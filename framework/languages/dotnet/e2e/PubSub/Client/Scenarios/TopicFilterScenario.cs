@@ -1,6 +1,6 @@
+using PubSub.Client.Support;
 using PubSub.Shared;
 using Zlink.HttpClient;
-using PubSub.Client.Support;
 
 namespace PubSub.Client.Scenarios;
 
@@ -30,13 +30,12 @@ internal static class TopicFilterScenario
             subscribers,
             new EvidenceWaitRequest(
                 ["event|", $"run={runId}", $"topic={PubSubNames.MainTopic}"],
-                [],
-                10000)
+                [])
             {
                 ContainsAllLineGroups =
                 [
-                    ["ignored|", $"run={runId}", $"topic={PubSubNames.OtherTopic}"],
-                ],
+                    ["ignored|", $"run={runId}", $"topic={PubSubNames.OtherTopic}"]
+                ]
             });
 
         // The non-interest topic must not be recorded as an accepted business event.
@@ -53,7 +52,7 @@ internal static class TopicFilterScenario
         Console.WriteLine("scenario PS-A2 passed");
     }
 
-    static async Task<string[][]> WaitForAllSubscribersAsync(
+    private static async Task<string[][]> WaitForAllSubscribersAsync(
         IReadOnlyList<ZLinkHttpClient> subscribers,
         EvidenceWaitRequest request)
     {

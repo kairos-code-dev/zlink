@@ -9,9 +9,9 @@ internal sealed class ZlinkStreamConnectorCallbacks(
 {
     private readonly ConcurrentQueue<QueuedCallback> _dispatchQueue = new();
     private readonly object _gate = new();
-    private Func<ZlinkStreamError, CancellationToken, ValueTask>? _errorReceived;
-    private Func<CancellationToken, ValueTask>? _disconnected;
     private Func<ZlinkStreamConnectionStateChanged, CancellationToken, ValueTask>? _connectionStateChanged;
+    private Func<CancellationToken, ValueTask>? _disconnected;
+    private Func<ZlinkStreamError, CancellationToken, ValueTask>? _errorReceived;
     private int _pendingDispatchCount;
 
     public int PendingDispatchCount => Volatile.Read(ref _pendingDispatchCount);
@@ -48,7 +48,8 @@ internal sealed class ZlinkStreamConnectorCallbacks(
         }
     }
 
-    public void AddConnectionStateChanged(Func<ZlinkStreamConnectionStateChanged, CancellationToken, ValueTask>? handler)
+    public void AddConnectionStateChanged(
+        Func<ZlinkStreamConnectionStateChanged, CancellationToken, ValueTask>? handler)
     {
         lock (_gate)
         {
@@ -56,7 +57,8 @@ internal sealed class ZlinkStreamConnectorCallbacks(
         }
     }
 
-    public void RemoveConnectionStateChanged(Func<ZlinkStreamConnectionStateChanged, CancellationToken, ValueTask>? handler)
+    public void RemoveConnectionStateChanged(
+        Func<ZlinkStreamConnectionStateChanged, CancellationToken, ValueTask>? handler)
     {
         lock (_gate)
         {
@@ -68,24 +70,20 @@ internal sealed class ZlinkStreamConnectorCallbacks(
     {
         var handler = SnapshotErrorReceived();
         if (handler is not null)
-        {
             await DispatchUserCallbackAsync(
                     dispatchedToken => handler(error, dispatchedToken),
                     cancellationToken)
                 .ConfigureAwait(false);
-        }
     }
 
     public async ValueTask NotifyDisconnectedAsync(CancellationToken cancellationToken)
     {
         var disconnected = SnapshotDisconnected();
         if (disconnected is not null)
-        {
             await DispatchUserCallbackAsync(
                     disconnected,
                     cancellationToken)
                 .ConfigureAwait(false);
-        }
     }
 
     public async ValueTask NotifyConnectionStateChangedAsync(
@@ -94,12 +92,10 @@ internal sealed class ZlinkStreamConnectorCallbacks(
     {
         var handler = SnapshotConnectionStateChanged();
         if (handler is not null)
-        {
             await DispatchUserCallbackAsync(
                     dispatchedToken => handler(change, dispatchedToken),
                     cancellationToken)
                 .ConfigureAwait(false);
-        }
     }
 
     public async ValueTask DispatchUserCallbackAsync(
@@ -111,12 +107,12 @@ internal sealed class ZlinkStreamConnectorCallbacks(
 
         if (dispatchMode == ZlinkStreamDispatchMode.Immediate)
         {
-            await InvokeUserCallbackAsync(callback, cancellationToken, reportErrors: true)
+            await InvokeUserCallbackAsync(callback, cancellationToken, true)
                 .ConfigureAwait(false);
             return;
         }
 
-        Enqueue(callback, reportErrors: true, runWhenDropped);
+        Enqueue(callback, true, runWhenDropped);
     }
 
     public async ValueTask DispatchAsync(CancellationToken cancellationToken)
@@ -150,7 +146,7 @@ internal sealed class ZlinkStreamConnectorCallbacks(
                                 return ValueTask.CompletedTask;
                             },
                             CancellationToken.None,
-                            runWhenDropped: true)
+                            true)
                         .ConfigureAwait(false);
                 }
                 catch (ZlinkStreamException ex)
@@ -162,7 +158,7 @@ internal sealed class ZlinkStreamConnectorCallbacks(
                                 return ValueTask.CompletedTask;
                             },
                             CancellationToken.None,
-                            runWhenDropped: true)
+                            true)
                         .ConfigureAwait(false);
                 }
                 catch (Exception ex)
@@ -178,7 +174,7 @@ internal sealed class ZlinkStreamConnectorCallbacks(
                                 return ValueTask.CompletedTask;
                             },
                             CancellationToken.None,
-                            runWhenDropped: true)
+                            true)
                         .ConfigureAwait(false);
                 }
             });
@@ -207,10 +203,7 @@ internal sealed class ZlinkStreamConnectorCallbacks(
         CancellationToken cancellationToken)
     {
         var handler = SnapshotErrorReceived();
-        if (handler is null)
-        {
-            return;
-        }
+        if (handler is null) return;
 
         var error = new ZlinkStreamError(
             ZlinkStreamErrorCode.UserCallbackFailed,
@@ -222,15 +215,15 @@ internal sealed class ZlinkStreamConnectorCallbacks(
             await InvokeUserCallbackAsync(
                     dispatchedToken => handler(error, dispatchedToken),
                     cancellationToken,
-                    reportErrors: false)
+                    false)
                 .ConfigureAwait(false);
             return;
         }
 
         Enqueue(
             dispatchedToken => handler(error, dispatchedToken),
-            reportErrors: false,
-            runWhenDropped: false);
+            false,
+            false);
     }
 
     private void Enqueue(
@@ -244,7 +237,6 @@ internal sealed class ZlinkStreamConnectorCallbacks(
         {
             count = Interlocked.Decrement(ref _pendingDispatchCount);
             if (dropped.RunWhenDropped)
-            {
                 taskRunner.RunDetached(
                     "stream-dispatch-overflow-callback",
                     async token => await InvokeUserCallbackAsync(
@@ -252,7 +244,6 @@ internal sealed class ZlinkStreamConnectorCallbacks(
                             token,
                             dropped.ReportErrors)
                         .ConfigureAwait(false));
-            }
         }
     }
 

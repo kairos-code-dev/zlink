@@ -50,7 +50,8 @@ internal interface IZLinkBackendWeightedSocket : IZLinkBackendSocket
     int GetPeerWeight();
 }
 
-internal interface IZLinkBackendDealerSocket : IZLinkBackendConnectableSocket, IZLinkBackendWeightedSocket, IZLinkBackendSocketOptions
+internal interface IZLinkBackendDealerSocket : IZLinkBackendConnectableSocket, IZLinkBackendWeightedSocket,
+    IZLinkBackendSocketOptions
 {
     void SetRoutingId(RoutingId routingId);
 
@@ -77,7 +78,8 @@ internal interface IZLinkBackendDealerSocket : IZLinkBackendConnectableSocket, I
     Received? Recv(RecvFlags flags = RecvFlags.None);
 }
 
-internal interface IZLinkBackendRouterSocket : IZLinkBackendConnectableSocket, IZLinkBackendWeightedSocket, IZLinkBackendSocketOptions
+internal interface IZLinkBackendRouterSocket : IZLinkBackendConnectableSocket, IZLinkBackendWeightedSocket,
+    IZLinkBackendSocketOptions
 {
     void AttachDiscovery(IZLinkBackendDiscovery discovery);
 

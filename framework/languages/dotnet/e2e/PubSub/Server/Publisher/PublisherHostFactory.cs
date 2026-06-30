@@ -1,6 +1,5 @@
 using PubSub.Server.Publisher.Configuration;
 using PubSub.Server.Publisher.Endpoints;
-using PubSub.Server.Publisher;
 using PubSub.Shared;
 using Zlink.Framework.AspNetCore;
 using Zlink.Framework.Contracts.Dispatch;

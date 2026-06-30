@@ -7,15 +7,15 @@ using System.Text;
 namespace Zlink.HttpClient.UnitTests;
 
 /// <summary>
-/// Raw-socket server that deterministically fails the first <c>failCount</c> connections (accept
-/// then close, producing a transport error on the client) and answers 200 afterwards. Used to test
-/// retry on retriable transport failures without depending on <see cref="HttpListener"/> abort
-/// semantics, which are unreliable on the managed Linux listener.
+///     Raw-socket server that deterministically fails the first <c>failCount</c> connections (accept
+///     then close, producing a transport error on the client) and answers 200 afterwards. Used to test
+///     retry on retriable transport failures without depending on <see cref="HttpListener" /> abort
+///     semantics, which are unreliable on the managed Linux listener.
 /// </summary>
 internal sealed class FlakyRawServer : IDisposable
 {
-    private readonly TcpListener _listener = new(IPAddress.Loopback, 0);
     private readonly CancellationTokenSource _cts = new();
+    private readonly TcpListener _listener = new(IPAddress.Loopback, 0);
     private int _connectionCount;
 
     public FlakyRawServer(int failCount)
@@ -29,6 +29,21 @@ internal sealed class FlakyRawServer : IDisposable
     public string BaseUrl { get; }
 
     public int ConnectionCount => Volatile.Read(ref _connectionCount);
+
+    public void Dispose()
+    {
+        _cts.Cancel();
+        try
+        {
+            _listener.Stop();
+        }
+        catch
+        {
+            // already stopped
+        }
+
+        _cts.Dispose();
+    }
 
     private async Task AcceptLoopAsync(int failCount)
     {
@@ -66,20 +81,5 @@ internal sealed class FlakyRawServer : IDisposable
                 }
             });
         }
-    }
-
-    public void Dispose()
-    {
-        _cts.Cancel();
-        try
-        {
-            _listener.Stop();
-        }
-        catch
-        {
-            // already stopped
-        }
-
-        _cts.Dispose();
     }
 }

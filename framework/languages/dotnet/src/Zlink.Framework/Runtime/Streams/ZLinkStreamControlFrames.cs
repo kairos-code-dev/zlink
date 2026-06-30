@@ -10,10 +10,7 @@ internal static class ZLinkStreamControlFrames
         ZlinkStreamHeader header,
         ReadOnlyMemory<byte> payload)
     {
-        if (payload.Length != 0)
-        {
-            throw new InvalidOperationException("Stream control packet payload must be empty.");
-        }
+        if (payload.Length != 0) throw new InvalidOperationException("Stream control packet payload must be empty.");
 
         if (header.Name == HeartbeatPingName)
         {
@@ -21,10 +18,7 @@ internal static class ZLinkStreamControlFrames
             return;
         }
 
-        if (header.Name == HeartbeatPongName)
-        {
-            return;
-        }
+        if (header.Name == HeartbeatPongName) return;
 
         throw new InvalidOperationException("Unknown stream control packet.");
     }

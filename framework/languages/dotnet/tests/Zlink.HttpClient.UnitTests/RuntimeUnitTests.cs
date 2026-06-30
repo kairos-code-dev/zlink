@@ -1,9 +1,10 @@
 /* SPDX-License-Identifier: MPL-2.0 */
 
+using System.IO.Compression;
 using System.Text;
+using Xunit;
 using Zlink.Framework.Contracts.Errors;
 using Zlink.HttpClient.Runtime;
-using Xunit;
 
 namespace Zlink.HttpClient.UnitTests;
 
@@ -18,10 +19,10 @@ public sealed class RuntimeUnitTests
         jar.Store("api.test", "root=1");
         jar.Store("other.test", "x=9");
 
-        Assert.Equal("root=1", jar.HeaderFor("api.test", "/", secure: false));
-        Assert.Contains("sid=abc", jar.HeaderFor("api.test", "/secure/data", secure: false));
-        Assert.DoesNotContain("sid", jar.HeaderFor("api.test", "/", secure: false));
-        Assert.Equal("x=9", jar.HeaderFor("other.test", "/", secure: false));
+        Assert.Equal("root=1", jar.HeaderFor("api.test", "/", false));
+        Assert.Contains("sid=abc", jar.HeaderFor("api.test", "/secure/data", false));
+        Assert.DoesNotContain("sid", jar.HeaderFor("api.test", "/", false));
+        Assert.Equal("x=9", jar.HeaderFor("other.test", "/", false));
     }
 
     [Fact]
@@ -30,8 +31,8 @@ public sealed class RuntimeUnitTests
         var jar = new CookieJar();
         jar.Store("api.test", "tok=1; Secure");
 
-        Assert.Equal(string.Empty, jar.HeaderFor("api.test", "/", secure: false));
-        Assert.Equal("tok=1", jar.HeaderFor("api.test", "/", secure: true));
+        Assert.Equal(string.Empty, jar.HeaderFor("api.test", "/", false));
+        Assert.Equal("tok=1", jar.HeaderFor("api.test", "/", true));
     }
 
     [Fact]
@@ -40,35 +41,32 @@ public sealed class RuntimeUnitTests
         var jar = new CookieJar();
         jar.Store("api.test", "a=1");
         jar.Store("api.test", "a=2"); // overwrite same name+path
-        Assert.Equal("a=2", jar.HeaderFor("api.test", "/", secure: false));
+        Assert.Equal("a=2", jar.HeaderFor("api.test", "/", false));
 
         jar.Store("api.test", "a=; Max-Age=0"); // delete
-        Assert.Equal(string.Empty, jar.HeaderFor("api.test", "/", secure: false));
+        Assert.Equal(string.Empty, jar.HeaderFor("api.test", "/", false));
     }
 
     [Fact]
     public void CookieJar_evicts_oldest_beyond_host_limit()
     {
         var jar = new CookieJar();
-        for (var i = 0; i < 130; i++)
-        {
-            jar.Store("api.test", $"c{i}=v");
-        }
+        for (var i = 0; i < 130; i++) jar.Store("api.test", $"c{i}=v");
 
-        var header = jar.HeaderFor("api.test", "/", secure: false);
-        Assert.DoesNotContain("c0=", header);   // oldest evicted
+        var header = jar.HeaderFor("api.test", "/", false);
+        Assert.DoesNotContain("c0=", header); // oldest evicted
         Assert.DoesNotContain("c1=", header);
-        Assert.Contains("c129=", header);        // newest kept
+        Assert.Contains("c129=", header); // newest kept
     }
 
     [Fact]
     public void CookieJar_ignores_malformed_set_cookie()
     {
         var jar = new CookieJar();
-        jar.Store("api.test", "");          // empty
-        jar.Store("api.test", "novalue");   // no '='
-        jar.Store("api.test", "=novalue");  // empty name
-        Assert.Equal(string.Empty, jar.HeaderFor("api.test", "/", secure: false));
+        jar.Store("api.test", ""); // empty
+        jar.Store("api.test", "novalue"); // no '='
+        jar.Store("api.test", "=novalue"); // empty name
+        Assert.Equal(string.Empty, jar.HeaderFor("api.test", "/", false));
     }
 
     [Fact]
@@ -77,7 +75,7 @@ public sealed class RuntimeUnitTests
         var chunks = new Queue<byte[]>(new[]
         {
             Encoding.UTF8.GetBytes("alpha"),
-            Encoding.UTF8.GetBytes("beta"),
+            Encoding.UTF8.GetBytes("beta")
         });
         using var stream = new ProviderReadStream(() => chunks.Count > 0 ? chunks.Dequeue() : null);
 
@@ -145,7 +143,7 @@ public sealed class RuntimeUnitTests
     private static byte[] GzipBytes(byte[] input)
     {
         using var output = new MemoryStream();
-        using (var gz = new System.IO.Compression.GZipStream(output, System.IO.Compression.CompressionMode.Compress, leaveOpen: true))
+        using (var gz = new GZipStream(output, CompressionMode.Compress, true))
         {
             gz.Write(input, 0, input.Length);
         }
@@ -156,7 +154,7 @@ public sealed class RuntimeUnitTests
     private static byte[] DeflateBytes(byte[] input)
     {
         using var output = new MemoryStream();
-        using (var df = new System.IO.Compression.ZLibStream(output, System.IO.Compression.CompressionMode.Compress, leaveOpen: true))
+        using (var df = new ZLibStream(output, CompressionMode.Compress, true))
         {
             df.Write(input, 0, input.Length);
         }

@@ -6,10 +6,7 @@ internal static class EvidenceText
     {
         var marker = key + "=";
         var start = line.IndexOf(marker, StringComparison.Ordinal);
-        if (start < 0)
-        {
-            return string.Empty;
-        }
+        if (start < 0) return string.Empty;
 
         start += marker.Length;
         var end = line.IndexOf('|', start);
@@ -19,8 +16,8 @@ internal static class EvidenceText
     public static bool HasCodec(string[] lines, string codec, string contentType)
     {
         return lines.Any(line => line.Contains($"codec-request|codec={codec}", StringComparison.Ordinal)
-            && line.Contains($"content={contentType}", StringComparison.Ordinal))
-            && lines.Any(line => line.Contains($"codec-command|codec={codec}", StringComparison.Ordinal)
-                && line.Contains($"content={contentType}", StringComparison.Ordinal));
+                                 && line.Contains($"content={contentType}", StringComparison.Ordinal))
+               && lines.Any(line => line.Contains($"codec-command|codec={codec}", StringComparison.Ordinal)
+                                    && line.Contains($"content={contentType}", StringComparison.Ordinal));
     }
 }

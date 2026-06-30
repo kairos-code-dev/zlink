@@ -1,66 +1,66 @@
 <Project Sdk="Microsoft.NET.Sdk">
-  <PropertyGroup>
-    <TargetFrameworks>$(ZLinkFrameworkTargetFrameworks)</TargetFrameworks>
-    <IsPackable>false</IsPackable>
-    <IsTestProject>true</IsTestProject>
-    <EnableDefaultCompileItems>false</EnableDefaultCompileItems>
-  </PropertyGroup>
+    <PropertyGroup>
+        <TargetFrameworks>$(ZLinkFrameworkTargetFrameworks)</TargetFrameworks>
+        <IsPackable>false</IsPackable>
+        <IsTestProject>true</IsTestProject>
+        <EnableDefaultCompileItems>false</EnableDefaultCompileItems>
+    </PropertyGroup>
 
-  <ItemGroup>
-    <PackageReference Include="Microsoft.Extensions.DependencyInjection" />
-    <PackageReference Include="Microsoft.Extensions.Hosting" />
-    <PackageReference Include="Microsoft.NET.Test.Sdk" />
-    <PackageReference Include="coverlet.collector">
-      <IncludeAssets>runtime; build; native; contentfiles; analyzers; buildtransitive</IncludeAssets>
-      <PrivateAssets>all</PrivateAssets>
-    </PackageReference>
-    <PackageReference Include="coverlet.msbuild">
-      <IncludeAssets>runtime; build; native; contentfiles; analyzers; buildtransitive</IncludeAssets>
-      <PrivateAssets>all</PrivateAssets>
-    </PackageReference>
-    <PackageReference Include="xunit" />
-    <PackageReference Include="xunit.runner.visualstudio">
-      <IncludeAssets>runtime; build; native; contentfiles; analyzers; buildtransitive</IncludeAssets>
-      <PrivateAssets>all</PrivateAssets>
-    </PackageReference>
-  </ItemGroup>
+    <ItemGroup>
+        <PackageReference Include="Microsoft.Extensions.DependencyInjection"/>
+        <PackageReference Include="Microsoft.Extensions.Hosting"/>
+        <PackageReference Include="Microsoft.NET.Test.Sdk"/>
+        <PackageReference Include="coverlet.collector">
+            <IncludeAssets>runtime; build; native; contentfiles; analyzers; buildtransitive</IncludeAssets>
+            <PrivateAssets>all</PrivateAssets>
+        </PackageReference>
+        <PackageReference Include="coverlet.msbuild">
+            <IncludeAssets>runtime; build; native; contentfiles; analyzers; buildtransitive</IncludeAssets>
+            <PrivateAssets>all</PrivateAssets>
+        </PackageReference>
+        <PackageReference Include="xunit"/>
+        <PackageReference Include="xunit.runner.visualstudio">
+            <IncludeAssets>runtime; build; native; contentfiles; analyzers; buildtransitive</IncludeAssets>
+            <PrivateAssets>all</PrivateAssets>
+        </PackageReference>
+    </ItemGroup>
 
-  <ItemGroup>
-    <ProjectReference Include="../../src/Zlink.Framework.Codecs.MessagePack/Zlink.Framework.Codecs.MessagePack.csproj" />
-    <ProjectReference Include="../../src/Zlink.Framework.Codecs.Protobuf/Zlink.Framework.Codecs.Protobuf.csproj" />
-    <ProjectReference Include="../../src/Zlink.Framework/Zlink.Framework.csproj" />
-    <ProjectReference Include="../../src/Zlink.Framework.AspNetCore/Zlink.Framework.AspNetCore.csproj" />
-    <ProjectReference Include="../../../../../bindings/dotnet/src/Zlink/Zlink.csproj" />
-  </ItemGroup>
+    <ItemGroup>
+        <ProjectReference Include="../../src/Zlink.Framework.Codecs.MessagePack/Zlink.Framework.Codecs.MessagePack.csproj"/>
+        <ProjectReference Include="../../src/Zlink.Framework.Codecs.Protobuf/Zlink.Framework.Codecs.Protobuf.csproj"/>
+        <ProjectReference Include="../../src/Zlink.Framework/Zlink.Framework.csproj"/>
+        <ProjectReference Include="../../src/Zlink.Framework.AspNetCore/Zlink.Framework.AspNetCore.csproj"/>
+        <ProjectReference Include="../../../../../bindings/dotnet/src/Zlink/Zlink.csproj"/>
+    </ItemGroup>
 
-  <ItemGroup>
-    <Compile Include="AssemblyInfo.cs" />
-    <Compile Include="Configuration/Registration/Channels.cs" />
-    <Compile Include="Configuration/Registration/HandlerExposure.cs" />
-    <Compile Include="Configuration/Registration/NodesAndServices.cs" />
-    <Compile Include="Configuration/Registration/RegistryAndMonitoring.cs" />
-    <Compile Include="Configuration/Registration/RegistryRemoteAddresses.cs" />
-    <Compile Include="Configuration/Registration/Support.cs" />
-    <Compile Include="Contracts/ScaffoldSmokeTests.cs" />
-    <Compile Include="Contracts/SpotContractTests.cs" />
-    <Compile Include="Documentation/Regression.cs" />
-    <Compile Include="Runtime/BackendAdapterFactoryTests.cs" />
-    <Compile Include="Runtime/BackendMonitorWrapperTests.cs" />
-    <Compile Include="Runtime/CoverageCriticalRuntimeTests.cs" />
-    <Compile Include="Runtime/CustomSerializerEnvelopeTests.cs" />
-    <Compile Include="Runtime/EnvelopeCodecTests.cs" />
-    <Compile Include="Runtime/HandlerResultAwaiterTests.cs" />
-    <Compile Include="Runtime/MessageFlowTracerTests.cs" />
-    <Compile Include="Runtime/SerialExecutorTests.cs" />
-    <Compile Include="Runtime/SpotActorHandlerRegistryTests.cs" />
-    <Compile Include="Runtime/SpotHandlerInvokerTests.cs" />
-    <Compile Include="Runtime/SpotPeerConnectionSetTests.cs" />
-    <Compile Include="Runtime/RequestFailureMappingTests.cs" />
-    <Compile Include="Runtime/RouteCodecTests.cs" />
-    <Compile Include="Runtime/UnhandledDispatchPolicyTests.cs" />
-    <Compile Include="Runtime/WorkerPoolTests.cs" />
-    <Compile Include="Runtime/ZLinkAsyncSubmitterTests.cs" />
-    <Compile Include="../Common/FrameworkGlobalUsings.cs" Link="GlobalUsings.cs" />
-    <Compile Include="../Common/FrameworkTestEnvironment.cs" Link="Common/FrameworkTestEnvironment.cs" />
-  </ItemGroup>
+    <ItemGroup>
+        <Compile Include="AssemblyInfo.cs"/>
+        <Compile Include="Configuration/Registration/Channels.cs"/>
+        <Compile Include="Configuration/Registration/HandlerExposure.cs"/>
+        <Compile Include="Configuration/Registration/NodesAndServices.cs"/>
+        <Compile Include="Configuration/Registration/RegistryAndMonitoring.cs"/>
+        <Compile Include="Configuration/Registration/RegistryRemoteAddresses.cs"/>
+        <Compile Include="Configuration/Registration/Support.cs"/>
+        <Compile Include="Contracts/ScaffoldSmokeTests.cs"/>
+        <Compile Include="Contracts/SpotContractTests.cs"/>
+        <Compile Include="Documentation/Regression.cs"/>
+        <Compile Include="Runtime/BackendAdapterFactoryTests.cs"/>
+        <Compile Include="Runtime/BackendMonitorWrapperTests.cs"/>
+        <Compile Include="Runtime/CoverageCriticalRuntimeTests.cs"/>
+        <Compile Include="Runtime/CustomSerializerEnvelopeTests.cs"/>
+        <Compile Include="Runtime/EnvelopeCodecTests.cs"/>
+        <Compile Include="Runtime/HandlerResultAwaiterTests.cs"/>
+        <Compile Include="Runtime/MessageFlowTracerTests.cs"/>
+        <Compile Include="Runtime/SerialExecutorTests.cs"/>
+        <Compile Include="Runtime/SpotActorHandlerRegistryTests.cs"/>
+        <Compile Include="Runtime/SpotHandlerInvokerTests.cs"/>
+        <Compile Include="Runtime/SpotPeerConnectionSetTests.cs"/>
+        <Compile Include="Runtime/RequestFailureMappingTests.cs"/>
+        <Compile Include="Runtime/RouteCodecTests.cs"/>
+        <Compile Include="Runtime/UnhandledDispatchPolicyTests.cs"/>
+        <Compile Include="Runtime/WorkerPoolTests.cs"/>
+        <Compile Include="Runtime/ZLinkAsyncSubmitterTests.cs"/>
+        <Compile Include="../Common/FrameworkGlobalUsings.cs" Link="GlobalUsings.cs"/>
+        <Compile Include="../Common/FrameworkTestEnvironment.cs" Link="Common/FrameworkTestEnvironment.cs"/>
+    </ItemGroup>
 </Project>

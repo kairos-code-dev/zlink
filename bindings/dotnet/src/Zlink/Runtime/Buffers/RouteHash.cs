@@ -1,6 +1,5 @@
 // SPDX-License-Identifier: MPL-2.0
 
-using System;
 using System.Runtime.CompilerServices;
 
 namespace Systems.Zlink;
@@ -17,12 +16,13 @@ internal static class RouteHash
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
     internal static ulong Fnv1a(ReadOnlySpan<byte> bytes)
     {
-        ulong hash = Offset;
-        for (int i = 0; i < bytes.Length; i++)
+        var hash = Offset;
+        for (var i = 0; i < bytes.Length; i++)
         {
             hash ^= bytes[i];
             hash *= Prime;
         }
+
         return hash;
     }
 
@@ -31,17 +31,19 @@ internal static class RouteHash
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
     internal static ulong Fnv1aInline(int size, ulong lo, ulong hi)
     {
-        ulong hash = Offset;
-        for (int i = 0; i < size && i < 8; i++)
+        var hash = Offset;
+        for (var i = 0; i < size && i < 8; i++)
         {
             hash ^= (lo >> (i * 8)) & 0xFFUL;
             hash *= Prime;
         }
-        for (int i = 8; i < size; i++)
+
+        for (var i = 8; i < size; i++)
         {
             hash ^= (hi >> ((i - 8) * 8)) & 0xFFUL;
             hash *= Prime;
         }
+
         return hash;
     }
 }

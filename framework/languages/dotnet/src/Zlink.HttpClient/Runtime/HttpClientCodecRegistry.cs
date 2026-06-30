@@ -1,5 +1,5 @@
 using System.Text.Json;
-using Systems.Zlink;
+using Systems.Zlink.Stream.Connector.Contracts;
 using Zlink.Framework.Contracts.Codecs;
 
 namespace Zlink.HttpClient.Runtime;
@@ -18,13 +18,8 @@ internal sealed class HttpClientCodecRegistry : IZLinkCodecRegistryBuilder
 
     private HttpClientCodecRegistry(HttpClientCodecRegistry source)
     {
-        foreach (var (contentType, serializer) in source._serializers)
-        {
-            _serializers[contentType] = serializer;
-        }
+        foreach (var (contentType, serializer) in source._serializers) _serializers[contentType] = serializer;
     }
-
-    public HttpClientCodecRegistry Snapshot() => new(this);
 
     public void Use(IZLinkCodecExtension extension)
     {
@@ -37,26 +32,32 @@ internal sealed class HttpClientCodecRegistry : IZLinkCodecRegistryBuilder
     }
 
     public void AddSerializer(string contentType, IZLinkMessageSerializer serializer)
-        => AddSerializer(contentType, serializer, _ => true, isFallbackSerializer: true);
+    {
+        AddSerializer(contentType, serializer, _ => true, true);
+    }
 
     public void AddSerializer(
         string contentType,
         IZLinkMessageSerializer serializer,
         Func<Type, bool> canSerialize)
-        => AddSerializer(contentType, serializer, canSerialize, isFallbackSerializer: false);
+    {
+        AddSerializer(contentType, serializer, canSerialize, false);
+    }
 
     public void AddStreamCodec(
         string contentType,
-        Systems.Zlink.Stream.Connector.Contracts.ZlinkStreamCodec codec)
+        ZlinkStreamCodec codec)
     {
+    }
+
+    public HttpClientCodecRegistry Snapshot()
+    {
+        return new HttpClientCodecRegistry(this);
     }
 
     public (byte[] Body, string ContentType) Encode(object? value, Type type)
     {
-        if (value is null)
-        {
-            return ([], JsonContentType);
-        }
+        if (value is null) return ([], JsonContentType);
 
         if (TryResolveSerializer(type, out var contentType, out var serializer)
             || TryResolveFallback(out contentType, out serializer))
@@ -72,26 +73,15 @@ internal sealed class HttpClientCodecRegistry : IZLinkCodecRegistryBuilder
 
     public object? Decode(byte[] body, Type type, string? contentType)
     {
-        if (type == typeof(byte[]))
-        {
-            return body;
-        }
+        if (type == typeof(byte[])) return body;
 
-        if (type == typeof(ReadOnlyMemory<byte>))
-        {
-            return new ReadOnlyMemory<byte>(body);
-        }
+        if (type == typeof(ReadOnlyMemory<byte>)) return new ReadOnlyMemory<byte>(body);
 
-        if (body.Length == 0)
-        {
-            return type.IsValueType ? Activator.CreateInstance(type) : null;
-        }
+        if (body.Length == 0) return type.IsValueType ? Activator.CreateInstance(type) : null;
 
         if (!string.IsNullOrWhiteSpace(contentType)
             && _serializers.TryGetValue(NormalizeContentType(contentType), out var found))
-        {
             return found.Serializer.Deserialize(ZLinkEncodedPayload.From(body), type);
-        }
 
         return JsonSerializer.Deserialize(body, type, JsonOptions);
     }
@@ -105,9 +95,7 @@ internal sealed class HttpClientCodecRegistry : IZLinkCodecRegistryBuilder
         ArgumentNullException.ThrowIfNull(serializer);
         ArgumentNullException.ThrowIfNull(canSerialize);
         if (string.IsNullOrWhiteSpace(contentType))
-        {
             throw new ArgumentException("HTTP codec content type must not be blank.", nameof(contentType));
-        }
 
         _serializers[NormalizeContentType(contentType)] =
             new RegisteredSerializer(serializer, canSerialize, isFallbackSerializer);
@@ -130,11 +118,9 @@ internal sealed class HttpClientCodecRegistry : IZLinkCodecRegistryBuilder
         }
 
         if (matches.Length > 1)
-        {
             throw new InvalidOperationException(
                 "HTTP payload serializer is ambiguous for type '" + payloadType + "': "
-                    + string.Join(", ", matches.Select(entry => entry.Key)));
-        }
+                + string.Join(", ", matches.Select(entry => entry.Key)));
 
         contentType = matches[0].Key;
         serializer = matches[0].Value.Serializer;
@@ -155,11 +141,9 @@ internal sealed class HttpClientCodecRegistry : IZLinkCodecRegistryBuilder
         }
 
         if (fallbackSerializers.Length > 1)
-        {
             throw new InvalidOperationException(
                 "HTTP payload serializer is ambiguous because more than one custom serializer is registered: "
-                    + string.Join(", ", fallbackSerializers.Select(entry => entry.Key)));
-        }
+                + string.Join(", ", fallbackSerializers.Select(entry => entry.Key)));
 
         contentType = fallbackSerializers[0].Key;
         serializer = fallbackSerializers[0].Value.Serializer;

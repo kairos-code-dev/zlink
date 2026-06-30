@@ -2,8 +2,8 @@ namespace Zlink.Framework.Runtime.Spots;
 
 internal sealed class ZLinkSpotActorMembership
 {
-    private readonly object _gate = new();
     private readonly Dictionary<string, IZLinkActor> _actorsById = new(StringComparer.Ordinal);
+    private readonly object _gate = new();
 
     public int Count
     {
@@ -22,10 +22,8 @@ internal sealed class ZLinkSpotActorMembership
         {
             if (_actorsById.TryGetValue(actor.ActorId, out var existing)
                 && !ReferenceEquals(existing, actor))
-            {
                 throw new InvalidOperationException(
                     $"SPOT already has an actor with id '{actor.ActorId}'.");
-            }
 
             _actorsById[actor.ActorId] = actor;
         }
@@ -45,9 +43,7 @@ internal sealed class ZLinkSpotActorMembership
         {
             if (_actorsById.TryGetValue(actor.ActorId, out var existing)
                 && ReferenceEquals(existing, actor))
-            {
                 _actorsById.Remove(actor.ActorId);
-            }
         }
     }
 }

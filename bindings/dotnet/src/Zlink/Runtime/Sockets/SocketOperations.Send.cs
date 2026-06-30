@@ -1,18 +1,15 @@
 // SPDX-License-Identifier: MPL-2.0
 
-using System;
-using System.Collections.Generic;
 using System.Runtime.CompilerServices;
-using System.Threading;
-using System.Threading.Tasks;
 
 namespace Systems.Zlink;
+
 internal sealed class MessageSocketSendOperation : SendOperation,
     SendSubmitOperation
 {
     private readonly MessageSocketBase _socket;
-    private OperationMessageBuffer _parts;
     private SendFlags _flags;
+    private OperationMessageBuffer _parts;
     private OperationSubmissionGuard _submission;
 
     internal MessageSocketSendOperation(MessageSocketBase socket)
@@ -62,8 +59,8 @@ internal sealed class PublisherSendOperation : SendOperation, SendSubmitOperatio
 {
     private readonly PublisherSocketBase _socket;
     private readonly string _topic;
-    private OperationMessageBuffer _parts;
     private SendFlags _flags;
+    private OperationMessageBuffer _parts;
     private OperationSubmissionGuard _submission;
 
     internal PublisherSendOperation(PublisherSocketBase socket, string topic)
@@ -112,10 +109,10 @@ internal sealed class PublisherSendOperation : SendOperation, SendSubmitOperatio
 
 internal sealed class RoutedSendOperation : SendOperation, SendSubmitOperation
 {
-    private readonly RoutedMessageSocketBase _socket;
     private readonly RoutingId _routingId;
-    private OperationMessageBuffer _parts;
+    private readonly RoutedMessageSocketBase _socket;
     private SendFlags _flags;
+    private OperationMessageBuffer _parts;
     private OperationSubmissionGuard _submission;
 
     internal RoutedSendOperation(RoutedMessageSocketBase socket,
@@ -162,11 +159,11 @@ internal sealed class RoutedSendOperation : SendOperation, SendSubmitOperation
 
 internal sealed class RouterSendOperation : SendOperation, SendSubmitOperation
 {
-    private readonly RouterSocket _socket;
     private readonly RoutingId _destNodeRid;
     private readonly RoutingId _destSpotRid;
-    private OperationMessageBuffer _parts;
+    private readonly RouterSocket _socket;
     private SendFlags _flags;
+    private OperationMessageBuffer _parts;
     private OperationSubmissionGuard _submission;
 
     internal RouterSendOperation(RouterSocket socket, RoutingId destNodeRid,
@@ -213,12 +210,12 @@ internal sealed class RouterSendOperation : SendOperation, SendSubmitOperation
 
 internal sealed class StreamSendOperation : SendOperation, SendSubmitOperation
 {
-    private readonly StreamSocket _socket;
+    private readonly string? _actorId;
     private readonly RoutingId? _routingId;
     private readonly RoutingId? _sessionRid;
-    private readonly string? _actorId;
-    private OperationMessageBuffer _parts;
+    private readonly StreamSocket _socket;
     private SendFlags _flags;
+    private OperationMessageBuffer _parts;
     private OperationSubmissionGuard _submission;
 
     internal StreamSendOperation(StreamSocket socket, RoutingId routingId)
@@ -254,10 +251,8 @@ internal sealed class StreamSendOperation : SendOperation, SendSubmitOperation
         EnsureReady();
         _submission.MarkSubmitted();
         if (_actorId != null)
-        {
             return _socket.SendBoundActorCore(_sessionRid!.Value, _actorId,
                 _parts.Parts, _flags);
-        }
         return _parts.IsSingle
             ? _socket.SendRoutedCore(_routingId!.Value, _parts.Single, _flags)
             : _socket.SendRoutedCore(_routingId!.Value, _parts.Parts, _flags);
@@ -278,10 +273,10 @@ internal sealed class StreamSendOperation : SendOperation, SendSubmitOperation
 internal sealed class ActorSendBoundSessionOperation : SendOperation,
     SendSubmitOperation
 {
-    private readonly SpotNode _node;
     private readonly ActorRef _actor;
-    private OperationMessageBuffer _parts;
+    private readonly SpotNode _node;
     private SendFlags _flags;
+    private OperationMessageBuffer _parts;
     private OperationSubmissionGuard _submission;
 
     internal ActorSendBoundSessionOperation(SpotNode node, ActorRef actor)
@@ -327,8 +322,8 @@ internal sealed class ReceivedSendOperationImpl : SendOperation,
     SendSubmitOperation
 {
     private readonly Received _received;
-    private OperationMessageBuffer _parts;
     private SendFlags _flags;
+    private OperationMessageBuffer _parts;
     private OperationSubmissionGuard _submission;
 
     internal ReceivedSendOperationImpl(Received received)

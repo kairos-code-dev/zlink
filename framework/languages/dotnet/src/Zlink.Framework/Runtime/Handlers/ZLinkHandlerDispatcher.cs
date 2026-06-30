@@ -70,7 +70,6 @@ internal sealed class ZLinkHandlerDispatcher(
         object?[] args)
     {
         for (var i = 0; i < endpoint.ArgumentPlan.Count; i++)
-        {
             switch (endpoint.ArgumentPlan[i])
             {
                 case ZLinkHandlerArgumentKind.Message:
@@ -83,7 +82,6 @@ internal sealed class ZLinkHandlerDispatcher(
                     args[i] = cancellationToken;
                     break;
             }
-        }
     }
 
     private static ZLinkHandlerContext RebindContext(ZLinkHandlerContext context)
@@ -107,7 +105,7 @@ internal sealed class ZLinkHandlerDispatcher(
                 publish.Topic,
                 publish.Source,
                 publish.ConnectionAborted),
-            _ => throw new InvalidOperationException("Unknown handler context type."),
+            _ => throw new InvalidOperationException("Unknown handler context type.")
         };
     }
 }

@@ -1,109 +1,26 @@
 // SPDX-License-Identifier: MPL-2.0
 
-using System;
-using System.Collections.Generic;
-using Systems.Zlink.Runtime.Native;
+using System.Collections;
 using Systems.Zlink.Runtime.Sockets.Internal;
 
 namespace Systems.Zlink;
 
 public sealed partial class Received
 {
-    private ReceivedMetadata? _metadata;
-    private RoutingIdSnapshot _routingIdSnapshot;
-    private MultipartMessageCollection? _parts;
-    private Message? _singlePart;
     private bool _closed;
+    private ReceivedMetadata? _metadata;
+    private MultipartMessageCollection? _parts;
     private RoutingId? _routingId;
-    private ReceivedSendSingleHandler? _sendSingleHandler;
+    private RoutingIdSnapshot _routingIdSnapshot;
     private ReceivedSendHandler? _sendHandler;
     private SocketKernel? _sendKernel;
     private RoutingIdSnapshot _sendRoutingIdSnapshot;
+    private ReceivedSendSingleHandler? _sendSingleHandler;
     private RoutingIdSnapshot _sendSpotRidSnapshot;
+    private Message? _singlePart;
 
     private Received()
     {
-    }
-
-    private void DisposeCore()
-    {
-        if (_closed)
-            return;
-        _closed = true;
-        if (_singlePart != null)
-        {
-            _singlePart.DisposeNativeOwned();
-            _singlePart = null;
-            return;
-        }
-        _parts?.Dispose();
-    }
-
-    internal static Received Create(RoutingId? routingId, Message[] parts,
-        ulong? requestSeq = null, RoutingId? spotRid = null,
-        ReceivedReplyHandler? replyHandler = null)
-    {
-        return new Received(routingId, parts, requestSeq, spotRid, replyHandler);
-    }
-
-    internal static Received Create(RoutingId? routingId,
-        MultipartMessageCollection parts, ulong? requestSeq = null,
-        RoutingId? spotRid = null, ReceivedReplyHandler? replyHandler = null)
-    {
-        return new Received(routingId, parts, requestSeq, spotRid, replyHandler);
-    }
-
-    internal static Received Create(byte[]? routingIdBytes, Message[] parts,
-        bool adoptRoutingBytes, ulong? requestSeq = null,
-        byte[]? spotRidBytes = null,
-        ReceivedReplyHandler? replyHandler = null)
-    {
-        return new Received(routingIdBytes, parts, adoptRoutingBytes,
-            requestSeq, spotRidBytes, replyHandler);
-    }
-
-    internal static Received Create(byte[]? routingIdBytes,
-        MultipartMessageCollection parts, bool adoptRoutingBytes,
-        ulong? requestSeq = null, byte[]? spotRidBytes = null,
-        ReceivedReplyHandler? replyHandler = null)
-    {
-        return new Received(routingIdBytes, parts, adoptRoutingBytes,
-            requestSeq, spotRidBytes, replyHandler);
-    }
-
-    internal static Received Create(RoutingId? routingId, Message singlePart,
-        ulong? requestSeq = null, RoutingId? spotRid = null,
-        ReceivedReplyHandler? replyHandler = null)
-    {
-        return new Received(routingId, singlePart, requestSeq, spotRid,
-            replyHandler);
-    }
-
-    internal static Received Create(byte[]? routingIdBytes, Message singlePart,
-        bool adoptRoutingBytes, ulong? requestSeq = null,
-        byte[]? spotRidBytes = null,
-        ReceivedReplyHandler? replyHandler = null)
-    {
-        return new Received(routingIdBytes, singlePart, adoptRoutingBytes,
-            requestSeq, spotRidBytes, replyHandler);
-    }
-
-    internal static Received Create(RoutingIdSnapshot routingId,
-        Message singlePart, ulong? requestSeq = null,
-        RoutingIdSnapshot spotRid = default,
-        ReceivedReplyHandler? replyHandler = null)
-    {
-        return new Received(routingId, singlePart, requestSeq, spotRid,
-            replyHandler);
-    }
-
-    internal static Received Create(RoutingIdSnapshot routingId,
-        MultipartMessageCollection parts, ulong? requestSeq = null,
-        RoutingIdSnapshot spotRid = default,
-        ReceivedReplyHandler? replyHandler = null)
-    {
-        return new Received(routingId, parts, requestSeq, spotRid,
-            replyHandler);
     }
 
     internal Received(RoutingId? routingId, Message[] parts,
@@ -197,25 +114,9 @@ public sealed partial class Received
                     return _singlePart;
                 throw new ArgumentOutOfRangeException(nameof(index));
             }
+
             return PartsCollection[index];
         }
-    }
-
-    internal IReadOnlyList<Message> TakePartsOwnership()
-    {
-        if (_singlePart != null)
-        {
-            Message part = _singlePart;
-            _singlePart = null;
-            _closed = true;
-            return new SingleMessageList(part);
-        }
-        return PartsCollection.TakeMessages();
-    }
-
-    internal IEnumerator<Message> GetEnumerator()
-    {
-        return PartsCollection.GetEnumerator();
     }
 
     private MultipartMessageCollection PartsCollection
@@ -226,10 +127,110 @@ public sealed partial class Received
                 return _parts;
             if (_singlePart == null)
                 return _parts = MultipartMessageCollection.FromMessages(Array.Empty<Message>());
-            Message part = _singlePart;
+            var part = _singlePart;
             _singlePart = null;
             return _parts = MultipartMessageCollection.FromSingle(part);
         }
+    }
+
+    private void DisposeCore()
+    {
+        if (_closed)
+            return;
+        _closed = true;
+        if (_singlePart != null)
+        {
+            _singlePart.DisposeNativeOwned();
+            _singlePart = null;
+            return;
+        }
+
+        _parts?.Dispose();
+    }
+
+    internal static Received Create(RoutingId? routingId, Message[] parts,
+        ulong? requestSeq = null, RoutingId? spotRid = null,
+        ReceivedReplyHandler? replyHandler = null)
+    {
+        return new Received(routingId, parts, requestSeq, spotRid, replyHandler);
+    }
+
+    internal static Received Create(RoutingId? routingId,
+        MultipartMessageCollection parts, ulong? requestSeq = null,
+        RoutingId? spotRid = null, ReceivedReplyHandler? replyHandler = null)
+    {
+        return new Received(routingId, parts, requestSeq, spotRid, replyHandler);
+    }
+
+    internal static Received Create(byte[]? routingIdBytes, Message[] parts,
+        bool adoptRoutingBytes, ulong? requestSeq = null,
+        byte[]? spotRidBytes = null,
+        ReceivedReplyHandler? replyHandler = null)
+    {
+        return new Received(routingIdBytes, parts, adoptRoutingBytes,
+            requestSeq, spotRidBytes, replyHandler);
+    }
+
+    internal static Received Create(byte[]? routingIdBytes,
+        MultipartMessageCollection parts, bool adoptRoutingBytes,
+        ulong? requestSeq = null, byte[]? spotRidBytes = null,
+        ReceivedReplyHandler? replyHandler = null)
+    {
+        return new Received(routingIdBytes, parts, adoptRoutingBytes,
+            requestSeq, spotRidBytes, replyHandler);
+    }
+
+    internal static Received Create(RoutingId? routingId, Message singlePart,
+        ulong? requestSeq = null, RoutingId? spotRid = null,
+        ReceivedReplyHandler? replyHandler = null)
+    {
+        return new Received(routingId, singlePart, requestSeq, spotRid,
+            replyHandler);
+    }
+
+    internal static Received Create(byte[]? routingIdBytes, Message singlePart,
+        bool adoptRoutingBytes, ulong? requestSeq = null,
+        byte[]? spotRidBytes = null,
+        ReceivedReplyHandler? replyHandler = null)
+    {
+        return new Received(routingIdBytes, singlePart, adoptRoutingBytes,
+            requestSeq, spotRidBytes, replyHandler);
+    }
+
+    internal static Received Create(RoutingIdSnapshot routingId,
+        Message singlePart, ulong? requestSeq = null,
+        RoutingIdSnapshot spotRid = default,
+        ReceivedReplyHandler? replyHandler = null)
+    {
+        return new Received(routingId, singlePart, requestSeq, spotRid,
+            replyHandler);
+    }
+
+    internal static Received Create(RoutingIdSnapshot routingId,
+        MultipartMessageCollection parts, ulong? requestSeq = null,
+        RoutingIdSnapshot spotRid = default,
+        ReceivedReplyHandler? replyHandler = null)
+    {
+        return new Received(routingId, parts, requestSeq, spotRid,
+            replyHandler);
+    }
+
+    internal IReadOnlyList<Message> TakePartsOwnership()
+    {
+        if (_singlePart != null)
+        {
+            var part = _singlePart;
+            _singlePart = null;
+            _closed = true;
+            return new SingleMessageList(part);
+        }
+
+        return PartsCollection.TakeMessages();
+    }
+
+    internal IEnumerator<Message> GetEnumerator()
+    {
+        return PartsCollection.GetEnumerator();
     }
 
     private sealed class ReceivedMetadata
@@ -310,7 +311,7 @@ public sealed partial class Received
             yield return _message;
         }
 
-        System.Collections.IEnumerator System.Collections.IEnumerable
+        IEnumerator IEnumerable
             .GetEnumerator()
         {
             return GetEnumerator();

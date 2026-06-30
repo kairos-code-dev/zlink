@@ -1,8 +1,7 @@
-using Systems.Zlink;
-using Zlink.Framework.Contracts.Codecs.Json;
-using ShoppingMall.Server.OrderWorkflow.Infrastructure.ZLink.Spots.OrderWorkflowSpot;
 using ShoppingMall.Server.OrderWorkflow.Application.OrderWorkflow;
+using ShoppingMall.Server.OrderWorkflow.Infrastructure.ZLink.Spots.OrderWorkflowSpot;
 using ShoppingMall.Shared.Contracts;
+using Systems.Zlink;
 using Zlink.Framework.Contracts.Channels;
 using Zlink.Framework.Contracts.Spots;
 
@@ -59,7 +58,8 @@ internal sealed class StartOrderWorkflowRouteHandler(
         OrderWorkflowService workflow,
         string orderId)
     {
-        await workflow.ContinueAsync(new ContinueOrderWorkflowReq(orderId), CancellationToken.None).ConfigureAwait(false);
+        await workflow.ContinueAsync(new ContinueOrderWorkflowReq(orderId), CancellationToken.None)
+            .ConfigureAwait(false);
     }
 }
 

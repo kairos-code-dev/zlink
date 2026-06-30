@@ -12,133 +12,12 @@ public sealed class FileCommerceStores(string directory) :
 {
     private static readonly JsonSerializerOptions JsonOptions = new(JsonSerializerDefaults.Web)
     {
-        WriteIndented = true,
+        WriteIndented = true
     };
 
-    private readonly string _stateFile = Path.Combine(directory, "commerce-state.json");
     private readonly string _lockFile = Path.Combine(directory, "commerce-state.lock");
 
-    public void SeedDefaults()
-    {
-        Directory.CreateDirectory(directory);
-        WithState(state =>
-        {
-            state.Carts.TryAdd("cart-success", new CartSeed(
-                "cart-success",
-                [new OrderLineInput("sku-keyboard", 1), new OrderLineInput("sku-mouse", 1)],
-                120.00m,
-                "USD"));
-            state.Carts.TryAdd("cart-inventory-fail", new CartSeed(
-                "cart-inventory-fail",
-                [new OrderLineInput("sku-soldout", 2)],
-                88.00m,
-                "USD"));
-            state.Carts.TryAdd("cart-payment-fail", new CartSeed(
-                "cart-payment-fail",
-                [new OrderLineInput("sku-headset", 1)],
-                64.00m,
-                "USD"));
-
-            state.Inventory.TryAdd("sku-keyboard", 5);
-            state.Inventory.TryAdd("sku-mouse", 5);
-            state.Inventory.TryAdd("sku-headset", 3);
-            state.Inventory.TryAdd("sku-soldout", 1);
-
-            state.PaymentMethods.TryAdd("pm-ok", new PaymentMethodSeed("pm-ok", ShouldAuthorize: true, FailureReason: null));
-            state.PaymentMethods.TryAdd("pm-decline", new PaymentMethodSeed("pm-decline", ShouldAuthorize: false, "payment declined"));
-
-            state.ShippingAddresses.Add("addr-home");
-            state.ShippingAddresses.Add("addr-office");
-        });
-    }
-
-    public ValueTask<IReadOnlyList<StoredOrderEvent>> ReadAsync(
-        string orderId,
-        CancellationToken cancellationToken)
-    {
-        cancellationToken.ThrowIfCancellationRequested();
-        var events = WithState(state => state.Events.TryGetValue(orderId, out var current)
-            ? current.OrderBy(static item => item.Version).ToArray()
-            : []);
-        return ValueTask.FromResult<IReadOnlyList<StoredOrderEvent>>(events);
-    }
-
-    public ValueTask AppendAsync(
-        string orderId,
-        long expectedVersion,
-        IReadOnlyList<OrderDomainEvent> events,
-        CancellationToken cancellationToken)
-    {
-        cancellationToken.ThrowIfCancellationRequested();
-        WithState(state =>
-        {
-            if (!state.Events.TryGetValue(orderId, out var stream))
-            {
-                stream = [];
-                state.Events[orderId] = stream;
-            }
-
-            var currentVersion = stream.Count == 0 ? 0 : stream.Max(static item => item.Version);
-            if (currentVersion != expectedVersion)
-            {
-                throw new InvalidOperationException(
-                    $"Order stream version mismatch. order={orderId}, expected={expectedVersion}, actual={currentVersion}");
-            }
-
-            foreach (var domainEvent in events)
-            {
-                var sourceCommandId = domainEvent is OrderStartedEvent started ? started.SourceCommandId : null;
-                if (sourceCommandId is not null
-                    && stream.Any(item => string.Equals(item.SourceCommandId, sourceCommandId, StringComparison.Ordinal)
-                                          && item.EventType == nameof(OrderStartedEvent)))
-                {
-                    continue;
-                }
-
-                if (IsDuplicateSemanticEvent(stream, domainEvent))
-                {
-                    continue;
-                }
-
-                stream.Add(new StoredOrderEvent(
-                    domainEvent.EventId,
-                    sourceCommandId,
-                    orderId,
-                    domainEvent.GetType().Name,
-                    domainEvent,
-                    ++currentVersion,
-                    domainEvent.CreatedAtUnixMs));
-            }
-        });
-        return ValueTask.CompletedTask;
-    }
-
-    public ValueTask<OrderState?> FindAsync(
-        string orderId,
-        CancellationToken cancellationToken)
-    {
-        cancellationToken.ThrowIfCancellationRequested();
-        var state = WithState(current => current.ReadModels.GetValueOrDefault(orderId));
-        return ValueTask.FromResult(state);
-    }
-
-    public ValueTask SaveAsync(
-        OrderState state,
-        CancellationToken cancellationToken)
-    {
-        cancellationToken.ThrowIfCancellationRequested();
-        WithState(current => current.ReadModels[state.OrderId] = state);
-        return ValueTask.CompletedTask;
-    }
-
-    public ValueTask DeleteAsync(
-        string orderId,
-        CancellationToken cancellationToken)
-    {
-        cancellationToken.ThrowIfCancellationRequested();
-        WithState(state => state.ReadModels.Remove(orderId));
-        return ValueTask.CompletedTask;
-    }
+    private readonly string _stateFile = Path.Combine(directory, "commerce-state.json");
 
     public ValueTask<CartSeed> GetCartAsync(
         string cartId,
@@ -158,9 +37,7 @@ public sealed class FileCommerceStores(string directory) :
         WithState(state =>
         {
             if (!state.ShippingAddresses.Contains(shippingAddressId))
-            {
                 throw new InvalidOperationException($"Shipping address '{shippingAddressId}' does not exist.");
-            }
         });
         return ValueTask.CompletedTask;
     }
@@ -192,13 +69,10 @@ public sealed class FileCommerceStores(string directory) :
         cancellationToken.ThrowIfCancellationRequested();
         var mapping = WithState(state =>
         {
-            if (state.Idempotency.TryGetValue(idempotencyKey, out var existing))
-            {
-                return existing;
-            }
+            if (state.Idempotency.TryGetValue(idempotencyKey, out var existing)) return existing;
 
             var orderId = $"order-{++state.NextOrderSequence:0000}";
-            var created = new IdempotencyMapping(idempotencyKey, orderId, ownerInstanceId, Started: false);
+            var created = new IdempotencyMapping(idempotencyKey, orderId, ownerInstanceId, false);
             state.Idempotency[idempotencyKey] = created;
             return created;
         });
@@ -231,7 +105,7 @@ public sealed class FileCommerceStores(string directory) :
                 idempotencyKey,
                 orderId,
                 ownerInstanceId,
-                Started: false);
+                false);
         });
         return ValueTask.CompletedTask;
     }
@@ -248,19 +122,14 @@ public sealed class FileCommerceStores(string directory) :
             {
                 var available = state.Inventory.GetValueOrDefault(line.Sku);
                 if (available < line.Quantity)
-                {
-                    return new ReserveInventoryResult(false, ReservationId: null, $"inventory unavailable for {line.Sku}");
-                }
+                    return new ReserveInventoryResult(false, null, $"inventory unavailable for {line.Sku}");
             }
 
-            foreach (var line in lines)
-            {
-                state.Inventory[line.Sku] -= line.Quantity;
-            }
+            foreach (var line in lines) state.Inventory[line.Sku] -= line.Quantity;
 
             var reservationId = $"reservation-{orderId}";
             state.Reservations[reservationId] = orderId;
-            return new ReserveInventoryResult(true, reservationId, Reason: null);
+            return new ReserveInventoryResult(true, reservationId, null);
         });
         return ValueTask.FromResult(result);
     }
@@ -311,14 +180,129 @@ public sealed class FileCommerceStores(string directory) :
             if (!method.ShouldAuthorize)
             {
                 state.PaymentAttempts[orderId] = method.FailureReason ?? "payment failed";
-                return new AuthorizePaymentResult(false, PaymentId: null, state.PaymentAttempts[orderId]);
+                return new AuthorizePaymentResult(false, null, state.PaymentAttempts[orderId]);
             }
 
             var paymentId = $"payment-{orderId}";
             state.Payments[paymentId] = $"{amount:0.00} {currency}";
-            return new AuthorizePaymentResult(true, paymentId, Reason: null);
+            return new AuthorizePaymentResult(true, paymentId, null);
         });
         return ValueTask.FromResult(result);
+    }
+
+    public ValueTask<IReadOnlyList<StoredOrderEvent>> ReadAsync(
+        string orderId,
+        CancellationToken cancellationToken)
+    {
+        cancellationToken.ThrowIfCancellationRequested();
+        var events = WithState(state => state.Events.TryGetValue(orderId, out var current)
+            ? current.OrderBy(static item => item.Version).ToArray()
+            : []);
+        return ValueTask.FromResult<IReadOnlyList<StoredOrderEvent>>(events);
+    }
+
+    public ValueTask AppendAsync(
+        string orderId,
+        long expectedVersion,
+        IReadOnlyList<OrderDomainEvent> events,
+        CancellationToken cancellationToken)
+    {
+        cancellationToken.ThrowIfCancellationRequested();
+        WithState(state =>
+        {
+            if (!state.Events.TryGetValue(orderId, out var stream))
+            {
+                stream = [];
+                state.Events[orderId] = stream;
+            }
+
+            var currentVersion = stream.Count == 0 ? 0 : stream.Max(static item => item.Version);
+            if (currentVersion != expectedVersion)
+                throw new InvalidOperationException(
+                    $"Order stream version mismatch. order={orderId}, expected={expectedVersion}, actual={currentVersion}");
+
+            foreach (var domainEvent in events)
+            {
+                var sourceCommandId = domainEvent is OrderStartedEvent started ? started.SourceCommandId : null;
+                if (sourceCommandId is not null
+                    && stream.Any(item => string.Equals(item.SourceCommandId, sourceCommandId, StringComparison.Ordinal)
+                                          && item.EventType == nameof(OrderStartedEvent)))
+                    continue;
+
+                if (IsDuplicateSemanticEvent(stream, domainEvent)) continue;
+
+                stream.Add(new StoredOrderEvent(
+                    domainEvent.EventId,
+                    sourceCommandId,
+                    orderId,
+                    domainEvent.GetType().Name,
+                    domainEvent,
+                    ++currentVersion,
+                    domainEvent.CreatedAtUnixMs));
+            }
+        });
+        return ValueTask.CompletedTask;
+    }
+
+    public ValueTask<OrderState?> FindAsync(
+        string orderId,
+        CancellationToken cancellationToken)
+    {
+        cancellationToken.ThrowIfCancellationRequested();
+        var state = WithState(current => current.ReadModels.GetValueOrDefault(orderId));
+        return ValueTask.FromResult(state);
+    }
+
+    public ValueTask SaveAsync(
+        OrderState state,
+        CancellationToken cancellationToken)
+    {
+        cancellationToken.ThrowIfCancellationRequested();
+        WithState(current => current.ReadModels[state.OrderId] = state);
+        return ValueTask.CompletedTask;
+    }
+
+    public ValueTask DeleteAsync(
+        string orderId,
+        CancellationToken cancellationToken)
+    {
+        cancellationToken.ThrowIfCancellationRequested();
+        WithState(state => state.ReadModels.Remove(orderId));
+        return ValueTask.CompletedTask;
+    }
+
+    public void SeedDefaults()
+    {
+        Directory.CreateDirectory(directory);
+        WithState(state =>
+        {
+            state.Carts.TryAdd("cart-success", new CartSeed(
+                "cart-success",
+                [new OrderLineInput("sku-keyboard", 1), new OrderLineInput("sku-mouse", 1)],
+                120.00m,
+                "USD"));
+            state.Carts.TryAdd("cart-inventory-fail", new CartSeed(
+                "cart-inventory-fail",
+                [new OrderLineInput("sku-soldout", 2)],
+                88.00m,
+                "USD"));
+            state.Carts.TryAdd("cart-payment-fail", new CartSeed(
+                "cart-payment-fail",
+                [new OrderLineInput("sku-headset", 1)],
+                64.00m,
+                "USD"));
+
+            state.Inventory.TryAdd("sku-keyboard", 5);
+            state.Inventory.TryAdd("sku-mouse", 5);
+            state.Inventory.TryAdd("sku-headset", 3);
+            state.Inventory.TryAdd("sku-soldout", 1);
+
+            state.PaymentMethods.TryAdd("pm-ok", new PaymentMethodSeed("pm-ok", true, null));
+            state.PaymentMethods.TryAdd("pm-decline", new PaymentMethodSeed("pm-decline", false, "payment declined"));
+
+            state.ShippingAddresses.Add("addr-home");
+            state.ShippingAddresses.Add("addr-office");
+        });
     }
 
     public ValueTask<StoreEvidence> EvidenceAsync(
@@ -357,7 +341,7 @@ public sealed class FileCommerceStores(string directory) :
                 && current.PaymentId == paid.PaymentId),
             OrderConfirmedEvent => stream.Any(static item => item.Payload is OrderConfirmedEvent),
             OrderFailedEvent => stream.Any(static item => item.Payload is OrderFailedEvent),
-            _ => false,
+            _ => false
         };
     }
 
@@ -383,7 +367,6 @@ public sealed class FileCommerceStores(string directory) :
     {
         Directory.CreateDirectory(directory);
         while (true)
-        {
             try
             {
                 return new FileStream(_lockFile, FileMode.OpenOrCreate, FileAccess.ReadWrite, FileShare.None);
@@ -392,15 +375,11 @@ public sealed class FileCommerceStores(string directory) :
             {
                 Thread.Sleep(10);
             }
-        }
     }
 
     private PersistedCommerceState ReadState()
     {
-        if (!File.Exists(_stateFile))
-        {
-            return new PersistedCommerceState();
-        }
+        if (!File.Exists(_stateFile)) return new PersistedCommerceState();
 
         var json = File.ReadAllText(_stateFile);
         return string.IsNullOrWhiteSpace(json)

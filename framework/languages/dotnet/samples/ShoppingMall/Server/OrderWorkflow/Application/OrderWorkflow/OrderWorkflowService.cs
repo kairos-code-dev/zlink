@@ -1,7 +1,7 @@
+using ShoppingMall.Server.Configuration;
 using ShoppingMall.Server.OrderWorkflow.Domain.ShoppingMall;
 using ShoppingMall.Server.Shared.Domain;
 using ShoppingMall.Server.Shared.Ports.Outbound;
-using ShoppingMall.Server.Configuration;
 using ShoppingMall.Shared.Contracts;
 
 namespace ShoppingMall.Server.OrderWorkflow.Application.OrderWorkflow;
@@ -18,16 +18,11 @@ internal sealed class OrderWorkflowService(
         var stored = await events.ReadAsync(command.OrderId, cancellationToken);
         var aggregate = OrderAggregate.Rehydrate(stored.Select(static item => item.Payload));
         if (aggregate.HasProcessedCommand(command.IdempotencyKey))
-        {
             return await RequireProjectionAsync(command.OrderId, cancellationToken);
-        }
 
         var now = NowUnixMs();
         var started = aggregate.Start(command, NewEventId("started", command.OrderId), now);
-        if (started.Count > 0)
-        {
-            await AppendAndProjectAsync(command.OrderId, stored.Count, started, cancellationToken);
-        }
+        if (started.Count > 0) await AppendAndProjectAsync(command.OrderId, stored.Count, started, cancellationToken);
 
         await commerce.MarkIdempotencyStartedAsync(command.IdempotencyKey, cancellationToken);
         var createdState = await RequireProjectionAsync(command.OrderId, cancellationToken);
@@ -45,13 +40,10 @@ internal sealed class OrderWorkflowService(
             cancellationToken.ThrowIfCancellationRequested();
             var stored = await events.ReadAsync(orderId, cancellationToken);
             var aggregate = OrderAggregate.Rehydrate(stored.Select(static item => item.Payload));
-            if (aggregate.IsTerminal)
-            {
-                return await RequireProjectionAsync(orderId, cancellationToken);
-            }
+            if (aggregate.IsTerminal) return await RequireProjectionAsync(orderId, cancellationToken);
 
             var current = await RequireProjectionAsync(orderId, cancellationToken);
-            IReadOnlyList<OrderDomainEvent> next = current.Status switch
+            var next = current.Status switch
             {
                 OrderStatuses.Created => aggregate.ApplyInventoryResult(
                     await commerce.ReserveInventoryAsync(
@@ -67,23 +59,18 @@ internal sealed class OrderWorkflowService(
                     paymentMethodId,
                     cancellationToken),
                 OrderStatuses.PaymentAuthorized => aggregate.Confirm(NewEventId("confirmed", orderId), NowUnixMs()),
-                _ => [],
+                _ => []
             };
 
-            if (next.Count == 0)
-            {
-                return current;
-            }
+            if (next.Count == 0) return current;
 
             await AppendAndProjectAsync(orderId, stored.Count, next, cancellationToken);
             foreach (var released in next.OfType<InventoryReleasedEvent>())
-            {
                 await commerce.ReleaseInventoryAsync(
                     orderId,
                     released.ReservationId,
                     released.Reason,
                     cancellationToken);
-            }
         }
     }
 
@@ -93,15 +80,9 @@ internal sealed class OrderWorkflowService(
     {
         var stored = await events.ReadAsync(orderId, cancellationToken);
         OrderState? state = null;
-        foreach (var storedEvent in stored)
-        {
-            state = OrderProjection.Apply(state, storedEvent.Payload);
-        }
+        foreach (var storedEvent in stored) state = OrderProjection.Apply(state, storedEvent.Payload);
 
-        if (state is null)
-        {
-            throw new InvalidOperationException($"Order '{orderId}' has no event stream.");
-        }
+        if (state is null) throw new InvalidOperationException($"Order '{orderId}' has no event stream.");
 
         await readModels.SaveAsync(state, cancellationToken);
         return state;

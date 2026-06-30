@@ -20,18 +20,12 @@ internal sealed class ZLinkMonitoringPollingRunner(
         {
             var registryQuery = services.GetRequiredService<IZLinkRegistryQuery>();
             foreach (var source in registration.RegistrySources.Values)
-            {
                 tasks.Add(RunRegistryLoopAsync(source, registryQuery, cancellationToken));
-            }
         }
 
         if (frameworkRuntime is not null)
-        {
             foreach (var source in registration.SpotSources.Values)
-            {
                 tasks.Add(RunSpotLoopAsync(source, frameworkRuntime, cancellationToken));
-            }
-        }
 
         await tasks.WaitAsync();
     }

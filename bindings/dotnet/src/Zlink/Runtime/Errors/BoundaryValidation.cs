@@ -1,6 +1,5 @@
 // SPDX-License-Identifier: MPL-2.0
 
-using System;
 using System.Text;
 
 namespace Systems.Zlink;
@@ -17,12 +16,10 @@ internal static class BoundaryValidation
             throw new ArgumentException("Value must not contain NUL.",
                 paramName);
 
-        int byteCount = Encoding.UTF8.GetByteCount(value);
+        var byteCount = Encoding.UTF8.GetByteCount(value);
         if (byteCount == 0 || byteCount > FixedUtf8MaxBytes)
-        {
             throw new ArgumentOutOfRangeException(paramName,
                 $"UTF-8 length must be between 1 and {FixedUtf8MaxBytes} bytes.");
-        }
     }
 
     public static void ValidateOptionalFixedUtf8(string? value, string paramName)
@@ -47,15 +44,13 @@ internal static class BoundaryValidation
     {
         ValidateNoNulString(value, paramName);
 
-        int byteCount = Encoding.UTF8.GetByteCount(value);
+        var byteCount = Encoding.UTF8.GetByteCount(value);
         if (!allowEmpty && byteCount == 0)
             throw new ArgumentException("Value must not be empty.", paramName);
         if (byteCount > FixedUtf8MaxBytes)
-        {
             throw new ArgumentOutOfRangeException(paramName,
                 $"UTF-8 length must be between {(allowEmpty ? 0 : 1)} and " +
                 $"{FixedUtf8MaxBytes} bytes.");
-        }
     }
 
     public static uint EncodeTimeoutMilliseconds(TimeSpan timeout,
@@ -64,12 +59,10 @@ internal static class BoundaryValidation
         if (timeout == TimeSpan.Zero)
             return 0;
 
-        double millis = timeout.TotalMilliseconds;
+        var millis = timeout.TotalMilliseconds;
         if (double.IsNaN(millis) || double.IsInfinity(millis)
-            || millis < 0 || millis > uint.MaxValue)
-        {
+                                 || millis < 0 || millis > uint.MaxValue)
             throw new ArgumentOutOfRangeException(paramName);
-        }
 
         return (uint)Math.Ceiling(millis);
     }

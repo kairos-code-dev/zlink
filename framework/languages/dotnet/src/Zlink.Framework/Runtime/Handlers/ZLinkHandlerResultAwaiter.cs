@@ -8,10 +8,7 @@ internal static class ZLinkHandlerResultAwaiter
 
     public static async ValueTask<object?> AwaitAsync(object? result)
     {
-        if (result is null)
-        {
-            return null;
-        }
+        if (result is null) return null;
 
         switch (result)
         {
@@ -31,8 +28,8 @@ internal static class ZLinkHandlerResultAwaiter
     private static bool IsGenericAwaitable(Type resultType)
     {
         return resultType.IsGenericType
-            && (resultType.GetGenericTypeDefinition() == typeof(Task<>)
-                || resultType.GetGenericTypeDefinition() == typeof(ValueTask<>));
+               && (resultType.GetGenericTypeDefinition() == typeof(Task<>)
+                   || resultType.GetGenericTypeDefinition() == typeof(ValueTask<>));
     }
 
     private static Func<object, ValueTask<object?>> CreateGenericAwaiter(Type resultType)
@@ -48,8 +45,12 @@ internal static class ZLinkHandlerResultAwaiter
     }
 
     public static async ValueTask<object?> AwaitTaskAsync<T>(object result)
-        => await ((Task<T>)result).ConfigureAwait(false);
+    {
+        return await ((Task<T>)result).ConfigureAwait(false);
+    }
 
     public static async ValueTask<object?> AwaitValueTaskAsync<T>(object result)
-        => await ((ValueTask<T>)result).ConfigureAwait(false);
+    {
+        return await ((ValueTask<T>)result).ConfigureAwait(false);
+    }
 }

@@ -1,20 +1,8 @@
-using Microsoft.AspNetCore.Builder;
-using Microsoft.AspNetCore.Http;
-using Microsoft.Extensions.DependencyInjection;
-using Microsoft.Extensions.Hosting;
-using Microsoft.Extensions.Logging;
 using Systems.Zlink;
 using YieldDispatch.Shared;
-using Zlink.Framework;
-using Zlink.Framework.AspNetCore;
 using Zlink.Framework.Contracts.Channels;
-using Zlink.Framework.Contracts.Dispatch;
 using Zlink.Framework.Contracts.Errors;
-using Zlink.Framework.Contracts.Messaging;
-using Zlink.Framework.Contracts.Spots;
 using Zlink.Framework.Contracts.Streams;
-using Zlink.Framework.Contracts.Actors;
-using YieldDispatch.Server.Session.Support;
 
 namespace YieldDispatch.Server.Session.Support;
 
@@ -25,12 +13,14 @@ internal sealed partial class YieldSession
         object request,
         string packetName,
         CancellationToken cancellationToken)
-        => await RequestPlayControlWithRetryAsync<TReply>(
+    {
+        return await RequestPlayControlWithRetryAsync<TReply>(
             routes,
             request,
             packetName,
             RoutingId.From("play-a"),
             cancellationToken);
+    }
 
     private static async Task<TReply> RequestPlayControlWithRetryAsync<TReply>(
         IZLinkRouteClient routes,
@@ -42,7 +32,6 @@ internal sealed partial class YieldSession
         var deadline = DateTimeOffset.UtcNow + TimeSpan.FromSeconds(20);
         Exception? last = null;
         while (DateTimeOffset.UtcNow < deadline)
-        {
             try
             {
                 return await routes.Request(
@@ -60,7 +49,6 @@ internal sealed partial class YieldSession
                 last = ex;
                 await Task.Delay(100, cancellationToken);
             }
-        }
 
         throw new TimeoutException($"Timed out requesting play control packet '{packetName}'.", last);
     }
@@ -75,7 +63,6 @@ internal sealed partial class YieldSession
         var deadline = DateTimeOffset.UtcNow + TimeSpan.FromSeconds(20);
         Exception? last = null;
         while (DateTimeOffset.UtcNow < deadline)
-        {
             try
             {
                 await routes.Send(
@@ -93,7 +80,6 @@ internal sealed partial class YieldSession
                 last = ex;
                 await Task.Delay(100, cancellationToken);
             }
-        }
 
         throw new TimeoutException($"Timed out sending spot '{spotRid}' packet '{packetName}'.", last);
     }
@@ -108,7 +94,6 @@ internal sealed partial class YieldSession
         var deadline = DateTimeOffset.UtcNow + TimeSpan.FromSeconds(20);
         Exception? last = null;
         while (DateTimeOffset.UtcNow < deadline)
-        {
             try
             {
                 return await routes.Request(
@@ -126,7 +111,6 @@ internal sealed partial class YieldSession
                 last = ex;
                 await Task.Delay(100, cancellationToken);
             }
-        }
 
         throw new TimeoutException($"Timed out requesting spot '{spotRid}' packet '{packetName}'.", last);
     }
@@ -148,11 +132,9 @@ internal sealed partial class YieldSession
                 evidence,
                 cursor + 1,
                 line => line.Contains(requestFilter, StringComparison.Ordinal)
-                    && line.Contains(marker, StringComparison.Ordinal));
+                        && line.Contains(marker, StringComparison.Ordinal));
             if (index < 0)
-            {
                 throw new InvalidOperationException($"Missing ordered marker '{marker}' for {requestFilter}.");
-            }
 
             cursor = index;
         }
@@ -160,9 +142,6 @@ internal sealed partial class YieldSession
 
     private static void Ensure(bool condition, string message)
     {
-        if (!condition)
-        {
-            throw new InvalidOperationException(message);
-        }
+        if (!condition) throw new InvalidOperationException(message);
     }
 }

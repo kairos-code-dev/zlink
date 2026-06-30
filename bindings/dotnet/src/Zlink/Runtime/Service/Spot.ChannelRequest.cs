@@ -1,12 +1,7 @@
 // SPDX-License-Identifier: MPL-2.0
 
-using System;
-using System.Collections.Generic;
 using System.Runtime.InteropServices;
-using System.Threading;
-using System.Threading.Tasks;
 using Systems.Zlink.Runtime.Native;
-using Systems.Zlink.Runtime.Sockets.Internal;
 
 namespace Systems.Zlink;
 
@@ -18,7 +13,7 @@ internal sealed partial class Spot : ISpot
         ValidateChannelName(channelName, nameof(channelName));
         if (message == null)
             throw new ArgumentNullException(nameof(message));
-        Received received = await RequestToChannelAsyncInternal(channelName,
+        var received = await RequestToChannelAsyncInternal(channelName,
             new[] { message }, timeout, ct).ConfigureAwait(false);
         return received.Parts;
     }
@@ -28,7 +23,7 @@ internal sealed partial class Spot : ISpot
         CancellationToken ct = default)
     {
         ValidateChannelName(channelName, nameof(channelName));
-        Received received = await RequestToChannelAsyncInternal(channelName,
+        var received = await RequestToChannelAsyncInternal(channelName,
             parts, timeout, ct).ConfigureAwait(false);
         return received.Parts;
     }
@@ -36,18 +31,24 @@ internal sealed partial class Spot : ISpot
     internal bool RequestToChannel(string channelName, Message message,
         Action<RequestResult, IReadOnlyList<Message>> callback,
         TimeSpan? timeout = null)
-        => RequestToChannel(channelName, message, callback, SendFlags.None, timeout);
+    {
+        return RequestToChannel(channelName, message, callback, SendFlags.None, timeout);
+    }
 
     internal bool RequestToChannel(string channelName, IReadOnlyList<Message> parts,
         Action<RequestResult, IReadOnlyList<Message>> callback,
         TimeSpan? timeout = null)
-        => RequestToChannel(channelName, parts, callback, SendFlags.None, timeout);
+    {
+        return RequestToChannel(channelName, parts, callback, SendFlags.None, timeout);
+    }
 
     internal bool RequestToChannel(string channelName, Message message,
         Action<RequestResult, IReadOnlyList<Message>> callback,
         SendFlags flags, TimeSpan? timeout = null)
-        => RequestToChannel(channelName, new[] { message }, callback, flags,
+    {
+        return RequestToChannel(channelName, new[] { message }, callback, flags,
             timeout);
+    }
 
     internal bool RequestToChannel(string channelName, IReadOnlyList<Message> parts,
         Action<RequestResult, IReadOnlyList<Message>> callback,
@@ -68,6 +69,7 @@ internal sealed partial class Spot : ISpot
                         payload = RequestReplySupport.TakeOwnedParts(reply);
                         reply.Dispose();
                     }
+
                     callback(result, payload);
                 });
             return true;
@@ -76,9 +78,7 @@ internal sealed partial class Spot : ISpot
         {
             if (RequestReplySupport.MapSendNoWaitResult(error)
                 == SendResult.Backpressured)
-            {
                 return false;
-            }
 
             throw;
         }
@@ -89,9 +89,9 @@ internal sealed partial class Spot : ISpot
         int flags = 0)
     {
         RequestReplySupport.EnsureParts(parts, nameof(parts));
-        Message[] cloned = RequestReplySupport.CloneParts(parts);
-        byte[] channelNameUtf8 = GetChannelNameUtf8(channelName);
-        uint timeoutMs = RequestReplySupport.NormalizeTimeout(timeout);
+        var cloned = RequestReplySupport.CloneParts(parts);
+        var channelNameUtf8 = GetChannelNameUtf8(channelName);
+        var timeoutMs = RequestReplySupport.NormalizeTimeout(timeout);
         var completion = new TaskCompletionSource<Received>(
             TaskCreationOptions.RunContinuationsAsynchronously);
         GCHandle handle = default;
@@ -102,30 +102,25 @@ internal sealed partial class Spot : ISpot
             state = new RequestCallState(completion);
             handle = GCHandle.Alloc(state, GCHandleType.Normal);
             if (ct.CanBeCanceled)
-            {
-                state.SetCancellationRegistration(ct.Register(static userdata =>
-                {
-                    RequestCallState.CancelFromUserData(userdata);
-                }, handle));
-            }
+                state.SetCancellationRegistration(
+                    ct.Register(static userdata => { RequestCallState.CancelFromUserData(userdata); }, handle));
 
-            state.SetTimeoutTimer(new System.Threading.Timer(static userdata =>
-            {
-                RequestCallState.TimeoutFromUserData(userdata);
-            }, handle, (int)timeoutMs, Timeout.Infinite));
+            state.SetTimeoutTimer(new System.Threading.Timer(
+                static userdata => { RequestCallState.TimeoutFromUserData(userdata); }, handle, (int)timeoutMs,
+                Timeout.Infinite));
 
             fixed (byte* channelPtr = channelNameUtf8)
             {
-                for (int i = 0; i < cloned.Length; i++)
+                for (var i = 0; i < cloned.Length; i++)
                 {
                     ZlinkMsg nativePart = default;
                     cloned[i].MoveTo(ref nativePart);
-                    bool submitted = false;
+                    var submitted = false;
                     try
                     {
-                        int rc = NativeMethods.zlink_spot_request_channel_part_utf8(
-                            _handle, channelPtr, ref nativePart,
-                            RoutedReplyHandlerPtr,
+                        var rc = NativeMethods.zlink_spot_request_channel_part_utf8(
+                            Handle, channelPtr, ref nativePart,
+                            RoutedReplyHandlerPointer,
                             GCHandle.ToIntPtr(handle),
                             flags,
                             i + 1 < cloned.Length
@@ -145,7 +140,7 @@ internal sealed partial class Spot : ISpot
                 }
             }
 
-            return RequestProgressPump.AttachSpot(_handle, completion.Task);
+            return RequestProgressPump.AttachSpot(Handle, completion.Task);
         }
         catch
         {

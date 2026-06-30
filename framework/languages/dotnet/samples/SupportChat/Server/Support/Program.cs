@@ -1,11 +1,12 @@
-using SupportChat.Server.Configuration;
 using Microsoft.Extensions.Hosting;
+using SupportChat.Server.Configuration;
+using SupportChat.Server.Support;
 
 internal static class Program
 {
     private static async Task Main()
     {
-        await SupportChat.Server.Support.SupportServerHostFactory.Build(SampleTopology.Create())
+        await SupportServerHostFactory.Build(SampleTopology.Create())
             .RunAsync();
     }
 }

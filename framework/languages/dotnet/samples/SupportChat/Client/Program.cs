@@ -8,7 +8,7 @@ internal static class Program
     public static async Task Main(string[] args)
     {
         var streamEndpoint = ReadOption(args, "--stream-endpoint")
-            ?? throw new ArgumentException("Missing --stream-endpoint.");
+                             ?? throw new ArgumentException("Missing --stream-endpoint.");
 
         await using var customer = CreateClient(streamEndpoint);
         await using var agent = CreateClient(streamEndpoint);
@@ -35,7 +35,7 @@ internal static class Program
             Endpoint = new Uri(streamEndpoint),
             ConnectTimeout = SampleNames.ConnectTimeout,
             RequestTimeout = SampleNames.RequestTimeout,
-            DispatchMode = ZlinkStreamDispatchMode.Immediate,
+            DispatchMode = ZlinkStreamDispatchMode.Immediate
         });
     }
 

@@ -69,8 +69,8 @@
 | 조합 | 허용 여부 | 기대 동작 |
 |------|-----------|-----------|
 | `AddSpotMesh` 호출 | 허용 | mesh가 활성 SPOT[^spot] channel view와 단일 node를 함께 소유한다 |
-| `AddSpotMesh`에 `UseDiscovery().AddRegistryEndpoint(...)` 없음 | 허용 | top-level discovery endpoint 를 상속하거나 local-only mesh 로 시작한다 |
-| `AddSpotMesh` + 빈 `UseDiscovery` + local-only spot factory | 허용 | discovery endpoint 없이 단일 local SpotNode 하나를 mesh 소유권 아래 띄운다 |
+| root `UseDiscovery().AddRegistryEndpoint(...)` 없이 `AddSpotMesh`만 등록 | 허용 | top-level discovery endpoint 를 상속하거나 local-only mesh 로 시작한다 |
+| root discovery 없이 local-only spot factory | 허용 | discovery endpoint 없이 단일 local SpotNode 하나를 mesh 소유권 아래 띄운다 |
 | top-level standalone node 등록 | 비허용 | public 등록 표면에는 top-level standalone node 등록 API 가 없다. SPOT node 는 항상 `AddSpotMesh` 안에서 등록한다 |
 | 분리된 SPOT discovery 등록과 node 등록 | 비허용 | SPOT discovery 와 단일 node는 `AddSpotMesh`가 함께 등록·소유한다 |
 | 같은 프로세스에 SPOT node 여러 개 | 비허용 | Q9 모델에서는 `AddSpotMesh(channelName)` 이 그 프로세스의 단일 SpotNode 이다 |

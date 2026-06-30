@@ -1,4 +1,3 @@
-
 namespace Zlink.Framework.Runtime.Streams;
 
 internal static class ZLinkStreamFrameWriter
@@ -11,10 +10,7 @@ internal static class ZLinkStreamFrameWriter
     {
         var frame = ZLinkStreamFrameCodec.Encode(ZLinkStreamProtocolDefaults.EncodeHeader(header).Span, payload);
         using var payloadMessage = Message.From(frame);
-        if (!write(payloadMessage))
-        {
-            throw new InvalidOperationException(failureMessage);
-        }
+        if (!write(payloadMessage)) throw new InvalidOperationException(failureMessage);
     }
 
     public static void Write(
@@ -37,10 +33,7 @@ internal static class ZLinkStreamFrameWriter
 
     private static bool WriteRaw(IZLinkStream stream, Message message)
     {
-        if (stream is ZLinkManagedStream managedStream)
-        {
-            return managedStream.WriteRaw(message);
-        }
+        if (stream is ZLinkManagedStream managedStream) return managedStream.WriteRaw(message);
 
         return stream.Write(ZLinkMessage.From(message.ToArray()));
     }

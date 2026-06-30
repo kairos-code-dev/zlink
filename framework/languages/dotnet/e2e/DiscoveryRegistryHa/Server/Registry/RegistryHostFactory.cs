@@ -1,4 +1,3 @@
-using DiscoveryRegistryHa.Server.Registry;
 using DiscoveryRegistryHa.Shared;
 using Microsoft.AspNetCore.Mvc;
 using Zlink.Framework.AspNetCore;
@@ -10,7 +9,7 @@ internal static class RegistryHostFactory
 {
     public static WebApplication Create(string[] args)
     {
-        var options = ServerOptions.Parse(args, defaultRole: "registry");
+        var options = ServerOptions.Parse(args, "registry");
         Directory.CreateDirectory(options.LogDir);
 
         var builder = WebApplication.CreateBuilder(args);
@@ -29,17 +28,16 @@ internal static class RegistryHostFactory
             registry.HeartbeatInterval = TimeSpan.FromMilliseconds(250);
             registry.HeartbeatTimeout = TimeSpan.FromSeconds(2);
             registry.BroadcastInterval = TimeSpan.FromMilliseconds(250);
-            foreach (var peer in options.PeerPubEndpoints)
-            {
-                registry.AddPeer(peer);
-            }
+            foreach (var peer in options.PeerPubEndpoints) registry.AddPeer(peer);
         });
 
         var app = builder.Build();
         app.MapGet("/health", () => Results.Ok(new { status = "ready", options.Role, options.Rid }));
-        app.MapGet("/registry/status", async ([FromServices] IZLinkRegistryQuery query, CancellationToken cancellationToken) =>
+        app.MapGet("/registry/status",
+            async ([FromServices] IZLinkRegistryQuery query, CancellationToken cancellationToken) =>
             Results.Ok(await query.StatusAsync(cancellationToken)));
-        app.MapGet("/registry/topology", async ([FromServices] IZLinkRegistryQuery query, CancellationToken cancellationToken) =>
+        app.MapGet("/registry/topology",
+            async ([FromServices] IZLinkRegistryQuery query, CancellationToken cancellationToken) =>
             Results.Ok(await query.TopologyAsync(
                 new ZLinkRegistryTopologyFilter(ChannelName: DiscoveryRegistryHaNames.Channel),
                 cancellationToken)));
@@ -58,16 +56,15 @@ internal static class RegistryHostFactory
                 if (topology.Count(entry =>
                         entry.State == ZLinkTopologyState.Ready
                         && entry.ServiceRole == ZLinkServiceRole.Router) >= request.ReadyCount)
-                {
                     return Results.Ok(topology);
-                }
 
                 await Task.Delay(TimeSpan.FromMilliseconds(100), cancellationToken);
             }
 
             throw new TimeoutException("Timed out waiting for discovery registry HA topology.");
         });
-        app.MapGet("/registry/members", async ([FromServices] IZLinkRegistryQuery query, CancellationToken cancellationToken) =>
+        app.MapGet("/registry/members",
+            async ([FromServices] IZLinkRegistryQuery query, CancellationToken cancellationToken) =>
             Results.Ok(await query.MemberPeersAsync(DiscoveryRegistryHaNames.Channel, cancellationToken)));
         app.MapPost("/registry/members/wait", async (
             MemberEndpointWaitRequest request,
@@ -82,9 +79,7 @@ internal static class RegistryHostFactory
                 if (members.Any(member =>
                         member.ServiceRole == ZLinkServiceRole.Router
                         && string.Equals(member.Endpoint, request.Endpoint, StringComparison.Ordinal)))
-                {
                     return Results.Ok(members);
-                }
 
                 await Task.Delay(TimeSpan.FromMilliseconds(100), cancellationToken);
             }
@@ -99,7 +94,7 @@ internal static class RegistryHostFactory
         return app;
     }
 
-    static string Require(string? value, string name)
+    private static string Require(string? value, string name)
     {
         return string.IsNullOrWhiteSpace(value)
             ? throw new InvalidOperationException($"{name} is required.")

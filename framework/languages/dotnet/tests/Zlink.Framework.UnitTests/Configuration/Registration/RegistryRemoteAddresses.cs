@@ -1,10 +1,7 @@
 using Microsoft.Extensions.DependencyInjection;
-using Microsoft.Extensions.Hosting;
-using Systems.Zlink.Stream.Connector.Contracts;
 using Zlink.Framework.AspNetCore;
 
 namespace Zlink.Framework.UnitTests;
-
 
 public sealed class RegistryRemoteAddressesTests : RegistrationValidationSupport
 {
@@ -18,14 +15,11 @@ public sealed class RegistryRemoteAddressesTests : RegistrationValidationSupport
             options.UseDiscovery().AddRegistryEndpoint("tcp://127.0.0.1:5551");
             {
                 var mesh = options.AddSpotMesh("spot");
-                mesh.UseDiscovery().AddRegistryEndpoint("tcp://127.0.0.1:5551");
                 mesh.EnableRouter("tcp://127.0.0.1:6201");
-
             }
             {
                 var routed = options.AddRouteMesh("play");
                 routed.EnableServer("tcp://127.0.0.1:6202");
-
             }
             options.UseRegistrySpotRemoteAddresses("bingo").RouterChannelId = "play";
         });
@@ -64,7 +58,6 @@ public sealed class RegistryRemoteAddressesTests : RegistrationValidationSupport
                 {
                     var routed = options.AddRouteMesh("play");
                     routed.EnableServer("tcp://127.0.0.1:6202");
-
                 }
                 options.UseRegistrySpotRemoteAddresses("bingo");
             }));
@@ -98,24 +91,19 @@ public sealed class RegistryRemoteAddressesTests : RegistrationValidationSupport
                 options.UseDiscovery().AddRegistryEndpoint("tcp://127.0.0.1:5551");
                 {
                     var mesh = options.AddSpotMesh("spot");
-                    mesh.UseDiscovery().AddRegistryEndpoint("tcp://127.0.0.1:5551");
                     mesh.EnableRouter("tcp://127.0.0.1:6201");
-
                 }
                 {
                     var routed = options.AddRouteMesh("play-a");
                     routed.EnableServer("tcp://127.0.0.1:6202");
-
                 }
                 {
                     var routed = options.AddRouteMesh("play-b");
                     routed.EnableServer("tcp://127.0.0.1:6203");
-
                 }
                 options.UseRegistrySpotRemoteAddresses("bingo");
             }));
 
         Assert.Contains("requires RouterChannelId", exception.Message, StringComparison.Ordinal);
     }
-
 }

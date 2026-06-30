@@ -1,5 +1,4 @@
-
-using Zlink.Framework.Runtime.Streams;
+using System.Diagnostics;
 
 namespace Zlink.Framework.Runtime.Spots;
 
@@ -15,7 +14,7 @@ internal static class ZLinkEntrySpotActorDispatcher
         // handler invocation itself is gated on the Entry Spot serial
         // execution line; awaiting each packet here keeps the enqueue order
         // identical to the native batch order.
-        int i = 0;
+        var i = 0;
         while (i < parts.Count)
         {
             var headerPart = parts[i++];
@@ -27,10 +26,7 @@ internal static class ZLinkEntrySpotActorDispatcher
                 continue;
             }
 
-            if (!ZLinkSpotActorFrameReader.TryRead(parts, ref i, headerPart, out var frame))
-            {
-                continue;
-            }
+            if (!ZLinkSpotActorFrameReader.TryRead(parts, ref i, headerPart, out var frame)) continue;
 
             if (ZLinkActorSessionForwarder.ShouldForward(
                     actorState,
@@ -47,6 +43,7 @@ internal static class ZLinkEntrySpotActorDispatcher
                         frame.Header,
                         frame.Body);
                 }
+
                 continue;
             }
 
@@ -132,10 +129,8 @@ internal static class ZLinkEntrySpotActorDispatcher
                     .ConfigureAwait(false);
 
             if (reply is not null)
-            {
                 await SendResponseAsync(runtime, actor.ActorId, header, reply, cancellationToken)
                     .ConfigureAwait(false);
-            }
 
             await boundSessionScope.DrainAsync(cancellationToken)
                 .ConfigureAwait(false);
@@ -186,7 +181,7 @@ internal static class ZLinkEntrySpotActorDispatcher
     {
         var timeout = runtime.Registration.DefaultRequestTimeout;
         var retryDelay = TimeSpan.FromMilliseconds(25);
-        var elapsed = System.Diagnostics.Stopwatch.StartNew();
+        var elapsed = Stopwatch.StartNew();
         Exception? lastError = null;
         while (true)
         {
@@ -198,9 +193,7 @@ internal static class ZLinkEntrySpotActorDispatcher
                         actorId,
                         new[] { frameMessage },
                         SendFlags.None))
-                {
                     return;
-                }
             }
             catch (ZlinkSubmitException error) when (error.Result == ZlinkSubmitException.ErrorCode.NotConnected)
             {
@@ -208,9 +201,7 @@ internal static class ZLinkEntrySpotActorDispatcher
             }
 
             if (elapsed.Elapsed >= timeout)
-            {
                 throw new InvalidOperationException("Actor request reply relay failed.", lastError);
-            }
 
             var remaining = timeout - elapsed.Elapsed;
             await Task.Delay(remaining < retryDelay ? remaining : retryDelay, cancellationToken)

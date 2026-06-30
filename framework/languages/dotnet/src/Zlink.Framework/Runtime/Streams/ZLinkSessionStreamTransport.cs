@@ -1,17 +1,13 @@
-
 namespace Zlink.Framework.Runtime.Streams;
 
 internal sealed class ZLinkSessionStreamTransport(
     IZLinkStream stream,
     ZLinkSessionRequestTracker requests,
-    Zlink.Framework.Runtime.Diagnostics.ZLinkMessageFlowTracer flow)
+    ZLinkMessageFlowTracer flow)
 {
     public bool Write(Message payload)
     {
-        if (stream is ZLinkManagedStream managedStream)
-        {
-            return managedStream.WriteRaw(payload);
-        }
+        if (stream is ZLinkManagedStream managedStream) return managedStream.WriteRaw(payload);
 
         return stream.Write(ZLinkMessage.From(payload.ToArray()));
     }
@@ -78,9 +74,7 @@ internal sealed class ZLinkSessionStreamTransport(
     {
         cancellationToken.ThrowIfCancellationRequested();
         if (requestHeader.RequestSeq is not { } requestSeq)
-        {
             throw new InvalidOperationException("Raw reply is only available for a request packet.");
-        }
 
         var header = new ZlinkStreamHeader(
             ZlinkStreamMessageKind.Response,
@@ -111,10 +105,7 @@ internal sealed class ZLinkSessionStreamTransport(
         CancellationToken cancellationToken)
     {
         cancellationToken.ThrowIfCancellationRequested();
-        if (requestHeader.RequestSeq is not { } requestSeq)
-        {
-            return ValueTask.CompletedTask;
-        }
+        if (requestHeader.RequestSeq is not { } requestSeq) return ValueTask.CompletedTask;
 
         var header = new ZlinkStreamHeader(
             ZlinkStreamMessageKind.Error,
@@ -182,22 +173,17 @@ internal sealed class ZLinkSessionStreamTransport(
         string failureMessage)
     {
         using var message = Message.From(frame);
-        if (!Write(message))
-        {
-            throw new InvalidOperationException(failureMessage);
-        }
+        if (!Write(message)) throw new InvalidOperationException(failureMessage);
     }
 
     private void TraceSent(string packetName, ZLinkDispatchMessageKind kind, string correlationId)
     {
         if (flow.Enabled(ZLinkMessageFlowOutcome.Sent))
-        {
             flow.Trace(new ZLinkMessageFlowEvent(
                 ZLinkMessageFlowOutcome.Sent,
                 ZLinkDispatchErrorSurface.StreamSession,
                 kind,
-                PacketName: packetName,
+                packetName,
                 CorrelationId: correlationId));
-        }
     }
 }

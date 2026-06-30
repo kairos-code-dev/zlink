@@ -64,10 +64,7 @@ internal sealed class ZLinkActorDispatchMailbox
                 }
             }
 
-            if (next.TrySetReady())
-            {
-                return;
-            }
+            if (next.TrySetReady()) return;
 
             next.Dispose();
         }
@@ -92,17 +89,16 @@ internal sealed class ZLinkActorDispatchMailbox
     {
         private readonly TaskCompletionSource _ready =
             new(TaskCreationOptions.RunContinuationsAsynchronously);
+
         private readonly CancellationTokenRegistration _registration;
         private int _canceled;
 
         public Waiter(CancellationToken cancellationToken)
         {
             if (cancellationToken.CanBeCanceled)
-            {
                 _registration = cancellationToken.Register(
                     static state => ((Waiter)state!).Cancel(),
                     this);
-            }
         }
 
         public ZLinkActorDispatchMailbox? Owner { get; set; }
@@ -111,28 +107,22 @@ internal sealed class ZLinkActorDispatchMailbox
 
         public bool IsCanceled => Volatile.Read(ref _canceled) != 0;
 
-        public bool TrySetReady()
-        {
-            if (IsCanceled)
-            {
-                return false;
-            }
-
-            Dispose();
-            return _ready.TrySetResult();
-        }
-
         public void Dispose()
         {
             _registration.Dispose();
         }
 
+        public bool TrySetReady()
+        {
+            if (IsCanceled) return false;
+
+            Dispose();
+            return _ready.TrySetResult();
+        }
+
         private void Cancel()
         {
-            if (Interlocked.Exchange(ref _canceled, 1) == 0)
-            {
-                _ready.TrySetException(new OperationCanceledException());
-            }
+            if (Interlocked.Exchange(ref _canceled, 1) == 0) _ready.TrySetException(new OperationCanceledException());
         }
     }
 }

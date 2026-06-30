@@ -17,7 +17,7 @@ internal static class YdD4SessionRelayActorYieldScenario
             RequestTimeout = TimeSpan.FromSeconds(60),
             Heartbeat = new ZlinkStreamHeartbeatOptions { Enabled = false },
             DispatchMode = ZlinkStreamDispatchMode.Immediate,
-            MaxReceivedMessages = 1024,
+            MaxReceivedMessages = 1024
         });
         await unbound.Connect.Async();
 
@@ -37,7 +37,8 @@ internal static class YdD4SessionRelayActorYieldScenario
         ScenarioAssert.That(notify.Payload.RequestId == requestId, "YD-D4 push request mismatch.");
         ScenarioAssert.That(notify.Payload.Value == "bound-session-push", "YD-D4 push value mismatch.");
         await Task.Delay(150);
-        ScenarioAssert.That(unbound.ReceivedCount("ActorPushNotify") == 0, "YD-D4 unbound session received actor push.");
+        ScenarioAssert.That(unbound.ReceivedCount("ActorPushNotify") == 0,
+            "YD-D4 unbound session received actor push.");
 
         var evidence = await client.Request(new YieldEvidenceReq(requestId))
             .PacketName("YieldEvidenceReq")
@@ -48,6 +49,7 @@ internal static class YdD4SessionRelayActorYieldScenario
             "actor-push-yield-started",
             "actor-push-yield-released",
             "actor-push-yield-resumed",
-            "actor-push-yield-completed"]);
+            "actor-push-yield-completed"
+        ]);
     }
 }

@@ -1,5 +1,4 @@
 using MessagePack;
-using Systems.Zlink;
 using Systems.Zlink.Stream.Connector.Contracts;
 using Zlink.Framework.Contracts.Codecs;
 
@@ -7,11 +6,11 @@ namespace Zlink.Framework.Codecs.MessagePack;
 
 public sealed class ZLinkMessagePackCodec : IZLinkCodecExtension, IZlinkStreamPayloadCodec
 {
-    public static ZLinkMessagePackCodec Default { get; } = new();
-
     private ZLinkMessagePackCodec()
     {
     }
+
+    public static ZLinkMessagePackCodec Default { get; } = new();
 
     public void Register(IZLinkCodecRegistryBuilder codecs)
     {
@@ -19,7 +18,7 @@ public sealed class ZLinkMessagePackCodec : IZLinkCodecExtension, IZlinkStreamPa
         codecs.AddSerializer(
             "application/x-msgpack",
             MessagePackSerializerAdapter.Instance,
-            type => type.GetCustomAttributes(typeof(MessagePackObjectAttribute), inherit: true).Length > 0);
+            type => type.GetCustomAttributes(typeof(MessagePackObjectAttribute), true).Length > 0);
         codecs.AddStreamCodec("application/x-msgpack", ZlinkStreamCodec.MessagePack);
     }
 
@@ -34,9 +33,7 @@ public sealed class ZLinkMessagePackCodec : IZLinkCodecExtension, IZlinkStreamPa
     public TPayload Decode<TPayload>(ZlinkStreamEncodedPayload payload)
     {
         if (payload.Codec != ZlinkStreamCodec.MessagePack)
-        {
             throw new InvalidOperationException($"Stream payload codec is {payload.Codec}, not MessagePack.");
-        }
 
         return MessagePackSerializer.Deserialize<TPayload>(
             payload.Payload,

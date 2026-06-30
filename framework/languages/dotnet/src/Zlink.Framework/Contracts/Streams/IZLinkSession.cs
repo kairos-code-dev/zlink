@@ -15,12 +15,12 @@ public interface IZLinkSession
         CancellationToken cancellationToken);
 
     /// <summary>
-    /// Handles a framework-owned inbound stream payload.
+    ///     Handles a framework-owned inbound stream payload.
     /// </summary>
     /// <remarks>
-    /// The payload is a framework <see cref="ZLinkMessage"/>. Session code may
-    /// decode it or pass it to framework APIs such as
-    /// <see cref="IZLinkSessionActor.RelayAsync"/>.
+    ///     The payload is a framework <see cref="ZLinkMessage" />. Session code may
+    ///     decode it or pass it to framework APIs such as
+    ///     <see cref="IZLinkSessionActor.RelayAsync" />.
     /// </remarks>
     ValueTask OnDispatchAsync(
         ZLinkSessionDispatchContext dispatch,

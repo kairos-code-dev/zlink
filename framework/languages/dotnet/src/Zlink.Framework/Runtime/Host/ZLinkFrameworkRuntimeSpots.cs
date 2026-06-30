@@ -1,5 +1,3 @@
-using Zlink.Framework.Runtime.Backend.Contracts;
-
 namespace Zlink.Framework.Runtime.Host;
 
 internal sealed partial class ZLinkFrameworkRuntime
@@ -118,10 +116,7 @@ internal sealed partial class ZLinkFrameworkRuntime
         RoutingId? targetNodeRid = null,
         CancellationToken cancellationToken = default)
     {
-        if (_state is null)
-        {
-            return;
-        }
+        if (_state is null) return;
 
         await _spots.NotifyEntrySpotActorJoinedAsync(
                 _state,
@@ -150,10 +145,7 @@ internal sealed partial class ZLinkFrameworkRuntime
         RoutingId? targetNodeRid = null,
         CancellationToken cancellationToken = default)
     {
-        if (_state is null)
-        {
-            return;
-        }
+        if (_state is null) return;
 
         await _spots.NotifyEntrySpotActorCreatedAsync(
                 _state,
@@ -169,10 +161,7 @@ internal sealed partial class ZLinkFrameworkRuntime
         RoutingId? targetNodeRid = null,
         CancellationToken cancellationToken = default)
     {
-        if (_state is null)
-        {
-            return;
-        }
+        if (_state is null) return;
 
         await _spots.NotifyEntrySpotActorLeftAsync(
                 _state,
@@ -187,10 +176,7 @@ internal sealed partial class ZLinkFrameworkRuntime
         RoutingId? targetNodeRid = null,
         CancellationToken cancellationToken = default)
     {
-        if (_state is null)
-        {
-            return false;
-        }
+        if (_state is null) return false;
 
         return await _spots.TryNotifyEntrySpotActorDisconnectedAsync(
                 _state,

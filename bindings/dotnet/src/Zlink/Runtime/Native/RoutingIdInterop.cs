@@ -7,5 +7,7 @@ namespace Systems.Zlink;
 internal static class RoutingIdInterop
 {
     internal static RoutingId? FromNative(ref ZlinkRoutingId routingId)
-        => RoutingId.FromNative(ref routingId);
+    {
+        return RoutingId.FromNative(ref routingId);
+    }
 }

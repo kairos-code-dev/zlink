@@ -1,5 +1,5 @@
-using SupportChat.Server.Configuration;
 using Microsoft.Extensions.Hosting;
+using SupportChat.Server.Configuration;
 using Zlink.Framework.AspNetCore;
 using Zlink.Framework.Contracts.Dispatch;
 
@@ -23,12 +23,10 @@ public static class ApiServerHostFactory
                 var channel = options.AddClientServerChannel(SampleNames.ApiChannel);
                 channel.EnableServer(topology.ApiChannelEndpoint);
                 channel.AddHandlerGroup("api");
-
             }
             {
                 var channel = options.AddClientServerChannel(SampleNames.SupportChannel);
                 channel.EnableClient();
-
             }
         });
 

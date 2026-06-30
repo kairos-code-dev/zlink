@@ -1,5 +1,3 @@
-using Zlink.Framework.Runtime.Streams;
-
 namespace Zlink.Framework.Runtime.Spots;
 
 internal sealed class ZLinkEntrySpotActorRouter
@@ -17,9 +15,7 @@ internal sealed class ZLinkEntrySpotActorRouter
             var dispatch = node.EntrySpotActorDispatch;
             if (!dispatch.TryResolvePacket(actor.GetType(), header, out var descriptor)
                 || descriptor is null)
-            {
                 continue;
-            }
 
             await runtimeState.ExecuteDispatchAsync(
                     header,
@@ -51,9 +47,7 @@ internal sealed class ZLinkEntrySpotActorRouter
             var dispatch = node.EntrySpotActorDispatch;
             if (!dispatch.TryResolvePacket(actor.GetType(), header, out var descriptor)
                 || descriptor is null)
-            {
                 continue;
-            }
 
             var reply = await runtimeState.ExecuteDispatchAsync(
                     header,
@@ -141,17 +135,12 @@ internal sealed class ZLinkEntrySpotActorRouter
         var handled = false;
         foreach (var node in state.SpotNodes.Values)
         {
-            if (targetNodeRid is not null && node.Node.RoutingId != targetNodeRid)
-            {
-                continue;
-            }
+            if (targetNodeRid is not null && node.Node.RoutingId != targetNodeRid) continue;
 
             var dispatch = node.EntrySpotActorDispatch;
             if (!dispatch.TryResolveDisconnected(actor.GetType(), out var descriptor)
                 || descriptor is null)
-            {
                 continue;
-            }
 
             await dispatch.InvokeDisconnectedAsync(
                     descriptor,
@@ -175,7 +164,7 @@ internal sealed class ZLinkEntrySpotActorRouter
         await NotifyLifecycleAsync(
                 state,
                 actor,
-                request: null,
+                null,
                 targetNodeRid,
                 resolve,
                 cancellationToken)
@@ -192,23 +181,18 @@ internal sealed class ZLinkEntrySpotActorRouter
     {
         foreach (var node in state.SpotNodes.Values)
         {
-            if (targetNodeRid is not null && node.Node.RoutingId != targetNodeRid)
-            {
-                continue;
-            }
+            if (targetNodeRid is not null && node.Node.RoutingId != targetNodeRid) continue;
 
             try
             {
                 if (resolve(node, actor.GetType(), out var descriptor)
                     && descriptor is not null)
-                {
-                        await node.EntrySpotActorDispatch.InvokeLifecycleAsync(
-                                descriptor,
-                                actor,
-                                request,
-                                cancellationToken)
+                    await node.EntrySpotActorDispatch.InvokeLifecycleAsync(
+                            descriptor,
+                            actor,
+                            request,
+                            cancellationToken)
                         .ConfigureAwait(false);
-                }
             }
             catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
             {

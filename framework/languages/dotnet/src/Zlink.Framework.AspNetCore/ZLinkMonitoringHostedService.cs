@@ -1,13 +1,4 @@
 using Microsoft.Extensions.Hosting;
-using Microsoft.Extensions.DependencyInjection;
-using Zlink.Framework.Runtime.Backend.Contracts;
-using Zlink.Framework.Runtime.Actors;
-using Zlink.Framework.Runtime.Diagnostics;
-using Zlink.Framework.Runtime.Execution;
-using Zlink.Framework.Runtime.Host;
-using Zlink.Framework.Runtime.Messaging;
-using Zlink.Framework.Runtime.Registry;
-using System.Threading;
 
 namespace Zlink.Framework.AspNetCore;
 
@@ -19,12 +10,33 @@ internal sealed class ZLinkMonitoringHostedService(
     ZLinkFrameworkRuntime? frameworkRuntime,
     ZLinkRegistryRuntime? registryRuntime) : IHostedService, IAsyncDisposable
 {
-    private readonly IZLinkMonitoringBackendAdapter _monitoringAdapter = backendAdapterFactory.CreateMonitoringAdapter();
-    private readonly ZLinkMonitoringSourceValidator _sourceValidator = new(services, registration);
+    private readonly IZLinkMonitoringBackendAdapter
+        _monitoringAdapter = backendAdapterFactory.CreateMonitoringAdapter();
+
     private readonly List<IAsyncDisposable> _monitors = [];
+    private readonly ZLinkMonitoringSourceValidator _sourceValidator = new(services, registration);
+    private Task? _pollingTask;
     private CancellationTokenSource? _stopTokenSource;
     private ZLinkRuntimeTaskRunner? _taskRunner;
-    private Task? _pollingTask;
+
+    public async ValueTask DisposeAsync()
+    {
+        if (_stopTokenSource is not null) _stopTokenSource.Cancel();
+
+        if (_pollingTask is not null)
+            try
+            {
+                await _pollingTask;
+            }
+            catch (OperationCanceledException)
+            {
+            }
+
+        await DisposeMonitorsAsync();
+        _stopTokenSource?.Dispose();
+        _stopTokenSource = null;
+        _taskRunner = null;
+    }
 
     public async Task StartAsync(CancellationToken cancellationToken)
     {
@@ -32,15 +44,9 @@ internal sealed class ZLinkMonitoringHostedService(
 
         try
         {
-            if (frameworkRuntime is not null)
-            {
-                await frameworkRuntime.StartAsync(cancellationToken);
-            }
+            if (frameworkRuntime is not null) await frameworkRuntime.StartAsync(cancellationToken);
 
-            if (registryRuntime is not null)
-            {
-                await registryRuntime.StartAsync(cancellationToken);
-            }
+            if (registryRuntime is not null) await registryRuntime.StartAsync(cancellationToken);
 
             await _sourceValidator.PreflightPollingSourcesAsync(frameworkRuntime, registryRuntime, cancellationToken);
             AttachSocketMonitors(frameworkRuntime);
@@ -49,14 +55,10 @@ internal sealed class ZLinkMonitoringHostedService(
         {
             await DisposeMonitorsAsync();
             if (frameworkRuntime is not null && frameworkRuntime.IsStarted)
-            {
                 await frameworkRuntime.StopAsync(CancellationToken.None);
-            }
 
             if (registryRuntime is not null && registryRuntime.IsStarted)
-            {
                 await registryRuntime.StopAsync(CancellationToken.None);
-            }
 
             throw;
         }
@@ -78,13 +80,9 @@ internal sealed class ZLinkMonitoringHostedService(
 
     public async Task StopAsync(CancellationToken cancellationToken)
     {
-        if (_stopTokenSource is not null)
-        {
-            _stopTokenSource.Cancel();
-        }
+        if (_stopTokenSource is not null) _stopTokenSource.Cancel();
 
         if (_pollingTask is not null)
-        {
             try
             {
                 await _pollingTask.WaitAsync(cancellationToken);
@@ -92,7 +90,6 @@ internal sealed class ZLinkMonitoringHostedService(
             catch (OperationCanceledException)
             {
             }
-        }
 
         await DisposeMonitorsAsync();
 
@@ -102,36 +99,9 @@ internal sealed class ZLinkMonitoringHostedService(
         _pollingTask = null;
     }
 
-    public async ValueTask DisposeAsync()
-    {
-        if (_stopTokenSource is not null)
-        {
-            _stopTokenSource.Cancel();
-        }
-
-        if (_pollingTask is not null)
-        {
-            try
-            {
-                await _pollingTask;
-            }
-            catch (OperationCanceledException)
-            {
-            }
-        }
-
-        await DisposeMonitorsAsync();
-        _stopTokenSource?.Dispose();
-        _stopTokenSource = null;
-        _taskRunner = null;
-    }
-
     private void AttachSocketMonitors(ZLinkFrameworkRuntime? frameworkRuntime)
     {
-        if (frameworkRuntime is null)
-        {
-            return;
-        }
+        if (frameworkRuntime is null) return;
 
         foreach (var source in registration.SocketSources.Values)
         {
@@ -148,15 +118,11 @@ internal sealed class ZLinkMonitoringHostedService(
             var monitor = _monitoringAdapter.OpenSocketMonitor(socket);
             RegisterWithoutSynchronizationContext(() =>
             {
-                monitor.OnEvent(
-                    monitorEvent =>
-                    {
-                        var mapped = ZLinkMonitoringEventMapper.MapSocketEvent(source, monitorEvent);
-                        if (mapped is ZLinkSocketEvent @event)
-                        {
-                            QueueDispatch(@event);
-                        }
-                    });
+                monitor.OnEvent(monitorEvent =>
+                {
+                    var mapped = ZLinkMonitoringEventMapper.MapSocketEvent(source, monitorEvent);
+                    if (mapped is ZLinkSocketEvent @event) QueueDispatch(@event);
+                });
                 return 0;
             });
             _monitors.Add(monitor);
@@ -181,25 +147,16 @@ internal sealed class ZLinkMonitoringHostedService(
         where TEvent : IZLinkRuntimeEvent
     {
         var taskRunner = _taskRunner;
-        if (taskRunner is null)
-        {
-            return;
-        }
+        if (taskRunner is null) return;
 
         taskRunner.RunDetached(
             "monitoring-event-dispatch",
-            async ct =>
-            {
-                await dispatcher.DispatchAsync(@event, ct).ConfigureAwait(false);
-            });
+            async ct => { await dispatcher.DispatchAsync(@event, ct).ConfigureAwait(false); });
     }
 
     private async ValueTask DisposeMonitorsAsync()
     {
-        for (var index = _monitors.Count - 1; index >= 0; index--)
-        {
-            await _monitors[index].DisposeAsync();
-        }
+        for (var index = _monitors.Count - 1; index >= 0; index--) await _monitors[index].DisposeAsync();
 
         _monitors.Clear();
     }

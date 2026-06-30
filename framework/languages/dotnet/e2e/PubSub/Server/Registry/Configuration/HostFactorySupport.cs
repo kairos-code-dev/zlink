@@ -1,8 +1,3 @@
-using Microsoft.AspNetCore.Builder;
-using Microsoft.AspNetCore.Hosting;
-using Microsoft.Extensions.Logging;
-using PubSub.Server.Registry;
-
 namespace PubSub.Server.Registry.Configuration;
 
 public static class HostFactorySupport

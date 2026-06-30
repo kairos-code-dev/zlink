@@ -5,7 +5,14 @@ namespace ResilienceLifecycle.Client.Support;
 
 internal sealed class ResilienceProcessManager(ClientOptions options) : IAsyncDisposable
 {
-    readonly List<ManagedProcess> _processes = [];
+    private readonly List<ManagedProcess> _processes = [];
+
+    public async ValueTask DisposeAsync()
+    {
+        for (var i = _processes.Count - 1; i >= 0; i--) await _processes[i].StopAsync();
+
+        _processes.Clear();
+    }
 
     public async Task<ProviderStartResult> StartProviderAAsync()
     {
@@ -66,7 +73,7 @@ internal sealed class ResilienceProcessManager(ClientOptions options) : IAsyncDi
                 "--http-url", options.RegistryUrl,
                 "--registry-pub-endpoint", options.RegistryPubEndpoint,
                 "--registry-router-endpoint", options.RegistryRouterEndpoint,
-                "--log-dir", options.LogDir,
+                "--log-dir", options.LogDir
             ],
             options.RegistryUrl);
         await process.WaitReadyAsync();
@@ -77,10 +84,7 @@ internal sealed class ResilienceProcessManager(ClientOptions options) : IAsyncDi
         var deadline = DateTimeOffset.UtcNow + timeout;
         while (DateTimeOffset.UtcNow < deadline)
         {
-            if (await IsHealthyAsync(options.RegistryUrl) == expectedHealthy)
-            {
-                return;
-            }
+            if (await IsHealthyAsync(options.RegistryUrl) == expectedHealthy) return;
 
             await Task.Delay(250);
         }
@@ -88,17 +92,7 @@ internal sealed class ResilienceProcessManager(ClientOptions options) : IAsyncDi
         throw new TimeoutException($"Registry health did not become {expectedHealthy}.");
     }
 
-    public async ValueTask DisposeAsync()
-    {
-        for (var i = _processes.Count - 1; i >= 0; i--)
-        {
-            await _processes[i].StopAsync();
-        }
-
-        _processes.Clear();
-    }
-
-    ManagedProcess StartProvider(
+    private ManagedProcess StartProvider(
         string name,
         string rid,
         string url,
@@ -115,12 +109,12 @@ internal sealed class ResilienceProcessManager(ClientOptions options) : IAsyncDi
                 "--registry-router-endpoint", options.RegistryRouterEndpoint,
                 "--channel-endpoint", endpoint,
                 "--evidence-file", evidenceFile,
-                "--log-dir", options.LogDir,
+                "--log-dir", options.LogDir
             ],
             url);
     }
 
-    ManagedProcess StartProcess(
+    private ManagedProcess StartProcess(
         string name,
         string rid,
         string project,
@@ -131,20 +125,17 @@ internal sealed class ResilienceProcessManager(ClientOptions options) : IAsyncDi
         {
             RedirectStandardOutput = true,
             RedirectStandardError = true,
-            UseShellExecute = false,
+            UseShellExecute = false
         };
         startInfo.Environment["ZLINK_E2E_RID"] = rid;
         startInfo.ArgumentList.Add("run");
         startInfo.ArgumentList.Add("--project");
         startInfo.ArgumentList.Add(project);
         startInfo.ArgumentList.Add("--");
-        foreach (var argument in arguments)
-        {
-            startInfo.ArgumentList.Add(argument);
-        }
+        foreach (var argument in arguments) startInfo.ArgumentList.Add(argument);
 
         var process = Process.Start(startInfo)
-            ?? throw new InvalidOperationException($"Failed to start {name}.");
+                      ?? throw new InvalidOperationException($"Failed to start {name}.");
         _ = CopyToFileAsync(process.StandardOutput, Path.Combine(options.LogDir, $"{name}.stdout.log"));
         _ = CopyToFileAsync(process.StandardError, Path.Combine(options.LogDir, $"{name}.stderr.log"));
         var managed = new ManagedProcess(process, healthUrl);
@@ -152,7 +143,7 @@ internal sealed class ResilienceProcessManager(ClientOptions options) : IAsyncDi
         return managed;
     }
 
-    static async Task<bool> IsHealthyAsync(string url)
+    private static async Task<bool> IsHealthyAsync(string url)
     {
         try
         {
@@ -165,7 +156,7 @@ internal sealed class ResilienceProcessManager(ClientOptions options) : IAsyncDi
         }
     }
 
-    static async Task CopyToFileAsync(StreamReader reader, string path)
+    private static async Task CopyToFileAsync(StreamReader reader, string path)
     {
         await using var stream = File.Open(path, FileMode.Create, FileAccess.Write, FileShare.Read);
         await using var writer = new StreamWriter(stream);
@@ -181,24 +172,19 @@ internal sealed record ProviderStartResult(string Rid, string Status, string Url
 
 internal sealed class ManagedProcess(Process process, string healthUrl)
 {
-    bool _disposed;
+    private bool _disposed;
 
     public async Task WaitReadyAsync()
     {
         for (var i = 0; i < 120; i++)
         {
             if (process.HasExited)
-            {
                 throw new InvalidOperationException($"Process exited before readiness: {process.ExitCode}.");
-            }
 
             try
             {
                 using var http = ZLinkHttpClient.Create(healthUrl).Json().Timeout(TimeSpan.FromSeconds(2)).Build();
-                if ((await http.Get("/health").SubmitRawAsync()).Status == 200)
-                {
-                    return;
-                }
+                if ((await http.Get("/health").SubmitRawAsync()).Status == 200) return;
             }
             catch
             {
@@ -212,14 +198,10 @@ internal sealed class ManagedProcess(Process process, string healthUrl)
 
     public async Task StopAsync()
     {
-        if (_disposed)
-        {
-            return;
-        }
+        if (_disposed) return;
 
         _disposed = true;
         if (!process.HasExited)
-        {
             try
             {
                 using var http = ZLinkHttpClient.Create(healthUrl).Json().Timeout(TimeSpan.FromSeconds(5)).Build();
@@ -227,12 +209,8 @@ internal sealed class ManagedProcess(Process process, string healthUrl)
             }
             catch
             {
-                if (!process.HasExited)
-                {
-                    process.Kill(entireProcessTree: true);
-                }
+                if (!process.HasExited) process.Kill(true);
             }
-        }
 
         await process.WaitForExitAsync();
         process.Dispose();

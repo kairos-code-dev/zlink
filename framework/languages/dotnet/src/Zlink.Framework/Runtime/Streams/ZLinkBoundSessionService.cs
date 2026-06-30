@@ -1,5 +1,3 @@
-using Zlink.Framework.Runtime.Execution;
-
 namespace Zlink.Framework.Runtime.Streams;
 
 internal sealed class ZLinkBoundSessionService(
@@ -27,9 +25,7 @@ internal sealed class ZLinkBoundSessionService(
         if (ZLinkBoundSessionDispatchScope.TryDeferClose(
                 actorId,
                 ct => DisconnectNowAsync(actorId, ct)))
-        {
             return;
-        }
 
         await DisconnectNowAsync(actorId, cancellationToken)
             .ConfigureAwait(false);
@@ -49,9 +45,7 @@ internal sealed class ZLinkBoundSessionService(
         finally
         {
             if (runtime.TryGetSessionActorContext(actorId, route.BindingToken, out var context))
-            {
                 runtime.UnbindSessionActor(actorId, context, route.BindingToken);
-            }
 
             runtime.UnbindActorSession(actorId, route.BindingToken);
         }
@@ -99,15 +93,12 @@ internal sealed class ZLinkBoundSessionService(
         CancellationToken cancellationToken)
     {
         cancellationToken.ThrowIfCancellationRequested();
-        if (runtime.TryGetActorBoundSession(actorId, out var route))
-        {
-            return ValueTask.FromResult(route);
-        }
+        if (runtime.TryGetActorBoundSession(actorId, out var route)) return ValueTask.FromResult(route);
 
         throw new ZLinkFrameworkException(
             ZLinkFrameworkErrorKind.ActorSessionNotBound,
             $"No current session binding exists for actor '{actorId}'.",
-            isRetriable: true);
+            true);
     }
 
     private static byte[] CreateBoundSessionFrame<TPayload>(
@@ -125,7 +116,8 @@ internal sealed class ZLinkBoundSessionService(
             packetName ?? throw new InvalidOperationException("Packet name is required."),
             ToStreamMetadata(metadata),
             ZLinkStreamCorrelation.Next());
-        return ZLinkStreamFrameCodec.Encode(ZLinkStreamProtocolDefaults.EncodeHeader(header).Span, encoded.Payload.Span);
+        return ZLinkStreamFrameCodec.Encode(ZLinkStreamProtocolDefaults.EncodeHeader(header).Span,
+            encoded.Payload.Span);
     }
 
     private static ZlinkStreamHeaderFlags MetadataFlags(IReadOnlyDictionary<string, string> metadata)
@@ -136,10 +128,7 @@ internal sealed class ZLinkBoundSessionService(
     private static ZlinkStreamMetadata ToStreamMetadata(IReadOnlyDictionary<string, string> metadata)
     {
         var values = ZlinkStreamMetadata.Empty;
-        foreach (var (key, value) in metadata)
-        {
-            values = values.With(key, value);
-        }
+        foreach (var (key, value) in metadata) values = values.With(key, value);
 
         return values;
     }
@@ -167,8 +156,8 @@ internal sealed class ZLinkBoundSessionSendCall<TMessage>(
     string actorId,
     TMessage message) : IZLinkBoundSessionSendCall
 {
-    private string? _packetName = ZLinkMessageNameResolver.ResolveFromMessage(message);
     private readonly Dictionary<string, string> _metadata = new(StringComparer.Ordinal);
+    private string? _packetName = ZLinkMessageNameResolver.ResolveFromMessage(message);
 
     public IZLinkBoundSessionSendCall PacketName(string packetName)
     {
@@ -194,5 +183,4 @@ internal sealed class ZLinkBoundSessionSendCall<TMessage>(
                 cancellationToken)
             .ConfigureAwait(false);
     }
-
 }

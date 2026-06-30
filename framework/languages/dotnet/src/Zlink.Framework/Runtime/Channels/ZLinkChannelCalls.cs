@@ -1,14 +1,11 @@
-using Zlink.Framework.Runtime.Messaging;
-using Zlink.Framework.Runtime.Execution;
-
 namespace Zlink.Framework.Runtime.Channels;
 
 internal sealed class ZLinkSendCall : IZLinkSendCall
 {
-    private readonly ZLinkFrameworkRuntime _runtime;
-    private readonly ZLinkFrameworkRegistration _registration;
     private readonly string _channelName;
     private readonly object? _message;
+    private readonly ZLinkFrameworkRegistration _registration;
+    private readonly ZLinkFrameworkRuntime _runtime;
     private string? _messageName;
 
     public ZLinkSendCall(
@@ -43,17 +40,15 @@ internal sealed class ZLinkSendCall : IZLinkSendCall
         var message = ZLinkEnvelopeCodec.EncodeParts(header, _message, _message?.GetType(), _registration.Codecs);
 
         if (_runtime.Flow.Enabled(ZLinkMessageFlowOutcome.Sent))
-        {
             _runtime.Flow.Trace(new ZLinkMessageFlowEvent(
                 ZLinkMessageFlowOutcome.Sent,
                 ZLinkDispatchErrorSurface.Channel,
                 ZLinkDispatchMessageKind.Send,
-                PacketName: header.MessageName,
-                ChannelName: _channelName,
+                header.MessageName,
+                _channelName,
                 CorrelationId: header.CorrelationId,
                 LocalRid: bundle.LocalRid,
                 SocketRole: bundle.SocketRole));
-        }
 
         return (bundle.Submitter
                 ?? throw new InvalidOperationException("ZLink send submitter is not initialized."))
@@ -100,20 +95,18 @@ internal sealed class ZLinkRequestCall<TMessage>(
         var message = ZLinkClientCallCodec.EncodeEnvelopeParts(header, request, registration.Codecs);
 
         if (runtime.Flow.Enabled(ZLinkMessageFlowOutcome.Sent))
-        {
             runtime.Flow.Trace(new ZLinkMessageFlowEvent(
                 ZLinkMessageFlowOutcome.Sent,
                 ZLinkDispatchErrorSurface.Channel,
                 ZLinkDispatchMessageKind.Request,
-                PacketName: header.MessageName,
-                ChannelName: channelName,
+                header.MessageName,
+                channelName,
                 CorrelationId: header.CorrelationId,
                 LocalRid: bundle.LocalRid,
                 SocketRole: bundle.SocketRole));
-        }
 
         var reply = await (bundle.Submitter
-                ?? throw new InvalidOperationException("ZLink request submitter is not initialized."))
+                           ?? throw new InvalidOperationException("ZLink request submitter is not initialized."))
             .SubmitRequestAsync<TReply>(
                 message,
                 (pending, complete, fail) => dealer.Request(
@@ -131,17 +124,15 @@ internal sealed class ZLinkRequestCall<TMessage>(
             .ConfigureAwait(false);
 
         if (runtime.Flow.Enabled(ZLinkMessageFlowOutcome.ReplyReceived))
-        {
             runtime.Flow.Trace(new ZLinkMessageFlowEvent(
                 ZLinkMessageFlowOutcome.ReplyReceived,
                 ZLinkDispatchErrorSurface.Channel,
                 ZLinkDispatchMessageKind.Response,
-                PacketName: header.MessageName,
-                ChannelName: channelName,
+                header.MessageName,
+                channelName,
                 CorrelationId: header.CorrelationId,
                 LocalRid: bundle.LocalRid,
                 SocketRole: bundle.SocketRole));
-        }
 
         return reply;
     }
@@ -154,8 +145,8 @@ internal sealed class ZLinkRequestCall<TMessage>(
     private ZLinkSerialTurn RequireTurn()
     {
         return _turn
-            ?? throw new InvalidOperationException(
-                "Yield requires a framework Spot handler turn captured when the call object was created.");
+               ?? throw new InvalidOperationException(
+                   "Yield requires a framework Spot handler turn captured when the call object was created.");
     }
 }
 
@@ -189,18 +180,16 @@ internal sealed class ZLinkPublishCall(
         var envelopedMsg = ZLinkEnvelopeCodec.EncodeParts(header, message, message?.GetType(), registration.Codecs);
 
         if (runtime.Flow.Enabled(ZLinkMessageFlowOutcome.Sent))
-        {
             runtime.Flow.Trace(new ZLinkMessageFlowEvent(
                 ZLinkMessageFlowOutcome.Sent,
                 ZLinkDispatchErrorSurface.Channel,
                 ZLinkDispatchMessageKind.Publish,
-                PacketName: header.MessageName,
-                ChannelName: channelName,
-                Topic: topic,
-                CorrelationId: header.CorrelationId,
+                header.MessageName,
+                channelName,
+                topic,
+                header.CorrelationId,
                 LocalRid: bundle.LocalRid,
                 SocketRole: bundle.SocketRole));
-        }
 
         return (bundle.Submitter
                 ?? throw new InvalidOperationException("ZLink publish submitter is not initialized."))

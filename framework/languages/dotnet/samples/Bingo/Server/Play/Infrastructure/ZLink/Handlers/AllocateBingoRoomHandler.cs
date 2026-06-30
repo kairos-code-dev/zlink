@@ -1,12 +1,11 @@
-using Zlink.Framework.Codecs.Protobuf;
-using Zlink.Framework.Contracts.Handlers;
-using Zlink.Framework.Contracts.Channels;
-using Zlink.Framework.Contracts.Spots;
 using Bingo.Server.Play.Application.RoomAllocation;
 using Bingo.Server.Play.Infrastructure.ZLink.Spots.BingoRoomSpot;
 using Bingo.Shared.Contracts;
 using Microsoft.Extensions.Logging;
 using Systems.Zlink;
+using Zlink.Framework.Contracts.Channels;
+using Zlink.Framework.Contracts.Handlers;
+using Zlink.Framework.Contracts.Spots;
 
 namespace Bingo.Server.Play.Infrastructure.ZLink.Handlers;
 
@@ -39,17 +38,15 @@ internal sealed class AllocateBingoRoomHandler(
             reservation.RoomId,
             reservation.OwnerPlayNodeRid);
         if (reservation.LocalRoomSettings is not null)
-        {
             await spots.GetOrCreateAsync<BingoRoom>(
                 RoutingId.From(reservation.RoomId),
                 BingoRoomSettingsPayloadMapper.ToPayload(reservation.LocalRoomSettings),
                 cancellationToken);
-        }
 
         return new AllocateBingoRoomRes
         {
             RoomId = reservation.RoomId,
-            RoomOwnerNodeRid = reservation.OwnerPlayNodeRid,
+            RoomOwnerNodeRid = reservation.OwnerPlayNodeRid
         };
     }
 }

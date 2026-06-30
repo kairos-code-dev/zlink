@@ -1,6 +1,6 @@
+using ResilienceLifecycle.Client.Support;
 using ResilienceLifecycle.Shared;
 using Zlink.HttpClient;
-using ResilienceLifecycle.Client.Support;
 
 namespace ResilienceLifecycle.Client.Scenarios;
 
@@ -31,8 +31,10 @@ internal static class RlD5MixedBurstScenario
         string[] requestEvidence;
         {
             using var timeout = new CancellationTokenSource(TimeSpan.FromSeconds(15));
-            var waitA = providerA.Post("/evidence/wait").Body(new EvidenceWaitRequest(["marker=rl-d5-req-"], [])).SubmitAsync<string[]>(timeout.Token).AsTask();
-            var waitB = providerB.Post("/evidence/wait").Body(new EvidenceWaitRequest(["marker=rl-d5-req-"], [])).SubmitAsync<string[]>(timeout.Token).AsTask();
+            var waitA = providerA.Post("/evidence/wait").Body(new EvidenceWaitRequest(["marker=rl-d5-req-"], []))
+                .SubmitAsync<string[]>(timeout.Token).AsTask();
+            var waitB = providerB.Post("/evidence/wait").Body(new EvidenceWaitRequest(["marker=rl-d5-req-"], []))
+                .SubmitAsync<string[]>(timeout.Token).AsTask();
             var completed = await Task.WhenAny(waitA, waitB);
             requestEvidence = (await completed).Body;
             timeout.Cancel();
@@ -44,8 +46,10 @@ internal static class RlD5MixedBurstScenario
         string[] commandEvidence;
         {
             using var timeout = new CancellationTokenSource(TimeSpan.FromSeconds(15));
-            var waitA = providerA.Post("/evidence/wait").Body(new EvidenceWaitRequest(["marker=rl-d5-cmd-"], [])).SubmitAsync<string[]>(timeout.Token).AsTask();
-            var waitB = providerB.Post("/evidence/wait").Body(new EvidenceWaitRequest(["marker=rl-d5-cmd-"], [])).SubmitAsync<string[]>(timeout.Token).AsTask();
+            var waitA = providerA.Post("/evidence/wait").Body(new EvidenceWaitRequest(["marker=rl-d5-cmd-"], []))
+                .SubmitAsync<string[]>(timeout.Token).AsTask();
+            var waitB = providerB.Post("/evidence/wait").Body(new EvidenceWaitRequest(["marker=rl-d5-cmd-"], []))
+                .SubmitAsync<string[]>(timeout.Token).AsTask();
             var completed = await Task.WhenAny(waitA, waitB);
             commandEvidence = (await completed).Body;
             timeout.Cancel();

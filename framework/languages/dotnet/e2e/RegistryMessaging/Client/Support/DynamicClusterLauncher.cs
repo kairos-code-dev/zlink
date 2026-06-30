@@ -7,7 +7,16 @@ namespace RegistryMessaging.Client.Support;
 
 internal sealed class DynamicClusterLauncher(string providerProject, string logDir) : IAsyncDisposable
 {
-    readonly List<DynamicProcess> _processes = [];
+    private readonly List<DynamicProcess> _processes = [];
+
+    public string RegistryRouterEndpoint { get; private set; } = "";
+
+    public async ValueTask DisposeAsync()
+    {
+        for (var i = _processes.Count - 1; i >= 0; i--) await _processes[i].StopAsync();
+
+        _processes.Clear();
+    }
 
     public static async Task<DynamicClusterLauncher> StartAsync(ClientOptions options, string scenarioName)
     {
@@ -24,7 +33,7 @@ internal sealed class DynamicClusterLauncher(string providerProject, string logD
                     "--http-url", registryHttp,
                     "--registry-pub-endpoint", PickEndpoint(),
                     "--registry-router-endpoint", launcher.RegistryRouterEndpoint,
-                    "--log-dir", options.LogDir,
+                    "--log-dir", options.LogDir
                 ],
                 registryHttp,
                 null);
@@ -37,8 +46,6 @@ internal sealed class DynamicClusterLauncher(string providerProject, string logD
             throw;
         }
     }
-
-    public string RegistryRouterEndpoint { get; private set; } = "";
 
     public async Task<DynamicProvider> StartProviderAsync(string name, string rid, int weight = 100)
     {
@@ -55,7 +62,7 @@ internal sealed class DynamicClusterLauncher(string providerProject, string logD
                 "--route-endpoint", PickEndpoint(),
                 "--weight", weight.ToString(),
                 "--evidence-file", Path.Combine(logDir, $"{name}.evidence.log"),
-                "--log-dir", logDir,
+                "--log-dir", logDir
             ],
             httpUrl,
             channelEndpoint);
@@ -69,17 +76,7 @@ internal sealed class DynamicClusterLauncher(string providerProject, string logD
         _processes.Remove(provider.Process);
     }
 
-    public async ValueTask DisposeAsync()
-    {
-        for (var i = _processes.Count - 1; i >= 0; i--)
-        {
-            await _processes[i].StopAsync();
-        }
-
-        _processes.Clear();
-    }
-
-    DynamicProcess StartServer(
+    private DynamicProcess StartServer(
         string name,
         string projectPath,
         IReadOnlyList<string> arguments,
@@ -91,19 +88,16 @@ internal sealed class DynamicClusterLauncher(string providerProject, string logD
             FileName = "dotnet",
             RedirectStandardOutput = true,
             RedirectStandardError = true,
-            UseShellExecute = false,
+            UseShellExecute = false
         };
         startInfo.ArgumentList.Add("run");
         startInfo.ArgumentList.Add("--project");
         startInfo.ArgumentList.Add(projectPath);
         startInfo.ArgumentList.Add("--");
-        foreach (var argument in arguments)
-        {
-            startInfo.ArgumentList.Add(argument);
-        }
+        foreach (var argument in arguments) startInfo.ArgumentList.Add(argument);
 
         var process = Process.Start(startInfo)
-            ?? throw new InvalidOperationException($"Failed to start {name}.");
+                      ?? throw new InvalidOperationException($"Failed to start {name}.");
         _ = CopyToFileAsync(process.StandardOutput, Path.Combine(logDir, $"{name}.stdout.log"));
         _ = CopyToFileAsync(process.StandardError, Path.Combine(logDir, $"{name}.stderr.log"));
         var dynamicProcess = new DynamicProcess(process, httpUrl, channelEndpoint);
@@ -111,7 +105,7 @@ internal sealed class DynamicClusterLauncher(string providerProject, string logD
         return dynamicProcess;
     }
 
-    static async Task CopyToFileAsync(StreamReader reader, string path)
+    private static async Task CopyToFileAsync(StreamReader reader, string path)
     {
         await using var stream = File.Open(path, FileMode.Create, FileAccess.Write, FileShare.Read);
         await using var writer = new StreamWriter(stream);
@@ -122,11 +116,17 @@ internal sealed class DynamicClusterLauncher(string providerProject, string logD
         }
     }
 
-    static string PickEndpoint() => $"tcp://127.0.0.1:{PickPort()}";
+    private static string PickEndpoint()
+    {
+        return $"tcp://127.0.0.1:{PickPort()}";
+    }
 
-    static string PickHttpUrl() => $"http://127.0.0.1:{PickPort()}";
+    private static string PickHttpUrl()
+    {
+        return $"http://127.0.0.1:{PickPort()}";
+    }
 
-    static int PickPort()
+    private static int PickPort()
     {
         using var listener = new TcpListener(IPAddress.Loopback, 0);
         listener.Start();
@@ -138,14 +138,17 @@ internal sealed record DynamicProvider(DynamicProcess Process, string HttpUrl, s
 
 internal sealed class DynamicProcess(Process process, string httpUrl, string? channelEndpoint)
 {
-    bool _disposed;
+    private bool _disposed;
 
     public string HttpUrl { get; } = httpUrl;
 
     public string? ChannelEndpoint { get; } = channelEndpoint;
 
-    public string RequireChannelEndpoint() =>
-        ChannelEndpoint ?? throw new InvalidOperationException("This process does not expose a channel endpoint.");
+    public string RequireChannelEndpoint()
+    {
+        return ChannelEndpoint ??
+               throw new InvalidOperationException("This process does not expose a channel endpoint.");
+    }
 
     public async Task WaitReadyAsync()
     {
@@ -153,17 +156,12 @@ internal sealed class DynamicProcess(Process process, string httpUrl, string? ch
         for (var i = 0; i < 120; i++)
         {
             if (process.HasExited)
-            {
                 throw new InvalidOperationException($"Process exited before readiness: {process.ExitCode}.");
-            }
 
             try
             {
                 using var response = await client.GetAsync($"{HttpUrl}/health");
-                if (response.IsSuccessStatusCode)
-                {
-                    return;
-                }
+                if (response.IsSuccessStatusCode) return;
             }
             catch
             {
@@ -177,14 +175,10 @@ internal sealed class DynamicProcess(Process process, string httpUrl, string? ch
 
     public async Task StopAsync()
     {
-        if (_disposed)
-        {
-            return;
-        }
+        if (_disposed) return;
 
         _disposed = true;
         if (!process.HasExited)
-        {
             try
             {
                 using var client = ZLinkHttpClient.Create(HttpUrl)
@@ -195,12 +189,8 @@ internal sealed class DynamicProcess(Process process, string httpUrl, string? ch
             }
             catch
             {
-                if (!process.HasExited)
-                {
-                    process.Kill(entireProcessTree: true);
-                }
+                if (!process.HasExited) process.Kill(true);
             }
-        }
 
         await process.WaitForExitAsync();
         process.Dispose();

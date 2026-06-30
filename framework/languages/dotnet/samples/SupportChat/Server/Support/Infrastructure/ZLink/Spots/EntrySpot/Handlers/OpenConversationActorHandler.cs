@@ -1,8 +1,8 @@
-using Systems.Zlink;
+using SupportChat.Server.Configuration;
 using SupportChat.Server.Support.Infrastructure.ZLink.Actors;
 using SupportChat.Server.Support.Infrastructure.ZLink.Spots.ConversationSpot.Notifications;
-using SupportChat.Server.Configuration;
 using SupportChat.Shared.Contracts;
+using Systems.Zlink;
 using Zlink.Framework.Contracts.Spots;
 
 namespace SupportChat.Server.Support.Infrastructure.ZLink.Spots.EntrySpot.Handlers;
@@ -21,9 +21,7 @@ internal sealed class OpenConversationActorHandler(
     {
         _ = context;
         if (!string.Equals(actor.Role, SupportChatRoles.Customer, StringComparison.Ordinal))
-        {
             throw new InvalidOperationException("Only customer actors can open a conversation.");
-        }
 
         Console.Error.WriteLine($"support entry open: request actor={actor.ActorId} subject={message.Subject}");
         var opened = await entrySpot.Context.Outbound.RequestToChannel(
@@ -57,7 +55,8 @@ internal sealed class OpenConversationActorHandler(
             actor,
             state,
             cancellationToken);
-        Console.Error.WriteLine($"support entry open: completed conversation={opened.ConversationId} status={state.Status}");
+        Console.Error.WriteLine(
+            $"support entry open: completed conversation={opened.ConversationId} status={state.Status}");
         return new OpenConversationRes(opened.ConversationId, state);
     }
 }

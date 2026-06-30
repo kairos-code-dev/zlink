@@ -24,7 +24,8 @@ public sealed class TicTacToeClientScenario
         Ensure(room.PlayEndpoints.Count >= 2);
         Ensure(room.PlayEndpoints.Contains(room.OwnerPlayEndpoint, StringComparer.Ordinal));
         Ensure(room.PlayNodes.Count == room.PlayEndpoints.Count);
-        Ensure(room.PlayNodes.Any(node => string.Equals(node.StreamEndpoint, room.OwnerPlayEndpoint, StringComparison.Ordinal)));
+        Ensure(room.PlayNodes.Any(node =>
+            string.Equals(node.StreamEndpoint, room.OwnerPlayEndpoint, StringComparison.Ordinal)));
         Ensure(room.RequiredLevel == 3);
         Ensure(room.GameName == options.GameName);
 
@@ -34,22 +35,27 @@ public sealed class TicTacToeClientScenario
         var observerPlayNode = room.PlayNodes.Single(node =>
             string.Equals(node.StreamEndpoint, observerPlayEndpoint, StringComparison.Ordinal));
 
-        await using var client1 = TicTacToeClientConnections.CreateStreamClient(room.OwnerPlayEndpoint, options, "host");
+        await using var client1 =
+            TicTacToeClientConnections.CreateStreamClient(room.OwnerPlayEndpoint, options, "host");
         await using var client2 = TicTacToeClientConnections.CreateStreamClient(guestPlayEndpoint, options, "guest");
-        await using var observer = TicTacToeClientConnections.CreateStreamClient(observerPlayEndpoint, options, "observer");
+        await using var observer =
+            TicTacToeClientConnections.CreateStreamClient(observerPlayEndpoint, options, "observer");
 
         // Client 1 connects, authenticates as player X, and joins the empty room.
         await client1.Connect.Async(cancellationToken);
 
-        var client1Authentication = await client1.Request(new AuthenticateReq(options.XActorId)).Async<AuthenticateRes>(cancellationToken);
+        var client1Authentication = await client1.Request(new AuthenticateReq(options.XActorId))
+            .Async<AuthenticateRes>(cancellationToken);
         Ensure(client1Authentication.Player.ActorId == options.XActorId);
         Ensure(client1Authentication.Player.Level >= room.RequiredLevel);
         Ensure(client1Authentication.Player.Wins == 99);
 
         await observer.Connect.Async(cancellationToken);
-        var observerAuthentication = await observer.Request(new AuthenticateReq(options.ObserverActorId)).Async<AuthenticateRes>(cancellationToken);
+        var observerAuthentication = await observer.Request(new AuthenticateReq(options.ObserverActorId))
+            .Async<AuthenticateRes>(cancellationToken);
         Ensure(observerAuthentication.Player.ActorId == options.ObserverActorId);
-        var observerSubscription = await observer.Request(new ObserveMilestoneReq()).Async<ObserveMilestoneRes>(cancellationToken);
+        var observerSubscription =
+            await observer.Request(new ObserveMilestoneReq()).Async<ObserveMilestoneRes>(cancellationToken);
         Ensure(observerSubscription.Subscribed);
 
         var client1Join = await client1.Request(new JoinGameReq(room.RoomId)).Async<JoinGameRes>(cancellationToken);
@@ -61,7 +67,8 @@ public sealed class TicTacToeClientScenario
         // Client 2 connects, authenticates as player O, and joins the same room.
         await client2.Connect.Async(cancellationToken);
 
-        var client2Authentication = await client2.Request(new AuthenticateReq(options.OActorId)).Async<AuthenticateRes>(cancellationToken);
+        var client2Authentication = await client2.Request(new AuthenticateReq(options.OActorId))
+            .Async<AuthenticateRes>(cancellationToken);
         Ensure(client2Authentication.Player.ActorId == options.OActorId);
         Ensure(client2Authentication.Player.Level >= room.RequiredLevel);
         Ensure(client2Authentication.Player.ActorId != client1Authentication.Player.ActorId);
@@ -172,11 +179,9 @@ public sealed class TicTacToeClientScenario
 
     private static void Ensure(
         bool condition,
-        [CallerArgumentExpression(nameof(condition))] string? expression = null)
+        [CallerArgumentExpression(nameof(condition))]
+        string? expression = null)
     {
-        if (!condition)
-        {
-            throw new InvalidOperationException($"Ensure failed: {expression}");
-        }
+        if (!condition) throw new InvalidOperationException($"Ensure failed: {expression}");
     }
 }

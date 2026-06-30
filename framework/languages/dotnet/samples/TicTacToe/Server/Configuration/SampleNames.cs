@@ -4,12 +4,15 @@ internal static class SampleChannels
 {
     public const string Api = "Api";
 
-    public static string Play(int index) => index switch
+    public static string Play(int index)
     {
-        0 => "PlayA",
-        1 => "PlayB",
-        _ => $"Play{index + 1}",
-    };
+        return index switch
+        {
+            0 => "PlayA",
+            1 => "PlayB",
+            _ => $"Play{index + 1}"
+        };
+    }
 }
 
 internal static class SampleTypes

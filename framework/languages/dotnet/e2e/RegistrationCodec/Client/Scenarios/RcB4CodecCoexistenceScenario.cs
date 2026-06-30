@@ -1,6 +1,6 @@
+using RegistrationCodec.Client.Support;
 using RegistrationCodec.Shared;
 using Zlink.HttpClient;
-using RegistrationCodec.Client.Support;
 
 namespace RegistrationCodec.Client.Scenarios;
 
@@ -11,12 +11,14 @@ internal static class RcB4CodecCoexistenceScenario
     {
         await server.Post("/codec/roundtrip").SubmitAsync<CodecScenarioResult>();
         var evidence = (await server.Post("/evidence/wait")
-            .Body(new EvidenceWaitRequest(["codec-request|codec=json", "codec-request|codec=protobuf", "codec-request|codec=msgpack"]))
+            .Body(new EvidenceWaitRequest([
+                "codec-request|codec=json", "codec-request|codec=protobuf", "codec-request|codec=msgpack"
+            ]))
             .SubmitAsync<string[]>()).Body;
         ScenarioAssert.That(
             EvidenceText.HasCodec(evidence, "json", "application/json")
-                && EvidenceText.HasCodec(evidence, "protobuf", "application/x-protobuf")
-                && EvidenceText.HasCodec(evidence, "msgpack", "application/x-msgpack"),
+            && EvidenceText.HasCodec(evidence, "protobuf", "application/x-protobuf")
+            && EvidenceText.HasCodec(evidence, "msgpack", "application/x-msgpack"),
             "RC-B4 expected all codec evidence.");
 
         Console.WriteLine("scenario RC-B4 passed");

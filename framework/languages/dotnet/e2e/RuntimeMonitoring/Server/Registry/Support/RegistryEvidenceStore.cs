@@ -1,6 +1,4 @@
 using System.Collections.Concurrent;
-using RuntimeMonitoring.Server.Registry.Handlers;
-using RuntimeMonitoring.Server.Registry;
 
 namespace RuntimeMonitoring.Server.Registry.Support;
 
@@ -8,9 +6,9 @@ internal sealed class EvidenceStore
 {
     private readonly ConcurrentQueue<string> _entries = new();
     private readonly object _fileGate = new();
+    private readonly string? _filePath;
     private readonly object _waiterGate = new();
     private readonly List<TaskCompletionSource> _waiters = new();
-    private readonly string? _filePath;
 
     public EvidenceStore(string? filePath)
     {
@@ -29,10 +27,7 @@ internal sealed class EvidenceStore
     {
         _entries.Enqueue(entry);
         SignalWaiters();
-        if (string.IsNullOrWhiteSpace(_filePath))
-        {
-            return;
-        }
+        if (string.IsNullOrWhiteSpace(_filePath)) return;
 
         lock (_fileGate)
         {
@@ -40,7 +35,10 @@ internal sealed class EvidenceStore
         }
     }
 
-    public string[] Snapshot() => _entries.ToArray();
+    public string[] Snapshot()
+    {
+        return _entries.ToArray();
+    }
 
     public async Task<string[]> WaitUntilAsync(
         Func<string[], bool> predicate,
@@ -77,7 +75,7 @@ internal sealed class EvidenceStore
         }
     }
 
-    TaskCompletionSource AddWaiter()
+    private TaskCompletionSource AddWaiter()
     {
         var waiter = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
         lock (_waiterGate)
@@ -88,7 +86,7 @@ internal sealed class EvidenceStore
         return waiter;
     }
 
-    void RemoveWaiter(TaskCompletionSource waiter)
+    private void RemoveWaiter(TaskCompletionSource waiter)
     {
         lock (_waiterGate)
         {
@@ -96,7 +94,7 @@ internal sealed class EvidenceStore
         }
     }
 
-    void SignalWaiters()
+    private void SignalWaiters()
     {
         TaskCompletionSource[] waiters;
         lock (_waiterGate)
@@ -105,9 +103,6 @@ internal sealed class EvidenceStore
             _waiters.Clear();
         }
 
-        foreach (var waiter in waiters)
-        {
-            waiter.TrySetResult();
-        }
+        foreach (var waiter in waiters) waiter.TrySetResult();
     }
 }

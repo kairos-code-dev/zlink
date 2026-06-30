@@ -1,23 +1,15 @@
 using System.Buffers.Binary;
 using System.Net;
-using System.Net.Security;
 using System.Net.Sockets;
 using System.Net.WebSockets;
 using System.Security.Cryptography;
 using System.Security.Cryptography.X509Certificates;
-using System.Text;
-using System.Text.Json;
 using MessagePack;
 using Systems.Zlink.Stream.Connector.Contracts;
-using Systems.Zlink.Stream.Connector.Contracts.Calls;
-using Systems.Zlink.Stream.Connector.Runtime;
-using Systems.Zlink.Stream.Connector.Runtime.Protocol.Framing;
-using Xunit;
-
 
 public sealed partial class StreamConnectorTests
 {
-    private static async Task<(byte[] Header, byte[] Payload)> ReadPacketAsync(global::System.IO.Stream stream)
+    private static async Task<(byte[] Header, byte[] Payload)> ReadPacketAsync(Stream stream)
     {
         var prefix = new byte[6];
         await stream.ReadExactlyAsync(prefix);
@@ -30,7 +22,7 @@ public sealed partial class StreamConnectorTests
         return (header, payload);
     }
 
-    private static async Task WritePacketAsync(global::System.IO.Stream stream, byte[] header, byte[] payload)
+    private static async Task WritePacketAsync(Stream stream, byte[] header, byte[] payload)
     {
         var prefix = new byte[6];
         BinaryPrimitives.WriteUInt16BigEndian(prefix.AsSpan(0, 2), (ushort)header.Length);
@@ -41,7 +33,7 @@ public sealed partial class StreamConnectorTests
     }
 
     private static async Task WritePrefixAsync(
-        global::System.IO.Stream stream,
+        Stream stream,
         ushort headerLength,
         uint payloadLength)
     {
@@ -79,8 +71,7 @@ public sealed partial class StreamConnectorTests
         {
             result = await webSocket.ReceiveAsync(buffer, CancellationToken.None);
             stream.Write(buffer, 0, result.Count);
-        }
-        while (!result.EndOfMessage);
+        } while (!result.EndOfMessage);
 
         return stream.ToArray();
     }
@@ -101,10 +92,7 @@ public sealed partial class StreamConnectorTests
         while (!predicate())
         {
             await connector.Dispatch.Async();
-            if (DateTimeOffset.UtcNow >= deadline)
-            {
-                throw new TimeoutException("Connector dispatch timeout.");
-            }
+            if (DateTimeOffset.UtcNow >= deadline) throw new TimeoutException("Connector dispatch timeout.");
 
             await Task.Delay(TimeSpan.FromMilliseconds(10));
         }
@@ -117,17 +105,16 @@ public sealed partial class StreamConnectorTests
         var deadline = DateTimeOffset.UtcNow + timeout;
         while (!predicate())
         {
-            if (DateTimeOffset.UtcNow >= deadline)
-            {
-                throw new TimeoutException("Condition wait timeout.");
-            }
+            if (DateTimeOffset.UtcNow >= deadline) throw new TimeoutException("Condition wait timeout.");
 
             await Task.Delay(TimeSpan.FromMilliseconds(10));
         }
     }
 
     private static ZlinkStreamHeartbeatOptions DisabledHeartbeat()
-        => new() { Enabled = false };
+    {
+        return new ZlinkStreamHeartbeatOptions { Enabled = false };
+    }
 
     private static X509Certificate2 CreateSelfSignedCertificate()
     {
@@ -154,11 +141,9 @@ public sealed partial class StreamConnectorTests
     [MessagePackObject]
     public sealed class PackedPing
     {
-        [Key(0)]
-        public string Text { get; set; } = string.Empty;
+        [Key(0)] public string Text { get; set; } = string.Empty;
     }
 
     [ZlinkStreamPacketName("custom.packet")]
     private sealed record NamedPacket(string Text);
-
 }

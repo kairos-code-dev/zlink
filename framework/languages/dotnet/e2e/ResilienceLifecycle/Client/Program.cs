@@ -1,6 +1,6 @@
 using ResilienceLifecycle.Client.Scenarios;
-using Zlink.HttpClient;
 using ResilienceLifecycle.Client.Support;
+using Zlink.HttpClient;
 
 var options = ClientOptions.Parse(args);
 
@@ -38,24 +38,18 @@ var scenarios = new (string Name, Func<Task> Run)[]
     ("RL-D2", () => RlD2ObserverFaultScenario.RunAsync(consumer, providerA, providerB)),
     ("RL-D3", () => RlD3DispatchErrorEvidenceScenario.RunAsync(consumer, providerA, providerB)),
     ("RL-D4", () => RlD4MissingRequestHandlerScenario.RunAsync(consumer, providerA, providerB)),
-    ("RL-D5", () => RlD5MixedBurstScenario.RunAsync(consumer, providerA, providerB)),
+    ("RL-D5", () => RlD5MixedBurstScenario.RunAsync(consumer, providerA, providerB))
 };
 
 if (string.Equals(options.Scenario, "all", StringComparison.OrdinalIgnoreCase))
 {
-    foreach (var scenario in scenarios)
-    {
-        await scenario.Run();
-    }
+    foreach (var scenario in scenarios) await scenario.Run();
 }
 else
 {
     var selected = scenarios.FirstOrDefault(scenario =>
         string.Equals(scenario.Name, options.Scenario, StringComparison.OrdinalIgnoreCase));
-    if (selected.Run is null)
-    {
-        throw new ArgumentException($"Unknown scenario '{options.Scenario}'.");
-    }
+    if (selected.Run is null) throw new ArgumentException($"Unknown scenario '{options.Scenario}'.");
 
     await selected.Run();
 }

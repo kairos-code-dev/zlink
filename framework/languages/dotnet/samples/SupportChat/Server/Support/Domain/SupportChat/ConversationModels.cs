@@ -34,7 +34,7 @@ internal enum ConversationEventKind
     MessageAppended,
     TypingChanged,
     Idle,
-    Closed,
+    Closed
 }
 
 internal sealed record ConversationEvent(

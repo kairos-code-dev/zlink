@@ -1,3 +1,4 @@
+using Zlink.Framework.Contracts.Messaging;
 using Zlink.Framework.ContractTests.Support;
 
 namespace Zlink.Framework.ContractTests.Streams;
@@ -22,10 +23,11 @@ public sealed class StreamContracts
         var session = new ExampleSession(context);
 
         await session.OnConnectedAsync(CancellationToken.None);
-        var actorRef = await context.Actors.BindAsync(new Systems.Zlink.ActorRef(RoutingId.From("actor-node"), "player-1", 1));
+        var actorRef =
+            await context.Actors.BindAsync(new Systems.Zlink.ActorRef(RoutingId.From("actor-node"), "player-1", 1));
         var boundActor = context.Actors.Find("player-1");
         await actorRef.RelayAsync(
-            Zlink.Framework.Contracts.Messaging.ZLinkMessage.From(new PlayerJoined("player-1")));
+            ZLinkMessage.From(new PlayerJoined("player-1")));
         await actorRef.NotifyDisconnectedAsync();
 
         await context.Client
@@ -44,7 +46,7 @@ public sealed class StreamContracts
         await context.CloseAsync();
 
         IZLinkStream stream = context;
-        stream.Write(Zlink.Framework.Contracts.Messaging.ZLinkMessage.From(new AuthenticateReply("token")));
+        stream.Write(ZLinkMessage.From(new AuthenticateReply("token")));
         await stream.CloseAsync();
 
         Assert.Equal("session-1", session.Context.SessionId);
@@ -70,11 +72,11 @@ public sealed class StreamContracts
         var handled = await dispatcher.TryHandleAsync(
             sessionContext,
             new ZLinkSessionDispatchContext("auth"),
-            Zlink.Framework.Contracts.Messaging.ZLinkMessage.From(new AuthenticateReply("token")));
+            ZLinkMessage.From(new AuthenticateReply("token")));
         var unhandled = await dispatcher.TryHandleAsync(
             sessionContext,
             new ZLinkSessionDispatchContext("gameplay"),
-            Zlink.Framework.Contracts.Messaging.ZLinkMessage.From(new PlayerJoined("player-1")));
+            ZLinkMessage.From(new PlayerJoined("player-1")));
 
         Assert.True(handled);
         Assert.False(unhandled);
@@ -137,7 +139,7 @@ public sealed class StreamContracts
         public ValueTask HandleAsync(
             SessionPacketContext context,
             ZLinkSessionDispatchContext dispatch,
-            Zlink.Framework.Contracts.Messaging.ZLinkMessage payload,
+            ZLinkMessage payload,
             CancellationToken cancellationToken)
         {
             _ = payload;
@@ -157,13 +159,10 @@ public sealed class StreamContracts
         public async ValueTask<bool> TryHandleAsync(
             TContext context,
             ZLinkSessionDispatchContext dispatch,
-            Zlink.Framework.Contracts.Messaging.ZLinkMessage payload,
+            ZLinkMessage payload,
             CancellationToken cancellationToken = default)
         {
-            if (!_handlers.TryGetValue(dispatch.PacketName, out var handler))
-            {
-                return false;
-            }
+            if (!_handlers.TryGetValue(dispatch.PacketName, out var handler)) return false;
 
             await handler.HandleAsync(context, dispatch, payload, cancellationToken);
             return true;
@@ -174,14 +173,22 @@ public sealed class StreamContracts
     {
         public IZLinkSessionContext Context { get; } = context;
 
-        public ValueTask OnConnectedAsync(CancellationToken cancellationToken) => ValueTask.CompletedTask;
+        public ValueTask OnConnectedAsync(CancellationToken cancellationToken)
+        {
+            return ValueTask.CompletedTask;
+        }
 
-        public ValueTask OnDisconnectedAsync(CancellationToken cancellationToken) => ValueTask.CompletedTask;
+        public ValueTask OnDisconnectedAsync(CancellationToken cancellationToken)
+        {
+            return ValueTask.CompletedTask;
+        }
 
         public ValueTask OnErrorAsync(
             ZLinkStreamError error,
-            CancellationToken cancellationToken) =>
-            ValueTask.CompletedTask;
+            CancellationToken cancellationToken)
+        {
+            return ValueTask.CompletedTask;
+        }
     }
 
     private sealed class ExampleSessionContext :
@@ -190,29 +197,13 @@ public sealed class StreamContracts
         IZLinkSessionActors,
         IZLinkStream
     {
-        public string SessionId => "session-1";
-
-        public RoutingId? RoutingId => Systems.Zlink.RoutingId.From("session-route");
-
-        public string? LocalAddr => "tcp://127.0.0.1:5000";
-
-        public string? RemoteAddr => "tcp://127.0.0.1:5001";
-
         private readonly Dictionary<string, IZLinkSessionActor> _actors = new(StringComparer.Ordinal);
-
-        public IZLinkSessionClient Client => this;
-
-        public IZLinkSessionActors Actors => this;
-
-        public IReadOnlyCollection<IZLinkSessionActor> Bound => _actors.Values.ToArray();
 
         public bool IsClosed { get; private set; }
 
         public bool StreamClosed { get; private set; }
 
-        public IZLinkSessionSendCall Send<TMessage>(TMessage message) => new SessionSendCall();
-
-        public IZLinkSessionReplyCall Reply<TMessage>(TMessage message) => new SessionReplyCall();
+        public IReadOnlyCollection<IZLinkSessionActor> Bound => _actors.Values.ToArray();
 
         public ValueTask<IZLinkSessionActor> BindAsync(
             IZLinkActor actor,
@@ -237,6 +228,28 @@ public sealed class StreamContracts
             return _actors.GetValueOrDefault(actorId);
         }
 
+        public IZLinkSessionSendCall Send<TMessage>(TMessage message)
+        {
+            return new SessionSendCall();
+        }
+
+        public IZLinkSessionReplyCall Reply<TMessage>(TMessage message)
+        {
+            return new SessionReplyCall();
+        }
+
+        public string SessionId => "session-1";
+
+        public RoutingId? RoutingId => Systems.Zlink.RoutingId.From("session-route");
+
+        public string? LocalAddr => "tcp://127.0.0.1:5000";
+
+        public string? RemoteAddr => "tcp://127.0.0.1:5001";
+
+        public IZLinkSessionClient Client => this;
+
+        public IZLinkSessionActors Actors => this;
+
         public ValueTask CloseAsync()
         {
             IsClosed = true;
@@ -244,8 +257,11 @@ public sealed class StreamContracts
         }
 
         bool IZLinkStream.Write(
-            Zlink.Framework.Contracts.Messaging.ZLinkMessage payload,
-            SendFlags flags) => true;
+            ZLinkMessage payload,
+            SendFlags flags)
+        {
+            return true;
+        }
 
         async ValueTask IZLinkStream.CloseAsync()
         {
@@ -258,7 +274,10 @@ public sealed class StreamContracts
     {
         public bool IsDisconnected { get; private set; }
 
-        public IZLinkBoundSessionSendCall Send<TMessage>(TMessage message) => new BoundSessionSendCall();
+        public IZLinkBoundSessionSendCall Send<TMessage>(TMessage message)
+        {
+            return new BoundSessionSendCall();
+        }
 
         public ValueTask DisconnectAsync(CancellationToken cancellationToken = default)
         {
@@ -274,63 +293,113 @@ public sealed class StreamContracts
         public Systems.Zlink.ActorRef Ref { get; } = actor;
 
         public ValueTask RelayAsync(
-            Zlink.Framework.Contracts.Messaging.ZLinkMessage payload,
-            CancellationToken cancellationToken = default) =>
-            ValueTask.CompletedTask;
+            ZLinkMessage payload,
+            CancellationToken cancellationToken = default)
+        {
+            return ValueTask.CompletedTask;
+        }
 
-        public ValueTask NotifyDisconnectedAsync(CancellationToken cancellationToken = default) =>
-            ValueTask.CompletedTask;
+        public ValueTask NotifyDisconnectedAsync(CancellationToken cancellationToken = default)
+        {
+            return ValueTask.CompletedTask;
+        }
     }
 
     private sealed class SendCall : IZLinkSendCall
     {
-        public IZLinkSendCall PacketName(string messageName) => this;
+        public IZLinkSendCall PacketName(string messageName)
+        {
+            return this;
+        }
 
-        public ValueTask Async(CancellationToken cancellationToken = default) => ValueTask.CompletedTask;
+        public ValueTask Async(CancellationToken cancellationToken = default)
+        {
+            return ValueTask.CompletedTask;
+        }
     }
 
     private sealed class RequestCall(object reply) : IZLinkRequestCall
     {
-        public IZLinkRequestCall PacketName(string messageName) => this;
+        public IZLinkRequestCall PacketName(string messageName)
+        {
+            return this;
+        }
 
-        public IZLinkRequestCall Timeout(TimeSpan timeout) => this;
+        public IZLinkRequestCall Timeout(TimeSpan timeout)
+        {
+            return this;
+        }
 
-        public ValueTask<TReply> Async<TReply>(CancellationToken cancellationToken = default) =>
-            ValueTask.FromResult((TReply)reply);
+        public ValueTask<TReply> Async<TReply>(CancellationToken cancellationToken = default)
+        {
+            return ValueTask.FromResult((TReply)reply);
+        }
     }
 
     private sealed class SessionSendCall : IZLinkSessionSendCall
     {
-        public IZLinkSessionSendCall Metadata(string key, string value) => this;
+        public IZLinkSessionSendCall Metadata(string key, string value)
+        {
+            return this;
+        }
 
-        public IZLinkSessionSendCall PacketName(string messageName) => this;
+        public IZLinkSessionSendCall PacketName(string messageName)
+        {
+            return this;
+        }
 
-        public IZLinkSessionSendCall Compress() => this;
+        public IZLinkSessionSendCall Compress()
+        {
+            return this;
+        }
 
-        public ValueTask Async() => ValueTask.CompletedTask;
+        public ValueTask Async()
+        {
+            return ValueTask.CompletedTask;
+        }
     }
 
     private sealed class SessionReplyCall : IZLinkSessionReplyCall
     {
-        public IZLinkSessionReplyCall Metadata(string key, string value) => this;
+        public IZLinkSessionReplyCall Metadata(string key, string value)
+        {
+            return this;
+        }
 
-        public IZLinkSessionReplyCall Compress() => this;
+        public IZLinkSessionReplyCall Compress()
+        {
+            return this;
+        }
 
-        public ValueTask Async() => ValueTask.CompletedTask;
+        public ValueTask Async()
+        {
+            return ValueTask.CompletedTask;
+        }
     }
 
     private sealed class BoundSessionSendCall : IZLinkBoundSessionSendCall
     {
-        public IZLinkBoundSessionSendCall PacketName(string packetName) => this;
+        public IZLinkBoundSessionSendCall PacketName(string packetName)
+        {
+            return this;
+        }
 
-        public IZLinkBoundSessionSendCall Metadata(string key, string value) => this;
+        public IZLinkBoundSessionSendCall Metadata(string key, string value)
+        {
+            return this;
+        }
 
-        public ValueTask Async(CancellationToken cancellationToken = default) => ValueTask.CompletedTask;
-
+        public ValueTask Async(CancellationToken cancellationToken = default)
+        {
+            return ValueTask.CompletedTask;
+        }
     }
 
     private sealed class MetadataPolicy(IReadOnlySet<string> forwardedKeys) : IZLinkMessageMetadataPolicy
     {
-        public bool CanForward(string key) => forwardedKeys.Contains(key);
+        public bool CanForward(string key)
+        {
+            return forwardedKeys.Contains(key);
+        }
     }
 }

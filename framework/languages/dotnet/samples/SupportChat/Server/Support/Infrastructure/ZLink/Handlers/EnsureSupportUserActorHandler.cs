@@ -1,11 +1,8 @@
-using Zlink.Framework.Contracts.Codecs.Json;
-using Systems.Zlink;
-using SupportChat.Server.Support.Infrastructure.ZLink.Actors;
 using SupportChat.Server.Configuration;
 using SupportChat.Shared.Contracts;
+using Systems.Zlink;
 using Zlink.Framework.Contracts.Actors;
 using Zlink.Framework.Contracts.Handlers;
-using Zlink.Framework.Contracts.Messaging;
 
 namespace SupportChat.Server.Support.Infrastructure.ZLink.Handlers;
 
@@ -20,15 +17,12 @@ internal sealed class EnsureSupportUserActorHandler(
         CancellationToken cancellationToken)
     {
         _ = context;
-        if (await actors.FindAsync(request.ActorId, cancellationToken) is { } existing)
-        {
-            return ToResponse(existing);
-        }
+        if (await actors.FindAsync(request.ActorId, cancellationToken) is { } existing) return ToResponse(existing);
 
         var actor = await actors.GetOrCreateAsync(
-                request.ActorId,
-                SampleNames.SupportActorType,
-                request,
+            request.ActorId,
+            SampleNames.SupportActorType,
+            request,
             cancellationToken);
 
         return ToResponse(actor);

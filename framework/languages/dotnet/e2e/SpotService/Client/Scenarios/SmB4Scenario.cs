@@ -1,7 +1,7 @@
+using SpotService.Client.Support;
 using SpotService.Shared;
 using Systems.Zlink.Stream.Connector.Contracts;
 using Zlink.HttpClient;
-using SpotService.Client.Support;
 
 namespace SpotService.Client.Scenarios;
 
@@ -22,7 +22,7 @@ internal static class SmB4Scenario
                 RequestTimeout = TimeSpan.FromSeconds(5),
                 Heartbeat = new ZlinkStreamHeartbeatOptions { Enabled = false },
                 DispatchMode = ZlinkStreamDispatchMode.Immediate,
-                MaxReceivedMessages = 1024,
+                MaxReceivedMessages = 1024
             });
             try
             {
@@ -43,13 +43,11 @@ internal static class SmB4Scenario
         }
 
         if (reply is null)
-        {
             throw new InvalidOperationException(
                 last is null
                     ? "SM-B4 remote actor request did not become routable."
                     : $"SM-B4 remote actor request did not become routable. Last error: {last.Message}",
                 last);
-        }
 
         ScenarioAssert.That(reply.NodeRid == "play-b", "SM-B4 remote actor request reached the wrong node.");
         var expectedEvidence = new[] { $"actor-ping|rid=play-b|actor={actorId}" };

@@ -1,6 +1,6 @@
+using PubSub.Client.Support;
 using PubSub.Shared;
 using Zlink.HttpClient;
-using PubSub.Client.Support;
 
 namespace PubSub.Client.Scenarios;
 
@@ -17,20 +17,18 @@ internal static class LateSubscriberScenario
 
         // Publish before the late subscriber exists; this range must not be replayed later.
         for (var i = 1; i <= 5; i++)
-        {
             await publisher.Post("/publish/event")
                 .Query("topic", PubSubNames.MainTopic)
                 .Query("runId", beforeLateRun)
                 .Query("sequence", i.ToString())
                 .Query("value", $"before-late-{i}")
                 .SubmitRawAsync();
-        }
 
         // Start the late subscriber through the same server executable used by the harness.
         using var lateSubscriber = processes.StartSubscriber(
-            name: "sub-late",
-            httpUrl: lateSubscriberUrl,
-            evidenceFile: "sub-late.evidence.log");
+            "sub-late",
+            lateSubscriberUrl,
+            "sub-late.evidence.log");
         try
         {
             await ScenarioAssert.EventuallyAsync(
@@ -51,21 +49,18 @@ internal static class LateSubscriberScenario
 
             // After the late subscriber is healthy, new publishes should be visible to it.
             for (var i = 1; i <= 8; i++)
-            {
                 await publisher.Post("/publish/event")
                     .Query("topic", PubSubNames.MainTopic)
                     .Query("runId", afterLateRun)
                     .Query("sequence", i.ToString())
                     .Query("value", $"after-late-{i}")
                     .SubmitRawAsync();
-            }
 
             // The positive check proves the late subscriber joined the fanout after process start.
             var lateEvidence = (await lateSubscriberClient.Post("/evidence/wait")
                 .Body(new EvidenceWaitRequest(
                     ["event|", $"run={afterLateRun}", $"topic={PubSubNames.MainTopic}"],
-                    [],
-                    10000))
+                    []))
                 .SubmitAsync<string[]>()).Body;
 
             // Pub/Sub has no replay contract, so pre-join events must stay absent from late evidence.
@@ -78,7 +73,7 @@ internal static class LateSubscriberScenario
         {
             if (!lateSubscriber.HasExited)
             {
-                lateSubscriber.Kill(entireProcessTree: true);
+                lateSubscriber.Kill(true);
                 await lateSubscriber.WaitForExitAsync();
             }
         }

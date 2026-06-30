@@ -12,9 +12,12 @@ internal sealed class ZLinkBackendSocketMonitorWrapper(ISocketMonitor nativeMoni
     public ZLinkBackendSocketMonitorEvent Recv()
     {
         return (nativeMonitor.Recv(RecvFlags.DontWait)
-            ?? throw new ZlinkRecvException(ZlinkRecvException.ErrorCode.NoData))
+                ?? throw new ZlinkRecvException(ZlinkRecvException.ErrorCode.NoData))
             .ToFramework();
     }
 
-    public ValueTask DisposeAsync() => nativeMonitor.DisposeAsync();
+    public ValueTask DisposeAsync()
+    {
+        return nativeMonitor.DisposeAsync();
+    }
 }

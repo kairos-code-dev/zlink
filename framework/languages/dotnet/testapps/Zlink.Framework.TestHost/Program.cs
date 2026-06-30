@@ -3,6 +3,7 @@ using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Hosting;
 using Microsoft.Extensions.Logging;
 using Systems.Zlink.Stream.Connector.Contracts;
+using Zlink.Framework.Contracts.Messaging;
 
 internal sealed class Program
 {
@@ -13,9 +14,9 @@ internal sealed class Program
 
         Console.SetOut(TextWriter.Synchronized(new StreamWriter(
             Console.OpenStandardOutput(),
-            new UTF8Encoding(encoderShouldEmitUTF8Identifier: false))
+            new UTF8Encoding(false))
         {
-            AutoFlush = true,
+            AutoFlush = true
         }));
 
         var builder = Host.CreateApplicationBuilder(args);
@@ -31,7 +32,6 @@ internal sealed class Program
 
         using var host = builder.Build();
         await host.RunAsync();
-
     }
 }
 
@@ -127,16 +127,10 @@ internal sealed class TestHostEventSink(string? path)
 
     public void Append(string value)
     {
-        if (string.IsNullOrWhiteSpace(path))
-        {
-            return;
-        }
+        if (string.IsNullOrWhiteSpace(path)) return;
 
         var directory = Path.GetDirectoryName(path);
-        if (!string.IsNullOrWhiteSpace(directory))
-        {
-            Directory.CreateDirectory(directory);
-        }
+        if (!string.IsNullOrWhiteSpace(directory)) Directory.CreateDirectory(directory);
 
         lock (_gate)
         {
@@ -155,7 +149,8 @@ internal sealed class StartupStageSpot(IZLinkSpotContext context) : IZLinkSpot
     }
 }
 
-internal sealed class StartupStageSubscriptionHandler(TestHostEventSink sink) : IZLinkSpotSubscriptionHandler<StartupStageSpot, StartupStageEvent>
+internal sealed class StartupStageSubscriptionHandler(TestHostEventSink sink)
+    : IZLinkSpotSubscriptionHandler<StartupStageSpot, StartupStageEvent>
 {
     public ValueTask HandleAsync(
         StartupStageSpot spot,
@@ -261,7 +256,7 @@ internal sealed class StreamClientStartupRequestHostedService(
             Endpoint = new Uri(endpoint),
             Heartbeat = new ZlinkStreamHeartbeatOptions { Enabled = false },
             Reconnect = new ZlinkStreamReconnectOptions { Enabled = false },
-            RequestTimeout = TimeSpan.FromSeconds(5),
+            RequestTimeout = TimeSpan.FromSeconds(5)
         });
         await _connector.Connect.Async(cancellationToken);
         var pending = _connector
@@ -279,10 +274,7 @@ internal sealed class StreamClientStartupRequestHostedService(
 
     public async Task StopAsync(CancellationToken cancellationToken)
     {
-        if (_connector is not null)
-        {
-            await _connector.DisposeAsync();
-        }
+        if (_connector is not null) await _connector.DisposeAsync();
     }
 }
 
@@ -317,7 +309,7 @@ internal sealed class TestHostRawStreamSession(
 
     public ValueTask OnDispatchAsync(
         ZLinkSessionDispatchContext dispatch,
-        Zlink.Framework.Contracts.Messaging.ZLinkMessage payload,
+        ZLinkMessage payload,
         CancellationToken cancellationToken)
     {
         _ = cancellationToken;

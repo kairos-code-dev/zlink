@@ -1,6 +1,6 @@
-using Zlink.HttpClient;
-using RegistryMessaging.Shared;
 using RegistryMessaging.Client.Support;
+using RegistryMessaging.Shared;
+using Zlink.HttpClient;
 
 namespace RegistryMessaging.Client.Scenarios;
 
@@ -33,11 +33,11 @@ internal static class RmC5MissingPacketScenario
             .ToArray();
         ScenarioAssert.That(
             evidence.Any(line => line.Contains("dispatch-error", StringComparison.Ordinal)
-                && line.Contains("MissingProfileRequest", StringComparison.Ordinal)),
+                                 && line.Contains("MissingProfileRequest", StringComparison.Ordinal)),
             "RM-C5 missing request evidence missing.");
         ScenarioAssert.That(
             evidence.Any(line => line.Contains("dispatch-error", StringComparison.Ordinal)
-                && line.Contains("MissingProfileCommand", StringComparison.Ordinal)),
+                                 && line.Contains("MissingProfileCommand", StringComparison.Ordinal)),
             "RM-C5 missing send evidence missing.");
 
         var reply = (await discoveryConsumer.Post("/profile/request")
@@ -47,7 +47,7 @@ internal static class RmC5MissingPacketScenario
         Console.WriteLine("scenario RM-C5 passed");
     }
 
-    static async Task<string[]> WaitForDispatchErrorEvidenceAsync(
+    private static async Task<string[]> WaitForDispatchErrorEvidenceAsync(
         ZLinkHttpClient providerA,
         ZLinkHttpClient providerB,
         string packetName)

@@ -1,15 +1,8 @@
-using Zlink.Framework.Contracts.Actors;
-using Zlink.Framework.Contracts.Channels;
-using Zlink.Framework.Contracts.Configuration;
-using Zlink.Framework.Contracts.Handlers;
-using Zlink.Framework.Contracts.Messaging;
-using Zlink.Framework.Contracts.Spots;
-using Zlink.Framework.Contracts.Streams;
-using Zlink.Framework.Contracts.Timers;
-using Systems.Zlink;
-using Bingo.Server.Play.Infrastructure.ZLink.Actors;
 using Bingo.Server.Configuration;
 using Bingo.Shared.Contracts;
+using Zlink.Framework.Contracts.Actors;
+using Zlink.Framework.Contracts.Channels;
+using Zlink.Framework.Contracts.Handlers;
 
 namespace Bingo.Server.Play.Infrastructure.ZLink.Handlers;
 
@@ -25,10 +18,10 @@ internal sealed class EnsurePlayerActorHandler(
     {
         _ = context;
         var actor = await actors.GetOrCreateAsync(
-                request.ActorId,
-                SampleNames.PlayerActorType,
-                request,
-                cancellationToken);
+            request.ActorId,
+            SampleNames.PlayerActorType,
+            request,
+            cancellationToken);
 
         return new EnsurePlayerActorRes
         {
@@ -38,8 +31,8 @@ internal sealed class EnsurePlayerActorHandler(
             {
                 NodeRid = actor.NodeRid.ToString(),
                 ActorId = actor.ActorId,
-                Generation = actor.Generation,
-            },
+                Generation = actor.Generation
+            }
         };
     }
 }

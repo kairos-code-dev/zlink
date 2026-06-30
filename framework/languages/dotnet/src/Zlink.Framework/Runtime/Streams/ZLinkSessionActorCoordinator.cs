@@ -65,9 +65,7 @@ internal sealed class ZLinkSessionActorCoordinator(
         CancellationToken cancellationToken)
     {
         if (actor is not ZLinkSessionActor actorRef)
-        {
             throw new InvalidOperationException("Actor ref was not created by this framework runtime.");
-        }
 
         if (stream is ZLinkManagedStream managedStream)
         {
@@ -85,9 +83,7 @@ internal sealed class ZLinkSessionActorCoordinator(
         CancellationToken cancellationToken)
     {
         if (actor is not ZLinkSessionActor actorRef)
-        {
             throw new InvalidOperationException("Actor ref was not created by this framework runtime.");
-        }
 
         await runtime.NotifyActorDisconnectedAsync(actorRef.Ref, cancellationToken)
             .ConfigureAwait(false);
@@ -142,16 +138,14 @@ internal sealed class ZLinkSessionActorCoordinator(
         if (runtime.TryGetCreatedActorState(actorId, out var state))
         {
             if (state.Actor is not null && !ReferenceEquals(state.Actor, actor))
-            {
                 throw new ZLinkFrameworkException(
                     ZLinkFrameworkErrorKind.ActorRouteNotFound,
                     $"Actor '{actorId}' is already created with a different actor instance.");
-            }
 
             return state.NativeActorRef
-                ?? throw new ZLinkFrameworkException(
-                    ZLinkFrameworkErrorKind.ActorRouteNotFound,
-                    $"Actor '{actorId}' does not have a native Actor ref.");
+                   ?? throw new ZLinkFrameworkException(
+                       ZLinkFrameworkErrorKind.ActorRouteNotFound,
+                       $"Actor '{actorId}' does not have a native Actor ref.");
         }
 
         throw new ZLinkFrameworkException(
@@ -160,27 +154,24 @@ internal sealed class ZLinkSessionActorCoordinator(
     }
 
     private static ActorRef ToPublicActorRef(ZLinkBackendActorRef actorRef)
-        => new(actorRef.NodeRid, actorRef.ActorId, actorRef.Generation);
+    {
+        return new ActorRef(actorRef.NodeRid, actorRef.ActorId, actorRef.Generation);
+    }
 
     private static void EnsureConcreteActorRef(ActorRef actor)
     {
         if (actor.NodeRid.IsEmpty || actor.Generation == 0)
-        {
             throw new ZLinkFrameworkException(
                 ZLinkFrameworkErrorKind.ActorRouteNotFound,
                 "Actor ref requires a target SpotNode routing id and concrete actor generation.",
-                isRetriable: false);
-        }
+                false);
     }
 
     private async ValueTask BindNativeActorAsync(
         ZLinkBackendActorRef actorRef,
         CancellationToken cancellationToken)
     {
-        if (stream is not ZLinkManagedStream managedStream)
-        {
-            return;
-        }
+        if (stream is not ZLinkManagedStream managedStream) return;
 
         await managedStream.BindActorAsync(
                 actorRef,
@@ -188,5 +179,4 @@ internal sealed class ZLinkSessionActorCoordinator(
                 cancellationToken)
             .ConfigureAwait(false);
     }
-
 }

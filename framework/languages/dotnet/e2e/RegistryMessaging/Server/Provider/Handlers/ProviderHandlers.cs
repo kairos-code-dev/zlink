@@ -1,13 +1,10 @@
 using System.Security.Cryptography;
 using System.Text;
+using RegistryMessaging.Server.Provider.Infrastructure;
 using RegistryMessaging.Shared;
 using Zlink.Framework.Contracts.Channels;
 using Zlink.Framework.Contracts.Dispatch;
 using Zlink.Framework.Contracts.Handlers;
-using RegistryMessaging.Server.Provider.Configuration;
-using RegistryMessaging.Server.Provider.Endpoints;
-using RegistryMessaging.Server.Provider.Infrastructure;
-using RegistryMessaging.Server.Provider;
 
 namespace RegistryMessaging.Server.Provider.Handlers;
 
@@ -19,10 +16,7 @@ internal sealed class ProfileRequestHandler(EvidenceStore evidence)
         ZLinkRequestContext context,
         CancellationToken cancellationToken)
     {
-        if (request.Value == "slow")
-        {
-            await Task.Delay(TimeSpan.FromSeconds(1), cancellationToken);
-        }
+        if (request.Value == "slow") await Task.Delay(TimeSpan.FromSeconds(1), cancellationToken);
 
         evidence.Add($"profile-request|rid={evidence.Rid}|value={request.Value}|packet={context.PacketName}");
         return new ProfileReply($"profile:{request.Value}", evidence.Rid);
@@ -39,9 +33,7 @@ internal sealed class ProfileCommandHandler(EvidenceStore evidence)
     {
         cancellationToken.ThrowIfCancellationRequested();
         if (command.CommandId.StartsWith("rm-c9-slow-", StringComparison.Ordinal))
-        {
             await Task.Delay(TimeSpan.FromSeconds(1), cancellationToken);
-        }
 
         evidence.Add($"profile-command|rid={evidence.Rid}|command={command.CommandId}|packet={context.PacketName}");
     }
@@ -87,10 +79,7 @@ internal sealed class EvidenceDispatchErrorObserver(EvidenceStore evidence)
         CancellationToken cancellationToken)
     {
         cancellationToken.ThrowIfCancellationRequested();
-        if (flow.Outcome != ZLinkMessageFlowOutcome.Error)
-        {
-            return ValueTask.CompletedTask;
-        }
+        if (flow.Outcome != ZLinkMessageFlowOutcome.Error) return ValueTask.CompletedTask;
 
         evidence.Add(
             "dispatch-error"

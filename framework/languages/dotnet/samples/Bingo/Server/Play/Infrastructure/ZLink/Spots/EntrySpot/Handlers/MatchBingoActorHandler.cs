@@ -1,10 +1,10 @@
+using Bingo.Server.Configuration;
+using Bingo.Server.Play.Infrastructure.ZLink.Actors;
+using Bingo.Shared.Contracts;
+using Microsoft.Extensions.Logging;
 using Systems.Zlink;
 using Zlink.Framework.Contracts.Handlers;
 using Zlink.Framework.Contracts.Spots;
-using Bingo.Server.Play.Infrastructure.ZLink.Actors;
-using Bingo.Server.Configuration;
-using Bingo.Shared.Contracts;
-using Microsoft.Extensions.Logging;
 
 namespace Bingo.Server.Play.Infrastructure.ZLink.Spots.EntrySpot.Handlers;
 
@@ -27,7 +27,7 @@ internal sealed class MatchBingoActorHandler(
             ActorId = actor.ActorId,
             DisplayName = actor.DisplayName,
             ActorNodeRid = entrySpot.Context.NodeRid.ToString(),
-            Mode = message.Mode,
+            Mode = message.Mode
         };
         var matched = await entrySpot.Context.Outbound
             .RequestToChannel(SampleNames.ApiChannel, apiRequest)
@@ -43,10 +43,11 @@ internal sealed class MatchBingoActorHandler(
                     RoomId = matched.RoomId,
                     ActorId = actor.ActorId,
                     DisplayName = actor.DisplayName,
-                    ObserveOnly = false,
+                    ObserveOnly = false
                 })
             .Yield<BingoRoomJoinRes>(cancellationToken);
-        logger.LogInformation("match: actor joined room. actor={ActorId}, room={RoomId}", actor.ActorId, matched.RoomId);
+        logger.LogInformation("match: actor joined room. actor={ActorId}, room={RoomId}", actor.ActorId,
+            matched.RoomId);
         var joinedState = joined.Reply.State;
         // join 후에는 actor 객체를 다시 만지지 않는다 — game-started push 는 room 의 OnJoinedActorAsync 가 한다.
 
@@ -54,7 +55,7 @@ internal sealed class MatchBingoActorHandler(
         {
             RoomId = matched.RoomId,
             State = joinedState,
-            RoomOwnerNodeRid = matched.RoomOwnerNodeRid,
+            RoomOwnerNodeRid = matched.RoomOwnerNodeRid
         };
     }
 }

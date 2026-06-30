@@ -2,19 +2,82 @@ namespace Zlink.Framework.Runtime.Spots;
 
 internal sealed partial class ZLinkSpotActivation
 {
+    public void AddPacket<THandler>()
+        where THandler : class
+    {
+        EnsureConfigurationOpen();
+        _packets.Add(typeof(THandler));
+    }
+
+    public void AddSubscribe<THandler>(string topic)
+        where THandler : class
+    {
+        EnsureConfigurationOpen();
+        _subscriptions.Add(topic, typeof(THandler));
+    }
+
+    public void AddHandler<THandler>()
+        where THandler : class
+    {
+        EnsureConfigurationOpen();
+        RequireActorHandlers().AddHandler(typeof(THandler), null);
+    }
+
+    public void AddHandler<THandler>(string packetName)
+        where THandler : class
+    {
+        if (string.IsNullOrWhiteSpace(packetName))
+            throw new InvalidOperationException("Actor packet name must not be empty.");
+
+        EnsureConfigurationOpen();
+        RequireActorHandlers().AddHandler(typeof(THandler), packetName);
+    }
+
+    public void AddActorPacket<THandler, TActor>()
+        where THandler : class
+        where TActor : IZLinkActor
+    {
+        AddActorPacketCore<THandler, TActor>(null);
+    }
+
+    public void AddActorPacket<THandler, TActor>(string packetName)
+        where THandler : class
+        where TActor : IZLinkActor
+    {
+        if (string.IsNullOrWhiteSpace(packetName))
+            throw new InvalidOperationException("Actor packet name must not be empty.");
+
+        AddActorPacketCore<THandler, TActor>(packetName);
+    }
+
+    public void AddActorSend<THandler, TActor>(string packetName)
+        where THandler : class
+        where TActor : IZLinkActor
+    {
+        if (string.IsNullOrWhiteSpace(packetName))
+            throw new InvalidOperationException("Actor packet name must not be empty.");
+
+        AddActorPacketCore<THandler, TActor>(packetName, ZLinkMessageKind.Command);
+    }
+
+    public void AddActorRequest<THandler, TActor>(string packetName)
+        where THandler : class
+        where TActor : IZLinkActor
+    {
+        if (string.IsNullOrWhiteSpace(packetName))
+            throw new InvalidOperationException("Actor packet name must not be empty.");
+
+        AddActorPacketCore<THandler, TActor>(packetName, ZLinkMessageKind.Request);
+    }
+
     public void AttachSpot(IZLinkSpot spot)
     {
         ArgumentNullException.ThrowIfNull(spot);
-        if (_spot is not null)
-        {
-            throw new InvalidOperationException("SPOT has already been attached to this context.");
-        }
+        if (_spot is not null) throw new InvalidOperationException("SPOT has already been attached to this context.");
 
         if (!ReferenceEquals(spot.Context, this))
-        {
             throw new InvalidOperationException(
                 $"SPOT '{spot.GetType().FullName}' must expose the context provided by the runtime.");
-        }
 
         _spot = spot;
         _actorHandlers = new ZLinkSpotActorHandlerRegistry(
@@ -37,28 +100,11 @@ internal sealed partial class ZLinkSpotActivation
         _actorHandlers?.Bind();
     }
 
-    public void AddPacket<THandler>()
-        where THandler : class
-    {
-        EnsureConfigurationOpen();
-        _packets.Add(typeof(THandler));
-    }
-
-    public void AddSubscribe<THandler>(string topic)
-        where THandler : class
-    {
-        EnsureConfigurationOpen();
-        _subscriptions.Add(topic, typeof(THandler));
-    }
-
     internal async ValueTask ApplyScannedHandlerAsync(
         ZLinkScannedSpotHandler handler,
         CancellationToken cancellationToken)
     {
-        if (handler.SpotType != Spot.GetType())
-        {
-            return;
-        }
+        if (handler.SpotType != Spot.GetType()) return;
 
         EnsureConfigurationOpen();
         switch (handler.Kind)
@@ -75,7 +121,8 @@ internal sealed partial class ZLinkSpotActivation
             case ZLinkScannedSpotHandlerKind.ActorRequest:
                 RequireActorHandlers().AddPacket(
                     handler.HandlerType,
-                    handler.ActorType ?? throw new InvalidOperationException("Scanned SPOT actor handler requires an actor type."),
+                    handler.ActorType ??
+                    throw new InvalidOperationException("Scanned SPOT actor handler requires an actor type."),
                     handler.PacketName);
                 return;
             case ZLinkScannedSpotHandlerKind.Timer:
@@ -101,72 +148,12 @@ internal sealed partial class ZLinkSpotActivation
         }
     }
 
-    public void AddHandler<THandler>()
-        where THandler : class
-    {
-        EnsureConfigurationOpen();
-        RequireActorHandlers().AddHandler(typeof(THandler), null);
-    }
-
-    public void AddHandler<THandler>(string packetName)
-        where THandler : class
-    {
-        if (string.IsNullOrWhiteSpace(packetName))
-        {
-            throw new InvalidOperationException("Actor packet name must not be empty.");
-        }
-
-        EnsureConfigurationOpen();
-        RequireActorHandlers().AddHandler(typeof(THandler), packetName);
-    }
-
-    public void AddActorPacket<THandler, TActor>()
-        where THandler : class
-        where TActor : IZLinkActor
-    {
-        AddActorPacketCore<THandler, TActor>(packetName: null);
-    }
-
-    public void AddActorPacket<THandler, TActor>(string packetName)
-        where THandler : class
-        where TActor : IZLinkActor
-    {
-        if (string.IsNullOrWhiteSpace(packetName))
-        {
-            throw new InvalidOperationException("Actor packet name must not be empty.");
-        }
-
-        AddActorPacketCore<THandler, TActor>(packetName);
-    }
-
-    public void AddActorSend<THandler, TActor>(string packetName)
-        where THandler : class
-        where TActor : IZLinkActor
-    {
-        if (string.IsNullOrWhiteSpace(packetName))
-        {
-            throw new InvalidOperationException("Actor packet name must not be empty.");
-        }
-
-        AddActorPacketCore<THandler, TActor>(packetName, ZLinkMessageKind.Command);
-    }
-
-    public void AddActorRequest<THandler, TActor>(string packetName)
-        where THandler : class
-        where TActor : IZLinkActor
-    {
-        if (string.IsNullOrWhiteSpace(packetName))
-        {
-            throw new InvalidOperationException("Actor packet name must not be empty.");
-        }
-
-        AddActorPacketCore<THandler, TActor>(packetName, ZLinkMessageKind.Request);
-    }
-
     private void AddActorPacketCore<THandler, TActor>(string? packetName)
         where THandler : class
-        where TActor : IZLinkActor =>
-        AddActorPacketCore<THandler, TActor>(packetName, expectedKind: null);
+        where TActor : IZLinkActor
+    {
+        AddActorPacketCore<THandler, TActor>(packetName, null);
+    }
 
     private void AddActorPacketCore<THandler, TActor>(
         string? packetName,
@@ -181,6 +168,6 @@ internal sealed partial class ZLinkSpotActivation
     private ZLinkSpotActorHandlerRegistry RequireActorHandlers()
     {
         return _actorHandlers
-            ?? throw new InvalidOperationException("SPOT actor registry is not initialized.");
+               ?? throw new InvalidOperationException("SPOT actor registry is not initialized.");
     }
 }

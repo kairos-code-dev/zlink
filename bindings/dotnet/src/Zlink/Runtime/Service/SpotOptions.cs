@@ -1,16 +1,14 @@
 // SPDX-License-Identifier: MPL-2.0
 
-using System;
-
 namespace Systems.Zlink;
 
 internal sealed class SpotNodeOptions
 {
     private SpotNode? _owner;
-    private AutoHwmProfile _routerHwmProfile = AutoHwmProfile.Balanced;
-    private int _routerHighWaterMark;
-    private AutoHwmProfile _pubSubHwmProfile = AutoHwmProfile.Balanced;
     private int _pubSubHighWaterMark;
+    private AutoHwmProfile _pubSubHwmProfile = AutoHwmProfile.Balanced;
+    private int _routerHighWaterMark;
+    private AutoHwmProfile _routerHwmProfile = AutoHwmProfile.Balanced;
 
     public SpotNodeMode Mode { get; init; } = SpotNodeMode.All;
 
@@ -124,5 +122,4 @@ internal sealed class SpotOptions
         set => _spot.SetSocketOption(SocketOptions.Linger,
             CommonSocketOptions.EncodeDuration(value, nameof(value)));
     }
-
 }

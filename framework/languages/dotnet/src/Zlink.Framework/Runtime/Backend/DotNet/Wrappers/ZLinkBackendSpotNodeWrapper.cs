@@ -1,6 +1,5 @@
 namespace Zlink.Framework.Runtime.Backend.DotNet.Wrappers;
 
-
 internal sealed class ZLinkBackendSpotNodeWrapper(ISpotNode nativeSpotNode) : IZLinkBackendSpotNode
 {
     public object NativeInstance => nativeSpotNode;
@@ -122,10 +121,7 @@ internal sealed class ZLinkBackendSpotNodeWrapper(ISpotNode nativeSpotNode) : IZ
         var operation = nativeSpotNode.JoinActor(actor.ToNative(), destNodeRid, destSpotRid)
             .Message(message)
             .Flags(SendFlags.DontWait);
-        if (timeout is { } value)
-        {
-            operation = operation.Timeout(value);
-        }
+        if (timeout is { } value) operation = operation.Timeout(value);
 
         return operation.Submit((result, parts) => callback(result.Result, parts));
     }
@@ -142,10 +138,7 @@ internal sealed class ZLinkBackendSpotNodeWrapper(ISpotNode nativeSpotNode) : IZ
             .Messages(parts)
             .Flags(SendFlags.DontWait);
 
-        if (timeout is { } value)
-        {
-            operation = operation.Timeout(value);
-        }
+        if (timeout is { } value) operation = operation.Timeout(value);
 
         return operation.Submit((result, replyParts) => callback(
             new ZLinkBackendActorJoinResult(
@@ -166,10 +159,7 @@ internal sealed class ZLinkBackendSpotNodeWrapper(ISpotNode nativeSpotNode) : IZ
         TimeSpan? timeout)
     {
         var operation = nativeSpotNode.JoinActorEntrySpot(actor.ToNative(), destNodeRid, request);
-        if (timeout is { } value)
-        {
-            operation = operation.Timeout(value);
-        }
+        if (timeout is { } value) operation = operation.Timeout(value);
 
         return operation.Submit((result, replyParts) => callback(
             new ZLinkBackendActorJoinEntrySpotResult(
@@ -243,5 +233,8 @@ internal sealed class ZLinkBackendSpotNodeWrapper(ISpotNode nativeSpotNode) : IZ
         return ValueTask.CompletedTask;
     }
 
-    public ValueTask DisposeAsync() => nativeSpotNode.DisposeAsync();
+    public ValueTask DisposeAsync()
+    {
+        return nativeSpotNode.DisposeAsync();
+    }
 }

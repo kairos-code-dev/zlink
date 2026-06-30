@@ -1,20 +1,8 @@
-using Microsoft.AspNetCore.Builder;
-using Microsoft.AspNetCore.Http;
-using Microsoft.Extensions.DependencyInjection;
-using Microsoft.Extensions.Hosting;
-using Microsoft.Extensions.Logging;
 using Systems.Zlink;
 using YieldDispatch.Shared;
-using Zlink.Framework;
-using Zlink.Framework.AspNetCore;
 using Zlink.Framework.Contracts.Channels;
-using Zlink.Framework.Contracts.Dispatch;
-using Zlink.Framework.Contracts.Errors;
 using Zlink.Framework.Contracts.Messaging;
-using Zlink.Framework.Contracts.Spots;
 using Zlink.Framework.Contracts.Streams;
-using Zlink.Framework.Contracts.Actors;
-using YieldDispatch.Server.Session;
 
 namespace YieldDispatch.Server.Session.Support;
 
@@ -56,7 +44,8 @@ internal sealed partial class YieldSession(
             case "BindYieldActorsReq":
             {
                 var request = payload.Decode<BindYieldActorsReq>();
-                evidence.Add($"session-bind-actors|rid={evidence.Rid}|session={Context.SessionId}|spot={request.SpotRid}");
+                evidence.Add(
+                    $"session-bind-actors|rid={evidence.Rid}|session={Context.SessionId}|spot={request.SpotRid}");
                 var result = await RequestPlayControlWithRetryAsync<BindYieldActorsReply>(
                     routes,
                     request,
@@ -81,7 +70,8 @@ internal sealed partial class YieldSession(
             case "YieldShutdownScenarioReq":
             {
                 var request = payload.Decode<YieldShutdownScenarioReq>();
-                evidence.Add($"session-shutdown|rid={evidence.Rid}|session={Context.SessionId}|request={request.RequestId}|spot={request.SpotRid}");
+                evidence.Add(
+                    $"session-shutdown|rid={evidence.Rid}|session={Context.SessionId}|request={request.RequestId}|spot={request.SpotRid}");
                 var result = await RunShutdownThroughSpotRouteAsync(
                     routes,
                     request,
@@ -92,7 +82,8 @@ internal sealed partial class YieldSession(
             case "YieldShutdownRecoveryReq":
             {
                 var request = payload.Decode<YieldShutdownRecoveryReq>();
-                evidence.Add($"session-shutdown-recovery|rid={evidence.Rid}|session={Context.SessionId}|request={request.RequestId}|spot={request.SpotRid}");
+                evidence.Add(
+                    $"session-shutdown-recovery|rid={evidence.Rid}|session={Context.SessionId}|request={request.RequestId}|spot={request.SpotRid}");
                 var result = await RunShutdownRecoveryThroughSpotRouteAsync(
                     routes,
                     request,
@@ -153,7 +144,8 @@ internal sealed partial class YieldSession(
             }
             case "RemoteSpotYieldReq":
             {
-                await ReplySpotRequestAsync<RemoteSpotYieldReq, YieldDispatchReply>(dispatch, payload, cancellationToken);
+                await ReplySpotRequestAsync<RemoteSpotYieldReq, YieldDispatchReply>(dispatch, payload,
+                    cancellationToken);
                 return;
             }
             case "ProbeReq":
@@ -236,12 +228,10 @@ internal sealed partial class YieldSession(
     {
         var spotRid = dispatch.Metadata.Find(YieldDispatchNames.SpotRidMetadata);
         if (string.IsNullOrWhiteSpace(spotRid))
-        {
             throw new InvalidOperationException($"{YieldDispatchNames.SpotRidMetadata} metadata is required.");
-        }
 
         var request = payload.Decode<TRequest>()
-            ?? throw new InvalidOperationException($"Failed to decode packet '{dispatch.PacketName}'.");
+                      ?? throw new InvalidOperationException($"Failed to decode packet '{dispatch.PacketName}'.");
         var result = await RequestSpotWithRetryAsync<TReply>(
             routes,
             spotRid,
@@ -258,12 +248,10 @@ internal sealed partial class YieldSession(
     {
         var spotRid = dispatch.Metadata.Find(YieldDispatchNames.SpotRidMetadata);
         if (string.IsNullOrWhiteSpace(spotRid))
-        {
             throw new InvalidOperationException($"{YieldDispatchNames.SpotRidMetadata} metadata is required.");
-        }
 
         var command = payload.Decode<TCommand>()
-            ?? throw new InvalidOperationException($"Failed to decode packet '{dispatch.PacketName}'.");
+                      ?? throw new InvalidOperationException($"Failed to decode packet '{dispatch.PacketName}'.");
         await SendSpotWithRetryAsync(
             routes,
             spotRid,
@@ -271,5 +259,4 @@ internal sealed partial class YieldSession(
             dispatch.PacketName,
             cancellationToken);
     }
-
 }

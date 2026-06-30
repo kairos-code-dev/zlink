@@ -1,6 +1,5 @@
 // SPDX-License-Identifier: MPL-2.0
 
-using System;
 using Systems.Zlink.Runtime.Native;
 
 namespace Systems.Zlink;
@@ -21,7 +20,7 @@ internal static partial class ActorInterop
     {
         fixed (byte* actorId = native.ActorId)
         {
-            RoutingId nodeRid = RoutingId.From(
+            var nodeRid = RoutingId.From(
                 NativeHelpers.ReadRoutingId(ref native.NodeRid));
             return new ActorRef(nodeRid,
                 NativeHelpers.ReadFixedString(actorId,
@@ -32,13 +31,13 @@ internal static partial class ActorInterop
 
     internal static unsafe ActorRef? FromOptionalNative(ref ZlinkActorRef native)
     {
-        RoutingId? nodeRid = RoutingIdInterop.FromNative(ref native.NodeRid);
+        var nodeRid = RoutingIdInterop.FromNative(ref native.NodeRid);
         if (nodeRid == null)
             return null;
 
         fixed (byte* actorId = native.ActorId)
         {
-            string id = NativeHelpers.ReadFixedString(actorId,
+            var id = NativeHelpers.ReadFixedString(actorId,
                 NativeConstants.ActorIdMax);
             if (id.Length == 0 && native.Generation == 0)
                 return null;
@@ -51,7 +50,7 @@ internal static partial class ActorInterop
         ZlinkActorRef native = default;
         if (!actor.NodeRid.IsEmpty)
             native.NodeRid = actor.NodeRid.ToNative();
-        byte* actorId = native.ActorId;
+        var actorId = native.ActorId;
         NativeHelpers.WriteFixedString(actor.ActorId, actorId,
             NativeConstants.ActorIdMax);
         native.Generation = actor.Generation;
@@ -63,11 +62,11 @@ internal static partial class ActorInterop
         return new ActorRecvInfo(
             FromNative(ref native.Actor),
             RoutingIdInterop.FromNative(ref native.SourceNodeRid)
-                ?? throw new ZlinkRecvException(
-                    ZlinkRecvException.ErrorCode.InternalError),
+            ?? throw new ZlinkRecvException(
+                ZlinkRecvException.ErrorCode.InternalError),
             RoutingIdInterop.FromNative(ref native.SourceSessionRid)
-                ?? throw new ZlinkRecvException(
-                    ZlinkRecvException.ErrorCode.InternalError),
+            ?? throw new ZlinkRecvException(
+                ZlinkRecvException.ErrorCode.InternalError),
             native.Flags);
     }
 
@@ -77,17 +76,17 @@ internal static partial class ActorInterop
             FromNative(ref native.SourceActor),
             FromNative(ref native.TargetActor),
             RoutingIdInterop.FromNative(ref native.SourceNodeRid)
-                ?? throw new ZlinkRecvException(
-                    ZlinkRecvException.ErrorCode.InternalError),
+            ?? throw new ZlinkRecvException(
+                ZlinkRecvException.ErrorCode.InternalError),
             RoutingIdInterop.FromNative(ref native.SourceSpotRid)
-                ?? throw new ZlinkRecvException(
-                    ZlinkRecvException.ErrorCode.InternalError),
+            ?? throw new ZlinkRecvException(
+                ZlinkRecvException.ErrorCode.InternalError),
             RoutingIdInterop.FromNative(ref native.TargetNodeRid)
-                ?? throw new ZlinkRecvException(
-                    ZlinkRecvException.ErrorCode.InternalError),
+            ?? throw new ZlinkRecvException(
+                ZlinkRecvException.ErrorCode.InternalError),
             RoutingIdInterop.FromNative(ref native.TargetSpotRid)
-                ?? throw new ZlinkRecvException(
-                    ZlinkRecvException.ErrorCode.InternalError),
+            ?? throw new ZlinkRecvException(
+                ZlinkRecvException.ErrorCode.InternalError),
             native.JoinEpoch,
             native.Flags);
     }
@@ -97,8 +96,8 @@ internal static partial class ActorInterop
         return new ActorRoute(
             FromNative(ref native.Actor),
             RoutingIdInterop.FromNative(ref native.CurrentSpotRid)
-                ?? throw new ZlinkConfigException(
-                    ZlinkConfigException.ErrorCode.InternalError),
+            ?? throw new ZlinkConfigException(
+                ZlinkConfigException.ErrorCode.InternalError),
             (SpotKind)native.CurrentSpotKind);
     }
 

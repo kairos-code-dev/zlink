@@ -1,6 +1,6 @@
+using DiscoveryRegistryHa.Client.Support;
 using DiscoveryRegistryHa.Shared;
 using Zlink.HttpClient;
-using DiscoveryRegistryHa.Client.Support;
 
 namespace DiscoveryRegistryHa.Client.Scenarios;
 
@@ -45,10 +45,9 @@ internal static class DrB2FailoverScenario
             .SubmitAsync<string[]>()).Body;
         ScenarioAssert.That(
             evidence.Any(line => line.Contains(marker, StringComparison.Ordinal)
-                && line.Contains($"rid={reply.ProviderRid}", StringComparison.Ordinal)),
+                                 && line.Contains($"rid={reply.ProviderRid}", StringComparison.Ordinal)),
             "DR-B2 provider evidence was not recorded.");
 
         Console.WriteLine("scenario DR-B2 passed");
     }
-
 }

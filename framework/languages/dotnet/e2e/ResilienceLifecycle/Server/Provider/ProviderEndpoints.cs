@@ -1,11 +1,6 @@
-using Microsoft.AspNetCore.Builder;
-using Microsoft.AspNetCore.Http;
 using Microsoft.AspNetCore.Mvc;
-using Microsoft.Extensions.Hosting;
 using ResilienceLifecycle.Shared;
-using Zlink.Framework;
 using Zlink.Framework.Contracts.Channels;
-using ResilienceLifecycle.Server.Provider.Handlers;
 
 namespace ResilienceLifecycle.Server.Provider;
 
@@ -23,10 +18,10 @@ internal static class ProviderEndpoints
             var timeout = TimeSpan.FromMilliseconds(Math.Clamp(request.TimeoutMilliseconds, 1, 30000));
             var snapshot = await evidence.WaitUntilAsync(
                 entries => request.ContainsAll.All(expected =>
-                        entries.Any(entry => entry.Contains(expected, StringComparison.Ordinal)))
-                    && request.ContainsAnyGroups.All(group =>
-                        group.Any(expected =>
-                            entries.Any(entry => entry.Contains(expected, StringComparison.Ordinal)))),
+                               entries.Any(entry => entry.Contains(expected, StringComparison.Ordinal)))
+                           && request.ContainsAnyGroups.All(group =>
+                               group.Any(expected =>
+                                   entries.Any(entry => entry.Contains(expected, StringComparison.Ordinal)))),
                 timeout,
                 cancellationToken);
             return Results.Ok(snapshot);
@@ -77,7 +72,8 @@ internal static class ProviderEndpoints
         });
         app.MapGet("/admin/weight", ([FromServices] IZLinkChannelRuntimeOptions runtimeOptions) =>
         {
-            var weight = runtimeOptions.ClientServerChannel(ResilienceLifecycleNames.Channel).ConfigureServerSocket().Weight;
+            var weight = runtimeOptions.ClientServerChannel(ResilienceLifecycleNames.Channel).ConfigureServerSocket()
+                .Weight;
             return Results.Ok(new { weight });
         });
         app.MapPost("/admin/weight/wait", async (
@@ -92,10 +88,7 @@ internal static class ProviderEndpoints
                 var weight = runtimeOptions.ClientServerChannel(ResilienceLifecycleNames.Channel)
                     .ConfigureServerSocket()
                     .Weight;
-                if (weight == request.Expected)
-                {
-                    return Results.Ok(new { weight });
-                }
+                if (weight == request.Expected) return Results.Ok(new { weight });
 
                 await Task.Delay(TimeSpan.FromMilliseconds(50), cancellationToken);
             }

@@ -35,18 +35,19 @@ public sealed class ZlinkStreamConnectorOptions
     public ZlinkStreamCompression Compression { get; init; } = ZlinkStreamCompression.Lz4;
 
     /// <summary>
-    /// Optional compression codec for frames marked with <see cref="ZlinkStreamHeaderFlags.PayloadCompressed"/>.
-    /// When this value is set, it replaces the built-in compression selected by <see cref="Compression"/>.
-    /// Set <see cref="Compression"/> to <see cref="ZlinkStreamCompression.None"/> only when this connector must
-    /// reject compressed frames and fail calls that opt into compression.
+    ///     Optional compression codec for frames marked with <see cref="ZlinkStreamHeaderFlags.PayloadCompressed" />.
+    ///     When this value is set, it replaces the built-in compression selected by <see cref="Compression" />.
+    ///     Set <see cref="Compression" /> to <see cref="ZlinkStreamCompression.None" /> only when this connector must
+    ///     reject compressed frames and fail calls that opt into compression.
     /// </summary>
     public IZlinkStreamCompressionCodec? CompressionCodec { get; init; }
 
-    public IZlinkStreamPacketNameResolver NameResolver { get; init; } = ZlinkStreamDefaultCodecFactory.PacketNameResolver();
+    public IZlinkStreamPacketNameResolver NameResolver { get; init; } =
+        ZlinkStreamDefaultCodecFactory.PacketNameResolver();
 
     /// <summary>
-    /// Optional custom payload codec for the typed connector API. When set, the
-    /// connector encodes and decodes typed payloads with this codec instead of JSON.
+    ///     Optional custom payload codec for the typed connector API. When set, the
+    ///     connector encodes and decodes typed payloads with this codec instead of JSON.
     /// </summary>
     public IZlinkStreamPayloadCodec? PayloadCodec { get; init; }
 }

@@ -1,3 +1,5 @@
+using System.Collections;
+
 namespace Zlink.Framework.Runtime.Messaging;
 
 internal sealed class ZLinkAsyncSubmitter : IAsyncDisposable
@@ -5,11 +7,11 @@ internal sealed class ZLinkAsyncSubmitter : IAsyncDisposable
     private const int DefaultCapacity = 4096;
 
     private readonly object _gate = new();
-    private readonly object _submitGate = new();
+    private readonly ZLinkSubmitOperationFactory _operationFactory;
     private readonly ZLinkSubmitQueue _pending;
     private readonly TimeSpan? _sendTimeout;
     private readonly CancellationToken _stopToken;
-    private readonly ZLinkSubmitOperationFactory _operationFactory;
+    private readonly object _submitGate = new();
     private bool _draining;
 
     public ZLinkAsyncSubmitter(
@@ -23,6 +25,23 @@ internal sealed class ZLinkAsyncSubmitter : IAsyncDisposable
         _stopToken = stopToken;
         _operationFactory = new ZLinkSubmitOperationFactory(_sendTimeout, Drain);
         registerReadyHandler(OnSendReady);
+    }
+
+    public ValueTask DisposeAsync()
+    {
+        var remaining = _pending.DisposeAll();
+
+        foreach (var item in remaining)
+            try
+            {
+                item.TryFail(new ObjectDisposedException(nameof(ZLinkAsyncSubmitter)));
+            }
+            finally
+            {
+                item.Dispose();
+            }
+
+        return ValueTask.CompletedTask;
     }
 
     public ValueTask Async(
@@ -77,25 +96,6 @@ internal sealed class ZLinkAsyncSubmitter : IAsyncDisposable
         return SubmitRequestCoreAsync(parts, trySubmit, cancellationToken);
     }
 
-    public ValueTask DisposeAsync()
-    {
-        var remaining = _pending.DisposeAll();
-
-        foreach (var item in remaining)
-        {
-            try
-            {
-                item.TryFail(new ObjectDisposedException(nameof(ZLinkAsyncSubmitter)));
-            }
-            finally
-            {
-                item.Dispose();
-            }
-        }
-
-        return ValueTask.CompletedTask;
-    }
-
     private ValueTask SubmitCommandAsync(
         IReadOnlyList<Message> parts,
         Func<IReadOnlyList<Message>, bool> trySubmit,
@@ -119,10 +119,7 @@ internal sealed class ZLinkAsyncSubmitter : IAsyncDisposable
         }
 
         var pending = _operationFactory.CreateCommand(parts, trySubmit);
-        if (submitFailure is not null)
-        {
-            pending.RecordSubmitFailure(submitFailure);
-        }
+        if (submitFailure is not null) pending.RecordSubmitFailure(submitFailure);
 
         EnqueuePending(pending, cancellationToken);
         return new ValueTask(pending.Task);
@@ -137,6 +134,7 @@ internal sealed class ZLinkAsyncSubmitter : IAsyncDisposable
         _stopToken.ThrowIfCancellationRequested();
 
         var completion = new TaskCompletionSource<object?>(TaskCreationOptions.RunContinuationsAsynchronously);
+
         bool Submit(IReadOnlyList<Message> pending)
         {
             return trySubmit(
@@ -154,16 +152,16 @@ internal sealed class ZLinkAsyncSubmitter : IAsyncDisposable
         if (retryableFailure is ZlinkSubmitException
             {
                 Result: ZlinkSubmitException.ErrorCode.NotFound
-                    or ZlinkSubmitException.ErrorCode.NotAdmitted
-                    or ZlinkSubmitException.ErrorCode.InvalidState
-                    or ZlinkSubmitException.ErrorCode.InvalidArgument
-                    or ZlinkSubmitException.ErrorCode.InvalidHandle
-                    or ZlinkSubmitException.ErrorCode.NotSupported
-                    or ZlinkSubmitException.ErrorCode.ThreadViolation
-                    or ZlinkSubmitException.ErrorCode.OutOfMemory
-                    or ZlinkSubmitException.ErrorCode.SeqExhausted
-                    or ZlinkSubmitException.ErrorCode.Terminated
-                    or ZlinkSubmitException.ErrorCode.InternalError
+                or ZlinkSubmitException.ErrorCode.NotAdmitted
+                or ZlinkSubmitException.ErrorCode.InvalidState
+                or ZlinkSubmitException.ErrorCode.InvalidArgument
+                or ZlinkSubmitException.ErrorCode.InvalidHandle
+                or ZlinkSubmitException.ErrorCode.NotSupported
+                or ZlinkSubmitException.ErrorCode.ThreadViolation
+                or ZlinkSubmitException.ErrorCode.OutOfMemory
+                or ZlinkSubmitException.ErrorCode.SeqExhausted
+                or ZlinkSubmitException.ErrorCode.Terminated
+                or ZlinkSubmitException.ErrorCode.InternalError
             } submitError)
         {
             ZLinkMessageParts.DisposeAll(parts);
@@ -174,10 +172,7 @@ internal sealed class ZLinkAsyncSubmitter : IAsyncDisposable
         }
 
         var pendingSubmit = _operationFactory.CreateRequest(parts, Submit, completion);
-        if (retryableFailure is not null)
-        {
-            pendingSubmit.RecordSubmitFailure(retryableFailure);
-        }
+        if (retryableFailure is not null) pendingSubmit.RecordSubmitFailure(retryableFailure);
 
         EnqueuePending(pendingSubmit, cancellationToken);
         return AwaitResultAsync<T>(pendingSubmit.Task);
@@ -211,10 +206,7 @@ internal sealed class ZLinkAsyncSubmitter : IAsyncDisposable
     {
         lock (_gate)
         {
-            if (_draining)
-            {
-                return;
-            }
+            if (_draining) return;
 
             _draining = true;
         }
@@ -225,10 +217,7 @@ internal sealed class ZLinkAsyncSubmitter : IAsyncDisposable
             {
                 PendingSubmit? item;
                 _pending.TryPeek(out item);
-                if (item is null)
-                {
-                    return;
-                }
+                if (item is null) return;
 
                 if (item.IsCompleted)
                 {
@@ -238,7 +227,8 @@ internal sealed class ZLinkAsyncSubmitter : IAsyncDisposable
 
                 if (item.Deadline is DateTimeOffset deadline && deadline <= DateTimeOffset.UtcNow)
                 {
-                    item.TryFail(new TimeoutException("ZLink async submit timed out before the socket became writable."));
+                    item.TryFail(
+                        new TimeoutException("ZLink async submit timed out before the socket became writable."));
                     Dequeue(item);
                     continue;
                 }
@@ -250,7 +240,7 @@ internal sealed class ZLinkAsyncSubmitter : IAsyncDisposable
                         if (retryableFailure is ZlinkSubmitException
                             {
                                 Result: not ZlinkSubmitException.ErrorCode.Backpressured
-                                    and not ZlinkSubmitException.ErrorCode.NotConnected
+                                and not ZlinkSubmitException.ErrorCode.NotConnected
                             } submitError)
                         {
                             item.TryFail(ZLinkRequestFailureMapper.CreateSubmitException(
@@ -266,10 +256,7 @@ internal sealed class ZLinkAsyncSubmitter : IAsyncDisposable
                     return;
                 }
 
-                if (item.CompleteOnAccepted)
-                {
-                    item.TryComplete(null);
-                }
+                if (item.CompleteOnAccepted) item.TryComplete(null);
 
                 Dequeue(item);
             }
@@ -315,27 +302,21 @@ internal sealed class ZLinkAsyncSubmitter : IAsyncDisposable
                 Result: ZlinkSubmitException.ErrorCode.Backpressured
                 or ZlinkSubmitException.ErrorCode.NotConnected
             })
-        {
             return true;
-        }
 
         return false;
     }
 
     private void Dequeue(PendingSubmit expected)
     {
-        if (_pending.TryDequeue(expected, out var pending) && pending is not null)
-        {
-            pending.Dispose();
-        }
+        if (_pending.TryDequeue(expected, out var pending) && pending is not null) pending.Dispose();
     }
 
     private static TimeSpan? ValidateTimeout(TimeSpan? timeout)
     {
         if (timeout is { } value && value < TimeSpan.Zero)
-        {
-            throw new ArgumentOutOfRangeException(nameof(timeout), "SendTimeout must be null, zero, or a positive duration.");
-        }
+            throw new ArgumentOutOfRangeException(nameof(timeout),
+                "SendTimeout must be null, zero, or a positive duration.");
 
         return timeout;
     }
@@ -347,10 +328,7 @@ internal sealed class ZLinkAsyncSubmitter : IAsyncDisposable
 
     private static void EnsureNotEmpty(IReadOnlyList<Message> parts)
     {
-        if (parts.Count == 0)
-        {
-            throw new ArgumentException("At least one message part is required.", nameof(parts));
-        }
+        if (parts.Count == 0) throw new ArgumentException("At least one message part is required.", nameof(parts));
     }
 
     private sealed class SingleMessageParts(Message message) : IReadOnlyList<Message>
@@ -366,7 +344,7 @@ internal sealed class ZLinkAsyncSubmitter : IAsyncDisposable
             yield return message;
         }
 
-        System.Collections.IEnumerator System.Collections.IEnumerable.GetEnumerator()
+        IEnumerator IEnumerable.GetEnumerator()
         {
             return GetEnumerator();
         }

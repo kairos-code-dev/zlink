@@ -18,10 +18,7 @@ internal sealed class ZLinkSpotRouteEgressDispatcher(
         CancellationToken cancellationToken)
     {
         var target = ResolveTarget(localEgressChannelName);
-        if (!target.TryResolveTargetPeerRid(targetSpotRid, out var targetPeerRid))
-        {
-            return false;
-        }
+        if (!target.TryResolveTargetPeerRid(targetSpotRid, out var targetPeerRid)) return false;
 
         await target.SendAsync(
                 targetPeerRid,
@@ -41,9 +38,7 @@ internal sealed class ZLinkSpotRouteEgressDispatcher(
     {
         var target = ResolveTarget(localEgressChannelName);
         if (!target.TryResolveTargetPeerRid(targetSpotRid, out var targetPeerRid))
-        {
             return SpotRouteEgressRequestResult.NotHandled;
-        }
 
         var reply = await target.RequestAsync(
                 targetPeerRid,
@@ -58,13 +53,11 @@ internal sealed class ZLinkSpotRouteEgressDispatcher(
     private IEgressTarget ResolveTarget(string localEgressChannelName)
     {
         if (registration.RouteChannels.ContainsKey(localEgressChannelName))
-        {
             return new RouteEgressTarget(
                 localEgressChannelName,
                 getRouteChannel,
                 getRouteBridgeOwner,
                 getRegistrySpotDiscovery);
-        }
 
         throw new ZLinkConfigurationException(
             $"Routed SPOT egress channel '{localEgressChannelName}' is not a registered RouteMesh channel.");
@@ -106,15 +99,11 @@ internal sealed class ZLinkSpotRouteEgressDispatcher(
             {
                 var registryDiscovery = getRegistrySpotDiscovery(localEgressChannelName);
                 if (registryDiscovery is not null)
-                {
                     if (TryResolveRegistrySpotDiscovery(
-                        registryDiscovery,
-                        targetSpotRid,
-                        out targetPeerRid))
-                    {
+                            registryDiscovery,
+                            targetSpotRid,
+                            out targetPeerRid))
                         return true;
-                    }
-                }
 
                 return TryResolveBridgeOwnerRid(out targetPeerRid);
             }
@@ -128,49 +117,15 @@ internal sealed class ZLinkSpotRouteEgressDispatcher(
             {
                 var registryDiscovery = getRegistrySpotDiscovery(localEgressChannelName);
                 if (registryDiscovery is not null)
-                {
                     if (TryResolveRegistrySpotDiscovery(
-                        registryDiscovery,
-                        targetSpotRid,
-                        out targetPeerRid))
-                    {
+                            registryDiscovery,
+                            targetSpotRid,
+                            out targetPeerRid))
                         return true;
-                    }
-                }
 
                 targetPeerRid = default;
                 return false;
             }
-        }
-
-        private bool TryResolveRegistrySpotDiscovery(
-            IZLinkBackendDiscovery discovery,
-            RoutingId targetSpotRid,
-            out RoutingId targetPeerRid)
-        {
-            try
-            {
-                targetPeerRid = discovery.ResolveSpot(targetSpotRid).OwnerNodeRid;
-                return true;
-            }
-            catch (ZlinkConfigException error) when (error.NativeErrno is 2 or 95)
-            {
-                targetPeerRid = default;
-                return false;
-            }
-        }
-
-        private bool TryResolveBridgeOwnerRid(out RoutingId targetPeerRid)
-        {
-            var owner = getRouteBridgeOwner(localEgressChannelName);
-            if (owner is null)
-            {
-                targetPeerRid = default;
-                return false;
-            }
-
-            targetPeerRid = owner.Node.RoutingId;
-            return true;
         }
 
         public async ValueTask SendAsync(
@@ -183,9 +138,7 @@ internal sealed class ZLinkSpotRouteEgressDispatcher(
                     targetPeerRid,
                     targetSpotRid,
                     parts))
-            {
                 return;
-            }
 
             var routeChannel = getRouteChannel(localEgressChannelName);
             if (routeChannel.TrySendViaSpotRouteBridge(
@@ -220,10 +173,7 @@ internal sealed class ZLinkSpotRouteEgressDispatcher(
                     timeout,
                     cancellationToken)
                 .ConfigureAwait(false);
-            if (localOwnerReply is not null)
-            {
-                return localOwnerReply;
-            }
+            if (localOwnerReply is not null) return localOwnerReply;
 
             var routeChannel = getRouteChannel(localEgressChannelName);
             var bridgeReply = await TryRequestViaSpotRouteBridgeAsync(
@@ -250,6 +200,36 @@ internal sealed class ZLinkSpotRouteEgressDispatcher(
                 .ConfigureAwait(false);
         }
 
+        private bool TryResolveRegistrySpotDiscovery(
+            IZLinkBackendDiscovery discovery,
+            RoutingId targetSpotRid,
+            out RoutingId targetPeerRid)
+        {
+            try
+            {
+                targetPeerRid = discovery.ResolveSpot(targetSpotRid).OwnerNodeRid;
+                return true;
+            }
+            catch (ZlinkConfigException error) when (error.NativeErrno is 2 or 95)
+            {
+                targetPeerRid = default;
+                return false;
+            }
+        }
+
+        private bool TryResolveBridgeOwnerRid(out RoutingId targetPeerRid)
+        {
+            var owner = getRouteBridgeOwner(localEgressChannelName);
+            if (owner is null)
+            {
+                targetPeerRid = default;
+                return false;
+            }
+
+            targetPeerRid = owner.Node.RoutingId;
+            return true;
+        }
+
         private bool TrySendToLocalOwner(
             RoutingId targetPeerRid,
             RoutingId targetSpotRid,
@@ -258,9 +238,7 @@ internal sealed class ZLinkSpotRouteEgressDispatcher(
             var owner = getRouteBridgeOwner(localEgressChannelName);
             if (owner is null
                 || owner.Node.RoutingId != targetPeerRid)
-            {
                 return false;
-            }
 
             try
             {
@@ -269,11 +247,9 @@ internal sealed class ZLinkSpotRouteEgressDispatcher(
                         targetSpotRid,
                         parts,
                         SendFlags.None))
-                {
                     throw new ZLinkFrameworkException(
                         ZLinkFrameworkErrorKind.ActorRouteNotFound,
                         $"Route channel '{localEgressChannelName}' could not dispatch SPOT egress send to '{targetSpotRid}'.");
-                }
 
                 return true;
             }
@@ -293,9 +269,7 @@ internal sealed class ZLinkSpotRouteEgressDispatcher(
             var owner = getRouteBridgeOwner(localEgressChannelName);
             if (owner is null
                 || owner.Node.RoutingId != targetPeerRid)
-            {
                 return null;
-            }
 
             var completion = new TaskCompletionSource<IReadOnlyList<Message>>(
                 TaskCreationOptions.RunContinuationsAsynchronously);
@@ -312,11 +286,9 @@ internal sealed class ZLinkSpotRouteEgressDispatcher(
                             $"SPOT egress request for '{localEgressChannelName}' failed with result '{result}'."),
                         SendFlags.None,
                         timeout))
-                {
                     throw new ZLinkFrameworkException(
                         ZLinkFrameworkErrorKind.ActorRouteNotFound,
                         $"Route channel '{localEgressChannelName}' could not dispatch SPOT egress request to '{targetSpotRid}'.");
-                }
             }
             finally
             {
@@ -359,9 +331,7 @@ internal sealed class ZLinkSpotRouteEgressDispatcher(
                         completion,
                         $"SPOT route bridge request failed with result '{result}'."),
                     timeout))
-            {
                 return null;
-            }
 
             using var timeoutSource = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
             timeoutSource.CancelAfter(timeout);
@@ -378,7 +348,6 @@ internal sealed class ZLinkSpotRouteEgressDispatcher(
                     $"SPOT route bridge request to '{targetSpotRid}' timed out.");
             }
         }
-
     }
 }
 
@@ -389,5 +358,7 @@ internal sealed record SpotRouteEgressRequestResult(
     public static SpotRouteEgressRequestResult NotHandled { get; } = new(false, []);
 
     public static SpotRouteEgressRequestResult Handled(IReadOnlyList<Message> reply)
-        => new(true, reply);
+    {
+        return new SpotRouteEgressRequestResult(true, reply);
+    }
 }

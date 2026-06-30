@@ -1,13 +1,10 @@
+using SpotService.Server.Play.Spots;
 using SpotService.Shared;
 using Systems.Zlink;
 using Zlink.Framework.Contracts.Handlers;
 using Zlink.Framework.Contracts.Spots;
-using SpotService.Server.Play.Endpoints;
-using SpotService.Server.Play.Handlers;
-using SpotService.Server.Play.Spots;
 
 namespace SpotService.Server.Play.Handlers;
-
 
 [ZLinkSpotRequestHandler("SpotToSpotReq")]
 internal sealed class SpotToSpotHandler(EvidenceStore evidence)

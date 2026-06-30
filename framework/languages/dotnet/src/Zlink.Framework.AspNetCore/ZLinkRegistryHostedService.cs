@@ -13,10 +13,7 @@ internal sealed class ZLinkRegistryHostedService(
 
     public Task StopAsync(CancellationToken cancellationToken)
     {
-        if (frameworkRuntime is not null)
-        {
-            return Task.CompletedTask;
-        }
+        if (frameworkRuntime is not null) return Task.CompletedTask;
 
         return runtime.StopAsync(cancellationToken).AsTask();
     }

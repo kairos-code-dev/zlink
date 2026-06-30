@@ -44,7 +44,7 @@ internal sealed class ServerProcessLauncher(ClientOptions options)
         {
             RedirectStandardOutput = true,
             RedirectStandardError = true,
-            UseShellExecute = false,
+            UseShellExecute = false
         };
         startInfo.Environment["ZLINK_E2E_RID"] = rid;
         startInfo.ArgumentList.Add("run");
@@ -61,7 +61,7 @@ internal sealed class ServerProcessLauncher(ClientOptions options)
         var stdout = Path.Combine(options.LogDir, $"{name}.stdout.log");
         var stderr = Path.Combine(options.LogDir, $"{name}.stderr.log");
         var process = Process.Start(startInfo)
-            ?? throw new InvalidOperationException($"Failed to start {name}.");
+                      ?? throw new InvalidOperationException($"Failed to start {name}.");
         _ = Task.Run(async () => await File.WriteAllTextAsync(stdout, await process.StandardOutput.ReadToEndAsync()));
         _ = Task.Run(async () => await File.WriteAllTextAsync(stderr, await process.StandardError.ReadToEndAsync()));
         return process;

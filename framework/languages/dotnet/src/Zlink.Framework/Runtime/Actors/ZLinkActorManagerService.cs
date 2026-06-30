@@ -37,9 +37,7 @@ internal sealed class ZLinkActorManagerService(ZLinkFrameworkRuntime runtime) : 
         cancellationToken.ThrowIfCancellationRequested();
         if (!runtime.TryGetCreatedActorState(actorId, out var state)
             || state.NativeActorRef is not { } actorRef)
-        {
             return ValueTask.FromResult<ActorRef?>(null);
-        }
 
         return ValueTask.FromResult<ActorRef?>(ToPublicActorRef(actorRef));
     }
@@ -76,12 +74,14 @@ internal sealed class ZLinkActorManagerService(ZLinkFrameworkRuntime runtime) : 
     {
         var state = runtime.GetOrCreateActorState(actorId);
         var actorRef = state.NativeActorRef
-            ?? throw new ZLinkFrameworkException(
-                ZLinkFrameworkErrorKind.ActorRouteNotFound,
-                $"Actor '{actorId}' does not have a native Actor ref.");
+                       ?? throw new ZLinkFrameworkException(
+                           ZLinkFrameworkErrorKind.ActorRouteNotFound,
+                           $"Actor '{actorId}' does not have a native Actor ref.");
         return ToPublicActorRef(actorRef);
     }
 
     private static ActorRef ToPublicActorRef(ZLinkBackendActorRef actorRef)
-        => new(actorRef.NodeRid, actorRef.ActorId, actorRef.Generation);
+    {
+        return new ActorRef(actorRef.NodeRid, actorRef.ActorId, actorRef.Generation);
+    }
 }

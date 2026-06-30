@@ -1,7 +1,4 @@
-using PubSub.Server.Publisher;
 using Zlink.Framework.Contracts.Dispatch;
-using PubSub.Server.Publisher.Configuration;
-using PubSub.Server.Publisher.Endpoints;
 
 namespace PubSub.Server.Publisher;
 
@@ -13,10 +10,7 @@ public sealed class EvidenceDispatchErrorObserver(EvidenceStore evidence)
         CancellationToken cancellationToken)
     {
         cancellationToken.ThrowIfCancellationRequested();
-        if (flow.Outcome != ZLinkMessageFlowOutcome.Error)
-        {
-            return ValueTask.CompletedTask;
-        }
+        if (flow.Outcome != ZLinkMessageFlowOutcome.Error) return ValueTask.CompletedTask;
 
         evidence.Add(
             "dispatch-error"

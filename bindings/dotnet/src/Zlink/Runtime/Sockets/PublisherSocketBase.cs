@@ -1,7 +1,5 @@
 // SPDX-License-Identifier: MPL-2.0
 
-using System;
-using System.Collections.Generic;
 using System.ComponentModel;
 using System.Runtime.CompilerServices;
 using Systems.Zlink.Runtime.Sockets.Internal;
@@ -22,7 +20,7 @@ internal abstract class PublisherSocketBase : ConnectableSocketBase, IPublisherS
     }
 
     /// <summary>
-    /// Start a topic publish operation (operation builder).
+    ///     Start a topic publish operation (operation builder).
     /// </summary>
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
     public SendOperation Publish(string topic)
@@ -32,15 +30,18 @@ internal abstract class PublisherSocketBase : ConnectableSocketBase, IPublisherS
         return new PublisherSendOperation(this, topic);
     }
 
+    public void OnSendReady(Action handler)
+    {
+        Kernel.SendReadyHandler(handler);
+    }
+
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
     internal bool PublishCore(string topic, Message message,
         SendFlags flags = SendFlags.None)
     {
         if ((flags & SendFlags.DontWait) != 0)
-        {
             return SocketKernel.TrySendOrThrow(Kernel.PublishNoWaitResult(topic,
                 message));
-        }
 
         Kernel.Publish(topic, message, flags);
         return true;
@@ -52,10 +53,8 @@ internal abstract class PublisherSocketBase : ConnectableSocketBase, IPublisherS
         if (parts.Count == 1)
             return PublishCore(topic, parts[0], flags);
         if ((flags & SendFlags.DontWait) != 0)
-        {
             return SocketKernel.TrySendOrThrow(Kernel.PublishNoWaitResult(topic,
                 parts));
-        }
 
         Kernel.Publish(topic, parts, flags);
         return true;
@@ -70,10 +69,5 @@ internal abstract class PublisherSocketBase : ConnectableSocketBase, IPublisherS
         IReadOnlyList<Message> parts)
     {
         return Kernel.PublishNoWaitResult(topic, parts);
-    }
-
-    public void OnSendReady(Action handler)
-    {
-        Kernel.SendReadyHandler(handler);
     }
 }

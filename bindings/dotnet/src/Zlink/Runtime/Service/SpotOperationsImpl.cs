@@ -1,10 +1,5 @@
 // SPDX-License-Identifier: MPL-2.0
 
-using System;
-using System.Collections.Generic;
-using System.Threading;
-using System.Threading.Tasks;
-
 namespace Systems.Zlink;
 
 internal enum SpotOperationKind
@@ -21,14 +16,14 @@ internal enum SpotOperationKind
 
 internal sealed class SpotSendOperation : SendOperation, SendSubmitOperation
 {
-    private readonly Spot _spot;
-    private readonly SpotOperationKind _kind;
     private readonly string? _channelName;
-    private readonly string? _topicOrChannel;
     private readonly RoutingId _destNodeRid;
     private readonly RoutingId _destSpotRid;
-    private OperationMessageBuffer _parts;
+    private readonly SpotOperationKind _kind;
+    private readonly Spot _spot;
+    private readonly string? _topicOrChannel;
     private SendFlags _flags;
+    private OperationMessageBuffer _parts;
     private OperationSubmissionGuard _submission;
 
     internal SpotSendOperation(Spot spot, SpotOperationKind kind,
@@ -94,17 +89,17 @@ internal sealed class SpotSendOperation : SendOperation, SendSubmitOperation
 internal sealed class SpotRequestOperation : RequestOperation,
     RequestSubmitOperation, RequestCallbackSubmitOperation
 {
-    private readonly Spot _spot;
-    private readonly SpotOperationKind _kind;
     private readonly string? _channelName;
     private readonly RoutingId _destNodeRid;
     private readonly RoutingId _destSpotRid;
+    private readonly SpotOperationKind _kind;
     private readonly RoutingId _peerRid;
-    private OperationMessageBuffer _parts;
-    private TimeSpan _timeout;
-    private SendFlags _flags;
+    private readonly Spot _spot;
     private bool _callbackStage;
+    private SendFlags _flags;
+    private OperationMessageBuffer _parts;
     private OperationSubmissionGuard _submission;
+    private TimeSpan _timeout;
 
     internal SpotRequestOperation(Spot spot, SpotOperationKind kind,
         string? channelName = null, RoutingId destNodeRid = default,
@@ -118,12 +113,6 @@ internal sealed class SpotRequestOperation : RequestOperation,
         _peerRid = peerRid;
     }
 
-    public RequestSubmitOperation Message(Message message)
-    {
-        AddMessage(message);
-        return this;
-    }
-
     RequestCallbackSubmitOperation RequestCallbackSubmitOperation.Message(
         Message message)
     {
@@ -131,15 +120,21 @@ internal sealed class SpotRequestOperation : RequestOperation,
         return this;
     }
 
-    public RequestSubmitOperation Timeout(TimeSpan timeout)
+    RequestCallbackSubmitOperation RequestCallbackSubmitOperation.Timeout(
+        TimeSpan timeout)
     {
         EnsureNotSubmitted();
         _timeout = timeout;
         return this;
     }
 
-    RequestCallbackSubmitOperation RequestCallbackSubmitOperation.Timeout(
-        TimeSpan timeout)
+    public RequestSubmitOperation Message(Message message)
+    {
+        AddMessage(message);
+        return this;
+    }
+
+    public RequestSubmitOperation Timeout(TimeSpan timeout)
     {
         EnsureNotSubmitted();
         _timeout = timeout;
@@ -215,14 +210,14 @@ internal sealed class SpotRequestOperation : RequestOperation,
 
 internal sealed class SpotReplyOperation : ReplyOperation, ReplySubmitOperation
 {
-    private readonly Spot _spot;
-    private readonly SpotOperationKind _kind;
     private readonly RoutingId _destNodeRid;
     private readonly RoutingId _destSpotRid;
+    private readonly SpotOperationKind _kind;
     private readonly RoutingId _peerRid;
     private readonly ulong _requestSeq;
-    private OperationMessageBuffer _parts;
+    private readonly Spot _spot;
     private SendFlags _flags;
+    private OperationMessageBuffer _parts;
     private OperationSubmissionGuard _submission;
 
     internal SpotReplyOperation(Spot spot, SpotOperationKind kind,

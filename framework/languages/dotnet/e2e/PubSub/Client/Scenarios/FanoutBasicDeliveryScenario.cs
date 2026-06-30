@@ -1,6 +1,6 @@
+using PubSub.Client.Support;
 using PubSub.Shared;
 using Zlink.HttpClient;
-using PubSub.Client.Support;
 
 namespace PubSub.Client.Scenarios;
 
@@ -14,36 +14,31 @@ internal static class FanoutBasicDeliveryScenario
 
         // There is no public "subscribe ready" event, so the first observed delivery is the barrier.
         for (var i = warmupStart; i < warmupStart + 20; i++)
-        {
             await publisher.Post("/publish/event")
                 .Query("topic", PubSubNames.MainTopic)
                 .Query("runId", runId)
                 .Query("sequence", i.ToString())
                 .Query("value", $"warmup-{i}")
                 .SubmitRawAsync();
-        }
 
         // Wait until every subscriber has proven that it is attached to the fanout stream.
         await WaitForAllSubscribersAsync(
             subscribers,
             new EvidenceWaitRequest(
                 ["event|", $"run={runId}", $"topic={PubSubNames.MainTopic}"],
-                [],
-                10000));
+                []));
 
         var measureStart = 100;
         var measureCount = 12;
 
         // The measured range is separate from warm-up so the fanout oracle uses only post-barrier data.
         for (var i = measureStart; i < measureStart + measureCount; i++)
-        {
             await publisher.Post("/publish/event")
                 .Query("topic", PubSubNames.MainTopic)
                 .Query("runId", runId)
                 .Query("sequence", i.ToString())
                 .Query("value", $"measure-{i}")
                 .SubmitRawAsync();
-        }
 
         // Publish submit does not promise remote delivery, so the scenario checks a shared contiguous range.
         var measuredSnapshots = await WaitForAllSubscribersAsync(
@@ -53,9 +48,8 @@ internal static class FanoutBasicDeliveryScenario
                 [
                     [$"seq={measureStart}|"],
                     [$"seq={measureStart + 1}|"],
-                    [$"seq={measureStart + 2}|"],
-                ],
-                10000));
+                    [$"seq={measureStart + 2}|"]
+                ]));
         ScenarioAssert.That(
             Evidence.CommonContiguousSequence(
                 measuredSnapshots,
@@ -68,7 +62,7 @@ internal static class FanoutBasicDeliveryScenario
         Console.WriteLine("scenario PS-A1 passed");
     }
 
-    static async Task<string[][]> WaitForAllSubscribersAsync(
+    private static async Task<string[][]> WaitForAllSubscribersAsync(
         IReadOnlyList<ZLinkHttpClient> subscribers,
         EvidenceWaitRequest request)
     {

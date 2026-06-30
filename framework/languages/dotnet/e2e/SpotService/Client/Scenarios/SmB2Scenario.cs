@@ -1,7 +1,7 @@
+using SpotService.Client.Support;
 using SpotService.Shared;
 using Systems.Zlink.Stream.Connector.Contracts;
 using Zlink.HttpClient;
-using SpotService.Client.Support;
 
 namespace SpotService.Client.Scenarios;
 
@@ -22,7 +22,7 @@ internal static class SmB2Scenario
                 RequestTimeout = TimeSpan.FromSeconds(5),
                 Heartbeat = new ZlinkStreamHeartbeatOptions { Enabled = false },
                 DispatchMode = ZlinkStreamDispatchMode.Immediate,
-                MaxReceivedMessages = 1024,
+                MaxReceivedMessages = 1024
             });
             try
             {
@@ -43,20 +43,18 @@ internal static class SmB2Scenario
         }
 
         if (reply is null)
-        {
             throw new InvalidOperationException(
                 last is null
                     ? "SM-B2 remote actor flow did not become routable."
                     : $"SM-B2 remote actor flow did not become routable. Last error: {last.Message}",
                 last);
-        }
 
         ScenarioAssert.That(reply.ActorId == actorId, "SM-B2 actor reply mismatch.");
         ScenarioAssert.That(reply.NodeRid == "play-b", "SM-B2 remote node mismatch.");
         var expectedEvidence = new[]
         {
             $"entry-created|rid=play-b|actor={actorId}",
-            $"entry-joined|rid=play-b|actor={actorId}",
+            $"entry-joined|rid=play-b|actor={actorId}"
         };
         var evidence = (await playB.Post("/evidence/wait")
             .Body(new EvidenceWaitRequest(expectedEvidence))

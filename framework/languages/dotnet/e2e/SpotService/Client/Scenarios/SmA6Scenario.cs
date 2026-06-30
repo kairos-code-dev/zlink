@@ -1,6 +1,6 @@
+using SpotService.Client.Support;
 using SpotService.Shared;
 using Zlink.HttpClient;
-using SpotService.Client.Support;
 
 namespace SpotService.Client.Scenarios;
 
@@ -12,7 +12,8 @@ internal static class SmA6Scenario
         var created = (await playA.Post("/spot/create")
             .Body(new CreateSpotReq(spotRid))
             .SubmitAsync<CreateSpotReply>()).Body;
-        ScenarioAssert.That(created.SpotRid == spotRid && created.NodeRid == "play-a", "SM-A6 lifecycle spot was not created on play-a.");
+        ScenarioAssert.That(created.SpotRid == spotRid && created.NodeRid == "play-a",
+            "SM-A6 lifecycle spot was not created on play-a.");
         var closeReply = (await playA.Post("/spot/close")
             .Body(new CloseSpotReq(spotRid))
             .SubmitAsync<CloseSpotReply>()).Body;
@@ -20,7 +21,7 @@ internal static class SmA6Scenario
         var expectedEvidence = new[]
         {
             $"spot-initialize|rid=play-a|spot={spotRid}",
-            $"spot-closing|rid=play-a|spot={spotRid}",
+            $"spot-closing|rid=play-a|spot={spotRid}"
         };
         var evidence = (await playA.Post("/evidence/wait")
             .Body(new EvidenceWaitRequest(expectedEvidence))

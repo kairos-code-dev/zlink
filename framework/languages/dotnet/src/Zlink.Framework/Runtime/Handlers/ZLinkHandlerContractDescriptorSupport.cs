@@ -9,9 +9,10 @@ internal static class ZLinkHandlerContractDescriptorSupport
         string description)
     {
         var method = handlerType.GetMethod(
-                nameof(IZLinkSendHandler<object>.HandleAsync),
-                BindingFlags.Instance | BindingFlags.Public)
-            ?? throw new InvalidOperationException($"{description} '{handlerType}' does not expose HandleAsync.");
+                         nameof(IZLinkSendHandler<object>.HandleAsync),
+                         BindingFlags.Instance | BindingFlags.Public)
+                     ?? throw new InvalidOperationException(
+                         $"{description} '{handlerType}' does not expose HandleAsync.");
         return ZLinkHandlerMethodInvokerFactory.Create(method);
     }
 
@@ -22,10 +23,8 @@ internal static class ZLinkHandlerContractDescriptorSupport
         string description)
     {
         if (actualType != expectedType)
-        {
             throw new InvalidOperationException(
                 $"{description} '{handlerType}' targets '{actualType}', but registration expects '{expectedType}'.");
-        }
     }
 
     public static void RequireAssignableFrom(
@@ -35,9 +34,7 @@ internal static class ZLinkHandlerContractDescriptorSupport
         string description)
     {
         if (!declaredType.IsAssignableFrom(expectedRuntimeType))
-        {
             throw new InvalidOperationException(
                 $"{description} '{handlerType}' targets '{declaredType}', but runtime type is '{expectedRuntimeType}'.");
-        }
     }
 }

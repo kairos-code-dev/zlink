@@ -8,13 +8,9 @@ internal sealed class ZLinkMessageFlowControl(ZLinkDiagnosticsOptionsModel diagn
     public void SetMessageFlowMode(ZLinkMessageFlowLogMode mode)
     {
         if (diagnostics.LiveMode is { } cell)
-        {
             cell.Mode = mode;
-        }
         else
-        {
             diagnostics.MessageFlow = mode;
-        }
     }
 
     public ZLinkMessageFlowLogMode MessageFlowMode => diagnostics.EffectiveMessageFlow;

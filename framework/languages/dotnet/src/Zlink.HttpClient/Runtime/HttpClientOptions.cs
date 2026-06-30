@@ -3,10 +3,10 @@
 namespace Zlink.HttpClient.Runtime;
 
 /// <summary>
-/// Immutable snapshot of the client configuration produced by <see cref="ZLinkHttpClientBuilder"/>.
-/// Mirrors the C++ <c>http_client_options_t</c>. The transport (redirect loop, cookie jar,
-/// compression, retry) is implemented by the wrapper around <c>SocketsHttpHandler</c>; only the
-/// semantics that match the ZLink contract are delegated to the native handler.
+///     Immutable snapshot of the client configuration produced by <see cref="ZLinkHttpClientBuilder" />.
+///     Mirrors the C++ <c>http_client_options_t</c>. The transport (redirect loop, cookie jar,
+///     compression, retry) is implemented by the wrapper around <c>SocketsHttpHandler</c>; only the
+///     semantics that match the ZLink contract are delegated to the native handler.
 /// </summary>
 internal sealed class HttpClientOptions
 {

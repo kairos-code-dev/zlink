@@ -1,6 +1,6 @@
 using RegistryMessaging.Client.Scenarios;
-using Zlink.HttpClient;
 using RegistryMessaging.Client.Support;
+using Zlink.HttpClient;
 
 var options = ClientOptions.Parse(args);
 
@@ -52,24 +52,18 @@ var scenarios = new (string Name, Func<Task> Run)[]
     ("RM-C5", () => RmC5MissingPacketScenario.RunAsync(discoveryConsumer, providerA, providerB)),
     ("RM-C7", () => RmC7WeightedProviderScenario.RunAsync(options)),
     ("RM-C8", () => RmC8PayloadRoundTripScenario.RunAsync(singleConsumer, providerA)),
-    ("RM-C9", () => RmC9BackpressureScenario.RunAsync(backpressureConsumer, providerA)),
+    ("RM-C9", () => RmC9BackpressureScenario.RunAsync(backpressureConsumer, providerA))
 };
 
 if (string.Equals(options.Scenario, "all", StringComparison.OrdinalIgnoreCase))
 {
-    foreach (var scenario in scenarios)
-    {
-        await scenario.Run();
-    }
+    foreach (var scenario in scenarios) await scenario.Run();
 }
 else
 {
     var selected = scenarios.FirstOrDefault(scenario =>
         string.Equals(scenario.Name, options.Scenario, StringComparison.OrdinalIgnoreCase));
-    if (selected.Run is null)
-    {
-        throw new ArgumentException($"Unknown scenario '{options.Scenario}'.");
-    }
+    if (selected.Run is null) throw new ArgumentException($"Unknown scenario '{options.Scenario}'.");
 
     await selected.Run();
 }

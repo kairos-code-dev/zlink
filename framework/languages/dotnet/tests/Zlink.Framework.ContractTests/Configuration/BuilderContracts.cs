@@ -1,6 +1,7 @@
+using System.Reflection;
 using Systems.Zlink.Stream.Connector.Contracts;
-using Zlink.Framework.ContractTests.Support;
 using Zlink.Framework.Contracts.Workers;
+using Zlink.Framework.ContractTests.Support;
 
 namespace Zlink.Framework.ContractTests.Configuration;
 
@@ -86,7 +87,6 @@ public sealed class BuilderContracts
             channel.AddSendHandler<AttributeApiSendHandler>("api.event");
             channel.AddRequestHandler<ApiRequestHandler, ApiRequest, ApiReply>();
             channel.AddRequestHandler<AttributeApiRequestHandler>("api.request");
-
         }
 
         {
@@ -97,7 +97,6 @@ public sealed class BuilderContracts
             channel.AddHandlerGroup("events");
             channel.AddPublishHandler<EventHandler, ApiEvent>();
             channel.AddPublishHandler<AttributePublishHandler>("api.event");
-
         }
 
         {
@@ -110,7 +109,6 @@ public sealed class BuilderContracts
             channel.AddSendHandler<AttributeRouteSendHandler>("route.event");
             channel.AddRequestHandler<RouteRequestHandler, ApiRequest, ApiReply>();
             channel.AddRequestHandler<AttributeRouteRequestHandler>("route.request");
-
         }
 
         Assert.Contains("api", options.Channels);
@@ -131,14 +129,12 @@ public sealed class BuilderContracts
             var stream = options.AddStreamNode("gateway");
             stream.Bind("tcp://127.0.0.1:5400");
             stream.RegisterSession<GatewaySession>();
-
         }
 
         {
+            options.UseDiscovery().AddRegistryEndpoint("tcp://127.0.0.1:6001");
             var mesh = options.AddSpotMesh("play-spots");
-            mesh.UseDiscovery().AddRegistryEndpoint("tcp://127.0.0.1:6001");
             ConfigureSpotNode(mesh);
-
         }
 
         Assert.Contains("gateway", options.StreamNodes);
@@ -184,17 +180,9 @@ public sealed class BuilderContracts
 
     private sealed class FrameworkOptions : IZLinkFrameworkOptions
     {
-        public TimeSpan DefaultRequestTimeout { get; set; }
-
-        public TimeSpan? DefaultSocketSendTimeout { get; set; }
-
         public CodecRegistryBuilder Codecs { get; } = new();
 
-        IZLinkCodecRegistryBuilder IZLinkFrameworkOptions.Codecs => Codecs;
-
         public WorkerOptions Worker { get; } = new();
-
-        IZLinkWorkerOptions IZLinkFrameworkOptions.Worker => Worker;
 
         public MetadataPolicyBuilder Metadata { get; } = new();
 
@@ -209,12 +197,25 @@ public sealed class BuilderContracts
         public List<string> SpotNodes { get; } = [];
 
         public List<string> SpotMeshes { get; } = [];
+        public TimeSpan DefaultRequestTimeout { get; set; }
 
-        public void AddHandlersFromAssemblyOf<TMarker>() { }
+        public TimeSpan? DefaultSocketSendTimeout { get; set; }
 
-        public void AddHandlersFromAssemblyOf(Type markerType) { }
+        IZLinkCodecRegistryBuilder IZLinkFrameworkOptions.Codecs => Codecs;
 
-        public void AddHandlersFromAssembly(System.Reflection.Assembly assembly) { }
+        IZLinkWorkerOptions IZLinkFrameworkOptions.Worker => Worker;
+
+        public void AddHandlersFromAssemblyOf<TMarker>()
+        {
+        }
+
+        public void AddHandlersFromAssemblyOf(Type markerType)
+        {
+        }
+
+        public void AddHandlersFromAssembly(Assembly assembly)
+        {
+        }
 
         public IZLinkMetadataPolicyBuilder ConfigureMetadata()
         {
@@ -222,10 +223,14 @@ public sealed class BuilderContracts
         }
 
         public void AddSpotRemoteAddressResolver<TResolver>()
-            where TResolver : class, IZLinkSpotRemoteAddressResolver { }
+            where TResolver : class, IZLinkSpotRemoteAddressResolver
+        {
+        }
 
-        public IZLinkRegistrySpotRemoteAddressesOptions UseRegistrySpotRemoteAddresses(string namespaceName) =>
-            SpotRemoteAddresses;
+        public IZLinkRegistrySpotRemoteAddressesOptions UseRegistrySpotRemoteAddresses(string namespaceName)
+        {
+            return SpotRemoteAddresses;
+        }
 
         public IZLinkClientServerChannelBuilder AddClientServerChannel(string channelName)
         {
@@ -251,7 +256,9 @@ public sealed class BuilderContracts
         }
 
         public void UseFilter<TFilter>()
-            where TFilter : class, IZLinkHandlerFilter { }
+            where TFilter : class, IZLinkHandlerFilter
+        {
+        }
 
         public IZLinkDispatchOptions ConfigureDispatch()
         {
@@ -290,20 +297,30 @@ public sealed class BuilderContracts
 
     private sealed class CodecRegistryBuilder : IZLinkCodecRegistryBuilder
     {
-        public void Use(IZLinkCodecExtension extension) { }
+        public void Use(IZLinkCodecExtension extension)
+        {
+        }
 
-        public void AddJson() { }
+        public void AddJson()
+        {
+        }
 
-        public void AddSerializer(string contentType, IZLinkMessageSerializer serializer) { }
+        public void AddSerializer(string contentType, IZLinkMessageSerializer serializer)
+        {
+        }
 
         public void AddSerializer(
             string contentType,
             IZLinkMessageSerializer serializer,
-            Func<Type, bool> canSerialize) { }
+            Func<Type, bool> canSerialize)
+        {
+        }
 
         public void AddStreamCodec(
             string contentType,
-            Systems.Zlink.Stream.Connector.Contracts.ZlinkStreamCodec codec) { }
+            ZlinkStreamCodec codec)
+        {
+        }
     }
 
     private sealed class WorkerOptions : IZLinkWorkerOptions
@@ -319,20 +336,35 @@ public sealed class BuilderContracts
 
     private sealed class StreamCompressionBuilder : IZLinkStreamCompressionBuilder
     {
-        public IZLinkStreamCompressionBuilder UseDefault() => this;
+        public IZLinkStreamCompressionBuilder UseDefault()
+        {
+            return this;
+        }
 
-        public IZLinkStreamCompressionBuilder UseLz4() => this;
+        public IZLinkStreamCompressionBuilder UseLz4()
+        {
+            return this;
+        }
 
-        public IZLinkStreamCompressionBuilder Use(IZlinkStreamCompressionCodec codec) => this;
+        public IZLinkStreamCompressionBuilder Use(IZlinkStreamCompressionCodec codec)
+        {
+            return this;
+        }
 
-        public IZLinkStreamCompressionBuilder Disable() => this;
+        public IZLinkStreamCompressionBuilder Disable()
+        {
+            return this;
+        }
     }
 
     private sealed class MetadataPolicyBuilder : IZLinkMetadataPolicyBuilder
     {
         public List<string> ForwardedKeys { get; } = [];
 
-        public void AddForwardedMetadataKey(string key) => ForwardedKeys.Add(key);
+        public void AddForwardedMetadataKey(string key)
+        {
+            ForwardedKeys.Add(key);
+        }
     }
 
     private sealed class RegistrySpotRemoteAddressesOptions : IZLinkRegistrySpotRemoteAddressesOptions
@@ -342,10 +374,10 @@ public sealed class BuilderContracts
 
     private sealed class ClientServerChannelBuilder : IZLinkClientServerChannelBuilder
     {
-        private readonly ConnectionAndConfigContracts.SocketConfig _serverSocket = new();
-        private readonly ConnectionAndConfigContracts.RouteConfig _serverRoute = new();
-        private readonly ConnectionAndConfigContracts.SocketConfig _clientSocket = new();
         private readonly ConnectionAndConfigContracts.OutboundRouteConfig _clientRoute = new();
+        private readonly ConnectionAndConfigContracts.SocketConfig _clientSocket = new();
+        private readonly ConnectionAndConfigContracts.RouteConfig _serverRoute = new();
+        private readonly ConnectionAndConfigContracts.SocketConfig _serverSocket = new();
 
         public IZLinkClientServerChannelBuilder EnableServer(string endpoint)
         {
@@ -387,22 +419,39 @@ public sealed class BuilderContracts
             return _clientRoute;
         }
 
-        public IZLinkClientServerChannelBuilder SetDefaultRequestTimeout(TimeSpan timeout) => this;
+        public IZLinkClientServerChannelBuilder SetDefaultRequestTimeout(TimeSpan timeout)
+        {
+            return this;
+        }
 
-        public IZLinkClientServerChannelBuilder AddHandlerGroup(string groupName) => this;
+        public IZLinkClientServerChannelBuilder AddHandlerGroup(string groupName)
+        {
+            return this;
+        }
 
         public IZLinkClientServerChannelBuilder AddSendHandler<THandler, TMessage>(string? packetName = null)
-            where THandler : class, IZLinkSendHandler<TMessage> => this;
+            where THandler : class, IZLinkSendHandler<TMessage>
+        {
+            return this;
+        }
 
         public IZLinkClientServerChannelBuilder AddSendHandler<THandler>(string? packetName = null)
-            where THandler : class => this;
+            where THandler : class
+        {
+            return this;
+        }
 
         public IZLinkClientServerChannelBuilder AddRequestHandler<THandler, TRequest, TReply>(string? packetName = null)
-            where THandler : class, IZLinkRequestHandler<TRequest, TReply> => this;
+            where THandler : class, IZLinkRequestHandler<TRequest, TReply>
+        {
+            return this;
+        }
 
         public IZLinkClientServerChannelBuilder AddRequestHandler<THandler>(string? packetName = null)
-            where THandler : class => this;
-
+            where THandler : class
+        {
+            return this;
+        }
     }
 
     private sealed class FanoutChannelBuilder : IZLinkFanoutChannelBuilder
@@ -427,13 +476,22 @@ public sealed class BuilderContracts
             return this;
         }
 
-        public IZLinkFanoutChannelBuilder AddHandlerGroup(string groupName) => this;
+        public IZLinkFanoutChannelBuilder AddHandlerGroup(string groupName)
+        {
+            return this;
+        }
 
         public IZLinkFanoutChannelBuilder AddPublishHandler<THandler, TMessage>(string? packetName = null)
-            where THandler : class, IZLinkPublishHandler<TMessage> => this;
+            where THandler : class, IZLinkPublishHandler<TMessage>
+        {
+            return this;
+        }
 
         public IZLinkFanoutChannelBuilder AddPublishHandler<THandler>(string? packetName = null)
-            where THandler : class => this;
+            where THandler : class
+        {
+            return this;
+        }
     }
 
     private sealed class RouteMeshChannelBuilder : IZLinkRouteMeshChannelBuilder
@@ -465,32 +523,58 @@ public sealed class BuilderContracts
             return this;
         }
 
-        public IZLinkRouteMeshChannelBuilder SetDefaultRequestTimeout(TimeSpan timeout) => this;
+        public IZLinkRouteMeshChannelBuilder SetDefaultRequestTimeout(TimeSpan timeout)
+        {
+            return this;
+        }
 
-        public IZLinkRouteMeshChannelBuilder AddHandlerGroup(string groupName) => this;
+        public IZLinkRouteMeshChannelBuilder AddHandlerGroup(string groupName)
+        {
+            return this;
+        }
 
         public IZLinkRouteMeshChannelBuilder AddSendHandler<THandler, TMessage>(string? packetName = null)
-            where THandler : class, IZLinkRouteSendHandler<TMessage> => this;
+            where THandler : class, IZLinkRouteSendHandler<TMessage>
+        {
+            return this;
+        }
 
         public IZLinkRouteMeshChannelBuilder AddSendHandler<THandler>(string? packetName = null)
-            where THandler : class => this;
+            where THandler : class
+        {
+            return this;
+        }
 
         public IZLinkRouteMeshChannelBuilder AddRequestHandler<THandler, TRequest, TReply>(string? packetName = null)
-            where THandler : class, IZLinkRouteRequestHandler<TRequest, TReply> => this;
+            where THandler : class, IZLinkRouteRequestHandler<TRequest, TReply>
+        {
+            return this;
+        }
 
         public IZLinkRouteMeshChannelBuilder AddRequestHandler<THandler>(string? packetName = null)
-            where THandler : class => this;
-
+            where THandler : class
+        {
+            return this;
+        }
     }
 
     private sealed class StreamNodeBuilder : IZLinkStreamNodeBuilder
     {
-        public IZLinkStreamNodeBuilder Bind(string endpoint) => this;
+        public IZLinkStreamNodeBuilder Bind(string endpoint)
+        {
+            return this;
+        }
 
-        public IZLinkStreamNodeBuilder SetTlsServer(string certPath, string keyPath, bool requireClientCert = false) => this;
+        public IZLinkStreamNodeBuilder SetTlsServer(string certPath, string keyPath, bool requireClientCert = false)
+        {
+            return this;
+        }
 
         public IZLinkStreamNodeBuilder RegisterSession<TSession>()
-            where TSession : class, IZLinkSession => this;
+            where TSession : class, IZLinkSession
+        {
+            return this;
+        }
     }
 
     private class SpotNodeBuilder : IZLinkSpotNodeBuilder
@@ -551,27 +635,35 @@ public sealed class BuilderContracts
         }
 
         public IZLinkSpotNodeBuilder AddSpotFactory<TSpot>()
-            where TSpot : IZLinkSpot => this;
+            where TSpot : IZLinkSpot
+        {
+            return this;
+        }
 
         public IZLinkSpotNodeBuilder AddEntrySpot<TEntrySpot>()
-            where TEntrySpot : IZLinkEntrySpot => this;
+            where TEntrySpot : IZLinkEntrySpot
+        {
+            return this;
+        }
 
         public IZLinkSpotNodeBuilder AddActorFactory<TFactory>(string actorType)
-            where TFactory : class, IZLinkActorFactory => this;
+            where TFactory : class, IZLinkActorFactory
+        {
+            return this;
+        }
     }
 
     private sealed class SpotMeshBuilder : SpotNodeBuilder, IZLinkSpotMeshBuilder
     {
-        public IZLinkDiscoveryBuilder UseDiscovery()
-        {
-            return new DiscoveryBuilder();
-        }
-
         public IZLinkSpotMeshBuilder UseRegistrySpotResolver()
         {
             return this;
         }
 
+        public IZLinkDiscoveryBuilder UseDiscovery()
+        {
+            return new DiscoveryBuilder();
+        }
     }
 
     private sealed class ActorFactory : IZLinkActorFactory
@@ -579,20 +671,24 @@ public sealed class BuilderContracts
         public ValueTask<IZLinkActor> CreateAsync(
             string actorId,
             IZLinkActorContext context,
-            CancellationToken cancellationToken = default) =>
-            ValueTask.FromResult<IZLinkActor>(new Actor(actorId, context));
+            CancellationToken cancellationToken = default)
+        {
+            return ValueTask.FromResult<IZLinkActor>(new Actor(actorId, context));
+        }
     }
 
     private sealed class SpotRemoteAddressResolver : IZLinkSpotRemoteAddressResolver
     {
         public ValueTask<ZLinkSpotRemoteAddress> ResolveSpotRemoteAddressAsync(
             RoutingId spotRid,
-            CancellationToken cancellationToken) =>
-            ValueTask.FromResult(new ZLinkSpotRemoteAddress(
+            CancellationToken cancellationToken)
+        {
+            return ValueTask.FromResult(new ZLinkSpotRemoteAddress(
                 "play-router",
                 RoutingId.From("node"),
                 spotRid,
                 ZLinkSpotKind.User));
+        }
     }
 
     private sealed class HandlerFilter : IZLinkHandlerFilter
@@ -600,8 +696,10 @@ public sealed class BuilderContracts
         public ValueTask<object?> InvokeAsync(
             ZLinkHandlerInvocation invocation,
             ZLinkHandlerDelegate next,
-            CancellationToken cancellationToken) =>
-            next(cancellationToken);
+            CancellationToken cancellationToken)
+        {
+            return next(cancellationToken);
+        }
     }
 
     private sealed class Actor(string actorId, IZLinkActorContext context) : IZLinkActor
@@ -615,14 +713,22 @@ public sealed class BuilderContracts
     {
         public IZLinkSessionContext Context => null!;
 
-        public ValueTask OnConnectedAsync(CancellationToken cancellationToken) => ValueTask.CompletedTask;
+        public ValueTask OnConnectedAsync(CancellationToken cancellationToken)
+        {
+            return ValueTask.CompletedTask;
+        }
 
-        public ValueTask OnDisconnectedAsync(CancellationToken cancellationToken) => ValueTask.CompletedTask;
+        public ValueTask OnDisconnectedAsync(CancellationToken cancellationToken)
+        {
+            return ValueTask.CompletedTask;
+        }
 
         public ValueTask OnErrorAsync(
             ZLinkStreamError error,
-            CancellationToken cancellationToken) =>
-            ValueTask.CompletedTask;
+            CancellationToken cancellationToken)
+        {
+            return ValueTask.CompletedTask;
+        }
     }
 
     private sealed class RoomSpot : IZLinkSpot
@@ -637,40 +743,53 @@ public sealed class BuilderContracts
 
     private sealed class ApiSendHandler : IZLinkSendHandler<ApiEvent>
     {
-        public ValueTask HandleAsync(ApiEvent message, ZLinkSendContext context, CancellationToken cancellationToken) =>
-            ValueTask.CompletedTask;
+        public ValueTask HandleAsync(ApiEvent message, ZLinkSendContext context, CancellationToken cancellationToken)
+        {
+            return ValueTask.CompletedTask;
+        }
     }
 
     private sealed class AttributeApiSendHandler;
 
     private sealed class ApiRequestHandler : IZLinkRequestHandler<ApiRequest, ApiReply>
     {
-        public ValueTask<ApiReply> HandleAsync(ApiRequest request, ZLinkRequestContext context, CancellationToken cancellationToken) =>
-            ValueTask.FromResult(new ApiReply(request.Value));
+        public ValueTask<ApiReply> HandleAsync(ApiRequest request, ZLinkRequestContext context,
+            CancellationToken cancellationToken)
+        {
+            return ValueTask.FromResult(new ApiReply(request.Value));
+        }
     }
 
     private sealed class AttributeApiRequestHandler;
 
     private sealed class EventHandler : IZLinkPublishHandler<ApiEvent>
     {
-        public ValueTask HandleAsync(ApiEvent message, ZLinkPublishContext context, CancellationToken cancellationToken) =>
-            ValueTask.CompletedTask;
+        public ValueTask HandleAsync(ApiEvent message, ZLinkPublishContext context, CancellationToken cancellationToken)
+        {
+            return ValueTask.CompletedTask;
+        }
     }
 
     private sealed class AttributePublishHandler;
 
     private sealed class RouteSendHandler : IZLinkRouteSendHandler<ApiEvent>
     {
-        public ValueTask HandleAsync(ApiEvent message, ZLinkRouteSendContext context, CancellationToken cancellationToken) =>
-            ValueTask.CompletedTask;
+        public ValueTask HandleAsync(ApiEvent message, ZLinkRouteSendContext context,
+            CancellationToken cancellationToken)
+        {
+            return ValueTask.CompletedTask;
+        }
     }
 
     private sealed class AttributeRouteSendHandler;
 
     private sealed class RouteRequestHandler : IZLinkRouteRequestHandler<ApiRequest, ApiReply>
     {
-        public ValueTask<ApiReply> HandleAsync(ApiRequest request, ZLinkRouteRequestContext context, CancellationToken cancellationToken) =>
-            ValueTask.FromResult(new ApiReply(request.Value));
+        public ValueTask<ApiReply> HandleAsync(ApiRequest request, ZLinkRouteRequestContext context,
+            CancellationToken cancellationToken)
+        {
+            return ValueTask.FromResult(new ApiReply(request.Value));
+        }
     }
 
     private sealed class AttributeRouteRequestHandler;

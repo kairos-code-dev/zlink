@@ -1,6 +1,6 @@
-using SupportChat.Server.Session;
-using SupportChat.Server.Configuration;
 using Microsoft.Extensions.Hosting;
+using SupportChat.Server.Configuration;
+using SupportChat.Server.Session;
 
 internal static class Program
 {

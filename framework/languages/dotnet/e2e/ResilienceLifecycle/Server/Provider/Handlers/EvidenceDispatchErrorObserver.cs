@@ -1,5 +1,4 @@
 using Zlink.Framework.Contracts.Dispatch;
-using ResilienceLifecycle.Server.Provider;
 
 namespace ResilienceLifecycle.Server.Provider.Handlers;
 
@@ -11,10 +10,7 @@ internal sealed class EvidenceDispatchErrorObserver(EvidenceStore evidence, Faul
         CancellationToken cancellationToken)
     {
         cancellationToken.ThrowIfCancellationRequested();
-        if (flow.Outcome != ZLinkMessageFlowOutcome.Error)
-        {
-            return ValueTask.CompletedTask;
-        }
+        if (flow.Outcome != ZLinkMessageFlowOutcome.Error) return ValueTask.CompletedTask;
 
         evidence.Add(
             "dispatch-error"
@@ -24,10 +20,7 @@ internal sealed class EvidenceDispatchErrorObserver(EvidenceStore evidence, Faul
             + $"|action={flow.ErrorAction}"
             + $"|packet={flow.PacketName ?? "<null>"}"
             + $"|channel={flow.ChannelName ?? "<null>"}");
-        if (fault.Mode == "observer-throws")
-        {
-            throw new InvalidOperationException("dispatch observer failure");
-        }
+        if (fault.Mode == "observer-throws") throw new InvalidOperationException("dispatch observer failure");
 
         return ValueTask.CompletedTask;
     }

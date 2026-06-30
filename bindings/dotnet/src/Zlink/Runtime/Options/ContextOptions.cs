@@ -1,6 +1,5 @@
 // SPDX-License-Identifier: MPL-2.0
 
-using System;
 using System.Text;
 using Systems.Zlink.Runtime.Native;
 
@@ -14,6 +13,12 @@ internal sealed class ContextOptions : IContextOptions
     internal ContextOptions(Context context)
     {
         _context = context;
+    }
+
+    internal int SpotWorkerThreads
+    {
+        get => _context.GetOption(ContextOption.SpotWorkerThreads);
+        set => _context.SetOption(ContextOption.SpotWorkerThreads, value);
     }
 
     public int IoThreads
@@ -87,12 +92,6 @@ internal sealed class ContextOptions : IContextOptions
             EncodeMilliseconds(value, nameof(value)));
     }
 
-    internal int SpotWorkerThreads
-    {
-        get => _context.GetOption(ContextOption.SpotWorkerThreads);
-        set => _context.SetOption(ContextOption.SpotWorkerThreads, value);
-    }
-
     public string ThreadNamePrefix
     {
         get => _threadNamePrefix;
@@ -105,10 +104,10 @@ internal sealed class ContextOptions : IContextOptions
                     nameof(value));
             if (value.Length > 16)
                 throw new ArgumentOutOfRangeException(nameof(value));
-            byte[] bytes = Encoding.UTF8.GetBytes(value);
+            var bytes = Encoding.UTF8.GetBytes(value);
             if (bytes.Length > 16)
                 throw new ArgumentOutOfRangeException(nameof(value));
-            int rc = NativeMethods.zlink_ctx_set_data(_context.Handle,
+            var rc = NativeMethods.zlink_ctx_set_data(_context.Handle,
                 (int)ContextOption.ThreadNamePrefix, bytes, (nuint)bytes.Length);
             ZlinkException.ThrowConfigIfError(rc);
             _threadNamePrefix = value;
@@ -127,12 +126,10 @@ internal sealed class ContextOptions : IContextOptions
 
     private static int EncodeMilliseconds(TimeSpan value, string paramName)
     {
-        double millis = value.TotalMilliseconds;
+        var millis = value.TotalMilliseconds;
         if (double.IsNaN(millis) || double.IsInfinity(millis)
-            || millis < 0 || millis > int.MaxValue)
-        {
+                                 || millis < 0 || millis > int.MaxValue)
             throw new ArgumentOutOfRangeException(paramName);
-        }
         return (int)Math.Ceiling(millis);
     }
 }

@@ -1,6 +1,6 @@
+using PubSub.Client.Support;
 using PubSub.Shared;
 using Zlink.HttpClient;
-using PubSub.Client.Support;
 
 namespace PubSub.Client.Scenarios;
 
@@ -18,9 +18,9 @@ internal static class SubscriberReconnectScenario
 
         // First prove the extra subscriber can receive before it is disconnected.
         using (var subscriber = processes.StartSubscriber(
-            name: "sub-reconnect",
-            httpUrl: reconnectSubscriberUrl,
-            evidenceFile: "sub-reconnect.evidence.log"))
+                   "sub-reconnect",
+                   reconnectSubscriberUrl,
+                   "sub-reconnect.evidence.log"))
         {
             await ScenarioAssert.EventuallyAsync(
                 async () =>
@@ -43,7 +43,7 @@ internal static class SubscriberReconnectScenario
                 .SubmitRawAsync();
             await WaitForSubscriberAsync(reconnectSubscriberClient, runId);
 
-            subscriber.Kill(entireProcessTree: true);
+            subscriber.Kill(true);
             await subscriber.WaitForExitAsync();
         }
 
@@ -64,23 +64,21 @@ internal static class SubscriberReconnectScenario
 
         // These events are intentionally published while the reconnecting subscriber is absent.
         for (var i = 2; i <= 4; i++)
-        {
             await publisher.Post("/publish/event")
                 .Query("topic", PubSubNames.MainTopic)
                 .Query("runId", runId)
                 .Query("sequence", i.ToString())
                 .Query("value", $"gap-{i}")
                 .SubmitRawAsync();
-        }
 
         // The two always-on subscribers must continue receiving while the extra subscriber is down.
         await WaitForSubscribersAsync(fastSubscribers, runId);
 
         // Restart the same logical subscriber and verify it receives only the post-reconnect range.
         using var restartedSubscriber = processes.StartSubscriber(
-            name: "sub-reconnect",
-            httpUrl: reconnectSubscriberUrl,
-            evidenceFile: "sub-reconnect.evidence.log");
+            "sub-reconnect",
+            reconnectSubscriberUrl,
+            "sub-reconnect.evidence.log");
         await ScenarioAssert.EventuallyAsync(
             async () =>
             {
@@ -92,18 +90,16 @@ internal static class SubscriberReconnectScenario
                 {
                     return false;
                 }
-                },
+            },
             "PS-A4 expected reconnect subscriber to become healthy after reconnect.");
 
         for (var i = 5; i <= 8; i++)
-        {
             await publisher.Post("/publish/event")
                 .Query("topic", PubSubNames.MainTopic)
                 .Query("runId", runId)
                 .Query("sequence", i.ToString())
                 .Query("value", $"after-reconnect-{i}")
                 .SubmitRawAsync();
-        }
 
         var reconnectEvidence = await WaitForSubscriberAsync(reconnectSubscriberClient, runId);
 
@@ -115,21 +111,20 @@ internal static class SubscriberReconnectScenario
             "PS-A4 reconnected subscriber replayed disconnect-gap events.");
         Console.WriteLine("scenario PS-A4 passed");
 
-        restartedSubscriber.Kill(entireProcessTree: true);
+        restartedSubscriber.Kill(true);
         await restartedSubscriber.WaitForExitAsync();
     }
 
-    static async Task<string[]> WaitForSubscriberAsync(ZLinkHttpClient subscriber, string runId)
+    private static async Task<string[]> WaitForSubscriberAsync(ZLinkHttpClient subscriber, string runId)
     {
         return (await subscriber.Post("/evidence/wait")
             .Body(new EvidenceWaitRequest(
                 ["event|", $"run={runId}", $"topic={PubSubNames.MainTopic}"],
-                [],
-                10000))
+                []))
             .SubmitAsync<string[]>()).Body;
     }
 
-    static async Task WaitForSubscribersAsync(IReadOnlyList<ZLinkHttpClient> subscribers, string runId)
+    private static async Task WaitForSubscribersAsync(IReadOnlyList<ZLinkHttpClient> subscribers, string runId)
     {
         var waits = subscribers.Select(subscriber => WaitForSubscriberAsync(subscriber, runId)).ToArray();
         await Task.WhenAll(waits);

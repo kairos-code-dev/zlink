@@ -42,7 +42,8 @@ internal static class YdC3ActorTimerIsolationScenario
             "timer-fast-started",
             "timer-fast-completed",
             "actor-yield-resumed",
-            "actor-yield-completed"]);
+            "actor-yield-completed"
+        ]);
 
         var timerThenActor = $"YD-C3B-{Guid.NewGuid():N}";
         await client.Send(new TimerStartCommand(timerThenActor, $"{timerThenActor}-yield", "yield-on-first", 50, 350))
@@ -59,7 +60,8 @@ internal static class YdC3ActorTimerIsolationScenario
             .Metadata(YieldDispatchNames.ActorIdMetadata, actors.ActorB)
             .Timeout(TimeSpan.FromSeconds(30))
             .Async<ActorYieldReply>();
-        var timerThenActorEvidence = await client.Request(new YieldEvidenceWaitReq(timerThenActor, "timer-yield-completed"))
+        var timerThenActorEvidence = await client
+            .Request(new YieldEvidenceWaitReq(timerThenActor, "timer-yield-completed"))
             .PacketName("YieldEvidenceWaitReq")
             .Metadata(YieldDispatchNames.TargetNodeRidMetadata, "play-a")
             .Timeout(TimeSpan.FromSeconds(30))
@@ -75,6 +77,7 @@ internal static class YdC3ActorTimerIsolationScenario
             "actor-fast-started",
             "actor-fast-completed",
             "timer-yield-resumed",
-            "timer-yield-completed"]);
+            "timer-yield-completed"
+        ]);
     }
 }

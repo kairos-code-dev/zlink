@@ -5,8 +5,8 @@ namespace Bingo.Server.Play.Domain.Bingo;
 internal sealed class BingoRoomGame(string roomId, BingoRoomSettings settings)
 {
     private readonly List<BingoRoomPlayer> _players = [];
-    private BingoRoomSettings _settings = settings;
     private BingoGame? _game;
+    private BingoRoomSettings _settings = settings;
 
     public string Status { get; private set; } = BingoRoomStatus.WaitingForPlayers;
 
@@ -16,14 +16,10 @@ internal sealed class BingoRoomGame(string roomId, BingoRoomSettings settings)
     public void ApplySettings(BingoRoomSettings newSettings)
     {
         if (newSettings.RequiredPlayers <= 0)
-        {
             throw new InvalidOperationException("Bingo room requires at least one player.");
-        }
 
         if (newSettings.MaxDrawNumber <= 0)
-        {
             throw new InvalidOperationException("Bingo room requires at least one draw number.");
-        }
 
         _settings = newSettings;
         _game = null;
@@ -32,15 +28,10 @@ internal sealed class BingoRoomGame(string roomId, BingoRoomSettings settings)
     public BingoGameChange JoinPlayer(string actorId, string displayName)
     {
         var existing = _players.FirstOrDefault(player => player.ActorId == actorId);
-        if (existing is not null)
-        {
-            return new BingoGameChange(Snapshot(), []);
-        }
+        if (existing is not null) return new BingoGameChange(Snapshot(), []);
 
         if (Status != BingoRoomStatus.WaitingForPlayers || _players.Count >= _settings.RequiredPlayers)
-        {
             throw new InvalidOperationException($"Room {roomId} cannot accept more players.");
-        }
 
         var player = new BingoRoomPlayer(actorId, displayName, _players.Count);
         _players.Add(player);
@@ -65,9 +56,7 @@ internal sealed class BingoRoomGame(string roomId, BingoRoomSettings settings)
     public BingoGameChange SubmitCard(string actorId, BingoCard card)
     {
         if (Status != BingoRoomStatus.Running)
-        {
             throw new InvalidOperationException($"Room is not accepting cards. status={Status}");
-        }
 
         RequireGame().SubmitCard(actorId, card);
         return new BingoGameChange(Snapshot(), []);
@@ -75,33 +64,21 @@ internal sealed class BingoRoomGame(string roomId, BingoRoomSettings settings)
 
     public BingoGameChange DrawNextNumber()
     {
-        if (Status != BingoRoomStatus.Running)
-        {
-            return new BingoGameChange(Snapshot(), [], ShouldStopDrawTimer: true);
-        }
+        if (Status != BingoRoomStatus.Running) return new BingoGameChange(Snapshot(), [], true);
 
         var result = RequireGame().DrawNextNumber();
-        if (result.IsFinished)
-        {
-            Status = BingoRoomStatus.Finished;
-        }
+        if (result.IsFinished) Status = BingoRoomStatus.Finished;
 
         var state = Snapshot();
         var events = new List<BingoGameEvent>();
-        if (result.Number is { } number)
-        {
-            events.AddRange(NumberDrawnEvents(state, number));
-        }
+        if (result.Number is { } number) events.AddRange(NumberDrawnEvents(state, number));
 
-        if (Status == BingoRoomStatus.Finished)
-        {
-            events.AddRange(EventsForAll(BingoRoomEventKind.GameEnded, state));
-        }
+        if (Status == BingoRoomStatus.Finished) events.AddRange(EventsForAll(BingoRoomEventKind.GameEnded, state));
 
         return new BingoGameChange(
             state,
             events,
-            ShouldStopDrawTimer: Status == BingoRoomStatus.Finished);
+            Status == BingoRoomStatus.Finished);
     }
 
     public BingoRoomState Snapshot()
@@ -117,12 +94,9 @@ internal sealed class BingoRoomGame(string roomId, BingoRoomSettings settings)
             DrawSeq = game.DrawSeq,
             DrawnNumbers = { game.DrawnNumbers },
             Players = { _players.Select(player => player.ToState(hostActorId, _game)) },
-            Winners = { game.Winners },
+            Winners = { game.Winners }
         };
-        if (game.LastDrawnNumber is { } lastDrawnNumber)
-        {
-            state.LastDrawnNumber = lastDrawnNumber;
-        }
+        if (game.LastDrawnNumber is { } lastDrawnNumber) state.LastDrawnNumber = lastDrawnNumber;
 
         return state;
     }
@@ -198,7 +172,7 @@ internal sealed class BingoRoomGame(string roomId, BingoRoomSettings settings)
                 IsHost = string.Equals(ActorId, hostActorId, StringComparison.Ordinal),
                 Card = { card.Numbers },
                 Marks = { card.Marks },
-                CompletedLines = card.CompletedLines,
+                CompletedLines = card.CompletedLines
             };
         }
     }

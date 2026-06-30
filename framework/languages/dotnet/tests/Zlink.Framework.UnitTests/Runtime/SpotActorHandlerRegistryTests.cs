@@ -1,7 +1,3 @@
-using Zlink.Framework.Contracts.Actors;
-using Zlink.Framework.Contracts.Spots;
-using Zlink.Framework.Runtime.Spots;
-
 namespace Zlink.Framework.UnitTests.Runtime;
 
 public sealed class SpotActorHandlerRegistryTests
@@ -60,8 +56,10 @@ public sealed class SpotActorHandlerRegistryTests
             RegistryActor actor,
             ZLinkSpotActorSendContext context,
             RegistryMessage message,
-            CancellationToken cancellationToken) =>
-            ValueTask.CompletedTask;
+            CancellationToken cancellationToken)
+        {
+            return ValueTask.CompletedTask;
+        }
     }
 
     private sealed class RequestHandler :
@@ -72,8 +70,10 @@ public sealed class SpotActorHandlerRegistryTests
             RegistryActor actor,
             ZLinkSpotActorRequestContext context,
             RegistryMessage request,
-            CancellationToken cancellationToken) =>
-            ValueTask.FromResult(new RegistryReply(request.Value));
+            CancellationToken cancellationToken)
+        {
+            return ValueTask.FromResult(new RegistryReply(request.Value));
+        }
     }
 
     private sealed record RegistryMessage(string Value);

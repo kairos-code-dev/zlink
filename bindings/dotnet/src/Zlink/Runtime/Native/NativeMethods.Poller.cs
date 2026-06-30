@@ -1,4 +1,3 @@
-using System;
 using System.Runtime.InteropServices;
 
 namespace Systems.Zlink.Runtime.Native;
@@ -59,13 +58,13 @@ internal static partial class NativeMethods
     [DllImport(LibraryName, EntryPoint = "zlink_poll",
         CallingConvention = CallingConvention.Cdecl)]
     internal static extern int zlink_poll(
-        [In, Out] ZlinkPollItemUnix[] items, int nitems, long timeout,
+        [In] [Out] ZlinkPollItemUnix[] items, int nitems, long timeout,
         out int errorOut);
 
     [DllImport(LibraryName, EntryPoint = "zlink_poll",
         CallingConvention = CallingConvention.Cdecl)]
     internal static extern int zlink_poll(
-        [In, Out] ZlinkPollItemWindows[] items, int nitems, long timeout,
+        [In] [Out] ZlinkPollItemWindows[] items, int nitems, long timeout,
         out int errorOut);
 
     [DllImport(LibraryName, CallingConvention = CallingConvention.Cdecl)]

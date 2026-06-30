@@ -1,27 +1,29 @@
 // SPDX-License-Identifier: MPL-2.0
 
-using System.Collections.Generic;
-
 namespace Systems.Zlink;
 
 public readonly partial struct ActorRef
 {
     internal static ActorRef Unchecked(RoutingId nodeRid, string actorId)
-        => new(nodeRid, actorId, 0);
+    {
+        return new ActorRef(nodeRid, actorId, 0);
+    }
 
     internal static ActorRef Remote(RoutingId targetNodeRid, string actorId)
-        => Unchecked(targetNodeRid, actorId);
+    {
+        return Unchecked(targetNodeRid, actorId);
+    }
 }
 
 public sealed partial class ActorJoinRequest
 {
     internal ActorJoinRequest(ActorJoinInfo info, Message message)
-        : this(info, [message], runtimeState: null)
+        : this(info, [message], null)
     {
     }
 
     internal ActorJoinRequest(ActorJoinInfo info, IReadOnlyList<Message> parts)
-        : this(info, parts, runtimeState: null)
+        : this(info, parts, null)
     {
     }
 

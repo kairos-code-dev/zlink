@@ -1,33 +1,32 @@
 /* SPDX-License-Identifier: MPL-2.0 */
 
 using System.Text;
+using System.Text.Json;
 using Zlink.HttpClient.Runtime;
 
 namespace Zlink.HttpClient;
 
 /// <summary>
-/// Fluent builder for a single request. Mirrors the C++ <c>request_builder_t</c>. Submission
-/// returns a <see cref="ValueTask{T}"/>; no thread is parked while the request is in flight. The
-/// blocking <see cref="Fetch{T}"/> convenience is intended for tests and CLI scenarios — framework
-/// handler code should <c>await</c> <see cref="SubmitAsync{T}"/>.
+///     Fluent builder for a single request. Mirrors the C++ <c>request_builder_t</c>. Submission
+///     returns a <see cref="ValueTask{T}" />; no thread is parked while the request is in flight. The
+///     blocking <see cref="Fetch{T}" /> convenience is intended for tests and CLI scenarios — framework
+///     handler code should <c>await</c> <see cref="SubmitAsync{T}" />.
 /// </summary>
 public sealed class ZLinkHttpRequestBuilder
 {
-    private ZLinkHttpClient? _client;
     private readonly ZLinkHttpClientBuilder? _clientFactory;
+    private readonly List<KeyValuePair<string, string>> _form = new();
+    private readonly Dictionary<string, string> _headers = new(StringComparer.OrdinalIgnoreCase);
     private readonly ZLinkHttpMethod _method;
+    private readonly List<MultipartPart> _multipart = new();
+    private readonly bool _ownsClient;
     private readonly string _path;
+    private readonly List<KeyValuePair<string, string>> _query = new();
     private byte[]? _body;
     private Func<byte[]?>? _bodyProvider;
-    private readonly Dictionary<string, string> _headers = new(StringComparer.OrdinalIgnoreCase);
-    private TimeSpan? _timeout;
-    private readonly bool _ownsClient;
+    private ZLinkHttpClient? _client;
     private bool _consumed;
-    private readonly List<KeyValuePair<string, string>> _query = new();
-    private readonly List<KeyValuePair<string, string>> _form = new();
-    private readonly List<MultipartPart> _multipart = new();
-
-    private readonly record struct MultipartPart(string Name, string Filename, string Content, string ContentType);
+    private TimeSpan? _timeout;
 
     internal ZLinkHttpRequestBuilder(ZLinkHttpClient client, ZLinkHttpMethod method, string path)
     {
@@ -51,11 +50,9 @@ public sealed class ZLinkHttpRequestBuilder
     private static void ValidatePath(string path)
     {
         if (path.Length == 0 || path[0] != '/')
-        {
             throw new ZLinkFrameworkException(
                 ZLinkFrameworkErrorKind.RequestProtocolError,
                 "HTTP request path must start with /");
-        }
     }
 
     public ZLinkHttpRequestBuilder Header(string name, string value)
@@ -92,10 +89,8 @@ public sealed class ZLinkHttpRequestBuilder
     public ZLinkHttpRequestBuilder Body(string content, string contentType)
     {
         if (content is null)
-        {
             throw new ZLinkFrameworkException(
                 ZLinkFrameworkErrorKind.RequestProtocolError, "HTTP request raw body content is required");
-        }
 
         HttpClientText.RequireNonBlank(contentType, "HTTP request body content type is required");
         _body = Encoding.UTF8.GetBytes(content);
@@ -104,8 +99,8 @@ public sealed class ZLinkHttpRequestBuilder
     }
 
     /// <summary>
-    /// Streams the request body chunk by chunk with chunked transfer-encoding; the provider
-    /// returns <c>null</c> when the body is complete. Streamed requests are excluded from retry.
+    ///     Streams the request body chunk by chunk with chunked transfer-encoding; the provider
+    ///     returns <c>null</c> when the body is complete. Streamed requests are excluded from retry.
     /// </summary>
     public ZLinkHttpRequestBuilder BodyStream(Func<byte[]?> provider, string contentType)
     {
@@ -144,11 +139,9 @@ public sealed class ZLinkHttpRequestBuilder
     private ZLinkHttpClient ResolveClient()
     {
         if (_ownsClient && _consumed)
-        {
             throw new ZLinkFrameworkException(
                 ZLinkFrameworkErrorKind.RequestProtocolError,
                 "A one-shot HTTP request can only be submitted once");
-        }
 
         _consumed = true;
         return _client ??= _clientFactory!.Build();
@@ -156,10 +149,7 @@ public sealed class ZLinkHttpRequestBuilder
 
     private void ReleaseIfOwned(ZLinkHttpClient client)
     {
-        if (_ownsClient)
-        {
-            client.Dispose();
-        }
+        if (_ownsClient) client.Dispose();
     }
 
     /// <summary>Submits the request and returns the raw response.</summary>
@@ -177,11 +167,12 @@ public sealed class ZLinkHttpRequestBuilder
     }
 
     /// <summary>
-    /// Streams the response body to <paramref name="sink"/> chunk by chunk instead of buffering it;
-    /// the returned response carries status and headers with an empty body. Chunks are delivered as
-    /// received (no content-encoding decompression).
+    ///     Streams the response body to <paramref name="sink" /> chunk by chunk instead of buffering it;
+    ///     the returned response carries status and headers with an empty body. Chunks are delivered as
+    ///     received (no content-encoding decompression).
     /// </summary>
-    public async ValueTask<RawHttpResponse> DownloadAsync(Action<ReadOnlyMemory<byte>> sink, CancellationToken cancellationToken = default)
+    public async ValueTask<RawHttpResponse> DownloadAsync(Action<ReadOnlyMemory<byte>> sink,
+        CancellationToken cancellationToken = default)
     {
         ArgumentNullException.ThrowIfNull(sink);
         var client = ResolveClient();
@@ -195,29 +186,27 @@ public sealed class ZLinkHttpRequestBuilder
         }
     }
 
-    /// <summary>Submits the request and decodes the JSON body to <typeparamref name="T"/>.</summary>
+    /// <summary>Submits the request and decodes the JSON body to <typeparamref name="T" />.</summary>
     public async ValueTask<HttpResponse<T>> SubmitAsync<T>(CancellationToken cancellationToken = default)
     {
         var codecs = ResolveCodecs();
         var raw = await SubmitRawAsync(cancellationToken).ConfigureAwait(false);
         if (raw.Status >= 400)
-        {
             throw new ZLinkFrameworkException(
                 ZLinkFrameworkErrorKind.RequestFailed,
                 $"HTTP request failed with status {raw.Status}");
-        }
 
         T body;
         try
         {
             var contentType = FindHeader(raw.Headers, "content-type");
             body = (T?)codecs.Decode(
-                    raw.BodyBytes,
-                    typeof(T),
-                    contentType)
-                ?? throw new InvalidOperationException("HTTP response body decoded to null");
+                       raw.BodyBytes,
+                       typeof(T),
+                       contentType)
+                   ?? throw new InvalidOperationException("HTTP response body decoded to null");
         }
-        catch (Exception ex) when (ex is InvalidOperationException or NotSupportedException or System.Text.Json.JsonException)
+        catch (Exception ex) when (ex is InvalidOperationException or NotSupportedException or JsonException)
         {
             throw new ZLinkFrameworkException(
                 ZLinkFrameworkErrorKind.PayloadDecodeFailed, ex.Message, innerException: ex);
@@ -228,15 +217,18 @@ public sealed class ZLinkHttpRequestBuilder
             Status = raw.Status,
             Headers = raw.Headers,
             Body = body,
-            RawBody = raw.Body,
+            RawBody = raw.Body
         };
     }
 
     /// <summary>
-    /// Blocking convenience that unwraps the typed body and throws on failure. For tests and CLI
-    /// scenarios; handler/runtime code should <c>await</c> <see cref="SubmitAsync{T}"/> instead.
+    ///     Blocking convenience that unwraps the typed body and throws on failure. For tests and CLI
+    ///     scenarios; handler/runtime code should <c>await</c> <see cref="SubmitAsync{T}" /> instead.
     /// </summary>
-    public T Fetch<T>() => SubmitAsync<T>().AsTask().GetAwaiter().GetResult().Body;
+    public T Fetch<T>()
+    {
+        return SubmitAsync<T>().AsTask().GetAwaiter().GetResult().Body;
+    }
 
     private HttpRequestSpec MakeRequest(Action<ReadOnlyMemory<byte>>? sink)
     {
@@ -249,16 +241,13 @@ public sealed class ZLinkHttpRequestBuilder
             BodyProvider = _bodyProvider,
             Headers = headers,
             Timeout = _timeout,
-            Sink = sink,
+            Sink = sink
         };
     }
 
     private string ResolveTarget()
     {
-        if (_query.Count == 0)
-        {
-            return _path;
-        }
+        if (_query.Count == 0) return _path;
 
         var target = new StringBuilder(_path);
         var separator = _path.Contains('?') ? '&' : '?';
@@ -275,24 +264,21 @@ public sealed class ZLinkHttpRequestBuilder
     }
 
     private HttpClientCodecRegistry ResolveCodecs()
-        => _client?.Runtime.Options.Codecs
-            ?? _clientFactory?.CodecRegistry
-            ?? throw new InvalidOperationException("HTTP client is not configured.");
+    {
+        return _client?.Runtime.Options.Codecs
+               ?? _clientFactory?.CodecRegistry
+               ?? throw new InvalidOperationException("HTTP client is not configured.");
+    }
 
     private (byte[]? Body, IReadOnlyDictionary<string, string> Headers) ResolveBodyAndHeaders()
     {
         if (CountBodySources() > 1)
-        {
             throw new ZLinkFrameworkException(
                 ZLinkFrameworkErrorKind.RequestProtocolError,
                 "HTTP request accepts a single body source: body, body_stream, form, or multipart");
-        }
 
         var headers = new Dictionary<string, string>(_headers, StringComparer.OrdinalIgnoreCase);
-        if (_body is not null)
-        {
-            return (_body, headers);
-        }
+        if (_body is not null) return (_body, headers);
 
         if (_form.Count > 0)
         {
@@ -310,19 +296,18 @@ public sealed class ZLinkHttpRequestBuilder
         return (null, headers);
     }
 
-    private int CountBodySources() =>
-        (_body is not null ? 1 : 0) + (_bodyProvider is not null ? 1 : 0)
-        + (_form.Count > 0 ? 1 : 0) + (_multipart.Count > 0 ? 1 : 0);
+    private int CountBodySources()
+    {
+        return (_body is not null ? 1 : 0) + (_bodyProvider is not null ? 1 : 0)
+                                           + (_form.Count > 0 ? 1 : 0) + (_multipart.Count > 0 ? 1 : 0);
+    }
 
     private string EncodeFormBody()
     {
         var encoded = new StringBuilder();
         foreach (var (name, value) in _form)
         {
-            if (encoded.Length > 0)
-            {
-                encoded.Append('&');
-            }
+            if (encoded.Length > 0) encoded.Append('&');
 
             encoded.Append(HttpClientText.PercentEncode(name))
                 .Append('=')
@@ -335,12 +320,8 @@ public sealed class ZLinkHttpRequestBuilder
     private static string? FindHeader(IReadOnlyDictionary<string, string> headers, string name)
     {
         foreach (var (key, value) in headers)
-        {
             if (key.Equals(name, StringComparison.OrdinalIgnoreCase))
-            {
                 return value;
-            }
-        }
 
         return null;
     }
@@ -352,16 +333,10 @@ public sealed class ZLinkHttpRequestBuilder
         {
             encoded.Append("--").Append(boundary).Append("\r\n");
             encoded.Append("Content-Disposition: form-data; name=\"").Append(part.Name).Append('"');
-            if (part.Filename.Length > 0)
-            {
-                encoded.Append("; filename=\"").Append(part.Filename).Append('"');
-            }
+            if (part.Filename.Length > 0) encoded.Append("; filename=\"").Append(part.Filename).Append('"');
 
             encoded.Append("\r\n");
-            if (part.ContentType.Length > 0)
-            {
-                encoded.Append("Content-Type: ").Append(part.ContentType).Append("\r\n");
-            }
+            if (part.ContentType.Length > 0) encoded.Append("Content-Type: ").Append(part.ContentType).Append("\r\n");
 
             encoded.Append("\r\n").Append(part.Content).Append("\r\n");
         }
@@ -369,4 +344,6 @@ public sealed class ZLinkHttpRequestBuilder
         encoded.Append("--").Append(boundary).Append("--\r\n");
         return encoded.ToString();
     }
+
+    private readonly record struct MultipartPart(string Name, string Filename, string Content, string ContentType);
 }

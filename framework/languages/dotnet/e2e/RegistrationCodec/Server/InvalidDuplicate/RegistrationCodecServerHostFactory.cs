@@ -1,7 +1,6 @@
 using Google.Protobuf.WellKnownTypes;
-using RegistrationCodec.Server.InvalidDuplicate;
-using RegistrationCodec.Server.InvalidDuplicate.Infrastructure;
 using RegistrationCodec.Server.InvalidDuplicate.Handlers;
+using RegistrationCodec.Server.InvalidDuplicate.Infrastructure;
 using RegistrationCodec.Shared;
 using Zlink.Framework.AspNetCore;
 using Zlink.Framework.Codecs.MessagePack;
@@ -71,9 +70,7 @@ public static class RegistrationCodecServerHostFactory
             channel.AddRequestHandler<DiEchoRequestHandler, EchoReq, EchoReply>("EchoDi");
 
             if (options.InvalidMode == "duplicate")
-            {
                 channel.AddRequestHandler<DuplicateEchoRequestHandler, EchoManualReq, EchoReply>("EchoManual");
-            }
         });
 
         var app = builder.Build();

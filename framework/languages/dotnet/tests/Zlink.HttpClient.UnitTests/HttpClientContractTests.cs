@@ -2,36 +2,20 @@
 
 using System.Diagnostics;
 using System.IO.Compression;
-using System.Net;
 using System.Text;
+using System.Text.Json;
 using Google.Protobuf;
 using Google.Protobuf.WellKnownTypes;
 using MessagePack;
+using Xunit;
 using Zlink.Framework.Codecs.MessagePack;
 using Zlink.Framework.Codecs.Protobuf;
 using Zlink.Framework.Contracts.Errors;
-using Xunit;
 
 namespace Zlink.HttpClient.UnitTests;
 
 public sealed class HttpClientContractTests
 {
-    private sealed record Player(int Id, string Name);
-
-    private sealed record CreateGameReq(string Name);
-
-    private sealed record CreateGameRes(string Id, bool Ranked);
-
-    [MessagePackObject]
-    public sealed class PackedPlayer
-    {
-        [Key(0)]
-        public int Id { get; set; }
-
-        [Key(1)]
-        public string Name { get; set; } = string.Empty;
-    }
-
     [Theory]
     [InlineData("GET")]
     [InlineData("POST")]
@@ -56,7 +40,7 @@ public sealed class HttpClientContractTests
             "PUT" => client.Put("/r"),
             "DELETE" => client.Delete("/r"),
             "PATCH" => client.Patch("/r"),
-            _ => client.Options("/r"),
+            _ => client.Options("/r")
         };
         var response = await request.SubmitRawAsync();
 
@@ -125,8 +109,8 @@ public sealed class HttpClientContractTests
         CreateGameReq? received = null;
         using var server = new TestHttpServer(async ctx =>
         {
-            received = System.Text.Json.JsonSerializer.Deserialize<CreateGameReq>(
-                ctx.Request.ReadBody(), new System.Text.Json.JsonSerializerOptions(System.Text.Json.JsonSerializerDefaults.Web));
+            received = JsonSerializer.Deserialize<CreateGameReq>(
+                ctx.Request.ReadBody(), new JsonSerializerOptions(JsonSerializerDefaults.Web));
             await ctx.Response.WriteAsync(200, """{"id":"game-7","ranked":true}""");
         });
         using var client = ZLinkHttpClient.Create(server.BaseUrl).Json().Build();
@@ -310,8 +294,8 @@ public sealed class HttpClientContractTests
             await ctx.Response.WriteAsync(404, """{"error":"missing"}"""));
         using var client = ZLinkHttpClient.Create(server.BaseUrl).Json().Build();
 
-        var ex = await Assert.ThrowsAsync<ZLinkFrameworkException>(
-            async () => await client.Get("/players/0").SubmitAsync<Player>());
+        var ex = await Assert.ThrowsAsync<ZLinkFrameworkException>(async () =>
+            await client.Get("/players/0").SubmitAsync<Player>());
 
         Assert.Equal(ZLinkFrameworkErrorKind.RequestFailed, ex.Kind);
     }
@@ -323,8 +307,8 @@ public sealed class HttpClientContractTests
             await ctx.Response.WriteAsync(200, "not-json"));
         using var client = ZLinkHttpClient.Create(server.BaseUrl).Json().Build();
 
-        var ex = await Assert.ThrowsAsync<ZLinkFrameworkException>(
-            async () => await client.Get("/players/7").SubmitAsync<Player>());
+        var ex = await Assert.ThrowsAsync<ZLinkFrameworkException>(async () =>
+            await client.Get("/players/7").SubmitAsync<Player>());
 
         Assert.Equal(ZLinkFrameworkErrorKind.PayloadDecodeFailed, ex.Kind);
     }
@@ -411,8 +395,8 @@ public sealed class HttpClientContractTests
         });
         using var client = ZLinkHttpClient.Create(server.BaseUrl).FollowRedirects(2).Build();
 
-        var ex = await Assert.ThrowsAsync<ZLinkFrameworkException>(
-            async () => await client.Get("/loop").SubmitRawAsync());
+        var ex = await Assert.ThrowsAsync<ZLinkFrameworkException>(async () =>
+            await client.Get("/loop").SubmitRawAsync());
 
         Assert.Equal(ZLinkFrameworkErrorKind.RequestFailed, ex.Kind);
     }
@@ -421,7 +405,7 @@ public sealed class HttpClientContractTests
     public async Task Retries_retriable_transport_failure()
     {
         // First connection is dropped (retriable transport error); the retry succeeds.
-        using var server = new FlakyRawServer(failCount: 1);
+        using var server = new FlakyRawServer(1);
         using var client = ZLinkHttpClient.Create(server.BaseUrl).Retry(3).Build();
 
         var response = await client.Get("/r").SubmitRawAsync();
@@ -442,8 +426,7 @@ public sealed class HttpClientContractTests
         using var client = ZLinkHttpClient.Create(server.BaseUrl)
             .Timeout(TimeSpan.FromMilliseconds(60)).Retry(2).Build();
 
-        await Assert.ThrowsAsync<TimeoutException>(
-            async () => await client.Get("/slow").SubmitRawAsync());
+        await Assert.ThrowsAsync<TimeoutException>(async () => await client.Get("/slow").SubmitRawAsync());
     }
 
     [Fact]
@@ -514,8 +497,7 @@ public sealed class HttpClientContractTests
         using var client = ZLinkHttpClient.Create(server.BaseUrl)
             .Timeout(TimeSpan.FromMilliseconds(80)).Build();
 
-        await Assert.ThrowsAsync<TimeoutException>(
-            async () => await client.Get("/slow").SubmitRawAsync());
+        await Assert.ThrowsAsync<TimeoutException>(async () => await client.Get("/slow").SubmitRawAsync());
     }
 
     [Fact]
@@ -525,8 +507,8 @@ public sealed class HttpClientContractTests
             await ctx.Response.WriteAsync(200, new string('x', 4096), "text/plain"));
         using var client = ZLinkHttpClient.Create(server.BaseUrl).MaxResponseBodySize(1024).Build();
 
-        var ex = await Assert.ThrowsAsync<ZLinkFrameworkException>(
-            async () => await client.Get("/big").SubmitRawAsync());
+        var ex =
+            await Assert.ThrowsAsync<ZLinkFrameworkException>(async () => await client.Get("/big").SubmitRawAsync());
 
         Assert.Equal(ZLinkFrameworkErrorKind.RequestFailed, ex.Kind);
     }
@@ -558,14 +540,10 @@ public sealed class HttpClientContractTests
     {
         Assert.Throws<ZLinkFrameworkException>(() => ZLinkHttpClient.Create().Build());
         Assert.Throws<ZLinkFrameworkException>(() => ZLinkHttpClient.Create("ftp://x").Build());
-        Assert.Throws<ZLinkFrameworkException>(
-            () => ZLinkHttpClient.Create("http://h").Timeout(TimeSpan.Zero));
-        Assert.Throws<ZLinkFrameworkException>(
-            () => ZLinkHttpClient.Create("http://h").Proxy("https://p").Build());
-        Assert.Throws<ZLinkFrameworkException>(
-            () => ZLinkHttpClient.Create("http://h").FollowRedirects(0));
-        Assert.Throws<ZLinkFrameworkException>(
-            () => ZLinkHttpClient.Create("http://h").Retry(0));
+        Assert.Throws<ZLinkFrameworkException>(() => ZLinkHttpClient.Create("http://h").Timeout(TimeSpan.Zero));
+        Assert.Throws<ZLinkFrameworkException>(() => ZLinkHttpClient.Create("http://h").Proxy("https://p").Build());
+        Assert.Throws<ZLinkFrameworkException>(() => ZLinkHttpClient.Create("http://h").FollowRedirects(0));
+        Assert.Throws<ZLinkFrameworkException>(() => ZLinkHttpClient.Create("http://h").Retry(0));
     }
 
     [Fact]
@@ -636,7 +614,7 @@ public sealed class HttpClientContractTests
         await client.Get("/check-2").SubmitRawAsync();
 
         Assert.Equal("keep=1", cookieAfterSecure); // secure cookie withheld over http
-        Assert.Null(cookieAfterDelete);            // keep deleted by Max-Age=0
+        Assert.Null(cookieAfterDelete); // keep deleted by Max-Age=0
     }
 
     [Fact]
@@ -652,8 +630,8 @@ public sealed class HttpClientContractTests
         });
         using var client = ZLinkHttpClient.Create(server.BaseUrl).Compression().Build();
 
-        var ex = await Assert.ThrowsAsync<ZLinkFrameworkException>(
-            async () => await client.Get("/bad").SubmitRawAsync());
+        var ex =
+            await Assert.ThrowsAsync<ZLinkFrameworkException>(async () => await client.Get("/bad").SubmitRawAsync());
 
         Assert.Equal(ZLinkFrameworkErrorKind.PayloadDecodeFailed, ex.Kind);
     }
@@ -713,7 +691,7 @@ public sealed class HttpClientContractTests
         var (clientCertPath, clientKeyPath) = TestCertificates.WritePem(clientCert);
         try
         {
-            using var server = new TlsTestServer(serverCert, requireClientCertificate: true);
+            using var server = new TlsTestServer(serverCert, true);
             using var client = ZLinkHttpClient.Create(server.BaseUrl)
                 .TrustCertificateFile(serverCertPath)
                 .ClientCertificateFile(clientCertPath, clientKeyPath)
@@ -768,13 +746,27 @@ public sealed class HttpClientContractTests
     {
         using var output = new MemoryStream();
         Stream compressor = encoding == "gzip"
-            ? new GZipStream(output, CompressionMode.Compress, leaveOpen: true)
-            : new ZLibStream(output, CompressionMode.Compress, leaveOpen: true);
+            ? new GZipStream(output, CompressionMode.Compress, true)
+            : new ZLibStream(output, CompressionMode.Compress, true);
         using (compressor)
         {
             compressor.Write(input, 0, input.Length);
         }
 
         return output.ToArray();
+    }
+
+    private sealed record Player(int Id, string Name);
+
+    private sealed record CreateGameReq(string Name);
+
+    private sealed record CreateGameRes(string Id, bool Ranked);
+
+    [MessagePackObject]
+    public sealed class PackedPlayer
+    {
+        [Key(0)] public int Id { get; set; }
+
+        [Key(1)] public string Name { get; set; } = string.Empty;
     }
 }

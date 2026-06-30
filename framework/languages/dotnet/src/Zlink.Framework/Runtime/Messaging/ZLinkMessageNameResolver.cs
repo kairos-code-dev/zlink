@@ -1,8 +1,5 @@
 using System.Collections.Concurrent;
 using System.Reflection;
-using System.Text.Json;
-using Microsoft.Extensions.DependencyInjection;
-using Zlink.Framework.Runtime.Backend.Contracts;
 
 namespace Zlink.Framework.Runtime.Messaging;
 
@@ -13,7 +10,7 @@ internal static class ZLinkMessageNameResolver
     public static string ResolveFromMessage(object? message)
     {
         var messageType = message?.GetType()
-            ?? throw new InvalidOperationException("Message type is required.");
+                          ?? throw new InvalidOperationException("Message type is required.");
         return ResolveFromType(messageType);
     }
 

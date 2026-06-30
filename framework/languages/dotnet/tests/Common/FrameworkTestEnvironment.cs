@@ -1,7 +1,7 @@
+using System.Diagnostics;
 using System.Globalization;
 using System.Reflection;
 using System.Runtime.Versioning;
-using System.Diagnostics;
 
 namespace Zlink.Framework.Tests.Common;
 
@@ -13,10 +13,7 @@ internal static class FrameworkTestEnvironment
 
         while (current is not null)
         {
-            if (File.Exists(Path.Combine(current.FullName, "Zlink.Framework.sln")))
-            {
-                return current.FullName;
-            }
+            if (File.Exists(Path.Combine(current.FullName, "Zlink.Framework.sln"))) return current.FullName;
 
             current = current.Parent;
         }
@@ -30,9 +27,7 @@ internal static class FrameworkTestEnvironment
         var repoRoot = frameworkRoot.Parent?.Parent?.Parent;
 
         if (repoRoot is null)
-        {
             throw new DirectoryNotFoundException("Could not locate repository root from framework root.");
-        }
 
         return repoRoot.FullName;
     }
@@ -40,8 +35,8 @@ internal static class FrameworkTestEnvironment
     public static string GetTargetFrameworkMoniker()
     {
         var attribute = Assembly.GetExecutingAssembly().GetCustomAttribute<TargetFrameworkAttribute>()
-            ?? throw new InvalidOperationException("Target framework attribute is missing.");
-        var frameworkName = new System.Runtime.Versioning.FrameworkName(attribute.FrameworkName);
+                        ?? throw new InvalidOperationException("Target framework attribute is missing.");
+        var frameworkName = new FrameworkName(attribute.FrameworkName);
         return string.Create(
             CultureInfo.InvariantCulture,
             $"net{frameworkName.Version.Major}.{frameworkName.Version.Minor}");
@@ -90,17 +85,11 @@ internal static class FrameworkTestEnvironment
     {
         const string localHostPath = "/home/hep7/.dotnet/dotnet";
 
-        if (File.Exists(localHostPath))
-        {
-            return localHostPath;
-        }
+        if (File.Exists(localHostPath)) return localHostPath;
 
         var hostPath = Environment.GetEnvironmentVariable("DOTNET_HOST_PATH");
 
-        if (!string.IsNullOrWhiteSpace(hostPath) && File.Exists(hostPath))
-        {
-            return hostPath;
-        }
+        if (!string.IsNullOrWhiteSpace(hostPath) && File.Exists(hostPath)) return hostPath;
 
         return "dotnet";
     }
@@ -126,7 +115,7 @@ internal static class FrameworkTestEnvironment
             RedirectStandardInput = redirectStandardInput,
             RedirectStandardOutput = true,
             RedirectStandardError = true,
-            UseShellExecute = false,
+            UseShellExecute = false
         };
 
         startInfo.ArgumentList.Add(GetTestHostAssemblyPath());
@@ -138,12 +127,8 @@ internal static class FrameworkTestEnvironment
         }
 
         if (additionalArguments is not null)
-        {
             foreach (var argument in additionalArguments)
-            {
                 startInfo.ArgumentList.Add(argument);
-            }
-        }
 
         return startInfo;
     }

@@ -1,7 +1,5 @@
 // SPDX-License-Identifier: MPL-2.0
 
-using System;
-
 namespace Systems.Zlink;
 
 internal sealed class SpotNodePublisherOptions
@@ -35,7 +33,6 @@ internal sealed class SpotNodePublisherOptions
         set => _node.SetOption(SpotNodeSocketRole.Pub, SocketOptions.XPubNoDrop,
             value ? 1 : 0);
     }
-
 }
 
 internal sealed class SpotNodeSubscriberOptions
@@ -63,5 +60,4 @@ internal sealed class SpotNodeSubscriberOptions
         set => _node.SetOption(SpotNodeSocketRole.Sub, SocketOptions.Linger,
             CommonSocketOptions.EncodeDuration(value, nameof(value)));
     }
-
 }

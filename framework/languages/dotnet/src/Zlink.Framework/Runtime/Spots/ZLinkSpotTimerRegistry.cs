@@ -6,6 +6,11 @@ internal sealed class ZLinkSpotTimerRegistry : IAsyncDisposable
 {
     private readonly List<IZLinkTimer> _timers = [];
 
+    public async ValueTask DisposeAsync()
+    {
+        foreach (var timer in _timers) await timer.DisposeAsync().ConfigureAwait(false);
+    }
+
     public ValueTask<IZLinkTimer> AddAsync(
         string name,
         TimeSpan period,
@@ -14,32 +19,25 @@ internal sealed class ZLinkSpotTimerRegistry : IAsyncDisposable
         Type spotType,
         CancellationToken stopToken,
         Func<ZLinkSpotTimerDescriptor, ZLinkTimerTick, CancellationToken, ValueTask> dispatchAsync,
-        Func<ZLinkSpotTimerDescriptor, ZLinkTimerTick, Exception, bool, CancellationToken, ValueTask> reportFailureAsync,
+        Func<ZLinkSpotTimerDescriptor, ZLinkTimerTick, Exception, bool, CancellationToken, ValueTask>
+            reportFailureAsync,
         CancellationToken cancellationToken)
     {
         cancellationToken.ThrowIfCancellationRequested();
 
         if (string.IsNullOrWhiteSpace(name))
-        {
             throw new ZLinkConfigurationException("SPOT timer name must not be empty.");
-        }
 
         if (period <= TimeSpan.Zero)
-        {
             throw new ZLinkConfigurationException("SPOT timer period must be greater than zero.");
-        }
 
         var timerOptions = options ?? new ZLinkTimerOptions();
         if (!Enum.IsDefined(timerOptions.OverrunPolicy))
-        {
             throw new ZLinkConfigurationException("SPOT timer overrun policy is not supported.");
-        }
 
         if (timerOptions.OverrunPolicy == ZLinkTimerOverrunPolicy.CatchUpBounded
             && timerOptions.MaxCatchUpTicks <= 0)
-        {
             throw new ZLinkConfigurationException("SPOT timer MaxCatchUpTicks must be greater than zero.");
-        }
 
         var descriptor = ZLinkSpotDescriptorFactory.CreateTimerDescriptor(name, period, handlerType, spotType);
         var timer = new ZLinkTimer(
@@ -51,13 +49,5 @@ internal sealed class ZLinkSpotTimerRegistry : IAsyncDisposable
             (tick, exception, stopped, ct) => reportFailureAsync(descriptor, tick, exception, stopped, ct));
         _timers.Add(timer);
         return ValueTask.FromResult<IZLinkTimer>(timer);
-    }
-
-    public async ValueTask DisposeAsync()
-    {
-        foreach (var timer in _timers)
-        {
-            await timer.DisposeAsync().ConfigureAwait(false);
-        }
     }
 }

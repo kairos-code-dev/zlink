@@ -1,12 +1,11 @@
 namespace Zlink.Framework.Runtime.Backend.DotNet.Adapters;
 
-
 internal sealed class ZLinkDotNetChannelBackendAdapter : IZLinkChannelBackendAdapter
 {
     public IZLinkBackendContext CreateContext()
     {
         return new ZLinkBackendContextWrapper(
-            global::Systems.Zlink.Zlink.CreateContext());
+            Systems.Zlink.Zlink.CreateContext());
     }
 
     public IZLinkBackendDiscovery CreateDiscovery(

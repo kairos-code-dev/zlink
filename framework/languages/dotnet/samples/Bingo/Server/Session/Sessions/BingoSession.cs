@@ -1,6 +1,5 @@
-using Systems.Zlink;
+using Zlink.Framework.Contracts.Messaging;
 using Zlink.Framework.Contracts.Streams;
-using Systems.Zlink.Stream.Connector.Contracts;
 
 namespace Bingo.Server.Session.Sessions;
 
@@ -18,10 +17,7 @@ internal sealed class BingoSession(
 
     public async ValueTask OnDisconnectedAsync(CancellationToken cancellationToken)
     {
-        foreach (var actor in Context.Actors.Bound)
-        {
-            await actor.NotifyDisconnectedAsync(cancellationToken);
-        }
+        foreach (var actor in Context.Actors.Bound) await actor.NotifyDisconnectedAsync(cancellationToken);
     }
 
     public ValueTask OnErrorAsync(
@@ -35,7 +31,7 @@ internal sealed class BingoSession(
 
     public async ValueTask OnDispatchAsync(
         ZLinkSessionDispatchContext dispatch,
-        Zlink.Framework.Contracts.Messaging.ZLinkMessage payload,
+        ZLinkMessage payload,
         CancellationToken cancellationToken)
     {
         if (await handlers.TryHandleAsync(
@@ -43,9 +39,7 @@ internal sealed class BingoSession(
                 dispatch,
                 payload,
                 cancellationToken))
-        {
             return;
-        }
 
         cancellationToken.ThrowIfCancellationRequested();
         var actor = RequireSingleBoundActor($"relaying packet '{dispatch.PacketName}'");

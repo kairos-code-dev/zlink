@@ -1,12 +1,10 @@
-using Systems.Zlink;
-using Zlink.Framework.Contracts.Codecs.Json;
-using SupportChat.Server.Support.Infrastructure.ZLink.Actors;
-using SupportChat.Server.Support.Infrastructure.ZLink.Spots.ConversationSpot.Notifications;
-using SupportChat.Server.Support.Infrastructure.ZLink.Spots.ConversationSpot.Handlers;
-using SupportChat.Server.Support.Domain.SupportChat;
-using SupportChat.Server.Configuration;
-using SupportChat.Shared.Contracts;
 using Microsoft.Extensions.Logging;
+using SupportChat.Server.Configuration;
+using SupportChat.Server.Support.Domain.SupportChat;
+using SupportChat.Server.Support.Infrastructure.ZLink.Actors;
+using SupportChat.Server.Support.Infrastructure.ZLink.Spots.ConversationSpot.Handlers;
+using SupportChat.Server.Support.Infrastructure.ZLink.Spots.ConversationSpot.Notifications;
+using SupportChat.Shared.Contracts;
 using Zlink.Framework.Contracts.Messaging;
 using Zlink.Framework.Contracts.Spots;
 
@@ -46,13 +44,14 @@ internal sealed class ConversationSpot(
             new ConversationPolicy(
                 SampleTimings.IdleTimeout,
                 SampleTimings.CloseGraceTimeout,
-                MaxMessageLength: 500));
+                500));
         _ = cancellationToken;
         logger.LogInformation(
             "support conversation: created. conversation={ConversationId}, customer={CustomerActorId}",
             conversationId,
             create.CustomerActorId);
-        Console.Error.WriteLine($"support conversation: created conversation={conversationId} customer={create.CustomerActorId}");
+        Console.Error.WriteLine(
+            $"support conversation: created conversation={conversationId} customer={create.CustomerActorId}");
         return ValueTask.FromResult(ZLinkSpotCreateResponse.Accept());
     }
 
@@ -70,9 +69,7 @@ internal sealed class ConversationSpot(
         var join = request.Decode<JoinConversationReq>();
         var conversation = RequireConversation();
         if (!string.Equals(join.ConversationId, conversation.ConversationId, StringComparison.Ordinal))
-        {
             return ZLinkSpotActorJoinResult.Reject();
-        }
 
         if (string.Equals(actor.Role, SupportChatRoles.Agent, StringComparison.Ordinal))
         {
@@ -89,7 +86,8 @@ internal sealed class ConversationSpot(
             join.ConversationId,
             actor.ActorId,
             actor.Role);
-        Console.Error.WriteLine($"support conversation: actor joined conversation={join.ConversationId} actor={actor.ActorId} role={actor.Role}");
+        Console.Error.WriteLine(
+            $"support conversation: actor joined conversation={join.ConversationId} actor={actor.ActorId} role={actor.Role}");
         return ZLinkSpotActorJoinResult.Accept(new JoinConversationRes(conversation.Snapshot()));
     }
 
@@ -116,7 +114,7 @@ internal sealed class ConversationSpot(
         ScheduleIdleCheck();
         return new SendChatMessageRes(
             change.Events.Single(static item => item.Kind == ConversationEventKind.MessageAppended).Message
-                ?? throw new InvalidOperationException("Message event was not created."),
+            ?? throw new InvalidOperationException("Message event was not created."),
             change.State);
     }
 
@@ -152,9 +150,7 @@ internal sealed class ConversationSpot(
     {
         var conversation = RequireConversation();
         if (!string.Equals(conversationId, conversation.ConversationId, StringComparison.Ordinal))
-        {
             throw new InvalidOperationException($"Request targets another conversation. conversation={conversationId}");
-        }
     }
 
     private Conversation RequireConversation()
@@ -180,9 +176,7 @@ internal sealed class ConversationSpot(
                 if (change.Events.Count > 0
                     || !string.Equals(change.State.Status, ConversationStatuses.Active, StringComparison.Ordinal)
                     || change.State.IdleDeadlineUnixMs is null)
-                {
                     return;
-                }
 
                 await Task.Delay(IdleCheckPeriod);
             }

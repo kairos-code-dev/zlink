@@ -2,18 +2,14 @@ namespace Zlink.Framework.Runtime.Spots;
 
 internal sealed class ZLinkEntrySpotActorDispatch(string spotNodeName)
 {
-    private ZLinkEntrySpotActivation? _activation;
-
-    public ZLinkEntrySpotActivation? Activation => _activation;
+    public ZLinkEntrySpotActivation? Activation { get; private set; }
 
     public void Attach(ZLinkEntrySpotActivation activation)
     {
-        if (_activation is not null)
-        {
+        if (Activation is not null)
             throw new InvalidOperationException($"SPOT node '{spotNodeName}' already has an Entry Spot activation.");
-        }
 
-        _activation = activation;
+        Activation = activation;
     }
 
     public bool TryResolvePacket(
@@ -22,8 +18,8 @@ internal sealed class ZLinkEntrySpotActorDispatch(string spotNodeName)
         out ZLinkSpotActorPacketDescriptor? descriptor)
     {
         descriptor = null;
-        return _activation is not null
-            && _activation.TryResolveActorPacket(actorType, header, out descriptor);
+        return Activation is not null
+               && Activation.TryResolveActorPacket(actorType, header, out descriptor);
     }
 
     public ValueTask InvokePacketAsync(
@@ -59,29 +55,29 @@ internal sealed class ZLinkEntrySpotActorDispatch(string spotNodeName)
     public bool TryResolveJoined(Type actorType, out ZLinkSpotActorLifecycleDescriptor? descriptor)
     {
         descriptor = null;
-        return _activation is not null
-            && _activation.TryResolveActorJoined(actorType, out descriptor);
+        return Activation is not null
+               && Activation.TryResolveActorJoined(actorType, out descriptor);
     }
 
     public bool TryResolveCreated(Type actorType, out ZLinkSpotActorLifecycleDescriptor? descriptor)
     {
         descriptor = null;
-        return _activation is not null
-            && _activation.TryResolveActorCreated(actorType, out descriptor);
+        return Activation is not null
+               && Activation.TryResolveActorCreated(actorType, out descriptor);
     }
 
     public bool TryResolveLeft(Type actorType, out ZLinkSpotActorLifecycleDescriptor? descriptor)
     {
         descriptor = null;
-        return _activation is not null
-            && _activation.TryResolveActorLeft(actorType, out descriptor);
+        return Activation is not null
+               && Activation.TryResolveActorLeft(actorType, out descriptor);
     }
 
     public bool TryResolveDisconnected(Type actorType, out ZLinkSpotActorLifecycleDescriptor? descriptor)
     {
         descriptor = null;
-        return _activation is not null
-            && _activation.TryResolveActorDisconnected(actorType, out descriptor);
+        return Activation is not null
+               && Activation.TryResolveActorDisconnected(actorType, out descriptor);
     }
 
     public ValueTask InvokeLifecycleAsync(
@@ -110,7 +106,7 @@ internal sealed class ZLinkEntrySpotActorDispatch(string spotNodeName)
 
     private ZLinkEntrySpotActivation RequireActivation()
     {
-        return _activation
-            ?? throw new InvalidOperationException($"SPOT node '{spotNodeName}' does not have an Entry Spot.");
+        return Activation
+               ?? throw new InvalidOperationException($"SPOT node '{spotNodeName}' does not have an Entry Spot.");
     }
 }

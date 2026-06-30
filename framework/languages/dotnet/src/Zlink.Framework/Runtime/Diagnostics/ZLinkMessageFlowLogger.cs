@@ -35,10 +35,7 @@ internal static class ZLinkMessageFlowLogger
             actorType,
             spotRid);
 
-        if (!logger.IsEnabled(level))
-        {
-            return;
-        }
+        if (!logger.IsEnabled(level)) return;
 
         logger.Log(
             level,
@@ -70,9 +67,7 @@ internal static class ZLinkMessageFlowLogger
         string? spotRid = null)
     {
         if (string.Equals(action, "reply-error", StringComparison.Ordinal))
-        {
             ZLinkTelemetry.RecordReplyError(surface, kind, reason);
-        }
         ZLinkTelemetry.TraceFlowEvent(
             "failed",
             surface,
@@ -85,10 +80,7 @@ internal static class ZLinkMessageFlowLogger
             actorType,
             spotRid);
 
-        if (!logger.IsEnabled(LogLevel.Warning))
-        {
-            return;
-        }
+        if (!logger.IsEnabled(LogLevel.Warning)) return;
 
         logger.LogWarning(
             PayloadDecodeFailedEvent,
@@ -131,10 +123,7 @@ internal static class ZLinkMessageFlowLogger
             actorType,
             spotRid);
 
-        if (!logger.IsEnabled(level))
-        {
-            return;
-        }
+        if (!logger.IsEnabled(level)) return;
 
         logger.Log(
             level,
@@ -166,9 +155,7 @@ internal static class ZLinkMessageFlowLogger
         string? spotRid = null)
     {
         if (string.Equals(reason, "no-join-handler", StringComparison.Ordinal))
-        {
             ZLinkTelemetry.RecordHandlerMissing(surface, kind, "rejected", reason);
-        }
         ZLinkTelemetry.TraceFlowEvent(
             "rejected",
             surface,
@@ -181,10 +168,7 @@ internal static class ZLinkMessageFlowLogger
             actorType,
             spotRid);
 
-        if (!logger.IsEnabled(level))
-        {
-            return;
-        }
+        if (!logger.IsEnabled(level)) return;
 
         logger.Log(
             level,

@@ -1,15 +1,11 @@
-using Microsoft.AspNetCore.Builder;
-using Microsoft.Extensions.DependencyInjection;
-using Microsoft.Extensions.Logging;
-using RegistryMessaging.Shared;
-using Systems.Zlink;
-using Zlink.Framework;
-using Zlink.Framework.AspNetCore;
-using Zlink.Framework.Contracts.Dispatch;
 using RegistryMessaging.Server.Provider.Configuration;
 using RegistryMessaging.Server.Provider.Endpoints;
 using RegistryMessaging.Server.Provider.Handlers;
 using RegistryMessaging.Server.Provider.Infrastructure;
+using RegistryMessaging.Shared;
+using Systems.Zlink;
+using Zlink.Framework.AspNetCore;
+using Zlink.Framework.Contracts.Dispatch;
 
 namespace RegistryMessaging.Server.Provider;
 
@@ -17,7 +13,7 @@ internal static class ProviderHostFactory
 {
     public static WebApplication Create(string[] args)
     {
-        var options = ServerOptions.Parse(args, defaultRole: "provider");
+        var options = ServerOptions.Parse(args, "provider");
         Directory.CreateDirectory(options.LogDir);
 
         var builder = WebApplication.CreateBuilder(args);
@@ -34,7 +30,8 @@ internal static class ProviderHostFactory
         builder.Services.AddZLinkFramework(framework =>
         {
             framework.UseDiscovery().AddRegistryEndpoint(options.RegistryRouterEndpoint
-                ?? throw new InvalidOperationException("--registry-router-endpoint is required."));
+                                                         ?? throw new InvalidOperationException(
+                                                             "--registry-router-endpoint is required."));
             framework.ConfigureDispatch()
                 .SetMessageFlowObserver<EvidenceDispatchErrorObserver>()
                 .MessageFlow(ZLinkMessageFlowLogMode.KeyTransitions)
@@ -54,20 +51,15 @@ internal static class ProviderHostFactory
             }
 
             if (!string.IsNullOrWhiteSpace(options.ManualClientEndpoint))
-            {
                 framework.AddClientServerChannel("profile.manual")
                     .EnableClient(options.ManualClientEndpoint);
-            }
 
             if (!string.IsNullOrWhiteSpace(options.RouteEndpoint))
             {
                 var route = framework.AddRouteMesh("profile.route")
                     .EnableServer(options.RouteEndpoint)
                     .SetRoutingId(RoutingId.From(options.Rid));
-                foreach (var peer in options.RoutePeers)
-                {
-                    route.EnableClient(peer);
-                }
+                foreach (var peer in options.RoutePeers) route.EnableClient(peer);
 
                 route.AddRequestHandler<RoutePingHandler, ScenarioRoutePing, ScenarioRoutePong>("ScenarioRoutePing");
             }

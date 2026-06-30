@@ -1,6 +1,6 @@
+using SpotService.Client.Support;
 using SpotService.Shared;
 using Zlink.HttpClient;
-using SpotService.Client.Support;
 
 namespace SpotService.Client.Scenarios;
 
@@ -23,7 +23,7 @@ internal static class SmF2Scenario
         var expectedEvidence = new[]
         {
             $"spot-state-request|rid=play-a|spot={context.SpotRid}|value={context.CurrentValue}",
-            $"spot-state-command|rid=play-a|spot={context.SpotRid}|marker=sm-f2-command",
+            $"spot-state-command|rid=play-a|spot={context.SpotRid}|marker=sm-f2-command"
         };
         var evidence = (await api.Post("/evidence/wait")
             .Body(new EvidenceWaitRequest(expectedEvidence))

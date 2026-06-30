@@ -38,10 +38,7 @@ internal sealed record TestHostOptions(
 
             string ReadValue()
             {
-                if (index + 1 >= args.Length)
-                {
-                    throw new InvalidOperationException($"Missing value for '{argument}'.");
-                }
+                if (index + 1 >= args.Length) throw new InvalidOperationException($"Missing value for '{argument}'.");
 
                 index++;
                 return args[index];

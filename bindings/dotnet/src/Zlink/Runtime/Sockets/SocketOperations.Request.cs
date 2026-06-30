@@ -1,35 +1,46 @@
 // SPDX-License-Identifier: MPL-2.0
 
-using System;
-using System.Collections.Generic;
-using System.Runtime.CompilerServices;
-using System.Threading;
-using System.Threading.Tasks;
-
 namespace Systems.Zlink;
+
 internal sealed class DealerRequestOperation : RequestOperation,
     RequestSubmitOperation, RequestCallbackSubmitOperation
 {
     private readonly DealerSocket _socket;
-    private OperationMessageBuffer _parts;
-    private TimeSpan _timeout;
-    private SendFlags _flags;
     private bool _callbackStage;
+    private SendFlags _flags;
+    private OperationMessageBuffer _parts;
     private OperationSubmissionGuard _submission;
+    private TimeSpan _timeout;
 
     internal DealerRequestOperation(DealerSocket socket)
     {
         _socket = socket;
     }
 
-    public RequestSubmitOperation Message(Message message)
+    RequestCallbackSubmitOperation RequestCallbackSubmitOperation.Message(
+        Message message)
     {
         AddMessage(message);
         return this;
     }
 
-    RequestCallbackSubmitOperation RequestCallbackSubmitOperation.Message(
-        Message message)
+    RequestCallbackSubmitOperation RequestCallbackSubmitOperation.Timeout(
+        TimeSpan timeout)
+    {
+        EnsureNotSubmitted();
+        _timeout = timeout;
+        return this;
+    }
+
+    RequestCallbackSubmitOperation RequestCallbackSubmitOperation.Flags(
+        SendFlags flags)
+    {
+        EnsureNotSubmitted();
+        _flags = flags;
+        return this;
+    }
+
+    public RequestSubmitOperation Message(Message message)
     {
         AddMessage(message);
         return this;
@@ -42,26 +53,10 @@ internal sealed class DealerRequestOperation : RequestOperation,
         return this;
     }
 
-    RequestCallbackSubmitOperation RequestCallbackSubmitOperation.Timeout(
-        TimeSpan timeout)
-    {
-        EnsureNotSubmitted();
-        _timeout = timeout;
-        return this;
-    }
-
     public RequestCallbackSubmitOperation Flags(SendFlags flags)
     {
         EnsureNotSubmitted();
         _callbackStage = true;
-        _flags = flags;
-        return this;
-    }
-
-    RequestCallbackSubmitOperation RequestCallbackSubmitOperation.Flags(
-        SendFlags flags)
-    {
-        EnsureNotSubmitted();
         _flags = flags;
         return this;
     }
@@ -117,16 +112,16 @@ internal enum RouterOperationKind
 internal sealed class RouterRequestOperation : RequestOperation,
     RequestSubmitOperation, RequestCallbackSubmitOperation
 {
-    private readonly RouterSocket _socket;
-    private readonly RouterOperationKind _kind;
-    private readonly RoutingId _peerRid;
     private readonly RoutingId _destNodeRid;
     private readonly RoutingId _destSpotRid;
-    private OperationMessageBuffer _parts;
-    private TimeSpan _timeout;
-    private SendFlags _flags;
+    private readonly RouterOperationKind _kind;
+    private readonly RoutingId _peerRid;
+    private readonly RouterSocket _socket;
     private bool _callbackStage;
+    private SendFlags _flags;
+    private OperationMessageBuffer _parts;
     private OperationSubmissionGuard _submission;
+    private TimeSpan _timeout;
 
     internal RouterRequestOperation(RouterSocket socket,
         RouterOperationKind kind, RoutingId peerRid, RoutingId destNodeRid,
@@ -139,14 +134,30 @@ internal sealed class RouterRequestOperation : RequestOperation,
         _destSpotRid = destSpotRid;
     }
 
-    public RequestSubmitOperation Message(Message message)
+    RequestCallbackSubmitOperation RequestCallbackSubmitOperation.Message(
+        Message message)
     {
         AddMessage(message);
         return this;
     }
 
-    RequestCallbackSubmitOperation RequestCallbackSubmitOperation.Message(
-        Message message)
+    RequestCallbackSubmitOperation RequestCallbackSubmitOperation.Timeout(
+        TimeSpan timeout)
+    {
+        EnsureNotSubmitted();
+        _timeout = timeout;
+        return this;
+    }
+
+    RequestCallbackSubmitOperation RequestCallbackSubmitOperation.Flags(
+        SendFlags flags)
+    {
+        EnsureNotSubmitted();
+        _flags = flags;
+        return this;
+    }
+
+    public RequestSubmitOperation Message(Message message)
     {
         AddMessage(message);
         return this;
@@ -159,26 +170,10 @@ internal sealed class RouterRequestOperation : RequestOperation,
         return this;
     }
 
-    RequestCallbackSubmitOperation RequestCallbackSubmitOperation.Timeout(
-        TimeSpan timeout)
-    {
-        EnsureNotSubmitted();
-        _timeout = timeout;
-        return this;
-    }
-
     public RequestCallbackSubmitOperation Flags(SendFlags flags)
     {
         EnsureNotSubmitted();
         _callbackStage = true;
-        _flags = flags;
-        return this;
-    }
-
-    RequestCallbackSubmitOperation RequestCallbackSubmitOperation.Flags(
-        SendFlags flags)
-    {
-        EnsureNotSubmitted();
         _flags = flags;
         return this;
     }

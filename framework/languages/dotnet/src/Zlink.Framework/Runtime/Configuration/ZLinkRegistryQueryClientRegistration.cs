@@ -22,9 +22,7 @@ internal static class ZLinkRegistryQueryClientRegistrationValidator
         ArgumentNullException.ThrowIfNull(registration);
 
         if (string.IsNullOrWhiteSpace(registration.Endpoint))
-        {
             throw new ZLinkConfigurationException(
                 "Registry query client requires a non-empty endpoint.");
-        }
     }
 }

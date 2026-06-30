@@ -12,10 +12,8 @@ internal static class ZLinkHandlerMethodShape
     {
         var parameters = method.GetParameters();
         if (parameters.Length != expectedCount)
-        {
             throw new InvalidOperationException(
                 $"{description} '{handlerType}' method '{method.Name}' must declare exactly {expectedCount} parameters.");
-        }
 
         return parameters;
     }
@@ -28,10 +26,8 @@ internal static class ZLinkHandlerMethodShape
         string position = "last")
     {
         if (parameter.ParameterType != typeof(CancellationToken))
-        {
             throw new InvalidOperationException(
                 $"{description} '{handlerType}' method '{method.Name}' must use CancellationToken as the {position} parameter.");
-        }
     }
 
     public static Type RequireReplyType(Type returnType, string description)
@@ -39,16 +35,12 @@ internal static class ZLinkHandlerMethodShape
         if (returnType.IsGenericType
             && (returnType.GetGenericTypeDefinition() == typeof(ValueTask<>)
                 || returnType.GetGenericTypeDefinition() == typeof(Task<>)))
-        {
             return returnType.GetGenericArguments()[0];
-        }
 
         if (returnType == typeof(ValueTask)
             || returnType == typeof(Task)
             || returnType == typeof(void))
-        {
             throw new InvalidOperationException($"{description} must return a reply value.");
-        }
 
         return returnType;
     }
@@ -59,9 +51,7 @@ internal static class ZLinkHandlerMethodShape
         if (returnType == typeof(void)
             || returnType == typeof(ValueTask)
             || returnType == typeof(Task))
-        {
             return;
-        }
 
         throw new InvalidOperationException(
             $"{description} '{handlerType}' method '{method.Name}' must not return a reply value.");

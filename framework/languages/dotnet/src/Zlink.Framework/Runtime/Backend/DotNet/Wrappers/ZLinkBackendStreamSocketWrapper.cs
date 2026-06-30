@@ -1,6 +1,5 @@
 namespace Zlink.Framework.Runtime.Backend.DotNet.Wrappers;
 
-
 internal sealed class ZLinkBackendStreamSocketWrapper(IStreamSocket nativeSocket) : IZLinkBackendStreamSocket
 {
     public object NativeInstance => nativeSocket;
@@ -22,10 +21,7 @@ internal sealed class ZLinkBackendStreamSocketWrapper(IStreamSocket nativeSocket
 
     public void OnFramedPacket(Action<string, Message, Message> handler)
     {
-        nativeSocket.OnPacket((routingId, header, body) =>
-        {
-            handler("hex:" + routingId.ToHex(), header, body);
-        });
+        nativeSocket.OnPacket((routingId, header, body) => { handler("hex:" + routingId.ToHex(), header, body); });
     }
 
     public bool Send(
@@ -91,5 +87,8 @@ internal sealed class ZLinkBackendStreamSocketWrapper(IStreamSocket nativeSocket
             .Submit();
     }
 
-    public ValueTask DisposeAsync() => nativeSocket.DisposeAsync();
+    public ValueTask DisposeAsync()
+    {
+        return nativeSocket.DisposeAsync();
+    }
 }

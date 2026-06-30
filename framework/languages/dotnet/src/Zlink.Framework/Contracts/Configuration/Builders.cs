@@ -159,8 +159,6 @@ public interface IZLinkSpotNodeBuilder
 
 public interface IZLinkSpotMeshBuilder : IZLinkSpotNodeBuilder
 {
-    IZLinkDiscoveryBuilder UseDiscovery();
-
     IZLinkSpotMeshBuilder UseRegistrySpotResolver();
 }
 

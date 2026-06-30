@@ -1,6 +1,5 @@
 using RuntimeMonitoring.Server.Registry.Support;
 using Zlink.Framework.Contracts.Eventing;
-using RuntimeMonitoring.Server.Registry;
 
 namespace RuntimeMonitoring.Server.Registry.Handlers;
 

@@ -2,14 +2,39 @@ namespace Zlink.Framework.Runtime.Spots;
 
 internal sealed partial class ZLinkEntrySpotActivation
 {
+    public ValueTask<IZLinkTimer> AddTimer<THandler>(
+        string name,
+        TimeSpan period,
+        ZLinkTimerOptions? options = null,
+        CancellationToken cancellationToken = default)
+        where THandler : class
+    {
+        return _timers.AddAsync(
+            name,
+            period,
+            options,
+            typeof(THandler),
+            EntrySpot.GetType(),
+            _stopSource.Token,
+            (descriptor, tick, ct) => ExecuteQueuedAsync(
+                static (activation, state, innerCt) => activation._invoker.InvokeTimerAsync(
+                    state.Descriptor,
+                    state.Tick,
+                    innerCt),
+                (Descriptor: descriptor, Tick: tick),
+                ct),
+            PublishTimerFailureAsync,
+            cancellationToken);
+    }
+
     /// <summary>
-    /// Runs the operation on the Entry Spot serial execution line. Every
-    /// application callback of this Entry Spot (lifecycle, actor packets,
-    /// route packets, subscriptions, timers, worker completions) goes through
-    /// this single line, one at a time, and each handler is awaited to
-    /// completion before the next callback starts. Calls that already run on
-    /// the line execute inline so gated callbacks can nest without
-    /// deadlocking.
+    ///     Runs the operation on the Entry Spot serial execution line. Every
+    ///     application callback of this Entry Spot (lifecycle, actor packets,
+    ///     route packets, subscriptions, timers, worker completions) goes through
+    ///     this single line, one at a time, and each handler is awaited to
+    ///     completion before the next callback starts. Calls that already run on
+    ///     the line execute inline so gated callbacks can nest without
+    ///     deadlocking.
     /// </summary>
     private async ValueTask ExecuteAsync(
         Func<ZLinkEntrySpotActivation, CancellationToken, ValueTask> operation,
@@ -75,10 +100,7 @@ internal sealed partial class ZLinkEntrySpotActivation
         Func<ZLinkEntrySpotActivation, CancellationToken, ValueTask> operation,
         CancellationToken cancellationToken)
     {
-        if (IsDisposed)
-        {
-            return;
-        }
+        if (IsDisposed) return;
 
         var previous = Current.Value;
         Current.Value = this;
@@ -93,31 +115,6 @@ internal sealed partial class ZLinkEntrySpotActivation
         }
     }
 
-    public ValueTask<IZLinkTimer> AddTimer<THandler>(
-        string name,
-        TimeSpan period,
-        ZLinkTimerOptions? options = null,
-        CancellationToken cancellationToken = default)
-        where THandler : class
-    {
-        return _timers.AddAsync(
-            name,
-            period,
-            options,
-            typeof(THandler),
-            EntrySpot.GetType(),
-            _stopSource.Token,
-            (descriptor, tick, ct) => ExecuteQueuedAsync(
-                static (activation, state, innerCt) => activation._invoker.InvokeTimerAsync(
-                    state.Descriptor,
-                    state.Tick,
-                    innerCt),
-                (Descriptor: descriptor, Tick: tick),
-                ct),
-            PublishTimerFailureAsync,
-            cancellationToken);
-    }
-
     private ValueTask PublishTimerFailureAsync(
         ZLinkSpotTimerDescriptor descriptor,
         ZLinkTimerTick tick,
@@ -129,7 +126,7 @@ internal sealed partial class ZLinkEntrySpotActivation
             ZLinkSpotTimerFailureEventFactory.Create(
                 SpotNodeName,
                 SpotRid,
-                isEntrySpot: true,
+                true,
                 descriptor,
                 tick,
                 exception,

@@ -1,6 +1,5 @@
 namespace Zlink.Framework.Runtime.Backend.DotNet.Wrappers;
 
-
 internal sealed class ZLinkBackendRouterSocketWrapper(IRouterSocket nativeSocket) : IZLinkBackendRouterSocket
 {
     private readonly object _gate = new();
@@ -75,6 +74,7 @@ internal sealed class ZLinkBackendRouterSocketWrapper(IRouterSocket nativeSocket
             if (nativeSocket.Recv(result, flags))
                 return result;
         }
+
         result.Dispose();
         return null;
     }
@@ -117,10 +117,7 @@ internal sealed class ZLinkBackendRouterSocketWrapper(IRouterSocket nativeSocket
         var operation = nativeSocket.Request(routingId)
             .Message(message)
             .Flags(flags);
-        if (timeout is { } value)
-        {
-            operation = operation.Timeout(value);
-        }
+        if (timeout is { } value) operation = operation.Timeout(value);
 
         lock (_gate)
         {
@@ -137,10 +134,7 @@ internal sealed class ZLinkBackendRouterSocketWrapper(IRouterSocket nativeSocket
     {
         var operation = nativeSocket.Request(routingId).Messages(parts);
 
-        if (timeout is { } value)
-        {
-            operation = operation.Timeout(value);
-        }
+        if (timeout is { } value) operation = operation.Timeout(value);
 
         lock (_gate)
         {
@@ -175,10 +169,7 @@ internal sealed class ZLinkBackendRouterSocketWrapper(IRouterSocket nativeSocket
             .Messages(parts)
             .Flags(flags);
 
-        if (timeout is { } value)
-        {
-            operation = operation.Timeout(value);
-        }
+        if (timeout is { } value) operation = operation.Timeout(value);
 
         lock (_gate)
         {

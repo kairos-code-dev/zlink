@@ -1,5 +1,3 @@
-using Zlink.Framework.Runtime.Backend.Contracts;
-
 namespace Zlink.Framework.Runtime.Host;
 
 internal sealed class ZLinkFrameworkRuntimeState : IAsyncDisposable
@@ -51,45 +49,21 @@ internal sealed class ZLinkFrameworkRuntimeState : IAsyncDisposable
     {
         StopTokenSource.Cancel();
 
-        foreach (var node in SpotNodes.Values)
-        {
-            await DisposeSafelyAsync(node);
-        }
+        foreach (var node in SpotNodes.Values) await DisposeSafelyAsync(node);
 
-        foreach (var routed in RouteChannels.Values)
-        {
-            await DisposeSafelyAsync(routed);
-        }
+        foreach (var routed in RouteChannels.Values) await DisposeSafelyAsync(routed);
 
-        foreach (var discovery in SpotDiscoveries.Values)
-        {
-            await DisposeSafelyAsync(discovery);
-        }
+        foreach (var discovery in SpotDiscoveries.Values) await DisposeSafelyAsync(discovery);
 
-        foreach (var stream in StreamNodes.Values)
-        {
-            await DisposeSafelyAsync(stream);
-        }
+        foreach (var stream in StreamNodes.Values) await DisposeSafelyAsync(stream);
 
-        foreach (var bundle in ClientBundles.Values)
-        {
-            await DisposeSafelyAsync(bundle);
-        }
+        foreach (var bundle in ClientBundles.Values) await DisposeSafelyAsync(bundle);
 
-        foreach (var bundle in PublisherBundles.Values)
-        {
-            await DisposeSafelyAsync(bundle);
-        }
+        foreach (var bundle in PublisherBundles.Values) await DisposeSafelyAsync(bundle);
 
-        foreach (var bundle in SubscriberBundles.Values)
-        {
-            await DisposeSafelyAsync(bundle);
-        }
+        foreach (var bundle in SubscriberBundles.Values) await DisposeSafelyAsync(bundle);
 
-        foreach (var bundle in ServerBundles.Values)
-        {
-            await DisposeSafelyAsync(bundle);
-        }
+        foreach (var bundle in ServerBundles.Values) await DisposeSafelyAsync(bundle);
 
         await WaitForListenerTasksAsync();
 
@@ -99,10 +73,7 @@ internal sealed class ZLinkFrameworkRuntimeState : IAsyncDisposable
 
     private async ValueTask WaitForListenerTasksAsync()
     {
-        if (ListenerTasks.Count == 0)
-        {
-            return;
-        }
+        if (ListenerTasks.Count == 0) return;
 
         try
         {

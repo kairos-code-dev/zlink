@@ -1,8 +1,7 @@
+using SpotService.Client.Support;
 using SpotService.Shared;
-using Systems.Zlink.Stream.Connector;
 using Systems.Zlink.Stream.Connector.Contracts;
 using Zlink.HttpClient;
-using SpotService.Client.Support;
 
 namespace SpotService.Client.Scenarios;
 
@@ -18,13 +17,13 @@ internal static class SmG1Scenario
         {
             Endpoint = new Uri(sessionAStreamEndpoint),
             RequestTimeout = TimeSpan.FromSeconds(30),
-            Heartbeat = new ZlinkStreamHeartbeatOptions { Enabled = false },
+            Heartbeat = new ZlinkStreamHeartbeatOptions { Enabled = false }
         });
         await using var playB = ZlinkStreamConnectorFactory.Create(new ZlinkStreamConnectorOptions
         {
             Endpoint = new Uri(sessionBStreamEndpoint),
             RequestTimeout = TimeSpan.FromSeconds(30),
-            Heartbeat = new ZlinkStreamHeartbeatOptions { Enabled = false },
+            Heartbeat = new ZlinkStreamHeartbeatOptions { Enabled = false }
         });
         await playA.Connect.Async();
         await playB.Connect.Async();
@@ -79,7 +78,7 @@ internal static class SmG1Scenario
         {
             Endpoint = new Uri(sessionBStreamEndpoint),
             RequestTimeout = TimeSpan.FromSeconds(30),
-            Heartbeat = new ZlinkStreamHeartbeatOptions { Enabled = false },
+            Heartbeat = new ZlinkStreamHeartbeatOptions { Enabled = false }
         });
         await recovered.Connect.Async();
         await recovered.Request(new AuthReq("actor-sm-g1-crash", "recovered-on-play-b", "play-b"))

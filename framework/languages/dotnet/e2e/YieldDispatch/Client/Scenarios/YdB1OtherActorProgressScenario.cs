@@ -34,6 +34,7 @@ internal static class YdB1OtherActorProgressScenario
             "actor-fast-started",
             "actor-fast-completed",
             "actor-yield-resumed",
-            "actor-yield-completed"]);
+            "actor-yield-completed"
+        ]);
     }
 }

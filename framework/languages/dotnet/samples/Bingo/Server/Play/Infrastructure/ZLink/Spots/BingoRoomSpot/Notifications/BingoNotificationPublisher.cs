@@ -1,5 +1,4 @@
 using Bingo.Server.Play.Domain.Bingo;
-using Bingo.Server.Configuration;
 using Bingo.Shared.Contracts;
 
 namespace Bingo.Server.Play.Infrastructure.ZLink.Spots.BingoRoomSpot.Notifications;
@@ -10,10 +9,7 @@ internal sealed class BingoNotificationPublisher
         IReadOnlyList<BingoRoomEvent> events,
         CancellationToken cancellationToken)
     {
-        foreach (var roomEvent in events)
-        {
-            await PublishAsync(roomEvent, cancellationToken);
-        }
+        foreach (var roomEvent in events) await PublishAsync(roomEvent, cancellationToken);
     }
 
     private ValueTask PublishAsync(
@@ -27,11 +23,13 @@ internal sealed class BingoNotificationPublisher
                     new PlayerJoinedNotify
                     {
                         RoomId = roomEvent.State.RoomId,
-                        ActorId = roomEvent.JoinedActorId ?? throw new InvalidOperationException("Joined actor is required."),
-                        DisplayName = roomEvent.JoinedDisplayName ?? throw new InvalidOperationException("Joined display name is required."),
+                        ActorId = roomEvent.JoinedActorId ??
+                                  throw new InvalidOperationException("Joined actor is required."),
+                        DisplayName = roomEvent.JoinedDisplayName ??
+                                      throw new InvalidOperationException("Joined display name is required."),
                         Seat = roomEvent.Seat,
                         IsHost = roomEvent.IsHost,
-                        State = roomEvent.State,
+                        State = roomEvent.State
                     })
                 .Async(cancellationToken),
             BingoRoomEventKind.GameStarted => roomEvent.Recipient.Context.BoundSession
@@ -44,7 +42,7 @@ internal sealed class BingoNotificationPublisher
                         RoomId = roomEvent.State.RoomId,
                         DrawSeq = roomEvent.State.DrawSeq,
                         Number = roomEvent.DrawnNumber,
-                        State = roomEvent.State,
+                        State = roomEvent.State
                     })
                 .Async(cancellationToken),
             BingoRoomEventKind.GameEnded => roomEvent.Recipient.Context.BoundSession

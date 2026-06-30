@@ -1,9 +1,6 @@
 // SPDX-License-Identifier: MPL-2.0
 
-using System;
 using System.Collections;
-using System.Collections.Generic;
-using System.Threading;
 using Systems.Zlink.Runtime.Native;
 
 namespace Systems.Zlink;
@@ -12,14 +9,14 @@ internal sealed class MultipartMessageCollection : IReadOnlyList<Message>, IDisp
 {
     private readonly object _gate = new();
     private readonly Message?[] _messages;
-    private ZlinkMsg[]? _nativeParts;
-    private int _nativePartCount;
     private int _closed;
+    private int _nativePartCount;
+    private ZlinkMsg[]? _nativeParts;
 
     private MultipartMessageCollection(Message[] messages)
     {
         _messages = new Message?[messages.Length];
-        for (int i = 0; i < messages.Length; i++)
+        for (var i = 0; i < messages.Length; i++)
             _messages[i] = messages[i];
     }
 
@@ -33,6 +30,57 @@ internal sealed class MultipartMessageCollection : IReadOnlyList<Message>, IDisp
         _messages = new Message?[nativePartCount];
         _nativeParts = nativeParts;
         _nativePartCount = nativePartCount;
+    }
+
+    internal bool IsSinglePart => Count == 1;
+
+    private bool IsDisposed => Volatile.Read(ref _closed) != 0;
+
+    public void Dispose()
+    {
+        if (Interlocked.Exchange(ref _closed, 1) != 0)
+            return;
+
+        lock (_gate)
+        {
+            for (var i = 0; i < _messages.Length; i++)
+                _messages[i]?.Dispose();
+
+            if (_nativeParts == null)
+                return;
+
+            for (var i = 0; i < _nativePartCount; i++)
+                NativeMethods.zlink_msg_close(ref _nativeParts[i]);
+            _nativeParts = null;
+            _nativePartCount = 0;
+        }
+    }
+
+    public int Count => _messages.Length;
+
+    public Message this[int index]
+    {
+        get
+        {
+            if (IsDisposed)
+                throw new ObjectDisposedException(nameof(MultipartMessageCollection));
+            if ((uint)index >= (uint)_messages.Length)
+                throw new ArgumentOutOfRangeException(nameof(index));
+            return GetOrMaterialize(index);
+        }
+    }
+
+    public IEnumerator<Message> GetEnumerator()
+    {
+        if (IsDisposed)
+            throw new ObjectDisposedException(nameof(MultipartMessageCollection));
+        for (var i = 0; i < _messages.Length; i++)
+            yield return GetOrMaterialize(i);
+    }
+
+    IEnumerator IEnumerable.GetEnumerator()
+    {
+        return GetEnumerator();
     }
 
     internal static MultipartMessageCollection FromMessages(Message[] messages)
@@ -49,7 +97,7 @@ internal sealed class MultipartMessageCollection : IReadOnlyList<Message>, IDisp
 
     internal static MultipartMessageCollection FromNativeSingle(ref ZlinkMsg nativePart)
     {
-        Message message = Message.AdoptNative(ref nativePart);
+        var message = Message.AdoptNative(ref nativePart);
         try
         {
             return FromSingle(message);
@@ -76,29 +124,11 @@ internal sealed class MultipartMessageCollection : IReadOnlyList<Message>, IDisp
         return new MultipartMessageCollection(nativeParts, nativePartCount);
     }
 
-    public int Count => _messages.Length;
-
-    public Message this[int index]
-    {
-        get
-        {
-            if (IsDisposed)
-                throw new ObjectDisposedException(nameof(MultipartMessageCollection));
-            if ((uint)index >= (uint)_messages.Length)
-                throw new ArgumentOutOfRangeException(nameof(index));
-            return GetOrMaterialize(index);
-        }
-    }
-
-    internal bool IsSinglePart => Count == 1;
-
     internal Message First()
     {
         if (Count == 0)
-        {
             throw new ZlinkRecvException(RecvResult.NoData,
                 (int)ErrorCode.EAgain);
-        }
 
         return this[0];
     }
@@ -106,10 +136,8 @@ internal sealed class MultipartMessageCollection : IReadOnlyList<Message>, IDisp
     internal Message Single()
     {
         if (Count != 1)
-        {
             throw new ZlinkRecvException(RecvResult.NotSupported,
                 (int)ErrorCode.ENotSup);
-        }
 
         return this[0];
     }
@@ -121,8 +149,8 @@ internal sealed class MultipartMessageCollection : IReadOnlyList<Message>, IDisp
 
         lock (_gate)
         {
-            Message[] taken = new Message[_messages.Length];
-            for (int i = 0; i < _messages.Length; i++)
+            var taken = new Message[_messages.Length];
+            for (var i = 0; i < _messages.Length; i++)
             {
                 taken[i] = GetOrMaterialize(i);
                 _messages[i] = null;
@@ -134,44 +162,9 @@ internal sealed class MultipartMessageCollection : IReadOnlyList<Message>, IDisp
         }
     }
 
-    public void Dispose()
-    {
-        if (Interlocked.Exchange(ref _closed, 1) != 0)
-            return;
-
-        lock (_gate)
-        {
-            for (int i = 0; i < _messages.Length; i++)
-                _messages[i]?.Dispose();
-
-            if (_nativeParts == null)
-                return;
-
-            for (int i = 0; i < _nativePartCount; i++)
-                NativeMethods.zlink_msg_close(ref _nativeParts[i]);
-            _nativeParts = null;
-            _nativePartCount = 0;
-        }
-    }
-
-    public IEnumerator<Message> GetEnumerator()
-    {
-        if (IsDisposed)
-            throw new ObjectDisposedException(nameof(MultipartMessageCollection));
-        for (int i = 0; i < _messages.Length; i++)
-            yield return GetOrMaterialize(i);
-    }
-
-    IEnumerator IEnumerable.GetEnumerator()
-    {
-        return GetEnumerator();
-    }
-
-    private bool IsDisposed => Volatile.Read(ref _closed) != 0;
-
     private Message GetOrMaterialize(int index)
     {
-        Message? existing = Volatile.Read(ref _messages[index]);
+        var existing = Volatile.Read(ref _messages[index]);
         if (existing != null)
             return existing;
 
@@ -184,24 +177,23 @@ internal sealed class MultipartMessageCollection : IReadOnlyList<Message>, IDisp
             if (_nativeParts == null)
                 throw new ObjectDisposedException(nameof(MultipartMessageCollection));
 
-            Message created = Message.MoveFromNative(ref _nativeParts[index]);
+            var created = Message.MoveFromNative(ref _nativeParts[index]);
             _messages[index] = created;
             if (AllMaterialized())
             {
                 _nativeParts = null;
                 _nativePartCount = 0;
             }
+
             return created;
         }
     }
 
     private bool AllMaterialized()
     {
-        for (int i = 0; i < _messages.Length; i++)
-        {
+        for (var i = 0; i < _messages.Length; i++)
             if (_messages[i] == null)
                 return false;
-        }
 
         return true;
     }

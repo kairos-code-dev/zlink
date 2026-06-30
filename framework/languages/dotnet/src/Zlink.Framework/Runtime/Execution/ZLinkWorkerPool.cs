@@ -1,24 +1,23 @@
 namespace Zlink.Framework.Runtime.Execution;
 
 /// <summary>
-/// Single elastic bounded worker pool. Threads are spawned on demand up to
-/// <see cref="MaxThreads"/>, exit after <see cref="_idleTimeout"/> of
-/// inactivity, and queued work is bounded by <see cref="_maxQueueLength"/>.
-/// A full queue fails the submit immediately; the pool never blocks the
-/// submitting dispatcher and never runs work on the caller thread.
+///     Single elastic bounded worker pool. Threads are spawned on demand up to
+///     <see cref="MaxThreads" />, exit after <see cref="_idleTimeout" /> of
+///     inactivity, and queued work is bounded by <see cref="_maxQueueLength" />.
+///     A full queue fails the submit immediately; the pool never blocks the
+///     submitting dispatcher and never runs work on the caller thread.
 /// </summary>
 internal sealed class ZLinkWorkerPool : IDisposable
 {
-    private readonly object _sync = new();
-    private readonly Queue<Action<CancellationToken>> _queue = new();
-    private readonly CancellationTokenSource _shutdownSource = new();
-    private readonly int _minThreads;
-    private readonly int _maxThreads;
     private readonly TimeSpan _idleTimeout;
     private readonly int _maxQueueLength;
-    private int _threadCount;
-    private int _idleThreads;
+    private readonly int _minThreads;
+    private readonly Queue<Action<CancellationToken>> _queue = new();
+    private readonly CancellationTokenSource _shutdownSource = new();
+    private readonly object _sync = new();
     private bool _disposed;
+    private int _idleThreads;
+    private int _threadCount;
 
     public ZLinkWorkerPool(
         int minThreads,
@@ -26,35 +25,23 @@ internal sealed class ZLinkWorkerPool : IDisposable
         TimeSpan idleTimeout,
         int maxQueueLength)
     {
-        if (minThreads < 0)
-        {
-            throw new ArgumentOutOfRangeException(nameof(minThreads));
-        }
+        if (minThreads < 0) throw new ArgumentOutOfRangeException(nameof(minThreads));
 
-        if (maxThreads < Math.Max(1, minThreads))
-        {
-            throw new ArgumentOutOfRangeException(nameof(maxThreads));
-        }
+        if (maxThreads < Math.Max(1, minThreads)) throw new ArgumentOutOfRangeException(nameof(maxThreads));
 
-        if (idleTimeout <= TimeSpan.Zero)
-        {
-            throw new ArgumentOutOfRangeException(nameof(idleTimeout));
-        }
+        if (idleTimeout <= TimeSpan.Zero) throw new ArgumentOutOfRangeException(nameof(idleTimeout));
 
-        if (maxQueueLength < 1)
-        {
-            throw new ArgumentOutOfRangeException(nameof(maxQueueLength));
-        }
+        if (maxQueueLength < 1) throw new ArgumentOutOfRangeException(nameof(maxQueueLength));
 
         _minThreads = minThreads;
-        _maxThreads = maxThreads;
+        MaxThreads = maxThreads;
         _idleTimeout = idleTimeout;
         _maxQueueLength = maxQueueLength;
     }
 
     public CancellationToken ShutdownToken => _shutdownSource.Token;
 
-    public int MaxThreads => _maxThreads;
+    public int MaxThreads { get; }
 
     public int ThreadCount
     {
@@ -78,38 +65,11 @@ internal sealed class ZLinkWorkerPool : IDisposable
         }
     }
 
-    public bool TrySubmit(Action<CancellationToken> work)
-    {
-        lock (_sync)
-        {
-            if (_disposed || _queue.Count >= _maxQueueLength)
-            {
-                return false;
-            }
-
-            _queue.Enqueue(work);
-            if (_idleThreads > 0)
-            {
-                Monitor.Pulse(_sync);
-            }
-            else if (_threadCount < _maxThreads)
-            {
-                _threadCount++;
-                StartWorkerThread();
-            }
-
-            return true;
-        }
-    }
-
     public void Dispose()
     {
         lock (_sync)
         {
-            if (_disposed)
-            {
-                return;
-            }
+            if (_disposed) return;
 
             _disposed = true;
             _queue.Clear();
@@ -119,12 +79,33 @@ internal sealed class ZLinkWorkerPool : IDisposable
         _shutdownSource.Cancel();
     }
 
+    public bool TrySubmit(Action<CancellationToken> work)
+    {
+        lock (_sync)
+        {
+            if (_disposed || _queue.Count >= _maxQueueLength) return false;
+
+            _queue.Enqueue(work);
+            if (_idleThreads > 0)
+            {
+                Monitor.Pulse(_sync);
+            }
+            else if (_threadCount < MaxThreads)
+            {
+                _threadCount++;
+                StartWorkerThread();
+            }
+
+            return true;
+        }
+    }
+
     private void StartWorkerThread()
     {
         var thread = new Thread(WorkerLoop)
         {
             IsBackground = true,
-            Name = "zlink-worker",
+            Name = "zlink-worker"
         };
         thread.Start();
     }

@@ -1,6 +1,6 @@
+using DiscoveryRegistryHa.Client.Support;
 using DiscoveryRegistryHa.Shared;
 using Zlink.HttpClient;
-using DiscoveryRegistryHa.Client.Support;
 
 namespace DiscoveryRegistryHa.Client.Scenarios;
 
@@ -45,17 +45,16 @@ internal static class DrD3DirectEndpointScenario
         {
             "api-a" => providerA,
             "api-b" => providerB,
-            _ => embedded,
+            _ => embedded
         };
         var evidence = (await evidenceClient.Post("/evidence/wait")
             .Body(new EvidenceWaitRequest(marker))
             .SubmitAsync<string[]>()).Body;
         ScenarioAssert.That(
             evidence.Any(line => line.Contains(marker, StringComparison.Ordinal)
-                && line.Contains($"rid={reply.ProviderRid}", StringComparison.Ordinal)),
+                                 && line.Contains($"rid={reply.ProviderRid}", StringComparison.Ordinal)),
             "DR-D3 provider evidence was not recorded.");
 
         Console.WriteLine("scenario DR-D3 passed");
     }
-
 }

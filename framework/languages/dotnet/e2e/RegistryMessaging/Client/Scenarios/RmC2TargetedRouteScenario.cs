@@ -1,6 +1,6 @@
-using Zlink.HttpClient;
-using RegistryMessaging.Shared;
 using RegistryMessaging.Client.Support;
+using RegistryMessaging.Shared;
+using Zlink.HttpClient;
 
 namespace RegistryMessaging.Client.Scenarios;
 
@@ -26,9 +26,9 @@ internal static class RmC2TargetedRouteScenario
         var afterA = providerA.Get("/evidence").Fetch<string[]>();
         ScenarioAssert.That(
             afterB.Count(line => line.Contains("route-request|rid=api-b", StringComparison.Ordinal)
-                && line.Contains(marker, StringComparison.Ordinal)) == 1
+                                 && line.Contains(marker, StringComparison.Ordinal)) == 1
             && afterA.Count(line => line.Contains("route-request|rid=api-a", StringComparison.Ordinal)
-                && line.Contains(marker, StringComparison.Ordinal)) == 0,
+                                    && line.Contains(marker, StringComparison.Ordinal)) == 0,
             "RM-C2 targeted route evidence did not match api-b only.");
 
         var missing = (await providerA.Post("/profile/route/missing")

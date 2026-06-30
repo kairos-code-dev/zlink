@@ -14,25 +14,16 @@ internal sealed partial class ZLinkActorSessionManager
             () => state.Activation,
             cancellationToken).ConfigureAwait(false);
 
-        if (ReferenceEquals(previousActivation, activation))
-        {
-            return;
-        }
+        if (ReferenceEquals(previousActivation, activation)) return;
 
         if (previousActivation is not null && !previousActivation.IsDisposed)
-        {
             await previousActivation.NotifyActorLeftAfterManagedJoinSpotAsync(
                     actor,
                     cancellationToken)
                 .ConfigureAwait(false);
-        }
 
         await state.ExecuteLockedAsync(
-            () =>
-            {
-                state.Activation = activation;
-            },
+            () => { state.Activation = activation; },
             cancellationToken).ConfigureAwait(false);
     }
-
 }

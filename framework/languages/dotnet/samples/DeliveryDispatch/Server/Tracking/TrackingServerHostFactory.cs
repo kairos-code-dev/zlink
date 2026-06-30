@@ -1,6 +1,7 @@
 using DeliveryDispatch.Server.Configuration;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Hosting;
+using Systems.Zlink;
 using Zlink.Framework.AspNetCore;
 using Zlink.Framework.Contracts.Dispatch;
 
@@ -24,11 +25,11 @@ public static class TrackingServerHostFactory
             options.UseDiscovery().AddRegistryEndpoint(topology.RegistryRouterEndpoint);
             options.AddClientServerChannel(SampleNames.TrackingRouteChannel)
                 .EnableServer(topology.TrackingRouteEndpoint)
-                .SetRoutingId(Systems.Zlink.RoutingId.From("delivery-tracking-server"))
+                .SetRoutingId(RoutingId.From("delivery-tracking-server"))
                 .AddHandlerGroup(SampleNames.TrackingRouteChannel);
             options.AddClientServerChannel(SampleNames.CustomerRouteChannel)
                 .EnableClient(topology.CustomerRouteEndpoint)
-                .SetRoutingId(Systems.Zlink.RoutingId.From("delivery-tracking-customer-client"));
+                .SetRoutingId(RoutingId.From("delivery-tracking-customer-client"));
         });
 
         return builder.Build();

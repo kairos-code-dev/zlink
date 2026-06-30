@@ -1,7 +1,6 @@
-using PubSub.Server.Subscriber;
+using PubSub.Server.Subscriber.Configuration;
 using PubSub.Shared;
 using Zlink.Framework.Contracts.Handlers;
-using PubSub.Server.Subscriber.Configuration;
 
 namespace PubSub.Server.Subscriber.Handlers;
 
@@ -23,16 +22,12 @@ internal sealed class EventNotifyHandler(EvidenceStore evidence, HandlerDelayOpt
         }
 
         if (context.Topic == PubSubNames.MainTopic)
-        {
             evidence.Add(
                 $"event|rid={evidence.Rid}|run={message.RunId}|topic={context.Topic}"
                 + $"|seq={message.Sequence}|value={message.Value}|packet={context.PacketName}");
-        }
         else
-        {
             evidence.Add(
                 $"ignored|rid={evidence.Rid}|run={message.RunId}|topic={context.Topic}"
                 + $"|seq={message.Sequence}|value={message.Value}|packet={context.PacketName}");
-        }
     }
 }

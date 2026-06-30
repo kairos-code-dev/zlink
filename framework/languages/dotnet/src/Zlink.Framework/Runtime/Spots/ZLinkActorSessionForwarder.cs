@@ -1,6 +1,3 @@
-using Zlink.Framework.Runtime.Actors;
-using Zlink.Framework.Runtime.Backend.Contracts;
-
 namespace Zlink.Framework.Runtime.Spots;
 
 internal static class ZLinkActorSessionForwarder
@@ -12,7 +9,7 @@ internal static class ZLinkActorSessionForwarder
     {
         targetActor = actorState.NativeActorRef ?? frameActor;
         return targetActor.NodeRid != frameActor.NodeRid
-            || targetActor.Generation != frameActor.Generation;
+               || targetActor.Generation != frameActor.Generation;
     }
 
     public static void Forward(
@@ -30,21 +27,17 @@ internal static class ZLinkActorSessionForwarder
                 sourceNodeRid,
                 sourceSessionRid,
                 headerPart,
-                hasMore: true,
+                true,
                 SendFlags.None))
-        {
             throw new InvalidOperationException("Actor session header forward failed.");
-        }
 
         if (!runtime.ForwardActorBoundSessionPart(
                 targetActor,
                 sourceNodeRid,
                 sourceSessionRid,
                 body,
-                hasMore: false,
+                false,
                 SendFlags.None))
-        {
             throw new InvalidOperationException("Actor session body forward failed.");
-        }
     }
 }

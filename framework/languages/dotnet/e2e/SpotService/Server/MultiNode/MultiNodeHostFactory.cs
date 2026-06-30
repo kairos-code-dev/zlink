@@ -1,26 +1,10 @@
-using System.Collections.Concurrent;
-using Microsoft.AspNetCore.Builder;
-using Microsoft.AspNetCore.Http;
-using Microsoft.Extensions.DependencyInjection;
-using Microsoft.Extensions.Hosting;
-using Microsoft.Extensions.Logging;
+using System.Diagnostics;
+using SpotService.Server.MultiNode.Spots;
 using SpotService.Shared;
 using Systems.Zlink;
-using Systems.Zlink.Stream.Connector.Contracts;
-using Zlink.Framework;
 using Zlink.Framework.AspNetCore;
-using Zlink.Framework.Contracts.Actors;
 using Zlink.Framework.Contracts.Channels;
-using Zlink.Framework.Contracts.Codecs.Json;
-using Zlink.Framework.Contracts.Dispatch;
-using Zlink.Framework.Contracts.Errors;
-using Zlink.Framework.Contracts.Handlers;
-using Zlink.Framework.Contracts.Messaging;
 using Zlink.Framework.Contracts.Spots;
-using Zlink.Framework.Contracts.Streams;
-using Zlink.Framework.Contracts.Timers;
-using SpotService.Server.MultiNode.Handlers;
-using SpotService.Server.MultiNode.Spots;
 
 namespace SpotService.Server.MultiNode;
 
@@ -28,7 +12,7 @@ internal static class MultiNodeHostFactory
 {
     public static WebApplication Create(string[] args)
     {
-        var options = ServerOptions.Parse(args, defaultRole: "multi-node");
+        var options = ServerOptions.Parse(args, "multi-node");
         Directory.CreateDirectory(options.LogDir);
 
         var builder = WebApplication.CreateBuilder(args);
@@ -47,13 +31,12 @@ internal static class MultiNodeHostFactory
             var isNodeA = string.Equals(options.Rid, SpotServiceNames.MultiSpotNodeA, StringComparison.Ordinal);
             var isNodeB = string.Equals(options.Rid, SpotServiceNames.MultiSpotNodeB, StringComparison.Ordinal);
             if (!isNodeA && !isNodeB)
-            {
                 throw new InvalidOperationException(
                     $"multi-node role requires rid '{SpotServiceNames.MultiSpotNodeA}' or '{SpotServiceNames.MultiSpotNodeB}'.");
-            }
 
             framework.AddHandlersFromAssemblyOf(typeof(Program));
-            framework.UseDiscovery().AddRegistryEndpoint(Require(options.RegistryRouterEndpoint, "--registry-router-endpoint"));
+            framework.UseDiscovery()
+                .AddRegistryEndpoint(Require(options.RegistryRouterEndpoint, "--registry-router-endpoint"));
             if (isNodeA)
             {
                 var routeEndpoint = Require(options.MultiRouteAEndpoint, "--multi-route-a-endpoint");
@@ -61,13 +44,15 @@ internal static class MultiNodeHostFactory
                     .EnableServer(routeEndpoint)
                     .EnableClient(routeEndpoint)
                     .SetRoutingId(RoutingId.From(SpotServiceNames.MultiSpotNodeA))
-                    .AddRequestHandler<MultiNodeCreateSpotAHandler, MultiNodeCreateSpotReq, MultiNodeCreateSpotReply>("MultiNodeCreateSpotReq");
+                    .AddRequestHandler<MultiNodeCreateSpotAHandler, MultiNodeCreateSpotReq, MultiNodeCreateSpotReply>(
+                        "MultiNodeCreateSpotReq");
                 framework.AddSpotMesh(SpotServiceNames.MultiSpotNodeA)
                     .UseRegistrySpotResolver()
                     .EnableRouter(Require(options.MultiSpotRouterAEndpoint, "--multi-spot-router-a-endpoint"))
                     .SetRoutingId(RoutingId.From(SpotServiceNames.MultiSpotNodeA))
                     .AddSpotFactory<MultiNodeSpotA>();
             }
+
             if (isNodeB)
             {
                 var routeEndpoint = Require(options.MultiRouteBEndpoint, "--multi-route-b-endpoint");
@@ -75,7 +60,8 @@ internal static class MultiNodeHostFactory
                     .EnableServer(routeEndpoint)
                     .EnableClient(routeEndpoint)
                     .SetRoutingId(RoutingId.From(SpotServiceNames.MultiSpotNodeB))
-                    .AddRequestHandler<MultiNodeCreateSpotBHandler, MultiNodeCreateSpotReq, MultiNodeCreateSpotReply>("MultiNodeCreateSpotReq");
+                    .AddRequestHandler<MultiNodeCreateSpotBHandler, MultiNodeCreateSpotReq, MultiNodeCreateSpotReply>(
+                        "MultiNodeCreateSpotReq");
                 framework.AddSpotMesh(SpotServiceNames.MultiSpotNodeB)
                     .UseRegistrySpotResolver()
                     .EnableRouter(Require(options.MultiSpotRouterBEndpoint, "--multi-spot-router-b-endpoint"))
@@ -109,8 +95,10 @@ internal static class MultiNodeHostFactory
         {
             var isNodeA = string.Equals(node.Rid, SpotServiceNames.MultiSpotNodeA, StringComparison.Ordinal);
             var created = isNodeA
-                ? await CreateLocalMultiNodeSpotAsync<MultiNodeSpotA>(spots, evidence, node.Rid, request.SpotRid, cancellationToken)
-                : await CreateLocalMultiNodeSpotAsync<MultiNodeSpotB>(spots, evidence, node.Rid, request.SpotRid, cancellationToken);
+                ? await CreateLocalMultiNodeSpotAsync<MultiNodeSpotA>(spots, evidence, node.Rid, request.SpotRid,
+                    cancellationToken)
+                : await CreateLocalMultiNodeSpotAsync<MultiNodeSpotB>(spots, evidence, node.Rid, request.SpotRid,
+                    cancellationToken);
             return Results.Ok(created);
         });
         app.MapPost("/spot/state/request", async (
@@ -141,33 +129,34 @@ internal static class MultiNodeHostFactory
             ThreadPool.QueueUserWorkItem(_ =>
             {
                 Thread.Sleep(50);
-                System.Diagnostics.Process.GetCurrentProcess().Kill(entireProcessTree: false);
+                Process.GetCurrentProcess().Kill(false);
             });
             return Results.Accepted();
         });
         return app;
     }
 
-static string Require(string? value, string optionName)
-    => string.IsNullOrWhiteSpace(value)
-        ? throw new InvalidOperationException($"{optionName} is required.")
-        : value;
+    private static string Require(string? value, string optionName)
+    {
+        return string.IsNullOrWhiteSpace(value)
+            ? throw new InvalidOperationException($"{optionName} is required.")
+            : value;
+    }
 
-static async Task<MultiNodeCreateSpotReply> CreateLocalMultiNodeSpotAsync<TSpot>(
-    IZLinkSpotManager spots,
-    EvidenceStore evidence,
-    string nodeRid,
-    string spotRid,
-    CancellationToken cancellationToken)
-    where TSpot : class, IZLinkSpot
-{
-    var created = await spots.GetOrCreateAsync<TSpot>(RoutingId.From(spotRid), cancellationToken);
-    evidence.Add($"multi-create-spot|node={nodeRid}|spot={created.SpotRid}|state={created.State}");
-    return new MultiNodeCreateSpotReply(
-        created.SpotRid.ToString(),
-        nodeRid,
-        created.State.ToString(),
-        0);
-}
-
+    private static async Task<MultiNodeCreateSpotReply> CreateLocalMultiNodeSpotAsync<TSpot>(
+        IZLinkSpotManager spots,
+        EvidenceStore evidence,
+        string nodeRid,
+        string spotRid,
+        CancellationToken cancellationToken)
+        where TSpot : class, IZLinkSpot
+    {
+        var created = await spots.GetOrCreateAsync<TSpot>(RoutingId.From(spotRid), cancellationToken);
+        evidence.Add($"multi-create-spot|node={nodeRid}|spot={created.SpotRid}|state={created.State}");
+        return new MultiNodeCreateSpotReply(
+            created.SpotRid.ToString(),
+            nodeRid,
+            created.State.ToString(),
+            0);
+    }
 }

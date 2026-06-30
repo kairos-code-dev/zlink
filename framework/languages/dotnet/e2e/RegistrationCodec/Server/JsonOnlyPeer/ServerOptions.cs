@@ -1,5 +1,3 @@
-using RegistrationCodec.Server.JsonOnlyPeer.Handlers;
-using RegistrationCodec.Server.JsonOnlyPeer.Infrastructure;
 namespace RegistrationCodec.Server.JsonOnlyPeer;
 
 public sealed record ServerOptions(
@@ -19,14 +17,9 @@ public sealed record ServerOptions(
         {
             var key = args[i];
             if (!key.StartsWith("--", StringComparison.Ordinal))
-            {
                 throw new ArgumentException($"Unexpected argument '{key}'.");
-            }
 
-            if (i + 1 >= args.Length)
-            {
-                throw new ArgumentException($"Missing value for '{key}'.");
-            }
+            if (i + 1 >= args.Length) throw new ArgumentException($"Missing value for '{key}'.");
 
             var value = args[++i];
             if (!values.TryGetValue(key, out var bucket))
@@ -38,15 +31,19 @@ public sealed record ServerOptions(
             bucket.Add(value);
         }
 
-        string? Get(string name) => values.TryGetValue(name, out var bucket) ? bucket[^1] : null;
+        string? Get(string name)
+        {
+            return values.TryGetValue(name, out var bucket) ? bucket[^1] : null;
+        }
+
         return new ServerOptions(
-            Rid: Get("--rid") ?? "reg-codec-node",
-            HttpUrl: Get("--http-url") ?? "http://127.0.0.1:0",
-            LogDir: Get("--log-dir") ?? "logs",
-            ChannelEndpoint: Get("--channel-endpoint"),
-            EvidenceFile: Get("--evidence-file"),
-            InvalidMode: Get("--invalid-mode"),
-            CodecMode: Get("--codec-mode") ?? "all",
-            JsonOnlyPeerProject: Get("--json-only-peer-project"));
+            Get("--rid") ?? "reg-codec-node",
+            Get("--http-url") ?? "http://127.0.0.1:0",
+            Get("--log-dir") ?? "logs",
+            Get("--channel-endpoint"),
+            Get("--evidence-file"),
+            Get("--invalid-mode"),
+            Get("--codec-mode") ?? "all",
+            Get("--json-only-peer-project"));
     }
 }

@@ -5,13 +5,13 @@ namespace Systems.Zlink;
 
 internal sealed class SubSocket : SubscriberSocketBase, ISubSocket
 {
-    public new SubSocketOptions Options { get; }
-
     public SubSocket(Context context)
         : base(context, SocketType.Sub)
     {
         Options = new SubSocketOptions(this);
     }
+
+    public new SubSocketOptions Options { get; }
 
     public void SetRoutingId(RoutingId routingId)
     {

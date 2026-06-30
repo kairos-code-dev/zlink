@@ -1,10 +1,3 @@
-using Zlink.Framework.Runtime.Actors;
-using Zlink.Framework.Runtime.Diagnostics;
-using Zlink.Framework.Runtime.Execution;
-using Zlink.Framework.Runtime.Host;
-using Zlink.Framework.Runtime.Messaging;
-using Zlink.Framework.Runtime.Registry;
-
 namespace Zlink.Framework.Runtime.Spots;
 
 internal sealed class ZLinkSpotDiscoveryLoop(
@@ -18,10 +11,7 @@ internal sealed class ZLinkSpotDiscoveryLoop(
 
     public void StartIfNeeded(Func<bool> canRun)
     {
-        if (!canRun() || _task is not null)
-        {
-            return;
-        }
+        if (!canRun() || _task is not null) return;
 
         _task = taskRunner.Run(
             $"spot-discovery-reconcile:{name}",
@@ -30,10 +20,7 @@ internal sealed class ZLinkSpotDiscoveryLoop(
 
     public async ValueTask StopAsync()
     {
-        if (_task is null)
-        {
-            return;
-        }
+        if (_task is null) return;
 
         try
         {
@@ -47,7 +34,6 @@ internal sealed class ZLinkSpotDiscoveryLoop(
     private async Task RunAsync()
     {
         while (!stopToken.IsCancellationRequested)
-        {
             try
             {
                 reconcile();
@@ -65,6 +51,5 @@ internal sealed class ZLinkSpotDiscoveryLoop(
             {
                 await Task.Delay(RetryDelay, stopToken).ConfigureAwait(false);
             }
-        }
     }
 }

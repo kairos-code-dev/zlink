@@ -42,9 +42,9 @@ internal sealed class ShoppingMallClientScenario
         var pendingHook = await apiA.Post("/self-check/idempotency/pending")
             .Body(new
             {
-                IdempotencyKey = pendingReq.IdempotencyKey,
+                pendingReq.IdempotencyKey,
                 OrderId = "order-pending-0001",
-                OwnerInstanceId = "api-a",
+                OwnerInstanceId = "api-a"
             })
             .SubmitRawAsync(cancellationToken);
         Ensure(pendingHook.Status is >= 200 and < 300);
@@ -61,7 +61,8 @@ internal sealed class ShoppingMallClientScenario
             "pm-ok",
             "order-inventory-001");
         var inventoryStarted = apiA.Post("/orders/start").Body(inventoryReq).Fetch<StartOrderRes>();
-        var inventoryFailed = await WaitForStatusAsync(apiA, inventoryStarted.OrderId, OrderStatuses.Failed, cancellationToken);
+        var inventoryFailed =
+            await WaitForStatusAsync(apiA, inventoryStarted.OrderId, OrderStatuses.Failed, cancellationToken);
         Ensure(inventoryFailed.Reason?.Contains("inventory", StringComparison.OrdinalIgnoreCase) == true);
 
         var paymentReq = new StartOrderReq(
@@ -70,7 +71,8 @@ internal sealed class ShoppingMallClientScenario
             "pm-decline",
             "order-payment-001");
         var paymentStarted = apiB.Post("/orders/start").Body(paymentReq).Fetch<StartOrderRes>();
-        var paymentFailed = await WaitForStatusAsync(apiB, paymentStarted.OrderId, OrderStatuses.Failed, cancellationToken);
+        var paymentFailed =
+            await WaitForStatusAsync(apiB, paymentStarted.OrderId, OrderStatuses.Failed, cancellationToken);
         Ensure(paymentFailed.ReservationId is not null);
         Ensure(paymentFailed.Reason?.Contains("payment", StringComparison.OrdinalIgnoreCase) == true);
 
@@ -128,10 +130,7 @@ internal sealed class ShoppingMallClientScenario
         while (!timeout.IsCancellationRequested)
         {
             var state = await GetOrderAsync(api, orderId, timeout.Token);
-            if (state.Status == expectedStatus)
-            {
-                return state;
-            }
+            if (state.Status == expectedStatus) return state;
 
             await Task.Delay(100, timeout.Token);
         }
@@ -141,12 +140,10 @@ internal sealed class ShoppingMallClientScenario
 
     private static void Ensure(
         bool condition,
-        [CallerArgumentExpression(nameof(condition))] string? expression = null)
+        [CallerArgumentExpression(nameof(condition))]
+        string? expression = null)
     {
-        if (!condition)
-        {
-            throw new InvalidOperationException($"Ensure failed: {expression}");
-        }
+        if (!condition) throw new InvalidOperationException($"Ensure failed: {expression}");
     }
 
     private static bool IsCreatedOrConfirmed(OrderState state)

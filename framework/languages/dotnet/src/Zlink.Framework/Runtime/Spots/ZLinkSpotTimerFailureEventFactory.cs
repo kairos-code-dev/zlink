@@ -17,9 +17,9 @@ internal static class ZLinkSpotTimerFailureEventFactory
             stopped
                 ? ZLinkSpotEventKind.TimerStoppedAfterUnhandledException
                 : ZLinkSpotEventKind.TimerHandlerFailed,
-            Status: null,
-            Peers: null,
-            Subjects: null,
+            null,
+            null,
+            null,
             new ZLinkSpotTimerDiagnostic(
                 spotRid,
                 isEntrySpot,

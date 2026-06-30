@@ -7,13 +7,12 @@ internal sealed class ZLinkSessionActor(
     string bindingToken)
     : IZLinkSessionActor
 {
-    public string ActorId => Ref.ActorId;
-
-    public ActorRef Ref { get; } = actorRef;
-
     internal RoutingId SessionRid { get; } = sessionRid;
 
     internal string BindingToken { get; } = bindingToken;
+    public string ActorId => Ref.ActorId;
+
+    public ActorRef Ref { get; } = actorRef;
 
     public ValueTask RelayAsync(
         ZLinkMessage payload,

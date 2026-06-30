@@ -1,6 +1,5 @@
 // SPDX-License-Identifier: MPL-2.0
 
-using System;
 using Systems.Zlink.Runtime.Native;
 
 namespace Systems.Zlink.Runtime.Sockets.Internal;
@@ -11,7 +10,7 @@ internal sealed partial class SocketKernel : IDisposable
     {
         BoundaryValidation.ValidateFixedUtf8(address, nameof(address));
 
-        int rc = NativeMethods.zlink_bind(Handle, address);
+        var rc = NativeMethods.zlink_bind(Handle, address);
         if (rc != 0)
             throw ZlinkException.CreateBindException(NativeMethods.zlink_errno());
     }
@@ -20,7 +19,7 @@ internal sealed partial class SocketKernel : IDisposable
     {
         BoundaryValidation.ValidateFixedUtf8(address, nameof(address));
 
-        int rc = NativeMethods.zlink_connect(Handle, address);
+        var rc = NativeMethods.zlink_connect(Handle, address);
         if (rc != 0)
             throw ZlinkException.CreateConnectException(NativeMethods.zlink_errno());
     }
@@ -29,7 +28,7 @@ internal sealed partial class SocketKernel : IDisposable
     {
         BoundaryValidation.ValidateFixedUtf8(address, nameof(address));
 
-        int rc = NativeMethods.zlink_unbind(Handle, address);
+        var rc = NativeMethods.zlink_unbind(Handle, address);
         if (rc != 0)
             throw ZlinkException.CreateConnectException(NativeMethods.zlink_errno());
     }
@@ -38,15 +37,15 @@ internal sealed partial class SocketKernel : IDisposable
     {
         BoundaryValidation.ValidateFixedUtf8(address, nameof(address));
 
-        int rc = NativeMethods.zlink_disconnect(Handle, address);
+        var rc = NativeMethods.zlink_disconnect(Handle, address);
         if (rc != 0)
             throw ZlinkException.CreateConnectException(NativeMethods.zlink_errno());
     }
 
     public void DisconnectRid(RoutingId peerRid)
     {
-        ZlinkRoutingId nativeRid = peerRid.ToNative();
-        int rc = NativeMethods.zlink_disconnect_rid(Handle, ref nativeRid);
+        var nativeRid = peerRid.ToNative();
+        var rc = NativeMethods.zlink_disconnect_rid(Handle, ref nativeRid);
         ZlinkException.ThrowConnectIfError(rc);
     }
 
@@ -55,7 +54,7 @@ internal sealed partial class SocketKernel : IDisposable
         if (discovery == null)
             throw new ArgumentNullException(nameof(discovery));
 
-        int rc = NativeMethods.zlink_socket_attach_discovery(Handle,
+        var rc = NativeMethods.zlink_socket_attach_discovery(Handle,
             discovery.Handle);
         ZlinkException.ThrowConfigIfError(rc);
         _discoveryAttached = true;

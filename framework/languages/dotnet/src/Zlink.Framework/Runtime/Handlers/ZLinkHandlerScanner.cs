@@ -10,35 +10,24 @@ internal static class ZLinkHandlerScanner
 
         foreach (var type in assembly.GetTypes())
         {
-            if (type.IsAbstract || type.IsInterface)
-            {
-                continue;
-            }
+            if (type.IsAbstract || type.IsInterface) continue;
 
             var groups = ResolveGroups(type);
             foreach (var method in type.GetMethods(BindingFlags.Instance | BindingFlags.Public))
-            {
-                foreach (var attribute in EnumerateEndpointAttributes(method))
-                {
-                    endpoints.Add(CreateDescriptor(
-                        type,
-                        method,
-                        attribute.PacketName,
-                        attribute.Kind,
-                        groups));
-                }
-            }
+            foreach (var attribute in EnumerateEndpointAttributes(method))
+                endpoints.Add(CreateDescriptor(
+                    type,
+                    method,
+                    attribute.PacketName,
+                    attribute.Kind,
+                    groups));
 
             foreach (var iface in type.GetInterfaces())
             {
-                if (!iface.IsGenericType)
-                {
-                    continue;
-                }
+                if (!iface.IsGenericType) continue;
 
                 var def = iface.GetGenericTypeDefinition();
                 if (def == typeof(IZLinkRequestHandler<,>))
-                {
                     endpoints.Add(CreateInterfaceDescriptor(
                         type,
                         iface,
@@ -46,9 +35,7 @@ internal static class ZLinkHandlerScanner
                         groups,
                         null,
                         null));
-                }
                 else if (def == typeof(IZLinkSendHandler<>))
-                {
                     endpoints.Add(CreateInterfaceDescriptor(
                         type,
                         iface,
@@ -56,9 +43,7 @@ internal static class ZLinkHandlerScanner
                         groups,
                         null,
                         null));
-                }
                 else if (def == typeof(IZLinkPublishHandler<>))
-                {
                     endpoints.Add(CreateInterfaceDescriptor(
                         type,
                         iface,
@@ -66,7 +51,6 @@ internal static class ZLinkHandlerScanner
                         groups,
                         null,
                         null));
-                }
             }
         }
 
@@ -79,38 +63,28 @@ internal static class ZLinkHandlerScanner
 
         foreach (var type in assembly.GetTypes())
         {
-            if (type.IsAbstract || type.IsInterface)
-            {
-                continue;
-            }
+            if (type.IsAbstract || type.IsInterface) continue;
 
             var groups = ResolveGroups(type);
             foreach (var iface in type.GetInterfaces())
             {
-                if (!iface.IsGenericType)
-                {
-                    continue;
-                }
+                if (!iface.IsGenericType) continue;
 
                 var def = iface.GetGenericTypeDefinition();
                 if (def == typeof(IZLinkRouteRequestHandler<,>))
-                {
                     endpoints.Add(CreateRouteInterfaceDescriptor(
                         type,
                         iface,
                         ZLinkMessageKind.Request,
                         groups,
                         null));
-                }
                 else if (def == typeof(IZLinkRouteSendHandler<>))
-                {
                     endpoints.Add(CreateRouteInterfaceDescriptor(
                         type,
                         iface,
                         ZLinkMessageKind.Command,
                         groups,
                         null));
-                }
             }
         }
 
@@ -150,25 +124,19 @@ internal static class ZLinkHandlerScanner
     private static IEnumerable<ZLinkEndpointAttributeDescriptor> EnumerateEndpointAttributes(MethodInfo method)
     {
         if (method.GetCustomAttribute<ZLinkRequestAttribute>() is { } request)
-        {
             yield return new ZLinkEndpointAttributeDescriptor(
                 ZLinkMessageKind.Request,
                 request.PacketName);
-        }
 
         if (method.GetCustomAttribute<ZLinkSendAttribute>() is { } send)
-        {
             yield return new ZLinkEndpointAttributeDescriptor(
                 ZLinkMessageKind.Command,
                 send.PacketName);
-        }
 
         if (method.GetCustomAttribute<ZLinkPublishAttribute>() is { } publish)
-        {
             yield return new ZLinkEndpointAttributeDescriptor(
                 ZLinkMessageKind.Publish,
                 publish.PacketName);
-        }
     }
 
     private static IReadOnlySet<string> ResolveGroups(Type declaringType)
@@ -179,10 +147,6 @@ internal static class ZLinkHandlerScanner
             .Where(static group => !string.IsNullOrWhiteSpace(group))
             .ToHashSet(StringComparer.Ordinal);
     }
-
-    private readonly record struct ZLinkEndpointAttributeDescriptor(
-        ZLinkMessageKind Kind,
-        string? PacketName);
 
     private static ZLinkHandlerEndpointDescriptor CreateInterfaceDescriptor(
         Type declaringType,
@@ -230,4 +194,8 @@ internal static class ZLinkHandlerScanner
             kind,
             groups);
     }
+
+    private readonly record struct ZLinkEndpointAttributeDescriptor(
+        ZLinkMessageKind Kind,
+        string? PacketName);
 }

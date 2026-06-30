@@ -1,9 +1,7 @@
-using GameQuest.GameApi.Infrastructure.Store;
 using GameQuest.GameApi.Application;
+using GameQuest.GameApi.Infrastructure.Store;
 using GameQuest.Shared;
-using Systems.Zlink;
-using Zlink.Framework.Contracts.Codecs.Json;
-using Systems.Zlink.Stream.Connector.Contracts;
+using Zlink.Framework.Contracts.Messaging;
 using Zlink.Framework.Contracts.Streams;
 
 namespace GameQuest.GameApi.Session;
@@ -16,7 +14,7 @@ internal sealed class SubscribeQuestHandler(GameQuestStore store, GameQuestSessi
     public async ValueTask HandleAsync(
         IZLinkSessionContext context,
         ZLinkSessionDispatchContext dispatch,
-        Zlink.Framework.Contracts.Messaging.ZLinkMessage payload,
+        ZLinkMessage payload,
         CancellationToken cancellationToken)
     {
         _ = dispatch;
@@ -35,7 +33,7 @@ internal sealed class GetQuestProgressHandler(GameQuestStore store)
     public async ValueTask HandleAsync(
         IZLinkSessionContext context,
         ZLinkSessionDispatchContext dispatch,
-        Zlink.Framework.Contracts.Messaging.ZLinkMessage payload,
+        ZLinkMessage payload,
         CancellationToken cancellationToken)
     {
         _ = dispatch;
@@ -54,7 +52,7 @@ internal sealed class SyncQuestProgressHandler(GameplayActionService actions)
     public async ValueTask HandleAsync(
         IZLinkSessionContext context,
         ZLinkSessionDispatchContext dispatch,
-        Zlink.Framework.Contracts.Messaging.ZLinkMessage payload,
+        ZLinkMessage payload,
         CancellationToken cancellationToken)
     {
         _ = dispatch;

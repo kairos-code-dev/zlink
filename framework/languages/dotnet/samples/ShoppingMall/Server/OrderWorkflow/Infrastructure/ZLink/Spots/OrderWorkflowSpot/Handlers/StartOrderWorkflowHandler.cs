@@ -1,4 +1,3 @@
-using ShoppingMall.Server.OrderWorkflow.Infrastructure.ZLink.Spots.OrderWorkflowSpot;
 using ShoppingMall.Shared.Contracts;
 using Zlink.Framework.Contracts.Spots;
 

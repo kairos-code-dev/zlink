@@ -7,7 +7,7 @@ public sealed class WorkerPoolTests
     [Fact]
     public async Task RunWorker_Async_Returns_Result_From_Pool_Thread()
     {
-        using var pool = CreatePool(maxThreads: 2);
+        using var pool = CreatePool(2);
         await using var queue = CreateQueue();
 
         var call = CreateCall(pool, _ => Environment.CurrentManagedThreadId, queue);
@@ -19,11 +19,11 @@ public sealed class WorkerPoolTests
     [Fact]
     public async Task RunWorker_Submit_Posts_Completion_To_Dispatcher_Not_Worker_Thread()
     {
-        using var pool = CreatePool(maxThreads: 2);
+        using var pool = CreatePool(2);
         await using var queue = CreateQueue();
         var completed = new TaskCompletionSource<int>(
             TaskCreationOptions.RunContinuationsAsynchronously);
-        int workerThreadId = 0;
+        var workerThreadId = 0;
 
         var call = CreateCall(
             pool,
@@ -51,7 +51,7 @@ public sealed class WorkerPoolTests
     [Fact]
     public async Task RunWorker_Queue_Full_Fails_Fast_With_WorkerQueueFull()
     {
-        using var pool = CreatePool(maxThreads: 1, maxQueueLength: 1);
+        using var pool = CreatePool(1, 1);
         await using var queue = CreateQueue();
         using var blockPool = new ManualResetEventSlim(false);
         var workerStarted = new TaskCompletionSource(
@@ -74,8 +74,8 @@ public sealed class WorkerPoolTests
             await WaitForAsync(() => pool.QueueLength == 1);
 
             var overflow = CreateCall(pool, _ => 0, queue).Async();
-            var error = await Assert.ThrowsAsync<ZLinkFrameworkException>(
-                async () => await overflow.AsTask().WaitAsync(TimeSpan.FromSeconds(5)));
+            var error = await Assert.ThrowsAsync<ZLinkFrameworkException>(async () =>
+                await overflow.AsTask().WaitAsync(TimeSpan.FromSeconds(5)));
             Assert.Equal(ZLinkFrameworkErrorKind.WorkerQueueFull, error.Kind);
             Assert.True(error.IsRetriable);
         }
@@ -88,7 +88,7 @@ public sealed class WorkerPoolTests
     [Fact]
     public async Task RunWorker_Timeout_Drops_Late_Completion()
     {
-        using var pool = CreatePool(maxThreads: 2);
+        using var pool = CreatePool(2);
         await using var queue = CreateQueue();
         using var releaseWork = new ManualResetEventSlim(false);
         var callbacks = new ConcurrentQueue<string>();
@@ -133,23 +133,23 @@ public sealed class WorkerPoolTests
     public async Task RunWorker_Idle_Threads_Shrink_After_Idle_Timeout()
     {
         using var pool = new ZLinkWorkerPool(
-            minThreads: 0,
-            maxThreads: 2,
-            idleTimeout: TimeSpan.FromMilliseconds(150),
-            maxQueueLength: 16);
+            0,
+            2,
+            TimeSpan.FromMilliseconds(150),
+            16);
         await using var queue = CreateQueue();
 
         await CreateCall(pool, _ => 1, queue).Async().AsTask().WaitAsync(TimeSpan.FromSeconds(5));
         Assert.True(pool.ThreadCount >= 1);
 
-        await WaitForAsync(() => pool.ThreadCount == 0, timeoutMs: 5_000);
+        await WaitForAsync(() => pool.ThreadCount == 0);
         Assert.Equal(0, pool.ThreadCount);
     }
 
     [Fact]
     public async Task RunWorker_Detached_Callback_Observes_State_Mutated_While_Waiting()
     {
-        using var pool = CreatePool(maxThreads: 2);
+        using var pool = CreatePool(2);
         await using var queue = CreateQueue();
         using var releaseWork = new ManualResetEventSlim(false);
         var observed = new TaskCompletionSource<string>(
@@ -191,7 +191,7 @@ public sealed class WorkerPoolTests
     [Fact]
     public async Task RunWorker_Yield_Allows_Dispatcher_Work_While_Worker_Runs()
     {
-        using var pool = CreatePool(maxThreads: 2);
+        using var pool = CreatePool(2);
         await using var queue = CreateQueue();
         using var releaseWork = new ManualResetEventSlim(false);
         var workerStarted = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
@@ -255,12 +255,11 @@ public sealed class WorkerPoolTests
     [Fact]
     public async Task RunWorker_Yield_Requires_Captured_Turn()
     {
-        using var pool = CreatePool(maxThreads: 2);
+        using var pool = CreatePool(2);
         await using var queue = CreateQueue();
         var call = CreateCall(pool, _ => 1, queue);
 
-        var error = await Assert.ThrowsAsync<InvalidOperationException>(
-            () => call.Yield().AsTask());
+        var error = await Assert.ThrowsAsync<InvalidOperationException>(() => call.Yield().AsTask());
 
         Assert.Contains("captured", error.Message, StringComparison.Ordinal);
     }
@@ -268,15 +267,15 @@ public sealed class WorkerPoolTests
     [Fact]
     public async Task RunWorker_Worker_Exception_Maps_To_WorkerFailed()
     {
-        using var pool = CreatePool(maxThreads: 2);
+        using var pool = CreatePool(2);
         await using var queue = CreateQueue();
 
         var call = CreateCall<int>(
             pool,
             _ => throw new InvalidOperationException("boom"),
             queue);
-        var error = await Assert.ThrowsAsync<ZLinkFrameworkException>(
-            async () => await call.Async().AsTask().WaitAsync(TimeSpan.FromSeconds(5)));
+        var error = await Assert.ThrowsAsync<ZLinkFrameworkException>(async () =>
+            await call.Async().AsTask().WaitAsync(TimeSpan.FromSeconds(5)));
 
         Assert.Equal(ZLinkFrameworkErrorKind.WorkerFailed, error.Kind);
         Assert.False(error.IsRetriable);
@@ -286,32 +285,35 @@ public sealed class WorkerPoolTests
     [Fact]
     public async Task RunWorker_Second_Terminator_Throws()
     {
-        using var pool = CreatePool(maxThreads: 2);
+        using var pool = CreatePool(2);
         await using var queue = CreateQueue();
 
         var call = CreateCall(pool, _ => 1, queue);
         _ = call.Async();
-        Assert.Throws<InvalidOperationException>(
-            () => call.Submit((_, _) => ValueTask.CompletedTask));
+        Assert.Throws<InvalidOperationException>(() => call.Submit((_, _) => ValueTask.CompletedTask));
     }
 
     private static ZLinkWorkerPool CreatePool(
         int maxThreads,
         int maxQueueLength = 16)
-        => new(
-            minThreads: 0,
-            maxThreads: maxThreads,
-            idleTimeout: TimeSpan.FromSeconds(30),
-            maxQueueLength: maxQueueLength);
+    {
+        return new ZLinkWorkerPool(
+            0,
+            maxThreads,
+            TimeSpan.FromSeconds(30),
+            maxQueueLength);
+    }
 
     private static ZLinkWorkerCall<TResult> CreateCall<TResult>(
         ZLinkWorkerPool pool,
         Func<CancellationToken, TResult> work,
         ZLinkSerialExecutionQueue dispatcherQueue)
-        => new(
+    {
+        return new ZLinkWorkerCall<TResult>(
             pool,
             work,
             callback => dispatcherQueue.TryPost(callback, out _));
+    }
 
     private static ZLinkSerialExecutionQueue CreateQueue()
     {
@@ -327,10 +329,7 @@ public sealed class WorkerPoolTests
         var deadline = Environment.TickCount64 + timeoutMs;
         while (!predicate())
         {
-            if (Environment.TickCount64 > deadline)
-            {
-                throw new TimeoutException("Condition was not reached in time.");
-            }
+            if (Environment.TickCount64 > deadline) throw new TimeoutException("Condition was not reached in time.");
 
             await Task.Delay(10);
         }

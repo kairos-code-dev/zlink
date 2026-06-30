@@ -56,8 +56,9 @@ public sealed class RegistryContracts
         ];
 
         public ValueTask<ZLinkRegistryStatus> StatusAsync(
-            CancellationToken cancellationToken = default) =>
-            ValueTask.FromResult(new ZLinkRegistryStatus(
+            CancellationToken cancellationToken = default)
+        {
+            return ValueTask.FromResult(new ZLinkRegistryStatus(
                 1,
                 "tcp://127.0.0.1:6001",
                 ZLinkRegistryState.Active,
@@ -67,24 +68,30 @@ public sealed class RegistryContracts
                 1,
                 0,
                 1));
+        }
 
         public ValueTask<ZLinkRegistryServiceSummaryEntry[]> ServiceSummaryAsync(
             ZLinkRegistryServiceSummaryFilter? filter = null,
-            CancellationToken cancellationToken = default) =>
-            ValueTask.FromResult(Array.Empty<ZLinkRegistryServiceSummaryEntry>());
+            CancellationToken cancellationToken = default)
+        {
+            return ValueTask.FromResult(Array.Empty<ZLinkRegistryServiceSummaryEntry>());
+        }
 
         public ValueTask<ZLinkRegistryTopologyEntry[]> TopologyAsync(
             ZLinkRegistryTopologyFilter? filter = null,
-            CancellationToken cancellationToken = default) =>
-            ValueTask.FromResult(_topology
+            CancellationToken cancellationToken = default)
+        {
+            return ValueTask.FromResult(_topology
                 .Where(entry => filter?.ChannelName is null || entry.ChannelName == filter.ChannelName)
                 .ToArray());
+        }
 
         public ValueTask<ZLinkMemberPeerEntry[]> MemberPeersAsync(
             string channelName,
-            CancellationToken cancellationToken = default) =>
-            ValueTask.FromResult(Array.Empty<ZLinkMemberPeerEntry>());
-
+            CancellationToken cancellationToken = default)
+        {
+            return ValueTask.FromResult(Array.Empty<ZLinkMemberPeerEntry>());
+        }
     }
 
     private sealed class ExampleRegistryQueryClientOptions : IZLinkRegistryQueryClientOptions
@@ -95,6 +102,8 @@ public sealed class RegistryContracts
     private sealed class ExampleRegistryOptions : IZLinkRegistryOptions
     {
         private readonly List<string> _peers = [];
+
+        public IReadOnlyList<string> Peers => _peers;
 
         public string PubEndpoint { get; set; } = "";
 
@@ -108,8 +117,9 @@ public sealed class RegistryContracts
 
         public TimeSpan BroadcastInterval { get; set; }
 
-        public IReadOnlyList<string> Peers => _peers;
-
-        public void AddPeer(string peerPubEndpoint) => _peers.Add(peerPubEndpoint);
+        public void AddPeer(string peerPubEndpoint)
+        {
+            _peers.Add(peerPubEndpoint);
+        }
     }
 }

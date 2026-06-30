@@ -12,13 +12,9 @@ internal sealed class ReadySignalHostedService(
         applicationLifetime.ApplicationStarted.Register(WriteReadyMarker);
 
         if (!string.IsNullOrWhiteSpace(stopFilePath))
-        {
             _ = WatchStopFileAsync(applicationLifetime, stopFilePath, cancellationToken);
-        }
         else
-        {
             _ = ListenForStopSignalAsync(applicationLifetime, cancellationToken);
-        }
 
         return Task.CompletedTask;
     }
@@ -34,15 +30,12 @@ internal sealed class ReadySignalHostedService(
         {
             app = "Zlink.Framework.TestHost",
             mode,
-            pid = Environment.ProcessId,
+            pid = Environment.ProcessId
         });
 
         Console.WriteLine($"READY:{payload}");
 
-        if (!string.IsNullOrWhiteSpace(readyFilePath))
-        {
-            File.WriteAllText(readyFilePath, payload);
-        }
+        if (!string.IsNullOrWhiteSpace(readyFilePath)) File.WriteAllText(readyFilePath, payload);
     }
 
     private static async Task ListenForStopSignalAsync(

@@ -2,9 +2,9 @@ namespace Zlink.Framework.Runtime.Actors;
 
 internal sealed class ZLinkActorRuntimeState(string actorId)
 {
+    private readonly ZLinkActorDispatchMailbox _dispatchMailbox = new();
     private readonly SemaphoreSlim _gate = new(1, 1);
     private readonly object _sessionGate = new();
-    private readonly ZLinkActorDispatchMailbox _dispatchMailbox = new();
     private Task<IZLinkActor>? _actorCreationTask;
     private ulong _actorGeneration;
     private ZLinkActorBoundSession? _boundSession;
@@ -51,9 +51,7 @@ internal sealed class ZLinkActorRuntimeState(string actorId)
         string bindingToken)
     {
         if (bindingToken.Length == 0)
-        {
             throw new InvalidOperationException("Actor session binding token must not be empty.");
-        }
 
         lock (_sessionGate)
         {
@@ -63,18 +61,13 @@ internal sealed class ZLinkActorRuntimeState(string actorId)
 
     public void UnbindSession(string bindingToken)
     {
-        if (bindingToken.Length == 0)
-        {
-            return;
-        }
+        if (bindingToken.Length == 0) return;
 
         lock (_sessionGate)
         {
             if (_boundSession is { BindingToken: var current }
                 && string.Equals(current, bindingToken, StringComparison.Ordinal))
-            {
                 _boundSession = null;
-            }
         }
     }
 
@@ -119,10 +112,7 @@ internal sealed class ZLinkActorRuntimeState(string actorId)
 
     public bool TryBeginDestroy()
     {
-        if (IsDestroying)
-        {
-            return false;
-        }
+        if (IsDestroying) return false;
 
         IsDestroying = true;
         return true;
@@ -137,16 +127,14 @@ internal sealed class ZLinkActorRuntimeState(string actorId)
     {
         EnsureContextValid();
         return LiveActivation?.Spot
-            ?? throw new InvalidOperationException("Actor has not joined a SPOT.");
+               ?? throw new InvalidOperationException("Actor has not joined a SPOT.");
     }
 
     public void EnsureContextValid()
     {
         if (ContextInvalidated)
-        {
             throw new InvalidOperationException(
                 $"Actor context for '{ActorId}' is no longer valid because actor ownership moved to another SpotNode.");
-        }
     }
 
     public void InvalidateContext()
@@ -181,20 +169,16 @@ internal sealed class ZLinkActorRuntimeState(string actorId)
             {
                 if (ActorType is not null
                     && !string.Equals(ActorType, actorType, StringComparison.Ordinal))
-                {
                     throw new ZLinkFrameworkException(
                         ZLinkFrameworkErrorKind.ActorTypeMismatch,
                         $"Actor '{ActorId}' already uses actor type '{ActorType}', not '{actorType}'.");
-                }
 
                 if (Actor is not null)
                 {
                     if (failIfExists)
-                    {
                         throw new ZLinkFrameworkException(
                             ZLinkFrameworkErrorKind.ActorAlreadyExists,
                             $"Actor '{ActorId}' already exists.");
-                    }
 
                     return Task.FromResult(Actor);
                 }
@@ -225,10 +209,7 @@ internal sealed class ZLinkActorRuntimeState(string actorId)
         await ExecuteLockedAsync(
             () =>
             {
-                if (!ReferenceEquals(_actorCreationTask, creationTask))
-                {
-                    return;
-                }
+                if (!ReferenceEquals(_actorCreationTask, creationTask)) return;
 
                 ClearFailedActorCreationLocked();
             },
@@ -308,10 +289,7 @@ internal sealed class ZLinkActorRuntimeState(string actorId)
             return;
         }
 
-        if (_actorGeneration == 0)
-        {
-            _actorGeneration = 1;
-        }
+        if (_actorGeneration == 0) _actorGeneration = 1;
     }
 
     private async Task ClearActorCreationTaskWhenCompletedAsync(Task<IZLinkActor> creationTask)
@@ -332,13 +310,9 @@ internal sealed class ZLinkActorRuntimeState(string actorId)
                 if (ReferenceEquals(_actorCreationTask, creationTask))
                 {
                     if (succeeded)
-                    {
                         _actorCreationTask = null;
-                    }
                     else
-                    {
                         ClearFailedActorCreationLocked();
-                    }
                 }
             },
             CancellationToken.None).ConfigureAwait(false);
@@ -347,15 +321,9 @@ internal sealed class ZLinkActorRuntimeState(string actorId)
     private void ClearFailedActorCreationLocked()
     {
         _actorCreationTask = null;
-        if (!IsConfigured)
-        {
-            Actor = null;
-        }
+        if (!IsConfigured) Actor = null;
 
-        if (Actor is null)
-        {
-            ActorType = null;
-        }
+        if (Actor is null) ActorType = null;
     }
 
     public readonly struct DispatchScope : IDisposable
@@ -373,13 +341,9 @@ internal sealed class ZLinkActorRuntimeState(string actorId)
 
         public void Dispose()
         {
-            if (_state is not null)
-            {
-                _state.CurrentDispatch = _previous;
-            }
+            if (_state is not null) _state.CurrentDispatch = _previous;
         }
     }
-
 }
 
 internal readonly record struct ZLinkActorBoundSession(

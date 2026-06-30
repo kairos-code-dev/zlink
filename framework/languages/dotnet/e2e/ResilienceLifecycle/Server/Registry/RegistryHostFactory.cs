@@ -1,11 +1,7 @@
-using Microsoft.AspNetCore.Builder;
-using Microsoft.Extensions.DependencyInjection;
-using Microsoft.Extensions.Logging;
-using Zlink.Framework.AspNetCore;
 using ResilienceLifecycle.Server.Registry.Configuration;
 using ResilienceLifecycle.Server.Registry.Endpoints;
-using ResilienceLifecycle.Server.Registry.Handlers;
 using ResilienceLifecycle.Server.Registry.Infrastructure;
+using Zlink.Framework.AspNetCore;
 
 namespace ResilienceLifecycle.Server.Registry;
 
@@ -13,7 +9,7 @@ internal static class RegistryHostFactory
 {
     public static WebApplication Create(string[] args)
     {
-        var options = ServerOptions.Parse(args, defaultRole: "registry");
+        var options = ServerOptions.Parse(args, "registry");
         Directory.CreateDirectory(options.LogDir);
 
         var builder = WebApplication.CreateBuilder(args);
@@ -40,7 +36,7 @@ internal static class RegistryHostFactory
         return app;
     }
 
-    static string Require(string? value, string name)
+    private static string Require(string? value, string name)
     {
         return string.IsNullOrWhiteSpace(value)
             ? throw new InvalidOperationException($"{name} is required.")

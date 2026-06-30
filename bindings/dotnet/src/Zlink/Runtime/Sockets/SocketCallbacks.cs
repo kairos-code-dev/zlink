@@ -1,7 +1,5 @@
 // SPDX-License-Identifier: MPL-2.0
 
-using System;
-
 namespace Systems.Zlink;
 
 internal delegate void StreamFramedPacketHandler(
@@ -28,11 +26,9 @@ internal static class SocketInterop
         if (socket == null)
             throw new ArgumentNullException(paramName);
         if (socket is not SocketBase concrete)
-        {
             throw new ArgumentException(
                 "socket must be a concrete zlink socket instance",
                 paramName);
-        }
         return concrete;
     }
 
@@ -57,11 +53,9 @@ internal static class SocketInterop
         if (discovery == null)
             throw new ArgumentNullException(paramName);
         if (discovery is not Discovery concrete)
-        {
             throw new ArgumentException(
                 "discovery must be a concrete zlink discovery instance",
                 paramName);
-        }
         return concrete;
     }
 
@@ -71,11 +65,9 @@ internal static class SocketInterop
         if (socket == null)
             throw new ArgumentNullException(paramName);
         if (socket is not DealerSocket concrete)
-        {
             throw new ArgumentException(
                 "socket must be a concrete zlink dealer socket instance",
                 paramName);
-        }
         return concrete;
     }
 
@@ -85,11 +77,9 @@ internal static class SocketInterop
         if (socket == null)
             throw new ArgumentNullException(paramName);
         if (socket is not RouterSocket concrete)
-        {
             throw new ArgumentException(
                 "socket must be a concrete zlink router socket instance",
                 paramName);
-        }
         return concrete;
     }
 
@@ -99,11 +89,9 @@ internal static class SocketInterop
         if (socket == null)
             throw new ArgumentNullException(paramName);
         if (socket is not PubSocket concrete)
-        {
             throw new ArgumentException(
                 "socket must be a concrete zlink pub socket instance",
                 paramName);
-        }
         return concrete;
     }
 
@@ -112,11 +100,9 @@ internal static class SocketInterop
         if (spot == null)
             throw new ArgumentNullException(paramName);
         if (spot is not Spot concrete)
-        {
             throw new ArgumentException(
                 "spot must be a concrete zlink spot instance",
                 paramName);
-        }
         return concrete;
     }
 
@@ -125,11 +111,9 @@ internal static class SocketInterop
         if (node == null)
             throw new ArgumentNullException(paramName);
         if (node is not SpotNode concrete)
-        {
             throw new ArgumentException(
                 "node must be a concrete zlink spot node instance",
                 paramName);
-        }
         return concrete;
     }
 
@@ -138,11 +122,9 @@ internal static class SocketInterop
         if (timer == null)
             throw new ArgumentNullException(paramName);
         if (timer is not Timer concrete)
-        {
             throw new ArgumentException(
                 "timer must be a concrete zlink timer instance",
                 paramName);
-        }
         return concrete;
     }
 }

@@ -1,9 +1,3 @@
-using Zlink.Framework.Contracts.Channels;
-using Zlink.Framework.Contracts.Configuration;
-using Zlink.Framework.Runtime.Backend.Contracts;
-using Zlink.Framework.Runtime.Configuration;
-using Zlink.Framework.Runtime.Host;
-
 namespace Zlink.Framework.Runtime.Channels;
 
 // live serving socket 을 backing 으로 하는 IZLinkSocketConfig. Weight 는 socket 에서 read/write 하고,
@@ -127,19 +121,34 @@ internal static class ZLinkRuntimeOptionsErrors
 internal sealed class ZLinkClientServerRuntimeOptions(IZLinkSocketConfig serverSocket)
     : IZLinkClientServerChannelOptions
 {
-    public IZLinkSocketConfig ConfigureServerSocket() => serverSocket;
+    public IZLinkSocketConfig ConfigureServerSocket()
+    {
+        return serverSocket;
+    }
 
-    public IZLinkSocketConfig ConfigureClientSocket() => throw ZLinkRuntimeOptionsErrors.NotWired(nameof(ConfigureClientSocket));
+    public IZLinkSocketConfig ConfigureClientSocket()
+    {
+        throw ZLinkRuntimeOptionsErrors.NotWired(nameof(ConfigureClientSocket));
+    }
 
-    public IZLinkRouteConfig ConfigureServerRouting() => throw ZLinkRuntimeOptionsErrors.NotWired(nameof(ConfigureServerRouting));
+    public IZLinkRouteConfig ConfigureServerRouting()
+    {
+        throw ZLinkRuntimeOptionsErrors.NotWired(nameof(ConfigureServerRouting));
+    }
 
-    public IZLinkOutboundRouteConfig ConfigureClientRouting() => throw ZLinkRuntimeOptionsErrors.NotWired(nameof(ConfigureClientRouting));
+    public IZLinkOutboundRouteConfig ConfigureClientRouting()
+    {
+        throw ZLinkRuntimeOptionsErrors.NotWired(nameof(ConfigureClientRouting));
+    }
 }
 
 internal sealed class ZLinkRouteMeshRuntimeOptions(IZLinkSocketConfig socket)
     : IZLinkRouteMeshChannelOptions
 {
-    public IZLinkSocketConfig ConfigureSocket() => socket;
+    public IZLinkSocketConfig ConfigureSocket()
+    {
+        return socket;
+    }
 }
 
 internal sealed class ZLinkChannelRuntimeOptions(ZLinkFrameworkRuntime runtime)

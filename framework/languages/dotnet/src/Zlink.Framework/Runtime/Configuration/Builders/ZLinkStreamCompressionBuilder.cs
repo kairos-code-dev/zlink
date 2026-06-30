@@ -10,7 +10,9 @@ internal sealed class ZLinkStreamCompressionBuilder(
     }
 
     public IZLinkStreamCompressionBuilder UseLz4()
-        => UseDefault();
+    {
+        return UseDefault();
+    }
 
     public IZLinkStreamCompressionBuilder Use(IZlinkStreamCompressionCodec codec)
     {

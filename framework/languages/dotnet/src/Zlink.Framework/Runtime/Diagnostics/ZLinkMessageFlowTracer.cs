@@ -17,9 +17,9 @@ namespace Zlink.Framework.Runtime.Diagnostics;
 internal sealed class ZLinkMessageFlowTracer
 {
     private static long _tracedCount;
+    private readonly ILogger _logger;
     private readonly ZLinkDispatchOptionsModel _options;
     private readonly IServiceProvider _services;
-    private readonly ILogger _logger;
     private long _sampleCounter;
 
     public ZLinkMessageFlowTracer(
@@ -36,23 +36,20 @@ internal sealed class ZLinkMessageFlowTracer
 
     // Cheap mode gate (relaxed/volatile read of the live mode). Build the event only
     // after this returns true.
-    public bool Enabled(ZLinkMessageFlowOutcome outcome) =>
-        (int)_options.Diagnostics.EffectiveMessageFlow >= (int)RequiredMode(outcome);
+    public bool Enabled(ZLinkMessageFlowOutcome outcome)
+    {
+        return (int)_options.Diagnostics.EffectiveMessageFlow >= (int)RequiredMode(outcome);
+    }
 
     public void Trace(ZLinkMessageFlowEvent flow)
     {
-        if (!Enabled(flow.Outcome))
-        {
-            return;
-        }
+        if (!Enabled(flow.Outcome)) return;
 
         // Sampling thins healthy traffic; dropped transitions always pass through.
         if (flow.Outcome != ZLinkMessageFlowOutcome.Dropped
             && flow.Outcome != ZLinkMessageFlowOutcome.Error
             && !Sample())
-        {
             return;
-        }
 
         Interlocked.Increment(ref _tracedCount);
 
@@ -65,10 +62,7 @@ internal sealed class ZLinkMessageFlowTracer
             ZLinkRuntimeErrorSink.ReportUnhandledCallbackException(ex);
         }
 
-        if (_options.MessageFlowObserver is null && _options.MessageFlowObserverType is null)
-        {
-            return;
-        }
+        if (_options.MessageFlowObserver is null && _options.MessageFlowObserverType is null) return;
 
         _ = Task.Run(async () =>
         {
@@ -76,10 +70,8 @@ internal sealed class ZLinkMessageFlowTracer
             {
                 var observer = ResolveObserver();
                 if (observer is not null)
-                {
                     await observer.OnMessageFlowAsync(flow, CancellationToken.None)
                         .ConfigureAwait(false);
-                }
             }
             catch (Exception ex)
             {
@@ -88,44 +80,31 @@ internal sealed class ZLinkMessageFlowTracer
         });
     }
 
-    private static ZLinkMessageFlowLogMode RequiredMode(ZLinkMessageFlowOutcome outcome) =>
-        outcome is ZLinkMessageFlowOutcome.Dropped or ZLinkMessageFlowOutcome.Error
+    private static ZLinkMessageFlowLogMode RequiredMode(ZLinkMessageFlowOutcome outcome)
+    {
+        return outcome is ZLinkMessageFlowOutcome.Dropped or ZLinkMessageFlowOutcome.Error
             ? ZLinkMessageFlowLogMode.ErrorsOnly
             : ZLinkMessageFlowLogMode.KeyTransitions;
+    }
 
     private bool Sample()
     {
         var rate = _options.Diagnostics.SampleRate;
-        if (rate >= 1.0d)
-        {
-            return true;
-        }
+        if (rate >= 1.0d) return true;
 
-        if (rate <= 0.0d)
-        {
-            return false;
-        }
+        if (rate <= 0.0d) return false;
 
-        var stride = (long)((1.0d / rate) + 0.5d);
-        if (stride < 1)
-        {
-            stride = 1;
-        }
+        var stride = (long)(1.0d / rate + 0.5d);
+        if (stride < 1) stride = 1;
 
         return Interlocked.Increment(ref _sampleCounter) % stride == 0;
     }
 
     private IZLinkMessageFlowObserver? ResolveObserver()
     {
-        if (_options.MessageFlowObserver is { } observer)
-        {
-            return observer;
-        }
+        if (_options.MessageFlowObserver is { } observer) return observer;
 
-        if (_options.MessageFlowObserverType is not { } observerType)
-        {
-            return null;
-        }
+        if (_options.MessageFlowObserverType is not { } observerType) return null;
 
         return (IZLinkMessageFlowObserver)ActivatorUtilities.GetServiceOrCreateInstance(
             _services,
@@ -136,10 +115,10 @@ internal sealed class ZLinkMessageFlowTracer
     {
         var diagnostics = _options.Diagnostics;
         long? size = flow.MessageSize is { } messageSize
-            && (int)diagnostics.EffectiveMessageFlow >= (int)ZLinkMessageFlowLogMode.Verbose
-            && diagnostics.IncludeMessageSizes
-                ? messageSize
-                : null;
+                     && (int)diagnostics.EffectiveMessageFlow >= (int)ZLinkMessageFlowLogMode.Verbose
+                     && diagnostics.IncludeMessageSizes
+            ? messageSize
+            : null;
 
         // Separated file (diagnostics.log_file) vs the shared app logger. Both carry
         // structured key/value fields (so collectors ingest without parsing).
@@ -149,10 +128,7 @@ internal sealed class ZLinkMessageFlowTracer
             return;
         }
 
-        if (!_logger.IsEnabled(LogLevel.Information))
-        {
-            return;
-        }
+        if (!_logger.IsEnabled(LogLevel.Information)) return;
 
         _logger.LogInformation(
             "message flow outcome={Outcome} surface={Surface} kind={Kind} label={Label} packet={Packet} channel={Channel} topic={Topic} corr={Corr} src={Src} localRid={LocalRid} peerRid={PeerRid} socket={Socket} spot={Spot} actor={Actor} errorReason={ErrorReason} errorAction={ErrorAction} errorType={ErrorType} errorMessage={ErrorMessage} size={Size}",
@@ -191,10 +167,7 @@ internal static class ZLinkTraceFileWriter
             var directory = Path.GetDirectoryName(path);
             lock (Gate)
             {
-                if (!string.IsNullOrEmpty(directory))
-                {
-                    Directory.CreateDirectory(directory);
-                }
+                if (!string.IsNullOrEmpty(directory)) Directory.CreateDirectory(directory);
 
                 File.AppendAllText(path, line + Environment.NewLine);
             }
@@ -231,31 +204,28 @@ internal static class ZLinkTraceFormat
         Append(builder, "errorAction", flow.ErrorAction?.ToString());
         Append(builder, "errorType", flow.ErrorType);
         Append(builder, "errorMessage", flow.ErrorMessage);
-        if (size is { } value)
-        {
-            Append(builder, "size", value.ToString(CultureInfo.InvariantCulture));
-        }
+        if (size is { } value) Append(builder, "size", value.ToString(CultureInfo.InvariantCulture));
 
         return $"{DateTime.Now:O} info zlink.framework.dispatch - {builder}";
     }
 
-    public static string OutcomeKey(ZLinkMessageFlowOutcome outcome) => outcome switch
+    public static string OutcomeKey(ZLinkMessageFlowOutcome outcome)
     {
-        ZLinkMessageFlowOutcome.Received => "received",
-        ZLinkMessageFlowOutcome.Dispatched => "dispatched",
-        ZLinkMessageFlowOutcome.Replied => "replied",
-        ZLinkMessageFlowOutcome.Dropped => "dropped",
-        ZLinkMessageFlowOutcome.Sent => "sent",
-        ZLinkMessageFlowOutcome.ReplyReceived => "reply-received",
-        ZLinkMessageFlowOutcome.Error => "error",
-        _ => outcome.ToString().ToLowerInvariant()
-    };
+        return outcome switch
+        {
+            ZLinkMessageFlowOutcome.Received => "received",
+            ZLinkMessageFlowOutcome.Dispatched => "dispatched",
+            ZLinkMessageFlowOutcome.Replied => "replied",
+            ZLinkMessageFlowOutcome.Dropped => "dropped",
+            ZLinkMessageFlowOutcome.Sent => "sent",
+            ZLinkMessageFlowOutcome.ReplyReceived => "reply-received",
+            ZLinkMessageFlowOutcome.Error => "error",
+            _ => outcome.ToString().ToLowerInvariant()
+        };
+    }
 
     private static void Append(StringBuilder builder, string key, string? value)
     {
-        if (!string.IsNullOrEmpty(value))
-        {
-            builder.Append(' ').Append(key).Append('=').Append(value);
-        }
+        if (!string.IsNullOrEmpty(value)) builder.Append(' ').Append(key).Append('=').Append(value);
     }
 }

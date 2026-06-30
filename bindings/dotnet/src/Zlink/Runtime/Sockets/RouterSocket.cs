@@ -1,10 +1,6 @@
 // SPDX-License-Identifier: MPL-2.0
 
-using System;
-using System.Collections.Generic;
 using System.Runtime.InteropServices;
-using System.Threading;
-using System.Threading.Tasks;
 using Systems.Zlink.Runtime.Native;
 
 namespace Systems.Zlink;
@@ -13,21 +9,26 @@ internal sealed class RouterSocket : ConnectableRoutedMessageSocketBase,
     IRouterSocket
 {
     private static readonly TimeSpan DefaultRequestTimeout = TimeSpan.FromSeconds(5);
+
     private static readonly NativeMethods.ZlinkReplyHandlerDelegate RequestReplyHandler =
         OnRequestReply;
+
     private static readonly NativeMethods.ZlinkReplyHandlerDelegate SpotReplyHandler =
         OnSpotReply;
+
     private static readonly IntPtr RequestReplyHandlerPtr =
         Marshal.GetFunctionPointerForDelegate(RequestReplyHandler);
+
     private static readonly IntPtr SpotReplyHandlerPtr =
         Marshal.GetFunctionPointerForDelegate(SpotReplyHandler);
-    public new RouterSocketOptions Options { get; }
 
     public RouterSocket(Context context)
         : base(context, SocketType.Router)
     {
         Options = new RouterSocketOptions(this);
     }
+
+    public new RouterSocketOptions Options { get; }
 
     public void AttachDiscovery(IDiscovery discovery)
     {
@@ -46,7 +47,7 @@ internal sealed class RouterSocket : ConnectableRoutedMessageSocketBase,
     }
 
     /// <summary>
-    /// Start a request to a specific peer (operation builder).
+    ///     Start a request to a specific peer (operation builder).
     /// </summary>
     public RequestOperation Request(RoutingId peerRid)
     {
@@ -55,7 +56,7 @@ internal sealed class RouterSocket : ConnectableRoutedMessageSocketBase,
     }
 
     /// <summary>
-    /// Start a reply (operation builder).
+    ///     Start a reply (operation builder).
     /// </summary>
     public ReplyOperation Reply(RoutingId rid, ulong requestSeq)
     {
@@ -64,7 +65,7 @@ internal sealed class RouterSocket : ConnectableRoutedMessageSocketBase,
     }
 
     /// <summary>
-    /// Start a router -> spot routed send (operation builder).
+    ///     Start a router -> spot routed send (operation builder).
     /// </summary>
     public SendOperation SendToSpot(RoutingId destNodeRid, RoutingId destSpotRid)
     {
@@ -72,7 +73,7 @@ internal sealed class RouterSocket : ConnectableRoutedMessageSocketBase,
     }
 
     /// <summary>
-    /// Start a router -> spot routed request (operation builder).
+    ///     Start a router -> spot routed request (operation builder).
     /// </summary>
     public RequestOperation RequestToSpot(RoutingId destNodeRid,
         RoutingId destSpotRid)
@@ -83,7 +84,7 @@ internal sealed class RouterSocket : ConnectableRoutedMessageSocketBase,
     }
 
     /// <summary>
-    /// Start a router -> spot routed reply (operation builder).
+    ///     Start a router -> spot routed reply (operation builder).
     /// </summary>
     public ReplyOperation ReplyToSpot(RoutingId destNodeRid,
         RoutingId destSpotRid, ulong requestSeq)
@@ -95,8 +96,8 @@ internal sealed class RouterSocket : ConnectableRoutedMessageSocketBase,
     internal async Task<IReadOnlyList<Message>> RequestCore(RoutingId peerRid,
         IReadOnlyList<Message> parts, TimeSpan timeout, CancellationToken ct)
     {
-        Received received = await RequestAsyncCore(peerRid, parts,
-            timeout == TimeSpan.Zero ? DefaultRequestTimeout : timeout, ct)
+        var received = await RequestAsyncCore(peerRid, parts,
+                timeout == TimeSpan.Zero ? DefaultRequestTimeout : timeout, ct)
             .ConfigureAwait(false);
         return received.Parts;
     }
@@ -119,6 +120,7 @@ internal sealed class RouterSocket : ConnectableRoutedMessageSocketBase,
                         payload = RequestReplySupport.TakeOwnedParts(reply);
                         reply.Dispose();
                     }
+
                     callback(result, payload);
                 });
             return true;
@@ -127,28 +129,26 @@ internal sealed class RouterSocket : ConnectableRoutedMessageSocketBase,
         {
             if (RequestReplySupport.MapSendNoWaitResult(error)
                 == SendResult.Backpressured)
-            {
                 return false;
-            }
 
             throw;
         }
     }
 
-    internal unsafe void ReplyCore(RoutingId peerRid, ulong requestSeq,
+    internal void ReplyCore(RoutingId peerRid, ulong requestSeq,
         IReadOnlyList<Message> parts, SendFlags flags = SendFlags.None)
     {
         _ = flags;
         RequestReplySupport.EnsureParts(parts, nameof(parts));
-        ZlinkRoutingId nativeRoutingId = peerRid.ToNative();
-        Message[] cloned = RequestReplySupport.CloneParts(parts);
+        var nativeRoutingId = peerRid.ToNative();
+        var cloned = RequestReplySupport.CloneParts(parts);
         try
         {
             lock (SubmitGate)
             {
                 RequestReplySupport.SubmitClonedParts(cloned,
                     (ref ZlinkMsg nativePart,
-                        NativeMethods.ZlinkPartFlag partFlag) =>
+                            NativeMethods.ZlinkPartFlag partFlag) =>
                         NativeMethods.zlink_router_reply_part(Handle,
                             ref nativeRoutingId, requestSeq, ref nativePart,
                             partFlag));
@@ -161,30 +161,31 @@ internal sealed class RouterSocket : ConnectableRoutedMessageSocketBase,
         }
     }
 
-    internal unsafe bool SendToSpotCore(RoutingId destNodeRid,
+    internal bool SendToSpotCore(RoutingId destNodeRid,
         RoutingId destSpotRid, IReadOnlyList<Message> parts,
         SendFlags flags = SendFlags.None)
     {
         RequestReplySupport.EnsureParts(parts, nameof(parts));
-        ZlinkRoutingId nodeRid = destNodeRid.ToNative();
-        ZlinkRoutingId spotRid = destSpotRid.ToNative();
-        Message[] cloned = RequestReplySupport.CloneParts(parts);
+        var nodeRid = destNodeRid.ToNative();
+        var spotRid = destSpotRid.ToNative();
+        var cloned = RequestReplySupport.CloneParts(parts);
         try
         {
             lock (SubmitGate)
             {
                 RequestReplySupport.SubmitClonedParts(cloned,
                     (ref ZlinkMsg nativePart,
-                        NativeMethods.ZlinkPartFlag partFlag) =>
+                            NativeMethods.ZlinkPartFlag partFlag) =>
                         NativeMethods.zlink_router_send_spot_part(Handle,
                             ref nodeRid, ref spotRid, ref nativePart, (int)flags,
                             partFlag));
             }
+
             return true;
         }
         catch (ZlinkException error) when ((flags & SendFlags.DontWait) != 0
-            && RequestReplySupport.MapSendNoWaitResult(error)
-                == SendResult.Backpressured)
+                                           && RequestReplySupport.MapSendNoWaitResult(error)
+                                           == SendResult.Backpressured)
         {
             RequestReplySupport.DisposeParts(cloned);
             return false;
@@ -200,7 +201,7 @@ internal sealed class RouterSocket : ConnectableRoutedMessageSocketBase,
         RoutingId destNodeRid, RoutingId destSpotRid,
         IReadOnlyList<Message> parts, TimeSpan timeout, CancellationToken ct)
     {
-        Received received = await RequestToSpotAsyncInternal(destNodeRid,
+        var received = await RequestToSpotAsyncInternal(destNodeRid,
             destSpotRid, parts, timeout, ct).ConfigureAwait(false);
         return received.Parts;
     }
@@ -222,6 +223,7 @@ internal sealed class RouterSocket : ConnectableRoutedMessageSocketBase,
                         payload = RequestReplySupport.TakeOwnedParts(reply);
                         reply.Dispose();
                     }
+
                     callback(result, payload);
                 });
             return true;
@@ -230,30 +232,28 @@ internal sealed class RouterSocket : ConnectableRoutedMessageSocketBase,
         {
             if (RequestReplySupport.MapSendNoWaitResult(error)
                 == SendResult.Backpressured)
-            {
                 return false;
-            }
 
             throw;
         }
     }
 
-    internal unsafe void ReplyToSpotCore(RoutingId destNodeRid,
+    internal void ReplyToSpotCore(RoutingId destNodeRid,
         RoutingId destSpotRid, ulong requestSeq, IReadOnlyList<Message> parts,
         SendFlags flags = SendFlags.None)
     {
         _ = flags;
         RequestReplySupport.EnsureParts(parts, nameof(parts));
-        ZlinkRoutingId nodeRid = destNodeRid.ToNative();
-        ZlinkRoutingId spotRid = destSpotRid.ToNative();
-        Message[] cloned = RequestReplySupport.CloneParts(parts);
+        var nodeRid = destNodeRid.ToNative();
+        var spotRid = destSpotRid.ToNative();
+        var cloned = RequestReplySupport.CloneParts(parts);
         try
         {
             lock (SubmitGate)
             {
                 RequestReplySupport.SubmitClonedParts(cloned,
                     (ref ZlinkMsg nativePart,
-                        NativeMethods.ZlinkPartFlag partFlag) =>
+                            NativeMethods.ZlinkPartFlag partFlag) =>
                         NativeMethods.zlink_router_reply_spot_part(Handle,
                             ref nodeRid, ref spotRid, requestSeq, ref nativePart,
                             partFlag));
@@ -266,15 +266,15 @@ internal sealed class RouterSocket : ConnectableRoutedMessageSocketBase,
         }
     }
 
-    private unsafe Task<Received> RequestToSpotAsyncInternal(
+    private Task<Received> RequestToSpotAsyncInternal(
         RoutingId destNodeRid, RoutingId destSpotRid, IReadOnlyList<Message> parts,
         TimeSpan timeout, CancellationToken ct, int flags = 0)
     {
         RequestReplySupport.EnsureParts(parts, nameof(parts));
-        ZlinkRoutingId nodeRid = destNodeRid.ToNative();
-        ZlinkRoutingId spotRid = destSpotRid.ToNative();
-        Message[] cloned = RequestReplySupport.CloneParts(parts);
-        uint timeoutMs = RequestReplySupport.NormalizeTimeout(timeout);
+        var nodeRid = destNodeRid.ToNative();
+        var spotRid = destSpotRid.ToNative();
+        var cloned = RequestReplySupport.CloneParts(parts);
+        var timeoutMs = RequestReplySupport.NormalizeTimeout(timeout);
         var completion = new TaskCompletionSource<Received>(
             TaskCreationOptions.RunContinuationsAsynchronously);
         GCHandle handle = default;
@@ -285,28 +285,23 @@ internal sealed class RouterSocket : ConnectableRoutedMessageSocketBase,
             state = new RequestCallState(completion);
             handle = GCHandle.Alloc(state, GCHandleType.Normal);
             if (ct.CanBeCanceled)
-            {
-                state.SetCancellationRegistration(ct.Register(static userdata =>
-                {
-                    RequestCallState.CancelFromUserData(userdata);
-                }, handle));
-            }
+                state.SetCancellationRegistration(
+                    ct.Register(static userdata => { RequestCallState.CancelFromUserData(userdata); }, handle));
 
-            state.SetTimeoutTimer(new System.Threading.Timer(static userdata =>
-            {
-                RequestCallState.TimeoutFromUserData(userdata);
-            }, handle, (int)timeoutMs, Timeout.Infinite));
+            state.SetTimeoutTimer(new System.Threading.Timer(
+                static userdata => { RequestCallState.TimeoutFromUserData(userdata); }, handle, (int)timeoutMs,
+                Timeout.Infinite));
 
             lock (SubmitGate)
             {
-                for (int i = 0; i < cloned.Length; i++)
+                for (var i = 0; i < cloned.Length; i++)
                 {
                     ZlinkMsg nativePart = default;
                     cloned[i].MoveTo(ref nativePart);
-                    bool submitted = false;
+                    var submitted = false;
                     try
                     {
-                        int rc = NativeMethods.zlink_router_request_spot_part(Handle,
+                        var rc = NativeMethods.zlink_router_request_spot_part(Handle,
                             ref nodeRid, ref spotRid, ref nativePart,
                             SpotReplyHandlerPtr,
                             GCHandle.ToIntPtr(handle),
@@ -339,14 +334,14 @@ internal sealed class RouterSocket : ConnectableRoutedMessageSocketBase,
         }
     }
 
-    private unsafe Task<Received> RequestAsyncCore(RoutingId peerRid,
+    private Task<Received> RequestAsyncCore(RoutingId peerRid,
         IReadOnlyList<Message> parts, TimeSpan timeout, CancellationToken ct,
         int flags = 0)
     {
         RequestReplySupport.EnsureParts(parts, nameof(parts));
-        ZlinkRoutingId nativeRoutingId = peerRid.ToNative();
-        Message[] cloned = RequestReplySupport.CloneParts(parts);
-        uint timeoutMs = RequestReplySupport.NormalizeRequestTimeout(timeout,
+        var nativeRoutingId = peerRid.ToNative();
+        var cloned = RequestReplySupport.CloneParts(parts);
+        var timeoutMs = RequestReplySupport.NormalizeRequestTimeout(timeout,
             DefaultRequestTimeout);
         var completion = new TaskCompletionSource<Received>(
             TaskCreationOptions.RunContinuationsAsynchronously);
@@ -358,24 +353,19 @@ internal sealed class RouterSocket : ConnectableRoutedMessageSocketBase,
             handle = GCHandle.Alloc(state, GCHandleType.Normal);
 
             if (ct.CanBeCanceled)
-            {
-                state.SetCancellationRegistration(ct.Register(static userdata =>
-                {
-                    RequestCallState.CancelFromUserData(userdata);
-                }, handle));
-            }
+                state.SetCancellationRegistration(
+                    ct.Register(static userdata => { RequestCallState.CancelFromUserData(userdata); }, handle));
 
-            state.SetTimeoutTimer(new System.Threading.Timer(static userdata =>
-            {
-                RequestCallState.RequestTimeoutFromUserData(userdata);
-            }, handle, (int)timeoutMs, Timeout.Infinite));
+            state.SetTimeoutTimer(new System.Threading.Timer(
+                static userdata => { RequestCallState.RequestTimeoutFromUserData(userdata); }, handle, (int)timeoutMs,
+                Timeout.Infinite));
 
-            IntPtr userData = GCHandle.ToIntPtr(handle);
+            var userData = GCHandle.ToIntPtr(handle);
             lock (SubmitGate)
             {
                 RequestReplySupport.SubmitClonedParts(cloned,
                     (ref ZlinkMsg nativePart,
-                        NativeMethods.ZlinkPartFlag partFlag) =>
+                            NativeMethods.ZlinkPartFlag partFlag) =>
                         NativeMethods.zlink_router_request_part(Handle,
                             ref nativeRoutingId, ref nativePart, flags, partFlag,
                             timeoutMs, RequestReplyHandlerPtr, userData));

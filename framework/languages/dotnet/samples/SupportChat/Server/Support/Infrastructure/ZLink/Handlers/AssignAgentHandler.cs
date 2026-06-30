@@ -1,5 +1,5 @@
-using SupportChat.Server.Support.Application.ConversationAssignment;
 using SupportChat.Server.Configuration;
+using SupportChat.Server.Support.Application.ConversationAssignment;
 using SupportChat.Shared.Contracts;
 using Zlink.Framework.Contracts.Handlers;
 
@@ -16,18 +16,18 @@ internal sealed class AssignAgentHandler(
         CancellationToken cancellationToken)
     {
         _ = context;
-        Console.Error.WriteLine($"support assign: request conversation={request.ConversationId} requested={request.RequestedAgentActorId}");
+        Console.Error.WriteLine(
+            $"support assign: request conversation={request.ConversationId} requested={request.RequestedAgentActorId}");
         var assigned = assignment.AssignNextAgent();
         if (assigned is null)
-        {
             return ValueTask.FromResult(new AssignAgentRes(
                 request.ConversationId,
                 ConversationStatuses.WaitingForAgent,
-                AgentActorId: null));
-        }
+                null));
 
         _ = cancellationToken;
-        Console.Error.WriteLine($"support assign: assigned conversation={request.ConversationId} agent={assigned.ActorId}");
+        Console.Error.WriteLine(
+            $"support assign: assigned conversation={request.ConversationId} agent={assigned.ActorId}");
         return ValueTask.FromResult(new AssignAgentRes(
             request.ConversationId,
             ConversationStatuses.Active,

@@ -1,6 +1,6 @@
-using Zlink.HttpClient;
-using RegistryMessaging.Shared;
 using RegistryMessaging.Client.Support;
+using RegistryMessaging.Shared;
+using Zlink.HttpClient;
 
 namespace RegistryMessaging.Client.Scenarios;
 
@@ -57,7 +57,8 @@ internal static class RmB2ScaleInScenario
         var preA = ScenarioAssert.CountNewEvidence(scaleOutA, beforeA, "profile-request|rid=api-a", markerBefore);
         var preB = ScenarioAssert.CountNewEvidence(scaleOutB, beforeB, "profile-request|rid=api-b", markerBefore);
         ScenarioAssert.That(preA == apiABeforeValues.Length && preB == apiBBeforeValues.Length
-            && preA + preB == valuesBefore.Length, "RM-B2 expected both providers before scale-in.");
+                                                            && preA + preB == valuesBefore.Length,
+            "RM-B2 expected both providers before scale-in.");
 
         await cluster.StopAsync(providerB);
         await Task.Delay(TimeSpan.FromSeconds(1));
@@ -91,10 +92,12 @@ internal static class RmB2ScaleInScenario
         Console.WriteLine("scenario RM-B2 passed");
     }
 
-    static async Task<string[]> ReadEvidenceAsync(ZLinkHttpClient http) =>
-        (await http.Get("/evidence").SubmitAsync<string[]>()).Body;
+    private static async Task<string[]> ReadEvidenceAsync(ZLinkHttpClient http)
+    {
+        return (await http.Get("/evidence").SubmitAsync<string[]>()).Body;
+    }
 
-    static async Task<string[]> ReadEvidenceIgnoringStoppedAsync(ZLinkHttpClient http)
+    private static async Task<string[]> ReadEvidenceIgnoringStoppedAsync(ZLinkHttpClient http)
     {
         try
         {
@@ -106,8 +109,10 @@ internal static class RmB2ScaleInScenario
         }
     }
 
-    static async Task<string[]> WaitEvidenceAsync(ZLinkHttpClient http, string contains) =>
-        (await http.Post("/evidence/wait")
+    private static async Task<string[]> WaitEvidenceAsync(ZLinkHttpClient http, string contains)
+    {
+        return (await http.Post("/evidence/wait")
             .Body(new EvidenceWaitRequest(contains))
             .SubmitAsync<string[]>()).Body;
+    }
 }

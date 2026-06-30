@@ -1,6 +1,6 @@
-using Zlink.HttpClient;
-using RegistryMessaging.Shared;
 using RegistryMessaging.Client.Support;
+using RegistryMessaging.Shared;
+using Zlink.HttpClient;
 
 namespace RegistryMessaging.Client.Scenarios;
 
@@ -59,9 +59,7 @@ internal static class RmB1ScaleOutScenario
 
         ScenarioAssert.That(replies.Count == values.Length, "RM-B1 scale-out reply count mismatch.");
         foreach (var reply in replies)
-        {
             ScenarioAssert.That(reply.ProviderRid is "api-a" or "api-b", "RM-B1 reply provider mismatch.");
-        }
 
         var apiAValues = replies
             .Where(reply => reply.ProviderRid == "api-a")
@@ -71,7 +69,8 @@ internal static class RmB1ScaleOutScenario
             .Where(reply => reply.ProviderRid == "api-b")
             .Select(reply => reply.Value)
             .ToArray();
-        ScenarioAssert.That(apiAValues.Length > 0 && apiBValues.Length > 0, "RM-B1 expected both providers after scale-out.");
+        ScenarioAssert.That(apiAValues.Length > 0 && apiBValues.Length > 0,
+            "RM-B1 expected both providers after scale-out.");
 
         var afterA = await WaitEvidenceAsync(requester, apiAValues[^1]);
         var afterB = await WaitEvidenceAsync(providerBClient, apiBValues[^1]);
@@ -83,11 +82,15 @@ internal static class RmB1ScaleOutScenario
         Console.WriteLine("scenario RM-B1 passed");
     }
 
-    static async Task<string[]> ReadEvidenceAsync(ZLinkHttpClient http) =>
-        (await http.Get("/evidence").SubmitAsync<string[]>()).Body;
+    private static async Task<string[]> ReadEvidenceAsync(ZLinkHttpClient http)
+    {
+        return (await http.Get("/evidence").SubmitAsync<string[]>()).Body;
+    }
 
-    static async Task<string[]> WaitEvidenceAsync(ZLinkHttpClient http, string contains) =>
-        (await http.Post("/evidence/wait")
+    private static async Task<string[]> WaitEvidenceAsync(ZLinkHttpClient http, string contains)
+    {
+        return (await http.Post("/evidence/wait")
             .Body(new EvidenceWaitRequest(contains))
             .SubmitAsync<string[]>()).Body;
+    }
 }

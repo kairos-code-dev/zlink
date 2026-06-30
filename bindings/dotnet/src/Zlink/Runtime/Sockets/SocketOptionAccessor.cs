@@ -1,6 +1,5 @@
 // SPDX-License-Identifier: MPL-2.0
 
-using System;
 using System.Buffers;
 using System.Text;
 using Systems.Zlink.Runtime.Native;
@@ -14,36 +13,36 @@ internal sealed class SocketOptionAccessor
     public SocketOptionAccessor(Func<IntPtr> handleProvider)
     {
         _handleProvider = handleProvider
-            ?? throw new ArgumentNullException(nameof(handleProvider));
+                          ?? throw new ArgumentNullException(nameof(handleProvider));
     }
 
     public unsafe void SetInt32(SocketOption option, int value)
     {
-        int tmp = value;
-        IntPtr ptr = new IntPtr(&tmp);
-        int rc = SetCore(option, ptr, (nuint)sizeof(int));
+        var tmp = value;
+        var ptr = new IntPtr(&tmp);
+        var rc = SetCore(option, ptr, sizeof(int));
         ZlinkException.ThrowConfigIfError(rc);
     }
 
     public unsafe void SetInt64(SocketOption option, long value)
     {
-        long tmp = value;
-        IntPtr ptr = new IntPtr(&tmp);
-        int rc = SetCore(option, ptr, (nuint)sizeof(long));
+        var tmp = value;
+        var ptr = new IntPtr(&tmp);
+        var rc = SetCore(option, ptr, sizeof(long));
         ZlinkException.ThrowConfigIfError(rc);
     }
 
     public unsafe void SetUInt64(SocketOption option, ulong value)
     {
-        ulong tmp = value;
-        IntPtr ptr = new IntPtr(&tmp);
-        int rc = SetCore(option, ptr, (nuint)sizeof(ulong));
+        var tmp = value;
+        var ptr = new IntPtr(&tmp);
+        var rc = SetCore(option, ptr, sizeof(ulong));
         ZlinkException.ThrowConfigIfError(rc);
     }
 
     public unsafe void SetBytes(SocketOption option, ReadOnlySpan<byte> value)
     {
-        IntPtr handle = _handleProvider();
+        var handle = _handleProvider();
         if (option == SocketOption.RoutingId)
         {
             int rc;
@@ -52,13 +51,14 @@ internal sealed class SocketOptionAccessor
                 rc = NativeMethods.zlink_set_routing_id(handle, (IntPtr)ptr,
                     (nuint)value.Length);
             }
+
             ZlinkException.ThrowConfigIfError(rc);
             return;
         }
 
         fixed (byte* ptr = value)
         {
-            int rc = SetCore(option, (IntPtr)ptr, (nuint)value.Length);
+            var rc = SetCore(option, (IntPtr)ptr, (nuint)value.Length);
             ZlinkException.ThrowConfigIfError(rc);
         }
     }
@@ -68,34 +68,34 @@ internal sealed class SocketOptionAccessor
         if (value == null)
             throw new ArgumentNullException(nameof(value));
 
-        IntPtr handle = _handleProvider();
+        var handle = _handleProvider();
         if (option == SocketOption.Subscribe)
         {
-            int rc = NativeMethods.zlink_set_subscription(handle, value);
+            var rc = NativeMethods.zlink_set_subscription(handle, value);
             ZlinkException.ThrowConfigIfError(rc);
             return;
         }
 
         if (option == SocketOption.Unsubscribe)
         {
-            int rc = NativeMethods.zlink_unset_subscription(handle, value);
+            var rc = NativeMethods.zlink_unset_subscription(handle, value);
             ZlinkException.ThrowConfigIfError(rc);
             return;
         }
 
-        int maxByteCount = Encoding.UTF8.GetMaxByteCount(value.Length);
+        var maxByteCount = Encoding.UTF8.GetMaxByteCount(value.Length);
         if (maxByteCount <= 512)
         {
             Span<byte> buffer = stackalloc byte[maxByteCount];
-            int byteCount = Encoding.UTF8.GetBytes(value.AsSpan(), buffer);
+            var byteCount = Encoding.UTF8.GetBytes(value.AsSpan(), buffer);
             SetBytes(option, buffer.Slice(0, byteCount));
             return;
         }
 
-        byte[] rented = ArrayPool<byte>.Shared.Rent(maxByteCount);
+        var rented = ArrayPool<byte>.Shared.Rent(maxByteCount);
         try
         {
-            int byteCount = Encoding.UTF8.GetBytes(value, rented);
+            var byteCount = Encoding.UTF8.GetBytes(value, rented);
             SetBytes(option, rented.AsSpan(0, byteCount));
         }
         finally
@@ -106,10 +106,10 @@ internal sealed class SocketOptionAccessor
 
     public unsafe int GetInt32(SocketOption option)
     {
-        int value = 0;
-        nuint size = (nuint)sizeof(int);
-        IntPtr ptr = new IntPtr(&value);
-        int rc = GetCore(option, ptr, ref size);
+        var value = 0;
+        var size = (nuint)sizeof(int);
+        var ptr = new IntPtr(&value);
+        var rc = GetCore(option, ptr, ref size);
         ZlinkException.ThrowConfigIfError(rc);
         return value;
     }
@@ -117,9 +117,9 @@ internal sealed class SocketOptionAccessor
     public unsafe long GetInt64(SocketOption option)
     {
         long value = 0;
-        nuint size = (nuint)sizeof(long);
-        IntPtr ptr = new IntPtr(&value);
-        int rc = GetCore(option, ptr, ref size);
+        var size = (nuint)sizeof(long);
+        var ptr = new IntPtr(&value);
+        var rc = GetCore(option, ptr, ref size);
         ZlinkException.ThrowConfigIfError(rc);
         return value;
     }
@@ -127,19 +127,19 @@ internal sealed class SocketOptionAccessor
     public unsafe ulong GetUInt64(SocketOption option)
     {
         ulong value = 0;
-        nuint size = (nuint)sizeof(ulong);
-        IntPtr ptr = new IntPtr(&value);
-        int rc = GetCore(option, ptr, ref size);
+        var size = (nuint)sizeof(ulong);
+        var ptr = new IntPtr(&value);
+        var rc = GetCore(option, ptr, ref size);
         ZlinkException.ThrowConfigIfError(rc);
         return value;
     }
 
     public byte[] GetBytes(SocketOption option, int initialSize = 256)
     {
-        IntPtr handle = _handleProvider();
+        var handle = _handleProvider();
         if (option == SocketOption.RoutingId)
         {
-            int rc = NativeMethods.zlink_get_routing_id(handle, out var routingId);
+            var rc = NativeMethods.zlink_get_routing_id(handle, out var routingId);
             ZlinkException.ThrowConfigIfError(rc);
             return NativeHelpers.ReadRoutingId(ref routingId);
         }
@@ -147,17 +147,16 @@ internal sealed class SocketOptionAccessor
         if (initialSize <= 0)
             throw new ArgumentOutOfRangeException(nameof(initialSize));
 
-        byte[] rented = ArrayPool<byte>.Shared.Rent(initialSize);
+        var rented = ArrayPool<byte>.Shared.Rent(initialSize);
         try
         {
             while (true)
-            {
                 unsafe
                 {
                     fixed (byte* ptr = rented)
                     {
-                        nuint size = (nuint)rented.Length;
-                        int rc = GetCore(option, (IntPtr)ptr, ref size);
+                        var size = (nuint)rented.Length;
+                        var rc = GetCore(option, (IntPtr)ptr, ref size);
                         if (rc == 0)
                             return CopyBytes(rented, size);
 
@@ -171,7 +170,6 @@ internal sealed class SocketOptionAccessor
                         ZlinkException.ThrowConfigIfError(rc);
                     }
                 }
-            }
         }
         finally
         {
@@ -183,8 +181,8 @@ internal sealed class SocketOptionAccessor
     {
         fixed (byte* ptr = destination)
         {
-            nuint size = (nuint)destination.Length;
-            int rc = GetCore(option, (IntPtr)ptr, ref size);
+            var size = (nuint)destination.Length;
+            var rc = GetCore(option, (IntPtr)ptr, ref size);
             ZlinkException.ThrowConfigIfError(rc);
             return checked((int)size);
         }
@@ -192,8 +190,8 @@ internal sealed class SocketOptionAccessor
 
     public string GetString(SocketOption option, int initialSize = 256)
     {
-        byte[] bytes = GetBytes(option, initialSize);
-        int len = Array.IndexOf(bytes, (byte)0);
+        var bytes = GetBytes(option, initialSize);
+        var len = Array.IndexOf(bytes, (byte)0);
         if (len < 0)
             len = bytes.Length;
         return Encoding.UTF8.GetString(bytes, 0, len);
@@ -203,9 +201,9 @@ internal sealed class SocketOptionAccessor
     {
         unsafe
         {
-            int value = 0;
-            nuint size = (nuint)sizeof(int);
-            int rc = NativeMethods.zlink_get_option(handle, (int)SocketOption.Type,
+            var value = 0;
+            var size = (nuint)sizeof(int);
+            var rc = NativeMethods.zlink_get_option(handle, (int)SocketOption.Type,
                 new IntPtr(&value), ref size);
             ZlinkException.ThrowConfigIfError(rc);
             return (SocketType)value;
@@ -214,8 +212,8 @@ internal sealed class SocketOptionAccessor
 
     private int SetCore(SocketOption option, IntPtr value, nuint length)
     {
-        IntPtr handle = _handleProvider();
-        int code = (int)option;
+        var handle = _handleProvider();
+        var code = (int)option;
         if ((code & 0xFF00) == 0x3100)
             return NativeMethods.zlink_set_router_option(handle, code, value,
                 length);
@@ -236,8 +234,8 @@ internal sealed class SocketOptionAccessor
 
     private int GetCore(SocketOption option, IntPtr value, ref nuint length)
     {
-        IntPtr handle = _handleProvider();
-        int code = (int)option;
+        var handle = _handleProvider();
+        var code = (int)option;
         if ((code & 0xFF00) == 0x3100)
             return NativeMethods.zlink_get_router_option(handle, code, value,
                 ref length);
@@ -258,12 +256,12 @@ internal sealed class SocketOptionAccessor
 
     private static byte[] CopyBytes(byte[] source, nuint size)
     {
-        int actual = checked((int)size);
-        byte[] result = new byte[actual];
+        var actual = checked((int)size);
+        var result = new byte[actual];
         if (actual == 0)
             return result;
 
-        int toCopy = actual;
+        var toCopy = actual;
         if (toCopy > source.Length)
             toCopy = source.Length;
         Array.Copy(source, result, toCopy);

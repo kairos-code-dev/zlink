@@ -1,6 +1,6 @@
+using SpotService.Client.Support;
 using SpotService.Shared;
 using Zlink.HttpClient;
-using SpotService.Client.Support;
 
 namespace SpotService.Client.Scenarios;
 
@@ -16,7 +16,8 @@ internal static class SmC3Scenario
             var created = (await playA.Post("/spot/create")
                 .Body(new CreateSpotReq(spotRid))
                 .SubmitAsync<CreateSpotReply>()).Body;
-            ScenarioAssert.That(created.SpotRid == spotRid && created.NodeRid == "play-a", "SM-C3 spot was not created on play-a.");
+            ScenarioAssert.That(created.SpotRid == spotRid && created.NodeRid == "play-a",
+                "SM-C3 spot was not created on play-a.");
         }
 
         var direct = (await playA.Post("/spot/to-spot/request")
@@ -44,7 +45,7 @@ internal static class SmC3Scenario
             $"spot-to-spot-timeout|rid=play-a|source={sourceSpotRid}|target={targetSpotRid}|failed=True",
             $"spot-to-spot-negative|rid=play-a|source={sourceSpotRid}|target={targetSpotRid}|requestFailed=True",
             "dispatch-error|surface=SpotRoute|reason=HandlerMissing|action=ReplyError|packet=MissingSpotReq",
-            "dispatch-error|surface=SpotRoute|reason=HandlerMissing|action=Drop|packet=MissingSpotCommand",
+            "dispatch-error|surface=SpotRoute|reason=HandlerMissing|action=Drop|packet=MissingSpotCommand"
         };
         var evidence = (await playA.Post("/evidence/wait")
             .Body(new EvidenceWaitRequest(expectedEvidence))

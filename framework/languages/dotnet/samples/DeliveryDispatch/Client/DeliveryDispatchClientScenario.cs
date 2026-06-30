@@ -63,16 +63,20 @@ internal sealed class DeliveryDispatchClientScenario
             .Where(message => message.Payload.DeliveryId == deliveryId)
             .Async(cancellationToken);
         var assigned = customer.WaitFor<DeliveryStatusNotify>()
-            .Where(message => message.Payload.DeliveryId == deliveryId && message.Payload.Status == DeliveryStatus.Assigned)
+            .Where(message =>
+                message.Payload.DeliveryId == deliveryId && message.Payload.Status == DeliveryStatus.Assigned)
             .Async(cancellationToken);
         var accepted = customer.WaitFor<DeliveryStatusNotify>()
-            .Where(message => message.Payload.DeliveryId == deliveryId && message.Payload.Status == DeliveryStatus.Accepted)
+            .Where(message =>
+                message.Payload.DeliveryId == deliveryId && message.Payload.Status == DeliveryStatus.Accepted)
             .Async(cancellationToken);
         var pickedUp = customer.WaitFor<DeliveryStatusNotify>()
-            .Where(message => message.Payload.DeliveryId == deliveryId && message.Payload.Status == DeliveryStatus.PickedUp)
+            .Where(message =>
+                message.Payload.DeliveryId == deliveryId && message.Payload.Status == DeliveryStatus.PickedUp)
             .Async(cancellationToken);
         var delivered = customer.WaitFor<DeliveryStatusNotify>()
-            .Where(message => message.Payload.DeliveryId == deliveryId && message.Payload.Status == DeliveryStatus.Delivered)
+            .Where(message =>
+                message.Payload.DeliveryId == deliveryId && message.Payload.Status == DeliveryStatus.Delivered)
             .Async(cancellationToken);
 
         var subscribed = await customer.Request(new SubscribeDelivery(deliveryId))
@@ -93,8 +97,8 @@ internal sealed class DeliveryDispatchClientScenario
         await courier.Send(new CourierDecision(
                 courierOffer.DeliveryId,
                 courierOffer.CourierId,
-                Accepted: true,
-                Reason: null))
+                true,
+                null))
             .Async(cancellationToken);
 
         Ensure((await assigned).Payload.CourierId == "courier-a");
@@ -124,16 +128,20 @@ internal sealed class DeliveryDispatchClientScenario
             .Where(message => message.Payload.CourierId == "courier-b")
             .Async(cancellationToken);
         var assigned = customer.WaitFor<DeliveryStatusNotify>()
-            .Where(message => message.Payload.DeliveryId == deliveryId && message.Payload.Status == DeliveryStatus.Assigned)
+            .Where(message =>
+                message.Payload.DeliveryId == deliveryId && message.Payload.Status == DeliveryStatus.Assigned)
             .Async(cancellationToken);
         var reassigned = customer.WaitFor<DeliveryStatusNotify>()
-            .Where(message => message.Payload.DeliveryId == deliveryId && message.Payload.Status == DeliveryStatus.Reassigned)
+            .Where(message =>
+                message.Payload.DeliveryId == deliveryId && message.Payload.Status == DeliveryStatus.Reassigned)
             .Async(cancellationToken);
         var accepted = customer.WaitFor<DeliveryStatusNotify>()
-            .Where(message => message.Payload.DeliveryId == deliveryId && message.Payload.Status == DeliveryStatus.Accepted)
+            .Where(message =>
+                message.Payload.DeliveryId == deliveryId && message.Payload.Status == DeliveryStatus.Accepted)
             .Async(cancellationToken);
         var delivered = customer.WaitFor<DeliveryStatusNotify>()
-            .Where(message => message.Payload.DeliveryId == deliveryId && message.Payload.Status == DeliveryStatus.Delivered)
+            .Where(message =>
+                message.Payload.DeliveryId == deliveryId && message.Payload.Status == DeliveryStatus.Delivered)
             .Async(cancellationToken);
 
         var subscribed = await customer.Request(new SubscribeDelivery(deliveryId))
@@ -156,8 +164,8 @@ internal sealed class DeliveryDispatchClientScenario
         await courierB.Send(new CourierDecision(
                 acceptedOffer.DeliveryId,
                 acceptedOffer.CourierId,
-                Accepted: true,
-                Reason: null))
+                true,
+                null))
             .Async(cancellationToken);
 
         Ensure((await assigned).Payload.CourierId == "courier-a");
@@ -182,11 +190,9 @@ internal sealed class DeliveryDispatchClientScenario
 
     private static void Ensure(
         bool condition,
-        [CallerArgumentExpression(nameof(condition))] string? expression = null)
+        [CallerArgumentExpression(nameof(condition))]
+        string? expression = null)
     {
-        if (!condition)
-        {
-            throw new InvalidOperationException($"Ensure failed: {expression}");
-        }
+        if (!condition) throw new InvalidOperationException($"Ensure failed: {expression}");
     }
 }

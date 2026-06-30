@@ -32,7 +32,8 @@ internal static class YdA2YieldTerminatorScenario
             "probe-started",
             "probe-completed",
             "yield-resumed",
-            "yield-completed"]);
+            "yield-completed"
+        ]);
         return requestId;
     }
 }

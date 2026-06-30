@@ -1,5 +1,3 @@
-using Zlink.Framework.Runtime.Streams;
-
 namespace Zlink.Framework.Runtime.Actors;
 
 internal sealed partial class ZLinkActorSessionManager(
@@ -8,6 +6,10 @@ internal sealed partial class ZLinkActorSessionManager(
     Func<IZLinkBackendSpotNode?> getActorSpotNode)
 {
     private readonly ZLinkActorSessionRegistry _actorSessions = new();
+
+    private ZLinkActorCreationCoordinator? _actorCreationInitialized;
+    private ZLinkActorDispatchRouter? _dispatchRouterInitialized;
+
     private ZLinkActorCreationCoordinator ActorCreation => _actorCreationInitialized
         ??= new ZLinkActorCreationCoordinator(
             runtime,
@@ -15,11 +17,9 @@ internal sealed partial class ZLinkActorSessionManager(
             getActorSpotNode,
             EnsureActorContext,
             BindActorContext);
+
     private ZLinkActorDispatchRouter DispatchRouter => _dispatchRouterInitialized
         ??= new ZLinkActorDispatchRouter(runtime, _actorSessions, BindActorContext);
-
-    private ZLinkActorCreationCoordinator? _actorCreationInitialized;
-    private ZLinkActorDispatchRouter? _dispatchRouterInitialized;
 
     public async ValueTask<CreateActorResult> CreateAndBindActorAsync(
         string actorId,
@@ -44,7 +44,7 @@ internal sealed partial class ZLinkActorSessionManager(
                 actorId,
                 actorType,
                 createRequest,
-                failIfExists: false,
+                false,
                 cancellationToken)
             .ConfigureAwait(false);
     }
@@ -72,7 +72,7 @@ internal sealed partial class ZLinkActorSessionManager(
                 actorId,
                 actorType,
                 createRequest,
-                failIfExists: true,
+                true,
                 cancellationToken)
             .ConfigureAwait(false);
     }
@@ -94,10 +94,7 @@ internal sealed partial class ZLinkActorSessionManager(
         out IZLinkActor actor)
     {
         actor = null!;
-        if (!TryGetCreatedActorState(actorId, actorType, out var state))
-        {
-            return false;
-        }
+        if (!TryGetCreatedActorState(actorId, actorType, out var state)) return false;
 
         actor = state.Actor!;
         return true;
@@ -110,9 +107,7 @@ internal sealed partial class ZLinkActorSessionManager(
         state = null!;
         if (!_actorSessions.TryGet(actorId, out var existingState)
             || existingState.Actor is null)
-        {
             return false;
-        }
 
         state = existingState;
         return true;
@@ -126,17 +121,13 @@ internal sealed partial class ZLinkActorSessionManager(
         state = null!;
         if (!_actorSessions.TryGet(actorId, out var existingState)
             || existingState.Actor is null)
-        {
             return false;
-        }
 
         if (existingState.ActorType is not null
             && !string.Equals(existingState.ActorType, actorType, StringComparison.Ordinal))
-        {
             throw new ZLinkFrameworkException(
                 ZLinkFrameworkErrorKind.ActorTypeMismatch,
                 $"Actor '{actorId}' already uses actor type '{existingState.ActorType}', not '{actorType}'.");
-        }
 
         state = existingState;
         return true;
@@ -203,18 +194,14 @@ internal sealed partial class ZLinkActorSessionManager(
         ZLinkActorRuntimeState state)
     {
         if (!string.Equals(state.ActorId, actor.ActorId, StringComparison.Ordinal))
-        {
             throw new InvalidOperationException(
                 $"Actor state id '{state.ActorId}' does not match actor id '{actor.ActorId}'.");
-        }
 
         if (state.Actor is not null
             && !ReferenceEquals(state.Actor, actor)
             && (state.SessionId is not null || state.Activation is not null))
-        {
             throw new InvalidOperationException(
                 $"Actor id '{actor.ActorId}' is already bound to another actor instance.");
-        }
 
         var assignedActor = false;
         if (!ReferenceEquals(state.Actor, actor))
@@ -226,10 +213,8 @@ internal sealed partial class ZLinkActorSessionManager(
 
         var context = EnsureActorContext(state);
         if (!ReferenceEquals(actor.Context, context))
-        {
             throw new InvalidOperationException(
                 $"Actor '{actor.ActorId}' must expose the context provided by its factory.");
-        }
 
         if (!state.IsConfigured)
         {
@@ -241,10 +226,7 @@ internal sealed partial class ZLinkActorSessionManager(
             catch
             {
                 state.IsConfigured = false;
-                if (assignedActor)
-                {
-                    state.Actor = null;
-                }
+                if (assignedActor) state.Actor = null;
 
                 throw;
             }
@@ -268,5 +250,4 @@ internal sealed partial class ZLinkActorSessionManager(
     {
         return _actorSessions.GetOrCreate(actorId);
     }
-
 }

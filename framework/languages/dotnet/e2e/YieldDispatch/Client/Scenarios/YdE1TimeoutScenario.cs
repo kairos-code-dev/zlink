@@ -15,7 +15,7 @@ internal static class YdE1TimeoutScenario
         ScenarioAssert.That(spot.SpotRid == spotRid, "YD-E1 spot creation mismatch.");
 
         var requestId = $"YD-E1-{Guid.NewGuid():N}";
-        await client.Send(new YieldTimeoutCommand(requestId, DelayMs: 700, TimeoutMs: 100))
+        await client.Send(new YieldTimeoutCommand(requestId, 700, 100))
             .PacketName("YieldTimeoutCommand")
             .Metadata(YieldDispatchNames.SpotRidMetadata, spotRid)
             .Async();
@@ -35,12 +35,12 @@ internal static class YdE1TimeoutScenario
             .Async<YieldEvidenceReply>();
         ScenarioAssert.That(
             evidence.Evidence.Any(line => line.Contains($"request={requestId}", StringComparison.Ordinal)
-                && line.Contains("timeout-yield-completed", StringComparison.Ordinal)),
+                                          && line.Contains("timeout-yield-completed", StringComparison.Ordinal)),
             "YD-E1 timeout marker missing.");
         ScenarioAssert.That(
             evidence.Evidence.Any(line => line.Contains($"request={requestId}", StringComparison.Ordinal)
-                && line.Contains("probe-completed", StringComparison.Ordinal)
-                && line.Contains("timeout-probe", StringComparison.Ordinal)),
+                                          && line.Contains("probe-completed", StringComparison.Ordinal)
+                                          && line.Contains("timeout-probe", StringComparison.Ordinal)),
             "YD-E1 post-timeout probe marker missing.");
     }
 }

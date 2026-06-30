@@ -1,6 +1,6 @@
+using SpotService.Client.Support;
 using SpotService.Shared;
 using Zlink.HttpClient;
-using SpotService.Client.Support;
 
 namespace SpotService.Client.Scenarios;
 
@@ -12,7 +12,8 @@ internal static class SmE3Scenario
         var created = (await playA.Post("/spot/create")
             .Body(new CreateSpotReq(spotRid))
             .SubmitAsync<CreateSpotReply>()).Body;
-        ScenarioAssert.That(created.SpotRid == spotRid && created.NodeRid == "play-a", "SM-E3 idle spot was not created on play-a.");
+        ScenarioAssert.That(created.SpotRid == spotRid && created.NodeRid == "play-a",
+            "SM-E3 idle spot was not created on play-a.");
         var idle = (await playA.Post("/spot/idle-close/start")
             .Body(new SpotIdleCloseReq(spotRid, "sm-e3-idle", 50))
             .SubmitAsync<SpotIdleCloseReply>()).Body;
@@ -24,7 +25,7 @@ internal static class SmE3Scenario
         var expectedEvidence = new[]
         {
             $"timer-idle-close|rid=play-a|spot={spotRid}|name=sm-e3-idle|closed=True",
-            $"spot-closing|rid=play-a|spot={spotRid}",
+            $"spot-closing|rid=play-a|spot={spotRid}"
         };
         var evidence = (await playA.Post("/evidence/wait")
             .Body(new EvidenceWaitRequest(expectedEvidence))

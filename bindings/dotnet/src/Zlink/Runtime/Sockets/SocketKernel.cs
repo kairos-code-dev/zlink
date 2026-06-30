@@ -1,12 +1,6 @@
 // SPDX-License-Identifier: MPL-2.0
 
-using System;
-using System.Buffers;
-using System.Collections.Generic;
-using System.Runtime.CompilerServices;
 using System.Runtime.InteropServices;
-using System.Text;
-using System.Threading;
 using Systems.Zlink.Runtime.Native;
 
 namespace Systems.Zlink.Runtime.Sockets.Internal;
@@ -16,15 +10,15 @@ internal sealed partial class SocketKernel : IDisposable
     private const int StackSendPartLimit = 8;
     private const int TopicBufferSize = 4096;
     private const int DontWaitFlag = 1;
+    private readonly SocketCallbackRegistry _callbacks = new();
 
     private readonly SocketHandle _handle;
     private readonly SocketOptionAccessor _options;
     private readonly SocketTypePolicy _policy;
-    private readonly SocketCallbackRegistry _callbacks = new();
+    private bool _discoveryAttached;
     private string? _publishTopicCacheKey;
     private byte[]? _publishTopicCacheUtf8;
     private bool _streamAttached;
-    private bool _discoveryAttached;
 
     public SocketKernel(Context context, SocketType type)
     {
@@ -55,8 +49,8 @@ internal sealed partial class SocketKernel : IDisposable
             return SubscribeInto(result, (int)flags);
         }
         catch (ZlinkException ex) when ((flags & RecvFlags.DontWait) != 0
-            && ZlinkException.MapErrorCode(ex.NativeErrno) is ErrorCode.EAgain
-                or ErrorCode.EBusy)
+                                        && ZlinkException.MapErrorCode(ex.NativeErrno) is ErrorCode.EAgain
+                                            or ErrorCode.EBusy)
         {
             return false;
         }
@@ -98,7 +92,7 @@ internal sealed partial class SocketKernel : IDisposable
         }
     }
 
-    public unsafe bool ReceiveSubscriptionEvent(SubscriptionEvent result,
+    public bool ReceiveSubscriptionEvent(SubscriptionEvent result,
         RecvFlags flags = RecvFlags.None)
     {
         EnsureSupports(nameof(ReceiveSubscriptionEvent),
@@ -122,11 +116,9 @@ internal sealed partial class SocketKernel : IDisposable
 
     internal Received RecvMessageUnchecked(RecvFlags flags = RecvFlags.None)
     {
-        if ((((int)flags) & DontWaitFlag) != 0)
-        {
+        if (((int)flags & DontWaitFlag) != 0)
             return TryReceiveMessageCore(DontWaitFlag)
-                ?? throw ZlinkException.CreateRecvException((int)ErrorCode.EAgain);
-        }
+                   ?? throw ZlinkException.CreateRecvException((int)ErrorCode.EAgain);
         return ReceiveCore((int)flags);
     }
 
@@ -151,11 +143,9 @@ internal sealed partial class SocketKernel : IDisposable
 
     internal Received ReceiveRoutedUnchecked(RecvFlags flags = RecvFlags.None)
     {
-        if ((((int)flags) & DontWaitFlag) != 0)
-        {
+        if (((int)flags & DontWaitFlag) != 0)
             return TryReceiveRoutedCore(DontWaitFlag)
-                ?? throw ZlinkException.CreateRecvException((int)ErrorCode.EAgain);
-        }
+                   ?? throw ZlinkException.CreateRecvException((int)ErrorCode.EAgain);
         return ReceiveRoutedCore((int)flags);
     }
 
@@ -174,15 +164,11 @@ internal sealed partial class SocketKernel : IDisposable
     internal byte[][]? TryReceiveRawFrames(int flags)
     {
         if (Type == SocketType.Router || Type == SocketType.Stream)
-        {
             EnsureSupports(nameof(TryReceiveRawFrames),
                 SocketTypePolicy.SocketCapability.RoutedReceive);
-        }
         else
-        {
             EnsureSupports(nameof(TryReceiveRawFrames),
                 SocketTypePolicy.SocketCapability.MessageReceive);
-        }
 
         try
         {
@@ -238,17 +224,17 @@ internal sealed partial class SocketKernel : IDisposable
     }
 
 
-    private unsafe void SendReplyCore(RoutingId routingId,
+    private void SendReplyCore(RoutingId routingId,
         RoutingId? spotRid, ulong requestSeq, IReadOnlyList<Message> parts,
         SendFlags flags)
     {
         _ = flags;
-        ZlinkRoutingId nativeRoutingId = routingId.ToNative();
-        bool hasSpotRid = spotRid.HasValue;
+        var nativeRoutingId = routingId.ToNative();
+        var hasSpotRid = spotRid.HasValue;
         ZlinkRoutingId nativeSpotRid = default;
         if (hasSpotRid)
             nativeSpotRid = spotRid.GetValueOrDefault().ToNative();
-        Message[] cloned = RequestReplySupport.CloneParts(parts);
+        var cloned = RequestReplySupport.CloneParts(parts);
         try
         {
             RequestReplySupport.SubmitClonedParts(cloned,
@@ -282,8 +268,8 @@ internal sealed partial class SocketKernel : IDisposable
             return;
         }
 
-        Message[] copied = new Message[parts.Count];
-        for (int i = 0; i < copied.Length; i++)
+        var copied = new Message[parts.Count];
+        for (var i = 0; i < copied.Length; i++)
             copied[i] = parts[i];
         SendCore(copied.AsSpan(), flags, nameof(parts));
     }
@@ -296,8 +282,8 @@ internal sealed partial class SocketKernel : IDisposable
         if (parts is List<Message> list)
             return SendNoWaitResultCore(CollectionsMarshal.AsSpan(list), nameof(parts));
 
-        Message[] copied = new Message[parts.Count];
-        for (int i = 0; i < copied.Length; i++)
+        var copied = new Message[parts.Count];
+        for (var i = 0; i < copied.Length; i++)
             copied[i] = parts[i];
         return SendNoWaitResultCore(copied.AsSpan(), nameof(parts));
     }
@@ -305,27 +291,27 @@ internal sealed partial class SocketKernel : IDisposable
     private void SendRoutedSingleWithFlags(string routingId, Message message,
         int flags)
     {
-        byte[] encoded = RoutingIdCodec.FromPublicString(routingId,
+        var encoded = RoutingIdCodec.FromPublicString(routingId,
             nameof(routingId));
-        ZlinkRoutingId nativeRoutingId = NativeHelpers.WriteRoutingId(encoded);
+        var nativeRoutingId = NativeHelpers.WriteRoutingId(encoded);
         SendSingleCore(ref nativeRoutingId, message, flags);
     }
 
     private SendResult SendRoutedSingleNoWaitResult(string routingId,
         Message message)
     {
-        byte[] encoded = RoutingIdCodec.FromPublicString(routingId,
+        var encoded = RoutingIdCodec.FromPublicString(routingId,
             nameof(routingId));
-        ZlinkRoutingId nativeRoutingId = NativeHelpers.WriteRoutingId(encoded);
+        var nativeRoutingId = NativeHelpers.WriteRoutingId(encoded);
         return SendSingleNoWaitResultCore(ref nativeRoutingId, message);
     }
 
     private void SendRoutedPartsWithFlags(string routingId,
         IReadOnlyList<Message> parts, int flags)
     {
-        byte[] encoded = RoutingIdCodec.FromPublicString(routingId,
+        var encoded = RoutingIdCodec.FromPublicString(routingId,
             nameof(routingId));
-        ZlinkRoutingId nativeRoutingId = NativeHelpers.WriteRoutingId(encoded);
+        var nativeRoutingId = NativeHelpers.WriteRoutingId(encoded);
 
         if (parts is Message[] array)
         {
@@ -340,8 +326,8 @@ internal sealed partial class SocketKernel : IDisposable
             return;
         }
 
-        Message[] copied = new Message[parts.Count];
-        for (int i = 0; i < copied.Length; i++)
+        var copied = new Message[parts.Count];
+        for (var i = 0; i < copied.Length; i++)
             copied[i] = parts[i];
         SendCore(ref nativeRoutingId, copied.AsSpan(), flags, nameof(parts));
     }
@@ -349,21 +335,19 @@ internal sealed partial class SocketKernel : IDisposable
     private SendResult SendRoutedPartsNoWaitResult(string routingId,
         IReadOnlyList<Message> parts)
     {
-        byte[] encoded = RoutingIdCodec.FromPublicString(routingId,
+        var encoded = RoutingIdCodec.FromPublicString(routingId,
             nameof(routingId));
-        ZlinkRoutingId nativeRoutingId = NativeHelpers.WriteRoutingId(encoded);
+        var nativeRoutingId = NativeHelpers.WriteRoutingId(encoded);
 
         if (parts is Message[] array)
             return SendNoWaitResultCore(ref nativeRoutingId, array.AsSpan(), nameof(parts));
 
         if (parts is List<Message> list)
-        {
             return SendNoWaitResultCore(ref nativeRoutingId,
                 CollectionsMarshal.AsSpan(list), nameof(parts));
-        }
 
-        Message[] copied = new Message[parts.Count];
-        for (int i = 0; i < copied.Length; i++)
+        var copied = new Message[parts.Count];
+        for (var i = 0; i < copied.Length; i++)
             copied[i] = parts[i];
         return SendNoWaitResultCore(ref nativeRoutingId, copied.AsSpan(), nameof(parts));
     }
@@ -384,8 +368,8 @@ internal sealed partial class SocketKernel : IDisposable
             return;
         }
 
-        Message[] copied = new Message[parts.Count];
-        for (int i = 0; i < copied.Length; i++)
+        var copied = new Message[parts.Count];
+        for (var i = 0; i < copied.Length; i++)
             copied[i] = parts[i];
         PublishCore(topic, copied.AsSpan(), flags, nameof(parts));
     }
@@ -400,8 +384,8 @@ internal sealed partial class SocketKernel : IDisposable
             return PublishNoWaitCore(topic, CollectionsMarshal.AsSpan(list),
                 nameof(parts));
 
-        Message[] copied = new Message[parts.Count];
-        for (int i = 0; i < copied.Length; i++)
+        var copied = new Message[parts.Count];
+        for (var i = 0; i < copied.Length; i++)
             copied[i] = parts[i];
         return PublishNoWaitCore(topic, copied.AsSpan(), nameof(parts));
     }
@@ -415,13 +399,11 @@ internal sealed partial class SocketKernel : IDisposable
             return 0;
         }
 
-        byte[] first = frames[0];
-        int firstSize = first.Length;
+        var first = frames[0];
+        var firstSize = first.Length;
         if (firstSize > destination.Length)
-        {
             throw new ArgumentException("Destination buffer is too small.",
                 nameof(destination));
-        }
 
         first.AsSpan().CopyTo(destination);
 
@@ -432,7 +414,7 @@ internal sealed partial class SocketKernel : IDisposable
         }
 
         pendingFrames = new byte[frames.Count - 1][];
-        for (int i = 1; i < frames.Count; i++)
+        for (var i = 1; i < frames.Count; i++)
             pendingFrames[i - 1] = frames[i];
 
         return firstSize;
@@ -443,37 +425,35 @@ internal sealed partial class SocketKernel : IDisposable
     {
         if (requestSeq == 0)
         {
-            Received received = Received.Create(routingIdBytes, parts,
-                adoptRoutingBytes: true, spotRidBytes: spotRidBytes);
-            RoutingIdSnapshot routingId = RoutingIdSnapshot.FromBytes(routingIdBytes);
-            RoutingIdSnapshot spotRid = RoutingIdSnapshot.FromBytes(spotRidBytes);
+            var received = Received.Create(routingIdBytes, parts,
+                true, spotRidBytes: spotRidBytes);
+            var routingId = RoutingIdSnapshot.FromBytes(routingIdBytes);
+            var spotRid = RoutingIdSnapshot.FromBytes(spotRidBytes);
             received.SetSendHandler(CreateRoutedSendHandler(routingId, spotRid),
                 CreateRoutedSendSingleHandler(routingId, spotRid));
             return received;
         }
 
-        RoutingId? replyRoutingId = routingIdBytes == null
+        var replyRoutingId = routingIdBytes == null
             ? null
             : RoutingId.FromOwnedOptionalBytes(routingIdBytes);
-        RoutingId? replySpotRid = spotRidBytes == null
+        var replySpotRid = spotRidBytes == null
             ? null
             : RoutingId.FromOwnedOptionalBytes(spotRidBytes);
-        Received request = Received.Create(replyRoutingId, parts, requestSeq,
-            replySpotRid, replyHandler: (replyParts, sendFlags) =>
+        var request = Received.Create(replyRoutingId, parts, requestSeq,
+            replySpotRid, (replyParts, sendFlags) =>
             {
                 if (replyRoutingId is null)
-                {
                     throw new ZlinkSubmitException(
                         SubmitResult.InvalidArgument,
                         (int)ErrorCode.EInval);
-                }
 
                 SendReplyCore(replyRoutingId.Value, replySpotRid, requestSeq,
                     replyParts, sendFlags);
             });
-        RoutingIdSnapshot requestRoutingId =
+        var requestRoutingId =
             RoutingIdSnapshot.FromBytes(routingIdBytes);
-        RoutingIdSnapshot requestSpotRid =
+        var requestSpotRid =
             RoutingIdSnapshot.FromBytes(spotRidBytes);
         request.SetSendHandler(CreateRoutedSendHandler(requestRoutingId,
                 requestSpotRid),
@@ -486,37 +466,35 @@ internal sealed partial class SocketKernel : IDisposable
     {
         if (requestSeq == 0)
         {
-            Received received = Received.Create(routingIdBytes, singlePart,
-                adoptRoutingBytes: true, spotRidBytes: spotRidBytes);
-            RoutingIdSnapshot routingId = RoutingIdSnapshot.FromBytes(routingIdBytes);
-            RoutingIdSnapshot spotRid = RoutingIdSnapshot.FromBytes(spotRidBytes);
+            var received = Received.Create(routingIdBytes, singlePart,
+                true, spotRidBytes: spotRidBytes);
+            var routingId = RoutingIdSnapshot.FromBytes(routingIdBytes);
+            var spotRid = RoutingIdSnapshot.FromBytes(spotRidBytes);
             received.SetSendHandler(CreateRoutedSendHandler(routingId, spotRid),
                 CreateRoutedSendSingleHandler(routingId, spotRid));
             return received;
         }
 
-        RoutingId? replyRoutingId = routingIdBytes == null
+        var replyRoutingId = routingIdBytes == null
             ? null
             : RoutingId.FromOwnedOptionalBytes(routingIdBytes);
-        RoutingId? replySpotRid = spotRidBytes == null
+        var replySpotRid = spotRidBytes == null
             ? null
             : RoutingId.FromOwnedOptionalBytes(spotRidBytes);
-        Received request = Received.Create(replyRoutingId, singlePart, requestSeq,
-            replySpotRid, replyHandler: (replyParts, sendFlags) =>
+        var request = Received.Create(replyRoutingId, singlePart, requestSeq,
+            replySpotRid, (replyParts, sendFlags) =>
             {
                 if (replyRoutingId is null)
-                {
                     throw new ZlinkSubmitException(
                         SubmitResult.InvalidArgument,
                         (int)ErrorCode.EInval);
-                }
 
                 SendReplyCore(replyRoutingId.Value, replySpotRid, requestSeq,
                     replyParts, sendFlags);
             });
-        RoutingIdSnapshot requestRoutingId =
+        var requestRoutingId =
             RoutingIdSnapshot.FromBytes(routingIdBytes);
-        RoutingIdSnapshot requestSpotRid =
+        var requestSpotRid =
             RoutingIdSnapshot.FromBytes(spotRidBytes);
         request.SetSendHandler(CreateRoutedSendHandler(requestRoutingId,
                 requestSpotRid),
@@ -530,15 +508,15 @@ internal sealed partial class SocketKernel : IDisposable
     {
         if (requestSeq == 0)
         {
-            Received received = Received.Create(routingId, parts,
+            var received = Received.Create(routingId, parts,
                 spotRid: spotRid);
             received.SetSendHandler(CreateRoutedSendHandler(routingId, spotRid),
                 CreateRoutedSendSingleHandler(routingId, spotRid));
             return received;
         }
 
-        byte[]? routingIdBytes = routingId.ToByteArray();
-        byte[]? spotRidBytes = spotRid.ToByteArray();
+        var routingIdBytes = routingId.ToByteArray();
+        var spotRidBytes = spotRid.ToByteArray();
         return CreateRoutedReceived(parts, routingIdBytes, spotRidBytes,
             requestSeq);
     }
@@ -547,13 +525,10 @@ internal sealed partial class SocketKernel : IDisposable
         RoutingIdSnapshot routingId, RoutingIdSnapshot spotRid,
         ulong requestSeq)
     {
-        if (requestSeq == 0)
-        {
-            return Received.Create(routingId, singlePart, spotRid: spotRid);
-        }
+        if (requestSeq == 0) return Received.Create(routingId, singlePart, spotRid: spotRid);
 
-        byte[]? routingIdBytes = routingId.ToByteArray();
-        byte[]? spotRidBytes = spotRid.ToByteArray();
+        var routingIdBytes = routingId.ToByteArray();
+        var spotRidBytes = spotRid.ToByteArray();
         return CreateRoutedReceived(singlePart, routingIdBytes, spotRidBytes,
             requestSeq);
     }
@@ -611,5 +586,4 @@ internal sealed partial class SocketKernel : IDisposable
     {
         _policy.EnsureOptionSupported(option);
     }
-
 }

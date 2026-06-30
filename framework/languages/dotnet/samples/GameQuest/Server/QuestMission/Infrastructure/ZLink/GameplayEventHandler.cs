@@ -1,6 +1,6 @@
 using GameQuest.QuestMission.Application;
-using GameQuest.Shared;
 using GameQuest.Server.Configuration;
+using GameQuest.Shared;
 using Zlink.Framework.Contracts.Handlers;
 
 namespace GameQuest.QuestMission.Infrastructure.ZLink;
@@ -14,10 +14,7 @@ internal sealed class GameplayEventHandler(QuestEventProcessor processor)
         ZLinkPublishContext context,
         CancellationToken cancellationToken)
     {
-        if (context.Topic != SampleNames.GameplayTopic)
-        {
-            return;
-        }
+        if (context.Topic != SampleNames.GameplayTopic) return;
 
         await processor.ProcessAsync(gameplayEvent, cancellationToken);
     }

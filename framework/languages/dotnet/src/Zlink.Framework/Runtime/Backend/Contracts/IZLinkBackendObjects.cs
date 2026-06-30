@@ -1,5 +1,3 @@
-using Zlink.Framework;
-
 namespace Zlink.Framework.Runtime.Backend.Contracts;
 
 internal enum ZLinkBackendSpotDispatchEvent
@@ -9,7 +7,7 @@ internal enum ZLinkBackendSpotDispatchEvent
     ChannelReplyReadable = 2,
     ActorJoinReadable = 3,
     ActorReadable = 4,
-    SubscribeReadable = 5,
+    SubscribeReadable = 5
 }
 
 internal readonly record struct ZLinkBackendActorRef(
@@ -46,15 +44,15 @@ internal sealed record ZLinkBackendDiscoveryRoute(
     RoutingId OwnerRoutingId,
     Message Value) : IDisposable, IAsyncDisposable
 {
-    public void Dispose()
-    {
-        Value.Dispose();
-    }
-
     public ValueTask DisposeAsync()
     {
         Value.Dispose();
         return ValueTask.CompletedTask;
+    }
+
+    public void Dispose()
+    {
+        Value.Dispose();
     }
 }
 

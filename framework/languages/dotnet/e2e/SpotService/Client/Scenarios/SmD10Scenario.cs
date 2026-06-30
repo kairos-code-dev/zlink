@@ -1,6 +1,6 @@
+using SpotService.Client.Support;
 using SpotService.Shared;
 using Systems.Zlink.Stream.Connector.Contracts;
-using SpotService.Client.Support;
 
 namespace SpotService.Client.Scenarios;
 
@@ -23,7 +23,7 @@ internal static class SmD10Scenario
                     RequestTimeout = TimeSpan.FromSeconds(5),
                     Heartbeat = new ZlinkStreamHeartbeatOptions { Enabled = false },
                     DispatchMode = ZlinkStreamDispatchMode.Immediate,
-                    MaxReceivedMessages = 1,
+                    MaxReceivedMessages = 1
                 });
                 try
                 {
@@ -43,9 +43,11 @@ internal static class SmD10Scenario
             }
 
             if (congested is null)
-            {
-                throw new InvalidOperationException(last is null ? "Actor auth did not become routable: actor-sm-d10-congested" : $"Actor auth did not become routable: actor-sm-d10-congested. Last error: {last.Message}", last);
-            }
+                throw new InvalidOperationException(
+                    last is null
+                        ? "Actor auth did not become routable: actor-sm-d10-congested"
+                        : $"Actor auth did not become routable: actor-sm-d10-congested. Last error: {last.Message}",
+                    last);
 
             deadline = DateTimeOffset.UtcNow + TimeSpan.FromSeconds(10);
             last = null;
@@ -58,7 +60,7 @@ internal static class SmD10Scenario
                     RequestTimeout = TimeSpan.FromSeconds(5),
                     Heartbeat = new ZlinkStreamHeartbeatOptions { Enabled = false },
                     DispatchMode = ZlinkStreamDispatchMode.Immediate,
-                    MaxReceivedMessages = 1024,
+                    MaxReceivedMessages = 1024
                 });
                 try
                 {
@@ -78,16 +80,19 @@ internal static class SmD10Scenario
             }
 
             if (isolated is null)
-            {
-                throw new InvalidOperationException(last is null ? "Actor auth did not become routable: actor-sm-d10-isolated" : $"Actor auth did not become routable: actor-sm-d10-isolated. Last error: {last.Message}", last);
-            }
+                throw new InvalidOperationException(
+                    last is null
+                        ? "Actor auth did not become routable: actor-sm-d10-isolated"
+                        : $"Actor auth did not become routable: actor-sm-d10-isolated. Last error: {last.Message}",
+                    last);
 
             for (var index = 0; index < 8; index++)
             {
                 var reply = await congested.Request(new ActorPushReq($"burst-{index}"))
                     .PacketName("ActorPushReq")
                     .Async<ActorPingReply>();
-                ScenarioAssert.That(reply.ActorId == "actor-sm-d10-congested", "SM-D10 congested reply actor mismatch.");
+                ScenarioAssert.That(reply.ActorId == "actor-sm-d10-congested",
+                    "SM-D10 congested reply actor mismatch.");
             }
 
             ScenarioAssert.That(
@@ -97,12 +102,14 @@ internal static class SmD10Scenario
                 .Where(message => message.Payload.ActorId == "actor-sm-d10-congested")
                 .Timeout(TimeSpan.FromSeconds(2))
                 .Async();
-            ScenarioAssert.That(retained.Payload.Value == "burst-7", "SM-D10 expected the newest congested push to be retained.");
+            ScenarioAssert.That(retained.Payload.Value == "burst-7",
+                "SM-D10 expected the newest congested push to be retained.");
 
             var stillAlive = await congested.Request(new ActorPingReq("after-backpressure"))
                 .PacketName("ActorPingReq")
                 .Async<ActorPingReply>();
-            ScenarioAssert.That(stillAlive.ActorId == "actor-sm-d10-congested", "SM-D10 congested session stopped routing.");
+            ScenarioAssert.That(stillAlive.ActorId == "actor-sm-d10-congested",
+                "SM-D10 congested session stopped routing.");
             ScenarioAssert.That(stillAlive.Value == "after-backpressure", "SM-D10 congested session reply mismatch.");
 
             var isolatedPush = isolated.WaitFor<ActorPushNotify>().Async().AsTask();
@@ -110,20 +117,17 @@ internal static class SmD10Scenario
                 .PacketName("ActorPushReq")
                 .Async<ActorPingReply>();
             var isolatedNotify = await isolatedPush;
-            ScenarioAssert.That(isolatedReply.ActorId == "actor-sm-d10-isolated", "SM-D10 isolated reply actor mismatch.");
-            ScenarioAssert.That(isolatedNotify.Payload.ActorId == "actor-sm-d10-isolated", "SM-D10 isolated push actor mismatch.");
-            ScenarioAssert.That(isolatedNotify.Payload.Value == "isolated-push", "SM-D10 isolated session push mismatch.");
+            ScenarioAssert.That(isolatedReply.ActorId == "actor-sm-d10-isolated",
+                "SM-D10 isolated reply actor mismatch.");
+            ScenarioAssert.That(isolatedNotify.Payload.ActorId == "actor-sm-d10-isolated",
+                "SM-D10 isolated push actor mismatch.");
+            ScenarioAssert.That(isolatedNotify.Payload.Value == "isolated-push",
+                "SM-D10 isolated session push mismatch.");
         }
         finally
         {
-            if (congested is not null)
-            {
-                await congested.DisposeAsync();
-            }
-            if (isolated is not null)
-            {
-                await isolated.DisposeAsync();
-            }
+            if (congested is not null) await congested.DisposeAsync();
+            if (isolated is not null) await isolated.DisposeAsync();
         }
 
         Console.WriteLine("operation SpotService.sm-d10 passed");

@@ -1,10 +1,6 @@
 // SPDX-License-Identifier: MPL-2.0
 
-using System;
-using System.Collections.Generic;
 using System.Runtime.InteropServices;
-using System.Threading;
-using System.Threading.Tasks;
 using Systems.Zlink.Runtime.Native;
 
 namespace Systems.Zlink;
@@ -12,20 +8,28 @@ namespace Systems.Zlink;
 internal static partial class ActorInterop
 {
     internal const int DontWaitFlag = 1;
+
     internal static readonly NativeMethods.ZlinkReplyHandlerDelegate ReplyHandler =
         OnReply;
+
     internal static readonly IntPtr ReplyHandlerPtr =
         Marshal.GetFunctionPointerForDelegate(ReplyHandler);
+
     internal static readonly NativeMethods.ZlinkReplyHandlerDelegate NoopReplyHandler =
         OnNoopReply;
+
     internal static readonly IntPtr NoopReplyHandlerPtr =
         Marshal.GetFunctionPointerForDelegate(NoopReplyHandler);
+
     internal static readonly NativeMethods.ZlinkActorJoinHandlerDelegate JoinHandler =
         OnJoinReply;
+
     internal static readonly IntPtr JoinHandlerPtr =
         Marshal.GetFunctionPointerForDelegate(JoinHandler);
+
     internal static readonly NativeMethods.ZlinkActorJoinEntrySpotHandlerDelegate
         JoinEntrySpotHandler = OnActorJoinEntrySpot;
+
     internal static readonly IntPtr JoinEntrySpotHandlerPtr =
         Marshal.GetFunctionPointerForDelegate(JoinEntrySpotHandler);
 
@@ -33,13 +37,13 @@ internal static partial class ActorInterop
     {
         if (message == IntPtr.Zero)
             return Message.From(ReadOnlySpan<byte>.Empty);
-        int size = checked((int)NativeMethods.zlink_msg_size(message));
+        var size = checked((int)NativeMethods.zlink_msg_size(message));
         if (size == 0)
             return Message.From(ReadOnlySpan<byte>.Empty);
-        IntPtr data = NativeMethods.zlink_msg_data(message);
+        var data = NativeMethods.zlink_msg_data(message);
         if (data == IntPtr.Zero)
             return Message.From(ReadOnlySpan<byte>.Empty);
-        byte[] copy = new byte[size];
+        var copy = new byte[size];
         Marshal.Copy(data, copy, 0, copy.Length);
         return Message.From(copy);
     }
@@ -47,27 +51,27 @@ internal static partial class ActorInterop
     internal static ActorReceived? RecvActor(IntPtr node, ActorRef actor,
         RecvFlags flags = RecvFlags.None)
     {
-        ZlinkActorRef nativeActor = ToNative(actor);
+        var nativeActor = ToNative(actor);
         List<Message> parts = new();
         ActorRecvInfo? managedInfo = null;
-        bool firstPart = true;
-        bool transferred = false;
+        var firstPart = true;
+        var transferred = false;
 
         try
         {
             while (true)
             {
                 ZlinkMsg nativePart = default;
-                int rc = NativeMethods.zlink_spot_node_actor_recv_part(node,
+                var rc = NativeMethods.zlink_spot_node_actor_recv_part(node,
                     ref nativeActor,
-                    out ZlinkActorRecvInfo info, ref nativePart,
-                    out NativeMethods.ZlinkPartFlag hasMore,
+                    out var info, ref nativePart,
+                    out var hasMore,
                     (int)flags);
                 if (rc != 0)
                 {
-                    int errno = NativeMethods.zlink_errno();
+                    var errno = NativeMethods.zlink_errno();
                     if (firstPart && (flags & RecvFlags.DontWait) != 0
-                        && ZlinkException.MapErrorCode(errno) == ErrorCode.EAgain)
+                                  && ZlinkException.MapErrorCode(errno) == ErrorCode.EAgain)
                         return null;
                     throw ZlinkException.CreateRecvException(errno);
                 }
@@ -91,22 +95,23 @@ internal static partial class ActorInterop
         }
     }
 
-    internal static unsafe ActorReceived[] DrainActors(IntPtr node,
+    internal static ActorReceived[] DrainActors(IntPtr node,
         IntPtr actor)
     {
         if (actor == IntPtr.Zero)
             return Array.Empty<ActorReceived>();
-        ZlinkActorRef nativeActor = Marshal.PtrToStructure<ZlinkActorRef>(actor);
-        ActorRef actorRef = FromNative(ref nativeActor);
+        var nativeActor = Marshal.PtrToStructure<ZlinkActorRef>(actor);
+        var actorRef = FromNative(ref nativeActor);
         List<ActorReceived> messages = new();
         while (true)
         {
-            ActorReceived? message = RecvActor(node, actorRef,
+            var message = RecvActor(node, actorRef,
                 RecvFlags.DontWait);
             if (message == null)
                 break;
             messages.Add(message);
         }
+
         return messages.ToArray();
     }
 
@@ -119,7 +124,7 @@ internal static partial class ActorInterop
                 throw completed.Exception!.GetBaseException();
             if (completed.IsCanceled)
                 throw new TaskCanceledException(completed);
-            Received received = completed.Result;
+            var received = completed.Result;
             try
             {
                 return RequestReplySupport.TakeOwnedParts(received);
@@ -140,6 +145,7 @@ internal static partial class ActorInterop
             parts = RequestReplySupport.TakeOwnedParts(received);
             received.Dispose();
         }
+
         callback(result, parts);
     }
 
@@ -148,10 +154,8 @@ internal static partial class ActorInterop
     {
         if (timeoutMs == 0)
             return null;
-        return new System.Threading.Timer(static userdata =>
-        {
-            RequestCallState.TimeoutFromUserData(userdata);
-        }, handle, (int)timeoutMs, Timeout.Infinite);
+        return new System.Threading.Timer(static userdata => { RequestCallState.TimeoutFromUserData(userdata); },
+            handle, (int)timeoutMs, Timeout.Infinite);
     }
 
     internal static void AttachPartsCallback(
@@ -160,26 +164,28 @@ internal static partial class ActorInterop
     {
         if (callback == null)
             throw new ArgumentNullException(nameof(callback));
-        SynchronizationContext? context = SynchronizationContext.Current;
+        var context = SynchronizationContext.Current;
         _ = invoke().ContinueWith(task =>
         {
             if (task.IsFaulted)
             {
-                Exception error = task.Exception?.GetBaseException()
-                    ?? new ZlinkRequestException(RequestResult.InternalError);
-                RequestResult result = error is ZlinkRequestException requestError
+                var error = task.Exception?.GetBaseException()
+                            ?? new ZlinkRequestException(RequestResult.InternalError);
+                var result = error is ZlinkRequestException requestError
                     ? (RequestResult)requestError.Code
                     : RequestResult.InternalError;
                 CallbackDelivery.Post(context, () => callback(result,
                     Array.Empty<Message>()));
                 return;
             }
+
             if (task.IsCanceled)
             {
                 CallbackDelivery.Post(context, () => callback(
                     RequestResult.Terminated, Array.Empty<Message>()));
                 return;
             }
+
             CallbackDelivery.Post(context, () => callback(RequestResult.Ok,
                 task.Result));
         }, TaskScheduler.Default);
@@ -187,13 +193,17 @@ internal static partial class ActorInterop
 
     internal static void SubmitAndWait(IntPtr progressHandle,
         Func<IntPtr, int> submit)
-        => SubmitAndWaitCore(submit,
+    {
+        SubmitAndWaitCore(submit,
             task => RequestProgressPump.AttachSpot(progressHandle, task));
+    }
 
     internal static void SubmitAndWaitSocket(IntPtr progressHandle,
         Func<IntPtr, int> submit)
-        => SubmitAndWaitCore(submit,
+    {
+        SubmitAndWaitCore(submit,
             task => RequestProgressPump.AttachSocket(progressHandle, task));
+    }
 
     private static void SubmitAndWaitCore(
         Func<IntPtr, int> submit,
@@ -202,12 +212,12 @@ internal static partial class ActorInterop
         var completion = new TaskCompletionSource<Received>(
             TaskCreationOptions.RunContinuationsAsynchronously);
         GCHandle handle = default;
-        bool submitted = false;
+        var submitted = false;
         try
         {
             RequestCallState state = new(completion);
             handle = GCHandle.Alloc(state, GCHandleType.Normal);
-            int rc = submit(GCHandle.ToIntPtr(handle));
+            var rc = submit(GCHandle.ToIntPtr(handle));
             if (rc != 0)
             {
                 handle.Free();
@@ -217,7 +227,7 @@ internal static partial class ActorInterop
             }
 
             submitted = true;
-            Received received = attachProgress(completion.Task)
+            var received = attachProgress(completion.Task)
                 .GetAwaiter()
                 .GetResult();
             received.Dispose();
@@ -229,6 +239,4 @@ internal static partial class ActorInterop
             throw;
         }
     }
-
-
 }

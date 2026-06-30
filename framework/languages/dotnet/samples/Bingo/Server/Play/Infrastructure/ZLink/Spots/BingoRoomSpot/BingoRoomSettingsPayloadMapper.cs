@@ -8,10 +8,7 @@ internal static class BingoRoomSettingsPayloadMapper
 {
     public static BingoRoomSettings FromMessage(ZLinkMessage request, BingoRoomSettings defaultSettings)
     {
-        if (request.IsEmpty)
-        {
-            return defaultSettings;
-        }
+        if (request.IsEmpty) return defaultSettings;
 
         var payload = request.Decode<BingoRoomSettingsPayload>();
         return new BingoRoomSettings(
@@ -31,13 +28,10 @@ internal static class BingoRoomSettingsPayloadMapper
             Mode = settings.Mode,
             RequiredPlayers = settings.RequiredPlayers,
             MaxDrawNumber = settings.MaxDrawNumber,
-            Purpose = settings.Purpose,
+            Purpose = settings.Purpose
         };
 
-        if (settings.ObservedRoomId is not null)
-        {
-            payload.ObservedRoomId = settings.ObservedRoomId;
-        }
+        if (settings.ObservedRoomId is not null) payload.ObservedRoomId = settings.ObservedRoomId;
 
         return payload;
     }

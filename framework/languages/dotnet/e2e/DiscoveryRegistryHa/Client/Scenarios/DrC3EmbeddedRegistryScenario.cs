@@ -1,8 +1,8 @@
 using System.Diagnostics;
 using System.Net.Sockets;
+using DiscoveryRegistryHa.Client.Support;
 using DiscoveryRegistryHa.Shared;
 using Zlink.HttpClient;
-using DiscoveryRegistryHa.Client.Support;
 
 namespace DiscoveryRegistryHa.Client.Scenarios;
 
@@ -42,7 +42,8 @@ internal static class DrC3EmbeddedRegistryScenario
         await StopServerAsync(options.Reg3Url);
 
         var during = await RequestProfileAsync(survivorConsumer, "dr-c3-during");
-        ScenarioAssert.That(during.ProviderRid is "api-a" or "api-b", "DR-C3 established channel failed during registry outage.");
+        ScenarioAssert.That(during.ProviderRid is "api-a" or "api-b",
+            "DR-C3 established channel failed during registry outage.");
         await WaitForEvidenceAsync(during, during.ProviderRid == "api-a" ? providerA : providerB);
         await StopServerAsync(options.ProviderAUrl);
         await StopServerAsync(options.ProviderBUrl);
@@ -80,9 +81,9 @@ internal static class DrC3EmbeddedRegistryScenario
             started.Add(await StartProviderAsync(options));
 
             using var reg2 = ZLinkHttpClient.Create(options.Reg2Url)
-            .Json()
-            .Timeout(TimeSpan.FromSeconds(10))
-            .Build();
+                .Json()
+                .Timeout(TimeSpan.FromSeconds(10))
+                .Build();
             await reg2.Post("/registry/members/wait")
                 .Body(new MemberEndpointWaitRequest(options.ProviderCEndpoint))
                 .SubmitRawAsync();
@@ -90,25 +91,22 @@ internal static class DrC3EmbeddedRegistryScenario
             await StopServerAsync(options.Reg2ConsumerUrl);
             await using var recoveredConsumerProcess = await StartConsumerAsync(options);
             using var freshRecoveredConsumer = ZLinkHttpClient.Create(options.Reg2ConsumerUrl)
-            .Json()
-            .Timeout(TimeSpan.FromSeconds(10))
-            .Build();
+                .Json()
+                .Timeout(TimeSpan.FromSeconds(10))
+                .Build();
             var after = await RequestProfileAsync(freshRecoveredConsumer, "dr-c3-after");
             ScenarioAssert.That(after.ProviderRid == "api-c", "DR-C3 recovered registry did not route to api-c.");
             await WaitForEvidenceAsync(after, providerC);
         }
         finally
         {
-            for (var i = started.Count - 1; i >= 0; i--)
-            {
-                await started[i].DisposeAsync();
-            }
+            for (var i = started.Count - 1; i >= 0; i--) await started[i].DisposeAsync();
         }
 
         Console.WriteLine("scenario DR-C3 passed");
     }
 
-    static async Task<ProfileReply> RequestProfileAsync(ZLinkHttpClient consumer, string phase)
+    private static async Task<ProfileReply> RequestProfileAsync(ZLinkHttpClient consumer, string phase)
     {
         var marker = $"{phase}-{Guid.NewGuid():N}";
         var reply = (await consumer.Post("/profile/request")
@@ -119,18 +117,18 @@ internal static class DrC3EmbeddedRegistryScenario
         return reply;
     }
 
-    static async Task WaitForEvidenceAsync(ProfileReply reply, ZLinkHttpClient provider)
+    private static async Task WaitForEvidenceAsync(ProfileReply reply, ZLinkHttpClient provider)
     {
         var evidence = (await provider.Post("/evidence/wait")
             .Body(new EvidenceWaitRequest(reply.Marker))
             .SubmitAsync<string[]>()).Body;
         ScenarioAssert.That(
             evidence.Any(line => line.Contains(reply.Marker, StringComparison.Ordinal)
-                && line.Contains($"rid={reply.ProviderRid}", StringComparison.Ordinal)),
+                                 && line.Contains($"rid={reply.ProviderRid}", StringComparison.Ordinal)),
             $"DR-C3 evidence was not recorded for {reply.Marker}.");
     }
 
-    static async Task StopServerAsync(string baseUrl)
+    private static async Task StopServerAsync(string baseUrl)
     {
         try
         {
@@ -145,7 +143,7 @@ internal static class DrC3EmbeddedRegistryScenario
         }
     }
 
-    static async Task<ManagedProcess> StartRegistryAsync(
+    private static async Task<ManagedProcess> StartRegistryAsync(
         ClientOptions options,
         string name,
         string rid,
@@ -162,7 +160,7 @@ internal static class DrC3EmbeddedRegistryScenario
             "--http-url", httpUrl,
             "--registry-pub-endpoint", pubEndpoint,
             "--registry-router-endpoint", routerEndpoint,
-            "--log-dir", options.LogDir,
+            "--log-dir", options.LogDir
         };
         foreach (var peer in peers)
         {
@@ -175,7 +173,7 @@ internal static class DrC3EmbeddedRegistryScenario
         return process;
     }
 
-    static async Task<ManagedProcess> StartProviderAsync(ClientOptions options)
+    private static async Task<ManagedProcess> StartProviderAsync(ClientOptions options)
     {
         var args = new List<string>
         {
@@ -186,21 +184,22 @@ internal static class DrC3EmbeddedRegistryScenario
             "--discovery-endpoint", options.Reg2RouterEndpoint,
             "--discovery-endpoint", options.Reg3RouterEndpoint,
             "--evidence-file", Path.Combine(options.LogDir, "api-c-after-all-outage.evidence.log"),
-            "--log-dir", options.LogDir,
+            "--log-dir", options.LogDir
         };
-        var process = ManagedProcess.Start(options.ProviderProject, "api-c-after-all-outage", "api-c", options.LogDir, args);
+        var process = ManagedProcess.Start(options.ProviderProject, "api-c-after-all-outage", "api-c", options.LogDir,
+            args);
         await process.WaitReadyAsync(options.ProviderCUrl);
         return process;
     }
 
-    static async Task<ManagedProcess> StartConsumerAsync(ClientOptions options)
+    private static async Task<ManagedProcess> StartConsumerAsync(ClientOptions options)
     {
         var args = new List<string>
         {
             "--rid", "consumer-reg2-recovered",
             "--http-url", options.Reg2ConsumerUrl,
             "--discovery-endpoint", options.Reg2RouterEndpoint,
-            "--log-dir", options.LogDir,
+            "--log-dir", options.LogDir
         };
         var process = ManagedProcess.Start(
             options.ConsumerProject,
@@ -214,6 +213,26 @@ internal static class DrC3EmbeddedRegistryScenario
 
     private sealed class ManagedProcess(Process process, string httpUrl) : IAsyncDisposable
     {
+        public async ValueTask DisposeAsync()
+        {
+            if (process.HasExited) return;
+
+            await StopServerAsync(httpUrl);
+            using var timeout = new CancellationTokenSource(TimeSpan.FromSeconds(5));
+            try
+            {
+                await process.WaitForExitAsync(timeout.Token);
+            }
+            catch (OperationCanceledException)
+            {
+                if (!process.HasExited)
+                {
+                    process.Kill(true);
+                    await process.WaitForExitAsync();
+                }
+            }
+        }
+
         public static ManagedProcess Start(
             string project,
             string name,
@@ -225,7 +244,7 @@ internal static class DrC3EmbeddedRegistryScenario
             {
                 RedirectStandardOutput = true,
                 RedirectStandardError = true,
-                UseShellExecute = false,
+                UseShellExecute = false
             };
             startInfo.Environment["ZLINK_E2E_RID"] = rid;
             startInfo.ArgumentList.Add("run");
@@ -233,10 +252,7 @@ internal static class DrC3EmbeddedRegistryScenario
             startInfo.ArgumentList.Add("--project");
             startInfo.ArgumentList.Add(project);
             startInfo.ArgumentList.Add("--");
-            foreach (var argument in arguments)
-            {
-                startInfo.ArgumentList.Add(argument);
-            }
+            foreach (var argument in arguments) startInfo.ArgumentList.Add(argument);
 
             var process = new Process { StartInfo = startInfo };
             process.Start();
@@ -251,14 +267,9 @@ internal static class DrC3EmbeddedRegistryScenario
             for (var attempt = 0; attempt < 120; attempt++)
             {
                 if (process.HasExited)
-                {
                     throw new InvalidOperationException($"Process exited before readiness: {process.ExitCode}.");
-                }
 
-                if (await CanConnectAsync(uri.Host, uri.Port))
-                {
-                    return;
-                }
+                if (await CanConnectAsync(uri.Host, uri.Port)) return;
 
                 await Task.Delay(TimeSpan.FromMilliseconds(250));
             }
@@ -266,7 +277,7 @@ internal static class DrC3EmbeddedRegistryScenario
             throw new TimeoutException($"Timed out waiting for {healthUrl}.");
         }
 
-        static async Task<bool> CanConnectAsync(string host, int port)
+        private static async Task<bool> CanConnectAsync(string host, int port)
         {
             try
             {
@@ -281,29 +292,6 @@ internal static class DrC3EmbeddedRegistryScenario
             catch (TimeoutException)
             {
                 return false;
-            }
-        }
-
-        public async ValueTask DisposeAsync()
-        {
-            if (process.HasExited)
-            {
-                return;
-            }
-
-            await StopServerAsync(httpUrl);
-            using var timeout = new CancellationTokenSource(TimeSpan.FromSeconds(5));
-            try
-            {
-                await process.WaitForExitAsync(timeout.Token);
-            }
-            catch (OperationCanceledException)
-            {
-                if (!process.HasExited)
-                {
-                    process.Kill(entireProcessTree: true);
-                    await process.WaitForExitAsync();
-                }
             }
         }
 

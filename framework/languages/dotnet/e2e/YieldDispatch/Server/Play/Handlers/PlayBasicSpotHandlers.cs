@@ -1,8 +1,7 @@
+using YieldDispatch.Server.Play.Spots;
 using YieldDispatch.Shared;
 using Zlink.Framework.Contracts.Handlers;
 using Zlink.Framework.Contracts.Spots;
-using YieldDispatch.Server.Play.Handlers;
-using YieldDispatch.Server.Play.Spots;
 
 namespace YieldDispatch.Server.Play.Handlers;
 
@@ -15,15 +14,18 @@ internal sealed class HoldHandler(EvidenceStore evidence)
         HoldReq request,
         CancellationToken cancellationToken)
     {
-        evidence.Add($"hold-started|rid={evidence.Rid}|spot={spot.Context.SpotRid}|request={request.RequestId}|handler=spot");
+        evidence.Add(
+            $"hold-started|rid={evidence.Rid}|spot={spot.Context.SpotRid}|request={request.RequestId}|handler=spot");
         await spot.Context.Outbound.RequestToChannel(
                 YieldDispatchNames.DelayChannel,
                 new DelayReq(request.RequestId, request.DelayMs, "hold"))
             .PacketName("DelayReq")
             .Timeout(TimeSpan.FromSeconds(5))
             .Async<DelayReply>(cancellationToken);
-        evidence.Add($"hold-resumed|rid={evidence.Rid}|spot={spot.Context.SpotRid}|request={request.RequestId}|handler=spot");
-        evidence.Add($"hold-completed|rid={evidence.Rid}|spot={spot.Context.SpotRid}|request={request.RequestId}|handler=spot");
+        evidence.Add(
+            $"hold-resumed|rid={evidence.Rid}|spot={spot.Context.SpotRid}|request={request.RequestId}|handler=spot");
+        evidence.Add(
+            $"hold-completed|rid={evidence.Rid}|spot={spot.Context.SpotRid}|request={request.RequestId}|handler=spot");
         return YieldReplies.Reply("YD-A1", request.RequestId, spot, "hold-completed");
     }
 }
@@ -37,15 +39,18 @@ internal sealed class HoldCommandHandler(EvidenceStore evidence)
         HoldCommand request,
         CancellationToken cancellationToken)
     {
-        evidence.Add($"hold-started|rid={evidence.Rid}|spot={spot.Context.SpotRid}|request={request.RequestId}|handler=spot");
+        evidence.Add(
+            $"hold-started|rid={evidence.Rid}|spot={spot.Context.SpotRid}|request={request.RequestId}|handler=spot");
         await spot.Context.Outbound.RequestToChannel(
                 YieldDispatchNames.DelayChannel,
                 new DelayReq(request.RequestId, request.DelayMs, "hold"))
             .PacketName("DelayReq")
             .Timeout(TimeSpan.FromSeconds(5))
             .Async<DelayReply>(cancellationToken);
-        evidence.Add($"hold-resumed|rid={evidence.Rid}|spot={spot.Context.SpotRid}|request={request.RequestId}|handler=spot");
-        evidence.Add($"hold-completed|rid={evidence.Rid}|spot={spot.Context.SpotRid}|request={request.RequestId}|handler=spot");
+        evidence.Add(
+            $"hold-resumed|rid={evidence.Rid}|spot={spot.Context.SpotRid}|request={request.RequestId}|handler=spot");
+        evidence.Add(
+            $"hold-completed|rid={evidence.Rid}|spot={spot.Context.SpotRid}|request={request.RequestId}|handler=spot");
     }
 }
 
@@ -119,17 +124,21 @@ internal sealed class WorkerYieldHandler(EvidenceStore evidence)
         WorkerYieldReq request,
         CancellationToken cancellationToken)
     {
-        evidence.Add($"worker-yield-started|rid={evidence.Rid}|spot={spot.Context.SpotRid}|request={request.RequestId}|handler=spot");
+        evidence.Add(
+            $"worker-yield-started|rid={evidence.Rid}|spot={spot.Context.SpotRid}|request={request.RequestId}|handler=spot");
         var call = spot.Context.RunWorker(ct =>
         {
             ct.ThrowIfCancellationRequested();
             Thread.Sleep(TimeSpan.FromMilliseconds(request.DelayMs));
             return request.RequestId;
         });
-        evidence.Add($"worker-yield-released|rid={evidence.Rid}|spot={spot.Context.SpotRid}|request={request.RequestId}|handler=spot");
+        evidence.Add(
+            $"worker-yield-released|rid={evidence.Rid}|spot={spot.Context.SpotRid}|request={request.RequestId}|handler=spot");
         await call.Yield(cancellationToken);
-        evidence.Add($"worker-yield-resumed|rid={evidence.Rid}|spot={spot.Context.SpotRid}|request={request.RequestId}|handler=spot");
-        evidence.Add($"worker-yield-completed|rid={evidence.Rid}|spot={spot.Context.SpotRid}|request={request.RequestId}|handler=spot");
+        evidence.Add(
+            $"worker-yield-resumed|rid={evidence.Rid}|spot={spot.Context.SpotRid}|request={request.RequestId}|handler=spot");
+        evidence.Add(
+            $"worker-yield-completed|rid={evidence.Rid}|spot={spot.Context.SpotRid}|request={request.RequestId}|handler=spot");
         return YieldReplies.Reply("YD-A4", request.RequestId, spot, "worker-yield-completed");
     }
 }
@@ -143,17 +152,21 @@ internal sealed class WorkerYieldCommandHandler(EvidenceStore evidence)
         WorkerYieldCommand request,
         CancellationToken cancellationToken)
     {
-        evidence.Add($"worker-yield-started|rid={evidence.Rid}|spot={spot.Context.SpotRid}|request={request.RequestId}|handler=spot");
+        evidence.Add(
+            $"worker-yield-started|rid={evidence.Rid}|spot={spot.Context.SpotRid}|request={request.RequestId}|handler=spot");
         var call = spot.Context.RunWorker(ct =>
         {
             ct.ThrowIfCancellationRequested();
             Thread.Sleep(TimeSpan.FromMilliseconds(request.DelayMs));
             return request.RequestId;
         });
-        evidence.Add($"worker-yield-released|rid={evidence.Rid}|spot={spot.Context.SpotRid}|request={request.RequestId}|handler=spot");
+        evidence.Add(
+            $"worker-yield-released|rid={evidence.Rid}|spot={spot.Context.SpotRid}|request={request.RequestId}|handler=spot");
         await call.Yield(cancellationToken);
-        evidence.Add($"worker-yield-resumed|rid={evidence.Rid}|spot={spot.Context.SpotRid}|request={request.RequestId}|handler=spot");
-        evidence.Add($"worker-yield-completed|rid={evidence.Rid}|spot={spot.Context.SpotRid}|request={request.RequestId}|handler=spot");
+        evidence.Add(
+            $"worker-yield-resumed|rid={evidence.Rid}|spot={spot.Context.SpotRid}|request={request.RequestId}|handler=spot");
+        evidence.Add(
+            $"worker-yield-completed|rid={evidence.Rid}|spot={spot.Context.SpotRid}|request={request.RequestId}|handler=spot");
     }
 }
 

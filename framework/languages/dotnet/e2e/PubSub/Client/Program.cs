@@ -1,7 +1,7 @@
-using PubSub.Client.Scenarios;
 using System.Diagnostics;
-using Zlink.HttpClient;
+using PubSub.Client.Scenarios;
 using PubSub.Client.Support;
+using Zlink.HttpClient;
 
 var options = ClientOptions.Parse(args);
 Directory.CreateDirectory(options.LogDir);
@@ -36,24 +36,16 @@ try
             publisher,
             subscribers,
             processLauncher),
-        ["PS-C1"] = () => MissingMessageNameScenario.RunAsync(publisher, subscribers),
+        ["PS-C1"] = () => MissingMessageNameScenario.RunAsync(publisher, subscribers)
     };
 
     if (string.Equals(options.Scenario, "all", StringComparison.OrdinalIgnoreCase))
-    {
         foreach (var scenario in scenarios.Values)
-        {
             await scenario();
-        }
-    }
     else if (scenarios.TryGetValue(options.Scenario, out var selected))
-    {
         await selected();
-    }
     else
-    {
         throw new ArgumentException($"Unknown scenario '{options.Scenario}'.");
-    }
 }
 finally
 {
@@ -63,10 +55,7 @@ finally
         await restartedPublisher.WaitForExitAsync();
     }
 
-    foreach (var subscriber in subscribers)
-    {
-        subscriber.Dispose();
-    }
+    foreach (var subscriber in subscribers) subscriber.Dispose();
 }
 
 Console.WriteLine("pubsub e2e result=passed");

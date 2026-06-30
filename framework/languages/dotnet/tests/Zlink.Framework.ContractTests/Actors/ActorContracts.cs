@@ -53,8 +53,10 @@ public sealed class ActorContracts
         public ValueTask<IZLinkActor> CreateAsync(
             string actorId,
             IZLinkActorContext context,
-            CancellationToken cancellationToken = default) =>
-            ValueTask.FromResult<IZLinkActor>(new PlayerActor(actorId, context));
+            CancellationToken cancellationToken = default)
+        {
+            return ValueTask.FromResult<IZLinkActor>(new PlayerActor(actorId, context));
+        }
     }
 
     private sealed class ActorManager(IZLinkActorFactory factory, IZLinkActorContext context) : IZLinkActorManager
@@ -88,29 +90,35 @@ public sealed class ActorContracts
 
         public ValueTask<ActorRef?> FindAsync(
             string actorId,
-            CancellationToken cancellationToken = default) =>
-            ValueTask.FromResult<ActorRef?>(
+            CancellationToken cancellationToken = default)
+        {
+            return ValueTask.FromResult<ActorRef?>(
                 _actors.TryGetValue(actorId, out var actorRef)
                     ? actorRef
                     : null);
+        }
 
         public async ValueTask<ActorRef> GetOrCreateAsync(
             string actorId,
             string actorType,
-            CancellationToken cancellationToken = default) =>
-            await GetOrCreateAsync(
+            CancellationToken cancellationToken = default)
+        {
+            return await GetOrCreateAsync(
                 actorId,
                 actorType,
                 ZLinkMessage.Empty,
                 cancellationToken);
+        }
 
         public async ValueTask<ActorRef> GetOrCreateAsync(
             string actorId,
             string actorType,
             ZLinkMessage createRequest,
-            CancellationToken cancellationToken = default) =>
-            await FindAsync(actorId, cancellationToken)
-                ?? await CreateAsync(actorId, actorType, createRequest, cancellationToken);
+            CancellationToken cancellationToken = default)
+        {
+            return await FindAsync(actorId, cancellationToken)
+                   ?? await CreateAsync(actorId, actorType, createRequest, cancellationToken);
+        }
     }
 
     private sealed class ActorContext(string actorId, IZLinkSpot spot) : IZLinkActorContext
@@ -121,48 +129,71 @@ public sealed class ActorContracts
 
         public IZLinkBoundSession BoundSession { get; } = new BoundSession();
 
-        public IZLinkSpot GetSpot() => spot;
+        public IZLinkSpot GetSpot()
+        {
+            return spot;
+        }
 
         public TSpot GetSpot<TSpot>()
-            where TSpot : IZLinkSpot =>
-            (TSpot)spot;
+            where TSpot : IZLinkSpot
+        {
+            return (TSpot)spot;
+        }
 
         public IZLinkActorJoinSpotCall JoinSpot(
             RoutingId spotRid,
-            ZLinkMessage request) =>
-            new JoinSpotCall(ZLinkMessage.From(new JoinedRoom("room-1")));
+            ZLinkMessage request)
+        {
+            return new JoinSpotCall(ZLinkMessage.From(new JoinedRoom("room-1")));
+        }
 
-        public IZLinkActorJoinEntrySpotCall JoinEntrySpot(RoutingId spotNodeRid, ZLinkMessage request) =>
-            new JoinEntrySpotCall(new ActorRef(spotNodeRid, actorId, 1), request);
+        public IZLinkActorJoinEntrySpotCall JoinEntrySpot(RoutingId spotNodeRid, ZLinkMessage request)
+        {
+            return new JoinEntrySpotCall(new ActorRef(spotNodeRid, actorId, 1), request);
+        }
     }
 
     private sealed class JoinSpotCall(ZLinkMessage reply) : IZLinkActorJoinSpotCall
     {
-        public IZLinkActorJoinSpotCall Timeout(TimeSpan timeout) => this;
+        public IZLinkActorJoinSpotCall Timeout(TimeSpan timeout)
+        {
+            return this;
+        }
 
         public ValueTask<ZLinkActorJoinResult> Async(
-            CancellationToken cancellationToken = default) =>
-            ValueTask.FromResult(new ZLinkActorJoinResult(
+            CancellationToken cancellationToken = default)
+        {
+            return ValueTask.FromResult(new ZLinkActorJoinResult(
                 true,
                 new ActorRef(RoutingId.From("room-node"), "player-1", 1),
                 reply));
+        }
 
         public ValueTask<ZLinkActorJoinResult> Yield(
-            CancellationToken cancellationToken = default) =>
-            Async(cancellationToken);
+            CancellationToken cancellationToken = default)
+        {
+            return Async(cancellationToken);
+        }
     }
 
     private sealed class JoinEntrySpotCall(ActorRef result, ZLinkMessage reply) : IZLinkActorJoinEntrySpotCall
     {
-        public IZLinkActorJoinEntrySpotCall Timeout(TimeSpan timeout) => this;
+        public IZLinkActorJoinEntrySpotCall Timeout(TimeSpan timeout)
+        {
+            return this;
+        }
 
         public ValueTask<ZLinkActorJoinResult> Async(
-            CancellationToken cancellationToken = default) =>
-            ValueTask.FromResult(new ZLinkActorJoinResult(true, result, reply));
+            CancellationToken cancellationToken = default)
+        {
+            return ValueTask.FromResult(new ZLinkActorJoinResult(true, result, reply));
+        }
 
         public ValueTask<ZLinkActorJoinResult> Yield(
-            CancellationToken cancellationToken = default) =>
-            Async(cancellationToken);
+            CancellationToken cancellationToken = default)
+        {
+            return Async(cancellationToken);
+        }
     }
 
     private sealed class PlayerActor(string actorId, IZLinkActorContext context) : IZLinkActor
@@ -179,9 +210,14 @@ public sealed class ActorContracts
 
     private sealed class BoundSession : IZLinkBoundSession
     {
-        public IZLinkBoundSessionSendCall Send<TMessage>(TMessage message) => null!;
+        public IZLinkBoundSessionSendCall Send<TMessage>(TMessage message)
+        {
+            return null!;
+        }
 
-        public ValueTask DisconnectAsync(CancellationToken cancellationToken = default) => ValueTask.CompletedTask;
+        public ValueTask DisconnectAsync(CancellationToken cancellationToken = default)
+        {
+            return ValueTask.CompletedTask;
+        }
     }
-
 }

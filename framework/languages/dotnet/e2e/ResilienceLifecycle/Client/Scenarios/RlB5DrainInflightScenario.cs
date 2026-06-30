@@ -1,6 +1,6 @@
+using ResilienceLifecycle.Client.Support;
 using ResilienceLifecycle.Shared;
 using Zlink.HttpClient;
-using ResilienceLifecycle.Client.Support;
 
 namespace ResilienceLifecycle.Client.Scenarios;
 
@@ -35,7 +35,8 @@ internal static class RlB5DrainInflightScenario
             var reply = (await consumer.Post("/profile/request")
                 .Body(new ProfileRequest("fast", $"rl-b5-drained-{i}"))
                 .SubmitAsync<ProfileReply>()).Body;
-            ScenarioAssert.That(reply.ProviderRid == healthyProvider, "RL-B5 drain did not block new requests to the drained provider.");
+            ScenarioAssert.That(reply.ProviderRid == healthyProvider,
+                "RL-B5 drain did not block new requests to the drained provider.");
         }
 
         var slowReply = (await slowTask).Body;
@@ -48,7 +49,8 @@ internal static class RlB5DrainInflightScenario
             CountNew(afterDrain, beforeDrain, $"profile-request|rid={slowProvider}|marker=rl-b5-drained-") == 0,
             "RL-B5 drained provider accepted new requests after drain.");
         ScenarioAssert.That(
-            afterDrain.Any(line => line.Contains($"profile-request|rid={slowProvider}|marker={slowMarker}", StringComparison.Ordinal)),
+            afterDrain.Any(line =>
+                line.Contains($"profile-request|rid={slowProvider}|marker={slowMarker}", StringComparison.Ordinal)),
             "RL-B5 in-flight completion evidence missing.");
 
         await drainedProvider.Post("/admin/restore").SubmitRawAsync();
@@ -69,7 +71,7 @@ internal static class RlB5DrainInflightScenario
         Console.WriteLine("scenario RL-B5 passed");
     }
 
-    static async Task<string> WaitForSlowStartAsync(
+    private static async Task<string> WaitForSlowStartAsync(
         ZLinkHttpClient providerA,
         ZLinkHttpClient providerB,
         string marker)
@@ -90,14 +92,16 @@ internal static class RlB5DrainInflightScenario
         return completed == waitA ? "api-a" : "api-b";
     }
 
-    static async Task WaitForWeightAsync(ZLinkHttpClient provider, int expected)
+    private static async Task WaitForWeightAsync(ZLinkHttpClient provider, int expected)
     {
         await provider.Post("/admin/weight/wait")
             .Body(new WeightWaitRequest(expected))
             .SubmitRawAsync();
     }
 
-    static int CountNew(string[] after, string[] before, string pattern) =>
-        Math.Max(0, after.Count(line => line.Contains(pattern, StringComparison.Ordinal))
-            - before.Count(line => line.Contains(pattern, StringComparison.Ordinal)));
+    private static int CountNew(string[] after, string[] before, string pattern)
+    {
+        return Math.Max(0, after.Count(line => line.Contains(pattern, StringComparison.Ordinal))
+                           - before.Count(line => line.Contains(pattern, StringComparison.Ordinal)));
+    }
 }

@@ -1,6 +1,6 @@
 using ShoppingMall.Server.OrderWorkflow.Application.OrderWorkflow;
+using ShoppingMall.Server.OrderWorkflow.Infrastructure.ZLink.Spots.OrderWorkflowSpot.Handlers;
 using ShoppingMall.Shared.Contracts;
-using Microsoft.Extensions.Logging;
 using Zlink.Framework.Contracts.Messaging;
 using Zlink.Framework.Contracts.Spots;
 
@@ -15,9 +15,9 @@ internal sealed class OrderWorkflowSpot(
 
     public void Configure()
     {
-        Context.Handlers.AddPacket<Handlers.StartOrderWorkflowHandler>();
-        Context.Handlers.AddPacket<Handlers.ContinueOrderWorkflowHandler>();
-        Context.Handlers.AddPacket<Handlers.RebuildOrderProjectionHandler>();
+        Context.Handlers.AddPacket<StartOrderWorkflowHandler>();
+        Context.Handlers.AddPacket<ContinueOrderWorkflowHandler>();
+        Context.Handlers.AddPacket<RebuildOrderProjectionHandler>();
     }
 
     public ValueTask<ZLinkSpotCreateResponse> OnCreateAsync(

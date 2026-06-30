@@ -1,9 +1,5 @@
 // SPDX-License-Identifier: MPL-2.0
 
-using System;
-using System.Runtime.InteropServices;
-using System.Text;
-using System.Threading;
 using Systems.Zlink.Runtime.Native;
 
 namespace Systems.Zlink.Runtime.Sockets.Internal;
@@ -20,11 +16,11 @@ internal sealed partial class SocketKernel : IDisposable
             throw new ZlinkHandlerException(HandlerResult.Busy,
                 (int)ErrorCode.EBusy);
 
-        SynchronizationContext? context = SynchronizationContext.Current;
+        var context = SynchronizationContext.Current;
         _callbacks.StreamPacketHandler = handler;
         _callbacks.StreamRawContext = context;
         _callbacks.StreamRawNative = OnStreamRaw;
-        int rc = NativeMethods.zlink_stream_attach_raw(Handle,
+        var rc = NativeMethods.zlink_stream_attach_raw(Handle,
             _callbacks.StreamRawNative, IntPtr.Zero);
         if (rc != 0)
         {
@@ -34,6 +30,7 @@ internal sealed partial class SocketKernel : IDisposable
             throw ZlinkException.CreateHandlerException(
                 NativeMethods.zlink_errno());
         }
+
         _streamAttached = true;
     }
 
@@ -47,11 +44,11 @@ internal sealed partial class SocketKernel : IDisposable
             throw new ZlinkHandlerException(HandlerResult.Busy,
                 (int)ErrorCode.EBusy);
 
-        SynchronizationContext? context = SynchronizationContext.Current;
+        var context = SynchronizationContext.Current;
         _callbacks.StreamUInt32PacketHandler = handler;
         _callbacks.StreamRawContext = context;
         _callbacks.StreamRawNative = OnStreamRawUInt32;
-        int rc = NativeMethods.zlink_stream_attach_raw(Handle,
+        var rc = NativeMethods.zlink_stream_attach_raw(Handle,
             _callbacks.StreamRawNative, IntPtr.Zero);
         if (rc != 0)
         {
@@ -61,6 +58,7 @@ internal sealed partial class SocketKernel : IDisposable
             throw ZlinkException.CreateHandlerException(
                 NativeMethods.zlink_errno());
         }
+
         _streamAttached = true;
     }
 
@@ -74,11 +72,11 @@ internal sealed partial class SocketKernel : IDisposable
             throw new ZlinkHandlerException(HandlerResult.Busy,
                 (int)ErrorCode.EBusy);
 
-        SynchronizationContext? context = SynchronizationContext.Current;
+        var context = SynchronizationContext.Current;
         _callbacks.StreamFramedPacketHandler = handler;
         _callbacks.StreamPacketContext = context;
         _callbacks.StreamPacketNative = OnStreamPacket;
-        int rc = NativeMethods.zlink_stream_packet_handler(Handle,
+        var rc = NativeMethods.zlink_stream_packet_handler(Handle,
             _callbacks.StreamPacketNative, IntPtr.Zero);
         if (rc != 0)
         {
@@ -88,6 +86,7 @@ internal sealed partial class SocketKernel : IDisposable
             throw ZlinkException.CreateHandlerException(
                 NativeMethods.zlink_errno());
         }
+
         _streamAttached = true;
     }
 
@@ -109,11 +108,11 @@ internal sealed partial class SocketKernel : IDisposable
             throw new ZlinkHandlerException(HandlerResult.Busy,
                 (int)ErrorCode.EBusy);
 
-        SynchronizationContext? context = SynchronizationContext.Current;
+        var context = SynchronizationContext.Current;
         _callbacks.StreamUInt32FramedPacketHandler = handler;
         _callbacks.StreamPacketContext = context;
         _callbacks.StreamPacketNative = OnStreamPacketUInt32;
-        int rc = NativeMethods.zlink_stream_packet_handler(Handle,
+        var rc = NativeMethods.zlink_stream_packet_handler(Handle,
             _callbacks.StreamPacketNative, IntPtr.Zero);
         if (rc != 0)
         {
@@ -123,6 +122,7 @@ internal sealed partial class SocketKernel : IDisposable
             throw ZlinkException.CreateHandlerException(
                 NativeMethods.zlink_errno());
         }
+
         _streamAttached = true;
     }
 
@@ -133,7 +133,7 @@ internal sealed partial class SocketKernel : IDisposable
         if (!_streamAttached)
             return;
 
-        int rc = NativeMethods.zlink_stream_detach(Handle);
+        var rc = NativeMethods.zlink_stream_detach(Handle);
         _streamAttached = false;
         _callbacks.ClearStream();
         ZlinkException.ThrowCloseIfError(rc);
@@ -157,21 +157,21 @@ internal sealed partial class SocketKernel : IDisposable
         if (message == IntPtr.Zero)
             return 0;
 
-        StreamRawPacketHandler? packetHandler = _callbacks.StreamPacketHandler;
-        SynchronizationContext? context = _callbacks.StreamRawContext;
+        var packetHandler = _callbacks.StreamPacketHandler;
+        var context = _callbacks.StreamRawContext;
         if (packetHandler == null || routingId == IntPtr.Zero)
         {
             CloseStreamPacket(message);
             return 0;
         }
 
-        ZlinkRoutingId* rid = (ZlinkRoutingId*)routingId;
+        var rid = (ZlinkRoutingId*)routingId;
         Message? payloadMsg = null;
-        bool delivered = false;
+        var delivered = false;
         try
         {
             payloadMsg = Message.MoveFromNativeSingle(message);
-            string routingIdText = RoutingIdCodec.ToPublicString(
+            var routingIdText = RoutingIdCodec.ToPublicString(
                 NativeHelpers.ReadRoutingId(ref *rid));
             delivered = true;
             if (context == null)
@@ -183,7 +183,6 @@ internal sealed partial class SocketKernel : IDisposable
         {
             CallbackExceptionHub.Report(ex);
             if (!delivered && payloadMsg != null)
-            {
                 try
                 {
                     payloadMsg.Dispose();
@@ -191,7 +190,7 @@ internal sealed partial class SocketKernel : IDisposable
                 catch
                 {
                 }
-            }
+
             return 1;
         }
         finally
@@ -206,24 +205,24 @@ internal sealed partial class SocketKernel : IDisposable
         if (message == IntPtr.Zero)
             return 0;
 
-        StreamUInt32PacketHandler? packetHandler = _callbacks.StreamUInt32PacketHandler;
-        SynchronizationContext? context = _callbacks.StreamRawContext;
+        var packetHandler = _callbacks.StreamUInt32PacketHandler;
+        var context = _callbacks.StreamRawContext;
         if (packetHandler == null || routingId == IntPtr.Zero)
         {
             CloseStreamPacket(message);
             return 0;
         }
 
-        byte[] ridBytes = NativeHelpers.ReadRoutingId(
+        var ridBytes = NativeHelpers.ReadRoutingId(
             ref *(ZlinkRoutingId*)routingId);
-        if (!RoutingIdCodec.TryToUInt32(ridBytes, out uint routingIdValue))
+        if (!RoutingIdCodec.TryToUInt32(ridBytes, out var routingIdValue))
         {
             CloseStreamPacket(message);
             return 0;
         }
 
         Message? payloadMsg = null;
-        bool delivered = false;
+        var delivered = false;
         try
         {
             payloadMsg = Message.MoveFromNativeSingle(message);
@@ -237,7 +236,6 @@ internal sealed partial class SocketKernel : IDisposable
         {
             CallbackExceptionHub.Report(ex);
             if (!delivered && payloadMsg != null)
-            {
                 try
                 {
                     payloadMsg.Dispose();
@@ -245,7 +243,7 @@ internal sealed partial class SocketKernel : IDisposable
                 catch
                 {
                 }
-            }
+
             return 1;
         }
         finally
@@ -257,8 +255,8 @@ internal sealed partial class SocketKernel : IDisposable
     private unsafe void OnStreamPacket(IntPtr stream, IntPtr routingId,
         IntPtr header, IntPtr body, IntPtr userdata)
     {
-        StreamFramedPacketHandler? packetHandler = _callbacks.StreamFramedPacketHandler;
-        SynchronizationContext? context = _callbacks.StreamPacketContext;
+        var packetHandler = _callbacks.StreamFramedPacketHandler;
+        var context = _callbacks.StreamPacketContext;
         if (packetHandler == null || routingId == IntPtr.Zero)
         {
             CloseStreamPacket(header);
@@ -268,10 +266,10 @@ internal sealed partial class SocketKernel : IDisposable
 
         Message? headerMsg = null;
         Message? bodyMsg = null;
-        bool delivered = false;
+        var delivered = false;
         try
         {
-            string routingIdText = RoutingIdCodec.ToPublicString(
+            var routingIdText = RoutingIdCodec.ToPublicString(
                 NativeHelpers.ReadRoutingId(ref *(ZlinkRoutingId*)routingId));
             headerMsg = Message.MoveFromNativeSingle(header);
             bodyMsg = Message.MoveFromNativeSingle(body);
@@ -314,9 +312,9 @@ internal sealed partial class SocketKernel : IDisposable
     private unsafe void OnStreamPacketUInt32(IntPtr stream, IntPtr routingId,
         IntPtr header, IntPtr body, IntPtr userdata)
     {
-        StreamUInt32FramedPacketHandler? packetHandler =
+        var packetHandler =
             _callbacks.StreamUInt32FramedPacketHandler;
-        SynchronizationContext? context = _callbacks.StreamPacketContext;
+        var context = _callbacks.StreamPacketContext;
         if (packetHandler == null || routingId == IntPtr.Zero)
         {
             CloseStreamPacket(header);
@@ -324,9 +322,9 @@ internal sealed partial class SocketKernel : IDisposable
             return;
         }
 
-        byte[] ridBytes = NativeHelpers.ReadRoutingId(
+        var ridBytes = NativeHelpers.ReadRoutingId(
             ref *(ZlinkRoutingId*)routingId);
-        if (!RoutingIdCodec.TryToUInt32(ridBytes, out uint routingIdValue))
+        if (!RoutingIdCodec.TryToUInt32(ridBytes, out var routingIdValue))
         {
             CloseStreamPacket(header);
             CloseStreamPacket(body);
@@ -335,7 +333,7 @@ internal sealed partial class SocketKernel : IDisposable
 
         Message? headerMsg = null;
         Message? bodyMsg = null;
-        bool delivered = false;
+        var delivered = false;
         try
         {
             headerMsg = Message.MoveFromNativeSingle(header);

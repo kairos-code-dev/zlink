@@ -103,7 +103,7 @@ public sealed class ZLinkAsyncSubmitterTests
             _ => { },
             TimeSpan.FromSeconds(1),
             CancellationToken.None,
-            capacity: 1);
+            1);
 
         var first = submitter.Async(
             Message.From("first"),

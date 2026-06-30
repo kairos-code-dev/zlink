@@ -10,10 +10,7 @@ internal static class ScenarioAssert
         using var timeoutSource = new CancellationTokenSource(timeout ?? TimeSpan.FromSeconds(15));
         while (!timeoutSource.IsCancellationRequested)
         {
-            if (await condition())
-            {
-                return;
-            }
+            if (await condition()) return;
 
             await Task.Delay(100, timeoutSource.Token).ContinueWith(_ => { });
         }
@@ -23,15 +20,12 @@ internal static class ScenarioAssert
 
     public static void That(bool condition, string message)
     {
-        if (!condition)
-        {
-            throw new InvalidOperationException(message);
-        }
+        if (!condition) throw new InvalidOperationException(message);
     }
 
     public static bool IsConnectionFailure(Exception ex)
     {
         return ex is HttpRequestException
-            || ex.InnerException is HttpRequestException;
+               || ex.InnerException is HttpRequestException;
     }
 }

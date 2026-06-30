@@ -1,21 +1,35 @@
-using Zlink.Framework.Runtime.Spots;
-
 namespace Zlink.Framework.Contracts.Spots;
 
 public readonly record struct ZLinkSpotActorJoinResult(bool Accepted, ZLinkMessage? Reply)
 {
-    public static ZLinkSpotActorJoinResult Accept(ZLinkMessage? reply = null) => new(true, reply);
+    public static ZLinkSpotActorJoinResult Accept(ZLinkMessage? reply = null)
+    {
+        return new ZLinkSpotActorJoinResult(true, reply);
+    }
 
-    public static ZLinkSpotActorJoinResult Accept<TReply>(TReply reply) => new(true, ZLinkMessage.From(reply));
+    public static ZLinkSpotActorJoinResult Accept<TReply>(TReply reply)
+    {
+        return new ZLinkSpotActorJoinResult(true, ZLinkMessage.From(reply));
+    }
 
-    public static ZLinkSpotActorJoinResult Reject(ZLinkMessage? reply = null) => new(false, reply);
+    public static ZLinkSpotActorJoinResult Reject(ZLinkMessage? reply = null)
+    {
+        return new ZLinkSpotActorJoinResult(false, reply);
+    }
 
-    public static ZLinkSpotActorJoinResult Reject<TReply>(TReply reply) => new(false, ZLinkMessage.From(reply));
+    public static ZLinkSpotActorJoinResult Reject<TReply>(TReply reply)
+    {
+        return new ZLinkSpotActorJoinResult(false, ZLinkMessage.From(reply));
+    }
 }
 
 public sealed class ZLinkSpotActorReplyOptions
 {
     private readonly Dictionary<string, string> _metadata = new(StringComparer.Ordinal);
+
+    internal IReadOnlyDictionary<string, string> MetadataValues => _metadata;
+
+    internal bool CompressPayload { get; private set; }
 
     internal ZLinkSpotActorReplyOptionsSnapshot CreateSnapshot()
     {
@@ -25,10 +39,6 @@ public sealed class ZLinkSpotActorReplyOptions
                 : new Dictionary<string, string>(_metadata, StringComparer.Ordinal),
             CompressPayload);
     }
-
-    internal IReadOnlyDictionary<string, string> MetadataValues => _metadata;
-
-    internal bool CompressPayload { get; private set; }
 
     public ZLinkSpotActorReplyOptions Metadata(string key, string value)
     {
@@ -166,7 +176,6 @@ public interface IZLinkActorHandlerRegistry
     {
         AddActorPacket<THandler, TActor>(packetName);
     }
-
 }
 
 public interface IZLinkSpotHandlerRegistry : IZLinkActorHandlerRegistry
@@ -176,7 +185,6 @@ public interface IZLinkSpotHandlerRegistry : IZLinkActorHandlerRegistry
 
     void AddSubscribe<THandler>(string topic)
         where THandler : class;
-
 }
 
 public interface IZLinkSpotOutbound

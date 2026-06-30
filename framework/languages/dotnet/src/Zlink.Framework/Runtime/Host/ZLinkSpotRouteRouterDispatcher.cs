@@ -39,8 +39,8 @@ internal sealed class ZLinkSpotRouteRouterDispatcher(
     {
         var state = getState();
         return ResolveRouterSpotNode(state, targetSpotNodeChannelName)?.Node.RoutingId
-            ?? throw new ZLinkConfigurationException(
-                $"Routed SPOT target channel '{targetSpotNodeChannelName}' is not owned by a router-capable SPOT node in this process.");
+               ?? throw new ZLinkConfigurationException(
+                   $"Routed SPOT target channel '{targetSpotNodeChannelName}' is not owned by a router-capable SPOT node in this process.");
     }
 
     private static bool TryResolveLocalAcceptedSpotNode(
@@ -66,16 +66,11 @@ internal sealed class ZLinkSpotRouteRouterDispatcher(
         ZLinkSpotNodeRuntime? matched = null;
         foreach (var candidate in state.SpotNodes.Values)
         {
-            if (candidate.Registration.Router is null)
-            {
-                continue;
-            }
+            if (candidate.Registration.Router is null) continue;
 
             if (matched is not null)
-            {
                 throw new ZLinkConfigurationException(
                     "Routed SPOT dispatch requires exactly one router-capable SPOT node in this process.");
-            }
 
             matched = candidate;
         }
@@ -89,22 +84,14 @@ internal sealed class ZLinkSpotRouteRouterDispatcher(
         RoutingId? targetNodeRid = null)
     {
         if (targetNodeRid is { } rid)
-        {
             foreach (var candidate in state.SpotNodes.Values)
-            {
                 if (candidate.Registration.Router is not null
                     && candidate.Node.RoutingId == rid)
-                {
                     return candidate;
-                }
-            }
-        }
 
         if (state.SpotNodes.TryGetValue(routerChannelId, out var named)
             && named.Registration.Router is not null)
-        {
             return named;
-        }
 
         return ResolveSingleRouterSpotNode(state);
     }
@@ -117,36 +104,28 @@ internal sealed class ZLinkSpotRouteRouterDispatcher(
                 routerChannelId,
                 targetNodeRid,
                 out var localSpotNode))
-        {
             return new SpotNodeRouterTarget(
                 routerChannelId,
                 localSpotNode.Node.EntrySpot(),
                 "Local SPOT node");
-        }
 
         if (state.RouteChannels.TryGetValue(routerChannelId, out var routeChannel))
-        {
             return new RouteChannelTarget(routeChannel);
-        }
 
         if (state.ServerBundles.TryGetValue(routerChannelId, out var serverBundle)
             && serverBundle.Socket is IZLinkBackendRouterSocket)
-        {
             return new ServerRouterTarget(
                 routerChannelId,
                 serverBundle.SpotRouteBridge
-                    ?? throw new ZLinkConfigurationException(
-                        $"Router channel '{routerChannelId}' is not attached to a SPOT route bridge."),
+                ?? throw new ZLinkConfigurationException(
+                    $"Router channel '{routerChannelId}' is not attached to a SPOT route bridge."),
                 serverBundle.ReceiveGate);
-        }
 
         if (state.SpotNodes.TryGetValue(routerChannelId, out var spotNodeRuntime))
-        {
             return new SpotNodeRouterTarget(
                 routerChannelId,
                 spotNodeRuntime.Node.EntrySpot(),
                 "SpotNode router");
-        }
 
         throw new ZLinkConfigurationException(
             $"Router-capable channel '{routerChannelId}' is not registered in this process.");
@@ -187,11 +166,9 @@ internal sealed class ZLinkSpotRouteRouterDispatcher(
                         targetSpotRid,
                         parts,
                         SendFlags.None))
-                {
                     throw new ZLinkFrameworkException(
                         ZLinkFrameworkErrorKind.ActorRouteNotFound,
                         $"{sourceLabel} for route channel '{routerChannelId}' is not ready for SPOT send.");
-                }
             }
             finally
             {
@@ -224,11 +201,9 @@ internal sealed class ZLinkSpotRouteRouterDispatcher(
                             $"SpotNode router '{routerChannelId}' SPOT request failed with result '{result}'."),
                         SendFlags.None,
                         timeout))
-                {
                     throw new ZLinkFrameworkException(
                         ZLinkFrameworkErrorKind.ActorRouteNotFound,
                         $"SpotNode router '{routerChannelId}' is not ready for SPOT request.");
-                }
             }
             finally
             {
@@ -297,11 +272,9 @@ internal sealed class ZLinkSpotRouteRouterDispatcher(
                         targetSpotRid,
                         parts,
                         SendFlags.None))
-                {
                     throw new ZLinkFrameworkException(
                         ZLinkFrameworkErrorKind.ActorRouteNotFound,
                         $"Router channel '{routerChannelId}' is not ready for SPOT send.");
-                }
             }
             finally
             {
@@ -338,11 +311,9 @@ internal sealed class ZLinkSpotRouteRouterDispatcher(
                                 $"Router channel '{routerChannelId}' SPOT request failed with result '{result}'."),
                             SendFlags.None,
                             timeout))
-                    {
                         throw new ZLinkFrameworkException(
                             ZLinkFrameworkErrorKind.ActorRouteNotFound,
                             $"Router channel '{routerChannelId}' is not ready for SPOT request.");
-                    }
                 }
                 finally
                 {

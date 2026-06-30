@@ -1,13 +1,8 @@
-using Microsoft.AspNetCore.Builder;
-using Microsoft.AspNetCore.Http;
-using Microsoft.Extensions.DependencyInjection;
-using Microsoft.Extensions.Hosting;
-using Microsoft.Extensions.Logging;
+using RuntimeMonitoring.Server.Registry.Handlers;
 using RuntimeMonitoring.Server.Registry.Support;
 using RuntimeMonitoring.Shared;
 using Zlink.Framework.AspNetCore;
 using Zlink.Framework.Contracts.Eventing;
-using RuntimeMonitoring.Server.Registry.Handlers;
 
 namespace RuntimeMonitoring.Server.Registry;
 
@@ -15,7 +10,7 @@ internal static class RegistryHostFactory
 {
     public static WebApplication Create(string[] args)
     {
-        var options = ServerOptions.Parse(args, defaultRole: "registry");
+        var options = ServerOptions.Parse(args, "registry");
         Directory.CreateDirectory(options.LogDir);
 
         var builder = WebApplication.CreateBuilder(args);
@@ -53,10 +48,10 @@ internal static class RegistryHostFactory
             var timeout = TimeSpan.FromMilliseconds(Math.Clamp(request.TimeoutMilliseconds, 1, 30000));
             var snapshot = await evidence.WaitUntilAsync(
                 entries => request.ContainsAll.All(expected =>
-                        entries.Any(entry => entry.Contains(expected, StringComparison.Ordinal)))
-                    && request.ContainsAnyGroups.All(group =>
-                        group.Any(expected =>
-                            entries.Any(entry => entry.Contains(expected, StringComparison.Ordinal)))),
+                               entries.Any(entry => entry.Contains(expected, StringComparison.Ordinal)))
+                           && request.ContainsAnyGroups.All(group =>
+                               group.Any(expected =>
+                                   entries.Any(entry => entry.Contains(expected, StringComparison.Ordinal)))),
                 timeout,
                 cancellationToken);
             return Results.Ok(snapshot);
@@ -69,7 +64,7 @@ internal static class RegistryHostFactory
         return app;
     }
 
-    static string Require(string? value, string name)
+    private static string Require(string? value, string name)
     {
         return string.IsNullOrWhiteSpace(value)
             ? throw new InvalidOperationException($"{name} is required.")

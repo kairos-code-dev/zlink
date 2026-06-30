@@ -1,6 +1,6 @@
+using ResilienceLifecycle.Client.Support;
 using ResilienceLifecycle.Shared;
 using Zlink.HttpClient;
-using ResilienceLifecycle.Client.Support;
 
 namespace ResilienceLifecycle.Client.Scenarios;
 
@@ -42,7 +42,7 @@ internal static class RlA2ProviderEndpointRemapScenario
         Console.WriteLine("scenario RL-A2 passed");
     }
 
-    static async Task SendRequestBatchAsync(
+    private static async Task SendRequestBatchAsync(
         ZLinkHttpClient consumer,
         string markerPrefix)
     {
@@ -56,17 +56,14 @@ internal static class RlA2ProviderEndpointRemapScenario
         }
     }
 
-    static async Task WaitUntilAvailableAsync(ZLinkHttpClient http)
+    private static async Task WaitUntilAvailableAsync(ZLinkHttpClient http)
     {
         for (var attempt = 0; attempt < 100; attempt++)
         {
             try
             {
                 var health = await http.Get("/health").SubmitRawAsync();
-                if (health.Status == 200)
-                {
-                    return;
-                }
+                if (health.Status == 200) return;
             }
             catch
             {
@@ -78,17 +75,14 @@ internal static class RlA2ProviderEndpointRemapScenario
         ScenarioAssert.That(false, "RL-A2 provider did not become healthy.");
     }
 
-    static async Task WaitUntilUnavailableAsync(ZLinkHttpClient http)
+    private static async Task WaitUntilUnavailableAsync(ZLinkHttpClient http)
     {
         for (var attempt = 0; attempt < 100; attempt++)
         {
             try
             {
                 var health = await http.Get("/health").SubmitRawAsync();
-                if (health.Status != 200)
-                {
-                    return;
-                }
+                if (health.Status != 200) return;
             }
             catch
             {

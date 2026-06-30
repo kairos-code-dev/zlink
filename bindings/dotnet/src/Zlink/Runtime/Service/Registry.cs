@@ -1,29 +1,24 @@
 // SPDX-License-Identifier: MPL-2.0
 
-using System;
 using System.Runtime.InteropServices;
 using System.Text;
-using System.Threading.Tasks;
-using Systems.Zlink;
 using Systems.Zlink.Runtime.Native;
 
 namespace Systems.Zlink;
 
 internal sealed class Registry : IRegistry
 {
-    private IntPtr _handle;
-
     public Registry(Context context)
     {
         if (context == null)
             throw new ArgumentNullException(nameof(context));
-        _handle = NativeMethods.zlink_registry_new(context.Handle);
-        if (_handle == IntPtr.Zero)
+        Handle = NativeMethods.zlink_registry_new(context.Handle);
+        if (Handle == IntPtr.Zero)
             throw ZlinkException.CreateConfigException(
                 NativeMethods.zlink_errno());
     }
 
-    internal IntPtr Handle => _handle;
+    internal IntPtr Handle { get; private set; }
 
     public void Bind(string pubEndpoint, string routerEndpoint)
     {
@@ -31,28 +26,14 @@ internal sealed class Registry : IRegistry
         BoundaryValidation.ValidateFixedUtf8(routerEndpoint,
             nameof(routerEndpoint));
         EnsureNotDisposed();
-        int rc = NativeMethods.zlink_registry_bind(_handle, pubEndpoint,
+        var rc = NativeMethods.zlink_registry_bind(Handle, pubEndpoint,
             routerEndpoint);
         ZlinkException.ThrowBindIfError(rc);
     }
 
     public void SetId(uint registryId)
-        => SetRegistryOption(RegistryOption.Id, registryId);
-
-    private void SetRegistryOption(RegistryOption option, uint value)
     {
-        EnsureNotDisposed();
-        int rc = NativeMethods.zlink_registry_set(_handle, (int)option, value);
-        ZlinkException.ThrowConfigIfError(rc);
-    }
-
-    private uint GetRegistryOption(RegistryOption option)
-    {
-        EnsureNotDisposed();
-        uint value = NativeMethods.zlink_registry_get(_handle, (int)option,
-            out int error);
-        ZlinkException.ThrowConfigIfError(error);
-        return value;
+        SetRegistryOption(RegistryOption.Id, registryId);
     }
 
     public void AddPeer(string peerPubEndpoint)
@@ -60,7 +41,7 @@ internal sealed class Registry : IRegistry
         BoundaryValidation.ValidateFixedUtf8(peerPubEndpoint,
             nameof(peerPubEndpoint));
         EnsureNotDisposed();
-        int rc = NativeMethods.zlink_registry_add_peer(_handle,
+        var rc = NativeMethods.zlink_registry_add_peer(Handle,
             peerPubEndpoint);
         ZlinkException.ThrowConfigIfError(rc);
     }
@@ -88,7 +69,7 @@ internal sealed class Registry : IRegistry
             throw new ArgumentNullException(nameof(keyPath));
         EnsureNotDisposed();
 
-        int rc = NativeMethods.zlink_set_tls_server(_handle, certPath, keyPath,
+        var rc = NativeMethods.zlink_set_tls_server(Handle, certPath, keyPath,
             requireClientCert ? 1 : 0);
         ZlinkException.ThrowConfigIfError(rc);
     }
@@ -102,7 +83,7 @@ internal sealed class Registry : IRegistry
             throw new ArgumentNullException(nameof(hostname));
         EnsureNotDisposed();
 
-        int rc = NativeMethods.zlink_set_tls_client(_handle, caCertPath,
+        var rc = NativeMethods.zlink_set_tls_client(Handle, caCertPath,
             hostname, trustSystem ? 1 : 0);
         ZlinkException.ThrowConfigIfError(rc);
     }
@@ -110,7 +91,7 @@ internal sealed class Registry : IRegistry
     public RegistryStatus Status()
     {
         EnsureNotDisposed();
-        int rc = NativeMethods.zlink_registry_status(_handle,
+        var rc = NativeMethods.zlink_registry_status(Handle,
             out var native);
         ZlinkException.ThrowConfigIfError(rc);
         return TopologyModelConverters.FromNative(ref native);
@@ -123,13 +104,13 @@ internal sealed class Registry : IRegistry
         unsafe
         {
             ZlinkRegistryServiceSummaryFilter nativeFilter = default;
-            IntPtr filterPtr = IntPtr.Zero;
-            RegistryServiceSummaryFilter? requestedFilter = filter;
+            var filterPtr = IntPtr.Zero;
+            var requestedFilter = filter;
             if (requestedFilter != null)
             {
-                RegistryServiceSummaryFilter value = requestedFilter;
+                var value = requestedFilter;
                 if (value.AutoConnectType.HasValue || value.ServiceRole.HasValue
-                    || !string.IsNullOrEmpty(value.ChannelName))
+                                                   || !string.IsNullOrEmpty(value.ChannelName))
                 {
                     nativeFilter.AutoConnectType =
                         (int)value.AutoConnectType.GetValueOrDefault();
@@ -143,18 +124,13 @@ internal sealed class Registry : IRegistry
                             nativeFilter.ChannelName,
                             256);
                     }
+
                     filterPtr = (IntPtr)(&nativeFilter);
                 }
             }
 
             return ReadSummaryEntries(filterPtr);
         }
-    }
-
-    public RegistryTopologyEntry[] Topology()
-    {
-        EnsureNotDisposed();
-        return ReadTopologyEntries(IntPtr.Zero, true);
     }
 
     public RegistryTopologyEntry[] Topology(
@@ -164,11 +140,11 @@ internal sealed class Registry : IRegistry
         unsafe
         {
             ZlinkRegistryTopologyFilter nativeFilter = default;
-            IntPtr filterPtr = IntPtr.Zero;
-            RegistryTopologyFilter? requestedFilter = filter;
+            var filterPtr = IntPtr.Zero;
+            var requestedFilter = filter;
             if (requestedFilter != null)
             {
-                RegistryTopologyFilter value = requestedFilter;
+                var value = requestedFilter;
                 if (value.AutoConnectType.HasValue
                     || value.ServiceKind.HasValue || value.ServiceRole.HasValue
                     || !string.IsNullOrEmpty(value.ChannelName)
@@ -191,11 +167,10 @@ internal sealed class Registry : IRegistry
                             nativeFilter.ChannelName,
                             256);
                     }
+
                     if (value.RoutingId.HasValue)
-                    {
                         nativeFilter.RoutingId =
                             value.RoutingId.Value.ToNative();
-                    }
                     filterPtr = (IntPtr)(&nativeFilter);
                 }
             }
@@ -210,29 +185,30 @@ internal sealed class Registry : IRegistry
         EnsureNotDisposed();
 
         nuint count = 0;
-        int rc = NativeMethods.zlink_registry_member_peers(_handle,
+        var rc = NativeMethods.zlink_registry_member_peers(Handle,
             channelName, IntPtr.Zero, ref count);
         ZlinkException.ThrowConfigIfError(rc);
         if (count == 0)
             return Array.Empty<MemberPeerEntry>();
 
-        int entrySize = Marshal.SizeOf<ZlinkMemberPeerEntry>();
-        IntPtr entries = Marshal.AllocHGlobal(checked((int)(count * (nuint)entrySize)));
+        var entrySize = Marshal.SizeOf<ZlinkMemberPeerEntry>();
+        var entries = Marshal.AllocHGlobal(checked((int)(count * (nuint)entrySize)));
         try
         {
-            nuint actual = count;
-            rc = NativeMethods.zlink_registry_member_peers(_handle,
+            var actual = count;
+            rc = NativeMethods.zlink_registry_member_peers(Handle,
                 channelName, entries, ref actual);
             ZlinkException.ThrowConfigIfError(rc);
 
-            MemberPeerEntry[] result = new MemberPeerEntry[(int)actual];
-            for (int i = 0; i < result.Length; i++)
+            var result = new MemberPeerEntry[(int)actual];
+            for (var i = 0; i < result.Length; i++)
             {
-                IntPtr current = IntPtr.Add(entries, i * entrySize);
-                ZlinkMemberPeerEntry native =
+                var current = IntPtr.Add(entries, i * entrySize);
+                var native =
                     Marshal.PtrToStructure<ZlinkMemberPeerEntry>(current);
                 result[i] = TopologyModelConverters.FromNative(ref native);
             }
+
             return result;
         }
         finally
@@ -248,7 +224,7 @@ internal sealed class Registry : IRegistry
 
     public void Dispose()
     {
-        Destroy(throwOnError: true);
+        Destroy(true);
         GC.SuppressFinalize(this);
     }
 
@@ -258,74 +234,95 @@ internal sealed class Registry : IRegistry
         return ValueTask.CompletedTask;
     }
 
+    private void SetRegistryOption(RegistryOption option, uint value)
+    {
+        EnsureNotDisposed();
+        var rc = NativeMethods.zlink_registry_set(Handle, (int)option, value);
+        ZlinkException.ThrowConfigIfError(rc);
+    }
+
+    private uint GetRegistryOption(RegistryOption option)
+    {
+        EnsureNotDisposed();
+        var value = NativeMethods.zlink_registry_get(Handle, (int)option,
+            out var error);
+        ZlinkException.ThrowConfigIfError(error);
+        return value;
+    }
+
+    public RegistryTopologyEntry[] Topology()
+    {
+        EnsureNotDisposed();
+        return ReadTopologyEntries(IntPtr.Zero, true);
+    }
+
     ~Registry()
     {
-        Destroy(throwOnError: false);
+        Destroy(false);
     }
 
     private void Destroy(bool throwOnError)
     {
-        if (_handle == IntPtr.Zero)
+        if (Handle == IntPtr.Zero)
             return;
 
-        IntPtr originalHandle = _handle;
-        IntPtr handle = _handle;
-        int rc = NativeMethods.zlink_registry_destroy(ref handle);
+        var originalHandle = Handle;
+        var handle = Handle;
+        var rc = NativeMethods.zlink_registry_destroy(ref handle);
         if (rc == 0)
         {
-            _handle = IntPtr.Zero;
+            Handle = IntPtr.Zero;
             return;
         }
 
-        _handle = originalHandle;
+        Handle = originalHandle;
         if (throwOnError)
             throw ZlinkException.CreateCloseException(NativeMethods.zlink_errno());
     }
 
     private void EnsureNotDisposed()
     {
-        if (_handle == IntPtr.Zero)
+        if (Handle == IntPtr.Zero)
             throw new ObjectDisposedException(nameof(Registry));
     }
 
     private static uint EncodeMilliseconds(TimeSpan value, string paramName)
     {
-        double millis = value.TotalMilliseconds;
+        var millis = value.TotalMilliseconds;
         if (double.IsNaN(millis) || double.IsInfinity(millis)
-            || millis < 0 || millis > uint.MaxValue)
-        {
+                                 || millis < 0 || millis > uint.MaxValue)
             throw new ArgumentOutOfRangeException(paramName);
-        }
         return (uint)Math.Ceiling(millis);
     }
 
     private RegistryServiceSummaryEntry[] ReadSummaryEntries(IntPtr filterPtr)
     {
         nuint count = 0;
-        int rc = NativeMethods.zlink_registry_service_summary(_handle,
+        var rc = NativeMethods.zlink_registry_service_summary(Handle,
             filterPtr, IntPtr.Zero, ref count);
         ZlinkException.ThrowConfigIfError(rc);
         if (count == 0)
             return Array.Empty<RegistryServiceSummaryEntry>();
 
-        int entrySize = Marshal.SizeOf<ZlinkRegistryServiceSummaryEntry>();
-        IntPtr entries = Marshal.AllocHGlobal(checked((int)(count * (nuint)entrySize)));
+        var entrySize = Marshal.SizeOf<ZlinkRegistryServiceSummaryEntry>();
+        var entries = Marshal.AllocHGlobal(checked((int)(count * (nuint)entrySize)));
         try
         {
-            nuint actual = count;
-            rc = NativeMethods.zlink_registry_service_summary(_handle,
+            var actual = count;
+            rc = NativeMethods.zlink_registry_service_summary(Handle,
                 filterPtr, entries, ref actual);
             ZlinkException.ThrowConfigIfError(rc);
 
-            RegistryServiceSummaryEntry[] result =
+            var result =
                 new RegistryServiceSummaryEntry[(int)actual];
-            for (int i = 0; i < result.Length; i++)
+            for (var i = 0; i < result.Length; i++)
             {
-                IntPtr current = IntPtr.Add(entries, i * entrySize);
-                ZlinkRegistryServiceSummaryEntry native =
+                var current = IntPtr.Add(entries, i * entrySize);
+                var native =
                     Marshal.PtrToStructure<ZlinkRegistryServiceSummaryEntry>(current);
                 result[i] = TopologyModelConverters.FromNative(ref native);
             }
+
             return result;
         }
         finally
@@ -337,7 +334,7 @@ internal sealed class Registry : IRegistry
     private RegistryTopologyEntry[] ReadTopologyEntries(IntPtr filterPtr,
         bool snapshot)
     {
-        return RegistryTopologyReader.Read(_handle,
+        return RegistryTopologyReader.Read(Handle,
             snapshot ? IntPtr.Zero : filterPtr,
             NativeMethods.zlink_registry_topology);
     }
@@ -345,16 +342,14 @@ internal sealed class Registry : IRegistry
     private static unsafe void WriteFixedString(string value, byte* destination,
         int capacity)
     {
-        byte[] encoded = Encoding.UTF8.GetBytes(value);
+        var encoded = Encoding.UTF8.GetBytes(value);
         if (encoded.Length >= capacity)
-        {
             throw new ArgumentOutOfRangeException(nameof(value),
                 "UTF-8 value exceeds native fixed buffer capacity.");
-        }
 
-        for (int i = 0; i < capacity; i++)
+        for (var i = 0; i < capacity; i++)
             destination[i] = 0;
-        for (int i = 0; i < encoded.Length; i++)
+        for (var i = 0; i < encoded.Length; i++)
             destination[i] = encoded[i];
     }
 }

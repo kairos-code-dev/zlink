@@ -1,10 +1,7 @@
+using ResilienceLifecycle.Server.Registry.Infrastructure;
 using ResilienceLifecycle.Shared;
 using Zlink.Framework.Contracts.Dispatch;
 using Zlink.Framework.Contracts.Handlers;
-using ResilienceLifecycle.Server.Registry.Configuration;
-using ResilienceLifecycle.Server.Registry.Endpoints;
-using ResilienceLifecycle.Server.Registry.Infrastructure;
-using ResilienceLifecycle.Server.Registry;
 
 namespace ResilienceLifecycle.Server.Registry.Handlers;
 
@@ -57,10 +54,7 @@ internal sealed class EvidenceDispatchErrorObserver(EvidenceStore evidence, Faul
         CancellationToken cancellationToken)
     {
         cancellationToken.ThrowIfCancellationRequested();
-        if (flow.Outcome != ZLinkMessageFlowOutcome.Error)
-        {
-            return ValueTask.CompletedTask;
-        }
+        if (flow.Outcome != ZLinkMessageFlowOutcome.Error) return ValueTask.CompletedTask;
 
         evidence.Add(
             "dispatch-error"
@@ -70,10 +64,7 @@ internal sealed class EvidenceDispatchErrorObserver(EvidenceStore evidence, Faul
             + $"|action={flow.ErrorAction}"
             + $"|packet={flow.PacketName ?? "<null>"}"
             + $"|channel={flow.ChannelName ?? "<null>"}");
-        if (fault.Mode == "observer-throws")
-        {
-            throw new InvalidOperationException("dispatch observer failure");
-        }
+        if (fault.Mode == "observer-throws") throw new InvalidOperationException("dispatch observer failure");
 
         return ValueTask.CompletedTask;
     }

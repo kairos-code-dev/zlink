@@ -5,24 +5,19 @@ internal sealed class ZLinkRegistryRuntime(
     ZLinkRegistryRegistration registration)
 {
     private readonly SemaphoreSlim _gate = new(1, 1);
-    private IZLinkBackendContext? _context;
-    private IZLinkBackendRegistry? _registry;
 
-    public IZLinkBackendContext? Context => _context;
+    public IZLinkBackendContext? Context { get; private set; }
 
-    public IZLinkBackendRegistry? Registry => _registry;
+    public IZLinkBackendRegistry? Registry { get; private set; }
 
-    public bool IsStarted => _registry is not null;
+    public bool IsStarted => Registry is not null;
 
     public async ValueTask StartAsync(CancellationToken cancellationToken)
     {
         await _gate.WaitAsync(cancellationToken);
         try
         {
-            if (_registry is not null)
-            {
-                return;
-            }
+            if (Registry is not null) return;
 
             var registryAdapter = backendAdapterFactory.CreateRegistryAdapter();
             var channelAdapter = backendAdapterFactory.CreateChannelAdapter();
@@ -31,20 +26,14 @@ internal sealed class ZLinkRegistryRuntime(
 
             try
             {
-                if (registration.RegistryId != 0)
-                {
-                    registry.SetId(registration.RegistryId);
-                }
+                if (registration.RegistryId != 0) registry.SetId(registration.RegistryId);
                 registry.SetHeartbeat(
                     checked((uint)registration.HeartbeatInterval.TotalMilliseconds),
                     checked((uint)registration.HeartbeatTimeout.TotalMilliseconds));
                 registry.SetBroadcastInterval(
                     checked((uint)registration.BroadcastInterval.TotalMilliseconds));
 
-                foreach (var peerEndpoint in registration.PeerPubEndpoints)
-                {
-                    registry.AddPeer(peerEndpoint);
-                }
+                foreach (var peerEndpoint in registration.PeerPubEndpoints) registry.AddPeer(peerEndpoint);
 
                 registry.Bind(registration.PubEndpoint!, registration.RouterEndpoint!);
             }
@@ -55,8 +44,8 @@ internal sealed class ZLinkRegistryRuntime(
                 throw;
             }
 
-            _context = context;
-            _registry = registry;
+            Context = context;
+            Registry = registry;
         }
         finally
         {
@@ -72,41 +61,32 @@ internal sealed class ZLinkRegistryRuntime(
         await _gate.WaitAsync(cancellationToken);
         try
         {
-            registryToDispose = _registry;
-            contextToDispose = _context;
-            _registry = null;
-            _context = null;
+            registryToDispose = Registry;
+            contextToDispose = Context;
+            Registry = null;
+            Context = null;
         }
         finally
         {
             _gate.Release();
         }
 
-        if (registryToDispose is not null)
-        {
-            await registryToDispose.DisposeAsync();
-        }
+        if (registryToDispose is not null) await registryToDispose.DisposeAsync();
 
-        if (contextToDispose is not null)
-        {
-            await contextToDispose.DisposeAsync();
-        }
+        if (contextToDispose is not null) await contextToDispose.DisposeAsync();
     }
 
     public async ValueTask<T> ExecuteAsync<T>(
         Func<IZLinkBackendRegistry, T> action,
         CancellationToken cancellationToken)
     {
-        if (_registry is null)
-        {
-            await StartAsync(cancellationToken);
-        }
+        if (Registry is null) await StartAsync(cancellationToken);
 
         await _gate.WaitAsync(cancellationToken);
         try
         {
-            return action(_registry
-                ?? throw new InvalidOperationException("Embedded registry runtime is not started."));
+            return action(Registry
+                          ?? throw new InvalidOperationException("Embedded registry runtime is not started."));
         }
         finally
         {

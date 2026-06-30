@@ -1,13 +1,13 @@
 <Project Sdk="Microsoft.NET.Sdk">
-  <PropertyGroup>
-    <TargetFramework>net8.0</TargetFramework>
-    <OutputType>Exe</OutputType>
-    <AssemblyName>PubSub.Client</AssemblyName>
-    <RootNamespace>PubSub.Client</RootNamespace>
-  </PropertyGroup>
+    <PropertyGroup>
+        <TargetFramework>net8.0</TargetFramework>
+        <OutputType>Exe</OutputType>
+        <AssemblyName>PubSub.Client</AssemblyName>
+        <RootNamespace>PubSub.Client</RootNamespace>
+    </PropertyGroup>
 
-  <ItemGroup>
-    <ProjectReference Include="../Shared/PubSub.Shared.csproj" />
-    <ProjectReference Include="../../../src/Zlink.HttpClient/Zlink.HttpClient.csproj" />
-  </ItemGroup>
+    <ItemGroup>
+        <ProjectReference Include="../Shared/PubSub.Shared.csproj"/>
+        <ProjectReference Include="../../../src/Zlink.HttpClient/Zlink.HttpClient.csproj"/>
+    </ItemGroup>
 </Project>

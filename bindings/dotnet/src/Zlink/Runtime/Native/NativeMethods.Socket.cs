@@ -1,4 +1,3 @@
-using System;
 using System.Runtime.CompilerServices;
 using System.Runtime.InteropServices;
 
@@ -6,26 +5,6 @@ namespace Systems.Zlink.Runtime.Native;
 
 internal static partial class NativeMethods
 {
-    [UnmanagedFunctionPointer(CallingConvention.Cdecl)]
-    internal delegate void ZlinkSocketMsgHandlerDelegate(
-        IntPtr sourceRoutingId,
-        IntPtr parts,
-        nuint partCount,
-        IntPtr userData);
-
-    [UnmanagedFunctionPointer(CallingConvention.Cdecl)]
-    internal unsafe delegate void ZlinkSubscribeHandlerDelegate(
-        IntPtr sourceRoutingId,
-        byte* topic,
-        nuint topicLen,
-        IntPtr parts,
-        nuint partCount,
-        IntPtr userData);
-
-    [UnmanagedFunctionPointer(CallingConvention.Cdecl)]
-    internal delegate void ZlinkSendReadyHandlerDelegate(IntPtr subject,
-        IntPtr userData);
-
     [DllImport(LibraryName, CallingConvention = CallingConvention.Cdecl)]
     internal static extern IntPtr zlink_socket(IntPtr context, int type);
 
@@ -105,7 +84,7 @@ internal static partial class NativeMethods
         ZlinkSocketMsgHandlerDelegate handler, IntPtr userData);
 
     [DllImport(LibraryName, CallingConvention = CallingConvention.Cdecl)]
-    internal static extern unsafe int zlink_subscribe_handler(IntPtr subject,
+    internal static extern int zlink_subscribe_handler(IntPtr subject,
         ZlinkSubscribeHandlerDelegate handler, IntPtr userData);
 
     [DllImport(LibraryName, CallingConvention = CallingConvention.Cdecl)]
@@ -226,4 +205,24 @@ internal static partial class NativeMethods
         ref ZlinkRoutingId sessionRid,
         IntPtr entries,
         ref nuint count);
+
+    [UnmanagedFunctionPointer(CallingConvention.Cdecl)]
+    internal delegate void ZlinkSocketMsgHandlerDelegate(
+        IntPtr sourceRoutingId,
+        IntPtr parts,
+        nuint partCount,
+        IntPtr userData);
+
+    [UnmanagedFunctionPointer(CallingConvention.Cdecl)]
+    internal unsafe delegate void ZlinkSubscribeHandlerDelegate(
+        IntPtr sourceRoutingId,
+        byte* topic,
+        nuint topicLen,
+        IntPtr parts,
+        nuint partCount,
+        IntPtr userData);
+
+    [UnmanagedFunctionPointer(CallingConvention.Cdecl)]
+    internal delegate void ZlinkSendReadyHandlerDelegate(IntPtr subject,
+        IntPtr userData);
 }

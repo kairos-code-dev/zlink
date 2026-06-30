@@ -1,15 +1,9 @@
-using Microsoft.AspNetCore.Builder;
-using Microsoft.AspNetCore.Http;
-using Microsoft.Extensions.Hosting;
+using RegistryMessaging.Server.Provider.Configuration;
+using RegistryMessaging.Server.Provider.Infrastructure;
 using RegistryMessaging.Shared;
 using Systems.Zlink;
 using Zlink.Framework.Contracts.Channels;
 using Zlink.Framework.Contracts.Errors;
-using Zlink.Framework.Contracts.Registry;
-using RegistryMessaging.Server.Provider.Configuration;
-using RegistryMessaging.Server.Provider.Handlers;
-using RegistryMessaging.Server.Provider.Infrastructure;
-using RegistryMessaging.Server.Provider;
 
 namespace RegistryMessaging.Server.Provider.Endpoints;
 
@@ -90,7 +84,7 @@ internal static class ProviderEndpoints
         });
     }
 
-    static async Task<ProfileReply> RequestProfileWithRetryAsync(
+    private static async Task<ProfileReply> RequestProfileWithRetryAsync(
         IZLinkChannelClient channel,
         string channelName,
         ProfileRequest request)
@@ -98,7 +92,6 @@ internal static class ProviderEndpoints
         var deadline = DateTimeOffset.UtcNow + TimeSpan.FromSeconds(30);
         Exception? last = null;
         while (DateTimeOffset.UtcNow < deadline)
-        {
             try
             {
                 return await channel.RequestToChannel(channelName, request)
@@ -111,12 +104,11 @@ internal static class ProviderEndpoints
                 last = ex;
                 await Task.Delay(TimeSpan.FromMilliseconds(100));
             }
-        }
 
         throw new InvalidOperationException("Timed out waiting for profile request channel route.", last);
     }
 
-    static async Task SendProfileWithRetryAsync(
+    private static async Task SendProfileWithRetryAsync(
         IZLinkChannelClient channel,
         string channelName,
         ProfileCommand command)
@@ -124,7 +116,6 @@ internal static class ProviderEndpoints
         var deadline = DateTimeOffset.UtcNow + TimeSpan.FromSeconds(30);
         Exception? last = null;
         while (DateTimeOffset.UtcNow < deadline)
-        {
             try
             {
                 await channel.SendToChannel(channelName, command)
@@ -137,18 +128,19 @@ internal static class ProviderEndpoints
                 last = ex;
                 await Task.Delay(TimeSpan.FromMilliseconds(100));
             }
-        }
 
         throw new InvalidOperationException("Timed out waiting for profile send channel route.", last);
     }
 
-    static bool IsRetriableRequestStartupFailure(ZLinkFrameworkException ex) =>
-        ex.IsRetriable
-        || ex.Kind is ZLinkFrameworkErrorKind.RouteNotConnected
-            or ZLinkFrameworkErrorKind.RequestTargetNotFound
-            or ZLinkFrameworkErrorKind.RequestProtocolError;
+    private static bool IsRetriableRequestStartupFailure(ZLinkFrameworkException ex)
+    {
+        return ex.IsRetriable
+               || ex.Kind is ZLinkFrameworkErrorKind.RouteNotConnected
+                   or ZLinkFrameworkErrorKind.RequestTargetNotFound
+                   or ZLinkFrameworkErrorKind.RequestProtocolError;
+    }
 
-    static async Task<ScenarioRoutePong> RequestRouteWithRetryAsync(
+    private static async Task<ScenarioRoutePong> RequestRouteWithRetryAsync(
         IZLinkRouteClient route,
         RoutingId target,
         ScenarioRoutePing request)
@@ -156,7 +148,6 @@ internal static class ProviderEndpoints
         var deadline = DateTimeOffset.UtcNow + TimeSpan.FromSeconds(30);
         Exception? last = null;
         while (DateTimeOffset.UtcNow < deadline)
-        {
             try
             {
                 return await route.Request("profile.route", target, request)
@@ -169,7 +160,6 @@ internal static class ProviderEndpoints
                 last = ex;
                 await Task.Delay(TimeSpan.FromMilliseconds(100));
             }
-        }
 
         throw new InvalidOperationException("Timed out waiting for route mesh target.", last);
     }

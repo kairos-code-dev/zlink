@@ -24,14 +24,12 @@ internal sealed class ZlinkStreamReceiveDispatcher(
             return;
         }
 
-        if (pending.TryComplete(header, frame, ParseErrorPayload))
-        {
-            return;
-        }
+        if (pending.TryComplete(header, frame, ParseErrorPayload)) return;
 
         if (header.Kind == ZlinkStreamMessageKind.Error && header.RequestSeq is null)
         {
-            await callbacks.PublishErrorAsync(ParseErrorPayload(frame.Payload), cancellationToken).ConfigureAwait(false);
+            await callbacks.PublishErrorAsync(ParseErrorPayload(frame.Payload), cancellationToken)
+                .ConfigureAwait(false);
             return;
         }
 
@@ -44,11 +42,9 @@ internal sealed class ZlinkStreamReceiveDispatcher(
         CancellationToken cancellationToken)
     {
         if (payload.Length != 0)
-        {
             throw ZlinkStreamConnector.Error(
                 ZlinkStreamErrorCode.FrameDecodeFailed,
                 "Control packet payload must be empty.");
-        }
 
         if (header.Name == ZlinkStreamConnector.HeartbeatPingName)
         {
@@ -57,10 +53,7 @@ internal sealed class ZlinkStreamReceiveDispatcher(
             return;
         }
 
-        if (header.Name == ZlinkStreamConnector.HeartbeatPongName)
-        {
-            return;
-        }
+        if (header.Name == ZlinkStreamConnector.HeartbeatPongName) return;
 
         throw ZlinkStreamConnector.Error(
             ZlinkStreamErrorCode.FrameDecodeFailed,
@@ -80,7 +73,6 @@ internal sealed class ZlinkStreamReceiveDispatcher(
 
         var handlers = typedHandlers.Snapshot(header.Name);
         foreach (var handler in handlers)
-        {
             try
             {
                 await callbacks.DispatchUserCallbackAsync(
@@ -95,7 +87,6 @@ internal sealed class ZlinkStreamReceiveDispatcher(
                     "Typed message handler failed.",
                     ex), cancellationToken).ConfigureAwait(false);
             }
-        }
     }
 
     private static ZlinkStreamError ParseErrorPayload(ReadOnlyMemory<byte> payload)

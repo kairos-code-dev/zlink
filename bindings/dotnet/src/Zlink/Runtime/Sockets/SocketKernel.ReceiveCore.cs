@@ -1,7 +1,5 @@
 // SPDX-License-Identifier: MPL-2.0
 
-using System;
-using System.Collections.Generic;
 using System.Text;
 using Systems.Zlink.Runtime.Native;
 
@@ -9,12 +7,12 @@ namespace Systems.Zlink.Runtime.Sockets.Internal;
 
 internal sealed partial class SocketKernel
 {
-    private unsafe bool ReceiveBasicParts(int flags,
+    private bool ReceiveBasicParts(int flags,
         out byte[]? routingIdBytes, out Message? singlePart,
         out MultipartMessageCollection? parts, bool allowNoData = false)
     {
-        ZlinkMsg[] nativeParts = Array.Empty<ZlinkMsg>();
-        int nativePartCount = 0;
+        var nativeParts = Array.Empty<ZlinkMsg>();
+        var nativePartCount = 0;
         routingIdBytes = null;
         singlePart = null;
         parts = null;
@@ -23,14 +21,14 @@ internal sealed partial class SocketKernel
             while (true)
             {
                 ZlinkMsg part = default;
-                int initRc = NativeMethods.zlink_msg_init(ref part);
+                var initRc = NativeMethods.zlink_msg_init(ref part);
                 if (initRc != 0)
                     throw ZlinkException.CreateRecvException(
                         NativeMethods.zlink_errno());
-                bool initialized = true;
-                int rc = (flags & DontWaitFlag) != 0
+                var initialized = true;
+                var rc = (flags & DontWaitFlag) != 0
                     ? NativeMethods.zlink_recv_part_nowait(Handle,
-                        out IntPtr sourceRoutingId, ref part, out int hasMore,
+                        out var sourceRoutingId, ref part, out var hasMore,
                         flags)
                     : NativeMethods.zlink_recv_part(Handle,
                         out sourceRoutingId, ref part, out hasMore, flags);
@@ -38,13 +36,11 @@ internal sealed partial class SocketKernel
                 {
                     if (initialized)
                         NativeMethods.zlink_msg_close(ref part);
-                    int errno = NativeMethods.zlink_errno();
+                    var errno = NativeMethods.zlink_errno();
                     if (allowNoData && nativePartCount == 0
-                        && ZlinkException.MapErrorCode(errno) is ErrorCode.EAgain
-                            or ErrorCode.EBusy)
-                    {
+                                    && ZlinkException.MapErrorCode(errno) is ErrorCode.EAgain
+                                        or ErrorCode.EBusy)
                         return false;
-                    }
                     throw ZlinkException.CreateRecvException(errno);
                 }
 
@@ -77,7 +73,7 @@ internal sealed partial class SocketKernel
         }
     }
 
-    private unsafe bool ReceiveRoutedParts(int flags,
+    private bool ReceiveRoutedParts(int flags,
         out RoutingIdSnapshot routingId, out RoutingIdSnapshot spotRid,
         out ulong requestSeq, out Message? singlePart,
         out MultipartMessageCollection? parts, bool allowNoData = false)
@@ -88,39 +84,35 @@ internal sealed partial class SocketKernel
         singlePart = null;
         parts = null;
         if (Type == SocketType.Router)
-        {
             return ReceiveRouterParts(flags, out routingId, out spotRid,
                 out requestSeq, out singlePart,
                 out parts, allowNoData);
-        }
 
-        ZlinkMsg[] nativeParts = Array.Empty<ZlinkMsg>();
-        int nativePartCount = 0;
+        var nativeParts = Array.Empty<ZlinkMsg>();
+        var nativePartCount = 0;
         try
         {
             while (true)
             {
                 ZlinkMsg part = default;
-                int initRc = NativeMethods.zlink_msg_init(ref part);
+                var initRc = NativeMethods.zlink_msg_init(ref part);
                 if (initRc != 0)
                     throw ZlinkException.CreateRecvException(
                         NativeMethods.zlink_errno());
-                bool initialized = true;
+                var initialized = true;
                 int rc;
                 IntPtr sourceNodeRid;
                 rc = NativeMethods.zlink_recv_part(Handle, out sourceNodeRid,
-                    ref part, out int basicHasMore, flags);
+                    ref part, out var basicHasMore, flags);
                 if (rc != 0)
                 {
                     if (initialized)
                         NativeMethods.zlink_msg_close(ref part);
-                    int errno = NativeMethods.zlink_errno();
+                    var errno = NativeMethods.zlink_errno();
                     if (allowNoData && nativePartCount == 0
-                        && ZlinkException.MapErrorCode(errno) is ErrorCode.EAgain
-                            or ErrorCode.EBusy)
-                    {
+                                    && ZlinkException.MapErrorCode(errno) is ErrorCode.EAgain
+                                        or ErrorCode.EBusy)
                         return false;
-                    }
                     throw ZlinkException.CreateRecvException(errno);
                 }
 
@@ -150,13 +142,13 @@ internal sealed partial class SocketKernel
         }
     }
 
-    private unsafe bool ReceiveRouterParts(int flags,
+    private bool ReceiveRouterParts(int flags,
         out RoutingIdSnapshot routingId, out RoutingIdSnapshot spotRid,
         out ulong requestSeq, out Message? singlePart,
         out MultipartMessageCollection? parts, bool allowNoData)
     {
-        ZlinkMsg[] nativeParts = Array.Empty<ZlinkMsg>();
-        int nativePartCount = 0;
+        var nativeParts = Array.Empty<ZlinkMsg>();
+        var nativePartCount = 0;
         routingId = default;
         spotRid = default;
         requestSeq = 0;
@@ -167,18 +159,18 @@ internal sealed partial class SocketKernel
             while (true)
             {
                 ZlinkMsg part = default;
-                int initRc = NativeMethods.zlink_msg_init(ref part);
+                var initRc = NativeMethods.zlink_msg_init(ref part);
                 if (initRc != 0)
                     throw ZlinkException.CreateRecvException(
                         NativeMethods.zlink_errno());
-                bool initialized = true;
+                var initialized = true;
                 // DONT_WAIT-only variant: avoid blocking while still allowing
                 // managed free callbacks during native message handling.
                 IntPtr sourceNodeRid;
                 IntPtr sourceSpotRid;
                 ulong receivedRequestSeq;
                 int hasMore;
-                int rc = (flags & DontWaitFlag) != 0
+                var rc = (flags & DontWaitFlag) != 0
                     ? NativeMethods.zlink_router_recv_part_nowait(Handle,
                         out sourceNodeRid, out sourceSpotRid,
                         out receivedRequestSeq, ref part, out hasMore,
@@ -191,13 +183,11 @@ internal sealed partial class SocketKernel
                 {
                     if (initialized)
                         NativeMethods.zlink_msg_close(ref part);
-                    int errno = NativeMethods.zlink_errno();
+                    var errno = NativeMethods.zlink_errno();
                     if (allowNoData && nativePartCount == 0
-                        && ZlinkException.MapErrorCode(errno) is ErrorCode.EAgain
-                            or ErrorCode.EBusy)
-                    {
+                                    && ZlinkException.MapErrorCode(errno) is ErrorCode.EAgain
+                                        or ErrorCode.EBusy)
                         return false;
-                    }
 
                     throw ZlinkException.CreateRecvException(errno);
                 }
@@ -209,6 +199,7 @@ internal sealed partial class SocketKernel
                     spotRid = RoutingIdSnapshot.FromPointer(sourceSpotRid);
                     requestSeq = receivedRequestSeq;
                 }
+
                 if (hasMore == 0 && nativePartCount == 0)
                 {
                     // Pool-aware adoption: in routed echo workloads the
@@ -236,13 +227,13 @@ internal sealed partial class SocketKernel
         }
     }
 
-    private unsafe bool ReceiveSubscribedParts(int flags,
+    private bool ReceiveSubscribedParts(int flags,
         byte[] topicBuffer, out RoutingIdSnapshot routingId, out int topicLength,
         out Message? singlePart, out MultipartMessageCollection? parts,
         bool allowNoData = false)
     {
-        ZlinkMsg[] nativeParts = Array.Empty<ZlinkMsg>();
-        int nativePartCount = 0;
+        var nativeParts = Array.Empty<ZlinkMsg>();
+        var nativePartCount = 0;
         routingId = default;
         topicLength = 0;
         singlePart = null;
@@ -252,26 +243,24 @@ internal sealed partial class SocketKernel
             while (true)
             {
                 ZlinkMsg part = default;
-                int initRc = NativeMethods.zlink_msg_init(ref part);
+                var initRc = NativeMethods.zlink_msg_init(ref part);
                 if (initRc != 0)
                     throw ZlinkException.CreateRecvException(
                         NativeMethods.zlink_errno());
-                bool initialized = true;
-                int rc = NativeMethods.zlink_subscribe_part(Handle,
-                    out IntPtr sourceRoutingId, topicBuffer,
-                    (nuint)topicBuffer.Length, out nuint nativeTopicLength, ref part,
-                    out int hasMore, flags);
+                var initialized = true;
+                var rc = NativeMethods.zlink_subscribe_part(Handle,
+                    out var sourceRoutingId, topicBuffer,
+                    (nuint)topicBuffer.Length, out var nativeTopicLength, ref part,
+                    out var hasMore, flags);
                 if (rc != 0)
                 {
                     if (initialized)
                         NativeMethods.zlink_msg_close(ref part);
-                    int errno = NativeMethods.zlink_errno();
+                    var errno = NativeMethods.zlink_errno();
                     if (allowNoData && nativePartCount == 0
-                        && ZlinkException.MapErrorCode(errno) is ErrorCode.EAgain
-                            or ErrorCode.EBusy)
-                    {
+                                    && ZlinkException.MapErrorCode(errno) is ErrorCode.EAgain
+                                        or ErrorCode.EBusy)
                         return false;
-                    }
                     throw ZlinkException.CreateRecvException(errno);
                 }
 
@@ -281,6 +270,7 @@ internal sealed partial class SocketKernel
                     routingId = RoutingIdSnapshot.FromPointer(sourceRoutingId);
                     topicLength = checked((int)nativeTopicLength);
                 }
+
                 if (hasMore == 0 && nativePartCount == 0)
                 {
                     singlePart = Message.AdoptNativeFromPool(ref part);
@@ -304,52 +294,45 @@ internal sealed partial class SocketKernel
         }
     }
 
-    private unsafe List<byte[]> ReceiveSubscribedFrames(int flags, byte[] topicBuffer)
+    private List<byte[]> ReceiveSubscribedFrames(int flags, byte[] topicBuffer)
     {
         List<byte[]> frames = new();
-        try
+        while (true)
         {
-            while (true)
+            ZlinkMsg part = default;
+            var initRc = NativeMethods.zlink_msg_init(ref part);
+            if (initRc != 0)
+                throw ZlinkException.CreateRecvException(
+                    NativeMethods.zlink_errno());
+            var initialized = true;
+            var rc = NativeMethods.zlink_subscribe_part(Handle,
+                out _, topicBuffer, (nuint)topicBuffer.Length,
+                out _, ref part, out var hasMore, flags);
+            if (rc != 0)
             {
-                ZlinkMsg part = default;
-                int initRc = NativeMethods.zlink_msg_init(ref part);
-                if (initRc != 0)
-                    throw ZlinkException.CreateRecvException(
-                        NativeMethods.zlink_errno());
-                bool initialized = true;
-                int rc = NativeMethods.zlink_subscribe_part(Handle,
-                    out _, topicBuffer, (nuint)topicBuffer.Length,
-                    out _, ref part, out int hasMore, flags);
-                if (rc != 0)
-                {
-                    if (initialized)
-                        NativeMethods.zlink_msg_close(ref part);
-                    throw ZlinkException.CreateRecvException(
-                        NativeMethods.zlink_errno());
-                }
-
-                initialized = false;
-                frames.Add(CopyAndClosePart(ref part));
-                if (hasMore == 0)
-                    break;
+                if (initialized)
+                    NativeMethods.zlink_msg_close(ref part);
+                throw ZlinkException.CreateRecvException(
+                    NativeMethods.zlink_errno());
             }
 
-            return frames;
+            initialized = false;
+            frames.Add(CopyAndClosePart(ref part));
+            if (hasMore == 0)
+                break;
         }
-        catch
-        {
-            throw;
-        }
+
+        return frames;
     }
 
-    private unsafe List<byte[]> ReceiveRawFrameSequence(int flags,
+    private List<byte[]> ReceiveRawFrameSequence(int flags,
         bool includeRoutingFrames)
     {
         return ReceiveRawFrameSequence(flags, includeRoutingFrames,
             out _, out _, out _);
     }
 
-    private unsafe List<byte[]> ReceiveRawFrameSequence(int flags,
+    private List<byte[]> ReceiveRawFrameSequence(int flags,
         bool includeRoutingFrames, out byte[]? routingIdBytes,
         out byte[]? spotRidBytes, out ulong requestSeq)
     {
@@ -360,26 +343,22 @@ internal sealed partial class SocketKernel
         while (true)
         {
             ZlinkMsg part = default;
-            int initRc = NativeMethods.zlink_msg_init(ref part);
+            var initRc = NativeMethods.zlink_msg_init(ref part);
             if (initRc != 0)
                 throw ZlinkException.CreateRecvException(
                     NativeMethods.zlink_errno());
-            bool initialized = true;
+            var initialized = true;
             int rc;
             IntPtr sourceNodeRid;
-            IntPtr sourceSpotRid = IntPtr.Zero;
+            var sourceSpotRid = IntPtr.Zero;
             int hasMore;
             if (Type == SocketType.Router)
-            {
                 rc = NativeMethods.zlink_router_recv_part(Handle,
                     out sourceNodeRid, out sourceSpotRid, out requestSeq,
                     ref part, out hasMore, flags);
-            }
             else
-            {
                 rc = NativeMethods.zlink_recv_part(Handle, out sourceNodeRid,
                     ref part, out hasMore, flags);
-            }
 
             if (rc != 0)
             {
@@ -413,15 +392,15 @@ internal sealed partial class SocketKernel
     {
         try
         {
-            int size = checked((int)NativeMethods.zlink_msg_size(ref part));
+            var size = checked((int)NativeMethods.zlink_msg_size(ref part));
             if (size == 0)
                 return Array.Empty<byte>();
 
-            IntPtr data = NativeMethods.zlink_msg_data(ref part);
+            var data = NativeMethods.zlink_msg_data(ref part);
             if (data == IntPtr.Zero)
                 return Array.Empty<byte>();
 
-            byte[] payload = new byte[size];
+            var payload = new byte[size];
             new ReadOnlySpan<byte>((void*)data, size).CopyTo(payload);
             return payload;
         }
@@ -434,12 +413,12 @@ internal sealed partial class SocketKernel
     private static ZlinkMsg MoveStoredPart(ref ZlinkMsg source)
     {
         ZlinkMsg stored = default;
-        int initRc = NativeMethods.zlink_msg_init(ref stored);
+        var initRc = NativeMethods.zlink_msg_init(ref stored);
         if (initRc != 0)
             throw ZlinkException.CreateRecvException(NativeMethods.zlink_errno());
         try
         {
-            int rc = NativeMethods.zlink_msg_move(ref stored, ref source);
+            var rc = NativeMethods.zlink_msg_move(ref stored, ref source);
             if (rc != 0)
                 throw ZlinkException.CreateConfigException(NativeMethods.zlink_errno());
             return stored;
@@ -454,17 +433,14 @@ internal sealed partial class SocketKernel
     private static void AppendNativePart(ref ZlinkMsg[] nativeParts,
         ref int count, ref ZlinkMsg source)
     {
-        if (count == nativeParts.Length)
-        {
-            Array.Resize(ref nativeParts, count == 0 ? 4 : count * 2);
-        }
+        if (count == nativeParts.Length) Array.Resize(ref nativeParts, count == 0 ? 4 : count * 2);
 
         nativeParts[count++] = MoveStoredPart(ref source);
     }
 
-    private static unsafe void CloseNativeParts(ZlinkMsg[] parts, int count)
+    private static void CloseNativeParts(ZlinkMsg[] parts, int count)
     {
-        for (int i = 0; i < count; i++)
+        for (var i = 0; i < count; i++)
             NativeMethods.zlink_msg_close(ref parts[i]);
     }
 
@@ -492,7 +468,7 @@ internal sealed partial class SocketKernel
     {
         if (!hasRoutingId)
             return null;
-        ZlinkRoutingId copy = routingId;
+        var copy = routingId;
         return NativeHelpers.ReadRoutingId(ref copy);
     }
 
@@ -501,16 +477,17 @@ internal sealed partial class SocketKernel
     {
         int size = routingId.Size;
         if (size > destination.Length)
-        {
             throw new ArgumentException("Destination buffer is too small.",
                 nameof(destination));
-        }
 
         if (size <= 0)
             return 0;
 
         fixed (byte* src = routingId.Data)
+        {
             new ReadOnlySpan<byte>(src, size).CopyTo(destination);
+        }
+
         return size;
     }
 
@@ -518,10 +495,8 @@ internal sealed partial class SocketKernel
         Span<byte> destination)
     {
         if (routingId.Length > destination.Length)
-        {
             throw new ArgumentException("Destination buffer is too small.",
                 nameof(destination));
-        }
 
         routingId.CopyTo(destination);
         return routingId.Length;
@@ -541,13 +516,13 @@ internal sealed partial class SocketKernel
 
     private static bool MapTryReceiveableError(ZlinkException ex)
     {
-        ErrorCode code = ZlinkException.MapErrorCode(ex.NativeErrno);
+        var code = ZlinkException.MapErrorCode(ex.NativeErrno);
         return code == ErrorCode.EAgain;
     }
 
     private static string DecodeTopic(byte[] topicBuffer, nuint topicLength)
     {
-        int boundedLength = topicLength > (nuint)topicBuffer.Length
+        var boundedLength = topicLength > (nuint)topicBuffer.Length
             ? topicBuffer.Length
             : (int)topicLength;
         return boundedLength == 0

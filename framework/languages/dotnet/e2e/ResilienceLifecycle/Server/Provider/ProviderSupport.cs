@@ -1,5 +1,4 @@
 using System.Collections.Concurrent;
-using ResilienceLifecycle.Server.Provider.Handlers;
 
 namespace ResilienceLifecycle.Server.Provider;
 
@@ -12,9 +11,9 @@ internal sealed class EvidenceStore
 {
     private readonly ConcurrentQueue<string> _entries = new();
     private readonly object _fileGate = new();
+    private readonly string? _filePath;
     private readonly object _waiterGate = new();
     private readonly List<TaskCompletionSource> _waiters = new();
-    private readonly string? _filePath;
 
     public EvidenceStore(string? filePath)
     {
@@ -33,10 +32,7 @@ internal sealed class EvidenceStore
     {
         _entries.Enqueue(entry);
         SignalWaiters();
-        if (string.IsNullOrWhiteSpace(_filePath))
-        {
-            return;
-        }
+        if (string.IsNullOrWhiteSpace(_filePath)) return;
 
         lock (_fileGate)
         {
@@ -44,7 +40,10 @@ internal sealed class EvidenceStore
         }
     }
 
-    public string[] Snapshot() => _entries.ToArray();
+    public string[] Snapshot()
+    {
+        return _entries.ToArray();
+    }
 
     public async Task<string[]> WaitUntilAsync(
         Func<string[], bool> predicate,
@@ -88,15 +87,13 @@ internal sealed class EvidenceStore
         }
 
         if (!string.IsNullOrWhiteSpace(_filePath))
-        {
             lock (_fileGate)
             {
                 File.WriteAllText(_filePath, string.Empty);
             }
-        }
     }
 
-    TaskCompletionSource AddWaiter()
+    private TaskCompletionSource AddWaiter()
     {
         var waiter = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
         lock (_waiterGate)
@@ -107,7 +104,7 @@ internal sealed class EvidenceStore
         return waiter;
     }
 
-    void RemoveWaiter(TaskCompletionSource waiter)
+    private void RemoveWaiter(TaskCompletionSource waiter)
     {
         lock (_waiterGate)
         {
@@ -115,7 +112,7 @@ internal sealed class EvidenceStore
         }
     }
 
-    void SignalWaiters()
+    private void SignalWaiters()
     {
         TaskCompletionSource[] waiters;
         lock (_waiterGate)
@@ -124,10 +121,7 @@ internal sealed class EvidenceStore
             _waiters.Clear();
         }
 
-        foreach (var waiter in waiters)
-        {
-            waiter.TrySetResult();
-        }
+        foreach (var waiter in waiters) waiter.TrySetResult();
     }
 }
 
@@ -149,14 +143,9 @@ internal sealed record ServerOptions(
         {
             var key = args[i];
             if (!key.StartsWith("--", StringComparison.Ordinal))
-            {
                 throw new ArgumentException($"Unexpected argument '{key}'.");
-            }
 
-            if (i + 1 >= args.Length)
-            {
-                throw new ArgumentException($"Missing value for '{key}'.");
-            }
+            if (i + 1 >= args.Length) throw new ArgumentException($"Missing value for '{key}'.");
 
             var value = args[++i];
             if (!values.TryGetValue(key, out var bucket))
@@ -168,16 +157,20 @@ internal sealed record ServerOptions(
             bucket.Add(value);
         }
 
-        string? Get(string name) => values.TryGetValue(name, out var bucket) ? bucket[^1] : null;
+        string? Get(string name)
+        {
+            return values.TryGetValue(name, out var bucket) ? bucket[^1] : null;
+        }
+
         return new ServerOptions(
-            Role: defaultRole,
-            Rid: Get("--rid") ?? "node",
-            HttpUrl: Get("--http-url") ?? "http://127.0.0.1:0",
-            LogDir: Get("--log-dir") ?? "logs",
-            RegistryPubEndpoint: Get("--registry-pub-endpoint"),
-            RegistryRouterEndpoint: Get("--registry-router-endpoint"),
-            ChannelEndpoint: Get("--channel-endpoint"),
-            EvidenceFile: Get("--evidence-file"),
-            Weight: int.TryParse(Get("--weight"), out var weight) ? weight : 100);
+            defaultRole,
+            Get("--rid") ?? "node",
+            Get("--http-url") ?? "http://127.0.0.1:0",
+            Get("--log-dir") ?? "logs",
+            Get("--registry-pub-endpoint"),
+            Get("--registry-router-endpoint"),
+            Get("--channel-endpoint"),
+            Get("--evidence-file"),
+            int.TryParse(Get("--weight"), out var weight) ? weight : 100);
     }
 }

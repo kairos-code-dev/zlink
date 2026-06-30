@@ -1,6 +1,3 @@
-using Zlink.Framework;
-using Zlink.Framework.Runtime.Backend.Contracts;
-
 namespace Zlink.Framework.AspNetCore.Monitoring;
 
 internal static class ZLinkMonitoringEventMapper
@@ -21,13 +18,10 @@ internal static class ZLinkMonitoringEventMapper
             ZLinkSocketNativeEventType.Closed => ZLinkSocketEventKind.Closed,
             ZLinkSocketNativeEventType.CloseFailed => ZLinkSocketEventKind.Closed,
             ZLinkSocketNativeEventType.MonitorStopped => ZLinkSocketEventKind.Closed,
-            _ => ZLinkSocketEventKind.Internal,
+            _ => ZLinkSocketEventKind.Internal
         };
 
-        if (source.Events.Count > 0 && !source.Events.Contains(eventKind))
-        {
-            return null;
-        }
+        if (source.Events.Count > 0 && !source.Events.Contains(eventKind)) return null;
 
         return new ZLinkSocketEvent(
             source.SourceName,
@@ -40,5 +34,4 @@ internal static class ZLinkMonitoringEventMapper
                 monitorEvent.NativeEvent,
                 monitorEvent.Value));
     }
-
 }

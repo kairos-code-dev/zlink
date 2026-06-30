@@ -9,10 +9,7 @@ internal sealed class ZLinkActorSessionRegistry
     {
         lock (_gate)
         {
-            if (_states.TryGetValue(actorId, out var existing))
-            {
-                return existing;
-            }
+            if (_states.TryGetValue(actorId, out var existing)) return existing;
 
             var created = new ZLinkActorRuntimeState(actorId);
             _states.Add(actorId, created);
@@ -36,9 +33,7 @@ internal sealed class ZLinkActorSessionRegistry
                 && ReferenceEquals(existing, state)
                 && state.SessionId is null
                 && state.Activation is null)
-            {
                 _states.Remove(actorId);
-            }
         }
     }
 
@@ -48,9 +43,7 @@ internal sealed class ZLinkActorSessionRegistry
         {
             if (_states.TryGetValue(actorId, out var existing)
                 && ReferenceEquals(existing, state))
-            {
                 _states.Remove(actorId);
-            }
         }
     }
 }

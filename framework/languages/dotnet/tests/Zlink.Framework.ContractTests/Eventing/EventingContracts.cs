@@ -46,18 +46,24 @@ public sealed class EventingContracts
 
         public void AddSocketEvents(
             string sourceName,
-            params ZLinkSocketEventKind[] events) =>
+            params ZLinkSocketEventKind[] events)
+        {
             _sources.Add($"{sourceName}:socket");
+        }
 
         public void AddRegistryEvents(
             string sourceName,
-            TimeSpan interval) =>
+            TimeSpan interval)
+        {
             _sources.Add($"{sourceName}:registry");
+        }
 
         public void AddSpotEvents(
             string sourceName,
-            TimeSpan interval) =>
+            TimeSpan interval)
+        {
             _sources.Add($"{sourceName}:spot");
+        }
     }
 
     private sealed class SocketEventHandler : IZLinkRuntimeEventHandler<ZLinkSocketEvent>
@@ -77,19 +83,20 @@ public sealed class EventingContracts
     {
         private SocketEventHandler? _handler;
 
-        public void Subscribe(SocketEventHandler handler) => _handler = handler;
-
         public ValueTask PublishAsync<TEvent>(
             TEvent @event,
             CancellationToken cancellationToken)
             where TEvent : IZLinkRuntimeEvent
         {
             if (@event is ZLinkSocketEvent socketEvent && _handler is not null)
-            {
                 return _handler.HandleAsync(socketEvent, cancellationToken);
-            }
 
             return ValueTask.CompletedTask;
+        }
+
+        public void Subscribe(SocketEventHandler handler)
+        {
+            _handler = handler;
         }
     }
 }

@@ -1,14 +1,16 @@
+using System.Security.Cryptography;
+using System.Text;
 using System.Text.Json;
 using GameQuest.GameApi.Application;
-using GameQuest.Shared;
 using GameQuest.Server.Configuration;
+using GameQuest.Shared;
 
 namespace GameQuest.GameApi.Infrastructure.Store;
 
 internal sealed class GameQuestStore : IGameplayEventStore
 {
-    private readonly string _directory;
     private static readonly JsonSerializerOptions JsonOptions = new(JsonSerializerDefaults.Web);
+    private readonly string _directory;
 
     public GameQuestStore(GameQuestTopology topology)
     {
@@ -29,10 +31,7 @@ internal sealed class GameQuestStore : IGameplayEventStore
                 var existing = events.FirstOrDefault(e =>
                     string.Equals(e.PlayerId, candidate.PlayerId, StringComparison.Ordinal)
                     && string.Equals(e.IdempotencyKey, candidate.IdempotencyKey, StringComparison.Ordinal));
-                if (existing is not null)
-                {
-                    return existing;
-                }
+                if (existing is not null) return existing;
 
                 events.Add(candidate);
                 return candidate;
@@ -70,9 +69,9 @@ internal sealed class GameQuestStore : IGameplayEventStore
             new Dictionary<string, int>(StringComparer.Ordinal),
             cancellationToken);
         return events
-            .Where(e => e.PlayerId == playerId && e.EventType == "MonsterKilled")
-            .Sum(e => e.Count)
-            + unpublished.GetValueOrDefault(playerId);
+                   .Where(e => e.PlayerId == playerId && e.EventType == "MonsterKilled")
+                   .Sum(e => e.Count)
+               + unpublished.GetValueOrDefault(playerId);
     }
 
     public async ValueTask<GetGameplaySnapshotRes> ReadSnapshotAsync(
@@ -154,9 +153,7 @@ internal sealed class GameQuestStore : IGameplayEventStore
                 if (bindings.All(binding =>
                         binding.PlayerId != request.PlayerId
                         || binding.ConnectionId != request.ConnectionId))
-                {
                     bindings.Add(request);
-                }
 
                 return true;
             },
@@ -244,9 +241,7 @@ internal sealed class GameQuestStore : IGameplayEventStore
             .OrderBy(e => e.Version)
             .ToArray();
         if (stream.Length == 0)
-        {
             throw new InvalidOperationException($"Quest stream was not found for {playerId}/{questId}.");
-        }
 
         var currentCount = 0;
         var requiredCount = 1;
@@ -260,20 +255,12 @@ internal sealed class GameQuestStore : IGameplayEventStore
             if (@event.EventType is nameof(QuestProgressedEvent) or nameof(QuestProgressReconciledEvent))
             {
                 currentCount = root.GetProperty("CurrentCount").GetInt32();
-                if (root.TryGetProperty("RequiredCount", out var required))
-                {
-                    requiredCount = required.GetInt32();
-                }
+                if (root.TryGetProperty("RequiredCount", out var required)) requiredCount = required.GetInt32();
             }
 
             if (@event.EventType == nameof(QuestCompletedEvent))
-            {
                 status = QuestStatuses.Completed;
-            }
-            else if (@event.EventType == nameof(QuestRewardGrantedEvent))
-            {
-                status = QuestStatuses.RewardGranted;
-            }
+            else if (@event.EventType == nameof(QuestRewardGrantedEvent)) status = QuestStatuses.RewardGranted;
 
             lastEventId = @event.SourceEventId;
             updatedAtUnixMs = Math.Max(updatedAtUnixMs, @event.CreatedAtUnixMs);
@@ -342,16 +329,17 @@ internal sealed class GameQuestStore : IGameplayEventStore
         T fallback,
         CancellationToken cancellationToken)
     {
-        if (!File.Exists(path))
-        {
-            return fallback;
-        }
+        if (!File.Exists(path)) return fallback;
 
         await Task.CompletedTask;
         var json = File.ReadAllText(path);
         return JsonSerializer.Deserialize<T>(json, JsonOptions) ?? fallback;
     }
 
-    private static string MutexName(string path) =>
-        "GameQuest-" + Convert.ToHexString(System.Security.Cryptography.SHA256.HashData(System.Text.Encoding.UTF8.GetBytes(path)));
+    private static string MutexName(string path)
+    {
+        return "GameQuest-" +
+               Convert.ToHexString(
+                   SHA256.HashData(Encoding.UTF8.GetBytes(path)));
+    }
 }

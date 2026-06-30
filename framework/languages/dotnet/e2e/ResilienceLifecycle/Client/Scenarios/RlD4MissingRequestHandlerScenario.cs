@@ -1,6 +1,6 @@
+using ResilienceLifecycle.Client.Support;
 using ResilienceLifecycle.Shared;
 using Zlink.HttpClient;
-using ResilienceLifecycle.Client.Support;
 
 namespace ResilienceLifecycle.Client.Scenarios;
 
@@ -27,7 +27,7 @@ internal static class RlD4MissingRequestHandlerScenario
             timeout.Cancel();
             ScenarioAssert.That(
                 evidence.Any(line => line.Contains("dispatch-error|", StringComparison.Ordinal)
-                    && line.Contains("packet=MissingProfileRequest", StringComparison.Ordinal)),
+                                     && line.Contains("packet=MissingProfileRequest", StringComparison.Ordinal)),
                 "RL-D4 dispatch-error marker missing.");
         }
 

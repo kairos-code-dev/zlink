@@ -20,33 +20,31 @@ internal sealed record ClientOptions(
         {
             var key = args[i];
             if (!key.StartsWith("--", StringComparison.Ordinal))
-            {
                 throw new ArgumentException($"Unexpected argument '{key}'.");
-            }
 
-            if (i + 1 >= args.Length)
-            {
-                throw new ArgumentException($"Missing value for '{key}'.");
-            }
+            if (i + 1 >= args.Length) throw new ArgumentException($"Missing value for '{key}'.");
 
             values[key] = args[++i];
         }
 
-        string Get(string name) => values.TryGetValue(name, out var value) && !string.IsNullOrWhiteSpace(value)
-            ? value
-            : throw new ArgumentException($"{name} is required.");
+        string Get(string name)
+        {
+            return values.TryGetValue(name, out var value) && !string.IsNullOrWhiteSpace(value)
+                ? value
+                : throw new ArgumentException($"{name} is required.");
+        }
 
         return new ClientOptions(
-            TriggerUrl: Get("--trigger-url"),
-            RegistryRouterEndpoint: Get("--registry-router-endpoint"),
-            RegistryUrl: Get("--registry-url"),
-            ServiceUrl: Get("--service-url"),
-            ServiceChannelEndpoint: Get("--service-channel-endpoint"),
-            ServiceBUrl: Get("--service-b-url"),
-            ServiceBChannelEndpoint: Get("--service-b-channel-endpoint"),
-            ThrowServiceUrl: Get("--throw-service-url"),
-            ThrowChannelEndpoint: Get("--throw-channel-endpoint"),
-            FilteredServiceProject: Get("--filtered-service-project"),
-            LogDir: Get("--log-dir"));
+            Get("--trigger-url"),
+            Get("--registry-router-endpoint"),
+            Get("--registry-url"),
+            Get("--service-url"),
+            Get("--service-channel-endpoint"),
+            Get("--service-b-url"),
+            Get("--service-b-channel-endpoint"),
+            Get("--throw-service-url"),
+            Get("--throw-channel-endpoint"),
+            Get("--filtered-service-project"),
+            Get("--log-dir"));
     }
 }

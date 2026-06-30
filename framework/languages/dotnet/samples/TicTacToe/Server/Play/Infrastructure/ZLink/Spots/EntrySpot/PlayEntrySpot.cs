@@ -1,9 +1,9 @@
-using Zlink.Framework.Contracts.Messaging;
-using Zlink.Framework.Contracts.Spots;
 using TicTacToe.Server.Configuration;
 using TicTacToe.Server.Play.Infrastructure.ZLink.Actors;
 using TicTacToe.Server.Play.Infrastructure.ZLink.Spots.EntrySpot.Handlers;
 using TicTacToe.Shared.Contracts;
+using Zlink.Framework.Contracts.Messaging;
+using Zlink.Framework.Contracts.Spots;
 
 namespace TicTacToe.Server.Play.Infrastructure.ZLink.Spots.EntrySpot;
 
@@ -20,29 +20,6 @@ internal sealed class PlayEntrySpot(
         Context.Handlers.AddActorRequest<PlayActorJoinGameHandler, PlayActor>(nameof(JoinGameReq));
         Context.Handlers.AddActorRequest<PlayActorObserveMilestoneHandler, PlayActor>(nameof(ObserveMilestoneReq));
         Context.Handlers.AddSubscribe<PlayerWinMilestoneEventHandler>(SampleTopics.PlayerMilestone);
-    }
-
-    public ValueTask SubscribeMilestoneAsync(
-        PlayActor actor,
-        CancellationToken cancellationToken)
-    {
-        cancellationToken.ThrowIfCancellationRequested();
-        _milestoneObservers.Subscribe(actor);
-        logger.LogInformation(
-            "entry spot: milestone observer subscribed. actor={ActorId}, nodeRid={NodeRid}",
-            actor.ActorId,
-            Context.NodeRid);
-        return ValueTask.CompletedTask;
-    }
-
-    public async ValueTask NotifyMilestoneAsync(
-        PlayerWinMilestoneEvent milestone,
-        CancellationToken cancellationToken)
-    {
-        await _milestoneObservers.NotifyAsync(
-            milestone,
-            Context.NodeRid.ToString(),
-            cancellationToken);
     }
 
     public ValueTask OnCreateActorAsync(
@@ -76,10 +53,7 @@ internal sealed class PlayEntrySpot(
         logger.LogInformation(
             "entry spot: actor joined. actor={ActorId}",
             actor.ActorId);
-        if (!actor.DestroyAfterEntrySpotJoin)
-        {
-            return;
-        }
+        if (!actor.DestroyAfterEntrySpotJoin) return;
 
         logger.LogInformation(
             "entry spot: actor destroy requested. actor={ActorId}",
@@ -115,6 +89,29 @@ internal sealed class PlayEntrySpot(
         return ValueTask.CompletedTask;
     }
 
+    public ValueTask SubscribeMilestoneAsync(
+        PlayActor actor,
+        CancellationToken cancellationToken)
+    {
+        cancellationToken.ThrowIfCancellationRequested();
+        _milestoneObservers.Subscribe(actor);
+        logger.LogInformation(
+            "entry spot: milestone observer subscribed. actor={ActorId}, nodeRid={NodeRid}",
+            actor.ActorId,
+            Context.NodeRid);
+        return ValueTask.CompletedTask;
+    }
+
+    public async ValueTask NotifyMilestoneAsync(
+        PlayerWinMilestoneEvent milestone,
+        CancellationToken cancellationToken)
+    {
+        await _milestoneObservers.NotifyAsync(
+            milestone,
+            Context.NodeRid.ToString(),
+            cancellationToken);
+    }
+
     private sealed class MilestoneObserverRegistry
     {
         private readonly Dictionary<string, PlayActor> _observers = new(StringComparer.Ordinal);
@@ -143,10 +140,8 @@ internal sealed class PlayEntrySpot(
 
             var observers = _observers.Values.ToArray();
             foreach (var observer in observers)
-            {
                 await observer.Context.BoundSession.Send(notify)
                     .Async(cancellationToken);
-            }
         }
     }
 }

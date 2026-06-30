@@ -3,33 +3,21 @@ namespace Zlink.Framework.Runtime.Spots;
 internal sealed class ZLinkSpotSubscriptionPump
 {
     private static readonly TimeSpan PollInterval = TimeSpan.FromMilliseconds(20);
-    private Task? _task;
     private Exception? _lastError;
+    private Task? _task;
 
     public string State
     {
         get
         {
             var task = _task;
-            if (task is null)
-            {
-                return "null";
-            }
+            if (task is null) return "null";
 
-            if (task.IsFaulted)
-            {
-                return task.Exception?.GetBaseException().ToString() ?? "faulted";
-            }
+            if (task.IsFaulted) return task.Exception?.GetBaseException().ToString() ?? "faulted";
 
-            if (task.IsCanceled)
-            {
-                return "canceled";
-            }
+            if (task.IsCanceled) return "canceled";
 
-            if (task.IsCompleted && _lastError is not null)
-            {
-                return _lastError.ToString();
-            }
+            if (task.IsCompleted && _lastError is not null) return _lastError.ToString();
 
             return task.IsCompleted ? "completed" : "running";
         }
@@ -40,10 +28,7 @@ internal sealed class ZLinkSpotSubscriptionPump
         CancellationToken cancellationToken,
         Func<CancellationToken, ValueTask> dispatchAsync)
     {
-        if (!hasSubscriptions || _task is not null)
-        {
-            return;
-        }
+        if (!hasSubscriptions || _task is not null) return;
 
         var taskRunner = new ZLinkRuntimeTaskRunner(
             new ZLinkRuntimeErrorSink(),
@@ -55,10 +40,7 @@ internal sealed class ZLinkSpotSubscriptionPump
 
     public async ValueTask StopAsync()
     {
-        if (_task is null)
-        {
-            return;
-        }
+        if (_task is null) return;
 
         try
         {
@@ -77,7 +59,6 @@ internal sealed class ZLinkSpotSubscriptionPump
         Func<CancellationToken, ValueTask> dispatchAsync)
     {
         while (!cancellationToken.IsCancellationRequested)
-        {
             try
             {
                 await dispatchAsync(cancellationToken).ConfigureAwait(false);
@@ -94,7 +75,7 @@ internal sealed class ZLinkSpotSubscriptionPump
             catch (ZlinkRecvException ex)
                 when (cancellationToken.IsCancellationRequested
                       || ex.Result is ZlinkRecvException.ErrorCode.InternalError
-                      or ZlinkRecvException.ErrorCode.InvalidHandle)
+                          or ZlinkRecvException.ErrorCode.InvalidHandle)
             {
                 return;
             }
@@ -103,6 +84,5 @@ internal sealed class ZLinkSpotSubscriptionPump
                 _lastError = ex;
                 throw;
             }
-        }
     }
 }

@@ -1,8 +1,5 @@
 using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Logging.Abstractions;
-using Zlink.Framework.Runtime.Backend.Contracts;
-using Zlink.Framework.Runtime.Codecs;
-using Zlink.Framework.Runtime.Diagnostics;
 
 namespace Zlink.Framework.Runtime.Channels;
 
@@ -23,25 +20,20 @@ internal sealed class ZLinkRoutePacketDispatcher(
         Received received,
         CancellationToken cancellationToken)
     {
-        if (received.Parts.Count == 0)
-        {
-            return;
-        }
+        if (received.Parts.Count == 0) return;
 
         var header = ZLinkEnvelopeCodec.DecodeHeader(received.Parts);
 
         if (dispatchErrors.Flow.Enabled(ZLinkMessageFlowOutcome.Received))
-        {
             dispatchErrors.Flow.Trace(new ZLinkMessageFlowEvent(
                 ZLinkMessageFlowOutcome.Received,
                 ZLinkDispatchErrorSurface.RouteMeshChannel,
                 header.Kind == ZLinkMessageKind.Request
                     ? ZLinkDispatchMessageKind.Request
                     : ZLinkDispatchMessageKind.Send,
-                PacketName: header.MessageName,
-                ChannelName: routerChannelId,
+                header.MessageName,
+                routerChannelId,
                 CorrelationId: header.CorrelationId));
-        }
 
         switch (header.Kind)
         {
@@ -86,7 +78,7 @@ internal sealed class ZLinkRoutePacketDispatcher(
                 ZLinkDispatchErrorReason.HandlerMissing,
                 ZLinkDispatchErrorAction.Drop,
                 header.MessageName,
-                ChannelName: routerChannelId,
+                routerChannelId,
                 CorrelationId: header.CorrelationId));
             return;
         }
@@ -105,16 +97,14 @@ internal sealed class ZLinkRoutePacketDispatcher(
                 .ConfigureAwait(false);
 
             if (dispatchErrors.Flow.Enabled(ZLinkMessageFlowOutcome.Dispatched))
-            {
                 dispatchErrors.Flow.Trace(new ZLinkMessageFlowEvent(
                     ZLinkMessageFlowOutcome.Dispatched,
                     ZLinkDispatchErrorSurface.RouteMeshChannel,
                     ZLinkDispatchMessageKind.Send,
-                    PacketName: header.MessageName,
-                    ChannelName: routerChannelId,
+                    header.MessageName,
+                    routerChannelId,
                     CorrelationId: header.CorrelationId,
                     SourceRid: sourceRid.ToString()));
-            }
         }
         catch (Exception ex)
         {
@@ -134,7 +124,7 @@ internal sealed class ZLinkRoutePacketDispatcher(
                 ZLinkDispatchErrorReason.HandlerException,
                 ZLinkDispatchErrorAction.Drop,
                 header.MessageName,
-                ChannelName: routerChannelId,
+                routerChannelId,
                 SourceRid: sourceRid.ToString(),
                 CorrelationId: header.CorrelationId,
                 Exception: ex));
@@ -149,10 +139,10 @@ internal sealed class ZLinkRoutePacketDispatcher(
         if (internalPackets.CanHandleRequest(header.MessageName))
         {
             await DispatchInternalRequestAsync(
-                received,
-                header,
-                cancellationToken,
-                (_, requestHeader, token) => internalPackets.DispatchRequestAsync(received, requestHeader, token))
+                    received,
+                    header,
+                    cancellationToken,
+                    (_, requestHeader, token) => internalPackets.DispatchRequestAsync(received, requestHeader, token))
                 .ConfigureAwait(false);
             return;
         }
@@ -188,7 +178,7 @@ internal sealed class ZLinkRoutePacketDispatcher(
                 ZLinkDispatchErrorReason.HandlerMissing,
                 ZLinkDispatchErrorAction.ReplyError,
                 header.MessageName,
-                ChannelName: routerChannelId,
+                routerChannelId,
                 SourceRid: sourceRid.ToString(),
                 CorrelationId: header.CorrelationId,
                 Exception: new ZLinkFrameworkException(
@@ -210,16 +200,14 @@ internal sealed class ZLinkRoutePacketDispatcher(
             Reply(sourceRid, received.RequestSeq, header, reply.Message, reply.MessageType);
 
             if (dispatchErrors.Flow.Enabled(ZLinkMessageFlowOutcome.Replied))
-            {
                 dispatchErrors.Flow.Trace(new ZLinkMessageFlowEvent(
                     ZLinkMessageFlowOutcome.Replied,
                     ZLinkDispatchErrorSurface.RouteMeshChannel,
                     ZLinkDispatchMessageKind.Request,
-                    PacketName: header.MessageName,
-                    ChannelName: routerChannelId,
+                    header.MessageName,
+                    routerChannelId,
                     CorrelationId: header.CorrelationId,
                     SourceRid: sourceRid.ToString()));
-            }
         }
         catch (Exception ex)
         {
@@ -230,7 +218,7 @@ internal sealed class ZLinkRoutePacketDispatcher(
                 ZLinkDispatchErrorReason.HandlerException,
                 ZLinkDispatchErrorAction.ReplyError,
                 header.MessageName,
-                ChannelName: routerChannelId,
+                routerChannelId,
                 SourceRid: sourceRid.ToString(),
                 CorrelationId: header.CorrelationId,
                 Exception: ex));
@@ -251,16 +239,14 @@ internal sealed class ZLinkRoutePacketDispatcher(
             ReplyRaw(sourceRid, received.RequestSeq, header, reply);
 
             if (dispatchErrors.Flow.Enabled(ZLinkMessageFlowOutcome.Replied))
-            {
                 dispatchErrors.Flow.Trace(new ZLinkMessageFlowEvent(
                     ZLinkMessageFlowOutcome.Replied,
                     ZLinkDispatchErrorSurface.RouteMeshChannel,
                     ZLinkDispatchMessageKind.Request,
-                    PacketName: header.MessageName,
-                    ChannelName: routerChannelId,
+                    header.MessageName,
+                    routerChannelId,
                     CorrelationId: header.CorrelationId,
                     SourceRid: sourceRid.ToString()));
-            }
         }
         catch (Exception ex)
         {
@@ -271,7 +257,7 @@ internal sealed class ZLinkRoutePacketDispatcher(
                 ZLinkDispatchErrorReason.HandlerException,
                 ZLinkDispatchErrorAction.ReplyError,
                 header.MessageName,
-                ChannelName: routerChannelId,
+                routerChannelId,
                 SourceRid: sourceRid.ToString(),
                 CorrelationId: header.CorrelationId,
                 Exception: ex));
@@ -303,7 +289,7 @@ internal sealed class ZLinkRoutePacketDispatcher(
         string operationName)
     {
         return received.RoutingId
-            ?? throw new InvalidOperationException($"{operationName} requires a source routing id.");
+               ?? throw new InvalidOperationException($"{operationName} requires a source routing id.");
     }
 
     private void ReplyRaw(

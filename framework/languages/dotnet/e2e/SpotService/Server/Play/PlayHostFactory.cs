@@ -1,12 +1,11 @@
+using SpotService.Server.Play.Endpoints;
+using SpotService.Server.Play.Spots;
 using SpotService.Shared;
 using Systems.Zlink;
 using Zlink.Framework.AspNetCore;
 using Zlink.Framework.Contracts.Channels;
 using Zlink.Framework.Contracts.Dispatch;
 using Zlink.Framework.Contracts.Errors;
-using SpotService.Server.Play.Endpoints;
-using SpotService.Server.Play.Handlers;
-using SpotService.Server.Play.Spots;
 
 namespace SpotService.Server.Play;
 
@@ -14,7 +13,7 @@ internal static class PlayHostFactory
 {
     public static WebApplication Create(string[] args)
     {
-        var options = ServerOptions.Parse(args, defaultRole: "play");
+        var options = ServerOptions.Parse(args, "play");
         Directory.CreateDirectory(options.LogDir);
 
         var builder = WebApplication.CreateBuilder(args);
@@ -29,50 +28,45 @@ internal static class PlayHostFactory
         builder.Services.AddSingleton(new NodeOptions(options.Rid));
 
         builder.Services.AddZLinkFramework(framework =>
-            {
-                framework.AddHandlersFromAssemblyOf(typeof(Program));
-                framework.ConfigureDispatch()
-                    .SetMessageFlowObserver<EvidenceDispatchErrorObserver>()
-                    .MessageFlow(ZLinkMessageFlowLogMode.KeyTransitions)
-                    .TraceLogFile(Path.Combine(options.LogDir, $"{options.Rid}-flow.log"))
-                    .TraceLabel(options.Rid);
-                framework.UseDiscovery().AddRegistryEndpoint(Require(options.RegistryRouterEndpoint, "--registry-router-endpoint"));
-                framework.AddRouteMesh(SpotServiceNames.ControlChannel)
-                    .EnableServer(Require(options.ControlEndpoint, "--control-endpoint"))
+        {
+            framework.AddHandlersFromAssemblyOf(typeof(Program));
+            framework.ConfigureDispatch()
+                .SetMessageFlowObserver<EvidenceDispatchErrorObserver>()
+                .MessageFlow(ZLinkMessageFlowLogMode.KeyTransitions)
+                .TraceLogFile(Path.Combine(options.LogDir, $"{options.Rid}-flow.log"))
+                .TraceLabel(options.Rid);
+            framework.UseDiscovery()
+                .AddRegistryEndpoint(Require(options.RegistryRouterEndpoint, "--registry-router-endpoint"));
+            framework.AddRouteMesh(SpotServiceNames.ControlChannel)
+                .EnableServer(Require(options.ControlEndpoint, "--control-endpoint"))
+                .EnableClient()
+                .SetRoutingId(RoutingId.From(options.Rid))
+                .AddHandlerGroup("play");
+            var externalSpotChannel = string.Equals(options.Rid, "play-b", StringComparison.Ordinal)
+                ? SpotServiceNames.ExternalSpotChannelB
+                : SpotServiceNames.ExternalSpotChannel;
+            if (!string.IsNullOrWhiteSpace(options.ExternalSpotEndpoint))
+                framework.AddRouteMesh(externalSpotChannel)
+                    .EnableServer(options.ExternalSpotEndpoint)
                     .EnableClient()
-                    .SetRoutingId(RoutingId.From(options.Rid))
-                    .AddHandlerGroup("play");
-                var externalSpotChannel = string.Equals(options.Rid, "play-b", StringComparison.Ordinal)
-                    ? SpotServiceNames.ExternalSpotChannelB
-                    : SpotServiceNames.ExternalSpotChannel;
-                if (!string.IsNullOrWhiteSpace(options.ExternalSpotEndpoint))
-                {
-                    framework.AddRouteMesh(externalSpotChannel)
-                        .EnableServer(options.ExternalSpotEndpoint)
-                        .EnableClient()
-                        .SetRoutingId(RoutingId.From(options.Rid));
-                }
-                if (!string.IsNullOrWhiteSpace(options.ExternalClientEndpoint))
-                {
-                    framework.AddClientServerChannel(SpotServiceNames.ExternalClientChannel)
-                        .EnableServer(options.ExternalClientEndpoint)
-                        .EnableClient(options.ExternalClientEndpoint)
-                        .AddHandlerGroup("client");
-                }
+                    .SetRoutingId(RoutingId.From(options.Rid));
+            if (!string.IsNullOrWhiteSpace(options.ExternalClientEndpoint))
+                framework.AddClientServerChannel(SpotServiceNames.ExternalClientChannel)
+                    .EnableServer(options.ExternalClientEndpoint)
+                    .EnableClient(options.ExternalClientEndpoint)
+                    .AddHandlerGroup("client");
 
-                var spot = framework.AddSpotMesh(SpotServiceNames.SpotChannel)
-                    .UseRegistrySpotResolver()
-                    .EnableRouter(Require(options.SpotRouterEndpoint, "--spot-router-endpoint"))
-                    .SetRoutingId(RoutingId.From(options.Rid))
-                    .EnablePubSub(Require(options.SpotPubEndpoint, "--spot-pub-endpoint"))
-                    .AddEntrySpot<ScenarioEntrySpot>()
-                    .AddActorFactory<ScenarioActorFactory>(SpotServiceNames.ActorType)
-                    .AddSpotFactory<ScenarioUserSpot>()
-                    .AddSpotFactory<ScenarioAlternateSpot>();
-                if (!string.IsNullOrWhiteSpace(options.ClientSpotPubEndpoint))
-                {
-                    spot.ConnectPeerPub(options.ClientSpotPubEndpoint);
-                }
+            var spot = framework.AddSpotMesh(SpotServiceNames.SpotChannel)
+                .UseRegistrySpotResolver()
+                .EnableRouter(Require(options.SpotRouterEndpoint, "--spot-router-endpoint"))
+                .SetRoutingId(RoutingId.From(options.Rid))
+                .EnablePubSub(Require(options.SpotPubEndpoint, "--spot-pub-endpoint"))
+                .AddEntrySpot<ScenarioEntrySpot>()
+                .AddActorFactory<ScenarioActorFactory>(SpotServiceNames.ActorType)
+                .AddSpotFactory<ScenarioUserSpot>()
+                .AddSpotFactory<ScenarioAlternateSpot>();
+            if (!string.IsNullOrWhiteSpace(options.ClientSpotPubEndpoint))
+                spot.ConnectPeerPub(options.ClientSpotPubEndpoint);
         });
 
         var app = builder.Build();
@@ -83,204 +77,191 @@ internal static class PlayHostFactory
         return app;
     }
 
-internal static string Require(string? value, string optionName)
-    => string.IsNullOrWhiteSpace(value)
-        ? throw new InvalidOperationException($"{optionName} is required.")
-        : value;
-
-internal static async Task<bool> FailsAsync(Task task)
-{
-    try
+    internal static string Require(string? value, string optionName)
     {
-        await task;
-        return false;
+        return string.IsNullOrWhiteSpace(value)
+            ? throw new InvalidOperationException($"{optionName} is required.")
+            : value;
     }
-    catch
-    {
-        return true;
-    }
-}
 
-internal static async Task<StateReply> RequestSpotStateWithRetryAsync(
-    IZLinkRouteClient routes,
-    string spotRid,
-    StateReq request,
-    string failureMessage,
-    string channelName = SpotServiceNames.ExternalSpotChannel)
-{
-    var deadline = DateTimeOffset.UtcNow + TimeSpan.FromSeconds(5);
-    Exception? last = null;
-    while (DateTimeOffset.UtcNow < deadline)
+    internal static async Task<bool> FailsAsync(Task task)
     {
         try
         {
-            return await routes.Request(
-                    channelName,
-                    RoutingId.From(spotRid),
-                    request)
-                .PacketName("StateReq")
-                .Timeout(TimeSpan.FromSeconds(1))
-                .Async<StateReply>();
+            await task;
+            return false;
         }
-        catch (Exception ex) when (ex is TimeoutException or ZLinkFrameworkException)
+        catch
         {
-            last = ex;
-            await Task.Delay(100);
+            return true;
         }
     }
 
-    throw new InvalidOperationException(last is null ? failureMessage : $"{failureMessage} Last error: {last.Message}", last);
-}
-
-internal static async Task SendSpotCommandWithRetryAsync(
-    IZLinkRouteClient routes,
-    string channelName,
-    string spotRid,
-    object command,
-    string packetName,
-    string failureMessage)
-{
-    var deadline = DateTimeOffset.UtcNow + TimeSpan.FromSeconds(5);
-    Exception? last = null;
-    while (DateTimeOffset.UtcNow < deadline)
+    internal static async Task<StateReply> RequestSpotStateWithRetryAsync(
+        IZLinkRouteClient routes,
+        string spotRid,
+        StateReq request,
+        string failureMessage,
+        string channelName = SpotServiceNames.ExternalSpotChannel)
     {
-        try
-        {
-            await routes.Send(channelName, RoutingId.From(spotRid), command)
-                .PacketName(packetName)
-                .Async();
-            return;
-        }
-        catch (Exception ex) when (ex is TimeoutException or ZLinkFrameworkException)
-        {
-            last = ex;
-            await Task.Delay(100);
-        }
-    }
-
-    throw new InvalidOperationException(last is null ? failureMessage : $"{failureMessage} Last error: {last.Message}", last);
-}
-
-internal static async Task<SpotToSpotReply> RequestSpotToSpotWithRetryAsync(
-    IZLinkRouteClient routes,
-    string sourceSpotRid,
-    SpotToSpotReq request,
-    string failureMessage)
-{
-    var deadline = DateTimeOffset.UtcNow + TimeSpan.FromSeconds(10);
-    Exception? last = null;
-    while (DateTimeOffset.UtcNow < deadline)
-    {
-        try
-        {
-            return await routes.Request(
-                    SpotServiceNames.ExternalSpotChannel,
-                    RoutingId.From(sourceSpotRid),
-                    request)
-                .PacketName("SpotToSpotReq")
-                .Timeout(TimeSpan.FromSeconds(2))
-                .Async<SpotToSpotReply>();
-        }
-        catch (Exception ex) when (
-            ex is TimeoutException or OperationCanceledException or ZlinkRequestException or ZlinkSubmitException
-            || ex is ZLinkFrameworkException { InnerException: ZlinkRequestException or ZlinkSubmitException })
-        {
-            last = ex;
-        }
-
-        await Task.Delay(TimeSpan.FromMilliseconds(100));
-    }
-
-    throw new TimeoutException(failureMessage, last);
-}
-
-internal static async Task ExpectFailureAsync(Task task, string message)
-{
-    try
-    {
-        await task;
-    }
-    catch
-    {
-        return;
-    }
-
-    throw new InvalidOperationException(message);
-}
-
-internal static async Task WaitUntilAsync(Func<bool> condition, string failureMessage)
-{
-    var deadline = DateTimeOffset.UtcNow + TimeSpan.FromSeconds(10);
-    while (DateTimeOffset.UtcNow < deadline)
-    {
-        if (condition())
-        {
-            return;
-        }
-
-        await Task.Delay(100);
-    }
-
-    throw new InvalidOperationException(failureMessage);
-}
-
-internal static async Task WaitUntilAsync(Func<Task<bool>> condition, string failureMessage)
-{
-    var deadline = DateTimeOffset.UtcNow + TimeSpan.FromSeconds(10);
-    Exception? last = null;
-    while (DateTimeOffset.UtcNow < deadline)
-    {
-        try
-        {
-            if (await condition())
+        var deadline = DateTimeOffset.UtcNow + TimeSpan.FromSeconds(5);
+        Exception? last = null;
+        while (DateTimeOffset.UtcNow < deadline)
+            try
             {
+                return await routes.Request(
+                        channelName,
+                        RoutingId.From(spotRid),
+                        request)
+                    .PacketName("StateReq")
+                    .Timeout(TimeSpan.FromSeconds(1))
+                    .Async<StateReply>();
+            }
+            catch (Exception ex) when (ex is TimeoutException or ZLinkFrameworkException)
+            {
+                last = ex;
+                await Task.Delay(100);
+            }
+
+        throw new InvalidOperationException(
+            last is null ? failureMessage : $"{failureMessage} Last error: {last.Message}", last);
+    }
+
+    internal static async Task SendSpotCommandWithRetryAsync(
+        IZLinkRouteClient routes,
+        string channelName,
+        string spotRid,
+        object command,
+        string packetName,
+        string failureMessage)
+    {
+        var deadline = DateTimeOffset.UtcNow + TimeSpan.FromSeconds(5);
+        Exception? last = null;
+        while (DateTimeOffset.UtcNow < deadline)
+            try
+            {
+                await routes.Send(channelName, RoutingId.From(spotRid), command)
+                    .PacketName(packetName)
+                    .Async();
                 return;
             }
-        }
-        catch (Exception ex)
+            catch (Exception ex) when (ex is TimeoutException or ZLinkFrameworkException)
+            {
+                last = ex;
+                await Task.Delay(100);
+            }
+
+        throw new InvalidOperationException(
+            last is null ? failureMessage : $"{failureMessage} Last error: {last.Message}", last);
+    }
+
+    internal static async Task<SpotToSpotReply> RequestSpotToSpotWithRetryAsync(
+        IZLinkRouteClient routes,
+        string sourceSpotRid,
+        SpotToSpotReq request,
+        string failureMessage)
+    {
+        var deadline = DateTimeOffset.UtcNow + TimeSpan.FromSeconds(10);
+        Exception? last = null;
+        while (DateTimeOffset.UtcNow < deadline)
         {
-            last = ex;
+            try
+            {
+                return await routes.Request(
+                        SpotServiceNames.ExternalSpotChannel,
+                        RoutingId.From(sourceSpotRid),
+                        request)
+                    .PacketName("SpotToSpotReq")
+                    .Timeout(TimeSpan.FromSeconds(2))
+                    .Async<SpotToSpotReply>();
+            }
+            catch (Exception ex) when (
+                ex is TimeoutException or OperationCanceledException or ZlinkRequestException or ZlinkSubmitException
+                || ex is ZLinkFrameworkException { InnerException: ZlinkRequestException or ZlinkSubmitException })
+            {
+                last = ex;
+            }
+
+            await Task.Delay(TimeSpan.FromMilliseconds(100));
         }
 
-        await Task.Delay(100);
+        throw new TimeoutException(failureMessage, last);
     }
 
-    throw new InvalidOperationException(failureMessage, last);
-}
-
-static int FindIndex(string[] lines, string pattern)
-{
-    return Array.FindIndex(lines, line => line.Contains(pattern, StringComparison.Ordinal));
-}
-
-static ulong ExtractUInt64(string line, string key)
-{
-    var prefix = key + "=";
-    var start = line.IndexOf(prefix, StringComparison.Ordinal);
-    if (start < 0)
+    internal static async Task ExpectFailureAsync(Task task, string message)
     {
-        throw new InvalidOperationException($"Missing field '{key}' in evidence line: {line}");
-    }
+        try
+        {
+            await task;
+        }
+        catch
+        {
+            return;
+        }
 
-    start += prefix.Length;
-    var end = line.IndexOf('|', start);
-    var value = end < 0 ? line[start..] : line[start..end];
-    return ulong.Parse(value);
-}
-
-internal static int CountNew(string[] after, string[] before, string pattern)
-{
-    var beforeCount = before.Count(line => line.Contains(pattern, StringComparison.Ordinal));
-    var afterCount = after.Count(line => line.Contains(pattern, StringComparison.Ordinal));
-    return afterCount - beforeCount;
-}
-
-static void Ensure(bool condition, string message)
-{
-    if (!condition)
-    {
         throw new InvalidOperationException(message);
     }
-}
 
+    internal static async Task WaitUntilAsync(Func<bool> condition, string failureMessage)
+    {
+        var deadline = DateTimeOffset.UtcNow + TimeSpan.FromSeconds(10);
+        while (DateTimeOffset.UtcNow < deadline)
+        {
+            if (condition()) return;
+
+            await Task.Delay(100);
+        }
+
+        throw new InvalidOperationException(failureMessage);
+    }
+
+    internal static async Task WaitUntilAsync(Func<Task<bool>> condition, string failureMessage)
+    {
+        var deadline = DateTimeOffset.UtcNow + TimeSpan.FromSeconds(10);
+        Exception? last = null;
+        while (DateTimeOffset.UtcNow < deadline)
+        {
+            try
+            {
+                if (await condition()) return;
+            }
+            catch (Exception ex)
+            {
+                last = ex;
+            }
+
+            await Task.Delay(100);
+        }
+
+        throw new InvalidOperationException(failureMessage, last);
+    }
+
+    private static int FindIndex(string[] lines, string pattern)
+    {
+        return Array.FindIndex(lines, line => line.Contains(pattern, StringComparison.Ordinal));
+    }
+
+    private static ulong ExtractUInt64(string line, string key)
+    {
+        var prefix = key + "=";
+        var start = line.IndexOf(prefix, StringComparison.Ordinal);
+        if (start < 0) throw new InvalidOperationException($"Missing field '{key}' in evidence line: {line}");
+
+        start += prefix.Length;
+        var end = line.IndexOf('|', start);
+        var value = end < 0 ? line[start..] : line[start..end];
+        return ulong.Parse(value);
+    }
+
+    internal static int CountNew(string[] after, string[] before, string pattern)
+    {
+        var beforeCount = before.Count(line => line.Contains(pattern, StringComparison.Ordinal));
+        var afterCount = after.Count(line => line.Contains(pattern, StringComparison.Ordinal));
+        return afterCount - beforeCount;
+    }
+
+    private static void Ensure(bool condition, string message)
+    {
+        if (!condition) throw new InvalidOperationException(message);
+    }
 }

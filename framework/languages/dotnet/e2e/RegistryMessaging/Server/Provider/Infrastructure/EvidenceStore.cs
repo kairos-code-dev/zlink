@@ -1,4 +1,5 @@
 using System.Collections.Concurrent;
+
 namespace RegistryMessaging.Server.Provider.Infrastructure;
 
 internal sealed class EvidenceStore
@@ -25,10 +26,7 @@ internal sealed class EvidenceStore
     {
         _entries.Enqueue(entry);
         _signal.Release();
-        if (string.IsNullOrWhiteSpace(_filePath))
-        {
-            return;
-        }
+        if (string.IsNullOrWhiteSpace(_filePath)) return;
 
         lock (_fileGate)
         {
@@ -36,7 +34,10 @@ internal sealed class EvidenceStore
         }
     }
 
-    public string[] Snapshot() => _entries.ToArray();
+    public string[] Snapshot()
+    {
+        return _entries.ToArray();
+    }
 
     public async Task<string[]> WaitUntilAsync(
         Func<string, bool> predicate,
@@ -47,17 +48,12 @@ internal sealed class EvidenceStore
         while (true)
         {
             var snapshot = Snapshot();
-            if (snapshot.Any(predicate))
-            {
-                return snapshot;
-            }
+            if (snapshot.Any(predicate)) return snapshot;
 
             var remaining = deadline - DateTimeOffset.UtcNow;
             if (remaining <= TimeSpan.Zero
                 || !await _signal.WaitAsync(remaining, cancellationToken))
-            {
                 return Snapshot();
-            }
         }
     }
 
@@ -68,11 +64,9 @@ internal sealed class EvidenceStore
         }
 
         if (!string.IsNullOrWhiteSpace(_filePath))
-        {
             lock (_fileGate)
             {
                 File.WriteAllText(_filePath, string.Empty);
             }
-        }
     }
 }

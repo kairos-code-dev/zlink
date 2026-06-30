@@ -1,8 +1,8 @@
 using System.Diagnostics;
 using System.Net.Sockets;
+using RuntimeMonitoring.Client.Support;
 using RuntimeMonitoring.Shared;
 using Zlink.HttpClient;
-using RuntimeMonitoring.Client.Support;
 
 namespace RuntimeMonitoring.Client.Scenarios;
 
@@ -19,7 +19,7 @@ internal static class MonD1FailureRecoveryScenario
         await WaitForPortStateAsync(
             serviceBUri.Host,
             serviceBUri.Port,
-            shouldBeOpen: false,
+            false,
             "MON-D1 expected service-b to stop.");
 
         using var restartedService = StartServiceB(options);
@@ -28,7 +28,7 @@ internal static class MonD1FailureRecoveryScenario
             await WaitForPortStateAsync(
                 serviceBUri.Host,
                 serviceBUri.Port,
-                shouldBeOpen: true,
+                true,
                 "MON-D1 expected service-b to restart.");
 
             var reply = (await trigger.Post("/profile/request/service-b")
@@ -44,8 +44,7 @@ internal static class MonD1FailureRecoveryScenario
             var serviceBEvidence = (await restartedServiceB.Post("/evidence/wait")
                 .Body(new EvidenceWaitRequest(
                     ["profile-request|rid=svc-b|marker=mon-d1-request|value=restart"],
-                    [],
-                    10000))
+                    []))
                 .SubmitAsync<string[]>()).Body;
             ScenarioAssert.That(
                 serviceBEvidence.Any(line => line.Contains(
@@ -56,11 +55,11 @@ internal static class MonD1FailureRecoveryScenario
             var registryEvidence = (await registry.Post("/evidence/wait")
                 .Body(new EvidenceWaitRequest(
                     ["monitor-registry|source=registry"],
-                    [["kind=TopologyChanged|topology=5"]],
-                    10000))
+                    [["kind=TopologyChanged|topology=5"]]))
                 .SubmitAsync<string[]>()).Body;
             ScenarioAssert.That(
-                registryEvidence.Count(line => line.Contains("monitor-registry|source=registry|kind=TopologyChanged", StringComparison.Ordinal)) >= 3,
+                registryEvidence.Count(line => line.Contains("monitor-registry|source=registry|kind=TopologyChanged",
+                    StringComparison.Ordinal)) >= 3,
                 "MON-D1 registry topology continuity evidence missing.");
         }
         finally
@@ -73,7 +72,7 @@ internal static class MonD1FailureRecoveryScenario
         Console.WriteLine("scenario MON-D1 passed");
     }
 
-    static Process StartServiceB(ClientOptions options)
+    private static Process StartServiceB(ClientOptions options)
     {
         var stdout = Path.Combine(options.LogDir, "svc-b-restart.stdout.log");
         var stderr = Path.Combine(options.LogDir, "svc-b-restart.stderr.log");
@@ -81,7 +80,7 @@ internal static class MonD1FailureRecoveryScenario
         {
             RedirectStandardOutput = true,
             RedirectStandardError = true,
-            UseShellExecute = false,
+            UseShellExecute = false
         };
         startInfo.Environment["ZLINK_E2E_RID"] = "svc-b";
         startInfo.ArgumentList.Add("run");
@@ -102,13 +101,13 @@ internal static class MonD1FailureRecoveryScenario
         startInfo.ArgumentList.Add(options.LogDir);
 
         var process = Process.Start(startInfo)
-            ?? throw new InvalidOperationException("Failed to restart service-b.");
+                      ?? throw new InvalidOperationException("Failed to restart service-b.");
         _ = Task.Run(async () => await File.WriteAllTextAsync(stdout, await process.StandardOutput.ReadToEndAsync()));
         _ = Task.Run(async () => await File.WriteAllTextAsync(stderr, await process.StandardError.ReadToEndAsync()));
         return process;
     }
 
-    static async Task PostBestEffortAsync(ZLinkHttpClient http, string path)
+    private static async Task PostBestEffortAsync(ZLinkHttpClient http, string path)
     {
         try
         {
@@ -122,14 +121,11 @@ internal static class MonD1FailureRecoveryScenario
         }
     }
 
-    static async Task WaitForPortStateAsync(string host, int port, bool shouldBeOpen, string failureMessage)
+    private static async Task WaitForPortStateAsync(string host, int port, bool shouldBeOpen, string failureMessage)
     {
         for (var attempt = 0; attempt < 100; attempt++)
         {
-            if (await CanConnectAsync(host, port) == shouldBeOpen)
-            {
-                return;
-            }
+            if (await CanConnectAsync(host, port) == shouldBeOpen) return;
 
             await Task.Delay(100);
         }
@@ -137,7 +133,7 @@ internal static class MonD1FailureRecoveryScenario
         throw new InvalidOperationException(failureMessage);
     }
 
-    static async Task<bool> CanConnectAsync(string host, int port)
+    private static async Task<bool> CanConnectAsync(string host, int port)
     {
         try
         {

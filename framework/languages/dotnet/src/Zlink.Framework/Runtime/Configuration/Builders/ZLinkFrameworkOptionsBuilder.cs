@@ -73,7 +73,7 @@ internal sealed class ZLinkFrameworkOptionsBuilder : IZLinkFrameworkOptions
 
         var options = new ZLinkRegistrySpotRemoteAddressesRegistration
         {
-            Namespace = ValidateRegistryNamespace(namespaceName),
+            Namespace = ValidateRegistryNamespace(namespaceName)
         };
         _registration.RegistrySpotRemoteAddresses = options;
         return options;
@@ -140,16 +140,14 @@ internal sealed class ZLinkFrameworkOptionsBuilder : IZLinkFrameworkOptions
     public IZLinkSpotMeshBuilder AddSpotMesh(string channelName)
     {
         if (string.IsNullOrWhiteSpace(channelName))
-        {
             throw new ZLinkConfigurationException("SPOT mesh channel name must not be empty.");
-        }
 
         var discovery = ZLinkRegistrationBuilderGuard.AddUnique(
             _registration.SpotDiscoveries,
             channelName,
             () => new ZLinkSpotDiscoveryRegistration
             {
-                ChannelName = channelName,
+                ChannelName = channelName
             },
             "SPOT mesh channel name must not be empty.",
             $"Duplicate SPOT mesh channel name '{channelName}'.");
@@ -171,7 +169,7 @@ internal sealed class ZLinkFrameworkOptionsBuilder : IZLinkFrameworkOptions
             () => new ZLinkChannelRegistration
             {
                 ChannelName = channelName,
-                AutoConnectType = autoConnectType,
+                AutoConnectType = autoConnectType
             },
             "Channel name must not be empty.",
             $"Duplicate channel name '{channelName}'.");
@@ -181,22 +179,17 @@ internal sealed class ZLinkFrameworkOptionsBuilder : IZLinkFrameworkOptions
     {
         if (_registration.SpotRemoteAddressResolverType is not null
             || _registration.RegistrySpotRemoteAddresses is not null)
-        {
             throw new ZLinkConfigurationException("SPOT remote address resolver is already registered.");
-        }
     }
 
     private static string ValidateRegistryNamespace(string namespaceName)
     {
         if (string.IsNullOrWhiteSpace(namespaceName)
             || !string.Equals(namespaceName, namespaceName.Trim(), StringComparison.Ordinal))
-        {
             throw new ZLinkConfigurationException("Registry route namespace must not be empty or padded.");
-        }
 
         return namespaceName;
     }
-
 }
 
 internal sealed class ZLinkSpotMeshBuilder(
@@ -207,77 +200,97 @@ internal sealed class ZLinkSpotMeshBuilder(
 {
     private ZLinkSpotNodeBuilder? _nodeBuilder;
 
-    public IZLinkDiscoveryBuilder UseDiscovery()
-    {
-        return new ZLinkDiscoveryBuilder(discovery.Endpoints);
-    }
-
     public IZLinkSpotMeshBuilder UseRegistrySpotResolver()
     {
         if (registration.SpotRemoteAddressResolverType is not null
             || registration.RegistrySpotRemoteAddresses is not null)
-        {
             throw new ZLinkConfigurationException("SPOT remote address resolver is already registered.");
-        }
 
         registration.RegistrySpotRemoteAddresses = new ZLinkRegistrySpotRemoteAddressesRegistration
         {
             Namespace = discovery.ChannelName,
-            RouterChannelId = discovery.ChannelName,
+            RouterChannelId = discovery.ChannelName
         };
         return this;
     }
 
     public IZLinkSpotNodeBuilder EnableRouter(string endpoint)
-        => DefaultNode().EnableRouter(endpoint);
+    {
+        return DefaultNode().EnableRouter(endpoint);
+    }
 
     public IZLinkSpotNodeBuilder ConnectRouter(string endpoint)
-        => DefaultNode().ConnectRouter(endpoint);
+    {
+        return DefaultNode().ConnectRouter(endpoint);
+    }
 
     public IZLinkSpotNodeBuilder ConnectRouter(RoutingId peerRid, string endpoint)
-        => DefaultNode().ConnectRouter(peerRid, endpoint);
+    {
+        return DefaultNode().ConnectRouter(peerRid, endpoint);
+    }
 
     public IZLinkSpotNodeBuilder SetRoutingId(RoutingId routingId)
-        => DefaultNode().SetRoutingId(routingId);
+    {
+        return DefaultNode().SetRoutingId(routingId);
+    }
 
     public IZLinkSocketConfig ConfigureRouterSocket()
-        => DefaultNode().ConfigureRouterSocket();
+    {
+        return DefaultNode().ConfigureRouterSocket();
+    }
 
     public IZLinkRouteConfig ConfigureRouterRouting()
-        => DefaultNode().ConfigureRouterRouting();
+    {
+        return DefaultNode().ConfigureRouterRouting();
+    }
 
     public IZLinkSpotNodeBuilder EnablePubSub(string endpoint)
-        => DefaultNode().EnablePubSub(endpoint);
+    {
+        return DefaultNode().EnablePubSub(endpoint);
+    }
 
     public IZLinkSpotNodeBuilder ConnectPeerPub(string endpoint)
-        => DefaultNode().ConnectPeerPub(endpoint);
+    {
+        return DefaultNode().ConnectPeerPub(endpoint);
+    }
 
     public IZLinkSpotPublisherConfig ConfigurePubSubPublisher()
-        => DefaultNode().ConfigurePubSubPublisher();
+    {
+        return DefaultNode().ConfigurePubSubPublisher();
+    }
 
     public IZLinkSpotSubscriberConfig ConfigurePubSubSubscriber()
-        => DefaultNode().ConfigurePubSubSubscriber();
+    {
+        return DefaultNode().ConfigurePubSubSubscriber();
+    }
 
     public IZLinkEntrySpotOptions ConfigureEntrySpot()
-        => DefaultNode().ConfigureEntrySpot();
+    {
+        return DefaultNode().ConfigureEntrySpot();
+    }
 
     public IZLinkSpotNodeBuilder AddSpotFactory<TSpot>()
         where TSpot : IZLinkSpot
-        => DefaultNode().AddSpotFactory<TSpot>();
+    {
+        return DefaultNode().AddSpotFactory<TSpot>();
+    }
 
     public IZLinkSpotNodeBuilder AddEntrySpot<TEntrySpot>()
         where TEntrySpot : IZLinkEntrySpot
-        => DefaultNode().AddEntrySpot<TEntrySpot>();
+    {
+        return DefaultNode().AddEntrySpot<TEntrySpot>();
+    }
 
     public IZLinkSpotNodeBuilder AddActorFactory<TFactory>(string actorType)
         where TFactory : class, IZLinkActorFactory
-        => DefaultNode().AddActorFactory<TFactory>(actorType);
+    {
+        return DefaultNode().AddActorFactory<TFactory>(actorType);
+    }
 
     private ZLinkSpotNodeBuilder DefaultNode()
     {
         return _nodeBuilder ??= new ZLinkSpotNodeBuilder(spotNode);
     }
-
 }
 
 internal static class ZLinkRegistrationBuilderGuard
@@ -311,16 +324,10 @@ internal static class ZLinkRegistrationBuilderGuard
         string emptyMessage,
         string duplicateMessage)
     {
-        if (string.IsNullOrWhiteSpace(name))
-        {
-            throw new ZLinkConfigurationException(emptyMessage);
-        }
+        if (string.IsNullOrWhiteSpace(name)) throw new ZLinkConfigurationException(emptyMessage);
 
         var value = create();
-        if (!registrations.TryAdd(name, value))
-        {
-            throw new ZLinkConfigurationException(duplicateMessage);
-        }
+        if (!registrations.TryAdd(name, value)) throw new ZLinkConfigurationException(duplicateMessage);
 
         return value;
     }
@@ -331,10 +338,7 @@ internal sealed class ZLinkMetadataPolicyBuilder(ZLinkMetadataPolicyRegistration
 {
     public void AddForwardedMetadataKey(string key)
     {
-        if (string.IsNullOrWhiteSpace(key))
-        {
-            throw new ZLinkConfigurationException("Metadata key must not be empty.");
-        }
+        if (string.IsNullOrWhiteSpace(key)) throw new ZLinkConfigurationException("Metadata key must not be empty.");
 
         registration.ForwardedApplicationKeys.Add(key);
     }

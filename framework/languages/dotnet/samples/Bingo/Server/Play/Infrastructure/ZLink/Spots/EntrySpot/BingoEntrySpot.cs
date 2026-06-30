@@ -1,8 +1,8 @@
+using Bingo.Server.Play.Infrastructure.ZLink.Actors;
+using Bingo.Shared.Contracts;
+using Microsoft.Extensions.Logging;
 using Zlink.Framework.Contracts.Messaging;
 using Zlink.Framework.Contracts.Spots;
-using Bingo.Server.Play.Infrastructure.ZLink.Actors;
-using Microsoft.Extensions.Logging;
-using Bingo.Shared.Contracts;
 
 namespace Bingo.Server.Play.Infrastructure.ZLink.Spots.EntrySpot;
 
@@ -48,10 +48,7 @@ internal sealed class BingoEntrySpot(
         logger.LogInformation(
             "entry spot: actor joined. actor={ActorId}",
             actor.ActorId);
-        if (!actor.DestroyAfterEntrySpotJoin)
-        {
-            return;
-        }
+        if (!actor.DestroyAfterEntrySpotJoin) return;
 
         logger.LogInformation(
             "entry spot: actor destroy requested. actor={ActorId}",

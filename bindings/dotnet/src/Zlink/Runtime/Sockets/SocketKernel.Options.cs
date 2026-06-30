@@ -1,6 +1,5 @@
 // SPDX-License-Identifier: MPL-2.0
 
-using System;
 using Systems.Zlink.Runtime.Native;
 
 namespace Systems.Zlink.Runtime.Sockets.Internal;
@@ -98,7 +97,7 @@ internal sealed partial class SocketKernel : IDisposable
         {
             Events = (uint)events
         };
-        IntPtr handle = NativeMethods.zlink_socket_monitor_open(Handle, in options);
+        var handle = NativeMethods.zlink_socket_monitor_open(Handle, in options);
         if (handle == IntPtr.Zero)
             throw ZlinkException.CreateConfigException(
                 NativeMethods.zlink_errno());

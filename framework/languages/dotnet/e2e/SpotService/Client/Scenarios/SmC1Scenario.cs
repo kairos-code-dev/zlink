@@ -1,6 +1,6 @@
+using SpotService.Client.Support;
 using SpotService.Shared;
 using Zlink.HttpClient;
-using SpotService.Client.Support;
 
 namespace SpotService.Client.Scenarios;
 
@@ -12,7 +12,8 @@ internal static class SmC1Scenario
         var created = (await playA.Post("/spot/create")
             .Body(new CreateSpotReq(spotRid))
             .SubmitAsync<CreateSpotReply>()).Body;
-        ScenarioAssert.That(created.SpotRid == spotRid && created.NodeRid == "play-a", "SM-C1 spot was not created on play-a.");
+        ScenarioAssert.That(created.SpotRid == spotRid && created.NodeRid == "play-a",
+            "SM-C1 spot was not created on play-a.");
         var viaChannel = (await playA.Post("/spot/state/request")
             .Body(new SpotStateRouteReq(spotRid, "noop", 0))
             .SubmitAsync<StateReply>()).Body;

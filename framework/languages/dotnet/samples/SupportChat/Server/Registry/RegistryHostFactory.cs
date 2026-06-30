@@ -1,5 +1,5 @@
-using SupportChat.Server.Configuration;
 using Microsoft.Extensions.Hosting;
+using SupportChat.Server.Configuration;
 using Zlink.Framework.AspNetCore;
 
 namespace SupportChat.Server.Registry;

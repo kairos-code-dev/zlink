@@ -39,9 +39,7 @@ internal sealed class ZLinkSessionActorBindingTable
             if (_entries.TryGetValue(key, out var existing)
                 && ReferenceEquals(existing.Context, context)
                 && string.Equals(existing.BindingToken, bindingToken, StringComparison.Ordinal))
-            {
                 _entries.Remove(key);
-            }
         }
     }
 
@@ -71,17 +69,14 @@ internal sealed class ZLinkSessionActorBindingTable
         lock (_entries)
         {
             foreach (var entry in _entries)
-            {
                 if (string.Equals(entry.Key.ActorId, actorId, StringComparison.Ordinal))
                 {
                     context = entry.Value.Context;
                     return true;
                 }
-            }
 
             context = null!;
             return false;
         }
     }
-
 }

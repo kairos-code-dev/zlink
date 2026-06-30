@@ -1,13 +1,7 @@
 // SPDX-License-Identifier: MPL-2.0
 
-using System;
-using System.Collections.Generic;
 using System.Runtime.InteropServices;
-using System.Text;
-using System.Threading;
-using System.Threading.Tasks;
 using Systems.Zlink.Runtime.Native;
-using Systems.Zlink.Runtime.Sockets.Internal;
 
 namespace Systems.Zlink;
 
@@ -16,7 +10,7 @@ internal sealed partial class SpotNode : ISpotNode
     public SpotNodeStatus Status()
     {
         EnsureNotDisposed();
-        int rc = NativeMethods.zlink_spot_node_status(_handle,
+        var rc = NativeMethods.zlink_spot_node_status(Handle,
             out var native);
         ZlinkException.ThrowConfigIfError(rc);
         return TopologyModelConverters.FromNative(ref native);
@@ -55,12 +49,12 @@ internal sealed partial class SpotNode : ISpotNode
         unsafe
         {
             ZlinkSpotNodeSubjectFilter nativeFilter = default;
-            IntPtr filterPtr = IntPtr.Zero;
+            var filterPtr = IntPtr.Zero;
             if (filter != null)
             {
-                SpotNodeSubjectFilter value = filter;
+                var value = filter;
                 if (value.Role.HasValue || !string.IsNullOrEmpty(value.Subject)
-                    || value.SubjectKind.HasValue)
+                                        || value.SubjectKind.HasValue)
                 {
                     nativeFilter.Role = (int)value.Role.GetValueOrDefault();
                     nativeFilter.SubjectKind =
@@ -72,6 +66,7 @@ internal sealed partial class SpotNode : ISpotNode
                         WriteFixedString(value.Subject, nativeFilter.Subject,
                             256);
                     }
+
                     filterPtr = (IntPtr)(&nativeFilter);
                 }
             }
@@ -87,10 +82,10 @@ internal sealed partial class SpotNode : ISpotNode
         unsafe
         {
             ZlinkSpotNodeSocketFilter nativeFilter = default;
-            IntPtr filterPtr = IntPtr.Zero;
+            var filterPtr = IntPtr.Zero;
             if (filter != null)
             {
-                SpotNodeSocketFilter value = filter;
+                var value = filter;
                 nativeFilter.Owner =
                     value.Owner.GetValueOrDefault(SpotNodeSocketOwner.Any);
                 nativeFilter.SocketType =
@@ -102,6 +97,7 @@ internal sealed partial class SpotNode : ISpotNode
                     WriteFixedString(value.SocketName,
                         nativeFilter.SocketName, 64);
                 }
+
                 filterPtr = (IntPtr)(&nativeFilter);
             }
 
@@ -113,25 +109,25 @@ internal sealed partial class SpotNode : ISpotNode
     {
         EnsureNotDisposed();
         nuint count = 0;
-        int rc = NativeMethods.zlink_spot_node_spots(_handle,
+        var rc = NativeMethods.zlink_spot_node_spots(Handle,
             IntPtr.Zero, ref count);
         ZlinkException.ThrowConfigIfError(rc);
         if (count == 0)
             return Array.Empty<SpotNodeSpotEntry>();
 
-        int entrySize = Marshal.SizeOf<ZlinkSpotNodeSpotEntry>();
-        IntPtr entries = Marshal.AllocHGlobal(
+        var entrySize = Marshal.SizeOf<ZlinkSpotNodeSpotEntry>();
+        var entries = Marshal.AllocHGlobal(
             checked((int)(count * (nuint)entrySize)));
         try
         {
-            nuint actual = count;
-            rc = NativeMethods.zlink_spot_node_spots(_handle,
+            var actual = count;
+            rc = NativeMethods.zlink_spot_node_spots(Handle,
                 entries, ref actual);
             ZlinkException.ThrowConfigIfError(rc);
-            SpotNodeSpotEntry[] result = new SpotNodeSpotEntry[(int)actual];
-            for (int i = 0; i < result.Length; i++)
+            var result = new SpotNodeSpotEntry[(int)actual];
+            for (var i = 0; i < result.Length; i++)
             {
-                ZlinkSpotNodeSpotEntry native =
+                var native =
                     Marshal.PtrToStructure<ZlinkSpotNodeSpotEntry>(
                         IntPtr.Add(entries, i * entrySize));
                 result[i] = new SpotNodeSpotEntry(
@@ -143,6 +139,7 @@ internal sealed partial class SpotNode : ISpotNode
                     native.RouteSynced != 0,
                     native.LastChangedMs);
             }
+
             return result;
         }
         finally
@@ -155,37 +152,38 @@ internal sealed partial class SpotNode : ISpotNode
     {
         EnsureNotDisposed();
         nuint count = 0;
-        int rc = NativeMethods.zlink_spot_node_actors(_handle,
+        var rc = NativeMethods.zlink_spot_node_actors(Handle,
             IntPtr.Zero, ref count);
         ZlinkException.ThrowConfigIfError(rc);
         if (count == 0)
             return Array.Empty<SpotNodeActorEntry>();
 
-        int entrySize = Marshal.SizeOf<ZlinkSpotNodeActorEntry>();
-        IntPtr entries = Marshal.AllocHGlobal(
+        var entrySize = Marshal.SizeOf<ZlinkSpotNodeActorEntry>();
+        var entries = Marshal.AllocHGlobal(
             checked((int)(count * (nuint)entrySize)));
         try
         {
-            nuint actual = count;
-            rc = NativeMethods.zlink_spot_node_actors(_handle,
+            var actual = count;
+            rc = NativeMethods.zlink_spot_node_actors(Handle,
                 entries, ref actual);
             ZlinkException.ThrowConfigIfError(rc);
-            SpotNodeActorEntry[] result = new SpotNodeActorEntry[(int)actual];
-            for (int i = 0; i < result.Length; i++)
+            var result = new SpotNodeActorEntry[(int)actual];
+            for (var i = 0; i < result.Length; i++)
             {
-                ZlinkSpotNodeActorEntry native =
+                var native =
                     Marshal.PtrToStructure<ZlinkSpotNodeActorEntry>(
                         IntPtr.Add(entries, i * entrySize));
                 result[i] = new SpotNodeActorEntry(
                     ActorInterop.FromNative(ref native.Actor),
                     RoutingIdInterop.FromNative(ref native.CurrentSpotRid)
-                        ?? throw new ZlinkConfigException(
-                            ZlinkConfigException.ErrorCode.InternalError),
+                    ?? throw new ZlinkConfigException(
+                        ZlinkConfigException.ErrorCode.InternalError),
                     (SpotKind)native.CurrentSpotKind,
                     native.RouteSynced != 0,
                     native.PendingMessageCount,
                     native.LastChangedMs);
             }
+
             return result;
         }
         finally
@@ -197,29 +195,30 @@ internal sealed partial class SpotNode : ISpotNode
     private SpotNodePeerEntry[] ReadPeerEntries(IntPtr filterPtr)
     {
         nuint count = 0;
-        int rc = NativeMethods.zlink_spot_node_peers(_handle, filterPtr,
+        var rc = NativeMethods.zlink_spot_node_peers(Handle, filterPtr,
             IntPtr.Zero, ref count);
         ZlinkException.ThrowConfigIfError(rc);
         if (count == 0)
             return Array.Empty<SpotNodePeerEntry>();
 
-        int entrySize = Marshal.SizeOf<ZlinkSpotNodePeerEntry>();
-        IntPtr entries = Marshal.AllocHGlobal(checked((int)(count * (nuint)entrySize)));
+        var entrySize = Marshal.SizeOf<ZlinkSpotNodePeerEntry>();
+        var entries = Marshal.AllocHGlobal(checked((int)(count * (nuint)entrySize)));
         try
         {
-            nuint actual = count;
-            rc = NativeMethods.zlink_spot_node_peers(_handle, filterPtr,
+            var actual = count;
+            rc = NativeMethods.zlink_spot_node_peers(Handle, filterPtr,
                 entries, ref actual);
             ZlinkException.ThrowConfigIfError(rc);
 
-            SpotNodePeerEntry[] result = new SpotNodePeerEntry[(int)actual];
-            for (int i = 0; i < result.Length; i++)
+            var result = new SpotNodePeerEntry[(int)actual];
+            for (var i = 0; i < result.Length; i++)
             {
-                IntPtr current = IntPtr.Add(entries, i * entrySize);
-                ZlinkSpotNodePeerEntry native =
+                var current = IntPtr.Add(entries, i * entrySize);
+                var native =
                     Marshal.PtrToStructure<ZlinkSpotNodePeerEntry>(current);
                 result[i] = TopologyModelConverters.FromNative(ref native);
             }
+
             return result;
         }
         finally
@@ -231,29 +230,30 @@ internal sealed partial class SpotNode : ISpotNode
     private SpotNodeSubjectEntry[] ReadSubjectEntries(IntPtr filterPtr)
     {
         nuint count = 0;
-        int rc = NativeMethods.zlink_spot_node_subjects(_handle,
+        var rc = NativeMethods.zlink_spot_node_subjects(Handle,
             filterPtr, IntPtr.Zero, ref count);
         ZlinkException.ThrowConfigIfError(rc);
         if (count == 0)
             return Array.Empty<SpotNodeSubjectEntry>();
 
-        int entrySize = Marshal.SizeOf<ZlinkSpotNodeSubjectEntry>();
-        IntPtr entries = Marshal.AllocHGlobal(checked((int)(count * (nuint)entrySize)));
+        var entrySize = Marshal.SizeOf<ZlinkSpotNodeSubjectEntry>();
+        var entries = Marshal.AllocHGlobal(checked((int)(count * (nuint)entrySize)));
         try
         {
-            nuint actual = count;
-            rc = NativeMethods.zlink_spot_node_subjects(_handle,
+            var actual = count;
+            rc = NativeMethods.zlink_spot_node_subjects(Handle,
                 filterPtr, entries, ref actual);
             ZlinkException.ThrowConfigIfError(rc);
 
-            SpotNodeSubjectEntry[] result = new SpotNodeSubjectEntry[(int)actual];
-            for (int i = 0; i < result.Length; i++)
+            var result = new SpotNodeSubjectEntry[(int)actual];
+            for (var i = 0; i < result.Length; i++)
             {
-                IntPtr current = IntPtr.Add(entries, i * entrySize);
-                ZlinkSpotNodeSubjectEntry native =
+                var current = IntPtr.Add(entries, i * entrySize);
+                var native =
                     Marshal.PtrToStructure<ZlinkSpotNodeSubjectEntry>(current);
                 result[i] = TopologyModelConverters.FromNative(ref native);
             }
+
             return result;
         }
         finally
@@ -266,32 +266,33 @@ internal sealed partial class SpotNode : ISpotNode
         IntPtr filterPtr)
     {
         nuint count = 0;
-        int rc = NativeMethods.zlink_spot_node_internal_sockets(
-            _handle, filterPtr, IntPtr.Zero, ref count);
+        var rc = NativeMethods.zlink_spot_node_internal_sockets(
+            Handle, filterPtr, IntPtr.Zero, ref count);
         ZlinkException.ThrowConfigIfError(rc);
         if (count == 0)
             return Array.Empty<SpotNodeSocketEntry>();
 
-        int entrySize = Marshal.SizeOf<ZlinkSpotNodeSocketEntry>();
-        IntPtr entries = Marshal.AllocHGlobal(
+        var entrySize = Marshal.SizeOf<ZlinkSpotNodeSocketEntry>();
+        var entries = Marshal.AllocHGlobal(
             checked((int)(count * (nuint)entrySize)));
         try
         {
-            nuint actual = count;
+            var actual = count;
             rc = NativeMethods.zlink_spot_node_internal_sockets(
-                _handle, filterPtr, entries, ref actual);
+                Handle, filterPtr, entries, ref actual);
             ZlinkException.ThrowConfigIfError(rc);
 
-            SpotNodeSocketEntry[] result =
+            var result =
                 new SpotNodeSocketEntry[(int)actual];
-            for (int i = 0; i < result.Length; i++)
+            for (var i = 0; i < result.Length; i++)
             {
-                IntPtr current = IntPtr.Add(entries, i * entrySize);
-                ZlinkSpotNodeSocketEntry native =
+                var current = IntPtr.Add(entries, i * entrySize);
+                var native =
                     Marshal.PtrToStructure<ZlinkSpotNodeSocketEntry>(
                         current);
                 result[i] = TopologyModelConverters.FromNative(ref native);
             }
+
             return result;
         }
         finally

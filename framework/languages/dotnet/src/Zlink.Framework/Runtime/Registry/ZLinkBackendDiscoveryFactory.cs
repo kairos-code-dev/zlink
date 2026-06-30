@@ -1,5 +1,3 @@
-using Zlink.Framework.Runtime.Backend.Contracts;
-
 namespace Zlink.Framework.Runtime.Registry;
 
 internal static class ZLinkBackendDiscoveryFactory
@@ -14,10 +12,7 @@ internal static class ZLinkBackendDiscoveryFactory
         IReadOnlyCollection<string> endpoints)
     {
         var discovery = adapter.CreateDiscovery(context, autoConnectType, channelName);
-        foreach (var endpoint in endpoints)
-        {
-            ConnectRegistryWithRetry(discovery, endpoint);
-        }
+        foreach (var endpoint in endpoints) ConnectRegistryWithRetry(discovery, endpoint);
 
         return discovery;
     }
@@ -26,8 +21,7 @@ internal static class ZLinkBackendDiscoveryFactory
         IZLinkBackendDiscovery discovery,
         string endpoint)
     {
-        for (var attempt = 0; ; attempt++)
-        {
+        for (var attempt = 0;; attempt++)
             try
             {
                 discovery.ConnectRegistry(endpoint);
@@ -37,6 +31,5 @@ internal static class ZLinkBackendDiscoveryFactory
             {
                 Thread.Sleep(50);
             }
-        }
     }
 }

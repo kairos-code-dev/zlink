@@ -1,6 +1,6 @@
+using ResilienceLifecycle.Client.Support;
 using ResilienceLifecycle.Shared;
 using Zlink.HttpClient;
-using ResilienceLifecycle.Client.Support;
 
 namespace ResilienceLifecycle.Client.Scenarios;
 
@@ -15,7 +15,8 @@ internal static class RlC3NodePauseRecoveryScenario
         ZLinkHttpClient providerB)
     {
         await providerB.Post("/shutdown").SubmitRawAsync();
-        await WaitUntilAsync(async () => !await IsHealthyAsync(providerB), "RL-C3 expected api-b simulated node pause/down.");
+        await WaitUntilAsync(async () => !await IsHealthyAsync(providerB),
+            "RL-C3 expected api-b simulated node pause/down.");
 
         var during = (await consumer.Post("/profile/request")
             .Body(new ProfileRequest("fast", "rl-c3-during-down"))
@@ -36,27 +37,38 @@ internal static class RlC3NodePauseRecoveryScenario
 
         {
             using var timeout = new CancellationTokenSource(TimeSpan.FromSeconds(15));
-            var waitA = providerA.Post("/evidence/wait").Body(new EvidenceWaitRequest(["marker=rl-c3-during-down"], [])).SubmitAsync<string[]>(timeout.Token).AsTask();
-            var waitB = providerB.Post("/evidence/wait").Body(new EvidenceWaitRequest(["marker=rl-c3-during-down"], [])).SubmitAsync<string[]>(timeout.Token).AsTask();
+            var waitA = providerA.Post("/evidence/wait").Body(new EvidenceWaitRequest(["marker=rl-c3-during-down"], []))
+                .SubmitAsync<string[]>(timeout.Token).AsTask();
+            var waitB = providerB.Post("/evidence/wait").Body(new EvidenceWaitRequest(["marker=rl-c3-during-down"], []))
+                .SubmitAsync<string[]>(timeout.Token).AsTask();
             var completed = await Task.WhenAny(waitA, waitB);
             var evidence = (await completed).Body;
             timeout.Cancel();
-            ScenarioAssert.That(evidence.Any(line => line.Contains("marker=rl-c3-during-down", StringComparison.Ordinal)), "RL-C3 did not record expected evidence 'marker=rl-c3-during-down'.");
+            ScenarioAssert.That(
+                evidence.Any(line => line.Contains("marker=rl-c3-during-down", StringComparison.Ordinal)),
+                "RL-C3 did not record expected evidence 'marker=rl-c3-during-down'.");
         }
         {
             using var timeout = new CancellationTokenSource(TimeSpan.FromSeconds(15));
-            var waitA = providerA.Post("/evidence/wait").Body(new EvidenceWaitRequest(["profile-request|rid=api-b|marker=rl-c3-recovered-"], [])).SubmitAsync<string[]>(timeout.Token).AsTask();
-            var waitB = providerB.Post("/evidence/wait").Body(new EvidenceWaitRequest(["profile-request|rid=api-b|marker=rl-c3-recovered-"], [])).SubmitAsync<string[]>(timeout.Token).AsTask();
+            var waitA = providerA.Post("/evidence/wait")
+                .Body(new EvidenceWaitRequest(["profile-request|rid=api-b|marker=rl-c3-recovered-"], []))
+                .SubmitAsync<string[]>(timeout.Token).AsTask();
+            var waitB = providerB.Post("/evidence/wait")
+                .Body(new EvidenceWaitRequest(["profile-request|rid=api-b|marker=rl-c3-recovered-"], []))
+                .SubmitAsync<string[]>(timeout.Token).AsTask();
             var completed = await Task.WhenAny(waitA, waitB);
             var evidence = (await completed).Body;
             timeout.Cancel();
-            ScenarioAssert.That(evidence.Any(line => line.Contains("profile-request|rid=api-b|marker=rl-c3-recovered-", StringComparison.Ordinal)), "RL-C3 did not record expected evidence 'marker=rl-c3-recovered-'.");
+            ScenarioAssert.That(
+                evidence.Any(line =>
+                    line.Contains("profile-request|rid=api-b|marker=rl-c3-recovered-", StringComparison.Ordinal)),
+                "RL-C3 did not record expected evidence 'marker=rl-c3-recovered-'.");
         }
 
         Console.WriteLine("scenario RL-C3 passed");
     }
 
-    static async Task<bool> IsHealthyAsync(ZLinkHttpClient provider)
+    private static async Task<bool> IsHealthyAsync(ZLinkHttpClient provider)
     {
         try
         {
@@ -68,14 +80,11 @@ internal static class RlC3NodePauseRecoveryScenario
         }
     }
 
-    static async Task WaitUntilAsync(Func<Task<bool>> condition, string message)
+    private static async Task WaitUntilAsync(Func<Task<bool>> condition, string message)
     {
         for (var attempt = 0; attempt < 120; attempt++)
         {
-            if (await condition())
-            {
-                return;
-            }
+            if (await condition()) return;
 
             await Task.Delay(250);
         }

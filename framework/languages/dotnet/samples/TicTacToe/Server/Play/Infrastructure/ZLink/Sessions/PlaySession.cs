@@ -1,11 +1,9 @@
-using Zlink.Framework.Contracts.Actors;
+using Zlink.Framework.Contracts.Messaging;
 using Zlink.Framework.Contracts.Streams;
-using Systems.Zlink;
-using Systems.Zlink.Stream.Connector.Contracts;
 
 namespace TicTacToe.Server.Play.Infrastructure.ZLink.Sessions;
 
-sealed class PlaySession(
+internal sealed class PlaySession(
     IZLinkSessionContext context,
     IZLinkSessionPacketDispatcher<IZLinkSessionContext> handlers,
     ILogger<PlaySession> logger)
@@ -30,10 +28,7 @@ sealed class PlaySession(
             Context.SessionId,
             boundActors.Length);
 
-        foreach (var actor in boundActors)
-        {
-            await actor.NotifyDisconnectedAsync(cancellationToken);
-        }
+        foreach (var actor in boundActors) await actor.NotifyDisconnectedAsync(cancellationToken);
     }
 
     public ValueTask OnErrorAsync(
@@ -51,13 +46,13 @@ sealed class PlaySession(
 
     public async ValueTask OnDispatchAsync(
         ZLinkSessionDispatchContext dispatch,
-        Zlink.Framework.Contracts.Messaging.ZLinkMessage payload,
+        ZLinkMessage payload,
         CancellationToken cancellationToken)
     {
         logger.LogInformation(
             "client -> play stream: message received. name={MessageName}, kind={Kind}, sessionId={SessionId}",
             dispatch.PacketName,
-            (dispatch.CanReply ? "Request" : "Send"),
+            dispatch.CanReply ? "Request" : "Send",
             Context.SessionId);
 
         if (await handlers.TryHandleAsync(
@@ -65,9 +60,7 @@ sealed class PlaySession(
                 dispatch,
                 payload,
                 cancellationToken))
-        {
             return;
-        }
 
         var actor = RequireSingleBoundActor($"relaying packet '{dispatch.PacketName}'");
         await actor.RelayAsync(payload, cancellationToken);

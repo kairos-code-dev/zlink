@@ -1,6 +1,6 @@
-namespace Zlink.Framework.Contracts.Dispatch;
-
 using Microsoft.Extensions.Logging;
+
+namespace Zlink.Framework.Contracts.Dispatch;
 
 public interface IZLinkDispatchOptions
 {
@@ -44,9 +44,8 @@ public interface IZLinkMessageFlowObserver
 // is read live by every dispatch surface. Thread-safe.
 public interface IZLinkMessageFlowControl
 {
-    void SetMessageFlowMode(ZLinkMessageFlowLogMode mode);
-
     ZLinkMessageFlowLogMode MessageFlowMode { get; }
+    void SetMessageFlowMode(ZLinkMessageFlowLogMode mode);
 }
 
 // A transition or error result in a message's lifecycle.

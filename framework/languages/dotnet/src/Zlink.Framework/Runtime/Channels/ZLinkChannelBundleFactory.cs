@@ -1,11 +1,3 @@
-using Zlink.Framework.Runtime.Backend.Contracts;
-using Zlink.Framework.Runtime.Actors;
-using Zlink.Framework.Runtime.Diagnostics;
-using Zlink.Framework.Runtime.Execution;
-using Zlink.Framework.Runtime.Host;
-using Zlink.Framework.Runtime.Messaging;
-using Zlink.Framework.Runtime.Registry;
-
 namespace Zlink.Framework.Runtime.Channels;
 
 internal sealed class ZLinkChannelBundleFactory(
@@ -31,12 +23,10 @@ internal sealed class ZLinkChannelBundleFactory(
                 localRid = ZLinkRoutingIdPolicy.Derive(channel.RoutingId, "dealer");
                 dealer.SetRoutingId(localRid);
             }
+
             // weight 는 bind/connect/discovery 前에 적용해 default-weight 노출 창을 없앤다.
             dealer.SetPeerWeight(channel.Client.SocketConfig.Weight);
-            if (!string.IsNullOrWhiteSpace(channel.Client.BindEndpoint))
-            {
-                dealer.Bind(channel.Client.BindEndpoint);
-            }
+            if (!string.IsNullOrWhiteSpace(channel.Client.BindEndpoint)) dealer.Bind(channel.Client.BindEndpoint);
 
             bundle = new ZLinkChannelRuntimeBundle(
                 dealer,
@@ -48,11 +38,8 @@ internal sealed class ZLinkChannelBundleFactory(
                 "dealer");
 
             if (channel.Client.ManualConnections.Count > 0)
-            {
                 AttachManualConnections(bundle, dealer, channel.Client.ManualConnections);
-            }
             else
-            {
                 AttachDiscovery(
                     bundle,
                     adapter,
@@ -61,20 +48,14 @@ internal sealed class ZLinkChannelBundleFactory(
                     ZLinkAutoConnectType.ClientServer,
                     registration.Discovery?.Endpoints ?? [],
                     dealer.AttachDiscovery);
-            }
 
             return bundle;
         }
         catch
         {
             if (bundle is not null)
-            {
                 DisposeFailedBundle(bundle);
-            }
-            else if (dealer is not null)
-            {
-                dealer.DisposeAsync().AsTask().GetAwaiter().GetResult();
-            }
+            else if (dealer is not null) dealer.DisposeAsync().AsTask().GetAwaiter().GetResult();
 
             throw;
         }
@@ -99,13 +80,13 @@ internal sealed class ZLinkChannelBundleFactory(
                 localRid = channel.RoutingId;
                 router.SetRoutingId(localRid);
             }
+
             // weight 는 bind 前에 적용해 default-weight 노출 창을 없앤다(peer 가 그 사이 연결할 수 있다).
             router.SetPeerWeight(channel.Server.SocketConfig.Weight);
             router.Bind(channel.Server!.BindEndpoint!);
             bundle = new ZLinkChannelRuntimeBundle(router, localRid: localRid, socketRole: "router");
 
             if (registration.Discovery is not null)
-            {
                 AttachDiscovery(
                     bundle,
                     adapter,
@@ -114,20 +95,14 @@ internal sealed class ZLinkChannelBundleFactory(
                     ZLinkAutoConnectType.ClientServer,
                     registration.Discovery.Endpoints,
                     router.AttachDiscovery);
-            }
 
             return bundle;
         }
         catch
         {
             if (bundle is not null)
-            {
                 DisposeFailedBundle(bundle);
-            }
-            else if (router is not null)
-            {
-                router.DisposeAsync().AsTask().GetAwaiter().GetResult();
-            }
+            else if (router is not null) router.DisposeAsync().AsTask().GetAwaiter().GetResult();
 
             throw;
         }
@@ -152,15 +127,13 @@ internal sealed class ZLinkChannelBundleFactory(
                 localRid = ZLinkRoutingIdPolicy.Derive(channel.RoutingId, "sub");
                 subscriber.SetRoutingId(localRid);
             }
+
             subscriber.SetSubscription(string.Empty);
             bundle = new ZLinkChannelRuntimeBundle(subscriber, localRid: localRid, socketRole: "sub");
 
             if (channel.Subscriber!.ManualConnections.Count > 0)
-            {
                 AttachManualConnections(bundle, subscriber, channel.Subscriber.ManualConnections);
-            }
             else
-            {
                 AttachDiscovery(
                     bundle,
                     adapter,
@@ -169,20 +142,14 @@ internal sealed class ZLinkChannelBundleFactory(
                     ZLinkAutoConnectType.Fanout,
                     registration.Discovery?.Endpoints ?? [],
                     subscriber.AttachDiscovery);
-            }
 
             return bundle;
         }
         catch
         {
             if (bundle is not null)
-            {
                 DisposeFailedBundle(bundle);
-            }
-            else if (subscriber is not null)
-            {
-                subscriber.DisposeAsync().AsTask().GetAwaiter().GetResult();
-            }
+            else if (subscriber is not null) subscriber.DisposeAsync().AsTask().GetAwaiter().GetResult();
 
             throw;
         }
@@ -208,6 +175,7 @@ internal sealed class ZLinkChannelBundleFactory(
                 localRid = ZLinkRoutingIdPolicy.Derive(channel.RoutingId, "pub");
                 publisher.SetRoutingId(localRid);
             }
+
             publisher.Bind(channel.Publisher!.BindEndpoint!);
             bundle = new ZLinkChannelRuntimeBundle(
                 publisher,
@@ -219,7 +187,6 @@ internal sealed class ZLinkChannelBundleFactory(
                 "pub");
 
             if (registration.Discovery is not null)
-            {
                 AttachDiscovery(
                     bundle,
                     adapter,
@@ -228,20 +195,14 @@ internal sealed class ZLinkChannelBundleFactory(
                     ZLinkAutoConnectType.Fanout,
                     registration.Discovery.Endpoints,
                     publisher.AttachDiscovery);
-            }
 
             return bundle;
         }
         catch
         {
             if (bundle is not null)
-            {
                 DisposeFailedBundle(bundle);
-            }
-            else if (publisher is not null)
-            {
-                publisher.DisposeAsync().AsTask().GetAwaiter().GetResult();
-            }
+            else if (publisher is not null) publisher.DisposeAsync().AsTask().GetAwaiter().GetResult();
 
             throw;
         }
@@ -251,15 +212,9 @@ internal sealed class ZLinkChannelBundleFactory(
         IZLinkBackendSocketOptions socket,
         IZLinkSocketConfig config)
     {
-        if (config.SendHighWaterMark > 0)
-        {
-            socket.SetSendHighWaterMark(config.SendHighWaterMark);
-        }
+        if (config.SendHighWaterMark > 0) socket.SetSendHighWaterMark(config.SendHighWaterMark);
 
-        if (config.ReceiveHighWaterMark > 0)
-        {
-            socket.SetReceiveHighWaterMark(config.ReceiveHighWaterMark);
-        }
+        if (config.ReceiveHighWaterMark > 0) socket.SetReceiveHighWaterMark(config.ReceiveHighWaterMark);
     }
 
     private static void AttachManualConnections(

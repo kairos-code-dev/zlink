@@ -1,6 +1,6 @@
+using SpotService.Client.Support;
 using SpotService.Shared;
 using Systems.Zlink.Stream.Connector.Contracts;
-using SpotService.Client.Support;
 
 namespace SpotService.Client.Scenarios;
 
@@ -25,7 +25,7 @@ internal static class SmD12Scenario
                     RequestTimeout = TimeSpan.FromSeconds(5),
                     Heartbeat = new ZlinkStreamHeartbeatOptions { Enabled = false },
                     DispatchMode = ZlinkStreamDispatchMode.Immediate,
-                    MaxReceivedMessages = 1024,
+                    MaxReceivedMessages = 1024
                 });
                 try
                 {
@@ -45,9 +45,10 @@ internal static class SmD12Scenario
             }
 
             if (first is null)
-            {
-                throw new InvalidOperationException(last is null ? $"Actor auth did not become routable: {actorId}" : $"Actor auth did not become routable: {actorId}. Last error: {last.Message}", last);
-            }
+                throw new InvalidOperationException(
+                    last is null
+                        ? $"Actor auth did not become routable: {actorId}"
+                        : $"Actor auth did not become routable: {actorId}. Last error: {last.Message}", last);
 
             var firstReply = await first.Request(new ActorPingReq("before-transfer"))
                 .PacketName("ActorPingReq")
@@ -68,7 +69,7 @@ internal static class SmD12Scenario
                     RequestTimeout = TimeSpan.FromSeconds(5),
                     Heartbeat = new ZlinkStreamHeartbeatOptions { Enabled = false },
                     DispatchMode = ZlinkStreamDispatchMode.Immediate,
-                    MaxReceivedMessages = 1024,
+                    MaxReceivedMessages = 1024
                 });
                 try
                 {
@@ -88,9 +89,10 @@ internal static class SmD12Scenario
             }
 
             if (second is null)
-            {
-                throw new InvalidOperationException(last is null ? $"Actor auth did not become routable: {actorId}" : $"Actor auth did not become routable: {actorId}. Last error: {last.Message}", last);
-            }
+                throw new InvalidOperationException(
+                    last is null
+                        ? $"Actor auth did not become routable: {actorId}"
+                        : $"Actor auth did not become routable: {actorId}. Last error: {last.Message}", last);
 
             var snapshot = await second.Request(new SnapshotReq(actorId))
                 .PacketName("SnapshotReq")
@@ -112,14 +114,8 @@ internal static class SmD12Scenario
         }
         finally
         {
-            if (first is not null)
-            {
-                await first.DisposeAsync();
-            }
-            if (second is not null)
-            {
-                await second.DisposeAsync();
-            }
+            if (first is not null) await first.DisposeAsync();
+            if (second is not null) await second.DisposeAsync();
         }
 
         Console.WriteLine("operation SpotService.sm-d12 passed");

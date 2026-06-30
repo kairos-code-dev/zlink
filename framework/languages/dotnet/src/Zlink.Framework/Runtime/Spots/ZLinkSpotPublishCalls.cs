@@ -1,6 +1,3 @@
-using Microsoft.Extensions.DependencyInjection;
-using Zlink.Framework.Runtime.Backend.Contracts;
-
 namespace Zlink.Framework.Runtime.Spots;
 
 internal sealed class ZLinkCurrentSpotPublishCall<TEvent>(
@@ -67,16 +64,14 @@ internal sealed class ZLinkExternalSpotPublishCall<TEvent>(
             correlationId);
 
         if (runtime.Flow.Enabled(ZLinkMessageFlowOutcome.Sent))
-        {
             runtime.Flow.Trace(new ZLinkMessageFlowEvent(
                 ZLinkMessageFlowOutcome.Sent,
                 ZLinkDispatchErrorSurface.SpotSubscription,
                 ZLinkDispatchMessageKind.Publish,
-                PacketName: packetName,
-                ChannelName: channelName,
-                Topic: topic,
-                CorrelationId: correlationId));
-        }
+                packetName,
+                channelName,
+                topic,
+                correlationId));
 
         return (bundle.Submitter
                 ?? throw new InvalidOperationException("External SPOT publish submitter is not initialized."))
@@ -107,7 +102,7 @@ internal static class ZLinkSpotPublishEnvelope
             topic,
             null,
             null,
-            Source: channelName);
+            channelName);
         return ZLinkEnvelopeCodec.EncodeParts(
             header,
             message,

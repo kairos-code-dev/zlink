@@ -1,76 +1,22 @@
-
-using Zlink.Framework.Runtime.Streams;
-
 namespace Zlink.Framework.Runtime.Spots;
 
 internal sealed partial class ZLinkSpotActivation
 {
     public CancellationToken StopToken => _stopSource.Token;
 
-    public async ValueTask<ZLinkSpotCreateResponse> InitializeAsync(
-        ZLinkMessage request,
-        CancellationToken cancellationToken)
+    public async ValueTask DisposeAsync()
     {
-        RegisterWithoutSynchronizationContext(() =>
-        {
-            ZLinkSpotNativeDispatchRouter.Attach(
-                NativeSpot,
-                routeReadable: receivedMessages =>
-                {
-                    if (receivedMessages.Count == 0)
-                    {
-                        QueueSerialized(
-                            static (activation, ct) => activation._dispatcher.DispatchRouteDrainAsync(ct));
-                        return;
-                    }
+        if (Interlocked.Exchange(ref _disposed, 1) != 0) return;
 
-                    foreach (var received in receivedMessages)
-                    {
-                        QueueSerialized(
-                            static (activation, state, ct) => activation._dispatcher.DispatchRouteAsync(state, ct),
-                            received);
-                    }
-                },
-                channelReplyReadable: drain => drain?.Invoke(),
-                subscribeReadable: () => QueueSerialized(
-                    static (activation, ct) => activation.DispatchSubscriptionsAsync(ct)),
-                actorJoinReadable: () => QueueSerialized(
-                    static (activation, ct) => activation._dispatcher.DispatchActorJoinDrainAsync(ct)),
-                actorPartsReadable: actorParts => QueueSerialized(
-                    static (activation, state, ct) => activation._dispatcher.DispatchActorPartsAsync(state, ct),
-                    actorParts));
+        _stopSource.Cancel();
+        await _subscriptionPump.StopAsync();
 
-            return 0;
-        });
-
-        _subscriptionPump.StartIfNeeded(
-            _subscriptions.HasSubscriptions,
-            StopToken,
-            ct => ExecuteSerializedAsync(
-                static (activation, innerCt) => activation.DispatchSubscriptionsAsync(innerCt),
-                ct));
-        var create = new SpotCreateCallState(request);
-        await ExecuteSerializedAsync(
-            static async (activation, state, ct) =>
-            {
-                state.Response = await activation.Spot.OnCreateAsync(state.Request, ct);
-                if (!state.Response.Accepted)
-                {
-                    return;
-                }
-
-                await activation.Spot.OnInitializeAsync(ct);
-            },
-            create,
-            cancellationToken);
-        return create.Response;
-    }
-
-    private sealed class SpotCreateCallState(ZLinkMessage request)
-    {
-        public ZLinkMessage Request { get; } = request;
-
-        public ZLinkSpotCreateResponse Response { get; set; }
+        await _timers.DisposeAsync();
+        await _serial.DisposeAsync();
+        await _outbound.DisposeAsync();
+        await NativeSpot.DisposeAsync();
+        _stopSource.Dispose();
+        await _scope.DisposeAsync();
     }
 
     public ValueTask<IZLinkTimer> AddTimer<THandler>(
@@ -108,6 +54,63 @@ internal sealed partial class ZLinkSpotActivation
             callback => QueueSerialized((_, ct) => callback(ct)));
     }
 
+    ValueTask<bool> IZLinkSpotContext.CloseAsync(CancellationToken cancellationToken)
+    {
+        return _runtime.CloseSpotAsync(SpotRid, cancellationToken);
+    }
+
+    public async ValueTask<ZLinkSpotCreateResponse> InitializeAsync(
+        ZLinkMessage request,
+        CancellationToken cancellationToken)
+    {
+        RegisterWithoutSynchronizationContext(() =>
+        {
+            ZLinkSpotNativeDispatchRouter.Attach(
+                NativeSpot,
+                receivedMessages =>
+                {
+                    if (receivedMessages.Count == 0)
+                    {
+                        QueueSerialized(static (activation, ct) => activation._dispatcher.DispatchRouteDrainAsync(ct));
+                        return;
+                    }
+
+                    foreach (var received in receivedMessages)
+                        QueueSerialized(
+                            static (activation, state, ct) => activation._dispatcher.DispatchRouteAsync(state, ct),
+                            received);
+                },
+                drain => drain?.Invoke(),
+                () => QueueSerialized(static (activation, ct) => activation.DispatchSubscriptionsAsync(ct)),
+                () => QueueSerialized(static (activation, ct) =>
+                    activation._dispatcher.DispatchActorJoinDrainAsync(ct)),
+                actorParts => QueueSerialized(
+                    static (activation, state, ct) => activation._dispatcher.DispatchActorPartsAsync(state, ct),
+                    actorParts));
+
+            return 0;
+        });
+
+        _subscriptionPump.StartIfNeeded(
+            _subscriptions.HasSubscriptions,
+            StopToken,
+            ct => ExecuteSerializedAsync(
+                static (activation, innerCt) => activation.DispatchSubscriptionsAsync(innerCt),
+                ct));
+        var create = new SpotCreateCallState(request);
+        await ExecuteSerializedAsync(
+            static async (activation, state, ct) =>
+            {
+                state.Response = await activation.Spot.OnCreateAsync(state.Request, ct);
+                if (!state.Response.Accepted) return;
+
+                await activation.Spot.OnInitializeAsync(ct);
+            },
+            create,
+            cancellationToken);
+        return create.Response;
+    }
+
     public async ValueTask SubmitActorAsync(
         IZLinkActor actor,
         ZLinkActorRuntimeState runtimeState,
@@ -141,29 +144,6 @@ internal sealed partial class ZLinkSpotActivation
         return ExecuteSerializedAsync(
             static (activation, ct) => activation.Spot.OnClosingAsync(ct),
             cancellationToken);
-    }
-
-    ValueTask<bool> IZLinkSpotContext.CloseAsync(CancellationToken cancellationToken)
-    {
-        return _runtime.CloseSpotAsync(SpotRid, cancellationToken);
-    }
-
-    public async ValueTask DisposeAsync()
-    {
-        if (Interlocked.Exchange(ref _disposed, 1) != 0)
-        {
-            return;
-        }
-
-        _stopSource.Cancel();
-        await _subscriptionPump.StopAsync();
-
-        await _timers.DisposeAsync();
-        await _serial.DisposeAsync();
-        await _outbound.DisposeAsync();
-        await NativeSpot.DisposeAsync();
-        _stopSource.Dispose();
-        await _scope.DisposeAsync();
     }
 
     private async ValueTask ExecuteSerializedAsync(
@@ -221,7 +201,7 @@ internal sealed partial class ZLinkSpotActivation
             ZLinkSpotTimerFailureEventFactory.Create(
                 SpotNodeName,
                 SpotRid,
-                isEntrySpot: false,
+                false,
                 descriptor,
                 tick,
                 exception,
@@ -241,5 +221,12 @@ internal sealed partial class ZLinkSpotActivation
         {
             SynchronizationContext.SetSynchronizationContext(previous);
         }
+    }
+
+    private sealed class SpotCreateCallState(ZLinkMessage request)
+    {
+        public ZLinkMessage Request { get; } = request;
+
+        public ZLinkSpotCreateResponse Response { get; set; }
     }
 }

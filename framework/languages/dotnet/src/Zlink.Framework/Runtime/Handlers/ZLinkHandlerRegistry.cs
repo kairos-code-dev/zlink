@@ -4,11 +4,16 @@ namespace Zlink.Framework.Runtime.Handlers;
 
 internal sealed class ZLinkHandlerRegistry
 {
-    private readonly IReadOnlyDictionary<string, IReadOnlyList<ZLinkHandlerEndpointDescriptor>> _requests;
     private readonly IReadOnlyDictionary<string, IReadOnlyList<ZLinkHandlerEndpointDescriptor>> _commands;
     private readonly IReadOnlyDictionary<string, IReadOnlyList<ZLinkHandlerEndpointDescriptor>> _publishes;
-    private readonly ConcurrentDictionary<ZLinkHandlerSelectionKey, ZLinkHandlerEndpointDescriptor> _singleSelections = new();
-    private readonly ConcurrentDictionary<ZLinkHandlerSelectionKey, IReadOnlyList<ZLinkHandlerEndpointDescriptor>> _publishSelections = new();
+
+    private readonly ConcurrentDictionary<ZLinkHandlerSelectionKey, IReadOnlyList<ZLinkHandlerEndpointDescriptor>>
+        _publishSelections = new();
+
+    private readonly IReadOnlyDictionary<string, IReadOnlyList<ZLinkHandlerEndpointDescriptor>> _requests;
+
+    private readonly ConcurrentDictionary<ZLinkHandlerSelectionKey, ZLinkHandlerEndpointDescriptor> _singleSelections =
+        new();
 
     public ZLinkHandlerRegistry(IEnumerable<ZLinkHandlerEndpointDescriptor> endpoints)
     {
@@ -17,7 +22,6 @@ internal sealed class ZLinkHandlerRegistry
         var publishes = new Dictionary<string, List<ZLinkHandlerEndpointDescriptor>>(StringComparer.Ordinal);
 
         foreach (var endpoint in endpoints)
-        {
             switch (endpoint.Kind)
             {
                 case ZLinkMessageKind.Request:
@@ -30,7 +34,6 @@ internal sealed class ZLinkHandlerRegistry
                     AddEndpoint(publishes, endpoint);
                     break;
             }
-        }
 
         _requests = Freeze(requests);
         _commands = Freeze(commands);
@@ -105,10 +108,7 @@ internal sealed class ZLinkHandlerRegistry
         string messageName)
     {
         var key = new ZLinkHandlerSelectionKey(ZLinkMessageKind.Publish, channelName, messageName);
-        if (_publishSelections.TryGetValue(key, out var cached))
-        {
-            return cached;
-        }
+        if (_publishSelections.TryGetValue(key, out var cached)) return cached;
 
         var selected = _publishes.TryGetValue(messageName, out var endpoints)
             ? FilterEndpoints(channelName, mappedGroups, endpoints)
@@ -148,10 +148,7 @@ internal sealed class ZLinkHandlerRegistry
         string missingMessage)
     {
         var key = new ZLinkHandlerSelectionKey(kind, channelName, messageName);
-        if (_singleSelections.TryGetValue(key, out var cached))
-        {
-            return cached;
-        }
+        if (_singleSelections.TryGetValue(key, out var cached)) return cached;
 
         var selected = registry.TryGetValue(messageName, out var endpoints)
             ? SelectEndpoint(channelName, mappedGroups, messageName, endpoints, kindName)
@@ -222,10 +219,7 @@ internal sealed class ZLinkHandlerRegistry
         List<ZLinkHandlerEndpointDescriptor>? matches = null;
         foreach (var endpoint in endpoints)
         {
-            if (!IsMappedToChannel(endpoint, channelName, mappedGroups))
-            {
-                continue;
-            }
+            if (!IsMappedToChannel(endpoint, channelName, mappedGroups)) continue;
 
             matches ??= [];
             matches.Add(endpoint);
@@ -242,12 +236,10 @@ internal sealed class ZLinkHandlerRegistry
         IReadOnlySet<string> mappedGroups)
     {
         if (endpoint.ExplicitChannelName is not null)
-        {
             return string.Equals(endpoint.ExplicitChannelName, channelName, StringComparison.Ordinal);
-        }
 
         return mappedGroups.Count > 0
-            && endpoint.Groups.Count > 0
-            && endpoint.Groups.Any(mappedGroups.Contains);
+               && endpoint.Groups.Count > 0
+               && endpoint.Groups.Any(mappedGroups.Contains);
     }
 }

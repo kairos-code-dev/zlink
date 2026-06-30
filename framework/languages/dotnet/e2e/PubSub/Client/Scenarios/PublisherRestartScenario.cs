@@ -1,7 +1,7 @@
-using PubSub.Shared;
 using System.Diagnostics;
-using Zlink.HttpClient;
 using PubSub.Client.Support;
+using PubSub.Shared;
+using Zlink.HttpClient;
 
 namespace PubSub.Client.Scenarios;
 
@@ -24,8 +24,7 @@ internal static class PublisherRestartScenario
             .SubmitRawAsync();
         await WaitForSubscribersAsync(subscribers, new EvidenceWaitRequest(
             ["event|", $"run={runId}", $"topic={PubSubNames.MainTopic}", "seq=1"],
-            [],
-            10000));
+            []));
 
         // Stop the HTTP publisher server and wait until the client observes the process gap.
         await publisher.Post("/shutdown").SubmitRawAsync();
@@ -90,18 +89,17 @@ internal static class PublisherRestartScenario
         // Recovery is proven by post-restart delivery to every subscriber, not by replaying downtime data.
         await WaitForSubscribersAsync(subscribers, new EvidenceWaitRequest(
             ["event|", $"run={runId}", $"topic={PubSubNames.MainTopic}"],
-            [],
-            10000)
+            [])
         {
             ContainsAnyLineGroups = Enumerable.Range(20, 23)
                 .Select(seq => new[] { $"seq={seq}|", $"run={runId}", $"topic={PubSubNames.MainTopic}" })
-                .ToArray(),
+                .ToArray()
         });
         Console.WriteLine("scenario PS-B2 passed");
         return restartedPublisher;
     }
 
-    static async Task WaitForSubscribersAsync(
+    private static async Task WaitForSubscribersAsync(
         IReadOnlyList<ZLinkHttpClient> subscribers,
         EvidenceWaitRequest request)
     {

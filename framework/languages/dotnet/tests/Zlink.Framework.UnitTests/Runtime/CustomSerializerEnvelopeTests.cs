@@ -1,12 +1,10 @@
+using System.Text;
 using MessagePack;
 using Systems.Zlink.Stream.Connector.Contracts;
 using Zlink.Framework.Codecs.MessagePack;
 using Zlink.Framework.Codecs.Protobuf;
-using Zlink.Framework.Contracts.Codecs;
 using Zlink.Framework.Contracts.Messaging;
 using Zlink.Framework.Runtime.Codecs;
-using Zlink.Framework.Runtime.Messaging;
-using Zlink.Framework.Runtime.Streams;
 using StringValue = Google.Protobuf.WellKnownTypes.StringValue;
 
 namespace Zlink.Framework.UnitTests.Runtime;
@@ -64,7 +62,8 @@ public sealed class CustomSerializerEnvelopeTests
         codecs.Use(ZLinkProtobufCodec.Default);
         var value = new StringValue { Value = "hello" };
 
-        var parts = ZLinkEnvelopeCodec.EncodeParts(CreateHeader(nameof(StringValue)), value, typeof(StringValue), codecs);
+        var parts = ZLinkEnvelopeCodec.EncodeParts(CreateHeader(nameof(StringValue)), value, typeof(StringValue),
+            codecs);
 
         Assert.Equal("application/x-protobuf", ZLinkEnvelopeCodec.DecodeHeader(parts).ContentType);
         var decoded = Assert.IsType<StringValue>(ZLinkEnvelopeCodec.DecodeBody(parts, typeof(StringValue), codecs));
@@ -78,7 +77,8 @@ public sealed class CustomSerializerEnvelopeTests
         codecs.Use(ZLinkMessagePackCodec.Default);
         var value = new PackedProbe("hello");
 
-        var parts = ZLinkEnvelopeCodec.EncodeParts(CreateHeader(nameof(PackedProbe)), value, typeof(PackedProbe), codecs);
+        var parts = ZLinkEnvelopeCodec.EncodeParts(CreateHeader(nameof(PackedProbe)), value, typeof(PackedProbe),
+            codecs);
 
         Assert.Equal("application/x-msgpack", ZLinkEnvelopeCodec.DecodeHeader(parts).ContentType);
         var decoded = Assert.IsType<PackedProbe>(ZLinkEnvelopeCodec.DecodeBody(parts, typeof(PackedProbe), codecs));
@@ -300,7 +300,7 @@ public sealed class CustomSerializerEnvelopeTests
         var encoded = ZLinkStreamPacketPayloadCodec.Encode(new Probe("hello"), typeof(Probe), codecs);
 
         Assert.Equal(ZlinkStreamCodec.Protobuf, encoded.Codec);
-        Assert.Equal("AVRO:hello", System.Text.Encoding.UTF8.GetString(encoded.Payload.Span));
+        Assert.Equal("AVRO:hello", Encoding.UTF8.GetString(encoded.Payload.Span));
 
         using var payload = Message.From(encoded.Payload.Span);
         var header = new ZlinkStreamHeader(
@@ -354,11 +354,6 @@ public sealed class CustomSerializerEnvelopeTests
 
         Assert.Throws<InvalidOperationException>(() => codecs.SingleCustomSerializer());
     }
-
-    private sealed record Probe(string Text);
-
-    [MessagePackObject]
-    public sealed record PackedProbe([property: Key(0)] string Text);
 
     private static ZLinkEnvelopeHeader CreateHeader(string messageName)
     {
@@ -440,17 +435,22 @@ public sealed class CustomSerializerEnvelopeTests
         Assert.Equal(expected, actual);
     }
 
+    private sealed record Probe(string Text);
+
+    [MessagePackObject]
+    public sealed record PackedProbe([property: Key(0)] string Text);
+
     private sealed class MarkerSerializer : IZLinkMessageSerializer
     {
         public ZLinkEncodedPayload Serialize(object value, Type type)
         {
             var probe = (Probe)value;
-            return ZLinkEncodedPayload.From(System.Text.Encoding.UTF8.GetBytes("AVRO:" + probe.Text));
+            return ZLinkEncodedPayload.From(Encoding.UTF8.GetBytes("AVRO:" + probe.Text));
         }
 
         public object? Deserialize(ZLinkEncodedPayload payload, Type type)
         {
-            var text = System.Text.Encoding.UTF8.GetString(payload.Bytes.Span);
+            var text = Encoding.UTF8.GetString(payload.Bytes.Span);
             var value = text.StartsWith("AVRO:", StringComparison.Ordinal) ? text["AVRO:".Length..] : text;
             return new Probe(value);
         }

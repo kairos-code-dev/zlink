@@ -1,14 +1,13 @@
+using SpotService.Server.MultiNode.Spots;
 using SpotService.Shared;
 using Systems.Zlink;
 using Zlink.Framework.Contracts.Actors;
 using Zlink.Framework.Contracts.Channels;
 using Zlink.Framework.Contracts.Errors;
+using Zlink.Framework.Contracts.Messaging;
 using Zlink.Framework.Contracts.Streams;
-using SpotService.Server.MultiNode.Handlers;
-using SpotService.Server.MultiNode.Spots;
 
 namespace SpotService.Server.MultiNode.Handlers;
-
 
 internal sealed class ScenarioSession(
     IZLinkSessionContext context,
@@ -27,7 +26,6 @@ internal sealed class ScenarioSession(
     public async ValueTask OnDisconnectedAsync(CancellationToken cancellationToken)
     {
         foreach (var actor in Context.Actors.Bound.Take(1))
-        {
             try
             {
                 await actor.NotifyDisconnectedAsync(cancellationToken);
@@ -39,7 +37,6 @@ internal sealed class ScenarioSession(
                     $"session-disconnect-skip|rid={evidence.Rid}|session={Context.SessionId}"
                     + $"|actor={actor.ActorId}|reason=actor-route-not-found");
             }
-        }
 
         evidence.Add($"session-disconnected|rid={evidence.Rid}|session={Context.SessionId}");
     }
@@ -53,13 +50,10 @@ internal sealed class ScenarioSession(
 
     public async ValueTask OnDispatchAsync(
         ZLinkSessionDispatchContext dispatch,
-        Zlink.Framework.Contracts.Messaging.ZLinkMessage payload,
+        ZLinkMessage payload,
         CancellationToken cancellationToken)
     {
-        if (await handlers.TryHandleAsync(Context, dispatch, payload, cancellationToken))
-        {
-            return;
-        }
+        if (await handlers.TryHandleAsync(Context, dispatch, payload, cancellationToken)) return;
 
         var actorId = dispatch.Metadata.Find(SpotServiceNames.ActorIdMetadata);
         var actor = string.IsNullOrWhiteSpace(actorId)
@@ -92,7 +86,7 @@ internal sealed class AuthSessionHandler(
     public async ValueTask HandleAsync(
         IZLinkSessionContext context,
         ZLinkSessionDispatchContext dispatch,
-        Zlink.Framework.Contracts.Messaging.ZLinkMessage payload,
+        ZLinkMessage payload,
         CancellationToken cancellationToken)
     {
         _ = dispatch;
@@ -142,7 +136,7 @@ internal sealed class MultiBindSessionHandler(
     public async ValueTask HandleAsync(
         IZLinkSessionContext context,
         ZLinkSessionDispatchContext dispatch,
-        Zlink.Framework.Contracts.Messaging.ZLinkMessage payload,
+        ZLinkMessage payload,
         CancellationToken cancellationToken)
     {
         _ = dispatch;
@@ -176,7 +170,7 @@ internal sealed class UserSpotAuthSessionHandler(
     public async ValueTask HandleAsync(
         IZLinkSessionContext context,
         ZLinkSessionDispatchContext dispatch,
-        Zlink.Framework.Contracts.Messaging.ZLinkMessage payload,
+        ZLinkMessage payload,
         CancellationToken cancellationToken)
     {
         _ = dispatch;
@@ -211,7 +205,7 @@ internal sealed class UserSpotAuthSessionHandler(
         return new JoinUserSpotActorReply(
             request.SpotRid,
             actor.ActorId,
-            Accepted: true,
+            true,
             actor.Generation);
     }
 
@@ -237,8 +231,6 @@ internal sealed class UserSpotAuthSessionHandler(
     private static void EnsureAccepted(JoinUserSpotActorReply joined)
     {
         if (!joined.Accepted)
-        {
             throw new InvalidOperationException($"User spot actor join was rejected: {joined.ActorId}");
-        }
     }
 }

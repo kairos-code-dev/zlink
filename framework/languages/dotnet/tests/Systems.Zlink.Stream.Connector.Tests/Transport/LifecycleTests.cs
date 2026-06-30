@@ -1,6 +1,5 @@
 using System.Net;
 using System.Net.Sockets;
-using Systems.Zlink.Stream.Connector;
 using Systems.Zlink.Stream.Connector.Contracts;
 using Xunit;
 
@@ -204,10 +203,7 @@ public sealed partial class StreamConnectorTests
         var reconnecting = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
         connector.ConnectionStateChanged += (change, _) =>
         {
-            if (change.Current == ZlinkStreamConnectionState.Reconnecting)
-            {
-                reconnecting.TrySetResult();
-            }
+            if (change.Current == ZlinkStreamConnectionState.Reconnecting) reconnecting.TrySetResult();
 
             return ValueTask.CompletedTask;
         };

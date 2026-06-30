@@ -1,14 +1,16 @@
+using System.Security.Cryptography;
+using System.Text;
 using System.Text.Json;
 using GameQuest.QuestMission.Application;
-using GameQuest.Shared;
 using GameQuest.Server.Configuration;
+using GameQuest.Shared;
 
 namespace GameQuest.QuestMission.Infrastructure.Store;
 
 internal sealed class QuestStore : IQuestStore
 {
-    private readonly string _directory;
     private static readonly JsonSerializerOptions JsonOptions = new(JsonSerializerDefaults.Web);
+    private readonly string _directory;
 
     public QuestStore(GameQuestTopology topology)
     {
@@ -67,9 +69,7 @@ internal sealed class QuestStore : IQuestStore
                         existing.PlayerId == progress.PlayerId
                         && existing.QuestId == progress.QuestId
                         && existing.SourceEventId == progress.LastEventId))
-                {
                     return;
-                }
 
                 var nextVersion = stored
                     .Where(existing => existing.PlayerId == progress.PlayerId && existing.QuestId == progress.QuestId)
@@ -77,20 +77,15 @@ internal sealed class QuestStore : IQuestStore
                     .DefaultIfEmpty(0)
                     .Max() + 1;
                 foreach (var @event in events)
-                {
                     if (stored.All(existing => existing.EventId != @event.EventId))
                     {
                         stored.Add(@event with { Version = nextVersion++ });
                         appended = true;
                     }
-                }
             },
             cancellationToken);
 
-        if (!appended)
-        {
-            return false;
-        }
+        if (!appended) return false;
 
         await UpdateAsync(
             Path.Combine(_directory, "quest-projection.json"),
@@ -140,16 +135,17 @@ internal sealed class QuestStore : IQuestStore
 
     private static async ValueTask<T> ReadAsync<T>(string path, T fallback, CancellationToken cancellationToken)
     {
-        if (!File.Exists(path))
-        {
-            return fallback;
-        }
+        if (!File.Exists(path)) return fallback;
 
         await Task.CompletedTask;
         var json = File.ReadAllText(path);
         return JsonSerializer.Deserialize<T>(json, JsonOptions) ?? fallback;
     }
 
-    private static string MutexName(string path) =>
-        "GameQuest-" + Convert.ToHexString(System.Security.Cryptography.SHA256.HashData(System.Text.Encoding.UTF8.GetBytes(path)));
+    private static string MutexName(string path)
+    {
+        return "GameQuest-" +
+               Convert.ToHexString(
+                   SHA256.HashData(Encoding.UTF8.GetBytes(path)));
+    }
 }

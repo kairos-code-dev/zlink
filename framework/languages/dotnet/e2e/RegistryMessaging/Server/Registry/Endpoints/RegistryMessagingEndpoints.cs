@@ -1,9 +1,6 @@
-using Microsoft.AspNetCore.Builder;
-using Microsoft.AspNetCore.Http;
-using Microsoft.Extensions.Hosting;
-using Zlink.Framework.Contracts.Registry;
 using RegistryMessaging.Server.Registry.Configuration;
 using RegistryMessaging.Server.Registry.Infrastructure;
+using Zlink.Framework.Contracts.Registry;
 
 namespace RegistryMessaging.Server.Registry.Endpoints;
 

@@ -34,12 +34,13 @@ internal sealed class ZLinkCompositeRouteInternalPacketDispatcher(
     private IZLinkRouteInternalPacketDispatcher ResolveSend(string packetName)
     {
         return dispatchers.FirstOrDefault(dispatcher => dispatcher.CanHandleSend(packetName))
-            ?? throw new InvalidOperationException($"Internal routed send packet '{packetName}' is not supported.");
+               ?? throw new InvalidOperationException($"Internal routed send packet '{packetName}' is not supported.");
     }
 
     private IZLinkRouteInternalPacketDispatcher ResolveRequest(string packetName)
     {
         return dispatchers.FirstOrDefault(dispatcher => dispatcher.CanHandleRequest(packetName))
-            ?? throw new InvalidOperationException($"Internal routed request packet '{packetName}' is not supported.");
+               ?? throw new InvalidOperationException(
+                   $"Internal routed request packet '{packetName}' is not supported.");
     }
 }

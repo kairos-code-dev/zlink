@@ -1,28 +1,25 @@
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Logging;
-using Zlink.Framework.Runtime.Backend.Contracts;
-using Zlink.Framework.Runtime.Codecs;
 
 namespace Zlink.Framework.Runtime.Channels;
 
 internal sealed class ZLinkRouteChannelRuntime : IAsyncDisposable
 {
-    private readonly ZLinkRouteChannelRegistration _registration;
-    private readonly IZLinkBackendRouterSocket _router;
-    private readonly ZLinkAsyncSubmitter _submitter;
-    private readonly ZLinkRouteConnectionSet _connections;
-    private readonly ZLinkRouteReceivePump _receivePump;
-    private readonly CancellationTokenSource _stopSource;
-    private readonly ZLinkRuntimeTaskRunner _taskRunner;
-    private readonly IZLinkBackendDiscovery? _discovery;
+    private readonly ZLinkRouteChannelCalls _calls;
     private readonly ZLinkCodecRegistryBuilder _codecs;
+    private readonly ZLinkRouteConnectionSet _connections;
     private readonly ZLinkRouteHandlerRegistry _handlers;
     private readonly IZLinkRouteInternalPacketDispatcher _internalPackets;
-    private readonly ZLinkRouteChannelCalls _calls;
+    private readonly ZLinkRouteReceivePump _receivePump;
+    private readonly ZLinkRouteChannelRegistration _registration;
+    private readonly IZLinkBackendRouterSocket _router;
     private readonly ZLinkRouteSpotChannelCalls _spotRouteCalls;
+    private readonly CancellationTokenSource _stopSource;
+    private readonly ZLinkAsyncSubmitter _submitter;
+    private readonly ZLinkRuntimeTaskRunner _taskRunner;
+    private Task? _receiveTask;
     private IZLinkBackendSpotRouteBridge? _spotRouteBridge;
     private ZLinkSpotNodeRuntime? _spotRouteBridgeOwner;
-    private Task? _receiveTask;
 
     public ZLinkRouteChannelRuntime(
         IServiceProvider services,
@@ -36,7 +33,7 @@ internal sealed class ZLinkRouteChannelRuntime : IAsyncDisposable
     {
         _registration = registration;
         _router = router;
-        _discovery = discovery;
+        Discovery = discovery;
         _handlers = handlers;
         _internalPackets = internalPackets ?? ZLinkNoRouteInternalPacketDispatcher.Instance;
         _codecs = frameworkRegistration.Codecs;
@@ -82,9 +79,37 @@ internal sealed class ZLinkRouteChannelRuntime : IAsyncDisposable
     // route mesh 의 serving socket(weight 적용 대상). server·client 가 공유하는 단일 ROUTER.
     internal IZLinkBackendWeightedSocket ServingSocket => _router;
 
-    public IZLinkBackendDiscovery? Discovery => _discovery;
+    public IZLinkBackendDiscovery? Discovery { get; }
 
     internal bool HasSpotRouteBridge => _spotRouteBridge is not null;
+
+    public async ValueTask DisposeAsync()
+    {
+        _stopSource.Cancel();
+        if (_receiveTask is not null)
+            try
+            {
+                await _receiveTask.WaitAsync(TimeSpan.FromSeconds(5)).ConfigureAwait(false);
+            }
+            catch (OperationCanceledException)
+            {
+            }
+            catch (ObjectDisposedException)
+            {
+            }
+            catch (TimeoutException)
+            {
+            }
+
+        await _submitter.DisposeAsync();
+
+        if (Discovery is not null) await Discovery.DisposeAsync();
+
+        if (_spotRouteBridge is not null) await _spotRouteBridge.DisposeAsync();
+
+        await _router.DisposeAsync();
+        _stopSource.Dispose();
+    }
 
     internal bool CanDispatchRoutePacket(
         ZLinkMessageKind kind,
@@ -93,21 +118,18 @@ internal sealed class ZLinkRouteChannelRuntime : IAsyncDisposable
         return kind switch
         {
             ZLinkMessageKind.Command => _internalPackets.CanHandleSend(packetName)
-                || _handlers.TryGet(RouterChannelId, kind, packetName, out _),
+                                        || _handlers.TryGet(RouterChannelId, kind, packetName, out _),
             ZLinkMessageKind.Request => _internalPackets.CanHandleRequest(packetName)
-                || _handlers.TryGet(RouterChannelId, kind, packetName, out _),
+                                        || _handlers.TryGet(RouterChannelId, kind, packetName, out _),
             _ => false
         };
     }
 
     internal bool HasKnownRoutePeer(RoutingId targetNodeRid)
     {
-        if (_discovery is null)
-        {
-            return false;
-        }
+        if (Discovery is null) return false;
 
-        return _discovery.MemberPeers()
+        return Discovery.MemberPeers()
             .Any(peer => peer.RoutingId == targetNodeRid);
     }
 
@@ -116,10 +138,8 @@ internal sealed class ZLinkRouteChannelRuntime : IAsyncDisposable
         ZLinkSpotNodeRuntime owner)
     {
         if (_spotRouteBridge is not null)
-        {
             throw new ZLinkConfigurationException(
                 $"Route channel '{RouterChannelId}' is already attached to a SPOT route bridge.");
-        }
 
         bridge.AttachRouterChannel(
             RouterChannelId,
@@ -133,10 +153,7 @@ internal sealed class ZLinkRouteChannelRuntime : IAsyncDisposable
         RoutingId targetSpotRid,
         IReadOnlyList<Message> parts)
     {
-        if (_spotRouteBridge is null)
-        {
-            return false;
-        }
+        if (_spotRouteBridge is null) return false;
 
         return _spotRouteBridge.Send(
             RouterChannelId,
@@ -153,10 +170,7 @@ internal sealed class ZLinkRouteChannelRuntime : IAsyncDisposable
         RequestCallback callback,
         TimeSpan timeout)
     {
-        if (_spotRouteBridge is null)
-        {
-            return false;
-        }
+        if (_spotRouteBridge is null) return false;
 
         return _spotRouteBridge.Request(
             RouterChannelId,
@@ -275,41 +289,5 @@ internal sealed class ZLinkRouteChannelRuntime : IAsyncDisposable
                 timeout,
                 cancellationToken)
             .ConfigureAwait(false);
-    }
-
-    public async ValueTask DisposeAsync()
-    {
-        _stopSource.Cancel();
-        if (_receiveTask is not null)
-        {
-            try
-            {
-                await _receiveTask.WaitAsync(TimeSpan.FromSeconds(5)).ConfigureAwait(false);
-            }
-            catch (OperationCanceledException)
-            {
-            }
-            catch (ObjectDisposedException)
-            {
-            }
-            catch (TimeoutException)
-            {
-            }
-        }
-
-        await _submitter.DisposeAsync();
-
-        if (_discovery is not null)
-        {
-            await _discovery.DisposeAsync();
-        }
-
-        if (_spotRouteBridge is not null)
-        {
-            await _spotRouteBridge.DisposeAsync();
-        }
-
-        await _router.DisposeAsync();
-        _stopSource.Dispose();
     }
 }

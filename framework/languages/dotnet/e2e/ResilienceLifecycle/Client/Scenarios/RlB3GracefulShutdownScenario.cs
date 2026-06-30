@@ -1,6 +1,6 @@
+using ResilienceLifecycle.Client.Support;
 using ResilienceLifecycle.Shared;
 using Zlink.HttpClient;
-using ResilienceLifecycle.Client.Support;
 
 namespace ResilienceLifecycle.Client.Scenarios;
 
@@ -25,10 +25,7 @@ internal static class RlB3GracefulShutdownScenario
             try
             {
                 var health = await providerB.Get("/health").SubmitRawAsync();
-                if (health.Status != 200)
-                {
-                    break;
-                }
+                if (health.Status != 200) break;
             }
             catch
             {
@@ -43,7 +40,8 @@ internal static class RlB3GracefulShutdownScenario
             var after = (await consumer.Post("/profile/request")
                 .Body(new ProfileRequest("fast", $"rl-b3-after-{i}"))
                 .SubmitAsync<ProfileReply>()).Body;
-            ScenarioAssert.That(after.ProviderRid == "api-a", "RL-B3 request after graceful shutdown used stale api-b.");
+            ScenarioAssert.That(after.ProviderRid == "api-a",
+                "RL-B3 request after graceful shutdown used stale api-b.");
         }
 
         await providerA.Post("/evidence/wait")

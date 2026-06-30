@@ -13,23 +13,15 @@ internal static class ZLinkRegistryRouteRuntime
         {
             if (!state.RouteChannels.ContainsKey(configured)
                 && !state.SpotNodes.ContainsKey(configured))
-            {
                 throw new ZLinkConfigurationException(
                     $"Route mesh channel or SPOT node '{configured}' is not registered.");
-            }
 
             return configured;
         }
 
-        if (state.RouteChannels.Count == 1)
-        {
-            return state.RouteChannels.Keys.Single();
-        }
+        if (state.RouteChannels.Count == 1) return state.RouteChannels.Keys.Single();
 
-        if (state.RouteChannels.Count == 0 && state.SpotNodes.Count == 1)
-        {
-            return state.SpotNodes.Keys.Single();
-        }
+        if (state.RouteChannels.Count == 0 && state.SpotNodes.Count == 1) return state.SpotNodes.Keys.Single();
 
         throw new ZLinkConfigurationException(
             "Registry remote address resolver requires RouterChannelId when there is not exactly one route mesh channel or router-capable SPOT node.");
@@ -41,14 +33,12 @@ internal static class ZLinkRegistryRouteRuntime
         string capabilityName)
     {
         if (!state.RouteChannels.TryGetValue(routerChannelId, out var routeChannel))
-        {
             throw new ZLinkConfigurationException(
                 $"Route mesh channel '{routerChannelId}' is not registered.");
-        }
 
         return routeChannel.Discovery
-            ?? throw new ZLinkConfigurationException(
-                $"{capabilityName} requires discovery-attached route mesh channel '{routerChannelId}'.");
+               ?? throw new ZLinkConfigurationException(
+                   $"{capabilityName} requires discovery-attached route mesh channel '{routerChannelId}'.");
     }
 
     public static IZLinkBackendDiscovery ResolveSingleSpotDiscovery(
@@ -59,10 +49,7 @@ internal static class ZLinkRegistryRouteRuntime
             .OfType<IZLinkBackendDiscovery>()
             .Distinct()
             .ToArray();
-        if (spotNodeDiscoveries.Length == 1)
-        {
-            return spotNodeDiscoveries[0];
-        }
+        if (spotNodeDiscoveries.Length == 1) return spotNodeDiscoveries[0];
 
         throw new ZLinkConfigurationException(
             "Registry remote address resolver requires exactly one configured SPOT discovery.");
@@ -74,9 +61,7 @@ internal static class ZLinkRegistryRouteRuntime
     {
         if (state.SpotNodes.TryGetValue(routerChannelId, out var spotNode)
             && spotNode.SpotDiscovery is not null)
-        {
             return spotNode.SpotDiscovery;
-        }
 
         return ResolveSingleSpotDiscovery(state);
     }
@@ -108,10 +93,7 @@ internal static class ZLinkRegistryRouteRuntime
             catch (ZlinkConfigException error)
                 when (error.NativeErrno is RouteNotFoundErrno or RouteRetryErrno)
             {
-                if (timeoutSource.IsCancellationRequested)
-                {
-                    throw RouteOperationFailed(errorKind, errorMessage, error);
-                }
+                if (timeoutSource.IsCancellationRequested) throw RouteOperationFailed(errorKind, errorMessage, error);
 
                 try
                 {
@@ -138,7 +120,7 @@ internal static class ZLinkRegistryRouteRuntime
         return new ZLinkFrameworkException(
             errorKind,
             errorMessage,
-            isRetriable: true,
-            innerException: innerException);
+            true,
+            innerException);
     }
 }

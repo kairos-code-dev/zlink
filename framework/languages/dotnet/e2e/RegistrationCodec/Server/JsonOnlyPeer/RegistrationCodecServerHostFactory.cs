@@ -1,9 +1,4 @@
 using Google.Protobuf.WellKnownTypes;
-using Microsoft.AspNetCore.Builder;
-using Microsoft.AspNetCore.Hosting;
-using Microsoft.Extensions.DependencyInjection;
-using Microsoft.Extensions.Logging;
-using RegistrationCodec.Server.JsonOnlyPeer;
 using RegistrationCodec.Server.JsonOnlyPeer.Handlers;
 using RegistrationCodec.Server.JsonOnlyPeer.Infrastructure;
 using RegistrationCodec.Shared;
@@ -75,9 +70,7 @@ public static class RegistrationCodecServerHostFactory
             channel.AddRequestHandler<DiEchoRequestHandler, EchoReq, EchoReply>("EchoDi");
 
             if (options.InvalidMode == "duplicate")
-            {
                 channel.AddRequestHandler<DuplicateEchoRequestHandler, EchoManualReq, EchoReply>("EchoManual");
-            }
         });
 
         var app = builder.Build();

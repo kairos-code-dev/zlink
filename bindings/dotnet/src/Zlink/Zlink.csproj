@@ -1,37 +1,37 @@
 <Project Sdk="Microsoft.NET.Sdk">
-  <PropertyGroup>
-    <TargetFramework>net8.0</TargetFramework>
-    <Nullable>enable</Nullable>
-    <ImplicitUsings>enable</ImplicitUsings>
-    <GenerateDocumentationFile>true</GenerateDocumentationFile>
-    <Version>8.4.2</Version>
-    <AssemblyName>Systems.Zlink</AssemblyName>
-    <PackageId>Systems.Zlink</PackageId>
-    <RootNamespace>Systems.Zlink</RootNamespace>
-    <AllowUnsafeBlocks>true</AllowUnsafeBlocks>
-    <Authors>ulalax</Authors>
-    <Description>zlink .NET bindings - high-performance async messaging library</Description>
-  </PropertyGroup>
-  <ItemGroup>
-    <None Include="..\..\runtimes\**\*.*">
-      <Pack>true</Pack>
-      <PackagePath>runtimes\%(RecursiveDir)%(Filename)%(Extension)</PackagePath>
-      <CopyToOutputDirectory>Never</CopyToOutputDirectory>
-    </None>
-  </ItemGroup>
-  <ItemGroup Condition="$([MSBuild]::IsOSPlatform('Windows'))">
-    <None Update="..\..\runtimes\win-*\native\*.*">
-      <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
-    </None>
-  </ItemGroup>
-  <ItemGroup Condition="$([MSBuild]::IsOSPlatform('Linux'))">
-    <None Update="..\..\runtimes\linux-*\native\*.*">
-      <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
-    </None>
-  </ItemGroup>
-  <ItemGroup Condition="$([MSBuild]::IsOSPlatform('OSX'))">
-    <None Update="..\..\runtimes\osx-*\native\*.*">
-      <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
-    </None>
-  </ItemGroup>
+    <PropertyGroup>
+        <TargetFramework>net8.0</TargetFramework>
+        <Nullable>enable</Nullable>
+        <ImplicitUsings>enable</ImplicitUsings>
+        <GenerateDocumentationFile>true</GenerateDocumentationFile>
+        <Version>8.4.2</Version>
+        <AssemblyName>Systems.Zlink</AssemblyName>
+        <PackageId>Systems.Zlink</PackageId>
+        <RootNamespace>Systems.Zlink</RootNamespace>
+        <AllowUnsafeBlocks>true</AllowUnsafeBlocks>
+        <Authors>ulalax</Authors>
+        <Description>zlink .NET bindings - high-performance async messaging library</Description>
+    </PropertyGroup>
+    <ItemGroup>
+        <None Include="..\..\runtimes\**\*.*">
+            <Pack>true</Pack>
+            <PackagePath>runtimes\%(RecursiveDir)%(Filename)%(Extension)</PackagePath>
+            <CopyToOutputDirectory>Never</CopyToOutputDirectory>
+        </None>
+    </ItemGroup>
+    <ItemGroup Condition="$([MSBuild]::IsOSPlatform('Windows'))">
+        <None Update="..\..\runtimes\win-*\native\*.*">
+            <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
+        </None>
+    </ItemGroup>
+    <ItemGroup Condition="$([MSBuild]::IsOSPlatform('Linux'))">
+        <None Update="..\..\runtimes\linux-*\native\*.*">
+            <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
+        </None>
+    </ItemGroup>
+    <ItemGroup Condition="$([MSBuild]::IsOSPlatform('OSX'))">
+        <None Update="..\..\runtimes\osx-*\native\*.*">
+            <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
+        </None>
+    </ItemGroup>
 </Project>

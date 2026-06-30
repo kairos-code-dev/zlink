@@ -104,7 +104,6 @@ internal sealed class ZLinkChannelRegistration
     public List<ZLinkChannelHandlerRegistration> RequestHandlers { get; } = [];
 
     public List<ZLinkChannelHandlerRegistration> PublishHandlers { get; } = [];
-
 }
 
 internal sealed class ZLinkChannelServerCapabilityRegistration
@@ -180,7 +179,6 @@ internal sealed class ZLinkRouteChannelRegistration
     public List<ZLinkRouteHandlerRegistration> RequestHandlers { get; } = [];
 
     public HashSet<string> HandlerGroups { get; } = new(StringComparer.Ordinal);
-
 }
 
 internal sealed record ZLinkRouteHandlerRegistration(

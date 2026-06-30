@@ -1,6 +1,6 @@
+using ResilienceLifecycle.Client.Support;
 using ResilienceLifecycle.Shared;
 using Zlink.HttpClient;
-using ResilienceLifecycle.Client.Support;
 
 namespace ResilienceLifecycle.Client.Scenarios;
 
@@ -20,10 +20,7 @@ internal static class RlA1ProviderRestartScenario
             try
             {
                 var health = await providerB.Get("/health").SubmitRawAsync();
-                if (health.Status != 200)
-                {
-                    break;
-                }
+                if (health.Status != 200) break;
             }
             catch
             {
@@ -39,7 +36,8 @@ internal static class RlA1ProviderRestartScenario
             var reply = (await consumer.Post("/profile/request")
                 .Body(new ProfileRequest("fast", marker))
                 .SubmitAsync<ProfileReply>()).Body;
-            ScenarioAssert.That(reply.ProviderRid == "api-a", "RL-A1 request during api-b restart did not use surviving provider.");
+            ScenarioAssert.That(reply.ProviderRid == "api-a",
+                "RL-A1 request during api-b restart did not use surviving provider.");
         }
 
         await providerA.Post("/evidence/wait")
@@ -55,10 +53,7 @@ internal static class RlA1ProviderRestartScenario
             try
             {
                 var health = await providerB.Get("/health").SubmitRawAsync();
-                if (health.Status == 200)
-                {
-                    break;
-                }
+                if (health.Status == 200) break;
             }
             catch
             {

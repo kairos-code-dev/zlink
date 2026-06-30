@@ -1,17 +1,5 @@
-using Microsoft.Extensions.Logging;
-using TicTacToe.Server.Api;
-using TicTacToe.Server.Api.Handlers;
-using TicTacToe.Server.Configuration;
-using TicTacToe.Server.Play;
-using TicTacToe.Shared.Contracts;
-using Zlink.Framework.Contracts.Actors;
-using Zlink.Framework.Contracts.Channels;
-using Zlink.Framework.Contracts.Configuration;
-using Zlink.Framework.Contracts.Handlers;
-using Zlink.Framework.Contracts.Spots;
-using Zlink.Framework.Contracts.Streams;
-using Zlink.Framework.Contracts.Timers;
 using System.Collections.Concurrent;
+using TicTacToe.Server.Configuration;
 
 namespace TicTacToe.Server;
 
@@ -29,22 +17,18 @@ internal static class SampleLogging
         logging.AddProvider(new SampleFileLoggerProvider(
             Path.Combine(settings.LogDirectory, $"{role}.log")));
     }
-
 }
 
 internal sealed class SampleFileLoggerProvider : ILoggerProvider
 {
-    private readonly StreamWriter _writer;
     private readonly object _gate = new();
     private readonly ConcurrentDictionary<string, SampleFileLogger> _loggers = new();
+    private readonly StreamWriter _writer;
 
     public SampleFileLoggerProvider(string path)
     {
         var directory = Path.GetDirectoryName(path);
-        if (!string.IsNullOrWhiteSpace(directory))
-        {
-            Directory.CreateDirectory(directory);
-        }
+        if (!string.IsNullOrWhiteSpace(directory)) Directory.CreateDirectory(directory);
 
         _writer = new StreamWriter(new FileStream(
             path,
@@ -52,14 +36,14 @@ internal sealed class SampleFileLoggerProvider : ILoggerProvider
             FileAccess.Write,
             FileShare.ReadWrite))
         {
-            AutoFlush = true,
+            AutoFlush = true
         };
     }
 
     public ILogger CreateLogger(string categoryName)
     {
         return _loggers.GetOrAdd(categoryName, static (category, provider) =>
-            new SampleFileLogger(category, provider),
+                new SampleFileLogger(category, provider),
             this);
     }
 
@@ -94,10 +78,7 @@ internal sealed class SampleFileLoggerProvider : ILoggerProvider
 
             _writer.Write(": ");
             _writer.WriteLine(message);
-            if (exception is not null)
-            {
-                _writer.WriteLine(exception);
-            }
+            if (exception is not null) _writer.WriteLine(exception);
         }
     }
 
@@ -124,10 +105,7 @@ internal sealed class SampleFileLoggerProvider : ILoggerProvider
             Exception? exception,
             Func<TState, Exception?, string> formatter)
         {
-            if (!IsEnabled(logLevel))
-            {
-                return;
-            }
+            if (!IsEnabled(logLevel)) return;
 
             provider.Write(category, logLevel, eventId, formatter(state, exception), exception);
         }

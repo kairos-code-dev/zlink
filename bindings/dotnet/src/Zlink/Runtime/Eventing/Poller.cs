@@ -1,8 +1,5 @@
 // SPDX-License-Identifier: MPL-2.0
 
-using System;
-using System.Collections.Generic;
-using System.Threading.Tasks;
 using Systems.Zlink.Runtime.Native;
 
 namespace Systems.Zlink;
@@ -26,17 +23,15 @@ internal sealed class Poller : IPoller
     };
 
     private readonly List<PollItem> _items = new();
-    private ZlinkPollerEvent[] _nativeEvents = Array.Empty<ZlinkPollerEvent>();
     private IntPtr _handle;
+    private ZlinkPollerEvent[] _nativeEvents = Array.Empty<ZlinkPollerEvent>();
 
     public Poller()
     {
-        List<string> missing = GetMissingExports();
+        var missing = GetMissingExports();
         if (missing.Count > 0)
-        {
             throw new ZlinkConfigException(ConfigResult.NotSupported,
                 (int)ErrorCode.ENotSup);
-        }
 
         _handle = NativeMethods.zlink_poller_new();
         if (_handle == IntPtr.Zero)
@@ -50,7 +45,7 @@ internal sealed class Poller : IPoller
         get
         {
             EnsureNotDisposed();
-            int rc = NativeMethods.zlink_poller_size(_handle, out _);
+            var rc = NativeMethods.zlink_poller_size(_handle, out _);
             if (rc < 0)
                 throw ZlinkException.CreateConfigException(
                     NativeMethods.zlink_errno());
@@ -63,12 +58,12 @@ internal sealed class Poller : IPoller
     public void Add(IZlinkSocket socket, PollEventFlags events, nuint slot)
     {
         EnsureNotDisposed();
-        IntPtr socketHandle = SocketInterop.RequirePollableHandle(socket,
+        var socketHandle = SocketInterop.RequirePollableHandle(socket,
             nameof(socket));
         EnumValidation.EnsurePollEvents(events, nameof(events));
 
-        IntPtr userData = SlotToUserData(slot);
-        int rc = NativeMethods.zlink_poller_add(_handle, socketHandle,
+        var userData = SlotToUserData(slot);
+        var rc = NativeMethods.zlink_poller_add(_handle, socketHandle,
             userData, (short)events);
         if (rc != 0)
             ZlinkException.ThrowConfigIfError(rc);
@@ -81,8 +76,8 @@ internal sealed class Poller : IPoller
         EnsureNotDisposed();
         EnumValidation.EnsurePollEvents(events, nameof(events));
 
-        IntPtr userData = SlotToUserData(slot);
-        int rc = NativeMethods.zlink_poller_add_fd(_handle, fd, userData,
+        var userData = SlotToUserData(slot);
+        var rc = NativeMethods.zlink_poller_add_fd(_handle, fd, userData,
             (short)events);
         if (rc != 0)
             ZlinkException.ThrowConfigIfError(rc);
@@ -93,10 +88,10 @@ internal sealed class Poller : IPoller
     public void Add(IZlinkTimer timer, nuint slot)
     {
         EnsureNotDisposed();
-        Timer concreteTimer = SocketInterop.RequireTimer(timer, nameof(timer));
+        var concreteTimer = SocketInterop.RequireTimer(timer, nameof(timer));
 
-        IntPtr userData = SlotToUserData(slot);
-        int rc = NativeMethods.zlink_poller_add_timer(_handle,
+        var userData = SlotToUserData(slot);
+        var rc = NativeMethods.zlink_poller_add_timer(_handle,
             concreteTimer.Handle, userData);
         if (rc != 0)
             ZlinkException.ThrowConfigIfError(rc);
@@ -107,16 +102,16 @@ internal sealed class Poller : IPoller
     public void Modify(IZlinkSocket socket, PollEventFlags events)
     {
         EnsureNotDisposed();
-        IntPtr socketHandle = SocketInterop.RequirePollableHandle(socket,
+        var socketHandle = SocketInterop.RequirePollableHandle(socket,
             nameof(socket));
         EnumValidation.EnsurePollEvents(events, nameof(events));
 
-        int index = FindSocket(socketHandle);
+        var index = FindSocket(socketHandle);
         if (index < 0)
             throw new ArgumentException("socket is not registered",
                 nameof(socket));
 
-        int rc = NativeMethods.zlink_poller_modify(_handle, socketHandle,
+        var rc = NativeMethods.zlink_poller_modify(_handle, socketHandle,
             (short)events);
         ZlinkException.ThrowConfigIfError(rc);
         UnregisterExternalProgress(_items[index]);
@@ -129,11 +124,11 @@ internal sealed class Poller : IPoller
         EnsureNotDisposed();
         EnumValidation.EnsurePollEvents(events, nameof(events));
 
-        int index = FindFd(fd);
+        var index = FindFd(fd);
         if (index < 0)
             throw new ArgumentException("fd is not registered", nameof(fd));
 
-        int rc = NativeMethods.zlink_poller_modify_fd(_handle, fd,
+        var rc = NativeMethods.zlink_poller_modify_fd(_handle, fd,
             (short)events);
         ZlinkException.ThrowConfigIfError(rc);
         _items[index].Events = events;
@@ -142,14 +137,14 @@ internal sealed class Poller : IPoller
     public bool Remove(IZlinkSocket socket)
     {
         EnsureNotDisposed();
-        IntPtr socketHandle = SocketInterop.RequirePollableHandle(socket,
+        var socketHandle = SocketInterop.RequirePollableHandle(socket,
             nameof(socket));
 
-        int index = FindSocket(socketHandle);
+        var index = FindSocket(socketHandle);
         if (index < 0)
             return false;
 
-        int rc = NativeMethods.zlink_poller_remove(_handle, socketHandle);
+        var rc = NativeMethods.zlink_poller_remove(_handle, socketHandle);
         ZlinkException.ThrowConfigIfError(rc);
         UnregisterItem(index);
         return true;
@@ -158,13 +153,13 @@ internal sealed class Poller : IPoller
     public bool Remove(IZlinkTimer timer)
     {
         EnsureNotDisposed();
-        Timer concreteTimer = SocketInterop.RequireTimer(timer, nameof(timer));
+        var concreteTimer = SocketInterop.RequireTimer(timer, nameof(timer));
 
-        int index = FindTimer(concreteTimer.Handle);
+        var index = FindTimer(concreteTimer.Handle);
         if (index < 0)
             return false;
 
-        int rc = NativeMethods.zlink_poller_remove_timer(_handle,
+        var rc = NativeMethods.zlink_poller_remove_timer(_handle,
             concreteTimer.Handle);
         ZlinkException.ThrowConfigIfError(rc);
         UnregisterItem(index);
@@ -175,11 +170,11 @@ internal sealed class Poller : IPoller
     {
         EnsureNotDisposed();
 
-        int index = FindFd(fd);
+        var index = FindFd(fd);
         if (index < 0)
             return false;
 
-        int rc = NativeMethods.zlink_poller_remove_fd(_handle, fd);
+        var rc = NativeMethods.zlink_poller_remove_fd(_handle, fd);
         ZlinkException.ThrowConfigIfError(rc);
         UnregisterItem(index);
         return true;
@@ -189,8 +184,8 @@ internal sealed class Poller : IPoller
     {
         EnsureNotDisposed();
 
-        IntPtr handle = _handle;
-        int rc = NativeMethods.zlink_poller_destroy(ref handle);
+        var handle = _handle;
+        var rc = NativeMethods.zlink_poller_destroy(ref handle);
         ZlinkException.ThrowConfigIfError(rc);
 
         _handle = NativeMethods.zlink_poller_new();
@@ -215,15 +210,15 @@ internal sealed class Poller : IPoller
         if (_items.Count == 0)
             return 0;
 
-        int capacity = Math.Min(destination.Length, _items.Count);
+        var capacity = Math.Min(destination.Length, _items.Count);
         EnsureEventCapacity(capacity);
-        int ready = WaitNative(ToTimeoutMilliseconds(timeout), capacity);
+        var ready = WaitNative(ToTimeoutMilliseconds(timeout), capacity);
         if (ready < 0)
             throw ZlinkException.CreateRecvException(NativeMethods.zlink_errno());
         if (ready == 0)
             return 0;
 
-        for (int i = 0; i < ready; i++)
+        for (var i = 0; i < ready; i++)
             destination[i] = MapEvent(_nativeEvents[i]);
         return ready;
     }
@@ -233,7 +228,7 @@ internal sealed class Poller : IPoller
         if (_handle == IntPtr.Zero)
             return;
 
-        IntPtr handle = _handle;
+        var handle = _handle;
         int rc;
         while (true)
         {
@@ -241,12 +236,13 @@ internal sealed class Poller : IPoller
             if (rc == 0)
                 break;
 
-            int errno = NativeMethods.zlink_errno();
-            ErrorCode code = ZlinkException.MapErrorCode(errno);
+            var errno = NativeMethods.zlink_errno();
+            var code = ZlinkException.MapErrorCode(errno);
             if (code == ErrorCode.EIntr || errno == 4)
                 continue;
             break;
         }
+
         _handle = IntPtr.Zero;
         UnregisterAllExternalProgress();
         _items.Clear();
@@ -270,11 +266,9 @@ internal sealed class Poller : IPoller
     private static List<string> GetMissingExports()
     {
         var missing = new List<string>();
-        foreach (string symbol in RequiredExports)
-        {
+        foreach (var symbol in RequiredExports)
             if (!NativeLibraryLoader.HasExport(symbol))
                 missing.Add(symbol);
-        }
         return missing;
     }
 
@@ -282,7 +276,7 @@ internal sealed class Poller : IPoller
     {
         if (timeout < TimeSpan.Zero)
             return -1;
-        double millis = timeout.TotalMilliseconds;
+        var millis = timeout.TotalMilliseconds;
         if (millis > int.MaxValue)
             return int.MaxValue;
         return (int)Math.Ceiling(millis);
@@ -305,41 +299,44 @@ internal sealed class Poller : IPoller
 
     private int FindSocket(IntPtr handle)
     {
-        for (int i = 0; i < _items.Count; i++)
+        for (var i = 0; i < _items.Count; i++)
         {
-            PollItem item = _items[i];
+            var item = _items[i];
             if (item.IsSocket && item.SocketHandle == handle)
                 return i;
         }
+
         return -1;
     }
 
     private int FindFd(int fd)
     {
-        for (int i = 0; i < _items.Count; i++)
+        for (var i = 0; i < _items.Count; i++)
         {
-            PollItem item = _items[i];
+            var item = _items[i];
             if (item.Kind == PollItemKind.Fd && item.Fd == fd)
                 return i;
         }
+
         return -1;
     }
 
     private int FindTimer(IntPtr handle)
     {
-        for (int i = 0; i < _items.Count; i++)
+        for (var i = 0; i < _items.Count; i++)
         {
-            PollItem item = _items[i];
+            var item = _items[i];
             if (item.Kind == PollItemKind.Timer && item.Timer?.Handle == handle)
                 return i;
         }
+
         return -1;
     }
 
     private PollEvent MapEvent(ZlinkPollerEvent nativeEvent)
     {
-        PollSourceKind sourceKind = (PollSourceKind)nativeEvent.MonitorSourceKind;
-        int fd = sourceKind == PollSourceKind.Fd ? nativeEvent.Fd : 0;
+        var sourceKind = (PollSourceKind)nativeEvent.MonitorSourceKind;
+        var fd = sourceKind == PollSourceKind.Fd ? nativeEvent.Fd : 0;
         return new PollEvent(sourceKind, UserDataToSlot(nativeEvent.UserData),
             (PollEventFlags)nativeEvent.Events, fd);
     }
@@ -362,7 +359,7 @@ internal sealed class Poller : IPoller
 
     private void UnregisterItem(int index)
     {
-        PollItem item = _items[index];
+        var item = _items[index];
         UnregisterExternalProgress(item);
         _items.RemoveAt(index);
     }
@@ -383,7 +380,7 @@ internal sealed class Poller : IPoller
 
     private void UnregisterAllExternalProgress()
     {
-        foreach (PollItem item in _items)
+        foreach (var item in _items)
             UnregisterExternalProgress(item);
     }
 

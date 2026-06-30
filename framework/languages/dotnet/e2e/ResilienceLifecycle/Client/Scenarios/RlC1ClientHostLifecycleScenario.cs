@@ -1,6 +1,6 @@
+using ResilienceLifecycle.Client.Support;
 using ResilienceLifecycle.Shared;
 using Zlink.HttpClient;
-using ResilienceLifecycle.Client.Support;
 
 namespace ResilienceLifecycle.Client.Scenarios;
 
@@ -29,21 +29,30 @@ internal static class RlC1ClientHostLifecycleScenario
 
         {
             using var timeout = new CancellationTokenSource(TimeSpan.FromSeconds(15));
-            var waitA = providerA.Post("/evidence/wait").Body(new EvidenceWaitRequest(["marker=rl-c1-"], [])).SubmitAsync<string[]>(timeout.Token).AsTask();
-            var waitB = providerB.Post("/evidence/wait").Body(new EvidenceWaitRequest(["marker=rl-c1-"], [])).SubmitAsync<string[]>(timeout.Token).AsTask();
+            var waitA = providerA.Post("/evidence/wait").Body(new EvidenceWaitRequest(["marker=rl-c1-"], []))
+                .SubmitAsync<string[]>(timeout.Token).AsTask();
+            var waitB = providerB.Post("/evidence/wait").Body(new EvidenceWaitRequest(["marker=rl-c1-"], []))
+                .SubmitAsync<string[]>(timeout.Token).AsTask();
             var completed = await Task.WhenAny(waitA, waitB);
             var evidence = (await completed).Body;
             timeout.Cancel();
-            ScenarioAssert.That(evidence.Any(line => line.Contains("marker=rl-c1-", StringComparison.Ordinal)), "RL-C1 did not record expected evidence 'marker=rl-c1-'.");
+            ScenarioAssert.That(evidence.Any(line => line.Contains("marker=rl-c1-", StringComparison.Ordinal)),
+                "RL-C1 did not record expected evidence 'marker=rl-c1-'.");
         }
         {
             using var timeout = new CancellationTokenSource(TimeSpan.FromSeconds(15));
-            var waitA = providerA.Post("/evidence/wait").Body(new EvidenceWaitRequest(["marker=rl-c1-after-cleanup"], [])).SubmitAsync<string[]>(timeout.Token).AsTask();
-            var waitB = providerB.Post("/evidence/wait").Body(new EvidenceWaitRequest(["marker=rl-c1-after-cleanup"], [])).SubmitAsync<string[]>(timeout.Token).AsTask();
+            var waitA = providerA.Post("/evidence/wait")
+                .Body(new EvidenceWaitRequest(["marker=rl-c1-after-cleanup"], [])).SubmitAsync<string[]>(timeout.Token)
+                .AsTask();
+            var waitB = providerB.Post("/evidence/wait")
+                .Body(new EvidenceWaitRequest(["marker=rl-c1-after-cleanup"], [])).SubmitAsync<string[]>(timeout.Token)
+                .AsTask();
             var completed = await Task.WhenAny(waitA, waitB);
             var evidence = (await completed).Body;
             timeout.Cancel();
-            ScenarioAssert.That(evidence.Any(line => line.Contains("marker=rl-c1-after-cleanup", StringComparison.Ordinal)), "RL-C1 did not record expected evidence 'marker=rl-c1-after-cleanup'.");
+            ScenarioAssert.That(
+                evidence.Any(line => line.Contains("marker=rl-c1-after-cleanup", StringComparison.Ordinal)),
+                "RL-C1 did not record expected evidence 'marker=rl-c1-after-cleanup'.");
         }
 
         Console.WriteLine("scenario RL-C1 passed");

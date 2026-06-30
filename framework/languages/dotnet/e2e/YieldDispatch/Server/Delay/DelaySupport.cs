@@ -4,9 +4,9 @@ internal sealed record NodeOptions(string Rid);
 
 internal sealed class EvidenceStore
 {
-    private readonly object _gate = new();
     private readonly List<string> _entries = [];
     private readonly string? _filePath;
+    private readonly object _gate = new();
 
     public EvidenceStore(string rid, string? filePath)
     {
@@ -21,10 +21,7 @@ internal sealed class EvidenceStore
         lock (_gate)
         {
             _entries.Add(entry);
-            if (!string.IsNullOrWhiteSpace(_filePath))
-            {
-                File.AppendAllText(_filePath, entry + Environment.NewLine);
-            }
+            if (!string.IsNullOrWhiteSpace(_filePath)) File.AppendAllText(_filePath, entry + Environment.NewLine);
         }
     }
 
@@ -63,15 +60,9 @@ internal static class Cli
         var values = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase);
         for (var i = 0; i < args.Length; i++)
         {
-            if (!args[i].StartsWith("--", StringComparison.Ordinal))
-            {
-                continue;
-            }
+            if (!args[i].StartsWith("--", StringComparison.Ordinal)) continue;
 
-            if (i + 1 >= args.Length)
-            {
-                throw new ArgumentException($"Missing value for {args[i]}.");
-            }
+            if (i + 1 >= args.Length) throw new ArgumentException($"Missing value for {args[i]}.");
 
             values[args[i][2..]] = args[++i];
         }
@@ -80,7 +71,9 @@ internal static class Cli
     }
 
     public static string Required(Dictionary<string, string> values, string key)
-        => values.TryGetValue(key, out var value) && !string.IsNullOrWhiteSpace(value)
+    {
+        return values.TryGetValue(key, out var value) && !string.IsNullOrWhiteSpace(value)
             ? value
             : throw new ArgumentException($"--{key} is required.");
+    }
 }

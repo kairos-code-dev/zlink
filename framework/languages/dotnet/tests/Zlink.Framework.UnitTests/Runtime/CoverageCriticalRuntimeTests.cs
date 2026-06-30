@@ -3,13 +3,12 @@ using System.Net;
 using System.Net.Sockets;
 using System.Text;
 using K4os.Compression.LZ4;
-using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Hosting;
 using Systems.Zlink.Stream.Connector.Contracts;
 using Zlink.Framework.AspNetCore;
 using Zlink.Framework.AspNetCore.Monitoring;
-using Zlink.Framework.Runtime.Codecs;
 using Zlink.Framework.Runtime.Backend.Contracts;
+using Zlink.Framework.Runtime.Codecs;
 
 namespace Zlink.Framework.UnitTests.Runtime;
 
@@ -18,7 +17,7 @@ public sealed class CoverageCriticalRuntimeTests
     [Fact]
     public void StreamProtocolLz4DecompressRejectsDecodedPayloadAboveDefaultLimit()
     {
-        var compressed = LZ4Pickler.Pickle(new byte[(64 * 1024) + 1]);
+        var compressed = LZ4Pickler.Pickle(new byte[64 * 1024 + 1]);
 
         Assert.Throws<InvalidOperationException>(() =>
             ZLinkStreamProtocolDefaults.Lz4Decompress(compressed));
@@ -120,16 +119,16 @@ public sealed class CoverageCriticalRuntimeTests
     [Fact]
     public void RegistryRoutePayloadCodec_RoundTripsIdentityStringsRoutingIdsAndUInt64()
     {
-        byte[] identity = ZLinkRegistryRoutePayloadCodec.EncodeIdentity(
-            version: 3,
-            namespaceName: "game",
-            identity: "room-7",
-            tooLargeMessage: "too large");
+        var identity = ZLinkRegistryRoutePayloadCodec.EncodeIdentity(
+            3,
+            "game",
+            "room-7",
+            "too large");
 
         var decoded = ZLinkRegistryRoutePayloadCodec.DecodeIdentity(
             identity,
-            expectedVersion: 3,
-            invalidPayloadMessage: "invalid");
+            3,
+            "invalid");
 
         Assert.True(decoded.Matches("game", "room-7"));
         Assert.Equal(identity.Length, decoded.Offset);
@@ -158,8 +157,8 @@ public sealed class CoverageCriticalRuntimeTests
     {
         Assert.Throws<FormatException>(() => ZLinkRegistryRoutePayloadCodec.DecodeIdentity(
             [9],
-            expectedVersion: 3,
-            invalidPayloadMessage: "invalid"));
+            3,
+            "invalid"));
 
         Assert.Throws<FormatException>(() =>
         {
@@ -169,16 +168,15 @@ public sealed class CoverageCriticalRuntimeTests
 
         Assert.Throws<FormatException>(() => ZLinkRegistryRoutePayloadCodec.EnsureFullyRead(
             [1, 2, 3],
-            offset: 2,
-            invalidPayloadMessage: "invalid"));
+            2,
+            "invalid"));
 
         var large = new string('x', ushort.MaxValue + 1);
         Assert.Throws<ZLinkConfigurationException>(() => ZLinkRegistryRoutePayloadCodec.EncodeIdentity(
-            version: 1,
-            namespaceName: large,
-            identity: "id",
-            tooLargeMessage: "too large"));
-
+            1,
+            large,
+            "id",
+            "too large"));
     }
 
     [Fact]
@@ -186,7 +184,7 @@ public sealed class CoverageCriticalRuntimeTests
     {
         var source = new ZLinkSocketMonitoringRegistration
         {
-            SourceName = "orders",
+            SourceName = "orders"
         };
         source.Events.Add(ZLinkSocketEventKind.HandshakeFailed);
 
@@ -235,36 +233,36 @@ public sealed class CoverageCriticalRuntimeTests
             Period = TimeSpan.FromSeconds(1),
             HandlerType = typeof(CoverageCriticalRuntimeTests),
             SpotType = typeof(CoverageCriticalRuntimeTests),
-            Invoker = null!,
+            Invoker = null!
         };
         var tick = new ZLinkTimerTick(
             "tick",
-            DeliveryIndex: 2,
-            ScheduledIndex: 3,
+            2,
+            3,
             TimeSpan.FromSeconds(1),
             DateTimeOffset.UnixEpoch,
             DateTimeOffset.UnixEpoch.AddMilliseconds(10),
             TimeSpan.Zero,
             TimeSpan.FromMilliseconds(10),
             TimeSpan.FromMilliseconds(10),
-            SkippedTicks: 1);
+            1);
 
         var continuing = ZLinkSpotTimerFailureEventFactory.Create(
             "spot.events",
             RoutingId.From("spot"),
-            isEntrySpot: true,
+            true,
             descriptor,
             tick,
             new InvalidOperationException("boom"),
-            stopped: false);
+            false);
         var stopped = ZLinkSpotTimerFailureEventFactory.Create(
             "spot.events",
             RoutingId.From("spot"),
-            isEntrySpot: false,
+            false,
             descriptor,
             tick,
             new ApplicationException("stop"),
-            stopped: true);
+            true);
 
         Assert.Equal(ZLinkSpotEventKind.TimerHandlerFailed, continuing.Event);
         Assert.Equal(ZLinkSpotEventKind.TimerStoppedAfterUnhandledException, stopped.Event);
@@ -272,19 +270,6 @@ public sealed class CoverageCriticalRuntimeTests
         Assert.Equal(2UL, continuing.TimerDiagnostic!.Value.DeliveryIndex);
         Assert.Contains("InvalidOperationException", continuing.TimerDiagnostic!.Value.ExceptionType);
         Assert.Equal("stop", stopped.TimerDiagnostic!.Value.ExceptionMessage);
-    }
-
-    private sealed record CompressionProbe(string Text);
-
-    private sealed class StartupFailureTestSession(IZLinkSessionContext context) : IZLinkSession
-    {
-        public IZLinkSessionContext Context { get; } = context;
-
-        public ValueTask OnConnectedAsync(CancellationToken cancellationToken) => ValueTask.CompletedTask;
-
-        public ValueTask OnDisconnectedAsync(CancellationToken cancellationToken) => ValueTask.CompletedTask;
-
-        public ValueTask OnErrorAsync(ZLinkStreamError error, CancellationToken cancellationToken) => ValueTask.CompletedTask;
     }
 
     private static int FindFreeTcpPort()
@@ -298,6 +283,28 @@ public sealed class CoverageCriticalRuntimeTests
         finally
         {
             listener.Stop();
+        }
+    }
+
+    private sealed record CompressionProbe(string Text);
+
+    private sealed class StartupFailureTestSession(IZLinkSessionContext context) : IZLinkSession
+    {
+        public IZLinkSessionContext Context { get; } = context;
+
+        public ValueTask OnConnectedAsync(CancellationToken cancellationToken)
+        {
+            return ValueTask.CompletedTask;
+        }
+
+        public ValueTask OnDisconnectedAsync(CancellationToken cancellationToken)
+        {
+            return ValueTask.CompletedTask;
+        }
+
+        public ValueTask OnErrorAsync(ZLinkStreamError error, CancellationToken cancellationToken)
+        {
+            return ValueTask.CompletedTask;
         }
     }
 
@@ -316,9 +323,7 @@ public sealed class CoverageCriticalRuntimeTests
         public ReadOnlyMemory<byte> Decompress(ReadOnlyMemory<byte> payload, int maxDecompressedPayloadSize)
         {
             if (payload.Length == 0 || payload.Span[0] != Marker)
-            {
                 throw new InvalidOperationException("Unexpected custom compression marker.");
-            }
 
             return payload[1..].ToArray();
         }
@@ -327,9 +332,13 @@ public sealed class CoverageCriticalRuntimeTests
     private sealed class OversizedCompressionCodec : IZlinkStreamCompressionCodec
     {
         public ReadOnlyMemory<byte> Compress(ReadOnlyMemory<byte> payload)
-            => payload;
+        {
+            return payload;
+        }
 
         public ReadOnlyMemory<byte> Decompress(ReadOnlyMemory<byte> payload, int maxDecompressedPayloadSize)
-            => new byte[maxDecompressedPayloadSize + 1];
+        {
+            return new byte[maxDecompressedPayloadSize + 1];
+        }
     }
 }

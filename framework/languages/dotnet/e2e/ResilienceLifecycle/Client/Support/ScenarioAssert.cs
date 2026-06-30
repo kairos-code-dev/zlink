@@ -4,12 +4,11 @@ internal static class ScenarioAssert
 {
     public static void That(bool condition, string message)
     {
-        if (!condition)
-        {
-            throw new InvalidOperationException(message);
-        }
+        if (!condition) throw new InvalidOperationException(message);
     }
 
-    public static string[] AllProviderEvidence(LifecycleApiResult result) =>
-        result.ProviderAEvidence.Concat(result.ProviderBEvidence).ToArray();
+    public static string[] AllProviderEvidence(LifecycleApiResult result)
+    {
+        return result.ProviderAEvidence.Concat(result.ProviderBEvidence).ToArray();
+    }
 }

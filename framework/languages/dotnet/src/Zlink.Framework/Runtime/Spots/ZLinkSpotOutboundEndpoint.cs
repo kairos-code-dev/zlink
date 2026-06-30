@@ -86,7 +86,7 @@ internal sealed class ZLinkSpotOutboundEndpoint(
         var dealer = (IZLinkBackendDealerSocket)bundle.Socket;
         var requestTimeout = timeout ?? activation.DefaultRequestTimeout;
         return await (bundle.Submitter
-                ?? throw new InvalidOperationException("ZLink request submitter is not initialized."))
+                      ?? throw new InvalidOperationException("ZLink request submitter is not initialized."))
             .SubmitRequestAsync<IReadOnlyList<Message>>(
                 parts,
                 (pending, complete, fail) => dealer.Request(

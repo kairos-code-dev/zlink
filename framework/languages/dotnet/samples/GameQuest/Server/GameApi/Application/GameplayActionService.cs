@@ -16,7 +16,8 @@ internal sealed class GameplayActionService(
         CancellationToken cancellationToken)
     {
         var published = await StoreAndPublishAsync(
-            GameplayDomain.CreateMonsterKilled(request.PlayerId, request.MonsterId, request.AreaId, request.IdempotencyKey, _apiName),
+            GameplayDomain.CreateMonsterKilled(request.PlayerId, request.MonsterId, request.AreaId,
+                request.IdempotencyKey, _apiName),
             cancellationToken);
         return new KillMonsterRes(published.EventId);
     }
@@ -26,7 +27,8 @@ internal sealed class GameplayActionService(
         CancellationToken cancellationToken)
     {
         var published = await StoreAndPublishAsync(
-            GameplayDomain.CreateItemCollected(request.PlayerId, request.ItemId, request.Count, request.IdempotencyKey, _apiName),
+            GameplayDomain.CreateItemCollected(request.PlayerId, request.ItemId, request.Count, request.IdempotencyKey,
+                _apiName),
             cancellationToken);
         return new CollectItemRes(published.EventId);
     }
@@ -36,7 +38,8 @@ internal sealed class GameplayActionService(
         CancellationToken cancellationToken)
     {
         var published = await StoreAndPublishAsync(
-            GameplayDomain.CreateMissionCompleted(request.PlayerId, request.MissionId, request.IdempotencyKey, _apiName),
+            GameplayDomain.CreateMissionCompleted(request.PlayerId, request.MissionId, request.IdempotencyKey,
+                _apiName),
             cancellationToken);
         return new CompleteMissionRes(published.EventId);
     }
@@ -74,15 +77,15 @@ internal sealed class GameplayActionService(
     {
         var stored = await store.GetOrAddGameplayEventAsync(candidate, cancellationToken);
         var publishedFrom = await publisher.PublishAsync(stored, cancellationToken);
-            logger.LogInformation("gamequest api event published api={Api} player={PlayerId} event={EventId} type={EventType} fanout={Fanout}",
-                _apiName,
-                stored.PlayerId,
-                stored.EventId,
-                stored.EventType,
-                publishedFrom);
+        logger.LogInformation(
+            "gamequest api event published api={Api} player={PlayerId} event={EventId} type={EventType} fanout={Fanout}",
+            _apiName,
+            stored.PlayerId,
+            stored.EventId,
+            stored.EventType,
+            publishedFrom);
         return stored;
     }
-
 }
 
 internal interface IGameplayEventStore

@@ -1,12 +1,10 @@
-using RuntimeMonitoring.Server.Service.Handlers;
-using RuntimeMonitoring.Server.Service;
 namespace RuntimeMonitoring.Server.Service.Support;
 
 internal enum ServiceMonitorProfile
 {
     All,
     SocketFilter,
-    Throwing,
+    Throwing
 }
 
 internal sealed record ServerOptions(
@@ -28,32 +26,30 @@ internal sealed record ServerOptions(
         {
             var key = args[i];
             if (!key.StartsWith("--", StringComparison.Ordinal))
-            {
                 throw new ArgumentException($"Unexpected argument '{key}'.");
-            }
 
-            if (i + 1 >= args.Length)
-            {
-                throw new ArgumentException($"Missing value for '{key}'.");
-            }
+            if (i + 1 >= args.Length) throw new ArgumentException($"Missing value for '{key}'.");
 
             values[key] = args[++i];
         }
 
-        string Get(string name, string fallback = "") => values.TryGetValue(name, out var value)
-            ? value
-            : fallback;
+        string Get(string name, string fallback = "")
+        {
+            return values.TryGetValue(name, out var value)
+                ? value
+                : fallback;
+        }
 
         return new ServerOptions(
-            Role: defaultRole,
-            HttpUrl: Get("--http-url", "http://127.0.0.1:0"),
-            LogDir: Get("--log-dir", "logs"),
-            EvidenceFile: Get("--evidence-file"),
-            Rid: Get("--rid", Environment.GetEnvironmentVariable("ZLINK_E2E_RID") ?? "node"),
-            RegistryPubEndpoint: Get("--registry-pub-endpoint"),
-            RegistryRouterEndpoint: Get("--registry-router-endpoint"),
-            ChannelEndpoint: Get("--channel-endpoint"),
-            SpotRouterEndpoint: Get("--spot-router-endpoint"),
-            SpotPubEndpoint: Get("--spot-pub-endpoint"));
+            defaultRole,
+            Get("--http-url", "http://127.0.0.1:0"),
+            Get("--log-dir", "logs"),
+            Get("--evidence-file"),
+            Get("--rid", Environment.GetEnvironmentVariable("ZLINK_E2E_RID") ?? "node"),
+            Get("--registry-pub-endpoint"),
+            Get("--registry-router-endpoint"),
+            Get("--channel-endpoint"),
+            Get("--spot-router-endpoint"),
+            Get("--spot-pub-endpoint"));
     }
 }

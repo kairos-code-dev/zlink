@@ -4,5 +4,7 @@ internal sealed class ZlinkStreamLifecycleCall(Func<CancellationToken, ValueTask
     : IZlinkStreamLifecycleCall
 {
     public ValueTask Async(CancellationToken cancellationToken = default)
-        => execute(cancellationToken);
+    {
+        return execute(cancellationToken);
+    }
 }

@@ -13,14 +13,10 @@ internal sealed class BingoRoomAllocator(IBingoMatchQueue matchQueue)
         CancellationToken cancellationToken)
     {
         if (string.IsNullOrWhiteSpace(actorId))
-        {
             throw new InvalidOperationException("Actor id is required for room allocation.");
-        }
 
         if (string.IsNullOrWhiteSpace(preferredOwnerNodeRid))
-        {
             throw new InvalidOperationException("Preferred owner node rid is required for room allocation.");
-        }
 
         var settings = BingoRoomSettings.Create(mode, Interlocked.Increment(ref _roomSeq));
         var roomId = $"bingo-room-{Guid.NewGuid():N}";
@@ -34,9 +30,7 @@ internal sealed class BingoRoomAllocator(IBingoMatchQueue matchQueue)
 
         if (string.Equals(reservation.OwnerPlayNodeRid, preferredOwnerNodeRid, StringComparison.Ordinal)
             && string.Equals(reservation.RoomId, roomId, StringComparison.Ordinal))
-        {
             return reservation with { LocalRoomSettings = settings };
-        }
 
         return reservation;
     }

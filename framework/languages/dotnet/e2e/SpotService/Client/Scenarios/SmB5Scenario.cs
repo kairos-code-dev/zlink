@@ -1,7 +1,7 @@
+using SpotService.Client.Support;
 using SpotService.Shared;
 using Systems.Zlink.Stream.Connector.Contracts;
 using Zlink.HttpClient;
-using SpotService.Client.Support;
 
 namespace SpotService.Client.Scenarios;
 
@@ -10,7 +10,8 @@ internal static class SmB5Scenario
     public static async Task RunAsync(ZLinkHttpClient playA, string sessionAStreamEndpoint)
     {
         var actorId = $"actor-sm-b5-missing-{Guid.NewGuid():N}";
-        ScenarioAssert.That(!string.IsNullOrWhiteSpace(sessionAStreamEndpoint), "session-a stream endpoint is required.");
+        ScenarioAssert.That(!string.IsNullOrWhiteSpace(sessionAStreamEndpoint),
+            "session-a stream endpoint is required.");
         await using var client = ZlinkStreamConnectorFactory.Create(new ZlinkStreamConnectorOptions
         {
             Endpoint = new Uri(sessionAStreamEndpoint),
@@ -18,7 +19,7 @@ internal static class SmB5Scenario
             RequestTimeout = TimeSpan.FromSeconds(5),
             Heartbeat = new ZlinkStreamHeartbeatOptions { Enabled = false },
             DispatchMode = ZlinkStreamDispatchMode.Immediate,
-            MaxReceivedMessages = 1024,
+            MaxReceivedMessages = 1024
         });
         await client.Connect.Async();
         await client.Request(new AuthReq(actorId, "missing handler actor", "play-a"))
@@ -38,7 +39,8 @@ internal static class SmB5Scenario
         }
 
         ScenarioAssert.That(missingActorRequestFailed, "SM-B5 expected missing actor handler request to fail.");
-        var expectedEvidence = new[] { "dispatch-error|surface=SpotActor|reason=HandlerMissing|action=ReplyError|packet=MissingActorReq" };
+        var expectedEvidence = new[]
+            { "dispatch-error|surface=SpotActor|reason=HandlerMissing|action=ReplyError|packet=MissingActorReq" };
         var evidence = (await playA.Post("/evidence/wait")
             .Body(new EvidenceWaitRequest(expectedEvidence))
             .SubmitAsync<string[]>()).Body;

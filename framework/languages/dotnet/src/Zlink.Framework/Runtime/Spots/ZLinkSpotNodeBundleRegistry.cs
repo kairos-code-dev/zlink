@@ -1,11 +1,4 @@
 using System.Diagnostics.CodeAnalysis;
-using Zlink.Framework.Runtime.Backend.Contracts;
-using Zlink.Framework.Runtime.Actors;
-using Zlink.Framework.Runtime.Diagnostics;
-using Zlink.Framework.Runtime.Execution;
-using Zlink.Framework.Runtime.Host;
-using Zlink.Framework.Runtime.Messaging;
-using Zlink.Framework.Runtime.Registry;
 
 namespace Zlink.Framework.Runtime.Spots;
 
@@ -17,6 +10,18 @@ internal sealed class ZLinkSpotNodeBundleRegistry(
 {
     private readonly object _gate = new();
     private readonly Dictionary<string, ZLinkSpotPublisherBundle> _publisherBundles = new(StringComparer.Ordinal);
+
+    public async ValueTask DisposeAsync()
+    {
+        ZLinkSpotPublisherBundle[] publishers;
+        lock (_gate)
+        {
+            publishers = _publisherBundles.Values.ToArray();
+            _publisherBundles.Clear();
+        }
+
+        foreach (var publisher in publishers) await publisher.DisposeAsync();
+    }
 
     public void AddPublisherBundle(string channelName, ZLinkSpotPublisherBundle bundle)
     {
@@ -40,10 +45,7 @@ internal sealed class ZLinkSpotNodeBundleRegistry(
     {
         lock (_gate)
         {
-            if (_publisherBundles.TryGetValue(channelName, out var existing))
-            {
-                return existing;
-            }
+            if (_publisherBundles.TryGetValue(channelName, out var existing)) return existing;
 
             connectDiscoveredPubSubPeers();
 
@@ -63,21 +65,5 @@ internal sealed class ZLinkSpotNodeBundleRegistry(
                 publisher.OnSendReady,
                 frameworkRegistration.DefaultSocketSendTimeout,
                 stopToken));
-    }
-
-    public async ValueTask DisposeAsync()
-    {
-        ZLinkSpotPublisherBundle[] publishers;
-        lock (_gate)
-        {
-            publishers = _publisherBundles.Values.ToArray();
-            _publisherBundles.Clear();
-        }
-
-        foreach (var publisher in publishers)
-        {
-            await publisher.DisposeAsync();
-        }
-
     }
 }

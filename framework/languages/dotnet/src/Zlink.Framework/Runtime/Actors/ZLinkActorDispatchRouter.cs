@@ -1,7 +1,6 @@
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Logging;
-using Zlink.Framework.Runtime.Diagnostics;
-using Zlink.Framework.Runtime.Streams;
+using Microsoft.Extensions.Logging.Abstractions;
 
 namespace Zlink.Framework.Runtime.Actors;
 
@@ -10,13 +9,14 @@ internal sealed class ZLinkActorDispatchRouter(
     ZLinkActorSessionRegistry actorSessions,
     Func<IZLinkActor, ZLinkActorRuntimeState, ZLinkActorContext> ensureActorContext)
 {
-    private readonly ILogger _logger =
-        runtime.Services.GetService<ILoggerFactory>()?.CreateLogger<ZLinkActorDispatchRouter>()
-        ?? Microsoft.Extensions.Logging.Abstractions.NullLogger<ZLinkActorDispatchRouter>.Instance;
     private readonly ZLinkDispatchErrorReporter _dispatchErrors = new(
         runtime.Registration.DispatchOptions,
         runtime.Services,
         runtime.Services.GetService<ILoggerFactory>()?.CreateLogger<ZLinkActorDispatchRouter>());
+
+    private readonly ILogger _logger =
+        runtime.Services.GetService<ILoggerFactory>()?.CreateLogger<ZLinkActorDispatchRouter>()
+        ?? NullLogger<ZLinkActorDispatchRouter>.Instance;
 
     public async ValueTask SubmitByIdAsync(
         string actorId,
@@ -26,9 +26,9 @@ internal sealed class ZLinkActorDispatchRouter(
     {
         var state = actorSessions.GetOrCreate(actorId);
         var actor = state.Actor
-            ?? throw new ZLinkFrameworkException(
-                ZLinkFrameworkErrorKind.ActorRouteNotFound,
-                $"Actor '{actorId}' is not active.");
+                    ?? throw new ZLinkFrameworkException(
+                        ZLinkFrameworkErrorKind.ActorRouteNotFound,
+                        $"Actor '{actorId}' is not active.");
 
         await Async(actor, header, payload, cancellationToken).ConfigureAwait(false);
     }
@@ -41,9 +41,9 @@ internal sealed class ZLinkActorDispatchRouter(
     {
         var state = actorSessions.GetOrCreate(actorId);
         var actor = state.Actor
-            ?? throw new ZLinkFrameworkException(
-                ZLinkFrameworkErrorKind.ActorRouteNotFound,
-                $"Actor '{actorId}' is not active.");
+                    ?? throw new ZLinkFrameworkException(
+                        ZLinkFrameworkErrorKind.ActorRouteNotFound,
+                        $"Actor '{actorId}' is not active.");
 
         return await SubmitForReplyAsync(actor, state, header, payload, cancellationToken)
             .ConfigureAwait(false);
@@ -70,10 +70,7 @@ internal sealed class ZLinkActorDispatchRouter(
         }
         finally
         {
-            if (shouldPrune)
-            {
-                actorSessions.TryRemove(actorId, state);
-            }
+            if (shouldPrune) actorSessions.TryRemove(actorId, state);
         }
     }
 
@@ -83,9 +80,9 @@ internal sealed class ZLinkActorDispatchRouter(
     {
         var state = actorSessions.GetOrCreate(actorId);
         var actor = state.Actor
-            ?? throw new ZLinkFrameworkException(
-                ZLinkFrameworkErrorKind.ActorRouteNotFound,
-                $"Actor '{actorId}' is not active.");
+                    ?? throw new ZLinkFrameworkException(
+                        ZLinkFrameworkErrorKind.ActorRouteNotFound,
+                        $"Actor '{actorId}' is not active.");
 
         await state.ExecuteLifecycleAsync(
                 ct => NotifyDisconnectedByCurrentLocationAsync(actor, state, ct),
@@ -115,7 +112,7 @@ internal sealed class ZLinkActorDispatchRouter(
         CancellationToken cancellationToken)
     {
         var placement = await state.ExecuteLockedAsync(
-            () => state.SelectPlacementLocked(pruneWhenSessionless: true),
+            () => state.SelectPlacementLocked(true),
             cancellationToken).ConfigureAwait(false);
 
         if (placement.Activation is null)
@@ -128,13 +125,11 @@ internal sealed class ZLinkActorDispatchRouter(
                     cancellationToken)
                 .ConfigureAwait(false);
             if (!handled)
-            {
                 ReportMissingHandler(
                     actor,
                     header,
                     ZLinkDispatchMessageKind.ActorSend,
                     ZLinkDispatchErrorAction.Drop);
-            }
             return placement.Prune;
         }
 
@@ -151,11 +146,10 @@ internal sealed class ZLinkActorDispatchRouter(
         CancellationToken cancellationToken)
     {
         var placement = await state.ExecuteLockedAsync(
-            () => state.SelectPlacementLocked(pruneWhenSessionless: false),
+            () => state.SelectPlacementLocked(false),
             cancellationToken).ConfigureAwait(false);
 
         if (placement.Activation is not null)
-        {
             return await placement.Activation.SubmitActorForReplyAsync(
                     actor,
                     state,
@@ -163,7 +157,6 @@ internal sealed class ZLinkActorDispatchRouter(
                     payload,
                     cancellationToken)
                 .ConfigureAwait(false);
-        }
 
         var entryResult = await runtime.TrySubmitEntrySpotActorForReplyAsync(
                 actor,
@@ -173,11 +166,9 @@ internal sealed class ZLinkActorDispatchRouter(
                 cancellationToken)
             .ConfigureAwait(false);
         if (entryResult.Handled)
-        {
             return entryResult.Reply
-                ?? throw new InvalidOperationException(
-                    $"Entry Spot actor request handler for '{header.Name}' returned no reply.");
-        }
+                   ?? throw new InvalidOperationException(
+                       $"Entry Spot actor request handler for '{header.Name}' returned no reply.");
 
         var error = new ZLinkFrameworkException(
             ZLinkFrameworkErrorKind.ActorDispatchHandlerNotFound,
@@ -197,7 +188,7 @@ internal sealed class ZLinkActorDispatchRouter(
         CancellationToken cancellationToken)
     {
         var placement = await state.ExecuteLockedAsync(
-            () => state.SelectPlacementLocked(pruneWhenSessionless: false),
+            () => state.SelectPlacementLocked(false),
             cancellationToken).ConfigureAwait(false);
 
         if (placement.Activation is not null)
@@ -209,7 +200,7 @@ internal sealed class ZLinkActorDispatchRouter(
 
         await runtime.TryNotifyEntrySpotActorDisconnectedAsync(
                 actor,
-                targetNodeRid: null,
+                null,
                 cancellationToken)
             .ConfigureAwait(false);
     }
@@ -251,5 +242,4 @@ internal sealed class ZLinkActorDispatchRouter(
             CorrelationId: header.CorrelationId ?? header.RequestSeq?.ToString(),
             Exception: exception));
     }
-
 }

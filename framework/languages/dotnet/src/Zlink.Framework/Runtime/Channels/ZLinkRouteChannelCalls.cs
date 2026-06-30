@@ -1,18 +1,15 @@
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Logging;
-using Zlink.Framework.Runtime.Backend.Contracts;
-using Zlink.Framework.Runtime.Diagnostics;
-using Zlink.Framework.Runtime.Messaging;
 
 namespace Zlink.Framework.Runtime.Channels;
 
 internal sealed class ZLinkRouteChannelCalls
 {
-    private readonly string _routerChannelId;
-    private readonly IZLinkBackendRouterSocket _router;
-    private readonly ZLinkAsyncSubmitter _submitter;
-    private readonly ZLinkMessageFlowTracer _flow;
     private readonly ZLinkCodecRegistryBuilder _codecs;
+    private readonly ZLinkMessageFlowTracer _flow;
+    private readonly IZLinkBackendRouterSocket _router;
+    private readonly string _routerChannelId;
+    private readonly ZLinkAsyncSubmitter _submitter;
 
     public ZLinkRouteChannelCalls(
         IServiceProvider services,
@@ -40,8 +37,7 @@ internal sealed class ZLinkRouteChannelCalls
         var header = ZLinkClientCallCodec.CreateEnvelope(
             ZLinkMessageKind.Command,
             _routerChannelId,
-            packetName,
-            null);
+            packetName);
         var parts = ZLinkEnvelopeCodec.EncodeParts(
             header,
             message,
@@ -149,17 +145,14 @@ internal sealed class ZLinkRouteChannelCalls
         string? correlationId,
         RoutingId targetNodeRid)
     {
-        if (!_flow.Enabled(ZLinkMessageFlowOutcome.Sent))
-        {
-            return;
-        }
+        if (!_flow.Enabled(ZLinkMessageFlowOutcome.Sent)) return;
 
         _flow.Trace(new ZLinkMessageFlowEvent(
             ZLinkMessageFlowOutcome.Sent,
             ZLinkDispatchErrorSurface.RouteMeshChannel,
             kind,
-            PacketName: packetName,
-            ChannelName: _routerChannelId,
+            packetName,
+            _routerChannelId,
             CorrelationId: correlationId,
             PeerRid: targetNodeRid.ToString(),
             SocketRole: "router"));
@@ -170,17 +163,14 @@ internal sealed class ZLinkRouteChannelCalls
         string? correlationId,
         RoutingId targetNodeRid)
     {
-        if (!_flow.Enabled(ZLinkMessageFlowOutcome.ReplyReceived))
-        {
-            return;
-        }
+        if (!_flow.Enabled(ZLinkMessageFlowOutcome.ReplyReceived)) return;
 
         _flow.Trace(new ZLinkMessageFlowEvent(
             ZLinkMessageFlowOutcome.ReplyReceived,
             ZLinkDispatchErrorSurface.RouteMeshChannel,
             ZLinkDispatchMessageKind.Response,
-            PacketName: packetName,
-            ChannelName: _routerChannelId,
+            packetName,
+            _routerChannelId,
             CorrelationId: correlationId,
             PeerRid: targetNodeRid.ToString(),
             SocketRole: "router"));
@@ -192,10 +182,7 @@ internal sealed class ZLinkRouteChannelCalls
     {
         var parts = new Message[payloadParts.Count + 1];
         parts[0] = ZLinkEnvelopeCodec.EncodeHeader(header);
-        for (int index = 0; index < payloadParts.Count; index++)
-        {
-            parts[index + 1] = payloadParts[index];
-        }
+        for (var index = 0; index < payloadParts.Count; index++) parts[index + 1] = payloadParts[index];
 
         return parts;
     }
@@ -240,7 +227,7 @@ internal sealed class ZLinkRouteChannelCalls
                 .ConfigureAwait(false);
         }
         catch (OperationCanceledException) when (timeoutSource.IsCancellationRequested
-            && !cancellationToken.IsCancellationRequested)
+                                                 && !cancellationToken.IsCancellationRequested)
         {
             throw new TimeoutException("ZLink routed request timed out.");
         }

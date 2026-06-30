@@ -18,10 +18,7 @@ internal static class ZLinkSpotActorInterfaceDescriptorFactory
                 definition,
                 arguments,
                 packetName);
-            if (packet is not null)
-            {
-                yield return new ZLinkSpotActorInferredHandlerDescriptor { Packet = packet };
-            }
+            if (packet is not null) yield return new ZLinkSpotActorInferredHandlerDescriptor { Packet = packet };
         }
     }
 
@@ -36,42 +33,32 @@ internal static class ZLinkSpotActorInterfaceDescriptorFactory
     {
         if (definition == typeof(IZLinkEntrySpotActorSendHandler<,,>))
         {
-            if (surface != ZLinkSpotActorHandlerSurface.EntrySpot)
-            {
-                return null;
-            }
+            if (surface != ZLinkSpotActorHandlerSurface.EntrySpot) return null;
 
             return CreatePacket(surface, expectedSpotType, handlerType, expectedActorType, arguments, null, packetName);
         }
 
         if (definition == typeof(IZLinkEntrySpotActorRequestHandler<,,,>))
         {
-            if (surface != ZLinkSpotActorHandlerSurface.EntrySpot)
-            {
-                return null;
-            }
+            if (surface != ZLinkSpotActorHandlerSurface.EntrySpot) return null;
 
-            return CreatePacket(surface, expectedSpotType, handlerType, expectedActorType, arguments, arguments[3], packetName);
+            return CreatePacket(surface, expectedSpotType, handlerType, expectedActorType, arguments, arguments[3],
+                packetName);
         }
 
         if (definition == typeof(IZLinkSpotActorSendHandler<,,>))
         {
-            if (surface != ZLinkSpotActorHandlerSurface.UserSpot)
-            {
-                return null;
-            }
+            if (surface != ZLinkSpotActorHandlerSurface.UserSpot) return null;
 
             return CreatePacket(surface, expectedSpotType, handlerType, expectedActorType, arguments, null, packetName);
         }
 
         if (definition == typeof(IZLinkSpotActorRequestHandler<,,,>))
         {
-            if (surface != ZLinkSpotActorHandlerSurface.UserSpot)
-            {
-                return null;
-            }
+            if (surface != ZLinkSpotActorHandlerSurface.UserSpot) return null;
 
-            return CreatePacket(surface, expectedSpotType, handlerType, expectedActorType, arguments, arguments[3], packetName);
+            return CreatePacket(surface, expectedSpotType, handlerType, expectedActorType, arguments, arguments[3],
+                packetName);
         }
 
         return null;
@@ -97,5 +84,4 @@ internal static class ZLinkSpotActorInterfaceDescriptorFactory
             replyType,
             packetName);
     }
-
 }

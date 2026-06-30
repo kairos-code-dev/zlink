@@ -1,4 +1,3 @@
-
 namespace Zlink.Framework.Runtime.Spots;
 
 internal sealed partial class ZLinkSpotActivation
@@ -28,7 +27,7 @@ internal sealed partial class ZLinkSpotActivation
     {
         descriptor = null;
         return _actorHandlers is not null
-            && _actorHandlers.TryResolve(actorType, header, out descriptor);
+               && _actorHandlers.TryResolve(actorType, header, out descriptor);
     }
 
     public async ValueTask<ZLinkSpotActorJoinResult> JoinActorAsync(
@@ -40,10 +39,8 @@ internal sealed partial class ZLinkSpotActivation
 
         if (!_actorJoins.TryResolve(out var descriptor)
             || descriptor is null)
-        {
             throw new InvalidOperationException(
                 $"SPOT '{Spot.GetType()}' does not declare an actor join callback.");
-        }
 
         var state = new ActorJoinCallState(actor, request, descriptor);
         if (ReferenceEquals(ZLinkSpotAmbientContext.CurrentOrDefault, this))
@@ -55,10 +52,8 @@ internal sealed partial class ZLinkSpotActivation
                     cancellationToken)
                 .ConfigureAwait(false);
             if (state.Result.Accepted)
-            {
                 await CommitActorJoinCoreAsync(state.Actor, cancellationToken)
                     .ConfigureAwait(false);
-            }
 
             return state.Result;
         }
@@ -72,10 +67,8 @@ internal sealed partial class ZLinkSpotActivation
                     state.Request,
                     ct);
                 if (state.Result.Accepted)
-                {
                     await activation.CommitActorJoinCoreAsync(state.Actor, ct)
                         .ConfigureAwait(false);
-                }
             },
             state,
             cancellationToken);
@@ -155,18 +148,13 @@ internal sealed partial class ZLinkSpotActivation
     {
         _actors.RemoveIfCurrent(actor);
         var actorState = _runtime.GetOrCreateActorState(actor.ActorId);
-        if (ReferenceEquals(actorState.Activation, this))
-        {
-            actorState.Activation = null;
-        }
+        if (ReferenceEquals(actorState.Activation, this)) actorState.Activation = null;
 
         if (_actorHandlers is not null
             && _actorHandlers.TryResolveLeft(actor.GetType(), out var descriptor)
             && descriptor is not null)
-        {
             await HandlerInvoker.InvokeActorLifecycleAsync(descriptor, actor, cancellationToken)
                 .ConfigureAwait(false);
-        }
     }
 
     private async ValueTask NotifyActorDisconnectedCoreAsync(
@@ -176,10 +164,8 @@ internal sealed partial class ZLinkSpotActivation
         if (_actorHandlers is not null
             && _actorHandlers.TryResolveDisconnected(actor.GetType(), out var descriptor)
             && descriptor is not null)
-        {
             await HandlerInvoker.InvokeActorLifecycleAsync(descriptor, actor, cancellationToken)
                 .ConfigureAwait(false);
-        }
     }
 
     private async ValueTask<ZLinkSpotActorJoinResult> InvokeActorJoinAsync(

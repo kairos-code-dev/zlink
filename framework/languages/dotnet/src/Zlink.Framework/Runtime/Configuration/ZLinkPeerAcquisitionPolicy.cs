@@ -4,7 +4,7 @@ internal enum ZLinkPeerAcquisitionMode
 {
     None,
     Discovery,
-    Manual,
+    Manual
 }
 
 internal static class ZLinkPeerAcquisitionPolicy
@@ -13,10 +13,7 @@ internal static class ZLinkPeerAcquisitionPolicy
         bool discoveryConfigured,
         IReadOnlyCollection<string> manualConnections)
     {
-        if (manualConnections.Count > 0)
-        {
-            return ZLinkPeerAcquisitionMode.Manual;
-        }
+        if (manualConnections.Count > 0) return ZLinkPeerAcquisitionMode.Manual;
 
         return discoveryConfigured
             ? ZLinkPeerAcquisitionMode.Discovery
@@ -29,10 +26,8 @@ internal static class ZLinkPeerAcquisitionPolicy
         IReadOnlyCollection<string> manualConnections)
     {
         if (Resolve(discoveryConfigured, manualConnections) == ZLinkPeerAcquisitionMode.None)
-        {
             throw new ZLinkConfigurationException(
                 $"{capabilityName} requires discovery or manual connections.");
-        }
     }
 
     public static void RequireSinglePeerSource(
@@ -41,10 +36,8 @@ internal static class ZLinkPeerAcquisitionPolicy
         IReadOnlyCollection<string> manualConnections)
     {
         if (discoveryConfigured && manualConnections.Count > 0)
-        {
             throw new ZLinkConfigurationException(
                 $"{capabilityName} cannot mix discovery and manual connections.");
-        }
 
         RequirePeerSource(capabilityName, discoveryConfigured, manualConnections);
     }

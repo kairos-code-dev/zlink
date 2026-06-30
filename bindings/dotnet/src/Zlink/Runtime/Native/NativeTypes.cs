@@ -1,6 +1,5 @@
-using System;
-using System.Runtime.InteropServices;
 using System.Runtime.CompilerServices;
+using System.Runtime.InteropServices;
 using System.Text;
 
 namespace Systems.Zlink.Runtime.Native;
@@ -10,11 +9,9 @@ internal unsafe struct ZlinkMsg
 {
     // zlink_msg_t is a 64-byte opaque value aligned to sizeof(void *).
     // The pointer-sized field forces native-compatible alignment.
-    [FieldOffset(0)]
-    public fixed byte Data[64];
+    [FieldOffset(0)] public fixed byte Data[64];
 
-    [FieldOffset(0)]
-    private readonly nuint _align;
+    [FieldOffset(0)] private readonly nuint _align;
 }
 
 [StructLayout(LayoutKind.Sequential)]
@@ -94,7 +91,7 @@ internal static class NativeHelpers
     {
         if (buffer == null || maxLen <= 0)
             return string.Empty;
-        int len = 0;
+        var len = 0;
         while (len < maxLen && buffer[len] != 0)
             len++;
         if (len == 0)
@@ -107,11 +104,12 @@ internal static class NativeHelpers
         int size = id.Size;
         if (size <= 0)
             return Array.Empty<byte>();
-        byte[] data = new byte[size];
+        var data = new byte[size];
         fixed (byte* src = id.Data)
         {
             new ReadOnlySpan<byte>(src, size).CopyTo(data);
         }
+
         return data;
     }
 
@@ -124,7 +122,7 @@ internal static class NativeHelpers
 
         ZlinkRoutingId rid = default;
         rid.Size = (byte)routingId.Length;
-        for (int i = 0; i < routingId.Length; i++)
+        for (var i = 0; i < routingId.Length; i++)
             rid.Data[i] = routingId[i];
         return rid;
     }
@@ -142,16 +140,14 @@ internal static class NativeHelpers
         if (capacity <= 0)
             throw new ArgumentOutOfRangeException(nameof(capacity));
 
-        Span<byte> bytes = new Span<byte>(destination, capacity);
+        var bytes = new Span<byte>(destination, capacity);
         bytes.Clear();
         if (value.Length == 0)
             return;
 
-        int written = Encoding.UTF8.GetBytes(value, bytes);
+        var written = Encoding.UTF8.GetBytes(value, bytes);
         if (written >= capacity)
-        {
             throw new ArgumentOutOfRangeException(nameof(value),
                 "UTF-8 value exceeds native fixed buffer capacity.");
-        }
     }
 }

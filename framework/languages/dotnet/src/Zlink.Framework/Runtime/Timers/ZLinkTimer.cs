@@ -4,8 +4,8 @@ namespace Zlink.Framework.Runtime.Timers;
 
 internal sealed class ZLinkTimer : IZLinkTimer
 {
-    private readonly CancellationTokenSource _stopSource;
     private readonly Task _pump;
+    private readonly CancellationTokenSource _stopSource;
     private int _disposed;
 
     public ZLinkTimer(
@@ -28,10 +28,7 @@ internal sealed class ZLinkTimer : IZLinkTimer
 
     public async ValueTask CancelAsync()
     {
-        if (Interlocked.Exchange(ref _disposed, 1) != 0)
-        {
-            return;
-        }
+        if (Interlocked.Exchange(ref _disposed, 1) != 0) return;
 
         _stopSource.Cancel();
         try
@@ -94,12 +91,9 @@ internal sealed class ZLinkTimer : IZLinkTimer
                 period,
                 started,
                 started,
-                skippedTicks: 0);
+                0);
 
-            if (!await callbacks.DispatchTickAsync(tick, cancellationToken).ConfigureAwait(false))
-            {
-                return;
-            }
+            if (!await callbacks.DispatchTickAsync(tick, cancellationToken).ConfigureAwait(false)) return;
         }
     }
 
@@ -147,10 +141,7 @@ internal sealed class ZLinkTimer : IZLinkTimer
                 startedElapsed,
                 skippedTicks);
 
-            if (!await callbacks.DispatchTickAsync(tick, cancellationToken).ConfigureAwait(false))
-            {
-                return;
-            }
+            if (!await callbacks.DispatchTickAsync(tick, cancellationToken).ConfigureAwait(false)) return;
 
             lastScheduledIndex = scheduledIndex;
         }
@@ -161,17 +152,11 @@ internal sealed class ZLinkTimer : IZLinkTimer
         ulong lastScheduledIndex,
         ulong dueScheduledIndex)
     {
-        if (options.OverrunPolicy == ZLinkTimerOverrunPolicy.SkipLateTicks)
-        {
-            return dueScheduledIndex;
-        }
+        if (options.OverrunPolicy == ZLinkTimerOverrunPolicy.SkipLateTicks) return dueScheduledIndex;
 
         var availableTicks = dueScheduledIndex - lastScheduledIndex;
         var maxCatchUpTicks = (ulong)options.MaxCatchUpTicks;
-        if (availableTicks > maxCatchUpTicks)
-        {
-            return dueScheduledIndex - maxCatchUpTicks + 1;
-        }
+        if (availableTicks > maxCatchUpTicks) return dueScheduledIndex - maxCatchUpTicks + 1;
 
         return lastScheduledIndex + 1;
     }
@@ -180,10 +165,7 @@ internal sealed class ZLinkTimer : IZLinkTimer
         long elapsedStopwatchTicks,
         long periodStopwatchTicks)
     {
-        if (elapsedStopwatchTicks <= 0)
-        {
-            return 1;
-        }
+        if (elapsedStopwatchTicks <= 0) return 1;
 
         return Math.Max(1, (ulong)(elapsedStopwatchTicks / periodStopwatchTicks));
     }

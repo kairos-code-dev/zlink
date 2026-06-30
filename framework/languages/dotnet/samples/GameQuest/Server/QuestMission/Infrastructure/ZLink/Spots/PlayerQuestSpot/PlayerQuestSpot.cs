@@ -1,5 +1,3 @@
-using GameQuest.Shared;
-using Microsoft.Extensions.Logging;
 using Zlink.Framework.Contracts.Messaging;
 using Zlink.Framework.Contracts.Spots;
 
@@ -9,9 +7,8 @@ internal sealed class PlayerQuestSpot(
     IZLinkSpotContext context,
     ILogger<PlayerQuestSpot> logger) : IZLinkSpot
 {
-    public IZLinkSpotContext Context { get; } = context;
-
     public string PlayerId { get; private set; } = string.Empty;
+    public IZLinkSpotContext Context { get; } = context;
 
     public void Configure()
     {

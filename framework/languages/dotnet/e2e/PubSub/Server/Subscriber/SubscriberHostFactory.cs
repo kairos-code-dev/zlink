@@ -1,6 +1,5 @@
 using PubSub.Server.Subscriber.Configuration;
 using PubSub.Server.Subscriber.Handlers;
-using PubSub.Server.Subscriber;
 using PubSub.Shared;
 using Zlink.Framework.AspNetCore;
 using Zlink.Framework.Contracts.Dispatch;

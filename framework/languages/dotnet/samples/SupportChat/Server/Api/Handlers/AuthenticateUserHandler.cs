@@ -21,7 +21,7 @@ internal sealed class AuthenticateUserHandler : IZLinkRequestHandler<Authenticat
             "customer-3" => Accepted("customer-3", "Customer 3", SupportChatRoles.Customer),
             "agent-1" => Accepted("agent-1", "Agent 1", SupportChatRoles.Agent),
             "agent-2" => Accepted("agent-2", "Agent 2", SupportChatRoles.Agent),
-            _ => new AuthenticateUserRes(false, null, null, null, "Unknown support chat token."),
+            _ => new AuthenticateUserRes(false, null, null, null, "Unknown support chat token.")
         });
     }
 

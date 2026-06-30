@@ -1,5 +1,3 @@
-using Zlink.Framework.Runtime.Backend.Contracts;
-
 namespace Zlink.Framework.Runtime.Messaging;
 
 internal static class ZLinkEnvelopeReplyCompletion
@@ -34,7 +32,7 @@ internal static class ZLinkEnvelopeReplyCompletion
             }
 
             complete((TReply?)ZLinkEnvelopeCodec.DecodeBody(reply, typeof(TReply), codecs)
-                ?? throw new InvalidOperationException($"{operationName} reply body is null."));
+                     ?? throw new InvalidOperationException($"{operationName} reply body is null."));
         }
         catch (Exception exception)
         {

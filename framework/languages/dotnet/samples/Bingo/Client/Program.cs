@@ -9,14 +9,13 @@ internal static class Program
     public static async Task Main(string[] args)
     {
         if (args.Length == 0)
-        {
-            throw new ArgumentException("Usage: --stream-a-endpoint tcp://HOST:PORT --stream-b-endpoint tcp://HOST:PORT");
-        }
+            throw new ArgumentException(
+                "Usage: --stream-a-endpoint tcp://HOST:PORT --stream-b-endpoint tcp://HOST:PORT");
 
         var streamAEndpoint = ReadOption(args, "--stream-a-endpoint")
-            ?? throw new ArgumentException("Missing --stream-a-endpoint.");
+                              ?? throw new ArgumentException("Missing --stream-a-endpoint.");
         var streamBEndpoint = ReadOption(args, "--stream-b-endpoint")
-            ?? throw new ArgumentException("Missing --stream-b-endpoint.");
+                              ?? throw new ArgumentException("Missing --stream-b-endpoint.");
         await using var client1 = CreateClient(streamAEndpoint, "player1");
         await using var client2 = CreateClient(streamBEndpoint, "player2");
         await using var observer = CreateClient(streamBEndpoint, "observer");
@@ -36,7 +35,7 @@ internal static class Program
                 ConnectTimeout = SampleTimings.ConnectTimeout,
                 RequestTimeout = SampleTimings.RequestTimeout,
                 DispatchMode = ZlinkStreamDispatchMode.Immediate,
-                PayloadCodec = ZLinkProtobufCodec.Default,
+                PayloadCodec = ZLinkProtobufCodec.Default
             })
             .WithInboundObserver((observation, _) =>
             {

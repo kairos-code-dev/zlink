@@ -1,8 +1,3 @@
-using Zlink.Framework.Runtime.Actors;
-using Zlink.Framework.Runtime.Backend.Contracts;
-using Zlink.Framework.Runtime.Spots;
-using Zlink.Framework.Runtime.Streams;
-
 namespace Zlink.Framework.Runtime.Host;
 
 internal sealed class ZLinkFrameworkActorFacade(
@@ -21,6 +16,7 @@ internal sealed class ZLinkFrameworkActorFacade(
         getState,
         getActorSpotNode,
         runtime.Flow);
+
     private readonly ZLinkActorRemoteJoiner _remoteJoiner = new(
         runtime,
         registration,
@@ -42,7 +38,6 @@ internal sealed class ZLinkFrameworkActorFacade(
         if (localActivation is null
             && node is not null
             && actorState.NativeActorRef is { } actorRef)
-        {
             return await _remoteJoiner.JoinAsync(
                 state,
                 spotRid,
@@ -51,25 +46,20 @@ internal sealed class ZLinkFrameworkActorFacade(
                 node,
                 request,
                 cancellationToken).ConfigureAwait(false);
-        }
 
         ZLinkSpotActorJoinResult joinResult;
         if (localActivation is not null)
-        {
             joinResult = await localActivation.JoinActorAsync(actor, request, cancellationToken)
                 .ConfigureAwait(false);
-        }
         else
-        {
             joinResult = await spots.JoinActorAsync(
                 state,
                 spotRid,
                 actor,
                 request,
                 cancellationToken).ConfigureAwait(false);
-        }
         return new ZLinkActorJoinResult(
-            Accepted: joinResult.Accepted,
+            joinResult.Accepted,
             ToActorRef(actorState),
             joinResult.Reply ?? ZLinkMessage.Empty);
     }
@@ -255,12 +245,14 @@ internal sealed class ZLinkFrameworkActorFacade(
     private static ActorRef ToActorRef(ZLinkActorRuntimeState actorState)
     {
         var actorRef = actorState.NativeActorRef
-            ?? throw new ZLinkFrameworkException(
-                ZLinkFrameworkErrorKind.ActorRouteNotFound,
-                $"Actor '{actorState.ActorId}' does not have a native Actor ref.");
+                       ?? throw new ZLinkFrameworkException(
+                           ZLinkFrameworkErrorKind.ActorRouteNotFound,
+                           $"Actor '{actorState.ActorId}' does not have a native Actor ref.");
         return ToActorRef(actorRef);
     }
 
     private static ActorRef ToActorRef(ZLinkBackendActorRef actorRef)
-        => new(actorRef.NodeRid, actorRef.ActorId, actorRef.Generation);
+    {
+        return new ActorRef(actorRef.NodeRid, actorRef.ActorId, actorRef.Generation);
+    }
 }

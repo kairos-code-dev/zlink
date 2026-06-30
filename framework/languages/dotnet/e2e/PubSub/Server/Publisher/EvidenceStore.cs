@@ -1,6 +1,4 @@
 using System.Collections.Concurrent;
-using PubSub.Server.Publisher.Configuration;
-using PubSub.Server.Publisher.Endpoints;
 
 namespace PubSub.Server.Publisher;
 
@@ -26,10 +24,7 @@ public sealed class EvidenceStore
     public void Add(string entry)
     {
         _entries.Enqueue(entry);
-        if (string.IsNullOrWhiteSpace(_filePath))
-        {
-            return;
-        }
+        if (string.IsNullOrWhiteSpace(_filePath)) return;
 
         lock (_fileGate)
         {
@@ -37,7 +32,10 @@ public sealed class EvidenceStore
         }
     }
 
-    public string[] Snapshot() => _entries.ToArray();
+    public string[] Snapshot()
+    {
+        return _entries.ToArray();
+    }
 
     public void Clear()
     {
@@ -46,11 +44,9 @@ public sealed class EvidenceStore
         }
 
         if (!string.IsNullOrWhiteSpace(_filePath))
-        {
             lock (_fileGate)
             {
                 File.WriteAllText(_filePath, string.Empty);
             }
-        }
     }
 }

@@ -1,7 +1,5 @@
 // SPDX-License-Identifier: MPL-2.0
 
-using System;
-using System.Collections.Generic;
 using System.Runtime.CompilerServices;
 using System.Text;
 using Systems.Zlink.Runtime.Native;
@@ -16,14 +14,18 @@ internal static class RoutingIdCodec
     private static readonly object PublicCacheLock = new();
     private static readonly object CanonicalCacheLock = new();
     private static readonly object RoutingCacheLock = new();
-    [ThreadStatic]
-    private static Dictionary<RouteCacheKey, List<byte[]>>? t_ownedBytesCache;
+
+    [ThreadStatic] private static Dictionary<RouteCacheKey, List<byte[]>>? t_ownedBytesCache;
+
     private static readonly Dictionary<RouteCacheKey, List<RouteCacheEntry>>
         ByteToPublicCache = new();
+
     private static readonly Dictionary<RouteCacheKey, List<byte[]>>
         ByteCanonicalCache = new();
+
     private static readonly Dictionary<RouteCacheKey, List<RouteRoutingEntry>>
         ByteToRoutingCache = new();
+
     private static readonly Dictionary<string, byte[]> PublicToByteCache =
         new(StringComparer.Ordinal);
 
@@ -32,39 +34,33 @@ internal static class RoutingIdCodec
         if (routingId.Length == 0)
             return string.Empty;
 
-        RouteCacheKey key = RouteCacheKey.Create(routingId);
+        var key = RouteCacheKey.Create(routingId);
         lock (PublicCacheLock)
         {
-            if (ByteToPublicCache.TryGetValue(key, out List<RouteCacheEntry>? entries))
-            {
-                for (int i = 0; i < entries.Count; i++)
-                {
+            if (ByteToPublicCache.TryGetValue(key, out var entries))
+                for (var i = 0; i < entries.Count; i++)
                     if (routingId.SequenceEqual(entries[i].Bytes))
                         return entries[i].Public;
-                }
-            }
         }
 
-        string utf8 = Encoding.UTF8.GetString(routingId);
-        string publicValue = IsPrintableUtf8Roundtrip(utf8, routingId)
+        var utf8 = Encoding.UTF8.GetString(routingId);
+        var publicValue = IsPrintableUtf8Roundtrip(utf8, routingId)
             ? utf8
             : HexPrefix + Convert.ToHexString(routingId);
-        byte[] copy = routingId.ToArray();
+        var copy = routingId.ToArray();
 
         lock (PublicCacheLock)
         {
             TrimPublicCachesIfNeeded();
-            if (!ByteToPublicCache.TryGetValue(key, out List<RouteCacheEntry>? entries))
+            if (!ByteToPublicCache.TryGetValue(key, out var entries))
             {
                 entries = new List<RouteCacheEntry>(1);
                 ByteToPublicCache[key] = entries;
             }
 
-            for (int i = 0; i < entries.Count; i++)
-            {
+            for (var i = 0; i < entries.Count; i++)
                 if (copy.AsSpan().SequenceEqual(entries[i].Bytes))
                     return entries[i].Public;
-            }
 
             entries.Add(new RouteCacheEntry(copy, publicValue));
             if (!PublicToByteCache.ContainsKey(publicValue))
@@ -120,11 +116,12 @@ internal static class RoutingIdCodec
         if (size <= 0)
             return null;
 
-        byte[] bytes = new byte[size];
+        var bytes = new byte[size];
         fixed (byte* src = routingId.Data)
         {
             new ReadOnlySpan<byte>(src, size).CopyTo(bytes);
         }
+
         return bytes;
     }
 
@@ -160,9 +157,9 @@ internal static class RoutingIdCodec
         }
 
         value = ((uint)routingId[0] << 24)
-              | ((uint)routingId[1] << 16)
-              | ((uint)routingId[2] << 8)
-              | routingId[3];
+                | ((uint)routingId[1] << 16)
+                | ((uint)routingId[2] << 8)
+                | routingId[3];
         return true;
     }
 
@@ -171,27 +168,23 @@ internal static class RoutingIdCodec
         if (routingId == null)
             throw new ArgumentNullException(paramName);
         if (routingId.Length == 0)
-        {
             throw new ArgumentOutOfRangeException(paramName,
                 "routingId must not be empty.");
-        }
 
         lock (PublicCacheLock)
         {
-            if (PublicToByteCache.TryGetValue(routingId, out byte[]? cached))
+            if (PublicToByteCache.TryGetValue(routingId, out var cached))
                 return cached;
         }
 
         byte[] bytes;
         if (routingId.StartsWith(HexPrefix, StringComparison.OrdinalIgnoreCase))
         {
-            string hex = routingId.Substring(HexPrefix.Length);
+            var hex = routingId.Substring(HexPrefix.Length);
             if (hex.Length == 0 || (hex.Length & 1) != 0)
-            {
                 throw new ArgumentException(
                     "Hex routingId must contain an even number of digits.",
                     paramName);
-            }
 
             try
             {
@@ -205,19 +198,15 @@ internal static class RoutingIdCodec
             }
 
             if (bytes.Length == 0 || bytes.Length > 255)
-            {
                 throw new ArgumentOutOfRangeException(paramName,
                     "routingId length must be between 1 and 255 bytes.");
-            }
         }
         else
         {
-            int byteCount = Encoding.UTF8.GetByteCount(routingId);
+            var byteCount = Encoding.UTF8.GetByteCount(routingId);
             if (byteCount <= 0 || byteCount > 255)
-            {
                 throw new ArgumentOutOfRangeException(paramName,
                     "routingId UTF-8 length must be between 1 and 255 bytes.");
-            }
 
             bytes = new byte[byteCount];
             Encoding.UTF8.GetBytes(routingId, bytes.AsSpan());
@@ -226,47 +215,42 @@ internal static class RoutingIdCodec
         lock (PublicCacheLock)
         {
             TrimPublicCachesIfNeeded();
-            if (!PublicToByteCache.TryGetValue(routingId, out byte[]? cached))
+            if (!PublicToByteCache.TryGetValue(routingId, out var cached))
                 PublicToByteCache[routingId] = bytes;
         }
+
         return bytes;
     }
 
     private static bool IsPrintableUtf8Roundtrip(string text,
         ReadOnlySpan<byte> original)
     {
-        for (int i = 0; i < text.Length; i++)
-        {
+        for (var i = 0; i < text.Length; i++)
             if (char.IsControl(text[i]))
                 return false;
-        }
 
-        int byteCount = Encoding.UTF8.GetByteCount(text);
+        var byteCount = Encoding.UTF8.GetByteCount(text);
         if (byteCount != original.Length)
             return false;
 
-        byte[] roundtrip = new byte[byteCount];
+        var roundtrip = new byte[byteCount];
         Encoding.UTF8.GetBytes(text, roundtrip.AsSpan());
         return roundtrip.AsSpan().SequenceEqual(original);
     }
 
     private static byte[] Canonicalize(ReadOnlySpan<byte> routingId)
     {
-        RouteCacheKey key = RouteCacheKey.Create(routingId);
+        var key = RouteCacheKey.Create(routingId);
         lock (CanonicalCacheLock)
         {
             TrimCanonicalCacheIfNeeded();
             if (ByteCanonicalCache.TryGetValue(key,
-                out List<byte[]>? cachedEntries))
-            {
-                for (int i = 0; i < cachedEntries.Count; i++)
-                {
+                    out var cachedEntries))
+                for (var i = 0; i < cachedEntries.Count; i++)
                     if (routingId.SequenceEqual(cachedEntries[i]))
                         return cachedEntries[i];
-                }
-            }
 
-            byte[] copy = routingId.ToArray();
+            var copy = routingId.ToArray();
             if (!ByteCanonicalCache.TryGetValue(key, out cachedEntries))
             {
                 cachedEntries = new List<byte[]>(1);
@@ -280,19 +264,15 @@ internal static class RoutingIdCodec
 
     private static byte[] CanonicalizeThreadLocal(ReadOnlySpan<byte> routingId)
     {
-        RouteCacheKey key = RouteCacheKey.Create(routingId);
-        Dictionary<RouteCacheKey, List<byte[]>> cache =
+        var key = RouteCacheKey.Create(routingId);
+        var cache =
             t_ownedBytesCache ??= new Dictionary<RouteCacheKey, List<byte[]>>();
-        if (cache.TryGetValue(key, out List<byte[]>? cachedEntries))
-        {
-            for (int i = 0; i < cachedEntries.Count; i++)
-            {
+        if (cache.TryGetValue(key, out var cachedEntries))
+            for (var i = 0; i < cachedEntries.Count; i++)
                 if (routingId.SequenceEqual(cachedEntries[i]))
                     return cachedEntries[i];
-            }
-        }
 
-        byte[] copy = routingId.ToArray();
+        var copy = routingId.ToArray();
         if (cache.Count >= ThreadCacheMaxEntries)
             cache.Clear();
         if (!cache.TryGetValue(key, out cachedEntries))
@@ -307,26 +287,20 @@ internal static class RoutingIdCodec
 
     private static RoutingId ToRoutingIdCached(ReadOnlySpan<byte> routingId)
     {
-        byte[] canonical = Canonicalize(routingId);
-        RouteCacheKey key = RouteCacheKey.Create(canonical);
+        var canonical = Canonicalize(routingId);
+        var key = RouteCacheKey.Create(canonical);
         lock (RoutingCacheLock)
         {
             TrimRoutingCacheIfNeeded();
             if (ByteToRoutingCache.TryGetValue(key,
-                out List<RouteRoutingEntry>? cachedEntries))
-            {
-                for (int i = 0; i < cachedEntries.Count; i++)
-                {
+                    out var cachedEntries))
+                for (var i = 0; i < cachedEntries.Count; i++)
                     if (ReferenceEquals(canonical, cachedEntries[i].Bytes)
                         || canonical.AsSpan().SequenceEqual(cachedEntries[i].Bytes))
-                    {
                         return cachedEntries[i].RoutingId;
-                    }
-                }
-            }
 
-            RoutingId created = RoutingId.FromOwnedOptionalBytes(canonical)
-                ?? throw new InvalidOperationException("routingId must not be empty.");
+            var created = RoutingId.FromOwnedOptionalBytes(canonical)
+                          ?? throw new InvalidOperationException("routingId must not be empty.");
             if (!ByteToRoutingCache.TryGetValue(key, out cachedEntries))
             {
                 cachedEntries = new List<RouteRoutingEntry>(1);
@@ -342,9 +316,7 @@ internal static class RoutingIdCodec
     {
         if (ByteToPublicCache.Count < SharedCacheMaxKeys
             && PublicToByteCache.Count < SharedCacheMaxKeys)
-        {
             return;
-        }
 
         ByteToPublicCache.Clear();
         PublicToByteCache.Clear();

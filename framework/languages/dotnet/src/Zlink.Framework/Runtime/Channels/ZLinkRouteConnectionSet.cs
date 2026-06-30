@@ -1,5 +1,3 @@
-using Zlink.Framework.Runtime.Backend.Contracts;
-
 namespace Zlink.Framework.Runtime.Channels;
 
 internal sealed class ZLinkRouteConnectionSet(IZLinkBackendRouterSocket router)
@@ -8,10 +6,7 @@ internal sealed class ZLinkRouteConnectionSet(IZLinkBackendRouterSocket router)
 
     public void Connect(string endpoint)
     {
-        if (_manualConnections.Add(endpoint))
-        {
-            router.Connect(endpoint);
-        }
+        if (_manualConnections.Add(endpoint)) router.Connect(endpoint);
     }
 
     public void Disconnect(string endpoint)

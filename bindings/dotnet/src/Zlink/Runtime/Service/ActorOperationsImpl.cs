@@ -1,12 +1,5 @@
 // SPDX-License-Identifier: MPL-2.0
 
-using System;
-using System.Collections.Generic;
-using System.Runtime.InteropServices;
-using System.Threading;
-using System.Threading.Tasks;
-using Systems.Zlink.Runtime.Native;
-
 namespace Systems.Zlink;
 
 internal enum ActorJoinSource
@@ -18,15 +11,15 @@ internal enum ActorJoinSource
 internal sealed class ActorJoinOperationImpl : ActorJoinOperation,
     ActorJoinSubmitOperation, ActorJoinCallbackSubmitOperation
 {
-    private readonly SpotNode _node;
     private readonly ActorRef _actor;
     private readonly RoutingId _destNodeRid;
     private readonly RoutingId _destSpotRid;
-    private OperationMessageBuffer _parts;
-    private TimeSpan _timeout;
-    private SendFlags _flags;
+    private readonly SpotNode _node;
     private bool _callbackStage;
+    private SendFlags _flags;
+    private OperationMessageBuffer _parts;
     private OperationSubmissionGuard _submission;
+    private TimeSpan _timeout;
 
     internal ActorJoinOperationImpl(SpotNode node, ActorRef actor,
         RoutingId destNodeRid, RoutingId destSpotRid)
@@ -35,6 +28,29 @@ internal sealed class ActorJoinOperationImpl : ActorJoinOperation,
         _actor = actor;
         _destNodeRid = destNodeRid;
         _destSpotRid = destSpotRid;
+    }
+
+    ActorJoinCallbackSubmitOperation ActorJoinCallbackSubmitOperation.Message(
+        Message message)
+    {
+        AddMessage(message);
+        return this;
+    }
+
+    ActorJoinCallbackSubmitOperation ActorJoinCallbackSubmitOperation.Timeout(
+        TimeSpan timeout)
+    {
+        EnsureNotSubmitted();
+        _timeout = timeout;
+        return this;
+    }
+
+    ActorJoinCallbackSubmitOperation ActorJoinCallbackSubmitOperation.Flags(
+        SendFlags flags)
+    {
+        EnsureNotSubmitted();
+        _flags = flags;
+        return this;
     }
 
     public ActorJoinSubmitOperation Message(Message message)
@@ -49,22 +65,7 @@ internal sealed class ActorJoinOperationImpl : ActorJoinOperation,
         return this;
     }
 
-    ActorJoinCallbackSubmitOperation ActorJoinCallbackSubmitOperation.Message(
-        Message message)
-    {
-        AddMessage(message);
-        return this;
-    }
-
     public ActorJoinSubmitOperation Timeout(TimeSpan timeout)
-    {
-        EnsureNotSubmitted();
-        _timeout = timeout;
-        return this;
-    }
-
-    ActorJoinCallbackSubmitOperation ActorJoinCallbackSubmitOperation.Timeout(
-        TimeSpan timeout)
     {
         EnsureNotSubmitted();
         _timeout = timeout;
@@ -75,14 +76,6 @@ internal sealed class ActorJoinOperationImpl : ActorJoinOperation,
     {
         EnsureNotSubmitted();
         _callbackStage = true;
-        _flags = flags;
-        return this;
-    }
-
-    ActorJoinCallbackSubmitOperation ActorJoinCallbackSubmitOperation.Flags(
-        SendFlags flags)
-    {
-        EnsureNotSubmitted();
         _flags = flags;
         return this;
     }
@@ -130,13 +123,13 @@ internal sealed class ActorJoinOperationImpl : ActorJoinOperation,
 internal sealed class ActorJoinEntrySpotOperationImpl :
     ActorJoinEntrySpotOperation
 {
-    private readonly SpotNode _node;
     private readonly ActorRef _actor;
     private readonly RoutingId _destNodeRid;
-    private OperationMessageBuffer _parts;
-    private TimeSpan _timeout;
+    private readonly SpotNode _node;
     private SendFlags _flags;
+    private OperationMessageBuffer _parts;
     private OperationSubmissionGuard _submission;
+    private TimeSpan _timeout;
 
     internal ActorJoinEntrySpotOperationImpl(SpotNode node, ActorRef actor,
         RoutingId destNodeRid, Message request)
@@ -197,9 +190,9 @@ internal sealed class ActorJoinEntrySpotOperationImpl :
 
 internal sealed class ActorJoinReplyOperationImpl : ActorJoinReplyOperation
 {
-    private readonly Spot _spot;
-    private readonly ActorJoinRequest _request;
     private readonly int _joinResultCode;
+    private readonly ActorJoinRequest _request;
+    private readonly Spot _spot;
     private OperationMessageBuffer _parts;
     private OperationSubmissionGuard _submission;
 
@@ -229,11 +222,11 @@ internal sealed class ActorJoinReplyOperationImpl : ActorJoinReplyOperation
 
 internal sealed class ActorLeaveOperationImpl : ActorLeaveOperation
 {
-    private readonly SpotNode _node;
     private readonly ActorRef _actor;
     private readonly RoutingId _currentSpotRid;
-    private TimeSpan _timeout;
+    private readonly SpotNode _node;
     private OperationSubmissionGuard _submission;
+    private TimeSpan _timeout;
 
     internal ActorLeaveOperationImpl(SpotNode node, ActorRef actor,
         RoutingId currentSpotRid)
@@ -277,10 +270,10 @@ internal sealed class ActorLeaveOperationImpl : ActorLeaveOperation
 
 internal sealed class ActorDestroyOperationImpl : ActorDestroyOperation
 {
-    private readonly SpotNode _node;
     private readonly ActorRef _actor;
-    private TimeSpan _timeout;
+    private readonly SpotNode _node;
     private OperationSubmissionGuard _submission;
+    private TimeSpan _timeout;
 
     internal ActorDestroyOperationImpl(SpotNode node, ActorRef actor)
     {
@@ -321,11 +314,11 @@ internal sealed class ActorDestroyOperationImpl : ActorDestroyOperation
 
 internal sealed class ActorLookupOperationImpl : ActorLookupOperation
 {
+    private readonly string _actorId;
     private readonly SpotNode _node;
     private readonly RoutingId _targetNodeRid;
-    private readonly string _actorId;
-    private TimeSpan _timeout;
     private OperationSubmissionGuard _submission;
+    private TimeSpan _timeout;
 
     internal ActorLookupOperationImpl(SpotNode node, RoutingId targetNodeRid,
         string actorId)
@@ -368,11 +361,11 @@ internal sealed class ActorLookupOperationImpl : ActorLookupOperation
 
 internal sealed class ActorBindOperationImpl : ActorBindOperation
 {
-    private readonly StreamSocket _stream;
-    private readonly RoutingId _sessionRid;
     private readonly ActorRef _actor;
-    private TimeSpan _timeout;
+    private readonly RoutingId _sessionRid;
+    private readonly StreamSocket _stream;
     private OperationSubmissionGuard _submission;
+    private TimeSpan _timeout;
 
     internal ActorBindOperationImpl(StreamSocket stream, RoutingId sessionRid,
         ActorRef actor)
@@ -416,11 +409,11 @@ internal sealed class ActorBindOperationImpl : ActorBindOperation
 
 internal sealed class ActorUnbindOperationImpl : ActorUnbindOperation
 {
-    private readonly StreamSocket _stream;
-    private readonly RoutingId _sessionRid;
     private readonly string _actorId;
-    private TimeSpan _timeout;
+    private readonly RoutingId _sessionRid;
+    private readonly StreamSocket _stream;
     private OperationSubmissionGuard _submission;
+    private TimeSpan _timeout;
 
     internal ActorUnbindOperationImpl(StreamSocket stream, RoutingId sessionRid,
         string actorId)

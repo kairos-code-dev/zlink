@@ -12,18 +12,14 @@ internal static partial class ZLinkFrameworkRegistrationValidator
         ValidateChannelShape(channel);
 
         if (channel.Server is not null && string.IsNullOrWhiteSpace(channel.Server.BindEndpoint))
-        {
             throw new ZLinkConfigurationException(
                 $"channel '{channel.ChannelName}' server must define a bind endpoint.");
-        }
 
         if (channel.Client is not null)
         {
             if (!string.IsNullOrWhiteSpace(channel.Client.BindEndpoint))
-            {
                 throw new ZLinkConfigurationException(
                     $"channel '{channel.ChannelName}' client cannot define a bind endpoint.");
-            }
 
             ZLinkPeerAcquisitionPolicy.RequirePeerSource(
                 $"channel '{channel.ChannelName}' client",
@@ -32,18 +28,14 @@ internal static partial class ZLinkFrameworkRegistrationValidator
         }
 
         if (channel.Publisher is not null && string.IsNullOrWhiteSpace(channel.Publisher.BindEndpoint))
-        {
             throw new ZLinkConfigurationException(
                 $"channel '{channel.ChannelName}' publisher must define a bind endpoint.");
-        }
 
         if (channel.Subscriber is not null)
-        {
             ZLinkPeerAcquisitionPolicy.RequirePeerSource(
                 $"channel '{channel.ChannelName}' subscriber",
                 discoveryConfigured,
                 channel.Subscriber.ManualConnections);
-        }
 
         ValidateChannelHandlerExposure(channel, acceptedBySpotRouteChannel, handlerGroups, scannedEndpoints);
     }
@@ -93,36 +85,30 @@ internal static partial class ZLinkFrameworkRegistrationValidator
             new HashSet<ZLinkMessageKind>
             {
                 ZLinkMessageKind.Command,
-                ZLinkMessageKind.Request,
+                ZLinkMessageKind.Request
             });
 
         var hasHandlerExposure = channel.SendHandlers.Count > 0
-            || channel.RequestHandlers.Count > 0
-            || ChannelGroupsExposeAny(
-                channel,
-                handlerGroups,
-                ZLinkMessageKind.Command,
-                ZLinkMessageKind.Request);
+                                 || channel.RequestHandlers.Count > 0
+                                 || ChannelGroupsExposeAny(
+                                     channel,
+                                     handlerGroups,
+                                     ZLinkMessageKind.Command,
+                                     ZLinkMessageKind.Request);
 
         if (hasHandlerExposure && channel.Server is null)
-        {
             throw new ZLinkConfigurationException(
                 $"client/server channel '{channel.ChannelName}' exposes handlers but does not enable server capability.");
-        }
 
         if (channel.Server is not null
             && !hasHandlerExposure
             && !acceptedBySpotRouteChannel)
-        {
             throw new ZLinkConfigurationException(
                 $"client/server channel '{channel.ChannelName}' server must map a handler group, register a typed handler, or be accepted by a SPOT route channel.");
-        }
 
         if (channel.PublishHandlers.Count > 0)
-        {
             throw new ZLinkConfigurationException(
                 $"client/server channel '{channel.ChannelName}' cannot register publish handlers.");
-        }
     }
 
     private static void ValidateFanoutHandlerExposure(
@@ -135,25 +121,19 @@ internal static partial class ZLinkFrameworkRegistrationValidator
             new HashSet<ZLinkMessageKind> { ZLinkMessageKind.Publish });
 
         var hasHandlerExposure = channel.PublishHandlers.Count > 0
-            || ChannelGroupsExposeAny(channel, handlerGroups, ZLinkMessageKind.Publish);
+                                 || ChannelGroupsExposeAny(channel, handlerGroups, ZLinkMessageKind.Publish);
 
         if (hasHandlerExposure && channel.Subscriber is null)
-        {
             throw new ZLinkConfigurationException(
                 $"fanout channel '{channel.ChannelName}' exposes publish handlers but does not enable subscriber capability.");
-        }
 
         if (channel.Subscriber is not null && !hasHandlerExposure)
-        {
             throw new ZLinkConfigurationException(
                 $"fanout channel '{channel.ChannelName}' subscriber must map a publish handler group or register a typed publish handler.");
-        }
 
         if (channel.SendHandlers.Count > 0 || channel.RequestHandlers.Count > 0)
-        {
             throw new ZLinkConfigurationException(
                 $"fanout channel '{channel.ChannelName}' cannot register send or request handlers.");
-        }
     }
 
     private static void ValidateMappedGroups(
@@ -164,20 +144,14 @@ internal static partial class ZLinkFrameworkRegistrationValidator
         foreach (var group in channel.HandlerGroups)
         {
             if (!handlerGroups.TryGetValue(group, out var entries))
-            {
                 throw new ZLinkConfigurationException(
                     $"channel '{channel.ChannelName}' maps unknown handler group '{group}'.");
-            }
 
             foreach (var entry in entries)
-            {
                 if (entry.Surface != ZLinkHandlerEndpointSurface.Channel
                     || !allowedKinds.Contains(entry.Kind))
-                {
                     throw new ZLinkConfigurationException(
                         $"channel '{channel.ChannelName}' maps handler group '{group}' with incompatible handler kind '{entry.Kind}'.");
-                }
-            }
         }
     }
 
@@ -203,12 +177,10 @@ internal static partial class ZLinkFrameworkRegistrationValidator
         foreach (var handler in handlers)
         {
             var packetName = handler.PacketName
-                ?? ZLinkMessageNameResolver.ResolveFromType(handler.MessageType);
+                             ?? ZLinkMessageNameResolver.ResolveFromType(handler.MessageType);
             if (!keys.Add((kind, packetName)))
-            {
                 throw new ZLinkConfigurationException(
                     $"Duplicate {label} handler '{channelName}:{packetName}'.");
-            }
         }
     }
 
@@ -222,9 +194,7 @@ internal static partial class ZLinkFrameworkRegistrationValidator
         {
             if (endpoint.Groups.Count == 0
                 || !endpoint.Groups.Any(channel.HandlerGroups.Contains))
-            {
                 continue;
-            }
 
             AddExposedChannelHandler(
                 channel.ChannelName,
@@ -235,34 +205,28 @@ internal static partial class ZLinkFrameworkRegistrationValidator
         }
 
         foreach (var handler in channel.SendHandlers)
-        {
             AddExposedChannelHandler(
                 channel.ChannelName,
                 exposed,
                 ZLinkMessageKind.Command,
                 handler.PacketName ?? ZLinkMessageNameResolver.ResolveFromType(handler.MessageType),
                 handler.HandlerType);
-        }
 
         foreach (var handler in channel.RequestHandlers)
-        {
             AddExposedChannelHandler(
                 channel.ChannelName,
                 exposed,
                 ZLinkMessageKind.Request,
                 handler.PacketName ?? ZLinkMessageNameResolver.ResolveFromType(handler.MessageType),
                 handler.HandlerType);
-        }
 
         foreach (var handler in channel.PublishHandlers)
-        {
             AddExposedChannelHandler(
                 channel.ChannelName,
                 exposed,
                 ZLinkMessageKind.Publish,
                 handler.PacketName ?? ZLinkMessageNameResolver.ResolveFromType(handler.MessageType),
                 handler.HandlerType);
-        }
     }
 
     private static void AddExposedChannelHandler(
@@ -275,10 +239,8 @@ internal static partial class ZLinkFrameworkRegistrationValidator
         var key = (kind, packetName);
         if (exposed.TryGetValue(key, out var existing)
             && existing != handlerType)
-        {
             throw new ZLinkConfigurationException(
                 $"channel '{channelName}' maps duplicate {kind} handler packet '{packetName}'.");
-        }
 
         exposed[key] = handlerType;
     }
@@ -305,31 +267,22 @@ internal static partial class ZLinkFrameworkRegistrationValidator
     private static void RequireClientServerShape(ZLinkChannelRegistration channel)
     {
         if (channel.Server is null && channel.Client is null)
-        {
             throw new ZLinkConfigurationException(
                 $"client/server channel '{channel.ChannelName}' must enable server or client capabilities.");
-        }
 
         if (channel.Publisher is not null || channel.Subscriber is not null)
-        {
             throw new ZLinkConfigurationException(
                 $"client/server channel '{channel.ChannelName}' cannot enable publisher or subscriber capabilities.");
-        }
     }
 
     private static void RequireFanoutShape(ZLinkChannelRegistration channel)
     {
         if (channel.Publisher is null && channel.Subscriber is null)
-        {
             throw new ZLinkConfigurationException(
                 $"fanout channel '{channel.ChannelName}' must enable publisher or subscriber capabilities.");
-        }
 
         if (channel.Server is not null || channel.Client is not null)
-        {
             throw new ZLinkConfigurationException(
                 $"fanout channel '{channel.ChannelName}' cannot enable server or client capabilities.");
-        }
     }
-
 }

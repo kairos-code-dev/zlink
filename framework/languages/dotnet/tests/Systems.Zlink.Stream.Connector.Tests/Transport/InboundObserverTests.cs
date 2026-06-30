@@ -1,7 +1,6 @@
 using System.Net;
 using System.Net.Sockets;
 using System.Text.Json;
-using Systems.Zlink.Stream.Connector;
 using Systems.Zlink.Stream.Connector.Contracts;
 using Systems.Zlink.Stream.Connector.Runtime;
 using Xunit;
@@ -41,7 +40,8 @@ public sealed partial class StreamConnectorTests
             DispatchMode = ZlinkStreamDispatchMode.Immediate
         });
         var observerCanFinish = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
-        var observed = new TaskCompletionSource<ZlinkStreamInboundObservation>(TaskCreationOptions.RunContinuationsAsynchronously);
+        var observed =
+            new TaskCompletionSource<ZlinkStreamInboundObservation>(TaskCreationOptions.RunContinuationsAsynchronously);
         using var registration = connector.ObserveInbound(async (observation, _) =>
         {
             observed.TrySetResult(observation);
@@ -236,14 +236,13 @@ public sealed partial class StreamConnectorTests
             Heartbeat = DisabledHeartbeat(),
             DispatchMode = ZlinkStreamDispatchMode.Immediate
         });
-        using var registration = connector.ObserveInbound((_, _) => throw new InvalidOperationException("observer failed"));
-        var errorReceived = new TaskCompletionSource<ZlinkStreamError>(TaskCreationOptions.RunContinuationsAsynchronously);
+        using var registration =
+            connector.ObserveInbound((_, _) => throw new InvalidOperationException("observer failed"));
+        var errorReceived =
+            new TaskCompletionSource<ZlinkStreamError>(TaskCreationOptions.RunContinuationsAsynchronously);
         connector.ErrorReceived += (error, _) =>
         {
-            if (error.Code == ZlinkStreamErrorCode.ObserverFailed)
-            {
-                errorReceived.TrySetResult(error);
-            }
+            if (error.Code == ZlinkStreamErrorCode.ObserverFailed) errorReceived.TrySetResult(error);
 
             return ValueTask.CompletedTask;
         };
@@ -312,10 +311,7 @@ public sealed partial class StreamConnectorTests
         var dropped = new TaskCompletionSource<ZlinkStreamError>(TaskCreationOptions.RunContinuationsAsynchronously);
         connector.ErrorReceived += (error, _) =>
         {
-            if (error.Code == ZlinkStreamErrorCode.ObserverDropped)
-            {
-                dropped.TrySetResult(error);
-            }
+            if (error.Code == ZlinkStreamErrorCode.ObserverDropped) dropped.TrySetResult(error);
 
             return ValueTask.CompletedTask;
         };

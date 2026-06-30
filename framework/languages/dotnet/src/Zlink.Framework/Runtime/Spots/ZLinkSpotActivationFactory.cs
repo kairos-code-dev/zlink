@@ -1,5 +1,4 @@
 using Microsoft.Extensions.DependencyInjection;
-using Zlink.Framework.Runtime.Backend.Contracts;
 
 namespace Zlink.Framework.Runtime.Spots;
 
@@ -32,7 +31,7 @@ internal sealed class ZLinkSpotActivationFactory(
                 spotChannelName,
                 frameworkRegistration.DefaultRequestTimeout,
                 registration.Router?.SocketConfig.SendTimeout
-                    ?? frameworkRegistration.DefaultSocketSendTimeout);
+                ?? frameworkRegistration.DefaultSocketSendTimeout);
 
             var spot = (IZLinkSpot)ActivatorUtilities.CreateInstance(
                 spotScope.ServiceProvider,
@@ -41,13 +40,9 @@ internal sealed class ZLinkSpotActivationFactory(
 
             activation.AttachSpot(spot);
             foreach (var assembly in frameworkRegistration.HandlerAssemblies)
-            {
-                foreach (var handler in ZLinkScannedSpotHandlerScanner.Scan(assembly))
-                {
-                    await activation.ApplyScannedHandlerAsync(handler, cancellationToken)
-                        .ConfigureAwait(false);
-                }
-            }
+            foreach (var handler in ZLinkScannedSpotHandlerScanner.Scan(assembly))
+                await activation.ApplyScannedHandlerAsync(handler, cancellationToken)
+                    .ConfigureAwait(false);
 
             spot.Configure();
             activation.BindDescriptors();
@@ -57,13 +52,9 @@ internal sealed class ZLinkSpotActivationFactory(
         catch
         {
             if (activation is null)
-            {
                 await spotScope.DisposeAsync().ConfigureAwait(false);
-            }
             else
-            {
                 await activation.DisposeAsync().ConfigureAwait(false);
-            }
 
             throw;
         }

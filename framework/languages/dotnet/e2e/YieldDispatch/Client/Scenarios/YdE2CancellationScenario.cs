@@ -15,7 +15,7 @@ internal static class YdE2CancellationScenario
         ScenarioAssert.That(spot.SpotRid == spotRid, "YD-E2 spot creation mismatch.");
 
         var requestId = $"YD-E2-{Guid.NewGuid():N}";
-        await client.Send(new YieldCancelCommand(requestId, DelayMs: 800, CancelAfterMs: 100))
+        await client.Send(new YieldCancelCommand(requestId, 800, 100))
             .PacketName("YieldCancelCommand")
             .Metadata(YieldDispatchNames.SpotRidMetadata, spotRid)
             .Async();
@@ -38,6 +38,7 @@ internal static class YdE2CancellationScenario
             "cancel-yield-released",
             "cancel-yield-completed",
             "probe-started",
-            "probe-completed"]);
+            "probe-completed"
+        ]);
     }
 }

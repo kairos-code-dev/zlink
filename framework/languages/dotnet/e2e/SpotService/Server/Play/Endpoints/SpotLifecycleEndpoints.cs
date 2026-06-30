@@ -1,21 +1,16 @@
-using Microsoft.AspNetCore.Builder;
-using Microsoft.AspNetCore.Http;
+using SpotService.Server.Play.Spots;
 using SpotService.Shared;
 using Systems.Zlink;
 using Zlink.Framework.Contracts.Channels;
 using Zlink.Framework.Contracts.Errors;
 using Zlink.Framework.Contracts.Spots;
-using SpotService.Server.Play.Endpoints;
-using SpotService.Server.Play.Handlers;
-using SpotService.Server.Play.Spots;
 
 namespace SpotService.Server.Play.Endpoints;
 
-using static SpotService.Server.Play.PlayHostFactory;
+using static PlayHostFactory;
 
 internal static class SpotLifecycleEndpoints
 {
-
     public static void MapSpotLifecycleEndpoints(WebApplication app)
     {
         app.MapPost("/spot/create", async (
@@ -38,7 +33,8 @@ internal static class SpotLifecycleEndpoints
             CreateSpotReq request) =>
         {
             var createdSpot = await spots.GetOrCreateAsync<ScenarioAlternateSpot>(RoutingId.From(request.SpotRid));
-            evidence.Add($"create-unsubscribed-spot|rid={node.Rid}|spot={createdSpot.SpotRid}|state={createdSpot.State}");
+            evidence.Add(
+                $"create-unsubscribed-spot|rid={node.Rid}|spot={createdSpot.SpotRid}|state={createdSpot.State}");
             return Results.Ok(new CreateSpotReply(
                 createdSpot.SpotRid.ToString(),
                 node.Rid,
@@ -77,7 +73,8 @@ internal static class SpotLifecycleEndpoints
             var closed = await spots.CloseAsync(RoutingId.From(request.SpotRid));
             evidence.Add($"close-spot|rid={node.Rid}|spot={request.SpotRid}|closed={closed}");
             await WaitUntilAsync(
-                () => evidence.Snapshot().Any(line => line.Contains($"spot-closing|rid={node.Rid}|spot={request.SpotRid}", StringComparison.Ordinal)),
+                () => evidence.Snapshot().Any(line =>
+                    line.Contains($"spot-closing|rid={node.Rid}|spot={request.SpotRid}", StringComparison.Ordinal)),
                 "Expected spot closing evidence.");
             return Results.Ok(new CloseSpotReply(request.SpotRid, closed));
         });
@@ -112,7 +109,8 @@ internal static class SpotLifecycleEndpoints
                 "StateCommand",
                 "Spot state command route timed out.");
             await WaitUntilAsync(
-                () => CountNew(evidence.Snapshot(), before, $"spot-state-command|rid={node.Rid}|spot={request.SpotRid}|marker={request.Marker}") == 1,
+                () => CountNew(evidence.Snapshot(), before,
+                    $"spot-state-command|rid={node.Rid}|spot={request.SpotRid}|marker={request.Marker}") == 1,
                 "Expected spot state command evidence.");
             return Results.Ok(new SpotStateCommandReply(
                 request.SpotRid,

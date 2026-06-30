@@ -1,9 +1,6 @@
 // SPDX-License-Identifier: MPL-2.0
 
-using System;
 using System.Collections.Concurrent;
-using System.Threading;
-using System.Threading.Tasks;
 
 namespace Systems.Zlink;
 
@@ -17,13 +14,9 @@ internal static class CallbackDelivery
             throw new ArgumentNullException(nameof(action));
 
         if (context != null)
-        {
             try
             {
-                context.Post(static state =>
-                {
-                    ExecuteSafely((Action)state!);
-                }, action);
+                context.Post(static state => { ExecuteSafely((Action)state!); }, action);
                 return;
             }
             catch
@@ -31,7 +24,6 @@ internal static class CallbackDelivery
                 // Fall back to the managed dispatcher if the captured context
                 // is unavailable or no longer usable.
             }
-        }
 
         Dispatcher.Post(action);
     }
@@ -50,10 +42,7 @@ internal static class CallbackDelivery
             var pending = new PendingInvocation<TResult>(action);
             try
             {
-                context.Post(static state =>
-                {
-                    ((PendingInvocation<TResult>)state!).Run();
-                }, pending);
+                context.Post(static state => { ((PendingInvocation<TResult>)state!).Run(); }, pending);
                 return pending.Completion.Task.GetAwaiter().GetResult();
             }
             catch
@@ -81,6 +70,7 @@ internal static class CallbackDelivery
     private sealed class PendingInvocation<TResult>
     {
         private readonly Func<TResult> _action;
+
         internal readonly TaskCompletionSource<TResult> Completion =
             new(TaskCreationOptions.RunContinuationsAsynchronously);
 
@@ -105,8 +95,8 @@ internal static class CallbackDelivery
     private sealed class ManagedCallbackDispatcher
     {
         private readonly BlockingCollection<Action> _queue = new();
-        private readonly Thread _thread;
         private readonly ManualResetEventSlim _started = new(false);
+        private readonly Thread _thread;
         private volatile int _threadId;
 
         internal ManagedCallbackDispatcher()
@@ -119,6 +109,9 @@ internal static class CallbackDelivery
             _thread.Start();
             _started.Wait();
         }
+
+        private bool IsCurrentThread =>
+            Environment.CurrentManagedThreadId == _threadId;
 
         internal void Post(Action action)
         {
@@ -135,18 +128,12 @@ internal static class CallbackDelivery
             return pending.Completion.Task.GetAwaiter().GetResult();
         }
 
-        private bool IsCurrentThread =>
-            Environment.CurrentManagedThreadId == _threadId;
-
         private void Run()
         {
             _threadId = Environment.CurrentManagedThreadId;
             _started.Set();
 
-            foreach (Action action in _queue.GetConsumingEnumerable())
-            {
-                action();
-            }
+            foreach (var action in _queue.GetConsumingEnumerable()) action();
         }
     }
 }

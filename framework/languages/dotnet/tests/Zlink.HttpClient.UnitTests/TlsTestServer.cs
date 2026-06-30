@@ -17,7 +17,7 @@ internal static class TestCertificates
         using var rsa = RSA.Create(2048);
         var request = new CertificateRequest(
             $"CN={commonName}", rsa, HashAlgorithmName.SHA256, RSASignaturePadding.Pkcs1);
-        request.CertificateExtensions.Add(new X509BasicConstraintsExtension(certificateAuthority: true, false, 0, critical: true));
+        request.CertificateExtensions.Add(new X509BasicConstraintsExtension(true, false, 0, true));
         var san = new SubjectAlternativeNameBuilder();
         san.AddIpAddress(IPAddress.Loopback);
         san.AddDnsName("localhost");
@@ -38,18 +38,19 @@ internal static class TestCertificates
 }
 
 /// <summary>
-/// Minimal HTTPS server over <see cref="SslStream"/> for TLS contract tests. The managed Linux
-/// <see cref="HttpListener"/> cannot bind HTTPS, so this server drives the handshake directly,
-/// optionally requiring a client certificate (mTLS), and records whether one was presented.
+///     Minimal HTTPS server over <see cref="SslStream" /> for TLS contract tests. The managed Linux
+///     <see cref="HttpListener" /> cannot bind HTTPS, so this server drives the handshake directly,
+///     optionally requiring a client certificate (mTLS), and records whether one was presented.
 /// </summary>
 internal sealed class TlsTestServer : IDisposable
 {
-    private readonly TcpListener _listener = new(IPAddress.Loopback, 0);
-    private readonly X509Certificate2 _serverCertificate;
-    private readonly bool _requireClientCertificate;
-    private readonly CancellationTokenSource _cts = new();
     private readonly TaskCompletionSource<X509Certificate2?> _clientCertificate =
         new(TaskCreationOptions.RunContinuationsAsynchronously);
+
+    private readonly CancellationTokenSource _cts = new();
+    private readonly TcpListener _listener = new(IPAddress.Loopback, 0);
+    private readonly bool _requireClientCertificate;
+    private readonly X509Certificate2 _serverCertificate;
 
     public TlsTestServer(X509Certificate2 serverCertificate, bool requireClientCertificate = false)
     {
@@ -66,17 +67,32 @@ internal sealed class TlsTestServer : IDisposable
     /// <summary>Completes with the client certificate the server saw (null if none).</summary>
     public Task<X509Certificate2?> PresentedClientCertificate => _clientCertificate.Task;
 
+    public void Dispose()
+    {
+        _cts.Cancel();
+        try
+        {
+            _listener.Stop();
+        }
+        catch
+        {
+            // already stopped
+        }
+
+        _cts.Dispose();
+    }
+
     private async Task ServeAsync()
     {
         try
         {
             using var connection = await _listener.AcceptTcpClientAsync(_cts.Token).ConfigureAwait(false);
-            await using var ssl = new SslStream(connection.GetStream(), leaveInnerStreamOpen: false);
+            await using var ssl = new SslStream(connection.GetStream(), false);
             var options = new SslServerAuthenticationOptions
             {
                 ServerCertificate = _serverCertificate,
                 ClientCertificateRequired = _requireClientCertificate,
-                RemoteCertificateValidationCallback = (_, _, _, _) => true,
+                RemoteCertificateValidationCallback = (_, _, _, _) => true
             };
 
             await ssl.AuthenticateAsServerAsync(options, _cts.Token).ConfigureAwait(false);
@@ -95,20 +111,5 @@ internal sealed class TlsTestServer : IDisposable
         {
             _clientCertificate.TrySetException(ex);
         }
-    }
-
-    public void Dispose()
-    {
-        _cts.Cancel();
-        try
-        {
-            _listener.Stop();
-        }
-        catch
-        {
-            // already stopped
-        }
-
-        _cts.Dispose();
     }
 }

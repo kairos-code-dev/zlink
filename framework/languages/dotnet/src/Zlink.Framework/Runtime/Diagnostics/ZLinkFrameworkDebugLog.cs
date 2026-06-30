@@ -4,26 +4,17 @@ internal static class ZLinkFrameworkDebugLog
 {
     public static void Startup(Exception exception)
     {
-        if (IsEnabled("ZLINK_DEBUG_FRAMEWORK_STARTUP"))
-        {
-            Write(exception.ToString());
-        }
+        if (IsEnabled("ZLINK_DEBUG_FRAMEWORK_STARTUP")) Write(exception.ToString());
     }
 
     public static void SpotDiscovery(string message)
     {
-        if (IsEnabled("ZLINK_DEBUG_FRAMEWORK_SPOT_DISCOVERY"))
-        {
-            Write($"[zlink-framework-spot-discovery] {message}");
-        }
+        if (IsEnabled("ZLINK_DEBUG_FRAMEWORK_SPOT_DISCOVERY")) Write($"[zlink-framework-spot-discovery] {message}");
     }
 
     public static void TaskFailure(string taskName, Exception exception)
     {
-        if (IsEnabled("ZLINK_DEBUG_FRAMEWORK_TASKS"))
-        {
-            Write($"[zlink-framework] task '{taskName}' failed: {exception}");
-        }
+        if (IsEnabled("ZLINK_DEBUG_FRAMEWORK_TASKS")) Write($"[zlink-framework] task '{taskName}' failed: {exception}");
     }
 
     private static bool IsEnabled(string variableName)

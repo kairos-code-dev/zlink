@@ -1,10 +1,7 @@
-using Microsoft.AspNetCore.Builder;
-using Microsoft.Extensions.DependencyInjection;
-using Microsoft.Extensions.Logging;
-using Zlink.Framework.AspNetCore;
 using RegistryMessaging.Server.Registry.Configuration;
 using RegistryMessaging.Server.Registry.Endpoints;
 using RegistryMessaging.Server.Registry.Infrastructure;
+using Zlink.Framework.AspNetCore;
 
 namespace RegistryMessaging.Server.Registry;
 
@@ -12,7 +9,7 @@ internal static class RegistryHostFactory
 {
     public static WebApplication Create(string[] args)
     {
-        var options = ServerOptions.Parse(args, defaultRole: "registry");
+        var options = ServerOptions.Parse(args, "registry");
         Directory.CreateDirectory(options.LogDir);
 
         var builder = WebApplication.CreateBuilder(args);
@@ -29,14 +26,14 @@ internal static class RegistryHostFactory
         builder.Services.AddZLinkRegistry(registry =>
         {
             registry.PubEndpoint = options.RegistryPubEndpoint
-                ?? throw new InvalidOperationException("--registry-pub-endpoint is required.");
+                                   ?? throw new InvalidOperationException("--registry-pub-endpoint is required.");
             registry.RouterEndpoint = options.RegistryRouterEndpoint
-                ?? throw new InvalidOperationException("--registry-router-endpoint is required.");
+                                      ?? throw new InvalidOperationException("--registry-router-endpoint is required.");
         });
         builder.Services.AddZLinkRegistryQueryClient(query =>
         {
             query.Endpoint = options.RegistryRouterEndpoint
-                ?? throw new InvalidOperationException("--registry-router-endpoint is required.");
+                             ?? throw new InvalidOperationException("--registry-router-endpoint is required.");
         });
 
         var app = builder.Build();

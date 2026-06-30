@@ -1,13 +1,13 @@
 using System.Buffers.Binary;
 using System.Net.Sockets;
 using System.Net.WebSockets;
+using GameQuest.GameApi.Application;
 using GameQuest.GameApi.Infrastructure.Http;
 using GameQuest.GameApi.Infrastructure.Store;
 using GameQuest.GameApi.Infrastructure.ZLink;
-using GameQuest.GameApi.Application;
 using GameQuest.GameApi.Session;
-using GameQuest.Shared;
 using GameQuest.Server.Configuration;
+using GameQuest.Shared;
 using Microsoft.AspNetCore.Mvc;
 using Zlink.Framework.AspNetCore;
 using Zlink.Framework.Contracts.Dispatch;
@@ -44,14 +44,12 @@ internal static class Program
             {
                 var channel = options.AddFanoutChannel(SampleNames.FanoutChannel);
                 channel.EnablePublisher(topology.FanoutPublisherEndpointForApi(apiName));
-
             }
             {
                 var stream = options.AddStreamNode(SampleNames.StreamNode);
                 stream.Bind(Environment.GetEnvironmentVariable("GAMEQUEST_STREAM_BIND_ENDPOINT")
                             ?? throw new InvalidOperationException("GAMEQUEST_STREAM_BIND_ENDPOINT is required."));
                 stream.RegisterSession<GameQuestSession>();
-
             }
         });
 
@@ -195,7 +193,8 @@ internal static class Program
             var passed = alice.Any(p => p is { QuestId: QuestIds.FirstHunt, Status: QuestStatuses.RewardGranted })
                          && alice.Any(p => p is { QuestId: QuestIds.OpenAuction, Status: QuestStatuses.RewardGranted })
                          && bob.Any(p => p is { QuestId: QuestIds.HerbGathering, Status: QuestStatuses.RewardGranted })
-                         && bindings.Any(binding => binding.PlayerId == "player-bob" && binding.GameApiInstanceId == "api-b")
+                         && bindings.Any(binding =>
+                             binding.PlayerId == "player-bob" && binding.GameApiInstanceId == "api-b")
                          && activeBindings.All(binding => binding.PlayerId != "player-alice")
                          && Count(events, "player-alice", QuestIds.FirstHunt, nameof(QuestProgressedEvent)) == 3
                          && Count(events, "player-alice", QuestIds.FirstHunt, nameof(QuestCompletedEvent)) == 1
@@ -222,106 +221,92 @@ internal static class Program
     }
 
     private static async Task BridgeWebSocketToStreamAsync(HttpContext context)
-{
-    var bindEndpoint = Environment.GetEnvironmentVariable("GAMEQUEST_STREAM_BIND_ENDPOINT")
-                       ?? throw new InvalidOperationException("GAMEQUEST_STREAM_BIND_ENDPOINT is required.");
-    var target = new Uri(bindEndpoint);
-    using var tcp = new TcpClient();
-    await tcp.ConnectAsync(target.Host, target.Port, context.RequestAborted);
-    await using var stream = tcp.GetStream();
-    using var webSocket = await context.WebSockets.AcceptWebSocketAsync();
-
-    var webSocketToStream = CopyWebSocketToStreamAsync(webSocket, stream, context.RequestAborted);
-    var streamToWebSocket = CopyStreamFramesToWebSocketAsync(stream, webSocket, context.RequestAborted);
-    await Task.WhenAny(webSocketToStream, streamToWebSocket);
-
-    tcp.Close();
-    if (webSocket.State is WebSocketState.Open or WebSocketState.CloseReceived)
     {
-        await webSocket.CloseAsync(WebSocketCloseStatus.NormalClosure, "closed", CancellationToken.None);
-    }
-}
+        var bindEndpoint = Environment.GetEnvironmentVariable("GAMEQUEST_STREAM_BIND_ENDPOINT")
+                           ?? throw new InvalidOperationException("GAMEQUEST_STREAM_BIND_ENDPOINT is required.");
+        var target = new Uri(bindEndpoint);
+        using var tcp = new TcpClient();
+        await tcp.ConnectAsync(target.Host, target.Port, context.RequestAborted);
+        await using var stream = tcp.GetStream();
+        using var webSocket = await context.WebSockets.AcceptWebSocketAsync();
 
-static int Count(
-    IEnumerable<StoredQuestEvent> events,
-    string playerId,
-    string questId,
-    string eventType) =>
-    events.Count(e =>
-        e.PlayerId == playerId
-        && e.QuestId == questId
-        && e.EventType == eventType);
+        var webSocketToStream = CopyWebSocketToStreamAsync(webSocket, stream, context.RequestAborted);
+        var streamToWebSocket = CopyStreamFramesToWebSocketAsync(stream, webSocket, context.RequestAborted);
+        await Task.WhenAny(webSocketToStream, streamToWebSocket);
 
-static async Task CopyWebSocketToStreamAsync(
-    WebSocket webSocket,
-    NetworkStream stream,
-    CancellationToken cancellationToken)
-{
-    var buffer = new byte[8192];
-    while (!cancellationToken.IsCancellationRequested && webSocket.State == WebSocketState.Open)
-    {
-        var result = await webSocket.ReceiveAsync(buffer, cancellationToken);
-        if (result.MessageType == WebSocketMessageType.Close)
-        {
-            return;
-        }
-
-        if (result.MessageType != WebSocketMessageType.Binary)
-        {
-            await webSocket.CloseAsync(WebSocketCloseStatus.InvalidMessageType, "binary frames only", cancellationToken);
-            return;
-        }
-
-        if (result.Count > 0)
-        {
-            await stream.WriteAsync(buffer.AsMemory(0, result.Count), cancellationToken);
-        }
-    }
-}
-
-static async Task CopyStreamFramesToWebSocketAsync(
-    NetworkStream stream,
-    WebSocket webSocket,
-    CancellationToken cancellationToken)
-{
-    var prefix = new byte[6];
-    while (!cancellationToken.IsCancellationRequested && webSocket.State == WebSocketState.Open)
-    {
-        if (!await ReadExactOrCloseAsync(stream, prefix, cancellationToken))
-        {
-            return;
-        }
-
-        var headerLength = BinaryPrimitives.ReadUInt16BigEndian(prefix.AsSpan(0, 2));
-        var payloadLength = BinaryPrimitives.ReadUInt32BigEndian(prefix.AsSpan(2, 4));
-        var frame = new byte[checked(6 + headerLength + payloadLength)];
-        prefix.CopyTo(frame.AsSpan(0, 6));
-        if (!await ReadExactOrCloseAsync(stream, frame.AsMemory(6), cancellationToken))
-        {
-            return;
-        }
-
-        await webSocket.SendAsync(frame, WebSocketMessageType.Binary, true, cancellationToken);
-    }
-}
-
-static async ValueTask<bool> ReadExactOrCloseAsync(
-    NetworkStream stream,
-    Memory<byte> buffer,
-    CancellationToken cancellationToken)
-{
-    var offset = 0;
-    while (offset < buffer.Length)
-    {
-        var count = await stream.ReadAsync(buffer[offset..], cancellationToken);
-        if (count == 0)
-        {
-            return false;
-        }
-
-        offset += count;
+        tcp.Close();
+        if (webSocket.State is WebSocketState.Open or WebSocketState.CloseReceived)
+            await webSocket.CloseAsync(WebSocketCloseStatus.NormalClosure, "closed", CancellationToken.None);
     }
 
-    return true;
+    private static int Count(
+        IEnumerable<StoredQuestEvent> events,
+        string playerId,
+        string questId,
+        string eventType)
+    {
+        return events.Count(e =>
+            e.PlayerId == playerId
+            && e.QuestId == questId
+            && e.EventType == eventType);
+    }
+
+    private static async Task CopyWebSocketToStreamAsync(
+        WebSocket webSocket,
+        NetworkStream stream,
+        CancellationToken cancellationToken)
+    {
+        var buffer = new byte[8192];
+        while (!cancellationToken.IsCancellationRequested && webSocket.State == WebSocketState.Open)
+        {
+            var result = await webSocket.ReceiveAsync(buffer, cancellationToken);
+            if (result.MessageType == WebSocketMessageType.Close) return;
+
+            if (result.MessageType != WebSocketMessageType.Binary)
+            {
+                await webSocket.CloseAsync(WebSocketCloseStatus.InvalidMessageType, "binary frames only",
+                    cancellationToken);
+                return;
+            }
+
+            if (result.Count > 0) await stream.WriteAsync(buffer.AsMemory(0, result.Count), cancellationToken);
+        }
+    }
+
+    private static async Task CopyStreamFramesToWebSocketAsync(
+        NetworkStream stream,
+        WebSocket webSocket,
+        CancellationToken cancellationToken)
+    {
+        var prefix = new byte[6];
+        while (!cancellationToken.IsCancellationRequested && webSocket.State == WebSocketState.Open)
+        {
+            if (!await ReadExactOrCloseAsync(stream, prefix, cancellationToken)) return;
+
+            var headerLength = BinaryPrimitives.ReadUInt16BigEndian(prefix.AsSpan(0, 2));
+            var payloadLength = BinaryPrimitives.ReadUInt32BigEndian(prefix.AsSpan(2, 4));
+            var frame = new byte[checked(6 + headerLength + payloadLength)];
+            prefix.CopyTo(frame.AsSpan(0, 6));
+            if (!await ReadExactOrCloseAsync(stream, frame.AsMemory(6), cancellationToken)) return;
+
+            await webSocket.SendAsync(frame, WebSocketMessageType.Binary, true, cancellationToken);
+        }
+    }
+
+    private static async ValueTask<bool> ReadExactOrCloseAsync(
+        NetworkStream stream,
+        Memory<byte> buffer,
+        CancellationToken cancellationToken)
+    {
+        var offset = 0;
+        while (offset < buffer.Length)
+        {
+            var count = await stream.ReadAsync(buffer[offset..], cancellationToken);
+            if (count == 0) return false;
+
+            offset += count;
+        }
+
+        return true;
     }
 }

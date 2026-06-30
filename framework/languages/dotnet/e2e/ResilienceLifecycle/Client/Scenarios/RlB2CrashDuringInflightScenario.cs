@@ -1,6 +1,6 @@
+using ResilienceLifecycle.Client.Support;
 using ResilienceLifecycle.Shared;
 using Zlink.HttpClient;
-using ResilienceLifecycle.Client.Support;
 
 namespace ResilienceLifecycle.Client.Scenarios;
 
@@ -34,10 +34,7 @@ internal static class RlB2CrashDuringInflightScenario
             try
             {
                 var health = await providerB.Get("/health").SubmitRawAsync();
-                if (health.Status != 200)
-                {
-                    break;
-                }
+                if (health.Status != 200) break;
             }
             catch
             {
@@ -81,10 +78,7 @@ internal static class RlB2CrashDuringInflightScenario
             try
             {
                 var health = await providerB.Get("/health").SubmitRawAsync();
-                if (health.Status == 200)
-                {
-                    break;
-                }
+                if (health.Status == 200) break;
             }
             catch
             {

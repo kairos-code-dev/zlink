@@ -5,11 +5,10 @@ namespace Zlink.Framework.Contracts.Messaging;
 
 public sealed class ZLinkMessage
 {
-    private readonly object? _value;
+    private readonly ZLinkCodecRegistryBuilder? _codecs;
     private readonly Type? _declaredType;
     private readonly ReadOnlyMemory<byte> _payload;
-    private readonly ZlinkStreamCodec? _streamCodec;
-    private readonly ZLinkCodecRegistryBuilder? _codecs;
+    private readonly object? _value;
 
     private ZLinkMessage(object? value, Type? declaredType)
     {
@@ -25,36 +24,31 @@ public sealed class ZLinkMessage
     {
         _payload = payload;
         ContentType = contentType;
-        _streamCodec = streamCodec;
+        StreamCodec = streamCodec;
         _codecs = codecs;
     }
 
     public string? ContentType { get; }
 
-    public ZlinkStreamCodec? StreamCodec => _streamCodec;
+    public ZlinkStreamCodec? StreamCodec { get; }
 
     public bool IsEmpty => _declaredType is null && _payload.IsEmpty;
+
+    public static ZLinkMessage Empty { get; } =
+        new(ReadOnlyMemory<byte>.Empty, ZLinkEnvelopeCodec.DefaultContentType, null, null);
 
     public static ZLinkMessage From<T>(T value)
     {
         return new ZLinkMessage(value, typeof(T));
     }
 
-    public static ZLinkMessage Empty { get; } = new(ReadOnlyMemory<byte>.Empty, ZLinkEnvelopeCodec.DefaultContentType, null, null);
-
     public T Decode<T>()
     {
         if (_declaredType is not null)
         {
-            if (_value is T typed)
-            {
-                return typed;
-            }
+            if (_value is T typed) return typed;
 
-            if (_value is null)
-            {
-                return default!;
-            }
+            if (_value is null) return default!;
         }
 
         var targetType = typeof(T);
@@ -96,7 +90,9 @@ public sealed class ZLinkMessage
     }
 
     internal Message ToRawMessage(ZLinkCodecRegistryBuilder codecs)
-        => Message.From(Encode(codecs).Payload.Bytes.Span);
+    {
+        return Message.From(Encode(codecs).Payload.Bytes.Span);
+    }
 
     internal static ZLinkMessage FromStreamPayload(
         ZlinkStreamCodec codec,
@@ -121,47 +117,28 @@ public sealed class ZLinkMessage
 
     private object? Decode(Type targetType)
     {
-        if (_streamCodec == ZlinkStreamCodec.Raw)
+        if (StreamCodec == ZlinkStreamCodec.Raw)
         {
-            if (targetType == typeof(string))
-            {
-                return Encoding.UTF8.GetString(_payload.Span);
-            }
+            if (targetType == typeof(string)) return Encoding.UTF8.GetString(_payload.Span);
 
-            if (targetType == typeof(byte[]))
-            {
-                return _payload.ToArray();
-            }
+            if (targetType == typeof(byte[])) return _payload.ToArray();
         }
 
-        if (targetType == typeof(ReadOnlyMemory<byte>))
-        {
-            return _payload;
-        }
+        if (targetType == typeof(ReadOnlyMemory<byte>)) return _payload;
 
-        if (targetType == typeof(byte[]))
-        {
-            return _payload.ToArray();
-        }
+        if (targetType == typeof(byte[])) return _payload.ToArray();
 
-        if (_payload.Length == 0)
-        {
-            return targetType.IsValueType ? Activator.CreateInstance(targetType) : null;
-        }
+        if (_payload.Length == 0) return targetType.IsValueType ? Activator.CreateInstance(targetType) : null;
 
         if (ContentType is not null
             && _codecs is not null
             && _codecs.TryGetSerializer(ContentType, out var serializer))
-        {
             return serializer.Deserialize(ZLinkEncodedPayload.From(_payload.Span), targetType);
-        }
 
-        if (_streamCodec is { } codec
+        if (StreamCodec is { } codec
             && codec != ZlinkStreamCodec.Json)
-        {
             throw new InvalidOperationException(
                 $"Stream payload uses codec '{codec}', but no matching codec extension is registered.");
-        }
 
         return JsonSerializer.Deserialize(
             _payload.Span,

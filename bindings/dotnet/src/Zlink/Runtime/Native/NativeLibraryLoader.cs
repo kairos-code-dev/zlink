@@ -1,6 +1,3 @@
-using System;
-using System.Collections.Generic;
-using System.IO;
 using System.Reflection;
 using System.Runtime.CompilerServices;
 using System.Runtime.InteropServices;
@@ -41,16 +38,14 @@ internal static class NativeLibraryLoader
                 ValidateRequiredExports();
                 return;
             }
+
             if (TryLoadPackagedCandidates(out _handle))
             {
                 ValidateRequiredExports();
                 return;
             }
-            if (TryLoadWellKnownNames(out _handle))
-            {
-                ValidateRequiredExports();
-                return;
-            }
+
+            if (TryLoadWellKnownNames(out _handle)) ValidateRequiredExports();
         }
     }
 
@@ -74,9 +69,7 @@ internal static class NativeLibraryLoader
     {
         if (!string.Equals(libraryName, "zlink", StringComparison.Ordinal)
             && !string.Equals(libraryName, "libzlink", StringComparison.Ordinal))
-        {
             return IntPtr.Zero;
-        }
         EnsureLoaded();
         return _handle;
     }
@@ -84,7 +77,7 @@ internal static class NativeLibraryLoader
     private static bool TryLoadConfiguredPath(out IntPtr handle)
     {
         handle = IntPtr.Zero;
-        string? path = Environment.GetEnvironmentVariable("ZLINK_LIBRARY_PATH");
+        var path = Environment.GetEnvironmentVariable("ZLINK_LIBRARY_PATH");
         if (string.IsNullOrWhiteSpace(path))
             return false;
         return TryLoad(path, out handle);
@@ -92,11 +85,9 @@ internal static class NativeLibraryLoader
 
     private static bool TryLoadWellKnownNames(out IntPtr handle)
     {
-        foreach (string name in GetWellKnownNames())
-        {
+        foreach (var name in GetWellKnownNames())
             if (TryLoad(name, out handle))
                 return true;
-        }
         handle = IntPtr.Zero;
         return false;
     }
@@ -104,17 +95,16 @@ internal static class NativeLibraryLoader
     private static bool TryLoadPackagedCandidates(out IntPtr handle)
     {
         handle = IntPtr.Zero;
-        string rid = GetRid();
-        foreach (string baseDir in GetBaseDirs())
+        var rid = GetRid();
+        foreach (var baseDir in GetBaseDirs())
+        foreach (var candidate in GetCandidates(baseDir, rid))
         {
-            foreach (string candidate in GetCandidates(baseDir, rid))
-            {
-                if (!File.Exists(candidate))
-                    continue;
-                if (TryLoad(candidate, out handle))
-                    return true;
-            }
+            if (!File.Exists(candidate))
+                continue;
+            if (TryLoad(candidate, out handle))
+                return true;
         }
+
         return false;
     }
 
@@ -126,7 +116,7 @@ internal static class NativeLibraryLoader
 
         EnsureLoaded();
         return _handle != IntPtr.Zero
-            && NativeLibrary.TryGetExport(_handle, symbol, out _);
+               && NativeLibrary.TryGetExport(_handle, symbol, out _);
     }
 
     private static void ValidateRequiredExports()
@@ -134,7 +124,7 @@ internal static class NativeLibraryLoader
         if (_exportsValidated || _handle == IntPtr.Zero)
             return;
 
-        foreach (string export in NativeMethods.RequiredExports)
+        foreach (var export in NativeMethods.RequiredExports)
         {
             if (NativeLibrary.TryGetExport(_handle, export, out _))
                 continue;
@@ -162,8 +152,8 @@ internal static class NativeLibraryLoader
 
     private static IEnumerable<string> GetCandidates(string baseDir, string rid)
     {
-        string[] libNames = GetLibNames();
-        foreach (string libName in libNames)
+        var libNames = GetLibNames();
+        foreach (var libName in libNames)
         {
             yield return Path.Combine(baseDir, "runtimes", rid, "native", libName);
             yield return Path.Combine(baseDir, rid, "native", libName);
@@ -175,16 +165,16 @@ internal static class NativeLibraryLoader
     private static IEnumerable<string> GetBaseDirs()
     {
         var seen = new HashSet<string>(StringComparer.Ordinal);
-        string appBase = AppContext.BaseDirectory;
+        var appBase = AppContext.BaseDirectory;
         if (!string.IsNullOrEmpty(appBase) && seen.Add(appBase))
             yield return appBase;
 
-        string? assemblyBase =
-          Path.GetDirectoryName(typeof(NativeLibraryLoader).Assembly.Location);
+        var assemblyBase =
+            Path.GetDirectoryName(typeof(NativeLibraryLoader).Assembly.Location);
         if (!string.IsNullOrEmpty(assemblyBase) && seen.Add(assemblyBase))
             yield return assemblyBase;
 
-        string? entryBase = Path.GetDirectoryName(Assembly.GetEntryAssembly()?.Location);
+        var entryBase = Path.GetDirectoryName(Assembly.GetEntryAssembly()?.Location);
         if (!string.IsNullOrEmpty(entryBase) && seen.Add(entryBase))
             yield return entryBase;
     }
@@ -200,7 +190,7 @@ internal static class NativeLibraryLoader
 
     private static string GetRid()
     {
-        string arch = RuntimeInformation.ProcessArchitecture switch
+        var arch = RuntimeInformation.ProcessArchitecture switch
         {
             Architecture.Arm64 => "arm64",
             Architecture.X64 => "x64",

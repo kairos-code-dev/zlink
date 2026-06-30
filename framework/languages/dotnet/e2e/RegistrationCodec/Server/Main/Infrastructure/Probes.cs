@@ -1,6 +1,3 @@
-using RegistrationCodec.Server.Main.Endpoints;
-using RegistrationCodec.Server.Main.Handlers;
-using RegistrationCodec.Server.Main;
 namespace RegistrationCodec.Server.Main.Infrastructure;
 
 internal sealed class SingletonProbe

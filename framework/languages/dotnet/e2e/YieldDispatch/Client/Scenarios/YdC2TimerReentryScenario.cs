@@ -23,7 +23,8 @@ internal static class YdC2TimerReentryScenario
             "timer-yield-resumed",
             "timer-yield-completed",
             "timer-next-started",
-            "timer-next-completed"]);
+            "timer-next-completed"
+        ]);
         await client.Send(new TimerStopCommand(requestId))
             .PacketName("TimerStopCommand")
             .Metadata(YieldDispatchNames.SpotRidMetadata, spotRid)

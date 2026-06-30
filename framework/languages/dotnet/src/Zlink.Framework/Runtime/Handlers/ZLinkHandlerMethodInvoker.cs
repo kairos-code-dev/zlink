@@ -19,20 +19,14 @@ internal static class ZLinkHandlerMethodInvokerFactory
     private static ZLinkHandlerMethodInvoker Compile(MethodInfo method)
     {
         if (method.ContainsGenericParameters)
-        {
             throw new ZLinkConfigurationException(
                 $"Handler method '{method.DeclaringType?.FullName}.{method.Name}' must not contain open generic parameters.");
-        }
 
         var parameters = method.GetParameters();
         foreach (var parameter in parameters)
-        {
             if (parameter.ParameterType.IsByRef)
-            {
                 throw new ZLinkConfigurationException(
                     $"Handler method '{method.DeclaringType?.FullName}.{method.Name}' must not use ref, in, or out parameters.");
-            }
-        }
 
         var target = Expression.Parameter(typeof(object), "target");
         var arguments = Expression.Parameter(typeof(object?[]), "arguments");

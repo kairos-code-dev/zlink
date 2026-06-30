@@ -9,64 +9,45 @@ internal sealed partial class ZLinkActorSessionManager
     {
         ArgumentNullException.ThrowIfNull(actor);
 
-        if (!_actorSessions.TryGet(actor.ActorId, out var state))
-        {
-            return;
-        }
+        if (!_actorSessions.TryGet(actor.ActorId, out var state)) return;
 
         var actorRef = await state.ExecuteLockedAsync<ZLinkBackendActorRef?>(
             () =>
             {
-                if (state.Actor is null)
-                {
-                    return null;
-                }
+                if (state.Actor is null) return null;
 
-                if (!ReferenceEquals(state.Actor, actor))
-                {
-                    return null;
-                }
+                if (!ReferenceEquals(state.Actor, actor)) return null;
 
                 if (state.Activation is not null)
-                {
                     throw new ZLinkFrameworkException(
                         ZLinkFrameworkErrorKind.ActorRouteNotFound,
                         $"Actor '{actor.ActorId}' must leave its current SPOT before destroy.");
-                }
 
                 var nativeActor = state.NativeActorRef
-                    ?? throw new ZLinkFrameworkException(
-                        ZLinkFrameworkErrorKind.ActorRouteNotFound,
-                        $"Actor '{actor.ActorId}' does not have a native Actor ref.");
+                                  ?? throw new ZLinkFrameworkException(
+                                      ZLinkFrameworkErrorKind.ActorRouteNotFound,
+                                      $"Actor '{actor.ActorId}' does not have a native Actor ref.");
 
                 if (nativeActor.NodeRid != entrySpotNodeRid)
-                {
                     throw new ZLinkFrameworkException(
                         ZLinkFrameworkErrorKind.ActorRouteNotFound,
                         $"Actor '{actor.ActorId}' is not owned by this Entry Spot.");
-                }
 
-                if (!state.TryBeginDestroy())
-                {
-                    return null;
-                }
+                if (!state.TryBeginDestroy()) return null;
 
                 return nativeActor;
             },
             cancellationToken).ConfigureAwait(false);
 
-        if (actorRef is not { } currentActorRef)
-        {
-            return;
-        }
+        if (actorRef is not { } currentActorRef) return;
 
         try
         {
             var node = getActorSpotNode()
-                ?? throw new ZLinkFrameworkException(
-                    ZLinkFrameworkErrorKind.ActorRouteNotFound,
-                    "Actor destroy requires a router-capable SpotNode.",
-                    isRetriable: false);
+                       ?? throw new ZLinkFrameworkException(
+                           ZLinkFrameworkErrorKind.ActorRouteNotFound,
+                           "Actor destroy requires a router-capable SpotNode.",
+                           false);
 
             await node.DestroyActorAsync(
                     currentActorRef,
@@ -78,10 +59,7 @@ internal sealed partial class ZLinkActorSessionManager
                 () => state.ClearAfterDestroy(),
                 CancellationToken.None).ConfigureAwait(false);
 
-            if (boundSession is { } session)
-            {
-                runtime.RemoveActorSessionBinding(actor.ActorId, session.BindingToken);
-            }
+            if (boundSession is { } session) runtime.RemoveActorSessionBinding(actor.ActorId, session.BindingToken);
 
             _actorSessions.RemoveIfCurrent(actor.ActorId, state);
         }

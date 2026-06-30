@@ -46,9 +46,7 @@ internal sealed class ZLinkRouteChannelBuilder(ZLinkRouteChannelRegistration reg
     public IZLinkRouteMeshChannelBuilder AddHandlerGroup(string groupName)
     {
         if (string.IsNullOrWhiteSpace(groupName))
-        {
             throw new ZLinkConfigurationException("Handler group name must not be empty.");
-        }
 
         registration.HandlerGroups.Add(groupName);
         return this;
@@ -107,7 +105,6 @@ internal sealed class ZLinkRouteChannelBuilder(ZLinkRouteChannelRegistration reg
             packetName));
         return this;
     }
-
 }
 
 internal sealed class ZLinkRouteMeshChannelServerCapabilityBuilder(
@@ -116,9 +113,7 @@ internal sealed class ZLinkRouteMeshChannelServerCapabilityBuilder(
     public void Bind(string endpoint)
     {
         if (string.IsNullOrWhiteSpace(endpoint))
-        {
             throw new ZLinkConfigurationException("Route mesh channel server bind endpoint must not be empty.");
-        }
 
         registration.BindEndpoint = endpoint;
     }
@@ -127,5 +122,4 @@ internal sealed class ZLinkRouteMeshChannelServerCapabilityBuilder(
     {
         return registration.SocketConfig;
     }
-
 }

@@ -1,13 +1,9 @@
-namespace Zlink.Framework.Runtime.Dispatch;
-
 using Microsoft.Extensions.Logging;
+
+namespace Zlink.Framework.Runtime.Dispatch;
 
 internal sealed class ZLinkDispatchOptionsModel : IZLinkDispatchOptions
 {
-    public ZLinkDispatchMode SpotDispatchMode { get; set; } = ZLinkDispatchMode.Compiled;
-
-    public ZLinkDispatchMode StreamDispatchMode { get; set; } = ZLinkDispatchMode.Compiled;
-
     public ZLinkUnhandledDispatchOptionsModel Unhandled { get; } = new();
 
     public ZLinkDiagnosticsOptionsModel Diagnostics { get; } = new();
@@ -15,6 +11,9 @@ internal sealed class ZLinkDispatchOptionsModel : IZLinkDispatchOptions
     public Type? MessageFlowObserverType { get; private set; }
 
     public IZLinkMessageFlowObserver? MessageFlowObserver { get; private set; }
+    public ZLinkDispatchMode SpotDispatchMode { get; set; } = ZLinkDispatchMode.Compiled;
+
+    public ZLinkDispatchMode StreamDispatchMode { get; set; } = ZLinkDispatchMode.Compiled;
 
     IZLinkUnhandledDispatchOptions IZLinkDispatchOptions.Unhandled => Unhandled;
 
@@ -76,7 +75,10 @@ internal sealed class ZLinkMessageFlowModeCell
 {
     private int _mode;
 
-    public ZLinkMessageFlowModeCell(ZLinkMessageFlowLogMode seed) => _mode = (int)seed;
+    public ZLinkMessageFlowModeCell(ZLinkMessageFlowLogMode seed)
+    {
+        _mode = (int)seed;
+    }
 
     public ZLinkMessageFlowLogMode Mode
     {
@@ -100,6 +102,9 @@ internal sealed class ZLinkUnhandledDispatchOptionsModel : IZLinkUnhandledDispat
 
 internal sealed class ZLinkDiagnosticsOptionsModel : IZLinkDiagnosticsOptions
 {
+    // Installed by the host at apply (ZLinkFrameworkServiceRegistrar). Shared across
+    // surfaces so SetMessageFlowMode flips it live. Null before apply.
+    public ZLinkMessageFlowModeCell? LiveMode { get; internal set; }
     public ZLinkMessageFlowLogMode MessageFlow { get; internal set; } = ZLinkMessageFlowLogMode.ErrorsOnly;
 
     public double SampleRate { get; internal set; } = 1.0d;
@@ -111,10 +116,6 @@ internal sealed class ZLinkDiagnosticsOptionsModel : IZLinkDiagnosticsOptions
     public string? LogFile { get; internal set; }
 
     public string? Label { get; internal set; }
-
-    // Installed by the host at apply (ZLinkFrameworkServiceRegistrar). Shared across
-    // surfaces so SetMessageFlowMode flips it live. Null before apply.
-    public ZLinkMessageFlowModeCell? LiveMode { get; internal set; }
 
     public ZLinkMessageFlowLogMode EffectiveMessageFlow =>
         LiveMode is { } cell ? cell.Mode : MessageFlow;

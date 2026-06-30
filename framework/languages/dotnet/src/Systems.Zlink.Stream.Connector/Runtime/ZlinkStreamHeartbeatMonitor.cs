@@ -1,5 +1,4 @@
 using System.Diagnostics;
-using Systems.Zlink.Stream.Connector.Contracts;
 
 namespace Systems.Zlink.Stream.Connector.Runtime;
 
@@ -25,10 +24,7 @@ internal sealed class ZlinkStreamHeartbeatMonitor(ZlinkStreamHeartbeatOptions op
         Func<ZlinkStreamError, CancellationToken, ValueTask> handleTransportErrorAsync,
         CancellationToken cancellationToken)
     {
-        if (!options.Enabled || sendHeartbeatPing is null)
-        {
-            return;
-        }
+        if (!options.Enabled || sendHeartbeatPing is null) return;
 
         try
         {
@@ -65,5 +61,7 @@ internal sealed class ZlinkStreamHeartbeatMonitor(ZlinkStreamHeartbeatOptions op
     }
 
     private static TimeSpan Elapsed(long nowTicks, long previousTicks)
-        => TimeSpan.FromSeconds((double)(nowTicks - previousTicks) / Stopwatch.Frequency);
+    {
+        return TimeSpan.FromSeconds((double)(nowTicks - previousTicks) / Stopwatch.Frequency);
+    }
 }

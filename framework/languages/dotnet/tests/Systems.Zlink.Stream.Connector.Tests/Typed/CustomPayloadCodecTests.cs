@@ -11,7 +11,7 @@ public sealed partial class StreamConnectorTests
         var connector = new RecordingConnector(codec);
 
         // Send: the custom codec produces the wire payload, not the built-in JSON auto-codec.
-        await ZlinkStreamTypedConnectorExtensions.Send(connector, new CustomProbe("hello"))
+        await connector.Send(new CustomProbe("hello"))
             .PacketName("custom.send")
             .Async();
         Assert.Equal(ZlinkStreamCodec.Raw, connector.SendCall.Payload.Codec);
@@ -19,7 +19,7 @@ public sealed partial class StreamConnectorTests
 
         // Request: reply body is decoded with the custom codec.
         connector.NextReply = codec.Encode(new CustomProbe("reply"));
-        var reply = await ZlinkStreamTypedConnectorExtensions.Request(connector, new CustomProbe("ask"))
+        var reply = await connector.Request(new CustomProbe("ask"))
             .PacketName("custom.request")
             .Async<CustomProbe>();
         Assert.Equal("reply", reply.Text);
@@ -29,16 +29,14 @@ public sealed partial class StreamConnectorTests
         ZlinkStreamResult<CustomProbe>? callbackResult = null;
         connector.NextCallbackPayloadResult =
             ZlinkStreamResult<ZlinkStreamEncodedPayload>.Success(codec.Encode(new CustomProbe("callback")));
-        ZlinkStreamTypedConnectorExtensions.Request(connector, new CustomProbe("ask"))
+        connector.Request(new CustomProbe("ask"))
             .Submit<CustomProbe>(result => callbackResult = result);
         Assert.True(callbackResult?.IsSuccess);
         Assert.Equal("callback", callbackResult.GetValueOrDefault().Value!.Text);
 
         // On handler decodes inbound notifications with the custom codec.
         CustomProbe? handlerPayload = null;
-        using var subscription = ZlinkStreamTypedConnectorExtensions.On<CustomProbe>(
-            connector,
-            "custom.notify",
+        using var subscription = connector.On<CustomProbe>("custom.notify",
             (message, _) =>
             {
                 handlerPayload = message.Payload;
@@ -50,7 +48,7 @@ public sealed partial class StreamConnectorTests
         // WaitFor decodes with the custom codec, including the Where filter.
         connector.RecordReceived("custom.wait", codec.Encode(new CustomProbe("first")));
         connector.RecordReceived("custom.wait", codec.Encode(new CustomProbe("second")));
-        var filtered = await ZlinkStreamTypedConnectorExtensions.WaitFor<CustomProbe>(connector, "custom.wait")
+        var filtered = await connector.WaitFor<CustomProbe>("custom.wait")
             .Where(message => message.Payload.Text == "second")
             .Timeout(TimeSpan.FromSeconds(1))
             .Async();
@@ -63,7 +61,7 @@ public sealed partial class StreamConnectorTests
         // Without a custom codec the typed API keeps the built-in JSON auto-selection.
         var connector = new RecordingConnector();
 
-        await ZlinkStreamTypedConnectorExtensions.Send(connector, new CustomProbe("plain"))
+        await connector.Send(new CustomProbe("plain"))
             .PacketName("auto.json")
             .Async();
 

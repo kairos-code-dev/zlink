@@ -2,8 +2,6 @@ namespace Zlink.Framework.Runtime.Diagnostics;
 
 internal sealed class ZLinkRuntimeErrorSink : IZLinkRuntimeErrorSink
 {
-    public static event Action<Exception>? UnhandledCallbackException;
-
     public void ReportHandlerException(Exception exception)
     {
         ReportUnhandledCallbackException(exception);
@@ -16,6 +14,8 @@ internal sealed class ZLinkRuntimeErrorSink : IZLinkRuntimeErrorSink
         ZLinkFrameworkDebugLog.TaskFailure(taskName, exception);
         ReportUnhandledCallbackException(exception);
     }
+
+    public static event Action<Exception>? UnhandledCallbackException;
 
     internal static void ReportUnhandledCallbackException(Exception exception)
     {

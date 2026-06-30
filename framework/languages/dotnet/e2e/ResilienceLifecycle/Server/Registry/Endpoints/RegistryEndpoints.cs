@@ -1,12 +1,7 @@
-using Microsoft.AspNetCore.Builder;
-using Microsoft.AspNetCore.Http;
-using Microsoft.Extensions.Hosting;
+using ResilienceLifecycle.Server.Registry.Configuration;
+using ResilienceLifecycle.Server.Registry.Infrastructure;
 using ResilienceLifecycle.Shared;
 using Zlink.Framework.Contracts.Registry;
-using ResilienceLifecycle.Server.Registry.Configuration;
-using ResilienceLifecycle.Server.Registry.Handlers;
-using ResilienceLifecycle.Server.Registry.Infrastructure;
-using ResilienceLifecycle.Server.Registry;
 
 namespace ResilienceLifecycle.Server.Registry.Endpoints;
 
@@ -43,10 +38,7 @@ internal static class RegistryEndpoints
                     entry.State.ToString())).ToArray();
                 var count = snapshot.Count(entry =>
                     entry.RoutingId == request.RoutingId && entry.State == request.State);
-                if (count == request.ExpectedCount)
-                {
-                    return Results.Ok(snapshot);
-                }
+                if (count == request.ExpectedCount) return Results.Ok(snapshot);
 
                 await Task.Delay(TimeSpan.FromMilliseconds(250), cancellationToken);
             }

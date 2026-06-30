@@ -1,9 +1,6 @@
 // SPDX-License-Identifier: MPL-2.0
 
-using System;
 using System.Collections.Concurrent;
-using System.Threading;
-using System.Threading.Tasks;
 using Systems.Zlink.Runtime.Native;
 
 namespace Systems.Zlink;
@@ -12,8 +9,9 @@ internal sealed class Timer : IZlinkTimer
 {
     private static readonly ConcurrentDictionary<IntPtr, WeakReference<Timer>>
         TimersByHandle = new();
-    private IntPtr _handle;
+
     private readonly bool _ownsHandle;
+    private IntPtr _handle;
     private Action<IZlinkTimer, ulong>? _handler;
     private SynchronizationContext? _handlerContext;
     private NativeMethods.ZlinkTimerHandlerDelegate? _handlerNative;
@@ -44,55 +42,19 @@ internal sealed class Timer : IZlinkTimer
         }
     }
 
-    public static Timer FromSpot(Spot spot)
-    {
-        if (spot == null)
-            throw new ArgumentNullException(nameof(spot));
-
-        IntPtr handle = NativeMethods.zlink_spot_timer_new(spot.Handle);
-        if (handle == IntPtr.Zero)
-            throw ZlinkException.CreateConfigException(NativeMethods.zlink_errno());
-        return new Timer(handle, ownsHandle: true);
-    }
-
-    internal static Timer? FromDispatchSubject(IntPtr handle)
-    {
-        if (handle == IntPtr.Zero)
-            return null;
-
-        if (TimersByHandle.TryGetValue(handle, out WeakReference<Timer>? weak)
-            && weak.TryGetTarget(out Timer? timer))
-        {
-            return timer;
-        }
-
-        return new Timer(handle, ownsHandle: false);
-    }
-
     public void Start(TimeSpan interval, ulong repeatCount)
     {
         if (interval < TimeSpan.Zero
             || interval.Ticks > (long)(ulong.MaxValue / 100UL))
-        {
             throw new ArgumentOutOfRangeException(nameof(interval));
-        }
 
         Start((ulong)interval.Ticks * 100UL, repeatCount);
-    }
-
-    internal void Start(ulong intervalNs, ulong repeatCount)
-    {
-        EnsureNotDisposed();
-        int rc = NativeMethods.zlink_timer_start(_handle, intervalNs,
-            repeatCount);
-        if (rc != 0)
-            throw ZlinkException.CreateConfigException(NativeMethods.zlink_errno());
     }
 
     public void Stop()
     {
         EnsureNotDisposed();
-        int rc = NativeMethods.zlink_timer_stop(_handle);
+        var rc = NativeMethods.zlink_timer_stop(_handle);
         if (rc != 0)
             throw ZlinkException.CreateConfigException(NativeMethods.zlink_errno());
     }
@@ -103,7 +65,7 @@ internal sealed class Timer : IZlinkTimer
         if ((flags & RecvFlags.DontWait) != 0 && !PollReadyNoWait())
             return null;
 
-        int rc = NativeMethods.zlink_timer_recv(_handle, out ulong fireCount);
+        var rc = NativeMethods.zlink_timer_recv(_handle, out var fireCount);
         if (rc != 0)
             throw ZlinkException.CreateRecvException(NativeMethods.zlink_errno());
         return fireCount;
@@ -121,7 +83,7 @@ internal sealed class Timer : IZlinkTimer
             return;
 
         _handlerNative = OnNativeFire;
-        int rc = NativeMethods.zlink_timer_handler(_handle, _handlerNative,
+        var rc = NativeMethods.zlink_timer_handler(_handle, _handlerNative,
             IntPtr.Zero);
         if (rc != 0)
         {
@@ -139,7 +101,7 @@ internal sealed class Timer : IZlinkTimer
 
     public void Dispose()
     {
-        Destroy(throwOnError: true);
+        Destroy(true);
         GC.SuppressFinalize(this);
     }
 
@@ -149,9 +111,41 @@ internal sealed class Timer : IZlinkTimer
         return ValueTask.CompletedTask;
     }
 
+    public static Timer FromSpot(Spot spot)
+    {
+        if (spot == null)
+            throw new ArgumentNullException(nameof(spot));
+
+        var handle = NativeMethods.zlink_spot_timer_new(spot.Handle);
+        if (handle == IntPtr.Zero)
+            throw ZlinkException.CreateConfigException(NativeMethods.zlink_errno());
+        return new Timer(handle, true);
+    }
+
+    internal static Timer? FromDispatchSubject(IntPtr handle)
+    {
+        if (handle == IntPtr.Zero)
+            return null;
+
+        if (TimersByHandle.TryGetValue(handle, out var weak)
+            && weak.TryGetTarget(out var timer))
+            return timer;
+
+        return new Timer(handle, false);
+    }
+
+    internal void Start(ulong intervalNs, ulong repeatCount)
+    {
+        EnsureNotDisposed();
+        var rc = NativeMethods.zlink_timer_start(_handle, intervalNs,
+            repeatCount);
+        if (rc != 0)
+            throw ZlinkException.CreateConfigException(NativeMethods.zlink_errno());
+    }
+
     ~Timer()
     {
-        Destroy(throwOnError: false);
+        Destroy(false);
     }
 
     private void Destroy(bool throwOnError)
@@ -159,7 +153,7 @@ internal sealed class Timer : IZlinkTimer
         if (_handle == IntPtr.Zero)
             return;
 
-        IntPtr originalHandle = _handle;
+        var originalHandle = _handle;
         if (!_ownsHandle)
         {
             _handle = IntPtr.Zero;
@@ -169,8 +163,8 @@ internal sealed class Timer : IZlinkTimer
             return;
         }
 
-        IntPtr handle = _handle;
-        int rc = NativeMethods.zlink_timer_destroy(ref handle);
+        var handle = _handle;
+        var rc = NativeMethods.zlink_timer_destroy(ref handle);
         if (rc == 0)
         {
             UnregisterHandle(originalHandle);
@@ -200,18 +194,18 @@ internal sealed class Timer : IZlinkTimer
 
     private bool PollReadyNoWait()
     {
-        IntPtr poller = NativeMethods.zlink_poller_new();
+        var poller = NativeMethods.zlink_poller_new();
         if (poller == IntPtr.Zero)
             throw ZlinkException.CreateRecvException(NativeMethods.zlink_errno());
 
         try
         {
-            int rc = NativeMethods.zlink_poller_add_timer(poller, _handle,
+            var rc = NativeMethods.zlink_poller_add_timer(poller, _handle,
                 IntPtr.Zero);
             if (rc != 0)
                 throw ZlinkException.CreateRecvException(NativeMethods.zlink_errno());
 
-            int ready = NativeMethods.zlink_poller_wait(poller,
+            var ready = NativeMethods.zlink_poller_wait(poller,
                 new ZlinkPollerEvent[1], 1, 0, out _);
             if (ready < 0)
                 throw ZlinkException.CreateRecvException(NativeMethods.zlink_errno());
@@ -238,7 +232,7 @@ internal sealed class Timer : IZlinkTimer
         _ = timer;
         _ = userData;
 
-        Action<IZlinkTimer, ulong>? handler = _handler;
+        var handler = _handler;
         if (handler == null)
             return;
 

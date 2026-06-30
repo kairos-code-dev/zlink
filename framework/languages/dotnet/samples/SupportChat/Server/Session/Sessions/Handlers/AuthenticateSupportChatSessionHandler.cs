@@ -1,10 +1,9 @@
-using Systems.Zlink;
-using Zlink.Framework.Contracts.Codecs.Json;
 using SupportChat.Server.Configuration;
 using SupportChat.Shared.Contracts;
+using Systems.Zlink;
 using Zlink.Framework.Contracts.Channels;
+using Zlink.Framework.Contracts.Messaging;
 using Zlink.Framework.Contracts.Streams;
-using Systems.Zlink.Stream.Connector.Contracts;
 
 namespace SupportChat.Server.Session.Sessions.Handlers;
 
@@ -16,7 +15,7 @@ internal sealed class AuthenticateSupportChatSessionHandler(IZLinkChannelClient 
     public async ValueTask HandleAsync(
         IZLinkSessionContext context,
         ZLinkSessionDispatchContext dispatch,
-        Zlink.Framework.Contracts.Messaging.ZLinkMessage payload,
+        ZLinkMessage payload,
         CancellationToken cancellationToken)
     {
         _ = dispatch;
@@ -30,9 +29,7 @@ internal sealed class AuthenticateSupportChatSessionHandler(IZLinkChannelClient 
             || string.IsNullOrWhiteSpace(authenticated.ActorId)
             || string.IsNullOrWhiteSpace(authenticated.DisplayName)
             || string.IsNullOrWhiteSpace(authenticated.Role))
-        {
             throw new InvalidOperationException(authenticated.Reason ?? "SupportChat authentication failed.");
-        }
 
         var ensured = await channels.RequestToChannel(
                 SampleNames.SupportChannel,

@@ -22,25 +22,15 @@ internal sealed record ServerOptions(
         for (var i = 0; i < args.Length; i++)
         {
             var key = args[i];
-            if (!key.StartsWith("--", StringComparison.Ordinal))
-            {
-                continue;
-            }
+            if (!key.StartsWith("--", StringComparison.Ordinal)) continue;
 
-            if (i + 1 >= args.Length)
-            {
-                throw new ArgumentException($"Missing value for {key}.");
-            }
+            if (i + 1 >= args.Length) throw new ArgumentException($"Missing value for {key}.");
 
             var value = args[++i];
             if (key == "--route-peer")
-            {
                 routePeers.Add(value);
-            }
             else
-            {
                 values[key[2..]] = value;
-            }
         }
 
         var rid = values.GetValueOrDefault("rid", "node");

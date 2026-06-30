@@ -34,6 +34,7 @@ internal static class YdB2SameActorReentryScenario
             "actor-yield-resumed",
             "actor-yield-completed",
             "actor-fast-started",
-            "actor-fast-completed"]);
+            "actor-fast-completed"
+        ]);
     }
 }

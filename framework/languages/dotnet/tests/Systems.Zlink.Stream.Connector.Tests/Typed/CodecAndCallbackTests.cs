@@ -1,33 +1,21 @@
-using System.Buffers.Binary;
 using System.Net;
-using System.Net.Security;
 using System.Net.Sockets;
-using System.Net.WebSockets;
-using System.Security.Cryptography;
-using System.Security.Cryptography.X509Certificates;
 using System.Text;
 using System.Text.Json;
-using MessagePack;
-using Systems.Zlink.Stream.Connector;
 using Systems.Zlink.Stream.Connector.Contracts;
-using Systems.Zlink.Stream.Connector.Contracts.Calls;
-using Systems.Zlink.Stream.Connector.Runtime;
-using Systems.Zlink.Stream.Connector.Runtime.Protocol.Framing;
 using Xunit;
 using Zlink.Framework.Codecs.MessagePack;
-using StreamJson = Systems.Zlink.Stream.Connector.Contracts.ZlinkStreamJsonExtensions;
-
 
 public sealed partial class StreamConnectorTests
 {
     [Fact]
     public void JsonExtensionBuildsEncodedPayload()
     {
-        var payload = StreamJson.ToJson(new Ping("hello"));
+        var payload = new Ping("hello").ToJson();
 
         Assert.Equal(ZlinkStreamCodec.Json, payload.Codec);
         Assert.Equal(typeof(Ping), payload.MessageType);
-        Assert.Equal("hello", StreamJson.FromJson<Ping>(payload).Text);
+        Assert.Equal("hello", payload.FromJson<Ping>().Text);
     }
 
     [Fact]
@@ -237,7 +225,8 @@ public sealed partial class StreamConnectorTests
             return ValueTask.CompletedTask;
         };
         using var subscription = connector.On<Pong>("disabled-pong", (_, _) =>
-            throw new InvalidOperationException("Handler must not receive compressed payload when compression is disabled."));
+            throw new InvalidOperationException(
+                "Handler must not receive compressed payload when compression is disabled."));
 
         await connector.Connect.Async();
 
@@ -321,15 +310,11 @@ public sealed partial class StreamConnectorTests
         public ReadOnlyMemory<byte> Decompress(ReadOnlyMemory<byte> payload, int maxDecompressedPayloadSize)
         {
             if (payload.Length == 0 || payload.Span[0] != Marker)
-            {
                 throw new InvalidOperationException("Unexpected custom compression marker.");
-            }
 
             var restored = payload[1..].ToArray();
             if (restored.Length > maxDecompressedPayloadSize)
-            {
                 throw new InvalidOperationException("Custom decoded payload exceeds limit.");
-            }
 
             return restored;
         }
@@ -338,10 +323,13 @@ public sealed partial class StreamConnectorTests
     private sealed class OversizedCompressionCodec : IZlinkStreamCompressionCodec
     {
         public ReadOnlyMemory<byte> Compress(ReadOnlyMemory<byte> payload)
-            => payload;
+        {
+            return payload;
+        }
 
         public ReadOnlyMemory<byte> Decompress(ReadOnlyMemory<byte> payload, int maxDecompressedPayloadSize)
-            => new byte[maxDecompressedPayloadSize + 1];
+        {
+            return new byte[maxDecompressedPayloadSize + 1];
+        }
     }
-
 }

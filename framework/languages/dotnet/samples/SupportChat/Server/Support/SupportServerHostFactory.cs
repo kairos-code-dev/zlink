@@ -1,12 +1,12 @@
-using SupportChat.Server.Support.Infrastructure.ZLink.Actors;
-using SupportChat.Server.Support.Infrastructure.ZLink.Spots.ConversationSpot.Notifications;
-using SupportChat.Server.Support.Infrastructure.ZLink.Spots.EntrySpot;
-using SupportChat.Server.Support.Infrastructure.ZLink.Spots.ConversationSpot;
-using SupportChat.Server.Support.Infrastructure.ZLink;
-using SupportChat.Server.Support.Application.ConversationAssignment;
-using SupportChat.Server.Configuration;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Hosting;
+using SupportChat.Server.Configuration;
+using SupportChat.Server.Support.Application.ConversationAssignment;
+using SupportChat.Server.Support.Infrastructure.ZLink;
+using SupportChat.Server.Support.Infrastructure.ZLink.Actors;
+using SupportChat.Server.Support.Infrastructure.ZLink.Spots.ConversationSpot;
+using SupportChat.Server.Support.Infrastructure.ZLink.Spots.ConversationSpot.Notifications;
+using SupportChat.Server.Support.Infrastructure.ZLink.Spots.EntrySpot;
 using Zlink.Framework.AspNetCore;
 using Zlink.Framework.Contracts.Dispatch;
 
@@ -38,12 +38,10 @@ public static class SupportServerHostFactory
                 var channel = options.AddClientServerChannel(SampleNames.SupportChannel);
                 channel.EnableServer(topology.SupportChannelEndpoint);
                 channel.AddHandlerGroup("support");
-
             }
             {
                 var channel = options.AddClientServerChannel(SampleNames.ApiChannel);
                 channel.EnableClient();
-
             }
             {
                 var mesh = options.AddSpotMesh(SampleNames.SupportSpotDiscovery);
@@ -52,18 +50,14 @@ public static class SupportServerHostFactory
                     {
                         var router = spot.EnableRouter(topology.SupportEntrySpotRouterEndpoint);
                         router.SetRoutingId(topology.SupportEntryRid);
-
                     }
                     {
                         var pubsub = spot.EnablePubSub(topology.SupportEntrySpotEndpoint);
-
                     }
                     spot.AddEntrySpot<SupportEntrySpot>();
                     spot.AddActorFactory<SupportUserActorFactory>(SampleNames.SupportActorType);
                     spot.AddSpotFactory<ConversationSpot>();
-
                 }
-
             }
         });
 

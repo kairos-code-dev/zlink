@@ -20,6 +20,7 @@ internal static class Program
                 {
                     await play.RunAsync();
                 }
+
                 break;
             case "api":
             case "api-a":
@@ -28,6 +29,7 @@ internal static class Program
                 {
                     await api.RunAsync();
                 }
+
                 break;
             default:
                 await Console.Error.WriteLineAsync("Usage: dotnet run -- [play|api] [--config PATH]");

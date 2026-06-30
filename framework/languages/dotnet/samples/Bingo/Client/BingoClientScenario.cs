@@ -14,11 +14,13 @@ internal sealed class BingoClientScenario
     {
         // Client 1 connects, authenticates, and creates the waiting room.
         await client1.Connect.Async(cancellationToken);
-        var client1Auth = await client1.Request(new AuthenticateReq { AccessToken = BingoSamplePlayers.Player1 }).Async<AuthenticateRes>(cancellationToken);
+        var client1Auth = await client1.Request(new AuthenticateReq { AccessToken = BingoSamplePlayers.Player1 })
+            .Async<AuthenticateRes>(cancellationToken);
 
         Ensure(client1Auth.ActorId == BingoSamplePlayers.Player1);
 
-        var client1MatchRes = await client1.Request(new MatchBingoReq { Mode = BingoSampleModes.TwoPlayer }).Async<MatchBingoRes>(cancellationToken);
+        var client1MatchRes = await client1.Request(new MatchBingoReq { Mode = BingoSampleModes.TwoPlayer })
+            .Async<MatchBingoRes>(cancellationToken);
 
         Ensure(client1MatchRes.State.Status == BingoRoomStatuses.WaitingForPlayers);
         Ensure(client1MatchRes.State.HostActorId == client1Auth.ActorId);
@@ -26,7 +28,8 @@ internal sealed class BingoClientScenario
         Ensure(client1.ReceivedCount(nameof(PlayerJoinedNotify)) == 0);
 
         await observer.Connect.Async(cancellationToken);
-        var observerAuth = await observer.Request(new AuthenticateReq { AccessToken = BingoSamplePlayers.Observer }).Async<AuthenticateRes>(cancellationToken);
+        var observerAuth = await observer.Request(new AuthenticateReq { AccessToken = BingoSamplePlayers.Observer })
+            .Async<AuthenticateRes>(cancellationToken);
         Ensure(observerAuth.ActorId == BingoSamplePlayers.Observer);
 
         var observed = await observer.Request(new ObserveBingoEventsReq { RoomId = client1MatchRes.RoomId })
@@ -37,13 +40,15 @@ internal sealed class BingoClientScenario
         // Client 2 connects, authenticates, and joins the same room.
         await client2.Connect.Async(cancellationToken);
 
-        var client2Auth = await client2.Request(new AuthenticateReq { AccessToken = BingoSamplePlayers.Player2 }).Async<AuthenticateRes>(cancellationToken);
+        var client2Auth = await client2.Request(new AuthenticateReq { AccessToken = BingoSamplePlayers.Player2 })
+            .Async<AuthenticateRes>(cancellationToken);
 
         Ensure(client2Auth.ActorId == BingoSamplePlayers.Player2);
         Ensure(client2Auth.ActorId != client1Auth.ActorId);
         Ensure(client2Auth.ActorNodeRid != client1Auth.ActorNodeRid);
 
-        var client2MatchRes = await client2.Request(new MatchBingoReq { Mode = BingoSampleModes.TwoPlayer }).Async<MatchBingoRes>(cancellationToken);
+        var client2MatchRes = await client2.Request(new MatchBingoReq { Mode = BingoSampleModes.TwoPlayer })
+            .Async<MatchBingoRes>(cancellationToken);
 
         Ensure(client2MatchRes.RoomId == client1MatchRes.RoomId);
         Ensure(client2MatchRes.State.Status == BingoRoomStatuses.Running);
@@ -73,7 +78,7 @@ internal sealed class BingoClientScenario
             .Request(new SubmitBingoCardReq
             {
                 RoomId = client2MatchRes.RoomId,
-                Card = { BingoClientCards.Player2 },
+                Card = { BingoClientCards.Player2 }
             })
             .Async<SubmitBingoCardRes>(cancellationToken);
         Ensure(client2Card.State.Status == BingoRoomStatuses.Running);
@@ -82,7 +87,7 @@ internal sealed class BingoClientScenario
             .Request(new SubmitBingoCardReq
             {
                 RoomId = client1MatchRes.RoomId,
-                Card = { BingoClientCards.Player1 },
+                Card = { BingoClientCards.Player1 }
             })
             .Async<SubmitBingoCardRes>(cancellationToken);
         Ensure(client1Card.State.Status == BingoRoomStatuses.Running);
@@ -109,11 +114,9 @@ internal sealed class BingoClientScenario
             Ensure(client2Drawn.Payload.DrawSeq == client1Drawn.Payload.DrawSeq);
             Ensure(client2Drawn.Payload.Number == client1Drawn.Payload.Number);
 
-            if (client1Drawn.Payload.State.Status == BingoRoomStatuses.Finished)
-            {
-                break;
-            }
+            if (client1Drawn.Payload.State.Status == BingoRoomStatuses.Finished) break;
         }
+
         Ensure(drawnNumbers.Count > 0);
         Ensure(drawnNumbers[^1].State.Status == BingoRoomStatuses.Finished);
 
@@ -166,12 +169,10 @@ internal sealed class BingoClientScenario
 
     private static void Ensure(
         bool condition,
-        [CallerArgumentExpression(nameof(condition))] string? expression = null)
+        [CallerArgumentExpression(nameof(condition))]
+        string? expression = null)
     {
-        if (!condition)
-        {
-            throw new InvalidOperationException($"Ensure failed: {expression}");
-        }
+        if (!condition) throw new InvalidOperationException($"Ensure failed: {expression}");
     }
 }
 

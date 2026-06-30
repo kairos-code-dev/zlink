@@ -20,7 +20,8 @@ internal sealed class DeliveryStatusChangedHandler(
         evidence.Append(request);
         _ = await channels.RequestToChannel(SampleNames.CustomerRouteChannel, request)
             .Async<DeliveryStatusAck>(cancellationToken);
-        Console.Error.WriteLine($"deliverydispatch tracking: status delivery={request.DeliveryId} status={request.Status} courier={request.CourierId}");
+        Console.Error.WriteLine(
+            $"deliverydispatch tracking: status delivery={request.DeliveryId} status={request.Status} courier={request.CourierId}");
         return new DeliveryStatusAck(request.DeliveryId, request.Status);
     }
 }

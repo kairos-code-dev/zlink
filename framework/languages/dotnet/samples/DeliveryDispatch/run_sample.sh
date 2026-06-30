@@ -158,7 +158,7 @@ start_server() {
   PIDS+=("$!")
 }
 
-dotnet build "${SCRIPT_DIR}/DeliveryDispatch.csproj" --maxcpucount:1
+dotnet build "${SCRIPT_DIR}/DeliveryDispatch.sln" --maxcpucount:1
 
 start_server registry "${SCRIPT_DIR}/Server/Registry/DeliveryDispatch.Server.Registry.csproj"
 wait_port registry-router "${DELIVERYDISPATCH_REGISTRY}"

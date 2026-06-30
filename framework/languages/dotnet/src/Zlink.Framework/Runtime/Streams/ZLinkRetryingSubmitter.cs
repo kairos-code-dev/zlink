@@ -1,3 +1,5 @@
+using System.Diagnostics;
+
 namespace Zlink.Framework.Runtime.Streams;
 
 internal static class ZLinkRetryingSubmitter
@@ -10,17 +12,14 @@ internal static class ZLinkRetryingSubmitter
         string failureMessage,
         CancellationToken cancellationToken)
     {
-        var elapsed = System.Diagnostics.Stopwatch.StartNew();
+        var elapsed = Stopwatch.StartNew();
         Exception? lastError = null;
         while (true)
         {
             cancellationToken.ThrowIfCancellationRequested();
             try
             {
-                if (submit())
-                {
-                    return;
-                }
+                if (submit()) return;
             }
             catch (ZlinkSubmitException error) when (IsRoutePending(error))
             {

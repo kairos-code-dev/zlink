@@ -46,13 +46,16 @@ internal static class YdD2RemoteSpotYieldScenario
             "remote-yield-started",
             "remote-yield-released",
             "remote-yield-resumed",
-            "remote-yield-completed"]);
+            "remote-yield-completed"
+        ]);
         ScenarioAssert.That(
             targetEvidence.Evidence.Any(line =>
-                line.Contains($"yield-started|rid=play-b|spot={targetSpotRid}|request={requestId}", StringComparison.Ordinal)),
+                line.Contains($"yield-started|rid=play-b|spot={targetSpotRid}|request={requestId}",
+                    StringComparison.Ordinal)),
             "YD-D2 target play-b marker missing.");
         ScenarioAssert.That(
-            targetEvidence.Evidence.All(line => !line.Contains("remote-yield-resumed|rid=play-b", StringComparison.Ordinal)),
+            targetEvidence.Evidence.All(line =>
+                !line.Contains("remote-yield-resumed|rid=play-b", StringComparison.Ordinal)),
             "YD-D2 target node must not own the caller continuation.");
     }
 }

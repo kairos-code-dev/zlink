@@ -1,16 +1,10 @@
+using DiscoveryRegistryHa.Server.Embedded.Support;
 using DiscoveryRegistryHa.Shared;
-using Microsoft.AspNetCore.Builder;
-using Microsoft.AspNetCore.Http;
 using Microsoft.AspNetCore.Mvc;
-using Microsoft.Extensions.DependencyInjection;
-using Microsoft.Extensions.Hosting;
-using Microsoft.Extensions.Logging;
 using Systems.Zlink;
 using Zlink.Framework.AspNetCore;
-using Zlink.Framework.Contracts.Channels;
 using Zlink.Framework.Contracts.Dispatch;
 using Zlink.Framework.Contracts.Registry;
-using DiscoveryRegistryHa.Server.Embedded.Support;
 
 namespace DiscoveryRegistryHa.Server.Embedded;
 
@@ -18,7 +12,7 @@ internal static class EmbeddedHostFactory
 {
     public static WebApplication Create(string[] args)
     {
-        var options = ServerOptions.Parse(args, defaultRole: "embedded");
+        var options = ServerOptions.Parse(args, "embedded");
         Directory.CreateDirectory(options.LogDir);
 
         var builder = WebApplication.CreateBuilder(args);
@@ -39,23 +33,16 @@ internal static class EmbeddedHostFactory
             registry.HeartbeatInterval = TimeSpan.FromMilliseconds(250);
             registry.HeartbeatTimeout = TimeSpan.FromSeconds(2);
             registry.BroadcastInterval = TimeSpan.FromMilliseconds(250);
-            foreach (var peer in options.PeerPubEndpoints)
-            {
-                registry.AddPeer(peer);
-            }
+            foreach (var peer in options.PeerPubEndpoints) registry.AddPeer(peer);
         });
 
         builder.Services.AddZLinkFramework(framework =>
         {
             if (options.DiscoveryEndpoints.Count == 0)
-            {
-                framework.UseDiscovery().AddRegistryEndpoint(Require(options.RegistryRouterEndpoint, "--registry-router-endpoint"));
-            }
+                framework.UseDiscovery()
+                    .AddRegistryEndpoint(Require(options.RegistryRouterEndpoint, "--registry-router-endpoint"));
 
-            foreach (var endpoint in options.DiscoveryEndpoints)
-            {
-                framework.UseDiscovery().AddRegistryEndpoint(endpoint);
-            }
+            foreach (var endpoint in options.DiscoveryEndpoints) framework.UseDiscovery().AddRegistryEndpoint(endpoint);
 
             framework.ConfigureDispatch()
                 .MessageFlow(ZLinkMessageFlowLogMode.KeyTransitions)
@@ -83,13 +70,16 @@ internal static class EmbeddedHostFactory
                 cancellationToken);
             return Results.Ok(snapshot);
         });
-        app.MapGet("/registry/status", async ([FromServices] IZLinkRegistryQuery query, CancellationToken cancellationToken) =>
+        app.MapGet("/registry/status",
+            async ([FromServices] IZLinkRegistryQuery query, CancellationToken cancellationToken) =>
             Results.Ok(await query.StatusAsync(cancellationToken)));
-        app.MapGet("/registry/topology", async ([FromServices] IZLinkRegistryQuery query, CancellationToken cancellationToken) =>
+        app.MapGet("/registry/topology",
+            async ([FromServices] IZLinkRegistryQuery query, CancellationToken cancellationToken) =>
             Results.Ok(await query.TopologyAsync(
                 new ZLinkRegistryTopologyFilter(ChannelName: DiscoveryRegistryHaNames.Channel),
                 cancellationToken)));
-        app.MapGet("/registry/members", async ([FromServices] IZLinkRegistryQuery query, CancellationToken cancellationToken) =>
+        app.MapGet("/registry/members",
+            async ([FromServices] IZLinkRegistryQuery query, CancellationToken cancellationToken) =>
             Results.Ok(await query.MemberPeersAsync(DiscoveryRegistryHaNames.Channel, cancellationToken)));
         app.MapPost("/registry/members/wait", async (
             MemberEndpointWaitRequest request,
@@ -104,9 +94,7 @@ internal static class EmbeddedHostFactory
                 if (members.Any(member =>
                         member.ServiceRole == ZLinkServiceRole.Router
                         && string.Equals(member.Endpoint, request.Endpoint, StringComparison.Ordinal)))
-                {
                     return Results.Ok(members);
-                }
 
                 await Task.Delay(TimeSpan.FromMilliseconds(100), cancellationToken);
             }
@@ -121,7 +109,7 @@ internal static class EmbeddedHostFactory
         return app;
     }
 
-    static string Require(string? value, string name)
+    private static string Require(string? value, string name)
     {
         return string.IsNullOrWhiteSpace(value)
             ? throw new InvalidOperationException($"{name} is required.")

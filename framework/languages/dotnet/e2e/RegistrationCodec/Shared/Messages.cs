@@ -42,16 +42,13 @@ public sealed record EvidenceWaitRequest(
 [MessagePackObject]
 public sealed class PackedEchoReq
 {
-    [Key(0)]
-    public string Value { get; set; } = string.Empty;
+    [Key(0)] public string Value { get; set; } = string.Empty;
 }
 
 [MessagePackObject]
 public sealed class PackedEchoCommand
 {
-    [Key(0)]
-    public string CommandId { get; set; } = string.Empty;
+    [Key(0)] public string CommandId { get; set; } = string.Empty;
 
-    [Key(1)]
-    public string Value { get; set; } = string.Empty;
+    [Key(1)] public string Value { get; set; } = string.Empty;
 }

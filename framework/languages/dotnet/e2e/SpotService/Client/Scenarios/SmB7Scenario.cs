@@ -1,7 +1,7 @@
+using SpotService.Client.Support;
 using SpotService.Shared;
 using Systems.Zlink.Stream.Connector.Contracts;
 using Zlink.HttpClient;
-using SpotService.Client.Support;
 
 namespace SpotService.Client.Scenarios;
 
@@ -23,7 +23,7 @@ internal static class SmB7Scenario
                 RequestTimeout = TimeSpan.FromSeconds(5),
                 Heartbeat = new ZlinkStreamHeartbeatOptions { Enabled = false },
                 DispatchMode = ZlinkStreamDispatchMode.Immediate,
-                MaxReceivedMessages = 1024,
+                MaxReceivedMessages = 1024
             });
             try
             {
@@ -53,7 +53,7 @@ internal static class SmB7Scenario
                 : $"SM-B7 ordered actor requests did not become routable. Last error: {last.Message}");
         ScenarioAssert.That(
             replies[0].Value == "order-1" && replies[0].Seen == 1
-                && replies[1].Value == "order-2" && replies[1].Seen == 2,
+                                          && replies[1].Value == "order-2" && replies[1].Seen == 2,
             "SM-B7 stream replies did not preserve actor packet order.");
         var evidence = (await playA.Post("/evidence/wait")
             .Body(new EvidenceWaitRequest([$"actor-ping|rid=play-a|actor={actorId}", "value=order-2|seen=2"]))

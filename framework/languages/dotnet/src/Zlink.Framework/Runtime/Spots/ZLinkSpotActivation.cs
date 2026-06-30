@@ -1,4 +1,5 @@
 using Microsoft.Extensions.DependencyInjection;
+
 namespace Zlink.Framework.Runtime.Spots;
 
 internal sealed partial class ZLinkSpotActivation :
@@ -8,29 +9,26 @@ internal sealed partial class ZLinkSpotActivation :
     IZLinkSpotOutboundSink,
     IAsyncDisposable
 {
-    private readonly ZLinkFrameworkRuntime _runtime;
-    private readonly AsyncServiceScope _scope;
-    private readonly CancellationTokenSource _stopSource = new();
-    private readonly ZLinkSpotSerialExecutor _serial;
-    private readonly ZLinkSpotPacketRegistry _packets = new();
-    private readonly ZLinkSpotActorJoinRegistry _actorJoins = new();
-    private ZLinkSpotActorHandlerRegistry? _actorHandlers;
-    private readonly ZLinkSpotActorMembership _actors = new();
-    private readonly ZLinkSpotSubscriptionRegistry _subscriptions = new();
-    private ZLinkSpotHandlerInvoker? _handlerInvoker;
-    private IZLinkSpot? _spot;
-    private readonly ZLinkSpotTimerRegistry _timers = new();
-    private readonly ZLinkSpotActivationDispatcher _dispatcher;
     private readonly ZLinkSpotActorDispatchSubmitter _actorDispatchSubmitter;
+    private readonly ZLinkSpotActorJoinRegistry _actorJoins = new();
     private readonly ZLinkSpotActorLifecycleCoordinator _actorLifecycle;
+    private readonly ZLinkSpotActorMembership _actors = new();
+    private readonly ZLinkSpotActivationDispatcher _dispatcher;
     private readonly ZLinkSpotOutboundTransport _outbound;
     private readonly ZLinkSpotOutboundEndpoint _outboundEndpoint;
-    private readonly IZLinkSpotHandlerRegistry _handlersSurface;
-    private readonly IZLinkSpotOutbound _outboundSurface;
+    private readonly ZLinkSpotPacketRegistry _packets = new();
+    private readonly ZLinkFrameworkRuntime _runtime;
+    private readonly AsyncServiceScope _scope;
+    private readonly ZLinkSpotSerialExecutor _serial;
+    private readonly CancellationTokenSource _stopSource = new();
     private readonly ZLinkSpotSubscriptionPump _subscriptionPump = new();
-    private readonly TimeSpan _defaultRequestTimeout;
-    private int _disposed;
+    private readonly ZLinkSpotSubscriptionRegistry _subscriptions = new();
+    private readonly ZLinkSpotTimerRegistry _timers = new();
+    private ZLinkSpotActorHandlerRegistry? _actorHandlers;
     private bool _configurationOpen = true;
+    private int _disposed;
+    private ZLinkSpotHandlerInvoker? _handlerInvoker;
+    private IZLinkSpot? _spot;
 
     public ZLinkSpotActivation(
         ZLinkFrameworkRuntime runtime,
@@ -48,7 +46,7 @@ internal sealed partial class ZLinkSpotActivation :
         NodeRid = nodeRid;
         SpotNodeName = spotNodeName;
         ChannelName = channelName;
-        _defaultRequestTimeout = defaultRequestTimeout;
+        DefaultRequestTimeout = defaultRequestTimeout;
         _outbound = new ZLinkSpotOutboundTransport(
             nativeSpot,
             defaultRequestTimeout,
@@ -60,8 +58,8 @@ internal sealed partial class ZLinkSpotActivation :
             _outbound,
             _runtime,
             "IZLinkSpotContext spot routing requires AddSpotRemoteAddressResolver<TResolver>().");
-        _handlersSurface = new ZLinkSpotHandlerRegistrySurface(this);
-        _outboundSurface = new ZLinkSpotOutboundSurface(this);
+        Handlers = new ZLinkSpotHandlerRegistrySurface(this);
+        Outbound = new ZLinkSpotOutboundSurface(this);
         _serial = new ZLinkSpotSerialExecutor(this, () => IsDisposed, _stopSource.Token);
         _dispatcher = new ZLinkSpotActivationDispatcher(
             runtime,
@@ -83,24 +81,15 @@ internal sealed partial class ZLinkSpotActivation :
     }
 
     public IZLinkSpot Spot => _spot
-        ?? throw new InvalidOperationException("SPOT has not been attached to this context.");
+                              ?? throw new InvalidOperationException("SPOT has not been attached to this context.");
 
     private ZLinkSpotHandlerInvoker HandlerInvoker => _handlerInvoker
-        ?? throw new InvalidOperationException("SPOT has not been attached to this context.");
+                                                      ?? throw new InvalidOperationException(
+                                                          "SPOT has not been attached to this context.");
 
     public IZLinkBackendSpot NativeSpot { get; }
 
     public string SpotNodeName { get; }
-
-    public string ChannelName { get; }
-
-    public TimeSpan DefaultRequestTimeout => _defaultRequestTimeout;
-
-    public ZLinkCodecRegistryBuilder Codecs => _runtime.Registration.Codecs;
-
-    public RoutingId SpotRid => NativeSpot.RoutingId;
-
-    public RoutingId NodeRid { get; }
 
     public int SubscriptionMessageCount => _subscriptions.MessageCount;
 
@@ -118,13 +107,20 @@ internal sealed partial class ZLinkSpotActivation :
 
     internal string SubscriptionPumpState => _subscriptionPump.State;
 
+    public string ChannelName { get; }
+
+    public TimeSpan DefaultRequestTimeout { get; }
+
+    public ZLinkCodecRegistryBuilder Codecs => _runtime.Registration.Codecs;
+
+    public RoutingId SpotRid => NativeSpot.RoutingId;
+
+    public RoutingId NodeRid { get; }
+
     private void EnsureConfigurationOpen()
     {
         if (!_configurationOpen)
-        {
             throw new InvalidOperationException(
                 "SPOT handler registration is only allowed while IZLinkSpot.Configure is running.");
-        }
     }
-
 }

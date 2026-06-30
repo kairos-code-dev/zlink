@@ -1,13 +1,10 @@
+using SpotService.Server.Play.Spots;
 using SpotService.Shared;
 using Zlink.Framework.Contracts.Handlers;
 using Zlink.Framework.Contracts.Spots;
 using Zlink.Framework.Contracts.Timers;
-using SpotService.Server.Play.Endpoints;
-using SpotService.Server.Play.Handlers;
-using SpotService.Server.Play.Spots;
 
 namespace SpotService.Server.Play.Handlers;
-
 
 [ZLinkSpotSubscriptionHandler(SpotServiceNames.SpotEventTopic)]
 internal sealed class SpotEventHandler(EvidenceStore evidence)
@@ -101,7 +98,8 @@ internal sealed class MultiNodeStateAHandler(EvidenceStore evidence)
         cancellationToken.ThrowIfCancellationRequested();
         var delta = string.Equals(request.Operation, "add", StringComparison.Ordinal) ? request.Delta : 0;
         var value = spot.Add(delta);
-        evidence.Add($"multi-state-request|node={SpotServiceNames.MultiSpotNodeA}|spot={spot.Context.SpotRid}|value={value}");
+        evidence.Add(
+            $"multi-state-request|node={SpotServiceNames.MultiSpotNodeA}|spot={spot.Context.SpotRid}|value={value}");
         return ValueTask.FromResult(new StateReply(
             spot.Context.SpotRid.ToString(),
             spot.Context.NodeRid.ToString(),
@@ -121,7 +119,8 @@ internal sealed class MultiNodeStateBHandler(EvidenceStore evidence)
         cancellationToken.ThrowIfCancellationRequested();
         var delta = string.Equals(request.Operation, "add", StringComparison.Ordinal) ? request.Delta : 0;
         var value = spot.Add(delta);
-        evidence.Add($"multi-state-request|node={SpotServiceNames.MultiSpotNodeB}|spot={spot.Context.SpotRid}|value={value}");
+        evidence.Add(
+            $"multi-state-request|node={SpotServiceNames.MultiSpotNodeB}|spot={spot.Context.SpotRid}|value={value}");
         return ValueTask.FromResult(new StateReply(
             spot.Context.SpotRid.ToString(),
             spot.Context.NodeRid.ToString(),
@@ -204,14 +203,14 @@ internal sealed class OverrunStartHandler
         OverrunStartCommand request,
         CancellationToken cancellationToken)
     {
-        var policy = Enum.Parse<ZLinkTimerOverrunPolicy>(request.Policy, ignoreCase: false);
+        var policy = Enum.Parse<ZLinkTimerOverrunPolicy>(request.Policy, false);
         await spot.Context.AddTimer<OverrunTimerHandler>(
             request.Name,
             TimeSpan.FromMilliseconds(request.PeriodMs),
             new ZLinkTimerOptions
             {
                 OverrunPolicy = policy,
-                MaxCatchUpTicks = 2,
+                MaxCatchUpTicks = 2
             },
             cancellationToken);
     }
@@ -288,10 +287,7 @@ internal sealed class IdleCloseTimerHandler(EvidenceStore evidence)
         ZLinkTimerTick tick,
         CancellationToken cancellationToken)
     {
-        if (tick.DeliveryIndex > 1)
-        {
-            return;
-        }
+        if (tick.DeliveryIndex > 1) return;
 
         var closed = await spot.Context.CloseAsync(cancellationToken);
         evidence.Add(

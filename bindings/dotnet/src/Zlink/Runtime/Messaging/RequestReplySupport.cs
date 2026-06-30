@@ -1,7 +1,5 @@
 // SPDX-License-Identifier: MPL-2.0
 
-using System;
-using System.Collections.Generic;
 using System.Runtime.InteropServices;
 using Systems.Zlink.Runtime.Native;
 
@@ -21,8 +19,8 @@ internal static class RequestReplySupport
     {
         if (parts.Count == 0)
             throw new ArgumentException("parts must not be empty", nameof(parts));
-        Message[] cloned = new Message[parts.Count];
-        for (int i = 0; i < parts.Count; i++)
+        var cloned = new Message[parts.Count];
+        for (var i = 0; i < parts.Count; i++)
             cloned[i] = CloneMessage(parts[i]);
         return cloned;
     }
@@ -45,7 +43,7 @@ internal static class RequestReplySupport
     internal static uint NormalizeRequestTimeout(TimeSpan timeout,
         TimeSpan defaultTimeout)
     {
-        TimeSpan effective = timeout == TimeSpan.Zero
+        var effective = timeout == TimeSpan.Zero
             ? defaultTimeout
             : timeout;
         return BoundaryValidation.EncodeTimeoutMilliseconds(effective,
@@ -59,20 +57,17 @@ internal static class RequestReplySupport
 
     internal static void DisposeParts(IEnumerable<Message> parts)
     {
-        foreach (Message part in parts)
+        foreach (var part in parts)
             part.Dispose();
     }
 
-    internal unsafe delegate int NativePartSubmitter(
-        ref ZlinkMsg nativePart, NativeMethods.ZlinkPartFlag partFlag);
-
-    internal static unsafe void CloneAndSubmitParts(IReadOnlyList<Message> parts,
+    internal static void CloneAndSubmitParts(IReadOnlyList<Message> parts,
         NativePartSubmitter submit)
     {
         if (submit == null)
             throw new ArgumentNullException(nameof(submit));
 
-        Message[] cloned = CloneParts(parts);
+        var cloned = CloneParts(parts);
         try
         {
             SubmitClonedParts(cloned, submit);
@@ -84,7 +79,7 @@ internal static class RequestReplySupport
         }
     }
 
-    internal static unsafe void SubmitClonedParts(IReadOnlyList<Message> parts,
+    internal static void SubmitClonedParts(IReadOnlyList<Message> parts,
         NativePartSubmitter submit)
     {
         if (parts == null)
@@ -94,14 +89,14 @@ internal static class RequestReplySupport
         if (submit == null)
             throw new ArgumentNullException(nameof(submit));
 
-        for (int i = 0; i < parts.Count; i++)
+        for (var i = 0; i < parts.Count; i++)
         {
             ZlinkMsg nativePart = default;
             parts[i].MoveTo(ref nativePart);
-            bool submitted = false;
+            var submitted = false;
             try
             {
-                int rc = submit(ref nativePart, i + 1 < parts.Count
+                var rc = submit(ref nativePart, i + 1 < parts.Count
                     ? NativeMethods.ZlinkPartFlag.More
                     : NativeMethods.ZlinkPartFlag.Final);
                 submitted = true;
@@ -122,41 +117,43 @@ internal static class RequestReplySupport
     {
         if (callback == null)
             throw new ArgumentNullException(nameof(callback));
-        SynchronizationContext? context = SynchronizationContext.Current;
+        var context = SynchronizationContext.Current;
         _ = invoke().ContinueWith(task =>
-        {
-            if (task.IsFaulted)
             {
-                Exception error = task.Exception?.GetBaseException()
-                    ?? new ZlinkRequestException(RequestResult.ProtocolError);
-                if (error is ZlinkRequestException requestError)
+                if (task.IsFaulted)
                 {
+                    var error = task.Exception?.GetBaseException()
+                                ?? new ZlinkRequestException(RequestResult.ProtocolError);
+                    if (error is ZlinkRequestException requestError)
+                    {
+                        DeliverCallback(context, () => callback(
+                            (RequestResult)requestError.Code, null));
+                        return;
+                    }
+
                     DeliverCallback(context, () => callback(
-                        (RequestResult)requestError.Code, null));
+                        RequestResult.ProtocolError, null));
                     return;
                 }
 
-                DeliverCallback(context, () => callback(
-                    RequestResult.ProtocolError, null));
-                return;
-            }
-            if (task.IsCanceled)
-            {
-                DeliverCallback(context, () => callback(
-                    RequestResult.Terminated, null));
-                return;
-            }
-            DeliverCallback(context, () => callback(RequestResult.Ok,
-                task.Result));
-        }, CancellationToken.None, TaskContinuationOptions.ExecuteSynchronously,
+                if (task.IsCanceled)
+                {
+                    DeliverCallback(context, () => callback(
+                        RequestResult.Terminated, null));
+                    return;
+                }
+
+                DeliverCallback(context, () => callback(RequestResult.Ok,
+                    task.Result));
+            }, CancellationToken.None, TaskContinuationOptions.ExecuteSynchronously,
             TaskScheduler.Default);
     }
 
     internal static void CompleteReceivedReply(int result, IntPtr parts,
         nuint partCount, IntPtr userData)
     {
-        GCHandle handle = GCHandle.FromIntPtr(userData);
-        RequestCallState state = (RequestCallState)handle.Target!;
+        var handle = GCHandle.FromIntPtr(userData);
+        var state = (RequestCallState)handle.Target!;
         try
         {
             if (result != 0)
@@ -166,10 +163,10 @@ internal static class RequestReplySupport
                 return;
             }
 
-            Message[] replyParts = Message.FromNativeVector(parts, partCount);
+            var replyParts = Message.FromNativeVector(parts, partCount);
             parts = IntPtr.Zero;
             partCount = 0;
-            Received received = Received.Create((RoutingId?)null, replyParts);
+            var received = Received.Create(null, replyParts);
             if (!state.TrySetResult(received))
                 DisposeParts(replyParts);
         }
@@ -202,14 +199,17 @@ internal static class RequestReplySupport
 
     internal static SendResult MapSendNoWaitResult(ZlinkException error)
     {
-        ErrorCode code = ZlinkException.MapErrorCode(error.NativeErrno);
+        var code = ZlinkException.MapErrorCode(error.NativeErrno);
         return code switch
         {
             ErrorCode.EAgain => SendResult.Backpressured,
             _ when error.NativeErrno == ErrnoEAgainWin ||
-                error.NativeErrno == ErrnoEWouldBlockWin =>
+                   error.NativeErrno == ErrnoEWouldBlockWin =>
                 SendResult.Backpressured,
             _ => throw error
         };
     }
+
+    internal delegate int NativePartSubmitter(
+        ref ZlinkMsg nativePart, NativeMethods.ZlinkPartFlag partFlag);
 }

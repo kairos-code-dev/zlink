@@ -1,14 +1,9 @@
-using System;
 using System.Runtime.InteropServices;
 
 namespace Systems.Zlink.Runtime.Native;
 
 internal static partial class NativeMethods
 {
-    [UnmanagedFunctionPointer(CallingConvention.Cdecl)]
-    internal delegate void ZlinkTimerHandlerDelegate(IntPtr timer,
-        ulong fireCount, IntPtr userData);
-
     [DllImport(LibraryName, CallingConvention = CallingConvention.Cdecl)]
     internal static extern IntPtr zlink_timer_new();
 
@@ -32,4 +27,8 @@ internal static partial class NativeMethods
     [DllImport(LibraryName, CallingConvention = CallingConvention.Cdecl)]
     internal static extern int zlink_timer_handler(IntPtr timer,
         ZlinkTimerHandlerDelegate handler, IntPtr userData);
+
+    [UnmanagedFunctionPointer(CallingConvention.Cdecl)]
+    internal delegate void ZlinkTimerHandlerDelegate(IntPtr timer,
+        ulong fireCount, IntPtr userData);
 }

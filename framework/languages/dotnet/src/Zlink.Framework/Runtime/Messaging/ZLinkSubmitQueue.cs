@@ -2,9 +2,9 @@ namespace Zlink.Framework.Runtime.Messaging;
 
 internal sealed class ZLinkSubmitQueue
 {
+    private readonly int _capacity;
     private readonly object _gate = new();
     private readonly Queue<PendingSubmit> _pending = new();
-    private readonly int _capacity;
     private bool _disposed;
 
     public ZLinkSubmitQueue(int capacity)
@@ -19,10 +19,7 @@ internal sealed class ZLinkSubmitQueue
         lock (_gate)
         {
             ThrowIfDisposed();
-            if (_pending.Count >= _capacity)
-            {
-                throw new InvalidOperationException("ZLink async submit queue is full.");
-            }
+            if (_pending.Count >= _capacity) throw new InvalidOperationException("ZLink async submit queue is full.");
 
             _pending.Enqueue(pending);
         }
@@ -59,10 +56,7 @@ internal sealed class ZLinkSubmitQueue
         PendingSubmit[] remaining;
         lock (_gate)
         {
-            if (_disposed)
-            {
-                return Array.Empty<PendingSubmit>();
-            }
+            if (_disposed) return Array.Empty<PendingSubmit>();
 
             _disposed = true;
             remaining = _pending.ToArray();
@@ -74,9 +68,6 @@ internal sealed class ZLinkSubmitQueue
 
     private void ThrowIfDisposed()
     {
-        if (_disposed)
-        {
-            throw new ObjectDisposedException(nameof(ZLinkAsyncSubmitter));
-        }
+        if (_disposed) throw new ObjectDisposedException(nameof(ZLinkAsyncSubmitter));
     }
 }

@@ -1,8 +1,5 @@
-using Microsoft.AspNetCore.Builder;
-using Microsoft.Extensions.DependencyInjection;
-using Microsoft.Extensions.Logging;
-using ResilienceLifecycle.Shared;
 using ResilienceLifecycle.Server.Provider.Handlers;
+using ResilienceLifecycle.Shared;
 using Systems.Zlink;
 using Zlink.Framework.AspNetCore;
 using Zlink.Framework.Contracts.Dispatch;
@@ -13,7 +10,7 @@ internal static class ProviderHostFactory
 {
     public static WebApplication Create(string[] args)
     {
-        var options = ServerOptions.Parse(args, defaultRole: "provider");
+        var options = ServerOptions.Parse(args, "provider");
         Directory.CreateDirectory(options.LogDir);
 
         var builder = WebApplication.CreateBuilder(args);
@@ -29,7 +26,8 @@ internal static class ProviderHostFactory
 
         builder.Services.AddZLinkFramework(framework =>
         {
-            framework.UseDiscovery().AddRegistryEndpoint(Require(options.RegistryRouterEndpoint, "--registry-router-endpoint"));
+            framework.UseDiscovery()
+                .AddRegistryEndpoint(Require(options.RegistryRouterEndpoint, "--registry-router-endpoint"));
             framework.ConfigureDispatch()
                 .SetMessageFlowObserver<EvidenceDispatchErrorObserver>()
                 .MessageFlow(ZLinkMessageFlowLogMode.KeyTransitions)
@@ -48,7 +46,7 @@ internal static class ProviderHostFactory
         return app;
     }
 
-    static string Require(string? value, string name)
+    private static string Require(string? value, string name)
     {
         return string.IsNullOrWhiteSpace(value)
             ? throw new InvalidOperationException($"{name} is required.")

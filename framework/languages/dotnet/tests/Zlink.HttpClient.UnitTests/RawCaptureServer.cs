@@ -7,15 +7,15 @@ using System.Text;
 namespace Zlink.HttpClient.UnitTests;
 
 /// <summary>
-/// Minimal raw-socket HTTP/1.1 server used where <see cref="HttpListener"/> cannot help — notably
-/// reading a chunked (<c>Transfer-Encoding: chunked</c>) request body, which the managed Linux
-/// <see cref="HttpListener"/> does not support. It reads one request, decodes a chunked or
-/// content-length body, records it, and replies with a fixed 200 response.
+///     Minimal raw-socket HTTP/1.1 server used where <see cref="HttpListener" /> cannot help — notably
+///     reading a chunked (<c>Transfer-Encoding: chunked</c>) request body, which the managed Linux
+///     <see cref="HttpListener" /> does not support. It reads one request, decodes a chunked or
+///     content-length body, records it, and replies with a fixed 200 response.
 /// </summary>
 internal sealed class RawCaptureServer : IDisposable
 {
-    private readonly TcpListener _listener;
     private readonly TaskCompletionSource<string> _captured = new(TaskCreationOptions.RunContinuationsAsynchronously);
+    private readonly TcpListener _listener;
 
     public RawCaptureServer(string responseBody = "{}")
     {
@@ -30,6 +30,18 @@ internal sealed class RawCaptureServer : IDisposable
 
     /// <summary>Completes with the decoded request body once a request has been served.</summary>
     public Task<string> CapturedBody => _captured.Task;
+
+    public void Dispose()
+    {
+        try
+        {
+            _listener.Stop();
+        }
+        catch
+        {
+            // already stopped
+        }
+    }
 
     private async Task ServeAsync(string responseBody)
     {
@@ -68,18 +80,13 @@ internal sealed class RawCaptureServer : IDisposable
         while (true)
         {
             var read = await stream.ReadAsync(one).ConfigureAwait(false);
-            if (read == 0)
-            {
-                break;
-            }
+            if (read == 0) break;
 
             buffer.Add(one[0]);
             if (buffer.Count >= 4
                 && buffer[^4] == (byte)'\r' && buffer[^3] == (byte)'\n'
                 && buffer[^2] == (byte)'\r' && buffer[^1] == (byte)'\n')
-            {
                 break;
-            }
         }
 
         return Encoding.ASCII.GetString(buffer.ToArray());
@@ -88,12 +95,8 @@ internal sealed class RawCaptureServer : IDisposable
     private static int ParseContentLength(string headers)
     {
         foreach (var line in headers.Split("\r\n"))
-        {
             if (line.StartsWith("content-length:", StringComparison.OrdinalIgnoreCase))
-            {
                 return int.Parse(line["content-length:".Length..].Trim());
-            }
-        }
 
         return 0;
     }
@@ -105,10 +108,7 @@ internal sealed class RawCaptureServer : IDisposable
         while (offset < length)
         {
             var read = await stream.ReadAsync(buffer.AsMemory(offset)).ConfigureAwait(false);
-            if (read == 0)
-            {
-                break;
-            }
+            if (read == 0) break;
 
             offset += read;
         }
@@ -144,34 +144,13 @@ internal sealed class RawCaptureServer : IDisposable
         while (true)
         {
             var read = await stream.ReadAsync(one).ConfigureAwait(false);
-            if (read == 0)
-            {
-                break;
-            }
+            if (read == 0) break;
 
-            if (one[0] == (byte)'\n')
-            {
-                break;
-            }
+            if (one[0] == (byte)'\n') break;
 
-            if (one[0] != (byte)'\r')
-            {
-                buffer.Add(one[0]);
-            }
+            if (one[0] != (byte)'\r') buffer.Add(one[0]);
         }
 
         return Encoding.ASCII.GetString(buffer.ToArray());
-    }
-
-    public void Dispose()
-    {
-        try
-        {
-            _listener.Stop();
-        }
-        catch
-        {
-            // already stopped
-        }
     }
 }

@@ -221,7 +221,7 @@ spot.AddActorFactory<PlayerActorFactory>("player");
 options.AddSpotRemoteAddressResolver<MySpotResolver>();
 options.UseRegistrySpotRemoteAddresses("game").RouterChannelId = "play-router"; // 반환 옵션에 후속 설정 — spot 주소 해석 시 경유할 router channel
 options.UseDiscovery().AddRegistryEndpoint("tcp://127.0.0.1:6000");
-options.AddSpotMesh("play-spots").UseDiscovery().AddRegistryEndpoint("tcp://127.0.0.1:6001");
+options.AddSpotMesh("play-spots");
 options.UseFilter<AuditingFilter>();
 options.ConfigureDispatch().SpotDispatchMode = ZLinkDispatchMode.Compiled;
 ```
@@ -275,7 +275,6 @@ options.ConfigureDispatch().SpotDispatchMode = ZLinkDispatchMode.Compiled;
 
 {
     var mesh = options.AddSpotMesh("play-mesh");
-    mesh.UseDiscovery().AddRegistryEndpoint("tcp://127.0.0.1:6003");
 
     {
         var spot = mesh;

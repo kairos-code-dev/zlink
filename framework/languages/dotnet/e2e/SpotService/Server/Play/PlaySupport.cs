@@ -1,11 +1,7 @@
 using System.Collections.Concurrent;
 using Zlink.Framework.Contracts.Dispatch;
-using SpotService.Server.Play.Endpoints;
-using SpotService.Server.Play.Handlers;
-using SpotService.Server.Play.Spots;
 
 namespace SpotService.Server.Play;
-
 
 internal sealed class EvidenceDispatchErrorObserver(EvidenceStore evidence)
     : IZLinkMessageFlowObserver
@@ -29,8 +25,8 @@ internal sealed class EvidenceStore
 {
     private readonly ConcurrentQueue<string> _entries = new();
     private readonly object _fileGate = new();
-    private readonly SemaphoreSlim _signal = new(0);
     private readonly string? _filePath;
+    private readonly SemaphoreSlim _signal = new(0);
 
     public EvidenceStore(string rid, string? filePath)
     {
@@ -49,10 +45,7 @@ internal sealed class EvidenceStore
     {
         _entries.Enqueue(entry);
         _signal.Release();
-        if (string.IsNullOrWhiteSpace(_filePath))
-        {
-            return;
-        }
+        if (string.IsNullOrWhiteSpace(_filePath)) return;
 
         lock (_fileGate)
         {
@@ -60,7 +53,10 @@ internal sealed class EvidenceStore
         }
     }
 
-    public string[] Snapshot() => _entries.ToArray();
+    public string[] Snapshot()
+    {
+        return _entries.ToArray();
+    }
 
     public async Task<string[]> WaitUntilAsync(
         Func<string[], bool> condition,
@@ -71,16 +67,10 @@ internal sealed class EvidenceStore
         while (true)
         {
             var snapshot = Snapshot();
-            if (condition(snapshot))
-            {
-                return snapshot;
-            }
+            if (condition(snapshot)) return snapshot;
 
             var remaining = deadline - DateTimeOffset.UtcNow;
-            if (remaining <= TimeSpan.Zero)
-            {
-                throw new TimeoutException("Timed out waiting for spot service evidence.");
-            }
+            if (remaining <= TimeSpan.Zero) throw new TimeoutException("Timed out waiting for spot service evidence.");
 
             await _signal.WaitAsync(remaining, cancellationToken);
         }
@@ -118,22 +108,19 @@ internal sealed record ServerOptions(
         for (var i = 0; i < args.Length; i++)
         {
             var key = args[i];
-            if (!key.StartsWith("--", StringComparison.Ordinal))
-            {
-                continue;
-            }
+            if (!key.StartsWith("--", StringComparison.Ordinal)) continue;
 
-            if (i + 1 >= args.Length)
-            {
-                throw new ArgumentException($"Missing value for {key}.");
-            }
+            if (i + 1 >= args.Length) throw new ArgumentException($"Missing value for {key}.");
 
             values[key[2..]] = args[++i];
         }
 
-        string Required(string key) => values.TryGetValue(key, out var value) && !string.IsNullOrWhiteSpace(value)
-            ? value
-            : throw new ArgumentException($"--{key} is required.");
+        string Required(string key)
+        {
+            return values.TryGetValue(key, out var value) && !string.IsNullOrWhiteSpace(value)
+                ? value
+                : throw new ArgumentException($"--{key} is required.");
+        }
 
         return new ServerOptions(
             defaultRole,

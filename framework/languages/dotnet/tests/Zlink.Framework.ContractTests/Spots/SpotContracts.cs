@@ -1,7 +1,6 @@
-using Zlink.Framework.Contracts.Codecs.Json;
 using Zlink.Framework.Contracts.Messaging;
-using Zlink.Framework.ContractTests.Support;
 using Zlink.Framework.Contracts.Workers;
+using Zlink.Framework.ContractTests.Support;
 
 namespace Zlink.Framework.ContractTests.Spots;
 
@@ -141,18 +140,26 @@ public sealed class SpotContracts
         var actor = new PlayerActor("player-1");
 
         await new RoomPacketHandler().HandleAsync(room, new RoomEvent("opened"), CancellationToken.None);
-        var roomReply = await new RoomRequestHandler().HandleAsync(room, new JoinRoom("room-1"), CancellationToken.None);
+        var roomReply =
+            await new RoomRequestHandler().HandleAsync(room, new JoinRoom("room-1"), CancellationToken.None);
         await new RoomEventHandler().HandleAsync(room, new RoomEvent("opened"), CancellationToken.None);
         await new RoomTimerHandler().HandleAsync(room, TimerTick(), CancellationToken.None);
-        var joinReply = await room.OnActorJoinAsync(actor, ZLinkMessage.From(new JoinRoom("room-1")), CancellationToken.None);
-        await new PlayerActorSendHandler().HandleAsync(room, actor, null!, new RoomEvent("opened"), CancellationToken.None);
-        var actorReply = await new PlayerActorRequestHandler().HandleAsync(room, actor, null!, new JoinRoom("room-1"), CancellationToken.None);
+        var joinReply =
+            await room.OnActorJoinAsync(actor, ZLinkMessage.From(new JoinRoom("room-1")), CancellationToken.None);
+        await new PlayerActorSendHandler().HandleAsync(room, actor, null!, new RoomEvent("opened"),
+            CancellationToken.None);
+        var actorReply =
+            await new PlayerActorRequestHandler().HandleAsync(room, actor, null!, new JoinRoom("room-1"),
+                CancellationToken.None);
         await room.OnJoinedActorAsync(actor, CancellationToken.None);
         await room.OnLeaveActorAsync(actor, CancellationToken.None);
         await room.OnDisconnectActorAsync(actor, CancellationToken.None);
-        await new EntryActorSendHandler().HandleAsync(entry, actor, null!, new RoomEvent("opened"), CancellationToken.None);
-        var entryReply = await new EntryActorRequestHandler().HandleAsync(entry, actor, null!, new JoinRoom("room-1"), CancellationToken.None);
-        await ((IZLinkEntrySpot<PlayerActor>)entry).OnCreateActorAsync(actor, ZLinkMessage.Empty, CancellationToken.None);
+        await new EntryActorSendHandler().HandleAsync(entry, actor, null!, new RoomEvent("opened"),
+            CancellationToken.None);
+        var entryReply = await new EntryActorRequestHandler().HandleAsync(entry, actor, null!, new JoinRoom("room-1"),
+            CancellationToken.None);
+        await ((IZLinkEntrySpot<PlayerActor>)entry).OnCreateActorAsync(actor, ZLinkMessage.Empty,
+            CancellationToken.None);
         await entry.OnJoinedActorAsync(actor, CancellationToken.None);
         await entry.OnLeaveActorAsync(actor, CancellationToken.None);
         await entry.OnDisconnectActorAsync(actor, CancellationToken.None);
@@ -270,8 +277,9 @@ public sealed class SpotContracts
         Assert.Equal(expected.Order(StringComparer.Ordinal).ToArray(), actual);
     }
 
-    private static ZLinkTimerTick TimerTick() =>
-        new(
+    private static ZLinkTimerTick TimerTick()
+    {
+        return new ZLinkTimerTick(
             "heartbeat",
             1,
             1,
@@ -282,6 +290,7 @@ public sealed class SpotContracts
             TimeSpan.FromSeconds(1),
             TimeSpan.Zero,
             0);
+    }
 
     private sealed record JoinRoom(string RoomId);
 
@@ -387,6 +396,11 @@ public sealed class SpotContracts
         IZLinkSpotHandlerRegistry,
         IZLinkSpotOutbound
     {
+        public List<string> JoinedActors { get; } = [];
+
+        public List<string> LeftActors { get; } = [];
+
+        public List<string> Timers { get; } = [];
         public RoutingId SpotRid { get; } = spotRid;
 
         public RoutingId NodeRid => RoutingId.From("spot-node");
@@ -394,44 +408,6 @@ public sealed class SpotContracts
         public IZLinkSpotHandlerRegistry Handlers => this;
 
         public IZLinkSpotOutbound Outbound => this;
-
-        public List<string> JoinedActors { get; } = [];
-
-        public List<string> LeftActors { get; } = [];
-
-        public List<string> Timers { get; } = [];
-
-        public void AddHandler<THandler>()
-            where THandler : class { }
-
-        public void AddHandler<THandler>(string packetName)
-            where THandler : class { }
-
-        public void AddActorPacket<THandler, TActor>()
-            where THandler : class
-            where TActor : IZLinkActor { }
-
-        public void AddActorPacket<THandler, TActor>(string packetName)
-            where THandler : class
-            where TActor : IZLinkActor { }
-
-        public void AddPacket<THandler>()
-            where THandler : class { }
-
-        public void AddSubscribe<THandler>(string topic)
-            where THandler : class { }
-
-        public IZLinkSendCall SendToSpot<TMessage>(RoutingId spotRid, TMessage message) => new SendCall();
-
-        public IZLinkRequestCall RequestToSpot<TRequest>(RoutingId spotRid, TRequest request) =>
-            new RequestCall(new JoinedRoom("room-1"));
-
-        public IZLinkPublishCall Publish<TEvent>(string topic, TEvent message) => new PublishCall();
-
-        public IZLinkSendCall SendToChannel<TMessage>(string channelName, TMessage message) => new SendCall();
-
-        public IZLinkRequestCall RequestToChannel<TRequest>(string channelName, TRequest request) =>
-            new RequestCall(new JoinedRoom("room-1"));
 
         public ValueTask leaveActor(
             IZLinkActor actor,
@@ -441,8 +417,10 @@ public sealed class SpotContracts
             return ValueTask.CompletedTask;
         }
 
-        public ValueTask<bool> CloseAsync(CancellationToken cancellationToken = default) =>
-            ValueTask.FromResult(true);
+        public ValueTask<bool> CloseAsync(CancellationToken cancellationToken = default)
+        {
+            return ValueTask.FromResult(true);
+        }
 
         public ValueTask<IZLinkTimer> AddTimer<THandler>(
             string name,
@@ -456,8 +434,67 @@ public sealed class SpotContracts
         }
 
         public IZLinkWorkerCall<TResult> RunWorker<TResult>(
-            Func<CancellationToken, TResult> work) =>
-            new WorkerCall<TResult>(work);
+            Func<CancellationToken, TResult> work)
+        {
+            return new WorkerCall<TResult>(work);
+        }
+
+        public void AddHandler<THandler>()
+            where THandler : class
+        {
+        }
+
+        public void AddHandler<THandler>(string packetName)
+            where THandler : class
+        {
+        }
+
+        public void AddActorPacket<THandler, TActor>()
+            where THandler : class
+            where TActor : IZLinkActor
+        {
+        }
+
+        public void AddActorPacket<THandler, TActor>(string packetName)
+            where THandler : class
+            where TActor : IZLinkActor
+        {
+        }
+
+        public void AddPacket<THandler>()
+            where THandler : class
+        {
+        }
+
+        public void AddSubscribe<THandler>(string topic)
+            where THandler : class
+        {
+        }
+
+        public IZLinkSendCall SendToSpot<TMessage>(RoutingId spotRid, TMessage message)
+        {
+            return new SendCall();
+        }
+
+        public IZLinkRequestCall RequestToSpot<TRequest>(RoutingId spotRid, TRequest request)
+        {
+            return new RequestCall(new JoinedRoom("room-1"));
+        }
+
+        public IZLinkPublishCall Publish<TEvent>(string topic, TEvent message)
+        {
+            return new PublishCall();
+        }
+
+        public IZLinkSendCall SendToChannel<TMessage>(string channelName, TMessage message)
+        {
+            return new SendCall();
+        }
+
+        public IZLinkRequestCall RequestToChannel<TRequest>(string channelName, TRequest request)
+        {
+            return new RequestCall(new JoinedRoom("room-1"));
+        }
     }
 
     private sealed class EntrySpotContext(RoutingId spotRid) :
@@ -465,6 +502,7 @@ public sealed class SpotContracts
         IZLinkSpotHandlerRegistry,
         IZLinkSpotOutbound
     {
+        public List<string> DestroyedActors { get; } = [];
         public RoutingId SpotRid { get; } = spotRid;
 
         public RoutingId NodeRid => RoutingId.From("spot-node");
@@ -472,40 +510,6 @@ public sealed class SpotContracts
         public IZLinkSpotHandlerRegistry Handlers => this;
 
         public IZLinkSpotOutbound Outbound => this;
-
-        public List<string> DestroyedActors { get; } = [];
-
-        public void AddHandler<THandler>()
-            where THandler : class { }
-
-        public void AddHandler<THandler>(string packetName)
-            where THandler : class { }
-
-        public void AddActorPacket<THandler, TActor>()
-            where THandler : class
-            where TActor : IZLinkActor { }
-
-        public void AddActorPacket<THandler, TActor>(string packetName)
-            where THandler : class
-            where TActor : IZLinkActor { }
-
-        public void AddPacket<THandler>()
-            where THandler : class { }
-
-        public void AddSubscribe<THandler>(string topic)
-            where THandler : class { }
-
-        public IZLinkSendCall SendToSpot<TMessage>(RoutingId spotRid, TMessage message) => new SendCall();
-
-        public IZLinkRequestCall RequestToSpot<TRequest>(RoutingId spotRid, TRequest request) =>
-            new RequestCall(new JoinedRoom("room-1"));
-
-        public IZLinkPublishCall Publish<TEvent>(string topic, TEvent message) => new PublishCall();
-
-        public IZLinkSendCall SendToChannel<TMessage>(string channelName, TMessage message) => new SendCall();
-
-        public IZLinkRequestCall RequestToChannel<TRequest>(string channelName, TRequest request) =>
-            new RequestCall(new JoinedRoom("room-1"));
 
         public ValueTask DestroyActorAsync(
             IZLinkActor actor,
@@ -520,20 +524,86 @@ public sealed class SpotContracts
             TimeSpan period,
             ZLinkTimerOptions? options = null,
             CancellationToken cancellationToken = default)
-            where THandler : class =>
-            ValueTask.FromResult<IZLinkTimer>(new Timer());
+            where THandler : class
+        {
+            return ValueTask.FromResult<IZLinkTimer>(new Timer());
+        }
 
         public IZLinkWorkerCall<TResult> RunWorker<TResult>(
-            Func<CancellationToken, TResult> work) =>
-            new WorkerCall<TResult>(work);
+            Func<CancellationToken, TResult> work)
+        {
+            return new WorkerCall<TResult>(work);
+        }
+
+        public void AddHandler<THandler>()
+            where THandler : class
+        {
+        }
+
+        public void AddHandler<THandler>(string packetName)
+            where THandler : class
+        {
+        }
+
+        public void AddActorPacket<THandler, TActor>()
+            where THandler : class
+            where TActor : IZLinkActor
+        {
+        }
+
+        public void AddActorPacket<THandler, TActor>(string packetName)
+            where THandler : class
+            where TActor : IZLinkActor
+        {
+        }
+
+        public void AddPacket<THandler>()
+            where THandler : class
+        {
+        }
+
+        public void AddSubscribe<THandler>(string topic)
+            where THandler : class
+        {
+        }
+
+        public IZLinkSendCall SendToSpot<TMessage>(RoutingId spotRid, TMessage message)
+        {
+            return new SendCall();
+        }
+
+        public IZLinkRequestCall RequestToSpot<TRequest>(RoutingId spotRid, TRequest request)
+        {
+            return new RequestCall(new JoinedRoom("room-1"));
+        }
+
+        public IZLinkPublishCall Publish<TEvent>(string topic, TEvent message)
+        {
+            return new PublishCall();
+        }
+
+        public IZLinkSendCall SendToChannel<TMessage>(string channelName, TMessage message)
+        {
+            return new SendCall();
+        }
+
+        public IZLinkRequestCall RequestToChannel<TRequest>(string channelName, TRequest request)
+        {
+            return new RequestCall(new JoinedRoom("room-1"));
+        }
     }
 
     private sealed class WorkerCall<TResult>(Func<CancellationToken, TResult> work) : IZLinkWorkerCall<TResult>
     {
-        public IZLinkWorkerCall<TResult> Timeout(TimeSpan timeout) => this;
+        public IZLinkWorkerCall<TResult> Timeout(TimeSpan timeout)
+        {
+            return this;
+        }
 
-        public ValueTask<TResult> Async(CancellationToken cancellationToken = default) =>
-            ValueTask.FromResult(work(cancellationToken));
+        public ValueTask<TResult> Async(CancellationToken cancellationToken = default)
+        {
+            return ValueTask.FromResult(work(cancellationToken));
+        }
 
         public void Submit(
             Func<TResult, CancellationToken, ValueTask> onCompleted,
@@ -597,44 +667,65 @@ public sealed class SpotContracts
         }
 
         public ValueTask<ZLinkSpotInfo?> FindAsync(RoutingId spotRid,
-            CancellationToken cancellationToken = default) =>
-            ValueTask.FromResult(_spots.TryGetValue(spotRid, out var info) ? info : (ZLinkSpotInfo?)null);
+            CancellationToken cancellationToken = default)
+        {
+            return ValueTask.FromResult<ZLinkSpotInfo?>(_spots.TryGetValue(spotRid, out var info) ? info : null);
+        }
 
         public ValueTask<IReadOnlyList<ZLinkSpotInfo>> ListAsync(
-            CancellationToken cancellationToken = default) =>
-            ValueTask.FromResult<IReadOnlyList<ZLinkSpotInfo>>(_spots.Values.ToArray());
+            CancellationToken cancellationToken = default)
+        {
+            return ValueTask.FromResult<IReadOnlyList<ZLinkSpotInfo>>(_spots.Values.ToArray());
+        }
 
         public ValueTask<bool> CloseAsync(
             RoutingId spotRid,
-            CancellationToken cancellationToken = default) =>
-            ValueTask.FromResult(_spots.Remove(spotRid));
+            CancellationToken cancellationToken = default)
+        {
+            return ValueTask.FromResult(_spots.Remove(spotRid));
+        }
     }
 
     private sealed class SpotRemoteAddressResolver(RoutingId configuredSpotRid) : IZLinkSpotRemoteAddressResolver
     {
         public ValueTask<ZLinkSpotRemoteAddress> ResolveSpotRemoteAddressAsync(
             RoutingId spotRid,
-            CancellationToken cancellationToken) =>
-            ValueTask.FromResult(new ZLinkSpotRemoteAddress(
+            CancellationToken cancellationToken)
+        {
+            return ValueTask.FromResult(new ZLinkSpotRemoteAddress(
                 "play-router",
                 RoutingId.From("spot-node"),
                 spotRid,
                 configuredSpotRid == spotRid ? ZLinkSpotKind.User : ZLinkSpotKind.Invalid));
+        }
     }
 
     private sealed class SpotOutbound : IZLinkSpotOutbound
     {
-        public IZLinkSendCall SendToSpot<TMessage>(RoutingId spotRid, TMessage message) => new SendCall();
+        public IZLinkSendCall SendToSpot<TMessage>(RoutingId spotRid, TMessage message)
+        {
+            return new SendCall();
+        }
 
-        public IZLinkRequestCall RequestToSpot<TMessage>(RoutingId spotRid, TMessage request) =>
-            new RequestCall(new JoinedRoom("room-1"));
+        public IZLinkRequestCall RequestToSpot<TMessage>(RoutingId spotRid, TMessage request)
+        {
+            return new RequestCall(new JoinedRoom("room-1"));
+        }
 
-        public IZLinkPublishCall Publish<TEvent>(string topic, TEvent message) => new PublishCall();
+        public IZLinkPublishCall Publish<TEvent>(string topic, TEvent message)
+        {
+            return new PublishCall();
+        }
 
-        public IZLinkSendCall SendToChannel<TMessage>(string channelName, TMessage message) => new SendCall();
+        public IZLinkSendCall SendToChannel<TMessage>(string channelName, TMessage message)
+        {
+            return new SendCall();
+        }
 
-        public IZLinkRequestCall RequestToChannel<TMessage>(string channelName, TMessage request) =>
-            new RequestCall(new JoinedRoom("room-1"));
+        public IZLinkRequestCall RequestToChannel<TMessage>(string channelName, TMessage request)
+        {
+            return new RequestCall(new JoinedRoom("room-1"));
+        }
     }
 
     private sealed class SpotPublisherClient : IZLinkSpotPublisherClient
@@ -642,32 +733,54 @@ public sealed class SpotContracts
         public IZLinkPublishCall PublishSpot<TEvent>(
             string channelName,
             string topic,
-            TEvent message) =>
-            new PublishCall();
+            TEvent message)
+        {
+            return new PublishCall();
+        }
     }
 
     private sealed class SendCall : IZLinkSendCall
     {
-        public IZLinkSendCall PacketName(string messageName) => this;
+        public IZLinkSendCall PacketName(string messageName)
+        {
+            return this;
+        }
 
-        public ValueTask Async(CancellationToken cancellationToken = default) => ValueTask.CompletedTask;
+        public ValueTask Async(CancellationToken cancellationToken = default)
+        {
+            return ValueTask.CompletedTask;
+        }
     }
 
     private sealed class RequestCall(object reply) : IZLinkRequestCall
     {
-        public IZLinkRequestCall PacketName(string messageName) => this;
+        public IZLinkRequestCall PacketName(string messageName)
+        {
+            return this;
+        }
 
-        public IZLinkRequestCall Timeout(TimeSpan timeout) => this;
+        public IZLinkRequestCall Timeout(TimeSpan timeout)
+        {
+            return this;
+        }
 
-        public ValueTask<TReply> Async<TReply>(CancellationToken cancellationToken = default) =>
-            ValueTask.FromResult((TReply)reply);
+        public ValueTask<TReply> Async<TReply>(CancellationToken cancellationToken = default)
+        {
+            return ValueTask.FromResult((TReply)reply);
+        }
     }
 
     private sealed class PublishCall : IZLinkPublishCall
     {
-        public IZLinkPublishCall PacketName(string messageName) => this;
+        public IZLinkPublishCall PacketName(string messageName)
+        {
+            return this;
+        }
 
-        public ValueTask Async(CancellationToken cancellationToken = default) => ValueTask.CompletedTask;
+        public ValueTask Async(CancellationToken cancellationToken = default)
+        {
+            return ValueTask.CompletedTask;
+        }
     }
 
     private sealed class Timer : IZLinkTimer
@@ -689,26 +802,34 @@ public sealed class SpotContracts
 
     private sealed class RoomPacketHandler : IZLinkSpotPacketHandler<RoomSpot, RoomEvent>
     {
-        public ValueTask HandleAsync(RoomSpot spot, RoomEvent message, CancellationToken cancellationToken) =>
-            ValueTask.CompletedTask;
+        public ValueTask HandleAsync(RoomSpot spot, RoomEvent message, CancellationToken cancellationToken)
+        {
+            return ValueTask.CompletedTask;
+        }
     }
 
     private sealed class RoomRequestHandler : IZLinkSpotRequestHandler<RoomSpot, JoinRoom, JoinedRoom>
     {
-        public ValueTask<JoinedRoom> HandleAsync(RoomSpot spot, JoinRoom request, CancellationToken cancellationToken) =>
-            ValueTask.FromResult(new JoinedRoom(request.RoomId));
+        public ValueTask<JoinedRoom> HandleAsync(RoomSpot spot, JoinRoom request, CancellationToken cancellationToken)
+        {
+            return ValueTask.FromResult(new JoinedRoom(request.RoomId));
+        }
     }
 
     private sealed class RoomEventHandler : IZLinkSpotSubscriptionHandler<RoomSpot, RoomEvent>
     {
-        public ValueTask HandleAsync(RoomSpot spot, RoomEvent message, CancellationToken cancellationToken) =>
-            ValueTask.CompletedTask;
+        public ValueTask HandleAsync(RoomSpot spot, RoomEvent message, CancellationToken cancellationToken)
+        {
+            return ValueTask.CompletedTask;
+        }
     }
 
     private sealed class RoomTimerHandler : IZLinkSpotTimerHandler<RoomSpot>
     {
-        public ValueTask HandleAsync(RoomSpot spot, ZLinkTimerTick tick, CancellationToken cancellationToken) =>
-            ValueTask.CompletedTask;
+        public ValueTask HandleAsync(RoomSpot spot, ZLinkTimerTick tick, CancellationToken cancellationToken)
+        {
+            return ValueTask.CompletedTask;
+        }
     }
 
     private sealed class PlayerActorPacketHandler : IZLinkSpotActorSendHandler<RoomSpot, PlayerActor, RoomEvent>
@@ -718,8 +839,10 @@ public sealed class SpotContracts
             PlayerActor actor,
             ZLinkSpotActorSendContext context,
             RoomEvent message,
-            CancellationToken cancellationToken) =>
-            ValueTask.CompletedTask;
+            CancellationToken cancellationToken)
+        {
+            return ValueTask.CompletedTask;
+        }
     }
 
     private sealed class PlayerActorSendHandler : IZLinkSpotActorSendHandler<RoomSpot, PlayerActor, RoomEvent>
@@ -729,19 +852,24 @@ public sealed class SpotContracts
             PlayerActor actor,
             ZLinkSpotActorSendContext context,
             RoomEvent message,
-            CancellationToken cancellationToken) =>
-            ValueTask.CompletedTask;
+            CancellationToken cancellationToken)
+        {
+            return ValueTask.CompletedTask;
+        }
     }
 
-    private sealed class PlayerActorRequestHandler : IZLinkSpotActorRequestHandler<RoomSpot, PlayerActor, JoinRoom, JoinedRoom>
+    private sealed class
+        PlayerActorRequestHandler : IZLinkSpotActorRequestHandler<RoomSpot, PlayerActor, JoinRoom, JoinedRoom>
     {
         public ValueTask<JoinedRoom> HandleAsync(
             RoomSpot spot,
             PlayerActor actor,
             ZLinkSpotActorRequestContext context,
             JoinRoom request,
-            CancellationToken cancellationToken) =>
-            ValueTask.FromResult(new JoinedRoom($"actor:{request.RoomId}"));
+            CancellationToken cancellationToken)
+        {
+            return ValueTask.FromResult(new JoinedRoom($"actor:{request.RoomId}"));
+        }
     }
 
     private sealed class EntryActorSendHandler : IZLinkEntrySpotActorSendHandler<EntrySpot, PlayerActor, RoomEvent>
@@ -751,19 +879,23 @@ public sealed class SpotContracts
             PlayerActor actor,
             ZLinkSpotActorSendContext context,
             RoomEvent message,
-            CancellationToken cancellationToken) =>
-            ValueTask.CompletedTask;
+            CancellationToken cancellationToken)
+        {
+            return ValueTask.CompletedTask;
+        }
     }
 
-    private sealed class EntryActorRequestHandler : IZLinkEntrySpotActorRequestHandler<EntrySpot, PlayerActor, JoinRoom, JoinedRoom>
+    private sealed class
+        EntryActorRequestHandler : IZLinkEntrySpotActorRequestHandler<EntrySpot, PlayerActor, JoinRoom, JoinedRoom>
     {
         public ValueTask<JoinedRoom> HandleAsync(
             EntrySpot entrySpot,
             PlayerActor actor,
             ZLinkSpotActorRequestContext context,
             JoinRoom request,
-            CancellationToken cancellationToken) =>
-            ValueTask.FromResult(new JoinedRoom($"entry:{request.RoomId}"));
+            CancellationToken cancellationToken)
+        {
+            return ValueTask.FromResult(new JoinedRoom($"entry:{request.RoomId}"));
+        }
     }
-
 }

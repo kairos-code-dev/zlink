@@ -3,11 +3,11 @@
 namespace Zlink.HttpClient.Runtime;
 
 /// <summary>
-/// Applies the wrapper's retry policy around a single request attempt: streaming requests are never
-/// retried (they cannot be rewound), each attempt is bounded by the effective timeout, and only
-/// retriable transport failures (timeout, connection errors) are retried at a fixed delay. Timeouts
-/// surface as <see cref="TimeoutException"/>. Separated from <see cref="HttpClientRuntime"/> so the
-/// retry/timeout policy is independent of handler construction.
+///     Applies the wrapper's retry policy around a single request attempt: streaming requests are never
+///     retried (they cannot be rewound), each attempt is bounded by the effective timeout, and only
+///     retriable transport failures (timeout, connection errors) are retried at a fixed delay. Timeouts
+///     surface as <see cref="TimeoutException" />. Separated from <see cref="HttpClientRuntime" /> so the
+///     retry/timeout policy is independent of handler construction.
 /// </summary>
 internal sealed class RetryPolicy(HttpClientOptions options)
 {
@@ -21,7 +21,7 @@ internal sealed class RetryPolicy(HttpClientOptions options)
         var maxRetries = request.IsStreaming ? 0 : options.RetryAttempts;
         var timeout = request.Timeout ?? options.Timeout;
 
-        for (var attempt = 0; ; attempt++)
+        for (var attempt = 0;; attempt++)
         {
             Exception failure;
             try
@@ -41,23 +41,19 @@ internal sealed class RetryPolicy(HttpClientOptions options)
             catch (ZLinkFrameworkException ex)
             {
                 if (ex.IsRetriable && attempt < maxRetries)
-                {
                     failure = ex;
-                }
                 else
-                {
                     throw;
-                }
             }
             catch (HttpRequestException ex)
             {
                 failure = new ZLinkFrameworkException(
-                    ZLinkFrameworkErrorKind.RequestFailed, ex.Message, isRetriable: true, ex);
+                    ZLinkFrameworkErrorKind.RequestFailed, ex.Message, true, ex);
             }
             catch (IOException ex)
             {
                 failure = new ZLinkFrameworkException(
-                    ZLinkFrameworkErrorKind.RequestFailed, ex.Message, isRetriable: true, ex);
+                    ZLinkFrameworkErrorKind.RequestFailed, ex.Message, true, ex);
             }
 
             if (attempt < maxRetries)

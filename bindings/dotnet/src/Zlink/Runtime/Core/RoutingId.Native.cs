@@ -1,7 +1,5 @@
 // SPDX-License-Identifier: MPL-2.0
 
-using System;
-using System.Collections.Generic;
 using System.Runtime.CompilerServices;
 using Systems.Zlink.Runtime.Native;
 
@@ -12,10 +10,8 @@ public readonly partial struct RoutingId
     private const int ThreadCacheMaxEntries = 256;
     private const int InlineDirectCacheEntries = 256;
 
-    [ThreadStatic]
-    private static Dictionary<RouteCacheKey, List<RouteCacheEntry>>? t_ownedCache;
-    [ThreadStatic]
-    private static InlineRouteCacheEntry[]? t_inlineDirectCache;
+    [ThreadStatic] private static Dictionary<RouteCacheKey, List<RouteCacheEntry>>? t_ownedCache;
+    [ThreadStatic] private static InlineRouteCacheEntry[]? t_inlineDirectCache;
 
     internal static RoutingId? FromOptionalBytes(ReadOnlySpan<byte> bytes)
     {
@@ -39,20 +35,18 @@ public readonly partial struct RoutingId
     {
         if (size <= 0 || size > 16)
             return null;
-        ulong hash = RouteHash.Fnv1aInline(size, lo, hi);
-        RoutingId? direct = TryFromInlineDirectCache(size, lo, hi, hash);
+        var hash = RouteHash.Fnv1aInline(size, lo, hi);
+        var direct = TryFromInlineDirectCache(size, lo, hi, hash);
         if (direct != null)
             return direct;
-        RouteCacheKey key = RouteCacheKey.FromHash(size, hash);
-        Dictionary<RouteCacheKey, List<RouteCacheEntry>>? cache = t_ownedCache;
+        var key = RouteCacheKey.FromHash(size, hash);
+        var cache = t_ownedCache;
         if (cache == null || !cache.TryGetValue(key,
-                out List<RouteCacheEntry>? entries))
-        {
+                out var entries))
             return null;
-        }
-        for (int i = 0; i < entries.Count; i++)
+        for (var i = 0; i < entries.Count; i++)
         {
-            byte[] entryBytes = entries[i].Bytes;
+            var entryBytes = entries[i].Bytes;
             if (entryBytes.Length != size)
                 continue;
             if (!InlineMatchesBytes(size, lo, hi, entryBytes))
@@ -60,22 +54,19 @@ public readonly partial struct RoutingId
             StoreInlineDirectCache(size, lo, hi, hash, entries[i].RoutingId);
             return entries[i].RoutingId;
         }
+
         return null;
     }
 
     private static bool InlineMatchesBytes(int size, ulong lo, ulong hi,
         byte[] entryBytes)
     {
-        for (int i = 0; i < size && i < 8; i++)
-        {
+        for (var i = 0; i < size && i < 8; i++)
             if (entryBytes[i] != (byte)(lo >> (i * 8)))
                 return false;
-        }
-        for (int i = 8; i < size; i++)
-        {
+        for (var i = 8; i < size; i++)
             if (entryBytes[i] != (byte)(hi >> ((i - 8) * 8)))
                 return false;
-        }
         return true;
     }
 
@@ -112,19 +103,15 @@ public readonly partial struct RoutingId
 
     private static RoutingId FromOwnedBytesCached(byte[] bytes)
     {
-        RouteCacheKey key = RouteCacheKey.Create(bytes);
-        Dictionary<RouteCacheKey, List<RouteCacheEntry>> cache =
+        var key = RouteCacheKey.Create(bytes);
+        var cache =
             t_ownedCache ??= new Dictionary<RouteCacheKey, List<RouteCacheEntry>>();
-        if (cache.TryGetValue(key, out List<RouteCacheEntry>? entries))
-        {
-            for (int i = 0; i < entries.Count; i++)
-            {
+        if (cache.TryGetValue(key, out var entries))
+            for (var i = 0; i < entries.Count; i++)
                 if (bytes.AsSpan().SequenceEqual(entries[i].Bytes))
                     return entries[i].RoutingId;
-            }
-        }
 
-        RoutingId created = new RoutingId(bytes, takeOwnership: true);
+        var created = new RoutingId(bytes, true);
         StoreInlineDirectCache(bytes, key.Hash, created);
         if (cache.Count >= ThreadCacheMaxEntries)
             cache.Clear();
@@ -133,26 +120,23 @@ public readonly partial struct RoutingId
             entries = new List<RouteCacheEntry>(1);
             cache[key] = entries;
         }
+
         entries.Add(new RouteCacheEntry(bytes, created));
         return created;
     }
 
     private static RoutingId FromSpanCached(ReadOnlySpan<byte> bytes)
     {
-        RouteCacheKey key = RouteCacheKey.Create(bytes);
-        Dictionary<RouteCacheKey, List<RouteCacheEntry>> cache =
+        var key = RouteCacheKey.Create(bytes);
+        var cache =
             t_ownedCache ??= new Dictionary<RouteCacheKey, List<RouteCacheEntry>>();
-        if (cache.TryGetValue(key, out List<RouteCacheEntry>? entries))
-        {
-            for (int i = 0; i < entries.Count; i++)
-            {
+        if (cache.TryGetValue(key, out var entries))
+            for (var i = 0; i < entries.Count; i++)
                 if (bytes.SequenceEqual(entries[i].Bytes))
                     return entries[i].RoutingId;
-            }
-        }
 
-        byte[] ownedBytes = bytes.ToArray();
-        RoutingId created = new RoutingId(ownedBytes, takeOwnership: true);
+        var ownedBytes = bytes.ToArray();
+        var created = new RoutingId(ownedBytes, true);
         StoreInlineDirectCache(ownedBytes, key.Hash, created);
         if (cache.Count >= ThreadCacheMaxEntries)
             cache.Clear();
@@ -161,6 +145,7 @@ public readonly partial struct RoutingId
             entries = new List<RouteCacheEntry>(1);
             cache[key] = entries;
         }
+
         entries.Add(new RouteCacheEntry(ownedBytes, created));
         return created;
     }
@@ -217,17 +202,15 @@ public readonly partial struct RoutingId
     private static RoutingId? TryFromInlineDirectCache(int size, ulong lo,
         ulong hi, ulong hash)
     {
-        InlineRouteCacheEntry[]? cache = t_inlineDirectCache;
+        var cache = t_inlineDirectCache;
         if (cache == null)
             return null;
 
-        ref InlineRouteCacheEntry entry = ref cache[(int)hash
-            & (InlineDirectCacheEntries - 1)];
+        ref var entry = ref cache[(int)hash
+                                  & (InlineDirectCacheEntries - 1)];
         if (entry.RoutingId == null || entry.Size != size
-            || entry.Hash != hash || entry.Lo != lo || entry.Hi != hi)
-        {
+                                    || entry.Hash != hash || entry.Lo != lo || entry.Hi != hi)
             return null;
-        }
         return entry.RoutingId;
     }
 
@@ -239,9 +222,9 @@ public readonly partial struct RoutingId
 
         ulong lo = 0;
         ulong hi = 0;
-        for (int i = 0; i < bytes.Length && i < 8; i++)
+        for (var i = 0; i < bytes.Length && i < 8; i++)
             lo |= (ulong)bytes[i] << (i * 8);
-        for (int i = 8; i < bytes.Length; i++)
+        for (var i = 8; i < bytes.Length; i++)
             hi |= (ulong)bytes[i] << ((i - 8) * 8);
         StoreInlineDirectCache(bytes.Length, lo, hi, hash, routingId);
     }
@@ -249,23 +232,27 @@ public readonly partial struct RoutingId
     private static void StoreInlineDirectCache(int size, ulong lo, ulong hi,
         ulong hash, RoutingId routingId)
     {
-        InlineRouteCacheEntry[] cache = t_inlineDirectCache
+        var cache = t_inlineDirectCache
             ??= new InlineRouteCacheEntry[InlineDirectCacheEntries];
         cache[(int)hash & (InlineDirectCacheEntries - 1)] =
             new InlineRouteCacheEntry(size, hash, lo, hi, routingId);
     }
 
-    private readonly record struct InlineRouteCacheEntry(int Size, ulong Hash,
-        ulong Lo, ulong Hi, RoutingId? RoutingId);
+    private readonly record struct InlineRouteCacheEntry(
+        int Size,
+        ulong Hash,
+        ulong Lo,
+        ulong Hi,
+        RoutingId? RoutingId);
 
     private sealed class NativeRoutingIdBox
     {
+        internal ZlinkRoutingId Value;
+
         internal NativeRoutingIdBox(ReadOnlySpan<byte> bytes)
         {
             Value = NativeHelpers.WriteRoutingId(bytes);
         }
-
-        internal ZlinkRoutingId Value;
 
         internal ref ZlinkRoutingId RefValue
         {

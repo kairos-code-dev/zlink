@@ -1,6 +1,5 @@
 using RegistrationCodec.Server.InvalidDuplicate.Infrastructure;
 using Zlink.Framework.Contracts.Handlers;
-using RegistrationCodec.Server.InvalidDuplicate.Handlers;
 
 namespace RegistrationCodec.Server.InvalidDuplicate;
 

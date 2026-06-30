@@ -1,10 +1,6 @@
 // SPDX-License-Identifier: MPL-2.0
 
-using System;
-using System.Collections.Generic;
 using System.Runtime.InteropServices;
-using System.Threading;
-using System.Threading.Tasks;
 using Systems.Zlink.Runtime.Native;
 
 namespace Systems.Zlink;
@@ -33,7 +29,7 @@ internal static partial class ActorInterop
     internal static void OnJoinReply(IntPtr resultPtr, IntPtr parts,
         nuint partCount, IntPtr userData)
     {
-        int result = resultPtr == IntPtr.Zero
+        var result = resultPtr == IntPtr.Zero
             ? (int)RequestResult.InternalError
             : Marshal.PtrToStructure<ZlinkActorJoinResult>(resultPtr).Result;
         OnReply(result, parts, partCount, userData);
@@ -49,8 +45,8 @@ internal static partial class ActorInterop
     internal static void OnActorJoinEntrySpot(IntPtr resultPtr, IntPtr parts,
         nuint partCount, IntPtr userData)
     {
-        GCHandle handle = GCHandle.FromIntPtr(userData);
-        ActorJoinEntrySpotCallState state =
+        var handle = GCHandle.FromIntPtr(userData);
+        var state =
             (ActorJoinEntrySpotCallState)handle.Target!;
         try
         {
@@ -65,7 +61,7 @@ internal static partial class ActorInterop
                 return;
             }
 
-            ZlinkActorJoinEntrySpotResult native = Marshal.PtrToStructure
+            var native = Marshal.PtrToStructure
                 <ZlinkActorJoinEntrySpotResult>(resultPtr);
             if ((RequestResult)native.Result != RequestResult.Ok)
             {
@@ -78,16 +74,16 @@ internal static partial class ActorInterop
                 return;
             }
 
-            ActorRef returnedActor = FromNative(ref native.Actor);
-            RoutingId targetNodeRid = RoutingId.From(
+            var returnedActor = FromNative(ref native.Actor);
+            var targetNodeRid = RoutingId.From(
                 NativeHelpers.ReadRoutingId(ref native.TargetNodeRid));
-            RoutingId joinedSpotRid = RoutingId.From(
+            var joinedSpotRid = RoutingId.From(
                 NativeHelpers.ReadRoutingId(ref native.JoinedSpotRid));
             ActorJoinEntrySpotResult result = new(
                 (RequestResult)native.Result, native.JoinResultCode,
                 returnedActor, targetNodeRid, joinedSpotRid, native.JoinEpoch,
                 native.Flags);
-            Message[] replyParts = parts != IntPtr.Zero
+            var replyParts = parts != IntPtr.Zero
                 ? Message.FromNativeVector(parts, partCount)
                 : Array.Empty<Message>();
             parts = IntPtr.Zero;
@@ -107,8 +103,8 @@ internal static partial class ActorInterop
     internal static void OnActorJoinFull(IntPtr resultPtr, IntPtr parts,
         nuint partCount, IntPtr userData)
     {
-        GCHandle handle = GCHandle.FromIntPtr(userData);
-        ActorJoinCallState state = (ActorJoinCallState)handle.Target!;
+        var handle = GCHandle.FromIntPtr(userData);
+        var state = (ActorJoinCallState)handle.Target!;
         try
         {
             if (resultPtr == IntPtr.Zero)
@@ -120,7 +116,8 @@ internal static partial class ActorInterop
                         Array.Empty<Message>()));
                 return;
             }
-            ZlinkActorJoinResult native = Marshal.PtrToStructure
+
+            var native = Marshal.PtrToStructure
                 <ZlinkActorJoinResult>(resultPtr);
             if ((RequestResult)native.Result != RequestResult.Ok)
             {
@@ -133,13 +130,13 @@ internal static partial class ActorInterop
                 return;
             }
 
-            ActorRef returnedActor = FromNative(ref native.Actor);
-            RoutingId joinedSpot = RoutingId.From(
+            var returnedActor = FromNative(ref native.Actor);
+            var joinedSpot = RoutingId.From(
                 NativeHelpers.ReadRoutingId(ref native.JoinedSpotRid));
             ActorJoinResult result = new((RequestResult)native.Result,
                 native.JoinResultCode, returnedActor, joinedSpot,
                 native.JoinEpoch, native.Flags);
-            Message[] replyParts = parts != IntPtr.Zero
+            var replyParts = parts != IntPtr.Zero
                 ? Message.FromNativeVector(parts, partCount)
                 : Array.Empty<Message>();
             parts = IntPtr.Zero;
@@ -158,8 +155,8 @@ internal static partial class ActorInterop
 
     internal static void OnLookupReply(IntPtr resultPtr, IntPtr userData)
     {
-        GCHandle handle = GCHandle.FromIntPtr(userData);
-        ActorLookupCallState state = (ActorLookupCallState)handle.Target!;
+        var handle = GCHandle.FromIntPtr(userData);
+        var state = (ActorLookupCallState)handle.Target!;
         try
         {
             ActorLookupResult r;
@@ -170,25 +167,22 @@ internal static partial class ActorInterop
             }
             else
             {
-                ZlinkActorLookupResult native = Marshal.PtrToStructure
+                var native = Marshal.PtrToStructure
                     <ZlinkActorLookupResult>(resultPtr);
-                RequestResult result = (RequestResult)native.Result;
+                var result = (RequestResult)native.Result;
                 ActorRef actor = default;
                 if (result == RequestResult.Ok)
                 {
-                    ActorRef? parsedActor = FromOptionalNative(ref native.Actor);
+                    var parsedActor = FromOptionalNative(ref native.Actor);
                     if (parsedActor is null)
-                    {
                         result = RequestResult.InternalError;
-                    }
                     else
-                    {
                         actor = parsedActor.Value;
-                    }
                 }
 
                 r = new ActorLookupResult(result, actor, native.Flags);
             }
+
             state.Completion.TrySetResult(r);
         }
         finally
@@ -200,15 +194,15 @@ internal static partial class ActorInterop
 
     internal sealed class ActorJoinCallState
     {
-        public TaskCompletionSource<ActorJoinResultEnvelope> Completion { get; }
-        public CancellationTokenRegistration? CancelReg { get; set; }
-        public System.Threading.Timer? TimeoutTimer { get; set; }
-
         public ActorJoinCallState(
             TaskCompletionSource<ActorJoinResultEnvelope> completion)
         {
             Completion = completion;
         }
+
+        public TaskCompletionSource<ActorJoinResultEnvelope> Completion { get; }
+        public CancellationTokenRegistration? CancelReg { get; set; }
+        public System.Threading.Timer? TimeoutTimer { get; set; }
 
         public void Cleanup()
         {
@@ -219,15 +213,15 @@ internal static partial class ActorInterop
 
     internal sealed class ActorLookupCallState
     {
-        public TaskCompletionSource<ActorLookupResult> Completion { get; }
-        public CancellationTokenRegistration? CancelReg { get; set; }
-        public System.Threading.Timer? TimeoutTimer { get; set; }
-
         public ActorLookupCallState(
             TaskCompletionSource<ActorLookupResult> completion)
         {
             Completion = completion;
         }
+
+        public TaskCompletionSource<ActorLookupResult> Completion { get; }
+        public CancellationTokenRegistration? CancelReg { get; set; }
+        public System.Threading.Timer? TimeoutTimer { get; set; }
 
         public void Cleanup()
         {
@@ -238,15 +232,15 @@ internal static partial class ActorInterop
 
     internal sealed class ActorJoinEntrySpotCallState
     {
-        public TaskCompletionSource<ActorJoinEntrySpotResultEnvelope> Completion { get; }
-        public CancellationTokenRegistration? CancelReg { get; set; }
-        public System.Threading.Timer? TimeoutTimer { get; set; }
-
         public ActorJoinEntrySpotCallState(
             TaskCompletionSource<ActorJoinEntrySpotResultEnvelope> completion)
         {
             Completion = completion;
         }
+
+        public TaskCompletionSource<ActorJoinEntrySpotResultEnvelope> Completion { get; }
+        public CancellationTokenRegistration? CancelReg { get; set; }
+        public System.Threading.Timer? TimeoutTimer { get; set; }
 
         public void Cleanup()
         {

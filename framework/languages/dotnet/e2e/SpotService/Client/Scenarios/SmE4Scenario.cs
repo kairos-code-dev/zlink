@@ -1,6 +1,6 @@
+using SpotService.Client.Support;
 using SpotService.Shared;
 using Zlink.HttpClient;
-using SpotService.Client.Support;
 
 namespace SpotService.Client.Scenarios;
 
@@ -13,7 +13,7 @@ internal static class SmE4Scenario
         {
             ["SkipLateTicks"] = $"spot-sm-e4-skip-{Guid.NewGuid():N}",
             ["CatchUpBounded"] = $"spot-sm-e4-catch-{Guid.NewGuid():N}",
-            ["DelayNextTick"] = $"spot-sm-e4-delay-{Guid.NewGuid():N}",
+            ["DelayNextTick"] = $"spot-sm-e4-delay-{Guid.NewGuid():N}"
         };
 
         foreach (var spotRid in policySpots.Values)
@@ -21,11 +21,13 @@ internal static class SmE4Scenario
             var created = (await playA.Post("/spot/create")
                 .Body(new CreateSpotReq(spotRid))
                 .SubmitAsync<CreateSpotReply>()).Body;
-            ScenarioAssert.That(created.SpotRid == spotRid && created.NodeRid == "play-a", "SM-E4 timer spot was not created on play-a.");
+            ScenarioAssert.That(created.SpotRid == spotRid && created.NodeRid == "play-a",
+                "SM-E4 timer spot was not created on play-a.");
             var ready = (await playA.Post("/spot/state/request")
                 .Body(new SpotStateRouteReq(spotRid, "noop", 0))
                 .SubmitAsync<StateReply>()).Body;
-            ScenarioAssert.That(ready.SpotRid == spotRid && ready.NodeRid == "play-a", "SM-E4 timer spot route did not become ready.");
+            ScenarioAssert.That(ready.SpotRid == spotRid && ready.NodeRid == "play-a",
+                "SM-E4 timer spot route did not become ready.");
         }
 
         foreach (var (policy, spotRid) in policySpots)
@@ -37,8 +39,8 @@ internal static class SmE4Scenario
         }
 
         var evidenceRequest = new EvidenceWaitRequest(
-                policySpots.Select(pair => $"timer-overrun|rid=play-a|spot={pair.Value}|name=sm-e4-{pair.Key}").ToArray(),
-                TimeoutMilliseconds: 15000);
+            policySpots.Select(pair => $"timer-overrun|rid=play-a|spot={pair.Value}|name=sm-e4-{pair.Key}").ToArray(),
+            15000);
         var evidence = (await playA.Post("/evidence/wait")
             .Body(evidenceRequest)
             .SubmitAsync<string[]>()).Body;
@@ -55,7 +57,7 @@ internal static class SmE4Scenario
             .Where(line => line.Contains("name=sm-e4-DelayNextTick", StringComparison.Ordinal))
             .Take(3)
             .All(line => ExtractUInt64(line, "skipped") == 0
-                && ExtractUInt64(line, "delivery") == ExtractUInt64(line, "scheduled"));
+                         && ExtractUInt64(line, "delivery") == ExtractUInt64(line, "scheduled"));
 
         ScenarioAssert.That(skipLateTicksSkipped, "SM-E4 SkipLateTicks did not skip late ticks.");
         ScenarioAssert.That(catchUpBoundedSkipped, "SM-E4 CatchUpBounded did not show bounded catch-up evidence.");
@@ -68,18 +70,16 @@ internal static class SmE4Scenario
         {
             return policySpots.All(pair =>
                 entries.Count(line =>
-                    line.Contains($"timer-overrun|rid=play-a|spot={pair.Value}|name=sm-e4-{pair.Key}", StringComparison.Ordinal)) >= 3);
+                    line.Contains($"timer-overrun|rid=play-a|spot={pair.Value}|name=sm-e4-{pair.Key}",
+                        StringComparison.Ordinal)) >= 3);
         }
     }
 
-    static ulong ExtractUInt64(string line, string key)
+    private static ulong ExtractUInt64(string line, string key)
     {
         var prefix = key + "=";
         var start = line.IndexOf(prefix, StringComparison.Ordinal);
-        if (start < 0)
-        {
-            throw new InvalidOperationException($"Missing field '{key}' in evidence line: {line}");
-        }
+        if (start < 0) throw new InvalidOperationException($"Missing field '{key}' in evidence line: {line}");
 
         start += prefix.Length;
         var end = line.IndexOf('|', start);

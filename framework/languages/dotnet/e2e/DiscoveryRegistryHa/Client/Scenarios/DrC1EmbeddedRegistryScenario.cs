@@ -1,7 +1,7 @@
-using DiscoveryRegistryHa.Shared;
 using System.Text.Json;
-using Zlink.HttpClient;
 using DiscoveryRegistryHa.Client.Support;
+using DiscoveryRegistryHa.Shared;
+using Zlink.HttpClient;
 
 namespace DiscoveryRegistryHa.Client.Scenarios;
 
@@ -46,7 +46,7 @@ internal static class DrC1EmbeddedRegistryScenario
             .SubmitAsync<string[]>()).Body;
         ScenarioAssert.That(
             evidence.Any(line => line.Contains(marker, StringComparison.Ordinal)
-                && line.Contains($"rid={reply.ProviderRid}", StringComparison.Ordinal)),
+                                 && line.Contains($"rid={reply.ProviderRid}", StringComparison.Ordinal)),
             "DR-C1 provider evidence was not recorded.");
 
         await AssertDeadRegistryFailsAsync(options.Reg2Url);
@@ -54,7 +54,7 @@ internal static class DrC1EmbeddedRegistryScenario
         Console.WriteLine("scenario DR-C1 passed");
     }
 
-    static async Task AssertDeadRegistryFailsAsync(string reg2Url)
+    private static async Task AssertDeadRegistryFailsAsync(string reg2Url)
     {
         using var deadRegistry = ZLinkHttpClient.Create(reg2Url)
             .Json()

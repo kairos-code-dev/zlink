@@ -1,7 +1,6 @@
 // SPDX-License-Identifier: MPL-2.0
 
-using System;
-using System.Collections.Generic;
+using System.Runtime.InteropServices;
 using Systems.Zlink.Runtime.Native;
 
 namespace Systems.Zlink;
@@ -15,16 +14,16 @@ internal static class ZlinkRuntime
 
     public static string Strerror(int errnum)
     {
-        IntPtr ptr = NativeMethods.zlink_strerror(errnum);
+        var ptr = NativeMethods.zlink_strerror(errnum);
         return ptr == IntPtr.Zero
             ? string.Empty
-            : (System.Runtime.InteropServices.Marshal.PtrToStringAnsi(ptr)
-                ?? string.Empty);
+            : Marshal.PtrToStringAnsi(ptr)
+              ?? string.Empty;
     }
 
     public static (int Major, int Minor, int Patch) Version()
     {
-        NativeMethods.zlink_version(out int major, out int minor, out int patch);
+        NativeMethods.zlink_version(out var major, out var minor, out var patch);
         return (major, minor, patch);
     }
 
@@ -33,7 +32,7 @@ internal static class ZlinkRuntime
         if (capability == null)
             throw new ArgumentNullException(nameof(capability));
 
-        int rc = NativeMethods.zlink_has(capability);
+        var rc = NativeMethods.zlink_has(capability);
         if (rc < 0)
             throw ZlinkException.CreateConfigException(NativeMethods.zlink_errno());
         return rc != 0;
@@ -42,15 +41,15 @@ internal static class ZlinkRuntime
     public static void Proxy(IZlinkSocket frontend, IZlinkSocket backend,
         IZlinkSocket? capture = null)
     {
-        SocketBase frontendSocket = SocketInterop.RequireSocket(frontend,
+        var frontendSocket = SocketInterop.RequireSocket(frontend,
             nameof(frontend));
-        SocketBase backendSocket = SocketInterop.RequireSocket(backend,
+        var backendSocket = SocketInterop.RequireSocket(backend,
             nameof(backend));
-        SocketBase? captureSocket = capture == null
+        var captureSocket = capture == null
             ? null
             : SocketInterop.RequireSocket(capture, nameof(capture));
 
-        int rc = NativeMethods.zlink_proxy(frontendSocket.Handle,
+        var rc = NativeMethods.zlink_proxy(frontendSocket.Handle,
             backendSocket.Handle, captureSocket?.Handle ?? IntPtr.Zero);
         if (rc != 0)
             throw ZlinkException.CreateConfigException(NativeMethods.zlink_errno());
@@ -59,17 +58,17 @@ internal static class ZlinkRuntime
     public static void ProxySteerable(IZlinkSocket frontend, IZlinkSocket backend,
         IZlinkSocket? capture, IZlinkSocket control)
     {
-        SocketBase frontendSocket = SocketInterop.RequireSocket(frontend,
+        var frontendSocket = SocketInterop.RequireSocket(frontend,
             nameof(frontend));
-        SocketBase backendSocket = SocketInterop.RequireSocket(backend,
+        var backendSocket = SocketInterop.RequireSocket(backend,
             nameof(backend));
-        SocketBase? captureSocket = capture == null
+        var captureSocket = capture == null
             ? null
             : SocketInterop.RequireSocket(capture, nameof(capture));
-        SocketBase controlSocket = SocketInterop.RequireSocket(control,
+        var controlSocket = SocketInterop.RequireSocket(control,
             nameof(control));
 
-        int rc = NativeMethods.zlink_proxy_steerable(frontendSocket.Handle,
+        var rc = NativeMethods.zlink_proxy_steerable(frontendSocket.Handle,
             backendSocket.Handle, captureSocket?.Handle ?? IntPtr.Zero,
             controlSocket.Handle);
         if (rc != 0)
@@ -78,12 +77,10 @@ internal static class ZlinkRuntime
 
     public static void Sleep(TimeSpan duration)
     {
-        double totalSeconds = duration.TotalSeconds;
+        var totalSeconds = duration.TotalSeconds;
         if (double.IsNaN(totalSeconds) || double.IsInfinity(totalSeconds)
-            || totalSeconds < 0 || totalSeconds > int.MaxValue)
-        {
+                                       || totalSeconds < 0 || totalSeconds > int.MaxValue)
             throw new ArgumentOutOfRangeException(nameof(duration));
-        }
 
         NativeMethods.zlink_sleep((int)Math.Ceiling(totalSeconds));
     }
@@ -99,7 +96,7 @@ internal static class ZlinkRuntime
     {
         if (parts == null)
             throw new ArgumentNullException(nameof(parts));
-        foreach (Message? part in parts)
+        foreach (var part in parts)
             part?.Dispose();
     }
 }

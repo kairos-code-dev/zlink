@@ -1,11 +1,4 @@
 using Microsoft.Extensions.DependencyInjection;
-using Zlink.Framework.Runtime.Actors;
-using Zlink.Framework.Runtime.Backend.Contracts;
-using Zlink.Framework.Runtime.Diagnostics;
-using Zlink.Framework.Runtime.Execution;
-using Zlink.Framework.Runtime.Host;
-using Zlink.Framework.Runtime.Messaging;
-using Zlink.Framework.Runtime.Registry;
 
 namespace Zlink.Framework.Runtime.Channels;
 
@@ -23,10 +16,7 @@ internal sealed class ZLinkRouteChannelInitializer(
             state.RouteChannels.Add(routedRegistration.RouterChannelId, runtime);
             try
             {
-                foreach (var endpoint in ResolveManualConnections(routedRegistration))
-                {
-                    runtime.Connect(endpoint);
-                }
+                foreach (var endpoint in ResolveManualConnections(routedRegistration)) runtime.Connect(endpoint);
 
                 runtime.Start();
             }
@@ -42,10 +32,7 @@ internal sealed class ZLinkRouteChannelInitializer(
     private IEnumerable<string> ResolveManualConnections(
         ZLinkRouteChannelRegistration routedRegistration)
     {
-        foreach (var endpoint in routedRegistration.ManualConnections)
-        {
-            yield return endpoint;
-        }
+        foreach (var endpoint in routedRegistration.ManualConnections) yield return endpoint;
     }
 
     private ZLinkRouteChannelRuntime CreateRuntime(
@@ -60,17 +47,12 @@ internal sealed class ZLinkRouteChannelInitializer(
             router = adapter.CreateRouterSocket(state.Context);
             router.SetChannelName(routedRegistration.RouterChannelId);
             ZLinkChannelBundleFactory.ApplySocketConfig(router, routedRegistration.SocketConfig);
-            if (routedRegistration.RoutingId.Size > 0)
-            {
-                router.SetRoutingId(routedRegistration.RoutingId);
-            }
+            if (routedRegistration.RoutingId.Size > 0) router.SetRoutingId(routedRegistration.RoutingId);
             // weight 는 bind/discovery 前에 적용해 default-weight 노출 창을 없앤다.
             router.SetPeerWeight(routedRegistration.SocketConfig.Weight);
             router.SetMandatory(true);
             if (!string.IsNullOrWhiteSpace(routedRegistration.BindEndpoint))
-            {
                 router.Bind(routedRegistration.BindEndpoint);
-            }
             discovery = AttachDiscoveryIfNeeded(state, adapter, routedRegistration, router);
             var handlers = new ZLinkRouteHandlerRegistry(CreateRouteHandlerDescriptors(routedRegistration));
             var runtime = new ZLinkRouteChannelRuntime(
@@ -89,15 +71,9 @@ internal sealed class ZLinkRouteChannelInitializer(
         }
         catch
         {
-            if (discovery is not null)
-            {
-                discovery.DisposeAsync().AsTask().GetAwaiter().GetResult();
-            }
+            if (discovery is not null) discovery.DisposeAsync().AsTask().GetAwaiter().GetResult();
 
-            if (router is not null)
-            {
-                router.DisposeAsync().AsTask().GetAwaiter().GetResult();
-            }
+            if (router is not null) router.DisposeAsync().AsTask().GetAwaiter().GetResult();
 
             throw;
         }
@@ -109,16 +85,11 @@ internal sealed class ZLinkRouteChannelInitializer(
         ZLinkRouteChannelRuntime runtime)
     {
         var owner = ResolveSpotRouteBridgeOwner(routedRegistration);
-        if (owner is null)
-        {
-            return;
-        }
+        if (owner is null) return;
 
         if (!state.SpotNodes.TryGetValue(owner.SpotNodeName, out var spotRuntime))
-        {
             throw new ZLinkConfigurationException(
                 $"Route channel '{routedRegistration.RouterChannelId}' cannot attach an implicit SPOT route bridge because SPOT node '{owner.SpotNodeName}' is not started.");
-        }
 
         var bridge = spotRuntime.Node.CreateRouteBridge();
         try
@@ -138,33 +109,19 @@ internal sealed class ZLinkRouteChannelInitializer(
     {
         if (registration.SpotNodes.TryGetValue(routeChannel.RouterChannelId, out var named)
             && named.Router is not null)
-        {
             return named;
-        }
 
         if (routeChannel.RoutingId.Size > 0)
-        {
             foreach (var spotNode in registration.SpotNodes.Values)
-            {
                 if (spotNode.RoutingId == routeChannel.RoutingId)
-                {
                     return spotNode;
-                }
-            }
-        }
 
         ZLinkSpotNodeRegistration? owner = null;
         foreach (var spotNode in registration.SpotNodes.Values)
         {
-            if (spotNode.Router is null)
-            {
-                continue;
-            }
+            if (spotNode.Router is null) continue;
 
-            if (owner is not null)
-            {
-                return null;
-            }
+            if (owner is not null) return null;
 
             owner = spotNode;
         }
@@ -182,9 +139,7 @@ internal sealed class ZLinkRouteChannelInitializer(
         if (routedRegistration.ManualConnections.Count > 0
             || discoveryEndpoints is null
             || discoveryEndpoints.Count == 0)
-        {
             return null;
-        }
 
         var discovery = ZLinkBackendDiscoveryFactory.Create(
             adapter,
@@ -227,19 +182,15 @@ internal sealed class ZLinkRouteChannelInitializer(
         }
 
         foreach (var assembly in registration.HandlerAssemblies)
+        foreach (var endpoint in ZLinkHandlerScanner.ScanRoute(assembly))
         {
-            foreach (var endpoint in ZLinkHandlerScanner.ScanRoute(assembly))
-            {
-                if (endpoint.Groups.Count == 0
-                    || !endpoint.Groups.Any(routedRegistration.HandlerGroups.Contains))
-                {
-                    continue;
-                }
+            if (endpoint.Groups.Count == 0
+                || !endpoint.Groups.Any(routedRegistration.HandlerGroups.Contains))
+                continue;
 
-                yield return CreateRouteHandlerDescriptor(
-                    routedRegistration.RouterChannelId,
-                    endpoint);
-            }
+            yield return CreateRouteHandlerDescriptor(
+                routedRegistration.RouterChannelId,
+                endpoint);
         }
     }
 

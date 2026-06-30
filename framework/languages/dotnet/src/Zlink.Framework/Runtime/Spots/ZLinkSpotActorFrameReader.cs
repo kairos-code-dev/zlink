@@ -1,5 +1,3 @@
-using Zlink.Framework.Runtime.Backend.Contracts;
-
 namespace Zlink.Framework.Runtime.Spots;
 
 internal readonly record struct ZLinkSpotActorFrame(
@@ -62,15 +60,9 @@ internal static class ZLinkSpotActorFrameReader
         ref int index,
         bool hasBody)
     {
-        if (!hasBody)
-        {
-            return Message.From(ReadOnlySpan<byte>.Empty);
-        }
+        if (!hasBody) return Message.From(ReadOnlySpan<byte>.Empty);
 
-        if (index >= parts.Count)
-        {
-            return null;
-        }
+        if (index >= parts.Count) return null;
 
         return parts[index++].Message;
     }

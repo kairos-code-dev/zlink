@@ -1,6 +1,5 @@
 using ShoppingMall.Server.CommerceApi.Ports.Outbound;
 using ShoppingMall.Server.Shared.Ports.Outbound;
-using ShoppingMall.Server.Configuration;
 using ShoppingMall.Shared.Contracts;
 
 namespace ShoppingMall.Server.CommerceApi.Application.OrderWorkflow;
@@ -20,15 +19,14 @@ internal sealed class StartOrderUseCase(
         if (existing is { Started: true })
         {
             var existingState = await readModels.FindAsync(existing.OrderId, cancellationToken)
-                                ?? throw new InvalidOperationException($"Started order '{existing.OrderId}' has no projection.");
+                                ?? throw new InvalidOperationException(
+                                    $"Started order '{existing.OrderId}' has no projection.");
             return new StartOrderRes(existingState.OrderId, existingState.Status);
         }
 
         if (existing is not null
             && !string.Equals(existing.OwnerInstanceId, options.InstanceId, StringComparison.Ordinal))
-        {
             return await peers.ForwardStartAsync(existing.OwnerInstanceId, request, cancellationToken);
-        }
 
         var cart = await commerce.GetCartAsync(request.CartId, cancellationToken);
         await commerce.ValidateShippingAddressAsync(request.ShippingAddressId, cancellationToken);
@@ -58,7 +56,6 @@ internal sealed class StartOrderUseCase(
               ?? await workflows.StartAsync(command, cancellationToken);
         return new StartOrderRes(state.OrderId, state.Status);
     }
-
 }
 
 internal sealed class GetOrderStateUseCase(

@@ -4,7 +4,8 @@ internal sealed class ZLinkMonitoringRegistration
 {
     public Dictionary<string, ZLinkSocketMonitoringRegistration> SocketSources { get; } = new(StringComparer.Ordinal);
 
-    public Dictionary<string, ZLinkPollingMonitoringRegistration> RegistrySources { get; } = new(StringComparer.Ordinal);
+    public Dictionary<string, ZLinkPollingMonitoringRegistration> RegistrySources { get; } =
+        new(StringComparer.Ordinal);
 
     public Dictionary<string, ZLinkPollingMonitoringRegistration> SpotSources { get; } = new(StringComparer.Ordinal);
 }
@@ -29,19 +30,14 @@ internal sealed class ZLinkMonitoringOptionsModel(ZLinkMonitoringRegistration re
     {
         var entry = new ZLinkSocketMonitoringRegistration
         {
-            SourceName = ValidateSourceName(sourceName),
+            SourceName = ValidateSourceName(sourceName)
         };
 
-        foreach (var @event in events)
-        {
-            entry.Events.Add(@event);
-        }
+        foreach (var @event in events) entry.Events.Add(@event);
 
         if (!registration.SocketSources.TryAdd(entry.SourceName, entry))
-        {
             throw new ZLinkConfigurationException(
                 $"Duplicate monitoring socket source '{entry.SourceName}'.");
-        }
     }
 
     public void AddRegistryEvents(string sourceName, TimeSpan interval)
@@ -69,31 +65,25 @@ internal sealed class ZLinkMonitoringOptionsModel(ZLinkMonitoringRegistration re
         TimeSpan interval)
     {
         if (interval <= TimeSpan.Zero)
-        {
             throw new ZLinkConfigurationException(
                 $"Monitoring {kind} interval must be greater than zero.");
-        }
 
         var normalized = ValidateSourceName(sourceName);
         var entry = new ZLinkPollingMonitoringRegistration
         {
             SourceName = normalized,
-            Interval = interval,
+            Interval = interval
         };
 
         if (!sources.TryAdd(normalized, entry))
-        {
             throw new ZLinkConfigurationException(
                 $"Duplicate monitoring {kind} source '{normalized}'.");
-        }
     }
 
     private static string ValidateSourceName(string sourceName)
     {
         if (string.IsNullOrWhiteSpace(sourceName))
-        {
             throw new ZLinkConfigurationException("Monitoring source name must not be empty.");
-        }
 
         return sourceName;
     }

@@ -1,6 +1,6 @@
+using SpotService.Client.Support;
 using SpotService.Shared;
 using Zlink.HttpClient;
-using SpotService.Client.Support;
 
 namespace SpotService.Client.Scenarios;
 
@@ -12,7 +12,8 @@ internal static class SmE2Scenario
         var created = (await playA.Post("/spot/create")
             .Body(new CreateSpotReq(spotRid))
             .SubmitAsync<CreateSpotReply>()).Body;
-        ScenarioAssert.That(created.SpotRid == spotRid && created.NodeRid == "play-a", "SM-E2 timer spot was not created on play-a.");
+        ScenarioAssert.That(created.SpotRid == spotRid && created.NodeRid == "play-a",
+            "SM-E2 timer spot was not created on play-a.");
         var timer = (await playA.Post("/spot/timer/start")
             .Body(new SpotTimerStartReq(spotRid, "sm-e2-basic", 50))
             .SubmitAsync<SpotTimerStartReply>()).Body;

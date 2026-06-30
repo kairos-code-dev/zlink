@@ -1,7 +1,7 @@
+using SpotService.Client.Support;
 using SpotService.Shared;
 using Systems.Zlink.Stream.Connector.Contracts;
 using Zlink.HttpClient;
-using SpotService.Client.Support;
 
 namespace SpotService.Client.Scenarios;
 
@@ -17,7 +17,7 @@ internal static class SmB8Scenario
             RequestTimeout = TimeSpan.FromSeconds(5),
             Heartbeat = new ZlinkStreamHeartbeatOptions { Enabled = false },
             DispatchMode = ZlinkStreamDispatchMode.Immediate,
-            MaxReceivedMessages = 1024,
+            MaxReceivedMessages = 1024
         });
         await client.Connect.Async();
         await client.Request(new AuthReq(actorId, "destroy", "play-a"))
@@ -53,10 +53,12 @@ internal static class SmB8Scenario
             .Body(new EvidenceWaitRequest([$"actor-destroyed|rid=play-a|actor={actorId}"]))
             .SubmitAsync<string[]>()).Body;
         ScenarioAssert.That(
-            evidence.Any(line => line.Contains($"actor-destroyed|rid=play-a|actor={actorId}", StringComparison.Ordinal)),
+            evidence.Any(line =>
+                line.Contains($"actor-destroyed|rid=play-a|actor={actorId}", StringComparison.Ordinal)),
             "SM-B8 expected actor destroy evidence.");
         ScenarioAssert.That(
-            evidence.All(line => !line.Contains($"actor-destroy-failed|rid=play-a|actor={actorId}", StringComparison.Ordinal)),
+            evidence.All(line =>
+                !line.Contains($"actor-destroy-failed|rid=play-a|actor={actorId}", StringComparison.Ordinal)),
             "SM-B8 actor destroy reported a failure.");
 
         Console.WriteLine("operation SpotService.sm-b8 passed");

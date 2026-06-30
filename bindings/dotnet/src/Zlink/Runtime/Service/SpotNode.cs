@@ -1,31 +1,20 @@
 // SPDX-License-Identifier: MPL-2.0
 
-using System;
-using System.Buffers;
-using System.Collections.Generic;
-using System.Runtime.InteropServices;
 using System.Text;
-using System.Threading;
-using System.Threading.Tasks;
 using Systems.Zlink.Runtime.Native;
-using Systems.Zlink.Runtime.Sockets.Internal;
 
 namespace Systems.Zlink;
 
 internal sealed partial class SpotNode : ISpotNode
 {
-    private IntPtr _handle;
-    internal Context Context { get; }
     private readonly Dictionary<string, DealerSocket> _channelDealers =
         new(StringComparer.Ordinal);
+
     private readonly HashSet<Spot> _spots = new();
     private readonly object _spotsGate = new();
     private Action? _sendReadyHandler;
     private SynchronizationContext? _sendReadyHandlerContext;
     private NativeMethods.ZlinkSendReadyHandlerDelegate? _sendReadyHandlerNative;
-    internal SpotNodeOptions Options { get; }
-    internal SpotNodePublisherOptions PublisherOptions { get; }
-    internal SpotNodeSubscriberOptions SubscriberOptions { get; }
 
     public SpotNode(Context context)
         : this(context, null)
@@ -45,7 +34,7 @@ internal sealed partial class SpotNode : ISpotNode
         Options = options ?? new SpotNodeOptions();
         if (options == null)
         {
-            _handle = NativeMethods.zlink_spot_node_new(context.Handle,
+            Handle = NativeMethods.zlink_spot_node_new(context.Handle,
                 IntPtr.Zero);
         }
         else
@@ -54,10 +43,11 @@ internal sealed partial class SpotNode : ISpotNode
             {
                 Mode = Options.Mode
             };
-            _handle = NativeMethods.zlink_spot_node_new(context.Handle,
+            Handle = NativeMethods.zlink_spot_node_new(context.Handle,
                 ref nativeOptions);
         }
-        if (_handle == IntPtr.Zero)
+
+        if (Handle == IntPtr.Zero)
             throw ZlinkException.CreateConfigException(NativeMethods.zlink_errno());
         PublisherOptions = new SpotNodePublisherOptions(this);
         SubscriberOptions = new SpotNodeSubscriberOptions(this);
@@ -66,17 +56,22 @@ internal sealed partial class SpotNode : ISpotNode
             ApplyOptions(Options);
     }
 
-    internal IntPtr Handle => _handle;
+    internal Context Context { get; }
+    internal SpotNodeOptions Options { get; }
+    internal SpotNodePublisherOptions PublisherOptions { get; }
+    internal SpotNodeSubscriberOptions SubscriberOptions { get; }
+
+    internal IntPtr Handle { get; private set; }
 
     public void SetRoutingId(RoutingId routingId)
     {
         EnsureNotDisposed();
-        byte[] routingIdBytes = routingId.ToByteArray();
+        var routingIdBytes = routingId.ToByteArray();
         unsafe
         {
             fixed (byte* routingIdPtr = routingIdBytes)
             {
-                int rc = NativeMethods.zlink_set_routing_id(_handle,
+                var rc = NativeMethods.zlink_set_routing_id(Handle,
                     (IntPtr)routingIdPtr, (nuint)routingIdBytes.Length);
                 ZlinkException.ThrowConfigIfError(rc);
             }
@@ -97,51 +92,17 @@ internal sealed partial class SpotNode : ISpotNode
                 NativeMethods.zlink_spot_node_set_sub_routing_id(handle, data, size));
     }
 
-    private delegate int SpotNodeRoutingIdSetter(
-        IntPtr handle,
-        IntPtr data,
-        nuint size);
-
-    private void SetSpotPlaneRoutingId(
-        RoutingId routingId,
-        SpotNodeRoutingIdSetter setter)
-    {
-        EnsureNotDisposed();
-        if (setter == null)
-            throw new ArgumentNullException(nameof(setter));
-        byte[] routingIdBytes = routingId.ToByteArray();
-        unsafe
-        {
-            fixed (byte* routingIdPtr = routingIdBytes)
-            {
-                int rc = setter(
-                    _handle,
-                    (IntPtr)routingIdPtr,
-                    (nuint)routingIdBytes.Length);
-                ZlinkException.ThrowConfigIfError(rc);
-            }
-        }
-    }
-
     public RoutingId RoutingId
     {
         get
         {
             EnsureNotDisposed();
-            int rc = NativeMethods.zlink_get_routing_id(_handle,
-                out ZlinkRoutingId routingId);
+            var rc = NativeMethods.zlink_get_routing_id(Handle,
+                out var routingId);
             ZlinkException.ThrowConfigIfError(rc);
             return RoutingId.From(
                 NativeHelpers.ReadRoutingId(ref routingId));
         }
-    }
-
-    public Spot CreateSpot()
-    {
-        EnsureNotDisposed();
-        Spot spot = new(this);
-        RegisterSpot(spot);
-        return spot;
     }
 
     ISpot ISpotNode.CreateSpot()
@@ -149,65 +110,14 @@ internal sealed partial class SpotNode : ISpotNode
         return CreateSpot();
     }
 
-    public Spot EntrySpot()
-    {
-        EnsureNotDisposed();
-        int rc = NativeMethods.zlink_spot_node_entry_spot(_handle,
-            out IntPtr spotHandle);
-        ZlinkException.ThrowConfigIfError(rc);
-        Spot spot = new(this, spotHandle, ownsHandle: true);
-        RegisterSpot(spot);
-        return spot;
-    }
-
     ISpot ISpotNode.EntrySpot()
     {
         return EntrySpot();
     }
 
-    public Spot GetOrCreateSpot(RoutingId spotRid, out bool created)
-    {
-        EnsureNotDisposed();
-        ZlinkRoutingId nativeRid = spotRid.ToNative();
-        int rc = NativeMethods.zlink_spot_node_spot_get_or_new(_handle,
-            ref nativeRid, out IntPtr spotHandle, out uint createdValue);
-        ZlinkException.ThrowConfigIfError(rc);
-        if (spotHandle == IntPtr.Zero)
-        {
-            throw ZlinkException.CreateConfigException(NativeMethods.zlink_errno());
-        }
-
-        created = createdValue != 0;
-        Spot spot = new(this, spotHandle, ownsHandle: true);
-        RegisterSpot(spot);
-        return spot;
-    }
-
     ISpot ISpotNode.GetOrCreateSpot(RoutingId spotRid, out bool created)
     {
         return GetOrCreateSpot(spotRid, out created);
-    }
-
-    public Spot? SpotLookup(RoutingId spotRid)
-    {
-        EnsureNotDisposed();
-        ZlinkRoutingId nativeRid = spotRid.ToNative();
-        int rc = NativeMethods.zlink_spot_node_spot_lookup(_handle,
-            ref nativeRid, out IntPtr spotHandle);
-        try
-        {
-            ZlinkException.ThrowConfigIfError(rc);
-        }
-        catch (ZlinkConfigException error)
-            when (error.Result == ZlinkConfigException.ErrorCode.NotFound)
-        {
-            return null;
-        }
-        if (spotHandle == IntPtr.Zero)
-            return null;
-        Spot spot = new(this, spotHandle, ownsHandle: true);
-        RegisterSpot(spot);
-        return spot;
     }
 
     ISpot? ISpotNode.SpotLookup(RoutingId spotRid)
@@ -221,7 +131,7 @@ internal sealed partial class SpotNode : ISpotNode
         BoundaryValidation.ValidateFixedUtf8(certPath, nameof(certPath));
         BoundaryValidation.ValidateFixedUtf8(keyPath, nameof(keyPath));
         EnsureNotDisposed();
-        int rc = NativeMethods.zlink_set_tls_server(_handle, certPath, keyPath,
+        var rc = NativeMethods.zlink_set_tls_server(Handle, certPath, keyPath,
             requireClientCert ? 1 : 0);
         ZlinkException.ThrowConfigIfError(rc);
     }
@@ -232,25 +142,105 @@ internal sealed partial class SpotNode : ISpotNode
         BoundaryValidation.ValidateFixedUtf8(caCertPath, nameof(caCertPath));
         BoundaryValidation.ValidateFixedUtf8(hostname, nameof(hostname));
         EnsureNotDisposed();
-        int rc = NativeMethods.zlink_set_tls_client(_handle, caCertPath,
+        var rc = NativeMethods.zlink_set_tls_client(Handle, caCertPath,
             hostname, trustSystem ? 1 : 0);
         ZlinkException.ThrowConfigIfError(rc);
+    }
+
+    private void SetSpotPlaneRoutingId(
+        RoutingId routingId,
+        SpotNodeRoutingIdSetter setter)
+    {
+        EnsureNotDisposed();
+        if (setter == null)
+            throw new ArgumentNullException(nameof(setter));
+        var routingIdBytes = routingId.ToByteArray();
+        unsafe
+        {
+            fixed (byte* routingIdPtr = routingIdBytes)
+            {
+                var rc = setter(
+                    Handle,
+                    (IntPtr)routingIdPtr,
+                    (nuint)routingIdBytes.Length);
+                ZlinkException.ThrowConfigIfError(rc);
+            }
+        }
+    }
+
+    public Spot CreateSpot()
+    {
+        EnsureNotDisposed();
+        Spot spot = new(this);
+        RegisterSpot(spot);
+        return spot;
+    }
+
+    public Spot EntrySpot()
+    {
+        EnsureNotDisposed();
+        var rc = NativeMethods.zlink_spot_node_entry_spot(Handle,
+            out var spotHandle);
+        ZlinkException.ThrowConfigIfError(rc);
+        Spot spot = new(this, spotHandle, true);
+        RegisterSpot(spot);
+        return spot;
+    }
+
+    public Spot GetOrCreateSpot(RoutingId spotRid, out bool created)
+    {
+        EnsureNotDisposed();
+        var nativeRid = spotRid.ToNative();
+        var rc = NativeMethods.zlink_spot_node_spot_get_or_new(Handle,
+            ref nativeRid, out var spotHandle, out var createdValue);
+        ZlinkException.ThrowConfigIfError(rc);
+        if (spotHandle == IntPtr.Zero) throw ZlinkException.CreateConfigException(NativeMethods.zlink_errno());
+
+        created = createdValue != 0;
+        Spot spot = new(this, spotHandle, true);
+        RegisterSpot(spot);
+        return spot;
+    }
+
+    public Spot? SpotLookup(RoutingId spotRid)
+    {
+        EnsureNotDisposed();
+        var nativeRid = spotRid.ToNative();
+        var rc = NativeMethods.zlink_spot_node_spot_lookup(Handle,
+            ref nativeRid, out var spotHandle);
+        try
+        {
+            ZlinkException.ThrowConfigIfError(rc);
+        }
+        catch (ZlinkConfigException error)
+            when (error.Result == ZlinkConfigException.ErrorCode.NotFound)
+        {
+            return null;
+        }
+
+        if (spotHandle == IntPtr.Zero)
+            return null;
+        Spot spot = new(this, spotHandle, true);
+        RegisterSpot(spot);
+        return spot;
     }
 
     private static unsafe void WriteFixedString(string value, byte* destination,
         int capacity)
     {
-        byte[] encoded = Encoding.UTF8.GetBytes(value);
+        var encoded = Encoding.UTF8.GetBytes(value);
         if (encoded.Length >= capacity)
-        {
             throw new ArgumentOutOfRangeException(nameof(value),
                 "UTF-8 value exceeds native fixed buffer capacity.");
-        }
 
-        for (int i = 0; i < capacity; i++)
+        for (var i = 0; i < capacity; i++)
             destination[i] = 0;
-        for (int i = 0; i < encoded.Length; i++)
+        for (var i = 0; i < encoded.Length; i++)
             destination[i] = encoded[i];
     }
 
+    private delegate int SpotNodeRoutingIdSetter(
+        IntPtr handle,
+        IntPtr data,
+        nuint size);
 }

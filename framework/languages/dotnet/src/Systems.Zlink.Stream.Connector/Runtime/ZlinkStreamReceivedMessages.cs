@@ -2,9 +2,9 @@ namespace Systems.Zlink.Stream.Connector.Runtime;
 
 internal sealed class ZlinkStreamReceivedMessages(int maxMessages)
 {
-    private readonly Dictionary<string, List<ReceivedMessage>> _messages = new(StringComparer.Ordinal);
-    private readonly LinkedList<ReceivedMessage> _messageOrder = new();
     private readonly object _gate = new();
+    private readonly LinkedList<ReceivedMessage> _messageOrder = new();
+    private readonly Dictionary<string, List<ReceivedMessage>> _messages = new(StringComparer.Ordinal);
     private TaskCompletionSource _arrived = new(TaskCreationOptions.RunContinuationsAsynchronously);
     private int _messageCount;
 
@@ -51,10 +51,7 @@ internal sealed class ZlinkStreamReceivedMessages(int maxMessages)
         while (!timeoutSource.IsCancellationRequested)
         {
             var pending = TryTakeOrWait(name, predicate, timeoutSource.Token);
-            if (pending.Message is not null)
-            {
-                return pending.Message;
-            }
+            if (pending.Message is not null) return pending.Message;
 
             try
             {
@@ -88,26 +85,17 @@ internal sealed class ZlinkStreamReceivedMessages(int maxMessages)
         string name,
         Func<ZlinkStreamMessage<ZlinkStreamEncodedPayload>, bool>? predicate)
     {
-        if (!_messages.TryGetValue(name, out var messages))
-        {
-            return null;
-        }
+        if (!_messages.TryGetValue(name, out var messages)) return null;
 
         for (var index = 0; index < messages.Count; index++)
         {
             var message = messages[index];
-            if (predicate is not null && !predicate(message.Value))
-            {
-                continue;
-            }
+            if (predicate is not null && !predicate(message.Value)) continue;
 
             messages.RemoveAt(index);
             _messageCount--;
             RemoveFromOrder(message);
-            if (messages.Count == 0)
-            {
-                _messages.Remove(name);
-            }
+            if (messages.Count == 0) _messages.Remove(name);
             return message.Value;
         }
 
@@ -119,10 +107,7 @@ internal sealed class ZlinkStreamReceivedMessages(int maxMessages)
         while (_messageCount > maxMessages)
         {
             var oldestNode = _messageOrder.First;
-            if (oldestNode is null)
-            {
-                return;
-            }
+            if (oldestNode is null) return;
 
             var oldest = oldestNode.Value;
             if (!_messages.TryGetValue(oldest.Name, out var messages))
@@ -135,10 +120,7 @@ internal sealed class ZlinkStreamReceivedMessages(int maxMessages)
             _messageOrder.Remove(oldestNode);
             oldest.OrderNode = null;
             _messageCount--;
-            if (messages.Count == 0)
-            {
-                _messages.Remove(oldest.Name);
-            }
+            if (messages.Count == 0) _messages.Remove(oldest.Name);
         }
     }
 

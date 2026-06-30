@@ -22,7 +22,7 @@ internal static class ZLinkSpotDescriptorFactory
                     SpotType = arguments[0],
                     MessageType = arguments[1],
                     Invoker = CreateInvoker(handlerType),
-                    MessageName = packetName ?? ZLinkMessageNameResolver.ResolveFromType(arguments[1]),
+                    MessageName = packetName ?? ZLinkMessageNameResolver.ResolveFromType(arguments[1])
                 };
             }
 
@@ -36,7 +36,7 @@ internal static class ZLinkSpotDescriptorFactory
                     MessageType = arguments[1],
                     ReplyType = arguments[2],
                     Invoker = CreateInvoker(handlerType),
-                    MessageName = packetName ?? ZLinkMessageNameResolver.ResolveFromType(arguments[1]),
+                    MessageName = packetName ?? ZLinkMessageNameResolver.ResolveFromType(arguments[1])
                 };
             }
         }
@@ -52,10 +52,7 @@ internal static class ZLinkSpotDescriptorFactory
     {
         foreach (var (definition, arguments) in ZLinkHandlerContractInspector.EnumerateGenericInterfaces(handlerType))
         {
-            if (definition != typeof(IZLinkSpotSubscriptionHandler<,>))
-            {
-                continue;
-            }
+            if (definition != typeof(IZLinkSpotSubscriptionHandler<,>)) continue;
 
             ValidateSpotType(handlerType, expectedSpotType, arguments[0]);
             return new ZLinkSpotSubscriptionDescriptor
@@ -65,7 +62,7 @@ internal static class ZLinkSpotDescriptorFactory
                 SpotType = arguments[0],
                 MessageType = arguments[1],
                 Invoker = CreateInvoker(handlerType),
-                MessageName = ZLinkMessageNameResolver.ResolveFromType(arguments[1]),
+                MessageName = ZLinkMessageNameResolver.ResolveFromType(arguments[1])
             };
         }
 
@@ -81,10 +78,7 @@ internal static class ZLinkSpotDescriptorFactory
     {
         foreach (var (definition, arguments) in ZLinkHandlerContractInspector.EnumerateGenericInterfaces(handlerType))
         {
-            if (definition != typeof(IZLinkSpotTimerHandler<>))
-            {
-                continue;
-            }
+            if (definition != typeof(IZLinkSpotTimerHandler<>)) continue;
 
             ValidateSpotType(handlerType, expectedSpotType, arguments[0]);
             return new ZLinkSpotTimerDescriptor
@@ -93,7 +87,7 @@ internal static class ZLinkSpotDescriptorFactory
                 Period = period,
                 HandlerType = handlerType,
                 SpotType = arguments[0],
-                Invoker = CreateInvoker(handlerType),
+                Invoker = CreateInvoker(handlerType)
             };
         }
 
@@ -107,10 +101,8 @@ internal static class ZLinkSpotDescriptorFactory
         foreach (var method in EnumerateActorJoinMethods(spotType, contract?.ContractType))
         {
             if (contract is null)
-            {
                 throw new InvalidOperationException(
                     $"SPOT actor join hook '{spotType}' must implement IZLinkSpot<TActor> or IZLinkEntrySpot<TActor>.");
-            }
 
             yield return CreateSpotActorJoinDescriptor(spotType, method, contract.ActorType);
         }
@@ -130,10 +122,8 @@ internal static class ZLinkSpotDescriptorFactory
         if (expectedActorType is null)
         {
             if (!typeof(IZLinkActor).IsAssignableFrom(actualActorType))
-            {
                 throw new InvalidOperationException(
                     $"SPOT actor join callback '{handlerType}' targets '{actualActorType}', but actor type must implement '{typeof(IZLinkActor)}'.");
-            }
 
             return;
         }
@@ -162,10 +152,8 @@ internal static class ZLinkSpotDescriptorFactory
             "SPOT actor join hook");
         var actorType = parameters[0].ParameterType;
         if (parameters[1].ParameterType != typeof(ZLinkMessage))
-        {
             throw new InvalidOperationException(
                 $"SPOT actor join hook '{spotType}' method '{method.Name}' must use ZLinkMessage as the second parameter.");
-        }
 
         ZLinkHandlerMethodShape.RequireCancellationToken(
             spotType,
@@ -175,10 +163,8 @@ internal static class ZLinkSpotDescriptorFactory
             "third");
         ValidateActorType(spotType, expectedActorType, actorType);
         if (method.ReturnType != typeof(ValueTask<ZLinkSpotActorJoinResult>))
-        {
             throw new InvalidOperationException(
                 $"SPOT actor join hook '{spotType}' method '{method.Name}' must return ValueTask<ZLinkSpotActorJoinResult>.");
-        }
 
         return new ZLinkSpotActorJoinDescriptor
         {
@@ -186,7 +172,7 @@ internal static class ZLinkSpotDescriptorFactory
             SpotType = spotType,
             ActorType = actorType,
             Invoker = ZLinkHandlerMethodInvokerFactory.Create(method),
-            PassSpotArgument = false,
+            PassSpotArgument = false
         };
     }
 
@@ -195,12 +181,9 @@ internal static class ZLinkSpotDescriptorFactory
         var declaredMethods = spotType
             .GetMethods(BindingFlags.Instance | BindingFlags.Public)
             .Where(method => method.Name == ActorJoinMethodName
-                && method.DeclaringType == spotType)
+                             && method.DeclaringType == spotType)
             .ToArray();
-        if (declaredMethods.Length > 0)
-        {
-            return declaredMethods;
-        }
+        if (declaredMethods.Length > 0) return declaredMethods;
 
         return contractType is null
             ? []
@@ -213,14 +196,10 @@ internal static class ZLinkSpotDescriptorFactory
         foreach (var contract in spotType.GetInterfaces())
         {
             if (contract.IsGenericType && contract.GetGenericTypeDefinition() == typeof(IZLinkSpot<>))
-            {
                 return new SpotActorContract(contract, contract.GetGenericArguments()[0]);
-            }
 
             if (contract.IsGenericType && contract.GetGenericTypeDefinition() == typeof(IZLinkEntrySpot<>))
-            {
                 return new SpotActorContract(contract, contract.GetGenericArguments()[0]);
-            }
         }
 
         return null;

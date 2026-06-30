@@ -1,6 +1,6 @@
+using RuntimeMonitoring.Client.Support;
 using RuntimeMonitoring.Shared;
 using Zlink.HttpClient;
-using RuntimeMonitoring.Client.Support;
 
 namespace RuntimeMonitoring.Client.Scenarios;
 
@@ -19,7 +19,7 @@ internal static class MonB1KindFilterScenario
         var serviceBEvidence = await WaitForFilteredSocketEvidenceAsync(serviceB);
         ScenarioAssert.That(
             serviceBEvidence.Any(line => line.Contains("monitor-socket|", StringComparison.Ordinal)
-                && line.Contains("kind=ConnectionReady", StringComparison.Ordinal)),
+                                         && line.Contains("kind=ConnectionReady", StringComparison.Ordinal)),
             "MON-B1 filtered socket evidence missing.");
         ScenarioAssert.That(
             serviceBEvidence
@@ -29,21 +29,18 @@ internal static class MonB1KindFilterScenario
         Console.WriteLine("scenario MON-B1 passed");
     }
 
-    static async Task<string[]> WaitForFilteredSocketEvidenceAsync(ZLinkHttpClient serviceB)
+    private static async Task<string[]> WaitForFilteredSocketEvidenceAsync(ZLinkHttpClient serviceB)
     {
         var evidence = (await serviceB.Post("/evidence/wait")
             .Body(new EvidenceWaitRequest(
                 ["monitor-socket|"],
-                [["kind=ConnectionReady"]],
-                10000))
+                [["kind=ConnectionReady"]]))
             .SubmitAsync<string[]>()).Body;
         if (evidence.Any(line => line.Contains("monitor-socket|", StringComparison.Ordinal)
-                && line.Contains("kind=ConnectionReady", StringComparison.Ordinal))
+                                 && line.Contains("kind=ConnectionReady", StringComparison.Ordinal))
             && evidence.Where(line => line.Contains("monitor-socket|", StringComparison.Ordinal))
                 .All(line => line.Contains("kind=ConnectionReady", StringComparison.Ordinal)))
-        {
             return evidence;
-        }
 
         throw new InvalidOperationException("MON-B1 socket event kind filter evidence was incomplete.");
     }

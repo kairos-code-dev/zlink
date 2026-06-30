@@ -1,12 +1,9 @@
+using SpotService.Server.Play.Spots;
 using SpotService.Shared;
 using Zlink.Framework.Contracts.Handlers;
 using Zlink.Framework.Contracts.Spots;
-using SpotService.Server.Play.Endpoints;
-using SpotService.Server.Play.Handlers;
-using SpotService.Server.Play.Spots;
 
 namespace SpotService.Server.Play.Handlers;
-
 
 [ZLinkHandlerGroup("client")]
 internal sealed class ChannelEchoHandler(EvidenceStore evidence)
@@ -158,9 +155,7 @@ internal sealed class EntryActorLeaveHandler(EvidenceStore evidence)
         _ = context;
         cancellationToken.ThrowIfCancellationRequested();
         if (!string.Equals(request.ActorId, actor.ActorId, StringComparison.Ordinal))
-        {
             throw new InvalidOperationException("Leave request actor does not match dispatched actor.");
-        }
 
         evidence.Add(
             $"spot-actor-left|rid={entrySpot.Context.NodeRid}|spot={actor.DisplayName}|actor={actor.ActorId}");
@@ -181,9 +176,7 @@ internal sealed class UserActorLeaveHandler
     {
         _ = context;
         if (!string.Equals(request.ActorId, actor.ActorId, StringComparison.Ordinal))
-        {
             throw new InvalidOperationException("Leave request actor does not match dispatched actor.");
-        }
 
         await spot.Context.leaveActor(actor, cancellationToken);
         return new LeaveReply(actor.ActorId, true);
@@ -205,9 +198,7 @@ internal sealed class EntryActorSnapshotHandler
         _ = context;
         cancellationToken.ThrowIfCancellationRequested();
         if (!string.Equals(request.ActorId, actor.ActorId, StringComparison.Ordinal))
-        {
             throw new InvalidOperationException("Snapshot request actor does not match dispatched actor.");
-        }
 
         return ValueTask.FromResult(new SnapshotReply(actor.ActorId, actor.Seen));
     }
@@ -226,9 +217,7 @@ internal sealed class EntryActorDestroyHandler(EvidenceStore evidence)
     {
         _ = context;
         if (!string.Equals(request.ActorId, actor.ActorId, StringComparison.Ordinal))
-        {
             throw new InvalidOperationException("Destroy request actor does not match dispatched actor.");
-        }
 
         entrySpot.Context.RunWorker(_ => true).Submit(
             async (_, ct) =>

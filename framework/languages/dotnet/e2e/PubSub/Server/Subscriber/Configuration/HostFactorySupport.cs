@@ -1,9 +1,3 @@
-using Microsoft.AspNetCore.Builder;
-using Microsoft.AspNetCore.Hosting;
-using Microsoft.Extensions.Logging;
-using PubSub.Server.Subscriber.Handlers;
-using PubSub.Server.Subscriber;
-
 namespace PubSub.Server.Subscriber.Configuration;
 
 public static class HostFactorySupport

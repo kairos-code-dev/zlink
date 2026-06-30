@@ -1,15 +1,14 @@
+using Systems.Zlink;
 using TicTacToe.Server.Configuration;
+using TicTacToe.Server.Play.Application.GameCreation;
+using TicTacToe.Server.Play.Infrastructure.ZLink;
 using TicTacToe.Server.Play.Infrastructure.ZLink.Actors;
 using TicTacToe.Server.Play.Infrastructure.ZLink.Handlers;
 using TicTacToe.Server.Play.Infrastructure.ZLink.Sessions;
 using TicTacToe.Server.Play.Infrastructure.ZLink.Spots.EntrySpot;
 using TicTacToe.Server.Play.Infrastructure.ZLink.Spots.TicTacToeGameSpot;
-using TicTacToe.Server.Play.Infrastructure.ZLink;
-using TicTacToe.Server.Play.Application.GameCreation;
-using Systems.Zlink;
-using Zlink.Framework.Contracts.Codecs.Json;
-using Zlink.Framework.Contracts.Dispatch;
 using Zlink.Framework.AspNetCore;
+using Zlink.Framework.Contracts.Dispatch;
 
 namespace TicTacToe.Server.Play;
 
@@ -49,11 +48,11 @@ internal sealed class PlayServer(SampleSettings settings)
 
             options.AddSpotMesh(SampleNodes.PlaySpot)
                 .EnableRouter(settings.SpotEndpoint)
-                    .SetRoutingId(RoutingId.From(settings.PlaySpotNodeRid))
-                    .ConnectRouter(
-                    RoutingId.From(settings.PeerPlaySpotNodeRid),settings.PeerSpotEndpoint)
+                .SetRoutingId(RoutingId.From(settings.PlaySpotNodeRid))
+                .ConnectRouter(
+                    RoutingId.From(settings.PeerPlaySpotNodeRid), settings.PeerSpotEndpoint)
                 .EnablePubSub(settings.SpotPubSubEndpoint)
-                    .ConnectPeerPub(settings.PeerSpotPubEndpoint)
+                .ConnectPeerPub(settings.PeerSpotPubEndpoint)
                 .AddEntrySpot<PlayEntrySpot>()
                 .AddActorFactory<PlayActorFactory>(SampleTypes.PlayerActor)
                 .AddSpotFactory<TicTacToeGame>();

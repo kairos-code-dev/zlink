@@ -1,11 +1,13 @@
-using Zlink.Framework.Runtime.Execution;
-
 namespace Zlink.Framework.Runtime.Actors;
 
 internal sealed class ZLinkActorContext(
     ZLinkFrameworkRuntime runtime,
     ZLinkActorRuntimeState state) : IZLinkActorContext
 {
+    private IZLinkActor CurrentActor
+        => state.Actor ?? throw new InvalidOperationException(
+            $"Actor '{state.ActorId}' has not been created.");
+
     public RoutingId? SpotRid => state.SpotRid;
 
     public bool IsJoined => state.IsJoined;
@@ -33,10 +35,8 @@ internal sealed class ZLinkActorContext(
         state.EnsureContextValid();
         var spot = GetSpot();
         if (spot is not TSpot typed)
-        {
             throw new InvalidOperationException(
                 $"Actor joined SPOT '{spot.GetType()}', not '{typeof(TSpot)}'.");
-        }
 
         return typed;
     }
@@ -64,10 +64,6 @@ internal sealed class ZLinkActorContext(
             spotNodeRid,
             request);
     }
-
-    private IZLinkActor CurrentActor
-        => state.Actor ?? throw new InvalidOperationException(
-            $"Actor '{state.ActorId}' has not been created.");
 }
 
 internal sealed class ZLinkActorJoinSpotCall(
@@ -100,7 +96,8 @@ internal sealed class ZLinkActorJoinSpotCall(
                 request,
                 timeoutSource.Token).ConfigureAwait(false);
         }
-        catch (OperationCanceledException) when (!cancellationToken.IsCancellationRequested && timeoutSource.IsCancellationRequested)
+        catch (OperationCanceledException) when (!cancellationToken.IsCancellationRequested &&
+                                                 timeoutSource.IsCancellationRequested)
         {
             throw new TimeoutException($"SPOT actor join timed out after {timeout}.");
         }
@@ -114,8 +111,8 @@ internal sealed class ZLinkActorJoinSpotCall(
     private ZLinkSerialTurn RequireTurn()
     {
         return _turn
-            ?? throw new InvalidOperationException(
-                "Yield requires a framework Spot handler turn captured when the call object was created.");
+               ?? throw new InvalidOperationException(
+                   "Yield requires a framework Spot handler turn captured when the call object was created.");
     }
 }
 
@@ -148,7 +145,8 @@ internal sealed class ZLinkActorJoinEntrySpotCall(
                 request,
                 timeoutSource.Token).ConfigureAwait(false);
         }
-        catch (OperationCanceledException) when (!cancellationToken.IsCancellationRequested && timeoutSource.IsCancellationRequested)
+        catch (OperationCanceledException) when (!cancellationToken.IsCancellationRequested &&
+                                                 timeoutSource.IsCancellationRequested)
         {
             throw new TimeoutException($"Entry SPOT actor join timed out after {timeout}.");
         }
@@ -162,7 +160,7 @@ internal sealed class ZLinkActorJoinEntrySpotCall(
     private ZLinkSerialTurn RequireTurn()
     {
         return _turn
-            ?? throw new InvalidOperationException(
-                "Yield requires a framework Spot handler turn captured when the call object was created.");
+               ?? throw new InvalidOperationException(
+                   "Yield requires a framework Spot handler turn captured when the call object was created.");
     }
 }

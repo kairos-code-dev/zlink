@@ -5,12 +5,12 @@ namespace SupportChat.Server.Support.Domain.SupportChat;
 
 internal sealed class Conversation
 {
-    private readonly ConversationPolicy _policy;
-    private readonly Dictionary<string, ConversationParticipant> _participants = new(StringComparer.Ordinal);
     private readonly List<ConversationMessage> _messages = [];
-    private ulong _lastMessageSeq;
-    private long? _lastMessageAtUnixMs;
+    private readonly Dictionary<string, ConversationParticipant> _participants = new(StringComparer.Ordinal);
+    private readonly ConversationPolicy _policy;
     private long? _idleDeadlineUnixMs;
+    private long? _lastMessageAtUnixMs;
+    private ulong _lastMessageSeq;
 
     public Conversation(
         string conversationId,
@@ -21,9 +21,7 @@ internal sealed class Conversation
         ConversationPolicy? policy = null)
     {
         if (string.IsNullOrWhiteSpace(subject))
-        {
             throw new InvalidOperationException("Conversation subject is required.");
-        }
 
         ConversationId = conversationId;
         Subject = subject;
@@ -35,7 +33,7 @@ internal sealed class Conversation
             SupportChatRoles.Customer,
             customerDisplayName,
             createdAtUnixMs,
-            IsTyping: false);
+            false);
     }
 
     public string ConversationId { get; }
@@ -68,9 +66,7 @@ internal sealed class Conversation
     {
         EnsureNotClosed("join an agent");
         if (AgentActorId is not null && !string.Equals(AgentActorId, agentActorId, StringComparison.Ordinal))
-        {
             throw new InvalidOperationException("Conversation already has an assigned agent.");
-        }
 
         AgentActorId = agentActorId;
         Status = ConversationStatuses.Active;
@@ -79,7 +75,7 @@ internal sealed class Conversation
             SupportChatRoles.Agent,
             agentDisplayName,
             joinedAtUnixMs,
-            IsTyping: false);
+            false);
 
         var state = Snapshot();
         return new ConversationChange(
@@ -94,7 +90,7 @@ internal sealed class Conversation
                     ConversationEventKind.Assigned,
                     state,
                     agentActorId,
-                    SupportChatRoles.Agent),
+                    SupportChatRoles.Agent)
             ]);
     }
 
@@ -105,21 +101,11 @@ internal sealed class Conversation
     {
         EnsureParticipant(senderActorId);
         if (Status == ConversationStatuses.Closed)
-        {
             throw new InvalidOperationException("Closed conversation cannot accept messages.");
-        }
         if (Status == ConversationStatuses.WaitingForAgent)
-        {
             throw new InvalidOperationException("Conversation is waiting for an agent.");
-        }
-        if (string.IsNullOrWhiteSpace(text))
-        {
-            throw new InvalidOperationException("Message text is required.");
-        }
-        if (text.Length > _policy.MaxMessageLength)
-        {
-            throw new InvalidOperationException("Message text is too long.");
-        }
+        if (string.IsNullOrWhiteSpace(text)) throw new InvalidOperationException("Message text is required.");
+        if (text.Length > _policy.MaxMessageLength) throw new InvalidOperationException("Message text is too long.");
 
         Status = ConversationStatuses.Active;
         _lastMessageSeq += 1;
@@ -141,7 +127,7 @@ internal sealed class Conversation
                     ConversationEventKind.MessageAppended,
                     state,
                     senderActorId,
-                    Message: ToContract(message)),
+                    Message: ToContract(message))
             ]);
     }
 
@@ -162,16 +148,14 @@ internal sealed class Conversation
                     state,
                     actorId,
                     participant.Role,
-                    IsTyping: isTyping),
+                    IsTyping: isTyping)
             ]);
     }
 
     public ConversationChange MarkIdle(long nowUnixMs)
     {
         if (Status != ConversationStatuses.Active || _idleDeadlineUnixMs is null || nowUnixMs < _idleDeadlineUnixMs)
-        {
             return new ConversationChange(Snapshot(), []);
-        }
 
         Status = ConversationStatuses.WaitingForClose;
         var state = Snapshot();
@@ -187,9 +171,7 @@ internal sealed class Conversation
         _ = reason;
         EnsureParticipant(actorId);
         if (Status == ConversationStatuses.Closed)
-        {
             throw new InvalidOperationException("Conversation is already closed.");
-        }
 
         Status = ConversationStatuses.Closed;
         var state = Snapshot();
@@ -201,9 +183,7 @@ internal sealed class Conversation
     private ConversationParticipant EnsureParticipant(string actorId)
     {
         if (!_participants.TryGetValue(actorId, out var participant))
-        {
             throw new InvalidOperationException("Actor is not a conversation participant.");
-        }
 
         return participant;
     }
@@ -211,9 +191,7 @@ internal sealed class Conversation
     private void EnsureNotClosed(string action)
     {
         if (Status == ConversationStatuses.Closed)
-        {
             throw new InvalidOperationException($"Closed conversation cannot {action}.");
-        }
     }
 
     private static ChatMessage ToContract(ConversationMessage message)

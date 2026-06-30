@@ -1,6 +1,6 @@
+using RegistrationCodec.Client.Support;
 using RegistrationCodec.Shared;
 using Zlink.HttpClient;
-using RegistrationCodec.Client.Support;
 
 namespace RegistrationCodec.Client.Scenarios;
 

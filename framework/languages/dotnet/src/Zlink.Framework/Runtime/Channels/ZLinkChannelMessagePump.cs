@@ -46,5 +46,4 @@ internal sealed class ZLinkChannelMessagePump
     {
         return _receiveLoop.RunSubscriberLoopAsync(channelName, subscriber, cancellationToken);
     }
-
 }

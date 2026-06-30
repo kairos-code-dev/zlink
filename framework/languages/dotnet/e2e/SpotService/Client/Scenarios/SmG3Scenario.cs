@@ -1,8 +1,7 @@
+using SpotService.Client.Support;
 using SpotService.Shared;
-using Systems.Zlink.Stream.Connector;
 using Systems.Zlink.Stream.Connector.Contracts;
 using Zlink.HttpClient;
-using SpotService.Client.Support;
 
 namespace SpotService.Client.Scenarios;
 
@@ -29,7 +28,7 @@ internal static class SmG3Scenario
                 {
                     var candidate = ZlinkStreamConnectorFactory.Create(new ZlinkStreamConnectorOptions
                     {
-                        Endpoint = new Uri(sessionAStreamEndpoint),
+                        Endpoint = new Uri(sessionAStreamEndpoint)
                     });
                     try
                     {
@@ -50,13 +49,11 @@ internal static class SmG3Scenario
                 }
 
                 if (client is null)
-                {
                     throw new InvalidOperationException(
                         last is null
                             ? $"Actor auth did not become routable: {actorId}"
                             : $"Actor auth did not become routable: {actorId}. Last error: {last.Message}",
                         last);
-                }
 
                 clients.Add(client);
             }
@@ -79,14 +76,15 @@ internal static class SmG3Scenario
                 .SelectMany(actorId => new[]
                 {
                     $"spot-actor-joined|rid=play-a|spot={spotRid}|actor={actorId}",
-                    $"spot-actor-left|rid=play-a|spot={spotRid}|actor={actorId}",
+                    $"spot-actor-left|rid=play-a|spot={spotRid}|actor={actorId}"
                 })
                 .ToArray();
             var evidence = (await playA.Post("/evidence/wait")
                 .Body(new EvidenceWaitRequest(expectedEvidence))
                 .SubmitAsync<string[]>()).Body;
             ScenarioAssert.That(
-                expectedEvidence.All(expected => evidence.Any(line => line.Contains(expected, StringComparison.Ordinal))),
+                expectedEvidence.All(expected =>
+                    evidence.Any(line => line.Contains(expected, StringComparison.Ordinal))),
                 "SM-G3 expected concurrent join and leave evidence.");
             foreach (var actorId in actorIds)
             {
@@ -104,10 +102,7 @@ internal static class SmG3Scenario
         }
         finally
         {
-            foreach (var client in clients)
-            {
-                await client.DisposeAsync();
-            }
+            foreach (var client in clients) await client.DisposeAsync();
         }
 
         Console.WriteLine("operation SpotService.sm-g3 passed");

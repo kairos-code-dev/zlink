@@ -1,10 +1,3 @@
-using Zlink.Framework.Runtime.Actors;
-using Zlink.Framework.Runtime.Diagnostics;
-using Zlink.Framework.Runtime.Execution;
-using Zlink.Framework.Runtime.Host;
-using Zlink.Framework.Runtime.Messaging;
-using Zlink.Framework.Runtime.Registry;
-
 namespace Zlink.Framework.Runtime.Channels;
 
 internal sealed class ZLinkChannelReceiveLoop(ZLinkChannelPacketDispatcher dispatcher)
@@ -37,9 +30,7 @@ internal sealed class ZLinkChannelReceiveLoop(ZLinkChannelPacketDispatcher dispa
                         channelName,
                         spotRouteBridge(),
                         received))
-                {
                     continue;
-                }
 
                 await dispatcher.DispatchServerMessageAsync(channelName, router, received, cancellationToken)
                     .ConfigureAwait(false);
@@ -55,10 +46,7 @@ internal sealed class ZLinkChannelReceiveLoop(ZLinkChannelPacketDispatcher dispa
             finally
             {
                 received?.Dispose();
-                if (gateHeld)
-                {
-                    receiveGate.Release();
-                }
+                if (gateHeld) receiveGate.Release();
             }
         }
     }
@@ -70,17 +58,12 @@ internal sealed class ZLinkChannelReceiveLoop(ZLinkChannelPacketDispatcher dispa
     {
         if (bridge is null
             || received.RoutingId is not { } sourceNodeRid)
-        {
             return false;
-        }
 
         var handled = received.RequestSeq is { } requestSeq
             ? bridge.HandleRouterReceived(channelName, sourceNodeRid, requestSeq, received.Parts)
             : bridge.HandleRouterReceived(channelName, sourceNodeRid, 0, received.Parts);
-        if (handled)
-        {
-            bridge.Drain();
-        }
+        if (handled) bridge.Drain();
 
         return handled;
     }
@@ -116,5 +99,4 @@ internal sealed class ZLinkChannelReceiveLoop(ZLinkChannelPacketDispatcher dispa
             }
         }
     }
-
 }

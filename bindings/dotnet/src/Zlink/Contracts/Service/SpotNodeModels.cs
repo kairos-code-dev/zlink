@@ -3,140 +3,154 @@
 namespace Systems.Zlink;
 
 /// <summary>
-/// The overall readiness state of a spot node.
+///     The overall readiness state of a spot node.
 /// </summary>
 public enum SpotNodeState
 {
     /// <summary>
-    /// Not yet connecting to any peer.
+    ///     Not yet connecting to any peer.
     /// </summary>
     Idle = 1,
+
     /// <summary>
-    /// Establishing connections to peers.
+    ///     Establishing connections to peers.
     /// </summary>
     Connecting = 2,
+
     /// <summary>
-    /// Some but not all peers are connected.
+    ///     Some but not all peers are connected.
     /// </summary>
     PartialReady = 3,
+
     /// <summary>
-    /// All expected peers are connected.
+    ///     All expected peers are connected.
     /// </summary>
     Ready = 4,
+
     /// <summary>
-    /// The node is in an error state.
+    ///     The node is in an error state.
     /// </summary>
     Error = 5
 }
 
 /// <summary>
-/// How a spot peer became known to the node.
+///     How a spot peer became known to the node.
 /// </summary>
 public enum SpotPeerSource
 {
     /// <summary>
-    /// Added manually by the application.
+    ///     Added manually by the application.
     /// </summary>
     Manual = 1,
+
     /// <summary>
-    /// Learned from a discovery service.
+    ///     Learned from a discovery service.
     /// </summary>
     Discovery = 2,
+
     /// <summary>
-    /// Both manually added and discovered.
+    ///     Both manually added and discovered.
     /// </summary>
     Mixed = 3
 }
 
 /// <summary>
-/// The connection style of a spot peer.
+///     The connection style of a spot peer.
 /// </summary>
 public enum SpotPeerKind
 {
     /// <summary>
-    /// A peer in the spot mesh.
+    ///     A peer in the spot mesh.
     /// </summary>
     SpotMesh = 1,
+
     /// <summary>
-    /// A peer reached over a router channel.
+    ///     A peer reached over a router channel.
     /// </summary>
     RouterChannel = 2
 }
 
 /// <summary>
-/// The connection state of a spot peer.
+///     The connection state of a spot peer.
 /// </summary>
 public enum SpotPeerState
 {
     /// <summary>
-    /// Configured but not yet connecting.
+    ///     Configured but not yet connecting.
     /// </summary>
     Configured = 1,
+
     /// <summary>
-    /// A connection is being established.
+    ///     A connection is being established.
     /// </summary>
     Connecting = 2,
+
     /// <summary>
-    /// The peer is connected.
+    ///     The peer is connected.
     /// </summary>
     Connected = 3
 }
 
 /// <summary>
-/// The kind of a spot.
+///     The kind of a spot.
 /// </summary>
 public enum SpotKind
 {
     /// <summary>
-    /// No spot kind (unset).
+    ///     No spot kind (unset).
     /// </summary>
     Invalid = 0,
+
     /// <summary>
-    /// An entry spot (a node's well-known entry point).
+    ///     An entry spot (a node's well-known entry point).
     /// </summary>
     Entry = 1,
+
     /// <summary>
-    /// A user-created spot.
+    ///     A user-created spot.
     /// </summary>
     User = 2
 }
 
 /// <summary>
-/// How a subscription subject is matched.
+///     How a subscription subject is matched.
 /// </summary>
 public enum SubjectKind
 {
     /// <summary>
-    /// No subject.
+    ///     No subject.
     /// </summary>
     None = 0,
+
     /// <summary>
-    /// An exact topic match.
+    ///     An exact topic match.
     /// </summary>
     Topic = 1,
+
     /// <summary>
-    /// A pattern match.
+    ///     A pattern match.
     /// </summary>
     Pattern = 2
 }
 
 /// <summary>
-/// The pub/sub role of a spot subject.
+///     The pub/sub role of a spot subject.
 /// </summary>
 public enum SpotRole
 {
     /// <summary>
-    /// A publisher subject.
+    ///     A publisher subject.
     /// </summary>
     Pub = 1,
+
     /// <summary>
-    /// A subscriber subject.
+    ///     A subscriber subject.
     /// </summary>
     Sub = 2
 }
 
 /// <summary>
-/// Filter for a spot node peer query; null fields match anything.
+///     Filter for a spot node peer query; null fields match anything.
 /// </summary>
 /// <param name="PeerEndpoint">Restrict to this peer endpoint.</param>
 /// <param name="Source">Restrict to peers from this source.</param>
@@ -147,7 +161,7 @@ public sealed record SpotNodePeerFilter(
     SpotPeerState? State = null);
 
 /// <summary>
-/// Filter for a spot node subject query; null fields match anything.
+///     Filter for a spot node subject query; null fields match anything.
 /// </summary>
 /// <param name="Role">Restrict to subjects with this pub/sub role.</param>
 /// <param name="Subject">Restrict to this subject topic or pattern.</param>
@@ -158,7 +172,7 @@ public sealed record SpotNodeSubjectFilter(
     SubjectKind? SubjectKind = null);
 
 /// <summary>
-/// A snapshot of a spot node's status and peer/subject counts.
+///     A snapshot of a spot node's status and peer/subject counts.
 /// </summary>
 /// <param name="ChannelName">The logical channel name.</param>
 /// <param name="LocalEndpoint">The node's local transport endpoint.</param>
@@ -189,7 +203,7 @@ public sealed record SpotNodeStatus(
     ulong LastChangedMs);
 
 /// <summary>
-/// One peer of a spot node and its connection details.
+///     One peer of a spot node and its connection details.
 /// </summary>
 /// <param name="ChannelName">The logical channel name.</param>
 /// <param name="LocalEndpoint">The node's local transport endpoint.</param>
@@ -212,7 +226,7 @@ public sealed record SpotNodePeerEntry(
     ulong LastChangedMs);
 
 /// <summary>
-/// One subject (topic or pattern) served by a spot node.
+///     One subject (topic or pattern) served by a spot node.
 /// </summary>
 /// <param name="Role">The subject's pub/sub role.</param>
 /// <param name="Subject">The subject topic or pattern.</param>
@@ -229,88 +243,100 @@ public sealed record SpotNodeSubjectEntry(
     ulong LastChangedMs);
 
 /// <summary>
-/// Which messaging patterns a spot node enables.
+///     Which messaging patterns a spot node enables.
 /// </summary>
 public enum SpotNodeMode
 {
     /// <summary>
-    /// Publish/subscribe only.
+    ///     Publish/subscribe only.
     /// </summary>
     PubSub = 1,
+
     /// <summary>
-    /// Routed request/reply only.
+    ///     Routed request/reply only.
     /// </summary>
     Routed = 2,
+
     /// <summary>
-    /// Both pub/sub and routed.
+    ///     Both pub/sub and routed.
     /// </summary>
     All = 3
 }
 
 /// <summary>
-/// Which component owns a spot node socket.
+///     Which component owns a spot node socket.
 /// </summary>
 public enum SpotNodeSocketOwner
 {
     /// <summary>
-    /// Any owner (no filter).
+    ///     Any owner (no filter).
     /// </summary>
     Any = 0,
+
     /// <summary>
-    /// Owned by the node itself.
+    ///     Owned by the node itself.
     /// </summary>
     Node = 1,
+
     /// <summary>
-    /// Owned by a spot.
+    ///     Owned by a spot.
     /// </summary>
     Spot = 2
 }
 
 /// <summary>
-/// The socket type of a spot node socket; mirrors <see cref="SocketType"/>.
+///     The socket type of a spot node socket; mirrors <see cref="SocketType" />.
 /// </summary>
 public enum SpotNodeSocketType
 {
     /// <summary>
-    /// Any socket type (no filter).
+    ///     Any socket type (no filter).
     /// </summary>
     Any = 0,
+
     /// <summary>
-    /// A PAIR socket.
+    ///     A PAIR socket.
     /// </summary>
     Pair = 0x1001,
+
     /// <summary>
-    /// A PUB socket.
+    ///     A PUB socket.
     /// </summary>
     Pub = 0x1002,
+
     /// <summary>
-    /// A SUB socket.
+    ///     A SUB socket.
     /// </summary>
     Sub = 0x1003,
+
     /// <summary>
-    /// A DEALER socket.
+    ///     A DEALER socket.
     /// </summary>
     Dealer = 0x1004,
+
     /// <summary>
-    /// A ROUTER socket.
+    ///     A ROUTER socket.
     /// </summary>
     Router = 0x1005,
+
     /// <summary>
-    /// An XPUB socket.
+    ///     An XPUB socket.
     /// </summary>
     XPub = 0x1006,
+
     /// <summary>
-    /// An XSUB socket.
+    ///     An XSUB socket.
     /// </summary>
     XSub = 0x1007,
+
     /// <summary>
-    /// A STREAM socket.
+    ///     A STREAM socket.
     /// </summary>
     Stream = 0x1008
 }
 
 /// <summary>
-/// Filter for a spot node socket query; null fields match anything.
+///     Filter for a spot node socket query; null fields match anything.
 /// </summary>
 /// <param name="Owner">Restrict to sockets owned by this component.</param>
 /// <param name="SocketType">Restrict to this socket type.</param>
@@ -321,7 +347,7 @@ public sealed record SpotNodeSocketFilter(
     string? SocketName = null);
 
 /// <summary>
-/// One socket owned within a spot node and its monitored status.
+///     One socket owned within a spot node and its monitored status.
 /// </summary>
 /// <param name="Owner">Which component owns the socket.</param>
 /// <param name="OwnerId">The identifier of the owning component.</param>
@@ -340,7 +366,7 @@ public sealed record SpotNodeSocketEntry(
     MonitorStatus MonitorStatus);
 
 /// <summary>
-/// One spot hosted on a spot node and its actor counts.
+///     One spot hosted on a spot node and its actor counts.
 /// </summary>
 /// <param name="SpotRid">The spot's routing id, when assigned.</param>
 /// <param name="SpotKind">The kind of spot.</param>
@@ -349,12 +375,17 @@ public sealed record SpotNodeSocketEntry(
 /// <param name="PendingActorJoinCount">The number of pending actor joins.</param>
 /// <param name="RouteSynced">Whether the spot's route is synced across peers.</param>
 /// <param name="LastChangedMs">When the spot last changed, in milliseconds.</param>
-public sealed record SpotNodeSpotEntry(RoutingId? SpotRid, SpotKind SpotKind,
-    bool DispatchHandlerAttached, uint JoinedActorCount,
-    uint PendingActorJoinCount, bool RouteSynced, ulong LastChangedMs);
+public sealed record SpotNodeSpotEntry(
+    RoutingId? SpotRid,
+    SpotKind SpotKind,
+    bool DispatchHandlerAttached,
+    uint JoinedActorCount,
+    uint PendingActorJoinCount,
+    bool RouteSynced,
+    ulong LastChangedMs);
 
 /// <summary>
-/// One actor hosted on a spot node and its current placement.
+///     One actor hosted on a spot node and its current placement.
 /// </summary>
 /// <param name="Actor">The actor.</param>
 /// <param name="CurrentSpotRid">The routing id of the spot the actor is currently on.</param>
@@ -362,6 +393,10 @@ public sealed record SpotNodeSpotEntry(RoutingId? SpotRid, SpotKind SpotKind,
 /// <param name="RouteSynced">Whether the actor's route is synced across peers.</param>
 /// <param name="PendingMessageCount">The number of messages queued for the actor.</param>
 /// <param name="LastChangedMs">When the actor last changed, in milliseconds.</param>
-public sealed record SpotNodeActorEntry(ActorRef Actor, RoutingId CurrentSpotRid,
-    SpotKind CurrentSpotKind, bool RouteSynced, uint PendingMessageCount,
+public sealed record SpotNodeActorEntry(
+    ActorRef Actor,
+    RoutingId CurrentSpotRid,
+    SpotKind CurrentSpotKind,
+    bool RouteSynced,
+    uint PendingMessageCount,
     ulong LastChangedMs);

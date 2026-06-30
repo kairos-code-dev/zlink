@@ -1,23 +1,5 @@
-using Microsoft.AspNetCore.Builder;
-using Microsoft.AspNetCore.Http;
-using Microsoft.Extensions.DependencyInjection;
-using Microsoft.Extensions.Hosting;
-using Microsoft.Extensions.Logging;
-using Systems.Zlink;
-using YieldDispatch.Shared;
-using Zlink.Framework;
-using Zlink.Framework.AspNetCore;
-using Zlink.Framework.Contracts.Actors;
-using Zlink.Framework.Contracts.Channels;
-using Zlink.Framework.Contracts.Configuration;
-using Zlink.Framework.Contracts.Dispatch;
-using Zlink.Framework.Contracts.Errors;
-using Zlink.Framework.Contracts.Handlers;
-using Zlink.Framework.Contracts.Messaging;
-using Zlink.Framework.Contracts.Spots;
-using Zlink.Framework.Contracts.Timers;
-using YieldDispatch.Server.Play.Handlers;
 using YieldDispatch.Server.Play.Spots;
+using YieldDispatch.Shared;
 
 namespace YieldDispatch.Server.Play;
 
@@ -25,10 +7,10 @@ internal sealed record NodeOptions(string Rid);
 
 internal sealed class EvidenceStore
 {
-    private readonly object _gate = new();
     private readonly List<string> _entries = [];
-    private readonly List<TaskCompletionSource> _waiters = [];
     private readonly string? _filePath;
+    private readonly object _gate = new();
+    private readonly List<TaskCompletionSource> _waiters = [];
 
     public EvidenceStore(string rid, string? filePath)
     {
@@ -43,15 +25,9 @@ internal sealed class EvidenceStore
         lock (_gate)
         {
             _entries.Add(entry);
-            if (!string.IsNullOrWhiteSpace(_filePath))
-            {
-                File.AppendAllText(_filePath, entry + Environment.NewLine);
-            }
+            if (!string.IsNullOrWhiteSpace(_filePath)) File.AppendAllText(_filePath, entry + Environment.NewLine);
 
-            foreach (var waiter in _waiters.ToArray())
-            {
-                waiter.TrySetResult();
-            }
+            foreach (var waiter in _waiters.ToArray()) waiter.TrySetResult();
 
             _waiters.Clear();
         }
@@ -78,10 +54,7 @@ internal sealed class EvidenceStore
             lock (_gate)
             {
                 snapshot = _entries.ToArray();
-                if (predicate(snapshot))
-                {
-                    return snapshot;
-                }
+                if (predicate(snapshot)) return snapshot;
 
                 waiter = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
                 _waiters.Add(waiter);
@@ -106,7 +79,7 @@ internal sealed class EvidenceStore
         }
     }
 
-    void RemoveWaiter(TaskCompletionSource waiter)
+    private void RemoveWaiter(TaskCompletionSource waiter)
     {
         lock (_gate)
         {
@@ -151,15 +124,9 @@ internal static class Cli
         var values = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase);
         for (var i = 0; i < args.Length; i++)
         {
-            if (!args[i].StartsWith("--", StringComparison.Ordinal))
-            {
-                continue;
-            }
+            if (!args[i].StartsWith("--", StringComparison.Ordinal)) continue;
 
-            if (i + 1 >= args.Length)
-            {
-                throw new ArgumentException($"Missing value for {args[i]}.");
-            }
+            if (i + 1 >= args.Length) throw new ArgumentException($"Missing value for {args[i]}.");
 
             values[args[i][2..]] = args[++i];
         }
@@ -168,9 +135,11 @@ internal static class Cli
     }
 
     public static string Required(Dictionary<string, string> values, string key)
-        => values.TryGetValue(key, out var value) && !string.IsNullOrWhiteSpace(value)
+    {
+        return values.TryGetValue(key, out var value) && !string.IsNullOrWhiteSpace(value)
             ? value
             : throw new ArgumentException($"--{key} is required.");
+    }
 }
 
 internal static class YieldReplies

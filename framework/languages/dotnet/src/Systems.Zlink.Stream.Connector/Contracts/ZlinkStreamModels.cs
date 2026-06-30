@@ -52,9 +52,15 @@ public readonly struct ZlinkStreamResult
 
     public ZlinkStreamError? Error { get; }
 
-    public static ZlinkStreamResult Success() => new(null);
+    public static ZlinkStreamResult Success()
+    {
+        return new ZlinkStreamResult(null);
+    }
 
-    public static ZlinkStreamResult Failure(ZlinkStreamError error) => new(error);
+    public static ZlinkStreamResult Failure(ZlinkStreamError error)
+    {
+        return new ZlinkStreamResult(error);
+    }
 }
 
 public readonly struct ZlinkStreamResult<T>
@@ -71,7 +77,13 @@ public readonly struct ZlinkStreamResult<T>
 
     public ZlinkStreamError? Error { get; }
 
-    public static ZlinkStreamResult<T> Success(T value) => new(value, null);
+    public static ZlinkStreamResult<T> Success(T value)
+    {
+        return new ZlinkStreamResult<T>(value, null);
+    }
 
-    public static ZlinkStreamResult<T> Failure(ZlinkStreamError error) => new(default, error);
+    public static ZlinkStreamResult<T> Failure(ZlinkStreamError error)
+    {
+        return new ZlinkStreamResult<T>(default, error);
+    }
 }

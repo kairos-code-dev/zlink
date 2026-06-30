@@ -68,33 +68,23 @@ internal static class ZLinkRegistryRegistrationValidator
         ArgumentNullException.ThrowIfNull(registration);
 
         if (string.IsNullOrWhiteSpace(registration.PubEndpoint))
-        {
             throw new ZLinkConfigurationException(
                 "Registry registration requires a non-empty pub endpoint.");
-        }
 
         if (string.IsNullOrWhiteSpace(registration.RouterEndpoint))
-        {
             throw new ZLinkConfigurationException(
                 "Registry registration requires a non-empty router endpoint.");
-        }
 
         if (registration.HeartbeatInterval <= TimeSpan.Zero)
-        {
             throw new ZLinkConfigurationException(
                 "Registry heartbeat interval must be greater than zero.");
-        }
 
         if (registration.HeartbeatTimeout <= TimeSpan.Zero)
-        {
             throw new ZLinkConfigurationException(
                 "Registry heartbeat timeout must be greater than zero.");
-        }
 
         if (registration.BroadcastInterval <= TimeSpan.Zero)
-        {
             throw new ZLinkConfigurationException(
                 "Registry broadcast interval must be greater than zero.");
-        }
     }
 }

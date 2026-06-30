@@ -1,16 +1,16 @@
 ﻿<Project Sdk="Microsoft.NET.Sdk">
-  <PropertyGroup>
-    <TargetFrameworks>$(ZLinkFrameworkTargetFrameworks)</TargetFrameworks>
-    <AssemblyName>Zlink.Framework.Codecs.MessagePack</AssemblyName>
-    <RootNamespace>Zlink.Framework.Codecs.MessagePack</RootNamespace>
-    <Description>MessagePack codec extension for the ZLink .NET framework.</Description>
-  </PropertyGroup>
+    <PropertyGroup>
+        <TargetFrameworks>$(ZLinkFrameworkTargetFrameworks)</TargetFrameworks>
+        <AssemblyName>Zlink.Framework.Codecs.MessagePack</AssemblyName>
+        <RootNamespace>Zlink.Framework.Codecs.MessagePack</RootNamespace>
+        <Description>MessagePack codec extension for the ZLink .NET framework.</Description>
+    </PropertyGroup>
 
-  <ItemGroup>
-    <PackageReference Include="MessagePack" />
-  </ItemGroup>
+    <ItemGroup>
+        <PackageReference Include="MessagePack"/>
+    </ItemGroup>
 
-  <ItemGroup>
-    <ProjectReference Include="../Zlink.Framework/Zlink.Framework.csproj" />
-  </ItemGroup>
+    <ItemGroup>
+        <ProjectReference Include="../Zlink.Framework/Zlink.Framework.csproj"/>
+    </ItemGroup>
 </Project>

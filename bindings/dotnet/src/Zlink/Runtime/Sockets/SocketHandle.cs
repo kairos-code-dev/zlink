@@ -1,14 +1,13 @@
 // SPDX-License-Identifier: MPL-2.0
 
-using System;
 using Systems.Zlink.Runtime.Native;
 
 namespace Systems.Zlink.Runtime.Sockets.Internal;
 
 internal sealed class SocketHandle : IDisposable
 {
-    private IntPtr _handle;
     private readonly bool _own;
+    private IntPtr _handle;
 
     public SocketHandle(Context context, SocketType type)
     {
@@ -31,13 +30,6 @@ internal sealed class SocketHandle : IDisposable
         _own = own;
     }
 
-    public IntPtr DangerousGetHandle()
-    {
-        if (_handle == IntPtr.Zero)
-            throw new ObjectDisposedException(nameof(SocketHandle));
-        return _handle;
-    }
-
     public void Dispose()
     {
         if (_handle == IntPtr.Zero)
@@ -45,26 +37,35 @@ internal sealed class SocketHandle : IDisposable
 
         if (_own)
         {
-            int lastErrno = 0;
+            var lastErrno = 0;
             while (true)
             {
-                int rc = NativeMethods.zlink_close(_handle);
+                var rc = NativeMethods.zlink_close(_handle);
                 if (rc == 0)
                 {
                     _handle = IntPtr.Zero;
                     GC.SuppressFinalize(this);
                     return;
                 }
-                int errno = NativeMethods.zlink_errno();
+
+                var errno = NativeMethods.zlink_errno();
                 lastErrno = errno;
-                ErrorCode code = ZlinkException.MapErrorCode(errno);
+                var code = ZlinkException.MapErrorCode(errno);
                 if (code == ErrorCode.EIntr || errno == 4)
                     continue;
                 throw ZlinkException.CreateCloseException(lastErrno);
             }
         }
+
         _handle = IntPtr.Zero;
         GC.SuppressFinalize(this);
+    }
+
+    public IntPtr DangerousGetHandle()
+    {
+        if (_handle == IntPtr.Zero)
+            throw new ObjectDisposedException(nameof(SocketHandle));
+        return _handle;
     }
 
     public void ReleaseWithoutClose()

@@ -1,19 +1,10 @@
-using System.Buffers.Binary;
 using System.Net;
 using System.Net.Security;
 using System.Net.Sockets;
 using System.Net.WebSockets;
-using System.Security.Cryptography;
-using System.Security.Cryptography.X509Certificates;
 using System.Text;
-using System.Text.Json;
-using Systems.Zlink.Stream.Connector;
 using Systems.Zlink.Stream.Connector.Contracts;
-using Systems.Zlink.Stream.Connector.Contracts.Calls;
-using Systems.Zlink.Stream.Connector.Runtime;
-using Systems.Zlink.Stream.Connector.Runtime.Protocol.Framing;
 using Xunit;
-
 
 public sealed partial class StreamConnectorTests
 {
@@ -125,7 +116,7 @@ public sealed partial class StreamConnectorTests
         {
             using var tcp = await listener.AcceptTcpClientAsync();
             await using var stream = tcp.GetStream();
-            await WritePrefixAsync(stream, headerLength: 0, payloadLength: 2);
+            await WritePrefixAsync(stream, 0, 2);
             await Task.Delay(TimeSpan.FromMilliseconds(100));
         });
 
@@ -264,7 +255,7 @@ public sealed partial class StreamConnectorTests
             using var tcp = await listener.AcceptTcpClientAsync();
             await using var ssl = new SslStream(tcp.GetStream(), false);
             await ssl.AuthenticateAsServerAsync(certificate);
-            await WritePrefixAsync(ssl, headerLength: 0, payloadLength: 2);
+            await WritePrefixAsync(ssl, 0, 2);
             await Task.Delay(TimeSpan.FromMilliseconds(100));
         });
 
@@ -283,5 +274,4 @@ public sealed partial class StreamConnectorTests
             TimeSpan.FromSeconds(5));
         await server;
     }
-
 }

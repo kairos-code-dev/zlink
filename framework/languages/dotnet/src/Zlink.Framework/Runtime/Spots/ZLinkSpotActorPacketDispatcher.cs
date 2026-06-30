@@ -1,7 +1,4 @@
-
 using Microsoft.Extensions.Logging;
-using Zlink.Framework.Runtime.Streams;
-using Zlink.Framework.Runtime.Diagnostics;
 
 namespace Zlink.Framework.Runtime.Spots;
 
@@ -21,15 +18,13 @@ internal sealed class ZLinkSpotActorPacketDispatcher(
         using var dispatch = runtimeState.EnterDispatch(header);
 
         if (dispatchErrors.Flow.Enabled(ZLinkMessageFlowOutcome.Received))
-        {
             dispatchErrors.Flow.Trace(new ZLinkMessageFlowEvent(
                 ZLinkMessageFlowOutcome.Received,
                 ZLinkDispatchErrorSurface.SpotActor,
                 ZLinkDispatchMessageKind.ActorSend,
-                PacketName: header.Name,
+                header.Name,
                 ActorId: actor.ActorId,
                 CorrelationId: header.CorrelationId ?? header.RequestSeq?.ToString()));
-        }
 
         if (TryResolveActorPacketDescriptor(actor.GetType(), header, out var descriptor)
             && descriptor is not null)
@@ -41,15 +36,13 @@ internal sealed class ZLinkSpotActorPacketDispatcher(
                     .ConfigureAwait(false);
 
                 if (dispatchErrors.Flow.Enabled(ZLinkMessageFlowOutcome.Dispatched))
-                {
                     dispatchErrors.Flow.Trace(new ZLinkMessageFlowEvent(
                         ZLinkMessageFlowOutcome.Dispatched,
                         ZLinkDispatchErrorSurface.SpotActor,
                         ZLinkDispatchMessageKind.ActorSend,
-                        PacketName: header.Name,
+                        header.Name,
                         ActorId: actor.ActorId,
                         CorrelationId: header.CorrelationId ?? header.RequestSeq?.ToString()));
-                }
             }
             catch (Exception ex)
             {
@@ -73,6 +66,7 @@ internal sealed class ZLinkSpotActorPacketDispatcher(
                     CorrelationId: header.CorrelationId ?? header.RequestSeq?.ToString(),
                     Exception: ex));
             }
+
             return;
         }
 
@@ -105,19 +99,16 @@ internal sealed class ZLinkSpotActorPacketDispatcher(
         using var dispatch = runtimeState.EnterDispatch(header);
 
         if (dispatchErrors.Flow.Enabled(ZLinkMessageFlowOutcome.Received))
-        {
             dispatchErrors.Flow.Trace(new ZLinkMessageFlowEvent(
                 ZLinkMessageFlowOutcome.Received,
                 ZLinkDispatchErrorSurface.SpotActor,
                 ZLinkDispatchMessageKind.ActorRequest,
-                PacketName: header.Name,
+                header.Name,
                 ActorId: actor.ActorId,
                 CorrelationId: header.CorrelationId ?? header.RequestSeq?.ToString()));
-        }
 
         if (TryResolveActorPacketDescriptor(actor.GetType(), header, out var descriptor)
             && descriptor is not null)
-        {
             try
             {
                 var reply = await handlerInvoker()
@@ -125,15 +116,13 @@ internal sealed class ZLinkSpotActorPacketDispatcher(
                     .ConfigureAwait(false);
 
                 if (dispatchErrors.Flow.Enabled(ZLinkMessageFlowOutcome.Replied))
-                {
                     dispatchErrors.Flow.Trace(new ZLinkMessageFlowEvent(
                         ZLinkMessageFlowOutcome.Replied,
                         ZLinkDispatchErrorSurface.SpotActor,
                         ZLinkDispatchMessageKind.ActorRequest,
-                        PacketName: header.Name,
+                        header.Name,
                         ActorId: actor.ActorId,
                         CorrelationId: header.CorrelationId ?? header.RequestSeq?.ToString()));
-                }
 
                 return reply;
             }
@@ -160,7 +149,6 @@ internal sealed class ZLinkSpotActorPacketDispatcher(
                     Exception: ex));
                 throw;
             }
-        }
 
         ZLinkMessageFlowLogger.HandlerMissing(
             logger,
@@ -193,6 +181,6 @@ internal sealed class ZLinkSpotActorPacketDispatcher(
     {
         descriptor = null;
         return actorHandlers() is { } handlers
-            && handlers.TryResolve(actorType, header, out descriptor);
+               && handlers.TryResolve(actorType, header, out descriptor);
     }
 }

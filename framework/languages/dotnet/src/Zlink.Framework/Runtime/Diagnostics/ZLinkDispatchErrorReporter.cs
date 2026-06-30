@@ -21,22 +21,20 @@ internal sealed class ZLinkDispatchErrorReporter(
         Interlocked.Increment(ref _reportedCount);
 
         if (Flow.Enabled(ZLinkMessageFlowOutcome.Error))
-        {
             Flow.Trace(new ZLinkMessageFlowEvent(
                 ZLinkMessageFlowOutcome.Error,
                 error.Surface,
                 error.MessageKind,
-                PacketName: error.PacketName,
-                ChannelName: error.ChannelName,
-                Topic: error.Topic,
-                CorrelationId: error.CorrelationId,
-                SourceRid: error.SourceRid,
+                error.PacketName,
+                error.ChannelName,
+                error.Topic,
+                error.CorrelationId,
+                error.SourceRid,
                 SpotRid: error.SpotRid,
                 ActorId: error.ActorId,
                 ErrorReason: error.Reason,
                 ErrorAction: error.Action,
                 ErrorType: error.Exception?.GetType().Name,
                 ErrorMessage: error.Exception?.Message));
-        }
     }
 }

@@ -63,7 +63,7 @@ public sealed record JoinGameReq(string RoomId);
 
 public sealed record JoinGameRes(GameState State);
 
-public sealed record ObserveMilestoneReq();
+public sealed record ObserveMilestoneReq;
 
 public sealed record ObserveMilestoneRes(bool Subscribed);
 

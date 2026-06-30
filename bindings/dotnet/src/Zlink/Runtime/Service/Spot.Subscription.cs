@@ -1,9 +1,6 @@
 // SPDX-License-Identifier: MPL-2.0
 
-using System;
 using System.Buffers;
-using System.Collections.Generic;
-using System.Text;
 using Systems.Zlink.Runtime.Native;
 using Systems.Zlink.Runtime.Sockets.Internal;
 
@@ -11,16 +8,16 @@ namespace Systems.Zlink;
 
 internal sealed partial class Spot
 {
-    private unsafe TopicMessage SubscribeCore(int flags)
+    private TopicMessage SubscribeCore(int flags)
     {
-        byte[] topicBuffer = ArrayPool<byte>.Shared.Rent(TopicBufferSize);
+        var topicBuffer = ArrayPool<byte>.Shared.Rent(TopicBufferSize);
         try
         {
             if (!ReceiveSpotSubscribedParts(flags, topicBuffer,
-                    out RoutingIdSnapshot routingId, out int topicLength,
-                    out Message? singlePart, out MultipartMessageCollection? parts))
+                    out var routingId, out var topicLength,
+                    out var singlePart, out var parts))
                 throw ZlinkException.CreateRecvException((int)ErrorCode.EAgain);
-            string topic = DecodeBuffer(topicBuffer, (nuint)topicLength);
+            var topic = DecodeBuffer(topicBuffer, (nuint)topicLength);
             if (singlePart != null)
                 return new TopicMessage(routingId, topic, singlePart);
             if (parts == null || parts.Count == 0)
@@ -33,13 +30,13 @@ internal sealed partial class Spot
         }
     }
 
-    private unsafe bool SubscribeInto(TopicMessage result, int flags)
+    private bool SubscribeInto(TopicMessage result, int flags)
     {
-        byte[] topicBuffer = result.GetWritableTopicBuffer(TopicBufferSize);
-        bool received = ReceiveSpotSubscribedParts(flags,
-            topicBuffer, out RoutingIdSnapshot routingId, out int topicLength,
-            out Message? singlePart, out MultipartMessageCollection? parts,
-            allowNoData: (flags & 1) != 0);
+        var topicBuffer = result.GetWritableTopicBuffer(TopicBufferSize);
+        var received = ReceiveSpotSubscribedParts(flags,
+            topicBuffer, out var routingId, out var topicLength,
+            out var singlePart, out var parts,
+            (flags & 1) != 0);
         if (!received)
             return false;
         if (singlePart != null)
@@ -48,6 +45,7 @@ internal sealed partial class Spot
                 topicLength, singlePart);
             return true;
         }
+
         if (parts == null || parts.Count == 0)
             throw ZlinkException.CreateRecvException((int)ErrorCode.EAgain);
         result.PopulateFromWritableTopicBuffer(routingId, topicLength, parts);
@@ -60,29 +58,27 @@ internal sealed partial class Spot
         topicLength = 0;
         hasMore = false;
         ZlinkMsg part = default;
-        int initRc = NativeMethods.zlink_msg_init(ref part);
+        var initRc = NativeMethods.zlink_msg_init(ref part);
         if (initRc != 0)
             throw ZlinkException.CreateRecvException(
                 NativeMethods.zlink_errno());
 
-        bool initialized = true;
+        var initialized = true;
         try
         {
             fixed (byte* topicPtr = topicBuffer)
             {
-                int rc = NativeMethods.zlink_spot_subscribe_part_buffer(
-                    _handle, out _, topicPtr, (nuint)topicBuffer.Length,
-                    out nuint nativeTopicLength, ref part,
-                    out int nativeHasMore, flags);
+                var rc = NativeMethods.zlink_spot_subscribe_part_buffer(
+                    Handle, out _, topicPtr, (nuint)topicBuffer.Length,
+                    out var nativeTopicLength, ref part,
+                    out var nativeHasMore, flags);
                 if (rc != 0)
                 {
-                    int errno = NativeMethods.zlink_errno();
+                    var errno = NativeMethods.zlink_errno();
                     if ((flags & DontWaitFlag) != 0
                         && ZlinkException.MapErrorCode(errno)
                             is ErrorCode.EAgain or ErrorCode.EBusy)
-                    {
                         return false;
-                    }
                     throw ZlinkException.CreateRecvException(errno);
                 }
 
@@ -100,25 +96,23 @@ internal sealed partial class Spot
         }
     }
 
-    private unsafe SubscriptionEvent ReceiveSubscriptionEventCore(int flags)
+    private SubscriptionEvent ReceiveSubscriptionEventCore(int flags)
     {
-        byte[] topicBuffer = ArrayPool<byte>.Shared.Rent(TopicBufferSize);
+        var topicBuffer = ArrayPool<byte>.Shared.Rent(TopicBufferSize);
         try
         {
-            int rc = NativeMethods.zlink_spot_recv_subscription_event(_handle,
-                out IntPtr sourceRoutingId, out int subscribedInt, topicBuffer,
-                (nuint)topicBuffer.Length, out nuint topicLength, flags);
+            var rc = NativeMethods.zlink_spot_recv_subscription_event(Handle,
+                out var sourceRoutingId, out var subscribedInt, topicBuffer,
+                (nuint)topicBuffer.Length, out var topicLength, flags);
             if (rc != 0)
-            {
                 throw ZlinkException.CreateRecvException(
                     NativeMethods.zlink_errno());
-            }
 
-            byte[]? routingIdBytes = CopyRoutingIdBytes(sourceRoutingId);
-            RoutingId? routingId = routingIdBytes == null
+            var routingIdBytes = CopyRoutingIdBytes(sourceRoutingId);
+            var routingId = routingIdBytes == null
                 ? null
                 : RoutingId.FromOwnedOptionalBytes(routingIdBytes);
-            string topic = DecodeBuffer(topicBuffer, topicLength);
+            var topic = DecodeBuffer(topicBuffer, topicLength);
             return new SubscriptionEvent(routingId, topic, subscribedInt != 0);
         }
         finally
@@ -127,29 +121,29 @@ internal sealed partial class Spot
         }
     }
 
-    private unsafe bool ReceiveSubscriptionEventInto(SubscriptionEvent result,
+    private bool ReceiveSubscriptionEventInto(SubscriptionEvent result,
         int flags)
     {
-        byte[] topicBuffer = ArrayPool<byte>.Shared.Rent(TopicBufferSize);
+        var topicBuffer = ArrayPool<byte>.Shared.Rent(TopicBufferSize);
         try
         {
-            int rc = NativeMethods.zlink_spot_recv_subscription_event(_handle,
-                out IntPtr sourceRoutingId, out int subscribedInt, topicBuffer,
-                (nuint)topicBuffer.Length, out nuint topicLength, flags);
+            var rc = NativeMethods.zlink_spot_recv_subscription_event(Handle,
+                out var sourceRoutingId, out var subscribedInt, topicBuffer,
+                (nuint)topicBuffer.Length, out var topicLength, flags);
             if (rc != 0)
             {
-                int errno = NativeMethods.zlink_errno();
+                var errno = NativeMethods.zlink_errno();
                 if ((flags & 1) != 0
                     && ZlinkException.MapErrorCode(errno) == ErrorCode.EAgain)
                     return false;
                 throw ZlinkException.CreateRecvException(errno);
             }
 
-            byte[]? routingIdBytes = CopyRoutingIdBytes(sourceRoutingId);
-            RoutingId? routingId = routingIdBytes == null
+            var routingIdBytes = CopyRoutingIdBytes(sourceRoutingId);
+            var routingId = routingIdBytes == null
                 ? null
                 : RoutingId.FromOwnedOptionalBytes(routingIdBytes);
-            string topic = DecodeBuffer(topicBuffer, topicLength);
+            var topic = DecodeBuffer(topicBuffer, topicLength);
             result.Populate(routingId, topic, subscribedInt != 0);
             return true;
         }
@@ -159,7 +153,7 @@ internal sealed partial class Spot
         }
     }
 
-    private unsafe SendResult PublishNoWaitSingleCore(string topic,
+    private SendResult PublishNoWaitSingleCore(string topic,
         Message message)
     {
         return PublishNoWaitSingleCore(GetPublishTopicUtf8(topic), message);
@@ -174,13 +168,13 @@ internal sealed partial class Spot
         // not add benchmark-only caches that depend on repeated topic or payload
         // values.
         ZlinkMsg nativePart = default;
-        bool submitted = false;
+        var submitted = false;
         try
         {
             message.MoveTo(ref nativePart);
             fixed (byte* topicPtr = topicUtf8)
             {
-                int rc = NativeMethods.zlink_spot_publish_part_utf8(_handle,
+                var rc = NativeMethods.zlink_spot_publish_part_utf8(Handle,
                     topicPtr, ref nativePart, DontWaitFlag,
                     NativeMethods.ZlinkPartFlag.Final);
                 submitted = true;
@@ -188,7 +182,7 @@ internal sealed partial class Spot
                     return SendResult.Sent;
             }
 
-            SendResult? sendResult = SendResultErrno.TryMapCurrent();
+            var sendResult = SendResultErrno.TryMapCurrent();
             if (sendResult == null)
                 throw ZlinkException.CreateSubmitException(
                     NativeMethods.zlink_errno());
@@ -201,6 +195,4 @@ internal sealed partial class Spot
             throw;
         }
     }
-
-
 }

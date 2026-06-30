@@ -1,5 +1,3 @@
-using Zlink.Framework.Runtime.Backend.Contracts;
-
 namespace Zlink.Framework.Runtime.Registry;
 
 internal sealed class ZLinkRegistryQuery(ZLinkRegistryRuntime runtime) : IZLinkRegistryQuery
@@ -42,8 +40,8 @@ internal sealed class ZLinkRegistryQuery(ZLinkRegistryRuntime runtime) : IZLinkR
 
 internal sealed class ZLinkRegistryQueryClientService : IZLinkRegistryQueryClient, IAsyncDisposable
 {
-    private readonly IZLinkBackendContext _context;
     private readonly IZLinkBackendRegistryQueryClient _client;
+    private readonly IZLinkBackendContext _context;
 
     public ZLinkRegistryQueryClientService(
         IZLinkBackendAdapterFactory backendAdapterFactory,
@@ -56,16 +54,16 @@ internal sealed class ZLinkRegistryQueryClientService : IZLinkRegistryQueryClien
         _client.Connect(registration.Endpoint!);
     }
 
+    public async ValueTask DisposeAsync()
+    {
+        await _client.DisposeAsync();
+        await _context.DisposeAsync();
+    }
+
     public ValueTask<ZLinkRegistryTopologyEntry[]> TopologyAsync(
         ZLinkRegistryTopologyFilter? filter = null,
         CancellationToken cancellationToken = default)
     {
         return ValueTask.FromResult(_client.Topology(filter).ToArray());
-    }
-
-    public async ValueTask DisposeAsync()
-    {
-        await _client.DisposeAsync();
-        await _context.DisposeAsync();
     }
 }

@@ -1,7 +1,7 @@
-using SupportChat.Server.Session.Sessions;
-using SupportChat.Server.Configuration;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Hosting;
+using SupportChat.Server.Configuration;
+using SupportChat.Server.Session.Sessions;
 using Zlink.Framework.AspNetCore;
 using Zlink.Framework.Contracts.Dispatch;
 
@@ -27,12 +27,10 @@ public static class SessionServerHostFactory
             {
                 var channel = options.AddClientServerChannel(SampleNames.ApiChannel);
                 channel.EnableClient();
-
             }
             {
                 var channel = options.AddClientServerChannel(SampleNames.SupportChannel);
                 channel.EnableClient();
-
             }
             {
                 var mesh = options.AddSpotMesh(SampleNames.SupportSpotDiscovery);
@@ -41,21 +39,16 @@ public static class SessionServerHostFactory
                     {
                         var router = node.EnableRouter(session.RouterEndpoint);
                         router.SetRoutingId(session.RoutingId);
-
                     }
                     {
                         var pubsub = node.EnablePubSub(session.PubEndpoint);
-
                     }
-
                 }
-
             }
             {
                 var stream = options.AddStreamNode(SampleNames.StreamNode);
                 stream.Bind(session.StreamEndpoint);
                 stream.RegisterSession<SupportChatSession>();
-
             }
         });
 

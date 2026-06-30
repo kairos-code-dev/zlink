@@ -1,10 +1,10 @@
-using Bingo.Server.Play.Infrastructure.ZLink.Actors;
-using Bingo.Server.Play.Infrastructure.ZLink.Spots.EntrySpot;
-using Bingo.Server.Play.Infrastructure.Redis;
-using Bingo.Server.Play.Infrastructure.ZLink.Spots.BingoRoomSpot.Notifications;
-using Bingo.Server.Play.Application.RoomAllocation;
-using Bingo.Server.Play.Infrastructure.ZLink.Spots.BingoRoomSpot;
 using Bingo.Server.Configuration;
+using Bingo.Server.Play.Application.RoomAllocation;
+using Bingo.Server.Play.Infrastructure.Redis;
+using Bingo.Server.Play.Infrastructure.ZLink.Actors;
+using Bingo.Server.Play.Infrastructure.ZLink.Spots.BingoRoomSpot;
+using Bingo.Server.Play.Infrastructure.ZLink.Spots.BingoRoomSpot.Notifications;
+using Bingo.Server.Play.Infrastructure.ZLink.Spots.EntrySpot;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Hosting;
 using StackExchange.Redis;
@@ -21,7 +21,8 @@ public static class PlayServerHostFactory
         var builder = Host.CreateApplicationBuilder();
         builder.Services.AddSingleton(topology);
         builder.Services.AddSingleton(node);
-        builder.Services.AddSingleton<IConnectionMultiplexer>(_ => ConnectionMultiplexer.Connect(topology.RedisEndpoint));
+        builder.Services.AddSingleton<IConnectionMultiplexer>(_ =>
+            ConnectionMultiplexer.Connect(topology.RedisEndpoint));
         builder.Services.AddSingleton<IBingoMatchQueue, RedisBingoMatchQueue>();
         builder.Services.AddSingleton<BingoRoomAllocator>();
         builder.Services.AddSingleton<BingoRoomEventMapper>();

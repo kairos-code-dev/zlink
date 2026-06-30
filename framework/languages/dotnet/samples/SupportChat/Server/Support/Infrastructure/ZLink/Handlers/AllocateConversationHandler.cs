@@ -1,5 +1,5 @@
-using SupportChat.Server.Support.Application.ConversationAssignment;
 using SupportChat.Server.Configuration;
+using SupportChat.Server.Support.Application.ConversationAssignment;
 using SupportChat.Shared.Contracts;
 using Zlink.Framework.Contracts.Handlers;
 
@@ -15,12 +15,13 @@ internal sealed class AllocateConversationHandler(SupportConversationAllocator a
         CancellationToken cancellationToken)
     {
         _ = context;
-        Console.Error.WriteLine($"support allocate: request customer={request.CustomerActorId} subject={request.Subject}");
+        Console.Error.WriteLine(
+            $"support allocate: request customer={request.CustomerActorId} subject={request.Subject}");
         var conversationId = await allocator.AllocateAsync(
-                request.CustomerActorId,
-                request.CustomerDisplayName,
-                request.Subject,
-                cancellationToken);
+            request.CustomerActorId,
+            request.CustomerDisplayName,
+            request.Subject,
+            cancellationToken);
         Console.Error.WriteLine($"support allocate: created conversation={conversationId}");
         return new AllocateConversationRes(
             conversationId,

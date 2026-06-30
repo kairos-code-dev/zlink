@@ -1,4 +1,5 @@
 using Bingo.Server.Configuration;
+using Bingo.Server.Session.Sessions;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Hosting;
 using Zlink.Framework.AspNetCore;
@@ -36,7 +37,7 @@ public static class SessionServerHostFactory
                 .SetRoutingId(session.RoutingId);
             options.AddStreamNode(SampleNames.StreamNode)
                 .Bind(session.StreamEndpoint)
-                .RegisterSession<Sessions.BingoSession>();
+                .RegisterSession<BingoSession>();
         });
 
         return builder.Build();

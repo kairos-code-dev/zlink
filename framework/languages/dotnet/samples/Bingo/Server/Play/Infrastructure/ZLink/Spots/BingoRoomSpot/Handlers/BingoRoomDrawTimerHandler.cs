@@ -13,16 +13,10 @@ internal sealed class BingoRoomDrawTimerHandler : IZLinkSpotTimerHandler<BingoRo
         CancellationToken cancellationToken)
     {
         _ = tick;
-        if (!spot.IsReadyToDraw)
-        {
-            return;
-        }
+        if (!spot.IsReadyToDraw) return;
 
         var change = spot.DrawNextNumber();
         await spot.PublishAsync(change, cancellationToken);
-        if (change.ShouldStopDrawTimer)
-        {
-            await spot.LeaveFinishedActorsAsync(cancellationToken);
-        }
+        if (change.ShouldStopDrawTimer) await spot.LeaveFinishedActorsAsync(cancellationToken);
     }
 }

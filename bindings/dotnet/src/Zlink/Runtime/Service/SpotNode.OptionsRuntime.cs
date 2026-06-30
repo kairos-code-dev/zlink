@@ -1,13 +1,6 @@
 // SPDX-License-Identifier: MPL-2.0
 
-using System;
-using System.Collections.Generic;
-using System.Runtime.InteropServices;
-using System.Text;
-using System.Threading;
-using System.Threading.Tasks;
 using Systems.Zlink.Runtime.Native;
-using Systems.Zlink.Runtime.Sockets.Internal;
 
 namespace Systems.Zlink;
 
@@ -75,23 +68,23 @@ internal sealed partial class SpotNode : ISpotNode
         EnsureNotDisposed();
         unsafe
         {
-            int local = value;
-            int code = (int)option.Option;
-            int rc = role switch
+            var local = value;
+            var code = (int)option.Option;
+            var rc = role switch
             {
                 SpotNodeSocketRole.Node => NativeMethods.zlink_set_option(
-                    _handle, code, new IntPtr(&local),
-                    (nuint)sizeof(int)),
+                    Handle, code, new IntPtr(&local),
+                    sizeof(int)),
                 SpotNodeSocketRole.Pub => (code & 0xFF00) == 0x3300
-                    ? NativeMethods.zlink_set_pub_option(_handle, code,
-                        new IntPtr(&local), (nuint)sizeof(int))
-                    : NativeMethods.zlink_set_option(_handle, code,
-                        new IntPtr(&local), (nuint)sizeof(int)),
+                    ? NativeMethods.zlink_set_pub_option(Handle, code,
+                        new IntPtr(&local), sizeof(int))
+                    : NativeMethods.zlink_set_option(Handle, code,
+                        new IntPtr(&local), sizeof(int)),
                 SpotNodeSocketRole.Sub => (code & 0xFF00) == 0x3400
-                    ? NativeMethods.zlink_set_sub_option(_handle, code,
-                        new IntPtr(&local), (nuint)sizeof(int))
-                    : NativeMethods.zlink_set_option(_handle, code,
-                        new IntPtr(&local), (nuint)sizeof(int)),
+                    ? NativeMethods.zlink_set_sub_option(Handle, code,
+                        new IntPtr(&local), sizeof(int))
+                    : NativeMethods.zlink_set_option(Handle, code,
+                        new IntPtr(&local), sizeof(int)),
                 _ => throw new ArgumentOutOfRangeException(nameof(role))
             };
             ZlinkException.ThrowConfigIfError(rc);
@@ -103,9 +96,9 @@ internal sealed partial class SpotNode : ISpotNode
         EnsureNotDisposed();
         unsafe
         {
-            int local = value;
-            int rc = NativeMethods.zlink_set_spot_node_option(_handle, option,
-                new IntPtr(&local), (nuint)sizeof(int));
+            var local = value;
+            var rc = NativeMethods.zlink_set_spot_node_option(Handle, option,
+                new IntPtr(&local), sizeof(int));
             ZlinkException.ThrowConfigIfError(rc);
         }
     }
@@ -115,9 +108,9 @@ internal sealed partial class SpotNode : ISpotNode
         EnsureNotDisposed();
         unsafe
         {
-            int value = 0;
-            nuint size = (nuint)sizeof(int);
-            int rc = NativeMethods.zlink_get_spot_node_option(_handle, option,
+            var value = 0;
+            var size = (nuint)sizeof(int);
+            var rc = NativeMethods.zlink_get_spot_node_option(Handle, option,
                 new IntPtr(&value), ref size);
             ZlinkException.ThrowConfigIfError(rc);
             return value;

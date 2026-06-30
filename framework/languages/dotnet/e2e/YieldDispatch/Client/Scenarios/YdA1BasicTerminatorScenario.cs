@@ -34,7 +34,8 @@ internal static class YdA1BasicTerminatorScenario
             "hold-started",
             "hold-resumed",
             "hold-completed",
-            "probe-started"]);
+            "probe-started"
+        ]);
         return (spotRid, requestId);
     }
 }

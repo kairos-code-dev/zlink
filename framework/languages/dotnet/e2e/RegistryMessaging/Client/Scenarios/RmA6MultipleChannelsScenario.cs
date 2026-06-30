@@ -1,6 +1,6 @@
-using Zlink.HttpClient;
-using RegistryMessaging.Shared;
 using RegistryMessaging.Client.Support;
+using RegistryMessaging.Shared;
+using Zlink.HttpClient;
 
 namespace RegistryMessaging.Client.Scenarios;
 
@@ -27,8 +27,10 @@ internal static class RmA6MultipleChannelsScenario
         var workflowReply = (await workflow.Post("/workflow/request")
             .Body(new WorkflowRequest(workflowMarker))
             .SubmitAsync<WorkflowReply>()).Body;
-        ScenarioAssert.That(workflowReply.Value == $"workflow:{workflowMarker}", "RM-A6 workflow reply value mismatch.");
-        ScenarioAssert.That(workflowReply.ProviderRid == "workflow-a", "RM-A6 workflow request should reach workflow-a.");
+        ScenarioAssert.That(workflowReply.Value == $"workflow:{workflowMarker}",
+            "RM-A6 workflow reply value mismatch.");
+        ScenarioAssert.That(workflowReply.ProviderRid == "workflow-a",
+            "RM-A6 workflow request should reach workflow-a.");
 
         var providerWaitA = providerA.Post("/evidence/wait")
             .Body(new EvidenceWaitRequest(profileMarker))
@@ -45,15 +47,15 @@ internal static class RmA6MultipleChannelsScenario
             .SubmitAsync<string[]>()).Body;
         ScenarioAssert.That(
             providerEvidence.Any(line => line.Contains("profile-request|", StringComparison.Ordinal)
-                && line.Contains(profileMarker, StringComparison.Ordinal)),
+                                         && line.Contains(profileMarker, StringComparison.Ordinal)),
             "RM-A6 profile evidence missing.");
         ScenarioAssert.That(
             workflowEvidence.Any(line => line.Contains("workflow-request|rid=workflow-a", StringComparison.Ordinal)
-                && line.Contains(workflowMarker, StringComparison.Ordinal)),
+                                         && line.Contains(workflowMarker, StringComparison.Ordinal)),
             "RM-A6 workflow evidence missing.");
         ScenarioAssert.That(
             !providerEvidence.Any(line => line.Contains("workflow-request|", StringComparison.Ordinal)
-                && line.Contains(workflowMarker, StringComparison.Ordinal)),
+                                          && line.Contains(workflowMarker, StringComparison.Ordinal)),
             "RM-A6 workflow request was recorded on profile providers.");
         Console.WriteLine("scenario RM-A6 passed");
     }

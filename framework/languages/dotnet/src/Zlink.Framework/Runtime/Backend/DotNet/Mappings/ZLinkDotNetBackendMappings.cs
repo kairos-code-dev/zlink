@@ -1,6 +1,5 @@
 namespace Zlink.Framework.Runtime.Backend.DotNet.Mappings;
 
-
 internal static class ZLinkDotNetBackendMappings
 {
     public static ZLinkRegistryStatus ToFramework(this RegistryStatus status)
@@ -67,7 +66,7 @@ internal static class ZLinkDotNetBackendMappings
         {
             SpotKind.Entry => ZLinkSpotKind.Entry,
             SpotKind.User => ZLinkSpotKind.User,
-            _ => ZLinkSpotKind.Invalid,
+            _ => ZLinkSpotKind.Invalid
         };
     }
 
@@ -114,10 +113,7 @@ internal static class ZLinkDotNetBackendMappings
 
     public static RegistryServiceSummaryFilter? ToNative(this ZLinkRegistryServiceSummaryFilter? filter)
     {
-        if (filter is null)
-        {
-            return null;
-        }
+        if (filter is null) return null;
 
         return new RegistryServiceSummaryFilter(
             filter.AutoConnectType is null ? null : (AutoConnectType?)filter.AutoConnectType,
@@ -127,10 +123,7 @@ internal static class ZLinkDotNetBackendMappings
 
     public static RegistryTopologyFilter? ToNative(this ZLinkRegistryTopologyFilter? filter)
     {
-        if (filter is null)
-        {
-            return null;
-        }
+        if (filter is null) return null;
 
         return new RegistryTopologyFilter(
             filter.AutoConnectType is null ? null : (AutoConnectType?)filter.AutoConnectType,
@@ -158,7 +151,7 @@ internal static class ZLinkDotNetBackendMappings
         if (info.Event == SpotDispatchEvent.ActorReadable && info.ActorMessages.Count > 0)
         {
             var mapped = new List<ZLinkBackendActorPart>();
-            foreach (ActorReceived message in info.ActorMessages)
+            foreach (var message in info.ActorMessages)
                 mapped.AddRange(message.ToFrameworkParts());
             actorParts = mapped;
         }
@@ -171,28 +164,26 @@ internal static class ZLinkDotNetBackendMappings
                 SpotDispatchEvent.ChannelReplyReadable => ZLinkBackendSpotDispatchEvent.ChannelReplyReadable,
                 SpotDispatchEvent.ActorJoinReadable => ZLinkBackendSpotDispatchEvent.ActorJoinReadable,
                 SpotDispatchEvent.ActorReadable => ZLinkBackendSpotDispatchEvent.ActorReadable,
-                _ => ZLinkBackendSpotDispatchEvent.Internal,
+                _ => ZLinkBackendSpotDispatchEvent.Internal
             },
-            DrainChannelReply: info.Event == SpotDispatchEvent.ChannelReplyReadable
-                               && info.SubjectKind == SpotDispatchSubjectKind.ChannelDealer
+            info.Event == SpotDispatchEvent.ChannelReplyReadable
+            && info.SubjectKind == SpotDispatchSubjectKind.ChannelDealer
                 ? info.DrainChannelReply
                 : null,
-            ActorParts: actorParts);
+            actorParts);
     }
 
     public static IReadOnlyList<ZLinkBackendActorPart> ToFrameworkParts(
         this ActorReceived message)
     {
         var parts = new ZLinkBackendActorPart[message.Parts.Count];
-        for (int i = 0; i < parts.Length; i++)
-        {
+        for (var i = 0; i < parts.Length; i++)
             parts[i] = new ZLinkBackendActorPart(
                 message.Info.Actor.ToBackend(),
                 message.Info.SourceNodeRid,
                 message.Info.SourceSessionRid,
                 message.Parts[i],
                 i + 1 < parts.Length);
-        }
 
         return parts;
     }

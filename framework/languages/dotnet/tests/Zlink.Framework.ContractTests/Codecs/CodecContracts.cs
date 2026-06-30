@@ -1,3 +1,5 @@
+using System.Text;
+using Systems.Zlink.Stream.Connector.Contracts;
 using Zlink.Framework.ContractTests.Support;
 
 namespace Zlink.Framework.ContractTests.Codecs;
@@ -35,12 +37,12 @@ public sealed class CodecContracts
         public ZLinkEncodedPayload Serialize(object value, Type type)
         {
             var order = (Order)value;
-            return ZLinkEncodedPayload.From(System.Text.Encoding.UTF8.GetBytes($"{order.Sku}:{order.Quantity}"));
+            return ZLinkEncodedPayload.From(Encoding.UTF8.GetBytes($"{order.Sku}:{order.Quantity}"));
         }
 
         public object? Deserialize(ZLinkEncodedPayload payload, Type type)
         {
-            var parts = System.Text.Encoding.UTF8.GetString(payload.Bytes.Span).Split(':');
+            var parts = Encoding.UTF8.GetString(payload.Bytes.Span).Split(':');
             return new Order(parts[0], int.Parse(parts[1]));
         }
     }
@@ -51,22 +53,34 @@ public sealed class CodecContracts
 
         public IReadOnlyList<string> EnabledCodecs => _enabledCodecs;
 
-        public void Use(IZLinkCodecExtension extension) => extension.Register(this);
+        public void Use(IZLinkCodecExtension extension)
+        {
+            extension.Register(this);
+        }
 
-        public void AddJson() => _enabledCodecs.Add("json");
+        public void AddJson()
+        {
+            _enabledCodecs.Add("json");
+        }
 
-        public void AddSerializer(string contentType, IZLinkMessageSerializer serializer) =>
+        public void AddSerializer(string contentType, IZLinkMessageSerializer serializer)
+        {
             _enabledCodecs.Add(contentType);
+        }
 
         public void AddSerializer(
             string contentType,
             IZLinkMessageSerializer serializer,
-            Func<Type, bool> canSerialize) =>
+            Func<Type, bool> canSerialize)
+        {
             _enabledCodecs.Add(contentType);
+        }
 
         public void AddStreamCodec(
             string contentType,
-            Systems.Zlink.Stream.Connector.Contracts.ZlinkStreamCodec codec) { }
+            ZlinkStreamCodec codec)
+        {
+        }
     }
 
     private sealed class ExampleCodecExtension : IZLinkCodecExtension

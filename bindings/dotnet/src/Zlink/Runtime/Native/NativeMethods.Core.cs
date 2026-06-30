@@ -1,4 +1,3 @@
-using System;
 using System.Runtime.CompilerServices;
 using System.Runtime.InteropServices;
 
@@ -126,7 +125,7 @@ internal static partial class NativeMethods
         "zlink_atomic_counter_destroy",
         "zlink_stopwatch_start",
         "zlink_stopwatch_intermediate",
-        "zlink_stopwatch_stop",
+        "zlink_stopwatch_stop"
     };
 
     [DllImport(LibraryName, CallingConvention = CallingConvention.Cdecl)]
@@ -222,26 +221,6 @@ internal static partial class NativeMethods
 
     [DllImport(LibraryName, CallingConvention = CallingConvention.Cdecl)]
     internal static extern void zlink_multipart_close(IntPtr parts, nuint count);
-
-    [UnmanagedFunctionPointer(CallingConvention.Cdecl)]
-    internal delegate void ZlinkReplyHandlerDelegate(int result, IntPtr parts,
-        nuint partCount, IntPtr userData);
-
-    [UnmanagedFunctionPointer(CallingConvention.Cdecl)]
-    internal delegate void ZlinkActorJoinHandlerDelegate(IntPtr result,
-        IntPtr parts, nuint partCount, IntPtr userData);
-
-    [UnmanagedFunctionPointer(CallingConvention.Cdecl)]
-    internal delegate void ZlinkActorJoinEntrySpotHandlerDelegate(
-        IntPtr result, IntPtr parts, nuint partCount, IntPtr userData);
-
-    [UnmanagedFunctionPointer(CallingConvention.Cdecl)]
-    internal delegate void ZlinkActorLookupHandlerDelegate(IntPtr result,
-        IntPtr userData);
-
-    [UnmanagedFunctionPointer(CallingConvention.Cdecl)]
-    internal unsafe delegate void ZlinkSpotDispatchEventHandlerDelegate(
-        IntPtr spot, ZlinkSpotDispatchInfoNative* info, IntPtr userData);
 
     [DllImport(LibraryName, CallingConvention = CallingConvention.Cdecl)]
     internal static extern int zlink_dealer_request_part(IntPtr dealer,
@@ -365,4 +344,24 @@ internal static partial class NativeMethods
 
     [DllImport(LibraryName, CallingConvention = CallingConvention.Cdecl)]
     internal static extern ulong zlink_stopwatch_stop(IntPtr watch);
+
+    [UnmanagedFunctionPointer(CallingConvention.Cdecl)]
+    internal delegate void ZlinkReplyHandlerDelegate(int result, IntPtr parts,
+        nuint partCount, IntPtr userData);
+
+    [UnmanagedFunctionPointer(CallingConvention.Cdecl)]
+    internal delegate void ZlinkActorJoinHandlerDelegate(IntPtr result,
+        IntPtr parts, nuint partCount, IntPtr userData);
+
+    [UnmanagedFunctionPointer(CallingConvention.Cdecl)]
+    internal delegate void ZlinkActorJoinEntrySpotHandlerDelegate(
+        IntPtr result, IntPtr parts, nuint partCount, IntPtr userData);
+
+    [UnmanagedFunctionPointer(CallingConvention.Cdecl)]
+    internal delegate void ZlinkActorLookupHandlerDelegate(IntPtr result,
+        IntPtr userData);
+
+    [UnmanagedFunctionPointer(CallingConvention.Cdecl)]
+    internal unsafe delegate void ZlinkSpotDispatchEventHandlerDelegate(
+        IntPtr spot, ZlinkSpotDispatchInfoNative* info, IntPtr userData);
 }

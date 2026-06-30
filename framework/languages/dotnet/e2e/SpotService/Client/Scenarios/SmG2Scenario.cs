@@ -1,6 +1,6 @@
+using SpotService.Client.Support;
 using SpotService.Shared;
 using Zlink.HttpClient;
-using SpotService.Client.Support;
 
 namespace SpotService.Client.Scenarios;
 
@@ -23,7 +23,8 @@ internal static class SmG2Scenario
             .Body(new EvidenceWaitRequest(firstExpectedEvidence))
             .SubmitAsync<string[]>()).Body;
         ScenarioAssert.That(
-            firstExpectedEvidence.All(expected => firstEvidence.Any(line => line.Contains(expected, StringComparison.Ordinal))),
+            firstExpectedEvidence.All(expected =>
+                firstEvidence.Any(line => line.Contains(expected, StringComparison.Ordinal))),
             "SM-G2 play-a evidence did not include the first owner request.");
 
         var secondCreated = (await playB.Post("/spot/create")
@@ -37,7 +38,8 @@ internal static class SmG2Scenario
             .Body(new EvidenceWaitRequest(secondExpectedEvidence))
             .SubmitAsync<string[]>()).Body;
         ScenarioAssert.That(
-            secondExpectedEvidence.All(expected => secondEvidence.Any(line => line.Contains(expected, StringComparison.Ordinal))),
+            secondExpectedEvidence.All(expected =>
+                secondEvidence.Any(line => line.Contains(expected, StringComparison.Ordinal))),
             "SM-G2 play-b evidence did not include the remapped owner request.");
 
         ScenarioAssert.That(firstCreated.NodeRid == "play-a", "SM-G2 first owner was not created on play-a.");
@@ -45,10 +47,12 @@ internal static class SmG2Scenario
         ScenarioAssert.That(firstReply.NodeRid == "play-a", "SM-G2 first owner request reached the wrong node.");
         ScenarioAssert.That(secondReply.NodeRid == "play-b", "SM-G2 remapped owner request reached the wrong node.");
         ScenarioAssert.That(
-            !firstEvidence.Any(line => line.Contains($"spot-state-request|rid=play-a|spot={secondOwnerSpotRid}", StringComparison.Ordinal)),
+            !firstEvidence.Any(line =>
+                line.Contains($"spot-state-request|rid=play-a|spot={secondOwnerSpotRid}", StringComparison.Ordinal)),
             "SM-G2 remapped owner leaked to play-a.");
         ScenarioAssert.That(
-            !secondEvidence.Any(line => line.Contains($"spot-state-request|rid=play-b|spot={firstOwnerSpotRid}", StringComparison.Ordinal)),
+            !secondEvidence.Any(line =>
+                line.Contains($"spot-state-request|rid=play-b|spot={firstOwnerSpotRid}", StringComparison.Ordinal)),
             "SM-G2 first owner leaked to play-b.");
 
         Console.WriteLine("operation SpotService.sm-g2 passed");

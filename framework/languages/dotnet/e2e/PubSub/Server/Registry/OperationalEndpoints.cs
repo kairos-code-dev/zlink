@@ -1,9 +1,3 @@
-using Microsoft.AspNetCore.Builder;
-using Microsoft.AspNetCore.Http;
-using Microsoft.Extensions.Hosting;
-using PubSub.Server.Registry;
-using PubSub.Server.Registry.Configuration;
-
 namespace PubSub.Server.Registry;
 
 public static class OperationalEndpoints

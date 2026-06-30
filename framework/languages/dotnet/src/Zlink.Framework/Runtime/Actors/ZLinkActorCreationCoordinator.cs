@@ -21,11 +21,9 @@ internal sealed class ZLinkActorCreationCoordinator(
             .SingleOrDefault(static node => node.ActorFactories.Count > 0);
         if (actorNode is null
             || !actorNode.ActorFactories.TryGetValue(actorType, out var factoryType))
-        {
             throw new ZLinkFrameworkException(
                 ZLinkFrameworkErrorKind.ActorCreateFailed,
                 $"Actor factory '{actorType}' is not registered.");
-        }
 
         var creation = await state.GetOrStartActorCreationAsync(
                 actorType,
@@ -67,16 +65,11 @@ internal sealed class ZLinkActorCreationCoordinator(
         var factory = (IZLinkActorFactory)scope.ServiceProvider.GetRequiredService(factoryType);
         var actor = await factory.CreateAsync(actorId, context, cancellationToken)
             .ConfigureAwait(false);
-        if (actor is null)
-        {
-            throw new InvalidOperationException($"Actor factory '{factoryType}' returned null.");
-        }
+        if (actor is null) throw new InvalidOperationException($"Actor factory '{factoryType}' returned null.");
 
         if (!string.Equals(actor.ActorId, actorId, StringComparison.Ordinal))
-        {
             throw new InvalidOperationException(
                 $"Actor factory '{factoryType}' returned actor id '{actor.ActorId}' for requested id '{actorId}'.");
-        }
 
         bindActorContext(actor, state);
 

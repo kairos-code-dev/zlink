@@ -72,10 +72,9 @@ public sealed class SerialExecutorTests
                 static () => false,
                 CancellationToken.None);
 
-            var thrown = await Assert.ThrowsAsync<InvalidOperationException>(
-                () => executor.ExecuteAsync(
-                    static (_, _) => throw new InvalidOperationException("spot execute failure"),
-                    CancellationToken.None).AsTask());
+            var thrown = await Assert.ThrowsAsync<InvalidOperationException>(() => executor.ExecuteAsync(
+                static (_, _) => throw new InvalidOperationException("spot execute failure"),
+                CancellationToken.None).AsTask());
 
             Assert.Equal("spot execute failure", thrown.Message);
             Assert.Contains(exceptions, static ex => ex.Message == "spot execute failure");
@@ -95,10 +94,9 @@ public sealed class SerialExecutorTests
         {
             await using var queue = CreateQueue(CancellationToken.None);
 
-            var thrown = await Assert.ThrowsAsync<InvalidOperationException>(
-                () => queue.RunAsync(
-                    static _ => throw new InvalidOperationException("queue failure"),
-                    CancellationToken.None).AsTask());
+            var thrown = await Assert.ThrowsAsync<InvalidOperationException>(() => queue.RunAsync(
+                static _ => throw new InvalidOperationException("queue failure"),
+                CancellationToken.None).AsTask());
 
             Assert.Equal("queue failure", thrown.Message);
             Assert.Contains(exceptions, static ex => ex.Message == "queue failure");
@@ -138,8 +136,7 @@ public sealed class SerialExecutorTests
 
         try
         {
-            await Assert.ThrowsAnyAsync<OperationCanceledException>(
-                () => second.WaitAsync(TimeSpan.FromSeconds(5)));
+            await Assert.ThrowsAnyAsync<OperationCanceledException>(() => second.WaitAsync(TimeSpan.FromSeconds(5)));
             Assert.False(secondRan.Task.IsCompleted);
         }
         finally
@@ -154,7 +151,7 @@ public sealed class SerialExecutorTests
     [Fact]
     public async Task SerialExecutionQueue_TryPost_ReturnsFalse_WhenQueueIsFull()
     {
-        await using var queue = CreateQueue(CancellationToken.None, capacity: 1);
+        await using var queue = CreateQueue(CancellationToken.None, 1);
         var releaseFirst = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
 
         Assert.True(queue.TryPost(
@@ -170,17 +167,16 @@ public sealed class SerialExecutorTests
     [Fact]
     public async Task SerialExecutionQueue_PostAsync_Throws_WhenQueueIsFull()
     {
-        await using var queue = CreateQueue(CancellationToken.None, capacity: 1);
+        await using var queue = CreateQueue(CancellationToken.None, 1);
         var releaseFirst = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
 
         Assert.True(queue.TryPost(
             async _ => await releaseFirst.Task.ConfigureAwait(false),
             out _));
 
-        await Assert.ThrowsAsync<InvalidOperationException>(
-            () => queue.PostAsync(
-                _ => ValueTask.CompletedTask,
-                CancellationToken.None).AsTask());
+        await Assert.ThrowsAsync<InvalidOperationException>(() => queue.PostAsync(
+            _ => ValueTask.CompletedTask,
+            CancellationToken.None).AsTask());
 
         releaseFirst.SetResult();
     }
@@ -234,7 +230,7 @@ public sealed class SerialExecutorTests
             {
                 order.Enqueue("first-start");
                 var turn = ZLinkSerialTurn.Current
-                    ?? throw new InvalidOperationException("serial turn was not available");
+                           ?? throw new InvalidOperationException("serial turn was not available");
                 await turn.YieldFrameworkCallAsync(
                     async _ =>
                     {
@@ -297,7 +293,7 @@ public sealed class SerialExecutorTests
                 async ct =>
                 {
                     var turn = ZLinkSerialTurn.Current
-                        ?? throw new InvalidOperationException("serial turn was not available");
+                               ?? throw new InvalidOperationException("serial turn was not available");
                     await turn.YieldFrameworkCallAsync(
                         async _ =>
                         {
@@ -320,8 +316,8 @@ public sealed class SerialExecutorTests
 
             failIo.SetException(new InvalidOperationException("yield I/O failed"));
 
-            var thrown = await Assert.ThrowsAsync<InvalidOperationException>(
-                () => first.WaitAsync(TimeSpan.FromSeconds(5)));
+            var thrown =
+                await Assert.ThrowsAsync<InvalidOperationException>(() => first.WaitAsync(TimeSpan.FromSeconds(5)));
             Assert.Equal("yield I/O failed", thrown.Message);
 
             await queue.RunAsync(
@@ -359,7 +355,7 @@ public sealed class SerialExecutorTests
                 async ct =>
                 {
                     var turn = ZLinkSerialTurn.Current
-                        ?? throw new InvalidOperationException("serial turn was not available");
+                               ?? throw new InvalidOperationException("serial turn was not available");
                     await turn.YieldFrameworkCallAsync(
                         async _ =>
                         {
@@ -382,8 +378,7 @@ public sealed class SerialExecutorTests
 
             cancelIo.SetCanceled();
 
-            await Assert.ThrowsAnyAsync<OperationCanceledException>(
-                () => first.WaitAsync(TimeSpan.FromSeconds(5)));
+            await Assert.ThrowsAnyAsync<OperationCanceledException>(() => first.WaitAsync(TimeSpan.FromSeconds(5)));
 
             await queue.RunAsync(
                 _ =>
@@ -433,8 +428,7 @@ public sealed class SerialExecutorTests
             secondCancellation.Token).AsTask();
         await secondCancellation.CancelAsync();
 
-        await Assert.ThrowsAsync<OperationCanceledException>(
-            () => second.WaitAsync(TimeSpan.FromSeconds(5)));
+        await Assert.ThrowsAsync<OperationCanceledException>(() => second.WaitAsync(TimeSpan.FromSeconds(5)));
         Assert.False(secondRan);
 
         releaseFirst.SetResult();

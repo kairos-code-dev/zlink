@@ -1,9 +1,6 @@
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Hosting;
-using Systems.Zlink.Stream.Connector.Contracts;
-using Zlink.Framework;
 using Zlink.Framework.AspNetCore;
-using Zlink.Framework.Contracts.Codecs.Json;
 using Zlink.Framework.Contracts.Messaging;
 
 internal static class Program
@@ -18,7 +15,6 @@ internal static class Program
         _ = FixtureSamples.CreateActorBuilder();
 
         return 0;
-
     }
 }
 
@@ -37,15 +33,12 @@ internal static class FixtureSamples
                 channel.EnableServer("tcp://127.0.0.1:7201");
 
                 channel.EnableClient("tcp://127.0.0.1:7201");
-
-
             }
 
             {
                 var channel = options.AddFanoutChannel("orders.events");
                 channel.EnablePublisher("tcp://127.0.0.1:7202");
                 channel.EnableSubscriber("tcp://127.0.0.1:7202");
-
             }
         });
         return builder;
@@ -58,25 +51,21 @@ internal static class FixtureSamples
         builder.Services.AddScoped<FixtureSpotSubscriptionHandler>();
         builder.Services.AddZLinkFramework(options =>
         {
+            options.UseDiscovery().AddRegistryEndpoint("tcp://127.0.0.1:7300");
             {
                 var spotMesh = options.AddSpotMesh("game.stage");
-                spotMesh.UseDiscovery().AddRegistryEndpoint("tcp://127.0.0.1:7300");
                 {
                     var spot = spotMesh;
                     {
                         var router = spot.EnableRouter("tcp://127.0.0.1:7302");
-
                     }
                     {
                         var pubsub = spot.EnablePubSub("tcp://127.0.0.1:7301");
-
                     }
                     {
                     }
                     spot.AddSpotFactory<FixtureStageSpot>();
-
                 }
-
             }
         });
         return builder;
@@ -92,7 +81,6 @@ internal static class FixtureSamples
                 var stream = options.AddStreamNode("stream.raw");
                 stream.Bind("tcp://127.0.0.1:7401");
                 stream.RegisterSession<FixtureRawStreamSession>();
-
             }
         });
         return builder;
@@ -124,26 +112,20 @@ internal static class FixtureSamples
             {
                 var channel = options.AddClientServerChannel("orders");
                 channel.EnableServer("tcp://127.0.0.1:7603");
-
             }
 
             {
                 var spotMesh = options.AddSpotMesh("game.stage");
-                spotMesh.UseDiscovery().AddRegistryEndpoint("tcp://127.0.0.1:7602");
                 {
                     var spot = spotMesh;
                     {
                         var router = spot.EnableRouter("tcp://127.0.0.1:7605");
-
                     }
                     {
                         var pubsub = spot.EnablePubSub("tcp://127.0.0.1:7604");
-
                     }
                     spot.AddSpotFactory<FixtureStageSpot>();
-
                 }
-
             }
         });
         builder.Services.AddZLinkMonitoring(options =>
@@ -161,27 +143,23 @@ internal static class FixtureSamples
         builder.Services.AddScoped<FixtureActorPacketSession>();
         builder.Services.AddZLinkFramework(options =>
         {
+            options.UseDiscovery().AddRegistryEndpoint("tcp://127.0.0.1:7700");
             {
                 var stream = options.AddStreamNode("stream.actor");
                 stream.Bind("tcp://127.0.0.1:7701");
                 stream.RegisterSession<FixtureActorPacketSession>();
-
             }
 
             {
                 var spotMesh = options.AddSpotMesh("game.stage");
-                spotMesh.UseDiscovery().AddRegistryEndpoint("tcp://127.0.0.1:7700");
                 {
                     var spot = spotMesh;
                     {
                         var router = spot.EnableRouter("tcp://127.0.0.1:7702");
-
                     }
                     spot.AddSpotFactory<FixtureActorSpot>();
                     spot.AddActorFactory<FixtureActorFactory>("hero");
-
                 }
-
             }
         });
         return builder;
@@ -332,9 +310,8 @@ internal sealed class FixtureActor(
     string actorId,
     IZLinkActorContext context) : IZLinkActor
 {
-    public string ActorId { get; } = actorId;
-
     public FixtureActorSpot? Spot { get; private set; }
+    public string ActorId { get; } = actorId;
 
     public IZLinkActorContext Context { get; } = context;
 
@@ -345,10 +322,7 @@ internal sealed class FixtureActor(
 
     public void DetachSpot(FixtureActorSpot spot)
     {
-        if (ReferenceEquals(Spot, spot))
-        {
-            Spot = null;
-        }
+        if (ReferenceEquals(Spot, spot)) Spot = null;
     }
 
     public ValueTask OnAttachedAsync(CancellationToken cancellationToken)
@@ -362,7 +336,6 @@ internal sealed class FixtureActor(
         _ = cancellationToken;
         return ValueTask.CompletedTask;
     }
-
 }
 
 internal sealed class FixtureActorPacketSession(

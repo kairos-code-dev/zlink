@@ -1,7 +1,6 @@
 // SPDX-License-Identifier: MPL-2.0
 
-using System;
-using System.Threading.Tasks;
+using System.Text;
 using Systems.Zlink.Runtime.Native;
 
 namespace Systems.Zlink;
@@ -24,7 +23,7 @@ internal sealed class RegistryQueryClient : IRegistryQueryClient
     {
         BoundaryValidation.ValidateFixedUtf8(endpoint, nameof(endpoint));
         EnsureNotDisposed();
-        int rc = NativeMethods.zlink_registry_query_client_connect(_handle,
+        var rc = NativeMethods.zlink_registry_query_client_connect(_handle,
             endpoint);
         ZlinkException.ThrowConnectIfError(rc);
     }
@@ -35,10 +34,10 @@ internal sealed class RegistryQueryClient : IRegistryQueryClient
         unsafe
         {
             ZlinkRegistryTopologyFilter nativeFilter = default;
-            IntPtr filterPtr = IntPtr.Zero;
+            var filterPtr = IntPtr.Zero;
             if (filter != null)
             {
-                RegistryTopologyFilter value = filter;
+                var value = filter;
                 if (value.AutoConnectType.HasValue
                     || value.ServiceKind.HasValue || value.ServiceRole.HasValue
                     || !string.IsNullOrEmpty(value.ChannelName)
@@ -60,11 +59,10 @@ internal sealed class RegistryQueryClient : IRegistryQueryClient
                         WriteFixedString(value.ChannelName,
                             nativeFilter.ChannelName, 256);
                     }
+
                     if (value.RoutingId.HasValue)
-                    {
                         nativeFilter.RoutingId =
                             value.RoutingId.Value.ToNative();
-                    }
 
                     filterPtr = (IntPtr)(&nativeFilter);
                 }
@@ -82,7 +80,7 @@ internal sealed class RegistryQueryClient : IRegistryQueryClient
 
     public void Dispose()
     {
-        Destroy(throwOnError: true);
+        Destroy(true);
         GC.SuppressFinalize(this);
     }
 
@@ -94,7 +92,7 @@ internal sealed class RegistryQueryClient : IRegistryQueryClient
 
     ~RegistryQueryClient()
     {
-        Destroy(throwOnError: false);
+        Destroy(false);
     }
 
     private void Destroy(bool throwOnError)
@@ -102,9 +100,9 @@ internal sealed class RegistryQueryClient : IRegistryQueryClient
         if (_handle == IntPtr.Zero)
             return;
 
-        IntPtr originalHandle = _handle;
-        IntPtr handle = _handle;
-        int rc = NativeMethods.zlink_registry_query_client_destroy(ref handle);
+        var originalHandle = _handle;
+        var handle = _handle;
+        var rc = NativeMethods.zlink_registry_query_client_destroy(ref handle);
         if (rc == 0)
         {
             _handle = IntPtr.Zero;
@@ -125,16 +123,14 @@ internal sealed class RegistryQueryClient : IRegistryQueryClient
     private static unsafe void WriteFixedString(string value, byte* destination,
         int capacity)
     {
-        byte[] encoded = System.Text.Encoding.UTF8.GetBytes(value);
+        var encoded = Encoding.UTF8.GetBytes(value);
         if (encoded.Length >= capacity)
-        {
             throw new ArgumentOutOfRangeException(nameof(value),
                 "UTF-8 value exceeds native fixed buffer capacity.");
-        }
 
-        for (int i = 0; i < capacity; i++)
+        for (var i = 0; i < capacity; i++)
             destination[i] = 0;
-        for (int i = 0; i < encoded.Length; i++)
+        for (var i = 0; i < encoded.Length; i++)
             destination[i] = encoded[i];
     }
 }

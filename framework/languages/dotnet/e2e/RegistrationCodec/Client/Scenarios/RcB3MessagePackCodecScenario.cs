@@ -1,5 +1,5 @@
-using Zlink.HttpClient;
 using RegistrationCodec.Client.Support;
+using Zlink.HttpClient;
 
 namespace RegistrationCodec.Client.Scenarios;
 
@@ -9,7 +9,8 @@ internal static class RcB3MessagePackCodecScenario
     public static async Task RunAsync(ZLinkHttpClient server)
     {
         var result = (await server.Post("/codec/roundtrip").SubmitAsync<CodecScenarioResult>()).Body;
-        ScenarioAssert.That(result.MessagePackValue.Contains("echo:rc-b3", StringComparison.Ordinal), "RC-B3 MessagePack reply mismatch.");
+        ScenarioAssert.That(result.MessagePackValue.Contains("echo:rc-b3", StringComparison.Ordinal),
+            "RC-B3 MessagePack reply mismatch.");
         ScenarioAssert.That(
             result.MessagePackValue.Contains("content:application/x-msgpack", StringComparison.Ordinal),
             "RC-B3 MessagePack content type mismatch.");

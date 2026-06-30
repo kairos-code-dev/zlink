@@ -1,6 +1,6 @@
+using PubSub.Client.Support;
 using PubSub.Shared;
 using Zlink.HttpClient;
-using PubSub.Client.Support;
 
 namespace PubSub.Client.Scenarios;
 
@@ -36,8 +36,8 @@ internal static class SlowSubscriberScenario
                 {
                     ContainsAllLineGroups =
                     [
-                        ["event|", $"run={runId}", $"topic={PubSubNames.MainTopic}", "seq=8"],
-                    ],
+                        ["event|", $"run={runId}", $"topic={PubSubNames.MainTopic}", "seq=8"]
+                    ]
                 })
                 .SubmitAsync<string[]>()
                 .AsTask())
@@ -48,18 +48,17 @@ internal static class SlowSubscriberScenario
         var slowEvidence = (await slowSubscriber.Post("/evidence/wait")
             .Body(new EvidenceWaitRequest(
                 [],
-                [],
-                10000)
+                [])
             {
                 ContainsAllLineGroups =
                 [
-                    ["delay-start|", $"run={runId}"],
-                ],
+                    ["delay-start|", $"run={runId}"]
+                ]
             })
             .SubmitAsync<string[]>()).Body;
         ScenarioAssert.That(
             slowEvidence.Any(line => line.Contains("delay-start|", StringComparison.Ordinal)
-                && line.Contains($"run={runId}", StringComparison.Ordinal)),
+                                     && line.Contains($"run={runId}", StringComparison.Ordinal)),
             "PS-B1 expected slow subscriber delay evidence.");
         Console.WriteLine("scenario PS-B1 passed");
     }

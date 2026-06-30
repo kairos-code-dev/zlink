@@ -5,9 +5,11 @@ internal sealed class ZLinkSerialTurn
     private static readonly AsyncLocal<ZLinkSerialTurn?> CurrentTurn = new();
 
     private readonly Func<ZLinkSerialTurn, Action, bool> _postResume;
+    private Task? _ownerTask;
+
     private TaskCompletionSource _suspended =
         new(TaskCreationOptions.RunContinuationsAsynchronously);
-    private Task? _ownerTask;
+
     private int _suspendSignaled;
 
     public ZLinkSerialTurn(Func<ZLinkSerialTurn, Action, bool> postResume)
@@ -47,10 +49,7 @@ internal sealed class ZLinkSerialTurn
     {
         cancellationToken.ThrowIfCancellationRequested();
         var operation = submit(cancellationToken);
-        if (operation.IsCompletedSuccessfully)
-        {
-            return operation.Result;
-        }
+        if (operation.IsCompletedSuccessfully) return operation.Result;
 
         SignalSuspended();
         try
@@ -69,10 +68,7 @@ internal sealed class ZLinkSerialTurn
     {
         cancellationToken.ThrowIfCancellationRequested();
         var operation = submit(cancellationToken);
-        if (operation.IsCompletedSuccessfully)
-        {
-            return;
-        }
+        if (operation.IsCompletedSuccessfully) return;
 
         SignalSuspended();
         try
@@ -87,22 +83,17 @@ internal sealed class ZLinkSerialTurn
 
     private void SignalSuspended()
     {
-        if (Interlocked.Exchange(ref _suspendSignaled, 1) == 0)
-        {
-            Volatile.Read(ref _suspended).TrySetResult();
-        }
+        if (Interlocked.Exchange(ref _suspendSignaled, 1) == 0) Volatile.Read(ref _suspended).TrySetResult();
     }
 
     private Task AwaitResumePermitAsync()
     {
         var resume = new TaskCompletionSource();
         if (!_postResume(this, () => resume.TrySetResult()))
-        {
             resume.TrySetException(
                 new ObjectDisposedException(
                     nameof(ZLinkSerialExecutionQueue),
                     "ZLink serial execution queue is closed."));
-        }
 
         return resume.Task;
     }

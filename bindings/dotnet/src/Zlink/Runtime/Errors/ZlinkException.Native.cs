@@ -7,9 +7,33 @@ namespace Systems.Zlink;
 
 public abstract partial class ZlinkException
 {
+    private const int ZlinkHausnumero = 156384712;
+    private const int EnotSupFallback = ZlinkHausnumero + 1;
+    private const int EprotoNoSupportFallback = ZlinkHausnumero + 2;
+    private const int EnoBufsFallback = ZlinkHausnumero + 3;
+    private const int EnetDownFallback = ZlinkHausnumero + 4;
+    private const int EaddrInUseFallback = ZlinkHausnumero + 5;
+    private const int EaddrNotAvailFallback = ZlinkHausnumero + 6;
+    private const int EconnRefusedFallback = ZlinkHausnumero + 7;
+    private const int EinProgressFallback = ZlinkHausnumero + 8;
+    private const int EnotSockFallback = ZlinkHausnumero + 9;
+    private const int EmsgSizeFallback = ZlinkHausnumero + 10;
+    private const int EafNoSupportFallback = ZlinkHausnumero + 11;
+    private const int EnetUnreachFallback = ZlinkHausnumero + 12;
+    private const int EconnAbortedFallback = ZlinkHausnumero + 13;
+    private const int EconnResetFallback = ZlinkHausnumero + 14;
+    private const int EnotConnFallback = ZlinkHausnumero + 15;
+    private const int EtimedOutFallback = ZlinkHausnumero + 16;
+    private const int EhostUnreachFallback = ZlinkHausnumero + 17;
+    private const int EnetResetFallback = ZlinkHausnumero + 18;
+    private const int EfsmNative = ZlinkHausnumero + 51;
+    private const int EnoCompatProtoNative = ZlinkHausnumero + 52;
+    private const int EtermNative = ZlinkHausnumero + 53;
+    private const int EmThreadNative = ZlinkHausnumero + 54;
+
     internal static ZlinkException FromLastError()
     {
-        int errno = NativeMethods.zlink_errno();
+        var errno = NativeMethods.zlink_errno();
         return new LegacyZlinkException(errno);
     }
 
@@ -126,28 +150,44 @@ public abstract partial class ZlinkException
     }
 
     internal static ZlinkSubmitException CreateSubmitException(int errno)
-        => new(MapSubmitResult(errno), errno);
+    {
+        return new ZlinkSubmitException(MapSubmitResult(errno), errno);
+    }
 
     internal static ZlinkRequestException CreateRequestException(int errno)
-        => new(MapRequestResult(errno), errno);
+    {
+        return new ZlinkRequestException(MapRequestResult(errno), errno);
+    }
 
     internal static ZlinkRecvException CreateRecvException(int errno)
-        => new(MapRecvResult(errno), errno);
+    {
+        return new ZlinkRecvException(MapRecvResult(errno), errno);
+    }
 
     internal static ZlinkHandlerException CreateHandlerException(int errno)
-        => new(MapHandlerResult(errno), errno);
+    {
+        return new ZlinkHandlerException(MapHandlerResult(errno), errno);
+    }
 
     internal static ZlinkCloseException CreateCloseException(int errno)
-        => new(MapCloseResult(errno), errno);
+    {
+        return new ZlinkCloseException(MapCloseResult(errno), errno);
+    }
 
     internal static ZlinkBindException CreateBindException(int errno)
-        => new(MapBindResult(errno), errno);
+    {
+        return new ZlinkBindException(MapBindResult(errno), errno);
+    }
 
     internal static ZlinkConnectException CreateConnectException(int errno)
-        => new(MapConnectResult(errno), errno);
+    {
+        return new ZlinkConnectException(MapConnectResult(errno), errno);
+    }
 
     internal static ZlinkConfigException CreateConfigException(int errno)
-        => new(MapConfigResult(errno), errno);
+    {
+        return new ZlinkConfigException(MapConfigResult(errno), errno);
+    }
 
     private static string BuildMessage(int code, int nativeErrno)
     {
@@ -280,30 +320,6 @@ public abstract partial class ZlinkException
             _ => ConfigResult.InternalError
         };
     }
-
-    private const int ZlinkHausnumero = 156384712;
-    private const int EnotSupFallback = ZlinkHausnumero + 1;
-    private const int EprotoNoSupportFallback = ZlinkHausnumero + 2;
-    private const int EnoBufsFallback = ZlinkHausnumero + 3;
-    private const int EnetDownFallback = ZlinkHausnumero + 4;
-    private const int EaddrInUseFallback = ZlinkHausnumero + 5;
-    private const int EaddrNotAvailFallback = ZlinkHausnumero + 6;
-    private const int EconnRefusedFallback = ZlinkHausnumero + 7;
-    private const int EinProgressFallback = ZlinkHausnumero + 8;
-    private const int EnotSockFallback = ZlinkHausnumero + 9;
-    private const int EmsgSizeFallback = ZlinkHausnumero + 10;
-    private const int EafNoSupportFallback = ZlinkHausnumero + 11;
-    private const int EnetUnreachFallback = ZlinkHausnumero + 12;
-    private const int EconnAbortedFallback = ZlinkHausnumero + 13;
-    private const int EconnResetFallback = ZlinkHausnumero + 14;
-    private const int EnotConnFallback = ZlinkHausnumero + 15;
-    private const int EtimedOutFallback = ZlinkHausnumero + 16;
-    private const int EhostUnreachFallback = ZlinkHausnumero + 17;
-    private const int EnetResetFallback = ZlinkHausnumero + 18;
-    private const int EfsmNative = ZlinkHausnumero + 51;
-    private const int EnoCompatProtoNative = ZlinkHausnumero + 52;
-    private const int EtermNative = ZlinkHausnumero + 53;
-    private const int EmThreadNative = ZlinkHausnumero + 54;
 
     private sealed class LegacyZlinkException : ZlinkException
     {

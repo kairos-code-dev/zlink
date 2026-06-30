@@ -1,6 +1,5 @@
 // SPDX-License-Identifier: MPL-2.0
 
-using System;
 using System.Buffers.Binary;
 using System.Globalization;
 using System.Text;
@@ -8,7 +7,7 @@ using System.Text;
 namespace Systems.Zlink;
 
 /// <summary>
-/// An opaque identifier for a messaging peer or route, 1 to 255 bytes long.
+///     An opaque identifier for a messaging peer or route, 1 to 255 bytes long.
 /// </summary>
 public readonly partial struct RoutingId : IEquatable<RoutingId>
 {
@@ -24,27 +23,27 @@ public readonly partial struct RoutingId : IEquatable<RoutingId>
     }
 
     /// <summary>
-    /// Creates a routing id from a copy of the given bytes (1 to 255 bytes).
+    ///     Creates a routing id from a copy of the given bytes (1 to 255 bytes).
     /// </summary>
     public static RoutingId From(ReadOnlySpan<byte> bytes)
     {
         Validate(bytes, nameof(bytes));
-        return new RoutingId(bytes.ToArray(), takeOwnership: true);
+        return new RoutingId(bytes.ToArray(), true);
     }
 
     /// <summary>
-    /// Creates a routing id from a copy of the given bytes (1 to 255 bytes).
+    ///     Creates a routing id from a copy of the given bytes (1 to 255 bytes).
     /// </summary>
     public static RoutingId From(byte[] bytes)
     {
         if (bytes == null)
             throw new ArgumentNullException(nameof(bytes));
         Validate(bytes, nameof(bytes));
-        return new RoutingId(bytes, takeOwnership: false);
+        return new RoutingId(bytes, false);
     }
 
     /// <summary>
-    /// Creates a routing id from the UTF-8 encoding of <paramref name="value"/>.
+    ///     Creates a routing id from the UTF-8 encoding of <paramref name="value" />.
     /// </summary>
     public static RoutingId From(string value)
     {
@@ -54,24 +53,20 @@ public readonly partial struct RoutingId : IEquatable<RoutingId>
     }
 
     /// <summary>
-    /// Creates a routing id by decoding <paramref name="value"/> as a hex
-    /// string (even length, up to 510 hex digits for 255 bytes).
+    ///     Creates a routing id by decoding <paramref name="value" /> as a hex
+    ///     string (even length, up to 510 hex digits for 255 bytes).
     /// </summary>
     public static RoutingId FromHex(string value)
     {
         if (value == null)
             throw new ArgumentNullException(nameof(value));
         if (value.Length == 0 || (value.Length & 1) != 0)
-        {
             throw new ArgumentException(
                 "routingId string must be a non-empty even-length hex string.",
                 nameof(value));
-        }
         if (value.Length > MaxHexStringLength)
-        {
             throw new ArgumentOutOfRangeException(nameof(value),
                 "routingId string must decode to at most 255 bytes.");
-        }
 
         byte[] bytes;
         try
@@ -86,44 +81,44 @@ public readonly partial struct RoutingId : IEquatable<RoutingId>
         }
 
         Validate(bytes, nameof(value));
-        return new RoutingId(bytes, takeOwnership: true);
+        return new RoutingId(bytes, true);
     }
 
     /// <summary>
-    /// Creates a 4-byte routing id from <paramref name="value"/> in big-endian
-    /// order.
+    ///     Creates a 4-byte routing id from <paramref name="value" /> in big-endian
+    ///     order.
     /// </summary>
     public static RoutingId From(uint value)
     {
         Span<byte> bytes = stackalloc byte[sizeof(uint)];
         BinaryPrimitives.WriteUInt32BigEndian(bytes, value);
-        return new RoutingId(bytes.ToArray(), takeOwnership: true);
+        return new RoutingId(bytes.ToArray(), true);
     }
 
     /// <summary>
-    /// Creates a 16-byte routing id from <paramref name="value"/> in big-endian
-    /// order.
+    ///     Creates a 16-byte routing id from <paramref name="value" /> in big-endian
+    ///     order.
     /// </summary>
     public static RoutingId From(Guid value)
     {
-        byte[] bytes = new byte[16];
-        value.TryWriteBytes(bytes, bigEndian: true, out _);
-        return new RoutingId(bytes, takeOwnership: true);
+        var bytes = new byte[16];
+        value.TryWriteBytes(bytes, true, out _);
+        return new RoutingId(bytes, true);
     }
 
     /// <summary>
-    /// Gets the length of the routing id in bytes; 0 when empty.
+    ///     Gets the length of the routing id in bytes; 0 when empty.
     /// </summary>
     public int Size => _bytes?.Length ?? 0;
 
     /// <summary>
-    /// Gets whether this routing id has no bytes.
+    ///     Gets whether this routing id has no bytes.
     /// </summary>
     public bool IsEmpty => Size == 0;
 
     /// <summary>
-    /// Returns the routing id bytes, backed by internal storage; empty when this
-    /// id is empty.
+    ///     Returns the routing id bytes, backed by internal storage; empty when this
+    ///     id is empty.
     /// </summary>
     public ReadOnlySpan<byte> ToBytes()
     {
@@ -131,7 +126,7 @@ public readonly partial struct RoutingId : IEquatable<RoutingId>
     }
 
     /// <summary>
-    /// Returns the routing id as a lowercase hex string.
+    ///     Returns the routing id as a lowercase hex string.
     /// </summary>
     public string ToHex()
     {
@@ -139,12 +134,12 @@ public readonly partial struct RoutingId : IEquatable<RoutingId>
     }
 
     /// <summary>
-    /// Tries to read a 4-byte routing id as a big-endian <see cref="uint"/>.
+    ///     Tries to read a 4-byte routing id as a big-endian <see cref="uint" />.
     /// </summary>
     /// <returns>true when the id is exactly 4 bytes; otherwise false.</returns>
     public bool TryToUInt32(out uint value)
     {
-        ReadOnlySpan<byte> bytes = ToBytes();
+        var bytes = ToBytes();
         if (bytes.Length != sizeof(uint))
         {
             value = 0;
@@ -156,40 +151,40 @@ public readonly partial struct RoutingId : IEquatable<RoutingId>
     }
 
     /// <summary>
-    /// Tries to read a 16-byte routing id as a big-endian <see cref="Guid"/>.
+    ///     Tries to read a 16-byte routing id as a big-endian <see cref="Guid" />.
     /// </summary>
     /// <returns>true when the id is exactly 16 bytes; otherwise false.</returns>
     public bool TryToGuid(out Guid value)
     {
-        ReadOnlySpan<byte> bytes = ToBytes();
+        var bytes = ToBytes();
         if (bytes.Length != 16)
         {
             value = default;
             return false;
         }
 
-        value = new Guid(bytes, bigEndian: true);
+        value = new Guid(bytes, true);
         return true;
     }
 
     /// <summary>
-    /// Returns a human-readable form: printable UTF-8 text when possible,
-    /// otherwise a uint, a Guid, or a "hex:" fallback.
+    ///     Returns a human-readable form: printable UTF-8 text when possible,
+    ///     otherwise a uint, a Guid, or a "hex:" fallback.
     /// </summary>
     public override string ToString()
     {
-        ReadOnlySpan<byte> bytes = ToBytes();
-        if (TryToUtf8String(bytes, out string? text))
+        var bytes = ToBytes();
+        if (TryToUtf8String(bytes, out var text))
             return text!;
-        if (TryToUInt32(out uint uint32))
+        if (TryToUInt32(out var uint32))
             return uint32.ToString(CultureInfo.InvariantCulture);
-        if (TryToGuid(out Guid guid))
+        if (TryToGuid(out var guid))
             return guid.ToString("D");
         return "hex:" + ToHex();
     }
 
     /// <summary>
-    /// Returns true when <paramref name="other"/> has identical bytes.
+    ///     Returns true when <paramref name="other" /> has identical bytes.
     /// </summary>
     public bool Equals(RoutingId other)
     {
@@ -199,8 +194,8 @@ public readonly partial struct RoutingId : IEquatable<RoutingId>
     }
 
     /// <summary>
-    /// Returns true when <paramref name="obj"/> is a routing id with identical
-    /// bytes.
+    ///     Returns true when <paramref name="obj" /> is a routing id with identical
+    ///     bytes.
     /// </summary>
     public override bool Equals(object? obj)
     {
@@ -208,7 +203,7 @@ public readonly partial struct RoutingId : IEquatable<RoutingId>
     }
 
     /// <summary>
-    /// Returns the precomputed hash over the routing id bytes.
+    ///     Returns the precomputed hash over the routing id bytes.
     /// </summary>
     public override int GetHashCode()
     {
@@ -216,7 +211,7 @@ public readonly partial struct RoutingId : IEquatable<RoutingId>
     }
 
     /// <summary>
-    /// Returns true when both routing ids have identical bytes.
+    ///     Returns true when both routing ids have identical bytes.
     /// </summary>
     public static bool operator ==(RoutingId left, RoutingId right)
     {
@@ -224,7 +219,7 @@ public readonly partial struct RoutingId : IEquatable<RoutingId>
     }
 
     /// <summary>
-    /// Returns true when the routing ids differ.
+    ///     Returns true when the routing ids differ.
     /// </summary>
     public static bool operator !=(RoutingId left, RoutingId right)
     {
@@ -234,7 +229,7 @@ public readonly partial struct RoutingId : IEquatable<RoutingId>
     private static int ComputeHash(ReadOnlySpan<byte> bytes)
     {
         HashCode hash = new();
-        for (int i = 0; i < bytes.Length; i++)
+        for (var i = 0; i < bytes.Length; i++)
             hash.Add(bytes[i]);
         return hash.ToHashCode();
     }
@@ -246,18 +241,16 @@ public readonly partial struct RoutingId : IEquatable<RoutingId>
         if (bytes.Length == 0)
             return false;
 
-        string decoded = Encoding.UTF8.GetString(bytes);
-        for (int i = 0; i < decoded.Length; i++)
-        {
+        var decoded = Encoding.UTF8.GetString(bytes);
+        for (var i = 0; i < decoded.Length; i++)
             if (char.IsControl(decoded[i]))
                 return false;
-        }
 
-        int byteCount = Encoding.UTF8.GetByteCount(decoded);
+        var byteCount = Encoding.UTF8.GetByteCount(decoded);
         if (byteCount != bytes.Length)
             return false;
 
-        byte[] roundtrip = new byte[byteCount];
+        var roundtrip = new byte[byteCount];
         Encoding.UTF8.GetBytes(decoded, roundtrip.AsSpan());
         if (!roundtrip.AsSpan().SequenceEqual(bytes))
             return false;
@@ -269,10 +262,7 @@ public readonly partial struct RoutingId : IEquatable<RoutingId>
     private static void Validate(ReadOnlySpan<byte> bytes, string paramName)
     {
         if (bytes.Length <= 0 || bytes.Length > MaxSize)
-        {
             throw new ArgumentOutOfRangeException(paramName,
                 "routingId length must be between 1 and 255 bytes.");
-        }
     }
-
 }

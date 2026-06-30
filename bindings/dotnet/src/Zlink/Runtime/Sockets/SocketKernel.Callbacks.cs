@@ -1,25 +1,23 @@
 // SPDX-License-Identifier: MPL-2.0
 
-using System;
 using System.Text;
-using System.Threading;
 using Systems.Zlink.Runtime.Native;
 
 namespace Systems.Zlink.Runtime.Sockets.Internal;
 
 internal sealed partial class SocketKernel : IDisposable
 {
-    public unsafe void RecvHandler(SocketRecvHandler handler)
+    public void RecvHandler(SocketRecvHandler handler)
     {
         EnsureSupports(nameof(RecvHandler),
             SocketTypePolicy.SocketCapability.ReceiveHandler);
         if (handler == null)
             throw new ArgumentNullException(nameof(handler));
 
-        SynchronizationContext? context = SynchronizationContext.Current;
+        var context = SynchronizationContext.Current;
         var socketNative = new NativeMethods.ZlinkSocketMsgHandlerDelegate(
             OnNativeReceive);
-        int rc = NativeMethods.zlink_recv_handler(Handle, socketNative, IntPtr.Zero);
+        var rc = NativeMethods.zlink_recv_handler(Handle, socketNative, IntPtr.Zero);
         if (rc != 0)
         {
             _callbacks.RecvHandler = null;
@@ -27,6 +25,7 @@ internal sealed partial class SocketKernel : IDisposable
             _callbacks.RecvHandlerNative = null;
             ZlinkException.ThrowHandlerIfError(rc);
         }
+
         _callbacks.RecvHandler = handler;
         _callbacks.RecvHandlerContext = context;
         _callbacks.RecvHandlerNative = socketNative;
@@ -37,10 +36,10 @@ internal sealed partial class SocketKernel : IDisposable
         if (handler == null)
             throw new ArgumentNullException(nameof(handler));
 
-        SynchronizationContext? context = SynchronizationContext.Current;
+        var context = SynchronizationContext.Current;
         var native = new NativeMethods.ZlinkSendReadyHandlerDelegate(
             OnNativeSendReady);
-        int rc = NativeMethods.zlink_send_ready_handler(Handle, native,
+        var rc = NativeMethods.zlink_send_ready_handler(Handle, native,
             IntPtr.Zero);
         if (rc != 0)
         {
@@ -49,6 +48,7 @@ internal sealed partial class SocketKernel : IDisposable
             _callbacks.SendReadyHandlerNative = null;
             ZlinkException.ThrowHandlerIfError(rc);
         }
+
         _callbacks.SendReadyHandler = handler;
         _callbacks.SendReadyHandlerContext = context;
         _callbacks.SendReadyHandlerNative = native;
@@ -61,10 +61,10 @@ internal sealed partial class SocketKernel : IDisposable
         if (handler == null)
             throw new ArgumentNullException(nameof(handler));
 
-        SynchronizationContext? context = SynchronizationContext.Current;
+        var context = SynchronizationContext.Current;
         var native = new NativeMethods.ZlinkSubscribeHandlerDelegate(
             OnNativeSubscribe);
-        int rc = NativeMethods.zlink_subscribe_handler(Handle, native,
+        var rc = NativeMethods.zlink_subscribe_handler(Handle, native,
             IntPtr.Zero);
         if (rc != 0)
         {
@@ -73,6 +73,7 @@ internal sealed partial class SocketKernel : IDisposable
             _callbacks.SubscribeHandlerNative = null;
             throw ZlinkException.CreateHandlerException(NativeMethods.zlink_errno());
         }
+
         _callbacks.SubscribeHandler = handler;
         _callbacks.SubscribeHandlerContext = context;
         _callbacks.SubscribeHandlerNative = native;
@@ -81,8 +82,8 @@ internal sealed partial class SocketKernel : IDisposable
     private unsafe void OnNativeSubscribe(IntPtr sourceRoutingId, byte* topic,
         nuint topicLen, IntPtr parts, nuint partCount, IntPtr userData)
     {
-        SocketSubscribeHandler? handler = _callbacks.SubscribeHandler;
-        SynchronizationContext? context = _callbacks.SubscribeHandlerContext;
+        var handler = _callbacks.SubscribeHandler;
+        var context = _callbacks.SubscribeHandlerContext;
         if (handler == null)
         {
             if (parts != IntPtr.Zero)
@@ -91,18 +92,18 @@ internal sealed partial class SocketKernel : IDisposable
         }
 
         Message[]? managedParts = null;
-        bool delivered = false;
+        var delivered = false;
         try
         {
-            string routingId = string.Empty;
+            var routingId = string.Empty;
             if (sourceRoutingId != IntPtr.Zero)
             {
-                ZlinkRoutingId* nativeRoutingId = (ZlinkRoutingId*)sourceRoutingId;
+                var nativeRoutingId = (ZlinkRoutingId*)sourceRoutingId;
                 routingId = RoutingIdCodec.ToPublicString(
                     NativeHelpers.ReadRoutingId(ref *nativeRoutingId));
             }
 
-            string topicId = topic == null || topicLen == 0
+            var topicId = topic == null || topicLen == 0
                 ? string.Empty
                 : Encoding.UTF8.GetString(
                     new ReadOnlySpan<byte>(topic, checked((int)topicLen)));
@@ -117,10 +118,8 @@ internal sealed partial class SocketKernel : IDisposable
         {
             CallbackExceptionHub.Report(ex);
             if (!delivered && managedParts != null)
-            {
-                foreach (Message part in managedParts)
+                foreach (var part in managedParts)
                     part.Dispose();
-            }
         }
         finally
         {
@@ -131,8 +130,8 @@ internal sealed partial class SocketKernel : IDisposable
 
     private void OnNativeSendReady(IntPtr subject, IntPtr userData)
     {
-        Action? handler = _callbacks.SendReadyHandler;
-        SynchronizationContext? context = _callbacks.SendReadyHandlerContext;
+        var handler = _callbacks.SendReadyHandler;
+        var context = _callbacks.SendReadyHandlerContext;
         if (handler == null)
             return;
 
@@ -149,8 +148,8 @@ internal sealed partial class SocketKernel : IDisposable
     private unsafe void OnNativeReceive(IntPtr sourceRoutingId, IntPtr parts,
         nuint partCount, IntPtr userData)
     {
-        SocketRecvHandler? handler = _callbacks.RecvHandler;
-        SynchronizationContext? context = _callbacks.RecvHandlerContext;
+        var handler = _callbacks.RecvHandler;
+        var context = _callbacks.RecvHandlerContext;
         if (handler == null)
         {
             if (parts != IntPtr.Zero)
@@ -159,13 +158,13 @@ internal sealed partial class SocketKernel : IDisposable
         }
 
         Message[]? managedParts = null;
-        bool delivered = false;
+        var delivered = false;
         try
         {
-            string routingId = string.Empty;
+            var routingId = string.Empty;
             if (sourceRoutingId != IntPtr.Zero)
             {
-                ZlinkRoutingId* nativeRoutingId = (ZlinkRoutingId*)sourceRoutingId;
+                var nativeRoutingId = (ZlinkRoutingId*)sourceRoutingId;
                 routingId = RoutingIdCodec.ToPublicString(
                     NativeHelpers.ReadRoutingId(ref *nativeRoutingId));
             }
@@ -181,10 +180,8 @@ internal sealed partial class SocketKernel : IDisposable
         {
             CallbackExceptionHub.Report(ex);
             if (!delivered && managedParts != null)
-            {
-                foreach (Message part in managedParts)
+                foreach (var part in managedParts)
                     part.Dispose();
-            }
         }
         finally
         {

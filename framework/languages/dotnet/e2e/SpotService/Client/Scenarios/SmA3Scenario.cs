@@ -1,6 +1,6 @@
+using SpotService.Client.Support;
 using SpotService.Shared;
 using Zlink.HttpClient;
-using SpotService.Client.Support;
 
 namespace SpotService.Client.Scenarios;
 
@@ -12,7 +12,8 @@ internal static class SmA3Scenario
         var created = (await playA.Post("/spot/create")
             .Body(new CreateSpotReq(spotRid))
             .SubmitAsync<CreateSpotReply>()).Body;
-        ScenarioAssert.That(created.SpotRid == spotRid && created.NodeRid == "play-a", "SM-A3 routed spot was not created on play-a.");
+        ScenarioAssert.That(created.SpotRid == spotRid && created.NodeRid == "play-a",
+            "SM-A3 routed spot was not created on play-a.");
         var routeReply = (await playA.Post("/spot/state/request")
             .Body(new SpotStateRouteReq(spotRid, "add", 1))
             .SubmitAsync<StateReply>()).Body;
@@ -25,7 +26,8 @@ internal static class SmA3Scenario
             .Body(new EvidenceWaitRequest(expectedPlayAEvidence))
             .SubmitAsync<string[]>()).Body;
         ScenarioAssert.That(
-            expectedPlayAEvidence.All(expected => playAEvidence.Any(line => line.Contains(expected, StringComparison.Ordinal))),
+            expectedPlayAEvidence.All(expected =>
+                playAEvidence.Any(line => line.Contains(expected, StringComparison.Ordinal))),
             "SM-A3 evidence mismatch.");
         var playBEvidence = (await playB.Post("/evidence/wait")
             .Body(new EvidenceWaitRequest([]))

@@ -1,8 +1,6 @@
 using RegistrationCodec.Server.Main.Infrastructure;
 using RegistrationCodec.Shared;
 using Zlink.Framework.Contracts.Handlers;
-using RegistrationCodec.Server.Main.Endpoints;
-using RegistrationCodec.Server.Main;
 
 namespace RegistrationCodec.Server.Main.Handlers;
 
@@ -10,7 +8,8 @@ namespace RegistrationCodec.Server.Main.Handlers;
 internal sealed class EchoAutoRequestHandler(EvidenceStore evidence)
     : IZLinkRequestHandler<EchoAutoReq, EchoReply>
 {
-    public ValueTask<EchoReply> HandleAsync(EchoAutoReq request, ZLinkRequestContext context, CancellationToken cancellationToken)
+    public ValueTask<EchoReply> HandleAsync(EchoAutoReq request, ZLinkRequestContext context,
+        CancellationToken cancellationToken)
     {
         cancellationToken.ThrowIfCancellationRequested();
         evidence.Add($"echo-request|variant=auto|value={request.Value}|content={context.ContentType}");
@@ -25,7 +24,8 @@ internal sealed class EchoAutoCommandHandler(EvidenceStore evidence)
     public ValueTask HandleAsync(EchoAutoCommand message, ZLinkSendContext context, CancellationToken cancellationToken)
     {
         cancellationToken.ThrowIfCancellationRequested();
-        evidence.Add($"echo-command|variant=auto|id={message.CommandId}|value={message.Value}|content={context.ContentType}");
+        evidence.Add(
+            $"echo-command|variant=auto|id={message.CommandId}|value={message.Value}|content={context.ContentType}");
         return ValueTask.CompletedTask;
     }
 }
@@ -45,7 +45,8 @@ internal sealed class AttributeHandlers(EvidenceStore evidence)
     public ValueTask Send(EchoCommand message, ZLinkSendContext context, CancellationToken cancellationToken)
     {
         cancellationToken.ThrowIfCancellationRequested();
-        evidence.Add($"echo-command|variant=attr|id={message.CommandId}|value={message.Value}|content={context.ContentType}");
+        evidence.Add(
+            $"echo-command|variant=attr|id={message.CommandId}|value={message.Value}|content={context.ContentType}");
         return ValueTask.CompletedTask;
     }
 }
@@ -53,7 +54,8 @@ internal sealed class AttributeHandlers(EvidenceStore evidence)
 internal sealed class EchoManualRequestHandler(EvidenceStore evidence)
     : IZLinkRequestHandler<EchoManualReq, EchoReply>
 {
-    public ValueTask<EchoReply> HandleAsync(EchoManualReq request, ZLinkRequestContext context, CancellationToken cancellationToken)
+    public ValueTask<EchoReply> HandleAsync(EchoManualReq request, ZLinkRequestContext context,
+        CancellationToken cancellationToken)
     {
         cancellationToken.ThrowIfCancellationRequested();
         evidence.Add($"echo-request|variant=manual|value={request.Value}|content={context.ContentType}");
@@ -64,10 +66,12 @@ internal sealed class EchoManualRequestHandler(EvidenceStore evidence)
 internal sealed class EchoManualCommandHandler(EvidenceStore evidence)
     : IZLinkSendHandler<EchoManualCommand>
 {
-    public ValueTask HandleAsync(EchoManualCommand message, ZLinkSendContext context, CancellationToken cancellationToken)
+    public ValueTask HandleAsync(EchoManualCommand message, ZLinkSendContext context,
+        CancellationToken cancellationToken)
     {
         cancellationToken.ThrowIfCancellationRequested();
-        evidence.Add($"echo-command|variant=manual|id={message.CommandId}|value={message.Value}|content={context.ContentType}");
+        evidence.Add(
+            $"echo-command|variant=manual|id={message.CommandId}|value={message.Value}|content={context.ContentType}");
         return ValueTask.CompletedTask;
     }
 }
@@ -75,7 +79,8 @@ internal sealed class EchoManualCommandHandler(EvidenceStore evidence)
 internal sealed class DuplicateEchoRequestHandler
     : IZLinkRequestHandler<EchoManualReq, EchoReply>
 {
-    public ValueTask<EchoReply> HandleAsync(EchoManualReq request, ZLinkRequestContext context, CancellationToken cancellationToken)
+    public ValueTask<EchoReply> HandleAsync(EchoManualReq request, ZLinkRequestContext context,
+        CancellationToken cancellationToken)
     {
         _ = context;
         cancellationToken.ThrowIfCancellationRequested();

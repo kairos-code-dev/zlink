@@ -8,9 +8,9 @@ internal static class PublishTopicEncoding
 {
     internal static byte[] GetNullTerminatedUtf8(string topic)
     {
-        int byteCount = Encoding.UTF8.GetByteCount(topic);
-        byte[] encoded = new byte[byteCount + 1];
-        int written = Encoding.UTF8.GetBytes(topic.AsSpan(),
+        var byteCount = Encoding.UTF8.GetByteCount(topic);
+        var encoded = new byte[byteCount + 1];
+        var written = Encoding.UTF8.GetBytes(topic.AsSpan(),
             encoded.AsSpan(0, byteCount));
         encoded[written] = 0;
         return encoded;

@@ -1,9 +1,8 @@
+using YieldDispatch.Server.Play.Spots;
 using YieldDispatch.Shared;
 using Zlink.Framework.Contracts.Handlers;
 using Zlink.Framework.Contracts.Spots;
 using Zlink.Framework.Contracts.Timers;
-using YieldDispatch.Server.Play.Handlers;
-using YieldDispatch.Server.Play.Spots;
 
 namespace YieldDispatch.Server.Play.Handlers;
 
@@ -112,10 +111,7 @@ internal sealed class YieldTimerHandler(EvidenceStore evidence)
         CancellationToken cancellationToken)
     {
         var state = spot.FindTimerState(tick.Name);
-        if (state is null)
-        {
-            return;
-        }
+        if (state is null) return;
 
         var tickNumber = state.NextTick();
         if (string.Equals(state.Mode, "fast", StringComparison.Ordinal))

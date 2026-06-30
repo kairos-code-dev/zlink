@@ -1,7 +1,4 @@
 using System.Collections.Concurrent;
-using RegistrationCodec.Server.Main.Endpoints;
-using RegistrationCodec.Server.Main.Handlers;
-using RegistrationCodec.Server.Main;
 
 namespace RegistrationCodec.Server.Main.Infrastructure;
 
@@ -9,8 +6,8 @@ internal sealed class EvidenceStore
 {
     private readonly ConcurrentQueue<string> _entries = new();
     private readonly object _fileGate = new();
-    private readonly SemaphoreSlim _signal = new(0);
     private readonly string? _filePath;
+    private readonly SemaphoreSlim _signal = new(0);
 
     public EvidenceStore(string? filePath)
     {
@@ -26,10 +23,7 @@ internal sealed class EvidenceStore
     {
         _entries.Enqueue(entry);
         _signal.Release();
-        if (string.IsNullOrWhiteSpace(_filePath))
-        {
-            return;
-        }
+        if (string.IsNullOrWhiteSpace(_filePath)) return;
 
         lock (_fileGate)
         {
@@ -37,7 +31,10 @@ internal sealed class EvidenceStore
         }
     }
 
-    public string[] Snapshot() => _entries.ToArray();
+    public string[] Snapshot()
+    {
+        return _entries.ToArray();
+    }
 
     public async Task<string[]> WaitUntilAsync(
         Func<string[], bool> condition,
@@ -48,16 +45,11 @@ internal sealed class EvidenceStore
         while (true)
         {
             var snapshot = Snapshot();
-            if (condition(snapshot))
-            {
-                return snapshot;
-            }
+            if (condition(snapshot)) return snapshot;
 
             var remaining = deadline - DateTimeOffset.UtcNow;
             if (remaining <= TimeSpan.Zero)
-            {
                 throw new TimeoutException("Timed out waiting for registration codec evidence.");
-            }
 
             await _signal.WaitAsync(remaining, cancellationToken);
         }
@@ -70,11 +62,9 @@ internal sealed class EvidenceStore
         }
 
         if (!string.IsNullOrWhiteSpace(_filePath))
-        {
             lock (_fileGate)
             {
                 File.WriteAllText(_filePath, string.Empty);
             }
-        }
     }
 }

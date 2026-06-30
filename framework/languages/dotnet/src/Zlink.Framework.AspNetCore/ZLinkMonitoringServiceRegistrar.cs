@@ -1,6 +1,6 @@
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.DependencyInjection.Extensions;
-using Zlink.Framework.Runtime.Backend.Contracts;
+using Microsoft.Extensions.Hosting;
 
 namespace Zlink.Framework.AspNetCore;
 
@@ -15,7 +15,7 @@ internal static class ZLinkMonitoringServiceRegistrar
         services.TryAddSingleton<ZLinkRuntimeEventDispatcher>();
         services.TryAddSingleton<IZLinkRuntimeEventPublisher>(static provider =>
             provider.GetRequiredService<ZLinkRuntimeEventDispatcher>());
-        services.AddSingleton<Microsoft.Extensions.Hosting.IHostedService>(static provider =>
+        services.AddSingleton<IHostedService>(static provider =>
             new ZLinkMonitoringHostedService(
                 provider,
                 provider.GetRequiredService<IZLinkBackendAdapterFactory>(),

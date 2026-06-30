@@ -21,7 +21,8 @@ internal static class YdA3ContinuationContextScenario
             "yield-started",
             "yield-released",
             "yield-resumed",
-            "yield-completed"]);
+            "yield-completed"
+        ]);
         return requestId;
     }
 }

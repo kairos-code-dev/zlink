@@ -1,6 +1,6 @@
+using DiscoveryRegistryHa.Client.Support;
 using DiscoveryRegistryHa.Shared;
 using Zlink.HttpClient;
-using DiscoveryRegistryHa.Client.Support;
 
 namespace DiscoveryRegistryHa.Client.Scenarios;
 
@@ -43,14 +43,16 @@ internal static class BasicDiscoveryScenario
         var evidence = await WaitForEvidenceAsync(provider, marker);
         ScenarioAssert.That(
             evidence.Any(line => line.Contains(marker, StringComparison.Ordinal)
-                && line.Contains($"rid={reply.ProviderRid}", StringComparison.Ordinal)),
+                                 && line.Contains($"rid={reply.ProviderRid}", StringComparison.Ordinal)),
             "DR-A1 provider evidence was not recorded.");
 
         Console.WriteLine("scenario DiscoveryRegistryHa.A1 passed");
     }
 
-    static async Task<string[]> WaitForEvidenceAsync(ZLinkHttpClient client, string contains) =>
-        (await client.Post("/evidence/wait")
+    private static async Task<string[]> WaitForEvidenceAsync(ZLinkHttpClient client, string contains)
+    {
+        return (await client.Post("/evidence/wait")
             .Body(new EvidenceWaitRequest(contains))
             .SubmitAsync<string[]>()).Body;
+    }
 }

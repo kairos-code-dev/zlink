@@ -1,7 +1,6 @@
 // SPDX-License-Identifier: MPL-2.0
 
-using System;
-using System.Collections.Generic;
+using System.Collections;
 
 namespace Systems.Zlink;
 
@@ -15,8 +14,8 @@ internal struct OperationMessageBuffer
     internal bool IsSingle => _singlePart != null;
 
     internal Message Single => _singlePart
-        ?? throw new ZlinkConfigException(
-            ZlinkConfigException.ErrorCode.InvalidState);
+                               ?? throw new ZlinkConfigException(
+                                   ZlinkConfigException.ErrorCode.InvalidState);
 
     internal IReadOnlyList<Message> Parts =>
         _parts != null ? _parts : new SingleMessageReadOnlyList(Single);
@@ -33,11 +32,13 @@ internal struct OperationMessageBuffer
             _parts.Add(message);
             return;
         }
+
         if (_singlePart == null)
         {
             _singlePart = message;
             return;
         }
+
         _parts = new List<Message> { _singlePart, message };
         _singlePart = null;
     }
@@ -75,7 +76,7 @@ internal struct OperationMessageBuffer
             yield return _message;
         }
 
-        System.Collections.IEnumerator System.Collections.IEnumerable
+        IEnumerator IEnumerable
             .GetEnumerator()
         {
             return GetEnumerator();

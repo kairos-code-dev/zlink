@@ -10,7 +10,6 @@ internal sealed class ZLinkSpotPollingEventDiff(string sourceName)
         Action<ZLinkSpotEvent> dispatch)
     {
         if (_previous is null || _previous.Status != current.Status)
-        {
             dispatch(new ZLinkSpotEvent(
                 sourceName,
                 timestamp,
@@ -18,10 +17,8 @@ internal sealed class ZLinkSpotPollingEventDiff(string sourceName)
                 current.Status,
                 null,
                 null));
-        }
 
         if (_previous is null || !_previous.Peers.SequenceEqual(current.Peers))
-        {
             dispatch(new ZLinkSpotEvent(
                 sourceName,
                 timestamp,
@@ -29,10 +26,8 @@ internal sealed class ZLinkSpotPollingEventDiff(string sourceName)
                 null,
                 current.Peers,
                 null));
-        }
 
         if (_previous is null || !_previous.Subjects.SequenceEqual(current.Subjects))
-        {
             dispatch(new ZLinkSpotEvent(
                 sourceName,
                 timestamp,
@@ -40,7 +35,6 @@ internal sealed class ZLinkSpotPollingEventDiff(string sourceName)
                 null,
                 null,
                 current.Subjects));
-        }
 
         _previous = current;
     }

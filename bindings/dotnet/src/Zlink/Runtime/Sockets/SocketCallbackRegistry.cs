@@ -1,30 +1,28 @@
 // SPDX-License-Identifier: MPL-2.0
 
-using System;
-using System.Threading;
 using Systems.Zlink.Runtime.Native;
 
 namespace Systems.Zlink.Runtime.Sockets.Internal;
 
 internal sealed class SocketCallbackRegistry
 {
-    internal NativeMethods.ZlinkStreamOnRawDelegate? StreamRawNative;
-    internal NativeMethods.ZlinkStreamOnPacketDelegate? StreamPacketNative;
-    internal StreamRawPacketHandler? StreamPacketHandler;
-    internal StreamUInt32PacketHandler? StreamUInt32PacketHandler;
-    internal StreamFramedPacketHandler? StreamFramedPacketHandler;
-    internal StreamUInt32FramedPacketHandler? StreamUInt32FramedPacketHandler;
     internal SocketRecvHandler? RecvHandler;
-    internal SocketSubscribeHandler? SubscribeHandler;
-    internal Action? SendReadyHandler;
-    internal SynchronizationContext? StreamRawContext;
-    internal SynchronizationContext? StreamPacketContext;
     internal SynchronizationContext? RecvHandlerContext;
-    internal SynchronizationContext? SubscribeHandlerContext;
-    internal SynchronizationContext? SendReadyHandlerContext;
     internal NativeMethods.ZlinkSocketMsgHandlerDelegate? RecvHandlerNative;
-    internal NativeMethods.ZlinkSubscribeHandlerDelegate? SubscribeHandlerNative;
+    internal Action? SendReadyHandler;
+    internal SynchronizationContext? SendReadyHandlerContext;
     internal NativeMethods.ZlinkSendReadyHandlerDelegate? SendReadyHandlerNative;
+    internal StreamFramedPacketHandler? StreamFramedPacketHandler;
+    internal SynchronizationContext? StreamPacketContext;
+    internal StreamRawPacketHandler? StreamPacketHandler;
+    internal NativeMethods.ZlinkStreamOnPacketDelegate? StreamPacketNative;
+    internal SynchronizationContext? StreamRawContext;
+    internal NativeMethods.ZlinkStreamOnRawDelegate? StreamRawNative;
+    internal StreamUInt32FramedPacketHandler? StreamUInt32FramedPacketHandler;
+    internal StreamUInt32PacketHandler? StreamUInt32PacketHandler;
+    internal SocketSubscribeHandler? SubscribeHandler;
+    internal SynchronizationContext? SubscribeHandlerContext;
+    internal NativeMethods.ZlinkSubscribeHandlerDelegate? SubscribeHandlerNative;
 
     internal void ClearStream()
     {

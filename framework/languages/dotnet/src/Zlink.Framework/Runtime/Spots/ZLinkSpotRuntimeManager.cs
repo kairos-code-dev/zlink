@@ -1,7 +1,3 @@
-using Zlink.Framework.Runtime.Backend.Contracts;
-
-using Zlink.Framework.Runtime.Streams;
-
 namespace Zlink.Framework.Runtime.Spots;
 
 internal sealed class ZLinkSpotRuntimeManager(
@@ -10,12 +6,13 @@ internal sealed class ZLinkSpotRuntimeManager(
     IZLinkBackendAdapterFactory backendAdapterFactory,
     ZLinkFrameworkRegistration registration)
 {
+    private readonly ZLinkEntrySpotActorRouter _entrySpotActors = new();
+
     private readonly ZLinkSpotNodeInitializer _nodeInitializer = new(
         services,
         runtime,
         backendAdapterFactory,
         registration);
-    private readonly ZLinkEntrySpotActorRouter _entrySpotActors = new();
 
     public async ValueTask InitializeSpotNodesAsync(ZLinkFrameworkRuntimeState state)
     {
@@ -28,10 +25,7 @@ internal sealed class ZLinkSpotRuntimeManager(
     {
         if (state.SpotNodes.TryGetValue(channelName, out var node))
         {
-            if (node.TryGetPublisherBundle(channelName, out var bundle))
-            {
-                return bundle;
-            }
+            if (node.TryGetPublisherBundle(channelName, out var bundle)) return bundle;
 
             return node.GetOrCreatePublisherBundle(channelName);
         }
@@ -73,10 +67,7 @@ internal sealed class ZLinkSpotRuntimeManager(
         foreach (var node in state.SpotNodes.Values)
         {
             var info = await node.GetAsync(spotRid, cancellationToken);
-            if (info is not null)
-            {
-                return info;
-            }
+            if (info is not null) return info;
         }
 
         return null;
@@ -87,10 +78,7 @@ internal sealed class ZLinkSpotRuntimeManager(
         CancellationToken cancellationToken)
     {
         var results = new List<ZLinkSpotInfo>();
-        foreach (var node in state.SpotNodes.Values)
-        {
-            results.AddRange(await node.ListAsync(cancellationToken));
-        }
+        foreach (var node in state.SpotNodes.Values) results.AddRange(await node.ListAsync(cancellationToken));
 
         return results
             .OrderBy(static info => info.SpotRid.ToHex(), StringComparer.Ordinal)
@@ -103,12 +91,8 @@ internal sealed class ZLinkSpotRuntimeManager(
         CancellationToken cancellationToken)
     {
         foreach (var node in state.SpotNodes.Values)
-        {
             if (await node.CloseAsync(spotRid, cancellationToken))
-            {
                 return true;
-            }
-        }
 
         return false;
     }
@@ -121,7 +105,7 @@ internal sealed class ZLinkSpotRuntimeManager(
         CancellationToken cancellationToken)
     {
         var activation = GetActivation(state, spotRid)
-            ?? throw new InvalidOperationException($"SPOT '{spotRid}' is not active.");
+                         ?? throw new InvalidOperationException($"SPOT '{spotRid}' is not active.");
 
         return await activation.JoinActorAsync(actor, request, cancellationToken);
     }
@@ -249,12 +233,8 @@ internal sealed class ZLinkSpotRuntimeManager(
         Type spotType)
     {
         foreach (var node in state.SpotNodes.Values)
-        {
             if (node.SpotFactories.Contains(spotType))
-            {
                 return node;
-            }
-        }
 
         throw new ZLinkConfigurationException($"SPOT factory '{spotType}' is not registered.");
     }
@@ -273,10 +253,7 @@ internal sealed class ZLinkSpotRuntimeManager(
         foreach (var node in state.SpotNodes.Values)
         {
             var activation = node.Spots.FirstOrDefault(current => current.SpotRid == spotRid);
-            if (activation is not null)
-            {
-                return activation;
-            }
+            if (activation is not null) return activation;
         }
 
         return null;

@@ -19,10 +19,7 @@ internal static class ZLinkSpotActorHandlerDescriptorFactory
                 definition,
                 arguments,
                 packetName);
-            if (descriptor is not null)
-            {
-                return descriptor;
-            }
+            if (descriptor is not null) return descriptor;
         }
 
         foreach (var descriptor in ZLinkSpotActorAttributedDescriptorFactory.CreatePacketDescriptors(
@@ -31,9 +28,7 @@ internal static class ZLinkSpotActorHandlerDescriptorFactory
                      handlerType,
                      expectedActorType,
                      packetName))
-        {
             return descriptor;
-        }
 
         throw new InvalidOperationException(
             $"Actor packet handler '{handlerType}' must implement a supported Entry Spot or user Spot actor handler interface or declare one SPOT actor packet attribute.");
@@ -63,7 +58,7 @@ internal static class ZLinkSpotActorHandlerDescriptorFactory
             0 => throw new InvalidOperationException(
                 $"Actor handler '{handlerType}' must implement exactly one supported Entry Spot or user Spot actor handler interface or declare exactly one SPOT actor handler attribute."),
             _ => throw new InvalidOperationException(
-                $"Actor handler '{handlerType}' implements multiple supported actor handler interfaces. Use AddActorPacket to select the actor surface explicitly."),
+                $"Actor handler '{handlerType}' implements multiple supported actor handler interfaces. Use AddActorPacket to select the actor surface explicitly.")
         };
     }
 }

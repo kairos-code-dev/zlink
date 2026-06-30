@@ -5,9 +5,7 @@ internal sealed class ZLinkDiscoveryBuilder(List<string> endpoints) : IZLinkDisc
     public IZLinkDiscoveryBuilder AddRegistryEndpoint(string endpoint)
     {
         if (string.IsNullOrWhiteSpace(endpoint))
-        {
             throw new ZLinkConfigurationException("Discovery endpoint must not be empty.");
-        }
 
         endpoints.Add(endpoint);
         return this;

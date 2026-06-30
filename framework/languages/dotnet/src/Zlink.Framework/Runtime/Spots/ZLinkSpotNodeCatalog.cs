@@ -1,5 +1,3 @@
-using Zlink.Framework.Runtime.Backend.Contracts;
-
 namespace Zlink.Framework.Runtime.Spots;
 
 internal sealed class ZLinkSpotNodeCatalog(
@@ -11,9 +9,6 @@ internal sealed class ZLinkSpotNodeCatalog(
     string spotChannelName,
     Action connectDiscoveredPubSubPeers) : IAsyncDisposable
 {
-    private readonly object _gate = new();
-    private readonly Dictionary<RoutingId, ZLinkSpotActivation> _spots = [];
-    private readonly Dictionary<RoutingId, PendingSpotCreation> _pending = [];
     private readonly ZLinkSpotActivationFactory _activationFactory = new(
         services,
         runtime,
@@ -23,7 +18,23 @@ internal sealed class ZLinkSpotNodeCatalog(
         spotChannelName,
         connectDiscoveredPubSubPeers);
 
+    private readonly object _gate = new();
+    private readonly Dictionary<RoutingId, PendingSpotCreation> _pending = [];
+    private readonly Dictionary<RoutingId, ZLinkSpotActivation> _spots = [];
+
     public IReadOnlyCollection<ZLinkSpotActivation> Spots => SnapshotActivations();
+
+    public async ValueTask DisposeAsync()
+    {
+        ZLinkSpotActivation[] activations;
+        lock (_gate)
+        {
+            activations = _spots.Values.ToArray();
+            _spots.Clear();
+        }
+
+        foreach (var activation in activations) await activation.DisposeAsync();
+    }
 
     public async ValueTask<ZLinkSpotCreateResult> CreateAsync(
         Type spotType,
@@ -228,15 +239,9 @@ internal sealed class ZLinkSpotNodeCatalog(
         cancellationToken.ThrowIfCancellationRequested();
         lock (_gate)
         {
-            if (!_spots.TryGetValue(spotRid, out activation))
-            {
-                return false;
-            }
+            if (!_spots.TryGetValue(spotRid, out activation)) return false;
 
-            if (activation.JoinedActorCount > 0)
-            {
-                return false;
-            }
+            if (activation.JoinedActorCount > 0) return false;
 
             _spots.Remove(spotRid);
         }
@@ -254,21 +259,6 @@ internal sealed class ZLinkSpotNodeCatalog(
         await activation.CloseAsync(cancellationToken);
         await activation.DisposeAsync();
         return true;
-    }
-
-    public async ValueTask DisposeAsync()
-    {
-        ZLinkSpotActivation[] activations;
-        lock (_gate)
-        {
-            activations = _spots.Values.ToArray();
-            _spots.Clear();
-        }
-
-        foreach (var activation in activations)
-        {
-            await activation.DisposeAsync();
-        }
     }
 
     private IReadOnlyCollection<ZLinkSpotActivation> SnapshotActivations()
@@ -293,10 +283,7 @@ internal sealed class ZLinkSpotNodeCatalog(
 
     private void RemoveActivation(ZLinkSpotActivation? activation)
     {
-        if (activation is null)
-        {
-            return;
-        }
+        if (activation is null) return;
 
         lock (_gate)
         {
@@ -306,10 +293,7 @@ internal sealed class ZLinkSpotNodeCatalog(
 
     private void RemoveActivationLocked(ZLinkSpotActivation? activation)
     {
-        if (activation is not null)
-        {
-            _spots.Remove(activation.SpotRid);
-        }
+        if (activation is not null) _spots.Remove(activation.SpotRid);
     }
 
     private static async ValueTask DisposeFailedCreationAsync(
@@ -322,19 +306,14 @@ internal sealed class ZLinkSpotNodeCatalog(
             return;
         }
 
-        if (nativeSpot is not null)
-        {
-            await nativeSpot.DisposeAsync();
-        }
+        if (nativeSpot is not null) await nativeSpot.DisposeAsync();
     }
 
     private void EnsureSpotTypeRegisteredLocked(Type spotType)
     {
         if (!registration.SpotFactories.Contains(spotType))
-        {
             throw new ZLinkConfigurationException(
                 $"SPOT factory '{spotType}' is not registered on node '{registration.SpotNodeName}'.");
-        }
     }
 
     private static void ThrowIfSpotTypeMismatch(
@@ -342,10 +321,7 @@ internal sealed class ZLinkSpotNodeCatalog(
         Type requestedSpotType,
         RoutingId spotRid)
     {
-        if (existingSpotType == requestedSpotType)
-        {
-            return;
-        }
+        if (existingSpotType == requestedSpotType) return;
 
         throw new ZLinkFrameworkException(
             ZLinkFrameworkErrorKind.SpotTypeMismatch,
@@ -356,10 +332,7 @@ internal sealed class ZLinkSpotNodeCatalog(
         Type spotType,
         Exception error)
     {
-        if (error is ZLinkFrameworkException frameworkError)
-        {
-            return frameworkError;
-        }
+        if (error is ZLinkFrameworkException frameworkError) return frameworkError;
 
         return new ZLinkFrameworkException(
             ZLinkFrameworkErrorKind.SpotCreateFailed,

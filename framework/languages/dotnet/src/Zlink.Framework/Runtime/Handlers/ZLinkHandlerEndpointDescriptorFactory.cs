@@ -26,7 +26,7 @@ internal static class ZLinkHandlerEndpointDescriptorFactory
         {
             ZLinkMessageKind.Request => typeof(ZLinkRequestContext),
             ZLinkMessageKind.Command => typeof(ZLinkSendContext),
-            _ => typeof(ZLinkPublishContext),
+            _ => typeof(ZLinkPublishContext)
         };
 
         return new ZLinkHandlerEndpointDescriptor(
@@ -38,7 +38,7 @@ internal static class ZLinkHandlerEndpointDescriptorFactory
             messageType,
             replyType,
             contextType,
-            HasCancellationToken: true,
+            true,
             groups,
             explicitChannelName);
     }
@@ -78,10 +78,8 @@ internal static class ZLinkHandlerEndpointDescriptorFactory
     {
         var parameters = method.GetParameters();
         if (parameters.Length == 0)
-        {
             throw new ZLinkConfigurationException(
                 $"Handler method '{declaringType.FullName}.{method.Name}' must accept a message parameter.");
-        }
 
         var messageType = parameters[0].ParameterType;
         var messageName = messageNameOverride ?? ZLinkMessageNameResolver.ResolveFromType(messageType);
@@ -97,9 +95,7 @@ internal static class ZLinkHandlerEndpointDescriptorFactory
             }
 
             if (typeof(ZLinkHandlerContext).IsAssignableFrom(parameters[i].ParameterType))
-            {
                 contextType = parameters[i].ParameterType;
-            }
         }
 
         var replyType = kind == ZLinkMessageKind.Request
@@ -128,12 +124,8 @@ internal static class ZLinkHandlerEndpointDescriptorFactory
     {
         var map = declaringType.GetInterfaceMap(handlerInterface);
         for (var i = 0; i < map.InterfaceMethods.Length; i++)
-        {
             if (map.InterfaceMethods[i].Name == methodName)
-            {
                 return map.TargetMethods[i];
-            }
-        }
 
         throw new ZLinkConfigurationException(
             $"{label} '{declaringType.FullName}' does not implement HandleAsync for '{handlerInterface.Name}'.");
@@ -144,10 +136,7 @@ internal static class ZLinkHandlerEndpointDescriptorFactory
         Type? contextType)
     {
         var plan = new ZLinkHandlerArgumentKind[parameters.Count];
-        if (parameters.Count == 0)
-        {
-            return plan;
-        }
+        if (parameters.Count == 0) return plan;
 
         plan[0] = ZLinkHandlerArgumentKind.Message;
         for (var i = 1; i < parameters.Count; i++)
@@ -173,19 +162,13 @@ internal static class ZLinkHandlerEndpointDescriptorFactory
     private static Type? GetReplyType(Type returnType)
     {
         if (returnType.IsGenericType && returnType.GetGenericTypeDefinition() == typeof(ValueTask<>))
-        {
             return returnType.GetGenericArguments()[0];
-        }
 
         if (returnType.IsGenericType && returnType.GetGenericTypeDefinition() == typeof(Task<>))
-        {
             return returnType.GetGenericArguments()[0];
-        }
 
         if (returnType == typeof(ValueTask) || returnType == typeof(Task))
-        {
             throw new ZLinkConfigurationException("Request handlers must return a reply value.");
-        }
 
         return returnType;
     }

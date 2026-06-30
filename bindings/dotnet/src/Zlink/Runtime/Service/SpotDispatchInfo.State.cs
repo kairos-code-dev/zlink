@@ -1,9 +1,5 @@
 // SPDX-License-Identifier: MPL-2.0
 
-using System;
-using System.Collections.Generic;
-using System.Threading;
-
 namespace Systems.Zlink;
 
 public sealed partial class SpotDispatchInfo
@@ -15,7 +11,6 @@ public sealed partial class SpotDispatchInfo
         IntPtr.Zero,
         null);
 
-    private readonly IntPtr _channelDealerSubject;
     private readonly Action<IntPtr>? _drainChannelReply;
     private int _actorMessageIndex;
 
@@ -27,27 +22,25 @@ public sealed partial class SpotDispatchInfo
         Event = @event;
         SubjectKind = subjectKind;
         Timer = timer;
-        _channelDealerSubject = channelDealerSubject;
+        Subject = channelDealerSubject;
         _drainChannelReply = drainChannelReply;
         ActorMessages = actorMessages ?? Array.Empty<ActorReceived>();
     }
 
-    internal IntPtr Subject => _channelDealerSubject;
+    internal IntPtr Subject { get; }
 
     private ActorReceived? RecvActorCore()
     {
-        int index = Interlocked.Increment(ref _actorMessageIndex) - 1;
+        var index = Interlocked.Increment(ref _actorMessageIndex) - 1;
         return index < ActorMessages.Count ? ActorMessages[index] : null;
     }
 
     private void DrainChannelReplyCore()
     {
-        if (_drainChannelReply == null || _channelDealerSubject == IntPtr.Zero)
-        {
+        if (_drainChannelReply == null || Subject == IntPtr.Zero)
             throw new ZlinkConfigException(ConfigResult.InvalidArgument,
                 (int)ErrorCode.EInval);
-        }
 
-        _drainChannelReply(_channelDealerSubject);
+        _drainChannelReply(Subject);
     }
 }

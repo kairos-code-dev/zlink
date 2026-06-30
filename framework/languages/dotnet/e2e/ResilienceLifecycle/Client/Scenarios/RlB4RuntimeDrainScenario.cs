@@ -1,6 +1,6 @@
+using ResilienceLifecycle.Client.Support;
 using ResilienceLifecycle.Shared;
 using Zlink.HttpClient;
-using ResilienceLifecycle.Client.Support;
 
 namespace ResilienceLifecycle.Client.Scenarios;
 
@@ -52,14 +52,16 @@ internal static class RlB4RuntimeDrainScenario
         Console.WriteLine("scenario RL-B4 passed");
     }
 
-    static async Task WaitForWeightAsync(ZLinkHttpClient provider, int expected)
+    private static async Task WaitForWeightAsync(ZLinkHttpClient provider, int expected)
     {
         await provider.Post("/admin/weight/wait")
             .Body(new WeightWaitRequest(expected))
             .SubmitRawAsync();
     }
 
-    static int CountNew(string[] after, string[] before, string pattern) =>
-        Math.Max(0, after.Count(line => line.Contains(pattern, StringComparison.Ordinal))
-            - before.Count(line => line.Contains(pattern, StringComparison.Ordinal)));
+    private static int CountNew(string[] after, string[] before, string pattern)
+    {
+        return Math.Max(0, after.Count(line => line.Contains(pattern, StringComparison.Ordinal))
+                           - before.Count(line => line.Contains(pattern, StringComparison.Ordinal)));
+    }
 }

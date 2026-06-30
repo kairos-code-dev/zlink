@@ -1,7 +1,6 @@
-using TicTacToe.Shared.Contracts;
-using Zlink.Framework.Contracts.Handlers;
-using Zlink.Framework.Contracts.Spots;
 using TicTacToe.Server.Play.Infrastructure.ZLink.Actors;
+using TicTacToe.Shared.Contracts;
+using Zlink.Framework.Contracts.Spots;
 
 namespace TicTacToe.Server.Play.Infrastructure.ZLink.Spots.TicTacToeGameSpot.Handlers;
 
@@ -18,9 +17,7 @@ internal sealed class PlayActorLeaveGameHandler(ILogger<PlayActorLeaveGameHandle
         _ = context;
         var roomId = actor.RequireJoinedRoom();
         if (!string.Equals(roomId, message.RoomId, StringComparison.Ordinal))
-        {
             throw new InvalidOperationException($"Actor is joined to '{roomId}', not '{message.RoomId}'.");
-        }
 
         logger.LogInformation(
             "actor: LeaveGameReq received. actor={ActorId}, roomId={RoomId}",

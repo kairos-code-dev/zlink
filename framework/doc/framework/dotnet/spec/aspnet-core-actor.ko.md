@@ -1000,7 +1000,6 @@ builder.Services.AddZLinkFramework(options =>
 {
     {
         var mesh =     options.AddSpotMesh("game.session");
-                mesh.UseDiscovery().AddRegistryEndpoint("tcp://registry1:5551");
         {
             var node = mesh;
             node.EnableRouter("tcp://0.0.0.0:7201");
@@ -1027,7 +1026,6 @@ builder.Services.AddZLinkFramework(options =>
 
     {
         var mesh =     options.AddSpotMesh("game.stage");
-                mesh.UseDiscovery().AddRegistryEndpoint("tcp://registry1:5551");
 
         {
             var node = mesh;

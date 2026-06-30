@@ -1,33 +1,32 @@
 /* SPDX-License-Identifier: MPL-2.0 */
 
-using Zlink.HttpClient.Runtime;
 using Zlink.Framework.Contracts.Codecs;
+using Zlink.HttpClient.Runtime;
 
 namespace Zlink.HttpClient;
 
 /// <summary>
-/// Fluent builder for <see cref="ZLinkHttpClient"/>. Mirrors the C++ <c>client_builder_t</c>.
-/// One-shot verb shortcuts build the client on demand so <see cref="Build"/> can be omitted for
-/// single requests.
+///     Fluent builder for <see cref="ZLinkHttpClient" />. Mirrors the C++ <c>client_builder_t</c>.
+///     One-shot verb shortcuts build the client on demand so <see cref="Build" /> can be omitted for
+///     single requests.
 /// </summary>
 public sealed class ZLinkHttpClientBuilder
 {
-    private string _baseUrl = string.Empty;
-    private bool _json;
-    private TimeSpan _timeout = TimeSpan.FromMilliseconds(3000);
-    private long _maxResponseBodySize = 16 * 1024 * 1024;
     private readonly Dictionary<string, string> _headers = new(StringComparer.OrdinalIgnoreCase);
-    private string? _trustCertificateFile;
+    private string _baseUrl = string.Empty;
     private (string CertificatePath, string KeyPath)? _clientCertificate;
-    private int _followRedirects;
-    private int _retryAttempts;
+    private bool _compression;
     private bool _cookies;
+    private int _followRedirects;
+    private bool _json;
+    private long _maxResponseBodySize = 16 * 1024 * 1024;
     private string? _proxy;
     private string? _proxyAuthorization;
-    private bool _compression;
-    private readonly HttpClientCodecRegistry _codecs = new();
+    private int _retryAttempts;
+    private TimeSpan _timeout = TimeSpan.FromMilliseconds(3000);
+    private string? _trustCertificateFile;
 
-    internal HttpClientCodecRegistry CodecRegistry => _codecs;
+    internal HttpClientCodecRegistry CodecRegistry { get; } = new();
 
     public ZLinkHttpClientBuilder BaseUrl(string value)
     {
@@ -46,7 +45,7 @@ public sealed class ZLinkHttpClientBuilder
     public ZLinkHttpClientBuilder Codecs(Action<IZLinkCodecRegistryBuilder> configure)
     {
         ArgumentNullException.ThrowIfNull(configure);
-        configure(_codecs);
+        configure(CodecRegistry);
         return this;
     }
 
@@ -81,11 +80,9 @@ public sealed class ZLinkHttpClientBuilder
     public ZLinkHttpClientBuilder MaxResponseBodySize(long bytes)
     {
         if (bytes <= 0)
-        {
             throw new ZLinkFrameworkException(
                 ZLinkFrameworkErrorKind.RequestProtocolError,
                 "HTTP client max response body size must be greater than zero");
-        }
 
         _maxResponseBodySize = bytes;
         return this;
@@ -109,11 +106,9 @@ public sealed class ZLinkHttpClientBuilder
     public ZLinkHttpClientBuilder FollowRedirects(int maxRedirects = 5)
     {
         if (maxRedirects <= 0)
-        {
             throw new ZLinkFrameworkException(
                 ZLinkFrameworkErrorKind.RequestProtocolError,
                 "HTTP client follow_redirects must be greater than zero");
-        }
 
         _followRedirects = maxRedirects;
         return this;
@@ -122,11 +117,9 @@ public sealed class ZLinkHttpClientBuilder
     public ZLinkHttpClientBuilder Retry(int attempts)
     {
         if (attempts <= 0)
-        {
             throw new ZLinkFrameworkException(
                 ZLinkFrameworkErrorKind.RequestProtocolError,
                 "HTTP client retry attempts must be greater than zero");
-        }
 
         _retryAttempts = attempts;
         return this;
@@ -142,11 +135,9 @@ public sealed class ZLinkHttpClientBuilder
     {
         HttpClientText.RequireNonBlank(url, "HTTP client proxy url is required");
         if (!url.StartsWith("http://", StringComparison.Ordinal))
-        {
             throw new ZLinkFrameworkException(
                 ZLinkFrameworkErrorKind.RequestProtocolError,
                 "HTTP client proxy url must start with http://");
-        }
 
         _proxy = url;
         return this;
@@ -172,11 +163,9 @@ public sealed class ZLinkHttpClientBuilder
         HttpClientText.RequirePositiveTimeout(_timeout);
         if (!_baseUrl.StartsWith("http://", StringComparison.OrdinalIgnoreCase)
             && !_baseUrl.StartsWith("https://", StringComparison.OrdinalIgnoreCase))
-        {
             throw new ZLinkFrameworkException(
                 ZLinkFrameworkErrorKind.RequestProtocolError,
                 "HTTP client base_url must start with http:// or https://");
-        }
 
         var options = new HttpClientOptions
         {
@@ -185,7 +174,7 @@ public sealed class ZLinkHttpClientBuilder
             Timeout = _timeout,
             MaxResponseBodySize = _maxResponseBodySize,
             Headers = new Dictionary<string, string>(_headers, StringComparer.OrdinalIgnoreCase),
-            Codecs = _codecs.Snapshot(),
+            Codecs = CodecRegistry.Snapshot(),
             TrustCertificateFile = _trustCertificateFile,
             ClientCertificate = _clientCertificate,
             FollowRedirects = _followRedirects,
@@ -193,23 +182,44 @@ public sealed class ZLinkHttpClientBuilder
             Cookies = _cookies,
             Proxy = _proxy,
             ProxyAuthorization = _proxyAuthorization,
-            Compression = _compression,
+            Compression = _compression
         };
 
         return new ZLinkHttpClient(new HttpClientRuntime(options));
     }
 
-    public ZLinkHttpRequestBuilder Get(string path) => new(this, ZLinkHttpMethod.Get, path);
+    public ZLinkHttpRequestBuilder Get(string path)
+    {
+        return new ZLinkHttpRequestBuilder(this, ZLinkHttpMethod.Get, path);
+    }
 
-    public ZLinkHttpRequestBuilder Post(string path) => new(this, ZLinkHttpMethod.Post, path);
+    public ZLinkHttpRequestBuilder Post(string path)
+    {
+        return new ZLinkHttpRequestBuilder(this, ZLinkHttpMethod.Post, path);
+    }
 
-    public ZLinkHttpRequestBuilder Put(string path) => new(this, ZLinkHttpMethod.Put, path);
+    public ZLinkHttpRequestBuilder Put(string path)
+    {
+        return new ZLinkHttpRequestBuilder(this, ZLinkHttpMethod.Put, path);
+    }
 
-    public ZLinkHttpRequestBuilder Delete(string path) => new(this, ZLinkHttpMethod.Delete, path);
+    public ZLinkHttpRequestBuilder Delete(string path)
+    {
+        return new ZLinkHttpRequestBuilder(this, ZLinkHttpMethod.Delete, path);
+    }
 
-    public ZLinkHttpRequestBuilder Patch(string path) => new(this, ZLinkHttpMethod.Patch, path);
+    public ZLinkHttpRequestBuilder Patch(string path)
+    {
+        return new ZLinkHttpRequestBuilder(this, ZLinkHttpMethod.Patch, path);
+    }
 
-    public ZLinkHttpRequestBuilder Head(string path) => new(this, ZLinkHttpMethod.Head, path);
+    public ZLinkHttpRequestBuilder Head(string path)
+    {
+        return new ZLinkHttpRequestBuilder(this, ZLinkHttpMethod.Head, path);
+    }
 
-    public ZLinkHttpRequestBuilder Options(string path) => new(this, ZLinkHttpMethod.Options, path);
+    public ZLinkHttpRequestBuilder Options(string path)
+    {
+        return new ZLinkHttpRequestBuilder(this, ZLinkHttpMethod.Options, path);
+    }
 }

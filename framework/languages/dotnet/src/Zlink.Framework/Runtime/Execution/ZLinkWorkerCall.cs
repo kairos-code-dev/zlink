@@ -1,11 +1,11 @@
 namespace Zlink.Framework.Runtime.Execution;
 
 /// <summary>
-/// Fluent worker offload call. The work delegate runs on a pool thread; the
-/// terminator decides how completion is observed. <c>Async()</c> is the gated
-/// awaitable path; <c>Submit(...)</c> always posts completion and error
-/// callbacks back to the owning spot serial line. A late completion after a
-/// timeout is dropped without invoking user callbacks.
+///     Fluent worker offload call. The work delegate runs on a pool thread; the
+///     terminator decides how completion is observed. <c>Async()</c> is the gated
+///     awaitable path; <c>Submit(...)</c> always posts completion and error
+///     callbacks back to the owning spot serial line. A late completion after a
+///     timeout is dropped without invoking user callbacks.
 /// </summary>
 internal sealed class ZLinkWorkerCall<TResult>(
     ZLinkWorkerPool pool,
@@ -13,15 +13,12 @@ internal sealed class ZLinkWorkerCall<TResult>(
     Action<Func<CancellationToken, ValueTask>> postToDispatcher) : IZLinkWorkerCall<TResult>
 {
     private readonly ZLinkSerialTurn? _turn = ZLinkSerialTurn.Current;
-    private TimeSpan? _timeout;
     private int _terminated;
+    private TimeSpan? _timeout;
 
     public IZLinkWorkerCall<TResult> Timeout(TimeSpan timeout)
     {
-        if (timeout <= TimeSpan.Zero)
-        {
-            throw new ArgumentOutOfRangeException(nameof(timeout));
-        }
+        if (timeout <= TimeSpan.Zero) throw new ArgumentOutOfRangeException(nameof(timeout));
 
         _timeout = timeout;
         return this;
@@ -56,10 +53,8 @@ internal sealed class ZLinkWorkerCall<TResult>(
             error => postToDispatcher(ct =>
             {
                 if (onError is null)
-                {
                     // Surfaces through the serial line's runtime error sink.
                     throw error;
-                }
 
                 return onError(error, ct);
             }),
@@ -72,31 +67,23 @@ internal sealed class ZLinkWorkerCall<TResult>(
         CancellationToken callerToken)
     {
         var execution = new Execution(work, complete, fail, _timeout);
-        if (!execution.TryBind(pool, callerToken))
-        {
-            return;
-        }
+        if (!execution.TryBind(pool, callerToken)) return;
 
-        if (!pool.TrySubmit(execution.Run))
-        {
-            execution.FailQueueFull();
-        }
+        if (!pool.TrySubmit(execution.Run)) execution.FailQueueFull();
     }
 
     private void EnsureSingleTerminator()
     {
         if (Interlocked.Exchange(ref _terminated, 1) != 0)
-        {
             throw new InvalidOperationException(
                 "RunWorker call already has a terminator. Call Async or Submit once.");
-        }
     }
 
     private ZLinkSerialTurn RequireTurn()
     {
         return _turn
-            ?? throw new InvalidOperationException(
-                "Yield requires a framework Spot handler turn captured when the call object was created.");
+               ?? throw new InvalidOperationException(
+                   "Yield requires a framework Spot handler turn captured when the call object was created.");
     }
 
     private sealed class Execution(
@@ -107,11 +94,11 @@ internal sealed class ZLinkWorkerCall<TResult>(
     {
         private readonly Action<TResult> _complete = complete;
         private readonly Action<Exception> _fail = fail;
-        private CancellationTokenSource? _timeoutSource;
-        private CancellationTokenSource? _workTokenSource;
-        private CancellationTokenRegistration _timeoutRegistration;
         private CancellationTokenRegistration _callerRegistration;
         private int _settled;
+        private CancellationTokenRegistration _timeoutRegistration;
+        private CancellationTokenSource? _timeoutSource;
+        private CancellationTokenSource? _workTokenSource;
 
         public bool TryBind(ZLinkWorkerPool pool, CancellationToken callerToken)
         {
@@ -125,12 +112,9 @@ internal sealed class ZLinkWorkerCall<TResult>(
             }
 
             if (callerToken.CanBeCanceled)
-            {
-                _callerRegistration = callerToken.Register(
-                    () => TrySettle(static (self, _) => self._fail(
-                            new OperationCanceledException("Worker call was canceled.")),
-                        this));
-            }
+                _callerRegistration = callerToken.Register(() => TrySettle(static (self, _) => self._fail(
+                        new OperationCanceledException("Worker call was canceled.")),
+                    this));
 
             return true;
         }
@@ -154,8 +138,8 @@ internal sealed class ZLinkWorkerCall<TResult>(
                         new ZLinkFrameworkException(
                             ZLinkFrameworkErrorKind.WorkerFailed,
                             "Worker call failed.",
-                            isRetriable: false,
-                            innerException: (Exception)state!)),
+                            false,
+                            (Exception)state!)),
                     this,
                     ex);
             }
@@ -171,7 +155,7 @@ internal sealed class ZLinkWorkerCall<TResult>(
                     new ZLinkFrameworkException(
                         ZLinkFrameworkErrorKind.WorkerQueueFull,
                         "Worker queue is full.",
-                        isRetriable: true)),
+                        true)),
                 this);
             Cleanup();
         }
@@ -182,7 +166,7 @@ internal sealed class ZLinkWorkerCall<TResult>(
                     new ZLinkFrameworkException(
                         ZLinkFrameworkErrorKind.WorkerTimedOut,
                         "Worker call timed out.",
-                        isRetriable: false)),
+                        false)),
                 this);
         }
 
@@ -192,10 +176,8 @@ internal sealed class ZLinkWorkerCall<TResult>(
             object? state = null)
         {
             if (Interlocked.Exchange(ref _settled, 1) != 0)
-            {
                 // Late completion after timeout/cancellation: drop the result.
                 return;
-            }
 
             settle(self, state);
         }

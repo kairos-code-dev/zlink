@@ -1,10 +1,9 @@
+using System.Reflection;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Hosting;
-using Systems.Zlink.Stream.Connector.Contracts;
 using Zlink.Framework.AspNetCore;
 
 namespace Zlink.Framework.UnitTests;
-
 
 public sealed class HandlerExposureTests : RegistrationValidationSupport
 {
@@ -21,7 +20,7 @@ public sealed class HandlerExposureTests : RegistrationValidationSupport
         var exception = await Assert.ThrowsAsync<ZLinkConfigurationException>(() =>
             client.Send(
                     "missing",
-                    global::Systems.Zlink.RoutingId.From("01"),
+                    RoutingId.From("01"),
                     "ping")
                 .Async().AsTask());
 
@@ -52,10 +51,7 @@ public sealed class HandlerExposureTests : RegistrationValidationSupport
         var services = new ServiceCollection();
 
         var exception = Assert.Throws<ZLinkConfigurationException>(() =>
-            services.AddZLinkFramework(options =>
-            {
-                options.AddClientServerChannel("profile").EnableServer("");
-            }));
+            services.AddZLinkFramework(options => { options.AddClientServerChannel("profile").EnableServer(""); }));
 
         Assert.Contains("Channel server bind endpoint must not be empty", exception.Message, StringComparison.Ordinal);
     }
@@ -71,7 +67,6 @@ public sealed class HandlerExposureTests : RegistrationValidationSupport
                 {
                     var channel = options.AddClientServerChannel("profile");
                     channel.EnableServer("tcp://127.0.0.1:7101");
-
                 }
             }));
 
@@ -90,7 +85,6 @@ public sealed class HandlerExposureTests : RegistrationValidationSupport
                 {
                     var channel = options.AddFanoutChannel("profile.events");
                     channel.EnableSubscriber();
-
                 }
             }));
 
@@ -110,7 +104,6 @@ public sealed class HandlerExposureTests : RegistrationValidationSupport
                     var channel = options.AddClientServerChannel("profile");
                     channel.EnableServer("tcp://127.0.0.1:7101");
                     channel.AddHandlerGroup("missing-group");
-
                 }
             }));
 
@@ -130,7 +123,6 @@ public sealed class HandlerExposureTests : RegistrationValidationSupport
                     var channel = options.AddClientServerChannel("profile");
                     channel.EnableServer("tcp://127.0.0.1:7101");
                     channel.AddHandlerGroup("validation-publish");
-
                 }
             }));
 
@@ -150,7 +142,6 @@ public sealed class HandlerExposureTests : RegistrationValidationSupport
                 channel.EnableServer("tcp://127.0.0.1:7101");
                 channel.EnableClient("tcp://127.0.0.1:7102");
                 channel.AddHandlerGroup("validation-route");
-
             }
         });
 
@@ -175,11 +166,11 @@ public sealed class HandlerExposureTests : RegistrationValidationSupport
                     channel.EnableServer("tcp://127.0.0.1:7101");
                     channel.EnableClient("tcp://127.0.0.1:7102");
                     channel.AddHandlerGroup("missing-route-group");
-
                 }
             }));
 
-        Assert.Contains("maps unknown handler group 'missing-route-group'", exception.Message, StringComparison.Ordinal);
+        Assert.Contains("maps unknown handler group 'missing-route-group'", exception.Message,
+            StringComparison.Ordinal);
     }
 
     [Fact]
@@ -196,7 +187,6 @@ public sealed class HandlerExposureTests : RegistrationValidationSupport
                     channel.EnableServer("tcp://127.0.0.1:7101");
                     channel.EnableClient("tcp://127.0.0.1:7102");
                     channel.AddHandlerGroup("validation-publish");
-
                 }
             }));
 
@@ -216,8 +206,8 @@ public sealed class HandlerExposureTests : RegistrationValidationSupport
                     var channel = options.AddClientServerChannel("profile");
                     channel.EnableServer("tcp://127.0.0.1:7101");
                     channel.AddHandlerGroup("validation-request");
-                    channel.AddRequestHandler<AlternateTestChannelRequestHandler, TestChannelRequest, TestChannelReply>();
-
+                    channel
+                        .AddRequestHandler<AlternateTestChannelRequestHandler, TestChannelRequest, TestChannelReply>();
                 }
             }));
 
@@ -239,7 +229,6 @@ public sealed class HandlerExposureTests : RegistrationValidationSupport
                     channel.EnableClient("tcp://127.0.0.1:7102");
                     channel.AddHandlerGroup("validation-route");
                     channel.AddRequestHandler<AlternateTestRouteRequestHandler, TestRouteRequest, TestRouteReply>();
-
                 }
             }));
 
@@ -257,7 +246,6 @@ public sealed class HandlerExposureTests : RegistrationValidationSupport
                 var channel = options.AddClientServerChannel("profile");
                 channel.EnableServer("tcp://127.0.0.1:7101");
                 channel.AddRequestHandler<TestChannelRequestHandler>();
-
             }
         });
 
@@ -284,7 +272,6 @@ public sealed class HandlerExposureTests : RegistrationValidationSupport
                 var channel = options.AddRouteMesh("route").EnableServer("tcp://0.0.0.0:5700");
                 channel.SetRoutingId(RoutingId.From("route-node"));
                 channel.AddRequestHandler<TestRouteRequestHandler>();
-
             }
         });
 
@@ -310,7 +297,6 @@ public sealed class HandlerExposureTests : RegistrationValidationSupport
                 channel.SetRoutingId(RoutingId.From("route-node"));
                 channel.EnableClient("tcp://10.0.0.2:5700");
                 channel.AddRequestHandler<TestRouteRequestHandler>();
-
             }
         });
 
@@ -323,6 +309,7 @@ public sealed class HandlerExposureTests : RegistrationValidationSupport
         Assert.False(route.RoutingConfig.EnablePeerProbe);
         Assert.Equal("tcp://10.0.0.2:5700", Assert.Single(route.ManualConnections));
     }
+
     [Fact]
     public void AddZLinkFramework_AllowsSingleGenericRouteAndPublishHandlerRegistration()
     {
@@ -335,13 +322,11 @@ public sealed class HandlerExposureTests : RegistrationValidationSupport
                 var channel = options.AddRouteMesh("backend");
                 channel.EnableServer("tcp://127.0.0.1:7101");
                 channel.AddRequestHandler<TestRouteRequestHandler>();
-
             }
             {
                 var channel = options.AddFanoutChannel("events");
                 channel.EnableSubscriber();
                 channel.AddPublishHandler<TestPublishHandler>();
-
             }
         });
 
@@ -364,9 +349,9 @@ public sealed class HandlerExposureTests : RegistrationValidationSupport
     {
         var removedTypes = typeof(IZLinkSpotOutbound).Assembly.GetTypes()
             .Where(static type => type.Namespace == "Zlink.Framework.Contracts.Spots"
-                && type.Name.Contains("Routed", StringComparison.Ordinal)
-                && type.Name.Contains("Spot", StringComparison.Ordinal)
-                && type.Name.Contains("Client", StringComparison.Ordinal));
+                                  && type.Name.Contains("Routed", StringComparison.Ordinal)
+                                  && type.Name.Contains("Spot", StringComparison.Ordinal)
+                                  && type.Name.Contains("Client", StringComparison.Ordinal));
 
         Assert.Empty(removedTypes);
     }
@@ -381,63 +366,63 @@ public sealed class HandlerExposureTests : RegistrationValidationSupport
         Assert.Contains(
             clientServerMethods,
             static method => method.Name == nameof(IZLinkClientServerChannelBuilder.AddHandlerGroup)
-                && method.GetParameters() is [{ ParameterType: var parameterType }]
-                && parameterType == typeof(string));
+                             && method.GetParameters() is [{ ParameterType: var parameterType }]
+                             && parameterType == typeof(string));
         Assert.Contains(
             clientServerMethods,
             static method => method.Name == nameof(IZLinkClientServerChannelBuilder.AddSendHandler)
-                && method.GetGenericArguments().Length == 1);
+                             && method.GetGenericArguments().Length == 1);
         Assert.Contains(
             clientServerMethods,
             static method => method.Name == nameof(IZLinkClientServerChannelBuilder.AddSendHandler)
-                && method.GetGenericArguments().Length == 2);
+                             && method.GetGenericArguments().Length == 2);
         Assert.Contains(
             clientServerMethods,
             static method => method.Name == nameof(IZLinkClientServerChannelBuilder.AddRequestHandler)
-                && method.GetGenericArguments().Length == 1);
+                             && method.GetGenericArguments().Length == 1);
         Assert.Contains(
             clientServerMethods,
             static method => method.Name == nameof(IZLinkClientServerChannelBuilder.AddRequestHandler)
-                && method.GetGenericArguments().Length == 3);
+                             && method.GetGenericArguments().Length == 3);
         Assert.Contains(
             routeMeshMethods,
             static method => method.Name == nameof(IZLinkRouteMeshChannelBuilder.AddHandlerGroup)
-                && method.GetParameters() is [{ ParameterType: var parameterType }]
-                && parameterType == typeof(string));
+                             && method.GetParameters() is [{ ParameterType: var parameterType }]
+                             && parameterType == typeof(string));
         Assert.Contains(
             routeMeshMethods,
             static method => method.Name == nameof(IZLinkRouteMeshChannelBuilder.AddSendHandler)
-                && method.GetGenericArguments().Length == 1);
+                             && method.GetGenericArguments().Length == 1);
         Assert.Contains(
             routeMeshMethods,
             static method => method.Name == nameof(IZLinkRouteMeshChannelBuilder.AddSendHandler)
-                && method.GetGenericArguments().Length == 2);
+                             && method.GetGenericArguments().Length == 2);
         Assert.Contains(
             routeMeshMethods,
             static method => method.Name == nameof(IZLinkRouteMeshChannelBuilder.AddRequestHandler)
-                && method.GetGenericArguments().Length == 1);
+                             && method.GetGenericArguments().Length == 1);
         Assert.Contains(
             routeMeshMethods,
             static method => method.Name == nameof(IZLinkRouteMeshChannelBuilder.AddRequestHandler)
-                && method.GetGenericArguments().Length == 3);
+                             && method.GetGenericArguments().Length == 3);
         Assert.Contains(
             fanoutMethods,
             static method => method.Name == nameof(IZLinkFanoutChannelBuilder.AddHandlerGroup)
-                && method.GetParameters() is [{ ParameterType: var parameterType }]
-                && parameterType == typeof(string));
+                             && method.GetParameters() is [{ ParameterType: var parameterType }]
+                             && parameterType == typeof(string));
         Assert.Contains(
             fanoutMethods,
             static method => method.Name == nameof(IZLinkFanoutChannelBuilder.AddPublishHandler)
-                && method.GetGenericArguments().Length == 1);
+                             && method.GetGenericArguments().Length == 1);
         Assert.Contains(
             fanoutMethods,
             static method => method.Name == nameof(IZLinkFanoutChannelBuilder.AddPublishHandler)
-                && method.GetGenericArguments().Length == 2);
+                             && method.GetGenericArguments().Length == 2);
         Assert.DoesNotContain(
             fanoutMethods,
             static method => method.Name is "AddSendHandler" or "AddRequestHandler");
 
-        static IReadOnlyList<System.Reflection.MethodInfo> PublicInterfaceMethods(Type type)
+        static IReadOnlyList<MethodInfo> PublicInterfaceMethods(Type type)
         {
             return type.GetInterfaces()
                 .Append(type)
@@ -445,5 +430,4 @@ public sealed class HandlerExposureTests : RegistrationValidationSupport
                 .ToArray();
         }
     }
-
 }

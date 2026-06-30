@@ -1,21 +1,20 @@
 // SPDX-License-Identifier: MPL-2.0
 
-using System;
 using System.Text;
 
 namespace Systems.Zlink;
 
 public sealed partial class TopicMessage
 {
-    private MultipartMessageCollection? _parts;
-    private Message? _singlePart;
     private int _closed;
+    private MultipartMessageCollection? _parts;
     private RoutingId? _routingId;
     private RoutingIdSnapshot _routingIdSnapshot;
+    private Message? _singlePart;
     private string? _topic = string.Empty;
     private byte[]? _topicBytes;
-    private byte[]? _topicWriteBuffer;
     private int _topicLength;
+    private byte[]? _topicWriteBuffer;
 
     internal TopicMessage(RoutingId? routingId, string topic, Message[] parts)
         : this(routingId, topic,
@@ -45,6 +44,21 @@ public sealed partial class TopicMessage
         Message singlePart)
     {
         PopulateSinglePart(routingId, topic, singlePart);
+    }
+
+    private MultipartMessageCollection PartsCollection
+    {
+        get
+        {
+            if (_parts != null)
+                return _parts;
+            if (_singlePart == null)
+                return _parts = MultipartMessageCollection.FromMessages(
+                    Array.Empty<Message>());
+            var part = _singlePart;
+            _singlePart = null;
+            return _parts = MultipartMessageCollection.FromSingle(part);
+        }
     }
 
     internal void Populate(RoutingId? routingId, string topic,
@@ -115,19 +129,20 @@ public sealed partial class TopicMessage
     {
         if (minimumLength < 0)
             throw new ArgumentOutOfRangeException(nameof(minimumLength));
-        byte[]? topicWriteBuffer = _topicWriteBuffer;
+        var topicWriteBuffer = _topicWriteBuffer;
         if (topicWriteBuffer == null || topicWriteBuffer.Length < minimumLength)
         {
             topicWriteBuffer = new byte[minimumLength];
             _topicWriteBuffer = topicWriteBuffer;
         }
+
         return topicWriteBuffer;
     }
 
     internal void PopulateFromWritableTopicBuffer(RoutingId? routingId,
         int topicLength, MultipartMessageCollection parts)
     {
-        ResetForReuse(resetTopic: false);
+        ResetForReuse(false);
         _routingId = routingId;
         _routingIdSnapshot = default;
         SetTopicFromWritableBuffer(topicLength);
@@ -139,7 +154,7 @@ public sealed partial class TopicMessage
     {
         if (singlePart == null)
             throw new ArgumentNullException(nameof(singlePart));
-        ResetForReuse(resetTopic: false);
+        ResetForReuse(false);
         _routingId = routingId;
         _routingIdSnapshot = default;
         SetTopicFromWritableBuffer(topicLength);
@@ -150,7 +165,7 @@ public sealed partial class TopicMessage
         RoutingIdSnapshot routingId, int topicLength,
         MultipartMessageCollection parts)
     {
-        ResetForReuse(resetTopic: false);
+        ResetForReuse(false);
         _routingIdSnapshot = routingId;
         SetTopicFromWritableBuffer(topicLength);
         _parts = parts ?? MultipartMessageCollection.FromMessages(Array.Empty<Message>());
@@ -161,7 +176,7 @@ public sealed partial class TopicMessage
     {
         if (singlePart == null)
             throw new ArgumentNullException(nameof(singlePart));
-        ResetForReuse(resetTopic: false);
+        ResetForReuse(false);
         _routingIdSnapshot = routingId;
         SetTopicFromWritableBuffer(topicLength);
         _singlePart = singlePart;
@@ -182,6 +197,7 @@ public sealed partial class TopicMessage
             _topic = string.Empty;
             _topicLength = 0;
         }
+
         _closed = 0;
     }
 
@@ -203,10 +219,10 @@ public sealed partial class TopicMessage
         if ((uint)topicLength > (uint)topicBuffer.Length)
             throw new ArgumentOutOfRangeException(nameof(topicLength));
 
-        byte[] topicBytes = _topicBytes != null
-            && _topicBytes.Length >= topicLength
-                ? _topicBytes
-                : new byte[topicLength];
+        var topicBytes = _topicBytes != null
+                         && _topicBytes.Length >= topicLength
+            ? _topicBytes
+            : new byte[topicLength];
         Buffer.BlockCopy(topicBuffer, 0, topicBytes, 0, topicLength);
         _topicBytes = topicBytes;
         _topicLength = topicLength;
@@ -222,12 +238,10 @@ public sealed partial class TopicMessage
             return;
         }
 
-        byte[]? topicWriteBuffer = _topicWriteBuffer;
+        var topicWriteBuffer = _topicWriteBuffer;
         if (topicWriteBuffer == null
             || (uint)topicLength > (uint)topicWriteBuffer.Length)
-        {
             throw new ArgumentOutOfRangeException(nameof(topicLength));
-        }
 
         // HOT PATH: Spot.Subscribe(TopicMessage, ...) writes topic bytes into
         // the reusable buffer supplied by this instance. The reset step leaves
@@ -246,20 +260,5 @@ public sealed partial class TopicMessage
         return _topicBytes == null || _topicLength == 0
             ? string.Empty
             : Encoding.UTF8.GetString(_topicBytes, 0, _topicLength);
-    }
-
-    private MultipartMessageCollection PartsCollection
-    {
-        get
-        {
-            if (_parts != null)
-                return _parts;
-            if (_singlePart == null)
-                return _parts = MultipartMessageCollection.FromMessages(
-                    Array.Empty<Message>());
-            Message part = _singlePart;
-            _singlePart = null;
-            return _parts = MultipartMessageCollection.FromSingle(part);
-        }
     }
 }

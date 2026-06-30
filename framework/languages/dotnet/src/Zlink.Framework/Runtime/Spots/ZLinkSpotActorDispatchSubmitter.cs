@@ -1,6 +1,3 @@
-
-using Zlink.Framework.Runtime.Streams;
-
 namespace Zlink.Framework.Runtime.Spots;
 
 internal sealed class ZLinkSpotActorDispatchSubmitter(
@@ -68,8 +65,8 @@ internal sealed class ZLinkSpotActorDispatchSubmitter(
                 cancellationToken).ConfigureAwait(false);
 
             return state.Reply
-                ?? throw new InvalidOperationException(
-                    $"SPOT actor packet reply for '{header.Name}' was null.");
+                   ?? throw new InvalidOperationException(
+                       $"SPOT actor packet reply for '{header.Name}' was null.");
         }
         catch
         {

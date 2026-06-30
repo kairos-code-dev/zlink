@@ -1,5 +1,3 @@
-using Zlink.Framework.Runtime.Execution;
-
 namespace Zlink.Framework.Runtime.Spots;
 
 internal sealed class ZLinkSpotOutboundService(IServiceProvider services) : IZLinkSpotOutbound
@@ -142,8 +140,8 @@ internal sealed class ZLinkRoutedSpotRequestCall<TRequest>(
     private ZLinkSerialTurn RequireTurn()
     {
         return _turn
-            ?? throw new InvalidOperationException(
-                "Yield requires a framework Spot handler turn captured when the call object was created.");
+               ?? throw new InvalidOperationException(
+                   "Yield requires a framework Spot handler turn captured when the call object was created.");
     }
 }
 
@@ -234,7 +232,7 @@ internal sealed class ZLinkCurrentSpotRequestCall<TMessage>(
     private ZLinkSerialTurn RequireTurn()
     {
         return _turn
-            ?? throw new InvalidOperationException(
-                "Yield requires a framework Spot handler turn captured when the call object was created.");
+               ?? throw new InvalidOperationException(
+                   "Yield requires a framework Spot handler turn captured when the call object was created.");
     }
 }

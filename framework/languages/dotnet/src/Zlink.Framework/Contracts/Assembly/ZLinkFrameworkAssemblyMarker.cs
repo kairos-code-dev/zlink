@@ -1,7 +1,7 @@
 namespace Zlink.Framework.Contracts.Assembly;
 
 /// <summary>
-/// Marker type for the framework core assembly.
+///     Marker type for the framework core assembly.
 /// </summary>
 public static class ZLinkFrameworkAssemblyMarker
 {

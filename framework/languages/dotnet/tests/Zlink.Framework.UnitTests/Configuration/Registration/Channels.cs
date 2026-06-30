@@ -1,10 +1,7 @@
 using Microsoft.Extensions.DependencyInjection;
-using Microsoft.Extensions.Hosting;
-using Systems.Zlink.Stream.Connector.Contracts;
 using Zlink.Framework.AspNetCore;
 
 namespace Zlink.Framework.UnitTests;
-
 
 public sealed class ChannelsTests : RegistrationValidationSupport
 {
@@ -19,12 +16,10 @@ public sealed class ChannelsTests : RegistrationValidationSupport
                 {
                     var channel = options.AddClientServerChannel("profile");
                     channel.EnableServer("tcp://127.0.0.1:7101");
-
                 }
                 {
                     var channel = options.AddClientServerChannel("profile");
                     channel.EnableClient();
-
                 }
             }));
 
@@ -72,7 +67,6 @@ public sealed class ChannelsTests : RegistrationValidationSupport
                 Assert.Equal(1.0d, dispatch.Diagnostics.SampleRate);
                 Assert.True(dispatch.Diagnostics.IncludeMessageSizes);
                 Assert.False(dispatch.Diagnostics.IncludeNativeDiagnostics);
-
             }
         });
         var registration = services.BuildServiceProvider().GetRequiredService<ZLinkFrameworkRegistration>();
@@ -91,7 +85,6 @@ public sealed class ChannelsTests : RegistrationValidationSupport
                 {
                     var dispatch = options.ConfigureDispatch();
                     dispatch.Unhandled.Send = ZLinkUnhandledDispatchAction.ReplyError;
-
                 }
             }));
 
@@ -109,7 +102,6 @@ public sealed class ChannelsTests : RegistrationValidationSupport
                 {
                     var dispatch = options.ConfigureDispatch();
                     dispatch.Unhandled.Publish = ZLinkUnhandledDispatchAction.ReplyError;
-
                 }
             }));
 
@@ -127,7 +119,6 @@ public sealed class ChannelsTests : RegistrationValidationSupport
                 {
                     var dispatch = options.ConfigureDispatch();
                     dispatch.TraceSampleRate(1.1d);
-
                 }
             }));
 
@@ -143,7 +134,6 @@ public sealed class ChannelsTests : RegistrationValidationSupport
         {
             {
                 var channel = options.AddClientServerChannel("profile").EnableClient("tcp://127.0.0.1:7101");
-
             }
 
             options.UseDiscovery().AddRegistryEndpoint("tcp://127.0.0.1:5551");
@@ -162,7 +152,6 @@ public sealed class ChannelsTests : RegistrationValidationSupport
                 var routed = options.AddRouteMesh("backend");
                 routed.EnableServer("tcp://127.0.0.1:7201");
                 routed.EnableClient("tcp://127.0.0.1:7202");
-
             }
         });
     }
@@ -209,10 +198,7 @@ public sealed class ChannelsTests : RegistrationValidationSupport
         var services = new ServiceCollection();
 
         var exception = Assert.Throws<ZLinkConfigurationException>(() =>
-            services.AddZLinkFramework(options =>
-            {
-                options.AddRouteMesh("backend");
-            }));
+            services.AddZLinkFramework(options => { options.AddRouteMesh("backend"); }));
 
         Assert.Contains("must enable server or client capability", exception.Message, StringComparison.Ordinal);
     }
@@ -244,19 +230,15 @@ public sealed class ChannelsTests : RegistrationValidationSupport
                 var routed = options.AddRouteMesh("backend");
                 routed.EnableServer("tcp://127.0.0.1:7203");
                 routed.EnableClient("tcp://127.0.0.1:7204");
-
             }
             {
                 var mesh = options.AddSpotMesh("spot.mesh");
-                mesh.UseDiscovery().AddRegistryEndpoint("tcp://127.0.0.1:5551");
                 {
                     var node = mesh;
                     {
                         var router = node.EnableRouter("tcp://127.0.0.1:9105");
-
                     }
                 }
-
             }
         });
     }
@@ -267,12 +249,8 @@ public sealed class ChannelsTests : RegistrationValidationSupport
         var services = new ServiceCollection();
 
         var exception = Assert.Throws<ZLinkConfigurationException>(() =>
-            services.AddZLinkFramework(options =>
-            {
-                                options.AddClientServerChannel("profile").EnableClient();
-            }));
+            services.AddZLinkFramework(options => { options.AddClientServerChannel("profile").EnableClient(); }));
 
         Assert.Contains("requires discovery or manual connections", exception.Message, StringComparison.Ordinal);
     }
-
 }

@@ -4,21 +4,19 @@ namespace TicTacToe.Server.Play.Domain.TicTacToe;
 
 internal sealed class TicTacToeMatch(string roomId, TimeSpan turnTimeout)
 {
-    private readonly Dictionary<string, string> _players = new(StringComparer.Ordinal);
     private readonly TicTacToeBoard _board = new();
-    private string _nextTurn = TicTacToeMarks.X;
-    private string _status = TicTacToeGameStatuses.WaitingForPlayers;
-    private string? _winner;
+    private readonly Dictionary<string, string> _players = new(StringComparer.Ordinal);
     private string? _lastMoveActorId;
     private int? _lastMoveCell;
+    private string _nextTurn = TicTacToeMarks.X;
+    private string _status = TicTacToeGameStatuses.WaitingForPlayers;
     private DateTimeOffset? _turnDeadline;
+    private string? _winner;
 
     public TicTacToeJoinChange JoinPlayer(string actorId, DateTimeOffset now)
     {
         if (_players.TryGetValue(actorId, out var existingMark))
-        {
             return new TicTacToeJoinChange(Snapshot(), existingMark, false);
-        }
 
         var mark = _players.Count switch
         {
@@ -40,19 +38,13 @@ internal sealed class TicTacToeMatch(string roomId, TimeSpan turnTimeout)
     public TicTacToeMoveChange PlaceMark(string actorId, int cell, DateTimeOffset now)
     {
         if (!_players.TryGetValue(actorId, out var mark))
-        {
             throw new InvalidOperationException("Player has not joined this game.");
-        }
 
         if (_status != TicTacToeGameStatuses.InProgress)
-        {
             throw new InvalidOperationException($"Game is not in progress. status={_status}");
-        }
 
         if (!string.Equals(mark, _nextTurn, StringComparison.Ordinal))
-        {
             throw new InvalidOperationException($"It is {_nextTurn}'s turn.");
-        }
 
         _board.Place(mark, cell);
         _lastMoveActorId = actorId;
@@ -66,9 +58,7 @@ internal sealed class TicTacToeMatch(string roomId, TimeSpan turnTimeout)
         if (_status != TicTacToeGameStatuses.InProgress
             || _turnDeadline is not { } deadline
             || now < deadline)
-        {
             return new TicTacToeTickChange(Snapshot(), false);
-        }
 
         var timedOut = _players.FirstOrDefault(player => player.Value == _nextTurn).Key;
         var winner = _players.FirstOrDefault(player => player.Value != _nextTurn).Key;
@@ -126,7 +116,6 @@ internal sealed class TicTacToeMatch(string roomId, TimeSpan turnTimeout)
     {
         _turnDeadline = now.Add(turnTimeout);
     }
-
 }
 
 internal sealed record TicTacToeJoinChange(

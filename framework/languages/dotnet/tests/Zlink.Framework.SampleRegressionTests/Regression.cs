@@ -1,5 +1,4 @@
 using Xunit;
-using Common = Zlink.Framework.Tests.Common;
 
 namespace Zlink.Framework.SampleRegressionTests;
 
@@ -13,7 +12,7 @@ public sealed class RegressionTests
         AssertNoSampleRouteStore(sampleRoot);
         AssertNoSampleMetadataStore(sampleRoot);
         AssertSampleUsesRegistryDiscovery(sampleRoot);
-        AssertSessionServerUsesSessionRelay(sampleRoot, allowRouteMeshChannel: true);
+        AssertSessionServerUsesSessionRelay(sampleRoot, true);
         AssertSessionHandlersDoNotResolveActorRemoteAddresses(sampleRoot);
         AssertEnsureActorHandlersReturnSessionRelayRemoteAddresses(sampleRoot);
         AssertNoSampleSessionRelayJson(sampleRoot);
@@ -44,9 +43,12 @@ public sealed class RegressionTests
         var dotnetRoot = ResolveDotnetRoot();
         var docs = EnumerateMarkdownFiles(Path.Combine(dotnetRoot, "..", "..", "doc", "framework", "dotnet", "guide"))
             .Concat(EnumerateMarkdownFiles(Path.Combine(dotnetRoot, "..", "..", "doc", "framework", "dotnet", "spec")))
-            .Concat(EnumerateMarkdownFiles(Path.Combine(dotnetRoot, "..", "..", "doc", "framework", "dotnet", "internals")))
-            .Concat(Directory.EnumerateFiles(Path.Combine(dotnetRoot, "samples"), "README.md", SearchOption.AllDirectories))
-            .Concat(Directory.EnumerateFiles(Path.Combine(dotnetRoot, "samples"), "README.ko.md", SearchOption.AllDirectories))
+            .Concat(EnumerateMarkdownFiles(Path.Combine(dotnetRoot, "..", "..", "doc", "framework", "dotnet",
+                "internals")))
+            .Concat(Directory.EnumerateFiles(Path.Combine(dotnetRoot, "samples"), "README.md",
+                SearchOption.AllDirectories))
+            .Concat(Directory.EnumerateFiles(Path.Combine(dotnetRoot, "samples"), "README.ko.md",
+                SearchOption.AllDirectories))
             .ToArray();
         var offenders = new List<string>();
         (string Needle, string Reason)[] forbidden =
@@ -68,16 +70,14 @@ public sealed class RegressionTests
         {
             var text = File.ReadAllText(file);
             foreach (var (needle, reason) in forbidden)
-            {
                 if (text.Contains(needle, StringComparison.Ordinal))
-                {
                     offenders.Add($"{Path.GetRelativePath(dotnetRoot, file)}: {reason}");
-                }
-            }
         }
 
-        var actorSpec = File.ReadAllText(Path.Combine(dotnetRoot, "..", "..", "doc", "framework", "dotnet", "spec", "aspnet-core-actor.ko.md"));
-        var actorGuide = File.ReadAllText(Path.Combine(dotnetRoot, "..", "..", "doc", "framework", "dotnet", "guide", "06-actor-spot.ko.md"));
+        var actorSpec = File.ReadAllText(Path.Combine(dotnetRoot, "..", "..", "doc", "framework", "dotnet", "spec",
+            "aspnet-core-actor.ko.md"));
+        var actorGuide = File.ReadAllText(Path.Combine(dotnetRoot, "..", "..", "doc", "framework", "dotnet", "guide",
+            "06-actor-spot.ko.md"));
         Assert.Contains("DestroyActorAsync: Entry Spot", actorSpec, StringComparison.Ordinal);
         Assert.Contains("session 종료가 곧 actor leave 나 actor destroy 를 뜻하지 않는다", actorSpec, StringComparison.Ordinal);
         Assert.Contains("IZLinkEntrySpotContext.DestroyActorAsync(actor)", actorGuide, StringComparison.Ordinal);
@@ -127,13 +127,17 @@ public sealed class RegressionTests
         var sourceFiles = EnumerateSourceFiles(sampleRoot).ToArray();
         var projectFiles = Directory
             .EnumerateFiles(sampleRoot, "*.csproj", SearchOption.AllDirectories)
-            .Where(static path => !path.Contains($"{Path.DirectorySeparatorChar}bin{Path.DirectorySeparatorChar}", StringComparison.Ordinal)
-                && !path.Contains($"{Path.DirectorySeparatorChar}obj{Path.DirectorySeparatorChar}", StringComparison.Ordinal))
+            .Where(static path => !path.Contains($"{Path.DirectorySeparatorChar}bin{Path.DirectorySeparatorChar}",
+                                      StringComparison.Ordinal)
+                                  && !path.Contains($"{Path.DirectorySeparatorChar}obj{Path.DirectorySeparatorChar}",
+                                      StringComparison.Ordinal))
             .ToArray();
         var protoFiles = Directory
             .EnumerateFiles(sampleRoot, "*.proto", SearchOption.AllDirectories)
-            .Where(static path => !path.Contains($"{Path.DirectorySeparatorChar}bin{Path.DirectorySeparatorChar}", StringComparison.Ordinal)
-                && !path.Contains($"{Path.DirectorySeparatorChar}obj{Path.DirectorySeparatorChar}", StringComparison.Ordinal))
+            .Where(static path => !path.Contains($"{Path.DirectorySeparatorChar}bin{Path.DirectorySeparatorChar}",
+                                      StringComparison.Ordinal)
+                                  && !path.Contains($"{Path.DirectorySeparatorChar}obj{Path.DirectorySeparatorChar}",
+                                      StringComparison.Ordinal))
             .ToArray();
         var allText = string.Join(
             Environment.NewLine,
@@ -144,14 +148,18 @@ public sealed class RegressionTests
             Environment.NewLine,
             Directory
                 .EnumerateFiles(Path.Combine(sampleRoot, "Shared", "Contracts"), "*.cs", SearchOption.AllDirectories)
-                .Where(static path => !path.Contains($"{Path.DirectorySeparatorChar}bin{Path.DirectorySeparatorChar}", StringComparison.Ordinal)
-                    && !path.Contains($"{Path.DirectorySeparatorChar}obj{Path.DirectorySeparatorChar}", StringComparison.Ordinal))
+                .Where(static path => !path.Contains($"{Path.DirectorySeparatorChar}bin{Path.DirectorySeparatorChar}",
+                                          StringComparison.Ordinal)
+                                      && !path.Contains(
+                                          $"{Path.DirectorySeparatorChar}obj{Path.DirectorySeparatorChar}",
+                                          StringComparison.Ordinal))
                 .Select(File.ReadAllText));
 
         Assert.NotEmpty(protoFiles);
         Assert.Contains("Google.Protobuf", sharedProjectText, StringComparison.Ordinal);
         Assert.Contains("Grpc.Tools", sharedProjectText, StringComparison.Ordinal);
-        Assert.Contains("<Protobuf Include=\"Contracts\\bingo_messages.proto\" GrpcServices=\"None\" />", sharedProjectText, StringComparison.Ordinal);
+        Assert.Contains("<Protobuf Include=\"Contracts\\bingo_messages.proto\" GrpcServices=\"None\" />",
+            sharedProjectText, StringComparison.Ordinal);
         Assert.DoesNotContain("record ", sharedContractSourceText, StringComparison.Ordinal);
         Assert.DoesNotContain("class AuthenticateReq", sharedContractSourceText, StringComparison.Ordinal);
         Assert.DoesNotContain("class BingoRoomJoinReq", sharedContractSourceText, StringComparison.Ordinal);
@@ -169,13 +177,17 @@ public sealed class RegressionTests
         var sourceFiles = EnumerateSourceFiles(sampleRoot).ToArray();
         var projectFiles = Directory
             .EnumerateFiles(sampleRoot, "*.csproj", SearchOption.AllDirectories)
-            .Where(static path => !path.Contains($"{Path.DirectorySeparatorChar}bin{Path.DirectorySeparatorChar}", StringComparison.Ordinal)
-                && !path.Contains($"{Path.DirectorySeparatorChar}obj{Path.DirectorySeparatorChar}", StringComparison.Ordinal))
+            .Where(static path => !path.Contains($"{Path.DirectorySeparatorChar}bin{Path.DirectorySeparatorChar}",
+                                      StringComparison.Ordinal)
+                                  && !path.Contains($"{Path.DirectorySeparatorChar}obj{Path.DirectorySeparatorChar}",
+                                      StringComparison.Ordinal))
             .ToArray();
         var protoFiles = Directory
             .EnumerateFiles(sampleRoot, "*.proto", SearchOption.AllDirectories)
-            .Where(static path => !path.Contains($"{Path.DirectorySeparatorChar}bin{Path.DirectorySeparatorChar}", StringComparison.Ordinal)
-                && !path.Contains($"{Path.DirectorySeparatorChar}obj{Path.DirectorySeparatorChar}", StringComparison.Ordinal))
+            .Where(static path => !path.Contains($"{Path.DirectorySeparatorChar}bin{Path.DirectorySeparatorChar}",
+                                      StringComparison.Ordinal)
+                                  && !path.Contains($"{Path.DirectorySeparatorChar}obj{Path.DirectorySeparatorChar}",
+                                      StringComparison.Ordinal))
             .ToArray();
         var allText = string.Join(
             Environment.NewLine,
@@ -200,16 +212,10 @@ public sealed class RegressionTests
         foreach (var file in EnumerateSourceFiles(sampleRoot))
         {
             var text = File.ReadAllText(file);
-            if (!ContainsRawCodecHelper(text))
-            {
-                continue;
-            }
+            if (!ContainsRawCodecHelper(text)) continue;
 
             var relative = Path.GetRelativePath(sampleRoot, file).Replace('\\', '/');
-            if (!IsAllowedRawCodecLifecycleFile(sampleName, relative))
-            {
-                violations.Add($"{sampleName}/{relative}");
-            }
+            if (!IsAllowedRawCodecLifecycleFile(sampleName, relative)) violations.Add($"{sampleName}/{relative}");
         }
 
         Assert.Empty(violations.Order(StringComparer.Ordinal));
@@ -218,9 +224,9 @@ public sealed class RegressionTests
     private static bool ContainsRawCodecHelper(string text)
     {
         return text.Contains(".ToJson()", StringComparison.Ordinal)
-            || text.Contains(".FromJson<", StringComparison.Ordinal)
-            || text.Contains(".ToProto()", StringComparison.Ordinal)
-            || text.Contains(".FromProto<", StringComparison.Ordinal);
+               || text.Contains(".FromJson<", StringComparison.Ordinal)
+               || text.Contains(".ToProto()", StringComparison.Ordinal)
+               || text.Contains(".FromProto<", StringComparison.Ordinal);
     }
 
     private static bool IsAllowedRawCodecLifecycleFile(string sampleName, string relative)
@@ -258,8 +264,10 @@ public sealed class RegressionTests
             var text = File.ReadAllText(file);
             Assert.DoesNotContain("RegistryRemoteAddressStore", text, StringComparison.Ordinal);
             Assert.DoesNotContain("RegistryRemoteAddressPublisher", text, StringComparison.Ordinal);
-            Assert.DoesNotContain("AddActorRemoteAddressResolver<RegistryRemoteAddressStore>", text, StringComparison.Ordinal);
-            Assert.DoesNotContain("AddSpotRemoteAddressResolver<RegistryRemoteAddressStore>", text, StringComparison.Ordinal);
+            Assert.DoesNotContain("AddActorRemoteAddressResolver<RegistryRemoteAddressStore>", text,
+                StringComparison.Ordinal);
+            Assert.DoesNotContain("AddSpotRemoteAddressResolver<RegistryRemoteAddressStore>", text,
+                StringComparison.Ordinal);
             Assert.DoesNotContain("BindInitialActorRemoteAddressesAsync", text, StringComparison.Ordinal);
         }
     }
@@ -285,7 +293,8 @@ public sealed class RegressionTests
             Assert.DoesNotContain("OpenRegistryMetadata", text, StringComparison.Ordinal);
             Assert.DoesNotContain("AddActorSessionBindingStore", text, StringComparison.Ordinal);
             Assert.DoesNotContain("IZLinkActorSessionClient", text, StringComparison.Ordinal);
-            Assert.DoesNotContain("AddActorSessionBindingStore<RegistryActorSessionLocationStore>", text, StringComparison.Ordinal);
+            Assert.DoesNotContain("AddActorSessionBindingStore<RegistryActorSessionLocationStore>", text,
+                StringComparison.Ordinal);
         }
     }
 
@@ -360,18 +369,16 @@ public sealed class RegressionTests
         bool allowRouteMeshChannel)
     {
         var sessionHostFactory = Directory
-            .EnumerateFiles(Path.Combine(sampleRoot, "Server", "Session"), "*HostFactory.cs", SearchOption.AllDirectories)
+            .EnumerateFiles(Path.Combine(sampleRoot, "Server", "Session"), "*HostFactory.cs",
+                SearchOption.AllDirectories)
             .Single();
         var text = File.ReadAllText(sessionHostFactory);
 
         Assert.Contains("AddSpotMesh", text, StringComparison.Ordinal);
         Assert.True(
             text.Contains("EnableRouter", StringComparison.Ordinal)
-                || text.Contains("ConfigureRouter", StringComparison.Ordinal));
-        if (!allowRouteMeshChannel)
-        {
-            Assert.DoesNotContain("AddRouteMesh", text, StringComparison.Ordinal);
-        }
+            || text.Contains("ConfigureRouter", StringComparison.Ordinal));
+        if (!allowRouteMeshChannel) Assert.DoesNotContain("AddRouteMesh", text, StringComparison.Ordinal);
         Assert.DoesNotContain("AddScoped<IBingoSessionHandler", text, StringComparison.Ordinal);
         Assert.DoesNotContain("AddScoped<ISessionRelayPacketHandler", text, StringComparison.Ordinal);
     }
@@ -454,31 +461,29 @@ public sealed class RegressionTests
     {
         return Directory
             .EnumerateFiles(root, "*.cs", SearchOption.AllDirectories)
-            .Where(static path => !path.Contains($"{Path.DirectorySeparatorChar}bin{Path.DirectorySeparatorChar}", StringComparison.Ordinal)
-                && !path.Contains($"{Path.DirectorySeparatorChar}obj{Path.DirectorySeparatorChar}", StringComparison.Ordinal));
+            .Where(static path => !path.Contains($"{Path.DirectorySeparatorChar}bin{Path.DirectorySeparatorChar}",
+                                      StringComparison.Ordinal)
+                                  && !path.Contains($"{Path.DirectorySeparatorChar}obj{Path.DirectorySeparatorChar}",
+                                      StringComparison.Ordinal));
     }
 
     private static IEnumerable<string> EnumerateMarkdownFiles(string root)
     {
         return Directory
             .EnumerateFiles(root, "*.md", SearchOption.AllDirectories)
-            .Where(static path => !path.Contains($"{Path.DirectorySeparatorChar}bin{Path.DirectorySeparatorChar}", StringComparison.Ordinal)
-                && !path.Contains($"{Path.DirectorySeparatorChar}obj{Path.DirectorySeparatorChar}", StringComparison.Ordinal));
+            .Where(static path => !path.Contains($"{Path.DirectorySeparatorChar}bin{Path.DirectorySeparatorChar}",
+                                      StringComparison.Ordinal)
+                                  && !path.Contains($"{Path.DirectorySeparatorChar}obj{Path.DirectorySeparatorChar}",
+                                      StringComparison.Ordinal));
     }
 
     private static IEnumerable<string> EnumerateSessionRoots(string sampleRoot)
     {
         var sessionRoot = Path.Combine(sampleRoot, "Server", "Session");
-        if (Directory.Exists(sessionRoot))
-        {
-            yield return sessionRoot;
-        }
+        if (Directory.Exists(sessionRoot)) yield return sessionRoot;
 
         var playSessionsRoot = Path.Combine(sampleRoot, "Server", "Play", "Sessions");
-        if (Directory.Exists(playSessionsRoot))
-        {
-            yield return playSessionsRoot;
-        }
+        if (Directory.Exists(playSessionsRoot)) yield return playSessionsRoot;
 
         var adapterSessionsRoot = Path.Combine(
             sampleRoot,
@@ -487,10 +492,7 @@ public sealed class RegressionTests
             "Adapters",
             "ZLink",
             "Sessions");
-        if (Directory.Exists(adapterSessionsRoot))
-        {
-            yield return adapterSessionsRoot;
-        }
+        if (Directory.Exists(adapterSessionsRoot)) yield return adapterSessionsRoot;
 
         var infrastructureSessionsRoot = Path.Combine(
             sampleRoot,
@@ -499,10 +501,7 @@ public sealed class RegressionTests
             "Infrastructure",
             "ZLink",
             "Sessions");
-        if (Directory.Exists(infrastructureSessionsRoot))
-        {
-            yield return infrastructureSessionsRoot;
-        }
+        if (Directory.Exists(infrastructureSessionsRoot)) yield return infrastructureSessionsRoot;
     }
 
     private static string ResolveSampleRoot(string sampleName)
@@ -528,10 +527,7 @@ public sealed class RegressionTests
                 "dotnet",
                 "samples");
 
-            if (Directory.Exists(candidate))
-            {
-                return Directory.GetParent(candidate)!.FullName;
-            }
+            if (Directory.Exists(candidate)) return Directory.GetParent(candidate)!.FullName;
 
             current = current.Parent;
         }

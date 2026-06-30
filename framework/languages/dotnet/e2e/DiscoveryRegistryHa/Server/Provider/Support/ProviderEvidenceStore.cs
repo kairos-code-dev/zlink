@@ -1,5 +1,4 @@
 using System.Collections.Concurrent;
-using DiscoveryRegistryHa.Server.Provider;
 
 namespace DiscoveryRegistryHa.Server.Provider.Support;
 
@@ -7,8 +6,8 @@ internal sealed class EvidenceStore
 {
     private readonly ConcurrentQueue<string> _entries = new();
     private readonly object _fileGate = new();
-    private readonly SemaphoreSlim _signal = new(0);
     private readonly string? _filePath;
+    private readonly SemaphoreSlim _signal = new(0);
 
     public EvidenceStore(string? filePath)
     {
@@ -27,10 +26,7 @@ internal sealed class EvidenceStore
     {
         _entries.Enqueue(entry);
         _signal.Release();
-        if (string.IsNullOrWhiteSpace(_filePath))
-        {
-            return;
-        }
+        if (string.IsNullOrWhiteSpace(_filePath)) return;
 
         lock (_fileGate)
         {
@@ -38,7 +34,10 @@ internal sealed class EvidenceStore
         }
     }
 
-    public string[] Snapshot() => _entries.ToArray();
+    public string[] Snapshot()
+    {
+        return _entries.ToArray();
+    }
 
     public async Task<string[]> WaitUntilAsync(
         Func<string, bool> predicate,
@@ -49,16 +48,11 @@ internal sealed class EvidenceStore
         while (true)
         {
             var snapshot = Snapshot();
-            if (snapshot.Any(predicate))
-            {
-                return snapshot;
-            }
+            if (snapshot.Any(predicate)) return snapshot;
 
             var remaining = deadline - DateTimeOffset.UtcNow;
             if (remaining <= TimeSpan.Zero)
-            {
                 throw new TimeoutException("Timed out waiting for discovery registry HA evidence.");
-            }
 
             await _signal.WaitAsync(remaining, cancellationToken);
         }

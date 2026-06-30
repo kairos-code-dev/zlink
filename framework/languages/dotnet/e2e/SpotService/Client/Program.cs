@@ -1,6 +1,6 @@
 using SpotService.Client.Scenarios;
-using Zlink.HttpClient;
 using SpotService.Client.Support;
+using Zlink.HttpClient;
 
 var options = ClientOptions.Parse(args);
 
@@ -58,7 +58,7 @@ await (options.OperationGroup switch
     "sm-a5" => SmA5Scenario.RunAsync(playA),
     "sm-a1-a2-a4-f1-f2" => RunA1A2A4F1F2Async(playA),
     "sm-e4" => SmE4Scenario.RunAsync(playA),
-    _ => throw new InvalidOperationException($"Unsupported SpotService operation group '{options.OperationGroup}'."),
+    _ => throw new InvalidOperationException($"Unsupported SpotService operation group '{options.OperationGroup}'.")
 });
 
 Console.WriteLine($"spot-service client operation_group={options.OperationGroup} result=passed");

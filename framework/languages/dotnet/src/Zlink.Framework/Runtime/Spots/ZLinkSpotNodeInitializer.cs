@@ -1,11 +1,4 @@
 using System.Security.Cryptography;
-using Zlink.Framework.Runtime.Backend.Contracts;
-using Zlink.Framework.Runtime.Actors;
-using Zlink.Framework.Runtime.Diagnostics;
-using Zlink.Framework.Runtime.Execution;
-using Zlink.Framework.Runtime.Host;
-using Zlink.Framework.Runtime.Messaging;
-using Zlink.Framework.Runtime.Registry;
 
 namespace Zlink.Framework.Runtime.Spots;
 
@@ -17,10 +10,7 @@ internal sealed class ZLinkSpotNodeInitializer(
 {
     public async ValueTask InitializeAsync(ZLinkFrameworkRuntimeState state)
     {
-        if (registration.SpotNodes.Count == 0)
-        {
-            return;
-        }
+        if (registration.SpotNodes.Count == 0) return;
 
         var channelAdapter = backendAdapterFactory.CreateChannelAdapter();
         var spotAdapter = backendAdapterFactory.CreateSpotAdapter();
@@ -39,6 +29,7 @@ internal sealed class ZLinkSpotNodeInitializer(
                 node.SetSubscriberRoutingId(
                     ZLinkRoutingIdPolicy.Derive(nodeRoutingId, "sub"));
             }
+
             var nodeRuntime = new ZLinkSpotNodeRuntime(
                 services,
                 runtime,
@@ -52,14 +43,10 @@ internal sealed class ZLinkSpotNodeInitializer(
             nodeRuntime.ApplyEntrySpotRoutingIdBeforeBind();
             if (spotNodeRegistration.Router is not null
                 && spotNodeRegistration.Router.BindEndpoint is { Length: > 0 } routerEndpoint)
-            {
                 node.SetRouterBind(routerEndpoint);
-            }
             if (spotNodeRegistration.PubSub is not null
                 && spotNodeRegistration.PubSub.BindEndpoint is { Length: > 0 } pubEndpoint)
-            {
                 node.SetPubBind(pubEndpoint);
-            }
 
             state.SpotNodes.Add(spotNodeRegistration.SpotNodeName, nodeRuntime);
             try
@@ -101,17 +88,12 @@ internal sealed class ZLinkSpotNodeInitializer(
             || !registration.SpotDiscoveries.TryGetValue(
                 spotNodeRegistration.SpotDiscoveryChannelName,
                 out var spotDiscovery))
-        {
             return;
-        }
 
         var endpoints = ZLinkFrameworkRegistrationValidator.ResolveSpotDiscoveryEndpoints(
             registration,
             spotDiscovery);
-        if (endpoints.Count == 0)
-        {
-            return;
-        }
+        if (endpoints.Count == 0) return;
 
         var discovery = ZLinkBackendDiscoveryFactory.Create(
             channelAdapter,
@@ -119,10 +101,7 @@ internal sealed class ZLinkSpotNodeInitializer(
             spotDiscovery.ChannelName,
             ZLinkAutoConnectType.SpotMesh,
             endpoints);
-        if (registration.RegistrySpotRemoteAddresses is not null)
-        {
-            discovery.SpotOwnerSyncEnabled = true;
-        }
+        if (registration.RegistrySpotRemoteAddresses is not null) discovery.SpotOwnerSyncEnabled = true;
         node.AttachDiscovery(discovery);
         nodeRuntime.SpotDiscovery = discovery;
         nodeRuntime.StartDiscoveryPeerReconciliation();
@@ -134,24 +113,17 @@ internal sealed class ZLinkSpotNodeInitializer(
         ZLinkSpotNodeRuntime nodeRuntime)
     {
         foreach (var connection in registration.Router?.ManualConnections ?? [])
-        {
             _ = connection.PeerRid is { } peerRid
                 ? nodeRuntime.ConnectRouterAsync(peerRid, connection.Endpoint, CancellationToken.None)
                 : nodeRuntime.ConnectRouterAsync(connection.Endpoint, CancellationToken.None);
-        }
 
         foreach (var endpoint in registration.PubSub?.ManualConnections ?? [])
-        {
             _ = nodeRuntime.ConnectPubSubAsync(endpoint, CancellationToken.None);
-        }
     }
 
     private static RoutingId CreateNodeRoutingId(ZLinkSpotNodeRegistration registration)
     {
-        if (registration.RoutingId.Size > 0)
-        {
-            return registration.RoutingId;
-        }
+        if (registration.RoutingId.Size > 0) return registration.RoutingId;
 
         var bytes = RandomNumberGenerator.GetBytes(16);
         bytes[0] = 0x10;

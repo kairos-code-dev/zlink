@@ -4,10 +4,7 @@ internal static class ScenarioAssert
 {
     public static void That(bool condition, string message)
     {
-        if (!condition)
-        {
-            throw new InvalidOperationException(message);
-        }
+        if (!condition) throw new InvalidOperationException(message);
     }
 
     public static int CountNewEvidence(
@@ -17,9 +14,9 @@ internal static class ScenarioAssert
         string marker)
     {
         var beforeCount = before.Count(line => line.Contains(prefix, StringComparison.Ordinal)
-            && line.Contains(marker, StringComparison.Ordinal));
+                                               && line.Contains(marker, StringComparison.Ordinal));
         var afterCount = after.Count(line => line.Contains(prefix, StringComparison.Ordinal)
-            && line.Contains(marker, StringComparison.Ordinal));
+                                             && line.Contains(marker, StringComparison.Ordinal));
         return afterCount - beforeCount;
     }
 }

@@ -1,6 +1,5 @@
 using System.Net;
 using System.Net.Sockets;
-using Systems.Zlink.Stream.Connector;
 using Systems.Zlink.Stream.Connector.Contracts;
 using Xunit;
 
@@ -73,7 +72,6 @@ public sealed partial class StreamConnectorTests
             using var tcp = await listener.AcceptTcpClientAsync();
             await using var stream = tcp.GetStream();
             for (var index = 1; index <= 3; index++)
-            {
                 await WritePacketAsync(
                     stream,
                     headerCodec.Encode(new ZlinkStreamHeader(
@@ -84,7 +82,6 @@ public sealed partial class StreamConnectorTests
                         "buffered",
                         ZlinkStreamMetadata.Empty)).ToArray(),
                     [(byte)index]);
-            }
         });
 
         await using var connector = ZlinkStreamConnectorFactory.Create(new ZlinkStreamConnectorOptions
@@ -124,7 +121,6 @@ public sealed partial class StreamConnectorTests
             using var tcp = await listener.AcceptTcpClientAsync();
             await using var stream = tcp.GetStream();
             for (var index = 1; index <= 3; index++)
-            {
                 await WritePacketAsync(
                     stream,
                     headerCodec.Encode(new ZlinkStreamHeader(
@@ -135,7 +131,6 @@ public sealed partial class StreamConnectorTests
                         "queued",
                         ZlinkStreamMetadata.Empty)).ToArray(),
                     [(byte)index]);
-            }
         });
 
         await using var connector = ZlinkStreamConnectorFactory.Create(new ZlinkStreamConnectorOptions
@@ -206,24 +201,20 @@ public sealed partial class StreamConnectorTests
             .Submit((ZlinkStreamResult<ZlinkStreamEncodedPayload> result) =>
             {
                 if (result.IsSuccess)
-                {
                     lock (resultsGate)
                     {
                         results.Add(1);
                     }
-                }
             });
         connector.Request(new ZlinkStreamEncodedPayload(ZlinkStreamCodec.Raw, new byte[] { 2 }))
             .PacketName("request.two")
             .Submit((ZlinkStreamResult<ZlinkStreamEncodedPayload> result) =>
             {
                 if (result.IsSuccess)
-                {
                     lock (resultsGate)
                     {
                         results.Add(2);
                     }
-                }
             });
 
         await server;
@@ -239,6 +230,7 @@ public sealed partial class StreamConnectorTests
         {
             Assert.Equal([1, 2], results.Order().ToArray());
         }
+
         Assert.Equal(0, connector.PendingDispatchCount);
 
         int ResultCount()

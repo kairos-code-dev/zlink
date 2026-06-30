@@ -83,7 +83,7 @@ binding 기능을 `ASP.NET Core` 안에 자연스럽게 녹여 넣는 방법을 
 - `Spot`은 특정 service에 종속되지 않는다.
 - `Spot`은 `SpotNode`에 종속된다.
 - `SpotNode`는 channel 이름을 직접 소유하지 않는다.
-- `AddSpotMesh(channelName).UseDiscovery().AddRegistryEndpoint(...)` 등록이 active
+- root `UseDiscovery().AddRegistryEndpoint(...)` 등록이 active
   channel view[^channel-view]를 공급한다.
 - 같은 `SpotNode`에는 active SPOT channel view를 하나만 둔다.
 - `SpotNode.router`와 pub/sub mesh[^mesh]는 같은 channel에 속한 다른
@@ -126,9 +126,9 @@ binding 기능을 `ASP.NET Core` 안에 자연스럽게 녹여 넣는 방법을 
 ```csharp
 builder.Services.AddZLinkFramework(options =>
 {
+    options.UseDiscovery().AddRegistryEndpoint("tcp://registry1:5551");
     {
         var mesh =     options.AddSpotMesh("game.stage");
-                mesh.UseDiscovery().AddRegistryEndpoint("tcp://registry1:5551");
 
         {
             var node = mesh;
@@ -149,7 +149,7 @@ builder.Services.AddZLinkFramework(options =>
 
 - 논리 `SpotNode` 이름은 `stage-node`
 - 그에 대응하는 backing `SpotNode` 생성
-- `AddSpotMesh("game.stage").UseDiscovery().AddRegistryEndpoint(...)`가 active channel
+- `UseDiscovery().AddRegistryEndpoint(...)`가 active channel
   view 공급
 - 같은 channel에 속한 다른 `SpotNode`와만 mesh 구성
 - local routed router 역할[^capability] 활성화
@@ -164,14 +164,14 @@ builder.Services.AddZLinkFramework(options =>
 `AddSpotMesh` 는 SPOT channel 이름을 등록하고, 같은 프로세스의 단일
 `SpotNode` 를 함께 만든다. 그 노드가 맡는 역할은 다음과 같다.
 
-- mesh 단위의 discovery 설정은 `mesh.UseDiscovery().AddRegistryEndpoint(...)` 가 담당한다.
+- 자동 연결에 사용할 discovery endpoint 는 `options.UseDiscovery().AddRegistryEndpoint(...)` 에 한 번 등록한다.
 
 같은 프로세스 안에는 하나의 `SpotNode` 만 둔다. `AddSpotMesh(channelName)` 의
 `channelName` 이 그 로컬 노드 이름으로도 쓰이므로, route·publish 소유 노드를
 따로 고르는 설정이 필요하지 않다.
 
 discovery endpoint 가 없는 로컬 단일 노드도 `AddSpotMesh` 안에서 표현한다.
-이 경우 `mesh.UseDiscovery().AddRegistryEndpoint(...)` 를 생략하고, `AddSpotMesh`
+이 경우 `options.UseDiscovery().AddRegistryEndpoint(...)` 를 생략하고, `AddSpotMesh`
 가 반환한 builder 에 바로 router, pub/sub, factory 를 설정한다. public 등록
 표면은 항상 `AddSpotMesh` 가 SPOT channel 이름과 단일 node 를 함께 소유하도록
 유지한다.
@@ -203,7 +203,7 @@ discovery endpoint 가 없는 로컬 단일 노드도 `AddSpotMesh` 안에서 �
 
 `SpotNode` 의 역할 분담은 다음과 같다.
 
-- `AddSpotMesh(channelName).UseDiscovery().AddRegistryEndpoint(...)` 등록이 노드의
+- root `UseDiscovery().AddRegistryEndpoint(...)` 등록이 노드의
   channel 정체성을 닫는다.
 - 다른 channel 호출은 별도로 attach 된 client 경로를 통해 푼다.
 
@@ -374,7 +374,6 @@ SPOT 역시 일반 channel 과 마찬가지로 수동 연결은 역할 단위로
 builder.Services.AddZLinkFramework(options =>
 {
     var mesh = options.AddSpotMesh("game.stage");
-    mesh.UseDiscovery().AddRegistryEndpoint("tcp://registry1:5551");
 
     var node = mesh;
     node.EnableRouter("tcp://0.0.0.0:9001");
@@ -467,7 +466,6 @@ builder.Services.AddZLinkFramework(options =>
 {
 
     var mesh = options.AddSpotMesh("game.stage");
-    mesh.UseDiscovery().AddRegistryEndpoint("tcp://registry1:5551");
 
     var node = mesh;
     node.EnableRouter("tcp://0.0.0.0:9001");
@@ -986,11 +984,11 @@ room 의 핫패스에 비해 편의 기능을 조금 더 허용할 여지가 있
 discovery 와 어떻게 묶이는지를 짧게 정리한다.
 
 최신 topology 초안에서는 `SpotNode` 가 channel 이름을 직접 소유하지 않는다.
-대신 `AddSpotMesh(channelName).UseDiscovery().AddRegistryEndpoint(...)` 등록이 active
+대신 root `UseDiscovery().AddRegistryEndpoint(...)` 등록이 active
 channel view 를 공급한다. 그 view 가 같은 channel 에 속한 peer mesh 의 범위를
 닫는다.
 
-예를 들어 `AddSpotMesh("game.stage").UseDiscovery().AddRegistryEndpoint(...)` 로
+예를 들어 `UseDiscovery().AddRegistryEndpoint(...)` 로
 등록했다고 하자. 이 경우 그 mesh 에 포함된 `SpotNode` 는 `game.stage` channel
 mesh 안에서 동작한다고 이해하면 된다.
 

@@ -1,11 +1,9 @@
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Hosting;
-using Systems.Zlink.Stream.Connector.Contracts;
 using Zlink.Framework.AspNetCore;
 using Zlink.Framework.Codecs.Protobuf;
 
 namespace Zlink.Framework.UnitTests;
-
 
 public sealed class RegistryAndMonitoringTests : RegistrationValidationSupport
 {
@@ -17,8 +15,7 @@ public sealed class RegistryAndMonitoringTests : RegistrationValidationSupport
         {
             {
                 var channel = options.AddClientServerChannel("gateway.client");
-                                channel.EnableClient("tcp://127.0.0.1:7101");
-
+                channel.EnableClient("tcp://127.0.0.1:7101");
             }
         });
 
@@ -35,7 +32,6 @@ public sealed class RegistryAndMonitoringTests : RegistrationValidationSupport
                 var channel = options.AddRouteMesh("gateway.route");
                 channel.EnableServer("tcp://127.0.0.1:7301");
                 channel.EnableClient("tcp://127.0.0.1:7201");
-
             }
         });
 
@@ -49,9 +45,9 @@ public sealed class RegistryAndMonitoringTests : RegistrationValidationSupport
     private static bool IsRemovedSpotEgressClient(Type type)
     {
         return type.Namespace == "Zlink.Framework.Contracts.Spots"
-            && type.Name.Contains("Routed", StringComparison.Ordinal)
-            && type.Name.Contains("Spot", StringComparison.Ordinal)
-            && type.Name.Contains("Client", StringComparison.Ordinal);
+               && type.Name.Contains("Routed", StringComparison.Ordinal)
+               && type.Name.Contains("Spot", StringComparison.Ordinal)
+               && type.Name.Contains("Client", StringComparison.Ordinal);
     }
 
     [Fact]
@@ -60,12 +56,10 @@ public sealed class RegistryAndMonitoringTests : RegistrationValidationSupport
         var services = new ServiceCollection();
 
         var exception = Assert.Throws<ZLinkConfigurationException>(() =>
-            services.AddZLinkFramework(options =>
-            {
-                options.AddFanoutChannel("profile").EnablePublisher("");
-            }));
+            services.AddZLinkFramework(options => { options.AddFanoutChannel("profile").EnablePublisher(""); }));
 
-        Assert.Contains("Channel publisher bind endpoint must not be empty", exception.Message, StringComparison.Ordinal);
+        Assert.Contains("Channel publisher bind endpoint must not be empty", exception.Message,
+            StringComparison.Ordinal);
     }
 
     [Fact]
@@ -73,16 +67,15 @@ public sealed class RegistryAndMonitoringTests : RegistrationValidationSupport
     {
         var services = new ServiceCollection();
 
-            services.AddZLinkFramework(options =>
-            {
-                options.DefaultRequestTimeout = TimeSpan.FromSeconds(5);
-                options.Codecs.Use(ZLinkProtobufCodec.Default);
-                options.UseFilter<TestFilter>();
+        services.AddZLinkFramework(options =>
+        {
+            options.DefaultRequestTimeout = TimeSpan.FromSeconds(5);
+            options.Codecs.Use(ZLinkProtobufCodec.Default);
+            options.UseFilter<TestFilter>();
             options.AddSpotRemoteAddressResolver<TestSpotRemoteAddressResolver>();
             {
                 var dispatch = options.ConfigureDispatch();
                 dispatch.SpotDispatchMode = ZLinkDispatchMode.Dynamic;
-
             }
             options.UseDiscovery().AddRegistryEndpoint("tcp://127.0.0.1:5551");
 
@@ -92,41 +85,34 @@ public sealed class RegistryAndMonitoringTests : RegistrationValidationSupport
                 channel.EnableServer("tcp://127.0.0.1:7101");
                 channel.EnableClient();
                 channel.AddRequestHandler<TestChannelRequestHandler, TestChannelRequest, TestChannelReply>();
-
             }
 
             {
                 var events = options.AddFanoutChannel("profile.events");
                 events.EnableSubscriber();
                 events.AddPublishHandler<TestPublishHandler, TestPublishedEvent>();
-
             }
 
             {
                 var stream = options.AddStreamNode("stream.node");
                 stream.Bind("tcp://127.0.0.1:9100");
                 stream.RegisterSession<TestHeaderSession>();
-
             }
 
             {
                 var routed = options.AddRouteMesh("gateway");
                 routed.EnableServer("tcp://127.0.0.1:7301");
-
             }
 
             {
                 var mesh = options.AddSpotMesh("game.stage");
-                mesh.UseDiscovery().AddRegistryEndpoint("tcp://127.0.0.1:5551");
                 {
                     var spot = mesh;
-                {
-                    var router = spot.EnableRouter("tcp://127.0.0.1:9000");
-
+                    {
+                        var router = spot.EnableRouter("tcp://127.0.0.1:9000");
+                    }
+                    spot.AddSpotFactory<TestSpot>();
                 }
-                spot.AddSpotFactory<TestSpot>();
-                }
-
             }
         });
 
@@ -180,10 +166,7 @@ public sealed class RegistryAndMonitoringTests : RegistrationValidationSupport
         var services = new ServiceCollection();
 
         var exception = Assert.Throws<ZLinkConfigurationException>(() =>
-            services.AddZLinkRegistry(options =>
-            {
-                options.RouterEndpoint = "tcp://127.0.0.1:5551";
-            }));
+            services.AddZLinkRegistry(options => { options.RouterEndpoint = "tcp://127.0.0.1:5551"; }));
 
         Assert.Contains("pub endpoint", exception.Message, StringComparison.OrdinalIgnoreCase);
     }
@@ -194,10 +177,7 @@ public sealed class RegistryAndMonitoringTests : RegistrationValidationSupport
         var services = new ServiceCollection();
 
         var exception = Assert.Throws<ZLinkConfigurationException>(() =>
-            services.AddZLinkRegistry(options =>
-            {
-                options.PubEndpoint = "tcp://127.0.0.1:5550";
-            }));
+            services.AddZLinkRegistry(options => { options.PubEndpoint = "tcp://127.0.0.1:5550"; }));
 
         Assert.Contains("router endpoint", exception.Message, StringComparison.OrdinalIgnoreCase);
     }
@@ -230,7 +210,6 @@ public sealed class RegistryAndMonitoringTests : RegistrationValidationSupport
                 var channel = options.AddClientServerChannel("profile");
                 channel.EnableServer(endpoint);
                 channel.AddRequestHandler<TestChannelRequestHandler, TestChannelRequest, TestChannelReply>();
-
             }
         });
 

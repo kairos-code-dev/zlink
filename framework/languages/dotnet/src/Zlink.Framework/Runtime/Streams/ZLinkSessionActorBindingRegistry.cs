@@ -2,8 +2,8 @@ namespace Zlink.Framework.Runtime.Streams;
 
 internal sealed class ZLinkSessionActorBindingRegistry(ZLinkFrameworkRuntime runtime)
 {
-    private readonly Dictionary<string, ZLinkSessionActorBinding> _bindings = new(StringComparer.Ordinal);
     private readonly Dictionary<string, ZLinkSessionActor> _actorsById = new(StringComparer.Ordinal);
+    private readonly Dictionary<string, ZLinkSessionActorBinding> _bindings = new(StringComparer.Ordinal);
 
     public IReadOnlyCollection<IZLinkSessionActor> BoundActors
     {
@@ -22,14 +22,9 @@ internal sealed class ZLinkSessionActorBindingRegistry(ZLinkFrameworkRuntime run
         CancellationToken cancellationToken)
     {
         var actorId = actor.ActorId;
-        if (string.IsNullOrWhiteSpace(actorId))
-        {
-            throw new InvalidOperationException("Actor id must not be empty.");
-        }
+        if (string.IsNullOrWhiteSpace(actorId)) throw new InvalidOperationException("Actor id must not be empty.");
         if (context.RoutingId is not { } sessionRid)
-        {
             throw new InvalidOperationException("Actor session binding requires a stream routing id.");
-        }
 
         var binding = new ZLinkSessionActorBinding(
             actorId,
@@ -55,17 +50,11 @@ internal sealed class ZLinkSessionActorBindingRegistry(ZLinkFrameworkRuntime run
 
     public IZLinkSessionActor? FindActor(string actorId)
     {
-        if (string.IsNullOrWhiteSpace(actorId))
-        {
-            return null;
-        }
+        if (string.IsNullOrWhiteSpace(actorId)) return null;
 
         lock (_bindings)
         {
-            if (_actorsById.TryGetValue(actorId, out var actorRef))
-            {
-                return actorRef;
-            }
+            if (_actorsById.TryGetValue(actorId, out var actorRef)) return actorRef;
         }
 
         return null;

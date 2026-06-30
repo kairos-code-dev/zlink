@@ -1,26 +1,21 @@
 // SPDX-License-Identifier: MPL-2.0
 
-using System;
-using System.Collections.Generic;
-using System.Runtime.InteropServices;
 using Systems.Zlink.Runtime.Native;
 
 namespace Systems.Zlink;
 
 internal static class ZlinkPollRuntime
 {
-    [ThreadStatic]
-    private static ZlinkPollItemUnix[]? _unixItems;
+    [ThreadStatic] private static ZlinkPollItemUnix[]? _unixItems;
 
-    [ThreadStatic]
-    private static ZlinkPollItemWindows[]? _windowsItems;
+    [ThreadStatic] private static ZlinkPollItemWindows[]? _windowsItems;
 
     public static int Poll(IReadOnlyList<IZlinkSocket> sockets, int timeoutMs)
     {
         if (sockets == null)
             throw new ArgumentNullException(nameof(sockets));
-        PollEventFlags[] events = new PollEventFlags[sockets.Count];
-        Span<PollEventFlags> revents = sockets.Count <= 64
+        var events = new PollEventFlags[sockets.Count];
+        var revents = sockets.Count <= 64
             ? stackalloc PollEventFlags[sockets.Count]
             : new PollEventFlags[sockets.Count];
         Array.Fill(events, PollEventFlags.PollIn);
@@ -45,8 +40,8 @@ internal static class ZlinkPollRuntime
     {
         if (monitors == null)
             throw new ArgumentNullException(nameof(monitors));
-        PollEventFlags[] events = new PollEventFlags[monitors.Count];
-        Span<PollEventFlags> revents = monitors.Count <= 64
+        var events = new PollEventFlags[monitors.Count];
+        var revents = monitors.Count <= 64
             ? stackalloc PollEventFlags[monitors.Count]
             : new PollEventFlags[monitors.Count];
         Array.Fill(events, PollEventFlags.PollIn);
@@ -72,11 +67,9 @@ internal static class ZlinkPollRuntime
         if (monitor == null)
             throw new ArgumentNullException(paramName);
         if (monitor is not SocketMonitor concrete)
-        {
             throw new ArgumentException(
                 "monitor must be a concrete zlink socket monitor instance",
                 paramName);
-        }
         return concrete;
     }
 
@@ -101,8 +94,8 @@ internal static class ZlinkPollRuntime
         long boundedTimeoutMs = Math.Max(0, timeoutMs);
         if (OperatingSystem.IsWindows())
         {
-            ZlinkPollItemWindows[] items = EnsureWindowsCapacity(count);
-            for (int i = 0; i < count; i++)
+            var items = EnsureWindowsCapacity(count);
+            for (var i = 0; i < count; i++)
             {
                 items[i].Socket = getHandle(i);
                 items[i].Fd = 0;
@@ -114,13 +107,13 @@ internal static class ZlinkPollRuntime
                 out _);
             if (rc < 0)
                 throw ZlinkException.CreateRecvException(NativeMethods.zlink_errno());
-            for (int i = 0; i < count; i++)
+            for (var i = 0; i < count; i++)
                 revents[i] = (PollEventFlags)items[i].Revents;
             return rc;
         }
 
-        ZlinkPollItemUnix[] unixItems = EnsureUnixCapacity(count);
-        for (int i = 0; i < count; i++)
+        var unixItems = EnsureUnixCapacity(count);
+        for (var i = 0; i < count; i++)
         {
             unixItems[i].Socket = getHandle(i);
             unixItems[i].Fd = 0;
@@ -132,7 +125,7 @@ internal static class ZlinkPollRuntime
             out _);
         if (rc < 0)
             throw ZlinkException.CreateRecvException(NativeMethods.zlink_errno());
-        for (int i = 0; i < count; i++)
+        for (var i = 0; i < count; i++)
             revents[i] = (PollEventFlags)unixItems[i].Revents;
         return rc;
     }

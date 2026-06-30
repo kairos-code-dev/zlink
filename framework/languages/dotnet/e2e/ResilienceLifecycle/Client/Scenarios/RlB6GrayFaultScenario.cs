@@ -1,6 +1,6 @@
+using ResilienceLifecycle.Client.Support;
 using ResilienceLifecycle.Shared;
 using Zlink.HttpClient;
-using ResilienceLifecycle.Client.Support;
 
 namespace ResilienceLifecycle.Client.Scenarios;
 
@@ -17,22 +17,17 @@ internal static class RlB6GrayFaultScenario
         var failures = 0;
         var successes = 0;
         for (var i = 0; i < 30; i++)
-        {
             try
             {
                 var reply = (await consumer.Post("/profile/request")
                     .Body(new ProfileRequest(i % 3 == 0 ? "gray" : "fast", $"rl-b6-{i}"))
                     .SubmitAsync<ProfileReply>()).Body;
-                if (reply.ProviderRid == "api-a")
-                {
-                    successes++;
-                }
+                if (reply.ProviderRid == "api-a") successes++;
             }
             catch
             {
                 failures++;
             }
-        }
 
         ScenarioAssert.That(successes > 0 && failures > 0, "RL-B6 expected both healthy successes and gray failures.");
         await providerB.Post("/admin/fault/none").SubmitRawAsync();
@@ -43,21 +38,27 @@ internal static class RlB6GrayFaultScenario
 
         {
             using var timeout = new CancellationTokenSource(TimeSpan.FromSeconds(15));
-            var waitA = providerA.Post("/evidence/wait").Body(new EvidenceWaitRequest(["marker=rl-b6-"], [])).SubmitAsync<string[]>(timeout.Token).AsTask();
-            var waitB = providerB.Post("/evidence/wait").Body(new EvidenceWaitRequest(["marker=rl-b6-"], [])).SubmitAsync<string[]>(timeout.Token).AsTask();
+            var waitA = providerA.Post("/evidence/wait").Body(new EvidenceWaitRequest(["marker=rl-b6-"], []))
+                .SubmitAsync<string[]>(timeout.Token).AsTask();
+            var waitB = providerB.Post("/evidence/wait").Body(new EvidenceWaitRequest(["marker=rl-b6-"], []))
+                .SubmitAsync<string[]>(timeout.Token).AsTask();
             var completed = await Task.WhenAny(waitA, waitB);
             var evidence = (await completed).Body;
             timeout.Cancel();
-            ScenarioAssert.That(evidence.Any(line => line.Contains("marker=rl-b6-", StringComparison.Ordinal)), "RL-B6 did not record expected evidence 'marker=rl-b6-'.");
+            ScenarioAssert.That(evidence.Any(line => line.Contains("marker=rl-b6-", StringComparison.Ordinal)),
+                "RL-B6 did not record expected evidence 'marker=rl-b6-'.");
         }
         {
             using var timeout = new CancellationTokenSource(TimeSpan.FromSeconds(15));
-            var waitA = providerA.Post("/evidence/wait").Body(new EvidenceWaitRequest(["marker=rl-b6-after"], [])).SubmitAsync<string[]>(timeout.Token).AsTask();
-            var waitB = providerB.Post("/evidence/wait").Body(new EvidenceWaitRequest(["marker=rl-b6-after"], [])).SubmitAsync<string[]>(timeout.Token).AsTask();
+            var waitA = providerA.Post("/evidence/wait").Body(new EvidenceWaitRequest(["marker=rl-b6-after"], []))
+                .SubmitAsync<string[]>(timeout.Token).AsTask();
+            var waitB = providerB.Post("/evidence/wait").Body(new EvidenceWaitRequest(["marker=rl-b6-after"], []))
+                .SubmitAsync<string[]>(timeout.Token).AsTask();
             var completed = await Task.WhenAny(waitA, waitB);
             var evidence = (await completed).Body;
             timeout.Cancel();
-            ScenarioAssert.That(evidence.Any(line => line.Contains("marker=rl-b6-after", StringComparison.Ordinal)), "RL-B6 did not record expected evidence 'marker=rl-b6-after'.");
+            ScenarioAssert.That(evidence.Any(line => line.Contains("marker=rl-b6-after", StringComparison.Ordinal)),
+                "RL-B6 did not record expected evidence 'marker=rl-b6-after'.");
         }
 
         Console.WriteLine("scenario RL-B6 passed");

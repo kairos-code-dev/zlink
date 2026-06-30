@@ -1,4 +1,6 @@
 using System.Diagnostics;
+using System.Net;
+using System.Net.Sockets;
 using Zlink.HttpClient;
 
 namespace RegistrationCodec.Client.Support;
@@ -7,9 +9,9 @@ internal static class ProcessSupport
 {
     public static int PickPort()
     {
-        using var socket = new System.Net.Sockets.TcpListener(System.Net.IPAddress.Loopback, 0);
+        using var socket = new TcpListener(IPAddress.Loopback, 0);
         socket.Start();
-        var port = ((System.Net.IPEndPoint)socket.LocalEndpoint).Port;
+        var port = ((IPEndPoint)socket.LocalEndpoint).Port;
         socket.Stop();
         return port;
     }
@@ -30,16 +32,11 @@ internal static class ProcessSupport
         for (var i = 0; i < 120; i++)
         {
             if (process.HasExited)
-            {
                 throw new InvalidOperationException($"{failureContext} server exited early: {process.ExitCode}.");
-            }
 
             try
             {
-                if ((await http.Get("/health").SubmitRawAsync()).Status == 200)
-                {
-                    return;
-                }
+                if ((await http.Get("/health").SubmitRawAsync()).Status == 200) return;
             }
             catch (Exception ex) when (ScenarioAssert.IsConnectionFailure(ex))
             {

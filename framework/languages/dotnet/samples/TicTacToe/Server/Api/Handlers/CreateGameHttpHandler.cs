@@ -53,10 +53,7 @@ internal static class CreateGameHttpHandler
 
     private static int SelectOwner(int playCount)
     {
-        if (playCount <= 0)
-        {
-            throw new InvalidOperationException("At least one Play endpoint is required.");
-        }
+        if (playCount <= 0) throw new InvalidOperationException("At least one Play endpoint is required.");
 
         return Math.Abs(Interlocked.Increment(ref s_nextOwnerIndex)) % playCount;
     }

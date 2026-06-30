@@ -33,5 +33,5 @@ public enum ZLinkFrameworkErrorKind
     RequestFailed,
     WorkerQueueFull,
     WorkerTimedOut,
-    WorkerFailed,
+    WorkerFailed
 }

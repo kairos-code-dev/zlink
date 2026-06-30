@@ -1,10 +1,7 @@
+using System.Text;
 using Microsoft.Extensions.DependencyInjection;
-using Zlink.Framework.Contracts.Channels;
-using Zlink.Framework.Contracts.Codecs;
 using Zlink.Framework.Runtime.Backend.Contracts;
-using Zlink.Framework.Runtime.Channels;
 using Zlink.Framework.Runtime.Codecs;
-using Zlink.Framework.Runtime.Messaging;
 
 namespace Zlink.Framework.UnitTests.Runtime;
 
@@ -117,23 +114,17 @@ public sealed class RouteCodecTests
                 RouteProbeReply reply => reply.Text,
                 _ => throw new NotSupportedException(type.FullName)
             };
-            return ZLinkEncodedPayload.From(System.Text.Encoding.UTF8.GetBytes("ROUTE:" + text));
+            return ZLinkEncodedPayload.From(Encoding.UTF8.GetBytes("ROUTE:" + text));
         }
 
         public object? Deserialize(ZLinkEncodedPayload payload, Type type)
         {
-            var text = System.Text.Encoding.UTF8.GetString(payload.Bytes.Span);
+            var text = Encoding.UTF8.GetString(payload.Bytes.Span);
             var value = text.StartsWith("ROUTE:", StringComparison.Ordinal)
                 ? text["ROUTE:".Length..]
                 : text;
-            if (type == typeof(RouteProbe))
-            {
-                return new RouteProbe(value);
-            }
-            if (type == typeof(RouteProbeReply))
-            {
-                return new RouteProbeReply(value);
-            }
+            if (type == typeof(RouteProbe)) return new RouteProbe(value);
+            if (type == typeof(RouteProbeReply)) return new RouteProbeReply(value);
             throw new NotSupportedException(type.FullName);
         }
     }
@@ -146,58 +137,114 @@ public sealed class RouteCodecTests
 
         public object NativeInstance => this;
 
-        public ValueTask DisposeAsync() => ValueTask.CompletedTask;
+        public ValueTask DisposeAsync()
+        {
+            return ValueTask.CompletedTask;
+        }
 
-        public void Bind(string endpoint) => throw new NotSupportedException();
-
-        public void SetChannelName(string channelName) => throw new NotSupportedException();
-
-        public void Connect(string endpoint) => throw new NotSupportedException();
-
-        public void Disconnect(string endpoint) => throw new NotSupportedException();
-
-        public void SetPeerWeight(int weight) => throw new NotSupportedException();
-
-        public int GetPeerWeight() => throw new NotSupportedException();
-
-        public void AttachDiscovery(IZLinkBackendDiscovery discovery) => throw new NotSupportedException();
-
-        public void OnSendReady(Action handler) => throw new NotSupportedException();
-
-        public void SetSendHighWaterMark(int value) => throw new NotSupportedException();
-
-        public void SetReceiveHighWaterMark(int value) => throw new NotSupportedException();
-
-        public void SetRoutingId(RoutingId routingId) => throw new NotSupportedException();
-
-        public void SetMandatory(bool mandatory) => throw new NotSupportedException();
-
-        public Received? Recv(RecvFlags flags = RecvFlags.None) => throw new NotSupportedException();
-
-        public bool Send(RoutingId routingId, Message message, SendFlags flags) => throw new NotSupportedException();
-
-        public bool Send(RoutingId routingId, IReadOnlyList<Message> parts, SendFlags flags) =>
+        public void Bind(string endpoint)
+        {
             throw new NotSupportedException();
+        }
+
+        public void SetChannelName(string channelName)
+        {
+            throw new NotSupportedException();
+        }
+
+        public void Connect(string endpoint)
+        {
+            throw new NotSupportedException();
+        }
+
+        public void Disconnect(string endpoint)
+        {
+            throw new NotSupportedException();
+        }
+
+        public void SetPeerWeight(int weight)
+        {
+            throw new NotSupportedException();
+        }
+
+        public int GetPeerWeight()
+        {
+            throw new NotSupportedException();
+        }
+
+        public void AttachDiscovery(IZLinkBackendDiscovery discovery)
+        {
+            throw new NotSupportedException();
+        }
+
+        public void OnSendReady(Action handler)
+        {
+            throw new NotSupportedException();
+        }
+
+        public void SetSendHighWaterMark(int value)
+        {
+            throw new NotSupportedException();
+        }
+
+        public void SetReceiveHighWaterMark(int value)
+        {
+            throw new NotSupportedException();
+        }
+
+        public void SetRoutingId(RoutingId routingId)
+        {
+            throw new NotSupportedException();
+        }
+
+        public void SetMandatory(bool mandatory)
+        {
+            throw new NotSupportedException();
+        }
+
+        public Received? Recv(RecvFlags flags = RecvFlags.None)
+        {
+            throw new NotSupportedException();
+        }
+
+        public bool Send(RoutingId routingId, Message message, SendFlags flags)
+        {
+            throw new NotSupportedException();
+        }
+
+        public bool Send(RoutingId routingId, IReadOnlyList<Message> parts, SendFlags flags)
+        {
+            throw new NotSupportedException();
+        }
 
         public bool Request(
             RoutingId routingId,
             Message message,
             RequestCallback callback,
             SendFlags flags,
-            TimeSpan? timeout) => throw new NotSupportedException();
+            TimeSpan? timeout)
+        {
+            throw new NotSupportedException();
+        }
 
         public bool Request(
             RoutingId routingId,
             IReadOnlyList<Message> parts,
             RequestCallback callback,
             SendFlags flags,
-            TimeSpan? timeout) => throw new NotSupportedException();
+            TimeSpan? timeout)
+        {
+            throw new NotSupportedException();
+        }
 
         public bool SendToSpot(
             RoutingId targetNodeRid,
             RoutingId targetSpotRid,
             IReadOnlyList<Message> parts,
-            SendFlags flags) => throw new NotSupportedException();
+            SendFlags flags)
+        {
+            throw new NotSupportedException();
+        }
 
         public bool RequestToSpot(
             RoutingId targetNodeRid,
@@ -205,10 +252,15 @@ public sealed class RouteCodecTests
             IReadOnlyList<Message> parts,
             RequestCallback callback,
             SendFlags flags,
-            TimeSpan? timeout) => throw new NotSupportedException();
-
-        public void Reply(RoutingId routingId, ulong requestSeq, Message message) =>
+            TimeSpan? timeout)
+        {
             throw new NotSupportedException();
+        }
+
+        public void Reply(RoutingId routingId, ulong requestSeq, Message message)
+        {
+            throw new NotSupportedException();
+        }
 
         public void Reply(RoutingId routingId, ulong requestSeq, IReadOnlyList<Message> parts)
         {

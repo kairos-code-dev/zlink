@@ -2,13 +2,13 @@ namespace Zlink.Framework.Runtime.Messaging;
 
 internal sealed class PendingSubmit : IDisposable
 {
-    private readonly Action _wake;
     private readonly TaskCompletionSource<object?> _completion;
-    private System.Threading.Timer? _deadlineTimer;
-    private CancellationTokenSource? _linkedCancellation;
+    private readonly Action _wake;
     private CancellationTokenRegistration _cancellationRegistration;
-    private Exception? _lastSubmitFailure;
     private int _completed;
+    private Timer? _deadlineTimer;
+    private Exception? _lastSubmitFailure;
+    private CancellationTokenSource? _linkedCancellation;
 
     private PendingSubmit(
         IReadOnlyList<Message> parts,
@@ -26,6 +26,26 @@ internal sealed class PendingSubmit : IDisposable
         CompleteOnAccepted = completeOnAccepted;
     }
 
+    public IReadOnlyList<Message> Parts { get; }
+
+    public Func<IReadOnlyList<Message>, bool> TrySubmit { get; }
+
+    public DateTimeOffset? Deadline { get; }
+
+    public bool CompleteOnAccepted { get; }
+
+    public Task<object?> Task => _completion.Task;
+
+    public bool IsCompleted => Volatile.Read(ref _completed) != 0;
+
+    public void Dispose()
+    {
+        _deadlineTimer?.Dispose();
+        _cancellationRegistration.Dispose();
+        _linkedCancellation?.Dispose();
+        foreach (var part in Parts) part.Dispose();
+    }
+
     public static PendingSubmit CreateCommand(
         IReadOnlyList<Message> parts,
         Func<IReadOnlyList<Message>, bool> trySubmit,
@@ -38,7 +58,7 @@ internal sealed class PendingSubmit : IDisposable
             deadline,
             wake,
             new TaskCompletionSource<object?>(TaskCreationOptions.RunContinuationsAsynchronously),
-            completeOnAccepted: true);
+            true);
     }
 
     public static PendingSubmit CreateRequest(
@@ -54,20 +74,8 @@ internal sealed class PendingSubmit : IDisposable
             deadline,
             wake,
             completion,
-            completeOnAccepted: false);
+            false);
     }
-
-    public IReadOnlyList<Message> Parts { get; }
-
-    public Func<IReadOnlyList<Message>, bool> TrySubmit { get; }
-
-    public DateTimeOffset? Deadline { get; }
-
-    public bool CompleteOnAccepted { get; }
-
-    public Task<object?> Task => _completion.Task;
-
-    public bool IsCompleted => Volatile.Read(ref _completed) != 0;
 
     public void Activate(CancellationToken cancellationToken, CancellationToken stopToken)
     {
@@ -77,10 +85,7 @@ internal sealed class PendingSubmit : IDisposable
 
     public void TryComplete(object? result)
     {
-        if (Interlocked.Exchange(ref _completed, 1) == 0)
-        {
-            _completion.TrySetResult(result);
-        }
+        if (Interlocked.Exchange(ref _completed, 1) == 0) _completion.TrySetResult(result);
     }
 
     public void TryCancel()
@@ -106,31 +111,14 @@ internal sealed class PendingSubmit : IDisposable
         Volatile.Write(ref _lastSubmitFailure, exception);
     }
 
-    public void Dispose()
-    {
-        _deadlineTimer?.Dispose();
-        _cancellationRegistration.Dispose();
-        _linkedCancellation?.Dispose();
-        foreach (var part in Parts)
-        {
-            part.Dispose();
-        }
-    }
-
     private void StartDeadlineTimer()
     {
-        if (Deadline is not { } deadline)
-        {
-            return;
-        }
+        if (Deadline is not { } deadline) return;
 
         var dueTime = deadline - DateTimeOffset.UtcNow;
-        if (dueTime < TimeSpan.Zero)
-        {
-            dueTime = TimeSpan.Zero;
-        }
+        if (dueTime < TimeSpan.Zero) dueTime = TimeSpan.Zero;
 
-        _deadlineTimer = new System.Threading.Timer(static state =>
+        _deadlineTimer = new Timer(static state =>
         {
             var item = (PendingSubmit)state!;
             item.TryFail(item.CreateDeadlineException());
@@ -160,10 +148,7 @@ internal sealed class PendingSubmit : IDisposable
     {
         var hasCallerCancellation = cancellationToken.CanBeCanceled;
         var hasStopCancellation = stopToken.CanBeCanceled;
-        if (!hasCallerCancellation && !hasStopCancellation)
-        {
-            return;
-        }
+        if (!hasCallerCancellation && !hasStopCancellation) return;
 
         if (hasCallerCancellation && hasStopCancellation)
         {

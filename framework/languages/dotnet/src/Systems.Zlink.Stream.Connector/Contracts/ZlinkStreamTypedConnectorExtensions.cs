@@ -4,14 +4,12 @@ namespace Systems.Zlink.Stream.Connector.Contracts;
 
 public static class ZlinkStreamJsonCodec
 {
-    private static JsonSerializerOptions _serializerOptions = new(JsonSerializerDefaults.Web);
-
-    public static JsonSerializerOptions SerializerOptions => _serializerOptions;
+    public static JsonSerializerOptions SerializerOptions { get; private set; } = new(JsonSerializerDefaults.Web);
 
     public static void Configure(JsonSerializerOptions options)
     {
         ArgumentNullException.ThrowIfNull(options);
-        _serializerOptions = options;
+        SerializerOptions = options;
     }
 }
 
@@ -34,9 +32,7 @@ public static class ZlinkStreamJsonExtensions
     private static void EnsureJson(ZlinkStreamEncodedPayload payload)
     {
         if (payload.Codec != ZlinkStreamCodec.Json)
-        {
             throw new InvalidOperationException($"Stream payload codec is {payload.Codec}, not Json.");
-        }
     }
 }
 
@@ -73,12 +69,16 @@ public static class ZlinkStreamTypedConnectorExtensions
     internal static ZlinkStreamEncodedPayload EncodePayload<TPayload>(
         IZlinkStreamPayloadCodec? codec,
         TPayload payload)
-        => codec is null ? payload.ToJson() : codec.Encode(payload);
+    {
+        return codec is null ? payload.ToJson() : codec.Encode(payload);
+    }
 
     internal static TPayload DecodePayload<TPayload>(
         IZlinkStreamPayloadCodec? codec,
         ZlinkStreamEncodedPayload payload)
-        => codec is null ? payload.FromJson<TPayload>() : codec.Decode<TPayload>(payload);
+    {
+        return codec is null ? payload.FromJson<TPayload>() : codec.Decode<TPayload>(payload);
+    }
 
     public static IDisposable On<TPayload>(
         this IZlinkStreamConnector connector,
@@ -98,7 +98,8 @@ public static class ZlinkStreamTypedConnectorExtensions
         return connector.On(name, (message, cancellationToken) =>
         {
             var payload = DecodePayload<TPayload>(connector.Options.PayloadCodec, message.Payload);
-            return handler(new ZlinkStreamMessage<TPayload>(message.Name, message.Metadata, payload), cancellationToken);
+            return handler(new ZlinkStreamMessage<TPayload>(message.Name, message.Metadata, payload),
+                cancellationToken);
         });
     }
 
@@ -114,16 +115,14 @@ public static class ZlinkStreamTypedConnectorExtensions
         this IZlinkStreamConnector connector)
     {
         ArgumentNullException.ThrowIfNull(connector);
-        return WaitFor<TPayload>(
-            connector,
-            connector.Options.NameResolver.Resolve(typeof(TPayload)));
+        return connector.WaitFor<TPayload>(connector.Options.NameResolver.Resolve(typeof(TPayload)));
     }
 }
 
 public sealed class ZlinkStreamTypedWaitBuilder<TPayload>
 {
-    private readonly IZlinkStreamWaitCall _inner;
     private readonly IZlinkStreamPayloadCodec? _codec;
+    private readonly IZlinkStreamWaitCall _inner;
 
     internal ZlinkStreamTypedWaitBuilder(IZlinkStreamWaitCall inner, IZlinkStreamPayloadCodec? codec)
     {
@@ -192,13 +191,15 @@ public sealed class ZlinkStreamTypedSendBuilder
     }
 
     public ValueTask Async(CancellationToken cancellationToken = default)
-        => _inner.Async(cancellationToken);
+    {
+        return _inner.Async(cancellationToken);
+    }
 }
 
 public sealed class ZlinkStreamTypedRequestBuilder
 {
-    private readonly IZlinkStreamRequestCall _inner;
     private readonly IZlinkStreamPayloadCodec? _codec;
+    private readonly IZlinkStreamRequestCall _inner;
 
     internal ZlinkStreamTypedRequestBuilder(IZlinkStreamRequestCall inner, IZlinkStreamPayloadCodec? codec)
     {
@@ -243,7 +244,9 @@ public sealed class ZlinkStreamTypedRequestBuilder
     }
 
     public void Submit(Action<ZlinkStreamResult> callback)
-        => _inner.Submit(callback);
+    {
+        _inner.Submit(callback);
+    }
 
     public void Submit<TReply>(Action<ZlinkStreamResult<TReply>> callback)
     {

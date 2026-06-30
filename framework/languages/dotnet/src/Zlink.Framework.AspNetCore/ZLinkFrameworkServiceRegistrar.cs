@@ -1,9 +1,6 @@
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.DependencyInjection.Extensions;
-using Zlink.Framework.Contracts.Dispatch;
-using Zlink.Framework.Runtime.Backend.Contracts;
-using Zlink.Framework.Runtime.Diagnostics;
-using Zlink.Framework.Runtime.Dispatch;
+using Microsoft.Extensions.Hosting;
 
 namespace Zlink.Framework.AspNetCore;
 
@@ -24,15 +21,9 @@ internal static class ZLinkFrameworkServiceRegistrar
         this IServiceCollection services,
         ZLinkFrameworkRegistration registration)
     {
-        foreach (var assembly in registration.HandlerAssemblies)
-        {
-            services.AddZLinkHandlersFromAssembly(assembly);
-        }
+        foreach (var assembly in registration.HandlerAssemblies) services.AddZLinkHandlersFromAssembly(assembly);
 
-        foreach (var channel in registration.Channels.Values)
-        {
-            AddExplicitChannelHandlers(services, channel);
-        }
+        foreach (var channel in registration.Channels.Values) AddExplicitChannelHandlers(services, channel);
 
         return services;
     }
@@ -42,34 +33,28 @@ internal static class ZLinkFrameworkServiceRegistrar
         ZLinkChannelRegistration channel)
     {
         foreach (var handler in channel.SendHandlers)
-        {
             AddExplicitChannelHandler(
                 services,
                 channel.ChannelName,
                 handler,
                 typeof(IZLinkSendHandler<>).MakeGenericType(handler.MessageType),
                 ZLinkMessageKind.Command);
-        }
 
         foreach (var handler in channel.RequestHandlers)
-        {
             AddExplicitChannelHandler(
                 services,
                 channel.ChannelName,
                 handler,
                 typeof(IZLinkRequestHandler<,>).MakeGenericType(handler.MessageType, handler.ReplyType!),
                 ZLinkMessageKind.Request);
-        }
 
         foreach (var handler in channel.PublishHandlers)
-        {
             AddExplicitChannelHandler(
                 services,
                 channel.ChannelName,
                 handler,
                 typeof(IZLinkPublishHandler<>).MakeGenericType(handler.MessageType),
                 ZLinkMessageKind.Publish);
-        }
     }
 
     private static void AddExplicitChannelHandler(
@@ -106,9 +91,7 @@ internal static class ZLinkFrameworkServiceRegistrar
             new ZLinkMessageFlowControl(registration.DispatchOptions.Diagnostics));
 
         if (registration.DispatchOptions.MessageFlowObserverType is { } flowObserverType)
-        {
             services.TryAddTransient(flowObserverType);
-        }
 
         services.TryAddSingleton(static provider =>
             new ZLinkHandlerRegistry(
@@ -125,7 +108,7 @@ internal static class ZLinkFrameworkServiceRegistrar
                 provider.GetRequiredService<ZLinkHandlerDispatcher>(),
                 provider.GetService<ZLinkRegistryRuntime>()));
         services.AddSingleton<IZLinkMessageMetadataPolicy, ZLinkMessageMetadataPolicy>();
-        services.AddSingleton<Microsoft.Extensions.Hosting.IHostedService, ZLinkFrameworkHostedService>();
+        services.AddSingleton<IHostedService, ZLinkFrameworkHostedService>();
 
         return services;
     }
@@ -135,16 +118,17 @@ internal static class ZLinkFrameworkServiceRegistrar
         ZLinkFrameworkRegistration registration)
     {
         services.AddSingleton<ZLinkChannelClient>();
-        services.AddSingleton<IZLinkChannelClient>(static provider => provider.GetRequiredService<ZLinkChannelClient>());
-        services.AddSingleton<Zlink.Framework.Contracts.Channels.IZLinkChannelRuntimeOptions>(
-            static provider => new Zlink.Framework.Runtime.Channels.ZLinkChannelRuntimeOptions(
-                provider.GetRequiredService<Zlink.Framework.Runtime.Host.ZLinkFrameworkRuntime>()));
+        services.AddSingleton<IZLinkChannelClient>(static provider =>
+            provider.GetRequiredService<ZLinkChannelClient>());
+        services.AddSingleton<IZLinkChannelRuntimeOptions>(static provider => new ZLinkChannelRuntimeOptions(
+            provider.GetRequiredService<ZLinkFrameworkRuntime>()));
         services.AddSingleton<ZLinkRouteClient>();
         services.AddSingleton<IZLinkRouteClient>(static provider => provider.GetRequiredService<ZLinkRouteClient>());
-        services.AddSingleton<IZLinkMultipartRouteClient>(static provider => provider.GetRequiredService<ZLinkRouteClient>());
+        services.AddSingleton<IZLinkMultipartRouteClient>(static provider =>
+            provider.GetRequiredService<ZLinkRouteClient>());
         services.AddSingleton<ZLinkBoundSessionService>();
-        services.AddSingleton<IZLinkBoundSessionFactory>(
-            provider => provider.GetRequiredService<ZLinkBoundSessionService>());
+        services.AddSingleton<IZLinkBoundSessionFactory>(provider =>
+            provider.GetRequiredService<ZLinkBoundSessionService>());
         services.AddSingleton<ZLinkFanoutClient>();
         services.AddSingleton<IZLinkFanoutClient>(static provider => provider.GetRequiredService<ZLinkFanoutClient>());
 
@@ -157,14 +141,15 @@ internal static class ZLinkFrameworkServiceRegistrar
         if (HasSpotPublisherClient(registration))
         {
             services.AddSingleton<ZLinkSpotPublisherClientService>();
-            services.AddSingleton<IZLinkSpotPublisherClient>(static provider => provider.GetRequiredService<ZLinkSpotPublisherClientService>());
+            services.AddSingleton<IZLinkSpotPublisherClient>(static provider =>
+                provider.GetRequiredService<ZLinkSpotPublisherClientService>());
         }
 
         if (HasActorCapableSpotNode(registration))
         {
             services.AddSingleton<ZLinkActorManagerService>();
-            services.AddSingleton<IZLinkActorManager>(
-                static provider => provider.GetRequiredService<ZLinkActorManagerService>());
+            services.AddSingleton<IZLinkActorManager>(static provider =>
+                provider.GetRequiredService<ZLinkActorManagerService>());
         }
 
         if (registration.SpotRemoteAddressResolverType is not null)
@@ -177,8 +162,8 @@ internal static class ZLinkFrameworkServiceRegistrar
         else if (registration.RegistrySpotRemoteAddresses is not null)
         {
             services.AddSingleton<ZLinkRegistrySpotRemoteAddressResolver>();
-            services.AddSingleton<IZLinkSpotRemoteAddressResolver>(
-                static provider => provider.GetRequiredService<ZLinkRegistrySpotRemoteAddressResolver>());
+            services.AddSingleton<IZLinkSpotRemoteAddressResolver>(static provider =>
+                provider.GetRequiredService<ZLinkRegistrySpotRemoteAddressResolver>());
         }
 
         return services;
@@ -188,41 +173,26 @@ internal static class ZLinkFrameworkServiceRegistrar
         this IServiceCollection services,
         ZLinkFrameworkRegistration registration)
     {
-        foreach (var filterType in registration.Filters)
-        {
-            services.AddTransient(filterType);
-        }
+        foreach (var filterType in registration.Filters) services.AddTransient(filterType);
 
         foreach (var actorFactoryType in registration.SpotNodes.Values
                      .SelectMany(static spotNode => spotNode.ActorFactories.Values))
-        {
             services.TryAddScoped(actorFactoryType);
-        }
 
         foreach (var spotType in registration.SpotNodes.Values
                      .SelectMany(static spotNode => spotNode.SpotFactories))
-        {
             services.TryAddScoped(spotType);
-        }
 
         foreach (var entrySpotType in registration.SpotNodes.Values
                      .Select(static spotNode => spotNode.EntrySpotType)
                      .OfType<Type>())
-        {
             services.TryAddScoped(entrySpotType);
-        }
 
         foreach (var routed in registration.RouteChannels.Values)
         {
-            foreach (var handler in routed.SendHandlers)
-            {
-                services.TryAddScoped(handler.HandlerType);
-            }
+            foreach (var handler in routed.SendHandlers) services.TryAddScoped(handler.HandlerType);
 
-            foreach (var handler in routed.RequestHandlers)
-            {
-                services.TryAddScoped(handler.HandlerType);
-            }
+            foreach (var handler in routed.RequestHandlers) services.TryAddScoped(handler.HandlerType);
         }
 
         ZLinkApplicationDependencyRegistrar.AddConstructorDiscoveredDependencies(services, registration);
@@ -244,5 +214,4 @@ internal static class ZLinkFrameworkServiceRegistrar
     {
         return registration.SpotNodes.Values.Any(static spotNode => spotNode.ActorFactories.Count > 0);
     }
-
 }

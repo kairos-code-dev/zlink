@@ -52,17 +52,12 @@ internal sealed class ZLinkSocketConfig : IZLinkSocketConfig
     internal static void ValidateSendTimeout(TimeSpan? value)
     {
         if (value is { } timeout && timeout < TimeSpan.Zero)
-        {
             throw new ZLinkConfigurationException("SendTimeout must be null, zero, or a positive duration.");
-        }
     }
 
     internal static void ValidatePeerWeight(int value)
     {
-        if (value is < 0 or > 100)
-        {
-            throw new ZLinkConfigurationException("Weight must be between 0 and 100.");
-        }
+        if (value is < 0 or > 100) throw new ZLinkConfigurationException("Weight must be between 0 and 100.");
     }
 }
 

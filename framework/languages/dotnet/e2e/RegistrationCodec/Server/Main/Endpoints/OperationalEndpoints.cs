@@ -1,9 +1,5 @@
-using Microsoft.AspNetCore.Builder;
-using Microsoft.AspNetCore.Http;
-using RegistrationCodec.Server.Main;
 using RegistrationCodec.Server.Main.Infrastructure;
 using RegistrationCodec.Shared;
-using RegistrationCodec.Server.Main.Handlers;
 
 namespace RegistrationCodec.Server.Main.Endpoints;
 

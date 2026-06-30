@@ -116,8 +116,8 @@ public sealed class ChannelContracts
             .PacketName("order.status-changed")
             .Async();
 
-        Assert.Equal("order-1042", placed.OrderId);          // unary RPC reply correlated by type
-        Assert.Equal("inventory", orders.LastChannelName);    // last one-way send routed by channel name
+        Assert.Equal("order-1042", placed.OrderId); // unary RPC reply correlated by type
+        Assert.Equal("inventory", orders.LastChannelName); // last one-way send routed by channel name
         Assert.Equal(
             ("order.events", "order.status", "order.status-changed"),
             events.LastPublish);
@@ -160,7 +160,7 @@ public sealed class ChannelContracts
             {
                 AuthenticateRequest authenticate => new AuthenticateReply(authenticate.PlayerId),
                 PlaceOrder order => new OrderPlaced(order.OrderId),
-                _ => null,
+                _ => null
             };
             return new ExampleRequestCall(packetName => LastPacketName = packetName, reply);
         }
@@ -216,7 +216,10 @@ public sealed class ChannelContracts
             return this;
         }
 
-        public ValueTask Async(CancellationToken cancellationToken = default) => ValueTask.CompletedTask;
+        public ValueTask Async(CancellationToken cancellationToken = default)
+        {
+            return ValueTask.CompletedTask;
+        }
     }
 
     private class ExampleRequestCall(Action<string> setPacketName, object? reply) : IZLinkRequestCall
@@ -227,10 +230,15 @@ public sealed class ChannelContracts
             return this;
         }
 
-        public IZLinkRequestCall Timeout(TimeSpan timeout) => this;
+        public IZLinkRequestCall Timeout(TimeSpan timeout)
+        {
+            return this;
+        }
 
-        public ValueTask<TReply> Async<TReply>(CancellationToken cancellationToken = default) =>
-            ValueTask.FromResult((TReply)reply!);
+        public ValueTask<TReply> Async<TReply>(CancellationToken cancellationToken = default)
+        {
+            return ValueTask.FromResult((TReply)reply!);
+        }
     }
 
     private sealed class ExamplePublishCall(Action<string> setPacketName) : IZLinkPublishCall
@@ -241,7 +249,10 @@ public sealed class ChannelContracts
             return this;
         }
 
-        public ValueTask Async(CancellationToken cancellationToken = default) => ValueTask.CompletedTask;
+        public ValueTask Async(CancellationToken cancellationToken = default)
+        {
+            return ValueTask.CompletedTask;
+        }
     }
 
     private sealed class ExampleRouteSendCall : ExampleSendCall
@@ -253,12 +264,20 @@ public sealed class ChannelContracts
 
     private sealed class ExampleRouteRequestCall(object reply) : IZLinkRouteRequestCall
     {
-        public IZLinkRouteRequestCall PacketName(string messageName) => this;
+        public IZLinkRouteRequestCall PacketName(string messageName)
+        {
+            return this;
+        }
 
-        public IZLinkRouteRequestCall Timeout(TimeSpan timeout) => this;
+        public IZLinkRouteRequestCall Timeout(TimeSpan timeout)
+        {
+            return this;
+        }
 
-        public ValueTask<TReply> Async<TReply>(CancellationToken cancellationToken = default) =>
-            ValueTask.FromResult((TReply)reply);
+        public ValueTask<TReply> Async<TReply>(CancellationToken cancellationToken = default)
+        {
+            return ValueTask.FromResult((TReply)reply);
+        }
     }
 
     private sealed class RoomEventRouteSendHandler : IZLinkRouteSendHandler<RoomEvent>
@@ -266,8 +285,10 @@ public sealed class ChannelContracts
         public ValueTask HandleAsync(
             RoomEvent message,
             ZLinkRouteSendContext context,
-            CancellationToken cancellationToken) =>
-            ValueTask.CompletedTask;
+            CancellationToken cancellationToken)
+        {
+            return ValueTask.CompletedTask;
+        }
     }
 
     private sealed class AllocateRoomRouteHandler : IZLinkRouteRequestHandler<AllocateRoom, RoomAllocated>
@@ -275,7 +296,9 @@ public sealed class ChannelContracts
         public ValueTask<RoomAllocated> HandleAsync(
             AllocateRoom request,
             ZLinkRouteRequestContext context,
-            CancellationToken cancellationToken) =>
-            ValueTask.FromResult(new RoomAllocated("room-1"));
+            CancellationToken cancellationToken)
+        {
+            return ValueTask.FromResult(new RoomAllocated("room-1"));
+        }
     }
 }

@@ -41,10 +41,7 @@ internal static class ZLinkRegistryRoutePayloadCodec
         string invalidPayloadMessage)
     {
         EnsureRemaining(bytes, 0, 1, invalidPayloadMessage);
-        if (bytes[0] != expectedVersion)
-        {
-            throw new FormatException(invalidPayloadMessage);
-        }
+        if (bytes[0] != expectedVersion) throw new FormatException(invalidPayloadMessage);
 
         var offset = 1;
         var namespaceName = ReadString(bytes, ref offset, invalidPayloadMessage);
@@ -69,10 +66,7 @@ internal static class ZLinkRegistryRoutePayloadCodec
         string tooLargeMessage)
     {
         var bytes = routingId.ToBytes();
-        if (bytes.Length > byte.MaxValue)
-        {
-            throw new ZLinkConfigurationException(tooLargeMessage);
-        }
+        if (bytes.Length > byte.MaxValue) throw new ZLinkConfigurationException(tooLargeMessage);
 
         return 1 + bytes.Length;
     }
@@ -116,10 +110,7 @@ internal static class ZLinkRegistryRoutePayloadCodec
         string tooLargeMessage)
     {
         var encoded = routingId.ToBytes();
-        if (encoded.Length > byte.MaxValue)
-        {
-            throw new ZLinkConfigurationException(tooLargeMessage);
-        }
+        if (encoded.Length > byte.MaxValue) throw new ZLinkConfigurationException(tooLargeMessage);
 
         bytes[offset++] = (byte)encoded.Length;
         encoded.CopyTo(bytes[offset..]);
@@ -165,10 +156,7 @@ internal static class ZLinkRegistryRoutePayloadCodec
         int offset,
         string invalidPayloadMessage)
     {
-        if (bytes.Length != offset)
-        {
-            throw new FormatException(invalidPayloadMessage);
-        }
+        if (bytes.Length != offset) throw new FormatException(invalidPayloadMessage);
     }
 
     private static void EnsureRemaining(
@@ -178,9 +166,7 @@ internal static class ZLinkRegistryRoutePayloadCodec
         string invalidPayloadMessage)
     {
         if (offset < 0 || length < 0 || bytes.Length < offset + length)
-        {
             throw new FormatException(invalidPayloadMessage);
-        }
     }
 
     private static ushort ReadUInt16(
@@ -200,10 +186,7 @@ internal static class ZLinkRegistryRoutePayloadCodec
         string tooLargeMessage)
     {
         var bytes = Encoding.UTF8.GetBytes(value);
-        if (bytes.Length > ushort.MaxValue)
-        {
-            throw new ZLinkConfigurationException(tooLargeMessage);
-        }
+        if (bytes.Length > ushort.MaxValue) throw new ZLinkConfigurationException(tooLargeMessage);
 
         return bytes;
     }
@@ -219,6 +202,6 @@ internal readonly record struct RegistryRouteIdentity(
         string expectedIdentity)
     {
         return string.Equals(Namespace, expectedNamespace, StringComparison.Ordinal)
-            && string.Equals(Identity, expectedIdentity, StringComparison.Ordinal);
+               && string.Equals(Identity, expectedIdentity, StringComparison.Ordinal);
     }
 }

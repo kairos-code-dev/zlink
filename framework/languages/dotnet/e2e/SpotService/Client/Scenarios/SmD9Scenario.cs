@@ -1,7 +1,7 @@
 using System.Collections.Concurrent;
+using SpotService.Client.Support;
 using SpotService.Shared;
 using Systems.Zlink.Stream.Connector.Contracts;
-using SpotService.Client.Support;
 
 namespace SpotService.Client.Scenarios;
 
@@ -24,7 +24,7 @@ internal static class SmD9Scenario
                     RequestTimeout = TimeSpan.FromSeconds(5),
                     Heartbeat = new ZlinkStreamHeartbeatOptions { Enabled = false },
                     DispatchMode = ZlinkStreamDispatchMode.Immediate,
-                    MaxReceivedMessages = 1024,
+                    MaxReceivedMessages = 1024
                 });
                 client.ObserveInbound((observation, cancellationToken) =>
                 {
@@ -50,11 +50,11 @@ internal static class SmD9Scenario
             }
 
             if (stream is null)
-            {
                 throw new InvalidOperationException(
-                    last is null ? "Actor auth did not become routable: actor-sm-d9" : $"Actor auth did not become routable: actor-sm-d9. Last error: {last.Message}",
+                    last is null
+                        ? "Actor auth did not become routable: actor-sm-d9"
+                        : $"Actor auth did not become routable: actor-sm-d9. Last error: {last.Message}",
                     last);
-            }
 
             var activeStream = stream;
             await activeStream.Request(new ActorPingReq("observer-1"))
@@ -67,11 +67,9 @@ internal static class SmD9Scenario
         }
         finally
         {
-            if (stream is not null)
-            {
-                await stream.DisposeAsync();
-            }
+            if (stream is not null) await stream.DisposeAsync();
         }
+
         Console.WriteLine("operation SpotService.sm-d9 passed");
     }
 }

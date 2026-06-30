@@ -1,23 +1,18 @@
 // SPDX-License-Identifier: MPL-2.0
 
-using System;
-using System.Collections.Generic;
-using System.Runtime.CompilerServices;
-using System.Threading;
-using System.Threading.Tasks;
-
 namespace Systems.Zlink;
+
 internal sealed class RouterReplyOperation : ReplyOperation,
     ReplySubmitOperation
 {
-    private readonly RouterSocket _socket;
-    private readonly RouterOperationKind _kind;
-    private readonly RoutingId _peerRid;
     private readonly RoutingId _destNodeRid;
     private readonly RoutingId _destSpotRid;
+    private readonly RouterOperationKind _kind;
+    private readonly RoutingId _peerRid;
     private readonly ulong _requestSeq;
-    private OperationMessageBuffer _parts;
+    private readonly RouterSocket _socket;
     private SendFlags _flags;
+    private OperationMessageBuffer _parts;
     private OperationSubmissionGuard _submission;
 
     internal RouterReplyOperation(RouterSocket socket, RouterOperationKind kind,
@@ -81,8 +76,8 @@ internal sealed class ReceivedReplyOperationImpl : ReplyOperation,
     ReplySubmitOperation
 {
     private readonly Received _received;
-    private OperationMessageBuffer _parts;
     private SendFlags _flags;
+    private OperationMessageBuffer _parts;
     private OperationSubmissionGuard _submission;
 
     internal ReceivedReplyOperationImpl(Received received)

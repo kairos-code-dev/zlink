@@ -1,5 +1,4 @@
 using Microsoft.Extensions.DependencyInjection;
-using Zlink.Framework;
 using Zlink.Framework.AspNetCore;
 
 internal static class TestHostScenarioConfigurator
@@ -44,14 +43,13 @@ internal static class TestHostScenarioConfigurator
         services.AddZLinkRegistry(registry =>
         {
             registry.PubEndpoint = options.RegistryPubEndpoint
-                ?? throw new InvalidOperationException("Registry mode requires --registry-pub-endpoint.");
+                                   ?? throw new InvalidOperationException(
+                                       "Registry mode requires --registry-pub-endpoint.");
             registry.RouterEndpoint = options.RegistryRouterEndpoint
-                ?? throw new InvalidOperationException("Registry mode requires --registry-router-endpoint.");
+                                      ?? throw new InvalidOperationException(
+                                          "Registry mode requires --registry-router-endpoint.");
 
-            if (options.RegistryId is uint registryId)
-            {
-                registry.RegistryId = registryId;
-            }
+            if (options.RegistryId is uint registryId) registry.RegistryId = registryId;
         });
     }
 
@@ -61,18 +59,18 @@ internal static class TestHostScenarioConfigurator
         services.AddZLinkFramework(framework =>
         {
             if (!string.IsNullOrWhiteSpace(options.DiscoveryEndpoint))
-            {
                 framework.UseDiscovery().AddRegistryEndpoint(options.DiscoveryEndpoint);
-            }
 
             {
                 var channel = framework.AddClientServerChannel(options.ChannelName
-                    ?? throw new InvalidOperationException("Channel server mode requires --channel-name."))
+                                                               ?? throw new InvalidOperationException(
+                                                                   "Channel server mode requires --channel-name."))
                     .EnableServer(options.ServerEndpoint
-                        ?? throw new InvalidOperationException("Channel server mode requires --server-endpoint."));
-                    channel.AddRequestHandler<TestHostProfileRequestHandler, TestHostProfileRequest, TestHostProfileReply>();
-                    channel.AddSendHandler<TestHostProfileSendHandler, TestHostProfileSend>();
-
+                                  ?? throw new InvalidOperationException(
+                                      "Channel server mode requires --server-endpoint."));
+                channel
+                    .AddRequestHandler<TestHostProfileRequestHandler, TestHostProfileRequest, TestHostProfileReply>();
+                channel.AddSendHandler<TestHostProfileSendHandler, TestHostProfileSend>();
             }
         });
     }
@@ -84,10 +82,11 @@ internal static class TestHostScenarioConfigurator
         {
             {
                 framework.AddClientServerChannel(options.ChannelName
-                    ?? throw new InvalidOperationException("Channel client mode requires --channel-name."))
+                                                 ?? throw new InvalidOperationException(
+                                                     "Channel client mode requires --channel-name."))
                     .EnableClient(options.ServerEndpoint
-                        ?? throw new InvalidOperationException("Channel client mode requires --server-endpoint."));
-
+                                  ?? throw new InvalidOperationException(
+                                      "Channel client mode requires --server-endpoint."));
             }
         });
         services.AddHostedService(provider =>
@@ -105,25 +104,19 @@ internal static class TestHostScenarioConfigurator
         {
             framework.AddHandlersFromAssemblyOf<Program>();
             if (string.IsNullOrWhiteSpace(options.PublisherEndpoint))
-            {
                 framework.UseDiscovery().AddRegistryEndpoint(
                     options.DiscoveryEndpoint
-                        ?? throw new InvalidOperationException("Channel subscriber mode requires --discovery-endpoint."));
-            }
+                    ?? throw new InvalidOperationException("Channel subscriber mode requires --discovery-endpoint."));
 
             {
                 var channel = framework.AddFanoutChannel(options.ChannelName
-                    ?? throw new InvalidOperationException("Channel subscriber mode requires --channel-name."));
-                    if (!string.IsNullOrWhiteSpace(options.PublisherEndpoint))
-                    {
-                        channel.EnableSubscriber(options.PublisherEndpoint);
-                    }
-                    else
-                    {
-                        channel.EnableSubscriber();
-                    }
-                    channel.AddHandlerGroup("testhost-channel-events");
-
+                                                         ?? throw new InvalidOperationException(
+                                                             "Channel subscriber mode requires --channel-name."));
+                if (!string.IsNullOrWhiteSpace(options.PublisherEndpoint))
+                    channel.EnableSubscriber(options.PublisherEndpoint);
+                else
+                    channel.EnableSubscriber();
+                channel.AddHandlerGroup("testhost-channel-events");
             }
         });
     }
@@ -133,28 +126,25 @@ internal static class TestHostScenarioConfigurator
         services.AddZLinkFramework(framework =>
         {
             if (!string.IsNullOrWhiteSpace(options.DiscoveryEndpoint))
-            {
                 framework.UseDiscovery().AddRegistryEndpoint(options.DiscoveryEndpoint);
-            }
 
             {
                 framework.AddFanoutChannel(options.ChannelName
-                    ?? throw new InvalidOperationException("Channel publisher mode requires --channel-name."))
+                                           ?? throw new InvalidOperationException(
+                                               "Channel publisher mode requires --channel-name."))
                     .EnablePublisher(options.PublisherEndpoint
-                        ?? throw new InvalidOperationException("Channel publisher mode requires --publisher-endpoint."));
-
+                                     ?? throw new InvalidOperationException(
+                                         "Channel publisher mode requires --publisher-endpoint."));
             }
         });
 
         if (!string.IsNullOrWhiteSpace(options.PublishTopic))
-        {
             services.AddHostedService(provider =>
                 new ChannelStartupPublishHostedService(
                     provider.GetRequiredService<IZLinkFanoutClient>(),
                     options.ChannelName!,
                     options.PublishTopic!,
                     options.PublishValue ?? "startup"));
-        }
     }
 
     private static void ConfigureSpotNode(IServiceCollection services, TestHostOptions options)
@@ -163,62 +153,49 @@ internal static class TestHostScenarioConfigurator
         services.AddScoped<StartupStageSubscriptionHandler>();
         services.AddZLinkFramework(framework =>
         {
+            framework.UseDiscovery().AddRegistryEndpoint(
+                options.DiscoveryEndpoint
+                ?? throw new InvalidOperationException("SPOT node mode requires --discovery-endpoint."));
             {
                 var spotMesh = framework.AddSpotMesh(options.DiscoveryChannelName
-                    ?? throw new InvalidOperationException("SPOT node mode requires --discovery-channel."));
-                    spotMesh.UseDiscovery().AddRegistryEndpoint(
-                        options.DiscoveryEndpoint
-                            ?? throw new InvalidOperationException("SPOT node mode requires --discovery-endpoint."));
+                                                     ?? throw new InvalidOperationException(
+                                                         "SPOT node mode requires --discovery-channel."));
 
+                {
+                    _ = options.SpotNodeName
+                        ?? throw new InvalidOperationException("SPOT node mode requires --spot-node-name.");
+                    var spot = spotMesh;
+                    var spotBindEndpoint = options.SpotBindEndpoint
+                                           ?? throw new InvalidOperationException(
+                                               "SPOT node mode requires --spot-bind-endpoint.");
+
+                    if (options.EnablePubSub)
                     {
-                        _ = options.SpotNodeName
-                            ?? throw new InvalidOperationException("SPOT node mode requires --spot-node-name.");
-                        var spot = spotMesh;
-                            var spotBindEndpoint = options.SpotBindEndpoint
-                                ?? throw new InvalidOperationException("SPOT node mode requires --spot-bind-endpoint.");
-
-                            if (options.EnablePubSub)
-                            {
-                                {
-                                    var pubsub = spot.EnablePubSub(spotBindEndpoint);
-
-                                }
-                            }
-                            else
-                            {
-                                {
-                                    var router = spot.EnableRouter(spotBindEndpoint);
-
-                                }
-                            }
-
-                            if (options.EnableSpotFactory)
-                            {
-                                spot.AddSpotFactory<StartupStageSpot>();
-                            }
-
+                        var pubsub = spot.EnablePubSub(spotBindEndpoint);
+                    }
+                    else
+                    {
+                        var router = spot.EnableRouter(spotBindEndpoint);
                     }
 
+                    if (options.EnableSpotFactory) spot.AddSpotFactory<StartupStageSpot>();
+                }
             }
         });
 
         if (options.CreateSpot)
-        {
             services.AddHostedService(provider =>
                 new StartupSpotCreationHostedService(
                     provider.GetRequiredService<IZLinkSpotManager>()));
-        }
 
         if (!string.IsNullOrWhiteSpace(options.AttachSpotPublisherChannel)
             && !string.IsNullOrWhiteSpace(options.PublishTopic))
-        {
             services.AddHostedService(provider =>
                 new SpotStartupPublishHostedService(
                     provider.GetRequiredService<IZLinkSpotPublisherClient>(),
                     options.AttachSpotPublisherChannel!,
                     options.PublishTopic!,
                     options.PublishValue ?? "startup"));
-        }
     }
 
     private static void ConfigureStreamRawNode(IServiceCollection services, TestHostOptions options)
@@ -230,9 +207,8 @@ internal static class TestHostScenarioConfigurator
             {
                 var stream = framework.AddStreamNode("stream.raw");
                 stream.Bind(options.StreamEndpoint
-                    ?? throw new InvalidOperationException("STREAM raw mode requires --stream-endpoint."));
+                            ?? throw new InvalidOperationException("STREAM raw mode requires --stream-endpoint."));
                 stream.RegisterSession<TestHostRawStreamSession>();
-
             }
         });
     }
@@ -244,7 +220,7 @@ internal static class TestHostScenarioConfigurator
             new StreamClientStartupRequestHostedService(
                 provider.GetRequiredService<TestHostEventSink>(),
                 options.StreamEndpoint
-                    ?? throw new InvalidOperationException("STREAM client mode requires --stream-endpoint."),
+                ?? throw new InvalidOperationException("STREAM client mode requires --stream-endpoint."),
                 options.PublishValue ?? "dotnet-to-node"));
     }
 }

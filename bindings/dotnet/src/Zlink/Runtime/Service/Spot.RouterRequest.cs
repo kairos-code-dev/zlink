@@ -1,12 +1,7 @@
 // SPDX-License-Identifier: MPL-2.0
 
-using System;
-using System.Collections.Generic;
 using System.Runtime.InteropServices;
-using System.Threading;
-using System.Threading.Tasks;
 using Systems.Zlink.Runtime.Native;
-using Systems.Zlink.Runtime.Sockets.Internal;
 
 namespace Systems.Zlink;
 
@@ -14,18 +9,22 @@ internal sealed partial class Spot : ISpot
 {
     internal void ReplyToRouter(RoutingId peerRid, ulong requestSeq,
         Message message, SendFlags flags = SendFlags.None)
-        => ReplyToRouter(peerRid, requestSeq, new[] { message }, flags);
+    {
+        ReplyToRouter(peerRid, requestSeq, new[] { message }, flags);
+    }
 
     internal Task<IReadOnlyList<Message>> RequestToRouterAsync(RoutingId peerRid,
         Message message, TimeSpan timeout = default,
         CancellationToken ct = default)
-        => RequestToRouterAsync(peerRid, new[] { message }, timeout, ct);
+    {
+        return RequestToRouterAsync(peerRid, new[] { message }, timeout, ct);
+    }
 
     internal async Task<IReadOnlyList<Message>> RequestToRouterAsync(RoutingId peerRid,
         IReadOnlyList<Message> parts, TimeSpan timeout = default,
         CancellationToken ct = default)
     {
-        Received received = await RequestToRouterAsyncInternal(peerRid, parts,
+        var received = await RequestToRouterAsyncInternal(peerRid, parts,
             timeout, ct).ConfigureAwait(false);
         return received.Parts;
     }
@@ -33,8 +32,10 @@ internal sealed partial class Spot : ISpot
     internal bool RequestToRouter(RoutingId peerRid, Message message,
         Action<RequestResult, IReadOnlyList<Message>> callback,
         SendFlags flags = SendFlags.None, TimeSpan? timeout = null)
-        => RequestToRouter(peerRid, new[] { message }, callback, flags,
+    {
+        return RequestToRouter(peerRid, new[] { message }, callback, flags,
             timeout);
+    }
 
     internal bool RequestToRouter(RoutingId peerRid, IReadOnlyList<Message> parts,
         Action<RequestResult, IReadOnlyList<Message>> callback,
@@ -55,31 +56,32 @@ internal sealed partial class Spot : ISpot
                         payload = RequestReplySupport.TakeOwnedParts(reply);
                         reply.Dispose();
                     }
+
                     callback(result, payload);
                 });
             return true;
         }
         catch (ZlinkException error) when ((flags & SendFlags.DontWait) != 0
-            && RequestReplySupport.MapSendNoWaitResult(error)
-                == SendResult.Backpressured)
+                                           && RequestReplySupport.MapSendNoWaitResult(error)
+                                           == SendResult.Backpressured)
         {
             return false;
         }
     }
 
-    internal unsafe void ReplyToRouter(RoutingId peerRid, ulong requestSeq,
+    internal void ReplyToRouter(RoutingId peerRid, ulong requestSeq,
         IReadOnlyList<Message> parts, SendFlags flags = SendFlags.None)
     {
         _ = flags;
         RequestReplySupport.EnsureParts(parts, nameof(parts));
-        ZlinkRoutingId routingId = peerRid.ToNative();
-        Message[] cloned = RequestReplySupport.CloneParts(parts);
+        var routingId = peerRid.ToNative();
+        var cloned = RequestReplySupport.CloneParts(parts);
         try
         {
             RequestReplySupport.SubmitClonedParts(cloned,
                 (ref ZlinkMsg nativePart,
-                    NativeMethods.ZlinkPartFlag partFlag) =>
-                    NativeMethods.zlink_spot_reply_router_part(_handle,
+                        NativeMethods.ZlinkPartFlag partFlag) =>
+                    NativeMethods.zlink_spot_reply_router_part(Handle,
                         ref routingId, requestSeq, ref nativePart, partFlag));
         }
         catch
@@ -89,22 +91,22 @@ internal sealed partial class Spot : ISpot
         }
     }
 
-    private unsafe Task<Received> RequestToSpotAsyncInternal(
+    private Task<Received> RequestToSpotAsyncInternal(
         RoutingId destNodeRid, RoutingId destSpotRid, IReadOnlyList<Message> parts,
         TimeSpan timeout, CancellationToken ct, int flags = 0)
     {
         RequestReplySupport.EnsureParts(parts, nameof(parts));
-        ZlinkRoutingId nodeRid = destNodeRid.ToNative();
-        ZlinkRoutingId spotRid = destSpotRid.ToNative();
+        var nodeRid = destNodeRid.ToNative();
+        var spotRid = destSpotRid.ToNative();
         return RequestRoutedAsyncInternal(parts, timeout, ct, flags,
             (ref ZlinkMsg nativePart, IntPtr handler, IntPtr userData,
-                NativeMethods.ZlinkPartFlag partFlag, uint timeoutMs) =>
-                NativeMethods.zlink_spot_request_spot_part(_handle,
+                    NativeMethods.ZlinkPartFlag partFlag, uint timeoutMs) =>
+                NativeMethods.zlink_spot_request_spot_part(Handle,
                     ref nodeRid, ref spotRid, ref nativePart, handler, userData,
                     flags, partFlag, timeoutMs));
     }
 
-    private unsafe bool RequestToSpotCallbackInternal(
+    private bool RequestToSpotCallbackInternal(
         RoutingId destNodeRid, RoutingId destSpotRid, IReadOnlyList<Message> parts,
         Action<RequestResult, IReadOnlyList<Message>> callback, SendFlags flags,
         TimeSpan timeout)
@@ -115,27 +117,27 @@ internal sealed partial class Spot : ISpot
         // below so the refs stay valid (no closure capture here).
         ZlinkRoutingId nodeFallback = default;
         ZlinkRoutingId spotFallback = default;
-        ref ZlinkRoutingId nodeRid = ref destNodeRid.ToNativeRef(ref nodeFallback);
-        ref ZlinkRoutingId spotRid = ref destSpotRid.ToNativeRef(ref spotFallback);
-        uint timeoutMs = RequestReplySupport.NormalizeTimeout(timeout);
-        Message[] cloned = RequestReplySupport.CloneParts(parts);
+        ref var nodeRid = ref destNodeRid.ToNativeRef(ref nodeFallback);
+        ref var spotRid = ref destSpotRid.ToNativeRef(ref spotFallback);
+        var timeoutMs = RequestReplySupport.NormalizeTimeout(timeout);
+        var cloned = RequestReplySupport.CloneParts(parts);
         GCHandle handle = default;
         SpotRequestCallbackState? state = null;
 
         try
         {
             state = new SpotRequestCallbackState(callback,
-                RequestProgressPump.AttachSpotCallback(_handle));
+                RequestProgressPump.AttachSpotCallback(Handle));
             handle = GCHandle.Alloc(state, GCHandleType.Normal);
 
-            for (int i = 0; i < cloned.Length; i++)
+            for (var i = 0; i < cloned.Length; i++)
             {
                 ZlinkMsg nativePart = default;
                 cloned[i].MoveTo(ref nativePart);
-                bool submitted = false;
+                var submitted = false;
                 try
                 {
-                    int rc = NativeMethods.zlink_spot_request_spot_part(_handle,
+                    var rc = NativeMethods.zlink_spot_request_spot_part(Handle,
                         ref nodeRid, ref spotRid, ref nativePart,
                         RoutedReplyCallbackHandlerPtr, GCHandle.ToIntPtr(handle),
                         (int)flags,
@@ -167,16 +169,16 @@ internal sealed partial class Spot : ISpot
         }
     }
 
-    private unsafe Task<Received> RequestToRouterAsyncInternal(RoutingId peerRid,
+    private Task<Received> RequestToRouterAsyncInternal(RoutingId peerRid,
         IReadOnlyList<Message> parts, TimeSpan timeout, CancellationToken ct,
         int flags = 0)
     {
         RequestReplySupport.EnsureParts(parts, nameof(parts));
-        ZlinkRoutingId nativePeerRid = peerRid.ToNative();
+        var nativePeerRid = peerRid.ToNative();
         return RequestRoutedAsyncInternal(parts, timeout, ct, flags,
             (ref ZlinkMsg nativePart, IntPtr handler, IntPtr userData,
-                NativeMethods.ZlinkPartFlag partFlag, uint timeoutMs) =>
-                NativeMethods.zlink_spot_request_router_part(_handle,
+                    NativeMethods.ZlinkPartFlag partFlag, uint timeoutMs) =>
+                NativeMethods.zlink_spot_request_router_part(Handle,
                     ref nativePeerRid, ref nativePart, handler, userData,
                     flags, partFlag, timeoutMs));
     }

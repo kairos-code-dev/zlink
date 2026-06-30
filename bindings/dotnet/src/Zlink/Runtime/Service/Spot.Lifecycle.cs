@@ -1,12 +1,6 @@
 // SPDX-License-Identifier: MPL-2.0
 
-using System;
-using System.Collections.Generic;
-using System.Runtime.InteropServices;
-using System.Threading;
-using System.Threading.Tasks;
 using Systems.Zlink.Runtime.Native;
-using Systems.Zlink.Runtime.Sockets.Internal;
 
 namespace Systems.Zlink;
 
@@ -19,7 +13,7 @@ internal sealed partial class Spot : ISpot
 
     public void Dispose()
     {
-        Destroy(throwOnError: true);
+        Destroy(true);
         GC.SuppressFinalize(this);
     }
 
@@ -31,31 +25,29 @@ internal sealed partial class Spot : ISpot
 
     ~Spot()
     {
-        Destroy(throwOnError: false);
+        Destroy(false);
     }
 
     private void Destroy(bool throwOnError)
     {
-        if (_handle == IntPtr.Zero)
+        if (Handle == IntPtr.Zero)
             return;
 
-        IntPtr originalHandle = _handle;
-        IntPtr handle = _handle;
-        int rc = _ownsHandle
+        var originalHandle = Handle;
+        var handle = Handle;
+        var rc = _ownsHandle
             ? NativeMethods.zlink_spot_destroy(ref handle)
             : 0;
         if (rc != 0)
         {
-            _handle = originalHandle;
+            Handle = originalHandle;
             if (throwOnError)
-            {
                 throw ZlinkException.CreateCloseException(
                     NativeMethods.zlink_errno());
-            }
             return;
         }
 
-        _handle = IntPtr.Zero;
+        Handle = IntPtr.Zero;
         _sendReadyHandler = null;
         _dispatchEventHandler = null;
         _sendReadyHandlerContext = null;
@@ -67,14 +59,14 @@ internal sealed partial class Spot : ISpot
 
     private void EnsureNotDisposed()
     {
-        if (_handle == IntPtr.Zero)
+        if (Handle == IntPtr.Zero)
             throw new ObjectDisposedException(nameof(Spot));
     }
 
     private void OnNativeSendReady(IntPtr subject, IntPtr userData)
     {
-        Action? handler = _sendReadyHandler;
-        SynchronizationContext? context = _sendReadyHandlerContext;
+        var handler = _sendReadyHandler;
+        var context = _sendReadyHandlerContext;
         if (handler == null)
             return;
 
@@ -95,7 +87,7 @@ internal sealed partial class Spot : ISpot
             return operation();
         }
         catch (ZlinkException ex) when (ZlinkException.MapErrorCode(
-            ex.NativeErrno) is ErrorCode.EAgain or ErrorCode.EBusy)
+                                            ex.NativeErrno) is ErrorCode.EAgain or ErrorCode.EBusy)
         {
             return null;
         }

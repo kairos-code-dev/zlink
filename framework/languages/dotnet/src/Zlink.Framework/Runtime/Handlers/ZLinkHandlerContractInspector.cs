@@ -11,9 +11,7 @@ internal static class ZLinkHandlerContractInspector
         {
             if (!implemented.IsGenericType
                 || implemented.GetGenericTypeDefinition() != genericDefinition)
-            {
                 continue;
-            }
 
             arguments = implemented.GetGenericArguments();
             return true;
@@ -27,11 +25,7 @@ internal static class ZLinkHandlerContractInspector
         Type handlerType)
     {
         foreach (var implemented in handlerType.GetInterfaces())
-        {
             if (implemented.IsGenericType)
-            {
                 yield return (implemented.GetGenericTypeDefinition(), implemented.GetGenericArguments());
-            }
-        }
     }
 }

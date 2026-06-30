@@ -1,17 +1,14 @@
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Logging;
-using Zlink.Framework.Runtime.Backend.Contracts;
-using Zlink.Framework.Runtime.Diagnostics;
-using Zlink.Framework.Runtime.Messaging;
 
 namespace Zlink.Framework.Runtime.Channels;
 
 internal sealed class ZLinkRouteSpotChannelCalls
 {
-    private readonly string _routerChannelId;
-    private readonly IZLinkBackendRouterSocket _router;
-    private readonly ZLinkAsyncSubmitter _submitter;
     private readonly ZLinkMessageFlowTracer _flow;
+    private readonly IZLinkBackendRouterSocket _router;
+    private readonly string _routerChannelId;
+    private readonly ZLinkAsyncSubmitter _submitter;
 
     public ZLinkRouteSpotChannelCalls(
         IServiceProvider services,
@@ -87,8 +84,8 @@ internal sealed class ZLinkRouteSpotChannelCalls
                 ZLinkMessageFlowOutcome.ReplyReceived,
                 ZLinkDispatchErrorSurface.SpotRoute,
                 ZLinkDispatchMessageKind.Response,
-                PacketName: packetName,
-                ChannelName: _routerChannelId,
+                packetName,
+                _routerChannelId,
                 CorrelationId: correlationId,
                 PeerRid: targetNodeRid.ToString(),
                 SpotRid: targetSpotRid.ToString()));
@@ -107,8 +104,8 @@ internal sealed class ZLinkRouteSpotChannelCalls
             ZLinkMessageFlowOutcome.Sent,
             ZLinkDispatchErrorSurface.SpotRoute,
             ZLinkDispatchMessageKind.Request,
-            PacketName: packetName,
-            ChannelName: _routerChannelId,
+            packetName,
+            _routerChannelId,
             CorrelationId: correlationId,
             PeerRid: targetNodeRid.ToString(),
             SpotRid: targetSpotRid.ToString()));
@@ -119,10 +116,7 @@ internal sealed class ZLinkRouteSpotChannelCalls
         ref string? correlationId,
         ref string? packetName)
     {
-        if (correlationId is not null || reply.Count == 0)
-        {
-            return;
-        }
+        if (correlationId is not null || reply.Count == 0) return;
 
         try
         {

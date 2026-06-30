@@ -1,11 +1,11 @@
 <Project>
-  <PropertyGroup>
-    <ZLinkFrameworkTargetFrameworks Condition="'$(ZLinkFrameworkTargetFrameworks)' == ''">net8.0</ZLinkFrameworkTargetFrameworks>
-    <Nullable>enable</Nullable>
-    <ImplicitUsings>enable</ImplicitUsings>
-    <LangVersion>12.0</LangVersion>
-    <Deterministic>true</Deterministic>
-    <GenerateDocumentationFile>true</GenerateDocumentationFile>
-    <NoWarn>$(NoWarn);CS1591</NoWarn>
-  </PropertyGroup>
+    <PropertyGroup>
+        <ZLinkFrameworkTargetFrameworks Condition="'$(ZLinkFrameworkTargetFrameworks)' == ''">net8.0</ZLinkFrameworkTargetFrameworks>
+        <Nullable>enable</Nullable>
+        <ImplicitUsings>enable</ImplicitUsings>
+        <LangVersion>12.0</LangVersion>
+        <Deterministic>true</Deterministic>
+        <GenerateDocumentationFile>true</GenerateDocumentationFile>
+        <NoWarn>$(NoWarn);CS1591</NoWarn>
+    </PropertyGroup>
 </Project>

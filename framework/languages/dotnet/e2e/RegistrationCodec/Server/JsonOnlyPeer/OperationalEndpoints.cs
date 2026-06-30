@@ -1,8 +1,5 @@
-using Microsoft.AspNetCore.Builder;
-using Microsoft.AspNetCore.Http;
 using RegistrationCodec.Server.JsonOnlyPeer.Infrastructure;
 using RegistrationCodec.Shared;
-using RegistrationCodec.Server.JsonOnlyPeer.Handlers;
 
 namespace RegistrationCodec.Server.JsonOnlyPeer;
 

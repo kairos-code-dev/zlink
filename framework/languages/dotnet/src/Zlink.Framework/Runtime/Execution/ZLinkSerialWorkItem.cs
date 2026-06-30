@@ -3,6 +3,7 @@ namespace Zlink.Framework.Runtime.Execution;
 internal sealed class ZLinkSerialWorkItem
 {
     private readonly Func<CancellationToken, ValueTask> _callback;
+
     private readonly TaskCompletionSource _completion =
         new(TaskCreationOptions.RunContinuationsAsynchronously);
 
@@ -68,10 +69,7 @@ internal sealed class ZLinkSerialWorkItem
         {
             _completion.TrySetException(ex);
             _ = _completion.Task.Exception;
-            if (ex is not OperationCanceledException)
-            {
-                onUnhandledException(ex);
-            }
+            if (ex is not OperationCanceledException) onUnhandledException(ex);
         }
     }
 }
@@ -79,5 +77,5 @@ internal sealed class ZLinkSerialWorkItem
 internal enum ZLinkSerialWorkItemResult
 {
     Completed,
-    Suspended,
+    Suspended
 }

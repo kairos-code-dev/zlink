@@ -1,6 +1,4 @@
 using Microsoft.Extensions.Logging;
-using Zlink.Framework.Runtime.Diagnostics;
-using Zlink.Framework.Runtime.Handlers;
 
 namespace Zlink.Framework.Runtime.Channels;
 
@@ -41,7 +39,7 @@ internal sealed class ZLinkChannelCommandDispatchPipeline(
                 ZLinkDispatchErrorReason.HandlerMissing,
                 ZLinkDispatchErrorAction.Drop,
                 header.MessageName,
-                ChannelName: channelName,
+                channelName,
                 CorrelationId: header.CorrelationId));
             return;
         }
@@ -68,7 +66,7 @@ internal sealed class ZLinkChannelCommandDispatchPipeline(
                 ZLinkDispatchErrorReason.PayloadDecodeFailed,
                 ZLinkDispatchErrorAction.Drop,
                 header.MessageName,
-                ChannelName: channelName,
+                channelName,
                 CorrelationId: header.CorrelationId,
                 Exception: ex));
             return;
@@ -85,15 +83,13 @@ internal sealed class ZLinkChannelCommandDispatchPipeline(
                 .ConfigureAwait(false);
 
             if (dispatchErrors.Flow.Enabled(ZLinkMessageFlowOutcome.Dispatched))
-            {
                 dispatchErrors.Flow.Trace(new ZLinkMessageFlowEvent(
                     ZLinkMessageFlowOutcome.Dispatched,
                     ResolveSurface(transportName),
                     ZLinkDispatchMessageKind.Send,
-                    PacketName: header.MessageName,
-                    ChannelName: channelName,
+                    header.MessageName,
+                    channelName,
                     CorrelationId: header.CorrelationId));
-            }
         }
         catch (Exception ex)
         {
@@ -112,7 +108,7 @@ internal sealed class ZLinkChannelCommandDispatchPipeline(
                 ZLinkDispatchErrorReason.HandlerException,
                 ZLinkDispatchErrorAction.Drop,
                 header.MessageName,
-                ChannelName: channelName,
+                channelName,
                 CorrelationId: header.CorrelationId,
                 Exception: ex));
         }

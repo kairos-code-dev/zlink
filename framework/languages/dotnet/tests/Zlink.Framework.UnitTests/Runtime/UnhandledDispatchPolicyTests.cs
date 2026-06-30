@@ -1,18 +1,12 @@
 using System.Diagnostics;
 using System.Diagnostics.Metrics;
+using System.Net;
+using System.Net.Sockets;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Logging;
 using Systems.Zlink.Stream.Connector.Contracts;
 using Zlink.Framework.Runtime.Backend.Contracts;
-using Zlink.Framework.Runtime.Backend.DotNet.Wrappers;
-using Zlink.Framework.Runtime.Channels;
-using Zlink.Framework.Runtime.Configuration;
-using Zlink.Framework.Runtime.Diagnostics;
 using Zlink.Framework.Runtime.Dispatch;
-using Zlink.Framework.Runtime.Handlers;
-using Zlink.Framework.Runtime.Messaging;
-using Zlink.Framework.Runtime.Spots;
-using Zlink.Framework.Runtime.Streams;
 
 namespace Zlink.Framework.UnitTests;
 
@@ -72,7 +66,7 @@ public sealed class UnhandledDispatchPolicyTests
         using var listener = new ActivityListener
         {
             ShouldListenTo = source => source.Name == ZLinkTelemetry.ActivitySourceName,
-            Sample = (ref ActivityCreationOptions<ActivityContext> _) => ActivitySamplingResult.AllDataAndRecorded,
+            Sample = (ref ActivityCreationOptions<ActivityContext> _) => ActivitySamplingResult.AllDataAndRecorded
         };
         var activities = new List<Activity>();
         listener.ActivityStopped = activities.Add;
@@ -83,9 +77,7 @@ public sealed class UnhandledDispatchPolicyTests
         {
             if (instrument.Meter.Name == ZLinkTelemetry.MeterName
                 && instrument.Name == "zlink.messages.handler_missing")
-            {
                 listenerRef.EnableMeasurementEvents(instrument);
-            }
         };
         meterListener.SetMeasurementEventCallback<long>((_, measurement, _, _) =>
         {
@@ -168,7 +160,7 @@ public sealed class UnhandledDispatchPolicyTests
             registration,
             null!);
         var endpoint = GetTcpEndpoint();
-        await using var context = global::Systems.Zlink.Zlink.CreateContext();
+        await using var context = Systems.Zlink.Zlink.CreateContext();
         await using var routerSocket = context.CreateRouterSocket();
         await using var dealerSocket = context.CreateDealerSocket();
         routerSocket.Options.Linger = TimeSpan.Zero;
@@ -231,7 +223,7 @@ public sealed class UnhandledDispatchPolicyTests
             ZLinkDispatchErrorReason.HandlerMissing,
             ZLinkDispatchErrorAction.ReplyError,
             "MissingReq",
-            ChannelName: "api",
+            "api",
             CorrelationId: "corr-1");
 
         reporter.Report(error);
@@ -288,6 +280,32 @@ public sealed class UnhandledDispatchPolicyTests
         Assert.Contains(logger.Messages, message => message.Contains("no-handler", StringComparison.Ordinal));
     }
 
+    private static async Task<Received> ReceiveAsync(
+        ZLinkBackendRouterSocketWrapper router,
+        TimeSpan timeout)
+    {
+        var deadline = DateTime.UtcNow + timeout;
+        while (DateTime.UtcNow < deadline)
+        {
+            var received = router.Recv(RecvFlags.DontWait);
+            if (received is not null) return received;
+
+            await Task.Yield();
+        }
+
+        throw new TimeoutException("Timed out waiting for router request.");
+    }
+
+    private static string GetTcpEndpoint()
+    {
+        using var listener = new TcpListener(
+            IPAddress.Loopback,
+            0);
+        listener.Start();
+        var port = ((IPEndPoint)listener.LocalEndpoint).Port;
+        return $"tcp://127.0.0.1:{port}";
+    }
+
     private sealed class NeverInvokedHandler;
 
     private sealed record TestRequest(string Value);
@@ -311,10 +329,7 @@ public sealed class UnhandledDispatchPolicyTests
             ZLinkMessageFlowEvent flow,
             CancellationToken cancellationToken)
         {
-            if (flow.Outcome == ZLinkMessageFlowOutcome.Error)
-            {
-                _observed.TrySetResult(flow);
-            }
+            if (flow.Outcome == ZLinkMessageFlowOutcome.Error) _observed.TrySetResult(flow);
             return ValueTask.CompletedTask;
         }
 
@@ -328,9 +343,15 @@ public sealed class UnhandledDispatchPolicyTests
     {
         public List<string> Messages { get; } = [];
 
-        public IDisposable? BeginScope<TState>(TState state) where TState : notnull => null;
+        public IDisposable? BeginScope<TState>(TState state) where TState : notnull
+        {
+            return null;
+        }
 
-        public bool IsEnabled(LogLevel logLevel) => true;
+        public bool IsEnabled(LogLevel logLevel)
+        {
+            return true;
+        }
 
         public void Log<TState>(
             LogLevel logLevel,
@@ -351,7 +372,10 @@ public sealed class UnhandledDispatchPolicyTests
 
         public RoutingId RoutingId => RoutingId.From("spot");
 
-        public ValueTask DisposeAsync() => ValueTask.CompletedTask;
+        public ValueTask DisposeAsync()
+        {
+            return ValueTask.CompletedTask;
+        }
 
         public void SetRoutingId(RoutingId routingId)
         {
@@ -361,17 +385,17 @@ public sealed class UnhandledDispatchPolicyTests
         {
         }
 
-        public bool Subscribe(TopicMessage result, RecvFlags flags) => false;
-
-        public bool RecvRoute(Received result, RecvFlags flags) => false;
-
-        public void OnDispatchEvent(Action<ZLinkBackendSpotDispatchInfo> handler)
+        public bool Subscribe(TopicMessage result, RecvFlags flags)
         {
+            return false;
         }
 
-        public void OnActorLifecycle(
-            Action<ZLinkBackendSpotActorLifecycleInfo>? onJoin,
-            Action<ZLinkBackendSpotActorLifecycleInfo>? onLeave)
+        public bool RecvRoute(Received result, RecvFlags flags)
+        {
+            return false;
+        }
+
+        public void OnDispatchEvent(Action<ZLinkBackendSpotDispatchInfo> handler)
         {
         }
 
@@ -399,15 +423,30 @@ public sealed class UnhandledDispatchPolicyTests
             return false;
         }
 
-        public bool SendToChannel(string channelName, Message message, SendFlags flags) => false;
+        public bool SendToChannel(string channelName, Message message, SendFlags flags)
+        {
+            return false;
+        }
 
-        public bool SendToChannel(string channelName, IReadOnlyList<Message> parts, SendFlags flags) => false;
+        public bool SendToChannel(string channelName, IReadOnlyList<Message> parts, SendFlags flags)
+        {
+            return false;
+        }
 
-        public bool Publish(string topic, Message message, SendFlags flags) => false;
+        public bool Publish(string topic, Message message, SendFlags flags)
+        {
+            return false;
+        }
 
-        public bool Publish(string topic, IReadOnlyList<Message> parts, SendFlags flags) => false;
+        public bool Publish(string topic, IReadOnlyList<Message> parts, SendFlags flags)
+        {
+            return false;
+        }
 
-        public bool SendToSpot(RoutingId targetRid, RoutingId spotRid, Message message, SendFlags flags) => false;
+        public bool SendToSpot(RoutingId targetRid, RoutingId spotRid, Message message, SendFlags flags)
+        {
+            return false;
+        }
 
         public bool SendToSpot(
             RoutingId targetRid,
@@ -440,7 +479,10 @@ public sealed class UnhandledDispatchPolicyTests
             return false;
         }
 
-        public ZLinkBackendActorJoinRequest? RecvActorJoin(RecvFlags flags) => null;
+        public ZLinkBackendActorJoinRequest? RecvActorJoin(RecvFlags flags)
+        {
+            return null;
+        }
 
         public void ReplyActorJoin(
             ZLinkBackendActorJoinRequest request,
@@ -457,34 +499,11 @@ public sealed class UnhandledDispatchPolicyTests
         {
             LastJoinResultCode = joinResultCode;
         }
-    }
 
-    private static async Task<Received> ReceiveAsync(
-        ZLinkBackendRouterSocketWrapper router,
-        TimeSpan timeout)
-    {
-        var deadline = DateTime.UtcNow + timeout;
-        while (DateTime.UtcNow < deadline)
+        public void OnActorLifecycle(
+            Action<ZLinkBackendSpotActorLifecycleInfo>? onJoin,
+            Action<ZLinkBackendSpotActorLifecycleInfo>? onLeave)
         {
-            var received = router.Recv(RecvFlags.DontWait);
-            if (received is not null)
-            {
-                return received;
-            }
-
-            await Task.Yield();
         }
-
-        throw new TimeoutException("Timed out waiting for router request.");
-    }
-
-    private static string GetTcpEndpoint()
-    {
-        using var listener = new System.Net.Sockets.TcpListener(
-            System.Net.IPAddress.Loopback,
-            0);
-        listener.Start();
-        var port = ((System.Net.IPEndPoint)listener.LocalEndpoint).Port;
-        return $"tcp://127.0.0.1:{port}";
     }
 }

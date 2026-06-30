@@ -2,20 +2,26 @@ namespace Systems.Zlink.Stream.Connector.Contracts;
 
 public sealed class ZlinkStreamMetadata
 {
-    public static ZlinkStreamMetadata Empty { get; } = new(new Dictionary<string, string>());
-
     private ZlinkStreamMetadata(IReadOnlyDictionary<string, string> values)
     {
         Values = values;
     }
 
+    public static ZlinkStreamMetadata Empty { get; } = new(new Dictionary<string, string>());
+
     public int Count => Values.Count;
 
     public IReadOnlyDictionary<string, string> Values { get; }
 
-    public string? Get(string key) => Values.TryGetValue(key, out var value) ? value : null;
+    public string? Get(string key)
+    {
+        return Values.TryGetValue(key, out var value) ? value : null;
+    }
 
-    public bool TryGet(string key, out string value) => Values.TryGetValue(key, out value!);
+    public bool TryGet(string key, out string value)
+    {
+        return Values.TryGetValue(key, out value!);
+    }
 
     public ZlinkStreamMetadata With(string key, string value)
     {
@@ -45,15 +51,15 @@ public sealed class ZlinkStreamMetadata
     }
 
     internal static ZlinkStreamMetadata FromDictionary(Dictionary<string, string> values)
-        => values.Count == 0 ? Empty : new ZlinkStreamMetadata(values);
+    {
+        return values.Count == 0 ? Empty : new ZlinkStreamMetadata(values);
+    }
 
     private static void ValidateKey(string key)
     {
         if (string.IsNullOrEmpty(key))
-        {
             throw new ZlinkStreamException(new ZlinkStreamError(
                 ZlinkStreamErrorCode.ValidationFailed,
                 "Metadata key must not be empty."));
-        }
     }
 }

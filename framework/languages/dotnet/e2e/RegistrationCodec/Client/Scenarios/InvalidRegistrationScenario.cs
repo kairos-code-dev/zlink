@@ -17,7 +17,7 @@ internal static class InvalidRegistrationScenario
         {
             RedirectStandardOutput = true,
             RedirectStandardError = true,
-            UseShellExecute = false,
+            UseShellExecute = false
         };
         process.StartInfo.ArgumentList.Add("run");
         process.StartInfo.ArgumentList.Add("--project");

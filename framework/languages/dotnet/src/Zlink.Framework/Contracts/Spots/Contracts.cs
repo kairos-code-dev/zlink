@@ -9,13 +9,25 @@ public enum ZLinkSpotCreateState
 
 public readonly record struct ZLinkSpotCreateResponse(bool Accepted, ZLinkMessage? Reply)
 {
-    public static ZLinkSpotCreateResponse Accept(ZLinkMessage? reply = null) => new(true, reply);
+    public static ZLinkSpotCreateResponse Accept(ZLinkMessage? reply = null)
+    {
+        return new ZLinkSpotCreateResponse(true, reply);
+    }
 
-    public static ZLinkSpotCreateResponse Accept<TReply>(TReply reply) => new(true, ZLinkMessage.From(reply));
+    public static ZLinkSpotCreateResponse Accept<TReply>(TReply reply)
+    {
+        return new ZLinkSpotCreateResponse(true, ZLinkMessage.From(reply));
+    }
 
-    public static ZLinkSpotCreateResponse Reject(ZLinkMessage? reply = null) => new(false, reply);
+    public static ZLinkSpotCreateResponse Reject(ZLinkMessage? reply = null)
+    {
+        return new ZLinkSpotCreateResponse(false, reply);
+    }
 
-    public static ZLinkSpotCreateResponse Reject<TReply>(TReply reply) => new(false, ZLinkMessage.From(reply));
+    public static ZLinkSpotCreateResponse Reject<TReply>(TReply reply)
+    {
+        return new ZLinkSpotCreateResponse(false, ZLinkMessage.From(reply));
+    }
 }
 
 public readonly record struct ZLinkSpotCreateResult(

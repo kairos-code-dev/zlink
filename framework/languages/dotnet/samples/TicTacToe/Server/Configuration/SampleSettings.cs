@@ -1,9 +1,8 @@
-using Microsoft.Extensions.Configuration;
 using TicTacToe.Shared.Contracts;
 
 namespace TicTacToe.Server.Configuration;
 
-sealed record SampleSettings(
+internal sealed record SampleSettings(
     string InstanceName,
     int ApiIndex,
     int PlayIndex,
@@ -36,10 +35,7 @@ sealed record SampleSettings(
         var defaults = CreateDefault(mode);
         var configPath = ReadOption(args, "--config");
         var builder = new ConfigurationBuilder();
-        if (!string.IsNullOrWhiteSpace(configPath))
-        {
-            builder.AddJsonFile(configPath, optional: false);
-        }
+        if (!string.IsNullOrWhiteSpace(configPath)) builder.AddJsonFile(configPath, false);
 
         builder.AddEnvironmentVariables("TICTACTOE_");
         var section = builder.Build().GetSection("Sample");
@@ -82,11 +78,9 @@ sealed record SampleSettings(
         // an isolated container; require the endpoint so a stray direct run never
         // silently falls back to a developer's local Redis.
         if (string.IsNullOrWhiteSpace(resolved.RedisEndpoint))
-        {
             throw new InvalidOperationException(
                 "RedisEndpoint is required; run the sample via run_sample.sh/run_sample.ps1, "
                 + "which provisions an isolated Redis container.");
-        }
 
         return resolved;
     }
@@ -143,10 +137,7 @@ sealed record SampleSettings(
         {
             string? ReadValue()
             {
-                if (i + 1 >= args.Length)
-                {
-                    throw new ArgumentException($"Missing value for '{args[i]}'.");
-                }
+                if (i + 1 >= args.Length) throw new ArgumentException($"Missing value for '{args[i]}'.");
 
                 i++;
                 return args[i];
@@ -222,7 +213,7 @@ sealed record SampleSettings(
             "play-b" => ("play-b", 0, 1),
             "api-a" or "api" => ("api-a", 0, 0),
             "play-a" or "play" => ("play-a", 0, 0),
-            _ => ("sample", 0, 0),
+            _ => ("sample", 0, 0)
         };
     }
 
@@ -242,31 +233,27 @@ sealed record SampleSettings(
 
     private static string At(IReadOnlyList<string> values, int index)
     {
-        if (values.Count == 0)
-        {
-            throw new ArgumentException("Endpoint list must not be empty.", nameof(values));
-        }
+        if (values.Count == 0) throw new ArgumentException("Endpoint list must not be empty.", nameof(values));
 
         return values[Math.Clamp(index, 0, values.Count - 1)];
     }
 
     private static int ReadInt(string? value, int fallback)
-        => int.TryParse(value, out var parsed) ? parsed : fallback;
+    {
+        return int.TryParse(value, out var parsed) ? parsed : fallback;
+    }
 
-    private static string PlaySpotNodeRidAt(int index) => $"play-node-{index + 1}";
+    private static string PlaySpotNodeRidAt(int index)
+    {
+        return $"play-node-{index + 1}";
+    }
 
     private static string? ReadOption(string[] args, string name)
     {
         var index = Array.IndexOf(args, name);
-        if (index < 0)
-        {
-            return null;
-        }
+        if (index < 0) return null;
 
-        if (index + 1 >= args.Length)
-        {
-            throw new ArgumentException($"Missing value for '{name}'.");
-        }
+        if (index + 1 >= args.Length) throw new ArgumentException($"Missing value for '{name}'.");
 
         return args[index + 1];
     }

@@ -1,25 +1,23 @@
+using System.Diagnostics;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Logging;
-using Zlink.Framework.Runtime.Backend.Contracts;
-using Zlink.Framework.Runtime.Actors;
-using Zlink.Framework.Runtime.Diagnostics;
-using Zlink.Framework.Runtime.Streams;
+using Microsoft.Extensions.Logging.Abstractions;
 
 namespace Zlink.Framework.Runtime.Spots;
 
 internal sealed class ZLinkSpotActivationDispatcher
 {
-    private readonly ZLinkFrameworkRuntime runtime;
-    private readonly IZLinkBackendSpot nativeSpot;
-    private readonly string channelName;
-    private readonly ZLinkSpotActorMembership actors;
-    private readonly ZLinkSpotSubscriptionRegistry subscriptions;
-    private readonly Func<ZLinkSpotHandlerInvoker> handlerInvoker;
-    private readonly ZLinkSpotActorPacketDispatcher _actorPacketDispatcher;
     private readonly ZLinkSpotActorJoinDispatcher _actorJoinDispatcher;
-    private readonly ZLinkSpotRouteDispatcher _routeDispatcher;
+    private readonly ZLinkSpotActorPacketDispatcher _actorPacketDispatcher;
     private readonly ZLinkDispatchErrorReporter _dispatchErrors;
     private readonly ILogger<ZLinkSpotActivationDispatcher> _logger;
+    private readonly ZLinkSpotRouteDispatcher _routeDispatcher;
+    private readonly ZLinkSpotActorMembership actors;
+    private readonly string channelName;
+    private readonly Func<ZLinkSpotHandlerInvoker> handlerInvoker;
+    private readonly IZLinkBackendSpot nativeSpot;
+    private readonly ZLinkFrameworkRuntime runtime;
+    private readonly ZLinkSpotSubscriptionRegistry subscriptions;
 
     public ZLinkSpotActivationDispatcher(
         ZLinkFrameworkRuntime runtime,
@@ -39,7 +37,7 @@ internal sealed class ZLinkSpotActivationDispatcher
         this.subscriptions = subscriptions;
         this.handlerInvoker = handlerInvoker;
         _logger = runtime.Services.GetService<ILoggerFactory>()?.CreateLogger<ZLinkSpotActivationDispatcher>()
-            ?? Microsoft.Extensions.Logging.Abstractions.NullLogger<ZLinkSpotActivationDispatcher>.Instance;
+                  ?? NullLogger<ZLinkSpotActivationDispatcher>.Instance;
         _dispatchErrors = new ZLinkDispatchErrorReporter(
             runtime.Registration.DispatchOptions,
             runtime.Services,
@@ -49,7 +47,7 @@ internal sealed class ZLinkSpotActivationDispatcher
             handlerInvoker,
             _dispatchErrors,
             runtime.Services.GetService<ILoggerFactory>()?.CreateLogger<ZLinkSpotActorPacketDispatcher>()
-                ?? Microsoft.Extensions.Logging.Abstractions.NullLogger<ZLinkSpotActorPacketDispatcher>.Instance);
+            ?? NullLogger<ZLinkSpotActorPacketDispatcher>.Instance);
         _actorJoinDispatcher = new ZLinkSpotActorJoinDispatcher(
             runtime,
             nativeSpot,
@@ -84,10 +82,7 @@ internal sealed class ZLinkSpotActivationDispatcher
                 return;
             }
 
-            if (request is null)
-            {
-                return;
-            }
+            if (request is null) return;
 
             try
             {
@@ -104,15 +99,13 @@ internal sealed class ZLinkSpotActivationDispatcher
         IReadOnlyList<ZLinkBackendActorPart> parts,
         CancellationToken cancellationToken)
     {
-        int i = 0;
+        var i = 0;
         while (i < parts.Count)
         {
             var headerPart = parts[i++];
             var runtimeState = runtime.GetOrCreateActorState(headerPart.Actor.ActorId);
             if (!actors.TryGetActor(headerPart.Actor.ActorId, out var actor) || actor is null)
-            {
                 actor = runtimeState.Actor;
-            }
 
             if (actor is null)
             {
@@ -120,10 +113,7 @@ internal sealed class ZLinkSpotActivationDispatcher
                 continue;
             }
 
-            if (!ZLinkSpotActorFrameReader.TryRead(parts, ref i, headerPart, out var frame))
-            {
-                continue;
-            }
+            if (!ZLinkSpotActorFrameReader.TryRead(parts, ref i, headerPart, out var frame)) continue;
 
             if (ZLinkActorSessionForwarder.ShouldForward(
                     runtimeState,
@@ -140,6 +130,7 @@ internal sealed class ZLinkSpotActivationDispatcher
                         frame.Header,
                         frame.Body);
                 }
+
                 continue;
             }
 
@@ -223,9 +214,7 @@ internal sealed class ZLinkSpotActivationDispatcher
                 header.MessageName,
                 ZLinkRemoteActorJoinPackets.RequestPacketName,
                 StringComparison.Ordinal))
-        {
             return false;
-        }
 
         if (received.Parts.Count < 2)
         {
@@ -311,7 +300,8 @@ internal sealed class ZLinkSpotActivationDispatcher
     public async ValueTask DispatchSubscriptionsAsync(CancellationToken cancellationToken)
     {
         await subscriptions
-            .DrainAsync(nativeSpot, runtime.Registration.Codecs, _dispatchErrors, _logger, InvokeSubscriptionAsync, cancellationToken)
+            .DrainAsync(nativeSpot, runtime.Registration.Codecs, _dispatchErrors, _logger, InvokeSubscriptionAsync,
+                cancellationToken)
             .ConfigureAwait(false);
     }
 
@@ -331,7 +321,7 @@ internal sealed class ZLinkSpotActivationDispatcher
             sourceNodeRid,
             sourceSessionRid,
             BuildNativeBoundSessionToken(sourceSessionRid));
-        if (streamHeader.RequestSeq is { })
+        if (streamHeader.RequestSeq is not null)
         {
             var reply = await _actorPacketDispatcher.DispatchForReplyAsync(
                     actor,
@@ -340,10 +330,7 @@ internal sealed class ZLinkSpotActivationDispatcher
                     body,
                     cancellationToken)
                 .ConfigureAwait(false);
-            if (reply is null)
-            {
-                return;
-            }
+            if (reply is null) return;
 
             var frame = reply.ToFrame(streamHeader);
             await SendFrameWithRetryAsync(runtime, actorId, frame, cancellationToken)
@@ -371,7 +358,7 @@ internal sealed class ZLinkSpotActivationDispatcher
     {
         var timeout = runtime.Registration.DefaultRequestTimeout;
         var retryDelay = TimeSpan.FromMilliseconds(25);
-        var elapsed = System.Diagnostics.Stopwatch.StartNew();
+        var elapsed = Stopwatch.StartNew();
         Exception? lastError = null;
         while (true)
         {
@@ -383,9 +370,7 @@ internal sealed class ZLinkSpotActivationDispatcher
                         actorId,
                         new[] { frameMessage },
                         SendFlags.None))
-                {
                     return;
-                }
             }
             catch (ZlinkSubmitException error) when (error.Result == ZlinkSubmitException.ErrorCode.NotConnected)
             {
@@ -393,9 +378,7 @@ internal sealed class ZLinkSpotActivationDispatcher
             }
 
             if (elapsed.Elapsed >= timeout)
-            {
                 throw new InvalidOperationException("Actor request reply relay failed.", lastError);
-            }
 
             var remaining = timeout - elapsed.Elapsed;
             await Task.Delay(remaining < retryDelay ? remaining : retryDelay, cancellationToken)
@@ -415,7 +398,8 @@ internal sealed class ZLinkSpotActivationDispatcher
     {
         try
         {
-            await handlerInvoker().InvokeSubscriptionAsync(descriptor, message, cancellationToken).ConfigureAwait(false);
+            await handlerInvoker().InvokeSubscriptionAsync(descriptor, message, cancellationToken)
+                .ConfigureAwait(false);
         }
         catch (Exception ex)
         {
@@ -427,7 +411,7 @@ internal sealed class ZLinkSpotActivationDispatcher
                 descriptor.MessageName,
                 "handler-exception",
                 ex,
-                channelName: descriptor.Topic);
+                descriptor.Topic);
             _dispatchErrors.Report(new ZLinkDispatchFailure(
                 ZLinkDispatchErrorSurface.SpotSubscription,
                 ZLinkDispatchMessageKind.Publish,
@@ -438,5 +422,4 @@ internal sealed class ZLinkSpotActivationDispatcher
                 Exception: ex));
         }
     }
-
 }

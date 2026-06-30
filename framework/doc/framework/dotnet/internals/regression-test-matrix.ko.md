@@ -126,9 +126,9 @@ runtime RID 를 기준으로 한다. framework CI gate[^ci-gate] 도 같은 범�
 |------|------|-----------|
 | duplicate Spot factory type | `unit` | startup validation 예외 |
 | duplicate `AddEntrySpot<TEntrySpot>()` | `unit` | 같은 `SpotNode` 안에서 Entry Spot[^entry-spot] registry를 중복 등록하면 startup validation 예외 |
-| `AddSpotMesh`에 `UseDiscovery().AddRegistryEndpoint(...)` 없음 | `unit` | top-level discovery endpoint 를 상속하거나 local-only mesh 로 등록된다 |
+| root `UseDiscovery().AddRegistryEndpoint(...)` 없이 `AddSpotMesh`만 등록 | `unit` | top-level discovery endpoint 를 상속하거나 local-only mesh 로 등록된다 |
 | `AddSpotMesh` 호출 | `integration-single-process` | mesh 빌더 한 호출로 discovery, node, spot factory 등록을 한 번에 끝낸다 |
-| `AddSpotMesh` + 빈 `UseDiscovery` + local-only spot factory | `integration-single-process` | discovery endpoint 없이 단일 local SpotNode runtime을 시작한다 |
+| root discovery 없이 local-only spot factory | `integration-single-process` | discovery endpoint 없이 단일 local SpotNode runtime을 시작한다 |
 | `CreateAsync<TSpot>()` | `integration-single-process` | `SpotId`, create `State`, create reply 값이 일관되게 유지된다 |
 | `CreateAsync<TSpot>()` empty create payload | `integration-single-process` | payload 없는 생성도 빈 `ZLinkMessage`로 `IZLinkSpot.OnCreateAsync(...)`를 한 번 호출한다 |
 | `CreateAsync<TSpot>(request)` payload | `integration-single-process` | create request `ZLinkMessage`가 `IZLinkSpot.OnCreateAsync(...)`로 한 번 전달된다 |

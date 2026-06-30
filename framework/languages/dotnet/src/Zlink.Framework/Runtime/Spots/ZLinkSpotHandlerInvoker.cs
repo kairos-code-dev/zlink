@@ -1,5 +1,4 @@
 using Microsoft.Extensions.DependencyInjection;
-using Zlink.Framework.Runtime.Streams;
 
 namespace Zlink.Framework.Runtime.Spots;
 
@@ -59,13 +58,15 @@ internal sealed class ZLinkSpotHandlerInvoker(
 
         if (descriptor.PassSpotArgument)
         {
-            var result = await InvokeAsync(descriptor.HandlerType, descriptor.Invoker, spot, actor, request, cancellationToken)
+            var result = await InvokeAsync(descriptor.HandlerType, descriptor.Invoker, spot, actor, request,
+                    cancellationToken)
                 .ConfigureAwait(false);
             return (ZLinkSpotActorJoinResult)result!;
         }
 
-        var hookResult = await InvokeAsync(descriptor.HandlerType, descriptor.Invoker, actor, request, cancellationToken)
-            .ConfigureAwait(false);
+        var hookResult =
+            await InvokeAsync(descriptor.HandlerType, descriptor.Invoker, actor, request, cancellationToken)
+                .ConfigureAwait(false);
         return (ZLinkSpotActorJoinResult)hookResult!;
     }
 
@@ -108,10 +109,8 @@ internal sealed class ZLinkSpotHandlerInvoker(
         CancellationToken cancellationToken)
     {
         if (descriptor.ReplyType is null)
-        {
             throw new InvalidOperationException(
                 $"Actor packet handler '{descriptor.HandlerType}' does not declare a reply type.");
-        }
 
         EnsureActorType(
             descriptor.HandlerType,
@@ -167,27 +166,19 @@ internal sealed class ZLinkSpotHandlerInvoker(
 
     private ZLinkMessageMetadata CreateMessageMetadata(ZlinkStreamHeader header)
     {
-        if (header.Metadata.Count == 0)
-        {
-            return ZLinkMessageMetadata.Empty;
-        }
+        if (header.Metadata.Count == 0) return ZLinkMessageMetadata.Empty;
 
         var policy = services.GetRequiredService<IZLinkMessageMetadataPolicy>();
         Dictionary<string, string>? application = null;
 
         foreach (var (key, value) in header.Metadata.Values)
-        {
             if (policy.CanForward(key))
             {
                 application ??= new Dictionary<string, string>(StringComparer.Ordinal);
                 application[key] = value;
             }
-        }
 
-        if (application is null)
-        {
-            return ZLinkMessageMetadata.Empty;
-        }
+        if (application is null) return ZLinkMessageMetadata.Empty;
 
         return new ZLinkMessageMetadata(application);
     }
@@ -200,7 +191,7 @@ internal sealed class ZLinkSpotHandlerInvoker(
         await InvokeActorLifecycleAsync(
                 descriptor,
                 actor,
-                request: null,
+                null,
                 cancellationToken)
             .ConfigureAwait(false);
     }
@@ -246,10 +237,7 @@ internal sealed class ZLinkSpotHandlerInvoker(
         IZLinkActor actor,
         string handlerKind)
     {
-        if (expectedActorType.IsInstanceOfType(actor))
-        {
-            return;
-        }
+        if (expectedActorType.IsInstanceOfType(actor)) return;
 
         throw new InvalidOperationException(
             $"{handlerKind} '{handlerType}' expects actor '{expectedActorType}', but received '{actor.GetType()}'.");

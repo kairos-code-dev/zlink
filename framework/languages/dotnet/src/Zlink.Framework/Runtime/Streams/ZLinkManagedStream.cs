@@ -1,14 +1,10 @@
-using Microsoft.Extensions.DependencyInjection;
-using Zlink.Framework.Runtime.Backend.Contracts;
-using System.Threading;
-
 namespace Zlink.Framework.Runtime.Streams;
 
 internal sealed class ZLinkManagedStream : IZLinkStream
 {
-    private readonly IZLinkBackendStreamSocket _socket;
-    private readonly RoutingId _routingId;
     private readonly ZLinkCodecRegistryBuilder _codecs;
+    private readonly RoutingId _routingId;
+    private readonly IZLinkBackendStreamSocket _socket;
 
     public ZLinkManagedStream(
         IZLinkBackendStreamSocket socket,
@@ -38,17 +34,17 @@ internal sealed class ZLinkManagedStream : IZLinkStream
         return WriteRaw(raw, flags);
     }
 
+    public ValueTask CloseAsync()
+    {
+        _socket.DisconnectPeer(_routingId);
+        return ValueTask.CompletedTask;
+    }
+
     internal bool WriteRaw(
         Message payload,
         SendFlags flags = SendFlags.None)
     {
         return _socket.Send(_routingId, payload, flags);
-    }
-
-    public ValueTask CloseAsync()
-    {
-        _socket.DisconnectPeer(_routingId);
-        return ValueTask.CompletedTask;
     }
 
     public void UpdateAddresses(string? localAddr, string? remoteAddr)

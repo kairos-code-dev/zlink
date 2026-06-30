@@ -44,7 +44,8 @@ internal static class YdC1TimerIsolationScenario
             "timer-fast-started",
             "timer-fast-completed",
             "timer-yield-resumed",
-            "timer-yield-completed"]);
+            "timer-yield-completed"
+        ]);
         await client.Send(new TimerStopCommand(requestId))
             .PacketName("TimerStopCommand")
             .Metadata(YieldDispatchNames.SpotRidMetadata, spotRid)

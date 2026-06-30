@@ -1,11 +1,3 @@
-using Zlink.Framework.Runtime.Backend.Contracts;
-using Zlink.Framework.Runtime.Actors;
-using Zlink.Framework.Runtime.Diagnostics;
-using Zlink.Framework.Runtime.Execution;
-using Zlink.Framework.Runtime.Host;
-using Zlink.Framework.Runtime.Messaging;
-using Zlink.Framework.Runtime.Registry;
-
 namespace Zlink.Framework.Runtime.Channels;
 
 internal sealed class ZLinkChannelRuntimeManager(
@@ -23,16 +15,11 @@ internal sealed class ZLinkChannelRuntimeManager(
     {
         lock (state.SyncRoot)
         {
-            if (state.ClientBundles.TryGetValue(channelName, out var existing))
-            {
-                return existing;
-            }
+            if (state.ClientBundles.TryGetValue(channelName, out var existing)) return existing;
 
             if (!registration.Channels.TryGetValue(channelName, out var channel)
                 || channel.Client is null)
-            {
                 throw new ZLinkConfigurationException($"Channel client '{channelName}' is not registered.");
-            }
 
             var bundle = _bundleFactory.CreateClientBundle(state, channelName, channel);
             state.ClientBundles.Add(channelName, bundle);
@@ -46,16 +33,11 @@ internal sealed class ZLinkChannelRuntimeManager(
     {
         lock (state.SyncRoot)
         {
-            if (state.PublisherBundles.TryGetValue(channelName, out var existing))
-            {
-                return existing;
-            }
+            if (state.PublisherBundles.TryGetValue(channelName, out var existing)) return existing;
 
             if (!registration.Channels.TryGetValue(channelName, out var channel)
                 || channel.Publisher is null)
-            {
                 throw new ZLinkConfigurationException($"Channel publisher '{channelName}' is not registered.");
-            }
 
             var bundle = _bundleFactory.CreatePublisherBundle(state, channelName, channel);
             state.PublisherBundles.Add(channelName, bundle);
@@ -87,12 +69,12 @@ internal sealed class ZLinkChannelRuntimeManager(
                 state.ServerBundles.Add(channelName, bundle);
                 state.ListenerTasks.Add(state.TaskRunner.Run(
                     $"channel-server:{channelName}",
-                        ct => new ValueTask(channelMessagePump.RunServerLoopAsync(
-                            channelName,
-                            (IZLinkBackendRouterSocket)bundle.Socket,
-                            bundle.ReceiveGate,
-                            () => bundle.SpotRouteBridge,
-                            ct))));
+                    ct => new ValueTask(channelMessagePump.RunServerLoopAsync(
+                        channelName,
+                        (IZLinkBackendRouterSocket)bundle.Socket,
+                        bundle.ReceiveGate,
+                        () => bundle.SpotRouteBridge,
+                        ct))));
             }
 
             if (channel.Subscriber is not null)
@@ -115,10 +97,7 @@ internal sealed class ZLinkChannelRuntimeManager(
     {
         foreach (var entry in registration.Channels)
         {
-            if (entry.Value.Publisher is null)
-            {
-                continue;
-            }
+            if (entry.Value.Publisher is null) continue;
 
             state.PublisherBundles.Add(
                 entry.Key,
@@ -129,12 +108,8 @@ internal sealed class ZLinkChannelRuntimeManager(
     public void InitializeClientChannels(ZLinkFrameworkRuntimeState state)
     {
         foreach (var entry in registration.Channels)
-        {
             if (entry.Value.Client is not null)
-            {
                 GetOrCreateClientBundle(state, entry.Key);
-            }
-        }
     }
 
     public void InitializeRouteChannels(
@@ -163,7 +138,7 @@ internal sealed class ZLinkChannelRuntimeManager(
             "publisher" => GetOrCreatePublisherBundle(state, channelName).Socket,
             "client" => GetOrCreateClientBundle(state, channelName).Socket,
             _ => throw new InvalidOperationException(
-                $"Socket monitoring source '{sourceName}' is not registered."),
+                $"Socket monitoring source '{sourceName}' is not registered.")
         };
     }
 
@@ -173,10 +148,8 @@ internal sealed class ZLinkChannelRuntimeManager(
 
         var separatorIndex = sourceName.LastIndexOf('.');
         if (separatorIndex <= 0 || separatorIndex == sourceName.Length - 1)
-        {
             throw new InvalidOperationException(
                 $"Socket monitoring source '{sourceName}' must use '<channel>.<capability>'.");
-        }
 
         return (sourceName[..separatorIndex], sourceName[(separatorIndex + 1)..]);
     }

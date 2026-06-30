@@ -1,29 +1,13 @@
-using System.Collections.Concurrent;
-using Microsoft.AspNetCore.Builder;
-using Microsoft.AspNetCore.Http;
-using Microsoft.Extensions.DependencyInjection;
-using Microsoft.Extensions.Hosting;
-using Microsoft.Extensions.Logging;
+using SpotService.Server.Session.Spots;
 using SpotService.Shared;
 using Systems.Zlink;
-using Systems.Zlink.Stream.Connector.Contracts;
-using Zlink.Framework;
-using Zlink.Framework.AspNetCore;
 using Zlink.Framework.Contracts.Actors;
 using Zlink.Framework.Contracts.Channels;
-using Zlink.Framework.Contracts.Codecs.Json;
-using Zlink.Framework.Contracts.Dispatch;
 using Zlink.Framework.Contracts.Errors;
 using Zlink.Framework.Contracts.Handlers;
-using Zlink.Framework.Contracts.Messaging;
 using Zlink.Framework.Contracts.Spots;
-using Zlink.Framework.Contracts.Streams;
-using Zlink.Framework.Contracts.Timers;
-using SpotService.Server.Session.Handlers;
-using SpotService.Server.Session.Spots;
 
 namespace SpotService.Server.Session.Handlers;
-
 
 [ZLinkHandlerGroup("play")]
 internal sealed class EnsureActorHandler(
@@ -160,7 +144,7 @@ internal sealed class JoinUserSpotActorHandler(
         return new JoinUserSpotActorReply(
             request.SpotRid,
             actor.ActorId,
-            Accepted: true,
+            true,
             actor.Generation);
     }
 }

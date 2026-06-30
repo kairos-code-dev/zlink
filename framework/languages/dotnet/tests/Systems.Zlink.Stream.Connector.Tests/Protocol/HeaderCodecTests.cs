@@ -1,18 +1,7 @@
 using System.Buffers.Binary;
-using System.Net;
-using System.Net.Security;
-using System.Net.Sockets;
-using System.Net.WebSockets;
-using System.Security.Cryptography;
-using System.Security.Cryptography.X509Certificates;
 using System.Text;
-using System.Text.Json;
 using Systems.Zlink.Stream.Connector.Contracts;
-using Systems.Zlink.Stream.Connector.Contracts.Calls;
-using Systems.Zlink.Stream.Connector.Runtime;
-using Systems.Zlink.Stream.Connector.Runtime.Protocol.Framing;
 using Xunit;
-
 
 public sealed partial class StreamConnectorTests
 {
@@ -60,7 +49,7 @@ public sealed partial class StreamConnectorTests
 
         var span = encoded.Span;
         Assert.Equal((byte)4, span[^5]);
-        Assert.Equal("a1b2", System.Text.Encoding.UTF8.GetString(span[^4..]));
+        Assert.Equal("a1b2", Encoding.UTF8.GetString(span[^4..]));
     }
 
     [Fact]
@@ -167,5 +156,4 @@ public sealed partial class StreamConnectorTests
             "$zlink.user",
             ZlinkStreamMetadata.Empty)));
     }
-
 }

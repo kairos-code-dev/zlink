@@ -7,7 +7,7 @@
 | RC-A1 | 구현 | assembly/module 자동 등록 marker가 있다. |
 | RC-A2 | 구현 | attribute 등록 marker가 있다. |
 | RC-A3 | 구현 | 수동 handler 등록 marker가 있다. |
-| RC-A4 | 구현 | DI lifecycle marker가 있다. |
+| RC-A4 | 구현 | dispatch별 async scope에서 scoped id가 갈라지고 singleton id가 유지되며 dispose marker가 요청 수와 일치하는지 검증한다. |
 | RC-A5 | 구현 | filter ordering marker가 있다. |
 | RC-A6 | 구현 | invalid registration startup failure marker가 있다. |
 | RC-B1 | 구현 | JSON codec marker가 있다. |

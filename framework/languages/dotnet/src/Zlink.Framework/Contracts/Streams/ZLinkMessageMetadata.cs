@@ -8,8 +8,10 @@ public sealed class ZLinkMessageMetadata(
 
     public IReadOnlyDictionary<string, string> Values { get; } = values;
 
-    public string? Find(string key) =>
-        Values.TryGetValue(key, out var value) ? value : null;
+    public string? Find(string key)
+    {
+        return Values.TryGetValue(key, out var value) ? value : null;
+    }
 }
 
 public interface IZLinkMessageMetadataPolicy

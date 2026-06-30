@@ -1,5 +1,5 @@
-using Bingo.Server.Play.Infrastructure.ZLink.Actors;
 using Bingo.Server.Play.Domain.Bingo;
+using Bingo.Server.Play.Infrastructure.ZLink.Actors;
 using Bingo.Shared.Contracts;
 
 namespace Bingo.Server.Play.Infrastructure.ZLink.Spots.BingoRoomSpot.Notifications;

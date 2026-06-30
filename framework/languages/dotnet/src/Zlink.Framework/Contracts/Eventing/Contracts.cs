@@ -46,7 +46,7 @@ public enum ZLinkSocketEventKind
     HandshakeFailed = 3,
     PeerAdmissionChanged = 4,
     Closed = 5,
-    Internal = 6,
+    Internal = 6
 }
 
 public enum ZLinkSocketNativeEventType
@@ -66,7 +66,7 @@ public enum ZLinkSocketNativeEventType
     ConnectionReady = 0x1000,
     HandshakeFailedProtocol = 0x2000,
     HandshakeFailedAuth = 0x4000,
-    PeerAdmissionChanged = 0x8000,
+    PeerAdmissionChanged = 0x8000
 }
 
 public readonly record struct ZLinkSocketDiagnostic(
@@ -86,7 +86,7 @@ public enum ZLinkRegistryEventKind
 {
     StatusChanged = 0,
     TopologyChanged = 1,
-    ServiceSummaryChanged = 2,
+    ServiceSummaryChanged = 2
 }
 
 public readonly record struct ZLinkRegistryEvent(
@@ -103,7 +103,7 @@ public enum ZLinkSpotEventKind
     PeersChanged = 1,
     SubjectsChanged = 2,
     TimerHandlerFailed = 3,
-    TimerStoppedAfterUnhandledException = 4,
+    TimerStoppedAfterUnhandledException = 4
 }
 
 public readonly record struct ZLinkSpotTimerDiagnostic(

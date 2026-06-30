@@ -1,4 +1,3 @@
-using Systems.Zlink.Stream.Connector;
 using Systems.Zlink.Stream.Connector.Contracts;
 
 namespace TicTacToe.Client;
@@ -30,22 +29,16 @@ internal static class TicTacToeClientArguments
             GameName = gameName,
             XActorId = xActorId,
             OActorId = oActorId,
-            ObserverActorId = observerActorId,
+            ObserverActorId = observerActorId
         };
     }
 
     private static string? ReadOption(string[] args, string name)
     {
         var index = Array.IndexOf(args, name);
-        if (index < 0)
-        {
-            return null;
-        }
+        if (index < 0) return null;
 
-        if (index + 1 >= args.Length)
-        {
-            throw new ArgumentException($"Missing value for '{name}'.");
-        }
+        if (index + 1 >= args.Length) throw new ArgumentException($"Missing value for '{name}'.");
 
         return args[index + 1];
     }
@@ -61,7 +54,8 @@ public sealed record TicTacToeClientOptions(
     TimeSpan StreamTimeout)
 {
     public static TicTacToeClientOptions CreateDefault()
-        => new(
+    {
+        return new TicTacToeClientOptions(
             new Uri("http://127.0.0.1:18080"),
             "tictactoe-game",
             "player-x",
@@ -69,6 +63,7 @@ public sealed record TicTacToeClientOptions(
             "observer",
             TimeSpan.FromSeconds(10),
             TimeSpan.FromSeconds(5));
+    }
 }
 
 public static class TicTacToeClientConnections
@@ -83,7 +78,7 @@ public static class TicTacToeClientConnections
             Endpoint = new Uri(streamEndpoint),
             ConnectTimeout = options.StreamTimeout,
             RequestTimeout = options.StreamTimeout,
-            DispatchMode = ZlinkStreamDispatchMode.Immediate,
+            DispatchMode = ZlinkStreamDispatchMode.Immediate
         });
         connector.ObserveInbound((observation, _) =>
         {

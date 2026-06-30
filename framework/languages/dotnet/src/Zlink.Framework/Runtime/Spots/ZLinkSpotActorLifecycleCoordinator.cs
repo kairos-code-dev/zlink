@@ -15,24 +15,17 @@ internal sealed class ZLinkSpotActorLifecycleCoordinator(
             runtime.GetOrCreateActorState(actor.ActorId).Activation;
         actors.Add(actor);
         await runtime.JoinActorToSpotAsync(activation, actor, cancellationToken);
-        if (ReferenceEquals(previousActivation, activation))
-        {
-            return;
-        }
+        if (ReferenceEquals(previousActivation, activation)) return;
 
         if (previousActivation is null)
-        {
             await runtime.NotifyEntrySpotActorLeftAsync(actor, activation.NodeRid, cancellationToken)
                 .ConfigureAwait(false);
-        }
 
         if (actorHandlers() is { } handlers
             && handlers.TryResolveJoined(actor.GetType(), out var descriptor)
             && descriptor is not null)
-        {
             await handlerInvoker().InvokeActorLifecycleAsync(descriptor, actor, cancellationToken)
                 .ConfigureAwait(false);
-        }
     }
 
     public async ValueTask LeaveAsync(

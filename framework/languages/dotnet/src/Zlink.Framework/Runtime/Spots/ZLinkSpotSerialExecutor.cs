@@ -1,10 +1,3 @@
-using Zlink.Framework.Runtime.Actors;
-using Zlink.Framework.Runtime.Diagnostics;
-using Zlink.Framework.Runtime.Execution;
-using Zlink.Framework.Runtime.Host;
-using Zlink.Framework.Runtime.Messaging;
-using Zlink.Framework.Runtime.Registry;
-
 namespace Zlink.Framework.Runtime.Spots;
 
 internal sealed class ZLinkSpotSerialExecutor : IAsyncDisposable
@@ -27,14 +20,16 @@ internal sealed class ZLinkSpotSerialExecutor : IAsyncDisposable
             stopToken);
     }
 
+    public async ValueTask DisposeAsync()
+    {
+        await _queue.DisposeAsync().ConfigureAwait(false);
+    }
+
     public async ValueTask ExecuteAsync(
         Func<ZLinkSpotActivation, CancellationToken, ValueTask> operation,
         CancellationToken cancellationToken)
     {
-        if (_isDisposed())
-        {
-            return;
-        }
+        if (_isDisposed()) return;
 
         await _queue.RunAsync(
                 ct => ExecuteOperationAsync(operation, ct),
@@ -47,10 +42,7 @@ internal sealed class ZLinkSpotSerialExecutor : IAsyncDisposable
         TState state,
         CancellationToken cancellationToken)
     {
-        if (_isDisposed())
-        {
-            return;
-        }
+        if (_isDisposed()) return;
 
         await _queue.RunAsync(
                 ct => ExecuteOperationAsync(operation, state, ct),
@@ -63,19 +55,11 @@ internal sealed class ZLinkSpotSerialExecutor : IAsyncDisposable
         _queue.TryPost(ct => ExecuteOperationAsync(operation, ct), out _);
     }
 
-    public async ValueTask DisposeAsync()
-    {
-        await _queue.DisposeAsync().ConfigureAwait(false);
-    }
-
     private async ValueTask ExecuteOperationAsync(
         Func<ZLinkSpotActivation, CancellationToken, ValueTask> operation,
         CancellationToken cancellationToken)
     {
-        if (_isDisposed())
-        {
-            return;
-        }
+        if (_isDisposed()) return;
 
         using var _ = ZLinkSpotAmbientContext.Push(_activation);
         await operation(_activation, cancellationToken).ConfigureAwait(false);
@@ -86,10 +70,7 @@ internal sealed class ZLinkSpotSerialExecutor : IAsyncDisposable
         TState state,
         CancellationToken cancellationToken)
     {
-        if (_isDisposed())
-        {
-            return;
-        }
+        if (_isDisposed()) return;
 
         using var _ = ZLinkSpotAmbientContext.Push(_activation);
         await operation(_activation, state, cancellationToken).ConfigureAwait(false);

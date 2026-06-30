@@ -1,6 +1,6 @@
+using SpotService.Client.Support;
 using SpotService.Shared;
 using Systems.Zlink.Stream.Connector.Contracts;
-using SpotService.Client.Support;
 
 namespace SpotService.Client.Scenarios;
 
@@ -23,7 +23,7 @@ internal static class SmD6Scenario
                     RequestTimeout = TimeSpan.FromSeconds(10),
                     Heartbeat = new ZlinkStreamHeartbeatOptions { Enabled = false },
                     DispatchMode = ZlinkStreamDispatchMode.Immediate,
-                    MaxReceivedMessages = 1024,
+                    MaxReceivedMessages = 1024
                 });
                 try
                 {
@@ -43,11 +43,11 @@ internal static class SmD6Scenario
             }
 
             if (bound is null)
-            {
                 throw new InvalidOperationException(
-                    last is null ? "Actor auth did not become routable: actor-sm-d6" : $"Actor auth did not become routable: actor-sm-d6. Last error: {last.Message}",
+                    last is null
+                        ? "Actor auth did not become routable: actor-sm-d6"
+                        : $"Actor auth did not become routable: actor-sm-d6. Last error: {last.Message}",
                     last);
-            }
 
             deadline = DateTimeOffset.UtcNow + TimeSpan.FromSeconds(30);
             last = null;
@@ -60,7 +60,7 @@ internal static class SmD6Scenario
                     RequestTimeout = TimeSpan.FromSeconds(10),
                     Heartbeat = new ZlinkStreamHeartbeatOptions { Enabled = false },
                     DispatchMode = ZlinkStreamDispatchMode.Immediate,
-                    MaxReceivedMessages = 1024,
+                    MaxReceivedMessages = 1024
                 });
                 try
                 {
@@ -80,11 +80,11 @@ internal static class SmD6Scenario
             }
 
             if (unbound is null)
-            {
                 throw new InvalidOperationException(
-                    last is null ? "Actor auth did not become routable: actor-sm-d6-shadow" : $"Actor auth did not become routable: actor-sm-d6-shadow. Last error: {last.Message}",
+                    last is null
+                        ? "Actor auth did not become routable: actor-sm-d6-shadow"
+                        : $"Actor auth did not become routable: actor-sm-d6-shadow. Last error: {last.Message}",
                     last);
-            }
 
             var activeBound = bound;
             var activeUnbound = unbound;
@@ -96,19 +96,15 @@ internal static class SmD6Scenario
             ScenarioAssert.That(notify.Payload.ActorId == "actor-sm-d6", "SM-D6 push actor mismatch.");
             ScenarioAssert.That(notify.Payload.Value == "push-bound-only", "SM-D6 push value mismatch.");
             await Task.Delay(200);
-            ScenarioAssert.That(activeUnbound.ReceivedCount("ActorPushNotify") == 0, "SM-D6 unbound session received push.");
+            ScenarioAssert.That(activeUnbound.ReceivedCount("ActorPushNotify") == 0,
+                "SM-D6 unbound session received push.");
         }
         finally
         {
-            if (bound is not null)
-            {
-                await bound.DisposeAsync();
-            }
-            if (unbound is not null)
-            {
-                await unbound.DisposeAsync();
-            }
+            if (bound is not null) await bound.DisposeAsync();
+            if (unbound is not null) await unbound.DisposeAsync();
         }
+
         Console.WriteLine("operation SpotService.sm-d6 passed");
     }
 }

@@ -24,10 +24,7 @@ internal sealed class EvidenceStore
     public void Add(string entry)
     {
         _entries.Enqueue(entry);
-        if (string.IsNullOrWhiteSpace(_filePath))
-        {
-            return;
-        }
+        if (string.IsNullOrWhiteSpace(_filePath)) return;
 
         lock (_fileGate)
         {
@@ -35,7 +32,10 @@ internal sealed class EvidenceStore
         }
     }
 
-    public string[] Snapshot() => _entries.ToArray();
+    public string[] Snapshot()
+    {
+        return _entries.ToArray();
+    }
 
     public void Clear()
     {
@@ -44,11 +44,9 @@ internal sealed class EvidenceStore
         }
 
         if (!string.IsNullOrWhiteSpace(_filePath))
-        {
             lock (_fileGate)
             {
                 File.WriteAllText(_filePath, string.Empty);
             }
-        }
     }
 }

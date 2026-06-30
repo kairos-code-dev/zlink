@@ -1,17 +1,13 @@
 using SpotService.Shared;
 using Systems.Zlink;
 using Zlink.Framework.Contracts.Channels;
-using SpotService.Server.Play.Endpoints;
-using SpotService.Server.Play.Handlers;
-using SpotService.Server.Play.Spots;
 
 namespace SpotService.Server.Play.Endpoints;
 
-using static SpotService.Server.Play.PlayHostFactory;
+using static PlayHostFactory;
 
 internal static class SpotFailureEndpoints
 {
-
     public static void MapSpotFailureEndpoints(WebApplication app)
     {
         app.MapPost("/spot/missing-handler/request", async (
@@ -29,7 +25,9 @@ internal static class SpotFailureEndpoints
                     .Timeout(TimeSpan.FromSeconds(2))
                     .Async<StateReply>().AsTask());
             await WaitUntilAsync(
-                () => CountNew(evidence.Snapshot(), before, "dispatch-error|surface=SpotRoute|reason=HandlerMissing|action=ReplyError|packet=MissingSpotReq") >= 1,
+                () => CountNew(evidence.Snapshot(), before,
+                          "dispatch-error|surface=SpotRoute|reason=HandlerMissing|action=ReplyError|packet=MissingSpotReq") >=
+                      1,
                 "Expected missing spot request handler evidence.");
             return Results.Ok(new SpotMissingHandlerReply(request.SpotRid, failed, evidence.Snapshot()));
         });
@@ -56,7 +54,9 @@ internal static class SpotFailureEndpoints
             }
 
             await WaitUntilAsync(
-                () => CountNew(evidence.Snapshot(), before, "dispatch-error|surface=SpotRoute|reason=HandlerMissing|action=Drop|packet=MissingSpotCommand") >= 1,
+                () => CountNew(evidence.Snapshot(), before,
+                          "dispatch-error|surface=SpotRoute|reason=HandlerMissing|action=Drop|packet=MissingSpotCommand") >=
+                      1,
                 "Expected missing spot command handler evidence.");
             return Results.Ok(new SpotMissingCommandReply(request.SpotRid, request.Marker, true, evidence.Snapshot()));
         });
@@ -118,9 +118,15 @@ internal static class SpotFailureEndpoints
                 () =>
                 {
                     var after = evidence.Snapshot();
-                    return CountNew(after, [], $"spot-to-spot-negative|rid={node.Rid}|source={request.SourceSpotRid}|target={request.TargetSpotRid}|requestFailed=True") >= 1
-                        && CountNew(after, [], "dispatch-error|surface=SpotRoute|reason=HandlerMissing|action=ReplyError|packet=MissingSpotReq") >= 1
-                        && CountNew(after, [], "dispatch-error|surface=SpotRoute|reason=HandlerMissing|action=Drop|packet=MissingSpotCommand") >= 1;
+                    return CountNew(after, [],
+                               $"spot-to-spot-negative|rid={node.Rid}|source={request.SourceSpotRid}|target={request.TargetSpotRid}|requestFailed=True") >=
+                           1
+                           && CountNew(after, [],
+                               "dispatch-error|surface=SpotRoute|reason=HandlerMissing|action=ReplyError|packet=MissingSpotReq") >=
+                           1
+                           && CountNew(after, [],
+                               "dispatch-error|surface=SpotRoute|reason=HandlerMissing|action=Drop|packet=MissingSpotCommand") >=
+                           1;
                 },
                 "Expected spot-to-spot negative evidence.");
             return Results.Ok(result);

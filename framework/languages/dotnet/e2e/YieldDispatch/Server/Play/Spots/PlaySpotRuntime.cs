@@ -1,23 +1,7 @@
-using Microsoft.AspNetCore.Builder;
-using Microsoft.AspNetCore.Http;
-using Microsoft.Extensions.DependencyInjection;
-using Microsoft.Extensions.Hosting;
-using Microsoft.Extensions.Logging;
-using Systems.Zlink;
 using YieldDispatch.Shared;
-using Zlink.Framework;
-using Zlink.Framework.AspNetCore;
-using Zlink.Framework.Contracts.Actors;
-using Zlink.Framework.Contracts.Channels;
-using Zlink.Framework.Contracts.Configuration;
-using Zlink.Framework.Contracts.Dispatch;
-using Zlink.Framework.Contracts.Errors;
-using Zlink.Framework.Contracts.Handlers;
 using Zlink.Framework.Contracts.Messaging;
 using Zlink.Framework.Contracts.Spots;
 using Zlink.Framework.Contracts.Timers;
-using YieldDispatch.Server.Play.Handlers;
-using YieldDispatch.Server.Play.Spots;
 
 namespace YieldDispatch.Server.Play.Spots;
 
@@ -39,10 +23,7 @@ internal sealed class YieldProbeSpot(
         if (!request.IsEmpty)
         {
             var delay = request.Decode<DelayReq>();
-            if (delay.DelayMs > 0)
-            {
-                await Task.Delay(TimeSpan.FromMilliseconds(delay.DelayMs), cancellationToken);
-            }
+            if (delay.DelayMs > 0) await Task.Delay(TimeSpan.FromMilliseconds(delay.DelayMs), cancellationToken);
         }
 
         evidence.Add($"actor-joined|rid={evidence.Rid}|spot={Context.SpotRid}|actor={actor.ActorId}");
@@ -53,10 +34,7 @@ internal sealed class YieldProbeSpot(
     {
         lock (_timerGate)
         {
-            if (_timers.ContainsKey(state.TimerName))
-            {
-                return false;
-            }
+            if (_timers.ContainsKey(state.TimerName)) return false;
 
             _timers[state.TimerName] = state;
             return true;
@@ -79,19 +57,12 @@ internal sealed class YieldProbeSpot(
             states = _timers.Values
                 .Where(state => string.Equals(state.RequestId, requestId, StringComparison.Ordinal))
                 .ToList();
-            foreach (var state in states)
-            {
-                _timers.Remove(state.TimerName);
-            }
+            foreach (var state in states) _timers.Remove(state.TimerName);
         }
 
         foreach (var state in states)
-        {
             if (state.Timer is not null)
-            {
                 await state.Timer.CancelAsync();
-            }
-        }
     }
 }
 
@@ -113,5 +84,8 @@ internal sealed class YieldTimerState(
 
     public IZLinkTimer? Timer { get; set; }
 
-    public int NextTick() => Interlocked.Increment(ref _tickCount);
+    public int NextTick()
+    {
+        return Interlocked.Increment(ref _tickCount);
+    }
 }

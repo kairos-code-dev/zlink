@@ -1,17 +1,16 @@
-using Zlink.Framework.Runtime.Backend.Contracts;
-using Zlink.Framework.Runtime.Diagnostics;
 using Microsoft.Extensions.Logging;
 
 namespace Zlink.Framework.Runtime.Spots;
 
 internal sealed class ZLinkSpotSubscriptionRegistry
 {
-    private readonly List<ZLinkSpotSubscriptionRegistration> _registrations = [];
     private readonly Dictionary<string, List<ZLinkSpotSubscriptionDescriptor>> _descriptorsByTopic =
         new(StringComparer.Ordinal);
-    private int _messageCount;
+
+    private readonly List<ZLinkSpotSubscriptionRegistration> _registrations = [];
     private int _dispatchCount;
     private int _ignoreCount;
+    private int _messageCount;
 
     public int MessageCount => Volatile.Read(ref _messageCount);
 
@@ -28,9 +27,7 @@ internal sealed class ZLinkSpotSubscriptionRegistry
     public void Add(string topic, Type handlerType)
     {
         if (string.IsNullOrWhiteSpace(topic))
-        {
             throw new ZLinkConfigurationException("SPOT subscription topic must not be empty.");
-        }
 
         _registrations.Add(new ZLinkSpotSubscriptionRegistration(topic, handlerType));
     }
@@ -73,17 +70,15 @@ internal sealed class ZLinkSpotSubscriptionRegistry
             }
             catch (ZlinkRecvException ex)
                 when (ex.Result is ZlinkRecvException.ErrorCode.NoData
-                    or ZlinkRecvException.ErrorCode.Busy)
+                          or ZlinkRecvException.ErrorCode.Busy)
             {
                 return;
             }
 
-            if (!received)
-            {
-                return;
-            }
+            if (!received) return;
 
-            await DispatchMessageAsync(message, codecs, dispatchErrors, logger, dispatchAsync, cancellationToken).ConfigureAwait(false);
+            await DispatchMessageAsync(message, codecs, dispatchErrors, logger, dispatchAsync, cancellationToken)
+                .ConfigureAwait(false);
         }
     }
 
@@ -108,7 +103,7 @@ internal sealed class ZLinkSpotSubscriptionRegistry
                 "Publish",
                 "<unknown>",
                 "invalid-frame",
-                channelName: message.Topic);
+                message.Topic);
             dispatchErrors.Report(new ZLinkDispatchFailure(
                 ZLinkDispatchErrorSurface.SpotSubscription,
                 ZLinkDispatchMessageKind.Publish,
@@ -129,7 +124,7 @@ internal sealed class ZLinkSpotSubscriptionRegistry
                 "Publish",
                 "<unknown>",
                 "no-handler",
-                channelName: message.Topic);
+                message.Topic);
             dispatchErrors.Report(new ZLinkDispatchFailure(
                 ZLinkDispatchErrorSurface.SpotSubscription,
                 ZLinkDispatchMessageKind.Publish,
@@ -144,24 +139,19 @@ internal sealed class ZLinkSpotSubscriptionRegistry
         LastMessageName = header.MessageName;
 
         if (dispatchErrors.Flow.Enabled(ZLinkMessageFlowOutcome.Received))
-        {
             dispatchErrors.Flow.Trace(new ZLinkMessageFlowEvent(
                 ZLinkMessageFlowOutcome.Received,
                 ZLinkDispatchErrorSurface.SpotSubscription,
                 ZLinkDispatchMessageKind.Publish,
-                PacketName: header.MessageName,
+                header.MessageName,
                 Topic: message.Topic,
                 SourceRid: header.Source,
                 CorrelationId: header.CorrelationId));
-        }
 
         var dispatched = false;
         foreach (var descriptor in descriptors)
         {
-            if (!string.Equals(descriptor.MessageName, header.MessageName, StringComparison.Ordinal))
-            {
-                continue;
-            }
+            if (!string.Equals(descriptor.MessageName, header.MessageName, StringComparison.Ordinal)) continue;
 
             var body = ZLinkEnvelopeCodec.DecodeBody(message.Parts, descriptor.MessageType, codecs);
             await dispatchAsync(descriptor, body, cancellationToken).ConfigureAwait(false);
@@ -170,16 +160,14 @@ internal sealed class ZLinkSpotSubscriptionRegistry
         }
 
         if (dispatched && dispatchErrors.Flow.Enabled(ZLinkMessageFlowOutcome.Dispatched))
-        {
             dispatchErrors.Flow.Trace(new ZLinkMessageFlowEvent(
                 ZLinkMessageFlowOutcome.Dispatched,
                 ZLinkDispatchErrorSurface.SpotSubscription,
                 ZLinkDispatchMessageKind.Publish,
-                PacketName: header.MessageName,
+                header.MessageName,
                 Topic: message.Topic,
                 SourceRid: header.Source,
                 CorrelationId: header.CorrelationId));
-        }
 
         if (!dispatched)
         {
@@ -191,7 +179,7 @@ internal sealed class ZLinkSpotSubscriptionRegistry
                 "Publish",
                 header.MessageName,
                 "no-handler",
-                channelName: message.Topic);
+                message.Topic);
             dispatchErrors.Report(new ZLinkDispatchFailure(
                 ZLinkDispatchErrorSurface.SpotSubscription,
                 ZLinkDispatchMessageKind.Publish,

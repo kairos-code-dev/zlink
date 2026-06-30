@@ -1,5 +1,5 @@
-using Zlink.Framework.Contracts.Handlers;
 using Bingo.Shared.Contracts;
+using Zlink.Framework.Contracts.Handlers;
 
 namespace Bingo.Server.Api.Handlers;
 
@@ -15,13 +15,11 @@ internal sealed class AuthenticatePlayerHandler
         cancellationToken.ThrowIfCancellationRequested();
         if (!request.AccessToken.StartsWith("player-", StringComparison.Ordinal)
             && !string.Equals(request.AccessToken, BingoSamplePlayers.Observer, StringComparison.Ordinal))
-        {
             return ValueTask.FromResult(new AuthenticatePlayerRes
             {
                 Accepted = false,
-                Reason = "Access token must be a sample player id.",
+                Reason = "Access token must be a sample player id."
             });
-        }
 
         var displayName = string.Equals(request.AccessToken, BingoSamplePlayers.Observer, StringComparison.Ordinal)
             ? "Observer"
@@ -30,7 +28,7 @@ internal sealed class AuthenticatePlayerHandler
         {
             Accepted = true,
             ActorId = request.AccessToken,
-            DisplayName = displayName,
+            DisplayName = displayName
         });
     }
 }

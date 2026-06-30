@@ -1,6 +1,6 @@
 using System.Runtime.CompilerServices;
-using GameQuest.Shared;
 using GameQuest.Client.Configuration;
+using GameQuest.Shared;
 using Systems.Zlink.Stream.Connector.Contracts;
 using Zlink.HttpClient;
 
@@ -17,7 +17,8 @@ internal sealed class GameQuestClientScenario(GameQuestTopology topology)
         using var apiB = ZLinkHttpClient.Create(topology.GameApiBHttpBaseUrl).Json().Build();
 
         await apiAStream.Connect.Async(cancellationToken);
-        var subscribed = await apiAStream.Request(new SubscribeQuestReq("player-alice")).Async<SubscribeQuestRes>(cancellationToken);
+        var subscribed = await apiAStream.Request(new SubscribeQuestReq("player-alice"))
+            .Async<SubscribeQuestRes>(cancellationToken);
         Ensure(subscribed.ActiveQuests.Length == 0);
 
         var firstProgress = apiAStream.WaitFor<QuestProgressNotify>().Async(cancellationToken);
@@ -78,7 +79,8 @@ internal sealed class GameQuestClientScenario(GameQuestTopology topology)
         Ensure(offlineItem.EventId == "player-bob-herb-1");
 
         await apiBStream.Connect.Async(cancellationToken);
-        var bobSubscribed = await apiBStream.Request(new SubscribeQuestReq("player-bob")).Async<SubscribeQuestRes>(cancellationToken);
+        var bobSubscribed = await apiBStream.Request(new SubscribeQuestReq("player-bob"))
+            .Async<SubscribeQuestRes>(cancellationToken);
         var bobProgress = bobSubscribed.ActiveQuests.Any(p =>
             p is { QuestId: QuestIds.HerbGathering, CurrentCount: 1 })
             ? bobSubscribed.ActiveQuests
@@ -109,13 +111,15 @@ internal sealed class GameQuestClientScenario(GameQuestTopology topology)
         Ensure(rebuilt is { QuestId: QuestIds.HerbGathering, Status: QuestStatuses.RewardGranted });
         var rebuiltProjection = await GetStreamProjectionAsync(apiBStream, "player-bob", cancellationToken);
         Ensure(rebuiltProjection.Any(progress =>
-                progress is { QuestId: QuestIds.HerbGathering, Status: QuestStatuses.RewardGranted }));
+            progress is { QuestId: QuestIds.HerbGathering, Status: QuestStatuses.RewardGranted }));
 
         var killWithoutPublish = await apiB.Post("/self-check/gameplay/kill-without-publish/player-alice")
             .SubmitRawAsync(cancellationToken);
         Ensure(killWithoutPublish.Status is >= 200 and < 300);
-        var sync = await apiAStream.Request(new SyncQuestProgressReq("player-alice")).Async<SyncQuestProgressRes>(cancellationToken);
-        Ensure(sync.UpdatedQuests.Any(progress => progress.QuestId == QuestIds.FirstHunt && progress.CurrentCount >= 4));
+        var sync = await apiAStream.Request(new SyncQuestProgressReq("player-alice"))
+            .Async<SyncQuestProgressRes>(cancellationToken);
+        Ensure(sync.UpdatedQuests.Any(progress =>
+            progress.QuestId == QuestIds.FirstHunt && progress.CurrentCount >= 4));
         var reconciled = await WaitForProjectionAsync(
             apiB,
             "player-alice",
@@ -138,10 +142,7 @@ internal sealed class GameQuestClientScenario(GameQuestTopology topology)
         while (DateTimeOffset.UtcNow < deadline)
         {
             last = api.Post("/self-check/assert").Fetch<GameQuestServerAssertRes>();
-            if (last.Passed)
-            {
-                return last;
-            }
+            if (last.Passed) return last;
 
             await Task.Delay(50, cancellationToken);
         }
@@ -159,10 +160,7 @@ internal sealed class GameQuestClientScenario(GameQuestTopology topology)
         while (DateTimeOffset.UtcNow < deadline)
         {
             var response = api.Get($"/quest/progress/{playerId}").Fetch<GetQuestProgressRes>();
-            if (response.ActiveQuests.Any(predicate))
-            {
-                return response.ActiveQuests;
-            }
+            if (response.ActiveQuests.Any(predicate)) return response.ActiveQuests;
 
             await Task.Delay(50, cancellationToken);
         }
@@ -179,31 +177,31 @@ internal sealed class GameQuestClientScenario(GameQuestTopology topology)
         var deadline = DateTimeOffset.UtcNow + SampleNames.RequestTimeout;
         while (DateTimeOffset.UtcNow < deadline)
         {
-            var response = await connector.Request(new GetQuestProgressReq(playerId)).Async<GetQuestProgressRes>(cancellationToken);
-            if (response.ActiveQuests.Any(predicate))
-            {
-                return response.ActiveQuests;
-            }
+            var response = await connector.Request(new GetQuestProgressReq(playerId))
+                .Async<GetQuestProgressRes>(cancellationToken);
+            if (response.ActiveQuests.Any(predicate)) return response.ActiveQuests;
 
             await Task.Delay(50, cancellationToken);
         }
 
-        return (await connector.Request(new GetQuestProgressReq(playerId)).Async<GetQuestProgressRes>(cancellationToken)).ActiveQuests;
+        return (await connector.Request(new GetQuestProgressReq(playerId))
+            .Async<GetQuestProgressRes>(cancellationToken)).ActiveQuests;
     }
 
     private static async ValueTask<QuestProgress[]> GetStreamProjectionAsync(
         IZlinkStreamConnector connector,
         string playerId,
-        CancellationToken cancellationToken) =>
-        (await connector.Request(new GetQuestProgressReq(playerId)).Async<GetQuestProgressRes>(cancellationToken)).ActiveQuests;
+        CancellationToken cancellationToken)
+    {
+        return (await connector.Request(new GetQuestProgressReq(playerId))
+            .Async<GetQuestProgressRes>(cancellationToken)).ActiveQuests;
+    }
 
     private static void Ensure(
         bool condition,
-        [CallerArgumentExpression(nameof(condition))] string? expression = null)
+        [CallerArgumentExpression(nameof(condition))]
+        string? expression = null)
     {
-        if (!condition)
-        {
-            throw new InvalidOperationException($"Ensure failed: {expression}");
-        }
+        if (!condition) throw new InvalidOperationException($"Ensure failed: {expression}");
     }
 }

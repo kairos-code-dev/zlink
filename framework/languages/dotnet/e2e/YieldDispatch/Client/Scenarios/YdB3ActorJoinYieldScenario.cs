@@ -34,6 +34,7 @@ internal static class YdB3ActorJoinYieldScenario
             "actor-fast-started",
             "actor-fast-completed",
             "actor-join-yield-resumed",
-            "actor-join-yield-completed"]);
+            "actor-join-yield-completed"
+        ]);
     }
 }

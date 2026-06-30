@@ -73,10 +73,8 @@ internal static class ZLinkSpotActorDescriptorBuilder
         Type actualSpotType)
     {
         if (expectedSpotType is null)
-        {
             throw new InvalidOperationException(
                 $"SPOT actor handler '{handlerType}' targets SPOT '{actualSpotType}', but registration expects '{expectedSpotType}'.");
-        }
 
         ZLinkHandlerContractDescriptorSupport.RequireExactType(
             handlerType,
@@ -90,10 +88,7 @@ internal static class ZLinkSpotActorDescriptorBuilder
         Type? expectedActorType,
         Type actualActorType)
     {
-        if (expectedActorType is null)
-        {
-            return;
-        }
+        if (expectedActorType is null) return;
 
         ZLinkHandlerContractDescriptorSupport.RequireAssignableFrom(
             handlerType,

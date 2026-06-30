@@ -1,5 +1,3 @@
-using PubSub.Server.Subscriber.Handlers;
-using PubSub.Server.Subscriber;
 namespace PubSub.Server.Subscriber.Configuration;
 
 public sealed class ServerArgs
@@ -18,14 +16,9 @@ public sealed class ServerArgs
         {
             var key = args[i];
             if (!key.StartsWith("--", StringComparison.Ordinal))
-            {
                 throw new ArgumentException($"Unexpected argument '{key}'.");
-            }
 
-            if (i + 1 >= args.Length)
-            {
-                throw new ArgumentException($"Missing value for '{key}'.");
-            }
+            if (i + 1 >= args.Length) throw new ArgumentException($"Missing value for '{key}'.");
 
             var value = args[++i];
             if (!values.TryGetValue(key, out var bucket))
@@ -40,8 +33,14 @@ public sealed class ServerArgs
         return new ServerArgs(values);
     }
 
-    public string? Get(string name) => _values.TryGetValue(name, out var bucket) ? bucket[^1] : null;
+    public string? Get(string name)
+    {
+        return _values.TryGetValue(name, out var bucket) ? bucket[^1] : null;
+    }
 
-    public string Require(string name) => Get(name)
-        ?? throw new ArgumentException($"{name} is required.");
+    public string Require(string name)
+    {
+        return Get(name)
+               ?? throw new ArgumentException($"{name} is required.");
+    }
 }

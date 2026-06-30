@@ -1,6 +1,5 @@
-using Systems.Zlink;
-using Zlink.Framework.Contracts.Codecs.Json;
-using Systems.Zlink.Stream.Connector.Contracts;
+using GameQuest.GameApi.Infrastructure.Store;
+using Zlink.Framework.Contracts.Messaging;
 using Zlink.Framework.Contracts.Streams;
 
 namespace GameQuest.GameApi.Session;
@@ -9,7 +8,7 @@ internal sealed class GameQuestSession(
     IZLinkSessionContext context,
     IZLinkSessionPacketDispatcher<IZLinkSessionContext> handlers,
     GameQuestSessionRegistry registry,
-    Infrastructure.Store.GameQuestStore store) : IZLinkSession
+    GameQuestStore store) : IZLinkSession
 {
     public IZLinkSessionContext Context { get; } = context;
 
@@ -21,10 +20,7 @@ internal sealed class GameQuestSession(
 
     public async ValueTask OnDisconnectedAsync(CancellationToken cancellationToken)
     {
-        foreach (var unbind in registry.Remove(Context))
-        {
-            await store.UnbindSessionAsync(unbind, cancellationToken);
-        }
+        foreach (var unbind in registry.Remove(Context)) await store.UnbindSessionAsync(unbind, cancellationToken);
     }
 
     public ValueTask OnErrorAsync(ZLinkStreamError error, CancellationToken cancellationToken)
@@ -36,12 +32,10 @@ internal sealed class GameQuestSession(
 
     public async ValueTask OnDispatchAsync(
         ZLinkSessionDispatchContext dispatch,
-        Zlink.Framework.Contracts.Messaging.ZLinkMessage payload,
+        ZLinkMessage payload,
         CancellationToken cancellationToken)
     {
         if (!await handlers.TryHandleAsync(Context, dispatch, payload, cancellationToken))
-        {
             throw new InvalidOperationException($"Unsupported GameQuest packet '{dispatch.PacketName}'.");
-        }
     }
 }

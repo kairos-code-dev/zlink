@@ -13,7 +13,8 @@ internal static class Program
         builder.Services.AddZLinkRegistry(options =>
         {
             options.PubEndpoint = Environment.GetEnvironmentVariable("GAMEQUEST_REGISTRY_PUB_ENDPOINT")
-                                  ?? throw new InvalidOperationException("GAMEQUEST_REGISTRY_PUB_ENDPOINT is required.");
+                                  ?? throw new InvalidOperationException(
+                                      "GAMEQUEST_REGISTRY_PUB_ENDPOINT is required.");
             options.RouterEndpoint = topology.RegistryRouterEndpoint;
         });
         await builder.Build().RunAsync();

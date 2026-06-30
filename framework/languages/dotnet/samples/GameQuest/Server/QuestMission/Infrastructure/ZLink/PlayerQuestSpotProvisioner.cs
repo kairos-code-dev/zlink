@@ -1,3 +1,4 @@
+using System.Text;
 using GameQuest.QuestMission.Application;
 using GameQuest.QuestMission.Infrastructure.ZLink.Spots.PlayerQuestSpot;
 using Systems.Zlink;
@@ -12,7 +13,7 @@ internal sealed class PlayerQuestOwnerProvisioner(IZLinkSpotManager spots) : IPl
         CancellationToken cancellationToken)
     {
         await spots.GetOrCreateAsync<PlayerQuestSpot>(
-            RoutingId.From(System.Text.Encoding.UTF8.GetBytes($"player:{playerId}")),
+            RoutingId.From(Encoding.UTF8.GetBytes($"player:{playerId}")),
             new PlayerQuestSpotCreateReq(playerId),
             cancellationToken);
     }

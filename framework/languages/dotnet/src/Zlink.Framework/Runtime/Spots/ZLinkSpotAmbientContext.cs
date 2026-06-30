@@ -1,6 +1,3 @@
-using Microsoft.Extensions.DependencyInjection;
-using Zlink.Framework.Runtime.Backend.Contracts;
-
 namespace Zlink.Framework.Runtime.Spots;
 
 internal static class ZLinkSpotAmbientContext
@@ -12,8 +9,8 @@ internal static class ZLinkSpotAmbientContext
     public static IZLinkCurrentSpotActivation RequireCurrent()
     {
         return Current.Value
-            ?? throw new InvalidOperationException(
-                "IZLinkSpotOutbound can only be used inside an active SPOT callback.");
+               ?? throw new InvalidOperationException(
+                   "IZLinkSpotOutbound can only be used inside an active SPOT callback.");
     }
 
     public static IDisposable Push(IZLinkCurrentSpotActivation activation)

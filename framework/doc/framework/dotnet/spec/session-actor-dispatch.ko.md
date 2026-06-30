@@ -1217,7 +1217,6 @@ builder.Services.AddZLinkFramework(options =>
 {
     {
         var mesh =     options.AddSpotMesh("game.rooms");
-                mesh.UseDiscovery().AddRegistryEndpoint("tcp://registry1:5551");
 
     }
     options.UseRegistrySpotRemoteAddresses("game");
@@ -1280,7 +1279,6 @@ spot handler는 spot 객체 안에서 등록한다.
 ```csharp
 {
     var mesh = options.AddSpotMesh("game.rooms");
-        mesh.UseDiscovery().AddRegistryEndpoint(registryEndpoint);
     {
         var spot = mesh;
         spot.EnableRouter(spotEndpoint);

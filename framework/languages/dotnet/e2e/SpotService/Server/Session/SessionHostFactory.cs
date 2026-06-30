@@ -1,26 +1,11 @@
-using System.Collections.Concurrent;
-using Microsoft.AspNetCore.Builder;
-using Microsoft.AspNetCore.Http;
-using Microsoft.Extensions.DependencyInjection;
-using Microsoft.Extensions.Hosting;
-using Microsoft.Extensions.Logging;
-using SpotService.Shared;
-using Systems.Zlink;
-using Systems.Zlink.Stream.Connector.Contracts;
-using Zlink.Framework;
-using Zlink.Framework.AspNetCore;
-using Zlink.Framework.Contracts.Actors;
-using Zlink.Framework.Contracts.Channels;
-using Zlink.Framework.Contracts.Codecs.Json;
-using Zlink.Framework.Contracts.Dispatch;
-using Zlink.Framework.Contracts.Errors;
-using Zlink.Framework.Contracts.Handlers;
-using Zlink.Framework.Contracts.Messaging;
-using Zlink.Framework.Contracts.Spots;
-using Zlink.Framework.Contracts.Streams;
-using Zlink.Framework.Contracts.Timers;
+using System.Diagnostics;
 using SpotService.Server.Session.Handlers;
 using SpotService.Server.Session.Spots;
+using SpotService.Shared;
+using Systems.Zlink;
+using Zlink.Framework.AspNetCore;
+using Zlink.Framework.Contracts.Channels;
+using Zlink.Framework.Contracts.Dispatch;
 
 namespace SpotService.Server.Session;
 
@@ -28,7 +13,7 @@ internal static class SessionHostFactory
 {
     public static WebApplication Create(string[] args)
     {
-        var options = ServerOptions.Parse(args, defaultRole: "session");
+        var options = ServerOptions.Parse(args, "session");
         Directory.CreateDirectory(options.LogDir);
 
         var builder = WebApplication.CreateBuilder(args);
@@ -50,7 +35,8 @@ internal static class SessionHostFactory
                 .MessageFlow(ZLinkMessageFlowLogMode.KeyTransitions)
                 .TraceLogFile(Path.Combine(options.LogDir, $"{options.Rid}-flow.log"))
                 .TraceLabel(options.Rid);
-            framework.UseDiscovery().AddRegistryEndpoint(Require(options.RegistryRouterEndpoint, "--registry-router-endpoint"));
+            framework.UseDiscovery()
+                .AddRegistryEndpoint(Require(options.RegistryRouterEndpoint, "--registry-router-endpoint"));
             framework.AddRouteMesh(SpotServiceNames.ControlChannel)
                 .EnableServer(Require(options.ControlEndpoint, "--control-endpoint"))
                 .EnableClient()
@@ -66,14 +52,12 @@ internal static class SessionHostFactory
                 .Bind(Require(options.StreamEndpoint, "--stream-endpoint"))
                 .RegisterSession<ScenarioSession>();
             if (!string.IsNullOrWhiteSpace(options.TlsStreamEndpoint))
-            {
                 framework.AddStreamNode(SpotServiceNames.TlsStreamNode)
                     .Bind(options.TlsStreamEndpoint)
                     .SetTlsServer(
                         Require(options.TlsCertPath, "--tls-cert-path"),
                         Require(options.TlsKeyPath, "--tls-key-path"))
                     .RegisterSession<ScenarioSession>();
-            }
         });
 
         var app = builder.Build();
@@ -116,16 +100,17 @@ internal static class SessionHostFactory
             ThreadPool.QueueUserWorkItem(_ =>
             {
                 Thread.Sleep(50);
-                System.Diagnostics.Process.GetCurrentProcess().Kill(entireProcessTree: false);
+                Process.GetCurrentProcess().Kill(false);
             });
             return Results.Accepted();
         });
         return app;
     }
 
-static string Require(string? value, string optionName)
-    => string.IsNullOrWhiteSpace(value)
-        ? throw new InvalidOperationException($"{optionName} is required.")
-        : value;
-
+    private static string Require(string? value, string optionName)
+    {
+        return string.IsNullOrWhiteSpace(value)
+            ? throw new InvalidOperationException($"{optionName} is required.")
+            : value;
+    }
 }

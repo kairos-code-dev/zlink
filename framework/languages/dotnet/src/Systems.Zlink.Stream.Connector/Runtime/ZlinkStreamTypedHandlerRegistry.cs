@@ -2,8 +2,8 @@ namespace Systems.Zlink.Stream.Connector.Runtime;
 
 internal sealed class ZlinkStreamTypedHandlerRegistry
 {
-    private readonly Dictionary<string, TypedHandler[]> _handlers = new(StringComparer.Ordinal);
     private readonly object _gate = new();
+    private readonly Dictionary<string, TypedHandler[]> _handlers = new(StringComparer.Ordinal);
 
     public IDisposable Add(
         string name,
@@ -11,7 +11,9 @@ internal sealed class ZlinkStreamTypedHandlerRegistry
     {
         var typed = new TypedHandler(async (message, payload, cancellationToken) =>
         {
-            await handler(new ZlinkStreamMessage<ZlinkStreamEncodedPayload>(message.Name, message.Metadata, (ZlinkStreamEncodedPayload)payload!), cancellationToken)
+            await handler(
+                    new ZlinkStreamMessage<ZlinkStreamEncodedPayload>(message.Name, message.Metadata,
+                        (ZlinkStreamEncodedPayload)payload!), cancellationToken)
                 .ConfigureAwait(false);
         });
 
@@ -46,16 +48,10 @@ internal sealed class ZlinkStreamTypedHandlerRegistry
     {
         lock (_gate)
         {
-            if (!_handlers.TryGetValue(name, out var handlers))
-            {
-                return;
-            }
+            if (!_handlers.TryGetValue(name, out var handlers)) return;
 
             var index = Array.IndexOf(handlers, typed);
-            if (index < 0)
-            {
-                return;
-            }
+            if (index < 0) return;
 
             if (handlers.Length == 1)
             {
@@ -64,20 +60,15 @@ internal sealed class ZlinkStreamTypedHandlerRegistry
             }
 
             var next = new TypedHandler[handlers.Length - 1];
-            if (index > 0)
-            {
-                Array.Copy(handlers, 0, next, 0, index);
-            }
+            if (index > 0) Array.Copy(handlers, 0, next, 0, index);
 
             if (index < handlers.Length - 1)
-            {
                 Array.Copy(
                     handlers,
                     index + 1,
                     next,
                     index,
                     handlers.Length - index - 1);
-            }
 
             _handlers[name] = next;
         }
@@ -92,10 +83,7 @@ internal sealed class ZlinkStreamTypedHandlerRegistry
 
         public void Dispose()
         {
-            if (Interlocked.Exchange(ref _disposed, 1) == 0)
-            {
-                dispose();
-            }
+            if (Interlocked.Exchange(ref _disposed, 1) == 0) dispose();
         }
     }
 }

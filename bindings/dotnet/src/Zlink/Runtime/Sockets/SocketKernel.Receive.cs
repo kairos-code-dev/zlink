@@ -1,8 +1,5 @@
 // SPDX-License-Identifier: MPL-2.0
 
-using System;
-using System.Buffers;
-using System.Collections.Generic;
 using System.Runtime.CompilerServices;
 using Systems.Zlink.Runtime.Native;
 
@@ -10,52 +7,44 @@ namespace Systems.Zlink.Runtime.Sockets.Internal;
 
 internal sealed partial class SocketKernel
 {
-    private unsafe Received ReceiveCore(int flags)
+    private Received ReceiveCore(int flags)
     {
-        if (!ReceiveBasicParts(flags, out _, out Message? singlePart,
-                out MultipartMessageCollection? parts))
-        {
+        if (!ReceiveBasicParts(flags, out _, out var singlePart,
+                out var parts))
             throw ZlinkException.CreateRecvException((int)ErrorCode.EAgain);
-        }
         return singlePart != null
-            ? Received.Create((RoutingId?)null, singlePart)
-            : Received.Create((RoutingId?)null, parts!);
+            ? Received.Create(null, singlePart)
+            : Received.Create(null, parts!);
     }
 
-    private unsafe Received? TryReceiveMessageCore(int flags)
+    private Received? TryReceiveMessageCore(int flags)
     {
-        if (!ReceiveBasicParts(flags, out _, out Message? singlePart,
-                out MultipartMessageCollection? parts, allowNoData: true))
-        {
+        if (!ReceiveBasicParts(flags, out _, out var singlePart,
+                out var parts, true))
             return null;
-        }
         return singlePart != null
-            ? Received.Create((RoutingId?)null, singlePart)
-            : Received.Create((RoutingId?)null, parts!);
+            ? Received.Create(null, singlePart)
+            : Received.Create(null, parts!);
     }
 
-    private unsafe Received ReceiveRoutedCore(int flags)
+    private Received ReceiveRoutedCore(int flags)
     {
-        if (!ReceiveRoutedParts(flags, out RoutingIdSnapshot routingId,
-                out RoutingIdSnapshot spotRid, out ulong requestSeq,
-                out Message? singlePart, out MultipartMessageCollection? parts))
-        {
+        if (!ReceiveRoutedParts(flags, out var routingId,
+                out var spotRid, out var requestSeq,
+                out var singlePart, out var parts))
             throw ZlinkException.CreateRecvException((int)ErrorCode.EAgain);
-        }
         return singlePart != null
             ? CreateRoutedReceived(singlePart, routingId, spotRid, requestSeq)
             : CreateRoutedReceived(parts!, routingId, spotRid, requestSeq);
     }
 
-    private unsafe Received? TryReceiveRoutedCore(int flags)
+    private Received? TryReceiveRoutedCore(int flags)
     {
-        if (!ReceiveRoutedParts(flags, out RoutingIdSnapshot routingId,
-                out RoutingIdSnapshot spotRid, out ulong requestSeq,
-                out Message? singlePart, out MultipartMessageCollection? parts,
-                allowNoData: true))
-        {
+        if (!ReceiveRoutedParts(flags, out var routingId,
+                out var spotRid, out var requestSeq,
+                out var singlePart, out var parts,
+                true))
             return null;
-        }
         return singlePart != null
             ? CreateRoutedReceived(singlePart, routingId, spotRid, requestSeq)
             : CreateRoutedReceived(parts!, routingId, spotRid, requestSeq);
@@ -81,24 +70,24 @@ internal sealed partial class SocketKernel
     }
 
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
-    internal unsafe bool ReceivePartInto(Message result, out bool hasMore,
+    internal bool ReceivePartInto(Message result, out bool hasMore,
         int flags)
     {
         if (result == null)
             throw new ArgumentNullException(nameof(result));
 
         ZlinkMsg part = default;
-        int initRc = NativeMethods.zlink_msg_init(ref part);
+        var initRc = NativeMethods.zlink_msg_init(ref part);
         if (initRc != 0)
             throw ZlinkException.CreateRecvException(
                 NativeMethods.zlink_errno());
 
-        bool initialized = true;
+        var initialized = true;
         try
         {
-            int rc = (flags & DontWaitFlag) != 0
+            var rc = (flags & DontWaitFlag) != 0
                 ? NativeMethods.zlink_recv_part_nowait(Handle,
-                    out IntPtr sourceRoutingId, ref part, out int more,
+                    out var sourceRoutingId, ref part, out var more,
                     flags)
                 : NativeMethods.zlink_recv_part(Handle,
                     out sourceRoutingId, ref part, out more, flags);
@@ -107,7 +96,7 @@ internal sealed partial class SocketKernel
             {
                 NativeMethods.zlink_msg_close(ref part);
                 initialized = false;
-                int errno = NativeMethods.zlink_errno();
+                var errno = NativeMethods.zlink_errno();
                 if ((flags & DontWaitFlag) != 0
                     && ZlinkException.MapErrorCode(errno) is ErrorCode.EAgain
                         or ErrorCode.EBusy)
@@ -133,7 +122,7 @@ internal sealed partial class SocketKernel
     }
 
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
-    internal unsafe bool ReceiveRoutedPartInto(Message result,
+    internal bool ReceiveRoutedPartInto(Message result,
         out RoutingId? routingId, out bool hasMore, int flags)
     {
         if (result == null)
@@ -141,12 +130,12 @@ internal sealed partial class SocketKernel
 
         routingId = null;
         ZlinkMsg part = default;
-        int initRc = NativeMethods.zlink_msg_init(ref part);
+        var initRc = NativeMethods.zlink_msg_init(ref part);
         if (initRc != 0)
             throw ZlinkException.CreateRecvException(
                 NativeMethods.zlink_errno());
 
-        bool initialized = true;
+        var initialized = true;
         try
         {
             int rc;
@@ -172,13 +161,14 @@ internal sealed partial class SocketKernel
                     : NativeMethods.zlink_recv_part(Handle,
                         out sourceRoutingId, ref part, out more, flags);
             }
+
             hasMore = more != 0;
 
             if (rc != 0)
             {
                 NativeMethods.zlink_msg_close(ref part);
                 initialized = false;
-                int errno = NativeMethods.zlink_errno();
+                var errno = NativeMethods.zlink_errno();
                 if ((flags & DontWaitFlag) != 0
                     && ZlinkException.MapErrorCode(errno) is ErrorCode.EAgain
                         or ErrorCode.EBusy)
@@ -212,15 +202,13 @@ internal sealed partial class SocketKernel
         return TryReceiveIntoRoutedCore(result, flags);
     }
 
-    private unsafe bool TryReceiveIntoMessageCore(Received result, int flags)
+    private bool TryReceiveIntoMessageCore(Received result, int flags)
     {
-        bool allowNoData = (flags & DontWaitFlag) != 0;
-        if (!ReceiveBasicParts(flags, out _, out Message? singlePart,
-                out MultipartMessageCollection? parts,
-                allowNoData: allowNoData))
-        {
+        var allowNoData = (flags & DontWaitFlag) != 0;
+        if (!ReceiveBasicParts(flags, out _, out var singlePart,
+                out var parts,
+                allowNoData))
             return false;
-        }
         if (singlePart != null)
             result.PopulateSinglePart(singlePart);
         else
@@ -228,16 +216,14 @@ internal sealed partial class SocketKernel
         return true;
     }
 
-    private unsafe bool TryReceiveIntoRoutedCore(Received result, int flags)
+    private bool TryReceiveIntoRoutedCore(Received result, int flags)
     {
-        bool allowNoData = (flags & DontWaitFlag) != 0;
-        if (!ReceiveRoutedParts(flags, out RoutingIdSnapshot routingId,
-                out RoutingIdSnapshot spotRid, out ulong requestSeq,
-                out Message? singlePart, out MultipartMessageCollection? parts,
-                allowNoData: allowNoData))
-        {
+        var allowNoData = (flags & DontWaitFlag) != 0;
+        if (!ReceiveRoutedParts(flags, out var routingId,
+                out var spotRid, out var requestSeq,
+                out var singlePart, out var parts,
+                allowNoData))
             return false;
-        }
         PopulateRoutedReceivedInto(result, singlePart, parts, routingId,
             spotRid, requestSeq);
         return true;
@@ -264,12 +250,12 @@ internal sealed partial class SocketKernel
         // kernel. This path allocates a RoutingId / byte[] / closure per
         // recv; non-request-reply routed traffic (the common router-router
         // / dealer-router echo case) skips this branch entirely.
-        byte[]? routingIdBytes = routingId.ToByteArray();
-        byte[]? spotRidBytes = spotRid.ToByteArray();
-        RoutingId? replyRoutingId = routingIdBytes == null
+        var routingIdBytes = routingId.ToByteArray();
+        var spotRidBytes = spotRid.ToByteArray();
+        var replyRoutingId = routingIdBytes == null
             ? null
             : RoutingId.FromOwnedOptionalBytes(routingIdBytes);
-        RoutingId? replySpotRid = spotRidBytes == null
+        var replySpotRid = spotRidBytes == null
             ? null
             : RoutingId.FromOwnedOptionalBytes(spotRidBytes);
         ReceivedReplyHandler replyHandler = (replyParts, sendFlags) =>
@@ -290,6 +276,4 @@ internal sealed partial class SocketKernel
                 requestSeq, replyHandler, CreateRoutedSendHandler(routingId, spotRid),
                 CreateRoutedSendSingleHandler(routingId, spotRid));
     }
-
-
 }

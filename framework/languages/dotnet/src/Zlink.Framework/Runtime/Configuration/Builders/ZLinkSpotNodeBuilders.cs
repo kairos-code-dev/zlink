@@ -7,9 +7,7 @@ internal sealed class ZLinkSpotNodeBuilder(ZLinkSpotNodeRegistration registratio
     {
         var router = EnsureRouter();
         if (string.IsNullOrWhiteSpace(endpoint))
-        {
             throw new ZLinkConfigurationException("SPOT router bind endpoint must not be empty.");
-        }
 
         router.BindEndpoint = endpoint;
         return this;
@@ -17,16 +15,14 @@ internal sealed class ZLinkSpotNodeBuilder(ZLinkSpotNodeRegistration registratio
 
     public IZLinkSpotNodeBuilder ConnectRouter(string endpoint)
     {
-        AddRouterManualConnection(endpoint, peerRid: null);
+        AddRouterManualConnection(endpoint, null);
         return this;
     }
 
     public IZLinkSpotNodeBuilder ConnectRouter(RoutingId peerRid, string endpoint)
     {
         if (peerRid.Size == 0)
-        {
             throw new ZLinkConfigurationException("Manual SPOT router peer routing id must not be empty.");
-        }
 
         AddRouterManualConnection(endpoint, peerRid);
         return this;
@@ -52,9 +48,7 @@ internal sealed class ZLinkSpotNodeBuilder(ZLinkSpotNodeRegistration registratio
     {
         var pubSub = EnsurePubSub();
         if (string.IsNullOrWhiteSpace(endpoint))
-        {
             throw new ZLinkConfigurationException("SPOT pub/sub bind endpoint must not be empty.");
-        }
 
         pubSub.BindEndpoint = endpoint;
         return this;
@@ -79,28 +73,6 @@ internal sealed class ZLinkSpotNodeBuilder(ZLinkSpotNodeRegistration registratio
         return EnsurePubSub().SubscriberConfig;
     }
 
-    private ZLinkSpotRouterCapabilityRegistration EnsureRouter()
-    {
-        registration.Router ??= new ZLinkSpotRouterCapabilityRegistration();
-        return registration.Router;
-    }
-
-    private void AddRouterManualConnection(string endpoint, RoutingId? peerRid)
-    {
-        if (string.IsNullOrWhiteSpace(endpoint))
-        {
-            throw new ZLinkConfigurationException("Manual SPOT router endpoint must not be empty.");
-        }
-
-        EnsureRouter().ManualConnections.Add(new ZLinkSpotRouterManualConnectionRegistration(endpoint, peerRid));
-    }
-
-    private ZLinkSpotPubSubCapabilityRegistration EnsurePubSub()
-    {
-        registration.PubSub ??= new ZLinkSpotPubSubCapabilityRegistration();
-        return registration.PubSub;
-    }
-
     public IZLinkEntrySpotOptions ConfigureEntrySpot()
     {
         return registration.EntrySpotOptions;
@@ -110,10 +82,8 @@ internal sealed class ZLinkSpotNodeBuilder(ZLinkSpotNodeRegistration registratio
         where TSpot : IZLinkSpot
     {
         if (!registration.SpotFactories.Add(typeof(TSpot)))
-        {
             throw new ZLinkConfigurationException(
                 $"Duplicate SPOT factory '{typeof(TSpot)}' on node '{registration.SpotNodeName}'.");
-        }
 
         return this;
     }
@@ -122,10 +92,8 @@ internal sealed class ZLinkSpotNodeBuilder(ZLinkSpotNodeRegistration registratio
         where TEntrySpot : IZLinkEntrySpot
     {
         if (registration.EntrySpotType is not null)
-        {
             throw new ZLinkConfigurationException(
                 $"Duplicate Entry Spot registry on node '{registration.SpotNodeName}'.");
-        }
 
         registration.EntrySpotType = typeof(TEntrySpot);
         return this;
@@ -141,5 +109,25 @@ internal sealed class ZLinkSpotNodeBuilder(ZLinkSpotNodeRegistration registratio
             "Actor factory name must not be empty.",
             $"Duplicate actor factory '{actorType}'.");
         return this;
+    }
+
+    private ZLinkSpotRouterCapabilityRegistration EnsureRouter()
+    {
+        registration.Router ??= new ZLinkSpotRouterCapabilityRegistration();
+        return registration.Router;
+    }
+
+    private void AddRouterManualConnection(string endpoint, RoutingId? peerRid)
+    {
+        if (string.IsNullOrWhiteSpace(endpoint))
+            throw new ZLinkConfigurationException("Manual SPOT router endpoint must not be empty.");
+
+        EnsureRouter().ManualConnections.Add(new ZLinkSpotRouterManualConnectionRegistration(endpoint, peerRid));
+    }
+
+    private ZLinkSpotPubSubCapabilityRegistration EnsurePubSub()
+    {
+        registration.PubSub ??= new ZLinkSpotPubSubCapabilityRegistration();
+        return registration.PubSub;
     }
 }

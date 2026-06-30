@@ -1,13 +1,6 @@
 // SPDX-License-Identifier: MPL-2.0
 
-using System;
-using System.Collections.Generic;
-using System.Runtime.InteropServices;
-using System.Text;
-using System.Threading;
-using System.Threading.Tasks;
 using Systems.Zlink.Runtime.Native;
-using Systems.Zlink.Runtime.Sockets.Internal;
 
 namespace Systems.Zlink;
 
@@ -20,9 +13,9 @@ internal sealed partial class SpotNode : ISpotNode
 
     public void Dispose()
     {
-        if (_handle == IntPtr.Zero)
+        if (Handle == IntPtr.Zero)
             return;
-        Destroy(throwOnError: true);
+        Destroy(true);
         GC.SuppressFinalize(this);
     }
 
@@ -34,12 +27,12 @@ internal sealed partial class SpotNode : ISpotNode
 
     ~SpotNode()
     {
-        Destroy(throwOnError: false);
+        Destroy(false);
     }
 
     internal void EnsureNotDisposed()
     {
-        if (_handle == IntPtr.Zero)
+        if (Handle == IntPtr.Zero)
             throw new ObjectDisposedException(nameof(SpotNode));
     }
 
@@ -47,7 +40,7 @@ internal sealed partial class SpotNode : ISpotNode
     {
         lock (_channelDealers)
         {
-            if (_channelDealers.TryGetValue(channelName, out DealerSocket? dealer))
+            if (_channelDealers.TryGetValue(channelName, out var dealer))
             {
                 handle = dealer.Handle;
                 return handle != IntPtr.Zero;
@@ -61,27 +54,32 @@ internal sealed partial class SpotNode : ISpotNode
     internal void RegisterSpot(Spot spot)
     {
         lock (_spotsGate)
+        {
             _spots.Add(spot);
+        }
     }
 
     internal void UnregisterSpot(Spot spot)
     {
         lock (_spotsGate)
+        {
             _spots.Remove(spot);
+        }
     }
 
     private void Destroy(bool throwOnError)
     {
-        if (_handle == IntPtr.Zero)
+        if (Handle == IntPtr.Zero)
             return;
 
         Spot[] spots;
         lock (_spotsGate)
+        {
             spots = new List<Spot>(_spots).ToArray();
+        }
 
         Exception? firstError = null;
-        foreach (Spot spot in spots)
-        {
+        foreach (var spot in spots)
             try
             {
                 spot.Dispose();
@@ -93,24 +91,26 @@ internal sealed partial class SpotNode : ISpotNode
             catch
             {
             }
-        }
 
         lock (_channelDealers)
+        {
             _channelDealers.Clear();
+        }
+
         _sendReadyHandler = null;
         _sendReadyHandlerContext = null;
         _sendReadyHandlerNative = null;
 
-        IntPtr originalHandle = _handle;
-        IntPtr handle = _handle;
-        int rc = NativeMethods.zlink_spot_node_destroy(ref handle);
+        var originalHandle = Handle;
+        var handle = Handle;
+        var rc = NativeMethods.zlink_spot_node_destroy(ref handle);
         if (rc == 0)
         {
-            _handle = IntPtr.Zero;
+            Handle = IntPtr.Zero;
         }
         else
         {
-            _handle = originalHandle;
+            Handle = originalHandle;
             if (throwOnError && firstError == null)
                 firstError = ZlinkException.CreateCloseException(
                     NativeMethods.zlink_errno());
@@ -122,8 +122,8 @@ internal sealed partial class SpotNode : ISpotNode
 
     private void OnNativeSendReady(IntPtr subject, IntPtr userData)
     {
-        Action? handler = _sendReadyHandler;
-        SynchronizationContext? context = _sendReadyHandlerContext;
+        var handler = _sendReadyHandler;
+        var context = _sendReadyHandlerContext;
         if (handler == null)
             return;
         CallbackDelivery.Post(context, () =>

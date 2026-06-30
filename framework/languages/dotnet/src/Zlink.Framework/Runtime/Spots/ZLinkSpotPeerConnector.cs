@@ -1,5 +1,3 @@
-using Zlink.Framework.Runtime.Backend.Contracts;
-
 namespace Zlink.Framework.Runtime.Spots;
 
 internal sealed class ZLinkSpotPeerConnector(
@@ -9,10 +7,7 @@ internal sealed class ZLinkSpotPeerConnector(
     public ValueTask<bool> ConnectRouterAsync(string endpoint, CancellationToken cancellationToken)
     {
         cancellationToken.ThrowIfCancellationRequested();
-        if (!connections.TryAddRouterManual(endpoint))
-        {
-            return ValueTask.FromResult(false);
-        }
+        if (!connections.TryAddRouterManual(endpoint)) return ValueTask.FromResult(false);
 
         ConnectRouterPeer(endpoint);
         return ValueTask.FromResult(true);
@@ -24,10 +19,7 @@ internal sealed class ZLinkSpotPeerConnector(
         CancellationToken cancellationToken)
     {
         cancellationToken.ThrowIfCancellationRequested();
-        if (!connections.TryAddRouterManual(endpoint))
-        {
-            return ValueTask.FromResult(false);
-        }
+        if (!connections.TryAddRouterManual(endpoint)) return ValueTask.FromResult(false);
 
         ConnectRouterPeer(peerRid, endpoint);
         return ValueTask.FromResult(true);
@@ -36,10 +28,7 @@ internal sealed class ZLinkSpotPeerConnector(
     public ValueTask<bool> ConnectPubSubAsync(string endpoint, CancellationToken cancellationToken)
     {
         cancellationToken.ThrowIfCancellationRequested();
-        if (!connections.TryAddPubSubManual(endpoint))
-        {
-            return ValueTask.FromResult(false);
-        }
+        if (!connections.TryAddPubSubManual(endpoint)) return ValueTask.FromResult(false);
 
         ConnectPeer(endpoint);
         return ValueTask.FromResult(true);

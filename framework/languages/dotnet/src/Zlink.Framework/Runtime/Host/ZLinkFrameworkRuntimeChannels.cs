@@ -36,16 +36,14 @@ internal sealed partial class ZLinkFrameworkRuntime
             var parts = ZLinkClientCallCodec.EncodeEnvelopeParts(
                 header,
                 message,
-                _registration.Codecs);
+                Registration.Codecs);
             if (await _spotRouteEgress.TrySendAsync(
-                    routerChannelId,
-                    targetNodeRid,
-                    parts,
-                    cancellationToken)
-                .ConfigureAwait(false))
-            {
+                        routerChannelId,
+                        targetNodeRid,
+                        parts,
+                        cancellationToken)
+                    .ConfigureAwait(false))
                 return;
-            }
 
             ZLinkMessageParts.DisposeAll(parts);
         }
@@ -79,7 +77,7 @@ internal sealed partial class ZLinkFrameworkRuntime
             var parts = ZLinkClientCallCodec.EncodeEnvelopeParts(
                 header,
                 request,
-                _registration.Codecs);
+                Registration.Codecs);
             var result = await _spotRouteEgress.TryRequestAsync(
                     routerChannelId,
                     targetNodeRid,
@@ -88,13 +86,11 @@ internal sealed partial class ZLinkFrameworkRuntime
                     cancellationToken)
                 .ConfigureAwait(false);
             if (result.WasHandled)
-            {
                 return ZLinkClientCallCodec.DecodeEnvelopeReplyAndDispose<TReply>(
                     result.Reply,
                     "Route SPOT reply was empty.",
                     $"Route SPOT request failed for '{packetName}'.",
-                    _registration.Codecs);
-            }
+                    Registration.Codecs);
 
             ZLinkMessageParts.DisposeAll(parts);
         }

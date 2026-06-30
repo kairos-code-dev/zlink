@@ -1,9 +1,8 @@
-using DiscoveryRegistryHa.Server.Provider;
+using DiscoveryRegistryHa.Server.Provider.Support;
 using DiscoveryRegistryHa.Shared;
 using Systems.Zlink;
 using Zlink.Framework.AspNetCore;
 using Zlink.Framework.Contracts.Dispatch;
-using DiscoveryRegistryHa.Server.Provider.Support;
 
 namespace DiscoveryRegistryHa.Server.Provider;
 
@@ -11,7 +10,7 @@ internal static class ProviderHostFactory
 {
     public static WebApplication Create(string[] args)
     {
-        var options = ServerOptions.Parse(args, defaultRole: "provider");
+        var options = ServerOptions.Parse(args, "provider");
         Directory.CreateDirectory(options.LogDir);
 
         var builder = WebApplication.CreateBuilder(args);
@@ -26,10 +25,7 @@ internal static class ProviderHostFactory
 
         builder.Services.AddZLinkFramework(framework =>
         {
-            foreach (var endpoint in options.DiscoveryEndpoints)
-            {
-                framework.UseDiscovery().AddRegistryEndpoint(endpoint);
-            }
+            foreach (var endpoint in options.DiscoveryEndpoints) framework.UseDiscovery().AddRegistryEndpoint(endpoint);
 
             framework.ConfigureDispatch()
                 .MessageFlow(ZLinkMessageFlowLogMode.KeyTransitions)
@@ -65,7 +61,7 @@ internal static class ProviderHostFactory
         return app;
     }
 
-    static string Require(string? value, string name)
+    private static string Require(string? value, string name)
     {
         return string.IsNullOrWhiteSpace(value)
             ? throw new InvalidOperationException($"{name} is required.")

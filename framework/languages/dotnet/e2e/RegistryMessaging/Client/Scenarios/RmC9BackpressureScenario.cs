@@ -1,6 +1,6 @@
-using Zlink.HttpClient;
-using RegistryMessaging.Shared;
 using RegistryMessaging.Client.Support;
+using RegistryMessaging.Shared;
+using Zlink.HttpClient;
 
 namespace RegistryMessaging.Client.Scenarios;
 
@@ -24,10 +24,11 @@ internal static class RmC9BackpressureScenario
         var followUp = (await backpressureConsumer.Post("/profile/request")
             .Body(new ProfileRequest("rm-c9-after"))
             .SubmitAsync<ProfileReply>()).Body;
-        ScenarioAssert.That(followUp.Value == "profile:rm-c9-after", "RM-C9 follow-up request failed after backlog cleared.");
+        ScenarioAssert.That(followUp.Value == "profile:rm-c9-after",
+            "RM-C9 follow-up request failed after backlog cleared.");
 
         var evidence = (await providerA.Post("/evidence/wait")
-            .Body(new EvidenceWaitRequest("rm-c9-after", TimeoutMilliseconds: 20000))
+            .Body(new EvidenceWaitRequest("rm-c9-after", 20000))
             .SubmitAsync<string[]>()).Body;
         ScenarioAssert.That(
             evidence.Any(line => line.Contains("rm-c9-after", StringComparison.Ordinal)),
@@ -35,7 +36,8 @@ internal static class RmC9BackpressureScenario
         Console.WriteLine("scenario RM-C9 passed");
     }
 
-    static async Task<string> SendBackpressureCommandAsync(ZLinkHttpClient backpressureConsumer, string commandId)
+    private static async Task<string> SendBackpressureCommandAsync(ZLinkHttpClient backpressureConsumer,
+        string commandId)
     {
         return (await backpressureConsumer.Post("/profile/backpressure/send")
             .Body(new ProfileCommand(commandId))

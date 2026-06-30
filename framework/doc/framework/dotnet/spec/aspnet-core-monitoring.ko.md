@@ -73,7 +73,6 @@ builder.Services.AddZLinkFramework(options =>
 
     {
         var mesh =     options.AddSpotMesh("game.stage");
-                mesh.UseDiscovery().AddRegistryEndpoint("tcp://registry-1:5551");
         {
             var spot = mesh;
             spot.EnablePubSub("tcp://0.0.0.0:9000");
@@ -108,7 +107,7 @@ spot source 는 같은 애플리케이션에 `AddZLinkFramework(...)` 또는
 mesh 는 각자 discovery source 를 가질 수 있다.
 
 - 일반 channel: framework 등록 루트의 `UseDiscovery().AddRegistryEndpoint(...)` 가 공급한다.
-- SPOT mesh: `AddSpotMesh` 안의 `mesh.UseDiscovery().AddRegistryEndpoint(...)` 로 자체
+- SPOT mesh: root `UseDiscovery().AddRegistryEndpoint(...)` 로
   endpoint 를 지정할 수 있고, 지정하지 않으면 framework 루트 discovery endpoint 를 상속한다.
 
 source 이름은 다음 규칙으로 잡는 편이 자연스럽다.

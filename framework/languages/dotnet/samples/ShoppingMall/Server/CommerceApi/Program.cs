@@ -1,12 +1,11 @@
-using Zlink.Framework.Contracts.Codecs.Json;
+using ShoppingMall.Server.CommerceApi.Application.OrderWorkflow;
 using ShoppingMall.Server.CommerceApi.Infrastructure.Http;
 using ShoppingMall.Server.CommerceApi.Infrastructure.ZLink;
-using ShoppingMall.Server.CommerceApi.Application.OrderWorkflow;
 using ShoppingMall.Server.CommerceApi.Ports.Outbound;
+using ShoppingMall.Server.Configuration;
 using ShoppingMall.Server.Shared.Domain;
 using ShoppingMall.Server.Shared.Ports.Outbound;
 using ShoppingMall.Server.Shared.Store;
-using ShoppingMall.Server.Configuration;
 using ShoppingMall.Shared.Contracts;
 using Zlink.Framework.AspNetCore;
 using Zlink.Framework.Contracts.Dispatch;
@@ -17,7 +16,8 @@ internal static class Program
 {
     public static async Task Main(string[] args)
     {
-        var instanceId = ReadOption(args, "--instance") ?? Environment.GetEnvironmentVariable("SHOPPINGMALL_INSTANCE") ?? "api-a";
+        var instanceId = ReadOption(args, "--instance") ??
+                         Environment.GetEnvironmentVariable("SHOPPINGMALL_INSTANCE") ?? "api-a";
         var topology = SampleTopology.Create();
         var instance = topology.ForInstance(instanceId);
         var builder = WebApplication.CreateBuilder(args);
@@ -26,8 +26,10 @@ internal static class Program
         builder.Services.AddSingleton(topology);
         builder.Services.AddSingleton(new CommerceApiInstanceOptions(instance.InstanceId));
         builder.Services.AddSingleton(new FileCommerceStores(topology.StoreDirectory));
-        builder.Services.AddSingleton<IOrderReadModelStore>(static provider => provider.GetRequiredService<FileCommerceStores>());
-        builder.Services.AddSingleton<ICommerceStateStore>(static provider => provider.GetRequiredService<FileCommerceStores>());
+        builder.Services.AddSingleton<IOrderReadModelStore>(static provider =>
+            provider.GetRequiredService<FileCommerceStores>());
+        builder.Services.AddSingleton<ICommerceStateStore>(static provider =>
+            provider.GetRequiredService<FileCommerceStores>());
         builder.Services.AddSingleton<IOrderWorkflowRouter, ZLinkOrderWorkflowRouter>();
         builder.Services.AddSingleton<ICommerceApiPeerClient, HttpCommerceApiPeerClient>();
         builder.Services.AddSingleton<StartOrderUseCase>();
@@ -45,7 +47,6 @@ internal static class Program
                 var route = options.AddRouteMesh(SampleNames.OrderWorkflowRouteChannel);
                 route.EnableServer(instance.RouteEndpoint);
                 route.SetRoutingId(instance.RouteRid);
-
             }
         });
 
@@ -111,7 +112,7 @@ internal static class Program
                     request.PendingRecoveredOrderId,
                     request.InventoryFailureOrderId,
                     request.PaymentFailureOrderId,
-                    request.ScaleOutOrderId,
+                    request.ScaleOutOrderId
                 ],
                 cancellationToken);
             var lines = evidence.EventsByOrder

@@ -408,7 +408,6 @@ builder.Services.AddZLinkFramework(options =>
 
     {
         var mesh =     options.AddSpotMesh("game.match");
-                mesh.UseDiscovery().AddRegistryEndpoint("tcp://registry1:5551");
         {
             var node = mesh;
             node.EnableRouter("tcp://0.0.0.0:9201");

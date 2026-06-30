@@ -2,20 +2,6 @@ namespace Zlink.Framework.Runtime.Spots;
 
 internal sealed partial class ZLinkEntrySpotActivation
 {
-    public IZLinkSpotHandlerRegistry Handlers => _handlersSurface;
-
-    public IZLinkSpotOutbound Outbound => _outboundSurface;
-
-    public IZLinkSendCall SendToSpot<TMessage>(RoutingId spotRid, TMessage message)
-    {
-        return _outboundEndpoint.SendToSpot(spotRid, message);
-    }
-
-    public IZLinkRequestCall RequestToSpot<TRequest>(RoutingId spotRid, TRequest request)
-    {
-        return _outboundEndpoint.RequestToSpot(spotRid, request);
-    }
-
     public IZLinkPublishCall Publish<TEvent>(string topic, TEvent message)
     {
         return _outboundEndpoint.Publish(topic, message);
@@ -75,15 +61,6 @@ internal sealed partial class ZLinkEntrySpotActivation
         return _outboundEndpoint.PublishCurrentAsync(topic, parts, cancellationToken);
     }
 
-    public bool SendToSpot(
-        RoutingId targetRid,
-        RoutingId spotRid,
-        IReadOnlyList<Message> parts,
-        SendFlags flags)
-    {
-        return _outboundEndpoint.SendToSpot(targetRid, spotRid, parts, flags);
-    }
-
     public ValueTask SendToSpotAsync(
         string routerChannelId,
         RoutingId targetNodeRid,
@@ -97,5 +74,28 @@ internal sealed partial class ZLinkEntrySpotActivation
             targetSpotRid,
             parts,
             cancellationToken);
+    }
+
+    public IZLinkSpotHandlerRegistry Handlers { get; }
+
+    public IZLinkSpotOutbound Outbound { get; }
+
+    public IZLinkSendCall SendToSpot<TMessage>(RoutingId spotRid, TMessage message)
+    {
+        return _outboundEndpoint.SendToSpot(spotRid, message);
+    }
+
+    public IZLinkRequestCall RequestToSpot<TRequest>(RoutingId spotRid, TRequest request)
+    {
+        return _outboundEndpoint.RequestToSpot(spotRid, request);
+    }
+
+    public bool SendToSpot(
+        RoutingId targetRid,
+        RoutingId spotRid,
+        IReadOnlyList<Message> parts,
+        SendFlags flags)
+    {
+        return _outboundEndpoint.SendToSpot(targetRid, spotRid, parts, flags);
     }
 }

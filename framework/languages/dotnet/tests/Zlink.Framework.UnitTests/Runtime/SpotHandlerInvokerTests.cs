@@ -1,9 +1,6 @@
 using Microsoft.Extensions.DependencyInjection;
-using Zlink.Framework.Contracts.Actors;
 using Zlink.Framework.Contracts.Messaging;
-using Zlink.Framework.Contracts.Spots;
 using Zlink.Framework.Runtime.Codecs;
-using Zlink.Framework.Runtime.Spots;
 
 namespace Zlink.Framework.UnitTests.Runtime;
 
@@ -110,9 +107,8 @@ public sealed class SpotHandlerInvokerTests
 
     private sealed class MemberLifecycleSpot : IZLinkSpot<MemberLifecycleActor>
     {
-        public IZLinkSpotContext Context => throw new NotSupportedException();
-
         public string? JoinedActorId { get; private set; }
+        public IZLinkSpotContext Context => throw new NotSupportedException();
 
         public ValueTask OnJoinedActorAsync(
             MemberLifecycleActor actor,

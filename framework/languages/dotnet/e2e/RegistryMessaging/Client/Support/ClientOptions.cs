@@ -20,15 +20,9 @@ internal sealed record ClientOptions(
         for (var i = 0; i < args.Length; i++)
         {
             var key = args[i];
-            if (!key.StartsWith("--", StringComparison.Ordinal))
-            {
-                continue;
-            }
+            if (!key.StartsWith("--", StringComparison.Ordinal)) continue;
 
-            if (i + 1 >= args.Length)
-            {
-                throw new ArgumentException($"Missing value for {key}.");
-            }
+            if (i + 1 >= args.Length) throw new ArgumentException($"Missing value for {key}.");
 
             values[key[2..]] = args[++i];
         }
@@ -47,27 +41,27 @@ internal sealed record ClientOptions(
                 ? workflowUrl
                 : throw new ArgumentException("--workflow-url is required."),
             values.TryGetValue("direct-consumer-url", out var directConsumerUrl)
-                && !string.IsNullOrWhiteSpace(directConsumerUrl)
+            && !string.IsNullOrWhiteSpace(directConsumerUrl)
                 ? directConsumerUrl
                 : throw new ArgumentException("--direct-consumer-url is required."),
             values.TryGetValue("single-consumer-url", out var singleConsumerUrl)
-                && !string.IsNullOrWhiteSpace(singleConsumerUrl)
+            && !string.IsNullOrWhiteSpace(singleConsumerUrl)
                 ? singleConsumerUrl
                 : throw new ArgumentException("--single-consumer-url is required."),
             values.TryGetValue("discovery-consumer-url", out var discoveryConsumerUrl)
-                && !string.IsNullOrWhiteSpace(discoveryConsumerUrl)
+            && !string.IsNullOrWhiteSpace(discoveryConsumerUrl)
                 ? discoveryConsumerUrl
                 : throw new ArgumentException("--discovery-consumer-url is required."),
             values.TryGetValue("backpressure-consumer-url", out var backpressureConsumerUrl)
-                && !string.IsNullOrWhiteSpace(backpressureConsumerUrl)
+            && !string.IsNullOrWhiteSpace(backpressureConsumerUrl)
                 ? backpressureConsumerUrl
                 : throw new ArgumentException("--backpressure-consumer-url is required."),
             values.TryGetValue("registry-project", out var registryProject)
-                && !string.IsNullOrWhiteSpace(registryProject)
+            && !string.IsNullOrWhiteSpace(registryProject)
                 ? registryProject
                 : throw new ArgumentException("--registry-project is required."),
             values.TryGetValue("provider-project", out var providerProject)
-                && !string.IsNullOrWhiteSpace(providerProject)
+            && !string.IsNullOrWhiteSpace(providerProject)
                 ? providerProject
                 : throw new ArgumentException("--provider-project is required."),
             values.TryGetValue("log-dir", out var logDir) && !string.IsNullOrWhiteSpace(logDir)

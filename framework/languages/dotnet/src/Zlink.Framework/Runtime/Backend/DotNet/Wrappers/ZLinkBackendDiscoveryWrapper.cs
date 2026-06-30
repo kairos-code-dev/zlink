@@ -1,6 +1,5 @@
 namespace Zlink.Framework.Runtime.Backend.DotNet.Wrappers;
 
-
 internal sealed class ZLinkBackendDiscoveryWrapper(IDiscovery nativeDiscovery) : IZLinkBackendDiscovery
 {
     public object NativeInstance => nativeDiscovery;
@@ -55,5 +54,8 @@ internal sealed class ZLinkBackendDiscoveryWrapper(IDiscovery nativeDiscovery) :
         return new ZLinkBackendDiscoveryRoute(route.OwnerRoutingId, route.Value);
     }
 
-    public ValueTask DisposeAsync() => nativeDiscovery.DisposeAsync();
+    public ValueTask DisposeAsync()
+    {
+        return nativeDiscovery.DisposeAsync();
+    }
 }

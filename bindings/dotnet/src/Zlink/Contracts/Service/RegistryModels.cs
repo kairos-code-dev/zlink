@@ -3,31 +3,34 @@
 namespace Systems.Zlink;
 
 /// <summary>
-/// The operational state of a registry.
+///     The operational state of a registry.
 /// </summary>
 public enum RegistryState
 {
     /// <summary>
-    /// Not yet serving.
+    ///     Not yet serving.
     /// </summary>
     Idle = 1,
+
     /// <summary>
-    /// Serving normally.
+    ///     Serving normally.
     /// </summary>
     Active = 2,
+
     /// <summary>
-    /// Serving with reduced capability.
+    ///     Serving with reduced capability.
     /// </summary>
     Degraded = 3,
+
     /// <summary>
-    /// In an error state.
+    ///     In an error state.
     /// </summary>
     Error = 4
 }
 
 /// <summary>
-/// Filter for <see cref="IRegistry.ServiceSummary"/>; null fields match
-/// anything.
+///     Filter for <see cref="IRegistry.ServiceSummary" />; null fields match
+///     anything.
 /// </summary>
 /// <param name="AutoConnectType">Restrict to this auto-connect topology.</param>
 /// <param name="ServiceRole">Restrict to this service role.</param>
@@ -38,7 +41,7 @@ public sealed record RegistryServiceSummaryFilter(
     string? ChannelName = null);
 
 /// <summary>
-/// Filter for a registry topology query; null fields match anything.
+///     Filter for a registry topology query; null fields match anything.
 /// </summary>
 /// <param name="AutoConnectType">Restrict to this auto-connect topology.</param>
 /// <param name="ServiceKind">Restrict to this kind of service.</param>
@@ -57,7 +60,7 @@ public sealed record RegistryTopologyFilter(
     TopologySource? Source = null);
 
 /// <summary>
-/// A snapshot of a registry's status.
+///     A snapshot of a registry's status.
 /// </summary>
 /// <param name="RegistryId">The registry's identifier.</param>
 /// <param name="BindEndpoint">The endpoint the registry is bound to.</param>
@@ -80,7 +83,7 @@ public sealed record RegistryStatus(
     ulong LastChangedMs);
 
 /// <summary>
-/// A per-service rollup of registered endpoints grouped by connection state.
+///     A per-service rollup of registered endpoints grouped by connection state.
 /// </summary>
 /// <param name="AutoConnectType">The auto-connect topology.</param>
 /// <param name="ServiceRole">The service's messaging role.</param>
@@ -103,7 +106,7 @@ public sealed record RegistryServiceSummaryEntry(
     ulong LastReportedMs);
 
 /// <summary>
-/// One entry in a registry's topology: a service endpoint and its state.
+///     One entry in a registry's topology: a service endpoint and its state.
 /// </summary>
 /// <param name="AutoConnectType">The auto-connect topology.</param>
 /// <param name="RoutingId">The endpoint's routing id, when known.</param>
@@ -134,7 +137,7 @@ public sealed record RegistryTopologyEntry(
     SpotKind SpotKind);
 
 /// <summary>
-/// One member peer registered on a channel.
+///     One member peer registered on a channel.
 /// </summary>
 /// <param name="AutoConnectType">The auto-connect topology.</param>
 /// <param name="ServiceRole">The peer's messaging role.</param>

@@ -8,7 +8,7 @@ internal enum ZLinkMessageKind
     Response = 2,
     Command = 3,
     Publish = 4,
-    Error = 5,
+    Error = 5
 }
 
 internal sealed record ZLinkEnvelopeHeader(
@@ -26,6 +26,8 @@ internal sealed record ZLinkEnvelopeHeader(
 internal static class ZLinkEnvelopeCodec
 {
     private const string JsonContentType = "application/json";
+
+    public static string DefaultContentType => JsonContentType;
 
     public static IReadOnlyList<Message> EncodeParts(
         ZLinkEnvelopeHeader header,
@@ -65,18 +67,13 @@ internal static class ZLinkEnvelopeCodec
 
     public static Message EncodeBody(object? body, Type? bodyType, ZLinkCodecRegistryBuilder? codecs)
     {
-        if (bodyType is null || body is null)
-        {
-            return Message.From(ReadOnlySpan<byte>.Empty);
-        }
+        if (bodyType is null || body is null) return Message.From(ReadOnlySpan<byte>.Empty);
 
         if (bodyType == typeof(Message))
         {
             if (body is not Message message)
-            {
                 throw new InvalidOperationException(
                     $"Envelope body type is Message, but body instance is '{body.GetType()}'.");
-            }
 
             return Message.From(message);
         }
@@ -84,24 +81,18 @@ internal static class ZLinkEnvelopeCodec
         if (bodyType == typeof(ZLinkMessage))
         {
             if (body is not ZLinkMessage message)
-            {
                 throw new InvalidOperationException(
                     $"Envelope body type is ZLinkMessage, but body instance is '{body.GetType()}'.");
-            }
 
             return Message.From(message.Encode(codecs ?? new ZLinkCodecRegistryBuilder()).Payload.Bytes.Span);
         }
 
         if (codecs is not null
             && codecs.TryResolveSerializer(bodyType, out _, out var serializer))
-        {
             return Message.From(serializer.Serialize(body, bodyType).Bytes.Span);
-        }
 
         if (codecs?.SingleCustomSerializer() is { } custom)
-        {
             return Message.From(custom.Serializer.Serialize(body, bodyType).Bytes.Span);
-        }
 
         return EncodeJsonPart(body, bodyType);
     }
@@ -109,7 +100,7 @@ internal static class ZLinkEnvelopeCodec
     public static T DecodePart<T>(Message message)
     {
         return JsonSerializer.Deserialize<T>(message.AsReadOnlySpan(), ZLinkJsonSerializerOptions.Default)
-            ?? throw new InvalidOperationException($"Invalid {typeof(T).Name} message part.");
+               ?? throw new InvalidOperationException($"Invalid {typeof(T).Name} message part.");
     }
 
     public static Message EncodePart<T>(T value)
@@ -120,9 +111,9 @@ internal static class ZLinkEnvelopeCodec
     public static ZLinkEnvelopeHeader DecodeHeader(Message message)
     {
         return JsonSerializer.Deserialize<ZLinkEnvelopeHeader>(
-                message.AsReadOnlySpan(),
-                ZLinkJsonSerializerOptions.Default)
-            ?? throw new InvalidOperationException("Invalid ZLink envelope header.");
+                   message.AsReadOnlySpan(),
+                   ZLinkJsonSerializerOptions.Default)
+               ?? throw new InvalidOperationException("Invalid ZLink envelope header.");
     }
 
     public static ZLinkEnvelopeHeader DecodeHeader(IReadOnlyList<Message> parts)
@@ -161,35 +152,24 @@ internal static class ZLinkEnvelopeCodec
         string contentType,
         ZLinkCodecRegistryBuilder? codecs)
     {
-        if (bodyType == typeof(Message))
-        {
-            return bodyMessage;
-        }
+        if (bodyType == typeof(Message)) return bodyMessage;
 
         if (bodyType == typeof(ZLinkMessage))
-        {
-            return ZLinkMessage.FromEnvelopePayload(contentType, bodyMessage, codecs ?? new ZLinkCodecRegistryBuilder());
-        }
+            return ZLinkMessage.FromEnvelopePayload(contentType, bodyMessage,
+                codecs ?? new ZLinkCodecRegistryBuilder());
 
-        if (bodyType == typeof(ReadOnlyMemory<byte>))
-        {
-            return bodyMessage.AsReadOnlyMemory();
-        }
+        if (bodyType == typeof(ReadOnlyMemory<byte>)) return bodyMessage.AsReadOnlyMemory();
 
         if (bodyMessage.Size == 0)
-        {
             return bodyType.IsValueType
                 ? Activator.CreateInstance(bodyType)
                 : null;
-        }
 
         if (codecs is not null
             && codecs.TryGetSerializer(contentType, out var customSerializer))
-        {
             return customSerializer.Deserialize(
                 ZLinkEncodedPayload.From(bodyMessage.AsReadOnlyMemory()),
                 bodyType);
-        }
 
         return JsonSerializer.Deserialize(
             bodyMessage.AsReadOnlySpan(),
@@ -203,8 +183,6 @@ internal static class ZLinkEnvelopeCodec
         return parts[1].ToArray();
     }
 
-    public static string DefaultContentType => JsonContentType;
-
     public static Message EncodeJsonPart<T>(T value)
     {
         return Message.From(EncodeJsonBytes(value));
@@ -216,22 +194,20 @@ internal static class ZLinkEnvelopeCodec
     }
 
     public static byte[] EncodeJsonBytes<T>(T value)
-        => JsonSerializer.SerializeToUtf8Bytes(value, ZLinkJsonSerializerOptions.Default);
+    {
+        return JsonSerializer.SerializeToUtf8Bytes(value, ZLinkJsonSerializerOptions.Default);
+    }
 
     public static byte[] EncodeJsonBytes(object? value, Type valueType)
-        => JsonSerializer.SerializeToUtf8Bytes(value, valueType, ZLinkJsonSerializerOptions.Default);
+    {
+        return JsonSerializer.SerializeToUtf8Bytes(value, valueType, ZLinkJsonSerializerOptions.Default);
+    }
 
     private static string ResolveContentType(object? body, Type? bodyType, ZLinkCodecRegistryBuilder? codecs)
     {
-        if (body is null || bodyType is null)
-        {
-            return JsonContentType;
-        }
+        if (body is null || bodyType is null) return JsonContentType;
 
-        if (bodyType == typeof(Message) || body is Message)
-        {
-            return JsonContentType;
-        }
+        if (bodyType == typeof(Message) || body is Message) return JsonContentType;
 
         if (bodyType == typeof(ZLinkMessage) && body is ZLinkMessage message)
         {
@@ -241,22 +217,15 @@ internal static class ZLinkEnvelopeCodec
 
         if (codecs is not null
             && codecs.TryResolveSerializer(bodyType, out var contentType, out _))
-        {
             return contentType;
-        }
 
-        if (codecs?.SingleCustomSerializer() is { } custom)
-        {
-            return custom.ContentType;
-        }
+        if (codecs?.SingleCustomSerializer() is { } custom) return custom.ContentType;
 
         return JsonContentType;
     }
+
     private static void EnsurePart(IReadOnlyList<Message> parts, int index, string name)
     {
-        if (parts.Count <= index)
-        {
-            throw new InvalidOperationException($"ZLink envelope {name} part is missing.");
-        }
+        if (parts.Count <= index) throw new InvalidOperationException($"ZLink envelope {name} part is missing.");
     }
 }

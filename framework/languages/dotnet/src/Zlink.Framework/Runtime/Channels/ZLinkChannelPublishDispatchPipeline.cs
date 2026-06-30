@@ -1,6 +1,4 @@
 using Microsoft.Extensions.Logging;
-using Zlink.Framework.Runtime.Diagnostics;
-using Zlink.Framework.Runtime.Handlers;
 
 namespace Zlink.Framework.Runtime.Channels;
 
@@ -39,8 +37,8 @@ internal sealed class ZLinkChannelPublishDispatchPipeline(
                 ZLinkDispatchErrorReason.HandlerMissing,
                 ZLinkDispatchErrorAction.Drop,
                 header.MessageName,
-                ChannelName: channelName,
-                Topic: topicMessage.Topic,
+                channelName,
+                topicMessage.Topic,
                 SourceRid: header.Source,
                 CorrelationId: header.CorrelationId));
             return;
@@ -73,8 +71,8 @@ internal sealed class ZLinkChannelPublishDispatchPipeline(
                         ZLinkDispatchErrorReason.PayloadDecodeFailed,
                         ZLinkDispatchErrorAction.Drop,
                         header.MessageName,
-                        ChannelName: channelName,
-                        Topic: topicMessage.Topic,
+                        channelName,
+                        topicMessage.Topic,
                         SourceRid: header.Source,
                         CorrelationId: header.CorrelationId,
                         Exception: ex));
@@ -97,17 +95,15 @@ internal sealed class ZLinkChannelPublishDispatchPipeline(
                     .ConfigureAwait(false);
 
                 if (dispatchErrors.Flow.Enabled(ZLinkMessageFlowOutcome.Dispatched))
-                {
                     dispatchErrors.Flow.Trace(new ZLinkMessageFlowEvent(
                         ZLinkMessageFlowOutcome.Dispatched,
                         ZLinkDispatchErrorSurface.Channel,
                         ZLinkDispatchMessageKind.Publish,
-                        PacketName: header.MessageName,
-                        ChannelName: channelName,
-                        Topic: topicMessage.Topic,
+                        header.MessageName,
+                        channelName,
+                        topicMessage.Topic,
                         SourceRid: header.Source,
                         CorrelationId: header.CorrelationId));
-                }
             }
             catch (Exception ex)
             {
@@ -126,8 +122,8 @@ internal sealed class ZLinkChannelPublishDispatchPipeline(
                     ZLinkDispatchErrorReason.HandlerException,
                     ZLinkDispatchErrorAction.Drop,
                     header.MessageName,
-                    ChannelName: channelName,
-                    Topic: topicMessage.Topic,
+                    channelName,
+                    topicMessage.Topic,
                     SourceRid: header.Source,
                     CorrelationId: header.CorrelationId,
                     Exception: ex));

@@ -1,5 +1,4 @@
 using PubSub.Server.Registry.Configuration;
-using PubSub.Server.Registry;
 using Zlink.Framework.AspNetCore;
 
 namespace PubSub.Server.Registry;

@@ -21,7 +21,7 @@ public enum ZLinkTimerOverrunPolicy
 {
     SkipLateTicks = 1,
     CatchUpBounded = 2,
-    DelayNextTick = 3,
+    DelayNextTick = 3
 }
 
 public readonly record struct ZLinkTimerTick(

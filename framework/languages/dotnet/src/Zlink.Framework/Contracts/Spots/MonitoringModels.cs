@@ -6,40 +6,40 @@ public enum ZLinkSpotNodeState
     Connecting = 2,
     PartialReady = 3,
     Ready = 4,
-    Error = 5,
+    Error = 5
 }
 
 public enum ZLinkSpotPeerSource
 {
     Manual = 1,
     Discovery = 2,
-    Mixed = 3,
+    Mixed = 3
 }
 
 public enum ZLinkSpotPeerKind
 {
     SpotMesh = 1,
-    RouterChannel = 2,
+    RouterChannel = 2
 }
 
 public enum ZLinkSpotPeerState
 {
     Configured = 1,
     Connecting = 2,
-    Connected = 3,
+    Connected = 3
 }
 
 public enum ZLinkSubjectKind : uint
 {
     None = 0,
     Topic = 1,
-    Pattern = 2,
+    Pattern = 2
 }
 
 public enum ZLinkSpotRole
 {
     Pub = 1,
-    Sub = 2,
+    Sub = 2
 }
 
 public sealed record ZLinkSpotNodeStatus(

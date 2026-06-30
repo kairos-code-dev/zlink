@@ -2,10 +2,10 @@ namespace Bingo.Server.Play.Domain.Bingo;
 
 internal sealed class BingoGame(BingoRoomSettings settings, IReadOnlyList<string> participantActorIds)
 {
-    private readonly HashSet<string> _participants = participantActorIds.ToHashSet(StringComparer.Ordinal);
     private readonly Dictionary<string, BingoCard> _cards = new(StringComparer.Ordinal);
     private readonly Queue<int> _drawDeck = new(Enumerable.Range(1, settings.MaxDrawNumber));
     private readonly List<int> _drawnNumbers = [];
+    private readonly HashSet<string> _participants = participantActorIds.ToHashSet(StringComparer.Ordinal);
     private readonly List<string> _winners = [];
 
     public bool IsFinished { get; private set; }
@@ -32,35 +32,21 @@ internal sealed class BingoGame(BingoRoomSettings settings, IReadOnlyList<string
 
     public void SubmitCard(string actorId, BingoCard card)
     {
-        if (IsFinished)
-        {
-            throw new InvalidOperationException("Bingo game has already finished.");
-        }
+        if (IsFinished) throw new InvalidOperationException("Bingo game has already finished.");
 
         if (!_participants.Contains(actorId))
-        {
             throw new InvalidOperationException("Player is not part of this bingo game.");
-        }
 
-        if (_cards.ContainsKey(actorId))
-        {
-            throw new InvalidOperationException("Bingo card has already been submitted.");
-        }
+        if (_cards.ContainsKey(actorId)) throw new InvalidOperationException("Bingo card has already been submitted.");
 
         _cards.Add(actorId, card);
     }
 
     public BingoDrawResult DrawNextNumber()
     {
-        if (IsFinished)
-        {
-            return new BingoDrawResult(null, true);
-        }
+        if (IsFinished) return new BingoDrawResult(null, true);
 
-        if (!IsReadyToDraw)
-        {
-            return new BingoDrawResult(null, false);
-        }
+        if (!IsReadyToDraw) return new BingoDrawResult(null, false);
 
         if (_drawDeck.Count == 0)
         {
@@ -75,16 +61,10 @@ internal sealed class BingoGame(BingoRoomSettings settings, IReadOnlyList<string
         {
             var before = card.CompletedLines;
             card.MarkDrawnNumber(number);
-            if (card.CompletedLines > before)
-            {
-                _winners.Add(actorId);
-            }
+            if (card.CompletedLines > before) _winners.Add(actorId);
         }
 
-        if (_winners.Count > 0 || _drawDeck.Count == 0)
-        {
-            IsFinished = true;
-        }
+        if (_winners.Count > 0 || _drawDeck.Count == 0) IsFinished = true;
 
         return new BingoDrawResult(number, IsFinished);
     }

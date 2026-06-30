@@ -1,18 +1,15 @@
-
 namespace Zlink.Framework.Runtime.Streams;
 
 internal sealed class ZLinkSessionContext : IZLinkSessionContext
 {
-    private readonly ZLinkFrameworkRuntime _runtime;
-    private readonly IZLinkStream _stream;
+    private readonly ZLinkSessionActorsContext _actorSurface;
+    private readonly ZLinkSessionClientContext _client;
     private readonly Func<ValueTask> _closeAsync;
     private readonly Func<CancellationToken, ValueTask> _closeByProxyAsync;
-    private ZLinkSessionDispatchContext? _currentDispatch;
     private readonly ZLinkSessionRequestTracker _requests = new();
+    private readonly IZLinkStream _stream;
+    private ZLinkSessionDispatchContext? _currentDispatch;
     private ZLinkSessionStreamTransport? _transport;
-    private readonly ZLinkSessionActorCoordinator _actors;
-    private readonly ZLinkSessionClientContext _client;
-    private readonly ZLinkSessionActorsContext _actorSurface;
 
     public ZLinkSessionContext(
         ZLinkFrameworkRuntime runtime,
@@ -20,19 +17,27 @@ internal sealed class ZLinkSessionContext : IZLinkSessionContext
         Func<ValueTask> closeAsync,
         Func<CancellationToken, ValueTask> closeByProxyAsync)
     {
-        _runtime = runtime;
+        Runtime = runtime;
         _stream = stream;
         _closeAsync = closeAsync;
         _closeByProxyAsync = closeByProxyAsync;
-        _actors = new ZLinkSessionActorCoordinator(runtime, stream);
+        ActorCoordinator = new ZLinkSessionActorCoordinator(runtime, stream);
         _client = new ZLinkSessionClientContext(this);
-        _actorSurface = new ZLinkSessionActorsContext(this, _actors);
+        _actorSurface = new ZLinkSessionActorsContext(this, ActorCoordinator);
     }
 
     private ZLinkSessionStreamTransport Transport
-        => _transport ??= new ZLinkSessionStreamTransport(_stream, _requests, _runtime.Flow);
+        => _transport ??= new ZLinkSessionStreamTransport(_stream, _requests, Runtime.Flow);
 
-    internal ZLinkFrameworkRuntime Runtime => _runtime;
+    internal ZLinkFrameworkRuntime Runtime { get; }
+
+    internal IReadOnlyCollection<IZLinkSessionActor> BoundActors => ActorCoordinator.BoundActors;
+    internal ZLinkSessionActorCoordinator ActorCoordinator { get; }
+
+    internal ZLinkCodecRegistryBuilder Codecs => Runtime.Registration.Codecs;
+    internal IZlinkStreamCompressionCodec? CompressionCodec => Runtime.Registration.StreamCompressionCodec;
+
+    internal ZlinkStreamHeader? CurrentDispatchHeader => _currentDispatch?.Header;
 
     public string SessionId => _stream.SessionId;
 
@@ -45,10 +50,6 @@ internal sealed class ZLinkSessionContext : IZLinkSessionContext
     public IZLinkSessionClient Client => _client;
 
     public IZLinkSessionActors Actors => _actorSurface;
-    internal IReadOnlyCollection<IZLinkSessionActor> BoundActors => _actors.BoundActors;
-    internal ZLinkSessionActorCoordinator ActorCoordinator => _actors;
-    internal ZLinkCodecRegistryBuilder Codecs => _runtime.Registration.Codecs;
-    internal IZlinkStreamCompressionCodec? CompressionCodec => _runtime.Registration.StreamCompressionCodec;
 
     public ValueTask CloseAsync()
     {
@@ -66,11 +67,12 @@ internal sealed class ZLinkSessionContext : IZLinkSessionContext
         CancellationToken cancellationToken)
     {
         var dispatch = _currentDispatch
-            ?? throw new InvalidOperationException("Session actor relay requires an active stream dispatch.");
+                       ?? throw new InvalidOperationException(
+                           "Session actor relay requires an active stream dispatch.");
         var header = dispatch.Header
-            ?? throw new InvalidOperationException("Session actor relay requires runtime dispatch state.");
+                     ?? throw new InvalidOperationException("Session actor relay requires runtime dispatch state.");
 
-        await _actors.RelayToActorAsync(
+        await ActorCoordinator.RelayToActorAsync(
                 actor,
                 header,
                 payload,
@@ -83,24 +85,19 @@ internal sealed class ZLinkSessionContext : IZLinkSessionContext
         ZLinkSessionActor actor,
         CancellationToken cancellationToken)
     {
-        await _actors.NotifyActorDisconnectedAsync(actor, cancellationToken)
+        await ActorCoordinator.NotifyActorDisconnectedAsync(actor, cancellationToken)
             .ConfigureAwait(false);
     }
 
-    internal ZlinkStreamHeader? CurrentDispatchHeader => _currentDispatch?.Header;
-
     internal async ValueTask CleanupActorBindingsAsync(CancellationToken cancellationToken)
     {
-        await _actors.CleanupBindingsAsync(this, cancellationToken).ConfigureAwait(false);
+        await ActorCoordinator.CleanupBindingsAsync(this, cancellationToken).ConfigureAwait(false);
     }
 
     internal async ValueTask CleanupAsync(CancellationToken cancellationToken)
     {
-        await _actors.CleanupAsync(this, cancellationToken).ConfigureAwait(false);
-        if (_stream.RoutingId is { } sessionRid)
-        {
-            _runtime.CleanupActorSessionsForSession(sessionRid);
-        }
+        await ActorCoordinator.CleanupAsync(this, cancellationToken).ConfigureAwait(false);
+        if (_stream.RoutingId is { } sessionRid) Runtime.CleanupActorSessionsForSession(sessionRid);
     }
 
     internal ZLinkSessionDispatchContext EnterDispatch(ZlinkStreamHeader header)
@@ -170,7 +167,6 @@ internal sealed class ZLinkSessionContext : IZLinkSessionContext
     {
         return Transport.ReplyErrorAsync(requestHeader, exception, cancellationToken);
     }
-
 }
 
 internal sealed class ZLinkSessionClientContext(ZLinkSessionContext context) : IZLinkSessionClient

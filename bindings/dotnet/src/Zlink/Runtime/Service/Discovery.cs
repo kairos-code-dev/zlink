@@ -1,31 +1,26 @@
 // SPDX-License-Identifier: MPL-2.0
 
-using System;
 using System.Runtime.InteropServices;
-using System.Threading.Tasks;
-using Systems.Zlink;
 using Systems.Zlink.Runtime.Native;
 
 namespace Systems.Zlink;
 
 internal sealed class Discovery : IDiscovery
 {
-    private IntPtr _handle;
-
     public Discovery(Context context, AutoConnectType autoConnectType,
         string channelName)
     {
         if (context == null)
             throw new ArgumentNullException(nameof(context));
         BoundaryValidation.ValidateFixedUtf8(channelName, nameof(channelName));
-        _handle = NativeMethods.zlink_discovery_new(context.Handle,
+        Handle = NativeMethods.zlink_discovery_new(context.Handle,
             (int)autoConnectType, channelName);
-        if (_handle == IntPtr.Zero)
+        if (Handle == IntPtr.Zero)
             throw ZlinkException.CreateConfigException(
                 NativeMethods.zlink_errno());
     }
 
-    internal IntPtr Handle => _handle;
+    internal IntPtr Handle { get; private set; }
 
     public int RouteValueMaxSize => GetOption(SocketOption.RouteValueMaxSize);
 
@@ -34,7 +29,7 @@ internal sealed class Discovery : IDiscovery
         BoundaryValidation.ValidateFixedUtf8(registryPubEndpoint,
             nameof(registryPubEndpoint));
         EnsureNotDisposed();
-        int rc = NativeMethods.zlink_discovery_connect_registry(_handle,
+        var rc = NativeMethods.zlink_discovery_connect_registry(Handle,
             registryPubEndpoint);
         ZlinkException.ThrowConnectIfError(rc);
     }
@@ -45,7 +40,7 @@ internal sealed class Discovery : IDiscovery
         BoundaryValidation.ValidateFixedUtf8(caCertPath, nameof(caCertPath));
         BoundaryValidation.ValidateFixedUtf8(hostname, nameof(hostname));
         EnsureNotDisposed();
-        int rc = NativeMethods.zlink_set_tls_client(_handle, caCertPath,
+        var rc = NativeMethods.zlink_set_tls_client(Handle, caCertPath,
             hostname, trustSystem ? 1 : 0);
         ZlinkException.ThrowConfigIfError(rc);
     }
@@ -53,25 +48,14 @@ internal sealed class Discovery : IDiscovery
     public void SetValue(long value)
     {
         EnsureNotDisposed();
-        int rc = NativeMethods.zlink_discovery_set_value(_handle, value);
+        var rc = NativeMethods.zlink_discovery_set_value(Handle, value);
         ZlinkException.ThrowConfigIfError(rc);
     }
 
     public long GetValue()
     {
         EnsureNotDisposed();
-        int rc = NativeMethods.zlink_discovery_get_value(_handle, out long value);
-        ZlinkException.ThrowConfigIfError(rc);
-        return value;
-    }
-
-    private unsafe int GetOption(SocketOption option)
-    {
-        EnsureNotDisposed();
-        int value = 0;
-        nuint size = (nuint)sizeof(int);
-        int rc = NativeMethods.zlink_get_option(_handle, (int)option,
-            (IntPtr)(&value), ref size);
+        var rc = NativeMethods.zlink_discovery_get_value(Handle, out var value);
         ZlinkException.ThrowConfigIfError(rc);
         return value;
     }
@@ -88,75 +72,34 @@ internal sealed class Discovery : IDiscovery
         set => SetActorRouteSyncEnabled(value);
     }
 
-    private unsafe void SetSpotOwnerSyncEnabled(bool enabled)
-    {
-        EnsureNotDisposed();
-        int raw = enabled ? 1 : 0;
-        int rc = NativeMethods.zlink_set_option(_handle,
-            (int)SocketOption.DiscoverySpotOwnerSync, (IntPtr)(&raw),
-            (nuint)sizeof(int));
-        ZlinkException.ThrowConfigIfError(rc);
-    }
-
-    private unsafe bool GetSpotOwnerSyncEnabled()
-    {
-        EnsureNotDisposed();
-        int raw = 0;
-        nuint size = (nuint)sizeof(int);
-        int rc = NativeMethods.zlink_get_option(_handle,
-            (int)SocketOption.DiscoverySpotOwnerSync, (IntPtr)(&raw), ref size);
-        ZlinkException.ThrowConfigIfError(rc);
-        return raw != 0;
-    }
-
-    private unsafe void SetActorRouteSyncEnabled(bool enabled)
-    {
-        EnsureNotDisposed();
-        int raw = enabled ? 1 : 0;
-        int rc = NativeMethods.zlink_set_option(_handle,
-            (int)SocketOption.DiscoveryActorRouteSync, (IntPtr)(&raw),
-            (nuint)sizeof(int));
-        ZlinkException.ThrowConfigIfError(rc);
-    }
-
-    private unsafe bool GetActorRouteSyncEnabled()
-    {
-        EnsureNotDisposed();
-        int raw = 0;
-        nuint size = (nuint)sizeof(int);
-        int rc = NativeMethods.zlink_get_option(_handle,
-            (int)SocketOption.DiscoveryActorRouteSync, (IntPtr)(&raw), ref size);
-        ZlinkException.ThrowConfigIfError(rc);
-        return raw != 0;
-    }
-
     public MemberPeerEntry[] MemberPeers()
     {
         EnsureNotDisposed();
         nuint count = 0;
-        int rc = NativeMethods.zlink_discovery_member_peers(_handle,
+        var rc = NativeMethods.zlink_discovery_member_peers(Handle,
             IntPtr.Zero, ref count);
         ZlinkException.ThrowConfigIfError(rc);
         if (count == 0)
             return Array.Empty<MemberPeerEntry>();
 
-        int entrySize = Marshal.SizeOf<ZlinkMemberPeerEntry>();
-        IntPtr entries = Marshal.AllocHGlobal(checked((int)(count * (nuint)entrySize)));
+        var entrySize = Marshal.SizeOf<ZlinkMemberPeerEntry>();
+        var entries = Marshal.AllocHGlobal(checked((int)(count * (nuint)entrySize)));
         try
         {
-            nuint actual = count;
-            rc = NativeMethods.zlink_discovery_member_peers(_handle, entries,
+            var actual = count;
+            rc = NativeMethods.zlink_discovery_member_peers(Handle, entries,
                 ref actual);
             ZlinkException.ThrowConfigIfError(rc);
 
-            MemberPeerEntry[] result = new MemberPeerEntry[(int)actual];
-            for (int i = 0; i < result.Length; i++)
+            var result = new MemberPeerEntry[(int)actual];
+            for (var i = 0; i < result.Length; i++)
             {
-                IntPtr current = IntPtr.Add(entries, i * entrySize);
-                ZlinkMemberPeerEntry native =
+                var current = IntPtr.Add(entries, i * entrySize);
+                var native =
                     Marshal.PtrToStructure<ZlinkMemberPeerEntry>(current);
                 result[i] = TopologyModelConverters.FromNative(ref native);
             }
+
             return result;
         }
         finally
@@ -168,17 +111,17 @@ internal sealed class Discovery : IDiscovery
     public SpotRoute ResolveSpot(RoutingId spotRid)
     {
         EnsureNotDisposed();
-        ZlinkRoutingId nativeSpotRid = spotRid.ToNative();
-        int rc = NativeMethods.zlink_discovery_resolve_spot(_handle,
-            ref nativeSpotRid, out ZlinkSpotRoute route);
+        var nativeSpotRid = spotRid.ToNative();
+        var rc = NativeMethods.zlink_discovery_resolve_spot(Handle,
+            ref nativeSpotRid, out var route);
         ZlinkException.ThrowConfigIfError(rc);
         return new SpotRoute(
             RoutingIdInterop.FromNative(ref route.SpotRid)
-                ?? throw new ZlinkConfigException(
-                    ZlinkConfigException.ErrorCode.InternalError),
+            ?? throw new ZlinkConfigException(
+                ZlinkConfigException.ErrorCode.InternalError),
             RoutingIdInterop.FromNative(ref route.OwnerNodeRid)
-                ?? throw new ZlinkConfigException(
-                    ZlinkConfigException.ErrorCode.InternalError),
+            ?? throw new ZlinkConfigException(
+                ZlinkConfigException.ErrorCode.InternalError),
             (SpotKind)route.SpotKind);
     }
 
@@ -186,8 +129,8 @@ internal sealed class Discovery : IDiscovery
     {
         ActorInterop.ValidateActorId(actorId, nameof(actorId));
         EnsureNotDisposed();
-        int rc = NativeMethods.zlink_discovery_resolve_actor(_handle, actorId,
-            out ZlinkActorRoute route);
+        var rc = NativeMethods.zlink_discovery_resolve_actor(Handle, actorId,
+            out var route);
         ZlinkException.ThrowConfigIfError(rc);
         return ActorInterop.FromNative(ref route);
     }
@@ -200,8 +143,8 @@ internal sealed class Discovery : IDiscovery
         fixed (byte* keyPtr = key)
         fixed (byte* valuePtr = value)
         {
-            int rc = NativeMethods.zlink_discovery_bind_route(
-                _handle, kind, keyPtr, (nuint)key.Length, valuePtr,
+            var rc = NativeMethods.zlink_discovery_bind_route(
+                Handle, kind, keyPtr, (nuint)key.Length, valuePtr,
                 (nuint)value.Length);
             ZlinkException.ThrowConfigIfError(rc);
         }
@@ -213,8 +156,8 @@ internal sealed class Discovery : IDiscovery
         EnsureNotDisposed();
         fixed (byte* keyPtr = key)
         {
-            int rc = NativeMethods.zlink_discovery_unbind_route(
-                _handle, kind, keyPtr, (nuint)key.Length);
+            var rc = NativeMethods.zlink_discovery_unbind_route(
+                Handle, kind, keyPtr, (nuint)key.Length);
             ZlinkException.ThrowConfigIfError(rc);
         }
     }
@@ -227,8 +170,8 @@ internal sealed class Discovery : IDiscovery
         {
             ZlinkRoutingId owner = default;
             ZlinkMsg value = default;
-            int rc = NativeMethods.zlink_discovery_resolve_route(
-                _handle, kind, keyPtr, (nuint)key.Length, out owner, ref value);
+            var rc = NativeMethods.zlink_discovery_resolve_route(
+                Handle, kind, keyPtr, (nuint)key.Length, out owner, ref value);
             ZlinkException.ThrowConfigIfError(rc);
             return new DiscoveryRoute(
                 RoutingId.From(NativeHelpers.ReadRoutingId(ref owner)),
@@ -243,7 +186,7 @@ internal sealed class Discovery : IDiscovery
 
     public void Dispose()
     {
-        Destroy(throwOnError: true);
+        Destroy(true);
         GC.SuppressFinalize(this);
     }
 
@@ -253,33 +196,86 @@ internal sealed class Discovery : IDiscovery
         return ValueTask.CompletedTask;
     }
 
+    private unsafe int GetOption(SocketOption option)
+    {
+        EnsureNotDisposed();
+        var value = 0;
+        var size = (nuint)sizeof(int);
+        var rc = NativeMethods.zlink_get_option(Handle, (int)option,
+            (IntPtr)(&value), ref size);
+        ZlinkException.ThrowConfigIfError(rc);
+        return value;
+    }
+
+    private unsafe void SetSpotOwnerSyncEnabled(bool enabled)
+    {
+        EnsureNotDisposed();
+        var raw = enabled ? 1 : 0;
+        var rc = NativeMethods.zlink_set_option(Handle,
+            (int)SocketOption.DiscoverySpotOwnerSync, (IntPtr)(&raw),
+            sizeof(int));
+        ZlinkException.ThrowConfigIfError(rc);
+    }
+
+    private unsafe bool GetSpotOwnerSyncEnabled()
+    {
+        EnsureNotDisposed();
+        var raw = 0;
+        var size = (nuint)sizeof(int);
+        var rc = NativeMethods.zlink_get_option(Handle,
+            (int)SocketOption.DiscoverySpotOwnerSync, (IntPtr)(&raw), ref size);
+        ZlinkException.ThrowConfigIfError(rc);
+        return raw != 0;
+    }
+
+    private unsafe void SetActorRouteSyncEnabled(bool enabled)
+    {
+        EnsureNotDisposed();
+        var raw = enabled ? 1 : 0;
+        var rc = NativeMethods.zlink_set_option(Handle,
+            (int)SocketOption.DiscoveryActorRouteSync, (IntPtr)(&raw),
+            sizeof(int));
+        ZlinkException.ThrowConfigIfError(rc);
+    }
+
+    private unsafe bool GetActorRouteSyncEnabled()
+    {
+        EnsureNotDisposed();
+        var raw = 0;
+        var size = (nuint)sizeof(int);
+        var rc = NativeMethods.zlink_get_option(Handle,
+            (int)SocketOption.DiscoveryActorRouteSync, (IntPtr)(&raw), ref size);
+        ZlinkException.ThrowConfigIfError(rc);
+        return raw != 0;
+    }
+
     ~Discovery()
     {
-        Destroy(throwOnError: false);
+        Destroy(false);
     }
 
     private void Destroy(bool throwOnError)
     {
-        if (_handle == IntPtr.Zero)
+        if (Handle == IntPtr.Zero)
             return;
 
-        IntPtr originalHandle = _handle;
-        IntPtr handle = _handle;
-        int rc = NativeMethods.zlink_discovery_destroy(ref handle);
+        var originalHandle = Handle;
+        var handle = Handle;
+        var rc = NativeMethods.zlink_discovery_destroy(ref handle);
         if (rc == 0)
         {
-            _handle = IntPtr.Zero;
+            Handle = IntPtr.Zero;
             return;
         }
 
-        _handle = originalHandle;
+        Handle = originalHandle;
         if (throwOnError)
             throw ZlinkException.CreateCloseException(NativeMethods.zlink_errno());
     }
 
     private void EnsureNotDisposed()
     {
-        if (_handle == IntPtr.Zero)
+        if (Handle == IntPtr.Zero)
             throw new ObjectDisposedException(nameof(Discovery));
     }
 

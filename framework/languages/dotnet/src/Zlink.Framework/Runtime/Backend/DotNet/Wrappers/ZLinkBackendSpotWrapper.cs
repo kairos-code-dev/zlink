@@ -1,6 +1,5 @@
 namespace Zlink.Framework.Runtime.Backend.DotNet.Wrappers;
 
-
 internal sealed class ZLinkBackendSpotWrapper(ISpot nativeSpot) : IZLinkBackendSpot
 {
     public object NativeInstance => nativeSpot;
@@ -33,34 +32,13 @@ internal sealed class ZLinkBackendSpotWrapper(ISpot nativeSpot) : IZLinkBackendS
         {
             var frameworkInfo = info.ToFramework();
             if (info.Event == SpotDispatchEvent.RoutedReadable)
-            {
                 frameworkInfo = frameworkInfo with
                 {
                     RoutedMessages = DrainRoutedMessages()
                 };
-            }
 
             handler(frameworkInfo);
         });
-    }
-
-    private IReadOnlyList<Received> DrainRoutedMessages()
-    {
-        List<Received>? receivedMessages = null;
-        while (true)
-        {
-            var received = Received.Create();
-            if (!nativeSpot.RecvRouted(received, RecvFlags.DontWait))
-            {
-                received.Dispose();
-                break;
-            }
-
-            receivedMessages ??= [];
-            receivedMessages.Add(received);
-        }
-
-        return receivedMessages ?? [];
     }
 
     public void OnSendReady(Action handler)
@@ -78,10 +56,7 @@ internal sealed class ZLinkBackendSpotWrapper(ISpot nativeSpot) : IZLinkBackendS
         var operation = nativeSpot.RequestToChannel(channelName)
             .Message(message)
             .Flags(flags);
-        if (timeout is { } value)
-        {
-            operation = operation.Timeout(value);
-        }
+        if (timeout is { } value) operation = operation.Timeout(value);
 
         return operation.Submit(callback);
     }
@@ -95,10 +70,7 @@ internal sealed class ZLinkBackendSpotWrapper(ISpot nativeSpot) : IZLinkBackendS
     {
         var operation = nativeSpot.RequestToChannel(channelName).Messages(parts);
 
-        if (timeout is { } value)
-        {
-            operation = operation.Timeout(value);
-        }
+        if (timeout is { } value) operation = operation.Timeout(value);
 
         return operation.Flags(flags).Submit(callback);
     }
@@ -182,10 +154,7 @@ internal sealed class ZLinkBackendSpotWrapper(ISpot nativeSpot) : IZLinkBackendS
         var operation = nativeSpot.RequestToSpot(targetRid, spotRid)
             .Message(message)
             .Flags(flags);
-        if (timeout is { } value)
-        {
-            operation = operation.Timeout(value);
-        }
+        if (timeout is { } value) operation = operation.Timeout(value);
 
         return operation.Submit(callback);
     }
@@ -200,10 +169,7 @@ internal sealed class ZLinkBackendSpotWrapper(ISpot nativeSpot) : IZLinkBackendS
     {
         var operation = nativeSpot.RequestToSpot(targetRid, spotRid).Messages(parts);
 
-        if (timeout is { } value)
-        {
-            operation = operation.Timeout(value);
-        }
+        if (timeout is { } value) operation = operation.Timeout(value);
 
         return operation.Flags(flags).Submit(callback);
     }
@@ -211,10 +177,7 @@ internal sealed class ZLinkBackendSpotWrapper(ISpot nativeSpot) : IZLinkBackendS
     public ZLinkBackendActorJoinRequest? RecvActorJoin(RecvFlags flags)
     {
         var request = nativeSpot.RecvActorJoin(flags);
-        if (request is null)
-        {
-            return null;
-        }
+        if (request is null) return null;
 
         return new ZLinkBackendActorJoinRequest(
             request.Info.SourceActor.ToBackend(),
@@ -251,5 +214,27 @@ internal sealed class ZLinkBackendSpotWrapper(ISpot nativeSpot) : IZLinkBackendS
             .Submit();
     }
 
-    public ValueTask DisposeAsync() => nativeSpot.DisposeAsync();
+    public ValueTask DisposeAsync()
+    {
+        return nativeSpot.DisposeAsync();
+    }
+
+    private IReadOnlyList<Received> DrainRoutedMessages()
+    {
+        List<Received>? receivedMessages = null;
+        while (true)
+        {
+            var received = Received.Create();
+            if (!nativeSpot.RecvRouted(received, RecvFlags.DontWait))
+            {
+                received.Dispose();
+                break;
+            }
+
+            receivedMessages ??= [];
+            receivedMessages.Add(received);
+        }
+
+        return receivedMessages ?? [];
+    }
 }

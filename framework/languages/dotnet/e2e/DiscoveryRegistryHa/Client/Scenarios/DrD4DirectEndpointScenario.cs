@@ -1,7 +1,7 @@
-using DiscoveryRegistryHa.Shared;
 using System.Text.Json;
-using Zlink.HttpClient;
 using DiscoveryRegistryHa.Client.Support;
+using DiscoveryRegistryHa.Shared;
+using Zlink.HttpClient;
 
 namespace DiscoveryRegistryHa.Client.Scenarios;
 
@@ -36,11 +36,14 @@ internal static class DrD4DirectEndpointScenario
         Console.WriteLine("scenario DR-D4 passed");
     }
 
-    static async Task<JsonElement[]> ReadJsonArrayAsync(ZLinkHttpClient client, string path) =>
-        (await client.Get(path).SubmitAsync<JsonElement[]>()).Body;
+    private static async Task<JsonElement[]> ReadJsonArrayAsync(ZLinkHttpClient client, string path)
+    {
+        return (await client.Get(path).SubmitAsync<JsonElement[]>()).Body;
+    }
 
-    static string[] Normalize(IEnumerable<JsonElement> entries) =>
-        entries.Select(entry => string.Join("|",
+    private static string[] Normalize(IEnumerable<JsonElement> entries)
+    {
+        return entries.Select(entry => string.Join("|",
                 ReadJsonValue(entry, "channelName"),
                 ReadJsonValue(entry, "routingId"),
                 ReadJsonValue(entry, "endpoint"),
@@ -48,10 +51,12 @@ internal static class DrD4DirectEndpointScenario
                 ReadJsonValue(entry, "serviceRole")))
             .Order(StringComparer.Ordinal)
             .ToArray();
+    }
 
-    static string ReadJsonValue(JsonElement element, string name) =>
-        element.TryGetProperty(name, out var property)
+    private static string ReadJsonValue(JsonElement element, string name)
+    {
+        return element.TryGetProperty(name, out var property)
             ? property.ToString()
             : "";
-
+    }
 }

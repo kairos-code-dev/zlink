@@ -18,11 +18,11 @@ internal interface IZLinkRouteInternalPacketDispatcher
 
 internal sealed class ZLinkNoRouteInternalPacketDispatcher : IZLinkRouteInternalPacketDispatcher
 {
-    public static ZLinkNoRouteInternalPacketDispatcher Instance { get; } = new();
-
     private ZLinkNoRouteInternalPacketDispatcher()
     {
     }
+
+    public static ZLinkNoRouteInternalPacketDispatcher Instance { get; } = new();
 
     public bool CanHandleSend(string packetName)
     {

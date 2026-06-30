@@ -6,13 +6,12 @@ internal sealed class SupportUserActor(
     string actorId,
     IZLinkActorContext context) : IZLinkActor
 {
-    public string ActorId { get; } = actorId;
-
     public string DisplayName { get; private set; } = actorId;
 
     public string Role { get; private set; } = string.Empty;
 
     public string ConversationId { get; private set; } = string.Empty;
+    public string ActorId { get; } = actorId;
 
     public IZLinkActorContext Context { get; } = context;
 

@@ -1,4 +1,3 @@
-using ShoppingMall.Client;
 using ShoppingMall.Client.Configuration;
 using Zlink.HttpClient;
 

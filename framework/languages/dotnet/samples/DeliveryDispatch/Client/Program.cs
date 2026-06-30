@@ -1,14 +1,13 @@
 using DeliveryDispatch.Client;
-using DeliveryDispatch.Shared.Contracts;
 using Systems.Zlink.Stream.Connector.Contracts;
 using Zlink.HttpClient;
 
 var apiUrl = ReadOption(args, "--api-url")
-    ?? throw new ArgumentException("Missing --api-url.");
+             ?? throw new ArgumentException("Missing --api-url.");
 var streamEndpoint = ReadOption(args, "--stream-endpoint")
-    ?? throw new ArgumentException("Missing --stream-endpoint.");
+                     ?? throw new ArgumentException("Missing --stream-endpoint.");
 var courierStreamEndpoint = ReadOption(args, "--courier-stream-endpoint")
-    ?? throw new ArgumentException("Missing --courier-stream-endpoint.");
+                            ?? throw new ArgumentException("Missing --courier-stream-endpoint.");
 
 using var http = ZLinkHttpClient.Create(apiUrl).Json().Build();
 await using var customer = ZlinkStreamConnectorFactory.Create(new ZlinkStreamConnectorOptions
@@ -17,7 +16,7 @@ await using var customer = ZlinkStreamConnectorFactory.Create(new ZlinkStreamCon
     ConnectTimeout = TimeSpan.FromSeconds(5),
     RequestTimeout = TimeSpan.FromSeconds(5),
     WaitTimeout = TimeSpan.FromSeconds(15),
-    DispatchMode = ZlinkStreamDispatchMode.Immediate,
+    DispatchMode = ZlinkStreamDispatchMode.Immediate
 });
 await using var courierA = ZlinkStreamConnectorFactory.Create(new ZlinkStreamConnectorOptions
 {
@@ -25,7 +24,7 @@ await using var courierA = ZlinkStreamConnectorFactory.Create(new ZlinkStreamCon
     ConnectTimeout = TimeSpan.FromSeconds(5),
     RequestTimeout = TimeSpan.FromSeconds(5),
     WaitTimeout = TimeSpan.FromSeconds(15),
-    DispatchMode = ZlinkStreamDispatchMode.Immediate,
+    DispatchMode = ZlinkStreamDispatchMode.Immediate
 });
 await using var courierB = ZlinkStreamConnectorFactory.Create(new ZlinkStreamConnectorOptions
 {
@@ -33,7 +32,7 @@ await using var courierB = ZlinkStreamConnectorFactory.Create(new ZlinkStreamCon
     ConnectTimeout = TimeSpan.FromSeconds(5),
     RequestTimeout = TimeSpan.FromSeconds(5),
     WaitTimeout = TimeSpan.FromSeconds(15),
-    DispatchMode = ZlinkStreamDispatchMode.Immediate,
+    DispatchMode = ZlinkStreamDispatchMode.Immediate
 });
 
 await new DeliveryDispatchClientScenario().RunAsync(http, customer, courierA, courierB);

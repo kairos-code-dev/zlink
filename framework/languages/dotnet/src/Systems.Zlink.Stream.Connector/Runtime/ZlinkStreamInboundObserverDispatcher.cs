@@ -4,16 +4,16 @@ namespace Systems.Zlink.Stream.Connector.Runtime;
 
 internal sealed class ZlinkStreamInboundObserverDispatcher
 {
+    private readonly ZlinkStreamConnectorCallbacks _callbacks;
+    private readonly object _gate = new();
+    private readonly int _maxNotifications;
+    private readonly int _maxPayloadPreviewBytes;
     private readonly ConcurrentQueue<ZlinkStreamInboundObservation> _queue = new();
     private readonly SemaphoreSlim _signal = new(0);
     private readonly ZlinkStreamTaskRunner _taskRunner;
-    private readonly ZlinkStreamConnectorCallbacks _callbacks;
-    private readonly int _maxNotifications;
-    private readonly int _maxPayloadPreviewBytes;
-    private readonly object _gate = new();
+    private int _dropReportPending;
     private ObserverRegistration? _observers;
     private int _queuedCount;
-    private int _dropReportPending;
 
     public ZlinkStreamInboundObserverDispatcher(
         ZlinkStreamTaskRunner taskRunner,
@@ -44,10 +44,7 @@ internal sealed class ZlinkStreamInboundObserverDispatcher
 
     public void Enqueue(ZlinkStreamHeader header, ReadOnlyMemory<byte> wirePayload)
     {
-        if (!HasObservers())
-        {
-            return;
-        }
+        if (!HasObservers()) return;
 
         var count = Interlocked.Increment(ref _queuedCount);
         if (count > _maxNotifications)
@@ -96,17 +93,11 @@ internal sealed class ZlinkStreamInboundObserverDispatcher
         lock (_gate)
         {
             var count = 0;
-            for (var current = _observers; current is not null; current = current.Next)
-            {
-                count++;
-            }
+            for (var current = _observers; current is not null; current = current.Next) count++;
 
             var snapshot = new ObserverRegistration[count];
             var index = 0;
-            for (var current = _observers; current is not null; current = current.Next)
-            {
-                snapshot[index++] = current;
-            }
+            for (var current = _observers; current is not null; current = current.Next) snapshot[index++] = current;
 
             return snapshot;
         }
@@ -122,10 +113,7 @@ internal sealed class ZlinkStreamInboundObserverDispatcher
                 Interlocked.Decrement(ref _queuedCount);
                 foreach (var observer in SnapshotObservers())
                 {
-                    if (observer.IsDisposed)
-                    {
-                        continue;
-                    }
+                    if (observer.IsDisposed) continue;
 
                     try
                     {
@@ -142,10 +130,7 @@ internal sealed class ZlinkStreamInboundObserverDispatcher
 
     private void ReportDropped()
     {
-        if (Interlocked.Exchange(ref _dropReportPending, 1) != 0)
-        {
-            return;
-        }
+        if (Interlocked.Exchange(ref _dropReportPending, 1) != 0) return;
 
         _taskRunner.RunDetached(
             "stream-inbound-observer-dropped",
@@ -191,13 +176,9 @@ internal sealed class ZlinkStreamInboundObserverDispatcher
                 if (ReferenceEquals(current, registration))
                 {
                     if (previous is null)
-                    {
                         _observers = current.Next;
-                    }
                     else
-                    {
                         previous.Next = current.Next;
-                    }
 
                     break;
                 }
@@ -218,17 +199,16 @@ internal sealed class ZlinkStreamInboundObserverDispatcher
 
         public bool IsDisposed => Volatile.Read(ref _disposed) != 0;
 
+        public void Dispose()
+        {
+            if (Interlocked.Exchange(ref _disposed, 1) == 0) owner.Remove(this);
+        }
+
         public ValueTask InvokeAsync(
             ZlinkStreamInboundObservation observation,
             CancellationToken cancellationToken)
-            => observer(observation, cancellationToken);
-
-        public void Dispose()
         {
-            if (Interlocked.Exchange(ref _disposed, 1) == 0)
-            {
-                owner.Remove(this);
-            }
+            return observer(observation, cancellationToken);
         }
     }
 }

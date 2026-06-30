@@ -33,10 +33,7 @@ internal static class ZLinkTelemetry
             new KeyValuePair<string, object?>("action", action),
             new KeyValuePair<string, object?>("reason", reason));
 
-        if (string.Equals(action, "reply-error", StringComparison.Ordinal))
-        {
-            RecordReplyError(surface, kind, reason);
-        }
+        if (string.Equals(action, "reply-error", StringComparison.Ordinal)) RecordReplyError(surface, kind, reason);
     }
 
     public static void RecordDropped(
@@ -77,40 +74,22 @@ internal static class ZLinkTelemetry
         string? actorType = null,
         string? spotRid = null)
     {
-        if (!ActivitySource.HasListeners())
-        {
-            return;
-        }
+        if (!ActivitySource.HasListeners()) return;
 
         using var activity = ActivitySource.StartActivity(
             ResolveSpanName(surface),
             ActivityKind.Consumer);
-        if (activity is null)
-        {
-            return;
-        }
+        if (activity is null) return;
 
         activity.SetTag("zlink.surface", surface);
         activity.SetTag("zlink.kind", kind);
         activity.SetTag("zlink.packet.name", packetName);
         activity.SetTag("zlink.action", action);
         activity.SetTag("zlink.reason", reason);
-        if (!string.IsNullOrEmpty(channelName))
-        {
-            activity.SetTag("zlink.channel.name", channelName);
-        }
-        if (!string.IsNullOrEmpty(actorId))
-        {
-            activity.SetTag("zlink.actor.id", actorId);
-        }
-        if (!string.IsNullOrEmpty(actorType))
-        {
-            activity.SetTag("zlink.actor.type", actorType);
-        }
-        if (!string.IsNullOrEmpty(spotRid))
-        {
-            activity.SetTag("zlink.spot.rid", spotRid);
-        }
+        if (!string.IsNullOrEmpty(channelName)) activity.SetTag("zlink.channel.name", channelName);
+        if (!string.IsNullOrEmpty(actorId)) activity.SetTag("zlink.actor.id", actorId);
+        if (!string.IsNullOrEmpty(actorType)) activity.SetTag("zlink.actor.type", actorType);
+        if (!string.IsNullOrEmpty(spotRid)) activity.SetTag("zlink.spot.rid", spotRid);
         activity.AddEvent(new ActivityEvent(eventName));
     }
 

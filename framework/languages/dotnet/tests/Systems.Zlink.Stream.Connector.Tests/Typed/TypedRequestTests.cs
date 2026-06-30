@@ -1,19 +1,8 @@
-using System.Buffers.Binary;
 using System.Net;
-using System.Net.Security;
 using System.Net.Sockets;
-using System.Net.WebSockets;
-using System.Security.Cryptography;
-using System.Security.Cryptography.X509Certificates;
-using System.Text;
 using System.Text.Json;
-using Systems.Zlink.Stream.Connector;
 using Systems.Zlink.Stream.Connector.Contracts;
-using Systems.Zlink.Stream.Connector.Contracts.Calls;
-using Systems.Zlink.Stream.Connector.Runtime;
-using Systems.Zlink.Stream.Connector.Runtime.Protocol.Framing;
 using Xunit;
-
 
 public sealed partial class StreamConnectorTests
 {
@@ -98,7 +87,8 @@ public sealed partial class StreamConnectorTests
         });
         await connector.Connect.Async();
 
-        var completed = new TaskCompletionSource<ZlinkStreamResult<Pong>>(TaskCreationOptions.RunContinuationsAsynchronously);
+        var completed =
+            new TaskCompletionSource<ZlinkStreamResult<Pong>>(TaskCreationOptions.RunContinuationsAsynchronously);
         connector.Request(new Ping("hello"))
             .PacketName("ping")
             .Submit<Pong>(result => completed.SetResult(result));
@@ -185,7 +175,8 @@ public sealed partial class StreamConnectorTests
             var compressedHeader = headerCodec.Decode(compressedPacket.Header);
             Assert.True(compressedHeader.Flags.HasFlag(ZlinkStreamHeaderFlags.PayloadCompressed));
             var payload = compressionCodec.Decompress(compressedPacket.Payload, 64 * 1024);
-            var decoded = JsonSerializer.Deserialize<Ping>(payload.Span, new JsonSerializerOptions(JsonSerializerDefaults.Web));
+            var decoded =
+                JsonSerializer.Deserialize<Ping>(payload.Span, new JsonSerializerOptions(JsonSerializerDefaults.Web));
             Assert.Equal("compressed", decoded?.Text);
         });
 
@@ -205,6 +196,4 @@ public sealed partial class StreamConnectorTests
             .Async();
         await server;
     }
-
-
 }

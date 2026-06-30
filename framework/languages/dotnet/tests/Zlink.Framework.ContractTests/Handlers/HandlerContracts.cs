@@ -1,3 +1,4 @@
+using System.Reflection;
 using Zlink.Framework.ContractTests.Support;
 
 namespace Zlink.Framework.ContractTests.Handlers;
@@ -59,7 +60,7 @@ public sealed class HandlerContracts
         Assert.Null(
             typeof(ZLinkHandlerInvocation).GetProperty(
                 "Services",
-                System.Reflection.BindingFlags.Instance | System.Reflection.BindingFlags.NonPublic));
+                BindingFlags.Instance | BindingFlags.NonPublic));
     }
 
     private sealed record Authenticate(string PlayerId);
@@ -75,8 +76,10 @@ public sealed class HandlerContracts
         public ValueTask<Authenticated> HandleAsync(
             Authenticate request,
             ZLinkRequestContext context,
-            CancellationToken cancellationToken) =>
-            ValueTask.FromResult(new Authenticated(request.PlayerId));
+            CancellationToken cancellationToken)
+        {
+            return ValueTask.FromResult(new Authenticated(request.PlayerId));
+        }
     }
 
     private sealed class PlayerJoinedSendHandler : IZLinkSendHandler<PlayerJoined>
@@ -112,7 +115,9 @@ public sealed class HandlerContracts
         public ValueTask<object?> InvokeAsync(
             ZLinkHandlerInvocation invocation,
             ZLinkHandlerDelegate next,
-            CancellationToken cancellationToken) =>
-            next(cancellationToken);
+            CancellationToken cancellationToken)
+        {
+            return next(cancellationToken);
+        }
     }
 }

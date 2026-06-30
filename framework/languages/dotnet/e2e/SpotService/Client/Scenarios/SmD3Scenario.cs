@@ -1,7 +1,7 @@
+using SpotService.Client.Support;
 using SpotService.Shared;
 using Systems.Zlink.Stream.Connector.Contracts;
 using Zlink.HttpClient;
-using SpotService.Client.Support;
 
 namespace SpotService.Client.Scenarios;
 
@@ -27,7 +27,7 @@ internal static class SmD3Scenario
                     RequestTimeout = TimeSpan.FromSeconds(5),
                     Heartbeat = new ZlinkStreamHeartbeatOptions { Enabled = false },
                     DispatchMode = ZlinkStreamDispatchMode.Immediate,
-                    MaxReceivedMessages = 1024,
+                    MaxReceivedMessages = 1024
                 });
                 try
                 {
@@ -47,11 +47,11 @@ internal static class SmD3Scenario
             }
 
             if (entry is null)
-            {
                 throw new InvalidOperationException(
-                    last is null ? $"Actor auth did not become routable: {entryActorId}" : $"Actor auth did not become routable: {entryActorId}. Last error: {last.Message}",
+                    last is null
+                        ? $"Actor auth did not become routable: {entryActorId}"
+                        : $"Actor auth did not become routable: {entryActorId}. Last error: {last.Message}",
                     last);
-            }
 
             var entryPushed = entry.WaitFor<ActorPushNotify>().Async().AsTask();
             var entryReply = await entry.Request(new ActorPushReq("entry-push"))
@@ -74,7 +74,7 @@ internal static class SmD3Scenario
                     RequestTimeout = TimeSpan.FromSeconds(5),
                     Heartbeat = new ZlinkStreamHeartbeatOptions { Enabled = false },
                     DispatchMode = ZlinkStreamDispatchMode.Immediate,
-                    MaxReceivedMessages = 1024,
+                    MaxReceivedMessages = 1024
                 });
                 try
                 {
@@ -94,11 +94,11 @@ internal static class SmD3Scenario
             }
 
             if (user is null)
-            {
                 throw new InvalidOperationException(
-                    last is null ? $"Actor auth did not become routable: {userActorId}" : $"Actor auth did not become routable: {userActorId}. Last error: {last.Message}",
+                    last is null
+                        ? $"Actor auth did not become routable: {userActorId}"
+                        : $"Actor auth did not become routable: {userActorId}. Last error: {last.Message}",
                     last);
-            }
 
             var userPushed = user.WaitFor<ActorPushNotify>().Async().AsTask();
             var userReply = await user.Request(new ActorPingReq("user-relay"))
@@ -118,29 +118,23 @@ internal static class SmD3Scenario
         }
         finally
         {
-            if (entry is not null)
-            {
-                await entry.DisposeAsync();
-            }
-            if (user is not null)
-            {
-                await user.DisposeAsync();
-            }
+            if (entry is not null) await entry.DisposeAsync();
+            if (user is not null) await user.DisposeAsync();
         }
 
         var evidence = (await playA.Post("/evidence/wait")
             .Body(new EvidenceWaitRequest([
                 $"spot-actor-joined|rid=play-a|spot={userSpotRid}|actor={userActorId}",
-                $"actor-ping|rid=play-a|actor={userActorId}|spot={userSpotRid}|value=user-relay",
+                $"actor-ping|rid=play-a|actor={userActorId}|spot={userSpotRid}|value=user-relay"
             ]))
             .SubmitAsync<string[]>()).Body;
         ScenarioAssert.That(
             evidence.Any(line => line.Contains(
-                    $"spot-actor-joined|rid=play-a|spot={userSpotRid}|actor={userActorId}",
-                    StringComparison.Ordinal))
-                && evidence.Any(line => line.Contains(
-                    $"actor-ping|rid=play-a|actor={userActorId}|spot={userSpotRid}|value=user-relay",
-                    StringComparison.Ordinal)),
+                $"spot-actor-joined|rid=play-a|spot={userSpotRid}|actor={userActorId}",
+                StringComparison.Ordinal))
+            && evidence.Any(line => line.Contains(
+                $"actor-ping|rid=play-a|actor={userActorId}|spot={userSpotRid}|value=user-relay",
+                StringComparison.Ordinal)),
             "SM-D3 expected user spot bind and relay evidence.");
 
         Console.WriteLine("operation SpotService.sm-d3 passed");

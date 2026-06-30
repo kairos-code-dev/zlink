@@ -25,13 +25,19 @@ internal sealed record RoomRoute(
 
 internal sealed class RedisRoomRouteStore : IRoomRouteStore, IAsyncDisposable
 {
-    private readonly ConnectionMultiplexer _redis;
     private readonly IDatabase _database;
+    private readonly ConnectionMultiplexer _redis;
 
     public RedisRoomRouteStore(SampleSettings settings)
     {
         _redis = ConnectionMultiplexer.Connect(settings.RedisEndpoint);
         _database = _redis.GetDatabase();
+    }
+
+    public async ValueTask DisposeAsync()
+    {
+        await _redis.CloseAsync().ConfigureAwait(false);
+        _redis.Dispose();
     }
 
     public async ValueTask SaveAsync(
@@ -47,7 +53,7 @@ internal sealed class RedisRoomRouteStore : IRoomRouteStore, IAsyncDisposable
                 new("RouteChannelId", route.RouteChannelId),
                 new("OwnerNodeRid", route.OwnerNodeRid),
                 new("SpotRid", route.SpotRid),
-                new("SpotKind", route.SpotKind),
+                new("SpotKind", route.SpotKind)
             }).ConfigureAwait(false);
     }
 
@@ -58,12 +64,10 @@ internal sealed class RedisRoomRouteStore : IRoomRouteStore, IAsyncDisposable
         cancellationToken.ThrowIfCancellationRequested();
         var values = await _database.HashGetAllAsync(Key(roomId)).ConfigureAwait(false);
         if (values.Length == 0)
-        {
             throw new ZLinkFrameworkException(
                 ZLinkFrameworkErrorKind.SpotRouteNotFound,
                 $"SPOT route was not found for room '{roomId}'.",
-                isRetriable: true);
-        }
+                true);
 
         var map = values.ToDictionary(
             static entry => (string)entry.Name!,
@@ -76,28 +80,22 @@ internal sealed class RedisRoomRouteStore : IRoomRouteStore, IAsyncDisposable
             Require(map, "SpotKind", roomId));
     }
 
-    public async ValueTask DisposeAsync()
+    private static string Key(string roomId)
     {
-        await _redis.CloseAsync().ConfigureAwait(false);
-        _redis.Dispose();
+        return $"tictactoe:rooms:{roomId}";
     }
-
-    private static string Key(string roomId) => $"tictactoe:rooms:{roomId}";
 
     private static string Require(
         IReadOnlyDictionary<string, string> values,
         string name,
         string roomId)
     {
-        if (values.TryGetValue(name, out var value) && !string.IsNullOrWhiteSpace(value))
-        {
-            return value;
-        }
+        if (values.TryGetValue(name, out var value) && !string.IsNullOrWhiteSpace(value)) return value;
 
         throw new ZLinkFrameworkException(
             ZLinkFrameworkErrorKind.SpotRouteNotFound,
             $"SPOT route field '{name}' was not found for room '{roomId}'.",
-            isRetriable: true);
+            true);
     }
 }
 
@@ -114,6 +112,6 @@ internal sealed class RedisSpotRemoteAddressResolver(IRoomRouteStore routes)
             route.RouteChannelId,
             RoutingId.From(route.OwnerNodeRid),
             RoutingId.From(route.SpotRid),
-            Enum.Parse<ZLinkSpotKind>(route.SpotKind, ignoreCase: false));
+            Enum.Parse<ZLinkSpotKind>(route.SpotKind, false));
     }
 }

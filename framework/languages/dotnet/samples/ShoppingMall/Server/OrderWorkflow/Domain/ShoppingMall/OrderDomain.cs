@@ -1,5 +1,5 @@
-using ShoppingMall.Server.Shared.Domain;
 using ShoppingMall.Server.Configuration;
+using ShoppingMall.Server.Shared.Domain;
 using ShoppingMall.Shared.Contracts;
 
 namespace ShoppingMall.Server.OrderWorkflow.Domain.ShoppingMall;
@@ -25,10 +25,7 @@ internal sealed class OrderAggregate
 
     public IReadOnlyList<OrderDomainEvent> Start(StartOrderWorkflowReq command, string eventId, long nowUnixMs)
     {
-        if (HasStarted)
-        {
-            return [];
-        }
+        if (HasStarted) return [];
 
         return
         [
@@ -41,7 +38,7 @@ internal sealed class OrderAggregate
                 command.Lines,
                 command.Amount,
                 command.Currency,
-                nowUnixMs),
+                nowUnixMs)
         ];
     }
 
@@ -51,10 +48,7 @@ internal sealed class OrderAggregate
         string failureEventId,
         long nowUnixMs)
     {
-        if (IsTerminal || Status != OrderStatuses.Created)
-        {
-            return [];
-        }
+        if (IsTerminal || Status != OrderStatuses.Created) return [];
 
         if (!result.Accepted)
         {
@@ -62,7 +56,7 @@ internal sealed class OrderAggregate
             return
             [
                 new InventoryReservationFailedEvent(eventId, OrderId, reason, nowUnixMs),
-                new OrderFailedEvent(failureEventId, OrderId, reason, nowUnixMs),
+                new OrderFailedEvent(failureEventId, OrderId, reason, nowUnixMs)
             ];
         }
 
@@ -72,7 +66,7 @@ internal sealed class OrderAggregate
                 eventId,
                 OrderId,
                 result.ReservationId ?? throw new InvalidOperationException("Accepted reservation requires an id."),
-                nowUnixMs),
+                nowUnixMs)
         ];
     }
 
@@ -83,10 +77,7 @@ internal sealed class OrderAggregate
         string failureEventId,
         long nowUnixMs)
     {
-        if (IsTerminal || Status != OrderStatuses.InventoryReserved)
-        {
-            return [];
-        }
+        if (IsTerminal || Status != OrderStatuses.InventoryReserved) return [];
 
         if (!result.Accepted)
         {
@@ -100,7 +91,7 @@ internal sealed class OrderAggregate
                     ReservationId ?? throw new InvalidOperationException("Reservation is required for compensation."),
                     reason,
                     nowUnixMs),
-                new OrderFailedEvent(failureEventId, OrderId, reason, nowUnixMs),
+                new OrderFailedEvent(failureEventId, OrderId, reason, nowUnixMs)
             ];
         }
 
@@ -110,16 +101,13 @@ internal sealed class OrderAggregate
                 eventId,
                 OrderId,
                 result.PaymentId ?? throw new InvalidOperationException("Accepted payment requires an id."),
-                nowUnixMs),
+                nowUnixMs)
         ];
     }
 
     public IReadOnlyList<OrderDomainEvent> Confirm(string eventId, long nowUnixMs)
     {
-        if (IsTerminal || Status != OrderStatuses.PaymentAuthorized)
-        {
-            return [];
-        }
+        if (IsTerminal || Status != OrderStatuses.PaymentAuthorized) return [];
 
         return [new OrderConfirmedEvent(eventId, OrderId, nowUnixMs)];
     }
@@ -160,10 +148,7 @@ internal sealed class OrderAggregate
     public static OrderAggregate Rehydrate(IEnumerable<OrderDomainEvent> events)
     {
         var aggregate = new OrderAggregate();
-        foreach (var domainEvent in events)
-        {
-            aggregate.Apply(domainEvent);
-        }
+        foreach (var domainEvent in events) aggregate.Apply(domainEvent);
 
         return aggregate;
     }

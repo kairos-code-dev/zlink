@@ -1,5 +1,3 @@
-using Zlink.Framework.Runtime.Backend.Contracts;
-
 namespace Zlink.Framework.Runtime.Channels;
 
 internal sealed class ZLinkChannelRuntimeBundle : IAsyncDisposable
@@ -32,6 +30,18 @@ internal sealed class ZLinkChannelRuntimeBundle : IAsyncDisposable
 
     public IZLinkBackendSpotRouteBridge? SpotRouteBridge { get; set; }
 
+    public async ValueTask DisposeAsync()
+    {
+        if (Submitter is not null) await Submitter.DisposeAsync();
+
+        if (Discovery is not null) await Discovery.DisposeAsync();
+
+        if (SpotRouteBridge is not null) await SpotRouteBridge.DisposeAsync();
+
+        await Socket.DisposeAsync();
+        ReceiveGate.Dispose();
+    }
+
     public bool TryAddManualConnection(string endpoint)
     {
         lock (_manualConnections)
@@ -62,26 +72,5 @@ internal sealed class ZLinkChannelRuntimeBundle : IAsyncDisposable
         {
             return _manualConnections.Snapshot();
         }
-    }
-
-    public async ValueTask DisposeAsync()
-    {
-        if (Submitter is not null)
-        {
-            await Submitter.DisposeAsync();
-        }
-
-        if (Discovery is not null)
-        {
-            await Discovery.DisposeAsync();
-        }
-
-        if (SpotRouteBridge is not null)
-        {
-            await SpotRouteBridge.DisposeAsync();
-        }
-
-        await Socket.DisposeAsync();
-        ReceiveGate.Dispose();
     }
 }

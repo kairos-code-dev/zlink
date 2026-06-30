@@ -1,6 +1,5 @@
 // SPDX-License-Identifier: MPL-2.0
 
-using System;
 using Systems.Zlink.Runtime.Native;
 
 namespace Systems.Zlink;
@@ -56,9 +55,9 @@ internal unsafe struct RoutingIdSnapshot
 
         if (routingId.Length <= InlineCapacity)
         {
-            for (int i = 0; i < routingId.Length && i < 8; i++)
+            for (var i = 0; i < routingId.Length && i < 8; i++)
                 snapshot._lo |= (ulong)routingId[i] << (i * 8);
-            for (int i = 8; i < routingId.Length; i++)
+            for (var i = 8; i < routingId.Length; i++)
                 snapshot._hi |= (ulong)routingId[i] << ((i - 8) * 8);
         }
         else
@@ -77,12 +76,13 @@ internal unsafe struct RoutingIdSnapshot
         // a byte[] when the routing id is already in the thread cache.
         if (_large == null)
         {
-            RoutingId? cached =
+            var cached =
                 RoutingId.TryFromInlineCached(_size, _lo, _hi);
             if (cached != null)
                 return cached;
         }
-        byte[]? bytes = ToByteArray();
+
+        var bytes = ToByteArray();
         return bytes == null ? null : RoutingId.FromOwnedOptionalBytes(bytes);
     }
 
@@ -93,10 +93,10 @@ internal unsafe struct RoutingIdSnapshot
         if (_large != null)
             return _large;
 
-        byte[] bytes = new byte[_size];
-        for (int i = 0; i < _size && i < 8; i++)
+        var bytes = new byte[_size];
+        for (var i = 0; i < _size && i < 8; i++)
             bytes[i] = (byte)(_lo >> (i * 8));
-        for (int i = 8; i < _size; i++)
+        for (var i = 8; i < _size; i++)
             bytes[i] = (byte)(_hi >> ((i - 8) * 8));
         return bytes;
     }
@@ -117,12 +117,13 @@ internal unsafe struct RoutingIdSnapshot
                 new ReadOnlySpan<byte>(src, _size)
                     .CopyTo(new Span<byte>(dst, _size));
             }
+
             return;
         }
 
-        for (int i = 0; i < _size && i < 8; i++)
+        for (var i = 0; i < _size && i < 8; i++)
             target.Data[i] = (byte)(_lo >> (i * 8));
-        for (int i = 8; i < _size; i++)
+        for (var i = 8; i < _size; i++)
             target.Data[i] = (byte)(_hi >> ((i - 8) * 8));
     }
 }

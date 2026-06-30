@@ -1,7 +1,5 @@
 using PubSub.Shared;
 using Zlink.Framework.Contracts.Channels;
-using PubSub.Server.Publisher.Configuration;
-using PubSub.Server.Publisher;
 
 namespace PubSub.Server.Publisher.Endpoints;
 

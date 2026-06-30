@@ -1,6 +1,6 @@
-using Zlink.HttpClient;
-using RegistryMessaging.Shared;
 using RegistryMessaging.Client.Support;
+using RegistryMessaging.Shared;
+using Zlink.HttpClient;
 
 namespace RegistryMessaging.Client.Scenarios;
 
@@ -11,8 +11,8 @@ internal static class RmC7WeightedProviderScenario
     public static async Task RunAsync(ClientOptions options)
     {
         await using var cluster = await DynamicClusterLauncher.StartAsync(options, "rm-c7");
-        var providerA = await cluster.StartProviderAsync("api-a-weighted", "api-a", weight: 75);
-        var providerB = await cluster.StartProviderAsync("api-b-weighted", "api-b", weight: 25);
+        var providerA = await cluster.StartProviderAsync("api-a-weighted", "api-a", 75);
+        var providerB = await cluster.StartProviderAsync("api-b-weighted", "api-b", 25);
         using var requester = ZLinkHttpClient.Create(providerA.HttpUrl)
             .Json()
             .Timeout(TimeSpan.FromMinutes(5))
@@ -56,7 +56,7 @@ internal static class RmC7WeightedProviderScenario
         var counts = new Dictionary<string, int>(StringComparer.Ordinal)
         {
             ["apiA"] = ScenarioAssert.CountNewEvidence(afterA, beforeA, "profile-request|rid=api-a", marker),
-            ["apiB"] = ScenarioAssert.CountNewEvidence(afterB, beforeB, "profile-request|rid=api-b", marker),
+            ["apiB"] = ScenarioAssert.CountNewEvidence(afterB, beforeB, "profile-request|rid=api-b", marker)
         };
         ScenarioAssert.That(
             counts["apiA"] == apiAValues.Length
@@ -68,11 +68,15 @@ internal static class RmC7WeightedProviderScenario
         Console.WriteLine("scenario RM-C7 passed");
     }
 
-    static async Task<string[]> ReadEvidenceAsync(ZLinkHttpClient http) =>
-        (await http.Get("/evidence").SubmitAsync<string[]>()).Body;
+    private static async Task<string[]> ReadEvidenceAsync(ZLinkHttpClient http)
+    {
+        return (await http.Get("/evidence").SubmitAsync<string[]>()).Body;
+    }
 
-    static async Task<string[]> WaitEvidenceAsync(ZLinkHttpClient http, string contains) =>
-        (await http.Post("/evidence/wait")
-            .Body(new EvidenceWaitRequest(contains, TimeoutMilliseconds: 20000))
+    private static async Task<string[]> WaitEvidenceAsync(ZLinkHttpClient http, string contains)
+    {
+        return (await http.Post("/evidence/wait")
+            .Body(new EvidenceWaitRequest(contains, 20000))
             .SubmitAsync<string[]>()).Body;
+    }
 }

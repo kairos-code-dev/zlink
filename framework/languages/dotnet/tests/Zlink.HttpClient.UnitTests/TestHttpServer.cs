@@ -2,18 +2,19 @@
 
 using System.Net;
 using System.Net.Sockets;
+using System.Text;
 
 namespace Zlink.HttpClient.UnitTests;
 
 /// <summary>
-/// Minimal in-process HTTP server backed by <see cref="HttpListener"/> for contract tests.
-/// Mirrors the role of the C++ <c>test_cpp_http_client</c> embedded server.
+///     Minimal in-process HTTP server backed by <see cref="HttpListener" /> for contract tests.
+///     Mirrors the role of the C++ <c>test_cpp_http_client</c> embedded server.
 /// </summary>
 internal sealed class TestHttpServer : IDisposable
 {
-    private readonly HttpListener _listener = new();
-    private readonly Func<HttpListenerContext, Task> _handler;
     private readonly CancellationTokenSource _cts = new();
+    private readonly Func<HttpListenerContext, Task> _handler;
+    private readonly HttpListener _listener = new();
 
     public TestHttpServer(Func<HttpListenerContext, Task> handler)
     {
@@ -26,6 +27,22 @@ internal sealed class TestHttpServer : IDisposable
     }
 
     public string BaseUrl { get; }
+
+    public void Dispose()
+    {
+        _cts.Cancel();
+        try
+        {
+            _listener.Stop();
+            _listener.Close();
+        }
+        catch
+        {
+            // already stopped
+        }
+
+        _cts.Dispose();
+    }
 
     private async Task AcceptLoopAsync()
     {
@@ -74,32 +91,17 @@ internal sealed class TestHttpServer : IDisposable
         listener.Stop();
         return port;
     }
-
-    public void Dispose()
-    {
-        _cts.Cancel();
-        try
-        {
-            _listener.Stop();
-            _listener.Close();
-        }
-        catch
-        {
-            // already stopped
-        }
-
-        _cts.Dispose();
-    }
 }
 
-/// <summary>Helpers for writing <see cref="HttpListener"/> responses in tests.</summary>
+/// <summary>Helpers for writing <see cref="HttpListener" /> responses in tests.</summary>
 internal static class TestHttpServerExtensions
 {
-    public static async Task WriteAsync(this HttpListenerResponse response, int status, string body, string contentType = "application/json")
+    public static async Task WriteAsync(this HttpListenerResponse response, int status, string body,
+        string contentType = "application/json")
     {
         response.StatusCode = status;
         response.ContentType = contentType;
-        var bytes = System.Text.Encoding.UTF8.GetBytes(body);
+        var bytes = Encoding.UTF8.GetBytes(body);
         response.ContentLength64 = bytes.Length;
         await response.OutputStream.WriteAsync(bytes).ConfigureAwait(false);
     }

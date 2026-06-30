@@ -1,8 +1,8 @@
-using Zlink.HttpClient;
-using RegistryMessaging.Shared;
 using System.Security.Cryptography;
 using System.Text;
 using RegistryMessaging.Client.Support;
+using RegistryMessaging.Shared;
+using Zlink.HttpClient;
 
 namespace RegistryMessaging.Client.Scenarios;
 
@@ -35,23 +35,21 @@ internal static class RmC8PayloadRoundTripScenario
 
         var after = providerA.Get("/evidence").Fetch<string[]>();
         ScenarioAssert.That(
-            markers.All(marker => ScenarioAssert.CountNewEvidence(after, before, "payload-request|rid=api-a", marker) == 1),
+            markers.All(marker =>
+                ScenarioAssert.CountNewEvidence(after, before, "payload-request|rid=api-a", marker) == 1),
             "RM-C8 payload evidence missing.");
         Console.WriteLine("scenario RM-C8 passed");
     }
 
-    static string BuildPayload(int size)
+    private static string BuildPayload(int size)
     {
         var builder = new StringBuilder(size);
-        for (var i = 0; i < size; i++)
-        {
-            builder.Append((char)('a' + (i % 26)));
-        }
+        for (var i = 0; i < size; i++) builder.Append((char)('a' + i % 26));
 
         return builder.ToString();
     }
 
-    static string HashPayload(string payload)
+    private static string HashPayload(string payload)
     {
         return Convert.ToHexString(SHA256.HashData(Encoding.UTF8.GetBytes(payload)));
     }

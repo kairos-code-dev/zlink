@@ -25,10 +25,7 @@ internal sealed partial class ZLinkActorSessionManager
         var shouldUnbind = await ClearStreamBindingAsync(state, stream, cancellationToken)
             .ConfigureAwait(false);
 
-        if (!shouldUnbind)
-        {
-            return;
-        }
+        if (!shouldUnbind) return;
 
         await TryUnbindNativeActorAsync(state, actor.ActorId, stream, cancellationToken)
             .ConfigureAwait(false);
@@ -56,10 +53,7 @@ internal sealed partial class ZLinkActorSessionManager
         return await state.ExecuteLockedAsync(
             () =>
             {
-                if (!string.Equals(state.SessionId, stream.SessionId, StringComparison.Ordinal))
-                {
-                    return false;
-                }
+                if (!string.Equals(state.SessionId, stream.SessionId, StringComparison.Ordinal)) return false;
 
                 state.SessionId = null;
                 state.Stream = null;
@@ -76,9 +70,7 @@ internal sealed partial class ZLinkActorSessionManager
         if (getActorSpotNode() is null
             || state.NativeActorRef is not { } actorRef
             || stream is not ZLinkManagedStream managedStream)
-        {
             return;
-        }
 
         await managedStream.BindActorAsync(
                 actorRef,
@@ -96,9 +88,7 @@ internal sealed partial class ZLinkActorSessionManager
         if (getActorSpotNode() is null
             || state.NativeActorRef is null
             || stream is not ZLinkManagedStream managedStream)
-        {
             return;
-        }
 
         try
         {

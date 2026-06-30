@@ -11,8 +11,9 @@ internal sealed record ZLinkRouteHandlerDescriptor(
 
 internal sealed class ZLinkRouteHandlerRegistry(IEnumerable<ZLinkRouteHandlerDescriptor> descriptors)
 {
-    private readonly Dictionary<(string Channel, ZLinkMessageKind Kind, string Packet), ZLinkRouteHandlerDescriptor> _handlers =
-        Build(descriptors);
+    private readonly Dictionary<(string Channel, ZLinkMessageKind Kind, string Packet), ZLinkRouteHandlerDescriptor>
+        _handlers =
+            Build(descriptors);
 
     public ZLinkRouteHandlerDescriptor Get(
         string routerChannelId,
@@ -34,18 +35,16 @@ internal sealed class ZLinkRouteHandlerRegistry(IEnumerable<ZLinkRouteHandlerDes
         return _handlers.TryGetValue((routerChannelId, kind, packetName), out descriptor);
     }
 
-    private static Dictionary<(string Channel, ZLinkMessageKind Kind, string Packet), ZLinkRouteHandlerDescriptor> Build(
-        IEnumerable<ZLinkRouteHandlerDescriptor> descriptors)
+    private static Dictionary<(string Channel, ZLinkMessageKind Kind, string Packet), ZLinkRouteHandlerDescriptor>
+        Build(
+            IEnumerable<ZLinkRouteHandlerDescriptor> descriptors)
     {
-        var handlers = new Dictionary<(string Channel, ZLinkMessageKind Kind, string Packet), ZLinkRouteHandlerDescriptor>();
+        var handlers =
+            new Dictionary<(string Channel, ZLinkMessageKind Kind, string Packet), ZLinkRouteHandlerDescriptor>();
         foreach (var descriptor in descriptors)
-        {
             if (!handlers.TryAdd((descriptor.RouterChannelId, descriptor.Kind, descriptor.PacketName), descriptor))
-            {
                 throw new ZLinkConfigurationException(
                     $"Duplicate routed handler '{descriptor.RouterChannelId}:{descriptor.Kind}:{descriptor.PacketName}'.");
-            }
-        }
 
         return handlers;
     }

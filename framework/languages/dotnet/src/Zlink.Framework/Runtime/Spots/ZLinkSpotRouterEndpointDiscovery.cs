@@ -11,10 +11,7 @@ internal static class ZLinkSpotRouterEndpointDiscovery
         RoutingId nodeRoutingId,
         string endpoint)
     {
-        if (nodeRoutingId.IsEmpty || string.IsNullOrWhiteSpace(endpoint))
-        {
-            return;
-        }
+        if (nodeRoutingId.IsEmpty || string.IsNullOrWhiteSpace(endpoint)) return;
 
         discovery.BindRoute(
             RouteKind,
@@ -46,10 +43,7 @@ internal static class ZLinkSpotRouterEndpointDiscovery
         out string endpoint)
     {
         endpoint = string.Empty;
-        if (nodeRoutingId.IsEmpty)
-        {
-            return false;
-        }
+        if (nodeRoutingId.IsEmpty) return false;
 
         try
         {

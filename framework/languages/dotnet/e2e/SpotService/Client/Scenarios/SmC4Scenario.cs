@@ -1,6 +1,6 @@
+using SpotService.Client.Support;
 using SpotService.Shared;
 using Zlink.HttpClient;
-using SpotService.Client.Support;
 
 namespace SpotService.Client.Scenarios;
 
@@ -12,12 +12,14 @@ internal static class SmC4Scenario
         var created = (await playA.Post("/spot/create")
             .Body(new CreateSpotReq(spotRid))
             .SubmitAsync<CreateSpotReply>()).Body;
-        ScenarioAssert.That(created.SpotRid == spotRid && created.NodeRid == "play-a", "SM-C4 publish spot was not created on play-a.");
+        ScenarioAssert.That(created.SpotRid == spotRid && created.NodeRid == "play-a",
+            "SM-C4 publish spot was not created on play-a.");
         var unsubscribedSpotRid = $"spot-sm-c4-unsubscribed-{Guid.NewGuid():N}";
         var unsubscribedSpot = (await playA.Post("/spot/create-alternate")
             .Body(new CreateSpotReq(unsubscribedSpotRid))
             .SubmitAsync<CreateSpotReply>()).Body;
-        ScenarioAssert.That(unsubscribedSpot.SpotRid == unsubscribedSpotRid && unsubscribedSpot.NodeRid == "play-a", "SM-C4 unsubscribed spot was not created on play-a.");
+        ScenarioAssert.That(unsubscribedSpot.SpotRid == unsubscribedSpotRid && unsubscribedSpot.NodeRid == "play-a",
+            "SM-C4 unsubscribed spot was not created on play-a.");
         var marker = "sm-c4-publish";
         var waitTask = playA.Post("/spot/publish/wait")
             .Body(new SpotPublishReq(spotRid, marker))
@@ -32,13 +34,17 @@ internal static class SmC4Scenario
         ScenarioAssert.That(observe.Operation == "spot.sm-c4-observe", "SM-C4 observe operation mismatch.");
         ScenarioAssert.That(observe.Received, "SM-C4 publish-only gateway event was not received.");
         ScenarioAssert.That(
-            publish.Evidence.Any(line => line.Contains($"spot-publish|rid=gateway|spot={spotRid}|marker={marker}", StringComparison.Ordinal)),
+            publish.Evidence.Any(line =>
+                line.Contains($"spot-publish|rid=gateway|spot={spotRid}|marker={marker}", StringComparison.Ordinal)),
             "SM-C4 gateway evidence did not include publish marker.");
         ScenarioAssert.That(
-            observe.Evidence.Any(line => line.Contains($"spot-event|rid=play-a|spot={spotRid}|marker={marker}", StringComparison.Ordinal)),
+            observe.Evidence.Any(line =>
+                line.Contains($"spot-event|rid=play-a|spot={spotRid}|marker={marker}", StringComparison.Ordinal)),
             "SM-C4 evidence did not include spot event publish.");
         ScenarioAssert.That(
-            observe.Evidence.All(line => !line.Contains($"spot-event|rid=play-a|spot={unsubscribedSpotRid}|marker={marker}", StringComparison.Ordinal)),
+            observe.Evidence.All(line =>
+                !line.Contains($"spot-event|rid=play-a|spot={unsubscribedSpotRid}|marker={marker}",
+                    StringComparison.Ordinal)),
             "SM-C4 unsubscribed spot received publish event.");
         Console.WriteLine("operation SpotService.sm-c4 passed");
     }

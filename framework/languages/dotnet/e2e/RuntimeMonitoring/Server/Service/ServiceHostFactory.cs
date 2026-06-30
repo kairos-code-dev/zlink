@@ -1,9 +1,4 @@
-using Microsoft.AspNetCore.Builder;
-using Microsoft.AspNetCore.Http;
 using Microsoft.AspNetCore.Mvc;
-using Microsoft.Extensions.DependencyInjection;
-using Microsoft.Extensions.Hosting;
-using Microsoft.Extensions.Logging;
 using RuntimeMonitoring.Server.Service.Handlers;
 using RuntimeMonitoring.Server.Service.Support;
 using RuntimeMonitoring.Shared;
@@ -17,15 +12,24 @@ namespace RuntimeMonitoring.Server.Service;
 
 internal static class ServiceHostFactory
 {
-    public static WebApplication CreateAll(string[] args) => Create(args, ServiceMonitorProfile.All);
+    public static WebApplication CreateAll(string[] args)
+    {
+        return Create(args, ServiceMonitorProfile.All);
+    }
 
-    public static WebApplication CreateSocketFilter(string[] args) => Create(args, ServiceMonitorProfile.SocketFilter);
+    public static WebApplication CreateSocketFilter(string[] args)
+    {
+        return Create(args, ServiceMonitorProfile.SocketFilter);
+    }
 
-    public static WebApplication CreateThrowing(string[] args) => Create(args, ServiceMonitorProfile.Throwing);
+    public static WebApplication CreateThrowing(string[] args)
+    {
+        return Create(args, ServiceMonitorProfile.Throwing);
+    }
 
     public static WebApplication Create(string[] args, ServiceMonitorProfile profile)
     {
-        var options = ServerOptions.Parse(args, defaultRole: "service");
+        var options = ServerOptions.Parse(args, "service");
         Directory.CreateDirectory(options.LogDir);
 
         var builder = WebApplication.CreateBuilder(args);
@@ -41,13 +45,12 @@ internal static class ServiceHostFactory
         builder.Services.AddScoped<IZLinkRuntimeEventHandler<ZLinkRegistryEvent>, RegistryEventRecorder>();
         builder.Services.AddScoped<IZLinkRuntimeEventHandler<ZLinkSpotEvent>, SpotEventRecorder>();
         if (profile == ServiceMonitorProfile.Throwing)
-        {
             builder.Services.AddScoped<IZLinkRuntimeEventHandler<ZLinkSocketEvent>, ThrowingSocketEventRecorder>();
-        }
 
         builder.Services.AddZLinkFramework(framework =>
         {
-            framework.UseDiscovery().AddRegistryEndpoint(Require(options.RegistryRouterEndpoint, "--registry-router-endpoint"));
+            framework.UseDiscovery()
+                .AddRegistryEndpoint(Require(options.RegistryRouterEndpoint, "--registry-router-endpoint"));
             framework.ConfigureDispatch()
                 .MessageFlow(ZLinkMessageFlowLogMode.KeyTransitions)
                 .TraceLogFile(Path.Combine(options.LogDir, $"{options.Rid}-flow.log"))
@@ -61,7 +64,6 @@ internal static class ServiceHostFactory
             if (profile == ServiceMonitorProfile.All)
             {
                 var spotMesh = framework.AddSpotMesh(RuntimeMonitoringNames.SpotChannel);
-                spotMesh.UseDiscovery().AddRegistryEndpoint(Require(options.RegistryRouterEndpoint, "--registry-router-endpoint"));
                 spotMesh.EnableRouter(Require(options.SpotRouterEndpoint, "--spot-router-endpoint"))
                     .SetRoutingId(RoutingId.From(options.Rid))
                     .EnablePubSub(Require(options.SpotPubEndpoint, "--spot-pub-endpoint"))
@@ -71,20 +73,14 @@ internal static class ServiceHostFactory
         builder.Services.AddZLinkMonitoring(monitor =>
         {
             if (profile == ServiceMonitorProfile.SocketFilter)
-            {
                 monitor.AddSocketEvents(
                     RuntimeMonitoringNames.ChannelServerSource,
                     ZLinkSocketEventKind.ConnectionReady);
-            }
             else
-            {
                 monitor.AddSocketEvents(RuntimeMonitoringNames.ChannelServerSource);
-            }
 
             if (profile == ServiceMonitorProfile.All)
-            {
                 monitor.AddSpotEvents(RuntimeMonitoringNames.SpotNode, TimeSpan.FromMilliseconds(100));
-            }
         });
 
         var app = builder.Build();
@@ -98,10 +94,10 @@ internal static class ServiceHostFactory
             var timeout = TimeSpan.FromMilliseconds(Math.Clamp(request.TimeoutMilliseconds, 1, 30000));
             var snapshot = await evidence.WaitUntilAsync(
                 entries => request.ContainsAll.All(expected =>
-                        entries.Any(entry => entry.Contains(expected, StringComparison.Ordinal)))
-                    && request.ContainsAnyGroups.All(group =>
-                        group.Any(expected =>
-                            entries.Any(entry => entry.Contains(expected, StringComparison.Ordinal)))),
+                               entries.Any(entry => entry.Contains(expected, StringComparison.Ordinal)))
+                           && request.ContainsAnyGroups.All(group =>
+                               group.Any(expected =>
+                                   entries.Any(entry => entry.Contains(expected, StringComparison.Ordinal)))),
                 timeout,
                 cancellationToken);
             return Results.Ok(snapshot);
@@ -130,7 +126,7 @@ internal static class ServiceHostFactory
         return app;
     }
 
-    static string Require(string? value, string name)
+    private static string Require(string? value, string name)
     {
         return string.IsNullOrWhiteSpace(value)
             ? throw new InvalidOperationException($"{name} is required.")

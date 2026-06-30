@@ -1,6 +1,6 @@
-namespace SupportChat.Server.Support.Infrastructure.ZLink.Actors;
-
 using Systems.Zlink;
+
+namespace SupportChat.Server.Support.Infrastructure.ZLink.Actors;
 
 internal sealed record SupportActorDirectoryEntry(
     SupportUserActor Actor,

@@ -1,9 +1,8 @@
-using Systems.Zlink;
-using Zlink.Framework.Contracts.Codecs.Json;
 using System.Text;
+using Systems.Zlink;
 using TicTacToe.Server.Configuration;
-using TicTacToe.Server.Play.Infrastructure.ZLink.Actors;
 using TicTacToe.Server.Play.Domain.TicTacToe;
+using TicTacToe.Server.Play.Infrastructure.ZLink.Actors;
 using TicTacToe.Server.Play.Infrastructure.ZLink.Spots.TicTacToeGameSpot.Handlers;
 using TicTacToe.Shared.Contracts;
 using Zlink.Framework.Contracts.Messaging;
@@ -12,7 +11,7 @@ using Zlink.Framework.Contracts.Timers;
 
 namespace TicTacToe.Server.Play.Infrastructure.ZLink.Spots.TicTacToeGameSpot;
 
-sealed class TicTacToeGame(
+internal sealed class TicTacToeGame(
     IZLinkSpotContext context,
     ILogger<TicTacToeGame> logger) : IZLinkSpot<PlayActor>
 {
@@ -20,8 +19,8 @@ sealed class TicTacToeGame(
     private static readonly TimeSpan TurnTimeout = TimeSpan.FromSeconds(15);
 
     private readonly Dictionary<string, PlayActor> _actors = new(StringComparer.Ordinal);
-    private readonly string _roomId = DecodeRoomId(context.SpotRid);
     private readonly TicTacToeMatch _match = new(DecodeRoomId(context.SpotRid), TurnTimeout);
+    private readonly string _roomId = DecodeRoomId(context.SpotRid);
     private IZLinkTimer? _gameTick;
 
     public IZLinkSpotContext Context { get; } = context;
@@ -109,10 +108,7 @@ sealed class TicTacToeGame(
     public async ValueTask OnClosingAsync(CancellationToken cancellationToken)
     {
         _ = cancellationToken;
-        if (_gameTick is not null)
-        {
-            await _gameTick.CancelAsync();
-        }
+        if (_gameTick is not null) await _gameTick.CancelAsync();
     }
 
     public async ValueTask<TicTacToeGameJoinRes> JoinPlayerAsync(
@@ -122,31 +118,22 @@ sealed class TicTacToeGame(
         CancellationToken cancellationToken)
     {
         if (!string.Equals(roomId, _roomId, StringComparison.Ordinal))
-        {
             throw new InvalidOperationException($"Actor requested join for a different room. roomId={roomId}");
-        }
 
         if (!string.Equals(player.ActorId, actor.ActorId, StringComparison.Ordinal))
-        {
             throw new InvalidOperationException(
                 $"Join player '{player.ActorId}' does not match actor '{actor.ActorId}'.");
-        }
 
         if (player.Level < SampleDefaults.RequiredLevel)
-        {
             throw new InvalidOperationException(
                 $"Player level {player.Level} is below required level {SampleDefaults.RequiredLevel}.");
-        }
 
         actor.JoinRoom(roomId);
         actor.ApplyPlayer(player);
         _actors[actor.ActorId] = actor;
 
         var change = _match.JoinPlayer(actor.ActorId, DateTimeOffset.UtcNow);
-        if (change.IsNewPlayer)
-        {
-            await NotifyPlayerJoinedAsync(actor, change.Mark, change.State, cancellationToken);
-        }
+        if (change.IsNewPlayer) await NotifyPlayerJoinedAsync(actor, change.Mark, change.State, cancellationToken);
 
         await BroadcastAsync(change.State, actor.ActorId, cancellationToken);
         return new TicTacToeGameJoinRes(change.State);
@@ -167,10 +154,7 @@ sealed class TicTacToeGame(
     internal async ValueTask TickAsync(CancellationToken cancellationToken)
     {
         var change = _match.Tick(DateTimeOffset.UtcNow);
-        if (!change.HasChanged)
-        {
-            return;
-        }
+        if (!change.HasChanged) return;
 
         await BroadcastAsync(change.State, null, cancellationToken);
     }
@@ -181,20 +165,12 @@ sealed class TicTacToeGame(
         CancellationToken cancellationToken)
     {
         if (!string.Equals(roomId, _roomId, StringComparison.Ordinal))
-        {
             throw new InvalidOperationException($"Actor requested leave for a different room. roomId={roomId}");
-        }
 
         var state = _match.Snapshot();
-        if (!IsTerminal(state))
-        {
-            throw new InvalidOperationException($"Game is not finished. status={state.Status}");
-        }
+        if (!IsTerminal(state)) throw new InvalidOperationException($"Game is not finished. status={state.Status}");
 
-        if (!_actors.ContainsKey(actor.ActorId))
-        {
-            return;
-        }
+        if (!_actors.ContainsKey(actor.ActorId)) return;
 
         actor.MarkForDestroyAfterRoomLeave();
         await Context.leaveActor(actor, cancellationToken);
@@ -248,16 +224,11 @@ sealed class TicTacToeGame(
         if (string.Equals(before.Status, TicTacToeGameStatuses.Won, StringComparison.Ordinal)
             || !string.Equals(after.Status, TicTacToeGameStatuses.Won, StringComparison.Ordinal)
             || !string.Equals(after.Winner, actor.ActorId, StringComparison.Ordinal))
-        {
             return ValueTask.CompletedTask;
-        }
 
         var player = actor.RequirePlayer();
         var wins = player.Wins + 1;
-        if (wins != 100)
-        {
-            return ValueTask.CompletedTask;
-        }
+        if (wins != 100) return ValueTask.CompletedTask;
 
         logger.LogInformation(
             "game spot: publishing win milestone. actor={ActorId}, roomId={RoomId}, wins={Wins}",
@@ -275,16 +246,15 @@ sealed class TicTacToeGame(
         IReadOnlyList<PlayActor> recipients,
         Func<PlayActor, ValueTask> sendAsync)
     {
-        foreach (var recipient in recipients)
-        {
-            await sendAsync(recipient);
-        }
+        foreach (var recipient in recipients) await sendAsync(recipient);
     }
 
-    private static bool IsTerminal(GameState state) =>
-        string.Equals(state.Status, TicTacToeGameStatuses.Won, StringComparison.Ordinal)
-        || string.Equals(state.Status, TicTacToeGameStatuses.Draw, StringComparison.Ordinal)
-        || string.Equals(state.Status, TicTacToeGameStatuses.TurnTimedOut, StringComparison.Ordinal);
+    private static bool IsTerminal(GameState state)
+    {
+        return string.Equals(state.Status, TicTacToeGameStatuses.Won, StringComparison.Ordinal)
+               || string.Equals(state.Status, TicTacToeGameStatuses.Draw, StringComparison.Ordinal)
+               || string.Equals(state.Status, TicTacToeGameStatuses.TurnTimedOut, StringComparison.Ordinal);
+    }
 
     private static string DecodeRoomId(RoutingId spotRid)
     {

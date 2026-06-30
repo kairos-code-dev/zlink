@@ -1,7 +1,7 @@
 using System.Text.Json;
 using GameQuest.QuestMission.Application;
-using GameQuest.Shared;
 using GameQuest.Server.Configuration;
+using GameQuest.Shared;
 using Zlink.Framework.Contracts.Errors;
 using Zlink.HttpClient;
 
@@ -38,10 +38,7 @@ internal sealed class HttpQuestProgressNotifier(GameQuestTopology topology) : IQ
             var response = await gameApi.Post("/internal/notify")
                 .Body(request)
                 .SubmitRawAsync(cancellationToken);
-            if (response.Status is < 200 or >= 300)
-            {
-                return new QuestProgressNotifyResult(false, response.Status, null);
-            }
+            if (response.Status is < 200 or >= 300) return new QuestProgressNotifyResult(false, response.Status, null);
 
             var delivered = JsonSerializer.Deserialize<NotifyQuestProgressRes>(response.Body, JsonOptions);
             return new QuestProgressNotifyResult(delivered?.Delivered ?? false, null, null);

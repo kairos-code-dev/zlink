@@ -1,8 +1,4 @@
-using Systems.Zlink;
-using Zlink.Framework.Contracts.Codecs.Json;
-using Systems.Zlink.Stream.Connector.Contracts;
 using TicTacToe.Server.Configuration;
-using TicTacToe.Server.Play.Infrastructure.ZLink.Actors;
 using TicTacToe.Shared.Contracts;
 using Zlink.Framework.Contracts.Actors;
 using Zlink.Framework.Contracts.Channels;
@@ -23,7 +19,7 @@ internal sealed class AuthenticatePlaySessionHandler(
     public async ValueTask HandleAsync(
         IZLinkSessionContext context,
         ZLinkSessionDispatchContext dispatch,
-        Zlink.Framework.Contracts.Messaging.ZLinkMessage payload,
+        ZLinkMessage payload,
         CancellationToken cancellationToken)
     {
         _ = dispatch;
@@ -36,9 +32,7 @@ internal sealed class AuthenticatePlaySessionHandler(
 
         var accessToken = authenticate.AccessToken.Trim();
         if (string.IsNullOrWhiteSpace(accessToken))
-        {
             throw new InvalidOperationException("Authentication token is empty.");
-        }
 
         var authenticated = await channels.RequestToChannel(
                 SampleChannels.Api,
@@ -69,10 +63,10 @@ internal sealed class AuthenticatePlaySessionHandler(
             context.SessionId,
             player.ActorId);
         var playerActor = await actors.GetOrCreateAsync(
-                player.ActorId,
-                SampleTypes.PlayerActor,
-                player,
-                cancellationToken);
+            player.ActorId,
+            SampleTypes.PlayerActor,
+            player,
+            cancellationToken);
 
         _ = settings;
 

@@ -20,8 +20,7 @@ internal sealed class ZLinkBoundActorRelaySender(TimeSpan timeout)
                     using var bodyPart = Message.From(bodyBytes);
                     return managedStream.SendBoundActor(
                         actorRef.ActorId,
-                        new[] { headerPart, bodyPart },
-                        SendFlags.None);
+                        new[] { headerPart, bodyPart });
                 },
                 timeout,
                 "Actor session relay failed because the session relay route was not ready before timeout.",

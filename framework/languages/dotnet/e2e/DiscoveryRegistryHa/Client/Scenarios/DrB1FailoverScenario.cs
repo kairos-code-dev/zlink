@@ -1,6 +1,6 @@
+using DiscoveryRegistryHa.Client.Support;
 using DiscoveryRegistryHa.Shared;
 using Zlink.HttpClient;
-using DiscoveryRegistryHa.Client.Support;
 
 namespace DiscoveryRegistryHa.Client.Scenarios;
 
@@ -13,7 +13,7 @@ internal static class DrB1FailoverScenario
         var cases = new[]
         {
             new RegistryCase("reg-2", options.Reg2Url, options.Reg2ConsumerUrl),
-            new RegistryCase("reg-3", options.Reg3Url, options.Reg3ConsumerUrl),
+            new RegistryCase("reg-3", options.Reg3Url, options.Reg3ConsumerUrl)
         };
 
         using var providerA = ZLinkHttpClient.Create(options.ProviderAUrl)
@@ -27,13 +27,13 @@ internal static class DrB1FailoverScenario
         foreach (var registryCase in cases)
         {
             using var registry = ZLinkHttpClient.Create(registryCase.RegistryUrl)
-            .Json()
-            .Timeout(TimeSpan.FromSeconds(10))
-            .Build();
+                .Json()
+                .Timeout(TimeSpan.FromSeconds(10))
+                .Build();
             using var consumer = ZLinkHttpClient.Create(registryCase.ConsumerUrl)
-            .Json()
-            .Timeout(TimeSpan.FromSeconds(10))
-            .Build();
+                .Json()
+                .Timeout(TimeSpan.FromSeconds(10))
+                .Build();
 
             await registry.Post("/registry/members/wait")
                 .Body(new MemberEndpointWaitRequest(options.ApiAEndpoint))
@@ -58,7 +58,7 @@ internal static class DrB1FailoverScenario
                 .SubmitAsync<string[]>()).Body;
             ScenarioAssert.That(
                 evidence.Any(line => line.Contains(marker, StringComparison.Ordinal)
-                    && line.Contains($"rid={reply.ProviderRid}", StringComparison.Ordinal)),
+                                     && line.Contains($"rid={reply.ProviderRid}", StringComparison.Ordinal)),
                 $"DR-B1 {registryCase.Name} provider evidence was not recorded.");
         }
 

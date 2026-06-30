@@ -1,7 +1,5 @@
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Logging;
-using Zlink.Framework.Contracts.Dispatch;
-using Zlink.Framework.Runtime.Diagnostics;
 using Zlink.Framework.Runtime.Dispatch;
 
 namespace Zlink.Framework.UnitTests;
@@ -67,28 +65,39 @@ public sealed class MessageFlowTracerTests
         return (new ZLinkMessageFlowTracer(options, services, logger), logger, options);
     }
 
-    private static ZLinkMessageFlowEvent Flow(ZLinkMessageFlowOutcome outcome) =>
-        new(
+    private static ZLinkMessageFlowEvent Flow(ZLinkMessageFlowOutcome outcome)
+    {
+        return new ZLinkMessageFlowEvent(
             outcome,
             ZLinkDispatchErrorSurface.Channel,
             ZLinkDispatchMessageKind.Request,
-            PacketName: "PlaceOrder",
-            ChannelName: "orders",
+            "PlaceOrder",
+            "orders",
             CorrelationId: "corr-1");
+    }
 
     private sealed class RecordingLogger : ILogger
     {
         public List<string> Messages { get; } = [];
 
-        public IDisposable? BeginScope<TState>(TState state) where TState : notnull => null;
+        public IDisposable? BeginScope<TState>(TState state) where TState : notnull
+        {
+            return null;
+        }
 
-        public bool IsEnabled(LogLevel logLevel) => true;
+        public bool IsEnabled(LogLevel logLevel)
+        {
+            return true;
+        }
 
         public void Log<TState>(
             LogLevel logLevel,
             EventId eventId,
             TState state,
             Exception? exception,
-            Func<TState, Exception?, string> formatter) => Messages.Add(formatter(state, exception));
+            Func<TState, Exception?, string> formatter)
+        {
+            Messages.Add(formatter(state, exception));
+        }
     }
 }

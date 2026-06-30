@@ -1,18 +1,16 @@
+using SpotService.Server.MultiNode.Handlers;
 using SpotService.Shared;
 using Systems.Zlink;
 using Zlink.Framework.Contracts.Channels;
 using Zlink.Framework.Contracts.Errors;
 using Zlink.Framework.Contracts.Spots;
-using SpotService.Server.MultiNode.Handlers;
-using SpotService.Server.MultiNode.Spots;
 
 namespace SpotService.Server.MultiNode.Spots;
-
 
 internal sealed class MultiNodeCreateSpotAHandler(
     IZLinkSpotManager spots,
     IZLinkRouteClient routes,
-    MultiNode.EvidenceStore evidence)
+    EvidenceStore evidence)
     : IZLinkRouteRequestHandler<MultiNodeCreateSpotReq, MultiNodeCreateSpotReply>
 {
     public async ValueTask<MultiNodeCreateSpotReply> HandleAsync(
@@ -30,7 +28,8 @@ internal sealed class MultiNodeCreateSpotAHandler(
             request.SpotRid,
             request.Delta,
             cancellationToken);
-        evidence.Add($"multi-create-spot|node={SpotServiceNames.MultiSpotNodeA}|spot={result.SpotRid}|state={result.State}");
+        evidence.Add(
+            $"multi-create-spot|node={SpotServiceNames.MultiSpotNodeA}|spot={result.SpotRid}|state={result.State}");
         return new MultiNodeCreateSpotReply(
             result.SpotRid.ToString(),
             SpotServiceNames.MultiSpotNodeA,
@@ -42,7 +41,7 @@ internal sealed class MultiNodeCreateSpotAHandler(
 internal sealed class MultiNodeCreateSpotBHandler(
     IZLinkSpotManager spots,
     IZLinkRouteClient routes,
-    MultiNode.EvidenceStore evidence)
+    EvidenceStore evidence)
     : IZLinkRouteRequestHandler<MultiNodeCreateSpotReq, MultiNodeCreateSpotReply>
 {
     public async ValueTask<MultiNodeCreateSpotReply> HandleAsync(
@@ -60,7 +59,8 @@ internal sealed class MultiNodeCreateSpotBHandler(
             request.SpotRid,
             request.Delta,
             cancellationToken);
-        evidence.Add($"multi-create-spot|node={SpotServiceNames.MultiSpotNodeB}|spot={result.SpotRid}|state={result.State}");
+        evidence.Add(
+            $"multi-create-spot|node={SpotServiceNames.MultiSpotNodeB}|spot={result.SpotRid}|state={result.State}");
         return new MultiNodeCreateSpotReply(
             result.SpotRid.ToString(),
             SpotServiceNames.MultiSpotNodeB,
@@ -108,11 +108,12 @@ internal static class MultiNodeScenario
             await Task.Delay(TimeSpan.FromMilliseconds(100), cancellationToken);
         }
 
-        throw new TimeoutException($"Timed out waiting for multi-node spot route '{spotRid}' on '{channelName}'.", last);
+        throw new TimeoutException($"Timed out waiting for multi-node spot route '{spotRid}' on '{channelName}'.",
+            last);
     }
 }
 
-internal sealed class MultiNodeSpotA(IZLinkSpotContext context, MultiNode.EvidenceStore evidence) : IZLinkSpot
+internal sealed class MultiNodeSpotA(IZLinkSpotContext context, EvidenceStore evidence) : IZLinkSpot
 {
     private int _value;
 
@@ -132,7 +133,7 @@ internal sealed class MultiNodeSpotA(IZLinkSpotContext context, MultiNode.Eviden
     }
 }
 
-internal sealed class MultiNodeSpotB(IZLinkSpotContext context, MultiNode.EvidenceStore evidence) : IZLinkSpot
+internal sealed class MultiNodeSpotB(IZLinkSpotContext context, EvidenceStore evidence) : IZLinkSpot
 {
     private int _value;
 
@@ -154,7 +155,7 @@ internal sealed class MultiNodeSpotB(IZLinkSpotContext context, MultiNode.Eviden
 
 internal sealed class ScenarioStage(ScenarioUserSpot spot)
 {
-    public StateReply Apply(StageProbeReq request, MultiNode.EvidenceStore evidence)
+    public StateReply Apply(StageProbeReq request, EvidenceStore evidence)
     {
         var value = spot.Add(request.Delta);
         evidence.Add(

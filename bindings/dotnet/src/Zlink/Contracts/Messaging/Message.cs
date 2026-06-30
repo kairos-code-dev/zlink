@@ -1,25 +1,23 @@
 // SPDX-License-Identifier: MPL-2.0
 
-using System;
 using System.Buffers;
 using System.Runtime.CompilerServices;
 using System.Text;
-using System.Threading.Tasks;
 
 namespace Systems.Zlink;
 
 /// <summary>
-/// Owns one zlink message payload.
+///     Owns one zlink message payload.
 /// </summary>
 /// <remarks>
-/// A message is disposable because it may own native storage. Span-returning
-/// APIs expose storage owned by this instance and are valid only while the
-/// message remains undisposed.
+///     A message is disposable because it may own native storage. Span-returning
+///     APIs expose storage owned by this instance and are valid only while the
+///     message remains undisposed.
 /// </remarks>
 public sealed partial class Message : IDisposable, IAsyncDisposable
 {
     /// <summary>
-    /// Create an empty message.
+    ///     Create an empty message.
     /// </summary>
     public Message()
     {
@@ -27,11 +25,11 @@ public sealed partial class Message : IDisposable, IAsyncDisposable
     }
 
     /// <summary>
-    /// Create a message with writable payload storage of <paramref name="size"/> bytes.
+    ///     Create a message with writable payload storage of <paramref name="size" /> bytes.
     /// </summary>
     /// <param name="size">Payload size in bytes. The value must be non-negative.</param>
     /// <exception cref="ArgumentOutOfRangeException">
-    /// <paramref name="size"/> is negative.
+    ///     <paramref name="size" /> is negative.
     /// </exception>
     public Message(int size)
     {
@@ -39,7 +37,7 @@ public sealed partial class Message : IDisposable, IAsyncDisposable
     }
 
     /// <summary>
-    /// Create a message containing a snapshot copy of <paramref name="data"/>.
+    ///     Create a message containing a snapshot copy of <paramref name="data" />.
     /// </summary>
     public Message(ReadOnlySpan<byte> data) : this(data.Length)
     {
@@ -49,49 +47,57 @@ public sealed partial class Message : IDisposable, IAsyncDisposable
     }
 
     /// <summary>
-    /// Create a message containing a snapshot copy of <paramref name="data"/>.
+    ///     Create a message containing a snapshot copy of <paramref name="data" />.
     /// </summary>
     public Message(ReadOnlyMemory<byte> data) : this(data.Span)
     {
     }
 
     /// <summary>
-    /// Gets the payload size in bytes.
+    ///     Gets the payload size in bytes.
     /// </summary>
-    public int Size
-    {
-        get
-        {
-            return GetSizeCore();
-        }
-    }
+    public int Size => GetSizeCore();
 
     /// <summary>
-    /// Gets whether the payload is empty.
+    ///     Gets whether the payload is empty.
     /// </summary>
     public bool IsEmpty => Size == 0;
 
     /// <summary>
-    /// Gets the native reference count when available.
+    ///     Gets the native reference count when available.
     /// </summary>
     /// <remarks>
-    /// Managed-copy messages report 1 because their storage is owned solely by
-    /// this instance.
+    ///     Managed-copy messages report 1 because their storage is owned solely by
+    ///     this instance.
     /// </remarks>
-    public int RefCount
+    public int RefCount => GetRefCountCore();
+
+    /// <summary>
+    ///     Releases the payload storage owned by this message. Disposal is
+    ///     synchronous; this returns an already-completed task for callers that
+    ///     await disposal.
+    /// </summary>
+    public ValueTask DisposeAsync()
     {
-        get
-        {
-            return GetRefCountCore();
-        }
+        Dispose();
+        return ValueTask.CompletedTask;
     }
 
     /// <summary>
-    /// Allocate a message with writable payload storage.
+    ///     Releases the payload storage owned by this message.
+    /// </summary>
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
+    public void Dispose()
+    {
+        DisposeCore();
+    }
+
+    /// <summary>
+    ///     Allocate a message with writable payload storage.
     /// </summary>
     /// <param name="size">Payload size in bytes. The value must be non-negative.</param>
     /// <exception cref="ArgumentOutOfRangeException">
-    /// <paramref name="size"/> is negative.
+    ///     <paramref name="size" /> is negative.
     /// </exception>
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
     public static Message Allocate(int size)
@@ -102,11 +108,11 @@ public sealed partial class Message : IDisposable, IAsyncDisposable
     }
 
     /// <summary>
-    /// Returns a writable view of the message payload.
+    ///     Returns a writable view of the message payload.
     /// </summary>
     /// <remarks>
-    /// The returned span is backed by storage owned by this message. It must
-    /// not be used after the message is disposed or moved.
+    ///     The returned span is backed by storage owned by this message. It must
+    ///     not be used after the message is disposed or moved.
     /// </remarks>
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
     public Span<byte> AsSpan()
@@ -115,7 +121,7 @@ public sealed partial class Message : IDisposable, IAsyncDisposable
     }
 
     /// <summary>
-    /// Returns a new byte array containing a copy of the payload.
+    ///     Returns a new byte array containing a copy of the payload.
     /// </summary>
     public byte[] ToArray()
     {
@@ -123,11 +129,11 @@ public sealed partial class Message : IDisposable, IAsyncDisposable
     }
 
     /// <summary>
-    /// Returns a read-only view of the message payload.
+    ///     Returns a read-only view of the message payload.
     /// </summary>
     /// <remarks>
-    /// The returned span is backed by storage owned by this message. It must
-    /// not be used after the message is disposed or moved.
+    ///     The returned span is backed by storage owned by this message. It must
+    ///     not be used after the message is disposed or moved.
     /// </remarks>
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
     public ReadOnlySpan<byte> AsReadOnlySpan()
@@ -136,11 +142,11 @@ public sealed partial class Message : IDisposable, IAsyncDisposable
     }
 
     /// <summary>
-    /// Returns a read-only memory view of the payload.
+    ///     Returns a read-only memory view of the payload.
     /// </summary>
     /// <remarks>
-    /// Native-backed messages are copied into managed memory because
-    /// <see cref="ReadOnlyMemory{T}"/> cannot safely reference native storage.
+    ///     Native-backed messages are copied into managed memory because
+    ///     <see cref="ReadOnlyMemory{T}" /> cannot safely reference native storage.
     /// </remarks>
     public ReadOnlyMemory<byte> AsReadOnlyMemory()
     {
@@ -148,19 +154,19 @@ public sealed partial class Message : IDisposable, IAsyncDisposable
     }
 
     /// <summary>
-    /// Copies the payload into <paramref name="destination"/>.
+    ///     Copies the payload into <paramref name="destination" />.
     /// </summary>
     /// <returns>The number of bytes written.</returns>
     public int CopyTo(Span<byte> destination)
     {
-        if (!TryCopyTo(destination, out int bytesWritten))
+        if (!TryCopyTo(destination, out var bytesWritten))
             throw new ArgumentException("Destination buffer is too small.",
                 nameof(destination));
         return bytesWritten;
     }
 
     /// <summary>
-    /// Copies the payload to an <see cref="IBufferWriter{T}"/>.
+    ///     Copies the payload to an <see cref="IBufferWriter{T}" />.
     /// </summary>
     /// <returns>The number of bytes written.</returns>
     public int CopyTo(IBufferWriter<byte> destination)
@@ -168,15 +174,15 @@ public sealed partial class Message : IDisposable, IAsyncDisposable
         if (destination == null)
             throw new ArgumentNullException(nameof(destination));
 
-        int size = Size;
-        Span<byte> span = destination.GetSpan(size).Slice(0, size);
-        int written = CopyTo(span);
+        var size = Size;
+        var span = destination.GetSpan(size).Slice(0, size);
+        var written = CopyTo(span);
         destination.Advance(written);
         return written;
     }
 
     /// <summary>
-    /// Attempts to copy the payload into <paramref name="destination"/>.
+    ///     Attempts to copy the payload into <paramref name="destination" />.
     /// </summary>
     /// <returns>true when the destination was large enough; otherwise false.</returns>
     public bool TryCopyTo(Span<byte> destination, out int bytesWritten)
@@ -185,9 +191,9 @@ public sealed partial class Message : IDisposable, IAsyncDisposable
     }
 
     /// <summary>
-    /// Create a message containing a snapshot copy of <paramref name="data"/>.
-    /// The caller may freely mutate or discard <paramref name="data"/> after
-    /// this call returns; the message holds its own copy of the payload.
+    ///     Create a message containing a snapshot copy of <paramref name="data" />.
+    ///     The caller may freely mutate or discard <paramref name="data" /> after
+    ///     this call returns; the message holds its own copy of the payload.
     /// </summary>
     public static Message From(byte[] data)
     {
@@ -199,9 +205,9 @@ public sealed partial class Message : IDisposable, IAsyncDisposable
     }
 
     /// <summary>
-    /// Create a message holding an independent snapshot copy of
-    /// <paramref name="data"/>; see <see cref="From(byte[])"/> for copy
-    /// semantics.
+    ///     Create a message holding an independent snapshot copy of
+    ///     <paramref name="data" />; see <see cref="From(byte[])" /> for copy
+    ///     semantics.
     /// </summary>
     public static Message From(ReadOnlySpan<byte> data)
     {
@@ -211,9 +217,9 @@ public sealed partial class Message : IDisposable, IAsyncDisposable
     }
 
     /// <summary>
-    /// Create a message holding an independent snapshot copy of
-    /// <paramref name="data"/>; see <see cref="From(byte[])"/> for copy
-    /// semantics.
+    ///     Create a message holding an independent snapshot copy of
+    ///     <paramref name="data" />; see <see cref="From(byte[])" /> for copy
+    ///     semantics.
     /// </summary>
     public static Message From(ReadOnlyMemory<byte> data)
     {
@@ -223,9 +229,9 @@ public sealed partial class Message : IDisposable, IAsyncDisposable
     }
 
     /// <summary>
-    /// Create a message holding an independent snapshot copy of
-    /// <paramref name="data"/>; see <see cref="From(byte[])"/> for copy
-    /// semantics.
+    ///     Create a message holding an independent snapshot copy of
+    ///     <paramref name="data" />; see <see cref="From(byte[])" /> for copy
+    ///     semantics.
     /// </summary>
     public static Message From(ReadOnlySequence<byte> data)
     {
@@ -235,7 +241,7 @@ public sealed partial class Message : IDisposable, IAsyncDisposable
     }
 
     /// <summary>
-    /// Create a message containing a copy of another message payload.
+    ///     Create a message containing a copy of another message payload.
     /// </summary>
     public static Message From(Message source)
     {
@@ -245,7 +251,7 @@ public sealed partial class Message : IDisposable, IAsyncDisposable
     }
 
     /// <summary>
-    /// Encode <paramref name="value"/> as UTF-8 and copy it into a message.
+    ///     Encode <paramref name="value" /> as UTF-8 and copy it into a message.
     /// </summary>
     public static Message From(string value)
     {
@@ -253,8 +259,8 @@ public sealed partial class Message : IDisposable, IAsyncDisposable
     }
 
     /// <summary>
-    /// Encode <paramref name="value"/> with <paramref name="encoding"/> and
-    /// copy it into a message.
+    ///     Encode <paramref name="value" /> with <paramref name="encoding" /> and
+    ///     copy it into a message.
     /// </summary>
     public static Message From(string value, Encoding encoding)
     {
@@ -266,7 +272,7 @@ public sealed partial class Message : IDisposable, IAsyncDisposable
     }
 
     /// <summary>
-    /// Decode the payload as UTF-8.
+    ///     Decode the payload as UTF-8.
     /// </summary>
     public string GetString()
     {
@@ -274,7 +280,7 @@ public sealed partial class Message : IDisposable, IAsyncDisposable
     }
 
     /// <summary>
-    /// Decode the payload with <paramref name="encoding"/>.
+    ///     Decode the payload with <paramref name="encoding" />.
     /// </summary>
     public string GetString(Encoding encoding)
     {
@@ -284,34 +290,14 @@ public sealed partial class Message : IDisposable, IAsyncDisposable
     }
 
     /// <summary>
-    /// Gets a native message property when the message is native-backed.
+    ///     Gets a native message property when the message is native-backed.
     /// </summary>
     /// <returns>
-    /// The property value, or null when the property is absent or the message
-    /// is managed-backed.
+    ///     The property value, or null when the property is absent or the message
+    ///     is managed-backed.
     /// </returns>
     public string? GetProperty(string property)
     {
         return GetPropertyCore(property);
-    }
-
-    /// <summary>
-    /// Releases the payload storage owned by this message.
-    /// </summary>
-    [MethodImpl(MethodImplOptions.AggressiveInlining)]
-    public void Dispose()
-    {
-        DisposeCore();
-    }
-
-    /// <summary>
-    /// Releases the payload storage owned by this message. Disposal is
-    /// synchronous; this returns an already-completed task for callers that
-    /// await disposal.
-    /// </summary>
-    public ValueTask DisposeAsync()
-    {
-        Dispose();
-        return ValueTask.CompletedTask;
     }
 }

@@ -1,6 +1,6 @@
+using SpotService.Client.Support;
 using SpotService.Shared;
 using Zlink.HttpClient;
-using SpotService.Client.Support;
 
 namespace SpotService.Client.Scenarios;
 
@@ -19,7 +19,8 @@ internal static class SmA5Scenario
         var ready = (await api.Post("/spot/state/request")
             .Body(new SpotStateRouteReq(spotRid, "noop", 0))
             .SubmitAsync<StateReply>()).Body;
-        ScenarioAssert.That(ready.SpotRid == spotRid && ready.NodeRid == "play-a", "SM-A5 spot route did not become ready.");
+        ScenarioAssert.That(ready.SpotRid == spotRid && ready.NodeRid == "play-a",
+            "SM-A5 spot route did not become ready.");
 
         var probeReply = (await api.Post("/spot/stage/request")
             .Body(new SpotStageProbeReq(spotRid, "sm-a5-stage", 9))
@@ -43,7 +44,7 @@ internal static class SmA5Scenario
             $"spot-initialize|rid=play-a|spot={spotRid}",
             $"stage-request|rid=play-a|spot={spotRid}|marker=sm-a5-stage|value=9",
             $"stage-timer|rid=play-a|spot={spotRid}|name=sm-a5-stage-timer",
-            $"spot-closing|rid=play-a|spot={spotRid}",
+            $"spot-closing|rid=play-a|spot={spotRid}"
         };
         var evidence = (await api.Post("/evidence/wait")
             .Body(new EvidenceWaitRequest(expectedEvidence))

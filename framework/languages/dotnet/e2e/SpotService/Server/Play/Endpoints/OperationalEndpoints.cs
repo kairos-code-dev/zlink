@@ -1,15 +1,10 @@
+using System.Diagnostics;
 using SpotService.Shared;
-using SpotService.Server.Play.Endpoints;
-using SpotService.Server.Play.Handlers;
-using SpotService.Server.Play.Spots;
 
 namespace SpotService.Server.Play.Endpoints;
 
-using static SpotService.Server.Play.PlayHostFactory;
-
 internal static class OperationalEndpoints
 {
-
     public static void MapOperationalEndpoints(WebApplication app, ServerOptions options)
     {
         app.MapGet("/health", () => Results.Ok(new { status = "ready", options.Role, options.Rid }));
@@ -46,7 +41,7 @@ internal static class OperationalEndpoints
             ThreadPool.QueueUserWorkItem(_ =>
             {
                 Thread.Sleep(50);
-                System.Diagnostics.Process.GetCurrentProcess().Kill(entireProcessTree: false);
+                Process.GetCurrentProcess().Kill(false);
             });
             return Results.Accepted();
         });

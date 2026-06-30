@@ -1,6 +1,6 @@
-using Zlink.HttpClient;
-using RegistryMessaging.Shared;
 using RegistryMessaging.Client.Support;
+using RegistryMessaging.Shared;
+using Zlink.HttpClient;
 
 namespace RegistryMessaging.Client.Scenarios;
 
@@ -64,10 +64,12 @@ internal static class RmA4SameRidFailoverScenario
         Console.WriteLine("scenario RM-A4 passed");
     }
 
-    static async Task<string[]> ReadEvidenceAsync(ZLinkHttpClient client) =>
-        (await client.Get("/evidence").SubmitAsync<string[]>()).Body;
+    private static async Task<string[]> ReadEvidenceAsync(ZLinkHttpClient client)
+    {
+        return (await client.Get("/evidence").SubmitAsync<string[]>()).Body;
+    }
 
-    static async Task<string[]> ReadEvidenceIgnoringStoppedAsync(ZLinkHttpClient client)
+    private static async Task<string[]> ReadEvidenceIgnoringStoppedAsync(ZLinkHttpClient client)
     {
         try
         {
@@ -79,8 +81,10 @@ internal static class RmA4SameRidFailoverScenario
         }
     }
 
-    static async Task<string[]> WaitForEvidenceAsync(ZLinkHttpClient client, string contains) =>
-        (await client.Post("/evidence/wait")
+    private static async Task<string[]> WaitForEvidenceAsync(ZLinkHttpClient client, string contains)
+    {
+        return (await client.Post("/evidence/wait")
             .Body(new EvidenceWaitRequest(contains))
             .SubmitAsync<string[]>()).Body;
+    }
 }

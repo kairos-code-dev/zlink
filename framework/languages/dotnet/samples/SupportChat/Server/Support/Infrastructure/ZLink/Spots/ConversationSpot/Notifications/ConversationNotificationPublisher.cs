@@ -1,6 +1,6 @@
-using SupportChat.Server.Support.Infrastructure.ZLink.Actors;
-using SupportChat.Server.Support.Domain.SupportChat;
 using SupportChat.Server.Configuration;
+using SupportChat.Server.Support.Domain.SupportChat;
+using SupportChat.Server.Support.Infrastructure.ZLink.Actors;
 using SupportChat.Shared.Contracts;
 
 namespace SupportChat.Server.Support.Infrastructure.ZLink.Spots.ConversationSpot.Notifications;
@@ -12,10 +12,7 @@ internal sealed class ConversationNotificationPublisher
         IReadOnlyDictionary<string, SupportUserActor> actors,
         CancellationToken cancellationToken)
     {
-        foreach (var conversationEvent in events)
-        {
-            await PublishAsync(conversationEvent, actors, cancellationToken);
-        }
+        foreach (var conversationEvent in events) await PublishAsync(conversationEvent, actors, cancellationToken);
     }
 
     public async ValueTask PublishJoinedAgentToCustomerAsync(
@@ -23,10 +20,7 @@ internal sealed class ConversationNotificationPublisher
         ConversationState state,
         CancellationToken cancellationToken)
     {
-        if (state.AgentActorId is null)
-        {
-            return;
-        }
+        if (state.AgentActorId is null) return;
 
         await customer.Context.BoundSession
             .Send(new ParticipantJoinedNotify(
@@ -101,14 +95,11 @@ internal sealed class ConversationNotificationPublisher
         CancellationToken cancellationToken)
     {
         if (conversationEvent.ActorId is null || conversationEvent.Role is null)
-        {
             throw new InvalidOperationException("Participant joined event requires actor id and role.");
-        }
 
         var customerActorId = conversationEvent.State.CustomerActorId;
         if (actors.TryGetValue(customerActorId, out var customer)
             && !string.Equals(customer.ActorId, conversationEvent.ActorId, StringComparison.Ordinal))
-        {
             await customer.Context.BoundSession
                 .Send(new ParticipantJoinedNotify(
                     conversationEvent.State.ConversationId,
@@ -117,7 +108,6 @@ internal sealed class ConversationNotificationPublisher
                     conversationEvent.State))
                 .PacketName(SampleNames.ParticipantJoinedPacket)
                 .Async(cancellationToken);
-        }
     }
 
     private static async ValueTask PublishAssignedAsync(
@@ -125,10 +115,7 @@ internal sealed class ConversationNotificationPublisher
         IReadOnlyDictionary<string, SupportUserActor> actors,
         CancellationToken cancellationToken)
     {
-        if (conversationEvent.ActorId is null || !actors.TryGetValue(conversationEvent.ActorId, out var agent))
-        {
-            return;
-        }
+        if (conversationEvent.ActorId is null || !actors.TryGetValue(conversationEvent.ActorId, out var agent)) return;
 
         await agent.Context.BoundSession
             .Send(new ConversationAssignedNotify(
@@ -144,7 +131,7 @@ internal sealed class ConversationNotificationPublisher
         CancellationToken cancellationToken)
     {
         var message = conversationEvent.Message
-            ?? throw new InvalidOperationException("Message event requires a chat message.");
+                      ?? throw new InvalidOperationException("Message event requires a chat message.");
         await PublishAllAsync(
             actors.Where(actor => !string.Equals(actor.Key, message.SenderActorId, StringComparison.Ordinal))
                 .ToDictionary(static actor => actor.Key, static actor => actor.Value, StringComparer.Ordinal),
@@ -163,9 +150,7 @@ internal sealed class ConversationNotificationPublisher
         CancellationToken cancellationToken)
     {
         if (conversationEvent.ActorId is null || conversationEvent.IsTyping is null)
-        {
             throw new InvalidOperationException("Typing event requires actor id and typing state.");
-        }
 
         await PublishAllAsync(
             actors.Where(actor => !string.Equals(actor.Key, conversationEvent.ActorId, StringComparison.Ordinal))
@@ -184,9 +169,6 @@ internal sealed class ConversationNotificationPublisher
         IReadOnlyDictionary<string, SupportUserActor> actors,
         Func<SupportUserActor, ValueTask> publish)
     {
-        foreach (var actor in actors.Values)
-        {
-            await publish(actor);
-        }
+        foreach (var actor in actors.Values) await publish(actor);
     }
 }

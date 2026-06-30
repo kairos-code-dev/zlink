@@ -12,7 +12,7 @@ internal static class ZLinkChannelReplyWriter
     {
         var replyParts = ZLinkEnvelopeCodec.EncodeParts(header, body, bodyType, codecs);
         var routingId = received.RoutingId
-            ?? throw new InvalidOperationException("Request reply requires a routing id.");
+                        ?? throw new InvalidOperationException("Request reply requires a routing id.");
         ReplyParts(router, routingId, received.RequestSeq, replyParts);
     }
 

@@ -1,6 +1,6 @@
+using SpotService.Client.Support;
 using SpotService.Shared;
 using Zlink.HttpClient;
-using SpotService.Client.Support;
 
 namespace SpotService.Client.Scenarios;
 
@@ -12,7 +12,8 @@ internal static class SmC2Scenario
         var created = (await playA.Post("/spot/create")
             .Body(new CreateSpotReq(spotRid))
             .SubmitAsync<CreateSpotReply>()).Body;
-        ScenarioAssert.That(created.SpotRid == spotRid && created.NodeRid == "play-a", "SM-C2 spot was not created on play-a.");
+        ScenarioAssert.That(created.SpotRid == spotRid && created.NodeRid == "play-a",
+            "SM-C2 spot was not created on play-a.");
         var outbound = (await playA.Post("/spot/outbound")
             .Body(new SpotOutboundRouteReq(spotRid, "sm-c2"))
             .SubmitAsync<SpotOutboundRouteReply>()).Body;
@@ -29,7 +30,7 @@ internal static class SmC2Scenario
             "channel-echo|value=sm-c2",
             "channel-notify|marker=notify-sm-c2",
             "dispatch-error|surface=Channel|reason=HandlerMissing|action=ReplyError|packet=MissingChannelReq",
-            "dispatch-error|surface=Channel|reason=HandlerMissing|action=Drop|packet=MissingChannelSend",
+            "dispatch-error|surface=Channel|reason=HandlerMissing|action=Drop|packet=MissingChannelSend"
         };
         var evidence = (await playA.Post("/evidence/wait")
             .Body(new EvidenceWaitRequest(expectedEvidence))

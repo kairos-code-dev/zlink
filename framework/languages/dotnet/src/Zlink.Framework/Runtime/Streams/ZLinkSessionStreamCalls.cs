@@ -56,13 +56,19 @@ internal sealed class ZLinkSessionSendCall<TMessage>(
     : ZLinkSessionStreamCallBase<TMessage>(context, message), IZLinkSessionSendCall
 {
     IZLinkSessionSendCall IZLinkSessionSendCall.Metadata(string key, string value)
-        => (IZLinkSessionSendCall)Metadata(key, value);
+    {
+        return (IZLinkSessionSendCall)Metadata(key, value);
+    }
 
     IZLinkSessionSendCall IZLinkSessionSendCall.PacketName(string messageName)
-        => (IZLinkSessionSendCall)PacketName(messageName);
+    {
+        return (IZLinkSessionSendCall)PacketName(messageName);
+    }
 
     IZLinkSessionSendCall IZLinkSessionSendCall.Compress()
-        => (IZLinkSessionSendCall)Compress();
+    {
+        return (IZLinkSessionSendCall)Compress();
+    }
 
     public ValueTask Async()
     {
@@ -94,10 +100,14 @@ internal sealed class ZLinkSessionReplyCall<TMessage>(
     : ZLinkSessionStreamCallBase<TMessage>(context, message), IZLinkSessionReplyCall
 {
     IZLinkSessionReplyCall IZLinkSessionReplyCall.Metadata(string key, string value)
-        => (IZLinkSessionReplyCall)Metadata(key, value);
+    {
+        return (IZLinkSessionReplyCall)Metadata(key, value);
+    }
 
     IZLinkSessionReplyCall IZLinkSessionReplyCall.Compress()
-        => (IZLinkSessionReplyCall)Compress();
+    {
+        return (IZLinkSessionReplyCall)Compress();
+    }
 
     public ValueTask Async()
     {
@@ -112,9 +122,7 @@ internal sealed class ZLinkSessionReplyCall<TMessage>(
         ZlinkStreamHeader? currentDispatchHeader)
     {
         if (currentDispatchHeader?.RequestSeq is not { } requestSeq)
-        {
             throw new InvalidOperationException("Reply is only available while handling a request packet.");
-        }
 
         return new ZlinkStreamHeader(
             ZlinkStreamMessageKind.Response,

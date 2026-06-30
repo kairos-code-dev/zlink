@@ -1,6 +1,6 @@
-using Zlink.HttpClient;
-using RegistryMessaging.Shared;
 using RegistryMessaging.Client.Support;
+using RegistryMessaging.Shared;
+using Zlink.HttpClient;
 
 namespace RegistryMessaging.Client.Scenarios;
 
@@ -23,7 +23,7 @@ internal static class RmC1RequestSendScenario
         var evidence = await WaitForProviderEvidenceAsync(providerA, providerB, commandId);
         ScenarioAssert.That(
             evidence.Any(line => line.Contains("profile-request|", StringComparison.Ordinal)
-                && line.Contains("rm-c1-request", StringComparison.Ordinal)),
+                                 && line.Contains("rm-c1-request", StringComparison.Ordinal)),
             "RM-C1 request evidence missing.");
         ScenarioAssert.That(
             evidence.Any(line => line.Contains("profile-command|", StringComparison.Ordinal)),

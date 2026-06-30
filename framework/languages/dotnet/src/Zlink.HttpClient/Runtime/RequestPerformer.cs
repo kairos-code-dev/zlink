@@ -7,12 +7,12 @@ using SystemHttpClient = System.Net.Http.HttpClient;
 namespace Zlink.HttpClient.Runtime;
 
 /// <summary>
-/// Performs a single logical request, driving the wrapper-owned redirect loop, cookie jar
-/// integration, and same-origin <c>Authorization</c> scrubbing. Redirect/URL rules live in
-/// <see cref="HttpRedirectPolicy"/> and response decoding in <see cref="ResponseBodyReader"/>.
-/// Mirrors the C++ <c>request_performer.cpp</c>. Native auto-redirect/auto-decompress/auto-cookie are
-/// disabled on the handler (see <see cref="HttpClientRuntime"/>) so these semantics match the ZLink
-/// contract.
+///     Performs a single logical request, driving the wrapper-owned redirect loop, cookie jar
+///     integration, and same-origin <c>Authorization</c> scrubbing. Redirect/URL rules live in
+///     <see cref="HttpRedirectPolicy" /> and response decoding in <see cref="ResponseBodyReader" />.
+///     Mirrors the C++ <c>request_performer.cpp</c>. Native auto-redirect/auto-decompress/auto-cookie are
+///     disabled on the handler (see <see cref="HttpClientRuntime" />) so these semantics match the ZLink
+///     contract.
 /// </summary>
 internal sealed class RequestPerformer(
     HttpClientOptions options,
@@ -49,22 +49,16 @@ internal sealed class RequestPerformer(
 
             var status = (int)response.StatusCode;
             if (options.Cookies && response.Headers.TryGetValues("Set-Cookie", out var setCookies))
-            {
                 foreach (var setCookie in setCookies)
-                {
                     cookieJar.Store(current.Host, setCookie);
-                }
-            }
 
             var location = response.Headers.TryGetValues("Location", out var locations)
                 ? locations.FirstOrDefault()
                 : null;
-            if (options.FollowRedirects > 0 && HttpRedirectPolicy.IsRedirectStatus(status) && !string.IsNullOrEmpty(location))
+            if (options.FollowRedirects > 0 && HttpRedirectPolicy.IsRedirectStatus(status) &&
+                !string.IsNullOrEmpty(location))
             {
-                if (redirectsLeft == 0)
-                {
-                    throw RequestError("HTTP request exceeded the redirect limit");
-                }
+                if (redirectsLeft == 0) throw RequestError("HTTP request exceeded the redirect limit");
 
                 --redirectsLeft;
                 (method, body) = HttpRedirectPolicy.RewriteForRedirect(status, method, body);
@@ -82,22 +76,19 @@ internal sealed class RequestPerformer(
                     Status = status,
                     Headers = headers,
                     Body = string.Empty,
-                    BodyBytes = [],
+                    BodyBytes = []
                 };
             }
 
             var bytes = await _bodyReader.ReadBufferedAsync(response, cancellationToken).ConfigureAwait(false);
-            if (options.Compression)
-            {
-                (bytes, headers) = _bodyReader.Decompress(bytes, headers);
-            }
+            if (options.Compression) (bytes, headers) = _bodyReader.Decompress(bytes, headers);
 
             return new RawHttpResponse
             {
                 Status = status,
                 Headers = headers,
                 Body = Encoding.UTF8.GetString(bytes),
-                BodyBytes = bytes,
+                BodyBytes = bytes
             };
         }
     }
@@ -112,7 +103,7 @@ internal sealed class RequestPerformer(
     {
         var message = new HttpRequestMessage(ToHttpMethod(method), target)
         {
-            Version = HttpVersion.Version11,
+            Version = HttpVersion.Version11
         };
 
         var contentType = FindRequestHeader(requestHeaders, "content-type");
@@ -126,36 +117,22 @@ internal sealed class RequestPerformer(
         else if (body is not null)
         {
             content = new ByteArrayContent(body);
-            if (contentType is not null)
-            {
-                content.Headers.TryAddWithoutValidation("Content-Type", contentType);
-            }
+            if (contentType is not null) content.Headers.TryAddWithoutValidation("Content-Type", contentType);
         }
 
         message.Content = content;
-        if (streaming)
-        {
-            message.Headers.TransferEncodingChunked = true;
-        }
+        if (streaming) message.Headers.TransferEncodingChunked = true;
 
         // HttpListener (and many servers) do not emit 100-Continue; waiting for it would deadlock
         // a streamed/chunked upload. We never use the Expect/continue handshake.
         message.Headers.ExpectContinue = false;
         message.Headers.TryAddWithoutValidation("User-Agent", "zlink-http-client/0.2");
-        if (options.Json)
-        {
-            message.Headers.TryAddWithoutValidation("Accept", "application/json");
-        }
+        if (options.Json) message.Headers.TryAddWithoutValidation("Accept", "application/json");
 
-        if (options.Compression)
-        {
-            message.Headers.TryAddWithoutValidation("Accept-Encoding", "gzip, deflate");
-        }
+        if (options.Compression) message.Headers.TryAddWithoutValidation("Accept-Encoding", "gzip, deflate");
 
         if (options.ProxyAuthorization is not null && options.Proxy is not null)
-        {
             message.Headers.TryAddWithoutValidation("Proxy-Authorization", options.ProxyAuthorization);
-        }
 
         ApplyHeaders(message, options.Headers, keepAuthorization);
         ApplyHeaders(message, requestHeaders, keepAuthorization);
@@ -164,10 +141,7 @@ internal sealed class RequestPerformer(
         {
             var path = HttpRedirectPolicy.PathOf(target);
             var cookieHeader = cookieJar.HeaderFor(target.Host, path, target.Scheme == "https");
-            if (cookieHeader.Length > 0)
-            {
-                message.Headers.TryAddWithoutValidation("Cookie", cookieHeader);
-            }
+            if (cookieHeader.Length > 0) message.Headers.TryAddWithoutValidation("Cookie", cookieHeader);
         }
 
         return message;
@@ -180,47 +154,43 @@ internal sealed class RequestPerformer(
     {
         foreach (var (name, value) in headers)
         {
-            if (name.Equals("content-type", StringComparison.OrdinalIgnoreCase))
-            {
-                continue; // routed to the content above
-            }
+            if (name.Equals("content-type",
+                    StringComparison.OrdinalIgnoreCase)) continue; // routed to the content above
 
-            if (!keepAuthorization && name.Equals("authorization", StringComparison.OrdinalIgnoreCase))
-            {
-                continue;
-            }
+            if (!keepAuthorization && name.Equals("authorization", StringComparison.OrdinalIgnoreCase)) continue;
 
             message.Headers.Remove(name);
             message.Headers.TryAddWithoutValidation(name, value);
         }
     }
 
-    private static HttpMethod ToHttpMethod(ZLinkHttpMethod method) => method switch
+    private static HttpMethod ToHttpMethod(ZLinkHttpMethod method)
     {
-        ZLinkHttpMethod.Get => HttpMethod.Get,
-        ZLinkHttpMethod.Post => HttpMethod.Post,
-        ZLinkHttpMethod.Put => HttpMethod.Put,
-        ZLinkHttpMethod.Delete => HttpMethod.Delete,
-        ZLinkHttpMethod.Patch => HttpMethod.Patch,
-        ZLinkHttpMethod.Head => HttpMethod.Head,
-        ZLinkHttpMethod.Options => HttpMethod.Options,
-        _ => HttpMethod.Get,
-    };
+        return method switch
+        {
+            ZLinkHttpMethod.Get => HttpMethod.Get,
+            ZLinkHttpMethod.Post => HttpMethod.Post,
+            ZLinkHttpMethod.Put => HttpMethod.Put,
+            ZLinkHttpMethod.Delete => HttpMethod.Delete,
+            ZLinkHttpMethod.Patch => HttpMethod.Patch,
+            ZLinkHttpMethod.Head => HttpMethod.Head,
+            ZLinkHttpMethod.Options => HttpMethod.Options,
+            _ => HttpMethod.Get
+        };
+    }
 
     // Request-side header lookup: request construction must not depend on the response decoder.
     private static string? FindRequestHeader(IReadOnlyDictionary<string, string> headers, string name)
     {
         foreach (var (key, value) in headers)
-        {
             if (key.Equals(name, StringComparison.OrdinalIgnoreCase))
-            {
                 return value;
-            }
-        }
 
         return null;
     }
 
-    private static ZLinkFrameworkException RequestError(string message) =>
-        new(ZLinkFrameworkErrorKind.RequestFailed, message);
+    private static ZLinkFrameworkException RequestError(string message)
+    {
+        return new ZLinkFrameworkException(ZLinkFrameworkErrorKind.RequestFailed, message);
+    }
 }

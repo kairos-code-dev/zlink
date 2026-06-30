@@ -1,17 +1,13 @@
 using SpotService.Shared;
 using Systems.Zlink;
 using Zlink.Framework.Contracts.Channels;
-using SpotService.Server.Play.Endpoints;
-using SpotService.Server.Play.Handlers;
-using SpotService.Server.Play.Spots;
 
 namespace SpotService.Server.Play.Endpoints;
 
-using static SpotService.Server.Play.PlayHostFactory;
+using static PlayHostFactory;
 
 internal static class SpotInteractionEndpoints
 {
-
     public static void MapSpotInteractionEndpoints(WebApplication app)
     {
         app.MapPost("/spot/outbound", async (
@@ -32,10 +28,13 @@ internal static class SpotInteractionEndpoints
                 () =>
                 {
                     var after = evidence.Snapshot();
-                    return CountNew(after, before, $"spot-outbound|rid={node.Rid}|spot={request.SpotRid}|echo=echo-sm-c2|notify=notify-sm-c2") >= 1
-                        && CountNew(after, before, $"spot-event|rid={node.Rid}|spot={request.SpotRid}|marker=sm-c2-publish") >= 1
-                        && CountNew(after, before, "channel-echo|value=sm-c2") >= 1
-                        && CountNew(after, before, "channel-notify|marker=notify-sm-c2") >= 1;
+                    return CountNew(after, before,
+                               $"spot-outbound|rid={node.Rid}|spot={request.SpotRid}|echo=echo-sm-c2|notify=notify-sm-c2") >=
+                           1
+                           && CountNew(after, before,
+                               $"spot-event|rid={node.Rid}|spot={request.SpotRid}|marker=sm-c2-publish") >= 1
+                           && CountNew(after, before, "channel-echo|value=sm-c2") >= 1
+                           && CountNew(after, before, "channel-notify|marker=notify-sm-c2") >= 1;
                 },
                 "Expected spot outbound evidence.");
             return Results.Ok(new SpotOutboundRouteReply(
@@ -62,9 +61,14 @@ internal static class SpotInteractionEndpoints
                 () =>
                 {
                     var after = evidence.Snapshot();
-                    return CountNew(after, before, $"spot-outbound-negative|rid={node.Rid}|spot={request.SpotRid}|requestFailed=True") >= 1
-                        && CountNew(after, before, "dispatch-error|surface=Channel|reason=HandlerMissing|action=ReplyError|packet=MissingChannelReq") >= 1
-                        && CountNew(after, before, "dispatch-error|surface=Channel|reason=HandlerMissing|action=Drop|packet=MissingChannelSend") >= 1;
+                    return CountNew(after, before,
+                               $"spot-outbound-negative|rid={node.Rid}|spot={request.SpotRid}|requestFailed=True") >= 1
+                           && CountNew(after, before,
+                               "dispatch-error|surface=Channel|reason=HandlerMissing|action=ReplyError|packet=MissingChannelReq") >=
+                           1
+                           && CountNew(after, before,
+                               "dispatch-error|surface=Channel|reason=HandlerMissing|action=Drop|packet=MissingChannelSend") >=
+                           1;
                 },
                 "Expected spot outbound negative evidence.");
             return Results.Ok(new SpotOutboundRouteReply(
@@ -101,7 +105,8 @@ internal static class SpotInteractionEndpoints
                 "StageTimerStartCommand",
                 "Spot stage timer command route timed out.");
             await WaitUntilAsync(
-                () => CountNew(evidence.Snapshot(), before, $"stage-timer|rid={node.Rid}|spot={request.SpotRid}|name={request.Name}") >= 1,
+                () => CountNew(evidence.Snapshot(), before,
+                    $"stage-timer|rid={node.Rid}|spot={request.SpotRid}|name={request.Name}") >= 1,
                 "Expected spot stage timer evidence.");
             return Results.Ok(new SpotStageTimerReply(
                 request.SpotRid,
@@ -124,7 +129,8 @@ internal static class SpotInteractionEndpoints
                 "TimerStartCommand",
                 "Spot timer start command timed out.");
             await WaitUntilAsync(
-                () => CountNew(evidence.Snapshot(), before, $"timer-basic|rid={node.Rid}|spot={request.SpotRid}|name={request.Name}") >= 2,
+                () => CountNew(evidence.Snapshot(), before,
+                    $"timer-basic|rid={node.Rid}|spot={request.SpotRid}|name={request.Name}") >= 2,
                 "Expected repeated spot timer evidence.");
             return Results.Ok(new SpotTimerStartReply(
                 request.SpotRid,
@@ -150,8 +156,10 @@ internal static class SpotInteractionEndpoints
                 () =>
                 {
                     var after = evidence.Snapshot();
-                    return CountNew(after, before, $"timer-idle-close|rid={node.Rid}|spot={request.SpotRid}|name={request.Name}|closed=True") == 1
-                        && CountNew(after, before, $"spot-closing|rid={node.Rid}|spot={request.SpotRid}") == 1;
+                    return CountNew(after, before,
+                               $"timer-idle-close|rid={node.Rid}|spot={request.SpotRid}|name={request.Name}|closed=True") ==
+                           1
+                           && CountNew(after, before, $"spot-closing|rid={node.Rid}|spot={request.SpotRid}") == 1;
                 },
                 "Expected spot idle close evidence.");
             return Results.Ok(new SpotIdleCloseReply(
@@ -175,7 +183,8 @@ internal static class SpotInteractionEndpoints
                 "OverrunStartCommand",
                 "Spot overrun timer start command timed out.");
             await WaitUntilAsync(
-                () => CountNew(evidence.Snapshot(), before, $"timer-overrun|rid={node.Rid}|spot={request.SpotRid}|name={request.Name}") >= 3,
+                () => CountNew(evidence.Snapshot(), before,
+                    $"timer-overrun|rid={node.Rid}|spot={request.SpotRid}|name={request.Name}") >= 3,
                 "Expected spot overrun timer evidence.");
             return Results.Ok(new SpotOverrunStartReply(
                 request.SpotRid,
@@ -203,7 +212,9 @@ internal static class SpotInteractionEndpoints
             SpotWorkerCompleteReq request) =>
         {
             await WaitUntilAsync(
-                () => evidence.Snapshot().Any(line => line.Contains($"worker-complete|rid={node.Rid}|spot={request.SpotRid}|marker={request.Marker}", StringComparison.Ordinal)),
+                () => evidence.Snapshot().Any(line =>
+                    line.Contains($"worker-complete|rid={node.Rid}|spot={request.SpotRid}|marker={request.Marker}",
+                        StringComparison.Ordinal)),
                 "Expected worker completion evidence.");
             return Results.Ok(new SpotWorkerCompleteReply(
                 request.SpotRid,
@@ -226,9 +237,15 @@ internal static class SpotInteractionEndpoints
                 () =>
                 {
                     var after = evidence.Snapshot();
-                    return CountNew(after, [], $"spot-to-spot|rid={node.Rid}|source={request.SourceSpotRid}|target={request.TargetSpotRid}|value=") >= 1
-                        && CountNew(after, [], $"spot-state-command|rid={node.Rid}|spot={request.TargetSpotRid}|marker=sm-c3-send-{request.Marker}") >= 1
-                        && CountNew(after, [], $"spot-event|rid={node.Rid}|spot={request.TargetSpotRid}|marker=sm-c3-publish-{request.Marker}") >= 1;
+                    return CountNew(after, [],
+                               $"spot-to-spot|rid={node.Rid}|source={request.SourceSpotRid}|target={request.TargetSpotRid}|value=") >=
+                           1
+                           && CountNew(after, [],
+                               $"spot-state-command|rid={node.Rid}|spot={request.TargetSpotRid}|marker=sm-c3-send-{request.Marker}") >=
+                           1
+                           && CountNew(after, [],
+                               $"spot-event|rid={node.Rid}|spot={request.TargetSpotRid}|marker=sm-c3-publish-{request.Marker}") >=
+                           1;
                 },
                 "Expected spot-to-spot request evidence.");
             return Results.Ok(result);
@@ -239,7 +256,8 @@ internal static class SpotInteractionEndpoints
             NodeOptions node) =>
         {
             await WaitUntilAsync(
-                () => CountNew(evidence.Snapshot(), Array.Empty<string>(), $"spot-event|rid={node.Rid}|spot={request.SpotRid}|marker={request.Marker}") >= 1,
+                () => CountNew(evidence.Snapshot(), Array.Empty<string>(),
+                    $"spot-event|rid={node.Rid}|spot={request.SpotRid}|marker={request.Marker}") >= 1,
                 "SM-C4 expected publish event evidence.");
             return Results.Ok(new SpotPublishObserveReply(
                 "spot.sm-c4-observe",

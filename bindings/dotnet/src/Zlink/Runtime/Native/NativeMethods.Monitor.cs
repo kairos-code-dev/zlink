@@ -1,14 +1,9 @@
-using System;
 using System.Runtime.InteropServices;
 
 namespace Systems.Zlink.Runtime.Native;
 
 internal static partial class NativeMethods
 {
-    [UnmanagedFunctionPointer(CallingConvention.Cdecl)]
-    internal delegate void ZlinkMonitorHandlerDelegate(
-        ref ZlinkMonitorEvent @event, IntPtr userData);
-
     [DllImport(LibraryName, CallingConvention = CallingConvention.Cdecl)]
     internal static extern IntPtr zlink_socket_monitor_open(
         IntPtr socket, in ZlinkSocketMonitorOpenOptions options);
@@ -31,4 +26,8 @@ internal static partial class NativeMethods
 
     [DllImport(LibraryName, CallingConvention = CallingConvention.Cdecl)]
     internal static extern int zlink_monitor_close(ref IntPtr monitor);
+
+    [UnmanagedFunctionPointer(CallingConvention.Cdecl)]
+    internal delegate void ZlinkMonitorHandlerDelegate(
+        ref ZlinkMonitorEvent @event, IntPtr userData);
 }

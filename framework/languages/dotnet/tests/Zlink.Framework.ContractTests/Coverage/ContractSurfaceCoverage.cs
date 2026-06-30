@@ -1,4 +1,5 @@
 using System.Reflection;
+using Zlink.Framework.Contracts.Messaging;
 using Zlink.Framework.ContractTests.Support;
 
 namespace Zlink.Framework.ContractTests.Coverage;
@@ -11,7 +12,7 @@ public sealed class ContractSurfaceCoverage
         var exportedContracts = typeof(IZLinkFrameworkOptions).Assembly
             .GetExportedTypes()
             .Where(type => type is { IsInterface: true, Namespace: not null }
-                && type.Namespace.StartsWith("Zlink.Framework.Contracts", StringComparison.Ordinal))
+                           && type.Namespace.StartsWith("Zlink.Framework.Contracts", StringComparison.Ordinal))
             .OrderBy(type => type.FullName, StringComparer.Ordinal)
             .ToArray();
 
@@ -46,43 +47,43 @@ public sealed class ContractSurfaceCoverage
     public void Basic_business_message_contracts_do_not_expose_binding_messages()
     {
         var bindingMessage = typeof(Message);
-        var frameworkMessage = typeof(Zlink.Framework.Contracts.Messaging.ZLinkMessage);
+        var frameworkMessage = typeof(ZLinkMessage);
 
         AssertMethodParameter(
             typeof(IZLinkSession),
             nameof(IZLinkSession.OnDispatchAsync),
             "payload",
-            requiredParameterType: frameworkMessage,
+            frameworkMessage,
             bindingMessage);
         AssertMethodParameter(
             typeof(IZLinkSessionPacketHandler<>),
             nameof(IZLinkSessionPacketHandler<IZLinkSessionContext>.HandleAsync),
             "payload",
-            requiredParameterType: frameworkMessage,
+            frameworkMessage,
             bindingMessage);
         AssertMethodParameter(
             typeof(IZLinkActorContext),
             nameof(IZLinkActorContext.JoinSpot),
             "request",
-            requiredParameterType: frameworkMessage,
+            frameworkMessage,
             bindingMessage);
         AssertMethodParameter(
             typeof(IZLinkActorContext),
             nameof(IZLinkActorContext.JoinEntrySpot),
             "request",
-            requiredParameterType: frameworkMessage,
+            frameworkMessage,
             bindingMessage);
         AssertMethodParameter(
             typeof(IZLinkSpot),
             nameof(IZLinkSpot.OnCreateAsync),
             "request",
-            requiredParameterType: frameworkMessage,
+            frameworkMessage,
             bindingMessage);
         AssertMethodParameter(
             typeof(IZLinkSpot<>),
             nameof(IZLinkSpot<IZLinkActor>.OnActorJoinAsync),
             "request",
-            requiredParameterType: frameworkMessage,
+            frameworkMessage,
             bindingMessage);
 
         Assert.DoesNotContain(
@@ -99,7 +100,7 @@ public sealed class ContractSurfaceCoverage
     {
         var matchingMethods = contractType.GetMethods()
             .Where(method => method.Name == methodName
-                && method.GetParameters().Any(parameter => parameter.Name == parameterName))
+                             && method.GetParameters().Any(parameter => parameter.Name == parameterName))
             .ToArray();
 
         Assert.NotEmpty(matchingMethods);

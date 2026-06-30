@@ -1,4 +1,3 @@
-using Systems.Zlink.Stream.Connector.Contracts;
 using YieldDispatch.Client.Support;
 using YieldDispatch.Shared;
 
@@ -15,13 +14,13 @@ internal static class ShutdownYieldScenario
             RequestTimeout = TimeSpan.FromSeconds(60),
             Heartbeat = new ZlinkStreamHeartbeatOptions { Enabled = false },
             DispatchMode = ZlinkStreamDispatchMode.Immediate,
-            MaxReceivedMessages = 1024,
+            MaxReceivedMessages = 1024
         });
         await client.Connect.Async();
 
         try
         {
-            var result = await client.Request(new YieldShutdownScenarioReq(options.RequestId, options.SpotRid, DelayMs: 30_000))
+            var result = await client.Request(new YieldShutdownScenarioReq(options.RequestId, options.SpotRid, 30_000))
                 .PacketName("YieldShutdownScenarioReq")
                 .Timeout(TimeSpan.FromSeconds(90))
                 .Async<YieldScenarioResult>();
@@ -43,7 +42,7 @@ internal static class ShutdownYieldScenario
             RequestTimeout = TimeSpan.FromSeconds(60),
             Heartbeat = new ZlinkStreamHeartbeatOptions { Enabled = false },
             DispatchMode = ZlinkStreamDispatchMode.Immediate,
-            MaxReceivedMessages = 1024,
+            MaxReceivedMessages = 1024
         });
         await client.Connect.Async();
 
@@ -55,7 +54,7 @@ internal static class ShutdownYieldScenario
         ScenarioAssert.That(result.SpotRid == options.SpotRid, "YD-E3 recovery spot rid mismatch.");
         ScenarioAssert.That(
             result.Evidence.Any(line => line.Contains($"request={options.RequestId}", StringComparison.Ordinal)
-                && line.Contains("marker=shutdown-recovery-probe", StringComparison.Ordinal)),
+                                        && line.Contains("marker=shutdown-recovery-probe", StringComparison.Ordinal)),
             "YD-E3 recovery probe marker missing.");
 
         Console.WriteLine("yield-dispatch shutdown recovery result=passed");

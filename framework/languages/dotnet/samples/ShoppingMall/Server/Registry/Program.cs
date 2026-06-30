@@ -1,5 +1,4 @@
 using ShoppingMall.Server.Configuration;
-using Microsoft.Extensions.Hosting;
 using Zlink.Framework.AspNetCore;
 
 namespace ShoppingMall.Server.Registry;

@@ -1,7 +1,4 @@
 using Microsoft.Extensions.Logging;
-using Zlink.Framework.Runtime.Diagnostics;
-using Zlink.Framework.Runtime.Handlers;
-using Zlink.Framework.Runtime.Messaging;
 
 namespace Zlink.Framework.Runtime.Channels;
 
@@ -48,7 +45,7 @@ internal sealed class ZLinkChannelRequestDispatchPipeline(
                 ZLinkDispatchErrorReason.HandlerMissing,
                 ZLinkDispatchErrorAction.ReplyError,
                 header.MessageName,
-                ChannelName: channelName,
+                channelName,
                 CorrelationId: header.CorrelationId,
                 Exception: error));
             return;
@@ -81,7 +78,7 @@ internal sealed class ZLinkChannelRequestDispatchPipeline(
                 ZLinkDispatchErrorReason.PayloadDecodeFailed,
                 ZLinkDispatchErrorAction.ReplyError,
                 header.MessageName,
-                ChannelName: channelName,
+                channelName,
                 CorrelationId: header.CorrelationId,
                 Exception: error));
             return;
@@ -103,15 +100,13 @@ internal sealed class ZLinkChannelRequestDispatchPipeline(
                 endpoint.ReplyType);
 
             if (dispatchErrors.Flow.Enabled(ZLinkMessageFlowOutcome.Replied))
-            {
                 dispatchErrors.Flow.Trace(new ZLinkMessageFlowEvent(
                     ZLinkMessageFlowOutcome.Replied,
                     ResolveSurface(transportName),
                     ZLinkDispatchMessageKind.Request,
-                    PacketName: header.MessageName,
-                    ChannelName: channelName,
+                    header.MessageName,
+                    channelName,
                     CorrelationId: header.CorrelationId));
-            }
         }
         catch (Exception ex)
         {
@@ -122,7 +117,7 @@ internal sealed class ZLinkChannelRequestDispatchPipeline(
                 ZLinkDispatchErrorReason.HandlerException,
                 ZLinkDispatchErrorAction.ReplyError,
                 header.MessageName,
-                ChannelName: channelName,
+                channelName,
                 CorrelationId: header.CorrelationId,
                 Exception: ex));
         }

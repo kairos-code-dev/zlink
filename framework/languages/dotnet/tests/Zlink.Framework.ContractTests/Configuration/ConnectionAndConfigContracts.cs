@@ -166,19 +166,40 @@ public sealed class ConnectionAndConfigContracts
         public IZLinkDiagnosticsOptions Diagnostics { get; } = new DiagnosticsOptions();
 
         public IZLinkDispatchOptions SetMessageFlowObserver<TObserver>()
-            where TObserver : class, IZLinkMessageFlowObserver => this;
+            where TObserver : class, IZLinkMessageFlowObserver
+        {
+            return this;
+        }
 
-        public IZLinkDispatchOptions SetMessageFlowObserver(IZLinkMessageFlowObserver observer) => this;
+        public IZLinkDispatchOptions SetMessageFlowObserver(IZLinkMessageFlowObserver observer)
+        {
+            return this;
+        }
 
-        public IZLinkDispatchOptions MessageFlow(ZLinkMessageFlowLogMode mode) => this;
+        public IZLinkDispatchOptions MessageFlow(ZLinkMessageFlowLogMode mode)
+        {
+            return this;
+        }
 
-        public IZLinkDispatchOptions TraceSampleRate(double rate) => this;
+        public IZLinkDispatchOptions TraceSampleRate(double rate)
+        {
+            return this;
+        }
 
-        public IZLinkDispatchOptions IncludeMessageSizes(bool include) => this;
+        public IZLinkDispatchOptions IncludeMessageSizes(bool include)
+        {
+            return this;
+        }
 
-        public IZLinkDispatchOptions TraceLogFile(string path) => this;
+        public IZLinkDispatchOptions TraceLogFile(string path)
+        {
+            return this;
+        }
 
-        public IZLinkDispatchOptions TraceLabel(string id) => this;
+        public IZLinkDispatchOptions TraceLabel(string id)
+        {
+            return this;
+        }
     }
 
     private sealed class UnhandledDispatchOptions : IZLinkUnhandledDispatchOptions

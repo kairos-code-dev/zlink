@@ -1,29 +1,11 @@
-using System.Collections.Concurrent;
-using Microsoft.AspNetCore.Builder;
-using Microsoft.AspNetCore.Http;
-using Microsoft.Extensions.DependencyInjection;
-using Microsoft.Extensions.Hosting;
-using Microsoft.Extensions.Logging;
+using SpotService.Server.Session.Handlers;
 using SpotService.Shared;
 using Systems.Zlink;
-using Systems.Zlink.Stream.Connector.Contracts;
-using Zlink.Framework;
-using Zlink.Framework.AspNetCore;
-using Zlink.Framework.Contracts.Actors;
 using Zlink.Framework.Contracts.Channels;
-using Zlink.Framework.Contracts.Codecs.Json;
-using Zlink.Framework.Contracts.Dispatch;
 using Zlink.Framework.Contracts.Errors;
-using Zlink.Framework.Contracts.Handlers;
-using Zlink.Framework.Contracts.Messaging;
 using Zlink.Framework.Contracts.Spots;
-using Zlink.Framework.Contracts.Streams;
-using Zlink.Framework.Contracts.Timers;
-using SpotService.Server.Session.Handlers;
-using SpotService.Server.Session.Spots;
 
 namespace SpotService.Server.Session.Spots;
-
 
 internal sealed class MultiNodeCreateSpotAHandler(
     IZLinkSpotManager spots,
@@ -46,7 +28,8 @@ internal sealed class MultiNodeCreateSpotAHandler(
             request.SpotRid,
             request.Delta,
             cancellationToken);
-        evidence.Add($"multi-create-spot|node={SpotServiceNames.MultiSpotNodeA}|spot={result.SpotRid}|state={result.State}");
+        evidence.Add(
+            $"multi-create-spot|node={SpotServiceNames.MultiSpotNodeA}|spot={result.SpotRid}|state={result.State}");
         return new MultiNodeCreateSpotReply(
             result.SpotRid.ToString(),
             SpotServiceNames.MultiSpotNodeA,
@@ -76,7 +59,8 @@ internal sealed class MultiNodeCreateSpotBHandler(
             request.SpotRid,
             request.Delta,
             cancellationToken);
-        evidence.Add($"multi-create-spot|node={SpotServiceNames.MultiSpotNodeB}|spot={result.SpotRid}|state={result.State}");
+        evidence.Add(
+            $"multi-create-spot|node={SpotServiceNames.MultiSpotNodeB}|spot={result.SpotRid}|state={result.State}");
         return new MultiNodeCreateSpotReply(
             result.SpotRid.ToString(),
             SpotServiceNames.MultiSpotNodeB,
@@ -124,7 +108,8 @@ internal static class MultiNodeScenario
             await Task.Delay(TimeSpan.FromMilliseconds(100), cancellationToken);
         }
 
-        throw new TimeoutException($"Timed out waiting for multi-node spot route '{spotRid}' on '{channelName}'.", last);
+        throw new TimeoutException($"Timed out waiting for multi-node spot route '{spotRid}' on '{channelName}'.",
+            last);
     }
 }
 

@@ -85,15 +85,15 @@ discovery 기반 mesh 로 묶는 형태가 표준이다.
 ```csharp
 builder.Services.AddZLinkFramework(options =>
 {
+    options.UseDiscovery().AddRegistryEndpoint("tcp://registry1:5551"); // 자동 연결에 쓸 Registry 는 options 에 한 번 등록한다.
     var mesh = options.AddSpotMesh("game.stage");
     // 외부→spot send/request 를 받을 노드라면 resolver 를 켠다: spotRid 로 소유 노드를
     // registry 에서 찾아 준다(이 mesh 이름을 namespace 로 사용). 빼면 외부→spot 가 안 닿는다.
     mesh.UseRegistrySpotResolver();
-    // 같은 channel("game.stage") 노드끼리 자동 연결되는 핵심: 모든 노드가 같은
+    // 같은 channel("game.stage") 노드끼리 자동 연결되는 핵심: root discovery 로 등록한
     // registry 에 자기 router/pub-sub bind endpoint 를 등록하고, registry 가
     // 알려준 peer 들과 router↔router·pub/sub mesh 를 알아서 배선한다. 그래서 별도
     // "connect" 코드 없이 §1 그림의 굵은 화살표(SpotNode A <==> B)가 생긴다.
-    mesh.UseDiscovery().AddRegistryEndpoint("tcp://registry1:5551");
 
     var node = mesh;
     node.EnableRouter("tcp://0.0.0.0:9001");   // 이 노드의 router 소켓을 이 endpoint 에 bind (discovery 가 이 주소로 peer 를 잇는다)
@@ -276,8 +276,7 @@ flowchart LR
 spot↔spot·actor 까지 포함한 전체 연결·handler·배선 표는 **§5 「한눈에 보기」**에서 한 번에 본다. 여기 §2 그림은 "함수가 켜는 SpotNode 소켓 ↔ channel" 한 축만 떼어 본 것이다.
 
 > top-level `UseDiscovery().AddRegistryEndpoint(...)` 를 등록하면 `AddSpotMesh` 는 그 discovery endpoint 를
-> 기본으로 상속한다. mesh 단위로 다른 endpoint 를 쓰려는 경우에만 `mesh.UseDiscovery().AddRegistryEndpoint(...)` 를
-> 따로 둔다. 단일 노드만 띄우는 local 테스트도 `AddSpotMesh(...)`가 반환한
+> 기본으로 사용한다. mesh 단위로 다른 endpoint 를 따로 지정하지 않는다. 단일 노드만 띄우는 local 테스트도 `AddSpotMesh(...)`가 반환한
 > builder 에 router, pub/sub, factory 를 바로 설정한다.
 
 ## 3. Spot 작성 — handler 등록과 lifecycle

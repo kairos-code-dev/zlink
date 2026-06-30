@@ -1,29 +1,11 @@
-using System.Collections.Concurrent;
-using Microsoft.AspNetCore.Builder;
-using Microsoft.AspNetCore.Http;
-using Microsoft.Extensions.DependencyInjection;
-using Microsoft.Extensions.Hosting;
-using Microsoft.Extensions.Logging;
+using SpotService.Server.Session.Handlers;
 using SpotService.Shared;
 using Systems.Zlink;
-using Systems.Zlink.Stream.Connector.Contracts;
-using Zlink.Framework;
-using Zlink.Framework.AspNetCore;
 using Zlink.Framework.Contracts.Actors;
-using Zlink.Framework.Contracts.Channels;
-using Zlink.Framework.Contracts.Codecs.Json;
-using Zlink.Framework.Contracts.Dispatch;
-using Zlink.Framework.Contracts.Errors;
-using Zlink.Framework.Contracts.Handlers;
 using Zlink.Framework.Contracts.Messaging;
 using Zlink.Framework.Contracts.Spots;
-using Zlink.Framework.Contracts.Streams;
-using Zlink.Framework.Contracts.Timers;
-using SpotService.Server.Session.Handlers;
-using SpotService.Server.Session.Spots;
 
 namespace SpotService.Server.Session.Spots;
-
 
 internal sealed class ScenarioActorFactory : IZLinkActorFactory
 {
@@ -39,11 +21,10 @@ internal sealed class ScenarioActorFactory : IZLinkActorFactory
 
 internal sealed class ScenarioActor(string actorId, IZLinkActorContext context) : IZLinkActor
 {
-    public string ActorId { get; } = actorId;
-
     public string DisplayName { get; set; } = actorId;
 
     public int Seen { get; set; }
+    public string ActorId { get; } = actorId;
 
     public IZLinkActorContext Context { get; } = context;
 }
@@ -62,10 +43,7 @@ internal sealed class ScenarioEntrySpot(
         CancellationToken cancellationToken)
     {
         cancellationToken.ThrowIfCancellationRequested();
-        if (!createRequest.IsEmpty)
-        {
-            actor.DisplayName = createRequest.Decode<ScenarioActorCreateRequest>().DisplayName;
-        }
+        if (!createRequest.IsEmpty) actor.DisplayName = createRequest.Decode<ScenarioActorCreateRequest>().DisplayName;
 
         evidence.Add($"entry-created|rid={evidence.Rid}|actor={actor.ActorId}");
         return ValueTask.CompletedTask;
@@ -122,15 +100,6 @@ internal sealed class ScenarioUserSpot(
         Context.Handlers.AddSubscribe<SpotEventHandler>(SpotServiceNames.SpotEventTopic);
     }
 
-    public ValueTask<ZLinkSpotCreateResponse> OnCreateAsync(
-        Message request,
-        CancellationToken cancellationToken)
-    {
-        cancellationToken.ThrowIfCancellationRequested();
-        evidence.Add($"spot-created|rid={evidence.Rid}|spot={Context.SpotRid}");
-        return ValueTask.FromResult(ZLinkSpotCreateResponse.Accept());
-    }
-
     public ValueTask OnInitializeAsync(CancellationToken cancellationToken)
     {
         cancellationToken.ThrowIfCancellationRequested();
@@ -167,6 +136,15 @@ internal sealed class ScenarioUserSpot(
         cancellationToken.ThrowIfCancellationRequested();
         evidence.Add($"spot-actor-disconnected|rid={evidence.Rid}|spot={Context.SpotRid}|actor={actor.ActorId}");
         return ValueTask.CompletedTask;
+    }
+
+    public ValueTask<ZLinkSpotCreateResponse> OnCreateAsync(
+        Message request,
+        CancellationToken cancellationToken)
+    {
+        cancellationToken.ThrowIfCancellationRequested();
+        evidence.Add($"spot-created|rid={evidence.Rid}|spot={Context.SpotRid}");
+        return ValueTask.FromResult(ZLinkSpotCreateResponse.Accept());
     }
 
     public int Add(int delta)

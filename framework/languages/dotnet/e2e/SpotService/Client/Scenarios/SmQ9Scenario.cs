@@ -1,6 +1,6 @@
+using SpotService.Client.Support;
 using SpotService.Shared;
 using Zlink.HttpClient;
-using SpotService.Client.Support;
 
 namespace SpotService.Client.Scenarios;
 
@@ -21,10 +21,13 @@ internal static class SmQ9Scenario
             .Body(new MultiNodeStateRouteReq(spotA, 0))
             .SubmitAsync<StateReply>()).Body;
         var evidenceA = (await multiA.Post("/evidence/wait")
-            .Body(new EvidenceWaitRequest([$"multi-state-request|node={SpotServiceNames.MultiSpotNodeA}|spot={spotA}|value=11"]))
+            .Body(new EvidenceWaitRequest([
+                $"multi-state-request|node={SpotServiceNames.MultiSpotNodeA}|spot={spotA}|value=11"
+            ]))
             .SubmitAsync<string[]>()).Body;
         ScenarioAssert.That(
-            evidenceA.Count(line => line == $"multi-state-request|node={SpotServiceNames.MultiSpotNodeA}|spot={spotA}|value=11") >= 2,
+            evidenceA.Count(line =>
+                line == $"multi-state-request|node={SpotServiceNames.MultiSpotNodeA}|spot={spotA}|value=11") >= 2,
             "SM-Q9 node A did not process both route-to-spot requests.");
 
         var createdB = (await multiB.Post("/spot/create-local")
@@ -37,21 +40,28 @@ internal static class SmQ9Scenario
             .Body(new MultiNodeStateRouteReq(spotB, 0))
             .SubmitAsync<StateReply>()).Body;
         var evidenceB = (await multiB.Post("/evidence/wait")
-            .Body(new EvidenceWaitRequest([$"multi-state-request|node={SpotServiceNames.MultiSpotNodeB}|spot={spotB}|value=17"]))
+            .Body(new EvidenceWaitRequest([
+                $"multi-state-request|node={SpotServiceNames.MultiSpotNodeB}|spot={spotB}|value=17"
+            ]))
             .SubmitAsync<string[]>()).Body;
         ScenarioAssert.That(
-            evidenceB.Count(line => line == $"multi-state-request|node={SpotServiceNames.MultiSpotNodeB}|spot={spotB}|value=17") >= 2,
+            evidenceB.Count(line =>
+                line == $"multi-state-request|node={SpotServiceNames.MultiSpotNodeB}|spot={spotB}|value=17") >= 2,
             "SM-Q9 node B did not process both route-to-spot requests.");
 
-        ScenarioAssert.That(createdA.NodeRid == SpotServiceNames.MultiSpotNodeA, "SM-Q9 node A create reply node mismatch.");
+        ScenarioAssert.That(createdA.NodeRid == SpotServiceNames.MultiSpotNodeA,
+            "SM-Q9 node A create reply node mismatch.");
         ScenarioAssert.That(firstA.Value == 11, "SM-Q9 node A route-to-spot reply value mismatch.");
         ScenarioAssert.That(directA.SpotRid == spotA, "SM-Q9 node A direct spot reply target mismatch.");
-        ScenarioAssert.That(directA.NodeRid == SpotServiceNames.MultiSpotNodeA, "SM-Q9 node A direct spot reply node mismatch.");
+        ScenarioAssert.That(directA.NodeRid == SpotServiceNames.MultiSpotNodeA,
+            "SM-Q9 node A direct spot reply node mismatch.");
         ScenarioAssert.That(directA.Value == 11, "SM-Q9 node A direct spot reply value mismatch.");
-        ScenarioAssert.That(createdB.NodeRid == SpotServiceNames.MultiSpotNodeB, "SM-Q9 node B create reply node mismatch.");
+        ScenarioAssert.That(createdB.NodeRid == SpotServiceNames.MultiSpotNodeB,
+            "SM-Q9 node B create reply node mismatch.");
         ScenarioAssert.That(firstB.Value == 17, "SM-Q9 node B route-to-spot reply value mismatch.");
         ScenarioAssert.That(directB.SpotRid == spotB, "SM-Q9 node B direct spot reply target mismatch.");
-        ScenarioAssert.That(directB.NodeRid == SpotServiceNames.MultiSpotNodeB, "SM-Q9 node B direct spot reply node mismatch.");
+        ScenarioAssert.That(directB.NodeRid == SpotServiceNames.MultiSpotNodeB,
+            "SM-Q9 node B direct spot reply node mismatch.");
         ScenarioAssert.That(directB.Value == 17, "SM-Q9 node B direct spot reply value mismatch.");
         Console.WriteLine("operation SpotService.sm-q9 passed");
     }

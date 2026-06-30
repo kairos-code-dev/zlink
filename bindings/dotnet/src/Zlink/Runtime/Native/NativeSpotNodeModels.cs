@@ -64,25 +64,25 @@ internal unsafe struct ZlinkSpotNodeSubjectFilter
 [StructLayout(LayoutKind.Sequential)]
 internal struct ZlinkSpotNodeOptions
 {
-    public global::Systems.Zlink.SpotNodeMode Mode;
+    public SpotNodeMode Mode;
 }
 
 [StructLayout(LayoutKind.Sequential)]
 internal unsafe struct ZlinkSpotNodeSocketFilter
 {
-    public global::Systems.Zlink.SpotNodeSocketOwner Owner;
-    public global::Systems.Zlink.SpotNodeSocketType SocketType;
+    public SpotNodeSocketOwner Owner;
+    public SpotNodeSocketType SocketType;
     public fixed byte SocketName[64];
 }
 
 [StructLayout(LayoutKind.Sequential)]
 internal unsafe struct ZlinkSpotNodeSocketEntry
 {
-    public global::Systems.Zlink.SpotNodeSocketOwner Owner;
+    public SpotNodeSocketOwner Owner;
     public ulong OwnerId;
     public fixed byte OwnerName[64];
     public fixed byte SocketName[64];
-    public global::Systems.Zlink.SpotNodeSocketType SocketType;
+    public SpotNodeSocketType SocketType;
     public uint AutoHwmVisible;
     public ZlinkMonitorStatus MonitorStatus;
 }

@@ -1,6 +1,3 @@
-using Zlink.Framework.Runtime.Backend.Contracts;
-using Zlink.Framework.Runtime.Registry;
-
 namespace Zlink.Framework.Runtime.Host;
 
 internal sealed class ZLinkFrameworkRuntimeStateFactory(
@@ -41,15 +38,10 @@ internal sealed class ZLinkFrameworkRuntimeStateFactory(
         var registryRoutes = state.Registration.RegistrySpotRemoteAddresses;
         if (registryRoutes is null
             || state.SpotNodes.Count > 0)
-        {
             return;
-        }
 
         var endpoints = state.Registration.Discovery?.Endpoints ?? [];
-        if (endpoints.Count == 0)
-        {
-            return;
-        }
+        if (endpoints.Count == 0) return;
 
         var discovery = ZLinkBackendDiscoveryFactory.Create(
             channelAdapter,

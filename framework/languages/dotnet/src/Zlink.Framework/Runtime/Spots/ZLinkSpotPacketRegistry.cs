@@ -1,17 +1,15 @@
-using Zlink.Framework.Runtime.Backend.Contracts;
-
 namespace Zlink.Framework.Runtime.Spots;
 
 internal sealed class ZLinkSpotPacketRegistry
 {
-    private readonly List<ZLinkSpotPacketRegistration> _registrations = [];
     private readonly Dictionary<string, ZLinkSpotDescriptor> _descriptorsByName = new(StringComparer.Ordinal);
+    private readonly List<ZLinkSpotPacketRegistration> _registrations = [];
 
     public bool HasPackets => _descriptorsByName.Count > 0;
 
     public void Add(Type handlerType)
     {
-        Add(handlerType, packetName: null);
+        Add(handlerType, null);
     }
 
     public void Add(Type handlerType, string? packetName)

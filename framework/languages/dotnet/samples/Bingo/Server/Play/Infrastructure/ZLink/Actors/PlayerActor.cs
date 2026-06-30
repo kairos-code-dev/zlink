@@ -6,8 +6,6 @@ internal sealed class PlayerActor(
     string actorId,
     IZLinkActorContext context) : IZLinkActor
 {
-    public string ActorId { get; } = actorId;
-
     public string DisplayName { get; private set; } = actorId;
 
     public string RoomId { get; private set; } = string.Empty;
@@ -15,6 +13,7 @@ internal sealed class PlayerActor(
     public bool DestroyAfterEntrySpotJoin { get; private set; }
 
     public bool Disconnected { get; private set; }
+    public string ActorId { get; } = actorId;
 
     public IZLinkActorContext Context { get; } = context;
 

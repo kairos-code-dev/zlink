@@ -1,6 +1,3 @@
-using Zlink.Framework.Runtime.Backend.Contracts;
-using Zlink.Framework.Runtime.Messaging;
-
 namespace Zlink.Framework.Runtime.Spots;
 
 internal sealed class ZLinkSpotOutboundTransport(
@@ -13,6 +10,11 @@ internal sealed class ZLinkSpotOutboundTransport(
         nativeSpot.OnSendReady,
         sendTimeout,
         stopToken);
+
+    public ValueTask DisposeAsync()
+    {
+        return _submitter.DisposeAsync();
+    }
 
     public async ValueTask<IReadOnlyList<Message>> RequestToSpotAsync(
         RoutingId targetNodeRid,
@@ -106,10 +108,5 @@ internal sealed class ZLinkSpotOutboundTransport(
         SendFlags flags)
     {
         return nativeSpot.SendToSpot(targetRid, spotRid, parts, flags);
-    }
-
-    public ValueTask DisposeAsync()
-    {
-        return _submitter.DisposeAsync();
     }
 }

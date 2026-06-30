@@ -1,10 +1,6 @@
 // SPDX-License-Identifier: MPL-2.0
 
-using System;
-using System.Collections.Generic;
 using System.Runtime.InteropServices;
-using System.Threading;
-using System.Threading.Tasks;
 using Systems.Zlink.Runtime.Native;
 
 namespace Systems.Zlink;
@@ -15,13 +11,13 @@ internal static partial class ActorInterop
         ActorRef actor, RoutingId currentSpotRid, TimeSpan timeout,
         CancellationToken ct)
     {
-        uint timeoutMs = NormalizeTimeout(timeout);
-        ZlinkActorRef nativeActor = ToNative(actor);
-        ZlinkRoutingId nativeSpotRid = currentSpotRid.ToNative();
+        var timeoutMs = NormalizeTimeout(timeout);
+        var nativeActor = ToNative(actor);
+        var nativeSpotRid = currentSpotRid.ToNative();
         return SubmitReplyAsync(node.Handle, ct, (userData, handler) =>
             NativeMethods.zlink_spot_node_actor_leave_spot(node.Handle,
                 ref nativeActor, ref nativeSpotRid, handler, userData,
-                timeoutMs), attachSpot: true);
+                timeoutMs), true);
     }
 
     internal static bool LeaveActorCallback(SpotNode node, ActorRef actor,
@@ -34,12 +30,12 @@ internal static partial class ActorInterop
     internal static Task<IReadOnlyList<Message>> DestroyActorAsync(SpotNode node,
         ActorRef actor, TimeSpan timeout, CancellationToken ct)
     {
-        uint timeoutMs = NormalizeTimeout(timeout);
-        ZlinkActorRef nativeActor = ToNative(actor);
+        var timeoutMs = NormalizeTimeout(timeout);
+        var nativeActor = ToNative(actor);
         return SubmitReplyAsync(node.Handle, ct, (userData, handler) =>
-            NativeMethods.zlink_spot_node_actor_destroy(node.Handle,
-                ref nativeActor, handler, userData, timeoutMs),
-            attachSpot: true);
+                NativeMethods.zlink_spot_node_actor_destroy(node.Handle,
+                    ref nativeActor, handler, userData, timeoutMs),
+            true);
     }
 
     internal static bool DestroyActorCallback(SpotNode node, ActorRef actor,
@@ -53,14 +49,14 @@ internal static partial class ActorInterop
         StreamSocket stream, RoutingId sessionRid, ActorRef actor,
         TimeSpan timeout, CancellationToken ct)
     {
-        uint timeoutMs = NormalizeTimeout(timeout);
-        ZlinkRoutingId nativeSession = sessionRid.ToNative();
-        ZlinkActorRef nativeActor = ToNative(actor);
-        IntPtr handle = stream.Handle;
+        var timeoutMs = NormalizeTimeout(timeout);
+        var nativeSession = sessionRid.ToNative();
+        var nativeActor = ToNative(actor);
+        var handle = stream.Handle;
         return SubmitReplyAsync(handle, ct, (userData, handler) =>
-            NativeMethods.zlink_stream_bind_actor(handle, ref nativeSession,
-                ref nativeActor, handler, userData, timeoutMs),
-            attachSpot: false);
+                NativeMethods.zlink_stream_bind_actor(handle, ref nativeSession,
+                    ref nativeActor, handler, userData, timeoutMs),
+            false);
     }
 
     internal static bool BindActorCallback(StreamSocket stream,
@@ -76,12 +72,12 @@ internal static partial class ActorInterop
         TimeSpan timeout, CancellationToken ct)
     {
         ValidateActorId(actorId, nameof(actorId));
-        uint timeoutMs = NormalizeTimeout(timeout);
-        ZlinkRoutingId nativeSession = sessionRid.ToNative();
-        IntPtr handle = stream.Handle;
+        var timeoutMs = NormalizeTimeout(timeout);
+        var nativeSession = sessionRid.ToNative();
+        var handle = stream.Handle;
         return SubmitReplyAsync(handle, ct, (userData, handler) =>
             NativeMethods.zlink_stream_unbind_actor(handle, ref nativeSession,
-                actorId, handler, userData, timeoutMs), attachSpot: false);
+                actorId, handler, userData, timeoutMs), false);
     }
 
     internal static bool UnbindActorCallback(StreamSocket stream,
@@ -91,8 +87,6 @@ internal static partial class ActorInterop
         return SubmitReplyCallback(() => UnbindActorAsync(stream, sessionRid,
             actorId, timeout, CancellationToken.None), callback);
     }
-
-    internal delegate int NativeSubmitFunc(IntPtr userData, IntPtr handler);
 
     private static Task<IReadOnlyList<Message>> SubmitReplyAsync(
         IntPtr progressHandle, CancellationToken ct,
@@ -106,20 +100,17 @@ internal static partial class ActorInterop
             RequestCallState state = new(completion);
             handle = GCHandle.Alloc(state, GCHandleType.Normal);
             if (ct.CanBeCanceled)
-            {
-                state.SetCancellationRegistration(ct.Register(static userdata =>
-                {
-                    RequestCallState.CancelFromUserData(userdata);
-                }, handle));
-            }
-            int rc = submitter(GCHandle.ToIntPtr(handle), ReplyHandlerPtr);
+                state.SetCancellationRegistration(
+                    ct.Register(static userdata => { RequestCallState.CancelFromUserData(userdata); }, handle));
+            var rc = submitter(GCHandle.ToIntPtr(handle), ReplyHandlerPtr);
             if (rc != 0)
             {
                 handle.Free();
                 throw ZlinkException.CreateSubmitException(
                     NativeMethods.zlink_errno());
             }
-            Task<Received> attached = attachSpot
+
+            var attached = attachSpot
                 ? RequestProgressPump.AttachSpot(progressHandle, completion.Task)
                 : RequestProgressPump.AttachSocket(progressHandle,
                     completion.Task);
@@ -136,7 +127,7 @@ internal static partial class ActorInterop
     private static bool SubmitReplyCallback(
         Func<Task<IReadOnlyList<Message>>> invoker, ReplyHandler callback)
     {
-        SynchronizationContext? syncCtx = SynchronizationContext.Current;
+        var syncCtx = SynchronizationContext.Current;
         try
         {
             _ = invoker().ContinueWith(t =>
@@ -145,7 +136,7 @@ internal static partial class ActorInterop
                 IReadOnlyList<Message> parts;
                 if (t.IsFaulted)
                 {
-                    Exception err = t.Exception!.GetBaseException();
+                    var err = t.Exception!.GetBaseException();
                     result = err is ZlinkRequestException rex
                         ? (RequestResult)rex.Code
                         : RequestResult.InternalError;
@@ -161,15 +152,18 @@ internal static partial class ActorInterop
                     result = RequestResult.Ok;
                     parts = t.Result;
                 }
+
                 CallbackDelivery.Post(syncCtx, () => callback(result, parts));
             }, TaskScheduler.Default);
             return true;
         }
         catch (ZlinkException error) when (
             RequestReplySupport.MapSendNoWaitResult(error)
-                == SendResult.Backpressured)
+            == SendResult.Backpressured)
         {
             return false;
         }
     }
+
+    internal delegate int NativeSubmitFunc(IntPtr userData, IntPtr handler);
 }

@@ -1,6 +1,5 @@
 namespace Zlink.Framework.Runtime.Backend.DotNet.Wrappers;
 
-
 internal sealed class ZLinkBackendDealerSocketWrapper(IDealerSocket nativeSocket) : IZLinkBackendDealerSocket
 {
     private readonly object _gate = new();
@@ -100,10 +99,7 @@ internal sealed class ZLinkBackendDealerSocketWrapper(IDealerSocket nativeSocket
         var operation = nativeSocket.Request()
             .Message(message)
             .Flags(flags);
-        if (timeout is { } value)
-        {
-            operation = operation.Timeout(value);
-        }
+        if (timeout is { } value) operation = operation.Timeout(value);
 
         lock (_gate)
         {
@@ -119,10 +115,7 @@ internal sealed class ZLinkBackendDealerSocketWrapper(IDealerSocket nativeSocket
     {
         var operation = nativeSocket.Request().Messages(parts);
 
-        if (timeout is { } value)
-        {
-            operation = operation.Timeout(value);
-        }
+        if (timeout is { } value) operation = operation.Timeout(value);
 
         lock (_gate)
         {
@@ -135,10 +128,7 @@ internal sealed class ZLinkBackendDealerSocketWrapper(IDealerSocket nativeSocket
         var received = Received.Create();
         lock (_gate)
         {
-            if (nativeSocket.Recv(received, flags))
-            {
-                return received;
-            }
+            if (nativeSocket.Recv(received, flags)) return received;
         }
 
         received.Dispose();

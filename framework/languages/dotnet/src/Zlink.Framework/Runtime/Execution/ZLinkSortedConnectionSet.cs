@@ -7,10 +7,7 @@ internal sealed class ZLinkSortedConnectionSet
 
     public bool Add(string endpoint)
     {
-        if (!_items.Add(endpoint))
-        {
-            return false;
-        }
+        if (!_items.Add(endpoint)) return false;
 
         RefreshSnapshot();
         return true;
@@ -18,10 +15,7 @@ internal sealed class ZLinkSortedConnectionSet
 
     public bool Remove(string endpoint)
     {
-        if (!_items.Remove(endpoint))
-        {
-            return false;
-        }
+        if (!_items.Remove(endpoint)) return false;
 
         RefreshSnapshot();
         return true;

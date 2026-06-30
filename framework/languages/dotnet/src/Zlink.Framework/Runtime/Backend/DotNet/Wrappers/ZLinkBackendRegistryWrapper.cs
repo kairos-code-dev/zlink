@@ -1,6 +1,5 @@
 namespace Zlink.Framework.Runtime.Backend.DotNet.Wrappers;
 
-
 internal sealed class ZLinkBackendRegistryWrapper(IRegistry nativeRegistry) : IZLinkBackendRegistry
 {
     public object NativeInstance => nativeRegistry;
@@ -67,5 +66,8 @@ internal sealed class ZLinkBackendRegistryWrapper(IRegistry nativeRegistry) : IZ
             .ToArray();
     }
 
-    public ValueTask DisposeAsync() => nativeRegistry.DisposeAsync();
+    public ValueTask DisposeAsync()
+    {
+        return nativeRegistry.DisposeAsync();
+    }
 }

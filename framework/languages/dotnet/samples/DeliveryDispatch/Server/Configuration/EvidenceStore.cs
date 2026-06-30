@@ -4,13 +4,13 @@ namespace DeliveryDispatch.Server.Configuration;
 
 public sealed class EvidenceStore
 {
-    private readonly string _path;
     private readonly object _gate = new();
+    private readonly string _path;
 
     public EvidenceStore()
     {
         var directory = Environment.GetEnvironmentVariable("DELIVERYDISPATCH_WORK_DIR")
-            ?? Path.Combine(Path.GetTempPath(), "zlink-deliverydispatch");
+                        ?? Path.Combine(Path.GetTempPath(), "zlink-deliverydispatch");
         Directory.CreateDirectory(directory);
         _path = Path.Combine(directory, "events.log");
     }

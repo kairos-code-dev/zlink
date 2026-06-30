@@ -1,19 +1,7 @@
-using System.Buffers.Binary;
 using System.Net;
-using System.Net.Security;
 using System.Net.Sockets;
-using System.Net.WebSockets;
-using System.Security.Cryptography;
-using System.Security.Cryptography.X509Certificates;
-using System.Text;
-using System.Text.Json;
-using Systems.Zlink.Stream.Connector;
 using Systems.Zlink.Stream.Connector.Contracts;
-using Systems.Zlink.Stream.Connector.Contracts.Calls;
-using Systems.Zlink.Stream.Connector.Runtime;
-using Systems.Zlink.Stream.Connector.Runtime.Protocol.Framing;
 using Xunit;
-
 
 public sealed partial class StreamConnectorTests
 {
@@ -175,13 +163,11 @@ public sealed partial class StreamConnectorTests
         {
             Endpoint = new Uri($"tcp://127.0.0.1:{endpoint.Port}")
         });
-        var errorReceived = new TaskCompletionSource<ZlinkStreamError>(TaskCreationOptions.RunContinuationsAsynchronously);
+        var errorReceived =
+            new TaskCompletionSource<ZlinkStreamError>(TaskCreationOptions.RunContinuationsAsynchronously);
         connector.ErrorReceived += (error, _) =>
         {
-            if (error.Code == ZlinkStreamErrorCode.FrameDecodeFailed)
-            {
-                errorReceived.TrySetResult(error);
-            }
+            if (error.Code == ZlinkStreamErrorCode.FrameDecodeFailed) errorReceived.TrySetResult(error);
 
             return ValueTask.CompletedTask;
         };
@@ -196,5 +182,4 @@ public sealed partial class StreamConnectorTests
         Assert.Equal(ZlinkStreamErrorCode.FrameDecodeFailed, error.Code);
         await server;
     }
-
 }

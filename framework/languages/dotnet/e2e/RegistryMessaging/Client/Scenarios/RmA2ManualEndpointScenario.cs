@@ -1,6 +1,6 @@
-using Zlink.HttpClient;
-using RegistryMessaging.Shared;
 using RegistryMessaging.Client.Support;
+using RegistryMessaging.Shared;
+using Zlink.HttpClient;
 
 namespace RegistryMessaging.Client.Scenarios;
 
@@ -10,7 +10,8 @@ internal static class RmA2ManualEndpointScenario
 {
     public static async Task RunAsync(ZLinkHttpClient providerA)
     {
-        var reply = (await providerA.Post("/profile/manual").Body(new ProfileRequest("rm-a2")).SubmitAsync<ProfileReply>()).Body;
+        var reply = (await providerA.Post("/profile/manual").Body(new ProfileRequest("rm-a2"))
+            .SubmitAsync<ProfileReply>()).Body;
         ScenarioAssert.That(reply.Value == "profile:rm-a2", "RM-A2 reply value mismatch.");
         ScenarioAssert.That(reply.ProviderRid == "api-a", "RM-A2 manual endpoint should reach api-a.");
 

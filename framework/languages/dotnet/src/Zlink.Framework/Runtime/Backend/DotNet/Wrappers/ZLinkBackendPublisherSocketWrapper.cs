@@ -1,6 +1,5 @@
 namespace Zlink.Framework.Runtime.Backend.DotNet.Wrappers;
 
-
 internal sealed class ZLinkBackendPublisherSocketWrapper(IPubSocket nativeSocket) : IZLinkBackendPublisherSocket
 {
     public object NativeInstance => nativeSocket;
@@ -62,5 +61,8 @@ internal sealed class ZLinkBackendPublisherSocketWrapper(IPubSocket nativeSocket
             .Submit();
     }
 
-    public ValueTask DisposeAsync() => nativeSocket.DisposeAsync();
+    public ValueTask DisposeAsync()
+    {
+        return nativeSocket.DisposeAsync();
+    }
 }

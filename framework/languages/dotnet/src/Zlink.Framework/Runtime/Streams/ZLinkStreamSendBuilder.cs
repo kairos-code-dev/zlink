@@ -8,10 +8,11 @@ internal sealed class ZLinkStreamSendBuilder<TMessage>(
     private static readonly IZlinkStreamPacketNameResolver MessageNameResolver =
         ZLinkStreamProtocolDefaults.PacketNameResolver;
 
-    private string _messageName = MessageNameResolver.Resolve(typeof(TMessage));
-    private ZlinkStreamMetadata _metadata = ZlinkStreamMetadata.Empty;
     private bool _compress;
     private int _executed;
+
+    private string _messageName = MessageNameResolver.Resolve(typeof(TMessage));
+    private ZlinkStreamMetadata _metadata = ZlinkStreamMetadata.Empty;
 
     public void AddMetadata(string key, string value)
     {
@@ -21,9 +22,7 @@ internal sealed class ZLinkStreamSendBuilder<TMessage>(
     public void SetPacketName(string messageName)
     {
         if (string.IsNullOrWhiteSpace(messageName))
-        {
             throw new InvalidOperationException("Stream packet name must not be empty.");
-        }
 
         _messageName = messageName;
     }
@@ -39,12 +38,10 @@ internal sealed class ZLinkStreamSendBuilder<TMessage>(
         string errorMessage)
     {
         if (Interlocked.Exchange(ref _executed, 1) != 0)
-        {
             throw new InvalidOperationException("Stream send builders can be executed only once.");
-        }
 
         var encoded = ZLinkStreamPacketPayloadCodec.Encode(message, typeof(TMessage), codecs);
-        ReadOnlyMemory<byte> payload = encoded.Payload;
+        var payload = encoded.Payload;
         var flags = ZlinkStreamHeaderFlags.None;
 
         if (_compress)

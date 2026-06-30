@@ -1,6 +1,6 @@
 using GameQuest.GameApi.Application;
-using GameQuest.Shared;
 using GameQuest.Server.Configuration;
+using GameQuest.Shared;
 using Zlink.HttpClient;
 
 namespace GameQuest.GameApi.Infrastructure.Http;

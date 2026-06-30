@@ -1,24 +1,20 @@
 // SPDX-License-Identifier: MPL-2.0
 
-using System;
-using System.Threading.Tasks;
 using Systems.Zlink.Runtime.Native;
 
 namespace Systems.Zlink;
 
 internal sealed class Context : IContext
 {
-    private IntPtr _handle;
-
     public Context()
     {
         Options = new ContextOptions(this);
-        _handle = NativeMethods.zlink_ctx_new();
-        if (_handle == IntPtr.Zero)
+        Handle = NativeMethods.zlink_ctx_new();
+        if (Handle == IntPtr.Zero)
             throw ZlinkException.CreateConfigException(NativeMethods.zlink_errno());
     }
 
-    internal IntPtr Handle => _handle;
+    internal IntPtr Handle { get; private set; }
 
     public ContextOptions Options { get; }
 
@@ -90,31 +86,10 @@ internal sealed class Context : IContext
         return new SpotNode(this, mode);
     }
 
-    internal void SetOption(ContextOption option, int value)
-    {
-        EnsureNotDisposed();
-        EnumValidation.EnsureContextOption(option, nameof(option));
-        int rc = NativeMethods.zlink_ctx_set(_handle, (int)option, value);
-        if (rc != 0)
-            throw ZlinkException.CreateConfigException(NativeMethods.zlink_errno());
-    }
-
-    internal int GetOption(ContextOption option)
-    {
-        EnsureNotDisposed();
-        EnumValidation.EnsureContextOption(option, nameof(option));
-        int value = NativeMethods.zlink_ctx_get(_handle, (int)option,
-            out int errorOut);
-        if (errorOut != (int)ConfigResult.Ok)
-            throw new ZlinkConfigException((ConfigResult)errorOut,
-                NativeMethods.zlink_errno());
-        return value;
-    }
-
     public void Shutdown()
     {
         EnsureNotDisposed();
-        int rc = NativeMethods.zlink_ctx_shutdown(_handle);
+        var rc = NativeMethods.zlink_ctx_shutdown(Handle);
         if (rc < 0)
             throw ZlinkException.CreateCloseException(NativeMethods.zlink_errno());
     }
@@ -122,39 +97,41 @@ internal sealed class Context : IContext
     public void RecalculateAutoHwm()
     {
         EnsureNotDisposed();
-        int rc = NativeMethods.zlink_ctx_auto_hwm_recalculate(_handle);
+        var rc = NativeMethods.zlink_ctx_auto_hwm_recalculate(Handle);
         if (rc != 0)
             throw ZlinkException.CreateConfigException(NativeMethods.zlink_errno());
     }
 
     public void Dispose()
     {
-        if (_handle == IntPtr.Zero)
+        if (Handle == IntPtr.Zero)
             return;
         while (true)
         {
-            int shutdownRc = NativeMethods.zlink_ctx_shutdown(_handle);
+            var shutdownRc = NativeMethods.zlink_ctx_shutdown(Handle);
             if (shutdownRc == 0)
                 break;
-            int shutdownErrno = NativeMethods.zlink_errno();
-            ErrorCode shutdownCode = ZlinkException.MapErrorCode(shutdownErrno);
+            var shutdownErrno = NativeMethods.zlink_errno();
+            var shutdownCode = ZlinkException.MapErrorCode(shutdownErrno);
             if (shutdownCode == ErrorCode.EIntr || shutdownErrno == 4)
                 continue;
             break;
         }
+
         int rc;
         while (true)
         {
-            rc = NativeMethods.zlink_ctx_term(_handle);
+            rc = NativeMethods.zlink_ctx_term(Handle);
             if (rc == 0)
                 break;
-            int errno = NativeMethods.zlink_errno();
-            ErrorCode code = ZlinkException.MapErrorCode(errno);
+            var errno = NativeMethods.zlink_errno();
+            var code = ZlinkException.MapErrorCode(errno);
             if (code == ErrorCode.EIntr || errno == 4)
                 continue;
             break;
         }
-        _handle = IntPtr.Zero;
+
+        Handle = IntPtr.Zero;
         if (rc < 0)
             throw ZlinkException.CreateCloseException(NativeMethods.zlink_errno());
         GC.SuppressFinalize(this);
@@ -166,14 +143,35 @@ internal sealed class Context : IContext
         return ValueTask.CompletedTask;
     }
 
+    internal void SetOption(ContextOption option, int value)
+    {
+        EnsureNotDisposed();
+        EnumValidation.EnsureContextOption(option, nameof(option));
+        var rc = NativeMethods.zlink_ctx_set(Handle, (int)option, value);
+        if (rc != 0)
+            throw ZlinkException.CreateConfigException(NativeMethods.zlink_errno());
+    }
+
+    internal int GetOption(ContextOption option)
+    {
+        EnsureNotDisposed();
+        EnumValidation.EnsureContextOption(option, nameof(option));
+        var value = NativeMethods.zlink_ctx_get(Handle, (int)option,
+            out var errorOut);
+        if (errorOut != (int)ConfigResult.Ok)
+            throw new ZlinkConfigException((ConfigResult)errorOut,
+                NativeMethods.zlink_errno());
+        return value;
+    }
+
     ~Context()
     {
-        if (_handle == IntPtr.Zero)
+        if (Handle == IntPtr.Zero)
             return;
 
         try
         {
-            _ = NativeMethods.zlink_ctx_shutdown(_handle);
+            _ = NativeMethods.zlink_ctx_shutdown(Handle);
         }
         catch
         {
@@ -182,7 +180,7 @@ internal sealed class Context : IContext
 
     private void EnsureNotDisposed()
     {
-        if (_handle == IntPtr.Zero)
+        if (Handle == IntPtr.Zero)
             throw new ObjectDisposedException(nameof(Context));
     }
 }

@@ -3,7 +3,8 @@ using Zlink.Framework.Contracts.Spots;
 
 namespace Bingo.Server.Play.Infrastructure.ZLink.Spots.BingoRoomSpot.Handlers;
 
-internal sealed class BingoRewardAcquiredEventHandler : IZLinkSpotSubscriptionHandler<BingoRoom, BingoRewardAcquiredEvent>
+internal sealed class
+    BingoRewardAcquiredEventHandler : IZLinkSpotSubscriptionHandler<BingoRoom, BingoRewardAcquiredEvent>
 {
     public ValueTask HandleAsync(
         BingoRoom spot,

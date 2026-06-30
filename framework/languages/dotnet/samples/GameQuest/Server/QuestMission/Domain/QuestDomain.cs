@@ -1,6 +1,6 @@
-using GameQuest.Shared;
-using GameQuest.Server.Configuration;
 using System.Text.Json;
+using GameQuest.Server.Configuration;
+using GameQuest.Shared;
 
 namespace GameQuest.QuestMission.Domain;
 
@@ -17,10 +17,12 @@ internal static class QuestCatalog
         new(QuestIds.VisitRuins, "AreaEntered", "ruins", 1)
     ];
 
-    public static QuestDefinition? Match(GameplayEventEnvelope gameplayEvent) =>
-        All.FirstOrDefault(definition =>
+    public static QuestDefinition? Match(GameplayEventEnvelope gameplayEvent)
+    {
+        return All.FirstOrDefault(definition =>
             definition.EventType == gameplayEvent.EventType
             && (definition.Value == "*" || definition.Value == gameplayEvent.Value));
+    }
 }
 
 internal sealed class QuestProjectionBuilder
@@ -47,17 +49,12 @@ internal sealed class QuestProjectionBuilder
         QuestProgress after,
         GameplayEventEnvelope source)
     {
-        if (before?.LastEventId == source.EventId)
-        {
-            return [];
-        }
+        if (before?.LastEventId == source.EventId) return [];
 
         if (before is not null
             && before.CurrentCount == after.CurrentCount
             && before.Status == after.Status)
-        {
             return [];
-        }
 
         var events = new List<StoredQuestEvent>();
         var kind = source.EventType == "SnapshotKillCount"
@@ -115,7 +112,7 @@ internal sealed class QuestProjectionBuilder
                 definition.QuestId,
                 eventType,
                 JsonSerializer.SerializeToUtf8Bytes(payload),
-                Version: 0,
+                0,
                 now);
         }
     }

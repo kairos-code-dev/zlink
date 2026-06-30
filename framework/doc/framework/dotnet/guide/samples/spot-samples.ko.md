@@ -309,7 +309,6 @@ builder.Services.AddZLinkFramework(options =>
 
     {
         var mesh = options.AddSpotMesh("game.stage");
-                mesh.UseDiscovery().AddRegistryEndpoint("tcp://registry1:5551");
 
         {
             var node = mesh;
@@ -436,7 +435,6 @@ builder.Services.AddZLinkFramework(options =>
     options.Codecs.Use(ZLinkProtobufCodec.Default);
 
     var mesh = options.AddSpotMesh("game.stage");
-    mesh.UseDiscovery().AddRegistryEndpoint("tcp://registry1:5551");
 
     var node = mesh;
     node.EnableRouter("tcp://0.0.0.0:9001");
@@ -498,7 +496,6 @@ builder.Services.AddZLinkFramework(options =>
 
     {
         var mesh = options.AddSpotMesh("game.stage");
-                mesh.UseDiscovery().AddRegistryEndpoint("tcp://registry1:5551");
 
         {
             var node = mesh;
@@ -714,7 +711,6 @@ builder.Services.AddZLinkFramework(options =>
 
     {
         var mesh = options.AddSpotMesh("game.stage");
-                mesh.UseDiscovery().AddRegistryEndpoint("tcp://registry1:5551");
 
         {
             var node = mesh;
@@ -948,7 +944,6 @@ builder.Services.AddZLinkFramework(options =>
 
     {
         var mesh = options.AddSpotMesh("game.room");
-                mesh.UseDiscovery().AddRegistryEndpoint("tcp://registry1:5551");
 
         {
             var node = mesh;
@@ -1671,7 +1666,7 @@ server tick 수를 계산할 수 있다.
 이 샘플에서 중요한 포인트는 다음과 같다.
 
 - `room.node` 는 논리적 `SpotNode` 이름이다. 그리고
-  `AddSpotMesh("game.room").UseDiscovery().AddRegistryEndpoint(...)` 가 `game.room`
+  `UseDiscovery().AddRegistryEndpoint(...)` 가 `game.room`
   channel mesh 의 범위를 정한다.
 - `SampleSpot` 은 단순한 handler 클래스가 아니라 실제 spot 객체다.
 - `SampleSpot` 은 `IZLinkSpot` 을 상속받는다. 그리고 자신의

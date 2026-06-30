@@ -10,7 +10,6 @@ internal sealed class ZLinkRegistryPollingEventDiff(string sourceName)
         Action<ZLinkRegistryEvent> dispatch)
     {
         if (_previous is null || _previous.Status != current.Status)
-        {
             dispatch(new ZLinkRegistryEvent(
                 sourceName,
                 timestamp,
@@ -18,10 +17,8 @@ internal sealed class ZLinkRegistryPollingEventDiff(string sourceName)
                 current.Status,
                 null,
                 null));
-        }
 
         if (_previous is null || !_previous.Topology.SequenceEqual(current.Topology))
-        {
             dispatch(new ZLinkRegistryEvent(
                 sourceName,
                 timestamp,
@@ -29,10 +26,8 @@ internal sealed class ZLinkRegistryPollingEventDiff(string sourceName)
                 null,
                 current.Topology,
                 null));
-        }
 
         if (_previous is null || !_previous.ServiceSummary.SequenceEqual(current.ServiceSummary))
-        {
             dispatch(new ZLinkRegistryEvent(
                 sourceName,
                 timestamp,
@@ -40,7 +35,6 @@ internal sealed class ZLinkRegistryPollingEventDiff(string sourceName)
                 null,
                 null,
                 current.ServiceSummary));
-        }
 
         _previous = current;
     }

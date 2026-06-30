@@ -1,8 +1,5 @@
 // SPDX-License-Identifier: MPL-2.0
 
-using System;
-using System.Collections;
-using System.Collections.Generic;
 using Systems.Zlink.Runtime.Sockets.Internal;
 
 namespace Systems.Zlink;
@@ -18,11 +15,13 @@ public sealed partial class Received : IDisposable
             _singlePart.DisposeNativeOwned();
             _singlePart = null;
         }
+
         if (_parts != null)
         {
             _parts.Dispose();
             _parts = null;
         }
+
         _routingId = null;
         _routingIdSnapshot = default;
         _metadata = null;

@@ -34,10 +34,11 @@ internal static class YdD3RouteBridgeYieldScenario
             "probe-started",
             "probe-completed",
             "yield-resumed",
-            "yield-completed"]);
+            "yield-completed"
+        ]);
         ScenarioAssert.That(
             evidence.Evidence.Any(line => line.Contains("yield-started|rid=play-b", StringComparison.Ordinal)
-                && line.Contains("handler=spot", StringComparison.Ordinal)),
+                                          && line.Contains("handler=spot", StringComparison.Ordinal)),
             "YD-D3 target Spot handler marker missing.");
     }
 }

@@ -1,3 +1,6 @@
+using System.Text.RegularExpressions;
+using System.Xml.Linq;
+
 namespace Zlink.Framework.UnitTests.Documentation;
 
 public sealed class RegressionTests
@@ -30,8 +33,65 @@ public sealed class RegressionTests
         "supportchat-sample.ko.md",
         "deliverydispatch-sample.ko.md",
         "shoppingmall-sample.ko.md",
-        "gamequest-sample.ko.md",
+        "gamequest-sample.ko.md"
     ];
+
+    private static readonly string[] GuideNarrativeDocuments =
+    [
+        "01-overview.ko.md",
+        "02-getting-started.ko.md",
+        "03-concepts.ko.md",
+        "04-channel-messaging.ko.md",
+        "05-spot.ko.md",
+        "06-actor-spot.ko.md",
+        "07-actor-session.ko.md",
+        "08-stream.ko.md",
+        "09-registry.ko.md",
+        "10-monitoring.ko.md",
+        "11-feature-map.ko.md",
+        "12-interface-catalog.ko.md",
+        "13-grpc-alternative.ko.md"
+    ];
+
+    private static readonly string[] GuideCaseStudyDocuments =
+    [
+        "13-case-ecommerce-checkout.ko.md",
+        "14-case-microservice-mesh.ko.md",
+        "15-case-realtime-game.ko.md",
+        "16-case-ride-hailing.ko.md",
+        "17-case-chat-messaging.ko.md",
+        "17-1-case-marketplace-chat.ko.md",
+        "17-2-case-live-commerce-chat.ko.md",
+        "17-3-case-game-chat.ko.md",
+        "18-case-trading-system.ko.md"
+    ];
+
+    private static readonly IReadOnlySet<string> RemovedE2ETestClasses =
+        new HashSet<string>(StringComparer.Ordinal)
+        {
+            "ActorBindingTests",
+            "ActorDisconnectNotifyTests",
+            "ActorLifecycleTests",
+            "ActorRegistryExecutionTests",
+            "ActorSessionStateTests",
+            "ClientServerTests",
+            "EmbeddedRegistryTests",
+            "EntryMailboxExecutionTests",
+            "EntryRoutingTests",
+            "EventsTests",
+            "FanoutTests",
+            "HeaderStreamSessionTests",
+            "HostTests",
+            "LocalActorMailboxExecutionTests",
+            "LocalSessionRelayTests",
+            "ManagerTests",
+            "ProtocolTests",
+            "PublisherTests",
+            "RemoteProxyDisconnectTests",
+            "RemoteSessionRelayTests",
+            "TimerTests",
+            "TopologyTests"
+        };
 
     [Fact]
     public void DotNetDraftDocuments_AllExposeRegressionTestSection()
@@ -44,8 +104,8 @@ public sealed class RegressionTests
         var caseStudyRoot = Path.Combine(guideRoot, "case-studies");
         var actualDocuments = Directory
             .EnumerateFiles(directory, "*.ko.md", SearchOption.AllDirectories)
-            .Where(path => !IsUnderDirectory(path, guideRoot, includeDirectChildrenOnly: true))
-            .Where(path => !IsUnderDirectory(path, caseStudyRoot, includeDirectChildrenOnly: true))
+            .Where(path => !IsUnderDirectory(path, guideRoot, true))
+            .Where(path => !IsUnderDirectory(path, caseStudyRoot, true))
             .Select(Path.GetFileName)
             .OfType<string>()
             .Order(StringComparer.Ordinal)
@@ -71,36 +131,6 @@ public sealed class RegressionTests
                 .Select(static group => group.Key));
         }
     }
-
-    private static readonly string[] GuideNarrativeDocuments =
-    [
-        "01-overview.ko.md",
-        "02-getting-started.ko.md",
-        "03-concepts.ko.md",
-        "04-channel-messaging.ko.md",
-        "05-spot.ko.md",
-        "06-actor-spot.ko.md",
-        "07-actor-session.ko.md",
-        "08-stream.ko.md",
-        "09-registry.ko.md",
-        "10-monitoring.ko.md",
-        "11-feature-map.ko.md",
-        "12-interface-catalog.ko.md",
-        "13-grpc-alternative.ko.md",
-    ];
-
-    private static readonly string[] GuideCaseStudyDocuments =
-    [
-        "13-case-ecommerce-checkout.ko.md",
-        "14-case-microservice-mesh.ko.md",
-        "15-case-realtime-game.ko.md",
-        "16-case-ride-hailing.ko.md",
-        "17-case-chat-messaging.ko.md",
-        "17-1-case-marketplace-chat.ko.md",
-        "17-2-case-live-commerce-chat.ko.md",
-        "17-3-case-game-chat.ko.md",
-        "18-case-trading-system.ko.md",
-    ];
 
     [Fact]
     public void DotNetGuideNarrative_DocumentsExist_AndAreWellFormed()
@@ -208,12 +238,15 @@ public sealed class RegressionTests
                 $"{Path.DirectorySeparatorChar}draft{Path.DirectorySeparatorChar}",
                 StringComparison.Ordinal))
             .ToArray();
-        var forbidden = new (System.Text.RegularExpressions.Regex Pattern, string Reason)[]
+        var forbidden = new (Regex Pattern, string Reason)[]
         {
-            (new(@"\bEnable(?:Server|Client|Publisher|Subscriber)\s*\([\s\S]{0,160}?Action<", System.Text.RegularExpressions.RegexOptions.Compiled), "nested capability callback"),
-            (new(@"\bUseManualConnections\s*\([\s\S]{0,160}?Action<", System.Text.RegularExpressions.RegexOptions.Compiled), "manual connection callback"),
-            (new(@"\bAddNode\s*\([\s\S]{0,160}?Action<", System.Text.RegularExpressions.RegexOptions.Compiled), "spot mesh node callback"),
-            (new(@"\bConfigureEntrySpot\s*\([\s\S]{0,160}?Action<", System.Text.RegularExpressions.RegexOptions.Compiled), "entry spot options callback"),
+            (new Regex(@"\bEnable(?:Server|Client|Publisher|Subscriber)\s*\([\s\S]{0,160}?Action<", RegexOptions.Compiled),
+                "nested capability callback"),
+            (new Regex(@"\bUseManualConnections\s*\([\s\S]{0,160}?Action<", RegexOptions.Compiled),
+                "manual connection callback"),
+            (new Regex(@"\bAddNode\s*\([\s\S]{0,160}?Action<", RegexOptions.Compiled), "spot mesh node callback"),
+            (new Regex(@"\bConfigureEntrySpot\s*\([\s\S]{0,160}?Action<", RegexOptions.Compiled),
+                "entry spot options callback")
         };
         var offenders = new List<string>();
 
@@ -222,12 +255,8 @@ public sealed class RegressionTests
             var text = File.ReadAllText(path);
             var relative = Path.GetRelativePath(docRoot, path);
             foreach (var (pattern, reason) in forbidden)
-            {
                 if (pattern.IsMatch(text))
-                {
                     offenders.Add($"{relative}: {reason}");
-                }
-            }
         }
 
         Assert.Empty(offenders.Order(StringComparer.Ordinal));
@@ -238,10 +267,7 @@ public sealed class RegressionTests
     {
         var matrix = File.ReadAllText(ResolveDoc("regression-test-matrix.ko.md"));
 
-        foreach (var document in DotNetDraftDocuments)
-        {
-            Assert.Contains(document, matrix, StringComparison.Ordinal);
-        }
+        foreach (var document in DotNetDraftDocuments) Assert.Contains(document, matrix, StringComparison.Ordinal);
     }
 
     [Fact]
@@ -258,10 +284,7 @@ public sealed class RegressionTests
 
             foreach (var reference in references)
             {
-                if (IsRemovedE2ETestReference(reference))
-                {
-                    continue;
-                }
+                if (IsRemovedE2ETestReference(reference)) continue;
 
                 Assert.Contains(reference, activeTests);
             }
@@ -324,10 +347,7 @@ public sealed class RegressionTests
                 "framework",
                 "dotnet");
 
-            if (Directory.Exists(candidate))
-            {
-                return candidate;
-            }
+            if (Directory.Exists(candidate)) return candidate;
 
             current = current.Parent;
         }
@@ -349,24 +369,24 @@ public sealed class RegressionTests
             0 => throw new FileNotFoundException(
                 $"Could not find '{fileName}' under framework/doc/framework/dotnet."),
             _ => throw new InvalidOperationException(
-                $"Ambiguous document '{fileName}': {string.Join(", ", matches)}"),
+                $"Ambiguous document '{fileName}': {string.Join(", ", matches)}")
         };
     }
 
     private static IReadOnlyCollection<string> ExtractRegressionTestReferences(string text)
     {
-        var sectionMatch = System.Text.RegularExpressions.Regex.Match(
+        var sectionMatch = Regex.Match(
             text,
             @"^## [^\r\n]*회귀 테스트[^\r\n]*\r?\n(?<body>.*?)(?=^## |\z)",
-            System.Text.RegularExpressions.RegexOptions.Multiline | System.Text.RegularExpressions.RegexOptions.Singleline);
+            RegexOptions.Multiline | RegexOptions.Singleline);
 
         Assert.True(sectionMatch.Success, "Missing regression test section.");
 
-        return System.Text.RegularExpressions.Regex
+        return Regex
             .Matches(
                 sectionMatch.Groups["body"].Value,
                 @"^\| `(?<test>[^`]+)` \|",
-                System.Text.RegularExpressions.RegexOptions.Multiline)
+                RegexOptions.Multiline)
             .Select(static match => match.Groups["test"].Value)
             .ToArray();
     }
@@ -377,36 +397,27 @@ public sealed class RegressionTests
         var sourceFiles = new HashSet<string>(StringComparer.Ordinal);
 
         foreach (var projectPath in Directory.EnumerateFiles(testsRoot, "*.csproj", SearchOption.AllDirectories))
-        {
             AddProjectSources(projectPath, sourceFiles);
-        }
 
         var activeTests = new HashSet<string>(StringComparer.Ordinal);
         foreach (var sourceFile in sourceFiles)
         {
             var text = File.ReadAllText(sourceFile);
-            var classMatches = System.Text.RegularExpressions.Regex.Matches(
+            var classMatches = Regex.Matches(
                 text,
                 @"\bclass\s+(?<class>[A-Za-z_][A-Za-z0-9_]*)");
 
-            if (classMatches.Count == 0)
-            {
-                continue;
-            }
+            if (classMatches.Count == 0) continue;
 
-            foreach (System.Text.RegularExpressions.Match methodMatch in System.Text.RegularExpressions.Regex.Matches(
+            foreach (Match methodMatch in Regex.Matches(
                          text,
                          @"\bpublic\s+(?:async\s+)?(?:Task|void)\s+(?<method>[A-Za-z_][A-Za-z0-9_]*)\s*\("))
             {
                 var className = classMatches
-                    .Cast<System.Text.RegularExpressions.Match>()
                     .Last(match => match.Index < methodMatch.Index)
                     .Groups["class"].Value;
                 var methodName = methodMatch.Groups["method"].Value;
-                if (HasFactOrTheoryAttribute(text, methodMatch.Index))
-                {
-                    activeTests.Add($"{className}.{methodName}");
-                }
+                if (HasFactOrTheoryAttribute(text, methodMatch.Index)) activeTests.Add($"{className}.{methodName}");
             }
         }
 
@@ -416,52 +427,22 @@ public sealed class RegressionTests
     private static bool IsRemovedE2ETestReference(string reference)
     {
         var separatorIndex = reference.IndexOf('.');
-        if (separatorIndex <= 0)
-        {
-            return false;
-        }
+        if (separatorIndex <= 0) return false;
 
         var className = reference[..separatorIndex];
         return RemovedE2ETestClasses.Contains(className);
     }
-
-    private static readonly IReadOnlySet<string> RemovedE2ETestClasses =
-        new HashSet<string>(StringComparer.Ordinal)
-        {
-            "ActorBindingTests",
-            "ActorDisconnectNotifyTests",
-            "ActorLifecycleTests",
-            "ActorRegistryExecutionTests",
-            "ActorSessionStateTests",
-            "ClientServerTests",
-            "EmbeddedRegistryTests",
-            "EntryMailboxExecutionTests",
-            "EntryRoutingTests",
-            "EventsTests",
-            "FanoutTests",
-            "HeaderStreamSessionTests",
-            "HostTests",
-            "LocalActorMailboxExecutionTests",
-            "LocalSessionRelayTests",
-            "ManagerTests",
-            "ProtocolTests",
-            "PublisherTests",
-            "RemoteProxyDisconnectTests",
-            "RemoteSessionRelayTests",
-            "TimerTests",
-            "TopologyTests",
-        };
 
     private static bool HasFactOrTheoryAttribute(string text, int methodIndex)
     {
         var lookbackStart = Math.Max(0, methodIndex - 300);
         var prefix = text[lookbackStart..methodIndex];
         return prefix.Contains("[Fact]", StringComparison.Ordinal)
-            || prefix.Contains("[Theory]", StringComparison.Ordinal)
-            || (prefix.Contains("[Fact(", StringComparison.Ordinal)
-                && !prefix.Contains("Skip", StringComparison.Ordinal))
-            || (prefix.Contains("[Theory(", StringComparison.Ordinal)
-                && !prefix.Contains("Skip", StringComparison.Ordinal));
+               || prefix.Contains("[Theory]", StringComparison.Ordinal)
+               || (prefix.Contains("[Fact(", StringComparison.Ordinal)
+                   && !prefix.Contains("Skip", StringComparison.Ordinal))
+               || (prefix.Contains("[Theory(", StringComparison.Ordinal)
+                   && !prefix.Contains("Skip", StringComparison.Ordinal));
     }
 
     private static bool IsUnderDirectory(
@@ -470,68 +451,50 @@ public sealed class RegressionTests
         bool includeDirectChildrenOnly)
     {
         var actualDirectory = Path.GetDirectoryName(path);
-        if (actualDirectory is null)
-        {
-            return false;
-        }
+        if (actualDirectory is null) return false;
 
-        if (includeDirectChildrenOnly)
-        {
-            return string.Equals(actualDirectory, directory, StringComparison.Ordinal);
-        }
+        if (includeDirectChildrenOnly) return string.Equals(actualDirectory, directory, StringComparison.Ordinal);
 
         var relative = Path.GetRelativePath(directory, actualDirectory);
         return relative == "."
-            || (!relative.StartsWith("..", StringComparison.Ordinal)
-                && !Path.IsPathRooted(relative));
+               || (!relative.StartsWith("..", StringComparison.Ordinal)
+                   && !Path.IsPathRooted(relative));
     }
 
     private static void AddProjectSources(string projectPath, ISet<string> sourceFiles)
     {
         var projectDirectory = Path.GetDirectoryName(projectPath)
-            ?? throw new InvalidOperationException($"Could not get project directory for '{projectPath}'.");
+                               ?? throw new InvalidOperationException(
+                                   $"Could not get project directory for '{projectPath}'.");
         var projectSources = Directory
             .EnumerateFiles(projectDirectory, "*.cs", SearchOption.AllDirectories)
-            .Where(static path => !path.Contains($"{Path.DirectorySeparatorChar}bin{Path.DirectorySeparatorChar}", StringComparison.Ordinal)
-                && !path.Contains($"{Path.DirectorySeparatorChar}obj{Path.DirectorySeparatorChar}", StringComparison.Ordinal))
+            .Where(static path => !path.Contains($"{Path.DirectorySeparatorChar}bin{Path.DirectorySeparatorChar}",
+                                      StringComparison.Ordinal)
+                                  && !path.Contains($"{Path.DirectorySeparatorChar}obj{Path.DirectorySeparatorChar}",
+                                      StringComparison.Ordinal))
             .Select(Path.GetFullPath)
             .ToHashSet(StringComparer.Ordinal);
 
-        var document = System.Xml.Linq.XDocument.Load(projectPath);
-        foreach (var remove in document.Descendants("Compile").SelectMany(static element => element.Attributes("Remove")))
-        {
-            foreach (var removedPath in ResolveProjectPattern(projectDirectory, remove.Value))
-            {
-                projectSources.Remove(removedPath);
-            }
-        }
+        var document = XDocument.Load(projectPath);
+        foreach (var remove in document.Descendants("Compile")
+                     .SelectMany(static element => element.Attributes("Remove")))
+        foreach (var removedPath in ResolveProjectPattern(projectDirectory, remove.Value))
+            projectSources.Remove(removedPath);
 
-        foreach (var include in document.Descendants("Compile").SelectMany(static element => element.Attributes("Include")))
-        {
-            foreach (var includedPath in ResolveProjectPattern(projectDirectory, include.Value))
-            {
-                projectSources.Add(includedPath);
-            }
-        }
+        foreach (var include in document.Descendants("Compile")
+                     .SelectMany(static element => element.Attributes("Include")))
+        foreach (var includedPath in ResolveProjectPattern(projectDirectory, include.Value))
+            projectSources.Add(includedPath);
 
-        foreach (var sourceFile in projectSources)
-        {
-            sourceFiles.Add(sourceFile);
-        }
+        foreach (var sourceFile in projectSources) sourceFiles.Add(sourceFile);
     }
 
     private static IEnumerable<string> ResolveProjectPattern(string projectDirectory, string pattern)
     {
-        if (pattern.Contains('*', StringComparison.Ordinal))
-        {
-            yield break;
-        }
+        if (pattern.Contains('*', StringComparison.Ordinal)) yield break;
 
         var path = Path.GetFullPath(Path.Combine(projectDirectory, pattern));
-        if (File.Exists(path))
-        {
-            yield return path;
-        }
+        if (File.Exists(path)) yield return path;
     }
 
     private static string GetTestsRoot()
@@ -541,10 +504,7 @@ public sealed class RegressionTests
         while (current is not null)
         {
             var candidate = Path.Combine(current.FullName, "framework", "languages", "dotnet", "tests");
-            if (Directory.Exists(candidate))
-            {
-                return candidate;
-            }
+            if (Directory.Exists(candidate)) return candidate;
 
             current = current.Parent;
         }

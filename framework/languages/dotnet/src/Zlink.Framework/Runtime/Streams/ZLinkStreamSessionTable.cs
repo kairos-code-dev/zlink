@@ -7,10 +7,21 @@ internal sealed class ZLinkStreamSessionTable(
     IZLinkBackendStreamSocket socket,
     Type? headerSessionType)
 {
-    private readonly Dictionary<string, ZLinkStreamSessionRuntime> _sessions = [];
-    private readonly Queue<(string LocalAddr, string RemoteAddr)> _pendingConnectionMetadata = [];
     private readonly object _gate = new();
+    private readonly Queue<(string LocalAddr, string RemoteAddr)> _pendingConnectionMetadata = [];
+    private readonly Dictionary<string, ZLinkStreamSessionRuntime> _sessions = [];
     private bool _stopping;
+
+    public bool IsStopping
+    {
+        get
+        {
+            lock (_gate)
+            {
+                return _stopping;
+            }
+        }
+    }
 
     public ZLinkStreamSessionRuntime[] Stop()
     {
@@ -21,17 +32,6 @@ internal sealed class ZLinkStreamSessionTable(
             _sessions.Clear();
             _pendingConnectionMetadata.Clear();
             return sessions;
-        }
-    }
-
-    public bool IsStopping
-    {
-        get
-        {
-            lock (_gate)
-            {
-                return _stopping;
-            }
         }
     }
 
@@ -70,10 +70,7 @@ internal sealed class ZLinkStreamSessionTable(
     {
         lock (_gate)
         {
-            if (!_stopping)
-            {
-                _pendingConnectionMetadata.Enqueue((localAddr, remoteAddr));
-            }
+            if (!_stopping) _pendingConnectionMetadata.Enqueue((localAddr, remoteAddr));
         }
     }
 
@@ -86,15 +83,10 @@ internal sealed class ZLinkStreamSessionTable(
             if (session.Stream.LocalAddr is null
                 && session.Stream.RemoteAddr is null
                 && _pendingConnectionMetadata.Count > 0)
-            {
                 metadata = _pendingConnectionMetadata.Dequeue();
-            }
         }
 
-        if (metadata is { } value)
-        {
-            session.EnqueueConnected(value.LocalAddr, value.RemoteAddr);
-        }
+        if (metadata is { } value) session.EnqueueConnected(value.LocalAddr, value.RemoteAddr);
     }
 
     public bool TryResolveMonitorSession(

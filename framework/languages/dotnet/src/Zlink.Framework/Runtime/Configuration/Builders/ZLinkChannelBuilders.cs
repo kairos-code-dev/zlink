@@ -104,7 +104,6 @@ internal sealed class ZLinkClientServerChannelBuilder(ZLinkChannelRegistration r
             packetName);
         return this;
     }
-
 }
 
 internal sealed class ZLinkFanoutChannelBuilder(ZLinkChannelRegistration registration)
@@ -171,10 +170,7 @@ internal static class ZLinkChannelEndpointBuilderSupport
         string endpoint,
         string errorMessage)
     {
-        if (string.IsNullOrWhiteSpace(endpoint))
-        {
-            throw new ZLinkConfigurationException(errorMessage);
-        }
+        if (string.IsNullOrWhiteSpace(endpoint)) throw new ZLinkConfigurationException(errorMessage);
 
         endpoints.Add(endpoint);
     }
@@ -277,9 +273,7 @@ internal static class ZLinkHandlerGroupBuilderSupport
         string groupName)
     {
         if (string.IsNullOrWhiteSpace(groupName))
-        {
             throw new ZLinkConfigurationException("Handler group name must not be empty.");
-        }
 
         registration.HandlerGroups.Add(groupName);
     }
@@ -295,7 +289,7 @@ internal static class ZLinkTypedHandlerBuilderSupport
         var matches = handlerType
             .GetInterfaces()
             .Where(handlerInterface => handlerInterface.IsGenericType
-                && handlerInterface.GetGenericTypeDefinition() == handlerInterfaceDefinition)
+                                       && handlerInterface.GetGenericTypeDefinition() == handlerInterfaceDefinition)
             .ToArray();
 
         return matches.Length switch
@@ -304,7 +298,7 @@ internal static class ZLinkTypedHandlerBuilderSupport
             0 => throw new ZLinkConfigurationException(
                 $"Handler '{handlerType.FullName}' must implement {handlerKind} handler interface '{handlerInterfaceDefinition.Name}'."),
             _ => throw new ZLinkConfigurationException(
-                $"Handler '{handlerType.FullName}' implements multiple {handlerKind} handler interfaces. Use the overload with explicit message types."),
+                $"Handler '{handlerType.FullName}' implements multiple {handlerKind} handler interfaces. Use the overload with explicit message types.")
         };
     }
 }
@@ -314,9 +308,7 @@ internal sealed class ZLinkChannelServerCapabilityBuilder(ZLinkChannelServerCapa
     public void Bind(string endpoint)
     {
         if (string.IsNullOrWhiteSpace(endpoint))
-        {
             throw new ZLinkConfigurationException("Channel server bind endpoint must not be empty.");
-        }
 
         registration.BindEndpoint = endpoint;
     }
@@ -332,9 +324,7 @@ internal sealed class ZLinkChannelPublisherCapabilityBuilder(ZLinkChannelPublish
     public void Bind(string endpoint)
     {
         if (string.IsNullOrWhiteSpace(endpoint))
-        {
             throw new ZLinkConfigurationException("Channel publisher bind endpoint must not be empty.");
-        }
 
         registration.BindEndpoint = endpoint;
     }

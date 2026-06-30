@@ -1,7 +1,5 @@
 // SPDX-License-Identifier: MPL-2.0
 
-using System;
-using System.Threading.Tasks;
 using Systems.Zlink.Runtime.Native;
 
 namespace Systems.Zlink;
@@ -27,7 +25,7 @@ internal sealed class ZlinkStopwatch : IZlinkStopwatch
     public ulong Stop()
     {
         EnsureNotDisposed();
-        ulong elapsed = NativeMethods.zlink_stopwatch_stop(_handle);
+        var elapsed = NativeMethods.zlink_stopwatch_stop(_handle);
         _handle = IntPtr.Zero;
         GC.SuppressFinalize(this);
         return elapsed;
@@ -44,6 +42,7 @@ internal sealed class ZlinkStopwatch : IZlinkStopwatch
         catch
         {
         }
+
         _handle = IntPtr.Zero;
         GC.SuppressFinalize(this);
     }

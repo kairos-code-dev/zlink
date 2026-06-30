@@ -12,9 +12,7 @@ internal sealed class ZLinkSessionRequestTracker
         var requestSeq = NextRequestSeq();
         var pending = new ZLinkPendingSessionRequest(this, requestSeq);
         if (!_pendingRequests.TryAdd(requestSeq.Value, pending))
-        {
             throw new InvalidOperationException("Duplicate stream request sequence.");
-        }
 
         return pending;
     }
@@ -26,9 +24,7 @@ internal sealed class ZLinkSessionRequestTracker
         if (header.Kind != ZlinkStreamMessageKind.Response
             || header.RequestSeq is not { } requestSeq
             || !_pendingRequests.TryRemove(requestSeq.Value, out var pending))
-        {
             return false;
-        }
 
         pending.Complete(payload.Copy());
         return true;
@@ -44,10 +40,7 @@ internal sealed class ZLinkSessionRequestTracker
         while (true)
         {
             var value = unchecked((ulong)Interlocked.Increment(ref _nextRequestSeq));
-            if (value != 0)
-            {
-                return new ZlinkStreamRequestSeq(value);
-            }
+            if (value != 0) return new ZlinkStreamRequestSeq(value);
         }
     }
 }
@@ -63,6 +56,11 @@ internal sealed class ZLinkPendingSessionRequest(
 
     public Task<Message> Task => _completion.Task;
 
+    public void Dispose()
+    {
+        tracker.Remove(RequestSeq);
+    }
+
     public void Complete(Message payload)
     {
         _completion.TrySetResult(payload);
@@ -71,10 +69,5 @@ internal sealed class ZLinkPendingSessionRequest(
     public void Cancel()
     {
         _completion.TrySetException(new TimeoutException("Client stream request timed out."));
-    }
-
-    public void Dispose()
-    {
-        tracker.Remove(RequestSeq);
     }
 }

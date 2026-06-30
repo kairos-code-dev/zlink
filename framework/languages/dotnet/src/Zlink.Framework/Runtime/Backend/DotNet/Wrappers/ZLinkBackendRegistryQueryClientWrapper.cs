@@ -1,6 +1,5 @@
 namespace Zlink.Framework.Runtime.Backend.DotNet.Wrappers;
 
-
 internal sealed class ZLinkBackendRegistryQueryClientWrapper(IRegistryQueryClient nativeClient)
     : IZLinkBackendRegistryQueryClient
 {
@@ -19,5 +18,8 @@ internal sealed class ZLinkBackendRegistryQueryClientWrapper(IRegistryQueryClien
             .ToArray();
     }
 
-    public ValueTask DisposeAsync() => nativeClient.DisposeAsync();
+    public ValueTask DisposeAsync()
+    {
+        return nativeClient.DisposeAsync();
+    }
 }

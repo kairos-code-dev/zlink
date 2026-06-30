@@ -48,7 +48,9 @@ internal static class ZLinkClientCallCodec
         IReadOnlyList<Message> reply,
         string emptyMessage,
         string errorMessage)
-        => DecodeEnvelopeReply<TReply>(reply, emptyMessage, errorMessage, null);
+    {
+        return DecodeEnvelopeReply<TReply>(reply, emptyMessage, errorMessage, null);
+    }
 
     public static TReply DecodeEnvelopeReply<TReply>(
         IReadOnlyList<Message> reply,
@@ -56,26 +58,23 @@ internal static class ZLinkClientCallCodec
         string errorMessage,
         ZLinkCodecRegistryBuilder? codecs)
     {
-        if (reply.Count == 0)
-        {
-            throw new InvalidOperationException(emptyMessage);
-        }
+        if (reply.Count == 0) throw new InvalidOperationException(emptyMessage);
 
         var replyHeader = ZLinkEnvelopeCodec.DecodeHeader(reply);
         if (replyHeader.Kind == ZLinkMessageKind.Error)
-        {
             throw new InvalidOperationException(replyHeader.ErrorMessage ?? errorMessage);
-        }
 
         return (TReply?)ZLinkEnvelopeCodec.DecodeBody(reply, typeof(TReply), codecs)
-            ?? throw new InvalidOperationException("Reply body is null.");
+               ?? throw new InvalidOperationException("Reply body is null.");
     }
 
     public static TReply DecodeEnvelopeReplyAndDispose<TReply>(
         IReadOnlyList<Message> reply,
         string emptyMessage,
         string errorMessage)
-        => DecodeEnvelopeReplyAndDispose<TReply>(reply, emptyMessage, errorMessage, null);
+    {
+        return DecodeEnvelopeReplyAndDispose<TReply>(reply, emptyMessage, errorMessage, null);
+    }
 
     public static TReply DecodeEnvelopeReplyAndDispose<TReply>(
         IReadOnlyList<Message> reply,
@@ -98,7 +97,7 @@ internal static class ZLinkClientCallCodec
         string nullMessage)
     {
         return JsonSerializer.Deserialize<TReply>(reply, ZLinkJsonSerializerOptions.Default)
-            ?? throw new InvalidOperationException(nullMessage);
+               ?? throw new InvalidOperationException(nullMessage);
     }
 
     public static Dictionary<string, string> CopyMetadata(

@@ -1,7 +1,3 @@
-using Zlink.Framework.Runtime.Actors;
-using Zlink.Framework.Runtime.Backend.DotNet.Mappings;
-using Zlink.Framework.Runtime.Streams;
-
 namespace Zlink.Framework.Runtime.Host;
 
 internal sealed partial class ZLinkFrameworkRuntime
@@ -71,11 +67,9 @@ internal sealed partial class ZLinkFrameworkRuntime
             || state.NativeActorRef is not { } nativeRef
             || nativeRef.NodeRid != actor.NodeRid
             || nativeRef.Generation != actor.Generation)
-        {
             throw new ZLinkFrameworkException(
                 ZLinkFrameworkErrorKind.ActorRouteNotFound,
                 $"Actor ref '{actor.ActorId}' is not owned by this runtime.");
-        }
 
         return managedActor;
     }
@@ -101,16 +95,16 @@ internal sealed partial class ZLinkFrameworkRuntime
         CancellationToken cancellationToken = default)
     {
         var activation = await GetSpotActivationByRidAsync(spotRid, cancellationToken)
-            .ConfigureAwait(false)
-            ?? throw new InvalidOperationException($"SPOT '{spotRid}' is not active.");
+                             .ConfigureAwait(false)
+                         ?? throw new InvalidOperationException($"SPOT '{spotRid}' is not active.");
 
         var creation = await CreateLocalActorAsync(actorId, actorType, cancellationToken)
             .ConfigureAwait(false);
         var actorState = GetOrCreateActorState(actorId);
         var actorRef = actorState.NativeActorRef
-            ?? throw new ZLinkFrameworkException(
-                ZLinkFrameworkErrorKind.ActorRouteNotFound,
-                $"Actor '{actorId}' does not have a native Actor ref.");
+                       ?? throw new ZLinkFrameworkException(
+                           ZLinkFrameworkErrorKind.ActorRouteNotFound,
+                           $"Actor '{actorId}' does not have a native Actor ref.");
         BindRemoteBoundSessionRoute(actorId, actorRef, boundSessionNodeRid, boundSessionRid);
 
         using var requestMessage = Message.From(requestPayload);
@@ -130,6 +124,7 @@ internal sealed partial class ZLinkFrameworkRuntime
             replyContentType = encoded.ContentType;
             encodedReply = Message.From(encoded.Payload.Bytes.Span);
         }
+
         using (encodedReply)
         {
             return new ZLinkRemoteActorJoinReply(
@@ -150,9 +145,7 @@ internal sealed partial class ZLinkFrameworkRuntime
     {
         if (boundSessionNodeRid is not { } sourceNodeRid
             || boundSessionRid is not { } sourceSessionRid)
-        {
             return;
-        }
 
         BindActorSession(
             actorId,
@@ -160,9 +153,9 @@ internal sealed partial class ZLinkFrameworkRuntime
             sourceSessionRid,
             BuildNativeBoundSessionToken(sourceSessionRid));
         var node = GetActorSpotNode()
-            ?? throw new ZLinkFrameworkException(
-                ZLinkFrameworkErrorKind.ActorSessionNotBound,
-                "Remote actor session binding requires a router-capable SpotNode.");
+                   ?? throw new ZLinkFrameworkException(
+                       ZLinkFrameworkErrorKind.ActorSessionNotBound,
+                       "Remote actor session binding requires a router-capable SpotNode.");
         node.BindRemoteActorBoundSession(actorRef, sourceNodeRid, sourceSessionRid);
     }
 
@@ -175,26 +168,34 @@ internal sealed partial class ZLinkFrameworkRuntime
         ZLinkSpotActivation activation,
         IZLinkActor actor,
         CancellationToken cancellationToken = default)
-        => await _actors.JoinActorToSpotAsync(activation, actor, cancellationToken);
+    {
+        await _actors.JoinActorToSpotAsync(activation, actor, cancellationToken);
+    }
 
     internal async ValueTask AttachActorAsync(
         IZLinkActor actor,
         IZLinkStream stream,
         CancellationToken cancellationToken = default)
-        => await _actors.AttachActorAsync(actor, stream, cancellationToken);
+    {
+        await _actors.AttachActorAsync(actor, stream, cancellationToken);
+    }
 
     internal async ValueTask DisconnectActorAsync(
         IZLinkActor actor,
         IZLinkStream stream,
         CancellationToken cancellationToken = default)
-        => await _actors.DisconnectActorAsync(actor, stream, cancellationToken);
+    {
+        await _actors.DisconnectActorAsync(actor, stream, cancellationToken);
+    }
 
     internal async ValueTask SubmitActorAsync(
         IZLinkActor actor,
         ZlinkStreamHeader header,
         Message payload,
         CancellationToken cancellationToken = default)
-        => await _actors.SubmitActorAsync(actor, header, payload, cancellationToken);
+    {
+        await _actors.SubmitActorAsync(actor, header, payload, cancellationToken);
+    }
 
     internal async ValueTask<CreateActorResult> CreateLocalActorAsync(
         string actorId,
@@ -225,9 +226,9 @@ internal sealed partial class ZLinkFrameworkRuntime
         {
             var state = GetOrCreateActorState(result.Actor.ActorId);
             var nativeRef = state.NativeActorRef
-                ?? throw new ZLinkFrameworkException(
-                    ZLinkFrameworkErrorKind.ActorRouteNotFound,
-                    $"Actor '{result.Actor.ActorId}' does not have a native Actor ref after creation.");
+                            ?? throw new ZLinkFrameworkException(
+                                ZLinkFrameworkErrorKind.ActorRouteNotFound,
+                                $"Actor '{result.Actor.ActorId}' does not have a native Actor ref after creation.");
             await NotifyEntrySpotActorCreatedAsync(
                     result.Actor,
                     result.CreateRequest,
@@ -243,55 +244,73 @@ internal sealed partial class ZLinkFrameworkRuntime
         string actorId,
         string actorType,
         CancellationToken cancellationToken = default)
-        => await CreateActorAsync(actorId, actorType, ZLinkMessage.Empty, cancellationToken);
+    {
+        return await CreateActorAsync(actorId, actorType, ZLinkMessage.Empty, cancellationToken);
+    }
 
     internal async ValueTask<CreateActorResult> CreateActorAsync(
         string actorId,
         string actorType,
         ZLinkMessage createRequest,
         CancellationToken cancellationToken = default)
-        => await _actors.CreateActorAsync(actorId, actorType, createRequest, cancellationToken);
+    {
+        return await _actors.CreateActorAsync(actorId, actorType, createRequest, cancellationToken);
+    }
 
     internal async ValueTask<IZLinkActor?> FindActorAsync(
         string actorId,
         CancellationToken cancellationToken = default)
-        => await _actors.FindActorAsync(actorId, cancellationToken);
+    {
+        return await _actors.FindActorAsync(actorId, cancellationToken);
+    }
 
     internal bool TryGetCreatedActor(
         string actorId,
         string actorType,
         out IZLinkActor actor)
-        => _actors.TryGetCreatedActor(actorId, actorType, out actor);
+    {
+        return _actors.TryGetCreatedActor(actorId, actorType, out actor);
+    }
 
     internal bool TryGetCreatedActorState(
         string actorId,
         out ZLinkActorRuntimeState state)
-        => _actors.TryGetCreatedActorState(actorId, out state);
+    {
+        return _actors.TryGetCreatedActorState(actorId, out state);
+    }
 
     internal bool TryGetCreatedActorState(
         string actorId,
         string actorType,
         out ZLinkActorRuntimeState state)
-        => _actors.TryGetCreatedActorState(actorId, actorType, out state);
+    {
+        return _actors.TryGetCreatedActorState(actorId, actorType, out state);
+    }
 
     internal async ValueTask<ZLinkActorReply> SubmitActorForReplyAsync(
         string actorId,
         ZlinkStreamHeader header,
         Message payload,
         CancellationToken cancellationToken = default)
-        => await _actors.SubmitActorForReplyCoreAsync(actorId, header, payload, cancellationToken);
+    {
+        return await _actors.SubmitActorForReplyCoreAsync(actorId, header, payload, cancellationToken);
+    }
 
     internal async ValueTask SubmitActorByIdAsync(
         string actorId,
         ZlinkStreamHeader header,
         Message payload,
         CancellationToken cancellationToken = default)
-        => await _actors.SubmitActorByIdAsync(actorId, header, payload, cancellationToken);
+    {
+        await _actors.SubmitActorByIdAsync(actorId, header, payload, cancellationToken);
+    }
 
     internal async ValueTask NotifyActorDisconnectedByIdAsync(
         string actorId,
         CancellationToken cancellationToken = default)
-        => await _actors.NotifyDisconnectedByIdAsync(actorId, cancellationToken);
+    {
+        await _actors.NotifyDisconnectedByIdAsync(actorId, cancellationToken);
+    }
 
     internal async ValueTask NotifyActorDisconnectedAsync(
         ActorRef actor,
@@ -330,7 +349,9 @@ internal sealed partial class ZLinkFrameworkRuntime
     }
 
     internal ZLinkActorRuntimeState GetOrCreateActorState(string actorId)
-        => _actors.GetOrCreateActorState(actorId);
+    {
+        return _actors.GetOrCreateActorState(actorId);
+    }
 
     internal void BindSessionActor(
         string actorId,
@@ -387,9 +408,7 @@ internal sealed partial class ZLinkFrameworkRuntime
         string bindingToken)
     {
         if (TryGetSessionActorContext(actorId, bindingToken, out var context))
-        {
             UnbindSessionActor(actorId, context, bindingToken);
-        }
 
         GetOrCreateActorState(actorId).UnbindSession(bindingToken);
         ActorBoundSessions.Unregister(this, actorId, bindingToken);
@@ -414,15 +433,15 @@ internal sealed partial class ZLinkFrameworkRuntime
     {
         var state = GetOrCreateActorState(actorId);
         var node = GetActorSpotNode()
-            ?? throw new ZLinkFrameworkException(
-                ZLinkFrameworkErrorKind.ActorSessionNotBound,
-                "Actor bound session send requires a router-capable SpotNode.",
-                isRetriable: false);
+                   ?? throw new ZLinkFrameworkException(
+                       ZLinkFrameworkErrorKind.ActorSessionNotBound,
+                       "Actor bound session send requires a router-capable SpotNode.",
+                       false);
         var actorRef = state.NativeActorRef
-            ?? throw new ZLinkFrameworkException(
-                ZLinkFrameworkErrorKind.ActorRouteNotFound,
-                $"Actor '{actorId}' does not have a native Actor ref.",
-                isRetriable: false);
+                       ?? throw new ZLinkFrameworkException(
+                           ZLinkFrameworkErrorKind.ActorRouteNotFound,
+                           $"Actor '{actorId}' does not have a native Actor ref.",
+                           false);
 
         return node.SendActorBoundSession(actorRef, parts, flags);
     }
@@ -436,10 +455,10 @@ internal sealed partial class ZLinkFrameworkRuntime
         SendFlags flags)
     {
         var node = GetActorSpotNode()
-            ?? throw new ZLinkFrameworkException(
-                ZLinkFrameworkErrorKind.ActorRouteNotFound,
-                "Actor session forward requires a router-capable SpotNode.",
-                isRetriable: false);
+                   ?? throw new ZLinkFrameworkException(
+                       ZLinkFrameworkErrorKind.ActorRouteNotFound,
+                       "Actor session forward requires a router-capable SpotNode.",
+                       false);
 
         return node.ForwardActorBoundSessionPart(
             actorRef,
@@ -456,15 +475,15 @@ internal sealed partial class ZLinkFrameworkRuntime
     {
         var state = GetOrCreateActorState(actorId);
         var node = GetActorSpotNode()
-            ?? throw new ZLinkFrameworkException(
-                ZLinkFrameworkErrorKind.ActorSessionNotBound,
-                "Actor bound session close requires a router-capable SpotNode.",
-                isRetriable: false);
+                   ?? throw new ZLinkFrameworkException(
+                       ZLinkFrameworkErrorKind.ActorSessionNotBound,
+                       "Actor bound session close requires a router-capable SpotNode.",
+                       false);
         var actorRef = state.NativeActorRef
-            ?? throw new ZLinkFrameworkException(
-                ZLinkFrameworkErrorKind.ActorRouteNotFound,
-                $"Actor '{actorId}' does not have a native Actor ref.",
-                isRetriable: false);
+                       ?? throw new ZLinkFrameworkException(
+                           ZLinkFrameworkErrorKind.ActorRouteNotFound,
+                           $"Actor '{actorId}' does not have a native Actor ref.",
+                           false);
 
         await node.CloseActorBoundSessionAsync(
                 actorRef,
@@ -472,14 +491,13 @@ internal sealed partial class ZLinkFrameworkRuntime
                 cancellationToken)
             .ConfigureAwait(false);
     }
-
 }
 
 internal sealed class ZLinkActorBoundSessionIndex
 {
     private const string NativeBindingTokenPrefix = "native:";
-    private readonly object _gate = new();
     private readonly Dictionary<string, List<Entry>> _entries = new(StringComparer.Ordinal);
+    private readonly object _gate = new();
 
     public void Register(
         ZLinkFrameworkRuntime runtime,
@@ -487,10 +505,7 @@ internal sealed class ZLinkActorBoundSessionIndex
         RoutingId sessionRid,
         string bindingToken)
     {
-        if (!IsNativeBindingToken(bindingToken))
-        {
-            return;
-        }
+        if (!IsNativeBindingToken(bindingToken)) return;
 
         var key = sessionRid.ToHex();
         lock (_gate)
@@ -511,10 +526,7 @@ internal sealed class ZLinkActorBoundSessionIndex
         string actorId,
         string bindingToken)
     {
-        if (!IsNativeBindingToken(bindingToken))
-        {
-            return;
-        }
+        if (!IsNativeBindingToken(bindingToken)) return;
 
         lock (_gate)
         {
@@ -522,10 +534,7 @@ internal sealed class ZLinkActorBoundSessionIndex
             {
                 var entries = _entries[key];
                 entries.RemoveAll(entry => entry.Matches(runtime, actorId, bindingToken) || !entry.IsAlive);
-                if (entries.Count == 0)
-                {
-                    _entries.Remove(key);
-                }
+                if (entries.Count == 0) _entries.Remove(key);
             }
         }
     }
@@ -536,21 +545,14 @@ internal sealed class ZLinkActorBoundSessionIndex
         var key = sessionRid.ToHex();
         lock (_gate)
         {
-            if (!_entries.Remove(key, out var registered))
-            {
-                return;
-            }
+            if (!_entries.Remove(key, out var registered)) return;
 
             entries = registered.ToArray();
         }
 
         foreach (var entry in entries)
-        {
             if (entry.Runtime.TryGetTarget(out var runtime))
-            {
                 runtime.UnbindActorSession(entry.ActorId, entry.BindingToken);
-            }
-        }
     }
 
     private static bool IsNativeBindingToken(string bindingToken)
@@ -571,9 +573,9 @@ internal sealed class ZLinkActorBoundSessionIndex
             string bindingToken)
         {
             return Runtime.TryGetTarget(out var current)
-                && ReferenceEquals(current, runtime)
-                && string.Equals(ActorId, actorId, StringComparison.Ordinal)
-                && string.Equals(BindingToken, bindingToken, StringComparison.Ordinal);
+                   && ReferenceEquals(current, runtime)
+                   && string.Equals(ActorId, actorId, StringComparison.Ordinal)
+                   && string.Equals(BindingToken, bindingToken, StringComparison.Ordinal);
         }
     }
 }

@@ -22,7 +22,7 @@ internal sealed class StopObservingBingoEventsHandler
         return new StopObservingBingoEventsRes
         {
             Stopped = stopped,
-            ObserverNodeRid = observerNodeRid,
+            ObserverNodeRid = observerNodeRid
         };
     }
 }

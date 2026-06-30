@@ -1,14 +1,12 @@
-using Systems.Zlink;
-using Zlink.Framework.Codecs.Protobuf;
-using Zlink.Framework.Contracts.Spots;
-using Bingo.Server.Play.Infrastructure.ZLink.Actors;
-using Bingo.Server.Play.Domain.Bingo;
-using Bingo.Server.Play.Infrastructure.ZLink.Spots.BingoRoomSpot.Notifications;
-using Bingo.Server.Play.Infrastructure.ZLink.Spots.BingoRoomSpot.Handlers;
 using Bingo.Server.Configuration;
+using Bingo.Server.Play.Domain.Bingo;
+using Bingo.Server.Play.Infrastructure.ZLink.Actors;
+using Bingo.Server.Play.Infrastructure.ZLink.Spots.BingoRoomSpot.Handlers;
+using Bingo.Server.Play.Infrastructure.ZLink.Spots.BingoRoomSpot.Notifications;
 using Bingo.Shared.Contracts;
 using Microsoft.Extensions.Logging;
 using Zlink.Framework.Contracts.Messaging;
+using Zlink.Framework.Contracts.Spots;
 
 namespace Bingo.Server.Play.Infrastructure.ZLink.Spots.BingoRoomSpot;
 
@@ -21,10 +19,12 @@ internal sealed class BingoRoom(
     private static readonly BingoRoomSettings DefaultSettings = BingoRoomSettings.Create(BingoSampleModes.TwoPlayer, 0);
 
     private readonly Dictionary<string, PlayerActor> _actors = new(StringComparer.Ordinal);
-    private BingoRoomSettings _settings = DefaultSettings;
+    private bool _cleanupStarted;
     private BingoRoomGame? _game = new(context.SpotRid.ToString(), DefaultSettings);
     private PlayerActor? _observerActor;
-    private bool _cleanupStarted;
+    private BingoRoomSettings _settings = DefaultSettings;
+
+    internal bool IsReadyToDraw => _game?.IsReadyToDraw == true;
 
     public IZLinkSpotContext Context { get; } = context;
 
@@ -51,11 +51,9 @@ internal sealed class BingoRoom(
         // PublishAsync excludes the joining actor, so the room sends the
         // start event here when this join fills the room.
         if (_game is not null && _game.Status == BingoRoomStatus.Running)
-        {
             await actor.Context.BoundSession
                 .Send(new BingoGameStartedNotify { State = _game.Snapshot() })
                 .Async(cancellationToken);
-        }
     }
 
     public ValueTask OnLeaveActorAsync(
@@ -66,9 +64,7 @@ internal sealed class BingoRoom(
         _actors.Remove(actor.ActorId);
         if (_observerActor is not null
             && string.Equals(_observerActor.ActorId, actor.ActorId, StringComparison.Ordinal))
-        {
             _observerActor = null;
-        }
         logger.LogInformation(
             "bingo room: actor left. room={RoomId}, actor={ActorId}",
             Context.SpotRid.ToString(),
@@ -127,8 +123,6 @@ internal sealed class BingoRoom(
             : await JoinPlayerAsync(actor, request, cancellationToken);
     }
 
-    internal bool IsReadyToDraw => _game?.IsReadyToDraw == true;
-
     internal BingoGameChange SubmitCard(string actorId, BingoCard card)
     {
         return RequireGame().SubmitCard(actorId, card);
@@ -143,10 +137,7 @@ internal sealed class BingoRoom(
         BingoGameChange change,
         CancellationToken cancellationToken)
     {
-        if (change.Events.Count == 0)
-        {
-            return;
-        }
+        if (change.Events.Count == 0) return;
 
         await notifications.PublishAsync(eventMapper.Map(change.Events, _actors), cancellationToken);
         if (change.State.Status == BingoRoomStatus.Finished && change.State.Winners.Count > 0)
@@ -166,7 +157,7 @@ internal sealed class BingoRoom(
                         DrawSeq = change.State.DrawSeq,
                         ItemId = BingoRewardItems.GoldenDauberId,
                         ItemName = BingoRewardItems.GoldenDauberName,
-                        Rarity = BingoRewardItems.LegendaryRarity,
+                        Rarity = BingoRewardItems.LegendaryRarity
                     })
                 .Async(cancellationToken);
             logger.LogInformation(
@@ -180,10 +171,7 @@ internal sealed class BingoRoom(
 
     internal async ValueTask LeaveFinishedActorsAsync(CancellationToken cancellationToken)
     {
-        if (_cleanupStarted || _game?.Status != BingoRoomStatus.Finished)
-        {
-            return;
-        }
+        if (_cleanupStarted || _game?.Status != BingoRoomStatus.Finished) return;
 
         _cleanupStarted = true;
         foreach (var actor in _actors.Values.ToArray())
@@ -202,9 +190,7 @@ internal sealed class BingoRoom(
     internal void EnsureRoomId(string roomId)
     {
         if (!string.Equals(roomId, Context.SpotRid.ToString(), StringComparison.Ordinal))
-        {
             throw new InvalidOperationException($"Player is not submitting to this room. room={roomId}");
-        }
     }
 
     internal async ValueTask AnnounceRewardAsync(BingoRewardAcquiredEvent message, CancellationToken cancellationToken)
@@ -242,20 +228,19 @@ internal sealed class BingoRoom(
                     ItemId = message.ItemId,
                     ItemName = message.ItemName,
                     Rarity = message.Rarity,
-                    ReceivingSpotNodeRid = Context.NodeRid.ToString(),
+                    ReceivingSpotNodeRid = Context.NodeRid.ToString()
                 })
             .Async(cancellationToken);
     }
 
-    internal async ValueTask<bool> StopObservingAsync(PlayerActor actor, string roomId, CancellationToken cancellationToken)
+    internal async ValueTask<bool> StopObservingAsync(PlayerActor actor, string roomId,
+        CancellationToken cancellationToken)
     {
         if (!_settings.IsObserver
             || _observerActor is null
             || !string.Equals(_observerActor.ActorId, actor.ActorId, StringComparison.Ordinal)
             || !string.Equals(_settings.ObservedRoomId, roomId, StringComparison.Ordinal))
-        {
             return false;
-        }
 
         _observerActor = null;
         await Context.leaveActor(actor, cancellationToken);
@@ -276,14 +261,10 @@ internal sealed class BingoRoom(
         BingoRoomJoinReq request)
     {
         if (!_settings.IsObserver)
-        {
             throw new InvalidOperationException("Observe-only actor can join only an observer BingoRoom.");
-        }
 
         if (!string.Equals(request.RoomId, _settings.ObservedRoomId, StringComparison.Ordinal))
-        {
             throw new InvalidOperationException($"Observer room is not watching room '{request.RoomId}'.");
-        }
 
         actor.SetDisplayName(request.DisplayName);
         actor.JoinRoom(request.RoomId);
@@ -298,8 +279,8 @@ internal sealed class BingoRoom(
             State = new BingoRoomState
             {
                 RoomId = request.RoomId,
-                Status = BingoRoomStatus.Running,
-            },
+                Status = BingoRoomStatus.Running
+            }
         };
     }
 

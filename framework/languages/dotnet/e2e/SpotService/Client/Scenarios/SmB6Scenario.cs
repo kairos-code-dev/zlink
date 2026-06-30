@@ -1,7 +1,7 @@
+using SpotService.Client.Support;
 using SpotService.Shared;
 using Systems.Zlink.Stream.Connector.Contracts;
 using Zlink.HttpClient;
-using SpotService.Client.Support;
 
 namespace SpotService.Client.Scenarios;
 
@@ -31,7 +31,7 @@ internal static class SmB6Scenario
                     RequestTimeout = TimeSpan.FromSeconds(5),
                     Heartbeat = new ZlinkStreamHeartbeatOptions { Enabled = false },
                     DispatchMode = ZlinkStreamDispatchMode.Immediate,
-                    MaxReceivedMessages = 1024,
+                    MaxReceivedMessages = 1024
                 });
                 await client.Connect.Async();
                 await client.Request(new UserSpotAuthReq(spotRid, leaveActorId, leaveActorId, "play-a"))
@@ -52,11 +52,11 @@ internal static class SmB6Scenario
         }
 
         if (left is null)
-        {
             throw new InvalidOperationException(
-                last is null ? "SM-B6 leave flow did not become routable." : $"SM-B6 leave flow did not become routable. Last error: {last.Message}",
+                last is null
+                    ? "SM-B6 leave flow did not become routable."
+                    : $"SM-B6 leave flow did not become routable. Last error: {last.Message}",
                 last);
-        }
 
         ScenarioAssert.That(left.Accepted && left.ActorId == leaveActorId, "SM-B6 leave reply mismatch.");
         var expectedLeaveEvidence = new[] { $"spot-actor-left|rid=play-a|spot={spotRid}|actor={leaveActorId}" };
@@ -64,7 +64,8 @@ internal static class SmB6Scenario
             .Body(new EvidenceWaitRequest(expectedLeaveEvidence))
             .SubmitAsync<string[]>()).Body;
         ScenarioAssert.That(
-            expectedLeaveEvidence.All(expected => playAAfterLeave.Any(line => line.Contains(expected, StringComparison.Ordinal))),
+            expectedLeaveEvidence.All(expected =>
+                playAAfterLeave.Any(line => line.Contains(expected, StringComparison.Ordinal))),
             "SM-B6 expected explicit leave evidence.");
         ScenarioAssert.That(
             playAAfterLeave.Any(line => line.Contains(
@@ -78,14 +79,14 @@ internal static class SmB6Scenario
             "SM-B6 explicit leave incorrectly emitted disconnect evidence.");
 
         await using (var disconnectClient = ZlinkStreamConnectorFactory.Create(new ZlinkStreamConnectorOptions
-        {
-            Endpoint = new Uri(sessionAStreamEndpoint),
-            ConnectTimeout = TimeSpan.FromSeconds(5),
-            RequestTimeout = TimeSpan.FromSeconds(5),
-            Heartbeat = new ZlinkStreamHeartbeatOptions { Enabled = false },
-            DispatchMode = ZlinkStreamDispatchMode.Immediate,
-            MaxReceivedMessages = 1024,
-        }))
+                     {
+                         Endpoint = new Uri(sessionAStreamEndpoint),
+                         ConnectTimeout = TimeSpan.FromSeconds(5),
+                         RequestTimeout = TimeSpan.FromSeconds(5),
+                         Heartbeat = new ZlinkStreamHeartbeatOptions { Enabled = false },
+                         DispatchMode = ZlinkStreamDispatchMode.Immediate,
+                         MaxReceivedMessages = 1024
+                     }))
         {
             await disconnectClient.Connect.Async();
             await disconnectClient.Request(new AuthReq(disconnectActorId, "disconnect", "session-a"))

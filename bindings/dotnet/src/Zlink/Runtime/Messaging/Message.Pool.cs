@@ -1,8 +1,6 @@
 // SPDX-License-Identifier: MPL-2.0
 
-using System;
 using System.Runtime.CompilerServices;
-using System.Runtime.InteropServices;
 using Systems.Zlink.Runtime.Native;
 
 namespace Systems.Zlink;
@@ -15,9 +13,9 @@ public sealed partial class Message : IDisposable, IAsyncDisposable
     // where Message lifetime is bounded by the immediate caller scope.
     internal static Message AdoptNativeFromPool(ref ZlinkMsg source)
     {
-        Message result = RentFromPool();
+        var result = RentFromPool();
         result._msg = source;
-        result._valid = true;
+        result.IsValid = true;
         result._managedPayload = null;
         result._knownSize = -1;
         source = default;
@@ -27,16 +25,16 @@ public sealed partial class Message : IDisposable, IAsyncDisposable
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
     private static Message RentFromPool()
     {
-        Message[]? pool = t_pool;
-        int count = t_poolCount;
+        var pool = t_pool;
+        var count = t_poolCount;
         if (pool != null && count > 0)
         {
             count--;
-            Message result = pool[count];
+            var result = pool[count];
             pool[count] = null!;
             t_poolCount = count;
             result._msg = default;
-            result._valid = false;
+            result.IsValid = false;
             result._managedPayload = null;
             result._knownSize = -1;
             result._pooled = true;
@@ -53,18 +51,19 @@ public sealed partial class Message : IDisposable, IAsyncDisposable
             return;
         // Defensive: only return when fully released (no managed payload
         // in flight, no native handle pending close).
-        if (_valid)
+        if (IsValid)
             return;
         if (_managedPayload != null)
             return;
         _pooled = false;
-        Message[]? pool = t_pool;
+        var pool = t_pool;
         if (pool == null)
         {
             pool = new Message[PoolCapacity];
             t_pool = pool;
         }
-        int count = t_poolCount;
+
+        var count = t_poolCount;
         if (count >= PoolCapacity)
             return;
         pool[count] = this;

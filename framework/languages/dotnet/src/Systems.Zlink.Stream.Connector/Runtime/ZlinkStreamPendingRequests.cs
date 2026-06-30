@@ -12,11 +12,9 @@ internal sealed class ZlinkStreamPendingRequests
         var requestSeq = NextRequestSeq();
         var pending = new PendingRequest(requestSeq);
         if (!_pending.TryAdd(requestSeq.Value, pending))
-        {
             throw ZlinkStreamConnector.Error(
                 ZlinkStreamErrorCode.ValidationFailed,
                 "Duplicate request sequence.");
-        }
 
         return pending;
     }
@@ -29,9 +27,7 @@ internal sealed class ZlinkStreamPendingRequests
         if (header.RequestSeq is not { } requestSeq
             || (header.Kind != ZlinkStreamMessageKind.Response && header.Kind != ZlinkStreamMessageKind.Error)
             || !_pending.TryRemove(requestSeq.Value, out var pending))
-        {
             return false;
-        }
 
         if (header.Kind == ZlinkStreamMessageKind.Error)
         {
@@ -73,12 +69,8 @@ internal sealed class ZlinkStreamPendingRequests
     public void FailAll(ZlinkStreamError error)
     {
         foreach (var (requestSeq, pending) in _pending)
-        {
             if (_pending.TryRemove(requestSeq, out _))
-            {
                 pending.Fail(error);
-            }
-        }
     }
 
     private ZlinkStreamRequestSeq NextRequestSeq()
@@ -86,10 +78,7 @@ internal sealed class ZlinkStreamPendingRequests
         while (true)
         {
             var value = unchecked((ulong)Interlocked.Increment(ref _nextRequestSeq));
-            if (value != 0)
-            {
-                return new ZlinkStreamRequestSeq(value);
-            }
+            if (value != 0) return new ZlinkStreamRequestSeq(value);
         }
     }
 
@@ -102,8 +91,14 @@ internal sealed class ZlinkStreamPendingRequests
 
         public Task<ZlinkStreamFrame> Task => _completion.Task;
 
-        public void Complete(ZlinkStreamFrame frame) => _completion.TrySetResult(frame);
+        public void Complete(ZlinkStreamFrame frame)
+        {
+            _completion.TrySetResult(frame);
+        }
 
-        public void Fail(ZlinkStreamError error) => _completion.TrySetException(new ZlinkStreamException(error));
+        public void Fail(ZlinkStreamError error)
+        {
+            _completion.TrySetException(new ZlinkStreamException(error));
+        }
     }
 }

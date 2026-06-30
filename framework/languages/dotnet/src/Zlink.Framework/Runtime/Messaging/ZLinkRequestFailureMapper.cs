@@ -12,7 +12,7 @@ internal static class ZLinkRequestFailureMapper
             RequestResult.NotConnected => new ZLinkFrameworkException(
                 ZLinkFrameworkErrorKind.RouteNotConnected,
                 $"{operationName} failed because the target route is not connected.",
-                isRetriable: true,
+                true,
                 CreateRequestException(result)),
             RequestResult.NotFound => new ZLinkFrameworkException(
                 ZLinkFrameworkErrorKind.RequestTargetNotFound,
@@ -21,7 +21,7 @@ internal static class ZLinkRequestFailureMapper
             RequestResult.Rejected or RequestResult.Conflict or RequestResult.Busy => new ZLinkFrameworkException(
                 ZLinkFrameworkErrorKind.RequestRejected,
                 $"{operationName} was rejected with result '{result}'.",
-                isRetriable: result is RequestResult.Busy or RequestResult.Conflict,
+                result is RequestResult.Busy or RequestResult.Conflict,
                 CreateRequestException(result)),
             RequestResult.ProtocolError => new ZLinkFrameworkException(
                 ZLinkFrameworkErrorKind.RequestProtocolError,
@@ -47,7 +47,7 @@ internal static class ZLinkRequestFailureMapper
             ZlinkSubmitException.ErrorCode.NotConnected => new ZLinkFrameworkException(
                 ZLinkFrameworkErrorKind.RouteNotConnected,
                 $"{operationName} failed because the target route is not connected.",
-                isRetriable: true,
+                true,
                 error),
             ZlinkSubmitException.ErrorCode.NotFound => new ZLinkFrameworkException(
                 ZLinkFrameworkErrorKind.RequestTargetNotFound,
@@ -84,9 +84,7 @@ internal static class ZLinkRequestFailureMapper
         string operationName)
     {
         if (lastSubmitFailure is ZlinkSubmitException submitError)
-        {
             return CreateSubmitException(submitError, operationName);
-        }
 
         return lastSubmitFailure is null
             ? new TimeoutException($"{operationName} timed out before the socket became writable.")
@@ -96,5 +94,7 @@ internal static class ZLinkRequestFailureMapper
     }
 
     private static ZlinkRequestException CreateRequestException(RequestResult result)
-        => new((ZlinkRequestException.ErrorCode)(int)result);
+    {
+        return new ZlinkRequestException((ZlinkRequestException.ErrorCode)(int)result);
+    }
 }

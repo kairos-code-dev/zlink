@@ -8,6 +8,8 @@ internal static class ZLinkStreamCorrelation
 {
     private static long _counter;
 
-    public static string Next() =>
-        System.Convert.ToString(System.Threading.Interlocked.Increment(ref _counter), 16);
+    public static string Next()
+    {
+        return Convert.ToString(Interlocked.Increment(ref _counter), 16);
+    }
 }

@@ -1,11 +1,3 @@
-using Zlink.Framework.Runtime.Backend.Contracts;
-using Zlink.Framework.Runtime.Actors;
-using Zlink.Framework.Runtime.Diagnostics;
-using Zlink.Framework.Runtime.Execution;
-using Zlink.Framework.Runtime.Host;
-using Zlink.Framework.Runtime.Messaging;
-using Zlink.Framework.Runtime.Registry;
-
 namespace Zlink.Framework.Runtime.Spots;
 
 internal sealed class ZLinkEntrySpotDispatchPump(
@@ -30,7 +22,6 @@ internal sealed class ZLinkEntrySpotDispatchPump(
     private void OnDispatchEvent(ZLinkBackendSpotDispatchInfo info)
     {
         if (activation is not null)
-        {
             switch (info.Event)
             {
                 case ZLinkBackendSpotDispatchEvent.RouteReadable:
@@ -52,13 +43,10 @@ internal sealed class ZLinkEntrySpotDispatchPump(
                         ct => activation.DispatchActorJoinDrainAsync(ct));
                     return;
             }
-        }
 
         if (info.Event != ZLinkBackendSpotDispatchEvent.ActorReadable
             || info.ActorParts is not { Count: > 0 } actorParts)
-        {
             return;
-        }
 
         taskRunner.RunDetached(
             "entry-spot-actor-dispatch",

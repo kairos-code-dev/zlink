@@ -1,10 +1,8 @@
-using Bingo.Server.Play.Infrastructure.ZLink.Actors;
 using Bingo.Server.Play.Domain.Bingo;
-using Bingo.Server.Play.Infrastructure.ZLink.Spots.EntrySpot;
+using Bingo.Server.Play.Infrastructure.ZLink.Actors;
 using Bingo.Server.Play.Infrastructure.ZLink.Spots.BingoRoomSpot;
 using Bingo.Shared.Contracts;
 using Systems.Zlink;
-using Zlink.Framework.Codecs.Protobuf;
 using Zlink.Framework.Contracts.Handlers;
 using Zlink.Framework.Contracts.Spots;
 
@@ -36,23 +34,21 @@ internal sealed class ObserveBingoEventsHandler(IZLinkSpotManager spots)
                     RoomId = message.RoomId,
                     ActorId = actor.ActorId,
                     DisplayName = actor.DisplayName,
-                    ObserveOnly = true,
+                    ObserveOnly = true
                 })
             .Yield<BingoRoomJoinRes>(cancellationToken);
 
         if (!joined.Accepted)
-        {
             return new ObserveBingoEventsRes
             {
                 Subscribed = false,
-                ObserverNodeRid = entrySpot.Context.NodeRid.ToString(),
+                ObserverNodeRid = entrySpot.Context.NodeRid.ToString()
             };
-        }
 
         return new ObserveBingoEventsRes
         {
             Subscribed = true,
-            ObserverNodeRid = entrySpot.Context.NodeRid.ToString(),
+            ObserverNodeRid = entrySpot.Context.NodeRid.ToString()
         };
     }
 

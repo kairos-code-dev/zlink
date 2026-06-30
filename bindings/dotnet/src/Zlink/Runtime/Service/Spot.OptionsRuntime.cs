@@ -1,12 +1,6 @@
 // SPDX-License-Identifier: MPL-2.0
 
-using System;
-using System.Collections.Generic;
-using System.Runtime.InteropServices;
-using System.Threading;
-using System.Threading.Tasks;
 using Systems.Zlink.Runtime.Native;
-using Systems.Zlink.Runtime.Sockets.Internal;
 
 namespace Systems.Zlink;
 
@@ -15,12 +9,12 @@ internal sealed partial class Spot : ISpot
     public void SetRoutingId(RoutingId routingId)
     {
         EnsureNotDisposed();
-        byte[] routingIdBytes = routingId.ToByteArray();
+        var routingIdBytes = routingId.ToByteArray();
         unsafe
         {
             fixed (byte* routingIdPtr = routingIdBytes)
             {
-                int rc = NativeMethods.zlink_set_routing_id(_handle,
+                var rc = NativeMethods.zlink_set_routing_id(Handle,
                     (IntPtr)routingIdPtr, (nuint)routingIdBytes.Length);
                 ZlinkException.ThrowConfigIfError(rc);
             }
@@ -32,52 +26,12 @@ internal sealed partial class Spot : ISpot
         get
         {
             EnsureNotDisposed();
-            int rc = NativeMethods.zlink_get_routing_id(_handle,
-                out ZlinkRoutingId routingId);
+            var rc = NativeMethods.zlink_get_routing_id(Handle,
+                out var routingId);
             ZlinkException.ThrowConfigIfError(rc);
             return RoutingId.From(
                 NativeHelpers.ReadRoutingId(ref routingId));
         }
-    }
-
-    internal unsafe void SetOption(SpotOption option, int value)
-    {
-        EnsureNotDisposed();
-        int local = value;
-        int rc = NativeMethods.zlink_set_spot_option(_handle, option,
-            (IntPtr)(&local), (nuint)sizeof(int));
-        ZlinkException.ThrowConfigIfError(rc);
-    }
-
-    internal unsafe int GetOption(SpotOption option)
-    {
-        EnsureNotDisposed();
-        int value = 0;
-        nuint size = (nuint)sizeof(int);
-        int rc = NativeMethods.zlink_get_spot_option(_handle, option,
-            (IntPtr)(&value), ref size);
-        ZlinkException.ThrowConfigIfError(rc);
-        return value;
-    }
-
-    internal unsafe void SetSocketOption(SocketOptionKey<int> option, int value)
-    {
-        EnsureNotDisposed();
-        int local = value;
-        int rc = NativeMethods.zlink_set_option(_handle, (int)option.Option,
-            (IntPtr)(&local), (nuint)sizeof(int));
-        ZlinkException.ThrowConfigIfError(rc);
-    }
-
-    internal unsafe int GetSocketOption(SocketOptionKey<int> option)
-    {
-        EnsureNotDisposed();
-        int value = 0;
-        nuint size = (nuint)sizeof(int);
-        int rc = NativeMethods.zlink_get_option(_handle, (int)option.Option,
-            (IntPtr)(&value), ref size);
-        ZlinkException.ThrowConfigIfError(rc);
-        return value;
     }
 
     public TimeSpan? RequestTimeout
@@ -126,5 +80,45 @@ internal sealed partial class Spot : ISpot
     {
         get => Options.Linger;
         set => Options.Linger = value;
+    }
+
+    internal unsafe void SetOption(SpotOption option, int value)
+    {
+        EnsureNotDisposed();
+        var local = value;
+        var rc = NativeMethods.zlink_set_spot_option(Handle, option,
+            (IntPtr)(&local), sizeof(int));
+        ZlinkException.ThrowConfigIfError(rc);
+    }
+
+    internal unsafe int GetOption(SpotOption option)
+    {
+        EnsureNotDisposed();
+        var value = 0;
+        var size = (nuint)sizeof(int);
+        var rc = NativeMethods.zlink_get_spot_option(Handle, option,
+            (IntPtr)(&value), ref size);
+        ZlinkException.ThrowConfigIfError(rc);
+        return value;
+    }
+
+    internal unsafe void SetSocketOption(SocketOptionKey<int> option, int value)
+    {
+        EnsureNotDisposed();
+        var local = value;
+        var rc = NativeMethods.zlink_set_option(Handle, (int)option.Option,
+            (IntPtr)(&local), sizeof(int));
+        ZlinkException.ThrowConfigIfError(rc);
+    }
+
+    internal unsafe int GetSocketOption(SocketOptionKey<int> option)
+    {
+        EnsureNotDisposed();
+        var value = 0;
+        var size = (nuint)sizeof(int);
+        var rc = NativeMethods.zlink_get_option(Handle, (int)option.Option,
+            (IntPtr)(&value), ref size);
+        ZlinkException.ThrowConfigIfError(rc);
+        return value;
     }
 }

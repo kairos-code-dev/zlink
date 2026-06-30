@@ -26,15 +26,9 @@ internal sealed record ClientOptions(
         for (var i = 0; i < args.Length; i++)
         {
             var key = args[i];
-            if (!key.StartsWith("--", StringComparison.Ordinal))
-            {
-                continue;
-            }
+            if (!key.StartsWith("--", StringComparison.Ordinal)) continue;
 
-            if (i + 1 >= args.Length)
-            {
-                throw new ArgumentException($"Missing value for {key}.");
-            }
+            if (i + 1 >= args.Length) throw new ArgumentException($"Missing value for {key}.");
 
             values[key[2..]] = args[++i];
         }
@@ -68,8 +62,10 @@ internal sealed record ClientOptions(
                 : "all");
     }
 
-    static string Require(IReadOnlyDictionary<string, string> values, string name) =>
-        values.TryGetValue(name, out var value) && !string.IsNullOrWhiteSpace(value)
+    private static string Require(IReadOnlyDictionary<string, string> values, string name)
+    {
+        return values.TryGetValue(name, out var value) && !string.IsNullOrWhiteSpace(value)
             ? value
             : throw new ArgumentException($"--{name} is required.");
+    }
 }

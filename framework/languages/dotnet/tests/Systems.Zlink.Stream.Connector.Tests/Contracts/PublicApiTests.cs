@@ -1,4 +1,3 @@
-using Systems.Zlink.Stream.Connector;
 using Systems.Zlink.Stream.Connector.Contracts;
 using Systems.Zlink.Stream.Connector.Contracts.Calls;
 using Xunit;
@@ -17,7 +16,7 @@ public sealed partial class StreamConnectorTests
         "public struct ",
         "public readonly struct ",
         "public delegate ",
-        "public static class ",
+        "public static class "
     ];
 
     private static readonly string[] InternalTypeDeclarationTokens =
@@ -32,7 +31,7 @@ public sealed partial class StreamConnectorTests
         "internal struct ",
         "internal readonly struct ",
         "internal delegate ",
-        "internal static class ",
+        "internal static class "
     ];
 
     [Fact]
@@ -41,7 +40,7 @@ public sealed partial class StreamConnectorTests
         var assembly = typeof(IZlinkStreamConnector).Assembly;
         var implementation = assembly.GetType(
             "Systems.Zlink.Stream.Connector.Runtime.ZlinkStreamConnector",
-            throwOnError: true)!;
+            true)!;
 
         Assert.False(implementation.IsPublic);
         Assert.True(typeof(IZlinkStreamConnector).IsAssignableFrom(implementation));
@@ -66,8 +65,10 @@ public sealed partial class StreamConnectorTests
         var sourceRoot = GetConnectorSourceRoot();
         var violations = Directory
             .EnumerateFiles(sourceRoot, "*.cs", SearchOption.AllDirectories)
-            .Where(static path => !path.Contains($"{Path.DirectorySeparatorChar}obj{Path.DirectorySeparatorChar}", StringComparison.Ordinal)
-                && !path.Contains($"{Path.DirectorySeparatorChar}bin{Path.DirectorySeparatorChar}", StringComparison.Ordinal))
+            .Where(static path => !path.Contains($"{Path.DirectorySeparatorChar}obj{Path.DirectorySeparatorChar}",
+                                      StringComparison.Ordinal)
+                                  && !path.Contains($"{Path.DirectorySeparatorChar}bin{Path.DirectorySeparatorChar}",
+                                      StringComparison.Ordinal))
             .Where(path => HasPublicTypeDeclaration(File.ReadAllText(path)))
             .Where(path => !Path.GetRelativePath(sourceRoot, path)
                 .StartsWith($"Contracts{Path.DirectorySeparatorChar}", StringComparison.Ordinal))
@@ -98,8 +99,10 @@ public sealed partial class StreamConnectorTests
         var violations = typeof(IZlinkStreamConnector).Assembly
             .GetExportedTypes()
             .Where(static type => type.Namespace is null
-                || !type.Namespace.Equals("Systems.Zlink.Stream.Connector.Contracts", StringComparison.Ordinal)
-                    && !type.Namespace.StartsWith("Systems.Zlink.Stream.Connector.Contracts.", StringComparison.Ordinal))
+                                  || (!type.Namespace.Equals("Systems.Zlink.Stream.Connector.Contracts",
+                                          StringComparison.Ordinal)
+                                      && !type.Namespace.StartsWith("Systems.Zlink.Stream.Connector.Contracts.",
+                                          StringComparison.Ordinal)))
             .Select(static type => type.FullName)
             .Order(StringComparer.Ordinal)
             .ToArray();
@@ -129,10 +132,7 @@ public sealed partial class StreamConnectorTests
                 directory.FullName,
                 "src",
                 "Systems.Zlink.Stream.Connector");
-            if (Directory.Exists(candidate))
-            {
-                return candidate;
-            }
+            if (Directory.Exists(candidate)) return candidate;
 
             directory = directory.Parent;
         }
@@ -145,7 +145,8 @@ public sealed partial class StreamConnectorTests
         return source
             .Split('\n')
             .Select(static line => line.TrimEnd('\r'))
-            .Any(static line => PublicTypeDeclarationTokens.Any(token => line.StartsWith(token, StringComparison.Ordinal)));
+            .Any(static line =>
+                PublicTypeDeclarationTokens.Any(token => line.StartsWith(token, StringComparison.Ordinal)));
     }
 
     private static bool HasInternalTypeDeclaration(string source)
@@ -153,6 +154,7 @@ public sealed partial class StreamConnectorTests
         return source
             .Split('\n')
             .Select(static line => line.TrimEnd('\r'))
-            .Any(static line => InternalTypeDeclarationTokens.Any(token => line.StartsWith(token, StringComparison.Ordinal)));
+            .Any(static line =>
+                InternalTypeDeclarationTokens.Any(token => line.StartsWith(token, StringComparison.Ordinal)));
     }
 }

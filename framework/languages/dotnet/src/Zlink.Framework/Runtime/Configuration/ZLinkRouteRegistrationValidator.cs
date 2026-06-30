@@ -11,10 +11,8 @@ internal static partial class ZLinkFrameworkRegistrationValidator
     {
         var serverEnabled = !string.IsNullOrWhiteSpace(routed.BindEndpoint);
         if (!serverEnabled && !routed.ClientEnabled)
-        {
             throw new ZLinkConfigurationException(
                 $"Route channel '{routed.RouterChannelId}' must enable server or client capability.");
-        }
 
         var manualAcceptedSpotRouteWithDiscoveryMetadata =
             acceptedBySpotRouteChannel
@@ -23,12 +21,10 @@ internal static partial class ZLinkFrameworkRegistrationValidator
 
         if (routed.ClientEnabled
             && !manualAcceptedSpotRouteWithDiscoveryMetadata)
-        {
             ZLinkPeerAcquisitionPolicy.RequirePeerSource(
                 $"Route channel '{routed.RouterChannelId}'",
                 discoveryConfigured,
                 routed.ManualConnections);
-        }
 
         ValidateRouteMappedGroups(routed, handlerGroups);
         ValidateUniqueRouteHandlers(
@@ -51,20 +47,14 @@ internal static partial class ZLinkFrameworkRegistrationValidator
         foreach (var group in routed.HandlerGroups)
         {
             if (!handlerGroups.TryGetValue(group, out var entries))
-            {
                 throw new ZLinkConfigurationException(
                     $"Route channel '{routed.RouterChannelId}' maps unknown handler group '{group}'.");
-            }
 
             foreach (var entry in entries)
-            {
                 if (entry.Surface != ZLinkHandlerEndpointSurface.Route
                     || entry.Kind is not (ZLinkMessageKind.Command or ZLinkMessageKind.Request))
-                {
                     throw new ZLinkConfigurationException(
                         $"Route channel '{routed.RouterChannelId}' maps handler group '{group}' with incompatible handler kind '{entry.Kind}'.");
-                }
-            }
         }
     }
 
@@ -78,12 +68,10 @@ internal static partial class ZLinkFrameworkRegistrationValidator
         foreach (var handler in handlers)
         {
             var packetName = handler.PacketName
-                ?? ZLinkMessageNameResolver.ResolveFromType(handler.MessageType);
+                             ?? ZLinkMessageNameResolver.ResolveFromType(handler.MessageType);
             if (!keys.Add((kind, packetName)))
-            {
                 throw new ZLinkConfigurationException(
                     $"Duplicate routed {label} handler '{routerChannelId}:{packetName}'.");
-            }
         }
     }
 
@@ -97,9 +85,7 @@ internal static partial class ZLinkFrameworkRegistrationValidator
         {
             if (endpoint.Groups.Count == 0
                 || !endpoint.Groups.Any(routed.HandlerGroups.Contains))
-            {
                 continue;
-            }
 
             AddExposedRouteHandler(
                 routed.RouterChannelId,
@@ -110,24 +96,20 @@ internal static partial class ZLinkFrameworkRegistrationValidator
         }
 
         foreach (var handler in routed.SendHandlers)
-        {
             AddExposedRouteHandler(
                 routed.RouterChannelId,
                 exposed,
                 ZLinkMessageKind.Command,
                 handler.PacketName ?? ZLinkMessageNameResolver.ResolveFromType(handler.MessageType),
                 handler.HandlerType);
-        }
 
         foreach (var handler in routed.RequestHandlers)
-        {
             AddExposedRouteHandler(
                 routed.RouterChannelId,
                 exposed,
                 ZLinkMessageKind.Request,
                 handler.PacketName ?? ZLinkMessageNameResolver.ResolveFromType(handler.MessageType),
                 handler.HandlerType);
-        }
     }
 
     private static void AddExposedRouteHandler(
@@ -140,10 +122,8 @@ internal static partial class ZLinkFrameworkRegistrationValidator
         var key = (kind, packetName);
         if (exposed.TryGetValue(key, out var existing)
             && existing != handlerType)
-        {
             throw new ZLinkConfigurationException(
                 $"Route channel '{routerChannelId}' maps duplicate {kind} handler packet '{packetName}'.");
-        }
 
         exposed[key] = handlerType;
     }

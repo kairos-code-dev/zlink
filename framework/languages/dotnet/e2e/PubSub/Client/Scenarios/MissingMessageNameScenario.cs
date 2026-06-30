@@ -1,6 +1,5 @@
 using PubSub.Shared;
 using Zlink.HttpClient;
-using PubSub.Client.Support;
 
 namespace PubSub.Client.Scenarios;
 
@@ -22,13 +21,12 @@ internal static class MissingMessageNameScenario
         // The drop is observed on subscriber evidence because publisher submit only reaches transport.
         await WaitForSubscribersAsync(subscribers, new EvidenceWaitRequest(
             [],
-            [],
-            10000)
+            [])
         {
             ContainsAllLineGroups =
             [
-                ["dispatch-error|", "packet=MissingEventNotify", $"topic={PubSubNames.MainTopic}"],
-            ],
+                ["dispatch-error|", "packet=MissingEventNotify", $"topic={PubSubNames.MainTopic}"]
+            ]
         });
 
         // A normal event after the missing handler case proves the channel continues to work.
@@ -40,13 +38,12 @@ internal static class MissingMessageNameScenario
             .SubmitRawAsync();
         await WaitForSubscribersAsync(subscribers, new EvidenceWaitRequest(
             ["event|", $"run={runId}", $"topic={PubSubNames.MainTopic}"],
-            [],
-            10000));
+            []));
 
         Console.WriteLine("scenario PS-C1 passed");
     }
 
-    static async Task WaitForSubscribersAsync(
+    private static async Task WaitForSubscribersAsync(
         IReadOnlyList<ZLinkHttpClient> subscribers,
         EvidenceWaitRequest request)
     {

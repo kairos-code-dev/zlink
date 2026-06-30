@@ -1,7 +1,7 @@
+using SpotService.Client.Support;
 using SpotService.Shared;
 using Systems.Zlink.Stream.Connector.Contracts;
 using Zlink.HttpClient;
-using SpotService.Client.Support;
 
 namespace SpotService.Client.Scenarios;
 
@@ -26,7 +26,7 @@ internal static class SmD5Scenario
                     RequestTimeout = TimeSpan.FromSeconds(5),
                     Heartbeat = new ZlinkStreamHeartbeatOptions { Enabled = false },
                     DispatchMode = ZlinkStreamDispatchMode.Immediate,
-                    MaxReceivedMessages = 1024,
+                    MaxReceivedMessages = 1024
                 });
                 try
                 {
@@ -46,27 +46,25 @@ internal static class SmD5Scenario
             }
 
             if (client is null)
-            {
                 throw new InvalidOperationException(
-                    last is null ? $"Actor auth did not become routable: {actorId}" : $"Actor auth did not become routable: {actorId}. Last error: {last.Message}",
+                    last is null
+                        ? $"Actor auth did not become routable: {actorId}"
+                        : $"Actor auth did not become routable: {actorId}. Last error: {last.Message}",
                     last);
-            }
 
             await client.Close.Async();
         }
         finally
         {
-            if (client is not null)
-            {
-                await client.DisposeAsync();
-            }
+            if (client is not null) await client.DisposeAsync();
         }
 
         var evidence = (await sessionA.Post("/evidence/wait")
             .Body(new EvidenceWaitRequest([$"entry-disconnected|rid=session-a|actor={actorId}"]))
             .SubmitAsync<string[]>()).Body;
         ScenarioAssert.That(
-            evidence.Any(line => line.Contains($"entry-disconnected|rid=session-a|actor={actorId}", StringComparison.Ordinal)),
+            evidence.Any(line =>
+                line.Contains($"entry-disconnected|rid=session-a|actor={actorId}", StringComparison.Ordinal)),
             "SM-D5 expected only the selected bound actor to receive disconnect notification.");
 
         Console.WriteLine("operation SpotService.sm-d5 passed");

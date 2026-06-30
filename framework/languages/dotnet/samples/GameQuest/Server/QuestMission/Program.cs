@@ -1,11 +1,10 @@
-using GameQuest.QuestMission.Infrastructure.ZLink.Spots.PlayerQuestSpot;
-using GameQuest.QuestMission.Infrastructure.ZLink;
+using GameQuest.QuestMission.Application;
 using GameQuest.QuestMission.Infrastructure.Http;
 using GameQuest.QuestMission.Infrastructure.Store;
-using GameQuest.QuestMission.Application;
-using GameQuest.Shared;
+using GameQuest.QuestMission.Infrastructure.ZLink;
+using GameQuest.QuestMission.Infrastructure.ZLink.Spots.PlayerQuestSpot;
 using GameQuest.Server.Configuration;
-using Zlink.Framework.Contracts.Codecs.Json;
+using GameQuest.Shared;
 using Zlink.Framework.AspNetCore;
 using Zlink.Framework.Contracts.Dispatch;
 
@@ -43,7 +42,6 @@ internal static class Program
                 channel.EnableSubscriber();
                 channel.EnableSubscriber();
                 channel.AddHandlerGroup("gamequest-gameplay");
-
             }
             {
                 var mesh = options.AddSpotMesh(SampleNames.QuestSpotDiscovery);
@@ -52,23 +50,21 @@ internal static class Program
                     {
                         var router = spot.EnableRouter(instance.SpotRouterEndpoint);
                         router.SetRoutingId(instance.SpotRid);
-
                     }
                     spot.EnablePubSub(instance.SpotEndpoint);
                     spot.AddSpotFactory<PlayerQuestSpot>();
-
                 }
-
             }
         });
 
         var app = builder.Build();
 
         app.MapGet("/health", () => Results.Ok(new { status = "ok", mission = instance.MissionName }));
-        app.MapGet("/self-check/events", async (QuestStore store, CancellationToken cancellationToken) =>
-        {
-            return Results.Ok(await store.ReadEventsAsync(cancellationToken));
-        });
+        app.MapGet("/self-check/events",
+            async (QuestStore store, CancellationToken cancellationToken) =>
+            {
+                return Results.Ok(await store.ReadEventsAsync(cancellationToken));
+            });
         app.MapPost("/internal/sync", async (
             SyncQuestProgressReq request,
             QuestEventProcessor processor,

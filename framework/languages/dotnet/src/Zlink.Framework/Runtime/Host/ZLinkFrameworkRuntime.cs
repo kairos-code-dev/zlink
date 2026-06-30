@@ -1,7 +1,5 @@
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Logging;
-using Zlink.Framework.Runtime.Backend.Contracts;
-using Zlink.Framework.Runtime.Diagnostics;
 
 namespace Zlink.Framework.Runtime.Host;
 
@@ -12,26 +10,24 @@ internal readonly record struct CreateActorResult(
 
 internal sealed partial class ZLinkFrameworkRuntime
 {
-    private readonly IServiceProvider _services;
+    private readonly ZLinkFrameworkActorFacade _actors;
+    private readonly ZLinkActorSessionManager _actorSessionManager;
     private readonly IZLinkBackendAdapterFactory _backendAdapterFactory;
-    private readonly ZLinkFrameworkRegistration _registration;
-    private readonly ZLinkRegistryRuntime? _registryRuntime;
+    private readonly ZLinkFrameworkChannelFacade _channelFacade;
     private readonly ZLinkChannelRuntimeManager _channels;
-    private readonly ZLinkStreamRuntimeManager _streams;
+    private readonly SemaphoreSlim _gate = new(1, 1);
+    private readonly ZLinkRegistryRuntime? _registryRuntime;
+    private readonly ZLinkFrameworkSessionBindings _sessionBindings = new();
+    private readonly ZLinkFrameworkSpotFacade _spotFacade;
+    private readonly ZLinkSpotRouteEgressDispatcher _spotRouteEgress;
+    private readonly ZLinkSpotRouteRouterDispatcher _spotRouteRouter;
     private readonly ZLinkSpotRuntimeManager _spots;
     private readonly ZLinkFrameworkRuntimeStateFactory _stateFactory;
-    private readonly SemaphoreSlim _gate = new(1, 1);
-    private readonly ZLinkActorSessionManager _actorSessionManager;
-    private readonly ZLinkFrameworkActorFacade _actors;
-    private readonly ZLinkFrameworkChannelFacade _channelFacade;
-    private readonly ZLinkFrameworkSpotFacade _spotFacade;
-    private readonly ZLinkSpotRouteRouterDispatcher _spotRouteRouter;
-    private readonly ZLinkSpotRouteEgressDispatcher _spotRouteEgress;
-    private readonly ZLinkFrameworkSessionBindings _sessionBindings = new();
+    private readonly ZLinkStreamRuntimeManager _streams;
     private readonly object _workerPoolGate = new();
-    private ZLinkWorkerPool? _workerPool;
-    private ZLinkFrameworkRuntimeState? _state;
     private ZLinkMessageFlowTracer? _flow;
+    private ZLinkFrameworkRuntimeState? _state;
+    private ZLinkWorkerPool? _workerPool;
 
     public ZLinkFrameworkRuntime(
         IServiceProvider services,
@@ -41,9 +37,9 @@ internal sealed partial class ZLinkFrameworkRuntime
         ZLinkHandlerDispatcher dispatcher,
         ZLinkRegistryRuntime? registryRuntime = null)
     {
-        _services = services;
+        Services = services;
         _backendAdapterFactory = backendAdapterFactory;
-        _registration = registration;
+        Registration = registration;
         _registryRuntime = registryRuntime;
         var components = ZLinkFrameworkRuntimeComponentFactory.Create(
             this,
@@ -64,7 +60,7 @@ internal sealed partial class ZLinkFrameworkRuntime
         _spotFacade = components.SpotFacade;
         _spotRouteRouter = new ZLinkSpotRouteRouterDispatcher(GetOrStartState);
         _spotRouteEgress = new ZLinkSpotRouteEgressDispatcher(
-            _registration,
+            Registration,
             _channelFacade.GetRouteChannel,
             GetSpotRouteBridgeOwner,
             GetRegistrySpotDiscovery);
@@ -72,16 +68,16 @@ internal sealed partial class ZLinkFrameworkRuntime
 
     public IZLinkBackendContext? Context => _state?.Context;
 
-    public ZLinkFrameworkRegistration Registration => _registration;
+    public ZLinkFrameworkRegistration Registration { get; }
 
     // Shared success-path tracer for outbound client calls (channel/route/spot/actor
     // send/request/publish), built once. Inbound surfaces use the reporter's Flow.
     internal ZLinkMessageFlowTracer Flow => _flow ??= new ZLinkMessageFlowTracer(
-        _registration.DispatchOptions,
-        _services,
-        _services.GetService<ILogger<ZLinkFrameworkRuntime>>());
+        Registration.DispatchOptions,
+        Services,
+        Services.GetService<ILogger<ZLinkFrameworkRuntime>>());
 
-    internal IServiceProvider Services => _services;
+    internal IServiceProvider Services { get; }
 
     internal ZLinkWorkerPool WorkerPool
     {
@@ -89,20 +85,19 @@ internal sealed partial class ZLinkFrameworkRuntime
         {
             lock (_workerPoolGate)
             {
-                return _workerPool ??= _registration.WorkerOptions.CreatePool();
+                return _workerPool ??= Registration.WorkerOptions.CreatePool();
             }
         }
     }
 
-    internal IZLinkRouteClient RouteClient => _services.GetRequiredService<IZLinkRouteClient>();
+    internal IZLinkRouteClient RouteClient => Services.GetRequiredService<IZLinkRouteClient>();
+
+    public bool IsStarted => _state is not null;
 
     private ZLinkSpotNodeRuntime? GetSpotRouteBridgeOwner(string routerChannelId)
     {
         var state = _state;
-        if (state is null)
-        {
-            return null;
-        }
+        if (state is null) return null;
 
         lock (state.SyncRoot)
         {
@@ -115,23 +110,15 @@ internal sealed partial class ZLinkFrameworkRuntime
     private IZLinkBackendDiscovery? GetRegistrySpotDiscovery(string routerChannelId)
     {
         var state = _state;
-        if (state is null)
-        {
-            return null;
-        }
+        if (state is null) return null;
 
-        var options = _registration.RegistrySpotRemoteAddresses;
-        if (options is null)
-        {
-            return null;
-        }
+        var options = Registration.RegistrySpotRemoteAddresses;
+        if (options is null) return null;
 
         lock (state.SyncRoot)
         {
             if (state.SpotDiscoveries.TryGetValue($"{options.Namespace}.registry-spot", out var discovery))
-            {
                 return discovery;
-            }
 
             var resolvedRouterChannelId = ZLinkRegistryRouteRuntime.ResolveRouterChannelId(
                 state,
@@ -143,10 +130,7 @@ internal sealed partial class ZLinkFrameworkRuntime
     internal void DrainSpotRouteBridges()
     {
         var state = _state;
-        if (state is null)
-        {
-            return;
-        }
+        if (state is null) return;
 
         IZLinkBackendSpotRouteBridge[] bridges;
         lock (state.SyncRoot)
@@ -155,7 +139,6 @@ internal sealed partial class ZLinkFrameworkRuntime
         }
 
         foreach (var bridge in bridges)
-        {
             try
             {
                 bridge.Drain();
@@ -166,7 +149,6 @@ internal sealed partial class ZLinkFrameworkRuntime
             catch (ZlinkCloseException)
             {
             }
-        }
     }
 
     internal ValueTask<ZLinkFrameworkRuntimeState> GetStartedStateForRoutingAsync(
@@ -180,28 +162,20 @@ internal sealed partial class ZLinkFrameworkRuntime
         CancellationToken cancellationToken)
         where TEvent : IZLinkRuntimeEvent
     {
-        var publisher = _services.GetService<IZLinkRuntimeEventPublisher>();
+        var publisher = Services.GetService<IZLinkRuntimeEventPublisher>();
         return publisher is null
             ? ValueTask.CompletedTask
             : publisher.PublishAsync(@event, cancellationToken);
     }
 
-    public bool IsStarted => _state is not null;
-
     public async ValueTask StartAsync(CancellationToken cancellationToken)
     {
-        if (_registryRuntime is not null)
-        {
-            await _registryRuntime.StartAsync(cancellationToken);
-        }
+        if (_registryRuntime is not null) await _registryRuntime.StartAsync(cancellationToken);
 
         await _gate.WaitAsync(cancellationToken);
         try
         {
-            if (_state is not null)
-            {
-                return;
-            }
+            if (_state is not null) return;
 
             _state = await _stateFactory.CreateAsync().ConfigureAwait(false);
             _state.ListenerTasks.Add(_state.TaskRunner.Run(
@@ -238,10 +212,7 @@ internal sealed partial class ZLinkFrameworkRuntime
             _gate.Release();
         }
 
-        if (stateToDispose is not null)
-        {
-            await stateToDispose.DisposeAsync();
-        }
+        if (stateToDispose is not null) await stateToDispose.DisposeAsync();
 
         ZLinkWorkerPool? workerPoolToDispose;
         lock (_workerPoolGate)
@@ -252,19 +223,13 @@ internal sealed partial class ZLinkFrameworkRuntime
 
         workerPoolToDispose?.Dispose();
 
-        if (_registryRuntime is not null)
-        {
-            await _registryRuntime.StopAsync(cancellationToken);
-        }
+        if (_registryRuntime is not null) await _registryRuntime.StopAsync(cancellationToken);
     }
 
     private async ValueTask<ZLinkFrameworkRuntimeState> GetStartedStateAsync(
         CancellationToken cancellationToken)
     {
-        if (_state is null)
-        {
-            await StartAsync(cancellationToken);
-        }
+        if (_state is null) await StartAsync(cancellationToken);
 
         return _state ?? throw new InvalidOperationException("ZLink framework runtime is not started.");
     }
@@ -272,12 +237,9 @@ internal sealed partial class ZLinkFrameworkRuntime
     private ZLinkFrameworkRuntimeState GetOrStartState()
     {
         if (_state is null)
-        {
             throw new InvalidOperationException(
                 "ZLink framework runtime is not started. Call StartAsync before using synchronous runtime APIs.");
-        }
 
         return _state ?? throw new InvalidOperationException("ZLink framework runtime is not started.");
     }
-
 }

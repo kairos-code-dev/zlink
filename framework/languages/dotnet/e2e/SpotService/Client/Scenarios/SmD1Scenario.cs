@@ -1,7 +1,7 @@
+using SpotService.Client.Support;
 using SpotService.Shared;
 using Systems.Zlink.Stream.Connector.Contracts;
 using Zlink.HttpClient;
-using SpotService.Client.Support;
 
 namespace SpotService.Client.Scenarios;
 
@@ -34,13 +34,11 @@ internal static class SmD1Scenario
         }
 
         if (!controlReady)
-        {
             throw new InvalidOperationException(
                 lastControlFailure is null
                     ? "Control route did not become ready: play-a"
                     : $"Control route did not become ready: play-a. Last error: {lastControlFailure.Message}",
                 lastControlFailure);
-        }
 
         IZlinkStreamConnector? bound = null;
         try
@@ -56,7 +54,7 @@ internal static class SmD1Scenario
                     RequestTimeout = TimeSpan.FromSeconds(10),
                     Heartbeat = new ZlinkStreamHeartbeatOptions { Enabled = false },
                     DispatchMode = ZlinkStreamDispatchMode.Immediate,
-                    MaxReceivedMessages = 1024,
+                    MaxReceivedMessages = 1024
                 });
                 try
                 {
@@ -76,13 +74,11 @@ internal static class SmD1Scenario
             }
 
             if (bound is null)
-            {
                 throw new InvalidOperationException(
                     last is null
                         ? "Actor auth did not become routable: actor-sm-d1"
                         : $"Actor auth did not become routable: actor-sm-d1. Last error: {last.Message}",
                     last);
-            }
 
             var activeBound = bound;
             var pushed = activeBound.WaitFor<ActorPushNotify>().Async().AsTask();
@@ -96,11 +92,9 @@ internal static class SmD1Scenario
         }
         finally
         {
-            if (bound is not null)
-            {
-                await bound.DisposeAsync();
-            }
+            if (bound is not null) await bound.DisposeAsync();
         }
+
         Console.WriteLine("operation SpotService.sm-d1 passed");
     }
 }

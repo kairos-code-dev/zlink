@@ -1,6 +1,6 @@
+using ResilienceLifecycle.Client.Support;
 using ResilienceLifecycle.Shared;
 using Zlink.HttpClient;
-using ResilienceLifecycle.Client.Support;
 
 namespace ResilienceLifecycle.Client.Scenarios;
 
@@ -26,7 +26,8 @@ internal static class RlA4DrainAndGreenEndpointScenario
                 .Body(new ProfileRequest("fast", marker))
                 .SubmitAsync<ProfileReply>()).Body;
             ScenarioAssert.That(reply.Value == "profile:fast", "RL-A4 rolling request returned an unexpected value.");
-            ScenarioAssert.That(reply.ProviderRid is "api-a" or "api-b", "RL-A4 rolling request used an unexpected provider.");
+            ScenarioAssert.That(reply.ProviderRid is "api-a" or "api-b",
+                "RL-A4 rolling request used an unexpected provider.");
         }
 
         await providerB.Post("/shutdown").SubmitRawAsync();
@@ -35,10 +36,7 @@ internal static class RlA4DrainAndGreenEndpointScenario
             try
             {
                 var health = await providerB.Get("/health").SubmitRawAsync();
-                if (health.Status != 200)
-                {
-                    break;
-                }
+                if (health.Status != 200) break;
             }
             catch
             {
@@ -72,10 +70,7 @@ internal static class RlA4DrainAndGreenEndpointScenario
             try
             {
                 var health = await providerB.Get("/health").SubmitRawAsync();
-                if (health.Status == 200)
-                {
-                    break;
-                }
+                if (health.Status == 200) break;
             }
             catch
             {
@@ -104,7 +99,7 @@ internal static class RlA4DrainAndGreenEndpointScenario
         Console.WriteLine("scenario RL-A4 passed");
     }
 
-    static async Task WaitForWeightAsync(ZLinkHttpClient provider, int expected)
+    private static async Task WaitForWeightAsync(ZLinkHttpClient provider, int expected)
     {
         await provider.Post("/admin/weight/wait")
             .Body(new WeightWaitRequest(expected))

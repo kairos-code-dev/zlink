@@ -1,6 +1,3 @@
-using Microsoft.Extensions.DependencyInjection;
-using Zlink.Framework.Runtime.Backend.Contracts;
-
 namespace Zlink.Framework.Runtime.Spots;
 
 internal sealed class ZLinkSpotPublisherBundle : IAsyncDisposable
@@ -19,10 +16,7 @@ internal sealed class ZLinkSpotPublisherBundle : IAsyncDisposable
 
     public async ValueTask DisposeAsync()
     {
-        if (Submitter is not null)
-        {
-            await Submitter.DisposeAsync();
-        }
+        if (Submitter is not null) await Submitter.DisposeAsync();
 
         await Spot.DisposeAsync();
     }

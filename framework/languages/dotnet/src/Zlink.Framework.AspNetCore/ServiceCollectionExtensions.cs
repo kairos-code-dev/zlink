@@ -1,6 +1,7 @@
+using System.Reflection;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.DependencyInjection.Extensions;
-using System.Reflection;
+using Microsoft.Extensions.Hosting;
 
 namespace Zlink.Framework.AspNetCore;
 
@@ -45,9 +46,7 @@ public static class ServiceCollectionExtensions
         }
 
         foreach (var endpoint in ZLinkHandlerScanner.ScanRoute(assembly))
-        {
             services.TryAddTransient(endpoint.DeclaringType);
-        }
 
         return services;
     }
@@ -69,7 +68,7 @@ public static class ServiceCollectionExtensions
         services.TryAddSingleton<IZLinkBackendAdapterFactory, ZLinkDotNetBackendAdapterFactory>();
         services.AddSingleton<ZLinkRegistryRuntime>();
         services.AddSingleton<IZLinkRegistryQuery, ZLinkRegistryQuery>();
-        services.AddSingleton<Microsoft.Extensions.Hosting.IHostedService>(static provider =>
+        services.AddSingleton<IHostedService>(static provider =>
             new ZLinkRegistryHostedService(
                 provider.GetRequiredService<ZLinkRegistryRuntime>(),
                 provider.GetService<ZLinkFrameworkRuntime>()));
@@ -105,9 +104,7 @@ public static class ServiceCollectionExtensions
         ArgumentNullException.ThrowIfNull(configure);
 
         if (services.Any(static descriptor => descriptor.ServiceType == typeof(ZLinkMonitoringRegistration)))
-        {
             throw new ZLinkConfigurationException("Monitoring is already configured.");
-        }
 
         var registration = new ZLinkMonitoringRegistration();
         var builder = new ZLinkMonitoringOptionsModel(registration);

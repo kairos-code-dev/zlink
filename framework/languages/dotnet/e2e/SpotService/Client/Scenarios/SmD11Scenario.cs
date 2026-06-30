@@ -1,7 +1,7 @@
+using SpotService.Client.Support;
 using SpotService.Shared;
 using Systems.Zlink.Stream.Connector.Contracts;
 using Zlink.HttpClient;
-using SpotService.Client.Support;
 
 namespace SpotService.Client.Scenarios;
 
@@ -23,7 +23,7 @@ internal static class SmD11Scenario
                     RequestTimeout = TimeSpan.FromSeconds(5),
                     Heartbeat = new ZlinkStreamHeartbeatOptions { Enabled = false },
                     DispatchMode = ZlinkStreamDispatchMode.Immediate,
-                    MaxReceivedMessages = 1024,
+                    MaxReceivedMessages = 1024
                 });
                 try
                 {
@@ -43,11 +43,11 @@ internal static class SmD11Scenario
             }
 
             if (stream is null)
-            {
                 throw new InvalidOperationException(
-                    last is null ? "Actor auth did not become routable: actor-sm-d11" : $"Actor auth did not become routable: actor-sm-d11. Last error: {last.Message}",
+                    last is null
+                        ? "Actor auth did not become routable: actor-sm-d11"
+                        : $"Actor auth did not become routable: actor-sm-d11. Last error: {last.Message}",
                     last);
-            }
 
             var activeStream = stream;
             var streamReply = await activeStream.Request(new ActorPingReq("stream-side"))
@@ -57,11 +57,9 @@ internal static class SmD11Scenario
         }
         finally
         {
-            if (stream is not null)
-            {
-                await stream.DisposeAsync();
-            }
+            if (stream is not null) await stream.DisposeAsync();
         }
+
         var channelReply = (await sessionA.Post("/channel/control-ping/play-a")
             .Body(new ControlPingReq("channel-side"))
             .SubmitAsync<ControlPingReply>()).Body;

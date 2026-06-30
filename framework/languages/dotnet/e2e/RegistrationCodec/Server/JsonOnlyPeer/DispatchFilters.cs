@@ -1,6 +1,5 @@
 using RegistrationCodec.Server.JsonOnlyPeer.Infrastructure;
 using Zlink.Framework.Contracts.Handlers;
-using RegistrationCodec.Server.JsonOnlyPeer.Handlers;
 
 namespace RegistrationCodec.Server.JsonOnlyPeer;
 

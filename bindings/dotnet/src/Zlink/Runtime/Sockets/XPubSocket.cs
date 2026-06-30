@@ -4,13 +4,13 @@ namespace Systems.Zlink;
 
 internal sealed class XPubSocket : PublisherSocketBase, IXPubSocket
 {
-    public new PubSocketOptions Options { get; }
-
     public XPubSocket(Context context)
         : base(context, SocketType.XPub)
     {
         Options = new PubSocketOptions(this);
     }
+
+    public new PubSocketOptions Options { get; }
 
     public bool ReceiveSubscriptionEvent(SubscriptionEvent result,
         RecvFlags flags = RecvFlags.None)

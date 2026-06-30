@@ -1,9 +1,3 @@
-using Zlink.Framework.Runtime.Backend.Contracts;
-using Zlink.Framework.Runtime.Diagnostics;
-using Zlink.Framework.Runtime.Execution;
-using Zlink.Framework.Runtime.Messaging;
-using Zlink.Framework.Runtime.Registry;
-
 namespace Zlink.Framework.Runtime.Channels;
 
 internal sealed class ZLinkRouteReceivePump(
@@ -28,10 +22,7 @@ internal sealed class ZLinkRouteReceivePump(
                 }
 
                 backoff.Reset();
-                if (TryHandleSpotRouteBridgePacket(received))
-                {
-                    continue;
-                }
+                if (TryHandleSpotRouteBridgePacket(received)) continue;
 
                 await dispatcher.DispatchAsync(received, cancellationToken).ConfigureAwait(false);
             }
@@ -70,19 +61,13 @@ internal sealed class ZLinkRouteReceivePump(
         var bridge = spotRouteBridge();
         if (bridge is null
             || received.RoutingId is not { } sourceNodeRid)
-        {
             return false;
-        }
 
         var handled = received.RequestSeq is { } requestSeq
             ? bridge.HandleRouterReceived(routerChannelId, sourceNodeRid, requestSeq, received.Parts)
             : bridge.HandleRouterReceived(routerChannelId, sourceNodeRid, 0, received.Parts);
-        if (handled)
-        {
-            bridge.Drain();
-        }
+        if (handled) bridge.Drain();
 
         return handled;
     }
-
 }

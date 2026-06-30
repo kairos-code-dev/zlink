@@ -1,7 +1,5 @@
 // SPDX-License-Identifier: MPL-2.0
 
-using System;
-
 namespace Systems.Zlink;
 
 public partial class CommonSocketOptions
@@ -176,12 +174,10 @@ public partial class CommonSocketOptions
         if (duration is null)
             return -1;
 
-        double millis = duration.Value.TotalMilliseconds;
+        var millis = duration.Value.TotalMilliseconds;
         if (double.IsNaN(millis) || double.IsInfinity(millis)
-            || millis < 0 || millis > int.MaxValue)
-        {
+                                 || millis < 0 || millis > int.MaxValue)
             throw new ArgumentOutOfRangeException(paramName);
-        }
 
         return (int)Math.Ceiling(millis);
     }
@@ -196,6 +192,7 @@ public partial class CommonSocketOptions
 
 internal interface ISocketOptionEndpoint
 {
+    SocketType SocketType { get; }
     void SetOption(SocketOptionKey<int> option, int value);
     void SetOption(SocketOptionKey<long> option, long value);
     void SetOption(SocketOptionKey<ulong> option, ulong value);
@@ -208,5 +205,4 @@ internal interface ISocketOptionEndpoint
     byte[] GetOption(SocketOptionKey<byte[]> option, int initialSize = 256);
     int GetOption(SocketOptionKey<byte[]> option, Span<byte> destination);
     string GetOption(SocketOptionKey<string> option, int initialSize = 256);
-    SocketType SocketType { get; }
 }

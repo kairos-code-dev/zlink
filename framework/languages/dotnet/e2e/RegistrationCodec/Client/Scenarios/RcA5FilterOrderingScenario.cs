@@ -1,6 +1,6 @@
+using RegistrationCodec.Client.Support;
 using RegistrationCodec.Shared;
 using Zlink.HttpClient;
-using RegistrationCodec.Client.Support;
 
 namespace RegistrationCodec.Client.Scenarios;
 
@@ -15,12 +15,12 @@ internal static class RcA5FilterOrderingScenario
             .SubmitAsync<string[]>()).Body;
         ScenarioAssert.That(
             lines.Count(line => line.Contains("filter|", StringComparison.Ordinal)
-                && line.Contains("packet=EchoDi", StringComparison.Ordinal)) >= 4,
+                                && line.Contains("packet=EchoDi", StringComparison.Ordinal)) >= 4,
             "RC-A5 filter evidence missing.");
 
         var filter = lines
             .Where(line => line.Contains("filter|", StringComparison.Ordinal)
-                && line.Contains("packet=EchoDi", StringComparison.Ordinal))
+                           && line.Contains("packet=EchoDi", StringComparison.Ordinal))
             .Take(4)
             .ToArray();
         ScenarioAssert.That(

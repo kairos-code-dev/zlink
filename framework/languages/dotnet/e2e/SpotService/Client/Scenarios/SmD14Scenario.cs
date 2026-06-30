@@ -1,6 +1,6 @@
+using SpotService.Client.Support;
 using SpotService.Shared;
 using Systems.Zlink.Stream.Connector.Contracts;
-using SpotService.Client.Support;
 
 namespace SpotService.Client.Scenarios;
 
@@ -16,7 +16,7 @@ internal static class SmD14Scenario
             Heartbeat = new ZlinkStreamHeartbeatOptions { Enabled = false },
             DispatchMode = ZlinkStreamDispatchMode.Immediate,
             MaxReceivedMessages = 1024,
-            SkipServerCertificateValidation = false,
+            SkipServerCertificateValidation = false
         });
         var strictTlsRejected = false;
         try
@@ -40,7 +40,7 @@ internal static class SmD14Scenario
             Heartbeat = new ZlinkStreamHeartbeatOptions { Enabled = false },
             DispatchMode = ZlinkStreamDispatchMode.Immediate,
             MaxReceivedMessages = 1024,
-            SkipServerCertificateValidation = true,
+            SkipServerCertificateValidation = true
         });
         await tls.Connect.Async();
         await tls.Request(new AuthReq("actor-sm-d14-tls", "stream tls", "play-a"))

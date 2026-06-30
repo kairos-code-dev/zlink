@@ -1,7 +1,5 @@
 // SPDX-License-Identifier: MPL-2.0
 
-using System;
-using System.Collections.Generic;
 using System.Runtime.CompilerServices;
 using System.Runtime.InteropServices;
 using Systems.Zlink.Runtime.Native;
@@ -21,13 +19,14 @@ internal sealed partial class SocketKernel : IDisposable
     {
         if (message == null)
             throw new ArgumentNullException(nameof(message));
-        if ((((int)flags) & DontWaitFlag) != 0)
+        if (((int)flags & DontWaitFlag) != 0)
         {
-            SendResult result = SendSingleNoWaitResultCore(message);
+            var result = SendSingleNoWaitResultCore(message);
             if (result != SendResult.Sent)
                 throw CreateNoWaitSendException(result);
             return;
         }
+
         SendSingleCore(message, (int)flags);
     }
 
@@ -67,8 +66,8 @@ internal sealed partial class SocketKernel : IDisposable
             return;
         }
 
-        Message[] copied = new Message[parts.Count];
-        for (int i = 0; i < copied.Length; i++)
+        var copied = new Message[parts.Count];
+        for (var i = 0; i < copied.Length; i++)
             copied[i] = parts[i];
         SendCore(copied.AsSpan(), (int)flags, nameof(parts));
     }
@@ -89,17 +88,18 @@ internal sealed partial class SocketKernel : IDisposable
         if (message == null)
             throw new ArgumentNullException(nameof(message));
 
-        byte[] encoded = RoutingIdCodec.FromPublicString(routingId,
+        var encoded = RoutingIdCodec.FromPublicString(routingId,
             nameof(routingId));
-        ZlinkRoutingId nativeRoutingId = NativeHelpers.WriteRoutingId(encoded);
-        if ((((int)flags) & DontWaitFlag) != 0)
+        var nativeRoutingId = NativeHelpers.WriteRoutingId(encoded);
+        if (((int)flags & DontWaitFlag) != 0)
         {
-            SendResult result = SendSingleNoWaitResultCore(ref nativeRoutingId,
+            var result = SendSingleNoWaitResultCore(ref nativeRoutingId,
                 message);
             if (result != SendResult.Sent)
                 throw CreateNoWaitSendException(result);
             return;
         }
+
         SendSingleCore(ref nativeRoutingId, message, (int)flags);
     }
 
@@ -116,16 +116,17 @@ internal sealed partial class SocketKernel : IDisposable
         if (message == null)
             throw new ArgumentNullException(nameof(message));
         ZlinkRoutingId fallback = default;
-        ref ZlinkRoutingId nativeRoutingId =
+        ref var nativeRoutingId =
             ref routingId.ToNativeRef(ref fallback);
-        if ((((int)flags) & DontWaitFlag) != 0)
+        if (((int)flags & DontWaitFlag) != 0)
         {
-            SendResult result = SendSingleNoWaitResultCore(ref nativeRoutingId,
+            var result = SendSingleNoWaitResultCore(ref nativeRoutingId,
                 message);
             if (result != SendResult.Sent)
                 throw CreateNoWaitSendException(result);
             return;
         }
+
         SendSingleCore(ref nativeRoutingId, message, (int)flags);
     }
 
@@ -139,7 +140,7 @@ internal sealed partial class SocketKernel : IDisposable
         // 256-byte struct copy that ToNative() does in the routed send hot
         // path (51 MB/s memcpy bandwidth at 200K msg/sec).
         ZlinkRoutingId fallback = default;
-        ref ZlinkRoutingId nativeRoutingId =
+        ref var nativeRoutingId =
             ref routingId.ToNativeRef(ref fallback);
         return SendSingleResultCore(ref nativeRoutingId, message, flags);
     }
@@ -150,15 +151,16 @@ internal sealed partial class SocketKernel : IDisposable
         EnsureSupports(nameof(Send), SocketTypePolicy.SocketCapability.RoutedSend);
         if (message == null)
             throw new ArgumentNullException(nameof(message));
-        ZlinkRoutingId nativeRoutingId = RoutingIdCodec.ToNative(routingId);
-        if ((((int)flags) & DontWaitFlag) != 0)
+        var nativeRoutingId = RoutingIdCodec.ToNative(routingId);
+        if (((int)flags & DontWaitFlag) != 0)
         {
-            SendResult result = SendSingleNoWaitResultCore(ref nativeRoutingId,
+            var result = SendSingleNoWaitResultCore(ref nativeRoutingId,
                 message);
             if (result != SendResult.Sent)
                 throw CreateNoWaitSendException(result);
             return;
         }
+
         SendSingleCore(ref nativeRoutingId, message, (int)flags);
     }
 
@@ -180,7 +182,7 @@ internal sealed partial class SocketKernel : IDisposable
         if (message == null)
             throw new ArgumentNullException(nameof(message));
         ZlinkRoutingId fallback = default;
-        ref ZlinkRoutingId nativeRoutingId =
+        ref var nativeRoutingId =
             ref routingId.ToNativeRef(ref fallback);
         return SendSingleNoWaitResultCore(ref nativeRoutingId, message);
     }
@@ -193,9 +195,9 @@ internal sealed partial class SocketKernel : IDisposable
             throw new ArgumentNullException(nameof(routingId));
         RequestReplySupport.EnsureParts(parts, nameof(parts));
 
-        byte[] encoded = RoutingIdCodec.FromPublicString(routingId,
+        var encoded = RoutingIdCodec.FromPublicString(routingId,
             nameof(routingId));
-        ZlinkRoutingId nativeRoutingId = NativeHelpers.WriteRoutingId(encoded);
+        var nativeRoutingId = NativeHelpers.WriteRoutingId(encoded);
 
         if (parts is Message[] array)
         {
@@ -210,8 +212,8 @@ internal sealed partial class SocketKernel : IDisposable
             return;
         }
 
-        Message[] copied = new Message[parts.Count];
-        for (int i = 0; i < copied.Length; i++)
+        var copied = new Message[parts.Count];
+        for (var i = 0; i < copied.Length; i++)
             copied[i] = parts[i];
         SendCore(ref nativeRoutingId, copied.AsSpan(), (int)flags, nameof(parts));
     }
@@ -223,7 +225,7 @@ internal sealed partial class SocketKernel : IDisposable
         RequestReplySupport.EnsureParts(parts, nameof(parts));
 
         ZlinkRoutingId fallback = default;
-        ref ZlinkRoutingId nativeRoutingId =
+        ref var nativeRoutingId =
             ref routingId.ToNativeRef(ref fallback);
 
         if (parts is Message[] array)
@@ -239,8 +241,8 @@ internal sealed partial class SocketKernel : IDisposable
             return;
         }
 
-        Message[] copied = new Message[parts.Count];
-        for (int i = 0; i < copied.Length; i++)
+        var copied = new Message[parts.Count];
+        for (var i = 0; i < copied.Length; i++)
             copied[i] = parts[i];
         SendCore(ref nativeRoutingId, copied.AsSpan(), (int)flags, nameof(parts));
     }
@@ -262,20 +264,18 @@ internal sealed partial class SocketKernel : IDisposable
         RequestReplySupport.EnsureParts(parts, nameof(parts));
 
         ZlinkRoutingId fallback = default;
-        ref ZlinkRoutingId nativeRoutingId =
+        ref var nativeRoutingId =
             ref routingId.ToNativeRef(ref fallback);
 
         if (parts is Message[] array)
             return SendNoWaitResultCore(ref nativeRoutingId, array.AsSpan(), nameof(parts));
 
         if (parts is List<Message> list)
-        {
             return SendNoWaitResultCore(ref nativeRoutingId,
                 CollectionsMarshal.AsSpan(list), nameof(parts));
-        }
 
-        Message[] copied = new Message[parts.Count];
-        for (int i = 0; i < copied.Length; i++)
+        var copied = new Message[parts.Count];
+        for (var i = 0; i < copied.Length; i++)
             copied[i] = parts[i];
         return SendNoWaitResultCore(ref nativeRoutingId, copied.AsSpan(), nameof(parts));
     }
@@ -283,7 +283,7 @@ internal sealed partial class SocketKernel : IDisposable
     public void Publish(string topic, Message message, SendFlags flags = SendFlags.None)
     {
         EnsureSupports(nameof(Publish), SocketTypePolicy.SocketCapability.Publish);
-        byte[] topicUtf8 = GetValidatedPublishTopicUtf8(topic, nameof(topic));
+        var topicUtf8 = GetValidatedPublishTopicUtf8(topic, nameof(topic));
         if (message == null)
             throw new ArgumentNullException(nameof(message));
         PublishSingleCore(topicUtf8, message, (int)flags);
@@ -293,7 +293,7 @@ internal sealed partial class SocketKernel : IDisposable
     {
         EnsureSupports(nameof(PublishNoWaitResult),
             SocketTypePolicy.SocketCapability.Publish);
-        byte[] topicUtf8 = GetValidatedPublishTopicUtf8(topic, nameof(topic));
+        var topicUtf8 = GetValidatedPublishTopicUtf8(topic, nameof(topic));
         if (message == null)
             throw new ArgumentNullException(nameof(message));
         return PublishNoWaitSingleCore(topicUtf8, message);
@@ -319,8 +319,8 @@ internal sealed partial class SocketKernel : IDisposable
             return;
         }
 
-        Message[] copied = new Message[parts.Count];
-        for (int i = 0; i < copied.Length; i++)
+        var copied = new Message[parts.Count];
+        for (var i = 0; i < copied.Length; i++)
             copied[i] = parts[i];
         PublishCore(topic, copied.AsSpan(), (int)flags, nameof(parts));
     }
@@ -341,7 +341,7 @@ internal sealed partial class SocketKernel : IDisposable
         BoundaryValidation.ValidateTopicOrFilterUtf8(topicOrPattern,
             nameof(topicOrPattern));
 
-        int rc = NativeMethods.zlink_set_subscription(Handle, topicOrPattern);
+        var rc = NativeMethods.zlink_set_subscription(Handle, topicOrPattern);
         ZlinkException.ThrowConfigIfError(rc);
     }
 
@@ -352,7 +352,7 @@ internal sealed partial class SocketKernel : IDisposable
         BoundaryValidation.ValidateTopicOrFilterUtf8(topicOrPattern,
             nameof(topicOrPattern));
 
-        int rc = NativeMethods.zlink_unset_subscription(Handle, topicOrPattern);
+        var rc = NativeMethods.zlink_unset_subscription(Handle, topicOrPattern);
         ZlinkException.ThrowConfigIfError(rc);
     }
 }

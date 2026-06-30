@@ -6,7 +6,7 @@ public enum ZLinkAutoConnectType
     RouteMesh = 1,
     ClientServer = 2,
     Fanout = 4,
-    SpotMesh = 5,
+    SpotMesh = 5
 }
 
 public enum ZLinkServiceKind
@@ -14,7 +14,7 @@ public enum ZLinkServiceKind
     Discovery = 1,
     SpotSub = 3,
     SpotPub = 4,
-    Socket = 5,
+    Socket = 5
 }
 
 public enum ZLinkServiceRole : ushort
@@ -24,7 +24,7 @@ public enum ZLinkServiceRole : ushort
     Router = 3,
     Dealer = 4,
     Pub = 5,
-    Sub = 6,
+    Sub = 6
 }
 
 public enum ZLinkRegistryState
@@ -32,14 +32,14 @@ public enum ZLinkRegistryState
     Idle = 1,
     Active = 2,
     Degraded = 3,
-    Error = 4,
+    Error = 4
 }
 
 public enum ZLinkTopologySource
 {
     Manual = 1,
     Discovery = 2,
-    Registry = 3,
+    Registry = 3
 }
 
 public enum ZLinkTopologyState
@@ -49,13 +49,13 @@ public enum ZLinkTopologyState
     Ready = 3,
     Lost = 4,
     Error = 5,
-    Stopped = 6,
+    Stopped = 6
 }
 
 public enum ZLinkAdmissionState
 {
     Serving = 1,
-    Draining = 2,
+    Draining = 2
 }
 
 public sealed record ZLinkRegistryServiceSummaryFilter(

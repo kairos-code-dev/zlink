@@ -1,6 +1,5 @@
 // SPDX-License-Identifier: MPL-2.0
 
-using System;
 using Systems.Zlink.Runtime.Native;
 
 namespace Systems.Zlink.Runtime.Sockets.Internal;
@@ -9,12 +8,12 @@ internal sealed partial class SocketKernel : IDisposable
 {
     public void Dispose()
     {
-        Dispose(closeNativeSocket: !_discoveryAttached);
+        Dispose(!_discoveryAttached);
     }
 
     public void Close()
     {
-        Dispose(closeNativeSocket: true);
+        Dispose(true);
     }
 
     private void Dispose(bool closeNativeSocket)

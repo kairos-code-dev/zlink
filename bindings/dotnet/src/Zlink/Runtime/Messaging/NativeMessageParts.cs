@@ -1,6 +1,5 @@
 // SPDX-License-Identifier: MPL-2.0
 
-using System;
 using Systems.Zlink.Runtime.Native;
 
 namespace Systems.Zlink;
@@ -12,16 +11,12 @@ internal static class NativeMessageParts
     {
         // Validate before the first move so a bad part cannot leave earlier
         // messages invalidated with no native owner to restore from.
-        for (int i = 0; i < parts.Length; i++)
-        {
+        for (var i = 0; i < parts.Length; i++)
             if (parts[i] == null)
-            {
                 throw new ArgumentException(
                     "Parts must not contain null messages.", paramName);
-            }
-        }
 
-        for (int i = 0; i < parts.Length; i++)
+        for (var i = 0; i < parts.Length; i++)
         {
             parts[i].MoveTo(ref nativeParts[i]);
             built++;
@@ -33,7 +28,7 @@ internal static class NativeMessageParts
     {
         // Restore in reverse construction order to mirror the native array
         // ownership transfer when multipart setup fails partway through.
-        for (int i = start + count - 1; i >= start; i--)
+        for (var i = start + count - 1; i >= start; i--)
             parts[i].RestoreFrom(ref nativeParts[i]);
     }
 }

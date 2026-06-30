@@ -8,13 +8,13 @@ internal sealed class ZLinkSpotDiscoveryReconciler(
     bool routerEnabled,
     bool pubSubEnabled)
 {
+    private static readonly IReadOnlyDictionary<RoutingId, string> EmptyRouterEndpointsByRid =
+        new Dictionary<RoutingId, string>();
+
     public void ConnectDiscoveredPubSubPeers()
     {
         var discovery = discoveryProvider();
-        if (discovery is null)
-        {
-            return;
-        }
+        if (discovery is null) return;
 
         var localEndpoint = node.Status().LocalEndpoint;
         var peers = discovery.MemberPeers();
@@ -28,14 +28,9 @@ internal sealed class ZLinkSpotDiscoveryReconciler(
                 || !string.Equals(peer.ChannelName, spotChannelName, StringComparison.Ordinal)
                 || string.IsNullOrWhiteSpace(peer.Endpoint)
                 || string.Equals(peer.Endpoint, localEndpoint, StringComparison.Ordinal))
-            {
                 continue;
-            }
 
-            if (!routerEnabled)
-            {
-                continue;
-            }
+            if (!routerEnabled) continue;
 
             var routerEndpoint = ResolveRouterEndpoint(
                 discovery,
@@ -65,23 +60,17 @@ internal sealed class ZLinkSpotDiscoveryReconciler(
     {
         peerRoutingId = default;
         if (peer.RoutingId is not { Size: > 0 } resolvedPeerRoutingId)
-        {
             return pubSubEnabled ? string.Empty : peer.Endpoint;
-        }
 
         peerRoutingId = resolvedPeerRoutingId;
         if (routerEndpointsByRid.TryGetValue(resolvedPeerRoutingId, out var discoveredEndpoint))
-        {
             return discoveredEndpoint;
-        }
 
         if (ZLinkSpotRouterEndpointDiscovery.TryResolveEndpoint(
                 discovery,
                 resolvedPeerRoutingId,
                 out var routerEndpoint))
-        {
             return routerEndpoint;
-        }
 
         return pubSubEnabled ? string.Empty : peer.Endpoint;
     }
@@ -98,9 +87,7 @@ internal sealed class ZLinkSpotDiscoveryReconciler(
                 || !string.Equals(peer.ChannelName, spotChannelName, StringComparison.Ordinal)
                 || string.IsNullOrWhiteSpace(peer.Endpoint)
                 || peer.RoutingId is not { Size: > 0 } routingId)
-            {
                 continue;
-            }
 
             endpoints ??= [];
             endpoints[routingId] = peer.Endpoint;
@@ -111,16 +98,10 @@ internal sealed class ZLinkSpotDiscoveryReconciler(
 
     private bool IsConnectablePeerRole(ZLinkServiceRole role)
     {
-        if (pubSubEnabled)
-        {
-            return role == ZLinkServiceRole.Spot;
-        }
+        if (pubSubEnabled) return role == ZLinkServiceRole.Spot;
 
         return routerEnabled && role == ZLinkServiceRole.Router;
     }
-
-    private static readonly IReadOnlyDictionary<RoutingId, string> EmptyRouterEndpointsByRid =
-        new Dictionary<RoutingId, string>();
 
     private static void Debug(string message)
     {

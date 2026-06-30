@@ -2,11 +2,12 @@ namespace Systems.Zlink.Stream.Connector.Runtime.Calls;
 
 internal sealed class ZlinkStreamSendBuilder : IZlinkStreamSendCall
 {
-    private readonly IZlinkStreamConnectorInternal _connector;
     private readonly ZlinkStreamEncodedPayload _body;
+    private readonly IZlinkStreamConnectorInternal _connector;
     private readonly ZlinkStreamCallBuilderState _state;
 
-    internal ZlinkStreamSendBuilder(IZlinkStreamConnectorInternal connector, string? name, ZlinkStreamEncodedPayload payload)
+    internal ZlinkStreamSendBuilder(IZlinkStreamConnectorInternal connector, string? name,
+        ZlinkStreamEncodedPayload payload)
     {
         _connector = connector;
         _body = payload;

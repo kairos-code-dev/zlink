@@ -1,7 +1,6 @@
-using GameQuest.Shared;
 using GameQuest.Server.Configuration;
+using GameQuest.Shared;
 using Systems.Zlink;
-using Systems.Zlink.Stream.Connector.Contracts;
 using Zlink.Framework.Contracts.Streams;
 
 namespace GameQuest.GameApi.Session;
@@ -50,26 +49,22 @@ internal sealed class GameQuestSessionRegistry(ILogger<GameQuestSessionRegistry>
             _sessionsByPlayer.TryGetValue(request.PlayerId, out session);
         }
 
-        if (session is null)
-        {
-            return false;
-        }
+        if (session is null) return false;
 
         try
         {
             foreach (var progress in request.Projection)
-            {
                 await session.Client.Send(new QuestProgressNotify(request.PlayerId, session.SessionId, progress))
                     .PacketName(SampleNames.ProgressPacket)
                     .Async();
-            }
 
             if (!string.IsNullOrWhiteSpace(request.CompletedQuestId))
             {
                 var completed = request.Projection.First(progress => progress.QuestId == request.CompletedQuestId);
-                await session.Client.Send(new QuestCompletedNotify(request.PlayerId, session.SessionId, completed, RewardGranted: true))
-                        .PacketName(SampleNames.CompletedPacket)
-                        .Async();
+                await session.Client
+                    .Send(new QuestCompletedNotify(request.PlayerId, session.SessionId, completed, true))
+                    .PacketName(SampleNames.CompletedPacket)
+                    .Async();
             }
         }
         catch (ZlinkSubmitException error)

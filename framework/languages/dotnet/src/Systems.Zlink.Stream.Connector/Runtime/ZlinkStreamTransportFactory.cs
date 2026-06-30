@@ -1,7 +1,6 @@
 using System.Net.Security;
 using System.Net.Sockets;
 using System.Net.WebSockets;
-using System.Security.Authentication;
 
 namespace Systems.Zlink.Stream.Connector.Runtime;
 
@@ -9,153 +8,112 @@ internal static class ZlinkStreamTransportFactory
 {
     public static void ValidateOptions(ZlinkStreamConnectorOptions options)
     {
-        if (options.Endpoint is null)
-        {
-            throw new ArgumentException("Endpoint is required.", nameof(options));
-        }
+        if (options.Endpoint is null) throw new ArgumentException("Endpoint is required.", nameof(options));
 
         _ = ResolveTransport(options);
 
         if (options.NameResolver is null)
-        {
             throw ZlinkStreamConnector.Error(
                 ZlinkStreamErrorCode.ValidationFailed,
                 "NameResolver is required.");
-        }
 
         if (options.Heartbeat is null)
-        {
             throw ZlinkStreamConnector.Error(
                 ZlinkStreamErrorCode.ValidationFailed,
                 "Heartbeat options are required.");
-        }
 
         if (options.Reconnect is null)
-        {
             throw ZlinkStreamConnector.Error(
                 ZlinkStreamErrorCode.ValidationFailed,
                 "Reconnect options are required.");
-        }
 
         if (options.ConnectTimeout <= TimeSpan.Zero)
-        {
             throw ZlinkStreamConnector.Error(
                 ZlinkStreamErrorCode.ValidationFailed,
                 "ConnectTimeout must be positive.");
-        }
 
         if (options.RequestTimeout <= TimeSpan.Zero)
-        {
             throw ZlinkStreamConnector.Error(
                 ZlinkStreamErrorCode.ValidationFailed,
                 "RequestTimeout must be positive.");
-        }
 
         if (options.WaitTimeout <= TimeSpan.Zero)
-        {
             throw ZlinkStreamConnector.Error(
                 ZlinkStreamErrorCode.ValidationFailed,
                 "WaitTimeout must be positive.");
-        }
 
         if (options.Heartbeat.Enabled)
         {
             var heartbeat = options.Heartbeat;
             if (heartbeat.Interval <= TimeSpan.Zero)
-            {
                 throw ZlinkStreamConnector.Error(
                     ZlinkStreamErrorCode.ValidationFailed,
                     "Heartbeat interval must be positive.");
-            }
 
             if (heartbeat.Timeout <= TimeSpan.Zero)
-            {
                 throw ZlinkStreamConnector.Error(
                     ZlinkStreamErrorCode.ValidationFailed,
                     "Heartbeat timeout must be positive.");
-            }
 
             if (heartbeat.Timeout <= heartbeat.Interval)
-            {
                 throw ZlinkStreamConnector.Error(
                     ZlinkStreamErrorCode.ValidationFailed,
                     "Heartbeat timeout must be greater than the heartbeat interval.");
-            }
         }
 
         if (options.Reconnect.Enabled)
         {
             var reconnect = options.Reconnect;
             if (reconnect.InitialDelay <= TimeSpan.Zero)
-            {
                 throw ZlinkStreamConnector.Error(
                     ZlinkStreamErrorCode.ValidationFailed,
                     "Reconnect InitialDelay must be positive.");
-            }
 
             if (reconnect.MaxDelay <= TimeSpan.Zero)
-            {
                 throw ZlinkStreamConnector.Error(
                     ZlinkStreamErrorCode.ValidationFailed,
                     "Reconnect MaxDelay must be positive.");
-            }
 
             if (reconnect.BackoffFactor < 1.0)
-            {
                 throw ZlinkStreamConnector.Error(
                     ZlinkStreamErrorCode.ValidationFailed,
                     "Reconnect BackoffFactor must be at least 1.0.");
-            }
 
             if (reconnect.MaxAttempts <= 0)
-            {
                 throw ZlinkStreamConnector.Error(
                     ZlinkStreamErrorCode.ValidationFailed,
                     "Reconnect MaxAttempts must be null or positive.");
-            }
         }
 
         if (options.MaxSendPayloadSize <= 0)
-        {
             throw ZlinkStreamConnector.Error(
                 ZlinkStreamErrorCode.ValidationFailed,
                 "MaxSendPayloadSize must be positive.");
-        }
 
         if (options.MaxReceivePayloadSize <= 0)
-        {
             throw ZlinkStreamConnector.Error(
                 ZlinkStreamErrorCode.ValidationFailed,
                 "MaxReceivePayloadSize must be positive.");
-        }
 
         if (options.MaxReceivedMessages <= 0)
-        {
             throw ZlinkStreamConnector.Error(
                 ZlinkStreamErrorCode.ValidationFailed,
                 "MaxReceivedMessages must be positive.");
-        }
 
         if (options.MaxPendingDispatchCallbacks <= 0)
-        {
             throw ZlinkStreamConnector.Error(
                 ZlinkStreamErrorCode.ValidationFailed,
                 "MaxPendingDispatchCallbacks must be positive.");
-        }
 
         if (options.MaxInboundObserverNotifications <= 0)
-        {
             throw ZlinkStreamConnector.Error(
                 ZlinkStreamErrorCode.ValidationFailed,
                 "MaxInboundObserverNotifications must be positive.");
-        }
 
         if (options.MaxInboundObserverPayloadPreviewBytes < 0)
-        {
             throw ZlinkStreamConnector.Error(
                 ZlinkStreamErrorCode.ValidationFailed,
                 "MaxInboundObserverPayloadPreviewBytes must not be negative.");
-        }
     }
 
     public static async ValueTask<IZlinkStreamConnection> ConnectAsync(
@@ -174,9 +132,7 @@ internal static class ZlinkStreamTransportFactory
     {
         var webSocket = new ClientWebSocket();
         if (options.SkipServerCertificateValidation)
-        {
             webSocket.Options.RemoteCertificateValidationCallback = (_, _, _, _) => true;
-        }
 
         await webSocket.ConnectAsync(options.Endpoint, cancellationToken).ConfigureAwait(false);
         return new WebSocketConnection(webSocket, options.MaxReceivePayloadSize);
@@ -199,7 +155,8 @@ internal static class ZlinkStreamTransportFactory
                 options.SkipServerCertificateValidation
                     ? (_, _, _, _) => true
                     : null);
-            await ssl.AuthenticateAsClientAsync(options.Endpoint.Host).WaitAsync(cancellationToken).ConfigureAwait(false);
+            await ssl.AuthenticateAsClientAsync(options.Endpoint.Host).WaitAsync(cancellationToken)
+                .ConfigureAwait(false);
             stream = ssl;
         }
 
@@ -220,11 +177,9 @@ internal static class ZlinkStreamTransportFactory
         };
 
         if (options.Transport is { } configured && configured != inferred)
-        {
             throw ZlinkStreamConnector.Error(
                 ZlinkStreamErrorCode.ConfigurationError,
                 "Configured transport conflicts with endpoint scheme.");
-        }
 
         return inferred;
     }

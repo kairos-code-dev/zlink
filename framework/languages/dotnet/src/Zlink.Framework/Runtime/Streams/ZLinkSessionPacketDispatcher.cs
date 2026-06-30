@@ -13,10 +13,7 @@ internal sealed class ZLinkSessionPacketDispatcher<TSessionContext>(
         ZLinkMessage payload,
         CancellationToken cancellationToken = default)
     {
-        if (!_handlers.TryGetValue(dispatch.PacketName, out var handler))
-        {
-            return false;
-        }
+        if (!_handlers.TryGetValue(dispatch.PacketName, out var handler)) return false;
 
         await handler.HandleAsync(context, dispatch, payload, cancellationToken)
             .ConfigureAwait(false);
@@ -32,16 +29,12 @@ internal sealed class ZLinkSessionPacketDispatcher<TSessionContext>(
             var packetName = handler.PacketName;
             if (string.IsNullOrWhiteSpace(packetName)
                 || !string.Equals(packetName, packetName.Trim(), StringComparison.Ordinal))
-            {
                 throw new ZLinkConfigurationException(
                     $"Session packet handler '{handler.GetType().FullName}' must declare a non-empty packet name.");
-            }
 
             if (!map.TryAdd(packetName, handler))
-            {
                 throw new ZLinkConfigurationException(
                     $"Duplicate session packet handler '{packetName}' for context '{typeof(TSessionContext).FullName}'.");
-            }
         }
 
         return map;

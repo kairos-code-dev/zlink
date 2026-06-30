@@ -32,7 +32,8 @@ internal static class YdA4WorkerYieldScenario
             "probe-started",
             "probe-completed",
             "worker-yield-resumed",
-            "worker-yield-completed"]);
+            "worker-yield-completed"
+        ]);
         return requestId;
     }
 }

@@ -1,10 +1,9 @@
-using Systems.Zlink;
-using Zlink.Framework.Contracts.Channels;
-using Zlink.Framework.Contracts.Streams;
 using Bingo.Server.Configuration;
 using Bingo.Shared.Contracts;
-using Systems.Zlink.Stream.Connector.Contracts;
+using Systems.Zlink;
+using Zlink.Framework.Contracts.Channels;
 using Zlink.Framework.Contracts.Messaging;
+using Zlink.Framework.Contracts.Streams;
 
 namespace Bingo.Server.Session.Sessions.Handlers;
 
@@ -32,9 +31,7 @@ internal sealed class AuthenticateBingoSessionHandler(
         if (!authenticated.Accepted
             || string.IsNullOrWhiteSpace(authenticated.ActorId)
             || string.IsNullOrWhiteSpace(authenticated.DisplayName))
-        {
             throw new InvalidOperationException(authenticated.Reason ?? "Player authentication failed.");
-        }
 
         var ensured = await routes.Request(
                 SampleNames.PlayChannel,
@@ -43,19 +40,19 @@ internal sealed class AuthenticateBingoSessionHandler(
                 {
                     ActorId = authenticated.ActorId,
                     DisplayName = authenticated.DisplayName,
-                    PreferredActorNodeRid = session.PreferredPlayNodeRid.ToString(),
+                    PreferredActorNodeRid = session.PreferredPlayNodeRid.ToString()
                 })
-            .Async<EnsurePlayerActorRes>(cancellationToken) ;
+            .Async<EnsurePlayerActorRes>(cancellationToken);
 
         await context.Actors.BindAsync(
-                ToActorRef(ensured.Actor),
-                cancellationToken);
+            ToActorRef(ensured.Actor),
+            cancellationToken);
 
         await context.Client.Reply(new AuthenticateRes
             {
                 ActorId = ensured.ActorId,
                 DisplayName = authenticated.DisplayName,
-                ActorNodeRid = ensured.Actor.NodeRid,
+                ActorNodeRid = ensured.Actor.NodeRid
             })
             .Async();
     }

@@ -1,13 +1,13 @@
 <Project Sdk="Microsoft.NET.Sdk">
-  <PropertyGroup>
-    <TargetFramework>net8.0</TargetFramework>
-    <OutputType>Exe</OutputType>
-    <AssemblyName>RegistryMessaging.Client</AssemblyName>
-    <RootNamespace>RegistryMessaging.Client</RootNamespace>
-  </PropertyGroup>
+    <PropertyGroup>
+        <TargetFramework>net8.0</TargetFramework>
+        <OutputType>Exe</OutputType>
+        <AssemblyName>RegistryMessaging.Client</AssemblyName>
+        <RootNamespace>RegistryMessaging.Client</RootNamespace>
+    </PropertyGroup>
 
-  <ItemGroup>
-    <ProjectReference Include="../Shared/RegistryMessaging.Shared.csproj" />
-    <ProjectReference Include="../../../src/Zlink.HttpClient/Zlink.HttpClient.csproj" />
-  </ItemGroup>
+    <ItemGroup>
+        <ProjectReference Include="../Shared/RegistryMessaging.Shared.csproj"/>
+        <ProjectReference Include="../../../src/Zlink.HttpClient/Zlink.HttpClient.csproj"/>
+    </ItemGroup>
 </Project>

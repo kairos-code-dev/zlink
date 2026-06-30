@@ -128,7 +128,7 @@ internal static class TopologyModelConverters
         fixed (byte* ownerName = native.OwnerName)
         fixed (byte* socketName = native.SocketName)
         {
-            ZlinkMonitorStatus snapshot = native.MonitorStatus;
+            var snapshot = native.MonitorStatus;
             return new SpotNodeSocketEntry(
                 native.Owner,
                 native.OwnerId,

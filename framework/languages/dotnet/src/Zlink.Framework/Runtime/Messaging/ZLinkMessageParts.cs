@@ -1,3 +1,5 @@
+using System.Collections;
+
 namespace Zlink.Framework.Runtime.Messaging;
 
 internal static class ZLinkMessageParts
@@ -11,10 +13,7 @@ internal static class ZLinkMessageParts
 
     public static void DisposeAll(IReadOnlyList<Message> parts)
     {
-        for (var index = 0; index < parts.Count; index++)
-        {
-            parts[index].Dispose();
-        }
+        for (var index = 0; index < parts.Count; index++) parts[index].Dispose();
     }
 
     public static IReadOnlyList<Message> CopyAll(IReadOnlyList<Message> parts)
@@ -23,19 +22,13 @@ internal static class ZLinkMessageParts
         var copied = 0;
         try
         {
-            for (; copied < parts.Count; copied++)
-            {
-                copies[copied] = parts[copied].Copy();
-            }
+            for (; copied < parts.Count; copied++) copies[copied] = parts[copied].Copy();
 
             return copies;
         }
         catch
         {
-            for (var index = 0; index < copied; index++)
-            {
-                copies[index].Dispose();
-            }
+            for (var index = 0; index < copied; index++) copies[index].Dispose();
 
             throw;
         }
@@ -66,7 +59,7 @@ internal static class ZLinkMessageParts
             yield return body;
         }
 
-        System.Collections.IEnumerator System.Collections.IEnumerable.GetEnumerator()
+        IEnumerator IEnumerable.GetEnumerator()
         {
             return GetEnumerator();
         }

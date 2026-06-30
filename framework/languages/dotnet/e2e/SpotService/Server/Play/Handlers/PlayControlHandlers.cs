@@ -1,3 +1,4 @@
+using SpotService.Server.Play.Spots;
 using SpotService.Shared;
 using Systems.Zlink;
 using Zlink.Framework.Contracts.Actors;
@@ -5,12 +6,8 @@ using Zlink.Framework.Contracts.Channels;
 using Zlink.Framework.Contracts.Errors;
 using Zlink.Framework.Contracts.Handlers;
 using Zlink.Framework.Contracts.Spots;
-using SpotService.Server.Play.Endpoints;
-using SpotService.Server.Play.Handlers;
-using SpotService.Server.Play.Spots;
 
 namespace SpotService.Server.Play.Handlers;
-
 
 [ZLinkHandlerGroup("play")]
 internal sealed class EnsureActorHandler(
@@ -147,7 +144,7 @@ internal sealed class JoinUserSpotActorHandler(
         return new JoinUserSpotActorReply(
             request.SpotRid,
             actor.ActorId,
-            Accepted: true,
+            true,
             actor.Generation);
     }
 }

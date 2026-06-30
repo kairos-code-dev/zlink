@@ -11,10 +11,7 @@ internal sealed class ZlinkStreamReceiveLoop(
         while (!cancellationToken.IsCancellationRequested)
         {
             var connection = connectionProvider();
-            if (connection is null)
-            {
-                return;
-            }
+            if (connection is null) return;
 
             var packet = await ZlinkStreamFrameCodec.ReadAsync(
                 connection,

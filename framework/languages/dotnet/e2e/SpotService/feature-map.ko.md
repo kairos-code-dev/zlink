@@ -45,7 +45,7 @@
 | SM-F1 | 구현 | client/server channel to target spot marker가 있다. |
 | SM-F2 | 구현 | route mesh channel to target spot marker가 있다. |
 | SM-F3 | 구현 | client/server egress와 route-mesh egress를 같은 spot에 혼재해 처리한 marker가 있다. |
-| SM-F4 | 구현 | spot route negative marker가 있다. |
+| SM-F4 | 구현 | missing target spot route request 실패 marker가 있다. malformed relay packet 주입은 public E2E 표면이 아니므로 직접 scenario로 만들지 않는다. |
 | SM-F5 | 구현 | client/server egress host 종료 후 route-mesh egress가 같은 spot으로 계속 동작하는 marker가 있다. |
 | SM-G1 | 구현 | client가 play-a crash endpoint로 프로세스를 kill한 뒤 play-a bound actor request 실패, play-b 격리 유지, play-b 재bind 복구를 확인한다. |
 | SM-G2 | 구현 | 앱이 같은 logical key의 owner spot RoutingId를 play-a에서 play-b로 remap하고, remap 전후 evidence가 새 owner에만 남는지 확인한다. |

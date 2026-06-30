@@ -11,7 +11,7 @@ public interface IZLinkStream
     string? RemoteAddr { get; }
 
     /// <summary>
-    /// Writes a stream payload through the framework message boundary.
+    ///     Writes a stream payload through the framework message boundary.
     /// </summary>
     bool Write(
         ZLinkMessage payload,

@@ -3,9 +3,9 @@
 namespace Zlink.HttpClient.Runtime;
 
 /// <summary>
-/// Internal description of a single request as assembled by <see cref="ZLinkHttpRequestBuilder"/>.
-/// Mirrors the C++ <c>http_request_t</c>. <see cref="Target"/> is the path (starting with
-/// <c>/</c>) with percent-encoded query already appended.
+///     Internal description of a single request as assembled by <see cref="ZLinkHttpRequestBuilder" />.
+///     Mirrors the C++ <c>http_request_t</c>. <see cref="Target" /> is the path (starting with
+///     <c>/</c>) with percent-encoded query already appended.
 /// </summary>
 internal sealed class HttpRequestSpec
 {

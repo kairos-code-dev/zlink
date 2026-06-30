@@ -77,10 +77,12 @@ Java e2e에는 이미 여러 config의 runner, source, feature-map이 있다. �
   처리되는지 검증한다. `YD-D4`는 stream session relay로 bound actor handler에 들어간 request가
   `yield` 중일 때 bound session push를 원래 stream connector로 보내고, 다른 actor의 push wait는
   진행되지 않는지 검증한다. `YD-E1`은 timeout cleanup 뒤 같은 Spot mailbox가 probe를 처리하는지 검증한다.
-  최신 재실행 로그는 `logs/20260630-111601-3718472`이며 YD-A/B/C/D/E1과 E4 정적 검증이 통과했다.
-  shutdown recovery diagnostic은 `logs/20260630-113936-3815368`에서 Java shutdown cleanup gap을
-  재현했다. cancellation, shutdown recovery, cross-language marker report 비교는 feature-map에 gap으로
-  남겨 둔다.
+  최신 재실행 로그는 `logs/20260630-120912-3920793`이며 YD-A/B/C/D/E1과 E4 정적 검증이 통과했다.
+  shutdown recovery diagnostic은 `logs/20260630-120121-3889577`에서 Java shutdown cleanup gap을
+  재현했고, thread dump는 Spring shutdown hook이 `Native.ctxTerm`에서 멈춘 상태를 남겼다.
+  `ZLINK_JAVA_E2E_RUN_E3_SHUTDOWN=1` 전체 gate는 `logs/20260630-121056-3929716`에서 E3에 도달하기 전
+  A2 route mesh timeout으로 중단됐다. cancellation, shutdown recovery, cross-language marker report
+  비교는 feature-map에 gap으로 남겨 둔다.
 
 판단:
 
@@ -102,7 +104,7 @@ Java e2e에는 이미 여러 config의 runner, source, feature-map이 있다. �
 | `DiscoveryRegistryHa` | 리팩토링 대상 | HA scenario coverage가 넓다. provider, registry, consumer, probe, embedded 역할을 `.NET` 구조에 맞게 분리한다. |
 | `ResilienceLifecycle` | 리팩토링 대상 | 구현된 scenario와 gap 분류가 많다. client scenario/support와 server role 분류를 맞추고, 미완료 항목은 feature-map에 남긴다. |
 | `Monitoring` | RuntimeMonitoring 전환 대상 | `.NET` 기준 config 이름은 `RuntimeMonitoring`이다. 기존 Java `Monitoring`은 구현이 있으므로 먼저 `RuntimeMonitoring` inventory에서 유지할 파일과 이동할 파일을 결정한다. 전환이 끝나면 기존 `Monitoring` 디렉터리는 삭제한다. |
-| `YieldDispatch` | 부분 구현 대상 | Java e2e에 config를 만들었다. `run_e2e.sh`는 registry, delay, play-a, play-b, session, client process를 띄워 `YD-A1`, `YD-A2`, `YD-A3`, `YD-A4`, `YD-B1`, `YD-B2`, `YD-B3`, `YD-C1`, `YD-C2`, `YD-C3`, `YD-D2`, `YD-D3`, `YD-D4`, `YD-E1`과 E4 정적 검증을 수행한다. 최신 재실행 로그는 `logs/20260630-111601-3718472`이며 현재 runner 범위는 통과했다. 아직 확인하지 못한 범위는 YD-E2 cancellation cleanup, YD-E3 shutdown/restart recovery, YD-E5 cross-language marker report 비교다. |
+| `YieldDispatch` | 부분 구현 대상 | Java e2e에 config를 만들었다. `run_e2e.sh`는 registry, delay, play-a, play-b, session, client process를 띄워 `YD-A1`, `YD-A2`, `YD-A3`, `YD-A4`, `YD-B1`, `YD-B2`, `YD-B3`, `YD-C1`, `YD-C2`, `YD-C3`, `YD-D2`, `YD-D3`, `YD-D4`, `YD-E1`과 E4 정적 검증을 수행한다. 최신 재실행 로그는 `logs/20260630-120912-3920793`이며 현재 runner 범위는 통과했다. `ZLINK_JAVA_E2E_RUN_E3_SHUTDOWN=1` 전체 gate는 `logs/20260630-121056-3929716`에서 E3에 도달하기 전 A2 route mesh timeout으로 중단됐다. 아직 확인하지 못한 범위는 YD-E2 cancellation cleanup, YD-E3 shutdown/restart recovery, YD-E5 cross-language marker report 비교다. |
 
 ## 표준 Java E2E 구조
 

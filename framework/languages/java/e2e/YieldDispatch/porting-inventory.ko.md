@@ -21,10 +21,11 @@ session gateway가 route mesh로 보낸 packet이 `play-b` target spot handler�
 먼저 처리되는지 검증한다. `YD-D4`는 stream session relay로 bound actor handler에 들어간 request가
 yield 중일 때 bound session push를 원래 stream connector로 보내고, 다른 actor의 push wait는 진행되지
 않는지 검증한다. `YD-E1`은 timeout 뒤 같은 Spot mailbox가 probe를 처리하는 cleanup을 검증한다.
-현재 proof log는 `logs/20260630-111601-3718472`다. `YD-E3` diagnostic runner는
-`logs/20260630-113936-3815368`에서 play-a가 pending yield 중 SIGTERM으로 내려가지 않고 client가
-closed/cancelled public error 대신 request timeout을 받는 것을 확인했다. 아직 `YD-E2`, `YD-E3`,
-`YD-E5`는 gap으로 남아 있다.
+현재 proof log는 `logs/20260630-120912-3920793`다. `YD-E3` diagnostic runner는
+`logs/20260630-120121-3889577`에서 play-a가 pending yield 중 SIGTERM으로 내려가지 않고 client가
+closed/cancelled public error 대신 request timeout을 받는 것을 확인했다. 같은 로그의
+`play-a-3890752-thread-dump.log`는 Spring shutdown hook이 `Native.ctxTerm`에서 멈춘 상태를
+남긴다. 아직 `YD-E2`, `YD-E3`, `YD-E5`는 gap으로 남아 있다.
 이 inventory는
 `.NET` 기준 파일과 Java 대응 위치를 고정하고, 남은 scenario를
 internal helper나 raw-frame 우회로 완료 처리하지 않기 위해 유지한다.
@@ -41,7 +42,7 @@ internal helper나 raw-frame 우회로 완료 처리하지 않기 위해 유지�
 | .NET 기준 파일 | Java 대응 파일 | 분류 | 상태 | 비고 |
 |----------------|----------------|------|------|------|
 | `.gitignore` | `.gitignore` | config | done | 목표 build/log 산출물 제외 |
-| `run_e2e.sh` | `run_e2e.sh` | runner | partial | 기본 실행은 registry, delay, play-a, play-b, session, client process를 띄우고 YD-A1/YD-A2/YD-A3/YD-A4, YD-B1, YD-B2, YD-B3, YD-C1, YD-C2, YD-C3, YD-D2, YD-D3, YD-D4, YD-E1 marker와 E4 정적 검증을 수행한다. `logs/20260630-111601-3718472`에서 통과했다. `ZLINK_JAVA_E2E_RUN_E3_SHUTDOWN=1` diagnostic gate는 `logs/20260630-113936-3815368`에서 Java shutdown cleanup gap을 재현했다 |
+| `run_e2e.sh` | `run_e2e.sh` | runner | partial | 기본 실행은 registry, delay, play-a, play-b, session, client process를 띄우고 YD-A1/YD-A2/YD-A3/YD-A4, YD-B1, YD-B2, YD-B3, YD-C1, YD-C2, YD-C3, YD-D2, YD-D3, YD-D4, YD-E1 marker와 E4 정적 검증을 수행한다. `logs/20260630-120912-3920793`에서 통과했다. `ZLINK_JAVA_E2E_RUN_E3_SHUTDOWN=1` diagnostic gate는 `logs/20260630-120121-3889577`에서 Java shutdown cleanup gap을 재현했다 |
 | `feature-map.ko.md` | `feature-map.ko.md` | docs | done | 구현된 YD-A1/YD-A2와 남은 gap을 구분 |
 | `Shared/YieldDispatch.Shared.csproj` | `Shared/build.gradle.kts` | build | done | shared project 구성 |
 | `Shared/Messages.cs` | `Shared/src/main/java/systems/zlink/e2e/yielddispatch/shared/Contracts.java` | shared | partial | YD-A1/YD-A2/YD-A3/YD-A4, YD-B1, YD-B2, YD-B3, YD-C1, YD-C2, YD-D2, YD-D3, YD-D4, YD-E1 scenario packet/evidence 타입과 YD-E3 diagnostic packet을 구현했다. E2 packet은 아직 없다 |
@@ -55,16 +56,16 @@ internal helper나 raw-frame 우회로 완료 처리하지 않기 위해 유지�
 | `Client/Scenarios/YdA2YieldTerminatorScenario.cs` | `Client/src/main/java/systems/zlink/e2e/yielddispatch/client/Program.java` | scenario | done | Java는 현재 Program 안에서 A2 marker 순서를 검증 |
 | `Client/Scenarios/YdA3ContinuationContextScenario.cs` | `Client/src/main/java/systems/zlink/e2e/yielddispatch/client/Program.java` | scenario | done | Java는 현재 Program 안에서 request id, spot rid, correlation id 보존을 검증한다. 공통 문서는 stream metadata나 cancellation token 상태를 Spot request handler public context에서 직접 읽는 검증을 YD-A3에 넣지 않는다 |
 | `Client/Scenarios/YdA4WorkerYieldScenario.cs` | `Client/src/main/java/systems/zlink/e2e/yielddispatch/client/Program.java` | scenario | done | Java는 현재 Program 안에서 A4 worker-yield marker 순서를 검증 |
-| `Client/Scenarios/YdB1OtherActorProgressScenario.cs` | `Client/src/main/java/systems/zlink/e2e/yielddispatch/client/Program.java` | scenario | done | Java는 Program 안에서 actor A와 actor B를 같은 target spot에 join한 뒤 actor A target-spot yield 중 actor B fast request가 먼저 reply되는 범위를 검증한다. `logs/20260630-111601-3718472`에서 통과했다 |
+| `Client/Scenarios/YdB1OtherActorProgressScenario.cs` | `Client/src/main/java/systems/zlink/e2e/yielddispatch/client/Program.java` | scenario | done | Java는 Program 안에서 actor A와 actor B를 같은 target spot에 join한 뒤 actor A target-spot yield 중 actor B fast request가 먼저 reply되는 범위를 검증한다. `logs/20260630-120912-3920793`에서 통과했다 |
 | `Client/Scenarios/YdB2SameActorReentryScenario.cs` | `Client/src/main/java/systems/zlink/e2e/yielddispatch/client/Program.java` | scenario | done | Java는 현재 Program 안에서 target spot에 join한 actor A의 yield continuation 뒤에 같은 actor A fast request가 처리되는 marker 순서를 검증 |
-| `Client/Scenarios/YdB3ActorJoinYieldScenario.cs` | `Client/src/main/java/systems/zlink/e2e/yielddispatch/client/Program.java` | scenario | done | Java는 현재 Program 안에서 actor join yield flow를 실행하고, actor binding은 Play role actor ref를 session에 bind하도록 맞췄다. `logs/20260630-111601-3718472`에서 통과했다 |
-| `Client/Scenarios/YdC1TimerIsolationScenario.cs` | `Client/src/main/java/systems/zlink/e2e/yielddispatch/client/Program.java` | scenario | done | Java는 현재 Program 안에서 yield 중인 timer와 빠른 timer의 marker 순서를 검증한다. `logs/20260630-111601-3718472`에서 통과했다 |
-| `Client/Scenarios/YdC2TimerReentryScenario.cs` | `Client/src/main/java/systems/zlink/e2e/yielddispatch/client/Program.java` | scenario | done | Java는 현재 Program 안에서 같은 timer의 다음 tick이 이전 tick continuation 뒤에 처리되는 marker 순서를 검증한다. `logs/20260630-111601-3718472`에서 통과했다 |
-| `Client/Scenarios/YdC3ActorTimerIsolationScenario.cs` | `Client/src/main/java/systems/zlink/e2e/yielddispatch/client/Program.java` | scenario | done | Java는 현재 Program 안에서 actor yield 중 timer 진행, timer yield 중 다른 actor 진행을 모두 검증한다. `logs/20260630-111601-3718472`에서 통과했다 |
-| `Client/Scenarios/YdD2RemoteSpotYieldScenario.cs` | `Client/src/main/java/systems/zlink/e2e/yielddispatch/client/Program.java` | scenario | done | Java는 현재 Program 안에서 play-a owner spot과 play-b target spot을 만들고, owner continuation이 play-a로 돌아오는 marker를 검증한다. `logs/20260630-111601-3718472`에서 통과했다 |
-| `Client/Scenarios/YdD3RouteBridgeYieldScenario.cs` | `Client/src/main/java/systems/zlink/e2e/yielddispatch/client/Program.java` | scenario | done | Java는 현재 Program 안에서 session gateway가 route mesh로 보낸 YieldCommand와 ProbeCommand를 play-b target spot에서 처리하고, target spot handler yield 중 probe가 먼저 완료되는 marker 순서를 검증한다. `logs/20260630-111601-3718472`에서 통과했다 |
-| `Client/Scenarios/YdD4SessionRelayActorYieldScenario.cs` | `Client/src/main/java/systems/zlink/e2e/yielddispatch/client/Program.java` | scenario | done | Java는 현재 Program 안에서 stream session relay actor yield와 bound session push reply 흐름을 검증한다. `logs/20260630-111601-3718472`에서 통과했다 |
-| `Client/Scenarios/YdE1TimeoutScenario.cs` | `Client/src/main/java/systems/zlink/e2e/yielddispatch/client/Program.java` | scenario | done | `YieldTimeoutCommand`와 post-timeout probe marker 검증을 구현했다. `logs/20260630-111601-3718472`에서 통과했다 |
+| `Client/Scenarios/YdB3ActorJoinYieldScenario.cs` | `Client/src/main/java/systems/zlink/e2e/yielddispatch/client/Program.java` | scenario | done | Java는 현재 Program 안에서 actor join yield flow를 실행하고, actor binding은 Play role actor ref를 session에 bind하도록 맞췄다. `logs/20260630-120912-3920793`에서 통과했다 |
+| `Client/Scenarios/YdC1TimerIsolationScenario.cs` | `Client/src/main/java/systems/zlink/e2e/yielddispatch/client/Program.java` | scenario | done | Java는 현재 Program 안에서 yield 중인 timer와 빠른 timer의 marker 순서를 검증한다. `logs/20260630-120912-3920793`에서 통과했다 |
+| `Client/Scenarios/YdC2TimerReentryScenario.cs` | `Client/src/main/java/systems/zlink/e2e/yielddispatch/client/Program.java` | scenario | done | Java는 현재 Program 안에서 같은 timer의 다음 tick이 이전 tick continuation 뒤에 처리되는 marker 순서를 검증한다. `logs/20260630-120912-3920793`에서 통과했다 |
+| `Client/Scenarios/YdC3ActorTimerIsolationScenario.cs` | `Client/src/main/java/systems/zlink/e2e/yielddispatch/client/Program.java` | scenario | done | Java는 현재 Program 안에서 actor yield 중 timer 진행, timer yield 중 다른 actor 진행을 모두 검증한다. `logs/20260630-120912-3920793`에서 통과했다 |
+| `Client/Scenarios/YdD2RemoteSpotYieldScenario.cs` | `Client/src/main/java/systems/zlink/e2e/yielddispatch/client/Program.java` | scenario | done | Java는 현재 Program 안에서 play-a owner spot과 play-b target spot을 만들고, owner continuation이 play-a로 돌아오는 marker를 검증한다. `logs/20260630-120912-3920793`에서 통과했다 |
+| `Client/Scenarios/YdD3RouteBridgeYieldScenario.cs` | `Client/src/main/java/systems/zlink/e2e/yielddispatch/client/Program.java` | scenario | done | Java는 현재 Program 안에서 session gateway가 route mesh로 보낸 YieldCommand와 ProbeCommand를 play-b target spot에서 처리하고, target spot handler yield 중 probe가 먼저 완료되는 marker 순서를 검증한다. `logs/20260630-120912-3920793`에서 통과했다 |
+| `Client/Scenarios/YdD4SessionRelayActorYieldScenario.cs` | `Client/src/main/java/systems/zlink/e2e/yielddispatch/client/Program.java` | scenario | done | Java는 현재 Program 안에서 stream session relay actor yield와 bound session push reply 흐름을 검증한다. `logs/20260630-120912-3920793`에서 통과했다 |
+| `Client/Scenarios/YdE1TimeoutScenario.cs` | `Client/src/main/java/systems/zlink/e2e/yielddispatch/client/Program.java` | scenario | done | `YieldTimeoutCommand`와 post-timeout probe marker 검증을 구현했다. `logs/20260630-120912-3920793`에서 통과했다 |
 | `Client/Scenarios/YdE2CancellationScenario.cs` | `Client/src/main/java/systems/zlink/e2e/yielddispatch/client/scenarios/YdE2CancellationScenario.java` | scenario | gap | 미구현 |
 | `Client/Scenarios/ShutdownYieldScenario.cs` | `Client/src/main/java/systems/zlink/e2e/yielddispatch/client/Program.java` | scenario | gap | YD-E3 diagnostic client mode를 추가했지만 현재 Java framework가 pending yield 중 shutdown을 closed/cancelled public error로 정리하지 못해 기본 통과 gate로 올리지 않았다 |
 | `Server/Registry/*` | `Server/Registry/src/main/java/systems/zlink/e2e/yielddispatch/registry/` | server-role | done | embedded registry role 구현 |
@@ -91,10 +92,12 @@ YD-E1에서 검증했다. Java Config 8 전체는 E2/E3/E5 gap 때문에 아직 
 - `../../gradlew --project-cache-dir "$HOME/.cache/zlink/java-e2e/YieldDispatch-gradle-cache" --no-daemon --no-parallel --max-workers=1 :zlink-framework-java-build:zlink-framework-core:test --tests systems.zlink.framework.execution.ZLinkAsyncSerialQueueTest`
 - `./run_e2e.sh`
 
-최근 재실행 로그: `logs/20260630-111601-3718472`
+최근 재실행 로그: `logs/20260630-120912-3920793`
 
 현재 runner는 YD-A1/A2/A3/A4, YD-B1/B2/B3, YD-C1/C2/C3, YD-D2/D3/D4, YD-E1과 E4 정적 검증을
-통과했다. `ZLINK_JAVA_E2E_RUN_E3_SHUTDOWN=1 ./run_e2e.sh`는 `logs/20260630-113936-3815368`에서
+통과했다. `ZLINK_JAVA_E2E_RUN_E3_SHUTDOWN=1 ./run_e2e.sh`는 `logs/20260630-120121-3889577`에서
 play-a SIGTERM shutdown이 pending yield를 정리하지 못하고 client request timeout으로 끝나는 gap을
-재현했다. 아직 YD-E2 cancellation cleanup, YD-E3 shutdown/restart recovery, YD-E5 cross-language
-marker report 비교는 완료하지 않았다.
+재현했다. 이후 임시 단독 실행 우회를 제거한 전체 E3 gate 재실행은 `logs/20260630-121056-3929716`에서
+E3에 도달하기 전 A2 route mesh timeout으로 중단되어, E3 gate를 기본 완료 조건으로 올릴 수 없다.
+아직 YD-E2 cancellation cleanup, YD-E3 shutdown/restart recovery, YD-E5 cross-language marker report
+비교는 완료하지 않았다.

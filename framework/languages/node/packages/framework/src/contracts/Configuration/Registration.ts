@@ -26,6 +26,7 @@ import type {
   ZLinkStreamNodeBuilder,
   ZLinkSession,
   ZLinkSessionFactory,
+  ZLinkSocketConfig,
   ZLinkTimerOptions
 } from '../../contracts';
 import type { ZLinkCodecExtension, ZLinkCodecRegistryBuilder, ZLinkMessageSerializer } from '../Codecs';
@@ -147,12 +148,19 @@ export interface ZLinkChannelOptions {
   readonly server?: {
     readonly bind?: string;
     readonly routingId?: string;
+    readonly weight?: number;
+    readonly sendHighWaterMark?: number;
+    readonly receiveHighWaterMark?: number;
+    readonly sendTimeoutMs?: number;
   };
   readonly subscriber?: ZLinkClientCapabilityOptions;
 }
 
 export interface ZLinkClientCapabilityOptions {
   readonly manualConnections?: readonly string[];
+  readonly sendHighWaterMark?: number;
+  readonly receiveHighWaterMark?: number;
+  readonly sendTimeoutMs?: number;
 }
 
 export interface ZLinkPublisherCapabilityOptions {
@@ -164,6 +172,10 @@ export interface ZLinkRouteMeshChannelOptions {
   readonly bind?: string;
   readonly manualConnections?: readonly string[];
   readonly routingId?: string;
+  readonly weight?: number;
+  readonly sendHighWaterMark?: number;
+  readonly receiveHighWaterMark?: number;
+  readonly sendTimeoutMs?: number;
   readonly sendHandlers?: readonly ZLinkRouteChannelSendHandlerRegistration[];
   readonly requestHandlers?: readonly ZLinkRouteChannelRequestHandlerRegistration[];
   readonly handlers?: readonly ZLinkRouteChannelHandlerOptions[];
@@ -175,6 +187,10 @@ export interface ZLinkRouteChannelOptions {
   readonly bind?: string;
   readonly manualConnections?: readonly string[];
   readonly routingId?: string;
+  readonly weight?: number;
+  readonly sendHighWaterMark?: number;
+  readonly receiveHighWaterMark?: number;
+  readonly sendTimeoutMs?: number;
   readonly sendHandlers?: readonly ZLinkRouteChannelSendHandlerRegistration[];
   readonly requestHandlers?: readonly ZLinkRouteChannelRequestHandlerRegistration[];
   readonly handlers?: readonly ZLinkRouteChannelHandlerOptions[];
@@ -182,7 +198,14 @@ export interface ZLinkRouteChannelOptions {
 
 export interface ZLinkStreamNodeOptions {
   readonly bind?: string;
+  readonly tlsServer?: ZLinkStreamTlsServerOptions;
   readonly session?: Type;
+}
+
+export interface ZLinkStreamTlsServerOptions {
+  readonly certificatePath: string;
+  readonly keyPath: string;
+  readonly requireClientCertificate?: boolean;
 }
 
 export interface ZLinkSpotNodeRegistrationOptions extends ZLinkSpotNodeOptions {
@@ -419,7 +442,7 @@ class ZLinkFrameworkOptionsBuilder implements ZLinkFrameworkOptions {
     }
     this.spotMeshes.add(channelName);
     const spotNode = this.spotNodeOptions(channelName);
-    return new DefaultSpotMeshBuilder(this, spotNode);
+    return new DefaultSpotMeshBuilder(spotNode);
   }
 
   addClientServerChannel(name: string): ZLinkClientServerChannelBuilder {
@@ -532,6 +555,16 @@ class DefaultClientServerChannelBuilder implements ZLinkClientServerChannelBuild
     return this;
   }
 
+  configureServerSocket(): ZLinkSocketConfig {
+    this.channel.server ??= {};
+    return this.channel.server;
+  }
+
+  configureClientSocket(): ZLinkSocketConfig {
+    this.channel.client ??= { manualConnections: [] };
+    return this.channel.client;
+  }
+
   enableClient(endpoint?: string): this {
     this.channel.client ??= { manualConnections: [] };
     if (endpoint !== undefined) {
@@ -583,6 +616,10 @@ class DefaultRouteChannelBuilder implements ZLinkRouteChannelBuilder {
     return this;
   }
 
+  configureSocket(): ZLinkSocketConfig {
+    return this.routeChannel;
+  }
+
   setDefaultRequestTimeout(timeoutMs: number): this {
     this.routeChannel.requestTimeoutMs = normalizeOptionalPositiveInteger(timeoutMs, 'requestTimeoutMs');
     return this;
@@ -606,6 +643,10 @@ class DefaultRouteMeshChannelBuilder implements ZLinkRouteMeshChannelBuilder {
     return this;
   }
 
+  configureSocket(): ZLinkSocketConfig {
+    return this.routeMesh;
+  }
+
   setDefaultRequestTimeout(timeoutMs: number): this {
     this.routeMesh.requestTimeoutMs = normalizeOptionalPositiveInteger(timeoutMs, 'requestTimeoutMs');
     return this;
@@ -617,6 +658,15 @@ class DefaultStreamNodeBuilder implements ZLinkStreamNodeBuilder {
 
   bind(endpoint: string): this {
     this.streamNode.bind = endpoint;
+    return this;
+  }
+
+  setTlsServer(certificatePath: string, keyPath: string, requireClientCertificate: boolean = false): this {
+    this.streamNode.tlsServer = {
+      certificatePath,
+      keyPath,
+      requireClientCertificate
+    };
     return this;
   }
 
@@ -662,14 +712,9 @@ class DefaultSpotMeshBuilder implements ZLinkSpotMeshBuilder {
   private readonly node: DefaultSpotNodeBuilder;
 
   constructor(
-    private readonly root: ZLinkFrameworkOptionsBuilder,
     spotNode: MutableSpotNodeOptions
   ) {
     this.node = new DefaultSpotNodeBuilder(spotNode);
-  }
-
-  useDiscovery(): ZLinkDiscoveryBuilder {
-    return this.root.useDiscovery();
   }
 
   routingId(routingId: RoutingId): this {
@@ -951,12 +996,19 @@ interface MutableChannelOptions {
   server?: {
     bind?: string;
     routingId?: string;
+    weight?: number;
+    sendHighWaterMark?: number;
+    receiveHighWaterMark?: number;
+    sendTimeoutMs?: number;
   };
   subscriber?: MutableClientCapabilityOptions;
 }
 
 interface MutableClientCapabilityOptions {
   manualConnections?: string[];
+  sendHighWaterMark?: number;
+  receiveHighWaterMark?: number;
+  sendTimeoutMs?: number;
 }
 
 interface MutablePublisherCapabilityOptions {
@@ -970,6 +1022,9 @@ interface MutableRouteMeshChannelOptions {
   clientEnabled?: boolean;
   manualConnections?: string[];
   routingId?: string;
+  sendHighWaterMark?: number;
+  receiveHighWaterMark?: number;
+  sendTimeoutMs?: number;
   sendHandlers?: ZLinkRouteChannelSendHandlerRegistration[];
   requestHandlers?: ZLinkRouteChannelRequestHandlerRegistration[];
   handlers?: ZLinkRouteChannelHandlerOptions[];
@@ -981,6 +1036,7 @@ interface MutableRouteChannelOptions extends MutableRouteMeshChannelOptions {
 
 interface MutableStreamNodeOptions {
   bind?: string;
+  tlsServer?: ZLinkStreamTlsServerOptions;
   session?: Type;
 }
 

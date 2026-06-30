@@ -1,0 +1,69 @@
+import type { ProfileReply } from '../../Shared/messages';
+import type { ClientOptions } from '../Support/client-options';
+import { postJson } from '../Support/http-client';
+import { startProvider } from '../Support/managed-provider';
+import {
+  profileRequest,
+  sendRequestBatch,
+  waitTopologyAbsent,
+  waitTopologyReady,
+  waitUntilAvailable,
+  waitUntilDown
+} from '../Support/resilience-helpers';
+import { ensure } from '../Support/scenario-assert';
+import type { ScenarioState } from '../Support/scenario-state';
+
+export async function runRlC2(options: ClientOptions, state: ScenarioState): Promise<void> {
+  await postJson(options.providerBUrl, '/admin/crash');
+  if (state.providerBProcess !== undefined) {
+    await state.providerBProcess.waitExited();
+    state.providerBProcess = undefined;
+  }
+  await waitUntilDown(options.providerBUrl);
+  await waitTopologyAbsent(options.registryUrl, 'api-b');
+
+  for (let i = 0; i < 8; i += 1) {
+    const reply = await postJson<ProfileReply>(
+      options.consumerUrl,
+      '/profile/request/new-client',
+      profileRequest(`rl-c2-after-crash-${i}`)
+    );
+    ensure(reply.providerRid === 'api-a', 'RL-C2 request used stale crashed api-b.');
+  }
+
+  const restarted = startProvider({
+    providerMain: options.providerMain,
+    logDir: options.logDir,
+    registryRouterEndpoint: options.registryRouterEndpoint,
+    name: 'api-b-c2-restored',
+    rid: 'api-b',
+    httpUrl: options.providerBUrl,
+    channelEndpoint: options.providerBChannelEndpoint,
+    evidenceFileName: 'api-b-c2-restored.evidence.log'
+  });
+  await restarted.waitReady();
+  state.providerBProcess = restarted;
+  await waitUntilAvailable(options.providerBUrl);
+  await waitTopologyReady(options.registryUrl, 'api-b');
+
+  const sawApiB = await sendRequestBatch(options.consumerUrl, 'rl-c2-restored', 'api-b');
+  ensure(sawApiB, 'RL-C2 restored traffic did not reach api-b.');
+
+  const crashEvidence = await postJson<string[]>(options.providerAUrl, '/evidence/wait', {
+    contains: 'marker=rl-c2-after-crash-'
+  });
+  ensure(
+    crashEvidence.some((line) => line.includes('marker=rl-c2-after-crash-')),
+    'RL-C2 did not record expected after-crash evidence.'
+  );
+
+  const restoreEvidence = await postJson<string[]>(options.providerBUrl, '/evidence/wait', {
+    contains: 'profile-request|rid=api-b|value=fast|marker=rl-c2-restored-'
+  });
+  ensure(
+    restoreEvidence.some((line) => line.includes('profile-request|rid=api-b') && line.includes('marker=rl-c2-restored-')),
+    'RL-C2 did not record expected restored api-b evidence.'
+  );
+
+  console.log('scenario RL-C2 passed');
+}

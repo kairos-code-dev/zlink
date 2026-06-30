@@ -30,7 +30,8 @@ import {
   ZLinkFrameworkErrorKind,
   ZLinkFrameworkException,
   ZLinkMessage,
-  ZLinkMessageFlowOutcome
+  ZLinkMessageFlowOutcome,
+  ZLinkSocketNativeEventType
 } from '../../contracts';
 import type { Message } from '../../contracts/Common/Message';
 import { ZLinkConfigurationException, type ZLinkFrameworkRegistration } from '../configuration';
@@ -45,6 +46,7 @@ import type {
   ZLinkBackendAdapterFactory,
   ZLinkBackendContext,
   ZLinkBackendSocketMonitor,
+  ZLinkBackendSocketMonitorEvent,
   ZLinkBackendSendFlags,
   ZLinkBackendSpotNode,
   ZLinkBackendStreamSocket
@@ -138,6 +140,7 @@ export interface ZLinkStreamSessionRuntimeOptions {
 
 export interface ZLinkStreamSessionNodeRuntimeOptions extends ZLinkStreamSessionRuntimeOptions {
   readonly nodeName?: string;
+  readonly monitor?: ZLinkBackendSocketMonitor;
 }
 
 export interface ZLinkStreamRuntimeManagerOptions {
@@ -169,12 +172,21 @@ export class ZLinkStreamRuntimeManager {
     const monitoringAdapter = this.options.backendAdapterFactory.createMonitoringAdapter();
     for (const [nodeName, streamNode] of this.options.registration.streamNodes.entries()) {
       const socket = streamAdapter.createStreamSocket(this.options.context);
+      const tlsServer = streamNode.tlsServer;
+      if (tlsServer !== undefined) {
+        socket.setTlsServer(
+          tlsServer.certificatePath,
+          tlsServer.keyPath,
+          tlsServer.requireClientCertificate ?? false
+        );
+      }
       socket.bind(streamNode.bind!);
       const monitor = monitoringAdapter.openSocketMonitor(socket);
       const sessionType = streamNode.session!;
       const runtime = new ZLinkStreamSessionNodeRuntime({
         nodeName,
         socket,
+        monitor,
         bindingRuntime: this.options.bindingRuntime,
         dispatchErrors: this.options.dispatchErrors,
         messageSerializers: this.options.registration.messageSerializers,
@@ -492,6 +504,11 @@ export class ZLinkStreamSessionRuntime {
 
 export class ZLinkStreamSessionNodeRuntime {
   private readonly sessions = new Map<string, ZLinkStreamSessionRuntime>();
+  private readonly pendingConnectionMetadata: Array<{
+    readonly localAddr?: string;
+    readonly remoteAddr?: string;
+  }> = [];
+  private readonly disconnectedEndpoints = new Set<string>();
   private stopped = false;
 
   constructor(private readonly options: ZLinkStreamSessionNodeRuntimeOptions) {}
@@ -499,6 +516,9 @@ export class ZLinkStreamSessionNodeRuntime {
   start(): void {
     this.options.socket.onFramedPacket((routingId, header, payload) => {
       this.onFramedPacket(routingId, header, payload);
+    });
+    this.options.monitor?.onEvent((event) => {
+      this.onMonitorEvent(event);
     });
   }
 
@@ -529,7 +549,95 @@ export class ZLinkStreamSessionNodeRuntime {
       payload.close();
       return;
     }
-    this.getOrCreateSession(routingId).enqueuePacket(header, payload);
+    const session = this.getOrCreateSession(routingId);
+    this.applyPendingConnectionMetadata(session);
+    session.enqueuePacket(header, payload);
+  }
+
+  private onMonitorEvent(event: ZLinkBackendSocketMonitorEvent): void {
+    if (this.stopped) {
+      return;
+    }
+    switch (event.nativeEvent) {
+      case ZLinkSocketNativeEventType.ConnectionReady:
+        if (event.routingId === undefined) {
+          const endpointKey = streamMonitorEndpointKey(event.localAddr, event.remoteAddr);
+          const unaddressed = this.firstUnaddressedSession();
+          if (unaddressed !== undefined) {
+            this.disconnectedEndpoints.delete(endpointKey);
+            unaddressed.enqueueConnected(event.localAddr, event.remoteAddr);
+            return;
+          }
+          if (this.disconnectedEndpoints.delete(endpointKey)) {
+            return;
+          }
+          this.pendingConnectionMetadata.push({
+            localAddr: event.localAddr,
+            remoteAddr: event.remoteAddr
+          });
+          return;
+        }
+        this.getOrCreateSession(event.routingId).enqueueConnected(event.localAddr, event.remoteAddr);
+        return;
+      case ZLinkSocketNativeEventType.Disconnected:
+        {
+          const endpointKey = streamMonitorEndpointKey(event.localAddr, event.remoteAddr);
+          this.disconnectedEndpoints.add(endpointKey);
+          this.removePendingConnectionMetadata(endpointKey);
+          const session = this.resolveMonitorSession(event);
+          session?.enqueueDisconnected(new Error(`Stream disconnected: ${event.nativeEvent}/${event.value}`));
+        }
+        return;
+      default:
+        return;
+    }
+  }
+
+  private applyPendingConnectionMetadata(session: ZLinkStreamSessionRuntime): void {
+    if (
+      session.stream.localAddr !== undefined
+      || session.stream.remoteAddr !== undefined
+      || this.pendingConnectionMetadata.length === 0
+    ) {
+      return;
+    }
+    const metadata = this.pendingConnectionMetadata.shift()!;
+    session.enqueueConnected(metadata.localAddr, metadata.remoteAddr);
+  }
+
+  private firstUnaddressedSession(): ZLinkStreamSessionRuntime | undefined {
+    return [...this.sessions.values()].find((session) =>
+      session.stream.localAddr === undefined
+      && session.stream.remoteAddr === undefined
+    );
+  }
+
+  private removePendingConnectionMetadata(endpointKey: string): void {
+    for (let index = this.pendingConnectionMetadata.length - 1; index >= 0; index--) {
+      const metadata = this.pendingConnectionMetadata[index];
+      if (streamMonitorEndpointKey(metadata.localAddr, metadata.remoteAddr) === endpointKey) {
+        this.pendingConnectionMetadata.splice(index, 1);
+      }
+    }
+  }
+
+  private resolveMonitorSession(event: ZLinkBackendSocketMonitorEvent): ZLinkStreamSessionRuntime | undefined {
+    if (event.routingId !== undefined) {
+      const session = this.findSession(event.routingId);
+      if (session !== undefined) {
+        return session;
+      }
+    }
+    const sessions = [...this.sessions.values()];
+    if (sessions.length === 1) {
+      return sessions[0];
+    }
+    return sessions.find((session) =>
+      session.stream.localAddr === event.localAddr
+      && session.stream.remoteAddr === event.remoteAddr
+    )
+      ?? this.firstUnaddressedSession()
+      ?? sessions[sessions.length - 1];
   }
 
   private getOrCreateSession(routingId: unknown): ZLinkStreamSessionRuntime {
@@ -835,6 +943,34 @@ export class ZLinkStreamBindingRuntime {
       false,
       requestSeq,
       message
+    );
+    try {
+      await this.sendNativeBoundSessionFrame(node, actorRef, frame, signal);
+    } finally {
+      frame.close();
+    }
+  }
+
+  async sendNativeBoundSessionError(
+    node: ZLinkBackendSpotNode,
+    actorRef: ActorRef,
+    packetName: string,
+    requestSeq: bigint,
+    error: unknown,
+    metadata: ReadonlyMap<string, string>,
+    signal?: AbortSignal
+  ): Promise<void> {
+    throwIfAborted(signal);
+    const frame = this.frameMessages.createJsonFrameMessage(
+      ZLinkStreamMessageKind.Error,
+      packetName,
+      metadata,
+      false,
+      requestSeq,
+      {
+        code: error instanceof Error ? error.constructor.name : undefined,
+        message: error instanceof Error ? error.message : String(error)
+      }
     );
     try {
       await this.sendNativeBoundSessionFrame(node, actorRef, frame, signal);
@@ -1805,6 +1941,10 @@ function streamSessionIdFromRoutingId(routingId: unknown): string {
     ZLinkFrameworkErrorKind.RouteNotConnected,
     'Stream session routing id is invalid.'
   );
+}
+
+function streamMonitorEndpointKey(localAddr: string | undefined, remoteAddr: string | undefined): string {
+  return `${localAddr ?? ''}\n${remoteAddr ?? ''}`;
 }
 
 function isPromiseLike<T>(value: T | Promise<T>): value is Promise<T> {

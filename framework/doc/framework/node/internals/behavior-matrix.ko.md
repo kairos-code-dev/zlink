@@ -72,7 +72,7 @@
 |------|-----------|-----------|
 | `.addSpotMesh(name)` | 허용 | 활성 SPOT[^spot] channel view와 node 런타임을 함께 소유한다 |
 | spot mesh에 `discovery` 없음 | 허용 | top-level discovery endpoint 를 상속하거나 local-only mesh 로 시작한다 |
-| spot mesh + 빈 `discovery` + local-only spot factory | 허용 | discovery endpoint 없이 단일 local SpotNode 하나를 mesh 소유권 아래 띄운다 |
+| root discovery 없이 local-only spot factory | 허용 | discovery endpoint 없이 단일 local SpotNode 하나를 mesh 소유권 아래 띄운다 |
 | top-level standalone `addSpotMesh(name)` 등록 | 허용 | SpotMesh 이름이 곧 단일 SpotNode 이름이다 |
 | 분리된 SPOT discovery 등록과 node 등록 | 비허용 | discovery 와 node 집합은 spot mesh가 함께 소유한다 |
 | 같은 process에 SpotMesh 여러 개 | 비허용 | Q9 정책으로 process당 SpotNode는 하나만 둔다 |

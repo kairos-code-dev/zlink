@@ -1,4 +1,3 @@
-import type { ZLinkDiscoveryBuilder } from '../Configuration';
 import type { RoutingId, Type } from '../Common';
 import type { ZLinkEntrySpot, ZLinkSpot } from './ZLinkSpot';
 
@@ -17,9 +16,7 @@ export interface ZLinkSpotNodeBuilder {
 
 export interface ZLinkSpotMeshNodeBuilder extends ZLinkSpotNodeBuilder {}
 
-export interface ZLinkSpotMeshBuilder extends ZLinkSpotNodeBuilder {
-  useDiscovery(): ZLinkDiscoveryBuilder;
-}
+export interface ZLinkSpotMeshBuilder extends ZLinkSpotNodeBuilder {}
 
 export interface ZLinkEntrySpotOptions {
   routingId?: RoutingId;

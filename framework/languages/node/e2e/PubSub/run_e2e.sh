@@ -1,0 +1,143 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+NODE_ROOT="$(cd "$ROOT_DIR/../.." && pwd)"
+RUN_ID="$(date +%Y%m%d-%H%M%S)-$$"
+LOG_DIR="$ROOT_DIR/logs/$RUN_ID"
+SCENARIO="${1:-all}"
+mkdir -p "$LOG_DIR"
+
+pick_port() {
+  node -e "const net=require('node:net'); const s=net.createServer(); s.listen(0,'127.0.0.1',()=>{console.log(s.address().port); s.close();});"
+}
+
+build_package() {
+  local dir="$1"
+  (cd "$dir" && npm run build >/dev/null)
+}
+
+wait_health() {
+  local url="$1"
+  local name="$2"
+  for _ in $(seq 1 120); do
+    if curl -fsS "$url/health" >/dev/null 2>&1; then
+      return 0
+    fi
+    sleep 0.25
+  done
+  echo "Timed out waiting for $name at $url" >&2
+  return 1
+}
+
+pids=()
+cleanup() {
+  local code=$?
+  for pid in "${pids[@]:-}"; do
+    if kill -0 "$pid" 2>/dev/null; then
+      kill "$pid" 2>/dev/null || true
+    fi
+  done
+  wait "${pids[@]:-}" 2>/dev/null || true
+  if [[ "$code" -ne 0 ]]; then
+    echo "E2E failed. log_dir=$LOG_DIR" >&2
+    for file in "$LOG_DIR"/*.stderr.log "$LOG_DIR"/client.stderr.log; do
+      if [[ -f "$file" ]]; then
+        echo "----- $file -----" >&2
+        tail -n 80 "$file" >&2 || true
+      fi
+    done
+  fi
+}
+trap cleanup EXIT
+
+start_server() {
+  local name="$1"
+  local main="$2"
+  shift
+  shift
+  ZLINK_E2E_RID="$name" node "$main" "$@" >"$LOG_DIR/$name.stdout.log" 2>"$LOG_DIR/$name.stderr.log" &
+  pids+=("$!")
+}
+
+echo "log_dir=$LOG_DIR"
+
+(cd "$NODE_ROOT" && npm run build >/dev/null)
+build_package "$ROOT_DIR/Server/Registry"
+build_package "$ROOT_DIR/Server/Publisher"
+build_package "$ROOT_DIR/Server/Subscriber"
+build_package "$ROOT_DIR/Client"
+
+REG_HTTP_PORT="$(pick_port)"
+PUB_HTTP_PORT="$(pick_port)"
+SUB_1_HTTP_PORT="$(pick_port)"
+SUB_2_HTTP_PORT="$(pick_port)"
+SUB_3_HTTP_PORT="$(pick_port)"
+SUB_LATE_HTTP_PORT="$(pick_port)"
+REG_PUB_PORT="$(pick_port)"
+REG_ROUTER_PORT="$(pick_port)"
+PUB_PORT="$(pick_port)"
+
+REG_PUB="tcp://127.0.0.1:$REG_PUB_PORT"
+REG_ROUTER="tcp://127.0.0.1:$REG_ROUTER_PORT"
+PUB_ENDPOINT="tcp://127.0.0.1:$PUB_PORT"
+PUB_URL="http://127.0.0.1:$PUB_HTTP_PORT"
+SUB_1_URL="http://127.0.0.1:$SUB_1_HTTP_PORT"
+SUB_2_URL="http://127.0.0.1:$SUB_2_HTTP_PORT"
+SUB_3_URL="http://127.0.0.1:$SUB_3_HTTP_PORT"
+SUB_LATE_URL="http://127.0.0.1:$SUB_LATE_HTTP_PORT"
+
+REGISTRY_MAIN="$ROOT_DIR/Server/Registry/dist/Server/Registry/main.js"
+PUBLISHER_MAIN="$ROOT_DIR/Server/Publisher/dist/Server/Publisher/main.js"
+SUBSCRIBER_MAIN="$ROOT_DIR/Server/Subscriber/dist/Server/Subscriber/main.js"
+CLIENT_MAIN="$ROOT_DIR/Client/dist/Client/main.js"
+
+start_server registry "$REGISTRY_MAIN" \
+  --rid registry \
+  --http-url "http://127.0.0.1:$REG_HTTP_PORT" \
+  --registry-pub-endpoint "$REG_PUB" \
+  --registry-router-endpoint "$REG_ROUTER" \
+  --log-dir "$LOG_DIR"
+wait_health "http://127.0.0.1:$REG_HTTP_PORT" registry
+
+start_server pub-a "$PUBLISHER_MAIN" \
+  --rid pub-a \
+  --http-url "$PUB_URL" \
+  --registry-router-endpoint "$REG_ROUTER" \
+  --publisher-endpoint "$PUB_ENDPOINT" \
+  --evidence-file "$LOG_DIR/pub-a.evidence.log" \
+  --log-dir "$LOG_DIR"
+wait_health "$PUB_URL" pub-a
+
+for sub in 1 2 3; do
+  url_var="SUB_${sub}_URL"
+  extra_args=()
+  if [[ "$sub" == "3" ]]; then
+    extra_args+=(--handler-delay-ms 3000)
+  fi
+  start_server "sub-$sub" "$SUBSCRIBER_MAIN" \
+    --rid "sub-$sub" \
+    --http-url "${!url_var}" \
+    --registry-router-endpoint "$REG_ROUTER" \
+    --publisher-endpoint "$PUB_ENDPOINT" \
+    --evidence-file "$LOG_DIR/sub-$sub.evidence.log" \
+    --log-dir "$LOG_DIR" \
+    "${extra_args[@]}"
+  wait_health "${!url_var}" "sub-$sub"
+done
+
+node "$CLIENT_MAIN" \
+  --publisher-url "$PUB_URL" \
+  --subscriber-url "$SUB_1_URL" \
+  --subscriber-url "$SUB_2_URL" \
+  --subscriber-url "$SUB_3_URL" \
+  --late-subscriber-url "$SUB_LATE_URL" \
+  --registry-router-endpoint "$REG_ROUTER" \
+  --publisher-endpoint "$PUB_ENDPOINT" \
+  --publisher-main "$PUBLISHER_MAIN" \
+  --subscriber-main "$SUBSCRIBER_MAIN" \
+  --log-dir "$LOG_DIR" \
+  --scenario "$SCENARIO" \
+  >"$LOG_DIR/client.stdout.log" 2>"$LOG_DIR/client.stderr.log"
+
+cat "$LOG_DIR/client.stdout.log"

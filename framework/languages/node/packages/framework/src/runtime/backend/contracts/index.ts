@@ -163,6 +163,10 @@ export interface ZLinkBackendConnectableSocket extends ZLinkBackendSocket {
 }
 
 export interface ZLinkBackendDealerSocket extends ZLinkBackendConnectableSocket {
+  peerWeight: number;
+  sendHighWaterMark: number;
+  receiveHighWaterMark: number;
+  sendTimeoutMs: number;
   attachDiscovery(discovery: ZLinkBackendDiscovery): void;
   onSendReady(handler: () => void): void;
   send(message: Message | readonly Message[], flags: ZLinkBackendSendFlags): boolean;
@@ -195,6 +199,10 @@ export interface ZLinkBackendRequestOperation {
 }
 
 export interface ZLinkBackendRouterSocket extends ZLinkBackendConnectableSocket {
+  peerWeight: number;
+  sendHighWaterMark: number;
+  receiveHighWaterMark: number;
+  sendTimeoutMs: number;
   attachDiscovery(discovery: ZLinkBackendDiscovery): void;
   onSendReady(handler: () => void): void;
   setRoutingId(routingId: RoutingId): void;
@@ -247,6 +255,7 @@ export interface ZLinkBackendReadablePoller {
 }
 
 export interface ZLinkBackendStreamSocket extends ZLinkBackendSocket {
+  setTlsServer(cert: string, key: string, requireClientCert?: boolean): void;
   onFramedPacket(handler: (peer: string, header: Message, payload: Message) => void): void;
   send(routingId: RoutingId, payload: Message | readonly Message[], flags: ZLinkBackendSendFlags): boolean;
   disconnectPeer(routingId: RoutingId): void;

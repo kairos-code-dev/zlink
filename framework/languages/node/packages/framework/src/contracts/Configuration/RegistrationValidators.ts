@@ -169,12 +169,15 @@ function validateChannelCapabilities(
       if (channel.server.routingId !== undefined) {
         requireName(`channel '${channelName}' server routingId`, channel.server.routingId);
       }
+      requirePeerWeight(`channel '${channelName}' server weight`, channel.server.weight);
+      requireSocketOptions(`channel '${channelName}' server`, channel.server);
     }
     if (channel.publisher !== undefined) {
       requireEndpoint(`channel '${channelName}' publisher`, channel.publisher.bind);
     }
     if (channel.client !== undefined) {
       requirePeerSource(`channel '${channelName}' client`, channel.client.manualConnections, discoveryConfigured);
+      requireSocketOptions(`channel '${channelName}' client`, channel.client);
     }
     if (channel.subscriber !== undefined) {
       requirePeerSource(`channel '${channelName}' subscriber`, channel.subscriber.manualConnections, discoveryConfigured);
@@ -347,9 +350,19 @@ function requireEndpoint(capabilityName: string, endpoint: string | undefined): 
   }
 }
 
+function requireFilePath(label: string, value: string | undefined): void {
+  if (value === undefined || value.trim().length === 0) {
+    throw new ZLinkConfigurationException(`${label} must define a file path.`);
+  }
+}
+
 function validateStreamNodes(registration: ZLinkFrameworkRegistration): void {
   for (const [streamNodeName, streamNode] of registration.streamNodes.entries()) {
     requireEndpoint(`STREAM node '${streamNodeName}'`, streamNode.bind);
+    if (streamNode.tlsServer !== undefined) {
+      requireFilePath(`STREAM node '${streamNodeName}' TLS certificate`, streamNode.tlsServer.certificatePath);
+      requireFilePath(`STREAM node '${streamNodeName}' TLS key`, streamNode.tlsServer.keyPath);
+    }
     if (streamNode.session === undefined) {
       throw new ZLinkConfigurationException(
         `STREAM node '${streamNodeName}' must register a header stream session.`
@@ -417,6 +430,8 @@ function validateRouteMeshCapability(
   if (clientEnabled) {
     requirePeerSource(capabilityName, routeChannel.manualConnections, discoveryConfigured);
   }
+  requirePeerWeight(`${capabilityName} weight`, routeChannel.weight);
+  requireSocketOptions(capabilityName, routeChannel);
 }
 
 function routeChannelHandlerCount(routeChannel: ZLinkRouteChannelOptions): number {
@@ -427,6 +442,30 @@ function routeChannelHandlerCount(routeChannel: ZLinkRouteChannelOptions): numbe
 
 function hasBind(endpoint: string | undefined): boolean {
   return endpoint !== undefined && endpoint.trim().length > 0;
+}
+
+function requirePeerWeight(label: string, value: number | undefined): void {
+  if (value === undefined) {
+    return;
+  }
+  if (!Number.isInteger(value) || value < 0 || value > 100) {
+    throw new ZLinkConfigurationException(`${label} must be between 0 and 100.`);
+  }
+}
+
+function requireSocketOptions(
+  label: string,
+  options: {
+    readonly sendHighWaterMark?: number;
+    readonly receiveHighWaterMark?: number;
+    readonly sendTimeoutMs?: number;
+  }
+): void {
+  requireNonNegativeInteger(`${label} sendHighWaterMark`, options.sendHighWaterMark);
+  requireNonNegativeInteger(`${label} receiveHighWaterMark`, options.receiveHighWaterMark);
+  if (options.sendTimeoutMs !== undefined && (!Number.isInteger(options.sendTimeoutMs) || options.sendTimeoutMs < -1)) {
+    throw new ZLinkConfigurationException(`${label} sendTimeoutMs must be -1 or a non-negative integer.`);
+  }
 }
 
 interface RouteMeshInternalState {

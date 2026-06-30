@@ -109,11 +109,15 @@ HTTP client 호출을 추가하지 않는다.
 
 우선순위: `P0`
 
-**한마디로:** `yield` 전후의 spot rid, cancellation token, message metadata가 같은 handler 흐름으로 이어지는가.
+**한마디로:** `yield` 전후의 request id와 target spot이 같은 handler 흐름으로 이어지는가.
 
-- 절차: `YieldReq`에 correlation id와 사용자 metadata를 넣고 delay service reply를 기다린다.
+- 절차: `YieldReq`에 correlation id를 넣고 target spot rid로 delay service reply를 기다린다.
 - 검증: `yield` 전 marker와 `yield` 후 marker가 같은 request id를 공유한다. continuation에서 읽은
-  spot rid, metadata, cancellation 상태가 request 시작 시점의 context와 일치한다.
+  spot rid가 request 시작 시점의 target spot과 일치한다.
+- stream metadata나 cancellation token 상태를 Spot request handler public context에서 직접 읽는 검증은
+  이 시나리오에 넣지 않는다. 현재 public Spot request handler 표면은 stream metadata를 직접 노출하지
+  않으므로, 이 값을 요구하면 각 언어가 내부 helper나 raw metadata 경로를 만들게 된다. metadata 보존이
+  필요하면 actor/session metadata context처럼 별도 public contract로 먼저 정한다.
 - 세부 동작: yield continuation context 보존.
 
 #### YD-A4 worker offload yield는 Spot turn을 붙잡지 않는다
@@ -311,12 +315,13 @@ HTTP client 호출을 추가하지 않는다.
 
 **한마디로:** 같은 시나리오 id는 모든 framework 언어에서 같은 mailbox·timeout·cancellation 의미를 갖는가.
 
-- 절차: 각 언어 구현의 Config 8 report를 같은 시나리오 id(`YD-A1` 등)로 모은다. 메서드 이름은
-  언어별 public API를 따르되, marker 이름과 성공 조건은 공통 문서의 정의를 따른다.
-- 검증: 같은 id의 evidence가 같은 의미를 증명한다. 예를 들어 `YD-B2`는 모든 언어에서 같은 actor
-  재진입 금지를 보여야 하고, `YD-E1`은 모든 언어에서 timeout 뒤 mailbox가 풀리는 것을 보여야 한다.
-  특정 언어만 다른 동작을 보이면 그 언어 구현은 완료가 아니라 common contract gap이다.
-- 세부 동작: 언어별 API 이름 차이와 공통 runtime 의미 분리.
+- 절차: 각 언어 구현은 Config 8 report를 같은 시나리오 id(`YD-A1` 등)와 공통 marker 이름으로 남긴다.
+  메서드 이름은 언어별 public API를 따르되, marker 이름과 성공 조건은 공통 문서의 정의를 따른다.
+- 검증: 한 언어의 report는 그 언어가 구현한 scenario id와 marker 이름이 공통 정의에 맞는지 증명해야 한다.
+  여러 언어의 report를 한 번에 모아 비교하는 aggregation은 이 config의 입력이지만, 개별 언어 runner 안에서
+  직접 수행하지 않는다. 특정 언어만 다른 동작을 보이면 그 언어 구현은 완료가 아니라 common contract gap이다.
+- 세부 동작: 언어별 API 이름 차이와 공통 runtime 의미 분리. cross-language aggregation은 모든 언어 report가
+  준비된 뒤 별도 parity gate에서 수행한다.
 
 ## 5. 완료 기준
 

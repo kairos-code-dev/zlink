@@ -1,0 +1,123 @@
+import {
+  zlinkStreamConnectorFactory,
+  zlinkStreamJsonCodec,
+  ZlinkStreamDispatchMode
+} from '@zlink-systems/stream-connector';
+import type {
+  ActorPingReply,
+  ActorPingReq,
+  ActorPushNotify,
+  ActorPushReq,
+  AuthReply,
+  AuthReq,
+  EvidenceWaitRequest,
+  UserSpotAuthReq
+} from '../../Shared/messages';
+import type { ClientOptions } from '../Support/client-options';
+import { postJson } from '../Support/http-client';
+import { ensure } from '../Support/scenario-assert';
+import { decodeStreamReply } from '../Support/stream-reply';
+
+export async function runSmD3(options: ClientOptions): Promise<void> {
+  const suffix = Date.now();
+  const entryActorId = `actor-sm-d3-entry-${suffix}`;
+  const userSpotRid = `spot-sm-d3-user-${suffix}`;
+  const userActorId = `actor-sm-d3-user-${suffix}`;
+
+  const entry = createStreamClient(options.sessionAStreamEndpoint);
+  await entry.connect();
+  try {
+    await entry
+      .request({
+        actorId: entryActorId,
+        displayName: 'entry bind',
+        nodeRid: 'play-a'
+      } satisfies AuthReq)
+      .packetName('AuthReq')
+      .timeout(5000)
+      .submit<AuthReply>();
+
+    const entryPushed = entry.waitFor<ActorPushNotify>('ActorPushNotify')
+      .where((message) => message.payload.actorId === entryActorId)
+      .timeout(10000)
+      .submit();
+    const entryReply = decodeStreamReply<ActorPingReply>(await entry
+      .request({ value: 'entry-push' } satisfies ActorPushReq)
+      .packetName('ActorPushReq')
+      .timeout(5000)
+      .submit());
+    const entryNotify = await entryPushed;
+    ensure(entryReply.actorId === entryActorId, 'SM-D3 entry bind actor mismatch.');
+    ensure(entryReply.nodeRid === 'play-a', 'SM-D3 entry bind node mismatch.');
+    ensure(entryNotify.payload.actorId === entryActorId, 'SM-D3 entry push actor mismatch.');
+    ensure(entryNotify.payload.value === 'entry-push', 'SM-D3 entry push value mismatch.');
+  } finally {
+    await entry.close();
+  }
+
+  const user = createStreamClient(options.sessionAStreamEndpoint);
+  await user.connect();
+  try {
+    await user
+      .request({
+        spotRid: userSpotRid,
+        actorId: userActorId,
+        displayName: 'user bind',
+        nodeRid: 'play-a'
+      } satisfies UserSpotAuthReq)
+      .packetName('UserSpotAuthReq')
+      .timeout(5000)
+      .submit<AuthReply>();
+
+    const userPushed = user.waitFor<ActorPushNotify>('ActorPushNotify')
+      .where((message) => message.payload.actorId === userActorId)
+      .timeout(10000)
+      .submit();
+    const userReply = decodeStreamReply<ActorPingReply>(await user
+      .request({ value: 'user-relay' } satisfies ActorPingReq)
+      .packetName('UserActorPingReq')
+      .timeout(5000)
+      .submit());
+    const userPushReply = decodeStreamReply<ActorPingReply>(await user
+      .request({ value: 'user-push' } satisfies ActorPushReq)
+      .packetName('UserActorPushReq')
+      .timeout(5000)
+      .submit());
+    const userNotify = await userPushed;
+
+    ensure(userReply.actorId === userActorId, 'SM-D3 user bind actor mismatch.');
+    ensure(userReply.nodeRid === 'play-a', 'SM-D3 user bind node mismatch.');
+    ensure(userReply.spotRid === userSpotRid, 'SM-D3 user bind spot mismatch.');
+    ensure(userReply.value === 'user-relay', 'SM-D3 user relay value mismatch.');
+    ensure(userPushReply.actorId === userActorId, 'SM-D3 user push reply actor mismatch.');
+    ensure(userNotify.payload.actorId === userActorId, 'SM-D3 user push actor mismatch.');
+    ensure(userNotify.payload.value === 'user-push', 'SM-D3 user push value mismatch.');
+  } finally {
+    await user.close();
+  }
+
+  const expectedEvidence = [
+    `spot-actor-joined|rid=play-a|spot=${userSpotRid}|actor=${userActorId}`,
+    `actor-ping|rid=play-a|actor=${userActorId}|spot=${userSpotRid}|value=user-relay`
+  ];
+  const evidence = await postJson<string[]>(options.playAUrl, '/evidence/wait', {
+    containsAll: expectedEvidence,
+    timeoutMilliseconds: 10000
+  } satisfies EvidenceWaitRequest);
+  ensure(
+    expectedEvidence.every((expected) => evidence.some((line) => line.includes(expected))),
+    'SM-D3 expected user spot bind and relay evidence.'
+  );
+
+  console.log('scenario SM-D3 passed');
+}
+
+function createStreamClient(endpoint: string) {
+  return zlinkStreamConnectorFactory.create({
+    endpoint,
+    codec: zlinkStreamJsonCodec,
+    dispatchMode: ZlinkStreamDispatchMode.Immediate,
+    heartbeat: { enabled: false },
+    waitTimeoutMs: 10000
+  });
+}

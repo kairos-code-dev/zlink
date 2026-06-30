@@ -318,8 +318,7 @@ function resolveBackendMessagingProperty(target: unknown, property: string | sym
       const operation = (target as unknown as {
         sendToChannel(channelName: string): unknown;
       }).sendToChannel(channelName);
-      submitSendOperation(operation, payload, flags);
-      return true;
+      return submitSendOperation(operation, payload, flags);
     };
   }
   if (property === 'requestToChannel') {
@@ -335,8 +334,7 @@ function resolveBackendMessagingProperty(target: unknown, property: string | sym
       const operation = (target as unknown as {
         publish(topic: string): unknown;
       }).publish(topic);
-      submitSendOperation(operation, payload, flags);
-      return true;
+      return submitSendOperation(operation, payload, flags);
     };
   }
   if (property === 'sendToSpot') {
@@ -344,8 +342,7 @@ function resolveBackendMessagingProperty(target: unknown, property: string | sym
       const operation = (target as unknown as {
         sendToSpot(targetRid: unknown, spotRid: unknown): unknown;
       }).sendToSpot(toNativeRoutingId(targetRid), toNativeRoutingId(spotRid));
-      submitSendOperation(operation, payload, flags);
-      return true;
+      return submitSendOperation(operation, payload, flags);
     };
   }
   if (property === 'requestToSpot') {
@@ -361,8 +358,7 @@ function resolveBackendMessagingProperty(target: unknown, property: string | sym
       const operation = (target as unknown as {
         sendActorBoundSession(actor: unknown): unknown;
       }).sendActorBoundSession(toNativeActorRef(actor));
-      submitSendOperation(operation, payload, flags);
-      return true;
+      return submitSendOperation(operation, payload, flags);
     };
   }
   if (property === 'bindRemoteActorSession') {
@@ -417,7 +413,7 @@ function isSpotRouteBridgeTarget(target: unknown): boolean {
     'handleRouterReceived' in target;
 }
 
-function submitSendOperation(operation: unknown, payload: unknown, flags: number): void {
+function submitSendOperation(operation: unknown, payload: unknown, flags: number): boolean {
   let current = appendOperationParts(operation, payload);
   if (flags !== 0 && hasOperationMethod(current, 'flags')) {
     current = current.flags(flags) as ZLinkBindingOperation;
@@ -425,7 +421,7 @@ function submitSendOperation(operation: unknown, payload: unknown, flags: number
   if (!hasOperationMethod(current, 'submit')) {
     throw new TypeError('Binding send operation does not expose submit().');
   }
-  current.submit();
+  return Boolean(current.submit());
 }
 
 function submitRequestOperation(
@@ -536,6 +532,26 @@ function wrapSocket<T extends { close(): void }>(nativeInstance: T): T & ZLinkBa
       }
       const value = Reflect.get(target, property, target);
       return typeof value === 'function' ? value.bind(target) : value;
+    },
+    set(target, property, value, receiver) {
+      if (property === 'peerWeight') {
+        const options = (target as { options?: { peerWeight?: number } }).options;
+        if (options === undefined || !('peerWeight' in options)) {
+          return false;
+        }
+        options.peerWeight = value as number;
+        return true;
+      }
+      const socketOption = socketConfigProperty(property);
+      if (socketOption !== undefined) {
+        const options = (target as { options?: Record<string, unknown> }).options;
+        if (options === undefined || !(socketOption in options)) {
+          return false;
+        }
+        options[socketOption] = value;
+        return true;
+      }
+      return Reflect.set(target, property, value, receiver);
     }
   }) as T & ZLinkBackendObject;
 }
@@ -608,7 +624,27 @@ function resolveSocketLifecycleProperty(
     return (handler: () => void) =>
       (target as { setSendReadyHandler(handler: () => void): void }).setSendReadyHandler(handler);
   }
+  if (property === 'peerWeight') {
+    return (target as { options?: { peerWeight?: number } }).options?.peerWeight ?? 100;
+  }
+  const socketOption = socketConfigProperty(property);
+  if (socketOption !== undefined) {
+    return (target as { options?: Record<string, unknown> }).options?.[socketOption];
+  }
   return undefined;
+}
+
+function socketConfigProperty(property: string | symbol): string | undefined {
+  switch (property) {
+    case 'sendHighWaterMark':
+      return 'sendHwm';
+    case 'receiveHighWaterMark':
+      return 'recvHwm';
+    case 'sendTimeoutMs':
+      return 'sendTimeout';
+    default:
+      return undefined;
+  }
 }
 
 function resolveSocketMessagingProperty(

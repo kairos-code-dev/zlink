@@ -8,6 +8,10 @@ export interface ZLinkSocketConfig {
   bind?: string;
   connect?: string;
   channelName?: string;
+  weight?: number;
+  sendHighWaterMark?: number;
+  receiveHighWaterMark?: number;
+  sendTimeoutMs?: number;
 }
 
 export interface ZLinkRouteConfig {

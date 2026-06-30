@@ -1,0 +1,50 @@
+import {
+  zlinkStreamConnectorFactory,
+  zlinkStreamJsonCodec,
+  ZlinkStreamDispatchMode
+} from '@zlink-systems/stream-connector';
+import type {
+  AuthReply,
+  AuthReq,
+  EvidenceWaitRequest
+} from '../../Shared/messages';
+import type { ClientOptions } from '../Support/client-options';
+import { postJson } from '../Support/http-client';
+import { ensure } from '../Support/scenario-assert';
+
+export async function runSmD5(options: ClientOptions): Promise<void> {
+  const actorId = `actor-sm-d5-notified-${Date.now()}`;
+  const client = zlinkStreamConnectorFactory.create({
+    endpoint: options.sessionAStreamEndpoint,
+    codec: zlinkStreamJsonCodec,
+    dispatchMode: ZlinkStreamDispatchMode.Immediate,
+    heartbeat: { enabled: false },
+    waitTimeoutMs: 10000
+  });
+  await client.connect();
+  try {
+    await client
+      .request({
+        actorId,
+        displayName: 'disconnect',
+        nodeRid: 'session-a'
+      } satisfies AuthReq)
+      .packetName('AuthReq')
+      .timeout(5000)
+      .submit<AuthReply>();
+  } finally {
+    await client.close();
+  }
+
+  const expectedEvidence = [`entry-disconnected|rid=session-a|actor=${actorId}`];
+  const evidence = await postJson<string[]>(options.sessionAUrl, '/evidence/wait', {
+    containsAll: expectedEvidence,
+    timeoutMilliseconds: 10000
+  } satisfies EvidenceWaitRequest);
+  ensure(
+    expectedEvidence.every((expected) => evidence.some((line) => line.includes(expected))),
+    'SM-D5 expected selected bound actor disconnect notification.'
+  );
+
+  console.log('scenario SM-D5 passed');
+}

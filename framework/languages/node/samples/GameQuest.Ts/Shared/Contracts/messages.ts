@@ -73,6 +73,17 @@ type SyncQuestProgressRes = {
   updatedQuests: QuestProgress[];
 };
 
+type QuestProgressNotify = {
+  playerId: string;
+  progress: QuestProgress;
+};
+
+type QuestCompletedNotify = {
+  playerId: string;
+  progress: QuestProgress;
+  rewardGranted: boolean;
+};
+
 type GetGameplaySnapshotReq = Packetized & {
   playerId: string;
 };
@@ -194,6 +205,8 @@ export type {
   GetQuestProgressRes,
   KillMonsterReq,
   QuestProgress,
+  QuestCompletedNotify,
+  QuestProgressNotify,
   QuestStatus,
   RebuildQuestProjectionReq,
   SubscribeQuestReq,

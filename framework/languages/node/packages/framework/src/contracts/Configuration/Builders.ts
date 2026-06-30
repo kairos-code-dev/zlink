@@ -4,6 +4,7 @@ import type { ZLinkCodecRegistryBuilder } from '../Codecs';
 import type { ZLinkDispatchOptionsBuilder } from '../Dispatch';
 import type { Type } from '../Common';
 import type { ZLinkWorkerOptions } from './Registration';
+import type { ZLinkSocketConfig } from './Configs';
 
 export interface ZLinkFrameworkOptions {
   useDiscovery(): ZLinkDiscoveryBuilder;
@@ -43,6 +44,8 @@ export interface ZLinkStreamCompressionBuilder {
 export interface ZLinkClientServerChannelBuilder {
   enableServer(endpoint: string): this;
   routingId(routingId: string): this;
+  configureServerSocket(): ZLinkSocketConfig;
+  configureClientSocket(): ZLinkSocketConfig;
   enableClient(): this;
   enableClient(endpoint: string): this;
   setDefaultRequestTimeout(timeoutMs: number): this;
@@ -58,6 +61,7 @@ export interface ZLinkRouteChannelBuilder {
   enableServer(endpoint: string): this;
   enableClient(): this;
   enableClient(endpoint: string): this;
+  configureSocket(): ZLinkSocketConfig;
   setDefaultRequestTimeout(timeoutMs: number): this;
 }
 
@@ -65,5 +69,6 @@ export interface ZLinkRouteMeshChannelBuilder extends ZLinkRouteChannelBuilder {
 
 export interface ZLinkStreamNodeBuilder {
   bind(endpoint: string): this;
+  setTlsServer(certificatePath: string, keyPath: string, requireClientCertificate?: boolean): this;
   registerSession<TSession extends ZLinkSession>(sessionType: Type<TSession> | Type<ZLinkSessionFactory<TSession>>): this;
 }

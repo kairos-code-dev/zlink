@@ -412,6 +412,16 @@ actor 를 쓰는 stream server 는 fluent builder 의 `actorFactory(...)` 와
 같은 공개 계약을 만들지만, server entrypoint 에서 raw options 객체를 직접 조립하지
 않아도 되게 한다.
 
+TLS endpoint 를 열 때는 같은 stream node builder 에서 server certificate 와 key 경로를 지정한다.
+framework runtime 은 이 설정을 stream socket 을 bind 하기 전에 적용한다.
+
+```ts
+framework.addStreamNode('client.stream.tls')
+  .bind('tls://0.0.0.0:9443')
+  .setTlsServer('server.crt', 'server.key') // server TLS certificate/key 를 bind 전에 적용한다.
+  .registerSession(ClientHeaderSession);
+```
+
 이 등록 모델에서 짚어 둘 점은 다음과 같다.
 
 - framework Header 기반 packet session 만 붙인다.

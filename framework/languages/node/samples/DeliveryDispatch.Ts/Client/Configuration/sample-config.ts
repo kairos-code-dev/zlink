@@ -1,12 +1,12 @@
 type DeliveryDispatchClientConfig = {
-  registryRouterEndpoint: string;
-  dispatchEndpoint: string;
+  dispatchApiHttpUrl: string;
+  sessionStreamEndpoint: string;
 };
 
 function loadSampleConfig(): DeliveryDispatchClientConfig {
   return {
-    registryRouterEndpoint: process.env.DELIVERYDISPATCH_REGISTRY_ROUTER_ENDPOINT ?? 'tcp://127.0.0.1:31082',
-    dispatchEndpoint: process.env.DELIVERYDISPATCH_DISPATCH_ENDPOINT ?? 'tcp://127.0.0.1:31091'
+    dispatchApiHttpUrl: process.env.DELIVERYDISPATCH_API_HTTP ?? 'http://127.0.0.1:31083',
+    sessionStreamEndpoint: process.env.DELIVERYDISPATCH_SESSION_STREAM ?? 'tcp://127.0.0.1:31091'
   };
 }
 

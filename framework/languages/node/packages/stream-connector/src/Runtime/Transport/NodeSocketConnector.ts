@@ -59,7 +59,7 @@ async function connectWebSocket(
       host,
       servername: tlsServerName(host),
       rejectUnauthorized: !options.skipServerCertificateValidation
-    }), 443)
+    }), 443, 'secureConnect')
     : await connectSocket(endpoint, options.connectTimeoutMs, signal, (port, host) => net.connect({ port, host, keepAlive: true }), 80);
   const leftover = await completeWebSocketHandshake(socket, endpoint, options.connectTimeoutMs, signal);
   return new NodeWebSocketConnection(socket, options.maxReceivePayloadSize, leftover);
@@ -79,7 +79,7 @@ async function connectTls(
     host,
     servername: tlsServerName(host),
     rejectUnauthorized: !options.skipServerCertificateValidation
-  }));
+  }), undefined, 'secureConnect');
 }
 
 function tlsServerName(host: string): string | undefined {
@@ -91,7 +91,8 @@ async function connectSocket<TSocket extends net.Socket>(
   connectTimeoutMs: number,
   signal: AbortSignal | undefined,
   create: (port: number, host: string) => TSocket,
-  defaultPort?: number
+  defaultPort?: number,
+  readyEvent: 'connect' | 'secureConnect' = 'connect'
 ): Promise<TSocket> {
   const configuredPort = endpoint.port.length > 0 ? Number(endpoint.port) : defaultPort;
   if (!Number.isInteger(configuredPort) || configuredPort === undefined || configuredPort <= 0) {
@@ -107,8 +108,7 @@ async function connectSocket<TSocket extends net.Socket>(
     }, connectTimeoutMs);
     const cleanup = () => {
       clearTimeout(timeout);
-      socket.off('connect', onConnect);
-      socket.off('secureConnect', onConnect);
+      socket.off(readyEvent, onConnect);
       socket.off('error', onError);
       signal?.removeEventListener('abort', onAbort);
     };
@@ -126,8 +126,7 @@ async function connectSocket<TSocket extends net.Socket>(
       socket.destroy();
       reject(connectorError(ZlinkStreamErrorCode.Disconnected, 'Connect canceled.'));
     };
-    socket.once('connect', onConnect);
-    socket.once('secureConnect', onConnect);
+    socket.once(readyEvent, onConnect);
     socket.once('error', onError);
     signal?.addEventListener('abort', onAbort, { once: true });
   });

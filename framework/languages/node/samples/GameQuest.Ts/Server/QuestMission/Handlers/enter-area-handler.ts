@@ -1,13 +1,14 @@
 import { Inject } from '@nestjs/common';
-import { QuestProgressStore } from '../quest-progress-store';
-import type { ZLinkRequestHandler } from '@zlink-systems/framework';
+import { QuestEventProcessor } from '../Application/quest-event-processor';
+import type { ZLinkRouteRequestContext, ZLinkRouteRequestHandler } from '@zlink-systems/framework';
 import type { EnterAreaReq, EventRes } from '../../../Shared/Contracts/messages';
 
-class EnterAreaHandler implements ZLinkRequestHandler<EnterAreaReq, EventRes> {
-  constructor(@Inject(QuestProgressStore) private readonly quests: QuestProgressStore) {}
+class EnterAreaHandler implements ZLinkRouteRequestHandler<EnterAreaReq, EventRes> {
+  constructor(@Inject(QuestEventProcessor) private readonly processor: QuestEventProcessor) {}
 
-  async handle(request: EnterAreaReq): Promise<EventRes> {
-    return this.quests.enterArea(request);
+  async handle(request: EnterAreaReq, context: ZLinkRouteRequestContext): Promise<EventRes> {
+    void context;
+    return this.processor.enterArea(request);
   }
 }
 

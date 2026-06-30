@@ -18,8 +18,6 @@ function createSupportChatApiModule(config: {
             .traceLogFile(`${process.env.SUPPORTCHAT_LOG_DIR ?? 'logs'}/flow-api.log`)
             .traceLabel('api');
           return builder
-          .codecs()
-            .addJson()
           .useDiscovery()
             .addRegistryEndpoint(config.registryRouterEndpoint)
           .addClientServerChannel(SampleNames.apiChannel)

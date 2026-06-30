@@ -65,8 +65,9 @@
 - outbound 호출의 payload 인자는 **업무 객체**다. codec 선택은 호출부가 아니라 runtime
   구성 단계에서 끝난다. framework가 요청·응답 객체 타입을 보고 serializer를 찾아 byte
   payload로 직렬화하고, reply도 업무 객체로 복원한다.
-- JSON은 framework 표준 codec이다. `codecs().add_json()`/`addJson()`으로 등록해서 쓴다
-  (등록 전에는 JSON serializer가 설치되지 않는다).
+- JSON은 framework 표준 codec이며, codec을 따로 설정하지 않으면 기본값으로 사용한다.
+  기존 `codecs().add_json()`/`addJson()` 호출은 호환을 위해 남아 있지만 새 코드에서는
+  JSON만 쓰기 위해 별도 등록을 하지 않는다.
 - Protobuf와 MessagePack은 framework core의 기본 의존성이 아니다. 두 codec은 선택
   framework codec extension package로 제공한다. application은 필요한 package만 설치하고
   구성 단계에서 extension을 등록한다.
@@ -413,7 +414,7 @@ channel 설정도 없을 때 전역 기본값을 사용한다.
 `SPOT`은 일반 channel messaging보다 instance lifecycle과 실행 문맥이 더 먼저
 보이는 표면이다. 공통 정책 차원에서는 아래 정도만 고정한다.
 
-- active SPOT channel view는 `AddSpotMesh(channelName).UseDiscovery()`가
+- active SPOT channel view는 `AddSpotMesh(channelName)`가
   정한다. SpotMesh 등록 하나가 같은 프로세스의 단일 SpotNode를 나타내며, 새 샘플은
   mesh 등록을 기준으로 작성한다.
 - `SpotNode`는 router, pub/sub, route bridge 기반 외부 호출 역할을 가진다.

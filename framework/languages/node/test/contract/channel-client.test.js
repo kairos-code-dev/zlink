@@ -755,6 +755,9 @@ test('route bridge queued sends keep each target on its submitted operation', as
         message() {
           return this;
         },
+        flags() {
+          return this;
+        },
         submit() {
           if (!bridgeWritable) {
             return false;
@@ -1833,7 +1836,7 @@ test('CDC-001 ZLinkFrameworkRuntimeHost JSON codec round-trips nested arrays and
 
 test('ZLinkFrameworkRuntimeHost uses protobuf codec extension for channels', async () => {
   const endpoint = `tcp://127.0.0.1:${await reservePort()}`;
-  const contentType = 'application/x-zlink-protobuf';
+  const contentType = 'application/x-protobuf';
   const calls = [];
   const codecs = new framework.DefaultZLinkCodecRegistryBuilder()
     .use(frameworkProtobuf.zlinkProtobufCodec());

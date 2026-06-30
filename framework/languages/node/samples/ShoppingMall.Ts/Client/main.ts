@@ -1,24 +1,32 @@
 import 'reflect-metadata';
-import { NestFactory } from '@nestjs/core';
-import { ZLINK_CHANNEL_CLIENT } from '@zlink-systems/nestjs';
+import { ZLinkHttpClient } from '@zlink-systems/http-client';
 import { loadSampleConfig } from './Configuration/sample-config';
 import { ShoppingMallClientScenario } from './shoppingmall-client-scenario';
-import { createShoppingMallClientModule } from './shoppingmall-client-module';
-import type { ZLinkChannelClient } from '@zlink-systems/framework';
+import { SampleTimings } from '../Shared/Configuration/sample-names';
 
 async function main(): Promise<void> {
   const config = loadSampleConfig();
-  const ShoppingMallClientModule = createShoppingMallClientModule(config);
-  const app = await NestFactory.createApplicationContext(ShoppingMallClientModule, {
-    logger: false,
-    abortOnError: false
-  });
+  const apiA = ZLinkHttpClient.create(config.apiAHttpUrl)
+    .json()
+    .timeout(SampleTimings.httpTimeout)
+    .build();
+  const apiB = ZLinkHttpClient.create(config.apiBHttpUrl)
+    .json()
+    .timeout(SampleTimings.httpTimeout)
+    .build();
   try {
-    const channels = app.get(ZLINK_CHANNEL_CLIENT, { strict: false }) as ZLinkChannelClient;
-    await new ShoppingMallClientScenario().run(channels);
+    await new ShoppingMallClientScenario().run(
+      apiA,
+      apiB,
+      AbortSignal.timeout(SampleTimings.workflowTimeout)
+    );
   } finally {
-    await app.close();
+    await Promise.allSettled([
+      apiA.close(),
+      apiB.close()
+    ]);
   }
+  console.log('shoppingmall=completed');
   console.log('PASS ShoppingMall.Ts');
 }
 

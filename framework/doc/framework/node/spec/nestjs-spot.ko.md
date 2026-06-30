@@ -225,7 +225,7 @@ export class AppModule {}
 `SpotNode` 는 더 이상 여러 service surface 를 동시에 소유하는 hub 처럼
 설명되지 않는다. 현재 방향에서 그 역할 분담은 다음과 같다.
 
-- `.addSpotMesh(name)` 등록과 `.useDiscovery()` 가 노드의 channel 정체성을 닫는다.
+- `.addSpotMesh(name)` 등록이 노드의 channel 정체성을 닫는다.
 - 다른 channel 호출은 별도로 attach 된 client 경로를 통해 푼다.
 
 이 모델에서 중요한 점은 다음과 같다.

@@ -2,6 +2,10 @@ Set-StrictMode -Version Latest
 $ErrorActionPreference = "Stop"
 
 $scriptDir = Split-Path -Parent $MyInvocation.MyCommand.Path
+if (-not $IsWindows) {
+    & bash (Join-Path $scriptDir "run_sample.sh")
+    exit $LASTEXITCODE
+}
 Push-Location $scriptDir
 $serverProcess = $null
 try {

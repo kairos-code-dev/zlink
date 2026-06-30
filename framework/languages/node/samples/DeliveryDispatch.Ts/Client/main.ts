@@ -1,25 +1,42 @@
-import 'reflect-metadata';
-import { NestFactory } from '@nestjs/core';
-import { ZLINK_CHANNEL_CLIENT } from '@zlink-systems/nestjs';
+import { ZLinkHttpClient } from '@zlink-systems/http-client';
+import * as connector from '@zlink-systems/stream-connector';
 import { loadSampleConfig } from './Configuration/sample-config';
 import { DeliveryDispatchClientScenario } from './deliverydispatch-client-scenario';
-import { createDeliveryDispatchClientModule } from './deliverydispatch-client-module';
-import type { ZLinkChannelClient } from '@zlink-systems/framework';
+import { SampleTimings } from '../Shared/Configuration/sample-names';
+import type { ZlinkStreamConnector } from '@zlink-systems/stream-connector';
 
 async function main(): Promise<void> {
   const config = loadSampleConfig();
-  const DeliveryDispatchClientModule = createDeliveryDispatchClientModule(config);
-  const app = await NestFactory.createApplicationContext(DeliveryDispatchClientModule, {
-    logger: false,
-    abortOnError: false
-  });
+  const http = ZLinkHttpClient.create(config.dispatchApiHttpUrl)
+    .json()
+    .timeout(SampleTimings.clientTimeout)
+    .build();
+  const customer = createClient(config.sessionStreamEndpoint);
   try {
-    const channels = app.get(ZLINK_CHANNEL_CLIENT, { strict: false }) as ZLinkChannelClient;
-    await new DeliveryDispatchClientScenario().run(channels);
+    await new DeliveryDispatchClientScenario().run(
+      http,
+      customer,
+      AbortSignal.timeout(SampleTimings.clientTimeout)
+    );
   } finally {
-    await app.close();
+    await Promise.allSettled([
+      customer.close(),
+      http.close()
+    ]);
   }
+  console.log('deliverydispatch=completed');
   console.log('PASS DeliveryDispatch.Ts');
+}
+
+function createClient(sessionEndpoint: string): ZlinkStreamConnector {
+  return connector.zlinkStreamConnectorFactory.create({
+    endpoint: sessionEndpoint,
+    codec: connector.zlinkStreamJsonCodec,
+    dispatchMode: connector.ZlinkStreamDispatchMode.Immediate,
+    requestTimeoutMs: SampleTimings.requestTimeout,
+    waitTimeoutMs: SampleTimings.clientTimeout,
+    heartbeat: { enabled: false }
+  });
 }
 
 main().catch((error: unknown) => {

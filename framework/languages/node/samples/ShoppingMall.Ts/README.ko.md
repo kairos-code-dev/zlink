@@ -1,8 +1,8 @@
 # ShoppingMall TypeScript Sample
 
-ShoppingMall 샘플은 commerce API가 주문을 시작하고 order workflow 역할이 주문 상태를 이어서
-처리하는 흐름을 보여준다. 현재 TypeScript 구현은 channel handler와 role service로 workflow를
-검증하는 compact 샘플이며, 공통 시나리오의 `OrderWorkflowSpot` owner 구조까지 구현한 full 샘플은 아니다.
+ShoppingMall 샘플은 commerce API가 주문을 접수하고 order workflow 역할이 주문 상태를 이어서
+처리하는 흐름을 보여준다. 클라이언트는 ZLink HTTP client로 두 API 인스턴스를 호출하고,
+서버는 registry, commerce API, order workflow 역할을 분리해서 실행한다.
 
 ## 실행
 
@@ -12,8 +12,10 @@ ShoppingMall 샘플은 commerce API가 주문을 시작하고 order workflow 역
 
 ## Topology
 
-- `Client`는 주문 생성부터 배송 상태까지의 workflow를 검증한다.
-- `Server`는 commerce API와 order workflow 책임을 분리해 보여준다.
+- `Client`는 주문 생성, 멱등성, projection rebuild, scale-out 조회를 검증한다.
+- `Server/CommerceApi`는 HTTP 요청 검증, 멱등성 예약, workflow routing을 담당한다.
+- `Server/OrderWorkflow`는 예약된 주문 command를 처리하고 주문 상태를 갱신한다.
+- `Server/Registry`는 샘플 실행 중 사용할 discovery registry를 띄운다.
 - `Shared`는 주문 상태 계약과 패킷 이름을 정의한다.
 
 ## Success Condition

@@ -15,7 +15,12 @@ type OrderState = {
   updatedAtUnixMs: number;
 };
 
-type StartOrderReq = Packetized & {
+type OrderLineInput = {
+  sku: string;
+  quantity: number;
+};
+
+type StartOrderReq = {
   cartId: string;
   shippingAddressId: string;
   paymentMethodId: string;
@@ -25,6 +30,21 @@ type StartOrderReq = Packetized & {
 type StartOrderRes = {
   orderId: string;
   status: OrderStatus;
+};
+
+type StartOrderWorkflowReq = Packetized & {
+  orderId: string;
+  cartId: string;
+  shippingAddressId: string;
+  paymentMethodId: string;
+  idempotencyKey: string;
+  lines: OrderLineInput[];
+  amount: number;
+  currency: string;
+};
+
+type StartOrderWorkflowRes = {
+  state: OrderState;
 };
 
 type GetOrderStateReq = Packetized & {
@@ -71,7 +91,7 @@ type ServerAssertionRes = {
 };
 
 const PacketNames = {
-  startOrderReq: 'StartOrderReq',
+  startOrderWorkflowReq: 'StartOrderWorkflowReq',
   getOrderStateReq: 'GetOrderStateReq',
   continueOrderWorkflowReq: 'ContinueOrderWorkflowReq',
   rebuildOrderProjectionReq: 'RebuildOrderProjectionReq',
@@ -81,13 +101,27 @@ const PacketNames = {
   orderStateNotify: 'OrderStateNotify'
 } as const;
 
-function startOrderReq(
+function startOrderWorkflowReq(
+  orderId: string,
   cartId: string,
   shippingAddressId: string,
   paymentMethodId: string,
-  idempotencyKey: string
-): StartOrderReq {
-  return { cartId, shippingAddressId, paymentMethodId, idempotencyKey, packetName: () => PacketNames.startOrderReq };
+  idempotencyKey: string,
+  lines: OrderLineInput[],
+  amount: number,
+  currency: string
+): StartOrderWorkflowReq {
+  return {
+    orderId,
+    cartId,
+    shippingAddressId,
+    paymentMethodId,
+    idempotencyKey,
+    lines,
+    amount,
+    currency,
+    packetName: () => PacketNames.startOrderWorkflowReq
+  };
 }
 
 function getOrderStateReq(orderId: string): GetOrderStateReq {
@@ -139,7 +173,7 @@ export {
   rebuildOrderProjectionReq,
   seedPendingIdempotencyReq,
   serverAssertionReq,
-  startOrderReq
+  startOrderWorkflowReq
 };
 
 export type {
@@ -147,6 +181,7 @@ export type {
   ContinueOrderWorkflowRes,
   GetOrderStateReq,
   GetOrderStateRes,
+  OrderLineInput,
   OrderState,
   OrderStatus,
   RebuildOrderProjectionReq,
@@ -155,5 +190,7 @@ export type {
   ServerAssertionReq,
   ServerAssertionRes,
   StartOrderReq,
-  StartOrderRes
+  StartOrderRes,
+  StartOrderWorkflowReq,
+  StartOrderWorkflowRes
 };

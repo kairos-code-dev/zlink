@@ -1,25 +1,46 @@
 import 'reflect-metadata';
-import { NestFactory } from '@nestjs/core';
-import { ZLINK_CHANNEL_CLIENT } from '@zlink-systems/nestjs';
+import { ZLinkHttpClient } from '@zlink-systems/http-client';
+import * as connector from '@zlink-systems/stream-connector';
 import { loadSampleConfig } from './Configuration/sample-config';
 import { GameQuestClientScenario } from './gamequest-client-scenario';
-import { createGameQuestClientModule } from './gamequest-client-module';
-import type { ZLinkChannelClient } from '@zlink-systems/framework';
+import { SampleTimings } from '../Shared/Configuration/sample-names';
+import type { ZlinkStreamConnector } from '@zlink-systems/stream-connector';
 
 async function main(): Promise<void> {
   const config = loadSampleConfig();
-  const GameQuestClientModule = createGameQuestClientModule(config);
-  const app = await NestFactory.createApplicationContext(GameQuestClientModule, {
-    logger: false,
-    abortOnError: false
-  });
+  const apiA = ZLinkHttpClient.create(config.apiAHttpUrl).json().timeout(SampleTimings.httpTimeout).build();
+  const apiB = ZLinkHttpClient.create(config.apiBHttpUrl).json().timeout(SampleTimings.httpTimeout).build();
+  const apiAStream = createStream(config.apiAStreamEndpoint);
+  const apiBStream = createStream(config.apiBStreamEndpoint);
   try {
-    const channels = app.get(ZLINK_CHANNEL_CLIENT, { strict: false }) as ZLinkChannelClient;
-    await new GameQuestClientScenario().run(channels);
+    await new GameQuestClientScenario().run(
+      apiA,
+      apiB,
+      apiAStream,
+      apiBStream,
+      AbortSignal.timeout(SampleTimings.workflowTimeout)
+    );
   } finally {
-    await app.close();
+    await Promise.allSettled([
+      apiA.close(),
+      apiB.close(),
+      apiAStream.close(),
+      apiBStream.close()
+    ]);
   }
+  console.log('gamequest=completed');
   console.log('PASS GameQuest.Ts');
+}
+
+function createStream(endpoint: string): ZlinkStreamConnector {
+  return connector.zlinkStreamConnectorFactory.create({
+    endpoint,
+    codec: connector.zlinkStreamJsonCodec,
+    dispatchMode: connector.ZlinkStreamDispatchMode.Immediate,
+    requestTimeoutMs: SampleTimings.requestTimeout,
+    waitTimeoutMs: SampleTimings.workflowTimeout,
+    heartbeat: { enabled: false }
+  });
 }
 
 main().catch((error: unknown) => {

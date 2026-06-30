@@ -1,0 +1,103 @@
+import { Injectable } from '@nestjs/common';
+import type {
+  ZLinkMessageFlowEvent,
+  ZLinkMessageFlowObserver,
+  ZLinkRequestContext,
+  ZLinkRequestHandler,
+  ZLinkSendContext,
+  ZLinkSendHandler
+} from '@zlink-systems/framework';
+import { ZLinkMessageFlowOutcome } from '@zlink-systems/framework';
+import type {
+  PayloadReply,
+  PayloadRequest,
+  ProfileCommand,
+  ProfileReply,
+  ProfileRequest
+} from '../../../Shared/messages';
+import { sha256Hex } from '../../../Shared/messages';
+import { EvidenceStore } from '../Infrastructure/evidence-store';
+import { FaultState } from '../Infrastructure/fault-state';
+
+@Injectable()
+export class ProfileRequestHandler implements ZLinkRequestHandler<ProfileRequest, ProfileReply> {
+  constructor(
+    private readonly evidence: EvidenceStore,
+    private readonly fault: FaultState
+  ) {}
+
+  async handle(request: ProfileRequest, context: ZLinkRequestContext): Promise<ProfileReply> {
+    const marker = request.marker ?? '<none>';
+    this.evidence.add(`profile-start|rid=${this.evidence.rid}|value=${request.value}|marker=${marker}|packet=${context.packetName}`);
+    if (this.fault.mode === 'gray' && request.value === 'fast') {
+      this.evidence.add(`profile-fault|rid=${this.evidence.rid}|marker=${marker}|mode=gray|packet=${context.packetName}`);
+      throw new Error('gray failure');
+    }
+    if (this.fault.mode === 'crash-on-slow-start' && request.value === 'slow') {
+      setTimeout(() => process.exit(134), 50);
+    }
+    if (request.value === 'slow') {
+      await delay(3000);
+    }
+    this.evidence.add(`profile-request|rid=${this.evidence.rid}|value=${request.value}|marker=${marker}|packet=${context.packetName}`);
+    return { value: `profile:${request.value}`, providerRid: this.evidence.rid };
+  }
+}
+
+@Injectable()
+export class ProfileCommandHandler implements ZLinkSendHandler<ProfileCommand> {
+  constructor(private readonly evidence: EvidenceStore) {}
+
+  async handle(command: ProfileCommand, context: ZLinkSendContext): Promise<void> {
+    if (command.commandId.startsWith('rl-c9-slow-')) {
+      await delay(1000);
+    }
+    this.evidence.add(
+      `profile-command|rid=${this.evidence.rid}|command=${command.commandId}|marker=${command.commandId}|packet=${context.packetName}`
+    );
+  }
+}
+
+@Injectable()
+export class PayloadRequestHandler implements ZLinkRequestHandler<PayloadRequest, PayloadReply> {
+  constructor(private readonly evidence: EvidenceStore) {}
+
+  async handle(request: PayloadRequest, context: ZLinkRequestContext): Promise<PayloadReply> {
+    const hash = sha256Hex(request.payload);
+    this.evidence.add(
+      `payload-request|rid=${this.evidence.rid}|marker=${request.marker}`
+      + `|length=${request.payload.length}|sha256=${hash}|packet=${context.packetName}`
+    );
+    return { marker: request.marker, length: request.payload.length, sha256: hash };
+  }
+}
+
+@Injectable()
+export class EvidenceDispatchErrorObserver implements ZLinkMessageFlowObserver {
+  constructor(
+    private readonly evidence: EvidenceStore,
+    private readonly fault: FaultState
+  ) {}
+
+  onMessageFlow(flow: ZLinkMessageFlowEvent): void {
+    if (flow.outcome !== ZLinkMessageFlowOutcome.Error) {
+      return;
+    }
+    this.evidence.add(
+      'dispatch-error'
+      + `|surface=${flow.surface}`
+      + `|kind=${flow.messageKind}`
+      + `|reason=${flow.errorReason}`
+      + `|action=${flow.errorAction}`
+      + `|packet=${flow.packetName ?? '<null>'}`
+      + `|channel=${flow.channelName ?? '<null>'}`
+    );
+    if (this.fault.mode === 'observer-throws') {
+      throw new Error('dispatch observer failure');
+    }
+  }
+}
+
+function delay(milliseconds: number): Promise<void> {
+  return new Promise((resolve) => setTimeout(resolve, milliseconds));
+}

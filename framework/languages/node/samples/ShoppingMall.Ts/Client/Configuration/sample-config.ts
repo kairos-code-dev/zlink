@@ -1,12 +1,12 @@
 type SampleConfig = {
-  registryRouterEndpoint: string;
-  workflowEndpoint: string;
+  apiAHttpUrl: string;
+  apiBHttpUrl: string;
 };
 
 function loadSampleConfig(): SampleConfig {
   return {
-    registryRouterEndpoint: process.env.SHOPPINGMALL_REGISTRY_ROUTER_ENDPOINT ?? 'tcp://127.0.0.1:31086',
-    workflowEndpoint: process.env.SHOPPINGMALL_WORKFLOW_ENDPOINT ?? 'tcp://127.0.0.1:31093'
+    apiAHttpUrl: process.env.SHOPPINGMALL_API_A_HTTP ?? 'http://127.0.0.1:31087',
+    apiBHttpUrl: process.env.SHOPPINGMALL_API_B_HTTP ?? 'http://127.0.0.1:31088'
   };
 }
 

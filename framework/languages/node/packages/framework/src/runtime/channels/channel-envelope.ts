@@ -8,7 +8,7 @@ import {
 } from '../../contracts';
 import { ZLinkConfigurationException } from '../configuration';
 import { resolveFrameworkPacketName } from '../messaging/packet-name';
-import { selectDefaultSerializer } from '../messaging/payload-codec';
+import { selectSerializer } from '../messaging/payload-codec';
 
 export const JSON_CONTENT_TYPE = 'application/json';
 export const BINARY_CONTENT_TYPE = 'application/octet-stream';
@@ -58,7 +58,7 @@ export function encodeChannelEnvelopeParts(
   codecs?: ZLinkChannelEnvelopeCodecRegistry,
   correlationId?: string
 ): readonly MessageLike[] {
-  const encoded = encodePayload(payload, codecs);
+  const encoded = encodePayload(payload, codecs, { packetName });
   const header: ZLinkChannelEnvelopeHeader = {
     kind,
     channelName,
@@ -80,7 +80,7 @@ export function encodeChannelPublishEnvelopeParts(
   payload: unknown,
   codecs?: ZLinkChannelEnvelopeCodecRegistry
 ): readonly MessageLike[] {
-  const encoded = encodePayload(payload, codecs);
+  const encoded = encodePayload(payload, codecs, { packetName });
   const header: ZLinkChannelEnvelopeHeader = {
     kind: ZLinkChannelMessageKind.Publish,
     channelName,
@@ -100,7 +100,7 @@ export function encodeChannelReplyParts(
   payload: unknown,
   codecs?: ZLinkChannelEnvelopeCodecRegistry
 ): readonly MessageLike[] {
-  const encoded = encodePayload(payload ?? Buffer.alloc(0), codecs);
+  const encoded = encodePayload(payload ?? Buffer.alloc(0), codecs, { packetName: request.messageName });
   const header: ZLinkChannelEnvelopeHeader = {
     kind: ZLinkChannelMessageKind.Response,
     channelName: request.channelName,
@@ -196,11 +196,15 @@ export function closeMessages(parts: readonly MessageLike[]): void {
   }
 }
 
-function encodePayload(value: unknown, codecs: ZLinkChannelEnvelopeCodecRegistry | undefined): {
+function encodePayload(
+  value: unknown,
+  codecs: ZLinkChannelEnvelopeCodecRegistry | undefined,
+  context: { readonly packetName?: string } = {}
+): {
   readonly contentType: string;
   readonly message: MessageLike;
 } {
-  const serializer = selectDefaultSerializer(codecs);
+  const serializer = selectSerializer(value, codecs, context);
   if (serializer !== undefined && !(Buffer.isBuffer(value) || value instanceof Uint8Array || isMessage(value))) {
     const contentType = requireDefaultSerializerContentType(codecs, serializer);
     return { contentType, message: serializer.serialize(value).data() };

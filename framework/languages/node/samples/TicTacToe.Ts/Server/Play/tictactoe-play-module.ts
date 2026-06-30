@@ -50,8 +50,6 @@ function createTicTacToePlayModule(config: {
           .options({
             spotRemoteAddressResolver: RedisSpotRemoteAddressResolver
           })
-          .codecs()
-            .addJson()
           .addClientServerChannel(SampleNames.playChannel)
             .enableServer(config.playEndpoint)
             .addRequestHandler(PacketNames.createGame, CreateGameHandler)

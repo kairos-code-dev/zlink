@@ -25,6 +25,8 @@ import type {
   ZLinkBackendSocketMonitorEvent
 } from '../backend';
 
+const ZLINK_DISCONNECT_REASON_HANDSHAKE_FAILED = 3;
+
 export class DefaultZLinkRuntimeEventPublisher implements ZLinkRuntimeEventPublisherContract {
   private readonly handlers: ZLinkRuntimeEventHandler<ZLinkRuntimeEvent>[] = [];
 
@@ -34,7 +36,12 @@ export class DefaultZLinkRuntimeEventPublisher implements ZLinkRuntimeEventPubli
 
   async publish<TEvent extends ZLinkRuntimeEvent>(event: TEvent): Promise<void> {
     for (const handler of this.handlers) {
-      await handler.handle(event);
+      try {
+        await handler.handle(event);
+      } catch (error) {
+        console.error('[monitoring-event-dispatch]', error);
+        return;
+      }
     }
   }
 }
@@ -160,7 +167,7 @@ function toSocketEvent(sourceName: string, raw: ZLinkBackendSocketMonitorEvent):
   return {
     sourceName,
     timestamp: new Date(),
-    event: mapSocketEvent(raw.nativeEvent as ZLinkSocketNativeEventType),
+    event: mapSocketEvent(raw.nativeEvent as ZLinkSocketNativeEventType, raw.value),
     routingId: raw.routingId as unknown as string | undefined,
     localAddr: raw.localAddr,
     remoteAddr: raw.remoteAddr,
@@ -171,7 +178,7 @@ function toSocketEvent(sourceName: string, raw: ZLinkBackendSocketMonitorEvent):
   };
 }
 
-function mapSocketEvent(nativeEvent: ZLinkSocketNativeEventType): ZLinkSocketEventKind {
+function mapSocketEvent(nativeEvent: ZLinkSocketNativeEventType, nativeValue: number): ZLinkSocketEventKind {
   switch (nativeEvent) {
     case SocketNativeEventType.Connected:
     case SocketNativeEventType.Accepted:
@@ -180,7 +187,9 @@ function mapSocketEvent(nativeEvent: ZLinkSocketNativeEventType): ZLinkSocketEve
     case SocketNativeEventType.ConnectionReady:
       return SocketEventKind.ConnectionReady;
     case SocketNativeEventType.Disconnected:
-      return SocketEventKind.Disconnected;
+      return nativeValue === ZLINK_DISCONNECT_REASON_HANDSHAKE_FAILED
+        ? SocketEventKind.HandshakeFailed
+        : SocketEventKind.Disconnected;
     case SocketNativeEventType.HandshakeFailedNoDetail:
     case SocketNativeEventType.HandshakeFailedProtocol:
     case SocketNativeEventType.HandshakeFailedAuth:

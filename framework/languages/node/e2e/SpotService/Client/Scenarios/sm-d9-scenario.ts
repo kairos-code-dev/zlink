@@ -1,0 +1,84 @@
+import {
+  zlinkStreamConnectorFactory,
+  zlinkStreamJsonCodec,
+  ZlinkStreamDispatchMode,
+  ZlinkStreamMessageKind
+} from '@zlink-systems/stream-connector';
+import type { ZlinkStreamInboundObservation } from '@zlink-systems/stream-connector';
+import type {
+  ActorPingReply,
+  ActorPingReq,
+  AuthReply,
+  AuthReq
+} from '../../Shared/messages';
+import type { ClientOptions } from '../Support/client-options';
+import { ensure } from '../Support/scenario-assert';
+import { decodeStreamReply } from '../Support/stream-reply';
+
+export async function runSmD9(options: ClientOptions): Promise<void> {
+  const observed: ZlinkStreamInboundObservation[] = [];
+  const client = zlinkStreamConnectorFactory.create({
+    endpoint: options.sessionAStreamEndpoint,
+    codec: zlinkStreamJsonCodec,
+    dispatchMode: ZlinkStreamDispatchMode.Immediate,
+    heartbeat: { enabled: false },
+    waitTimeoutMs: 10000
+  });
+  client.observeInbound((observation) => {
+    observed.push(observation);
+  });
+
+  await client.connect();
+  try {
+    const auth = decodeStreamReply<AuthReply>(await client
+      .request({
+        actorId: 'actor-sm-d9',
+        displayName: 'observer',
+        nodeRid: 'play-a'
+      } satisfies AuthReq)
+      .packetName('AuthReq')
+      .timeout(5000)
+      .submit());
+    ensure(auth.actorId === 'actor-sm-d9', 'SM-D9 auth reply actor mismatch.');
+
+    const first = decodeStreamReply<ActorPingReply>(await client
+      .request({ value: 'observer-1' } satisfies ActorPingReq)
+      .packetName('ActorPingReq')
+      .timeout(5000)
+      .submit());
+    ensure(first.value === 'observer-1', 'SM-D9 first ping value mismatch.');
+
+    const second = decodeStreamReply<ActorPingReply>(await client
+      .request({ value: 'observer-2' } satisfies ActorPingReq)
+      .packetName('ActorPingReq')
+      .timeout(5000)
+      .submit());
+    ensure(second.value === 'observer-2', 'SM-D9 second ping value mismatch.');
+
+    await waitForObservedReplies(observed, 2);
+  } finally {
+    await client.close();
+  }
+
+  console.log('scenario SM-D9 passed');
+}
+
+async function waitForObservedReplies(
+  observed: readonly ZlinkStreamInboundObservation[],
+  expectedCount: number
+): Promise<void> {
+  const deadline = Date.now() + 5000;
+  while (Date.now() < deadline) {
+    const replies = observed.filter((item) =>
+      item.kind === ZlinkStreamMessageKind.Response
+      && item.requestSeq !== undefined
+      && item.payloadLength > 0
+    ).length;
+    if (replies >= expectedCount) {
+      return;
+    }
+    await new Promise((resolve) => setTimeout(resolve, 25));
+  }
+  const summary = observed.map((item) => `${item.kind}:${item.name}:${item.requestSeq?.toString() ?? '-'}`).join(',');
+  throw new Error(`SM-D9 inbound observer did not observe stream replies. observed=${summary}`);
+}

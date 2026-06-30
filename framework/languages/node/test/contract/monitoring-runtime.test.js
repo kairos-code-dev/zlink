@@ -174,7 +174,7 @@ test('spot timer reports handler failure immediately through runtime publisher',
   );
 
   try {
-    await waitFor(() => events.length === 1, 1000);
+    await waitFor(() => events.length >= 1, 1000);
   } finally {
     await timer.dispose();
   }

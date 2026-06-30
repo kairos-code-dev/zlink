@@ -4,7 +4,8 @@ import {
   ZLinkMessage,
   type Type,
   ZLinkEncodedPayload,
-  type ZLinkMessageSerializer
+  type ZLinkMessageSerializer,
+  type ZLinkSerializerSelectionContext
 } from '../../contracts';
 import type { Message } from '../../contracts/Common/Message';
 import { ZLinkConfigurationException } from '../configuration';
@@ -15,10 +16,11 @@ export interface ZLinkSerializerRegistryLike {
 
 export function encodeFrameworkPayloadMessage(
   payload: unknown,
-  registry?: ZLinkSerializerRegistryLike | ReadonlyMap<string, ZLinkMessageSerializer>
+  registry?: ZLinkSerializerRegistryLike | ReadonlyMap<string, ZLinkMessageSerializer>,
+  context: ZLinkSerializerSelectionContext = {}
 ): Message {
   if (isZLinkMessage(payload)) {
-    return toBindingMessage(payload.toEncodedPayload(registry));
+    return toBindingMessage(payload.toEncodedPayload(registry, context));
   }
   if (isMessage(payload)) {
     throw new ZLinkConfigurationException(
@@ -31,7 +33,7 @@ export function encodeFrameworkPayloadMessage(
     );
   }
 
-  const serializer = selectDefaultSerializer(registry);
+  const serializer = selectSerializer(payload, registry, context);
   if (serializer !== undefined) {
     return toBindingMessage(serializer.serialize(payload));
   }
@@ -74,12 +76,34 @@ export function wrapFrameworkPayloadMessage(
 export function selectDefaultSerializer(
   registry?: ZLinkSerializerRegistryLike | ReadonlyMap<string, ZLinkMessageSerializer>
 ): ZLinkMessageSerializer | undefined {
+  return selectSerializer(undefined, registry, {});
+}
+
+export function selectSerializer(
+  value: unknown,
+  registry?: ZLinkSerializerRegistryLike | ReadonlyMap<string, ZLinkMessageSerializer>,
+  context: ZLinkSerializerSelectionContext = {}
+): ZLinkMessageSerializer | undefined {
   const serializers = serializerMapOf(registry);
   if (serializers === undefined || serializers.size === 0) {
     return undefined;
   }
+  const matching = [...serializers.values()].filter((serializer) =>
+    serializer.canSerialize?.(value, context) === true
+  );
+  if (matching.length === 1) {
+    return matching[0];
+  }
+  if (matching.length > 1) {
+    throw new ZLinkConfigurationException(
+      'Payload serializer is ambiguous because more than one serializer accepts the payload.'
+    );
+  }
   if (serializers.size === 1) {
     return serializers.values().next().value;
+  }
+  if ([...serializers.values()].every((serializer) => serializer.canSerialize !== undefined)) {
+    return undefined;
   }
   throw new ZLinkConfigurationException(
     'Payload serializer is ambiguous because more than one serializer is registered.'

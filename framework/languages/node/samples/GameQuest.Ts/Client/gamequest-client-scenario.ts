@@ -1,81 +1,159 @@
 import {
   collectItemReq,
   completeMissionReq,
-  deleteQuestProjectionReq,
   enterAreaReq,
-  gameQuestServerAssertReq,
   getGameplaySnapshotReq,
   getQuestProgressReq,
   killMonsterReq,
-  rebuildQuestProjectionReq,
   subscribeQuestReq,
   syncQuestProgressReq,
   unlockFeatureReq
 } from '../Shared/Contracts/messages';
-import { SampleNames } from '../Shared/Configuration/sample-names';
-import type { ZLinkChannelClient } from '@zlink-systems/framework';
+import type { ZLinkHttpClient } from '@zlink-systems/http-client';
+import type { ZlinkStreamConnector } from '@zlink-systems/stream-connector';
 import type {
   EventRes,
   GameQuestServerAssertRes,
   GetGameplaySnapshotRes,
   GetQuestProgressRes,
   QuestProgress,
+  QuestCompletedNotify,
+  QuestProgressNotify,
   SubscribeQuestRes,
   SyncQuestProgressRes
 } from '../Shared/Contracts/messages';
 
 class GameQuestClientScenario {
-  async run(channels: ZLinkChannelClient): Promise<void> {
-    const subscribed = await request<SubscribeQuestRes>(channels, subscribeQuestReq('player-alice'));
-    ensure(subscribed.activeQuests.length === 0);
+  async run(
+    apiA: ZLinkHttpClient,
+    apiB: ZLinkHttpClient,
+    apiAStream: ZlinkStreamConnector,
+    apiBStream: ZlinkStreamConnector,
+    signal?: AbortSignal
+  ): Promise<void> {
+    await apiAStream.connect(signal);
+    const subscribed = await apiAStream.request(subscribeQuestReq('player-alice'), Object)
+      .packetName('SubscribeQuestReq')
+      .submit<SubscribeQuestRes>(signal);
+    ensure(Array.isArray(subscribed.activeQuests));
 
-    const firstKill = await request<EventRes>(channels, killMonsterReq('player-alice', 'wolf', 'forest', 'kill-1'));
+    const firstProgress = apiAStream.waitFor<QuestProgressNotify>('QuestProgressNotify')
+      .where((message) => message.payload.playerId === 'player-alice' && message.payload.progress.questId === 'first-hunt')
+      .submit(signal);
+    const firstKill = await post<EventRes>(apiA, '/combat/kill', killMonsterReq('player-alice', 'wolf', 'forest', 'kill-1'));
     ensure(firstKill.eventId === 'player-alice-kill-1');
-    const secondKill = await request<EventRes>(channels, killMonsterReq('player-alice', 'wolf', 'forest', 'kill-2'));
+    ensure((await firstProgress).payload.progress.currentCount === 1);
+    const firstCompleted = apiAStream.waitFor<QuestCompletedNotify>('QuestCompletedNotify')
+      .where((message) => message.payload.playerId === 'player-alice' && message.payload.progress.questId === 'first-hunt')
+      .submit(signal);
+    const secondKill = await post<EventRes>(apiA, '/combat/kill', killMonsterReq('player-alice', 'wolf', 'forest', 'kill-2'));
     ensure(secondKill.eventId === 'player-alice-kill-2');
-    const thirdKill = await request<EventRes>(channels, killMonsterReq('player-alice', 'wolf', 'forest', 'kill-3'));
+    const thirdKill = await post<EventRes>(apiA, '/combat/kill', killMonsterReq('player-alice', 'wolf', 'forest', 'kill-3'));
     ensure(thirdKill.eventId === 'player-alice-kill-3');
-    const duplicate = await request<EventRes>(channels, killMonsterReq('player-alice', 'wolf', 'forest', 'kill-3'));
+    ensure((await firstCompleted).payload.rewardGranted);
+    const duplicate = await post<EventRes>(apiA, '/combat/kill', killMonsterReq('player-alice', 'wolf', 'forest', 'kill-3'));
     ensure(duplicate.eventId === thirdKill.eventId);
 
-    const auction = await request<EventRes>(channels, unlockFeatureReq('player-alice', 'auction', 'unlock-auction'));
+    const auctionCompleted = apiAStream.waitFor<QuestCompletedNotify>('QuestCompletedNotify')
+      .where((message) => message.payload.playerId === 'player-alice' && message.payload.progress.questId === 'open-auction')
+      .submit(signal);
+    const auction = await post<EventRes>(apiA, '/feature/unlock', unlockFeatureReq('player-alice', 'auction', 'unlock-auction'));
     ensure(auction.eventId === 'player-alice-unlock-auction');
-    const snapshot = await request<GetGameplaySnapshotRes>(channels, getGameplaySnapshotReq('player-alice'));
+    ensure((await auctionCompleted).payload.rewardGranted);
+    const snapshot = await post<GetGameplaySnapshotRes>(apiA, '/internal/snapshot', getGameplaySnapshotReq('player-alice'));
     ensure(snapshot.unlockedFeatureIds.includes('auction'));
 
-    const tutorial = await request<EventRes>(channels, completeMissionReq('player-alice', 'tutorial', 'mission-tutorial'));
+    const tutorial = await post<EventRes>(apiA, '/mission/complete', completeMissionReq('player-alice', 'tutorial', 'mission-tutorial'));
     ensure(tutorial.eventId === 'player-alice-mission-tutorial');
-    const ruins = await request<EventRes>(channels, enterAreaReq('player-alice', 'ruins', 'enter-ruins'));
+    const ruins = await post<EventRes>(apiA, '/world/enter', enterAreaReq('player-alice', 'ruins', 'enter-ruins'));
     ensure(ruins.eventId === 'player-alice-enter-ruins');
 
-    const offlineItem = await request<EventRes>(channels, collectItemReq('player-bob', 'healing-herb', 1, 'herb-1'));
+    const offlineItem = await post<EventRes>(apiA, '/inventory/collect', collectItemReq('player-bob', 'healing-herb', 1, 'herb-1'));
     ensure(offlineItem.eventId === 'player-bob-herb-1');
-    const bobSubscribed = await request<SubscribeQuestRes>(channels, subscribeQuestReq('player-bob'));
+    await apiBStream.connect(signal);
+    const bobSubscribed = await apiBStream.request(subscribeQuestReq('player-bob'), Object)
+      .packetName('SubscribeQuestReq')
+      .submit<SubscribeQuestRes>(signal);
     ensure(bobSubscribed.activeQuests.some((progress) => progress.questId === 'herb-gathering' && progress.currentCount === 1));
-    const onlineItem = await request<EventRes>(channels, collectItemReq('player-bob', 'healing-herb', 4, 'herb-2'));
+    const herbCompleted = apiBStream.waitFor<QuestCompletedNotify>('QuestCompletedNotify')
+      .where((message) => message.payload.playerId === 'player-bob' && message.payload.progress.questId === 'herb-gathering')
+      .submit(signal);
+    const onlineItem = await post<EventRes>(apiB, '/inventory/collect', collectItemReq('player-bob', 'healing-herb', 4, 'herb-2'));
     ensure(onlineItem.eventId === 'player-bob-herb-2');
-    const bobProgress = await request<GetQuestProgressRes>(channels, getQuestProgressReq('player-bob'));
+    ensure((await herbCompleted).payload.rewardGranted);
+    const bobProgress = await apiBStream.request(getQuestProgressReq('player-bob'), Object)
+      .packetName('GetQuestProgressReq')
+      .submit<GetQuestProgressRes>(signal);
     ensure(bobProgress.activeQuests.some((progress) => progress.questId === 'herb-gathering' && progress.status === 'RewardGranted'));
 
-    await request<QuestProgress | undefined>(channels, deleteQuestProjectionReq('player-bob', 'herb-gathering'));
-    const missingProjection = await request<GetQuestProgressRes>(channels, getQuestProgressReq('player-bob'));
+    await apiA.post('/self-check/projection/player-bob/herb-gathering/delete').fetch<QuestProgress | undefined>();
+    const missingProjection = await apiBStream.request(getQuestProgressReq('player-bob'), Object)
+      .packetName('GetQuestProgressReq')
+      .submit<GetQuestProgressRes>(signal);
     ensure(missingProjection.activeQuests.every((progress) => progress.questId !== 'herb-gathering'));
-    const rebuilt = await request<QuestProgress>(channels, rebuildQuestProjectionReq('player-bob', 'herb-gathering'));
+    const rebuilt = await apiA.post('/self-check/projection/player-bob/herb-gathering/rebuild').fetch<QuestProgress>();
     ensure(rebuilt.questId === 'herb-gathering' && rebuilt.status === 'RewardGranted');
 
-    const sync = await request<SyncQuestProgressRes>(channels, syncQuestProgressReq('player-alice'));
+    await apiB.post('/self-check/gameplay/kill-without-publish/player-alice').fetch<Record<string, unknown>>();
+    const sync = await apiAStream.request(syncQuestProgressReq('player-alice'), Object)
+      .packetName('SyncQuestProgressReq')
+      .submit<SyncQuestProgressRes>(signal);
     ensure(sync.updatedQuests.some((progress) => progress.questId === 'first-hunt' && progress.currentCount >= 4));
+    const reconciled = await apiB.get('/quest/progress/player-alice').fetch<GetQuestProgressRes>();
+    ensure(reconciled.activeQuests.some((progress) => progress.questId === 'first-hunt' && progress.currentCount >= 4));
 
-    const assertion = await request<GameQuestServerAssertRes>(channels, gameQuestServerAssertReq());
+    const assertion = await waitForServerAssertion(apiA, signal);
     ensure(assertion.passed);
     console.log('gamequest-server-evidence=completed');
   }
 }
 
-async function request<TResponse>(channels: ZLinkChannelClient, payload: unknown): Promise<TResponse> {
-  return await channels
-    .requestToChannel(SampleNames.questChannel, payload)
-    .submit<TResponse>();
+async function post<TResponse>(api: ZLinkHttpClient, path: string, payload: unknown): Promise<TResponse> {
+  return await retry(() => api.post(path).body(stripPacket(payload)).fetch<TResponse>());
+}
+
+async function waitForServerAssertion(api: ZLinkHttpClient, signal?: AbortSignal): Promise<GameQuestServerAssertRes> {
+  let last: GameQuestServerAssertRes | undefined;
+  for (let attempt = 0; attempt < 80 && signal?.aborted !== true; attempt += 1) {
+    last = await retry(() => api.post('/self-check/assert').fetch<GameQuestServerAssertRes>());
+    if (last.passed) {
+      return last;
+    }
+    await delay(250, signal);
+  }
+  return last ?? { passed: false, evidence: [] };
+}
+
+async function retry<T>(operation: () => Promise<T>): Promise<T> {
+  let lastError: unknown;
+  for (let attempt = 0; attempt < 40; attempt += 1) {
+    try {
+      return await operation();
+    } catch (error) {
+      lastError = error;
+      await delay(250);
+    }
+  }
+  throw lastError instanceof Error ? lastError : new Error(String(lastError));
+}
+
+function delay(ms: number, signal?: AbortSignal): Promise<void> {
+  return new Promise((resolve, reject) => {
+    const timer = setTimeout(resolve, ms);
+    signal?.addEventListener('abort', () => {
+      clearTimeout(timer);
+      reject(new DOMException('Operation aborted.', 'AbortError'));
+    }, { once: true });
+  });
+}
+
+function stripPacket(payload: unknown): unknown {
+  if (typeof payload !== 'object' || payload === null) {
+    return payload;
+  }
+  const { packetName, ...body } = payload as Record<string, unknown>;
+  void packetName;
+  return body;
 }
 
 function ensure(condition: boolean): void {

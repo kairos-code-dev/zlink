@@ -10,6 +10,9 @@
       "@zlink-systems/framework": [
         "../../packages/framework/dist"
       ],
+      "@zlink-systems/http-client": [
+        "../../packages/http-client/dist"
+      ],
       "@zlink-systems/nestjs": [
         "../../packages/nestjs/dist"
       ],

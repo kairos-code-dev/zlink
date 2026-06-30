@@ -6,106 +6,162 @@ cd "${SCRIPT_DIR}"
 npm run build >/dev/null
 
 RUN_DIR="$(mktemp -d)"
+LOG_DIR="${RUN_DIR}/logs"
+WORK_DIR="${RUN_DIR}/work"
 export DELIVERYDISPATCH_LOG_DIR="${DELIVERYDISPATCH_LOG_DIR:-${SCRIPT_DIR}/logs}"
-mkdir -p "${DELIVERYDISPATCH_LOG_DIR}"
+export DELIVERYDISPATCH_WORK_DIR="${WORK_DIR}"
+mkdir -p "${LOG_DIR}" "${WORK_DIR}" "${DELIVERYDISPATCH_LOG_DIR}"
 rm -f "${DELIVERYDISPATCH_LOG_DIR}"/*.log
 PIDS=()
 
 cleanup() {
-  for pid in "${PIDS[@]}"; do
-    kill "${pid}" >/dev/null 2>&1 || true
+  for ((i=${#PIDS[@]}-1; i>=0; i--)); do
+    local pid="${PIDS[$i]}"
+    kill -INT "${pid}" >/dev/null 2>&1 || true
+  done
+  for _ in $(seq 1 20); do
+    local any_alive=0
+    for pid in "${PIDS[@]}"; do
+      if kill -0 "${pid}" >/dev/null 2>&1; then
+        any_alive=1
+        break
+      fi
+    done
+    if [[ "${any_alive}" == "0" ]]; then
+      break
+    fi
+    sleep 0.1
   done
   for pid in "${PIDS[@]}"; do
+    if kill -0 "${pid}" >/dev/null 2>&1; then
+      kill -9 "${pid}" >/dev/null 2>&1 || true
+    fi
     wait "${pid}" 2>/dev/null || true
   done
-  rm -rf "${RUN_DIR}"
+  if [[ "${DELIVERYDISPATCH_KEEP_RUN_DIR:-}" == "1" ]]; then
+    echo "runDir=${RUN_DIR}"
+  else
+    rm -rf "${RUN_DIR}"
+  fi
 }
 trap cleanup EXIT
 
-read -r DELIVERYDISPATCH_REGISTRY_PUB_ENDPOINT DELIVERYDISPATCH_REGISTRY_ROUTER_ENDPOINT DELIVERYDISPATCH_DISPATCH_ENDPOINT <<<"$(python3 - <<'PY'
+read -r -a PORTS <<<"$(python3 - <<'PY'
+import random
 import socket
+
 sockets = []
-for _ in range(3):
-    sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
-    sock.bind(("127.0.0.1", 0))
-    sockets.append(sock)
-print(" ".join(f"tcp://127.0.0.1:{sock.getsockname()[1]}" for sock in sockets))
-for sock in sockets:
-    sock.close()
+chosen = set()
+try:
+    while len(sockets) < 13:
+        port = random.randint(41000, 60999)
+        if port in chosen:
+            continue
+        sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+        try:
+            sock.bind(("127.0.0.1", port))
+        except OSError:
+            sock.close()
+            continue
+        chosen.add(port)
+        sockets.append(sock)
+    print(" ".join(str(sock.getsockname()[1]) for sock in sockets))
+finally:
+    for sock in sockets:
+        sock.close()
 PY
 )"
-export DELIVERYDISPATCH_REGISTRY_PUB_ENDPOINT
-export DELIVERYDISPATCH_REGISTRY_ROUTER_ENDPOINT
-export DELIVERYDISPATCH_DISPATCH_ENDPOINT
-export ZLINK_SAMPLE_CONFIG="${RUN_DIR}/sample.env"
 
-endpoint_host="${DELIVERYDISPATCH_DISPATCH_ENDPOINT#tcp://}"
-endpoint_host="${endpoint_host%:*}"
-endpoint_port="${DELIVERYDISPATCH_DISPATCH_ENDPOINT##*:}"
+export DELIVERYDISPATCH_REGISTRY_PUB="tcp://127.0.0.1:${PORTS[0]}"
+export DELIVERYDISPATCH_REGISTRY="tcp://127.0.0.1:${PORTS[1]}"
+export DELIVERYDISPATCH_API_HTTP="http://127.0.0.1:${PORTS[2]}"
+export DELIVERYDISPATCH_CENTER_ROUTE="tcp://127.0.0.1:${PORTS[3]}"
+export DELIVERYDISPATCH_COURIER_A_ROUTE="tcp://127.0.0.1:${PORTS[4]}"
+export DELIVERYDISPATCH_COURIER_B_ROUTE="tcp://127.0.0.1:${PORTS[5]}"
+export DELIVERYDISPATCH_TRACKING_ROUTE="tcp://127.0.0.1:${PORTS[6]}"
+export DELIVERYDISPATCH_STATUS_FANOUT="tcp://127.0.0.1:${PORTS[7]}"
+export DELIVERYDISPATCH_TRACKING_SPOT_ROUTER="tcp://127.0.0.1:${PORTS[8]}"
+export DELIVERYDISPATCH_TRACKING_SPOT="tcp://127.0.0.1:${PORTS[9]}"
+export DELIVERYDISPATCH_SESSION_STREAM="tcp://127.0.0.1:${PORTS[10]}"
+export DELIVERYDISPATCH_SESSION_SPOT_ROUTER="tcp://127.0.0.1:${PORTS[11]}"
+export DELIVERYDISPATCH_SESSION_SPOT="tcp://127.0.0.1:${PORTS[12]}"
+
+endpoint_host() {
+  local endpoint="$1"
+  endpoint="${endpoint#tcp://}"
+  endpoint="${endpoint#http://}"
+  echo "${endpoint%:*}"
+}
+
+endpoint_port() {
+  local endpoint="$1"
+  endpoint="${endpoint#tcp://}"
+  endpoint="${endpoint#http://}"
+  echo "${endpoint##*:}"
+}
 
 wait_port() {
-  for _ in $(seq 1 100); do
-    if (echo >"/dev/tcp/${endpoint_host}/${endpoint_port}") >/dev/null 2>&1; then
+  local name="$1"
+  local endpoint="$2"
+  local host
+  local port
+  host="$(endpoint_host "${endpoint}")"
+  port="$(endpoint_port "${endpoint}")"
+  for _ in $(seq 1 120); do
+    if (echo >"/dev/tcp/${host}/${port}") >/dev/null 2>&1; then
       return 0
     fi
     sleep 0.1
   done
-  echo "Timed out waiting for DeliveryDispatch server" >&2
+  echo "Timed out waiting for ${name} at ${endpoint}" >&2
   return 1
 }
 
-wait_discovery_ready() {
-  node - "${DELIVERYDISPATCH_REGISTRY_ROUTER_ENDPOINT}" <<'NODE'
-const registryEndpoint = process.argv[2];
-const zlink = require('@zlink-systems/zlink');
-const pause = new Int32Array(new SharedArrayBuffer(4));
-const context = zlink.createContext();
-const client = zlink.createRegistryQueryClient(context);
-
-try {
-  client.connect(registryEndpoint);
-  for (let attempt = 0; attempt < 100; attempt += 1) {
-    const ready = client
-      .topology()
-      .some((entry) =>
-        entry.channelName === 'deliverydispatch.dispatch' &&
-        entry.state === 3 &&
-        typeof entry.endpoint === 'string' &&
-        entry.endpoint.length > 0);
-    if (ready) {
-      process.exit(0);
-    }
-    Atomics.wait(pause, 0, 0, 100);
-  }
-  console.error('Timed out waiting for DeliveryDispatch discovery readiness.');
-  process.exit(1);
-} finally {
-  client.close();
-  context.close();
-}
-NODE
+wait_http() {
+  local name="$1"
+  local endpoint="$2"
+  for _ in $(seq 1 120); do
+    if curl -fsS "${endpoint}/health" >/dev/null 2>&1; then
+      return 0
+    fi
+    sleep 0.1
+  done
+  echo "Timed out waiting for ${name} at ${endpoint}" >&2
+  return 1
 }
 
-start_server() {
-  node "${SCRIPT_DIR}/dist/Server/main.js" >"${RUN_DIR}/server.log" 2>&1 &
+start_role() {
+  local name="$1"
+  shift
+  node "${SCRIPT_DIR}/dist/Server/main.js" --role "${name}" "$@" >"${LOG_DIR}/${name}.log" 2>&1 &
   PIDS+=("$!")
 }
 
-run_client() {
-  for attempt in $(seq 1 10); do
-    if node "${SCRIPT_DIR}/dist/Client/main.js"; then
-      return 0
-    fi
-    if [[ "${attempt}" == "10" ]]; then
-      return 1
-    fi
-    sleep 0.2
-  done
-}
+start_role registry
+wait_port registry-router "${DELIVERYDISPATCH_REGISTRY}"
 
-start_server
-wait_port
-wait_discovery_ready
+start_role tracking
+wait_port tracking-route "${DELIVERYDISPATCH_TRACKING_ROUTE}"
+
+start_role session
+wait_port session-stream "${DELIVERYDISPATCH_SESSION_STREAM}"
 sleep 1
-run_client
+
+start_role courier-a --mode timeout-reassign
+wait_port courier-a "${DELIVERYDISPATCH_COURIER_A_ROUTE}"
+
+start_role courier-b --mode accept
+wait_port courier-b "${DELIVERYDISPATCH_COURIER_B_ROUTE}"
+
+start_role dispatch-center
+wait_port dispatch-center "${DELIVERYDISPATCH_CENTER_ROUTE}"
+
+start_role dispatch-api
+wait_http dispatch-api "${DELIVERYDISPATCH_API_HTTP}"
+
+node "${SCRIPT_DIR}/dist/Server/main.js" --role probe --timeout-ms 10000
+node "${SCRIPT_DIR}/dist/Client/main.js"
+
+grep -q "deliverydispatch tracking: status" "${LOG_DIR}/tracking.log"
+grep -q "deliverydispatch session: bound customer" "${LOG_DIR}/session.log"
 grep -Rq "message flow" "${DELIVERYDISPATCH_LOG_DIR}"

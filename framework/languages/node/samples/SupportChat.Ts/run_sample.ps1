@@ -2,6 +2,10 @@ Set-StrictMode -Version Latest
 $ErrorActionPreference = "Stop"
 
 $scriptDir = Split-Path -Parent $MyInvocation.MyCommand.Path
+if (-not $IsWindows) {
+    & bash (Join-Path $scriptDir "run_sample.sh")
+    exit $LASTEXITCODE
+}
 $runDir = Join-Path ([System.IO.Path]::GetTempPath()) ("zlink-supportchat-ts-" + [System.Guid]::NewGuid().ToString("N"))
 $logDir = Join-Path $runDir "logs"
 New-Item -ItemType Directory -Path $logDir | Out-Null

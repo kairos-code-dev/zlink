@@ -1,0 +1,180 @@
+import type { ZLinkChannelClient, ZLinkChannelRuntimeOptions } from '@zlink-systems/framework';
+import type {
+  EvidenceWaitRequest,
+  ProfileCommand,
+  ProfileReply,
+  ProfileRequest,
+  WeightWaitRequest,
+} from '../../../Shared/messages';
+import { PacketNames } from '../../../Shared/messages';
+import type { EvidenceStore } from '../Infrastructure/evidence-store';
+import type { FaultState } from '../Infrastructure/fault-state';
+import type { HttpRoute } from '../Support/http-server';
+
+export function createProviderEndpoints(
+  evidence: EvidenceStore,
+  fault: FaultState,
+  channel: ZLinkChannelClient,
+  runtimeOptions: ZLinkChannelRuntimeOptions,
+  stop: () => void
+): HttpRoute[] {
+  return [
+    { method: 'GET', path: '/health', handle: () => ({ status: 'ready', role: 'provider', rid: evidence.rid }) },
+    { method: 'GET', path: '/evidence', handle: () => evidence.snapshot() },
+    {
+      method: 'POST',
+      path: '/profile/request',
+      handle: (body) => requestProfileWithRetry(channel, 'profile', body as ProfileRequest)
+    },
+    {
+      method: 'POST',
+      path: '/profile/command',
+      handle: async (body) => {
+        await sendProfileWithRetry(channel, 'profile', body as ProfileCommand);
+        return { status: 'sent' };
+      }
+    },
+    { method: 'POST', path: '/evidence/clear', handle: () => { evidence.clear(); return { status: 'cleared' }; } },
+    {
+      method: 'POST',
+      path: '/admin/fault/gray',
+      handle: () => {
+        fault.mode = 'gray';
+        evidence.add(`admin|rid=${evidence.rid}|action=fault|mode=gray`);
+        return { status: 'fault', mode: fault.mode };
+      }
+    },
+    {
+      method: 'POST',
+      path: '/admin/fault/none',
+      handle: () => {
+        fault.mode = 'none';
+        evidence.add(`admin|rid=${evidence.rid}|action=fault|mode=none`);
+        return { status: 'fault', mode: fault.mode };
+      }
+    },
+    {
+      method: 'POST',
+      path: '/admin/fault/observer-throws',
+      handle: () => {
+        fault.mode = 'observer-throws';
+        evidence.add(`admin|rid=${evidence.rid}|action=fault|mode=observer-throws`);
+        return { status: 'fault', mode: fault.mode };
+      }
+    },
+    {
+      method: 'POST',
+      path: '/admin/fault/crash-on-slow-start',
+      handle: () => {
+        fault.mode = 'crash-on-slow-start';
+        evidence.add(`admin|rid=${evidence.rid}|action=fault|mode=crash-on-slow-start`);
+        return { status: 'fault', mode: fault.mode };
+      }
+    },
+    {
+      method: 'POST',
+      path: '/admin/crash',
+      handle: () => {
+        setTimeout(() => process.kill(process.pid, 'SIGKILL'), 50);
+        return { status: 'crashing' };
+      }
+    },
+    {
+      method: 'POST',
+      path: '/admin/drain',
+      handle: () => {
+        runtimeOptions.clientServerChannel('profile').configureServerSocket().weight = 0;
+        evidence.add(`admin|rid=${evidence.rid}|action=drain|weight=0`);
+        return { status: 'drained', weight: 0 };
+      }
+    },
+    {
+      method: 'POST',
+      path: '/admin/restore',
+      handle: () => {
+        runtimeOptions.clientServerChannel('profile').configureServerSocket().weight = 100;
+        evidence.add(`admin|rid=${evidence.rid}|action=restore|weight=100`);
+        return { status: 'restored', weight: 100 };
+      }
+    },
+    {
+      method: 'GET',
+      path: '/admin/weight',
+      handle: () => ({
+        weight: runtimeOptions.clientServerChannel('profile').configureServerSocket().weight
+      })
+    },
+    {
+      method: 'POST',
+      path: '/admin/weight/wait',
+      handle: async (body) => waitForWeight(runtimeOptions, body as WeightWaitRequest)
+    },
+    {
+      method: 'POST',
+      path: '/evidence/wait',
+      handle: async (body) => {
+        const request = body as EvidenceWaitRequest;
+        const timeout = Math.max(1, Math.min(request.timeoutMilliseconds ?? 10000, 30000));
+        const snapshot = await evidence.waitUntil((line) => line.includes(request.contains), timeout);
+        if (!snapshot.some((line) => line.includes(request.contains))) {
+          throw new Error(`Evidence marker not found: ${request.contains}`);
+        }
+        return snapshot;
+      }
+    },
+    { method: 'POST', path: '/shutdown', handle: () => { stop(); return { status: 'stopping' }; } }
+  ];
+}
+
+async function waitForWeight(
+  runtimeOptions: ZLinkChannelRuntimeOptions,
+  request: WeightWaitRequest
+): Promise<{ readonly weight: number }> {
+  const timeout = Math.max(1, Math.min(request.timeoutMilliseconds ?? 10000, 30000));
+  const deadline = Date.now() + timeout;
+  while (Date.now() < deadline) {
+    const weight = runtimeOptions.clientServerChannel('profile').configureServerSocket().weight;
+    if (weight === request.expected) {
+      return { weight };
+    }
+    await new Promise((resolve) => setTimeout(resolve, 100));
+  }
+  throw new Error(`Provider weight did not become ${request.expected}.`);
+}
+
+async function requestProfileWithRetry(
+  channel: ZLinkChannelClient,
+  channelName: string,
+  request: ProfileRequest
+): Promise<ProfileReply> {
+  return retryUntil(async () => channel
+    .requestToChannel(channelName, request)
+    .packetName(PacketNames.profileRequest)
+    .timeout(5000)
+    .submit<ProfileReply>(), 'profile request channel route');
+}
+
+async function sendProfileWithRetry(
+  channel: ZLinkChannelClient,
+  channelName: string,
+  command: ProfileCommand
+): Promise<void> {
+  await retryUntil(async () => channel
+    .sendToChannel(channelName, command)
+    .packetName(PacketNames.profileCommand)
+    .submit(), 'profile send channel route');
+}
+
+async function retryUntil<T>(operation: () => Promise<T>, label: string): Promise<T> {
+  const deadline = Date.now() + 30000;
+  let last: unknown;
+  while (Date.now() < deadline) {
+    try {
+      return await operation();
+    } catch (error) {
+      last = error;
+      await new Promise((resolve) => setTimeout(resolve, 100));
+    }
+  }
+  throw new Error(`Timed out waiting for ${label}: ${last instanceof Error ? last.message : String(last)}`);
+}

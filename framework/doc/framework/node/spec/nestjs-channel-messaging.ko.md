@@ -1055,12 +1055,18 @@ extension package가 제공하는 객체를 `use(...)`로 등록한다. 직접 �
 때도 같은 extension 계약을 사용하고, extension 내부에서 `addSerializer`로 content type과
 serializer를 함께 넘긴다.
 
+serializer는 `canSerialize(value, context)`를 선택적으로 제공할 수 있다. 이 함수는 같은
+runtime에 serializer가 여러 개 있을 때 어떤 payload를 맡을지 알려준다. serializer가 하나만
+등록된 구성은 기존처럼 그 serializer를 기본값으로 사용한다. serializer가 여러 개면
+`canSerialize`가 `true`를 반환한 serializer만 payload를 맡는다. 모든 serializer가 predicate를
+제공했고 어느 것도 맡지 않으면 JSON으로 보낸다. 둘 이상의 serializer가 같은 payload를 맡겠다고
+하거나, 여러 serializer 중 predicate가 없는 항목 때문에 선택을 확정할 수 없으면 전송은 실패한다.
+
 ```ts
 ZLinkModule.forRoot(
   zlinkFramework()
     .codecs()
       .use(zlinkProtobufCodec())
-      .addJson()
       .use(zlinkMessagePackCodec())
     .build()
 );
@@ -1143,6 +1149,11 @@ channel 문서의 항목은 다음 흐름이 함께 깨지지 않아야 한다.
 | `ClientServer.DiscoveryClient_Request_And_Send_Work_Across_Hosts` | Discovery 기반 client가 request와 send를 모두 처리한다. |
 | `FiltersAndHttp.HttpHandler_Uses_SameContainer_ToResolve_ZLinkChannelClient` | HTTP controller가 같은 DI container에서 `ZLinkChannelClient`를 받아 호출한다. |
 | `channel runtime drains backpressured requests from send-ready callback` | async submitter가 ready callback에서 pending item을 비우고 중복 전송하지 않는다. |
+
+client/server channel의 client socket은 `configureClientSocket()`으로 송신 HWM, 수신 HWM,
+송신 timeout을 설정할 수 있다. 이 값은 live socket option에 적용된다. 다만 backpressure
+E2E는 HWM 포화 자체가 관찰되어야 완료로 본다. handler가 느린 것만으로 runtime recv loop가
+이미 native queue를 비우면 완료 proof로 쓰지 않는다.
 
 ---
 

@@ -1,27 +1,33 @@
 type DeliveryStatus = 'Created' | 'Assigned' | 'Accepted' | 'Reassigned' | 'PickedUp' | 'Delivered' | 'Failed';
 
-type DeliveryRecord = {
-  deliveryId: string;
-  customerId: string;
-  pickupAddress: string;
-  dropoffAddress: string;
-  courierId?: string;
-  status: DeliveryStatus;
+type ActorRefSnapshot = {
+  nodeRid: string;
+  actorId: string;
+  generation: number;
 };
 
-type CreateDeliveryReq = {
+type CreateDeliveryRequest = {
   deliveryId: string;
   customerId: string;
   pickupAddress: string;
   dropoffAddress: string;
-  packetName(): string;
 };
 
 type DeliveryCreated = {
   deliveryId: string;
 };
 
-type SubscribeDeliveryReq = {
+type EnsureCustomerActor = {
+  customerId: string;
+  packetName(): string;
+};
+
+type CustomerActorEnsured = {
+  customerId: string;
+  actor: ActorRefSnapshot;
+};
+
+type SubscribeDelivery = {
   deliveryId: string;
   packetName(): string;
 };
@@ -30,17 +36,56 @@ type SubscribeDeliveryAccepted = {
   deliveryId: string;
 };
 
-type AssignDeliveryReq = {
+type SubscribeCustomerToDelivery = {
+  customerId: string;
   deliveryId: string;
-  courierId: string;
   packetName(): string;
 };
 
-type AdvanceDeliveryReq = {
+type CustomerDeliverySubscribed = {
+  customerId: string;
+  deliveryId: string;
+};
+
+type AssignDelivery = {
+  deliveryId: string;
+  customerId: string;
+  pickupAddress: string;
+  dropoffAddress: string;
+  packetName(): string;
+};
+
+type AssignDeliveryResult = {
+  deliveryId: string;
+  courierId: string;
+  accepted: boolean;
+};
+
+type OfferDelivery = {
+  deliveryId: string;
+  pickupAddress: string;
+  dropoffAddress: string;
+  packetName(): string;
+};
+
+type OfferDeliveryResult = {
+  deliveryId: string;
+  courierId: string;
+  accepted: boolean;
+  reason?: string;
+};
+
+type DeliveryStatusChanged = {
   deliveryId: string;
   status: Exclude<DeliveryStatus, 'Created'>;
   courierId?: string;
+  occurredAt: string;
   packetName(): string;
+};
+
+type DeliveryStatusAck = {
+  deliveryId: string;
+  status: DeliveryStatus;
 };
 
 type DeliveryStatusNotify = {
@@ -50,10 +95,27 @@ type DeliveryStatusNotify = {
   occurredAt: string;
 };
 
+type DeliverySpotCreate = {
+  deliveryId: string;
+};
+
+type DeliverySpotCreated = {
+  deliveryId: string;
+};
+
+type DeliverySpotJoin = {
+  deliveryId: string;
+  customerId: string;
+};
+
+type DeliverySpotJoined = {
+  deliveryId: string;
+  customerId: string;
+};
+
 type ServerAssertionReq = {
   successfulDeliveryId: string;
   reassignedDeliveryId: string;
-  packetName(): string;
 };
 
 type ServerAssertionRes = {
@@ -62,65 +124,96 @@ type ServerAssertionRes = {
 };
 
 const PacketNames = {
-  createDeliveryReq: 'CreateDeliveryReq',
+  assignDelivery: 'AssignDelivery',
+  assignDeliveryResult: 'AssignDeliveryResult',
+  createDeliveryRequest: 'CreateDeliveryRequest',
   deliveryCreated: 'DeliveryCreated',
-  subscribeDeliveryReq: 'SubscribeDelivery',
-  subscribeDeliveryAccepted: 'SubscribeDeliveryAccepted',
-  assignDeliveryReq: 'AssignDeliveryReq',
-  advanceDeliveryReq: 'AdvanceDeliveryReq',
+  deliveryStatusAck: 'DeliveryStatusAck',
+  deliveryStatusChanged: 'DeliveryStatusChanged',
   deliveryStatusNotify: 'DeliveryStatusNotify',
+  ensureCustomerActor: 'EnsureCustomerActor',
+  customerActorEnsured: 'CustomerActorEnsured',
+  offerDelivery: 'OfferDelivery',
+  offerDeliveryResult: 'OfferDeliveryResult',
   serverAssertionReq: 'ServerAssertionReq',
-  serverAssertionRes: 'ServerAssertionRes'
+  serverAssertionRes: 'ServerAssertionRes',
+  subscribeCustomerToDelivery: 'SubscribeCustomerToDelivery',
+  customerDeliverySubscribed: 'CustomerDeliverySubscribed',
+  subscribeDelivery: 'SubscribeDelivery',
+  subscribeDeliveryAccepted: 'SubscribeDeliveryAccepted'
 } as const;
 
-function createDeliveryReq(
+function assignDelivery(
   deliveryId: string,
   customerId: string,
   pickupAddress: string,
   dropoffAddress: string
-): CreateDeliveryReq {
-  return { deliveryId, customerId, pickupAddress, dropoffAddress, packetName: () => PacketNames.createDeliveryReq };
+): AssignDelivery {
+  return { deliveryId, customerId, pickupAddress, dropoffAddress, packetName: () => PacketNames.assignDelivery };
 }
 
-function subscribeDeliveryReq(deliveryId: string): SubscribeDeliveryReq {
-  return { deliveryId, packetName: () => PacketNames.subscribeDeliveryReq };
-}
-
-function assignDeliveryReq(deliveryId: string, courierId: string): AssignDeliveryReq {
-  return { deliveryId, courierId, packetName: () => PacketNames.assignDeliveryReq };
-}
-
-function advanceDeliveryReq(
+function deliveryStatusChanged(
   deliveryId: string,
-  status: AdvanceDeliveryReq['status'],
+  status: DeliveryStatusChanged['status'],
   courierId?: string
-): AdvanceDeliveryReq {
-  return { deliveryId, status, courierId, packetName: () => PacketNames.advanceDeliveryReq };
+): DeliveryStatusChanged {
+  return {
+    deliveryId,
+    status,
+    courierId,
+    occurredAt: new Date().toISOString(),
+    packetName: () => PacketNames.deliveryStatusChanged
+  };
 }
 
-function serverAssertionReq(successfulDeliveryId: string, reassignedDeliveryId: string): ServerAssertionReq {
-  return { successfulDeliveryId, reassignedDeliveryId, packetName: () => PacketNames.serverAssertionReq };
+function ensureCustomerActor(customerId: string): EnsureCustomerActor {
+  return { customerId, packetName: () => PacketNames.ensureCustomerActor };
+}
+
+function offerDelivery(deliveryId: string, pickupAddress: string, dropoffAddress: string): OfferDelivery {
+  return { deliveryId, pickupAddress, dropoffAddress, packetName: () => PacketNames.offerDelivery };
+}
+
+function subscribeCustomerToDelivery(customerId: string, deliveryId: string): SubscribeCustomerToDelivery {
+  return { customerId, deliveryId, packetName: () => PacketNames.subscribeCustomerToDelivery };
+}
+
+function subscribeDelivery(deliveryId: string): SubscribeDelivery {
+  return { deliveryId, packetName: () => PacketNames.subscribeDelivery };
 }
 
 export {
   PacketNames,
-  advanceDeliveryReq,
-  assignDeliveryReq,
-  createDeliveryReq,
-  serverAssertionReq,
-  subscribeDeliveryReq
+  assignDelivery,
+  deliveryStatusChanged,
+  ensureCustomerActor,
+  offerDelivery,
+  subscribeCustomerToDelivery,
+  subscribeDelivery
 };
 
 export type {
-  AdvanceDeliveryReq,
-  AssignDeliveryReq,
-  CreateDeliveryReq,
+  ActorRefSnapshot,
+  AssignDelivery,
+  AssignDeliveryResult,
+  CreateDeliveryRequest,
+  CustomerActorEnsured,
+  CustomerDeliverySubscribed,
   DeliveryCreated,
-  DeliveryRecord,
+  DeliverySpotCreate,
+  DeliverySpotCreated,
+  DeliverySpotJoin,
+  DeliverySpotJoined,
   DeliveryStatus,
+  DeliveryStatusAck,
+  DeliveryStatusChanged,
   DeliveryStatusNotify,
+  EnsureCustomerActor,
+  OfferDelivery,
+  OfferDeliveryResult,
   ServerAssertionReq,
   ServerAssertionRes,
-  SubscribeDeliveryAccepted,
-  SubscribeDeliveryReq
+  SubscribeCustomerToDelivery,
+  SubscribeDelivery,
+  SubscribeDeliveryAccepted
 };

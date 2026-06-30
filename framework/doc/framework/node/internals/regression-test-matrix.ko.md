@@ -179,7 +179,7 @@ CI workflow 가 만들어 내는 native artifact 조합은 위 여섯 플랫폼 
 |------|------|-----------|
 | duplicate Spot factory type | `unit` | startup validation 예외 |
 | duplicate `addEntrySpot(EntrySpotClass)` | `unit` | 같은 `SpotNode` 안에서 Entry Spot[^entry-spot] registry를 중복 등록하면 startup validation 예외 |
-| `addSpotMesh(...)`에 `useDiscovery().addRegistryEndpoint(...)` 없음 | `unit` | top-level discovery endpoint 를 상속하거나 local-only mesh 로 등록된다 |
+| root `useDiscovery().addRegistryEndpoint(...)` 없이 `addSpotMesh(...)`만 등록 | `unit` | top-level discovery endpoint 를 상속하거나 local-only mesh 로 등록된다 |
 | `addSpotMesh(channel, configureMesh)` | `integration-single-process` | mesh 빌더 한 호출로 discovery, node, spot factory 등록을 한 번에 끝낸다 |
 | `addSpotMesh(...)` + 빈 `addRegistryEndpoint` + local-only spot factory | `integration-single-process` | discovery endpoint 없이 단일 local SpotNode runtime을 시작한다 |
 | `create(spotType)` | `integration-single-process` | `spotId`, `Created` 상태가 일관되게 유지된다 |

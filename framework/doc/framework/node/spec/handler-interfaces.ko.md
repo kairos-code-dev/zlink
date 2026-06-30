@@ -2228,6 +2228,11 @@ class 구성 방식은 자유롭다(주제별 묶음 `UserHandlers`, packet 별 
   컨테이너에서 provider token 으로 주입된다.
 - `ZLinkHandlerFilter` 구현체도 같은 컨테이너에서 resolve 한다.
 - framework 는 별도 객체 생성기를 두지 않고 NestJS `ModuleRef`/DI 기반으로 handler invocation 을 구성한다.
+- channel/route/publish handler 는 dispatch마다 NestJS context id를 만들고 그 context에서 resolve 한다.
+  따라서 `Scope.REQUEST` provider는 dispatch마다 새 instance가 될 수 있고, singleton provider는 같은
+  application context 안에서 유지된다.
+- request-scoped provider의 정리 시점과 dispose hook 호출은 NestJS container 정책을 따른다. framework는
+  현재 dispatch 완료 시점마다 별도 dispose hook을 호출한다고 보장하지 않는다.
 - public registration 함수에 DI 컨테이너를 매번 노출할 필요는 없다.
 - `Spot`, packet handler, timer handler 는 framework 가 만든 per-spot scope 에서 resolve 한다.
   `context.handlers.addPacket(handlerType)`, `context.addTimer(...)` 는 service locator 가 아니라

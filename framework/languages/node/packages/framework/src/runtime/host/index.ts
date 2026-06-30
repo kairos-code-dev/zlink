@@ -31,6 +31,7 @@ import {
   DefaultZLinkChannelClient,
   DefaultZLinkFanoutClient,
   DefaultZLinkSpotPublisherClient,
+  DefaultZLinkChannelRuntimeOptions,
   ZLinkDispatchErrorReporter,
   ZLinkChannelRuntimeManager,
   ZLinkRuntimeChannelTransport,
@@ -78,6 +79,7 @@ import {
   type ZLinkStreamFrameHeader,
   ZLinkStreamMessageKind
 } from '../streams/protocol';
+import { wrapFrameworkPayloadMessage } from '../messaging/payload-codec';
 
 export interface ZLinkFrameworkRuntime {
   readonly isStarted: boolean;
@@ -103,6 +105,7 @@ export class ZLinkFrameworkRuntimeHost implements ZLinkFrameworkRuntime, ZLinkMe
   private monitoringRuntime?: ZLinkMonitoringRuntime;
   private actorManager?: DefaultZLinkActorManager;
   private spotManager?: DefaultZLinkSpotManager;
+  private readonly destroyedActorRefs = new Map<string, ActorRef>();
   private readonly runtimeEventPublisher: ZLinkRuntimeEventPublisher;
   // Shared, runtime-mutable message-flow mode cell — installed once so
   // setMessageFlowMode flips every surface live. Seeded from config at start().
@@ -111,6 +114,7 @@ export class ZLinkFrameworkRuntimeHost implements ZLinkFrameworkRuntime, ZLinkMe
   };
   private readonly preStartErrorSink = new ZLinkRuntimeErrorSink();
   readonly channelTransport = new ZLinkRuntimeChannelTransport(() => this.channelRuntime);
+  readonly channelRuntimeOptions = new DefaultZLinkChannelRuntimeOptions(() => this.channelRuntime);
   readonly routeTransport = new ZLinkRuntimeRouteTransport(
     () => this.channelRuntime,
     (routerChannelId) => this.canUseRouterChannel(routerChannelId)
@@ -131,7 +135,9 @@ export class ZLinkFrameworkRuntimeHost implements ZLinkFrameworkRuntime, ZLinkMe
       messageSerializers: options.registration.messageSerializers,
       nativeActorNodeProvider: () => this.spotNodeRuntime?.primaryNode,
       relay: (actor, header, payload, signal) =>
-        this.relayRemoteActorPacket(actor, header, payload, signal)
+        this.relayRemoteActorPacket(actor, header, payload, signal),
+      notifyDisconnected: (actor, signal) =>
+        this.notifyBoundActorDisconnected(actor, signal)
     });
     this.boundSessionFactory = new DefaultZLinkBoundSessionFactory(this.streamBindingRuntime);
   }
@@ -218,7 +224,21 @@ export class ZLinkFrameworkRuntimeHost implements ZLinkFrameworkRuntime, ZLinkMe
               handle: (payload, routeContext) =>
                 this.receiveRemoteActorPacketRelay(payload, routeContext)
             }]
-          ])
+          ]),
+          localSpotRouteDispatcher: {
+            send: async (spotRid, packetName, message, routeContext) => {
+              if (this.spotManager === undefined) {
+                throw new Error('Local SPOT route dispatch requires ZLINK_SPOT_MANAGER.');
+              }
+              await this.spotManager.dispatchRoutedSpotSend(spotRid, packetName, message, routeContext);
+            },
+            request: async (spotRid, packetName, request, routeContext) => {
+              if (this.spotManager === undefined) {
+                throw new Error('Local SPOT route dispatch requires ZLINK_SPOT_MANAGER.');
+              }
+              return await this.spotManager.dispatchRoutedSpotRequest(spotRid, packetName, request, routeContext);
+            }
+          }
         }
       );
       this.channelRuntime = channelRuntime;
@@ -273,6 +293,8 @@ export class ZLinkFrameworkRuntimeHost implements ZLinkFrameworkRuntime, ZLinkMe
         },
         actorResponseSender: (actor, packetName, requestSeq, response, metadata, signal) =>
           this.sendActorResponse(actor, packetName, requestSeq, response, metadata, signal),
+        actorErrorSender: (actorId, packetName, requestSeq, error, metadata, actorRef, signal) =>
+          this.sendActorError(actorId, packetName, requestSeq, error, metadata, actorRef, signal),
         actorDestroyer: (node, entryNodeRid, actor, signal) => {
           if (this.actorManager === undefined) {
             throw new Error('Entry Spot actor destroy requires ZLINK_ACTOR_MANAGER.');
@@ -405,9 +427,17 @@ export class ZLinkFrameworkRuntimeHost implements ZLinkFrameworkRuntime, ZLinkMe
         actorId
       ),
       actorCreatedNodeRidProvider: () => this.spotNodeRuntime?.primaryNode?.routingId,
-      actorCreatedNotifier: (nodeRid, actor, createRequest, signal) =>
-        this.spotNodeRuntime?.notifyEntrySpotActorCreated(nodeRid, actor, createRequest, signal) ?? Promise.resolve(),
-      actorDestroyedCleanup: (actorId) => this.streamBindingRuntime.unbindActor(actorId)
+      actorCreatedNotifier: (nodeRid, actor, createRequest, signal) => {
+        this.destroyedActorRefs.delete(actor.actorId);
+        return this.spotNodeRuntime?.notifyEntrySpotActorCreated(nodeRid, actor, createRequest, signal) ?? Promise.resolve();
+      },
+      actorDestroyedCleanup: (actorId) => {
+        const actorRef = this.actorManager?.getState(actorId)?.nativeActorRef as ActorRef | undefined;
+        if (actorRef !== undefined) {
+          this.destroyedActorRefs.set(actorId, actorRef);
+        }
+        this.streamBindingRuntime.unbindActor(actorId);
+      }
     };
   }
 
@@ -438,6 +468,7 @@ export class ZLinkFrameworkRuntimeHost implements ZLinkFrameworkRuntime, ZLinkMe
         actorType: string,
         actorRef?: ActorRef,
         remoteBoundSessionTarget?: ZLinkRemoteBoundSessionTarget,
+        actorCreateRequest?: Message,
         signal?: AbortSignal
       ) => {
         if (this.actorManager === undefined) {
@@ -449,6 +480,9 @@ export class ZLinkFrameworkRuntimeHost implements ZLinkFrameworkRuntime, ZLinkMe
               actorId,
               actorType,
               actorRef as unknown as ZLinkBackendActorRef,
+              actorCreateRequest === undefined
+                ? undefined
+                : wrapFrameworkPayloadMessage(actorCreateRequest, this.options.registration.messageSerializers),
               signal
             );
         const state = this.actorManager.getState(actorId);
@@ -499,6 +533,15 @@ export class ZLinkFrameworkRuntimeHost implements ZLinkFrameworkRuntime, ZLinkMe
         metadata: ReadonlyMap<string, string>,
         signal?: AbortSignal
       ) => this.sendActorResponse(actor, packetName, requestSeq, response, metadata, signal),
+      actorErrorSender: async (
+        actorId: string,
+        packetName: string,
+        requestSeq: bigint,
+        error: unknown,
+        metadata: ReadonlyMap<string, string>,
+        actorRef?: ActorRef,
+        signal?: AbortSignal
+      ) => this.sendActorError(actorId, packetName, requestSeq, error, metadata, actorRef, signal),
       dispatchErrors: new ZLinkDispatchErrorReporter(
         undefined,
         undefined,
@@ -679,6 +722,54 @@ export class ZLinkFrameworkRuntimeHost implements ZLinkFrameworkRuntime, ZLinkMe
       metadata,
       signal
     );
+  }
+
+  private async notifyBoundActorDisconnected(
+    actor: ZLinkSessionActor,
+    signal?: AbortSignal
+  ): Promise<void> {
+    const state = this.actorManager?.getState(actor.actorId);
+    const localActor = state?.actor;
+    if (localActor === undefined) {
+      throw new Error(`Actor '${actor.actorId}' does not have a local actor instance.`);
+    }
+    await this.requireSpotNodeRuntime().notifyPrimaryEntrySpotActorDisconnected(localActor, signal);
+  }
+
+  private async sendActorError(
+    actorId: string,
+    packetName: string,
+    requestSeq: bigint,
+    error: unknown,
+    metadata: ReadonlyMap<string, string>,
+    fallbackActorRef?: ActorRef,
+    signal?: AbortSignal
+  ): Promise<void> {
+    void signal;
+    if (!this.streamBindingRuntime.sendLocalBoundSessionError(
+      actorId,
+      packetName,
+      requestSeq,
+      error,
+      metadata
+    )) {
+      const state = this.actorManager?.getState(actorId);
+      const actorRef = (state?.nativeActorRef as ActorRef | undefined)
+        ?? fallbackActorRef
+        ?? this.destroyedActorRefs.get(actorId);
+      if (actorRef === undefined) {
+        throw new Error(`Actor '${actorId}' does not have a native actor ref.`);
+      }
+      await this.streamBindingRuntime.sendNativeBoundSessionError(
+        this.requirePrimarySpotNode(),
+        actorRef,
+        packetName,
+        requestSeq,
+        error,
+        metadata,
+        signal
+      );
+    }
   }
 
   private async receiveRemoteActorPacketRelay(

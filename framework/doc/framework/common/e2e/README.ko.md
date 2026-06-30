@@ -59,6 +59,10 @@ e2e는 기능을 평면으로 죽 나열하지 않는다. **실제 배포처럼 
   알려 줄 수 있는 흐름이면 client stream connector를 먼저 연결해 두고, HTTP 호출은 상태 변경을
   트리거하는 역할로만 쓴다. 검증은 connector가 받은 push payload와 실제 역할 server evidence/log를
   함께 대조한다.
+- Pub/Sub처럼 검증 대상이 client stream session이 아니라 별도 subscriber 역할 server가 받은 fanout
+  delivery인 경우에는 subscriber handler가 남긴 bounded `/evidence/wait` marker를 성공 기준으로
+  사용할 수 있다. 이때 evidence는 실제 subscriber 역할 server에서 남긴 것이어야 하고, client는
+  publisher endpoint로 publish를 트리거한 뒤 각 subscriber의 marker를 확인한다.
 - 검증은 client가 볼 수 있는 결과와 실제 역할 server가 남긴 evidence/log를 조합해 직접 표현한다.
   시나리오 실행 전용 driver가 남긴 evidence만으로 기능 검증을 대신하지 않는다.
 - E2E 시나리오가 요구하는 기능이 특정 언어에 없더라도, spec 또는 공통 framework spec/guide에
@@ -171,6 +175,9 @@ client는 publisher/subscriber/main 같은 실제 역할 server의 endpoint를 �
   방식은 쓰지 않는다.
 - stream, subscription, monitoring event처럼 server가 push할 수 있는 흐름은 client stream connector를
   먼저 연결하고 push payload로 검증한다. HTTP는 상태 변경을 일으키는 trigger로만 쓴다.
+- 다만 Pub/Sub fanout처럼 event의 수신자가 client가 아니라 subscriber 역할 server인 config는
+  subscriber server의 bounded evidence wait를 사용한다. client stream connector로 별도 observer를
+  추가해 subscriber 역할을 우회하지 않는다.
 
 ### 2.3 서버 프로젝트 구성 규칙
 
@@ -222,6 +229,9 @@ client는 publisher/subscriber/main 같은 실제 역할 server의 endpoint를 �
   connector를 사용한다. HTTP endpoint는 bind, subscribe, state-change trigger처럼 사용자가 실제로
   일으키는 동작을 표현하고, 변화가 도착했는지는 connector push 수신으로 단언한다. connector가 없는
   언어 또는 아직 public contract가 없는 기능은 feature-map에 gap으로 남긴다.
+- Pub/Sub fanout 시나리오는 예외다. 해당 config는 subscriber 역할 server가 실제 수신자이므로,
+  subscriber handler evidence를 bounded wait endpoint로 확인한다. 이 예외는 subscriber 역할 server의
+  실제 dispatch marker에만 적용되며, 시나리오 실행 전용 driver evidence에는 적용하지 않는다.
 - client scenario는 실제 역할 server endpoint 호출과 검증 흐름을 직접 보여야 한다. driver의
   `/run` endpoint 하나를 호출하고 "나머지는 server 쪽에서 알아서 검증"하게 만들면 안 된다.
   evidence 조회도 실제 역할 server에서 가져와야 하며, 시나리오 실행 전용 server의 결과만 읽으면

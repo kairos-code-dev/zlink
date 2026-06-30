@@ -1,13 +1,14 @@
 import { Inject } from '@nestjs/common';
-import { QuestProgressStore } from '../quest-progress-store';
-import type { ZLinkRequestHandler } from '@zlink-systems/framework';
+import { QuestEventProcessor } from '../Application/quest-event-processor';
+import type { ZLinkRouteRequestContext, ZLinkRouteRequestHandler } from '@zlink-systems/framework';
 import type { CollectItemReq, EventRes } from '../../../Shared/Contracts/messages';
 
-class CollectItemHandler implements ZLinkRequestHandler<CollectItemReq, EventRes> {
-  constructor(@Inject(QuestProgressStore) private readonly quests: QuestProgressStore) {}
+class CollectItemHandler implements ZLinkRouteRequestHandler<CollectItemReq, EventRes> {
+  constructor(@Inject(QuestEventProcessor) private readonly processor: QuestEventProcessor) {}
 
-  async handle(request: CollectItemReq): Promise<EventRes> {
-    return this.quests.collectItem(request);
+  async handle(request: CollectItemReq, context: ZLinkRouteRequestContext): Promise<EventRes> {
+    void context;
+    return this.processor.collectItem(request);
   }
 }
 

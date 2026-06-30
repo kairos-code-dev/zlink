@@ -531,18 +531,18 @@ target spot packet이 함께 오가도 서로 오염되지 않는지 검증한�
 - 검증: 일반 channel packet은 channel handler가, spot route packet은 target spot이 처리한다. 서로 오배달·간섭이 없고 두 종류 모두 각자 정상 reply를 받는다.
 - 세부 동작: 한 socket에서 application channel packet과 spot relay packet 공존 분기(channel inbound 허용 설정).
 
-#### SM-F4 spot route negative — route 없음 / malformed
+#### SM-F4 spot route negative — route 없음
 
 우선순위: `P0`
 
-**한마디로:** target spot route가 없거나 packet이 malformed면, request는 error reply로 명확히 실패하고 command는 drop + counter로 끝나며, malformed는 application handler로 새지 않는가.
+**한마디로:** target spot route가 없으면 request는 error reply로 명확히 실패하고 command는 drop + counter로 끝나는가.
 
-- 절차: (a) 존재하지 않는 target spot RoutingId로 request와 send를 보낸다. (b) malformed spot route packet을 유입시킨다. v1 implicit SPOT wiring에는 RouteMesh 단위 ingress opt-out이 없으므로 opt-out 거부 케이스는 이 시나리오에서 다루지 않는다.
+- 절차: 존재하지 않는 target spot RoutingId로 request와 send를 보낸다. v1 implicit SPOT wiring에는 RouteMesh 단위 ingress opt-out이 없으므로 opt-out 거부 케이스는 이 시나리오에서 다루지 않는다.
 - 검증:
-  - (a) target spot route 없음: request는 error reply로 실패(client는 예외로 받음), send(command)는 reply 없이 drop되고 failure counter가 오른다.
-  - (b) malformed relay packet: application route handler로 넘어가지 않고 error/drop으로 처리되어 observer에만 남는다.
-  - 두 경우 모두 message-flow error evidence(`Surface`=`SpotRoute`, `Reason`/`Action`)에 분류가 남고, 같은 channel의 다른 정상 spot routing은 영향받지 않는다.
-- 세부 동작: spot route bridge 에러 계약(route 없음·malformed) + 관측.
+  - target spot route 없음: request는 error reply로 실패(client는 예외로 받음), send(command)는 reply 없이 drop되고 failure counter가 오른다.
+  - message-flow error evidence(`Surface`=`SpotRoute`, `Reason`/`Action`)에 분류가 남고, 같은 channel의 다른 정상 spot routing은 영향받지 않는다.
+- malformed relay packet은 application route handler로 새면 안 된다. 다만 이 입력은 public route client 표면으로 만들 수 없고 low-level relay packet 조립이 필요하므로, 이 시나리오의 public E2E가 직접 주입하지 않는다. 해당 검증은 runtime 내부 검증이나 별도 bridge-level 테스트로 분리한다.
+- 세부 동작: spot route bridge 에러 계약(route 없음) + 관측.
 
 #### SM-F5 channel socket 소유권 독립 (spot routing이 channel을 흔들지 않음)
 

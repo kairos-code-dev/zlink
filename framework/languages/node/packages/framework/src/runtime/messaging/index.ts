@@ -6,7 +6,7 @@ type ZLinkRequestSubmit<TReply> = (
 ) => boolean;
 
 interface ZLinkPendingSubmitOptions {
-  readonly timeoutMs: number;
+  readonly timeoutMs: number | undefined;
   readonly signal?: AbortSignal;
 }
 
@@ -14,7 +14,7 @@ export class ZLinkAsyncSubmitter {
   private readonly queue: ZLinkPendingSubmit<unknown>[] = [];
   private queueOffset = 0;
   private readonly active = new Set<ZLinkPendingSubmit<unknown>>();
-  private readonly timeoutMs: number;
+  private readonly timeoutMs: number | undefined;
   private readonly capacity: number;
   private readyRegistered = false;
   private disposed = false;
@@ -23,7 +23,7 @@ export class ZLinkAsyncSubmitter {
     private readonly registerSendReady: (handler: () => void) => void,
     options: { readonly timeoutMs?: number; readonly capacity?: number } = {}
   ) {
-    this.timeoutMs = options.timeoutMs ?? 1000;
+    this.timeoutMs = options.timeoutMs === -1 ? undefined : options.timeoutMs ?? 1000;
     this.capacity = options.capacity ?? 4096;
   }
 
@@ -151,7 +151,7 @@ class ZLinkPendingSubmit<TReply> {
   private rejectPromise!: (error: unknown) => void;
   private readonly signal: AbortSignal | undefined;
   private readonly abortHandler: (() => void) | undefined;
-  private readonly timeout: ReturnType<typeof setTimeout>;
+  private readonly timeout: ReturnType<typeof setTimeout> | undefined;
   private completed = false;
 
   constructor(
@@ -164,10 +164,12 @@ class ZLinkPendingSubmit<TReply> {
       this.resolvePromise = resolve;
       this.rejectPromise = reject;
     });
-    this.timeout = setTimeout(
-      () => this.reject(new ZLinkConfigurationException('ZLink async submit timed out.')),
-      options.timeoutMs
-    );
+    if (options.timeoutMs !== undefined) {
+      this.timeout = setTimeout(
+        () => this.reject(new ZLinkConfigurationException('ZLink async submit timed out.')),
+        options.timeoutMs
+      );
+    }
     if (options.signal !== undefined) {
       this.abortHandler = () => this.reject(new Error('The operation was aborted.'));
       options.signal.addEventListener('abort', this.abortHandler, { once: true });
@@ -213,7 +215,9 @@ class ZLinkPendingSubmit<TReply> {
   }
 
   private cleanup(): void {
-    clearTimeout(this.timeout);
+    if (this.timeout !== undefined) {
+      clearTimeout(this.timeout);
+    }
     if (this.signal !== undefined && this.abortHandler !== undefined) {
       this.signal.removeEventListener('abort', this.abortHandler);
     }

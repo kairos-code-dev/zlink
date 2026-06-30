@@ -4,12 +4,13 @@ import fs from 'node:fs';
 import path from 'node:path';
 import { Inject, Injectable, Module, Optional } from '@nestjs/common';
 import type { DynamicModule, InjectionToken, ModuleMetadata, OnModuleDestroy, OnModuleInit, Provider } from '@nestjs/common';
-import { DiscoveryModule, DiscoveryService, ModuleRef } from '@nestjs/core';
+import { ContextIdFactory, DiscoveryModule, DiscoveryService, ModuleRef } from '@nestjs/core';
 import type {
   Type,
   ZLinkActor,
   ZLinkChannelPublishHandlerRegistration,
   ZLinkChannelRequestHandlerRegistration,
+  ZLinkChannelRuntimeOptions,
   ZLinkChannelSendHandlerRegistration,
   ZLinkClientCapabilityOptions,
   ZLinkChannelOptions,
@@ -27,6 +28,7 @@ import type {
   ZLinkPublishContext,
   ZLinkRequestContext,
   ZLinkSendContext,
+  ZLinkSocketConfig,
   ZLinkRouteChannelOptions,
   ZLinkRouteChannelRequestHandlerRegistration,
   ZLinkRouteChannelSendHandlerRegistration,
@@ -64,6 +66,7 @@ type MutableCodecRegistryOptions = {
 interface FrameworkRuntimeHost {
   readonly channelTransport: unknown;
   readonly routeTransport: unknown;
+  readonly channelRuntimeOptions: ZLinkChannelRuntimeOptions;
   readonly spotPublisherTransport: unknown;
   readonly streamBindingRuntime: unknown;
   readonly boundSessionFactory: {
@@ -161,6 +164,7 @@ interface ZLinkNestClientServerChannelOptions extends ZLinkNestHandlerDiscoveryO
   readonly server?: {
     readonly bind?: string;
     readonly routingId?: string;
+    readonly weight?: number;
   };
   readonly client?: ZLinkClientCapabilityOptions;
   readonly requestHandlers?: readonly ZLinkChannelRequestHandlerRegistration[];
@@ -182,6 +186,7 @@ interface ZLinkNestRouterMeshOptions extends ZLinkNestHandlerDiscoveryOptions {
   readonly transportDeclared?: boolean;
   readonly manualConnections?: readonly string[];
   readonly routingId?: string;
+  readonly weight?: number;
   readonly sendHandlers?: readonly ZLinkRouteChannelSendHandlerRegistration[];
   readonly requestHandlers?: readonly ZLinkRouteChannelRequestHandlerRegistration[];
   readonly sendHandlerTypes?: readonly ZLinkNestManualHandlerOptions[];
@@ -309,6 +314,8 @@ export interface ZLinkNestCodecRegistryBuilder extends ZLinkNestFrameworkOptions
 export interface ZLinkNestClientServerChannelBuilder extends ZLinkNestFrameworkOptionsBuilder {
   enableServer(bind: string | undefined): this;
   routingId(routingId: string | undefined): this;
+  configureServerSocket(): ZLinkSocketConfig;
+  configureClientSocket(): ZLinkSocketConfig;
   enableClient(endpoint?: string | readonly string[]): this;
   addRequestHandler(packetName: string, handlerType: Type): this;
   addSendHandler(packetName: string, handlerType: Type): this;
@@ -325,6 +332,7 @@ export interface ZLinkNestFanoutChannelBuilder extends ZLinkNestFrameworkOptions
 export interface ZLinkNestRouterMeshBuilder extends ZLinkNestFrameworkOptionsBuilder {
   enableRouter(endpoint: string | undefined): this;
   routingId(routingId: string | undefined): this;
+  configureSocket(): ZLinkSocketConfig;
   connect(endpoint: string | readonly string[] | undefined): this;
   addSendHandler(packetName: string, handlerType: Type): this;
   addRequestHandler(packetName: string, handlerType: Type): this;
@@ -333,6 +341,7 @@ export interface ZLinkNestRouterMeshBuilder extends ZLinkNestFrameworkOptionsBui
 
 export interface ZLinkNestStreamNodeBuilder extends ZLinkNestFrameworkOptionsBuilder {
   bind(endpoint: string | undefined): this;
+  setTlsServer(certificatePath: string, keyPath: string, requireClientCertificate?: boolean): this;
   registerSession<TSession extends ZLinkSession>(sessionType: Type<TSession> | Type<ZLinkSessionFactory<TSession>>): this;
 }
 
@@ -353,6 +362,7 @@ export const ZLINK_NEST_HANDLER_GROUP = Symbol.for('@zlink-systems/nestjs:handle
 export const ZLINK_FRAMEWORK_REGISTRATION = Symbol.for('@zlink-systems/framework:registration');
 export const ZLINK_FRAMEWORK_RUNTIME = Symbol.for('@zlink-systems/framework:runtime');
 export const ZLINK_CHANNEL_CLIENT = Symbol.for('@zlink-systems/framework:channel-client');
+export const ZLINK_CHANNEL_RUNTIME_OPTIONS = Symbol.for('@zlink-systems/framework:channel-runtime-options');
 export const ZLINK_ROUTE_CLIENT = Symbol.for('@zlink-systems/framework:route-client');
 export const ZLINK_FANOUT_CLIENT = Symbol.for('@zlink-systems/framework:fanout-client');
 export const ZLINK_BOUND_SESSION_FACTORY = Symbol.for('@zlink-systems/framework:bound-session-factory');
@@ -778,7 +788,7 @@ class DefaultZLinkNestClientServerChannelBuilder extends ZLinkNestChildBuilder i
   }
 
   enableServer(bind: string | undefined): this {
-    this.channelOptions.server = { bind };
+    this.channelOptions.server = { ...this.channelOptions.server, bind };
     return this;
   }
 
@@ -790,8 +800,21 @@ class DefaultZLinkNestClientServerChannelBuilder extends ZLinkNestChildBuilder i
     return this;
   }
 
+  configureServerSocket(): ZLinkSocketConfig {
+    this.channelOptions.server ??= {};
+    return this.channelOptions.server;
+  }
+
+  configureClientSocket(): ZLinkSocketConfig {
+    this.channelOptions.client ??= {};
+    return this.channelOptions.client;
+  }
+
   enableClient(endpoint?: string | readonly string[]): this {
-    this.channelOptions.client = endpoint === undefined ? {} : { manualConnections: endpointList(endpoint) };
+    this.channelOptions.client = {
+      ...this.channelOptions.client,
+      ...(endpoint === undefined ? {} : { manualConnections: endpointList(endpoint) })
+    };
     return this;
   }
 
@@ -852,6 +875,10 @@ class DefaultZLinkNestRouterMeshBuilder extends ZLinkNestChildBuilder implements
     return this;
   }
 
+  configureSocket(): ZLinkSocketConfig {
+    return this.routeOptions;
+  }
+
   connect(endpoint: string | readonly string[] | undefined): this {
     markRouteClientEnabled(this.routeOptions);
     this.routeOptions.manualConnections = endpoint === undefined ? [] : endpointList(endpoint);
@@ -881,6 +908,15 @@ class DefaultZLinkNestStreamNodeBuilder extends ZLinkNestChildBuilder implements
 
   bind(endpoint: string | undefined): this {
     this.streamOptions.bind = endpoint;
+    return this;
+  }
+
+  setTlsServer(certificatePath: string, keyPath: string, requireClientCertificate: boolean = false): this {
+    this.streamOptions.tlsServer = {
+      certificatePath,
+      keyPath,
+      requireClientCertificate
+    };
     return this;
   }
 
@@ -2150,7 +2186,7 @@ async function invokeDiscoveredHandler(
   payload: Buffer,
   context: ZLinkRequestContext | ZLinkSendContext | ZLinkRouteRequestContext | ZLinkRouteSendContext | ZLinkPublishContext
 ): Promise<unknown> {
-  const instance = moduleRef.get(ref.token, { strict: false }) as Record<string, unknown>;
+  const instance = await resolveHandlerInstance(moduleRef, ref.token, context);
   const methodName = metadata.methodName;
   const method = instance[methodName];
   if (typeof method !== 'function') {
@@ -2167,7 +2203,7 @@ async function invokeManualHandler(
   payload: Buffer,
   context: ZLinkRequestContext | ZLinkSendContext | ZLinkRouteRequestContext | ZLinkRouteSendContext | ZLinkPublishContext
 ): Promise<unknown> {
-  const instance = moduleRef.get(handlerType, { strict: false }) as Record<string, unknown>;
+  const instance = await resolveHandlerInstance(moduleRef, handlerType, context);
   const method = instance.handle;
   if (typeof method !== 'function') {
     throw new framework.ZLinkConfigurationException(
@@ -2175,6 +2211,19 @@ async function invokeManualHandler(
     );
   }
   return await method.call(instance, decodePayload(undefined, payload, context), context);
+}
+
+async function resolveHandlerInstance(
+  moduleRef: ModuleRef,
+  token: InjectionToken,
+  context: ZLinkRequestContext | ZLinkSendContext | ZLinkRouteRequestContext | ZLinkRouteSendContext | ZLinkPublishContext
+): Promise<Record<string, unknown>> {
+  if (!isInjectionToken(token)) {
+    throw new framework.ZLinkConfigurationException('Handler token is not a valid Nest injection token.');
+  }
+  const contextId = ContextIdFactory.create();
+  moduleRef.registerRequestByContextId({ zlinkContext: context }, contextId);
+  return await moduleRef.resolve(token, contextId, { strict: false }) as Record<string, unknown>;
 }
 
 function handlerKeyName(handlerKey: InjectionToken): string {
@@ -2264,6 +2313,10 @@ const ALWAYS_AVAILABLE_CLIENT_PROVIDER_SPECS: readonly AlwaysAvailableClientProv
   {
     token: ZLINK_CHANNEL_CLIENT,
     create: (registration, runtime) => new framework.DefaultZLinkChannelClient(registration, runtime.channelTransport)
+  },
+  {
+    token: ZLINK_CHANNEL_RUNTIME_OPTIONS,
+    create: (_registration, runtime) => runtime.channelRuntimeOptions
   },
   {
     token: ZLINK_FANOUT_CLIENT,
@@ -2544,7 +2597,7 @@ function registerDiscoveredRuntimeEventHandlers(
 function discoverRuntimeEventHandlers(discovery: DiscoveryService): ZLinkRuntimeEventHandler<ZLinkRuntimeEvent>[] {
   const handlers: ZLinkRuntimeEventHandler<ZLinkRuntimeEvent>[] = [];
   for (const wrapper of discovery.getProviders()) {
-    const token = wrapper.metatype ?? wrapper.token;
+    const token = wrapper.metatype;
     const instance = wrapper.instance;
     if (
       instance !== undefined
@@ -2580,6 +2633,12 @@ function createProviderResolver(moduleRef: ModuleRef, discovery?: DiscoveryServi
       }
     },
     async create<T>(type: Type<T>): Promise<T> {
+      try {
+        return await moduleRef.resolve(type, undefined, { strict: false });
+      } catch {
+        // Fall back to direct construction through Nest for classes that are
+        // not registered as providers.
+      }
       return moduleRef.create(type as unknown as import('@nestjs/common').Type<T>);
     }
   };

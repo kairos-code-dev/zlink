@@ -1,0 +1,8 @@
+{
+  "name": "@zlink-systems/e2e-discovery-registry-ha-embedded",
+  "private": true,
+  "main": "dist/Server/Embedded/main.js",
+  "scripts": {
+    "build": "node ../../../../../../../bindings/node/node_modules/typescript/bin/tsc -p tsconfig.json"
+  }
+}

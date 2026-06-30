@@ -20,8 +20,6 @@ function createSupportChatSessionModule(endpoints: {
             .traceLogFile(`${process.env.SUPPORTCHAT_LOG_DIR ?? 'logs'}/flow-session.log`)
             .traceLabel('session');
           return builder
-          .codecs()
-            .addJson()
           .useDiscovery()
             .addRegistryEndpoint(endpoints.registryRouterEndpoint)
           .addClientServerChannel(SampleNames.apiChannel)

@@ -93,7 +93,7 @@ SPOT topology는 "`AddSpotMesh(channelName)` 등록이 node 묶음의 active cha
 view를 소유하는 모델"로 읽는 편이 맞다. 즉:
 
 - `SpotNode`는 생성 시 channel 이름을 직접 소유하지 않는다.
-- `AddSpotMesh(channelName).UseDiscovery()`가 node 묶음의 mesh 범위를
+- `AddSpotMesh(channelName)`가 node 묶음의 mesh 범위를
   정한다.
 - 같은 `SpotNode`에는 active SPOT channel view를 하나만 둔다.
 - 같은 channel의 다른 `SpotNode`와만 router / pub/sub mesh를 만든다.

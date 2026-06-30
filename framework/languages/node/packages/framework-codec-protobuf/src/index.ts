@@ -12,7 +12,7 @@ import {
   type ZlinkStreamPayloadCodec
 } from '@zlink-systems/stream-connector';
 
-export const ZLINK_PROTOBUF_CONTENT_TYPE = 'application/x-zlink-protobuf';
+export const ZLINK_PROTOBUF_CONTENT_TYPE = 'application/x-protobuf';
 export const zlinkStreamProtobufCodecName = 'protobuf';
 
 export interface ProtobufType<T> {

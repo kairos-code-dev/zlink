@@ -1,6 +1,6 @@
 import { Inject } from '@nestjs/common';
-import { QuestProgressStore } from '../quest-progress-store';
-import type { ZLinkRequestHandler } from '@zlink-systems/framework';
+import { QuestEventProcessor } from '../Application/quest-event-processor';
+import type { ZLinkRouteRequestContext, ZLinkRouteRequestHandler } from '@zlink-systems/framework';
 import type {
   DeleteQuestProjectionReq,
   GameQuestServerAssertRes,
@@ -18,67 +18,76 @@ import type {
   EventRes
 } from '../../../Shared/Contracts/messages';
 
-class SubscribeQuestHandler implements ZLinkRequestHandler<SubscribeQuestReq, SubscribeQuestRes> {
-  constructor(@Inject(QuestProgressStore) private readonly quests: QuestProgressStore) {}
+class SubscribeQuestHandler implements ZLinkRouteRequestHandler<SubscribeQuestReq, SubscribeQuestRes> {
+  constructor(@Inject(QuestEventProcessor) private readonly processor: QuestEventProcessor) {}
 
-  async handle(request: SubscribeQuestReq): Promise<SubscribeQuestRes> {
-    return this.quests.subscribeQuest(request.playerId);
+  async handle(request: SubscribeQuestReq, context: ZLinkRouteRequestContext): Promise<SubscribeQuestRes> {
+    void context;
+    return this.processor.subscribeQuest(request);
   }
 }
 
-class UnlockFeatureHandler implements ZLinkRequestHandler<UnlockFeatureReq, EventRes> {
-  constructor(@Inject(QuestProgressStore) private readonly quests: QuestProgressStore) {}
+class UnlockFeatureHandler implements ZLinkRouteRequestHandler<UnlockFeatureReq, EventRes> {
+  constructor(@Inject(QuestEventProcessor) private readonly processor: QuestEventProcessor) {}
 
-  async handle(request: UnlockFeatureReq): Promise<EventRes> {
-    return this.quests.unlockFeature(request);
+  async handle(request: UnlockFeatureReq, context: ZLinkRouteRequestContext): Promise<EventRes> {
+    void context;
+    return this.processor.unlockFeature(request);
   }
 }
 
-class GetQuestProgressHandler implements ZLinkRequestHandler<GetQuestProgressReq, GetQuestProgressRes> {
-  constructor(@Inject(QuestProgressStore) private readonly quests: QuestProgressStore) {}
+class GetQuestProgressHandler implements ZLinkRouteRequestHandler<GetQuestProgressReq, GetQuestProgressRes> {
+  constructor(@Inject(QuestEventProcessor) private readonly processor: QuestEventProcessor) {}
 
-  async handle(request: GetQuestProgressReq): Promise<GetQuestProgressRes> {
-    return this.quests.getProgress(request.playerId);
+  async handle(request: GetQuestProgressReq, context: ZLinkRouteRequestContext): Promise<GetQuestProgressRes> {
+    void context;
+    return this.processor.getProgress(request);
   }
 }
 
-class SyncQuestProgressHandler implements ZLinkRequestHandler<SyncQuestProgressReq, SyncQuestProgressRes> {
-  constructor(@Inject(QuestProgressStore) private readonly quests: QuestProgressStore) {}
+class SyncQuestProgressHandler implements ZLinkRouteRequestHandler<SyncQuestProgressReq, SyncQuestProgressRes> {
+  constructor(@Inject(QuestEventProcessor) private readonly processor: QuestEventProcessor) {}
 
-  async handle(request: SyncQuestProgressReq): Promise<SyncQuestProgressRes> {
-    return this.quests.syncProgress(request.playerId);
+  async handle(request: SyncQuestProgressReq, context: ZLinkRouteRequestContext): Promise<SyncQuestProgressRes> {
+    void context;
+    return this.processor.syncProgress(request);
   }
 }
 
-class GetGameplaySnapshotHandler implements ZLinkRequestHandler<GetGameplaySnapshotReq, GetGameplaySnapshotRes> {
-  constructor(@Inject(QuestProgressStore) private readonly quests: QuestProgressStore) {}
+class GetGameplaySnapshotHandler implements ZLinkRouteRequestHandler<GetGameplaySnapshotReq, GetGameplaySnapshotRes> {
+  constructor(@Inject(QuestEventProcessor) private readonly processor: QuestEventProcessor) {}
 
-  async handle(request: GetGameplaySnapshotReq): Promise<GetGameplaySnapshotRes> {
-    return this.quests.getSnapshot(request.playerId);
+  async handle(request: GetGameplaySnapshotReq, context: ZLinkRouteRequestContext): Promise<GetGameplaySnapshotRes> {
+    void context;
+    return this.processor.getSnapshot(request);
   }
 }
 
-class DeleteQuestProjectionHandler implements ZLinkRequestHandler<DeleteQuestProjectionReq, QuestProgress | undefined> {
-  constructor(@Inject(QuestProgressStore) private readonly quests: QuestProgressStore) {}
+class DeleteQuestProjectionHandler implements ZLinkRouteRequestHandler<DeleteQuestProjectionReq, QuestProgress | undefined> {
+  constructor(@Inject(QuestEventProcessor) private readonly processor: QuestEventProcessor) {}
 
-  async handle(request: DeleteQuestProjectionReq): Promise<QuestProgress | undefined> {
-    return this.quests.deleteProjection(request);
+  async handle(request: DeleteQuestProjectionReq, context: ZLinkRouteRequestContext): Promise<QuestProgress | undefined> {
+    void context;
+    return this.processor.deleteProjection(request);
   }
 }
 
-class RebuildQuestProjectionHandler implements ZLinkRequestHandler<RebuildQuestProjectionReq, QuestProgress> {
-  constructor(@Inject(QuestProgressStore) private readonly quests: QuestProgressStore) {}
+class RebuildQuestProjectionHandler implements ZLinkRouteRequestHandler<RebuildQuestProjectionReq, QuestProgress> {
+  constructor(@Inject(QuestEventProcessor) private readonly processor: QuestEventProcessor) {}
 
-  async handle(request: RebuildQuestProjectionReq): Promise<QuestProgress> {
-    return this.quests.rebuildProjection(request);
+  async handle(request: RebuildQuestProjectionReq, context: ZLinkRouteRequestContext): Promise<QuestProgress> {
+    void context;
+    return this.processor.rebuildProjection(request);
   }
 }
 
-class GameQuestServerAssertHandler implements ZLinkRequestHandler<Record<string, never>, GameQuestServerAssertRes> {
-  constructor(@Inject(QuestProgressStore) private readonly quests: QuestProgressStore) {}
+class GameQuestServerAssertHandler implements ZLinkRouteRequestHandler<Record<string, never>, GameQuestServerAssertRes> {
+  constructor(@Inject(QuestEventProcessor) private readonly processor: QuestEventProcessor) {}
 
-  async handle(): Promise<GameQuestServerAssertRes> {
-    return this.quests.assertServer();
+  async handle(request: Record<string, never>, context: ZLinkRouteRequestContext): Promise<GameQuestServerAssertRes> {
+    void request;
+    void context;
+    return this.processor.assertServer();
   }
 }
 

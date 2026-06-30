@@ -22,8 +22,6 @@ function createTicTacToeApiModule(config: {
             .traceLogFile(`${process.env.TICTACTOE_LOG_DIR ?? 'logs'}/flow-api-${config.apiIndex}.log`)
             .traceLabel(`api-${config.apiIndex}`);
           return builder
-          .codecs()
-            .addJson()
           .addClientServerChannel(SampleNames.apiChannel)
             .enableServer(config.apiEndpoints[config.apiIndex])
             .addRequestHandler(PacketNames.authenticatePlayerReq, AuthenticatePlayerHandler)

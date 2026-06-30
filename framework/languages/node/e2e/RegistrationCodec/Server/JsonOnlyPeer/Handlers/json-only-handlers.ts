@@ -1,0 +1,18 @@
+import { Injectable } from '@nestjs/common';
+import type { ZLinkRequestContext, ZLinkRequestHandler } from '@zlink-systems/framework';
+import { type EchoReply, type EchoReq } from '../../../Shared/messages';
+import { EvidenceStore } from '../Infrastructure/evidence-store';
+
+@Injectable()
+export class JsonOnlyEchoRequestHandler implements ZLinkRequestHandler<EchoReq, EchoReply> {
+  constructor(private readonly evidence: EvidenceStore) {}
+
+  async handle(request: EchoReq, context: ZLinkRequestContext): Promise<EchoReply> {
+    if (context.contentType !== 'application/json') {
+      this.evidence.add(`codec-mismatch-rejected|content=${context.contentType ?? '<null>'}`);
+      throw new Error(`JSON-only peer rejected content type '${context.contentType ?? '<null>'}'.`);
+    }
+    this.evidence.add(`codec-mismatch-json|value=${request.value}|content=${context.contentType}`);
+    return { value: `echo:${request.value}`, contentType: context.contentType ?? '<null>' };
+  }
+}

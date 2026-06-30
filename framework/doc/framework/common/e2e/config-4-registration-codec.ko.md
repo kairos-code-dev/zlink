@@ -79,11 +79,12 @@ handler 의미(공유): 등록 방식이 다른 handler들도 전부 `Echo*Req(v
 
 우선순위: `P1`
 
-**한마디로:** 요청마다 scoped 의존성은 새로 생기고 singleton은 그대로이며, scoped는 누수 없이 dispose되는가.
+**한마디로:** 요청마다 scoped 의존성은 새로 생기고 singleton은 그대로이며, 공개 DI 표면이 제공하는 수명 정리 증거가 일관적인가.
 
 - 절차: scoped/singleton 의존성을 가진 handler로 연속 request를 보낸다. handler는 주입된 의존성의 instance id와 `IDisposable`/`IAsyncDisposable` dispose 횟수를 evidence에 남긴다.
-- 검증: dispatch마다 async scope가 생기므로 scoped 의존성 instance id가 요청마다 달라지고, singleton은 같다. scoped 의존성의 dispose 카운터가 요청 수와 일치한다(누수 없음).
-- 세부 동작: handler DI 수명(instance id·dispose 카운터 evidence).
+- 검증: dispatch마다 새 scope 또는 그 언어의 같은 의미를 가진 request context가 생기므로 scoped 의존성 instance id가 요청마다 달라지고, singleton은 같다. DI 컨테이너가 공개 API로 dispatch scope dispose를 보장하면 scoped 의존성의 dispose 카운터가 요청 수와 일치해야 한다.
+- Node/Nest처럼 public `ModuleRef`가 request context 생성과 resolve는 제공하지만 dispatch 뒤 context dispose API를 제공하지 않는 경우, E2E는 per-dispatch scoped instance 분리와 singleton 안정성을 검증한다. 내부 wrapper 저장소 삭제나 테스트 전용 adapter로 dispose counter를 맞추지 않는다.
+- 세부 동작: handler DI 수명(instance id·공개 수명 정리 evidence).
 
 #### RC-A5 filter ordering
 

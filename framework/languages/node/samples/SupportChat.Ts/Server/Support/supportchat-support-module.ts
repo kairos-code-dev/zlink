@@ -49,8 +49,6 @@ function createSupportChatSupportModule(config: {
             .traceLogFile(`${process.env.SUPPORTCHAT_LOG_DIR ?? 'logs'}/flow-support.log`)
             .traceLabel('support');
           return builder
-          .codecs()
-            .addJson()
           .useDiscovery()
             .addRegistryEndpoint(config.registryRouterEndpoint)
           .addClientServerChannel(SampleNames.supportChannel)

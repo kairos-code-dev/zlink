@@ -1,0 +1,123 @@
+import net from 'node:net';
+import fs from 'node:fs';
+import type { ZLinkChannelClient } from '@zlink-systems/framework';
+import type { EvidenceWaitRequest, ProfileReply, ProfileRequest } from '../../../Shared/messages';
+import { PacketNames, RuntimeMonitoringNames } from '../../../Shared/messages';
+import type { TriggerOptions } from '../Configuration/trigger-options';
+import type { HttpRoute } from '../Support/http-server';
+import type { EvidenceStore } from '../../Service/Infrastructure/evidence-store';
+import {
+  verifyDuplicateSocketSource,
+  verifyMissingSocketSource,
+  verifyMissingSpotSource,
+  verifyPollingInterval
+} from '../Support/trigger-validation';
+
+export function createTriggerEndpoints(
+  options: TriggerOptions,
+  channel: ZLinkChannelClient,
+  evidence: EvidenceStore,
+  requestWithTransientHost: (request: ProfileRequest, endpoint?: string) => Promise<ProfileReply>,
+  stop: () => void
+): HttpRoute[] {
+  return [
+    { method: 'GET', path: '/health', handle: () => ({ status: 'ready' }) },
+    { method: 'GET', path: '/evidence', handle: () => evidence.snapshot() },
+    {
+      method: 'POST',
+      path: '/evidence/wait',
+      handle: (body) => {
+        const request = body as EvidenceWaitRequest;
+        const timeout = Math.max(1, Math.min(request.timeoutMilliseconds ?? 10000, 30000));
+        return evidence.waitUntil((entries) =>
+          request.containsAll.every((expected) => entries.some((entry) => entry.includes(expected)))
+          && request.containsAnyGroups.every((group) => group.some((expected) =>
+            entries.some((entry) => entry.includes(expected)))), timeout);
+      }
+    },
+    { method: 'POST', path: '/profile/request', handle: (body) => requestProfile(channel, body as ProfileRequest) },
+    { method: 'POST', path: '/profile/request/disconnect', handle: (body) => requestWithTransientHost(body as ProfileRequest) },
+    {
+      method: 'POST',
+      path: '/profile/request/service-b',
+      handle: (body) => requestWithTransientHost(body as ProfileRequest, options.serviceBChannelEndpoint)
+    },
+    {
+      method: 'POST',
+      path: '/profile/request/throw',
+      handle: (body) => requestWithTransientHost(body as ProfileRequest, options.throwChannelEndpoint)
+    },
+    { method: 'POST', path: '/socket/handshake-failure', handle: async () => {
+      await sendInvalidHandshake(options.serviceChannelEndpoint);
+      return { triggered: true };
+    } },
+    { method: 'POST', path: '/validation/registration/duplicate-source', handle: () => verifyDuplicateSocketSource() },
+    { method: 'POST', path: '/validation/registration/interval', handle: () => verifyPollingInterval() },
+    { method: 'POST', path: '/validation/registration/missing-spot', handle: () => verifyMissingSpotSource() },
+    { method: 'POST', path: '/validation/registration/missing-socket', handle: () => verifyMissingSocketSource() },
+    { method: 'GET', path: '/logs/throw-stderr', handle: () => readLines(`${options.logDir}/svc-throw.stderr.log`) },
+    {
+      method: 'POST',
+      path: '/logs/throw-stderr/wait',
+      handle: (body) => waitForLines(`${options.logDir}/svc-throw.stderr.log`, body as EvidenceWaitRequest)
+    },
+    { method: 'POST', path: '/shutdown', handle: () => { stop(); return { status: 'stopping', logDir: options.logDir }; } }
+  ];
+}
+
+export async function requestProfile(channel: ZLinkChannelClient, request: ProfileRequest): Promise<ProfileReply> {
+  return await channel
+    .requestToChannel(RuntimeMonitoringNames.channel, request)
+    .packetName(PacketNames.profileRequest)
+    .timeout(3000)
+    .submit<ProfileReply>();
+}
+
+async function sendInvalidHandshake(endpoint: string): Promise<void> {
+  const { host, port } = parseTcpEndpoint(endpoint);
+  await new Promise<void>((resolve, reject) => {
+    const socket = net.createConnection({ host, port }, () => {
+      socket.write('not-a-zlink-handshake', () => {
+        setTimeout(() => {
+          socket.end();
+          resolve();
+        }, 500);
+      });
+    });
+    socket.setTimeout(2000);
+    socket.once('timeout', () => {
+      socket.destroy();
+      reject(new Error(`Timed out writing invalid handshake to ${endpoint}.`));
+    });
+    socket.once('error', reject);
+  });
+}
+
+function parseTcpEndpoint(endpoint: string): { host: string; port: number } {
+  const url = new URL(endpoint);
+  if (url.protocol !== 'tcp:') {
+    throw new Error(`Unsupported endpoint protocol '${url.protocol}'.`);
+  }
+  return { host: url.hostname, port: Number(url.port) };
+}
+
+async function waitForLines(path: string, request: EvidenceWaitRequest): Promise<string[]> {
+  const timeout = Math.max(1, Math.min(request.timeoutMilliseconds ?? 10000, 30000));
+  const deadline = Date.now() + timeout;
+  while (Date.now() <= deadline) {
+    const lines = readLines(path);
+    if (
+      request.containsAll.every((expected) => lines.some((line) => line.includes(expected)))
+      && request.containsAnyGroups.every((group) => group.some((expected) =>
+        lines.some((line) => line.includes(expected))))
+    ) {
+      return lines;
+    }
+    await new Promise((resolve) => setTimeout(resolve, 100));
+  }
+  throw new Error('Timed out waiting for runtime monitoring log evidence.');
+}
+
+function readLines(path: string): string[] {
+  return fs.existsSync(path) ? fs.readFileSync(path, 'utf8').split(/\r?\n/).filter((line) => line.length > 0) : [];
+}

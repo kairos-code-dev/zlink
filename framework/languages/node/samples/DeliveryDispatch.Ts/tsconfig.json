@@ -16,6 +16,9 @@
       "@zlink-systems/stream-connector": [
         "../../packages/stream-connector/dist"
       ],
+      "@zlink-systems/http-client": [
+        "../../packages/http-client/dist"
+      ],
       "@zlink-systems/zlink": [
         "../../../../../bindings/node/dist/index.d.ts"
       ]

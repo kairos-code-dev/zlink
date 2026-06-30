@@ -1,0 +1,25 @@
+import type { EvidenceWaitRequest, SpotTypeMismatchReply, SpotTypeMismatchReq } from '../../Shared/messages';
+import type { ClientOptions } from '../Support/client-options';
+import { postJson } from '../Support/http-client';
+import { ensure } from '../Support/scenario-assert';
+
+export async function runSmA7(options: ClientOptions): Promise<void> {
+  const spotRid = `spot-sm-a7-${Date.now().toString(36)}`;
+  const mismatch = await postJson<SpotTypeMismatchReply>(options.playAUrl, '/spot/type-mismatch', {
+    spotRid
+  } satisfies SpotTypeMismatchReq);
+  ensure(mismatch.failed, 'SM-A7 expected SpotTypeMismatch.');
+  ensure(mismatch.errorKind === 'SpotTypeMismatch', 'SM-A7 error kind mismatch.');
+
+  const expected = `spot-type-mismatch|rid=play-a|spot=${mismatch.spotRid}|kind=SpotTypeMismatch`;
+  const evidence = await postJson<string[]>(options.playAUrl, '/evidence/wait', {
+    containsAll: [expected],
+    timeoutMilliseconds: 10000
+  } satisfies EvidenceWaitRequest);
+  ensure(
+    evidence.some((line) => line.includes(expected)),
+    'SM-A7 evidence did not include SpotTypeMismatch.'
+  );
+
+  console.log('scenario SM-A7 passed');
+}

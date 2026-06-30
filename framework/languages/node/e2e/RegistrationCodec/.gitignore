@@ -1,0 +1,4 @@
+Server/**/dist/
+Client/dist/
+logs/*
+!logs/.gitignore

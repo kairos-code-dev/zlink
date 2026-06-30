@@ -207,6 +207,7 @@ start_server session dist/Server/Session/main.js
 wait_ready session "${LOG_DIR}/session.log"
 wait_port session "${SUPPORTCHAT_SESSION_ENDPOINT}"
 wait_discovery_ready
+node "${SCRIPT_DIR}/dist/Server/Probe/main.js"
 
 node "${SCRIPT_DIR}/dist/Client/main.js" >"${LOG_DIR}/client.log" 2>&1
 grep -q "stream-inbound sample=SupportChat" "${LOG_DIR}/client.log"

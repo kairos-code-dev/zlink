@@ -103,6 +103,25 @@ getter** 다. role(server/client)은 빌더처럼 getter 이름에 박혀 있고
 | framework runtime state | `ZLinkFrameworkRuntimeState` 가 channel 이름 keyed dict(`ServerBundles`/`ClientBundles`/`RouteChannels`)로 live socket 을 들고 있고, `ZLinkChannelRuntimeManager.GetMonitoringSocket` 이 이미 `channel.capability` → live socket lookup 을 한다. | 이 lookup 을 채널이름으로 재사용해 live-backed config 객체를 돌려줄 resolver 만 없다. |
 | framework 문서 | `common/e2e/config-5-resilience-lifecycle.ko.md` RL-B3 가 "진행 중 request 를 끝까지 drain 하는 public admin/drain 모드는 가정하지 않는다 — drain 모드가 추가되면 별도 검증" 이라고 명시한다. | 이 계획이 그 가정을 바꾼다. 공통 spec 에 drain 의미 정의가 없다. |
 
+### 2026-06-30 Node E2E gap 연결
+
+Node/NestJS E2E 포팅에서 아래 scenario가 이 계획의 입력으로 확인됐다. 이 항목들은 현재 공개 계약이
+아니며, Node에서 raw binding option이나 internal runtime option을 직접 호출해서 marker만 맞추지 않는다.
+
+| Node E2E ID | 현재 판정 | 이 계획과의 관계 |
+|-------------|-----------|------------------|
+| `RM-C7` | draft 후보 | build-time server `Weight` 초기값이 있어야 weighted provider 분산을 public API로 검증할 수 있다. |
+| `RL-A4` | draft 후보 | runtime server `Weight = 0`을 만들 수 있어야 drain된 provider 대신 green endpoint로 수렴하는지 검증할 수 있다. |
+| `RL-B4` | draft 후보 | runtime drain/restore 접근자가 있어야 provider를 죽이지 않는 무중단 drain과 복구를 검증할 수 있다. |
+| `RL-B5` | draft 후보 | `RL-B4`의 runtime drain 입력이 있어야 drain 중 in-flight reply 보존을 검증할 수 있다. |
+| `MON-A4` | draft 후보 | runtime drain/restore와 `PEER_WEIGHT_CHANGED`/`PeerAdmissionChanged` monitoring 의미가 함께 정해져야 한다. |
+
+`RM-C9`는 같은 Node 포팅 묶음에 있지만 이 계획의 1차 deliverable은 아니다. 공통 framework spec은
+nonblocking submit, pending queue, ready notification, send timeout 정책을 설명한다. 반면 HWM 값을
+public builder에서 낮춰 포화를 결정적으로 유도하는 계약은 아직 별도 후보로 남는다. 이 문서의
+`SendHighWaterMark`/`ReceiveHighWaterMark`는 런타임 set 확장 후보이고, `SendTimeout`은 framework 내부
+receive/send loop가 소유하는 값으로 분리되어 있다.
+
 ## 목표 정책
 
 ### 1. drain 은 로컬 serving socket 의 weight 를 즉시 바꾼다

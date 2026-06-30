@@ -13,8 +13,7 @@ framework worker pool에 맡긴 작업을 `yield`로 기다리는 동안 같은 
 처리되는지 검증한다. `YD-B1`은 actor A를 target spot에 join한 뒤 actor A가 delay service reply를
 `yield`로 기다리는 동안, 같은 target spot에 join한 actor B의 빠른 actor request가 actor A의 reply보다
 먼저 완료되는지 검증한다. `YD-B2`는 target spot에 join한 actor A가 `yield` 중일 때 같은 actor A의
-빠른 request가 actor A의 continuation과 completion 뒤에 처리되는지 검증한다.
-`YD-B3`는 actor A의 Entry Spot actor handler가 actor join call을 `yield`로 기다리는 동안 actor B의
+빠른 request가 actor A의 continuation과 completion 뒤에 처리되는지 검증한다. `YD-B3`는 actor A의 Entry Spot actor handler가 actor join call을 `yield`로 기다리는 동안 actor B의
 빠른 Entry Spot actor request가 먼저 완료되는지 검증한다. `YD-C1`은 yield 중인 timer와 빠른 timer를
 같은 target spot에 함께 두고, yield 중인 timer가 reply를 기다리는 동안 빠른 timer tick이 먼저 완료되는지
 검증한다. `YD-C2`는 같은 timer의 다음 tick이 이전 tick의 yield continuation과 completion 뒤에
@@ -24,10 +23,11 @@ reply를 `yield`로 기다린 뒤 원래 owner spot에서 재개되는지 검증
 route mesh로 보낸 packet이 `play-b` target spot handler에 도착한 뒤, 그 handler가 `yield` 중일 때 같은
 target spot의 probe가 먼저 처리되는지 검증한다. `YD-D4`는 stream session relay로 bound actor
 handler에 들어간 request가 `yield` 중일 때 bound session push를 원래 stream connector로 돌려보내고,
-다른 actor의 push wait는 진행되지 않는지 검증한다.
+다른 actor의 push wait는 진행되지 않는지 검증한다. `YD-E1`은 timeout 뒤 같은 Spot mailbox가
+post-timeout probe를 처리하는지 검증한다.
 
-아직 `YD-A3`의 cancellation token 상태 확인, timeout, cancellation, shutdown recovery scenario는
-구현하지 않았다.
+최근 full runner는 `logs/20260630-111601-3718472`에서 YD-A/B/C/D/E1과 E4 정적 검증을 통과했다.
+아직 cancellation, shutdown recovery, cross-language marker report 비교 scenario는 구현하지 않았다.
 남은 gap은 `feature-map.ko.md`와 `porting-inventory.ko.md`에 기록한다.
 
 ## 목표 역할
@@ -54,5 +54,6 @@ play/session evidence JSON을 남긴다. 성공 기준은 `scenario YD-A1 passed
 `scenario YD-B2 passed`, `scenario YD-B3 passed`, `scenario YD-C1 passed`,
 `scenario YD-C2 passed`, `scenario YD-C3 passed`, `scenario YD-D2 passed`,
 `scenario YD-D3 passed`, `scenario YD-D4 passed`,
-`yield-dispatch e2e result=passed` 출력과 message flow 로그 생성이다. 최근 확인된 통과 로그는
-`logs/20260630-032840-2493437`이며, `YD-D4`까지 포함해 통과했다.
+`scenario YD-E1 passed`, `yield-dispatch e2e result=passed` 출력과 message flow 로그 생성이다.
+최근 재실행 로그는 `logs/20260630-111601-3718472`이며, 현재 runner 범위는 통과한다. 전체 Config 8
+포팅 완료에는 아직 YD-E2, YD-E3, YD-E5 gap 처리가 남아 있다.

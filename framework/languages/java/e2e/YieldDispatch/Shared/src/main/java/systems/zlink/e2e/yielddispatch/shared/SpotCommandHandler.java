@@ -76,6 +76,18 @@ public abstract class SpotCommandHandler<TCommand>
         }
     }
 
+    public static final class YieldTimeout
+        extends SpotCommandHandler<Contracts.YieldTimeoutCommand> {
+        public YieldTimeout(ZLinkRouteClient routes) {
+            super(routes, Contracts.YieldTimeoutCommand.class);
+        }
+
+        @Override
+        public String packetName() {
+            return "YieldTimeoutCommand";
+        }
+    }
+
     public static final class TimerStart
         extends SpotCommandHandler<Contracts.TimerStartCommand> {
         public TimerStart(ZLinkRouteClient routes) {

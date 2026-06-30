@@ -40,6 +40,7 @@ public final class YieldProbeSpot implements ZLinkSpot<YieldActor> {
         context.handlers().addPacket(YieldProbeHandlers.WorkerYieldCommandHandler.class);
         context.handlers().addPacket(YieldProbeHandlers.ProbeCommandHandler.class);
         context.handlers().addPacket(YieldProbeHandlers.YieldCommandHandler.class);
+        context.handlers().addPacket(YieldProbeHandlers.YieldTimeoutCommandHandler.class);
         context.handlers().addPacket(YieldProbeHandlers.RemoteSpotYieldHandler.class);
         context.handlers().addPacket(YieldProbeHandlers.TimerStartCommandHandler.class);
         context.handlers().addPacket(YieldProbeHandlers.TimerStopCommandHandler.class);

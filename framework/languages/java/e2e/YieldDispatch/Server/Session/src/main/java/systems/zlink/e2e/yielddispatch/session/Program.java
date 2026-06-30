@@ -87,6 +87,7 @@ public final class Program {
                 .registerSession(YieldSession.class)
                 .addSessionPacketHandler(ScenarioRequestHandler.class)
                 .addSessionPacketHandler(SpotCommandHandler.Yield.class)
+                .addSessionPacketHandler(SpotCommandHandler.YieldTimeout.class)
                 .addSessionPacketHandler(SpotCommandHandler.WorkerYield.class)
                 .addSessionPacketHandler(SpotCommandHandler.Probe.class)
                 .addSessionPacketHandler(SpotCommandHandler.TimerStart.class)
@@ -133,6 +134,12 @@ public final class Program {
     SpotCommandHandler.Yield yieldCommandHandler(
         systems.zlink.framework.channels.ZLinkRouteClient routes) {
         return new SpotCommandHandler.Yield(routes);
+    }
+
+    @Bean
+    SpotCommandHandler.YieldTimeout yieldTimeoutCommandHandler(
+        systems.zlink.framework.channels.ZLinkRouteClient routes) {
+        return new SpotCommandHandler.YieldTimeout(routes);
     }
 
     @Bean

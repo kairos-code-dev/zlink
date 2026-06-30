@@ -139,6 +139,11 @@ public final class Program {
     }
 
     @Bean
+    YieldProbeHandlers.YieldTimeoutCommandHandler yieldTimeoutCommandHandler(EvidenceStore evidence) {
+        return new YieldProbeHandlers.YieldTimeoutCommandHandler(evidence);
+    }
+
+    @Bean
     YieldProbeHandlers.RemoteSpotYieldHandler remoteSpotYieldHandler(EvidenceStore evidence) {
         return new YieldProbeHandlers.RemoteSpotYieldHandler(evidence);
     }

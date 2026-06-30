@@ -21,6 +21,7 @@ import systems.zlink.stream.connector.ZLinkStreamMessage;
 
 public final class Program {
     private static final Duration REQUEST_TIMEOUT = Duration.ofSeconds(30);
+    private static final long ISOLATION_DELAY_MILLIS = 3000;
     private static final ObjectMapper JSON = new ObjectMapper();
 
     private Program() {
@@ -82,6 +83,8 @@ public final class Program {
             System.out.println("scenario YD-D3 passed");
             runSessionRelayActorYield(connector);
             System.out.println("scenario YD-D4 passed");
+            runTimeoutCleanup(connector);
+            System.out.println("scenario YD-E1 passed");
             System.out.println("yield-dispatch e2e result=passed");
         } finally {
             connector.close().await();
@@ -265,7 +268,7 @@ public final class Program {
                 requestId + "-yield",
                 "yield-on-first",
                 50,
-                1000))
+                ISOLATION_DELAY_MILLIS))
             .metadata(metadata)
             .await();
         assertOrder(playEvidence, requestId, List.of(
@@ -365,7 +368,7 @@ public final class Program {
         String timerName = requestId + "-fast";
         String playEvidence = Env.get("ZLINK_JAVA_E2E_PLAY_HTTP") + "/evidence";
         CompletionStage<Contracts.ActorReply> actorYield = connector
-            .request(new Contracts.ActorYieldRequest(requestId, 350))
+            .request(new Contracts.ActorYieldRequest(requestId, ISOLATION_DELAY_MILLIS))
             .metadata(Contracts.ACTOR_ID_METADATA, actorId)
             .timeout(REQUEST_TIMEOUT)
             .submit(Contracts.ActorReply.class);
@@ -424,7 +427,7 @@ public final class Program {
                 timerName,
                 "yield-on-first",
                 50,
-                1000))
+                ISOLATION_DELAY_MILLIS))
             .metadata(timerMetadata)
             .await();
         assertOrder(playEvidence, requestId, List.of(
@@ -615,6 +618,49 @@ public final class Program {
             "actor-push-yield-released",
             "actor-push-yield-resumed",
             "actor-push-yield-completed"), "actor=" + actorA);
+    }
+
+    private static void runTimeoutCleanup(ZLinkStreamConnector connector) throws Exception {
+        String requestId = "yde1-" + System.nanoTime();
+        String spotRid = requestId + "-spot";
+        String playEvidence = Env.get("ZLINK_JAVA_E2E_PLAY_HTTP") + "/evidence";
+        Contracts.EnsureSpotReply target = connector
+            .request(new Contracts.EnsureSpotRequest(spotRid))
+            .metadata(Contracts.TARGET_NODE_RID_METADATA, Contracts.PLAY_NODE_A)
+            .timeout(REQUEST_TIMEOUT)
+            .await(Contracts.EnsureSpotReply.class);
+        ensure(spotRid.equals(target.spotRid()), "YD-E1 spot mismatch");
+        ensure(Contracts.PLAY_NODE_A.equals(target.nodeRid()), "YD-E1 node mismatch");
+
+        Map<String, String> metadata = Map.of(
+            Contracts.SPOT_RID_METADATA, spotRid,
+            Contracts.TARGET_NODE_RID_METADATA, Contracts.PLAY_NODE_A);
+        connector
+            .send(new Contracts.YieldTimeoutCommand(requestId, 700, 100))
+            .metadata(metadata)
+            .await();
+        assertOrder(playEvidence, requestId, List.of(
+            "timeout-yield-started",
+            "timeout-yield-released",
+            "timeout-yield-completed"));
+        assertNoMarker(playEvidence, requestId, "timeout-yield-unexpected-resumed");
+        connector
+            .send(new Contracts.ProbeCommand(requestId, "timeout-probe"))
+            .metadata(metadata)
+            .await();
+        assertOrder(playEvidence, requestId, List.of(
+            "timeout-yield-started",
+            "timeout-yield-released",
+            "timeout-yield-completed",
+            "probe-started",
+            "probe-completed"));
+        assertAllValuesContain(playEvidence, requestId, List.of(
+            "timeout-yield-started",
+            "timeout-yield-released",
+            "timeout-yield-completed"), "spot=" + spotRid);
+        assertAllValuesContain(playEvidence, requestId, List.of(
+            "probe-started",
+            "probe-completed"), spotRid);
     }
 
     private static void runReadinessProbe(ZLinkStreamConnector connector) throws Exception {

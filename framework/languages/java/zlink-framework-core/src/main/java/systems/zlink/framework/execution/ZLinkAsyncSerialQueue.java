@@ -11,7 +11,16 @@ public final class ZLinkAsyncSerialQueue {
     private static final ExecutorService HANDLER_EXECUTOR =
         Executors.newVirtualThreadPerTaskExecutor();
 
+    private final boolean releaseDispatchOnSuspension;
     private CompletionStage<Void> tail = CompletableFuture.completedFuture(null);
+
+    public ZLinkAsyncSerialQueue() {
+        this(true);
+    }
+
+    public ZLinkAsyncSerialQueue(boolean releaseDispatchOnSuspension) {
+        this.releaseDispatchOnSuspension = releaseDispatchOnSuspension;
+    }
 
     public synchronized CompletionStage<Void> enqueue(Supplier<CompletionStage<Void>> operation) {
         CompletableFuture<Void> result = new CompletableFuture<>();
@@ -37,6 +46,10 @@ public final class ZLinkAsyncSerialQueue {
         Supplier<CompletionStage<Void>> operation,
         CompletableFuture<Void> result) {
         ZLinkYieldTurn turn = new ZLinkYieldTurn((yieldTurn, resume) -> {
+            if (!releaseDispatchOnSuspension) {
+                invokeResume(yieldTurn, resume);
+                return true;
+            }
             enqueueResume(yieldTurn, resume);
             return true;
         });
@@ -56,6 +69,9 @@ public final class ZLinkAsyncSerialQueue {
             }
         });
         CompletableFuture<Void> suspended = turn.suspended();
+        if (!releaseDispatchOnSuspension) {
+            return owner;
+        }
         return firstOf(owner, suspended).thenCompose(ignored -> {
             if (suspended.isDone() && !owner.isDone()) {
                 return CompletableFuture.completedFuture(null);
@@ -71,6 +87,10 @@ public final class ZLinkAsyncSerialQueue {
         CompletableFuture<Void> resumed = CompletableFuture.runAsync(() -> {
             resume.run();
             if (owner != null && !owner.isDone()) {
+                if (!releaseDispatchOnSuspension) {
+                    owner.join();
+                    return;
+                }
                 firstOf(owner, suspended).join();
             }
         }, HANDLER_EXECUTOR);

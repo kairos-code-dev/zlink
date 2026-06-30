@@ -154,4 +154,40 @@ final class ZLinkAsyncSerialQueueTest {
             "third-start",
             "first-resumed-again:two"), events);
     }
+
+    @Test
+    void nonReentrantYieldKeepsNextDispatchQueuedUntilOperationCompletes() throws Exception {
+        ZLinkAsyncSerialQueue queue = new ZLinkAsyncSerialQueue(false);
+        CompletableFuture<String> io = new CompletableFuture<>();
+        CompletableFuture<Void> firstStarted = new CompletableFuture<>();
+        CompletableFuture<Void> firstResumed = new CompletableFuture<>();
+        List<String> events = new ArrayList<>();
+
+        CompletableFuture<Void> first = queue.enqueue(() -> {
+            events.add("first-start");
+            firstStarted.complete(null);
+            String result = ZLinkYieldTurn.current().awaitFrameworkCallBlocking(io);
+            events.add("first-resumed:" + result);
+            firstResumed.complete(null);
+            return CompletableFuture.completedFuture(null);
+        }).toCompletableFuture();
+
+        firstStarted.get(3, TimeUnit.SECONDS);
+
+        CompletableFuture<Void> second = queue.enqueue(() -> {
+            events.add("second-start");
+            return CompletableFuture.completedFuture(null);
+        }).toCompletableFuture();
+
+        TimeUnit.MILLISECONDS.sleep(100);
+        assertFalse(second.isDone());
+        assertEquals(List.of("first-start"), events);
+
+        io.complete("ok");
+        firstResumed.get(3, TimeUnit.SECONDS);
+        second.get(3, TimeUnit.SECONDS);
+
+        assertEquals(List.of("first-start", "first-resumed:ok", "second-start"), events);
+        assertEquals(null, first.join());
+    }
 }

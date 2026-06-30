@@ -517,7 +517,7 @@ public final class ZLinkActorRuntime implements ZLinkActorManager {
                 return CompletableFuture.failedFuture(new ZLinkConfigurationException(
                     "actor is not managed by this runtime: " + actorId));
             }
-            queue = dispatchQueues.computeIfAbsent(actorId, ignored -> new ZLinkAsyncSerialQueue());
+            queue = dispatchQueues.computeIfAbsent(actorId, ignored -> new ZLinkAsyncSerialQueue(false));
         }
         return queue.enqueue(operation);
     }

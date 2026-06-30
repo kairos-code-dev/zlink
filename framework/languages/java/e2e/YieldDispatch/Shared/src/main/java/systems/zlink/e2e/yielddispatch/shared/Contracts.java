@@ -39,6 +39,9 @@ public final class Contracts {
     public record YieldCommand(String requestId, long delayMillis, String correlationId) {
     }
 
+    public record YieldTimeoutCommand(String requestId, long delayMillis, long timeoutMillis) {
+    }
+
     public record WorkerYieldRequest(String requestId) {
     }
 

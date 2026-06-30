@@ -178,6 +178,38 @@ public final class YieldProbeHandlers {
         }
     }
 
+    public static final class YieldTimeoutCommandHandler
+        implements ZLinkSpotPacketHandler<YieldProbeSpot, Contracts.YieldTimeoutCommand> {
+        private final EvidenceStore evidence;
+
+        public YieldTimeoutCommandHandler(EvidenceStore evidence) {
+            this.evidence = evidence;
+        }
+
+        @Override
+        public void handle(
+            YieldProbeSpot spot,
+            Contracts.YieldTimeoutCommand request) {
+            String value = "spot=" + spot.context().spotRid() + ";handler=spot";
+            evidence.record("timeout-yield-started", request.requestId(), value);
+            try {
+                evidence.record("timeout-yield-released", request.requestId(), value);
+                spot.context().outbound()
+                    .requestToChannel(
+                        Contracts.DELAY_CHANNEL,
+                        new Contracts.DelayRequest(request.requestId(), request.delayMillis()))
+                    .timeout(Duration.ofMillis(request.timeoutMillis()))
+                    .yield(Contracts.DelayReply.class);
+                evidence.record("timeout-yield-unexpected-resumed", request.requestId(), value);
+            } catch (RuntimeException error) {
+                evidence.record(
+                    "timeout-yield-completed",
+                    request.requestId(),
+                    value + ";error=" + error.getClass().getSimpleName());
+            }
+        }
+    }
+
     public static final class RemoteSpotYieldHandler {
         private final EvidenceStore evidence;
 

@@ -2235,14 +2235,18 @@ public final class ZLinkSpotRuntime implements ZLinkSpotManager, AutoCloseable {
                 Message payloadCopy = bodyPart == null
                     ? Message.from(new byte[0])
                     : Message.from(bodyPart.message());
-                context.enqueueDispatch(
-                    () -> dispatchActorPacket(
-                        handler,
-                        spotSurface,
-                        actor,
-                        packetHeader,
-                        headerCopy,
-                        payloadCopy));
+                context.enqueueDispatch(() -> {
+                    actorRuntime.submitActorDispatch(
+                        actor.actorId(),
+                        () -> dispatchActorPacket(
+                            handler,
+                            spotSurface,
+                            actor,
+                            packetHeader,
+                            headerCopy,
+                            payloadCopy));
+                    return CompletableFuture.completedFuture(null);
+                });
             }
         }
 
@@ -4780,7 +4784,6 @@ public final class ZLinkSpotRuntime implements ZLinkSpotManager, AutoCloseable {
         }
 
         private CompletionStage<Void> dispatchActorMessagesAsync(List<ZLinkBackendActorReceived> actorMessages) {
-            CompletionStage<Void> tail = CompletableFuture.completedFuture(null);
             int index = 0;
             while (index < actorMessages.size() || pendingActorHeader != null) {
                 boolean pendingHeader = pendingActorHeader != null;
@@ -4795,7 +4798,7 @@ public final class ZLinkSpotRuntime implements ZLinkSpotManager, AutoCloseable {
                     if (!pendingHeader) {
                         pendingActorHeader = copyActorReceived(headerPart);
                     }
-                    return tail;
+                    return CompletableFuture.completedFuture(null);
                 }
                 if (pendingHeader) {
                     pendingActorHeader = null;
@@ -4927,16 +4930,16 @@ public final class ZLinkSpotRuntime implements ZLinkSpotManager, AutoCloseable {
                 Message payloadCopy = bodyPart == null
                     ? Message.from(new byte[0])
                     : Message.from(bodyPart.message());
-                tail = tail.thenCompose(ignored -> actorRuntime.submitActorDispatch(
+                actorRuntime.submitActorDispatch(
                     actor.actorId(),
                     () -> dispatchActorPacket(
                         handler,
                         actor,
                         packetHeader,
                         headerCopy,
-                        payloadCopy)));
+                        payloadCopy));
             }
-            return tail;
+            return CompletableFuture.completedFuture(null);
         }
 
         private CompletionStage<Void> dispatchActorPacket(

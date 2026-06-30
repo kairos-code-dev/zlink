@@ -64,10 +64,9 @@ Java e2e에는 이미 여러 config의 runner, source, feature-map이 있다. �
   분류에 맞춘다.
 - 기존 `Monitoring` 이름은 `.NET` 기준 `RuntimeMonitoring`과 이름이 맞지 않는다. 완료 config로
   인정하기 전에 rename 또는 새 config 작성 여부를 inventory에서 결정한다.
-- `YieldDispatch`는 Java e2e에 초기 구현을 만들었다. 현재 `YD-A1`, `YD-A2`, `YD-A4`와 `YD-A3`의
-  request id, spot rid, correlation id 보존을 검증한다. `YD-B1`은 actor A와 actor B를 같은 target
-  spot에 join한 뒤, actor A가 `yield`로 기다리는 동안 actor B의 fast request가 먼저 완료되는 범위를
-  검증한다. `YD-B2`는 같은 target actor의 fast request가 yield continuation 뒤에
+- `YieldDispatch`는 Java e2e에 구현을 만들었다. 현재 `YD-A1`, `YD-A2`, `YD-A3`, `YD-A4`를
+  검증한다. `YD-B1`은 actor A와 actor B를 같은 target spot에 join한 뒤, actor A가 `yield`로 기다리는
+  동안 actor B의 fast request가 먼저 완료되는 범위를 검증한다. `YD-B2`는 같은 target actor의 fast request가 yield continuation 뒤에
   처리되는지 검증한다. `YD-B3`는 Play role에서 만든 actor ref를 session에 bind하고, actor join call을
   `yield`로 기다리는 동안 다른 actor의 entry actor request가 먼저 완료되는지 검증한다. `YD-C1`은 같은
   target spot에서 yield 중인 timer가 기다리는 동안 빠른 timer tick이 먼저 완료되는지 검증한다. `YD-C2`는
@@ -77,8 +76,9 @@ Java e2e에는 이미 여러 config의 runner, source, feature-map이 있다. �
   gateway가 route mesh로 보낸 packet이 `play-b` target spot handler에서 yield하는 동안 probe가 먼저
   처리되는지 검증한다. `YD-D4`는 stream session relay로 bound actor handler에 들어간 request가
   `yield` 중일 때 bound session push를 원래 stream connector로 보내고, 다른 actor의 push wait는
-  진행되지 않는지 검증한다. 최신 full runner 통과 로그는 `logs/20260630-032840-2493437`이다.
-  `YD-A3`의 cancellation token 상태와 cleanup scenario는 feature-map에 gap으로 남겨 둔다.
+  진행되지 않는지 검증한다. `YD-E1`은 timeout cleanup 뒤 같은 Spot mailbox가 probe를 처리하는지 검증한다.
+  최신 재실행 로그는 `logs/20260630-111601-3718472`이며 YD-A/B/C/D/E1과 E4 정적 검증이 통과했다.
+  cancellation, shutdown recovery, cross-language marker report 비교는 feature-map에 gap으로 남겨 둔다.
 
 판단:
 
@@ -100,7 +100,7 @@ Java e2e에는 이미 여러 config의 runner, source, feature-map이 있다. �
 | `DiscoveryRegistryHa` | 리팩토링 대상 | HA scenario coverage가 넓다. provider, registry, consumer, probe, embedded 역할을 `.NET` 구조에 맞게 분리한다. |
 | `ResilienceLifecycle` | 리팩토링 대상 | 구현된 scenario와 gap 분류가 많다. client scenario/support와 server role 분류를 맞추고, 미완료 항목은 feature-map에 남긴다. |
 | `Monitoring` | RuntimeMonitoring 전환 대상 | `.NET` 기준 config 이름은 `RuntimeMonitoring`이다. 기존 Java `Monitoring`은 구현이 있으므로 먼저 `RuntimeMonitoring` inventory에서 유지할 파일과 이동할 파일을 결정한다. 전환이 끝나면 기존 `Monitoring` 디렉터리는 삭제한다. |
-| `YieldDispatch` | 부분 구현 대상 | Java e2e에 초기 config를 만들었다. `run_e2e.sh`는 registry, delay, play-a, play-b, session, client process를 띄워 `YD-A1`, `YD-A2`, `YD-A4`, `YD-A3`의 request id/spot rid/correlation id 보존, `YD-B1`, `YD-B2`, `YD-B3`, `YD-C1`, `YD-C2`, `YD-C3`, `YD-D2`, `YD-D3`, `YD-D4`를 검증한다. 최신 full runner 통과 로그는 `logs/20260630-032840-2493437`이다. 아직 확인하지 못한 범위는 `YD-A3`의 cancellation token 상태와 cleanup scenario다. |
+| `YieldDispatch` | 부분 구현 대상 | Java e2e에 config를 만들었다. `run_e2e.sh`는 registry, delay, play-a, play-b, session, client process를 띄워 `YD-A1`, `YD-A2`, `YD-A3`, `YD-A4`, `YD-B1`, `YD-B2`, `YD-B3`, `YD-C1`, `YD-C2`, `YD-C3`, `YD-D2`, `YD-D3`, `YD-D4`, `YD-E1`과 E4 정적 검증을 수행한다. 최신 재실행 로그는 `logs/20260630-111601-3718472`이며 현재 runner 범위는 통과했다. 아직 확인하지 못한 범위는 YD-E2 cancellation cleanup, YD-E3 shutdown/restart recovery, YD-E5 cross-language marker report 비교다. |
 
 ## 표준 Java E2E 구조
 

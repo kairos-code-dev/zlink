@@ -132,6 +132,33 @@ with urllib.request.urlopen(sys.argv[1], timeout=5) as response:
 PY
 }
 
+static_checks() {
+  local tmp
+  tmp="$(mktemp)"
+  if grep -RInE 'POST|/yield|\.POST\(' Client Server Shared --include='*.java' >"${tmp}"; then
+    cat "${tmp}" >&2
+    rm -f "${tmp}"
+    echo "YieldDispatch scenarios must not be triggered through HTTP." >&2
+    return 1
+  fi
+  rm -f "${tmp}"
+
+  tmp="$(mktemp)"
+  if grep -RInF '.yield(' . --include='*.java' \
+      | grep -v 'Shared/src/main/java/systems/zlink/e2e/yielddispatch/shared/YieldProbeHandlers.java' >"${tmp}"; then
+    cat "${tmp}" >&2
+    rm -f "${tmp}"
+    echo "YieldDispatch may only call .yield from Play Spot/Entry Spot handlers." >&2
+    return 1
+  fi
+  rm -f "${tmp}"
+
+  if ! grep -q 'ZLinkStreamConnectorFactory.create' Client/src/main/java/systems/zlink/e2e/yielddispatch/client/Program.java; then
+    echo "YieldDispatch client must create a real stream connector directly." >&2
+    return 1
+  fi
+}
+
 wait_readiness() {
   : >"${log_dir}/readiness.stdout.log"
   : >"${log_dir}/readiness.stderr.log"
@@ -191,6 +218,7 @@ SESSION_HTTP="$(http "${SESSION_HTTP_PORT}")"
 SESSION_ROUTE_ENDPOINT="$(tcp "${SESSION_ROUTE_PORT}")"
 SESSION_SPOT_ENDPOINT="$(tcp "${SESSION_SPOT_PORT}")"
 
+static_checks
 gradle_run installDist
 
 ZLINK_JAVA_E2E_REGISTRY_PUB="${REGISTRY_PUB}" \
@@ -276,5 +304,6 @@ grep -q "scenario YD-C3 passed" "${log_dir}/client.stdout.log"
 grep -q "scenario YD-D2 passed" "${log_dir}/client.stdout.log"
 grep -q "scenario YD-D3 passed" "${log_dir}/client.stdout.log"
 grep -q "scenario YD-D4 passed" "${log_dir}/client.stdout.log"
+grep -q "scenario YD-E1 passed" "${log_dir}/client.stdout.log"
 grep -q "yield-dispatch e2e result=passed" "${log_dir}/client.stdout.log"
 grep -Rq "message flow" "${log_dir}"/*-flow.log

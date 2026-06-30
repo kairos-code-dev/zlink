@@ -70,7 +70,7 @@ internal helper나 raw-frame 우회로 완료 처리하지 않기 위해 유지�
 | `Server/Registry/*` | `Server/Registry/src/main/java/systems/zlink/e2e/yielddispatch/registry/` | server-role | done | embedded registry role 구현 |
 | `Server/Delay/*` | `Server/Delay/src/main/java/systems/zlink/e2e/yielddispatch/delay/` | server-role | done | delay service role 구현 |
 | `Server/Play/*` | `Server/Play/src/main/java/systems/zlink/e2e/yielddispatch/play/` | server-role | partial | route mesh, spot mesh, YD-A1/A2/A3/A4 probe spot, B1/B2 target actor handler, YD-B3 handler bean, C1/C2/C3 timer start/stop/tick handler, D2 remote spot owner/target handler, D3 route bridge target spot handler, D4 actor push yield handler, E1 timeout handler bean, E3 shutdown target role을 구현했다. E2 role work는 남아 있다 |
-| `Server/Session/*` | `Server/Session/src/main/java/systems/zlink/e2e/yielddispatch/session/` | server-role | partial | stream session gateway, routed spot egress bridge, actor bind/relay entry path, timer command relay, D2 ensure-spot/remote spot request relay, D3 YieldCommand relay, D4 bound actor relay, E1 YieldTimeoutCommand relay, E3 diagnostic relay를 구현했다. E2 relay와 E3 framework cleanup은 남아 있다 |
+| `Server/Session/*` | `Server/Session/src/main/java/systems/zlink/e2e/yielddispatch/session/` | server-role | partial | stream session gateway, routed spot egress bridge, actor bind/relay entry path, timer command relay, D2 ensure-spot/remote spot request relay, D3 YieldCommand relay, D4 bound actor relay, E1 YieldTimeoutCommand relay, E3 diagnostic relay를 구현했다. E2 relay는 남아 있다 |
 
 ## 구현 전 확인한 public surface
 

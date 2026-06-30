@@ -45,7 +45,6 @@ public final class OrderWorkflowApplication {
                 .messageFlow(ZLinkMessageFlowLogMode.KEY_TRANSITIONS)
                 .traceLogFile(System.getenv().getOrDefault("SHOPPINGMALL_LOG_DIR", "logs") + "/flow-" + options.instanceId() + ".log")
                 .traceLabel(options.instanceId());
-            configurer.codecs().addJson();
             configurer.addHandlersFromPackageOf(OrderWorkflowApplication.class);
             configurer.addClientServerChannel(SampleNames.workflowChannel(options.instanceId()))
                 .enableServer(SampleTopology.workflowEndpoint(options.instanceId()))

@@ -21,7 +21,6 @@ public static class CourierSpotHostFactory
                 .TraceLogFile(SampleFlowLog.Path($"courier-spot-{nodeConfig.Name}"))
                 .TraceLabel($"courier-spot-{nodeConfig.Name}");
             options.AddHandlersFromAssemblyOf(typeof(CourierSpotHostFactory));
-            options.Codecs.AddJson();
             options.UseDiscovery().AddRegistryEndpoint(topology.RegistryRouterEndpoint);
             var route = options.AddRouteMesh(SampleNames.CourierSpotRouteChannel)
                 .SetRoutingId(nodeConfig.Rid)

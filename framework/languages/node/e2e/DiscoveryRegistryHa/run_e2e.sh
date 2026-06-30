@@ -6,6 +6,22 @@ NODE_ROOT="$(cd "$ROOT_DIR/../.." && pwd)"
 RUN_ID="$(date +%Y%m%d-%H%M%S)-$$"
 LOG_DIR="$ROOT_DIR/logs/$RUN_ID"
 SCENARIO="${1:-DR-A1}"
+SCENARIOS=(
+  DR-A1
+  DR-A2
+  DR-A3
+  DR-A4
+  DR-B1
+  DR-B2
+  DR-B3
+  DR-C1
+  DR-C2
+  DR-C3
+  DR-D1
+  DR-D2
+  DR-D3
+  DR-D4
+)
 mkdir -p "$LOG_DIR"
 
 pick_port() {
@@ -84,7 +100,19 @@ kill_pid() {
   fi
 }
 
+run_all_scenarios() {
+  local scenario
+  for scenario in "${SCENARIOS[@]}"; do
+    "$0" "$scenario"
+  done
+}
+
 echo "log_dir=$LOG_DIR"
+
+if [[ "$SCENARIO" == "all" ]]; then
+  run_all_scenarios
+  exit 0
+fi
 
 (cd "$NODE_ROOT" && npm run build >/dev/null)
 build_package "$ROOT_DIR/Server/Registry"
@@ -1376,7 +1404,7 @@ case "$SCENARIO" in
     run_dr_d4
     ;;
   *)
-    echo "Unsupported scenario '$SCENARIO'. Supported: DR-A1, DR-A2, DR-A3, DR-A4, DR-B1, DR-B2, DR-B3, DR-C1, DR-C2, DR-C3, DR-D1, DR-D2, DR-D3, DR-D4" >&2
+    echo "Unsupported scenario '$SCENARIO'. Supported: all, ${SCENARIOS[*]}" >&2
     exit 2
     ;;
 esac

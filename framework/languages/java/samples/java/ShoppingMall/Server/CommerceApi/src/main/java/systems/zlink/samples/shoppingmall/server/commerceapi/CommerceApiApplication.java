@@ -48,7 +48,6 @@ public final class CommerceApiApplication {
                 .messageFlow(ZLinkMessageFlowLogMode.KEY_TRANSITIONS)
                 .traceLogFile(System.getenv().getOrDefault("SHOPPINGMALL_LOG_DIR", "logs") + "/flow-" + options.instanceId() + ".log")
                 .traceLabel(options.instanceId());
-            configurer.codecs().addJson();
             configurer.addHandlersFromPackageOf(CommerceApiApplication.class);
 
             // public client-facing channel hosted on this instance's endpoint

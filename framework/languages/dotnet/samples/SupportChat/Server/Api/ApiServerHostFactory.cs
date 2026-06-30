@@ -17,7 +17,6 @@ public static class ApiServerHostFactory
                 .TraceLogFile(SampleFlowLog.Path("api"))
                 .TraceLabel("api");
             options.AddHandlersFromAssemblyOf(typeof(ApiServerHostFactory));
-            options.Codecs.AddJson();
             options.UseDiscovery().AddRegistryEndpoint(topology.RegistryRouterEndpoint);
             {
                 var channel = options.AddClientServerChannel(SampleNames.ApiChannel);

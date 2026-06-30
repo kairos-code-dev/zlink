@@ -35,7 +35,6 @@ class OrderWorkflowApplication {
                 traceLogFile((System.getenv("SHOPPINGMALL_LOG_DIR") ?: "logs") + "/flow-${options.instanceId}.log")
                 traceLabel(options.instanceId)
             }
-            configurer.codecs().addJson()
             configurer.addHandlersFromPackageOf(OrderWorkflowApplication::class.java)
             configurer.addClientServerChannel(SampleNames.workflowChannel(options.instanceId))
                 .enableServer(SampleTopology.workflowEndpoint(options.instanceId))

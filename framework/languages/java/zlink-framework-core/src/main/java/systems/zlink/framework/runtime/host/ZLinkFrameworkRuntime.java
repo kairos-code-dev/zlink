@@ -18,7 +18,6 @@ import systems.zlink.framework.runtime.actors.ZLinkSessionActorsRuntime;
 import systems.zlink.framework.runtime.channels.ZLinkChannelRuntime;
 import systems.zlink.framework.runtime.handlers.ZLinkHandlerFactory;
 import systems.zlink.framework.runtime.messaging.ZLinkJsonMessageSerializer;
-import systems.zlink.framework.runtime.messaging.ZLinkStringMessageSerializer;
 import systems.zlink.framework.runtime.registry.ZLinkRegistrySpotRemoteAddressResolver;
 import systems.zlink.framework.runtime.spots.ZLinkSpotRuntime;
 import systems.zlink.framework.runtime.streams.ZLinkStreamRuntime;
@@ -203,12 +202,7 @@ public final class ZLinkFrameworkRuntime
         if (custom.isPresent()) {
             return custom.get();
         }
-        ZLinkMessageSerializer fallback =
-            options.registration().codecs().registeredCodecs().isEmpty()
-                && options.registration().codecs().serializers().isEmpty()
-                ? new ZLinkStringMessageSerializer()
-                : new ZLinkJsonMessageSerializer();
-        return options.registration().codecs().serializerWithFallback(fallback);
+        return options.registration().codecs().serializerWithFallback(new ZLinkJsonMessageSerializer());
     }
 
     private static ZLinkStreamCodec defaultStreamCodec(DefaultZLinkFrameworkOptions options) {

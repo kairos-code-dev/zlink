@@ -147,7 +147,6 @@ class CheckoutZLinkConfig {
     fun checkoutFramework(): ZLinkFrameworkConfigurer =
         ZLinkFrameworkConfigurer { options ->
             options.useCoroutineHandlers(Dispatchers.Default)
-            options.codecs().addJson()   // data class DTO는 JSON codec; Protobuf는 생성된 MessageLite 타입에 쓴다
             options.addClientServerChannel("orders")
                 .enableServer("tcp://0.0.0.0:7401")
                 .addHandlerGroup("orders")

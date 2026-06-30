@@ -176,7 +176,7 @@ struct handler_group_options_state_t
       handler_packets_by_group;
     std::vector<serializer_installer_t> json_serializer_installers;
     std::set<std::type_index> json_serializer_types;
-    bool json_enabled = false;
+    bool json_enabled = true;
 
     void add_channel (const std::string &group_name,
                       const std::string &channel_name,

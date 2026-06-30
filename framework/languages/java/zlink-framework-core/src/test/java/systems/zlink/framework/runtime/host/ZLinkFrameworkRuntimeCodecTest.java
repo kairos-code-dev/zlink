@@ -11,6 +11,16 @@ import systems.zlink.framework.runtime.configuration.DefaultZLinkFrameworkOption
 
 final class ZLinkFrameworkRuntimeCodecTest {
     @Test
+    void emptyCodecRegistrationUsesJsonSerializer() {
+        DefaultZLinkFrameworkOptions options = new DefaultZLinkFrameworkOptions();
+
+        ZLinkMessageSerializer serializer = ZLinkFrameworkRuntime.serializerFor(options);
+
+        Fallback fallback = serializer.deserialize(serializer.serialize(new Fallback("json")), Fallback.class);
+        assertEquals(new Fallback("json"), fallback);
+    }
+
+    @Test
     void predicateCodecExtensionKeepsJsonFallbackForOtherPayloadTypes() {
         DefaultZLinkFrameworkOptions options = new DefaultZLinkFrameworkOptions();
         options.codecs().use(MarkerCodecExtension::register);

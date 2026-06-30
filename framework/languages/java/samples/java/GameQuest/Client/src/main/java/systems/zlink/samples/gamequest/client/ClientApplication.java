@@ -46,7 +46,6 @@ public final class ClientApplication {
     ZLinkFrameworkConfigurer clientFramework() {
         return options -> {
             options.useDiscovery().addRegistryEndpoint(SampleTopology.RegistryRouterEndpoint);
-            options.codecs().addJson();
             options.addClientServerChannel(SampleNames.gameApiActionChannel(SampleNames.ApiA))
                 .enableClient();
             options.addClientServerChannel(SampleNames.gameApiActionChannel(SampleNames.ApiB))

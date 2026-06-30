@@ -22,7 +22,6 @@ public static class CustomerGatewayHostFactory
                 .TraceLogFile(SampleFlowLog.Path("customer-gateway"))
                 .TraceLabel("customer-gateway");
             options.AddHandlersFromAssemblyOf(typeof(CustomerGatewayHostFactory));
-            options.Codecs.AddJson();
             options.UseDiscovery().AddRegistryEndpoint(topology.RegistryRouterEndpoint);
             options.AddClientServerChannel(SampleNames.CustomerRouteChannel)
                 .EnableServer(topology.CustomerRouteEndpoint)

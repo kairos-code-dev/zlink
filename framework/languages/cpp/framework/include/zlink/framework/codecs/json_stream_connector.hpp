@@ -28,10 +28,8 @@ template <typename T> void decode_payload (codec_t codec, const zlink::message_t
         case codec_t::json:
         case codec_t::raw:
         case codec_t::protobuf:
-            value = codec_traits<T>::decode (payload);
-            return;
         case codec_t::message_pack:
-            value = nlohmann::json::from_msgpack (payload.to_bytes ()).template get<T> ();
+            value = codec_traits<T>::decode (payload);
             return;
     }
     value = codec_traits<T>::decode (payload);

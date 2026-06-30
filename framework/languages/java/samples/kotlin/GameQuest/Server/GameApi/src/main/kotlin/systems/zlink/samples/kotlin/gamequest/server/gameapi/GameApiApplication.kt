@@ -39,7 +39,6 @@ class GameApiApplication {
                 traceLogFile((System.getenv("GAMEQUEST_LOG_DIR") ?: "logs") + "/flow-$apiName.log")
                 traceLabel(apiName)
             }
-            configurer.codecs().addJson()
             configurer.addHandlersFromPackageOf(GameApiApplication::class.java)
 
             // public client-facing action channel hosted on this instance

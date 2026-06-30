@@ -34,7 +34,6 @@ class ApiServerApplication {
                 traceLogFile((System.getenv("BINGO_LOG_DIR") ?: "logs") + "/flow-api.log")
                 traceLabel("api")
             }
-            options.codecs().addJson()
             options.codecs().use(ZLinkProtobufCodec.defaultCodec())
             options.addClientServerChannel(SampleNames.ApiChannel)
                 .enableServer(SampleTopology.selectedApiChannelEndpoint())

@@ -26,12 +26,13 @@ handler에 들어간 request가 `yield` 중일 때 bound session push를 원래 
 다른 actor의 push wait는 진행되지 않는지 검증한다. `YD-E1`은 timeout 뒤 같은 Spot mailbox가
 post-timeout probe를 처리하는지 검증한다.
 
-최근 full runner는 `logs/20260630-120912-3920793`에서 YD-A/B/C/D/E1과 E4 정적 검증을 통과했다.
+최근 full runner는 `logs/20260630-123141-4002944`에서 YD-A/B/C/D/E1, E4 정적 검증,
+E5 marker report 생성을 통과했다.
 shutdown recovery diagnostic은 `ZLINK_JAVA_E2E_RUN_E3_SHUTDOWN=1`로 실행할 수 있지만,
-`logs/20260630-120121-3889577`에서 pending yield 중 play-a가 SIGTERM으로 내려가지 않고 client가
+`logs/20260630-122821-3987239`에서 pending yield 중 play-a가 SIGTERM으로 내려가지 않고 client가
 closed/cancelled public error 대신 request timeout을 받는 gap을 확인했다. 같은 로그의 thread dump는
 Spring shutdown hook이 `Native.ctxTerm`에서 멈춘 상태를 남긴다. 아직 cancellation, shutdown recovery,
-cross-language marker report 비교 scenario는 완료하지 않았다.
+cross-language aggregation은 완료하지 않았다.
 남은 gap은 `feature-map.ko.md`와 `porting-inventory.ko.md`에 기록한다.
 
 ## 목표 역할
@@ -58,8 +59,9 @@ play/session evidence JSON을 남긴다. 성공 기준은 `scenario YD-A1 passed
 `scenario YD-B2 passed`, `scenario YD-B3 passed`, `scenario YD-C1 passed`,
 `scenario YD-C2 passed`, `scenario YD-C3 passed`, `scenario YD-D2 passed`,
 `scenario YD-D3 passed`, `scenario YD-D4 passed`,
-`scenario YD-E1 passed`, `yield-dispatch e2e result=passed` 출력과 message flow 로그 생성이다.
-최근 재실행 로그는 `logs/20260630-120912-3920793`이며, 현재 기본 runner 범위는 통과한다.
-`ZLINK_JAVA_E2E_RUN_E3_SHUTDOWN=1` 전체 gate는 `logs/20260630-121056-3929716`에서 E3에 도달하기 전
-A2 route mesh timeout으로 중단됐다. 전체 Config 8 포팅 완료에는 아직 YD-E2, YD-E3, YD-E5 gap
-처리가 남아 있다.
+`scenario YD-E1 passed`, `yield-dispatch e2e result=passed` 출력, message flow 로그,
+`yield-dispatch-marker-report.json` 생성이다. 최근 재실행 로그는 `logs/20260630-123141-4002944`이며,
+현재 기본 runner 범위는 통과한다.
+`ZLINK_JAVA_E2E_RUN_E3_SHUTDOWN=1` 전체 gate는 `logs/20260630-122821-3987239`에서 play-a가
+SIGTERM 뒤에도 내려가지 않아 SIGKILL까지 갔고, client가 public closed/cancelled error 대신 timeout을
+받았다. 전체 Config 8 포팅 완료에는 아직 YD-E2, YD-E3 gap 처리가 남아 있다.

@@ -159,6 +159,93 @@ with urllib.request.urlopen(sys.argv[1], timeout=5) as response:
 PY
 }
 
+write_marker_report() {
+  python3 - "${log_dir}/yield-dispatch-marker-report.json" \
+    "${log_dir}/play-a-evidence.json" \
+    "${log_dir}/play-b-evidence.json" \
+    "${log_dir}/session-evidence.json" <<'PY'
+import json
+import sys
+
+output = sys.argv[1]
+sources = {
+    "play-a": sys.argv[2],
+    "play-b": sys.argv[3],
+    "session": sys.argv[4],
+}
+scenario_prefixes = {
+    "YD-A1": ["yda1-"],
+    "YD-A2": ["yda2-"],
+    "YD-A3": ["yda3-"],
+    "YD-A4": ["yda4-"],
+    "YD-B1": ["ydb1-"],
+    "YD-B2": ["ydb2-"],
+    "YD-B3": ["ydb3-"],
+    "YD-C1": ["ydc1-"],
+    "YD-C2": ["ydc2-"],
+    "YD-C3": ["ydc3-"],
+    "YD-D2": ["ydd2-"],
+    "YD-D3": ["ydd3-"],
+    "YD-D4": ["ydd4-"],
+    "YD-E1": ["yde1-"],
+}
+required_markers = {
+    "YD-A1": ["hold-started", "hold-resumed", "hold-completed", "probe-started"],
+    "YD-A2": ["yield-started", "yield-released", "probe-started", "probe-completed", "yield-resumed", "yield-completed"],
+    "YD-A3": ["yield-started", "yield-released", "yield-resumed", "yield-completed"],
+    "YD-A4": ["worker-yield-started", "worker-yield-released", "probe-started", "probe-completed", "worker-yield-resumed", "worker-yield-completed"],
+    "YD-B1": ["actor-yield-started", "actor-yield-released", "actor-fast-started", "actor-fast-completed", "actor-yield-resumed", "actor-yield-completed"],
+    "YD-B2": ["actor-yield-started", "actor-yield-released", "actor-yield-resumed", "actor-yield-completed", "actor-fast-started", "actor-fast-completed"],
+    "YD-B3": ["actor-join-yield-started", "actor-join-yield-released", "actor-fast-started", "actor-fast-completed", "actor-join-yield-resumed", "actor-join-yield-completed"],
+    "YD-C1": ["timer-yield-started", "timer-yield-released", "timer-fast-started", "timer-fast-completed", "timer-yield-resumed", "timer-yield-completed"],
+    "YD-C2": ["timer-yield-started", "timer-yield-released", "timer-yield-resumed", "timer-yield-completed", "timer-next-started", "timer-next-completed"],
+    "YD-C3": ["actor-yield-started", "actor-yield-released", "timer-fast-started", "timer-fast-completed", "actor-yield-resumed", "actor-yield-completed", "timer-yield-started", "timer-yield-released", "actor-fast-started", "actor-fast-completed", "timer-yield-resumed", "timer-yield-completed"],
+    "YD-D2": ["remote-yield-started", "remote-yield-released", "remote-yield-resumed", "remote-yield-completed", "yield-started", "yield-released", "yield-resumed", "yield-completed"],
+    "YD-D3": ["yield-started", "yield-released", "probe-started", "probe-completed", "yield-resumed", "yield-completed"],
+    "YD-D4": ["actor-push-yield-started", "actor-push-yield-released", "actor-push-yield-resumed", "actor-push-yield-completed"],
+    "YD-E1": ["timeout-yield-started", "timeout-yield-released", "timeout-yield-completed", "probe-started", "probe-completed"],
+}
+
+entries = []
+for role, path in sources.items():
+    with open(path, encoding="utf-8") as handle:
+        snapshot = json.load(handle)
+    for entry in snapshot.get("entries", []):
+        entries.append({
+            "role": role,
+            "marker": entry.get("marker", ""),
+            "subject": entry.get("subject", ""),
+            "value": entry.get("value", ""),
+        })
+
+scenarios = {}
+for scenario_id, prefixes in scenario_prefixes.items():
+    scenario_entries = [
+        entry for entry in entries
+        if any(entry["subject"].startswith(prefix) for prefix in prefixes)
+    ]
+    observed = sorted({entry["marker"] for entry in scenario_entries})
+    missing = [
+        marker for marker in required_markers[scenario_id]
+        if marker not in observed
+    ]
+    if missing:
+        raise SystemExit(f"{scenario_id} marker report missing markers: {', '.join(missing)}")
+    scenarios[scenario_id] = {
+        "markers": observed,
+        "roles": sorted({entry["role"] for entry in scenario_entries}),
+    }
+
+with open(output, "w", encoding="utf-8") as handle:
+    json.dump({
+        "language": "java",
+        "config": "YieldDispatch",
+        "scenarios": scenarios,
+    }, handle, ensure_ascii=False, indent=2)
+    handle.write("\n")
+PY
+}
+
 terminate_gracefully() {
   local name="$1"
   local pid="$2"
@@ -355,6 +442,7 @@ ZLINK_JAVA_E2E_LOG_DIR="${log_dir}" \
 fetch_evidence "${PLAY_A_HTTP}" "${log_dir}/play-a-evidence.json"
 fetch_evidence "${PLAY_B_HTTP}" "${log_dir}/play-b-evidence.json"
 fetch_evidence "${SESSION_HTTP}" "${log_dir}/session-evidence.json"
+write_marker_report
 cat "${log_dir}/client.stdout.log"
 grep -q "scenario YD-A1 passed" "${log_dir}/client.stdout.log"
 grep -q "scenario YD-A2 passed" "${log_dir}/client.stdout.log"
@@ -372,6 +460,8 @@ grep -q "scenario YD-D4 passed" "${log_dir}/client.stdout.log"
 grep -q "scenario YD-E1 passed" "${log_dir}/client.stdout.log"
 grep -q "yield-dispatch e2e result=passed" "${log_dir}/client.stdout.log"
 grep -Rq "message flow" "${log_dir}"/*-flow.log
+grep -q '"YD-E1"' "${log_dir}/yield-dispatch-marker-report.json"
+echo "yield-dispatch marker report=${log_dir}/yield-dispatch-marker-report.json"
 
 if [[ "${ZLINK_JAVA_E2E_RUN_E3_SHUTDOWN:-0}" == "1" ]]; then
   SHUTDOWN_ID="yde3-$(date +%s)-$$"

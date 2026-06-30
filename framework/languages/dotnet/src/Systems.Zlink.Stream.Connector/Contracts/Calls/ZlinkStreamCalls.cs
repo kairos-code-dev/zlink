@@ -16,6 +16,11 @@ public interface IZlinkStreamSendCall
     IZlinkStreamSendCall Compress();
 
     ValueTask Async(CancellationToken cancellationToken = default);
+
+    void Submit(CancellationToken cancellationToken = default)
+    {
+        _ = Async(cancellationToken).AsTask();
+    }
 }
 
 public interface IZlinkStreamRequestCall

@@ -5,6 +5,11 @@ public interface IZLinkSendCall
     IZLinkSendCall PacketName(string messageName);
 
     ValueTask Async(CancellationToken cancellationToken = default);
+
+    void Submit(CancellationToken cancellationToken = default)
+    {
+        _ = Async(cancellationToken).AsTask();
+    }
 }
 
 public interface IZLinkRequestCall

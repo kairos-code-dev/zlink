@@ -113,14 +113,23 @@ internal sealed class ZLinkSessionActorCoordinator(
         using var actorPayload = payload.Copy();
         if (header.RequestSeq is not null)
         {
-            var reply = await runtime.SubmitActorForReplyAsync(
-                    actorRef.ActorId,
-                    header,
-                    actorPayload,
-                    cancellationToken)
-                .ConfigureAwait(false);
-            await replyRawAsync(header, reply, cancellationToken)
-                .ConfigureAwait(false);
+            await using var boundSessionScope = ZLinkBoundSessionDispatchScope.Enter(actorRef.ActorId);
+            try
+            {
+                var reply = await runtime.SubmitActorForReplyAsync(
+                        actorRef.ActorId,
+                        header,
+                        actorPayload,
+                        cancellationToken)
+                    .ConfigureAwait(false);
+                await replyRawAsync(header, reply, cancellationToken)
+                    .ConfigureAwait(false);
+            }
+            finally
+            {
+                await boundSessionScope.DrainAsync(cancellationToken)
+                    .ConfigureAwait(false);
+            }
             return;
         }
 

@@ -26,12 +26,12 @@ internal sealed class CourierActor(
 
         try
         {
-            await Context.BoundSession.Send(new OfferDeliveryNotify(
+            Context.BoundSession.Send(new OfferDeliveryNotify(
                     offer.CourierId,
                     offer.DeliveryId,
                     offer.PickupAddress,
                     offer.DropoffAddress))
-                .Async(cancellationToken);
+                .Submit(cancellationToken);
             var decision = await pending.Task.WaitAsync(cancellationToken);
             return new OfferDeliveryRes(
                 offer.DeliveryId,

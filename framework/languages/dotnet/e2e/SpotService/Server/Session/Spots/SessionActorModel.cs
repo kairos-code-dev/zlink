@@ -95,11 +95,6 @@ internal sealed class ScenarioUserSpot(
 
     public IZLinkSpotContext Context { get; } = context;
 
-    public void Configure()
-    {
-        Context.Handlers.AddSubscribe<SpotMsgHandler>(SpotServiceNames.SpotMsgTopic);
-    }
-
     public ValueTask OnInitializeAsync(CancellationToken cancellationToken)
     {
         cancellationToken.ThrowIfCancellationRequested();

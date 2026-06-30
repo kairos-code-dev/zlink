@@ -174,8 +174,8 @@ public sealed class TicTacToeClientScenario(ILogger logger)
             observerSawMilestone.Payload.Wins,
             observerSawMilestone.Payload.ReceivingSpotNodeRid);
 
-        await client1.Send(new LeaveGameMsg(room.RoomId)).Async(cancellationToken);
-        await client2.Send(new LeaveGameMsg(room.RoomId)).Async(cancellationToken);
+        client1.Send(new LeaveGameMsg(room.RoomId)).Submit(cancellationToken);
+        client2.Send(new LeaveGameMsg(room.RoomId)).Submit(cancellationToken);
     }
 
     private static void Ensure(

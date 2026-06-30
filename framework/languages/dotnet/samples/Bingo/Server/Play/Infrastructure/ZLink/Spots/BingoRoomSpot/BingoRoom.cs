@@ -38,7 +38,7 @@ internal sealed class BingoRoom(
         return ValueTask.CompletedTask;
     }
 
-    public async ValueTask OnJoinedActorAsync(
+    public ValueTask OnJoinedActorAsync(
         PlayerActor actor,
         CancellationToken cancellationToken)
     {
@@ -50,9 +50,10 @@ internal sealed class BingoRoom(
         // PublishAsync excludes the joining actor, so the room sends the
         // start event here when this join fills the room.
         if (_game is not null && _game.Status == BingoRoomStatus.Running)
-            await actor.Context.BoundSession
+            actor.Context.BoundSession
                 .Send(new BingoGameStartedNotify { State = _game.Snapshot() })
-                .Async(cancellationToken);
+                .Submit(cancellationToken);
+        return ValueTask.CompletedTask;
     }
 
     public ValueTask OnLeaveActorAsync(
@@ -189,7 +190,7 @@ internal sealed class BingoRoom(
             throw new InvalidOperationException($"Player is not submitting to this room. room={roomId}");
     }
 
-    internal async ValueTask AnnounceRewardAsync(BingoRewardAcquiredEvent message, CancellationToken cancellationToken)
+    internal ValueTask AnnounceRewardAsync(BingoRewardAcquiredEvent message, CancellationToken cancellationToken)
     {
         if (!_settings.IsObserver
             || _observerActor is null
@@ -204,7 +205,7 @@ internal sealed class BingoRoom(
                 _observerActor is not null,
                 _settings.ObservedRoomId ?? "-",
                 Context.NodeRid.ToString());
-            return;
+            return ValueTask.CompletedTask;
         }
 
         logger.LogInformation(
@@ -214,7 +215,7 @@ internal sealed class BingoRoom(
             message.ItemId,
             _observerActor.ActorId,
             Context.NodeRid.ToString());
-        await _observerActor.Context.BoundSession
+        _observerActor.Context.BoundSession
             .Send(
                 new BingoRewardAnnouncedNotify
                 {
@@ -226,7 +227,8 @@ internal sealed class BingoRoom(
                     Rarity = message.Rarity,
                     ReceivingSpotNodeRid = Context.NodeRid.ToString()
                 })
-            .Async(cancellationToken);
+            .Submit(cancellationToken);
+        return ValueTask.CompletedTask;
     }
 
     internal async ValueTask<bool> StopObservingAsync(PlayerActor actor, string roomId,

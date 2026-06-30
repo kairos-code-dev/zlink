@@ -5,7 +5,7 @@ using Zlink.Framework.Contracts.Streams;
 
 namespace GameQuest.GameApi.Session;
 
-internal sealed class GameQuestSessionRegistry(ILogger<GameQuestSessionRegistry> logger)
+internal sealed class GameQuestSessionRegistry
 {
     private readonly object _gate = new();
     private readonly Dictionary<string, IZLinkSessionContext> _sessionsByPlayer = new(StringComparer.Ordinal);
@@ -39,44 +39,33 @@ internal sealed class GameQuestSessionRegistry(ILogger<GameQuestSessionRegistry>
         return removed.ToArray();
     }
 
-    public async ValueTask<bool> NotifyAsync(
+    public ValueTask<bool> NotifyAsync(
         NotifyQuestProgressReq request,
         CancellationToken cancellationToken)
     {
+        _ = cancellationToken;
         IZLinkSessionContext? session;
         lock (_gate)
         {
             _sessionsByPlayer.TryGetValue(request.PlayerId, out session);
         }
 
-        if (session is null) return false;
+        if (session is null) return ValueTask.FromResult(false);
 
-        try
-        {
-            foreach (var progress in request.Projection)
-                await session.Client.Send(new QuestProgressNotify(request.PlayerId, session.SessionId, progress))
-                    .PacketName(SampleNames.ProgressPacket)
-                    .Async();
+        foreach (var progress in request.Projection)
+            session.Client.Send(new QuestProgressNotify(request.PlayerId, session.SessionId, progress))
+                .PacketName(SampleNames.ProgressPacket)
+                .Submit();
 
-            if (!string.IsNullOrWhiteSpace(request.CompletedQuestId))
-            {
-                var completed = request.Projection.First(progress => progress.QuestId == request.CompletedQuestId);
-                await session.Client
-                    .Send(new QuestCompletedNotify(request.PlayerId, session.SessionId, completed, true))
-                    .PacketName(SampleNames.CompletedPacket)
-                    .Async();
-            }
-        }
-        catch (ZlinkSubmitException error)
+        if (!string.IsNullOrWhiteSpace(request.CompletedQuestId))
         {
-            Remove(session);
-            logger.LogWarning(error,
-                "gamequest stream notify skipped because the session is no longer connected. player={PlayerId} session={SessionId}",
-                request.PlayerId,
-                session.SessionId);
-            return false;
+            var completed = request.Projection.First(progress => progress.QuestId == request.CompletedQuestId);
+            session.Client
+                .Send(new QuestCompletedNotify(request.PlayerId, session.SessionId, completed, true))
+                .PacketName(SampleNames.CompletedPacket)
+                .Submit();
         }
 
-        return true;
+        return ValueTask.FromResult(true);
     }
 }

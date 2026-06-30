@@ -7,7 +7,7 @@ namespace Zlink.Framework.ContractTests.Codecs;
 public sealed class CodecContracts
 {
     [Fact]
-    [ContractExample(typeof(IZLinkCodecRegistryBuilder), typeof(IZLinkCodecExtension))]
+    [ContractExample(typeof(IZLinkCodecRegistryBuilder), typeof(IZLinkCodecRegistrar), typeof(IZLinkCodecExtension))]
     public void Codec_registry_builder_registers_extensions_and_serializers()
     {
         var codecs = new ExampleCodecRegistryBuilder();

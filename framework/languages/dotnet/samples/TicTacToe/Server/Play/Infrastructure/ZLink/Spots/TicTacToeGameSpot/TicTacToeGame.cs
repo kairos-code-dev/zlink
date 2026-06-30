@@ -180,9 +180,10 @@ internal sealed class TicTacToeGame(
         var recipients = _actors.Values
             .Where(actor => !string.Equals(actor.ActorId, excludedActorId, StringComparison.Ordinal))
             .ToArray();
-        return SendSessionPushAsync(
+        SendSessionPush(
             recipients,
-            actor => actor.Context.BoundSession.Send(message).Async(cancellationToken));
+            actor => actor.Context.BoundSession.Send(message).Submit(cancellationToken));
+        return ValueTask.CompletedTask;
     }
 
     private ValueTask NotifyPlayerJoinedAsync(
@@ -203,9 +204,10 @@ internal sealed class TicTacToeGame(
         var recipients = _actors.Values
             .Where(actor => !string.Equals(actor.ActorId, joinedActor.ActorId, StringComparison.Ordinal))
             .ToArray();
-        return SendSessionPushAsync(
+        SendSessionPush(
             recipients,
-            actor => actor.Context.BoundSession.Send(message).Async(cancellationToken));
+            actor => actor.Context.BoundSession.Send(message).Submit(cancellationToken));
+        return ValueTask.CompletedTask;
     }
 
     private ValueTask PublishWinMilestoneAsync(
@@ -235,11 +237,11 @@ internal sealed class TicTacToeGame(
             .Async(cancellationToken);
     }
 
-    private static async ValueTask SendSessionPushAsync(
+    private static void SendSessionPush(
         IReadOnlyList<PlayActor> recipients,
-        Func<PlayActor, ValueTask> sendAsync)
+        Action<PlayActor> send)
     {
-        foreach (var recipient in recipients) await sendAsync(recipient);
+        foreach (var recipient in recipients) send(recipient);
     }
 
     private static bool IsTerminal(GameState state)

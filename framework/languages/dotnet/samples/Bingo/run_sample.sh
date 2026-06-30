@@ -180,13 +180,6 @@ dotnet build "${SCRIPT_DIR}/Bingo.csproj" --maxcpucount:1
 start_server registry "${SCRIPT_DIR}/Server/Registry/Bingo.Server.Registry.csproj"
 wait_port registry-router "${BINGO_REGISTRY_ROUTER_ENDPOINT}"
 
-start_server api-a "${SCRIPT_DIR}/Server/Api/Bingo.Server.Api.csproj" --node a
-wait_port api-a "${BINGO_API_A_CHANNEL_ENDPOINT}"
-wait_port api-a-play-route "${BINGO_API_A_PLAY_ROUTE_ENDPOINT}"
-start_server api-b "${SCRIPT_DIR}/Server/Api/Bingo.Server.Api.csproj" --node b
-wait_port api-b "${BINGO_API_B_CHANNEL_ENDPOINT}"
-wait_port api-b-play-route "${BINGO_API_B_PLAY_ROUTE_ENDPOINT}"
-
 start_server play-a "${SCRIPT_DIR}/Server/Play/Bingo.Server.Play.csproj" --node a
 wait_port play-a "${BINGO_PLAY_A_CHANNEL_ENDPOINT}"
 wait_port play-a-spot-router "${BINGO_PLAY_A_SPOT_ROUTER_ENDPOINT}"
@@ -195,6 +188,13 @@ start_server play-b "${SCRIPT_DIR}/Server/Play/Bingo.Server.Play.csproj" --node 
 wait_port play-b "${BINGO_PLAY_B_CHANNEL_ENDPOINT}"
 wait_port play-b-spot-router "${BINGO_PLAY_B_SPOT_ROUTER_ENDPOINT}"
 wait_port play-b-spot-pub "${BINGO_PLAY_B_SPOT_ENDPOINT}"
+
+start_server api-a "${SCRIPT_DIR}/Server/Api/Bingo.Server.Api.csproj" --node a
+wait_port api-a "${BINGO_API_A_CHANNEL_ENDPOINT}"
+wait_port api-a-play-route "${BINGO_API_A_PLAY_ROUTE_ENDPOINT}"
+start_server api-b "${SCRIPT_DIR}/Server/Api/Bingo.Server.Api.csproj" --node b
+wait_port api-b "${BINGO_API_B_CHANNEL_ENDPOINT}"
+wait_port api-b-play-route "${BINGO_API_B_PLAY_ROUTE_ENDPOINT}"
 
 start_server session-a "${SCRIPT_DIR}/Server/Session/Bingo.Server.Session.csproj" --node a
 wait_port session-a-router "${BINGO_SESSION_A_ROUTER_ENDPOINT}"

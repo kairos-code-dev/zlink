@@ -60,7 +60,7 @@ if [[ "$SCENARIO_SET" == "all" && "${ZLINK_SPOT_SERVICE_ALL_CHILD:-0}" != "1" ]]
   build_projects
   for child_group in default-batch sm-g2 sm-g3 sm-g4 sm-g1 sm-q9; do
     child_ok=0
-    for attempt in $(seq 1 "${ZLINK_SPOT_SERVICE_CHILD_ATTEMPTS:-1}"); do
+    for attempt in $(seq 1 "${ZLINK_SPOT_SERVICE_CHILD_ATTEMPTS:-2}"); do
       echo "child operation_group=${child_group} attempt=${attempt}"
       if timeout "${ZLINK_SPOT_SERVICE_CHILD_TIMEOUT:-420s}" \
         env SCENARIO_SET="$child_group" ZLINK_SPOT_SERVICE_ALL_CHILD=1 ZLINK_SPOT_SERVICE_SKIP_BUILD=1 "$0"; then
@@ -117,7 +117,7 @@ sockets = []
 try:
     chosen = set()
     while len(sockets) < 140:
-        port = random.randint(20000, 32767)
+        port = random.randint(10000, 60999)
         if port in chosen:
             continue
         sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
@@ -225,6 +225,26 @@ PY
     sleep 0.1
   done
   echo "Timed out waiting for ${name} at ${endpoint}" >&2
+  return 1
+}
+
+wait_control_route() {
+  local source_url="$1"
+  local target_rid="$2"
+  local name="$3"
+  local attempts="${ZLINK_SPOT_SERVICE_WAIT_ROUTE_ATTEMPTS:-180}"
+  local payload
+  payload="{\"value\":\"ready-${name}\"}"
+  for _ in $(seq 1 "$attempts"); do
+    if curl -fsS \
+      -H 'content-type: application/json' \
+      -d "$payload" \
+      "$source_url/channel/control-ping/$target_rid" >/dev/null 2>&1; then
+      return 0
+    fi
+    sleep 0.5
+  done
+  echo "Timed out waiting for control route ${name} via ${source_url} -> ${target_rid}" >&2
   return 1
 }
 
@@ -385,6 +405,16 @@ start_server gateway "$GATEWAY_DLL" \
   --evidence-file "$LOG_DIR/gateway.evidence.log" \
   --log-dir "$LOG_DIR"
 wait_port gateway "$GATEWAY_HTTP"
+fi
+
+if [[ "$SCENARIO_SET" != "sm-q9" && "$NEED_SESSION_NODES" == "1" ]]; then
+  wait_control_route "$SESSION_A_HTTP" play-a session-a-play-a
+  if [[ "$NEED_PLAY_B" == "1" ]]; then
+    wait_control_route "$SESSION_A_HTTP" play-b session-a-play-b
+  fi
+  if [[ "$NEED_SESSION_B" == "1" ]]; then
+    wait_control_route "$SESSION_B_HTTP" play-b session-b-play-b
+  fi
 fi
 
 sleep 2

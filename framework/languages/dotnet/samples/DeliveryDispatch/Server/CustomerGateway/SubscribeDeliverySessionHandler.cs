@@ -9,6 +9,7 @@ namespace DeliveryDispatch.Server.CustomerGateway;
 
 internal sealed class SubscribeDeliverySessionHandler(
     IZLinkChannelClient channels,
+    CustomerActorDirectory actors,
     ILogger<SubscribeDeliverySessionHandler> logger)
     : IZLinkSessionPacketHandler<IZLinkSessionContext>
 {
@@ -22,6 +23,7 @@ internal sealed class SubscribeDeliverySessionHandler(
         Zlink.Framework.Contracts.Messaging.ZLinkMessage payload,
         CancellationToken cancellationToken)
     {
+        var request = payload.Decode<SubscribeDeliveryReq>();
         var ensured = await channels.RequestToChannel(
                 SampleNames.CustomerRouteChannel,
                 new EnsureCustomerActorReq(CustomerId))
@@ -42,6 +44,14 @@ internal sealed class SubscribeDeliverySessionHandler(
                 context.SessionId);
         }
 
-        await boundActor.RelayAsync(payload, cancellationToken);
+        actors.Subscribe(ensured.CustomerId, request.DeliveryId);
+        logger.LogInformation(
+            "deliverydispatch customer-session: subscribed customer={CustomerId} delivery={DeliveryId}",
+            ensured.CustomerId,
+            request.DeliveryId);
+
+        await context.Client
+            .Reply(new SubscribeDeliveryRes(request.DeliveryId))
+            .Async();
     }
 }

@@ -194,6 +194,11 @@ public sealed class ZlinkStreamTypedSendBuilder
     {
         return _inner.Async(cancellationToken);
     }
+
+    public void Submit(CancellationToken cancellationToken = default)
+    {
+        _inner.Submit(cancellationToken);
+    }
 }
 
 public sealed class ZlinkStreamTypedRequestBuilder

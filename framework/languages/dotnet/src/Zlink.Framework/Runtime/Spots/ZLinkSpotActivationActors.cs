@@ -7,6 +7,11 @@ internal sealed partial class ZLinkSpotActivation
         CancellationToken cancellationToken = default)
     {
         ArgumentNullException.ThrowIfNull(actor);
+        if (ZLinkBoundSessionDispatchScope.TryDefer(
+                actor.ActorId,
+                ct => LeaveActorCoreAsync(actor, ct)))
+            return ValueTask.CompletedTask;
+
         return ReferenceEquals(ZLinkSpotAmbientContext.CurrentOrDefault, this)
             ? LeaveActorCoreAsync(actor, cancellationToken)
             : ExecuteSerializedAsync(

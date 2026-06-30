@@ -25,7 +25,7 @@ internal sealed class CustomerActorDirectory(ILogger<CustomerActorDirectory> log
         }
     }
 
-    public async ValueTask PushAsync(
+    public ValueTask PushAsync(
         DeliveryStatusChangedReq status,
         CancellationToken cancellationToken)
     {
@@ -43,15 +43,16 @@ internal sealed class CustomerActorDirectory(ILogger<CustomerActorDirectory> log
             logger.LogWarning(
                 "deliverydispatch customer-gateway: no bound customer for delivery={DeliveryId}",
                 status.DeliveryId);
-            return;
+            return ValueTask.CompletedTask;
         }
 
-        await actor.Context.BoundSession
+        actor.Context.BoundSession
             .Send(new DeliveryStatusNotify(
                 status.DeliveryId,
                 status.Status,
                 status.CourierId,
                 status.OccurredAt))
-            .Async(cancellationToken);
+            .Submit(cancellationToken);
+        return ValueTask.CompletedTask;
     }
 }

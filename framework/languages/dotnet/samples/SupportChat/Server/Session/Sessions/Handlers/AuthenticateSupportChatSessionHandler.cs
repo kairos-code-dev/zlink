@@ -42,11 +42,11 @@ internal sealed class AuthenticateSupportChatSessionHandler(IZLinkChannelClient 
             ToActorRef(ensured.Actor),
             cancellationToken);
 
-        await context.Client.Reply(new AuthenticateRes(
+        context.Client.Reply(new AuthenticateRes(
                 authenticated.ActorId,
                 authenticated.DisplayName,
                 authenticated.Role))
-            .Async();
+            .Submit();
     }
 
     private static ActorRef ToActorRef(ActorRefSnapshot snapshot)

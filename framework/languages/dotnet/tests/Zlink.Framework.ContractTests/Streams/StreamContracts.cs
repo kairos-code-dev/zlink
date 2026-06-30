@@ -30,18 +30,16 @@ public sealed class StreamContracts
             ZLinkMessage.From(new PlayerJoined("player-1")));
         await actorRef.NotifyDisconnectedAsync();
 
-        await context.Client
-            .Send(new PlayerJoined("player-1"))
+        context.Client.Send(new PlayerJoined("player-1"))
             .PacketName("player.joined")
             .Metadata("trace-id", "abc")
             .Compress()
-            .Async();
+            .Submit();
 
-        await context
-            .Client.Reply(new AuthenticateReply("player-1"))
+        context.Client.Reply(new AuthenticateReply("player-1"))
             .Metadata("trace-id", "abc")
             .Compress()
-            .Async();
+            .Submit();
 
         await context.CloseAsync();
 
@@ -92,16 +90,14 @@ public sealed class StreamContracts
     {
         var boundSession = new ExampleBoundSession();
 
-        await boundSession
-            .Send(new PlayerJoined("player-1"))
+        boundSession.Send(new PlayerJoined("player-1"))
             .PacketName("player.joined")
             .Metadata("trace-id", "abc")
-            .Async();
+            .Submit();
 
-        await boundSession
-            .Send(new PlayerJoined("player-2"))
+        boundSession.Send(new PlayerJoined("player-2"))
             .PacketName("player.joined")
-            .Async();
+            .Submit();
 
         await boundSession.DisconnectAsync();
 
@@ -312,9 +308,8 @@ public sealed class StreamContracts
             return this;
         }
 
-        public ValueTask Async(CancellationToken cancellationToken = default)
+        public void Submit(CancellationToken cancellationToken = default)
         {
-            return ValueTask.CompletedTask;
         }
     }
 
@@ -353,9 +348,8 @@ public sealed class StreamContracts
             return this;
         }
 
-        public ValueTask Async()
+        public void Submit()
         {
-            return ValueTask.CompletedTask;
         }
     }
 
@@ -371,9 +365,8 @@ public sealed class StreamContracts
             return this;
         }
 
-        public ValueTask Async()
+        public void Submit()
         {
-            return ValueTask.CompletedTask;
         }
     }
 
@@ -389,9 +382,8 @@ public sealed class StreamContracts
             return this;
         }
 
-        public ValueTask Async(CancellationToken cancellationToken = default)
+        public void Submit(CancellationToken cancellationToken = default)
         {
-            return ValueTask.CompletedTask;
         }
     }
 

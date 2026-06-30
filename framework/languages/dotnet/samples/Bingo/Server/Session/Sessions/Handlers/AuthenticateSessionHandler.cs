@@ -47,13 +47,13 @@ internal sealed class AuthenticateBingoSessionHandler(
             ToActorRef(ensured.Actor),
             cancellationToken);
 
-        await context.Client.Reply(new AuthenticateRes
+        context.Client.Reply(new AuthenticateRes
             {
                 ActorId = ensured.ActorId,
                 DisplayName = authenticated.DisplayName,
                 ActorNodeRid = ensured.Actor.NodeRid
             })
-            .Async();
+            .Submit();
     }
 
     private static ActorRef ToActorRef(ActorRefSnapshot snapshot)

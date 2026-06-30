@@ -50,8 +50,8 @@ internal sealed class SubscribeDeliverySessionHandler(
             ensured.CustomerId,
             request.DeliveryId);
 
-        await context.Client
+        context.Client
             .Reply(new SubscribeDeliveryRes(request.DeliveryId))
-            .Async();
+            .Submit();
     }
 }

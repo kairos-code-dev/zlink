@@ -14,15 +14,13 @@ internal static class YdD3RouteBridgeYieldScenario
             .Metadata(YieldDispatchNames.TargetNodeRidMetadata, "play-b")
             .Timeout(TimeSpan.FromSeconds(30))
             .Async<EnsureSpotRes>();
-        await client.Send(new YieldMsg(requestId, 250, "route-bridge"))
+        client.Send(new YieldMsg(requestId, 250, "route-bridge"))
             .PacketName("YieldMsg")
-            .Metadata(YieldDispatchNames.SpotRidMetadata, spotRid)
-            .Async();
+            .Metadata(YieldDispatchNames.SpotRidMetadata, spotRid).Submit();
         await Task.Delay(75);
-        await client.Send(new ProbeMsg(requestId, "route-bridge-probe"))
+        client.Send(new ProbeMsg(requestId, "route-bridge-probe"))
             .PacketName("ProbeMsg")
-            .Metadata(YieldDispatchNames.SpotRidMetadata, spotRid)
-            .Async();
+            .Metadata(YieldDispatchNames.SpotRidMetadata, spotRid).Submit();
         var evidence = await client.Request(new YieldEvidenceWaitReq(requestId, "yield-completed"))
             .PacketName("YieldEvidenceWaitReq")
             .Metadata(YieldDispatchNames.TargetNodeRidMetadata, "play-b")

@@ -41,12 +41,11 @@ internal static class SpotFailureEndpoints
             {
                 try
                 {
-                    await routes.Send(
+                    routes.Send(
                             SpotServiceNames.ExternalSpotChannel,
                             RoutingId.From(request.SpotRid),
                             new StateMsg(request.Marker))
-                        .PacketName("MissingSpotMsg")
-                        .Async(missingSendCts.Token);
+                        .PacketName("MissingSpotMsg").Submit(missingSendCts.Token);
                 }
                 catch (OperationCanceledException) when (missingSendCts.IsCancellationRequested)
                 {

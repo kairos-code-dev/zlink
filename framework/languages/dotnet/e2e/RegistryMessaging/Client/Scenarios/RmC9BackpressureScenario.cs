@@ -4,23 +4,25 @@ using Zlink.HttpClient;
 
 namespace RegistryMessaging.Client.Scenarios;
 
-// RM-C9 verifies that low high-water marks produce bounded send failures under
-// pressure and that the channel recovers for a later request.
+// RM-C9 verifies that one-way send pressure does not expose a public send
+// completion oracle and that the channel recovers for a later request.
 internal static class RmC9BackpressureScenario
 {
+    private const int SlowSendCount = 8;
+
     public static async Task RunAsync(ZLinkHttpClient backpressureConsumer, ZLinkHttpClient providerA)
     {
         await backpressureConsumer.Post("/profile/backpressure/reset").SubmitAsync<object>();
         var marker = $"rm-c9-{Guid.NewGuid():N}";
-        var outcomes = await Task.WhenAll(Enumerable.Range(0, 32)
+        var outcomes = await Task.WhenAll(Enumerable.Range(0, SlowSendCount)
             .Select(index => SendBackpressureCommandAsync(
                 backpressureConsumer,
                 $"rm-c9-slow-{marker}-{index}")));
         ScenarioAssert.That(
-            outcomes.Any(outcome => outcome == "BoundedFailure"),
-            "RM-C9 expected at least one bounded failure while the low-HWM socket was saturated.");
+            outcomes.All(outcome => outcome == "Submitted"),
+            "RM-C9 expected all one-way sends to be submitted without a public bounded-failure oracle.");
 
-        await Task.Delay(TimeSpan.FromSeconds(5));
+        await Task.Delay(TimeSpan.FromSeconds(10));
         var followUp = (await backpressureConsumer.Post("/profile/request")
             .Body(new ProfileReq("rm-c9-after"))
             .SubmitAsync<ProfileRes>()).Body;

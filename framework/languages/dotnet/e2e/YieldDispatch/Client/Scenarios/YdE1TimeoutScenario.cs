@@ -15,19 +15,17 @@ internal static class YdE1TimeoutScenario
         ScenarioAssert.That(spot.SpotRid == spotRid, "YD-E1 spot creation mismatch.");
 
         var requestId = $"YD-E1-{Guid.NewGuid():N}";
-        await client.Send(new YieldTimeoutMsg(requestId, 700, 100))
+        client.Send(new YieldTimeoutMsg(requestId, 700, 100))
             .PacketName("YieldTimeoutMsg")
-            .Metadata(YieldDispatchNames.SpotRidMetadata, spotRid)
-            .Async();
+            .Metadata(YieldDispatchNames.SpotRidMetadata, spotRid).Submit();
         await client.Request(new YieldEvidenceWaitReq(requestId, "timeout-yield-completed"))
             .PacketName("YieldEvidenceWaitReq")
             .Metadata(YieldDispatchNames.TargetNodeRidMetadata, "play-a")
             .Timeout(TimeSpan.FromSeconds(30))
             .Async<YieldEvidenceRes>();
-        await client.Send(new ProbeMsg(requestId, "timeout-probe"))
+        client.Send(new ProbeMsg(requestId, "timeout-probe"))
             .PacketName("ProbeMsg")
-            .Metadata(YieldDispatchNames.SpotRidMetadata, spotRid)
-            .Async();
+            .Metadata(YieldDispatchNames.SpotRidMetadata, spotRid).Submit();
         var evidence = await client.Request(new YieldEvidenceWaitReq(requestId, "probe-completed"))
             .PacketName("YieldEvidenceWaitReq")
             .Metadata(YieldDispatchNames.TargetNodeRidMetadata, "play-a")

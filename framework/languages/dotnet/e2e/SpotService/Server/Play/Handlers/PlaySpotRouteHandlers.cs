@@ -20,14 +20,12 @@ internal sealed class SpotToSpotHandler(EvidenceStore evidence)
             .RequestToSpot(targetRid, new StateReq("add", 3))
             .PacketName("StateReq")
             .Async<StateRes>(cancellationToken);
-        await spot.Context.Outbound
-            .SendToSpot(targetRid, new StateMsg($"sm-c3-send-{request.Marker}"))
+        spot.Context.Outbound.SendToSpot(targetRid, new StateMsg($"sm-c3-send-{request.Marker}"))
             .PacketName("StateMsg")
-            .Async(cancellationToken);
-        await spot.Context.Outbound
-            .Publish(SpotServiceNames.SpotMsgTopic, new SpotMsg($"sm-c3-publish-{request.Marker}"))
+            .Submit(cancellationToken);
+        spot.Context.Outbound.Publish(SpotServiceNames.SpotMsgTopic, new SpotMsg($"sm-c3-publish-{request.Marker}"))
             .PacketName("SpotMsg")
-            .Async(cancellationToken);
+            .Submit(cancellationToken);
         evidence.Add(
             $"spot-to-spot|rid={evidence.Rid}|source={spot.Context.SpotRid}"
             + $"|target={request.TargetSpotRid}|value={reply.Value}");
@@ -96,10 +94,9 @@ internal sealed class SpotToSpotNegativeHandler(EvidenceStore evidence)
             requestFailed = true;
         }
 
-        await spot.Context.Outbound
-            .SendToSpot(targetRid, new StateMsg($"missing-{request.Marker}"))
+        spot.Context.Outbound.SendToSpot(targetRid, new StateMsg($"missing-{request.Marker}"))
             .PacketName("MissingSpotMsg")
-            .Async(cancellationToken);
+            .Submit(cancellationToken);
         evidence.Add(
             $"spot-to-spot-negative|rid={evidence.Rid}|source={spot.Context.SpotRid}"
             + $"|target={request.TargetSpotRid}|requestFailed={requestFailed}");
@@ -126,18 +123,16 @@ internal sealed class SpotOutboundHandler(EvidenceStore evidence)
             .PacketName("ChannelEchoReq")
             .Async<ChannelEchoRes>(cancellationToken);
         var notifyMarker = $"notify-{request.Marker}";
-        await spot.Context.Outbound
-            .SendToChannel(
+        spot.Context.Outbound.SendToChannel(
                 SpotServiceNames.ExternalClientChannel,
                 new ChannelNotify(notifyMarker))
             .PacketName("ChannelNotify")
-            .Async(cancellationToken);
-        await spot.Context.Outbound
-            .Publish(
+            .Submit(cancellationToken);
+        spot.Context.Outbound.Publish(
                 SpotServiceNames.SpotMsgTopic,
                 new SpotMsg("sm-c2-publish"))
             .PacketName("SpotMsg")
-            .Async(cancellationToken);
+            .Submit(cancellationToken);
         evidence.Add(
             $"spot-outbound|rid={evidence.Rid}|spot={spot.Context.SpotRid}"
             + $"|echo={echo.Value}|notify={notifyMarker}");
@@ -169,12 +164,11 @@ internal sealed class SpotOutboundNegativeHandler(EvidenceStore evidence)
             requestFailed = true;
         }
 
-        await spot.Context.Outbound
-            .SendToChannel(
+        spot.Context.Outbound.SendToChannel(
                 SpotServiceNames.ExternalClientChannel,
                 new ChannelNotify($"missing-{request.Marker}"))
             .PacketName("MissingChannelNotify")
-            .Async(cancellationToken);
+            .Submit(cancellationToken);
         evidence.Add(
             $"spot-outbound-negative|rid={evidence.Rid}|spot={spot.Context.SpotRid}"
             + $"|requestFailed={requestFailed}");

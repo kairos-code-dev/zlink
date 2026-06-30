@@ -65,12 +65,11 @@ internal sealed partial class YieldSession
         while (DateTimeOffset.UtcNow < deadline)
             try
             {
-                await routes.Send(
+                routes.Send(
                         YieldDispatchNames.SpotRouteChannel,
                         RoutingId.From(spotRid),
                         message)
-                    .PacketName(packetName)
-                    .Async(cancellationToken);
+                    .PacketName(packetName).Submit(cancellationToken);
                 return;
             }
             catch (Exception ex) when (

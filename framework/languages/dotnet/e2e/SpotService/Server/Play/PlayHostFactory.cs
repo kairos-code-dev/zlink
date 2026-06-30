@@ -140,9 +140,8 @@ internal static class PlayHostFactory
         while (DateTimeOffset.UtcNow < deadline)
             try
             {
-                await routes.Send(channelName, RoutingId.From(spotRid), command)
-                    .PacketName(packetName)
-                    .Async();
+                routes.Send(channelName, RoutingId.From(spotRid), command)
+                    .PacketName(packetName).Submit();
                 return;
             }
             catch (Exception ex) when (ex is TimeoutException or ZLinkFrameworkException)

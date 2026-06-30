@@ -64,7 +64,7 @@ internal sealed partial class YieldSession(
                         + $"|actor={actor.ActorId}|node={actor.NodeRid}");
                 }
 
-                await Context.Client.Reply(result).Async();
+                Context.Client.Reply(result).Submit();
                 return;
             }
             case "YieldShutdownScenarioReq":
@@ -76,7 +76,7 @@ internal sealed partial class YieldSession(
                     routes,
                     request,
                     cancellationToken);
-                await Context.Client.Reply(result).Async();
+                Context.Client.Reply(result).Submit();
                 return;
             }
             case "YieldShutdownRecoveryReq":
@@ -88,7 +88,7 @@ internal sealed partial class YieldSession(
                     routes,
                     request,
                     cancellationToken);
-                await Context.Client.Reply(result).Async();
+                Context.Client.Reply(result).Submit();
                 return;
             }
             case "YieldEvidenceReq":
@@ -100,7 +100,7 @@ internal sealed partial class YieldSession(
                     "YieldEvidenceReq",
                     TargetOrDefault(dispatch),
                     cancellationToken);
-                await Context.Client.Reply(result).Async();
+                Context.Client.Reply(result).Submit();
                 return;
             }
             case "YieldEvidenceWaitReq":
@@ -112,7 +112,7 @@ internal sealed partial class YieldSession(
                     "YieldEvidenceWaitReq",
                     TargetOrDefault(dispatch),
                     cancellationToken);
-                await Context.Client.Reply(result).Async();
+                Context.Client.Reply(result).Submit();
                 return;
             }
             case "EnsureSpotReq":
@@ -124,7 +124,7 @@ internal sealed partial class YieldSession(
                     "EnsureSpotReq",
                     TargetOrDefault(dispatch),
                     cancellationToken);
-                await Context.Client.Reply(result).Async();
+                Context.Client.Reply(result).Submit();
                 return;
             }
             case "HoldReq":
@@ -238,7 +238,7 @@ internal sealed partial class YieldSession(
             request,
             dispatch.PacketName,
             cancellationToken);
-        await Context.Client.Reply(result).Async();
+        Context.Client.Reply(result).Submit();
     }
 
     private async Task RelaySpotCommandAsync<TMsg>(

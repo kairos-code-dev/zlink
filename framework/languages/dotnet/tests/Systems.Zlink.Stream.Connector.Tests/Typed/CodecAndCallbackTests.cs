@@ -42,9 +42,8 @@ public sealed partial class StreamConnectorTests
         });
         await connector.Connect.Async();
 
-        await connector.Send(new PackedPing { Text = "hello" })
-            .PacketName("packed")
-            .Async();
+        connector.Send(new PackedPing { Text = "hello" })
+            .PacketName("packed").Submit();
         await server;
     }
 
@@ -135,10 +134,9 @@ public sealed partial class StreamConnectorTests
         });
         await connector.Connect.Async();
 
-        await connector.Send(new Ping("custom"))
+        connector.Send(new Ping("custom"))
             .PacketName("custom")
-            .Compress()
-            .Async();
+            .Compress().Submit();
         await server;
     }
 

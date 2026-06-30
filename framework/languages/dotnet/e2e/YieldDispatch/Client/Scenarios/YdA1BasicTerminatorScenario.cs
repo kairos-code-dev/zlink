@@ -15,15 +15,13 @@ internal static class YdA1BasicTerminatorScenario
         ScenarioAssert.That(spot.SpotRid == spotRid, "YD-A spot creation mismatch.");
 
         var requestId = $"YD-A1-{Guid.NewGuid():N}";
-        await client.Send(new HoldMsg(requestId, 350))
+        client.Send(new HoldMsg(requestId, 350))
             .PacketName("HoldMsg")
-            .Metadata(YieldDispatchNames.SpotRidMetadata, spotRid)
-            .Async();
+            .Metadata(YieldDispatchNames.SpotRidMetadata, spotRid).Submit();
         await Task.Delay(75);
-        await client.Send(new ProbeMsg(requestId, "hold-probe"))
+        client.Send(new ProbeMsg(requestId, "hold-probe"))
             .PacketName("ProbeMsg")
-            .Metadata(YieldDispatchNames.SpotRidMetadata, spotRid)
-            .Async();
+            .Metadata(YieldDispatchNames.SpotRidMetadata, spotRid).Submit();
 
         var evidence = await client.Request(new YieldEvidenceWaitReq(requestId, "probe-completed"))
             .PacketName("YieldEvidenceWaitReq")

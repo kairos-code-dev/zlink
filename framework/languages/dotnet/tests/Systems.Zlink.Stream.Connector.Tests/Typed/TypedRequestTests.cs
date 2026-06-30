@@ -122,7 +122,7 @@ public sealed partial class StreamConnectorTests
         });
         await connector.Connect.Async();
 
-        await connector.Send(new NamedPacket("name")).Async();
+        connector.Send(new NamedPacket("name")).Submit();
         await server;
     }
 
@@ -145,11 +145,11 @@ public sealed partial class StreamConnectorTests
         });
         await connector.Connect.Async();
 
-        var exception = await Assert.ThrowsAsync<ZlinkStreamException>(async () =>
-            await connector.Send(new Ping("hello"))
+        var exception = Assert.Throws<ZlinkStreamException>(() =>
+            connector.Send(new Ping("hello"))
                 .PacketName("ping")
                 .Metadata("traceId", new string('x', 1014))
-                .Async());
+                .Submit());
 
         Assert.Equal(ZlinkStreamErrorCode.ValidationFailed, exception.Error.Code);
         await server;
@@ -187,13 +187,11 @@ public sealed partial class StreamConnectorTests
         });
         await connector.Connect.Async();
 
-        await connector.Send(new Ping("plain"))
-            .PacketName("plain")
-            .Async();
-        await connector.Send(new Ping("compressed"))
+        connector.Send(new Ping("plain"))
+            .PacketName("plain").Submit();
+        connector.Send(new Ping("compressed"))
             .PacketName("compressed")
-            .Compress()
-            .Async();
+            .Compress().Submit();
         await server;
     }
 }

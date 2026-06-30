@@ -8,19 +8,17 @@ internal static class YdA4WorkerYieldScenario
     public static async Task<string> RunAsync(IZlinkStreamConnector client, string spotRid)
     {
         var requestId = $"YD-A4-{Guid.NewGuid():N}";
-        await client.Send(new WorkerYieldMsg(requestId, 350))
+        client.Send(new WorkerYieldMsg(requestId, 350))
             .PacketName("WorkerYieldMsg")
-            .Metadata(YieldDispatchNames.SpotRidMetadata, spotRid)
-            .Async();
+            .Metadata(YieldDispatchNames.SpotRidMetadata, spotRid).Submit();
         await client.Request(new YieldEvidenceWaitReq(requestId, "worker-yield-released"))
             .PacketName("YieldEvidenceWaitReq")
             .Metadata(YieldDispatchNames.TargetNodeRidMetadata, "play-a")
             .Timeout(TimeSpan.FromSeconds(30))
             .Async<YieldEvidenceRes>();
-        await client.Send(new ProbeMsg(requestId, "worker-probe"))
+        client.Send(new ProbeMsg(requestId, "worker-probe"))
             .PacketName("ProbeMsg")
-            .Metadata(YieldDispatchNames.SpotRidMetadata, spotRid)
-            .Async();
+            .Metadata(YieldDispatchNames.SpotRidMetadata, spotRid).Submit();
         var evidence = await client.Request(new YieldEvidenceWaitReq(requestId, "worker-yield-completed"))
             .PacketName("YieldEvidenceWaitReq")
             .Metadata(YieldDispatchNames.TargetNodeRidMetadata, "play-a")

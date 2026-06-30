@@ -50,9 +50,8 @@ internal static class ConsumerEndpoints
             ProfileMsg command,
             IZLinkChannelClient channel) =>
         {
-            await channel.SendToChannel("profile", command)
-                .PacketName("MissingProfileMsg")
-                .Async();
+            channel.SendToChannel("profile", command)
+                .PacketName("MissingProfileMsg").Submit();
             return Results.Ok(new { status = "sent" });
         });
         app.MapPost("/profile/payload", async (
@@ -63,11 +62,11 @@ internal static class ConsumerEndpoints
             return Results.Ok(reply);
         });
         app.MapPost("/profile/backpressure/reset", () => Results.Ok(new { status = "ready" }));
-        app.MapPost("/profile/backpressure/send", async (
+        app.MapPost("/profile/backpressure/send", (
             ProfileMsg command,
             IZLinkChannelClient channel) =>
         {
-            var outcome = await SendProfileWithBoundedFailureAsync(channel, command);
+            var outcome = SubmitProfileUnderPressure(channel, command);
             return Results.Ok(outcome);
         });
     }
@@ -160,45 +159,13 @@ internal static class ConsumerEndpoints
         }
     }
 
-    static async Task<string> SendProfileWithBoundedFailureAsync(
+    static string SubmitProfileUnderPressure(
         IZLinkChannelClient channel,
         ProfileMsg command)
     {
-        try
-        {
-            var send = Task.Run(async () =>
-            {
-                using var timeout = new CancellationTokenSource(TimeSpan.FromMilliseconds(500));
-                await channel.SendToChannel("profile", command)
-                    .PacketName("ProfileMsg")
-                    .Async(timeout.Token);
-            });
-            var completed = await Task.WhenAny(send, Task.Delay(TimeSpan.FromMilliseconds(750)));
-            if (!ReferenceEquals(completed, send))
-            {
-                return "BoundedFailure";
-            }
-
-            await send;
-            return "Accepted";
-        }
-        catch (TimeoutException)
-        {
-            return "BoundedFailure";
-        }
-        catch (OperationCanceledException)
-        {
-            return "BoundedFailure";
-        }
-        catch (ZLinkFrameworkException error) when (error.IsRetriable)
-        {
-            return "BoundedFailure";
-        }
-        catch (Exception error) when (error.Message.Contains("backpressure", StringComparison.OrdinalIgnoreCase)
-            || error.Message.Contains("socket became writable", StringComparison.OrdinalIgnoreCase))
-        {
-            return "BoundedFailure";
-        }
+        channel.SendToChannel("profile", command)
+            .PacketName("ProfileMsg").Submit();
+        return "Submitted";
     }
 
     static bool IsRetriableStartupFailure(ZLinkFrameworkException ex) =>

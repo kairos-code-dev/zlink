@@ -129,14 +129,13 @@ internal sealed class EntryActorPushYieldHandler(EvidenceStore evidence)
         evidence.Add(
             $"actor-push-yield-resumed|rid={evidence.Rid}|spot={entrySpot.Context.SpotRid}"
             + $"|actor={actor.ActorId}|mailbox={mailboxId}|request={request.RequestId}|handler=actor");
-        await actor.Context.BoundSession.Send(
+        actor.Context.BoundSession.Send(
                 new ActorPushNotify(
                     actor.ActorId,
                     request.RequestId,
                     request.Value,
                     entrySpot.Context.NodeRid.ToString()))
-            .PacketName("ActorPushNotify")
-            .Async(cancellationToken);
+            .PacketName("ActorPushNotify").Submit(cancellationToken);
         evidence.Add(
             $"actor-push-yield-completed|rid={evidence.Rid}|spot={entrySpot.Context.SpotRid}"
             + $"|actor={actor.ActorId}|mailbox={mailboxId}|request={request.RequestId}|handler=actor");

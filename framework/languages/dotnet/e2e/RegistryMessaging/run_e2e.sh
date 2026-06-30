@@ -155,7 +155,6 @@ wait_health "http://127.0.0.1:$DISCOVERY_CONSUMER_HTTP_PORT" discovery-consumer
 start_server backpressure-consumer "$CONSUMER_PROJECT" \
   --http-url "http://127.0.0.1:$BACKPRESSURE_CONSUMER_HTTP_PORT" \
   --provider-endpoint "$API_A" \
-  --low-hwm true \
   --trace-label backpressure-consumer \
   --log-dir "$LOG_DIR"
 wait_health "http://127.0.0.1:$BACKPRESSURE_CONSUMER_HTTP_PORT" backpressure-consumer

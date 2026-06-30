@@ -193,8 +193,8 @@ internal sealed class FixtureSpotTimerHandler
         CancellationToken cancellationToken)
     {
         _ = tick;
-        await spot.Context.Outbound.Publish("stage.event", new FixtureSpotEvent(spot.Context.SpotRid.ToHex()))
-            .Async(cancellationToken);
+        spot.Context.Outbound.Publish("stage.event", new FixtureSpotEvent(spot.Context.SpotRid.ToHex()))
+                .Submit(cancellationToken);
     }
 }
 

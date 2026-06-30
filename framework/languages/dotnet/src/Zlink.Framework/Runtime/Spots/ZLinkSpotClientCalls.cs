@@ -58,7 +58,12 @@ internal sealed class ZLinkRoutedSpotSendCall<TMessage>(
         return this;
     }
 
-    public async ValueTask Async(CancellationToken cancellationToken = default)
+    public void Submit(CancellationToken cancellationToken = default)
+    {
+        _ = SubmitAsync(cancellationToken).AsTask();
+    }
+
+    private async ValueTask SubmitAsync(CancellationToken cancellationToken)
     {
         cancellationToken.ThrowIfCancellationRequested();
         var remoteAddress = await ResolveRemoteAddressAsync(cancellationToken).ConfigureAwait(false);
@@ -174,7 +179,7 @@ internal sealed class ZLinkCurrentSpotSendCall<TMessage>(
         return this;
     }
 
-    public ValueTask Async(CancellationToken cancellationToken = default)
+    public void Submit(CancellationToken cancellationToken = default)
     {
         cancellationToken.ThrowIfCancellationRequested();
         var header = ZLinkClientCallCodec.CreateEnvelope(
@@ -182,7 +187,7 @@ internal sealed class ZLinkCurrentSpotSendCall<TMessage>(
             channelName,
             _messageName ?? throw new InvalidOperationException("Message name is required."));
         var parts = ZLinkClientCallCodec.EncodeEnvelopeParts(header, message, activation.Codecs);
-        return activation.SendToChannelAsync(channelName, parts, cancellationToken);
+        _ = activation.SendToChannelAsync(channelName, parts, cancellationToken).AsTask();
     }
 }
 

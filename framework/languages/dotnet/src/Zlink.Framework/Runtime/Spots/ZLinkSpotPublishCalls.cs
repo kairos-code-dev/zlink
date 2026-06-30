@@ -13,7 +13,7 @@ internal sealed class ZLinkCurrentSpotPublishCall<TEvent>(
         return this;
     }
 
-    public ValueTask Async(CancellationToken cancellationToken = default)
+    public void Submit(CancellationToken cancellationToken = default)
     {
         cancellationToken.ThrowIfCancellationRequested();
         var parts = ZLinkSpotPublishEnvelope.EncodeParts(
@@ -22,7 +22,7 @@ internal sealed class ZLinkCurrentSpotPublishCall<TEvent>(
             topic,
             message,
             activation.Codecs);
-        return activation.PublishCurrentAsync(topic, parts, cancellationToken);
+        _ = activation.PublishCurrentAsync(topic, parts, cancellationToken).AsTask();
     }
 }
 
@@ -49,7 +49,12 @@ internal sealed class ZLinkExternalSpotPublishCall<TEvent>(
         return this;
     }
 
-    public ValueTask Async(CancellationToken cancellationToken = default)
+    public void Submit(CancellationToken cancellationToken = default)
+    {
+        _ = SubmitAsync(cancellationToken).AsTask();
+    }
+
+    private ValueTask SubmitAsync(CancellationToken cancellationToken)
     {
         cancellationToken.ThrowIfCancellationRequested();
         var bundle = runtime.GetSpotPublisherBundle(channelName);

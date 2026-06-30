@@ -85,9 +85,8 @@ internal static class ConsumerHostFactory
             ProfileMsg command,
             IZLinkChannelClient channel) =>
         {
-            await channel.SendToChannel(ResilienceLifecycleNames.Channel, command)
-                .PacketName("ProfileMsg")
-                .Async();
+            channel.SendToChannel(ResilienceLifecycleNames.Channel, command)
+                .PacketName("ProfileMsg").Submit();
             return Results.Ok(new { status = "sent" });
         });
         app.MapPost("/profile/request/new-client", async (ProfileReq request) =>

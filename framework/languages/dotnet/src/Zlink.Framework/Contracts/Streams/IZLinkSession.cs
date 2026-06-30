@@ -81,12 +81,7 @@ public interface IZLinkSessionSendCall
 
     IZLinkSessionSendCall Compress();
 
-    ValueTask Async();
-
-    void Submit()
-    {
-        _ = Async().AsTask();
-    }
+    void Submit();
 }
 
 public interface IZLinkSessionReplyCall
@@ -95,5 +90,5 @@ public interface IZLinkSessionReplyCall
 
     IZLinkSessionReplyCall Compress();
 
-    ValueTask Async();
+    void Submit();
 }

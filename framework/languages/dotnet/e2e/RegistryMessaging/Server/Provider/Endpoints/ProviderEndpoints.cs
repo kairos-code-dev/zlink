@@ -118,9 +118,8 @@ internal static class ProviderEndpoints
         while (DateTimeOffset.UtcNow < deadline)
             try
             {
-                await channel.SendToChannel(channelName, command)
-                    .PacketName("ProfileMsg")
-                    .Async();
+                channel.SendToChannel(channelName, command)
+                    .PacketName("ProfileMsg").Submit();
                 return;
             }
             catch (ZLinkFrameworkException ex) when (IsRetriableRequestStartupFailure(ex))

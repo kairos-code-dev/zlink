@@ -11,9 +11,8 @@ public sealed partial class StreamConnectorTests
         var connector = new RecordingConnector(codec);
 
         // Send: the custom codec produces the wire payload, not the built-in JSON auto-codec.
-        await connector.Send(new CustomProbe("hello"))
-            .PacketName("custom.send")
-            .Async();
+        connector.Send(new CustomProbe("hello"))
+            .PacketName("custom.send").Submit();
         Assert.Equal(ZlinkStreamCodec.Raw, connector.SendCall.Payload.Codec);
         Assert.Equal("CUSTOM:hello", Encoding.UTF8.GetString(connector.SendCall.Payload.Payload.Span));
 
@@ -61,9 +60,8 @@ public sealed partial class StreamConnectorTests
         // Without a custom codec the typed API keeps the built-in JSON auto-selection.
         var connector = new RecordingConnector();
 
-        await connector.Send(new CustomProbe("plain"))
-            .PacketName("auto.json")
-            .Async();
+        connector.Send(new CustomProbe("plain"))
+            .PacketName("auto.json").Submit();
 
         Assert.Equal(ZlinkStreamCodec.Json, connector.SendCall.Payload.Codec);
     }

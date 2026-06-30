@@ -50,12 +50,11 @@ internal static class GatewayHostFactory
             IZLinkSpotPublisherClient publisher,
             EvidenceStore evidence) =>
         {
-            await publisher.PublishSpot(
+            publisher.PublishSpot(
                     SpotServiceNames.SpotChannel,
                     SpotServiceNames.SpotMsgTopic,
                     new SpotMsg(request.Marker))
-                .PacketName("SpotMsg")
-                .Async();
+                .PacketName("SpotMsg").Submit();
             evidence.Add($"spot-publish|rid={options.Rid}|spot={request.SpotRid}|marker={request.Marker}");
             return Results.Ok(new SpotPublishRes(
                 "spot.sm-c4-publish",

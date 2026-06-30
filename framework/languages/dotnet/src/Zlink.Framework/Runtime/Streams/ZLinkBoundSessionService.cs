@@ -173,7 +173,12 @@ internal sealed class ZLinkBoundSessionSendCall<TMessage>(
         return this;
     }
 
-    public async ValueTask Async(CancellationToken cancellationToken = default)
+    public void Submit(CancellationToken cancellationToken = default)
+    {
+        _ = SubmitAsync(cancellationToken).AsTask();
+    }
+
+    private async ValueTask SubmitAsync(CancellationToken cancellationToken)
     {
         await service.SendBoundSessionAsync(
                 actorId,

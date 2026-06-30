@@ -102,7 +102,7 @@ internal sealed class AuthSessionHandler(
         await context.Actors.BindAsync(
             new ActorRef(RoutingId.From(ensured.NodeRid), ensured.ActorId, ensured.Generation),
             cancellationToken);
-        await context.Client.Reply(new AuthRes(ensured.ActorId, ensured.NodeRid)).Async();
+        context.Client.Reply(new AuthRes(ensured.ActorId, ensured.NodeRid)).Submit();
     }
 
     private static async ValueTask<EnsureActorRes> EnsureLocalActorAsync(
@@ -154,7 +154,7 @@ internal sealed class MultiBindSessionHandler(
                 cancellationToken);
         }
 
-        await context.Client.Reply(new MultiBindRes(context.Actors.Bound.Count)).Async();
+        context.Client.Reply(new MultiBindRes(context.Actors.Bound.Count)).Submit();
     }
 }
 
@@ -183,7 +183,7 @@ internal sealed class UserSpotAuthSessionHandler(
         await context.Actors.BindAsync(
             new ActorRef(RoutingId.From(request.NodeRid), joined.ActorId, joined.Generation),
             cancellationToken);
-        await context.Client.Reply(new AuthRes(joined.ActorId, request.NodeRid)).Async();
+        context.Client.Reply(new AuthRes(joined.ActorId, request.NodeRid)).Submit();
     }
 
     private static async ValueTask<JoinUserSpotActorRes> JoinLocalUserSpotAsync(

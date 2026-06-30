@@ -15,19 +15,17 @@ internal static class YdE2CancellationScenario
         ScenarioAssert.That(spot.SpotRid == spotRid, "YD-E2 spot creation mismatch.");
 
         var requestId = $"YD-E2-{Guid.NewGuid():N}";
-        await client.Send(new YieldCancelMsg(requestId, 800, 100))
+        client.Send(new YieldCancelMsg(requestId, 800, 100))
             .PacketName("YieldCancelMsg")
-            .Metadata(YieldDispatchNames.SpotRidMetadata, spotRid)
-            .Async();
+            .Metadata(YieldDispatchNames.SpotRidMetadata, spotRid).Submit();
         await client.Request(new YieldEvidenceWaitReq(requestId, "cancel-yield-completed"))
             .PacketName("YieldEvidenceWaitReq")
             .Metadata(YieldDispatchNames.TargetNodeRidMetadata, "play-a")
             .Timeout(TimeSpan.FromSeconds(30))
             .Async<YieldEvidenceRes>();
-        await client.Send(new ProbeMsg(requestId, "cancel-probe"))
+        client.Send(new ProbeMsg(requestId, "cancel-probe"))
             .PacketName("ProbeMsg")
-            .Metadata(YieldDispatchNames.SpotRidMetadata, spotRid)
-            .Async();
+            .Metadata(YieldDispatchNames.SpotRidMetadata, spotRid).Submit();
         var evidence = await client.Request(new YieldEvidenceWaitReq(requestId, "probe-completed"))
             .PacketName("YieldEvidenceWaitReq")
             .Metadata(YieldDispatchNames.TargetNodeRidMetadata, "play-a")

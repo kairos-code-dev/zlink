@@ -7,8 +7,7 @@ internal sealed record ConsumerOptions(
     string LogDir,
     string TraceLabel,
     IReadOnlyList<string> ProviderEndpoints,
-    string? RegistryRouterEndpoint,
-    bool LowHighWaterMark)
+    string? RegistryRouterEndpoint)
 {
     public static ConsumerOptions Parse(string[] args)
     {
@@ -50,8 +49,7 @@ internal sealed record ConsumerOptions(
             GetSingle(values, "log-dir", Path.Combine(Path.GetTempPath(), "zlink-dotnet-e2e-log")),
             GetSingle(values, "trace-label", "consumer"),
             endpoints,
-            registryRouterEndpoint,
-            bool.TryParse(GetSingle(values, "low-hwm", "false"), out var lowHwm) && lowHwm);
+            registryRouterEndpoint);
     }
 
     static string GetSingle(

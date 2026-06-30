@@ -8,10 +8,9 @@ internal static class YdA3ContinuationContextScenario
     public static async Task<string> RunAsync(IZlinkStreamConnector client, string spotRid)
     {
         var requestId = $"YD-A3-{Guid.NewGuid():N}";
-        await client.Send(new YieldMsg(requestId, 50, "corr-a3"))
+        client.Send(new YieldMsg(requestId, 50, "corr-a3"))
             .PacketName("YieldMsg")
-            .Metadata(YieldDispatchNames.SpotRidMetadata, spotRid)
-            .Async();
+            .Metadata(YieldDispatchNames.SpotRidMetadata, spotRid).Submit();
         var evidence = await client.Request(new YieldEvidenceWaitReq(requestId, "yield-completed"))
             .PacketName("YieldEvidenceWaitReq")
             .Metadata(YieldDispatchNames.TargetNodeRidMetadata, "play-a")

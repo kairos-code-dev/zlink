@@ -4,12 +4,7 @@ public interface IZLinkSendCall
 {
     IZLinkSendCall PacketName(string messageName);
 
-    ValueTask Async(CancellationToken cancellationToken = default);
-
-    void Submit(CancellationToken cancellationToken = default)
-    {
-        _ = Async(cancellationToken).AsTask();
-    }
+    void Submit(CancellationToken cancellationToken = default);
 }
 
 public interface IZLinkRequestCall
@@ -40,5 +35,5 @@ public interface IZLinkPublishCall
 {
     IZLinkPublishCall PacketName(string messageName);
 
-    ValueTask Async(CancellationToken cancellationToken = default);
+    void Submit(CancellationToken cancellationToken = default);
 }

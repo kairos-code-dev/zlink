@@ -145,7 +145,7 @@ internal sealed class BingoRoom(
                 change.State.Winners[0],
                 BingoRewardItems.GoldenDauberId,
                 Context.NodeRid.ToString());
-            await Context.Outbound.Publish(
+            Context.Outbound.Publish(
                     SampleNames.RewardTopic,
                     new BingoRewardAcquiredEvent
                     {
@@ -156,7 +156,7 @@ internal sealed class BingoRoom(
                         ItemName = BingoRewardItems.GoldenDauberName,
                         Rarity = BingoRewardItems.LegendaryRarity
                     })
-                .Async(cancellationToken);
+                .Submit(cancellationToken);
             logger.LogInformation(
                 "bingo reward: published. room={RoomId}, actor={ActorId}, item={ItemId}, nodeRid={NodeRid}",
                 change.State.RoomId,

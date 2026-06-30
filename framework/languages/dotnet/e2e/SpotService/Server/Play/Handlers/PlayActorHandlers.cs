@@ -250,9 +250,8 @@ internal sealed class ActorPushHandler
         CancellationToken cancellationToken)
     {
         actor.Seen++;
-        await actor.Context.BoundSession.Send(new ActorPushNotify(actor.ActorId, request.Value, actor.Seen))
-            .PacketName("ActorPushNotify")
-            .Async();
+        actor.Context.BoundSession.Send(new ActorPushNotify(actor.ActorId, request.Value, actor.Seen))
+            .PacketName("ActorPushNotify").Submit();
         return new ActorPingRes(
             actor.ActorId,
             entrySpot.Context.NodeRid.ToString(),
@@ -276,9 +275,8 @@ internal sealed class EntryUserActorPushHandler
         _ = context;
         cancellationToken.ThrowIfCancellationRequested();
         actor.Seen++;
-        await actor.Context.BoundSession.Send(new ActorPushNotify(actor.ActorId, request.Value, actor.Seen))
-            .PacketName("ActorPushNotify")
-            .Async();
+        actor.Context.BoundSession.Send(new ActorPushNotify(actor.ActorId, request.Value, actor.Seen))
+            .PacketName("ActorPushNotify").Submit();
         return new ActorPingRes(
             actor.ActorId,
             entrySpot.Context.NodeRid.ToString(),
@@ -301,9 +299,8 @@ internal sealed class UserActorPushHandler
     {
         _ = context;
         actor.Seen++;
-        await actor.Context.BoundSession.Send(new ActorPushNotify(actor.ActorId, request.Value, actor.Seen))
-            .PacketName("ActorPushNotify")
-            .Async();
+        actor.Context.BoundSession.Send(new ActorPushNotify(actor.ActorId, request.Value, actor.Seen))
+            .PacketName("ActorPushNotify").Submit();
         return new ActorPingRes(
             actor.ActorId,
             spot.Context.NodeRid.ToString(),

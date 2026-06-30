@@ -16,19 +16,17 @@ internal static class YdC3ActorTimerIsolationScenario
             .Timeout(TimeSpan.FromSeconds(30))
             .Async<ActorYieldRes>();
         await Task.Delay(75);
-        await client.Send(new TimerStartMsg(actorThenTimer, $"{actorThenTimer}-fast", "fast", 50, 0))
+        client.Send(new TimerStartMsg(actorThenTimer, $"{actorThenTimer}-fast", "fast", 50, 0))
             .PacketName("TimerStartMsg")
-            .Metadata(YieldDispatchNames.SpotRidMetadata, actors.SpotRid)
-            .Async();
+            .Metadata(YieldDispatchNames.SpotRidMetadata, actors.SpotRid).Submit();
         await client.Request(new YieldEvidenceWaitReq(actorThenTimer, "timer-fast-completed"))
             .PacketName("YieldEvidenceWaitReq")
             .Metadata(YieldDispatchNames.TargetNodeRidMetadata, "play-a")
             .Timeout(TimeSpan.FromSeconds(30))
             .Async<YieldEvidenceRes>();
-        await client.Send(new TimerStopMsg(actorThenTimer))
+        client.Send(new TimerStopMsg(actorThenTimer))
             .PacketName("TimerStopMsg")
-            .Metadata(YieldDispatchNames.SpotRidMetadata, actors.SpotRid)
-            .Async();
+            .Metadata(YieldDispatchNames.SpotRidMetadata, actors.SpotRid).Submit();
         await actorYield;
 
         var actorThenTimerEvidence = await client.Request(new YieldEvidenceReq(actorThenTimer))
@@ -46,10 +44,9 @@ internal static class YdC3ActorTimerIsolationScenario
         ]);
 
         var timerThenActor = $"YD-C3B-{Guid.NewGuid():N}";
-        await client.Send(new TimerStartMsg(timerThenActor, $"{timerThenActor}-yield", "yield-on-first", 50, 350))
+        client.Send(new TimerStartMsg(timerThenActor, $"{timerThenActor}-yield", "yield-on-first", 50, 350))
             .PacketName("TimerStartMsg")
-            .Metadata(YieldDispatchNames.SpotRidMetadata, actors.SpotRid)
-            .Async();
+            .Metadata(YieldDispatchNames.SpotRidMetadata, actors.SpotRid).Submit();
         await client.Request(new YieldEvidenceWaitReq(timerThenActor, "timer-yield-released"))
             .PacketName("YieldEvidenceWaitReq")
             .Metadata(YieldDispatchNames.TargetNodeRidMetadata, "play-a")
@@ -66,10 +63,9 @@ internal static class YdC3ActorTimerIsolationScenario
             .Metadata(YieldDispatchNames.TargetNodeRidMetadata, "play-a")
             .Timeout(TimeSpan.FromSeconds(30))
             .Async<YieldEvidenceRes>();
-        await client.Send(new TimerStopMsg(timerThenActor))
+        client.Send(new TimerStopMsg(timerThenActor))
             .PacketName("TimerStopMsg")
-            .Metadata(YieldDispatchNames.SpotRidMetadata, actors.SpotRid)
-            .Async();
+            .Metadata(YieldDispatchNames.SpotRidMetadata, actors.SpotRid).Submit();
 
         ScenarioAssert.ContainsExactRequestInOrder(timerThenActorEvidence.Evidence, timerThenActor, [
             "timer-yield-started",

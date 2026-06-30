@@ -230,11 +230,12 @@ internal sealed class TicTacToeGame(
             player.ActorId,
             after.RoomId,
             wins);
-        return Context.Outbound.Publish(
+        Context.Outbound.Publish(
                 SampleTopics.PlayerMilestone,
                 new PlayerWinMilestoneEvent(after.RoomId, player.ActorId, player.DisplayName, wins))
             .PacketName(nameof(PlayerWinMilestoneEvent))
-            .Async(cancellationToken);
+                .Submit(cancellationToken);
+        return ValueTask.CompletedTask;
     }
 
     private static void SendSessionPush(

@@ -46,12 +46,6 @@ internal static class ConsumerHostFactory
                 }
             }
 
-            if (options.LowHighWaterMark)
-            {
-                profile.ConfigureClientSocket().SendHighWaterMark = 1;
-                profile.ConfigureClientSocket().ReceiveHighWaterMark = 1;
-                profile.ConfigureClientSocket().SendTimeout = TimeSpan.FromMilliseconds(100);
-            }
         });
 
         var app = builder.Build();

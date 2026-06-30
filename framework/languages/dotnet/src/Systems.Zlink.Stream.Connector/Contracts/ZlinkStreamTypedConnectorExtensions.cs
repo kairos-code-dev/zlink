@@ -190,11 +190,6 @@ public sealed class ZlinkStreamTypedSendBuilder
         return this;
     }
 
-    public ValueTask Async(CancellationToken cancellationToken = default)
-    {
-        return _inner.Async(cancellationToken);
-    }
-
     public void Submit(CancellationToken cancellationToken = default)
     {
         _inner.Submit(cancellationToken);

@@ -70,9 +70,9 @@ internal sealed class ZLinkSessionSendCall<TMessage>(
         return (IZLinkSessionSendCall)Compress();
     }
 
-    public ValueTask Async()
+    public void Submit()
     {
-        return Execute();
+        _ = Execute().AsTask();
     }
 
     protected override ZlinkStreamHeader CreateHeader(
@@ -109,9 +109,9 @@ internal sealed class ZLinkSessionReplyCall<TMessage>(
         return (IZLinkSessionReplyCall)Compress();
     }
 
-    public ValueTask Async()
+    public void Submit()
     {
-        return Execute();
+        _ = Execute().AsTask();
     }
 
     protected override ZlinkStreamHeader CreateHeader(

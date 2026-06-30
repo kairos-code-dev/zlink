@@ -15,19 +15,17 @@ internal static class YdC1TimerIsolationScenario
         ScenarioAssert.That(spot.SpotRid == spotRid, "YD-C timer spot creation mismatch.");
 
         var requestId = $"YD-C1-{Guid.NewGuid():N}";
-        await client.Send(new TimerStartMsg(requestId, $"{requestId}-yield", "yield-on-first", 50, 350))
+        client.Send(new TimerStartMsg(requestId, $"{requestId}-yield", "yield-on-first", 50, 350))
             .PacketName("TimerStartMsg")
-            .Metadata(YieldDispatchNames.SpotRidMetadata, spotRid)
-            .Async();
+            .Metadata(YieldDispatchNames.SpotRidMetadata, spotRid).Submit();
         await client.Request(new YieldEvidenceWaitReq(requestId, "timer-yield-released"))
             .PacketName("YieldEvidenceWaitReq")
             .Metadata(YieldDispatchNames.TargetNodeRidMetadata, "play-a")
             .Timeout(TimeSpan.FromSeconds(30))
             .Async<YieldEvidenceRes>();
-        await client.Send(new TimerStartMsg(requestId, $"{requestId}-fast", "fast", 50, 0))
+        client.Send(new TimerStartMsg(requestId, $"{requestId}-fast", "fast", 50, 0))
             .PacketName("TimerStartMsg")
-            .Metadata(YieldDispatchNames.SpotRidMetadata, spotRid)
-            .Async();
+            .Metadata(YieldDispatchNames.SpotRidMetadata, spotRid).Submit();
         await client.Request(new YieldEvidenceWaitReq(requestId, "timer-fast-completed"))
             .PacketName("YieldEvidenceWaitReq")
             .Metadata(YieldDispatchNames.TargetNodeRidMetadata, "play-a")
@@ -46,10 +44,9 @@ internal static class YdC1TimerIsolationScenario
             "timer-yield-resumed",
             "timer-yield-completed"
         ]);
-        await client.Send(new TimerStopMsg(requestId))
+        client.Send(new TimerStopMsg(requestId))
             .PacketName("TimerStopMsg")
-            .Metadata(YieldDispatchNames.SpotRidMetadata, spotRid)
-            .Async();
+            .Metadata(YieldDispatchNames.SpotRidMetadata, spotRid).Submit();
         return (spotRid, requestId);
     }
 }

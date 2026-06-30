@@ -15,8 +15,8 @@ internal sealed class GameplayEventPublisher(
         GameplayEventEnvelope gameplayEvent,
         CancellationToken cancellationToken)
     {
-        await fanout.Publish(SampleNames.FanoutChannel, SampleNames.GameplayTopic, gameplayEvent)
-            .Async(cancellationToken);
+        fanout.Publish(SampleNames.FanoutChannel, SampleNames.GameplayTopic, gameplayEvent)
+            .Submit(cancellationToken);
         return topology.FanoutPublisherEndpointForApi(_apiName);
     }
 }

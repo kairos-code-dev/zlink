@@ -161,6 +161,10 @@ static_checks() {
     echo "YieldDispatch full scenario must create and use a real stream connector directly." >&2
     return 1
   fi
+  if ! rg -q 'connector_factory_t::create' "$ROOT_DIR/Client/Scenarios/shutdown_yield_scenario.hpp"; then
+    echo "YieldDispatch shutdown scenario must create and use a real stream connector directly." >&2
+    return 1
+  fi
 
   local scenario_file
   for scenario_file in "$ROOT_DIR"/Client/Scenarios/yd_*.hpp; do
@@ -173,6 +177,42 @@ static_checks() {
 }
 
 static_checks
+
+wait_file_contains() {
+  local file="$1"
+  local pattern="$2"
+  local message="$3"
+  local watched_pid="${4:-}"
+  local attempts="${5:-200}"
+  for _ in $(seq 1 "$attempts"); do
+    if [[ -f "$file" ]] && grep -Fq "$pattern" "$file"; then
+      return 0
+    fi
+    if [[ -n "$watched_pid" ]] && ! kill -0 "$watched_pid" >/dev/null 2>&1; then
+      break
+    fi
+    sleep 0.05
+  done
+  echo "$message" >&2
+  return 1
+}
+
+terminate_gracefully() {
+  local name="$1"
+  local pid="$2"
+  kill "$pid" >/dev/null 2>&1 || true
+  for _ in $(seq 1 100); do
+    if ! kill -0 "$pid" >/dev/null 2>&1; then
+      wait "$pid" >/dev/null 2>&1 || true
+      return 0
+    fi
+    sleep 0.05
+  done
+  echo "$name did not exit after SIGTERM" >&2
+  kill -9 "$pid" >/dev/null 2>&1 || true
+  wait "$pid" >/dev/null 2>&1 || true
+  return 1
+}
 
 ZLINK_CPP_E2E_HTTP_ENDPOINT="$REG_HTTP" \
 ZLINK_CPP_E2E_REGISTRY_PUB="$REG_PUB" \
@@ -246,12 +286,14 @@ start_session_role() {
 start_delay_role delay-a "$DELAY_A_HTTP" "$DELAY_A_ENDPOINT"
 start_delay_role delay-b "$DELAY_B_HTTP" "$DELAY_B_ENDPOINT"
 start_play_role play-a "$PLAY_A_HTTP" "$PLAY_A_CONTROL" "$PLAY_A_SPOT_ROUTE" "$PLAY_A_SPOT_ROUTER" "$PLAY_A_SPOT_PUB" "$DELAY_A_ENDPOINT"
+PLAY_A_PID="${PIDS[-1]}"
 start_play_role play-b "$PLAY_B_HTTP" "$PLAY_B_CONTROL" "$PLAY_B_SPOT_ROUTE" "$PLAY_B_SPOT_ROUTER" "$PLAY_B_SPOT_PUB" "$DELAY_B_ENDPOINT"
 start_session_role session-a "$SESSION_A_HTTP" "$SESSION_A_STREAM" "$PLAY_A_CONTROL" "$SESSION_A_SPOT_ROUTER" "$SESSION_A_SPOT_PUB"
 start_session_role session-b "$SESSION_B_HTTP" "$SESSION_B_STREAM" "$PLAY_B_CONTROL" "$SESSION_B_SPOT_ROUTER" "$SESSION_B_SPOT_PUB"
 
 ZLINK_CPP_E2E_STREAM_ENDPOINT="$SESSION_A_STREAM" \
 ZLINK_CPP_E2E_SESSION_B_STREAM_ENDPOINT="$SESSION_B_STREAM" \
+ZLINK_CPP_E2E_SCENARIO="full" \
   "$CLIENT" >"$LOG_DIR/client.stdout.log" 2>"$LOG_DIR/client.stderr.log"
 grep -q "scenario YD-A1 passed" "$LOG_DIR/client.stdout.log"
 grep -q "scenario YD-A2 passed" "$LOG_DIR/client.stdout.log"
@@ -268,5 +310,47 @@ grep -q "scenario YD-D3 passed" "$LOG_DIR/client.stdout.log"
 grep -q "scenario YD-D4 passed" "$LOG_DIR/client.stdout.log"
 grep -q "scenario YD-E1 passed" "$LOG_DIR/client.stdout.log"
 grep -q "yield-dispatch track-a-e1 result=passed" "$LOG_DIR/client.stdout.log"
+grep -q "^hold-completed|rid=play-a" "$LOG_DIR/play-a.evidence.log"
+grep -q "^yield-completed|rid=play-a" "$LOG_DIR/play-a.evidence.log"
+grep -q "^worker-yield-completed|rid=play-a" "$LOG_DIR/play-a.evidence.log"
+grep -q "^actor-yield-completed|rid=play-a" "$LOG_DIR/play-a.evidence.log"
+grep -q "^timer-yield-completed|rid=play-a" "$LOG_DIR/play-a.evidence.log"
+grep -q "^timeout-yield-completed|rid=play-a" "$LOG_DIR/play-a.evidence.log"
+echo "scenario YD-D1 passed"
 
-echo "yield-dispatch track-a-e1 result=passed"
+SHUTDOWN_ID="YD-E3-$RUN_ID"
+SHUTDOWN_SPOT="yield-shutdown-${RUN_ID//[^a-zA-Z0-9]/}"
+ZLINK_CPP_E2E_STREAM_ENDPOINT="$SESSION_A_STREAM" \
+ZLINK_CPP_E2E_SESSION_B_STREAM_ENDPOINT="$SESSION_B_STREAM" \
+ZLINK_CPP_E2E_SCENARIO="shutdown-wait" \
+ZLINK_CPP_E2E_REQUEST_ID="$SHUTDOWN_ID" \
+ZLINK_CPP_E2E_SPOT_RID="$SHUTDOWN_SPOT" \
+  "$CLIENT" >"$LOG_DIR/client-shutdown-wait.stdout.log" 2>"$LOG_DIR/client-shutdown-wait.stderr.log" &
+SHUTDOWN_CLIENT_PID=$!
+wait_file_contains \
+  "$LOG_DIR/play-a.evidence.log" \
+  "yield-released|rid=play-a|spot=$SHUTDOWN_SPOT|request=$SHUTDOWN_ID" \
+  "YD-E3 pending yield marker was not observed before shutdown." \
+  "$SHUTDOWN_CLIENT_PID"
+terminate_gracefully play-a "$PLAY_A_PID"
+wait_file_contains \
+  "$LOG_DIR/client-shutdown-wait.stdout.log" \
+  "yield-dispatch shutdown wait result=passed" \
+  "YD-E3 shutdown client did not observe the public closed/cancelled error." \
+  "$SHUTDOWN_CLIENT_PID" \
+  900
+wait "$SHUTDOWN_CLIENT_PID"
+
+start_play_role play-a "$PLAY_A_HTTP" "$PLAY_A_CONTROL" "$PLAY_A_SPOT_ROUTE" "$PLAY_A_SPOT_ROUTER" "$PLAY_A_SPOT_PUB" "$DELAY_A_ENDPOINT"
+PLAY_A_PID="${PIDS[-1]}"
+sleep 1
+
+ZLINK_CPP_E2E_STREAM_ENDPOINT="$SESSION_A_STREAM" \
+ZLINK_CPP_E2E_SESSION_B_STREAM_ENDPOINT="$SESSION_B_STREAM" \
+ZLINK_CPP_E2E_SCENARIO="shutdown-recovery" \
+ZLINK_CPP_E2E_REQUEST_ID="$SHUTDOWN_ID-recovery" \
+ZLINK_CPP_E2E_SPOT_RID="$SHUTDOWN_SPOT" \
+  "$CLIENT" >"$LOG_DIR/client-shutdown-recovery.stdout.log" 2>"$LOG_DIR/client-shutdown-recovery.stderr.log"
+grep -q "yield-dispatch shutdown recovery result=passed" "$LOG_DIR/client-shutdown-recovery.stdout.log"
+
+echo "yield-dispatch e2e result=passed"

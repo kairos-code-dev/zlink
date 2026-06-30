@@ -96,3 +96,12 @@ C++ `RegistryMessaging` E2E의 대응 파일과 남은 gap을 기록한다. 상�
   - RM-C9 child 로그: `logs/20260630-081915-3246228`
   - 의미: 구현된 RegistryMessaging 시나리오는 전체 sweep에서 통과하지만, RM-C9 bounded-failure
     oracle은 위 gap 때문에 완료 판정에서 제외한다.
+- 2026-06-30: `timeout 420s framework/languages/cpp/e2e/RegistryMessaging/run_e2e.sh all`
+  - 결과: 통과
+  - parent 로그: `logs/20260630-161051-366893`
+  - RM-C9 child 로그: `logs/20260630-161317-377857`
+  - 의미: 현재 checkout에서도 RM-A1, RM-A2, RM-A4, RM-A6, RM-B1, RM-B2, RM-C1, RM-C2,
+    RM-C3, RM-C4, RM-C5, RM-C7, RM-C8, RM-C9 sweep가 모두 통과한다. RM-C9 child log의
+    `backpressure-consumer-flow.log`와 `api-a-flow.log`에는 low-HWM send pressure와 후속 recovery
+    request/reply flow가 남는다. bounded-failure oracle은 public send submit gap으로 계속 완료 판정에서
+    제외한다.

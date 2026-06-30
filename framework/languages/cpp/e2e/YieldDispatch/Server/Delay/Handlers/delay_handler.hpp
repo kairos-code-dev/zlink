@@ -25,7 +25,13 @@ class delay_handler_t
 
     yd::delay_reply_t handle (const yd::delay_req_t &request)
     {
+        _state.evidence.add ("delay-started|rid=" + _state.node_rid
+                             + "|request=" + request.request_id
+                             + "|marker=" + request.marker);
         std::this_thread::sleep_for (std::chrono::milliseconds (request.delay_ms));
+        _state.evidence.add ("delay-completed|rid=" + _state.node_rid
+                             + "|request=" + request.request_id
+                             + "|marker=" + request.marker);
         return {.request_id = request.request_id,
                 .marker = request.marker,
                 .node_rid = _state.node_rid};

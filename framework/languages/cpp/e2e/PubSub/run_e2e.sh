@@ -201,112 +201,96 @@ verify() {
   python3 - "$mode" "$@" <<'PY'
 import json
 import sys
-import time
 import urllib.request
 
 mode = sys.argv[1]
 endpoints = sys.argv[2:]
 
-def load(endpoint):
-    with urllib.request.urlopen(endpoint + "/evidence", timeout=2) as response:
+def post_json(endpoint, path, payload):
+    request = urllib.request.Request(
+        endpoint + path,
+        data=json.dumps(payload).encode(),
+        headers={"Content-Type": "application/json"},
+        method="POST")
+    with urllib.request.urlopen(request, timeout=35) as response:
         return json.loads(response.read().decode())
 
-def wait_for(predicate, message):
-    last = None
-    for _ in range(100):
-        snapshots = [load(endpoint) for endpoint in endpoints]
-        last = snapshots
-        if predicate(snapshots):
-            return
-        time.sleep(0.1)
-    raise SystemExit(message + "\nlast=" + json.dumps(last, sort_keys=True))
+def wait_lines(endpoint, *, contains_all=None, contains_any_groups=None,
+               contains_all_line_groups=None, contains_any_line_groups=None,
+               timeout_ms=10000):
+    return post_json(endpoint, "/evidence/wait", {
+        "contains_all": contains_all or [],
+        "contains_any_groups": contains_any_groups or [],
+        "contains_all_line_groups": contains_all_line_groups or [],
+        "contains_any_line_groups": contains_any_line_groups or [],
+        "timeout_milliseconds": timeout_ms,
+    })
 
-def values(snapshot, topic=None):
-    items = snapshot["events"]
-    if topic is not None:
-        items = [event for event in items if event["topic"] == topic]
-    return [event["value"] for event in items]
+def accepted(value, topic="fanout"):
+    return ["accepted|", f"topic={topic}", f"value={value}"]
 
-def ignored_values(snapshot, topic=None):
-    items = snapshot.get("ignored_events", [])
-    if topic is not None:
-        items = [event for event in items if event["topic"] == topic]
-    return [event["value"] for event in items]
+def ignored(value, topic):
+    return ["ignored|", f"topic={topic}", f"value={value}"]
+
+def error_line(packet, topic="fanout"):
+    return ["error|", "kind=publish", "reason=handlerMissing", "action=drop",
+            f"packet={packet}", f"topic={topic}"]
+
+def has_line(lines, *parts):
+    return any(all(part in line for part in parts) for line in lines)
+
+def assert_no_line(lines, message, *parts):
+    if has_line(lines, *parts):
+        raise SystemExit(message + "\nlines=" + json.dumps(lines, sort_keys=True))
 
 if mode == "basic":
-    expected = [f"measure-{index}" for index in range(20)]
-    wait_for(lambda ss: all(all(value in values(s, "fanout") for value in expected) for s in ss),
-             "PS-A1 evidence check failed")
+    groups = [accepted(f"measure-{index}") for index in range(20)]
+    for endpoint in endpoints:
+        wait_lines(endpoint, contains_all_line_groups=groups)
 elif mode == "topic":
-    def ok(ss):
-        by_id = {s["subscriber_id"]: s for s in ss}
-        sub1 = values(by_id["sub-1"], "alpha")
-        sub2 = values(by_id["sub-2"], "beta")
-        sub3 = values(by_id["sub-3"], "alpha")
-        sub1_ignored = ignored_values(by_id["sub-1"], "beta")
-        sub2_ignored = ignored_values(by_id["sub-2"], "alpha")
-        sub3_ignored = ignored_values(by_id["sub-3"], "beta")
-        return all(f"alpha-{i}" in sub1 for i in range(8)) and \
-            all(f"beta-{i}" in sub2 for i in range(8)) and \
-            all(f"alpha-{i}" in sub3 for i in range(8)) and \
-            all(f"beta-{i}" in sub1_ignored for i in range(8)) and \
-            all(f"alpha-{i}" in sub2_ignored for i in range(8)) and \
-            all(f"beta-{i}" in sub3_ignored for i in range(8)) and \
-            not values(by_id["sub-1"], "beta") and \
-            not values(by_id["sub-2"], "alpha") and \
-            not values(by_id["sub-3"], "beta")
-    wait_for(ok, "PS-A2 evidence check failed")
+    sub1 = wait_lines(endpoints[0],
+                      contains_all_line_groups=[accepted(f"alpha-{i}", "alpha") for i in range(8)]
+                      + [ignored(f"beta-{i}", "beta") for i in range(8)])
+    sub2 = wait_lines(endpoints[1],
+                      contains_all_line_groups=[accepted(f"beta-{i}", "beta") for i in range(8)]
+                      + [ignored(f"alpha-{i}", "alpha") for i in range(8)])
+    sub3 = wait_lines(endpoints[2],
+                      contains_all_line_groups=[accepted(f"alpha-{i}", "alpha") for i in range(8)]
+                      + [ignored(f"beta-{i}", "beta") for i in range(8)])
+    assert_no_line(sub1, "PS-A2 sub-1 accepted beta unexpectedly", "accepted|", "topic=beta")
+    assert_no_line(sub2, "PS-A2 sub-2 accepted alpha unexpectedly", "accepted|", "topic=alpha")
+    assert_no_line(sub3, "PS-A2 sub-3 accepted beta unexpectedly", "accepted|", "topic=beta")
 elif mode == "late":
-    def ok(ss):
-        by_id = {s["subscriber_id"]: s for s in ss}
-        late = values(by_id["sub-3"], "fanout")
-        early_ok = all(f"before-late-{i}" in values(by_id["sub-1"], "fanout") for i in range(5)) and \
-            all(f"before-late-{i}" in values(by_id["sub-2"], "fanout") for i in range(5))
-        late_ok = all(f"after-late-{i}" in late for i in range(8)) and \
-            not any(value.startswith("before-late-") for value in late)
-        return early_ok and late_ok
-    wait_for(ok, "PS-A3 evidence check failed")
+    early_groups = [accepted(f"before-late-{i}") for i in range(5)] \
+        + [accepted(f"after-late-{i}") for i in range(8)]
+    wait_lines(endpoints[0], contains_all_line_groups=early_groups)
+    wait_lines(endpoints[1], contains_all_line_groups=early_groups)
+    late = wait_lines(endpoints[2],
+                      contains_all_line_groups=[accepted(f"after-late-{i}") for i in range(8)])
+    assert_no_line(late, "PS-A3 late subscriber received pre-join event", "accepted|",
+                   "value=before-late-")
 elif mode == "reconnect":
-    def ok(ss):
-        by_id = {s["subscriber_id"]: s for s in ss}
-        sub1 = values(by_id["sub-1"], "fanout")
-        sub2 = values(by_id["sub-2"], "fanout")
-        sub3 = values(by_id["sub-3"], "fanout")
-        during = [f"during-reconnect-{i}" for i in range(5)]
-        after = [f"after-reconnect-{i}" for i in range(8)]
-        stable_ok = all(value in sub1 and value in sub2 for value in during + after)
-        rejoined_ok = all(value in sub3 for value in after) and \
-            not any(value in sub3 for value in during)
-        return stable_ok and rejoined_ok
-    wait_for(ok, "PS-A4 evidence check failed")
+    stable_groups = [accepted(f"during-reconnect-{i}") for i in range(5)] \
+        + [accepted(f"after-reconnect-{i}") for i in range(8)]
+    wait_lines(endpoints[0], contains_all_line_groups=stable_groups)
+    wait_lines(endpoints[1], contains_all_line_groups=stable_groups)
+    rejoined = wait_lines(endpoints[2],
+                          contains_all_line_groups=[accepted(f"after-reconnect-{i}")
+                                                    for i in range(8)])
+    assert_no_line(rejoined, "PS-A4 rejoined subscriber received disconnect-gap event",
+                   "accepted|", "value=during-reconnect-")
 elif mode == "slow":
-    def ok(ss):
-        by_id = {s["subscriber_id"]: s for s in ss}
-        fast1 = values(by_id["sub-2"], "fanout")
-        fast2 = values(by_id["sub-3"], "fanout")
-        expected = [f"slow-isolation-{i}" for i in range(16)]
-        return all(value in fast1 and value in fast2 for value in expected)
-    wait_for(ok, "PS-B1 evidence check failed")
+    groups = [accepted(f"slow-isolation-{i}") for i in range(16)]
+    wait_lines(endpoints[1], contains_all_line_groups=groups)
+    wait_lines(endpoints[2], contains_all_line_groups=groups)
 elif mode == "publisher-restart":
-    def ok(ss):
-        expected = [f"after-publisher-restart-{i}" for i in range(20, 43)]
-        return all(all(value in values(s, "fanout") for value in expected) for s in ss)
-    wait_for(ok, "PS-B2 evidence check failed")
+    groups = [accepted(f"after-publisher-restart-{i}") for i in range(20, 43)]
+    for endpoint in endpoints:
+        wait_lines(endpoint, contains_all_line_groups=groups)
 elif mode == "negative":
-    def ok(ss):
-        for snapshot in ss:
-            if "after-missing" not in values(snapshot, "fanout"):
-                return False
-            found = [error for error in snapshot["errors"]
-                     if error["message_kind"] == "publish"
-                     and error["reason"] == "handlerMissing"
-                     and error["action"] == "drop"
-                     and error["packet_name"] == "MissingEventNotify"
-                     and error["topic"] == "fanout"]
-            if not found:
-                return False
-        return True
-    wait_for(ok, "PS-C1 evidence check failed")
+    groups = [accepted("after-missing"), error_line("MissingEventNotify")]
+    for endpoint in endpoints:
+        wait_lines(endpoint, contains_all_line_groups=groups)
 else:
     raise SystemExit("unknown verify mode " + mode)
 PY

@@ -15,6 +15,7 @@
 #include "Scenarios/yd_d3_route_bridge_yield_scenario.hpp"
 #include "Scenarios/yd_d4_session_relay_actor_yield_scenario.hpp"
 #include "Scenarios/yd_e1_timeout_scenario.hpp"
+#include "Scenarios/shutdown_yield_scenario.hpp"
 #include "Scenarios/yield_actor_scenario_context.hpp"
 #include "Support/client_options.hpp"
 #include "Support/scenario_assert.hpp"
@@ -45,6 +46,25 @@ int main ()
                 "ZLINK_CPP_E2E_STREAM_ENDPOINT is required");
         ensure (!client_options.session_b_stream_endpoint.empty (),
                 "ZLINK_CPP_E2E_SESSION_B_STREAM_ENDPOINT is required");
+        const auto scenario =
+          client_options.scenario.empty () ? std::string ("full") : client_options.scenario;
+        if (scenario == "shutdown-wait") {
+            ensure (!client_options.request_id.empty (),
+                    "ZLINK_CPP_E2E_REQUEST_ID is required for shutdown-wait");
+            ensure (!client_options.spot_rid.empty (),
+                    "ZLINK_CPP_E2E_SPOT_RID is required for shutdown-wait");
+            yd_client::run_shutdown_wait_scenario (client_options);
+            return 0;
+        }
+        if (scenario == "shutdown-recovery") {
+            ensure (!client_options.request_id.empty (),
+                    "ZLINK_CPP_E2E_REQUEST_ID is required for shutdown-recovery");
+            ensure (!client_options.spot_rid.empty (),
+                    "ZLINK_CPP_E2E_SPOT_RID is required for shutdown-recovery");
+            yd_client::run_shutdown_recovery_scenario (client_options);
+            return 0;
+        }
+        ensure (scenario == "full", "unknown YieldDispatch client scenario: " + scenario);
 
         auto options = yd_client::make_connector_options (client_options);
         auto client = zlink::stream_connector::connector_factory_t::create (options);

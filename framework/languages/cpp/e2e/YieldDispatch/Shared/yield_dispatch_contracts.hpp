@@ -64,6 +64,21 @@ struct yield_evidence_wait_req_t
     int timeout_milliseconds = 20000;
 };
 
+struct yield_shutdown_scenario_req_t
+{
+    static constexpr const char *packet_name = "YieldShutdownScenarioReq";
+    std::string request_id;
+    std::string spot_rid;
+    int delay_ms = 0;
+};
+
+struct yield_shutdown_recovery_req_t
+{
+    static constexpr const char *packet_name = "YieldShutdownRecoveryReq";
+    std::string request_id;
+    std::string spot_rid;
+};
+
 struct delay_req_t
 {
     static constexpr const char *packet_name = "DelayReq";
@@ -159,6 +174,22 @@ struct yield_timeout_command_t
     std::string request_id;
     int delay_ms = 0;
     int timeout_ms = 0;
+};
+
+struct yield_cancel_req_t
+{
+    static constexpr const char *packet_name = "YieldCancelReq";
+    std::string request_id;
+    int delay_ms = 0;
+    int cancel_after_ms = 0;
+};
+
+struct yield_cancel_command_t
+{
+    static constexpr const char *packet_name = "YieldCancelCommand";
+    std::string request_id;
+    int delay_ms = 0;
+    int cancel_after_ms = 0;
 };
 
 struct remote_spot_yield_req_t
@@ -269,6 +300,25 @@ struct yield_timeout_reply_t
     std::string error;
 };
 
+struct yield_cancel_reply_t
+{
+    static constexpr const char *packet_name = "YieldCancelReply";
+    std::string scenario_id;
+    std::string request_id;
+    std::string spot_rid;
+    std::string node_rid;
+    bool canceled = false;
+    std::string error;
+};
+
+struct yield_scenario_result_t
+{
+    static constexpr const char *packet_name = "YieldScenarioResult";
+    std::string operation;
+    std::string spot_rid;
+    std::vector<std::string> evidence;
+};
+
 } // namespace zlink::framework::e2e::yield_dispatch
 
 namespace zlink::framework::e2e::yield_dispatch
@@ -328,6 +378,31 @@ inline void from_json (const nlohmann::json &json, yield_evidence_wait_req_t &va
     value.request_id = json.value ("request_id", "");
     value.marker = json.value ("marker", "");
     value.timeout_milliseconds = json.value ("timeout_milliseconds", 20000);
+}
+
+inline void to_json (nlohmann::json &json, const yield_shutdown_scenario_req_t &value)
+{
+    json = nlohmann::json{{"request_id", value.request_id},
+                          {"spot_rid", value.spot_rid},
+                          {"delay_ms", value.delay_ms}};
+}
+
+inline void from_json (const nlohmann::json &json, yield_shutdown_scenario_req_t &value)
+{
+    value.request_id = json.value ("request_id", "");
+    value.spot_rid = json.value ("spot_rid", "");
+    value.delay_ms = json.value ("delay_ms", 0);
+}
+
+inline void to_json (nlohmann::json &json, const yield_shutdown_recovery_req_t &value)
+{
+    json = nlohmann::json{{"request_id", value.request_id}, {"spot_rid", value.spot_rid}};
+}
+
+inline void from_json (const nlohmann::json &json, yield_shutdown_recovery_req_t &value)
+{
+    value.request_id = json.value ("request_id", "");
+    value.spot_rid = json.value ("spot_rid", "");
 }
 
 inline void to_json (nlohmann::json &json, const delay_req_t &value)
@@ -492,6 +567,34 @@ inline void from_json (const nlohmann::json &json, yield_timeout_command_t &valu
     value.request_id = json.value ("request_id", "");
     value.delay_ms = json.value ("delay_ms", 0);
     value.timeout_ms = json.value ("timeout_ms", 0);
+}
+
+inline void to_json (nlohmann::json &json, const yield_cancel_req_t &value)
+{
+    json = nlohmann::json{{"request_id", value.request_id},
+                          {"delay_ms", value.delay_ms},
+                          {"cancel_after_ms", value.cancel_after_ms}};
+}
+
+inline void from_json (const nlohmann::json &json, yield_cancel_req_t &value)
+{
+    value.request_id = json.value ("request_id", "");
+    value.delay_ms = json.value ("delay_ms", 0);
+    value.cancel_after_ms = json.value ("cancel_after_ms", 0);
+}
+
+inline void to_json (nlohmann::json &json, const yield_cancel_command_t &value)
+{
+    json = nlohmann::json{{"request_id", value.request_id},
+                          {"delay_ms", value.delay_ms},
+                          {"cancel_after_ms", value.cancel_after_ms}};
+}
+
+inline void from_json (const nlohmann::json &json, yield_cancel_command_t &value)
+{
+    value.request_id = json.value ("request_id", "");
+    value.delay_ms = json.value ("delay_ms", 0);
+    value.cancel_after_ms = json.value ("cancel_after_ms", 0);
 }
 
 inline void to_json (nlohmann::json &json, const remote_spot_yield_req_t &value)
@@ -712,6 +815,40 @@ inline void from_json (const nlohmann::json &json, yield_timeout_reply_t &value)
     value.node_rid = json.value ("node_rid", "");
     value.timed_out = json.value ("timed_out", false);
     value.error = json.value ("error", "");
+}
+
+inline void to_json (nlohmann::json &json, const yield_cancel_reply_t &value)
+{
+    json = nlohmann::json{{"scenario_id", value.scenario_id},
+                          {"request_id", value.request_id},
+                          {"spot_rid", value.spot_rid},
+                          {"node_rid", value.node_rid},
+                          {"canceled", value.canceled},
+                          {"error", value.error}};
+}
+
+inline void from_json (const nlohmann::json &json, yield_cancel_reply_t &value)
+{
+    value.scenario_id = json.value ("scenario_id", "");
+    value.request_id = json.value ("request_id", "");
+    value.spot_rid = json.value ("spot_rid", "");
+    value.node_rid = json.value ("node_rid", "");
+    value.canceled = json.value ("canceled", false);
+    value.error = json.value ("error", "");
+}
+
+inline void to_json (nlohmann::json &json, const yield_scenario_result_t &value)
+{
+    json = nlohmann::json{{"operation", value.operation},
+                          {"spot_rid", value.spot_rid},
+                          {"evidence", value.evidence}};
+}
+
+inline void from_json (const nlohmann::json &json, yield_scenario_result_t &value)
+{
+    value.operation = json.value ("operation", "");
+    value.spot_rid = json.value ("spot_rid", "");
+    value.evidence = json.value ("evidence", std::vector<std::string>{});
 }
 
 template <typename T> inline zlink::message_t to_stream_payload (const T &value)

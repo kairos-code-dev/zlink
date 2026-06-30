@@ -19,7 +19,7 @@ namespace zlink::framework::e2e::yield_dispatch::client
 template <typename TConnector>
 std::string run_yd_b2_same_actor_reentry_scenario (
   TConnector &connector,
-  TConnector &observer,
+  TConnector &,
   const yield_actor_scenario_context_t &actors)
 {
     const auto request_id = unique_id ("YD-B2");
@@ -35,7 +35,7 @@ std::string run_yd_b2_same_actor_reentry_scenario (
         });
     std::this_thread::sleep_for (std::chrono::milliseconds (75));
     auto actor_fast =
-      observer.request (actor_fast_req_t{.request_id = request_id, .marker = "b2-fast"})
+      connector.request (actor_fast_req_t{.request_id = request_id, .marker = "b2-fast"})
         .packet_name (actor_fast_req_t::packet_name)
         .metadata (actor_id_metadata, actors.actor_a)
         .timeout (std::chrono::milliseconds (30000))

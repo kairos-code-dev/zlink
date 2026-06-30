@@ -15,6 +15,9 @@ struct client_options_t
 {
     std::string session_a_stream_endpoint;
     std::string session_b_stream_endpoint;
+    std::string scenario;
+    std::string request_id;
+    std::string spot_rid;
 };
 
 inline std::string env_or (const char *name)
@@ -30,7 +33,10 @@ inline client_options_t parse_client_options ()
     return client_options_t{.session_a_stream_endpoint =
                               env_or ("ZLINK_CPP_E2E_STREAM_ENDPOINT"),
                             .session_b_stream_endpoint =
-                              env_or ("ZLINK_CPP_E2E_SESSION_B_STREAM_ENDPOINT")};
+                              env_or ("ZLINK_CPP_E2E_SESSION_B_STREAM_ENDPOINT"),
+                            .scenario = env_or ("ZLINK_CPP_E2E_SCENARIO"),
+                            .request_id = env_or ("ZLINK_CPP_E2E_REQUEST_ID"),
+                            .spot_rid = env_or ("ZLINK_CPP_E2E_SPOT_RID")};
 }
 
 inline zlink::stream_connector::connector_options_t

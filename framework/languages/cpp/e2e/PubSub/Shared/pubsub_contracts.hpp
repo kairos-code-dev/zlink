@@ -45,6 +45,15 @@ struct evidence_snapshot_t
     std::vector<dispatch_error_evidence_t> errors;
 };
 
+struct evidence_wait_request_t
+{
+    std::vector<std::string> contains_all;
+    std::vector<std::vector<std::string>> contains_any_groups;
+    std::vector<std::vector<std::string>> contains_all_line_groups;
+    std::vector<std::vector<std::string>> contains_any_line_groups;
+    int timeout_milliseconds = 10000;
+};
+
 inline void to_json (nlohmann::json &json, const event_notify_t &value)
 {
     json = nlohmann::json{{"value", value.value}};
@@ -106,6 +115,34 @@ inline void from_json (const nlohmann::json &json, evidence_snapshot_t &value)
         json.at ("ignored_events").get_to (value.ignored_events);
     }
     json.at ("errors").get_to (value.errors);
+}
+
+inline void to_json (nlohmann::json &json, const evidence_wait_request_t &value)
+{
+    json = nlohmann::json{{"contains_all", value.contains_all},
+                          {"contains_any_groups", value.contains_any_groups},
+                          {"contains_all_line_groups", value.contains_all_line_groups},
+                          {"contains_any_line_groups", value.contains_any_line_groups},
+                          {"timeout_milliseconds", value.timeout_milliseconds}};
+}
+
+inline void from_json (const nlohmann::json &json, evidence_wait_request_t &value)
+{
+    if (json.contains ("contains_all")) {
+        json.at ("contains_all").get_to (value.contains_all);
+    }
+    if (json.contains ("contains_any_groups")) {
+        json.at ("contains_any_groups").get_to (value.contains_any_groups);
+    }
+    if (json.contains ("contains_all_line_groups")) {
+        json.at ("contains_all_line_groups").get_to (value.contains_all_line_groups);
+    }
+    if (json.contains ("contains_any_line_groups")) {
+        json.at ("contains_any_line_groups").get_to (value.contains_any_line_groups);
+    }
+    if (json.contains ("timeout_milliseconds")) {
+        json.at ("timeout_milliseconds").get_to (value.timeout_milliseconds);
+    }
 }
 
 } // namespace zlink::framework::e2e::pubsub

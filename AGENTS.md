@@ -305,6 +305,8 @@ framework message codec은 메시지 타입마다 호출자가 등록하는 확�
 기본 직렬화 방식은 framework가 제공하는 typed JSON serializer 경로를 우선 사용한다.
 사용자 코드, 샘플, E2E, 언어별 framework 구현에서 메시지별 codec 등록 함수를 새로 만들거나
 되살리거나 흉내 내지 않는다.
+이미 제거된 메시지별 codec 등록 함수는 호환 계층이나 사용자 확장 지점으로 간주하지 않는다.
+배포된 framework 라이브러리의 사용자도 별도 등록 없이 기본 JSON codec 경로로 메시지를 주고받아야 한다.
 
 금지되는 접근:
 

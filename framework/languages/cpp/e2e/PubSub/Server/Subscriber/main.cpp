@@ -42,7 +42,8 @@ int main (int argc, char **argv)
         options.http ()
           .listen (pubsub.http_endpoint)
           .map_health ("/health")
-          .map_get<ps_subscriber::evidence_handler_t> ("/evidence");
+          .map_get<ps_subscriber::evidence_handler_t> ("/evidence")
+          .map_post<ps_subscriber::evidence_wait_handler_t> ("/evidence/wait");
         if (ps_server::env_has_topic (pubsub.topics, zlink::framework::e2e::pubsub::topic_fanout)) {
             options.handlers ()
               .group (zlink::framework::e2e::pubsub::handler_group)

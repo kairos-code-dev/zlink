@@ -2,7 +2,7 @@
 
 기준 구현: `framework/languages/dotnet/e2e/YieldDispatch`
 
-현재 C++ `YieldDispatch`는 role target, Track A YD-A1~YD-A4, Track B YD-B1~YD-B3, Track C YD-C1~YD-C3, Track D YD-D2~YD-D4, Track E YD-E1 실행 코드와 YD-E4 정적 검증을
+현재 C++ `YieldDispatch`는 role target, Track A YD-A1~YD-A4, Track B YD-B1~YD-B3, Track C YD-C1~YD-C3, Track D YD-D1~YD-D4, Track E YD-E1/YD-E3 실행 코드와 YD-E4 정적 검증을
 갖췄다. 이 inventory는
 `.NET` Config 8 파일을 기준으로 C++에 만들어야 할 역할, shared contract, client scenario, support 파일을
 계속 고정한다. Config 8은 stream connector client request가 session gateway를 거쳐 play node의
@@ -15,21 +15,21 @@ Spot/Entry Spot handler까지 도달해야 하므로, HTTP trigger나 direct Spo
 |----------------|---------------|------|------|------|
 | `.gitignore` | `.gitignore` | metadata | done | C++ YieldDispatch 로그와 임시 산출물 제외 규칙을 추가했다. |
 | `feature-map.ko.md` | `feature-map.ko.md` | docs | done | 아직 구현되지 않은 scenario와 public gap을 완료로 과장하지 않는다. |
-| `run_e2e.sh` | `run_e2e.sh` | runner | partial | registry, delay A/B, play A/B, session A/B, client를 빌드하고 readiness와 정적 검사를 수행한다. 이 runner는 E2E target만 필요하므로 configure 때 C++ sample target은 끈다. YD-A1~YD-A4, YD-B1~YD-B3, YD-C1~YD-C3, YD-D2~YD-D4, YD-E1 runner와 YD-E4 static gate는 반복 통과 증거가 있다. 남은 YD-E scenario와 파일 분리가 있어 config 완료 판정은 보류한다. |
-| `Shared/YieldDispatch.Shared.csproj` | `framework/languages/cpp/CMakeLists.txt` | build | partial | role/client target 묶음은 추가됐다. shared는 header로 포함된다. |
-| `Shared/Messages.cs` | `Shared/yield_dispatch_contracts.hpp` | shared | partial | Track A용 ensure/evidence/delay/hold/yield/worker/probe DTO, actor binding/yield/fast/join-yield/push-yield DTO, timer start/stop command, D2 remote Spot yield DTO, E1 timeout DTO와 JSON 매핑이 있다. stream connector typed request/reply/notify가 실제 JSON payload를 쓰도록 `to_stream_payload`/`from_stream_payload` hook도 제공한다. shutdown DTO는 남아 있다. |
+| `run_e2e.sh` | `run_e2e.sh` | runner | partial | registry, delay A/B, play A/B, session A/B, client를 빌드하고 readiness와 정적 검사를 수행한다. 이 runner는 E2E target만 필요하므로 configure 때 C++ sample target은 끈다. YD-A1~YD-A4, YD-B1~YD-B3, YD-C1~YD-C3, YD-D1~YD-D4, YD-E1/YD-E3 runner와 YD-E4 static gate는 반복 통과 증거가 있다. YD-A3 metadata 보존, YD-C3 같은 stream session 증거, YD-E2 cancellation token, YD-E5 cross-language report gap이 있어 config 완료 판정은 보류한다. |
+| `Shared/YieldDispatch.Shared.csproj` | `framework/languages/cpp/CMakeLists.txt` | build | done | role/client target 묶음은 추가됐다. shared는 header로 포함된다. |
+| `Shared/Messages.cs` | `Shared/yield_dispatch_contracts.hpp` | shared | done | Track A용 ensure/evidence/delay/hold/yield/worker/probe DTO, actor binding/yield/fast/join-yield/push-yield DTO, timer command, D2 remote Spot yield DTO, E1 timeout DTO, E2 cancellation DTO, E3 shutdown DTO와 JSON 매핑이 있다. stream connector typed request/reply/notify가 실제 JSON payload를 쓰도록 `to_stream_payload`/`from_stream_payload` hook도 제공한다. E2 scenario 자체는 C++ public yield cancellation token surface가 없어 gap으로 남긴다. |
 | `Client/GlobalUsings.cs` | not-needed | client | not-needed | C++에는 대응 파일이 필요 없다. |
-| `Client/YieldDispatch.Client.csproj` | `framework/languages/cpp/CMakeLists.txt` | build | partial | client target이 있다. |
-| `Client/Program.cs` | `Client/main.cpp` | client | partial | stream connector로 YD-A1~YD-A4, YD-B1~YD-B3, YD-C1~YD-C3, YD-D2~YD-D4, YD-E1 request를 시작하고 검증한다. client option 파싱, evidence wait, assertion, actor context는 support/scenario-support header로 분리됐다. YD-A2/A4는 yielded request와 probe/evidence 관측을 별도 connector로 분리한다. YD-B2와 YD-C3 일부는 같은 actor binding/spot에 붙은 별도 connector를 쓰므로 같은 stream session 증거는 아직 아니다. D2 owner evidence 관측은 public evidence snapshot polling을 쓴다. |
-| `Client/Support/ClientOptions.cs` | `Client/Support/client_options.hpp` | support | partial | session-a와 session-b stream endpoint를 읽고 stream connector option을 만든다. `.NET`의 scenario 선택과 shutdown flow option은 남아 있다. |
-| `Client/Support/ScenarioAssert.cs` | `Client/Support/scenario_assert.hpp`; `Client/Support/evidence_wait.hpp` | support | partial | marker 순서 검증, request line fragment 검증, result error 출력, evidence snapshot polling helper가 있다. `.NET` 수준의 독립 scenario assertion API로 완전히 분리하는 작업은 남아 있다. |
-| `Client/Scenarios/YieldActorScenarioContext.cs` | `Client/Scenarios/yield_actor_scenario_context.hpp` | scenario-support | partial | actor binding과 session relay scenario가 공유하는 spot rid, actor A, actor B context를 분리했다. |
+| `Client/YieldDispatch.Client.csproj` | `framework/languages/cpp/CMakeLists.txt` | build | done | client target이 있다. |
+| `Client/Program.cs` | `Client/main.cpp` | client | partial | stream connector로 YD-A1~YD-A4, YD-B1~YD-B3, YD-C1~YD-C3, YD-D2~YD-D4, YD-E1 request를 시작하고 검증한다. `shutdown-wait`/`shutdown-recovery` mode로 YD-E3도 실행한다. client option 파싱, evidence wait, assertion, actor context는 support/scenario-support header로 분리됐다. YD-A2/A4는 yielded request와 probe/evidence 관측을 별도 connector로 분리한다. YD-C3 일부는 같은 actor binding/spot에 붙은 별도 connector를 쓰므로 같은 stream session 증거는 아직 아니다. D2 owner evidence 관측은 public evidence snapshot polling을 쓴다. |
+| `Client/Support/ClientOptions.cs` | `Client/Support/client_options.hpp` | support | done | session-a와 session-b stream endpoint, scenario 선택, shutdown flow option을 읽고 stream connector option을 만든다. |
+| `Client/Support/ScenarioAssert.cs` | `Client/Support/scenario_assert.hpp`; `Client/Support/evidence_wait.hpp` | support | done | marker 순서 검증, request line fragment 검증, result error 출력, evidence snapshot polling helper가 있다. C++에서는 assertion과 evidence wait를 별도 support header로 나눈다. |
+| `Client/Scenarios/YieldActorScenarioContext.cs` | `Client/Scenarios/yield_actor_scenario_context.hpp` | scenario-support | done | actor binding과 session relay scenario가 공유하는 spot rid, actor A, actor B context를 분리했다. |
 | `Client/Scenarios/YdA1BasicTerminatorScenario.cs` | `Client/Scenarios/yd_a1_basic_terminator_scenario.hpp` | scenario | done | YD-A1 flow는 별도 scenario header로 분리했고 runner로 통과했다. |
 | `Client/Scenarios/YdA2YieldTerminatorScenario.cs` | `Client/Scenarios/yd_a2_yield_terminator_scenario.hpp` | scenario | done | YD-A2 flow는 별도 scenario header로 분리했고 runner로 통과했다. yielded request와 probe/evidence 관측은 별도 connector로 분리한다. |
 | `Client/Scenarios/YdA3ContinuationContextScenario.cs` | `Client/Scenarios/yd_a3_continuation_context_scenario.hpp` | scenario | partial | request id/spot rid/correlation id 보존은 별도 scenario header에서 runner로 통과했다. metadata 보존 검증은 public contract gap으로 남긴다. |
 | `Client/Scenarios/YdA4WorkerYieldScenario.cs` | `Client/Scenarios/yd_a4_worker_yield_scenario.hpp` | scenario | done | public worker call `yield()` flow는 별도 scenario header로 분리했고 runner로 통과했다. yielded request와 probe/evidence 관측은 별도 connector로 분리한다. |
 | `Client/Scenarios/YdB1OtherActorProgressScenario.cs` | `Client/Scenarios/yd_b1_other_actor_progress_scenario.hpp` | scenario | done | actor A yield 중 actor B 진행은 별도 scenario header에서 runner로 통과했다. |
-| `Client/Scenarios/YdB2SameActorReentryScenario.cs` | `Client/Scenarios/yd_b2_same_actor_reentry_scenario.hpp` | scenario | partial | 같은 actor mailbox 재진입 금지 marker 순서는 별도 scenario header에서 runner로 통과했다. fast request가 같은 actor ref에 bound된 별도 connector에서 들어가므로 `.NET`의 같은 stream session 증거와 같지는 않다. |
+| `Client/Scenarios/YdB2SameActorReentryScenario.cs` | `Client/Scenarios/yd_b2_same_actor_reentry_scenario.hpp` | scenario | done | 같은 stream connector session에서 같은 actor mailbox 재진입 금지 marker 순서를 runner로 검증한다. |
 | `Client/Scenarios/YdB3ActorJoinYieldScenario.cs` | `Client/Scenarios/yd_b3_actor_join_yield_scenario.hpp` | scenario | done | 공통 문서가 허용한 `JoinEntrySpot` terminator 경로로 actor join yield 중 actor B fast request 진행을 별도 scenario header에서 runner로 검증한다. |
 | `Client/Scenarios/YdC1TimerIsolationScenario.cs` | `Client/Scenarios/yd_c1_timer_isolation_scenario.hpp` | scenario | done | timer A yield 중 timer B fast tick 진행은 별도 scenario header에서 runner로 검증한다. |
 | `Client/Scenarios/YdC2TimerReentryScenario.cs` | `Client/Scenarios/yd_c2_timer_reentry_scenario.hpp` | scenario | done | 같은 timer yield 중 다음 tick 재진입 금지 marker 순서는 별도 scenario header에서 runner로 검증한다. |
@@ -39,35 +39,35 @@ Spot/Entry Spot handler까지 도달해야 하므로, HTTP trigger나 direct Spo
 | `Client/Scenarios/YdD4SessionRelayActorYieldScenario.cs` | `Client/Scenarios/yd_d4_session_relay_actor_yield_scenario.hpp` | scenario | done | session actor relay와 bound session push 격리는 별도 scenario header에서 runner로 통과했다. |
 | `Client/Scenarios/YdE1TimeoutScenario.cs` | `Client/Scenarios/yd_e1_timeout_scenario.hpp` | scenario | done | yield timeout 뒤 같은 Spot mailbox cleanup 검증은 별도 scenario header에서 runner로 통과했다. |
 | `Client/Scenarios/YdE2CancellationScenario.cs` | `Client/Scenarios/yd_e2_cancellation_scenario.hpp` | scenario | gap | `.NET` 기준은 `Yield<DelayReply>(CancellationToken)`으로 handler 내부 cancellation token을 넘긴다. 현재 C++ public yield call surface에는 cancellation token 인자가 없으므로 private cancel 우회 없이 public contract gap으로 남긴다. |
-| `Client/Scenarios/ShutdownYieldScenario.cs` | `Client/Scenarios/shutdown_yield_scenario.hpp` | scenario | gap | pending yield 중 play node shutdown과 recovery 검증이 필요하다. |
-| `Server/Registry/YieldDispatch.Registry.csproj` | `framework/languages/cpp/CMakeLists.txt` | build | partial | registry target이 있다. |
-| `Server/Registry/Program.cs` | `Server/Registry/main.cpp` | server-role | partial | registry role entrypoint가 있다. discovery registry host 구성은 factory header로 분리했다. |
-| `Server/Registry/RegistryHostFactory.cs` | `Server/Registry/registry_host_factory.hpp` | server-role | partial | registry pub/router endpoint, dispatch trace, health endpoint 구성을 factory header로 분리했고 Registry target과 runner로 검증했다. `.NET`의 CLI option record 수준 분리는 남아 있다. |
-| `Server/Delay/YieldDispatch.Delay.csproj` | `framework/languages/cpp/CMakeLists.txt` | build | partial | delay service target이 있다. |
-| `Server/Delay/Program.cs` | `Server/Delay/main.cpp` | server-role | partial | delay service entrypoint가 있다. delay host 구성은 factory header로 분리했다. |
-| `Server/Delay/DelayHostFactory.cs` | `Server/Delay/delay_host_factory.hpp` | server-role | partial | delay channel server, handler registration, dispatch trace, health endpoint 구성을 factory header로 분리했고 Delay target과 runner로 검증했다. `.NET`의 CLI option record 수준 분리는 남아 있다. |
-| `Server/Delay/DelayHandler.cs` | `Server/Delay/Handlers/delay_handler.hpp` | handler | partial | delayed reply handler를 `Handlers/`로 분리했고 Delay target과 runner로 검증했다. `.NET`처럼 evidence entry를 남기는 support는 아직 없다. |
-| `Server/Delay/DelaySupport.cs` | `Server/Delay/Support/delay_support.hpp` | support | partial | delay node state를 `Support/`로 분리했다. `.NET`의 DelayOptions/EvidenceStore 수준 option/evidence support는 남아 있다. |
-| `Server/Play/YieldDispatch.Play.csproj` | `framework/languages/cpp/CMakeLists.txt` | build | partial | play node target이 있다. |
-| `Server/Play/Program.cs` | `Server/Play/main.cpp` | server-role | partial | play node entrypoint가 있다. play host 구성은 factory header로 분리했다. |
-| `Server/Play/PlayHostFactory.cs` | `Server/Play/play_host_factory.hpp` | server-role | partial | play node의 control route, spot mesh, delay client, dispatch trace, health endpoint 구성을 factory header로 분리했고 Play target과 runner로 검증했다. `.NET`의 CLI option record와 evidence HTTP snapshot 수준 분리는 남아 있다. |
-| `Server/Play/PlaySupport.cs` | `Server/Play/Support/play_support.hpp` | support | partial | evidence store는 support header로 분리했다. `.NET`의 PlayOptions/NodeOptions 수준 option support 분리는 남아 있다. |
-| `Server/Play/Spots/PlaySpotRuntime.cs` | `Server/Play/Spots/play_spot_runtime.hpp` | spot | partial | request id별 evidence와 `YieldProbeSpot` runtime을 분리했고 YD-A/B/C/D2~D4/E1 runner 증거가 있다. basic/timer/remote/failure E1 Spot handler 로직은 handler header로 분리했다. shutdown 범위는 남아 있다. |
-| `Server/Play/Spots/PlaySpotTypes.cs` | `Server/Play/Spots/play_spot_types.hpp` | spot | partial / gap | actor 타입, actor factory, timer handler/state 타입을 분리했다. shutdown 타입은 남아 있다. |
-| `Server/Play/Handlers/PlayBasicSpotHandlers.cs` | `Server/Play/Handlers/play_basic_spot_handlers.hpp`; `Server/Play/Spots/play_spot_runtime.hpp` | handler | partial | YD-A1~YD-A4용 hold/yield/worker/probe handler 로직을 `Handlers/` helper header로 분리했고 Play target과 runner로 검증했다. C++ spot handler 등록 방식 때문에 `YieldProbeSpot`의 멤버 entrypoint는 runtime header에 남아 있다. |
-| `Server/Play/Handlers/PlayActorHandlers.cs` | `Server/Play/Handlers/play_actor_handlers.hpp` | handler | partial | YD-B1/B2 actor yield/fast handler, YD-B3 actor join-yield handler, YD-D4 actor push-yield handler를 분리했고 runner 증거가 있다. |
-| `Server/Play/Handlers/PlayTimerSpotHandlers.cs` | `Server/Play/Handlers/play_timer_spot_handlers.hpp`; `Server/Play/Spots/play_spot_runtime.hpp` | handler | partial | YD-C1~YD-C3 timer start/stop command와 timer yield/fast/next handler 로직을 `Handlers/` helper header로 분리했고 Play target과 runner로 검증했다. C++ timer handler 등록 방식 때문에 `YieldProbeSpot`의 timer entrypoint는 runtime header에 남아 있다. |
-| `Server/Play/Handlers/PlayRemoteSpotHandlers.cs` | `Server/Play/Handlers/play_remote_spot_handlers.hpp`; `Server/Play/Spots/play_spot_runtime.hpp` | handler | partial | YD-D2 remote Spot handler 로직은 helper header로 분리했고 `YieldProbeSpot` runtime entrypoint가 호출한다. public `spot_context_t::request_to(...).yield()`로 target Spot reply를 기다린다. D3는 existing Spot yield/probe handler와 route bridge 경로로 검증했다. |
-| `Server/Play/Handlers/PlayControlHandlers.cs` | `Server/Play/Handlers/play_control_handlers.hpp` | handler | partial | EnsureSpot, BindYieldActors, Evidence, EvidenceWait control route handler를 분리했고 YD-D3의 target Spot 준비와 evidence wait에도 같은 public control route를 사용해 runner로 검증했다. |
-| `Server/Play/Handlers/PlayFailureSpotHandlers.cs` | `Server/Play/Handlers/play_failure_spot_handlers.hpp` | handler | partial | YD-E1 timeout cleanup handler를 분리했고 Play target과 runner로 검증했다. shutdown과 cancellation 관련 handler는 남아 있다. |
-| `Server/Session/YieldDispatch.Session.csproj` | `framework/languages/cpp/CMakeLists.txt` | build | partial | session gateway target이 있다. |
-| `Server/Session/Program.cs` | `Server/Session/main.cpp` | server-role | partial | session gateway entrypoint가 있다. stream session 등록과 mesh 구성은 factory header로 분리했다. |
-| `Server/Session/SessionHostFactory.cs` | `Server/Session/session_host_factory.hpp` | server-role | partial | session gateway의 route client, spot mesh, stream node, dispatch trace, health endpoint 구성을 factory header로 분리했고 Session target과 runner로 검증했다. `.NET`의 CLI option record와 evidence/session-side spot 타입 수준 분리는 남아 있다. |
-| `Server/Session/Support/SessionSpotTypes.cs` | `Server/Session/Support/session_spot_types.hpp` | support | gap | session side spot/session DTO가 필요하다. |
-| `Server/Session/Support/SessionSupport.cs` | `Server/Session/Support/session_support.hpp` | support | gap | session role option/evidence helper가 필요하다. |
-| `Server/Session/Support/YieldSession.cs` | `Server/Session/Support/yield_session.hpp` | session | partial | connector session implementation을 support header로 분리했고 Session target과 runner로 검증했다. YD-E1 timeout packet relay도 같은 typed JSON/session route 경로로 검증했다. shutdown relay 범위는 남아 있다. |
-| `Server/Session/Support/YieldSessionRelay.cs` | `Server/Session/Support/yield_session.hpp` | session | partial | Ensure/evidence/Track A relay 코드, actor bind/relay 코드, timer command relay 코드가 있고, session host의 spot mesh를 통해 public Spot route dispatch가 통과한다. worker yield relay, D2 remote Spot yield relay, D4 bound session stream binding, E1 timeout relay도 포함한다. shutdown relay 범위는 남아 있다. |
-| `Server/Session/Support/YieldShutdownRelay.cs` | `Server/Session/Support/yield_shutdown_relay.hpp` | session | gap | shutdown scenario relay가 필요하다. |
+| `Client/Scenarios/ShutdownYieldScenario.cs` | `Client/Scenarios/shutdown_yield_scenario.hpp` | scenario | done | pending yield 중 play node shutdown과 recovery 검증은 별도 scenario header와 runner orchestration으로 통과했다. |
+| `Server/Registry/YieldDispatch.Registry.csproj` | `framework/languages/cpp/CMakeLists.txt` | build | done | registry target이 있다. |
+| `Server/Registry/Program.cs` | `Server/Registry/main.cpp` | server-role | done | registry role entrypoint가 있다. discovery registry host 구성은 factory header로 분리했다. |
+| `Server/Registry/RegistryHostFactory.cs` | `Server/Registry/registry_host_factory.hpp`; `Server/Registry/Support/registry_support.hpp` | server-role | done | registry pub/router endpoint, dispatch trace, health endpoint 구성을 factory header로 분리했고, registry option 읽기는 support header로 분리했다. Registry target과 runner로 검증했다. |
+| `Server/Delay/YieldDispatch.Delay.csproj` | `framework/languages/cpp/CMakeLists.txt` | build | done | delay service target이 있다. |
+| `Server/Delay/Program.cs` | `Server/Delay/main.cpp` | server-role | done | delay service entrypoint가 있다. delay host 구성은 factory header로 분리했다. |
+| `Server/Delay/DelayHostFactory.cs` | `Server/Delay/delay_host_factory.hpp`; `Server/Delay/Support/delay_support.hpp` | server-role | done | delay channel server, handler registration, dispatch trace, health endpoint 구성을 factory header로 분리했고, delay option 읽기는 support header로 분리했다. Delay target과 runner로 검증했다. |
+| `Server/Delay/DelayHandler.cs` | `Server/Delay/Handlers/delay_handler.hpp` | handler | done | delayed reply handler를 `Handlers/`로 분리했고, delay-started/delay-completed evidence entry를 남긴다. Delay target과 runner로 검증했다. |
+| `Server/Delay/DelaySupport.cs` | `Server/Delay/Support/delay_support.hpp` | support | done | delay node state, option 읽기, evidence store를 `Support/`로 분리했다. C++ runner는 Play evidence를 주 검증 경로로 쓰지만 Delay evidence 파일도 남긴다. |
+| `Server/Play/YieldDispatch.Play.csproj` | `framework/languages/cpp/CMakeLists.txt` | build | done | play node target이 있다. |
+| `Server/Play/Program.cs` | `Server/Play/main.cpp` | server-role | done | play node entrypoint가 있다. play host 구성은 factory header로 분리했다. |
+| `Server/Play/PlayHostFactory.cs` | `Server/Play/play_host_factory.hpp`; `Server/Play/Support/play_support.hpp` | server-role | done | play node의 control route, spot mesh, delay client, dispatch trace, health endpoint 구성을 factory header로 분리했고, play option 읽기는 support header로 분리했다. Play target과 runner로 검증했다. |
+| `Server/Play/PlaySupport.cs` | `Server/Play/Support/play_support.hpp` | support | done | evidence store, node rid, option 읽기를 support header로 분리했다. Evidence snapshot/wait는 public control route로 검증하고 evidence 파일도 남긴다. |
+| `Server/Play/Spots/PlaySpotRuntime.cs` | `Server/Play/Spots/play_spot_runtime.hpp` | spot | done | request id별 evidence와 `YieldProbeSpot` runtime을 분리했고 YD-A/B/C/D2~D4/E1/E3 runner 증거가 있다. C++ spot handler 등록은 member entrypoint가 필요하므로 runtime header가 helper handler를 호출한다. |
+| `Server/Play/Spots/PlaySpotTypes.cs` | `Server/Play/Spots/play_spot_types.hpp` | spot | done | actor 타입, actor factory, timer handler/state 타입을 분리했다. E2 cancellation token 타입은 scenario gap 행에서 별도로 다룬다. |
+| `Server/Play/Handlers/PlayBasicSpotHandlers.cs` | `Server/Play/Handlers/play_basic_spot_handlers.hpp`; `Server/Play/Spots/play_spot_runtime.hpp` | handler | done | YD-A1~YD-A4용 hold/yield/worker/probe handler 로직을 `Handlers/` helper header로 분리했고 Play target과 runner로 검증했다. C++ spot runtime member entrypoint는 이 helper를 호출한다. |
+| `Server/Play/Handlers/PlayActorHandlers.cs` | `Server/Play/Handlers/play_actor_handlers.hpp` | handler | done | YD-B1/B2 actor yield/fast handler, YD-B3 actor join-yield handler, YD-D4 actor push-yield handler를 분리했고 runner 증거가 있다. |
+| `Server/Play/Handlers/PlayTimerSpotHandlers.cs` | `Server/Play/Handlers/play_timer_spot_handlers.hpp`; `Server/Play/Spots/play_spot_runtime.hpp` | handler | done | YD-C1~YD-C3 timer start/stop command와 timer yield/fast/next handler 로직을 `Handlers/` helper header로 분리했고 Play target과 runner로 검증했다. C++ timer runtime entrypoint는 이 helper를 호출한다. |
+| `Server/Play/Handlers/PlayRemoteSpotHandlers.cs` | `Server/Play/Handlers/play_remote_spot_handlers.hpp`; `Server/Play/Spots/play_spot_runtime.hpp` | handler | done | YD-D2 remote Spot handler 로직은 helper header로 분리했고 `YieldProbeSpot` runtime entrypoint가 호출한다. public `spot_context_t::request_to(...).yield()`로 target Spot reply를 기다린다. D3는 existing Spot yield/probe handler와 route bridge 경로로 검증했다. |
+| `Server/Play/Handlers/PlayControlHandlers.cs` | `Server/Play/Handlers/play_control_handlers.hpp` | handler | done | EnsureSpot, BindYieldActors, Evidence, EvidenceWait control route handler를 분리했고 YD-D3의 target Spot 준비와 evidence wait에도 같은 public control route를 사용해 runner로 검증했다. |
+| `Server/Play/Handlers/PlayFailureSpotHandlers.cs` | `Server/Play/Handlers/play_failure_spot_handlers.hpp` | handler | done | YD-E1 timeout cleanup handler를 분리했고 Play target과 runner로 검증했다. YD-E2 cancellation handler는 scenario gap 행에서 별도로 다룬다. |
+| `Server/Session/YieldDispatch.Session.csproj` | `framework/languages/cpp/CMakeLists.txt` | build | done | session gateway target이 있다. |
+| `Server/Session/Program.cs` | `Server/Session/main.cpp` | server-role | done | session gateway entrypoint가 있다. stream session 등록과 mesh 구성은 factory header로 분리했다. |
+| `Server/Session/SessionHostFactory.cs` | `Server/Session/session_host_factory.hpp` | server-role | done | session gateway의 route client, spot mesh, stream node, dispatch trace, health endpoint 구성을 factory header로 분리했고 Session target과 runner로 검증했다. session option 읽기는 `Support/session_support.hpp`로 분리했다. |
+| `Server/Session/Support/SessionSpotTypes.cs` | not-needed | support | not-needed | C++ session relay는 framework의 public `session_actor_manager_t`, `session_actor_t`, `actor_gateway_t`를 직접 사용하므로 `.NET`처럼 session-side actor wrapper 타입을 따로 만들지 않는다. |
+| `Server/Session/Support/SessionSupport.cs` | `Server/Session/Support/session_support.hpp` | support | done | session role option 읽기를 support header로 분리했고 Session target build로 검증했다. 현재 C++ session role은 scenario evidence를 Play role evidence와 stream reply로 검증하므로 별도 session evidence store는 만들지 않는다. |
+| `Server/Session/Support/YieldSession.cs` | `Server/Session/Support/yield_session.hpp` | session | done | connector session implementation을 support header로 분리했고 Session target과 runner로 검증했다. YD-E1 timeout packet relay와 YD-E3 shutdown/recovery packet relay도 같은 typed JSON/session route 경로로 검증했다. |
+| `Server/Session/Support/YieldSessionRelay.cs` | `Server/Session/Support/yield_session.hpp` | session | done | Ensure/evidence/Track A relay 코드, actor bind/relay 코드, timer command relay 코드가 있고, session host의 spot mesh를 통해 public Spot route dispatch가 통과한다. worker yield relay, D2 remote Spot yield relay, D4 bound session stream binding, E1 timeout relay, E3 shutdown/recovery relay도 포함한다. |
+| `Server/Session/Support/YieldShutdownRelay.cs` | `Server/Session/Support/yield_session.hpp` | session | merged | shutdown scenario relay는 C++ session implementation header 안에 합쳐서 구현했다. |
 
 ## Scenario 대응
 
@@ -78,18 +78,18 @@ Spot/Entry Spot handler까지 도달해야 하므로, HTTP trigger나 direct Spo
 | `YD-A3` | `Client/main.cpp`; `Server/Play/main.cpp`; `Server/Session/main.cpp`; `Server/Session/Support/yield_session.hpp`; `Server/Delay/main.cpp` | partial |
 | `YD-A4` | `Client/main.cpp`; `Server/Play/main.cpp`; `Server/Session/main.cpp`; `Server/Session/Support/yield_session.hpp` | done |
 | `YD-B1` | `Client/main.cpp`; `Server/Play/main.cpp`; `Server/Session/main.cpp`; `Server/Session/Support/yield_session.hpp`; `Server/Delay/main.cpp` | done |
-| `YD-B2` | `Client/main.cpp`; `Server/Play/main.cpp`; `Server/Session/main.cpp`; `Server/Session/Support/yield_session.hpp`; `Server/Delay/main.cpp` | partial |
+| `YD-B2` | `Client/Scenarios/yd_b2_same_actor_reentry_scenario.hpp`; `Server/Play/Handlers/play_actor_handlers.hpp`; `Server/Session/Support/yield_session.hpp`; `Server/Delay/main.cpp` | done |
 | `YD-B3` | `Client/main.cpp`; `Server/Play/main.cpp`; `Server/Session/main.cpp`; `Server/Session/Support/yield_session.hpp` | done |
 | `YD-C1` | `Client/main.cpp`; `Server/Play/main.cpp`; `Server/Session/main.cpp`; `Server/Session/Support/yield_session.hpp`; `Server/Delay/main.cpp` | done |
 | `YD-C2` | `Client/main.cpp`; `Server/Play/main.cpp`; `Server/Session/main.cpp`; `Server/Session/Support/yield_session.hpp`; `Server/Delay/main.cpp` | done |
 | `YD-C3` | `Client/main.cpp`; `Server/Play/main.cpp`; `Server/Session/main.cpp`; `Server/Session/Support/yield_session.hpp`; `Server/Delay/main.cpp` | partial |
-| `YD-D1` | Track A/B/C local topology runner slice | gap |
+| `YD-D1` | `run_e2e.sh`; `Server/Play/Support/play_support.hpp` | done |
 | `YD-D2` | `Client/Scenarios/yd_d2_remote_spot_yield_scenario.hpp`; `Server/Play/main.cpp`; `Server/Session/main.cpp`; `Server/Session/Support/yield_session.hpp`; `Server/Delay/main.cpp` | done |
 | `YD-D3` | `Client/Scenarios/yd_d3_route_bridge_yield_scenario.hpp`; `Server/Play/Spots/play_spot_runtime.hpp`; `Server/Session/Support/yield_session.hpp` | done |
 | `YD-D4` | `Client/Scenarios/yd_d4_session_relay_actor_yield_scenario.hpp`; `Server/Play/Handlers/play_actor_handlers.hpp`; `Server/Session/Support/yield_session.hpp` | done |
 | `YD-E1` | `Client/Scenarios/yd_e1_timeout_scenario.hpp`; `Server/Play/Handlers/play_failure_spot_handlers.hpp`; `Server/Session/Support/yield_session.hpp` | done |
 | `YD-E2` | public yield cancellation token surface | gap |
-| `YD-E3` | `Client/Scenarios/shutdown_yield_scenario.hpp`; `run_e2e.sh` | gap |
+| `YD-E3` | `Client/Scenarios/shutdown_yield_scenario.hpp`; `Server/Session/Support/yield_session.hpp`; `run_e2e.sh` | done |
 | `YD-E4` | `run_e2e.sh` static checks | done |
 | `YD-E5` | cross-language report aggregation | gap |
 
@@ -425,9 +425,78 @@ Spot/Entry Spot handler까지 도달해야 하므로, HTTP trigger나 direct Spo
     `yield()` 사용, client scenario thin helper 사용을 금지하고, full client가 실제 stream connector를
     만들며 각 YD scenario가 connector 참조를 직접 받는지 검사한다. runner 출력은
     `yield-dispatch track-a-e1 result=passed`다.
+- 2026-06-30: `cmake --build framework/languages/cpp/build --target zlink_cpp_e2e_yield_dispatch_play zlink_cpp_e2e_yield_dispatch_session zlink_cpp_e2e_yield_dispatch_client`
+  - 결과: 통과
+  - 의미: YD-E3 shutdown/recovery DTO, session relay, Play evidence file append, client shutdown mode 추가 뒤 Play/Session/Client target이 통과했다.
+- 2026-06-30: `./framework/languages/cpp/e2e/YieldDispatch/run_e2e.sh`
+  - 결과: 통과
+  - 로그: `logs/20260630-153557-290422`
+  - 의미: YD-E3는 shutdown-wait client가 pending yield를 시작하고, runner가 play-a evidence log에서
+    `yield-released` marker를 확인한 뒤 play-a를 SIGTERM으로 정상 종료하며, client가 request timeout이
+    아닌 public connector error를 받는지 검증한다. 이후 같은 spot rid로 play-a를 재시작하고 recovery
+    probe marker를 확인한다. 같은 실행에서 YD-E4 static gate도 통과한다. runner 출력은
+    `yield-dispatch shutdown wait result=passed`, `yield-dispatch shutdown recovery result=passed`,
+    `yield-dispatch e2e result=passed`다.
+- 2026-06-30: `./framework/languages/cpp/e2e/YieldDispatch/run_e2e.sh`
+  - 결과: 통과
+  - 로그: `logs/20260630-154031-302809`
+  - 의미: YD-D1 local topology gate가 full client 실행 뒤 `play-a.evidence.log`에서 Track A/B/C/E1
+    local marker를 직접 확인한다. `hold-completed`, `yield-completed`, `worker-yield-completed`,
+    `actor-yield-completed`, `timer-yield-completed`, `timeout-yield-completed`가 모두 `rid=play-a`로
+    남아야 통과한다. 같은 실행에서 YD-E3/E4도 통과했다. runner 출력은 `scenario YD-D1 passed`,
+    `yield-dispatch e2e result=passed`다.
+- 2026-06-30: `./framework/languages/cpp/e2e/YieldDispatch/run_e2e.sh`
+  - 결과: 통과
+  - 로그: `logs/20260630-154843-321810`
+  - 의미: YD-B2는 같은 stream connector session에서 actor A yield request와 같은 actor A fast request를 보내고,
+    fast request가 actor yield continuation/completion 뒤에 실행되는 marker를 검증한다. 같은 실행에서
+    YD-D1, YD-E3, YD-E4도 통과했다. runner 출력은 `scenario YD-B2 passed`,
+    `scenario YD-D1 passed`, `yield-dispatch e2e result=passed`다.
+- 2026-06-30: `cmake --build framework/languages/cpp/build --target zlink_cpp_e2e_yield_dispatch_session`
+  - 결과: 통과
+  - 의미: session role option 읽기를 `Server/Session/Support/session_support.hpp`로 분리한 뒤 Session
+    target이 통과했다.
+- 2026-06-30: `timeout 420s framework/languages/cpp/e2e/YieldDispatch/run_e2e.sh`
+  - 결과: 통과
+  - 로그: `logs/20260630-155403-331046`
+  - 의미: session support 분리 뒤에도 registry -> delay -> play -> session -> client 전체 경로와
+    shutdown/recovery orchestration이 통과했다. runner 출력은 `scenario YD-D1 passed`,
+    `yield-dispatch e2e result=passed`다.
+- 2026-06-30: `cmake --build framework/languages/cpp/build --target zlink_cpp_e2e_yield_dispatch_registry`
+  - 결과: 통과
+  - 의미: registry role option 읽기를 `Server/Registry/Support/registry_support.hpp`로 분리한 뒤 Registry
+    target이 통과했다.
+- 2026-06-30: `timeout 420s framework/languages/cpp/e2e/YieldDispatch/run_e2e.sh`
+  - 결과: 통과
+  - 로그: `logs/20260630-155653-336186`
+  - 의미: registry support 분리 뒤에도 registry -> delay -> play -> session -> client 전체 경로와
+    shutdown/recovery orchestration이 통과했다. runner 출력은 `scenario YD-D1 passed`,
+    `yield-dispatch e2e result=passed`다.
+- 2026-06-30: `cmake --build framework/languages/cpp/build --target zlink_cpp_e2e_yield_dispatch_delay zlink_cpp_e2e_yield_dispatch_play`
+  - 결과: 통과
+  - 의미: delay option/evidence support와 play option support 분리 뒤 Delay/Play target이 통과했다.
+- 2026-06-30: `timeout 420s framework/languages/cpp/e2e/YieldDispatch/run_e2e.sh`
+  - 결과: 통과
+  - 로그: `logs/20260630-160112-346042`
+  - 의미: delay option/evidence support와 play option support 분리 뒤에도 registry -> delay -> play ->
+    session -> client 전체 경로와 shutdown/recovery orchestration이 통과했다. `delay-a.evidence.log`와
+    `delay-b.evidence.log`에는 `delay-started`/`delay-completed` marker가 남는다. runner 출력은
+    `scenario YD-D1 passed`, `yield-dispatch e2e result=passed`다.
+- 2026-06-30: `cmake --build framework/languages/cpp/build --target zlink_cpp_e2e_yield_dispatch_registry zlink_cpp_e2e_yield_dispatch_delay zlink_cpp_e2e_yield_dispatch_play zlink_cpp_e2e_yield_dispatch_session zlink_cpp_e2e_yield_dispatch_client`
+  - 결과: 통과
+  - 의미: shared contract에 E2 cancellation DTO와 JSON 매핑을 추가한 뒤 YieldDispatch role/client target이
+    모두 통과했다. E2 handler/scenario는 public yield cancellation token gap으로 남긴다.
+- 2026-06-30: `timeout 420s framework/languages/cpp/e2e/YieldDispatch/run_e2e.sh`
+  - 결과: 통과
+  - 로그: `logs/20260630-160702-358191`
+  - 의미: E2 cancellation DTO 추가 뒤에도 registry -> delay -> play -> session -> client 전체 경로와
+    shutdown/recovery orchestration이 통과했다. runner 출력은 `scenario YD-D1 passed`,
+    `yield-dispatch e2e result=passed`다.
 
 ## 다음 작업 순서
 
-1. Client/Server 코드를 목표 폴더 구조(`Client/Scenarios`, `Server/Play/Handlers` 등)로 나눈다.
-2. YD-E의 shutdown scenario를 추가한다. E2 cancellation은 C++ public yield cancellation token surface가 정리된 뒤 구현한다.
-3. 빠른 반복 실행에서 드물게 보이는 startup `errno=105`/`errno=22`와 빌드 산출물 손상은 runner 환경 안정화 후보로 분리한다.
+1. YD-A3 metadata 보존은 C++ Spot request handler public metadata surface가 정리된 뒤 보강한다.
+2. YD-C3의 actor-yield 중 timer-fast half는 같은 stream session 증거를 만들 수 있는 public connector/stream
+   semantics가 정리된 뒤 partial을 해소한다.
+3. YD-E2 cancellation은 C++ public yield cancellation token surface가 정리된 뒤 구현한다.
+4. 빠른 반복 실행에서 드물게 보이는 startup `errno=105`/`errno=22`와 빌드 산출물 손상은 runner 환경 안정화 후보로 분리한다.

@@ -418,9 +418,16 @@ Spot/Entry Spot handler까지 도달해야 하므로, HTTP trigger나 direct Spo
     delay service reply보다 짧은 timeout으로 `yield()` timeout marker를 남긴 뒤 같은 Spot이
     `ProbeCommand`를 처리하는 cleanup 범위를 검증한다. runner 출력은 `scenario YD-E1 passed`,
     `yield-dispatch track-a-e1 result=passed`다.
+- 2026-06-30: `./framework/languages/cpp/e2e/YieldDispatch/run_e2e.sh`
+  - 결과: 통과
+  - 로그: `logs/20260630-152918-275717`
+  - 의미: YD-E4 static gate가 `/yield` HTTP trigger/client 사용, Play Spot/Entry Spot handler 밖
+    `yield()` 사용, client scenario thin helper 사용을 금지하고, full client가 실제 stream connector를
+    만들며 각 YD scenario가 connector 참조를 직접 받는지 검사한다. runner 출력은
+    `yield-dispatch track-a-e1 result=passed`다.
 
 ## 다음 작업 순서
 
 1. Client/Server 코드를 목표 폴더 구조(`Client/Scenarios`, `Server/Play/Handlers` 등)로 나눈다.
-2. YD-E의 shutdown, static negative scenario를 순서대로 추가한다. E2 cancellation은 C++ public yield cancellation token surface가 정리된 뒤 구현한다.
+2. YD-E의 shutdown scenario를 추가한다. E2 cancellation은 C++ public yield cancellation token surface가 정리된 뒤 구현한다.
 3. 빠른 반복 실행에서 드물게 보이는 startup `errno=105`/`errno=22`와 빌드 산출물 손상은 runner 환경 안정화 후보로 분리한다.

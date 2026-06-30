@@ -362,8 +362,11 @@ class bound_session_t
                 && !std::is_same_v<std::remove_cvref_t<TMessage>, zlink::message_t>)
     bound_session_send_call_t send (const TMessage &message)
     {
-        return send_typed (detail::message_name<TMessage> (), std::type_index (typeid (TMessage)),
-                           &message);
+        using message_type = std::remove_cvref_t<TMessage>;
+        return send_typed (detail::message_name<message_type> (),
+                           [&message] (serializer_registry_t &serializers) {
+            return serializers.template get<message_type> ().serialize (message);
+        });
     }
     bound_session_send_call_t disconnect ();
 
@@ -377,6 +380,9 @@ class bound_session_t
     explicit bound_session_t (std::shared_ptr<detail::actor_gateway_state_t> state,
                               actor_ref_t actor_ref);
 
+    bound_session_send_call_t
+    send_typed (std::string packet_name,
+                std::function<encoded_payload_t (serializer_registry_t &)> encode_payload);
     bound_session_send_call_t
     send_typed (std::string packet_name, std::type_index message_type, const void *message);
     bound_session_send_call_t send_erased (std::string packet_name, const zlink::message_t &payload);

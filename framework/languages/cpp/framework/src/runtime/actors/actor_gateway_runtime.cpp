@@ -117,6 +117,25 @@ bound_session_send_call_t bound_session_t::send (const message_t &payload)
 }
 
 bound_session_send_call_t bound_session_t::send_typed (std::string packet_name,
+                                                       std::function<encoded_payload_t (
+                                                         serializer_registry_t &)> encode_payload)
+{
+    if (!_state || !_state->serializers) {
+        return bound_session_send_call_t (send_call_t (result_t<void>::failure (
+          framework_error_kind_t::request_protocol_error,
+          "bound session send requires a serializer registry")));
+    }
+    try {
+        auto payload = detail::encoded_payload_to_raw (encode_payload (*_state->serializers));
+        return send_erased (std::move (packet_name), payload);
+    }
+    catch (const framework_exception_t &error) {
+        return bound_session_send_call_t (send_call_t (
+          result_t<void>::failure (error.kind (), error.what (), error.is_retriable ())));
+    }
+}
+
+bound_session_send_call_t bound_session_t::send_typed (std::string packet_name,
                                                        std::type_index message_type,
                                                        const void *message)
 {

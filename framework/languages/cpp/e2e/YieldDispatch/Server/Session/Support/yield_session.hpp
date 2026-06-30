@@ -61,7 +61,9 @@ class yield_session_t final : public zlink::framework::packet_stream_session_t
             auto reply = co_await request_control<yd::bind_yield_actors_reply_t> (
               request, packet, target_or_default (dispatch));
             for (const auto &actor : reply.actors) {
-                auto bound = co_await _actors.bind (to_actor_ref (actor)).async ();
+                (void) co_await _actors.bind (to_actor_ref (actor)).async ();
+                _gateway.bind_session_stream (actor.actor_id, stream,
+                                              zlink::framework::stream_codec_t::json);
                 _bound_actors[actor.actor_id] = actor.node_rid;
             }
             co_await stream.reply_packet (zlink::message_t::from_json (reply)).async ();
@@ -113,6 +115,13 @@ class yield_session_t final : public zlink::framework::packet_stream_session_t
             co_await stream.reply_packet (zlink::message_t::from_json (reply)).async ();
             co_return;
         }
+        if (packet == yd::yield_timeout_req_t::packet_name) {
+            auto reply = co_await request_spot<yd::yield_timeout_reply_t> (
+              target_or_default (dispatch), spot_rid (dispatch),
+              payload.parse_json<yd::yield_timeout_req_t> (), packet);
+            co_await stream.reply_packet (zlink::message_t::from_json (reply)).async ();
+            co_return;
+        }
         if (packet == yd::remote_spot_yield_req_t::packet_name) {
             auto reply = co_await request_spot<yd::yield_dispatch_reply_t> (
               target_or_default (dispatch), spot_rid (dispatch),
@@ -140,6 +149,11 @@ class yield_session_t final : public zlink::framework::packet_stream_session_t
         if (packet == yd::worker_yield_command_t::packet_name) {
             co_await send_spot (target_or_default (dispatch), spot_rid (dispatch),
                                 payload.parse_json<yd::worker_yield_command_t> (), packet);
+            co_return;
+        }
+        if (packet == yd::yield_timeout_command_t::packet_name) {
+            co_await send_spot (target_or_default (dispatch), spot_rid (dispatch),
+                                payload.parse_json<yd::yield_timeout_command_t> (), packet);
             co_return;
         }
         if (packet == yd::timer_start_command_t::packet_name) {

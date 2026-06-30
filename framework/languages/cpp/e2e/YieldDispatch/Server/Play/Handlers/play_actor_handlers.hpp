@@ -30,7 +30,9 @@ class yield_entry_spot_t : public zlink::framework::entry_spot_t
           .add_actor_packet<&yield_entry_spot_t::actor_fast_req> (
             yd::actor_fast_req_t::packet_name)
           .add_actor_packet<&yield_entry_spot_t::actor_join_yield_req> (
-            yd::actor_join_yield_req_t::packet_name);
+            yd::actor_join_yield_req_t::packet_name)
+          .add_actor_packet<&yield_entry_spot_t::actor_push_yield_req> (
+            yd::actor_push_yield_req_t::packet_name);
     }
 
     void configure (zlink::framework::spot_context_t &context)
@@ -140,6 +142,45 @@ class yield_entry_spot_t : public zlink::framework::entry_spot_t
                        + "|handler=actor");
         co_return actor_reply ("YD-B3", request.request_id, actor.actor_id,
                                "actor-join-yield-completed");
+    }
+
+    zlink::framework::task_t<yd::actor_yield_reply_t>
+    actor_push_yield_req (yield_actor_t &actor,
+                          zlink::framework::spot_actor_request_context_t &,
+                          const yd::actor_push_yield_req_t &request)
+    {
+        const auto spot_rid = std::string (_context.spot_rid ().value ());
+        const auto mailbox = "actor:" + actor.actor_id;
+        _evidence.add ("actor-push-yield-started|rid=" + _evidence.node_rid + "|spot="
+                       + spot_rid + "|actor=" + actor.actor_id + "|mailbox=" + mailbox
+                       + "|request=" + request.request_id + "|handler=actor");
+        auto call =
+          _context.outbound ()
+            .request (yd::delay_channel,
+                      yd::delay_req_t{.request_id = request.request_id,
+                                      .delay_ms = request.delay_ms,
+                                      .marker = "actor-push-" + actor.actor_id})
+            .packet_name (yd::delay_req_t::packet_name)
+            .timeout (std::chrono::milliseconds (5000));
+        _evidence.add ("actor-push-yield-released|rid=" + _evidence.node_rid + "|spot="
+                       + spot_rid + "|actor=" + actor.actor_id + "|mailbox=" + mailbox
+                       + "|request=" + request.request_id + "|handler=actor");
+        co_await call.yield<yd::delay_reply_t> ();
+        _evidence.add ("actor-push-yield-resumed|rid=" + _evidence.node_rid + "|spot="
+                       + spot_rid + "|actor=" + actor.actor_id + "|mailbox=" + mailbox
+                       + "|request=" + request.request_id + "|handler=actor");
+        co_await actor.context.bound_session ()
+          .send (yd::actor_push_notify_t{.actor_id = actor.actor_id,
+                                         .request_id = request.request_id,
+                                         .value = request.value,
+                                         .node_rid = _evidence.node_rid})
+          .packet_name (yd::actor_push_notify_t::packet_name)
+          .async ();
+        _evidence.add ("actor-push-yield-completed|rid=" + _evidence.node_rid + "|spot="
+                       + spot_rid + "|actor=" + actor.actor_id + "|mailbox=" + mailbox
+                       + "|request=" + request.request_id + "|handler=actor");
+        co_return actor_reply ("YD-D4", request.request_id, actor.actor_id,
+                               "actor-push-yield-completed");
     }
 
   private:

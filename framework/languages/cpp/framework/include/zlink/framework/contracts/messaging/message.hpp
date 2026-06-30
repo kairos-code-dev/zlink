@@ -4,6 +4,7 @@
 #include <zlink/Contracts/Messaging/message.hpp>
 #include <zlink/framework/contracts/codecs/serializer.hpp>
 
+#include <functional>
 #include <memory>
 #include <optional>
 #include <typeindex>
@@ -39,12 +40,18 @@ class message_t
   public:
     message_t () = default;
 
+    /// Wraps a typed value for APIs that accept message_t. The value is encoded later through the
+    /// serializer selected for TValue, so normal JSON payloads do not need per-message registration.
     template <typename TValue> static message_t from (TValue value)
     {
         using value_type = std::remove_cvref_t<TValue>;
         message_t wrapped;
         wrapped._type = std::type_index (typeid (value_type));
         wrapped._value = std::make_shared<value_type> (std::move (value));
+        auto typed_value = std::static_pointer_cast<const value_type> (wrapped._value);
+        wrapped._encoder = [typed_value] (const serializer_registry_t &serializers) {
+            return serializers.template get<value_type> ().serialize (*typed_value);
+        };
         return wrapped;
     }
 
@@ -124,12 +131,16 @@ class message_t
         if (!_value) {
             return {};
         }
+        if (_encoder) {
+            return _encoder (serializers);
+        }
         return serializers.serialize (_type, _value.get ());
     }
 
     std::optional<encoded_payload_t> _encoded;
     std::shared_ptr<const void> _value;
     std::type_index _type = std::type_index (typeid (void));
+    std::function<encoded_payload_t (const serializer_registry_t &)> _encoder;
     const serializer_registry_t *_serializers = nullptr;
 
     const serializer_registry_t &require_serializers () const

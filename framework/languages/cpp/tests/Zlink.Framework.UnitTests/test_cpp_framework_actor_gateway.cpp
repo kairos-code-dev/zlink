@@ -17,6 +17,11 @@ struct typed_session_push_t
     std::string body;
 };
 
+struct json_session_push_t
+{
+    std::string body;
+};
+
 std::string to_stream_payload (const typed_session_push_t &message)
 {
     return message.body;
@@ -52,6 +57,16 @@ void from_json (const nlohmann::json &json, join_reply_t &value)
 {
     value.room_id = json.value ("roomId", "");
     value.mark = json.value ("mark", "");
+}
+
+void to_json (nlohmann::json &json, const json_session_push_t &value)
+{
+    json = {{"body", value.body}};
+}
+
+void from_json (const nlohmann::json &json, json_session_push_t &value)
+{
+    value.body = json.value ("body", "");
 }
 
 } // namespace
@@ -181,6 +196,17 @@ int main ()
     if (!typed_push || gateway.bound_session_pushes ().size () != 2
         || gateway.bound_session_pushes ()[1].payload.to_string () != "typed-payload") {
         return 13;
+    }
+    auto json_push = bound.value ()
+                       .context ()
+                       .bound_session ()
+                       .send (json_session_push_t{"json-payload"})
+                       .async ()
+                       .result ();
+    if (!json_push || gateway.bound_session_pushes ().size () != 3
+        || gateway.bound_session_pushes ()[2].payload.to_string ()
+             != R"({"body":"json-payload"})") {
+        return 24;
     }
 
     auto disconnect = bound.value ().bound_session ().disconnect ().async ().result ();

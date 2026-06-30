@@ -556,6 +556,23 @@ channel_runtime_t channel_runtime_t::from (const message_bus_t &bus)
 
 namespace zlink::framework
 {
+namespace
+{
+
+runtime::messaging::message_parts_t encode_route_payload_parts (
+  runtime::messaging::envelope_header_t header,
+  std::type_index payload_type,
+  const route_client_t::payload_encoder_t &encode_payload,
+  serializer_registry_t &serializers)
+{
+    header.content_type = serializers.content_type (payload_type);
+    runtime::messaging::envelope_codec_t envelope;
+    return envelope.encode_raw_body_parts (
+      header, detail::encoded_payload_to_raw (encode_payload (serializers)));
+}
+
+} // namespace
+
 
 namespace
 {
@@ -837,12 +854,13 @@ message_bus_t::erased_request_result_t
 message_bus_t::submit_request (std::string channel_name,
                                std::string packet_name,
                                std::type_index request_type,
-                               const void *request,
+                               payload_encoder_t encode_payload,
                                std::chrono::milliseconds timeout,
                                const channel_request_call_t::metadata_map_t &metadata)
 {
     return detail::channel_outbound_exchange_t (_state).submit_request (
-      std::move (channel_name), std::move (packet_name), request_type, request, timeout, metadata);
+      std::move (channel_name), std::move (packet_name), request_type, std::move (encode_payload),
+      timeout, metadata);
 }
 
 task_t<zlink::message_t>
@@ -850,21 +868,20 @@ message_bus_t::submit_request_message_async (
   std::string channel_name,
   std::string packet_name,
   std::type_index request_type,
-  const void *request,
-  std::shared_ptr<const void> request_owner,
+  payload_encoder_t encode_payload,
   std::chrono::milliseconds timeout,
   channel_request_call_t::metadata_map_t metadata)
 {
     auto state = _state;
     return runtime::handler_coroutine_executor ().submit<zlink::message_t> (
       [state, channel_name = std::move (channel_name), packet_name = std::move (packet_name),
-       request_type, request, request_owner = std::move (request_owner), timeout,
+       request_type, encode_payload = std::move (encode_payload), timeout,
        metadata = std::move (metadata)] () mutable
       -> boost::asio::awaitable<result_t<zlink::message_t>> {
-          (void) request_owner;
           auto result = message_bus_t (state)
                           .submit_request (std::move (channel_name), std::move (packet_name),
-                                           request_type, request, timeout, metadata)
+                                           request_type, std::move (encode_payload), timeout,
+                                           metadata)
                           .message ();
           co_return result;
       });
@@ -873,25 +890,26 @@ message_bus_t::submit_request_message_async (
 result_t<void> message_bus_t::submit_send (std::string channel_name,
                                            std::string packet_name,
                                            std::type_index message_type,
-                                           const void *message,
+                                           payload_encoder_t encode_payload,
                                            std::chrono::milliseconds timeout,
                                            const send_call_t::metadata_map_t &metadata)
 {
     return detail::channel_outbound_exchange_t (_state).submit_send (
-      std::move (channel_name), std::move (packet_name), message_type, message, timeout, metadata);
+      std::move (channel_name), std::move (packet_name), message_type, std::move (encode_payload),
+      timeout, metadata);
 }
 
 result_t<void> message_bus_t::submit_publish (std::string channel_name,
                                               std::string topic,
                                               std::string packet_name,
                                               std::type_index event_type,
-                                              const void *event,
+                                              payload_encoder_t encode_payload,
                                               std::chrono::milliseconds timeout,
                                               const send_call_t::metadata_map_t &metadata)
 {
     return detail::channel_outbound_exchange_t (_state).submit_publish (
-      std::move (channel_name), std::move (topic), std::move (packet_name), event_type, event,
-      timeout, metadata);
+      std::move (channel_name), std::move (topic), std::move (packet_name),
+      event_type, std::move (encode_payload), timeout, metadata);
 }
 
 channel_server_socket_runtime_options_t::channel_server_socket_runtime_options_t () = default;
@@ -1050,7 +1068,7 @@ route_client_t::submit_send_erased (const std::shared_ptr<detail::route_client_s
                                     const zlink::routing_id_t &target_node_rid,
                                     const std::string &packet_name,
                                     std::type_index message_type,
-                                    const void *message,
+                                    payload_encoder_t encode_payload,
                                     const route_send_call_t::metadata_map_t &metadata)
 {
     if (!state || !state->runtime || state->serializers == nullptr) {
@@ -1079,8 +1097,8 @@ route_client_t::submit_send_erased (const std::shared_ptr<detail::route_client_s
                                           std::nullopt,
                                           std::nullopt};
           });
-        runtime::messaging::envelope_codec_t envelope;
-        parts = envelope.encode_parts (header, message_type, message, *state->serializers);
+        parts = encode_route_payload_parts (std::move (header), message_type, encode_payload,
+                                            *state->serializers);
     }
     catch (const framework_exception_t &error) {
         return task_t<void> (
@@ -1111,7 +1129,7 @@ route_client_t::submit_request_erased (const std::shared_ptr<detail::route_clien
                                        const zlink::routing_id_t &target_node_rid,
                                        const std::string &packet_name,
                                        std::type_index request_type,
-                                       const void *request,
+                                       payload_encoder_t encode_payload,
                                        std::chrono::milliseconds timeout,
                                        const route_request_call_t::metadata_map_t &metadata)
 {
@@ -1144,8 +1162,8 @@ route_client_t::submit_request_erased (const std::shared_ptr<detail::route_clien
                                           std::nullopt,
                                           std::nullopt};
           });
-        runtime::messaging::envelope_codec_t envelope;
-        parts = envelope.encode_parts (header, request_type, request, *state->serializers);
+        parts = encode_route_payload_parts (std::move (header), request_type, encode_payload,
+                                            *state->serializers);
     }
     catch (const framework_exception_t &error) {
         return task_t<std::uint64_t> (
@@ -1177,7 +1195,7 @@ task_t<void> route_client_t::submit_spot_send_erased (
   const spot_rid_t &target_spot_rid,
   const std::string &packet_name,
   std::type_index message_type,
-  const void *message,
+  payload_encoder_t encode_payload,
   const route_send_call_t::metadata_map_t &metadata)
 {
     if (!state || !state->runtime || state->serializers == nullptr) {
@@ -1207,8 +1225,8 @@ task_t<void> route_client_t::submit_spot_send_erased (
                                           std::nullopt,
                                           std::nullopt};
           });
-        runtime::messaging::envelope_codec_t envelope;
-        parts = envelope.encode_parts (header, message_type, message, *state->serializers);
+        parts = encode_route_payload_parts (std::move (header), message_type, encode_payload,
+                                            *state->serializers);
     }
     catch (const framework_exception_t &error) {
         return task_t<void> (
@@ -1241,7 +1259,7 @@ task_t<std::uint64_t> route_client_t::submit_spot_request_erased (
   const spot_rid_t &target_spot_rid,
   const std::string &packet_name,
   std::type_index request_type,
-  const void *request,
+  payload_encoder_t encode_payload,
   std::chrono::milliseconds timeout,
   const route_request_call_t::metadata_map_t &metadata)
 {
@@ -1275,8 +1293,8 @@ task_t<std::uint64_t> route_client_t::submit_spot_request_erased (
                                           std::nullopt,
                                           std::nullopt};
           });
-        runtime::messaging::envelope_codec_t envelope;
-        parts = envelope.encode_parts (header, request_type, request, *state->serializers);
+        parts = encode_route_payload_parts (std::move (header), request_type, encode_payload,
+                                            *state->serializers);
     }
     catch (const framework_exception_t &error) {
         return task_t<std::uint64_t> (
@@ -1308,7 +1326,7 @@ task_t<zlink::message_t> route_client_t::submit_request_reply_message_erased (
   zlink::routing_id_t target_node_rid,
   std::string packet_name,
   std::type_index request_type,
-  const void *request,
+  payload_encoder_t encode_payload,
   std::chrono::milliseconds timeout,
   std::map<std::string, std::string> metadata)
 {
@@ -1342,8 +1360,8 @@ task_t<zlink::message_t> route_client_t::submit_request_reply_message_erased (
                                           std::nullopt,
                                           std::nullopt};
           });
-        runtime::messaging::envelope_codec_t envelope;
-        parts = envelope.encode_parts (header, request_type, request, *state->serializers);
+        parts = encode_route_payload_parts (std::move (header), request_type, encode_payload,
+                                            *state->serializers);
     }
     catch (const framework_exception_t &error) {
         return task_t<zlink::message_t> (result_t<zlink::message_t>::failure (
@@ -1417,7 +1435,7 @@ task_t<zlink::message_t> route_client_t::submit_spot_request_reply_message_erase
   spot_rid_t target_spot_rid,
   std::string packet_name,
   std::type_index request_type,
-  const void *request,
+  payload_encoder_t encode_payload,
   std::chrono::milliseconds timeout,
   std::map<std::string, std::string> metadata)
 {
@@ -1452,8 +1470,8 @@ task_t<zlink::message_t> route_client_t::submit_spot_request_reply_message_erase
                                           std::nullopt,
                                           std::nullopt};
           });
-        runtime::messaging::envelope_codec_t envelope;
-        parts = envelope.encode_parts (header, request_type, request, *state->serializers);
+        parts = encode_route_payload_parts (std::move (header), request_type, encode_payload,
+                                            *state->serializers);
     }
     catch (const framework_exception_t &error) {
         return task_t<zlink::message_t> (result_t<zlink::message_t>::failure (

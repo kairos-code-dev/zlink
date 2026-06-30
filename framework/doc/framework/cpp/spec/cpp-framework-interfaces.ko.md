@@ -1462,8 +1462,9 @@ ActorGateway session relay는 `session_actor_manager_t`, `session_actor_t`,
 보여 주지 않는다. runtime이 ActorGateway 내부 frame, actor ref, bound session metadata를
 소유한다.
 actor context의 `join_spot(...)` request와 reply는 DTO 또는 `zlink::framework::message_t`다.
-protobuf, json, messagepack, custom codec 사용자는 startup/options 에 serializer를 등록하고
-업무 코드는 같은 join 호출을 유지한다. `actor_join_result_t`는 join result code, join 이후 actor ref,
+JSON DTO는 기본 serializer를 사용하므로 message type별 codec 설정이 필요 없다. Protobuf,
+MessagePack, custom binary payload처럼 기본 JSON으로 표현할 수 없는 타입만 startup/options 에
+serializer extension을 연결하고 업무 코드는 같은 join 호출을 유지한다. `actor_join_result_t`는 join result code, join 이후 actor ref,
 reply `zlink::framework::message_t`를 함께 담는다. typed reply가 필요하면
 `async<TReply>()`가 같은 serializer registry로 decode한다. Entry Spot join도 같은 결과 타입을 돌려준다.
 raw payload를 이미 가진 runtime/harness 경계만 `join_spot_raw(...)`와
@@ -1546,7 +1547,9 @@ JSON은 기본 codec이므로 별도 등록하지 않는다. 사용자가 모든
 type을 codec 설정에 나열하지 않는다. C++ framework는 `options.handlers().group(...).add<THandler>()`에서
 handler의 `request_type`, `reply_type`을 읽고 기본 JSON serializer를 내부에서 선택한다.
 send handler는 `message_type`, publish handler는 `event_type`을 읽어 같은 방식으로 serializer와
-handler registry 항목을 등록한다. 따라서 request/send/publish handler를 같은 group 이름으로
+handler registry 항목을 등록한다. `options.codecs().use(...)`는 일반 message type을 나열하는
+단계가 아니라, 기본 JSON으로 표현할 수 없는 payload나 별도 binary serializer extension을
+연결하는 고급 확장점이다. 따라서 request/send/publish handler를 같은 group 이름으로
 묶고, channel builder의 `.use_handler_group(...)`에서 channel에 연결할 수 있다.
 handler group은 channel 종류와 맞아야 한다. client/server channel은 request/send
 handler group을 받을 수 있고, fanout channel은 publish handler group만 받을 수 있다. 맞지 않는

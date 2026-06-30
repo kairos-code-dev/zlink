@@ -54,6 +54,18 @@ bool has_connection (const channel_capability_snapshot_t *capability)
                || !capability->connect_endpoints.empty ());
 }
 
+runtime::messaging::message_parts_t encode_channel_payload_parts (
+  runtime::messaging::envelope_header_t header,
+  std::type_index payload_type,
+  const message_bus_t::payload_encoder_t &encode_payload,
+  serializer_registry_t &serializers)
+{
+    header.content_type = serializers.content_type (payload_type);
+    runtime::messaging::envelope_codec_t envelope;
+    return envelope.encode_raw_body_parts (
+      header, detail::encoded_payload_to_raw (encode_payload (serializers)));
+}
+
 bool runtime_is_stopping (const channel_runtime_state_t &state)
 {
     std::lock_guard lock (state.mutex);
@@ -234,7 +246,7 @@ message_bus_t::erased_request_result_t
 channel_outbound_exchange_t::submit_request (std::string channel_name,
                                              std::string packet_name,
                                              std::type_index request_type,
-                                             const void *request,
+                                             message_bus_t::payload_encoder_t encode_payload,
                                              std::chrono::milliseconds timeout,
                                              const channel_request_call_t::metadata_map_t &metadata)
 {
@@ -276,7 +288,8 @@ channel_outbound_exchange_t::submit_request (std::string channel_name,
             });
             runtime::messaging::envelope_codec_t envelope;
             auto parts =
-              envelope.encode_parts (header, request_type, request, *_state->serializers);
+              encode_channel_payload_parts (header, request_type, encode_payload,
+                                            *_state->serializers);
 
             detail::channel_runtime_manager_t manager (_state);
             std::vector<std::string> endpoints;
@@ -509,7 +522,7 @@ result_t<void>
 channel_outbound_exchange_t::submit_send (std::string channel_name,
                                           std::string packet_name,
                                           std::type_index message_type,
-                                          const void *message,
+                                          message_bus_t::payload_encoder_t encode_payload,
                                           std::chrono::milliseconds timeout,
                                           const send_call_t::metadata_map_t &metadata)
 {
@@ -560,10 +573,10 @@ channel_outbound_exchange_t::submit_send (std::string channel_name,
                                               std::nullopt,
                                               std::nullopt,
                                               std::nullopt};
-              });
-            runtime::messaging::envelope_codec_t envelope;
+            });
             auto parts =
-              envelope.encode_parts (header, message_type, message, *_state->serializers);
+              encode_channel_payload_parts (header, message_type, encode_payload,
+                                            *_state->serializers);
 
             zlink::context_t context;
             zlink::dealer_socket_t dealer (context);
@@ -636,7 +649,7 @@ channel_outbound_exchange_t::submit_publish (std::string channel_name,
                                              std::string topic,
                                              std::string packet_name,
                                              std::type_index event_type,
-                                             const void *event,
+                                             message_bus_t::payload_encoder_t encode_payload,
                                              std::chrono::milliseconds timeout,
                                              const send_call_t::metadata_map_t &metadata)
 {
@@ -671,9 +684,10 @@ channel_outbound_exchange_t::submit_publish (std::string channel_name,
                                               std::nullopt,
                                               std::nullopt,
                                               std::nullopt};
-              });
-            runtime::messaging::envelope_codec_t envelope;
-            auto parts = envelope.encode_parts (header, event_type, event, *_state->serializers);
+            });
+            auto parts =
+              encode_channel_payload_parts (header, event_type, encode_payload,
+                                            *_state->serializers);
             std::shared_ptr<detail::channel_native_publisher_t> native_publisher;
             {
                 std::lock_guard lock (_state->mutex);

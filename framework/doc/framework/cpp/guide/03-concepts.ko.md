@@ -35,6 +35,22 @@ ZLink framework 는 **다섯 가지 핵심 개념**으로 선다:
 | **deadline / timeout** | 응답을 얼마나 기다릴지의 상한 시간 |
 | **DI / lifecycle** | 의존성 주입과 앱 시작·종료 수명 관리 |
 
+## 0.1 Payload 직렬화
+
+C++ framework의 일반 payload는 메시지 타입마다 codec을 설정하지 않는다.
+payload 타입이 `to_json`/`from_json`을 제공하면 framework가 기본 JSON 직렬화 경로를
+사용한다. 사용자는 handler의 `request_type`, `reply_type`, `message_type`,
+`event_type`을 선언하고 handler group에 등록하면 된다.
+
+`options.codecs().use(...)`는 일반 메시지 타입을 나열하는 API가 아니다. 기본 JSON으로
+표현할 수 없는 payload나 별도 binary serializer가 필요한 extension을 연결할 때만 쓴다.
+
+`zlink::framework::message_t`에 이미 타입이 지워진 payload를 담아 전달하는 고급 경로는
+runtime이 타입 이름만 보고 serializer를 찾아야 한다. 이 경우에는 handler 등록으로 알려진
+타입이거나 custom serializer extension이 제공한 타입이어야 한다. 일반 업무 코드는 가능한 한
+typed request/send/publish API를 사용하고, raw frame이나 `message_t` 우회로 payload 변환을
+직접 맡지 않는다.
+
 ## 1. channel — 서버 간 연결
 
 channel 은 **서버↔서버 연결을 묶는 논리 이름**이다. 주소(`host:port`)가 아니라

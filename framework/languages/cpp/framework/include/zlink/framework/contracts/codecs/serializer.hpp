@@ -157,6 +157,8 @@ class serializer_registry_t
     serializer_registry_t (const serializer_registry_t &) = delete;
     serializer_registry_t &operator= (const serializer_registry_t &) = delete;
 
+    /// Registers a serializer for a payload that cannot use the default JSON path.
+    /// Normal JSON payloads do not need per-message registration.
     template <typename T>
     serializer_registry_t &add (typename serializer_t<T>::serialize_fn_t serialize,
                                 typename serializer_t<T>::deserialize_fn_t deserialize,
@@ -173,6 +175,8 @@ class serializer_registry_t
           std::move (content_type));
     }
 
+    /// Gets the serializer for T. If no custom serializer is registered and T can be converted
+    /// with nlohmann to_json/from_json, the framework uses the default JSON serializer.
     template <typename T> serializer_t<T> get () const
     {
         if (!contains (std::type_index (typeid (T)))) {

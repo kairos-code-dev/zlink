@@ -148,6 +148,28 @@ static_checks() {
     return 1
   fi
   rm -f /tmp/zlink-yield-dispatch-static-yield.$$
+
+  if rg -n 'YieldConnectorFactory|YieldDispatchScenarioContext|WaitForPlayEvidence|ReadPlayEvidence' "$ROOT_DIR/Client" -g '*.cpp' -g '*.hpp' >/tmp/zlink-yield-dispatch-static-helper.$$; then
+    cat /tmp/zlink-yield-dispatch-static-helper.$$ >&2
+    rm -f /tmp/zlink-yield-dispatch-static-helper.$$
+    echo "YieldDispatch client scenarios must use the stream connector directly instead of thin helpers." >&2
+    return 1
+  fi
+  rm -f /tmp/zlink-yield-dispatch-static-helper.$$
+
+  if ! rg -q 'connector_factory_t::create' "$ROOT_DIR/Client/main.cpp"; then
+    echo "YieldDispatch full scenario must create and use a real stream connector directly." >&2
+    return 1
+  fi
+
+  local scenario_file
+  for scenario_file in "$ROOT_DIR"/Client/Scenarios/yd_*.hpp; do
+    if ! rg -q 'TConnector &' "$scenario_file"; then
+      echo "$scenario_file" >&2
+      echo "YieldDispatch YD scenario files must receive the stream connector directly." >&2
+      return 1
+    fi
+  done
 }
 
 static_checks
@@ -229,6 +251,7 @@ start_session_role session-a "$SESSION_A_HTTP" "$SESSION_A_STREAM" "$PLAY_A_CONT
 start_session_role session-b "$SESSION_B_HTTP" "$SESSION_B_STREAM" "$PLAY_B_CONTROL" "$SESSION_B_SPOT_ROUTER" "$SESSION_B_SPOT_PUB"
 
 ZLINK_CPP_E2E_STREAM_ENDPOINT="$SESSION_A_STREAM" \
+ZLINK_CPP_E2E_SESSION_B_STREAM_ENDPOINT="$SESSION_B_STREAM" \
   "$CLIENT" >"$LOG_DIR/client.stdout.log" 2>"$LOG_DIR/client.stderr.log"
 grep -q "scenario YD-A1 passed" "$LOG_DIR/client.stdout.log"
 grep -q "scenario YD-A2 passed" "$LOG_DIR/client.stdout.log"
@@ -241,6 +264,9 @@ grep -q "scenario YD-C1 passed" "$LOG_DIR/client.stdout.log"
 grep -q "scenario YD-C2 passed" "$LOG_DIR/client.stdout.log"
 grep -q "scenario YD-C3 passed" "$LOG_DIR/client.stdout.log"
 grep -q "scenario YD-D2 passed" "$LOG_DIR/client.stdout.log"
-grep -q "yield-dispatch track-a-d result=passed" "$LOG_DIR/client.stdout.log"
+grep -q "scenario YD-D3 passed" "$LOG_DIR/client.stdout.log"
+grep -q "scenario YD-D4 passed" "$LOG_DIR/client.stdout.log"
+grep -q "scenario YD-E1 passed" "$LOG_DIR/client.stdout.log"
+grep -q "yield-dispatch track-a-e1 result=passed" "$LOG_DIR/client.stdout.log"
 
-echo "yield-dispatch track-a-d result=passed"
+echo "yield-dispatch track-a-e1 result=passed"

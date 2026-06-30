@@ -23,14 +23,14 @@ class channel_outbound_exchange_t
       std::string channel_name,
       std::string packet_name,
       std::type_index request_type,
-      const void *request,
+      message_bus_t::payload_encoder_t encode_payload,
       std::chrono::milliseconds timeout,
       const channel_request_call_t::metadata_map_t &metadata);
 
     result_t<void> submit_send (std::string channel_name,
                                 std::string packet_name,
                                 std::type_index message_type,
-                                const void *message,
+                                message_bus_t::payload_encoder_t encode_payload,
                                 std::chrono::milliseconds timeout,
                                 const send_call_t::metadata_map_t &metadata);
 
@@ -38,7 +38,7 @@ class channel_outbound_exchange_t
                                    std::string topic,
                                    std::string packet_name,
                                    std::type_index event_type,
-                                   const void *event,
+                                   message_bus_t::payload_encoder_t encode_payload,
                                    std::chrono::milliseconds timeout,
                                    const send_call_t::metadata_map_t &metadata);
 

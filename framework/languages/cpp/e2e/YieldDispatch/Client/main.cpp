@@ -12,6 +12,9 @@
 #include "Scenarios/yd_c2_timer_reentry_scenario.hpp"
 #include "Scenarios/yd_c3_actor_timer_isolation_scenario.hpp"
 #include "Scenarios/yd_d2_remote_spot_yield_scenario.hpp"
+#include "Scenarios/yd_d3_route_bridge_yield_scenario.hpp"
+#include "Scenarios/yd_d4_session_relay_actor_yield_scenario.hpp"
+#include "Scenarios/yd_e1_timeout_scenario.hpp"
 #include "Scenarios/yield_actor_scenario_context.hpp"
 #include "Support/client_options.hpp"
 #include "Support/scenario_assert.hpp"
@@ -40,6 +43,8 @@ int main ()
         const auto client_options = yd_client::parse_client_options ();
         ensure (!client_options.session_a_stream_endpoint.empty (),
                 "ZLINK_CPP_E2E_STREAM_ENDPOINT is required");
+        ensure (!client_options.session_b_stream_endpoint.empty (),
+                "ZLINK_CPP_E2E_SESSION_B_STREAM_ENDPOINT is required");
 
         auto options = yd_client::make_connector_options (client_options);
         auto client = zlink::stream_connector::connector_factory_t::create (options);
@@ -102,10 +107,15 @@ int main ()
         yd_client::run_yd_c3_actor_timer_isolation_scenario (client, observer, actors);
 
         yd_client::run_yd_d2_remote_spot_yield_scenario (client);
+        yd_client::run_yd_d3_route_bridge_yield_scenario (client);
+        yd_client::run_yd_d4_session_relay_actor_yield_scenario (
+          client, client_options.session_b_stream_endpoint, actors);
+
+        yd_client::run_yd_e1_timeout_scenario (client);
 
         (void) observer.close ();
         (void) client.close ();
-        std::cout << "yield-dispatch track-a-d result=passed\n";
+        std::cout << "yield-dispatch track-a-e1 result=passed\n";
         return 0;
     }
     catch (const std::exception &error) {

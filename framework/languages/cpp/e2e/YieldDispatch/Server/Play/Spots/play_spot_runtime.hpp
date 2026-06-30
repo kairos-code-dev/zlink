@@ -3,6 +3,7 @@
 
 #include "play_spot_types.hpp"
 #include "../Handlers/play_basic_spot_handlers.hpp"
+#include "../Handlers/play_failure_spot_handlers.hpp"
 #include "../Handlers/play_remote_spot_handlers.hpp"
 #include "../Handlers/play_timer_spot_handlers.hpp"
 #include "../Support/play_support.hpp"
@@ -36,6 +37,10 @@ class yield_probe_spot_t : public zlink::framework::spot_t
             yd::worker_yield_req_t::packet_name)
           .add_handler<&yield_probe_spot_t::worker_yield_command> (
             yd::worker_yield_command_t::packet_name)
+          .add_handler<&yield_probe_spot_t::yield_timeout_req> (
+            yd::yield_timeout_req_t::packet_name)
+          .add_handler<&yield_probe_spot_t::yield_timeout_command> (
+            yd::yield_timeout_command_t::packet_name)
           .add_handler<&yield_probe_spot_t::remote_spot_yield_req> (
             yd::remote_spot_yield_req_t::packet_name)
           .add_handler<&yield_probe_spot_t::timer_start_command> (
@@ -86,6 +91,18 @@ class yield_probe_spot_t : public zlink::framework::spot_t
     {
         co_await handle_basic_worker_yield (_context, _evidence, request.request_id,
                                             request.delay_ms);
+    }
+
+    zlink::framework::task_t<yd::yield_timeout_reply_t>
+    yield_timeout_req (const yd::yield_timeout_req_t &request)
+    {
+        co_return co_await handle_yield_timeout (_context, _evidence, request);
+    }
+
+    zlink::framework::task_t<void> yield_timeout_command (
+      const yd::yield_timeout_command_t &request)
+    {
+        co_await handle_yield_timeout_command (_context, _evidence, request);
     }
 
     zlink::framework::task_t<yd::yield_dispatch_reply_t>

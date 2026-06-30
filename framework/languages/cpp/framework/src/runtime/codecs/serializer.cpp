@@ -58,8 +58,10 @@ encoded_payload_t serializer_registry_t::serialize (std::type_index type, const 
     const auto found = _state->serializers.find (type);
     if (found == _state->serializers.end ()) {
         throw framework_exception_t (framework_error_kind_t::payload_decode_failed,
-                                     std::string ("serializer is not registered: ")
-                                       + type.name ());
+                                     std::string ("erased serializer is not registered: ")
+                                       + type.name ()
+                                       + ". Normal typed JSON payloads use serializer_registry_t::get<T>(); "
+                                         "avoid wrapping them in framework::message_t unless the erased type is registered.");
     }
     try {
         return found->second.serialize (value);
@@ -80,8 +82,10 @@ void serializer_registry_t::deserialize (std::type_index type,
     const auto found = _state->serializers.find (type);
     if (found == _state->serializers.end ()) {
         throw framework_exception_t (framework_error_kind_t::payload_decode_failed,
-                                     std::string ("serializer is not registered: ")
-                                       + type.name ());
+                                     std::string ("erased serializer is not registered: ")
+                                       + type.name ()
+                                       + ". Normal typed JSON payloads use serializer_registry_t::get<T>(); "
+                                         "avoid wrapping them in framework::message_t unless the erased type is registered.");
     }
     try {
         found->second.deserialize (payload, out);

@@ -312,6 +312,8 @@ class codec_options_builder_t
     {
     }
 
+    /// Adds a serializer extension. This is for payloads that cannot use the default JSON
+    /// serializer, not for listing every application message type.
     template <typename TExtension> codec_options_builder_t &use (const TExtension &extension)
     {
         codec_registration_context_t context (*_serializers);

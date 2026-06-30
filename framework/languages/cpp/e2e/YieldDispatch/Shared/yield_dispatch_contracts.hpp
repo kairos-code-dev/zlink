@@ -10,6 +10,11 @@
 
 #include <nlohmann/json.hpp>
 
+namespace zlink::stream_connector
+{
+enum class codec_t : std::uint8_t;
+}
+
 namespace zlink::framework::e2e::yield_dispatch
 {
 
@@ -140,6 +145,22 @@ struct worker_yield_command_t
     int delay_ms = 0;
 };
 
+struct yield_timeout_req_t
+{
+    static constexpr const char *packet_name = "YieldTimeoutReq";
+    std::string request_id;
+    int delay_ms = 0;
+    int timeout_ms = 0;
+};
+
+struct yield_timeout_command_t
+{
+    static constexpr const char *packet_name = "YieldTimeoutCommand";
+    std::string request_id;
+    int delay_ms = 0;
+    int timeout_ms = 0;
+};
+
 struct remote_spot_yield_req_t
 {
     static constexpr const char *packet_name = "RemoteSpotYieldReq";
@@ -199,6 +220,23 @@ struct actor_join_yield_req_t
     std::string target_node_rid;
 };
 
+struct actor_push_yield_req_t
+{
+    static constexpr const char *packet_name = "ActorPushYieldReq";
+    std::string request_id;
+    int delay_ms = 0;
+    std::string value;
+};
+
+struct actor_push_notify_t
+{
+    static constexpr const char *packet_name = "ActorPushNotify";
+    std::string actor_id;
+    std::string request_id;
+    std::string value;
+    std::string node_rid;
+};
+
 struct actor_yield_reply_t
 {
     static constexpr const char *packet_name = "ActorYieldReply";
@@ -218,6 +256,17 @@ struct yield_dispatch_reply_t
     std::string spot_rid;
     std::string node_rid;
     std::string marker;
+};
+
+struct yield_timeout_reply_t
+{
+    static constexpr const char *packet_name = "YieldTimeoutReply";
+    std::string scenario_id;
+    std::string request_id;
+    std::string spot_rid;
+    std::string node_rid;
+    bool timed_out = false;
+    std::string error;
 };
 
 } // namespace zlink::framework::e2e::yield_dispatch
@@ -417,6 +466,34 @@ inline void from_json (const nlohmann::json &json, worker_yield_command_t &value
     value.delay_ms = json.value ("delay_ms", 0);
 }
 
+inline void to_json (nlohmann::json &json, const yield_timeout_req_t &value)
+{
+    json = nlohmann::json{{"request_id", value.request_id},
+                          {"delay_ms", value.delay_ms},
+                          {"timeout_ms", value.timeout_ms}};
+}
+
+inline void from_json (const nlohmann::json &json, yield_timeout_req_t &value)
+{
+    value.request_id = json.value ("request_id", "");
+    value.delay_ms = json.value ("delay_ms", 0);
+    value.timeout_ms = json.value ("timeout_ms", 0);
+}
+
+inline void to_json (nlohmann::json &json, const yield_timeout_command_t &value)
+{
+    json = nlohmann::json{{"request_id", value.request_id},
+                          {"delay_ms", value.delay_ms},
+                          {"timeout_ms", value.timeout_ms}};
+}
+
+inline void from_json (const nlohmann::json &json, yield_timeout_command_t &value)
+{
+    value.request_id = json.value ("request_id", "");
+    value.delay_ms = json.value ("delay_ms", 0);
+    value.timeout_ms = json.value ("timeout_ms", 0);
+}
+
 inline void to_json (nlohmann::json &json, const remote_spot_yield_req_t &value)
 {
     json = nlohmann::json{{"request_id", value.request_id},
@@ -515,6 +592,70 @@ inline void from_json (const nlohmann::json &json, actor_join_yield_req_t &value
     value.target_node_rid = json.value ("target_node_rid", "");
 }
 
+inline void to_json (nlohmann::json &json, const actor_push_yield_req_t &value)
+{
+    json = nlohmann::json{{"request_id", value.request_id},
+                          {"delay_ms", value.delay_ms},
+                          {"value", value.value}};
+}
+
+inline void from_json (const nlohmann::json &json, actor_push_yield_req_t &value)
+{
+    value.request_id = json.value ("request_id", "");
+    value.delay_ms = json.value ("delay_ms", 0);
+    value.value = json.value ("value", "");
+}
+
+inline zlink::message_t to_stream_payload (const actor_push_yield_req_t &value)
+{
+    return zlink::message_t::from_json (value);
+}
+
+inline void from_stream_payload (const zlink::message_t &payload, actor_push_yield_req_t &value)
+{
+    value = payload.parse_json<actor_push_yield_req_t> ();
+}
+
+inline void from_stream_payload (zlink::stream_connector::codec_t,
+                                 const zlink::message_t &payload,
+                                 actor_push_yield_req_t &value)
+{
+    from_stream_payload (payload, value);
+}
+
+inline void to_json (nlohmann::json &json, const actor_push_notify_t &value)
+{
+    json = nlohmann::json{{"actor_id", value.actor_id},
+                          {"request_id", value.request_id},
+                          {"value", value.value},
+                          {"node_rid", value.node_rid}};
+}
+
+inline void from_json (const nlohmann::json &json, actor_push_notify_t &value)
+{
+    value.actor_id = json.value ("actor_id", "");
+    value.request_id = json.value ("request_id", "");
+    value.value = json.value ("value", "");
+    value.node_rid = json.value ("node_rid", "");
+}
+
+inline zlink::message_t to_stream_payload (const actor_push_notify_t &value)
+{
+    return zlink::message_t::from_json (value);
+}
+
+inline void from_stream_payload (const zlink::message_t &payload, actor_push_notify_t &value)
+{
+    value = payload.parse_json<actor_push_notify_t> ();
+}
+
+inline void from_stream_payload (zlink::stream_connector::codec_t,
+                                 const zlink::message_t &payload,
+                                 actor_push_notify_t &value)
+{
+    from_stream_payload (payload, value);
+}
+
 inline void to_json (nlohmann::json &json, const actor_yield_reply_t &value)
 {
     json = nlohmann::json{{"scenario_id", value.scenario_id},
@@ -551,6 +692,26 @@ inline void from_json (const nlohmann::json &json, yield_dispatch_reply_t &value
     value.spot_rid = json.value ("spot_rid", "");
     value.node_rid = json.value ("node_rid", "");
     value.marker = json.value ("marker", "");
+}
+
+inline void to_json (nlohmann::json &json, const yield_timeout_reply_t &value)
+{
+    json = nlohmann::json{{"scenario_id", value.scenario_id},
+                          {"request_id", value.request_id},
+                          {"spot_rid", value.spot_rid},
+                          {"node_rid", value.node_rid},
+                          {"timed_out", value.timed_out},
+                          {"error", value.error}};
+}
+
+inline void from_json (const nlohmann::json &json, yield_timeout_reply_t &value)
+{
+    value.scenario_id = json.value ("scenario_id", "");
+    value.request_id = json.value ("request_id", "");
+    value.spot_rid = json.value ("spot_rid", "");
+    value.node_rid = json.value ("node_rid", "");
+    value.timed_out = json.value ("timed_out", false);
+    value.error = json.value ("error", "");
 }
 
 template <typename T> inline zlink::message_t to_stream_payload (const T &value)

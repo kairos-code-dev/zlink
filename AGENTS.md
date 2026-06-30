@@ -299,6 +299,24 @@ low-level escape hatch를 넣지 않는다.
 - 한 언어만 다른 호출 표면을 사용함
 - 문서의 표준 예시와 실제 샘플 코드가 달라짐
 
+### 6. Codec 책임 경계
+
+framework message codec은 메시지 타입마다 호출자가 등록하는 확장 지점이 아니다.
+기본 직렬화 방식은 framework가 제공하는 typed JSON serializer 경로를 우선 사용한다.
+사용자 코드, 샘플, E2E, 언어별 framework 구현에서 메시지별 codec 등록 함수를 새로 만들거나
+되살리거나 흉내 내지 않는다.
+
+금지되는 접근:
+
+- `MessageA`는 JSON, `MessageB`는 다른 codec처럼 메시지마다 codec을 등록하는 public API 추가
+- 샘플이나 handler마다 codec option, serializer registry, encoder 함수를 반복해서 넘기는 방식
+- 기본 JSON 직렬화 실패를 호출부의 `encode`, `decode`, `serialize`, `parse` 호출로 우회하는 방식
+- 제거된 메시지별 codec 등록 함수를 compatibility helper, adapter, test utility로 다시 도입하는 방식
+
+typed JSON serializer 경로로 해결되지 않으면 호출자 코드에 codec 책임을 밀어내지 말고,
+framework 내부의 기본 직렬화 연결이 끊긴 지점을 고친다. 정말 새 codec 정책이 필요하면
+먼저 spec 또는 draft에서 공개 계약으로 설계할지 분리해 검토한다.
+
 ---
 
 ## POSD 설계 원칙

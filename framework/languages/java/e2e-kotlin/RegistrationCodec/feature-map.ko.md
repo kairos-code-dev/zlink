@@ -25,11 +25,11 @@ Gradle project로 실행 process를 나눴다. client scenario/support 파일과
 ## 포팅 구조 상태
 
 현재 Kotlin RegistrationCodec E2E는 `.NET` 기준 role/project 분리와 scenario/support 파일 분리를
-끝낸 구현이다. `porting-inventory.ko.md`에 남은 `pending`/`gap` 항목이 없으면 완료 config로 본다.
+끝낸 구현이다. `porting-inventory.ko.md`에는 완료 구조를 막는 `pending`/`gap` 항목이 없다.
 
 ## 검증 결과
 
-- `logs/20260629-165219-563294`: `timeout 420s framework/languages/java/e2e-kotlin/RegistrationCodec/run_e2e.sh`
+- `logs/20260630-123407-4013823`: `timeout 420s framework/languages/java/e2e-kotlin/RegistrationCodec/run_e2e.sh`
   실행 결과 role별 Gradle project runner, client scenario/support 분리 구조, `Server/Main` package
   분리와 CLI option parser, `Server/JsonOnlyPeer` package 분리와 CLI option parser,
   `Server/CodecRequester` role이 통과했다.

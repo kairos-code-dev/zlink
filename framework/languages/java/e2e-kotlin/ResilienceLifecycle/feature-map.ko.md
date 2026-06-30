@@ -8,7 +8,7 @@ public API 또는 harness 제어가 더 필요한 항목을 구분한다. 실행
 role별 binary를 시작한다. 구현된 client scenario는 `.NET` 기준 scenario 이름에 맞춘 Kotlin file로
 분리했다. Provider role application, evidence/admin endpoint, state, dispatch-error observer,
 request/send handler와 Registry role application/configuration도 Kotlin code path로 옮겼다. Shared
-message type도 Kotlin source다. `logs/20260629-183905-946498` runner에서 `RL-A1`, `RL-A2`,
+message type도 Kotlin source다. `logs/20260630-125201-4081089` runner에서 `RL-A1`, `RL-A2`,
 `RL-A3`, `RL-A5`, `RL-B1`, `RL-B3`, `RL-B4`, `RL-B5`, `RL-B6`, `RL-C1`, `RL-C3`, `RL-D1`,
 `RL-D3`, `RL-D5` marker와 각 client mode의 `resilience-lifecycle kotlin e2e result=passed`를
 확인했다.

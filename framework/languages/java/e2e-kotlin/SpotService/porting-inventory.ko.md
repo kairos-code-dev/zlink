@@ -39,6 +39,14 @@ Session evidence endpoint에는 `/evidence/wait`를 추가했고 `logs/20260630-
 actor-session mode에서 `SM-B1`, `SM-B3`, `SM-B7`, `SM-D1` marker와 함께 확인했다. Session의
 control/stage/multi-node 세부 parity는 아직 완료되지 않았다.
 
+최신 live checkout에서는 public `actor.context().boundSession().send(...)` 경로가 stream session rid로
+직접 frame을 보내도록 runtime을 수정했다. `logs/20260630-121648-3951366` focused `actor-session`
+runner에서 `SM-B1`, `SM-B3`, `SM-B5`, `SM-B6`, `SM-B7`, `SM-B8`, `SM-D1`, `SM-D3`,
+`SM-D4`, `SM-D5`, `SM-D6`, `SM-D7`, `SM-D8`, `SM-D9`, `SM-D10`, `SM-D11`, `SM-D13`과
+focused 통과 marker를 확인했다. 이어 `logs/20260630-121736-3954627` full runner에서 구현된 mode와
+최종 `spot-service kotlin e2e result=passed` marker를 확인했다. 이 수정은 private/raw 우회 없이
+기존 public bound-session contract의 runtime 전달 경로를 바로잡는다.
+
 ## Scenario 상태
 
 | scenario | .NET 기준 파일 | Kotlin 현재 대응 | 상태 | 비고 |

@@ -5,30 +5,27 @@
 공통 문서: `framework/doc/framework/common/e2e/config-6-discovery-registry-ha.ko.md`
 
 현재 Kotlin DiscoveryRegistryHa E2E는 `Shared`, `Client`, `Server/Registry`, `Server/Provider`,
-`Server/Embedded` Gradle project로 process 역할을 나눠 실행한다. 지원 코드 대부분은 아직
-`src/main/java`에 있고 Kotlin 코드는 role entry point만 담당한다. 계획 문서는 `.NET` 기준처럼
-`Shared`, `Client`, `Server/Registry`, `Server/Provider`, `Server/Consumer`, `Server/Probe`,
-`Server/Embedded` project와 Kotlin code path 중심의 scenario/support 파일 분리를 완료 조건으로
-삼는다.
+`Server/Consumer`, `Server/Probe`, `Server/Embedded` Gradle project로 process 역할을 나눠 실행한다.
+client scenario dispatcher, scenario ID별 실행 파일, shared message 타입, registry/provider/consumer/probe/embedded
+role support는 Kotlin source에 있고, 일부 CLI option parser만 Java source로 유지한다.
 
 상태 값:
 
 - `done`: 현재 파일이 목표 위치와 의미를 만족한다.
-- `pending`: 현재 구현은 있으나 `.NET` 기준 위치와 파일 책임으로 아직 재분류하지 않았다.
 - `not-needed`: Kotlin 구조에서 같은 파일 단위가 필요 없으며 비고에 근거를 적었다.
 - `gap`: public contract 또는 runtime 지원이 없어 완료로 주장할 수 없다.
 
 | .NET 기준 파일 | Kotlin 대응 파일 | 분류 | 상태 | 비고 |
 |----------------|------------------|------|------|------|
 | `.gitignore` | `.gitignore` | config-root | done | Gradle 산출물과 logs 제외는 유지한다. |
-| `feature-map.ko.md` | `feature-map.ko.md` | docs | done | role별 Gradle project runner 검증 결과와 남은 Kotlin scenario/support 분리 범위를 반영했다. |
+| `feature-map.ko.md` | `feature-map.ko.md` | docs | done | role별 Gradle project runner 검증 결과와 Kotlin scenario/support 분리 완료 상태를 반영했다. |
 | `run_e2e.sh` | `run_e2e.sh` | runner | done | role별 installDist binary를 시작하고 readiness, cleanup, 실패 로그 출력을 수행한다. |
 | `Shared/DiscoveryRegistryHa.Shared.csproj` | `Shared/build.gradle.kts` | build | done | Shared Gradle project를 만들고 client/server role project가 의존한다. |
 | `Shared/Messages.cs` | `Shared/src/main/kotlin/systems/zlink/e2e/kotlin/discoveryregistryha/Messages.kt` | shared | done | request/reply/channel 타입을 Kotlin shared source로 옮겼고 Java role code가 쓰는 `Contracts` JVM surface는 유지했다. |
 | `Client/DiscoveryRegistryHa.Client.csproj` | `Client/build.gradle.kts` | build | done | Client application project를 만들었다. |
 | `Client/Program.cs` | `Client/src/main/kotlin/systems/zlink/e2e/kotlin/discoveryregistryha/Program.kt` | client-entry | done | Client binary entry point가 client application만 실행한다. |
 | `Client/Support/ClientOptions.cs` | `Client/src/main/java/systems/zlink/e2e/kotlin/discoveryregistryha/ClientOptions.java` | support | done | client scenario, registry, consumer, probe, expected rid, log dir 입력을 role CLI option으로 파싱한다. |
-| `Client/Support/DiscoveryApiResult.cs` | `Client/src/main/kotlin/systems/zlink/e2e/kotlin/discoveryregistryha/client/Support/DiscoveryApiResult.kt` | support | done | `.NET` 대응 support record를 Kotlin data class로 추가했다. 현재 Kotlin scenario는 public registry query와 probe helper를 직접 사용하므로 이 타입은 후속 HTTP support 확장 지점으로 남긴다. |
+| `Client/Support/DiscoveryApiResult.cs` | `Client/src/main/kotlin/systems/zlink/e2e/kotlin/discoveryregistryha/client/Support/DiscoveryApiResult.kt` | support | done | `.NET` 대응 support record를 Kotlin data class로 추가했다. probe HTTP 응답을 typed result로 읽을 때 사용한다. |
 | `Client/Support/ScenarioAssert.cs` | `Client/src/main/kotlin/systems/zlink/e2e/kotlin/discoveryregistryha/client/Support/ScenarioAssert.kt` | support | done | scenario assertion helper를 Kotlin support로 분리했다. HTTP/probe/messaging wait helper는 `ClientScenarioContext.kt`가 맡는다. |
 | `Client/Scenarios/BasicDiscoveryScenario.cs` | `Client/src/main/kotlin/systems/zlink/e2e/kotlin/discoveryregistryha/client/Scenarios/BasicDiscoveryScenario.kt` | scenario | done | DR-A1. Kotlin scenario file이 shared context를 통해 member wait와 messaging 검증을 실행한다. |
 | `Client/Scenarios/DrA2ClusterBridgeScenario.cs` | `Client/src/main/kotlin/systems/zlink/e2e/kotlin/discoveryregistryha/client/Scenarios/DrA2ClusterBridgeScenario.kt` | scenario | done | DR-A2. Kotlin scenario file이 shared context를 통해 peer 합산 view와 messaging 검증을 실행한다. |

@@ -9,6 +9,7 @@ class EvidenceStore(
     private val handlerDelayMillis: Long?,
 ) {
     private val entries = mutableListOf<EvidenceEntry>()
+    private val monitor = Object()
 
     fun accepts(topic: String): Boolean = topics.contains(topic)
 
@@ -25,7 +26,6 @@ class EvidenceStore(
         }
     }
 
-    @Synchronized
     fun record(
         marker: String,
         topic: String,
@@ -33,10 +33,44 @@ class EvidenceStore(
         sequence: Int,
         value: String,
     ) {
-        entries += EvidenceEntry(marker, subscriberRid, topic, scenario, sequence, value)
+        synchronized(monitor) {
+            entries += EvidenceEntry(marker, subscriberRid, topic, scenario, sequence, value)
+            monitor.notifyAll()
+        }
     }
 
-    @Synchronized
     fun snapshot(): EvidenceSnapshot =
-        EvidenceSnapshot(subscriberRid, entries.toList())
+        synchronized(monitor) {
+            EvidenceSnapshot(subscriberRid, entries.toList())
+        }
+
+    fun waitFor(
+        marker: String?,
+        scenario: String?,
+        sequence: Int?,
+        valueContains: String?,
+        timeoutMillis: Long,
+    ): EvidenceSnapshot {
+        val deadline = System.nanoTime() + timeoutMillis * 1_000_000L
+        synchronized(monitor) {
+            while (System.nanoTime() < deadline) {
+                if (entries.any { entry ->
+                    (marker == null || entry.marker == marker) &&
+                        (scenario == null || entry.scenario == scenario) &&
+                        (sequence == null || entry.sequence == sequence) &&
+                        (valueContains == null || entry.value.contains(valueContains))
+                }) {
+                    return EvidenceSnapshot(subscriberRid, entries.toList())
+                }
+                val remainingMillis = ((deadline - System.nanoTime()) / 1_000_000L).coerceAtLeast(1L)
+                try {
+                    monitor.wait(remainingMillis.coerceAtMost(250L))
+                } catch (error: InterruptedException) {
+                    Thread.currentThread().interrupt()
+                    throw IllegalStateException("interrupted while waiting for subscriber evidence", error)
+                }
+            }
+            throw IllegalStateException("timed out waiting for subscriber evidence")
+        }
+    }
 }

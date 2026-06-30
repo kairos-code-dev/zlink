@@ -3,6 +3,7 @@ package systems.zlink.e2e.kotlin.pubsub.client.Support
 import com.fasterxml.jackson.databind.ObjectMapper
 import com.fasterxml.jackson.module.kotlin.readValue
 import java.net.URI
+import java.net.URLEncoder
 import java.net.http.HttpClient
 import java.net.http.HttpRequest
 import java.net.http.HttpResponse
@@ -96,8 +97,11 @@ class ScenarioContext(
         for (sequence in 0 until 12) {
             publish("all", EventNotify("ps-a1", sequence, "fanout-$sequence"))
         }
-        val common = commonSequences("ps-a1", setOf("sub-1", "sub-2", "sub-3"))
-        ensure(hasContiguousRun(common, 4), "PS-A1 did not observe a shared contiguous sequence")
+        for (rid in listOf("sub-1", "sub-2", "sub-3")) {
+            for (sequence in 0 until 4) {
+                waitForEvent(rid, "ps-a1", sequence)
+            }
+        }
         println("scenario PS-A1 passed")
     }
 
@@ -168,38 +172,8 @@ class ScenarioContext(
         ensure(response.statusCode() in 200..299, "publisher returned HTTP ${response.statusCode()}: ${response.body()}")
     }
 
-    private fun commonSequences(
-        scenario: String,
-        subscriberRids: Set<String>,
-    ): List<Int> {
-        val deadline = System.nanoTime() + EVIDENCE_TIMEOUT.toNanos()
-        while (System.nanoTime() < deadline) {
-            var common: MutableList<Int>? = null
-            for (rid in subscriberRids) {
-                val sequences = snapshot(rid).entries
-                    .filter { it.scenario == scenario }
-                    .map { it.sequence }
-                    .distinct()
-                    .sorted()
-                if (common == null) {
-                    common = sequences.toMutableList()
-                } else {
-                    common.retainAll(sequences.toSet())
-                }
-            }
-            val current = common
-            if (current != null && hasContiguousRun(current, 4)) {
-                return current
-            }
-            sleep(100)
-        }
-        return emptyList()
-    }
-
     private fun waitForAnyEvent(subscriberRid: String, scenario: String) {
-        waitUntil {
-            snapshot(subscriberRid).entries.any { it.scenario == scenario }
-        }
+        waitForEvidence(subscriberRid, marker = "EventNotify", scenario = scenario)
     }
 
     private fun waitForEvent(
@@ -207,27 +181,46 @@ class ScenarioContext(
         scenario: String,
         sequence: Int,
     ) {
-        waitUntil { hasEvent(snapshot(subscriberRid), scenario, sequence) }
+        waitForEvidence(subscriberRid, marker = "EventNotify", scenario = scenario, sequence = sequence)
     }
 
     private fun waitForDispatchError(subscriberRid: String, packetName: String) {
-        waitUntil {
-            snapshot(subscriberRid).entries.any {
-                it.marker == "DispatchError" &&
-                    it.value.contains("HANDLER_MISSING") &&
-                    it.value.contains("DROP") &&
-                    it.value.contains(packetName)
-            }
-        }
+        waitForEvidence(
+            subscriberRid,
+            marker = "DispatchError",
+            valueContains = "HANDLER_MISSING/DROP/$packetName",
+        )
+    }
+
+    private fun waitForEvidence(
+        subscriberRid: String,
+        marker: String,
+        scenario: String? = null,
+        sequence: Int? = null,
+        valueContains: String? = null,
+    ): EvidenceSnapshot {
+        val endpoint = subscriberEndpoint(subscriberRid)
+        val query = buildList {
+            add("marker=${encode(marker)}")
+            scenario?.let { add("scenario=${encode(it)}") }
+            sequence?.let { add("sequence=$it") }
+            valueContains?.let { add("contains=${encode(it)}") }
+            add("timeoutMs=${EVIDENCE_TIMEOUT.toMillis()}")
+        }.joinToString("&")
+        val request = HttpRequest.newBuilder(URI.create("$endpoint/evidence/wait?$query"))
+            .timeout(EVIDENCE_TIMEOUT.plusSeconds(5))
+            .GET()
+            .build()
+        val response = http.send(request, HttpResponse.BodyHandlers.ofString())
+        ensure(
+            response.statusCode() in 200..299,
+            "subscriber $subscriberRid evidence wait failed with HTTP ${response.statusCode()}: ${response.body()}",
+        )
+        return json.readValue(response.body())
     }
 
     private fun snapshot(subscriberRid: String): EvidenceSnapshot {
-        val endpoint = when (subscriberRid) {
-            "sub-1" -> options.sub1Http
-            "sub-2" -> options.sub2Http
-            "sub-3" -> options.sub3Http
-            else -> throw IllegalArgumentException("unknown subscriber $subscriberRid")
-        }
+        val endpoint = subscriberEndpoint(subscriberRid)
         val request = HttpRequest.newBuilder(URI.create("$endpoint/evidence"))
             .timeout(Duration.ofSeconds(3))
             .GET()
@@ -235,6 +228,14 @@ class ScenarioContext(
         val response = http.send(request, HttpResponse.BodyHandlers.ofString())
         return json.readValue(response.body())
     }
+
+    private fun subscriberEndpoint(subscriberRid: String): String =
+        when (subscriberRid) {
+            "sub-1" -> options.sub1Http
+            "sub-2" -> options.sub2Http
+            "sub-3" -> options.sub3Http
+            else -> throw IllegalArgumentException("unknown subscriber $subscriberRid")
+        }
 
     private fun hasEvent(
         snapshot: EvidenceSnapshot,
@@ -246,19 +247,6 @@ class ScenarioContext(
                 it.scenario == scenario &&
                 it.sequence == sequence
         }
-
-    private fun hasContiguousRun(sequences: List<Int>, minLength: Int): Boolean {
-        var run = 0
-        var previous = Int.MIN_VALUE
-        for (value in sequences.distinct().sorted()) {
-            run = if (value == previous + 1) run + 1 else 1
-            if (run >= minLength) {
-                return true
-            }
-            previous = value
-        }
-        return false
-    }
 
     private fun waitUntil(check: () -> Boolean) {
         val deadline = System.nanoTime() + EVIDENCE_TIMEOUT.toNanos()
@@ -304,6 +292,9 @@ class ScenarioContext(
             throw IllegalStateException("sleep interrupted", error)
         }
     }
+
+    private fun encode(value: String): String =
+        URLEncoder.encode(value, Charsets.UTF_8)
 
     private class PublishRequest() {
         var topic: String = ""

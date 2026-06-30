@@ -12,7 +12,6 @@ role별 package, scenario/support 파일, CLI option parser 책임 분리는 `.N
 상태 값:
 
 - `done`: 현재 파일이 목표 위치와 의미를 만족한다.
-- `pending`: 현재 구현은 있으나 `.NET` 기준 위치와 파일 책임으로 아직 재분류하지 않았다.
 - `not-needed`: Kotlin 구조에서 같은 파일 단위가 필요 없으며 비고에 근거를 적었다.
 - `gap`: public contract 또는 runtime 지원이 없어 완료로 주장할 수 없다.
 
@@ -22,9 +21,9 @@ role별 package, scenario/support 파일, CLI option parser 책임 분리는 `.N
 | `feature-map.ko.md` | `feature-map.ko.md` | docs | done | role별 Gradle project runner 검증 결과와 완료 상태를 반영했다. |
 | `run_e2e.sh` | `run_e2e.sh` | runner | done | role별 installDist binary를 시작하고 readiness, cleanup, 실패 로그 출력을 수행한다. |
 | `Shared/RegistrationCodec.Shared.csproj` | `Shared/build.gradle.kts` | build | done | Shared Gradle project를 만들고 client/server role project가 의존한다. |
-| `Shared/Messages.cs` | `Shared/src/main/kotlin/systems/zlink/e2e/kotlin/registrationcodec/Contracts.kt` | shared | done | request/reply/command/evidence 타입이 Shared project로 이동했다. package 이름 정리는 별도 책임 분리 작업으로 남긴다. |
+| `Shared/Messages.cs` | `Shared/src/main/kotlin/systems/zlink/e2e/kotlin/registrationcodec/Contracts.kt` | shared | done | request/reply/command/evidence 타입이 Shared project에 있다. 파일 이름은 Kotlin 기존 contract naming을 유지한다. |
 | `Client/RegistrationCodec.Client.csproj` | `Client/build.gradle.kts` | build | done | Client application project를 만들었다. |
-| `Client/Program.cs` | `Client/src/main/kotlin/systems/zlink/e2e/kotlin/registrationcodec/Program.kt` | client-entry | done | Client binary entry point가 client application만 실행한다. package 이름 정리는 별도 책임 분리 작업으로 남긴다. |
+| `Client/Program.cs` | `Client/src/main/kotlin/systems/zlink/e2e/kotlin/registrationcodec/Program.kt` | client-entry | done | Client binary entry point가 client application만 실행한다. |
 | `Client/Support/ClientOptions.cs` | `Client/src/main/kotlin/systems/zlink/e2e/kotlin/registrationcodec/client/Support/ClientOptions.kt` | support | done | Client endpoint, evidence endpoint, log dir, mode를 Spring application CLI argument로 파싱한다. |
 | `Client/Support/CodecScenarioResult.cs` | `Client/src/main/kotlin/systems/zlink/e2e/kotlin/registrationcodec/client/Support/CodecScenarioResult.kt` | support | done | codec scenario response/result helper를 client support로 분리했다. |
 | `Client/Support/EvidenceText.cs` | `Client/src/main/kotlin/systems/zlink/e2e/kotlin/registrationcodec/client/Support/EvidenceText.kt` | support | done | evidence 조회/검증 helper를 client support로 분리했다. |
@@ -69,7 +68,7 @@ role별 package, scenario/support 파일, CLI option parser 책임 분리는 `.N
 | `Server/JsonOnlyPeer/Infrastructure/EvidenceStore.cs` | `Server/JsonOnlyPeer/src/main/kotlin/systems/zlink/e2e/kotlin/registrationcodec/jsononlypeer/Infrastructure/EvidenceStore.kt` | infrastructure | done | evidence store를 JsonOnlyPeer role infrastructure package로 옮겼다. |
 | `Server/JsonOnlyPeer/Infrastructure/Probes.cs` | `Server/JsonOnlyPeer/src/main/kotlin/systems/zlink/e2e/kotlin/registrationcodec/jsononlypeer/Infrastructure/Probes.kt` | infrastructure | done | DI probe dependencies를 JsonOnlyPeer role infrastructure package로 옮겼다. |
 | `Server/InvalidDuplicate/RegistrationCodec.InvalidDuplicate.csproj` | `Server/InvalidDuplicate/build.gradle.kts` | build | done | InvalidDuplicate role project를 만들었다. |
-| `Server/InvalidDuplicate/Program.cs` | `Server/InvalidDuplicate/src/main/kotlin/systems/zlink/e2e/kotlin/registrationcodec/Program.kt` | server-entry | done | InvalidDuplicate binary entry point가 invalid duplicate application만 실행한다. package 이름 정리는 별도 책임 분리 작업으로 남긴다. |
+| `Server/InvalidDuplicate/Program.cs` | `Server/InvalidDuplicate/src/main/kotlin/systems/zlink/e2e/kotlin/registrationcodec/Program.kt` | server-entry | done | InvalidDuplicate binary entry point가 invalid duplicate application만 실행한다. |
 | `Server/InvalidDuplicate/RegistrationCodecServerHostFactory.cs` | `Server/InvalidDuplicate/src/main/kotlin/systems/zlink/e2e/kotlin/registrationcodec/InvalidServerApplication.kt` (`InvalidDuplicateApplication`) | server-role | done | duplicate packet registration startup failure를 별도 role project에서 검증한다. |
 | `Server/InvalidDuplicate/ServerOptions.cs` | `Server/InvalidDuplicate/src/main/kotlin/systems/zlink/e2e/kotlin/registrationcodec/invalidduplicate/Configuration/ServerOptions.kt` | configuration | done | invalid server endpoint와 log dir를 CLI option으로 파싱한다. |
 | `Server/InvalidDuplicate/OperationalEndpoints.cs` | `Server/InvalidDuplicate/src/main/kotlin/systems/zlink/e2e/kotlin/registrationcodec/invalidduplicate/Endpoints/OperationalEndpoints.kt` | endpoints | not-needed | invalid duplicate role은 startup failure가 목표라 HTTP endpoint가 열리지 않아야 한다. |
@@ -84,16 +83,16 @@ role별 package, scenario/support 파일, CLI option parser 책임 분리는 `.N
 
 | 기존 Kotlin 파일 | 판단 | 목표 |
 |------------------|------|------|
-| `src/main/kotlin/.../Program.kt` | role env 분기를 제거하고 role별 project entry point로 나눴다. | package 이름과 옵션 파싱 정리를 이어서 진행한다. |
+| `src/main/kotlin/.../Program.kt` | role env 분기를 제거하고 role별 project entry point로 나눴다. | role별 binary entry point로 유지한다. |
 | `src/main/kotlin/.../ClientApplication.kt` | client framework 설정과 scenario 실행이 섞여 있다. | `Client` project의 Program/Support/Scenarios로 나눈다. |
 | `src/main/kotlin/.../ClientScenario.kt` | 모든 scenario와 helper가 한 파일에 섞여 있다. | scenario ID별 파일과 `Client/Support`로 나눈다. |
-| `src/main/kotlin/.../Contracts.kt` | shared message/evidence 타입을 `Shared` project로 옮겼다. | 파일 이름과 package 이름 정리를 이어서 진행한다. |
+| `src/main/kotlin/.../Contracts.kt` | shared message/evidence 타입을 `Shared` project로 옮겼다. | Kotlin 기존 contract naming으로 유지한다. |
 | `src/main/kotlin/.../DiDependencies.kt` | server DI lifecycle support다. | Main server handler/infrastructure로 옮긴다. |
 | `src/main/kotlin/.../Env.kt` | 전역 환경 변수 helper다. | role별 CLI option parser로 대체한다. |
 | `src/main/kotlin/.../EvidenceHttpServer.kt` | server operational endpoint다. | 각 server role의 `Endpoints/OperationalEndpoints.kt`로 옮긴다. |
 | `src/main/kotlin/.../Filters.kt` | server dispatch filter다. | server role의 `Handlers/DispatchFilters.kt`로 옮긴다. |
-| `src/main/kotlin/.../InvalidServerApplication.kt` | invalid duplicate role project로 옮겼다. | CLI option parser 전환을 이어서 진행한다. |
-| `src/main/kotlin/.../ServerApplication.kt` | `Server/Main`과 `Server/JsonOnlyPeer` project로 복제 분리했다. | JsonOnlyPeer 전용 host 정리와 CLI option parser 전환을 이어서 진행한다. |
+| `src/main/kotlin/.../InvalidServerApplication.kt` | invalid duplicate role project로 옮겼다. | duplicate registration startup failure를 만드는 최소 host로 유지한다. |
+| `src/main/kotlin/.../ServerApplication.kt` | `Server/Main`과 `Server/JsonOnlyPeer` project로 분리했다. | 각 role의 CLI option parser와 host package가 분리되어 있다. |
 | `src/main/kotlin/.../ScenarioState.kt` | server evidence store다. | 각 server role의 `Infrastructure/EvidenceStore.kt`로 옮긴다. |
 | `src/main/kotlin/.../handlers/CodecHandlers.kt` | codec handlers다. | 필요한 server role의 `Handlers/CodecHandlers.kt`로 옮긴다. |
 | `src/main/kotlin/.../handlers/RegistrationHandlers.kt` | registration/DI handlers다. | 필요한 server role의 `Handlers/RegistrationHandlers.kt`와 `DiEchoRequestHandler.kt`로 나눈다. |

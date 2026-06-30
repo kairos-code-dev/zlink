@@ -7,7 +7,7 @@ public API 또는 harness 제어가 더 필요한 항목을 구분한다. 각 ho
 
 현재 `MON-A1`, `MON-A2`, `MON-A3`, `MON-A4`, `MON-A5`, `MON-B1`, `MON-B2`, `MON-C1`, `MON-D1` client scenario는
 `Client/src/main/kotlin/.../client/scenarios/` 아래 Kotlin 파일로 분리되어 있고,
-`logs/20260630-093115-3422310` full runner에서 `Client` module binary로 통과했다. Registry, Service,
+`logs/20260630-125539-4092618` full runner에서 `Client` module binary로 통과했다. Registry, Service,
 FailoverService, FilteredService, ThrowingService, Trigger role은 각각 `Server/Registry`, `Server/Service`,
 `Server/FailoverService`, `Server/FilteredService`, `Server/ThrowingService`, `Server/Trigger` module binary로 실행한다.
 `MON-A4`는 Service admin endpoint가 public runtime socket weight를 0으로 바꾸고, Trigger socket

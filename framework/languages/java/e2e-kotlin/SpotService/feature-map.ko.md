@@ -11,6 +11,19 @@ SpotNode builder, stream connector, `ZLinkSpotPublisherClient`만 사용한다.
 draft/spec 검토 대상으로 분리한다. 공통 E2E 문서는 누락을 찾는 기준이지만, 새 public API를 추가할
 근거로만 쓰지 않는다.
 
+## 현재 live 검증 상태
+
+- `logs/20260630-121648-3951366` focused runner에서는 `ZLINK_KOTLIN_E2E_MODES=actor-session`으로
+  `SM-B1`, `SM-B3`, `SM-B5`, `SM-B6`, `SM-B7`, `SM-B8`, `SM-D1`, `SM-D3`, `SM-D4`,
+  `SM-D5`, `SM-D6`, `SM-D7`, `SM-D8`, `SM-D9`, `SM-D10`, `SM-D11`, `SM-D13`과
+  `spot-service kotlin e2e focused modes=actor-session result=passed`를 확인했다.
+- `logs/20260630-121736-3954627` full runner에서는 `spot-outbound`, `spot-to-spot`,
+  `route-mesh`, `actor-session`, `gateway-publish`, `multi-node`를 포함한 구현 mode가 통과했고,
+  최종 `spot-service kotlin e2e result=passed` marker를 확인했다.
+- 이전 `ActorPush` drop은 public `boundSession().send(...)`가 actor relay path로 frame을 다시 보내던
+  runtime 문제였다. 현재 구현은 bound session send를 stream session rid로 직접 보내며 private/raw
+  우회를 추가하지 않았다.
+
 ## 구현됨
 
 - `SM-A1`: public `ZLinkSpotManager.getOrCreate`로 user spot을 생성하고 evidence로 확인한다.

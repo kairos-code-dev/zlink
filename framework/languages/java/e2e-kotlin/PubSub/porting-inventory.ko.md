@@ -4,29 +4,28 @@
 
 공통 문서: `framework/doc/framework/common/e2e/config-3-pubsub.ko.md`
 
-현재 Kotlin PubSub E2E는 `src/main/kotlin/systems/zlink/e2e/kotlin/pubsub/` 아래 단일 Gradle
-application에서 `ZLINK_KOTLIN_E2E_ROLE` 값으로 registry, subscriber, publisher/client 역할을 바꿔
-실행한다. 계획 문서는 `.NET` 기준처럼 `Shared`, `Client`, `Server/Publisher`, `Server/Registry`,
-`Server/Subscriber` project로 역할을 나누는 것을 완료 조건으로 삼으므로, 현재 구현은 보존할 입력이지
-완료 구조가 아니다.
+현재 Kotlin PubSub E2E는 `.NET` 기준처럼 `Shared`, `Client`, `Server/Publisher`,
+`Server/Registry`, `Server/Subscriber` Gradle project로 역할을 나눈다. runner는 각 role binary를
+별도 process로 실행하고, client scenario는 publisher HTTP endpoint로 publish를 트리거한 뒤 실제
+subscriber 역할 server의 bounded `/evidence/wait`와 snapshot evidence를 확인한다.
 
 상태 값:
 
 - `done`: 현재 파일이 목표 위치와 의미를 만족한다.
-- `pending`: 현재 구현은 있으나 `.NET` 기준 위치와 파일 책임으로 아직 재분류하지 않았다.
 - `gap`: public contract 또는 runtime 지원이 없어 완료로 주장할 수 없다.
+- `not-needed`: Kotlin 구조에서는 별도 파일이 필요 없고 다른 책임 위치에서 같은 의미를 만족한다.
 
 | .NET 기준 파일 | Kotlin 대응 파일 | 분류 | 상태 | 비고 |
 |----------------|------------------|------|------|------|
 | `.gitignore` | `.gitignore` | config-root | done | Gradle 산출물과 logs 제외는 유지한다. |
-| `feature-map.ko.md` | `feature-map.ko.md` | docs | done | `.NET feature-map`의 HTTP evidence polling gap과 Kotlin의 같은 검증 경로를 함께 반영했다. |
+| `feature-map.ko.md` | `feature-map.ko.md` | docs | done | `.NET feature-map`처럼 Pub/Sub subscriber 역할 server의 bounded `/evidence/wait`를 성공 기준으로 반영했다. |
 | `run_e2e.sh` | `run_e2e.sh` | runner | done | 별도 role project binary를 시작하고 readiness, cleanup, 실패 로그 출력을 처리한다. |
 | `Shared/PubSub.Shared.csproj` | `Shared/build.gradle.kts` | build | done | Kotlin Shared project로 분리했다. |
 | `Shared/Messages.cs` | `Shared/src/main/kotlin/systems/zlink/e2e/kotlin/pubsub/shared/Messages.kt` | shared | done | 기존 `Contracts.kt`의 `EventNotify`, `EvidenceEntry`, `EvidenceSnapshot`을 Shared로 옮겼다. |
 | `Client/PubSub.Client.csproj` | `Client/build.gradle.kts` | build | done | Client application project로 분리했다. |
 | `Client/Program.cs` | `Client/src/main/kotlin/systems/zlink/e2e/kotlin/pubsub/client/Program.kt` | client-entry | done | Client는 Spring framework client를 들지 않고 publisher role HTTP endpoint를 호출한다. |
 | `Client/Support/ClientOptions.cs` | `Client/src/main/kotlin/systems/zlink/e2e/kotlin/pubsub/client/Support/ClientOptions.kt` | support | done | Client CLI option parsing으로 분리했다. |
-| `Client/Support/Evidence.cs` | `Client/src/main/kotlin/systems/zlink/e2e/kotlin/pubsub/client/Support/ScenarioContext.kt` | support | done | HTTP evidence snapshot helper를 client support context로 분리했다. |
+| `Client/Support/Evidence.cs` | `Client/src/main/kotlin/systems/zlink/e2e/kotlin/pubsub/client/Support/ScenarioContext.kt` | support | done | subscriber `/evidence/wait`와 snapshot helper를 client support context로 분리했다. |
 | `Client/Support/ScenarioAssert.cs` | `Client/src/main/kotlin/systems/zlink/e2e/kotlin/pubsub/client/Support/ScenarioContext.kt` | support | done | assertion과 wait helper를 client support context로 분리했다. |
 | `Client/Support/ServerProcessLauncher.cs` | `run_e2e.sh` | support | not-needed | process orchestration은 Kotlin client helper가 아니라 shell runner가 담당한다. |
 | `Client/Scenarios/FanoutBasicDeliveryScenario.cs` | `Client/src/main/kotlin/systems/zlink/e2e/kotlin/pubsub/client/Scenarios/FanoutBasicDeliveryScenario.kt` | scenario | done | PS-A1 scenario entry가 support context를 호출한다. |
@@ -61,7 +60,7 @@ application에서 `ZLINK_KOTLIN_E2E_ROLE` 값으로 registry, subscriber, publis
 | `Server/Subscriber/Configuration/HostFactorySupport.cs` | `Server/Subscriber/src/main/kotlin/systems/zlink/e2e/kotlin/pubsub/subscriber/Configuration/SubscriberOptions.kt` | configuration | done | Kotlin subscriber role은 host factory helper 대신 `SubscriberOptions`로 필요한 실행 설정을 주입한다. |
 | `Server/Subscriber/Configuration/ServerArgs.cs` | `Server/Subscriber/src/main/kotlin/systems/zlink/e2e/kotlin/pubsub/subscriber/Configuration/SubscriberOptions.kt` | configuration | done | 공통 server argument parser 역할은 `SubscriberOptions.parse()`가 맡는다. |
 | `Server/Subscriber/Configuration/SubscriberOptions.cs` | `Server/Subscriber/src/main/kotlin/systems/zlink/e2e/kotlin/pubsub/subscriber/Configuration/SubscriberOptions.kt` | configuration | done | subscriber rid, topic, endpoint, delay, HTTP endpoint, log dir를 CLI option으로 파싱한다. |
-| `Server/Subscriber/OperationalEndpoints.cs` | `Server/Subscriber/src/main/kotlin/systems/zlink/e2e/kotlin/pubsub/subscriber/Endpoints/OperationalEndpoints.kt` | endpoints | done | 기존 `EvidenceHttpServer.kt`를 subscriber operational endpoint로 옮겼다. |
+| `Server/Subscriber/OperationalEndpoints.cs` | `Server/Subscriber/src/main/kotlin/systems/zlink/e2e/kotlin/pubsub/subscriber/Endpoints/OperationalEndpoints.kt` | endpoints | done | subscriber `/health`, `/evidence`, bounded `/evidence/wait` endpoint를 제공한다. |
 | `Server/Subscriber/EvidenceStore.cs` | `Server/Subscriber/src/main/kotlin/systems/zlink/e2e/kotlin/pubsub/subscriber/Infrastructure/EvidenceStore.kt` | infrastructure | done | 기존 `ScenarioState.kt`를 subscriber evidence store로 옮겼다. |
 | `Server/Subscriber/Handlers/EventNotifyHandler.cs` | `Server/Subscriber/src/main/kotlin/systems/zlink/e2e/kotlin/pubsub/subscriber/Handlers/EventNotifyHandler.kt` | handlers | done | 기존 `EventNotifyHandler.kt`를 subscriber handler package로 옮겼다. |
 | `Server/Subscriber/Handlers/EvidenceDispatchErrorObserver.cs` | `Server/Subscriber/src/main/kotlin/systems/zlink/e2e/kotlin/pubsub/subscriber/Program.kt` (`setMessageFlowObserver`) | handlers | done | dispatch error evidence 기록은 subscriber role dispatch observer로 둔다. |

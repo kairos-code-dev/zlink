@@ -34,7 +34,6 @@ class CodecRequesterApplication {
     @Bean
     fun requesterFramework(options: CodecRequesterOptions): ZLinkFrameworkConfigurer =
         ZLinkFrameworkConfigurer { framework ->
-            framework.codecs().addJson()
             framework.codecs().use(ZLinkProtobufCodec.defaultCodec())
             framework.codecs().use(
                 ZLinkMessagePackCodec.forPayloadTypes { type ->

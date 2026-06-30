@@ -4,6 +4,7 @@ using SupportChat.Server.Configuration;
 using SupportChat.Server.Session.Sessions;
 using Zlink.Framework.AspNetCore;
 using Zlink.Framework.Contracts.Dispatch;
+using Zlink.Samples.Logging;
 
 namespace SupportChat.Server.Session;
 
@@ -14,6 +15,10 @@ public static class SessionServerHostFactory
         SampleSessionNode session)
     {
         var builder = Host.CreateApplicationBuilder();
+        SampleLogging.Configure(
+            builder.Logging,
+            SampleLogging.DirectoryFromEnvironment("SUPPORTCHAT_LOG_DIR"),
+            "session");
         builder.Services.AddSingleton(topology);
         builder.Services.AddZLinkFramework(options =>
         {
@@ -22,7 +27,6 @@ public static class SessionServerHostFactory
                 .TraceLogFile(SampleFlowLog.Path("session"))
                 .TraceLabel("session");
             options.AddHandlersFromAssemblyOf(typeof(SessionServerHostFactory));
-            options.Codecs.AddJson();
             options.UseDiscovery().AddRegistryEndpoint(topology.RegistryRouterEndpoint);
             {
                 var channel = options.AddClientServerChannel(SampleNames.ApiChannel);

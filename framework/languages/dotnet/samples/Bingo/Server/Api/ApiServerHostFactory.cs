@@ -3,6 +3,7 @@ using Microsoft.Extensions.Hosting;
 using Zlink.Framework.AspNetCore;
 using Zlink.Framework.Codecs.Protobuf;
 using Zlink.Framework.Contracts.Dispatch;
+using Zlink.Samples.Logging;
 
 namespace Bingo.Server.Api;
 
@@ -11,6 +12,10 @@ public static class ApiServerHostFactory
     public static IHost Build(SampleTopology topology, SampleApiNode node)
     {
         var builder = Host.CreateApplicationBuilder();
+        SampleLogging.Configure(
+            builder.Logging,
+            SampleLogging.DirectoryFromEnvironment("BINGO_LOG_DIR"),
+            "api");
         builder.Services.AddZLinkFramework(options =>
         {
             options.ConfigureDispatch()

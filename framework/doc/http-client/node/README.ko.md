@@ -7,7 +7,6 @@ zlink 스타일 fluent builder로 사용하며 공개 표면은 undici 타입을
 import { ZLinkHttpClient } from '@zlink-systems/http-client';
 
 const game = await ZLinkHttpClient.create('https://game-api.example.internal')
-  .json()
   .post('/games')
   .body({ name: 'ranked-match-0611' })
   .submit<CreateGameRes>();

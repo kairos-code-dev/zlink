@@ -25,7 +25,6 @@ public final class InvalidDuplicateApplication {
     @Bean
     ZLinkFrameworkConfigurer invalidFramework(ServerOptions options) {
         return framework -> {
-            framework.codecs().addJson();
             var channel = framework.addClientServerChannel(Contracts.CHANNEL)
                 .enableServer(options.serverEndpoint());
             channel.addRequestHandler(

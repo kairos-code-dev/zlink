@@ -20,7 +20,6 @@ public sealed class BuilderContracts
 
         options.DefaultRequestTimeout = TimeSpan.FromSeconds(5);
         options.DefaultSocketSendTimeout = TimeSpan.FromSeconds(1);
-        options.Codecs.AddJson();
         options.AddHandlersFromAssemblyOf<BuilderContracts>();
         options.AddHandlersFromAssembly(typeof(BuilderContracts).Assembly);
         options.ConfigureMetadata().AddForwardedMetadataKey("trace-id");
@@ -295,14 +294,11 @@ public sealed class BuilderContracts
         }
     }
 
-    private sealed class CodecRegistryBuilder : IZLinkCodecRegistryBuilder
+    private sealed class CodecRegistryBuilder : IZLinkCodecRegistryBuilder, IZLinkCodecRegistrar
     {
         public void Use(IZLinkCodecExtension extension)
         {
-        }
-
-        public void AddJson()
-        {
+            extension.Register(this);
         }
 
         public void AddSerializer(string contentType, IZLinkMessageSerializer serializer)

@@ -14,7 +14,7 @@ internal sealed class HttpQuestProgressSynchronizer(GameQuestTopology topology) 
         var missionBaseUrl = GameQuestRouting.OwnerIndex(playerId) == 1
             ? topology.MissionBHttpBaseUrl
             : topology.MissionAHttpBaseUrl;
-        using var mission = ZLinkHttpClient.Create(missionBaseUrl).Json().Build();
+        using var mission = ZLinkHttpClient.Create(missionBaseUrl).Build();
         return (await mission.Post("/internal/sync")
             .Body(new SyncQuestProgressReq(playerId))
             .SubmitAsync<SyncQuestProgressRes>(cancellationToken)).Body;

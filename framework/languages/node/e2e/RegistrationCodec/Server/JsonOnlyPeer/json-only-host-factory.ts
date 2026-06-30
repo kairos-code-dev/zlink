@@ -48,8 +48,6 @@ function createJsonOnlyModule(options: JsonOnlyOptions, evidence: EvidenceStore)
         useFactory: () => {
           const builder = zlinkFramework();
           builder
-            .codecs()
-              .addJson()
             .configureDispatch()
               .messageFlow(ZLinkMessageFlowLogMode.KeyTransitions)
               .traceLogFile(`${options.logDir}/${options.rid}-flow.log`)

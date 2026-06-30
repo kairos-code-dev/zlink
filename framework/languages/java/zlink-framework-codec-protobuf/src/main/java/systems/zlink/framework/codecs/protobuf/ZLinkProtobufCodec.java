@@ -1,7 +1,7 @@
 package systems.zlink.framework.codecs.protobuf;
 
 import systems.zlink.framework.configuration.ZLinkCodecExtension;
-import systems.zlink.framework.configuration.ZLinkCodecRegistryBuilder;
+import systems.zlink.framework.configuration.ZLinkCodecRegistrar;
 import systems.zlink.framework.streams.ZLinkStreamCodec;
 import systems.zlink.stream.connector.ZLinkStreamEncodedPayload;
 import systems.zlink.stream.connector.ZLinkStreamTypedCodec;
@@ -27,7 +27,7 @@ public final class ZLinkProtobufCodec implements ZLinkCodecExtension, ZLinkStrea
     }
 
     @Override
-    public void register(ZLinkCodecRegistryBuilder codecs) {
+    public void register(ZLinkCodecRegistrar codecs) {
         codecs.addSerializer(
             "application/x-protobuf",
             ZLinkProtobufMessageSerializer.INSTANCE,

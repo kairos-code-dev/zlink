@@ -12,8 +12,6 @@ internal sealed class HttpClientOptions
 {
     public required string BaseUrl { get; init; }
 
-    public bool Json { get; init; }
-
     public TimeSpan Timeout { get; init; } = TimeSpan.FromMilliseconds(3000);
 
     public long MaxResponseBodySize { get; init; } = 16 * 1024 * 1024;

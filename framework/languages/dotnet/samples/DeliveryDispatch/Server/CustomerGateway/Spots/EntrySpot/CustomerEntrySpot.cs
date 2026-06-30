@@ -1,5 +1,6 @@
 using DeliveryDispatch.Server.CustomerGateway.Spots.EntrySpot.Handlers;
 using DeliveryDispatch.Shared.Contracts;
+using Microsoft.Extensions.Logging;
 using Zlink.Framework.Contracts.Messaging;
 using Zlink.Framework.Contracts.Spots;
 
@@ -7,7 +8,8 @@ namespace DeliveryDispatch.Server.CustomerGateway.Spots.EntrySpot;
 
 internal sealed class CustomerEntrySpot(
     IZLinkEntrySpotContext context,
-    CustomerActorDirectory actors) : IZLinkEntrySpot<CustomerActor>
+    CustomerActorDirectory actors,
+    ILogger<CustomerEntrySpot> logger) : IZLinkEntrySpot<CustomerActor>
 {
     public IZLinkEntrySpotContext Context { get; } = context;
 
@@ -21,7 +23,10 @@ internal sealed class CustomerEntrySpot(
         string deliveryId)
     {
         actors.Subscribe(customerId, deliveryId);
-        Console.Error.WriteLine($"deliverydispatch customer-entry: subscribed customer={customerId} delivery={deliveryId}");
+        logger.LogInformation(
+            "deliverydispatch customer-entry: subscribed customer={CustomerId} delivery={DeliveryId}",
+            customerId,
+            deliveryId);
         return new SubscribeDeliveryAccepted(deliveryId);
     }
 
@@ -33,7 +38,9 @@ internal sealed class CustomerEntrySpot(
         _ = createRequest;
         cancellationToken.ThrowIfCancellationRequested();
         actors.Register(actor);
-        Console.Error.WriteLine($"deliverydispatch customer-entry: actor created customer={actor.ActorId}");
+        logger.LogInformation(
+            "deliverydispatch customer-entry: actor created customer={ActorId}",
+            actor.ActorId);
         return ValueTask.CompletedTask;
     }
 

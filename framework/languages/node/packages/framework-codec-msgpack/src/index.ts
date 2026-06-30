@@ -3,7 +3,7 @@ import path from 'node:path';
 import {
   ZLinkEncodedPayload,
   type ZLinkCodecExtension,
-  type ZLinkCodecRegistryBuilder,
+  type ZLinkCodecRegistrar,
   type ZLinkMessageSerializer
 } from '@zlink-systems/framework';
 import {
@@ -26,7 +26,7 @@ export type ZLinkMessagePackCodecExtension = ZLinkCodecExtension & ZlinkStreamPa
 
 export function zlinkMessagePackCodec(): ZLinkMessagePackCodecExtension {
   return {
-    register(codecs: ZLinkCodecRegistryBuilder): void {
+    register(codecs: ZLinkCodecRegistrar): void {
       codecs.addSerializer(ZLINK_MESSAGEPACK_CONTENT_TYPE, createMessagePackSerializer());
       codecs.addStreamCodec(ZLINK_MESSAGEPACK_CONTENT_TYPE, this);
     },

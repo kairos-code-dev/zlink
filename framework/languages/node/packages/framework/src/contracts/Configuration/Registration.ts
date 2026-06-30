@@ -29,7 +29,12 @@ import type {
   ZLinkSocketConfig,
   ZLinkTimerOptions
 } from '../../contracts';
-import type { ZLinkCodecExtension, ZLinkCodecRegistryBuilder, ZLinkMessageSerializer } from '../Codecs';
+import type {
+  ZLinkCodecExtension,
+  ZLinkCodecRegistrar,
+  ZLinkCodecRegistryBuilder,
+  ZLinkMessageSerializer
+} from '../Codecs';
 import type {
   ZLinkDispatchOptions,
   ZLinkDispatchOptionsBuilder,
@@ -87,8 +92,6 @@ export interface ZLinkRegistrySpotRemoteAddressesRegistration {
   readonly registryEndpoint: string;
 }
 
-export type ZLinkNamedCodec = 'json';
-
 export interface ZLinkCodecSerializerRegistration {
   readonly contentType: string;
   readonly serializer: ZLinkMessageSerializer;
@@ -105,7 +108,6 @@ export interface ZLinkCodecRegistration {
 }
 
 export interface ZLinkCodecRegistryOptions {
-  readonly codecs?: readonly ZLinkNamedCodec[];
   readonly serializers?: readonly ZLinkCodecSerializerRegistration[];
   readonly streamCodecs?: readonly ZLinkStreamCodecRegistration[];
 }
@@ -409,7 +411,7 @@ class ZLinkFrameworkOptionsBuilder implements ZLinkFrameworkOptions {
   }
 
   codecs(): ZLinkCodecRegistryBuilder {
-    this.options.codecs ??= { codecs: [], serializers: [], streamCodecs: [] };
+    this.options.codecs ??= { serializers: [], streamCodecs: [] };
     return new RegistrationCodecRegistryBuilder(this.options.codecs);
   }
 
@@ -894,21 +896,19 @@ interface MutableFrameworkRegistrationOptions {
 }
 
 interface MutableCodecRegistryOptions {
-  codecs: ZLinkNamedCodec[];
   serializers: ZLinkCodecSerializerRegistration[];
   streamCodecs: ZLinkStreamCodecRegistration[];
 }
 
 function createCodecRegistry(options: ZLinkCodecRegistryOptions | undefined): RegistrationCodecRegistryBuilder {
   return new RegistrationCodecRegistryBuilder({
-    codecs: [...(options?.codecs ?? [])],
     serializers: [...(options?.serializers ?? [])],
     streamCodecs: [...(options?.streamCodecs ?? [])]
   });
 }
 
-class RegistrationCodecRegistryBuilder implements ZLinkCodecRegistryBuilder {
-  constructor(private readonly options: MutableCodecRegistryOptions = { codecs: [], serializers: [], streamCodecs: [] }) {}
+class RegistrationCodecRegistryBuilder implements ZLinkCodecRegistryBuilder, ZLinkCodecRegistrar {
+  constructor(private readonly options: MutableCodecRegistryOptions = { serializers: [], streamCodecs: [] }) {}
 
   get registeredSerializers(): ReadonlyMap<string, ZLinkMessageSerializer> {
     return new Map(this.options.serializers.map((entry) => [entry.contentType, entry.serializer]));
@@ -926,10 +926,7 @@ class RegistrationCodecRegistryBuilder implements ZLinkCodecRegistryBuilder {
   }
 
   get registeredCodecs(): readonly string[] {
-    return [
-      ...this.options.codecs,
-      ...this.options.serializers.map((entry) => entry.contentType)
-    ];
+    return this.options.serializers.map((entry) => entry.contentType);
   }
 
   use(extension: ZLinkCodecExtension): this {
@@ -961,16 +958,6 @@ class RegistrationCodecRegistryBuilder implements ZLinkCodecRegistryBuilder {
     return this;
   }
 
-  addJson(): this {
-    addNamedCodec(this.options, 'json');
-    return this;
-  }
-}
-
-function addNamedCodec(options: MutableCodecRegistryOptions, codec: ZLinkNamedCodec): void {
-  if (!options.codecs.includes(codec)) {
-    options.codecs.push(codec);
-  }
 }
 
 function normalizeCodecContentType(contentType: string): string {

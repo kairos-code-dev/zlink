@@ -26,11 +26,6 @@ inline bool env_has_topic (const std::string &topics, const std::string &topic)
 
 inline void configure_codecs (zlink::framework::codec_options_builder_t codecs)
 {
-    codecs.add_json ();
-    codecs.add_json<event_notify_t,
-                    evidence_event_t,
-                    dispatch_error_evidence_t,
-                    evidence_snapshot_t> ();
 }
 
 inline std::string kind_name (zlink::framework::dispatch_message_kind_t value)

@@ -63,7 +63,6 @@ class ServerApplication {
     @Bean
     fun serverFramework(serverOptions: ServerOptions): ZLinkFrameworkConfigurer =
         ZLinkFrameworkConfigurer { options ->
-            options.codecs().addJson()
             if (!serverOptions.jsonOnly) {
                 options.codecs().use(ZLinkProtobufCodec.defaultCodec())
                 options.codecs().use(ZLinkMessagePackCodec.forPayloadTypes(::isPackedType))

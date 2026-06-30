@@ -41,8 +41,6 @@ export async function startMultiNodeHost(args: readonly string[]): Promise<void>
                 routerChannelId: routeChannel
               }
             })
-            .codecs()
-              .addJson()
             .configureDispatch()
               .messageFlow(ZLinkMessageFlowLogMode.KeyTransitions)
               .traceLogFile(`${options.logDir}/${options.rid}-flow.log`)

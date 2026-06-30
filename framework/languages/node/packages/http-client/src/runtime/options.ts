@@ -7,7 +7,6 @@
  */
 export interface HttpClientOptions {
   readonly baseUrl: string;
-  readonly json: boolean;
   readonly timeoutMs: number;
   readonly maxResponseBodySize: number;
   readonly headers: Readonly<Record<string, string>>;

@@ -1,13 +1,15 @@
 using SupportChat.Server.Configuration;
 using SupportChat.Server.Support.Application.ConversationAssignment;
 using SupportChat.Shared.Contracts;
+using Microsoft.Extensions.Logging;
 using Zlink.Framework.Contracts.Handlers;
 
 namespace SupportChat.Server.Support.Infrastructure.ZLink.Handlers;
 
 [ZLinkHandlerGroup("support")]
 internal sealed class AssignAgentHandler(
-    AgentAssignmentService assignment)
+    AgentAssignmentService assignment,
+    ILogger<AssignAgentHandler> logger)
     : IZLinkRequestHandler<AssignAgentReq, AssignAgentRes>
 {
     public ValueTask<AssignAgentRes> HandleAsync(
@@ -16,8 +18,10 @@ internal sealed class AssignAgentHandler(
         CancellationToken cancellationToken)
     {
         _ = context;
-        Console.Error.WriteLine(
-            $"support assign: request conversation={request.ConversationId} requested={request.RequestedAgentActorId}");
+        logger.LogInformation(
+            "support assign: request conversation={ConversationId} requested={RequestedAgentActorId}",
+            request.ConversationId,
+            request.RequestedAgentActorId);
         var assigned = assignment.AssignNextAgent();
         if (assigned is null)
             return ValueTask.FromResult(new AssignAgentRes(
@@ -26,8 +30,10 @@ internal sealed class AssignAgentHandler(
                 null));
 
         _ = cancellationToken;
-        Console.Error.WriteLine(
-            $"support assign: assigned conversation={request.ConversationId} agent={assigned.ActorId}");
+        logger.LogInformation(
+            "support assign: assigned conversation={ConversationId} agent={AgentActorId}",
+            request.ConversationId,
+            assigned.ActorId);
         return ValueTask.FromResult(new AssignAgentRes(
             request.ConversationId,
             ConversationStatuses.Active,

@@ -19,13 +19,6 @@ namespace
 
 void configure_common_codecs (zlink::framework::codec_options_builder_t codecs)
 {
-    codecs.add_json ();
-    codecs.add_json<e2e::profile_request_t,
-                    e2e::profile_reply_t,
-                    e2e::workflow_request_t,
-                    e2e::workflow_reply_t,
-                    e2e::evidence_entry_t,
-                    e2e::evidence_snapshot_t> ();
 }
 
 } // namespace

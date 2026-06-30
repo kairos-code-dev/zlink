@@ -5,35 +5,27 @@ using Zlink.HttpClient;
 var options = ClientOptions.Parse(args);
 
 using var registry = ZLinkHttpClient.Create(options.RegistryUrl)
-    .Json()
     .Timeout(TimeSpan.FromMinutes(5))
     .Build();
 using var providerA = ZLinkHttpClient.Create(options.ProviderAUrl)
-    .Json()
     .Timeout(TimeSpan.FromMinutes(5))
     .Build();
 using var providerB = ZLinkHttpClient.Create(options.ProviderBUrl)
-    .Json()
     .Timeout(TimeSpan.FromMinutes(5))
     .Build();
 using var workflow = ZLinkHttpClient.Create(options.WorkflowUrl)
-    .Json()
     .Timeout(TimeSpan.FromMinutes(5))
     .Build();
 using var directConsumer = ZLinkHttpClient.Create(options.DirectConsumerUrl)
-    .Json()
     .Timeout(TimeSpan.FromMinutes(5))
     .Build();
 using var singleConsumer = ZLinkHttpClient.Create(options.SingleConsumerUrl)
-    .Json()
     .Timeout(TimeSpan.FromMinutes(5))
     .Build();
 using var discoveryConsumer = ZLinkHttpClient.Create(options.DiscoveryConsumerUrl)
-    .Json()
     .Timeout(TimeSpan.FromMinutes(5))
     .Build();
 using var backpressureConsumer = ZLinkHttpClient.Create(options.BackpressureConsumerUrl)
-    .Json()
     .Timeout(TimeSpan.FromMinutes(5))
     .Build();
 

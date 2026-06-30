@@ -7,7 +7,6 @@
 
 ```java
 HttpResponse<Report> response = ZLinkHttpClient.create("https://api.internal")
-    .json()
     .compression()
     .get("/large-report")
     .submit(Report.class)

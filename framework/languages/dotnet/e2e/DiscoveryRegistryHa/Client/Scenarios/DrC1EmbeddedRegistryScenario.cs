@@ -12,19 +12,15 @@ internal static class DrC1EmbeddedRegistryScenario
     public static async Task RunAsync(ClientOptions options)
     {
         using var reg1 = ZLinkHttpClient.Create(options.Reg1Url)
-            .Json()
             .Timeout(TimeSpan.FromSeconds(10))
             .Build();
         using var consumer = ZLinkHttpClient.Create(options.Reg1ConsumerUrl)
-            .Json()
             .Timeout(TimeSpan.FromSeconds(10))
             .Build();
         using var providerA = ZLinkHttpClient.Create(options.ProviderAUrl)
-            .Json()
             .Timeout(TimeSpan.FromSeconds(10))
             .Build();
         using var providerB = ZLinkHttpClient.Create(options.ProviderBUrl)
-            .Json()
             .Timeout(TimeSpan.FromSeconds(10))
             .Build();
 
@@ -57,7 +53,6 @@ internal static class DrC1EmbeddedRegistryScenario
     private static async Task AssertDeadRegistryFailsAsync(string reg2Url)
     {
         using var deadRegistry = ZLinkHttpClient.Create(reg2Url)
-            .Json()
             .Timeout(TimeSpan.FromMilliseconds(500))
             .Build();
         try

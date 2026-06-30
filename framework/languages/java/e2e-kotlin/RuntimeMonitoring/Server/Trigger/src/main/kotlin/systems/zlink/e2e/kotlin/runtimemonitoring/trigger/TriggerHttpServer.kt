@@ -73,7 +73,6 @@ class TriggerHttpServer(
 
     private fun requestServiceB(): String {
         val options = DefaultZLinkFrameworkOptions()
-        options.codecs().addJson()
         options.configureDispatch()
             .messageFlow(ZLinkMessageFlowLogMode.KEY_TRANSITIONS)
             .traceLogFile("${Env.get("ZLINK_KOTLIN_E2E_LOG_DIR", "logs")}/trigger-service-b-flow.log")

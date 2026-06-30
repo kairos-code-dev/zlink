@@ -44,7 +44,6 @@ internal static class SmG1Scenario
         ScenarioAssert.That(beforeSurvivor.NodeRid == "play-b", "SM-G1 play-b actor setup mismatch.");
 
         using var http = ZLinkHttpClient.Create(playAUrl)
-            .Json()
             .Timeout(TimeSpan.FromSeconds(5))
             .Build();
         var response = await http.Post("/crash").SubmitRawAsync();

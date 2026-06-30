@@ -5,27 +5,21 @@ using Zlink.HttpClient;
 var options = ClientOptions.Parse(args);
 
 using var gateway = ZLinkHttpClient.Create(options.GatewayUrl)
-    .Json()
     .Timeout(TimeSpan.FromMinutes(5))
     .Build();
 using var playA = ZLinkHttpClient.Create(options.PlayAUrl)
-    .Json()
     .Timeout(TimeSpan.FromMinutes(5))
     .Build();
 using var playB = ZLinkHttpClient.Create(options.PlayBUrl)
-    .Json()
     .Timeout(TimeSpan.FromMinutes(5))
     .Build();
 using var multiA = ZLinkHttpClient.Create(options.MultiAUrl)
-    .Json()
     .Timeout(TimeSpan.FromMinutes(5))
     .Build();
 using var multiB = ZLinkHttpClient.Create(options.MultiBUrl)
-    .Json()
     .Timeout(TimeSpan.FromMinutes(5))
     .Build();
 using var sessionA = ZLinkHttpClient.Create(options.SessionAUrl)
-    .Json()
     .Timeout(TimeSpan.FromMinutes(5))
     .Build();
 

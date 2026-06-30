@@ -1,0 +1,67 @@
+/* SPDX-License-Identifier: MPL-2.0 */
+#pragma once
+
+#include "../../Shared/yield_dispatch_contracts.hpp"
+#include "../Support/scenario_assert.hpp"
+#include "yield_actor_scenario_context.hpp"
+
+#include <zlink/stream_connector.hpp>
+
+#include <chrono>
+#include <future>
+#include <iostream>
+#include <string>
+#include <thread>
+
+namespace zlink::framework::e2e::yield_dispatch::client
+{
+
+template <typename TConnector>
+std::string run_yd_b3_actor_join_yield_scenario (
+  TConnector &connector,
+  TConnector &observer,
+  const yield_actor_scenario_context_t &actors)
+{
+    const auto request_id = unique_id ("YD-B3");
+    std::promise<zlink::stream_connector::result_t<actor_yield_reply_t>>
+      actor_join_promise;
+    auto actor_join = actor_join_promise.get_future ();
+    connector.request (actor_join_yield_req_t{.request_id = request_id,
+                                              .target_node_rid = "play-a"})
+      .packet_name (actor_join_yield_req_t::packet_name)
+      .metadata (actor_id_metadata, actors.actor_a)
+      .timeout (std::chrono::milliseconds (30000))
+      .template submit<actor_yield_reply_t> (
+        [&] (zlink::stream_connector::result_t<actor_yield_reply_t> result) {
+            actor_join_promise.set_value (std::move (result));
+        });
+    std::this_thread::sleep_for (std::chrono::milliseconds (75));
+    auto actor_fast =
+      observer.request (actor_fast_req_t{.request_id = request_id, .marker = "b3-fast"})
+        .packet_name (actor_fast_req_t::packet_name)
+        .metadata (actor_id_metadata, actors.actor_b)
+        .timeout (std::chrono::milliseconds (30000))
+        .template submit<actor_yield_reply_t> ();
+    ensure (static_cast<bool> (actor_fast), "YD-B3 ActorFastReq failed");
+    auto actor_join_reply = actor_join.get ();
+    ensure (static_cast<bool> (actor_join_reply), "YD-B3 ActorJoinYieldReq failed");
+    auto evidence =
+      connector.request (yield_evidence_req_t{.request_id = request_id})
+        .packet_name (yield_evidence_req_t::packet_name)
+        .metadata (target_node_rid_metadata, "play-a")
+        .timeout (std::chrono::milliseconds (30000))
+        .template submit<yield_evidence_reply_t> ();
+    ensure (static_cast<bool> (evidence), "YD-B3 evidence request failed");
+    ensure (contains_in_order (evidence.value ().evidence, request_id,
+                               {"actor-join-yield-started",
+                                "actor-join-yield-released",
+                                "actor-fast-started",
+                                "actor-fast-completed",
+                                "actor-join-yield-resumed",
+                                "actor-join-yield-completed"}),
+            "YD-B3 marker order mismatch");
+    std::cout << "scenario YD-B3 passed\n";
+    return request_id;
+}
+
+} // namespace zlink::framework::e2e::yield_dispatch::client

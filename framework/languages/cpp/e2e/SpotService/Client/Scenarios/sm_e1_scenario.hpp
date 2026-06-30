@@ -23,11 +23,9 @@ inline void run_sm_e1_scenario (const std::string &play_http_endpoint,
 
     auto play_a = zlink::http_client::client_t::create ()
                     .base_url (play_http_endpoint)
-                    .json ()
                     .build ();
     auto play_b = zlink::http_client::client_t::create ()
                     .base_url (play_b_http_endpoint)
-                    .json ()
                     .build ();
     constexpr auto spot_rid = "user:play-b:sm-e1-missing";
     auto created =

@@ -71,7 +71,6 @@ public final class Program {
         return options -> {
             String nodeRid = state.nodeRid();
             String logDir = Env.get("ZLINK_JAVA_E2E_LOG_DIR", "logs");
-            options.codecs().addJson();
             options.addSpotRemoteAddressResolver(SpotRouteResolver.class);
             options.useDiscovery().addRegistryEndpoint(Env.get("ZLINK_JAVA_E2E_REGISTRY_ROUTER"));
             options.configureDispatch()

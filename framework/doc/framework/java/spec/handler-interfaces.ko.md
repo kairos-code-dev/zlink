@@ -625,8 +625,6 @@ public interface ZLinkDiscoveryBuilder {
 
 public interface ZLinkCodecRegistryBuilder {
     void use(ZLinkCodecExtension extension);
-    void addJson();
-    void addSerializer(String contentType, ZLinkMessageSerializer serializer);
 }
 
 public interface ZLinkMetadataPolicyBuilder {

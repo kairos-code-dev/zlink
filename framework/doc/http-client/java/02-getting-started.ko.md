@@ -18,7 +18,7 @@ import systems.zlink.httpclient.ZLinkHttpClient;
 ## 첫 요청
 
 ```java
-try (ZLinkHttpClient client = ZLinkHttpClient.create("http://127.0.0.1:18080").json().build()) {
+try (ZLinkHttpClient client = ZLinkHttpClient.create("http://127.0.0.1:18080").build()) {
     HttpResponse<PlayerProfile> player =
         client.get("/players/7281").submit(PlayerProfile.class).toCompletableFuture().join();
     System.out.println(player.body().name());
@@ -35,7 +35,6 @@ try (ZLinkHttpClient client = ZLinkHttpClient.create("http://127.0.0.1:18080").j
 
 ```java
 HttpResponse<CreateGameRes> res = ZLinkHttpClient.create("https://game-api.example.internal")
-    .json()
     .post("/games")
     .body(new CreateGameReq("ranked-match-0611"))
     .submit(CreateGameRes.class)
@@ -46,7 +45,7 @@ HttpResponse<CreateGameRes> res = ZLinkHttpClient.create("https://game-api.examp
 
 ```java
 Leaderboard board = ZLinkHttpClient.create("http://127.0.0.1:18080")
-    .json().get("/leaderboard").fetch(Leaderboard.class);
+    .get("/leaderboard").fetch(Leaderboard.class);
 ```
 
 `fetch(Type)`는 결과를 기다려 typed body를 돌려주고 실패를 예외로 던진다. handler

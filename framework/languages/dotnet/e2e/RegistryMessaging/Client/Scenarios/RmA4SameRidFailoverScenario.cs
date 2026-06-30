@@ -13,7 +13,6 @@ internal static class RmA4SameRidFailoverScenario
         await using var cluster = await DynamicClusterLauncher.StartAsync(options, "rm-a4");
         var providerV1 = await cluster.StartProviderAsync("api-a-v1", "api-a");
         using var providerV1Client = ZLinkHttpClient.Create(providerV1.HttpUrl)
-            .Json()
             .Timeout(TimeSpan.FromMinutes(5))
             .Build();
 
@@ -30,7 +29,6 @@ internal static class RmA4SameRidFailoverScenario
 
         var providerV2 = await cluster.StartProviderAsync("api-a-v2", "api-a");
         using var providerV2Client = ZLinkHttpClient.Create(providerV2.HttpUrl)
-            .Json()
             .Timeout(TimeSpan.FromMinutes(5))
             .Build();
 

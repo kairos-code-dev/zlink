@@ -1,10 +1,11 @@
 import type {
   ZLinkCodecExtension,
+  ZLinkCodecRegistrar,
   ZLinkCodecRegistryBuilder,
   ZLinkMessageSerializer
 } from '../../contracts';
 
-export class DefaultZLinkCodecRegistryBuilder implements ZLinkCodecRegistryBuilder {
+export class DefaultZLinkCodecRegistryBuilder implements ZLinkCodecRegistryBuilder, ZLinkCodecRegistrar {
   private readonly serializers = new Map<string, ZLinkMessageSerializer>();
   private readonly streamCodecs = new Map<string, unknown>();
   private readonly codecs = new Set<string>();
@@ -40,10 +41,6 @@ export class DefaultZLinkCodecRegistryBuilder implements ZLinkCodecRegistryBuild
     return this;
   }
 
-  addJson(): this {
-    this.codecs.add('json');
-    return this;
-  }
 }
 
 function normalizeContentType(contentType: string): string {

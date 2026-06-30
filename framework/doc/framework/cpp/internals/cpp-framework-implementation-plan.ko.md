@@ -924,7 +924,7 @@ ctest --test-dir framework/languages/cpp/build -L framework-unit -R monitoring
 - `zlink_framework_options_t`
 - `options.services()`
 - `options.handlers()`
-- `options.codecs().add_json()`
+- `options.codecs().use(extension)`
 - discovery/channel/spot/stream fluent options builders
 - module service registration
 - module handler registration
@@ -935,8 +935,8 @@ ctest --test-dir framework/languages/cpp/build -L framework-unit -R monitoring
 
 - `.NET`의 `AddZLinkFramework(options => ...)`에 해당하는 C++ 고수준 진입점은
   `app_t::add_zlink_framework(options_callback)`다.
-- `options.codecs().add_json()`은 JSON codec 사용만 선언하고 message type을 모두 나열하지
-  않는다.
+- JSON은 기본 codec이므로 별도 등록하지 않는다. MessagePack, Protobuf, custom codec은
+  extension으로 등록하고 message type을 모두 나열하지 않는다.
 - handler 생성자 의존성은 `dependency_list_t<Dep...>`와 DI 생성자 주입으로 처리한다.
 - sample `main.cpp`와 role `*HostFactory`에는 handler용 DI factory, serializer smoke 검증,
   낮은 수준 zlink builder 람다를 두지 않는다.

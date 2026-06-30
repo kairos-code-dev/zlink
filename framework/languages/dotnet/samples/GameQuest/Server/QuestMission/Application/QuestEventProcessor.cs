@@ -87,12 +87,12 @@ internal sealed class QuestEventProcessor(
     {
         var result = await notifications.NotifyAsync(sourceApi, request, cancellationToken);
         if (result.FailureStatus is not null)
-            logger.LogInformation(
+            logger.LogWarning(
                 "gamequest mission projection kept while stream notify failed. player={PlayerId} status={StatusCode}",
                 request.PlayerId,
                 result.FailureStatus);
         else if (result.UnavailableError is not null)
-            logger.LogInformation(result.UnavailableError,
+            logger.LogWarning(result.UnavailableError,
                 "gamequest mission projection kept while stream notify endpoint was unavailable. player={PlayerId}",
                 request.PlayerId);
 

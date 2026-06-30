@@ -31,7 +31,6 @@ inline void run_rm_a1_discovery_request_scenario (zlink::framework::channel_clie
 
     auto registry_client = zlink::http_client::client_t::create ()
                              .base_url (env_or ("ZLINK_CPP_E2E_HTTP_REGISTRY_ENDPOINT"))
-                             .json ()
                              .timeout (std::chrono::milliseconds (1000))
                              .build ();
     int ready_providers = 0;

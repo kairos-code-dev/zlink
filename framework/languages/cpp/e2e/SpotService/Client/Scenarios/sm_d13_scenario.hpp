@@ -31,7 +31,6 @@ inline void run_sm_d13_scenario (const std::string &session_stream_endpoint)
 
     constexpr auto actor_id = "actor-sm-d13";
     auto stream = zlink::stream_connector::connector_factory_t::create (options);
-    stream.codecs ().add_json ();
     auto connected = stream.connect ();
     if (!connected) {
         throw std::runtime_error ("SM-D13 stream connect failed");

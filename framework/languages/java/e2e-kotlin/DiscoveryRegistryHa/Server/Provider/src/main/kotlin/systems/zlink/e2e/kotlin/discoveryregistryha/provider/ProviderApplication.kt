@@ -45,7 +45,6 @@ class ProviderApplication {
         providerOptions: ProviderOptions,
     ): ZLinkFrameworkConfigurer =
         ZLinkFrameworkConfigurer { options ->
-            options.codecs().addJson()
             options.configureDispatch()
                 .messageFlow(ZLinkMessageFlowLogMode.KEY_TRANSITIONS)
                 .traceLogFile("${providerOptions.logDir()}/${state.providerRid}-flow.log")

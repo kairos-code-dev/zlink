@@ -1,13 +1,15 @@
 using DeliveryDispatch.Server.Configuration;
 using DeliveryDispatch.Shared.Contracts;
 using Microsoft.Extensions.Hosting;
+using Microsoft.Extensions.Logging;
 using Zlink.Framework.Contracts.Channels;
 
 namespace DeliveryDispatch.Server.Dispatch;
 
 internal sealed class DispatchWorker(
     DispatchWorkQueue queue,
-    IZLinkChannelClient channels)
+    IZLinkChannelClient channels,
+    ILogger<DispatchWorker> logger)
     : BackgroundService
 {
     protected override async Task ExecuteAsync(CancellationToken stoppingToken)
@@ -24,8 +26,10 @@ internal sealed class DispatchWorker(
             }
             catch (Exception error)
             {
-                Console.Error.WriteLine(
-                    $"deliverydispatch dispatch: failed delivery={request.DeliveryId} error={error.Message}");
+                logger.LogError(
+                    error,
+                    "deliverydispatch dispatch: failed delivery={DeliveryId}",
+                    request.DeliveryId);
             }
         }
     }
@@ -34,7 +38,10 @@ internal sealed class DispatchWorker(
         AssignDelivery request,
         CancellationToken cancellationToken)
     {
-        Console.Error.WriteLine($"deliverydispatch dispatch: assign delivery={request.DeliveryId} customer={request.CustomerId}");
+        logger.LogInformation(
+            "deliverydispatch dispatch: assign delivery={DeliveryId} customer={CustomerId}",
+            request.DeliveryId,
+            request.CustomerId);
         await PublishStatusAsync(request.DeliveryId, DeliveryStatus.Assigned, "courier-a", cancellationToken);
 
         var first = await TryOfferAsync(request, "courier-a", cancellationToken);
@@ -71,7 +78,11 @@ internal sealed class DispatchWorker(
         }
         catch (Exception error) when (error is not OperationCanceledException)
         {
-            Console.Error.WriteLine($"deliverydispatch dispatch: courier timeout delivery={request.DeliveryId} courier={courierId}");
+            logger.LogWarning(
+                error,
+                "deliverydispatch dispatch: courier timeout delivery={DeliveryId} courier={CourierId}",
+                request.DeliveryId,
+                courierId);
             return new OfferDeliveryResult(request.DeliveryId, courierId, Accepted: false, error.Message);
         }
     }
@@ -123,8 +134,12 @@ internal sealed class DispatchWorker(
                 lastError = error;
                 if (attempt == 1 || attempt == maxAttempts)
                 {
-                    Console.Error.WriteLine(
-                        $"deliverydispatch dispatch: channel wait channel={channelName} request={typeof(TRequest).Name} attempt={attempt} error={error.Message}");
+                    logger.LogWarning(
+                        error,
+                        "deliverydispatch dispatch: channel wait channel={ChannelName} request={RequestName} attempt={Attempt}",
+                        channelName,
+                        typeof(TRequest).Name,
+                        attempt);
                 }
                 await Task.Delay(100, cancellationToken);
             }

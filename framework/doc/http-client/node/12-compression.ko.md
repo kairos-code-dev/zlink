@@ -7,7 +7,6 @@
 
 ```ts
 const response = await ZLinkHttpClient.create('https://api.internal')
-  .json()
   .compression()
   .get('/large-report')
   .submit<Report>();

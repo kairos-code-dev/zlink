@@ -9,7 +9,6 @@
 
 ```cpp
 auto client = zlink::http_client::client_t::create ("https://game-api.example.internal")
-                .json ()
                 .follow_redirects ()        // 기본 한도 5회
                 .build ();
 
@@ -48,7 +47,6 @@ if (raw && raw.value ().status == 302) {
 
 ```cpp
 auto client = zlink::http_client::client_t::create ("https://game-api.example.internal")
-                .json ()
                 .retry (2)                  // 최초 1회 + 재시도 2회 = 최대 3회
                 .timeout (std::chrono::seconds (2))
                 .build ();
@@ -78,7 +76,6 @@ client.post ("/games")
 
 ```cpp
 auto portal = zlink::http_client::client_t::create ("https://ops-portal.example.internal")
-                .json ()
                 .cookies ()
                 .build ();
 

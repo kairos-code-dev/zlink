@@ -8,8 +8,8 @@ internal static class MonB1KindFilterScenario
 {
     public static async Task RunAsync(ClientOptions options)
     {
-        using var trigger = ZLinkHttpClient.Create(options.TriggerUrl).Json().Build();
-        using var serviceB = ZLinkHttpClient.Create(options.ServiceBUrl).Json().Build();
+        using var trigger = ZLinkHttpClient.Create(options.TriggerUrl).Build();
+        using var serviceB = ZLinkHttpClient.Create(options.ServiceBUrl).Build();
 
         var reply = (await trigger.Post("/profile/request/service-b")
             .Body(new ProfileRequest("filter", "mon-b1-request"))

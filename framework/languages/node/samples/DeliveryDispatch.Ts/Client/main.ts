@@ -8,7 +8,6 @@ import type { ZlinkStreamConnector } from '@zlink-systems/stream-connector';
 async function main(): Promise<void> {
   const config = loadSampleConfig();
   const http = ZLinkHttpClient.create(config.dispatchApiHttpUrl)
-    .json()
     .timeout(SampleTimings.clientTimeout)
     .build();
   const customer = createClient(config.sessionStreamEndpoint);

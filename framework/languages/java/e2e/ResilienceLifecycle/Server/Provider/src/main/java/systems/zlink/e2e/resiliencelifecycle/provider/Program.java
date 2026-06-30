@@ -63,7 +63,6 @@ public final class Program {
     ZLinkFrameworkConfigurer providerFramework(ScenarioState state) {
         return options -> {
             String logDir = Env.get("ZLINK_JAVA_E2E_LOG_DIR", "logs");
-            options.codecs().addJson();
             options.configureDispatch()
                 .messageFlow(ZLinkMessageFlowLogMode.KEY_TRANSITIONS)
                 .traceLogFile(logDir + "/" + state.providerRid() + "-flow.log")

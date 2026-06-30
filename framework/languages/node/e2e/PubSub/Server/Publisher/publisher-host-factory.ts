@@ -23,8 +23,6 @@ export async function startPublisherHost(args: readonly string[]): Promise<void>
         useFactory: () => {
           const builder = zlinkFramework();
           builder
-            .codecs()
-              .addJson()
             .configureDispatch()
               .setMessageFlowObserver(EvidenceDispatchErrorObserver)
               .messageFlow(ZLinkMessageFlowLogMode.KeyTransitions)

@@ -1,0 +1,38 @@
+/* SPDX-License-Identifier: MPL-2.0 */
+
+#pragma once
+
+#include "../Support/delay_support.hpp"
+#include "../../../Shared/yield_dispatch_contracts.hpp"
+
+#include <zlink/framework.hpp>
+
+#include <chrono>
+#include <thread>
+
+namespace zlink::framework::e2e::yield_dispatch::server::delay {
+
+namespace yd = zlink::framework::e2e::yield_dispatch;
+
+class delay_handler_t
+{
+  public:
+    using dependency_types = zlink::framework::dependency_list_t<delay_state_t>;
+    using request_type = yd::delay_req_t;
+    using reply_type = yd::delay_reply_t;
+
+    explicit delay_handler_t (delay_state_t &state) : _state (state) {}
+
+    yd::delay_reply_t handle (const yd::delay_req_t &request)
+    {
+        std::this_thread::sleep_for (std::chrono::milliseconds (request.delay_ms));
+        return {.request_id = request.request_id,
+                .marker = request.marker,
+                .node_rid = _state.node_rid};
+    }
+
+  private:
+    delay_state_t &_state;
+};
+
+} // namespace zlink::framework::e2e::yield_dispatch::server::delay

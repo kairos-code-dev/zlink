@@ -70,7 +70,6 @@ public final class RegistryMessagingHttp implements AutoCloseable {
 
     private static ZLinkHttpClient client(String envName) {
         return ZLinkHttpClient.create(ClientOptions.get(envName))
-            .json()
             .timeout(Duration.ofMinutes(5))
             .build();
     }

@@ -68,8 +68,6 @@ int main (int argc, char **argv)
     auto scenario = std::make_unique<scenario_service_t> (app);
     auto *scenario_result = scenario.get ();
     app.add_zlink_framework ([] (zlink::framework::zlink_framework_options_t &framework) {
-        framework.codecs ().add_json ();
-        framework.codecs ().add_json<rm::profile_request_t, rm::profile_reply_t> ();
         const auto scenario_name = rm_client::env_or ("ZLINK_CPP_E2E_SCENARIO", "common");
         if (scenario_name != "mon-d1") {
             framework.use_discovery ().add_registry_endpoint (

@@ -1,5 +1,6 @@
 using DeliveryDispatch.Server.Configuration;
 using DeliveryDispatch.Shared.Contracts;
+using Microsoft.Extensions.Logging;
 using Zlink.Framework.Contracts.Channels;
 using Zlink.Framework.Contracts.Handlers;
 
@@ -8,7 +9,8 @@ namespace DeliveryDispatch.Server.Tracking;
 [ZLinkHandlerGroup(SampleNames.TrackingRouteChannel)]
 internal sealed class DeliveryStatusChangedHandler(
     EvidenceStore evidence,
-    IZLinkChannelClient channels)
+    IZLinkChannelClient channels,
+    ILogger<DeliveryStatusChangedHandler> logger)
     : IZLinkRequestHandler<DeliveryStatusChanged, DeliveryStatusAck>
 {
     public async ValueTask<DeliveryStatusAck> HandleAsync(
@@ -20,8 +22,11 @@ internal sealed class DeliveryStatusChangedHandler(
         evidence.Append(request);
         _ = await channels.RequestToChannel(SampleNames.CustomerRouteChannel, request)
             .Async<DeliveryStatusAck>(cancellationToken);
-        Console.Error.WriteLine(
-            $"deliverydispatch tracking: status delivery={request.DeliveryId} status={request.Status} courier={request.CourierId}");
+        logger.LogInformation(
+            "deliverydispatch tracking: status delivery={DeliveryId} status={Status} courier={CourierId}",
+            request.DeliveryId,
+            request.Status,
+            request.CourierId);
         return new DeliveryStatusAck(request.DeliveryId, request.Status);
     }
 }

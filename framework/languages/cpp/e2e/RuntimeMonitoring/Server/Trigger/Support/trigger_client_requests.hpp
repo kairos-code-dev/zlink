@@ -88,8 +88,6 @@ inline profile_reply_t request_with_transient_host (const trigger_options_t &opt
                                                                   trace_label);
     auto *service_result = service.get ();
     app.add_zlink_framework ([&] (zlink::framework::zlink_framework_options_t &framework) {
-        framework.codecs ().add_json ();
-        framework.codecs ().add_json<profile_request_t, profile_reply_t> ();
         framework.add_client_server_channel (profile_channel).enable_client (channel_endpoint);
         if (!options.log_dir.empty ()) {
             framework.configure_dispatch ()

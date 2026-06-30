@@ -3,9 +3,10 @@ namespace Zlink.Framework.Contracts.Codecs;
 public interface IZLinkCodecRegistryBuilder
 {
     void Use(IZLinkCodecExtension extension);
+}
 
-    void AddJson();
-
+public interface IZLinkCodecRegistrar
+{
     /// <summary>
     ///     Registers a custom payload serializer under a content type (for example
     ///     <c>"application/avro"</c>). The registered serializer becomes the payload

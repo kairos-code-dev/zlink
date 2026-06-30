@@ -24,11 +24,9 @@ inline void run_sm_c1_scenario (const std::string &play_http_endpoint,
     constexpr auto spot_rid = "user:play-a:sm-c1-channel";
     auto play_a = zlink::http_client::client_t::create ()
                     .base_url (play_http_endpoint)
-                    .json ()
                     .build ();
     auto external_channel = zlink::http_client::client_t::create ()
                               .base_url (play_b_http_endpoint)
-                              .json ()
                               .build ();
 
     auto created_raw =

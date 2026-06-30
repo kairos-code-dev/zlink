@@ -37,8 +37,6 @@ function createWorkflowModule(options: ServerOptions, evidence: EvidenceStore): 
         useFactory: () => {
           const builder = zlinkFramework();
           builder
-            .codecs()
-              .addJson()
             .configureDispatch()
               .setMessageFlowObserver(EvidenceDispatchErrorObserver)
               .messageFlow(ZLinkMessageFlowLogMode.KeyTransitions)

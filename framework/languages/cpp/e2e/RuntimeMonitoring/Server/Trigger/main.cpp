@@ -23,9 +23,6 @@ int main (int argc, char **argv)
         framework.services ().add_singleton<rm_server::evidence_store_t> (std::move (evidence));
         framework.services ().add_singleton<rm_trigger::trigger_options_t> (
           std::make_unique<rm_trigger::trigger_options_t> (options));
-        framework.codecs ().add_json ();
-        framework.codecs ().add_json<rm::profile_request_t, rm::profile_reply_t> ();
-        framework.codecs ().add_json<rm::evidence_wait_request_t, std::vector<std::string>> ();
         framework.use_discovery ().add_registry_endpoint (options.registry_router);
         framework.add_client_server_channel (rm::profile_channel).enable_client ();
         if (!options.http_endpoint.empty ()) {

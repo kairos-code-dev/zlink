@@ -58,23 +58,12 @@ inline void wait_for_file (const std::string &path)
 
 inline void configure_common_codecs (zlink::framework::codec_options_builder_t codecs)
 {
-    codecs.add_json ();
-    codecs.add_json<profile_request_t,
-                    profile_reply_t,
-                    profile_command_t,
-                    payload_request_t,
-                    payload_reply_t,
-                    workflow_request_t,
-                    workflow_reply_t,
-                    route_ping_t,
-                    route_pong_t> ();
 }
 
 inline evidence_snapshot_t fetch_evidence (const std::string &base_url)
 {
     auto client = zlink::http_client::client_t::create ()
                     .base_url (base_url)
-                    .json ()
                     .timeout (std::chrono::milliseconds (1000))
                     .build ();
     return client.get ("/evidence").fetch<evidence_snapshot_t> ();
@@ -113,7 +102,6 @@ inline TReply post_json (const std::string &base_url,
 {
     auto client = zlink::http_client::client_t::create ()
                     .base_url (base_url)
-                    .json ()
                     .timeout (timeout)
                     .build ();
     return client.post (path).body (request).template fetch<TReply> ();
@@ -125,7 +113,6 @@ inline void post_raw (const std::string &base_url,
 {
     auto client = zlink::http_client::client_t::create ()
                     .base_url (base_url)
-                    .json ()
                     .timeout (timeout)
                     .build ();
     auto response = client.post (path).submit_raw ().result ();

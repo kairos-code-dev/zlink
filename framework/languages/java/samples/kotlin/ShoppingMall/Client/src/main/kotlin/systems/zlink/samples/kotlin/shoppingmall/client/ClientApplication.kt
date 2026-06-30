@@ -20,7 +20,6 @@ class ClientApplication {
     fun clientFramework(): ZLinkFrameworkConfigurer =
         ZLinkFrameworkConfigurer { options ->
             options.useDiscovery().addRegistryEndpoint(SampleTopology.RegistryRouterEndpoint)
-            options.codecs().addJson()
             options.addClientServerChannel(SampleNames.commerceApiChannel(SampleNames.ApiInstanceA))
                 .enableClient()
             options.addClientServerChannel(SampleNames.commerceApiChannel(SampleNames.ApiInstanceB))

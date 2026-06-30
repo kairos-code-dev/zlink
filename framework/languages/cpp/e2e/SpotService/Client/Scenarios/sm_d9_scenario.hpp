@@ -34,7 +34,6 @@ inline void run_sm_d9_scenario (const std::string &session_stream_endpoint)
     std::vector<zlink::stream_connector::inbound_observation_t> observations;
 
     auto stream = zlink::stream_connector::connector_factory_t::create (options);
-    stream.codecs ().add_json ();
     auto observer = stream.observe_inbound (
       [&] (const zlink::stream_connector::inbound_observation_t &observation) {
           std::lock_guard lock (observations_mutex);

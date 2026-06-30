@@ -27,7 +27,6 @@ inline void run_sm_d2_scenario (const std::string &play_b_http_endpoint,
     constexpr auto actor_id = "actor-sm-d2";
     auto play_b = zlink::http_client::client_t::create ()
                     .base_url (play_b_http_endpoint)
-                    .json ()
                     .build ();
     auto joined =
       play_b.post ("/spot/join")
@@ -59,9 +58,7 @@ inline void run_sm_d2_scenario (const std::string &play_b_http_endpoint,
     options.dispatch_mode = zlink::stream_connector::dispatch_mode_t::immediate;
 
     auto remote = zlink::stream_connector::connector_factory_t::create (options);
-    remote.codecs ().add_json ();
     auto unbound = zlink::stream_connector::connector_factory_t::create (options);
-    unbound.codecs ().add_json ();
 
     auto remote_connected = remote.connect ();
     if (!remote_connected) {

@@ -59,7 +59,6 @@ class client_builder_t
 {
   public:
     client_builder_t &base_url (std::string value);
-    client_builder_t &json ();
     client_builder_t &timeout (std::chrono::milliseconds value);
     client_builder_t &default_header (std::string name, std::string value);
     client_builder_t &basic_auth (const std::string &user, const std::string &password);
@@ -94,7 +93,6 @@ class client_builder_t
 
   private:
     std::string _base_url;
-    bool _json = false;
     std::chrono::milliseconds _timeout{3000};
     std::size_t _max_response_body_size = 16 * 1024 * 1024;
     std::map<std::string, std::string> _headers;

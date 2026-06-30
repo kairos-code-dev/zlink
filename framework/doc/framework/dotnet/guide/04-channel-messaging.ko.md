@@ -469,7 +469,6 @@ payload 직렬화 codec 은 framework 등록에서 켠다.
 
 ```csharp
 options.Codecs.Use(ZLinkProtobufCodec.Default);
-options.Codecs.AddJson();
 options.Codecs.Use(ZLinkMessagePackCodec.Default);
 ```
 
@@ -480,8 +479,8 @@ abstract/interface 면 명시 codec 없이는 설정 오류가 난다.
 content type 으로 등록한다. serializer 는 업무 객체 ↔ `Message`(byte payload) 변환만
 맡고, packet name 결정·codec 선택은 framework 가 그대로 처리한다. custom serializer 는
 한 payload 타입에 대해 **둘 이상이 매칭하면** 구성 오류가 난다. 타입 조건 없이 모든
-타입을 받는 fallback serializer(`AddSerializer(contentType, serializer)`)는 하나만 두고,
-타입 조건을 받는 `AddSerializer(contentType, serializer, canSerialize)` 는 서로 겹치지
+타입을 받는 fallback serializer는 하나만 두고,
+타입 조건을 받는 serializer는 서로 겹치지
 않게 여러 개 둘 수 있다.
 
 ```csharp
@@ -505,8 +504,7 @@ public sealed class AvroOrderSerializer : IZLinkMessageSerializer
     }
 }
 
-// 타입 조건 없는 fallback 등록 → 하나만 둘 수 있다. 타입별로 고르려면 AddSerializer(.., canSerialize) 오버로드.
-options.Codecs.AddSerializer("application/avro", new AvroOrderSerializer());
+options.Codecs.Use(new AvroCodecExtension()); // extension 내부에서 Avro serializer를 한 번 등록한다.
 ```
 
 등록 후 high-level 호출은 그대로 업무 객체를 주고받고 직렬화는 Avro 로 처리된다.

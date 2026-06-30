@@ -114,10 +114,8 @@ export class RequestPerformer {
   ): Record<string, string> {
     const headers: Record<string, string> = {
       'user-agent': 'zlink-http-client/0.2',
+      accept: 'application/json',
     };
-    if (this.options.json) {
-      headers['accept'] = 'application/json';
-    }
     if (this.options.compression) {
       headers['accept-encoding'] = 'gzip, deflate';
     }

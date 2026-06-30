@@ -182,7 +182,6 @@ internal sealed class DynamicProcess(Process process, string httpUrl, string? ch
             try
             {
                 using var client = ZLinkHttpClient.Create(HttpUrl)
-                    .Json()
                     .Timeout(TimeSpan.FromSeconds(5))
                     .Build();
                 await client.Post("/shutdown").SubmitRawAsync();

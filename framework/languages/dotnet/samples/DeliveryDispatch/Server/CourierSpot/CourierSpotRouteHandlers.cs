@@ -1,5 +1,6 @@
 using DeliveryDispatch.Server.Configuration;
 using DeliveryDispatch.Shared.Contracts;
+using Microsoft.Extensions.Logging;
 using Zlink.Framework.Contracts.Actors;
 using Zlink.Framework.Contracts.Channels;
 using Zlink.Framework.Contracts.Handlers;
@@ -7,7 +8,9 @@ using Zlink.Framework.Contracts.Handlers;
 namespace DeliveryDispatch.Server.CourierSpot;
 
 [ZLinkHandlerGroup(SampleNames.CourierSpotRouteChannel)]
-internal sealed class EnsureCourierActorRouteHandler(IZLinkActorManager actorManager)
+internal sealed class EnsureCourierActorRouteHandler(
+    IZLinkActorManager actorManager,
+    ILogger<EnsureCourierActorRouteHandler> logger)
     : IZLinkRouteRequestHandler<EnsureCourierActor, CourierActorEnsured>
 {
     public async ValueTask<CourierActorEnsured> HandleAsync(
@@ -21,8 +24,10 @@ internal sealed class EnsureCourierActorRouteHandler(IZLinkActorManager actorMan
             SampleNames.CourierActorType,
             request,
             cancellationToken);
-        Console.Error.WriteLine(
-            $"deliverydispatch courier-route: ensured courier={request.CourierId} node={actor.NodeRid}");
+        logger.LogInformation(
+            "deliverydispatch courier-route: ensured courier={CourierId} node={NodeRid}",
+            request.CourierId,
+            actor.NodeRid);
         return new CourierActorEnsured(
             request.CourierId,
             new ActorRefSnapshot(actor.NodeRid.ToString(), actor.ActorId, actor.Generation));

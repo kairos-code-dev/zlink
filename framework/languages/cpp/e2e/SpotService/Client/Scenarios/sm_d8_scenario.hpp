@@ -30,7 +30,6 @@ inline void run_sm_d8_scenario (const std::string &session_stream_endpoint)
     constexpr auto actor_id = "actor-sm-d8-reconnect";
 
     auto first = zlink::stream_connector::connector_factory_t::create (options);
-    first.codecs ().add_json ();
     auto first_connected = first.connect ();
     if (!first_connected) {
         throw std::runtime_error ("SM-D8 first stream connect failed");
@@ -71,7 +70,6 @@ inline void run_sm_d8_scenario (const std::string &session_stream_endpoint)
     std::this_thread::sleep_for (std::chrono::milliseconds (1200));
 
     auto second = zlink::stream_connector::connector_factory_t::create (options);
-    second.codecs ().add_json ();
     auto second_connected = second.connect ();
     if (!second_connected) {
         throw std::runtime_error ("SM-D8 second stream connect failed");

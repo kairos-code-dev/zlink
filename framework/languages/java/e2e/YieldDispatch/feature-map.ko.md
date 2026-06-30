@@ -33,12 +33,11 @@
 | YD-D4 | done | stream session relay가 bound actor handler로 보낸 request에서 actor가 `yield(Class<TReply>)`로 delay service reply를 기다린다. actor는 bound session push를 원래 stream connector로 보내고, 같은 시간 다른 actor의 push wait가 진행되지 않는 것을 검증한다. `logs/20260630-123141-4002944`에서 `scenario YD-D4 passed`를 확인했다. |
 | YD-E1 | done | `YieldTimeoutCommand`가 timeout 뒤 `timeout-yield-completed`를 남기고, 같은 Spot mailbox가 post-timeout `ProbeCommand`를 처리하는 순서를 검증한다. `logs/20260630-123141-4002944`에서 `scenario YD-E1 passed`를 확인했다. |
 | YD-E2 | public contract gap | .NET 기준은 `Yield<TReply>(token)` 취소를 검증하지만, Java `ZLinkRequestCall`과 actor join yield public surface에는 cancellation token overload가 없다. 내부 helper로 우회하지 않고 public contract gap으로 남긴다. |
-| YD-E3 | framework/runtime gap | diagnostic shutdown runner를 추가해 `ZLINK_JAVA_E2E_RUN_E3_SHUTDOWN=1`로 검증할 수 있게 했다. `logs/20260630-125123-4074910`에서 play-a가 pending yield 중 SIGTERM으로 내려가지 않아 SIGKILL까지 갔고, `client-shutdown-wait.stderr.log`는 closed/cancelled public error가 아니라 request timeout을 받았음을 보여 준다. 같은 run의 `play-a-4076778-thread-dump.log`는 Spring shutdown hook이 `Native.ctxTerm`에서 멈춘 상태를 남겼고, `play-a.stderr.log`의 debug 출력은 `terminate-before-stop socket_count=20`으로 play-a context에 ROUTER/DEALER/SUB/PUB/PAIR socket이 남아 있음을 보여 준다. 완료가 아니라 Java shutdown cleanup gap이다. |
+| YD-E3 | done | `ZLINK_JAVA_E2E_RUN_E3_SHUTDOWN=1 ./run_e2e.sh`가 pending yield 중 `play-a`에 SIGTERM을 보내고, client가 public framework error를 받은 뒤 `play-a`를 같은 endpoint로 재시작해 recovery request를 통과시키는지 검증한다. `logs/20260630-134740-48684`에서 `yield-dispatch shutdown wait result=passed`, `yield-dispatch shutdown recovery result=passed`, `scenario YD-E3 passed`를 확인했다. |
 | YD-E4 | done | `run_e2e.sh`가 HTTP scenario trigger, handler 밖 `.yield(`, real stream connector 생성 여부를 정적으로 검사한 뒤 full runner를 실행한다. `logs/20260630-123141-4002944`에서 정적 검증과 runner marker gate가 모두 통과했다. |
 | YD-E5 | done | `run_e2e.sh`가 `yield-dispatch-marker-report.json`을 생성하고, Java가 구현한 YD-A/B/C/D/E1 scenario id별 marker 이름이 공통 정의와 맞는지 검증한다. `logs/20260630-123141-4002944/yield-dispatch-marker-report.json`에서 확인했다. 여러 언어 report를 모으는 aggregation은 공통 문서처럼 별도 parity gate가 담당한다. |
 
 ## 다음 구현 순서
 
 1. `YD-E2` cancellation cleanup을 Java public API로 구현할 수 있는지 확인한다.
-2. `YD-E3` shutdown/restart recovery는 runtime shutdown이 pending yield를 closed/cancelled public error로 정리하도록 framework를 고친 뒤 diagnostic runner를 기본 gate로 올린다.
-3. `YD-E5` cross-language aggregation은 Java report 산출 뒤 별도 parity gate에서 연결한다.
+2. `YD-E5` cross-language aggregation은 Java report 산출 뒤 별도 parity gate에서 연결한다.

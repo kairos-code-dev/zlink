@@ -13,7 +13,6 @@ import systems.zlink.httpclient.internal.HttpClientText;
 public final class ZLinkHttpClientBuilder {
 
     private String baseUrl = "";
-    private boolean json;
     private Duration timeout = Duration.ofMillis(3000);
     private long maxResponseBodySize = 16L * 1024 * 1024;
     private final Map<String, String> headers = new LinkedHashMap<>();
@@ -29,12 +28,6 @@ public final class ZLinkHttpClientBuilder {
     public ZLinkHttpClientBuilder baseUrl(String value) {
         HttpClientText.requireNonBlank(value, "HTTP client base_url is required");
         this.baseUrl = value;
-        return this;
-    }
-
-    public ZLinkHttpClientBuilder json() {
-        this.json = true;
-        this.headers.putIfAbsent("content-type", "application/json");
         return this;
     }
 
@@ -139,7 +132,6 @@ public final class ZLinkHttpClientBuilder {
 
         HttpClientOptions options = new HttpClientOptions(
             baseUrl,
-            json,
             timeout,
             maxResponseBodySize,
             Map.copyOf(headers),

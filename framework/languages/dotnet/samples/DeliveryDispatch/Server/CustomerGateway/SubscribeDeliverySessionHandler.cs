@@ -1,12 +1,15 @@
 using DeliveryDispatch.Server.Configuration;
 using DeliveryDispatch.Shared.Contracts;
+using Microsoft.Extensions.Logging;
 using Systems.Zlink;
 using Zlink.Framework.Contracts.Channels;
 using Zlink.Framework.Contracts.Streams;
 
 namespace DeliveryDispatch.Server.CustomerGateway;
 
-internal sealed class SubscribeDeliverySessionHandler(IZLinkChannelClient channels)
+internal sealed class SubscribeDeliverySessionHandler(
+    IZLinkChannelClient channels,
+    ILogger<SubscribeDeliverySessionHandler> logger)
     : IZLinkSessionPacketHandler<IZLinkSessionContext>
 {
     private const string CustomerId = "customer-1";
@@ -34,8 +37,10 @@ internal sealed class SubscribeDeliverySessionHandler(IZLinkChannelClient channe
                     ensured.Actor.ActorId,
                     ensured.Actor.Generation),
                 cancellationToken);
-            Console.Error.WriteLine(
-                $"deliverydispatch customer-session: bound customer actor={ensured.Actor.ActorId} session={context.SessionId}");
+            logger.LogInformation(
+                "deliverydispatch customer-session: bound customer actor={ActorId} session={SessionId}",
+                ensured.Actor.ActorId,
+                context.SessionId);
         }
 
         await boundActor.RelayAsync(payload, cancellationToken);

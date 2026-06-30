@@ -41,6 +41,7 @@ import java.util.concurrent.TimeUnit;
 import java.util.concurrent.TimeoutException;
 import java.util.function.Supplier;
 import systems.zlink.contracts.core.RoutingId;
+import systems.zlink.contracts.errors.ZlinkCloseException;
 import systems.zlink.contracts.errors.ZlinkSubmitException;
 import systems.zlink.contracts.messaging.Message;
 import systems.zlink.contracts.sockets.SendFlags;
@@ -689,34 +690,53 @@ public final class ZLinkSpotRuntime implements ZLinkSpotManager, AutoCloseable {
     @Override
     public void close() {
         beginClose();
+        RuntimeException firstFailure = null;
         for (EntrySpotActivation entrySpot : entrySpots) {
-            entrySpot.close();
+            firstFailure = closeRuntimeComponent(entrySpot::close, firstFailure);
         }
         entrySpots.clear();
         for (SpotActivation spot : spots.values()) {
-            spot.close();
+            firstFailure = closeRuntimeComponent(spot::close, firstFailure);
         }
         spots.clear();
         for (ZLinkBackendSpot publisherSpot : publisherSpotsByChannel.values()) {
-            publisherSpot.close();
+            firstFailure = closeRuntimeComponent(publisherSpot::close, firstFailure);
         }
         publisherSpotsByChannel.clear();
+        for (ZLinkBackendSpotNode node : nodes) {
+            firstFailure = closeRuntimeComponent(node::close, firstFailure);
+        }
         for (ZLinkBackendDiscovery discovery : attachedChannelDiscoveries) {
-            discovery.close();
+            firstFailure = closeRuntimeComponent(discovery::close, firstFailure);
         }
         attachedChannelDiscoveries.clear();
         timerExecutor.shutdownNow();
         workerPool.close();
-        for (ZLinkBackendSpotNode node : nodes) {
-            node.close();
-        }
         if (ownsContext) {
-            context.close();
+            firstFailure = closeRuntimeComponent(context::close, firstFailure);
+        }
+        if (firstFailure != null) {
+            throw firstFailure;
         }
     }
 
     public void beginClose() {
         closing = true;
+    }
+
+    private static RuntimeException closeRuntimeComponent(
+        Runnable close,
+        RuntimeException firstFailure) {
+        try {
+            close.run();
+        } catch (ZlinkCloseException ignored) {
+        } catch (RuntimeException error) {
+            if (firstFailure == null) {
+                return error;
+            }
+            firstFailure.addSuppressed(error);
+        }
+        return firstFailure;
     }
 
     public ZLinkBackendSpotNode primaryNode() {
@@ -1869,6 +1889,14 @@ public final class ZLinkSpotRuntime implements ZLinkSpotManager, AutoCloseable {
                         invokeSpotRequestHandler(handler, entrySpot, payloadCopy))
                         .thenAccept(reply -> received.reply(List.of(reply)))
                         .whenComplete((ignored, error) -> {
+                            if (error != null) {
+                                replySpotRouteDispatchError(
+                                    received,
+                                    packet.packetName(),
+                                    backendSpot.routingId(),
+                                    ZLinkDispatchErrorReason.HANDLER_EXCEPTION,
+                                    error);
+                            }
                             payloadCopy.close();
                             received.close();
                             if (error == null
@@ -3906,6 +3934,54 @@ public final class ZLinkSpotRuntime implements ZLinkSpotManager, AutoCloseable {
             && FRAMEWORK_ERROR_REPLY_MARKER.equals(parts.get(0).toUtf8String());
     }
 
+    private void replySpotRouteDispatchError(
+        ZLinkBackendReceived received,
+        String packetName,
+        RoutingId spotRid,
+        ZLinkDispatchErrorReason reason,
+        Throwable error) {
+        Throwable cause = unwrapCompletion(error);
+        List<Message> reply = List.of(
+            Message.from(FRAMEWORK_ERROR_REPLY_MARKER.getBytes(StandardCharsets.UTF_8)),
+            Message.from(errorText(reason, packetName, cause).getBytes(StandardCharsets.UTF_8)));
+        try {
+            received.reply(reply);
+        } catch (RuntimeException ignored) {
+        } finally {
+            reply.forEach(Message::close);
+        }
+        reportDispatchError(
+            ZLinkDispatchErrorSurface.SPOT_ROUTE,
+            ZLinkDispatchMessageKind.REQUEST,
+            reason,
+            ZLinkDispatchErrorAction.REPLY_ERROR,
+            packetName,
+            null,
+            null,
+            spotRid,
+            null,
+            received.routingId().orElse(null),
+            received.requestSeq().map(Object::toString).orElse(null),
+            cause);
+    }
+
+    private static Throwable unwrapCompletion(Throwable error) {
+        if (error instanceof CompletionException && error.getCause() != null) {
+            return error.getCause();
+        }
+        return error;
+    }
+
+    private static String errorText(
+        ZLinkDispatchErrorReason reason,
+        String packetName,
+        Throwable error) {
+        if (error != null && error.getMessage() != null) {
+            return error.getMessage();
+        }
+        return reason + " for packet '" + packetName + "'";
+    }
+
     private static String frameworkErrorReplyMessage(List<Message> parts) {
         return parts.get(1).toUtf8String();
     }
@@ -4637,6 +4713,14 @@ public final class ZLinkSpotRuntime implements ZLinkSpotManager, AutoCloseable {
                     invokeSpotRequestHandler(handler, spot, payloadCopy))
                     .thenAccept(reply -> received.reply(List.of(reply)))
                     .whenComplete((ignored, error) -> {
+                        if (error != null) {
+                            replySpotRouteDispatchError(
+                                received,
+                                packet.packetName(),
+                                backendSpot.routingId(),
+                                ZLinkDispatchErrorReason.HANDLER_EXCEPTION,
+                                error);
+                        }
                         payloadCopy.close();
                         received.close();
                         if (error == null

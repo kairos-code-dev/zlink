@@ -1,11 +1,11 @@
 using System.Collections.Concurrent;
-using TicTacToe.Server.Configuration;
+using Microsoft.Extensions.Logging;
 
-namespace TicTacToe.Server;
+namespace Zlink.Samples.Logging;
 
-internal static class SampleLogging
+public static class SampleLogging
 {
-    public static void Configure(ILoggingBuilder logging, SampleSettings settings, string role)
+    public static void Configure(ILoggingBuilder logging, string logDirectory, string role)
     {
         logging.ClearProviders();
         logging.SetMinimumLevel(LogLevel.Information);
@@ -14,8 +14,17 @@ internal static class SampleLogging
             options.SingleLine = true;
             options.TimestampFormat = "HH:mm:ss.fff ";
         });
-        logging.AddProvider(new SampleFileLoggerProvider(
-            Path.Combine(settings.LogDirectory, $"{role}.log")));
+        logging.AddProvider(new SampleFileLoggerProvider(Path.Combine(logDirectory, $"{role}.log")));
+    }
+
+    public static ILoggerFactory CreateFactory(string logDirectory, string role)
+    {
+        return LoggerFactory.Create(logging => Configure(logging, logDirectory, role));
+    }
+
+    public static string DirectoryFromEnvironment(string environmentVariableName, string fallback = "logs")
+    {
+        return Environment.GetEnvironmentVariable(environmentVariableName) ?? fallback;
     }
 }
 

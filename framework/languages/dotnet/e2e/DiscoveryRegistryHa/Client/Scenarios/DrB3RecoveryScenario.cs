@@ -31,19 +31,15 @@ internal static class DrB3RecoveryScenario
         ClientOptions options)
     {
         using var registry = ZLinkHttpClient.Create(registryUrl)
-            .Json()
             .Timeout(TimeSpan.FromSeconds(10))
             .Build();
         using var consumer = ZLinkHttpClient.Create(consumerUrl)
-            .Json()
             .Timeout(TimeSpan.FromSeconds(10))
             .Build();
         using var providerA = ZLinkHttpClient.Create(options.ProviderAUrl)
-            .Json()
             .Timeout(TimeSpan.FromSeconds(10))
             .Build();
         using var providerB = ZLinkHttpClient.Create(options.ProviderBUrl)
-            .Json()
             .Timeout(TimeSpan.FromSeconds(10))
             .Build();
 

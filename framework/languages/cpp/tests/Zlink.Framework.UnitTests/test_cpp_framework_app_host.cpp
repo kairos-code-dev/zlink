@@ -623,7 +623,6 @@ make_app_host_test_client (std::string base_url,
 {
     auto builder = zlink::http_client::client_t::create ()
                      .base_url (std::move (base_url))
-                     .json ()
                      .timeout (std::chrono::milliseconds (500));
     if (trust_certificate_file) {
         builder.trust_certificate_file (std::move (*trust_certificate_file));

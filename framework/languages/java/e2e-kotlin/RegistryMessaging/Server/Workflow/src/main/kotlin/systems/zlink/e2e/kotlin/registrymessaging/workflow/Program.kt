@@ -44,7 +44,6 @@ class WorkflowApplication {
     @Bean
     fun framework(options: ServerOptions, evidence: EvidenceStore): ZLinkFrameworkConfigurer =
         ZLinkFrameworkConfigurer { framework ->
-            framework.codecs().addJson()
             framework.useDiscovery().addRegistryEndpoint(options.registryRouterEndpoint)
             framework.configureDispatch()
                 .setMessageFlowObserver(EvidenceDispatchErrorObserver(evidence))

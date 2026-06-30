@@ -21,7 +21,6 @@ using Zlink.HttpClient;
 
 ```csharp
 using var client = ZLinkHttpClient.Create("http://127.0.0.1:18080")
-    .Json()
     .Build();
 
 var player = await client.Get("/players/7281").SubmitAsync<PlayerProfile>();
@@ -39,7 +38,6 @@ client를 만들어 요청을 수행한다.
 
 ```csharp
 var res = await ZLinkHttpClient.Create("https://game-api.example.internal")
-    .Json()
     .Post("/games")
     .Body(new CreateGameReq("ranked-match-0611"))
     .SubmitAsync<CreateGameRes>();
@@ -52,7 +50,6 @@ var res = await ZLinkHttpClient.Create("https://game-api.example.internal")
 
 ```csharp
 var board = ZLinkHttpClient.Create("http://127.0.0.1:18080")
-    .Json()
     .Get("/leaderboard")
     .Fetch<Leaderboard>();
 ```

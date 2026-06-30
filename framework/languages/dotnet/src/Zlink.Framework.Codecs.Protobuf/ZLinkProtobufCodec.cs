@@ -12,7 +12,7 @@ public sealed class ZLinkProtobufCodec : IZLinkCodecExtension, IZlinkStreamPaylo
 
     public static ZLinkProtobufCodec Default { get; } = new();
 
-    public void Register(IZLinkCodecRegistryBuilder codecs)
+    public void Register(IZLinkCodecRegistrar codecs)
     {
         ArgumentNullException.ThrowIfNull(codecs);
         codecs.AddSerializer(

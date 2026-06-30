@@ -1146,9 +1146,6 @@ namespace zlink::framework {
 class serializer_registry_t {
 public:
     template <typename T>
-    serializer_registry_t &add_json();
-
-    template <typename T>
     serializer_registry_t &add(
       std::function<zlink::message_t(const T &)> serialize,
       std::function<T(const zlink::message_t &)> deserialize);
@@ -1545,9 +1542,9 @@ reflection이 없으므로 `.NET`의 `AddHandlersFromAssemblyOf(...)`만 그대�
 나머지 codec, discovery, client-server channel, handler group 구성은 `.NET`과 같은 읽기 수준을
 유지한다.
 
-`options.codecs().add_json()`은 JSON codec 사용만 선언한다. 사용자가 모든 request/reply message
+JSON은 기본 codec이므로 별도 등록하지 않는다. 사용자가 모든 request/reply message
 type을 codec 설정에 나열하지 않는다. C++ framework는 `options.handlers().group(...).add<THandler>()`에서
-handler의 `request_type`, `reply_type`을 읽어 필요한 JSON serializer를 내부에서 등록한다.
+handler의 `request_type`, `reply_type`을 읽고 기본 JSON serializer를 내부에서 선택한다.
 send handler는 `message_type`, publish handler는 `event_type`을 읽어 같은 방식으로 serializer와
 handler registry 항목을 등록한다. 따라서 request/send/publish handler를 같은 group 이름으로
 묶고, channel builder의 `.use_handler_group(...)`에서 channel에 연결할 수 있다.
@@ -1581,8 +1578,6 @@ host logging 설정에서 정한다. custom category가 필요하면 `logger_fac
 app.add_zlink_framework ([&](zlink::framework::zlink_framework_options_t &options) {
     options.use_filter<audit_filter_t>();
     options.metadata().add_forwarded_metadata_key("trace-id");
-
-    options.codecs().add_json();
 
     options.use_discovery().add_registry_endpoint (topology.registry_router_endpoint);
 
@@ -1786,7 +1781,6 @@ public:
 ```cpp
 app.add_zlink_framework([&](auto &options) {
     options.use_discovery().add_registry_endpoint (topology.registry_router_endpoint);
-    options.codecs().add_json();
 
     options.add_client_server_channel(sample_names_t::api_channel)
       .enable_server(topology.api_channel_endpoint)
@@ -2057,7 +2051,6 @@ int main(int argc, char **argv)
 
     app.add_zlink_framework([](auto &options) {
         options.use_discovery().add_registry_endpoint ("tcp://registry:5551");
-        options.codecs().add_json();
         options.services()
           .add_singleton<order_repository_t>()
           .add_singleton<order_handler_t, order_repository_t>();

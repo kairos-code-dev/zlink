@@ -33,7 +33,6 @@ public final class ProviderApplication {
         ProviderOptions options,
         ProviderEvidenceStore evidence) {
         return framework -> {
-            framework.codecs().addJson();
             framework.configureDispatch()
                 .messageFlow(ZLinkMessageFlowLogMode.KEY_TRANSITIONS)
                 .traceLogFile(options.logDir() + "/" + options.rid() + "-flow.log")

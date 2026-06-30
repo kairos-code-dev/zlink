@@ -41,21 +41,32 @@ app.add_zlink_framework ([&] (zlink::framework::zlink_framework_options_t &optio
 ```
 
 - **codec** — 채널 메시지의 직렬화 형식. JSON은 기본 codec으로 제공하며
-  `add_json()` 또는 `add_json<T>()`로 명시 등록할 수 있다. MessagePack과 Protobuf는
+  JSON codec은 기본값이므로 명시 등록하지 않는다. MessagePack과 Protobuf는
   framework codec extension package를 참조한 뒤 `codecs().use(extension)`으로 등록한다.
 - **커스텀 codec(Avro·Thrift 등)** — 기본 codec 외 포맷은
-  extension 객체에서 `add_serializer<T>(serialize, deserialize)`를 호출해 등록한다.
+  extension 객체를 `codecs().use(extension)`으로 등록한다.
+  extension 내부 registrar가 serializer를 한 번 등록한다.
   serialize는 업무 객체를 `message_t`(byte payload)로, deserialize는 그 반대로 변환하는
   함수다. packet name 결정과 handler/client API는 codec 변경과 분리된다.
 
   ```cpp
-  options.codecs ().add_serializer<place_order_t> (
-    [schema] (const place_order_t &order) {
-        return zlink::message_t::from (avro_encode (schema, order));
-    },
-    [schema] (const zlink::message_t &message) {
-        return avro_decode<place_order_t> (schema, message.to_string ());
-    });
+  struct avro_codec_extension_t {
+      schema_t schema;
+
+      template <typename TRegistrar>
+      void register_framework_codecs (TRegistrar &codecs) const {
+          codecs.template add_serializer<place_order_t> (
+              [schema = schema] (const place_order_t &order) {
+                  return zlink::framework::encoded_payload_t::from_raw (
+                      zlink::message_t::from (avro_encode (schema, order)));
+              },
+              [schema = schema] (const zlink::framework::encoded_payload_t &payload) {
+                  return avro_decode<place_order_t> (schema, payload.to_raw ().to_string ());
+              });
+      }
+  };
+
+  options.codecs ().use (avro_codec_extension_t{schema});
   ```
 
   다른 언어의 등록 표면은 [framework-api §2.2](../../common/spec/framework-api.ko.md) 표를

@@ -10,7 +10,6 @@ runtime이 만들어진다.
 
 ```cpp
 auto client = zlink::http_client::client_t::create ("https://game-api.example.internal")
-                .json ()
                 .timeout (std::chrono::seconds (5))
                 .max_response_body_size (32 * 1024 * 1024)
                 .default_header ("x-service-name", "matchmaker")
@@ -54,7 +53,7 @@ API가 만드는 `Authorization` 헤더는 교차 origin redirect에서 자동�
 
 ```cpp
 auto client = zlink::http_client::client_t::create ("https://game-api.example.internal/v2")
-                .json ().build ();
+                .build ();
 client.get ("/players/7281");   // 실제 target: /v2/players/7281
 ```
 
@@ -69,7 +68,7 @@ client.get ("/players/7281");   // 실제 target: /v2/players/7281
 
 ```cpp
 auto client = zlink::http_client::client_t::create ("https://game-api.example.internal")
-                .json ().build ();
+                .build ();
 
 // 세 요청 모두 같은 TCP 연결을 재사용한다
 client.get ("/games/active").submit_raw ().result ();

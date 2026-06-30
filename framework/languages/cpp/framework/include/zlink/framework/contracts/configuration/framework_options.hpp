@@ -250,19 +250,7 @@ class handler_options_builder_t
                                });
     }
 
-    template <typename TPayload> void add_serializers () { add_json_serializer<TPayload> (); }
-
-    template <typename TPayload> void add_json_serializer ()
-    {
-        auto *serializers = _serializers;
-        auto state = _state;
-        _state->add_json_serializer_installer ([serializers, state] {
-            if (state->json_serializer_types.emplace (std::type_index (typeid (TPayload))).second
-                && !serializers->contains (std::type_index (typeid (TPayload)))) {
-                serializers->template add_json<TPayload> ();
-            }
-        });
-    }
+    template <typename TPayload> void add_serializers () {}
 
     service_collection_t *_services;
     handler_registry_t *_handlers;
@@ -293,41 +281,16 @@ class metadata_policy_builder_t
     std::shared_ptr<detail::framework_options_state_t> _options;
 };
 
-class codec_options_builder_t
+class codec_registration_context_t
 {
   public:
-    explicit codec_options_builder_t (
-      serializer_registry_t &serializers,
-      std::shared_ptr<detail::handler_group_options_state_t> state) :
-        _serializers (&serializers), _state (std::move (state))
+    explicit codec_registration_context_t (serializer_registry_t &serializers) :
+        _serializers (&serializers)
     {
     }
 
-    template <typename TPayload, typename... TPayloads> void add_json ()
-    {
-        add_json_serializer<TPayload> ();
-        (add_json_serializer<TPayloads> (), ...);
-    }
-
-    void add_json ()
-    {
-        _state->json_enabled = true;
-        for (const auto &installer : _state->json_serializer_installers) {
-            installer ();
-        }
-    }
-
-    template <typename TExtension> codec_options_builder_t &use (const TExtension &extension)
-    {
-        extension.register_framework_codecs (*this);
-        return *this;
-    }
-
-    // Registers a custom payload serializer for TPayload (for example Avro or
-    // Thrift). The provided serialize/deserialize functions become the payload
-    // codec for that type in high-level object messaging.
     template <typename TPayload>
-    codec_options_builder_t &
+    codec_registration_context_t &
     add_serializer (typename serializer_t<TPayload>::serialize_fn_t serialize,
                     typename serializer_t<TPayload>::deserialize_fn_t deserialize,
                     std::string content_type = "application/octet-stream")
@@ -339,14 +302,25 @@ class codec_options_builder_t
 
   private:
     serializer_registry_t *_serializers;
-    std::shared_ptr<detail::handler_group_options_state_t> _state;
+};
 
-    template <typename TPayload> void add_json_serializer ()
+class codec_options_builder_t
+{
+  public:
+    explicit codec_options_builder_t (serializer_registry_t &serializers) :
+        _serializers (&serializers)
     {
-        if (!_serializers->contains (std::type_index (typeid (TPayload)))) {
-            _serializers->template add_json<TPayload> ();
-        }
     }
+
+    template <typename TExtension> codec_options_builder_t &use (const TExtension &extension)
+    {
+        codec_registration_context_t context (*_serializers);
+        extension.register_framework_codecs (context);
+        return *this;
+    }
+
+  private:
+    serializer_registry_t *_serializers;
 };
 
 class discovery_options_builder_t
@@ -1313,7 +1287,7 @@ class zlink_framework_options_t
 
     codec_options_builder_t codecs ()
     {
-        return codec_options_builder_t (*_serializers, _handler_groups);
+        return codec_options_builder_t (*_serializers);
     }
 
     metadata_policy_builder_t metadata () { return metadata_policy_builder_t (_options); }

@@ -12,7 +12,6 @@
 
 ```cpp
 auto client = zlink::http_client::client_t::create ("http://127.0.0.1:18080")
-  .json ()
   .coroutines ()
   .build ();
 ```
@@ -31,7 +30,6 @@ auto server_resume_scheduler =
     });
 
 auto client = zlink::http_client::client_t::create ("https://matchmaking.internal")
-  .json ()
   .coroutines (server_resume_scheduler)
   .build ();
 ```
@@ -41,7 +39,6 @@ auto client = zlink::http_client::client_t::create ("https://matchmaking.interna
 
 ```cpp
 auto client = zlink::http_client::client_t::create ("https://matchmaking.internal")
-  .json ()
   .coroutines (http_execute_scheduler, server_resume_scheduler)
   .build ();
 ```

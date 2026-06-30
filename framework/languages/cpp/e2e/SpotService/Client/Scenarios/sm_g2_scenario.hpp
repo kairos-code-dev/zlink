@@ -76,11 +76,9 @@ inline void run_sm_g2_scenario (const std::string &play_http_endpoint,
 
     auto play_a = zlink::http_client::client_t::create ()
                     .base_url (play_http_endpoint)
-                    .json ()
                     .build ();
     auto play_b = zlink::http_client::client_t::create ()
                     .base_url (play_b_http_endpoint)
-                    .json ()
                     .build ();
 
     constexpr auto first_owner_spot = "user:play-a:sm-g2-owner";

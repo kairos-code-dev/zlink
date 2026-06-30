@@ -30,7 +30,6 @@ class delivery_dispatch_client_scenario_t
             connector_options.dispatch_mode = zlink::stream_connector::dispatch_mode_t::immediate;
             auto core_customer =
               zlink::stream_connector::connector_factory_t::create (connector_options);
-            core_customer.codecs ().add_json ();
             auto customer = zlink::stream_e2e_client::use (core_customer);
             auto connected = customer.connect ().submit ();
             ensure (static_cast<bool> (connected), "customer stream connect failed");

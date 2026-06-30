@@ -7,7 +7,6 @@
 
 ```csharp
 var response = await ZLinkHttpClient.Create("https://api.internal")
-    .Json()
     .Compression()
     .Get("/large-report")
     .SubmitAsync<Report>();

@@ -22,15 +22,6 @@ int main (int argc, char **argv)
           .message_flow (zlink::framework::message_flow_log_mode_t::key_transitions)
           .trace_log_file (options.log_dir + "/" + options.trace_label + "-flow.log")
           .trace_label (options.trace_label);
-        framework.codecs ().add_json ();
-        framework.codecs ().add_json<rm::profile_request_t,
-                                      rm::profile_reply_t,
-                                      rm::profile_command_t,
-                                      rm::payload_request_t,
-                                      rm::payload_reply_t,
-                                      rm::request_failure_result_t,
-                                      rm::operation_status_t,
-                                      rm::backpressure_send_result_t> ();
         auto channel = framework.add_client_server_channel (rm::api_channel);
         if (!options.registry_router.empty ()) {
             framework.use_discovery ().add_registry_endpoint (options.registry_router);

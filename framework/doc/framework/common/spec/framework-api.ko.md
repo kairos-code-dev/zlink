@@ -66,8 +66,7 @@
   구성 단계에서 끝난다. framework가 요청·응답 객체 타입을 보고 serializer를 찾아 byte
   payload로 직렬화하고, reply도 업무 객체로 복원한다.
 - JSON은 framework 표준 codec이며, codec을 따로 설정하지 않으면 기본값으로 사용한다.
-  기존 `codecs().add_json()`/`addJson()` 호출은 호환을 위해 남아 있지만 새 코드에서는
-  JSON만 쓰기 위해 별도 등록을 하지 않는다.
+  새 코드에서는 JSON만 쓰기 위해 별도 등록을 하지 않는다.
 - Protobuf와 MessagePack은 framework core의 기본 의존성이 아니다. 두 codec은 선택
   framework codec extension package로 제공한다. application은 필요한 package만 설치하고
   구성 단계에서 extension을 등록한다.

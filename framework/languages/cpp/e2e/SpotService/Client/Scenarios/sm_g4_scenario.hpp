@@ -81,7 +81,6 @@ inline void run_sm_g4_scenario (const std::string &session_stream_endpoint)
         auto stream =
           std::make_unique<zlink::stream_connector::connector_t> (
             zlink::stream_connector::connector_factory_t::create (options));
-        stream->codecs ().add_json ();
         auto connected = stream->connect ();
         if (!connected) {
             throw std::runtime_error ("SM-G4 stream connect failed for actor-sm-g4-"

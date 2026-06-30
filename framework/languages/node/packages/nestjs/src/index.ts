@@ -15,6 +15,7 @@ import type {
   ZLinkClientCapabilityOptions,
   ZLinkChannelOptions,
   ZLinkCodecExtension,
+  ZLinkCodecRegistrar,
   ZLinkCodecRegistryOptions,
   ZLinkDispatchOptionsBuilder,
   ZLinkFrameworkRegistration,
@@ -22,7 +23,6 @@ import type {
   ZLinkMessageFlowLogMode,
   ZLinkMessageFlowObserver,
   ZLinkMessageSerializer,
-  ZLinkNamedCodec,
   ZLinkProviderResolver,
   ZLinkPublisherCapabilityOptions,
   ZLinkPublishContext,
@@ -58,7 +58,6 @@ import type {
 
 type RuntimeConstructor<T> = new (...args: unknown[]) => T;
 type MutableCodecRegistryOptions = {
-  codecs: ZLinkNamedCodec[];
   serializers: NonNullable<ZLinkCodecRegistryOptions['serializers']>[number][];
   streamCodecs: NonNullable<ZLinkCodecRegistryOptions['streamCodecs']>[number][];
 };
@@ -306,9 +305,6 @@ export interface ZLinkNestDiscoveryBuilder extends ZLinkNestFrameworkOptionsBuil
 
 export interface ZLinkNestCodecRegistryBuilder extends ZLinkNestFrameworkOptionsBuilder {
   use(extension: ZLinkCodecExtension): this;
-  addSerializer(contentType: string, serializer: ZLinkMessageSerializer): this;
-  addStreamCodec(contentType: string, codec: unknown): this;
-  addJson(): this;
 }
 
 export interface ZLinkNestClientServerChannelBuilder extends ZLinkNestFrameworkOptionsBuilder {
@@ -559,7 +555,7 @@ class DefaultZLinkNestFrameworkOptionsBuilder implements ZLinkNestFrameworkOptio
   private readonly routerMeshes: Record<string, ZLinkNestRouterMeshOptions> = {};
   private readonly streams: Record<string, ZLinkStreamNodeOptions> = {};
   private readonly spotNodes: Record<string, ZLinkSpotNodeOptions> = {};
-  private readonly codecOptions: MutableCodecRegistryOptions = { codecs: [], serializers: [], streamCodecs: [] };
+  private readonly codecOptions: MutableCodecRegistryOptions = { serializers: [], streamCodecs: [] };
 
   options(options: ZLinkNestFrameworkAdditionalOptions): this {
     this.additionalOptions = { ...this.additionalOptions, ...options };
@@ -578,12 +574,6 @@ class DefaultZLinkNestFrameworkOptionsBuilder implements ZLinkNestFrameworkOptio
     return new DefaultZLinkNestDispatchOptionsBuilder(
       this.additionalOptions.dispatch as NonNullable<ZLinkFrameworkRegistrationOptions['dispatch']>
     );
-  }
-
-  addNamedCodec(codec: ZLinkNamedCodec): void {
-    if (!this.codecOptions.codecs.includes(codec)) {
-      this.codecOptions.codecs.push(codec);
-    }
   }
 
   addSerializer(contentType: string, serializer: ZLinkMessageSerializer): void {
@@ -649,12 +639,10 @@ class DefaultZLinkNestFrameworkOptionsBuilder implements ZLinkNestFrameworkOptio
       routerMeshes: { ...this.routerMeshes },
       streams: { ...this.streams },
       spotNodes: { ...this.spotNodes },
-      codecs: this.codecOptions.codecs.length === 0 &&
-          this.codecOptions.serializers.length === 0 &&
+      codecs: this.codecOptions.serializers.length === 0 &&
           this.codecOptions.streamCodecs.length === 0
         ? undefined
         : {
-            codecs: [...this.codecOptions.codecs],
             serializers: [...this.codecOptions.serializers],
             streamCodecs: [...this.codecOptions.streamCodecs]
           }
@@ -753,7 +741,7 @@ class DefaultZLinkNestDispatchOptionsBuilder implements ZLinkDispatchOptionsBuil
   }
 }
 
-class DefaultZLinkNestCodecRegistryBuilder extends ZLinkNestChildBuilder implements ZLinkNestCodecRegistryBuilder {
+class DefaultZLinkNestCodecRegistryBuilder extends ZLinkNestChildBuilder implements ZLinkNestCodecRegistryBuilder, ZLinkCodecRegistrar {
   constructor(root: DefaultZLinkNestFrameworkOptionsBuilder) {
     super(root);
   }
@@ -776,10 +764,6 @@ class DefaultZLinkNestCodecRegistryBuilder extends ZLinkNestChildBuilder impleme
     return this;
   }
 
-  addJson(): this {
-    this.root.addNamedCodec('json');
-    return this;
-  }
 }
 
 class DefaultZLinkNestClientServerChannelBuilder extends ZLinkNestChildBuilder implements ZLinkNestClientServerChannelBuilder {

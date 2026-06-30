@@ -282,6 +282,7 @@ terminate_gracefully() {
     kill -KILL "${child}" >/dev/null 2>&1 || true
   done
   wait "${pid}" >/dev/null 2>&1 || true
+  return 1
 }
 
 static_checks() {

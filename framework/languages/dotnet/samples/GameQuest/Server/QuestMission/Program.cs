@@ -7,6 +7,7 @@ using GameQuest.Server.Configuration;
 using GameQuest.Shared;
 using Zlink.Framework.AspNetCore;
 using Zlink.Framework.Contracts.Dispatch;
+using Zlink.Samples.Logging;
 
 namespace GameQuest.QuestMission;
 
@@ -18,6 +19,10 @@ internal static class Program
         var missionName = Environment.GetEnvironmentVariable("GAMEQUEST_MISSION_NAME") ?? "mission-a";
         var instance = topology.ForQuestMission(missionName);
         var builder = WebApplication.CreateBuilder(args);
+        SampleLogging.Configure(
+            builder.Logging,
+            SampleLogging.DirectoryFromEnvironment("GAMEQUEST_LOG_DIR"),
+            missionName);
 
         builder.Services.AddSingleton(topology);
         builder.Services.AddSingleton(instance);
@@ -34,7 +39,6 @@ internal static class Program
                 .MessageFlow(ZLinkMessageFlowLogMode.KeyTransitions)
                 .TraceLogFile(SampleFlowLog.Path(missionName))
                 .TraceLabel(missionName);
-            options.Codecs.AddJson();
             options.AddHandlersFromAssemblyOf(typeof(Program));
             options.UseDiscovery().AddRegistryEndpoint(topology.RegistryRouterEndpoint);
             {

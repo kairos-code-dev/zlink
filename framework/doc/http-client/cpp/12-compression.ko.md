@@ -7,7 +7,6 @@
 
 ```cpp
 auto client = zlink::http_client::client_t::create ("https://game-api.example.internal")
-                .json ()
                 .compression ()
                 .build ();
 

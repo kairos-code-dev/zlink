@@ -127,7 +127,7 @@ connector의 계약과 사용법은
 connector도 framework처럼 **custom codec**을 끼울 수 있다. connector typed 경로는
 `codec_traits<T>`를 쓰므로, DTO 타입에 대해 `codec_traits<place_order_t>`를 특수화해
 `encode`/`decode`/`codec`을 주면 Avro·Thrift 같은 포맷을 쓴다. server framework 쪽
-등록(`codecs().add_serializer<T>(...)`)과 대칭이며, 두 표면의 전체 목록은
+등록(`codecs().use(extension)`)과 대칭이며, 두 표면의 전체 목록은
 [framework-api §2.2](../../common/spec/framework-api.ko.md) 표를 본다.
 
 ```cpp

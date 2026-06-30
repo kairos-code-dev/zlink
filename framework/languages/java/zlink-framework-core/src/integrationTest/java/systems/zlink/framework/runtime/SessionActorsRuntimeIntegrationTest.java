@@ -302,19 +302,10 @@ final class SessionActorsRuntimeIntegrationTest {
         String registryRouter,
         String playRouter,
         String playPub) {
-        return startDiscoveredPlayRuntime(registryRouter, playRouter, playPub, false);
-    }
-
-    private static ZLinkFrameworkRuntime startDiscoveredPlayRuntime(
-        String registryRouter,
-        String playRouter,
-        String playPub,
-        boolean json) {
         return startDiscoveredPlayRuntime(
             registryRouter,
             playRouter,
             playPub,
-            json,
             RoutingId.from("play-node"));
     }
 
@@ -322,13 +313,9 @@ final class SessionActorsRuntimeIntegrationTest {
         String registryRouter,
         String playRouter,
         String playPub,
-        boolean json,
         RoutingId playNodeRid) {
         DefaultZLinkFrameworkOptions options = new DefaultZLinkFrameworkOptions();
         options.addHandlersFromPackageOf(SessionActorsRuntimeIntegrationTest.class);
-        if (json) {
-            options.codecs().addJson();
-        }
         { var discovery = options.useDiscovery(); discovery.addRegistryEndpoint(registryRouter); };
         { var mesh = options.addSpotMesh("game"); { var node = mesh; node.enableRouter(playRouter)
                     .setRoutingId(playNodeRid);

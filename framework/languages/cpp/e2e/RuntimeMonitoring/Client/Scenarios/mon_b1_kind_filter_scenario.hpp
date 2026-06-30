@@ -18,7 +18,6 @@ inline void run_mon_b1_kind_filter_scenario ()
     if (const auto trigger_url = env_or ("ZLINK_CPP_E2E_TRIGGER_URL"); !trigger_url.empty ()) {
         auto trigger = zlink::http_client::client_t::create ()
                          .base_url (trigger_url)
-                         .json ()
                          .timeout (std::chrono::milliseconds (3000))
                          .build ();
         auto request =

@@ -46,7 +46,6 @@ open class ProviderApplication {
     open fun providerFramework(state: ScenarioState): ZLinkFrameworkConfigurer =
         ZLinkFrameworkConfigurer { options ->
             val logDir = Env.get("ZLINK_KOTLIN_E2E_LOG_DIR", "logs")
-            options.codecs().addJson()
             options.configureDispatch()
                 .messageFlow(ZLinkMessageFlowLogMode.KEY_TRANSITIONS)
                 .traceLogFile("$logDir/${state.providerRid()}-flow.log")

@@ -27,7 +27,6 @@ inline void run_sm_b6_scenario (const std::string &play_http_endpoint,
 
     auto play_a = zlink::http_client::client_t::create ()
                     .base_url (play_http_endpoint)
-                    .json ()
                     .build ();
 
     constexpr auto leave_actor_id = "sm-b6-left";
@@ -58,7 +57,6 @@ inline void run_sm_b6_scenario (const std::string &play_http_endpoint,
     options.request_timeout = std::chrono::milliseconds (5000);
     options.dispatch_mode = zlink::stream_connector::dispatch_mode_t::immediate;
     auto stream = zlink::stream_connector::connector_factory_t::create (options);
-    stream.codecs ().add_json ();
 
     auto connected = stream.connect ();
     if (!connected) {
@@ -107,7 +105,6 @@ inline void run_sm_b6_scenario (const std::string &play_http_endpoint,
       nlohmann::json::parse (disconnect_joined.value ().body).get<join_res_t> ().actor;
 
     auto disconnect_stream = zlink::stream_connector::connector_factory_t::create (options);
-    disconnect_stream.codecs ().add_json ();
     auto disconnect_connected = disconnect_stream.connect ();
     if (!disconnect_connected) {
         throw std::runtime_error ("SM-B6 disconnect stream connect failed");

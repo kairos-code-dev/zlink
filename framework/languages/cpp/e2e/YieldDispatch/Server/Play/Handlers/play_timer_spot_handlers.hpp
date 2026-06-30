@@ -1,0 +1,182 @@
+/* SPDX-License-Identifier: MPL-2.0 */
+
+#pragma once
+
+#include "../Spots/play_spot_types.hpp"
+#include "../Support/play_support.hpp"
+#include "../../../Shared/yield_dispatch_contracts.hpp"
+
+#include <zlink/framework.hpp>
+
+#include <chrono>
+#include <map>
+#include <mutex>
+#include <optional>
+#include <string>
+#include <utility>
+#include <vector>
+
+namespace zlink::framework::e2e::yield_dispatch::server::play {
+
+namespace yd = zlink::framework::e2e::yield_dispatch;
+
+inline void
+deactivate_yield_timer (std::map<std::string, yield_timer_state_t> &timers,
+                        std::mutex &timer_mutex,
+                        const std::string &timer_name)
+{
+    std::lock_guard lock (timer_mutex);
+    if (auto found = timers.find (timer_name); found != timers.end ()) {
+        found->second.active = false;
+    }
+}
+
+inline std::optional<yield_timer_tick_state_t>
+next_yield_timer_tick (std::map<std::string, yield_timer_state_t> &timers,
+                       std::mutex &timer_mutex,
+                       const std::string &timer_name)
+{
+    std::lock_guard lock (timer_mutex);
+    auto found = timers.find (timer_name);
+    if (found == timers.end ()) {
+        return std::nullopt;
+    }
+    auto &state = found->second;
+    if (!state.active) {
+        return std::nullopt;
+    }
+    ++state.tick_count;
+    return yield_timer_tick_state_t{.request_id = state.request_id,
+                                    .timer_name = state.timer_name,
+                                    .mode = state.mode,
+                                    .delay_ms = state.delay_ms,
+                                    .tick_number = state.tick_count};
+}
+
+inline void
+handle_timer_start_command (zlink::framework::spot_context_t &context,
+                            evidence_store_t &evidence,
+                            std::map<std::string, yield_timer_state_t> &timers,
+                            std::mutex &timer_mutex,
+                            const yd::timer_start_command_t &request)
+{
+    const auto spot_rid = std::string (context.spot_rid ().value ());
+    {
+        std::lock_guard lock (timer_mutex);
+        if (timers.find (request.timer_name) != timers.end ()) {
+            evidence.add ("timer-start-duplicate-ignored|rid=" + evidence.node_rid
+                          + "|spot=" + spot_rid + "|request=" + request.request_id
+                          + "|timer=" + request.timer_name + "|mode=" + request.mode);
+            return;
+        }
+        timers.emplace (request.timer_name,
+                        yield_timer_state_t{.request_id = request.request_id,
+                                            .timer_name = request.timer_name,
+                                            .mode = request.mode,
+                                            .delay_ms = request.delay_ms});
+    }
+
+    zlink::framework::timer_options_t options;
+    options.overrun_policy = zlink::framework::timer_overrun_policy_t::delay_next_tick;
+    auto timer = context.add_timer<yield_timer_handler_t> (
+      request.timer_name, std::chrono::milliseconds (request.period_ms), options);
+    {
+        std::lock_guard lock (timer_mutex);
+        if (auto found = timers.find (request.timer_name); found != timers.end ()) {
+            found->second.timer = std::move (timer);
+        }
+    }
+    evidence.add ("timer-started|rid=" + evidence.node_rid + "|spot=" + spot_rid
+                  + "|request=" + request.request_id + "|timer=" + request.timer_name
+                  + "|mode=" + request.mode);
+}
+
+inline void
+handle_timer_stop_command (std::map<std::string, yield_timer_state_t> &timers,
+                           std::mutex &timer_mutex,
+                           const yd::timer_stop_command_t &request)
+{
+    std::vector<zlink::framework::timer_t> timers_to_cancel;
+    {
+        std::lock_guard lock (timer_mutex);
+        for (auto it = timers.begin (); it != timers.end ();) {
+            if (it->second.request_id == request.request_id) {
+                timers_to_cancel.push_back (std::move (it->second.timer));
+                it = timers.erase (it);
+            } else {
+                ++it;
+            }
+        }
+    }
+    for (auto &timer : timers_to_cancel) {
+        timer.cancel ();
+    }
+}
+
+inline zlink::framework::task_t<void>
+handle_timer_tick (zlink::framework::spot_context_t &context,
+                   evidence_store_t &evidence,
+                   std::map<std::string, yield_timer_state_t> &timers,
+                   std::mutex &timer_mutex,
+                   const zlink::framework::timer_tick_t &tick)
+{
+    auto state = next_yield_timer_tick (timers, timer_mutex, tick.name);
+    if (!state) {
+        co_return;
+    }
+
+    const auto spot_rid = std::string (context.spot_rid ().value ());
+    const auto tick_id = std::to_string (state->tick_number);
+    if (state->mode == "fast") {
+        evidence.add ("timer-fast-started|rid=" + evidence.node_rid + "|spot="
+                      + spot_rid + "|request=" + state->request_id + "|timer="
+                      + state->timer_name + "|tick=" + tick_id + "|handler=timer");
+        evidence.add ("timer-fast-completed|rid=" + evidence.node_rid + "|spot="
+                      + spot_rid + "|request=" + state->request_id + "|timer="
+                      + state->timer_name + "|tick=" + tick_id + "|handler=timer");
+        deactivate_yield_timer (timers, timer_mutex, state->timer_name);
+        co_return;
+    }
+
+    if (state->tick_number == 1
+        && (state->mode == "yield-on-first" || state->mode == "yield-then-next")) {
+        evidence.add ("timer-yield-started|rid=" + evidence.node_rid + "|spot="
+                      + spot_rid + "|request=" + state->request_id + "|timer="
+                      + state->timer_name + "|tick=" + tick_id + "|handler=timer");
+        auto call =
+          context.outbound ()
+            .request (yd::delay_channel,
+                      yd::delay_req_t{.request_id = state->request_id,
+                                      .delay_ms = state->delay_ms,
+                                      .marker = state->timer_name})
+            .packet_name (yd::delay_req_t::packet_name)
+            .timeout (std::chrono::milliseconds (5000));
+        evidence.add ("timer-yield-released|rid=" + evidence.node_rid + "|spot="
+                      + spot_rid + "|request=" + state->request_id + "|timer="
+                      + state->timer_name + "|tick=" + tick_id + "|handler=timer");
+        co_await call.yield<yd::delay_reply_t> ();
+        evidence.add ("timer-yield-resumed|rid=" + evidence.node_rid + "|spot="
+                      + spot_rid + "|request=" + state->request_id + "|timer="
+                      + state->timer_name + "|tick=" + tick_id + "|handler=timer");
+        evidence.add ("timer-yield-completed|rid=" + evidence.node_rid + "|spot="
+                      + spot_rid + "|request=" + state->request_id + "|timer="
+                      + state->timer_name + "|tick=" + tick_id + "|handler=timer");
+        if (state->mode == "yield-on-first") {
+            deactivate_yield_timer (timers, timer_mutex, state->timer_name);
+        }
+        co_return;
+    }
+
+    if (state->mode == "yield-then-next" && state->tick_number == 2) {
+        evidence.add ("timer-next-started|rid=" + evidence.node_rid + "|spot="
+                      + spot_rid + "|request=" + state->request_id + "|timer="
+                      + state->timer_name + "|tick=" + tick_id + "|handler=timer");
+        evidence.add ("timer-next-completed|rid=" + evidence.node_rid + "|spot="
+                      + spot_rid + "|request=" + state->request_id + "|timer="
+                      + state->timer_name + "|tick=" + tick_id + "|handler=timer");
+        deactivate_yield_timer (timers, timer_mutex, state->timer_name);
+    }
+    co_return;
+}
+
+} // namespace zlink::framework::e2e::yield_dispatch::server::play

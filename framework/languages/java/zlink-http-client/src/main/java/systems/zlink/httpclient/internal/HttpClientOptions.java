@@ -11,7 +11,6 @@ import java.util.Map;
  */
 public record HttpClientOptions(
     String baseUrl,
-    boolean json,
     Duration timeout,
     long maxResponseBodySize,
     Map<String, String> headers,

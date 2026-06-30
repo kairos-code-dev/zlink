@@ -30,7 +30,6 @@ class ClientApplication {
     @Bean
     fun clientFramework(clientOptions: ClientOptions): ZLinkFrameworkConfigurer =
         ZLinkFrameworkConfigurer { options ->
-            options.codecs().addJson()
             options.codecs().use(ZLinkProtobufCodec.defaultCodec())
             options.codecs().use(ZLinkMessagePackCodec.forPayloadTypes(::isPackedType))
             options.configureDispatch()

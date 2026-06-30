@@ -276,12 +276,6 @@ codec_registry_t::~codec_registry_t () = default;
 codec_registry_t::codec_registry_t (codec_registry_t &&) noexcept = default;
 codec_registry_t &codec_registry_t::operator= (codec_registry_t &&) noexcept = default;
 
-codec_registry_t &codec_registry_t::add_json ()
-{
-    enable_codec (codec_t::json);
-    return use_default_codec (codec_t::json);
-}
-
 codec_registry_t &codec_registry_t::enable_codec (codec_t codec)
 {
     auto state = detail::state_from (_state);

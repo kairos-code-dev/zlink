@@ -553,4 +553,15 @@ inline void from_json (const nlohmann::json &json, yield_dispatch_reply_t &value
     value.marker = json.value ("marker", "");
 }
 
+template <typename T> inline zlink::message_t to_stream_payload (const T &value)
+{
+    return zlink::message_t::from_json (value);
+}
+
+template <typename T>
+inline void from_stream_payload (const zlink::message_t &payload, T &value)
+{
+    value = payload.parse_json<T> ();
+}
+
 } // namespace zlink::framework::e2e::yield_dispatch

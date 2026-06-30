@@ -12,7 +12,7 @@ public sealed class ZLinkMessagePackCodec : IZLinkCodecExtension, IZlinkStreamPa
 
     public static ZLinkMessagePackCodec Default { get; } = new();
 
-    public void Register(IZLinkCodecRegistryBuilder codecs)
+    public void Register(IZLinkCodecRegistrar codecs)
     {
         ArgumentNullException.ThrowIfNull(codecs);
         codecs.AddSerializer(

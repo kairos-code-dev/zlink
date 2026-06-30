@@ -11,19 +11,15 @@ internal static class BasicDiscoveryScenario
     public static async Task RunAsync(ClientOptions options)
     {
         using var registry = ZLinkHttpClient.Create(options.Reg1Url)
-            .Json()
             .Timeout(TimeSpan.FromSeconds(10))
             .Build();
         using var consumer = ZLinkHttpClient.Create(options.ConsumerUrl)
-            .Json()
             .Timeout(TimeSpan.FromSeconds(10))
             .Build();
         using var providerA = ZLinkHttpClient.Create(options.ProviderAUrl)
-            .Json()
             .Timeout(TimeSpan.FromSeconds(10))
             .Build();
         using var providerB = ZLinkHttpClient.Create(options.ProviderBUrl)
-            .Json()
             .Timeout(TimeSpan.FromSeconds(10))
             .Build();
 

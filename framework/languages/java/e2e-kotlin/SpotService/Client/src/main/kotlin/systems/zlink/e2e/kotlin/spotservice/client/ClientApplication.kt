@@ -31,7 +31,6 @@ class ClientApplication {
         ZLinkFrameworkConfigurer { options ->
             val logDir = Env.get("ZLINK_KOTLIN_E2E_LOG_DIR", "logs")
             val clientRid = "client-${Env.get("ZLINK_KOTLIN_E2E_CLIENT_MODE", "state1")}"
-            options.codecs().addJson()
             options.addSpotRemoteAddressResolver(SpotRouteResolver::class.java)
             options.useDiscovery().addRegistryEndpoint(Env.get("ZLINK_KOTLIN_E2E_REGISTRY_ROUTER"))
             options.configureDispatch()

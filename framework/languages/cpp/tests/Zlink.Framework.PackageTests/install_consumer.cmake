@@ -169,7 +169,6 @@ main ()
   (void) app;
   auto client = zlink::http_client::client_t::create ()
                   .base_url ("http://127.0.0.1:18080")
-                  .json ()
                   .build ();
   (void) client;
   auto extensions = zlink::framework::extensions::known_extensions ();

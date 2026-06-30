@@ -458,7 +458,7 @@ public sealed class CustomSerializerEnvelopeTests
 
     private sealed class MarkerCodecExtension : IZLinkCodecExtension
     {
-        public void Register(IZLinkCodecRegistryBuilder codecs)
+        public void Register(IZLinkCodecRegistrar codecs)
         {
             codecs.AddSerializer("application/avro", new MarkerSerializer());
         }

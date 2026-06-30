@@ -43,7 +43,6 @@ public static class RegistrationCodecServerHostFactory
                 .MessageFlow(ZLinkMessageFlowLogMode.KeyTransitions)
                 .TraceLogFile(Path.Combine(options.LogDir, $"{options.Rid}-flow.log"))
                 .TraceLabel(options.Rid);
-            framework.Codecs.AddJson();
             if (options.CodecMode != "json-only")
             {
                 framework.Codecs.Use(ZLinkProtobufCodec.Default);

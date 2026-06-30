@@ -151,9 +151,7 @@ class request_performer_t
                                   || (hop.scheme == "https" && hop.port == "443");
         wire.set (http::field::host, default_port ? hop.host : hop.host + ":" + hop.port);
         wire.set (http::field::user_agent, "zlink-http-client/0.2");
-        if (_options.json) {
-            wire.set (http::field::accept, "application/json");
-        }
+        wire.set (http::field::accept, "application/json");
         if (_options.compression) {
             wire.set (http::field::accept_encoding, "gzip, deflate");
         }

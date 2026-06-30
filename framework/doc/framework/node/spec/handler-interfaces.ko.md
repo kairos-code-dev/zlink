@@ -1122,13 +1122,11 @@ codec registry 등록 표면(`zlinkFramework().codecs()`, §6.1):
 ```ts
 export interface ZLinkCodecRegistryBuilder {
   use(extension: ZLinkCodecExtension): this;
-  addJson(): this;
-  addSerializer(contentType: string, serializer: ZLinkMessageSerializer): this;
 }
 ```
 
-> 코드 기준: dotnet `IZLinkCodecRegistryBuilder` 는 `Use(...)`, `AddJson()`,
-> `AddSerializer(...)` 표면을 가진다.
+> 코드 기준: codec registry builder의 application 표면은 extension 등록만 제공한다.
+> serializer 등록은 extension 내부 registrar가 수행한다.
 
 ## 5. Client 인터페이스
 
@@ -1447,7 +1445,6 @@ export interface ZLinkMetadataPolicyBuilder {
         })
         .codecs()
           .use(zlinkProtobufCodec())
-          .addJson()
         .useDiscovery()
           .addRegistryEndpoint('tcp://registry:7000')
         .addClientServerChannel('api')
@@ -1478,7 +1475,7 @@ export class AppModule {}
 | `configureDispatch(...)` | `dispatch: { spotDispatchMode, streamDispatchMode, unhandled, diagnostics }` | §4.4.3 |
 | `addHandlersFromModule(s)(...)` | `discover: { modules / include }` | 매핑 정책 §4.2 |
 | `addSpotMesh(...).actorFactory(...)` | SpotNode `actorFactories` | nestjs-actor |
-| `codecs` | `codecs().use(zlinkProtobufCodec())` / `addJson()` / `addSerializer(...)` | §4.5 |
+| `codecs` | `codecs().use(zlinkProtobufCodec())`  | §4.5 |
 | `configureMetadata(...)` | `metadata: { forward: [...] }` | nestjs-actor |
 | `useRegistrySpotRemoteAddresses(...)` | `spotRemoteAddresses: { namespace, routerChannelId? }` | nestjs-spot |
 

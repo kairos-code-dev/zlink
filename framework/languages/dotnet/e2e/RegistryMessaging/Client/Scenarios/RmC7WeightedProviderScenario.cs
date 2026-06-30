@@ -14,11 +14,9 @@ internal static class RmC7WeightedProviderScenario
         var providerA = await cluster.StartProviderAsync("api-a-weighted", "api-a", 75);
         var providerB = await cluster.StartProviderAsync("api-b-weighted", "api-b", 25);
         using var requester = ZLinkHttpClient.Create(providerA.HttpUrl)
-            .Json()
             .Timeout(TimeSpan.FromMinutes(5))
             .Build();
         using var providerBClient = ZLinkHttpClient.Create(providerB.HttpUrl)
-            .Json()
             .Timeout(TimeSpan.FromMinutes(5))
             .Build();
 

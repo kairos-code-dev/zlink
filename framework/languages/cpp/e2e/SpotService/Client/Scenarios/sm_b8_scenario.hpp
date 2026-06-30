@@ -27,7 +27,6 @@ inline void run_sm_b8_scenario (const std::string &play_http_endpoint,
     constexpr auto actor_id = "sm-b8-destroy";
     auto play_a = zlink::http_client::client_t::create ()
                     .base_url (play_http_endpoint)
-                    .json ()
                     .build ();
     auto joined =
       play_a.post ("/spot/join")
@@ -55,7 +54,6 @@ inline void run_sm_b8_scenario (const std::string &play_http_endpoint,
     options.request_timeout = std::chrono::milliseconds (5000);
     options.dispatch_mode = zlink::stream_connector::dispatch_mode_t::immediate;
     auto stream = zlink::stream_connector::connector_factory_t::create (options);
-    stream.codecs ().add_json ();
 
     auto connected = stream.connect ();
     if (!connected) {

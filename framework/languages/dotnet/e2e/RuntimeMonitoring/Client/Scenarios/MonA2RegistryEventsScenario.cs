@@ -8,7 +8,7 @@ internal static class MonA2RegistryEventsScenario
 {
     public static async Task RunAsync(ClientOptions options)
     {
-        using var registry = ZLinkHttpClient.Create(options.RegistryUrl).Json().Build();
+        using var registry = ZLinkHttpClient.Create(options.RegistryUrl).Build();
         var evidence = await WaitForRegistryEvidenceAsync(registry);
         ScenarioAssert.That(
             evidence.Any(line =>

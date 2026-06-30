@@ -21,7 +21,6 @@ namespace zlink::http_client::detail
 struct http_client_options_t
 {
     std::string base_url;
-    bool json = false;
     std::chrono::milliseconds timeout{3000};
     std::uint64_t max_response_body_size = 16 * 1024 * 1024;
     std::map<std::string, std::string> headers;

@@ -70,7 +70,6 @@ auto app = zlink::framework::app_t::create();
 
 app.add_zlink_framework([&](auto &options) {
     options.use_discovery().add_registry_endpoint (topology.registry_router_endpoint);
-    options.codecs().add_json();
 
     options.add_client_server_channel(sample_names_t::api_channel)
       .enable_server(topology.api_channel_endpoint)

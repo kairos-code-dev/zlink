@@ -104,7 +104,6 @@ inline void run_sm_g1_crash_observation_scenario (zlink::framework::route_client
                                                 play_b_actor_id + "-display");
 
     auto play_a_core = sm_g1_make_stream_connector (stream_endpoint);
-    play_a_core.codecs ().add_json ();
     auto play_a_stream = zlink::stream_e2e_client::use (play_a_core);
     auto play_a_connected = play_a_stream.connect ().submit ();
     if (!static_cast<bool> (play_a_connected)) {
@@ -243,7 +242,6 @@ inline void run_sm_g1_crash_recovery_scenario (zlink::framework::route_client_t 
     auto recovered_actor = sm_g1_ensure_actor_ref (routes, "play-b", recovered_actor_id,
                                                    recovered_actor_id + "-display");
     auto recovered_core = sm_g1_make_stream_connector (stream_endpoint);
-    recovered_core.codecs ().add_json ();
     auto recovered_stream = zlink::stream_e2e_client::use (recovered_core);
     auto recovered_connected = recovered_stream.connect ().submit ();
     if (!static_cast<bool> (recovered_connected)) {

@@ -47,7 +47,6 @@ internal sealed class OrderWorkflowSpot(
             "shoppingmall order: started. order={OrderId}, status={Status}",
             state.OrderId,
             state.Status);
-        Console.Error.WriteLine($"shoppingmall order: started order={state.OrderId} status={state.Status}");
         return new StartOrderWorkflowRes(state);
     }
 
@@ -72,7 +71,6 @@ internal sealed class OrderWorkflowSpot(
             "shoppingmall order: projection rebuilt. order={OrderId}, status={Status}",
             state.OrderId,
             state.Status);
-        Console.Error.WriteLine($"shoppingmall order: projection rebuilt order={state.OrderId} status={state.Status}");
         return new RebuildOrderProjectionRes(state);
     }
 }

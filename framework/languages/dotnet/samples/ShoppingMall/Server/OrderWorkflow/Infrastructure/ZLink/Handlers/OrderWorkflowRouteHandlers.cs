@@ -18,8 +18,10 @@ internal sealed class StartOrderWorkflowRouteHandler(
         ZLinkRouteRequestContext context,
         CancellationToken cancellationToken)
     {
-        Console.Error.WriteLine($"shoppingmall workflow route: StartOrderWorkflowReq order={request.OrderId}");
-        await EnsureSpotAsync(spots, request.OrderId, cancellationToken);
+        logger.LogInformation(
+            "shoppingmall workflow route: StartOrderWorkflowReq order={OrderId}",
+            request.OrderId);
+        await EnsureSpotAsync(spots, request.OrderId, logger, cancellationToken);
         var state = await workflow.StartAsync(request, cancellationToken);
         _ = ContinueAfterStartAsync(workflow, request.OrderId)
             .ContinueWith(
@@ -31,13 +33,17 @@ internal sealed class StartOrderWorkflowRouteHandler(
             "shoppingmall workflow route: delivered StartOrderWorkflowReq to spot owner. order={OrderId}, status={Status}",
             state.OrderId,
             state.Status);
-        Console.Error.WriteLine($"shoppingmall order: started order={state.OrderId} status={state.Status}");
+        logger.LogInformation(
+            "shoppingmall order: started order={OrderId} status={Status}",
+            state.OrderId,
+            state.Status);
         return new StartOrderWorkflowRes(state);
     }
 
     internal static async ValueTask EnsureSpotAsync(
         IZLinkSpotManager spots,
         string orderId,
+        ILogger logger,
         CancellationToken cancellationToken)
     {
         try
@@ -49,7 +55,10 @@ internal sealed class StartOrderWorkflowRouteHandler(
         }
         catch (Exception error)
         {
-            Console.Error.WriteLine($"shoppingmall workflow route: spot create failed order={orderId} error={error}");
+            logger.LogError(
+                error,
+                "shoppingmall workflow route: spot create failed order={OrderId}",
+                orderId);
             throw;
         }
     }
@@ -65,7 +74,8 @@ internal sealed class StartOrderWorkflowRouteHandler(
 
 internal sealed class ContinueOrderWorkflowRouteHandler(
     IZLinkSpotManager spots,
-    OrderWorkflowService workflow)
+    OrderWorkflowService workflow,
+    ILogger<ContinueOrderWorkflowRouteHandler> logger)
     : IZLinkRouteRequestHandler<ContinueOrderWorkflowReq, ContinueOrderWorkflowRes>
 {
     public async ValueTask<ContinueOrderWorkflowRes> HandleAsync(
@@ -73,7 +83,7 @@ internal sealed class ContinueOrderWorkflowRouteHandler(
         ZLinkRouteRequestContext context,
         CancellationToken cancellationToken)
     {
-        await StartOrderWorkflowRouteHandler.EnsureSpotAsync(spots, request.OrderId, cancellationToken);
+        await StartOrderWorkflowRouteHandler.EnsureSpotAsync(spots, request.OrderId, logger, cancellationToken);
         var state = await workflow.ContinueAsync(request, cancellationToken);
         return new ContinueOrderWorkflowRes(state);
     }
@@ -81,7 +91,8 @@ internal sealed class ContinueOrderWorkflowRouteHandler(
 
 internal sealed class RebuildOrderProjectionRouteHandler(
     IZLinkSpotManager spots,
-    OrderWorkflowService workflow)
+    OrderWorkflowService workflow,
+    ILogger<RebuildOrderProjectionRouteHandler> logger)
     : IZLinkRouteRequestHandler<RebuildOrderProjectionReq, RebuildOrderProjectionRes>
 {
     public async ValueTask<RebuildOrderProjectionRes> HandleAsync(
@@ -89,9 +100,12 @@ internal sealed class RebuildOrderProjectionRouteHandler(
         ZLinkRouteRequestContext context,
         CancellationToken cancellationToken)
     {
-        await StartOrderWorkflowRouteHandler.EnsureSpotAsync(spots, request.OrderId, cancellationToken);
+        await StartOrderWorkflowRouteHandler.EnsureSpotAsync(spots, request.OrderId, logger, cancellationToken);
         var state = await workflow.RebuildProjectionAsync(request.OrderId, cancellationToken);
-        Console.Error.WriteLine($"shoppingmall order: projection rebuilt order={state.OrderId} status={state.Status}");
+        logger.LogInformation(
+            "shoppingmall order: projection rebuilt order={OrderId} status={Status}",
+            state.OrderId,
+            state.Status);
         return new RebuildOrderProjectionRes(state);
     }
 }

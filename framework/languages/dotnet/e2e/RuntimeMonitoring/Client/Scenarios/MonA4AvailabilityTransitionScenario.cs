@@ -8,9 +8,9 @@ internal static class MonA4AvailabilityTransitionScenario
 {
     public static async Task RunAsync(ClientOptions options)
     {
-        using var trigger = ZLinkHttpClient.Create(options.TriggerUrl).Json().Build();
-        using var service = ZLinkHttpClient.Create(options.ServiceUrl).Json().Build();
-        using var registry = ZLinkHttpClient.Create(options.RegistryUrl).Json().Build();
+        using var trigger = ZLinkHttpClient.Create(options.TriggerUrl).Build();
+        using var service = ZLinkHttpClient.Create(options.ServiceUrl).Build();
+        using var registry = ZLinkHttpClient.Create(options.RegistryUrl).Build();
 
         var before = (await trigger.Post("/profile/request")
             .Body(new ProfileRequest("drain", "mon-a4-before-drain"))

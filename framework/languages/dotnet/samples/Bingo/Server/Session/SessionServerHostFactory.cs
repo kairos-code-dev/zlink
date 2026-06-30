@@ -5,6 +5,7 @@ using Microsoft.Extensions.Hosting;
 using Zlink.Framework.AspNetCore;
 using Zlink.Framework.Codecs.Protobuf;
 using Zlink.Framework.Contracts.Dispatch;
+using Zlink.Samples.Logging;
 
 namespace Bingo.Server.Session;
 
@@ -15,6 +16,10 @@ public static class SessionServerHostFactory
         SampleSessionNode session)
     {
         var builder = Host.CreateApplicationBuilder();
+        SampleLogging.Configure(
+            builder.Logging,
+            SampleLogging.DirectoryFromEnvironment("BINGO_LOG_DIR"),
+            "session");
         builder.Services.AddSingleton(topology);
         builder.Services.AddSingleton(session);
         builder.Services.AddZLinkFramework(options =>

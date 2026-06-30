@@ -1,6 +1,8 @@
 using Bingo.Client.Configuration;
+using Microsoft.Extensions.Logging;
 using Systems.Zlink.Stream.Connector.Contracts;
 using Zlink.Framework.Codecs.Protobuf;
+using Zlink.Samples.Logging;
 
 namespace Bingo.Client;
 
@@ -16,18 +18,26 @@ internal static class Program
                               ?? throw new ArgumentException("Missing --stream-a-endpoint.");
         var streamBEndpoint = ReadOption(args, "--stream-b-endpoint")
                               ?? throw new ArgumentException("Missing --stream-b-endpoint.");
-        await using var client1 = CreateClient(streamAEndpoint, "player1");
-        await using var client2 = CreateClient(streamBEndpoint, "player2");
-        await using var observer = CreateClient(streamBEndpoint, "observer");
+        using var loggerFactory = SampleLogging.CreateFactory(
+            SampleLogging.DirectoryFromEnvironment("BINGO_LOG_DIR"),
+            "client");
+        var logger = loggerFactory.CreateLogger("Bingo.Client");
+
+        await using var client1 = CreateClient(streamAEndpoint, "player1", logger);
+        await using var client2 = CreateClient(streamBEndpoint, "player2", logger);
+        await using var observer = CreateClient(streamBEndpoint, "observer", logger);
 
         await new BingoClientScenario().RunAsync(
             client1,
             client2,
             observer);
-        Console.WriteLine("bingo=completed");
+        logger.LogInformation("bingo=completed");
     }
 
-    private static IZlinkStreamConnector CreateClient(string streamEndpoint, string clientName)
+    private static IZlinkStreamConnector CreateClient(
+        string streamEndpoint,
+        string clientName,
+        ILogger logger)
     {
         return ZlinkStreamConnectorFactory.Create(new ZlinkStreamConnectorOptions
             {
@@ -39,7 +49,7 @@ internal static class Program
             })
             .WithInboundObserver((observation, _) =>
             {
-                Console.WriteLine(
+                logger.LogInformation(
                     "stream-inbound sample=Bingo client={0} kind={1} name={2} seq={3} bytes={4}",
                     clientName,
                     observation.Kind,

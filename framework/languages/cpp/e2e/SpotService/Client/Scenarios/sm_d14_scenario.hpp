@@ -48,7 +48,6 @@ inline void run_sm_d14_scenario (const std::string &session_tls_stream_endpoint)
 
     {
         auto strict = zlink::stream_connector::connector_factory_t::create (options);
-        strict.codecs ().add_json ();
         const auto connected = strict.connect ();
         if (connected) {
             (void) strict.close ();
@@ -59,7 +58,6 @@ inline void run_sm_d14_scenario (const std::string &session_tls_stream_endpoint)
 
     options.skip_server_certificate_validation = true;
     auto tls = zlink::stream_connector::connector_factory_t::create (options);
-    tls.codecs ().add_json ();
     auto connected = tls.connect ();
     if (!connected) {
         throw std::runtime_error ("SM-D14 TLS stream connect failed");

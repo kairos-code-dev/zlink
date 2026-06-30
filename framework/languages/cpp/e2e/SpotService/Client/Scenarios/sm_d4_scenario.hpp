@@ -28,7 +28,6 @@ inline void run_sm_d4_scenario (const std::string &session_stream_endpoint)
     options.request_timeout = std::chrono::milliseconds (5000);
     options.dispatch_mode = zlink::stream_connector::dispatch_mode_t::immediate;
     auto stream = zlink::stream_connector::connector_factory_t::create (options);
-    stream.codecs ().add_json ();
 
     auto connected = stream.connect ();
     if (!connected) {

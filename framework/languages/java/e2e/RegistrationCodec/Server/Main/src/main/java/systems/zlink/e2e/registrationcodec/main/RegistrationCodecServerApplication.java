@@ -74,7 +74,6 @@ public final class RegistrationCodecServerApplication {
     @Bean
     ZLinkFrameworkConfigurer serverFramework(ServerOptions options) {
         return framework -> {
-            framework.codecs().addJson();
             framework.codecs().use(ZLinkProtobufCodec.defaultCodec());
             framework.codecs().use(ZLinkMessagePackCodec.forPayloadTypes(
                 RegistrationCodecServerApplication::isPackedType));

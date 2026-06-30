@@ -2,26 +2,24 @@ package systems.zlink.framework.runtime.configuration;
 
 import java.util.Collections;
 import java.util.LinkedHashMap;
-import java.util.LinkedHashSet;
 import java.util.Map;
 import java.util.Objects;
 import java.util.Optional;
-import java.util.Set;
 import java.util.function.Predicate;
 import systems.zlink.framework.ZLinkMessageSerializer;
 import systems.zlink.framework.configuration.ZLinkCodecRegistryBuilder;
+import systems.zlink.framework.configuration.ZLinkCodecRegistrar;
 import systems.zlink.framework.errors.ZLinkConfigurationException;
 import systems.zlink.framework.streams.ZLinkStreamCodec;
 
-public final class ZLinkCodecRegistration implements ZLinkCodecRegistryBuilder {
-    private final Set<String> registeredCodecs = new LinkedHashSet<>();
+public final class ZLinkCodecRegistration implements ZLinkCodecRegistryBuilder, ZLinkCodecRegistrar {
     private final Map<String, RegisteredSerializer> serializers = new LinkedHashMap<>();
     private final Map<String, ZLinkStreamCodec> streamCodecsByContentType = new LinkedHashMap<>();
     private final Map<ZLinkStreamCodec, String> contentTypesByStreamCodec = new LinkedHashMap<>();
 
     @Override
-    public void addJson() {
-        registeredCodecs.add("json");
+    public void use(systems.zlink.framework.configuration.ZLinkCodecExtension extension) {
+        Objects.requireNonNull(extension, "extension").register(this);
     }
 
     @Override
@@ -62,10 +60,6 @@ public final class ZLinkCodecRegistration implements ZLinkCodecRegistryBuilder {
         }
         streamCodecsByContentType.put(normalized, codec);
         contentTypesByStreamCodec.put(codec, normalized);
-    }
-
-    public Set<String> registeredCodecs() {
-        return Collections.unmodifiableSet(registeredCodecs);
     }
 
     public Map<String, ZLinkMessageSerializer> serializers() {

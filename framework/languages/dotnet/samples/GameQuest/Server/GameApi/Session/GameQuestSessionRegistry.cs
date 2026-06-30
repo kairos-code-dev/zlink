@@ -70,7 +70,7 @@ internal sealed class GameQuestSessionRegistry(ILogger<GameQuestSessionRegistry>
         catch (ZlinkSubmitException error)
         {
             Remove(session);
-            logger.LogInformation(error,
+            logger.LogWarning(error,
                 "gamequest stream notify skipped because the session is no longer connected. player={PlayerId} session={SessionId}",
                 request.PlayerId,
                 session.SessionId);

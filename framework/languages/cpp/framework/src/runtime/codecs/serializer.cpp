@@ -103,7 +103,10 @@ bool serializer_registry_t::contains (std::type_index type) const
 std::string serializer_registry_t::content_type (std::type_index type) const
 {
     const auto found = _state->serializers.find (type);
-    if (found == _state->serializers.end () || found->second.content_type.empty ()) {
+    if (found == _state->serializers.end ()) {
+        return "application/json";
+    }
+    if (found->second.content_type.empty ()) {
         return "application/octet-stream";
     }
     return found->second.content_type;

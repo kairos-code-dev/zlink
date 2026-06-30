@@ -966,7 +966,6 @@ registry 에 등록하는 흐름이라는 점에 유의한다.
 builder.Services.AddZLinkFramework(options =>
 {
     options.Codecs.Use(ZLinkProtobufCodec.Default);
-    options.Codecs.AddJson();
     options.Codecs.Use(ZLinkMessagePackCodec.Default);
 });
 ```

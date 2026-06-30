@@ -641,17 +641,7 @@ class http_options_builder_t
           THandler, typename detail::handler_dependencies_t<THandler>::type>::add (*_services);
     }
 
-    template <typename T> void register_json_serializer ()
-    {
-        if (_serializers == nullptr) {
-            return;
-        }
-        const auto type = std::type_index (typeid (T));
-        if (!_json_serializer_types.emplace (type).second || _serializers->contains (type)) {
-            return;
-        }
-        _serializers->template add_json<T> ();
-    }
+    template <typename T> void register_json_serializer () {}
 
     template <typename THandler> void register_route_serializers ()
     {

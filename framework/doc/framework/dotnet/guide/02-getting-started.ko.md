@@ -96,7 +96,6 @@ builder.WebHost.UseUrls(settings.ApiBindUrl);
 
 builder.Services.AddZLinkFramework(options =>
 {
-    options.Codecs.AddJson();   // 송수신 DTO 직렬화 codec. API/Play 양쪽이 같은 codec 이어야 매칭된다.
 
     options.AddClientServerChannel(SampleChannels.Play)
         .EnableClient(settings.PlayChannelEndpoint);  // 수동 연결 — Registry 없이 Play endpoint 를 설정으로 직접 지정(7장 자동연결과 대비)
@@ -148,7 +147,6 @@ Play 서버는 `Play` channel의 server 역할을 열고 `CreateGameHandler`를
 ```csharp
 builder.Services.AddZLinkFramework(options =>
 {
-    options.Codecs.AddJson();
 
     options.AddClientServerChannel(SampleChannels.Play)            // channel 이름은 API(client) 쪽과 반드시 일치
         .EnableServer(settings.PlayChannelEndpoint)               // API 의 EnableClient 와 같은 endpoint 를 server 로 bind

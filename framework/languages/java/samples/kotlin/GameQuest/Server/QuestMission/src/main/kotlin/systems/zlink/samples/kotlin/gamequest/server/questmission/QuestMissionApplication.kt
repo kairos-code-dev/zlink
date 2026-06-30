@@ -55,7 +55,6 @@ class QuestMissionApplication {
                 traceLogFile((System.getenv("GAMEQUEST_LOG_DIR") ?: "logs") + "/flow-${instance.missionName}.log")
                 traceLabel(instance.missionName)
             }
-            configurer.codecs().addJson()
             configurer.addHandlersFromPackageOf(QuestMissionApplication::class.java)
 
             // gameplay event fanout subscriber (both GameApi publishers)

@@ -23,7 +23,6 @@ class InvalidServerApplication {
     @Bean
     fun invalidFramework(serverOptions: ServerOptions): ZLinkFrameworkConfigurer =
         ZLinkFrameworkConfigurer { options ->
-            options.codecs().addJson()
             val channel = options.addClientServerChannel(Contracts.CHANNEL)
                 .enableServer(serverOptions.serverEndpoint)
             channel.addRequestHandler(ManualRequestHandler::class.java, EchoManualRequest::class.java, EchoReply::class.java, "DuplicatePacket")

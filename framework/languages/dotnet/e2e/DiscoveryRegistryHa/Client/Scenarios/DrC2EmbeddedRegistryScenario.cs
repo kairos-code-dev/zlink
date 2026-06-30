@@ -11,19 +11,15 @@ internal static class DrC2EmbeddedRegistryScenario
     public static async Task RunAsync(ClientOptions options)
     {
         using var reg2 = ZLinkHttpClient.Create(options.Reg2Url)
-            .Json()
             .Timeout(TimeSpan.FromSeconds(10))
             .Build();
         using var consumer = ZLinkHttpClient.Create(options.Reg2ConsumerUrl)
-            .Json()
             .Timeout(TimeSpan.FromSeconds(10))
             .Build();
         using var providerA = ZLinkHttpClient.Create(options.ProviderAUrl)
-            .Json()
             .Timeout(TimeSpan.FromSeconds(10))
             .Build();
         using var providerB = ZLinkHttpClient.Create(options.ProviderBUrl)
-            .Json()
             .Timeout(TimeSpan.FromSeconds(10))
             .Build();
 

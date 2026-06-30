@@ -61,7 +61,6 @@ public final class SubscriberApplication {
         EvidenceStore evidence,
         EvidenceDispatchErrorObserver observer) {
         return framework -> {
-            framework.codecs().addJson();
             framework.configureDispatch()
                 .messageFlow(ZLinkMessageFlowLogMode.KEY_TRANSITIONS)
                 .traceLogFile(options.logDir() + "/" + evidence.subscriberRid() + "-flow.log")

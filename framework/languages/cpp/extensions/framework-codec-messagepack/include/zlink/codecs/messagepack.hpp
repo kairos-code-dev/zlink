@@ -12,7 +12,7 @@ class messagepack_codec_extension_t
   public:
     template <typename TBuilder> void register_framework_codecs (TBuilder &codecs) const
     {
-        codecs.add_json ();
+        (void) codecs;
     }
 
     void register_connector_codecs (zlink::stream_connector::codec_registry_t &codecs) const

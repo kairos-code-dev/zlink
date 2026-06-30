@@ -10,7 +10,6 @@ proxy 주소는 `http://host:port` 형식이다 (proxy 자체는 http로만 접�
 
 ```cpp
 auto client = zlink::http_client::client_t::create ("https://api.partner-game.example")
-                .json ()
                 .proxy ("http://egress-proxy.example.internal:3128")
                 .build ();
 
@@ -39,7 +38,6 @@ target scheme에 따라 표준 proxy 프로토콜을 따른다. 호출자가 구
 
 ```cpp
 auto client = zlink::http_client::client_t::create ("https://api.partner-game.example")
-                .json ()
                 .proxy ("http://egress-proxy.example.internal:3128")
                 .proxy_basic_auth ("svc-matchmaker", proxy_password)
                 .build ();

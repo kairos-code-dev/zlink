@@ -58,8 +58,6 @@ function createProviderModule(options: ServerOptions, evidence: EvidenceStore, f
         useFactory: () => {
           const builder = zlinkFramework();
           builder
-            .codecs()
-              .addJson()
             .configureDispatch()
               .setMessageFlowObserver(EvidenceDispatchErrorObserver)
               .messageFlow(ZLinkMessageFlowLogMode.KeyTransitions)

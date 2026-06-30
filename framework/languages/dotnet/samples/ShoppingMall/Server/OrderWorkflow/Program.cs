@@ -7,6 +7,7 @@ using ShoppingMall.Server.Shared.Store;
 using ShoppingMall.Shared.Contracts;
 using Zlink.Framework.AspNetCore;
 using Zlink.Framework.Contracts.Dispatch;
+using Zlink.Samples.Logging;
 
 namespace ShoppingMall.Server.OrderWorkflow;
 
@@ -20,6 +21,10 @@ internal static class Program
         var topology = SampleTopology.Create();
         var instance = topology.ForWorkflowInstance(instanceId);
         var builder = WebApplication.CreateBuilder(args);
+        SampleLogging.Configure(
+            builder.Logging,
+            SampleLogging.DirectoryFromEnvironment("SHOPPINGMALL_LOG_DIR"),
+            instance.InstanceId);
 
         builder.WebHost.UseUrls(instance.HttpUrl);
         builder.Services.AddSingleton(topology);
@@ -39,7 +44,6 @@ internal static class Program
                 .MessageFlow(ZLinkMessageFlowLogMode.KeyTransitions)
                 .TraceLogFile(SampleFlowLog.Path(instance.InstanceId))
                 .TraceLabel(instance.InstanceId);
-            options.Codecs.AddJson();
             options.UseDiscovery().AddRegistryEndpoint(topology.RegistryRouterEndpoint);
             {
                 var route = options.AddRouteMesh(SampleNames.OrderWorkflowRouteChannel);

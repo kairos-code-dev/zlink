@@ -127,7 +127,7 @@ internal sealed class RequestPerformer(
         // a streamed/chunked upload. We never use the Expect/continue handshake.
         message.Headers.ExpectContinue = false;
         message.Headers.TryAddWithoutValidation("User-Agent", "zlink-http-client/0.2");
-        if (options.Json) message.Headers.TryAddWithoutValidation("Accept", "application/json");
+        message.Headers.TryAddWithoutValidation("Accept", "application/json");
 
         if (options.Compression) message.Headers.TryAddWithoutValidation("Accept-Encoding", "gzip, deflate");
 

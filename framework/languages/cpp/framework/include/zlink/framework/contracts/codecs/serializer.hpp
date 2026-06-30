@@ -10,6 +10,7 @@
 #include <memory>
 #include <span>
 #include <string>
+#include <type_traits>
 #include <typeindex>
 #include <utility>
 #include <vector>
@@ -24,6 +25,32 @@ namespace detail
 class serializer_registry_state_t;
 encoded_payload_t encoded_payload_from_raw (const zlink::message_t &message);
 zlink::message_t encoded_payload_to_raw (const encoded_payload_t &payload);
+
+template <typename T, typename = void> struct is_json_serializable_t : std::false_type
+{
+};
+
+template <typename T>
+struct is_json_serializable_t<T, std::void_t<decltype (nlohmann::json (std::declval<T> ()))>>
+  : std::true_type
+{
+};
+
+template <typename T, typename = void> struct is_json_deserializable_t : std::false_type
+{
+};
+
+template <typename T>
+struct is_json_deserializable_t<
+  T,
+  std::void_t<decltype (std::declval<nlohmann::json> ().template get<T> ())>>
+  : std::true_type
+{
+};
+
+template <typename T>
+inline constexpr bool is_json_serializer_compatible_v =
+  is_json_serializable_t<T>::value && is_json_deserializable_t<T>::value;
 } // namespace detail
 
 class encoded_payload_t
@@ -130,18 +157,6 @@ class serializer_registry_t
     serializer_registry_t (const serializer_registry_t &) = delete;
     serializer_registry_t &operator= (const serializer_registry_t &) = delete;
 
-    template <typename T> serializer_registry_t &add_json ()
-    {
-        return add<T> (
-          [] (const T &value) {
-              return encoded_payload_t::from_raw (zlink::message_t::from_json (value));
-          },
-          [] (const encoded_payload_t &payload) {
-              return payload.to_raw ().template parse_json<T> ();
-          },
-          "application/json");
-    }
-
     template <typename T>
     serializer_registry_t &add (typename serializer_t<T>::serialize_fn_t serialize,
                                 typename serializer_t<T>::deserialize_fn_t deserialize,
@@ -160,6 +175,30 @@ class serializer_registry_t
 
     template <typename T> serializer_t<T> get () const
     {
+        if (!contains (std::type_index (typeid (T)))) {
+            if constexpr (detail::is_json_serializer_compatible_v<T>) {
+                return serializer_t<T> (
+                  [] (const T &value) {
+                      return encoded_payload_t::from_raw (zlink::message_t::from_json (value));
+                  },
+                  [] (const encoded_payload_t &payload) {
+                      return payload.to_raw ().template parse_json<T> ();
+                  });
+            }
+            else {
+                return serializer_t<T> (
+                  [] (const T &) -> encoded_payload_t {
+                      throw framework_exception_t (
+                        framework_error_kind_t::payload_decode_failed,
+                        "No serializer is registered for this payload type");
+                  },
+                  [] (const encoded_payload_t &) -> T {
+                      throw framework_exception_t (
+                        framework_error_kind_t::payload_decode_failed,
+                        "No serializer is registered for this payload type");
+                  });
+            }
+        }
         return serializer_t<T> (
           [this] (const T &value) { return serialize (std::type_index (typeid (T)), &value); },
           [this] (const encoded_payload_t &payload) {

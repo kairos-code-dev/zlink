@@ -10,9 +10,9 @@ internal static class MonD1FailureRecoveryScenario
 {
     public static async Task RunAsync(ClientOptions options)
     {
-        using var trigger = ZLinkHttpClient.Create(options.TriggerUrl).Json().Build();
-        using var registry = ZLinkHttpClient.Create(options.RegistryUrl).Json().Build();
-        using var serviceB = ZLinkHttpClient.Create(options.ServiceBUrl).Json().Build();
+        using var trigger = ZLinkHttpClient.Create(options.TriggerUrl).Build();
+        using var registry = ZLinkHttpClient.Create(options.RegistryUrl).Build();
+        using var serviceB = ZLinkHttpClient.Create(options.ServiceBUrl).Build();
 
         await serviceB.Post("/shutdown").SubmitAsync<object>();
         var serviceBUri = new Uri(options.ServiceBUrl);
@@ -40,7 +40,7 @@ internal static class MonD1FailureRecoveryScenario
                 && reply.Value == "profile:restart",
                 "MON-D1 restarted service did not handle request.");
 
-            using var restartedServiceB = ZLinkHttpClient.Create(options.ServiceBUrl).Json().Build();
+            using var restartedServiceB = ZLinkHttpClient.Create(options.ServiceBUrl).Build();
             var serviceBEvidence = (await restartedServiceB.Post("/evidence/wait")
                 .Body(new EvidenceWaitRequest(
                     ["profile-request|rid=svc-b|marker=mon-d1-request|value=restart"],
@@ -64,7 +64,7 @@ internal static class MonD1FailureRecoveryScenario
         }
         finally
         {
-            using var restartedServiceB = ZLinkHttpClient.Create(options.ServiceBUrl).Json().Build();
+            using var restartedServiceB = ZLinkHttpClient.Create(options.ServiceBUrl).Build();
             await PostBestEffortAsync(restartedServiceB, "/shutdown");
             await restartedService.WaitForExitAsync();
         }

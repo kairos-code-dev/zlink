@@ -12,11 +12,9 @@ internal static class DrD4DirectEndpointScenario
     public static async Task RunAsync(ClientOptions options)
     {
         using var registry = ZLinkHttpClient.Create(options.Reg1Url)
-            .Json()
             .Timeout(TimeSpan.FromSeconds(10))
             .Build();
         using var probe = ZLinkHttpClient.Create(options.ProbeUrl)
-            .Json()
             .Timeout(TimeSpan.FromSeconds(10))
             .Build();
 

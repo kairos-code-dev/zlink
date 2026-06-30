@@ -3,7 +3,7 @@ import path from 'node:path';
 import {
   ZLinkEncodedPayload,
   type ZLinkCodecExtension,
-  type ZLinkCodecRegistryBuilder,
+  type ZLinkCodecRegistrar,
   type ZLinkMessageSerializer
 } from '@zlink-systems/framework';
 import {
@@ -89,7 +89,7 @@ export type ZLinkProtobufEnvelopeCodecExtension = ZLinkProtobufCodecExtension & 
 
 export function zlinkProtobufCodec(): ZLinkProtobufCodecExtension {
   return {
-    register(codecs: ZLinkCodecRegistryBuilder): void {
+    register(codecs: ZLinkCodecRegistrar): void {
       codecs.addSerializer(ZLINK_PROTOBUF_CONTENT_TYPE, createProtobufMessageSerializer());
       codecs.addStreamCodec(ZLINK_PROTOBUF_CONTENT_TYPE, this);
     },
@@ -148,7 +148,7 @@ export function createZlinkStreamProtobufEnvelopeCodec(
   options: ProtobufEnvelopeCodecOptions
 ): ZLinkProtobufEnvelopeCodecExtension {
   return {
-    register(codecs: ZLinkCodecRegistryBuilder): void {
+    register(codecs: ZLinkCodecRegistrar): void {
       codecs.addSerializer(ZLINK_PROTOBUF_CONTENT_TYPE, createProtobufMessageSerializer());
       codecs.addStreamCodec(ZLINK_PROTOBUF_CONTENT_TYPE, this);
     },

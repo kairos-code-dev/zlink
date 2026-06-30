@@ -5,17 +5,15 @@ using Zlink.HttpClient;
 var options = ClientOptions.Parse(args);
 
 using var consumer = ZLinkHttpClient.Create(options.ConsumerUrl)
-    .Json()
     .Timeout(TimeSpan.FromMinutes(10))
     .Build();
 using var registry = ZLinkHttpClient.Create(options.RegistryUrl)
-    .Json()
     .Timeout(TimeSpan.FromMinutes(10))
     .Build();
 await using var processes = new ResilienceProcessManager(options);
 
-using var providerA = ZLinkHttpClient.Create(options.ProviderAUrl).Json().Build();
-using var providerB = ZLinkHttpClient.Create(options.ProviderBUrl).Json().Build();
+using var providerA = ZLinkHttpClient.Create(options.ProviderAUrl).Build();
+using var providerB = ZLinkHttpClient.Create(options.ProviderBUrl).Build();
 
 var scenarios = new (string Name, Func<Task> Run)[]
 {

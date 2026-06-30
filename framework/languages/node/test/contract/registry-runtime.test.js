@@ -298,7 +298,6 @@ test('codec registry builder tracks dotnet named codecs and custom serializers',
   const builder = new framework.DefaultZLinkCodecRegistryBuilder();
 
   builder
-    .addJson()
     .use({
       register(codecs) {
         codecs.addSerializer('application/x-test', serializer);
@@ -306,7 +305,6 @@ test('codec registry builder tracks dotnet named codecs and custom serializers',
     });
 
   assert.deepEqual(builder.registeredCodecs, [
-    'json',
     'application/x-test'
   ]);
   assert.equal(builder.registeredSerializers.get('application/x-test'), serializer);

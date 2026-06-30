@@ -5,6 +5,7 @@ using Microsoft.Extensions.Hosting;
 using Zlink.Framework.AspNetCore;
 using Zlink.Framework.Contracts.Codecs.Json;
 using Zlink.Framework.Contracts.Dispatch;
+using Zlink.Samples.Logging;
 
 namespace DeliveryDispatch.Server.CustomerGateway;
 
@@ -13,6 +14,10 @@ public static class CustomerGatewayHostFactory
     public static IHost Build(SampleTopology topology)
     {
         var builder = Host.CreateApplicationBuilder();
+        SampleLogging.Configure(
+            builder.Logging,
+            SampleLogging.DirectoryFromEnvironment("DELIVERYDISPATCH_LOG_DIR"),
+            "customer-gateway");
         builder.Services.AddSingleton(topology);
         builder.Services.AddSingleton<CustomerActorDirectory>();
         builder.Services.AddZLinkFramework(options =>
@@ -22,7 +27,6 @@ public static class CustomerGatewayHostFactory
                 .TraceLogFile(SampleFlowLog.Path("customer-gateway"))
                 .TraceLabel("customer-gateway");
             options.AddHandlersFromAssemblyOf(typeof(CustomerGatewayHostFactory));
-            options.Codecs.AddJson();
             options.UseDiscovery().AddRegistryEndpoint(topology.RegistryRouterEndpoint);
             options.AddClientServerChannel(SampleNames.CustomerRouteChannel)
                 .EnableServer(topology.CustomerRouteEndpoint)

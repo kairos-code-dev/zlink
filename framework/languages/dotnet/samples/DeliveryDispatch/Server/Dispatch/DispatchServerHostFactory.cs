@@ -1,7 +1,9 @@
 using DeliveryDispatch.Server.Configuration;
 using DeliveryDispatch.Shared.Contracts;
+using Microsoft.Extensions.Logging;
 using Zlink.Framework.AspNetCore;
 using Zlink.Framework.Contracts.Dispatch;
+using Zlink.Samples.Logging;
 
 namespace DeliveryDispatch.Server.Dispatch;
 
@@ -10,6 +12,10 @@ public static class DispatchServerHostFactory
     public static WebApplication Build(SampleTopology topology)
     {
         var builder = WebApplication.CreateBuilder();
+        SampleLogging.Configure(
+            builder.Logging,
+            SampleLogging.DirectoryFromEnvironment("DELIVERYDISPATCH_LOG_DIR"),
+            "dispatch");
         builder.WebHost.UseUrls(topology.DispatchHttpUrl);
         builder.Services.AddSingleton(topology);
         builder.Services.AddSingleton<EvidenceStore>();
@@ -22,7 +28,6 @@ public static class DispatchServerHostFactory
                 .TraceLogFile(SampleFlowLog.Path("dispatch"))
                 .TraceLabel("dispatch");
             options.AddHandlersFromAssemblyOf(typeof(DispatchServerHostFactory));
-            options.Codecs.AddJson();
             options.UseDiscovery().AddRegistryEndpoint(topology.RegistryRouterEndpoint);
             options.AddClientServerChannel(SampleNames.CourierRouteChannel)
                 .EnableClient(topology.CourierRouteEndpoint)
@@ -37,6 +42,7 @@ public static class DispatchServerHostFactory
         app.MapPost("/deliveries", async (
             CreateDeliveryRequest request,
             DispatchWorkQueue queue,
+            ILoggerFactory loggerFactory,
             CancellationToken cancellationToken) =>
         {
             var assign = new AssignDelivery(
@@ -45,7 +51,8 @@ public static class DispatchServerHostFactory
                 request.PickupAddress,
                 request.DropoffAddress);
             await queue.EnqueueAsync(assign, cancellationToken);
-            Console.Error.WriteLine($"deliverydispatch api: created delivery={request.DeliveryId}");
+            loggerFactory.CreateLogger("DeliveryDispatch.Server.Dispatch")
+                .LogInformation("deliverydispatch api: created delivery={DeliveryId}", request.DeliveryId);
             return Results.Ok(new DeliveryCreated(request.DeliveryId));
         });
         app.MapPost("/self-check/assert", (

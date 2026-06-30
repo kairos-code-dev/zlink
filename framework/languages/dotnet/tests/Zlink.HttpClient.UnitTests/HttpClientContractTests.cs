@@ -113,7 +113,7 @@ public sealed class HttpClientContractTests
                 ctx.Request.ReadBody(), new JsonSerializerOptions(JsonSerializerDefaults.Web));
             await ctx.Response.WriteAsync(200, """{"id":"game-7","ranked":true}""");
         });
-        using var client = ZLinkHttpClient.Create(server.BaseUrl).Json().Build();
+        using var client = ZLinkHttpClient.Create(server.BaseUrl).Build();
 
         var response = await client.Post("/games").Body(new CreateGameReq("ranked-0611")).SubmitAsync<CreateGameRes>();
 
@@ -183,7 +183,7 @@ public sealed class HttpClientContractTests
     {
         using var server = new TestHttpServer(async ctx =>
             await ctx.Response.WriteAsync(200, """{"id":7,"name":"Aria"}"""));
-        using var client = ZLinkHttpClient.Create(server.BaseUrl).Json().Build();
+        using var client = ZLinkHttpClient.Create(server.BaseUrl).Build();
 
         var player = await Task.Run(() => client.Get("/players/7").Fetch<Player>());
 
@@ -292,7 +292,7 @@ public sealed class HttpClientContractTests
     {
         using var server = new TestHttpServer(async ctx =>
             await ctx.Response.WriteAsync(404, """{"error":"missing"}"""));
-        using var client = ZLinkHttpClient.Create(server.BaseUrl).Json().Build();
+        using var client = ZLinkHttpClient.Create(server.BaseUrl).Build();
 
         var ex = await Assert.ThrowsAsync<ZLinkFrameworkException>(async () =>
             await client.Get("/players/0").SubmitAsync<Player>());
@@ -305,7 +305,7 @@ public sealed class HttpClientContractTests
     {
         using var server = new TestHttpServer(async ctx =>
             await ctx.Response.WriteAsync(200, "not-json"));
-        using var client = ZLinkHttpClient.Create(server.BaseUrl).Json().Build();
+        using var client = ZLinkHttpClient.Create(server.BaseUrl).Build();
 
         var ex = await Assert.ThrowsAsync<ZLinkFrameworkException>(async () =>
             await client.Get("/players/7").SubmitAsync<Player>());
@@ -329,7 +329,7 @@ public sealed class HttpClientContractTests
             finalMethod = ctx.Request.HttpMethod;
             await ctx.Response.WriteAsync(200, """{"id":"game-1","ranked":false}""");
         });
-        using var client = ZLinkHttpClient.Create(server.BaseUrl).Json().FollowRedirects(3).Build();
+        using var client = ZLinkHttpClient.Create(server.BaseUrl).FollowRedirects(3).Build();
 
         var response = await client.Post("/start").Body(new CreateGameReq("x")).SubmitAsync<CreateGameRes>();
 
@@ -478,7 +478,7 @@ public sealed class HttpClientContractTests
             ctx.Response.ContentLength64 = compressed.Length;
             await ctx.Response.OutputStream.WriteAsync(compressed);
         });
-        using var client = ZLinkHttpClient.Create(server.BaseUrl).Json().Compression().Build();
+        using var client = ZLinkHttpClient.Create(server.BaseUrl).Compression().Build();
 
         var response = await client.Get("/data").SubmitAsync<Player>();
 
@@ -735,7 +735,7 @@ public sealed class HttpClientContractTests
             await ctx.Response.WriteAsync(200, """{"id":3,"name":"OneShot"}""");
         });
 
-        var player = await ZLinkHttpClient.Create(server.BaseUrl).Json().Put("/players/3")
+        var player = await ZLinkHttpClient.Create(server.BaseUrl).Put("/players/3")
             .Body(new Player(3, "OneShot")).SubmitAsync<Player>();
 
         Assert.Equal("PUT", method);

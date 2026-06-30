@@ -694,7 +694,6 @@ make_json_client (std::string base_url,
 {
     auto builder = zlink::http_client::client_t::create ()
                      .base_url (std::move (base_url))
-                     .json ()
                      .timeout (timeout);
     if (trust_certificate_file) {
         builder.trust_certificate_file (std::move (*trust_certificate_file));
@@ -768,7 +767,7 @@ TEST (ZLinkHttpClient, ValidatesFluentInputAsProtocolErrors)
       "trust certificate"));
 
     auto client =
-      zlink::http_client::client_t::create ().base_url ("http://127.0.0.1").json ().build ();
+      zlink::http_client::client_t::create ().base_url ("http://127.0.0.1").build ();
     EXPECT_TRUE (
       throws_protocol_error ([&client] { (void) client.get ("missing-leading-slash"); }, "path"));
 
@@ -801,7 +800,6 @@ TEST (ZLinkHttpClient, BuilderRequestShortcutOmitsExplicitBuild)
     // the whole request, otherwise this would be a use-after-free.
     auto result = zlink::http_client::client_t::create ()
                     .base_url (server.base_url ())
-                    .json ()
                     .timeout (std::chrono::milliseconds (500))
                     .post ("/games")
                     .body (create_game_request_t{.name = "shorthand"})
@@ -859,7 +857,6 @@ TEST (ZLinkHttpClient, CoroutineClientDoesNotBlockCallerWhileResponseIsPending)
 {
     loopback_http_server_t server;
     auto client = zlink::http_client::client_t::create (server.base_url ())
-                    .json ()
                     .timeout (500ms)
                     .coroutines ()
                     .build ();
@@ -907,7 +904,6 @@ TEST (ZLinkHttpClient, CustomExecuteAndResumeSchedulersControlCoroutineResume)
     auto execute = std::make_shared<queued_execute_scheduler_t> ();
     auto resume = std::make_shared<queued_resume_scheduler_t> ();
     auto client = zlink::http_client::client_t::create (server.base_url ())
-                    .json ()
                     .timeout (500ms)
                     .coroutines (execute, resume)
                     .build ();
@@ -934,7 +930,6 @@ TEST (ZLinkHttpClient, CustomResumeSchedulerControlsCallbackExecution)
     loopback_http_server_t server;
     auto resume = std::make_shared<queued_resume_scheduler_t> ();
     auto client = zlink::http_client::client_t::create (server.base_url ())
-                    .json ()
                     .timeout (500ms)
                     .coroutines (resume)
                     .build ();
@@ -969,7 +964,6 @@ TEST (ZLinkHttpClient, FrameworkResumeSchedulerAdapterUsesProvidedQueue)
           framework_queue.push_back (std::move (continuation));
       });
     auto client = zlink::http_client::client_t::create (server.base_url ())
-                    .json ()
                     .timeout (500ms)
                     .coroutines (resume)
                     .build ();
@@ -995,7 +989,6 @@ TEST (ZLinkHttpClient, ExecuteSchedulerRejectionCompletesTaskAsClosed)
     auto execute = std::make_shared<rejecting_execute_scheduler_t> ();
     auto resume = std::make_shared<queued_resume_scheduler_t> ();
     auto client = zlink::http_client::client_t::create ("http://127.0.0.1:1")
-                    .json ()
                     .coroutines (execute, resume)
                     .build ();
 
@@ -1011,7 +1004,6 @@ TEST (ZLinkHttpClient, QueueTimeoutCompletesBeforeStartingHttpExchange)
     auto execute = std::make_shared<queued_execute_scheduler_t> ();
     auto resume = std::make_shared<queued_resume_scheduler_t> ();
     auto client = zlink::http_client::client_t::create (server.base_url ())
-                    .json ()
                     .timeout (10ms)
                     .coroutines (execute, resume)
                     .build ();
@@ -1032,7 +1024,6 @@ TEST (ZLinkHttpClient, QueueDeadlineAppliesAcrossCoroutineRetries)
 {
     loopback_http_server_t server;
     auto client = zlink::http_client::client_t::create (server.base_url ())
-                    .json ()
                     .timeout (10ms)
                     .retry (2)
                     .coroutines ()
@@ -1055,7 +1046,6 @@ TEST (ZLinkHttpClient, ScheduledRequestOwnsTemporaryBuilderStateUntilCompletion)
     auto resume = std::make_shared<queued_resume_scheduler_t> ();
 
     auto task = zlink::http_client::client_t::create (server.base_url ())
-                  .json ()
                   .timeout (500ms)
                   .coroutines (execute, resume)
                   .post ("/games")
@@ -1114,7 +1104,6 @@ TEST (ZLinkHttpClient, SendsDefaultHeadersAndRequestOverride)
     loopback_http_server_t server;
     auto client = zlink::http_client::client_t::create ()
                     .base_url (server.base_url ())
-                    .json ()
                     .default_header ("From", "default@example.test")
                     .default_header ("X-ZLink-Override", "default")
                     .build ();
@@ -1269,7 +1258,6 @@ TEST (ZLinkHttpClient, FollowsRedirectsWhenEnabled)
     loopback_http_server_t server;
 
     auto following = zlink::http_client::client_t::create (server.base_url ())
-                       .json ()
                        .follow_redirects ()
                        .build ();
     const auto followed = following.get ("/redirect-once").submit<create_game_reply_t> ().result ();
@@ -1287,7 +1275,6 @@ TEST (ZLinkHttpClient, FollowsAbsoluteRedirectLocations)
 {
     loopback_http_server_t server;
     auto client = zlink::http_client::client_t::create (server.base_url ())
-                    .json ()
                     .follow_redirects ()
                     .build ();
 
@@ -1303,7 +1290,6 @@ TEST (ZLinkHttpClient, RedirectStripsAuthorizationAcrossHosts)
     const auto location = redirected.base_url () + "/echo-auth";
 
     auto default_auth_client = zlink::http_client::client_t::create (origin.base_url ())
-                                 .json ()
                                  .bearer_token ("secret-token")
                                  .follow_redirects ()
                                  .build ();
@@ -1315,7 +1301,6 @@ TEST (ZLinkHttpClient, RedirectStripsAuthorizationAcrossHosts)
     EXPECT_EQ (nlohmann::json::parse (default_auth.value ().body).at ("authorization"), "");
 
     auto request_auth_client = zlink::http_client::client_t::create (origin.base_url ())
-                                 .json ()
                                  .follow_redirects ()
                                  .build ();
     const auto request_auth = request_auth_client.get ("/redirect-custom")
@@ -1332,7 +1317,6 @@ TEST (ZLinkHttpClient, RedirectKeepsAuthorizationForSameOrigin)
     loopback_http_server_t server;
     const auto location = server.base_url () + "/echo-auth";
     auto client = zlink::http_client::client_t::create (server.base_url ())
-                    .json ()
                     .bearer_token ("same-origin-token")
                     .follow_redirects ()
                     .build ();
@@ -1351,7 +1335,6 @@ TEST (ZLinkHttpClient, RedirectTransformsPostIntoGet)
 {
     loopback_http_server_t server;
     auto client = zlink::http_client::client_t::create (server.base_url ())
-                    .json ()
                     .follow_redirects ()
                     .build ();
 
@@ -1367,7 +1350,6 @@ TEST (ZLinkHttpClient, StopsAtTheRedirectLimit)
 {
     loopback_http_server_t server;
     auto client = zlink::http_client::client_t::create (server.base_url ())
-                    .json ()
                     .follow_redirects (3)
                     .build ();
 
@@ -1380,7 +1362,7 @@ TEST (ZLinkHttpClient, RetriesRetriableTransportFailures)
 {
     loopback_http_server_t server;
     auto client =
-      zlink::http_client::client_t::create (server.base_url ()).json ().retry (2).build ();
+      zlink::http_client::client_t::create (server.base_url ()).retry (2).build ();
 
     // The first /flaky connection is dropped without a response; the retry
     // must succeed against the recovered server.
@@ -1392,7 +1374,7 @@ TEST (ZLinkHttpClient, RetriesRetriableTransportFailures)
 TEST (ZLinkHttpClient, DoesNotInternallyRetryNonIdempotentRequestsOnStaleConnection)
 {
     loopback_http_server_t server;
-    auto client = zlink::http_client::client_t::create (server.base_url ()).json ().build ();
+    auto client = zlink::http_client::client_t::create (server.base_url ()).build ();
 
     ASSERT_TRUE (client.get ("/games").submit_raw ().result ());
 
@@ -1409,7 +1391,7 @@ TEST (ZLinkHttpClient, StoresAndSendsCookies)
 {
     loopback_http_server_t server;
     auto client =
-      zlink::http_client::client_t::create (server.base_url ()).json ().cookies ().build ();
+      zlink::http_client::client_t::create (server.base_url ()).cookies ().build ();
 
     ASSERT_TRUE (client.get ("/set-cookie").submit_raw ().result ());
 
@@ -1431,7 +1413,7 @@ TEST (ZLinkHttpClient, MatchesCookiePathsWithSegmentBoundaries)
 {
     loopback_http_server_t server;
     auto client =
-      zlink::http_client::client_t::create (server.base_url ()).json ().cookies ().build ();
+      zlink::http_client::client_t::create (server.base_url ()).cookies ().build ();
 
     ASSERT_TRUE (client.get ("/set-cookie-overlap").submit_raw ().result ());
 
@@ -1457,7 +1439,6 @@ TEST (ZLinkHttpClient, RoutesPlainRequestsThroughHttpProxy)
     loopback_http_server_t server;
     loopback_proxy_t proxy;
     auto client = zlink::http_client::client_t::create (server.base_url ())
-                    .json ()
                     .proxy (proxy.url ())
                     .build ();
 
@@ -1471,7 +1452,7 @@ TEST (ZLinkHttpClient, DecompressesGzipResponses)
 {
     loopback_http_server_t server;
     auto client =
-      zlink::http_client::client_t::create (server.base_url ()).json ().compression ().build ();
+      zlink::http_client::client_t::create (server.base_url ()).compression ().build ();
 
     const auto result = client.get ("/gzip").submit_raw ().result ();
     ASSERT_TRUE (result) << result.error ()->what ();
@@ -1483,7 +1464,6 @@ TEST (ZLinkHttpClient, RejectsDecompressedResponseAboveBodyLimit)
 {
     loopback_http_server_t server;
     auto client = zlink::http_client::client_t::create (server.base_url ())
-                    .json ()
                     .compression ()
                     .max_response_body_size (1024)
                     .build ();
@@ -1519,7 +1499,6 @@ TEST (ZLinkHttpClient, RejectsBufferedResponseAboveBodyLimit)
 {
     loopback_http_server_t server;
     auto client = zlink::http_client::client_t::create (server.base_url ())
-                    .json ()
                     .timeout (2000ms)
                     .max_response_body_size (32)
                     .build ();
@@ -1534,7 +1513,6 @@ TEST (ZLinkHttpClient, RejectsDownloadResponseAboveBodyLimit)
 {
     loopback_http_server_t server;
     auto client = zlink::http_client::client_t::create (server.base_url ())
-                    .json ()
                     .timeout (2000ms)
                     .max_response_body_size (32)
                     .build ();
@@ -1553,7 +1531,6 @@ TEST (ZLinkHttpClient, CoroutineDownloadSinkRunsOnExecuteSchedulerWorker)
 {
     loopback_http_server_t server;
     auto client = zlink::http_client::client_t::create (server.base_url ())
-                    .json ()
                     .timeout (2000ms)
                     .coroutines ()
                     .build ();
@@ -1579,7 +1556,6 @@ TEST (ZLinkHttpClient, DownloadFollowsRedirectsWithoutLeakingIntermediateBodies)
 {
     loopback_http_server_t server;
     auto client = zlink::http_client::client_t::create (server.base_url ())
-                    .json ()
                     .follow_redirects ()
                     .build ();
 
@@ -1598,7 +1574,6 @@ TEST (ZLinkHttpClient, SendsBasicAuthAndBearerToken)
     loopback_http_server_t server;
 
     const auto basic = zlink::http_client::client_t::create (server.base_url ())
-                         .json ()
                          .basic_auth ("user", "pass")
                          .get ("/echo-auth")
                          .submit_raw ()
@@ -1608,7 +1583,6 @@ TEST (ZLinkHttpClient, SendsBasicAuthAndBearerToken)
                "Basic dXNlcjpwYXNz");
 
     const auto bearer = zlink::http_client::client_t::create (server.base_url ())
-                          .json ()
                           .bearer_token ("token-123")
                           .get ("/echo-auth")
                           .submit_raw ()
@@ -1675,7 +1649,6 @@ TEST (ZLinkHttpClient, CoroutineBodyStreamProviderRunsOnExecuteSchedulerWorker)
 {
     loopback_http_server_t server;
     auto client = zlink::http_client::client_t::create (server.base_url ())
-                    .json ()
                     .timeout (500ms)
                     .coroutines ()
                     .build ();
@@ -1707,7 +1680,7 @@ TEST (ZLinkHttpClient, DecompressesDeflateResponses)
 {
     loopback_http_server_t server;
     auto client =
-      zlink::http_client::client_t::create (server.base_url ()).json ().compression ().build ();
+      zlink::http_client::client_t::create (server.base_url ()).compression ().build ();
 
     const auto result = client.get ("/deflate").submit_raw ().result ();
     ASSERT_TRUE (result) << result.error ()->what ();
@@ -1721,7 +1694,6 @@ TEST (ZLinkHttpClient, RejectsUnauthorizedProxyAndAcceptsProxyBasicAuth)
     loopback_proxy_t proxy (std::string ("Basic cHJveHk6c2VjcmV0")); // proxy:secret
 
     const auto denied = zlink::http_client::client_t::create (server.base_url ())
-                          .json ()
                           .proxy (proxy.url ())
                           .get ("/games")
                           .submit_raw ()
@@ -1730,7 +1702,6 @@ TEST (ZLinkHttpClient, RejectsUnauthorizedProxyAndAcceptsProxyBasicAuth)
     EXPECT_EQ (denied.value ().status, 407);
 
     const auto allowed = zlink::http_client::client_t::create (server.base_url ())
-                           .json ()
                            .proxy (proxy.url ())
                            .proxy_basic_auth ("proxy", "secret")
                            .get ("/games")
@@ -1749,7 +1720,6 @@ TEST (ZLinkHttpClient, PresentsClientCertificateForMutualTls)
 
     const auto with_certificate =
       zlink::http_client::client_t::create (server.base_url ())
-        .json ()
         .trust_certificate_file (ZLINK_HTTP_CLIENT_TEST_CERT)
         .client_certificate_file (ZLINK_HTTP_CLIENT_TEST_CERT, ZLINK_HTTP_CLIENT_TEST_KEY)
         .get ("/games")
@@ -1759,7 +1729,6 @@ TEST (ZLinkHttpClient, PresentsClientCertificateForMutualTls)
     EXPECT_EQ (with_certificate.value ().status, 200);
 
     const auto without_certificate = zlink::http_client::client_t::create (server.base_url ())
-                                       .json ()
                                        .trust_certificate_file (ZLINK_HTTP_CLIENT_TEST_CERT)
                                        .get ("/games")
                                        .submit_raw ()
@@ -1774,7 +1743,6 @@ TEST (ZLinkHttpClient, TunnelsHttpsThroughProxyConnect)
     loopback_https_server_t server;
     loopback_proxy_t proxy;
     auto client = zlink::http_client::client_t::create (server.base_url ())
-                    .json ()
                     .trust_certificate_file (ZLINK_HTTP_CLIENT_TEST_CERT)
                     .proxy (proxy.url ())
                     .build ();

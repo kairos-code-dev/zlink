@@ -61,7 +61,6 @@ inline std::vector<std::string> fetch_evidence (const std::string &base_url)
 {
     auto http = zlink::http_client::client_t::create ()
                   .base_url (base_url)
-                  .json ()
                   .timeout (std::chrono::milliseconds (1000))
                   .build ();
     return http.get ("/evidence").fetch<std::vector<std::string>> ();
@@ -73,7 +72,6 @@ inline std::vector<std::string> wait_evidence_contains (const std::string &base_
 {
     auto http = zlink::http_client::client_t::create ()
                   .base_url (base_url)
-                  .json ()
                   .timeout (timeout + std::chrono::milliseconds (1000))
                   .build ();
     return http.post ("/evidence/wait")
@@ -106,7 +104,6 @@ inline profile_reply_t post_profile_request (const std::string &base_url,
 {
     auto http = zlink::http_client::client_t::create ()
                   .base_url (base_url)
-                  .json ()
                   .timeout (std::chrono::milliseconds (5000))
                   .build ();
     return http.post (path).body (request).fetch<profile_reply_t> ();
@@ -119,7 +116,6 @@ inline std::vector<std::string> wait_log_contains (const std::string &base_url,
 {
     auto http = zlink::http_client::client_t::create ()
                   .base_url (base_url)
-                  .json ()
                   .timeout (timeout + std::chrono::milliseconds (1000))
                   .build ();
     return http.post (path)

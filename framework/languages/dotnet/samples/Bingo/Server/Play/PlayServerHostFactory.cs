@@ -11,6 +11,7 @@ using StackExchange.Redis;
 using Zlink.Framework.AspNetCore;
 using Zlink.Framework.Codecs.Protobuf;
 using Zlink.Framework.Contracts.Dispatch;
+using Zlink.Samples.Logging;
 
 namespace Bingo.Server.Play;
 
@@ -19,6 +20,10 @@ public static class PlayServerHostFactory
     public static IHost Build(SampleTopology topology, SamplePlayNode node)
     {
         var builder = Host.CreateApplicationBuilder();
+        SampleLogging.Configure(
+            builder.Logging,
+            SampleLogging.DirectoryFromEnvironment("BINGO_LOG_DIR"),
+            "play");
         builder.Services.AddSingleton(topology);
         builder.Services.AddSingleton(node);
         builder.Services.AddSingleton<IConnectionMultiplexer>(_ =>

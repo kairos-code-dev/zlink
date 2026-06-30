@@ -28,7 +28,6 @@ inline zlink::stream_connector::connector_t sm_d10_connect_stream (
     options.max_received_messages = max_received_messages;
 
     auto stream = zlink::stream_connector::connector_factory_t::create (options);
-    stream.codecs ().add_json ();
     if (drop_seen != nullptr) {
         stream.on_error ([drop_seen] (const zlink::stream_connector::error_t &error) {
             if (error.code == zlink::stream_connector::error_code_t::received_message_dropped) {

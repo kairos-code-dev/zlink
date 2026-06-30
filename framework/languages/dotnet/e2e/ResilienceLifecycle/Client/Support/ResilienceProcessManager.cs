@@ -147,7 +147,7 @@ internal sealed class ResilienceProcessManager(ClientOptions options) : IAsyncDi
     {
         try
         {
-            using var http = ZLinkHttpClient.Create(url).Json().Timeout(TimeSpan.FromSeconds(2)).Build();
+            using var http = ZLinkHttpClient.Create(url).Timeout(TimeSpan.FromSeconds(2)).Build();
             return (await http.Get("/health").SubmitRawAsync()).Status == 200;
         }
         catch
@@ -183,7 +183,7 @@ internal sealed class ManagedProcess(Process process, string healthUrl)
 
             try
             {
-                using var http = ZLinkHttpClient.Create(healthUrl).Json().Timeout(TimeSpan.FromSeconds(2)).Build();
+                using var http = ZLinkHttpClient.Create(healthUrl).Timeout(TimeSpan.FromSeconds(2)).Build();
                 if ((await http.Get("/health").SubmitRawAsync()).Status == 200) return;
             }
             catch
@@ -204,7 +204,7 @@ internal sealed class ManagedProcess(Process process, string healthUrl)
         if (!process.HasExited)
             try
             {
-                using var http = ZLinkHttpClient.Create(healthUrl).Json().Timeout(TimeSpan.FromSeconds(5)).Build();
+                using var http = ZLinkHttpClient.Create(healthUrl).Timeout(TimeSpan.FromSeconds(5)).Build();
                 await http.Post("/shutdown").SubmitRawAsync();
             }
             catch

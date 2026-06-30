@@ -27,7 +27,6 @@ inline void run_sm_d7_scenario (const std::string &session_stream_endpoint)
 
     {
         auto unauthenticated = zlink::stream_connector::connector_factory_t::create (options);
-        unauthenticated.codecs ().add_json ();
         auto connected = unauthenticated.connect ();
         if (!connected) {
             throw std::runtime_error ("SM-D7 unauthenticated stream connect failed");
@@ -45,7 +44,6 @@ inline void run_sm_d7_scenario (const std::string &session_stream_endpoint)
 
     {
         auto invalid = zlink::stream_connector::connector_factory_t::create (options);
-        invalid.codecs ().add_json ();
         auto connected = invalid.connect ();
         if (!connected) {
             throw std::runtime_error ("SM-D7 invalid-auth stream connect failed");
@@ -63,7 +61,6 @@ inline void run_sm_d7_scenario (const std::string &session_stream_endpoint)
 
     constexpr auto actor_id = "actor-sm-d7";
     auto stream = zlink::stream_connector::connector_factory_t::create (options);
-    stream.codecs ().add_json ();
     auto connected = stream.connect ();
     if (!connected) {
         throw std::runtime_error ("SM-D7 stream connect failed");

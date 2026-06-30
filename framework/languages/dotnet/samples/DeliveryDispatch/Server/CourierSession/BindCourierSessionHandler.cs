@@ -1,12 +1,15 @@
 using DeliveryDispatch.Server.Configuration;
 using DeliveryDispatch.Shared.Contracts;
+using Microsoft.Extensions.Logging;
 using Systems.Zlink;
 using Zlink.Framework.Contracts.Channels;
 using Zlink.Framework.Contracts.Streams;
 
 namespace DeliveryDispatch.Server.CourierSession;
 
-internal sealed class BindCourierSessionHandler(IZLinkChannelClient channels)
+internal sealed class BindCourierSessionHandler(
+    IZLinkChannelClient channels,
+    ILogger<BindCourierSessionHandler> logger)
     : IZLinkSessionPacketHandler<IZLinkSessionContext>
 {
     public string PacketName => nameof(BindCourierSession);
@@ -37,8 +40,10 @@ internal sealed class BindCourierSessionHandler(IZLinkChannelClient channels)
                 cancellationToken);
         }
 
-        Console.Error.WriteLine(
-            $"deliverydispatch courier-session: bound courier={bound.CourierId} session={context.SessionId}");
+        logger.LogInformation(
+            "deliverydispatch courier-session: bound courier={CourierId} session={SessionId}",
+            bound.CourierId,
+            context.SessionId);
 
         await boundActor.RelayAsync(
             Zlink.Framework.Contracts.Messaging.ZLinkMessage.From(

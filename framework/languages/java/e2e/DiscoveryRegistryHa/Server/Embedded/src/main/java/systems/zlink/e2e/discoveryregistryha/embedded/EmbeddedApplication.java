@@ -51,7 +51,6 @@ public final class EmbeddedApplication {
         EmbeddedOptions options,
         EmbeddedEvidenceStore evidence) {
         return framework -> {
-            framework.codecs().addJson();
             framework.configureDispatch()
                 .messageFlow(ZLinkMessageFlowLogMode.KEY_TRANSITIONS)
                 .traceLogFile(options.logDir() + "/" + options.rid() + "-flow.log")

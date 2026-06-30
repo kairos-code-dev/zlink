@@ -32,7 +32,6 @@ inline void run_sm_d11_scenario (const std::string &session_http_endpoint,
 
     constexpr auto actor_id = "actor-sm-d11";
     auto stream = zlink::stream_connector::connector_factory_t::create (options);
-    stream.codecs ().add_json ();
     auto connected = stream.connect ();
     if (!connected) {
         throw std::runtime_error ("SM-D11 stream connect failed");
@@ -60,7 +59,6 @@ inline void run_sm_d11_scenario (const std::string &session_http_endpoint,
 
     auto session = zlink::http_client::client_t::create ()
                      .base_url (session_http_endpoint)
-                     .json ()
                      .build ();
     auto channel_raw =
       session.post ("/channel/control-ping")

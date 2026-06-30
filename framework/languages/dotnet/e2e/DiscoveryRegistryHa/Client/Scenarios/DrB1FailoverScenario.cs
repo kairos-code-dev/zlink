@@ -17,21 +17,17 @@ internal static class DrB1FailoverScenario
         };
 
         using var providerA = ZLinkHttpClient.Create(options.ProviderAUrl)
-            .Json()
             .Timeout(TimeSpan.FromSeconds(10))
             .Build();
         using var providerB = ZLinkHttpClient.Create(options.ProviderBUrl)
-            .Json()
             .Timeout(TimeSpan.FromSeconds(10))
             .Build();
         foreach (var registryCase in cases)
         {
             using var registry = ZLinkHttpClient.Create(registryCase.RegistryUrl)
-                .Json()
                 .Timeout(TimeSpan.FromSeconds(10))
                 .Build();
             using var consumer = ZLinkHttpClient.Create(registryCase.ConsumerUrl)
-                .Json()
                 .Timeout(TimeSpan.FromSeconds(10))
                 .Build();
 

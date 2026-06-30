@@ -30,7 +30,6 @@ public final class Program {
     ZLinkFrameworkConfigurer consumerFramework() {
         return options -> {
             String logDir = ConsumerOptions.get("ZLINK_JAVA_E2E_LOG_DIR", "logs");
-            options.codecs().addJson();
             options.configureDispatch()
                 .messageFlow(ZLinkMessageFlowLogMode.KEY_TRANSITIONS)
                 .traceLogFile(logDir + "/" + ConsumerOptions.get("ZLINK_JAVA_E2E_CONSUMER_NAME", "consumer") + "-flow.log")

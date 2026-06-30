@@ -11,15 +11,12 @@ internal static class DrA4ThirdRegistryScenario
     public static async Task RunAsync(ClientOptions options)
     {
         using var consumer = ZLinkHttpClient.Create(options.Reg2ConsumerUrl)
-            .Json()
             .Timeout(TimeSpan.FromSeconds(10))
             .Build();
         using var providerA = ZLinkHttpClient.Create(options.ProviderAUrl)
-            .Json()
             .Timeout(TimeSpan.FromSeconds(10))
             .Build();
         using var duplicateProvider = ZLinkHttpClient.Create(options.DuplicateProviderUrl)
-            .Json()
             .Timeout(TimeSpan.FromSeconds(10))
             .Build();
 

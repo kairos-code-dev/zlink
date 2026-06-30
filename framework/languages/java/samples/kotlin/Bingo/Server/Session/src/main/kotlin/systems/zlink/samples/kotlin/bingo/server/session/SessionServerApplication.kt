@@ -36,7 +36,6 @@ class SessionServerApplication {
                 traceLogFile((System.getenv("BINGO_LOG_DIR") ?: "logs") + "/flow-session.log")
                 traceLabel("session")
             }
-            options.codecs().addJson()
             options.codecs().use(ZLinkProtobufCodec.defaultCodec())
             options.addClientServerChannel(SampleNames.ApiChannel)
                 .enableClient()

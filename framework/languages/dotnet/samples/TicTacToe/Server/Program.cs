@@ -1,6 +1,8 @@
 using TicTacToe.Server.Api;
 using TicTacToe.Server.Configuration;
 using TicTacToe.Server.Play;
+using Microsoft.Extensions.Logging;
+using Zlink.Samples.Logging;
 
 namespace TicTacToe.Server;
 
@@ -32,7 +34,11 @@ internal static class Program
 
                 break;
             default:
-                await Console.Error.WriteLineAsync("Usage: dotnet run -- [play|api] [--config PATH]");
+                using (var loggerFactory = SampleLogging.CreateFactory(settings.LogDirectory, "program"))
+                {
+                    loggerFactory.CreateLogger("TicTacToe.Server.Program")
+                        .LogWarning("Usage: dotnet run -- [play|api] [--config PATH]");
+                }
                 Environment.ExitCode = 2;
                 break;
         }

@@ -83,12 +83,6 @@ class gateway_publish_handler_t
 
 void configure_gateway_codecs (zlink::framework::codec_options_builder_t codecs)
 {
-    codecs.add_json ();
-    codecs.add_json<e2e::mesh_event_t,
-                    e2e::spot_publish_route_req_t,
-                    e2e::spot_publish_route_res_t,
-                    e2e::evidence_entry_t,
-                    e2e::evidence_snapshot_t> ();
 }
 
 } // namespace

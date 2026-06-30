@@ -4,6 +4,7 @@ using Microsoft.Extensions.Hosting;
 using Systems.Zlink;
 using Zlink.Framework.AspNetCore;
 using Zlink.Framework.Contracts.Dispatch;
+using Zlink.Samples.Logging;
 
 namespace DeliveryDispatch.Server.Tracking;
 
@@ -12,6 +13,10 @@ public static class TrackingServerHostFactory
     public static IHost Build(SampleTopology topology)
     {
         var builder = Host.CreateApplicationBuilder();
+        SampleLogging.Configure(
+            builder.Logging,
+            SampleLogging.DirectoryFromEnvironment("DELIVERYDISPATCH_LOG_DIR"),
+            "tracking");
         builder.Services.AddSingleton(topology);
         builder.Services.AddSingleton<EvidenceStore>();
         builder.Services.AddZLinkFramework(options =>
@@ -21,7 +26,6 @@ public static class TrackingServerHostFactory
                 .TraceLogFile(SampleFlowLog.Path("tracking"))
                 .TraceLabel("tracking");
             options.AddHandlersFromAssemblyOf(typeof(DeliveryStatusChangedHandler));
-            options.Codecs.AddJson();
             options.UseDiscovery().AddRegistryEndpoint(topology.RegistryRouterEndpoint);
             options.AddClientServerChannel(SampleNames.TrackingRouteChannel)
                 .EnableServer(topology.TrackingRouteEndpoint)

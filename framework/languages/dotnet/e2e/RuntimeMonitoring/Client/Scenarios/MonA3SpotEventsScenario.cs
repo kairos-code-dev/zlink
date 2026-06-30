@@ -8,7 +8,7 @@ internal static class MonA3SpotEventsScenario
 {
     public static async Task RunAsync(ClientOptions options)
     {
-        using var service = ZLinkHttpClient.Create(options.ServiceUrl).Json().Build();
+        using var service = ZLinkHttpClient.Create(options.ServiceUrl).Build();
         var evidence = await WaitForSpotEvidenceAsync(service);
         ScenarioAssert.That(
             evidence.Any(line =>

@@ -17,8 +17,6 @@ export async function startDelayHost(args: readonly string[]): Promise<void> {
     imports: [
       ZLinkModule.forRootFactory({
         useFactory: () => zlinkFramework()
-          .codecs()
-            .addJson()
           .addClientServerChannel(YieldDispatchNames.delayChannel)
             .enableServer(options.delayEndpoint)
             .routingId(options.rid)

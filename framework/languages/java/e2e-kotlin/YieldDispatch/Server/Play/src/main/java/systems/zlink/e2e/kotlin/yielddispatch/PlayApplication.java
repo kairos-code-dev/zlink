@@ -31,7 +31,6 @@ public final class PlayApplication {
     ZLinkFrameworkConfigurer framework() {
         return options -> {
             String nodeRid = Env.get("ZLINK_KOTLIN_E2E_NODE_RID", "play-a");
-            options.codecs().addJson();
             options.useDiscovery().addRegistryEndpoint(Env.get("ZLINK_KOTLIN_E2E_REGISTRY_ROUTER"));
             options.useRegistrySpotRemoteAddresses(Contracts.SPOT_MESH)
                 .setRouterChannelId(Contracts.SPOT_MESH);

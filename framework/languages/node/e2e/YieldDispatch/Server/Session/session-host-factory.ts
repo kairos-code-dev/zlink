@@ -28,8 +28,6 @@ export async function startSessionHost(args: readonly string[]): Promise<void> {
                 routerChannelId: YieldDispatchNames.spotRouteChannel
               }
             })
-            .codecs()
-              .addJson()
             .useDiscovery()
               .addRegistryEndpoint(options.registryRouterEndpoint)
             .configureDispatch()

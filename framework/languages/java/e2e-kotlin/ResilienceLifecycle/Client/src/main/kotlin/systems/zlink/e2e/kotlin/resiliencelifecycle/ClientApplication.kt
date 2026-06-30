@@ -30,7 +30,6 @@ open class ClientApplication {
     @Bean
     open fun clientFramework(clientOptions: ClientOptions): ZLinkFrameworkConfigurer =
         ZLinkFrameworkConfigurer { options ->
-            options.codecs().addJson()
             options.configureDispatch()
                 .messageFlow(ZLinkMessageFlowLogMode.KEY_TRANSITIONS)
                 .traceLogFile("${clientOptions.logDir}/client-flow.log")

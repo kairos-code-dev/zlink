@@ -26,8 +26,6 @@ export async function startSessionHost(args: readonly string[]): Promise<void> {
         useFactory: () => {
           const builder = zlinkFramework();
           builder
-            .codecs()
-              .addJson()
             .useDiscovery()
               .addRegistryEndpoint(options.registryRouterEndpoint)
             .configureDispatch()

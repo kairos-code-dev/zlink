@@ -27,6 +27,7 @@ import java.util.concurrent.TimeUnit;
 import java.util.concurrent.TimeoutException;
 import java.util.function.Supplier;
 import systems.zlink.contracts.core.RoutingId;
+import systems.zlink.contracts.errors.ZlinkCloseException;
 import systems.zlink.contracts.errors.ZlinkRecvException;
 import systems.zlink.contracts.messaging.Message;
 import systems.zlink.contracts.service.registry.ServiceRole;
@@ -784,22 +785,19 @@ public final class ZLinkChannelRuntime
 
     @Override
     public void close() {
-        running = false;
-        spotRouteBridges.values().forEach(ZLinkBackendSpotRouteBridge::close);
-        discoveries.forEach(ZLinkBackendDiscovery::close);
-        clients.values().forEach(ZLinkBackendDealerSocket::close);
-        servers.values().forEach(ZLinkBackendRouterSocket::close);
-        publishers.values().forEach(ZLinkBackendPublisherSocket::close);
-        subscribers.values().forEach(ZLinkBackendSubscriberSocket::close);
-        routeRouters.values().forEach(ZLinkBackendRouterSocket::close);
-        manualClients.forEach(ZLinkBackendDealerSocket::close);
-        manualServers.forEach(ZLinkBackendRouterSocket::close);
-        manualPublishers.forEach(ZLinkBackendPublisherSocket::close);
-        manualSubscribers.forEach(ZLinkBackendSubscriberSocket::close);
-        manualRouteRouters.forEach(ZLinkBackendRouterSocket::close);
-        for (CompletableFuture<?> pending : pendingRequests) {
-            pending.completeExceptionally(new ZLinkConfigurationException("channel runtime is closed"));
-        }
+        beginClose();
+        closeSpotRouteBridges();
+        closeAll(discoveries);
+        closeAll(clients.values());
+        closeAll(servers.values());
+        closeAll(publishers.values());
+        closeAll(subscribers.values());
+        closeAll(routeRouters.values());
+        closeAll(manualClients);
+        closeAll(manualServers);
+        closeAll(manualPublishers);
+        closeAll(manualSubscribers);
+        closeAll(manualRouteRouters);
         receiveExecutor.shutdownNow();
         spotRouteBridgeExecutor.shutdownNow();
         timeoutExecutor.shutdownNow();
@@ -808,6 +806,27 @@ public final class ZLinkChannelRuntime
         awaitTerminated(timeoutExecutor);
         if (ownsContext) {
             context.close();
+        }
+    }
+
+    public void closeSpotRouteBridges() {
+        closeAll(spotRouteBridges.values());
+        spotRouteBridges.clear();
+    }
+
+    public void beginClose() {
+        running = false;
+        for (CompletableFuture<?> pending : pendingRequests) {
+            pending.completeExceptionally(new ZLinkConfigurationException("channel runtime is closed"));
+        }
+    }
+
+    private static void closeAll(Iterable<? extends ZLinkBackendObject> closeables) {
+        for (ZLinkBackendObject closeable : closeables) {
+            try {
+                closeable.close();
+            } catch (ZlinkCloseException ignored) {
+            }
         }
     }
 

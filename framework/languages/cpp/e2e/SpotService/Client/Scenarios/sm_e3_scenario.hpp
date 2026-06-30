@@ -21,7 +21,6 @@ inline void run_sm_e3_scenario (const std::string &play_http_endpoint)
     constexpr auto timer_name = "sm-e3-idle";
     auto play_a = zlink::http_client::client_t::create ()
                     .base_url (play_http_endpoint)
-                    .json ()
                     .build ();
 
     auto idle =

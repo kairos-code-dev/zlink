@@ -68,7 +68,6 @@ int main ()
 
     zlink::framework::detail::actor_gateway_runtime_t gateway;
     zlink::framework::serializer_registry_t serializers;
-    serializers.add_json<join_request_t> ().add_json<join_reply_t> ();
     serializers.add<std::string> (
       [] (const std::string &value) {
           return zlink::framework::encoded_payload_t::from_string (value);

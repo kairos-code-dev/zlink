@@ -113,7 +113,7 @@ final class HttpClientContractTest {
             exchange.getResponseHeaders().add("content-type", "application/json");
             TestSupport.respond(exchange, 200, "{\"id\":\"game-7\",\"ranked\":true}");
         });
-        try (ZLinkHttpClient client = ZLinkHttpClient.create(server.baseUrl()).json().build()) {
+        try (ZLinkHttpClient client = ZLinkHttpClient.create(server.baseUrl()).build()) {
             HttpResponse<CreateGameRes> response = client.post("/games")
                 .body(new CreateGameReq("ranked-0611")).submit(CreateGameRes.class).toCompletableFuture().join();
             assertTrue(received.get().contains("ranked-0611"));
@@ -128,7 +128,7 @@ final class HttpClientContractTest {
     void fetchUnwrapsTypedBody() throws Exception {
         TestSupport.Server server = TestSupport.httpServer(exchange ->
             TestSupport.respond(exchange, 200, "{\"id\":7,\"name\":\"Aria\"}"));
-        try (ZLinkHttpClient client = ZLinkHttpClient.create(server.baseUrl()).json().build()) {
+        try (ZLinkHttpClient client = ZLinkHttpClient.create(server.baseUrl()).build()) {
             Player player = client.get("/players/7").fetch(Player.class);
             assertEquals(7, player.id());
             assertEquals("Aria", player.name());
@@ -269,7 +269,7 @@ final class HttpClientContractTest {
     void status400ThrowsRequestFailed() throws Exception {
         TestSupport.Server server = TestSupport.httpServer(exchange ->
             TestSupport.respond(exchange, 404, "{\"error\":\"missing\"}"));
-        try (ZLinkHttpClient client = ZLinkHttpClient.create(server.baseUrl()).json().build()) {
+        try (ZLinkHttpClient client = ZLinkHttpClient.create(server.baseUrl()).build()) {
             CompletionException ex = assertThrows(CompletionException.class,
                 () -> client.get("/players/0").submit(Player.class).toCompletableFuture().join());
             assertTrue(ex.getCause() instanceof ZLinkFrameworkException);
@@ -282,7 +282,7 @@ final class HttpClientContractTest {
     void malformedJsonThrowsDecodeFailure() throws Exception {
         TestSupport.Server server = TestSupport.httpServer(exchange ->
             TestSupport.respond(exchange, 200, "not-json"));
-        try (ZLinkHttpClient client = ZLinkHttpClient.create(server.baseUrl()).json().build()) {
+        try (ZLinkHttpClient client = ZLinkHttpClient.create(server.baseUrl()).build()) {
             CompletionException ex = assertThrows(CompletionException.class,
                 () -> client.get("/x").submit(Player.class).toCompletableFuture().join());
             assertTrue(ex.getCause() instanceof ZLinkFrameworkException);
@@ -303,7 +303,7 @@ final class HttpClientContractTest {
             finalMethod.set(exchange.getRequestMethod());
             TestSupport.respond(exchange, 200, "{\"id\":\"game-1\",\"ranked\":false}");
         });
-        try (ZLinkHttpClient client = ZLinkHttpClient.create(server.baseUrl()).json().followRedirects(3).build()) {
+        try (ZLinkHttpClient client = ZLinkHttpClient.create(server.baseUrl()).followRedirects(3).build()) {
             HttpResponse<CreateGameRes> response = client.post("/start")
                 .body(new CreateGameReq("x")).submit(CreateGameRes.class).toCompletableFuture().join();
             assertEquals("GET", finalMethod.get());
@@ -452,7 +452,7 @@ final class HttpClientContractTest {
             exchange.getResponseHeaders().add("content-encoding", gzip ? "gzip" : "deflate");
             TestSupport.respondBytes(exchange, 200, buffer.toByteArray());
         });
-        try (ZLinkHttpClient client = ZLinkHttpClient.create(server.baseUrl()).json().compression().build()) {
+        try (ZLinkHttpClient client = ZLinkHttpClient.create(server.baseUrl()).compression().build()) {
             HttpResponse<Player> response = client.get("/data").submit(Player.class).toCompletableFuture().join();
             assertEquals(42, response.body().id());
             assertFalse(response.headers().containsKey("content-encoding"));

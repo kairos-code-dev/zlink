@@ -8,8 +8,8 @@ import type { ZlinkStreamConnector } from '@zlink-systems/stream-connector';
 
 async function main(): Promise<void> {
   const config = loadSampleConfig();
-  const apiA = ZLinkHttpClient.create(config.apiAHttpUrl).json().timeout(SampleTimings.httpTimeout).build();
-  const apiB = ZLinkHttpClient.create(config.apiBHttpUrl).json().timeout(SampleTimings.httpTimeout).build();
+  const apiA = ZLinkHttpClient.create(config.apiAHttpUrl).timeout(SampleTimings.httpTimeout).build();
+  const apiB = ZLinkHttpClient.create(config.apiBHttpUrl).timeout(SampleTimings.httpTimeout).build();
   const apiAStream = createStream(config.apiAStreamEndpoint);
   const apiBStream = createStream(config.apiBStreamEndpoint);
   try {

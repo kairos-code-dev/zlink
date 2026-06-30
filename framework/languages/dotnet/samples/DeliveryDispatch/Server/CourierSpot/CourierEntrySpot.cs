@@ -1,4 +1,5 @@
 using DeliveryDispatch.Shared.Contracts;
+using Microsoft.Extensions.Logging;
 using Zlink.Framework.Contracts.Messaging;
 using Zlink.Framework.Contracts.Spots;
 
@@ -6,7 +7,8 @@ namespace DeliveryDispatch.Server.CourierSpot;
 
 internal sealed class CourierEntrySpot(
     IZLinkEntrySpotContext context,
-    CourierActorDirectory actors) : IZLinkEntrySpot<CourierActor>
+    CourierActorDirectory actors,
+    ILogger<CourierEntrySpot> logger) : IZLinkEntrySpot<CourierActor>
 {
     public IZLinkEntrySpotContext Context { get; } = context;
 
@@ -24,8 +26,10 @@ internal sealed class CourierEntrySpot(
         _ = createRequest;
         cancellationToken.ThrowIfCancellationRequested();
         actors.Register(actor);
-        Console.Error.WriteLine(
-            $"deliverydispatch courier-entry: actor created courier={actor.ActorId} node={Context.NodeRid}");
+        logger.LogInformation(
+            "deliverydispatch courier-entry: actor created courier={CourierId} node={NodeRid}",
+            actor.ActorId,
+            Context.NodeRid);
         return ValueTask.CompletedTask;
     }
 
@@ -41,7 +45,7 @@ internal sealed class CourierEntrySpot(
     }
 }
 
-internal sealed class BindCourierSessionActorHandler
+internal sealed class BindCourierSessionActorHandler(ILogger<BindCourierSessionActorHandler> logger)
     : IZLinkEntrySpotActorRequestHandler<CourierEntrySpot, CourierActor, BindCourierSession, CourierBound>
 {
     public ValueTask<CourierBound> HandleAsync(
@@ -58,13 +62,15 @@ internal sealed class BindCourierSessionActorHandler
             ?? throw new InvalidOperationException("Courier bind relay requires actor ref.");
         var sessionRoute = message.SessionRoute
             ?? throw new InvalidOperationException("Courier bind relay requires session route.");
-        Console.Error.WriteLine(
-            $"deliverydispatch courier-actor: session bound courier={message.CourierId} actor={actor.ActorId}");
+        logger.LogInformation(
+            "deliverydispatch courier-actor: session bound courier={CourierId} actor={ActorId}",
+            message.CourierId,
+            actor.ActorId);
         return ValueTask.FromResult(new CourierBound(message.CourierId, actorRef, sessionRoute));
     }
 }
 
-internal sealed class CourierDecisionActorHandler
+internal sealed class CourierDecisionActorHandler(ILogger<CourierDecisionActorHandler> logger)
     : IZLinkEntrySpotActorSendHandler<CourierEntrySpot, CourierActor, CourierDecision>
 {
     public ValueTask HandleAsync(
@@ -78,8 +84,11 @@ internal sealed class CourierDecisionActorHandler
         _ = context;
         cancellationToken.ThrowIfCancellationRequested();
         actor.Complete(message);
-        Console.Error.WriteLine(
-            $"deliverydispatch courier-actor: decision delivery={message.DeliveryId} courier={actor.ActorId} accepted={message.Accepted}");
+        logger.LogInformation(
+            "deliverydispatch courier-actor: decision delivery={DeliveryId} courier={CourierId} accepted={Accepted}",
+            message.DeliveryId,
+            actor.ActorId,
+            message.Accepted);
         return ValueTask.CompletedTask;
     }
 }

@@ -4,6 +4,7 @@ using Microsoft.Extensions.Hosting;
 using Zlink.Framework.AspNetCore;
 using Zlink.Framework.Contracts.Codecs.Json;
 using Zlink.Framework.Contracts.Dispatch;
+using Zlink.Samples.Logging;
 
 namespace DeliveryDispatch.Server.CourierSession;
 
@@ -12,6 +13,10 @@ public static class CourierSessionHostFactory
     public static IHost Build(SampleTopology topology)
     {
         var builder = Host.CreateApplicationBuilder();
+        SampleLogging.Configure(
+            builder.Logging,
+            SampleLogging.DirectoryFromEnvironment("DELIVERYDISPATCH_LOG_DIR"),
+            "courier-session");
         builder.Services.AddSingleton(topology);
         builder.Services.AddZLinkFramework(options =>
         {
@@ -20,7 +25,6 @@ public static class CourierSessionHostFactory
                 .TraceLogFile(SampleFlowLog.Path("courier-session"))
                 .TraceLabel("courier-session");
             options.AddHandlersFromAssemblyOf(typeof(CourierSessionHostFactory));
-            options.Codecs.AddJson();
             options.UseDiscovery().AddRegistryEndpoint(topology.RegistryRouterEndpoint);
             options.AddClientServerChannel(SampleNames.CourierRouteChannel)
                 .EnableClient(topology.CourierRouteEndpoint)

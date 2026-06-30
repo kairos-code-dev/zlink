@@ -220,7 +220,6 @@ final class ChannelMessagingTest {
         logger.addHandler(logHandler);
 
         DefaultZLinkFrameworkOptions options = new DefaultZLinkFrameworkOptions();
-        options.codecs().addJson();
         { var dispatch = options.configureDispatch();
             dispatch.setMessageFlowObserver(error -> {
                 observedError.set(error);
@@ -401,7 +400,6 @@ final class ChannelMessagingTest {
         DecodeProbeHandler.invocations.set(0);
 
         DefaultZLinkFrameworkOptions options = new DefaultZLinkFrameworkOptions();
-        options.codecs().addJson();
         { var dispatch = options.configureDispatch();
             dispatch.setMessageFlowObserver(error -> {
                 observedError.set(error);
@@ -574,7 +572,6 @@ final class ChannelMessagingTest {
         CountDownLatch errors = new CountDownLatch(3);
 
         DefaultZLinkFrameworkOptions options = new DefaultZLinkFrameworkOptions();
-        options.codecs().addJson();
         { var dispatch = options.configureDispatch();
             dispatch.setMessageFlowObserver(error -> {
                 try {
@@ -681,7 +678,6 @@ final class ChannelMessagingTest {
             new JsonCodecChild("nested", 3));
 
         DefaultZLinkFrameworkOptions options = new DefaultZLinkFrameworkOptions();
-        options.codecs().addJson();
         { var channel = options.addClientServerChannel("codec").enableServer(endpoint);
             channel.enableClient(endpoint);
             channel.addRequestHandler(
@@ -1115,7 +1111,6 @@ final class ChannelMessagingTest {
         OutboundChannelSpot.CONTEXT.set(null);
 
         DefaultZLinkFrameworkOptions sourceOptions = new DefaultZLinkFrameworkOptions();
-        sourceOptions.codecs().addJson();
         sourceOptions.addSpotRemoteAddressResolver(SpotEgressAddressResolver.class);
         { var channel = sourceOptions.addClientServerChannel("egress");
             channel.enableClient(ingressEndpoint);};
@@ -1129,7 +1124,6 @@ final class ChannelMessagingTest {
                     .setRoutingId(RoutingId.from("spot-egress-source-node"));node.addSpotFactory(OutboundChannelSpot.class); }; };
 
         DefaultZLinkFrameworkOptions targetOptions = new DefaultZLinkFrameworkOptions();
-        targetOptions.codecs().addJson();
         { var channel = targetOptions.addClientServerChannel("ingress").enableServer(ingressEndpoint);
             channel.setRoutingId(RoutingId.from("spot-egress-target-node"));
             channel.addRequestHandler(EchoHandler.class, String.class, String.class, "Noop"); };

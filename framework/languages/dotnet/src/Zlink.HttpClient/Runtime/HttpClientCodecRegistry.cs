@@ -4,7 +4,7 @@ using Zlink.Framework.Contracts.Codecs;
 
 namespace Zlink.HttpClient.Runtime;
 
-internal sealed class HttpClientCodecRegistry : IZLinkCodecRegistryBuilder
+internal sealed class HttpClientCodecRegistry : IZLinkCodecRegistryBuilder, IZLinkCodecRegistrar
 {
     private const string JsonContentType = "application/json";
     private static readonly JsonSerializerOptions JsonOptions = new(JsonSerializerDefaults.Web);
@@ -25,10 +25,6 @@ internal sealed class HttpClientCodecRegistry : IZLinkCodecRegistryBuilder
     {
         ArgumentNullException.ThrowIfNull(extension);
         extension.Register(this);
-    }
-
-    public void AddJson()
-    {
     }
 
     public void AddSerializer(string contentType, IZLinkMessageSerializer serializer)

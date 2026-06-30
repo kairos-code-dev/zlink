@@ -22,7 +22,6 @@ inline void run_sm_a2_scenario (const std::string &play_http_endpoint)
 
     auto api = zlink::http_client::client_t::create ()
                  .base_url (play_http_endpoint)
-                 .json ()
                  .build ();
     auto joined =
       api.post ("/spot/join")
@@ -88,7 +87,6 @@ inline void run_sm_a2_scenario (const std::string &play_http_endpoint)
     auto concurrent_first = std::async (std::launch::async, [play_http_endpoint] {
         auto client = zlink::http_client::client_t::create ()
                         .base_url (play_http_endpoint)
-                        .json ()
                         .build ();
         auto raw = client.post ("/spot/state")
                      .body (spot_state_req_t{.actor_id = "alice",
@@ -109,7 +107,6 @@ inline void run_sm_a2_scenario (const std::string &play_http_endpoint)
     auto concurrent_second = std::async (std::launch::async, [play_http_endpoint] {
         auto client = zlink::http_client::client_t::create ()
                         .base_url (play_http_endpoint)
-                        .json ()
                         .build ();
         auto raw = client.post ("/spot/state")
                      .body (spot_state_req_t{.actor_id = "alice",

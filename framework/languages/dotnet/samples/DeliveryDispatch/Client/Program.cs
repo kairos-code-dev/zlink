@@ -1,6 +1,8 @@
 using DeliveryDispatch.Client;
+using Microsoft.Extensions.Logging;
 using Systems.Zlink.Stream.Connector.Contracts;
 using Zlink.HttpClient;
+using Zlink.Samples.Logging;
 
 var apiUrl = ReadOption(args, "--api-url")
              ?? throw new ArgumentException("Missing --api-url.");
@@ -8,8 +10,12 @@ var streamEndpoint = ReadOption(args, "--stream-endpoint")
                      ?? throw new ArgumentException("Missing --stream-endpoint.");
 var courierStreamEndpoint = ReadOption(args, "--courier-stream-endpoint")
                             ?? throw new ArgumentException("Missing --courier-stream-endpoint.");
+using var loggerFactory = SampleLogging.CreateFactory(
+    SampleLogging.DirectoryFromEnvironment("DELIVERYDISPATCH_LOG_DIR"),
+    "client");
+var logger = loggerFactory.CreateLogger("DeliveryDispatch.Client");
 
-using var http = ZLinkHttpClient.Create(apiUrl).Json().Build();
+using var http = ZLinkHttpClient.Create(apiUrl).Build();
 await using var customer = ZlinkStreamConnectorFactory.Create(new ZlinkStreamConnectorOptions
 {
     Endpoint = new Uri(streamEndpoint),
@@ -35,9 +41,9 @@ await using var courierB = ZlinkStreamConnectorFactory.Create(new ZlinkStreamCon
     DispatchMode = ZlinkStreamDispatchMode.Immediate
 });
 
-await new DeliveryDispatchClientScenario().RunAsync(http, customer, courierA, courierB);
+await new DeliveryDispatchClientScenario(logger).RunAsync(http, customer, courierA, courierB);
 
-Console.WriteLine("deliverydispatch=completed");
+logger.LogInformation("deliverydispatch=completed");
 
 static string? ReadOption(string[] args, string name)
 {

@@ -26,6 +26,23 @@ struct json_payload_t
     int value{};
 };
 
+struct custom_payload_codec_extension_t
+{
+    template <typename TRegistrar> void register_framework_codecs (TRegistrar &registrar) const
+    {
+        registrar.template add_serializer<payload_t> (
+          [] (const payload_t &payload) {
+              return zlink::framework::encoded_payload_t::from_string (
+                "avro:" + std::to_string (payload.value));
+          },
+          [] (const zlink::framework::encoded_payload_t &payload) {
+              const std::string text = payload.to_string ();
+              return payload_t{std::stoi (text.substr (std::string ("avro:").size ()))};
+          },
+          "application/avro");
+    }
+};
+
 void to_json (nlohmann::json &json, const json_payload_t &payload)
 {
     json = nlohmann::json{{"value", payload.value}};
@@ -63,8 +80,6 @@ int main ()
     if (decoded.value != 42) {
         return 2;
     }
-
-    serializers.add_json<json_payload_t> ();
     const auto json_encoded = serializers.get<json_payload_t> ().serialize ({77});
     const auto json_decoded = serializers.get<json_payload_t> ().deserialize (json_encoded);
     if (json_decoded.value != 77) {
@@ -93,18 +108,6 @@ int main ()
         return 5;
     }
 
-    bool missing_failed = false;
-    try {
-        (void) serializers.get<missing_t> ().serialize ({1});
-    }
-    catch (const zlink::framework::framework_exception_t &error) {
-        missing_failed =
-          error.kind () == zlink::framework::framework_error_kind_t::payload_decode_failed;
-    }
-    if (!missing_failed) {
-        return 6;
-    }
-
     bool decode_failed = false;
     try {
         (void) serializers.get<payload_t> ().deserialize (
@@ -118,22 +121,11 @@ int main ()
         return 7;
     }
 
-    // Public codec configuration surface: codecs().add_serializer<T>() registers a
-    // custom serializer (Avro/Thrift style) into the serializer registry.
+    // Application codec configuration uses extensions. The extension registrar
+    // installs custom serializers into the registry at startup.
     zlink::framework::serializer_registry_t config_serializers;
-    auto group_state =
-      std::make_shared<zlink::framework::detail::handler_group_options_state_t> ();
-    zlink::framework::codec_options_builder_t codecs (config_serializers, group_state);
-    codecs.add_serializer<payload_t> (
-      [] (const payload_t &payload) {
-          return zlink::framework::encoded_payload_t::from_string (
-            "avro:" + std::to_string (payload.value));
-      },
-      [] (const zlink::framework::encoded_payload_t &payload) {
-          const std::string text = payload.to_string ();
-          return payload_t{std::stoi (text.substr (std::string ("avro:").size ()))};
-      },
-      "application/avro");
+    zlink::framework::codec_options_builder_t codecs (config_serializers);
+    codecs.use (custom_payload_codec_extension_t{});
 
     const auto custom_encoded = config_serializers.get<payload_t> ().serialize ({9});
     if (custom_encoded.to_string () != "avro:9") {

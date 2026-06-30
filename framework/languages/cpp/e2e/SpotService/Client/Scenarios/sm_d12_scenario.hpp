@@ -32,7 +32,6 @@ inline void run_sm_d12_scenario (const std::string &session_a_stream_endpoint,
     first_options.dispatch_mode = zlink::stream_connector::dispatch_mode_t::immediate;
 
     auto first = zlink::stream_connector::connector_factory_t::create (first_options);
-    first.codecs ().add_json ();
     auto first_connected = first.connect ();
     if (!first_connected) {
         throw std::runtime_error ("SM-D12 first stream connect failed");
@@ -81,7 +80,6 @@ inline void run_sm_d12_scenario (const std::string &session_a_stream_endpoint,
     second_options.dispatch_mode = zlink::stream_connector::dispatch_mode_t::immediate;
 
     auto second = zlink::stream_connector::connector_factory_t::create (second_options);
-    second.codecs ().add_json ();
     auto second_connected = second.connect ();
     if (!second_connected) {
         throw std::runtime_error ("SM-D12 second stream connect failed");

@@ -55,75 +55,70 @@ inline std::string decode_text (const zlink::framework::encoded_payload_t &paylo
     return text.substr (expected.size ());
 }
 
-inline void add_json_codecs (zlink::framework::codec_options_builder_t codecs)
+struct binary_codecs_t
 {
-    codecs.add_json ();
-    codecs.add_json<echo_auto_t,
-                    echo_auto_reply_t,
-                    echo_auto_send_t,
-                    echo_manual_t,
-                    echo_manual_reply_t,
-                    json_roundtrip_t,
-                    json_roundtrip_reply_t,
-                    json_codec_send_t,
-                    scoped_lifecycle_req_t,
-                    scoped_lifecycle_reply_t,
-                    scoped_lifecycle_stats_req_t,
-                    scoped_lifecycle_stats_reply_t,
-                    filter_order_req_t,
-                    filter_order_reply_t> ();
-}
+    template <typename TRegistrar> void register_framework_codecs (TRegistrar &registrar) const
+    {
+        zlink::framework_codecs::protobuf_codec_extension_t::register_payload_serializer<
+          protobuf_roundtrip_t> (registrar);
+        zlink::framework_codecs::protobuf_codec_extension_t::register_payload_serializer<
+          protobuf_roundtrip_reply_t> (registrar);
+        zlink::framework_codecs::protobuf_codec_extension_t::register_payload_serializer<
+          protobuf_codec_send_t> (registrar);
+        zlink::framework_codecs::messagepack_codec_extension_t::register_payload_serializer<
+          messagepack_roundtrip_t> (registrar);
+        zlink::framework_codecs::messagepack_codec_extension_t::register_payload_serializer<
+          messagepack_roundtrip_reply_t> (registrar);
+        zlink::framework_codecs::messagepack_codec_extension_t::register_payload_serializer<
+          messagepack_codec_send_t> (registrar);
+    }
+};
+
+struct custom_codecs_t
+{
+    template <typename TRegistrar> void register_framework_codecs (TRegistrar &registrar) const
+    {
+        registrar
+          .template add_serializer<custom_roundtrip_t> (
+            [] (const custom_roundtrip_t &value) {
+                return encode_text ("custom-request", value.value);
+            },
+            [] (const zlink::framework::encoded_payload_t &payload) {
+                return custom_roundtrip_t{.value = decode_text (payload, "custom-request")};
+            })
+          .template add_serializer<custom_roundtrip_reply_t> (
+            [] (const custom_roundtrip_reply_t &value) {
+                return encode_text ("custom-reply", value.value);
+            },
+            [] (const zlink::framework::encoded_payload_t &payload) {
+                return custom_roundtrip_reply_t{.value = decode_text (payload, "custom-reply")};
+            })
+          .template add_serializer<mismatch_roundtrip_t> (
+            [] (const mismatch_roundtrip_t &value) {
+                return encode_text ("mismatch-request", value.value);
+            },
+            [] (const zlink::framework::encoded_payload_t &payload) {
+                return mismatch_roundtrip_t{.value = decode_text (payload, "mismatch-request")};
+            })
+          .template add_serializer<mismatch_roundtrip_reply_t> (
+            [] (const mismatch_roundtrip_reply_t &value) {
+                return encode_text ("client-wrong-reply", value.value);
+            },
+            [] (const zlink::framework::encoded_payload_t &payload) {
+                return mismatch_roundtrip_reply_t{
+                  .value = decode_text (payload, "client-wrong-reply")};
+            });
+    }
+};
 
 inline void add_binary_codecs (zlink::framework::codec_options_builder_t codecs)
 {
-    codecs.use (zlink::framework_codecs::protobuf ());
-    zlink::framework_codecs::protobuf_codec_extension_t::register_payload_serializer<
-      protobuf_roundtrip_t> (codecs);
-    zlink::framework_codecs::protobuf_codec_extension_t::register_payload_serializer<
-      protobuf_roundtrip_reply_t> (codecs);
-    zlink::framework_codecs::protobuf_codec_extension_t::register_payload_serializer<
-      protobuf_codec_send_t> (codecs);
-    codecs.use (zlink::framework_codecs::messagepack ());
-    zlink::framework_codecs::messagepack_codec_extension_t::register_payload_serializer<
-      messagepack_roundtrip_t> (codecs);
-    zlink::framework_codecs::messagepack_codec_extension_t::register_payload_serializer<
-      messagepack_roundtrip_reply_t> (codecs);
-    zlink::framework_codecs::messagepack_codec_extension_t::register_payload_serializer<
-      messagepack_codec_send_t> (codecs);
+    codecs.use (binary_codecs_t{});
 }
 
 inline void add_custom_codecs (zlink::framework::codec_options_builder_t codecs)
 {
-    codecs
-      .add_serializer<custom_roundtrip_t> (
-        [] (const custom_roundtrip_t &value) {
-            return encode_text ("custom-request", value.value);
-        },
-        [] (const zlink::framework::encoded_payload_t &payload) {
-            return custom_roundtrip_t{.value = decode_text (payload, "custom-request")};
-        })
-      .add_serializer<custom_roundtrip_reply_t> (
-        [] (const custom_roundtrip_reply_t &value) {
-            return encode_text ("custom-reply", value.value);
-        },
-        [] (const zlink::framework::encoded_payload_t &payload) {
-            return custom_roundtrip_reply_t{.value = decode_text (payload, "custom-reply")};
-        })
-      .add_serializer<mismatch_roundtrip_t> (
-        [] (const mismatch_roundtrip_t &value) {
-            return encode_text ("mismatch-request", value.value);
-        },
-        [] (const zlink::framework::encoded_payload_t &payload) {
-            return mismatch_roundtrip_t{.value = decode_text (payload, "mismatch-request")};
-        })
-      .add_serializer<mismatch_roundtrip_reply_t> (
-        [] (const mismatch_roundtrip_reply_t &value) {
-            return encode_text ("client-wrong-reply", value.value);
-        },
-        [] (const zlink::framework::encoded_payload_t &payload) {
-            return mismatch_roundtrip_reply_t{
-              .value = decode_text (payload, "client-wrong-reply")};
-        });
+    codecs.use (custom_codecs_t{});
 }
 
 struct http_endpoint_t

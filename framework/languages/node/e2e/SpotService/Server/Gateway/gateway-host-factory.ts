@@ -34,8 +34,6 @@ export async function startGatewayHost(args: readonly string[]): Promise<void> {
         useFactory: () => {
           const builder = zlinkFramework();
           builder
-            .codecs()
-              .addJson()
             .configureDispatch()
               .messageFlow(ZLinkMessageFlowLogMode.KeyTransitions)
               .traceLogFile(`${options.logDir}/${options.rid}-flow.log`)

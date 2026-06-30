@@ -174,10 +174,6 @@ struct handler_group_options_state_t
     std::map<std::string, std::vector<route_installer_binding_t>> route_installers_by_group;
     std::map<std::string, std::set<std::tuple<handler_group_kind_t, std::string, std::string>>>
       handler_packets_by_group;
-    std::vector<serializer_installer_t> json_serializer_installers;
-    std::set<std::type_index> json_serializer_types;
-    bool json_enabled = false;
-
     void add_channel (const std::string &group_name,
                       const std::string &channel_name,
                       std::set<handler_group_kind_t> allowed_kinds,
@@ -270,15 +266,6 @@ struct handler_group_options_state_t
             throw framework_exception_t (framework_error_kind_t::request_protocol_error,
                                          "duplicate handler registration");
         }
-    }
-
-    void add_json_serializer_installer (serializer_installer_t installer)
-    {
-        json_serializer_installers.push_back (std::move (installer));
-        if (!json_enabled) {
-            return;
-        }
-        json_serializer_installers.back () ();
     }
 
     bool channel_exposes_any (const std::string &channel_name,

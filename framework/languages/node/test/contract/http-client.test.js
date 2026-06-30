@@ -143,7 +143,7 @@ test('typed JSON round trip', async () => {
     res.setHeader('content-type', 'application/json');
     res.end(JSON.stringify({ id: 'game-7', ranked: true }));
   });
-  const client = ZLinkHttpClient.create(server.baseUrl).json().build();
+  const client = ZLinkHttpClient.create(server.baseUrl).build();
   try {
     const r = await client.post('/games').body({ name: 'ranked-0611' }).submit();
     assert.equal(received.name, 'ranked-0611');
@@ -280,7 +280,7 @@ test('status >= 400 throws requestFailed', async () => {
     res.statusCode = 404;
     res.end(JSON.stringify({ error: 'missing' }));
   });
-  const client = ZLinkHttpClient.create(server.baseUrl).json().build();
+  const client = ZLinkHttpClient.create(server.baseUrl).build();
   try {
     await assert.rejects(
       () => client.get('/players/0').submit(),
@@ -296,7 +296,7 @@ test('malformed JSON throws payloadDecodeFailed', async () => {
   const server = await startServer((req, res) => {
     res.end('not-json');
   });
-  const client = ZLinkHttpClient.create(server.baseUrl).json().build();
+  const client = ZLinkHttpClient.create(server.baseUrl).build();
   try {
     await assert.rejects(
       () => client.get('/x').submit(),
@@ -320,7 +320,7 @@ test('follows redirect and rewrites POST to GET on 303', async () => {
     finalMethod = req.method;
     res.end(JSON.stringify({ id: 'game-1', ranked: false }));
   });
-  const client = ZLinkHttpClient.create(server.baseUrl).json().followRedirects(3).build();
+  const client = ZLinkHttpClient.create(server.baseUrl).followRedirects(3).build();
   try {
     const r = await client.post('/start').body({ name: 'x' }).submit();
     assert.equal(finalMethod, 'GET');
@@ -456,7 +456,7 @@ for (const encoding of ['gzip', 'deflate']) {
       res.setHeader('content-encoding', encoding);
       res.end(compressed);
     });
-    const client = ZLinkHttpClient.create(server.baseUrl).json().compression().build();
+    const client = ZLinkHttpClient.create(server.baseUrl).compression().build();
     try {
       const r = await client.get('/data').submit();
       assert.equal(r.body.id, 42);

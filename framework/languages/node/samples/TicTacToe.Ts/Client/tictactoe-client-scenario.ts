@@ -26,7 +26,7 @@ import type { ZlinkStreamConnector, ZlinkStreamMessage } from '@zlink-systems/st
 
 class TicTacToeClientScenario {
   async run(apiHttpEndpoint: string, signal?: AbortSignal): Promise<void> {
-    const api = ZLinkHttpClient.create(apiHttpEndpoint).json().build();
+    const api = ZLinkHttpClient.create(apiHttpEndpoint).build();
     let game: CreateGameHttpRes;
     try {
       // 1. Create the room through API.

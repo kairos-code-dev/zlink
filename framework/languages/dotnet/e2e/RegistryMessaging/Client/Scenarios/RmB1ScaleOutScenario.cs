@@ -13,7 +13,6 @@ internal static class RmB1ScaleOutScenario
         await using var cluster = await DynamicClusterLauncher.StartAsync(options, "rm-b1");
         var providerA = await cluster.StartProviderAsync("api-a", "api-a");
         using var requester = ZLinkHttpClient.Create(providerA.HttpUrl)
-            .Json()
             .Timeout(TimeSpan.FromMinutes(5))
             .Build();
 
@@ -38,7 +37,6 @@ internal static class RmB1ScaleOutScenario
 
         var providerB = await cluster.StartProviderAsync("api-b", "api-b");
         using var providerBClient = ZLinkHttpClient.Create(providerB.HttpUrl)
-            .Json()
             .Timeout(TimeSpan.FromMinutes(5))
             .Build();
 

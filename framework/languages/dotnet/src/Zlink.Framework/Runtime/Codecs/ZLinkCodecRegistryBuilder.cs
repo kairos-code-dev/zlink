@@ -1,9 +1,7 @@
 namespace Zlink.Framework.Runtime.Codecs;
 
-internal sealed class ZLinkCodecRegistryBuilder : IZLinkCodecRegistryBuilder
+internal sealed class ZLinkCodecRegistryBuilder : IZLinkCodecRegistryBuilder, IZLinkCodecRegistrar
 {
-    private readonly HashSet<string> _codecs = new(StringComparer.Ordinal);
-
     private readonly Dictionary<ZlinkStreamCodec, string> _contentTypesByStreamCodec =
         [];
 
@@ -13,8 +11,6 @@ internal sealed class ZLinkCodecRegistryBuilder : IZLinkCodecRegistryBuilder
     private readonly Dictionary<string, ZlinkStreamCodec> _streamCodecsByContentType =
         new(StringComparer.OrdinalIgnoreCase);
 
-    public IReadOnlyCollection<string> RegisteredCodecs => _codecs;
-
     public IReadOnlyDictionary<string, IZLinkMessageSerializer> Serializers =>
         _serializers.ToDictionary(entry => entry.Key, entry => entry.Value.Serializer,
             StringComparer.OrdinalIgnoreCase);
@@ -23,11 +19,6 @@ internal sealed class ZLinkCodecRegistryBuilder : IZLinkCodecRegistryBuilder
     {
         ArgumentNullException.ThrowIfNull(extension);
         extension.Register(this);
-    }
-
-    public void AddJson()
-    {
-        _codecs.Add("json");
     }
 
     public void AddSerializer(string contentType, IZLinkMessageSerializer serializer)

@@ -9,6 +9,7 @@ using SupportChat.Server.Support.Infrastructure.ZLink.Spots.ConversationSpot.Not
 using SupportChat.Server.Support.Infrastructure.ZLink.Spots.EntrySpot;
 using Zlink.Framework.AspNetCore;
 using Zlink.Framework.Contracts.Dispatch;
+using Zlink.Samples.Logging;
 
 namespace SupportChat.Server.Support;
 
@@ -17,6 +18,10 @@ public static class SupportServerHostFactory
     public static IHost Build(SampleTopology topology)
     {
         var builder = Host.CreateApplicationBuilder();
+        SampleLogging.Configure(
+            builder.Logging,
+            SampleLogging.DirectoryFromEnvironment("SUPPORTCHAT_LOG_DIR"),
+            "support");
         builder.Services.AddSingleton(topology);
         builder.Services.AddSingleton<IConversationStarter, ConversationStarter>();
         builder.Services.AddSingleton<SupportConversationAllocator>();
@@ -32,7 +37,6 @@ public static class SupportServerHostFactory
                 .TraceLogFile(SampleFlowLog.Path("support"))
                 .TraceLabel("support");
             options.AddHandlersFromAssemblyOf(typeof(SupportServerHostFactory));
-            options.Codecs.AddJson();
             options.UseDiscovery().AddRegistryEndpoint(topology.RegistryRouterEndpoint);
             {
                 var channel = options.AddClientServerChannel(SampleNames.SupportChannel);

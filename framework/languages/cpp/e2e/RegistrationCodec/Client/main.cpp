@@ -82,7 +82,6 @@ int main (int argc, char **argv)
           .message_flow (zlink::framework::message_flow_log_mode_t::key_transitions)
           .trace_log_file (log_dir + "/client-flow.log")
           .trace_label ("cpp-rc-client");
-        rc_client::add_json_codecs (options.codecs ());
         rc_client::add_custom_codecs (options.codecs ());
         rc_client::add_binary_codecs (options.codecs ());
         options.add_client_server_channel (rc::api_channel).enable_client (api_endpoint);

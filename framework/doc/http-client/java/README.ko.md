@@ -5,7 +5,6 @@ fluent builder로 사용하며 공개 표면은 `java.net.http` 타입을 노출
 
 ```java
 HttpResponse<CreateGameRes> game = ZLinkHttpClient.create("https://game-api.example.internal")
-    .json()
     .post("/games")
     .body(new CreateGameReq("ranked-match-0611"))
     .submit(CreateGameRes.class)

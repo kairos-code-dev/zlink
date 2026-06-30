@@ -784,8 +784,6 @@ int main ()
         websocket_connect_server_latch.wait_for (std::chrono::milliseconds (100));
         websocket_connect_server_thread.join ();
     }
-
-    connector.codecs ().add_json ();
     if (!connector.codecs ().supports (zlink::stream_connector::codec_t::json)) {
         return 3;
     }

@@ -53,8 +53,6 @@ export async function startPlayHost(args: readonly string[]): Promise<void> {
           const builder = zlinkFramework();
           builder
             .options({ spotRemoteAddressResolver: InMemorySpotRouteStore })
-            .codecs()
-              .addJson()
             .configureDispatch()
               .setMessageFlowObserver(EvidenceDispatchErrorObserver)
               .messageFlow(ZLinkMessageFlowLogMode.KeyTransitions)

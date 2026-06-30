@@ -18,7 +18,7 @@ import { ZLinkHttpClient } from '@zlink-systems/http-client';
 ## 첫 요청
 
 ```ts
-const client = ZLinkHttpClient.create('http://127.0.0.1:18080').json().build();
+const client = ZLinkHttpClient.create('http://127.0.0.1:18080').build();
 try {
   const player = await client.get('/players/7281').submit<PlayerProfile>();
   console.log(player.body.name);
@@ -37,7 +37,6 @@ try {
 
 ```ts
 const res = await ZLinkHttpClient.create('https://game-api.example.internal')
-  .json()
   .post('/games')
   .body({ name: 'ranked-match-0611' })
   .submit<CreateGameRes>();

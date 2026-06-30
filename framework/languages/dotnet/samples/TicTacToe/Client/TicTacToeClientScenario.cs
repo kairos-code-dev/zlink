@@ -1,18 +1,18 @@
 using System.Runtime.CompilerServices;
+using Microsoft.Extensions.Logging;
 using Systems.Zlink.Stream.Connector.Contracts;
 using TicTacToe.Shared.Contracts;
 using Zlink.HttpClient;
 
 namespace TicTacToe.Client;
 
-public sealed class TicTacToeClientScenario
+public sealed class TicTacToeClientScenario(ILogger logger)
 {
     public async ValueTask RunAsync(
         TicTacToeClientOptions options,
         CancellationToken cancellationToken = default)
     {
         using var api = ZLinkHttpClient.Create(options.ApiUrl.ToString())
-            .Json()
             .Timeout(options.HttpTimeout)
             .Build();
         var room = api.Post("/games")
@@ -36,10 +36,11 @@ public sealed class TicTacToeClientScenario
             string.Equals(node.StreamEndpoint, observerPlayEndpoint, StringComparison.Ordinal));
 
         await using var client1 =
-            TicTacToeClientConnections.CreateStreamClient(room.OwnerPlayEndpoint, options, "host");
-        await using var client2 = TicTacToeClientConnections.CreateStreamClient(guestPlayEndpoint, options, "guest");
+            TicTacToeClientConnections.CreateStreamClient(room.OwnerPlayEndpoint, options, "host", logger);
+        await using var client2 =
+            TicTacToeClientConnections.CreateStreamClient(guestPlayEndpoint, options, "guest", logger);
         await using var observer =
-            TicTacToeClientConnections.CreateStreamClient(observerPlayEndpoint, options, "observer");
+            TicTacToeClientConnections.CreateStreamClient(observerPlayEndpoint, options, "observer", logger);
 
         // Client 1 connects, authenticates as player X, and joins the empty room.
         await client1.Connect.Async(cancellationToken);
@@ -167,7 +168,7 @@ public sealed class TicTacToeClientScenario
         Ensure(observerSawMilestone.Payload.DisplayName == client1Authentication.Player.DisplayName);
         Ensure(observerSawMilestone.Payload.Wins == 100);
         Ensure(observerSawMilestone.Payload.ReceivingSpotNodeRid == observerPlayNode.SpotNodeRid);
-        Console.WriteLine(
+        logger.LogInformation(
             "observer-win-milestone=verified actor={0} wins={1} receivingSpotNodeRid={2}",
             observerSawMilestone.Payload.ActorId,
             observerSawMilestone.Payload.Wins,

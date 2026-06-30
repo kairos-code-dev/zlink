@@ -3,6 +3,7 @@ using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Hosting;
 using Zlink.Framework.AspNetCore;
 using Zlink.Framework.Contracts.Dispatch;
+using Zlink.Samples.Logging;
 
 namespace DeliveryDispatch.Server.CourierSpot;
 
@@ -12,6 +13,10 @@ public static class CourierSpotHostFactory
     {
         var builder = Host.CreateApplicationBuilder();
         var nodeConfig = ResolveNode(topology, node);
+        SampleLogging.Configure(
+            builder.Logging,
+            SampleLogging.DirectoryFromEnvironment("DELIVERYDISPATCH_LOG_DIR"),
+            $"courier-spot-{nodeConfig.Name}");
         builder.Services.AddSingleton(topology);
         builder.Services.AddSingleton<CourierActorDirectory>();
         builder.Services.AddZLinkFramework(options =>
@@ -21,7 +26,6 @@ public static class CourierSpotHostFactory
                 .TraceLogFile(SampleFlowLog.Path($"courier-spot-{nodeConfig.Name}"))
                 .TraceLabel($"courier-spot-{nodeConfig.Name}");
             options.AddHandlersFromAssemblyOf(typeof(CourierSpotHostFactory));
-            options.Codecs.AddJson();
             options.UseDiscovery().AddRegistryEndpoint(topology.RegistryRouterEndpoint);
             var route = options.AddRouteMesh(SampleNames.CourierSpotRouteChannel)
                 .SetRoutingId(nodeConfig.Rid)

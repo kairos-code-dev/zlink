@@ -8,8 +8,8 @@ internal static class MonC1DispatchFailureScenario
 {
     public static async Task RunAsync(ClientOptions options)
     {
-        using var trigger = ZLinkHttpClient.Create(options.TriggerUrl).Json().Build();
-        using var throwService = ZLinkHttpClient.Create(options.ThrowServiceUrl).Json().Build();
+        using var trigger = ZLinkHttpClient.Create(options.TriggerUrl).Build();
+        using var throwService = ZLinkHttpClient.Create(options.ThrowServiceUrl).Build();
 
         var failureReply = (await trigger.Post("/profile/request/throw")
             .Body(new ProfileRequest("throw", "mon-c1-request"))

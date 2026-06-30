@@ -1,8 +1,9 @@
 using DeliveryDispatch.Shared.Contracts;
+using Microsoft.Extensions.Logging;
 
 namespace DeliveryDispatch.Server.CustomerGateway;
 
-internal sealed class CustomerActorDirectory
+internal sealed class CustomerActorDirectory(ILogger<CustomerActorDirectory> logger)
 {
     private readonly object _gate = new();
     private readonly Dictionary<string, CustomerActor> _actors = new(StringComparer.Ordinal);
@@ -39,7 +40,9 @@ internal sealed class CustomerActorDirectory
 
         if (actor is null)
         {
-            Console.Error.WriteLine($"deliverydispatch customer-gateway: no bound customer for delivery={status.DeliveryId}");
+            logger.LogWarning(
+                "deliverydispatch customer-gateway: no bound customer for delivery={DeliveryId}",
+                status.DeliveryId);
             return;
         }
 

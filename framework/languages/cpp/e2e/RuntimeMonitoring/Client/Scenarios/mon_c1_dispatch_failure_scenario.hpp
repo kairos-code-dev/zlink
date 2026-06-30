@@ -19,7 +19,6 @@ inline void run_mon_c1_dispatch_failure_scenario (zlink::framework::channel_clie
 {
     auto throwing_http = zlink::http_client::client_t::create ()
                            .base_url (env_or ("ZLINK_CPP_E2E_THROW_SERVICE_URL"))
-                           .json ()
                            .timeout (std::chrono::milliseconds (1000))
                            .build ();
     auto changed = throwing_http.post ("/admin/server-weight?weight=0").submit_raw ().result ();

@@ -7,7 +7,7 @@ import java.nio.charset.StandardCharsets;
 import org.junit.jupiter.api.Test;
 import systems.zlink.framework.ZLinkEncodedPayload;
 import systems.zlink.framework.ZLinkMessageSerializer;
-import systems.zlink.framework.configuration.ZLinkCodecRegistryBuilder;
+import systems.zlink.framework.configuration.ZLinkCodecRegistrar;
 import systems.zlink.framework.errors.ZLinkConfigurationException;
 import systems.zlink.framework.runtime.messaging.ZLinkPayloadEncoding;
 
@@ -79,7 +79,7 @@ final class ZLinkCodecRegistrationTest {
     }
 
     static final class MarkerCodecExtension {
-        static void register(ZLinkCodecRegistryBuilder codecs) {
+        static void register(ZLinkCodecRegistrar codecs) {
             codecs.addSerializer("application/avro", new MarkerSerializer());
         }
     }

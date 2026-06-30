@@ -14,11 +14,9 @@ internal static class RmB2ScaleInScenario
         var providerA = await cluster.StartProviderAsync("api-a", "api-a");
         var providerB = await cluster.StartProviderAsync("api-b", "api-b");
         using var requester = ZLinkHttpClient.Create(providerA.HttpUrl)
-            .Json()
             .Timeout(TimeSpan.FromMinutes(5))
             .Build();
         using var providerBClient = ZLinkHttpClient.Create(providerB.HttpUrl)
-            .Json()
             .Timeout(TimeSpan.FromMinutes(5))
             .Build();
 

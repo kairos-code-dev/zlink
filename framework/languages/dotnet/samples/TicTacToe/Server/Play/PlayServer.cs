@@ -9,6 +9,7 @@ using TicTacToe.Server.Play.Infrastructure.ZLink.Spots.EntrySpot;
 using TicTacToe.Server.Play.Infrastructure.ZLink.Spots.TicTacToeGameSpot;
 using Zlink.Framework.AspNetCore;
 using Zlink.Framework.Contracts.Dispatch;
+using Zlink.Samples.Logging;
 
 namespace TicTacToe.Server.Play;
 
@@ -17,7 +18,7 @@ internal sealed class PlayServer(SampleSettings settings)
     public IHost Build()
     {
         var builder = Host.CreateApplicationBuilder();
-        SampleLogging.Configure(builder.Logging, settings, "play");
+        SampleLogging.Configure(builder.Logging, settings.LogDirectory, "play");
 
         builder.Services.AddSingleton(settings);
         builder.Services.AddSingleton<IRoomRouteStore, RedisRoomRouteStore>();
@@ -31,7 +32,6 @@ internal sealed class PlayServer(SampleSettings settings)
                 .TraceLogFile(SampleFlowLog.Path(settings.InstanceName))
                 .TraceLabel(settings.InstanceName);
             options.AddHandlersFromAssemblyOf(typeof(PlayServer));
-            options.Codecs.AddJson();
             options.AddSpotRemoteAddressResolver<RedisSpotRemoteAddressResolver>();
 
             options.AddClientServerChannel(SampleChannels.Api)

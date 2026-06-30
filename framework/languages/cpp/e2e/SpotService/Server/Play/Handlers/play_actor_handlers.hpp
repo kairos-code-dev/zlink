@@ -459,7 +459,7 @@ class remote_actor_flow_handler_t
               zlink::framework::framework_error_kind_t::request_failed,
               "remote actor owner HTTP endpoint is not configured");
         }
-        auto owner = zlink::http_client::client_t::create ().base_url (endpoint).json ().build ();
+        auto owner = zlink::http_client::client_t::create ().base_url (endpoint).build ();
         auto forwarded =
           owner.post ("/spot/remote-actor").body (request).submit_raw ().result ();
         if (!forwarded) {

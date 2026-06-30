@@ -51,8 +51,6 @@ export async function startPlayHost(args: readonly string[]): Promise<void> {
                 routerChannelId: YieldDispatchNames.spotRouteChannel
               }
             })
-            .codecs()
-              .addJson()
             .configureDispatch()
               .messageFlow(ZLinkMessageFlowLogMode.KeyTransitions)
               .traceLogFile(`${options.logDir}/${options.rid}-flow.log`)

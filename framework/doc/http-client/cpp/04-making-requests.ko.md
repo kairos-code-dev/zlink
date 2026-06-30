@@ -51,7 +51,6 @@ client 수준 `default_header`(모든 요청)와 request 수준 `header`(이 요
 
 ```cpp
 auto client = zlink::http_client::client_t::create ("https://game-api.example.internal")
-                .json ()
                 .default_header ("x-service-name", "matchmaker")
                 .build ();
 

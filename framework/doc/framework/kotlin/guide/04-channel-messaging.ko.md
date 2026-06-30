@@ -148,7 +148,9 @@ class AvroOrderSerializer : ZLinkMessageSerializer {
     }
 }
 
-options.codecs().addSerializer("application/avro", AvroOrderSerializer())
+options.codecs().use { codecs ->
+    codecs.addSerializer("application/avro", AvroOrderSerializer())
+}
 ```
 
 등록 후 high-level 호출은 그대로 업무 객체를 주고받고 직렬화는 Avro로 처리된다. 다른

@@ -1,6 +1,7 @@
 using GameQuest.Server.Configuration;
 using Microsoft.Extensions.Hosting;
 using Zlink.Framework.AspNetCore;
+using Zlink.Samples.Logging;
 
 namespace GameQuest.Registry;
 
@@ -10,6 +11,10 @@ internal static class Program
     {
         var topology = GameQuestTopology.FromEnvironment();
         var builder = Host.CreateApplicationBuilder(args);
+        SampleLogging.Configure(
+            builder.Logging,
+            SampleLogging.DirectoryFromEnvironment("GAMEQUEST_LOG_DIR"),
+            "registry");
         builder.Services.AddZLinkRegistry(options =>
         {
             options.PubEndpoint = Environment.GetEnvironmentVariable("GAMEQUEST_REGISTRY_PUB_ENDPOINT")

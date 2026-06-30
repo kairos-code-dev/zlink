@@ -14,7 +14,6 @@ internal sealed class HttpCommerceApiPeerClient(SampleTopology topology) : IComm
     {
         var owner = topology.ForInstance(ownerInstanceId);
         using var client = ZLinkHttpClient.Create(owner.HttpUrl)
-            .Json()
             .Timeout(SampleTimings.HttpTimeout)
             .Build();
         return (await client.Post("/orders/start")

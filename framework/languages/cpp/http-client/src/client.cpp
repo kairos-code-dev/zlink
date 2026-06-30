@@ -158,13 +158,6 @@ client_builder_t &client_builder_t::base_url (std::string value)
     return *this;
 }
 
-client_builder_t &client_builder_t::json ()
-{
-    _json = true;
-    _headers.try_emplace ("content-type", "application/json");
-    return *this;
-}
-
 client_builder_t &client_builder_t::timeout (std::chrono::milliseconds value)
 {
     require_positive_timeout (value);
@@ -327,7 +320,6 @@ client_t client_builder_t::build () const
         }
     }
     detail::http_client_options_t options{.base_url = _base_url,
-                                          .json = _json,
                                           .timeout = _timeout,
                                           .max_response_body_size = _max_response_body_size,
                                           .headers = _headers,

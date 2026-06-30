@@ -30,7 +30,6 @@ inline std::string post_validation (const std::string &trigger_url, const std::s
 {
     auto http = zlink::http_client::client_t::create ()
                   .base_url (trigger_url)
-                  .json ()
                   .timeout (std::chrono::milliseconds (5000))
                   .build ();
     return http.post (path).fetch<std::string> ();

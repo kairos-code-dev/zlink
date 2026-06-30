@@ -11,11 +11,9 @@ internal static class DrD1DirectEndpointScenario
     public static async Task RunAsync(ClientOptions options)
     {
         using var embedded = ZLinkHttpClient.Create(options.EmbeddedUrl)
-            .Json()
             .Timeout(TimeSpan.FromSeconds(10))
             .Build();
         using var consumer = ZLinkHttpClient.Create(options.EmbeddedConsumerUrl)
-            .Json()
             .Timeout(TimeSpan.FromSeconds(10))
             .Build();
 

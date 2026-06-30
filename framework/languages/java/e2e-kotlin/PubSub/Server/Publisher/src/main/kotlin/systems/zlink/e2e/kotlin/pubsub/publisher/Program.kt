@@ -41,7 +41,6 @@ class PublisherApplication {
     @Bean
     fun publisherFramework(options: PublisherOptions): ZLinkFrameworkConfigurer =
         ZLinkFrameworkConfigurer { options ->
-            options.codecs().addJson()
             options.configureDispatch()
                 .messageFlow(ZLinkMessageFlowLogMode.KEY_TRANSITIONS)
                 .traceLogFile("${parsedOptions.logDir}/publisher-flow.log")

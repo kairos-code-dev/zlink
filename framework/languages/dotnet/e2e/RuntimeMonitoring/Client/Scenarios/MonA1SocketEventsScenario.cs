@@ -8,8 +8,8 @@ internal static class MonA1SocketEventsScenario
 {
     public static async Task RunAsync(ClientOptions options)
     {
-        using var trigger = ZLinkHttpClient.Create(options.TriggerUrl).Json().Build();
-        using var service = ZLinkHttpClient.Create(options.ServiceUrl).Json().Build();
+        using var trigger = ZLinkHttpClient.Create(options.TriggerUrl).Build();
+        using var service = ZLinkHttpClient.Create(options.ServiceUrl).Build();
 
         var reply = (await trigger.Post("/profile/request/disconnect")
             .Body(new ProfileRequest("monitor", "mon-a1-request"))

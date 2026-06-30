@@ -166,7 +166,7 @@ helper를 제공한다.
 
 connector도 framework처럼 **custom codec**을 끼울 수 있다. `ZLinkStreamConnectorOptions`의
 `typedCodec`에 `ZLinkStreamCodec`(`encode(packetName, value)`/`decode(payload, type)`) 구현을
-주면 Avro·Thrift 같은 포맷을 쓴다. server framework 쪽 등록(`codecs().addSerializer(...)`)과
+주면 Avro·Thrift 같은 포맷을 쓴다. server framework 쪽 등록(`codecs().use(extension)`)과
 대칭이며, 두 표면의 전체 목록은
 [framework-api §2.2](../../common/spec/framework-api.ko.md) 표를 본다.
 

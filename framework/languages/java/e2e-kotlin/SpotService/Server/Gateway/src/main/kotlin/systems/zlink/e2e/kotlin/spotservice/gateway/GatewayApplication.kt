@@ -56,7 +56,6 @@ class GatewayApplication {
     fun gatewayFramework(options: GatewayOptions): ZLinkFrameworkConfigurer =
         ZLinkFrameworkConfigurer { framework ->
             Files.createDirectories(Path.of(options.logDir))
-            framework.codecs().addJson()
             framework.configureDispatch()
                 .messageFlow(ZLinkMessageFlowLogMode.KEY_TRANSITIONS)
                 .traceLogFile("${options.logDir}/${options.rid}-flow.log")

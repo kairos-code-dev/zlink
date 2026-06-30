@@ -8,9 +8,9 @@ internal static class MonA5FixedKindsScenario
 {
     public static async Task RunAsync(ClientOptions options)
     {
-        using var trigger = ZLinkHttpClient.Create(options.TriggerUrl).Json().Build();
-        using var service = ZLinkHttpClient.Create(options.ServiceUrl).Json().Build();
-        using var registry = ZLinkHttpClient.Create(options.RegistryUrl).Json().Build();
+        using var trigger = ZLinkHttpClient.Create(options.TriggerUrl).Build();
+        using var service = ZLinkHttpClient.Create(options.ServiceUrl).Build();
+        using var registry = ZLinkHttpClient.Create(options.RegistryUrl).Build();
 
         await trigger.Post("/socket/handshake-failure").SubmitRawAsync();
         var (serviceEvidence, registryEvidence) = await WaitForFixedKindsAsync(service, registry);

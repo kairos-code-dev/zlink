@@ -13,23 +13,18 @@ internal static class DrC3EmbeddedRegistryScenario
     public static async Task RunAsync(ClientOptions options)
     {
         using var survivorConsumer = ZLinkHttpClient.Create(options.Reg1ConsumerUrl)
-            .Json()
             .Timeout(TimeSpan.FromSeconds(10))
             .Build();
         using var recoveredConsumer = ZLinkHttpClient.Create(options.Reg2ConsumerUrl)
-            .Json()
             .Timeout(TimeSpan.FromSeconds(10))
             .Build();
         using var providerA = ZLinkHttpClient.Create(options.ProviderAUrl)
-            .Json()
             .Timeout(TimeSpan.FromSeconds(10))
             .Build();
         using var providerB = ZLinkHttpClient.Create(options.ProviderBUrl)
-            .Json()
             .Timeout(TimeSpan.FromSeconds(10))
             .Build();
         using var providerC = ZLinkHttpClient.Create(options.ProviderCUrl)
-            .Json()
             .Timeout(TimeSpan.FromSeconds(10))
             .Build();
 
@@ -81,7 +76,6 @@ internal static class DrC3EmbeddedRegistryScenario
             started.Add(await StartProviderAsync(options));
 
             using var reg2 = ZLinkHttpClient.Create(options.Reg2Url)
-                .Json()
                 .Timeout(TimeSpan.FromSeconds(10))
                 .Build();
             await reg2.Post("/registry/members/wait")
@@ -91,7 +85,6 @@ internal static class DrC3EmbeddedRegistryScenario
             await StopServerAsync(options.Reg2ConsumerUrl);
             await using var recoveredConsumerProcess = await StartConsumerAsync(options);
             using var freshRecoveredConsumer = ZLinkHttpClient.Create(options.Reg2ConsumerUrl)
-                .Json()
                 .Timeout(TimeSpan.FromSeconds(10))
                 .Build();
             var after = await RequestProfileAsync(freshRecoveredConsumer, "dr-c3-after");
@@ -133,7 +126,6 @@ internal static class DrC3EmbeddedRegistryScenario
         try
         {
             using var server = ZLinkHttpClient.Create(baseUrl)
-                .Json()
                 .Timeout(TimeSpan.FromSeconds(2))
                 .Build();
             await server.Post("/shutdown").SubmitAsync<object>();

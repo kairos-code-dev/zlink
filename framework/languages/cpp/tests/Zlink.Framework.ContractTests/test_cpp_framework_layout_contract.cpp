@@ -1154,7 +1154,7 @@ bool implementation_plan_goal17_covers_module_hosting (const std::filesystem::pa
       "`zlink_framework_options_t`",
       "`options.services()`",
       "`options.handlers()`",
-      "`options.codecs().add_json()`",
+      "`options.codecs().use(extension)`",
       "discovery/channel/spot/stream fluent options builders",
       "module service registration",
       "module handler registration",

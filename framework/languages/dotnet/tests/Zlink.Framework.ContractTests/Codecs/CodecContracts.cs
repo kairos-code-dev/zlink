@@ -12,10 +12,9 @@ public sealed class CodecContracts
     {
         var codecs = new ExampleCodecRegistryBuilder();
 
-        codecs.AddJson();
         codecs.Use(new ExampleCodecExtension());
 
-        Assert.Equal(["json", "application/example"], codecs.EnabledCodecs);
+        Assert.Equal(["application/example"], codecs.EnabledCodecs);
     }
 
     [Fact]
@@ -47,7 +46,7 @@ public sealed class CodecContracts
         }
     }
 
-    private sealed class ExampleCodecRegistryBuilder : IZLinkCodecRegistryBuilder
+    private sealed class ExampleCodecRegistryBuilder : IZLinkCodecRegistryBuilder, IZLinkCodecRegistrar
     {
         private readonly List<string> _enabledCodecs = [];
 
@@ -56,11 +55,6 @@ public sealed class CodecContracts
         public void Use(IZLinkCodecExtension extension)
         {
             extension.Register(this);
-        }
-
-        public void AddJson()
-        {
-            _enabledCodecs.Add("json");
         }
 
         public void AddSerializer(string contentType, IZLinkMessageSerializer serializer)
@@ -85,7 +79,7 @@ public sealed class CodecContracts
 
     private sealed class ExampleCodecExtension : IZLinkCodecExtension
     {
-        public void Register(IZLinkCodecRegistryBuilder codecs)
+        public void Register(IZLinkCodecRegistrar codecs)
         {
             codecs.AddSerializer("application/example", new ExampleMessageSerializer());
         }

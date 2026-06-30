@@ -1,5 +1,6 @@
 using DeliveryDispatch.Server.Configuration;
 using DeliveryDispatch.Shared.Contracts;
+using Microsoft.Extensions.Logging;
 using Zlink.Framework.Contracts.Channels;
 using Zlink.Framework.Contracts.Handlers;
 
@@ -8,7 +9,8 @@ namespace DeliveryDispatch.Server.CourierGateway;
 [ZLinkHandlerGroup(SampleNames.CourierRouteChannel)]
 internal sealed class BindCourierHandler(
     CourierDirectory directory,
-    IZLinkRouteClient routes)
+    IZLinkRouteClient routes,
+    ILogger<BindCourierHandler> logger)
     : IZLinkRequestHandler<BindCourier, CourierBound>
 {
     public async ValueTask<CourierBound> HandleAsync(
@@ -25,8 +27,11 @@ internal sealed class BindCourierHandler(
             .PacketName(nameof(EnsureCourierActor))
             .Async<CourierActorEnsured>(cancellationToken);
         var binding = directory.Remember(ensured, request.SessionRoute);
-        Console.Error.WriteLine(
-            $"deliverydispatch courier-gateway: bound courier={request.CourierId} node={binding.Actor.NodeRid} session={binding.SessionRoute}");
+        logger.LogInformation(
+            "deliverydispatch courier-gateway: bound courier={CourierId} node={NodeRid} session={SessionRoute}",
+            request.CourierId,
+            binding.Actor.NodeRid,
+            binding.SessionRoute);
         return new CourierBound(request.CourierId, binding.Actor, binding.SessionRoute);
     }
 }

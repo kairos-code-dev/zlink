@@ -7,5 +7,5 @@ namespace Zlink.Framework.Contracts.Codecs;
 /// </summary>
 public interface IZLinkCodecExtension
 {
-    void Register(IZLinkCodecRegistryBuilder codecs);
+    void Register(IZLinkCodecRegistrar codecs);
 }

@@ -32,7 +32,6 @@ public final class ClientApplication {
     ZLinkFrameworkConfigurer clientFramework() {
         return options -> {
             options.useDiscovery().addRegistryEndpoint(SampleTopology.RegistryRouterEndpoint);
-            options.codecs().addJson();
             options.addClientServerChannel(SampleNames.commerceApiChannel(SampleNames.ApiInstanceA))
                 .enableClient();
             options.addClientServerChannel(SampleNames.commerceApiChannel(SampleNames.ApiInstanceB))

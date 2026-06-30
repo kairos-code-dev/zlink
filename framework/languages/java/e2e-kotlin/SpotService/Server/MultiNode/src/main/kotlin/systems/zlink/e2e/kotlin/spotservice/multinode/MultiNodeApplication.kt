@@ -63,7 +63,6 @@ class MultiNodeApplication {
         ZLinkFrameworkConfigurer { framework ->
             Files.createDirectories(Path.of(options.logDir))
             val node = MultiNodeKind.fromRid(options.rid)
-            framework.codecs().addJson()
             framework.configureDispatch()
                 .messageFlow(ZLinkMessageFlowLogMode.KEY_TRANSITIONS)
                 .traceLogFile("${options.logDir}/${options.rid}-flow.log")

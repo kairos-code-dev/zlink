@@ -200,7 +200,6 @@ final class NodesAndServicesTest {
         String routePeer) {
         DefaultZLinkFrameworkOptions options = new DefaultZLinkFrameworkOptions();
         options.setDefaultRequestTimeout(Duration.ofSeconds(2));
-        options.codecs().addJson();
         options.configureDispatch()
             .messageFlow(ZLinkMessageFlowLogMode.KEY_TRANSITIONS)
             .setMessageFlowObserver(new FlowObserver());

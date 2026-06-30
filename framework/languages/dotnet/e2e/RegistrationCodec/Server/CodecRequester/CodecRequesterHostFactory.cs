@@ -34,7 +34,6 @@ internal static class CodecRequesterHostFactory
                 .MessageFlow(ZLinkMessageFlowLogMode.KeyTransitions)
                 .TraceLogFile(Path.Combine(options.LogDir, $"{options.Rid}-flow.log"))
                 .TraceLabel(options.Rid);
-            framework.Codecs.AddJson();
             framework.Codecs.Use(ZLinkProtobufCodec.Default);
             framework.Codecs.Use(ZLinkMessagePackCodec.Default);
             framework.AddClientServerChannel(RegistrationCodecNames.Channel)

@@ -52,8 +52,6 @@ function createConsumerModule(options: ConsumerOptions, traceLabel = options.tra
         useFactory: () => {
           const builder = zlinkFramework();
           builder
-            .codecs()
-              .addJson()
             .configureDispatch()
               .messageFlow(ZLinkMessageFlowLogMode.KeyTransitions)
               .traceLogFile(`${options.logDir}/${traceLabel}-flow.log`)

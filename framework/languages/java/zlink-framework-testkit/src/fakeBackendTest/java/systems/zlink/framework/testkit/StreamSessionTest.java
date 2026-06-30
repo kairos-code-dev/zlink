@@ -195,8 +195,10 @@ final class StreamSessionTest {
     void customCodecSessionDispatchDecodesThroughFrameworkMessage() {
         GameSession.reset();
         DefaultZLinkFrameworkOptions options = new DefaultZLinkFrameworkOptions();
-        options.codecs().addSerializer("application/x-session-test", new SessionCustomSerializer());
-        options.codecs().addStreamCodec("application/x-session-test", ZLinkStreamCodec.PROTOBUF);
+        options.codecs().use(codecs -> {
+            codecs.addSerializer("application/x-session-test", new SessionCustomSerializer());
+            codecs.addStreamCodec("application/x-session-test", ZLinkStreamCodec.PROTOBUF);
+        });
         { var stream = options.addStreamNode("gateway"); stream.bind("inproc://gateway");
             stream.registerSession(GameSession.class); };
         FakeZLinkBackendAdapterFactory backendFactory =

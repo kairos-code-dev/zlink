@@ -44,7 +44,7 @@ response parser, SSL stream, SSL context 타입을 노출하지 않는다.
 - `zlink/http_client/contracts/client.hpp`
 - `zlink::http_client` CMake target
 - `client_t::create(base_url)` 또는 `create().base_url(...)` +
-  `.json().timeout(...).default_header(...).max_response_body_size(...)`
+  `.timeout(...).default_header(...).max_response_body_size(...)`
   `.trust_certificate_file(...)`
   `.follow_redirects(...).retry(...).cookies().proxy(...).compression().build()`
 - coroutine 실행 설정: `.coroutines()`, `.coroutines(resume_scheduler)`,
@@ -71,7 +71,6 @@ response parser, SSL stream, SSL context 타입을 노출하지 않는다.
 ```cpp
 auto client = zlink::http_client::client_t::create()
   .base_url(topology.api_http_endpoint)
-  .json()
   .timeout(std::chrono::seconds(3))
   .build();
 
@@ -94,7 +93,6 @@ request가 한 번뿐인 경우에는 `build()`를 생략하고 builder에서 �
 ```cpp
 auto created = zlink::http_client::client_t::create()
   .base_url(topology.api_http_endpoint)
-  .json()
   .post("/games")
   .body(create_game_http_req_t { .game_name = game_name })
   .submit<create_game_http_res_t>()
@@ -112,7 +110,6 @@ pointer가 아니라) 값으로 보유하므로, on-demand로 만든 client와 �
 
 ```cpp
 auto created = zlink::http_client::client_t::create(topology.api_http_endpoint)
-  .json()
   .post("/games")
   .body(create_game_http_req_t { .game_name = game_name })
   .fetch<create_game_http_res_t>();   // create_game_http_res_t (실패 시 예외)
@@ -220,7 +217,6 @@ auto resume_scheduler =
     });
 
 auto client = zlink::http_client::client_t::create("https://matchmaking.internal")
-  .json()
   .coroutines(resume_scheduler)
   .build();
 ```

@@ -2,6 +2,7 @@ using SupportChat.Server.Configuration;
 using SupportChat.Server.Support.Infrastructure.ZLink.Actors;
 using SupportChat.Server.Support.Infrastructure.ZLink.Spots.ConversationSpot.Notifications;
 using SupportChat.Shared.Contracts;
+using Microsoft.Extensions.Logging;
 using Systems.Zlink;
 using Zlink.Framework.Contracts.Spots;
 
@@ -9,7 +10,8 @@ namespace SupportChat.Server.Support.Infrastructure.ZLink.Spots.EntrySpot.Handle
 
 internal sealed class OpenConversationActorHandler(
     SupportActorDirectory actors,
-    ConversationNotificationPublisher notifications)
+    ConversationNotificationPublisher notifications,
+    ILogger<OpenConversationActorHandler> logger)
     : IZLinkEntrySpotActorRequestHandler<SupportEntrySpot, SupportUserActor, OpenConversationReq, OpenConversationRes>
 {
     public async ValueTask<OpenConversationRes> HandleAsync(
@@ -23,7 +25,10 @@ internal sealed class OpenConversationActorHandler(
         if (!string.Equals(actor.Role, SupportChatRoles.Customer, StringComparison.Ordinal))
             throw new InvalidOperationException("Only customer actors can open a conversation.");
 
-        Console.Error.WriteLine($"support entry open: request actor={actor.ActorId} subject={message.Subject}");
+        logger.LogInformation(
+            "support entry open: request actor={ActorId} subject={Subject}",
+            actor.ActorId,
+            message.Subject);
         var opened = await entrySpot.Context.Outbound.RequestToChannel(
                 SampleNames.ApiChannel,
                 new OpenConversationApiReq(
@@ -55,8 +60,10 @@ internal sealed class OpenConversationActorHandler(
             actor,
             state,
             cancellationToken);
-        Console.Error.WriteLine(
-            $"support entry open: completed conversation={opened.ConversationId} status={state.Status}");
+        logger.LogInformation(
+            "support entry open: completed conversation={ConversationId} status={Status}",
+            opened.ConversationId,
+            state.Status);
         return new OpenConversationRes(opened.ConversationId, state);
     }
 }

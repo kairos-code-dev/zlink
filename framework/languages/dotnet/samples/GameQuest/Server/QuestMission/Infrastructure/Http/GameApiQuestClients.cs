@@ -13,7 +13,7 @@ internal sealed class HttpGameApiSnapshotClient(GameQuestTopology topology) : IG
         GetGameplaySnapshotReq request,
         CancellationToken cancellationToken)
     {
-        using var gameApi = ZLinkHttpClient.Create(topology.GameApiAHttpBaseUrl).Json().Build();
+        using var gameApi = ZLinkHttpClient.Create(topology.GameApiAHttpBaseUrl).Build();
         return (await gameApi.Post("/internal/snapshot")
             .Body(request)
             .SubmitAsync<GetGameplaySnapshotRes>(cancellationToken)).Body;
@@ -34,7 +34,7 @@ internal sealed class HttpQuestProgressNotifier(GameQuestTopology topology) : IQ
             : topology.GameApiAHttpBaseUrl;
         try
         {
-            using var gameApi = ZLinkHttpClient.Create(baseUrl).Json().Build();
+            using var gameApi = ZLinkHttpClient.Create(baseUrl).Build();
             var response = await gameApi.Post("/internal/notify")
                 .Body(request)
                 .SubmitRawAsync(cancellationToken);

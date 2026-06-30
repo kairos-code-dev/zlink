@@ -6,10 +6,10 @@ using Zlink.HttpClient;
 var options = ClientOptions.Parse(args);
 Directory.CreateDirectory(options.LogDir);
 
-using var publisher = ZLinkHttpClient.Create(options.PublisherUrl).Json().Build();
-using var lateSubscriber = ZLinkHttpClient.Create(options.LateSubscriberUrl).Json().Build();
+using var publisher = ZLinkHttpClient.Create(options.PublisherUrl).Build();
+using var lateSubscriber = ZLinkHttpClient.Create(options.LateSubscriberUrl).Build();
 var subscribers = options.SubscriberUrls
-    .Select(url => ZLinkHttpClient.Create(url).Json().Build())
+    .Select(url => ZLinkHttpClient.Create(url).Build())
     .ToArray();
 var processLauncher = new ServerProcessLauncher(options);
 Process? restartedPublisher = null;

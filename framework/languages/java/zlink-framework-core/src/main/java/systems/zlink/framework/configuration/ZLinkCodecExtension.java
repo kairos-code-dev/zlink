@@ -7,5 +7,5 @@ package systems.zlink.framework.configuration;
  */
 @FunctionalInterface
 public interface ZLinkCodecExtension {
-    void register(ZLinkCodecRegistryBuilder codecs);
+    void register(ZLinkCodecRegistrar codecs);
 }

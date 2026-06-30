@@ -7,7 +7,7 @@ internal static class MonB2RegistrationValidationScenario
 {
     public static async Task RunAsync(ClientOptions options)
     {
-        using var trigger = ZLinkHttpClient.Create(options.TriggerUrl).Json().Build();
+        using var trigger = ZLinkHttpClient.Create(options.TriggerUrl).Build();
         var scenarioEvidence = new[]
         {
             (await trigger.Post("/validation/registration/duplicate-source").SubmitAsync<string>()).Body,

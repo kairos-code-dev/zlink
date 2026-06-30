@@ -29,7 +29,6 @@ inline void run_mon_a4_availability_transition_scenario ()
 {
     auto http = zlink::http_client::client_t::create ()
                   .base_url (env_or ("ZLINK_CPP_E2E_SERVICE_URL"))
-                  .json ()
                   .timeout (std::chrono::milliseconds (1000))
                   .build ();
 

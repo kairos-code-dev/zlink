@@ -28,7 +28,6 @@ public final class DelayApplication {
     ZLinkFrameworkConfigurer framework() {
         return options -> {
             String nodeRid = Env.get("ZLINK_KOTLIN_E2E_NODE_RID", "delay-a");
-            options.codecs().addJson();
             options.useDiscovery().addRegistryEndpoint(Env.get("ZLINK_KOTLIN_E2E_REGISTRY_ROUTER"));
             ClientServerChannelBuilder delay = options.addClientServerChannel(Contracts.DELAY_CHANNEL)
                 .enableServer(Env.get("ZLINK_KOTLIN_E2E_DELAY_ENDPOINT"))

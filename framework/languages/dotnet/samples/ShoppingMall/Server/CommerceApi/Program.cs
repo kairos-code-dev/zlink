@@ -7,8 +7,10 @@ using ShoppingMall.Server.Shared.Domain;
 using ShoppingMall.Server.Shared.Ports.Outbound;
 using ShoppingMall.Server.Shared.Store;
 using ShoppingMall.Shared.Contracts;
+using Microsoft.Extensions.Logging;
 using Zlink.Framework.AspNetCore;
 using Zlink.Framework.Contracts.Dispatch;
+using Zlink.Samples.Logging;
 
 namespace ShoppingMall.Server.CommerceApi;
 
@@ -21,6 +23,10 @@ internal static class Program
         var topology = SampleTopology.Create();
         var instance = topology.ForInstance(instanceId);
         var builder = WebApplication.CreateBuilder(args);
+        SampleLogging.Configure(
+            builder.Logging,
+            SampleLogging.DirectoryFromEnvironment("SHOPPINGMALL_LOG_DIR"),
+            instance.InstanceId);
 
         builder.WebHost.UseUrls(instance.HttpUrl);
         builder.Services.AddSingleton(topology);
@@ -41,7 +47,6 @@ internal static class Program
                 .MessageFlow(ZLinkMessageFlowLogMode.KeyTransitions)
                 .TraceLogFile(SampleFlowLog.Path(instance.InstanceId))
                 .TraceLabel(instance.InstanceId);
-            options.Codecs.AddJson();
             options.UseDiscovery().AddRegistryEndpoint(topology.RegistryRouterEndpoint);
             {
                 var route = options.AddRouteMesh(SampleNames.OrderWorkflowRouteChannel);
@@ -81,12 +86,17 @@ internal static class Program
         app.MapPost("/self-check/projection/{orderId}/rebuild", async (
             string orderId,
             IOrderWorkflowRouter workflows,
+            ILoggerFactory loggerFactory,
             CancellationToken cancellationToken) =>
         {
             var state = await workflows.RebuildProjectionAsync(
                 new RebuildOrderProjectionReq(orderId),
                 cancellationToken);
-            Console.Error.WriteLine($"shoppingmall projection: rebuilt order={state.OrderId} status={state.Status}");
+            loggerFactory.CreateLogger("ShoppingMall.Server.CommerceApi")
+                .LogInformation(
+                    "shoppingmall projection: rebuilt order={OrderId} status={Status}",
+                    state.OrderId,
+                    state.Status);
             return Results.Ok(new RebuildOrderProjectionRes(state));
         });
         app.MapPost("/self-check/idempotency/pending", async (
@@ -104,6 +114,7 @@ internal static class Program
         app.MapPost("/self-check/assert", async (
             ServerAssertionReq request,
             FileCommerceStores stores,
+            ILoggerFactory loggerFactory,
             CancellationToken cancellationToken) =>
         {
             var evidence = await stores.EvidenceAsync(
@@ -147,7 +158,8 @@ internal static class Program
                 && evidence.ReleasedReservationCount >= 1
                 && evidence.PaymentFailureCount >= 1
                 && evidence.StartedIdempotencyCount == 5;
-            Console.Error.WriteLine($"shoppingmall evidence: {string.Join("; ", lines)}");
+            loggerFactory.CreateLogger("ShoppingMall.Server.CommerceApi")
+                .LogInformation("shoppingmall evidence: {Evidence}", string.Join("; ", lines));
             return Results.Ok(new ServerAssertionRes(passed, lines));
         });
 

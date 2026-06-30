@@ -871,7 +871,6 @@ final class ZLinkFrameworkAutoConfigurationTest {
         @Bean
         ZLinkFrameworkConfigurer scannedHandlerConfigurer(String springAnnotatedEndpoint) {
             return options -> {
-                options.codecs().addJson();
                 options.addHandlersFromPackageOf(ScannedHandlerConfig.class);
                 { var channel = options.addClientServerChannel("profile").enableServer(springAnnotatedEndpoint);
             channel.enableClient(springAnnotatedEndpoint);
@@ -892,7 +891,6 @@ final class ZLinkFrameworkAutoConfigurationTest {
         ZLinkFrameworkConfigurer autoRegisteredHandlerConfigurer(
             String autoRegisteredEndpoint) {
             return options -> {
-                options.codecs().addJson();
                 options.addHandlersFromPackageOf(AutoRegisteredHandlerConfig.class);
                 { var channel = options.addClientServerChannel("profile").enableServer(autoRegisteredEndpoint);
             channel.enableClient(autoRegisteredEndpoint);
@@ -913,7 +911,6 @@ final class ZLinkFrameworkAutoConfigurationTest {
         ZLinkFrameworkConfigurer autoRegisteredSetHandlerConfigurer(
             String autoRegisteredSetEndpoint) {
             return options -> {
-                options.codecs().addJson();
                 options.addHandlersFromPackageOf(AutoRegisteredSetHandlerConfig.class);
                 { var channel = options.addClientServerChannel("profile").enableServer(autoRegisteredSetEndpoint);
             channel.enableClient(autoRegisteredSetEndpoint);
@@ -943,7 +940,6 @@ final class ZLinkFrameworkAutoConfigurationTest {
         @Bean
         ZLinkFrameworkConfigurer filteredHandlerConfigurer(String filteredEndpoint) {
             return options -> {
-                options.codecs().addJson();
                 options.useFilter(SpringInjectedReplyFilter.class);
                 { var channel = options.addClientServerChannel("profile").enableServer(filteredEndpoint);
             channel.enableClient(filteredEndpoint);

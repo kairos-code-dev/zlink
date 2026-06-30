@@ -29,7 +29,6 @@ inline void run_sm_d6_scenario (const std::string &session_stream_endpoint,
 
     auto play_a = zlink::http_client::client_t::create ()
                     .base_url (play_http_endpoint)
-                    .json ()
                     .build ();
     auto joined =
       play_a.post ("/spot/join")
@@ -56,7 +55,6 @@ inline void run_sm_d6_scenario (const std::string &session_stream_endpoint,
     bound_options.request_timeout = std::chrono::milliseconds (5000);
     bound_options.dispatch_mode = zlink::stream_connector::dispatch_mode_t::immediate;
     auto bound = zlink::stream_connector::connector_factory_t::create (bound_options);
-    bound.codecs ().add_json ();
     auto bound_connected = bound.connect ();
     if (!bound_connected) {
         throw std::runtime_error ("SM-D6 bound stream connect failed");
@@ -85,7 +83,6 @@ inline void run_sm_d6_scenario (const std::string &session_stream_endpoint,
     unbound_options.request_timeout = std::chrono::milliseconds (5000);
     unbound_options.dispatch_mode = zlink::stream_connector::dispatch_mode_t::immediate;
     auto unbound = zlink::stream_connector::connector_factory_t::create (unbound_options);
-    unbound.codecs ().add_json ();
     auto unbound_connected = unbound.connect ();
     if (!unbound_connected) {
         throw std::runtime_error ("SM-D6 unbound stream connect failed");

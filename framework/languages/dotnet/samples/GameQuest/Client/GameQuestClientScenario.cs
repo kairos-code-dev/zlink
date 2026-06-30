@@ -13,8 +13,8 @@ internal sealed class GameQuestClientScenario(GameQuestTopology topology)
         IZlinkStreamConnector apiBStream,
         CancellationToken cancellationToken = default)
     {
-        using var apiA = ZLinkHttpClient.Create(topology.GameApiAHttpBaseUrl).Json().Build();
-        using var apiB = ZLinkHttpClient.Create(topology.GameApiBHttpBaseUrl).Json().Build();
+        using var apiA = ZLinkHttpClient.Create(topology.GameApiAHttpBaseUrl).Build();
+        using var apiB = ZLinkHttpClient.Create(topology.GameApiBHttpBaseUrl).Build();
 
         await apiAStream.Connect.Async(cancellationToken);
         var subscribed = await apiAStream.Request(new SubscribeQuestReq("player-alice"))

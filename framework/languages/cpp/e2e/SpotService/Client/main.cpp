@@ -688,7 +688,6 @@ class scenario_service_t final : public zlink::framework::hosted_service_t
         const auto display_name = actor_id + "-display";
         auto actor = ensure_actor_ref (routes, target_node, actor_id, display_name);
         auto core = make_stream_connector ();
-        core.codecs ().add_json ();
         auto stream = zlink::stream_e2e_client::use (core);
 
         auto connected = stream.connect ().submit ();
@@ -741,7 +740,6 @@ class scenario_service_t final : public zlink::framework::hosted_service_t
 
         {
             auto core = make_stream_connector ();
-            core.codecs ().add_json ();
             auto unauthenticated = zlink::stream_e2e_client::use (core);
             auto connected = unauthenticated.connect ().submit ();
             ensure (static_cast<bool> (connected), "SM-D7 unauthenticated stream connect failed");
@@ -760,7 +758,6 @@ class scenario_service_t final : public zlink::framework::hosted_service_t
             auto invalid_actor = actor;
             invalid_actor.actor_id.clear ();
             auto core = make_stream_connector ();
-            core.codecs ().add_json ();
             auto invalid = zlink::stream_e2e_client::use (core);
             auto connected = invalid.connect ().submit ();
             ensure (static_cast<bool> (connected), "SM-D7 invalid-auth stream connect failed");
@@ -776,7 +773,6 @@ class scenario_service_t final : public zlink::framework::hosted_service_t
         }
 
         auto core = make_stream_connector ();
-        core.codecs ().add_json ();
         std::mutex observations_mutex;
         std::vector<zlink::stream_connector::inbound_observation_t> observations;
         auto observer = core.observe_inbound (
@@ -885,13 +881,11 @@ class scenario_service_t final : public zlink::framework::hosted_service_t
         auto actor = ensure_actor_ref (routes, "play-a", actor_id, actor_id + "-display");
 
         auto bound_core = make_stream_connector ();
-        bound_core.codecs ().add_json ();
         auto bound = zlink::stream_e2e_client::use (bound_core);
         auto bound_connected = bound.connect ().submit ();
         ensure (static_cast<bool> (bound_connected), "SM-D6 bound stream connect failed");
 
         auto unbound_core = make_stream_connector ();
-        unbound_core.codecs ().add_json ();
         auto unbound = zlink::stream_e2e_client::use (unbound_core);
         auto unbound_connected = unbound.connect ().submit ();
         ensure (static_cast<bool> (unbound_connected), "SM-D6 unbound stream connect failed");
@@ -948,7 +942,6 @@ class scenario_service_t final : public zlink::framework::hosted_service_t
         auto actor = ensure_actor_ref (routes, "play-a", actor_id, actor_id + "-display");
 
         auto core = make_stream_connector ();
-        core.codecs ().add_json ();
         auto stream = zlink::stream_e2e_client::use (core);
         auto connected = stream.connect ().submit ();
         ensure (static_cast<bool> (connected), "SM-D11 stream connect failed");
@@ -1011,7 +1004,6 @@ class scenario_service_t final : public zlink::framework::hosted_service_t
           ensure_actor_ref (routes, "play-a", muted_actor_id, muted_actor_id + "-display");
 
         auto core = make_stream_connector ();
-        core.codecs ().add_json ();
         auto stream = zlink::stream_e2e_client::use (core);
 
         auto connected = stream.connect ().submit ();
@@ -1078,7 +1070,6 @@ class scenario_service_t final : public zlink::framework::hosted_service_t
         auto actor = ensure_actor_ref (routes, "play-a", actor_id, display_name);
 
         auto first_core = make_stream_connector ();
-        first_core.codecs ().add_json ();
         auto first = zlink::stream_e2e_client::use (first_core);
         auto first_connected = first.connect ().submit ();
         ensure (static_cast<bool> (first_connected), "SM-D12 first stream connect failed");
@@ -1118,7 +1109,6 @@ class scenario_service_t final : public zlink::framework::hosted_service_t
         actor = ensure_actor_ref (routes, "play-a", actor_id, display_name);
 
         auto second_core = make_stream_connector (_alternate_stream_endpoint);
-        second_core.codecs ().add_json ();
         auto second = zlink::stream_e2e_client::use (second_core);
         auto second_connected = second.connect ().submit ();
         ensure (static_cast<bool> (second_connected), "SM-D12 second stream connect failed");
@@ -1179,7 +1169,6 @@ class scenario_service_t final : public zlink::framework::hosted_service_t
           ensure_actor_ref (routes, "play-b", second_actor_id, second_actor_id + "-display");
 
         auto core = make_stream_connector ();
-        core.codecs ().add_json ();
         auto stream = zlink::stream_e2e_client::use (core);
 
         auto connected = stream.connect ().submit ();
@@ -1308,48 +1297,6 @@ class scenario_service_t final : public zlink::framework::hosted_service_t
 
 void configure_codecs (zlink::framework::codec_options_builder_t codecs)
 {
-    codecs.add_json ();
-    codecs.add_json<e2e::actor_ref_dto_t,
-                    e2e::ensure_actor_req_t,
-                    e2e::ensure_actor_res_t,
-                    e2e::join_req_t,
-                    e2e::join_res_t,
-                    e2e::state_req_t,
-                    e2e::state_res_t,
-                    e2e::actor_ping_req_t,
-                    e2e::slow_actor_ping_req_t,
-                    e2e::actor_ping_res_t,
-                    e2e::leave_req_t,
-                    e2e::leave_res_t,
-                    e2e::destroy_actor_req_t,
-                    e2e::destroy_actor_res_t,
-                    e2e::disconnect_req_t,
-                    e2e::disconnect_res_t,
-                    e2e::channel_echo_req_t,
-                    e2e::channel_echo_res_t,
-                    e2e::channel_command_t,
-                    e2e::mesh_event_t,
-                    e2e::outbound_req_t,
-                    e2e::outbound_res_t,
-                    e2e::worker_req_t,
-                    e2e::worker_res_t,
-                    e2e::direct_spot_req_t,
-                    e2e::direct_spot_res_t,
-                    e2e::direct_spot_command_t,
-                    e2e::slow_spot_req_t,
-                    e2e::unhandled_spot_req_t,
-                    e2e::spot_to_spot_req_t,
-                    e2e::spot_to_spot_res_t,
-                    e2e::type_mismatch_req_t,
-                    e2e::type_mismatch_res_t,
-                    e2e::lifecycle_req_t,
-                    e2e::lifecycle_res_t,
-                    e2e::stream_auth_req_t,
-                    e2e::stream_ensure_auth_req_t,
-                    e2e::stream_auth_res_t,
-                    e2e::actor_push_req_t,
-                    e2e::actor_push_res_t,
-                    e2e::actor_push_notify_t> ();
 }
 
 } // namespace

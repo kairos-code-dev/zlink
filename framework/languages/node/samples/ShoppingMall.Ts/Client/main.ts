@@ -7,11 +7,9 @@ import { SampleTimings } from '../Shared/Configuration/sample-names';
 async function main(): Promise<void> {
   const config = loadSampleConfig();
   const apiA = ZLinkHttpClient.create(config.apiAHttpUrl)
-    .json()
     .timeout(SampleTimings.httpTimeout)
     .build();
   const apiB = ZLinkHttpClient.create(config.apiBHttpUrl)
-    .json()
     .timeout(SampleTimings.httpTimeout)
     .build();
   try {

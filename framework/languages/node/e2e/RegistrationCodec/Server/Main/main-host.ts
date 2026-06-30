@@ -81,14 +81,18 @@ function createMainModule(options: ServerOptions, evidence: EvidenceStore, hostO
           const builder = zlinkFramework();
           builder
             .codecs()
-              .addJson()
-              .addSerializer(ZLINK_PROTOBUF_CONTENT_TYPE, {
-                ...createProtobufMessageSerializer(),
-                canSerialize: (value) => value instanceof ProtobufEchoReq || value instanceof ProtobufEchoCommand
-              })
-              .addSerializer(ZLINK_MESSAGEPACK_CONTENT_TYPE, {
-                ...createMessagePackSerializer(),
-                canSerialize: (value) => value instanceof MessagePackEchoReq || value instanceof MessagePackEchoCommand
+              .use({
+                register: (codecs) => {
+                  codecs
+                    .addSerializer(ZLINK_PROTOBUF_CONTENT_TYPE, {
+                      ...createProtobufMessageSerializer(),
+                      canSerialize: (value) => value instanceof ProtobufEchoReq || value instanceof ProtobufEchoCommand
+                    })
+                    .addSerializer(ZLINK_MESSAGEPACK_CONTENT_TYPE, {
+                      ...createMessagePackSerializer(),
+                      canSerialize: (value) => value instanceof MessagePackEchoReq || value instanceof MessagePackEchoCommand
+                    });
+                }
               })
             .configureDispatch()
               .messageFlow(ZLinkMessageFlowLogMode.KeyTransitions)

@@ -152,9 +152,7 @@ public final class RequestPerformer {
 
         Map<String, String> headers = new LinkedHashMap<>();
         headers.put("user-agent", "zlink-http-client/0.2");
-        if (options.json()) {
-            headers.put("accept", "application/json");
-        }
+        headers.put("accept", "application/json");
         if (options.compression()) {
             headers.put("accept-encoding", "gzip, deflate");
         }

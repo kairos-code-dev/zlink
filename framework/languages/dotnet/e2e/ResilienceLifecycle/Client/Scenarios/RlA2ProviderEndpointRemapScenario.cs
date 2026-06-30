@@ -17,7 +17,7 @@ internal static class RlA2ProviderEndpointRemapScenario
         await WaitUntilUnavailableAsync(providerB);
 
         var replacement = await processes.StartProviderBRemapAsync();
-        using var replacementProvider = ZLinkHttpClient.Create(replacement.Url).Json().Build();
+        using var replacementProvider = ZLinkHttpClient.Create(replacement.Url).Build();
         await registry.Post("/topology/wait")
             .Body(new TopologyWaitRequest("api-b", "Ready", 1))
             .SubmitAsync<TopologyEntryResult[]>();

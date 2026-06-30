@@ -37,7 +37,6 @@ inline void run_mon_a1_socket_events_scenario (zlink::framework::channel_client_
 
     auto http = zlink::http_client::client_t::create ()
                   .base_url (env_or ("ZLINK_CPP_E2E_SERVICE_URL"))
-                  .json ()
                   .timeout (std::chrono::milliseconds (1000))
                   .build ();
     auto drained = http.post ("/admin/server-weight?weight=0").submit_raw ().result ();

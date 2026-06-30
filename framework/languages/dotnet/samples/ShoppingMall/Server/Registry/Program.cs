@@ -1,5 +1,6 @@
 using ShoppingMall.Server.Configuration;
 using Zlink.Framework.AspNetCore;
+using Zlink.Samples.Logging;
 
 namespace ShoppingMall.Server.Registry;
 
@@ -14,6 +15,10 @@ internal static class Program
     private static IHost Build(SampleTopology topology)
     {
         var builder = Host.CreateApplicationBuilder();
+        SampleLogging.Configure(
+            builder.Logging,
+            SampleLogging.DirectoryFromEnvironment("SHOPPINGMALL_LOG_DIR"),
+            "registry");
         builder.Services.AddZLinkRegistry(options =>
         {
             options.PubEndpoint = topology.RegistryPubEndpoint;

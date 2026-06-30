@@ -18,7 +18,6 @@ public sealed class ZLinkHttpClientBuilder
     private bool _compression;
     private bool _cookies;
     private int _followRedirects;
-    private bool _json;
     private long _maxResponseBodySize = 16 * 1024 * 1024;
     private string? _proxy;
     private string? _proxyAuthorization;
@@ -32,13 +31,6 @@ public sealed class ZLinkHttpClientBuilder
     {
         HttpClientText.RequireNonBlank(value, "HTTP client base_url is required");
         _baseUrl = value;
-        return this;
-    }
-
-    public ZLinkHttpClientBuilder Json()
-    {
-        _json = true;
-        _headers.TryAdd("content-type", "application/json");
         return this;
     }
 
@@ -170,7 +162,6 @@ public sealed class ZLinkHttpClientBuilder
         var options = new HttpClientOptions
         {
             BaseUrl = _baseUrl,
-            Json = _json,
             Timeout = _timeout,
             MaxResponseBodySize = _maxResponseBodySize,
             Headers = new Dictionary<string, string>(_headers, StringComparer.OrdinalIgnoreCase),

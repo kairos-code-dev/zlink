@@ -21,16 +21,6 @@ namespace
 
 void configure_common_codecs (zlink::framework::codec_options_builder_t codecs)
 {
-    codecs.add_json ();
-    codecs.add_json<e2e::profile_request_t,
-                    e2e::profile_reply_t,
-                    e2e::profile_command_t,
-                    e2e::payload_request_t,
-                    e2e::payload_reply_t,
-                    e2e::route_ping_t,
-                    e2e::route_pong_t,
-                    e2e::evidence_entry_t,
-                    e2e::evidence_snapshot_t> ();
 }
 
 std::string dispatch_reason_name (zlink::framework::dispatch_error_reason_t reason)

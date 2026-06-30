@@ -19,7 +19,6 @@ class codec_registry_t
     codec_registry_t (const codec_registry_t &) = default;
     codec_registry_t &operator= (const codec_registry_t &) = default;
 
-    codec_registry_t &add_json ();
     codec_registry_t &enable_codec (codec_t codec);
     codec_registry_t &use_default_codec (codec_t codec);
     template <typename TExtension> codec_registry_t &use (const TExtension &extension)

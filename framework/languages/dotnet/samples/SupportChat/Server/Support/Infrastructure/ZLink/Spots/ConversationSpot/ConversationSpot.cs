@@ -50,8 +50,6 @@ internal sealed class ConversationSpot(
             "support conversation: created. conversation={ConversationId}, customer={CustomerActorId}",
             conversationId,
             create.CustomerActorId);
-        Console.Error.WriteLine(
-            $"support conversation: created conversation={conversationId} customer={create.CustomerActorId}");
         return ValueTask.FromResult(ZLinkSpotCreateResponse.Accept());
     }
 
@@ -86,8 +84,6 @@ internal sealed class ConversationSpot(
             join.ConversationId,
             actor.ActorId,
             actor.Role);
-        Console.Error.WriteLine(
-            $"support conversation: actor joined conversation={join.ConversationId} actor={actor.ActorId} role={actor.Role}");
         return ZLinkSpotActorJoinResult.Accept(new JoinConversationRes(conversation.Snapshot()));
     }
 

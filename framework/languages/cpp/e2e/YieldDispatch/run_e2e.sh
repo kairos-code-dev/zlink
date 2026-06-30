@@ -54,7 +54,7 @@ for sock in sockets:
 PY
 )"
 
-cmake -S "$FRAMEWORK_DIR" -B "$BUILD_DIR" >/dev/null
+cmake -S "$FRAMEWORK_DIR" -B "$BUILD_DIR" -DZLINK_FRAMEWORK_CPP_BUILD_SAMPLES=OFF >/dev/null
 cmake --build "$BUILD_DIR" --target \
   zlink_cpp_e2e_yield_dispatch_registry \
   zlink_cpp_e2e_yield_dispatch_delay \

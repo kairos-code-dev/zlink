@@ -20,7 +20,6 @@ inline void run_sm_b5_scenario (const std::string &play_http_endpoint)
     constexpr auto actor_id = "sm-b5-missing";
     auto play_a = zlink::http_client::client_t::create ()
                     .base_url (play_http_endpoint)
-                    .json ()
                     .build ();
     auto missing =
       play_a.post ("/spot/missing-actor")

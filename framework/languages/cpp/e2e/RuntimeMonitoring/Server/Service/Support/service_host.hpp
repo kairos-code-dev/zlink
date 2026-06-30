@@ -33,8 +33,6 @@ inline int run_service_host (int argc,
                                                                     options.evidence_file);
         auto *evidence_ptr = evidence.get ();
         framework.services ().add_singleton<server::evidence_store_t> (std::move (evidence));
-        framework.codecs ().add_json ();
-        framework.codecs ().add_json<profile_request_t, profile_reply_t> ();
         framework.use_discovery ().add_registry_endpoint (options.registry_router);
         framework.add_client_server_channel (profile_channel)
           .enable_server (options.channel_endpoint)

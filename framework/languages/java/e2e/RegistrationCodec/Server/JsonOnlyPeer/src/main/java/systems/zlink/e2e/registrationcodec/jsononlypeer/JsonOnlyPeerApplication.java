@@ -37,7 +37,6 @@ public final class JsonOnlyPeerApplication {
     @Bean
     ZLinkFrameworkConfigurer serverFramework(ServerOptions options) {
         return framework -> {
-            framework.codecs().addJson();
             framework.configureDispatch()
                 .messageFlow(ZLinkMessageFlowLogMode.KEY_TRANSITIONS)
                 .traceLogFile(options.logDir() + "/json-only-flow.log")

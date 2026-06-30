@@ -1,4 +1,6 @@
+using Microsoft.Extensions.Logging;
 using Systems.Zlink.Stream.Connector.Contracts;
+using Zlink.Samples.Logging;
 
 namespace TicTacToe.Client;
 
@@ -7,8 +9,12 @@ internal static class Program
     public static async Task Main(string[] args)
     {
         var options = TicTacToeClientArguments.Parse(args);
-        await new TicTacToeClientScenario().RunAsync(options);
-        Console.WriteLine("tictactoe=completed");
+        using var loggerFactory = SampleLogging.CreateFactory(
+            SampleLogging.DirectoryFromEnvironment("TICTACTOE_LOG_DIR"),
+            "client");
+        var logger = loggerFactory.CreateLogger("TicTacToe.Client");
+        await new TicTacToeClientScenario(logger).RunAsync(options);
+        logger.LogInformation("tictactoe=completed");
     }
 }
 
@@ -71,7 +77,8 @@ public static class TicTacToeClientConnections
     public static IZlinkStreamConnector CreateStreamClient(
         string streamEndpoint,
         TicTacToeClientOptions options,
-        string role)
+        string role,
+        ILogger logger)
     {
         var connector = ZlinkStreamConnectorFactory.Create(new ZlinkStreamConnectorOptions
         {
@@ -82,7 +89,7 @@ public static class TicTacToeClientConnections
         });
         connector.ObserveInbound((observation, _) =>
         {
-            Console.WriteLine(
+            logger.LogInformation(
                 "stream-inbound sample=TicTacToe client={0} kind={1} name={2} seq={3} bytes={4}",
                 role,
                 observation.Kind,

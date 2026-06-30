@@ -53,7 +53,6 @@ class SubscriberApplication {
         state: EvidenceStore,
     ): ZLinkFrameworkConfigurer =
         ZLinkFrameworkConfigurer { options ->
-            options.codecs().addJson()
             options.configureDispatch()
                 .messageFlow(ZLinkMessageFlowLogMode.KEY_TRANSITIONS)
                 .traceLogFile("${parsedOptions.logDir}/${state.subscriberRid}-flow.log")

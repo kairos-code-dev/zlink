@@ -61,7 +61,6 @@ export class ZLinkHttpClient {
 /** Fluent builder for {@link ZLinkHttpClient}. Mirrors the C++ `client_builder_t`. */
 export class ZLinkHttpClientBuilder {
   private baseUrlValue = '';
-  private jsonValue = false;
   private timeoutMsValue = 3000;
   private maxResponseBodySizeValue = 16 * 1024 * 1024;
   private readonly headersValue: Record<string, string> = {};
@@ -77,12 +76,6 @@ export class ZLinkHttpClientBuilder {
   baseUrl(value: string): this {
     requireNonBlank(value, 'HTTP client base_url is required');
     this.baseUrlValue = value;
-    return this;
-  }
-
-  json(): this {
-    this.jsonValue = true;
-    this.headersValue['content-type'] ??= 'application/json';
     return this;
   }
 
@@ -197,7 +190,6 @@ export class ZLinkHttpClientBuilder {
 
     const options: HttpClientOptions = {
       baseUrl: this.baseUrlValue,
-      json: this.jsonValue,
       timeoutMs: this.timeoutMsValue,
       maxResponseBodySize: this.maxResponseBodySizeValue,
       headers: { ...this.headersValue },

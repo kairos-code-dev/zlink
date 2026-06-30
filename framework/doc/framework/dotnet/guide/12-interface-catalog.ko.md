@@ -144,16 +144,15 @@ application 이 직접 만든 `Message` 를 넘길 때만 caller 가 그 `Messag
 ### 1.5 codec 등록
 
 ```csharp
-codecs.AddJson();                              // JSON 기본 codec 활성화
-codecs.Use(ZLinkMessagePackCodec.Default);     // extension codec 등록(AddJson 과 등록 경로가 다르다)
+codecs.Use(ZLinkMessagePackCodec.Default);     // extension codec 등록(extension codec 등록)
 codecs.Use(ZLinkProtobufCodec.Default);
 ```
 
 | 인터페이스 | 역할 |
 |------------|------|
-| `IZLinkCodecRegistryBuilder` | JSON 기본 codec 활성화(`AddJson`), framework codec extension 등록(`Use`), custom serializer 등록(`AddSerializer`)을 담당한다. `options.Codecs` 로 접근 |
+| `IZLinkCodecRegistryBuilder` | framework codec extension 등록(`Use`)을 담당한다. `options.Codecs` 로 접근 |
 | `IZLinkCodecExtension` | codec 묶음을 registry 에 붙이는 확장점. `Register(IZLinkCodecRegistryBuilder)` 로 자기 codec 을 등록한다(예: protobuf·messagepack codec) |
-| `IZLinkMessageSerializer` | 업무 객체 ↔ `Message`(byte payload) 변환을 맡는 custom serializer 계약(예: Avro·Thrift). `AddSerializer` 로 등록 |
+| `IZLinkMessageSerializer` | 업무 객체 ↔ `Message`(byte payload) 변환을 맡는 custom serializer 계약(예: Avro·Thrift). codec extension으로 등록 |
 
 검증: `CodecContracts.Codec_registry_builder_registers_extensions_and_serializers`,
 `CodecContracts.Message_serializer_converts_business_objects_to_and_from_messages`.
@@ -214,7 +213,6 @@ await events
 `AddZLinkFramework(options => ...)` 의 `options` 가 구현하는 표면이다.
 
 ```csharp
-options.Codecs.AddJson();
 options.AddHandlersFromAssemblyOf<Program>();
 options.ConfigureMetadata().AddForwardedMetadataKey("trace-id");  // 이 key 만 다운스트림으로 전달 허용(허용 목록)
 spot.AddActorFactory<PlayerActorFactory>("player");

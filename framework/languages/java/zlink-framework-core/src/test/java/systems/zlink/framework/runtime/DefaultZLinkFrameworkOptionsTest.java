@@ -81,7 +81,8 @@ final class DefaultZLinkFrameworkOptionsTest {
     void globalConfigurationMutatesRegistrationModel() {
         DefaultZLinkFrameworkOptions options = new DefaultZLinkFrameworkOptions();
 
-        options.codecs().addSerializer("application/x-test", new ZLinkJsonMessageSerializer());
+        options.codecs().use(codecs ->
+            codecs.addSerializer("application/x-test", new ZLinkJsonMessageSerializer()));
         options.addHandlersFromPackageOf(DefaultZLinkFrameworkOptionsTest.class);
         { var metadata = options.configureMetadata(); metadata.addForwardedMetadataKey("trace-id"); };
         options.useFilter(TestFilter.class);
@@ -112,8 +113,10 @@ final class DefaultZLinkFrameworkOptionsTest {
     void singleRegisteredSerializerProvidesDefaultStreamCodec() {
         DefaultZLinkFrameworkOptions options = new DefaultZLinkFrameworkOptions();
 
-        options.codecs().addSerializer("application/x-test", new ZLinkJsonMessageSerializer(), ignored -> true);
-        options.codecs().addStreamCodec("application/x-test", ZLinkStreamCodec.PROTOBUF);
+        options.codecs().use(codecs -> {
+            codecs.addSerializer("application/x-test", new ZLinkJsonMessageSerializer(), ignored -> true);
+            codecs.addStreamCodec("application/x-test", ZLinkStreamCodec.PROTOBUF);
+        });
 
         assertEquals(
             ZLinkStreamCodec.PROTOBUF,

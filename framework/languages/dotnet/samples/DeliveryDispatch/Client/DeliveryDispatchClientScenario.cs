@@ -1,11 +1,12 @@
 using System.Runtime.CompilerServices;
 using DeliveryDispatch.Shared.Contracts;
+using Microsoft.Extensions.Logging;
 using Systems.Zlink.Stream.Connector.Contracts;
 using Zlink.HttpClient;
 
 namespace DeliveryDispatch.Client;
 
-internal sealed class DeliveryDispatchClientScenario
+internal sealed class DeliveryDispatchClientScenario(ILogger logger)
 {
     // End-to-end client story:
     // 1. Open one customer stream session and two courier stream sessions.
@@ -107,7 +108,7 @@ internal sealed class DeliveryDispatchClientScenario
         Ensure((await delivered).Payload.CourierId == "courier-a");
     }
 
-    private static async ValueTask RunReassignedDeliveryAsync(
+    private async ValueTask RunReassignedDeliveryAsync(
         ZLinkHttpClient http,
         IZlinkStreamConnector customer,
         IZlinkStreamConnector courierA,
@@ -172,10 +173,10 @@ internal sealed class DeliveryDispatchClientScenario
         Ensure((await reassigned).Payload.CourierId == "courier-b");
         Ensure((await accepted).Payload.CourierId == "courier-b");
         Ensure((await delivered).Payload.CourierId == "courier-b");
-        Console.WriteLine("deliverydispatch-reassignment=completed");
+        logger.LogInformation("deliverydispatch-reassignment=completed");
     }
 
-    private static ValueTask AssertServerEvidenceAsync(
+    private ValueTask AssertServerEvidenceAsync(
         ZLinkHttpClient http,
         CancellationToken cancellationToken)
     {
@@ -184,7 +185,7 @@ internal sealed class DeliveryDispatchClientScenario
             .Body(new ServerAssertionReq("delivery-success", "delivery-reassign"))
             .Fetch<ServerAssertionRes>();
         Ensure(assertion.Passed);
-        Console.WriteLine("deliverydispatch-server-evidence=completed");
+        logger.LogInformation("deliverydispatch-server-evidence=completed");
         return ValueTask.CompletedTask;
     }
 

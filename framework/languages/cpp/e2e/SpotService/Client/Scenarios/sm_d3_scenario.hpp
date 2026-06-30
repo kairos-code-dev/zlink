@@ -31,7 +31,6 @@ inline void run_sm_d3_scenario (const std::string &play_http_endpoint,
     entry_options.request_timeout = std::chrono::milliseconds (5000);
     entry_options.dispatch_mode = zlink::stream_connector::dispatch_mode_t::immediate;
     auto entry = zlink::stream_connector::connector_factory_t::create (entry_options);
-    entry.codecs ().add_json ();
     auto entry_connected = entry.connect ();
     if (!entry_connected) {
         throw std::runtime_error ("SM-D3 entry stream connect failed");
@@ -80,7 +79,6 @@ inline void run_sm_d3_scenario (const std::string &play_http_endpoint,
     constexpr auto user_key = "sm-d3-user";
     auto play_a = zlink::http_client::client_t::create ()
                     .base_url (play_http_endpoint)
-                    .json ()
                     .build ();
     auto joined =
       play_a.post ("/spot/join")
@@ -105,7 +103,6 @@ inline void run_sm_d3_scenario (const std::string &play_http_endpoint,
     user_options.request_timeout = std::chrono::milliseconds (5000);
     user_options.dispatch_mode = zlink::stream_connector::dispatch_mode_t::immediate;
     auto user = zlink::stream_connector::connector_factory_t::create (user_options);
-    user.codecs ().add_json ();
     auto user_connected = user.connect ();
     if (!user_connected) {
         throw std::runtime_error ("SM-D3 user stream connect failed");

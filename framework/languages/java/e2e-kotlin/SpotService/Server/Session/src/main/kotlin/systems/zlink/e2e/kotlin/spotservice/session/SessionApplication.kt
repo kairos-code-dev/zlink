@@ -54,7 +54,6 @@ class SessionApplication {
         ZLinkFrameworkConfigurer { options ->
             val nodeRid = state.nodeRid()
             val logDir = Env.get("ZLINK_KOTLIN_E2E_LOG_DIR", "logs")
-            options.codecs().addJson()
             options.addSpotRemoteAddressResolver(SpotRouteResolver::class.java)
             options.useDiscovery().addRegistryEndpoint(Env.get("ZLINK_KOTLIN_E2E_REGISTRY_ROUTER"))
             options.configureDispatch()

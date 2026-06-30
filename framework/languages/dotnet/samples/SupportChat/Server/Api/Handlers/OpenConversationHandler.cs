@@ -1,12 +1,15 @@
 using SupportChat.Server.Configuration;
 using SupportChat.Shared.Contracts;
+using Microsoft.Extensions.Logging;
 using Zlink.Framework.Contracts.Channels;
 using Zlink.Framework.Contracts.Handlers;
 
 namespace SupportChat.Server.Api.Handlers;
 
 [ZLinkHandlerGroup("api")]
-internal sealed class OpenConversationHandler(IZLinkChannelClient channels)
+internal sealed class OpenConversationHandler(
+    IZLinkChannelClient channels,
+    ILogger<OpenConversationHandler> logger)
     : IZLinkRequestHandler<OpenConversationApiReq, OpenConversationApiRes>
 {
     public async ValueTask<OpenConversationApiRes> HandleAsync(
@@ -15,8 +18,10 @@ internal sealed class OpenConversationHandler(IZLinkChannelClient channels)
         CancellationToken cancellationToken)
     {
         _ = context;
-        Console.Error.WriteLine(
-            $"support api open: allocate request customer={request.CustomerActorId} subject={request.Subject}");
+        logger.LogInformation(
+            "support api open: allocate request customer={CustomerActorId} subject={Subject}",
+            request.CustomerActorId,
+            request.Subject);
         var allocated = await channels.RequestToChannel(
                 SampleNames.SupportChannel,
                 new AllocateConversationReq(
@@ -24,8 +29,10 @@ internal sealed class OpenConversationHandler(IZLinkChannelClient channels)
                     request.CustomerDisplayName,
                     request.Subject))
             .Async<AllocateConversationRes>(cancellationToken);
-        Console.Error.WriteLine(
-            $"support api open: allocated conversation={allocated.ConversationId} status={allocated.Status}");
+        logger.LogInformation(
+            "support api open: allocated conversation={ConversationId} status={Status}",
+            allocated.ConversationId,
+            allocated.Status);
 
         var assigned = await channels.RequestToChannel(
                 SampleNames.SupportChannel,
@@ -33,8 +40,11 @@ internal sealed class OpenConversationHandler(IZLinkChannelClient channels)
                     allocated.ConversationId,
                     null))
             .Async<AssignAgentRes>(cancellationToken);
-        Console.Error.WriteLine(
-            $"support api open: assigned conversation={assigned.ConversationId} status={assigned.Status} agent={assigned.AgentActorId}");
+        logger.LogInformation(
+            "support api open: assigned conversation={ConversationId} status={Status} agent={AgentActorId}",
+            assigned.ConversationId,
+            assigned.Status,
+            assigned.AgentActorId);
 
         return new OpenConversationApiRes(
             allocated.ConversationId,

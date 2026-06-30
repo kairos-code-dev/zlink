@@ -2,6 +2,7 @@ using TicTacToe.Server.Api.Handlers;
 using TicTacToe.Server.Configuration;
 using Zlink.Framework.AspNetCore;
 using Zlink.Framework.Contracts.Dispatch;
+using Zlink.Samples.Logging;
 
 namespace TicTacToe.Server.Api;
 
@@ -10,7 +11,7 @@ internal sealed class ApiServer(SampleSettings settings)
     public WebApplication Build()
     {
         var builder = WebApplication.CreateBuilder();
-        SampleLogging.Configure(builder.Logging, settings, "api");
+        SampleLogging.Configure(builder.Logging, settings.LogDirectory, "api");
         builder.WebHost.UseUrls(settings.ApiBindUrl);
         builder.Services.AddSingleton(settings);
         builder.Services.AddZLinkFramework(options =>
@@ -19,7 +20,6 @@ internal sealed class ApiServer(SampleSettings settings)
                 .MessageFlow(ZLinkMessageFlowLogMode.KeyTransitions)
                 .TraceLogFile(SampleFlowLog.Path(settings.InstanceName))
                 .TraceLabel(settings.InstanceName);
-            options.Codecs.AddJson();
 
             options.AddClientServerChannel(SampleChannels.Api)
                 .EnableServer(settings.ApiChannelEndpoint)

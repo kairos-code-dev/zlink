@@ -119,7 +119,6 @@ int main(int argc, char **argv)
 
     app.add_zlink_framework([](auto &options) {
         options.use_discovery().add_registry_endpoint ("tcp://registry:5551");
-        options.codecs().add_json();
         options.services()
           .add_singleton<order_repository_t>()
           .add_scoped<order_service_t, order_repository_t>();

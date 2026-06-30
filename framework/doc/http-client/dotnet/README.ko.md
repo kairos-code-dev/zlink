@@ -8,7 +8,6 @@ zlink 스타일 fluent builder로 사용하며 공개 표면은 `System.Net.Http
 using Zlink.HttpClient;
 
 var game = await ZLinkHttpClient.Create("https://game-api.example.internal")
-    .Json()
     .Post("/games")
     .Body(new CreateGameReq("ranked-match-0611"))
     .SubmitAsync<CreateGameRes>();

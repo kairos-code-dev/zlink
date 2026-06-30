@@ -11,6 +11,7 @@ using GameQuest.Shared;
 using Microsoft.AspNetCore.Mvc;
 using Zlink.Framework.AspNetCore;
 using Zlink.Framework.Contracts.Dispatch;
+using Zlink.Samples.Logging;
 
 namespace GameQuest.GameApi;
 
@@ -21,6 +22,10 @@ internal static class Program
         var topology = GameQuestTopology.FromEnvironment();
         var apiName = Environment.GetEnvironmentVariable("GAMEQUEST_API_NAME") ?? "api-a";
         var builder = WebApplication.CreateBuilder(args);
+        SampleLogging.Configure(
+            builder.Logging,
+            SampleLogging.DirectoryFromEnvironment("GAMEQUEST_LOG_DIR"),
+            apiName);
 
         builder.Services.AddSingleton(topology);
         builder.Services.AddSingleton<GameQuestStore>();

@@ -40,7 +40,6 @@ class ConsumerApplication {
     @Bean
     fun consumerFramework(consumerOptions: ConsumerOptions): ZLinkFrameworkConfigurer =
         ZLinkFrameworkConfigurer { options ->
-            options.codecs().addJson()
             options.configureDispatch()
                 .messageFlow(ZLinkMessageFlowLogMode.KEY_TRANSITIONS)
                 .traceLogFile("${consumerOptions.logDir}/${consumerOptions.rid}-flow.log")

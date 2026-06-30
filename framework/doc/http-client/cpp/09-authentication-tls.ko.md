@@ -9,7 +9,6 @@
 
 ```cpp
 auto registry = zlink::http_client::client_t::create ("https://registry.example.internal")
-                  .json ()
                   .basic_auth ("matchmaker-svc", service_password)
                   .build ();
 ```
@@ -21,7 +20,6 @@ auto registry = zlink::http_client::client_t::create ("https://registry.example.
 
 ```cpp
 auto api = zlink::http_client::client_t::create ("https://game-api.example.internal")
-             .json ()
              .bearer_token (access_token)
              .build ();
 ```
@@ -63,7 +61,6 @@ TLS 검증을 비활성화하지 않는 것이 계약이다.
 ```cpp
 auto internal_api =
   zlink::http_client::client_t::create ("https://game-api.staging.internal:8443")
-    .json ()
     .trust_certificate_file ("/etc/pki/staging-root-ca.pem")
     .build ();
 ```
@@ -76,7 +73,6 @@ auto internal_api =
 ```cpp
 auto settlement =
   zlink::http_client::client_t::create ("https://settlement.partner-bank.example:9443")
-    .json ()
     .trust_certificate_file ("/etc/pki/partner-bank-ca.pem")
     .client_certificate_file ("/etc/pki/matchmaker-client.crt.pem",
                               "/etc/pki/matchmaker-client.key.pem")

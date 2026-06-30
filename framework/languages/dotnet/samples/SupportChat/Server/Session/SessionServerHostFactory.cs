@@ -28,32 +28,17 @@ public static class SessionServerHostFactory
                 .TraceLabel("session");
             options.AddHandlersFromAssemblyOf(typeof(SessionServerHostFactory));
             options.UseDiscovery().AddRegistryEndpoint(topology.RegistryRouterEndpoint);
-            {
-                var channel = options.AddClientServerChannel(SampleNames.ApiChannel);
-                channel.EnableClient();
-            }
-            {
-                var channel = options.AddClientServerChannel(SampleNames.SupportChannel);
-                channel.EnableClient();
-            }
-            {
-                var mesh = options.AddSpotMesh(SampleNames.SupportSpotDiscovery);
-                {
-                    var node = mesh;
-                    {
-                        var router = node.EnableRouter(session.RouterEndpoint);
-                        router.SetRoutingId(session.RoutingId);
-                    }
-                    {
-                        var pubsub = node.EnablePubSub(session.PubEndpoint);
-                    }
-                }
-            }
-            {
-                var stream = options.AddStreamNode(SampleNames.StreamNode);
-                stream.Bind(session.StreamEndpoint);
-                stream.RegisterSession<SupportChatSession>();
-            }
+            options.AddClientServerChannel(SampleNames.ApiChannel)
+                .EnableClient();
+            options.AddClientServerChannel(SampleNames.SupportChannel)
+                .EnableClient();
+            options.AddSpotMesh(SampleNames.SupportSpotDiscovery)
+                .EnableRouter(session.RouterEndpoint)
+                .SetRoutingId(session.RoutingId)
+                .EnablePubSub(session.PubEndpoint);
+            options.AddStreamNode(SampleNames.StreamNode)
+                .Bind(session.StreamEndpoint)
+                .RegisterSession<SupportChatSession>();
         });
 
         return builder.Build();

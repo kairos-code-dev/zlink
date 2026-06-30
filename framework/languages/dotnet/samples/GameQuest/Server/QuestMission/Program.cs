@@ -41,24 +41,15 @@ internal static class Program
                 .TraceLabel(missionName);
             options.AddHandlersFromAssemblyOf(typeof(Program));
             options.UseDiscovery().AddRegistryEndpoint(topology.RegistryRouterEndpoint);
-            {
-                var channel = options.AddFanoutChannel(SampleNames.FanoutChannel);
-                channel.EnableSubscriber();
-                channel.EnableSubscriber();
-                channel.AddHandlerGroup("gamequest-gameplay");
-            }
-            {
-                var mesh = options.AddSpotMesh(SampleNames.QuestSpotDiscovery);
-                {
-                    var spot = mesh;
-                    {
-                        var router = spot.EnableRouter(instance.SpotRouterEndpoint);
-                        router.SetRoutingId(instance.SpotRid);
-                    }
-                    spot.EnablePubSub(instance.SpotEndpoint);
-                    spot.AddSpotFactory<PlayerQuestSpot>();
-                }
-            }
+            options.AddFanoutChannel(SampleNames.FanoutChannel)
+                .EnableSubscriber()
+                .EnableSubscriber()
+                .AddHandlerGroup("gamequest-gameplay");
+            options.AddSpotMesh(SampleNames.QuestSpotDiscovery)
+                .EnableRouter(instance.SpotRouterEndpoint)
+                .SetRoutingId(instance.SpotRid)
+                .EnablePubSub(instance.SpotEndpoint)
+                .AddSpotFactory<PlayerQuestSpot>();
         });
 
         var app = builder.Build();

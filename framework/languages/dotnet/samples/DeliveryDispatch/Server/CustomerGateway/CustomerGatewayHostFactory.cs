@@ -33,12 +33,12 @@ public static class CustomerGatewayHostFactory
                 .EnableClient()
                 .SetRoutingId(Systems.Zlink.RoutingId.From("delivery-customer-gateway-server"))
                 .AddHandlerGroup(SampleNames.CustomerRouteChannel);
-            var mesh = options.AddSpotMesh(SampleNames.CustomerActorDiscovery);
-            mesh.EnableRouter(topology.CustomerSpotRouterEndpoint)
-                .SetRoutingId(topology.CustomerSpotNodeRid);
-            mesh.EnablePubSub(topology.CustomerSpotEndpoint);
-            mesh.AddEntrySpot<CustomerEntrySpot>();
-            mesh.AddActorFactory<CustomerActorFactory>(SampleNames.CustomerActorType);
+            options.AddSpotMesh(SampleNames.CustomerActorDiscovery)
+                .EnableRouter(topology.CustomerSpotRouterEndpoint)
+                .SetRoutingId(topology.CustomerSpotNodeRid)
+                .EnablePubSub(topology.CustomerSpotEndpoint)
+                .AddEntrySpot<CustomerEntrySpot>()
+                .AddActorFactory<CustomerActorFactory>(SampleNames.CustomerActorType);
             options.AddStreamNode(SampleNames.CustomerStreamNode)
                 .Bind(topology.CustomerStreamEndpoint)
                 .RegisterSession<CustomerSession>();

@@ -23,15 +23,11 @@ public static class ApiServerHostFactory
                 .TraceLabel("api");
             options.AddHandlersFromAssemblyOf(typeof(ApiServerHostFactory));
             options.UseDiscovery().AddRegistryEndpoint(topology.RegistryRouterEndpoint);
-            {
-                var channel = options.AddClientServerChannel(SampleNames.ApiChannel);
-                channel.EnableServer(topology.ApiChannelEndpoint);
-                channel.AddHandlerGroup("api");
-            }
-            {
-                var channel = options.AddClientServerChannel(SampleNames.SupportChannel);
-                channel.EnableClient();
-            }
+            options.AddClientServerChannel(SampleNames.ApiChannel)
+                .EnableServer(topology.ApiChannelEndpoint)
+                .AddHandlerGroup("api");
+            options.AddClientServerChannel(SampleNames.SupportChannel)
+                .EnableClient();
         });
 
         return builder.Build();

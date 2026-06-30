@@ -45,28 +45,19 @@ internal static class Program
                 .TraceLogFile(SampleFlowLog.Path(instance.InstanceId))
                 .TraceLabel(instance.InstanceId);
             options.UseDiscovery().AddRegistryEndpoint(topology.RegistryRouterEndpoint);
-            {
-                var route = options.AddRouteMesh(SampleNames.OrderWorkflowRouteChannel);
-                route.EnableServer(instance.RouteEndpoint);
-                route.SetRoutingId(instance.RouteRid);
-                route.AddRequestHandler<StartOrderWorkflowRouteHandler, StartOrderWorkflowReq, StartOrderWorkflowRes>();
-                route.AddRequestHandler<ContinueOrderWorkflowRouteHandler, ContinueOrderWorkflowReq,
-                    ContinueOrderWorkflowRes>();
-                route.AddRequestHandler<RebuildOrderProjectionRouteHandler, RebuildOrderProjectionReq,
+            options.AddRouteMesh(SampleNames.OrderWorkflowRouteChannel)
+                .EnableServer(instance.RouteEndpoint)
+                .SetRoutingId(instance.RouteRid)
+                .AddRequestHandler<StartOrderWorkflowRouteHandler, StartOrderWorkflowReq, StartOrderWorkflowRes>()
+                .AddRequestHandler<ContinueOrderWorkflowRouteHandler, ContinueOrderWorkflowReq,
+                    ContinueOrderWorkflowRes>()
+                .AddRequestHandler<RebuildOrderProjectionRouteHandler, RebuildOrderProjectionReq,
                     RebuildOrderProjectionRes>();
-            }
-            {
-                var mesh = options.AddSpotMesh(SampleNames.OrderSpotDiscovery);
-                {
-                    var spot = mesh;
-                    {
-                        var router = spot.EnableRouter(instance.SpotRouterEndpoint);
-                        router.SetRoutingId(instance.SpotRid);
-                    }
-                    spot.EnablePubSub(instance.SpotEndpoint);
-                    spot.AddSpotFactory<OrderWorkflowSpot>();
-                }
-            }
+            options.AddSpotMesh(SampleNames.OrderSpotDiscovery)
+                .EnableRouter(instance.SpotRouterEndpoint)
+                .SetRoutingId(instance.SpotRid)
+                .EnablePubSub(instance.SpotEndpoint)
+                .AddSpotFactory<OrderWorkflowSpot>();
         });
 
         var app = builder.Build();

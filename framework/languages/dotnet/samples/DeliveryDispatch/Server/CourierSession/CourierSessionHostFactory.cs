@@ -29,11 +29,11 @@ public static class CourierSessionHostFactory
             options.AddClientServerChannel(SampleNames.CourierRouteChannel)
                 .EnableClient()
                 .SetRoutingId(Systems.Zlink.RoutingId.From("delivery-courier-session-client"));
-            var mesh = options.AddSpotMesh(SampleNames.CourierActorDiscovery)
-                .UseRegistrySpotResolver();
-            mesh.EnableRouter(topology.CourierSessionSpotRouterEndpoint)
-                .SetRoutingId(topology.CourierSessionSpotNodeRid);
-            mesh.EnablePubSub(topology.CourierSessionSpotEndpoint);
+            options.AddSpotMesh(SampleNames.CourierActorDiscovery)
+                .UseRegistrySpotResolver()
+                .EnableRouter(topology.CourierSessionSpotRouterEndpoint)
+                .SetRoutingId(topology.CourierSessionSpotNodeRid)
+                .EnablePubSub(topology.CourierSessionSpotEndpoint);
             options.AddStreamNode(SampleNames.CourierStreamNode)
                 .Bind(topology.CourierStreamEndpoint)
                 .RegisterSession<CourierSession>();

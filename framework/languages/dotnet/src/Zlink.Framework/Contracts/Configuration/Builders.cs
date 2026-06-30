@@ -147,6 +147,8 @@ public interface IZLinkSpotNodeBuilder
 
     IZLinkEntrySpotOptions ConfigureEntrySpot();
 
+    IZLinkSpotNodeBuilder SetEntrySpotRoutingId(RoutingId routingId);
+
     IZLinkSpotNodeBuilder AddSpotFactory<TSpot>()
         where TSpot : IZLinkSpot;
 

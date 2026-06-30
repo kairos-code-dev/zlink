@@ -48,11 +48,9 @@ internal static class Program
                 .TraceLogFile(SampleFlowLog.Path(instance.InstanceId))
                 .TraceLabel(instance.InstanceId);
             options.UseDiscovery().AddRegistryEndpoint(topology.RegistryRouterEndpoint);
-            {
-                var route = options.AddRouteMesh(SampleNames.OrderWorkflowRouteChannel);
-                route.EnableServer(instance.RouteEndpoint);
-                route.SetRoutingId(instance.RouteRid);
-            }
+            options.AddRouteMesh(SampleNames.OrderWorkflowRouteChannel)
+                .EnableServer(instance.RouteEndpoint)
+                .SetRoutingId(instance.RouteRid);
         });
 
         var app = builder.Build();

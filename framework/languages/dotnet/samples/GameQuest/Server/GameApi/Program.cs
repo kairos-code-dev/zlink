@@ -46,16 +46,12 @@ internal static class Program
                 .TraceLabel(apiName);
             options.AddHandlersFromAssemblyOf(typeof(Program));
             options.UseDiscovery().AddRegistryEndpoint(topology.RegistryRouterEndpoint);
-            {
-                var channel = options.AddFanoutChannel(SampleNames.FanoutChannel);
-                channel.EnablePublisher(topology.FanoutPublisherEndpointForApi(apiName));
-            }
-            {
-                var stream = options.AddStreamNode(SampleNames.StreamNode);
-                stream.Bind(Environment.GetEnvironmentVariable("GAMEQUEST_STREAM_BIND_ENDPOINT")
-                            ?? throw new InvalidOperationException("GAMEQUEST_STREAM_BIND_ENDPOINT is required."));
-                stream.RegisterSession<GameQuestSession>();
-            }
+            options.AddFanoutChannel(SampleNames.FanoutChannel)
+                .EnablePublisher(topology.FanoutPublisherEndpointForApi(apiName));
+            options.AddStreamNode(SampleNames.StreamNode)
+                .Bind(Environment.GetEnvironmentVariable("GAMEQUEST_STREAM_BIND_ENDPOINT")
+                      ?? throw new InvalidOperationException("GAMEQUEST_STREAM_BIND_ENDPOINT is required."))
+                .RegisterSession<GameQuestSession>();
         });
 
         var app = builder.Build();

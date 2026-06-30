@@ -28,20 +28,20 @@ public static class NodeHostFactory
                 .TraceLabel($"courier-actor-{nodeConfig.Name}");
             options.AddHandlersFromAssemblyOf(typeof(NodeHostFactory));
             options.UseDiscovery().AddRegistryEndpoint(topology.RegistryRouterEndpoint);
-            var route = options.AddRouteMesh(SampleNames.CourierActorNodeRouteChannel)
+            options.AddRouteMesh(SampleNames.CourierActorNodeRouteChannel)
                 .SetRoutingId(nodeConfig.Rid)
-                .AddHandlerGroup(SampleNames.CourierActorNodeRouteChannel);
-            route.EnableServer(nodeConfig.RouteEndpoint);
-            route.EnableClient();
+                .AddHandlerGroup(SampleNames.CourierActorNodeRouteChannel)
+                .EnableServer(nodeConfig.RouteEndpoint)
+                .EnableClient();
 
-            var mesh = options.AddSpotMesh(SampleNames.CourierActorDiscovery)
-                .UseRegistrySpotResolver();
-            mesh.EnableRouter(nodeConfig.SpotRouterEndpoint)
-                .SetRoutingId(nodeConfig.Rid);
-            mesh.ConfigureEntrySpot().RoutingId = nodeConfig.EntrySpotRid;
-            mesh.EnablePubSub(nodeConfig.SpotEndpoint);
-            mesh.AddEntrySpot<CourierEntrySpot>();
-            mesh.AddActorFactory<CourierActorFactory>(SampleNames.CourierActorType);
+            options.AddSpotMesh(SampleNames.CourierActorDiscovery)
+                .UseRegistrySpotResolver()
+                .EnableRouter(nodeConfig.SpotRouterEndpoint)
+                .SetRoutingId(nodeConfig.Rid)
+                .SetEntrySpotRoutingId(nodeConfig.EntrySpotRid)
+                .EnablePubSub(nodeConfig.SpotEndpoint)
+                .AddEntrySpot<CourierEntrySpot>()
+                .AddActorFactory<CourierActorFactory>(SampleNames.CourierActorType);
         });
 
         return builder.Build();

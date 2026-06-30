@@ -78,6 +78,12 @@ internal sealed class ZLinkSpotNodeBuilder(ZLinkSpotNodeRegistration registratio
         return registration.EntrySpotOptions;
     }
 
+    public IZLinkSpotNodeBuilder SetEntrySpotRoutingId(RoutingId routingId)
+    {
+        registration.EntrySpotOptions.RoutingId = routingId;
+        return this;
+    }
+
     public IZLinkSpotNodeBuilder AddSpotFactory<TSpot>()
         where TSpot : IZLinkSpot
     {

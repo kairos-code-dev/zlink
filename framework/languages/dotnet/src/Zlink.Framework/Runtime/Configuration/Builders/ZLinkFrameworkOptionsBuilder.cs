@@ -269,6 +269,11 @@ internal sealed class ZLinkSpotMeshBuilder(
         return DefaultNode().ConfigureEntrySpot();
     }
 
+    public IZLinkSpotNodeBuilder SetEntrySpotRoutingId(RoutingId routingId)
+    {
+        return DefaultNode().SetEntrySpotRoutingId(routingId);
+    }
+
     public IZLinkSpotNodeBuilder AddSpotFactory<TSpot>()
         where TSpot : IZLinkSpot
     {

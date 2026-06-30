@@ -165,10 +165,10 @@ public sealed class BuilderContracts
         spot.ConfigurePubSubPublisher().NoDrop = true;
         spot.ConfigurePubSubSubscriber().ReceiveHighWaterMark = 64;
 
-        spot.ConfigureEntrySpot().RoutingId = RoutingId.From("entry");
-        spot.AddSpotFactory<RoomSpot>();
-        spot.AddEntrySpot<EntrySpot>();
-        spot.AddActorFactory<ActorFactory>("player");
+        spot.SetEntrySpotRoutingId(RoutingId.From("entry"))
+            .AddSpotFactory<RoomSpot>()
+            .AddEntrySpot<EntrySpot>()
+            .AddActorFactory<ActorFactory>("player");
     }
 
     private sealed record ApiEvent(string Value);
@@ -628,6 +628,11 @@ public sealed class BuilderContracts
         public IZLinkEntrySpotOptions ConfigureEntrySpot()
         {
             return new ConnectionAndConfigContracts.EntrySpotOptions();
+        }
+
+        public IZLinkSpotNodeBuilder SetEntrySpotRoutingId(RoutingId routingId)
+        {
+            return this;
         }
 
         public IZLinkSpotNodeBuilder AddSpotFactory<TSpot>()

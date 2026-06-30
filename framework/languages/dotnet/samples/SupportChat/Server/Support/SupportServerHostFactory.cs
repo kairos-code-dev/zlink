@@ -38,31 +38,18 @@ public static class SupportServerHostFactory
                 .TraceLabel("support");
             options.AddHandlersFromAssemblyOf(typeof(SupportServerHostFactory));
             options.UseDiscovery().AddRegistryEndpoint(topology.RegistryRouterEndpoint);
-            {
-                var channel = options.AddClientServerChannel(SampleNames.SupportChannel);
-                channel.EnableServer(topology.SupportChannelEndpoint);
-                channel.AddHandlerGroup("support");
-            }
-            {
-                var channel = options.AddClientServerChannel(SampleNames.ApiChannel);
-                channel.EnableClient();
-            }
-            {
-                var mesh = options.AddSpotMesh(SampleNames.SupportSpotDiscovery);
-                {
-                    var spot = mesh;
-                    {
-                        var router = spot.EnableRouter(topology.SupportEntrySpotRouterEndpoint);
-                        router.SetRoutingId(topology.SupportEntryRid);
-                    }
-                    {
-                        var pubsub = spot.EnablePubSub(topology.SupportEntrySpotEndpoint);
-                    }
-                    spot.AddEntrySpot<SupportEntrySpot>();
-                    spot.AddActorFactory<SupportUserActorFactory>(SampleNames.SupportActorType);
-                    spot.AddSpotFactory<ConversationSpot>();
-                }
-            }
+            options.AddClientServerChannel(SampleNames.SupportChannel)
+                .EnableServer(topology.SupportChannelEndpoint)
+                .AddHandlerGroup("support");
+            options.AddClientServerChannel(SampleNames.ApiChannel)
+                .EnableClient();
+            options.AddSpotMesh(SampleNames.SupportSpotDiscovery)
+                .EnableRouter(topology.SupportEntrySpotRouterEndpoint)
+                .SetRoutingId(topology.SupportEntryRid)
+                .EnablePubSub(topology.SupportEntrySpotEndpoint)
+                .AddEntrySpot<SupportEntrySpot>()
+                .AddActorFactory<SupportUserActorFactory>(SampleNames.SupportActorType)
+                .AddSpotFactory<ConversationSpot>();
         });
 
         return builder.Build();

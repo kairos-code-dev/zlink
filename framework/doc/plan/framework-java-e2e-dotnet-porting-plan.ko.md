@@ -78,7 +78,7 @@ Java e2e에는 이미 여러 config의 runner, source, feature-map이 있다. �
   `yield` 중일 때 bound session push를 원래 stream connector로 보내고, 다른 actor의 push wait는
   진행되지 않는지 검증한다. `YD-E1`은 timeout cleanup 뒤 같은 Spot mailbox가 probe를 처리하는지 검증한다.
   최신 재실행 로그는 `logs/20260630-111601-3718472`이며 YD-A/B/C/D/E1과 E4 정적 검증이 통과했다.
-  shutdown recovery diagnostic은 `logs/20260630-113136-3782250`에서 Java shutdown cleanup gap을
+  shutdown recovery diagnostic은 `logs/20260630-113936-3815368`에서 Java shutdown cleanup gap을
   재현했다. cancellation, shutdown recovery, cross-language marker report 비교는 feature-map에 gap으로
   남겨 둔다.
 

@@ -162,16 +162,33 @@ PY
 terminate_gracefully() {
   local name="$1"
   local pid="$2"
-  kill -TERM "${pid}" >/dev/null 2>&1 || return 0
+  local targets=()
+  local child
+  while read -r child; do
+    [[ -n "${child}" ]] && targets+=("${child}")
+  done < <(descendants "${pid}")
+  targets+=("${pid}")
+  for child in "${targets[@]}"; do
+    kill -TERM "${child}" >/dev/null 2>&1 || true
+  done
   for _ in $(seq 1 100); do
-    if ! kill -0 "${pid}" >/dev/null 2>&1; then
+    local alive=0
+    for child in "${targets[@]}"; do
+      if kill -0 "${child}" >/dev/null 2>&1; then
+        alive=1
+        break
+      fi
+    done
+    if [[ "${alive}" == "0" ]]; then
       wait "${pid}" >/dev/null 2>&1 || true
       return 0
     fi
     sleep 0.1
   done
   echo "${name} did not stop after SIGTERM; sending SIGKILL" >&2
-  kill -KILL "${pid}" >/dev/null 2>&1 || true
+  for child in "${targets[@]}"; do
+    kill -KILL "${child}" >/dev/null 2>&1 || true
+  done
   wait "${pid}" >/dev/null 2>&1 || true
 }
 

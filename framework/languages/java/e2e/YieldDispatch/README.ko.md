@@ -28,7 +28,7 @@ post-timeout probe를 처리하는지 검증한다.
 
 최근 full runner는 `logs/20260630-111601-3718472`에서 YD-A/B/C/D/E1과 E4 정적 검증을 통과했다.
 shutdown recovery diagnostic은 `ZLINK_JAVA_E2E_RUN_E3_SHUTDOWN=1`로 실행할 수 있지만,
-`logs/20260630-113136-3782250`에서 pending yield 중 play-a가 SIGTERM으로 내려가지 않고 client가
+`logs/20260630-113936-3815368`에서 pending yield 중 play-a가 SIGTERM으로 내려가지 않고 client가
 closed/cancelled public error 대신 request timeout을 받는 gap을 확인했다. 아직 cancellation,
 shutdown recovery, cross-language marker report 비교 scenario는 완료하지 않았다.
 남은 gap은 `feature-map.ko.md`와 `porting-inventory.ko.md`에 기록한다.

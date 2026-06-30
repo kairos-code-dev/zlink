@@ -33,7 +33,7 @@
 | YD-D4 | done | stream session relay가 bound actor handler로 보낸 request에서 actor가 `yield(Class<TReply>)`로 delay service reply를 기다린다. actor는 bound session push를 원래 stream connector로 보내고, 같은 시간 다른 actor의 push wait가 진행되지 않는 것을 검증한다. `logs/20260630-111601-3718472`에서 `scenario YD-D4 passed`를 확인했다. |
 | YD-E1 | done | `YieldTimeoutCommand`가 timeout 뒤 `timeout-yield-completed`를 남기고, 같은 Spot mailbox가 post-timeout `ProbeCommand`를 처리하는 순서를 검증한다. `logs/20260630-111601-3718472`에서 `scenario YD-E1 passed`를 확인했다. |
 | YD-E2 | public contract gap | .NET 기준은 `Yield<TReply>(token)` 취소를 검증하지만, Java `ZLinkRequestCall`과 actor join yield public surface에는 cancellation token overload가 없다. 내부 helper로 우회하지 않고 public contract gap으로 남긴다. |
-| YD-E3 | framework/runtime gap | diagnostic shutdown runner를 추가해 `ZLINK_JAVA_E2E_RUN_E3_SHUTDOWN=1`로 검증할 수 있게 했다. `logs/20260630-113136-3782250`에서 play-a가 pending yield 중 SIGTERM으로 내려가지 않아 SIGKILL까지 갔고, client는 closed/cancelled public error가 아니라 request timeout을 받았다. 완료가 아니라 Java shutdown cleanup gap이다. |
+| YD-E3 | framework/runtime gap | diagnostic shutdown runner를 추가해 `ZLINK_JAVA_E2E_RUN_E3_SHUTDOWN=1`로 검증할 수 있게 했다. `logs/20260630-113936-3815368`에서 play-a가 pending yield 중 SIGTERM으로 내려가지 않아 SIGKILL까지 갔고, client는 closed/cancelled public error가 아니라 request timeout을 받았다. 완료가 아니라 Java shutdown cleanup gap이다. |
 | YD-E4 | done | `run_e2e.sh`가 HTTP scenario trigger, handler 밖 `.yield(`, real stream connector 생성 여부를 정적으로 검사한 뒤 full runner를 실행한다. `logs/20260630-111601-3718472`에서 정적 검증과 runner marker gate가 모두 통과했다. |
 | YD-E5 | report gap | runner evidence JSON은 남기지만, cross-language parity gate가 소비할 공통 marker report 파일은 아직 만들지 않는다. 집계 단계와 report 형식이 필요하다. |
 

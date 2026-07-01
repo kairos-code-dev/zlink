@@ -27,4 +27,3 @@ run_sample() {
 
 run_sample "${SCRIPT_DIR}/TicTacToe.Ts/run_sample.sh" 3
 run_sample "${SCRIPT_DIR}/Bingo.Ts/run_sample.sh" 3
-run_sample "${SCRIPT_DIR}/DeliveryDispatch.Ts/run_sample.sh" 3

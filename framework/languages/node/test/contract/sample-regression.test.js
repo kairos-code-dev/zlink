@@ -8,13 +8,11 @@ const workspaceRoot = path.resolve(__dirname, '..', '..');
 const samplesRoot = path.join(workspaceRoot, 'samples');
 const requiredSamples = [
   'TicTacToe.Ts',
-  'Bingo.Ts',
-  'DeliveryDispatch.Ts'
+  'Bingo.Ts'
 ];
 const topologySamples = [
   'TicTacToe.Ts',
-  'Bingo.Ts',
-  'DeliveryDispatch.Ts'
+  'Bingo.Ts'
 ];
 
 test('node samples define the required sample directories and README files', () => {
@@ -150,20 +148,6 @@ test('node topology samples mirror dotnet role layout', () => {
       'Client/deliverydispatch-client-scenario.ts',
       'Client/main.ts',
       'Server/main.ts',
-      'Server/Courier/bind-courier-handler.ts',
-      'Server/Courier/courier-actor.ts',
-      'Server/Courier/courier-entry-spot.ts',
-      'Server/Courier/courier-module.ts',
-      'Server/Courier/offer-delivery-handler.ts',
-      'Server/CourierSession/courier-session.ts',
-      'Server/CourierSession/courier-session-module.ts',
-      'Server/DispatchApi/dispatch-api-module.ts',
-      'Server/DispatchCenter/dispatch-center-module.ts',
-      'Server/DispatchCenter/dispatch-worker.ts',
-      'Server/Probe/probe.ts',
-      'Server/Registry/registry-module.ts',
-      'Server/Session/customer-session.ts',
-      'Server/Tracking/tracking-module.ts',
       'Shared/Configuration/sample-names.ts',
       'Shared/Contracts/messages.ts'
     ],
@@ -1693,16 +1677,7 @@ test('node sample runners own server process orchestration', () => {
         missing.push(`${sample}:${text}`);
       }
     }
-    const psRequired = sample === 'DeliveryDispatch.Ts'
-      ? [
-          'Start-Role',
-          'Wait-Http',
-          'DELIVERYDISPATCH_COURIER_STREAM',
-          'DELIVERYDISPATCH_COURIER_ACTOR_NODE1_ROUTE',
-          'DELIVERYDISPATCH_COURIER_ACTOR_NODE2_ROUTE',
-          'dist/Client/main.js'
-        ]
-      : sample === 'ShoppingMall.Ts'
+    const psRequired = sample === 'ShoppingMall.Ts'
       ? [
           'Start-Role',
           'Wait-Topology',

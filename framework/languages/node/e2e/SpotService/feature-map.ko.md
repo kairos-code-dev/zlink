@@ -2,15 +2,17 @@
 
 기준 문서: `framework/doc/framework/common/e2e/config-2-spot-service.ko.md`
 
-현재 상태: Node.js `SpotService` config는 SM-A1, SM-A2, SM-A3, SM-A4, SM-A5, SM-A6, SM-A7, SM-A8, SM-B1, SM-B2, SM-B3, SM-B4, SM-B5,
+현재 상태: Node.js `SpotService` config는 `.NET` runner처럼 `all`을 child group으로 나누어 실행한다.
+`default-batch`는 SM-A1, SM-A2, SM-A3, SM-A4, SM-A5, SM-A6, SM-A7, SM-A8, SM-B1, SM-B2, SM-B3, SM-B4, SM-B5,
 SM-B6, SM-B7, SM-B8, SM-C1, SM-C2, SM-C3, SM-C4, SM-D1, SM-D2, SM-D3, SM-D4, SM-D5, SM-D6, SM-D7, SM-D8, SM-D9, SM-D10, SM-D11, SM-D12, SM-D13, SM-D14,
-SM-E1, SM-E2, SM-E3, SM-E4, SM-F1, SM-F2, SM-F3, SM-F5, SM-G2가 default `all` gate에서 구현되어 있다. SM-F4, SM-G1, SM-G3, SM-G4는 선택 scenario로 통과했다.
+SM-E1, SM-E2, SM-E3, SM-E4, SM-F1, SM-F2, SM-F3, SM-F4, SM-F5를 operation group 단위로 실행하고,
+outer `all`은 이어서 SM-G2, SM-G3, SM-G4, SM-G1, SM-Q9를 별도 child scenario로 실행한다.
 SM-F4는 missing target request 실패와 send drop evidence를 선택 scenario로 검증했다. malformed relay packet 주입은 public route-client 표면으로 만들 수 없으므로 public E2E 직접 대상에서 제외한다. 이 문서는 `.NET`
 `framework/languages/dotnet/e2e/SpotService/feature-map.ko.md`와 공통 문서의 scenario ID를 기준으로
 포팅 범위를 고정한다. 내부 helper나 raw-frame 우회로 gap을 완료 표시하지 않는다.
 `.NET`의 `SmQ9Scenario.cs`는 공통 문서에 없는 보조 operation이므로 scenario 표가 아니라
 `porting-inventory.ko.md`의 보조 항목에서 추적한다. Node.js에는 MultiNode role과 선택 operation을
-추가했고 public route-to-spot request가 각 local owner spot으로 도달하는지 검증했다. PASS: `logs/20260630-082118-3256244`
+추가했고 public route-to-spot request가 각 local owner spot으로 도달하는지 검증했다. `all` PASS: `logs/20260702-064908-43296`
 
 | Scenario | 상태 | 근거 |
 |----------|------|------|
@@ -39,7 +41,7 @@ SM-F4는 missing target request 실패와 send drop evidence를 선택 scenario�
 | SM-D3 | 구현 | entry actor stream bind 뒤 `ActorPushReq` reply와 bound session push를 검증한다. user spot bind는 `UserSpotAuthReq`로 spot/actor join marker를 남기고 `UserActorPingReq`/`UserActorPushReq` relay reply, user spot rid, push payload, `actor-pingMsg` evidence를 검증한다. 선택 PASS: `logs/20260629-212739-1577626`; `all` PASS: `logs/20260630-074201-3148526` |
 | SM-D4 | 구현 | `MultiBindReq`가 한 stream session에 두 actor를 bind하고, subsequent request가 stream metadata `actor-id`로 대상 actor를 선택한다. 각 actor request/reply, actor push, id 없는 request 실패를 검증한다. 선택 PASS: `logs/20260629-213206-1588322`; `all` PASS: `logs/20260630-074201-3148526` |
 | SM-D5 | 구현 | `session-a` local actor stream auth와 bind 뒤 stream close가 Session `onDisconnected`를 호출하고, handler가 선택 actor에 `notifyDisconnected()`를 호출해 `entry-disconnected` evidence를 남기는지 검증한다. 선택 PASS: `logs/20260630-073619-3133519`; `all` PASS: `logs/20260630-074201-3148526` |
-| SM-D6 | 구현 | bound consumer와 별도 consumer를 각각 stream session에 연결하고, `ActorPushReq`로 발생한 `ActorPushNotify`가 target actor에 bind된 consumer에게만 전달되는지 검증한다. 별도 consumer는 같은 gateway의 다른 actor에 bind되어 있으며 target actor push count가 0인지 확인한다. 선택 PASS: `logs/20260629-213945-1613927`; `all` PASS: `logs/20260630-074201-3148526` |
+| SM-D6 | 구현 | bound consumer와 별도 consumer를 각각 `session-a`, `session-b` stream session에 연결하고, `ActorPushReq`로 발생한 `ActorPushNotify`가 target actor에 bind된 consumer에게만 전달되는지 검증한다. 별도 consumer는 다른 actor에 bind되어 있으며 target actor push count가 0인지 확인한다. 선택 PASS: `logs/20260629-213945-1613927`; `all` PASS: `logs/20260702-064908-43303` |
 | SM-D7 | 구현 | stream connector가 `AuthReq`로 actor bind를 완료하고, 같은 stream의 `ActorPingReq`가 bound actor로 dispatch되어 reply payload가 유지되는지 검증한다. 선택 PASS: `logs/20260629-214310-1624231`; `all` PASS: `logs/20260630-074201-3148526` |
 | SM-D8 | 구현 | slow actor request가 pending인 상태에서 stream connector를 close하면 pending request가 실패하고 자동 재전송되지 않는지 확인한다. 이후 새 stream connector가 같은 actor id로 다시 auth/rebind하고 `ActorPingReq`가 정상 reply되는지 검증한다. 선택 PASS: `logs/20260629-214843-1639970`; `all` PASS: `logs/20260630-074201-3148526` |
 | SM-D9 | 구현 | stream connector에 public `observeInbound(...)`를 `connect()` 전에 등록하고, stream auth 뒤 두 번의 `ActorPingReq` reply를 받는 동안 inbound response frame의 kind, request sequence, payload length가 관측되는지 검증한다. 선택 PASS: `logs/20260629-215409-1654253`; `all` PASS: `logs/20260630-074201-3148526` |
@@ -55,12 +57,12 @@ SM-F4는 missing target request 실패와 send drop evidence를 선택 scenario�
 | SM-F1 | 구현 | target spot을 만든 뒤 route client 경로의 `/spot/state/request`와 `/spot/state/command`를 검증한다. 선택 PASS: `logs/20260630-082100-3253769` |
 | SM-F2 | 구현 | target spot request/command selectable scenario가 public route-to-spot path로 state reply와 command evidence를 검증한다. 선택 PASS: `logs/20260630-082100-3253756` |
 | SM-F3 | 구현 | `play-b`가 `play-a`의 same RouteMesh channel에 public route client로 일반 `ChannelEchoReq`를 보내고, 같은 channel의 target spot route로 `StateReq`를 보낸다. 일반 channel handler와 target spot handler evidence가 모두 `play-a`에 남는지 검증한다. 선택 PASS: `logs/20260630-091213-3386438`; `all` PASS: `logs/20260630-101424-3467655` |
-| SM-F4 | 구현 | missing target request 실패와 missing target send drop evidence를 selectable scenario로 검증했다. malformed relay packet 주입은 public route-client 표면이 아니므로 runtime 내부 검증이나 별도 bridge-level 테스트 대상으로 분리한다. 선택 PASS: `logs/20260630-101412-3466073` |
+| SM-F4 | 구현 | missing target request 실패와 missing target send drop evidence를 selectable scenario로 검증했다. malformed relay packet 주입은 public route-client 표면이 아니므로 runtime 내부 검증이나 별도 bridge-level 테스트 대상으로 분리한다. 선택 PASS: `logs/20260630-101412-3466073`; `all` PASS: `logs/20260702-064908-43303` |
 | SM-F5 | 구현 | live `.NET` tree에는 `Client/Scenarios/SmF5Scenario.cs`가 없지만 공통 E2E의 channel socket 소유권 독립 요구를 public spot close 경로로 검증했다. `play-b`가 `play-a`의 same RouteMesh channel로 일반 `ChannelEchoReq`와 target spot `StateReq`를 보낸 뒤, `play-a`에서 해당 spot을 public `ZLinkSpotManager.close(...)`로 닫고 같은 channel의 일반 `ChannelEchoReq`가 계속 성공하는지 확인한다. 선택 PASS: `logs/20260630-091846-3399628`; `all` PASS: `logs/20260630-101424-3467655` |
-| SM-G1 | 구현 | stream auth로 `play-a`/`play-b` actor를 각각 bind하고, `play-a` `/crash` endpoint로 프로세스를 종료한 뒤 `play-a` actor request 실패, `play-b` survivor request 유지, `session-b`에서 `play-b`로 재auth/rebind 복구를 검증했다. 선택 PASS: `logs/20260629-223922-1778101` |
-| SM-G2 | 구현 | logical key의 owner spot을 `play-a`와 `play-b`에 각각 만들고 owner remap 전후 routed `StateReq`가 올바른 node로 도달하는지 검증한다. 선택 PASS: `logs/20260630-082118-3256210` |
-| SM-G3 | 구현 | 같은 user spot에 두 stream client를 연결해 `UserSpotAuthReq`, concurrent `UserActorPingReq`, `LeaveReq`를 실행하고 actor별 `spot-actor-joined`/`spot-actor-left` evidence가 1회씩 남는지 검증했다. 선택 PASS: `logs/20260629-224535-1792721` |
-| SM-G4 | 구현 | 여섯 stream client를 각각 다른 actor에 bind한 뒤 `.NET` 기준처럼 순차적으로 `ActorPushReq`를 보내 reply와 `ActorPushNotify`가 각 actor/session으로만 돌아오는지 검증했다. 선택 PASS: `logs/20260629-225216-1811400` |
+| SM-G1 | 구현 | stream auth로 `play-a`/`play-b` actor를 각각 bind하고, `play-a` `/crash` endpoint로 프로세스를 종료한 뒤 `play-a` actor request 실패, `play-b` survivor request 유지, `session-b`에서 `play-b`로 재auth/rebind 복구를 검증했다. 선택 PASS: `logs/20260629-223922-1778101`; `all` PASS: `logs/20260702-064956-49262` |
+| SM-G2 | 구현 | logical key의 owner spot을 `play-a`와 `play-b`에 각각 만들고 owner remap 전후 routed `StateReq`가 올바른 node로 도달하는지 검증한다. 선택 PASS: `logs/20260630-082118-3256210`; `all` PASS: `logs/20260702-064929-45835` |
+| SM-G3 | 구현 | 같은 user spot에 두 stream client를 연결해 `UserSpotAuthReq`, concurrent `UserActorPingReq`, `LeaveReq`를 실행하고 actor별 `spot-actor-joined`/`spot-actor-left` evidence가 1회씩 남는지 검증했다. 선택 PASS: `logs/20260629-224535-1792721`; `all` PASS: `logs/20260702-064938-46760` |
+| SM-G4 | 구현 | 여섯 stream client를 각각 다른 actor에 bind한 뒤 `.NET` 기준처럼 순차적으로 `ActorPushReq`를 보내 reply와 `ActorPushNotify`가 각 actor/session으로만 돌아오는지 검증했다. 선택 PASS: `logs/20260629-225216-1811400`; `all` PASS: `logs/20260702-064947-48104` |
 
 ## 후속 계약 판정
 
@@ -72,8 +74,9 @@ SM-F4는 missing target request 실패와 send drop evidence를 선택 scenario�
 
 검증:
 
-- `timeout 720s framework/languages/node/e2e/SpotService/run_e2e.sh all`
-  - PASS: `logs/20260630-101424-3467655` (`SM-A1`, `SM-A2`, `SM-A3`, `SM-A4`, `SM-A5`, `SM-A6`, `SM-A7`, `SM-A8`, `SM-B1`, `SM-B2`, `SM-B3`, `SM-B4`, `SM-B5`, `SM-B6`, `SM-B7`, `SM-B8`, `SM-C1`, `SM-C2`, `SM-C3`, `SM-C4`, `SM-D1`, `SM-D2`, `SM-D3`, `SM-D4`, `SM-D5`, `SM-D6`, `SM-D7`, `SM-D8`, `SM-D9`, `SM-D10`, `SM-D11`, `SM-D12`, `SM-D13`, `SM-D14`, `SM-E1`, `SM-E2`, `SM-E3`, `SM-E4`, `SM-F1`, `SM-F2`, `SM-F3`, `SM-F5`, `SM-G2`)
+- `timeout 600s framework/languages/node/e2e/SpotService/run_e2e.sh`
+  - PASS: `logs/20260702-064908-43296` (`default-batch`, `SM-G2`, `SM-G3`, `SM-G4`, `SM-G1`, `SM-Q9`)
+  - `default-batch` child PASS: `logs/20260702-064908-43303` (`SM-A1`, `SM-A2`, `SM-A3`, `SM-A4`, `SM-A5`, `SM-A6`, `SM-A7`, `SM-A8`, `SM-B1`, `SM-B2`, `SM-B3`, `SM-B4`, `SM-B5`, `SM-B6`, `SM-B7`, `SM-B8`, `SM-C1`, `SM-C2`, `SM-C3`, `SM-C4`, `SM-D1`, `SM-D2`, `SM-D3`, `SM-D4`, `SM-D5`, `SM-D6`, `SM-D7`, `SM-D8`, `SM-D9`, `SM-D10`, `SM-D11`, `SM-D12`, `SM-D13`, `SM-D14`, `SM-E1`, `SM-E2`, `SM-E3`, `SM-E4`, `SM-F1`, `SM-F2`, `SM-F3`, `SM-F4`, `SM-F5`)
 - 선택 scenario: `timeout 360s framework/languages/node/e2e/SpotService/run_e2e.sh SM-B1`
   - PASS: `logs/20260630-070738-3054201` (`entry-created`, `entry-joined`, actor pingMsg evidence 확인)
 - 선택 scenario: `timeout 420s framework/languages/node/e2e/SpotService/run_e2e.sh SM-A3`

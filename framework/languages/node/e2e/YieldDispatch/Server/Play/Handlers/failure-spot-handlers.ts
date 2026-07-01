@@ -2,7 +2,7 @@ import { Injectable } from '@nestjs/common';
 import type { ZLinkHandlerContext, ZLinkSpotPacketHandler } from '@zlink-systems/framework';
 import type { DelayRes, DelayReq, YieldCancelMsg, YieldTimeoutMsg } from '../../../Shared/messages';
 import { YieldDispatchNames } from '../../../Shared/messages';
-import { EvidenceStore } from '../../Support/evidence-store';
+import { EvidenceStore } from '../Support/evidence-store';
 import type { YieldProbeSpot } from '../Spots/yield-probe-spot';
 
 @Injectable()

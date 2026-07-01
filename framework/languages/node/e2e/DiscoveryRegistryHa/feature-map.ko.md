@@ -22,58 +22,13 @@
 검증:
 
 - `timeout 420s framework/languages/node/e2e/DiscoveryRegistryHa/run_e2e.sh`
-  - 결과: `discovery-registry-ha e2e result=passed`
-  - 최신 확인 로그 디렉터리: `logs/20260630-022102-2343678`
-  - 통과 scenario: `DR-A1`
-- `timeout 420s framework/languages/node/e2e/DiscoveryRegistryHa/run_e2e.sh DR-A2`
-  - 결과: `discovery-registry-ha e2e result=passed`
-  - 최신 확인 로그 디렉터리: `logs/20260630-022108-2344016`
-  - 통과 scenario: `DR-A2`
-- `timeout 420s framework/languages/node/e2e/DiscoveryRegistryHa/run_e2e.sh DR-A3`
-  - 결과: `discovery-registry-ha e2e result=passed`
-  - 최신 확인 로그 디렉터리: `logs/20260630-022113-2344464`
-  - 통과 scenario: `DR-A3`
-- `timeout 420s framework/languages/node/e2e/DiscoveryRegistryHa/run_e2e.sh DR-A4`
-  - 결과: `discovery-registry-ha e2e result=passed`
-  - 최신 확인 로그 디렉터리: `logs/20260630-022120-2344980`
-  - 통과 scenario: `DR-A4`
-- `timeout 420s framework/languages/node/e2e/DiscoveryRegistryHa/run_e2e.sh DR-B1`
-  - 결과: `discovery-registry-ha e2e result=passed`
-  - 최신 확인 로그 디렉터리: `logs/20260630-022134-2345758`
-  - 통과 scenario: `DR-B1`
-- `timeout 420s framework/languages/node/e2e/DiscoveryRegistryHa/run_e2e.sh DR-B3`
-  - 결과: `discovery-registry-ha e2e result=passed`
-  - 최신 확인 로그 디렉터리: `logs/20260630-022140-2346239`
-  - 통과 scenario: `DR-B3`
-- `timeout 420s framework/languages/node/e2e/DiscoveryRegistryHa/run_e2e.sh DR-C1`
-  - 결과: `discovery-registry-ha e2e result=passed`
-  - 최신 확인 로그 디렉터리: `logs/20260630-022148-2346991`
-  - 통과 scenario: `DR-C1`
-- `timeout 420s framework/languages/node/e2e/DiscoveryRegistryHa/run_e2e.sh DR-C2`
-  - 결과: `discovery-registry-ha e2e result=passed`
-  - 최신 확인 로그 디렉터리: `logs/20260630-022151-2347457`
-  - 통과 scenario: `DR-C2`
-- `timeout 420s framework/languages/node/e2e/DiscoveryRegistryHa/run_e2e.sh DR-C3`
-  - 결과: `discovery-registry-ha e2e result=passed`
-  - 최신 확인 로그 디렉터리: `logs/20260630-022157-2347999`
-  - 통과 scenario: `DR-C3`
-- `timeout 420s framework/languages/node/e2e/DiscoveryRegistryHa/run_e2e.sh DR-D1`
-  - 결과: `discovery-registry-ha e2e result=passed`
-  - 최신 확인 로그 디렉터리: `logs/20260630-022206-2348746`
-  - 통과 scenario: `DR-D1`
-- `timeout 420s framework/languages/node/e2e/DiscoveryRegistryHa/run_e2e.sh DR-D2`
-  - 결과: `discovery-registry-ha e2e result=passed`
-  - 최신 확인 로그 디렉터리: `logs/20260630-022211-2349015`
-  - 통과 scenario: `DR-D2`
-- `timeout 420s framework/languages/node/e2e/DiscoveryRegistryHa/run_e2e.sh DR-D3`
-  - 결과: `discovery-registry-ha e2e result=passed`
-  - 최신 확인 로그 디렉터리: `logs/20260630-022216-2349345`
-  - 통과 scenario: `DR-D3`
-- `timeout 420s framework/languages/node/e2e/DiscoveryRegistryHa/run_e2e.sh DR-D4`
-  - 결과: `discovery-registry-ha e2e result=passed`
-  - 최신 확인 로그 디렉터리: `logs/20260630-022220-2349869`
-  - 통과 scenario: `DR-D4`
-- `timeout 420s framework/languages/node/e2e/DiscoveryRegistryHa/run_e2e.sh DR-B2`
-  - 결과: `discovery-registry-ha e2e result=passed`
-  - 최신 확인 로그 디렉터리: `logs/20260630-043800-2668198`
-  - 통과 scenario: `DR-B2`
+  - 결과: full sweep aggregate `discovery-registry-ha e2e result=passed`
+  - 최신 aggregate 로그 디렉터리: `logs/20260702-065342-62284`
+  - 이전 aggregate 로그 디렉터리: `logs/20260702-050632-82209`
+  - child 로그 디렉터리: `logs/20260702-050632-82215`(`DR-A1`), `logs/20260702-050637-82730`(`DR-A2`),
+    `logs/20260702-050643-83236`(`DR-A3`), `logs/20260702-050650-83983`(`DR-A4`),
+    `logs/20260702-050705-84912`(`DR-B1`), `logs/20260702-050712-85448`(`DR-B2`),
+    `logs/20260702-050720-86021`(`DR-B3`), `logs/20260702-050727-86602`(`DR-C1`),
+    `logs/20260702-050732-87169`(`DR-C2`), `logs/20260702-050738-87556`(`DR-C3`),
+    `logs/20260702-050746-88176`(`DR-D1`), `logs/20260702-050751-88535`(`DR-D2`),
+    `logs/20260702-050757-89039`(`DR-D3`), `logs/20260702-050803-90124`(`DR-D4`)

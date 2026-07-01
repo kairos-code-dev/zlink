@@ -1,7 +1,7 @@
 import { Injectable, Scope } from '@nestjs/common';
 import type { ZLinkMessage, ZLinkSpot, ZLinkSpotActorJoinResponse, ZLinkSpotContext } from '@zlink-systems/framework';
 import type { DelayReq } from '../../../Shared/messages';
-import { EvidenceStore } from '../../Support/evidence-store';
+import { EvidenceStore } from '../Support/evidence-store';
 import { HoldCommandHandler, ProbeCommandHandler, WorkerYieldCommandHandler, YieldCommandHandler, YieldRequestHandler } from '../Handlers/basic-spot-handlers';
 import { YieldCancelCommandHandler, YieldTimeoutCommandHandler } from '../Handlers/failure-spot-handlers';
 import { RemoteSpotYieldCommandHandler, RemoteSpotYieldHandler } from '../Handlers/remote-spot-handlers';

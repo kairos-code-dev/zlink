@@ -1,6 +1,15 @@
 import { parseClientOptions } from './Support/client-options';
-import { runRcA1, runRcA2, runRcA3, runRcA4, runRcA5, runRcA6 } from './Scenarios/rc-a-registration-scenarios';
-import { runRcB1, runRcB2, runRcB3, runRcB4, runRcB5 } from './Scenarios/rc-b-codec-scenarios';
+import { runRcA2 } from './Scenarios/AttributeRegistrationScenario';
+import { runRcA1 } from './Scenarios/AutoRegistrationScenario';
+import { runRcB5 } from './Scenarios/CodecMismatchScenario';
+import { runRcA6 } from './Scenarios/InvalidRegistrationScenario';
+import { runRcA3 } from './Scenarios/ManualRegistrationScenario';
+import { runRcA4 } from './Scenarios/RcA4DiLifecycleScenario';
+import { runRcA5 } from './Scenarios/RcA5FilterOrderingScenario';
+import { runRcB1 } from './Scenarios/RcB1JsonCodecScenario';
+import { runRcB2 } from './Scenarios/RcB2ProtobufCodecScenario';
+import { runRcB3 } from './Scenarios/RcB3MessagePackCodecScenario';
+import { runRcB4 } from './Scenarios/RcB4CodecCoexistenceScenario';
 
 async function main(): Promise<void> {
   const options = parseClientOptions(process.argv.slice(2));
@@ -11,8 +20,8 @@ async function main(): Promise<void> {
   await runRcA5(options.serverUrl);
   await runRcA6(options);
   await runRcB1(options.serverUrl);
-  await runRcB2(options.protobufUrl);
-  await runRcB3(options.messagePackUrl);
+  await runRcB2(options.serverUrl);
+  await runRcB3(options.serverUrl);
   await runRcB4(options.serverUrl);
   await runRcB5(options.codecRequesterUrl, options.jsonOnlyUrl);
   console.log('registration-codec e2e result=passed');

@@ -5,7 +5,7 @@ ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 NODE_ROOT="$(cd "$ROOT_DIR/../.." && pwd)"
 RUN_ID="$(date +%Y%m%d-%H%M%S)-$$"
 LOG_DIR="$ROOT_DIR/logs/$RUN_ID"
-SCENARIO="${1:-DR-A1}"
+SCENARIO="${1:-all}"
 SCENARIOS=(
   DR-A1
   DR-A2
@@ -105,6 +105,7 @@ run_all_scenarios() {
   for scenario in "${SCENARIOS[@]}"; do
     "$0" "$scenario"
   done
+  echo "discovery-registry-ha e2e result=passed"
 }
 
 echo "log_dir=$LOG_DIR"

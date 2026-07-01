@@ -58,6 +58,7 @@ allocate_port() {
 
 build_package() {
   local dir="$1"
+  rm -rf "$dir/dist"
   (cd "$dir" && npm run build >/dev/null)
 }
 
@@ -121,6 +122,18 @@ start_server() {
 }
 
 echo "log_dir=$LOG_DIR"
+
+if [[ "$SCENARIO" == "all" && "${ZLINK_SPOT_SERVICE_ALL_CHILD:-0}" != "1" ]]; then
+  for child_group in default-batch SM-G2 SM-G3 SM-G4 SM-G1 SM-Q9; do
+    echo "child scenario=$child_group"
+    if ! timeout 420s env ZLINK_SPOT_SERVICE_ALL_CHILD=1 "$0" "$child_group"; then
+      echo "child scenario=$child_group failed" >&2
+      exit 1
+    fi
+  done
+  echo "spot-service e2e result=passed"
+  exit 0
+fi
 
 (cd "$NODE_ROOT" && npm run build >/dev/null)
 build_package "$ROOT_DIR/Server/Registry"
@@ -312,17 +325,49 @@ start_server multi-node-b "$MULTI_NODE_MAIN" \
   --log-dir "$LOG_DIR"
 wait_health "$MULTI_B_URL" multi-node-b
 
-node "$CLIENT_MAIN" \
-  --play-a-url "$PLAY_A_URL" \
-  --play-b-url "$PLAY_B_URL" \
-  --gateway-url "$GATEWAY_URL" \
-  --session-a-url "$SESSION_A_URL" \
-  --session-a-stream-endpoint "$SESSION_A_STREAM" \
-  --session-a-tls-stream-endpoint "$SESSION_A_TLS_STREAM" \
-  --session-b-stream-endpoint "$SESSION_B_STREAM" \
-  --multi-a-url "$MULTI_A_URL" \
-  --multi-b-url "$MULTI_B_URL" \
-  --scenario "$SCENARIO" \
-  >"$LOG_DIR/client.stdout.log" 2>"$LOG_DIR/client.stderr.log"
+run_client() {
+  local scenario="$1"
+  echo "client scenario=${scenario}" >>"$LOG_DIR/client.stdout.log"
+  node "$CLIENT_MAIN" \
+    --play-a-url "$PLAY_A_URL" \
+    --play-b-url "$PLAY_B_URL" \
+    --gateway-url "$GATEWAY_URL" \
+    --session-a-url "$SESSION_A_URL" \
+    --session-b-url "$SESSION_B_URL" \
+    --session-a-stream-endpoint "$SESSION_A_STREAM" \
+    --session-a-tls-stream-endpoint "$SESSION_A_TLS_STREAM" \
+    --session-b-stream-endpoint "$SESSION_B_STREAM" \
+    --multi-a-url "$MULTI_A_URL" \
+    --multi-b-url "$MULTI_B_URL" \
+    --scenario "$scenario" \
+    >>"$LOG_DIR/client.stdout.log" 2>>"$LOG_DIR/client.stderr.log"
+}
+
+if [[ "$SCENARIO" == "default-batch" ]]; then
+  run_client sm-b1-b2-b3-b5
+  run_client sm-b6
+  run_client sm-b8
+  run_client sm-d1-d6
+  run_client sm-d3
+  run_client sm-d4
+  run_client sm-d5
+  run_client sm-d7
+  run_client sm-d8
+  run_client sm-d9-d11-d13
+  run_client sm-d10
+  run_client sm-d12
+  run_client sm-d14
+  run_client sm-c1-c2
+  run_client sm-c3
+  run_client sm-e4
+  run_client sm-e1-f4
+  run_client sm-e2-e3
+  run_client sm-a7-a8-c4
+  run_client sm-a3-a6-b4-b7
+  run_client sm-a5
+  run_client sm-a1-a2-a4-f1-f2
+else
+  run_client "$SCENARIO"
+fi
 
 cat "$LOG_DIR/client.stdout.log"

@@ -1136,6 +1136,104 @@ test('stream binding runtime can remove actor binding during actor destroy clean
   );
 });
 
+test('runtime host completes relayed actor request on captured stream after actor binding cleanup', async () => {
+  const stream = recordingStream('session-relay-cleanup', 'session-node');
+  const runtime = new framework.ZLinkFrameworkRuntimeHost({
+    registration: framework.createFrameworkRegistration({
+      discovery: { registries: ['tcp://127.0.0.1:19000'] },
+      routeChannels: ['spot.service']
+    })
+  });
+  runtime.streamBindingRuntime = new framework.ZLinkStreamBindingRuntime({
+    messageFactory: binaryMessageFactory()
+  });
+  const context = runtime.streamBindingRuntime.createSessionContext(stream);
+  const actor = await context.actors.bind({
+    nodeRid: 'play-node',
+    actorId: 'actor-cleanup',
+    generation: 1
+  });
+
+  runtime.routeTransport.requestRawToSpot = async () => {
+    runtime.streamBindingRuntime.unbindActor('actor-cleanup');
+    return [zlink.Message.from(Buffer.from(JSON.stringify({
+      ok: true,
+      response: { value: 'pong' }
+    })))];
+  };
+
+  const payload = zlink.Message.from(Buffer.from(JSON.stringify({ value: 'ping' })));
+  await runtime.relayRemoteActorPacket(actor, {
+    kind: streamProtocol.ZLinkStreamMessageKind.Request,
+    codec: streamProtocol.ZLinkStreamCodec.Json,
+    flags: streamProtocol.ZLinkStreamHeaderFlags.None,
+    requestSeq: 7n,
+    name: 'ComplexActorReq',
+    metadata: { values: new Map([['trace', 'cleanup']]) }
+  }, payload);
+  payload.close();
+
+  assert.equal(runtime.streamBindingRuntime.find('actor-cleanup'), undefined);
+  assert.equal(stream.writes.length, 1);
+  const frame = decodeFrame(stream.writes[0].bytes);
+  assert.equal(frame.header.kind, connector.ZlinkStreamMessageKind.Response);
+  assert.equal(frame.header.name, 'ComplexActorReq');
+  assert.equal(frame.header.requestSeq, 7n);
+  assert.equal(frame.header.metadata.get('trace'), 'cleanup');
+  assert.deepEqual(JSON.parse(new TextDecoder().decode(frame.payload)), { value: 'pong' });
+});
+
+test('detached worker completion runs after response work posted by the handler turn', async () => {
+  const serial = new framework.ZLinkSpotSerialExecutor();
+  const worker = new framework.ZLinkSpotWorkerRuntime();
+  const events = [];
+
+  await serial.execute(async () => {
+    new framework.DefaultZLinkWorkerCall(worker, serial, () => true)
+      .onCompleted(async () => {
+        events.push('cleanup');
+      });
+    await new Promise((resolve) => setImmediate(resolve));
+    events.push('response');
+  });
+  await waitForCondition(() => events.includes('cleanup'), 'detached worker cleanup');
+
+  assert.deepEqual(events, ['response', 'cleanup']);
+});
+
+test('runtime host awaits routed actor disconnect notification before session cleanup completes', async () => {
+  let releaseSend;
+  let sendStarted = false;
+  const runtime = new framework.ZLinkFrameworkRuntimeHost({
+    registration: framework.createFrameworkRegistration({
+      discovery: { registries: ['tcp://127.0.0.1:19000'] },
+      routeChannels: ['spot.service']
+    })
+  });
+  runtime.routeTransport.sendToSpot = async () => {
+    sendStarted = true;
+    await new Promise((resolve) => {
+      releaseSend = resolve;
+    });
+  };
+
+  let disconnectCompleted = false;
+  const disconnecting = runtime.notifyRemoteActorDisconnected('actor-disconnect-await', {
+    routerChannelId: 'spot.service',
+    targetNodeRid: 'play-node',
+    spotRid: 'play-node'
+  }).then(() => {
+    disconnectCompleted = true;
+  });
+  await new Promise((resolve) => setImmediate(resolve));
+
+  assert.equal(sendStarted, true);
+  assert.equal(disconnectCompleted, false);
+  releaseSend();
+  await disconnecting;
+  assert.equal(disconnectCompleted, true);
+});
+
 test('local bound session error response rejects pending actor request', async () => {
   const stream = recordingStream('session-error-response', 'rid-error-response');
   const runtime = new framework.ZLinkStreamBindingRuntime({

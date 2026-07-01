@@ -68,6 +68,7 @@ import {
 } from '../actors';
 import {
   DefaultZLinkBoundSessionFactory,
+  type ZLinkBoundSessionResponseTarget,
   type ZLinkStreamPayloadCodec,
   ZLinkStreamBindingRuntime,
   ZLinkStreamRuntimeManager
@@ -797,11 +798,11 @@ export class ZLinkFrameworkRuntimeHost implements ZLinkFrameworkRuntime, ZLinkMe
     await this.requireSpotNodeRuntime().notifyPrimaryEntrySpotActorDisconnected(localActor, signal);
   }
 
-  private notifyRemoteActorDisconnected(
+  private async notifyRemoteActorDisconnected(
     actorId: string,
     remoteTarget: ZLinkRemoteBoundSessionTarget | ZLinkRemoteActorPacketTarget,
     signal?: AbortSignal
-  ): void {
+  ): Promise<void> {
     const spotKind: ZLinkSpotKind | undefined =
       'spotKind' in remoteTarget ? remoteTarget.spotKind as ZLinkSpotKind | undefined : undefined;
     const header: ZLinkStreamFrameHeader = {
@@ -824,14 +825,9 @@ export class ZLinkFrameworkRuntimeHost implements ZLinkFrameworkRuntime, ZLinkMe
       spotRid: remoteTarget.spotRid,
       spotKind: spotKind ?? ZLinkSpotKind.Entry
     };
-    void this.routeTransport.sendToSpot(address, payload, {
+    await this.routeTransport.sendToSpot(address, payload, {
       packetName: ZLINK_REMOTE_ACTOR_PACKET_RELAY_PACKET,
       signal
-    }).catch((error) => {
-      (this.errorSink ?? this.preStartErrorSink).reportRuntimeTaskException(
-        `actor-disconnect:${actorId}`,
-        error
-      );
     });
   }
 
@@ -941,6 +937,7 @@ export class ZLinkFrameworkRuntimeHost implements ZLinkFrameworkRuntime, ZLinkMe
     payload: Message,
     signal?: AbortSignal
   ): Promise<boolean> {
+    const responseTarget = this.streamBindingRuntime.captureBoundSessionResponseTarget(actor);
     const remoteTarget = this.actorManager?.getState(actor.actorId)?.remoteActorPacketTarget
       ?? this.sessionActorPacketTargets.get(actor)
       ?? this.sessionActorPacketTargetsByActor.get(sessionActorPacketTargetKey(actor))
@@ -1007,7 +1004,8 @@ export class ZLinkFrameworkRuntimeHost implements ZLinkFrameworkRuntime, ZLinkMe
       }
       if (frameHeader.requestSeq !== undefined) {
           if (reply.ok === false) {
-            const sent = this.streamBindingRuntime.sendLocalBoundSessionError(
+            const sent = this.sendCapturedOrCurrentBoundSessionError(
+              responseTarget,
               actor.actorId,
               frameHeader.name,
               frameHeader.requestSeq,
@@ -1019,7 +1017,8 @@ export class ZLinkFrameworkRuntimeHost implements ZLinkFrameworkRuntime, ZLinkMe
             }
             return true;
           }
-          const sent = this.streamBindingRuntime.sendLocalBoundSessionResponse(
+          const sent = this.sendCapturedOrCurrentBoundSessionResponse(
+            responseTarget,
             actor.actorId,
             frameHeader.name,
             frameHeader.requestSeq,
@@ -1034,6 +1033,42 @@ export class ZLinkFrameworkRuntimeHost implements ZLinkFrameworkRuntime, ZLinkMe
       void request;
     }
     return true;
+  }
+
+  private sendCapturedOrCurrentBoundSessionResponse(
+    target: ZLinkBoundSessionResponseTarget | undefined,
+    actorId: string,
+    packetName: string,
+    requestSeq: bigint,
+    response: unknown,
+    metadata: ReadonlyMap<string, string>
+  ): boolean {
+    return target?.sendResponse(packetName, requestSeq, response, metadata)
+      ?? this.streamBindingRuntime.sendLocalBoundSessionResponse(
+        actorId,
+        packetName,
+        requestSeq,
+        response,
+        metadata
+      );
+  }
+
+  private sendCapturedOrCurrentBoundSessionError(
+    target: ZLinkBoundSessionResponseTarget | undefined,
+    actorId: string,
+    packetName: string,
+    requestSeq: bigint,
+    error: unknown,
+    metadata: ReadonlyMap<string, string>
+  ): boolean {
+    return target?.sendError(packetName, requestSeq, error, metadata)
+      ?? this.streamBindingRuntime.sendLocalBoundSessionError(
+        actorId,
+        packetName,
+        requestSeq,
+        error,
+        metadata
+      );
   }
 
   private actorPacketTargetForState(

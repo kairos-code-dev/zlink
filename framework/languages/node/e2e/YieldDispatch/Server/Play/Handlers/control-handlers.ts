@@ -11,7 +11,7 @@ import type {
   YieldEvidenceWaitReq
 } from '../../../Shared/messages';
 import { YieldDispatchNames } from '../../../Shared/messages';
-import { EvidenceStore } from '../../Support/evidence-store';
+import { EvidenceStore } from '../Support/evidence-store';
 import { YieldProbeSpot } from '../Spots/yield-probe-spot';
 
 @Injectable()

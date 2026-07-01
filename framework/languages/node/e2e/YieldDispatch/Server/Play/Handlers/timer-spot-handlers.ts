@@ -3,7 +3,7 @@ import type { ZLinkHandlerContext, ZLinkSpotPacketHandler, ZLinkSpotTimerHandler
 import { ZLinkTimerOverrunPolicy } from '@zlink-systems/framework';
 import type { DelayRes, DelayReq, TimerStartMsg, TimerStopMsg } from '../../../Shared/messages';
 import { YieldDispatchNames } from '../../../Shared/messages';
-import { EvidenceStore } from '../../Support/evidence-store';
+import { EvidenceStore } from '../Support/evidence-store';
 import type { YieldProbeSpot } from '../Spots/yield-probe-spot';
 import { YieldTimerState } from '../Spots/yield-timer-state';
 

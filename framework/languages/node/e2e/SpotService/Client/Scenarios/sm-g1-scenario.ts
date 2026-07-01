@@ -3,12 +3,22 @@ import {
   zlinkStreamJsonCodec,
   ZlinkStreamDispatchMode
 } from '@zlink-systems/stream-connector';
-import type { ActorPingRes, ActorPingReq, AuthRes, AuthReq } from '../../Shared/messages';
+import type {
+  ActorPingRes,
+  ActorPingReq,
+  AuthRes,
+  AuthReq,
+  ControlPingReq,
+  ControlPingRes
+} from '../../Shared/messages';
 import type { ClientOptions } from '../Support/client-options';
+import { postJson } from '../Support/http-client';
 import { ensure } from '../Support/scenario-assert';
 import { decodeStreamReply } from '../Support/stream-reply';
 
 export async function runSmG1(options: ClientOptions): Promise<void> {
+  await waitForControlRoute(options.sessionBUrl, 'play-b');
+
   const playA = createStreamClient(options.sessionAStreamEndpoint);
   const playB = createStreamClient(options.sessionBStreamEndpoint);
   let recovered: ReturnType<typeof createStreamClient> | undefined;
@@ -115,4 +125,27 @@ async function fails(operation: () => Promise<void>): Promise<boolean> {
   } catch {
     return true;
   }
+}
+
+async function waitForControlRoute(sessionUrl: string, targetRid: string): Promise<void> {
+  const deadline = Date.now() + 30000;
+  let lastError: unknown;
+  while (Date.now() < deadline) {
+    try {
+      const reply = await postJson<ControlPingRes>(sessionUrl, `/channel/control-pingMsg/${targetRid}`, {
+        value: `sm-g1-${targetRid}-ready`
+      } satisfies ControlPingReq);
+      if (reply.nodeRid === targetRid) {
+        return;
+      }
+    } catch (error) {
+      lastError = error;
+    }
+    await new Promise((resolve) => setTimeout(resolve, 500));
+  }
+  throw new Error(
+    lastError instanceof Error
+      ? `Control route did not become ready: ${targetRid}. Last error: ${lastError.message}`
+      : `Control route did not become ready: ${targetRid}.`
+  );
 }

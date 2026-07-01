@@ -106,6 +106,236 @@ test('stream session node runtime serializes dispatch and disconnect callbacks p
   ]);
 });
 
+test('stream session node runtime ignores unmatched monitor disconnect when multiple sessions exist', async () => {
+  const socket = new FakeStreamSocket();
+  const events = [];
+  let monitorHandler;
+  const runtime = new framework.ZLinkStreamSessionNodeRuntime({
+    socket,
+    monitor: {
+      onEvent(handler) {
+        monitorHandler = handler;
+      }
+    },
+    headerDecoder: (header) => ({ name: header.getString() }),
+    sessionFactory(context) {
+      return {
+        context,
+        async onConnected(ctx) {
+          events.push(['connected', ctx.sessionId]);
+        },
+        async onDisconnected(ctx) {
+          events.push(['disconnected', ctx.sessionId]);
+        }
+      };
+    }
+  });
+
+  runtime.start();
+  runtime.markConnected('session-stale-a', 'tcp://local-a', 'tcp://remote-a');
+  runtime.markConnected('session-stale-b', 'tcp://local-b', 'tcp://remote-b');
+  await new Promise((resolve) => setImmediate(resolve));
+
+  monitorHandler({
+    nativeEvent: framework.ZLinkSocketNativeEventType.Disconnected,
+    value: 0,
+    localAddr: undefined,
+    remoteAddr: undefined,
+    routingId: undefined
+  });
+  await new Promise((resolve) => setImmediate(resolve));
+  assert.deepEqual(events, [
+    ['connected', 'session-stale-a'],
+    ['connected', 'session-stale-b']
+  ]);
+  await runtime.dispose();
+});
+
+test('stream session node runtime maps endpointless monitor disconnect to a single session', async () => {
+  const socket = new FakeStreamSocket();
+  const events = [];
+  let monitorHandler;
+  const runtime = new framework.ZLinkStreamSessionNodeRuntime({
+    socket,
+    monitor: {
+      onEvent(handler) {
+        monitorHandler = handler;
+      }
+    },
+    headerDecoder: (header) => ({ name: header.getString() }),
+    sessionFactory(context) {
+      return {
+        context,
+        async onConnected(ctx) {
+          events.push(['connected', ctx.sessionId]);
+        },
+        async onDisconnected(ctx) {
+          events.push(['disconnected', ctx.sessionId]);
+        }
+      };
+    }
+  });
+
+  runtime.start();
+  runtime.markConnected('session-live', 'tcp://local-live', 'tcp://remote-live');
+  await new Promise((resolve) => setImmediate(resolve));
+
+  monitorHandler({
+    nativeEvent: framework.ZLinkSocketNativeEventType.Disconnected,
+    value: 0,
+    localAddr: undefined,
+    remoteAddr: undefined,
+    routingId: undefined
+  });
+  await new Promise((resolve) => setImmediate(resolve));
+  assert.deepEqual(events, [
+    ['connected', 'session-live'],
+    ['disconnected', 'session-live']
+  ]);
+  await runtime.dispose();
+});
+
+test('stream session node runtime cancels endpointless disconnect when connection-ready follows immediately', async () => {
+  const socket = new FakeStreamSocket();
+  const events = [];
+  let monitorHandler;
+  const runtime = new framework.ZLinkStreamSessionNodeRuntime({
+    socket,
+    monitor: {
+      onEvent(handler) {
+        monitorHandler = handler;
+      }
+    },
+    headerDecoder: (header) => ({ name: header.getString() }),
+    sessionFactory(context) {
+      return {
+        context,
+        async onConnected(ctx) {
+          events.push(['connected', ctx.sessionId]);
+        },
+        async onDisconnected(ctx) {
+          events.push(['disconnected', ctx.sessionId]);
+        }
+      };
+    }
+  });
+
+  runtime.start();
+  runtime.markConnected('session-live');
+  await new Promise((resolve) => setImmediate(resolve));
+
+  monitorHandler({
+    nativeEvent: framework.ZLinkSocketNativeEventType.Disconnected,
+    value: 0,
+    localAddr: undefined,
+    remoteAddr: undefined,
+    routingId: undefined
+  });
+  monitorHandler({
+    nativeEvent: framework.ZLinkSocketNativeEventType.ConnectionReady,
+    value: 0,
+    localAddr: undefined,
+    remoteAddr: undefined,
+    routingId: undefined
+  });
+  await new Promise((resolve) => setImmediate(resolve));
+  assert.deepEqual(events, [
+    ['connected', 'session-live']
+  ]);
+  await runtime.dispose();
+});
+
+test('stream session node runtime cancels endpointless disconnect when another packet arrives before it is applied', async () => {
+  const socket = new FakeStreamSocket();
+  const events = [];
+  let monitorHandler;
+  const runtime = new framework.ZLinkStreamSessionNodeRuntime({
+    socket,
+    monitor: {
+      onEvent(handler) {
+        monitorHandler = handler;
+      }
+    },
+    headerDecoder: (header) => ({ name: header.getString() }),
+    sessionFactory(context) {
+      return {
+        context,
+        async onConnected(ctx) {
+          events.push(['connected', ctx.sessionId]);
+        },
+        async onDispatch(header, payload) {
+          events.push(['dispatch', context.sessionId, header.packetName, payload.decode()]);
+        },
+        async onDisconnected(ctx) {
+          events.push(['disconnected', ctx.sessionId]);
+        }
+      };
+    }
+  });
+
+  runtime.start();
+  runtime.markConnected('session-live');
+  await new Promise((resolve) => setImmediate(resolve));
+
+  monitorHandler({
+    nativeEvent: framework.ZLinkSocketNativeEventType.Disconnected,
+    value: 0,
+    localAddr: undefined,
+    remoteAddr: undefined,
+    routingId: undefined
+  });
+  socket.emitPacket('session-next', fakeHeader({ name: 'Ready' }), fakeMessage('next'));
+  await new Promise((resolve) => setImmediate(resolve));
+  assert.deepEqual(events, [
+    ['connected', 'session-live'],
+    ['dispatch', 'session-next', 'Ready', 'next']
+  ]);
+  await runtime.dispose();
+});
+
+test('stream session node runtime ignores monitor disconnect whose endpoint does not match the single session', async () => {
+  const socket = new FakeStreamSocket();
+  const events = [];
+  let monitorHandler;
+  const runtime = new framework.ZLinkStreamSessionNodeRuntime({
+    socket,
+    monitor: {
+      onEvent(handler) {
+        monitorHandler = handler;
+      }
+    },
+    headerDecoder: (header) => ({ name: header.getString() }),
+    sessionFactory(context) {
+      return {
+        context,
+        async onConnected(ctx) {
+          events.push(['connected', ctx.sessionId]);
+        },
+        async onDisconnected(ctx) {
+          events.push(['disconnected', ctx.sessionId]);
+        }
+      };
+    }
+  });
+
+  runtime.start();
+  runtime.markConnected('session-live', 'tcp://local-live', 'tcp://remote-live');
+  await new Promise((resolve) => setImmediate(resolve));
+
+  monitorHandler({
+    nativeEvent: framework.ZLinkSocketNativeEventType.Disconnected,
+    value: 0,
+    localAddr: 'tcp://local-stale',
+    remoteAddr: 'tcp://remote-stale',
+    routingId: undefined
+  });
+  await new Promise((resolve) => setImmediate(resolve));
+  assert.deepEqual(events, [
+    ['connected', 'session-live']
+  ]);
+  await runtime.dispose();
+});
+
 test('stream session node runtime does not invoke user callbacks inside transport callback', async () => {
   const socket = new FakeStreamSocket();
   const events = [];
@@ -168,7 +398,7 @@ test('stream session cleanup removes actor bindings without closing the stream a
   assert.equal(socket.disconnects.length, 0);
 });
 
-test('stream session disconnect notifies bound actors before cleanup', async () => {
+test('stream session onDisconnected can explicitly notify bound actors before cleanup', async () => {
   const socket = new FakeStreamSocket();
   const events = [];
   const bindingRuntime = new framework.ZLinkStreamBindingRuntime({
@@ -185,7 +415,8 @@ test('stream session disconnect notifies bound actors before cleanup', async () 
         async onConnected(ctx) {
           await ctx.actors.bind({ nodeRid: 'node-a', actorId: 'actor-a', generation: 1 });
         },
-        async onDisconnected() {
+        async onDisconnected(ctx) {
+          await ctx.actors.bound[0].notifyDisconnected();
           events.push(['session-disconnected']);
         }
       };

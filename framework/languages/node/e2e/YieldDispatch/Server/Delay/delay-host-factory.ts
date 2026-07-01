@@ -2,8 +2,8 @@ import { Module } from '@nestjs/common';
 import { NestFactory } from '@nestjs/core';
 import { ZLinkModule, zlinkFramework } from '@zlink-systems/nestjs';
 import { YieldDispatchNames } from '../../Shared/messages';
-import { EvidenceStore } from '../Support/evidence-store';
-import { closeHttpServer, startHttpServer } from '../Support/http-server';
+import { EvidenceStore } from './Support/evidence-store';
+import { closeHttpServer, startHttpServer } from './Support/http-server';
 import { parseDelayOptions } from './Configuration/delay-options';
 import { DelayHandler } from './Handlers/delay-handler';
 

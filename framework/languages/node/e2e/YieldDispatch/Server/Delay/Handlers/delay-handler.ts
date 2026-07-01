@@ -1,7 +1,7 @@
 import { Injectable } from '@nestjs/common';
 import type { ZLinkHandlerContext, ZLinkRequestHandler } from '@zlink-systems/framework';
 import type { DelayRes, DelayReq } from '../../../Shared/messages';
-import { EvidenceStore } from '../../Support/evidence-store';
+import { EvidenceStore } from '../Support/evidence-store';
 
 @Injectable()
 export class DelayHandler implements ZLinkRequestHandler<DelayReq, DelayRes> {

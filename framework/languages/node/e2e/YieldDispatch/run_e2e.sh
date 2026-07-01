@@ -42,6 +42,7 @@ NODE
 
 build_package() {
   local dir="$1"
+  rm -rf "$dir/dist"
   (cd "$dir" && npm run build >/dev/null)
 }
 

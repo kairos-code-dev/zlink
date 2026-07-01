@@ -1,7 +1,7 @@
 import { Module } from '@nestjs/common';
 import { NestFactory } from '@nestjs/core';
 import { ZLinkRegistryModule } from '@zlink-systems/nestjs';
-import { closeHttpServer, startHttpServer } from '../Support/http-server';
+import { closeHttpServer, startHttpServer } from './Support/http-server';
 import { parseRegistryOptions } from './Configuration/registry-options';
 
 export async function startRegistryHost(args: readonly string[]): Promise<void> {

@@ -36,6 +36,10 @@ export async function runSmB6(options: ClientOptions): Promise<void> {
       .packetName('UserSpotAuthReq')
       .timeout(5000)
       .submit<AuthRes>();
+    await postJson<string[]>(options.playAUrl, '/evidence/wait', {
+      containsAll: [`entry-joined|rid=play-a|actor=${leaveActorId}`],
+      timeoutMilliseconds: 10000
+    } satisfies EvidenceWaitReq);
     await joinUserSpotActor(leaveClient, spotRid, leaveActorId);
 
     const left = decodeStreamReply<LeaveRes>(await leaveClient
@@ -62,6 +66,10 @@ export async function runSmB6(options: ClientOptions): Promise<void> {
       !line.includes(`spot-actor-disconnected|rid=play-a|spot=${spotRid}|actor=${leaveActorId}`)),
     'SM-B6 explicit leave incorrectly emitted disconnect evidence.'
   );
+  await postJson<string[]>(options.playAUrl, '/evidence/wait', {
+    containsAll: [`entry-disconnected|rid=play-a|actor=${leaveActorId}`],
+    timeoutMilliseconds: 10000
+  } satisfies EvidenceWaitReq);
 
   const disconnectClient = createStreamClient(options.sessionAStreamEndpoint);
   await disconnectClient.connect();
@@ -76,7 +84,15 @@ export async function runSmB6(options: ClientOptions): Promise<void> {
       .packetName('UserSpotAuthReq')
       .timeout(5000)
       .submit<AuthRes>();
+    await postJson<string[]>(options.playAUrl, '/evidence/wait', {
+      containsAll: [`entry-joined|rid=play-a|actor=${disconnectActorId}`],
+      timeoutMilliseconds: 10000
+    } satisfies EvidenceWaitReq);
     await joinUserSpotActor(disconnectClient, spotRid, disconnectActorId);
+    await postJson<string[]>(options.playAUrl, '/evidence/wait', {
+      containsAll: [`spot-actor-joined|rid=play-a|spot=${spotRid}|actor=${disconnectActorId}`],
+      timeoutMilliseconds: 10000
+    } satisfies EvidenceWaitReq);
   } finally {
     await disconnectClient.close();
   }

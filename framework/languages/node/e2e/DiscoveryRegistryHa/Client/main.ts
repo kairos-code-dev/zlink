@@ -1,5 +1,18 @@
 import { parseClientOptions } from './Support/client-options';
-import { runDrA1, runDrA2, runDrA3, runDrA4, runDrB1, runDrB2, runDrB3, runDrC1, runDrC2, runDrC3, runDrD1, runDrD2, runDrD3, runDrD4 } from './Scenarios/basic-discovery-scenario';
+import { runDrA1 } from './Scenarios/BasicDiscoveryScenario';
+import { runDrA2 } from './Scenarios/DrA2ClusterBridgeScenario';
+import { runDrA3 } from './Scenarios/DrA3ClusterBridgeScenario';
+import { runDrA4 } from './Scenarios/DrA4ThirdRegistryScenario';
+import { runDrB1 } from './Scenarios/DrB1FailoverScenario';
+import { runDrB2 } from './Scenarios/DrB2FailoverScenario';
+import { runDrB3 } from './Scenarios/DrB3RecoveryScenario';
+import { runDrC1 } from './Scenarios/DrC1EmbeddedRegistryScenario';
+import { runDrC2 } from './Scenarios/DrC2EmbeddedRegistryScenario';
+import { runDrC3 } from './Scenarios/DrC3EmbeddedRegistryScenario';
+import { runDrD1 } from './Scenarios/DrD1DirectEndpointScenario';
+import { runDrD2 } from './Scenarios/DrD2DirectEndpointScenario';
+import { runDrD3 } from './Scenarios/DrD3DirectEndpointScenario';
+import { runDrD4 } from './Scenarios/DrD4DirectEndpointScenario';
 
 async function main(): Promise<void> {
   const options = parseClientOptions(process.argv.slice(2));

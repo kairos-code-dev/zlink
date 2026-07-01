@@ -6,48 +6,49 @@
 
 | Scenario | .NET 기준 파일 | Node.js 대상 파일 | 상태 | 비고 |
 |----------|----------------|-------------------|------|------|
-| DR-A1 | `Client/Scenarios/BasicDiscoveryScenario.cs` | `Client/Scenarios/basic-discovery-scenario.ts` | done | 단일 registry baseline |
-| DR-A2 | `Client/Scenarios/DrA2ClusterBridgeScenario.cs` | `Client/Scenarios/basic-discovery-scenario.ts` | done | 2 registry peer 합산과 reg-2 only consumer request |
-| DR-A3 | `Client/Scenarios/DrA3ClusterBridgeScenario.cs` | `Client/Scenarios/basic-discovery-scenario.ts` | done | 3 registry peer 합산과 registry별 consumer request |
-| DR-A4 | `Client/Scenarios/DrA4ThirdRegistryScenario.cs` | `Client/Scenarios/basic-discovery-scenario.ts` | done | 같은 rid 다른 endpoint 충돌 광고와 bounded request/evidence |
-| DR-B1 | `Client/Scenarios/DrB1FailoverScenario.cs` | `Client/Scenarios/basic-discovery-scenario.ts` | done | late-start registry 합류와 consumer request |
-| DR-B2 | `Client/Scenarios/DrB2FailoverScenario.cs` | `Client/Scenarios/basic-discovery-scenario.ts`, `Server/Consumer/Configuration/consumer-options.ts`, `Server/Consumer/consumer-host-factory.ts`, `run_e2e.sh`, `feature-map.ko.md` | done | live+stopped endpoint consumer request와 provider evidence를 `logs/20260630-043800-2668198`로 검증 |
-| DR-B3 | `Client/Scenarios/DrB3RecoveryScenario.cs` | `Client/Scenarios/basic-discovery-scenario.ts` | done | peer flapping 후 recovered/survivor registry request |
-| DR-C1 | `Client/Scenarios/DrC1EmbeddedRegistryScenario.cs` | `Client/Scenarios/basic-discovery-scenario.ts` | done | live registry request와 dead registry bounded failure |
-| DR-C2 | `Client/Scenarios/DrC2EmbeddedRegistryScenario.cs` | `Client/Scenarios/basic-discovery-scenario.ts` | done | recovered registry peer 합산과 request |
-| DR-C3 | `Client/Scenarios/DrC3EmbeddedRegistryScenario.cs` | `Client/Scenarios/basic-discovery-scenario.ts`, `Client/Support/managed-process.ts` | done | full registry outage, recovery, api-c re-advertise |
-| DR-D1 | `Client/Scenarios/DrD1DirectEndpointScenario.cs` | `Client/Scenarios/basic-discovery-scenario.ts` | done | embedded registry+provider deployment |
-| DR-D2 | `Client/Scenarios/DrD2DirectEndpointScenario.cs` | `Client/Scenarios/basic-discovery-scenario.ts` | done | standalone registry deployment 대조 |
-| DR-D3 | `Client/Scenarios/DrD3DirectEndpointScenario.cs` | `Client/Scenarios/basic-discovery-scenario.ts` | done | embedded+standalone mixed cluster |
-| DR-D4 | `Client/Scenarios/DrD4DirectEndpointScenario.cs` | `Client/Scenarios/basic-discovery-scenario.ts`, `Server/Probe/` | done | in-process query와 remote topology query 비교 |
+| DR-A1 | `Client/Scenarios/BasicDiscoveryScenario.cs` | `Client/Scenarios/BasicDiscoveryScenario.ts` | done | 단일 registry baseline |
+| DR-A2 | `Client/Scenarios/DrA2ClusterBridgeScenario.cs` | `Client/Scenarios/DrA2ClusterBridgeScenario.ts` | done | 2 registry peer 합산과 reg-2 only consumer request |
+| DR-A3 | `Client/Scenarios/DrA3ClusterBridgeScenario.cs` | `Client/Scenarios/DrA3ClusterBridgeScenario.ts` | done | 3 registry peer 합산과 registry별 consumer request |
+| DR-A4 | `Client/Scenarios/DrA4ThirdRegistryScenario.cs` | `Client/Scenarios/DrA4ThirdRegistryScenario.ts` | done | 같은 rid 다른 endpoint 충돌 광고와 bounded request/evidence |
+| DR-B1 | `Client/Scenarios/DrB1FailoverScenario.cs` | `Client/Scenarios/DrB1FailoverScenario.ts` | done | late-start registry 합류와 consumer request |
+| DR-B2 | `Client/Scenarios/DrB2FailoverScenario.cs` | `Client/Scenarios/DrB2FailoverScenario.ts`, `Server/Consumer/Configuration/consumer-options.ts`, `Server/Consumer/consumer-host-factory.ts`, `run_e2e.sh`, `feature-map.ko.md` | done | live+stopped endpoint consumer request와 provider evidence를 `logs/20260702-050712-85448`로 검증 |
+| DR-B3 | `Client/Scenarios/DrB3RecoveryScenario.cs` | `Client/Scenarios/DrB3RecoveryScenario.ts` | done | peer flapping 후 recovered/survivor registry request |
+| DR-C1 | `Client/Scenarios/DrC1EmbeddedRegistryScenario.cs` | `Client/Scenarios/DrC1EmbeddedRegistryScenario.ts` | done | live registry request와 dead registry bounded failure |
+| DR-C2 | `Client/Scenarios/DrC2EmbeddedRegistryScenario.cs` | `Client/Scenarios/DrC2EmbeddedRegistryScenario.ts` | done | recovered registry peer 합산과 request |
+| DR-C3 | `Client/Scenarios/DrC3EmbeddedRegistryScenario.cs` | `Client/Scenarios/DrC3EmbeddedRegistryScenario.ts`, `Client/Support/managed-process.ts`, `Client/Support/discovery-scenario-support.ts` | done | full registry outage, recovery, api-c re-advertise |
+| DR-D1 | `Client/Scenarios/DrD1DirectEndpointScenario.cs` | `Client/Scenarios/DrD1DirectEndpointScenario.ts` | done | embedded registry+provider deployment |
+| DR-D2 | `Client/Scenarios/DrD2DirectEndpointScenario.cs` | `Client/Scenarios/DrD2DirectEndpointScenario.ts` | done | standalone registry deployment 대조 |
+| DR-D3 | `Client/Scenarios/DrD3DirectEndpointScenario.cs` | `Client/Scenarios/DrD3DirectEndpointScenario.ts` | done | embedded+standalone mixed cluster |
+| DR-D4 | `Client/Scenarios/DrD4DirectEndpointScenario.cs` | `Client/Scenarios/DrD4DirectEndpointScenario.ts`, `Server/Probe/` | done | in-process query와 remote topology query 비교 |
 
 ## File Mapping
 
 | .NET 기준 파일 | Node.js 대상 파일 | 분류 | 상태 | 비고 |
 |----------------|-------------------|------|------|------|
 | `.gitignore` | `.gitignore`, `logs/.gitignore` | ignore | done | dist와 logs 산출물 제외 |
-| `feature-map.ko.md` | `feature-map.ko.md` | feature-map | done | DR-B2 포함 구현 scenario 검증 결과 명시 |
-| `run_e2e.sh` | `run_e2e.sh`, `feature-map.ko.md` | runner | done | DR-B2 실행 경로와 pass proof를 `logs/20260630-043800-2668198`로 확인 |
+| `feature-map.ko.md` | `feature-map.ko.md` | feature-map | done | full sweep 검증 결과 명시 |
+| `run_e2e.sh` | `run_e2e.sh`, `feature-map.ko.md` | runner | done | bare 실행 기본값은 `all`이고 full sweep pass proof를 `logs/20260702-065342-62284`와 child log들로 확인 |
 | `Shared/DiscoveryRegistryHa.Shared.csproj` | `Shared/messages.ts` | project | done | Node는 별도 shared package 없이 TypeScript shared module로 대응 |
 | `Shared/Messages.cs` | `Shared/messages.ts` | shared | done | 현재 구현 scenario의 request/reply/evidence 타입 포함. DR-B2에 별도 payload 타입은 필요하지 않음 |
 | `Client/DiscoveryRegistryHa.Client.csproj` | `Client/package.json`, `Client/tsconfig.json` | project | done | client build 설정 |
 | `Client/Program.cs` | `Client/main.ts`, `feature-map.ko.md` | client-entry | done | DR-B2 선택과 실행 dispatch를 지원한다. |
 | `Client/Support/ClientOptions.cs` | `Client/Support/client-options.ts`, `feature-map.ko.md` | support | done | DR-B2 client에 필요한 입력은 기존 옵션으로 충분하다. |
-| `Client/Support/DiscoveryApiResult.cs` | `Client/Scenarios/basic-discovery-scenario.ts` | support | done | DR-D4 topology snapshot 비교용 구조를 scenario 내부에서 좁게 정의 |
+| `Client/Support/DiscoveryApiResult.cs` | `Client/Support/discovery-scenario-support.ts`, `Client/Scenarios/DrD4DirectEndpointScenario.ts` | support | done | DR-D4 topology snapshot 비교용 구조를 support와 scenario에 분리 |
 | `Client/Support/ScenarioAssert.cs` | `Client/Support/scenario-assert.ts` | support | done | assertion helper |
-| `Client/Scenarios/BasicDiscoveryScenario.cs` | `Client/Scenarios/basic-discovery-scenario.ts` | scenario | done | `DR-A1` |
-| `Client/Scenarios/DrA2ClusterBridgeScenario.cs` | `Client/Scenarios/basic-discovery-scenario.ts` | scenario | done | `DR-A2` |
-| `Client/Scenarios/DrA3ClusterBridgeScenario.cs` | `Client/Scenarios/basic-discovery-scenario.ts` | scenario | done | `DR-A3` |
-| `Client/Scenarios/DrA4ThirdRegistryScenario.cs` | `Client/Scenarios/basic-discovery-scenario.ts` | scenario | done | `DR-A4` |
-| `Client/Scenarios/DrB1FailoverScenario.cs` | `Client/Scenarios/basic-discovery-scenario.ts` | scenario | done | `DR-B1` |
-| `Client/Scenarios/DrB3RecoveryScenario.cs` | `Client/Scenarios/basic-discovery-scenario.ts` | scenario | done | `DR-B3` |
-| `Client/Scenarios/DrC1EmbeddedRegistryScenario.cs` | `Client/Scenarios/basic-discovery-scenario.ts` | scenario | done | `DR-C1` |
-| `Client/Scenarios/DrC2EmbeddedRegistryScenario.cs` | `Client/Scenarios/basic-discovery-scenario.ts` | scenario | done | `DR-C2` |
-| `Client/Scenarios/DrC3EmbeddedRegistryScenario.cs` | `Client/Scenarios/basic-discovery-scenario.ts` | scenario | done | `DR-C3` |
-| `Client/Scenarios/DrD1DirectEndpointScenario.cs` | `Client/Scenarios/basic-discovery-scenario.ts` | scenario | done | `DR-D1` |
-| `Client/Scenarios/DrD2DirectEndpointScenario.cs` | `Client/Scenarios/basic-discovery-scenario.ts` | scenario | done | `DR-D2` |
-| `Client/Scenarios/DrD3DirectEndpointScenario.cs` | `Client/Scenarios/basic-discovery-scenario.ts` | scenario | done | `DR-D3` |
-| `Client/Scenarios/DrD4DirectEndpointScenario.cs` | `Client/Scenarios/basic-discovery-scenario.ts` | scenario | done | `DR-D4` |
+| `Client/Scenarios/BasicDiscoveryScenario.cs` | `Client/Scenarios/BasicDiscoveryScenario.ts` | scenario | done | `DR-A1` |
+| `Client/Scenarios/DrA2ClusterBridgeScenario.cs` | `Client/Scenarios/DrA2ClusterBridgeScenario.ts` | scenario | done | `DR-A2` |
+| `Client/Scenarios/DrA3ClusterBridgeScenario.cs` | `Client/Scenarios/DrA3ClusterBridgeScenario.ts` | scenario | done | `DR-A3` |
+| `Client/Scenarios/DrA4ThirdRegistryScenario.cs` | `Client/Scenarios/DrA4ThirdRegistryScenario.ts` | scenario | done | `DR-A4` |
+| `Client/Scenarios/DrB1FailoverScenario.cs` | `Client/Scenarios/DrB1FailoverScenario.ts` | scenario | done | `DR-B1` |
+| `Client/Scenarios/DrB2FailoverScenario.cs` | `Client/Scenarios/DrB2FailoverScenario.ts` | scenario | done | `DR-B2` |
+| `Client/Scenarios/DrB3RecoveryScenario.cs` | `Client/Scenarios/DrB3RecoveryScenario.ts` | scenario | done | `DR-B3` |
+| `Client/Scenarios/DrC1EmbeddedRegistryScenario.cs` | `Client/Scenarios/DrC1EmbeddedRegistryScenario.ts` | scenario | done | `DR-C1` |
+| `Client/Scenarios/DrC2EmbeddedRegistryScenario.cs` | `Client/Scenarios/DrC2EmbeddedRegistryScenario.ts` | scenario | done | `DR-C2` |
+| `Client/Scenarios/DrC3EmbeddedRegistryScenario.cs` | `Client/Scenarios/DrC3EmbeddedRegistryScenario.ts` | scenario | done | `DR-C3` |
+| `Client/Scenarios/DrD1DirectEndpointScenario.cs` | `Client/Scenarios/DrD1DirectEndpointScenario.ts` | scenario | done | `DR-D1` |
+| `Client/Scenarios/DrD2DirectEndpointScenario.cs` | `Client/Scenarios/DrD2DirectEndpointScenario.ts` | scenario | done | `DR-D2` |
+| `Client/Scenarios/DrD3DirectEndpointScenario.cs` | `Client/Scenarios/DrD3DirectEndpointScenario.ts` | scenario | done | `DR-D3` |
+| `Client/Scenarios/DrD4DirectEndpointScenario.cs` | `Client/Scenarios/DrD4DirectEndpointScenario.ts` | scenario | done | `DR-D4` |
 | `Server/Consumer/DiscoveryRegistryHa.Consumer.csproj` | `Server/Consumer/package.json`, `Server/Consumer/tsconfig.json` | project | done | consumer role build 설정 |
 | `Server/Consumer/Program.cs` | `Server/Consumer/main.ts` | server-entry | done | consumer 실행 진입점 |
 | `Server/Consumer/ConsumerHostFactory.cs` | `Server/Consumer/consumer-host-factory.ts`, `feature-map.ko.md` | server-role | done | repeated registry endpoint를 discovery client 구성에 반영한다. |

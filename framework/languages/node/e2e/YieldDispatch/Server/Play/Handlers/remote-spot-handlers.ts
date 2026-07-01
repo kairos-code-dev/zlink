@@ -7,7 +7,7 @@ import type {
   YieldReq,
   YieldDispatchRes
 } from '../../../Shared/messages';
-import { EvidenceStore } from '../../Support/evidence-store';
+import { EvidenceStore } from '../Support/evidence-store';
 import type { YieldProbeSpot } from '../Spots/yield-probe-spot';
 
 @Injectable()

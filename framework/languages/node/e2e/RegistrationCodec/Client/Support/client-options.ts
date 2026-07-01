@@ -1,7 +1,5 @@
 export interface ClientOptions {
   readonly serverUrl: string;
-  readonly protobufUrl: string;
-  readonly messagePackUrl: string;
   readonly jsonOnlyUrl: string;
   readonly codecRequesterUrl: string;
   readonly invalidMain: string;
@@ -21,8 +19,6 @@ export function parseClientOptions(args: readonly string[]): ClientOptions {
   }
   return {
     serverUrl: required(values, 'server-url'),
-    protobufUrl: required(values, 'protobuf-url'),
-    messagePackUrl: required(values, 'messagepack-url'),
     jsonOnlyUrl: required(values, 'json-only-url'),
     codecRequesterUrl: required(values, 'codec-requester-url'),
     invalidMain: required(values, 'invalid-main'),

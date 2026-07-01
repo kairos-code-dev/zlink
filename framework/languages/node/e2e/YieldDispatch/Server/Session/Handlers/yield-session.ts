@@ -39,7 +39,7 @@ import type {
   ZLinkSessionFactory
 } from '@zlink-systems/framework';
 import { ZLINK_ROUTE_CLIENT, ZLINK_SPOT_OUTBOUND } from '@zlink-systems/nestjs';
-import { EvidenceStore } from '../../Support/evidence-store';
+import { EvidenceStore } from '../Support/evidence-store';
 
 class YieldSession implements ZLinkSession {
   constructor(

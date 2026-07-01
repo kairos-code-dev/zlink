@@ -37,6 +37,11 @@ export async function runSmB4(options: ClientOptions): Promise<void> {
       .submit());
     ensure(auth.actorId === actorId && auth.nodeRid === 'play-b', 'SM-B4 auth reply mismatch.');
 
+    await postJson<string[]>(options.playBUrl, '/evidence/wait', {
+      containsAll: [`entry-joined|rid=play-b|actor=${actorId}`],
+      timeoutMilliseconds: 10000
+    } satisfies EvidenceWaitReq);
+
     const reply = decodeStreamReply<ActorPingRes>(await client
       .request({ value: 'sm-b4' } satisfies ActorPingReq)
       .packetName('ActorPingReq')
@@ -57,6 +62,10 @@ export async function runSmB4(options: ClientOptions): Promise<void> {
   } finally {
     await client.close();
   }
+  await postJson<string[]>(options.playBUrl, '/evidence/wait', {
+    containsAll: [`entry-disconnected|rid=play-b|actor=${actorId}`],
+    timeoutMilliseconds: 10000
+  } satisfies EvidenceWaitReq);
 
   console.log('scenario SM-B4 passed');
 }

@@ -133,12 +133,13 @@ E2E 코드에서 우회하지 않는다. 먼저 원인을 확인하고, 필요�
 
 ### 6. `SpotService`
 
-현재 문제:
+확인 결과:
 
-- Node `SpotService` Client에는 `SM-F4`, `SM-G1`, `SM-G3`, `SM-G4`, `SM-Q9` scenario가 등록되어 있지만,
-  `all` 실행 목록에서는 빠져 있다.
+- Node `SpotService` Client에는 `SM-F4`, `SM-G1`, `SM-G3`, `SM-G4`, `SM-Q9` scenario가 등록되어 있었지만,
+  기존 `all` 실행 목록에서는 빠져 있었다.
 - `.NET` `SpotService` runner의 full sweep은 `SM-F4`, `SM-G1`, `SM-G3`, `SM-G4`, `SM-Q9`에 대응하는 child
   group을 실행한다.
+- Node runner를 같은 child group 구조로 맞췄고 `all` PASS 로그를 남겼다.
 
 수정 방향:
 
@@ -154,11 +155,11 @@ E2E 코드에서 우회하지 않는다. 먼저 원인을 확인하고, 필요�
 - [x] `DiscoveryRegistryHa` scenario 파일을 개별 파일로 나누고 bare runner 기본값을 full sweep으로 맞춘다.
 - [x] `RuntimeMonitoring` `FilteredService`, `ThrowingService`를 별도 role로 분리한다.
 - [x] `YieldDispatch` top-level `Server/Support`를 role-local support 또는 `Shared`로 재분류한다.
-- [ ] `SpotService` all mode에 `SM-F4`, `SM-G1`, `SM-G3`, `SM-G4`, `SM-Q9`를 포함한다.
-- [ ] 각 config의 `run_e2e.sh`에 공통 local E2E 대기 기준을 적용한다.
-- [ ] 각 config의 `porting-inventory.ko.md`와 `feature-map.ko.md`를 실제 구현 상태와 맞춘다.
-- [ ] framework 기능 누락이나 버그가 나오면 원인을 고치고 회귀테스트를 추가한다.
-- [ ] 각 config의 `run_e2e.sh`를 실행하고 scenario marker와 role process evidence를 확인한다.
+- [x] `SpotService` all mode에 `SM-F4`, `SM-G1`, `SM-G3`, `SM-G4`, `SM-Q9`를 포함한다.
+- [x] 각 config의 `run_e2e.sh`에 공통 local E2E 대기 기준을 적용한다.
+- [x] 각 config의 `porting-inventory.ko.md`와 `feature-map.ko.md`를 실제 구현 상태와 맞춘다.
+- [x] framework 기능 누락이나 버그가 나오면 원인을 고치고 회귀테스트를 추가한다.
+- [x] 각 config의 `run_e2e.sh`를 실행하고 scenario marker와 role process evidence를 확인한다.
 
 ## 완료 확인 절차
 
@@ -174,11 +175,13 @@ E2E 코드에서 우회하지 않는다. 먼저 원인을 확인하고, 필요�
 
 마지막에는 Codex 에이전트로 이 문서를 기준으로 반복 리뷰한다.
 
-- [ ] `.NET` source-only inventory와 Node.js inventory를 다시 대조한다.
-- [ ] Client가 framework runtime으로 뜨는 항목이 남아 있는지 검색한다.
-- [ ] `.NET` source role이 빠졌거나 Node.js extra role이 남았는지 확인한다.
-- [ ] scenario file 분류가 `.NET Client/Scenarios`와 공통 E2E scenario ID에 대응되는지 확인한다.
-- [ ] public API gap을 내부 helper나 test-only adapter로 숨긴 항목이 없는지 확인한다.
-- [ ] framework 기능 누락 또는 버그를 E2E 코드 우회로 처리한 항목이 없는지 확인한다.
-- [ ] 누락 항목이 나오면 이 문서의 수정 목록과 체크리스트에 추가한 뒤 다시 리뷰한다.
-- [ ] Codex 리뷰 결과가 `NO MISSING NODE ITEMS`가 될 때까지 반복한다.
+- [x] `.NET` source-only inventory와 Node.js inventory를 다시 대조한다.
+- [x] Client가 framework runtime으로 뜨는 항목이 남아 있는지 검색한다.
+- [x] `.NET` source role이 빠졌거나 Node.js extra role이 남았는지 확인한다.
+- [x] scenario file 분류가 `.NET Client/Scenarios`와 공통 E2E scenario ID에 대응되는지 확인한다.
+- [x] public API gap을 내부 helper나 test-only adapter로 숨긴 항목이 없는지 확인한다.
+- [x] framework 기능 누락 또는 버그를 E2E 코드 우회로 처리한 항목이 없는지 확인한다.
+- [x] 누락 항목이 나오면 이 문서의 수정 목록과 체크리스트에 추가한 뒤 다시 리뷰한다.
+- [x] Codex 리뷰 결과가 `NO MISSING NODE ITEMS`가 될 때까지 반복한다.
+
+리뷰 결과: `NO MISSING NODE ITEMS`

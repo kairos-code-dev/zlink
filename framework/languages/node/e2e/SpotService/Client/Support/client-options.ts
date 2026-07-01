@@ -3,6 +3,7 @@ export interface ClientOptions {
   readonly playBUrl: string;
   readonly gatewayUrl: string;
   readonly sessionAUrl: string;
+  readonly sessionBUrl: string;
   readonly sessionAStreamEndpoint: string;
   readonly sessionATlsStreamEndpoint: string;
   readonly sessionBStreamEndpoint: string;
@@ -28,6 +29,7 @@ export function parseClientOptions(args: readonly string[]): ClientOptions {
     playBUrl: required(values, 'play-b-url'),
     gatewayUrl: required(values, 'gateway-url'),
     sessionAUrl: required(values, 'session-a-url'),
+    sessionBUrl: required(values, 'session-b-url'),
     sessionAStreamEndpoint: required(values, 'session-a-stream-endpoint'),
     sessionATlsStreamEndpoint: values.get('session-a-tls-stream-endpoint') ?? '',
     sessionBStreamEndpoint: required(values, 'session-b-stream-endpoint'),

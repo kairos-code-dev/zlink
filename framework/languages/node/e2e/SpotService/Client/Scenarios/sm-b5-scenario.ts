@@ -37,6 +37,11 @@ export async function runSmB5(options: ClientOptions): Promise<void> {
       .submit());
     ensure(auth.actorId === actorId && auth.nodeRid === 'play-a', 'SM-B5 auth reply mismatch.');
 
+    await postJson<string[]>(options.playAUrl, '/evidence/wait', {
+      containsAll: [`entry-joined|rid=play-a|actor=${actorId}`],
+      timeoutMilliseconds: 10000
+    } satisfies EvidenceWaitReq);
+
     let failed = false;
     try {
       await client
@@ -63,6 +68,10 @@ export async function runSmB5(options: ClientOptions): Promise<void> {
   } finally {
     await client.close();
   }
+  await postJson<string[]>(options.playAUrl, '/evidence/wait', {
+    containsAll: [`entry-disconnected|rid=play-a|actor=${actorId}`],
+    timeoutMilliseconds: 10000
+  } satisfies EvidenceWaitReq);
 
   console.log('scenario SM-B5 passed');
 }

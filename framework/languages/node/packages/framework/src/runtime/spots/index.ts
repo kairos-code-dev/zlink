@@ -2368,29 +2368,43 @@ export class ZLinkEntrySpotActivation {
         });
         return undefined;
       }
-      const response = await dispatcher.dispatchRequest(actor, header.name, payload, {
-        metadata: Object.fromEntries(header.metadata)
-      });
-      flowIfEnabled(this.options.dispatchErrors?.flow, ZLinkMessageFlowOutcome.Replied)?.trace({
-        outcome: ZLinkMessageFlowOutcome.Replied,
-        surface: ZLinkDispatchErrorSurface.SpotActor,
-        messageKind: ZLinkDispatchMessageKind.ActorRequest,
-        packetName: header.name,
-        spotRid: String(this.options.nativeSpot.routingId),
-        actorId,
-        correlationId: header.correlationId ?? header.requestSeq.toString()
-      });
+      const requestSeq = header.requestSeq;
       if (returnResponse || this.options.actorResponseSender === undefined) {
+        const response = await dispatcher.dispatchRequest(actor, header.name, payload, {
+          metadata: Object.fromEntries(header.metadata)
+        });
+        flowIfEnabled(this.options.dispatchErrors?.flow, ZLinkMessageFlowOutcome.Replied)?.trace({
+          outcome: ZLinkMessageFlowOutcome.Replied,
+          surface: ZLinkDispatchErrorSurface.SpotActor,
+          messageKind: ZLinkDispatchMessageKind.ActorRequest,
+          packetName: header.name,
+          spotRid: String(this.options.nativeSpot.routingId),
+          actorId,
+          correlationId: header.correlationId ?? requestSeq.toString()
+        });
         return response;
       }
-      await this.options.actorResponseSender(
-        actor,
-        header.name,
-        header.requestSeq,
-        response,
-        new Map(),
-        undefined
-      );
+      await dispatcher.dispatchRequestThen(actor, header.name, payload, {
+        metadata: Object.fromEntries(header.metadata)
+      }, async (response) => {
+        flowIfEnabled(this.options.dispatchErrors?.flow, ZLinkMessageFlowOutcome.Replied)?.trace({
+          outcome: ZLinkMessageFlowOutcome.Replied,
+          surface: ZLinkDispatchErrorSurface.SpotActor,
+          messageKind: ZLinkDispatchMessageKind.ActorRequest,
+          packetName: header.name,
+          spotRid: String(this.options.nativeSpot.routingId),
+          actorId,
+          correlationId: header.correlationId ?? requestSeq.toString()
+        });
+        await this.options.actorResponseSender?.(
+          actor,
+          header.name,
+          requestSeq,
+          response,
+          new Map(),
+          undefined
+        );
+      });
       return undefined;
     } catch (error) {
       this.options.dispatchErrors?.report({
@@ -2660,6 +2674,8 @@ export class DefaultZLinkSpotManager implements ZLinkSpotManager {
     }
     const dispatcher = this.createActorDispatcher(activation);
     const response = await dispatcher.admitActorJoin(actor, request, async () => {
+      await commit(activation.spot);
+      activation.actors.set(actor.actorId, actor);
       const entryLeave = this.options.entrySpotCallbacks?.onLeaveActor(actor, signal);
       if (entryLeave !== undefined) {
         void entryLeave.catch((error) => {
@@ -2674,8 +2690,6 @@ export class DefaultZLinkSpotManager implements ZLinkSpotManager {
           });
         });
       }
-      await commit(activation.spot);
-      activation.actors.set(actor.actorId, actor);
     });
     return {
       accepted: response.accepted,
@@ -3233,29 +3247,43 @@ export class DefaultZLinkSpotManager implements ZLinkSpotManager {
         });
         return undefined;
       }
-      const response = await dispatcher.dispatchRequest(actor, header.name, payload, {
-        metadata: Object.fromEntries(header.metadata)
-      });
-      flowIfEnabled(this.options.dispatchErrors?.flow, ZLinkMessageFlowOutcome.Replied)?.trace({
-        outcome: ZLinkMessageFlowOutcome.Replied,
-        surface: ZLinkDispatchErrorSurface.SpotActor,
-        messageKind: ZLinkDispatchMessageKind.ActorRequest,
-        packetName: header.name,
-        spotRid: String(activation.spotRid),
-        actorId,
-        correlationId: header.correlationId ?? header.requestSeq.toString()
-      });
+      const requestSeq = header.requestSeq;
       if (returnResponse || this.options.actorResponseSender === undefined) {
+        const response = await dispatcher.dispatchRequest(actor, header.name, payload, {
+          metadata: Object.fromEntries(header.metadata)
+        });
+        flowIfEnabled(this.options.dispatchErrors?.flow, ZLinkMessageFlowOutcome.Replied)?.trace({
+          outcome: ZLinkMessageFlowOutcome.Replied,
+          surface: ZLinkDispatchErrorSurface.SpotActor,
+          messageKind: ZLinkDispatchMessageKind.ActorRequest,
+          packetName: header.name,
+          spotRid: String(activation.spotRid),
+          actorId,
+          correlationId: header.correlationId ?? requestSeq.toString()
+        });
         return response;
       }
-      await this.options.actorResponseSender(
-        actor,
-        header.name,
-        header.requestSeq,
-        response,
-        new Map(),
-        undefined
-      );
+      await dispatcher.dispatchRequestThen(actor, header.name, payload, {
+        metadata: Object.fromEntries(header.metadata)
+      }, async (response) => {
+        flowIfEnabled(this.options.dispatchErrors?.flow, ZLinkMessageFlowOutcome.Replied)?.trace({
+          outcome: ZLinkMessageFlowOutcome.Replied,
+          surface: ZLinkDispatchErrorSurface.SpotActor,
+          messageKind: ZLinkDispatchMessageKind.ActorRequest,
+          packetName: header.name,
+          spotRid: String(activation.spotRid),
+          actorId,
+          correlationId: header.correlationId ?? requestSeq.toString()
+        });
+        await this.options.actorResponseSender?.(
+          actor,
+          header.name,
+          requestSeq,
+          response,
+          new Map(),
+          undefined
+        );
+      });
       return undefined;
     } catch (error) {
       this.options.dispatchErrors?.report({

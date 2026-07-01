@@ -8,9 +8,11 @@ import type {
   ActorPingReq,
   AuthRes,
   AuthReq,
+  EvidenceWaitReq,
   SlowActorPingReq
 } from '../../Shared/messages';
 import type { ClientOptions } from '../Support/client-options';
+import { postJson } from '../Support/http-client';
 import { ensure } from '../Support/scenario-assert';
 import { decodeStreamReply } from '../Support/stream-reply';
 
@@ -39,7 +41,12 @@ export async function runSmD8(options: ClientOptions): Promise<void> {
       .packetName('SlowActorPingReq')
       .timeout(10000)
       .submit();
-    await new Promise((resolve) => setTimeout(resolve, 100));
+    await postJson<string[]>(options.playAUrl, '/evidence/wait', {
+      containsAll: [
+        `actor-slow-ping-start|rid=play-a|actor=${actorId}|spot=play-a|value=before-disconnect`
+      ],
+      timeoutMilliseconds: 10000
+    } satisfies EvidenceWaitReq);
     await first.close();
 
     let pendingFailed = false;
@@ -49,7 +56,12 @@ export async function runSmD8(options: ClientOptions): Promise<void> {
       pendingFailed = true;
     }
     ensure(pendingFailed, 'SM-D8 expected pending request to fail after stream disconnect.');
-    await new Promise((resolve) => setTimeout(resolve, 1200));
+    await postJson<string[]>(options.playAUrl, '/evidence/wait', {
+      containsAll: [
+        `actor-slow-pingMsg|rid=play-a|actor=${actorId}|spot=play-a|value=before-disconnect`
+      ],
+      timeoutMilliseconds: 10000
+    } satisfies EvidenceWaitReq);
 
     second = createStreamClient(options.sessionAStreamEndpoint);
     await second.connect();

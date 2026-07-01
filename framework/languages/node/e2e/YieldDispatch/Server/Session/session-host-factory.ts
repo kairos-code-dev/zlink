@@ -4,8 +4,8 @@ import { NestFactory } from '@nestjs/core';
 import { ZLinkMessageFlowLogMode } from '@zlink-systems/framework';
 import { ZLinkModule, zlinkFramework } from '@zlink-systems/nestjs';
 import { YieldDispatchNames } from '../../Shared/messages';
-import { EvidenceStore } from '../Support/evidence-store';
-import { closeHttpServer, startHttpServer } from '../Support/http-server';
+import { EvidenceStore } from './Support/evidence-store';
+import { closeHttpServer, startHttpServer } from './Support/http-server';
 import { parseSessionOptions } from './Configuration/session-options';
 import { YieldSessionFactory } from './Handlers/yield-session';
 

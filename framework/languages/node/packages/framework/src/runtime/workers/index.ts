@@ -201,10 +201,10 @@ export class DefaultZLinkWorkerCall<T> implements ZLinkWorkerCall<T> {
     const pending = this.worker.schedule(this.work, this.selectedTimeoutMs, signal);
     void pending
       .then(
-        (result) => this.serial.post(() => callback(result, signal)),
+        (result) => Promise.resolve().then(() => this.serial.post(() => callback(result, signal))),
         (error) => onError === undefined
           ? undefined
-          : this.serial.post(() => onError(error, signal))
+          : Promise.resolve().then(() => this.serial.post(() => onError(error, signal)))
       )
       .catch(() => {
         // Callback failures must not create an unhandled rejection path; the

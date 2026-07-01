@@ -100,10 +100,40 @@ async function main(): Promise<void> {
     'SM-G4': () => runSmG4(options),
     'SM-Q9': () => runSmQ9(options)
   };
-  const defaultScenarioIds = ['SM-A1', 'SM-A2', 'SM-A3', 'SM-A4', 'SM-A5', 'SM-A6', 'SM-A7', 'SM-A8', 'SM-B1', 'SM-B2', 'SM-B3', 'SM-B4', 'SM-B5', 'SM-B6', 'SM-B7', 'SM-B8', 'SM-C1', 'SM-C2', 'SM-C3', 'SM-C4', 'SM-D1', 'SM-D2', 'SM-D3', 'SM-D4', 'SM-D5', 'SM-D6', 'SM-D7', 'SM-D8', 'SM-D9', 'SM-D10', 'SM-D11', 'SM-D12', 'SM-D13', 'SM-D14', 'SM-E1', 'SM-E2', 'SM-E3', 'SM-E4', 'SM-F1', 'SM-F2', 'SM-F3', 'SM-F5', 'SM-G2'];
+  const defaultScenarioIds = ['SM-A1', 'SM-A2', 'SM-A3', 'SM-A4', 'SM-A5', 'SM-A6', 'SM-A7', 'SM-A8', 'SM-B1', 'SM-B2', 'SM-B3', 'SM-B4', 'SM-B5', 'SM-B6', 'SM-B7', 'SM-B8', 'SM-C1', 'SM-C2', 'SM-C3', 'SM-C4', 'SM-D1', 'SM-D2', 'SM-D3', 'SM-D4', 'SM-D5', 'SM-D6', 'SM-D7', 'SM-D8', 'SM-D9', 'SM-D10', 'SM-D11', 'SM-D12', 'SM-D13', 'SM-D14', 'SM-E1', 'SM-E2', 'SM-E3', 'SM-E4', 'SM-F1', 'SM-F2', 'SM-F3', 'SM-F4', 'SM-F5'];
+  const operationGroups: Record<string, readonly string[]> = {
+    'default-batch': defaultScenarioIds,
+    'sm-b1-b2-b3-b5': ['SM-B1', 'SM-B2', 'SM-B3', 'SM-B5'],
+    'sm-b6': ['SM-B6'],
+    'sm-b8': ['SM-B8'],
+    'sm-d1-d6': ['SM-D1', 'SM-D2', 'SM-D6'],
+    'sm-d3': ['SM-D3'],
+    'sm-d4': ['SM-D4'],
+    'sm-d5': ['SM-D5'],
+    'sm-d7': ['SM-D7'],
+    'sm-d8': ['SM-D8'],
+    'sm-d9-d11-d13': ['SM-D9', 'SM-D11', 'SM-D13'],
+    'sm-d10': ['SM-D10'],
+    'sm-d12': ['SM-D12'],
+    'sm-d14': ['SM-D14'],
+    'sm-c1-c2': ['SM-C1', 'SM-C2'],
+    'sm-c3': ['SM-C3'],
+    'sm-e4': ['SM-E4'],
+    'sm-e1-f4': ['SM-E1', 'SM-F4'],
+    'sm-e2-e3': ['SM-E2', 'SM-E3'],
+    'sm-a7-a8-c4': ['SM-A7', 'SM-A8', 'SM-C4'],
+    'sm-a3-a6-b4-b7': ['SM-A3', 'SM-A6', 'SM-B4', 'SM-B7'],
+    'sm-a5': ['SM-A5'],
+    'sm-a1-a2-a4-f1-f2': ['SM-A1', 'SM-A2', 'SM-A4', 'SM-F1', 'SM-F2']
+  };
 
+  const selectedGroup = operationGroups[options.scenario.toLowerCase()];
   if (options.scenario.toLowerCase() === 'all') {
     for (const scenarioId of defaultScenarioIds) {
+      await scenarios[scenarioId]();
+    }
+  } else if (selectedGroup !== undefined) {
+    for (const scenarioId of selectedGroup) {
       await scenarios[scenarioId]();
     }
   } else {

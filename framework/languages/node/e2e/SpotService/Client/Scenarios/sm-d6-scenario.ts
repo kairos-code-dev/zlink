@@ -8,15 +8,17 @@ import type {
   ActorPushNotify,
   ActorPushReq,
   AuthRes,
-  AuthReq
+  AuthReq,
+  EvidenceWaitReq
 } from '../../Shared/messages';
 import type { ClientOptions } from '../Support/client-options';
+import { postJson } from '../Support/http-client';
 import { ensure } from '../Support/scenario-assert';
 import { decodeStreamReply } from '../Support/stream-reply';
 
 export async function runSmD6(options: ClientOptions): Promise<void> {
   const bound = createStreamClient(options.sessionAStreamEndpoint);
-  const unbound = createStreamClient(options.sessionAStreamEndpoint);
+  const unbound = createStreamClient(options.sessionBStreamEndpoint);
   let unboundTargetPushCount = 0;
   const unboundSubscription = unbound.on<ActorPushNotify>('ActorPushNotify', (message) => {
     if (message.payload.actorId === 'actor-sm-d6') {
@@ -36,6 +38,10 @@ export async function runSmD6(options: ClientOptions): Promise<void> {
       .packetName('AuthReq')
       .timeout(5000)
       .submit<AuthRes>();
+    await postJson<string[]>(options.playAUrl, '/evidence/wait', {
+      containsAll: ['entry-joined|rid=play-a|actor=actor-sm-d6'],
+      timeoutMilliseconds: 10000
+    } satisfies EvidenceWaitReq);
     await unbound
       .request({
         actorId: 'actor-sm-d6-shadow',
@@ -45,6 +51,10 @@ export async function runSmD6(options: ClientOptions): Promise<void> {
       .packetName('AuthReq')
       .timeout(5000)
       .submit<AuthRes>();
+    await postJson<string[]>(options.playBUrl, '/evidence/wait', {
+      containsAll: ['entry-joined|rid=play-b|actor=actor-sm-d6-shadow'],
+      timeoutMilliseconds: 10000
+    } satisfies EvidenceWaitReq);
 
     const pushed = bound.waitFor<ActorPushNotify>('ActorPushNotify')
       .where((message) => message.payload.actorId === 'actor-sm-d6')

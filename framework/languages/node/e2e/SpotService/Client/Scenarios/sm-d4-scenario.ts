@@ -8,11 +8,13 @@ import type {
   ActorPingReq,
   ActorPushNotify,
   ActorPushReq,
+  EvidenceWaitReq,
   MultiBindRes,
   MultiBindReq
 } from '../../Shared/messages';
 import { SpotServiceNames } from '../../Shared/messages';
 import type { ClientOptions } from '../Support/client-options';
+import { postJson } from '../Support/http-client';
 import { ensure } from '../Support/scenario-assert';
 import { decodeStreamReply } from '../Support/stream-reply';
 
@@ -96,6 +98,10 @@ export async function runSmD4(options: ClientOptions): Promise<void> {
   } finally {
     await client.close();
   }
+  await postJson<string[]>(options.playAUrl, '/evidence/wait', {
+    containsAll: [`entry-disconnected|rid=play-a|actor=${firstActorId}`],
+    timeoutMilliseconds: 10000
+  } satisfies EvidenceWaitReq);
 
   console.log('scenario SM-D4 passed');
 }

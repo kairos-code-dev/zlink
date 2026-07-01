@@ -60,6 +60,10 @@ export async function runSmB1(options: ClientOptions): Promise<void> {
   } finally {
     await client.close();
   }
+  await postJson<string[]>(options.playAUrl, '/evidence/wait', {
+    containsAll: [`entry-disconnected|rid=play-a|actor=${actorId}`],
+    timeoutMilliseconds: 10000
+  } satisfies EvidenceWaitReq);
 
   console.log('scenario SM-B1 passed');
 }

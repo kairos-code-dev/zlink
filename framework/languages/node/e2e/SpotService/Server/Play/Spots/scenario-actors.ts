@@ -160,8 +160,12 @@ export class EntrySlowActorPingHandler
     request: SlowActorPingReq
   ): Promise<ActorPingRes> {
     void context;
-    await new Promise((resolve) => setTimeout(resolve, Math.max(0, request.delayMs)));
     const evidence = EntrySlowActorPingHandler.requireEvidence();
+    evidence.add(
+      `actor-slow-ping-start|rid=${entrySpot.context.nodeRid}|actor=${actor.actorId}`
+      + `|spot=${entrySpot.context.spotRid}|value=${request.value}`
+    );
+    await new Promise((resolve) => setTimeout(resolve, Math.max(0, request.delayMs)));
     actor.seen += 1;
     evidence.add(
       `actor-slow-pingMsg|rid=${entrySpot.context.nodeRid}|actor=${actor.actorId}`

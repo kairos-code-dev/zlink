@@ -129,6 +129,21 @@ interface ZLinkActorSessionRoute {
   readonly bindingToken: string;
 }
 
+export interface ZLinkBoundSessionResponseTarget {
+  sendResponse(
+    packetName: string,
+    requestSeq: bigint,
+    message: unknown,
+    metadata: ReadonlyMap<string, string>
+  ): boolean;
+  sendError(
+    packetName: string,
+    requestSeq: bigint,
+    error: unknown,
+    metadata: ReadonlyMap<string, string>
+  ): boolean;
+}
+
 export interface ZLinkStreamSessionRuntimeOptions {
   readonly socket: ZLinkBackendStreamSocket;
   readonly sessionFactory: (context: DefaultZLinkSessionContext) => ZLinkSession | Promise<ZLinkSession>;
@@ -484,22 +499,10 @@ export class ZLinkStreamSessionRuntime {
       });
     }
     if (notifyDisconnected) {
-      await this.notifyBoundActorsDisconnected();
       const session = await this.requireSession();
       await session.onDisconnected?.(this.context);
     }
     await this.cleanup();
-  }
-
-  private async notifyBoundActorsDisconnected(): Promise<void> {
-    const actors = [...this.context.boundActors];
-    await Promise.all(actors.map(async (actor) => {
-      try {
-        await actor.notifyDisconnected();
-      } catch (error) {
-        this.options.onError?.(error);
-      }
-    }));
   }
 
   private async cleanup(): Promise<void> {
@@ -521,6 +524,15 @@ export class ZLinkStreamSessionNodeRuntime {
     readonly remoteAddr?: string;
   }> = [];
   private readonly disconnectedEndpoints = new Set<string>();
+  private pendingEndpointlessDisconnect:
+    | {
+        readonly session: ZLinkStreamSessionRuntime;
+        cancelled: boolean;
+        readonly error: Error;
+        readonly activityVersion: number;
+      }
+    | undefined;
+  private activityVersion = 0;
   private stopped = false;
 
   constructor(private readonly options: ZLinkStreamSessionNodeRuntimeOptions) {}
@@ -561,6 +573,7 @@ export class ZLinkStreamSessionNodeRuntime {
       payload.close();
       return;
     }
+    this.activityVersion += 1;
     const session = this.getOrCreateSession(routingId);
     this.applyPendingConnectionMetadata(session);
     session.enqueuePacket(header, payload);
@@ -572,8 +585,15 @@ export class ZLinkStreamSessionNodeRuntime {
     }
     switch (event.nativeEvent) {
       case ZLinkSocketNativeEventType.ConnectionReady:
+        this.activityVersion += 1;
         if (event.routingId === undefined) {
           const endpointKey = streamMonitorEndpointKey(event.localAddr, event.remoteAddr);
+          if (event.localAddr === undefined && event.remoteAddr === undefined) {
+            if (this.pendingEndpointlessDisconnect !== undefined) {
+              this.pendingEndpointlessDisconnect.cancelled = true;
+            }
+            this.pendingEndpointlessDisconnect = undefined;
+          }
           const unaddressed = this.firstUnaddressedSession();
           if (unaddressed !== undefined) {
             this.disconnectedEndpoints.delete(endpointKey);
@@ -597,7 +617,14 @@ export class ZLinkStreamSessionNodeRuntime {
           this.disconnectedEndpoints.add(endpointKey);
           this.removePendingConnectionMetadata(endpointKey);
           const session = this.resolveMonitorSession(event);
-          session?.enqueueDisconnected(new Error(`Stream disconnected: ${event.nativeEvent}/${event.value}`));
+          const error = new Error(`Stream disconnected: ${event.nativeEvent}/${event.value}`);
+          if (session !== undefined) {
+            session.enqueueDisconnected(error);
+            return;
+          }
+          if (event.routingId === undefined && event.localAddr === undefined && event.remoteAddr === undefined) {
+            this.enqueueEndpointlessDisconnect(error);
+          }
         }
         return;
       default:
@@ -641,15 +668,47 @@ export class ZLinkStreamSessionNodeRuntime {
       }
     }
     const sessions = [...this.sessions.values()];
-    if (sessions.length === 1) {
-      return sessions[0];
+    if (event.localAddr === undefined && event.remoteAddr === undefined) {
+      return undefined;
     }
-    return sessions.find((session) =>
+    const session = sessions.find((session) =>
       session.stream.localAddr === event.localAddr
       && session.stream.remoteAddr === event.remoteAddr
-    )
-      ?? this.firstUnaddressedSession()
-      ?? sessions[sessions.length - 1];
+    );
+    if (session !== undefined) {
+      return session;
+    }
+    return undefined;
+  }
+
+  private enqueueEndpointlessDisconnect(error: Error): void {
+    const sessions = [...this.sessions.values()];
+    if (sessions.length !== 1) {
+      return;
+    }
+    if (this.pendingEndpointlessDisconnect !== undefined) {
+      this.pendingEndpointlessDisconnect.cancelled = true;
+    }
+    const pending = {
+      session: sessions[0],
+      cancelled: false,
+      error,
+      activityVersion: this.activityVersion
+    };
+    this.pendingEndpointlessDisconnect = pending;
+    setImmediate(() => {
+      if (
+        pending.cancelled
+        || this.stopped
+        || this.pendingEndpointlessDisconnect !== pending
+        || this.activityVersion !== pending.activityVersion
+        || this.sessions.get(pending.session.stream.sessionId) !== pending.session
+      ) {
+        return;
+      }
+      this.pendingEndpointlessDisconnect = undefined;
+      pending.session.enqueueDisconnected(pending.error);
+    });
   }
 
   private getOrCreateSession(routingId: unknown): ZLinkStreamSessionRuntime {
@@ -756,6 +815,22 @@ export class ZLinkStreamBindingRuntime {
     return this.routes.find(actorId) !== undefined;
   }
 
+  captureBoundSessionResponseTarget(actor: ZLinkSessionActor): ZLinkBoundSessionResponseTarget | undefined {
+    const bindingToken = (actor as { readonly bindingToken?: unknown }).bindingToken;
+    if (typeof bindingToken !== 'string') {
+      return undefined;
+    }
+    const route = this.routes.route(actor.actorId);
+    if (route === undefined || route.actor !== actor || route.bindingToken !== bindingToken) {
+      return undefined;
+    }
+    return new DefaultZLinkBoundSessionResponseTarget(
+      this.frameMessages,
+      route.context,
+      actor.actorId
+    );
+  }
+
   async rebindActor(actorRef: ActorRef, signal?: AbortSignal): Promise<void> {
     throwIfAborted(signal);
     const route = this.routes.route(actorRef.actorId);
@@ -840,10 +915,12 @@ export class ZLinkStreamBindingRuntime {
       message
     );
     try {
+      if (this.routes.route(actorId)?.bindingToken !== route.bindingToken) {
+        return false;
+      }
       if (!route.context.stream.writeRaw(frame)) {
         throw new Error(`Actor '${actorId}' local bound session send failed.`);
       }
-      this.routes.requireCurrentToken(actorId, route.bindingToken);
       return true;
     } finally {
       frame.close();
@@ -870,10 +947,12 @@ export class ZLinkStreamBindingRuntime {
       message
     );
     try {
+      if (this.routes.route(actorId)?.bindingToken !== route.bindingToken) {
+        return false;
+      }
       if (!route.context.stream.writeRaw(frame)) {
         throw new Error(`Actor '${actorId}' local bound session response failed.`);
       }
-      this.routes.requireCurrentToken(actorId, route.bindingToken);
       return true;
     } finally {
       frame.close();
@@ -903,10 +982,12 @@ export class ZLinkStreamBindingRuntime {
       }
     );
     try {
+      if (this.routes.route(actorId)?.bindingToken !== route.bindingToken) {
+        return false;
+      }
       if (!route.context.stream.writeRaw(frame)) {
         throw new Error(`Actor '${actorId}' local bound session error response failed.`);
       }
-      this.routes.requireCurrentToken(actorId, route.bindingToken);
       return true;
     } finally {
       frame.close();
@@ -1247,6 +1328,65 @@ class ZLinkActorSessionBindingRegistry {
       `Actor '${actorId}' session binding is stale.`,
       true
     );
+  }
+}
+
+class DefaultZLinkBoundSessionResponseTarget implements ZLinkBoundSessionResponseTarget {
+  constructor(
+    private readonly frameMessages: ZLinkStreamFrameMessageFactory,
+    private readonly context: DefaultZLinkSessionContext,
+    private readonly actorId: string
+  ) {}
+
+  sendResponse(
+    packetName: string,
+    requestSeq: bigint,
+    message: unknown,
+    metadata: ReadonlyMap<string, string>
+  ): boolean {
+    const frame = this.frameMessages.createJsonFrameMessage(
+      ZLinkStreamMessageKind.Response,
+      packetName,
+      metadata,
+      false,
+      requestSeq,
+      message
+    );
+    try {
+      if (!this.context.stream.writeRaw(frame)) {
+        throw new Error(`Actor '${this.actorId}' local bound session response failed.`);
+      }
+      return true;
+    } finally {
+      frame.close();
+    }
+  }
+
+  sendError(
+    packetName: string,
+    requestSeq: bigint,
+    error: unknown,
+    metadata: ReadonlyMap<string, string>
+  ): boolean {
+    const frame = this.frameMessages.createJsonFrameMessage(
+      ZLinkStreamMessageKind.Error,
+      packetName,
+      metadata,
+      false,
+      requestSeq,
+      {
+        code: error instanceof Error ? error.constructor.name : undefined,
+        message: error instanceof Error ? error.message : String(error)
+      }
+    );
+    try {
+      if (!this.context.stream.writeRaw(frame)) {
+        throw new Error(`Actor '${this.actorId}' local bound session error response failed.`);
+      }
+      return true;
+    } finally {
+      frame.close();
+    }
   }
 }
 

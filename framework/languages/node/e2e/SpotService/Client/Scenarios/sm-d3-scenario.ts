@@ -38,6 +38,10 @@ export async function runSmD3(options: ClientOptions): Promise<void> {
       .packetName('AuthReq')
       .timeout(5000)
       .submit<AuthRes>();
+    await postJson<string[]>(options.playAUrl, '/evidence/wait', {
+      containsAll: [`entry-joined|rid=play-a|actor=${entryActorId}`],
+      timeoutMilliseconds: 10000
+    } satisfies EvidenceWaitReq);
 
     const entryPushed = entry.waitFor<ActorPushNotify>('ActorPushNotify')
       .where((message) => message.payload.actorId === entryActorId)
@@ -70,6 +74,10 @@ export async function runSmD3(options: ClientOptions): Promise<void> {
       .packetName('UserSpotAuthReq')
       .timeout(5000)
       .submit<AuthRes>();
+    await postJson<string[]>(options.playAUrl, '/evidence/wait', {
+      containsAll: [`entry-joined|rid=play-a|actor=${userActorId}`],
+      timeoutMilliseconds: 10000
+    } satisfies EvidenceWaitReq);
     await joinUserSpotActor(user, userSpotRid, userActorId);
 
     const userPushed = user.waitFor<ActorPushNotify>('ActorPushNotify')

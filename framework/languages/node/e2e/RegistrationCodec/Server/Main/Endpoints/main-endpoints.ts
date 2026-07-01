@@ -93,6 +93,40 @@ export function createMainEndpoints(evidence: EvidenceStore, channel: ZLinkChann
     },
     {
       method: 'POST',
+      path: '/codec/protobuf',
+      handle: async () => {
+        const reply = await channel.requestToChannel(RegistrationCodecNames.channel, new ProtobufEchoReq('rc-b2'))
+          .packetName(PacketNames.echoProtobufReq)
+          .submit<ProtobufEchoReq>();
+        await channel.sendToChannel(RegistrationCodecNames.channel, new ProtobufEchoMsg('rc-b2-send'))
+          .packetName(PacketNames.echoProtobufMsg)
+          .submit();
+        evidence.add(`codec-reply|codec=protobuf|value=${reply.value}`);
+        return {
+          value: reply.value.replace(/\|content:.+$/, ''),
+          contentType: reply.value.includes('content:application/x-protobuf') ? 'application/x-protobuf' : '<missing>'
+        } satisfies CodecScenarioRes;
+      }
+    },
+    {
+      method: 'POST',
+      path: '/codec/msgpack',
+      handle: async () => {
+        const reply = await channel.requestToChannel(RegistrationCodecNames.channel, new MessagePackEchoReq('rc-b3'))
+          .packetName(PacketNames.echoMessagePackReq)
+          .submit<MessagePackEchoReq>();
+        await channel.sendToChannel(RegistrationCodecNames.channel, new MessagePackEchoMsg('cmd-rc-b3', 'rc-b3-send'))
+          .packetName(PacketNames.echoMessagePackMsg)
+          .submit();
+        evidence.add(`codec-reply|codec=msgpack|value=${reply.value}`);
+        return {
+          value: reply.value.replace(/\|content:.+$/, ''),
+          contentType: reply.value.includes('content:application/x-msgpack') ? 'application/x-msgpack' : '<missing>'
+        } satisfies CodecScenarioRes;
+      }
+    },
+    {
+      method: 'POST',
       path: '/codec/roundtrip',
       handle: async () => {
         const json = await channel.requestToChannel(RegistrationCodecNames.channel, { value: 'rc-b1' })

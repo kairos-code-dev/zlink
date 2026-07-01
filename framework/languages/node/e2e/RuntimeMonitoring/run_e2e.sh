@@ -89,6 +89,8 @@ echo "log_dir=$LOG_DIR"
 (cd "$NODE_ROOT" && npm run build >/dev/null)
 build_package "$ROOT_DIR/Server/Registry"
 build_package "$ROOT_DIR/Server/Service"
+build_package "$ROOT_DIR/Server/FilteredService"
+build_package "$ROOT_DIR/Server/ThrowingService"
 build_package "$ROOT_DIR/Server/Trigger"
 build_package "$ROOT_DIR/Client"
 
@@ -128,6 +130,8 @@ THROW_SPOT_PUB_ENDPOINT="tcp://127.0.0.1:$THROW_SPOT_PUB_PORT"
 
 REGISTRY_MAIN="$ROOT_DIR/Server/Registry/dist/RuntimeMonitoring/Server/Registry/main.js"
 SERVICE_MAIN="$ROOT_DIR/Server/Service/dist/Server/Service/main.js"
+FILTERED_SERVICE_MAIN="$ROOT_DIR/Server/FilteredService/dist/Server/FilteredService/main.js"
+THROWING_SERVICE_MAIN="$ROOT_DIR/Server/ThrowingService/dist/Server/ThrowingService/main.js"
 TRIGGER_MAIN="$ROOT_DIR/Server/Trigger/dist/Server/Trigger/main.js"
 CLIENT_MAIN="$ROOT_DIR/Client/dist/Client/main.js"
 
@@ -151,26 +155,24 @@ start_server svc-a "$SERVICE_MAIN" \
   --log-dir "$LOG_DIR"
 wait_health "$SVC_URL" svc-a
 
-start_server svc-b "$SERVICE_MAIN" \
+start_server svc-b "$FILTERED_SERVICE_MAIN" \
   --rid svc-b \
   --http-url "$SVC_B_URL" \
   --registry-router-endpoint "$REG_ROUTER" \
   --channel-endpoint "$CHANNEL_B_ENDPOINT" \
   --spot-router-endpoint "$SPOT_B_ROUTER_ENDPOINT" \
   --spot-pub-endpoint "$SPOT_B_PUB_ENDPOINT" \
-  --socket-filter connection-ready \
   --evidence-file "$LOG_DIR/svc-b.evidence.log" \
   --log-dir "$LOG_DIR"
 wait_health "$SVC_B_URL" svc-b
 
-start_server svc-throw "$SERVICE_MAIN" \
+start_server svc-throw "$THROWING_SERVICE_MAIN" \
   --rid svc-throw \
   --http-url "$THROW_URL" \
   --registry-router-endpoint "$REG_ROUTER" \
   --channel-endpoint "$THROW_CHANNEL_ENDPOINT" \
   --spot-router-endpoint "$THROW_SPOT_ROUTER_ENDPOINT" \
   --spot-pub-endpoint "$THROW_SPOT_PUB_ENDPOINT" \
-  --throw-monitor true \
   --evidence-file "$LOG_DIR/svc-throw.evidence.log" \
   --log-dir "$LOG_DIR"
 wait_health "$THROW_URL" svc-throw

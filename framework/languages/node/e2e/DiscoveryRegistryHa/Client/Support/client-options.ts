@@ -55,6 +55,6 @@ export function parseClientOptions(args: readonly string[]): ClientOptions {
     registryMain: values.get('registry-main'),
     providerMain: values.get('provider-main'),
     consumerMain: values.get('consumer-main'),
-    scenario: values.get('scenario') ?? 'DR-A1'
+    scenario: values.get('scenario') ?? 'all'
   };
 }

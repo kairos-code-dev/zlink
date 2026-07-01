@@ -26,7 +26,7 @@ import type {
   ZLinkSpotActorSendHandler,
   ZLinkSpotActorSendContext
 } from '@zlink-systems/framework';
-import { EvidenceStore } from '../../Support/evidence-store';
+import { EvidenceStore } from '../Support/evidence-store';
 import type { YieldProbeSpot } from './yield-probe-spot';
 
 export class YieldActor implements ZLinkActor {

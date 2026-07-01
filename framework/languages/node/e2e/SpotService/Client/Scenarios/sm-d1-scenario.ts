@@ -10,7 +10,8 @@ import type {
   AuthRes,
   AuthReq,
   ControlPingRes,
-  ControlPingReq
+  ControlPingReq,
+  EvidenceWaitReq
 } from '../../Shared/messages';
 import type { ClientOptions } from '../Support/client-options';
 import { postJson } from '../Support/http-client';
@@ -35,11 +36,15 @@ export async function runSmD1(options: ClientOptions): Promise<void> {
         actorId,
         displayName: 'local relay',
         nodeRid: 'play-a'
-      } satisfies AuthReq)
+    } satisfies AuthReq)
       .packetName('AuthReq')
       .timeout(5000)
       .submit());
     ensure(auth.actorId === actorId && auth.nodeRid === 'play-a', 'SM-D1 auth reply mismatch.');
+    await postJson<string[]>(options.playAUrl, '/evidence/wait', {
+      containsAll: [`entry-joined|rid=play-a|actor=${actorId}`],
+      timeoutMilliseconds: 10000
+    } satisfies EvidenceWaitReq);
 
     const pushed = client.waitFor<ActorPushNotify>('ActorPushNotify')
       .where((message) => message.payload.actorId === actorId)

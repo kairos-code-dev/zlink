@@ -1323,10 +1323,21 @@ export class ZLinkSpotActorDispatcher {
     request: TRequest,
     context: Partial<ZLinkSpotActorRequestContext> = {}
   ): Promise<TReply> {
+    return this.dispatchRequestThen<TRequest, TReply, TReply>(actor, packetName, request, context, (reply) => reply);
+  }
+
+  dispatchRequestThen<TRequest, TReply, TResult>(
+    actor: ZLinkActor,
+    packetName: string,
+    request: TRequest,
+    context: Partial<ZLinkSpotActorRequestContext> = {},
+    afterReply: (reply: TReply) => Promise<TResult> | TResult
+  ): Promise<TResult> {
     return this.execute(async () => {
       const descriptor = this.requirePacket(ZLinkActorPacketKind.Request, actor, packetName);
       const handler = this.createHandler<ZLinkSpotActorRequestHandler<ZLinkSpot, ZLinkActor, TRequest, TReply>>(descriptor);
-      return handler.handle(this.options.spot, actor, this.createRequestContext(packetName, context), request);
+      const reply = await handler.handle(this.options.spot, actor, this.createRequestContext(packetName, context), request);
+      return await afterReply(reply);
     });
   }
 

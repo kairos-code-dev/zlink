@@ -483,11 +483,11 @@ final class StreamSessionTest {
         assertTrue(backendFactory.calls().stream()
             .anyMatch(call -> call.startsWith("stream.send.fake-session.Notify.")
                 && call.contains("PAYLOAD_COMPRESSED")
-                && call.endsWith(".fw:notify")));
+                && call.endsWith(".fw:\"notify\"")));
         assertTrue(backendFactory.calls().stream()
             .anyMatch(call -> call.startsWith("stream.reply.fake-session.93.String.")
                 && call.contains("PAYLOAD_COMPRESSED")
-                && call.endsWith(".fw:reply")));
+                && call.endsWith(".fw:\"reply\"")));
     }
 
     @Test

@@ -4,20 +4,23 @@ $ErrorActionPreference = "Stop"
 $SampleDir = Split-Path -Parent $MyInvocation.MyCommand.Path
 Set-Location $SampleDir
 
-$LogDir = Join-Path $SampleDir "build/sample-logs"
-New-Item -ItemType Directory -Force -Path $LogDir | Out-Null
-Remove-Item -Force -ErrorAction SilentlyContinue (Join-Path $LogDir "*.log")
+$RunDir = Join-Path ([System.IO.Path]::GetTempPath()) "zlink-tictactoe-kotlin-$PID-$([Guid]::NewGuid().ToString('N'))"
+$LogDir = Join-Path $RunDir "logs"
+$FlowLogDir = if ($env:TICTACTOE_LOG_DIR) { $env:TICTACTOE_LOG_DIR } else { Join-Path $SampleDir "logs" }
+New-Item -ItemType Directory -Force -Path $LogDir, $FlowLogDir | Out-Null
+Remove-Item -Force -ErrorAction SilentlyContinue (Join-Path $FlowLogDir "*.log")
 
 $Gradle = if ($IsWindows) { Join-Path $SampleDir "../../gradlew.bat" } else { Join-Path $SampleDir "../../gradlew" }
 $RolePattern = "systems\.zlink\.samples\.kotlin\.tictactoe\.server\.ProgramKt|systems\.zlink\.samples\.kotlin\.tictactoe\.client\.ProgramKt"
 $Processes = New-Object System.Collections.Generic.List[System.Diagnostics.Process]
+$RedisContainer = $null
 
 function Print-Logs {
     param([int]$Status)
     if ($Status -eq 0) { return }
     Get-ChildItem -Path $LogDir -Filter "*.log" -ErrorAction SilentlyContinue | ForEach-Object {
         Write-Error "===== $($_.FullName) ====="
-        Get-Content -Path $_.FullName -Tail 200 -ErrorAction SilentlyContinue | ForEach-Object { Write-Error $_ }
+        Get-Content -Path $_.FullName -Tail 240 -ErrorAction SilentlyContinue | ForEach-Object { Write-Error $_ }
     }
 }
 
@@ -43,6 +46,14 @@ function Cleanup {
         }
     }
     Stop-RoleProcesses
+    if ($RedisContainer) {
+        & docker rm -f $RedisContainer *> $null
+    }
+    if ($env:TICTACTOE_KOTLIN_KEEP_RUN_DIR -eq "1") {
+        Write-Host "runDir=$RunDir"
+    } else {
+        Remove-Item -Recurse -Force -ErrorAction SilentlyContinue $RunDir
+    }
 }
 
 function Reserve-Ports {
@@ -64,13 +75,27 @@ function Reserve-Ports {
     }
 }
 
-function Wait-Port {
-    param([int]$Port, [int]$TimeoutSeconds = 45)
+function Endpoint-Host {
+    param([string]$Endpoint)
+    $value = $Endpoint -replace '^tcp://', '' -replace '^http://', '' -replace '^redis://', ''
+    return ($value -split ':')[0]
+}
+
+function Endpoint-Port {
+    param([string]$Endpoint)
+    $value = $Endpoint -replace '^tcp://', '' -replace '^http://', '' -replace '^redis://', ''
+    return [int](($value -split ':')[-1])
+}
+
+function Wait-Endpoint {
+    param([string]$Name, [string]$Endpoint, [int]$TimeoutSeconds = 15)
+    $hostName = Endpoint-Host $Endpoint
+    $port = Endpoint-Port $Endpoint
     $deadline = [DateTime]::UtcNow.AddSeconds($TimeoutSeconds)
     while ([DateTime]::UtcNow -lt $deadline) {
         $client = [System.Net.Sockets.TcpClient]::new()
         try {
-            $connect = $client.BeginConnect("127.0.0.1", $Port, $null, $null)
+            $connect = $client.BeginConnect($hostName, $port, $null, $null)
             if ($connect.AsyncWaitHandle.WaitOne(200)) {
                 $client.EndConnect($connect)
                 return
@@ -81,7 +106,19 @@ function Wait-Port {
         }
         Start-Sleep -Milliseconds 100
     }
-    throw "Timed out waiting for port $Port"
+    throw "Timed out waiting for $Name at $Endpoint"
+}
+
+function Wait-LogContains {
+    param([string]$LogPath, [string]$Pattern, [int]$TimeoutSeconds = 60)
+    $deadline = [DateTime]::UtcNow.AddSeconds($TimeoutSeconds)
+    while ([DateTime]::UtcNow -lt $deadline) {
+        if ((Test-Path $LogPath) -and (Select-String -Path $LogPath -Pattern $Pattern -Quiet)) {
+            return
+        }
+        Start-Sleep -Milliseconds 100
+    }
+    throw "Timed out waiting for '$Pattern' in $LogPath"
 }
 
 function Invoke-Gradle {
@@ -92,43 +129,149 @@ function Invoke-Gradle {
     }
 }
 
-function Start-GradleRole {
-    param([string[]]$Arguments, [string]$LogName)
-    $logPath = Join-Path $LogDir $LogName
-    $errorLogPath = Join-Path $LogDir ($LogName + ".err.log")
-    $process = Start-Process -FilePath $Gradle -ArgumentList $Arguments -WorkingDirectory $SampleDir -NoNewWindow -RedirectStandardOutput $logPath -RedirectStandardError $errorLogPath -PassThru
+function Start-SampleRole {
+    param([string]$Role, [string]$ConfigPath, [string]$LogName)
+    $serverBin = Join-Path $SampleDir "Server/build/install/Server/bin/Server"
+    if ($IsWindows) { $serverBin = "$serverBin.bat" }
+    $process = Start-Process -FilePath $serverBin -ArgumentList @($Role, "--config", $ConfigPath) -WorkingDirectory $SampleDir -NoNewWindow -RedirectStandardOutput (Join-Path $LogDir $LogName) -RedirectStandardError (Join-Path $LogDir "$LogName.err") -PassThru
     $Processes.Add($process)
 }
 
 $Status = 1
 try {
-    $ports = Reserve-Ports 5
-    $ApiPort = $ports[0]
-    $ApiChannelPort = $ports[1]
-    $PlayStreamPort = $ports[2]
-    $PlayChannelPort = $ports[3]
-    $SpotPort = $ports[4]
+    $ports = Reserve-Ports 15
+    $ApiAHttpPort = $ports[0]
+    $ApiBHttpPort = $ports[1]
+    $ApiAChannelPort = $ports[2]
+    $ApiBChannelPort = $ports[3]
+    $PlayAChannelPort = $ports[4]
+    $PlayBChannelPort = $ports[5]
+    $PlayAStreamPort = $ports[6]
+    $PlayBStreamPort = $ports[7]
+    $PlayASpotPort = $ports[8]
+    $PlayBSpotPort = $ports[9]
+    $PlayARoutePort = $ports[10]
+    $PlayBRoutePort = $ports[11]
+    $PlayAPubPort = $ports[12]
+    $PlayBPubPort = $ports[13]
 
-    $ConfigFile = Join-Path $SampleDir "build/sample-application.properties"
+    if ($env:TICTACTOE_REDIS_ENDPOINT) {
+        $redisEndpoint = $env:TICTACTOE_REDIS_ENDPOINT
+    } else {
+        if (-not (Get-Command docker -ErrorAction SilentlyContinue)) {
+            throw "Docker is required when TICTACTOE_REDIS_ENDPOINT is not set."
+        }
+        $RedisContainer = "zlink-tictactoe-kotlin-redis-$PID-$([Guid]::NewGuid().ToString('N'))"
+        & docker run -d --rm --name $RedisContainer --label "systems.zlink.sample=tictactoe-kotlin" -p "127.0.0.1::6379" redis:7-alpine | Out-Null
+        if ($LASTEXITCODE -ne 0) {
+            throw "Failed to start Redis Docker container."
+        }
+        $redisPort = (& docker port $RedisContainer "6379/tcp") -replace '^.*:', ''
+        $redisEndpoint = "127.0.0.1:$redisPort"
+    }
+    Wait-Endpoint "redis" $redisEndpoint
+    $redisKeyPrefix = if ($env:TICTACTOE_REDIS_KEY_PREFIX) { $env:TICTACTOE_REDIS_KEY_PREFIX } else { "zlink:tictactoe-kotlin:${PID}:$([Guid]::NewGuid().ToString('N')):room:" }
+
+    $commonPlayChannels = "tcp://127.0.0.1:${PlayAChannelPort},tcp://127.0.0.1:${PlayBChannelPort}"
+    $commonPlayStreams = "tcp://127.0.0.1:${PlayAStreamPort},tcp://127.0.0.1:${PlayBStreamPort}"
+    $commonSpots = "tcp://127.0.0.1:${PlayASpotPort},tcp://127.0.0.1:${PlayBSpotPort}"
+    $commonRoutes = "tcp://127.0.0.1:${PlayARoutePort},tcp://127.0.0.1:${PlayBRoutePort}"
+    $commonPubs = "tcp://127.0.0.1:${PlayAPubPort},tcp://127.0.0.1:${PlayBPubPort}"
+
+    $apiAConfig = Join-Path $RunDir "api-a.properties"
+    $apiBConfig = Join-Path $RunDir "api-b.properties"
+    $playAConfig = Join-Path $RunDir "play-a.properties"
+    $playBConfig = Join-Path $RunDir "play-b.properties"
+
     @(
-        "sample.apiBindUrl=http://127.0.0.1:$ApiPort",
-        "sample.apiPublicUrl=http://127.0.0.1:$ApiPort",
-        "sample.apiChannelEndpoint=tcp://127.0.0.1:$ApiChannelPort",
-        "sample.playChannelEndpoint=tcp://127.0.0.1:$PlayChannelPort",
-        "sample.playEndpoint=tcp://127.0.0.1:$PlayStreamPort",
-        "sample.spotEndpoint=tcp://127.0.0.1:$SpotPort",
+        "sample.apiBindUrl=http://127.0.0.1:$ApiAHttpPort",
+        "sample.apiPublicUrl=http://127.0.0.1:$ApiAHttpPort",
+        "sample.apiChannelEndpoint=tcp://127.0.0.1:$ApiAChannelPort",
+        "sample.playChannelEndpoint=tcp://127.0.0.1:$PlayAChannelPort",
+        "sample.playChannelEndpoints=$commonPlayChannels",
+        "sample.playEndpoint=tcp://127.0.0.1:$PlayAStreamPort",
+        "sample.playEndpoints=$commonPlayStreams",
+        "sample.spotEndpoint=tcp://127.0.0.1:$PlayASpotPort",
+        "sample.spotEndpoints=$commonSpots",
+        "sample.routeEndpoint=tcp://127.0.0.1:$PlayARoutePort",
+        "sample.routeEndpoints=$commonRoutes",
+        "sample.spotPubSubEndpoint=tcp://127.0.0.1:$PlayAPubPort",
+        "sample.spotPubSubEndpoints=$commonPubs",
+        "sample.redisEndpoint=$redisEndpoint",
+        "sample.redisKeyPrefix=$redisKeyPrefix",
+        "sample.playSpotNodeRid=play-node-1",
+        "sample.peerPlaySpotNodeRid=play-node-2",
+        "sample.peerSpotEndpoint=tcp://127.0.0.1:$PlayBSpotPort",
+        "sample.peerRouteEndpoint=tcp://127.0.0.1:$PlayBRoutePort",
+        "sample.peerSpotPubSubEndpoint=tcp://127.0.0.1:$PlayBPubPort",
         "sample.logDirectory=$LogDir"
-    ) | Set-Content -Path $ConfigFile -Encoding UTF8
+    ) | Set-Content -Path $apiAConfig -Encoding UTF8
 
-    Start-GradleRole -Arguments @("-Pzlink.useLocalBindings=true", "--settings-file", "standalone.settings.gradle.kts", ":Server:run", "--quiet", "--args=play --config $ConfigFile") -LogName "play.log"
-    Wait-Port $PlayStreamPort
-    Wait-Port $PlayChannelPort
+    Copy-Item $apiAConfig $apiBConfig
+    (Get-Content $apiBConfig) `
+        -replace 'sample\.apiBindUrl=.*', "sample.apiBindUrl=http://127.0.0.1:$ApiBHttpPort" `
+        -replace 'sample\.apiPublicUrl=.*', "sample.apiPublicUrl=http://127.0.0.1:$ApiBHttpPort" `
+        -replace 'sample\.apiChannelEndpoint=.*', "sample.apiChannelEndpoint=tcp://127.0.0.1:$ApiBChannelPort" |
+        Set-Content -Path $apiBConfig -Encoding UTF8
 
-    Start-GradleRole -Arguments @("-Pzlink.useLocalBindings=true", "--settings-file", "standalone.settings.gradle.kts", ":Server:run", "--quiet", "--args=api --config $ConfigFile") -LogName "api.log"
-    Wait-Port $ApiPort
-    Wait-Port $ApiChannelPort
+    Copy-Item $apiAConfig $playAConfig
+    Copy-Item $apiAConfig $playBConfig
+    (Get-Content $playBConfig) `
+        -replace 'sample\.playChannelEndpoint=.*', "sample.playChannelEndpoint=tcp://127.0.0.1:$PlayBChannelPort" `
+        -replace 'sample\.playEndpoint=.*', "sample.playEndpoint=tcp://127.0.0.1:$PlayBStreamPort" `
+        -replace 'sample\.spotEndpoint=.*', "sample.spotEndpoint=tcp://127.0.0.1:$PlayBSpotPort" `
+        -replace 'sample\.routeEndpoint=.*', "sample.routeEndpoint=tcp://127.0.0.1:$PlayBRoutePort" `
+        -replace 'sample\.spotPubSubEndpoint=.*', "sample.spotPubSubEndpoint=tcp://127.0.0.1:$PlayBPubPort" `
+        -replace 'sample\.playSpotNodeRid=.*', "sample.playSpotNodeRid=play-node-2" `
+        -replace 'sample\.peerPlaySpotNodeRid=.*', "sample.peerPlaySpotNodeRid=play-node-1" `
+        -replace 'sample\.peerSpotEndpoint=.*', "sample.peerSpotEndpoint=tcp://127.0.0.1:$PlayASpotPort" `
+        -replace 'sample\.peerRouteEndpoint=.*', "sample.peerRouteEndpoint=tcp://127.0.0.1:$PlayARoutePort" `
+        -replace 'sample\.peerSpotPubSubEndpoint=.*', "sample.peerSpotPubSubEndpoint=tcp://127.0.0.1:$PlayAPubPort" |
+        Set-Content -Path $playBConfig -Encoding UTF8
 
-    Invoke-Gradle @("-Pzlink.useLocalBindings=true", "--settings-file", "standalone.settings.gradle.kts", ":Client:run", "--quiet", "--args=--api-url http://127.0.0.1:$ApiPort")
+    Invoke-Gradle @("-Pzlink.useLocalBindings=true", "--settings-file", "standalone.settings.gradle.kts", "--no-daemon", ":Server:installDist", ":Client:installDist", "--quiet")
+
+    Start-SampleRole "play" $playBConfig "play-b.log"
+    Wait-LogContains (Join-Path $LogDir "play-b.log") "Started Program"
+    Wait-Endpoint "play-b-stream" "tcp://127.0.0.1:$PlayBStreamPort"
+    Wait-Endpoint "play-b-spot" "tcp://127.0.0.1:$PlayBSpotPort"
+
+    Start-SampleRole "play" $playAConfig "play-a.log"
+    Wait-LogContains (Join-Path $LogDir "play-a.log") "Started Program"
+    Wait-Endpoint "play-a-stream" "tcp://127.0.0.1:$PlayAStreamPort"
+    Wait-Endpoint "play-a-spot" "tcp://127.0.0.1:$PlayASpotPort"
+
+    Start-SampleRole "api" $apiAConfig "api-a.log"
+    Wait-LogContains (Join-Path $LogDir "api-a.log") "Started Program"
+    Wait-Endpoint "api-a-http" "http://127.0.0.1:$ApiAHttpPort"
+
+    Start-SampleRole "api" $apiBConfig "api-b.log"
+    Wait-LogContains (Join-Path $LogDir "api-b.log") "Started Program"
+    Wait-Endpoint "api-b-http" "http://127.0.0.1:$ApiBHttpPort"
+
+    $clientBin = Join-Path $SampleDir "Client/build/install/Client/bin/Client"
+    if ($IsWindows) { $clientBin = "$clientBin.bat" }
+    $clientLog = Join-Path $LogDir "client.log"
+    & $clientBin --api-url "http://127.0.0.1:$ApiAHttpPort" *> $clientLog
+    if ($LASTEXITCODE -ne 0) {
+        throw "Client run failed."
+    }
+    if (-not (Select-String -Path $clientLog -Pattern "observer-connected endpoint=tcp://127.0.0.1:$PlayBStreamPort" -Quiet)) {
+        throw "Observer connection marker was not found."
+    }
+    if (-not (Select-String -Path $clientLog -Pattern "observer-subscription=verified subscribed=true" -Quiet)) {
+        throw "Observer subscription marker was not found."
+    }
+    if (-not (Select-String -Path $clientLog -Pattern "observer-win-milestone=verified actor=player-x wins=100 receivingSpotNodeRid=play-node-2" -Quiet)) {
+        throw "Observer milestone marker was not found."
+    }
+    if (-not (Select-String -Path $clientLog -Pattern "tictactoe completed" -Quiet)) {
+        throw "Completion marker was not found."
+    }
+    if (-not (Select-String -Path (Join-Path $FlowLogDir "*.log") -Pattern "message flow" -Quiet -ErrorAction SilentlyContinue)) {
+        throw "Message flow evidence was not found."
+    }
+    Write-Host "PASS TicTacToe.Kotlin"
     $Status = 0
 } finally {
     Cleanup $Status

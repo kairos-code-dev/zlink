@@ -141,19 +141,20 @@ try {
     $playBRoute = Split-Endpoint $endpoints[18]
     $sessionBStream = Split-Endpoint $endpoints[19]
 
-    # The sample owns its Redis: always provision a dedicated, throwaway container
-    # so room-allocation state stays isolated per run and never touches a developer's
-    # local Redis. (BINGO_REDIS_ENDPOINT is intentionally derived here, not read.)
-    if (-not (Get-Command docker -ErrorAction SilentlyContinue)) {
-        throw "Docker is required to run the Bingo sample (it provisions a dedicated Redis container)."
+    if ($env:BINGO_REDIS_ENDPOINT) {
+        $redisEndpoint = $env:BINGO_REDIS_ENDPOINT
+    } else {
+        if (-not (Get-Command docker -ErrorAction SilentlyContinue)) {
+            throw "Docker is required when BINGO_REDIS_ENDPOINT is not set."
+        }
+        $RedisContainer = "bingo-kotlin-redis-$PID-$([Guid]::NewGuid().ToString('N'))"
+        & docker run -d --rm --name $RedisContainer -p "127.0.0.1::6379" redis:7.2-alpine | Out-Null
+        if ($LASTEXITCODE -ne 0) {
+            throw "Failed to start Redis Docker container."
+        }
+        $redisPort = (& docker port $RedisContainer "6379/tcp") -replace '^.*:', ''
+        $redisEndpoint = "127.0.0.1:$redisPort"
     }
-    $RedisContainer = "bingo-kotlin-redis-$PID-$([Guid]::NewGuid().ToString('N'))"
-    & docker run -d --rm --name $RedisContainer -p "127.0.0.1::6379" redis:7.2-alpine | Out-Null
-    if ($LASTEXITCODE -ne 0) {
-        throw "Failed to start Redis Docker container."
-    }
-    $redisPort = (& docker port $RedisContainer "6379/tcp") -replace '^.*:', ''
-    $redisEndpoint = "127.0.0.1:$redisPort"
     $redis = Split-Endpoint $redisEndpoint
     Wait-Port $redis.Host $redis.Port
     $redisKeyPrefix = if ($env:BINGO_REDIS_KEY_PREFIX) { $env:BINGO_REDIS_KEY_PREFIX } else { "bingo:kotlin:${PID}:$([Guid]::NewGuid().ToString('N')):" }

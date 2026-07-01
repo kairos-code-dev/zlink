@@ -15,12 +15,12 @@ Spot/Entry Spot handler까지 도달해야 하므로, HTTP trigger나 direct Spo
 |----------------|---------------|------|------|------|
 | `.gitignore` | `.gitignore` | metadata | done | C++ YieldDispatch 로그와 임시 산출물 제외 규칙을 추가했다. |
 | `feature-map.ko.md` | `feature-map.ko.md` | docs | done | 아직 구현되지 않은 scenario와 public gap을 완료로 과장하지 않는다. |
-| `run_e2e.sh` | `run_e2e.sh` | runner | partial | registry, delay A/B, play A/B, session A/B, client를 빌드하고 readiness와 정적 검사를 수행한다. 이 runner는 E2E target만 필요하므로 configure 때 C++ sample target은 끈다. YD-A1~YD-A4, YD-B1~YD-B3, YD-C1~YD-C3, YD-D1~YD-D4, YD-E1/YD-E3 runner, YD-E4 static gate, YD-E5 report 생성은 반복 통과 증거가 있다. YD-C3 같은 stream session 증거와 YD-E2 public yield cancellation token contract gap이 있어 config 완료 판정은 보류한다. |
+| `run_e2e.sh` | `run_e2e.sh` | runner | done | registry, delay A/B, play A/B, session A/B, client를 빌드하고 readiness와 정적 검사를 수행한다. 이 runner는 E2E target만 필요하므로 configure 때 C++ sample target은 끈다. YD-A1~YD-A4, YD-B1~YD-B3, YD-C1~YD-C3, YD-D1~YD-D4, YD-E1/YD-E3 runner, YD-E4 static gate, YD-E5 report 생성을 반복 검증한다. YD-E2는 runner 미완료가 아니라 public yield cancellation token contract gap이다. |
 | `Shared/YieldDispatch.Shared.csproj` | `framework/languages/cpp/CMakeLists.txt` | build | done | role/client target 묶음은 추가됐다. shared는 header로 포함된다. |
 | `Shared/Messages.cs` | `Shared/yield_dispatch_contracts.hpp` | shared | done | Track A용 ensure/evidence/delay/hold/yield/worker/probe DTO, actor binding/yield/fast/join-yield/push-yield DTO, timer command, D2 remote Spot yield DTO, E1 timeout DTO, E2 cancellation DTO, E3 shutdown DTO와 JSON 매핑이 있다. stream connector typed request/reply/notify가 실제 JSON payload를 쓰도록 `to_stream_payload`/`from_stream_payload` hook도 제공한다. E2 scenario 자체는 C++ public yield cancellation token surface가 없어 gap으로 남긴다. |
 | `Client/GlobalUsings.cs` | not-needed | client | not-needed | C++에는 대응 파일이 필요 없다. |
 | `Client/YieldDispatch.Client.csproj` | `framework/languages/cpp/CMakeLists.txt` | build | done | client target이 있다. |
-| `Client/Program.cs` | `Client/main.cpp` | client | partial | stream connector로 YD-A1~YD-A4, YD-B1~YD-B3, YD-C1~YD-C3, YD-D2~YD-D4, YD-E1 request를 시작하고 검증한다. `shutdown-wait`/`shutdown-recovery` mode로 YD-E3도 실행한다. client option 파싱, evidence wait, assertion, actor context는 support/scenario-support header로 분리됐다. YD-A2/A4는 yielded request와 probe/evidence 관측을 별도 connector로 분리한다. YD-C3 일부는 같은 actor binding/spot에 붙은 별도 connector를 쓰므로 같은 stream session 증거는 아직 아니다. 같은 connector 재시도와 session actor fire-and-forget relay 재시도는 각각 YD-C3 ordering 실패와 YD-B1 request reply 실패로 끝났다. D2 owner evidence 관측은 public evidence snapshot polling을 쓴다. |
+| `Client/Program.cs` | `Client/main.cpp` | client | done | stream connector로 YD-A1~YD-A4, YD-B1~YD-B3, YD-C1~YD-C3, YD-D2~YD-D4, YD-E1 request를 시작하고 검증한다. `shutdown-wait`/`shutdown-recovery` mode로 YD-E3도 실행한다. client option 파싱, evidence wait, assertion, actor context는 support/scenario-support header로 분리됐다. YD-A2/A4는 yielded command와 probe/evidence 관측을 별도 connector로 분리한다. YD-B1/B3/C3는 같은 session-a connector에서 in-flight actor/spot request를 겹쳐 `.NET`과 같은 교차 실행선 release를 검증한다. D2 owner evidence 관측은 public evidence snapshot polling을 쓴다. YD-E2는 client dispatcher 미완료가 아니라 public yield cancellation token contract gap이다. |
 | `Client/Support/ClientOptions.cs` | `Client/Support/client_options.hpp` | support | done | session-a와 session-b stream endpoint, scenario 선택, shutdown flow option을 읽고 stream connector option을 만든다. |
 | `Client/Support/ScenarioAssert.cs` | `Client/Support/scenario_assert.hpp`; `Client/Support/evidence_wait.hpp` | support | done | marker 순서 검증, request line fragment 검증, result error 출력, evidence snapshot polling helper가 있다. C++에서는 assertion과 evidence wait를 별도 support header로 나눈다. |
 | `Client/Scenarios/YieldActorScenarioContext.cs` | `Client/Scenarios/yield_actor_scenario_context.hpp` | scenario-support | done | actor binding과 session relay scenario가 공유하는 spot rid, actor A, actor B context를 분리했다. |
@@ -33,12 +33,12 @@ Spot/Entry Spot handler까지 도달해야 하므로, HTTP trigger나 direct Spo
 | `Client/Scenarios/YdB3ActorJoinYieldScenario.cs` | `Client/Scenarios/yd_b3_actor_join_yield_scenario.hpp` | scenario | done | 공통 문서가 허용한 `JoinEntrySpot` terminator 경로로 actor join yield 중 actor B fast request 진행을 별도 scenario header에서 runner로 검증한다. |
 | `Client/Scenarios/YdC1TimerIsolationScenario.cs` | `Client/Scenarios/yd_c1_timer_isolation_scenario.hpp` | scenario | done | timer A yield 중 timer B fast tick 진행은 별도 scenario header에서 runner로 검증한다. |
 | `Client/Scenarios/YdC2TimerReentryScenario.cs` | `Client/Scenarios/yd_c2_timer_reentry_scenario.hpp` | scenario | done | 같은 timer yield 중 다음 tick 재진입 금지 marker 순서는 별도 scenario header에서 runner로 검증한다. |
-| `Client/Scenarios/YdC3ActorTimerIsolationScenario.cs` | `Client/Scenarios/yd_c3_actor_timer_isolation_scenario.hpp` | scenario | partial | actor yield 중 timer fast tick 진행과 timer yield 중 actor fast request 진행은 별도 scenario header에서 runner로 검증한다. actor-yield 중 timer-fast half는 observer connector를 사용하므로 `.NET`의 같은 stream session 증거와 같지는 않다. 같은 connector 재시도는 `logs/20260701-003005-1569332`에서 actor yield 완료 뒤 timer start가 들어가 marker 순서가 깨졌다. session actor relay를 `.NET RelayAsync`처럼 fire-and-forget으로 바꾸는 시도는 `logs/20260701-013205-1681063`에서 YD-B1 request reply가 돌아오지 않아 실패했다. |
+| `Client/Scenarios/YdC3ActorTimerIsolationScenario.cs` | `Client/Scenarios/yd_c3_actor_timer_isolation_scenario.hpp` | scenario | done | actor yield 중 timer fast tick 진행과 timer yield 중 actor fast request 진행은 별도 scenario header에서 runner로 검증한다. actor-yield 중 timer-fast half도 같은 session-a connector에서 timer command와 evidence wait를 보내 actor/timer 실행선 release를 검증한다. 최신 통과 로그는 `logs/20260701-191329-11276`이다. |
 | `Client/Scenarios/YdD2RemoteSpotYieldScenario.cs` | `Client/Scenarios/yd_d2_remote_spot_yield_scenario.hpp` | scenario | done | remote Spot yield continuation 소유권 검증은 별도 scenario header에서 runner로 통과했다. owner evidence 관측은 public evidence snapshot polling을 쓴다. |
 | `Client/Scenarios/YdD3RouteBridgeYieldScenario.cs` | `Client/Scenarios/yd_d3_route_bridge_yield_scenario.hpp` | scenario | done | route bridge 경유 Spot handler yield 검증은 별도 scenario header에서 runner로 통과했다. |
 | `Client/Scenarios/YdD4SessionRelayActorYieldScenario.cs` | `Client/Scenarios/yd_d4_session_relay_actor_yield_scenario.hpp` | scenario | done | session actor relay와 bound session push 격리는 별도 scenario header에서 runner로 통과했다. |
 | `Client/Scenarios/YdE1TimeoutScenario.cs` | `Client/Scenarios/yd_e1_timeout_scenario.hpp` | scenario | done | yield timeout 뒤 같은 Spot mailbox cleanup 검증은 별도 scenario header에서 runner로 통과했다. |
-| `Client/Scenarios/YdE2CancellationScenario.cs` | `Client/Scenarios/yd_e2_cancellation_scenario.hpp` | scenario | gap | 공통 E2E는 cancellation이 yield 대기와 continuation을 정리해야 한다고 요구하고, `.NET` 기준은 `Yield<DelayReply>(CancellationToken)`으로 handler 내부 cancellation token을 넘긴다. C++ `cpp-framework-interfaces` spec은 public cancellation token과 cancellation registration을 두지 않는다고 명시하고, 현재 public yield call surface에도 cancellation token 인자가 없으므로 private cancel 우회 없이 public contract gap으로 남긴다. |
+| `Client/Scenarios/YdE2CancellationScenario.cs` | `Client/Scenarios/yd_e2_cancellation_scenario.hpp` | scenario | gap | 공통 E2E는 cancellation이 yield 대기와 continuation을 정리해야 한다고 요구하고, `.NET` 기준은 `Yield<DelayReply>(CancellationToken)`으로 handler 내부 cancellation token을 넘긴다. C++ `cpp-framework-interfaces` spec은 public cancellation token과 cancellation registration을 두지 않는다고 명시하고, 현재 public yield call surface에도 cancellation token 인자가 없으므로 private cancel 우회 없이 public contract gap으로 남긴다. 공개 계약 후보는 `framework/doc/framework/common/draft/yield-cancellation.ko.md`에 분리했다. |
 | `Client/Scenarios/ShutdownYieldScenario.cs` | `Client/Scenarios/shutdown_yield_scenario.hpp` | scenario | done | pending yield 중 play node shutdown과 recovery 검증은 별도 scenario header와 runner orchestration으로 통과했다. |
 | `Server/Registry/YieldDispatch.Registry.csproj` | `framework/languages/cpp/CMakeLists.txt` | build | done | registry target이 있다. |
 | `Server/Registry/Program.cs` | `Server/Registry/main.cpp` | server-role | done | registry role entrypoint가 있다. discovery registry host 구성은 factory header로 분리했다. |
@@ -82,13 +82,13 @@ Spot/Entry Spot handler까지 도달해야 하므로, HTTP trigger나 direct Spo
 | `YD-B3` | `Client/main.cpp`; `Server/Play/main.cpp`; `Server/Session/main.cpp`; `Server/Session/Support/yield_session.hpp` | done |
 | `YD-C1` | `Client/main.cpp`; `Server/Play/main.cpp`; `Server/Session/main.cpp`; `Server/Session/Support/yield_session.hpp`; `Server/Delay/main.cpp` | done |
 | `YD-C2` | `Client/main.cpp`; `Server/Play/main.cpp`; `Server/Session/main.cpp`; `Server/Session/Support/yield_session.hpp`; `Server/Delay/main.cpp` | done |
-| `YD-C3` | `Client/main.cpp`; `Server/Play/main.cpp`; `Server/Session/main.cpp`; `Server/Session/Support/yield_session.hpp`; `Server/Delay/main.cpp` | partial |
+| `YD-C3` | `Client/main.cpp`; `Server/Play/main.cpp`; `Server/Session/main.cpp`; `Server/Session/Support/yield_session.hpp`; `Server/Delay/main.cpp` | done |
 | `YD-D1` | `run_e2e.sh`; `Server/Play/Support/play_support.hpp` | done |
 | `YD-D2` | `Client/Scenarios/yd_d2_remote_spot_yield_scenario.hpp`; `Server/Play/main.cpp`; `Server/Session/main.cpp`; `Server/Session/Support/yield_session.hpp`; `Server/Delay/main.cpp` | done |
 | `YD-D3` | `Client/Scenarios/yd_d3_route_bridge_yield_scenario.hpp`; `Server/Play/Spots/play_spot_runtime.hpp`; `Server/Session/Support/yield_session.hpp` | done |
 | `YD-D4` | `Client/Scenarios/yd_d4_session_relay_actor_yield_scenario.hpp`; `Server/Play/Handlers/play_actor_handlers.hpp`; `Server/Session/Support/yield_session.hpp` | done |
 | `YD-E1` | `Client/Scenarios/yd_e1_timeout_scenario.hpp`; `Server/Play/Handlers/play_failure_spot_handlers.hpp`; `Server/Session/Support/yield_session.hpp` | done |
-| `YD-E2` | public yield cancellation token surface | gap; C++ spec이 public cancellation token/registration을 제공하지 않으므로 내부 pending cancel 또는 handler-local timeout으로 대체하지 않는다. |
+| `YD-E2` | public yield cancellation token surface | gap; C++ spec이 public cancellation token/registration을 제공하지 않으므로 내부 pending cancel 또는 handler-local timeout으로 대체하지 않는다. 공개 계약 후보는 `framework/doc/framework/common/draft/yield-cancellation.ko.md`에 분리했다. |
 | `YD-E3` | `Client/Scenarios/shutdown_yield_scenario.hpp`; `Server/Session/Support/yield_session.hpp`; `run_e2e.sh` | done |
 | `YD-E4` | `run_e2e.sh` static checks | done |
 | `YD-E5` | `run_e2e.sh`; `logs/<run>/yield-dispatch-report.json` | done |
@@ -164,8 +164,8 @@ Spot/Entry Spot handler까지 도달해야 하므로, HTTP trigger나 direct Spo
   - 결과: 통과
   - 로그: `logs/20260630-103612-3549306`
   - 의미: YD-A1~YD-A4, YD-B1~YD-B3, YD-C1~YD-C3가 통과한다. C3는 actor yield 중 timer fast tick
-    진행과 timer yield 중 actor fast request 진행을 모두 marker 순서로 검증한다. actor-yield 중
-    timer-fast half는 observer connector를 쓰므로 `.NET`의 같은 stream session 증거와 같지는 않다.
+    진행과 timer yield 중 actor fast request 진행을 모두 marker 순서로 검증한다. 당시 actor-yield 중
+    timer-fast half는 observer connector를 써서 `.NET`의 같은 stream session 증거와 같지는 않았다.
     runner 출력은 `scenario YD-C3 passed`, `yield-dispatch track-a-c result=passed`다.
 - 2026-06-30: `./framework/languages/cpp/e2e/YieldDispatch/run_e2e.sh`
   - 결과: 통과
@@ -432,7 +432,7 @@ Spot/Entry Spot handler까지 도달해야 하므로, HTTP trigger나 direct Spo
   - 결과: 통과
   - 로그: `logs/20260630-153557-290422`
   - 의미: YD-E3는 shutdown-wait client가 pending yield를 시작하고, runner가 play-a evidence log에서
-    `yield-released` marker를 확인한 뒤 play-a를 SIGTERM으로 정상 종료하며, client가 request timeout이
+    `yield-released` marker를 확인한 뒤 play-a에 SIGTERM을 보내며, client가 request timeout이
     아닌 public connector error를 받는지 검증한다. 이후 같은 spot rid로 play-a를 재시작하고 recovery
     probe marker를 확인한다. 같은 실행에서 YD-E4 static gate도 통과한다. runner 출력은
     `yield-dispatch shutdown wait result=passed`, `yield-dispatch shutdown recovery result=passed`,
@@ -505,7 +505,7 @@ Spot/Entry Spot handler까지 도달해야 하므로, HTTP trigger나 direct Spo
   - 로그: `logs/20260630-210837-1224464`
   - 의미: YD-C3 actor-yield 중 timer-fast half를 `.NET`처럼 같은 connector로 보내도록 시도했지만,
     `ActorYieldReq`가 완료된 뒤 `TimerStartMsg`가 들어가 `YD-C3A marker order mismatch`로 실패했다.
-    observer connector를 쓰는 현재 구현은 partial 근거로 유지한다.
+    이 시점에는 observer connector를 쓰는 구현을 partial 근거로 유지했다.
 - 2026-06-30: `timeout 420s framework/languages/cpp/e2e/YieldDispatch/run_e2e.sh`
   - 결과: 통과
   - 로그: `logs/20260630-211459-1245708`
@@ -520,34 +520,74 @@ Spot/Entry Spot handler까지 도달해야 하므로, HTTP trigger나 direct Spo
   - 결과: 통과
   - 로그: `logs/20260701-002028-1556638`
   - 의미: public send `submit()` 반환값 의존을 제거한 뒤 YD-A1~YD-D4, YD-E1, YD-E3, YD-E4 static
-    gate와 YD-E5 `yield-dispatch-report.json` 생성/검증이 다시 통과했다. report는 YD-C3를 partial,
+    gate와 YD-E5 `yield-dispatch-report.json` 생성/검증이 다시 통과했다. 당시 report는 YD-C3를 partial,
     YD-E2를 gap으로 유지한다.
 - 2026-07-01: `timeout 420s framework/languages/cpp/e2e/YieldDispatch/run_e2e.sh`
   - 결과: 실패
   - 로그: `logs/20260701-003005-1569332`
   - 의미: YD-C3 actor-yield 중 timer-fast half를 현재 C++ stream connector의 같은 connector로 다시
     시도했지만, `ActorYieldReq` 완료 뒤 `TimerStartMsg`가 처리되어 `YD-C3A marker order mismatch`로
-    실패했다. observer connector 기반 구현은 partial 근거로 유지한다.
+    실패했다. 이 시점에는 observer connector 기반 구현을 partial 근거로 유지했다.
 - 2026-07-01: `timeout 420s framework/languages/cpp/e2e/YieldDispatch/run_e2e.sh`
   - 결과: 실패
   - 로그: `logs/20260701-013205-1681063`
   - 의미: YD-C3 partial을 풀기 위해 session actor request relay를 `relay_request(...).async()` 대기
     대신 `relay(payload).submit()`으로 바꾸고 actor-yield 중 timer-fast half를 같은 connector로 다시
     시도했다. 이 변경은 YD-C3 이전의 YD-B1에서 `ActorFastReq` reply가 client로 돌아오지 않아 실패했다.
-    현재 C++ `session_actor_t::relay(payload)`는 `.NET` `RelayAsync`처럼 request reply를 stream에
+    당시 C++ `session_actor_t::relay(payload)`는 `.NET` `RelayAsync`처럼 request reply를 stream에
     deferred로 돌려주는 표면이 아니므로, request relay는 `relay_request(...).async()` 뒤
-    `stream.reply_packet(...)`을 기다려야 한다. 이 우회는 폐기했고 observer connector 기반 partial을
-    유지한다.
+    `stream.reply_packet(...)`을 기다려야 했다. 이 우회는 폐기했고 당시 observer connector 기반 partial을
+    유지했다.
 - 2026-07-01: `timeout 420s framework/languages/cpp/e2e/YieldDispatch/run_e2e.sh`
   - 결과: 통과
   - 로그: `logs/20260701-013458-1684685`
-  - 의미: 폐기한 session actor relay 우회를 되돌린 뒤 기존 observer connector 기반 YD-C3 partial,
+  - 의미: 폐기한 session actor relay 우회를 되돌린 뒤 당시 observer connector 기반 YD-C3 partial,
     YD-E2 gap, YD-E5 report 검증을 유지한 상태로 YieldDispatch full runner가 다시 통과했다.
+- 2026-07-01: `cmake --build framework/languages/cpp/build --target zlink_framework zlink_cpp_e2e_yield_dispatch_registry zlink_cpp_e2e_yield_dispatch_delay zlink_cpp_e2e_yield_dispatch_play zlink_cpp_e2e_yield_dispatch_session zlink_cpp_e2e_yield_dispatch_client -j 4`
+  - 결과: 통과
+  - 의미: stream host concurrent dispatch, per-dispatch reply context, YD-C3 same-connector scenario 변경 뒤 framework와 YieldDispatch role/client target이 빌드됐다.
+- 2026-07-01: `timeout 420s framework/languages/cpp/e2e/YieldDispatch/run_e2e.sh`
+  - 결과: 통과
+  - 로그: `logs/20260701-051400-81089`
+  - 의미: YD-C3 actor-yield 중 timer-fast half를 `.NET`처럼 같은 stream connector에서 실행해 통과했다. YD-A1~YD-D4, YD-E1, YD-E3, YD-E4 static gate, YD-E5 report 생성도 함께 통과했다. report는 YD-C3를 passed, YD-E2를 gap으로 기록한다.
+- 2026-07-01: `timeout 420s framework/languages/cpp/e2e/YieldDispatch/run_e2e.sh`
+  - 결과: 통과
+  - 로그: `logs/20260701-051641-83562`
+  - 의미: YD-C3 report status를 `passed`로 갱신한 뒤에도 full runner와 YD-E5 report 생성이 통과했다. report는 YD-C3를 passed, YD-E2를 gap으로 기록한다.
+- 2026-07-01: `timeout 420s framework/languages/cpp/e2e/YieldDispatch/run_e2e.sh`
+  - 결과: 통과
+  - 로그: `logs/20260701-073830-56972`
+  - 의미: 현재 트리에서 YD-A1~YD-D4, YD-E1, YD-E3, YD-E4 static gate, YD-E5 report 생성이 다시
+    통과했다. runner 출력은 `scenario YD-D1 passed`, `scenario YD-E5 passed`,
+    `yield-dispatch e2e result=passed`를 포함하고, report는 YD-E2를 public contract gap으로 기록한다.
+- 2026-07-01: `timeout 420s framework/languages/cpp/e2e/YieldDispatch/run_e2e.sh`
+  - 결과: 통과
+  - 로그: `logs/20260701-131002-82309`
+  - 의미: runner readiness와 client connect timeout을 로컬 기준 3초로 낮춘 뒤에도 full runner가 통과했다.
+    이 기록은 당시 observer 기반 B1/B3/C3 검증으로 얻은 과거 통과 증거다. 최신 완료 근거는 아래의
+    같은 session-a connector 검증 결과를 사용한다. runner 출력은 `scenario YD-D1 passed`,
+    `scenario YD-E5 passed`, `yield-dispatch e2e result=passed`를 포함하고, report는 YD-E2를 public
+    contract gap으로 기록한다.
+- 2026-07-01: `timeout 420s framework/languages/cpp/e2e/YieldDispatch/run_e2e.sh`
+  - 결과: 통과
+  - 로그: `logs/20260701-135643-4880`
+  - 의미: route request backend의 reply 대기 전체 직렬화를 제거한 뒤 B1/B3/C3가 session-b observer
+    없이 같은 session-a connector에서 통과했다. D3는 `yield-released` evidence를 확인한 뒤 probe를
+    보내 route bridge scheduling 차이 없이 yield turn release를 검증한다. runner 출력은
+    `scenario YD-D1 passed`, `scenario YD-E5 passed`, `yield-dispatch e2e result=passed`를 포함하고,
+    report는 YD-E2를 public contract gap으로 기록한다.
+- 2026-07-01: `ZLINK_CPP_E2E_BUILD_DIR=framework/languages/cpp/build timeout 420s framework/languages/cpp/e2e/YieldDispatch/run_e2e.sh`
+  - 결과: 통과
+  - 로그: `logs/20260701-191329-11276`
+  - 의미: native route backend가 request reply 대기 전체를 직렬화하지 않고 ROUTER/spot bridge submit
+    구간만 짧게 보호하도록 수정한 뒤에도 full runner가 통과했다. B1/B3/C3는 session-b observer 없이
+    같은 session-a connector에서 통과하며, B1 evidence 순서는 `actor-yield-started`,
+    `actor-yield-released`, `actor-fast-started`, `actor-fast-completed`, `actor-yield-resumed`,
+    `actor-yield-completed`로 확인했다. local readiness와 stream connect timeout은 3초 기준이고,
+    YD-E3 shutdown path의 session route spot request는 2초 안에 public `remote_error`를 올린다.
+    runner 출력은 `scenario YD-D1 passed`, `scenario YD-E5 passed`,
+    `yield-dispatch e2e result=passed`를 포함하고, report는 YD-E2를 public contract gap으로 기록한다.
 
 ## 다음 작업 순서
 
-1. YD-C3의 actor-yield 중 timer-fast half는 같은 stream session 증거를 만들 수 있는 public connector/stream
-   semantics 또는 request reply를 deferred로 stream에 돌려주는 session actor relay 표면이 정리된 뒤
-   partial을 해소한다.
-2. YD-E2 cancellation은 C++ public yield cancellation token surface가 정리된 뒤 구현한다.
-3. 빠른 반복 실행에서 드물게 보이는 startup `errno=105`/`errno=22`와 빌드 산출물 손상은 runner 환경 안정화 후보로 분리한다.
+1. YD-E2 cancellation은 C++ public yield cancellation token surface가 정리된 뒤 구현한다.

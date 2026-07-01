@@ -35,7 +35,7 @@ inline const char *shutdown_error_name (zlink::stream_connector::error_code_t co
 inline void run_shutdown_wait_scenario (const client_options_t &client_options)
 {
     auto connector_options = make_connector_options (client_options);
-    connector_options.request_timeout = std::chrono::milliseconds (90000);
+    connector_options.request_timeout = std::chrono::milliseconds (3000);
     auto client = zlink::stream_connector::connector_factory_t::create (connector_options);
     auto connected = client.connect ();
     ensure (static_cast<bool> (connected), "YD-E3 shutdown wait stream connect failed");
@@ -45,7 +45,7 @@ inline void run_shutdown_wait_scenario (const client_options_t &client_options)
                                                     .spot_rid = client_options.spot_rid,
                                                     .delay_ms = 30000})
         .packet_name (yield_shutdown_scenario_req_t::packet_name)
-        .timeout (std::chrono::milliseconds (90000))
+        .timeout (std::chrono::milliseconds (3000))
         .submit<yield_scenario_res_t> ();
     (void) client.close ();
     ensure (!static_cast<bool> (result),

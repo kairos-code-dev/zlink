@@ -15,40 +15,56 @@ read -r REG_HTTP REG_PUB REG_ROUTER \
   PLAY_B_HTTP PLAY_B_CONTROL PLAY_B_SPOT_ROUTE PLAY_B_SPOT_ROUTER PLAY_B_SPOT_PUB \
   SESSION_A_HTTP SESSION_A_STREAM SESSION_A_SPOT_ROUTER SESSION_A_SPOT_PUB \
   SESSION_B_HTTP SESSION_B_STREAM SESSION_B_SPOT_ROUTER SESSION_B_SPOT_PUB <<<"$(python3 - <<'PY'
+import os
+import random
 import socket
 
 sockets = []
 ports = []
-for _ in range(25):
+host = os.environ.get("ZLINK_CPP_E2E_BIND_HOST", "127.0.0.2")
+base = os.environ.get("ZLINK_CPP_E2E_PORT_BASE")
+port_range = int(os.environ.get("ZLINK_CPP_E2E_PORT_RANGE", "20000"))
+start = int(base) if base else 10000
+stop = start + port_range if base else 30000
+available = list(range(start, stop))
+for port in random.sample(available, len(available)):
     sock = socket.socket()
-    sock.bind(("127.0.0.1", 0))
+    try:
+        sock.bind((host, port))
+    except OSError:
+        sock.close()
+        continue
     sockets.append(sock)
     ports.append(sock.getsockname()[1])
-print(f"http://127.0.0.1:{ports[0]}", end=" ")
-print(f"tcp://127.0.0.1:{ports[1]}", end=" ")
-print(f"tcp://127.0.0.1:{ports[2]}", end=" ")
-print(f"http://127.0.0.1:{ports[3]}", end=" ")
-print(f"tcp://127.0.0.1:{ports[4]}", end=" ")
-print(f"http://127.0.0.1:{ports[5]}", end=" ")
-print(f"tcp://127.0.0.1:{ports[6]}", end=" ")
-print(f"http://127.0.0.1:{ports[7]}", end=" ")
-print(f"tcp://127.0.0.1:{ports[8]}", end=" ")
-print(f"tcp://127.0.0.1:{ports[9]}", end=" ")
-print(f"tcp://127.0.0.1:{ports[10]}", end=" ")
-print(f"tcp://127.0.0.1:{ports[11]}", end=" ")
-print(f"http://127.0.0.1:{ports[12]}", end=" ")
-print(f"tcp://127.0.0.1:{ports[13]}", end=" ")
-print(f"tcp://127.0.0.1:{ports[14]}", end=" ")
-print(f"tcp://127.0.0.1:{ports[15]}", end=" ")
-print(f"tcp://127.0.0.1:{ports[16]}", end=" ")
-print(f"http://127.0.0.1:{ports[17]}", end=" ")
-print(f"tcp://127.0.0.1:{ports[18]}", end=" ")
-print(f"tcp://127.0.0.1:{ports[19]}", end=" ")
-print(f"tcp://127.0.0.1:{ports[20]}", end=" ")
-print(f"http://127.0.0.1:{ports[21]}", end=" ")
-print(f"tcp://127.0.0.1:{ports[22]}", end=" ")
-print(f"tcp://127.0.0.1:{ports[23]}", end=" ")
-print(f"tcp://127.0.0.1:{ports[24]}")
+    if len(ports) == 25:
+        break
+if len(ports) != 25:
+    raise SystemExit(f"failed to allocate 25 local ports, allocated {len(ports)}")
+print(f"http://{host}:{ports[0]}", end=" ")
+print(f"tcp://{host}:{ports[1]}", end=" ")
+print(f"tcp://{host}:{ports[2]}", end=" ")
+print(f"http://{host}:{ports[3]}", end=" ")
+print(f"tcp://{host}:{ports[4]}", end=" ")
+print(f"http://{host}:{ports[5]}", end=" ")
+print(f"tcp://{host}:{ports[6]}", end=" ")
+print(f"http://{host}:{ports[7]}", end=" ")
+print(f"tcp://{host}:{ports[8]}", end=" ")
+print(f"tcp://{host}:{ports[9]}", end=" ")
+print(f"tcp://{host}:{ports[10]}", end=" ")
+print(f"tcp://{host}:{ports[11]}", end=" ")
+print(f"http://{host}:{ports[12]}", end=" ")
+print(f"tcp://{host}:{ports[13]}", end=" ")
+print(f"tcp://{host}:{ports[14]}", end=" ")
+print(f"tcp://{host}:{ports[15]}", end=" ")
+print(f"tcp://{host}:{ports[16]}", end=" ")
+print(f"http://{host}:{ports[17]}", end=" ")
+print(f"tcp://{host}:{ports[18]}", end=" ")
+print(f"tcp://{host}:{ports[19]}", end=" ")
+print(f"tcp://{host}:{ports[20]}", end=" ")
+print(f"http://{host}:{ports[21]}", end=" ")
+print(f"tcp://{host}:{ports[22]}", end=" ")
+print(f"tcp://{host}:{ports[23]}", end=" ")
+print(f"tcp://{host}:{ports[24]}")
 for sock in sockets:
     sock.close()
 PY
@@ -81,6 +97,15 @@ launch_process() {
   fi
 }
 
+print_failure_logs() {
+  echo "Recent logs:" >&2
+  for log_file in "$LOG_DIR"/*.stderr.log "$LOG_DIR"/client*.stdout.log; do
+    [[ -f "$log_file" ]] || continue
+    echo "--- ${log_file#$LOG_DIR/} ---" >&2
+    tail -n 40 "$log_file" >&2 || true
+  done
+}
+
 cleanup() {
   local code=$?
   for pid in "${PIDS[@]:-}"; do
@@ -107,6 +132,7 @@ cleanup() {
   wait >/dev/null 2>&1 || true
   if [[ $code -ne 0 ]]; then
     echo "E2E failed. Logs: $LOG_DIR" >&2
+    print_failure_logs
   fi
   exit "$code"
 }
@@ -117,13 +143,21 @@ port_of() {
   echo "${endpoint##*:}"
 }
 
+host_of() {
+  local endpoint="$1"
+  local rest="${endpoint#*://}"
+  echo "${rest%%:*}"
+}
+
 wait_port() {
   local name="$1"
   local endpoint="$2"
+  local host
   local port
+  host="$(host_of "$endpoint")"
   port="$(port_of "$endpoint")"
-  for _ in $(seq 1 100); do
-    if (echo >"/dev/tcp/127.0.0.1/${port}") >/dev/null 2>&1; then
+  for _ in $(seq 1 60); do
+    if (echo >"/dev/tcp/${host}/${port}") >/dev/null 2>&1; then
       return 0
     fi
     sleep 0.05
@@ -183,12 +217,15 @@ wait_file_contains() {
   local pattern="$2"
   local message="$3"
   local watched_pid="${4:-}"
-  local attempts="${5:-200}"
+  local attempts="${5:-60}"
   for _ in $(seq 1 "$attempts"); do
     if [[ -f "$file" ]] && grep -Fq "$pattern" "$file"; then
       return 0
     fi
     if [[ -n "$watched_pid" ]] && ! kill -0 "$watched_pid" >/dev/null 2>&1; then
+      if [[ -f "$file" ]] && grep -Fq "$pattern" "$file"; then
+        return 0
+      fi
       break
     fi
     sleep 0.05
@@ -201,7 +238,7 @@ terminate_gracefully() {
   local name="$1"
   local pid="$2"
   kill "$pid" >/dev/null 2>&1 || true
-  for _ in $(seq 1 100); do
+  for _ in $(seq 1 60); do
     if ! kill -0 "$pid" >/dev/null 2>&1; then
       wait "$pid" >/dev/null 2>&1 || true
       return 0
@@ -332,13 +369,13 @@ wait_file_contains \
   "yield-released|rid=play-a|spot=$SHUTDOWN_SPOT|request=$SHUTDOWN_ID" \
   "YD-E3 pending yield marker was not observed before shutdown." \
   "$SHUTDOWN_CLIENT_PID"
-terminate_gracefully play-a "$PLAY_A_PID"
+kill "$PLAY_A_PID" >/dev/null 2>&1 || true
 wait_file_contains \
   "$LOG_DIR/client-shutdown-wait.stdout.log" \
   "yield-dispatch shutdown wait result=passed" \
   "YD-E3 shutdown client did not observe the public closed/cancelled error." \
-  "$SHUTDOWN_CLIENT_PID" \
-  900
+  "$SHUTDOWN_CLIENT_PID"
+terminate_gracefully play-a "$PLAY_A_PID"
 wait "$SHUTDOWN_CLIENT_PID"
 
 start_play_role play-a "$PLAY_A_HTTP" "$PLAY_A_CONTROL" "$PLAY_A_SPOT_ROUTE" "$PLAY_A_SPOT_ROUTER" "$PLAY_A_SPOT_PUB" "$DELAY_A_ENDPOINT"
@@ -388,14 +425,13 @@ report = {
         {"id": "YD-C2", "status": "passed",
          "markers": ["timer-yield-started", "timer-yield-released",
                      "timer-yield-resumed", "timer-yield-completed"]},
-        {"id": "YD-C3", "status": "partial",
+        {"id": "YD-C3", "status": "passed",
          "markers": ["actor-yield-started", "actor-yield-released",
                      "timer-fast-started", "timer-fast-completed",
                      "actor-yield-resumed", "actor-yield-completed",
                      "timer-yield-started", "timer-yield-released",
                      "actor-fast-started", "actor-fast-completed",
-                     "timer-yield-resumed", "timer-yield-completed"],
-         "gap": "C++ currently needs an observer connector for the actor-yield/timer-fast half."},
+                     "timer-yield-resumed", "timer-yield-completed"]},
         {"id": "YD-D1", "status": "passed",
          "markers": ["hold-completed", "yield-completed", "worker-yield-completed",
                      "actor-yield-completed", "timer-yield-completed",

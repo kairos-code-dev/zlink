@@ -35,7 +35,7 @@ std::string run_yd_e1_timeout_scenario (TConnector &connector)
       connector.request (
                 yield_evidence_wait_req_t{.request_id = request_id,
                                           .marker = "timeout-yield-completed",
-                                          .timeout_milliseconds = 20000})
+                                          .timeout_milliseconds = 3000})
         .packet_name (yield_evidence_wait_req_t::packet_name)
         .metadata (target_node_rid_metadata, "play-a")
         .timeout (std::chrono::milliseconds (30000))
@@ -56,7 +56,7 @@ std::string run_yd_e1_timeout_scenario (TConnector &connector)
       connector.request (
                 yield_evidence_wait_req_t{.request_id = request_id,
                                           .marker = "probe-completed",
-                                          .timeout_milliseconds = 20000})
+                                          .timeout_milliseconds = 3000})
         .packet_name (yield_evidence_wait_req_t::packet_name)
         .metadata (target_node_rid_metadata, "play-a")
         .timeout (std::chrono::milliseconds (30000))

@@ -61,7 +61,7 @@ struct yield_evidence_wait_req_t
     static constexpr const char *packet_name = "YieldEvidenceWaitReq";
     std::string request_id;
     std::string marker;
-    int timeout_milliseconds = 20000;
+    int timeout_milliseconds = 3000;
 };
 
 struct yield_shutdown_scenario_req_t
@@ -377,7 +377,7 @@ inline void from_json (const nlohmann::json &json, yield_evidence_wait_req_t &va
 {
     value.request_id = json.value ("request_id", "");
     value.marker = json.value ("marker", "");
-    value.timeout_milliseconds = json.value ("timeout_milliseconds", 20000);
+    value.timeout_milliseconds = json.value ("timeout_milliseconds", 3000);
 }
 
 inline void to_json (nlohmann::json &json, const yield_shutdown_scenario_req_t &value)

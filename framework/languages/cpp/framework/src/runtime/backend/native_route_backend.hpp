@@ -9,6 +9,7 @@
 #include <chrono>
 #include <atomic>
 #include <memory>
+#include <mutex>
 #include <optional>
 #include <string>
 #include <vector>
@@ -55,9 +56,10 @@ class native_route_backend_t
     void forget_peer (const zlink::routing_id_t &target_node_rid) noexcept;
 
     zlink::router_socket_t *_router;
+    std::mutex _router_mutex;
     std::atomic_bool *_stop = nullptr;
     std::vector<std::string> _reconnect_endpoints;
-    std::unique_ptr<zlink::service::spot_route_bridge_t> _spot_route_bridge;
+    std::shared_ptr<zlink::service::spot_route_bridge_t> _spot_route_bridge;
     std::string _spot_route_channel_name;
 };
 

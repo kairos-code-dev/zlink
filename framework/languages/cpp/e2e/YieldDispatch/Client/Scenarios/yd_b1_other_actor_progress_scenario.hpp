@@ -19,7 +19,6 @@ namespace zlink::framework::e2e::yield_dispatch::client
 template <typename TConnector>
 std::string run_yd_b1_other_actor_progress_scenario (
   TConnector &connector,
-  TConnector &observer,
   const yield_actor_scenario_context_t &actors)
 {
     const auto request_id = unique_id ("YD-B1");
@@ -35,7 +34,7 @@ std::string run_yd_b1_other_actor_progress_scenario (
         });
     std::this_thread::sleep_for (std::chrono::milliseconds (75));
     auto actor_fast =
-      observer.request (actor_fast_req_t{.request_id = request_id, .marker = "b1-fast"})
+      connector.request (actor_fast_req_t{.request_id = request_id, .marker = "b1-fast"})
         .packet_name (actor_fast_req_t::packet_name)
         .metadata (actor_id_metadata, actors.actor_b)
         .timeout (std::chrono::milliseconds (30000))

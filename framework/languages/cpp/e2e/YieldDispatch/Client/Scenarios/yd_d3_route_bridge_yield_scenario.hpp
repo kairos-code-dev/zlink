@@ -7,7 +7,6 @@
 #include <chrono>
 #include <iostream>
 #include <string>
-#include <thread>
 
 namespace zlink::framework::e2e::yield_dispatch::client
 {
@@ -27,13 +26,22 @@ std::string run_yd_d3_route_bridge_yield_scenario (TConnector &connector)
     ensure (spot.value ().spot_rid == spot_rid, "YD-D3 ensure spot reply mismatch");
 
     connector.send (yield_msg_t{.request_id = request_id,
-                                .delay_ms = 250,
+                                .delay_ms = 500,
                                 .correlation_id = "route-bridge"})
         .packet_name (yield_msg_t::packet_name)
         .metadata (spot_rid_metadata, spot_rid)
         .metadata (target_node_rid_metadata, "play-b")
         .submit ();
-    std::this_thread::sleep_for (std::chrono::milliseconds (75));
+    auto released =
+      connector.request (
+                yield_evidence_wait_req_t{.request_id = request_id,
+                                          .marker = "yield-released",
+                                          .timeout_milliseconds = 3000})
+        .packet_name (yield_evidence_wait_req_t::packet_name)
+        .metadata (target_node_rid_metadata, "play-b")
+        .timeout (std::chrono::milliseconds (30000))
+        .template submit<yield_evidence_res_t> ();
+    ensure (static_cast<bool> (released), "YD-D3 yield-released wait failed");
 
     connector.send (probe_msg_t{.request_id = request_id, .marker = "route-bridge-probe"})
         .packet_name (probe_msg_t::packet_name)
@@ -45,7 +53,7 @@ std::string run_yd_d3_route_bridge_yield_scenario (TConnector &connector)
       connector.request (
                 yield_evidence_wait_req_t{.request_id = request_id,
                                           .marker = "yield-completed",
-                                          .timeout_milliseconds = 20000})
+                                          .timeout_milliseconds = 3000})
         .packet_name (yield_evidence_wait_req_t::packet_name)
         .metadata (target_node_rid_metadata, "play-b")
         .timeout (std::chrono::milliseconds (30000))

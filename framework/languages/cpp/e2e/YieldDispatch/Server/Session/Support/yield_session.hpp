@@ -9,6 +9,7 @@
 #include <chrono>
 #include <map>
 #include <string>
+#include <thread>
 
 namespace zlink::framework::e2e::yield_dispatch::server::session {
 
@@ -58,8 +59,41 @@ class yield_session_t final : public zlink::framework::packet_stream_session_t
         const auto packet = std::string (dispatch.packet_name ());
         if (packet == yd::bind_yield_actors_req_t::packet_name) {
             auto request = payload.parse_json<yd::bind_yield_actors_req_t> ();
-            auto reply = co_await request_control<yd::bind_yield_actors_res_t> (
-              request, packet, target_or_default (dispatch));
+            (void) co_await request_control<yd::ensure_spot_res_t> (
+              yd::ensure_spot_req_t{.spot_rid = request.spot_rid},
+              yd::ensure_spot_req_t::packet_name, target_or_default (dispatch));
+            yd::bind_yield_actors_res_t reply{.spot_rid = request.spot_rid};
+            for (const auto &actor_id : request.actor_ids) {
+                auto created =
+                  _actors.get_or_create (yd::actor_type, actor_id,
+                                         yd::delay_req_t{.request_id = "bind-" + actor_id,
+                                                         .delay_ms = 0,
+                                                         .marker = "bind"});
+                if (!created) {
+                    throw zlink::framework::framework_exception_t (
+                      created.error_kind (),
+                      created.error () ? created.error ()->what ()
+                                       : "failed to create yield actor");
+                }
+                auto joined =
+                  co_await created.value ()
+                    .context ()
+                    .join_spot (zlink::framework::spot_rid_t::from_string (request.spot_rid),
+                                yd::delay_req_t{.request_id = "bind-" + actor_id,
+                                                .delay_ms = 0,
+                                                .marker = "bind"})
+                    .timeout (std::chrono::milliseconds (3000))
+                    .template async<yd::delay_res_t> ();
+                if (joined.result_code != 0) {
+                    throw zlink::framework::framework_exception_t (
+                      zlink::framework::framework_error_kind_t::request_failed,
+                      "yield actor join was rejected: " + actor_id);
+                }
+                reply.actors.push_back (
+                  {.actor_id = actor_id,
+                   .node_rid = std::string (joined.actor.node_rid ().value ()),
+                   .generation = joined.actor.generation ()});
+            }
             for (const auto &actor : reply.actors) {
                 (void) co_await _actors.bind (to_actor_ref (actor)).async ();
                 _gateway.bind_session_stream (actor.actor_id, stream,
@@ -192,8 +226,21 @@ class yield_session_t final : public zlink::framework::packet_stream_session_t
                                                   : "bound actor route is not found");
         }
         if (dispatch.can_reply ()) {
-            auto reply = co_await actor.value ().relay_request (payload).async ();
-            stream.reply_packet (reply).submit ();
+            auto actor_value = actor.value ();
+            auto stream_copy = stream;
+            auto payload_copy = payload;
+            std::thread (
+              [actor_value = std::move (actor_value), stream_copy = std::move (stream_copy),
+               packet, payload_copy = std::move (payload_copy)] () mutable {
+                  auto task = actor_value.relay_request (packet, payload_copy).async ();
+                  const auto &reply = task.result ();
+                  if (reply) {
+                      stream_copy.reply_packet (reply.value ()).submit ();
+                  } else {
+                      (void) stream_copy.close ().result ();
+                  }
+              })
+              .detach ();
             co_return;
         }
         actor.value ().relay (payload).submit ();
@@ -247,9 +294,9 @@ class yield_session_t final : public zlink::framework::packet_stream_session_t
     request_control (const TRequest &request, const std::string &packet, zlink::routing_id_t target)
     {
         const auto reply =
-          co_await _routes.request (yd::control_channel, target, request)
+            co_await _routes.request (yd::control_channel, target, request)
             .packet_name (packet)
-            .timeout (std::chrono::milliseconds (5000))
+            .timeout (std::chrono::milliseconds (3000))
             .template async<TReply> ();
         co_return reply;
     }
@@ -266,7 +313,7 @@ class yield_session_t final : public zlink::framework::packet_stream_session_t
           yd::yield_req_t{.request_id = request.request_id,
                           .delay_ms = request.delay_ms,
                           .correlation_id = "shutdown"},
-          yd::yield_req_t::packet_name);
+          yd::yield_req_t::packet_name, std::chrono::milliseconds (2000));
         auto evidence = co_await request_control<yd::yield_evidence_res_t> (
           yd::yield_evidence_req_t{.request_id = request.request_id},
           yd::yield_evidence_req_t::packet_name, target);
@@ -292,7 +339,7 @@ class yield_session_t final : public zlink::framework::packet_stream_session_t
         auto evidence = co_await request_control<yd::yield_evidence_res_t> (
           yd::yield_evidence_wait_req_t{.request_id = request.request_id,
                                         .marker = "probe-completed",
-                                        .timeout_milliseconds = 20000},
+                                        .timeout_milliseconds = 3000},
           yd::yield_evidence_wait_req_t::packet_name, target);
         co_return yd::yield_scenario_res_t{
           .operation = "yield.e3-shutdown-recovery",
@@ -320,14 +367,15 @@ class yield_session_t final : public zlink::framework::packet_stream_session_t
     request_spot (zlink::routing_id_t target,
                   const std::string &spot_rid,
                   const TRequest &request,
-                  const std::string &packet)
+                  const std::string &packet,
+                  std::chrono::milliseconds timeout = std::chrono::milliseconds (3000))
     {
         auto reply =
           co_await _routes
             .request (yd::control_channel, target,
                       zlink::framework::spot_rid_t::from_string (spot_rid), request)
             .packet_name (packet)
-            .timeout (std::chrono::milliseconds (10000))
+            .timeout (timeout)
             .template async<TReply> ();
         co_return reply;
     }

@@ -102,15 +102,21 @@ int main ()
             .submit<yd::bind_yield_actors_res_t> ();
         ensure (static_cast<bool> (observer_bound_actors),
                 "YD-B observer bind actors failed");
-
         yd_client::run_yd_a1_basic_terminator_scenario (client, spot_rid);
         yd_client::run_yd_a2_yield_terminator_scenario (client, observer, spot_rid);
         yd_client::run_yd_a3_continuation_context_scenario (client, observer, spot_rid);
         yd_client::run_yd_a4_worker_yield_scenario (client, observer, spot_rid);
 
-        yd_client::run_yd_b1_other_actor_progress_scenario (client, observer, actors);
+        yd_client::run_yd_b1_other_actor_progress_scenario (client, actors);
         yd_client::run_yd_b2_same_actor_reentry_scenario (client, observer, actors);
-        yd_client::run_yd_b3_actor_join_yield_scenario (client, observer, actors);
+        yd_client::run_yd_b3_actor_join_yield_scenario (client, actors);
+        auto rebound_actors =
+          client.request (yd::bind_yield_actors_req_t{.spot_rid = actors.spot_rid,
+                                                      .actor_ids = {actors.actor_a, actors.actor_b}})
+            .packet_name (yd::bind_yield_actors_req_t::packet_name)
+            .timeout (std::chrono::milliseconds (15000))
+            .submit<yd::bind_yield_actors_res_t> ();
+        ensure (static_cast<bool> (rebound_actors), "YD-C actor rebind failed");
 
         const auto timer_spot_rid = unique_id ("yield-timer");
         auto timer_spot =
@@ -124,7 +130,7 @@ int main ()
 
         yd_client::run_yd_c1_timer_isolation_scenario (client, observer, timer_spot_rid);
         yd_client::run_yd_c2_timer_reentry_scenario (client, observer, timer_spot_rid);
-        yd_client::run_yd_c3_actor_timer_isolation_scenario (client, observer, actors);
+        yd_client::run_yd_c3_actor_timer_isolation_scenario (client, actors);
 
         yd_client::run_yd_d2_remote_spot_yield_scenario (client);
         yd_client::run_yd_d3_route_bridge_yield_scenario (client);

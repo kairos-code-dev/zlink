@@ -29,7 +29,7 @@ std::string run_yd_c2_timer_reentry_scenario (TConnector &connector,
       observer.request (
                 yield_evidence_wait_req_t{.request_id = request_id,
                                           .marker = "timer-next-completed",
-                                          .timeout_milliseconds = 20000})
+                                          .timeout_milliseconds = 3000})
         .packet_name (yield_evidence_wait_req_t::packet_name)
         .metadata (target_node_rid_metadata, "play-a")
         .timeout (std::chrono::milliseconds (30000))

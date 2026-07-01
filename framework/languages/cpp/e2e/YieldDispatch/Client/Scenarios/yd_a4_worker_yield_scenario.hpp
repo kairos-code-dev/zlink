@@ -5,7 +5,6 @@
 #include "../Support/scenario_assert.hpp"
 
 #include <chrono>
-#include <future>
 #include <iostream>
 #include <string>
 #include <thread>
@@ -19,38 +18,30 @@ std::string run_yd_a4_worker_yield_scenario (TConnector &connector,
                                              const std::string &spot_rid)
 {
     const auto request_id = unique_id ("YD-A4");
-    auto worker = std::async (std::launch::async, [&] {
-        return connector.request (worker_yield_req_t{.request_id = request_id, .delay_ms = 350})
-          .packet_name (worker_yield_req_t::packet_name)
-          .metadata (spot_rid_metadata, spot_rid)
-          .timeout (std::chrono::milliseconds (10000))
-          .template submit<yield_dispatch_res_t> ();
-    });
+    connector.send (worker_yield_msg_t{.request_id = request_id, .delay_ms = 350})
+      .packet_name (worker_yield_msg_t::packet_name)
+      .metadata (spot_rid_metadata, spot_rid)
+      .submit ();
     std::this_thread::sleep_for (std::chrono::milliseconds (75));
     auto worker_released =
       observer.request (
                   yield_evidence_wait_req_t{.request_id = request_id,
                                             .marker = "worker-yield-released",
-                                            .timeout_milliseconds = 20000})
+                                            .timeout_milliseconds = 3000})
         .packet_name (yield_evidence_wait_req_t::packet_name)
         .metadata (target_node_rid_metadata, "play-a")
         .timeout (std::chrono::milliseconds (30000))
         .template submit<yield_evidence_res_t> ();
     ensure (static_cast<bool> (worker_released), "YD-A4 worker-yield-released wait failed");
-    auto worker_probe =
-      observer.request (probe_req_t{.request_id = request_id, .marker = "worker-probe"})
-        .packet_name (probe_req_t::packet_name)
+    observer.send (probe_msg_t{.request_id = request_id, .marker = "worker-probe"})
+        .packet_name (probe_msg_t::packet_name)
         .metadata (spot_rid_metadata, spot_rid)
-        .timeout (std::chrono::milliseconds (10000))
-        .template submit<yield_dispatch_res_t> ();
-    ensure (static_cast<bool> (worker_probe), "YD-A4 ProbeReq failed");
-    auto worker_reply = worker.get ();
-    ensure (static_cast<bool> (worker_reply), "YD-A4 WorkerYieldReq failed");
+        .submit ();
     auto evidence =
       observer.request (
                   yield_evidence_wait_req_t{.request_id = request_id,
                                             .marker = "worker-yield-completed",
-                                            .timeout_milliseconds = 20000})
+                                            .timeout_milliseconds = 3000})
         .packet_name (yield_evidence_wait_req_t::packet_name)
         .metadata (target_node_rid_metadata, "play-a")
         .timeout (std::chrono::milliseconds (30000))

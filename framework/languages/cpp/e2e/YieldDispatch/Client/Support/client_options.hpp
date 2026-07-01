@@ -44,7 +44,7 @@ make_connector_options (const client_options_t &options)
 {
     zlink::stream_connector::connector_options_t connector_options;
     connector_options.endpoint = options.session_a_stream_endpoint;
-    connector_options.connect_timeout = std::chrono::milliseconds (5000);
+    connector_options.connect_timeout = std::chrono::milliseconds (3000);
     connector_options.request_timeout = std::chrono::milliseconds (10000);
     connector_options.dispatch_mode = zlink::stream_connector::dispatch_mode_t::immediate;
     return connector_options;

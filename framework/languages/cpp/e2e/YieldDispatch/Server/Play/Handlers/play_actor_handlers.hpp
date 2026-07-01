@@ -24,15 +24,8 @@ class yield_entry_spot_t : public zlink::framework::entry_spot_t
     void configure (zlink::framework::entry_spot_context_t &context)
     {
         _context = context;
-        context.handlers ()
-          .add_actor_packet<&yield_entry_spot_t::actor_yield_req> (
-            yd::actor_yield_req_t::packet_name)
-          .add_actor_packet<&yield_entry_spot_t::actor_fast_req> (
-            yd::actor_fast_req_t::packet_name)
-          .add_actor_packet<&yield_entry_spot_t::actor_join_yield_req> (
-            yd::actor_join_yield_req_t::packet_name)
-          .add_actor_packet<&yield_entry_spot_t::actor_push_yield_req> (
-            yd::actor_push_yield_req_t::packet_name);
+        context.handlers ().add_actor_packet<&yield_entry_spot_t::actor_fast_req> (
+          yd::actor_fast_req_t::packet_name);
     }
 
     void configure (zlink::framework::spot_context_t &context)
@@ -80,7 +73,7 @@ class yield_entry_spot_t : public zlink::framework::entry_spot_t
         _evidence.add ("actor-yield-released|rid=" + _evidence.node_rid + "|spot=" + spot_rid
                        + "|actor=" + actor.actor_id + "|mailbox=" + mailbox + "|request="
                        + request.request_id + "|handler=actor");
-        co_await call.async<yd::delay_res_t> ();
+        co_await call.yield<yd::delay_res_t> ();
         _evidence.add ("actor-yield-resumed|rid=" + _evidence.node_rid + "|spot=" + spot_rid
                        + "|actor=" + actor.actor_id + "|mailbox=" + mailbox + "|request="
                        + request.request_id + "|handler=actor");
@@ -128,7 +121,7 @@ class yield_entry_spot_t : public zlink::framework::entry_spot_t
                        + spot_rid + "|actor=" + actor.actor_id + "|mailbox=" + mailbox
                        + "|request=" + request.request_id + "|target_node="
                        + request.target_node_rid + "|handler=actor");
-        const auto joined = co_await call.async<yd::delay_res_t> ();
+        const auto joined = co_await call.yield<yd::delay_res_t> ();
         const auto accepted = joined.result_code == 0 ? "true" : "false";
         _evidence.add ("actor-join-yield-resumed|rid=" + _evidence.node_rid + "|spot="
                        + spot_rid + "|actor=" + actor.actor_id + "|mailbox=" + mailbox
@@ -165,7 +158,7 @@ class yield_entry_spot_t : public zlink::framework::entry_spot_t
         _evidence.add ("actor-push-yield-released|rid=" + _evidence.node_rid + "|spot="
                        + spot_rid + "|actor=" + actor.actor_id + "|mailbox=" + mailbox
                        + "|request=" + request.request_id + "|handler=actor");
-        co_await call.async<yd::delay_res_t> ();
+        co_await call.yield<yd::delay_res_t> ();
         _evidence.add ("actor-push-yield-resumed|rid=" + _evidence.node_rid + "|spot="
                        + spot_rid + "|actor=" + actor.actor_id + "|mailbox=" + mailbox
                        + "|request=" + request.request_id + "|handler=actor");

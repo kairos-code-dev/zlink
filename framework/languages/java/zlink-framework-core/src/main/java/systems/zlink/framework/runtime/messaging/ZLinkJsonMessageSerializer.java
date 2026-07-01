@@ -53,7 +53,10 @@ public final class ZLinkJsonMessageSerializer implements ZLinkMessageSerializer 
             return mapper.readValue(payload.bytes(), type);
         } catch (IOException ex) {
             throw new IllegalArgumentException(
-                "failed to deserialize JSON message as " + type.getName(),
+                "failed to deserialize JSON message as "
+                    + type.getName()
+                    + " payload="
+                    + new String(payload.bytes(), java.nio.charset.StandardCharsets.UTF_8),
                 ex);
         }
     }

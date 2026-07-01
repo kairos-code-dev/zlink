@@ -49,6 +49,19 @@ public final class EvidenceHttpServer implements SmartLifecycle {
                 exchange.getResponseBody().write(body);
                 exchange.close();
             });
+            server.createContext("/evidence/wait", exchange -> {
+                Contracts.EvidenceWaitReq request = json.readValue(
+                    exchange.getRequestBody(),
+                    Contracts.EvidenceWaitReq.class);
+                int timeout = request.timeoutMilliseconds() <= 0
+                    ? 10_000
+                    : request.timeoutMilliseconds();
+                byte[] body = json.writeValueAsBytes(state.waitFor(request.containsAll(), timeout));
+                exchange.getResponseHeaders().add("Content-Type", "application/json");
+                exchange.sendResponseHeaders(200, body.length);
+                exchange.getResponseBody().write(body);
+                exchange.close();
+            });
             server.createContext("/admin/close", exchange -> {
                 String rid = queryValue(exchange.getRequestURI(), "rid");
                 if (rid == null || rid.isBlank()) {

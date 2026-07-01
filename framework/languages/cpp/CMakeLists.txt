@@ -1037,39 +1037,29 @@ if(ZLINK_FRAMEWORK_CPP_BUILD_E2E)
   target_link_libraries(zlink_cpp_e2e_spot_service_registry PRIVATE
     zlink::framework
     zlink::http_client)
-  target_include_directories(zlink_cpp_e2e_spot_service_registry PRIVATE
-    ${ZLINK_FRAMEWORK_CPP_DIR}/framework/src)
 
   add_executable(zlink_cpp_e2e_spot_service_play
     e2e/SpotService/Server/Play/main.cpp)
   target_link_libraries(zlink_cpp_e2e_spot_service_play PRIVATE
     zlink::framework
     zlink::http_client)
-  target_include_directories(zlink_cpp_e2e_spot_service_play PRIVATE
-    ${ZLINK_FRAMEWORK_CPP_DIR}/framework/src)
 
   add_executable(zlink_cpp_e2e_spot_service_session
     e2e/SpotService/Server/Session/main.cpp)
   target_link_libraries(zlink_cpp_e2e_spot_service_session PRIVATE
     zlink::framework
     zlink::http_client)
-  target_include_directories(zlink_cpp_e2e_spot_service_session PRIVATE
-    ${ZLINK_FRAMEWORK_CPP_DIR}/framework/src)
 
   add_executable(zlink_cpp_e2e_spot_service_gateway
     e2e/SpotService/Server/Gateway/main.cpp)
   target_link_libraries(zlink_cpp_e2e_spot_service_gateway PRIVATE
     zlink::framework)
-  target_include_directories(zlink_cpp_e2e_spot_service_gateway PRIVATE
-    ${ZLINK_FRAMEWORK_CPP_DIR}/framework/src)
 
   add_executable(zlink_cpp_e2e_spot_service_multinode
     e2e/SpotService/Server/MultiNode/main.cpp)
   target_link_libraries(zlink_cpp_e2e_spot_service_multinode PRIVATE
     zlink::framework
     zlink::http_client)
-  target_include_directories(zlink_cpp_e2e_spot_service_multinode PRIVATE
-    ${ZLINK_FRAMEWORK_CPP_DIR}/framework/src)
 
   add_executable(zlink_cpp_e2e_spot_service_client
     e2e/SpotService/Client/main.cpp)
@@ -1077,8 +1067,6 @@ if(ZLINK_FRAMEWORK_CPP_BUILD_E2E)
     zlink::framework
     zlink::http_client
     zlink::stream_e2e_client)
-  target_include_directories(zlink_cpp_e2e_spot_service_client PRIVATE
-    ${ZLINK_FRAMEWORK_CPP_DIR}/framework/src)
 
   if(EXISTS "${CMAKE_CURRENT_SOURCE_DIR}/e2e/YieldDispatch/Server/Registry/main.cpp")
     add_executable(zlink_cpp_e2e_yield_dispatch_registry
@@ -1219,19 +1207,9 @@ if(ZLINK_FRAMEWORK_CPP_BUILD_E2E)
   target_link_libraries(zlink_cpp_e2e_delivery_dispatch_courier_session PRIVATE
     zlink::framework)
 
-  add_executable(zlink_cpp_e2e_delivery_dispatch_courier
-    e2e/DeliveryDispatch/Server/Courier/main.cpp)
-  target_link_libraries(zlink_cpp_e2e_delivery_dispatch_courier PRIVATE
-    zlink::framework)
-
   add_executable(zlink_cpp_e2e_delivery_dispatch_tracking
     e2e/DeliveryDispatch/Server/Tracking/main.cpp)
   target_link_libraries(zlink_cpp_e2e_delivery_dispatch_tracking PRIVATE
-    zlink::framework)
-
-  add_executable(zlink_cpp_e2e_delivery_dispatch_session
-    e2e/DeliveryDispatch/Server/Session/main.cpp)
-  target_link_libraries(zlink_cpp_e2e_delivery_dispatch_session PRIVATE
     zlink::framework)
 
   add_executable(zlink_cpp_e2e_delivery_dispatch_probe

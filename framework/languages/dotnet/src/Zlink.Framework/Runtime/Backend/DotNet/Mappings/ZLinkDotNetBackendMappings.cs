@@ -164,6 +164,7 @@ internal static class ZLinkDotNetBackendMappings
                 SpotDispatchEvent.ChannelReplyReadable => ZLinkBackendSpotDispatchEvent.ChannelReplyReadable,
                 SpotDispatchEvent.ActorJoinReadable => ZLinkBackendSpotDispatchEvent.ActorJoinReadable,
                 SpotDispatchEvent.ActorReadable => ZLinkBackendSpotDispatchEvent.ActorReadable,
+                SpotDispatchEvent.ActorLifecycleReadable => ZLinkBackendSpotDispatchEvent.ActorLifecycleReadable,
                 _ => ZLinkBackendSpotDispatchEvent.Internal
             },
             info.Event == SpotDispatchEvent.ChannelReplyReadable
@@ -202,6 +203,20 @@ internal static class ZLinkDotNetBackendMappings
             info.CurrentSpotRid,
             info.JoinEpoch,
             info.Flags);
+    }
+
+    public static ZLinkBackendSpotActorLifecycleEvent ToFramework(
+        this SpotActorLifecycleEvent lifecycle)
+    {
+        return new ZLinkBackendSpotActorLifecycleEvent(
+            lifecycle.Kind switch
+            {
+                SpotActorLifecycleEventKind.Joined => ZLinkBackendActorLifecycleEventKind.Joined,
+                SpotActorLifecycleEventKind.Left => ZLinkBackendActorLifecycleEventKind.Left,
+                SpotActorLifecycleEventKind.Disconnected => ZLinkBackendActorLifecycleEventKind.Disconnected,
+                _ => ZLinkBackendActorLifecycleEventKind.Joined
+            },
+            lifecycle.Info.ToFramework());
     }
 
     public static ZLinkBackendActorRef ToBackend(this ActorRef actorRef)

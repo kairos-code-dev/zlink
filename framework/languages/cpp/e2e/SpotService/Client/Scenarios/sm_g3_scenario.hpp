@@ -72,8 +72,8 @@ inline sm_g3_bound_client_t connect_sm_g3_actor (const std::string &session_stre
 {
     zlink::stream_connector::connector_options_t options;
     options.endpoint = session_stream_endpoint;
-    options.connect_timeout = std::chrono::milliseconds (5000);
-    options.request_timeout = std::chrono::milliseconds (5000);
+    options.connect_timeout = std::chrono::milliseconds (3000);
+    options.request_timeout = std::chrono::milliseconds (3000);
     options.dispatch_mode = zlink::stream_connector::dispatch_mode_t::immediate;
 
     auto stream = zlink::stream_connector::connector_factory_t::create (options);
@@ -83,26 +83,17 @@ inline sm_g3_bound_client_t connect_sm_g3_actor (const std::string &session_stre
         throw std::runtime_error ("SM-G3 stream connect failed for " + actor_id);
     }
 
-    std::optional<stream_auth_res_t> auth;
-    std::string auth_error = "not attempted";
-    for (int attempt = 0; attempt < 20; ++attempt) {
-        auto auth_result =
-          stream.request (stream_ensure_auth_req_t{"play-a", actor_id, actor_id + "-display"})
-            .packet_name ("StreamEnsureAuthReq")
-            .timeout (std::chrono::milliseconds (5000))
-            .submit<stream_auth_res_t> ();
-        if (auth_result) {
-            auth = auth_result.value ();
-            break;
-        }
-        auth_error =
-          auth_result.error () ? auth_result.error ()->message : "unknown stream auth error";
-        std::this_thread::sleep_for (std::chrono::milliseconds (150));
-    }
-    if (!auth || auth->actor.actor_id != actor_id || auth->session_node_rid != "session-a") {
+    auto auth =
+      stream.request (stream_ensure_auth_req_t{"play-a", actor_id, actor_id + "-display"})
+        .packet_name ("StreamEnsureAuthReq")
+        .timeout (std::chrono::milliseconds (3000))
+        .submit<stream_auth_res_t> ();
+    if (!auth || auth.value ().actor.actor_id != actor_id
+        || auth.value ().session_node_rid != "session-a") {
+        const auto detail =
+          auth.error () ? auth.error ()->message : "stream auth reply mismatch";
         (void) stream.close ();
-        throw std::runtime_error ("SM-G3 stream auth failed for " + actor_id + ": "
-                                  + auth_error);
+        throw std::runtime_error ("SM-G3 stream auth failed for " + actor_id + ": " + detail);
     }
 
     auto joined =
@@ -113,7 +104,7 @@ inline sm_g3_bound_client_t connect_sm_g3_actor (const std::string &session_stre
                            .tags = {"stream", "SM-G3", "concurrent"}})
         .packet_name ("JoinReq")
         .metadata ("actor-id", actor_id)
-        .timeout (std::chrono::milliseconds (5000))
+        .timeout (std::chrono::milliseconds (3000))
         .submit<join_res_t> ();
     if (!joined || joined.value ().owner_node_rid != "play-a"
         || joined.value ().actor.actor_id != actor_id) {
@@ -124,27 +115,42 @@ inline sm_g3_bound_client_t connect_sm_g3_actor (const std::string &session_stre
     return sm_g3_bound_client_t{actor_id, std::move (stream)};
 }
 
-inline void run_sm_g3_actor_flow (zlink::stream_connector::connector_t &stream,
+inline void run_sm_g3_actor_ping (zlink::stream_connector::connector_t &stream,
                                   const std::string &actor_id)
 {
     auto ping = stream.request (actor_ping_req_t{actor_id})
                   .packet_name ("ActorPingReq")
                   .metadata ("actor-id", actor_id)
-                  .timeout (std::chrono::milliseconds (5000))
+                  .timeout (std::chrono::milliseconds (3000))
                   .submit<actor_ping_res_t> ();
     if (!ping || ping.value ().actor_id != actor_id || ping.value ().node_rid != "play-a") {
+        const auto detail =
+          ping ? "reply actor_id=" + ping.value ().actor_id
+                   + " node_rid=" + ping.value ().node_rid
+                   + " value=" + ping.value ().value
+               : ping.error () ? ping.error ()->message : "unknown stream error";
         (void) stream.close ();
-        throw std::runtime_error ("SM-G3 actor request mismatch for " + actor_id);
+        throw std::runtime_error ("SM-G3 actor request mismatch for " + actor_id + ": "
+                                  + detail);
     }
+}
 
-    auto left = stream.request (leave_req_t{"sm-g3"})
+inline void run_sm_g3_actor_leave (zlink::stream_connector::connector_t &stream,
+                                   const std::string &actor_id)
+{
+    auto left = stream.request (leave_req_t{.actor_id = actor_id, .reason = "sm-g3"})
                   .packet_name ("LeaveReq")
                   .metadata ("actor-id", actor_id)
-                  .timeout (std::chrono::milliseconds (5000))
+                  .timeout (std::chrono::milliseconds (3000))
                   .submit<leave_res_t> ();
     if (!left || !left.value ().left || left.value ().actor_id != actor_id) {
+        const auto detail =
+          left ? "left=" + std::string (left.value ().left ? "true" : "false")
+                   + " actor_id=" + left.value ().actor_id
+               : left.error () ? left.error ()->message : "unknown stream error";
         (void) stream.close ();
-        throw std::runtime_error ("SM-G3 leave reply mismatch for " + actor_id);
+        throw std::runtime_error ("SM-G3 leave reply mismatch for " + actor_id + ": "
+                                  + detail);
     }
 }
 
@@ -169,14 +175,17 @@ inline void run_sm_g3_scenario (const std::string &play_http_endpoint,
     }
 
     auto first = std::async (std::launch::async, [&] {
-        run_sm_g3_actor_flow (clients[0].stream, clients[0].actor_id);
+        run_sm_g3_actor_ping (clients[0].stream, clients[0].actor_id);
     });
     auto second = std::async (std::launch::async, [&] {
-        run_sm_g3_actor_flow (clients[1].stream, clients[1].actor_id);
+        run_sm_g3_actor_ping (clients[1].stream, clients[1].actor_id);
     });
 
     first.get ();
     second.get ();
+    for (auto &client : clients) {
+        run_sm_g3_actor_leave (client.stream, client.actor_id);
+    }
     for (auto &client : clients) {
         (void) client.stream.close ();
     }

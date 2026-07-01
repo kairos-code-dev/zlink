@@ -22,8 +22,8 @@ inline zlink::stream_connector::connector_t sm_d10_connect_stream (
 {
     zlink::stream_connector::connector_options_t options;
     options.endpoint = endpoint;
-    options.connect_timeout = std::chrono::milliseconds (5000);
-    options.request_timeout = std::chrono::milliseconds (5000);
+    options.connect_timeout = std::chrono::milliseconds (3000);
+    options.request_timeout = std::chrono::milliseconds (3000);
     options.dispatch_mode = zlink::stream_connector::dispatch_mode_t::immediate;
     options.max_received_messages = max_received_messages;
 
@@ -47,22 +47,19 @@ inline void sm_d10_auth (zlink::stream_connector::connector_t &stream,
                          const std::string &actor_id,
                          const std::string &display_name)
 {
-    const auto deadline = std::chrono::steady_clock::now () + std::chrono::seconds (10);
-    std::string last_error = "auth was not attempted";
-    while (std::chrono::steady_clock::now () < deadline) {
-        auto auth =
-          stream.request (stream_ensure_auth_req_t{target_node, actor_id, display_name})
-            .packet_name ("StreamEnsureAuthReq")
-            .timeout (std::chrono::milliseconds (5000))
-            .submit<stream_auth_res_t> ();
-        if (auth && auth.value ().actor.actor_id == actor_id
-            && !auth.value ().session_node_rid.empty ()) {
-            return;
-        }
-        last_error = "auth failed for " + actor_id;
-        std::this_thread::sleep_for (std::chrono::milliseconds (200));
+    auto auth =
+      stream.request (stream_ensure_auth_req_t{target_node, actor_id, display_name})
+        .packet_name ("StreamEnsureAuthReq")
+        .timeout (std::chrono::milliseconds (3000))
+        .submit<stream_auth_res_t> ();
+    if (!auth || auth.value ().actor.actor_id != actor_id
+        || auth.value ().session_node_rid.empty ()) {
+        const auto detail =
+          auth ? "session_node_rid=" + auth.value ().session_node_rid
+                   + " actor_id=" + auth.value ().actor.actor_id
+               : auth.error () ? auth.error ()->message : "unknown stream error";
+        throw std::runtime_error ("SM-D10 auth failed for " + actor_id + ": " + detail);
     }
-    throw std::runtime_error ("SM-D10 " + last_error);
 }
 
 inline void run_sm_d10_scenario (const std::string &session_a_stream_endpoint,
@@ -88,7 +85,7 @@ inline void run_sm_d10_scenario (const std::string &session_a_stream_endpoint,
         auto reply = congested.request (actor_push_req_t{value})
                        .packet_name ("PushReq")
                        .metadata ("actor-id", congested_actor)
-                       .timeout (std::chrono::milliseconds (5000))
+                       .timeout (std::chrono::milliseconds (3000))
                        .submit<actor_push_res_t> ();
         if (!reply || !reply.value ().pushed || reply.value ().actor_id != congested_actor) {
             throw std::runtime_error ("SM-D10 congested push reply mismatch");
@@ -116,7 +113,7 @@ inline void run_sm_d10_scenario (const std::string &session_a_stream_endpoint,
     auto after_backpressure = congested.request (actor_ping_req_t{"after-backpressure"})
                                 .packet_name ("ActorPingReq")
                                 .metadata ("actor-id", congested_actor)
-                                .timeout (std::chrono::milliseconds (5000))
+                                .timeout (std::chrono::milliseconds (3000))
                                 .submit<actor_ping_res_t> ();
     if (!after_backpressure || after_backpressure.value ().actor_id != congested_actor
         || after_backpressure.value ().value != "after-backpressure") {
@@ -129,7 +126,7 @@ inline void run_sm_d10_scenario (const std::string &session_a_stream_endpoint,
     auto isolated_reply = isolated.request (actor_push_req_t{"isolated-push"})
                             .packet_name ("PushReq")
                             .metadata ("actor-id", isolated_actor)
-                            .timeout (std::chrono::milliseconds (5000))
+                            .timeout (std::chrono::milliseconds (3000))
                             .submit<actor_push_res_t> ();
     if (!isolated_reply || !isolated_reply.value ().pushed
         || isolated_reply.value ().actor_id != isolated_actor) {

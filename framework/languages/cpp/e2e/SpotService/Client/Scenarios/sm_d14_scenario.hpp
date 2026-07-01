@@ -25,7 +25,7 @@ sm_d14_submit_tls_request (zlink::stream_connector::connector_t &connector,
     auto future = promise->get_future ();
     connector.request (std::move (request))
       .packet_name (std::move (packet_name))
-      .timeout (std::chrono::milliseconds (5000))
+      .timeout (std::chrono::milliseconds (3000))
       .template submit<TReply> (
         [promise] (zlink::stream_connector::result_t<TReply> result) mutable {
           promise->set_value (std::move (result));
@@ -42,8 +42,8 @@ inline void run_sm_d14_scenario (const std::string &session_tls_stream_endpoint)
     zlink::stream_connector::connector_options_t options;
     options.endpoint = session_tls_stream_endpoint;
     options.transport = zlink::stream_connector::transport_t::tls;
-    options.connect_timeout = std::chrono::milliseconds (5000);
-    options.request_timeout = std::chrono::milliseconds (5000);
+    options.connect_timeout = std::chrono::milliseconds (3000);
+    options.request_timeout = std::chrono::milliseconds (3000);
     options.dispatch_mode = zlink::stream_connector::dispatch_mode_t::immediate;
 
     {

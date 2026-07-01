@@ -149,7 +149,7 @@ public sealed record SpotActorLifecycleInfo(
     uint Flags);
 
 /// <summary>
-///     Whether an actor joined or left a spot.
+///     Whether an actor joined, left, or disconnected from a spot.
 /// </summary>
 public enum SpotActorLifecycleEventKind
 {
@@ -161,7 +161,12 @@ public enum SpotActorLifecycleEventKind
     /// <summary>
     ///     The actor left a spot.
     /// </summary>
-    Left = 2
+    Left = 2,
+
+    /// <summary>
+    ///     The actor's bound session disconnected while the actor stayed in its spot.
+    /// </summary>
+    Disconnected = 3
 }
 
 /// <summary>

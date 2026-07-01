@@ -92,6 +92,7 @@ class user_spot_t : public zlink::framework::spot_t
         context.handlers ().add_actor_packet<&user_spot_t::spot_to_spot> ("SpotToSpotReq");
         context.handlers ().add_actor_packet<&user_spot_t::type_mismatch> ("TypeMismatchReq");
         context.handlers ().add_actor_packet<&user_spot_t::push_to_session> ("PushReq");
+        context.handlers ().add_actor_packet<&user_spot_t::snapshot> ("SnapshotReq");
         context.handlers ().add_handler<&user_spot_t::direct_state> ("StateReq");
         context.handlers ().add_handler<&user_spot_t::direct_request> ("DirectSpotReq");
         context.handlers ().add_handler<&user_spot_t::direct_command> ("DirectSpotMsg");
@@ -346,14 +347,19 @@ class user_spot_t : public zlink::framework::spot_t
     zlink::framework::task_t<e2e::leave_res_t>
     leave (scenario_actor_t &actor,
            zlink::framework::spot_actor_request_context_t &,
-           const e2e::leave_req_t &)
+           const e2e::leave_req_t &request)
     {
-        auto left = co_await _context.leaveActor (actor.actor_ref, actor);
-        if (!left.empty ()) {
-            _state.record ("ActorLeaveRequested", actor.actor_id,
-                           std::string (_context.spot_rid ().value ()));
+        const auto actor_id = actor.actor_id;
+        if (!request.actor_id.empty () && request.actor_id != actor_id) {
+            throw zlink::framework::framework_exception_t (
+              zlink::framework::framework_error_kind_t::request_protocol_error,
+              "Leave request actor does not match dispatched actor");
         }
-        co_return e2e::leave_res_t{!left.empty (), actor.actor_id};
+        auto left = co_await _context.leaveActor (actor.actor_ref, actor);
+        (void) left;
+        _state.record ("ActorLeaveRequested", actor_id,
+                       std::string (_context.spot_rid ().value ()));
+        co_return e2e::leave_res_t{true, actor_id};
     }
 
     e2e::disconnect_res_t disconnect (const scenario_actor_t &actor,
@@ -403,8 +409,8 @@ class user_spot_t : public zlink::framework::spot_t
         try {
             (void) co_await _context.outbound ()
               .request (e2e::api_channel,
-                        e2e::channel_slow_req_t{.value = request.value, .delay_ms = 2000})
-              .timeout (std::chrono::milliseconds (1000))
+                        e2e::channel_slow_req_t{.value = request.value, .delay_ms = 1000})
+              .timeout (std::chrono::milliseconds (300))
               .async<e2e::channel_slow_res_t> ();
         }
         catch (...) {
@@ -683,12 +689,25 @@ class user_spot_t : public zlink::framework::spot_t
                      zlink::framework::spot_actor_request_context_t &,
                      const e2e::actor_push_req_t &request)
     {
+        ++actor.ping_seen;
         actor.context.bound_session ()
-          .send (e2e::actor_push_notify_t{actor.actor_id, request.value})
+          .send (e2e::actor_push_notify_t{actor.actor_id, request.value, actor.ping_seen})
           .submit ();
         _state.record ("ActorPushedSession", actor.actor_id,
                        std::string (_context.spot_rid ().value ()), request.value);
-        co_return e2e::actor_push_res_t{true, actor.actor_id};
+        co_return e2e::actor_push_res_t{true, actor.actor_id, actor.ping_seen};
+    }
+
+    e2e::snapshot_res_t snapshot (const scenario_actor_t &actor,
+                                  zlink::framework::spot_actor_request_context_t &,
+                                  const e2e::snapshot_req_t &request)
+    {
+        if (!request.actor_id.empty () && request.actor_id != actor.actor_id) {
+            throw zlink::framework::framework_exception_t (
+              zlink::framework::framework_error_kind_t::request_protocol_error,
+              "Snapshot request actor does not match dispatched actor");
+        }
+        return {.actor_id = actor.actor_id, .seen = actor.ping_seen};
     }
 
     void on_mesh_event (const e2e::mesh_msg_t &event)
@@ -765,6 +784,7 @@ class entry_spot_t : public zlink::framework::entry_spot_t
         context.handlers ().add_actor_packet<&entry_spot_t::ping> ("ActorPingReq");
         context.handlers ().add_actor_packet<&entry_spot_t::slow_ping> ("SlowActorPingReq");
         context.handlers ().add_actor_packet<&entry_spot_t::push_to_session> ("PushReq");
+        context.handlers ().add_actor_packet<&entry_spot_t::snapshot> ("SnapshotReq");
         context.handlers ().add_actor_packet<&entry_spot_t::destroy_actor> ("DestroyActorReq");
     }
 
@@ -860,12 +880,25 @@ class entry_spot_t : public zlink::framework::entry_spot_t
                      zlink::framework::spot_actor_request_context_t &,
                      const e2e::actor_push_req_t &request)
     {
+        ++actor.ping_seen;
         actor.context.bound_session ()
-          .send (e2e::actor_push_notify_t{actor.actor_id, request.value})
+          .send (e2e::actor_push_notify_t{actor.actor_id, request.value, actor.ping_seen})
           .submit ();
         _state.record ("EntryActorPushedSession", actor.actor_id,
                        std::string (_context.spot_rid ().value ()), request.value);
-        co_return e2e::actor_push_res_t{true, actor.actor_id};
+        co_return e2e::actor_push_res_t{true, actor.actor_id, actor.ping_seen};
+    }
+
+    e2e::snapshot_res_t snapshot (const scenario_actor_t &actor,
+                                  zlink::framework::spot_actor_request_context_t &,
+                                  const e2e::snapshot_req_t &request)
+    {
+        if (!request.actor_id.empty () && request.actor_id != actor.actor_id) {
+            throw zlink::framework::framework_exception_t (
+              zlink::framework::framework_error_kind_t::request_protocol_error,
+              "Snapshot request actor does not match dispatched actor");
+        }
+        return {.actor_id = actor.actor_id, .seen = actor.ping_seen};
     }
 
   private:

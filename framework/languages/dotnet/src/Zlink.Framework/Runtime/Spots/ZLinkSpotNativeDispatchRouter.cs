@@ -8,6 +8,7 @@ internal static class ZLinkSpotNativeDispatchRouter
         Action<Action?> channelReplyReadable,
         Action subscribeReadable,
         Action actorJoinReadable,
+        Action actorLifecycleReadable,
         Action<IReadOnlyList<ZLinkBackendActorPart>> actorPartsReadable)
     {
         try
@@ -27,6 +28,9 @@ internal static class ZLinkSpotNativeDispatchRouter
                         break;
                     case ZLinkBackendSpotDispatchEvent.ActorJoinReadable:
                         actorJoinReadable();
+                        break;
+                    case ZLinkBackendSpotDispatchEvent.ActorLifecycleReadable:
+                        actorLifecycleReadable();
                         break;
                     case ZLinkBackendSpotDispatchEvent.ActorReadable
                         when info.ActorParts is { Count: > 0 } actorParts:

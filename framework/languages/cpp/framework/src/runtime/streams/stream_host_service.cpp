@@ -12,9 +12,12 @@
 #include <chrono>
 #include <cstdint>
 #include <cstring>
+#include <mutex>
 #include <optional>
 #include <stdexcept>
+#include <thread>
 #include <utility>
+#include <vector>
 
 namespace zlink::framework::runtime
 {
@@ -167,12 +170,16 @@ class stream_host_service_t::listener_t
                     _sockets.erase (connection.get ());
                     _sockets.insert (&tls_connection->next_layer ());
                 }
-                _workers.emplace_back (
-                  [this, tls_connection] { handle_tls_connection (tls_connection); });
+                {
+                    const std::lock_guard<std::mutex> lock (_workers_mutex);
+                    _workers.emplace_back (
+                      [this, tls_connection] { handle_tls_connection (tls_connection); });
+                }
 #else
                 connection->close ();
 #endif
             } else {
+                const std::lock_guard<std::mutex> lock (_workers_mutex);
                 _workers.emplace_back ([this, connection] { handle_connection (connection); });
             }
         }
@@ -199,12 +206,15 @@ class stream_host_service_t::listener_t
                 socket->close (ignored);
             }
         }
-        for (auto &worker : _workers) {
-            if (worker.joinable ()) {
-                worker.join ();
+        {
+            const std::lock_guard<std::mutex> lock (_workers_mutex);
+            for (auto &worker : _workers) {
+                if (worker.joinable ()) {
+                    worker.join ();
+                }
             }
+            _workers.clear ();
         }
-        _workers.clear ();
     }
 
   private:
@@ -300,10 +310,14 @@ class stream_host_service_t::listener_t
     }
 
     template <typename TStream>
-    void flush_writes (TStream &socket, stream_t &stream, std::size_t &flushed)
+    void flush_writes (TStream &socket,
+                       stream_t &stream,
+                       std::size_t &flushed,
+                       std::mutex &write_mutex)
     {
         const auto headers = _runtime.written_headers (stream);
         const auto payloads = _runtime.written_payloads (stream);
+        const std::lock_guard<std::mutex> lock (write_mutex);
         for (; flushed < headers.size (); ++flushed) {
             write_frame (socket, headers[flushed], payloads[flushed]);
         }
@@ -322,11 +336,14 @@ class stream_host_service_t::listener_t
         auto scope = _services->create_scope (service_scope_kind_t::stream_session);
         auto &session = _session_factory (scope.provider ());
         auto stream = _runtime.open_session (_stream.name);
+        auto write_mutex = std::make_shared<std::mutex> ();
         if (attach_immediate_writer) {
             _runtime.attach_transport_writer (
-              stream, [this, connection] (const stream_header_t &header,
-                                          const zlink::message_t &payload) -> result_t<void> {
+              stream, [this, connection, write_mutex] (const stream_header_t &header,
+                                                       const zlink::message_t &payload)
+                        -> result_t<void> {
                   try {
+                      const std::lock_guard<std::mutex> lock (*write_mutex);
                       write_frame (*connection, header, payload);
                       return result_t<void>::success ();
                   }
@@ -341,26 +358,39 @@ class stream_host_service_t::listener_t
               });
         }
         std::size_t flushed = 0;
+        std::vector<std::thread> dispatch_workers;
         try {
             if (auto connected = _runtime.dispatch_connected (session, stream); !connected) {
                 return;
             }
-            flush_writes (*connection, stream, flushed);
+            flush_writes (*connection, stream, flushed, *write_mutex);
             while (!_stop->load (std::memory_order_acquire)) {
                 auto frame = read_frame (*connection);
                 if (frame.header.kind () == stream_message_kind_t::control) {
                     continue;
                 }
-                if (auto dispatched =
-                      _runtime.dispatch_packet (session, stream, frame.header, frame.payload);
-                    !dispatched) {
-                    if (frame.header.kind () == stream_message_kind_t::request) {
-                        write_error_frame (*connection, frame.header, dispatched);
-                        continue;
-                    }
-                    return;
+                dispatch_workers.emplace_back (
+                  [this, &session, &stream, connection, write_mutex, frame = std::move (frame)] {
+                      try {
+                          if (auto dispatched = _runtime.dispatch_packet (session, stream,
+                                                                          frame.header,
+                                                                          frame.payload);
+                              !dispatched) {
+                              if (frame.header.kind () == stream_message_kind_t::request) {
+                                  const std::lock_guard<std::mutex> lock (*write_mutex);
+                                  write_error_frame (*connection, frame.header, dispatched);
+                              }
+                          }
+                      }
+                      catch (...) {
+                      }
+                  });
+                flush_writes (*connection, stream, flushed, *write_mutex);
+            }
+            for (auto &worker : dispatch_workers) {
+                if (worker.joinable ()) {
+                    worker.join ();
                 }
-                flush_writes (*connection, stream, flushed);
             }
         }
         catch (const boost::system::system_error &) {
@@ -369,9 +399,14 @@ class stream_host_service_t::listener_t
         }
         catch (...) {
         }
+        for (auto &worker : dispatch_workers) {
+            if (worker.joinable ()) {
+                worker.join ();
+            }
+        }
         (void) _runtime.dispatch_disconnected (session, stream);
         try {
-            flush_writes (*connection, stream, flushed);
+            flush_writes (*connection, stream, flushed, *write_mutex);
         }
         catch (...) {
         }
@@ -388,7 +423,7 @@ class stream_host_service_t::listener_t
             _sockets.erase (&connection->next_layer ());
             return;
         }
-        handle_stream_connection (connection, &connection->next_layer (), false);
+        handle_stream_connection (connection, &connection->next_layer (), true);
     }
 #endif
 
@@ -409,6 +444,7 @@ class stream_host_service_t::listener_t
 #endif
     std::mutex _sockets_mutex;
     std::unordered_set<tcp::socket *> _sockets;
+    std::mutex _workers_mutex;
     std::vector<std::thread> _workers;
 };
 

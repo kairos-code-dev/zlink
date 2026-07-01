@@ -186,6 +186,27 @@ internal sealed partial class ZLinkFrameworkRuntime
             .ConfigureAwait(false);
     }
 
+    internal async ValueTask<bool> TryNotifyJoinedSpotActorDisconnectedAsync(
+        string actorId,
+        CancellationToken cancellationToken = default)
+    {
+        if (_state is null) return false;
+
+        if (_actors.TryGetCreatedActorState(actorId, out var actorState)
+            && actorState is { Actor: { } actor, LiveActivation: { } activation })
+        {
+            await activation.NotifyActorDisconnectedAsync(actor, cancellationToken)
+                .ConfigureAwait(false);
+            return true;
+        }
+
+        return await _spots.TryNotifyJoinedSpotActorDisconnectedAsync(
+                _state,
+                actorId,
+                cancellationToken)
+            .ConfigureAwait(false);
+    }
+
     internal ZLinkSpotMonitoringSnapshot GetSpotMonitoringSnapshot(string spotNodeName)
     {
         return _spotFacade.GetMonitoringSnapshot(spotNodeName);

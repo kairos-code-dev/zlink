@@ -5,8 +5,11 @@ internal sealed class ZLinkEntrySpotDispatchPump(
     ZLinkEntrySpotActivation? activation,
     ZLinkRuntimeTaskRunner taskRunner)
 {
+    private IZLinkBackendSpot? _entrySpot;
+
     public void Attach(IZLinkBackendSpot entrySpot)
     {
+        _entrySpot = entrySpot;
         var previous = SynchronizationContext.Current;
         SynchronizationContext.SetSynchronizationContext(null);
         try
@@ -42,6 +45,11 @@ internal sealed class ZLinkEntrySpotDispatchPump(
                         "entry-spot-actor-join-dispatch",
                         ct => activation.DispatchActorJoinDrainAsync(ct));
                     return;
+                case ZLinkBackendSpotDispatchEvent.ActorLifecycleReadable:
+                    taskRunner.RunDetached(
+                        "entry-spot-actor-lifecycle-dispatch",
+                        DispatchActorLifecycleDrainAsync);
+                    return;
             }
 
         if (info.Event != ZLinkBackendSpotDispatchEvent.ActorReadable
@@ -55,5 +63,26 @@ internal sealed class ZLinkEntrySpotDispatchPump(
                 activation,
                 actorParts,
                 ct)));
+    }
+
+    private async ValueTask DispatchActorLifecycleDrainAsync(CancellationToken cancellationToken)
+    {
+        if (_entrySpot is not { } entrySpot) return;
+
+        while (true)
+        {
+            var lifecycle = entrySpot.RecvActorLifecycle(RecvFlags.DontWait);
+            if (lifecycle is null) return;
+            if (lifecycle.Value.Kind != ZLinkBackendActorLifecycleEventKind.Disconnected)
+                continue;
+
+            var actorId = lifecycle.Value.Info.CurrentActor?.ActorId;
+            if (actorId is null) continue;
+
+            if (!await runtime.TryNotifyJoinedSpotActorDisconnectedAsync(actorId, cancellationToken)
+                    .ConfigureAwait(false))
+                await runtime.NotifyActorDisconnectedByIdAsync(actorId, cancellationToken)
+                    .ConfigureAwait(false);
+        }
     }
 }

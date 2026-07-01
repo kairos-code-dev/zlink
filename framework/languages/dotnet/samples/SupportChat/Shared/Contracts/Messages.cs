@@ -19,7 +19,8 @@ public sealed record AuthenticateUserRes(
 public sealed record EnsureSupportUserActorReq(
     string ActorId,
     string DisplayName,
-    string Role);
+    string Role,
+    string ParticipantId);
 
 public sealed record ActorRefSnapshot(
     byte[] NodeRid,
@@ -28,6 +29,18 @@ public sealed record ActorRefSnapshot(
 
 public sealed record EnsureSupportUserActorRes(ActorRefSnapshot Actor);
 
+// One agent serves many conversations, so each assigned conversation gets its own
+// per-conversation agent actor (ParticipantId = the agent's roster id). The session
+// asks the Support server to create that actor and join it into the ConversationSpot.
+public sealed record EnsureAgentConversationReq(
+    string RosterActorId,
+    string DisplayName,
+    string ConversationId);
+
+public sealed record EnsureAgentConversationRes(
+    ActorRefSnapshot Actor,
+    ConversationState State);
+
 public sealed record OpenConversationApiReq(
     string CustomerActorId,
     string CustomerDisplayName,
@@ -35,8 +48,7 @@ public sealed record OpenConversationApiReq(
 
 public sealed record OpenConversationApiRes(
     string ConversationId,
-    string Status,
-    string? AgentActorId);
+    string Status);
 
 public sealed record AllocateConversationReq(
     string CustomerActorId,
@@ -46,15 +58,6 @@ public sealed record AllocateConversationReq(
 public sealed record AllocateConversationRes(
     string ConversationId,
     string Status);
-
-public sealed record AssignAgentReq(
-    string ConversationId,
-    string? RequestedAgentActorId);
-
-public sealed record AssignAgentRes(
-    string ConversationId,
-    string Status,
-    string? AgentActorId);
 
 public sealed record OpenConversationReq(string Subject);
 
@@ -66,27 +69,21 @@ public sealed record SetAgentAvailableReq(bool IsAvailable);
 
 public sealed record SetAgentAvailableRes(bool IsAvailable);
 
-public sealed record JoinConversationReq(string ConversationId);
+// ConversationId travels as stream message metadata (§9.2), not in these bodies.
+public sealed record JoinConversationReq();
 
 public sealed record JoinConversationRes(ConversationState State);
 
-public sealed record SendChatMessageReq(
-    string ConversationId,
-    string Text);
+public sealed record SendChatMessageReq(string Text);
 
 public sealed record SendChatMessageRes(
     ChatMessage Message,
     ConversationState State);
 
-public sealed record SetTypingReq(
-    string ConversationId,
-    bool IsTyping);
+// SetTyping is a one-way fire-and-forget send: no response record.
+public sealed record SetTypingReq(bool IsTyping);
 
-public sealed record SetTypingRes(ConversationState State);
-
-public sealed record CloseConversationReq(
-    string ConversationId,
-    string? Reason);
+public sealed record CloseConversationReq(string? Reason);
 
 public sealed record CloseConversationRes(ConversationState State);
 

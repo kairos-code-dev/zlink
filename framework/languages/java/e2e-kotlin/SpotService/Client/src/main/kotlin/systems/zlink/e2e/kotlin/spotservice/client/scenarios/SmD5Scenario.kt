@@ -1,5 +1,6 @@
 package systems.zlink.e2e.kotlin.spotservice.client.scenarios
 
+import java.util.UUID
 import systems.zlink.e2e.kotlin.spotservice.Contracts
 import systems.zlink.e2e.kotlin.spotservice.Env
 import systems.zlink.e2e.kotlin.spotservice.client.support.createStreamConnector
@@ -8,7 +9,7 @@ import systems.zlink.e2e.kotlin.spotservice.client.support.postJson
 
 internal object SmD5Scenario {
     fun run() {
-        val actorId = "actor-sm-d5-notified"
+        val actorId = "actor-sm-d5-notified-" + UUID.randomUUID().toString().replace("-", "")
         val connector = createStreamConnector(Env.get("ZLINK_KOTLIN_E2E_STREAM_A_ENDPOINT"))
         try {
             val profile = Contracts.ActorProfile("Disconnect", 5, listOf("disconnect"))
@@ -17,6 +18,11 @@ internal object SmD5Scenario {
                 .request(Contracts.ActorAuthReq(actorId, profile))
                 .await(Contracts.ActorAuthRes::class.java)
             ensure(auth.actorId == actorId, "SM-D5 auth actor mismatch")
+            val joined = connector
+                .request(Contracts.ActorJoinReq("room-a", profile, profile.tags))
+                .metadata("actor-id", actorId)
+                .await(Contracts.ActorJoinRes::class.java)
+            ensure(joined.actorId == actorId, "SM-D5 join actor mismatch")
             connector.close().await()
         } finally {
             try {
@@ -30,15 +36,14 @@ internal object SmD5Scenario {
             "/evidence/wait",
             Contracts.EvidenceWaitReq(
                 listOf(
-                    "ActorDisconnectNotified",
-                    "ActorEntryDisconnected|session-a|entry|$actorId",
+                    "ActorUserDisconnected|session-a|room-a|$actorId",
                 ),
                 10_000,
             ),
             Contracts.EvidenceSnapshot::class.java,
         )
         ensure(
-            evidence.entries.any { it.marker == "ActorEntryDisconnected" && it.value == actorId },
+            evidence.entries.any { it.marker == "ActorUserDisconnected" && it.value == actorId },
             "SM-D5 expected selected actor disconnect callback evidence",
         )
 

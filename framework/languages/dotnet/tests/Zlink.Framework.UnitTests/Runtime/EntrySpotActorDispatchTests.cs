@@ -288,6 +288,8 @@ public sealed class EntrySpotActorDispatchTests
 
         public ZLinkBackendActorJoinRequest? RecvActorJoin(RecvFlags flags) => null;
 
+        public ZLinkBackendSpotActorLifecycleEvent? RecvActorLifecycle(RecvFlags flags) => null;
+
         public void ReplyActorJoin(
             ZLinkBackendActorJoinRequest request,
             int joinResultCode,

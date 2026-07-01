@@ -916,7 +916,7 @@ void cleanup_idempotent_join_completion (void *userdata_)
 }
 
 void schedule_lifecycle_event_locked (const std::shared_ptr<spot_logical_state_t> &spot_state_,
-                                      bool join_,
+                                      zlink_spot_actor_lifecycle_event_kind_t kind_,
                                       const zlink_spot_actor_lifecycle_info_t &info_,
                                       zlink::spot_owned_msg_parts_t *request_parts_ = NULL)
 {
@@ -937,7 +937,7 @@ void schedule_lifecycle_event_locked (const std::shared_ptr<spot_logical_state_t
     }
 
     lifecycle_event_t event;
-    event.kind = join_ ? ZLINK_SPOT_ACTOR_LIFECYCLE_JOINED : ZLINK_SPOT_ACTOR_LIFECYCLE_LEFT;
+    event.kind = kind_;
     event.info = info_;
     if (request_parts_)
         event.request_parts.swap (*request_parts_);
@@ -1105,8 +1105,10 @@ zlink_request_result_t commit_accepted_join_locked (queued_join_request_t *reque
     }
 
     if (source_leave_spot)
-        schedule_lifecycle_event_locked (source_leave_spot, false, source_leave_info);
-    schedule_lifecycle_event_locked (target_join_spot, true, target_join_info);
+        schedule_lifecycle_event_locked (source_leave_spot, ZLINK_SPOT_ACTOR_LIFECYCLE_LEFT,
+                                         source_leave_info);
+    schedule_lifecycle_event_locked (target_join_spot, ZLINK_SPOT_ACTOR_LIFECYCLE_JOINED,
+                                     target_join_info);
     return ZLINK_REQUEST_OK;
 }
 
@@ -1244,7 +1246,8 @@ zlink_request_result_t run_destroy_operation_locked (actor_reply_operation_arg_t
                            zero_spot, actor->join_epoch);
     std::unique_ptr<actor_handle_t> actor_to_delete = remove_actor_locked (actor);
     LIBZLINK_UNUSED (actor_to_delete);
-    schedule_lifecycle_event_locked (lifecycle_spot, false, lifecycle_info);
+    schedule_lifecycle_event_locked (lifecycle_spot, ZLINK_SPOT_ACTOR_LIFECYCLE_LEFT,
+                                     lifecycle_info);
     return ZLINK_REQUEST_OK;
 }
 
@@ -1286,8 +1289,9 @@ zlink_request_result_t run_leave_operation_locked (actor_reply_operation_arg_t *
     const zlink_routing_id_t entry_spot = actor_current_spot_rid_locked (actor);
     const zlink_spot_actor_lifecycle_info_t join_info =
       make_lifecycle_info (actor_ref, actor_ref, previous_spot, entry_spot, epoch);
-    schedule_lifecycle_event_locked (source_spot, false, leave_info);
-    schedule_lifecycle_event_locked (actor->joined_spot_state, true, join_info);
+    schedule_lifecycle_event_locked (source_spot, ZLINK_SPOT_ACTOR_LIFECYCLE_LEFT, leave_info);
+    schedule_lifecycle_event_locked (actor->joined_spot_state, ZLINK_SPOT_ACTOR_LIFECYCLE_JOINED,
+                                     join_info);
     return ZLINK_REQUEST_OK;
 }
 
@@ -2000,7 +2004,8 @@ zlink_spot_node_actor_new_with_request (void *node_,
     memset (&zero_spot, 0, sizeof (zero_spot));
     const zlink_spot_actor_lifecycle_info_t info = make_lifecycle_info (
       zero_actor, *actor_out_, zero_spot, actor_current_spot_rid_locked (actor), actor->join_epoch);
-    schedule_lifecycle_event_locked (actor->joined_spot_state, true, info, &request_parts);
+    schedule_lifecycle_event_locked (actor->joined_spot_state, ZLINK_SPOT_ACTOR_LIFECYCLE_JOINED,
+                                     info, &request_parts);
     zlink::spot_clear_msg_parts (&request_parts);
     return ZLINK_CONFIG_OK;
 }
@@ -3294,13 +3299,25 @@ extern "C" zlink_request_result_t zlink_spot_node_actor_close_bound_session (
         actor_handle_t *actor = resolve_actor_ref_locked (actor_ref_);
         if (!actor)
             return actor_missing_request_result_from_errno ();
-        if (!actor->bound_stream) {
+        const bool has_local_session = actor->bound_stream != NULL;
+        const bool has_remote_session = valid_routing_id (&actor->bound_session_node_rid)
+                                        && valid_routing_id (&actor->bound_session_rid);
+        if (!has_local_session && !has_remote_session) {
             errno = ENOENT;
             return ZLINK_REQUEST_NOT_FOUND;
         }
 
-        actor_runtime ().sessions.detach_actor (actor, true, false);
+        zlink_actor_ref_t actor_ref;
+        fill_ref (actor, &actor_ref);
+        const zlink_routing_id_t spot_rid = actor_current_spot_rid_locked (actor);
+        const zlink_spot_actor_lifecycle_info_t lifecycle_info =
+          make_lifecycle_info (actor_ref, actor_ref, spot_rid, spot_rid, actor->join_epoch);
+        std::shared_ptr<spot_logical_state_t> lifecycle_spot = actor->joined_spot_state;
+        if (has_local_session)
+            actor_runtime ().sessions.detach_actor (actor, true, false);
         clear_actor_bound_session_locked (actor, true);
+        schedule_lifecycle_event_locked (lifecycle_spot, ZLINK_SPOT_ACTOR_LIFECYCLE_DISCONNECTED,
+                                         lifecycle_info);
         if (!actor->queue.empty ())
             readable_actor = actor;
     }

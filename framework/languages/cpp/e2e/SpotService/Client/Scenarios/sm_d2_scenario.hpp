@@ -53,8 +53,8 @@ inline void run_sm_d2_scenario (const std::string &play_b_http_endpoint,
 
     zlink::stream_connector::connector_options_t options;
     options.endpoint = session_stream_endpoint;
-    options.connect_timeout = std::chrono::milliseconds (5000);
-    options.request_timeout = std::chrono::milliseconds (5000);
+    options.connect_timeout = std::chrono::milliseconds (3000);
+    options.request_timeout = std::chrono::milliseconds (3000);
     options.dispatch_mode = zlink::stream_connector::dispatch_mode_t::immediate;
 
     auto remote = zlink::stream_connector::connector_factory_t::create (options);
@@ -72,7 +72,7 @@ inline void run_sm_d2_scenario (const std::string &play_b_http_endpoint,
     auto auth =
       remote.request (stream_auth_req_t{"play-b", actor_id, "SM-D2 Remote", join_reply.actor})
         .packet_name ("StreamAuthReq")
-        .timeout (std::chrono::milliseconds (5000))
+        .timeout (std::chrono::milliseconds (3000))
         .submit<stream_auth_res_t> ();
     if (!auth || auth.value ().session_node_rid != "session-a") {
         throw std::runtime_error ("SM-D2 stream auth failed");
@@ -81,7 +81,7 @@ inline void run_sm_d2_scenario (const std::string &play_b_http_endpoint,
     auto ping = remote.request (actor_ping_req_t{"remote-relay"})
                   .packet_name ("ActorPingReq")
                   .metadata ("actor-id", actor_id)
-                  .timeout (std::chrono::milliseconds (5000))
+                  .timeout (std::chrono::milliseconds (3000))
                   .submit<actor_ping_res_t> ();
     if (!ping) {
         throw std::runtime_error ("SM-D2 actor ping request failed");
@@ -99,7 +99,7 @@ inline void run_sm_d2_scenario (const std::string &play_b_http_endpoint,
     auto pushed = remote.request (actor_push_req_t{"push-remote"})
                     .packet_name ("PushReq")
                     .metadata ("actor-id", actor_id)
-                    .timeout (std::chrono::milliseconds (5000))
+                    .timeout (std::chrono::milliseconds (3000))
                     .submit<actor_push_res_t> ();
     if (!pushed || !pushed.value ().pushed || pushed.value ().actor_id != actor_id) {
         throw std::runtime_error ("SM-D2 actor push request failed");

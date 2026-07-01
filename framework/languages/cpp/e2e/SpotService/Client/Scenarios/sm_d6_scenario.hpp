@@ -51,8 +51,8 @@ inline void run_sm_d6_scenario (const std::string &session_stream_endpoint,
 
     zlink::stream_connector::connector_options_t bound_options;
     bound_options.endpoint = session_stream_endpoint;
-    bound_options.connect_timeout = std::chrono::milliseconds (5000);
-    bound_options.request_timeout = std::chrono::milliseconds (5000);
+    bound_options.connect_timeout = std::chrono::milliseconds (3000);
+    bound_options.request_timeout = std::chrono::milliseconds (3000);
     bound_options.dispatch_mode = zlink::stream_connector::dispatch_mode_t::immediate;
     auto bound = zlink::stream_connector::connector_factory_t::create (bound_options);
     auto bound_connected = bound.connect ();
@@ -62,7 +62,7 @@ inline void run_sm_d6_scenario (const std::string &session_stream_endpoint,
     auto bound_auth =
       bound.request (stream_auth_req_t{"play-a", actor_id, "SM-D6 Bound", join_reply.actor})
         .packet_name ("StreamAuthReq")
-        .timeout (std::chrono::milliseconds (5000))
+        .timeout (std::chrono::milliseconds (3000))
         .submit<stream_auth_res_t> ();
     if (!bound_auth) {
         throw std::runtime_error ("SM-D6 bound stream auth failed");
@@ -71,7 +71,7 @@ inline void run_sm_d6_scenario (const std::string &session_stream_endpoint,
       bound.request (actor_ping_req_t{"sm-d6-route"})
         .packet_name ("ActorPingReq")
         .metadata ("actor-id", actor_id)
-        .timeout (std::chrono::milliseconds (5000))
+        .timeout (std::chrono::milliseconds (3000))
         .submit<actor_ping_res_t> ();
     if (!routed || routed.value ().actor_id != actor_id) {
         throw std::runtime_error ("SM-D6 route establishment failed");
@@ -79,8 +79,8 @@ inline void run_sm_d6_scenario (const std::string &session_stream_endpoint,
 
     zlink::stream_connector::connector_options_t unbound_options;
     unbound_options.endpoint = alternate_stream_endpoint;
-    unbound_options.connect_timeout = std::chrono::milliseconds (5000);
-    unbound_options.request_timeout = std::chrono::milliseconds (5000);
+    unbound_options.connect_timeout = std::chrono::milliseconds (3000);
+    unbound_options.request_timeout = std::chrono::milliseconds (3000);
     unbound_options.dispatch_mode = zlink::stream_connector::dispatch_mode_t::immediate;
     auto unbound = zlink::stream_connector::connector_factory_t::create (unbound_options);
     auto unbound_connected = unbound.connect ();
@@ -90,7 +90,7 @@ inline void run_sm_d6_scenario (const std::string &session_stream_endpoint,
     auto unbound_auth =
       unbound.request (stream_ensure_auth_req_t{"play-b", shadow_actor_id, "SM-D6 Shadow"})
         .packet_name ("StreamEnsureAuthReq")
-        .timeout (std::chrono::milliseconds (5000))
+        .timeout (std::chrono::milliseconds (3000))
         .submit<stream_auth_res_t> ();
     if (!unbound_auth) {
         throw std::runtime_error ("SM-D6 unbound stream auth failed");

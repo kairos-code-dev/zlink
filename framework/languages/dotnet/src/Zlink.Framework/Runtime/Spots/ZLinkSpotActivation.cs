@@ -70,7 +70,8 @@ internal sealed partial class ZLinkSpotActivation :
             _actors,
             _subscriptions,
             () => _actorHandlers,
-            () => HandlerInvoker);
+            () => HandlerInvoker,
+            CommitNativeActorJoinAsync);
         _actorDispatchSubmitter = new ZLinkSpotActorDispatchSubmitter(_serial, _dispatcher);
         _actorLifecycle = new ZLinkSpotActorLifecycleCoordinator(
             runtime,
@@ -122,5 +123,12 @@ internal sealed partial class ZLinkSpotActivation :
         if (!_configurationOpen)
             throw new InvalidOperationException(
                 "SPOT handler registration is only allowed while IZLinkSpot.Configure is running.");
+    }
+
+    private ValueTask CommitNativeActorJoinAsync(
+        IZLinkActor actor,
+        CancellationToken cancellationToken)
+    {
+        return _actorLifecycle.JoinAsync(actor, cancellationToken);
     }
 }

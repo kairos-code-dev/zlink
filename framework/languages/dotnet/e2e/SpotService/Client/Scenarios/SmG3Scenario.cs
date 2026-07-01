@@ -36,6 +36,12 @@ internal static class SmG3Scenario
                         await candidate.Request(new UserSpotAuthReq(spotRid, actorId, actorId, "play-a"))
                             .PacketName("UserSpotAuthReq")
                             .Async<AuthRes>();
+                        await playA.Post("/spot/create")
+                            .Body(new CreateSpotReq(spotRid))
+                            .SubmitAsync<CreateSpotRes>();
+                        await candidate.Request(new JoinUserSpotActorReq(spotRid, actorId))
+                            .PacketName("JoinUserSpotActorReq")
+                            .Async<JoinUserSpotActorRes>();
                         client = candidate;
                         break;
                     }

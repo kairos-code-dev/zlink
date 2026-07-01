@@ -27,8 +27,8 @@ inline void run_sm_d3_scenario (const std::string &play_http_endpoint,
     constexpr auto entry_actor_id = "actor-sm-d3-entry";
     zlink::stream_connector::connector_options_t entry_options;
     entry_options.endpoint = session_stream_endpoint;
-    entry_options.connect_timeout = std::chrono::milliseconds (5000);
-    entry_options.request_timeout = std::chrono::milliseconds (5000);
+    entry_options.connect_timeout = std::chrono::milliseconds (3000);
+    entry_options.request_timeout = std::chrono::milliseconds (3000);
     entry_options.dispatch_mode = zlink::stream_connector::dispatch_mode_t::immediate;
     auto entry = zlink::stream_connector::connector_factory_t::create (entry_options);
     auto entry_connected = entry.connect ();
@@ -38,7 +38,7 @@ inline void run_sm_d3_scenario (const std::string &play_http_endpoint,
     auto entry_auth =
       entry.request (stream_ensure_auth_req_t{"play-a", entry_actor_id, "SM-D3 Entry"})
         .packet_name ("StreamEnsureAuthReq")
-        .timeout (std::chrono::milliseconds (5000))
+        .timeout (std::chrono::milliseconds (3000))
         .submit<stream_auth_res_t> ();
     if (!entry_auth || entry_auth.value ().session_node_rid != "session-a"
         || entry_auth.value ().actor.actor_id != entry_actor_id) {
@@ -49,7 +49,7 @@ inline void run_sm_d3_scenario (const std::string &play_http_endpoint,
       entry.request (actor_ping_req_t{"entry-relay"})
         .packet_name ("ActorPingReq")
         .metadata ("actor-id", entry_actor_id)
-        .timeout (std::chrono::milliseconds (5000))
+        .timeout (std::chrono::milliseconds (3000))
         .submit<actor_ping_res_t> ();
     if (!entry_ping || entry_ping.value ().actor_id != entry_actor_id
         || entry_ping.value ().node_rid != "play-a" || entry_ping.value ().value != "entry-relay"
@@ -64,7 +64,7 @@ inline void run_sm_d3_scenario (const std::string &play_http_endpoint,
       entry.request (actor_push_req_t{"entry-push"})
         .packet_name ("PushReq")
         .metadata ("actor-id", entry_actor_id)
-        .timeout (std::chrono::milliseconds (5000))
+        .timeout (std::chrono::milliseconds (3000))
         .submit<actor_push_res_t> ();
     if (!entry_push || !entry_push.value ().pushed
         || entry_push.value ().actor_id != entry_actor_id) {
@@ -99,8 +99,8 @@ inline void run_sm_d3_scenario (const std::string &play_http_endpoint,
 
     zlink::stream_connector::connector_options_t user_options;
     user_options.endpoint = session_stream_endpoint;
-    user_options.connect_timeout = std::chrono::milliseconds (5000);
-    user_options.request_timeout = std::chrono::milliseconds (5000);
+    user_options.connect_timeout = std::chrono::milliseconds (3000);
+    user_options.request_timeout = std::chrono::milliseconds (3000);
     user_options.dispatch_mode = zlink::stream_connector::dispatch_mode_t::immediate;
     auto user = zlink::stream_connector::connector_factory_t::create (user_options);
     auto user_connected = user.connect ();
@@ -110,7 +110,7 @@ inline void run_sm_d3_scenario (const std::string &play_http_endpoint,
     auto user_auth =
       user.request (stream_auth_req_t{"play-a", user_actor_id, "SM-D3 User", user_join.actor})
         .packet_name ("StreamAuthReq")
-        .timeout (std::chrono::milliseconds (5000))
+        .timeout (std::chrono::milliseconds (3000))
         .submit<stream_auth_res_t> ();
     if (!user_auth || user_auth.value ().session_node_rid != "session-a") {
         throw std::runtime_error ("SM-D3 user stream auth failed");
@@ -120,7 +120,7 @@ inline void run_sm_d3_scenario (const std::string &play_http_endpoint,
       user.request (actor_ping_req_t{"user-relay"})
         .packet_name ("ActorPingReq")
         .metadata ("actor-id", user_actor_id)
-        .timeout (std::chrono::milliseconds (5000))
+        .timeout (std::chrono::milliseconds (3000))
         .submit<actor_ping_res_t> ();
     if (!user_ping || user_ping.value ().actor_id != user_actor_id
         || user_ping.value ().node_rid != "play-a" || user_ping.value ().value != "user-relay"
@@ -135,7 +135,7 @@ inline void run_sm_d3_scenario (const std::string &play_http_endpoint,
       user.request (actor_push_req_t{"user-push"})
         .packet_name ("PushReq")
         .metadata ("actor-id", user_actor_id)
-        .timeout (std::chrono::milliseconds (5000))
+        .timeout (std::chrono::milliseconds (3000))
         .submit<actor_push_res_t> ();
     if (!user_push || !user_push.value ().pushed
         || user_push.value ().actor_id != user_actor_id) {

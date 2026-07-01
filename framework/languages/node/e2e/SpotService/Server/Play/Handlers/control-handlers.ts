@@ -5,9 +5,7 @@ import type {
   CreateSpotRes,
   CreateSpotReq,
   EnsureActorRes,
-  EnsureActorReq,
-  JoinUserSpotActorRes,
-  JoinUserSpotActorReq
+  EnsureActorReq
 } from '../../../Shared/messages';
 import { SpotServiceNames } from '../../../Shared/messages';
 import type {
@@ -18,7 +16,6 @@ import type {
 } from '@zlink-systems/framework';
 import { ZLINK_ACTOR_MANAGER, ZLINK_SPOT_MANAGER } from '@zlink-systems/nestjs';
 import { EvidenceStore } from '../Infrastructure/evidence-store';
-import { InMemoryActorSpotStore } from '../Infrastructure/actor-spot-store';
 import { InMemorySpotRouteStore } from '../Infrastructure/spot-route-store';
 import { ScenarioUserSpot } from '../Spots/scenario-spots';
 
@@ -77,35 +74,6 @@ export class CreateSpotHandler implements ZLinkRouteRequestHandler<CreateSpotReq
       spotRid: String(created.spotRid),
       nodeRid: this.evidence.rid,
       state
-    };
-  }
-}
-
-@Injectable()
-export class JoinUserSpotActorHandler implements ZLinkRouteRequestHandler<JoinUserSpotActorReq, JoinUserSpotActorRes> {
-  constructor(
-    @Inject(ZLINK_ACTOR_MANAGER) private readonly actors: ZLinkActorManager,
-    private readonly evidence: EvidenceStore
-  ) {}
-
-  async handle(request: JoinUserSpotActorReq, context: ZLinkRouteRequestContext): Promise<JoinUserSpotActorRes> {
-    void context;
-    const actorRef = await this.actors.getOrCreate(
-      request.actorId,
-      SpotServiceNames.actorType,
-      { displayName: request.spotRid }
-    );
-    InMemoryActorSpotStore.record(request.actorId, request.spotRid);
-    this.evidence.add(
-      `join-user-spot-actor|rid=${this.evidence.rid}|spot=${request.spotRid}`
-      + `|actor=${request.actorId}|accepted=true`
-    );
-    this.evidence.add(`spot-actor-joined|rid=${this.evidence.rid}|spot=${request.spotRid}|actor=${request.actorId}`);
-    return {
-      spotRid: request.spotRid,
-      actorId: actorRef.actorId,
-      accepted: true,
-      generation: actorRef.generation.toString()
     };
   }
 }

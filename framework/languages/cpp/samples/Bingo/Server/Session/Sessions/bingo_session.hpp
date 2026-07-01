@@ -36,6 +36,9 @@ class bingo_session_t final : public packet_stream_session_t
     task_t<void> on_disconnected (stream_t &) override
     {
         if (_bound_actor_id) {
+            if (auto actor = _actors.find (*_bound_actor_id)) {
+                actor->notify_disconnected ().submit ();
+            }
             _gateway.unbind_session_stream (*_bound_actor_id);
             _actors.unbind_session (*_bound_actor_id);
             _bound_actor_id.reset ();

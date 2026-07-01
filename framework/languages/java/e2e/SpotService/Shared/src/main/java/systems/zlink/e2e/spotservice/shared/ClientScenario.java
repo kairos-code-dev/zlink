@@ -1,8 +1,14 @@
 package systems.zlink.e2e.spotservice.shared;
 
+import com.fasterxml.jackson.databind.ObjectMapper;
+import java.io.IOException;
 import java.net.URI;
+import java.net.http.HttpClient;
+import java.net.http.HttpRequest;
+import java.net.http.HttpResponse;
 import java.time.Duration;
 import java.util.List;
+import java.util.UUID;
 import java.util.function.Supplier;
 import systems.zlink.contracts.core.RoutingId;
 import systems.zlink.framework.channels.ZLinkRouteClient;
@@ -16,6 +22,8 @@ import systems.zlink.stream.connector.ZLinkStreamDispatchMode;
 public final class ClientScenario {
     private static final Duration REQUEST_TIMEOUT = Duration.ofSeconds(5);
     private static final Duration EVENTUAL_TIMEOUT = Duration.ofSeconds(30);
+    private static final ObjectMapper JSON = new ObjectMapper();
+    private static final HttpClient HTTP = HttpClient.newHttpClient();
     private final ZLinkSpotOutbound outbound;
     private final ZLinkRouteClient routes;
 
@@ -37,6 +45,8 @@ public final class ClientScenario {
             case "owner" -> runOwnerRouting();
             case "route-mesh" -> runRouteMesh();
             case "actor-session" -> runActorSession();
+            case "actor-leave-disconnect" -> runActorLeaveDisconnect();
+            case "actor-disconnect-notify" -> runActorDisconnectNotify();
             case "worker" -> runWorkerOffload();
             case "spot-outbound" -> runSpotOutbound();
             case "spot-to-spot" -> runSpotToSpot();
@@ -263,6 +273,112 @@ public final class ClientScenario {
         }
     }
 
+    private void runActorLeaveDisconnect() {
+        try {
+            String suffix = UUID.randomUUID().toString().replace("-", "");
+            String leaveActorId = "actor-sm-b6-left-" + suffix;
+            String disconnectActorId = "actor-sm-b6-disconnected-" + suffix;
+
+            try {
+                ZLinkStreamConnector leaveClient = createStreamConnector(Env.get("ZLINK_JAVA_E2E_STREAM_A_ENDPOINT"));
+                Contracts.ActorProfile profile = new Contracts.ActorProfile("Leave", 6, List.of("leave"));
+                try {
+                    leaveClient.connect().await();
+                    Contracts.ActorAuthRes auth = leaveClient
+                        .request(new Contracts.ActorAuthReq(leaveActorId, profile))
+                        .await(Contracts.ActorAuthRes.class);
+                    ensure(leaveActorId.equals(auth.actorId()), "SM-B6 leave auth actor mismatch");
+                    Contracts.ActorJoinRes joined = leaveClient
+                        .request(new Contracts.ActorJoinReq("room-a", profile, profile.tags()))
+                        .metadata("actor-id", leaveActorId)
+                        .await(Contracts.ActorJoinRes.class);
+                    ensure(leaveActorId.equals(joined.actorId()), "SM-B6 leave join actor mismatch");
+                    leaveClient
+                        .send(new Contracts.LeaveActorReq(leaveActorId))
+                        .metadata("actor-id", leaveActorId)
+                        .submit()
+                        .toCompletableFuture()
+                        .join();
+                } finally {
+                    closeQuietly(leaveClient);
+                }
+            } catch (Exception error) {
+                throw new IllegalStateException("SM-B6 leave phase failed", error);
+            }
+
+            Contracts.EvidenceSnapshot leaveEvidence = waitForPlayAEvidence(
+                List.of("ActorUserLeft|play-a|room-a|" + leaveActorId));
+            ensure(leaveEvidence.entries().stream().noneMatch(entry ->
+                    "ActorUserDisconnected".equals(entry.marker()) && leaveActorId.equals(entry.value())),
+                "SM-B6 explicit leave emitted disconnect evidence");
+
+            try {
+                ZLinkStreamConnector disconnectClient =
+                    createStreamConnector(Env.get("ZLINK_JAVA_E2E_STREAM_A_ENDPOINT"));
+                try {
+                    Contracts.ActorProfile disconnectProfile =
+                        new Contracts.ActorProfile("Disconnect", 6, List.of("disconnect"));
+                    disconnectClient.connect().await();
+                    Contracts.ActorAuthRes auth = disconnectClient
+                        .request(new Contracts.ActorAuthReq(disconnectActorId, disconnectProfile))
+                        .await(Contracts.ActorAuthRes.class);
+                    ensure(disconnectActorId.equals(auth.actorId()), "SM-B6 disconnect auth actor mismatch");
+                    Contracts.ActorJoinRes joined = disconnectClient
+                        .request(new Contracts.ActorJoinReq("room-a", disconnectProfile, disconnectProfile.tags()))
+                        .metadata("actor-id", disconnectActorId)
+                        .await(Contracts.ActorJoinRes.class);
+                    ensure(disconnectActorId.equals(joined.actorId()), "SM-B6 disconnect join actor mismatch");
+                } finally {
+                    closeQuietly(disconnectClient);
+                }
+            } catch (Exception error) {
+                throw new IllegalStateException("SM-B6 disconnect phase failed", error);
+            }
+
+            Contracts.EvidenceSnapshot disconnectEvidence = waitForPlayAEvidence(
+                List.of("ActorUserDisconnected|play-a|room-a|" + disconnectActorId));
+            ensure(disconnectEvidence.entries().stream().noneMatch(entry ->
+                    "ActorUserLeft".equals(entry.marker()) && disconnectActorId.equals(entry.value())),
+                "SM-B6 disconnect emitted leave evidence");
+
+            System.out.println("scenario SM-B6 passed");
+        } catch (Exception error) {
+            throw new IllegalStateException("actor leave/disconnect scenario failed", error);
+        }
+    }
+
+    private void runActorDisconnectNotify() {
+        try {
+            String actorId = "actor-sm-d5-notified-" + UUID.randomUUID().toString().replace("-", "");
+            ZLinkStreamConnector connector = createStreamConnector(Env.get("ZLINK_JAVA_E2E_STREAM_A_ENDPOINT"));
+            Contracts.ActorProfile profile = new Contracts.ActorProfile("Disconnect", 5, List.of("disconnect"));
+            try {
+                connector.connect().await();
+                Contracts.ActorAuthRes auth = connector
+                    .request(new Contracts.ActorAuthReq(actorId, profile))
+                    .await(Contracts.ActorAuthRes.class);
+                ensure(actorId.equals(auth.actorId()), "SM-D5 auth actor mismatch");
+                Contracts.ActorJoinRes joined = connector
+                    .request(new Contracts.ActorJoinReq("room-a", profile, profile.tags()))
+                    .metadata("actor-id", actorId)
+                    .await(Contracts.ActorJoinRes.class);
+                ensure(actorId.equals(joined.actorId()), "SM-D5 join actor mismatch");
+            } finally {
+                closeQuietly(connector);
+            }
+
+            Contracts.EvidenceSnapshot evidence = waitForPlayAEvidence(
+                List.of("ActorUserDisconnected|play-a|room-a|" + actorId));
+            ensure(evidence.entries().stream().anyMatch(entry ->
+                    "ActorUserDisconnected".equals(entry.marker()) && actorId.equals(entry.value())),
+                "SM-D5 expected selected actor disconnect callback evidence");
+
+            System.out.println("scenario SM-D5 passed");
+        } catch (Exception error) {
+            throw new IllegalStateException("actor disconnect notify scenario failed", error);
+        }
+    }
+
     private static <T> void awaitUnchecked(
         ZLinkStreamConnector connector,
         java.util.concurrent.CompletionStage<T> stage) {
@@ -290,6 +406,47 @@ public final class ClientScenario {
             2.0,
             false,
             ZLinkStreamCompression.LZ4));
+    }
+
+    private static void closeQuietly(ZLinkStreamConnector connector) {
+        try {
+            connector.close().await();
+        } catch (Exception ignored) {
+        }
+    }
+
+    private static Contracts.EvidenceSnapshot waitForPlayAEvidence(List<String> fragments) {
+        return postJson(
+            Env.get("ZLINK_JAVA_E2E_HTTP_A_ENDPOINT"),
+            "/evidence/wait",
+            new Contracts.EvidenceWaitReq(fragments, 10_000),
+            Contracts.EvidenceSnapshot.class);
+    }
+
+    private static <T> T postJson(
+        String endpoint,
+        String path,
+        Object request,
+        Class<T> responseType) {
+        try {
+            HttpRequest httpRequest = HttpRequest.newBuilder(URI.create(endpoint + path))
+                .header("Content-Type", "application/json")
+                .POST(HttpRequest.BodyPublishers.ofByteArray(JSON.writeValueAsBytes(request)))
+                .build();
+            HttpResponse<byte[]> response = HTTP.send(
+                httpRequest,
+                HttpResponse.BodyHandlers.ofByteArray());
+            if (response.statusCode() < 200 || response.statusCode() >= 300) {
+                throw new IllegalStateException(
+                    "evidence request failed with status " + response.statusCode());
+            }
+            return JSON.readValue(response.body(), responseType);
+        } catch (IOException error) {
+            throw new IllegalStateException("evidence JSON request failed", error);
+        } catch (InterruptedException error) {
+            Thread.currentThread().interrupt();
+            throw new IllegalStateException("evidence JSON request interrupted", error);
+        }
     }
 
     private void runWorkerOffload() {

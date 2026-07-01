@@ -262,6 +262,7 @@ run_client_mode() {
       ZLINK_JAVA_E2E_INGRESS_A_ENDPOINT="${INGRESS_A}" \
       ZLINK_JAVA_E2E_STREAM_A_ENDPOINT="${STREAM_A}" \
       ZLINK_JAVA_E2E_STREAM_B_ENDPOINT="${STREAM_B}" \
+      ZLINK_JAVA_E2E_HTTP_A_ENDPOINT="${HTTP_A}" \
       ZLINK_JAVA_E2E_REGISTRY_ROUTER="${REGISTRY_ROUTER}" \
       ZLINK_JAVA_E2E_LOG_DIR="${log_dir}" \
         timeout -k 5s 30s "$(client_bin)" >"${log_dir}/client-${mode}.stdout.log" 2>"${log_dir}/client-${mode}.stderr.log"
@@ -279,7 +280,7 @@ run_client_mode() {
 
 : >"${log_dir}/client.stdout.log"
 : >"${log_dir}/client.stderr.log"
-for mode in state1 state2 send normal worker missing timeout owner spot-outbound spot-to-spot route-mesh actor-session idle-timer timer-overrun; do
+for mode in ${ZLINK_JAVA_E2E_MODES:-state1 state2 send normal worker missing timeout owner spot-outbound spot-to-spot route-mesh actor-session actor-leave-disconnect actor-disconnect-notify idle-timer timer-overrun}; do
   if [[ "${mode}" == "idle-timer" ]]; then
     create_timer_spot "${HTTP_A}" idle-close
     create_timer_spot "${HTTP_A}" idle-active
@@ -297,6 +298,12 @@ for mode in state1 state2 send normal worker missing timeout owner spot-outbound
   fi
   sleep 2
 done
+if [[ -n "${ZLINK_JAVA_E2E_MODES:-}" ]]; then
+  cat "${log_dir}/client.stdout.log"
+  fetch_evidence play-a "${HTTP_A}"
+  fetch_evidence play-b "${HTTP_B}"
+  exit 0
+fi
 run_publisher
 cat "${log_dir}/publisher.stdout.log" >>"${log_dir}/client.stdout.log"
 cat "${log_dir}/publisher.stderr.log" >>"${log_dir}/client.stderr.log"
@@ -318,6 +325,8 @@ grep -q '"marker":"ActorCreated"' "${log_dir}/play-a-evidence.json"
 grep -q '"marker":"ActorCreatedPayload"' "${log_dir}/play-a-evidence.json"
 grep -q '"value":"Player One/7/alpha,beta"' "${log_dir}/play-a-evidence.json"
 grep -q '"marker":"ActorUserJoined"' "${log_dir}/play-a-evidence.json"
+grep -q '"marker":"ActorUserLeft"' "${log_dir}/play-a-evidence.json"
+grep -q '"marker":"ActorUserDisconnected"' "${log_dir}/play-a-evidence.json"
 grep -q '"marker":"ActorUserReq"' "${log_dir}/play-a-evidence.json"
 grep -q 'ActorCreated.*ActorUserJoined.*ActorUserReq' "${log_dir}/play-a-evidence.json"
 grep -q 'user-echo-1.*user-echo-2.*user-echo-3' "${log_dir}/play-a-evidence.json"

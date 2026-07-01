@@ -136,7 +136,7 @@ class spot_stage_probe_route_handler_t
                       e2e::stage_probe_req_t{.marker = request.marker,
                                              .delta = request.delta})
             .packet_name ("StageProbeReq")
-            .timeout (std::chrono::seconds (5))
+            .timeout (std::chrono::seconds (3))
             .async<e2e::state_res_t> ()
             .result ();
         if (!reply) {
@@ -333,7 +333,7 @@ class spot_worker_start_route_handler_t
                       zlink::framework::spot_rid_t::from_string (request.spot_rid),
                       request)
             .packet_name ("WorkerStartReq")
-            .timeout (std::chrono::seconds (5))
+            .timeout (std::chrono::seconds (3))
             .async<e2e::spot_worker_start_res_t> ()
             .result ();
         if (!reply) {
@@ -725,7 +725,7 @@ class spot_outbound_route_handler_t
                       zlink::framework::spot_rid_t::from_string (request.spot_rid),
                       e2e::outbound_req_t{request.marker})
             .packet_name ("SpotOutboundReq")
-            .timeout (std::chrono::milliseconds (5000))
+            .timeout (std::chrono::milliseconds (3000))
             .async<e2e::outbound_res_t> ()
             .result ();
         if (!reply) {
@@ -810,7 +810,7 @@ class spot_to_spot_route_handler_t
                       zlink::framework::spot_rid_t::from_string (request.source_spot_rid),
                       request)
             .packet_name ("SpotToSpotDirectReq")
-            .timeout (std::chrono::milliseconds (5000))
+            .timeout (std::chrono::milliseconds (3000))
             .async<e2e::spot_to_spot_route_res_t> ()
             .result ();
         if (!reply) {

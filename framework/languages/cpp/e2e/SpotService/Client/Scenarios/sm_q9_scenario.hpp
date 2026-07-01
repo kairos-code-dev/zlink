@@ -10,7 +10,6 @@
 #include <iostream>
 #include <stdexcept>
 #include <string>
-#include <thread>
 
 namespace zlink::framework::e2e::spot_service::client::scenarios
 {
@@ -36,23 +35,20 @@ inline state_res_t request_sm_q9_state (zlink::framework::route_client_t &routes
                                         int delta,
                                         const std::string &label)
 {
-    std::string last_error = label + " was not attempted";
-    for (int attempt = 0; attempt < 40; ++attempt) {
-        auto reply = routes
-                       .request (route_channel, zlink::routing_id_t::from (target_node_rid),
-                                 zlink::framework::spot_rid_t::from_string (spot_rid),
-                                 state_req_t{.op = "add", .amount = delta})
-                       .packet_name ("StateReq")
-                       .timeout (std::chrono::milliseconds (2000))
-                       .async<state_res_t> ()
-                       .result ();
-        if (reply.has_value ()) {
-            return reply.value ();
-        }
-        last_error = reply.error () ? reply.error ()->what () : "unknown route error";
-        std::this_thread::sleep_for (std::chrono::milliseconds (100));
+    auto reply = routes
+                   .request (route_channel, zlink::routing_id_t::from (target_node_rid),
+                             zlink::framework::spot_rid_t::from_string (spot_rid),
+                             state_req_t{.op = "add", .amount = delta})
+                   .packet_name ("StateReq")
+                   .timeout (std::chrono::milliseconds (3000))
+                   .async<state_res_t> ()
+                   .result ();
+    if (reply.has_value ()) {
+        return reply.value ();
     }
-    throw std::runtime_error ("SM-Q9 state request failed for " + label + ": " + last_error);
+    throw std::runtime_error (
+      "SM-Q9 state request failed for " + label + ": "
+      + (reply.error () ? reply.error ()->what () : "unknown route error"));
 }
 
 inline evidence_snapshot_t fetch_sm_q9_evidence (zlink::http_client::client_t &client,
@@ -140,6 +136,8 @@ inline void run_sm_q9_scenario (zlink::framework::route_client_t &routes,
     }
 
     std::cout << "operation SpotService.sm-q9 passed\n";
-}
+    std::cout << "scenario SM-Q9 passed\n";
+    std::cout << "scenario SM-Q9 evidence passed\n";
+  }
 
 } // namespace zlink::framework::e2e::spot_service::client::scenarios

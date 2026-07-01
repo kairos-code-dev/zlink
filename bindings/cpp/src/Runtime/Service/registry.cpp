@@ -235,9 +235,19 @@ registry_t::topology (const registry_topology_filter_t &filter_) const
       zlink_registry_topology (_impl->handle, &native_filter, nullptr, &count)));
     std::vector<zlink_registry_topology_entry_t> native (count);
     if (count > 0) {
-        detail::throw_if_failed<config_error_t> (static_cast<config_result_t> (
-          zlink_registry_topology (_impl->handle, &native_filter, native.data (), &count)));
-        native.resize (count);
+        while (true) {
+            const auto result = static_cast<config_result_t> (
+              zlink_registry_topology (_impl->handle, &native_filter, native.data (), &count));
+            if (result == config_result_t::ok) {
+                native.resize (count);
+                break;
+            }
+            if (result == config_result_t::internal_error && zlink_errno () == ENOBUFS) {
+                native.resize (count);
+                continue;
+            }
+            detail::throw_if_failed<config_error_t> (result);
+        }
     }
     std::vector<registry_topology_entry_t> entries;
     entries.reserve (native.size ());
@@ -254,10 +264,19 @@ std::vector<member_peer_entry_t> registry_t::member_peers (const std::string &ch
       zlink_registry_member_peers (_impl->handle, channel_name_.c_str (), nullptr, &count)));
     std::vector<zlink_member_peer_entry_t> native (count);
     if (count > 0) {
-        detail::throw_if_failed<config_error_t> (
-          static_cast<config_result_t> (zlink_registry_member_peers (
-            _impl->handle, channel_name_.c_str (), native.data (), &count)));
-        native.resize (count);
+        while (true) {
+            const auto result = static_cast<config_result_t> (zlink_registry_member_peers (
+              _impl->handle, channel_name_.c_str (), native.data (), &count));
+            if (result == config_result_t::ok) {
+                native.resize (count);
+                break;
+            }
+            if (result == config_result_t::internal_error && zlink_errno () == ENOBUFS) {
+                native.resize (count);
+                continue;
+            }
+            detail::throw_if_failed<config_error_t> (result);
+        }
     }
     std::vector<member_peer_entry_t> entries;
     entries.reserve (native.size ());

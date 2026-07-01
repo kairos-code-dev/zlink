@@ -90,10 +90,6 @@ import {
   ZLinkBackendSpotDispatchEvent
 } from '../backend/contracts';
 
-// DontWait recv flag (core RecvFlags.DontWait = 1): non-blocking drain.
-const ZLINK_RECV_DONT_WAIT = 1 as ZLinkBackendRecvFlags;
-const ZLINK_SPOT_DISPATCH_SUBJECT_SPOT = 1;
-const ZLINK_SPOT_DISPATCH_SUBJECT_CHANNEL_DEALER = 3;
 import { ZLinkDispatchErrorReporter, type ZLinkSpotPublisherClientTransport } from '../channels';
 import { flowIfEnabled } from '../diagnostics';
 import { encodeChannelPublishEnvelopeParts } from '../channels/channel-envelope';
@@ -118,6 +114,7 @@ import {
   ZLinkActorPacketKind,
   ZLinkActorDispatchMailboxSet,
   ZLINK_REMOTE_ACTOR_PACKET_RELAY_PACKET,
+  ZLINK_REMOTE_ACTOR_SESSION_DISCONNECTED_PACKET,
   ZLINK_REMOTE_BOUND_SESSION_SEND_PACKET,
   ZLinkSpotActorDispatcher,
   ZLinkSpotActorHandlerRegistryRuntime
@@ -134,6 +131,14 @@ import {
   encodeFrameworkPayloadMessage,
   wrapFrameworkPayloadMessage
 } from '../messaging/payload-codec';
+
+// DontWait recv flag (core RecvFlags.DontWait = 1): non-blocking drain.
+const ZLINK_RECV_DONT_WAIT = 1 as ZLinkBackendRecvFlags;
+const ZLINK_SPOT_DISPATCH_SUBJECT_SPOT = 1;
+const ZLINK_SPOT_DISPATCH_SUBJECT_CHANNEL_DEALER = 3;
+const ZLINK_SPOT_ACTOR_LIFECYCLE_JOINED = 1;
+const ZLINK_SPOT_ACTOR_LIFECYCLE_LEFT = 2;
+const ZLINK_SPOT_ACTOR_LIFECYCLE_DISCONNECTED = 3;
 
 export interface ZLinkSpotManagerOptions {
   readonly spotFactories: readonly Type<ZLinkSpot>[];
@@ -178,6 +183,7 @@ export interface ZLinkSpotManagerOptions {
     info: ZLinkBackendActorJoinInfo
   ) => ZLinkRemoteBoundSessionTarget | undefined;
   readonly routedActorCommitter?: (actor: ZLinkActor, spotRid: RoutingId, spot: ZLinkSpot) => void;
+  readonly routedActorLeaveCommitter?: (actor: ZLinkActor) => void;
   readonly actorResponseSender?: (
     actor: ZLinkActor,
     packetName: string,
@@ -703,6 +709,8 @@ interface ZLinkEntrySpotActivationOptions {
 interface ZLinkActorJoinAdmissionTarget {
   onActorJoin?(actor: ZLinkActor, request: ZLinkMessage, signal?: AbortSignal): Promise<ZLinkSpotActorJoinResponse>;
   onJoinedActor?(actor: ZLinkActor, signal?: AbortSignal): Promise<void>;
+  onLeaveActor?(actor: ZLinkActor, signal?: AbortSignal): Promise<void>;
+  onDisconnectActor?(actor: ZLinkActor, signal?: AbortSignal): Promise<void>;
 }
 
 interface ZLinkActorDispatchPart {
@@ -964,18 +972,45 @@ class ZLinkSpotActorJoinDispatch {
         return;
       }
       if (info.event === ZLinkBackendSpotDispatchEvent.ActorLifecycleReadable) {
-        this.drainActorLifecycle();
+        void this.drainActorLifecycle();
       }
     });
   }
 
-  private drainActorLifecycle(): void {
+  private async drainActorLifecycle(): Promise<void> {
     try {
       for (;;) {
-        const event = this.nativeSpot.recvActorLifecycle(ZLINK_RECV_DONT_WAIT);
+        const event = this.nativeSpot.recvActorLifecycle(ZLINK_RECV_DONT_WAIT) as {
+          kind: number;
+          info: {
+            previousActor?: ZLinkBackendActorRef | null;
+            currentActor?: ZLinkBackendActorRef | null;
+          };
+        } | null;
         if (event === null) {
           return;
         }
+        const actorRef = event.kind === ZLINK_SPOT_ACTOR_LIFECYCLE_LEFT
+          ? event.info.previousActor
+          : event.info.currentActor;
+        const actorId = actorRef?.actorId;
+        const actor = actorId === undefined ? undefined : this.resolveActor(actorId);
+        if (actor === undefined) {
+          continue;
+        }
+        await this.serial.execute(() => {
+          const target = this.getTarget();
+          if (event.kind === ZLINK_SPOT_ACTOR_LIFECYCLE_JOINED) {
+            return target.onJoinedActor?.(actor);
+          }
+          if (event.kind === ZLINK_SPOT_ACTOR_LIFECYCLE_LEFT) {
+            return target.onLeaveActor?.(actor);
+          }
+          if (event.kind === ZLINK_SPOT_ACTOR_LIFECYCLE_DISCONNECTED) {
+            return target.onDisconnectActor?.(actor);
+          }
+          return undefined;
+        });
       }
     } catch (error) {
       console.error(error);
@@ -1280,15 +1315,17 @@ class ZLinkSpotActorJoinDispatch {
         const actorPacketTarget = encodeRemoteActorPacketTarget(
           this.actorPacketTargetProvider?.(actorPacketRelay.actorId)
         );
-        if (actorPacketRelay.envelope === undefined) {
-          received.reply()
-            .message(Buffer.from(JSON.stringify({ ok: true, response, actorPacketTarget })))
-            .submit();
-        } else {
-          appendRouteReplyParts(
-            received.reply(),
-            encodeChannelReplyParts(actorPacketRelay.envelope.header, { ok: true, response, actorPacketTarget })
-          ).submit();
+        if (isReplyableRequestSeq(received.requestSeq)) {
+          if (actorPacketRelay.envelope === undefined) {
+            received.reply()
+              .message(Buffer.from(JSON.stringify({ ok: true, response, actorPacketTarget })))
+              .submit();
+          } else {
+            appendRouteReplyParts(
+              received.reply(),
+              encodeChannelReplyParts(actorPacketRelay.envelope.header, { ok: true, response, actorPacketTarget })
+            ).submit();
+          }
         }
       } catch (error) {
         if (isReplyableRequestSeq(received.requestSeq)) {
@@ -2276,6 +2313,10 @@ export class ZLinkEntrySpotActivation {
       }
       return undefined;
     }
+    if (header.name === ZLINK_REMOTE_ACTOR_SESSION_DISCONNECTED_PACKET) {
+      await this.notifyDisconnectActor(actor);
+      return undefined;
+    }
     let payload: unknown;
     try {
       payload = decodeFrameworkPayloadMessage(parts[1], this.options.messageSerializers);
@@ -2474,11 +2515,15 @@ interface PendingSpotActivation {
   readonly ready: Promise<ZLinkSpotCreateResult>;
 }
 
+function spotActivationKey(spotRid: RoutingId): string {
+  return String(spotRid);
+}
+
 export class DefaultZLinkSpotManager implements ZLinkSpotManager {
   private nextId = 1;
   private readonly factories: ReadonlySet<Type<ZLinkSpot>>;
-  private readonly activations = new Map<RoutingId, SpotActivation>();
-  private readonly pending = new Map<RoutingId, PendingSpotActivation>();
+  private readonly activations = new Map<string, SpotActivation>();
+  private readonly pending = new Map<string, PendingSpotActivation>();
   private readonly workerRuntime: ZLinkSpotWorkerRuntime;
 
   constructor(private readonly options: ZLinkSpotManagerOptions) {
@@ -2510,7 +2555,8 @@ export class DefaultZLinkSpotManager implements ZLinkSpotManager {
     request?: unknown,
     signal?: AbortSignal
   ): Promise<ZLinkSpotCreateResult> {
-    const existing = this.activations.get(spotRid);
+    const key = spotActivationKey(spotRid);
+    const existing = this.activations.get(key);
     if (existing !== undefined) {
       if (existing.spotType !== spotType) {
         throw new ZLinkFrameworkException(
@@ -2521,7 +2567,7 @@ export class DefaultZLinkSpotManager implements ZLinkSpotManager {
       return { spotRid, state: ZLinkSpotCreateState.Existing };
     }
 
-    const pending = this.pending.get(spotRid);
+    const pending = this.pending.get(key);
     if (pending !== undefined) {
       if (pending.spotType !== spotType) {
         throw new ZLinkFrameworkException(
@@ -2539,11 +2585,11 @@ export class DefaultZLinkSpotManager implements ZLinkSpotManager {
       ? BindingMessage.from(Buffer.alloc(0))
       : encodeFrameworkPayloadMessage(request, this.options.messageSerializers);
     const ready = Promise.resolve().then(() => this.createActivation(spotType, spotRid, ownedRequest, signal));
-    this.pending.set(spotRid, { spotType, ready });
+    this.pending.set(key, { spotType, ready });
     try {
       return await ready;
     } finally {
-      this.pending.delete(spotRid);
+      this.pending.delete(key);
       if (ownsFrameworkPayloadMessage(request)) {
         ownedRequest.close();
       }
@@ -2551,24 +2597,26 @@ export class DefaultZLinkSpotManager implements ZLinkSpotManager {
   }
 
   async find(spotRid: RoutingId): Promise<ZLinkSpotInfo | null> {
-    return this.activations.has(spotRid) ? { spotRid } : null;
+    return this.activations.has(spotActivationKey(spotRid)) ? { spotRid } : null;
   }
 
   async list(): Promise<readonly ZLinkSpotInfo[]> {
-    return [...this.activations.keys()]
+    return [...this.activations.values()]
+      .map((activation) => String(activation.spotRid))
       .sort((left, right) => left.localeCompare(right))
       .map((spotRid) => ({ spotRid }));
   }
 
   async close(spotRid: RoutingId, signal?: AbortSignal): Promise<boolean> {
-    const activation = this.activations.get(spotRid);
+    const key = spotActivationKey(spotRid);
+    const activation = this.activations.get(key);
     if (activation === undefined) {
       return false;
     }
     if (activation.actorCount() > 0) {
       return false;
     }
-    this.activations.delete(spotRid);
+    this.activations.delete(key);
     if (activation.serial.isCurrentTurn) {
       void activation.serial.post(() => this.closeActivationInsideSerial(activation, signal));
       return true;
@@ -2584,7 +2632,7 @@ export class DefaultZLinkSpotManager implements ZLinkSpotManager {
     signal?: AbortSignal
   ): Promise<TResult> {
     throwIfAborted(signal);
-    const activation = this.activations.get(spotRid);
+    const activation = this.activations.get(spotActivationKey(spotRid));
     if (activation === undefined) {
       throw new ZLinkConfigurationException(`Spot '${spotRid}' is not active.`);
     }
@@ -2595,7 +2643,7 @@ export class DefaultZLinkSpotManager implements ZLinkSpotManager {
   }
 
   hasActiveSpot(spotRid: RoutingId): boolean {
-    return this.activations.has(spotRid);
+    return this.activations.has(spotActivationKey(spotRid));
   }
 
   async admitActorJoin(
@@ -2606,7 +2654,7 @@ export class DefaultZLinkSpotManager implements ZLinkSpotManager {
     signal?: AbortSignal
   ): Promise<ZLinkSpotActorJoinResponse> {
     throwIfAborted(signal);
-    const activation = this.activations.get(spotRid);
+    const activation = this.activations.get(spotActivationKey(spotRid));
     if (activation === undefined) {
       throw new ZLinkConfigurationException(`Spot '${spotRid}' is not active.`);
     }
@@ -2643,13 +2691,14 @@ export class DefaultZLinkSpotManager implements ZLinkSpotManager {
     signal?: AbortSignal
   ): Promise<void> {
     throwIfAborted(signal);
-    const activation = this.activations.get(spotRid);
+    const activation = this.activations.get(spotActivationKey(spotRid));
     if (activation === undefined) {
       throw new ZLinkConfigurationException(`Spot '${spotRid}' is not active.`);
     }
     await activation.serial.execute(async () => {
       await activation.spot.onLeaveActor?.(actor, signal);
       activation.actors.delete(actor.actorId);
+      this.options.routedActorLeaveCommitter?.(actor);
     });
     const localEntryNodeRid =
       this.options.entryNodeRidProvider?.() ??
@@ -2680,6 +2729,21 @@ export class DefaultZLinkSpotManager implements ZLinkSpotManager {
     }
   }
 
+  async notifyJoinedSpotActorDisconnected(
+    spotRid: RoutingId,
+    actor: ZLinkActor,
+    signal?: AbortSignal
+  ): Promise<boolean> {
+    throwIfAborted(signal);
+    const activation = this.activations.get(spotActivationKey(spotRid));
+    if (activation === undefined) {
+      return false;
+    }
+    const joinedActor = activation.actors.get(actor.actorId) ?? actor;
+    await activation.serial.execute(() => activation.spot.onDisconnectActor?.(joinedActor, signal));
+    return true;
+  }
+
   dispatchRoutedActorPacket(
     spotRid: RoutingId,
     actorId: string,
@@ -2687,7 +2751,7 @@ export class DefaultZLinkSpotManager implements ZLinkSpotManager {
     returnResponse = false,
     remoteBoundSessionTarget?: ZLinkRemoteBoundSessionTarget
   ): Promise<unknown> {
-    const activation = this.activations.get(spotRid);
+    const activation = this.activations.get(spotActivationKey(spotRid));
     if (activation === undefined) {
       throw new ZLinkConfigurationException(`Spot '${spotRid}' is not active.`);
     }
@@ -2719,7 +2783,7 @@ export class DefaultZLinkSpotManager implements ZLinkSpotManager {
     context: { readonly channelName: string; readonly contentType?: string },
     returnResponse: boolean
   ): Promise<unknown> {
-    const activation = this.activations.get(spotRid);
+    const activation = this.activations.get(spotActivationKey(spotRid));
     if (activation === undefined) {
       this.options.dispatchErrors?.report({
         surface: ZLinkDispatchErrorSurface.SpotRoute,
@@ -2929,7 +2993,7 @@ export class DefaultZLinkSpotManager implements ZLinkSpotManager {
           reply: this.decodeCreateReply(createResponse.reply)
         };
       }
-      this.activations.set(spotRid, activation);
+      this.activations.set(spotActivationKey(spotRid), activation);
       return {
         spotRid,
         state: ZLinkSpotCreateState.Created,
@@ -3119,6 +3183,10 @@ export class DefaultZLinkSpotManager implements ZLinkSpotManager {
     if (remoteBoundSessionTarget !== undefined) {
       this.options.remoteActorPacketTargetReceiver?.(actorId, remoteBoundSessionTarget);
     }
+    if (header.name === ZLINK_REMOTE_ACTOR_SESSION_DISCONNECTED_PACKET) {
+      await activation.serial.execute(() => activation.spot.onDisconnectActor?.(actor));
+      return undefined;
+    }
     let payload: unknown;
     try {
       payload = decodeFrameworkPayloadMessage(parts[1], this.options.messageSerializers);
@@ -3229,7 +3297,7 @@ export class DefaultZLinkSpotManager implements ZLinkSpotManager {
     do {
       spotRid = `spot-${this.nextId}`;
       this.nextId += 1;
-    } while (this.activations.has(spotRid));
+    } while (this.activations.has(spotActivationKey(spotRid)));
     return spotRid;
   }
 }

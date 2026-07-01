@@ -33,21 +33,11 @@ internal sealed class OpenConversationHandler(
             allocated.ConversationId,
             allocated.Status);
 
-        var assigned = await channels.RequestToChannel(
-                SampleNames.SupportChannel,
-                new AssignAgentReq(
-                    allocated.ConversationId,
-                    null))
-            .Async<AssignAgentRes>(cancellationToken);
-        logger.LogInformation(
-            "support api open: assigned conversation={ConversationId} status={Status} agent={AgentActorId}",
-            assigned.ConversationId,
-            assigned.Status,
-            assigned.AgentActorId);
-
+        // Agent assignment is a separate step driven after the customer has joined
+        // the conversation (see OpenConversationActorHandler), so the open response
+        // carries only the allocation result.
         return new OpenConversationApiRes(
             allocated.ConversationId,
-            assigned.Status,
-            assigned.AgentActorId);
+            allocated.Status);
     }
 }

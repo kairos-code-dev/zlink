@@ -90,7 +90,8 @@ typedef struct zlink_spot_actor_lifecycle_info_t
 typedef enum zlink_spot_actor_lifecycle_event_kind_t
 {
     ZLINK_SPOT_ACTOR_LIFECYCLE_JOINED = 1,
-    ZLINK_SPOT_ACTOR_LIFECYCLE_LEFT = 2
+    ZLINK_SPOT_ACTOR_LIFECYCLE_LEFT = 2,
+    ZLINK_SPOT_ACTOR_LIFECYCLE_DISCONNECTED = 3
 } zlink_spot_actor_lifecycle_event_kind_t;
 
 typedef struct zlink_spot_actor_lifecycle_event_t

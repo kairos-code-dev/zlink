@@ -28,7 +28,8 @@ internal sealed class ZLinkSpotActivationDispatcher
         ZLinkSpotActorMembership actors,
         ZLinkSpotSubscriptionRegistry subscriptions,
         Func<ZLinkSpotActorHandlerRegistry?> actorHandlers,
-        Func<ZLinkSpotHandlerInvoker> handlerInvoker)
+        Func<ZLinkSpotHandlerInvoker> handlerInvoker,
+        Func<IZLinkActor, CancellationToken, ValueTask>? commitAcceptedActorJoin = null)
     {
         this.runtime = runtime;
         this.nativeSpot = nativeSpot;
@@ -55,7 +56,8 @@ internal sealed class ZLinkSpotActivationDispatcher
             actorJoins,
             actors,
             handlerInvoker,
-            runtime.Services.GetService<ILoggerFactory>()?.CreateLogger<ZLinkSpotActorJoinDispatcher>());
+            runtime.Services.GetService<ILoggerFactory>()?.CreateLogger<ZLinkSpotActorJoinDispatcher>(),
+            commitAcceptedActorJoin);
         _routeDispatcher = new ZLinkSpotRouteDispatcher(
             channelName,
             nativeSpot.RoutingId.ToString(),
@@ -314,6 +316,17 @@ internal sealed class ZLinkSpotActivationDispatcher
         Message body,
         CancellationToken cancellationToken)
     {
+        if (string.Equals(
+                streamHeader.Name,
+                ZLinkRemoteActorJoinPackets.SessionDisconnectedPacketName,
+                StringComparison.Ordinal))
+        {
+            runtime.RemoveActorSessionBinding(actorId, BuildNativeBoundSessionToken(sourceSessionRid));
+            await runtime.NotifyActorDisconnectedByIdAsync(actorId, cancellationToken)
+                .ConfigureAwait(false);
+            return;
+        }
+
         var runtimeState = runtime.GetOrCreateActorState(actorId);
         await using var boundSessionScope = ZLinkBoundSessionDispatchScope.Enter(actorId);
         runtime.BindActorSession(

@@ -334,18 +334,12 @@ internal sealed partial class ZLinkFrameworkRuntime
             return;
         }
 
-        cancellationToken.ThrowIfCancellationRequested();
-        var backendActor = actor.ToBackend();
-        _ = Task.Run(
-            async () =>
-            {
-                await node.CloseActorBoundSessionAsync(
-                        backendActor,
-                        Registration.DefaultRequestTimeout,
-                        CancellationToken.None)
-                    .ConfigureAwait(false);
-            },
-            CancellationToken.None);
+        await NotifyRemoteActorDisconnectedAsync(
+                state,
+                actor.ToBackend(),
+                node,
+                cancellationToken)
+            .ConfigureAwait(false);
     }
 
     internal ZLinkActorRuntimeState GetOrCreateActorState(string actorId)
@@ -467,6 +461,54 @@ internal sealed partial class ZLinkFrameworkRuntime
             message,
             hasMore,
             flags);
+    }
+
+    private async ValueTask NotifyRemoteActorDisconnectedAsync(
+        ZLinkActorRuntimeState state,
+        ZLinkBackendActorRef actorRef,
+        IZLinkBackendSpotNode node,
+        CancellationToken cancellationToken)
+    {
+        cancellationToken.ThrowIfCancellationRequested();
+        if (!state.TryGetBoundSession(out var session)
+            || session.SessionNodeRid is not { } sourceNodeRid)
+        {
+            await node.CloseActorBoundSessionAsync(
+                    actorRef,
+                    Registration.DefaultRequestTimeout,
+                    cancellationToken)
+                .ConfigureAwait(false);
+            return;
+        }
+
+        var header = new ZlinkStreamHeader(
+            ZlinkStreamMessageKind.Send,
+            ZlinkStreamCodec.Raw,
+            ZlinkStreamHeaderFlags.None,
+            null,
+            ZLinkRemoteActorJoinPackets.SessionDisconnectedPacketName,
+            ZlinkStreamMetadata.Empty);
+        var headerBytes = ZLinkStreamProtocolDefaults.EncodeHeader(header).ToArray();
+        using var headerPart = Message.From(headerBytes);
+        using var bodyPart = Message.From(Array.Empty<byte>());
+
+        if (!node.ForwardActorBoundSessionPart(
+                actorRef,
+                sourceNodeRid,
+                session.SessionRid,
+                headerPart,
+                true,
+                SendFlags.DontWait))
+            throw new InvalidOperationException("Actor session disconnect header forward failed.");
+
+        if (!node.ForwardActorBoundSessionPart(
+                actorRef,
+                sourceNodeRid,
+                session.SessionRid,
+                bodyPart,
+                false,
+                SendFlags.DontWait))
+            throw new InvalidOperationException("Actor session disconnect body forward failed.");
     }
 
     internal async ValueTask CloseActorBoundSessionAsync(

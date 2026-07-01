@@ -324,11 +324,11 @@
 - `timeout 900s framework/languages/cpp/e2e/SpotService/run_e2e.sh all`
   - 결과: passed
   - 로그: `framework/languages/cpp/e2e/SpotService/logs/20260630-205514-1176161`
-  - 비고: base, stream, crash/recovery evidence와 SM-B3, SM-B4, SM-B7, SM-D3, SM-D8, SM-D10, SM-D14, SM-E2, SM-E3, SM-E4, SM-G2, SM-G3, SM-G4, SM-Q9 focused sweep를 통과했다. SM-G2와 SM-G3는 runner retry에서 2회차가 통과했다.
+  - 비고: base, stream, crash/recovery evidence와 SM-B3, SM-B4, SM-B7, SM-D3, SM-D8, SM-D10, SM-D14, SM-E2, SM-E3, SM-E4, SM-G2, SM-G3, SM-G4, SM-Q9 focused sweep를 통과했다. 이 기록은 과거 실행 기록이며, 최신 완료 근거는 아래의 child 재실행 없는 full sweep 결과다.
 - `timeout 1200s framework/languages/cpp/e2e/SpotService/run_e2e.sh`
   - 결과: passed
   - 로그: `framework/languages/cpp/e2e/SpotService/logs/20260630-232540-1458783`
-  - 비고: `.NET` runner처럼 full `all`을 focused scenario child sweep로 실행했다. SM-E3, SM-B7, SM-G1은 첫 시도에서 server startup `config_error_t`가 발생했지만 runner retry에서 통과했다.
+  - 비고: `.NET` runner처럼 full `all`을 focused scenario child sweep로 실행했다. 이 기록은 일부 child의 첫 실행 실패를 포함한 과거 실행 기록이며, 최신 완료 근거는 아래의 child 재실행 없는 full sweep 결과다.
 - `bash -n framework/languages/cpp/e2e/SpotService/run_e2e.sh`
   - 결과: passed
 - `cmake --build framework/languages/cpp/build --target zlink_cpp_e2e_spot_service_client -j 4`
@@ -358,13 +358,24 @@
   - 결과: passed
   - 로그: `framework/languages/cpp/e2e/SpotService/logs/20260701-024713-1805184`
   - 비고: SM-G3 수정 뒤 `.NET`식 focused child sweep 기반 full `all` runner가 통과했다. SM-D3와
-    SM-G1은 첫 시도 실패 뒤 runner retry에서 통과했고, SM-G3는 full sweep 안에서
+    SM-G1은 첫 시도 실패 뒤 두 번째 child 실행에서 통과했고, SM-G3는 full sweep 안에서
     `scenario SM-G3 evidence passed`를 출력했다.
+- `ZLINK_CPP_E2E_BUILD_DIR=framework/languages/cpp/build ZLINK_CPP_E2E_SKIP_BUILD=1 timeout 1200s framework/languages/cpp/e2e/SpotService/run_e2e.sh all`
+  - 결과: passed
+  - 로그: `framework/languages/cpp/e2e/SpotService/logs/20260701-145532-9009`
+  - 비고: child retry 없이 focused child sweep 전체가 통과했다. route readiness는 기본 3초 settle 뒤 단일 probe로 검증했고, server role은 discovery-only route mesh, e2e client route-ready는 manual endpoint 경로로 분리했다.
+- `ZLINK_CPP_E2E_BUILD_DIR=framework/languages/cpp/build ZLINK_CPP_E2E_SKIP_BUILD=1 timeout 1200s framework/languages/cpp/e2e/SpotService/run_e2e.sh all`
+  - 결과: passed
+  - 로그: `framework/languages/cpp/e2e/SpotService/logs/20260701-183404-20982`
+  - 비고: child retry 없이 focused child sweep 전체가 통과했다. Play/Session role은 runner가 넘긴 local route endpoint를 명시적으로 연결하고, route/control readiness는 기본 3초 settle 뒤 단일 3초 probe로 검증한다. client actor relay는 public `session_actor_t::relay_request(packet_name, payload)` overload를 사용하며 SpotService target의 `framework/src` 내부 include에 의존하지 않는다. route request backend는 같은 native ROUTER socket을 여러 dispatch worker가 동시에 쓰지 않도록 framework 내부에서 직렬화했다. stream host shutdown은 worker 목록을 mutex로 보호해 accept thread와 stop thread가 동시에 `_workers`를 갱신하지 않게 했다. SM-Q9 child output은 `scenario SM-Q9 passed`와 `scenario SM-Q9 evidence passed` marker를 남긴다.
 
 ## 완료 판정
 
 - server runtime 통합 header는 제거했고, 남은 공통 support는 shared support/endpoint 파일로 분리했다.
-- 최신 SM-Q9 focused 검증과 `.NET`식 focused child sweep 기반 full `all` runner 검증이 통과했다.
+- 최신 `.NET`식 focused child sweep 기반 full `all` runner 검증은 child retry 없이 통과했다. route/control
+  readiness는 기본 3초 settle 뒤 단일 3초 probe로 검증한다.
+- SpotService target은 `framework/src` 내부 include 없이 build되고, SM-Q9 child output은 scenario/evidence
+  marker를 모두 남긴다.
 - `feature-map.ko.md`는 public API 또는 harness gap을 별도로 기록한다.
 - registry, play, session, gateway host factory 책임은 role-local header로 분리했다.
 - play actor model 책임은 `Server/Play/Spots/play_actor_model.hpp`로 분리했다.
@@ -395,8 +406,11 @@
 - SM-F3/SM-F5 scenario 책임도 공통 E2E scenario ID에 맞춰 `Client/Scenarios/sm_f3_scenario.hpp`,
   `Client/Scenarios/sm_f5_scenario.hpp` 파일로 분리했고 focused runtime 검증에서 route evidence를
   확인했다.
-- SM-G1 crash/recovery scenario 책임은 `Client/Scenarios/sm_g1_scenario.hpp` 파일로 분리했고
-  focused runtime 검증과 full `all` runner에서 crash observation/recovery evidence를 확인했다.
+- SM-B8 destroy scenario는 stream auth 뒤 public actor destroy를 호출하고, destroy evidence와
+  post-destroy request failure를 확인한다.
+- SM-G1 crash/recovery scenario 책임은 `Client/Scenarios/sm_g1_scenario.hpp` 파일로 분리했다.
+  `.NET`처럼 `session-a`/`session-b`를 각각 `play-a`/`play-b`에 bind하고, `play-a` crash 뒤
+  `play-b` survivor ping과 `play-b` recovery rebind evidence를 확인한다.
 - SM-D10 stream backpressure scenario는 C++ stream connector의 public bounded receive queue 정책에
   맞춰 `Client/Scenarios/sm_d10_scenario.hpp`로 구현했고 focused runtime 검증을 통과했다.
 - SM-E2 spot timer tick scenario는 public `spot_context_t::add_timer<THandler>` 경로로

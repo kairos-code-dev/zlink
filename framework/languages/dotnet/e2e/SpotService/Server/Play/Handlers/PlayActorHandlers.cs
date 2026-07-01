@@ -1,6 +1,8 @@
 using SpotService.Server.Play.Spots;
 using SpotService.Shared;
+using Systems.Zlink;
 using Zlink.Framework.Contracts.Handlers;
+using Zlink.Framework.Contracts.Messaging;
 using Zlink.Framework.Contracts.Spots;
 
 namespace SpotService.Server.Play.Handlers;
@@ -138,6 +140,34 @@ internal sealed class UserActorPingHandler(EvidenceStore evidence)
             spot.Context.SpotRid.ToString(),
             request.Value,
             actor.Seen));
+    }
+}
+
+[ZLinkSpotActorRequestHandler("JoinUserSpotActorReq")]
+internal sealed class EntryUserSpotActorJoinHandler
+    : IZLinkEntrySpotActorRequestHandler<ScenarioEntrySpot, ScenarioActor, JoinUserSpotActorReq, JoinUserSpotActorRes>
+{
+    public async ValueTask<JoinUserSpotActorRes> HandleAsync(
+        ScenarioEntrySpot entrySpot,
+        ScenarioActor actor,
+        ZLinkSpotActorRequestContext context,
+        JoinUserSpotActorReq request,
+        CancellationToken cancellationToken)
+    {
+        _ = context;
+        if (!string.Equals(request.ActorId, actor.ActorId, StringComparison.Ordinal))
+            throw new InvalidOperationException("Join request actor does not match dispatched actor.");
+
+        var joined = await actor.Context.JoinSpot(
+                RoutingId.From(request.SpotRid),
+                ZLinkMessage.Empty)
+            .Async(cancellationToken)
+            .ConfigureAwait(false);
+        return new JoinUserSpotActorRes(
+            request.SpotRid,
+            joined.Actor.ActorId,
+            true,
+            joined.Actor.Generation);
     }
 }
 

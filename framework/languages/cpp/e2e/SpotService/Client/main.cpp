@@ -52,8 +52,6 @@
 #include "Support/client_options.hpp"
 #include "Support/client_support.hpp"
 
-#include "runtime/actors/actor_gateway_runtime.hpp"
-
 #include <zlink/framework.hpp>
 #include <zlink/stream_connector.hpp>
 #include <zlink/stream_e2e_client.hpp>
@@ -77,7 +75,6 @@ using e2e_client::client_channel_state_t;
 using e2e_client::encode_json;
 using e2e_client::ensure;
 using e2e_client::env_or;
-using e2e_client::request_header;
 using e2e_client::stream_error_text;
 using e2e_client::to_actor_ref;
 
@@ -135,22 +132,14 @@ class scenario_service_t final : public zlink::framework::hosted_service_t
                                                   const std::string &actor_id,
                                                   const std::string &display_name)
     {
-        zlink::framework::result_t<e2e::ensure_actor_res_t> ensured =
-          zlink::framework::result_t<e2e::ensure_actor_res_t>::failure (
-            zlink::framework::framework_error_kind_t::timeout, "EnsureActor not attempted");
-        for (int attempt = 0; attempt < 20; ++attempt) {
-            ensured = routes
-                        .request (e2e::route_channel, zlink::routing_id_t::from (target_node),
-                                  e2e::ensure_actor_req_t{actor_id, display_name})
-                        .packet_name ("EnsureActor")
-                        .timeout (std::chrono::milliseconds (3000))
-                        .async<e2e::ensure_actor_res_t> ()
-                        .result ();
-            if (ensured.has_value ()) {
-                break;
-            }
-            std::this_thread::sleep_for (std::chrono::milliseconds (100));
-        }
+        auto ensured =
+          routes
+            .request (e2e::route_channel, zlink::routing_id_t::from (target_node),
+                      e2e::ensure_actor_req_t{actor_id, display_name})
+            .packet_name ("EnsureActor")
+            .timeout (std::chrono::milliseconds (3000))
+            .async<e2e::ensure_actor_res_t> ()
+            .result ();
         ensure (ensured.has_value (),
                 "EnsureActor failed for " + actor_id + ": "
                   + (ensured.error () ? ensured.error ()->what () : "unknown"));
@@ -164,33 +153,11 @@ class scenario_service_t final : public zlink::framework::hosted_service_t
                           const std::string &packet_name,
                           const TRequest &request)
     {
-        auto header = request_header (packet_name);
-        zlink::framework::detail::enter_stream_relay_dispatch (header);
         auto reply =
-          actor.relay_request (zlink::message_t::from_json (request)).async ().result ();
-        zlink::framework::detail::exit_stream_relay_dispatch ();
+          actor.relay_request (packet_name, zlink::message_t::from_json (request)).async ().result ();
         ensure (reply.has_value (), packet_name + " relay failed: "
                                       + (reply.error () ? reply.error ()->what () : "unknown"));
         return reply.value ().template parse_json<TReply> ();
-    }
-
-    template <typename TReply, typename TRequest>
-    TReply relay_request_with_retry (zlink::framework::session_actor_t &actor,
-                                     const std::string &packet_name,
-                                     const TRequest &request)
-    {
-        const auto deadline = std::chrono::steady_clock::now () + std::chrono::seconds (10);
-        std::string last_error = "request was not attempted";
-        while (std::chrono::steady_clock::now () < deadline) {
-            try {
-                return relay_request<TReply> (actor, packet_name, request);
-            }
-            catch (const std::exception &ex) {
-                last_error = ex.what ();
-                std::this_thread::sleep_for (std::chrono::milliseconds (100));
-            }
-        }
-        throw std::runtime_error (packet_name + " relay failed after retry: " + last_error);
     }
 
     void run (zlink::framework::route_client_t &routes,
@@ -206,6 +173,7 @@ class scenario_service_t final : public zlink::framework::hosted_service_t
             return;
         }
         if (_scenario_mode == "route-ready") {
+            std::this_thread::sleep_for (std::chrono::seconds (3));
             (void) ensure_actor_ref (routes, "play-a", "route-ready-play-a",
                                      "Route Ready Play A");
             (void) ensure_actor_ref (routes, "play-b", "route-ready-play-b",
@@ -213,7 +181,15 @@ class scenario_service_t final : public zlink::framework::hosted_service_t
             std::cout << "scenario route-ready passed\n";
             return;
         }
+        if (_scenario_mode == "route-ready-play-a") {
+            std::this_thread::sleep_for (std::chrono::seconds (3));
+            (void) ensure_actor_ref (routes, "play-a", "route-ready-play-a",
+                                     "Route Ready Play A");
+            std::cout << "scenario route-ready-play-a passed\n";
+            return;
+        }
         if (_scenario_mode == "route-ready-play-b") {
+            std::this_thread::sleep_for (std::chrono::seconds (3));
             (void) ensure_actor_ref (routes, "play-b", "route-ready-play-b",
                                      "Route Ready Play B");
             std::cout << "scenario route-ready-play-b passed\n";
@@ -239,8 +215,8 @@ class scenario_service_t final : public zlink::framework::hosted_service_t
         if (_scenario_mode == "crash-setup") {
             zlink::framework::e2e::spot_service::client::scenarios::
               run_sm_g1_crash_observation_scenario (
-                routes, _stream_endpoint, _crash_ready_file, _crash_go_file,
-                _crash_observed_file);
+                routes, _stream_endpoint, _alternate_stream_endpoint, _crash_ready_file,
+                _crash_go_file, _crash_observed_file);
             return;
         }
         if (_scenario_mode == "crash-recover") {
@@ -256,7 +232,7 @@ class scenario_service_t final : public zlink::framework::hosted_service_t
 
         auto local = bind_actor (routes, actors, "play-a", "alice", "Alice");
         auto local_join =
-          relay_request_with_retry<e2e::join_res_t> (
+          relay_request<e2e::join_res_t> (
             local, "JoinReq",
             e2e::join_req_t{.key = "a-room",
                             .actor_id = "alice",
@@ -310,22 +286,20 @@ class scenario_service_t final : public zlink::framework::hosted_service_t
                 "SM-A6 lifecycle reply mismatch");
         std::cout << "scenario SM-A6 passed\n";
 
-        auto missing_actor_header = request_header ("MissingActorPacket");
-        zlink::framework::detail::enter_stream_relay_dispatch (missing_actor_header);
         auto missing_actor_packet =
           local
             .relay_request (
+              "MissingActorPacket",
               zlink::message_t::from_json (e2e::state_req_t{"add", 1}))
             .async ()
             .result ();
-        zlink::framework::detail::exit_stream_relay_dispatch ();
         ensure (!missing_actor_packet.has_value (),
                 "SM-B5 missing actor packet unexpectedly succeeded");
         std::cout << "scenario SM-B5 passed\n";
 
         auto same_key_actor = bind_actor (routes, actors, "play-a", "alice-2", "Alice Two");
         auto same_key_join =
-          relay_request_with_retry<e2e::join_res_t> (
+          relay_request<e2e::join_res_t> (
             same_key_actor, "JoinReq",
             e2e::join_req_t{.key = "a-room",
                             .actor_id = "alice-2",
@@ -430,7 +404,8 @@ class scenario_service_t final : public zlink::framework::hosted_service_t
         std::cout << "scenario SM-A8 passed\n";
 
         auto left =
-          relay_request<e2e::leave_res_t> (local, "LeaveReq", e2e::leave_req_t{"client-left"});
+          relay_request<e2e::leave_res_t> (
+            local, "LeaveReq", e2e::leave_req_t{.actor_id = "alice", .reason = "client-left"});
         ensure (left.left && left.actor_id == "alice", "SM-B6 leave reply mismatch");
         std::cout << "scenario SM-B6 passed\n";
         local = refresh_actor ("alice");
@@ -439,15 +414,13 @@ class scenario_service_t final : public zlink::framework::hosted_service_t
           local, "DestroyActorReq", e2e::destroy_actor_req_t{"client-destroyed"});
         ensure (destroyed.destroyed && destroyed.actor_id == "alice",
                 "SM-B8 destroy reply mismatch");
-        auto after_destroy_header = request_header ("StateReq");
-        zlink::framework::detail::enter_stream_relay_dispatch (after_destroy_header);
         auto after_destroy =
           local
             .relay_request (
+              "StateReq",
               zlink::message_t::from_json (e2e::state_req_t{"add", 1}))
             .async ()
             .result ();
-        zlink::framework::detail::exit_stream_relay_dispatch ();
         ensure (!after_destroy.has_value (), "SM-B8 destroyed actor unexpectedly accepted request");
         std::cout << "scenario SM-B8 passed\n";
 
@@ -461,7 +434,7 @@ class scenario_service_t final : public zlink::framework::hosted_service_t
                 "SM-C2 channel send evidence missing");
         std::cout << "scenario SM-C2 passed\n";
 
-        auto spot_to_spot = relay_request_with_retry<e2e::spot_to_spot_res_t> (
+        auto spot_to_spot = relay_request<e2e::spot_to_spot_res_t> (
           same_key_actor, "SpotToSpotReq", e2e::spot_to_spot_req_t{"b-room", "spot-to-spot"});
         ensure (spot_to_spot.request_reply == "spot-to-spot:reply",
                 "SM-C3 spot request reply mismatch");
@@ -520,11 +493,11 @@ class scenario_service_t final : public zlink::framework::hosted_service_t
                               .result ();
         ensure (publish_only.has_value (), "SM-C4 publisher client publish failed");
         std::this_thread::sleep_for (std::chrono::milliseconds (100));
-        auto publish_retry = publisher
+        auto publish_repeat = publisher
                                .publish (e2e::publisher_channel, e2e::mesh_topic,
                                          e2e::mesh_msg_t{"evt-publisher-client", "publish-only"})
                                .result ();
-        ensure (publish_retry.has_value (), "SM-C4 publisher client retry publish failed");
+        ensure (publish_repeat.has_value (), "SM-C4 publisher client repeat publish failed");
         std::cout << "scenario SM-C4 passed\n";
 
         if (_scenario_mode == "combined") {
@@ -555,8 +528,8 @@ class scenario_service_t final : public zlink::framework::hosted_service_t
     {
         zlink::stream_connector::connector_options_t options;
         options.endpoint = endpoint.empty () ? _stream_endpoint : std::move (endpoint);
-        options.connect_timeout = std::chrono::milliseconds (5000);
-        options.request_timeout = std::chrono::milliseconds (5000);
+        options.connect_timeout = std::chrono::milliseconds (3000);
+        options.request_timeout = std::chrono::milliseconds (3000);
         options.dispatch_mode = zlink::stream_connector::dispatch_mode_t::immediate;
         return zlink::stream_connector::connector_factory_t::create (options);
     }
@@ -566,22 +539,14 @@ class scenario_service_t final : public zlink::framework::hosted_service_t
                                            const std::string &actor_id,
                                            const std::string &display_name)
     {
-        zlink::framework::result_t<e2e::ensure_actor_res_t> ensured =
-          zlink::framework::result_t<e2e::ensure_actor_res_t>::failure (
-            zlink::framework::framework_error_kind_t::timeout, "EnsureActor not attempted");
-        for (int attempt = 0; attempt < 20; ++attempt) {
-            ensured = routes
-                        .request (e2e::route_channel, zlink::routing_id_t::from (target_node),
-                                  e2e::ensure_actor_req_t{actor_id, display_name})
-                        .packet_name ("EnsureActor")
-                        .timeout (std::chrono::milliseconds (5000))
-                        .async<e2e::ensure_actor_res_t> ()
-                        .result ();
-            if (ensured.has_value ()) {
-                break;
-            }
-            std::this_thread::sleep_for (std::chrono::milliseconds (100));
-        }
+        auto ensured =
+          routes
+            .request (e2e::route_channel, zlink::routing_id_t::from (target_node),
+                      e2e::ensure_actor_req_t{actor_id, display_name})
+            .packet_name ("EnsureActor")
+            .timeout (std::chrono::milliseconds (3000))
+            .async<e2e::ensure_actor_res_t> ()
+            .result ();
         ensure (ensured.has_value (),
                 "stream EnsureActor failed for " + actor_id + ": "
                   + (ensured.error () ? ensured.error ()->what () : "unknown"));
@@ -606,7 +571,7 @@ class scenario_service_t final : public zlink::framework::hosted_service_t
         auto auth =
           stream.request (e2e::stream_auth_req_t{target_node, actor_id, display_name, actor})
             .packet_name ("StreamAuthReq")
-            .timeout (std::chrono::milliseconds (5000))
+            .timeout (std::chrono::milliseconds (3000))
             .submit<e2e::stream_auth_res_t> ();
         ensure (static_cast<bool> (auth),
                 scenario_id + " stream auth failed: " + stream_error_text (auth));
@@ -715,7 +680,7 @@ class scenario_service_t final : public zlink::framework::hosted_service_t
                                                 .level = 71,
                                                 .tags = {"stream", "SM-D7"}})
                         .packet_name ("JoinReq")
-                        .timeout (std::chrono::milliseconds (5000))
+                        .timeout (std::chrono::milliseconds (3000))
                         .async<e2e::join_res_t> ()
                         .result ();
         ensure (static_cast<bool> (joined),
@@ -725,7 +690,7 @@ class scenario_service_t final : public zlink::framework::hosted_service_t
 
         auto state = stream.request (e2e::state_req_t{.op = "add", .amount = 7})
                        .packet_name ("StateReq")
-                       .timeout (std::chrono::milliseconds (5000))
+                       .timeout (std::chrono::milliseconds (3000))
                        .async<e2e::state_res_t> ()
                        .result ();
         ensure (static_cast<bool> (state),
@@ -818,7 +783,7 @@ class scenario_service_t final : public zlink::framework::hosted_service_t
                                                .level = 81,
                                                .tags = {"stream", "SM-D6"}})
                         .packet_name ("JoinReq")
-                        .timeout (std::chrono::milliseconds (5000))
+                        .timeout (std::chrono::milliseconds (3000))
                         .async<e2e::join_res_t> ()
                         .result ();
         ensure (static_cast<bool> (joined),
@@ -831,7 +796,7 @@ class scenario_service_t final : public zlink::framework::hosted_service_t
           unbound.wait_for<e2e::actor_push_notify_t> (std::chrono::milliseconds (500)).async ();
         auto pushed = bound.request (e2e::actor_push_req_t{"stream-push-d6-value"})
                         .packet_name ("PushReq")
-                        .timeout (std::chrono::milliseconds (5000))
+                        .timeout (std::chrono::milliseconds (3000))
                         .async<e2e::actor_push_res_t> ()
                         .result ();
         ensure (static_cast<bool> (pushed),
@@ -874,7 +839,7 @@ class scenario_service_t final : public zlink::framework::hosted_service_t
                                                 .level = 91,
                                                 .tags = {"stream", "SM-D11"}})
                         .packet_name ("JoinReq")
-                        .timeout (std::chrono::milliseconds (5000))
+                        .timeout (std::chrono::milliseconds (3000))
                         .async<e2e::join_res_t> ()
                         .result ();
         ensure (static_cast<bool> (joined),
@@ -883,14 +848,14 @@ class scenario_service_t final : public zlink::framework::hosted_service_t
         auto stream_request = std::async (std::launch::async, [&] {
             return stream.request (e2e::state_req_t{.op = "add", .amount = 11})
               .packet_name ("StateReq")
-              .timeout (std::chrono::milliseconds (5000))
+              .timeout (std::chrono::milliseconds (3000))
               .async<e2e::state_res_t> ()
               .result ();
         });
         auto channel_request = std::async (std::launch::async, [&] {
             return channels
               .request (e2e::api_channel, e2e::channel_echo_req_t{"sm-d11-channel"})
-              .timeout (std::chrono::milliseconds (5000))
+              .timeout (std::chrono::milliseconds (3000))
               .async<e2e::channel_echo_res_t> ()
               .result ();
         });
@@ -951,7 +916,7 @@ class scenario_service_t final : public zlink::framework::hosted_service_t
                                     .tags = {"stream", "SM-D5", "notified"}})
             .packet_name ("JoinReq")
             .metadata ("actor-id", notified_actor_id)
-            .timeout (std::chrono::milliseconds (5000))
+            .timeout (std::chrono::milliseconds (3000))
             .async<e2e::join_res_t> ()
             .result ();
         ensure (static_cast<bool> (notified_join),
@@ -964,7 +929,7 @@ class scenario_service_t final : public zlink::framework::hosted_service_t
                                                     .tags = {"stream", "SM-D5", "muted"}})
                             .packet_name ("JoinReq")
                             .metadata ("actor-id", muted_actor_id)
-                            .timeout (std::chrono::milliseconds (5000))
+                            .timeout (std::chrono::milliseconds (3000))
                             .async<e2e::join_res_t> ()
                             .result ();
         ensure (static_cast<bool> (muted_join),
@@ -1002,7 +967,7 @@ class scenario_service_t final : public zlink::framework::hosted_service_t
                                                .level = 121,
                                                .tags = {"stream", "SM-D12", "session-a"}})
                         .packet_name ("JoinReq")
-                        .timeout (std::chrono::milliseconds (5000))
+                        .timeout (std::chrono::milliseconds (3000))
                         .async<e2e::join_res_t> ()
                         .result ();
         ensure (static_cast<bool> (joined),
@@ -1012,7 +977,7 @@ class scenario_service_t final : public zlink::framework::hosted_service_t
 
         auto first_state = first.request (e2e::state_req_t{.op = "add", .amount = 11})
                              .packet_name ("StateReq")
-                             .timeout (std::chrono::milliseconds (5000))
+                             .timeout (std::chrono::milliseconds (3000))
                              .async<e2e::state_res_t> ()
                              .result ();
         ensure (static_cast<bool> (first_state),
@@ -1038,7 +1003,7 @@ class scenario_service_t final : public zlink::framework::hosted_service_t
 
         auto snapshot = second.request (e2e::state_req_t{.op = "add", .amount = 0})
                           .packet_name ("StateReq")
-                          .timeout (std::chrono::milliseconds (5000))
+                          .timeout (std::chrono::milliseconds (3000))
                           .async<e2e::state_res_t> ()
                           .result ();
         ensure (static_cast<bool> (snapshot),
@@ -1048,7 +1013,7 @@ class scenario_service_t final : public zlink::framework::hosted_service_t
 
         auto resumed = second.request (e2e::state_req_t{.op = "add", .amount = 5})
                          .packet_name ("StateReq")
-                         .timeout (std::chrono::milliseconds (5000))
+                         .timeout (std::chrono::milliseconds (3000))
                          .async<e2e::state_res_t> ()
                          .result ();
         ensure (static_cast<bool> (resumed),
@@ -1060,7 +1025,7 @@ class scenario_service_t final : public zlink::framework::hosted_service_t
             .to_future ("SM-D12 push notify missing after rebind");
         auto pushed = second.request (e2e::actor_push_req_t{"stream-reconnect-d12-push"})
                         .packet_name ("PushReq")
-                        .timeout (std::chrono::milliseconds (5000))
+                        .timeout (std::chrono::milliseconds (3000))
                         .async<e2e::actor_push_res_t> ()
                         .result ();
         ensure (static_cast<bool> (pushed),
@@ -1117,7 +1082,7 @@ class scenario_service_t final : public zlink::framework::hosted_service_t
                                                     .tags = {"stream", "SM-D4", "first"}})
                             .packet_name ("JoinReq")
                             .metadata ("actor-id", first_actor_id)
-                            .timeout (std::chrono::milliseconds (5000))
+                            .timeout (std::chrono::milliseconds (3000))
                             .async<e2e::join_res_t> ()
                             .result ();
         ensure (static_cast<bool> (join_first),
@@ -1130,7 +1095,7 @@ class scenario_service_t final : public zlink::framework::hosted_service_t
                                                      .tags = {"stream", "SM-D4", "second"}})
                              .packet_name ("JoinReq")
                              .metadata ("actor-id", second_actor_id)
-                             .timeout (std::chrono::milliseconds (5000))
+                             .timeout (std::chrono::milliseconds (3000))
                              .async<e2e::join_res_t> ()
                              .result ();
         ensure (static_cast<bool> (join_second),
@@ -1139,7 +1104,7 @@ class scenario_service_t final : public zlink::framework::hosted_service_t
         auto state_first = stream.request (e2e::state_req_t{.op = "add", .amount = 23})
                              .packet_name ("StateReq")
                              .metadata ("actor-id", first_actor_id)
-                             .timeout (std::chrono::milliseconds (5000))
+                             .timeout (std::chrono::milliseconds (3000))
                              .async<e2e::state_res_t> ()
                              .result ();
         ensure (static_cast<bool> (state_first),
@@ -1148,7 +1113,7 @@ class scenario_service_t final : public zlink::framework::hosted_service_t
         auto state_second = stream.request (e2e::state_req_t{.op = "add", .amount = 29})
                               .packet_name ("StateReq")
                               .metadata ("actor-id", second_actor_id)
-                              .timeout (std::chrono::milliseconds (5000))
+                              .timeout (std::chrono::milliseconds (3000))
                               .async<e2e::state_res_t> ()
                               .result ();
         ensure (static_cast<bool> (state_second),
@@ -1160,7 +1125,7 @@ class scenario_service_t final : public zlink::framework::hosted_service_t
         auto first_pushed = stream.request (e2e::actor_push_req_t{"stream-multi-a-push"})
                               .packet_name ("PushReq")
                               .metadata ("actor-id", first_actor_id)
-                              .timeout (std::chrono::milliseconds (5000))
+                              .timeout (std::chrono::milliseconds (3000))
                               .async<e2e::actor_push_res_t> ()
                               .result ();
         ensure (static_cast<bool> (first_pushed),
@@ -1176,7 +1141,7 @@ class scenario_service_t final : public zlink::framework::hosted_service_t
         auto second_pushed = stream.request (e2e::actor_push_req_t{"stream-multi-b-push"})
                                .packet_name ("PushReq")
                                .metadata ("actor-id", second_actor_id)
-                               .timeout (std::chrono::milliseconds (5000))
+                               .timeout (std::chrono::milliseconds (3000))
                                .async<e2e::actor_push_res_t> ()
                                .result ();
         ensure (static_cast<bool> (second_pushed),
@@ -1792,8 +1757,7 @@ int main (int argc, char **argv)
         options.add_fanout_channel (e2e::publisher_channel).enable_publisher (publisher_endpoint);
         auto route = options.add_route_mesh (e2e::route_channel)
                        .enable_server (route_endpoint)
-                       .set_routing_id (zlink::routing_id_t::from (client_rid))
-                       .enable_client ();
+                       .set_routing_id (zlink::routing_id_t::from (client_rid));
         if (!route_a_endpoint.empty ()) {
             route.enable_client (route_a_endpoint);
         }

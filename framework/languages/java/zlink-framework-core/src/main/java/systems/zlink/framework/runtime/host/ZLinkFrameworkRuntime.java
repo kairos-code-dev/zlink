@@ -313,21 +313,21 @@ public final class ZLinkFrameworkRuntime
         }
         channels.beginClose();
         try {
-            if (spots != null && spotRuntimeStopped.compareAndSet(false, true)) {
-                closeRuntimeComponent(spots::close);
+            if (streams != null) {
+                closeRuntimeComponent(streams::close);
             }
         } finally {
             try {
                 closeRuntimeComponent(channels::close);
             } finally {
                 try {
-                    if (streams != null) {
-                        closeRuntimeComponent(streams::close);
+                    if (actors != null) {
+                        closeRuntimeComponent(actors::close);
                     }
                 } finally {
                     try {
-                        if (actors != null) {
-                            closeRuntimeComponent(actors::close);
+                        if (spots != null && spotRuntimeStopped.compareAndSet(false, true)) {
+                            closeRuntimeComponent(spots::close);
                         }
                     } finally {
                         try {

@@ -23,8 +23,8 @@ inline void run_sm_d8_scenario (const std::string &session_stream_endpoint)
 
     zlink::stream_connector::connector_options_t options;
     options.endpoint = session_stream_endpoint;
-    options.connect_timeout = std::chrono::milliseconds (5000);
-    options.request_timeout = std::chrono::milliseconds (5000);
+    options.connect_timeout = std::chrono::milliseconds (3000);
+    options.request_timeout = std::chrono::milliseconds (3000);
     options.dispatch_mode = zlink::stream_connector::dispatch_mode_t::immediate;
 
     constexpr auto actor_id = "actor-sm-d8-reconnect";
@@ -37,7 +37,7 @@ inline void run_sm_d8_scenario (const std::string &session_stream_endpoint)
     auto first_auth =
       first.request (stream_ensure_auth_req_t{"play-a", actor_id, "SM-D8 Reconnect"})
         .packet_name ("StreamEnsureAuthReq")
-        .timeout (std::chrono::milliseconds (5000))
+        .timeout (std::chrono::milliseconds (3000))
         .submit<stream_auth_res_t> ();
     if (!first_auth || first_auth.value ().actor.actor_id != actor_id
         || first_auth.value ().session_node_rid != "session-a") {
@@ -77,7 +77,7 @@ inline void run_sm_d8_scenario (const std::string &session_stream_endpoint)
     auto second_auth =
       second.request (stream_ensure_auth_req_t{"play-a", actor_id, "SM-D8 Reconnect"})
         .packet_name ("StreamEnsureAuthReq")
-        .timeout (std::chrono::milliseconds (5000))
+        .timeout (std::chrono::milliseconds (3000))
         .submit<stream_auth_res_t> ();
     if (!second_auth || second_auth.value ().actor.actor_id != actor_id
         || second_auth.value ().session_node_rid != "session-a") {
@@ -87,7 +87,7 @@ inline void run_sm_d8_scenario (const std::string &session_stream_endpoint)
     auto resumed =
       second.request (actor_ping_req_t{"after-reconnect"})
         .packet_name ("ActorPingReq")
-        .timeout (std::chrono::milliseconds (5000))
+        .timeout (std::chrono::milliseconds (3000))
         .submit<actor_ping_res_t> ();
     if (!resumed || resumed.value ().actor_id != actor_id
         || resumed.value ().node_rid != "play-a"

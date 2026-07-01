@@ -209,7 +209,8 @@ struct spot_actor_lifecycle_info_t
 enum class spot_actor_lifecycle_event_kind_t : int
 {
     joined = 1,
-    left = 2
+    left = 2,
+    disconnected = 3
 };
 
 /// @brief An actor lifecycle event delivered to a lifecycle subscriber.

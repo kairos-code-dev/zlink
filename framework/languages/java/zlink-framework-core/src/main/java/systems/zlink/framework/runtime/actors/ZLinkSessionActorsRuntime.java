@@ -169,6 +169,14 @@ public final class ZLinkSessionActorsRuntime implements ZLinkSessionActors {
             .findFirst();
     }
 
+    public CompletionStage<Void> notifyDisconnectedAll() {
+        List<ZLinkSessionActor> current = List.copyOf(bound);
+        return CompletableFuture.allOf(current.stream()
+            .map(actor -> actor.notifyDisconnected().toCompletableFuture())
+            .toArray(CompletableFuture[]::new))
+            .whenComplete((ignored, error) -> bound.removeAll(current));
+    }
+
     private CompletionStage<ZLinkSessionActor> bindBackendRef(
         ZLinkBackendActorRef ref) {
         if (actors != null) {
@@ -227,7 +235,7 @@ public final class ZLinkSessionActorsRuntime implements ZLinkSessionActors {
                         actor,
                         defaultCodec);
                 RoutingId sourceNodeRid =
-                    nativeSessionRelayAttached && spotNode != null ? spotNode.routingId() : null;
+                    nativeSessionRelayAttached ? sessionRid : null;
                 RoutingId sourceSessionRid =
                     nativeSessionRelayAttached ? sessionRid : null;
                 long bindingToken = actors.bindSession(
@@ -385,7 +393,8 @@ public final class ZLinkSessionActorsRuntime implements ZLinkSessionActors {
                     EnumSet.noneOf(ZLinkStreamHeaderFlag.class),
                     header.requestSequence(),
                     header.packetName(),
-                    Map.of());
+                    Map.of(),
+                    header.correlationId());
                 byte[] replyBytes = reply.toByteArray();
                 CompletableFuture<Void> result = new CompletableFuture<>();
                 long deadline = System.nanoTime() + RELAY_SUBMIT_TIMEOUT.toNanos();

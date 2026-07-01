@@ -16,20 +16,18 @@ internal static class Program
             "client");
         var logger = loggerFactory.CreateLogger("SupportChat.Client");
 
-        await using var customer = CreateClient(streamEndpoint);
         await using var agent = CreateClient(streamEndpoint);
-        await using var reconnectingCustomer = CreateClient(streamEndpoint);
+        await using var customer1 = CreateClient(streamEndpoint);
+        await using var customer2 = CreateClient(streamEndpoint);
+        await using var reconnectingAgent = CreateClient(streamEndpoint);
         await using var waitingCustomer = CreateClient(streamEndpoint);
-        await using var closingCustomer = CreateClient(streamEndpoint);
-        await using var closingAgent = CreateClient(streamEndpoint);
 
         await new SupportChatClientScenario().RunAsync(
-            customer,
             agent,
-            reconnectingCustomer,
-            waitingCustomer,
-            closingCustomer,
-            closingAgent);
+            customer1,
+            customer2,
+            reconnectingAgent,
+            waitingCustomer);
 
         logger.LogInformation("supportchat=completed");
     }

@@ -22,4 +22,40 @@ public final class ScenarioState {
     public synchronized Contracts.EvidenceSnapshot snapshot() {
         return new Contracts.EvidenceSnapshot(nodeRid, List.copyOf(entries));
     }
+
+    public Contracts.EvidenceSnapshot waitFor(
+        List<String> fragments,
+        int timeoutMilliseconds) {
+        long deadline = System.nanoTime() + timeoutMilliseconds * 1_000_000L;
+        while (System.nanoTime() < deadline) {
+            Contracts.EvidenceSnapshot current = snapshot();
+            if (containsAll(current, fragments)) {
+                return current;
+            }
+            try {
+                Thread.sleep(50);
+            } catch (InterruptedException error) {
+                Thread.currentThread().interrupt();
+                throw new IllegalStateException("interrupted while waiting for evidence", error);
+            }
+        }
+        Contracts.EvidenceSnapshot current = snapshot();
+        if (containsAll(current, fragments)) {
+            return current;
+        }
+        throw new IllegalStateException("timed out waiting for evidence fragments: " + fragments);
+    }
+
+    private static boolean containsAll(
+        Contracts.EvidenceSnapshot snapshot,
+        List<String> fragments) {
+        List<String> lines = snapshot.entries().stream()
+            .map(entry -> entry.marker()
+                + "|" + entry.nodeRid()
+                + "|" + entry.spotRid()
+                + "|" + entry.value())
+            .toList();
+        return fragments.stream().allMatch(fragment ->
+            lines.stream().anyMatch(line -> line.contains(fragment)));
+    }
 }

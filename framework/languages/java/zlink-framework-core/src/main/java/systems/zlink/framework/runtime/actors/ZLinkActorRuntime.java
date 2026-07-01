@@ -735,6 +735,19 @@ public final class ZLinkActorRuntime implements ZLinkActorManager {
                 // Runtime shutdown is best-effort; native context close will release remaining handles.
             }
 
+            RoutingId joinedSpotRid = context.spotRid;
+            if (joinedSpotRid != null) {
+                try {
+                    List<Message> replyParts = spotNode
+                        .leaveActor(actorRef, joinedSpotRid, defaultRequestTimeout)
+                        .toCompletableFuture()
+                        .join();
+                    replyParts.forEach(Message::close);
+                } catch (RuntimeException ignored) {
+                    // Shutdown still proceeds to actor destroy and map cleanup below.
+                }
+            }
+
             try {
                 spotNode.destroyActor(actorRef, defaultRequestTimeout).toCompletableFuture().join();
             } catch (RuntimeException ignored) {

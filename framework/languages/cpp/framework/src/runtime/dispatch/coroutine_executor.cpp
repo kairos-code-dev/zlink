@@ -44,6 +44,12 @@ bool &executor_shutdown_requested ()
     return requested;
 }
 
+std::size_t &executor_owner_count ()
+{
+    static std::size_t count = 0;
+    return count;
+}
+
 std::size_t default_worker_count ()
 {
     return std::max (1u, std::thread::hardware_concurrency ());
@@ -90,6 +96,7 @@ void configure_handler_coroutine_executor (std::size_t worker_count)
         worker_count = default_worker_count ();
     }
     std::lock_guard lock (executor_mutex ());
+    ++executor_owner_count ();
     auto &executor = executor_instance ();
     if (executor) {
         return;
@@ -103,6 +110,13 @@ void shutdown_handler_coroutine_executor () noexcept
     std::unique_ptr<coroutine_executor_t> executor;
     {
         std::lock_guard lock (executor_mutex ());
+        auto &owners = executor_owner_count ();
+        if (owners > 0) {
+            --owners;
+        }
+        if (owners > 0) {
+            return;
+        }
         executor_shutdown_requested () = true;
         executor_fast_path ().store (nullptr, std::memory_order_release);
         executor = std::move (executor_instance ());

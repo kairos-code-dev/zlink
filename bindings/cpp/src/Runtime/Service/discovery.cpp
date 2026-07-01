@@ -163,9 +163,19 @@ std::vector<member_peer_entry_t> discovery_t::member_peers () const
       static_cast<config_result_t> (zlink_discovery_member_peers (_impl->handle, nullptr, &count)));
     std::vector<zlink_member_peer_entry_t> native (count);
     if (count > 0) {
-        detail::throw_if_failed<config_error_t> (static_cast<config_result_t> (
-          zlink_discovery_member_peers (_impl->handle, native.data (), &count)));
-        native.resize (count);
+        while (true) {
+            const auto result = static_cast<config_result_t> (
+              zlink_discovery_member_peers (_impl->handle, native.data (), &count));
+            if (result == config_result_t::ok) {
+                native.resize (count);
+                break;
+            }
+            if (result == config_result_t::internal_error && zlink_errno () == ENOBUFS) {
+                native.resize (count);
+                continue;
+            }
+            detail::throw_if_failed<config_error_t> (result);
+        }
     }
 
     std::vector<member_peer_entry_t> entries;

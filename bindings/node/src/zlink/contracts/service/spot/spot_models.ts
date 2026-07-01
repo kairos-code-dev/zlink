@@ -137,12 +137,13 @@ export interface SpotActorLifecycleInfo {
   readonly joinEpoch: bigint;
   readonly flags: number;
 }
-/** Whether an actor joined or left a spot. */
+/** Whether an actor joined, left, or disconnected from a spot. */
 export const SpotActorLifecycleEventKind = Object.freeze({
   Joined: 1,
-  Left: 2
+  Left: 2,
+  Disconnected: 3
 } as const);
-/** Whether an actor joined or left a spot. */
+/** Whether an actor joined, left, or disconnected from a spot. */
 export type SpotActorLifecycleEventKind =
   typeof SpotActorLifecycleEventKind[keyof typeof SpotActorLifecycleEventKind];
 /** An actor join/leave lifecycle event observed on a spot. */

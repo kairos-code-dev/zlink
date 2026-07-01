@@ -35,6 +35,13 @@ internal sealed partial class ZLinkSpotActivation
                && _actorHandlers.TryResolve(actorType, header, out descriptor);
     }
 
+    public bool TryGetJoinedActor(
+        string actorId,
+        out IZLinkActor? actor)
+    {
+        return _actors.TryGetActor(actorId, out actor);
+    }
+
     public async ValueTask<ZLinkSpotActorJoinResult> JoinActorAsync(
         IZLinkActor actor,
         ZLinkMessage request,
@@ -85,7 +92,10 @@ internal sealed partial class ZLinkSpotActivation
         IZLinkActor actor,
         CancellationToken cancellationToken)
     {
-        return ExecuteSerializedAsync(
+        ArgumentNullException.ThrowIfNull(actor);
+        return ReferenceEquals(ZLinkSpotAmbientContext.CurrentOrDefault, this)
+            ? NotifyActorDisconnectedCoreAsync(actor, cancellationToken)
+            : ExecuteSerializedAsync(
             static (activation, state, ct) =>
                 activation.NotifyActorDisconnectedCoreAsync(state, ct),
             actor,

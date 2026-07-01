@@ -2377,7 +2377,7 @@ int main ()
         return 73;
     }
     public_route.attach_native_backend (native_backend);
-    int send_backend_seen = 0;
+    std::atomic_int send_backend_seen = 0;
     public_route.set_send_backend (
       [&send_backend_seen, &envelope_codec] (
         const zlink::routing_id_t &target, const std::optional<zlink::routing_id_t> &spot,
@@ -2400,7 +2400,13 @@ int main ()
       .packet_name ("client.event")
       .metadata ("trace-id", "trace-send")
       .submit ();
-    if (public_route.outbound_packets ().size () != 1 || send_backend_seen != 1) {
+    const auto send_backend_deadline =
+      std::chrono::steady_clock::now () + std::chrono::seconds (1);
+    while (send_backend_seen.load () != 1
+           && std::chrono::steady_clock::now () < send_backend_deadline) {
+        std::this_thread::sleep_for (std::chrono::milliseconds (1));
+    }
+    if (public_route.outbound_packets ().size () != 1 || send_backend_seen.load () != 1) {
         return 58;
     }
     auto public_send_header =

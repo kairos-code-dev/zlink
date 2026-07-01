@@ -469,9 +469,19 @@ std::vector<actor_ref_t> spot_t::actors () const
       static_cast<config_result_t> (zlink_spot_actors (_impl->handle, nullptr, &count)));
     std::vector<zlink_actor_ref_t> native (count);
     if (count > 0) {
-        detail::throw_if_failed<config_error_t> (
-          static_cast<config_result_t> (zlink_spot_actors (_impl->handle, native.data (), &count)));
-        native.resize (count);
+        while (true) {
+            const auto result = static_cast<config_result_t> (
+              zlink_spot_actors (_impl->handle, native.data (), &count));
+            if (result == config_result_t::ok) {
+                native.resize (count);
+                break;
+            }
+            if (result == config_result_t::internal_error && zlink_errno () == ENOBUFS) {
+                native.resize (count);
+                continue;
+            }
+            detail::throw_if_failed<config_error_t> (result);
+        }
     }
     std::vector<actor_ref_t> entries;
     entries.reserve (native.size ());

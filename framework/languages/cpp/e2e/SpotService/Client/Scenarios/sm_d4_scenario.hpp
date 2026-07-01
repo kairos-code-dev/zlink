@@ -24,8 +24,8 @@ inline void run_sm_d4_scenario (const std::string &session_stream_endpoint)
 
     zlink::stream_connector::connector_options_t options;
     options.endpoint = session_stream_endpoint;
-    options.connect_timeout = std::chrono::milliseconds (5000);
-    options.request_timeout = std::chrono::milliseconds (5000);
+    options.connect_timeout = std::chrono::milliseconds (3000);
+    options.request_timeout = std::chrono::milliseconds (3000);
     options.dispatch_mode = zlink::stream_connector::dispatch_mode_t::immediate;
     auto stream = zlink::stream_connector::connector_factory_t::create (options);
 
@@ -37,12 +37,12 @@ inline void run_sm_d4_scenario (const std::string &session_stream_endpoint)
     auto first_auth =
       stream.request (stream_ensure_auth_req_t{"play-a", first_actor_id, "SM-D4 X"})
         .packet_name ("StreamEnsureAuthReq")
-        .timeout (std::chrono::milliseconds (5000))
+        .timeout (std::chrono::milliseconds (3000))
         .submit<stream_auth_res_t> ();
     auto second_auth =
       stream.request (stream_ensure_auth_req_t{"play-a", second_actor_id, "SM-D4 Y"})
         .packet_name ("StreamEnsureAuthReq")
-        .timeout (std::chrono::milliseconds (5000))
+        .timeout (std::chrono::milliseconds (3000))
         .submit<stream_auth_res_t> ();
     if (!first_auth || !second_auth || first_auth.value ().actor.actor_id != first_actor_id
         || second_auth.value ().actor.actor_id != second_actor_id) {
@@ -53,13 +53,13 @@ inline void run_sm_d4_scenario (const std::string &session_stream_endpoint)
       stream.request (actor_ping_req_t{"to-x"})
         .packet_name ("ActorPingReq")
         .metadata ("actor-id", first_actor_id)
-        .timeout (std::chrono::milliseconds (5000))
+        .timeout (std::chrono::milliseconds (3000))
         .submit<actor_ping_res_t> ();
     auto second_ping =
       stream.request (actor_ping_req_t{"to-y"})
         .packet_name ("ActorPingReq")
         .metadata ("actor-id", second_actor_id)
-        .timeout (std::chrono::milliseconds (5000))
+        .timeout (std::chrono::milliseconds (3000))
         .submit<actor_ping_res_t> ();
     if (!first_ping || first_ping.value ().actor_id != first_actor_id
         || first_ping.value ().value != "to-x" || !second_ping
@@ -75,7 +75,7 @@ inline void run_sm_d4_scenario (const std::string &session_stream_endpoint)
       stream.request (actor_push_req_t{"push-x"})
         .packet_name ("PushReq")
         .metadata ("actor-id", first_actor_id)
-        .timeout (std::chrono::milliseconds (5000))
+        .timeout (std::chrono::milliseconds (3000))
         .submit<actor_push_res_t> ();
     if (!first_push || !first_push.value ().pushed
         || first_push.value ().actor_id != first_actor_id) {
@@ -93,7 +93,7 @@ inline void run_sm_d4_scenario (const std::string &session_stream_endpoint)
       stream.request (actor_push_req_t{"push-y"})
         .packet_name ("PushReq")
         .metadata ("actor-id", second_actor_id)
-        .timeout (std::chrono::milliseconds (5000))
+        .timeout (std::chrono::milliseconds (3000))
         .submit<actor_push_res_t> ();
     if (!second_push || !second_push.value ().pushed
         || second_push.value ().actor_id != second_actor_id) {

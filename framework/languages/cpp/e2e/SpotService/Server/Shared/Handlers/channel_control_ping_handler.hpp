@@ -29,7 +29,7 @@ class channel_control_ping_route_handler_t
             .request (e2e::route_channel, zlink::routing_id_t::from (request.target_node_rid),
                       e2e::channel_echo_req_t{request.value})
             .packet_name ("ChannelEchoReq")
-            .timeout (std::chrono::milliseconds (5000))
+            .timeout (std::chrono::milliseconds (3000))
             .async<e2e::channel_echo_res_t> ()
             .result ();
         if (!reply) {

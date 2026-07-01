@@ -8,10 +8,8 @@
 
 #include <chrono>
 #include <memory>
-#include <optional>
 #include <stdexcept>
 #include <string>
-#include <thread>
 #include <vector>
 
 namespace zlink::framework::e2e::spot_service::client::scenarios
@@ -20,25 +18,16 @@ namespace zlink::framework::e2e::spot_service::client::scenarios
 inline stream_auth_res_t sm_g4_auth_stream (zlink::stream_connector::connector_t &stream,
                                             const std::string &actor_id)
 {
-    std::optional<stream_auth_res_t> auth;
-    std::string auth_error = "not attempted";
-    for (int attempt = 0; attempt < 20; ++attempt) {
-        auto auth_result =
-          stream.request (stream_ensure_auth_req_t{"play-a", actor_id, actor_id + "-display"})
-            .packet_name ("StreamEnsureAuthReq")
-            .timeout (std::chrono::milliseconds (5000))
-            .submit<stream_auth_res_t> ();
-        if (auth_result) {
-            auth = auth_result.value ();
-            break;
-        }
-        auth_error =
-          auth_result.error () ? auth_result.error ()->message : "unknown stream auth error";
-        std::this_thread::sleep_for (std::chrono::milliseconds (150));
-    }
-    if (!auth || auth->actor.actor_id != actor_id || auth->session_node_rid != "session-a") {
-        throw std::runtime_error ("SM-G4 stream auth failed for " + actor_id + ": "
-                                  + auth_error);
+    auto auth =
+      stream.request (stream_ensure_auth_req_t{"play-a", actor_id, actor_id + "-display"})
+        .packet_name ("StreamEnsureAuthReq")
+        .timeout (std::chrono::milliseconds (3000))
+        .submit<stream_auth_res_t> ();
+    if (!auth || auth.value ().actor.actor_id != actor_id
+        || auth.value ().session_node_rid != "session-a") {
+        const auto detail =
+          auth.error () ? auth.error ()->message : "stream auth reply mismatch";
+        throw std::runtime_error ("SM-G4 stream auth failed for " + actor_id + ": " + detail);
     }
     return auth.value ();
 }
@@ -52,7 +41,7 @@ inline void sm_g4_push_and_verify (zlink::stream_connector::connector_t &stream,
     auto pushed = stream.request (actor_push_req_t{value})
                     .packet_name ("PushReq")
                     .metadata ("actor-id", actor_id)
-                    .timeout (std::chrono::milliseconds (5000))
+                    .timeout (std::chrono::milliseconds (3000))
                     .submit<actor_push_res_t> ();
     if (!pushed || !pushed.value ().pushed || pushed.value ().actor_id != actor_id) {
         throw std::runtime_error ("SM-G4 push reply mismatch for " + actor_id);
@@ -72,8 +61,8 @@ inline void run_sm_g4_scenario (const std::string &session_stream_endpoint)
 
     zlink::stream_connector::connector_options_t options;
     options.endpoint = session_stream_endpoint;
-    options.connect_timeout = std::chrono::milliseconds (5000);
-    options.request_timeout = std::chrono::milliseconds (5000);
+    options.connect_timeout = std::chrono::milliseconds (3000);
+    options.request_timeout = std::chrono::milliseconds (3000);
     options.dispatch_mode = zlink::stream_connector::dispatch_mode_t::immediate;
 
     std::vector<std::unique_ptr<zlink::stream_connector::connector_t>> streams;

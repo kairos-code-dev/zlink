@@ -40,7 +40,7 @@ Java feature-map은 현재 구현된 public API 경로와 public contract/harnes
 | `Client/Scenarios/SmB3Scenario.cs` | `Shared/src/main/java/systems/zlink/e2e/spotservice/shared/ScenarioActor.java`, `ClientScenario.java` | scenario | done | payload fidelity marker |
 | `Client/Scenarios/SmB4Scenario.cs` | `feature-map.ko.md` | scenario | gap | remote actor request/reply E2E gap |
 | `Client/Scenarios/SmB5Scenario.cs` | `feature-map.ko.md` | scenario | gap | missing actor packet negative path 미구현 |
-| `Client/Scenarios/SmB6Scenario.cs` | `feature-map.ko.md` | scenario | gap | actor leave/disconnect callback 차이 미구현 |
+| `Client/Scenarios/SmB6Scenario.cs` | `Shared/src/main/java/systems/zlink/e2e/spotservice/shared/ClientScenario.java`, `UserActorLeaveHandler.java`, `UserSpot.java` | scenario | done | actor leave/disconnect callback 차이 marker |
 | `Client/Scenarios/SmB7Scenario.cs` | `Shared/src/main/java/systems/zlink/e2e/spotservice/shared/ScenarioActor.java`, `ClientScenario.java` | scenario | done | actor lifecycle/order marker |
 | `Client/Scenarios/SmB8Scenario.cs` | `feature-map.ko.md` | scenario | gap | Java destroyActor 의미 고정 scenario 미구현 |
 | `Client/Scenarios/SmC1Scenario.cs` | `Shared/src/main/java/systems/zlink/e2e/spotservice/shared/ClientScenario.java` | scenario | done | external consumer to spot messaging |
@@ -51,7 +51,7 @@ Java feature-map은 현재 구현된 public API 경로와 public contract/harnes
 | `Client/Scenarios/SmD2Scenario.cs` | `feature-map.ko.md` | scenario | gap | remote stream session bind/relay E2E gap |
 | `Client/Scenarios/SmD3Scenario.cs` | `feature-map.ko.md` | scenario | gap | entry/user spot actor bind 비교 미구현 |
 | `Client/Scenarios/SmD4Scenario.cs` | `feature-map.ko.md` | scenario | gap | multiple actor bind 미구현 |
-| `Client/Scenarios/SmD5Scenario.cs` | `feature-map.ko.md` | scenario | gap | disconnect callback target 미구현 |
+| `Client/Scenarios/SmD5Scenario.cs` | `Shared/src/main/java/systems/zlink/e2e/spotservice/shared/ClientScenario.java`, `UserSpot.java` | scenario | done | session disconnect 뒤 bound actor disconnect callback marker |
 | `Client/Scenarios/SmD6Scenario.cs` | `feature-map.ko.md` | scenario | gap | bound session push target isolation 미구현 |
 | `Client/Scenarios/SmD7Scenario.cs` | `feature-map.ko.md` | scenario | gap | stream auth and pre-auth dispatch failure 미구현 |
 | `Client/Scenarios/SmD8Scenario.cs` | `feature-map.ko.md` | scenario | gap | reconnect pending failure/reauth/rebind 미구현 |
@@ -87,6 +87,6 @@ Java feature-map은 현재 구현된 public API 경로와 public contract/harnes
 
 남은 gap은 `feature-map.ko.md`의 세 구역을 기준으로 관리한다.
 
-- public contract parity 또는 spec 검토 대기: `SM-A5`, `SM-B5`, `SM-B6`, `SM-B8`, `SM-D3`~`SM-D14`.
+- public contract parity 또는 spec 검토 대기: `SM-A5`, `SM-B5`, `SM-B8`, `SM-D3`, `SM-D4`, `SM-D6`~`SM-D14`.
 - Java public contract 기반 E2E 미구현: `SM-B2`, `SM-B4`, `SM-D2`.
 - E2E/harness 대기: `SM-F4` 일부, `SM-F5`, `SM-G1`~`SM-G4`.

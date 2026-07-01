@@ -1,5 +1,6 @@
 using Microsoft.Extensions.Logging;
 using SupportChat.Server.Configuration;
+using SupportChat.Server.Support.Application.ConversationAssignment;
 using SupportChat.Server.Support.Domain.SupportChat;
 using SupportChat.Server.Support.Infrastructure.ZLink.Actors;
 using SupportChat.Server.Support.Infrastructure.ZLink.Spots.ConversationSpot.Handlers;
@@ -13,10 +14,18 @@ namespace SupportChat.Server.Support.Infrastructure.ZLink.Spots.ConversationSpot
 internal sealed class ConversationSpot(
     IZLinkSpotContext context,
     ConversationNotificationPublisher notifications,
+    AgentAssignmentService assignment,
+    SupportActorDirectory directory,
     ILogger<ConversationSpot> logger) : IZLinkSpot<SupportUserActor>
 {
     internal static readonly TimeSpan IdleCheckPeriod = TimeSpan.FromMilliseconds(200);
 
+    // Push recipients keyed by participant id (customer id or agent roster id). The
+    // value is the actor whose bound session receives pushes. For the customer that is
+    // its own actor; for an agent it is the single roster actor, because an agent
+    // session's per-conversation actors are used only for inbound handling — outbound
+    // pushes to a session's non-first actor are not reliably delivered, so all of an
+    // agent's rooms fan out through its one roster actor (disambiguated by ConversationId).
     private readonly Dictionary<string, SupportUserActor> _actors = new(StringComparer.Ordinal);
     private Conversation? _conversation;
 
@@ -24,8 +33,9 @@ internal sealed class ConversationSpot(
 
     public void Configure()
     {
+        Context.Handlers.AddHandler<JoinConversationHandler>();
         Context.Handlers.AddHandler<SendChatMessageHandler>();
-        Context.Handlers.AddHandler<SetTypingHandler>();
+        Context.Handlers.AddActorSend<SetTypingHandler, SupportUserActor>(nameof(SetTypingReq));
         Context.Handlers.AddHandler<CloseConversationHandler>();
     }
 
@@ -57,42 +67,77 @@ internal sealed class ConversationSpot(
         await ValueTask.CompletedTask;
     }
 
+    // Timer tick (registered by ConversationIdleTimerHandler): advance the idle
+    // lifecycle one stage. No-op until the conversation exists and has messages.
+    public ValueTask CheckIdleAsync(CancellationToken cancellationToken)
+    {
+        if (_conversation is null) return ValueTask.CompletedTask;
+        var change = _conversation.MarkIdle(NowUnixMs());
+        return PublishChangeAsync(change, cancellationToken);
+    }
+
+    // The conversation is identified by the spot routing id, so an actor only reaches
+    // this spot when it is joining this conversation. The customer's own actor is the
+    // participant; each agent joins through its own per-conversation actor.
     public async ValueTask<ZLinkSpotActorJoinResult> OnActorJoinAsync(
         SupportUserActor actor,
         ZLinkMessage request,
         CancellationToken cancellationToken)
     {
-        var join = request.Decode<JoinConversationReq>();
         var conversation = RequireConversation();
-        if (!string.Equals(join.ConversationId, conversation.ConversationId, StringComparison.Ordinal))
-            return ZLinkSpotActorJoinResult.Reject();
 
         if (string.Equals(actor.Role, SupportChatRoles.Agent, StringComparison.Ordinal))
         {
-            var agentState = await JoinAgentAsync(actor, cancellationToken);
-            return ZLinkSpotActorJoinResult.Accept(new JoinConversationRes(agentState));
+            var change = JoinAgent(actor);
+            await PublishChangeAsync(change, cancellationToken);
+            return ZLinkSpotActorJoinResult.Accept(new JoinConversationRes(ConversationContracts.ToState(change.State)));
         }
 
-        actor.JoinConversation(join.ConversationId);
-        _actors[actor.ActorId] = actor;
+        actor.JoinConversation(conversation.ConversationId);
+        _actors[actor.ParticipantId] = actor;
+
+        // The customer has joined; pick a capacity-available agent and notify its roster.
+        await AssignAgentAsync(cancellationToken);
 
         logger.LogInformation(
-            "support conversation: actor joined. conversation={ConversationId}, actor={ActorId}, role={Role}",
-            join.ConversationId,
-            actor.ActorId,
+            "support conversation: actor joined. conversation={ConversationId}, participant={ParticipantId}, role={Role}",
+            conversation.ConversationId,
+            actor.ParticipantId,
             actor.Role);
-        return ZLinkSpotActorJoinResult.Accept(new JoinConversationRes(conversation.Snapshot()));
+        return ZLinkSpotActorJoinResult.Accept(new JoinConversationRes(ConversationContracts.ToState(conversation.Snapshot())));
     }
 
-    public ValueTask<ConversationState> JoinAgentAsync(
-        SupportUserActor agent,
-        CancellationToken cancellationToken)
+    // Reserves a capacity-available agent for this conversation and notifies its roster
+    // actor. Availability is reserved here and released on close (see PublishChangeAsync).
+    private async ValueTask AssignAgentAsync(CancellationToken cancellationToken)
     {
         var conversation = RequireConversation();
-        var change = conversation.JoinAgent(agent.ActorId, agent.DisplayName, NowUnixMs());
-        agent.JoinConversation(conversation.ConversationId);
-        _actors[agent.ActorId] = agent;
-        return ValueTask.FromResult(change.State);
+        var assigned = assignment.AssignForConversation(conversation.ConversationId);
+        if (assigned is null) return;
+
+        await notifications.PublishAssignedToRosterAsync(
+            directory.Get(assigned.RosterActorId).Actor,
+            conversation.Snapshot(),
+            cancellationToken);
+        logger.LogInformation(
+            "support conversation: assigned. conversation={ConversationId}, roster={RosterActorId}",
+            conversation.ConversationId,
+            assigned.RosterActorId);
+    }
+
+    // A reconnected client has a fresh session and no local conversation view, so it
+    // re-fetches the current state through JoinConversationReq. Membership already
+    // follows the actor, so this only refreshes the bound actor entry and returns the
+    // latest snapshot.
+    public JoinConversationRes RefreshMembership(SupportUserActor actor)
+    {
+        var conversation = RequireConversation();
+        _actors[actor.ParticipantId] = actor;
+        logger.LogInformation(
+            "support conversation: membership refreshed. conversation={ConversationId}, participant={ParticipantId}",
+            conversation.ConversationId,
+            actor.ParticipantId);
+        return new JoinConversationRes(ConversationContracts.ToState(conversation.Snapshot()));
     }
 
     public async ValueTask<SendChatMessageRes> SendMessageAsync(
@@ -100,25 +145,22 @@ internal sealed class ConversationSpot(
         SendChatMessageReq request,
         CancellationToken cancellationToken)
     {
-        EnsureConversationId(request.ConversationId);
-        var change = RequireConversation().SendMessage(actor.ActorId, request.Text, NowUnixMs());
-        await notifications.PublishAsync(change.Events, _actors, cancellationToken);
-        ScheduleIdleCheck();
+        var change = RequireConversation().SendMessage(actor.ParticipantId, request.Text, NowUnixMs());
+        await PublishChangeAsync(change, cancellationToken);
+        var appended = change.Events.Single(static item => item.Kind == ConversationEventKind.MessageAppended).Message
+                       ?? throw new InvalidOperationException("Message event was not created.");
         return new SendChatMessageRes(
-            change.Events.Single(static item => item.Kind == ConversationEventKind.MessageAppended).Message
-            ?? throw new InvalidOperationException("Message event was not created."),
-            change.State);
+            ConversationContracts.ToMessage(appended),
+            ConversationContracts.ToState(change.State));
     }
 
-    public async ValueTask<SetTypingRes> SetTypingAsync(
+    public async ValueTask SetTypingAsync(
         SupportUserActor actor,
         SetTypingReq request,
         CancellationToken cancellationToken)
     {
-        EnsureConversationId(request.ConversationId);
-        var change = RequireConversation().SetTyping(actor.ActorId, request.IsTyping);
-        await notifications.PublishAsync(change.Events, _actors, cancellationToken);
-        return new SetTypingRes(change.State);
+        var change = RequireConversation().SetTyping(actor.ParticipantId, request.IsTyping);
+        await PublishChangeAsync(change, cancellationToken);
     }
 
     public async ValueTask<CloseConversationRes> CloseAsync(
@@ -126,23 +168,28 @@ internal sealed class ConversationSpot(
         CloseConversationReq request,
         CancellationToken cancellationToken)
     {
-        EnsureConversationId(request.ConversationId);
-        var change = RequireConversation().Close(actor.ActorId, request.Reason);
-        await notifications.PublishAsync(change.Events, _actors, cancellationToken);
-        return new CloseConversationRes(change.State);
+        var change = RequireConversation().Close(actor.ParticipantId, request.Reason);
+        await PublishChangeAsync(change, cancellationToken);
+        return new CloseConversationRes(ConversationContracts.ToState(change.State));
     }
 
-    internal async ValueTask CheckIdleAsync(CancellationToken cancellationToken)
-    {
-        var change = RequireConversation().MarkIdle(NowUnixMs());
-        await notifications.PublishAsync(change.Events, _actors, cancellationToken);
-    }
-
-    private void EnsureConversationId(string conversationId)
+    private ConversationChange JoinAgent(SupportUserActor agent)
     {
         var conversation = RequireConversation();
-        if (!string.Equals(conversationId, conversation.ConversationId, StringComparison.Ordinal))
-            throw new InvalidOperationException($"Request targets another conversation. conversation={conversationId}");
+        var change = conversation.JoinAgent(agent.ParticipantId, agent.DisplayName, NowUnixMs());
+        agent.JoinConversation(conversation.ConversationId);
+        // Fan out this room's pushes through the agent's single roster actor.
+        _actors[agent.ParticipantId] = directory.Get(agent.ParticipantId).Actor;
+        return change;
+    }
+
+    // Publishes conversation events and, when the conversation closes, frees the
+    // assigned agent's capacity so it can take new conversations.
+    private async ValueTask PublishChangeAsync(ConversationChange change, CancellationToken cancellationToken)
+    {
+        await notifications.PublishAsync(change.Events, _actors, cancellationToken);
+        if (change.Events.Any(static item => item.Kind == ConversationEventKind.Closed))
+            assignment.ReleaseConversation(RequireConversation().ConversationId);
     }
 
     private Conversation RequireConversation()
@@ -153,25 +200,5 @@ internal sealed class ConversationSpot(
     private static long NowUnixMs()
     {
         return DateTimeOffset.UtcNow.ToUnixTimeMilliseconds();
-    }
-
-    private void ScheduleIdleCheck()
-    {
-        _ = Task.Run(async () =>
-        {
-            await Task.Delay(SampleTimings.IdleTimeout);
-            while (true)
-            {
-                var conversation = RequireConversation();
-                var change = conversation.MarkIdle(NowUnixMs());
-                await notifications.PublishAsync(change.Events, _actors, CancellationToken.None);
-                if (change.Events.Count > 0
-                    || !string.Equals(change.State.Status, ConversationStatuses.Active, StringComparison.Ordinal)
-                    || change.State.IdleDeadlineUnixMs is null)
-                    return;
-
-                await Task.Delay(IdleCheckPeriod);
-            }
-        });
     }
 }

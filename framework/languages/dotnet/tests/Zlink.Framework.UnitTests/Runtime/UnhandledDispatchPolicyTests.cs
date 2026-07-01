@@ -484,6 +484,11 @@ public sealed class UnhandledDispatchPolicyTests
             return null;
         }
 
+        public ZLinkBackendSpotActorLifecycleEvent? RecvActorLifecycle(RecvFlags flags)
+        {
+            return null;
+        }
+
         public void ReplyActorJoin(
             ZLinkBackendActorJoinRequest request,
             int joinResultCode,

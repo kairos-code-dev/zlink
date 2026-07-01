@@ -976,7 +976,22 @@ final class DefaultZLinkStreamConnector implements ZLinkStreamConnector {
                 throw new IllegalStateException(
                     "typed stream reply API requires ZLinkStreamConnectorOptions.typedCodec");
             }
-            return submit().thenApply(reply -> codec.decode(reply, replyType));
+            return submit().thenApply(reply -> {
+                try {
+                    return codec.decode(reply, replyType);
+                } catch (RuntimeException ex) {
+                    throw new IllegalStateException(
+                        "failed to decode stream reply request="
+                            + payload.packetName()
+                            + " reply="
+                            + reply.packetName()
+                            + " as "
+                            + replyType.getName()
+                            + " payload="
+                            + new String(reply.payload().toByteArray(), java.nio.charset.StandardCharsets.UTF_8),
+                        ex);
+                }
+            });
         }
     }
 

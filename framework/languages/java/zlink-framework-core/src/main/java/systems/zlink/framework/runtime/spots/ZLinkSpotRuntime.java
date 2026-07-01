@@ -751,6 +751,15 @@ public final class ZLinkSpotRuntime implements ZLinkSpotManager, AutoCloseable {
         return node;
     }
 
+    private ZLinkBackendSpotNode nodeByRid(RoutingId nodeRid) {
+        for (ZLinkBackendSpotNode node : nodes) {
+            if (node.routingId().equals(nodeRid)) {
+                return node;
+            }
+        }
+        throw new ZLinkConfigurationException("unknown SpotNode routing id: " + nodeRid);
+    }
+
     public void attachActorRuntime(ZLinkActorRuntime actorRuntime) {
         this.actorRuntime = actorRuntime;
         this.actorRuntime.setCreatedNotifier(this::notifyEntrySpotActorCreated);
@@ -2135,6 +2144,10 @@ public final class ZLinkSpotRuntime implements ZLinkSpotManager, AutoCloseable {
                     () -> notifySpotActorLifecycle(entrySpot, actor, false));
                 return;
             }
+            if (event.kind() == ZLinkBackendActorLifecycleEventKind.DISCONNECTED) {
+                context.enqueueDispatch(() -> notifySpotActorDisconnected(actor));
+                return;
+            }
             RoutingId spotRid = event.info()
                 .currentSpotRid()
                 .orElse(backendSpot.routingId());
@@ -2609,8 +2622,25 @@ public final class ZLinkSpotRuntime implements ZLinkSpotManager, AutoCloseable {
                 return CompletableFuture.failedFuture(new ZLinkConfigurationException(
                     "actor runtime is required for Spot actor leave"));
             }
-            actorRuntime.markLeft(actor);
-            return notifySpotActorLifecycle(this.spot, actor, false);
+            try {
+                RoutingId currentSpotRid = actorRuntime.spotRid(actor)
+                    .orElseGet(this::spotRid);
+                ZLinkBackendActorRef actorRef = actorRuntime.actorRef(actor);
+                nodeByRid(nodeRid)
+                    .leaveActor(actorRef, currentSpotRid, defaultRequestTimeout)
+                    .whenComplete((replyParts, error) -> {
+                        if (replyParts != null) {
+                            replyParts.forEach(Message::close);
+                        }
+                    });
+                actorRuntime.markLeft(actor);
+                actorRuntime.submitActorDispatch(
+                    actor.actorId(),
+                    () -> notifySpotActorLifecycle(this.spot, actor, false));
+                return systems.zlink.framework.ZLinkSubmitStage.completed();
+            } catch (RuntimeException ex) {
+                return CompletableFuture.failedFuture(ex);
+            }
         }
 
         @Override
@@ -4918,6 +4948,11 @@ public final class ZLinkSpotRuntime implements ZLinkSpotManager, AutoCloseable {
                 return actorRuntime.submitActorDispatch(
                     actor.actorId(),
                     () -> notifySpotActorLifecycle(spot, actor, false));
+            }
+            if (event.kind() == ZLinkBackendActorLifecycleEventKind.DISCONNECTED) {
+                return actorRuntime.submitActorDispatch(
+                    actor.actorId(),
+                    () -> notifySpotActorDisconnected(actor));
             }
             RoutingId spotRid = event.info()
                 .currentSpotRid()

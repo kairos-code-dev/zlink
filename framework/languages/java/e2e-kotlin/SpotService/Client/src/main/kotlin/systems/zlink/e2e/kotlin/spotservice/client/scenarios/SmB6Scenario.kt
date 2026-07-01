@@ -1,5 +1,6 @@
 package systems.zlink.e2e.kotlin.spotservice.client.scenarios
 
+import java.util.UUID
 import systems.zlink.e2e.kotlin.spotservice.Contracts
 import systems.zlink.e2e.kotlin.spotservice.Env
 import systems.zlink.e2e.kotlin.spotservice.client.support.createStreamConnector
@@ -8,8 +9,9 @@ import systems.zlink.e2e.kotlin.spotservice.client.support.postJson
 
 internal object SmB6Scenario {
     fun run() {
-        val leaveActorId = "actor-sm-b6-left"
-        val disconnectActorId = "actor-sm-b6-disconnected"
+        val suffix = UUID.randomUUID().toString().replace("-", "")
+        val leaveActorId = "actor-sm-b6-left-$suffix"
+        val disconnectActorId = "actor-sm-b6-disconnected-$suffix"
         val profile = Contracts.ActorProfile("Leave", 6, listOf("leave"))
 
         val leaveClient = createStreamConnector(Env.get("ZLINK_KOTLIN_E2E_STREAM_A_ENDPOINT"))
@@ -64,6 +66,11 @@ internal object SmB6Scenario {
                 .request(Contracts.ActorAuthReq(disconnectActorId, disconnectProfile))
                 .await(Contracts.ActorAuthRes::class.java)
             ensure(auth.actorId == disconnectActorId, "SM-B6 disconnect auth actor mismatch")
+            val joined = disconnectClient
+                .request(Contracts.ActorJoinReq("room-a", disconnectProfile, disconnectProfile.tags))
+                .metadata("actor-id", disconnectActorId)
+                .await(Contracts.ActorJoinRes::class.java)
+            ensure(joined.actorId == disconnectActorId, "SM-B6 disconnect join actor mismatch")
             disconnectClient.close().await()
         } finally {
             try {
@@ -76,7 +83,7 @@ internal object SmB6Scenario {
             Env.get("ZLINK_KOTLIN_E2E_HTTP_SESSION_ENDPOINT"),
             "/evidence/wait",
             Contracts.EvidenceWaitReq(
-                listOf("ActorEntryDisconnected|session-a|entry|$disconnectActorId"),
+                listOf("ActorUserDisconnected|session-a|room-a|$disconnectActorId"),
                 10_000,
             ),
             Contracts.EvidenceSnapshot::class.java,

@@ -30,6 +30,8 @@ import systems.zlink.framework.runtime.binding.ZLinkJavaBackendAdapterFactory;
 import systems.zlink.framework.spots.ZLinkEntrySpot;
 import systems.zlink.framework.spots.ZLinkEntrySpotContext;
 import systems.zlink.framework.spots.ZLinkSpot;
+import systems.zlink.framework.spots.ZLinkSpotActorJoinResponse;
+import systems.zlink.framework.spots.ZLinkSpotActorRequestContext;
 import systems.zlink.framework.spots.ZLinkSpotContext;
 import systems.zlink.framework.streams.ZLinkSession;
 import systems.zlink.framework.streams.ZLinkSessionContext;
@@ -84,6 +86,30 @@ final class StreamSessionTest {
     }
 
     @Test
+    void streamNodeFailureRepliesErrorAndDoesNotBlockLaterRequests() throws Exception {
+        Zlink.version();
+        RecoveringSession.reset();
+        int port = reservePort();
+        DefaultZLinkFrameworkOptions options = new DefaultZLinkFrameworkOptions();
+        { var stream = options.addStreamNode("gateway"); stream.bind("tcp://127.0.0.1:" + port);
+            stream.registerSession(RecoveringSession.class); };
+
+        try (ZLinkFrameworkRuntime ignored =
+                 RuntimeTestSupport.startFramework(options, new ZLinkJavaBackendAdapterFactory());
+             Socket client = new Socket("127.0.0.1", port)) {
+            client.setSoTimeout(3000);
+
+            client.getOutputStream().write(frame(requestHeader(11L, "MustFail"), bytes("bad")));
+            client.getOutputStream().flush();
+            assertErrorReply(client.getInputStream(), 11L, "public failure");
+
+            client.getOutputStream().write(frame(requestHeader(12L, "Ping"), bytes("again")));
+            client.getOutputStream().flush();
+            assertReply(client.getInputStream(), 12L, "\"pong\"");
+        }
+    }
+
+    @Test
     void streamActorGatewayRelaysRequestAndReplies() throws Exception {
         Zlink.version();
         int port = reservePort();
@@ -99,13 +125,92 @@ final class StreamSessionTest {
              Socket client = new Socket("127.0.0.1", port)) {
             client.setSoTimeout(3000);
 
-            client.getOutputStream().write(frame(requestHeader(1L, "Bind"), bytes("player-1")));
+            client.getOutputStream().write(frame(requestHeader(1L, "Bind"), bytes("\"player-1\"")));
             client.getOutputStream().flush();
-            assertReply(client.getInputStream(), 1L, "bound");
+            assertReply(client.getInputStream(), 1L, "\"bound\"");
 
-            client.getOutputStream().write(frame(requestHeader(2L, "StreamActorEcho"), bytes("hello")));
+            client.getOutputStream().write(frame(requestHeader(2L, "StreamActorEcho"), bytes("\"hello\"")));
             client.getOutputStream().flush();
-            assertReply(client.getInputStream(), 2L, "player-1:hello");
+            assertReply(client.getInputStream(), 2L, "\"player-1:hello\"");
+        }
+    }
+
+    @Test
+    void streamActorGatewayPreservesReplySequenceWhenActorSendsBoundSessionFrame() throws Exception {
+        Zlink.version();
+        int port = reservePort();
+        DefaultZLinkFrameworkOptions options = new DefaultZLinkFrameworkOptions();
+        options.addHandlersFromPackageOf(StreamSessionTest.class);
+        { var mesh = options.addSpotMesh("game"); { var node = mesh; node.setRoutingId(RoutingId.from("play-node"));
+                node.addEntrySpot(GameEntrySpot.class);
+                node.addSpotFactory(UserSpot.class);
+                node.addActorFactory("player", PlayerActorFactory.class); }; };
+        { var stream = options.addStreamNode("gateway"); stream.bind("tcp://127.0.0.1:" + port);
+            stream.registerSession(ActorRelaySession.class); };
+
+        try (ZLinkFrameworkRuntime runtime =
+                 RuntimeTestSupport.startFramework(options, new ZLinkJavaBackendAdapterFactory());
+             Socket client = new Socket("127.0.0.1", port)) {
+            runtime.spotManager()
+                .create(UserSpot.class, RoutingId.from("room-a"))
+                .toCompletableFuture()
+                .join();
+            client.setSoTimeout(3000);
+
+            client.getOutputStream().write(frame(requestHeader(1L, "Bind"), bytes("\"player-1\"")));
+            client.getOutputStream().flush();
+            assertReply(client.getInputStream(), 1L, "\"bound\"");
+
+            client.getOutputStream().write(frame(requestHeader(2L, "StreamActorEchoWithPush"), bytes("\"hello\"")));
+            client.getOutputStream().flush();
+            assertSend(client.getInputStream(), "StreamActorPush", "\"push:hello\"");
+            assertReply(client.getInputStream(), 2L, "\"player-1:hello\"");
+
+            client.getOutputStream().write(frame(requestHeader(3L, "JoinUserSpot"), bytes("\"join\"")));
+            client.getOutputStream().flush();
+            assertReply(client.getInputStream(), 3L, "\"joined\"");
+
+            client.getOutputStream().write(frame(requestHeader(4L, "LeaveUserSpot"), bytes("\"leave\"")));
+            client.getOutputStream().flush();
+            assertReply(client.getInputStream(), 4L, "\"left\"");
+        }
+    }
+
+    @Test
+    void streamActorGatewayCanLeaveUserSpotDuringRelayedRequest() throws Exception {
+        Zlink.version();
+        UserSpot.lastLeave.set(false);
+        int port = reservePort();
+        DefaultZLinkFrameworkOptions options = new DefaultZLinkFrameworkOptions();
+        options.addHandlersFromPackageOf(StreamSessionTest.class);
+        { var mesh = options.addSpotMesh("game"); { var node = mesh; node.setRoutingId(RoutingId.from("play-node"));
+                node.addEntrySpot(GameEntrySpot.class);
+                node.addSpotFactory(UserSpot.class);
+                node.addActorFactory("player", PlayerActorFactory.class); }; };
+        { var stream = options.addStreamNode("gateway"); stream.bind("tcp://127.0.0.1:" + port);
+            stream.registerSession(ActorRelaySession.class); };
+
+        try (ZLinkFrameworkRuntime runtime =
+                 RuntimeTestSupport.startFramework(options, new ZLinkJavaBackendAdapterFactory());
+             Socket client = new Socket("127.0.0.1", port)) {
+            runtime.spotManager()
+                .create(UserSpot.class, RoutingId.from("room-a"))
+                .toCompletableFuture()
+                .join();
+            client.setSoTimeout(3000);
+
+            client.getOutputStream().write(frame(requestHeader(1L, "Bind"), bytes("\"player-1\"")));
+            client.getOutputStream().flush();
+            assertReply(client.getInputStream(), 1L, "\"bound\"");
+
+            client.getOutputStream().write(frame(requestHeader(2L, "JoinUserSpot"), bytes("\"join\"")));
+            client.getOutputStream().flush();
+            assertReply(client.getInputStream(), 2L, "\"joined\"");
+
+            client.getOutputStream().write(frame(requestHeader(3L, "LeaveUserSpot"), bytes("\"leave\"")));
+            client.getOutputStream().flush();
+            assertReply(client.getInputStream(), 3L, "\"left\"");
+            assertEventually(UserSpot.lastLeave::get);
         }
     }
 
@@ -126,6 +231,35 @@ final class StreamSessionTest {
         @Override
         public ZLinkEntrySpotContext context() {
             return context;
+        }
+    }
+
+    public static final class UserSpot implements ZLinkSpot<ZLinkActor> {
+        static final AtomicBoolean lastLeave = new AtomicBoolean();
+        private final ZLinkSpotContext context;
+
+        public UserSpot(ZLinkSpotContext context) {
+            this.context = context;
+        }
+
+        @Override
+        public ZLinkSpotContext context() {
+            return context;
+        }
+
+        @Override
+        public ZLinkSpotActorJoinResponse onActorJoin(
+            ZLinkActor actor,
+            ZLinkMessage request,
+            systems.zlink.framework.CancellationToken cancellationToken) {
+            return ZLinkSpotActorJoinResponse.accept("joined");
+        }
+
+        @Override
+        public void onLeaveActor(
+            ZLinkActor actor,
+            systems.zlink.framework.CancellationToken cancellationToken) {
+            lastLeave.set(!actor.context().isJoined());
         }
     }
 
@@ -162,6 +296,43 @@ final class StreamSessionTest {
         @ZLinkSpotActorRequest(packetName = "StreamActorEcho")
         public String handle(PlayerActor actor, String request) {
             return actor.actorId() + ":" + request;
+        }
+
+        @ZLinkSpotActorRequest(packetName = "StreamActorEchoWithPush")
+        public String handleWithPush(PlayerActor actor, String request) {
+            actor.context()
+                .boundSession()
+                .send("push:" + request)
+                .packetName("StreamActorPush")
+                .submit()
+                .toCompletableFuture()
+                .join();
+            return actor.actorId() + ":" + request;
+        }
+    }
+
+    public static final class JoinUserSpotHandler {
+        @ZLinkSpotActorRequest(packetName = "JoinUserSpot")
+        public String handle(PlayerActor actor, String request) {
+            return actor.context()
+                .joinSpot(RoutingId.from("room-a"))
+                .submit(String.class)
+                .toCompletableFuture()
+                .join()
+                .reply();
+        }
+    }
+
+    public static final class LeaveUserSpotHandler {
+        @ZLinkSpotActorRequest(packetName = "LeaveUserSpot")
+        public String handle(
+            UserSpot spot,
+            PlayerActor actor,
+            ZLinkSpotActorRequestContext context,
+            String request,
+            systems.zlink.framework.CancellationToken cancellationToken) {
+            spot.context().leaveActor(actor).toCompletableFuture().join();
+            return "left";
         }
     }
 
@@ -222,6 +393,51 @@ final class StreamSessionTest {
                 throw new IllegalArgumentException("unexpected packet: " + dispatch.packetName());
             }
             context.client().reply("pong").submit().toCompletableFuture().join();
+        }
+    }
+
+    public static final class RecoveringSession implements ZLinkSession {
+        static final AtomicBoolean recovered = new AtomicBoolean();
+        private final ZLinkSessionContext context;
+
+        public RecoveringSession(ZLinkSessionContext context) {
+            this.context = context;
+        }
+
+        static void reset() {
+            recovered.set(false);
+        }
+
+        @Override
+        public ZLinkSessionContext context() {
+            return context;
+        }
+
+        @Override
+        public void onConnected() {
+        }
+
+        @Override
+        public void onDisconnected() {
+        }
+
+        @Override
+        public void onError(ZLinkStreamError error) {
+        }
+
+        @Override
+        public void onDispatch(
+            ZLinkSessionDispatchContext dispatch,
+            ZLinkMessage payload) {
+            if ("MustFail".equals(dispatch.packetName())) {
+                throw new IllegalStateException("public failure");
+            }
+            recovered.set(true);
+            context.client()
+                .reply("pong")
+                .submit()
+                .toCompletableFuture()
+                .join();
         }
     }
 
@@ -313,9 +529,61 @@ final class StreamSessionTest {
         byte[] header = readExact(input, headerSize);
         byte[] body = readExact(input, bodySize);
 
-        assertEquals(3, Byte.toUnsignedInt(header[0]));
+        assertEquals(
+            3,
+            Byte.toUnsignedInt(header[0]),
+            () -> "unexpected frame kind body=" + new String(body, StandardCharsets.UTF_8));
         assertEquals(requestSeq, ByteBuffer.wrap(header, 3, Long.BYTES).getLong());
         assertEquals(expectedBody, new String(body, StandardCharsets.UTF_8));
+    }
+
+    private static void assertErrorReply(InputStream input, long requestSeq, String expectedBody)
+        throws Exception {
+        byte[] prefix = input.readNBytes(6);
+        assertEquals(6, prefix.length);
+        ByteBuffer prefixBuffer = ByteBuffer.wrap(prefix);
+        int headerSize = Short.toUnsignedInt(prefixBuffer.getShort());
+        int bodySize = prefixBuffer.getInt();
+        byte[] header = readExact(input, headerSize);
+        byte[] body = readExact(input, bodySize);
+
+        assertEquals(4, Byte.toUnsignedInt(header[0]));
+        assertEquals(requestSeq, ByteBuffer.wrap(header, 3, Long.BYTES).getLong());
+        assertEquals(expectedBody, new String(body, StandardCharsets.UTF_8));
+    }
+
+    private static void assertSend(InputStream input, String expectedPacketName, String expectedBody)
+        throws Exception {
+        byte[] prefix = input.readNBytes(6);
+        assertEquals(6, prefix.length);
+        ByteBuffer prefixBuffer = ByteBuffer.wrap(prefix);
+        int headerSize = Short.toUnsignedInt(prefixBuffer.getShort());
+        int bodySize = prefixBuffer.getInt();
+        byte[] header = readExact(input, headerSize);
+        byte[] body = readExact(input, bodySize);
+
+        assertEquals(1, Byte.toUnsignedInt(header[0]));
+        int nameLengthOffset = 3;
+        int nameLength = Byte.toUnsignedInt(header[nameLengthOffset]);
+        String packetName = new String(
+            header,
+            nameLengthOffset + 1,
+            nameLength,
+            StandardCharsets.UTF_8);
+        assertEquals(expectedPacketName, packetName);
+        assertEquals(expectedBody, new String(body, StandardCharsets.UTF_8));
+    }
+
+    private static void assertEventually(java.util.function.BooleanSupplier condition)
+        throws Exception {
+        long deadline = System.nanoTime() + java.util.concurrent.TimeUnit.SECONDS.toNanos(3);
+        while (System.nanoTime() < deadline) {
+            if (condition.getAsBoolean()) {
+                return;
+            }
+            Thread.sleep(10);
+        }
+        assertTrue(condition.getAsBoolean());
     }
 
     private static byte[] bytes(String value) {

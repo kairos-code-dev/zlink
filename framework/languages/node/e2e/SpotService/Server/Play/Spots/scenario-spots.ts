@@ -1,10 +1,19 @@
 import type {
   ZLinkSpot,
+  ZLinkMessage,
+  ZLinkSpotActorJoinResponse,
   ZLinkSpotActorRequestContext,
   ZLinkSpotActorRequestHandler,
   ZLinkSpotContext
 } from '@zlink-systems/framework';
-import type { ActorPingRes, ActorPingReq, ActorPushNotify, ActorPushReq } from '../../../Shared/messages';
+import type {
+  ActorPingRes,
+  ActorPingReq,
+  ActorPushNotify,
+  ActorPushReq,
+  LeaveReq,
+  LeaveRes
+} from '../../../Shared/messages';
 import { SpotServiceNames } from '../../../Shared/messages';
 import { EvidenceStore } from '../Infrastructure/evidence-store';
 import { SpotMsgHandler, SpotOutboundHandler, SpotOutboundNegativeHandler } from '../Handlers/spot-outbound-handlers';
@@ -35,6 +44,7 @@ export class ScenarioUserSpot implements ZLinkSpot {
     this.context.handlers.packet('SpotToSpotNegativeReq', SpotToSpotNegativeHandler);
     this.context.handlers.actorRequest('UserActorPingReq', UserActorPingHandler, ScenarioActor);
     this.context.handlers.actorRequest('UserActorPushReq', UserActorPushHandler, ScenarioActor);
+    this.context.handlers.actorRequest('LeaveReq', UserActorLeaveHandler, ScenarioActor);
     this.context.handlers.subscribe(SpotServiceNames.spotEventTopic, SpotMsgHandler);
   }
 
@@ -51,6 +61,33 @@ export class ScenarioUserSpot implements ZLinkSpot {
   add(delta: number): number {
     this.value += delta;
     return this.value;
+  }
+
+  async onActorJoin(actor: ScenarioActor, request: ZLinkMessage): Promise<ZLinkSpotActorJoinResponse> {
+    void actor;
+    void request;
+    return { accepted: true };
+  }
+
+  async onJoinedActor(actor: ScenarioActor): Promise<void> {
+    const evidence = ScenarioUserSpot.requireEvidence();
+    evidence.add(
+      `spot-actor-joined|rid=${this.context.nodeRid}|spot=${this.context.spotRid}|actor=${actor.actorId}`
+    );
+  }
+
+  async onLeaveActor(actor: ScenarioActor): Promise<void> {
+    const evidence = ScenarioUserSpot.requireEvidence();
+    evidence.add(
+      `spot-actor-left|rid=${this.context.nodeRid}|spot=${this.context.spotRid}|actor=${actor.actorId}`
+    );
+  }
+
+  async onDisconnectActor(actor: ScenarioActor): Promise<void> {
+    const evidence = ScenarioUserSpot.requireEvidence();
+    evidence.add(
+      `spot-actor-disconnected|rid=${this.context.nodeRid}|spot=${this.context.spotRid}|actor=${actor.actorId}`
+    );
   }
 
   static requireEvidence(): EvidenceStore {
@@ -110,6 +147,25 @@ export class UserActorPushHandler
       spotRid: String(spot.context.spotRid),
       value: request.value,
       seen: actor.seen
+    };
+  }
+}
+
+export class UserActorLeaveHandler
+  implements ZLinkSpotActorRequestHandler<ScenarioUserSpot, ScenarioActor, LeaveReq, LeaveRes> {
+  async handle(
+    spot: ScenarioUserSpot,
+    actor: ScenarioActor,
+    context: ZLinkSpotActorRequestContext,
+    request: LeaveReq
+  ): Promise<LeaveRes> {
+    if (request.actorId !== actor.actorId) {
+      throw new Error('Leave request actor does not match dispatched actor.');
+    }
+    await spot.context.leaveActor(actor, context.connectionAborted);
+    return {
+      actorId: actor.actorId,
+      accepted: true
     };
   }
 }

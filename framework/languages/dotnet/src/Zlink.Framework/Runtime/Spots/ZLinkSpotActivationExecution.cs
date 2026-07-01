@@ -84,6 +84,8 @@ internal sealed partial class ZLinkSpotActivation
                 () => QueueSerialized(static (activation, ct) => activation.DispatchSubscriptionsAsync(ct)),
                 () => QueueSerialized(static (activation, ct) =>
                     activation._dispatcher.DispatchActorJoinDrainAsync(ct)),
+                () => QueueSerialized(static (activation, ct) =>
+                    activation.DispatchActorLifecycleDrainAsync(ct)),
                 actorParts => QueueSerialized(
                     static (activation, state, ct) => activation._dispatcher.DispatchActorPartsAsync(state, ct),
                     actorParts));
@@ -180,6 +182,30 @@ internal sealed partial class ZLinkSpotActivation
         await _dispatcher
             .DispatchSubscriptionsAsync(cancellationToken)
             .ConfigureAwait(false);
+    }
+
+    private async ValueTask DispatchActorLifecycleDrainAsync(CancellationToken cancellationToken)
+    {
+        while (true)
+        {
+            var lifecycle = NativeSpot.RecvActorLifecycle(RecvFlags.DontWait);
+            if (lifecycle is null) return;
+            if (lifecycle.Value.Kind != ZLinkBackendActorLifecycleEventKind.Disconnected)
+                continue;
+
+            var actorId = lifecycle.Value.Info.CurrentActor?.ActorId;
+            if (actorId is null) continue;
+
+            if (_actors.TryGetActor(actorId, out var actor) && actor is not null)
+            {
+                await NotifyActorDisconnectedCoreAsync(actor, cancellationToken)
+                    .ConfigureAwait(false);
+                continue;
+            }
+
+            await _runtime.NotifyActorDisconnectedByIdAsync(actorId, cancellationToken)
+                .ConfigureAwait(false);
+        }
     }
 
     private async ValueTask InvokeTimerAsync(

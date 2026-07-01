@@ -192,6 +192,12 @@ internal sealed class ZLinkBackendSpotWrapper(ISpot nativeSpot) : IZLinkBackendS
         };
     }
 
+    public ZLinkBackendSpotActorLifecycleEvent? RecvActorLifecycle(RecvFlags flags)
+    {
+        var lifecycle = nativeSpot.RecvActorLifecycle(flags);
+        return lifecycle?.ToFramework();
+    }
+
     public void ReplyActorJoin(
         ZLinkBackendActorJoinRequest request,
         int joinResultCode,

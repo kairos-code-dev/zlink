@@ -204,6 +204,8 @@ internal interface IZLinkBackendSpot : IZLinkBackendObject, IAsyncDisposable
 
     ZLinkBackendActorJoinRequest? RecvActorJoin(RecvFlags flags);
 
+    ZLinkBackendSpotActorLifecycleEvent? RecvActorLifecycle(RecvFlags flags);
+
     void ReplyActorJoin(
         ZLinkBackendActorJoinRequest request,
         int joinResultCode,

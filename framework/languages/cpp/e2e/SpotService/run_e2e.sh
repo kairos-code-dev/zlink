@@ -5,20 +5,37 @@ SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 CPP_DIR="$(cd "$SCRIPT_DIR/../.." && pwd)"
 BUILD_DIR="${ZLINK_CPP_E2E_BUILD_DIR:-$CPP_DIR/build}"
 SCENARIO="${1:-all}"
+LOCAL_READINESS_TIMEOUT_SECONDS="${ZLINK_CPP_E2E_LOCAL_READINESS_TIMEOUT_SECONDS:-3}"
 
 read -r REGISTRY_PUB REGISTRY_ROUTER ROUTE_A ROUTE_B ROUTE_SESSION_A ROUTE_SESSION_B ROUTE_CLIENT ROUTE_STREAM_CLIENT SPOT_A SPOT_B SPOT_SESSION_A SPOT_SESSION_B SPOT_CLIENT PUB_A PUB_B PUB_SESSION_A PUB_SESSION_B PUB_CLIENT PUBLISHER_CLIENT API_CLIENT STREAM_A STREAM_B MULTI_ROUTE_A MULTI_ROUTE_B MULTI_ROUTE_CLIENT_A MULTI_ROUTE_CLIENT_B MULTI_SPOT_A MULTI_SPOT_B MULTI_PUB_A MULTI_PUB_B STREAM_TLS_A HTTP_A HTTP_B HTTP_SESSION_A HTTP_SESSION_B HTTP_GATEWAY HTTP_MULTI_A HTTP_MULTI_B <<<"$(python3 - <<'PY'
+import random
 import socket
+import os
 
 sockets = []
 ports = []
-for _ in range(38):
+host = os.environ.get("ZLINK_CPP_E2E_BIND_HOST", "127.0.0.2")
+base = os.environ.get("ZLINK_CPP_E2E_PORT_BASE")
+port_range = int(os.environ.get("ZLINK_CPP_E2E_PORT_RANGE", "20000"))
+start = int(base) if base else 10000
+stop = start + port_range if base else 30000
+available = list(range(start, stop))
+for port in random.sample(available, len(available)):
     s = socket.socket()
-    s.bind(("127.0.0.1", 0))
+    try:
+        s.bind((host, port))
+    except OSError:
+        s.close()
+        continue
     sockets.append(s)
     ports.append(s.getsockname()[1])
-print(" ".join(f"tcp://127.0.0.1:{p}" for p in ports[:30]), end=" ")
-print(f"tls://127.0.0.1:{ports[30]}", end=" ")
-print(" ".join(f"http://127.0.0.1:{p}" for p in ports[31:]))
+    if len(ports) == 38:
+        break
+if len(ports) != 38:
+    raise SystemExit(f"failed to allocate 38 local ports, allocated {len(ports)}")
+print(" ".join(f"tcp://{host}:{p}" for p in ports[:30]), end=" ")
+print(f"tls://{host}:{ports[30]}", end=" ")
+print(" ".join(f"http://{host}:{p}" for p in ports[31:]))
 for s in sockets:
     s.close()
 PY
@@ -28,15 +45,140 @@ RUN_ID="$(date +%Y%m%d-%H%M%S)-$$"
 LOG_DIR="$SCRIPT_DIR/logs/$RUN_ID"
 mkdir -p "$LOG_DIR"
 echo "log_dir=$LOG_DIR"
+cat >"$LOG_DIR/endpoints.env" <<EOF
+REGISTRY_PUB=$REGISTRY_PUB
+REGISTRY_ROUTER=$REGISTRY_ROUTER
+ROUTE_A=$ROUTE_A
+ROUTE_B=$ROUTE_B
+ROUTE_SESSION_A=$ROUTE_SESSION_A
+ROUTE_SESSION_B=$ROUTE_SESSION_B
+ROUTE_CLIENT=$ROUTE_CLIENT
+ROUTE_STREAM_CLIENT=$ROUTE_STREAM_CLIENT
+SPOT_A=$SPOT_A
+SPOT_B=$SPOT_B
+SPOT_SESSION_A=$SPOT_SESSION_A
+SPOT_SESSION_B=$SPOT_SESSION_B
+SPOT_CLIENT=$SPOT_CLIENT
+PUB_A=$PUB_A
+PUB_B=$PUB_B
+PUB_SESSION_A=$PUB_SESSION_A
+PUB_SESSION_B=$PUB_SESSION_B
+PUB_CLIENT=$PUB_CLIENT
+PUBLISHER_CLIENT=$PUBLISHER_CLIENT
+API_CLIENT=$API_CLIENT
+STREAM_A=$STREAM_A
+STREAM_B=$STREAM_B
+MULTI_ROUTE_A=$MULTI_ROUTE_A
+MULTI_ROUTE_B=$MULTI_ROUTE_B
+MULTI_ROUTE_CLIENT_A=$MULTI_ROUTE_CLIENT_A
+MULTI_ROUTE_CLIENT_B=$MULTI_ROUTE_CLIENT_B
+MULTI_SPOT_A=$MULTI_SPOT_A
+MULTI_SPOT_B=$MULTI_SPOT_B
+MULTI_PUB_A=$MULTI_PUB_A
+MULTI_PUB_B=$MULTI_PUB_B
+STREAM_TLS_A=$STREAM_TLS_A
+HTTP_A=$HTTP_A
+HTTP_B=$HTTP_B
+HTTP_SESSION_A=$HTTP_SESSION_A
+HTTP_SESSION_B=$HTTP_SESSION_B
+HTTP_GATEWAY=$HTTP_GATEWAY
+HTTP_MULTI_A=$HTTP_MULTI_A
+HTTP_MULTI_B=$HTTP_MULTI_B
+EOF
 
-cmake -S "$CPP_DIR" -B "$BUILD_DIR" >/dev/null
-cmake --build "$BUILD_DIR" --target \
-  zlink_cpp_e2e_spot_service_registry \
-  zlink_cpp_e2e_spot_service_play \
-  zlink_cpp_e2e_spot_service_session \
-  zlink_cpp_e2e_spot_service_gateway \
-  zlink_cpp_e2e_spot_service_multinode \
-  zlink_cpp_e2e_spot_service_client >/dev/null
+declare -A PORT_GUARDS=()
+
+guard_port() {
+  local endpoint="$1"
+  local port
+  port="$(port_of "$endpoint")"
+  if [[ -n "${PORT_GUARDS[$port]:-}" ]]; then
+    return 0
+  fi
+  local ready_file="$LOG_DIR/port-guard-$port.ready"
+  python3 - "$port" "$ready_file" "$(host_of "$endpoint")" <<'PY' &
+import signal
+import socket
+import sys
+import time
+
+port = int(sys.argv[1])
+ready_file = sys.argv[2]
+host = sys.argv[3]
+sock = socket.socket()
+sock.bind((host, port))
+sock.listen(1)
+with open(ready_file, "w", encoding="utf-8") as ready:
+    ready.write(str(port))
+
+running = True
+def stop(_signum, _frame):
+    global running
+    running = False
+
+signal.signal(signal.SIGTERM, stop)
+signal.signal(signal.SIGINT, stop)
+while running:
+    time.sleep(0.1)
+sock.close()
+PY
+  local pid="$!"
+  PORT_GUARDS[$port]="$pid"
+  wait_file "port-guard-$port" "$ready_file"
+}
+
+guard_all_ports() {
+  local endpoint
+  for endpoint in \
+    "$REGISTRY_PUB" "$REGISTRY_ROUTER" \
+    "$ROUTE_A" "$ROUTE_B" "$ROUTE_SESSION_A" "$ROUTE_SESSION_B" \
+    "$SPOT_A" "$SPOT_B" "$SPOT_SESSION_A" "$SPOT_SESSION_B" \
+    "$PUB_A" "$PUB_B" "$PUB_SESSION_A" "$PUB_SESSION_B" \
+    "$PUBLISHER_CLIENT" "$API_CLIENT" \
+    "$STREAM_A" "$STREAM_B" \
+    "$MULTI_ROUTE_A" "$MULTI_ROUTE_B" \
+    "$MULTI_SPOT_A" "$MULTI_SPOT_B" "$MULTI_PUB_A" "$MULTI_PUB_B" \
+    "$STREAM_TLS_A" \
+    "$HTTP_A" "$HTTP_B" "$HTTP_SESSION_A" "$HTTP_SESSION_B" "$HTTP_GATEWAY" \
+    "$HTTP_MULTI_A" "$HTTP_MULTI_B"; do
+    guard_port "$endpoint"
+  done
+}
+
+release_port_guard() {
+  local endpoint="$1"
+  if [[ -z "$endpoint" ]]; then
+    return 0
+  fi
+  local port
+  port="$(port_of "$endpoint")"
+  local pid="${PORT_GUARDS[$port]:-}"
+  if [[ -z "$pid" ]]; then
+    return 0
+  fi
+  kill "$pid" >/dev/null 2>&1 || true
+  wait "$pid" >/dev/null 2>&1 || true
+  unset "PORT_GUARDS[$port]"
+  rm -f "$LOG_DIR/port-guard-$port.ready"
+}
+
+release_port_guards() {
+  local endpoint
+  for endpoint in "$@"; do
+    release_port_guard "$endpoint"
+  done
+}
+
+if [[ "${ZLINK_CPP_E2E_SKIP_BUILD:-0}" != "1" ]]; then
+  cmake -S "$CPP_DIR" -B "$BUILD_DIR" >/dev/null
+  cmake --build "$BUILD_DIR" --target \
+    zlink_cpp_e2e_spot_service_registry \
+    zlink_cpp_e2e_spot_service_play \
+    zlink_cpp_e2e_spot_service_session \
+    zlink_cpp_e2e_spot_service_gateway \
+    zlink_cpp_e2e_spot_service_multinode \
+    zlink_cpp_e2e_spot_service_client >/dev/null
+fi
 
 REGISTRY_SERVER="$BUILD_DIR/zlink_cpp_e2e_spot_service_registry"
 PLAY_SERVER="$BUILD_DIR/zlink_cpp_e2e_spot_service_play"
@@ -56,12 +198,26 @@ stop_all_processes() {
       kill "$pid" >/dev/null 2>&1 || true
     fi
   done
-  sleep 0.2
   for pid in "${PIDS[@]:-}"; do
-    if kill -0 "$pid" >/dev/null 2>&1; then
+    for _ in {1..30}; do
+      if ! kill -0 "$pid" >/dev/null 2>&1; then
+        break
+      fi
+      if [[ "$(ps -o stat= -p "$pid" 2>/dev/null | tr -d ' ')" == Z* ]]; then
+        break
+      fi
+      sleep 0.1
+    done
+    if kill -0 "$pid" >/dev/null 2>&1 \
+      && [[ "$(ps -o stat= -p "$pid" 2>/dev/null | tr -d ' ')" != Z* ]]; then
       kill -9 "$pid" >/dev/null 2>&1 || true
     fi
   done
+  for pid in "${PORT_GUARDS[@]:-}"; do
+    kill "$pid" >/dev/null 2>&1 || true
+    wait "$pid" >/dev/null 2>&1 || true
+  done
+  PORT_GUARDS=()
   wait >/dev/null 2>&1 || true
   PIDS=()
   PLAY_A_PID=""
@@ -84,13 +240,21 @@ port_of() {
   echo "${1##*:}"
 }
 
+host_of() {
+  local endpoint="$1"
+  local address="${endpoint#*://}"
+  echo "${address%:*}"
+}
+
 wait_port() {
   local name="$1"
   local endpoint="$2"
+  local host
   local port
+  host="$(host_of "$endpoint")"
   port="$(port_of "$endpoint")"
-  for _ in $(seq 1 120); do
-    if (echo >"/dev/tcp/127.0.0.1/${port}") >/dev/null 2>&1; then
+  for _ in $(seq 1 60); do
+    if (echo >"/dev/tcp/${host}/${port}") >/dev/null 2>&1; then
       return 0
     fi
     sleep 0.05
@@ -102,10 +266,12 @@ wait_port() {
 wait_port_closed() {
   local name="$1"
   local endpoint="$2"
+  local host
   local port
+  host="$(host_of "$endpoint")"
   port="$(port_of "$endpoint")"
-  for _ in $(seq 1 120); do
-    if ! (echo >"/dev/tcp/127.0.0.1/${port}") >/dev/null 2>&1; then
+  for _ in $(seq 1 60); do
+    if ! (echo >"/dev/tcp/${host}/${port}") >/dev/null 2>&1; then
       return 0
     fi
     sleep 0.05
@@ -114,22 +280,64 @@ wait_port_closed() {
   return 1
 }
 
+wait_http_health() {
+  local name="$1"
+  local endpoint="$2"
+  python3 - "$name" "$endpoint/health" "$LOCAL_READINESS_TIMEOUT_SECONDS" <<'PY'
+import sys
+import time
+import urllib.request
+
+name = sys.argv[1]
+url = sys.argv[2]
+timeout_seconds = float(sys.argv[3])
+deadline = time.monotonic() + timeout_seconds
+last_error = None
+while time.monotonic() < deadline:
+    try:
+        with urllib.request.urlopen(url, timeout=timeout_seconds) as response:
+            if 200 <= response.status < 300:
+                sys.exit(0)
+            last_error = f"HTTP {response.status}"
+    except Exception as error:
+        last_error = str(error)
+    time.sleep(0.1)
+print(f"Timed out waiting {timeout_seconds:g}s for {name} health at {url}: {last_error}", file=sys.stderr)
+sys.exit(1)
+PY
+}
+
 allocate_tcp_endpoint() {
   python3 - <<'PY'
+import random
 import socket
+import os
 
-sock = socket.socket()
-sock.bind(("127.0.0.1", 0))
-port = sock.getsockname()[1]
-sock.close()
-print(f"tcp://127.0.0.1:{port}")
+host = os.environ.get("ZLINK_CPP_E2E_BIND_HOST", "127.0.0.2")
+base = os.environ.get("ZLINK_CPP_E2E_PORT_BASE")
+port_range = int(os.environ.get("ZLINK_CPP_E2E_PORT_RANGE", "20000"))
+start = int(base) if base else 10000
+stop = start + port_range if base else 30000
+available = list(range(start, stop))
+for port in random.sample(available, len(available)):
+    sock = socket.socket()
+    try:
+        sock.bind((host, port))
+    except OSError:
+        sock.close()
+        continue
+    sock.close()
+    print(f"tcp://{host}:{port}")
+    raise SystemExit(0)
+raise SystemExit("failed to allocate local TCP endpoint")
 PY
 }
 
 wait_file() {
   local name="$1"
   local path="$2"
-  for _ in $(seq 1 900); do
+  local attempts="${3:-30}"
+  for _ in $(seq 1 "$attempts"); do
     if [[ -f "$path" ]]; then
       return 0
     fi
@@ -140,6 +348,7 @@ wait_file() {
 }
 
 start_registry() {
+  release_port_guards "$REGISTRY_PUB" "$REGISTRY_ROUTER"
   ZLINK_CPP_E2E_REGISTRY_PUB="$REGISTRY_PUB" \
   ZLINK_CPP_E2E_REGISTRY_ROUTER="$REGISTRY_ROUTER" \
   ZLINK_CPP_E2E_LOG_DIR="$LOG_DIR" \
@@ -155,6 +364,8 @@ start_play() {
   local pubsub="$4"
   local http="$5"
   local api_server="${6:-}"
+  release_port_guards "$route" "$spot" "$pubsub" "$http" "$api_server" "$API_CLIENT" \
+    "$PUBLISHER_CLIENT"
   ZLINK_CPP_E2E_NODE_RID="$rid" \
   ZLINK_CPP_E2E_ROUTE_ENDPOINT="$route" \
   ZLINK_CPP_E2E_ROUTE_A_ENDPOINT="$ROUTE_A" \
@@ -184,6 +395,7 @@ start_play() {
   wait_port "$rid-route" "$route"
   wait_port "$rid-spot" "$spot"
   wait_port "$rid-http" "$http"
+  wait_http_health "$rid" "$http"
 }
 
 start_session() {
@@ -196,6 +408,7 @@ start_session() {
   local tls_stream="${7:-}"
   local tls_cert="${8:-}"
   local tls_key="${9:-}"
+  release_port_guards "$route" "$spot" "$pubsub" "$stream" "$http" "$tls_stream"
   ZLINK_CPP_E2E_NODE_RID="$rid" \
   ZLINK_CPP_E2E_ROUTE_ENDPOINT="$route" \
   ZLINK_CPP_E2E_ROUTE_A_ENDPOINT="$ROUTE_A" \
@@ -225,6 +438,7 @@ start_session() {
     wait_port "$rid-tls-stream" "$tls_stream"
   fi
   wait_port "$rid-http" "$http"
+  wait_http_health "$rid" "$http"
 }
 
 generate_tls_cert() {
@@ -247,6 +461,7 @@ start_gateway() {
   local spot="$3"
   local pubsub="$4"
   local http="$5"
+  release_port_guards "$route" "$spot" "$pubsub" "$http"
   ZLINK_CPP_E2E_NODE_RID="$rid" \
   ZLINK_CPP_E2E_ROUTE_ENDPOINT="$route" \
   ZLINK_CPP_E2E_ROUTE_A_ENDPOINT="$ROUTE_A" \
@@ -266,6 +481,7 @@ start_gateway() {
   wait_port "$rid-route" "$route"
   wait_port "$rid-spot" "$spot"
   wait_port "$rid-http" "$http"
+  wait_http_health "$rid" "$http"
 }
 
 start_multi_node() {
@@ -275,6 +491,7 @@ start_multi_node() {
   local spot="$4"
   local pubsub="$5"
   local http="$6"
+  release_port_guards "$route" "$spot" "$pubsub" "$http"
   ZLINK_CPP_E2E_NODE_RID="$rid" \
   ZLINK_CPP_E2E_ROUTE_ENDPOINT="$route" \
   ZLINK_CPP_E2E_PEER_ROUTE_ENDPOINT="$peer_route" \
@@ -289,6 +506,7 @@ start_multi_node() {
   wait_port "$rid-route" "$route"
   wait_port "$rid-spot" "$spot"
   wait_port "$rid-http" "$http"
+  wait_http_health "$rid" "$http"
 }
 
 fetch_evidence() {
@@ -299,7 +517,7 @@ import sys
 import urllib.request
 
 url = sys.argv[1]
-with urllib.request.urlopen(url, timeout=5) as response:
+with urllib.request.urlopen(url, timeout=3) as response:
     sys.stdout.write(response.read().decode("utf-8"))
 PY
 }
@@ -312,6 +530,7 @@ run_control_ping() {
   python3 - "$http/channel/control-ping" "$target" "$value" >"$LOG_DIR/$output.stdout.log" 2>"$LOG_DIR/$output.stderr.log" <<'PY'
 import json
 import sys
+import urllib.error
 import urllib.request
 
 url = sys.argv[1]
@@ -324,7 +543,12 @@ request = urllib.request.Request(
     headers={"content-type": "application/json"},
     method="POST",
 )
-with urllib.request.urlopen(request, timeout=6) as response:
+try:
+    response = urllib.request.urlopen(request, timeout=3)
+except urllib.error.HTTPError as error:
+    sys.stderr.write(error.read().decode("utf-8", errors="replace"))
+    raise
+with response:
     payload = json.loads(response.read().decode("utf-8"))
 assert payload["node_rid"] == target
 assert payload["value"] == value
@@ -337,26 +561,26 @@ wait_control_ping() {
   local http="$2"
   local target="$3"
   local value="$4"
-  local attempts="${ZLINK_SPOT_SERVICE_WAIT_ROUTE_ATTEMPTS:-180}"
-  for attempt in $(seq 1 "$attempts"); do
-    if run_control_ping "$output-attempt-$attempt" "$http" "$target" "$value"; then
-      cat "$LOG_DIR/$output-attempt-$attempt.stdout.log"
-      return 0
-    fi
-    sleep 0.5
-  done
-  echo "Timed out waiting for SpotService control ping $output via $http -> $target" >&2
-  return 1
+  local settle_seconds="${ZLINK_SPOT_SERVICE_ROUTE_SETTLE_SECONDS:-3}"
+  sleep "$settle_seconds"
+  run_control_ping "$output" "$http" "$target" "$value"
+  cat "$LOG_DIR/$output.stdout.log"
+}
+
+settle_scenario() {
+  sleep "${ZLINK_SPOT_SERVICE_SCENARIO_SETTLE_SECONDS:-3}"
 }
 
 run_base_client() {
   local mode="$1"
   local output="$2"
   local route_endpoint="${3:-$ROUTE_CLIENT}"
+  local route_a_endpoint="${4:-$ROUTE_A}"
+  local route_b_endpoint="${5:-$ROUTE_B}"
   local status=0
   ZLINK_CPP_E2E_ROUTE_ENDPOINT="$route_endpoint" \
-  ZLINK_CPP_E2E_ROUTE_A_ENDPOINT="$ROUTE_A" \
-  ZLINK_CPP_E2E_ROUTE_B_ENDPOINT="$ROUTE_B" \
+  ZLINK_CPP_E2E_ROUTE_A_ENDPOINT="$route_a_endpoint" \
+  ZLINK_CPP_E2E_ROUTE_B_ENDPOINT="$route_b_endpoint" \
   ZLINK_CPP_E2E_MULTI_ROUTE_CLIENT_A_ENDPOINT="$MULTI_ROUTE_CLIENT_A" \
   ZLINK_CPP_E2E_MULTI_ROUTE_CLIENT_B_ENDPOINT="$MULTI_ROUTE_CLIENT_B" \
   ZLINK_CPP_E2E_MULTI_ROUTE_A_ENDPOINT="$MULTI_ROUTE_A" \
@@ -380,64 +604,44 @@ run_base_client() {
 
 wait_route_ready() {
   local output="$1"
-  local route_endpoint
-  route_endpoint="$(allocate_tcp_endpoint)"
-  for attempt in $(seq 1 20); do
-    if run_base_client route-ready "$output-attempt-$attempt" "$route_endpoint"; then
-      wait_port_closed "$output-route-client" "$route_endpoint"
-      return 0
-    fi
-    wait_port_closed "$output-route-client" "$route_endpoint" || true
-    sleep 1
-  done
-  echo "Timed out waiting for SpotService route mesh readiness" >&2
-  return 1
+  local settle_seconds="${ZLINK_SPOT_SERVICE_ROUTE_SETTLE_SECONDS:-3}"
+  local status=0
+  sleep "$settle_seconds"
+  run_base_client route-ready-play-a "$output" "$ROUTE_CLIENT" "$ROUTE_A" "" || status=$?
+  wait_port_closed "$output-route-client" "$ROUTE_CLIENT" || true
+  return "$status"
 }
 
 wait_play_b_route_ready() {
   local output="$1"
-  local route_endpoint
-  route_endpoint="$(allocate_tcp_endpoint)"
-  for attempt in $(seq 1 20); do
-    if run_base_client route-ready-play-b "$output-attempt-$attempt" "$route_endpoint"; then
-      wait_port_closed "$output-route-client" "$route_endpoint"
-      return 0
-    fi
-    wait_port_closed "$output-route-client" "$route_endpoint" || true
-    sleep 1
-  done
-  echo "Timed out waiting for SpotService play-b route readiness" >&2
-  return 1
+  local settle_seconds="${ZLINK_SPOT_SERVICE_ROUTE_SETTLE_SECONDS:-3}"
+  local status=0
+  sleep "$settle_seconds"
+  run_base_client route-ready-play-b "$output" "$ROUTE_CLIENT" "" "$ROUTE_B" || status=$?
+  wait_port_closed "$output-route-client" "$ROUTE_CLIENT" || true
+  return "$status"
 }
 
 wait_route_ready_on_endpoint() {
   local output="$1"
   local route_endpoint="$2"
-  for attempt in $(seq 1 20); do
-    if run_base_client route-ready "$output-attempt-$attempt" "$route_endpoint"; then
-      wait_port_closed "$output-route-client" "$route_endpoint"
-      return 0
-    fi
-    wait_port_closed "$output-route-client" "$route_endpoint" || true
-    sleep 1
-  done
-  echo "Timed out waiting for SpotService route mesh readiness at $route_endpoint" >&2
-  return 1
+  local settle_seconds="${ZLINK_SPOT_SERVICE_ROUTE_SETTLE_SECONDS:-3}"
+  local status=0
+  sleep "$settle_seconds"
+  run_base_client route-ready "$output" "$route_endpoint" || status=$?
+  wait_port_closed "$output-route-client" "$route_endpoint" || true
+  return "$status"
 }
 
 wait_play_b_route_ready_on_endpoint() {
   local output="$1"
   local route_endpoint="$2"
-  for attempt in $(seq 1 20); do
-    if run_base_client route-ready-play-b "$output-attempt-$attempt" "$route_endpoint"; then
-      wait_port_closed "$output-route-client" "$route_endpoint"
-      return 0
-    fi
-    wait_port_closed "$output-route-client" "$route_endpoint" || true
-    sleep 1
-  done
-  echo "Timed out waiting for SpotService play-b route readiness at $route_endpoint" >&2
-  return 1
+  local settle_seconds="${ZLINK_SPOT_SERVICE_ROUTE_SETTLE_SECONDS:-3}"
+  local status=0
+  sleep "$settle_seconds"
+  run_base_client route-ready-play-b "$output" "$route_endpoint" "" "$ROUTE_B" || status=$?
+  wait_port_closed "$output-route-client" "$route_endpoint" || true
+  return "$status"
 }
 
 if [[ "$SCENARIO" == "SM-A1-A2-A4-F1-F2" || "$SCENARIO" == "sm-a1-a2-a4-f1-f2" ]]; then
@@ -445,6 +649,8 @@ if [[ "$SCENARIO" == "SM-A1-A2-A4-F1-F2" || "$SCENARIO" == "sm-a1-a2-a4-f1-f2" ]
   start_play play-a "$ROUTE_A" "$SPOT_A" "$PUB_A" "$HTTP_A"
   start_play play-b "$ROUTE_B" "$SPOT_B" "$PUB_B" "$HTTP_B"
   wait_route_ready sm-a1-a2-a4-f1-f2-route-ready
+  wait_control_ping sm-a1-a2-a4-f1-f2-play-b-play-a-ready "$HTTP_B" play-a \
+    "sm-a1-a2-a4-f1-f2-play-b-play-a-ready"
   run_base_client sm-a1-a2-a4-f1-f2 client-sm-a1-a2-a4-f1-f2
   fetch_evidence play-a-sm-a1-a2-a4-f1-f2 "$HTTP_A"
   fetch_evidence play-b-sm-a1-a2-a4-f1-f2 "$HTTP_B"
@@ -512,29 +718,28 @@ run_stream_route_ready_client() {
 
 wait_stream_route_ready() {
   local output="$1"
-  for attempt in $(seq 1 20); do
-    if run_stream_route_ready_client "$output-attempt-$attempt"; then
-      wait_port_closed "$output-route-client" "$ROUTE_STREAM_CLIENT"
-      return 0
-    fi
-    wait_port_closed "$output-route-client" "$ROUTE_STREAM_CLIENT" || true
-    sleep 1
-  done
-  echo "Timed out waiting for SpotService stream route mesh readiness" >&2
-  return 1
+  local settle_seconds="${ZLINK_SPOT_SERVICE_ROUTE_SETTLE_SECONDS:-3}"
+  local status=0
+  sleep "$settle_seconds"
+  run_stream_route_ready_client "$output" || status=$?
+  wait_port_closed "$output-route-client" "$ROUTE_STREAM_CLIENT" || true
+  return "$status"
 }
 
 run_focused_from_all() {
   local scenario="$1"
-  for attempt in $(seq 1 3); do
-    if ZLINK_CPP_E2E_BUILD_DIR="$BUILD_DIR" "$0" "$scenario"; then
-      return 0
-    fi
-    echo "focused $scenario attempt $attempt failed; retrying" >&2
-    sleep 1
-  done
-  echo "focused $scenario failed after retries" >&2
-  return 1
+  local scenario_index="$2"
+  local child_output="$LOG_DIR/child-$scenario.output.log"
+  ZLINK_CPP_E2E_BUILD_DIR="$BUILD_DIR" \
+  ZLINK_CPP_E2E_SKIP_BUILD=1 \
+    "$0" "$scenario" | tee "$child_output"
+  local child_log_dir
+  child_log_dir="$(sed -n 's/^log_dir=//p' "$child_output" | tail -1)"
+  if [[ -z "$child_log_dir" || ! -d "$child_log_dir" ]]; then
+    echo "missing child log directory for $scenario" >&2
+    exit 1
+  fi
+  echo "$scenario $child_log_dir" >>"$LOG_DIR/child-runs.log"
 }
 
 if [[ "$SCENARIO" == "SM-A1" || "$SCENARIO" == "sm-a1" ]]; then
@@ -594,7 +799,8 @@ if [[ "$SCENARIO" == "SM-A3" || "$SCENARIO" == "sm-a3" ]]; then
   start_registry
   start_play play-a "$ROUTE_A" "$SPOT_A" "$PUB_A" "$HTTP_A"
   start_play play-b "$ROUTE_B" "$SPOT_B" "$PUB_B" "$HTTP_B"
-  sleep 20
+  settle_scenario
+  wait_control_ping sm-a3-play-b-play-a "$HTTP_B" play-a "sm-a3-play-b-play-a-ready"
   run_base_client sm-a3 client-sm-a3
   fetch_evidence play-a-sm-a3 "$HTTP_A"
   fetch_evidence play-b-sm-a3 "$HTTP_B"
@@ -621,7 +827,7 @@ if [[ "$SCENARIO" == "SM-A4" || "$SCENARIO" == "sm-a4" ]]; then
   start_registry
   start_play play-a "$ROUTE_A" "$SPOT_A" "$PUB_A" "$HTTP_A"
   start_play play-b "$ROUTE_B" "$SPOT_B" "$PUB_B" "$HTTP_B"
-  sleep 20
+  settle_scenario
   run_base_client sm-a4 client-sm-a4
   fetch_evidence play-a-sm-a4 "$HTTP_A"
   fetch_evidence play-b-sm-a4 "$HTTP_B"
@@ -650,6 +856,7 @@ if [[ "$SCENARIO" == "SM-A5" || "$SCENARIO" == "sm-a5" ]]; then
   start_play play-a "$ROUTE_A" "$SPOT_A" "$PUB_A" "$HTTP_A"
   start_play play-b "$ROUTE_B" "$SPOT_B" "$PUB_B" "$HTTP_B"
   wait_route_ready sm-a5-route-ready
+  wait_control_ping sm-a5-play-b-play-a "$HTTP_B" play-a "sm-a5-play-b-play-a-ready"
   run_base_client sm-a5 client-sm-a5
   fetch_evidence play-a-sm-a5 "$HTTP_A"
   fetch_evidence play-b-sm-a5 "$HTTP_B"
@@ -729,7 +936,7 @@ if [[ "$SCENARIO" == "SM-A7" || "$SCENARIO" == "sm-a7" ]]; then
   start_registry
   start_play play-a "$ROUTE_A" "$SPOT_A" "$PUB_A" "$HTTP_A"
   start_play play-b "$ROUTE_B" "$SPOT_B" "$PUB_B" "$HTTP_B"
-  sleep 20
+  settle_scenario
   run_base_client sm-a7 client-sm-a7
   fetch_evidence play-a-sm-a7 "$HTTP_A"
   fetch_evidence play-b-sm-a7 "$HTTP_B"
@@ -760,7 +967,7 @@ if [[ "$SCENARIO" == "SM-A8" || "$SCENARIO" == "sm-a8" ]]; then
   start_registry
   start_play play-a "$ROUTE_A" "$SPOT_A" "$PUB_A" "$HTTP_A"
   start_play play-b "$ROUTE_B" "$SPOT_B" "$PUB_B" "$HTTP_B"
-  sleep 20
+  settle_scenario
   run_base_client sm-a8 client-sm-a8
   fetch_evidence play-a-sm-a8 "$HTTP_A"
   fetch_evidence play-b-sm-a8 "$HTTP_B"
@@ -842,7 +1049,7 @@ if [[ "$SCENARIO" == "SM-B2" || "$SCENARIO" == "sm-b2" ]]; then
   start_registry
   start_play play-a "$ROUTE_A" "$SPOT_A" "$PUB_A" "$HTTP_A"
   start_play play-b "$ROUTE_B" "$SPOT_B" "$PUB_B" "$HTTP_B"
-  sleep 20
+  settle_scenario
   run_base_client sm-b2 client-sm-b2
   fetch_evidence play-a-sm-b2 "$HTTP_A"
   fetch_evidence play-b-sm-b2 "$HTTP_B"
@@ -888,7 +1095,7 @@ if [[ "$SCENARIO" == "SM-B3" || "$SCENARIO" == "sm-b3" ]]; then
   start_registry
   start_play play-a "$ROUTE_A" "$SPOT_A" "$PUB_A" "$HTTP_A"
   start_play play-b "$ROUTE_B" "$SPOT_B" "$PUB_B" "$HTTP_B"
-  sleep 20
+  settle_scenario
   run_base_client sm-b3 client-sm-b3
   fetch_evidence play-a-sm-b3 "$HTTP_A"
   fetch_evidence play-b-sm-b3 "$HTTP_B"
@@ -934,7 +1141,7 @@ if [[ "$SCENARIO" == "SM-B4" || "$SCENARIO" == "sm-b4" ]]; then
   start_registry
   start_play play-a "$ROUTE_A" "$SPOT_A" "$PUB_A" "$HTTP_A"
   start_play play-b "$ROUTE_B" "$SPOT_B" "$PUB_B" "$HTTP_B"
-  sleep 20
+  settle_scenario
   run_base_client sm-b4 client-sm-b4
   fetch_evidence play-a-sm-b4 "$HTTP_A"
   fetch_evidence play-b-sm-b4 "$HTTP_B"
@@ -986,7 +1193,7 @@ if [[ "$SCENARIO" == "SM-B5" || "$SCENARIO" == "sm-b5" ]]; then
   start_registry
   start_play play-a "$ROUTE_A" "$SPOT_A" "$PUB_A" "$HTTP_A"
   start_play play-b "$ROUTE_B" "$SPOT_B" "$PUB_B" "$HTTP_B"
-  sleep 20
+  settle_scenario
   run_base_client sm-b5 client-sm-b5
   fetch_evidence play-a-sm-b5 "$HTTP_A"
   fetch_evidence play-b-sm-b5 "$HTTP_B"
@@ -1017,8 +1224,8 @@ if [[ "$SCENARIO" == "SM-B6" || "$SCENARIO" == "sm-b6" ]]; then
   start_play play-a "$ROUTE_A" "$SPOT_A" "$PUB_A" "$HTTP_A"
   start_play play-b "$ROUTE_B" "$SPOT_B" "$PUB_B" "$HTTP_B"
   start_session session-a "$ROUTE_SESSION_A" "$SPOT_SESSION_A" "$PUB_SESSION_A" "$STREAM_A" "$HTTP_SESSION_A"
-  wait_control_ping sm-d2-session-a-play-b "$HTTP_SESSION_A" play-b "sm-d2-session-a-play-b-ready"
-  sleep 2
+  wait_control_ping sm-b6-session-a-play-a "$HTTP_SESSION_A" play-a "sm-b6-session-a-play-a-ready"
+  wait_control_ping sm-b6-session-a-play-b "$HTTP_SESSION_A" play-b "sm-b6-session-a-play-b-ready"
   ZLINK_CPP_E2E_ROUTE_ENDPOINT="$ROUTE_CLIENT" \
   ZLINK_CPP_E2E_ROUTE_A_ENDPOINT="$ROUTE_A" \
   ZLINK_CPP_E2E_ROUTE_B_ENDPOINT="$ROUTE_B" \
@@ -1081,7 +1288,6 @@ if [[ "$SCENARIO" == "SM-B7" || "$SCENARIO" == "sm-b7" ]]; then
   start_play play-a "$ROUTE_A" "$SPOT_A" "$PUB_A" "$HTTP_A"
   start_play play-b "$ROUTE_B" "$SPOT_B" "$PUB_B" "$HTTP_B"
   start_session session-a "$ROUTE_SESSION_A" "$SPOT_SESSION_A" "$PUB_SESSION_A" "$STREAM_A" "$HTTP_SESSION_A"
-  sleep 20
   ZLINK_CPP_E2E_ROUTE_ENDPOINT="$ROUTE_CLIENT" \
   ZLINK_CPP_E2E_ROUTE_A_ENDPOINT="$ROUTE_A" \
   ZLINK_CPP_E2E_ROUTE_B_ENDPOINT="$ROUTE_B" \
@@ -1141,7 +1347,6 @@ if [[ "$SCENARIO" == "SM-B8" || "$SCENARIO" == "sm-b8" ]]; then
   start_play play-a "$ROUTE_A" "$SPOT_A" "$PUB_A" "$HTTP_A"
   start_play play-b "$ROUTE_B" "$SPOT_B" "$PUB_B" "$HTTP_B"
   start_session session-a "$ROUTE_SESSION_A" "$SPOT_SESSION_A" "$PUB_SESSION_A" "$STREAM_A" "$HTTP_SESSION_A"
-  sleep 20
   ZLINK_CPP_E2E_ROUTE_ENDPOINT="$ROUTE_CLIENT" \
   ZLINK_CPP_E2E_ROUTE_A_ENDPOINT="$ROUTE_A" \
   ZLINK_CPP_E2E_ROUTE_B_ENDPOINT="$ROUTE_B" \
@@ -1168,9 +1373,8 @@ import sys
 play_a = json.load(open(sys.argv[1], encoding="utf-8"))
 play_b = json.load(open(sys.argv[2], encoding="utf-8"))
 session_a = json.load(open(sys.argv[3], encoding="utf-8"))
-actor = "sm-b8-destroy"
+actor = "actor-sm-b8-destroy"
 entry = "play-a:entry:1"
-spot = "user:play-a:sm-b8-destroy"
 entries = play_a["entries"]
 
 def indexes(marker, spot_rid=None, value=None):
@@ -1181,16 +1385,14 @@ def indexes(marker, spot_rid=None, value=None):
             and (value is None or item["value"] == value)]
 
 created = indexes("ActorCreated", entry)
-joined = indexes("ActorJoined", spot, "sm-b8-destroy")
-left = indexes("ActorLeft", spot)
-destroyed = indexes("ActorDestroyed", entry, "explicit")
+joined = indexes("EntryActorJoined", entry)
+destroyed = indexes("ActorDestroyed", entry, "destroy")
 assert len(created) == 1, created
 assert len(joined) == 1, joined
-assert len(left) == 1, left
 assert len(destroyed) == 1, destroyed
-assert created[0] < joined[0] < left[0] < destroyed[0]
-assert not indexes("ActorPing", spot, "after-destroy:1")
-assert not any(item["actor_id"] == actor or item["spot_rid"] in (entry, spot)
+assert created[0] < joined[0] < destroyed[0]
+assert not indexes("EntryActorPing", entry, "after-destroy:1")
+assert not any(item["actor_id"] == actor or item["spot_rid"] == entry
                for item in play_b["entries"])
 assert any(item["marker"] == "StreamUnbound" and item["actor_id"] == actor
            for item in session_a["entries"])
@@ -1204,7 +1406,8 @@ if [[ "$SCENARIO" == "SM-C1" || "$SCENARIO" == "sm-c1" ]]; then
   start_registry
   start_play play-a "$ROUTE_A" "$SPOT_A" "$PUB_A" "$HTTP_A"
   start_play play-b "$ROUTE_B" "$SPOT_B" "$PUB_B" "$HTTP_B"
-  sleep 20
+  settle_scenario
+  wait_control_ping sm-c1-play-a-play-b "$HTTP_A" play-b "sm-c1-play-a-play-b-ready"
   ZLINK_CPP_E2E_ROUTE_ENDPOINT="$ROUTE_CLIENT" \
   ZLINK_CPP_E2E_ROUTE_A_ENDPOINT="$ROUTE_A" \
   ZLINK_CPP_E2E_ROUTE_B_ENDPOINT="$ROUTE_B" \
@@ -1259,7 +1462,8 @@ if [[ "$SCENARIO" == "SM-C2" || "$SCENARIO" == "sm-c2" ]]; then
   start_registry
   start_play play-a "$ROUTE_A" "$SPOT_A" "$PUB_A" "$HTTP_A" "$API_CLIENT"
   start_play play-b "$ROUTE_B" "$SPOT_B" "$PUB_B" "$HTTP_B"
-  sleep 20
+  settle_scenario
+  wait_control_ping sm-c2-play-a-play-b "$HTTP_A" play-b "sm-c2-play-a-play-b-ready"
   ZLINK_CPP_E2E_ROUTE_ENDPOINT="$ROUTE_CLIENT" \
   ZLINK_CPP_E2E_ROUTE_A_ENDPOINT="$ROUTE_A" \
   ZLINK_CPP_E2E_ROUTE_B_ENDPOINT="$ROUTE_B" \
@@ -1314,7 +1518,8 @@ if [[ "$SCENARIO" == "SM-C3" || "$SCENARIO" == "sm-c3" ]]; then
   start_registry
   start_play play-a "$ROUTE_A" "$SPOT_A" "$PUB_A" "$HTTP_A"
   start_play play-b "$ROUTE_B" "$SPOT_B" "$PUB_B" "$HTTP_B"
-  sleep 20
+  settle_scenario
+  wait_control_ping sm-c3-play-a-play-b "$HTTP_A" play-b "sm-c3-play-a-play-b-ready"
   ZLINK_CPP_E2E_ROUTE_ENDPOINT="$ROUTE_CLIENT" \
   ZLINK_CPP_E2E_ROUTE_A_ENDPOINT="$ROUTE_A" \
   ZLINK_CPP_E2E_ROUTE_B_ENDPOINT="$ROUTE_B" \
@@ -1373,7 +1578,7 @@ if [[ "$SCENARIO" == "SM-C4" || "$SCENARIO" == "sm-c4" ]]; then
   start_play play-a "$ROUTE_A" "$SPOT_A" "$PUB_A" "$HTTP_A"
   start_play play-b "$ROUTE_B" "$SPOT_B" "$PUB_B" "$HTTP_B"
   start_gateway gateway "$ROUTE_CLIENT" "$SPOT_CLIENT" "$PUB_CLIENT" "$HTTP_GATEWAY"
-  sleep 20
+  settle_scenario
   ZLINK_CPP_E2E_ROUTE_ENDPOINT="$ROUTE_CLIENT" \
   ZLINK_CPP_E2E_ROUTE_A_ENDPOINT="$ROUTE_A" \
   ZLINK_CPP_E2E_ROUTE_B_ENDPOINT="$ROUTE_B" \
@@ -1431,7 +1636,7 @@ if [[ "$SCENARIO" == "SM-F1" || "$SCENARIO" == "sm-f1" \
   start_registry
   start_play play-a "$ROUTE_A" "$SPOT_A" "$PUB_A" "$HTTP_A"
   start_play play-b "$ROUTE_B" "$SPOT_B" "$PUB_B" "$HTTP_B"
-  sleep 20
+  settle_scenario
   scenario_lower="$(printf '%s' "$SCENARIO" | tr '[:upper:]' '[:lower:]')"
   run_base_client "$scenario_lower" "client-$scenario_lower"
   fetch_evidence "play-b-$scenario_lower" "$HTTP_B"
@@ -1476,12 +1681,10 @@ if [[ "$SCENARIO" == "SM-G1" || "$SCENARIO" == "sm-g1" ]]; then
   start_play play-a "$ROUTE_A" "$SPOT_A" "$PUB_A" "$HTTP_A"
   start_play play-b "$ROUTE_B" "$SPOT_B" "$PUB_B" "$HTTP_B"
   start_session session-a "$ROUTE_SESSION_A" "$SPOT_SESSION_A" "$PUB_SESSION_A" "$STREAM_A" "$HTTP_SESSION_A"
-  wait_route_ready sm-g1-route-ready
+  start_session session-b "$ROUTE_SESSION_B" "$SPOT_SESSION_B" "$PUB_SESSION_B" "$STREAM_B" "$HTTP_SESSION_B"
   wait_control_ping sm-g1-session-a-play-a "$HTTP_SESSION_A" play-a "sm-g1-session-a-play-a-ready"
-  wait_control_ping sm-g1-session-a-play-b "$HTTP_SESSION_A" play-b "sm-g1-session-a-play-b-ready"
+  wait_control_ping sm-g1-session-b-play-b "$HTTP_SESSION_B" play-b "sm-g1-session-b-play-b-ready"
   CRASH_SETUP_ROUTE="$(allocate_tcp_endpoint)"
-  wait_route_ready_on_endpoint sm-g1-setup-route-ready "$CRASH_SETUP_ROUTE"
-  sleep 2
 
   CRASH_READY="$LOG_DIR/sm-g1-ready"
   CRASH_GO="$LOG_DIR/sm-g1-go"
@@ -1495,6 +1698,7 @@ if [[ "$SCENARIO" == "SM-G1" || "$SCENARIO" == "sm-g1" ]]; then
   ZLINK_CPP_E2E_PUBLISHER_ENDPOINT="$PUBLISHER_CLIENT" \
   ZLINK_CPP_E2E_API_ENDPOINT="$API_CLIENT" \
   ZLINK_CPP_E2E_STREAM_ENDPOINT="$STREAM_A" \
+  ZLINK_CPP_E2E_ALT_STREAM_ENDPOINT="$STREAM_B" \
   ZLINK_CPP_E2E_SCENARIO_MODE=crash-setup \
   ZLINK_CPP_E2E_CLIENT_RID="client-sm-g1-setup" \
   ZLINK_CPP_E2E_CRASH_READY_FILE="$CRASH_READY" \
@@ -1513,19 +1717,15 @@ if [[ "$SCENARIO" == "SM-G1" || "$SCENARIO" == "sm-g1" ]]; then
   wait_file "SM-G1 crash observed" "$CRASH_OBSERVED"
   wait "$CRASH_CLIENT_PID"
   cat "$LOG_DIR/client-sm-g1-setup.stdout.log"
-  wait_play_b_route_ready sm-g1-recover-route-ready
-  sleep 2
-
   CRASH_RECOVER_ROUTE="$(allocate_tcp_endpoint)"
-  wait_play_b_route_ready_on_endpoint sm-g1-recover-client-route-ready "$CRASH_RECOVER_ROUTE"
   ZLINK_CPP_E2E_ROUTE_ENDPOINT="$CRASH_RECOVER_ROUTE" \
   ZLINK_CPP_E2E_ROUTE_A_ENDPOINT="" \
-  ZLINK_CPP_E2E_ROUTE_B_ENDPOINT="$ROUTE_B" \
+  ZLINK_CPP_E2E_ROUTE_B_ENDPOINT="" \
   ZLINK_CPP_E2E_SPOT_ROUTER_ENDPOINT="$SPOT_CLIENT" \
   ZLINK_CPP_E2E_PUBSUB_ENDPOINT="$PUB_CLIENT" \
   ZLINK_CPP_E2E_PUBLISHER_ENDPOINT="$PUBLISHER_CLIENT" \
   ZLINK_CPP_E2E_API_ENDPOINT="$API_CLIENT" \
-  ZLINK_CPP_E2E_STREAM_ENDPOINT="$STREAM_A" \
+  ZLINK_CPP_E2E_STREAM_ENDPOINT="$STREAM_B" \
   ZLINK_CPP_E2E_SCENARIO_MODE=crash-recover \
   ZLINK_CPP_E2E_CLIENT_RID="client-sm-g1-recover" \
   ZLINK_CPP_E2E_REGISTRY_ROUTER="$REGISTRY_ROUTER" \
@@ -1535,12 +1735,14 @@ if [[ "$SCENARIO" == "SM-G1" || "$SCENARIO" == "sm-g1" ]]; then
 
   fetch_evidence play-b-sm-g1 "$HTTP_B"
   fetch_evidence session-a-sm-g1 "$HTTP_SESSION_A"
-  python3 - "$LOG_DIR/play-b-sm-g1-evidence.json" "$LOG_DIR/session-a-sm-g1-evidence.json" <<'PY'
+  fetch_evidence session-b-sm-g1 "$HTTP_SESSION_B"
+  python3 - "$LOG_DIR/play-b-sm-g1-evidence.json" "$LOG_DIR/session-a-sm-g1-evidence.json" "$LOG_DIR/session-b-sm-g1-evidence.json" <<'PY'
 import json
 import sys
 
 play_b = json.load(open(sys.argv[1], encoding="utf-8"))
 session_a = json.load(open(sys.argv[2], encoding="utf-8"))
+session_b = json.load(open(sys.argv[3], encoding="utf-8"))
 
 def has(snapshot, marker, actor=None):
     return any(entry["marker"] == marker and (actor is None or entry["actor_id"] == actor)
@@ -1550,10 +1752,11 @@ def has_value(snapshot, marker, actor, value):
     return any(entry["marker"] == marker and entry["actor_id"] == actor and entry["value"] == value
                for entry in snapshot["entries"])
 
-assert has_value(play_b, "StateMutated", "crash-g1-play-b", "42")
-assert has_value(play_b, "StateMutated", "crash-g1-play-b", "49")
-assert has(session_a, "StreamBound", "crash-g1-play-a")
-assert has(session_a, "StreamBound", "crash-g1-play-b")
+assert has_value(play_b, "EntryActorPing", "actor-sm-g1-survivor", "after-crash:2")
+assert has_value(play_b, "EntryActorPing", "actor-sm-g1-crash", "rebound:1")
+assert has(session_a, "StreamBound", "actor-sm-g1-crash")
+assert has(session_b, "StreamBound", "actor-sm-g1-survivor")
+assert has(session_b, "StreamBound", "actor-sm-g1-crash")
 print("scenario SM-G1 evidence passed")
 PY
   echo "spot-service e2e result=passed"
@@ -1565,7 +1768,9 @@ if [[ "$SCENARIO" == "SM-D1" || "$SCENARIO" == "sm-d1" ]]; then
   start_play play-a "$ROUTE_A" "$SPOT_A" "$PUB_A" "$HTTP_A"
   start_play play-b "$ROUTE_B" "$SPOT_B" "$PUB_B" "$HTTP_B"
   start_session session-a "$ROUTE_SESSION_A" "$SPOT_SESSION_A" "$PUB_SESSION_A" "$STREAM_A" "$HTTP_SESSION_A"
-  sleep 20
+  settle_scenario
+  wait_control_ping sm-d1-session-a-play-a-ready "$HTTP_SESSION_A" play-a \
+    "sm-d1-session-a-play-a-ready"
   ZLINK_CPP_E2E_ROUTE_ENDPOINT="$ROUTE_CLIENT" \
   ZLINK_CPP_E2E_ROUTE_A_ENDPOINT="$ROUTE_A" \
   ZLINK_CPP_E2E_ROUTE_B_ENDPOINT="$ROUTE_B" \
@@ -1622,7 +1827,8 @@ if [[ "$SCENARIO" == "SM-D2" || "$SCENARIO" == "sm-d2" ]]; then
   start_play play-a "$ROUTE_A" "$SPOT_A" "$PUB_A" "$HTTP_A"
   start_play play-b "$ROUTE_B" "$SPOT_B" "$PUB_B" "$HTTP_B"
   start_session session-a "$ROUTE_SESSION_A" "$SPOT_SESSION_A" "$PUB_SESSION_A" "$STREAM_A" "$HTTP_SESSION_A"
-  sleep 20
+  settle_scenario
+  wait_control_ping sm-d11-session-a-play-a "$HTTP_SESSION_A" play-a "sm-d11-session-a-ready"
   ZLINK_CPP_E2E_ROUTE_ENDPOINT="$ROUTE_CLIENT" \
   ZLINK_CPP_E2E_ROUTE_A_ENDPOINT="$ROUTE_A" \
   ZLINK_CPP_E2E_ROUTE_B_ENDPOINT="$ROUTE_B" \
@@ -1679,7 +1885,8 @@ if [[ "$SCENARIO" == "SM-D3" || "$SCENARIO" == "sm-d3" ]]; then
   start_play play-a "$ROUTE_A" "$SPOT_A" "$PUB_A" "$HTTP_A"
   start_play play-b "$ROUTE_B" "$SPOT_B" "$PUB_B" "$HTTP_B"
   start_session session-a "$ROUTE_SESSION_A" "$SPOT_SESSION_A" "$PUB_SESSION_A" "$STREAM_A" "$HTTP_SESSION_A"
-  sleep 20
+  settle_scenario
+  wait_control_ping sm-d3-session-a-play-a "$HTTP_SESSION_A" play-a "sm-d3-session-a-ready"
   ZLINK_CPP_E2E_ROUTE_ENDPOINT="$ROUTE_CLIENT" \
   ZLINK_CPP_E2E_ROUTE_A_ENDPOINT="$ROUTE_A" \
   ZLINK_CPP_E2E_ROUTE_B_ENDPOINT="$ROUTE_B" \
@@ -1740,7 +1947,11 @@ if [[ "$SCENARIO" == "SM-D4" || "$SCENARIO" == "sm-d4" ]]; then
   start_play play-a "$ROUTE_A" "$SPOT_A" "$PUB_A" "$HTTP_A"
   start_play play-b "$ROUTE_B" "$SPOT_B" "$PUB_B" "$HTTP_B"
   start_session session-a "$ROUTE_SESSION_A" "$SPOT_SESSION_A" "$PUB_SESSION_A" "$STREAM_A" "$HTTP_SESSION_A"
-  sleep 20
+  settle_scenario
+  run_control_ping sm-d5-session-a-play-a "$HTTP_SESSION_A" play-a "sm-d5-session-a-play-a-ready"
+  cat "$LOG_DIR/sm-d5-session-a-play-a.stdout.log"
+  run_control_ping sm-d5-session-a-play-b "$HTTP_SESSION_A" play-b "sm-d5-session-a-play-b-ready"
+  cat "$LOG_DIR/sm-d5-session-a-play-b.stdout.log"
   ZLINK_CPP_E2E_ROUTE_ENDPOINT="$ROUTE_CLIENT" \
   ZLINK_CPP_E2E_ROUTE_A_ENDPOINT="$ROUTE_A" \
   ZLINK_CPP_E2E_ROUTE_B_ENDPOINT="$ROUTE_B" \
@@ -1796,7 +2007,11 @@ if [[ "$SCENARIO" == "SM-D5" || "$SCENARIO" == "sm-d5" ]]; then
   start_play play-a "$ROUTE_A" "$SPOT_A" "$PUB_A" "$HTTP_A"
   start_play play-b "$ROUTE_B" "$SPOT_B" "$PUB_B" "$HTTP_B"
   start_session session-a "$ROUTE_SESSION_A" "$SPOT_SESSION_A" "$PUB_SESSION_A" "$STREAM_A" "$HTTP_SESSION_A"
-  sleep 20
+  settle_scenario
+  run_control_ping sm-d5-session-a-play-a "$HTTP_SESSION_A" play-a "sm-d5-session-a-play-a-ready"
+  cat "$LOG_DIR/sm-d5-session-a-play-a.stdout.log"
+  run_control_ping sm-d5-session-a-play-b "$HTTP_SESSION_A" play-b "sm-d5-session-a-play-b-ready"
+  cat "$LOG_DIR/sm-d5-session-a-play-b.stdout.log"
   ZLINK_CPP_E2E_ROUTE_ENDPOINT="$ROUTE_CLIENT" \
   ZLINK_CPP_E2E_ROUTE_A_ENDPOINT="$ROUTE_A" \
   ZLINK_CPP_E2E_ROUTE_B_ENDPOINT="$ROUTE_B" \
@@ -1873,7 +2088,7 @@ if [[ "$SCENARIO" == "SM-D6" || "$SCENARIO" == "sm-d6" ]]; then
   start_play play-b "$ROUTE_B" "$SPOT_B" "$PUB_B" "$HTTP_B"
   start_session session-a "$ROUTE_SESSION_A" "$SPOT_SESSION_A" "$PUB_SESSION_A" "$STREAM_A" "$HTTP_SESSION_A"
   start_session session-b "$ROUTE_SESSION_B" "$SPOT_SESSION_B" "$PUB_SESSION_B" "$STREAM_B" "$HTTP_SESSION_B"
-  sleep 20
+  settle_scenario
   wait_control_ping sm-d6-session-a-control "$HTTP_SESSION_A" play-a "sm-d6-session-a-ready"
   wait_control_ping sm-d6-session-b-control "$HTTP_SESSION_B" play-b "sm-d6-session-b-ready"
   ZLINK_CPP_E2E_ROUTE_ENDPOINT="$ROUTE_CLIENT" \
@@ -1930,7 +2145,9 @@ if [[ "$SCENARIO" == "SM-D7" || "$SCENARIO" == "sm-d7" ]]; then
   start_play play-a "$ROUTE_A" "$SPOT_A" "$PUB_A" "$HTTP_A"
   start_play play-b "$ROUTE_B" "$SPOT_B" "$PUB_B" "$HTTP_B"
   start_session session-a "$ROUTE_SESSION_A" "$SPOT_SESSION_A" "$PUB_SESSION_A" "$STREAM_A" "$HTTP_SESSION_A"
-  sleep 20
+  settle_scenario
+  run_control_ping sm-g3-session-a-play-a "$HTTP_SESSION_A" play-a "sm-g3-session-a-ready"
+  cat "$LOG_DIR/sm-g3-session-a-play-a.stdout.log"
   ZLINK_CPP_E2E_ROUTE_ENDPOINT="$ROUTE_CLIENT" \
   ZLINK_CPP_E2E_ROUTE_A_ENDPOINT="$ROUTE_A" \
   ZLINK_CPP_E2E_ROUTE_B_ENDPOINT="$ROUTE_B" \
@@ -1982,7 +2199,7 @@ if [[ "$SCENARIO" == "SM-D8" || "$SCENARIO" == "sm-d8" ]]; then
   start_play play-a "$ROUTE_A" "$SPOT_A" "$PUB_A" "$HTTP_A"
   start_play play-b "$ROUTE_B" "$SPOT_B" "$PUB_B" "$HTTP_B"
   start_session session-a "$ROUTE_SESSION_A" "$SPOT_SESSION_A" "$PUB_SESSION_A" "$STREAM_A" "$HTTP_SESSION_A"
-  sleep 20
+  wait_control_ping sm-d8-session-a-play-a "$HTTP_SESSION_A" play-a "sm-d8-session-a-ready"
   ZLINK_CPP_E2E_ROUTE_ENDPOINT="$ROUTE_CLIENT" \
   ZLINK_CPP_E2E_ROUTE_A_ENDPOINT="$ROUTE_A" \
   ZLINK_CPP_E2E_ROUTE_B_ENDPOINT="$ROUTE_B" \
@@ -2039,7 +2256,8 @@ if [[ "$SCENARIO" == "SM-D9" || "$SCENARIO" == "sm-d9" ]]; then
   start_play play-a "$ROUTE_A" "$SPOT_A" "$PUB_A" "$HTTP_A"
   start_play play-b "$ROUTE_B" "$SPOT_B" "$PUB_B" "$HTTP_B"
   start_session session-a "$ROUTE_SESSION_A" "$SPOT_SESSION_A" "$PUB_SESSION_A" "$STREAM_A" "$HTTP_SESSION_A"
-  sleep 20
+  settle_scenario
+  wait_control_ping sm-d9-session-a-play-a "$HTTP_SESSION_A" play-a "sm-d9-session-a-play-a-ready"
   ZLINK_CPP_E2E_ROUTE_ENDPOINT="$ROUTE_CLIENT" \
   ZLINK_CPP_E2E_ROUTE_A_ENDPOINT="$ROUTE_A" \
   ZLINK_CPP_E2E_ROUTE_B_ENDPOINT="$ROUTE_B" \
@@ -2091,7 +2309,9 @@ if [[ "$SCENARIO" == "SM-D10" || "$SCENARIO" == "sm-d10" ]]; then
   start_play play-b "$ROUTE_B" "$SPOT_B" "$PUB_B" "$HTTP_B"
   start_session session-a "$ROUTE_SESSION_A" "$SPOT_SESSION_A" "$PUB_SESSION_A" "$STREAM_A" "$HTTP_SESSION_A"
   start_session session-b "$ROUTE_SESSION_B" "$SPOT_SESSION_B" "$PUB_SESSION_B" "$STREAM_B" "$HTTP_SESSION_B"
-  sleep 20
+  settle_scenario
+  wait_control_ping sm-d10-session-a-play-a "$HTTP_SESSION_A" play-a "sm-d10-session-a-ready"
+  wait_control_ping sm-d10-session-b-play-b "$HTTP_SESSION_B" play-b "sm-d10-session-b-ready"
   ZLINK_CPP_E2E_ROUTE_ENDPOINT="$ROUTE_CLIENT" \
   ZLINK_CPP_E2E_ROUTE_A_ENDPOINT="$ROUTE_A" \
   ZLINK_CPP_E2E_ROUTE_B_ENDPOINT="$ROUTE_B" \
@@ -2132,7 +2352,7 @@ def has(snapshot, marker, actor_id, value=None):
 
 assert has(session_a, "StreamBound", congested)
 assert has(session_b, "StreamBound", isolated)
-assert has(play_a, "EntryActorPing", congested, "after-backpressure:1")
+assert has(play_a, "EntryActorPing", congested, "after-backpressure:9")
 assert has(play_b, "EntryActorPushedSession", isolated, "isolated-push")
 print("scenario SM-D10 evidence passed")
 PY
@@ -2145,7 +2365,7 @@ if [[ "$SCENARIO" == "SM-D11" || "$SCENARIO" == "sm-d11" ]]; then
   start_play play-a "$ROUTE_A" "$SPOT_A" "$PUB_A" "$HTTP_A"
   start_play play-b "$ROUTE_B" "$SPOT_B" "$PUB_B" "$HTTP_B"
   start_session session-a "$ROUTE_SESSION_A" "$SPOT_SESSION_A" "$PUB_SESSION_A" "$STREAM_A" "$HTTP_SESSION_A"
-  sleep 20
+  settle_scenario
   ZLINK_CPP_E2E_ROUTE_ENDPOINT="$ROUTE_CLIENT" \
   ZLINK_CPP_E2E_ROUTE_A_ENDPOINT="$ROUTE_A" \
   ZLINK_CPP_E2E_ROUTE_B_ENDPOINT="$ROUTE_B" \
@@ -2198,7 +2418,9 @@ if [[ "$SCENARIO" == "SM-D12" || "$SCENARIO" == "sm-d12" ]]; then
   start_play play-b "$ROUTE_B" "$SPOT_B" "$PUB_B" "$HTTP_B"
   start_session session-a "$ROUTE_SESSION_A" "$SPOT_SESSION_A" "$PUB_SESSION_A" "$STREAM_A" "$HTTP_SESSION_A"
   start_session session-b "$ROUTE_SESSION_B" "$SPOT_SESSION_B" "$PUB_SESSION_B" "$STREAM_B" "$HTTP_SESSION_B"
-  sleep 20
+  settle_scenario
+  wait_control_ping sm-d12-session-a-play-a "$HTTP_SESSION_A" play-a "sm-d12-session-a-ready"
+  wait_control_ping sm-d12-session-b-play-a "$HTTP_SESSION_B" play-a "sm-d12-session-b-ready"
   ZLINK_CPP_E2E_ROUTE_ENDPOINT="$ROUTE_CLIENT" \
   ZLINK_CPP_E2E_ROUTE_A_ENDPOINT="$ROUTE_A" \
   ZLINK_CPP_E2E_ROUTE_B_ENDPOINT="$ROUTE_B" \
@@ -2237,10 +2459,8 @@ def has(snapshot, marker, actor_id=None, value=None):
                for item in snapshot["entries"])
 
 assert has(play_a, "ActorEnsured", actor, "SM-D12 Transfer")
-assert has(play_a, "ActorJoinedCallback", actor)
-assert has(play_a, "StateMutated", actor, "11")
-assert has(play_a, "StateMutated", actor, "16")
-assert has(play_a, "ActorPushedSession", actor, "after-transfer")
+assert has(play_a, "EntryActorPing", actor, "before-transfer:1")
+assert has(play_a, "EntryActorPushedSession", actor, "after-transfer")
 assert has(session_a, "StreamBound", actor)
 assert has(session_b, "StreamBound", actor)
 assert not any(item["actor_id"] == actor for item in play_b["entries"])
@@ -2255,7 +2475,7 @@ if [[ "$SCENARIO" == "SM-D13" || "$SCENARIO" == "sm-d13" ]]; then
   start_play play-a "$ROUTE_A" "$SPOT_A" "$PUB_A" "$HTTP_A"
   start_play play-b "$ROUTE_B" "$SPOT_B" "$PUB_B" "$HTTP_B"
   start_session session-a "$ROUTE_SESSION_A" "$SPOT_SESSION_A" "$PUB_SESSION_A" "$STREAM_A" "$HTTP_SESSION_A"
-  sleep 20
+  settle_scenario
   ZLINK_CPP_E2E_ROUTE_ENDPOINT="$ROUTE_CLIENT" \
   ZLINK_CPP_E2E_ROUTE_A_ENDPOINT="$ROUTE_A" \
   ZLINK_CPP_E2E_ROUTE_B_ENDPOINT="$ROUTE_B" \
@@ -2308,7 +2528,8 @@ if [[ "$SCENARIO" == "SM-D14" || "$SCENARIO" == "sm-d14" ]]; then
   start_play play-a "$ROUTE_A" "$SPOT_A" "$PUB_A" "$HTTP_A"
   start_play play-b "$ROUTE_B" "$SPOT_B" "$PUB_B" "$HTTP_B"
   start_session session-a "$ROUTE_SESSION_A" "$SPOT_SESSION_A" "$PUB_SESSION_A" "$STREAM_A" "$HTTP_SESSION_A" "$STREAM_TLS_A" "$TLS_CERT" "$TLS_KEY"
-  sleep 20
+  settle_scenario
+  wait_control_ping sm-d14-session-a-play-a "$HTTP_SESSION_A" play-a "sm-d14-session-a-ready"
   ZLINK_CPP_E2E_ROUTE_ENDPOINT="$ROUTE_CLIENT" \
   ZLINK_CPP_E2E_ROUTE_A_ENDPOINT="$ROUTE_A" \
   ZLINK_CPP_E2E_ROUTE_B_ENDPOINT="$ROUTE_B" \
@@ -2355,7 +2576,7 @@ if [[ "$SCENARIO" == "SM-E1" || "$SCENARIO" == "sm-e1" ]]; then
   start_registry
   start_play play-a "$ROUTE_A" "$SPOT_A" "$PUB_A" "$HTTP_A"
   start_play play-b "$ROUTE_B" "$SPOT_B" "$PUB_B" "$HTTP_B"
-  sleep 20
+  settle_scenario
   ZLINK_CPP_E2E_ROUTE_ENDPOINT="$ROUTE_CLIENT" \
   ZLINK_CPP_E2E_ROUTE_A_ENDPOINT="$ROUTE_A" \
   ZLINK_CPP_E2E_ROUTE_B_ENDPOINT="$ROUTE_B" \
@@ -2371,19 +2592,6 @@ if [[ "$SCENARIO" == "SM-E1" || "$SCENARIO" == "sm-e1" ]]; then
   ZLINK_CPP_E2E_LOG_DIR="$LOG_DIR" \
     "$CLIENT" >"$LOG_DIR/client-sm-e1.stdout.log" 2>"$LOG_DIR/client-sm-e1.stderr.log"
   cat "$LOG_DIR/client-sm-e1.stdout.log"
-  for _ in $(seq 1 100); do
-    if grep -q "surface=spot_route.*reason=handler_missing.*action=reply_error.*packet=MissingSpotReq" \
-      "$LOG_DIR/play-b.stderr.log" \
-      && grep -q "surface=spot_route.*reason=handler_missing.*action=drop.*packet=MissingSpotMsg" \
-        "$LOG_DIR/play-b.stderr.log"; then
-      break
-    fi
-    sleep 0.05
-  done
-  grep -q "surface=spot_route.*reason=handler_missing.*action=reply_error.*packet=MissingSpotReq" \
-    "$LOG_DIR/play-b.stderr.log"
-  grep -q "surface=spot_route.*reason=handler_missing.*action=drop.*packet=MissingSpotMsg" \
-    "$LOG_DIR/play-b.stderr.log"
   fetch_evidence play-a-sm-e1 "$HTTP_A"
   fetch_evidence play-b-sm-e1 "$HTTP_B"
   python3 - "$LOG_DIR/play-a-sm-e1-evidence.json" "$LOG_DIR/play-b-sm-e1-evidence.json" <<'PY'
@@ -2409,7 +2617,7 @@ fi
 if [[ "$SCENARIO" == "SM-E2" || "$SCENARIO" == "sm-e2" ]]; then
   start_registry
   start_play play-a "$ROUTE_A" "$SPOT_A" "$PUB_A" "$HTTP_A"
-  sleep 20
+  settle_scenario
   ZLINK_CPP_E2E_ROUTE_ENDPOINT="$ROUTE_CLIENT" \
   ZLINK_CPP_E2E_ROUTE_A_ENDPOINT="$ROUTE_A" \
   ZLINK_CPP_E2E_ROUTE_B_ENDPOINT="$ROUTE_B" \
@@ -2446,7 +2654,7 @@ fi
 if [[ "$SCENARIO" == "SM-E3" || "$SCENARIO" == "sm-e3" ]]; then
   start_registry
   start_play play-a "$ROUTE_A" "$SPOT_A" "$PUB_A" "$HTTP_A"
-  sleep 20
+  settle_scenario
   ZLINK_CPP_E2E_ROUTE_ENDPOINT="$ROUTE_CLIENT" \
   ZLINK_CPP_E2E_ROUTE_A_ENDPOINT="$ROUTE_A" \
   ZLINK_CPP_E2E_ROUTE_B_ENDPOINT="$ROUTE_B" \
@@ -2483,7 +2691,7 @@ fi
 if [[ "$SCENARIO" == "SM-E4" || "$SCENARIO" == "sm-e4" ]]; then
   start_registry
   start_play play-a "$ROUTE_A" "$SPOT_A" "$PUB_A" "$HTTP_A"
-  sleep 20
+  settle_scenario
   ZLINK_CPP_E2E_ROUTE_ENDPOINT="$ROUTE_CLIENT" \
   ZLINK_CPP_E2E_ROUTE_A_ENDPOINT="$ROUTE_A" \
   ZLINK_CPP_E2E_ROUTE_B_ENDPOINT="$ROUTE_B" \
@@ -2550,7 +2758,9 @@ if [[ "$SCENARIO" == "SM-G2" || "$SCENARIO" == "sm-g2" ]]; then
   start_registry
   start_play play-a "$ROUTE_A" "$SPOT_A" "$PUB_A" "$HTTP_A"
   start_play play-b "$ROUTE_B" "$SPOT_B" "$PUB_B" "$HTTP_B"
-  sleep 20
+  settle_scenario
+  wait_control_ping sm-g2-play-b-play-a "$HTTP_B" play-a "sm-g2-play-b-play-a-ready"
+  wait_control_ping sm-g2-play-a-play-b "$HTTP_A" play-b "sm-g2-play-a-play-b-ready"
   ZLINK_CPP_E2E_ROUTE_ENDPOINT="$ROUTE_CLIENT" \
   ZLINK_CPP_E2E_ROUTE_A_ENDPOINT="$ROUTE_A" \
   ZLINK_CPP_E2E_ROUTE_B_ENDPOINT="$ROUTE_B" \
@@ -2601,7 +2811,9 @@ if [[ "$SCENARIO" == "SM-G3" || "$SCENARIO" == "sm-g3" ]]; then
   start_play play-a "$ROUTE_A" "$SPOT_A" "$PUB_A" "$HTTP_A"
   start_play play-b "$ROUTE_B" "$SPOT_B" "$PUB_B" "$HTTP_B"
   start_session session-a "$ROUTE_SESSION_A" "$SPOT_SESSION_A" "$PUB_SESSION_A" "$STREAM_A" "$HTTP_SESSION_A"
-  sleep 20
+  settle_scenario
+  run_control_ping sm-g3-session-a-play-a "$HTTP_SESSION_A" play-a "sm-g3-session-a-ready"
+  cat "$LOG_DIR/sm-g3-session-a-play-a.stdout.log"
   ZLINK_CPP_E2E_ROUTE_ENDPOINT="$ROUTE_CLIENT" \
   ZLINK_CPP_E2E_ROUTE_A_ENDPOINT="$ROUTE_A" \
   ZLINK_CPP_E2E_ROUTE_B_ENDPOINT="$ROUTE_B" \
@@ -2650,7 +2862,8 @@ if [[ "$SCENARIO" == "SM-G4" || "$SCENARIO" == "sm-g4" ]]; then
   start_play play-a "$ROUTE_A" "$SPOT_A" "$PUB_A" "$HTTP_A"
   start_play play-b "$ROUTE_B" "$SPOT_B" "$PUB_B" "$HTTP_B"
   start_session session-a "$ROUTE_SESSION_A" "$SPOT_SESSION_A" "$PUB_SESSION_A" "$STREAM_A" "$HTTP_SESSION_A"
-  sleep 20
+  settle_scenario
+  wait_control_ping sm-g4-session-a-play-a "$HTTP_SESSION_A" play-a "sm-g4-session-a-ready"
   ZLINK_CPP_E2E_ROUTE_ENDPOINT="$ROUTE_CLIENT" \
   ZLINK_CPP_E2E_ROUTE_A_ENDPOINT="$ROUTE_A" \
   ZLINK_CPP_E2E_ROUTE_B_ENDPOINT="$ROUTE_B" \
@@ -2692,6 +2905,7 @@ PY
   exit 0
 fi
 
+scenario_index=0
 for scenario in \
   SM-B1 SM-B2 SM-B3 SM-B5 \
   SM-B6 SM-B8 \
@@ -2702,7 +2916,8 @@ for scenario in \
   SM-A3 SM-A6 SM-B4 SM-B7 \
   SM-A5 SM-A1-A2-A4-F1-F2 \
   SM-G2 SM-G3 SM-G4 SM-G1 SM-Q9; do
-  run_focused_from_all "$scenario"
+  run_focused_from_all "$scenario" "$scenario_index"
+  scenario_index=$((scenario_index + 1))
 done
 
 echo "spot-service e2e result=passed"

@@ -73,18 +73,21 @@ struct join_wait_t
 
 struct lifecycle_probe_t
 {
-    lifecycle_probe_t () : joined (0), left (0)
+    lifecycle_probe_t () : joined (0), left (0), disconnected (0)
     {
         memset (&last_join, 0, sizeof (last_join));
         memset (&last_leave, 0, sizeof (last_leave));
+        memset (&last_disconnected, 0, sizeof (last_disconnected));
     }
 
     std::mutex mutex;
     std::condition_variable cv;
     int joined;
     int left;
+    int disconnected;
     zlink_spot_actor_lifecycle_info_t last_join;
     zlink_spot_actor_lifecycle_info_t last_leave;
+    zlink_spot_actor_lifecycle_info_t last_disconnected;
 };
 
 void request_wait_handler (zlink_request_result_t result_,
@@ -171,6 +174,9 @@ void record_lifecycle_event (lifecycle_probe_t *probe_,
     } else if (event_.kind == ZLINK_SPOT_ACTOR_LIFECYCLE_LEFT) {
         ++probe_->left;
         probe_->last_leave = event_.info;
+    } else if (event_.kind == ZLINK_SPOT_ACTOR_LIFECYCLE_DISCONNECTED) {
+        ++probe_->disconnected;
+        probe_->last_disconnected = event_.info;
     }
     probe_->cv.notify_all ();
 }
@@ -706,6 +712,66 @@ void test_actor_new_with_request_delivers_lifecycle_payload ()
     zlink_multipart_close (parts, part_count);
 
     TEST_ASSERT_EQUAL (ZLINK_REQUEST_OK, wait_spot_node_actor_destroy (node, &actor, 1000));
+    TEST_ASSERT_EQUAL (ZLINK_CLOSE_OK, zlink_spot_destroy (&entry));
+    TEST_ASSERT_EQUAL (ZLINK_CLOSE_OK, zlink_spot_node_destroy (&node));
+    TEST_ASSERT_EQUAL (ZLINK_CLOSE_OK, zlink_ctx_term (ctx));
+}
+
+void test_remote_actor_close_bound_session_emits_disconnected_lifecycle ()
+{
+    void *ctx = zlink_ctx_new ();
+    TEST_ASSERT_NOT_NULL (ctx);
+    void *node = zlink_spot_node_new (ctx, NULL);
+    TEST_ASSERT_NOT_NULL (node);
+
+    void *entry = NULL;
+    TEST_ASSERT_EQUAL (ZLINK_CONFIG_OK, zlink_spot_node_entry_spot (node, &entry));
+    TEST_ASSERT_NOT_NULL (entry);
+    TEST_ASSERT_EQUAL (ZLINK_HANDLER_OK,
+                       zlink_spot_dispatch_event_handler (entry, on_noop_dispatch, NULL));
+
+    void *actor = zlink_spot_node_actor_new (node, "remote-disconnect-actor");
+    TEST_ASSERT_NOT_NULL (actor);
+    zlink_actor_ref_t actor_ref;
+    TEST_ASSERT_EQUAL (ZLINK_CONFIG_OK, zlink_actor_get_ref (actor, &actor_ref));
+
+    zlink_spot_actor_lifecycle_event_t joined;
+    TEST_ASSERT_EQUAL (ZLINK_RECV_OK,
+                       zlink_spot_recv_actor_lifecycle (entry, &joined,
+                                                        ZLINK_RECV_FLAGS_DONTWAIT));
+    TEST_ASSERT_EQUAL (ZLINK_SPOT_ACTOR_LIFECYCLE_JOINED, joined.kind);
+
+    zlink_routing_id_t source_node_rid;
+    zlink_routing_id_t session_rid;
+    set_rid (&source_node_rid, "session-node");
+    set_rid (&session_rid, "remote-session");
+    TEST_ASSERT_EQUAL (ZLINK_CONFIG_OK,
+                       zlink_spot_node_actor_bind_remote_session (
+                         node, &actor_ref, &source_node_rid, &session_rid));
+
+    TEST_ASSERT_EQUAL (ZLINK_REQUEST_OK,
+                       zlink_spot_node_actor_close_bound_session (node, &actor_ref, 1000));
+
+    zlink_spot_actor_lifecycle_event_t disconnected;
+    TEST_ASSERT_EQUAL (ZLINK_RECV_OK,
+                       zlink_spot_recv_actor_lifecycle (entry, &disconnected,
+                                                        ZLINK_RECV_FLAGS_DONTWAIT));
+    TEST_ASSERT_EQUAL (ZLINK_SPOT_ACTOR_LIFECYCLE_DISCONNECTED, disconnected.kind);
+    TEST_ASSERT_EQUAL_STRING ("remote-disconnect-actor",
+                              disconnected.info.current_actor.actor_id);
+    TEST_ASSERT_EQUAL_UINT64 (actor_ref.generation,
+                              disconnected.info.current_actor.generation);
+    assert_same_rid (actor_ref.node_rid, disconnected.info.current_actor.node_rid);
+    assert_same_rid (disconnected.info.previous_spot_rid,
+                     disconnected.info.current_spot_rid);
+
+    zlink_msg_t late_msg;
+    init_text_msg (&late_msg, "late");
+    TEST_ASSERT_EQUAL (ZLINK_SUBMIT_NOT_FOUND,
+                       zlink_actor_send_bound_session_msg (actor, &late_msg, ZLINK_DONTWAIT));
+    TEST_ASSERT_EQUAL (ZLINK_CONFIG_OK, zlink_msg_close (&late_msg));
+
+    TEST_ASSERT_EQUAL (ZLINK_REQUEST_OK, zlink_actor_destroy (&actor, 1000));
     TEST_ASSERT_EQUAL (ZLINK_CLOSE_OK, zlink_spot_destroy (&entry));
     TEST_ASSERT_EQUAL (ZLINK_CLOSE_OK, zlink_spot_node_destroy (&node));
     TEST_ASSERT_EQUAL (ZLINK_CLOSE_OK, zlink_ctx_term (ctx));
@@ -3374,6 +3440,7 @@ int main ()
     UNITY_BEGIN ();
     RUN_TEST (test_entry_spot_facade_lookup_and_rid);
     RUN_TEST (test_actor_new_with_request_delivers_lifecycle_payload);
+    RUN_TEST (test_remote_actor_close_bound_session_emits_disconnected_lifecycle);
     RUN_TEST (test_spot_lookup_refcount_and_rid_index);
     RUN_TEST (test_spot_get_or_new_creates_and_reuses_logical_spot);
     RUN_TEST (test_spot_get_or_new_rejects_invalid_args_and_clears_outputs);

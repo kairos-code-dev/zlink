@@ -2,6 +2,9 @@ namespace SupportChat.Client.Configuration;
 
 public static class SampleNames
 {
+    // Stream metadata key that carries ConversationId for session routing (§9.2).
+    public const string ConversationIdMetadataKey = "ConversationId";
+
     public static readonly TimeSpan ConnectTimeout = TimeSpan.FromSeconds(5);
     public static readonly TimeSpan RequestTimeout = TimeSpan.FromSeconds(5);
     public static readonly TimeSpan IdleTimeout = TimeSpan.FromSeconds(3);

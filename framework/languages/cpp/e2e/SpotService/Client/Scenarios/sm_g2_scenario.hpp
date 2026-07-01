@@ -5,10 +5,8 @@
 
 #include <zlink/http_client.hpp>
 
-#include <chrono>
 #include <stdexcept>
 #include <string>
-#include <thread>
 
 namespace zlink::framework::e2e::spot_service::client::scenarios
 {
@@ -47,19 +45,16 @@ inline direct_spot_res_t post_sm_g2_direct_request (zlink::http_client::client_t
                                                    const std::string &label)
 {
     std::string last_error = label + " was not attempted";
-    for (int attempt = 0; attempt < 40; ++attempt) {
-        auto raw = client.post ("/spot/direct").body (request).submit_raw ().result ();
-        if (raw && raw.value ().status < 400) {
-            return nlohmann::json::parse (raw.value ().body).get<direct_spot_res_t> ();
-        }
+    auto raw = client.post ("/spot/direct").body (request).submit_raw ().result ();
+    if (raw && raw.value ().status < 400) {
+        return nlohmann::json::parse (raw.value ().body).get<direct_spot_res_t> ();
+    }
 
-        if (raw) {
-            last_error = label + " HTTP status " + std::to_string (raw.value ().status) + ": "
-                         + raw.value ().body;
-        } else {
-            last_error = raw.error () ? raw.error ()->what () : label + " HTTP failed";
-        }
-        std::this_thread::sleep_for (std::chrono::milliseconds (100));
+    if (raw) {
+        last_error = label + " HTTP status " + std::to_string (raw.value ().status) + ": "
+                     + raw.value ().body;
+    } else {
+        last_error = raw.error () ? raw.error ()->what () : label + " HTTP failed";
     }
     throw std::runtime_error ("SM-G2 " + last_error);
 }

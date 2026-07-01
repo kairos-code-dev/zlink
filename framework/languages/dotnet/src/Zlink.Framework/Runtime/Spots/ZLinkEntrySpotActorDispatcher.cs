@@ -103,6 +103,19 @@ internal static class ZLinkEntrySpotActorDispatcher
         Message body,
         CancellationToken cancellationToken)
     {
+        if (string.Equals(
+                header.Name,
+                ZLinkRemoteActorJoinPackets.SessionDisconnectedPacketName,
+                StringComparison.Ordinal))
+        {
+            runtime.RemoveActorSessionBinding(actor.ActorId, BuildNativeBoundSessionToken(sourceSessionRid));
+            if (!await runtime.TryNotifyJoinedSpotActorDisconnectedAsync(actor.ActorId, cancellationToken)
+                    .ConfigureAwait(false))
+                await runtime.NotifyActorDisconnectedByIdAsync(actor.ActorId, cancellationToken)
+                    .ConfigureAwait(false);
+            return;
+        }
+
         await using var boundSessionScope = ZLinkBoundSessionDispatchScope.Enter(actor.ActorId);
         runtime.BindActorSession(
             actor.ActorId,
@@ -112,17 +125,18 @@ internal static class ZLinkEntrySpotActorDispatcher
 
         if (header.RequestSeq is not null)
         {
-            var result = await runtime.TrySubmitEntrySpotActorForReplyAsync(
-                    actor,
-                    actorState,
-                    header,
-                    body,
-                    cancellationToken)
-                .ConfigureAwait(false);
-            var reply = result.Handled
-                ? result.Reply
-                : await runtime.SubmitActorForReplyAsync(
+            var liveActivation = actorState.LiveActivation;
+            var reply = liveActivation is not null
+                ? await runtime.SubmitActorForReplyAsync(
                         actor.ActorId,
+                        header,
+                        body,
+                        cancellationToken)
+                    .ConfigureAwait(false)
+                : await SubmitEntryOrCurrentActorForReplyAsync(
+                        runtime,
+                        actor,
+                        actorState,
                         header,
                         body,
                         cancellationToken)
@@ -137,28 +151,40 @@ internal static class ZLinkEntrySpotActorDispatcher
             return;
         }
 
-        if (activation is not null
-            && activation.TryResolveActorPacket(actor.GetType(), header, out var descriptor)
-            && descriptor is not null)
+        if (actorState.LiveActivation is not null)
         {
-            await runtime.SubmitResolvedEntrySpotActorAsync(
-                    actor,
-                    actorState,
-                    header,
-                    ct => activation.InvokeActorPacketAsync(
-                        descriptor,
-                        actor,
-                        header,
-                        body,
-                        ct),
-                    cancellationToken)
+            await runtime.SubmitActorAsync(actor, header, body, cancellationToken)
                 .ConfigureAwait(false);
-
             return;
         }
 
         await runtime.SubmitActorAsync(actor, header, body, cancellationToken)
             .ConfigureAwait(false);
+    }
+
+    private static async ValueTask<ZLinkActorReply?> SubmitEntryOrCurrentActorForReplyAsync(
+        ZLinkFrameworkRuntime runtime,
+        IZLinkActor actor,
+        ZLinkActorRuntimeState actorState,
+        ZlinkStreamHeader header,
+        Message body,
+        CancellationToken cancellationToken)
+    {
+        var result = await runtime.TrySubmitEntrySpotActorForReplyAsync(
+                actor,
+                actorState,
+                header,
+                body,
+                cancellationToken)
+            .ConfigureAwait(false);
+        return result.Handled
+            ? result.Reply
+            : await runtime.SubmitActorForReplyAsync(
+                    actor.ActorId,
+                    header,
+                    body,
+                    cancellationToken)
+                .ConfigureAwait(false);
     }
 
     private static async ValueTask SendResponseAsync(

@@ -53,8 +53,8 @@ inline void run_sm_b6_scenario (const std::string &play_http_endpoint,
 
     zlink::stream_connector::connector_options_t options;
     options.endpoint = session_stream_endpoint;
-    options.connect_timeout = std::chrono::milliseconds (5000);
-    options.request_timeout = std::chrono::milliseconds (5000);
+    options.connect_timeout = std::chrono::milliseconds (3000);
+    options.request_timeout = std::chrono::milliseconds (3000);
     options.dispatch_mode = zlink::stream_connector::dispatch_mode_t::immediate;
     auto stream = zlink::stream_connector::connector_factory_t::create (options);
 
@@ -66,16 +66,16 @@ inline void run_sm_b6_scenario (const std::string &play_http_endpoint,
     auto leave_auth =
       stream.request (stream_auth_req_t{"play-a", leave_actor_id, "SM-B6 Left", leave_actor})
         .packet_name ("StreamAuthReq")
-        .timeout (std::chrono::milliseconds (5000))
+        .timeout (std::chrono::milliseconds (3000))
         .submit<stream_auth_res_t> ();
     if (!leave_auth) {
         throw std::runtime_error ("SM-B6 leave stream auth failed");
     }
 
-    auto left = stream.request (leave_req_t{"explicit"})
+    auto left = stream.request (leave_req_t{.actor_id = leave_actor_id, .reason = "explicit"})
                   .packet_name ("LeaveReq")
                   .metadata ("actor-id", leave_actor_id)
-                  .timeout (std::chrono::milliseconds (5000))
+                  .timeout (std::chrono::milliseconds (3000))
                   .submit<leave_res_t> ();
     if (!left || !left.value ().left || left.value ().actor_id != leave_actor_id) {
         throw std::runtime_error ("SM-B6 leave reply mismatch");
@@ -113,7 +113,7 @@ inline void run_sm_b6_scenario (const std::string &play_http_endpoint,
       disconnect_stream.request (stream_auth_req_t{"play-a", disconnect_actor_id, "SM-B6 Disconnected",
                           disconnect_actor})
         .packet_name ("StreamAuthReq")
-        .timeout (std::chrono::milliseconds (5000))
+        .timeout (std::chrono::milliseconds (3000))
         .submit<stream_auth_res_t> ();
     if (!disconnect_auth) {
         throw std::runtime_error ("SM-B6 disconnect stream auth failed");

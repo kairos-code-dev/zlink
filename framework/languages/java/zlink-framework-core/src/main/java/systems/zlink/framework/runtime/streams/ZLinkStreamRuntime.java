@@ -15,6 +15,9 @@ import java.util.function.Predicate;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.CompletionStage;
 import java.util.concurrent.Executor;
+import java.util.concurrent.Executors;
+import java.util.concurrent.ScheduledExecutorService;
+import java.util.concurrent.TimeUnit;
 import systems.zlink.contracts.core.RoutingId;
 import systems.zlink.contracts.messaging.Message;
 import systems.zlink.contracts.sockets.SendFlags;
@@ -53,6 +56,13 @@ public final class ZLinkStreamRuntime implements AutoCloseable {
     private static final int DEFAULT_MAX_DECOMPRESSED_PAYLOAD_SIZE = 64 * 1024;
     private static final String HEARTBEAT_PING_NAME = "$zlink.heartbeat.ping";
     private static final String HEARTBEAT_PONG_NAME = "$zlink.heartbeat.pong";
+    private static final long ASYNC_REPLY_TIMEOUT_NANOS = TimeUnit.SECONDS.toNanos(30);
+    private static final ScheduledExecutorService ASYNC_REPLY_EXECUTOR =
+        Executors.newSingleThreadScheduledExecutor(task -> {
+            Thread thread = new Thread(task, "zlink-stream-async-reply");
+            thread.setDaemon(true);
+            return thread;
+        });
     private final ZLinkBackendContext context;
     private final ZLinkMessageSerializer serializer;
     private final ZLinkActorRuntime actors;
@@ -258,8 +268,7 @@ public final class ZLinkStreamRuntime implements AutoCloseable {
         synchronized (sessions) {
             sessions.remove(key);
         }
-        state.queue().enqueue(() -> executeHandler(() ->
-            ZLinkHandlerStages.fromRunnable(state.session()::onDisconnected)));
+        state.queue().enqueue(() -> executeHandler(() -> disconnectSessionStage(state)));
     }
 
     private static boolean isStreamNotification(Message header, Message payload) {
@@ -283,17 +292,11 @@ public final class ZLinkStreamRuntime implements AutoCloseable {
             sessions.remove(key);
         }
         if (nativeCode == 0 && "DISCONNECTED".equals(message)) {
-            state.queue().enqueue(() -> executeHandler(() ->
-                ZLinkHandlerStages.fromRunnable(state.session()::onDisconnected)));
+            state.queue().enqueue(() -> executeHandler(() -> disconnectSessionStage(state)));
             return;
         }
         state.queue().enqueue(() -> executeHandler(() ->
-            ZLinkHandlerStages.fromRunnable(() -> {
-                state.session().onError(new ZLinkStreamError(
-                    ZLinkStreamSessionError.TRANSPORT_ERROR,
-                    Optional.of(new ZLinkStreamDiagnostic(nativeCode, message))));
-                state.session().onDisconnected();
-            })));
+            transportErrorDisconnectSessionStage(state, nativeCode, message)));
     }
 
     private SessionState getOrCreateSessionState(
@@ -382,8 +385,7 @@ public final class ZLinkStreamRuntime implements AutoCloseable {
             activeSessions = List.copyOf(sessions.values());
         }
         CompletableFuture.allOf(activeSessions.stream()
-            .map(state -> state.queue().enqueue(() -> executeHandler(() ->
-                ZLinkHandlerStages.fromRunnable(state.session()::onDisconnected)))
+            .map(state -> state.queue().enqueue(() -> executeHandler(() -> disconnectSessionStage(state)))
                 .toCompletableFuture())
             .toArray(CompletableFuture[]::new))
             .join();
@@ -414,6 +416,27 @@ public final class ZLinkStreamRuntime implements AutoCloseable {
             result.completeExceptionally(ex);
         }
         return result;
+    }
+
+    private CompletionStage<Void> disconnectSessionStage(SessionState state) {
+        return notifyBoundActorsDisconnectedBestEffort(state)
+            .thenCompose(ignored -> ZLinkHandlerStages.fromRunnable(state.session()::onDisconnected));
+    }
+
+    private CompletionStage<Void> transportErrorDisconnectSessionStage(
+        SessionState state,
+        int nativeCode,
+        String message) {
+        return ZLinkHandlerStages.fromRunnable(() -> state.session().onError(new ZLinkStreamError(
+                ZLinkStreamSessionError.TRANSPORT_ERROR,
+                Optional.of(new ZLinkStreamDiagnostic(nativeCode, message)))))
+            .thenCompose(ignored -> notifyBoundActorsDisconnectedBestEffort(state))
+            .thenCompose(ignored -> ZLinkHandlerStages.fromRunnable(state.session()::onDisconnected));
+    }
+
+    private CompletionStage<Void> notifyBoundActorsDisconnectedBestEffort(SessionState state) {
+        return state.context().notifyBoundActorsDisconnected()
+            .handle((ignored, error) -> (Void) null);
     }
 
     private record SessionState(
@@ -474,6 +497,13 @@ public final class ZLinkStreamRuntime implements AutoCloseable {
             return actors;
         }
 
+        CompletionStage<Void> notifyBoundActorsDisconnected() {
+            if (actors instanceof ZLinkSessionActorsRuntime runtime) {
+                return runtime.notifyDisconnectedAll();
+            }
+            return CompletableFuture.completedFuture(null);
+        }
+
         @Override
         public CompletionStage<Void> close() {
             return systems.zlink.framework.ZLinkSubmitStage.completed();
@@ -514,7 +544,7 @@ public final class ZLinkStreamRuntime implements AutoCloseable {
                         if (sendError != null) {
                             result.completeExceptionally(sendError);
                         } else {
-                            result.completeExceptionally(error);
+                            result.complete(null);
                         }
                     });
                     return;
@@ -557,8 +587,7 @@ public final class ZLinkStreamRuntime implements AutoCloseable {
             if (message == null || message.isBlank()) {
                 message = unwrap(error).getClass().getName();
             }
-            Message payload = Message.from(message.getBytes(StandardCharsets.UTF_8));
-            try {
+            try (Message payload = Message.from(message.getBytes(StandardCharsets.UTF_8))) {
                 ZLinkStreamHeader replyHeader = new ZLinkStreamHeader(
                     ZLinkStreamMessageKind.ERROR,
                     ZLinkStreamCodec.JSON,
@@ -567,18 +596,35 @@ public final class ZLinkStreamRuntime implements AutoCloseable {
                     requestHeader.packetName(),
                     Map.of(),
                     requestHeader.correlationId());
-                if (!stream.reply(
-                    routingId,
-                    replyHeader,
-                    List.of(payload),
-                    SendFlags.DONT_WAIT)) {
-                    return CompletableFuture.failedFuture(new ZLinkConfigurationException(
-                        "session error reply failed: " + routingId));
-                }
+                submitReplyAsync(replyHeader, payload.toByteArray());
                 return systems.zlink.framework.ZLinkSubmitStage.completed();
-            } finally {
-                payload.close();
             }
+        }
+
+        private void submitReplyAsync(
+            ZLinkStreamHeader replyHeader,
+            byte[] payloadBytes) {
+            long deadline = System.nanoTime() + ASYNC_REPLY_TIMEOUT_NANOS;
+            class Attempt implements Runnable {
+                @Override
+                public void run() {
+                    try (Message payload = Message.from(payloadBytes)) {
+                        if (stream.reply(
+                            routingId,
+                            replyHeader,
+                            List.of(payload),
+                            SendFlags.DONT_WAIT)) {
+                            return;
+                        }
+                    } catch (RuntimeException ignored) {
+                        return;
+                    }
+                    if (System.nanoTime() < deadline) {
+                        ASYNC_REPLY_EXECUTOR.schedule(this, 10, TimeUnit.MILLISECONDS);
+                    }
+                }
+            }
+            new Attempt().run();
         }
     }
 

@@ -1,5 +1,6 @@
-using SupportChat.Server.Configuration;
 using SupportChat.Server.Support.Application.ConversationAssignment;
+using SupportChat.Server.Support.Domain.SupportChat;
+using SupportChat.Server.Support.Infrastructure.ZLink.Spots.ConversationSpot;
 using SupportChat.Shared.Contracts;
 using Microsoft.Extensions.Logging;
 using Zlink.Framework.Contracts.Handlers;
@@ -29,6 +30,6 @@ internal sealed class AllocateConversationHandler(
         logger.LogInformation("support allocate: created conversation={ConversationId}", conversationId);
         return new AllocateConversationRes(
             conversationId,
-            ConversationStatuses.WaitingForAgent);
+            ConversationContracts.ToStatus(ConversationStatus.WaitingForAgent));
     }
 }

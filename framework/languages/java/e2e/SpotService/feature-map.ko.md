@@ -27,6 +27,8 @@ draft/spec 검토 대상으로 분리한다. 공통 E2E 문서는 누락을 찾�
   `ZLinkActorContext.joinSpot`으로 user spot에 join한 뒤 user spot actor request를 처리하는지 확인한다.
 - `SM-B3`: actor create/join/request payload의 profile, level, tag 값이 handler까지 유지되고 reply에
   같은 값이 반영되는지 확인한다.
+- `SM-B6`: public `ZLinkSpotContext.leaveActor(actor)`로 명시 leave를 실행했을 때 user spot leave
+  callback만 남고, stream disconnect 때는 actor disconnect callback만 남는지 확인한다.
 - `SM-B7`: actor create, entry request, join, user request callback/handler가 evidence marker를 남겨
   lifecycle과 packet handler 실행 순서를 확인할 수 있는지 검증한다.
 - `SM-C1`: 외부 consumer의 public `ZLinkSpotOutbound`로 request, send, timeout, 미등록 packet
@@ -40,6 +42,8 @@ draft/spec 검토 대상으로 분리한다. 공통 E2E 문서는 누락을 찾�
   SPOT mesh에 publish하고, 구독 spot들이 event evidence를 남기는지 확인한다.
 - `SM-D1`: public stream connector와 framework `ZLinkSessionActors.bind` / `ZLinkSessionActor.relay` /
   actor `boundSession().send`로 local stream session auth, actor relay, actor push를 검증한다.
+- `SM-D5`: stream session disconnect 뒤 bound actor의 현재 user spot에 disconnect callback이
+  통지되는지 확인한다.
 - `SM-E1`: handler 없는 spot route request/send가 error/drop 경로를 타고 dispatch observer evidence를
   남기는지 확인한다.
 - `SM-E2`: user spot이 public `context.addTimer`로 등록한 timer를 주기적으로 실행하고 tick evidence를
@@ -63,13 +67,11 @@ draft/spec 검토 대상으로 분리한다. 공통 E2E 문서는 누락을 찾�
 - `SM-A5`: .NET에는 app-level Stage wrapper 경로가 있지만 Java에는 대응 public wrapper 계층이
   아직 없다.
 - `SM-B5`: handler 없는 actor packet negative path를 검증하는 scenario가 아직 없다.
-- `SM-B6`: explicit leave와 disconnect callback 차이를 검증하는 scenario가 아직 없다.
 - `SM-B8`: Java public API는 `ZLinkEntrySpotContext.destroyActor(ZLinkActor)` 형태다. 공통 문서의
   id 기반 절차와 같은 의미를 고정하는 Java scenario가 아직 없다.
 - `SM-D3`: entry spot actor bind와 user spot actor bind를 비교하는 scenario가 아직 없다.
 - `SM-D4`: 한 stream session에 여러 actor를 bind하고 `actor-id` metadata로 분기하는 scenario가
   아직 없다.
-- `SM-D5`: session disconnect 뒤 선택 actor에만 disconnect callback을 통지하는 scenario가 아직 없다.
 - `SM-D6`: bound session push target isolation scenario가 아직 없다.
 - `SM-D7`: stream session auth와 auth 전 packet dispatch 실패를 검증하는 scenario가 아직 없다.
 - `SM-D8`: stream reconnect 중 pending failure와 재auth/rebind를 검증하는 scenario가 아직 없다.

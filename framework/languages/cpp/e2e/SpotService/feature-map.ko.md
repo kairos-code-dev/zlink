@@ -34,8 +34,8 @@
   `SM-D5` stream disconnect 시나리오에서 선택한 actor에만 callback이 실행되는지 함께 검증한다.
 - `SM-B7`: HTTP evidence snapshot에서 `ActorCreated`, entry spot packet handler, user spot join,
   join callback, 후속 actor packet handler의 순서를 검증한다.
-- `SM-B8`: entry spot의 public `destroyActor`로 actor를 명시 파괴하고, mailbox 제거와
-  post-destroy request 실패를 검증한다.
+- `SM-B8`: stream auth로 actor를 붙인 뒤 entry spot의 public `destroyActor`로 actor를 명시 파괴하고,
+  destroy evidence와 post-destroy request 실패를 검증한다.
 - `SM-C1`: 외부 route client가 특정 target node와 spot id로 request/send를 보내면 해당 spot이
   처리하고, handler-missing/timeout 이후 정상 request가 오염되지 않는지 검증한다.
 - `SM-C2`: spot handler가 외부 channel로 request/send를 내보내고, SPOT mesh publish를 수행하는
@@ -98,9 +98,9 @@
   public typed route client로 만들 수 없어 raw-frame harness가 필요하다.
 - `SM-F5`: `Client/Scenarios/sm_f5_scenario.hpp`가 spot route negative 이후에도 같은 route channel의
   일반 route request와 정상 spot route request가 계속 성공하는지 검증한다.
-- `SM-G1`: actor와 stream session이 붙은 `play-a`를 실제 SIGKILL하고, 같은 gateway에 bind된
-  `play-b` actor/session은 계속 동작하는지 확인한 뒤 살아 있는 `play-b`에 재auth/rebind해
-  상태를 복구한다.
+- `SM-G1`: `session-a`/`session-b`를 각각 `play-a`/`play-b`에 bind하고, actor와 stream session이
+  붙은 `play-a`를 실제 SIGKILL한다. 이후 `play-b` actor/session은 계속 동작하는지 확인하고
+  살아 있는 `play-b`에 재auth/rebind해 상태를 복구한다.
 - `SM-G2`: 앱이 같은 logical key의 owner spot RoutingId를 `play-a`에서 `play-b`로 remap한
   흐름을 `/spot/create`와 target node가 명시된 spot route request로 표현하고, remap 전후
   request evidence가 새 owner에만 남는지 검증한다.

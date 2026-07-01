@@ -1,6 +1,18 @@
-using SupportChat.Shared.Contracts;
-
 namespace SupportChat.Server.Support.Domain.SupportChat;
+
+internal enum ConversationStatus
+{
+    WaitingForAgent,
+    Active,
+    WaitingForClose,
+    Closed
+}
+
+internal enum ParticipantRole
+{
+    Customer,
+    Agent
+}
 
 internal sealed record ConversationPolicy(
     TimeSpan IdleTimeout,
@@ -15,7 +27,7 @@ internal sealed record ConversationPolicy(
 
 internal sealed record ConversationParticipant(
     string ActorId,
-    string Role,
+    ParticipantRole Role,
     string DisplayName,
     long JoinedAtUnixMs,
     bool IsTyping);
@@ -27,10 +39,21 @@ internal sealed record ConversationMessage(
     string Text,
     long SentAtUnixMs);
 
+// Domain-owned view of a conversation's state. Infrastructure adapters map this to the
+// ConversationState wire contract.
+internal sealed record ConversationSnapshot(
+    string ConversationId,
+    string Subject,
+    ConversationStatus Status,
+    string CustomerActorId,
+    string? AgentActorId,
+    ulong LastMessageSeq,
+    long? LastMessageAtUnixMs,
+    long? IdleDeadlineUnixMs);
+
 internal enum ConversationEventKind
 {
     ParticipantJoined,
-    Assigned,
     MessageAppended,
     TypingChanged,
     Idle,
@@ -39,12 +62,12 @@ internal enum ConversationEventKind
 
 internal sealed record ConversationEvent(
     ConversationEventKind Kind,
-    ConversationState State,
+    ConversationSnapshot State,
     string? ActorId = null,
-    string? Role = null,
-    ChatMessage? Message = null,
+    ParticipantRole? Role = null,
+    ConversationMessage? Message = null,
     bool? IsTyping = null);
 
 internal sealed record ConversationChange(
-    ConversationState State,
+    ConversationSnapshot State,
     IReadOnlyList<ConversationEvent> Events);

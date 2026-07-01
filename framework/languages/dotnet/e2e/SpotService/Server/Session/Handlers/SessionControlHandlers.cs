@@ -119,32 +119,3 @@ internal sealed class SpotTypeMismatchHandler(
         throw new InvalidOperationException("Expected SpotTypeMismatch for reused spot rid.");
     }
 }
-
-[ZLinkHandlerGroup("play")]
-internal sealed class JoinUserSpotActorHandler(
-    IZLinkActorManager actors,
-    EvidenceStore evidence)
-    : IZLinkRouteRequestHandler<JoinUserSpotActorReq, JoinUserSpotActorRes>
-{
-    public async ValueTask<JoinUserSpotActorRes> HandleAsync(
-        JoinUserSpotActorReq request,
-        ZLinkRouteRequestContext context,
-        CancellationToken cancellationToken)
-    {
-        _ = context;
-        var actor = await actors.GetOrCreateAsync(
-            request.ActorId,
-            SpotServiceNames.ActorType,
-            new ScenarioActorCreateReq(request.SpotRid),
-            cancellationToken);
-        evidence.Add(
-            $"join-user-spot-actor|rid={evidence.Rid}|spot={request.SpotRid}"
-            + $"|actor={request.ActorId}|accepted=True");
-        evidence.Add($"spot-actor-joined|rid={evidence.Rid}|spot={request.SpotRid}|actor={request.ActorId}");
-        return new JoinUserSpotActorRes(
-            request.SpotRid,
-            actor.ActorId,
-            true,
-            actor.Generation);
-    }
-}

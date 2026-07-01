@@ -8,6 +8,8 @@ import type {
   ActorPingReq,
   AuthRes,
   EvidenceWaitReq,
+  JoinUserSpotActorReq,
+  JoinUserSpotActorRes,
   LeaveRes,
   LeaveReq,
   UserSpotAuthReq
@@ -96,6 +98,7 @@ async function connectAndAuth(endpoint: string, spotRid: string, actorId: string
         .packetName('UserSpotAuthReq')
         .timeout(5000)
         .submit<AuthRes>();
+      await joinUserSpotActor(client, spotRid, actorId);
       return client;
     } catch (error) {
       last = error;
@@ -106,6 +109,19 @@ async function connectAndAuth(endpoint: string, spotRid: string, actorId: string
   throw last instanceof Error
     ? new Error(`Actor auth did not become routable: ${actorId}. Last error: ${last.message}`)
     : new Error(`Actor auth did not become routable: ${actorId}.`);
+}
+
+async function joinUserSpotActor(
+  client: ReturnType<typeof createStreamClient>,
+  spotRid: string,
+  actorId: string
+): Promise<void> {
+  const joined = decodeStreamReply<JoinUserSpotActorRes>(await client
+    .request({ spotRid, actorId } satisfies JoinUserSpotActorReq)
+    .packetName('JoinUserSpotActorReq')
+    .timeout(5000)
+    .submit());
+  ensure(joined.accepted && joined.actorId === actorId, `User spot actor join failed for ${actorId}.`);
 }
 
 function createStreamClient(endpoint: string) {

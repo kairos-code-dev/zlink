@@ -1,4 +1,6 @@
 using Microsoft.Extensions.Logging;
+using SupportChat.Server.Configuration;
+using SupportChat.Server.Support.Application.ConversationAssignment;
 using SupportChat.Server.Support.Infrastructure.ZLink.Actors;
 using SupportChat.Server.Support.Infrastructure.ZLink.Spots.EntrySpot.Handlers;
 using SupportChat.Shared.Contracts;
@@ -11,6 +13,7 @@ namespace SupportChat.Server.Support.Infrastructure.ZLink.Spots.EntrySpot;
 internal sealed class SupportEntrySpot(
     IZLinkEntrySpotContext context,
     SupportActorDirectory directory,
+    AgentAvailabilityDirectory availability,
     IZLinkActorManager actorManager,
     ILogger<SupportEntrySpot> logger) : IZLinkEntrySpot<SupportUserActor>
 {
@@ -28,7 +31,7 @@ internal sealed class SupportEntrySpot(
         CancellationToken cancellationToken)
     {
         var request = createRequest.Decode<EnsureSupportUserActorReq>();
-        actor.SetIdentity(request.DisplayName, request.Role);
+        actor.SetIdentity(request.DisplayName, request.Role, request.ParticipantId);
         var actorRef = await actorManager.FindAsync(actor.ActorId, cancellationToken)
                        ?? throw new InvalidOperationException(
                            $"Support actor ref is not available. actor={actor.ActorId}");
@@ -65,6 +68,24 @@ internal sealed class SupportEntrySpot(
         logger.LogInformation(
             "support entry: actor left. actor={ActorId}",
             actor.ActorId);
+        return ValueTask.CompletedTask;
+    }
+
+    // Fires when a member actor's stream session disconnects. An agent's roster actor
+    // leaves the assignable list so it stops receiving new conversations until it
+    // reconnects and re-registers availability (§9).
+    public ValueTask OnDisconnectActorAsync(
+        SupportUserActor actor,
+        CancellationToken cancellationToken)
+    {
+        if (string.Equals(actor.Role, SupportChatRoles.Agent, StringComparison.Ordinal))
+        {
+            availability.SetAvailable(actor.ActorId, string.Empty, false);
+            logger.LogInformation(
+                "support entry: agent disconnected, availability removed. actor={ActorId}",
+                actor.ActorId);
+        }
+
         return ValueTask.CompletedTask;
     }
 }

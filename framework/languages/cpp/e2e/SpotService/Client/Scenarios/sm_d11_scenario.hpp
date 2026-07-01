@@ -26,8 +26,8 @@ inline void run_sm_d11_scenario (const std::string &session_http_endpoint,
 
     zlink::stream_connector::connector_options_t options;
     options.endpoint = session_stream_endpoint;
-    options.connect_timeout = std::chrono::milliseconds (5000);
-    options.request_timeout = std::chrono::milliseconds (5000);
+    options.connect_timeout = std::chrono::milliseconds (3000);
+    options.request_timeout = std::chrono::milliseconds (3000);
     options.dispatch_mode = zlink::stream_connector::dispatch_mode_t::immediate;
 
     constexpr auto actor_id = "actor-sm-d11";
@@ -39,7 +39,7 @@ inline void run_sm_d11_scenario (const std::string &session_http_endpoint,
     auto auth =
       stream.request (stream_ensure_auth_req_t{"play-a", actor_id, "SM-D11 Stream Channel"})
         .packet_name ("StreamEnsureAuthReq")
-        .timeout (std::chrono::milliseconds (5000))
+        .timeout (std::chrono::milliseconds (3000))
         .submit<stream_auth_res_t> ();
     if (!auth || auth.value ().actor.actor_id != actor_id
         || auth.value ().session_node_rid != "session-a") {
@@ -49,7 +49,7 @@ inline void run_sm_d11_scenario (const std::string &session_http_endpoint,
     auto stream_reply =
       stream.request (actor_ping_req_t{"stream-side"})
         .packet_name ("ActorPingReq")
-        .timeout (std::chrono::milliseconds (5000))
+        .timeout (std::chrono::milliseconds (3000))
         .submit<actor_ping_res_t> ();
     if (!stream_reply || stream_reply.value ().actor_id != actor_id
         || stream_reply.value ().node_rid != "play-a"

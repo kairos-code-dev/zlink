@@ -8,7 +8,7 @@ import { SpotServiceNames } from '../../Shared/messages';
 import { parsePlayOptions } from './Configuration/play-options';
 import { createPlayEndpoints } from './Endpoints/play-endpoints';
 import { ChannelEchoHandler, ChannelNotifyHandler } from './Handlers/channel-handlers';
-import { ControlPingHandler, CreateSpotHandler, EnsureActorHandler, JoinUserSpotActorHandler } from './Handlers/control-handlers';
+import { ControlPingHandler, CreateSpotHandler, EnsureActorHandler } from './Handlers/control-handlers';
 import { EvidenceDispatchErrorObserver } from './Handlers/dispatch-error-observer';
 import { SpotMsgHandler, SpotOutboundHandler, SpotOutboundNegativeHandler } from './Handlers/spot-outbound-handlers';
 import { SpotToSpotHandler, SpotToSpotNegativeHandler, SpotToSpotTimeoutHandler } from './Handlers/spot-to-spot-handlers';
@@ -25,10 +25,17 @@ import {
   EntrySlowActorPingHandler,
   EntryUserActorPingHandler,
   EntryUserActorPushHandler,
+  EntryUserSpotActorJoinHandler,
   ScenarioActorFactory,
   ScenarioEntrySpot
 } from './Spots/scenario-actors';
-import { ScenarioAlternateSpot, ScenarioUserSpot, UserActorPingHandler, UserActorPushHandler } from './Spots/scenario-spots';
+import {
+  ScenarioAlternateSpot,
+  ScenarioUserSpot,
+  UserActorLeaveHandler,
+  UserActorPingHandler,
+  UserActorPushHandler
+} from './Spots/scenario-spots';
 import { closeHttpServer, startHttpServer } from './Support/http-server';
 
 export async function startPlayHost(args: readonly string[]): Promise<void> {
@@ -65,8 +72,7 @@ export async function startPlayHost(args: readonly string[]): Promise<void> {
             .routingId(options.rid)
             .addRequestHandler('ControlPingReq', ControlPingHandler)
             .addRequestHandler('EnsureActorReq', EnsureActorHandler)
-            .addRequestHandler('CreateSpotReq', CreateSpotHandler)
-            .addRequestHandler('JoinUserSpotActorReq', JoinUserSpotActorHandler);
+            .addRequestHandler('CreateSpotReq', CreateSpotHandler);
           const externalSpotChannel = options.rid === 'play-b'
             ? SpotServiceNames.externalSpotChannelB
             : SpotServiceNames.externalSpotChannel;
@@ -110,7 +116,6 @@ export async function startPlayHost(args: readonly string[]): Promise<void> {
       ControlPingHandler,
       CreateSpotHandler,
       EnsureActorHandler,
-      JoinUserSpotActorHandler,
       InMemorySpotRouteStore,
       ScenarioEntrySpot,
       ScenarioActorFactory,
@@ -118,6 +123,7 @@ export async function startPlayHost(args: readonly string[]): Promise<void> {
       EntrySlowActorPingHandler,
       EntryUserActorPingHandler,
       EntryUserActorPushHandler,
+      EntryUserSpotActorJoinHandler,
       ComplexActorHandler,
       EntryActorLeaveHandler,
       EntryActorDestroyHandler,
@@ -133,6 +139,7 @@ export async function startPlayHost(args: readonly string[]): Promise<void> {
       SpotToSpotTimeoutHandler,
       SpotToSpotNegativeHandler,
       SpotMsgHandler,
+      UserActorLeaveHandler,
       UserActorPingHandler,
       UserActorPushHandler,
       BasicTimerHandler,

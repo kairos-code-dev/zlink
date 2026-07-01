@@ -175,18 +175,21 @@ internal sealed class UserSpotAuthSessionHandler(
     {
         _ = dispatch;
         var request = payload.Decode<UserSpotAuthReq>();
-        var joined = string.Equals(request.NodeRid, node.Rid, StringComparison.Ordinal)
-            ? await JoinLocalUserSpotAsync(actors, evidence, request, cancellationToken)
-            : await JoinRemoteUserSpotAsync(routes, request, cancellationToken);
-
-        EnsureAccepted(joined);
+        var ensured = string.Equals(request.NodeRid, node.Rid, StringComparison.Ordinal)
+            ? await EnsureLocalActorAsync(actors, evidence, request, cancellationToken)
+            : await routes.Request(
+                    SpotServiceNames.ControlChannel,
+                    RoutingId.From(request.NodeRid),
+                    new EnsureActorReq(request.ActorId, request.DisplayName, request.NodeRid))
+                .PacketName("EnsureActorReq")
+                .Async<EnsureActorRes>(cancellationToken);
         await context.Actors.BindAsync(
-            new ActorRef(RoutingId.From(request.NodeRid), joined.ActorId, joined.Generation),
+            new ActorRef(RoutingId.From(ensured.NodeRid), ensured.ActorId, ensured.Generation),
             cancellationToken);
-        context.Client.Reply(new AuthRes(joined.ActorId, request.NodeRid)).Submit();
+        context.Client.Reply(new AuthRes(ensured.ActorId, ensured.NodeRid)).Submit();
     }
 
-    private static async ValueTask<JoinUserSpotActorRes> JoinLocalUserSpotAsync(
+    private static async ValueTask<EnsureActorRes> EnsureLocalActorAsync(
         IZLinkActorManager actors,
         EvidenceStore evidence,
         UserSpotAuthReq request,
@@ -199,38 +202,11 @@ internal sealed class UserSpotAuthSessionHandler(
             cancellationToken);
 
         evidence.Add(
-            $"join-user-spot-actor|rid={evidence.Rid}|spot={request.SpotRid}"
-            + $"|actor={request.ActorId}|accepted=True");
-        evidence.Add($"spot-actor-joined|rid={evidence.Rid}|spot={request.SpotRid}|actor={request.ActorId}");
-        return new JoinUserSpotActorRes(
-            request.SpotRid,
+            $"ensure-user-spot-actor|rid={evidence.Rid}|spot={request.SpotRid}"
+            + $"|actor={request.ActorId}");
+        return new EnsureActorRes(
             actor.ActorId,
-            true,
+            request.NodeRid,
             actor.Generation);
-    }
-
-    private static async ValueTask<JoinUserSpotActorRes> JoinRemoteUserSpotAsync(
-        IZLinkRouteClient routes,
-        UserSpotAuthReq request,
-        CancellationToken cancellationToken)
-    {
-        await routes.Request(
-                SpotServiceNames.ControlChannel,
-                RoutingId.From(request.NodeRid),
-                new CreateSpotReq(request.SpotRid))
-            .PacketName("CreateSpotReq")
-            .Async<CreateSpotRes>(cancellationToken);
-        return await routes.Request(
-                SpotServiceNames.ControlChannel,
-                RoutingId.From(request.NodeRid),
-                new JoinUserSpotActorReq(request.SpotRid, request.ActorId))
-            .PacketName("JoinUserSpotActorReq")
-            .Async<JoinUserSpotActorRes>(cancellationToken);
-    }
-
-    private static void EnsureAccepted(JoinUserSpotActorRes joined)
-    {
-        if (!joined.Accepted)
-            throw new InvalidOperationException($"User spot actor join was rejected: {joined.ActorId}");
     }
 }

@@ -26,8 +26,8 @@ inline void run_sm_d9_scenario (const std::string &session_stream_endpoint)
 
     zlink::stream_connector::connector_options_t options;
     options.endpoint = session_stream_endpoint;
-    options.connect_timeout = std::chrono::milliseconds (5000);
-    options.request_timeout = std::chrono::milliseconds (5000);
+    options.connect_timeout = std::chrono::milliseconds (3000);
+    options.request_timeout = std::chrono::milliseconds (3000);
     options.dispatch_mode = zlink::stream_connector::dispatch_mode_t::immediate;
 
     std::mutex observations_mutex;
@@ -48,20 +48,27 @@ inline void run_sm_d9_scenario (const std::string &session_stream_endpoint)
     auto auth =
       stream.request (stream_ensure_auth_req_t{"play-a", actor_id, "SM-D9 Observer"})
         .packet_name ("StreamEnsureAuthReq")
-        .timeout (std::chrono::milliseconds (5000))
+        .timeout (std::chrono::milliseconds (3000))
         .submit<stream_auth_res_t> ();
-    if (!auth || auth.value ().actor.actor_id != actor_id
+    if (!auth) {
+        throw std::runtime_error (
+          std::string ("SM-D9 stream auth failed: ")
+          + (auth.error () ? auth.error ()->message : "unknown stream auth error"));
+    }
+    if (auth.value ().actor.actor_id != actor_id
         || auth.value ().session_node_rid != "session-a") {
-        throw std::runtime_error ("SM-D9 stream auth reply mismatch");
+        throw std::runtime_error (
+          "SM-D9 stream auth reply mismatch: actor=" + auth.value ().actor.actor_id
+          + " session=" + auth.value ().session_node_rid);
     }
 
     auto first = stream.request (actor_ping_req_t{"observer-1"})
                    .packet_name ("ActorPingReq")
-                   .timeout (std::chrono::milliseconds (5000))
+                   .timeout (std::chrono::milliseconds (3000))
                    .submit<actor_ping_res_t> ();
     auto second = stream.request (actor_ping_req_t{"observer-2"})
                     .packet_name ("ActorPingReq")
-                    .timeout (std::chrono::milliseconds (5000))
+                    .timeout (std::chrono::milliseconds (3000))
                     .submit<actor_ping_res_t> ();
     if (!first || first.value ().actor_id != actor_id || first.value ().value != "observer-1") {
         throw std::runtime_error ("SM-D9 first ping reply mismatch");

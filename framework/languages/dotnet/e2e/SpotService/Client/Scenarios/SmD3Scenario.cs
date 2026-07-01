@@ -82,6 +82,12 @@ internal static class SmD3Scenario
                     await client.Request(new UserSpotAuthReq(userSpotRid, userActorId, "user bind", "play-a"))
                         .PacketName("UserSpotAuthReq")
                         .Async<AuthRes>();
+                    await playA.Post("/spot/create")
+                        .Body(new CreateSpotReq(userSpotRid))
+                        .SubmitAsync<CreateSpotRes>();
+                    await client.Request(new JoinUserSpotActorReq(userSpotRid, userActorId))
+                        .PacketName("JoinUserSpotActorReq")
+                        .Async<JoinUserSpotActorRes>();
                     user = client;
                     break;
                 }

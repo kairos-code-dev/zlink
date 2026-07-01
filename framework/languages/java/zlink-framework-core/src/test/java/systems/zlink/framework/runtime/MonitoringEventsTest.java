@@ -415,6 +415,15 @@ final class MonitoringEventsTest {
         }
 
         @Override
+        public java.util.concurrent.CompletionStage<List<Message>> leaveActor(
+            ZLinkBackendActorRef actor,
+            RoutingId currentSpotRid,
+            java.time.Duration timeout) {
+            return java.util.concurrent.CompletableFuture.failedFuture(
+                new UnsupportedOperationException("leave actor is not used by this test"));
+        }
+
+        @Override
         public java.util.concurrent.CompletionStage<Void> destroyActor(
             ZLinkBackendActorRef actor,
             java.time.Duration timeout) {

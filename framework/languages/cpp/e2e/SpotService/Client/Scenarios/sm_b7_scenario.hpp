@@ -50,8 +50,8 @@ inline void run_sm_b7_scenario (const std::string &play_http_endpoint,
 
     zlink::stream_connector::connector_options_t options;
     options.endpoint = session_stream_endpoint;
-    options.connect_timeout = std::chrono::milliseconds (5000);
-    options.request_timeout = std::chrono::milliseconds (5000);
+    options.connect_timeout = std::chrono::milliseconds (3000);
+    options.request_timeout = std::chrono::milliseconds (3000);
     options.dispatch_mode = zlink::stream_connector::dispatch_mode_t::immediate;
     auto stream = zlink::stream_connector::connector_factory_t::create (options);
 
@@ -62,7 +62,7 @@ inline void run_sm_b7_scenario (const std::string &play_http_endpoint,
     auto auth =
       stream.request (stream_auth_req_t{"play-a", actor_id, "SM-B7 Order", join_reply.actor})
         .packet_name ("StreamAuthReq")
-        .timeout (std::chrono::milliseconds (5000))
+        .timeout (std::chrono::milliseconds (3000))
         .submit<stream_auth_res_t> ();
     if (!auth) {
         throw std::runtime_error ("SM-B7 stream auth failed");
@@ -71,12 +71,12 @@ inline void run_sm_b7_scenario (const std::string &play_http_endpoint,
     auto first = stream.request (actor_ping_req_t{"order-1"})
                    .packet_name ("ActorPingReq")
                    .metadata ("actor-id", actor_id)
-                   .timeout (std::chrono::milliseconds (5000))
+                   .timeout (std::chrono::milliseconds (3000))
                    .submit<actor_ping_res_t> ();
     auto second = stream.request (actor_ping_req_t{"order-2"})
                     .packet_name ("ActorPingReq")
                     .metadata ("actor-id", actor_id)
-                    .timeout (std::chrono::milliseconds (5000))
+                    .timeout (std::chrono::milliseconds (3000))
                     .submit<actor_ping_res_t> ();
     (void) stream.close ();
 

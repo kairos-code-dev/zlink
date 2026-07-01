@@ -349,9 +349,19 @@ std::vector<spot_node_peer_entry_t> spot_node_t::peers () const
       zlink_spot_node_peers (_impl->handle, nullptr, nullptr, &count)));
     std::vector<zlink_spot_node_peer_entry_t> native (count);
     if (count > 0) {
-        detail::throw_if_failed<config_error_t> (static_cast<config_result_t> (
-          zlink_spot_node_peers (_impl->handle, nullptr, native.data (), &count)));
-        native.resize (count);
+        while (true) {
+            const auto result = static_cast<config_result_t> (
+              zlink_spot_node_peers (_impl->handle, nullptr, native.data (), &count));
+            if (result == config_result_t::ok) {
+                native.resize (count);
+                break;
+            }
+            if (result == config_result_t::internal_error && zlink_errno () == ENOBUFS) {
+                native.resize (count);
+                continue;
+            }
+            detail::throw_if_failed<config_error_t> (result);
+        }
     }
     std::vector<spot_node_peer_entry_t> entries;
     entries.reserve (native.size ());
@@ -378,9 +388,19 @@ spot_node_t::peers_query (const spot_node_peer_filter_t &filter_) const
       zlink_spot_node_peers (_impl->handle, &native_filter, nullptr, &count)));
     std::vector<zlink_spot_node_peer_entry_t> native (count);
     if (count > 0) {
-        detail::throw_if_failed<config_error_t> (static_cast<config_result_t> (
-          zlink_spot_node_peers (_impl->handle, &native_filter, native.data (), &count)));
-        native.resize (count);
+        while (true) {
+            const auto result = static_cast<config_result_t> (
+              zlink_spot_node_peers (_impl->handle, &native_filter, native.data (), &count));
+            if (result == config_result_t::ok) {
+                native.resize (count);
+                break;
+            }
+            if (result == config_result_t::internal_error && zlink_errno () == ENOBUFS) {
+                native.resize (count);
+                continue;
+            }
+            detail::throw_if_failed<config_error_t> (result);
+        }
     }
     std::vector<spot_node_peer_entry_t> entries;
     entries.reserve (native.size ());
@@ -411,9 +431,19 @@ spot_node_t::subjects (const spot_node_subject_filter_t *filter_) const
       zlink_spot_node_subjects (_impl->handle, filter_ptr, nullptr, &count)));
     std::vector<zlink_spot_node_subject_entry_t> native (count);
     if (count > 0) {
-        detail::throw_if_failed<config_error_t> (static_cast<config_result_t> (
-          zlink_spot_node_subjects (_impl->handle, filter_ptr, native.data (), &count)));
-        native.resize (count);
+        while (true) {
+            const auto result = static_cast<config_result_t> (
+              zlink_spot_node_subjects (_impl->handle, filter_ptr, native.data (), &count));
+            if (result == config_result_t::ok) {
+                native.resize (count);
+                break;
+            }
+            if (result == config_result_t::internal_error && zlink_errno () == ENOBUFS) {
+                native.resize (count);
+                continue;
+            }
+            detail::throw_if_failed<config_error_t> (result);
+        }
     }
     std::vector<spot_node_subject_entry_t> entries;
     entries.reserve (native.size ());
@@ -444,9 +474,19 @@ spot_node_t::internal_sockets (const spot_node_socket_filter_t *filter_) const
       zlink_spot_node_internal_sockets (_impl->handle, filter_ptr, nullptr, &count)));
     std::vector<zlink_spot_node_socket_entry_t> native (count);
     if (count > 0) {
-        detail::throw_if_failed<config_error_t> (static_cast<config_result_t> (
-          zlink_spot_node_internal_sockets (_impl->handle, filter_ptr, native.data (), &count)));
-        native.resize (count);
+        while (true) {
+            const auto result = static_cast<config_result_t> (
+              zlink_spot_node_internal_sockets (_impl->handle, filter_ptr, native.data (), &count));
+            if (result == config_result_t::ok) {
+                native.resize (count);
+                break;
+            }
+            if (result == config_result_t::internal_error && zlink_errno () == ENOBUFS) {
+                native.resize (count);
+                continue;
+            }
+            detail::throw_if_failed<config_error_t> (result);
+        }
     }
     std::vector<spot_node_socket_entry_t> entries;
     entries.reserve (native.size ());
@@ -483,9 +523,19 @@ std::vector<spot_node_spot_entry_t> spot_node_t::spots () const
       static_cast<config_result_t> (zlink_spot_node_spots (_impl->handle, nullptr, &count)));
     std::vector<zlink_spot_node_spot_entry_t> native (count);
     if (count > 0) {
-        detail::throw_if_failed<config_error_t> (static_cast<config_result_t> (
-          zlink_spot_node_spots (_impl->handle, native.data (), &count)));
-        native.resize (count);
+        while (true) {
+            const auto result = static_cast<config_result_t> (
+              zlink_spot_node_spots (_impl->handle, native.data (), &count));
+            if (result == config_result_t::ok) {
+                native.resize (count);
+                break;
+            }
+            if (result == config_result_t::internal_error && zlink_errno () == ENOBUFS) {
+                native.resize (count);
+                continue;
+            }
+            detail::throw_if_failed<config_error_t> (result);
+        }
     }
     std::vector<spot_node_spot_entry_t> entries;
     entries.reserve (native.size ());
@@ -501,9 +551,19 @@ std::vector<spot_node_actor_entry_t> spot_node_t::actors () const
       static_cast<config_result_t> (zlink_spot_node_actors (_impl->handle, nullptr, &count)));
     std::vector<zlink_spot_node_actor_entry_t> native (count);
     if (count > 0) {
-        detail::throw_if_failed<config_error_t> (static_cast<config_result_t> (
-          zlink_spot_node_actors (_impl->handle, native.data (), &count)));
-        native.resize (count);
+        while (true) {
+            const auto result = static_cast<config_result_t> (
+              zlink_spot_node_actors (_impl->handle, native.data (), &count));
+            if (result == config_result_t::ok) {
+                native.resize (count);
+                break;
+            }
+            if (result == config_result_t::internal_error && zlink_errno () == ENOBUFS) {
+                native.resize (count);
+                continue;
+            }
+            detail::throw_if_failed<config_error_t> (result);
+        }
     }
     std::vector<spot_node_actor_entry_t> entries;
     entries.reserve (native.size ());

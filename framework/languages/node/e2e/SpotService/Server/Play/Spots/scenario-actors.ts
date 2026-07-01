@@ -8,6 +8,8 @@ import type {
   DestroyActorRes,
   DestroyActorReq,
   EnsureActorReq,
+  JoinUserSpotActorReq,
+  JoinUserSpotActorRes,
   LeaveRes,
   LeaveReq,
   SlowActorPingReq,
@@ -58,6 +60,7 @@ export class ScenarioEntrySpot implements ZLinkEntrySpot<ScenarioActor> {
     this.context.handlers.actorRequest('UserActorPingReq', EntryUserActorPingHandler, ScenarioActor);
     this.context.handlers.actorRequest('UserActorPushReq', EntryUserActorPushHandler, ScenarioActor);
     this.context.handlers.actorRequest('ComplexActorReq', ComplexActorHandler, ScenarioActor);
+    this.context.handlers.actorRequest('JoinUserSpotActorReq', EntryUserSpotActorJoinHandler, ScenarioActor);
     this.context.handlers.actorRequest('LeaveReq', EntryActorLeaveHandler, ScenarioActor);
     this.context.handlers.actorRequest('SnapshotReq', EntryActorSnapshotHandler, ScenarioActor);
     this.context.handlers.actorRequest('DestroyActorReq', EntryActorDestroyHandler, ScenarioActor);
@@ -355,6 +358,45 @@ export class EntryActorLeaveHandler
       throw new Error('EntryActorLeaveHandler evidence store is not configured.');
     }
     return this.evidence;
+  }
+}
+
+export class EntryUserSpotActorJoinHandler
+  implements ZLinkEntrySpotActorRequestHandler<
+    ScenarioEntrySpot,
+    ScenarioActor,
+    JoinUserSpotActorReq,
+    JoinUserSpotActorRes
+  > {
+  async handle(
+    entrySpot: ScenarioEntrySpot,
+    actor: ScenarioActor,
+    context: ZLinkSpotActorRequestContext,
+    request: JoinUserSpotActorReq
+  ): Promise<JoinUserSpotActorRes> {
+    void entrySpot;
+    if (request.actorId !== actor.actorId) {
+      throw new Error('Join request actor does not match dispatched actor.');
+    }
+    const result = await actor.context
+      .joinSpot(request.spotRid, request)
+      .timeout(5000)
+      .submit(context.connectionAborted);
+    if (result.resultCode !== 0) {
+      return {
+        spotRid: request.spotRid,
+        actorId: actor.actorId,
+        accepted: false,
+        generation: result.actor.generation.toString()
+      };
+    }
+    InMemoryActorSpotStore.record(actor.actorId, request.spotRid);
+    return {
+      spotRid: request.spotRid,
+      actorId: actor.actorId,
+      accepted: true,
+      generation: result.actor.generation.toString()
+    };
   }
 }
 

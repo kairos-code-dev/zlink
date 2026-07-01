@@ -3,7 +3,6 @@ import type {
   AuthRes,
   AuthReq,
   EnsureActorRes,
-  JoinUserSpotActorRes,
   MultiBindRes,
   MultiBindReq,
   UserSpotAuthReq
@@ -79,18 +78,20 @@ class ScenarioSession implements ZLinkSession {
 
     if (dispatch.packetName === 'UserSpotAuthReq') {
       const request = payload.decode<UserSpotAuthReq>(Object as never);
-      const joined = await this.joinRemoteUserSpot(request, signal);
-      if (!joined.accepted) {
-        throw new Error(`User spot actor join was rejected: ${joined.actorId}`);
-      }
+      await this.ensureRemoteUserSpot(request, signal);
+      const ensured = await this.ensureRemoteActor({
+        actorId: request.actorId,
+        displayName: request.displayName,
+        nodeRid: request.nodeRid
+      }, signal);
       await this.context.actors.bind({
-        actorId: joined.actorId,
-        nodeRid: request.nodeRid,
-        generation: BigInt(joined.generation)
+        actorId: ensured.actorId,
+        nodeRid: ensured.nodeRid,
+        generation: BigInt(ensured.generation)
       }, signal);
       await this.context.client.reply({
-        actorId: joined.actorId,
-        nodeRid: request.nodeRid
+        actorId: ensured.actorId,
+        nodeRid: ensured.nodeRid
       } satisfies AuthRes).submit(signal);
       return;
     }
@@ -141,20 +142,12 @@ class ScenarioSession implements ZLinkSession {
     };
   }
 
-  private async joinRemoteUserSpot(request: UserSpotAuthReq, signal?: AbortSignal): Promise<JoinUserSpotActorRes> {
+  private async ensureRemoteUserSpot(request: UserSpotAuthReq, signal?: AbortSignal): Promise<void> {
     await this.route
       .request(SpotServiceNames.controlChannel, request.nodeRid, { spotRid: request.spotRid })
       .packetName('CreateSpotReq')
       .timeout(5000)
       .submit(signal);
-    return await this.route
-      .request(SpotServiceNames.controlChannel, request.nodeRid, {
-        spotRid: request.spotRid,
-        actorId: request.actorId
-      })
-      .packetName('JoinUserSpotActorReq')
-      .timeout(5000)
-      .submit<JoinUserSpotActorRes>(signal);
   }
 
   private async ensureRemoteActor(request: AuthReq, signal?: AbortSignal): Promise<EnsureActorRes> {

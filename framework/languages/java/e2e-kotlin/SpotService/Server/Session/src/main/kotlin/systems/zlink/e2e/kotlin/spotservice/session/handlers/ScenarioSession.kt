@@ -21,10 +21,6 @@ class ScenarioSession(
     }
 
     override fun onDisconnected() {
-        context.actors().bound().take(1).forEach { actor ->
-            actor.notifyDisconnected().toCompletableFuture().join()
-            evidence.record("ActorDisconnectNotified", "session", actor.actorId())
-        }
         evidence.record("StreamDisconnected", "session", context.sessionId())
     }
 

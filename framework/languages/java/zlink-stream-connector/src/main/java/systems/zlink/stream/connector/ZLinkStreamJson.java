@@ -87,7 +87,12 @@ public final class ZLinkStreamJson {
             return MAPPER.readValue(payload.payload().toByteArray(), type);
         } catch (IOException ex) {
             throw new IllegalArgumentException(
-                "failed to deserialize JSON stream payload as " + type.getName(),
+                "failed to deserialize JSON stream payload packet="
+                    + payload.packetName()
+                    + " as "
+                    + type.getName()
+                    + " payload="
+                    + new String(payload.payload().toByteArray(), java.nio.charset.StandardCharsets.UTF_8),
                 ex);
         }
     }

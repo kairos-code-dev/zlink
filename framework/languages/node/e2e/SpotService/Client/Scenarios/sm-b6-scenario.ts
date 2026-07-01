@@ -5,8 +5,9 @@ import {
 } from '@zlink-systems/stream-connector';
 import type {
   AuthRes,
-  AuthReq,
   EvidenceWaitReq,
+  JoinUserSpotActorReq,
+  JoinUserSpotActorRes,
   LeaveRes,
   LeaveReq,
   UserSpotAuthReq
@@ -35,6 +36,7 @@ export async function runSmB6(options: ClientOptions): Promise<void> {
       .packetName('UserSpotAuthReq')
       .timeout(5000)
       .submit<AuthRes>();
+    await joinUserSpotActor(leaveClient, spotRid, leaveActorId);
 
     const left = decodeStreamReply<LeaveRes>(await leaveClient
       .request({ actorId: leaveActorId } satisfies LeaveReq)
@@ -66,32 +68,50 @@ export async function runSmB6(options: ClientOptions): Promise<void> {
   try {
     await disconnectClient
       .request({
+        spotRid,
         actorId: disconnectActorId,
-        displayName: 'disconnect',
-        nodeRid: 'session-a'
-      } satisfies AuthReq)
-      .packetName('AuthReq')
+        displayName: disconnectActorId,
+        nodeRid: 'play-a'
+      } satisfies UserSpotAuthReq)
+      .packetName('UserSpotAuthReq')
       .timeout(5000)
       .submit<AuthRes>();
+    await joinUserSpotActor(disconnectClient, spotRid, disconnectActorId);
   } finally {
     await disconnectClient.close();
   }
 
-  const expectedDisconnectEvidence = [`entry-disconnected|rid=session-a|actor=${disconnectActorId}`];
-  const sessionAfterDisconnect = await postJson<string[]>(options.sessionAUrl, '/evidence/wait', {
+  const expectedDisconnectEvidence = [
+    `spot-actor-disconnected|rid=play-a|spot=${spotRid}|actor=${disconnectActorId}`
+  ];
+  const playAAfterDisconnect = await postJson<string[]>(options.playAUrl, '/evidence/wait', {
     containsAll: expectedDisconnectEvidence,
     timeoutMilliseconds: 10000
   } satisfies EvidenceWaitReq);
   ensure(
-    expectedDisconnectEvidence.every((expected) => sessionAfterDisconnect.some((line) => line.includes(expected))),
-    'SM-B6 expected disconnect evidence.'
+    expectedDisconnectEvidence.every((expected) => playAAfterDisconnect.some((line) => line.includes(expected))),
+    'SM-B6 expected remote spot actor disconnect evidence.'
   );
   ensure(
-    sessionAfterDisconnect.every((line) => !line.includes(`entry-left|rid=session-a|actor=${disconnectActorId}`)),
+    playAAfterDisconnect.every((line) =>
+      !line.includes(`spot-actor-left|rid=play-a|spot=${spotRid}|actor=${disconnectActorId}`)),
     'SM-B6 disconnect incorrectly emitted leave evidence.'
   );
 
   console.log('scenario SM-B6 passed');
+}
+
+async function joinUserSpotActor(
+  client: ReturnType<typeof createStreamClient>,
+  spotRid: string,
+  actorId: string
+): Promise<void> {
+  const joined = decodeStreamReply<JoinUserSpotActorRes>(await client
+    .request({ spotRid, actorId } satisfies JoinUserSpotActorReq)
+    .packetName('JoinUserSpotActorReq')
+    .timeout(5000)
+    .submit());
+  ensure(joined.accepted && joined.actorId === actorId, `User spot actor join failed for ${actorId}.`);
 }
 
 function createStreamClient(endpoint: string) {

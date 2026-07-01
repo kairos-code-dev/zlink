@@ -577,6 +577,13 @@ public final class ZLinkJavaBackendAdapterFactory implements ZLinkBackendAdapter
                         completion.replyParts());
                 });
         }
+        @Override public CompletionStage<List<Message>> leaveActor(ZLinkBackendActorRef actor, RoutingId currentSpotRid, Duration timeout) {
+            return spotNode.leaveActor(
+                    new ActorRef(actor.nodeRid(), actor.actorId(), actor.epoch()),
+                    currentSpotRid)
+                .timeout(timeout)
+                .submit();
+        }
         @Override public CompletionStage<Void> destroyActor(ZLinkBackendActorRef actor, Duration timeout) {
             return spotNode.destroyActor(new ActorRef(actor.nodeRid(), actor.actorId(), actor.epoch()))
                 .timeout(timeout)

@@ -448,7 +448,7 @@ final class StreamSessionTest {
                  RuntimeTestSupport.startFramework(options, backendFactory)) {
             backendFactory.dispatchStreamRequest(
                 "Compressed",
-                Message.from(hex("00636F6D70726573736564")),
+                Message.from(hex("0022636F6D7072657373656422")),
                 92,
                 0x04);
 
@@ -472,7 +472,7 @@ final class StreamSessionTest {
                  RuntimeTestSupport.startFramework(options, backendFactory)) {
             backendFactory.dispatchStreamRequest(
                 "CustomCompressed",
-                Message.from(codec.compress("inbound".getBytes(java.nio.charset.StandardCharsets.UTF_8))),
+                Message.from(codec.compress("\"inbound\"".getBytes(java.nio.charset.StandardCharsets.UTF_8))),
                 93,
                 0x04);
 
@@ -526,6 +526,31 @@ final class StreamSessionTest {
                 .anyMatch(call -> call.startsWith("stream.reply.fake-session.44.MustFail.")
                     && call.contains("HAS_REQUEST_SEQUENCE")
                     && call.endsWith(".public failure")));
+        }
+    }
+
+    @Test
+    void sessionRequestFailureDoesNotBlockLaterPackets() {
+        FailingThenRecoveringSession.reset();
+        DefaultZLinkFrameworkOptions options = new DefaultZLinkFrameworkOptions();
+        { var stream = options.addStreamNode("gateway"); stream.bind("inproc://gateway");
+            stream.registerSession(FailingThenRecoveringSession.class); };
+        FakeZLinkBackendAdapterFactory backendFactory =
+            new FakeZLinkBackendAdapterFactory();
+
+        try (ZLinkFrameworkRuntime ignored =
+                 RuntimeTestSupport.startFramework(options, backendFactory)) {
+            backendFactory.dispatchStreamRequest("MustFail", "payload", 44);
+            awaitCondition(() -> backendFactory.calls().stream()
+                .anyMatch(call -> call.startsWith("stream.reply.fake-session.44.MustFail.")
+                    && call.endsWith(".public failure")));
+
+            backendFactory.dispatchStreamRequest("Recover", "next", 45);
+
+            awaitCondition(() -> FailingThenRecoveringSession.dispatches.contains("Recover:next"));
+            awaitCondition(() -> backendFactory.calls().stream()
+                .anyMatch(call -> call.startsWith("stream.reply.fake-session.45.String.")
+                    && call.endsWith(".recovered")));
         }
     }
 
@@ -605,6 +630,47 @@ final class StreamSessionTest {
             ZLinkMessage payload) {
             dispatches.add(dispatch.packetName() + ":" + payload.decode(String.class));
                     }
+    }
+
+    public static final class FailingThenRecoveringSession implements ZLinkSession {
+        static List<String> dispatches = new CopyOnWriteArrayList<>();
+        private final ZLinkSessionContext context;
+
+        public FailingThenRecoveringSession(ZLinkSessionContext context) {
+            this.context = context;
+        }
+
+        static void reset() {
+            dispatches = new CopyOnWriteArrayList<>();
+        }
+
+        @Override
+        public ZLinkSessionContext context() {
+            return context;
+        }
+
+        @Override
+        public void onConnected() {
+        }
+
+        @Override
+        public void onDisconnected() {
+        }
+
+        @Override
+        public void onError(ZLinkStreamError error) {
+        }
+
+        @Override
+        public void onDispatch(
+            ZLinkSessionDispatchContext dispatch,
+            ZLinkMessage payload) {
+            if ("MustFail".equals(dispatch.packetName())) {
+                throw new IllegalStateException("public failure");
+            }
+            dispatches.add(dispatch.packetName() + ":" + payload.decode(String.class));
+            context.client().reply("recovered").submit().toCompletableFuture().join();
+        }
     }
 
     public static final class ReentrantOnConnectedSession implements ZLinkSession {
@@ -885,16 +951,13 @@ final class StreamSessionTest {
         public void onDispatch(
             ZLinkSessionDispatchContext dispatch,
             ZLinkMessage payload) {
-            context.client()
-                .reply("reply")
-                .submit()
-                .whenComplete((ignored, error) -> {
-                    if (error != null) {
-                        errorMessage = error.getMessage();
-                    }
-                })
-                .toCompletableFuture()
-                .join();
+            try {
+                context.client()
+                    .reply("reply")
+                    .submit();
+            } catch (RuntimeException error) {
+                errorMessage = error.getMessage();
+            }
         }
     }
 

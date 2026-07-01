@@ -4,6 +4,7 @@ internal static class ZLinkRemoteActorJoinPackets
 {
     public const string RequestPacketName = "__zlink.actor.join_spot.request";
     public const string BoundSessionBindPacketName = "zlink.framework.actor.bound_session.bind";
+    public const string SessionDisconnectedPacketName = "zlink.framework.actor.session_disconnected";
 }
 
 internal sealed record ZLinkRemoteActorJoinRequest(

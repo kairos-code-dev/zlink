@@ -8,9 +8,12 @@ namespace SpotService.Client.Scenarios;
 internal static class SmD5Scenario
 {
     public static async Task RunAsync(
+        ZLinkHttpClient playA,
         ZLinkHttpClient sessionA,
         string sessionAStreamEndpoint)
     {
+        _ = sessionA;
+        var spotRid = $"spot-sm-d5-{Guid.NewGuid():N}";
         var actorId = $"actor-sm-d5-notified-{Guid.NewGuid():N}";
         IZlinkStreamConnector? client = null;
         try
@@ -31,9 +34,15 @@ internal static class SmD5Scenario
                 try
                 {
                     await candidate.Connect.Async();
-                    await candidate.Request(new AuthReq(actorId, "disconnect", "session-a"))
-                        .PacketName("AuthReq")
+                    await candidate.Request(new UserSpotAuthReq(spotRid, actorId, "disconnect", "play-a"))
+                        .PacketName("UserSpotAuthReq")
                         .Async<AuthRes>();
+                    await playA.Post("/spot/create")
+                        .Body(new CreateSpotReq(spotRid))
+                        .SubmitAsync<CreateSpotRes>();
+                    await candidate.Request(new JoinUserSpotActorReq(spotRid, actorId))
+                        .PacketName("JoinUserSpotActorReq")
+                        .Async<JoinUserSpotActorRes>();
                     client = candidate;
                     break;
                 }
@@ -59,12 +68,12 @@ internal static class SmD5Scenario
             if (client is not null) await client.DisposeAsync();
         }
 
-        var evidence = (await sessionA.Post("/evidence/wait")
-            .Body(new EvidenceWaitReq([$"entry-disconnected|rid=session-a|actor={actorId}"]))
+        var expectedEvidence = $"spot-actor-disconnected|rid=play-a|spot={spotRid}|actor={actorId}";
+        var evidence = (await playA.Post("/evidence/wait")
+            .Body(new EvidenceWaitReq([expectedEvidence]))
             .SubmitAsync<string[]>()).Body;
         ScenarioAssert.That(
-            evidence.Any(line =>
-                line.Contains($"entry-disconnected|rid=session-a|actor={actorId}", StringComparison.Ordinal)),
+            evidence.Any(line => line.Contains(expectedEvidence, StringComparison.Ordinal)),
             "SM-D5 expected only the selected bound actor to receive disconnect notification.");
 
         Console.WriteLine("operation SpotService.sm-d5 passed");

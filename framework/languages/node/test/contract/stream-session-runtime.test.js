@@ -168,6 +168,41 @@ test('stream session cleanup removes actor bindings without closing the stream a
   assert.equal(socket.disconnects.length, 0);
 });
 
+test('stream session disconnect notifies bound actors before cleanup', async () => {
+  const socket = new FakeStreamSocket();
+  const events = [];
+  const bindingRuntime = new framework.ZLinkStreamBindingRuntime({
+    async notifyDisconnected(actor) {
+      events.push(['actor-disconnected', actor.actorId]);
+    }
+  });
+  const runtime = new framework.ZLinkStreamSessionRuntime({
+    socket,
+    bindingRuntime,
+    sessionFactory(context) {
+      return {
+        context,
+        async onConnected(ctx) {
+          await ctx.actors.bind({ nodeRid: 'node-a', actorId: 'actor-a', generation: 1 });
+        },
+        async onDisconnected() {
+          events.push(['session-disconnected']);
+        }
+      };
+    }
+  }, 'session-disconnect');
+
+  runtime.enqueueConnected();
+  runtime.enqueueDisconnected();
+  await runtime.dispose();
+
+  assert.deepEqual(events, [
+    ['actor-disconnected', 'actor-a'],
+    ['session-disconnected']
+  ]);
+  assert.equal(bindingRuntime.find('actor-a'), undefined);
+});
+
 test('stream session node runtime closes rejected packets after dispose', async () => {
   const socket = new FakeStreamSocket();
   const runtime = new framework.ZLinkStreamSessionNodeRuntime({

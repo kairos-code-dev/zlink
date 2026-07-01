@@ -302,6 +302,39 @@ struct async_game_http_handler_t
     }
 };
 
+struct nested_app_http_handler_t
+{
+    using request_type = create_game_http_handler_t::request_type;
+    using reply_type = create_game_http_handler_t::reply_type;
+
+    reply_type handle (const request_type &request)
+    {
+        class stop_service_t final : public zlink::framework::hosted_service_t
+        {
+          public:
+            explicit stop_service_t (zlink::framework::app_t &app) : _app (app) {}
+
+            void start (zlink::framework::service_provider_t &) override { _app.stop (); }
+
+            void stop () noexcept override {}
+
+          private:
+            zlink::framework::app_t &_app;
+        };
+
+        auto nested = zlink::framework::app_t::create ();
+        nested.add_zlink_framework ([] (zlink::framework::zlink_framework_options_t &) {});
+        nested.add_hosted_service (std::make_unique<stop_service_t> (nested));
+        const auto exit_code = nested.run (0, nullptr);
+        if (exit_code != 0) {
+            throw zlink::framework::framework_exception_t (
+              zlink::framework::framework_error_kind_t::request_failed,
+              "nested app failed");
+        }
+        return {.id = request.id, .name = "nested:" + request.name};
+    }
+};
+
 struct http_name_prefix_t
 {
     std::string value = "di:";
@@ -809,6 +842,7 @@ int main ()
           .map_readiness ("/ready")
           .map_liveness ("/live")
           .map_post<create_game_http_handler_t> ("/games")
+          .map_post<nested_app_http_handler_t> ("/nested-app")
           .map_get<create_game_http_handler_t> ("/games/{id}")
           .map_put<create_game_http_handler_t> ("/games/{id}")
           .map_delete<create_game_http_handler_t> ("/games/{id}")
@@ -843,6 +877,15 @@ int main ()
                                .body (create_game_http_handler_t::request_type{.name = "post"})
                                .submit<create_game_http_handler_t::reply_type> ()
                                .result ();
+    const auto nested_result = http_client.post ("/nested-app")
+                                 .body (create_game_http_handler_t::request_type{.name = "app"})
+                                 .submit<create_game_http_handler_t::reply_type> ()
+                                 .result ();
+    const auto post_after_nested_result =
+      http_client.post ("/games")
+        .body (create_game_http_handler_t::request_type{.name = "after-nested"})
+        .submit<create_game_http_handler_t::reply_type> ()
+        .result ();
     const auto get_result = http_client.get ("/games/1?filter=active")
                               .submit<create_game_http_handler_t::reply_type> ()
                               .result ();
@@ -982,6 +1025,11 @@ int main ()
         || post_result.value ().headers.at ("X-Middleware-After") != "seen"
         || post_result.value ().headers.at ("X-Middleware-State") != "preserved") {
         return 14;
+    }
+    if (!nested_result || nested_result.value ().body.name != "nested:app"
+        || !post_after_nested_result
+        || post_after_nested_result.value ().body.name != "after-nested") {
+        return 62;
     }
     if (!get_result || get_result.value ().status != 200 || get_result.value ().body.id != "1"
         || get_result.value ().body.filter != "active"

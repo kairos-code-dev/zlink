@@ -129,10 +129,20 @@ registry_query_client_t::topology (const registry_topology_filter_t *filter_) co
       zlink_registry_query_client_topology (_impl->handle, filter_ptr, nullptr, &count)));
     std::vector<zlink_registry_topology_entry_t> native (count);
     if (count > 0) {
-        detail::throw_if_failed<config_error_t> (
-          static_cast<config_result_t> (zlink_registry_query_client_topology (
-            _impl->handle, filter_ptr, native.data (), &count)));
-        native.resize (count);
+        while (true) {
+            const auto result = static_cast<config_result_t> (
+              zlink_registry_query_client_topology (
+                _impl->handle, filter_ptr, native.data (), &count));
+            if (result == config_result_t::ok) {
+                native.resize (count);
+                break;
+            }
+            if (result == config_result_t::internal_error && zlink_errno () == ENOBUFS) {
+                native.resize (count);
+                continue;
+            }
+            detail::throw_if_failed<config_error_t> (result);
+        }
     }
     std::vector<registry_topology_entry_t> entries;
     entries.reserve (native.size ());

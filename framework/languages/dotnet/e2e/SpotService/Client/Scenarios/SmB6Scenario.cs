@@ -37,6 +37,12 @@ internal static class SmB6Scenario
                 await client.Request(new UserSpotAuthReq(spotRid, leaveActorId, leaveActorId, "play-a"))
                     .PacketName("UserSpotAuthReq")
                     .Async<AuthRes>();
+                await playA.Post("/spot/create")
+                    .Body(new CreateSpotReq(spotRid))
+                    .SubmitAsync<CreateSpotRes>();
+                await client.Request(new JoinUserSpotActorReq(spotRid, leaveActorId))
+                    .PacketName("JoinUserSpotActorReq")
+                    .Async<JoinUserSpotActorRes>();
 
                 leaveStarted = true;
                 left = await client.Request(new LeaveReq(leaveActorId))
@@ -89,23 +95,29 @@ internal static class SmB6Scenario
                      }))
         {
             await disconnectClient.Connect.Async();
-            await disconnectClient.Request(new AuthReq(disconnectActorId, "disconnect", "session-a"))
-                .PacketName("AuthReq")
+            await disconnectClient.Request(new UserSpotAuthReq(spotRid, disconnectActorId, disconnectActorId, "play-a"))
+                .PacketName("UserSpotAuthReq")
                 .Async<AuthRes>();
+            await playA.Post("/spot/create")
+                .Body(new CreateSpotReq(spotRid))
+                .SubmitAsync<CreateSpotRes>();
+            await disconnectClient.Request(new JoinUserSpotActorReq(spotRid, disconnectActorId))
+                .PacketName("JoinUserSpotActorReq")
+                .Async<JoinUserSpotActorRes>();
             await disconnectClient.Close.Async();
         }
 
-        var sessionAfterDisconnect = (await sessionA.Post("/evidence/wait")
-            .Body(new EvidenceWaitReq([$"entry-disconnected|rid=session-a|actor={disconnectActorId}"]))
+        var expectedDisconnectEvidence =
+            $"spot-actor-disconnected|rid=play-a|spot={spotRid}|actor={disconnectActorId}";
+        var playAAfterDisconnect = (await playA.Post("/evidence/wait")
+            .Body(new EvidenceWaitReq([expectedDisconnectEvidence]))
             .SubmitAsync<string[]>()).Body;
         ScenarioAssert.That(
-            sessionAfterDisconnect.Any(line => line.Contains(
-                $"entry-disconnected|rid=session-a|actor={disconnectActorId}",
-                StringComparison.Ordinal)),
+            playAAfterDisconnect.Any(line => line.Contains(expectedDisconnectEvidence, StringComparison.Ordinal)),
             "SM-B6 expected disconnect evidence.");
         ScenarioAssert.That(
-            sessionAfterDisconnect.All(line => !line.Contains(
-                $"entry-left|rid=session-a|actor={disconnectActorId}",
+            playAAfterDisconnect.All(line => !line.Contains(
+                $"spot-actor-left|rid=play-a|spot={spotRid}|actor={disconnectActorId}",
                 StringComparison.Ordinal)),
             "SM-B6 disconnect incorrectly emitted leave evidence.");
 

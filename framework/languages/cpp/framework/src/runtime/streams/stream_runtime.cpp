@@ -106,6 +106,7 @@ class stream_session_dispatcher_t
 
     result_t<void> dispatch (std::string operation, dispatch_callback_t callback) const
     {
+        const std::lock_guard<std::mutex> dispatch_lock (_stream.dispatch_mutex);
         record_operation (std::move (operation));
         return runtime::handler_coroutine_executor ()
           .submit<void> ([callback = std::move (
@@ -130,6 +131,7 @@ class stream_session_dispatcher_t
   private:
     void record_operation (std::string operation) const
     {
+        const std::lock_guard<std::mutex> lock (_stream.state_mutex);
         _stream.serial_log.push_back (std::move (operation));
     }
 
@@ -377,6 +379,7 @@ stream_write_call_t stream_t::write_packet_with_header (detail::stream_header_t 
 	              const std::lock_guard<std::mutex> lock (state->transport_writer_mutex);
 	              return state->transport_writer (submitted_header, submitted_payload);
 	          }
+	          const std::lock_guard<std::mutex> lock (state->state_mutex);
 	          state->written_headers.push_back (submitted_header);
 	          state->written_payloads.push_back (submitted_payload);
 	          return result_t<void>::success ();
@@ -385,7 +388,7 @@ stream_write_call_t stream_t::write_packet_with_header (detail::stream_header_t 
 
 stream_write_call_t stream_t::reply_packet (const zlink::message_t &payload)
 {
-    const auto request_header = _state->current_dispatch_header;
+    const auto request_header = _reply_header;
     if (!request_header) {
         return stream_write_call_t (
           result_t<void>::failure (framework_error_kind_t::request_protocol_error,
@@ -896,13 +899,14 @@ result_t<void> stream_runtime_t::dispatch_packet (packet_stream_session_t &sessi
                                       std::nullopt,
                                       std::nullopt};
       });
+    auto dispatch_stream = stream;
+    dispatch_stream._reply_header = header;
     return dispatch_serial (stream, "packet:" + std::string (header.packet_name ()), [&] {
-        stream._state->current_dispatch_header = header;
         detail::enter_stream_relay_dispatch (header);
-        auto task = session.on_packet (stream, stream_dispatch_context_t (header), handler_payload);
-        ::zlink::framework::observe_task_completion (task, [&stream] (const result_t<void> &) {
+        auto task =
+          session.on_packet (dispatch_stream, stream_dispatch_context_t (header), handler_payload);
+        ::zlink::framework::observe_task_completion (task, [] (const result_t<void> &) {
             detail::exit_stream_relay_dispatch ();
-            stream._state->current_dispatch_header.reset ();
         });
         return task;
     });
@@ -932,16 +936,19 @@ void stream_runtime_t::attach_transport_writer (
 
 std::vector<std::string> stream_runtime_t::serial_log (const stream_t &stream) const
 {
+    const std::lock_guard<std::mutex> lock (stream._state->state_mutex);
     return {stream._state->serial_log.begin (), stream._state->serial_log.end ()};
 }
 
 std::vector<stream_header_t> stream_runtime_t::written_headers (const stream_t &stream) const
 {
+    const std::lock_guard<std::mutex> lock (stream._state->state_mutex);
     return stream._state->written_headers;
 }
 
 std::vector<zlink::message_t> stream_runtime_t::written_payloads (const stream_t &stream) const
 {
+    const std::lock_guard<std::mutex> lock (stream._state->state_mutex);
     return stream._state->written_payloads;
 }
 

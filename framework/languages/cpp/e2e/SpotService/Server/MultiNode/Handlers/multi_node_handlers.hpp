@@ -8,7 +8,6 @@
 #include <chrono>
 #include <stdexcept>
 #include <string>
-#include <thread>
 
 namespace e2e = zlink::framework::e2e::spot_service;
 
@@ -90,25 +89,22 @@ class multi_node_state_route_handler_t
 
     e2e::state_res_t handle (const e2e::multi_node_state_route_req_t &request)
     {
-        std::string last_error = "not attempted";
-        for (int attempt = 0; attempt < 60; ++attempt) {
-            auto reply =
-              _routes
-                .request (multi_node_route_channel_for (_state.node_rid),
-                          zlink::routing_id_t::from (_state.node_rid),
-                          zlink::framework::spot_rid_t::from_string (request.spot_rid),
-                          e2e::state_req_t{.op = "add", .amount = request.delta})
-                .packet_name ("StateReq")
-                .timeout (std::chrono::milliseconds (2000))
-                .async<e2e::state_res_t> ()
-                .result ();
-            if (reply) {
-                return reply.value ();
-            }
-            last_error = reply.error () ? reply.error ()->what () : "unknown route error";
-            std::this_thread::sleep_for (std::chrono::milliseconds (100));
+        auto reply =
+          _routes
+            .request (multi_node_route_channel_for (_state.node_rid),
+                      zlink::routing_id_t::from (_state.node_rid),
+                      zlink::framework::spot_rid_t::from_string (request.spot_rid),
+                      e2e::state_req_t{.op = "add", .amount = request.delta})
+            .packet_name ("StateReq")
+            .timeout (std::chrono::milliseconds (3000))
+            .async<e2e::state_res_t> ()
+            .result ();
+        if (reply) {
+            return reply.value ();
         }
-        throw std::runtime_error ("multi-node state route failed: " + last_error);
+        throw std::runtime_error (
+          "multi-node state route failed: "
+          + std::string (reply.error () ? reply.error ()->what () : "unknown route error"));
     }
 
   private:

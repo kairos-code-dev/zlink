@@ -7,6 +7,13 @@ namespace ShoppingMall.Client;
 
 internal sealed class ShoppingMallClientScenario
 {
+    // End-to-end client story:
+    // 1. Start a successful order on API A and wait until the workflow confirms it.
+    // 2. Repeat the same idempotency key through API B and verify it returns the same order.
+    // 3. Exercise a pending idempotency record that another API instance can resume.
+    // 4. Run inventory and payment failure paths and verify the stored failure reasons.
+    // 5. Delete and rebuild a read projection, then compare delayed reads across API instances.
+    // 6. Start a scale-out order and ask the server to verify all expected workflow evidence.
     public async ValueTask RunAsync(
         ZLinkHttpClient apiA,
         ZLinkHttpClient apiB,

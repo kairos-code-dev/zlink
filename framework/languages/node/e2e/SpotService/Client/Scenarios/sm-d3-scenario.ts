@@ -11,6 +11,8 @@ import type {
   AuthRes,
   AuthReq,
   EvidenceWaitReq,
+  JoinUserSpotActorReq,
+  JoinUserSpotActorRes,
   UserSpotAuthReq
 } from '../../Shared/messages';
 import type { ClientOptions } from '../Support/client-options';
@@ -68,6 +70,7 @@ export async function runSmD3(options: ClientOptions): Promise<void> {
       .packetName('UserSpotAuthReq')
       .timeout(5000)
       .submit<AuthRes>();
+    await joinUserSpotActor(user, userSpotRid, userActorId);
 
     const userPushed = user.waitFor<ActorPushNotify>('ActorPushNotify')
       .where((message) => message.payload.actorId === userActorId)
@@ -110,6 +113,19 @@ export async function runSmD3(options: ClientOptions): Promise<void> {
   );
 
   console.log('scenario SM-D3 passed');
+}
+
+async function joinUserSpotActor(
+  client: ReturnType<typeof createStreamClient>,
+  spotRid: string,
+  actorId: string
+): Promise<void> {
+  const joined = decodeStreamReply<JoinUserSpotActorRes>(await client
+    .request({ spotRid, actorId } satisfies JoinUserSpotActorReq)
+    .packetName('JoinUserSpotActorReq')
+    .timeout(5000)
+    .submit());
+  ensure(joined.accepted && joined.actorId === actorId, `User spot actor join failed for ${actorId}.`);
 }
 
 function createStreamClient(endpoint: string) {

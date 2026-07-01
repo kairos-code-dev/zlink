@@ -201,6 +201,7 @@ class stream_t
                                                   zlink::message_t payload);
 
     std::shared_ptr<detail::stream_state_t> _state;
+    std::optional<detail::stream_header_t> _reply_header;
 };
 
 class packet_stream_session_t

@@ -31,7 +31,7 @@ await (options.OperationGroup switch
     "sm-d1-d6" => RunD1D2D6Async(sessionA, options.SessionAStreamEndpoint, options.SessionBStreamEndpoint),
     "sm-d3" => SmD3Scenario.RunAsync(playA, options.SessionAStreamEndpoint),
     "sm-d4" => SmD4Scenario.RunAsync(options.SessionAStreamEndpoint),
-    "sm-d5" => SmD5Scenario.RunAsync(sessionA, options.SessionAStreamEndpoint),
+    "sm-d5" => SmD5Scenario.RunAsync(playA, sessionA, options.SessionAStreamEndpoint),
     "sm-d7" => SmD7Scenario.RunAsync(options.SessionAStreamEndpoint),
     "sm-d8" => SmD8Scenario.RunAsync(options.SessionAStreamEndpoint),
     "sm-d9-d11-d13" => RunD9D11D13Async(sessionA, options.SessionAStreamEndpoint),

@@ -212,6 +212,23 @@ internal sealed class ZLinkSpotRuntimeManager(
             .ConfigureAwait(false);
     }
 
+    public async ValueTask<bool> TryNotifyJoinedSpotActorDisconnectedAsync(
+        ZLinkFrameworkRuntimeState state,
+        string actorId,
+        CancellationToken cancellationToken)
+    {
+        foreach (var activation in state.SpotNodes.Values.SelectMany(static node => node.Spots))
+        {
+            if (!activation.TryGetJoinedActor(actorId, out var actor) || actor is null) continue;
+
+            await activation.NotifyActorDisconnectedAsync(actor, cancellationToken)
+                .ConfigureAwait(false);
+            return true;
+        }
+
+        return false;
+    }
+
     public ZLinkSpotMonitoringSnapshot GetMonitoringSnapshot(
         ZLinkFrameworkRuntimeState state,
         string spotNodeName)

@@ -36,6 +36,7 @@ public final class UserSpot implements ZLinkSpot<ScenarioActor> {
         context.handlers().addPacket(OutboundMsgHandler.class);
         context.handlers().addSubscribe("spot.events", SpotEventHandler.class);
         context.handlers().addActorRequest(UserActorEchoHandler.class);
+        context.handlers().addActorRequest(UserActorLeaveHandler.class);
     }
 
     @Override

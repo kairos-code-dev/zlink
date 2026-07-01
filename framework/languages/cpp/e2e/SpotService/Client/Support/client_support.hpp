@@ -43,13 +43,6 @@ template <typename T> zlink::message_t encode_json (const T &value)
     return zlink::message_t::from (nlohmann::json (value).dump ());
 }
 
-inline zlink::framework::detail::stream_header_t request_header (std::string packet_name)
-{
-    return zlink::framework::detail::stream_header_t (
-      zlink::framework::detail::stream_message_kind_t::request, zlink::framework::stream_codec_t::json,
-      zlink::framework::detail::stream_header_flags_t::none, std::nullopt, std::move (packet_name));
-}
-
 template <typename TResult> std::string stream_error_text (const TResult &result)
 {
     if (result.error ()) {

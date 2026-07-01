@@ -10,7 +10,8 @@ internal sealed class ZLinkSpotActorJoinDispatcher(
     ZLinkSpotActorJoinRegistry actorJoins,
     ZLinkSpotActorMembership actors,
     Func<ZLinkSpotHandlerInvoker> handlerInvoker,
-    ILogger<ZLinkSpotActorJoinDispatcher>? logger = null)
+    ILogger<ZLinkSpotActorJoinDispatcher>? logger = null,
+    Func<IZLinkActor, CancellationToken, ValueTask>? commitAcceptedActorJoin = null)
 {
     private readonly ILogger<ZLinkSpotActorJoinDispatcher> _logger =
         logger ?? NullLogger<ZLinkSpotActorJoinDispatcher>.Instance;
@@ -64,6 +65,26 @@ internal sealed class ZLinkSpotActorJoinDispatcher(
                 ex,
                 descriptor.ActorType);
             return;
+        }
+
+        if (result.Accepted && commitAcceptedActorJoin is not null)
+        {
+            try
+            {
+                await commitAcceptedActorJoin(actor, cancellationToken)
+                    .ConfigureAwait(false);
+            }
+            catch (Exception ex)
+            {
+                ReplyRejected(
+                    joinRequest,
+                    payload.MessageName,
+                    "join-commit-failed",
+                    LogLevel.Warning,
+                    ex,
+                    descriptor.ActorType);
+                return;
+            }
         }
 
         if (!payload.UsesEnvelope)

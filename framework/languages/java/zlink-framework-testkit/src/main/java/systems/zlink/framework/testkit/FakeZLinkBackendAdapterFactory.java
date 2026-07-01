@@ -130,8 +130,8 @@ public final class FakeZLinkBackendAdapterFactory implements ZLinkBackendAdapter
         }
         streams.get(0).dispatchPacket(
             RoutingId.from("fake-session"),
-            Message.from(packetName),
-            Message.from(payload));
+            Message.from(encodeStreamHeader(1, 0, packetName, Optional.empty())),
+            jsonStringMessage(payload));
     }
 
     public void dispatchStreamPacket(
@@ -148,7 +148,7 @@ public final class FakeZLinkBackendAdapterFactory implements ZLinkBackendAdapter
     }
 
     public void dispatchStreamRequest(String packetName, String payload, long requestSeq) {
-        dispatchStreamRequest(packetName, Message.from(payload), requestSeq, 0);
+        dispatchStreamRequest(packetName, jsonStringMessage(payload), requestSeq, 0);
     }
 
     public void dispatchStreamRequest(
@@ -289,6 +289,19 @@ public final class FakeZLinkBackendAdapterFactory implements ZLinkBackendAdapter
         FakeSpot spot = firstUserSpot();
         spot.enqueueActorJoin(actorId, packetName, payload);
         spot.dispatchActorJoinReadable();
+    }
+
+    public void dispatchSpotActorStreamRequest(
+        String actorId,
+        String packetName,
+        String payload,
+        long requestSeq) {
+        FakeSpot spot = firstUserSpot();
+        spot.dispatchActorMessage(
+            actorId,
+            encodeStreamHeader(2, 0, packetName, Optional.of(requestSeq)),
+            payload,
+            Optional.empty());
     }
 
     public List<String> spotReplies() {
@@ -932,6 +945,10 @@ public final class FakeZLinkBackendAdapterFactory implements ZLinkBackendAdapter
                 1,
                 0,
                 List.of(Message.from("entry-joined".getBytes(StandardCharsets.UTF_8)))));
+        }
+        @Override public CompletionStage<List<Message>> leaveActor(ZLinkBackendActorRef actor, RoutingId currentSpotRid, Duration timeout) {
+            record("leaveActor." + actor.actorId() + "." + currentSpotRid);
+            return CompletableFuture.completedFuture(List.of());
         }
         @Override public CompletionStage<Void> destroyActor(ZLinkBackendActorRef actor, Duration timeout) {
             record("destroyActor." + actor.actorId());

@@ -8,6 +8,13 @@ namespace GameQuest.Client;
 
 internal sealed class GameQuestClientScenario(GameQuestTopology topology)
 {
+    // End-to-end client story:
+    // 1. Subscribe player-alice on API A and verify quest progress/completion from combat events.
+    // 2. Replay a duplicate event and confirm the same event id is treated idempotently.
+    // 3. Complete feature, mission, and area events that unlock later quest progress.
+    // 4. Create offline progress for player-bob, reconnect on API B, and finish the herb quest.
+    // 5. Delete and rebuild a projection to prove stream queries see recovered quest state.
+    // 6. Reconcile a missed publish through sync, then ask the server for final evidence.
     public async ValueTask RunAsync(
         IZlinkStreamConnector apiAStream,
         IZlinkStreamConnector apiBStream,

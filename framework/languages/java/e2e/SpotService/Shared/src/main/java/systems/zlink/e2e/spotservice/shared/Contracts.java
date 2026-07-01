@@ -95,6 +95,14 @@ public final class Contracts {
         List<String> tags) {
     }
 
+    public record LeaveActorReq(String actorId) {
+    }
+
+    public record LeaveActorRes(
+        String actorId,
+        boolean accepted) {
+    }
+
     public record ActorEchoReq(
         String value,
         int seq,
@@ -126,6 +134,11 @@ public final class Contracts {
         String nodeRid,
         String spotRid,
         String value) {
+    }
+
+    public record EvidenceWaitReq(
+        List<String> containsAll,
+        int timeoutMilliseconds) {
     }
 
     public record EvidenceSnapshot(

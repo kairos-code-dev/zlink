@@ -158,7 +158,7 @@ public final class NativeMonitorSocket implements SocketMonitor {
                                      MemorySegment userdata) {
         SocketMonitorHandler handler = eventHandler;
         ExecutorService executor = callbacks.executor();
-        if (handler == null || executor == null)
+        if (handler == null || executor == null || executor.isShutdown())
             return;
         try {
             MemorySegment evt = event.reinterpret(

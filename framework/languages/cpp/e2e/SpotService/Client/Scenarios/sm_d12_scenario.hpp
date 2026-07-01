@@ -27,8 +27,8 @@ inline void run_sm_d12_scenario (const std::string &session_a_stream_endpoint,
 
     zlink::stream_connector::connector_options_t first_options;
     first_options.endpoint = session_a_stream_endpoint;
-    first_options.connect_timeout = std::chrono::milliseconds (5000);
-    first_options.request_timeout = std::chrono::milliseconds (5000);
+    first_options.connect_timeout = std::chrono::milliseconds (3000);
+    first_options.request_timeout = std::chrono::milliseconds (3000);
     first_options.dispatch_mode = zlink::stream_connector::dispatch_mode_t::immediate;
 
     auto first = zlink::stream_connector::connector_factory_t::create (first_options);
@@ -40,43 +40,29 @@ inline void run_sm_d12_scenario (const std::string &session_a_stream_endpoint,
     auto first_auth =
       first.request (stream_ensure_auth_req_t{"play-a", actor_id, "SM-D12 Transfer"})
         .packet_name ("StreamEnsureAuthReq")
-        .timeout (std::chrono::milliseconds (5000))
+        .timeout (std::chrono::milliseconds (3000))
         .submit<stream_auth_res_t> ();
     if (!first_auth || first_auth.value ().actor.actor_id != actor_id
         || first_auth.value ().session_node_rid != "session-a") {
         throw std::runtime_error ("SM-D12 first stream auth failed");
     }
 
-    auto joined =
-      first.request (join_req_t{.key = "sm-d12-transfer",
-                          .actor_id = actor_id,
-                          .display_name = "SM-D12 Transfer",
-                          .level = 12,
-                          .tags = {"stream", "SM-D12", "session-a"}})
-        .packet_name ("JoinReq")
-        .timeout (std::chrono::milliseconds (5000))
-        .submit<join_res_t> ();
-    if (!joined || joined.value ().owner_node_rid != "play-a"
-        || joined.value ().actor.actor_id != actor_id) {
-        throw std::runtime_error ("SM-D12 first join failed");
-    }
-
-    auto first_state =
-      first.request (state_req_t{.op = "add", .amount = 11})
-        .packet_name ("StateReq")
-        .timeout (std::chrono::milliseconds (5000))
-        .submit<state_res_t> ();
-    if (!first_state || first_state.value ().owner_node_rid != "play-a"
-        || first_state.value ().value != 11) {
-        throw std::runtime_error ("SM-D12 first state mismatch");
+    auto first_ping =
+      first.request (actor_ping_req_t{"before-transfer"})
+        .packet_name ("ActorPingReq")
+        .timeout (std::chrono::milliseconds (3000))
+        .submit<actor_ping_res_t> ();
+    if (!first_ping || first_ping.value ().actor_id != actor_id
+        || first_ping.value ().node_rid != "play-a" || first_ping.value ().seen != 1) {
+        throw std::runtime_error ("SM-D12 first actor state mismatch");
     }
 
     (void) first.close ();
 
     zlink::stream_connector::connector_options_t second_options;
     second_options.endpoint = session_b_stream_endpoint;
-    second_options.connect_timeout = std::chrono::milliseconds (5000);
-    second_options.request_timeout = std::chrono::milliseconds (5000);
+    second_options.connect_timeout = std::chrono::milliseconds (3000);
+    second_options.request_timeout = std::chrono::milliseconds (3000);
     second_options.dispatch_mode = zlink::stream_connector::dispatch_mode_t::immediate;
 
     auto second = zlink::stream_connector::connector_factory_t::create (second_options);
@@ -86,9 +72,9 @@ inline void run_sm_d12_scenario (const std::string &session_a_stream_endpoint,
     }
 
     auto second_auth =
-      second.request (stream_auth_req_t{"play-a", actor_id, "SM-D12 Transfer", joined.value ().actor})
-        .packet_name ("StreamAuthReq")
-        .timeout (std::chrono::milliseconds (5000))
+      second.request (stream_ensure_auth_req_t{"play-a", actor_id, "SM-D12 Transfer"})
+        .packet_name ("StreamEnsureAuthReq")
+        .timeout (std::chrono::milliseconds (3000))
         .submit<stream_auth_res_t> ();
     if (!second_auth || second_auth.value ().actor.actor_id != actor_id
         || second_auth.value ().session_node_rid != "session-b") {
@@ -96,13 +82,16 @@ inline void run_sm_d12_scenario (const std::string &session_a_stream_endpoint,
     }
 
     auto snapshot =
-      second.request (state_req_t{.op = "add", .amount = 0})
-        .packet_name ("StateReq")
-        .timeout (std::chrono::milliseconds (5000))
-        .submit<state_res_t> ();
-    if (!snapshot || snapshot.value ().owner_node_rid != "play-a"
-        || snapshot.value ().value != 11) {
-        throw std::runtime_error ("SM-D12 snapshot mismatch");
+      second.request (snapshot_req_t{actor_id})
+        .packet_name ("SnapshotReq")
+        .timeout (std::chrono::milliseconds (3000))
+        .submit<snapshot_res_t> ();
+    if (!snapshot || snapshot.value ().actor_id != actor_id || snapshot.value ().seen != 1) {
+        const auto detail =
+          snapshot ? "actor_id=" + snapshot.value ().actor_id
+                       + " seen=" + std::to_string (snapshot.value ().seen)
+                   : snapshot.error () ? snapshot.error ()->message : "unknown stream error";
+        throw std::runtime_error ("SM-D12 snapshot mismatch: " + detail);
     }
 
     auto notify_wait =
@@ -111,23 +100,15 @@ inline void run_sm_d12_scenario (const std::string &session_a_stream_endpoint,
     auto pushed =
       second.request (actor_push_req_t{"after-transfer"})
         .packet_name ("PushReq")
-        .timeout (std::chrono::milliseconds (5000))
+        .timeout (std::chrono::milliseconds (3000))
         .submit<actor_push_res_t> ();
-    if (!pushed || !pushed.value ().pushed || pushed.value ().actor_id != actor_id) {
+    if (!pushed || !pushed.value ().pushed || pushed.value ().actor_id != actor_id
+        || pushed.value ().seen != 2) {
         throw std::runtime_error ("SM-D12 push request failed");
     }
     auto notify = notify_wait.get ();
-    if (notify.actor_id != actor_id || notify.value != "after-transfer") {
+    if (notify.actor_id != actor_id || notify.value != "after-transfer" || notify.seen != 2) {
         throw std::runtime_error ("SM-D12 push notify mismatch");
-    }
-
-    auto resumed =
-      second.request (state_req_t{.op = "add", .amount = 5})
-        .packet_name ("StateReq")
-        .timeout (std::chrono::milliseconds (5000))
-        .submit<state_res_t> ();
-    if (!resumed || resumed.value ().owner_node_rid != "play-a" || resumed.value ().value != 16) {
-        throw std::runtime_error ("SM-D12 resumed state mismatch");
     }
 
     (void) second.close ();

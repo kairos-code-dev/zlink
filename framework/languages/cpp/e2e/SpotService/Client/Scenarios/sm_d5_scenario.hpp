@@ -21,8 +21,8 @@ inline void run_sm_d5_scenario (const std::string &session_stream_endpoint)
 
     zlink::stream_connector::connector_options_t options;
     options.endpoint = session_stream_endpoint;
-    options.connect_timeout = std::chrono::milliseconds (5000);
-    options.request_timeout = std::chrono::milliseconds (5000);
+    options.connect_timeout = std::chrono::milliseconds (3000);
+    options.request_timeout = std::chrono::milliseconds (3000);
     options.dispatch_mode = zlink::stream_connector::dispatch_mode_t::immediate;
 
     {
@@ -35,7 +35,7 @@ inline void run_sm_d5_scenario (const std::string &session_stream_endpoint)
         auto auth =
           stream.request (stream_ensure_auth_req_t{"play-a", actor_id, "SM-D5 Single"})
             .packet_name ("StreamEnsureAuthReq")
-            .timeout (std::chrono::milliseconds (5000))
+            .timeout (std::chrono::milliseconds (3000))
             .submit<stream_auth_res_t> ();
         auto joined =
           stream.request (join_req_t{.key = "a-stream-disconnect-single",
@@ -45,7 +45,7 @@ inline void run_sm_d5_scenario (const std::string &session_stream_endpoint)
                                .tags = {"stream", "SM-D5", "single"}})
             .packet_name ("JoinReq")
             .metadata ("actor-id", actor_id)
-            .timeout (std::chrono::milliseconds (5000))
+            .timeout (std::chrono::milliseconds (3000))
             .submit<join_res_t> ();
         if (!auth || !joined) {
             throw std::runtime_error ("SM-D5 single bind setup failed");
@@ -63,7 +63,7 @@ inline void run_sm_d5_scenario (const std::string &session_stream_endpoint)
         auto auth =
           stream.request (stream_ensure_auth_req_t{"play-b", actor_id, "SM-D5 Remote"})
             .packet_name ("StreamEnsureAuthReq")
-            .timeout (std::chrono::milliseconds (5000))
+            .timeout (std::chrono::milliseconds (3000))
             .submit<stream_auth_res_t> ();
         auto joined =
           stream.request (join_req_t{.key = "b-stream-disconnect-remote",
@@ -73,7 +73,7 @@ inline void run_sm_d5_scenario (const std::string &session_stream_endpoint)
                                .tags = {"stream", "SM-D5", "remote"}})
             .packet_name ("JoinReq")
             .metadata ("actor-id", actor_id)
-            .timeout (std::chrono::milliseconds (5000))
+            .timeout (std::chrono::milliseconds (3000))
             .submit<join_res_t> ();
         if (!auth || !joined) {
             throw std::runtime_error ("SM-D5 remote bind setup failed");
@@ -92,12 +92,12 @@ inline void run_sm_d5_scenario (const std::string &session_stream_endpoint)
         auto notified_auth =
           stream.request (stream_ensure_auth_req_t{"play-a", notified_actor_id, "SM-D5 Notified"})
             .packet_name ("StreamEnsureAuthReq")
-            .timeout (std::chrono::milliseconds (5000))
+            .timeout (std::chrono::milliseconds (3000))
             .submit<stream_auth_res_t> ();
         auto muted_auth =
           stream.request (stream_ensure_auth_req_t{"play-a", muted_actor_id, "SM-D5 Muted"})
             .packet_name ("StreamEnsureAuthReq")
-            .timeout (std::chrono::milliseconds (5000))
+            .timeout (std::chrono::milliseconds (3000))
             .submit<stream_auth_res_t> ();
         auto notified_join =
           stream.request (join_req_t{.key = "a-stream-disconnect-notified",
@@ -107,7 +107,7 @@ inline void run_sm_d5_scenario (const std::string &session_stream_endpoint)
                                .tags = {"stream", "SM-D5", "notified"}})
             .packet_name ("JoinReq")
             .metadata ("actor-id", notified_actor_id)
-            .timeout (std::chrono::milliseconds (5000))
+            .timeout (std::chrono::milliseconds (3000))
             .submit<join_res_t> ();
         auto muted_join =
           stream.request (join_req_t{.key = "a-stream-disconnect-muted",
@@ -117,7 +117,7 @@ inline void run_sm_d5_scenario (const std::string &session_stream_endpoint)
                                .tags = {"stream", "SM-D5", "muted"}})
             .packet_name ("JoinReq")
             .metadata ("actor-id", muted_actor_id)
-            .timeout (std::chrono::milliseconds (5000))
+            .timeout (std::chrono::milliseconds (3000))
             .submit<join_res_t> ();
         if (!notified_auth || !muted_auth || !notified_join || !muted_join) {
             throw std::runtime_error ("SM-D5 multi bind setup failed");

@@ -25,7 +25,7 @@ public static class SupportServerHostFactory
         builder.Services.AddSingleton(topology);
         builder.Services.AddSingleton<IConversationStarter, ConversationStarter>();
         builder.Services.AddSingleton<SupportConversationAllocator>();
-        builder.Services.AddSingleton<AgentAvailabilityDirectory>();
+        builder.Services.AddSingleton(new AgentAvailabilityDirectory(SampleNames.AgentCapacity));
         builder.Services.AddSingleton<AgentAssignmentService>();
         builder.Services.AddSingleton<SupportActorDirectory>();
         builder.Services.AddSingleton<ConversationNotificationPublisher>();

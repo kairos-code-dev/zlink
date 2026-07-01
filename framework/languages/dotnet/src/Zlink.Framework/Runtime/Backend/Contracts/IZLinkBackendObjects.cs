@@ -7,7 +7,15 @@ internal enum ZLinkBackendSpotDispatchEvent
     ChannelReplyReadable = 2,
     ActorJoinReadable = 3,
     ActorReadable = 4,
-    SubscribeReadable = 5
+    SubscribeReadable = 5,
+    ActorLifecycleReadable = 6
+}
+
+internal enum ZLinkBackendActorLifecycleEventKind
+{
+    Joined = 1,
+    Left = 2,
+    Disconnected = 3
 }
 
 internal readonly record struct ZLinkBackendActorRef(
@@ -63,6 +71,10 @@ internal readonly record struct ZLinkBackendSpotActorLifecycleInfo(
     RoutingId? CurrentSpotRid,
     ulong JoinEpoch,
     uint Flags);
+
+internal readonly record struct ZLinkBackendSpotActorLifecycleEvent(
+    ZLinkBackendActorLifecycleEventKind Kind,
+    ZLinkBackendSpotActorLifecycleInfo Info);
 
 internal sealed record ZLinkBackendActorPart(
     ZLinkBackendActorRef Actor,

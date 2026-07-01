@@ -233,6 +233,7 @@ struct spot_complex_actor_res_t
 
 struct leave_req_t
 {
+    std::string actor_id;
     std::string reason;
 };
 
@@ -630,6 +631,17 @@ struct actor_push_req_t
     std::string value;
 };
 
+struct snapshot_req_t
+{
+    std::string actor_id;
+};
+
+struct snapshot_res_t
+{
+    std::string actor_id;
+    int seen = 0;
+};
+
 struct bound_session_push_req_t
 {
     std::string actor_id;
@@ -640,12 +652,14 @@ struct actor_push_res_t
 {
     bool pushed = false;
     std::string actor_id;
+    int seen = 0;
 };
 
 struct actor_push_notify_t
 {
     std::string actor_id;
     std::string value;
+    int seen = 0;
 };
 
 struct evidence_entry_t
@@ -1106,12 +1120,17 @@ inline void from_json (const nlohmann::json &json, spot_complex_actor_res_t &val
 
 inline void to_json (nlohmann::json &json, const leave_req_t &value)
 {
-    json = nlohmann::json{{"reason", value.reason}};
+    json = nlohmann::json{{"actor_id", value.actor_id}, {"reason", value.reason}};
 }
 
 inline void from_json (const nlohmann::json &json, leave_req_t &value)
 {
-    json.at ("reason").get_to (value.reason);
+    if (json.contains ("actor_id")) {
+        json.at ("actor_id").get_to (value.actor_id);
+    }
+    if (json.contains ("reason")) {
+        json.at ("reason").get_to (value.reason);
+    }
 }
 
 inline void to_json (nlohmann::json &json, const leave_res_t &value)
@@ -1881,6 +1900,27 @@ inline void from_json (const nlohmann::json &json, actor_push_req_t &value)
     json.at ("value").get_to (value.value);
 }
 
+inline void to_json (nlohmann::json &json, const snapshot_req_t &value)
+{
+    json = nlohmann::json{{"actor_id", value.actor_id}};
+}
+
+inline void from_json (const nlohmann::json &json, snapshot_req_t &value)
+{
+    json.at ("actor_id").get_to (value.actor_id);
+}
+
+inline void to_json (nlohmann::json &json, const snapshot_res_t &value)
+{
+    json = nlohmann::json{{"actor_id", value.actor_id}, {"seen", value.seen}};
+}
+
+inline void from_json (const nlohmann::json &json, snapshot_res_t &value)
+{
+    json.at ("actor_id").get_to (value.actor_id);
+    json.at ("seen").get_to (value.seen);
+}
+
 inline void to_json (nlohmann::json &json, const bound_session_push_req_t &value)
 {
     json = nlohmann::json{{"actor_id", value.actor_id}, {"push", value.push}};
@@ -1894,13 +1934,17 @@ inline void from_json (const nlohmann::json &json, bound_session_push_req_t &val
 
 inline void to_json (nlohmann::json &json, const actor_push_res_t &value)
 {
-    json = nlohmann::json{{"pushed", value.pushed}, {"actor_id", value.actor_id}};
+    json =
+      nlohmann::json{{"pushed", value.pushed}, {"actor_id", value.actor_id}, {"seen", value.seen}};
 }
 
 inline void from_json (const nlohmann::json &json, actor_push_res_t &value)
 {
     json.at ("pushed").get_to (value.pushed);
     json.at ("actor_id").get_to (value.actor_id);
+    if (json.contains ("seen")) {
+        json.at ("seen").get_to (value.seen);
+    }
 }
 
 template <typename T> inline zlink::message_t to_stream_payload (const T &value)
@@ -1916,7 +1960,8 @@ inline void from_stream_payload (const zlink::message_t &payload, T &value)
 
 inline void to_json (nlohmann::json &json, const actor_push_notify_t &value)
 {
-    json = nlohmann::json{{"actor_id", value.actor_id}, {"value", value.value}};
+    json = nlohmann::json{
+      {"actor_id", value.actor_id}, {"value", value.value}, {"seen", value.seen}};
 }
 
 inline std::string to_stream_payload (const actor_push_notify_t &value)
@@ -1935,6 +1980,9 @@ inline void from_json (const nlohmann::json &json, actor_push_notify_t &value)
 {
     json.at ("actor_id").get_to (value.actor_id);
     json.at ("value").get_to (value.value);
+    if (json.contains ("seen")) {
+        json.at ("seen").get_to (value.seen);
+    }
 }
 
 inline void to_json (nlohmann::json &json, const evidence_entry_t &value)

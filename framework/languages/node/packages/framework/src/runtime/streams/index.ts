@@ -484,10 +484,22 @@ export class ZLinkStreamSessionRuntime {
       });
     }
     if (notifyDisconnected) {
+      await this.notifyBoundActorsDisconnected();
       const session = await this.requireSession();
       await session.onDisconnected?.(this.context);
     }
     await this.cleanup();
+  }
+
+  private async notifyBoundActorsDisconnected(): Promise<void> {
+    const actors = [...this.context.boundActors];
+    await Promise.all(actors.map(async (actor) => {
+      try {
+        await actor.notifyDisconnected();
+      } catch (error) {
+        this.options.onError?.(error);
+      }
+    }));
   }
 
   private async cleanup(): Promise<void> {

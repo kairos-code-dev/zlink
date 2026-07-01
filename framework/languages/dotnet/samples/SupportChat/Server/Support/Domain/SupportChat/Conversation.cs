@@ -1,13 +1,14 @@
-using SupportChat.Server.Configuration;
-using SupportChat.Shared.Contracts;
-
 namespace SupportChat.Server.Support.Domain.SupportChat;
 
+// Aggregate root: owns all conversation state transitions and validation. Pure domain —
+// no framework, transport, or configuration types. Infrastructure adapters map its
+// snapshots/messages to wire contracts.
 internal sealed class Conversation
 {
     private readonly List<ConversationMessage> _messages = [];
     private readonly Dictionary<string, ConversationParticipant> _participants = new(StringComparer.Ordinal);
     private readonly ConversationPolicy _policy;
+    private long? _closeDeadlineUnixMs;
     private long? _idleDeadlineUnixMs;
     private long? _lastMessageAtUnixMs;
     private ulong _lastMessageSeq;
@@ -26,11 +27,11 @@ internal sealed class Conversation
         ConversationId = conversationId;
         Subject = subject;
         CustomerActorId = customerActorId;
-        Status = ConversationStatuses.WaitingForAgent;
+        Status = ConversationStatus.WaitingForAgent;
         _policy = policy ?? ConversationPolicy.Sample;
         _participants[customerActorId] = new ConversationParticipant(
             customerActorId,
-            SupportChatRoles.Customer,
+            ParticipantRole.Customer,
             customerDisplayName,
             createdAtUnixMs,
             false);
@@ -40,15 +41,15 @@ internal sealed class Conversation
 
     public string Subject { get; }
 
-    public string Status { get; private set; }
+    public ConversationStatus Status { get; private set; }
 
     public string CustomerActorId { get; }
 
     public string? AgentActorId { get; private set; }
 
-    public ConversationState Snapshot()
+    public ConversationSnapshot Snapshot()
     {
-        return new ConversationState(
+        return new ConversationSnapshot(
             ConversationId,
             Subject,
             Status,
@@ -69,10 +70,10 @@ internal sealed class Conversation
             throw new InvalidOperationException("Conversation already has an assigned agent.");
 
         AgentActorId = agentActorId;
-        Status = ConversationStatuses.Active;
+        Status = ConversationStatus.Active;
         _participants[agentActorId] = new ConversationParticipant(
             agentActorId,
-            SupportChatRoles.Agent,
+            ParticipantRole.Agent,
             agentDisplayName,
             joinedAtUnixMs,
             false);
@@ -85,12 +86,7 @@ internal sealed class Conversation
                     ConversationEventKind.ParticipantJoined,
                     state,
                     agentActorId,
-                    SupportChatRoles.Agent),
-                new ConversationEvent(
-                    ConversationEventKind.Assigned,
-                    state,
-                    agentActorId,
-                    SupportChatRoles.Agent)
+                    ParticipantRole.Agent)
             ]);
     }
 
@@ -100,17 +96,18 @@ internal sealed class Conversation
         long sentAtUnixMs)
     {
         EnsureParticipant(senderActorId);
-        if (Status == ConversationStatuses.Closed)
+        if (Status == ConversationStatus.Closed)
             throw new InvalidOperationException("Closed conversation cannot accept messages.");
-        if (Status == ConversationStatuses.WaitingForAgent)
+        if (Status == ConversationStatus.WaitingForAgent)
             throw new InvalidOperationException("Conversation is waiting for an agent.");
         if (string.IsNullOrWhiteSpace(text)) throw new InvalidOperationException("Message text is required.");
         if (text.Length > _policy.MaxMessageLength) throw new InvalidOperationException("Message text is too long.");
 
-        Status = ConversationStatuses.Active;
+        Status = ConversationStatus.Active;
         _lastMessageSeq += 1;
         _lastMessageAtUnixMs = sentAtUnixMs;
         _idleDeadlineUnixMs = sentAtUnixMs + (long)_policy.IdleTimeout.TotalMilliseconds;
+        _closeDeadlineUnixMs = null;
         var message = new ConversationMessage(
             ConversationId,
             _lastMessageSeq,
@@ -127,7 +124,7 @@ internal sealed class Conversation
                     ConversationEventKind.MessageAppended,
                     state,
                     senderActorId,
-                    Message: ToContract(message))
+                    Message: message)
             ]);
     }
 
@@ -135,8 +132,10 @@ internal sealed class Conversation
         string actorId,
         bool isTyping)
     {
-        var participant = EnsureParticipant(actorId);
-        EnsureNotClosed("change typing state");
+        // Typing is a one-way send: a closed conversation or a non-participant sender
+        // is silently ignored (no event, no error) rather than rejected.
+        if (Status == ConversationStatus.Closed || !_participants.TryGetValue(actorId, out var participant))
+            return new ConversationChange(Snapshot(), []);
 
         _participants[actorId] = participant with { IsTyping = isTyping };
         var state = Snapshot();
@@ -152,16 +151,35 @@ internal sealed class Conversation
             ]);
     }
 
+    // Called on a timer tick. Advances the idle lifecycle one stage at a time:
+    // Active past the idle deadline moves to WaitingForClose and arms the grace
+    // deadline; WaitingForClose past the grace deadline closes the conversation.
     public ConversationChange MarkIdle(long nowUnixMs)
     {
-        if (Status != ConversationStatuses.Active || _idleDeadlineUnixMs is null || nowUnixMs < _idleDeadlineUnixMs)
-            return new ConversationChange(Snapshot(), []);
+        if (Status == ConversationStatus.Active
+            && _idleDeadlineUnixMs is not null
+            && nowUnixMs >= _idleDeadlineUnixMs)
+        {
+            Status = ConversationStatus.WaitingForClose;
+            _closeDeadlineUnixMs = nowUnixMs + (long)_policy.CloseGraceTimeout.TotalMilliseconds;
+            var idleState = Snapshot();
+            return new ConversationChange(
+                idleState,
+                [new ConversationEvent(ConversationEventKind.Idle, idleState)]);
+        }
 
-        Status = ConversationStatuses.WaitingForClose;
-        var state = Snapshot();
-        return new ConversationChange(
-            state,
-            [new ConversationEvent(ConversationEventKind.Idle, state)]);
+        if (Status == ConversationStatus.WaitingForClose
+            && _closeDeadlineUnixMs is not null
+            && nowUnixMs >= _closeDeadlineUnixMs)
+        {
+            Status = ConversationStatus.Closed;
+            var closedState = Snapshot();
+            return new ConversationChange(
+                closedState,
+                [new ConversationEvent(ConversationEventKind.Closed, closedState)]);
+        }
+
+        return new ConversationChange(Snapshot(), []);
     }
 
     public ConversationChange Close(
@@ -170,10 +188,10 @@ internal sealed class Conversation
     {
         _ = reason;
         EnsureParticipant(actorId);
-        if (Status == ConversationStatuses.Closed)
+        if (Status == ConversationStatus.Closed)
             throw new InvalidOperationException("Conversation is already closed.");
 
-        Status = ConversationStatuses.Closed;
+        Status = ConversationStatus.Closed;
         var state = Snapshot();
         return new ConversationChange(
             state,
@@ -190,17 +208,7 @@ internal sealed class Conversation
 
     private void EnsureNotClosed(string action)
     {
-        if (Status == ConversationStatuses.Closed)
+        if (Status == ConversationStatus.Closed)
             throw new InvalidOperationException($"Closed conversation cannot {action}.");
-    }
-
-    private static ChatMessage ToContract(ConversationMessage message)
-    {
-        return new ChatMessage(
-            message.ConversationId,
-            message.MessageSeq,
-            message.SenderActorId,
-            message.Text,
-            message.SentAtUnixMs);
     }
 }

@@ -1298,6 +1298,47 @@ final class SpotRuntimeFakeBackendTest {
     }
 
     @Test
+    void userSpotActorRequestCanLeaveActorAndReplyBoundSession() {
+        LeaveDuringRequestSpot.lastLeave.set(null);
+        LeaveDuringRequestHandler.lastRequest.set(null);
+        DefaultZLinkFrameworkOptions options = new DefaultZLinkFrameworkOptions();
+        { var mesh = options.addSpotMesh("game"); { var node = mesh;
+                node.addSpotFactory(LeaveDuringRequestSpot.class);
+                node.addActorFactory("player", PlayerActorFactory.class); }; };
+        FakeZLinkBackendAdapterFactory backendFactory =
+            new FakeZLinkBackendAdapterFactory();
+
+        try (ZLinkFrameworkRuntime runtime =
+                 RuntimeTestSupport.startFramework(options, backendFactory)) {
+            runtime.spotManager()
+                .create(LeaveDuringRequestSpot.class, RoutingId.from("leave-spot"))
+                .toCompletableFuture()
+                .join();
+
+            backendFactory.dispatchSpotActorJoinReadable(
+                "player-1",
+                null,
+                "join");
+            backendFactory.dispatchSpotActorStreamRequest(
+                "player-1",
+                "LeaveDuringRequest",
+                "\"leave-now\"",
+                42);
+
+            awaitCall(backendFactory, "spotNode.leaveActor.player-1.");
+            awaitCall(backendFactory, "spotNode.sendActorBoundSession.player-1.");
+        }
+
+        assertEquals("player-1:leave-now", LeaveDuringRequestHandler.lastRequest.get());
+        assertTrue(backendFactory.calls().stream()
+            .anyMatch(call -> call.startsWith("spotNode.leaveActor.player-1.")),
+            () -> "calls: " + backendFactory.calls());
+        assertTrue(backendFactory.calls().stream()
+            .anyMatch(call -> call.startsWith("spotNode.sendActorBoundSession.player-1.")),
+            () -> "calls: " + backendFactory.calls());
+    }
+
+    @Test
     void creatingSecondUserSpotOfSameTypeDoesNotDuplicateActorPacketRegistration() {
         DefaultZLinkFrameworkOptions options = new DefaultZLinkFrameworkOptions();
         { var mesh = options.addSpotMesh("game"); { var node = mesh; node.enableRouter("inproc://same-type-router");
@@ -1968,6 +2009,48 @@ final class SpotRuntimeFakeBackendTest {
             CancellationToken cancellationToken) {
             lastRequest.set("user:" + actor.actorId() + ":" + request);
             return "user-reply:" + request;
+        }
+    }
+
+    public static final class LeaveDuringRequestSpot implements ZLinkSpot<ZLinkActor> {
+        static final AtomicReference<String> lastLeave = new AtomicReference<>();
+        private final ZLinkSpotContext context;
+
+        public LeaveDuringRequestSpot(ZLinkSpotContext context) {
+            this.context = context;
+        }
+
+        @Override
+        public ZLinkSpotContext context() {
+            return context;
+        }
+
+        @Override
+        public void configure() {
+            context.handlers().addActorRequest(LeaveDuringRequestHandler.class);
+        }
+
+        @Override
+        public void onLeaveActor(
+            ZLinkActor actor,
+            CancellationToken cancellationToken) {
+            lastLeave.set(actor.actorId() + ":" + actor.context().isJoined());
+        }
+    }
+
+    public static final class LeaveDuringRequestHandler {
+        static final AtomicReference<String> lastRequest = new AtomicReference<>();
+
+        @ZLinkSpotActorRequest(packetName = "LeaveDuringRequest")
+        public String handle(
+            LeaveDuringRequestSpot spot,
+            PlayerActor actor,
+            ZLinkSpotActorRequestContext context,
+            String request,
+            CancellationToken cancellationToken) {
+            lastRequest.set(actor.actorId() + ":" + request);
+            spot.context().leaveActor(actor).toCompletableFuture().join();
+            return "left:" + request;
         }
     }
 

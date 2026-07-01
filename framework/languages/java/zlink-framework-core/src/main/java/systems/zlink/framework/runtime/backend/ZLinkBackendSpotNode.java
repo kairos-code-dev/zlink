@@ -52,6 +52,11 @@ public interface ZLinkBackendSpotNode extends ZLinkBackendObject {
         Message request,
         Duration timeout);
 
+    CompletionStage<List<Message>> leaveActor(
+        ZLinkBackendActorRef actor,
+        RoutingId currentSpotRid,
+        Duration timeout);
+
     CompletionStage<Void> destroyActor(
         ZLinkBackendActorRef actor,
         Duration timeout);

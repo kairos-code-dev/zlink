@@ -8,6 +8,13 @@ namespace TicTacToe.Client;
 
 public sealed class TicTacToeClientScenario(ILogger logger)
 {
+    // End-to-end client story:
+    // 1. Create a game through HTTP and choose separate stream endpoints for host, guest, and observer.
+    // 2. Connect the host and authenticate as player X.
+    // 3. Connect the observer and subscribe to win milestone notifications.
+    // 4. Join the host to the empty room, then connect the guest and verify join/start pushes.
+    // 5. Play a deterministic move sequence where player X wins the top row.
+    // 6. Verify the guest sees the final state and the observer receives the win milestone.
     public async ValueTask RunAsync(
         TicTacToeClientOptions options,
         CancellationToken cancellationToken = default)

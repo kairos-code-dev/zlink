@@ -119,7 +119,7 @@ internal sealed class PlayEntrySpot(
             _observers.Remove(actor.ActorId);
         }
 
-        public async ValueTask NotifyAsync(
+        public ValueTask NotifyAsync(
             PlayerWinMilestoneEvent milestone,
             string receivingSpotNodeRid,
             CancellationToken cancellationToken)
@@ -135,6 +135,8 @@ internal sealed class PlayEntrySpot(
             foreach (var observer in observers)
                 observer.Context.BoundSession.Send(notify)
                     .Submit(cancellationToken);
+
+            return ValueTask.CompletedTask;
         }
     }
 }

@@ -6,6 +6,13 @@ namespace Bingo.Client;
 
 internal sealed class BingoClientScenario
 {
+    // End-to-end client story:
+    // 1. Connect player 1, authenticate, and create a waiting two-player bingo room.
+    // 2. Subscribe an observer to room events from a different node.
+    // 3. Connect player 2, join the same room, and verify join/start pushes.
+    // 4. Submit both bingo cards and wait for server-driven number draws.
+    // 5. Verify the finished game state, winner, marked cards, and matching client results.
+    // 6. Verify the observer receives the reward announcement, then stop observing.
     public async ValueTask RunAsync(
         IZlinkStreamConnector client1,
         IZlinkStreamConnector client2,

@@ -817,6 +817,14 @@ test('runtime host local spot join uses SpotManager for actors with native refs'
   };
   const actor = { actorId: 'actor-local-room' };
   const state = new framework.ZLinkActorRuntimeState(actor.actorId);
+  const refreshed = [];
+  host.streamBindingRuntime.refreshActor = async (actorRef, _signal) => {
+    refreshed.push({
+      nodeRid: actorRef.nodeRid,
+      actorId: actorRef.actorId,
+      generation: actorRef.generation
+    });
+  };
   state.setNativeActorRef({
     nodeRid: 'local-node',
     actorId: actor.actorId,
@@ -846,6 +854,11 @@ test('runtime host local spot join uses SpotManager for actors with native refs'
     actorId: 'actor-local-room',
     generation: 4n
   });
+  assert.deepEqual(refreshed, [{
+    nodeRid: 'local-node',
+    actorId: 'actor-local-room',
+    generation: 4n
+  }]);
   assert.equal(result.reply.getString(), 'joined');
   request.close();
   result.reply.close();

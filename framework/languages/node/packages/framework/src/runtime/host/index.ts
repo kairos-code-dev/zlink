@@ -406,6 +406,9 @@ export class ZLinkFrameworkRuntimeHost implements ZLinkFrameworkRuntime, ZLinkMe
       joinCoordinator: new ZLinkLocalFirstActorJoinCoordinator({
         localSpotManager: () => this.spotManager,
         nativeNode: () => this.requirePrimarySpotNode(),
+        actorBinder: (actorRef, signal, force) => force === true
+          ? this.streamBindingRuntime.refreshActor(actorRef, signal)
+          : this.streamBindingRuntime.rebindActor(actorRef, signal),
         native: new ZLinkLazyNativeJoinCoordinator(
           () => this.requirePrimarySpotNode(),
           remoteAddressResolver,
@@ -1347,6 +1350,7 @@ interface ZLinkLocalFirstActorJoinCoordinatorOptions {
   readonly localSpotManager: () => DefaultZLinkSpotManager | undefined;
   readonly nativeNode: () => ZLinkBackendSpotNode;
   readonly native: ZLinkActorJoinCoordinator;
+  readonly actorBinder?: (actorRef: ActorRef, signal?: AbortSignal, force?: boolean) => Promise<void>;
 }
 
 class ZLinkLocalFirstActorJoinCoordinator implements ZLinkActorJoinCoordinator {
@@ -1375,15 +1379,19 @@ class ZLinkLocalFirstActorJoinCoordinator implements ZLinkActorJoinCoordinator {
       signal
     );
     const nativeActorRef = state.nativeActorRef;
+    const actorRef = nativeActorRef === undefined
+      ? localActorRef(nodeRidForLocalActor(this.options.nativeNode), actor.actorId)
+      : {
+          nodeRid: nativeActorRef.nodeRid as unknown as RoutingId,
+          actorId: nativeActorRef.actorId,
+          generation: nativeActorRef.generation
+        } as ActorRef;
+    if (result.accepted) {
+      await this.options.actorBinder?.(actorRef, signal, true);
+    }
     return {
       resultCode: result.accepted ? 0 : 1,
-      actor: nativeActorRef === undefined
-        ? localActorRef(nodeRidForLocalActor(this.options.nativeNode), actor.actorId)
-        : {
-            nodeRid: nativeActorRef.nodeRid as unknown as RoutingId,
-            actorId: nativeActorRef.actorId,
-            generation: nativeActorRef.generation
-          } as ActorRef,
+      actor: actorRef,
       reply: result.reply as Message | undefined
     };
   }

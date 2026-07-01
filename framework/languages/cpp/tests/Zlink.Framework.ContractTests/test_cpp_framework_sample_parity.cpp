@@ -23,6 +23,7 @@
 #include "../../samples/TicTacToe/Server/Play/Infrastructure/ZLink/Spots/EntrySpot/tictactoe_entry_spot.hpp"
 #include "../../samples/TicTacToe/Server/Play/Application/GameCreation/tictactoe_game_creator.hpp"
 #include "../../samples/TicTacToe/Server/Play/Domain/TicTacToe/tictactoe_match.hpp"
+#include "../../samples/DeliveryDispatch/Shared/Contracts/messages.hpp"
 
 #include <gtest/gtest.h>
 
@@ -247,6 +248,90 @@ TEST (CppFrameworkSampleParity, TicTacToeUsesDotNetSamplePacketSurface)
     EXPECT_EQ (publisher.game_state.size (), 1U);
 }
 
+TEST (CppFrameworkSampleParity, DeliveryDispatchUsesDotNetSampleStatusSurface)
+{
+    using namespace zlink::samples::deliverydispatch;
+
+    EXPECT_STREQ (delivery_status_changed_req_t::packet_name, "DeliveryStatusChangedReq");
+    EXPECT_STREQ (delivery_status_changed_res_t::packet_name, "DeliveryStatusChangedRes");
+    EXPECT_STREQ (create_delivery_req_t::packet_name, "CreateDeliveryReq");
+    EXPECT_STREQ (create_delivery_res_t::packet_name, "CreateDeliveryRes");
+    EXPECT_STREQ (subscribe_delivery_req_t::packet_name, "SubscribeDeliveryReq");
+    EXPECT_STREQ (subscribe_delivery_res_t::packet_name, "SubscribeDeliveryRes");
+    EXPECT_STREQ (ensure_customer_actor_req_t::packet_name, "EnsureCustomerActorReq");
+    EXPECT_STREQ (ensure_customer_actor_res_t::packet_name, "EnsureCustomerActorRes");
+    EXPECT_STREQ (bind_courier_req_t::packet_name, "BindCourierReq");
+    EXPECT_STREQ (bind_courier_res_t::packet_name, "BindCourierRes");
+    EXPECT_STREQ (bind_courier_session_req_t::packet_name, "BindCourierSessionReq");
+    EXPECT_STREQ (bind_courier_session_res_t::packet_name, "BindCourierSessionRes");
+    EXPECT_STREQ (ensure_courier_actor_req_t::packet_name, "EnsureCourierActorReq");
+    EXPECT_STREQ (ensure_courier_actor_res_t::packet_name, "EnsureCourierActorRes");
+    EXPECT_STREQ (offer_delivery_req_t::packet_name, "OfferDeliveryReq");
+    EXPECT_STREQ (offer_delivery_res_t::packet_name, "OfferDeliveryRes");
+    EXPECT_STREQ (delivery_status_notify_t::packet_name, "DeliveryStatusNotify");
+    EXPECT_STREQ (offer_delivery_notify_t::packet_name, "OfferDeliveryNotify");
+    EXPECT_STREQ (courier_decision_msg_t::packet_name, "CourierDecisionMsg");
+    EXPECT_STREQ (delivery_status_t::assigned, "Assigned");
+    EXPECT_STREQ (delivery_status_t::reassigned, "Reassigned");
+    EXPECT_STREQ (delivery_status_t::delivered, "Delivered");
+
+    const auto common_doc = read_file (
+      repository_root () / "framework/doc/framework/common/sample/deliverydispatch/README.ko.md");
+    for (const auto *message : {"CreateDeliveryReq",
+                                "CreateDeliveryRes",
+                                "SubscribeDeliveryReq",
+                                "SubscribeDeliveryRes",
+                                "BindCourierSessionReq",
+                                "BindCourierSessionRes",
+                                "BindCourierReq",
+                                "BindCourierRes",
+                                "EnsureCourierActorReq",
+                                "EnsureCourierActorRes",
+                                "OfferDeliveryReq",
+                                "OfferDeliveryRes",
+                                "EnsureCustomerActorReq",
+                                "EnsureCustomerActorRes",
+                                "DeliveryStatusChangedReq",
+                                "DeliveryStatusChangedRes"}) {
+        EXPECT_NE (common_doc.find (std::string ("`") + message + "`"), std::string::npos)
+          << "common DeliveryDispatch doc must use live .NET/C++ message name " << message;
+    }
+    for (const auto *stale_message : {"CreateDeliveryRequest",
+                                      "CreateDeliveryResponse",
+                                      "SubscribeDeliveryAccepted",
+                                      "OfferDeliveryResult",
+                                      "CourierBound",
+                                      "CourierActorEnsured",
+                                      "CustomerActorEnsured",
+                                      "DeliveryStatusAck",
+                                      "SubscribeCustomerToDeliveryReq",
+                                      "SubscribeCustomerToDeliveryRes",
+                                      "AssignDeliveryRes",
+                                      "ReassignDeliveryMsg",
+                                      "DeliverySpotCreateReq",
+                                      "DeliverySpotCreateReqRes",
+                                      "DeliverySpotJoinReq",
+                                      "DeliverySpotJoinReqRes"}) {
+        EXPECT_EQ (common_doc.find (stale_message), std::string::npos)
+          << "common DeliveryDispatch doc still contains stale message name " << stale_message;
+    }
+
+    const auto shared_contract =
+      read_file (cpp_language_root () / "samples/DeliveryDispatch/Shared/Contracts/messages.hpp");
+    for (const auto *extra_message : {"SubscribeCustomerToDeliveryReq",
+                                      "SubscribeCustomerToDeliveryRes",
+                                      "AssignDeliveryRes",
+                                      "ReassignDeliveryMsg",
+                                      "DeliverySpotCreateReq",
+                                      "DeliverySpotCreateReqRes",
+                                      "DeliverySpotJoinReq",
+                                      "DeliverySpotJoinReqRes"}) {
+        EXPECT_EQ (shared_contract.find (extra_message), std::string::npos)
+          << "C++ DeliveryDispatch shared sample contract must not expose non-.NET message name "
+          << extra_message;
+    }
+}
+
 TEST (CppFrameworkSampleParity, SampleHostsUseFrameworkOptionsSurface)
 {
     const std::vector<std::string> banned_patterns{"configure_registry_host",
@@ -281,7 +366,7 @@ TEST (CppFrameworkSampleParity, SampleHostsUseFrameworkOptionsSurface)
 TEST (CppFrameworkSampleParity, PublicSampleNamesDoNotUseVariantSuffixes)
 {
     const auto samples_root = cpp_language_root () / "samples";
-    const std::vector<std::string> expected_samples{"Bingo", "TicTacToe"};
+    const std::vector<std::string> expected_samples{"Bingo", "TicTacToe", "DeliveryDispatch"};
 
     for (const auto &sample : expected_samples) {
         EXPECT_TRUE (std::filesystem::is_directory (samples_root / sample))
@@ -305,7 +390,7 @@ TEST (CppFrameworkSampleParity, PublicSampleNamesDoNotUseVariantSuffixes)
 TEST (CppFrameworkSampleParity, SharedSampleDirectoryContainsOnlyContracts)
 {
     const auto samples_root = cpp_language_root () / "samples";
-    for (const auto &sample : {"Bingo", "TicTacToe"}) {
+    for (const auto &sample : {"Bingo", "TicTacToe", "DeliveryDispatch"}) {
         const auto shared_root = samples_root / sample / "Shared";
         ASSERT_TRUE (std::filesystem::is_directory (shared_root)) << shared_root;
         for (const auto &entry : std::filesystem::recursive_directory_iterator (shared_root)) {
@@ -380,7 +465,18 @@ TEST (CppFrameworkSampleParity, SampleReadmesDescribePublicExecutablesAndRunnerS
         "sample_cpp_framework_bingo_client"}},
       {"samples/TicTacToe/README.ko.md",
        {"sample_cpp_framework_tictactoe_api", "sample_cpp_framework_tictactoe_play",
-        "sample_cpp_framework_tictactoe_client"}}};
+        "sample_cpp_framework_tictactoe_client"}},
+      {"samples/DeliveryDispatch/README.ko.md",
+       {"sample_cpp_framework_deliverydispatch_registry",
+        "sample_cpp_framework_deliverydispatch_dispatch_api",
+        "sample_cpp_framework_deliverydispatch_dispatch_center",
+        "sample_cpp_framework_deliverydispatch_courier_gateway",
+        "sample_cpp_framework_deliverydispatch_courier_actor_node",
+        "sample_cpp_framework_deliverydispatch_customer_gateway",
+        "sample_cpp_framework_deliverydispatch_courier_session",
+        "sample_cpp_framework_deliverydispatch_tracking",
+        "sample_cpp_framework_deliverydispatch_probe",
+        "sample_cpp_framework_deliverydispatch_client"}}};
 
     for (const auto &sample : cases) {
         const auto readme = read_file (cpp_root / sample.readme_path);
@@ -414,6 +510,9 @@ TEST (CppFrameworkSampleParity, SampleReadmesDescribePublicExecutablesAndRunnerS
       << "C++ sample overview must name the TicTacToe full self-check";
     EXPECT_NE (top_level_readme.find ("Bingo sample-local script"), std::string::npos)
       << "C++ sample overview must name the Bingo full self-check";
+    EXPECT_NE (top_level_readme.find ("DeliveryDispatch 샘플은 현재 Linux 또는 WSL용"),
+               std::string::npos)
+      << "C++ sample overview must describe DeliveryDispatch runner availability";
 
     const auto tictactoe_runner = read_file (cpp_root / "samples/TicTacToe/run_sample.sh");
     EXPECT_NE (tictactoe_runner.find ("full client/server self-check completed"), std::string::npos)
@@ -432,6 +531,21 @@ TEST (CppFrameworkSampleParity, SampleReadmesDescribePublicExecutablesAndRunnerS
       << "Bingo runner must report the public client/server self-check";
     EXPECT_NE (bingo_runner.find ("\n\"$CLIENT_BIN\""), std::string::npos)
       << "Bingo runner must execute the public client binary";
+
+    const auto deliverydispatch_runner =
+      read_file (cpp_root / "samples/DeliveryDispatch/run_sample.sh");
+    EXPECT_NE (deliverydispatch_runner.find ("topology=ready"), std::string::npos)
+      << "DeliveryDispatch runner must verify registry/discovery readiness";
+    EXPECT_NE (deliverydispatch_runner.find ("deliverydispatch-reassignment=completed"),
+               std::string::npos)
+      << "DeliveryDispatch runner must verify timeout reassignment";
+    EXPECT_NE (deliverydispatch_runner.find ("deliverydispatch-server-evidence=completed"),
+               std::string::npos)
+      << "DeliveryDispatch runner must verify server evidence self-check";
+    EXPECT_NE (deliverydispatch_runner.find ("deliverydispatch=completed"), std::string::npos)
+      << "DeliveryDispatch runner must verify final client scenario completion";
+    EXPECT_EQ (deliverydispatch_runner.find ("delivery-dispatch e2e result"), std::string::npos)
+      << "DeliveryDispatch sample runner must not report e2e completion wording";
 }
 
 TEST (CppFrameworkSampleParity, CommonSampleSpecsDocumentActorDestroyLifecycle)

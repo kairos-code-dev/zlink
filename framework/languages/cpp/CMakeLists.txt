@@ -1177,6 +1177,7 @@ if(ZLINK_FRAMEWORK_CPP_BUILD_E2E)
     e2e/RegistrationCodec/Client/main.cpp)
   target_link_libraries(zlink_cpp_e2e_registration_codec_client PRIVATE
     zlink::framework
+    zlink::http_client
     zlink::framework_codec_protobuf
     zlink::framework_codec_messagepack)
   target_include_directories(zlink_cpp_e2e_registration_codec_client PRIVATE
@@ -1259,14 +1260,6 @@ if(ZLINK_FRAMEWORK_CPP_BUILD_E2E)
     zlink::framework
     OpenSSL::Crypto)
   target_include_directories(zlink_cpp_e2e_resilience_lifecycle_provider PRIVATE
-    ${ZLINK_FRAMEWORK_CPP_DIR}/framework/src)
-
-  add_executable(zlink_cpp_e2e_resilience_lifecycle_workflow
-    e2e/ResilienceLifecycle/Server/Workflow/main.cpp)
-  target_link_libraries(zlink_cpp_e2e_resilience_lifecycle_workflow PRIVATE
-    zlink::framework
-    OpenSSL::Crypto)
-  target_include_directories(zlink_cpp_e2e_resilience_lifecycle_workflow PRIVATE
     ${ZLINK_FRAMEWORK_CPP_DIR}/framework/src)
 
   add_executable(zlink_cpp_e2e_resilience_lifecycle_consumer
@@ -1386,6 +1379,59 @@ if(ZLINK_FRAMEWORK_CPP_BUILD_SAMPLES)
   target_link_libraries(sample_cpp_framework_tictactoe_client PRIVATE
     zlink::http_client
     zlink::stream_e2e_client)
+  add_zlink_framework_sample(
+    sample_cpp_framework_deliverydispatch_registry
+    samples/DeliveryDispatch/Server/Registry/main.cpp
+    "framework-sample-deliverydispatch;framework-sample-registry"
+    zlink::framework)
+  add_zlink_framework_sample(
+    sample_cpp_framework_deliverydispatch_dispatch_api
+    samples/DeliveryDispatch/Server/DispatchApi/main.cpp
+    "framework-sample-deliverydispatch;framework-sample-api"
+    zlink::framework
+    zlink::http_client)
+  add_zlink_framework_sample(
+    sample_cpp_framework_deliverydispatch_dispatch_center
+    samples/DeliveryDispatch/Server/DispatchCenter/main.cpp
+    "framework-sample-deliverydispatch;framework-sample-dispatch"
+    zlink::framework)
+  add_zlink_framework_sample(
+    sample_cpp_framework_deliverydispatch_courier_gateway
+    samples/DeliveryDispatch/Server/CourierGateway/main.cpp
+    "framework-sample-deliverydispatch;framework-sample-courier"
+    zlink::framework)
+  add_zlink_framework_sample(
+    sample_cpp_framework_deliverydispatch_courier_actor_node
+    samples/DeliveryDispatch/Server/CourierActorNode/main.cpp
+    "framework-sample-deliverydispatch;framework-sample-courier"
+    zlink::framework)
+  add_zlink_framework_sample(
+    sample_cpp_framework_deliverydispatch_customer_gateway
+    samples/DeliveryDispatch/Server/CustomerGateway/main.cpp
+    "framework-sample-deliverydispatch;framework-sample-session"
+    zlink::framework)
+  add_zlink_framework_sample(
+    sample_cpp_framework_deliverydispatch_courier_session
+    samples/DeliveryDispatch/Server/CourierSession/main.cpp
+    "framework-sample-deliverydispatch;framework-sample-session"
+    zlink::framework)
+  add_zlink_framework_sample(
+    sample_cpp_framework_deliverydispatch_tracking
+    samples/DeliveryDispatch/Server/Tracking/main.cpp
+    "framework-sample-deliverydispatch;framework-sample-tracking"
+    zlink::framework)
+  add_zlink_framework_sample(
+    sample_cpp_framework_deliverydispatch_probe
+    samples/DeliveryDispatch/Probe/main.cpp
+    "framework-sample-deliverydispatch;framework-sample-probe"
+    zlink::framework)
+  add_executable(sample_cpp_framework_deliverydispatch_client
+    samples/DeliveryDispatch/Client/main.cpp)
+  target_link_libraries(sample_cpp_framework_deliverydispatch_client PRIVATE
+    zlink::framework
+    zlink::http_client
+    zlink::stream_connector
+    zlink::stream_e2e_client)
 
   function(add_zlink_framework_sample_runner sample_name labels timeout_seconds)
     add_test(
@@ -1406,6 +1452,10 @@ if(ZLINK_FRAMEWORK_CPP_BUILD_SAMPLES)
     TicTacToe
     "framework-sample-tictactoe;framework-sample-api;framework-sample-play"
     180)
+  add_zlink_framework_sample_runner(
+    DeliveryDispatch
+    "framework-sample-deliverydispatch;framework-sample-api;framework-sample-courier;framework-sample-dispatch;framework-sample-probe;framework-sample-registry;framework-sample-session;framework-sample-tracking"
+    420)
 endif()
 
 if(ZLINK_FRAMEWORK_CPP_BUILD_TESTS AND ZLINK_FRAMEWORK_CPP_ENABLE_COVERAGE)

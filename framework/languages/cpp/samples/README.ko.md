@@ -12,11 +12,8 @@ process 로 시작하는 방식을 사용한다.
 둔다. 서버 topology, endpoint 이름, packet 이름, host 설정은 `Server/Configuration`에
 두고, client 전용 설정은 `Client/Configuration`에 둔다.
 
-Bingo와 TicTacToe 샘플 payload는 framework 기본 JSON codec을 사용한다. 샘플 코드에서
-별도 codec이나 type serializer를 등록하지 않는다.
-
-C++ framework 샘플은 현재 `Bingo`와 `TicTacToe`만 유지한다. 다른 샘플은 다시 작성 대상이므로
-이 디렉토리에 두지 않는다.
+Bingo는 Protobuf payload를 사용하고, TicTacToe와 DeliveryDispatch는 framework 기본 JSON
+codec을 사용한다. 샘플 코드에서 codec 차이 때문에 업무 DTO나 handler 호출 모양을 바꾸지 않는다.
 
 ## 실행
 
@@ -31,6 +28,7 @@ Linux 또는 WSL:
 ```bash
 ./framework/languages/cpp/samples/TicTacToe/run_sample.sh
 ./framework/languages/cpp/samples/Bingo/run_sample.sh
+./framework/languages/cpp/samples/DeliveryDispatch/run_sample.sh
 ./framework/languages/cpp/samples/run_samples.sh
 ```
 
@@ -41,6 +39,8 @@ Windows PowerShell:
 .\framework\languages\cpp\samples\Bingo\run_sample.ps1
 .\framework\languages\cpp\samples\run_samples.ps1
 ```
+
+DeliveryDispatch 샘플은 현재 Linux 또는 WSL용 `run_sample.sh` 경로로 검증한다.
 
 기본 빌드 디렉토리는 `framework/languages/cpp/build`이다. 다른 디렉토리에 빌드했다면
 `ZLINK_CPP_BUILD_DIR` 환경 변수로 실행 파일 위치를 넘긴다.

@@ -58,7 +58,7 @@ request로 호출하는 메시지는 업무 이름이 `Changed`, `Accepted`, `Cr
 | Bingo | .NET, Java, Kotlin, Node.js, C++ | 없음 |
 | TicTacToe | .NET, Java, Kotlin, Node.js, C++ | 없음 |
 | SupportChat | .NET, Java, Kotlin, Node.js, C++ | 없음 |
-| DeliveryDispatch | .NET, Java, Kotlin | Node.js, C++ |
+| DeliveryDispatch | .NET, Java, Kotlin, C++ | Node.js |
 | ShoppingMall | .NET | Java, Kotlin, Node.js, C++ |
 | GameQuest | .NET, Java, Kotlin | Node.js, C++ |
 

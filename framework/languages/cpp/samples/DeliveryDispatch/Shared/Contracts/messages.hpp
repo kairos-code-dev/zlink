@@ -1,0 +1,513 @@
+/* SPDX-License-Identifier: MPL-2.0 */
+#pragma once
+
+#include <zlink/Contracts/Messaging/message.hpp>
+
+#include <nlohmann/json.hpp>
+#include <cstdint>
+#include <string>
+#include <vector>
+
+namespace zlink::samples::deliverydispatch
+{
+
+struct delivery_status_t
+{
+    static constexpr const char *created = "Created";
+    static constexpr const char *assigned = "Assigned";
+    static constexpr const char *accepted = "Accepted";
+    static constexpr const char *reassigned = "Reassigned";
+    static constexpr const char *picked_up = "PickedUp";
+    static constexpr const char *delivered = "Delivered";
+    static constexpr const char *failed = "Failed";
+};
+
+struct create_delivery_req_t
+{
+    static constexpr const char *packet_name = "CreateDeliveryReq";
+    std::string delivery_id;
+    std::string customer_id;
+    std::string pickup_address;
+    std::string dropoff_address;
+};
+
+struct create_delivery_res_t
+{
+    static constexpr const char *packet_name = "CreateDeliveryRes";
+    std::string delivery_id;
+};
+
+struct actor_ref_snapshot_t
+{
+    static constexpr const char *packet_name = "ActorRefSnapshot";
+    std::string node_rid;
+    std::string actor_id;
+    std::uint64_t generation{0};
+};
+
+struct ensure_customer_actor_req_t
+{
+    static constexpr const char *packet_name = "EnsureCustomerActorReq";
+    std::string customer_id;
+};
+
+struct ensure_customer_actor_res_t
+{
+    static constexpr const char *packet_name = "EnsureCustomerActorRes";
+    std::string customer_id;
+    actor_ref_snapshot_t actor;
+};
+
+struct bind_courier_req_t
+{
+    static constexpr const char *packet_name = "BindCourierReq";
+    std::string courier_id;
+    std::string session_route;
+};
+
+struct bind_courier_res_t
+{
+    static constexpr const char *packet_name = "BindCourierRes";
+    std::string courier_id;
+    actor_ref_snapshot_t actor;
+    std::string session_route;
+};
+
+struct bind_courier_session_req_t
+{
+    static constexpr const char *packet_name = "BindCourierSessionReq";
+    std::string courier_id;
+    actor_ref_snapshot_t actor;
+    std::string session_route;
+};
+
+struct bind_courier_session_res_t
+{
+    static constexpr const char *packet_name = "BindCourierSessionRes";
+    std::string courier_id;
+    actor_ref_snapshot_t actor;
+    std::string session_route;
+};
+
+struct ensure_courier_actor_req_t
+{
+    static constexpr const char *packet_name = "EnsureCourierActorReq";
+    std::string courier_id;
+};
+
+struct ensure_courier_actor_res_t
+{
+    static constexpr const char *packet_name = "EnsureCourierActorRes";
+    std::string courier_id;
+    actor_ref_snapshot_t actor;
+};
+
+struct subscribe_delivery_req_t
+{
+    static constexpr const char *packet_name = "SubscribeDeliveryReq";
+    std::string delivery_id;
+};
+
+struct subscribe_delivery_res_t
+{
+    static constexpr const char *packet_name = "SubscribeDeliveryRes";
+    std::string delivery_id;
+};
+
+struct assign_delivery_req_t
+{
+    static constexpr const char *packet_name = "AssignDelivery";
+    std::string delivery_id;
+    std::string customer_id;
+    std::string pickup_address;
+    std::string dropoff_address;
+};
+
+struct offer_delivery_req_t
+{
+    static constexpr const char *packet_name = "OfferDeliveryReq";
+    std::string courier_id;
+    std::string delivery_id;
+    std::string pickup_address;
+    std::string dropoff_address;
+};
+
+struct offer_delivery_notify_t
+{
+    static constexpr const char *packet_name = "OfferDeliveryNotify";
+    std::string courier_id;
+    std::string delivery_id;
+    std::string pickup_address;
+    std::string dropoff_address;
+};
+
+struct offer_delivery_res_t
+{
+    static constexpr const char *packet_name = "OfferDeliveryRes";
+    std::string delivery_id;
+    std::string courier_id;
+    bool accepted{false};
+    std::string reason;
+};
+
+struct courier_decision_msg_t
+{
+    static constexpr const char *packet_name = "CourierDecisionMsg";
+    std::string delivery_id;
+    std::string courier_id;
+    bool accepted{false};
+    std::string reason;
+};
+
+struct delivery_status_changed_req_t
+{
+    static constexpr const char *packet_name = "DeliveryStatusChangedReq";
+    std::string delivery_id;
+    std::string status;
+    std::string courier_id;
+    std::string occurred_at;
+};
+
+struct delivery_status_changed_res_t
+{
+    static constexpr const char *packet_name = "DeliveryStatusChangedRes";
+    std::string delivery_id;
+    std::string status;
+};
+
+struct delivery_status_notify_t
+{
+    static constexpr const char *packet_name = "DeliveryStatusNotify";
+    std::string delivery_id;
+    std::string status;
+    std::string courier_id;
+    std::string occurred_at;
+};
+
+struct server_assertion_req_t
+{
+    static constexpr const char *packet_name = "ServerAssertionReq";
+    std::string successful_delivery_id;
+    std::string reassigned_delivery_id;
+};
+
+struct server_assertion_res_t
+{
+    static constexpr const char *packet_name = "ServerAssertionRes";
+    bool passed{false};
+    std::vector<std::string> evidence;
+};
+
+inline std::string json_string (const nlohmann::json &json,
+                                const char *camel,
+                                const char *snake,
+                                std::string fallback = {})
+{
+    if (json.contains (camel)) {
+        return json.value (camel, fallback);
+    }
+    return json.value (snake, fallback);
+}
+
+inline void to_json (nlohmann::json &json, const create_delivery_req_t &value)
+{
+    json = {{"deliveryId", value.delivery_id},
+            {"customerId", value.customer_id},
+            {"pickupAddress", value.pickup_address},
+            {"dropoffAddress", value.dropoff_address}};
+}
+
+inline void from_json (const nlohmann::json &json, create_delivery_req_t &value)
+{
+    value.delivery_id = json_string (json, "deliveryId", "delivery_id");
+    value.customer_id = json_string (json, "customerId", "customer_id");
+    value.pickup_address = json_string (json, "pickupAddress", "pickup_address");
+    value.dropoff_address = json_string (json, "dropoffAddress", "dropoff_address");
+}
+
+inline void to_json (nlohmann::json &json, const create_delivery_res_t &value)
+{
+    json = {{"deliveryId", value.delivery_id}};
+}
+
+inline void from_json (const nlohmann::json &json, create_delivery_res_t &value)
+{
+    value.delivery_id = json_string (json, "deliveryId", "delivery_id");
+}
+
+inline void to_json (nlohmann::json &json, const actor_ref_snapshot_t &value)
+{
+    json = {{"nodeRid", value.node_rid}, {"actorId", value.actor_id}, {"generation", value.generation}};
+}
+
+inline void from_json (const nlohmann::json &json, actor_ref_snapshot_t &value)
+{
+    value.node_rid = json_string (json, "nodeRid", "node_rid");
+    value.actor_id = json_string (json, "actorId", "actor_id");
+    value.generation = json.value ("generation", std::uint64_t{0});
+}
+
+inline void to_json (nlohmann::json &json, const ensure_customer_actor_req_t &value)
+{
+    json = {{"customerId", value.customer_id}};
+}
+
+inline void from_json (const nlohmann::json &json, ensure_customer_actor_req_t &value)
+{
+    value.customer_id = json_string (json, "customerId", "customer_id");
+}
+
+inline void to_json (nlohmann::json &json, const ensure_customer_actor_res_t &value)
+{
+    json = {{"customerId", value.customer_id}, {"actor", value.actor}};
+}
+
+inline void from_json (const nlohmann::json &json, ensure_customer_actor_res_t &value)
+{
+    value.customer_id = json_string (json, "customerId", "customer_id");
+    value.actor = json.value ("actor", actor_ref_snapshot_t{});
+}
+
+inline void to_json (nlohmann::json &json, const bind_courier_req_t &value)
+{
+    json = {{"courierId", value.courier_id}, {"sessionRoute", value.session_route}};
+}
+
+inline void from_json (const nlohmann::json &json, bind_courier_req_t &value)
+{
+    value.courier_id = json_string (json, "courierId", "courier_id");
+    value.session_route = json_string (json, "sessionRoute", "session_route");
+}
+
+inline void to_json (nlohmann::json &json, const bind_courier_res_t &value)
+{
+    json = {{"courierId", value.courier_id},
+            {"actor", value.actor},
+            {"sessionRoute", value.session_route}};
+}
+
+inline void from_json (const nlohmann::json &json, bind_courier_res_t &value)
+{
+    value.courier_id = json_string (json, "courierId", "courier_id");
+    value.actor = json.value ("actor", actor_ref_snapshot_t{});
+    value.session_route = json_string (json, "sessionRoute", "session_route");
+}
+
+inline void to_json (nlohmann::json &json, const bind_courier_session_req_t &value)
+{
+    json = {{"courierId", value.courier_id},
+            {"actor", value.actor},
+            {"sessionRoute", value.session_route}};
+}
+
+inline void from_json (const nlohmann::json &json, bind_courier_session_req_t &value)
+{
+    value.courier_id = json_string (json, "courierId", "courier_id");
+    value.actor = json.value ("actor", actor_ref_snapshot_t{});
+    value.session_route = json_string (json, "sessionRoute", "session_route");
+}
+
+inline void to_json (nlohmann::json &json, const bind_courier_session_res_t &value)
+{
+    json = {{"courierId", value.courier_id},
+            {"actor", value.actor},
+            {"sessionRoute", value.session_route}};
+}
+
+inline void from_json (const nlohmann::json &json, bind_courier_session_res_t &value)
+{
+    value.courier_id = json_string (json, "courierId", "courier_id");
+    value.actor = json.value ("actor", actor_ref_snapshot_t{});
+    value.session_route = json_string (json, "sessionRoute", "session_route");
+}
+
+inline void to_json (nlohmann::json &json, const ensure_courier_actor_req_t &value)
+{
+    json = {{"courierId", value.courier_id}};
+}
+
+inline void from_json (const nlohmann::json &json, ensure_courier_actor_req_t &value)
+{
+    value.courier_id = json_string (json, "courierId", "courier_id");
+}
+
+inline void to_json (nlohmann::json &json, const ensure_courier_actor_res_t &value)
+{
+    json = {{"courierId", value.courier_id}, {"actor", value.actor}};
+}
+
+inline void from_json (const nlohmann::json &json, ensure_courier_actor_res_t &value)
+{
+    value.courier_id = json_string (json, "courierId", "courier_id");
+    value.actor = json.value ("actor", actor_ref_snapshot_t{});
+}
+
+inline void to_json (nlohmann::json &json, const subscribe_delivery_req_t &value)
+{
+    json = {{"deliveryId", value.delivery_id}};
+}
+
+inline void from_json (const nlohmann::json &json, subscribe_delivery_req_t &value)
+{
+    value.delivery_id = json_string (json, "deliveryId", "delivery_id");
+}
+
+inline void to_json (nlohmann::json &json, const subscribe_delivery_res_t &value)
+{
+    json = {{"deliveryId", value.delivery_id}};
+}
+
+inline void from_json (const nlohmann::json &json, subscribe_delivery_res_t &value)
+{
+    value.delivery_id = json_string (json, "deliveryId", "delivery_id");
+}
+
+inline void to_json (nlohmann::json &json, const assign_delivery_req_t &value)
+{
+    json = {{"deliveryId", value.delivery_id},
+            {"customerId", value.customer_id},
+            {"pickupAddress", value.pickup_address},
+            {"dropoffAddress", value.dropoff_address}};
+}
+
+inline void from_json (const nlohmann::json &json, assign_delivery_req_t &value)
+{
+    value.delivery_id = json_string (json, "deliveryId", "delivery_id");
+    value.customer_id = json_string (json, "customerId", "customer_id");
+    value.pickup_address = json_string (json, "pickupAddress", "pickup_address");
+    value.dropoff_address = json_string (json, "dropoffAddress", "dropoff_address");
+}
+
+inline void to_json (nlohmann::json &json, const offer_delivery_req_t &value)
+{
+    json = {{"courierId", value.courier_id},
+            {"deliveryId", value.delivery_id},
+            {"pickupAddress", value.pickup_address},
+            {"dropoffAddress", value.dropoff_address}};
+}
+
+inline void from_json (const nlohmann::json &json, offer_delivery_req_t &value)
+{
+    value.courier_id = json_string (json, "courierId", "courier_id");
+    value.delivery_id = json_string (json, "deliveryId", "delivery_id");
+    value.pickup_address = json_string (json, "pickupAddress", "pickup_address");
+    value.dropoff_address = json_string (json, "dropoffAddress", "dropoff_address");
+}
+
+inline void to_json (nlohmann::json &json, const offer_delivery_notify_t &value)
+{
+    json = {{"courierId", value.courier_id},
+            {"deliveryId", value.delivery_id},
+            {"pickupAddress", value.pickup_address},
+            {"dropoffAddress", value.dropoff_address}};
+}
+
+inline void from_json (const nlohmann::json &json, offer_delivery_notify_t &value)
+{
+    value.courier_id = json_string (json, "courierId", "courier_id");
+    value.delivery_id = json_string (json, "deliveryId", "delivery_id");
+    value.pickup_address = json_string (json, "pickupAddress", "pickup_address");
+    value.dropoff_address = json_string (json, "dropoffAddress", "dropoff_address");
+}
+
+inline void to_json (nlohmann::json &json, const offer_delivery_res_t &value)
+{
+    json = {{"deliveryId", value.delivery_id},
+            {"courierId", value.courier_id},
+            {"accepted", value.accepted},
+            {"reason", value.reason}};
+}
+
+inline void from_json (const nlohmann::json &json, offer_delivery_res_t &value)
+{
+    value.delivery_id = json_string (json, "deliveryId", "delivery_id");
+    value.courier_id = json_string (json, "courierId", "courier_id");
+    value.accepted = json.value ("accepted", false);
+    value.reason = json.value ("reason", "");
+}
+
+inline void to_json (nlohmann::json &json, const courier_decision_msg_t &value)
+{
+    json = {{"deliveryId", value.delivery_id},
+            {"courierId", value.courier_id},
+            {"accepted", value.accepted},
+            {"reason", value.reason}};
+}
+
+inline void from_json (const nlohmann::json &json, courier_decision_msg_t &value)
+{
+    value.delivery_id = json_string (json, "deliveryId", "delivery_id");
+    value.courier_id = json_string (json, "courierId", "courier_id");
+    value.accepted = json.value ("accepted", false);
+    value.reason = json.value ("reason", "");
+}
+
+inline void to_json (nlohmann::json &json, const delivery_status_changed_req_t &value)
+{
+    json = {{"deliveryId", value.delivery_id},
+            {"status", value.status},
+            {"courierId", value.courier_id},
+            {"occurredAt", value.occurred_at}};
+}
+
+inline void from_json (const nlohmann::json &json, delivery_status_changed_req_t &value)
+{
+    value.delivery_id = json_string (json, "deliveryId", "delivery_id");
+    value.status = json.value ("status", "");
+    value.courier_id = json_string (json, "courierId", "courier_id");
+    value.occurred_at = json_string (json, "occurredAt", "occurred_at");
+}
+
+inline void to_json (nlohmann::json &json, const delivery_status_changed_res_t &value)
+{
+    json = {{"deliveryId", value.delivery_id}, {"status", value.status}};
+}
+
+inline void from_json (const nlohmann::json &json, delivery_status_changed_res_t &value)
+{
+    value.delivery_id = json_string (json, "deliveryId", "delivery_id");
+    value.status = json.value ("status", "");
+}
+
+inline void to_json (nlohmann::json &json, const delivery_status_notify_t &value)
+{
+    json = {{"deliveryId", value.delivery_id},
+            {"status", value.status},
+            {"courierId", value.courier_id},
+            {"occurredAt", value.occurred_at}};
+}
+
+inline void from_json (const nlohmann::json &json, delivery_status_notify_t &value)
+{
+    value.delivery_id = json_string (json, "deliveryId", "delivery_id");
+    value.status = json.value ("status", "");
+    value.courier_id = json_string (json, "courierId", "courier_id");
+    value.occurred_at = json_string (json, "occurredAt", "occurred_at");
+}
+
+inline void to_json (nlohmann::json &json, const server_assertion_req_t &value)
+{
+    json = {{"successfulDeliveryId", value.successful_delivery_id},
+            {"reassignedDeliveryId", value.reassigned_delivery_id}};
+}
+
+inline void from_json (const nlohmann::json &json, server_assertion_req_t &value)
+{
+    value.successful_delivery_id =
+      json_string (json, "successfulDeliveryId", "successful_delivery_id");
+    value.reassigned_delivery_id =
+      json_string (json, "reassignedDeliveryId", "reassigned_delivery_id");
+}
+
+inline void to_json (nlohmann::json &json, const server_assertion_res_t &value)
+{
+    json = {{"passed", value.passed}, {"evidence", value.evidence}};
+}
+
+inline void from_json (const nlohmann::json &json, server_assertion_res_t &value)
+{
+    value.passed = json.value ("passed", false);
+    value.evidence = json.value ("evidence", std::vector<std::string>{});
+}
+
+} // namespace zlink::samples::deliverydispatch

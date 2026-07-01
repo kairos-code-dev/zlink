@@ -179,7 +179,7 @@ final class ZLinkNativeBoundSessionRuntime implements ZLinkBoundSession {
         }
 
         @Override
-        public void submit() {
+        public systems.zlink.framework.ZLinkSubmitStage submit() {
             ZLinkBackendActorRef currentActorRef = actorRuntime.actorRef(actor);
             byte[] frameBytes;
             try {
@@ -194,14 +194,14 @@ final class ZLinkNativeBoundSessionRuntime implements ZLinkBoundSession {
             } finally {
                 payload.close();
             }
-            sendWithRetry(
+            return systems.zlink.framework.ZLinkSubmitStage.from(sendWithRetry(
                 spotNode,
                 currentActorRef,
                 sourceNodeRid,
                 sourceSessionRid,
                 frameBytes,
                 timeout,
-                "actor bound session send failed: " + currentActorRef.actorId());
+                "actor bound session send failed: " + currentActorRef.actorId()));
         }
 
         private ZLinkYieldTurn requireTurn() {

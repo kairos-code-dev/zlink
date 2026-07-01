@@ -1127,7 +1127,7 @@ public final class ZLinkSpotRuntime implements ZLinkSpotManager, AutoCloseable {
             })
             .thenCompose(reply -> {
                 if (reply.isEmpty()) {
-                    return CompletableFuture.completedFuture(null);
+                    return systems.zlink.framework.ZLinkSubmitStage.completed();
                 }
                 byte[] frameBytes;
                 try (Message frame = reply.get().streamFrame()
@@ -1251,7 +1251,7 @@ public final class ZLinkSpotRuntime implements ZLinkSpotManager, AutoCloseable {
                 : ZLinkHandlerStages.fromRunnable(() ->
                     entrySpot.onLeaveActor(actor, NONE_CANCELLATION));
         }
-        return CompletableFuture.completedFuture(null);
+        return systems.zlink.framework.ZLinkSubmitStage.completed();
     }
 
     @SuppressWarnings({"rawtypes", "unchecked"})
@@ -1271,7 +1271,7 @@ public final class ZLinkSpotRuntime implements ZLinkSpotManager, AutoCloseable {
             return ZLinkHandlerStages.fromRunnable(() ->
                 entrySpot.onDisconnectActor(actor, NONE_CANCELLATION));
         }
-        return CompletableFuture.completedFuture(null);
+        return systems.zlink.framework.ZLinkSubmitStage.completed();
     }
 
     @SuppressWarnings({"rawtypes", "unchecked"})
@@ -1287,7 +1287,7 @@ public final class ZLinkSpotRuntime implements ZLinkSpotManager, AutoCloseable {
                         rawEntrySpot.onCreateActor(actor, createRequest, NONE_CANCELLATION)));
             }
         }
-        return CompletableFuture.completedFuture(null);
+        return systems.zlink.framework.ZLinkSubmitStage.completed();
     }
 
     private ZLinkSpot<?> spotFor(RoutingId spotRid) {
@@ -1732,7 +1732,7 @@ public final class ZLinkSpotRuntime implements ZLinkSpotManager, AutoCloseable {
         @Override
         public CompletionStage<Void> leaveActor(
             ZLinkActor actor) {
-            return CompletableFuture.completedFuture(null);
+            return systems.zlink.framework.ZLinkSubmitStage.completed();
         }
 
         @Override
@@ -2360,7 +2360,7 @@ public final class ZLinkSpotRuntime implements ZLinkSpotManager, AutoCloseable {
                     return CompletableFuture.failedFuture(new ZLinkConfigurationException(
                         "remote joined actor packet forward failed: " + actor.actorId()));
                 }
-                return CompletableFuture.completedFuture(null);
+                return systems.zlink.framework.ZLinkSubmitStage.completed();
             } finally {
                 payload.close();
                 headerPart.close();
@@ -2854,7 +2854,7 @@ public final class ZLinkSpotRuntime implements ZLinkSpotManager, AutoCloseable {
             @Override
             public CompletionStage<Void> cancelAsync() {
                 close();
-                return CompletableFuture.completedFuture(null);
+                return systems.zlink.framework.ZLinkSubmitStage.completed();
             }
 
             @Override
@@ -3212,7 +3212,7 @@ public final class ZLinkSpotRuntime implements ZLinkSpotManager, AutoCloseable {
         }
 
         @Override
-        public void submit() {
+        public systems.zlink.framework.ZLinkSubmitStage submit() {
             if (dispatchErrors.flow().enabled(ZLinkMessageFlowOutcome.SENT)) {
                 dispatchErrors.flow().trace(new ZLinkMessageFlowEvent(
                     ZLinkMessageFlowOutcome.SENT,
@@ -3221,18 +3221,18 @@ public final class ZLinkSpotRuntime implements ZLinkSpotManager, AutoCloseable {
                     packetName.orElse(null), egressChannelName, null, null, null,
                     spotRid.toString(), null, null));
             }
-            resolveSpotRemoteAddressAsync(egressChannelName, spotRid)
-                .thenAccept(address -> {
+            return systems.zlink.framework.ZLinkSubmitStage.from(
+                resolveSpotRemoteAddressAsync(egressChannelName, spotRid)
+                .thenCompose(address -> {
                 ZLinkBackendSpotNode routerNode = nodesByName.get(address.routerChannelId());
                 if (routerNode != null) {
-                    new SpotToSpotSendCall(
+                    return new SpotToSpotSendCall(
                         routerNode.entrySpot(),
                         address.targetNodeRid(),
                         address.spotRid(),
                         payload,
                         packetName)
                         .submit();
-                    return;
                 }
                 List<Message> spotParts = parts(packetName, payload);
                 try {
@@ -3244,7 +3244,8 @@ public final class ZLinkSpotRuntime implements ZLinkSpotManager, AutoCloseable {
                 } finally {
                     spotParts.forEach(Message::close);
                 }
-            });
+                return systems.zlink.framework.ZLinkSubmitStage.completed();
+            }));
         }
 
     }
@@ -3504,7 +3505,7 @@ public final class ZLinkSpotRuntime implements ZLinkSpotManager, AutoCloseable {
         }
 
         @Override
-        public void submit() {
+        public systems.zlink.framework.ZLinkSubmitStage submit() {
             if (dispatchErrors.flow().enabled(ZLinkMessageFlowOutcome.SENT)) {
                 dispatchErrors.flow().trace(new ZLinkMessageFlowEvent(
                     ZLinkMessageFlowOutcome.SENT,
@@ -3512,14 +3513,14 @@ public final class ZLinkSpotRuntime implements ZLinkSpotManager, AutoCloseable {
                     ZLinkDispatchMessageKind.PUBLISH,
                     packetName.orElse(null), channelName, topic, null, null, null, null, null));
             }
-            CompletableFuture.runAsync(() -> {
+            return systems.zlink.framework.ZLinkSubmitStage.from(CompletableFuture.runAsync(() -> {
                 List<Message> parts = parts(packetName, payload);
                 try {
                     publisherSpot(channelName).publish(topic, parts, SendFlags.NONE);
                 } finally {
                     parts.forEach(Message::close);
                 }
-            });
+            }));
         }
     }
 
@@ -3587,7 +3588,7 @@ public final class ZLinkSpotRuntime implements ZLinkSpotManager, AutoCloseable {
         }
 
         @Override
-        public void submit() {
+        public systems.zlink.framework.ZLinkSubmitStage submit() {
             if (dispatchErrors.flow().enabled(ZLinkMessageFlowOutcome.SENT)) {
                 dispatchErrors.flow().trace(new ZLinkMessageFlowEvent(
                     ZLinkMessageFlowOutcome.SENT,
@@ -3596,14 +3597,14 @@ public final class ZLinkSpotRuntime implements ZLinkSpotManager, AutoCloseable {
                     packetName.orElse(null), null, null, null,
                     targetNodeRid.toString(), spotRid.toString(), null, null));
             }
-            CompletableFuture.runAsync(() -> {
+            return systems.zlink.framework.ZLinkSubmitStage.from(CompletableFuture.runAsync(() -> {
                 List<Message> parts = parts(packetName, payload);
                 try {
                     spot.sendToSpot(targetNodeRid, spotRid, parts, SendFlags.NONE);
                 } finally {
                     parts.forEach(Message::close);
                 }
-            });
+            }));
         }
     }
 
@@ -3912,7 +3913,7 @@ public final class ZLinkSpotRuntime implements ZLinkSpotManager, AutoCloseable {
         }
 
         @Override
-        public void submit() {
+        public systems.zlink.framework.ZLinkSubmitStage submit() {
             if (dispatchErrors.flow().enabled(ZLinkMessageFlowOutcome.SENT)) {
                 dispatchErrors.flow().trace(new ZLinkMessageFlowEvent(
                     ZLinkMessageFlowOutcome.SENT,
@@ -3920,14 +3921,14 @@ public final class ZLinkSpotRuntime implements ZLinkSpotManager, AutoCloseable {
                     ZLinkDispatchMessageKind.PUBLISH,
                     packetName.orElse(null), null, topic, null, null, null, null, null));
             }
-            CompletableFuture.runAsync(() -> {
+            return systems.zlink.framework.ZLinkSubmitStage.from(CompletableFuture.runAsync(() -> {
                 List<Message> parts = parts(packetName, payload);
                 try {
                     spot.publish(topic, parts, SendFlags.NONE);
                 } finally {
                     parts.forEach(Message::close);
                 }
-            });
+            }));
         }
     }
 
@@ -4587,7 +4588,7 @@ public final class ZLinkSpotRuntime implements ZLinkSpotManager, AutoCloseable {
             if (info.event() == ZLinkBackendSpotDispatchEvent.ACTOR_LIFECYCLE_READABLE) {
                 return drainActorLifecycleEventsAsync();
             }
-            return CompletableFuture.completedFuture(null);
+            return systems.zlink.framework.ZLinkSubmitStage.completed();
         }
 
         private void drainRoutesForDispatch() {
@@ -4645,7 +4646,7 @@ public final class ZLinkSpotRuntime implements ZLinkSpotManager, AutoCloseable {
         private CompletionStage<Void> dispatchRouteAsync(ZLinkBackendReceived received) {
             if (received.parts().isEmpty()) {
                 received.close();
-                return CompletableFuture.completedFuture(null);
+                return systems.zlink.framework.ZLinkSubmitStage.completed();
             }
             ParsedPacket packet = parsePacket(received.parts());
             if (dispatchErrors.flow().enabled(ZLinkMessageFlowOutcome.RECEIVED)) {
@@ -4713,7 +4714,7 @@ public final class ZLinkSpotRuntime implements ZLinkSpotManager, AutoCloseable {
                         null);
                 }
                 received.close();
-                return CompletableFuture.completedFuture(null);
+                return systems.zlink.framework.ZLinkSubmitStage.completed();
             }
             if (received.requestSeq().isPresent()) {
                 if (!handler.request()) {
@@ -4734,7 +4735,7 @@ public final class ZLinkSpotRuntime implements ZLinkSpotManager, AutoCloseable {
                         received.requestSeq().map(Object::toString).orElse(null),
                         null);
                     received.close();
-                    return CompletableFuture.completedFuture(null);
+                    return systems.zlink.framework.ZLinkSubmitStage.completed();
                 }
                 Message payloadCopy = Message.from(packet.payload());
                 return withCurrentOutbound(context.outbound, () ->
@@ -4778,7 +4779,7 @@ public final class ZLinkSpotRuntime implements ZLinkSpotManager, AutoCloseable {
                     null,
                     null);
                 received.close();
-                return CompletableFuture.completedFuture(null);
+                return systems.zlink.framework.ZLinkSubmitStage.completed();
             }
             Message payloadCopy = Message.from(packet.payload());
             String routeAsyncSendPacket = packet.packetName();
@@ -4827,7 +4828,7 @@ public final class ZLinkSpotRuntime implements ZLinkSpotManager, AutoCloseable {
                         null,
                         null,
                         null);
-                    return CompletableFuture.completedFuture(null);
+                    return systems.zlink.framework.ZLinkSubmitStage.completed();
                 }
                 ParsedPacket packet = parsePacket(received.parts());
                 if (dispatchErrors.flow().enabled(ZLinkMessageFlowOutcome.RECEIVED)) {
@@ -4910,7 +4911,7 @@ public final class ZLinkSpotRuntime implements ZLinkSpotManager, AutoCloseable {
             ZLinkBackendActorRef actorRef,
             ZLinkActor actor) {
             if (closing) {
-                return CompletableFuture.completedFuture(null);
+                return systems.zlink.framework.ZLinkSubmitStage.completed();
             }
             if (event.kind() == ZLinkBackendActorLifecycleEventKind.LEFT) {
                 actorRuntime.markLeft(actor);
@@ -4946,7 +4947,7 @@ public final class ZLinkSpotRuntime implements ZLinkSpotManager, AutoCloseable {
                     if (!pendingHeader) {
                         pendingActorHeader = copyActorReceived(headerPart);
                     }
-                    return CompletableFuture.completedFuture(null);
+                    return systems.zlink.framework.ZLinkSubmitStage.completed();
                 }
                 if (pendingHeader) {
                     pendingActorHeader = null;
@@ -5087,7 +5088,7 @@ public final class ZLinkSpotRuntime implements ZLinkSpotManager, AutoCloseable {
                         headerCopy,
                         payloadCopy));
             }
-            return CompletableFuture.completedFuture(null);
+            return systems.zlink.framework.ZLinkSubmitStage.completed();
         }
 
         private CompletionStage<Void> dispatchActorPacket(

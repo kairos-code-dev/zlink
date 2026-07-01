@@ -1,0 +1,53 @@
+package systems.zlink.samples.deliverydispatch.server.couriergateway;
+
+import org.springframework.boot.WebApplicationType;
+import org.springframework.boot.autoconfigure.SpringBootApplication;
+import org.springframework.boot.builder.SpringApplicationBuilder;
+import org.springframework.context.annotation.Bean;
+import systems.zlink.contracts.core.RoutingId;
+import systems.zlink.framework.configuration.ZLinkMessageFlowLogMode;
+import systems.zlink.framework.spring.EnableZLinkFramework;
+import systems.zlink.framework.spring.ZLinkFrameworkConfigurer;
+import systems.zlink.samples.deliverydispatch.server.configuration.SampleNames;
+import systems.zlink.samples.deliverydispatch.server.configuration.SampleTopology;
+
+@EnableZLinkFramework
+@SpringBootApplication(
+    proxyBeanMethods = false,
+    scanBasePackageClasses = CourierGatewayApplication.class)
+public final class CourierGatewayApplication {
+    private CourierGatewayApplication() {
+    }
+
+    public static AutoCloseable run(String... args) {
+        SpringApplicationBuilder builder = new SpringApplicationBuilder(CourierGatewayApplication.class)
+            .web(WebApplicationType.NONE);
+        builder.application().setKeepAlive(true);
+        return builder.run(args)::close;
+    }
+
+    @Bean
+    ZLinkFrameworkConfigurer courierGatewayFramework() {
+        return options -> {
+            options.addHandlersFromPackageOf(CourierGatewayApplication.class);
+            options.useDiscovery().addRegistryEndpoint(SampleTopology.RegistryRouterEndpoint);
+            options.configureDispatch()
+                .messageFlow(ZLinkMessageFlowLogMode.KEY_TRANSITIONS)
+                .traceLogFile(System.getenv().getOrDefault("DELIVERYDISPATCH_LOG_DIR", "logs")
+                    + "/flow-courier-gateway.log")
+                .traceLabel("courier-gateway");
+            options.addClientServerChannel(SampleNames.CourierChannel)
+                .enableServer(SampleTopology.CourierGatewayChannelEndpoint)
+                .setRoutingId(RoutingId.from("delivery-courier-gateway-server"))
+                .addHandlerGroup("courier-gateway");
+            options.addRouteMesh(SampleNames.CourierActorNodeRouteChannel)
+                .enableClient()
+                .setRoutingId(RoutingId.from("delivery-courier-gateway"));
+        };
+    }
+
+    @Bean
+    CourierDirectory courierDirectory() {
+        return new CourierDirectory();
+    }
+}

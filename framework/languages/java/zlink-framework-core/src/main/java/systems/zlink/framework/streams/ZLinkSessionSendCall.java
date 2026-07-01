@@ -1,5 +1,7 @@
 package systems.zlink.framework.streams;
 
+import systems.zlink.framework.ZLinkSubmitStage;
+
 public interface ZLinkSessionSendCall {
     ZLinkSessionSendCall metadata(String key, String value);
 
@@ -7,5 +9,9 @@ public interface ZLinkSessionSendCall {
 
     ZLinkSessionSendCall compress();
 
-    void submit();
+    ZLinkSubmitStage submit();
+
+    default void await() {
+        submit().await();
+    }
 }

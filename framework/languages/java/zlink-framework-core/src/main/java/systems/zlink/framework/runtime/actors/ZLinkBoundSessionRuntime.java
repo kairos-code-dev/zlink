@@ -112,7 +112,7 @@ final class ZLinkBoundSessionRuntime implements ZLinkBoundSession {
                         header,
                         List.of(body),
                         SendFlags.NONE)) {
-                        return CompletableFuture.completedFuture(null);
+                        return systems.zlink.framework.ZLinkSubmitStage.completed();
                     }
                     return CompletableFuture.failedFuture(new ZLinkConfigurationException(
                         "remote bound session bind relay failed: " + actorId));
@@ -286,7 +286,7 @@ final class ZLinkBoundSessionRuntime implements ZLinkBoundSession {
         }
 
         @Override
-        public void submit() {
+        public systems.zlink.framework.ZLinkSubmitStage submit() {
             byte[] payloadBytes;
             try {
                 payloadBytes = payload.toByteArray();
@@ -300,7 +300,8 @@ final class ZLinkBoundSessionRuntime implements ZLinkBoundSession {
                 Optional.empty(),
                 packetName.orElse(defaultPacketName),
                 metadata);
-            sendWithRetry(stream, sessionRid, header, payloadBytes, actorId);
+            return systems.zlink.framework.ZLinkSubmitStage.from(
+                sendWithRetry(stream, sessionRid, header, payloadBytes, actorId));
         }
 
         private ZLinkYieldTurn requireTurn() {

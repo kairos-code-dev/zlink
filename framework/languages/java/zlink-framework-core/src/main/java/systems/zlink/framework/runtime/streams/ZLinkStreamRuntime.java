@@ -476,7 +476,7 @@ public final class ZLinkStreamRuntime implements AutoCloseable {
 
         @Override
         public CompletionStage<Void> close() {
-            return CompletableFuture.completedFuture(null);
+            return systems.zlink.framework.ZLinkSubmitStage.completed();
         }
 
         CompletionStage<Void> dispatchStage(
@@ -575,7 +575,7 @@ public final class ZLinkStreamRuntime implements AutoCloseable {
                     return CompletableFuture.failedFuture(new ZLinkConfigurationException(
                         "session error reply failed: " + routingId));
                 }
-                return CompletableFuture.completedFuture(null);
+                return systems.zlink.framework.ZLinkSubmitStage.completed();
             } finally {
                 payload.close();
             }
@@ -690,7 +690,7 @@ public final class ZLinkStreamRuntime implements AutoCloseable {
         }
 
         @Override
-        public void submit() {
+        public systems.zlink.framework.ZLinkSubmitStage submit() {
             EncodedStreamPayload encoded = encodePayload(payload, compressed, compressionCodec);
             ZLinkStreamHeader header = new ZLinkStreamHeader(
                 ZLinkStreamMessageKind.SEND,
@@ -705,6 +705,7 @@ public final class ZLinkStreamRuntime implements AutoCloseable {
                 if (!stream.send(routingId, header, parts, SendFlags.DONT_WAIT)) {
                     throw new ZLinkConfigurationException("session send failed: " + routingId);
                 }
+                return systems.zlink.framework.ZLinkSubmitStage.completed();
             } finally {
                 parts.forEach(Message::close);
                 payload.close();
@@ -742,7 +743,7 @@ public final class ZLinkStreamRuntime implements AutoCloseable {
         }
 
         @Override
-        public void submit() {
+        public systems.zlink.framework.ZLinkSubmitStage submit() {
             Optional<ZLinkStreamHeader> currentHeader = context.currentDispatchHeader();
             if (currentHeader.isEmpty() || currentHeader.get().requestSequence().isEmpty()) {
                 payload.close();
@@ -770,6 +771,7 @@ public final class ZLinkStreamRuntime implements AutoCloseable {
                     throw new ZLinkConfigurationException("session reply failed: " + routingId);
                 }
                 context.traceStreamReplied(current);
+                return systems.zlink.framework.ZLinkSubmitStage.completed();
             } finally {
                 parts.forEach(Message::close);
                 payload.close();

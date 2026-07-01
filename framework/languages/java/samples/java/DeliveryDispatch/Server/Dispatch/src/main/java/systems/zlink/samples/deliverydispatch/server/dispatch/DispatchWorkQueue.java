@@ -1,0 +1,31 @@
+package systems.zlink.samples.deliverydispatch.server.dispatch;
+
+import java.util.concurrent.ExecutorService;
+import java.util.concurrent.Executors;
+import systems.zlink.samples.deliverydispatch.shared.contracts.Messages;
+
+public final class DispatchWorkQueue implements AutoCloseable {
+    private final DispatchWorker worker;
+    private final ExecutorService executor = Executors.newSingleThreadExecutor();
+
+    public DispatchWorkQueue(DispatchWorker worker) {
+        this.worker = worker;
+    }
+
+    public void enqueue(Messages.CreateDeliveryRequest request) {
+        executor.submit(() -> worker.dispatch(new Messages.AssignDelivery(
+            request.deliveryId(),
+            request.customerId(),
+            request.pickupAddress(),
+            request.dropoffAddress())));
+    }
+
+    public Messages.ServerAssertionResponse assertServerEvidence(Messages.ServerAssertionRequest request) {
+        return worker.assertServerEvidence(request);
+    }
+
+    @Override
+    public void close() {
+        executor.shutdownNow();
+    }
+}

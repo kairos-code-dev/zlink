@@ -2431,7 +2431,7 @@ public final class ZLinkChannelRuntime
         }
 
         @Override
-        public void submit() {
+        public systems.zlink.framework.ZLinkSubmitStage submit() {
             if (dispatchErrors.flow().enabled(ZLinkMessageFlowOutcome.SENT)) {
                 dispatchErrors.flow().trace(new ZLinkMessageFlowEvent(
                     ZLinkMessageFlowOutcome.SENT,
@@ -2439,14 +2439,14 @@ public final class ZLinkChannelRuntime
                     ZLinkDispatchMessageKind.PUBLISH,
                     packetName.orElse(null), null, topic, null, null, null, null, null));
             }
-            CompletableFuture.runAsync(() -> {
+            return systems.zlink.framework.ZLinkSubmitStage.from(CompletableFuture.runAsync(() -> {
                 List<Message> publishParts = parts(packetName, payload);
                 try {
                     publisher.publish(topic, publishParts, SendFlags.NONE);
                 } finally {
                     publishParts.forEach(Message::close);
                 }
-            });
+            }));
         }
     }
 
@@ -2476,7 +2476,7 @@ public final class ZLinkChannelRuntime
         }
 
         @Override
-        public void submit() {
+        public systems.zlink.framework.ZLinkSubmitStage submit() {
             if (dispatchErrors.flow().enabled(ZLinkMessageFlowOutcome.SENT)) {
                 dispatchErrors.flow().trace(new ZLinkMessageFlowEvent(
                     ZLinkMessageFlowOutcome.SENT,
@@ -2484,13 +2484,13 @@ public final class ZLinkChannelRuntime
                     ZLinkDispatchMessageKind.SEND,
                     packetName.orElse(null), null, null, null, null, null, null, null));
             }
-            CompletableFuture.runAsync(() -> {
+            return systems.zlink.framework.ZLinkSubmitStage.from(CompletableFuture.runAsync(() -> {
                 try {
                     client.send(parts(packetName, payload), SendFlags.NONE);
                 } finally {
                     payload.close();
                 }
-            });
+            }));
         }
     }
 
@@ -2661,7 +2661,7 @@ public final class ZLinkChannelRuntime
         }
 
         @Override
-        public void submit() {
+        public systems.zlink.framework.ZLinkSubmitStage submit() {
             if (dispatchErrors.flow().enabled(ZLinkMessageFlowOutcome.SENT)) {
                 dispatchErrors.flow().trace(new ZLinkMessageFlowEvent(
                     ZLinkMessageFlowOutcome.SENT,
@@ -2669,14 +2669,14 @@ public final class ZLinkChannelRuntime
                     ZLinkDispatchMessageKind.SEND,
                     packetName.orElse(null), null, null, null, target.toString(), null, null, null));
             }
-            CompletableFuture.runAsync(() -> {
+            return systems.zlink.framework.ZLinkSubmitStage.from(CompletableFuture.runAsync(() -> {
                 List<Message> sendParts = parts(packetName, payload);
                 try {
                     router.send(target, sendParts, SendFlags.NONE);
                 } finally {
                     sendParts.forEach(Message::close);
                 }
-            });
+            }));
         }
     }
 
@@ -2809,7 +2809,7 @@ public final class ZLinkChannelRuntime
         }
 
         @Override
-        public void submit() {
+        public systems.zlink.framework.ZLinkSubmitStage submit() {
             List<Message> sendParts = parts(packetName, payload);
             try {
                 sendToSpotViaRouterChannel(
@@ -2817,6 +2817,7 @@ public final class ZLinkChannelRuntime
                     targetNode,
                     targetSpot,
                     sendParts);
+                return systems.zlink.framework.ZLinkSubmitStage.completed();
             } finally {
                 sendParts.forEach(Message::close);
             }

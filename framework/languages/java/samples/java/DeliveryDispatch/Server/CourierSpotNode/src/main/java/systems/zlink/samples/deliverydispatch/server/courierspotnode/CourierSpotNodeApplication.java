@@ -1,0 +1,78 @@
+package systems.zlink.samples.deliverydispatch.server.courierspotnode;
+
+import org.springframework.boot.WebApplicationType;
+import org.springframework.boot.autoconfigure.SpringBootApplication;
+import org.springframework.boot.builder.SpringApplicationBuilder;
+import org.springframework.context.annotation.Bean;
+import systems.zlink.contracts.core.RoutingId;
+import systems.zlink.framework.configuration.ZLinkMessageFlowLogMode;
+import systems.zlink.framework.configuration.ZLinkSpotNodeBuilder;
+import systems.zlink.framework.spring.EnableZLinkFramework;
+import systems.zlink.framework.spring.ZLinkFrameworkConfigurer;
+import systems.zlink.samples.deliverydispatch.server.configuration.SampleNames;
+import systems.zlink.samples.deliverydispatch.server.configuration.SampleTopology;
+import systems.zlink.samples.deliverydispatch.server.courierspotnode.spots.CourierEntrySpot;
+
+@EnableZLinkFramework
+@SpringBootApplication(
+    proxyBeanMethods = false,
+    scanBasePackageClasses = CourierSpotNodeApplication.class)
+public final class CourierSpotNodeApplication {
+    private CourierSpotNodeApplication() {
+    }
+
+    public static AutoCloseable run(String... args) {
+        SpringApplicationBuilder builder = new SpringApplicationBuilder(CourierSpotNodeApplication.class)
+            .web(WebApplicationType.NONE);
+        builder.application().setKeepAlive(true);
+        return builder.run(args)::close;
+    }
+
+    @Bean
+    ZLinkFrameworkConfigurer courierSpotNodeFramework() {
+        return options -> {
+            String node = System.getProperty("zlink.samples.deliverydispatch.courierNode", "node1");
+            NodeOptions selected = NodeOptions.resolve(node);
+            options.addHandlersFromPackageOf(CourierSpotNodeApplication.class);
+            options.useDiscovery().addRegistryEndpoint(SampleTopology.RegistryRouterEndpoint);
+            options.configureDispatch()
+                .messageFlow(ZLinkMessageFlowLogMode.KEY_TRANSITIONS)
+                .traceLogFile(System.getenv().getOrDefault("DELIVERYDISPATCH_LOG_DIR", "logs")
+                    + "/flow-courier-" + node + ".log")
+                .traceLabel("courier-" + node);
+            options.addRouteMesh(SampleNames.CourierActorNodeRouteChannel)
+                .setRoutingId(RoutingId.from(selected.nodeRid()))
+                .enableServer(selected.routeEndpoint())
+                .enableClient()
+                .addHandlerGroup("courier-actor-node");
+            ZLinkSpotNodeBuilder spotNode = options.addSpotMesh(SampleNames.CourierSpotDiscovery);
+            spotNode.enableRouter(selected.routerEndpoint())
+                .setRoutingId(RoutingId.from(selected.nodeRid()));
+            spotNode.enablePubSub(selected.spotEndpoint());
+            spotNode.addEntrySpot(CourierEntrySpot.class);
+            spotNode.addActorFactory(SampleNames.CourierActorType, CourierActorFactory.class);
+        };
+    }
+
+    @Bean
+    ActorDirectory actorDirectory() {
+        return new ActorDirectory();
+    }
+
+    private record NodeOptions(String nodeRid, String routeEndpoint, String spotEndpoint, String routerEndpoint) {
+        static NodeOptions resolve(String node) {
+            return switch (node) {
+                case "node2" -> new NodeOptions(
+                    SampleTopology.CourierActorNode2Rid,
+                    SampleTopology.CourierActorNode2RouteEndpoint,
+                    SampleTopology.CourierActorNode2SpotEndpoint,
+                    SampleTopology.CourierActorNode2RouterEndpoint);
+                default -> new NodeOptions(
+                    SampleTopology.CourierActorNode1Rid,
+                    SampleTopology.CourierActorNode1RouteEndpoint,
+                    SampleTopology.CourierActorNode1SpotEndpoint,
+                    SampleTopology.CourierActorNode1RouterEndpoint);
+            };
+        }
+    }
+}

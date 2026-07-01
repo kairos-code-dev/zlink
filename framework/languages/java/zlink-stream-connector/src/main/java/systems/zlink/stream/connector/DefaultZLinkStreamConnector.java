@@ -916,8 +916,9 @@ final class DefaultZLinkStreamConnector implements ZLinkStreamConnector {
         }
 
         @Override
-        public void submit() {
+        public java.util.concurrent.CompletionStage<Void> submit() {
             connector.submit(payload, compressed);
+            return java.util.concurrent.CompletableFuture.completedFuture(null);
         }
     }
 

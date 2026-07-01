@@ -107,7 +107,7 @@ final class ZLinkRoutedBoundSessionRuntime implements ZLinkBoundSession {
     @Override
     public CompletionStage<Void> disconnect() {
         actorRuntime.clearSessionBinding(actor, bindingToken);
-        return java.util.concurrent.CompletableFuture.completedFuture(null);
+        return systems.zlink.framework.ZLinkSubmitStage.completed();
     }
 
     private static CompletionStage<Void> sendFrame(
@@ -137,7 +137,7 @@ final class ZLinkRoutedBoundSessionRuntime implements ZLinkBoundSession {
                     new ZLinkConfigurationException(
                         "routed actor bound session target is not ready"));
             }
-            return java.util.concurrent.CompletableFuture.completedFuture(null);
+            return systems.zlink.framework.ZLinkSubmitStage.completed();
         } finally {
             parts.forEach(Message::close);
         }
@@ -199,7 +199,7 @@ final class ZLinkRoutedBoundSessionRuntime implements ZLinkBoundSession {
         }
 
         @Override
-        public void submit() {
+        public systems.zlink.framework.ZLinkSubmitStage submit() {
             byte[] frameBytes;
             try {
                 ZLinkStreamHeader header = new ZLinkStreamHeader(
@@ -222,6 +222,7 @@ final class ZLinkRoutedBoundSessionRuntime implements ZLinkBoundSession {
                     targetEntrySpotRid,
                     actorRef,
                     frame);
+                return systems.zlink.framework.ZLinkSubmitStage.completed();
             }
         }
 

@@ -7,7 +7,6 @@
 
 #include <chrono>
 #include <string>
-#include <thread>
 #include <vector>
 
 namespace zlink::framework::e2e::registry_messaging::consumer
@@ -17,39 +16,29 @@ inline profile_res_t request_profile_with_retry (zlink::framework::channel_clien
                                                    const profile_req_t &request,
                                                    std::chrono::milliseconds timeout)
 {
-    const auto deadline = std::chrono::steady_clock::now () + std::chrono::seconds (30);
-    std::string last_error;
-    while (std::chrono::steady_clock::now () < deadline) {
-        auto call = channels.request (api_channel, request)
-                      .timeout (timeout)
-                      .async<profile_res_t> ();
-        const auto &reply = call.result ();
-        if (reply) {
-            return reply.value ();
-        }
-        last_error = reply.error () ? reply.error ()->what () : "unknown profile request error";
-        std::this_thread::sleep_for (std::chrono::milliseconds (100));
+    auto call = channels.request (api_channel, request)
+                  .timeout (timeout)
+                  .async<profile_res_t> ();
+    const auto &reply = call.result ();
+    if (reply) {
+        return reply.value ();
     }
-    throw std::runtime_error ("timed out waiting for profile endpoint: " + last_error);
+    throw std::runtime_error (reply.error () ? reply.error ()->what ()
+                                             : "profile request failed");
 }
 
 inline payload_res_t request_payload_with_retry (zlink::framework::channel_client_t &channels,
                                                    const payload_req_t &request)
 {
-    const auto deadline = std::chrono::steady_clock::now () + std::chrono::seconds (30);
-    std::string last_error;
-    while (std::chrono::steady_clock::now () < deadline) {
-        auto call = channels.request (api_channel, request)
-                      .timeout (std::chrono::seconds (10))
-                      .async<payload_res_t> ();
-        const auto &reply = call.result ();
-        if (reply) {
-            return reply.value ();
-        }
-        last_error = reply.error () ? reply.error ()->what () : "unknown payload request error";
-        std::this_thread::sleep_for (std::chrono::milliseconds (100));
+    auto call = channels.request (api_channel, request)
+                  .timeout (std::chrono::milliseconds (3000))
+                  .async<payload_res_t> ();
+    const auto &reply = call.result ();
+    if (reply) {
+        return reply.value ();
     }
-    throw std::runtime_error ("timed out waiting for payload endpoint: " + last_error);
+    throw std::runtime_error (reply.error () ? reply.error ()->what ()
+                                             : "payload request failed");
 }
 
 class batch_request_handler_t
@@ -70,7 +59,7 @@ class batch_request_handler_t
         replies.reserve (requests.size ());
         for (const auto &request : requests) {
             replies.push_back (
-              request_profile_with_retry (_channels, request, std::chrono::seconds (5)));
+              request_profile_with_retry (_channels, request, std::chrono::milliseconds (3000)));
         }
         return replies;
     }
@@ -93,7 +82,7 @@ class profile_request_handler_t
 
     profile_res_t handle (const profile_req_t &request)
     {
-        return request_profile_with_retry (_channels, request, std::chrono::seconds (5));
+        return request_profile_with_retry (_channels, request, std::chrono::milliseconds (3000));
     }
 
   private:
@@ -145,7 +134,7 @@ class missing_request_handler_t
     {
         auto call = _channels.request (api_channel, request)
                       .packet_name ("MissingProfileReq")
-                      .timeout (std::chrono::seconds (5))
+                      .timeout (std::chrono::milliseconds (3000))
                       .async<profile_res_t> ();
         const auto &reply = call.result ();
         if (reply) {

@@ -5,7 +5,7 @@
 #include <string>
 #include <utility>
 
-namespace zlink::framework::e2e::registry_messaging::registry
+namespace zlink::framework::e2e::resilience_lifecycle::registry
 {
 
 class fault_state_t
@@ -28,4 +28,4 @@ class fault_state_t
     std::string _mode = "none";
 };
 
-} // namespace zlink::framework::e2e::registry_messaging::registry
+} // namespace zlink::framework::e2e::resilience_lifecycle::registry

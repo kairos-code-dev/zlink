@@ -1,0 +1,30 @@
+/* SPDX-License-Identifier: MPL-2.0 */
+
+#pragma once
+
+#include "../Support/resilience_request_support.hpp"
+
+#include <zlink/http_client.hpp>
+
+#include <chrono>
+#include <iostream>
+
+namespace zlink::framework::e2e::resilience_lifecycle::client
+{
+
+inline void run_rl_d4_missing_request_handler_scenario ()
+{
+    auto consumer = zlink::http_client::client_t::create ()
+                      .base_url (env_or ("ZLINK_CPP_E2E_HTTP_CONSUMER_ENDPOINT"))
+                      .timeout (std::chrono::milliseconds (10000))
+                      .build ();
+    const auto failure = consumer.post ("/profile/request/missing")
+                           .body (profile_req_t{.value = "fast", .marker = "rl-d4-missing"})
+                           .fetch<request_failure_res_t> ();
+    ensure (failure.failed, "RL-D4 expected public failure payload");
+    wait_provider_evidence_contains ("DispatchError", "handler_missing:reply_error",
+                                     std::chrono::milliseconds (5000));
+    std::cout << "scenario RL-D4 passed\n";
+}
+
+} // namespace zlink::framework::e2e::resilience_lifecycle::client

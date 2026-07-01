@@ -5,18 +5,18 @@ SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 CPP_DIR="$(cd "$SCRIPT_DIR/../.." && pwd)"
 BUILD_DIR="${ZLINK_CPP_E2E_BUILD_DIR:-$CPP_DIR/build}"
 
-read -r REGISTRY_PUB REGISTRY_ROUTER PUBLISHER PUBLISHER_HTTP HTTP_1 HTTP_2 HTTP_3 <<<"$(python3 - <<'PY'
+read -r REGISTRY_PUB REGISTRY_ROUTER PUBLISHER REGISTRY_HTTP PUBLISHER_HTTP HTTP_1 HTTP_2 HTTP_3 <<<"$(python3 - <<'PY'
 import socket
 
 sockets = []
 ports = []
-for _ in range(7):
+for _ in range(8):
     s = socket.socket()
     s.bind(("127.0.0.1", 0))
     sockets.append(s)
     ports.append(s.getsockname()[1])
 print(" ".join(f"tcp://127.0.0.1:{p}" for p in ports[:3]), end=" ")
-print(" ".join(f"http://127.0.0.1:{p}" for p in ports[3:7]))
+print(" ".join(f"http://127.0.0.1:{p}" for p in ports[3:8]))
 for s in sockets:
     s.close()
 PY
@@ -69,7 +69,7 @@ wait_port() {
   local host="127.0.0.1"
   local port
   port="$(port_of "$endpoint")"
-  for _ in $(seq 1 100); do
+  for _ in $(seq 1 60); do
     if (echo >"/dev/tcp/${host}/${port}") >/dev/null 2>&1; then
       return 0
     fi
@@ -85,7 +85,7 @@ wait_port_closed() {
   local host="127.0.0.1"
   local port
   port="$(port_of "$endpoint")"
-  for _ in $(seq 1 100); do
+  for _ in $(seq 1 60); do
     if ! (echo >"/dev/tcp/${host}/${port}") >/dev/null 2>&1; then
       return 0
     fi
@@ -97,7 +97,7 @@ wait_port_closed() {
 
 wait_marker() {
   local file="$1"
-  for _ in $(seq 1 200); do
+  for _ in $(seq 1 60); do
     if [[ -f "$file" ]]; then
       return 0
     fi
@@ -107,13 +107,68 @@ wait_marker() {
   return 1
 }
 
+check_operational_endpoints() {
+  local name="$1"
+  local endpoint="$2"
+  python3 - "$name" "$endpoint" "$LOG_DIR/$name-operational.log" <<'PY'
+import json
+import sys
+import urllib.request
+
+name = sys.argv[1]
+endpoint = sys.argv[2]
+log_path = sys.argv[3]
+
+def get(path):
+    with urllib.request.urlopen(endpoint + path, timeout=3) as response:
+        return response.read().decode()
+
+def post(path):
+    request = urllib.request.Request(endpoint + path, data=b"", method="POST")
+    with urllib.request.urlopen(request, timeout=3) as response:
+        return response.read().decode()
+
+health = get("/health")
+evidence = get("/evidence")
+cleared = post("/evidence/clear")
+with open(log_path, "a", encoding="utf-8") as log:
+    log.write(f"{name} health={health}\n")
+    log.write(f"{name} evidence={evidence}\n")
+    log.write(f"{name} clear={cleared}\n")
+print(f"operational {name} passed")
+PY
+}
+
+snapshot_operational_evidence() {
+  local name="$1"
+  local endpoint="$2"
+  local output="$3"
+  python3 - "$name" "$endpoint" "$output" <<'PY'
+import sys
+import urllib.request
+
+name = sys.argv[1]
+endpoint = sys.argv[2]
+output = sys.argv[3]
+with urllib.request.urlopen(endpoint + "/evidence", timeout=3) as response:
+    body = response.read().decode()
+with open(output, "w", encoding="utf-8") as file:
+    file.write(body)
+    file.write("\n")
+print(f"snapshot {name} evidence written")
+PY
+}
+
 start_registry() {
   ZLINK_CPP_E2E_REGISTRY_PUB="$REGISTRY_PUB" \
   ZLINK_CPP_E2E_REGISTRY_ROUTER="$REGISTRY_ROUTER" \
+  ZLINK_CPP_E2E_REGISTRY_HTTP_ENDPOINT="$REGISTRY_HTTP" \
   ZLINK_CPP_E2E_LOG_DIR="$LOG_DIR" \
     "$REGISTRY" >"$LOG_DIR/registry.stdout.log" 2>"$LOG_DIR/registry.stderr.log" &
   PIDS+=("$!")
   wait_port registry-router "$REGISTRY_ROUTER"
+  wait_port registry-http "$REGISTRY_HTTP"
+  check_operational_endpoints registry "$REGISTRY_HTTP"
 }
 
 start_publisher() {
@@ -127,6 +182,7 @@ start_publisher() {
   PUBLISHER_PID="$LAST_PID"
   PIDS+=("$LAST_PID")
   wait_port "$suffix-http" "$PUBLISHER_HTTP"
+  check_operational_endpoints "$suffix" "$PUBLISHER_HTTP"
 }
 
 start_subscriber() {
@@ -193,12 +249,13 @@ start_client_waiting() {
     ZLINK_CPP_E2E_START_CONTINUE_FILE="$continue_file" \
     "$@" &
   LAST_PID="$!"
+  PIDS+=("$LAST_PID")
 }
 
 verify() {
   local mode="$1"
   shift
-  python3 - "$mode" "$@" <<'PY'
+  python3 - "$mode" "$@" <<'PY' | tee -a "$LOG_DIR/verify.log"
 import json
 import sys
 import urllib.request
@@ -293,6 +350,7 @@ elif mode == "negative":
         wait_lines(endpoint, contains_all_line_groups=groups)
 else:
     raise SystemExit("unknown verify mode " + mode)
+print(f"verify {mode} passed")
 PY
 }
 
@@ -466,4 +524,6 @@ if should_run PS-C1 ps-c1; then
   stop_all_subscribers
 fi
 
+snapshot_operational_evidence registry "$REGISTRY_HTTP" "$LOG_DIR/registry-evidence-final.json"
+snapshot_operational_evidence publisher "$PUBLISHER_HTTP" "$LOG_DIR/publisher-evidence-final.json"
 echo "pubsub e2e result=passed"

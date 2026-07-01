@@ -79,6 +79,14 @@ int main (int argc, char **argv)
         if (client_options.scenario != "mon-d1") {
             framework.use_discovery ().add_registry_endpoint (client_options.registry_router_endpoint);
         }
+        if (!client_options.log_dir.empty ()) {
+            const std::string label =
+              client_options.scenario == "mon-d1" ? "client-d1" : "client";
+            framework.configure_dispatch ()
+              .message_flow (zlink::framework::message_flow_log_mode_t::key_transitions)
+              .trace_log_file (client_options.log_dir + "/" + label + "-flow.log")
+              .trace_label ("cpp-mon-" + label);
+        }
         auto channel = framework.add_client_server_channel (rm::profile_channel);
         if (!client_options.direct_channel_endpoint.empty ()) {
             channel.enable_client (client_options.direct_channel_endpoint);

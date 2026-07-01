@@ -5,25 +5,12 @@
 #include "../Support/client_support.hpp"
 #include "../Support/resilience_request_support.hpp"
 
-#include <zlink/http_client.hpp>
-
 #include <chrono>
 #include <iostream>
 #include <thread>
 
-namespace zlink::framework::e2e::registry_messaging::client
+namespace zlink::framework::e2e::resilience_lifecycle::client
 {
-
-inline void post_provider_admin (const std::string &base_url, const std::string &path)
-{
-    auto http = zlink::http_client::client_t::create ()
-                  .base_url (base_url)
-                  .timeout (std::chrono::milliseconds (1000))
-                  .build ();
-    auto response = http.post (path).submit_raw ().result ();
-    ensure (response && response.value ().status < 400,
-            "provider admin call failed: " + base_url + path);
-}
 
 inline void set_observer_fault_mode (const std::string &path)
 {
@@ -55,4 +42,4 @@ inline void run_observer_fault_scenario (zlink::framework::channel_client_t &cha
     std::cout << "scenario RL-D2 passed\n";
 }
 
-} // namespace zlink::framework::e2e::registry_messaging::client
+} // namespace zlink::framework::e2e::resilience_lifecycle::client

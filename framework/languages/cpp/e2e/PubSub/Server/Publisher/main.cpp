@@ -14,6 +14,8 @@ int main (int argc, char **argv)
       .use_file (pubsub.log_dir + "/publisher.log")
       .set_min_level (zlink::framework::log_level_t::debug);
     app.add_zlink_framework ([&] (zlink::framework::zlink_framework_options_t &options) {
+        options.services ().add_singleton<ps_server::operational_evidence_store_t> (
+          std::make_unique<ps_server::operational_evidence_store_t> ("publisher"));
         ps_server::configure_flow (options, pubsub.log_dir, "publisher");
         ps_server::configure_codecs (options.codecs ());
         options.use_discovery ().add_registry_endpoint (pubsub.registry_router);
@@ -22,6 +24,9 @@ int main (int argc, char **argv)
         options.http ()
           .listen (pubsub.http_endpoint)
           .map_health ("/health")
+          .map_get<ps_server::operational_evidence_handler_t> ("/evidence")
+          .map_post<ps_server::operational_evidence_clear_handler_t> ("/evidence/clear")
+          .map_post<ps_server::operational_shutdown_handler_t> ("/shutdown")
           .map_post<ps_publisher::publish_event_handler_t> ("/publish/event")
           .map_post<ps_publisher::publish_missing_handler_t> ("/publish/missing");
     });

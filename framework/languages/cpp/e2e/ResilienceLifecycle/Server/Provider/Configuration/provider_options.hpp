@@ -7,7 +7,7 @@
 #include <string>
 #include <vector>
 
-namespace zlink::framework::e2e::registry_messaging::provider
+namespace zlink::framework::e2e::resilience_lifecycle::provider
 {
 
 inline std::string env_or (const char *name, std::string fallback = {})
@@ -51,6 +51,7 @@ struct provider_options_t
     std::string embedded_registry_pub;
     std::string embedded_registry_router;
     std::vector<std::string> embedded_registry_peers;
+    std::string evidence_file;
     std::string log_dir;
     std::optional<int> server_weight;
     std::optional<int> max_message_size;
@@ -69,9 +70,10 @@ inline provider_options_t read_provider_options ()
             .embedded_registry_router = env_or ("ZLINK_CPP_E2E_EMBEDDED_REGISTRY_ROUTER"),
             .embedded_registry_peers =
               split_csv (env_or ("ZLINK_CPP_E2E_EMBEDDED_REGISTRY_PEERS")),
+            .evidence_file = env_or ("ZLINK_CPP_E2E_EVIDENCE_FILE"),
             .log_dir = env_or ("ZLINK_CPP_E2E_LOG_DIR", "logs"),
             .server_weight = parse_int_env ("ZLINK_CPP_E2E_SERVER_WEIGHT"),
             .max_message_size = parse_int_env ("ZLINK_CPP_E2E_MAX_MESSAGE_SIZE")};
 }
 
-} // namespace zlink::framework::e2e::registry_messaging::provider
+} // namespace zlink::framework::e2e::resilience_lifecycle::provider

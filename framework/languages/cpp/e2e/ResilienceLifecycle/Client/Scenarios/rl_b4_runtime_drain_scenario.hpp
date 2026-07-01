@@ -4,62 +4,100 @@
 
 #include "../Support/resilience_request_support.hpp"
 
+#include <zlink/http_client.hpp>
+
 #include <chrono>
 #include <iostream>
 #include <string>
 #include <thread>
 
-namespace zlink::framework::e2e::registry_messaging::client
+namespace zlink::framework::e2e::resilience_lifecycle::client
 {
 
-inline void run_drain_restore_scenario (zlink::framework::channel_client_t &channels)
+inline int count_evidence_prefix (const evidence_snapshot_t &snapshot,
+                                  const std::string &marker,
+                                  const std::string &prefix)
 {
-    auto inflight = channels
-                      .request ("registry.messaging.api.manual.b",
-                                profile_req_t{.value = "slow"})
-                      .timeout (std::chrono::milliseconds (3000))
-                      .async<profile_res_t> ();
-
-    const auto deadline = std::chrono::steady_clock::now () + std::chrono::seconds (5);
-    while (std::chrono::steady_clock::now () < deadline) {
-        if (evidence_contains (fetch_evidence (env_or ("ZLINK_CPP_E2E_HTTP_B_ENDPOINT")),
-                               "ProfileReq", "slow")) {
-            break;
+    int count = 0;
+    for (const auto &entry : snapshot.entries) {
+        if (entry.marker == marker && entry.value.rfind (prefix, 0) == 0) {
+            ++count;
         }
-        std::this_thread::sleep_for (std::chrono::milliseconds (50));
     }
-    ensure (evidence_contains (fetch_evidence (env_or ("ZLINK_CPP_E2E_HTTP_B_ENDPOINT")),
-                               "ProfileReq", "slow"),
-            "slow in-flight request did not reach provider before drain");
-    touch_file (env_or ("ZLINK_CPP_E2E_READY_FILE"));
-    wait_for_file (env_or ("ZLINK_CPP_E2E_CONTINUE_FILE"));
+    return count;
+}
 
-    ensure (inflight.result ().has_value (), "in-flight request failed during drain");
-    ensure (inflight.result ().value ().provider_rid == "api-b",
-            "in-flight request did not complete on drained provider");
+inline void wait_provider_evidence_prefix_on (const std::string &base_url,
+                                              const std::string &prefix)
+{
+    const auto deadline = std::chrono::steady_clock::now () + std::chrono::seconds (15);
+    while (std::chrono::steady_clock::now () < deadline) {
+        const auto evidence = fetch_evidence (base_url);
+        if (count_evidence_prefix (evidence, "ProfileReq", prefix) > 0) {
+            return;
+        }
+        std::this_thread::sleep_for (std::chrono::milliseconds (100));
+    }
+    throw std::runtime_error ("timed out waiting for provider evidence " + prefix);
+}
+
+inline void wait_provider_weight_on (zlink::http_client::client_t &provider, int expected)
+{
+    provider.post ("/admin/weight/wait")
+      .body (nlohmann::json{{"expected", expected}}.dump (), "application/json")
+      .submit_raw ()
+      .result ()
+      .value ();
+}
+
+inline void run_rl_b4_runtime_drain_scenario (zlink::framework::channel_client_t &channels)
+{
+    (void) channels;
+
+    auto consumer = zlink::http_client::client_t::create ()
+                      .base_url (env_or ("ZLINK_CPP_E2E_HTTP_CONSUMER_ENDPOINT"))
+                      .timeout (std::chrono::milliseconds (10000))
+                      .build ();
+    auto provider_b = zlink::http_client::client_t::create ()
+                        .base_url (env_or ("ZLINK_CPP_E2E_HTTP_B_ENDPOINT"))
+                        .timeout (std::chrono::milliseconds (10000))
+                        .build ();
+
+    const auto before_drain = fetch_evidence (env_or ("ZLINK_CPP_E2E_HTTP_B_ENDPOINT"));
+    provider_b.post ("/admin/drain").submit_raw ().result ().value ();
+    wait_provider_weight_on (provider_b, 0);
 
     for (int index = 0; index < 20; ++index) {
-        const auto reply =
-          request_profile (channels, api_channel, "rl-b4-after-drain-" + std::to_string (index));
-        ensure (reply.provider_rid == "api-a",
-                "new request reached drained provider before restore");
+        const auto marker = "rl-b4-drained-" + std::to_string (index);
+        const auto reply = consumer.post ("/profile/request")
+                             .body (profile_req_t{.value = "fast", .marker = marker})
+                             .fetch<profile_res_t> ();
+        ensure (reply.provider_rid == "api-a", "RL-B4 drained provider received request");
     }
 
-    touch_file (env_or ("ZLINK_CPP_E2E_DRAINED_FILE"));
-    wait_for_file (env_or ("ZLINK_CPP_E2E_RESTORE_FILE"));
+    const auto after_drain = fetch_evidence (env_or ("ZLINK_CPP_E2E_HTTP_B_ENDPOINT"));
+    const auto new_b =
+      count_evidence_prefix (after_drain, "ProfileReq", "rl-b4-drained-")
+      - count_evidence_prefix (before_drain, "ProfileReq", "rl-b4-drained-");
+    ensure (new_b == 0, "RL-B4 api-b evidence changed after drain");
+    wait_provider_evidence_prefix_on (env_or ("ZLINK_CPP_E2E_HTTP_A_ENDPOINT"),
+                                      "rl-b4-drained-");
 
-    bool restored = false;
-    for (int index = 0; index < 80; ++index) {
-        const auto reply =
-          request_profile (channels, api_channel, "rl-b4-after-restore-" + std::to_string (index));
-        if (reply.provider_rid == "api-b") {
-            restored = true;
-            break;
-        }
+    provider_b.post ("/admin/restore").submit_raw ().result ().value ();
+    wait_provider_weight_on (provider_b, 100);
+
+    for (int index = 0; index < 40; ++index) {
+        const auto marker = "rl-b4-restored-" + std::to_string (index);
+        const auto reply = consumer.post ("/profile/request")
+                             .body (profile_req_t{.value = "fast", .marker = marker})
+                             .fetch<profile_res_t> ();
+        ensure (reply.value == "profile:fast",
+                "RL-B4 restored request returned an unexpected value");
     }
-    ensure (restored, "restored provider did not receive traffic");
-    std::cout << "scenario RL-B5 passed\n";
+    wait_provider_evidence_prefix_on (env_or ("ZLINK_CPP_E2E_HTTP_B_ENDPOINT"),
+                                      "rl-b4-restored-");
+
     std::cout << "scenario RL-B4 passed\n";
 }
 
-} // namespace zlink::framework::e2e::registry_messaging::client
+} // namespace zlink::framework::e2e::resilience_lifecycle::client

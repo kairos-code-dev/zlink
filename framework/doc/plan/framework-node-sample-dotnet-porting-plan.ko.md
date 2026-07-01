@@ -20,6 +20,12 @@ scenario, runner 검증을 비교하기 위한 기준 구현으로 사용한다.
    `@zlink-systems/nestjs`의 public entrypoint만 사용한다.
 5. 한 샘플의 inventory, 구현, `run_sample.sh`, `npm run build`, 전체 sample runner, 문서 갱신,
    Codex 에이전트 리뷰가 끝나기 전에는 다음 샘플로 넘어가지 않는다.
+6. 작업 중 버그가 드러나면 우회하지 않는다. 실패 로그와 재현 조건을 먼저 좁히고, 원인을 수정한 뒤
+   같은 문제가 다시 숨지 않도록 회귀테스트나 sample runner 검증을 추가한다.
+7. 서버 구동에는 TypeScript build, Node/NestJS 시작, framework 초기화에 필요한 충분한 시간을 준다. 다만
+   로컬 샘플 테스트에서 허용 가능한 준비 시간을 넘어 계속 대기해야 통과하는 경우는 느린 환경 문제가
+   아니라 버그로 판정하고, readiness, role wiring, port allocation, dependency 초기화 원인을 찾아
+   수정한다.
 
 ## 기준
 
@@ -138,7 +144,10 @@ framework/languages/node/samples/<Sample>.Ts/sample-porting-inventory.ko.md
 7. Node guide, 샘플 README, `sample-regression.test.js`가 실제 구조와 맞는지 갱신한다.
 8. `npm run build`, 개별 `run_sample.sh`, 상위 sample runner를 실행한다.
 9. 실패하면 같은 샘플 안에서 원인을 고치고 다시 실행한다. cleanup 중 transient error는 최종 PASS와
-   로그 marker를 함께 보고 판정한다.
+   로그 marker를 함께 보고 판정하되, 실패 자체를 cleanup 문제로 단정해 덮지 않는다. 버그가 확인되면
+   재현 조건을 남기고 회귀테스트나 runner 검증을 추가한 뒤 수정한다. 서버 준비 대기는 build와
+   Node/NestJS/framework 초기화에 필요한 범위로 제한하며, 로컬 테스트에서 납득하기 어려운 긴 대기가
+   필요하면 readiness나 서버 시작 경로의 버그로 보고 원인을 추적한다.
 10. Codex 에이전트 리뷰를 받고 이슈가 없어질 때까지 수정과 재검증을 반복한다.
 
 ## Codex 에이전트 리뷰 요청

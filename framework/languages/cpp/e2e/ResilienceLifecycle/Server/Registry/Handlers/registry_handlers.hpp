@@ -4,7 +4,7 @@
 #include "../Infrastructure/evidence_store.hpp"
 #include "../Infrastructure/fault_state.hpp"
 
-#include "../../../Shared/registry_messaging_contracts.hpp"
+#include "../../../Shared/resilience_lifecycle_messages.hpp"
 
 #include <zlink/framework.hpp>
 
@@ -13,7 +13,7 @@
 #include <string>
 #include <thread>
 
-namespace zlink::framework::e2e::registry_messaging::registry
+namespace zlink::framework::e2e::resilience_lifecycle::registry
 {
 
 inline const std::string &profile_marker_or_value (const profile_req_t &request)
@@ -101,6 +101,46 @@ inline std::string dispatch_reason_name (zlink::framework::dispatch_error_reason
     return "unknown";
 }
 
+inline std::string dispatch_surface_name (zlink::framework::dispatch_error_surface_t surface)
+{
+    switch (surface) {
+        case zlink::framework::dispatch_error_surface_t::channel:
+            return "channel";
+        case zlink::framework::dispatch_error_surface_t::route_mesh_channel:
+            return "route_mesh_channel";
+        case zlink::framework::dispatch_error_surface_t::spot_route:
+            return "spot_route";
+        case zlink::framework::dispatch_error_surface_t::spot_subscription:
+            return "spot_subscription";
+        case zlink::framework::dispatch_error_surface_t::spot_actor:
+            return "spot_actor";
+        case zlink::framework::dispatch_error_surface_t::stream_session:
+            return "stream_session";
+    }
+    return "unknown";
+}
+
+inline std::string dispatch_message_kind_name (zlink::framework::dispatch_message_kind_t kind)
+{
+    switch (kind) {
+        case zlink::framework::dispatch_message_kind_t::send:
+            return "send";
+        case zlink::framework::dispatch_message_kind_t::request:
+            return "request";
+        case zlink::framework::dispatch_message_kind_t::publish:
+            return "publish";
+        case zlink::framework::dispatch_message_kind_t::response:
+            return "response";
+        case zlink::framework::dispatch_message_kind_t::error:
+            return "error";
+        case zlink::framework::dispatch_message_kind_t::actor_send:
+            return "actor_send";
+        case zlink::framework::dispatch_message_kind_t::actor_request:
+            return "actor_request";
+    }
+    return "unknown";
+}
+
 inline std::string dispatch_action_name (zlink::framework::dispatch_error_action_t action)
 {
     switch (action) {
@@ -123,12 +163,16 @@ inline void configure_evidence_dispatch_error_observer (
               || !event.error_reason || !event.error_action) {
               return;
           }
-          evidence->add ("dispatch-error|reason=" + dispatch_reason_name (*event.error_reason)
-                         + "|action=" + dispatch_action_name (*event.error_action));
+          evidence->add ("dispatch-error|surface=" + dispatch_surface_name (event.surface)
+                         + "|kind=" + dispatch_message_kind_name (event.message_kind)
+                         + "|reason=" + dispatch_reason_name (*event.error_reason)
+                         + "|action=" + dispatch_action_name (*event.error_action)
+                         + "|packet=" + event.packet_name.value_or ("<null>")
+                         + "|channel=" + event.channel_name.value_or ("<null>"));
           if (fault_state->mode () == "observer-throws") {
               throw std::runtime_error ("dispatch observer failure");
           }
       });
 }
 
-} // namespace zlink::framework::e2e::registry_messaging::registry
+} // namespace zlink::framework::e2e::resilience_lifecycle::registry

@@ -4,7 +4,7 @@
 #include <cstdlib>
 #include <string>
 
-namespace zlink::framework::e2e::registry_messaging::registry
+namespace zlink::framework::e2e::resilience_lifecycle::registry
 {
 
 inline std::string env_or (const char *name, std::string fallback = {})
@@ -37,4 +37,4 @@ inline registry_options_t read_registry_options ()
             .evidence_file = env_or ("ZLINK_CPP_E2E_EVIDENCE_FILE")};
 }
 
-} // namespace zlink::framework::e2e::registry_messaging::registry
+} // namespace zlink::framework::e2e::resilience_lifecycle::registry

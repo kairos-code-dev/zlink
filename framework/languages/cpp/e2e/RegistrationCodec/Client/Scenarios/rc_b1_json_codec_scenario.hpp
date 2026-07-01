@@ -20,10 +20,9 @@ inline void run_json_codec_scenario (zlink::framework::channel_client_t &channel
     ensure (request.result ().value ().content_type == "application/json",
             "RC-B1 content type mismatch");
 
-    auto send = channels.send (api_channel, json_codec_msg_t{.value = "send-b1"})
-                  .timeout (std::chrono::milliseconds (2000))
-                  .async ();
-    ensure (send.result ().has_value (), "RC-B1 send failed");
+    channels.send (api_channel, json_codec_msg_t{.value = "send-b1"})
+      .timeout (std::chrono::milliseconds (2000))
+      .submit ();
     ensure (evidence_contains (http_endpoint, "RC-B1-send", "application/json:send-b1"),
             "RC-B1 send evidence mismatch");
     std::cout << "scenario RC-B1 passed\n";

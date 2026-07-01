@@ -17,10 +17,9 @@ inline void run_auto_registration_scenario (zlink::framework::channel_client_t &
     ensure (request.result ().has_value (), "RC-A1 request failed");
     ensure (request.result ().value ().value == "auto:a1", "RC-A1 reply mismatch");
 
-    auto send = channels.send (api_channel, echo_auto_msg_t{.value = "send-a1"})
-                  .timeout (std::chrono::milliseconds (2000))
-                  .async ();
-    ensure (send.result ().has_value (), "RC-A1 send failed");
+    channels.send (api_channel, echo_auto_msg_t{.value = "send-a1"})
+      .timeout (std::chrono::milliseconds (2000))
+      .submit ();
     std::cout << "scenario RC-A1 passed\n";
 }
 

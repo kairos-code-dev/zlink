@@ -25,6 +25,8 @@ struct client_options_t
     std::string route_a_endpoint;
     std::string route_b_endpoint;
     std::string client_route_endpoint;
+    std::string http_consumer_endpoint;
+    std::string http_b_green_endpoint;
 };
 
 inline client_options_t read_client_options ()
@@ -36,7 +38,9 @@ inline client_options_t read_client_options ()
             .api_b_endpoint = env_or ("ZLINK_CPP_E2E_API_B_ENDPOINT"),
             .route_a_endpoint = env_or ("ZLINK_CPP_E2E_ROUTE_A_ENDPOINT"),
             .route_b_endpoint = env_or ("ZLINK_CPP_E2E_ROUTE_B_ENDPOINT"),
-            .client_route_endpoint = env_or ("ZLINK_CPP_E2E_CLIENT_ROUTE_ENDPOINT")};
+            .client_route_endpoint = env_or ("ZLINK_CPP_E2E_CLIENT_ROUTE_ENDPOINT"),
+            .http_consumer_endpoint = env_or ("ZLINK_CPP_E2E_HTTP_CONSUMER_ENDPOINT"),
+            .http_b_green_endpoint = env_or ("ZLINK_CPP_E2E_HTTP_B_GREEN_ENDPOINT")};
 }
 
 } // namespace zlink::framework::e2e::resilience_lifecycle::client

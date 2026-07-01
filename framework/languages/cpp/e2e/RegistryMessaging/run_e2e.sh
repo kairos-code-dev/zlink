@@ -73,7 +73,7 @@ wait_port() {
   local host="127.0.0.1"
   local port
   port="$(port_of "$endpoint")"
-  for _ in $(seq 1 100); do
+  for _ in $(seq 1 60); do
     if (echo >"/dev/tcp/${host}/${port}") >/dev/null 2>&1; then
       return 0
     fi
@@ -163,7 +163,7 @@ stop_pid() {
 
 wait_marker() {
   local file="$1"
-  for _ in $(seq 1 200); do
+  for _ in $(seq 1 60); do
     if [[ -f "$file" ]]; then
       return 0
     fi
@@ -198,9 +198,17 @@ run_client() {
 }
 
 if [[ "$SCENARIO" == "all" ]]; then
+  CHILD_LOG_MANIFEST="$LOG_DIR/child-runs.log"
   for scenario in RM-A1 RM-A2 RM-A4 RM-A6 RM-B1 RM-B2 RM-C1 RM-C2 RM-C3 RM-C4 RM-C5 RM-C7 RM-C8 RM-C9; do
     echo "running $scenario"
-    ZLINK_CPP_E2E_BUILD_DIR="$BUILD_DIR" "$0" "$scenario"
+    child_output="$LOG_DIR/child-$scenario.output.log"
+    ZLINK_CPP_E2E_BUILD_DIR="$BUILD_DIR" "$0" "$scenario" | tee "$child_output"
+    child_log_dir="$(sed -n 's/^log_dir=//p' "$child_output" | tail -1)"
+    if [[ -z "$child_log_dir" || ! -d "$child_log_dir" ]]; then
+      echo "missing child log directory for $scenario" >&2
+      exit 1
+    fi
+    echo "$scenario $child_log_dir" >>"$CHILD_LOG_MANIFEST"
   done
   echo "registry-messaging e2e result=passed"
   exit 0

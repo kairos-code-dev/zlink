@@ -11,7 +11,7 @@
 
 #include <memory>
 
-namespace zlink::framework::e2e::registry_messaging::registry
+namespace zlink::framework::e2e::resilience_lifecycle::registry
 {
 
 inline void configure_registry_host (zlink::framework::zlink_framework_options_t &framework,
@@ -20,7 +20,7 @@ inline void configure_registry_host (zlink::framework::zlink_framework_options_t
     framework.configure_dispatch ()
       .message_flow (zlink::framework::message_flow_log_mode_t::key_transitions)
       .trace_log_file (options.log_dir + "/registry-flow.log")
-      .trace_label ("cpp-rm-registry");
+      .trace_label ("cpp-rl-registry");
     framework.enable_registry (options.pub_endpoint, options.router_endpoint);
     auto evidence = std::make_unique<evidence_store_t> (options.rid, options.evidence_file);
     auto *evidence_ptr = evidence.get ();
@@ -42,12 +42,14 @@ inline void configure_registry_host (zlink::framework::zlink_framework_options_t
       .map_health ("/health")
       .map_get<topology_handler_t> ("/topology")
       .map_get<topology_handler_t> ("/registry/topology")
+      .map_post<topology_wait_handler_t> ("/topology/wait")
       .map_get<evidence_handler_t> ("/evidence")
-      .map_post<evidence_clear_handler_t> ("/evidence/clear");
+      .map_post<evidence_clear_handler_t> ("/evidence/clear")
+      .map_post<shutdown_handler_t> ("/shutdown");
     framework.handlers ()
       .group (handler_group)
       .add<profile_request_handler_t> ()
       .add_send<profile_command_handler_t> ();
 }
 
-} // namespace zlink::framework::e2e::registry_messaging::registry
+} // namespace zlink::framework::e2e::resilience_lifecycle::registry

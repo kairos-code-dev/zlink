@@ -39,6 +39,12 @@ inline void configure_registry_host (zlink::framework::zlink_framework_options_t
     auto *evidence_ptr = evidence.get ();
     framework.services ().add_singleton<server::evidence_store_t> (std::move (evidence));
     framework.enable_registry (options.pub_endpoint, options.router_endpoint);
+    if (!options.log_dir.empty ()) {
+        framework.configure_dispatch ()
+          .message_flow (zlink::framework::message_flow_log_mode_t::key_transitions)
+          .trace_log_file (options.log_dir + "/registry-flow.log")
+          .trace_label ("cpp-mon-registry");
+    }
     framework.monitoring ()
       .add_registry_events ("registry", std::chrono::milliseconds (100))
       .on<zlink::framework::registry_event_payload_t> (

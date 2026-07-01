@@ -6,7 +6,7 @@
 
 #include <iostream>
 
-namespace zlink::framework::e2e::registry_messaging::client
+namespace zlink::framework::e2e::resilience_lifecycle::client
 {
 
 inline void run_rl_a1_provider_restart_scenario (zlink::framework::channel_client_t &channels)
@@ -37,4 +37,4 @@ inline void run_rl_a1_provider_restart_scenario (zlink::framework::channel_clien
     std::cout << "scenario RL-A1 client passed\n";
 }
 
-} // namespace zlink::framework::e2e::registry_messaging::client
+} // namespace zlink::framework::e2e::resilience_lifecycle::client

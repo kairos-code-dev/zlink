@@ -4,29 +4,151 @@
 
 #include "../Support/resilience_request_support.hpp"
 
-#include <chrono>
-#include <iostream>
+#include <zlink/http_client.hpp>
 
-namespace zlink::framework::e2e::registry_messaging::client
+#include <chrono>
+#include <fstream>
+#include <future>
+#include <iostream>
+#include <stdexcept>
+#include <string>
+#include <thread>
+#include <vector>
+
+namespace zlink::framework::e2e::resilience_lifecycle::client
 {
+
+inline bool file_contains (const std::string &path, const std::string &text)
+{
+    std::ifstream file (path);
+    if (!file) {
+        return false;
+    }
+    std::string line;
+    while (std::getline (file, line)) {
+        if (line.find (text) != std::string::npos) {
+            return true;
+        }
+    }
+    return false;
+}
 
 inline void run_inflight_crash_scenario (zlink::framework::channel_client_t &channels)
 {
-    auto pending = channels
-                     .request ("registry.messaging.api.manual.b",
-                               profile_req_t{.value = "very-slow"})
-                     .timeout (std::chrono::milliseconds (2500))
-                     .async<profile_res_t> ();
+    (void) channels;
+
+    auto consumer = zlink::http_client::client_t::create ()
+                      .base_url (env_or ("ZLINK_CPP_E2E_HTTP_CONSUMER_ENDPOINT"))
+                      .timeout (std::chrono::milliseconds (10000))
+                      .build ();
+    auto provider_a = zlink::http_client::client_t::create ()
+                        .base_url (env_or ("ZLINK_CPP_E2E_HTTP_A_ENDPOINT"))
+                        .timeout (std::chrono::milliseconds (10000))
+                        .build ();
+    auto provider_b = zlink::http_client::client_t::create ()
+                        .base_url (env_or ("ZLINK_CPP_E2E_HTTP_B_ENDPOINT"))
+                        .timeout (std::chrono::milliseconds (10000))
+                        .build ();
+    auto registry = zlink::http_client::client_t::create ()
+                      .base_url (env_or ("ZLINK_CPP_E2E_HTTP_REGISTRY_ENDPOINT"))
+                      .timeout (std::chrono::milliseconds (10000))
+                      .build ();
+
+    provider_a.post ("/admin/drain").submit_raw ().result ().value ();
+    provider_a.post ("/admin/weight/wait")
+      .body (nlohmann::json{{"expected", 0}}.dump (), "application/json")
+      .submit_raw ()
+      .result ()
+      .value ();
+
+    const std::string marker = "rl-b2-slow";
+    auto pending = std::async (std::launch::async, [&consumer, marker] {
+        auto response = consumer.post ("/profile/request")
+                          .body (profile_req_t{.value = "slow", .marker = marker})
+                          .timeout (std::chrono::milliseconds (500))
+                          .submit<profile_res_t> ()
+                          .result ();
+        return response.has_value ();
+    });
+
+    const auto start_deadline = std::chrono::steady_clock::now () + std::chrono::seconds (10);
+    const auto start_marker = "profile-start|rid=api-b|marker=" + marker;
+    const auto provider_b_evidence = env_or ("ZLINK_CPP_E2E_API_B_EVIDENCE_FILE");
+    while (std::chrono::steady_clock::now () < start_deadline) {
+        if (file_contains (provider_b_evidence, start_marker)) {
+            break;
+        }
+        std::this_thread::sleep_for (std::chrono::milliseconds (50));
+    }
+    ensure (file_contains (provider_b_evidence, start_marker),
+            "RL-B2 in-flight request did not start on provider B");
     touch_file (env_or ("ZLINK_CPP_E2E_READY_FILE"));
     wait_for_file (env_or ("ZLINK_CPP_E2E_CONTINUE_FILE"));
 
-    ensure (!pending.result ().has_value (),
-            "in-flight request unexpectedly succeeded after provider crash");
-    const auto follow_up =
-      request_profile (channels, "registry.messaging.api.manual", "rl-b2-follow-up");
-    ensure (follow_up.provider_rid == "api-a",
-            "follow-up request did not use surviving provider");
-    std::cout << "scenario RL-B2 passed\n";
+    registry.post ("/topology/wait")
+      .body (nlohmann::json{{"routingId", "api-b"},
+                            {"state", "Ready"},
+                            {"expectedCount", 0},
+                            {"timeoutMilliseconds", 30000}}
+               .dump (),
+             "application/json")
+      .submit<std::vector<topology_entry_result_t>> ()
+      .result ()
+      .value ();
+
+    ensure (!pending.get (),
+            "RL-B2 in-flight request unexpectedly completed after provider crash");
+
+    provider_a.post ("/admin/restore").submit_raw ().result ().value ();
+    provider_a.post ("/admin/weight/wait")
+      .body (nlohmann::json{{"expected", 100}}.dump (), "application/json")
+      .submit_raw ()
+      .result ()
+      .value ();
+
+    const auto follow_up = consumer.post ("/profile/request/new-client")
+                             .body (profile_req_t{.value = "fast",
+                                                  .marker = "rl-b2-after-crash"})
+                             .fetch<profile_res_t> ();
+    ensure (follow_up.provider_rid == "api-a", "RL-B2 surviving provider traffic failed");
+
+    touch_file (env_or ("ZLINK_CPP_E2E_DRAINED_FILE"));
+    wait_for_file (env_or ("ZLINK_CPP_E2E_RESTORE_FILE"));
+
+    registry.post ("/topology/wait")
+      .body (nlohmann::json{{"routingId", "api-b"},
+                            {"state", "Ready"},
+                            {"expectedCount", 1},
+                            {"timeoutMilliseconds", 30000}}
+               .dump (),
+             "application/json")
+      .submit<std::vector<topology_entry_result_t>> ()
+      .result ()
+      .value ();
+
+    for (int index = 0; index < 32; ++index) {
+        const auto reply = consumer.post ("/profile/request")
+                             .body (profile_req_t{.value = "fast",
+                                                  .marker = "rl-b2-restored-"
+                                                            + std::to_string (index)})
+                             .fetch<profile_res_t> ();
+        ensure (reply.value == "profile:fast",
+                "RL-B2 restored request returned an invalid value");
+    }
+
+    const auto deadline = std::chrono::steady_clock::now () + std::chrono::seconds (15);
+    while (std::chrono::steady_clock::now () < deadline) {
+        const auto evidence = fetch_evidence (env_or ("ZLINK_CPP_E2E_HTTP_B_ENDPOINT"));
+        for (const auto &entry : evidence.entries) {
+            if (entry.marker == "ProfileReq" && entry.value.rfind ("rl-b2-restored-", 0) == 0) {
+                std::cout << "scenario RL-B2 passed\n";
+                return;
+            }
+        }
+        std::this_thread::sleep_for (std::chrono::milliseconds (100));
+    }
+
+    throw std::runtime_error ("RL-B2 restored traffic did not reach provider B");
 }
 
-} // namespace zlink::framework::e2e::registry_messaging::client
+} // namespace zlink::framework::e2e::resilience_lifecycle::client

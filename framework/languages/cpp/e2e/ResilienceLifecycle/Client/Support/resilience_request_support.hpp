@@ -7,7 +7,7 @@
 #include <chrono>
 #include <string>
 
-namespace zlink::framework::e2e::registry_messaging::client
+namespace zlink::framework::e2e::resilience_lifecycle::client
 {
 
 inline profile_res_t request_profile (zlink::framework::channel_client_t &channels,
@@ -33,4 +33,4 @@ inline profile_res_t request_profile (zlink::framework::channel_client_t &channe
     return request_profile (channels, channel, value, value, timeout);
 }
 
-} // namespace zlink::framework::e2e::registry_messaging::client
+} // namespace zlink::framework::e2e::resilience_lifecycle::client

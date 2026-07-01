@@ -133,7 +133,14 @@
   - 의미: trigger handler header rename과 host factory include 정리 뒤 trigger target이 빌드된다.
 - 2026-07-01: `timeout 420s framework/languages/cpp/e2e/RuntimeMonitoring/run_e2e.sh`
   - 결과: 통과
-  - 로그: `logs/20260701-020431-1722060`
+  - 로그: `logs/20260701-133323-16246`
   - 의미: trigger endpoint/handler 분리 상태를 정리한 뒤에도 registry, service, filtered service,
     throwing service, trigger, client role target이 같은 gate에서 MON-A1, MON-A2, MON-A3, MON-A4,
     MON-A5, MON-B1, MON-B2, MON-C1, MON-D1을 검증한다.
+- 2026-07-01: `ZLINK_CPP_E2E_BUILD_DIR=framework/languages/cpp/build timeout 420s framework/languages/cpp/e2e/RuntimeMonitoring/run_e2e.sh`
+  - 결과: 통과
+  - 로그: `logs/20260701-165138-53788`
+  - 의미: local port readiness timeout을 기본 3초로 명시하고 service/trigger message-flow trace
+    파일을 runner 필수 gate로 추가한 뒤에도 registry, service, filtered service, throwing service,
+    trigger, client role target이 같은 gate에서 MON-A1, MON-A2, MON-A3, MON-A4, MON-A5,
+    MON-B1, MON-B2, MON-C1, MON-D1을 검증한다.

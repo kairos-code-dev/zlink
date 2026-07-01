@@ -10,14 +10,13 @@
 #include <string>
 #include <vector>
 
-namespace zlink::framework::e2e::registry_messaging
+namespace zlink::framework::e2e::resilience_lifecycle
 {
 
-inline constexpr const char *api_channel = "registry.messaging.api";
-inline constexpr const char *workflow_channel = "registry.messaging.workflow";
-inline constexpr const char *route_channel = "registry.messaging.route";
-inline constexpr const char *dealer_channel = "registry.messaging.dealer";
-inline constexpr const char *handler_group = "registry-messaging";
+inline constexpr const char *api_channel = "resilience.lifecycle.api";
+inline constexpr const char *route_channel = "resilience.lifecycle.route";
+inline constexpr const char *dealer_channel = "resilience.lifecycle.dealer";
+inline constexpr const char *handler_group = "resilience-lifecycle";
 
 struct profile_req_t
 {
@@ -61,17 +60,6 @@ struct request_failure_res_t
 struct operation_status_t
 {
     std::string status;
-};
-
-struct workflow_req_t
-{
-    std::string value;
-};
-
-struct workflow_res_t
-{
-    std::string value;
-    std::string provider_rid;
 };
 
 struct scenario_route_req_t
@@ -215,27 +203,6 @@ inline void from_json (const nlohmann::json &json, operation_status_t &value)
     json.at ("status").get_to (value.status);
 }
 
-inline void to_json (nlohmann::json &json, const workflow_req_t &value)
-{
-    json = nlohmann::json{{"value", value.value}};
-}
-
-inline void from_json (const nlohmann::json &json, workflow_req_t &value)
-{
-    json.at ("value").get_to (value.value);
-}
-
-inline void to_json (nlohmann::json &json, const workflow_res_t &value)
-{
-    json = nlohmann::json{{"value", value.value}, {"provider_rid", value.provider_rid}};
-}
-
-inline void from_json (const nlohmann::json &json, workflow_res_t &value)
-{
-    json.at ("value").get_to (value.value);
-    json.at ("provider_rid").get_to (value.provider_rid);
-}
-
 inline void to_json (nlohmann::json &json, const scenario_route_req_t &value)
 {
     json = nlohmann::json{{"value", value.value}};
@@ -283,4 +250,4 @@ inline void from_json (const nlohmann::json &json, evidence_snapshot_t &value)
     json.at ("entries").get_to (value.entries);
 }
 
-} // namespace zlink::framework::e2e::registry_messaging
+} // namespace zlink::framework::e2e::resilience_lifecycle

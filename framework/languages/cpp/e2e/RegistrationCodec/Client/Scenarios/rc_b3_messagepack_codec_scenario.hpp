@@ -20,11 +20,9 @@ inline void run_messagepack_codec_scenario (zlink::framework::channel_client_t &
     ensure (request.result ().value ().content_type == "application/x-msgpack",
             "RC-B3 content type mismatch");
 
-    auto send =
-      channels.send (api_channel, messagepack_codec_msg_t{.value = "send-b3"})
-        .timeout (std::chrono::milliseconds (2000))
-        .async ();
-    ensure (send.result ().has_value (), "RC-B3 send failed");
+    channels.send (api_channel, messagepack_codec_msg_t{.value = "send-b3"})
+      .timeout (std::chrono::milliseconds (2000))
+      .submit ();
     ensure (evidence_contains (http_endpoint, "RC-B3-send", "application/x-msgpack:send-b3"),
             "RC-B3 send evidence mismatch");
     std::cout << "scenario RC-B3 passed\n";

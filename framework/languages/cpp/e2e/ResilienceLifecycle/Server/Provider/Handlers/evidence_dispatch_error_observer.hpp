@@ -9,7 +9,7 @@
 #include <stdexcept>
 #include <string>
 
-namespace zlink::framework::e2e::registry_messaging::provider
+namespace zlink::framework::e2e::resilience_lifecycle::provider
 {
 
 inline std::string dispatch_reason_name (zlink::framework::dispatch_error_reason_t reason)
@@ -62,4 +62,4 @@ inline void configure_evidence_dispatch_error_observer (
       });
 }
 
-} // namespace zlink::framework::e2e::registry_messaging::provider
+} // namespace zlink::framework::e2e::resilience_lifecycle::provider

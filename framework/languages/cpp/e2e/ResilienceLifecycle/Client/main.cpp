@@ -9,6 +9,8 @@
 #include "Scenarios/rl_b2_crash_during_inflight_scenario.hpp"
 #include "Scenarios/rl_b3_graceful_shutdown_scenario.hpp"
 #include "Scenarios/rl_b4_runtime_drain_scenario.hpp"
+#include "Scenarios/rl_b5_drain_inflight_scenario.hpp"
+#include "Scenarios/rl_b6_gray_fault_scenario.hpp"
 #include "Scenarios/rl_c1_client_host_lifecycle_scenario.hpp"
 #include "Scenarios/rl_c2_topology_recovery_scenario.hpp"
 #include "Scenarios/rl_c3_node_pause_recovery_scenario.hpp"
@@ -16,6 +18,8 @@
 #include "Scenarios/rl_d1_high_fanout_scenario.hpp"
 #include "Scenarios/rl_d2_observer_fault_scenario.hpp"
 #include "Scenarios/rl_d3_dispatch_error_evidence_scenario.hpp"
+#include "Scenarios/rl_d4_missing_request_handler_scenario.hpp"
+#include "Scenarios/rl_d5_mixed_burst_scenario.hpp"
 
 #include <iostream>
 #include <memory>
@@ -23,7 +27,7 @@
 #include <string>
 
 namespace rl = zlink::framework::e2e::resilience_lifecycle;
-namespace rl_client = zlink::framework::e2e::registry_messaging::client;
+namespace rl_client = zlink::framework::e2e::resilience_lifecycle::client;
 
 namespace
 {
@@ -52,14 +56,20 @@ class scenario_service_t final : public zlink::framework::hosted_service_t
                 rl_client::run_rl_a2_provider_endpoint_remap_scenario (channels);
             } else if (scenario == "rl-a3") {
                 rl_client::run_rl_a3_reconnect_storm_probe (channels);
-            } else if (scenario == "rl-a4-b4-b5-b6") {
-                rl_client::run_rl_a4_b4_b5_b6_drain_scenario (channels);
+            } else if (scenario == "rl-a4") {
+                rl_client::run_rl_a4_drain_and_green_endpoint_scenario (channels);
+            } else if (scenario == "rl-b4") {
+                rl_client::run_rl_b4_runtime_drain_scenario (channels);
+            } else if (scenario == "rl-b5") {
+                rl_client::run_rl_b5_drain_inflight_scenario (channels);
             } else if (scenario == "rl-a5") {
                 rl_client::run_rl_a5_provider_flapping_probe (channels);
             } else if (scenario == "rl-b1") {
                 rl_client::run_rl_b1_cancellation_cleanup_scenario (channels);
             } else if (scenario == "rl-b3") {
                 rl_client::run_rl_b3_graceful_shutdown_scenario (channels);
+            } else if (scenario == "rl-b6") {
+                rl_client::run_rl_b6_gray_fault_scenario (channels);
             } else if (scenario == "rl-c1") {
                 rl_client::run_rl_c1_client_host_lifecycle_probe (channels);
             } else if (scenario == "rl-c2") {
@@ -68,6 +78,10 @@ class scenario_service_t final : public zlink::framework::hosted_service_t
                 rl_client::run_rl_c3_node_pause_recovery_probe (channels);
             } else if (scenario == "rl-d3") {
                 rl_client::run_rl_d3_dispatch_error_evidence_scenario (channels);
+            } else if (scenario == "rl-d4") {
+                rl_client::run_rl_d4_missing_request_handler_scenario ();
+            } else if (scenario == "rl-d5") {
+                rl_client::run_rl_d5_mixed_burst_scenario ();
             } else {
                 throw std::runtime_error ("unknown scenario " + scenario);
             }
@@ -105,26 +119,23 @@ int main (int argc, char **argv)
           .trace_log_file (client_options.log_dir + "/client-flow.log")
           .trace_label ("cpp-rl-client");
         rl_client::configure_common_codecs (options.codecs ());
-        if (client_options.scenario != "rm-a2") {
-            options.use_discovery ().add_registry_endpoint (client_options.registry_router);
-            options.add_client_server_channel (rl::api_channel).enable_client ();
-            options.add_client_server_channel (rl::workflow_channel).enable_client ();
-        }
-        options.add_client_server_channel ("registry.messaging.api.manual")
+        options.use_discovery ().add_registry_endpoint (client_options.registry_router);
+        options.add_client_server_channel (rl::api_channel).enable_client ();
+        options.add_client_server_channel ("resilience.lifecycle.api.manual")
           .enable_client (client_options.api_a_endpoint);
-        options.add_client_server_channel ("registry.messaging.api.manual.multi")
+        options.add_client_server_channel ("resilience.lifecycle.api.manual.multi")
           .enable_client (client_options.api_a_endpoint)
           .enable_client (client_options.api_b_endpoint);
-        options.add_client_server_channel ("registry.messaging.api.manual.weighted")
+        options.add_client_server_channel ("resilience.lifecycle.api.manual.weighted")
           .enable_client (client_options.api_a_endpoint)
           .enable_client (client_options.api_b_endpoint);
-        options.add_client_server_channel ("registry.messaging.api.manual.max")
+        options.add_client_server_channel ("resilience.lifecycle.api.manual.max")
           .enable_client (client_options.api_a_endpoint);
-        options.add_client_server_channel ("registry.messaging.api.manual.backpressure")
+        options.add_client_server_channel ("resilience.lifecycle.api.manual.backpressure")
           .enable_client (client_options.api_a_endpoint)
           .client_send_high_water_mark (zlink::message_count_t::value (2))
           .client_receive_high_water_mark (zlink::message_count_t::value (2));
-        options.add_client_server_channel ("registry.messaging.api.manual.b")
+        options.add_client_server_channel ("resilience.lifecycle.api.manual.b")
           .enable_client (client_options.api_b_endpoint);
     });
     app.add_hosted_service (std::move (scenario));

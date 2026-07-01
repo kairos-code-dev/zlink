@@ -8,13 +8,13 @@
 #include <iostream>
 #include <string>
 
-namespace zlink::framework::e2e::registry_messaging::client
+namespace zlink::framework::e2e::resilience_lifecycle::client
 {
 
 inline void run_registry_outage_scenario (zlink::framework::channel_client_t &channels)
 {
     const auto before =
-      request_profile (channels, "registry.messaging.api.manual", "rl-c4-before-outage");
+      request_profile (channels, "resilience.lifecycle.api.manual", "rl-c4-before-outage");
     ensure (before.value == "profile:rl-c4-before-outage",
             "RL-C4 request failed before registry outage");
 
@@ -22,7 +22,7 @@ inline void run_registry_outage_scenario (zlink::framework::channel_client_t &ch
     wait_for_file (env_or ("ZLINK_CPP_E2E_CONTINUE_FILE"));
 
     const auto during =
-      request_profile (channels, "registry.messaging.api.manual", "rl-c4-during-outage");
+      request_profile (channels, "resilience.lifecycle.api.manual", "rl-c4-during-outage");
     ensure (during.value == "profile:rl-c4-during-outage",
             "RL-C4 established channel failed during registry outage");
 
@@ -53,4 +53,4 @@ inline void run_registry_recovered_scenario (zlink::framework::channel_client_t 
     throw std::runtime_error ("RL-C4 new discovery client did not recover after registry restart");
 }
 
-} // namespace zlink::framework::e2e::registry_messaging::client
+} // namespace zlink::framework::e2e::resilience_lifecycle::client

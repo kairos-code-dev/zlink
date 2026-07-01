@@ -25,6 +25,7 @@ struct service_options_t
     std::string spot_endpoint = env_or ("ZLINK_CPP_E2E_SPOT_ENDPOINT");
     std::string evidence_file = env_or ("ZLINK_CPP_E2E_EVIDENCE_FILE");
     std::string monitor_profile = env_or ("ZLINK_CPP_E2E_MONITOR_PROFILE", "all");
+    std::string log_dir = env_or ("ZLINK_CPP_E2E_LOG_DIR");
 };
 
 inline service_options_t read_service_options () { return {}; }

@@ -11,7 +11,6 @@
 #include <optional>
 #include <stdexcept>
 #include <string>
-#include <thread>
 #include <utility>
 
 namespace zlink::framework::e2e::resilience_lifecycle::consumer
@@ -24,24 +23,19 @@ using resilience_lifecycle::profile_req_t;
 using resilience_lifecycle::profile_res_t;
 using resilience_lifecycle::request_failure_res_t;
 
-inline profile_res_t request_profile_with_retry (zlink::framework::channel_client_t &channels,
-                                                 const profile_req_t &request,
-                                                 std::chrono::milliseconds timeout)
+inline profile_res_t request_profile_once (zlink::framework::channel_client_t &channels,
+                                           const profile_req_t &request,
+                                           std::chrono::milliseconds timeout)
 {
-    const auto deadline = std::chrono::steady_clock::now () + std::chrono::seconds (30);
-    std::string last_error;
-    while (std::chrono::steady_clock::now () < deadline) {
-        auto call = channels.request (api_channel, request)
-                      .timeout (timeout)
-                      .async<profile_res_t> ();
-        const auto &reply = call.result ();
-        if (reply) {
-            return reply.value ();
-        }
-        last_error = reply.error () ? reply.error ()->what () : "unknown profile request error";
-        std::this_thread::sleep_for (std::chrono::milliseconds (100));
+    auto call = channels.request (api_channel, request)
+                  .timeout (timeout)
+                  .async<profile_res_t> ();
+    const auto &reply = call.result ();
+    if (reply) {
+        return reply.value ();
     }
-    throw std::runtime_error ("timed out waiting for profile endpoint: " + last_error);
+    throw std::runtime_error (reply.error () ? reply.error ()->what ()
+                                             : "profile request failed");
 }
 
 class profile_request_handler_t
@@ -58,7 +52,7 @@ class profile_request_handler_t
 
     profile_res_t handle (const profile_req_t &request)
     {
-        return request_profile_with_retry (_channels, request, std::chrono::seconds (5));
+        return request_profile_once (_channels, request, std::chrono::milliseconds (3000));
     }
 
   private:
@@ -110,7 +104,7 @@ class missing_request_handler_t
     {
         auto call = _channels.request (api_channel, request)
                       .packet_name ("MissingProfileReq")
-                      .timeout (std::chrono::seconds (5))
+                      .timeout (std::chrono::milliseconds (3000))
                       .async<profile_res_t> ();
         const auto &reply = call.result ();
         if (reply) {
@@ -149,8 +143,27 @@ class profile_command_handler_t
 class transient_profile_request_service_t final : public zlink::framework::hosted_service_t
 {
   public:
-    transient_profile_request_service_t (zlink::framework::app_t &app, profile_req_t request) :
-        _app (app), _request (std::move (request))
+    struct result_state_t
+    {
+        std::optional<profile_res_t> reply;
+        std::optional<std::string> error;
+
+        profile_res_t take_reply () const
+        {
+            if (error) {
+                throw std::runtime_error (*error);
+            }
+            if (!reply) {
+                throw std::runtime_error ("transient profile request produced no reply");
+            }
+            return *reply;
+        }
+    };
+
+    transient_profile_request_service_t (zlink::framework::app_t &app,
+                                         profile_req_t request,
+                                         std::shared_ptr<result_state_t> result) :
+        _app (app), _request (std::move (request)), _result (std::move (result))
     {
     }
 
@@ -158,46 +171,36 @@ class transient_profile_request_service_t final : public zlink::framework::hoste
     {
         try {
             auto &channels = services.get_required<zlink::framework::channel_client_t> ();
-            _reply = request_profile_with_retry (channels, _request, std::chrono::seconds (5));
+            _result->reply =
+              request_profile_once (channels, _request, std::chrono::milliseconds (3000));
         }
         catch (const std::exception &error) {
-            _error = error.what ();
+            _result->error = error.what ();
         }
         _app.stop ();
     }
 
     void stop () noexcept override {}
 
-    profile_res_t take_reply () const
-    {
-        if (_error) {
-            throw std::runtime_error (*_error);
-        }
-        if (!_reply) {
-            throw std::runtime_error ("transient profile request produced no reply");
-        }
-        return *_reply;
-    }
-
   private:
     zlink::framework::app_t &_app;
     profile_req_t _request;
-    std::optional<profile_res_t> _reply;
-    std::optional<std::string> _error;
+    std::shared_ptr<result_state_t> _result;
 };
 
 inline profile_res_t request_profile_with_new_client_host (const consumer_options_t &options,
                                                            const profile_req_t &request)
 {
+    const auto trace_id = request.marker.empty () ? request.value : request.marker;
     auto app = zlink::framework::app_t::create ();
-    auto service = std::make_unique<transient_profile_request_service_t> (app, request);
-    auto *service_result = service.get ();
+    auto result = std::make_shared<transient_profile_request_service_t::result_state_t> ();
+    auto service = std::make_unique<transient_profile_request_service_t> (app, request, result);
     app.add_zlink_framework ([&] (zlink::framework::zlink_framework_options_t &framework) {
         framework.use_discovery ().add_registry_endpoint (options.registry_router);
         framework.configure_dispatch ()
           .message_flow (zlink::framework::message_flow_log_mode_t::key_transitions)
-          .trace_log_file (options.log_dir + "/storm-" + request.value + "-flow.log")
-          .trace_label ("storm-" + request.value);
+          .trace_log_file (options.log_dir + "/storm-" + trace_id + "-flow.log")
+          .trace_label ("storm-" + trace_id);
         framework.add_client_server_channel (api_channel).enable_client ();
     });
     app.add_hosted_service (std::move (service));
@@ -205,7 +208,7 @@ inline profile_res_t request_profile_with_new_client_host (const consumer_option
     if (exit_code != 0) {
         throw std::runtime_error ("transient profile request host failed");
     }
-    return service_result->take_reply ();
+    return result->take_reply ();
 }
 
 class new_client_profile_request_handler_t

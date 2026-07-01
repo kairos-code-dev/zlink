@@ -30,9 +30,12 @@ class filter_order_handler_t
 class first_filter_t
 {
   public:
-    using dependency_types = zlink::framework::dependency_list_t<filter_order_state_t>;
+    using dependency_types = zlink::framework::dependency_list_t<filter_order_state_t, scenario_state_t>;
 
-    explicit first_filter_t (filter_order_state_t &state) : _state (state) {}
+    first_filter_t (filter_order_state_t &state, scenario_state_t &scenario_state) :
+        _state (state), _scenario_state (scenario_state)
+    {
+    }
 
     zlink::framework::task_t<zlink::message_t>
     invoke (const zlink::framework::handler_invocation_context_t &context,
@@ -46,22 +49,14 @@ class first_filter_t
         _state.add ("first-before");
         auto reply = co_await next ();
         _state.add ("first-after");
-        co_return rewrite_order (reply, _state.snapshot ());
+        const auto order = _state.snapshot ();
+        _scenario_state.record ("RC-A5", nlohmann::json (order).dump ());
+        co_return reply;
     }
 
   private:
-    static zlink::framework::result_t<zlink::message_t>
-    rewrite_order (const zlink::message_t &reply, const std::vector<std::string> &order)
-    {
-        auto payload = zlink::framework::detail::encoded_payload_from_raw (reply);
-        auto json = nlohmann::json::parse (payload.to_string ());
-        json["order"] = order;
-        return zlink::framework::result_t<zlink::message_t>::success (
-          zlink::framework::detail::encoded_payload_to_raw (
-            zlink::framework::encoded_payload_t::from_string (json.dump ())));
-    }
-
     filter_order_state_t &_state;
+    scenario_state_t &_scenario_state;
 };
 
 class second_filter_t

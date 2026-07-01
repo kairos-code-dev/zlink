@@ -6,7 +6,7 @@
 
 #include <iostream>
 
-namespace zlink::framework::e2e::registry_messaging::client
+namespace zlink::framework::e2e::resilience_lifecycle::client
 {
 
 inline void run_rl_c2_topology_recovery_probe (zlink::framework::channel_client_t &channels)
@@ -15,4 +15,4 @@ inline void run_rl_c2_topology_recovery_probe (zlink::framework::channel_client_
     std::cout << "scenario RL-C2 client passed\n";
 }
 
-} // namespace zlink::framework::e2e::registry_messaging::client
+} // namespace zlink::framework::e2e::resilience_lifecycle::client

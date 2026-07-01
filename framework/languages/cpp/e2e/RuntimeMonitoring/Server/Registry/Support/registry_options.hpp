@@ -23,6 +23,7 @@ struct registry_options_t
     std::string pub_endpoint = env_or ("ZLINK_CPP_E2E_REGISTRY_PUB");
     std::string router_endpoint = env_or ("ZLINK_CPP_E2E_REGISTRY_ROUTER");
     std::string evidence_file = env_or ("ZLINK_CPP_E2E_EVIDENCE_FILE");
+    std::string log_dir = env_or ("ZLINK_CPP_E2E_LOG_DIR");
 };
 
 inline registry_options_t read_registry_options () { return {}; }

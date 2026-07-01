@@ -20,11 +20,9 @@ inline void run_protobuf_codec_scenario (zlink::framework::channel_client_t &cha
     ensure (request.result ().value ().content_type == "application/x-protobuf",
             "RC-B2 content type mismatch");
 
-    auto send =
-      channels.send (api_channel, protobuf_codec_msg_t{.value = "send-b2"})
-        .timeout (std::chrono::milliseconds (2000))
-        .async ();
-    ensure (send.result ().has_value (), "RC-B2 send failed");
+    channels.send (api_channel, protobuf_codec_msg_t{.value = "send-b2"})
+      .timeout (std::chrono::milliseconds (2000))
+      .submit ();
     ensure (evidence_contains (http_endpoint, "RC-B2-send", "application/x-protobuf:send-b2"),
             "RC-B2 send evidence mismatch");
     std::cout << "scenario RC-B2 passed\n";

@@ -7,7 +7,7 @@
 #include <iostream>
 #include <set>
 
-namespace zlink::framework::e2e::registry_messaging::client
+namespace zlink::framework::e2e::resilience_lifecycle::client
 {
 
 inline void run_rl_b3_graceful_shutdown_scenario (zlink::framework::channel_client_t &channels)
@@ -43,4 +43,4 @@ inline void run_rl_b3_graceful_shutdown_scenario (zlink::framework::channel_clie
     std::cout << "scenario RL-B3 client passed\n";
 }
 
-} // namespace zlink::framework::e2e::registry_messaging::client
+} // namespace zlink::framework::e2e::resilience_lifecycle::client

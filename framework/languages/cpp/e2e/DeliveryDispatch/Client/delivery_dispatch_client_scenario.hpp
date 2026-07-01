@@ -27,7 +27,7 @@ class delivery_dispatch_client_scenario_t
         try {
             zlink::stream_connector::connector_options_t connector_options;
             connector_options.endpoint = customer_stream_endpoint;
-            connector_options.connect_timeout = std::chrono::seconds (5);
+            connector_options.connect_timeout = std::chrono::milliseconds (3000);
             connector_options.request_timeout = std::chrono::seconds (12);
             connector_options.dispatch_mode = zlink::stream_connector::dispatch_mode_t::immediate;
             auto core_customer =

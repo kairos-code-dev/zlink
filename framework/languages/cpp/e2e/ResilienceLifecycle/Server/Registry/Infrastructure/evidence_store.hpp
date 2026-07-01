@@ -8,7 +8,7 @@
 #include <utility>
 #include <vector>
 
-namespace zlink::framework::e2e::registry_messaging::registry
+namespace zlink::framework::e2e::resilience_lifecycle::registry
 {
 
 class evidence_store_t
@@ -60,4 +60,4 @@ class evidence_store_t
     std::vector<std::string> _entries;
 };
 
-} // namespace zlink::framework::e2e::registry_messaging::registry
+} // namespace zlink::framework::e2e::resilience_lifecycle::registry

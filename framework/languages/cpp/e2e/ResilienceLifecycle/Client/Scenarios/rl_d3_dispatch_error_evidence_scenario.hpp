@@ -6,7 +6,7 @@
 
 #include <iostream>
 
-namespace zlink::framework::e2e::registry_messaging::client
+namespace zlink::framework::e2e::resilience_lifecycle::client
 {
 
 inline void run_rl_d3_dispatch_error_evidence_scenario (
@@ -48,4 +48,4 @@ inline void run_rl_d3_dispatch_error_evidence_scenario (
     std::cout << "scenario RL-D3 client passed\n";
 }
 
-} // namespace zlink::framework::e2e::registry_messaging::client
+} // namespace zlink::framework::e2e::resilience_lifecycle::client

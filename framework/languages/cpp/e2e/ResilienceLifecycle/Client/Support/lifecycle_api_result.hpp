@@ -26,6 +26,17 @@ inline evidence_snapshot_t fetch_evidence (const std::string &base_url)
     return client.get ("/evidence").fetch<evidence_snapshot_t> ();
 }
 
+inline void post_provider_admin (const std::string &base_url, const std::string &path)
+{
+    auto http = zlink::http_client::client_t::create ()
+                  .base_url (base_url)
+                  .timeout (std::chrono::milliseconds (1000))
+                  .build ();
+    auto response = http.post (path).submit_raw ().result ();
+    ensure (response && response.value ().status < 400,
+            "provider admin call failed: " + base_url + path);
+}
+
 inline bool evidence_contains (const evidence_snapshot_t &snapshot,
                                const std::string &marker,
                                const std::string &value)

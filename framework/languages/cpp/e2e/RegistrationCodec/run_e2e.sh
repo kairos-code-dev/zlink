@@ -71,7 +71,7 @@ wait_port() {
   local host="127.0.0.1"
   local port
   port="$(port_of "$endpoint")"
-  for _ in $(seq 1 100); do
+  for _ in $(seq 1 60); do
     if (echo >"/dev/tcp/${host}/${port}") >/dev/null 2>&1; then
       return 0
     fi
@@ -83,11 +83,17 @@ wait_port() {
 
 run_invalid() {
   local mode="$1"
+  local expected="$2"
   if ZLINK_CPP_E2E_INVALID_MODE="$mode" \
     ZLINK_CPP_E2E_API_ENDPOINT="$INVALID" \
     ZLINK_CPP_E2E_LOG_DIR="$LOG_DIR" \
     "$INVALID_SERVER" >"$LOG_DIR/invalid-$mode.stdout.log" 2>"$LOG_DIR/invalid-$mode.stderr.log"; then
     echo "invalid mode $mode unexpectedly succeeded" >&2
+    return 1
+  fi
+  if ! grep -q "$expected" "$LOG_DIR/invalid-$mode.stderr.log"; then
+    echo "invalid mode $mode did not report expected validation error: $expected" >&2
+    cat "$LOG_DIR/invalid-$mode.stderr.log" >&2
     return 1
   fi
   echo "scenario RC-A6 $mode passed"
@@ -129,7 +135,8 @@ ZLINK_CPP_E2E_LOG_DIR="$LOG_DIR" \
   "$CLIENT" >"$LOG_DIR/client-b5.stdout.log" 2>"$LOG_DIR/client-b5.stderr.log"
 cat "$LOG_DIR/client-b5.stdout.log"
 
-run_invalid duplicate
-run_invalid wrong-group
-run_invalid unsupported-channel
+run_invalid duplicate "duplicate handler registration"
+run_invalid wrong-group "maps handler group 'registration-codec' with an incompatible handler kind"
+run_invalid unsupported-channel "server must map a request or send handler group"
 echo "scenario RC-A6 passed"
+echo "registration-codec e2e result=passed"

@@ -17,14 +17,14 @@
 |----------------|---------------|------|------|------|
 | `.gitignore` | `.gitignore` | config | done | 실행 로그를 제외한다. |
 | `feature-map.ko.md` | `feature-map.ko.md` | docs | done | PS-A/B/C 시나리오 구현 상태와 최신 `/evidence/wait` runner 증거를 기록한다. |
-| `run_e2e.sh` | `run_e2e.sh` | runner | done | registry/publisher/subscriber/client process orchestration을 분리하고, `all` 또는 개별 PS scenario ID 실행을 지원한다. 검증은 subscriber role server의 `/evidence/wait`를 사용한다. |
+| `run_e2e.sh` | `run_e2e.sh` | runner | done | registry/publisher/subscriber/client process orchestration을 분리하고, `all` 또는 개별 PS scenario ID 실행을 지원한다. 검증은 subscriber role server의 `/evidence/wait`를 사용하며, registry/publisher operational endpoint와 `verify.log` 증거도 runner가 남긴다. |
 | `Shared/Messages.cs` | `Shared/pubsub_contracts.hpp` | shared | done | event/accepted evidence/ignored evidence/dispatch-error DTO와 evidence wait request가 대응된다. |
 | `Shared/PubSub.Shared.csproj` | `Shared/pubsub_contracts.hpp` | build | not-needed | C++ shared contract는 header로 포함된다. |
 | `Client/Program.cs` | `Client/main.cpp` | client-entry | done | scenario dispatch만 담당하고 Publisher role HTTP endpoint를 호출한다. |
 | `Client/PubSub.Client.csproj` | `framework/languages/cpp/CMakeLists.txt` | build | done | `zlink_cpp_e2e_pubsub_client` target이 대응한다. |
 | `Client/Support/ClientOptions.cs` | `Client/Support/client_support.hpp`; `run_e2e.sh` | client-support | done | env parsing, marker 대기, Publisher HTTP 호출 helper가 대응한다. |
-| `Client/Support/Evidence.cs` | `run_e2e.sh`; `Server/Subscriber/Endpoints/operational_endpoints.hpp` | client-support | done | runner Python helper가 subscriber role server의 bounded `/evidence/wait`를 호출해 evidence line을 검증한다. |
-| `Client/Support/ScenarioAssert.cs` | `Client/Support/client_support.hpp`; `run_e2e.sh` | client-support | done | client process assert와 runner evidence assert가 분리되어 있고, scenario별 성공 조건은 `/evidence/wait` 결과로 확인한다. |
+| `Client/Support/Evidence.cs` | `run_e2e.sh`; `Server/Subscriber/Endpoints/operational_endpoints.hpp` | client-support | done | runner Python helper가 subscriber role server의 bounded `/evidence/wait`를 호출해 evidence line을 검증하고, 각 검증 결과를 `verify.log`에 남긴다. |
+| `Client/Support/ScenarioAssert.cs` | `Client/Support/client_support.hpp`; `run_e2e.sh` | client-support | done | client process assert와 runner evidence assert가 분리되어 있고, scenario별 성공 조건은 `/evidence/wait` 결과와 `verify.log` marker로 확인한다. |
 | `Client/Support/ServerProcessLauncher.cs` | `run_e2e.sh` | runner-support | done | 프로세스 시작/정지/재시작은 shell runner가 담당한다. |
 | `Client/Scenarios/FanoutBasicDeliveryScenario.cs` | `Client/Scenarios/fanout_basic_delivery_scenario.hpp`; `run_e2e.sh` | scenario | done | PS-A1 발행 흐름과 세 subscriber의 공통 sequence 수신을 `/evidence/wait`로 검증한다. |
 | `Client/Scenarios/TopicFilterScenario.cs` | `Client/Scenarios/topic_filter_scenario.hpp`; `run_e2e.sh` | scenario | done | PS-A2 발행 흐름과 accepted/ignored topic evidence를 `/evidence/wait`로 검증한다. |
@@ -36,18 +36,18 @@
 | `Server/Registry/Configuration/HostFactorySupport.cs` | `Server/Shared/server_support.hpp` | server-role | done | 공통 logging/codec/flow helper가 대응한다. |
 | `Server/Registry/Configuration/RegistryOptions.cs` | `Server/Registry/Configuration/registry_options.hpp`; `run_e2e.sh` | configuration | done | registry endpoint/env parsing이 대응한다. |
 | `Server/Registry/Configuration/ServerArgs.cs` | `run_e2e.sh` | configuration | done | C++ runner env가 서버 인자 역할을 담당한다. |
-| `Server/Registry/EvidenceStore.cs` | not-needed | infrastructure | not-needed | 현재 PubSub C++ registry role은 evidence를 판정에 쓰지 않는다. 필요하면 별도 gap으로 승격한다. |
-| `Server/Registry/OperationalEndpoints.cs` | `Server/Registry/main.cpp` | endpoint | done | health endpoint는 role entry에서 등록한다. |
+| `Server/Registry/EvidenceStore.cs` | `Server/Shared/server_support.hpp`; `Server/Registry/main.cpp` | infrastructure | done | registry role operational evidence store가 대응한다. 현재 scenario 성공 판정은 subscriber evidence를 기준으로 하지만, registry `/evidence`와 final snapshot도 runner 증거로 남긴다. |
+| `Server/Registry/OperationalEndpoints.cs` | `Server/Registry/main.cpp`; `Server/Shared/server_support.hpp` | endpoint | done | registry role이 `/health`, `/evidence`, `/evidence/clear`, `/shutdown`을 제공하고 runner가 시작 직후 endpoint 동작을 검증한다. |
 | `Server/Registry/Program.cs` | `Server/Registry/main.cpp` | server-entry | done | registry 전용 executable이다. |
 | `Server/Registry/RegistryHostFactory.cs` | `Server/Registry/main.cpp`; `Server/Shared/server_support.hpp` | server-role | done | registry framework 구성이 role entry에 있다. |
 | `Server/Registry/PubSub.Registry.csproj` | `framework/languages/cpp/CMakeLists.txt` | build | done | `zlink_cpp_e2e_pubsub_registry` target이 대응한다. |
 | `Server/Publisher/Configuration/HostFactorySupport.cs` | `Server/Shared/server_support.hpp` | server-role | done | 공통 logging/codec/flow helper가 대응한다. |
 | `Server/Publisher/Configuration/PublisherOptions.cs` | `Server/Publisher/Configuration/publisher_options.hpp`; `run_e2e.sh` | configuration | done | publisher endpoint/log/registry/http options가 대응한다. |
 | `Server/Publisher/Configuration/ServerArgs.cs` | `run_e2e.sh` | configuration | done | runner env orchestration이 인자 역할을 담당한다. |
-| `Server/Publisher/Endpoints/OperationalEndpoints.cs` | `Server/Publisher/main.cpp` | endpoint | done | Publisher health endpoint는 role entry에서 등록한다. |
+| `Server/Publisher/Endpoints/OperationalEndpoints.cs` | `Server/Publisher/main.cpp`; `Server/Shared/server_support.hpp` | endpoint | done | Publisher role이 `/health`, `/evidence`, `/evidence/clear`, `/shutdown`을 제공하고 runner가 최초 시작과 재시작 뒤 endpoint 동작을 검증한다. |
 | `Server/Publisher/Endpoints/PublisherEndpoints.cs` | `Server/Publisher/Endpoints/publisher_endpoints.hpp` | endpoint | done | `/publish/event`와 `/publish/missing` endpoint가 Publisher role에서 framework publish를 실행한다. |
 | `Server/Publisher/EvidenceDispatchErrorObserver.cs` | not-needed | handler | not-needed | 현재 C++ Publisher role evidence는 판정에 쓰지 않는다. subscriber dispatch error evidence로 PS-C1을 확인한다. |
-| `Server/Publisher/EvidenceStore.cs` | not-needed | infrastructure | not-needed | 현재 C++ Publisher role evidence는 판정에 쓰지 않는다. |
+| `Server/Publisher/EvidenceStore.cs` | `Server/Shared/server_support.hpp`; `Server/Publisher/Endpoints/publisher_endpoints.hpp` | infrastructure | done | Publisher role operational evidence store가 `/publish/event`와 `/publish/missing` 호출 marker를 기록하고 runner가 final snapshot을 남긴다. |
 | `Server/Publisher/Program.cs` | `Server/Publisher/main.cpp` | server-entry | done | publisher 전용 executable이다. |
 | `Server/Publisher/PublisherHostFactory.cs` | `Server/Publisher/main.cpp`; `Server/Shared/server_support.hpp` | server-role | done | publisher framework 구성이 role entry에 있다. |
 | `Server/Publisher/PubSub.Publisher.csproj` | `framework/languages/cpp/CMakeLists.txt` | build | done | `zlink_cpp_e2e_pubsub_publisher` target이 대응한다. |
@@ -83,8 +83,11 @@
   - 의미: 당시 C++ PubSub의 PS-A1, PS-A2, PS-A3, PS-A4, PS-B1, PS-B2, PS-C1 흐름은 모두
     통과했지만 검증 경로 판정이 오래되어 현재 완료 판정의 근거로는 쓰지 않는다. 최신 판정은
     아래 `/evidence/wait` 검증 기록을 따른다.
-- 2026-06-30: `timeout 420s framework/languages/cpp/e2e/PubSub/run_e2e.sh all`
+- 2026-07-01: `timeout 420s framework/languages/cpp/e2e/PubSub/run_e2e.sh all`
   - 결과: 통과
-  - 로그: `logs/20260630-162014-391042`
-  - 의미: subscriber role server에 `/evidence/wait` endpoint를 추가한 뒤 PS-A1, PS-A2, PS-A3,
-    PS-A4, PS-B1, PS-B2, PS-C1 전체가 bounded subscriber evidence wait 경로로 통과했다.
+  - 로그: `logs/20260701-170557-98147`
+  - 의미: PS-A1, PS-A2, PS-A3, PS-A4, PS-B1, PS-B2, PS-C1 전체가 bounded subscriber
+    evidence wait 경로로 통과했다. `verify.log`에는 `verify basic/topic/late/reconnect/slow/publisher-restart/negative passed`
+    marker가 남고, `registry-operational.log`, `publisher-operational.log`,
+    `publisher-restart-operational.log`, `registry-evidence-final.json`,
+    `publisher-evidence-final.json`이 registry/publisher operational endpoint 증거를 남긴다.

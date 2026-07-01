@@ -4,6 +4,18 @@ set -euo pipefail
 ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 FRAMEWORK_DIR="$(cd "$ROOT_DIR/../.." && pwd)"
 BUILD_DIR="${ZLINK_CPP_E2E_BUILD_DIR:-$FRAMEWORK_DIR/build}"
+LOCAL_READINESS_TIMEOUT_SECONDS="${ZLINK_CPP_E2E_LOCAL_READINESS_TIMEOUT_SECONDS:-3}"
+LOCAL_READINESS_POLL_SECONDS="0.05"
+LOCAL_READINESS_ATTEMPTS="$(
+  python3 - "$LOCAL_READINESS_TIMEOUT_SECONDS" "$LOCAL_READINESS_POLL_SECONDS" <<'PY'
+import math
+import sys
+
+timeout = float(sys.argv[1])
+poll = float(sys.argv[2])
+print(max(1, math.ceil(timeout / poll)))
+PY
+)"
 RUN_ID="$(date +%Y%m%d-%H%M%S)-$$"
 LOG_DIR="$ROOT_DIR/logs/$RUN_ID"
 mkdir -p "$LOG_DIR"
@@ -68,13 +80,13 @@ wait_port() {
   local endpoint="$2"
   local port
   port="$(port_of "$endpoint")"
-  for _ in $(seq 1 100); do
+  for _ in $(seq 1 "$LOCAL_READINESS_ATTEMPTS"); do
     if (echo >"/dev/tcp/127.0.0.1/${port}") >/dev/null 2>&1; then
       return 0
     fi
-    sleep 0.05
+    sleep "$LOCAL_READINESS_POLL_SECONDS"
   done
-  echo "Timed out waiting for $name at $endpoint" >&2
+  echo "Timed out waiting ${LOCAL_READINESS_TIMEOUT_SECONDS}s for $name at $endpoint" >&2
   return 1
 }
 
@@ -83,13 +95,13 @@ wait_port_closed() {
   local endpoint="$2"
   local port
   port="$(port_of "$endpoint")"
-  for _ in $(seq 1 100); do
+  for _ in $(seq 1 "$LOCAL_READINESS_ATTEMPTS"); do
     if ! (echo >"/dev/tcp/127.0.0.1/${port}") >/dev/null 2>&1; then
       return 0
     fi
-    sleep 0.05
+    sleep "$LOCAL_READINESS_POLL_SECONDS"
   done
-  echo "Timed out waiting for $name to stop at $endpoint" >&2
+  echo "Timed out waiting ${LOCAL_READINESS_TIMEOUT_SECONDS}s for $name to stop at $endpoint" >&2
   return 1
 }
 
@@ -113,6 +125,7 @@ ZLINK_CPP_E2E_HTTP_ENDPOINT="$HTTP_REG" \
 ZLINK_CPP_E2E_REGISTRY_PUB="$REG_PUB" \
 ZLINK_CPP_E2E_REGISTRY_ROUTER="$REG_ROUTER" \
 ZLINK_CPP_E2E_EVIDENCE_FILE="$LOG_DIR/registry.evidence.log" \
+ZLINK_CPP_E2E_LOG_DIR="$LOG_DIR" \
   "$REGISTRY" >"$LOG_DIR/registry.stdout.log" 2>"$LOG_DIR/registry.stderr.log" &
 PIDS+=("$!")
 wait_port registry "$HTTP_REG"
@@ -123,6 +136,7 @@ ZLINK_CPP_E2E_REGISTRY_ROUTER="$REG_ROUTER" \
 ZLINK_CPP_E2E_CHANNEL_ENDPOINT="$CHANNEL" \
 ZLINK_CPP_E2E_SPOT_ENDPOINT="$SPOT_SERVICE" \
 ZLINK_CPP_E2E_EVIDENCE_FILE="$LOG_DIR/service.evidence.log" \
+ZLINK_CPP_E2E_LOG_DIR="$LOG_DIR" \
   "$SERVICE" >"$LOG_DIR/service.stdout.log" 2>"$LOG_DIR/service.stderr.log" &
 PIDS+=("$!")
 wait_port service "$HTTP_SERVICE"
@@ -133,6 +147,7 @@ ZLINK_CPP_E2E_REGISTRY_ROUTER="$REG_ROUTER" \
 ZLINK_CPP_E2E_CHANNEL_ENDPOINT="$CHANNEL_FILTERED" \
 ZLINK_CPP_E2E_SPOT_ENDPOINT="$SPOT_FILTERED" \
 ZLINK_CPP_E2E_EVIDENCE_FILE="$LOG_DIR/filtered.evidence.log" \
+ZLINK_CPP_E2E_LOG_DIR="$LOG_DIR" \
   "$FILTERED_SERVICE" >"$LOG_DIR/filtered.stdout.log" 2>"$LOG_DIR/filtered.stderr.log" &
 FILTERED_PID="$!"
 PIDS+=("$FILTERED_PID")
@@ -144,6 +159,7 @@ ZLINK_CPP_E2E_REGISTRY_ROUTER="$REG_ROUTER" \
 ZLINK_CPP_E2E_CHANNEL_ENDPOINT="$CHANNEL_THROW" \
 ZLINK_CPP_E2E_SPOT_ENDPOINT="$SPOT_THROW" \
 ZLINK_CPP_E2E_EVIDENCE_FILE="$LOG_DIR/throw.evidence.log" \
+ZLINK_CPP_E2E_LOG_DIR="$LOG_DIR" \
   "$THROWING_SERVICE" >"$LOG_DIR/throw.stdout.log" 2>"$LOG_DIR/throw.stderr.log" &
 PIDS+=("$!")
 wait_port throwing-service "$HTTP_THROW"
@@ -166,6 +182,7 @@ ZLINK_CPP_E2E_SERVICE_URL="$HTTP_SERVICE" \
 ZLINK_CPP_E2E_FILTERED_SERVICE_URL="$HTTP_FILTERED" \
 ZLINK_CPP_E2E_THROW_SERVICE_URL="$HTTP_THROW" \
 ZLINK_CPP_E2E_TRIGGER_URL="$HTTP_TRIGGER" \
+ZLINK_CPP_E2E_LOG_DIR="$LOG_DIR" \
   "$CLIENT" \
   >"$LOG_DIR/client.stdout.log" 2>"$LOG_DIR/client.stderr.log"
 
@@ -181,6 +198,10 @@ grep -q "scenario MON-B2 passed" "$LOG_DIR/client.stdout.log"
 grep -q "runtime-monitoring client result=passed" "$LOG_DIR/client.stdout.log"
 grep -q "monitoring-event-dispatch" "$LOG_DIR/throw.stderr.log"
 grep -q "monitoring dispatch failure for e2e" "$LOG_DIR/throw.stderr.log"
+grep -q "message flow" "$LOG_DIR/svc-a-flow.log"
+grep -q "message flow" "$LOG_DIR/svc-b-flow.log"
+grep -q "message flow" "$LOG_DIR/trigger-service-a-mon-a1-flow.log"
+grep -q "message flow" "$LOG_DIR/trigger-service-b-mon-b1-flow.log"
 
 stop_service_http "$HTTP_FILTERED"
 wait "$FILTERED_PID" >/dev/null 2>&1 || true
@@ -192,6 +213,7 @@ ZLINK_CPP_E2E_REGISTRY_ROUTER="$REG_ROUTER" \
 ZLINK_CPP_E2E_CHANNEL_ENDPOINT="$CHANNEL_FILTERED" \
 ZLINK_CPP_E2E_SPOT_ENDPOINT="$SPOT_FILTERED" \
 ZLINK_CPP_E2E_EVIDENCE_FILE="$LOG_DIR/filtered-restart.evidence.log" \
+ZLINK_CPP_E2E_LOG_DIR="$LOG_DIR" \
   "$FILTERED_SERVICE" >"$LOG_DIR/filtered-restart.stdout.log" 2>"$LOG_DIR/filtered-restart.stderr.log" &
 FILTERED_RESTART_PID="$!"
 PIDS+=("$FILTERED_RESTART_PID")
@@ -203,10 +225,12 @@ ZLINK_CPP_E2E_REGISTRY_URL="$HTTP_REG" \
 ZLINK_CPP_E2E_FILTERED_SERVICE_URL="$HTTP_FILTERED" \
 ZLINK_CPP_E2E_TRIGGER_URL="$HTTP_TRIGGER" \
 ZLINK_CPP_E2E_DIRECT_CHANNEL_ENDPOINT="$CHANNEL_FILTERED" \
+ZLINK_CPP_E2E_LOG_DIR="$LOG_DIR" \
   "$CLIENT" \
   >"$LOG_DIR/client-d1.stdout.log" 2>"$LOG_DIR/client-d1.stderr.log"
 
 cat "$LOG_DIR/client-d1.stdout.log"
 grep -q "scenario MON-D1 passed" "$LOG_DIR/client-d1.stdout.log"
+grep -q "message flow" "$LOG_DIR/trigger-service-b-mon-d1-flow.log"
 
 echo "runtime-monitoring e2e result=passed"

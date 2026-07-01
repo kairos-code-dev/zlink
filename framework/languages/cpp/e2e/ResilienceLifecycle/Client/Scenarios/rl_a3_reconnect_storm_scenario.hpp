@@ -4,12 +4,15 @@
 
 #include "../Support/resilience_request_support.hpp"
 
+#include <zlink/http_client.hpp>
+
 #include <chrono>
 #include <iostream>
 #include <stdexcept>
+#include <string>
 #include <thread>
 
-namespace zlink::framework::e2e::registry_messaging::client
+namespace zlink::framework::e2e::resilience_lifecycle::client
 {
 
 inline void run_quick_resilience_scenario (zlink::framework::channel_client_t &channels)
@@ -30,8 +33,25 @@ inline void run_quick_resilience_scenario (zlink::framework::channel_client_t &c
 
 inline void run_rl_a3_reconnect_storm_probe (zlink::framework::channel_client_t &channels)
 {
-    run_quick_resilience_scenario (channels);
-    std::cout << "scenario RL-A3 client passed\n";
+    (void) channels;
+
+    auto consumer = zlink::http_client::client_t::create ()
+                      .base_url (env_or ("ZLINK_CPP_E2E_HTTP_CONSUMER_ENDPOINT"))
+                      .timeout (std::chrono::milliseconds (10000))
+                      .build ();
+
+    for (int index = 0; index < 24; ++index) {
+        const auto marker = "rl-a3-" + std::to_string (index);
+        const auto reply = consumer.post ("/profile/request/new-client")
+                             .body (profile_req_t{.value = "fast", .marker = marker})
+                             .fetch<profile_res_t> ();
+        ensure (reply.value == "profile:fast", "RL-A3 storm request returned an invalid value");
+        ensure (reply.provider_rid == "api-a" || reply.provider_rid == "api-b",
+                "RL-A3 storm request returned an unexpected provider");
+    }
+
+    wait_provider_evidence_contains ("ProfileReq", "rl-a3-0", std::chrono::seconds (15));
+    std::cout << "scenario RL-A3 passed\n";
 }
 
-} // namespace zlink::framework::e2e::registry_messaging::client
+} // namespace zlink::framework::e2e::resilience_lifecycle::client

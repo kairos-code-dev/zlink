@@ -10,7 +10,7 @@
 
 #include <zlink/framework.hpp>
 
-namespace zlink::framework::e2e::registry_messaging::client
+namespace zlink::framework::e2e::resilience_lifecycle::client
 {
 
 using resilience_lifecycle::api_channel;
@@ -26,9 +26,6 @@ using resilience_lifecycle::profile_res_t;
 using resilience_lifecycle::route_channel;
 using resilience_lifecycle::scenario_route_req_t;
 using resilience_lifecycle::scenario_route_res_t;
-using resilience_lifecycle::workflow_channel;
-using resilience_lifecycle::workflow_req_t;
-using resilience_lifecycle::workflow_res_t;
 
 using resilience_lifecycle::client::any_provider_evidence_contains;
 using resilience_lifecycle::client::client_options_t;
@@ -43,4 +40,4 @@ using resilience_lifecycle::client::touch_file;
 using resilience_lifecycle::client::wait_for_file;
 using resilience_lifecycle::client::wait_provider_evidence_contains;
 
-} // namespace zlink::framework::e2e::registry_messaging::client
+} // namespace zlink::framework::e2e::resilience_lifecycle::client

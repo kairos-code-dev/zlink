@@ -2,17 +2,74 @@
 
 #pragma once
 
-#include "rl_a3_reconnect_storm_scenario.hpp"
+#include "../Support/resilience_request_support.hpp"
 
+#include <zlink/http_client.hpp>
+
+#include <chrono>
 #include <iostream>
+#include <stdexcept>
+#include <string>
+#include <thread>
 
-namespace zlink::framework::e2e::registry_messaging::client
+namespace zlink::framework::e2e::resilience_lifecycle::client
 {
 
 inline void run_rl_a5_provider_flapping_probe (zlink::framework::channel_client_t &channels)
 {
-    run_quick_resilience_scenario (channels);
-    std::cout << "scenario RL-A5 client passed\n";
+    (void) channels;
+
+    const auto phase = env_or ("ZLINK_CPP_E2E_FLAP_PHASE");
+    const auto cycle = env_or ("ZLINK_CPP_E2E_FLAP_CYCLE", "0");
+    auto consumer = zlink::http_client::client_t::create ()
+                      .base_url (env_or ("ZLINK_CPP_E2E_HTTP_CONSUMER_ENDPOINT"))
+                      .timeout (std::chrono::milliseconds (10000))
+                      .build ();
+
+    if (phase == "down") {
+        for (int index = 0; index < 4; ++index) {
+            const auto marker = "rl-a5-down-" + cycle + "-" + std::to_string (index);
+            const auto reply = consumer.post ("/profile/request")
+                                 .body (profile_req_t{.value = "fast", .marker = marker})
+                                 .fetch<profile_res_t> ();
+            ensure (reply.provider_rid == "api-a",
+                    "RL-A5 down window did not converge to api-a");
+        }
+
+        const auto evidence = fetch_evidence (env_or ("ZLINK_CPP_E2E_HTTP_A_ENDPOINT"));
+        ensure (evidence_contains (evidence, "ProfileReq", "rl-a5-down-" + cycle + "-0"),
+                "RL-A5 down window did not record provider A evidence");
+        std::cout << "scenario RL-A5 down passed\n";
+        return;
+    }
+
+    if (phase == "up") {
+        for (int index = 0; index < 24; ++index) {
+            const auto marker = "rl-a5-up-" + cycle + "-" + std::to_string (index);
+            const auto reply = consumer.post ("/profile/request")
+                                 .body (profile_req_t{.value = "fast", .marker = marker})
+                                 .fetch<profile_res_t> ();
+            ensure (reply.value == "profile:fast",
+                    "RL-A5 up-window request returned an invalid value");
+        }
+
+        const auto prefix = "rl-a5-up-" + cycle + "-";
+        const auto deadline = std::chrono::steady_clock::now () + std::chrono::seconds (15);
+        while (std::chrono::steady_clock::now () < deadline) {
+            const auto evidence = fetch_evidence (env_or ("ZLINK_CPP_E2E_HTTP_B_ENDPOINT"));
+            for (const auto &entry : evidence.entries) {
+                if (entry.marker == "ProfileReq" && entry.value.rfind (prefix, 0) == 0) {
+                    std::cout << "scenario RL-A5 up passed\n";
+                    return;
+                }
+            }
+            std::this_thread::sleep_for (std::chrono::milliseconds (100));
+        }
+
+        throw std::runtime_error ("RL-A5 up window did not record provider B evidence");
+    }
+
+    throw std::runtime_error ("RL-A5 requires ZLINK_CPP_E2E_FLAP_PHASE=down or up");
 }
 
-} // namespace zlink::framework::e2e::registry_messaging::client
+} // namespace zlink::framework::e2e::resilience_lifecycle::client

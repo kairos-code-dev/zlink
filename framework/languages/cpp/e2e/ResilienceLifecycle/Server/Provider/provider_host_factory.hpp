@@ -7,15 +7,16 @@
 #include "Handlers/provider_handlers.hpp"
 #include "Infrastructure/evidence_store.hpp"
 #include "Infrastructure/fault_state.hpp"
+#include "Infrastructure/server_weight_state.hpp"
 
-#include "../../Shared/registry_messaging_contracts.hpp"
+#include "../../Shared/resilience_lifecycle_messages.hpp"
 
 #include <zlink/framework.hpp>
 
 #include <cstdint>
 #include <memory>
 
-namespace zlink::framework::e2e::registry_messaging::provider
+namespace zlink::framework::e2e::resilience_lifecycle::provider
 {
 
 inline void configure_common_codecs (zlink::framework::codec_options_builder_t)
@@ -28,17 +29,22 @@ inline void configure_provider_host (zlink::framework::zlink_framework_options_t
     framework.configure_dispatch ()
       .message_flow (zlink::framework::message_flow_log_mode_t::key_transitions)
       .trace_log_file (options.log_dir + "/" + options.rid + "-flow.log")
-      .trace_label ("cpp-rm-" + options.rid);
-    auto evidence = std::make_unique<evidence_store_t> (options.rid, options.instance_id);
+      .trace_label ("cpp-rl-" + options.rid);
+    auto evidence =
+      std::make_unique<evidence_store_t> (options.rid, options.instance_id, options.evidence_file);
     auto *evidence_ptr = evidence.get ();
     auto fault_state = std::make_unique<fault_state_t> ();
     auto *fault_state_ptr = fault_state.get ();
     configure_evidence_dispatch_error_observer (framework, evidence_ptr, fault_state_ptr);
     framework.services ().add_singleton<evidence_store_t> (std::move (evidence));
     framework.services ().add_singleton<fault_state_t> (std::move (fault_state));
+    framework.services ().add_singleton<server_weight_state_t> (
+      std::make_unique<server_weight_state_t> ());
     framework.services ().add_transient<route_ping_handler_t, evidence_store_t> ();
     framework.services ().add_transient<server_weight_handler_t,
-                                        zlink::framework::channel_runtime_options_t> ();
+                                        zlink::framework::channel_runtime_options_t,
+                                        evidence_store_t,
+                                        server_weight_state_t> ();
     configure_common_codecs (framework.codecs ());
     if (!options.embedded_registry_pub.empty () && !options.embedded_registry_router.empty ()) {
         framework.enable_registry (options.embedded_registry_pub,
@@ -78,8 +84,15 @@ inline void configure_provider_host (zlink::framework::zlink_framework_options_t
           .listen (options.http_endpoint)
           .map_health ("/health")
           .map_get<evidence_handler_t> ("/evidence")
+          .map_post<drain_handler_t> ("/admin/drain")
+          .map_post<restore_handler_t> ("/admin/restore")
+          .map_post<crash_handler_t> ("/admin/crash")
+          .map_post<shutdown_handler_t> ("/shutdown")
+          .map_get<weight_handler_t> ("/admin/weight")
+          .map_post<weight_wait_handler_t> ("/admin/weight/wait")
           .map_post<server_weight_handler_t> ("/admin/server-weight")
           .map_post<observer_fault_handler_t> ("/admin/fault/observer-throws")
+          .map_post<gray_fault_handler_t> ("/admin/fault/gray")
           .map_post<clear_fault_handler_t> ("/admin/fault/none");
     }
     framework.handlers ()
@@ -89,4 +102,4 @@ inline void configure_provider_host (zlink::framework::zlink_framework_options_t
       .add_send<profile_command_handler_t> ();
 }
 
-} // namespace zlink::framework::e2e::registry_messaging::provider
+} // namespace zlink::framework::e2e::resilience_lifecycle::provider

@@ -8,7 +8,7 @@
 #include <iostream>
 #include <string>
 
-namespace zlink::framework::e2e::registry_messaging::client
+namespace zlink::framework::e2e::resilience_lifecycle::client
 {
 
 inline void run_resilience_stress_scenario (zlink::framework::channel_client_t &channels)
@@ -34,4 +34,4 @@ inline void run_resilience_stress_scenario (zlink::framework::channel_client_t &
     std::cout << "scenario RL-D5 passed\n";
 }
 
-} // namespace zlink::framework::e2e::registry_messaging::client
+} // namespace zlink::framework::e2e::resilience_lifecycle::client

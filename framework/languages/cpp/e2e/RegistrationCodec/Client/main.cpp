@@ -39,7 +39,7 @@ class scenario_service_t final : public zlink::framework::hosted_service_t
                 rc_client::run_auto_registration_scenario (channels);
                 rc_client::run_manual_registration_scenario (routes);
                 rc_client::run_di_lifecycle_scenario (channels);
-                rc_client::run_filter_ordering_scenario (channels);
+                rc_client::run_filter_ordering_scenario (channels, _http_endpoint);
                 rc_client::run_json_codec_scenario (channels, _http_endpoint);
                 rc_client::run_protobuf_codec_scenario (channels, _http_endpoint);
                 rc_client::run_messagepack_codec_scenario (channels, _http_endpoint);
@@ -95,6 +95,5 @@ int main (int argc, char **argv)
     if (exit_code != 0 || !scenario_result->passed) {
         return 1;
     }
-    std::cout << "registration-codec e2e result=passed\n";
     return 0;
 }

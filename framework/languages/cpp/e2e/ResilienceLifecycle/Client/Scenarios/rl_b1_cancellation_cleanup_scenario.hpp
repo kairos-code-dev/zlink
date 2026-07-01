@@ -6,7 +6,7 @@
 
 #include <iostream>
 
-namespace zlink::framework::e2e::registry_messaging::client
+namespace zlink::framework::e2e::resilience_lifecycle::client
 {
 
 inline void run_rl_b1_cancellation_cleanup_scenario (
@@ -33,4 +33,4 @@ inline void run_rl_b1_cancellation_cleanup_scenario (
     std::cout << "scenario RL-B1 client passed\n";
 }
 
-} // namespace zlink::framework::e2e::registry_messaging::client
+} // namespace zlink::framework::e2e::resilience_lifecycle::client

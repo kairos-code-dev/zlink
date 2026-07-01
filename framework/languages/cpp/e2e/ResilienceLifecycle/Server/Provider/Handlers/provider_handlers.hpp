@@ -2,13 +2,14 @@
 #pragma once
 
 #include "../Infrastructure/evidence_store.hpp"
+#include "../Infrastructure/fault_state.hpp"
 
 #include <zlink/framework.hpp>
 
 #include <chrono>
 #include <thread>
 
-namespace zlink::framework::e2e::registry_messaging::provider
+namespace zlink::framework::e2e::resilience_lifecycle::provider
 {
 
 inline const std::string &profile_marker_or_value (const profile_req_t &request)
@@ -24,18 +25,26 @@ inline const std::string &profile_marker_or_command (const profile_msg_t &comman
 class profile_request_handler_t
 {
   public:
-    using dependency_types = zlink::framework::dependency_list_t<evidence_store_t>;
+    using dependency_types = zlink::framework::dependency_list_t<evidence_store_t, fault_state_t>;
     using request_type = profile_req_t;
     using reply_type = profile_res_t;
 
-    explicit profile_request_handler_t (evidence_store_t &evidence) : _evidence (evidence) {}
+    profile_request_handler_t (evidence_store_t &evidence, fault_state_t &fault) :
+        _evidence (evidence), _fault (fault)
+    {
+    }
 
     profile_res_t handle (const profile_req_t &request)
     {
         const auto &marker = profile_marker_or_value (request);
+        if (_fault.mode () == "gray" && request.value == "gray") {
+            _evidence.record ("ProfileFault", marker);
+            throw std::runtime_error ("gray failure");
+        }
         if (request.value == "slow") {
-            _evidence.record ("ProfileReq", marker);
+            _evidence.record ("ProfileStart", marker);
             std::this_thread::sleep_for (std::chrono::seconds (1));
+            _evidence.record ("ProfileReq", marker);
             return {.value = "profile:" + request.value,
                     .provider_rid = _evidence.provider_rid (),
                     .instance_id = _evidence.instance_id (),
@@ -57,6 +66,7 @@ class profile_request_handler_t
 
   private:
     evidence_store_t &_evidence;
+    fault_state_t &_fault;
 };
 
 class profile_command_handler_t
@@ -69,9 +79,6 @@ class profile_command_handler_t
 
     void handle (const profile_msg_t &command)
     {
-        if (command.command_id.rfind ("rm-c9-slow-", 0) == 0) {
-            std::this_thread::sleep_for (std::chrono::seconds (1));
-        }
         _evidence.record ("ProfileMsg", profile_marker_or_command (command));
     }
 
@@ -125,4 +132,4 @@ class route_ping_handler_t
     evidence_store_t &_evidence;
 };
 
-} // namespace zlink::framework::e2e::registry_messaging::provider
+} // namespace zlink::framework::e2e::resilience_lifecycle::provider

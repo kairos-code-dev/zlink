@@ -45,6 +45,12 @@ inline int run_service_host (int argc,
                              ? "inproc://runtime-monitoring-spot-" + options.rid
                              : options.spot_endpoint)
           .add_spot<monitoring_spot_t> (spot_channel);
+        if (!options.log_dir.empty ()) {
+            framework.configure_dispatch ()
+              .message_flow (zlink::framework::message_flow_log_mode_t::key_transitions)
+              .trace_log_file (options.log_dir + "/" + options.rid + "-flow.log")
+              .trace_label ("cpp-mon-" + options.rid);
+        }
         framework.handlers ().group (handler_group).add<profile_request_handler_t> ();
         auto &monitoring = framework.monitoring ();
         monitoring.add_socket_events (channel_server_source);

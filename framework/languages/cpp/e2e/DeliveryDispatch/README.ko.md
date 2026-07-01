@@ -17,8 +17,12 @@ DeliveryDispatch E2E는 배달 생성, courier 배정, 픽업, 완료까지의 �
 - `Server/DispatchApi`는 `/deliveries`와 `/self-check/assert` HTTP API를 제공한다.
 - `Server/DispatchCenter`는 courier 제안과 tracking 상태 갱신을 조율한다.
 - `Server/Tracking`은 상태 증거를 기록하고 fanout으로 고객 세션에 상태 알림을 발행한다.
-- `Server/Session`은 고객의 `SubscribeDelivery` 요청과 배송원의 `BindCourierSession` 요청을 받고,
-  상태 알림과 배송 제안을 client stream으로 보낸다.
+- `Server/CustomerGateway`는 고객의 `SubscribeDelivery` 요청을 받고 customer actor를 stream에 bind한 뒤
+  상태 알림을 bound session으로 보낸다.
+- `Server/CourierSession`은 배송원의 `BindCourierSession` 요청을 받고 courier actor를 stream에 bind한 뒤
+  배송원 결정을 bound actor로 relay한다.
+- `Server/CourierGateway`는 courier id별 actor node와 session route를 찾고 배송 제안을 actor node로 보낸다.
+- `Server/CourierActorNode`는 courier actor를 생성하고 bound session으로 배송 제안을 보낸다.
 - `Probe`는 tracking route가 registry/discovery를 통해 준비됐는지 확인한다.
 - `Shared`는 배달 상태 계약을 정의한다.
 

@@ -13,16 +13,37 @@ if [[ ! -x "$BIN_DIR/zlink_cpp_e2e_delivery_dispatch_client" && -x "$BIN_DIR/lin
 fi
 
 PIDS=()
-RUN_DIR="$(mktemp -d)"
-LOG_DIR="$RUN_DIR/logs"
+LOG_DIR="$DELIVERYDISPATCH_LOG_DIR/last-run"
+rm -rf "$LOG_DIR"
 mkdir -p "$LOG_DIR"
 cleanup() {
   for pid in "${PIDS[@]}"; do
-    kill "${pid}" >/dev/null 2>&1 || true
+    if kill -0 "${pid}" >/dev/null 2>&1; then
+      kill "${pid}" >/dev/null 2>&1 || true
+      for _ in $(seq 1 40); do
+        if ! kill -0 "${pid}" >/dev/null 2>&1; then
+          break
+        fi
+        sleep 0.05
+      done
+      if kill -0 "${pid}" >/dev/null 2>&1; then
+        kill -9 "${pid}" >/dev/null 2>&1 || true
+      fi
+    fi
     wait "${pid}" 2>/dev/null || true
   done
 }
 trap cleanup EXIT
+
+dump_logs() {
+  echo "===== DeliveryDispatch logs: $LOG_DIR" >&2
+  for log in "$LOG_DIR"/*.log "$DELIVERYDISPATCH_LOG_DIR"/flow-*.log; do
+    if [[ -f "$log" ]]; then
+      echo "===== ${log}" >&2
+      cat "$log" >&2
+    fi
+  done
+}
 
 read -r DELIVERYDISPATCH_REGISTRY_PUB DELIVERYDISPATCH_REGISTRY DELIVERYDISPATCH_API_HTTP_PORT DELIVERYDISPATCH_CENTER_ROUTE DELIVERYDISPATCH_COURIER_ROUTE DELIVERYDISPATCH_TRACKING_ROUTE DELIVERYDISPATCH_STATUS_FANOUT DELIVERYDISPATCH_CUSTOMER_STREAM DELIVERYDISPATCH_CUSTOMER_SPOT_ROUTER DELIVERYDISPATCH_CUSTOMER_SPOT DELIVERYDISPATCH_COURIER_STREAM DELIVERYDISPATCH_COURIER_SESSION_SPOT_ROUTER DELIVERYDISPATCH_COURIER_SESSION_SPOT DELIVERYDISPATCH_COURIER_ACTOR_NODE1_ROUTE DELIVERYDISPATCH_COURIER_ACTOR_NODE1_ROUTER DELIVERYDISPATCH_COURIER_ACTOR_NODE1 DELIVERYDISPATCH_COURIER_ACTOR_NODE2_ROUTE DELIVERYDISPATCH_COURIER_ACTOR_NODE2_ROUTER DELIVERYDISPATCH_COURIER_ACTOR_NODE2 <<<"$(python3 - <<'PY'
 import socket
@@ -86,13 +107,14 @@ port_of() {
 wait_port() {
   local label="$1"
   local port="$2"
-  for _ in $(seq 1 150); do
+  for _ in $(seq 1 30); do
     if (echo >"/dev/tcp/127.0.0.1/${port}") >/dev/null 2>&1; then
       return 0
     fi
     sleep 0.1
   done
   echo "timed out waiting for ${label} on ${port}" >&2
+  dump_logs
   return 1
 }
 
@@ -147,7 +169,7 @@ start_role dispatch-api "$BIN_DIR/zlink_cpp_e2e_delivery_dispatch_dispatch_api"
 wait_port dispatch-api "$DELIVERYDISPATCH_API_HTTP_PORT"
 
 "$BIN_DIR/zlink_cpp_e2e_delivery_dispatch_probe" >"$LOG_DIR/probe.log" 2>&1 || {
-  cat "$LOG_DIR/probe.log" >&2
+  dump_logs
   exit 1
 }
 
@@ -155,20 +177,30 @@ wait_port dispatch-api "$DELIVERYDISPATCH_API_HTTP_PORT"
   --api-url "$DELIVERYDISPATCH_API_HTTP" \
   --stream-endpoint "$DELIVERYDISPATCH_CUSTOMER_STREAM" \
   --courier-stream-endpoint "$DELIVERYDISPATCH_COURIER_STREAM" >"$LOG_DIR/client.log" 2>&1 || {
-  cat "$LOG_DIR/client.log" >&2
-  for log in "$LOG_DIR"/*.log; do
-    echo "===== ${log}" >&2
-    cat "$log" >&2
-  done
+  dump_logs
   exit 1
 }
 
-grep -q "deliverydispatch-server-evidence=completed" "$LOG_DIR/client.log"
-grep -q "deliverydispatch-reassignment=completed" "$LOG_DIR/client.log"
-grep -Rq "message flow" "$DELIVERYDISPATCH_LOG_DIR"
-grep -q "message flow" "$DELIVERYDISPATCH_LOG_DIR/flow-courier-gateway.log"
-grep -q "message flow" "$DELIVERYDISPATCH_LOG_DIR/flow-delivery-courier-node-1.log"
-grep -q "message flow" "$DELIVERYDISPATCH_LOG_DIR/flow-delivery-courier-node-2.log"
-grep -q "message flow" "$DELIVERYDISPATCH_LOG_DIR/flow-customer-gateway.log"
-grep -q "message flow" "$DELIVERYDISPATCH_LOG_DIR/flow-courier-session.log"
+require_log_marker() {
+  local pattern="$1"
+  local file="$2"
+  if ! grep -q "$pattern" "$file"; then
+    echo "missing marker '$pattern' in $file" >&2
+    dump_logs
+    exit 1
+  fi
+}
+
+require_log_marker "deliverydispatch-server-evidence=completed" "$LOG_DIR/client.log"
+require_log_marker "deliverydispatch-reassignment=completed" "$LOG_DIR/client.log"
+if ! grep -Rq "message flow" "$DELIVERYDISPATCH_LOG_DIR"; then
+  echo "missing any message flow evidence under $DELIVERYDISPATCH_LOG_DIR" >&2
+  dump_logs
+  exit 1
+fi
+require_log_marker "message flow" "$DELIVERYDISPATCH_LOG_DIR/flow-courier-gateway.log"
+require_log_marker "message flow" "$DELIVERYDISPATCH_LOG_DIR/flow-delivery-courier-node-1.log"
+require_log_marker "message flow" "$DELIVERYDISPATCH_LOG_DIR/flow-delivery-courier-node-2.log"
+require_log_marker "message flow" "$DELIVERYDISPATCH_LOG_DIR/flow-customer-gateway.log"
+require_log_marker "message flow" "$DELIVERYDISPATCH_LOG_DIR/flow-courier-session.log"
 echo "delivery-dispatch e2e result=passed"

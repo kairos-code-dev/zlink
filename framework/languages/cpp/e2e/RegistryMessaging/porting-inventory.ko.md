@@ -41,7 +41,7 @@ C++ `RegistryMessaging` E2E의 대응 파일과 남은 gap을 기록한다. 상�
 | `Client/Scenarios/RmC9BackpressureScenario.cs` | `Client/Scenarios/rm_c9_backpressure_scenario.hpp` | scenario | done | one-way send pressure 제출과 recovery evidence를 검증한다. public send는 bounded-failure oracle을 노출하지 않는다. |
 | `Server/Consumer/Configuration/ConsumerOptions.cs` | `Server/Consumer/Configuration/consumer_options.hpp` | consumer-role | done | consumer HTTP endpoint, registry router, direct provider endpoints를 env에서 읽는다. |
 | `Server/Consumer/ConsumerHostFactory.cs` | `Server/Consumer/main.cpp` | consumer-role | done | C++ consumer role이 direct, single, discovery, backpressure 구성의 framework client와 HTTP endpoint를 구성한다. payload scenario의 JSON wrapper 크기를 받기 위해 public HTTP server option으로 request body limit을 높인다. |
-| `Server/Consumer/Endpoints/ConsumerEndpoints.cs` | `Server/Consumer/Endpoints/consumer_endpoints.hpp` | consumer-role | partial | profile request, slow/missing request, missing command, payload, backpressure endpoint가 scenario 검증 경로에 쓰인다. batch endpoint는 남아 있지만 C++ HTTP array body binding 차이 때문에 RM-C3은 단건 request endpoint 반복 호출로 검증한다. |
+| `Server/Consumer/Endpoints/ConsumerEndpoints.cs` | `Server/Consumer/Endpoints/consumer_endpoints.hpp` | consumer-role | done | profile request, slow/missing request, missing command, payload, backpressure endpoint가 scenario 검증 경로에 쓰인다. RM-C3은 같은 consumer public request 경로를 반복 호출해 multi-provider distribution을 검증한다. C++ HTTP array body binding 차이는 scenario/public messaging 동작 차이로 보지 않는다. |
 | `Server/Consumer/Program.cs` | `Server/Consumer/main.cpp` | consumer-role | done | consumer role executable 진입점이 있다. |
 | `Server/Consumer/RegistryMessaging.Consumer.csproj` | `framework/languages/cpp/CMakeLists.txt` | build | done | `zlink_cpp_e2e_registry_messaging_consumer` target이 대응한다. |
 | `Server/Provider/Configuration/ServerOptions.cs` | `Server/Provider/Configuration/provider_options.hpp` | server-role | done | provider rid, endpoints, weight, max message size, log dir를 env에서 읽는다. |
@@ -103,3 +103,14 @@ C++ `RegistryMessaging` E2E의 대응 파일과 남은 gap을 기록한다. 상�
     RM-C3, RM-C4, RM-C5, RM-C7, RM-C8, RM-C9 sweep가 모두 통과한다. RM-C9 child log의
     `backpressure-consumer-flow.log`와 `api-a-flow.log`에는 send pressure와 후속 recovery
     request/reply flow가 남는다.
+- 2026-07-01: `timeout 420s framework/languages/cpp/e2e/RegistryMessaging/run_e2e.sh RM-C9`
+  - 결과: 통과
+  - 로그: `logs/20260701-141721-60851`
+  - 의미: 현재 public one-way send 계약에 맞춘 RM-C9 send pressure, provider evidence, recovery 검증이
+    focused runner에서 통과한다.
+- 2026-07-01: `timeout 420s framework/languages/cpp/e2e/RegistryMessaging/run_e2e.sh all`
+  - 결과: 통과
+  - parent 로그: `logs/20260701-141526-48855`
+  - RM-C9 child 로그: `logs/20260701-141721-60851`
+  - 의미: RM-A1, RM-A2, RM-A4, RM-A6, RM-B1, RM-B2, RM-C1, RM-C2,
+    RM-C3, RM-C4, RM-C5, RM-C7, RM-C8, RM-C8-max, RM-C9 sweep가 모두 통과한다.

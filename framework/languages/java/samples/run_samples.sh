@@ -53,7 +53,7 @@ run_sample_with_retry() {
   done
 }
 
-for sample in TicTacToe Bingo; do
+for sample in TicTacToe Bingo DeliveryDispatch; do
   if should_run_sample java "$sample"; then
     run_sample_with_retry "$SAMPLES_DIR/java/$sample/run_sample.sh"
   fi

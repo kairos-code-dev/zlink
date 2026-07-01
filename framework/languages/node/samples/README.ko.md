@@ -43,11 +43,13 @@ Windows PowerShell 에서는 PowerShell runner 를 실행한다.
 ```bash
 ./framework/languages/node/samples/TicTacToe.Ts/run_sample.sh
 ./framework/languages/node/samples/Bingo.Ts/run_sample.sh
+./framework/languages/node/samples/DeliveryDispatch.Ts/run_sample.sh
 ```
 
 ```powershell
 .\framework\languages\node\samples\TicTacToe.Ts\run_sample.ps1
 .\framework\languages\node\samples\Bingo.Ts\run_sample.ps1
+.\framework\languages\node\samples\DeliveryDispatch.Ts\run_sample.ps1
 ```
 
 ## Configuration
@@ -64,8 +66,8 @@ Node 샘플은 NestJS module 구성을 기준으로 설정을 주입한다. 서�
 아래에 둔다. `Shared` 아래에는 여러 role 이 함께 쓰는 message DTO, protobuf, codec 같은
 통신 계약만 둔다.
 
-`TicTacToe.Ts` 는 stream payload 와 샘플 내부 message 계약에 JSON payload 를
-사용한다. `Bingo.Ts` 는 Protobuf payload 를 사용한다.
+`TicTacToe.Ts` 와 `DeliveryDispatch.Ts` 는 stream payload 와 샘플 내부 message 계약에
+JSON payload 를 사용한다. `Bingo.Ts` 는 Protobuf payload 를 사용한다.
 
 ## 포함된 sample
 
@@ -73,6 +75,7 @@ Node 샘플은 NestJS module 구성을 기준으로 설정을 주입한다. 서�
 |--------|---------------|
 | `TicTacToe.Ts` | 기본 NestJS channel, HTTP API, stream connector, actor game 흐름 |
 | `Bingo.Ts` | NestJS DI, channel client/server, Spot, actor, session relay, bound push |
+| `DeliveryDispatch.Ts` | Registry discovery, dispatch channel, courier gateway, courier stream bind, actor-node route mesh, status fanout, customer stream push |
 
 ## 성공 조건
 

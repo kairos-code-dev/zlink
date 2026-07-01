@@ -1,0 +1,64 @@
+package systems.zlink.samples.kotlin.deliverydispatch.server.customergateway
+
+import org.springframework.boot.WebApplicationType
+import org.springframework.boot.autoconfigure.SpringBootApplication
+import org.springframework.boot.builder.SpringApplicationBuilder
+import org.springframework.context.annotation.Bean
+import systems.zlink.contracts.core.RoutingId
+import systems.zlink.framework.configuration.ZLinkMessageFlowLogMode
+import systems.zlink.framework.spring.EnableZLinkFramework
+import systems.zlink.framework.spring.ZLinkFrameworkConfigurer
+import systems.zlink.samples.kotlin.deliverydispatch.server.configuration.SampleNames
+import systems.zlink.samples.kotlin.deliverydispatch.server.configuration.SampleTopology
+import systems.zlink.samples.kotlin.deliverydispatch.server.customergateway.sessions.CustomerSession
+import systems.zlink.samples.kotlin.deliverydispatch.server.customergateway.sessions.handlers.SubscribeDeliverySessionHandler
+import systems.zlink.samples.kotlin.deliverydispatch.server.customergateway.spots.CustomerEntrySpot
+
+@EnableZLinkFramework
+@SpringBootApplication(
+    proxyBeanMethods = false,
+    scanBasePackageClasses = [CustomerGatewayApplication::class],
+)
+class CustomerGatewayApplication {
+    @Bean
+    fun customerGatewayFramework(): ZLinkFrameworkConfigurer =
+        ZLinkFrameworkConfigurer { options ->
+            options.addHandlersFromPackageOf(CustomerGatewayApplication::class.java)
+            options.useDiscovery().addRegistryEndpoint(SampleTopology.RegistryRouterEndpoint)
+            options.configureDispatch()
+                .messageFlow(ZLinkMessageFlowLogMode.KEY_TRANSITIONS)
+                .traceLogFile(
+                    System.getenv().getOrDefault("DELIVERYDISPATCH_LOG_DIR", "logs") +
+                        "/flow-customer-gateway.log",
+                )
+                .traceLabel("customer-gateway")
+            options.addClientServerChannel(SampleNames.CustomerRouteChannel)
+                .enableServer(SampleTopology.CustomerRouteEndpoint)
+                .enableClient()
+                .setRoutingId(RoutingId.from("delivery-customer-gateway-server"))
+                .addHandlerGroup("customer-route")
+            val node = options.addSpotMesh(SampleNames.CustomerSpotMesh)
+            node.enableRouter(SampleTopology.CustomerSpotRouterEndpoint)
+                .setRoutingId(RoutingId.from(SampleTopology.CustomerSpotNodeRid))
+            node.enablePubSub(SampleTopology.CustomerSpotEndpoint)
+            node.addEntrySpot(CustomerEntrySpot::class.java)
+            node.addActorFactory(SampleNames.CustomerActorType, CustomerActorFactory::class.java)
+            options.addStreamNode(SampleNames.CustomerStreamNode)
+                .bind(SampleTopology.CustomerStreamEndpoint)
+                .registerSession(CustomerSession::class.java)
+                .addSessionPacketHandler(SubscribeDeliverySessionHandler::class.java)
+        }
+
+    @Bean
+    fun customerActorDirectory(): CustomerActorDirectory = CustomerActorDirectory()
+
+    companion object {
+        fun run(args: Array<String> = emptyArray()): AutoCloseable {
+            val builder = SpringApplicationBuilder(CustomerGatewayApplication::class.java)
+                .web(WebApplicationType.NONE)
+            builder.application().setKeepAlive(true)
+            val context = builder.run(*args)
+            return AutoCloseable { context.close() }
+        }
+    }
+}

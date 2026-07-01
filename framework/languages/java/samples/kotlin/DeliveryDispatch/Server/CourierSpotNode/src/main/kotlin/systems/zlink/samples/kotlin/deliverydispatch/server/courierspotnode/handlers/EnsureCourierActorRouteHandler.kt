@@ -1,0 +1,31 @@
+package systems.zlink.samples.kotlin.deliverydispatch.server.courierspotnode.handlers
+
+import systems.zlink.framework.ZLinkAwait
+import systems.zlink.framework.actors.ZLinkActorManager
+import systems.zlink.framework.channels.ZLinkRouteRequestContext
+import systems.zlink.framework.channels.ZLinkRouteRequestHandler
+import systems.zlink.framework.handlers.ZLinkHandlerGroup
+import systems.zlink.samples.kotlin.deliverydispatch.server.configuration.SampleNames
+import systems.zlink.samples.kotlin.deliverydispatch.shared.contracts.ActorRefSnapshot
+import systems.zlink.samples.kotlin.deliverydispatch.shared.contracts.EnsureCourierActorRes
+import systems.zlink.samples.kotlin.deliverydispatch.shared.contracts.EnsureCourierActorReq
+
+@ZLinkHandlerGroup("courier-actor-node")
+class EnsureCourierActorRouteHandler(
+    private val actors: ZLinkActorManager,
+) : ZLinkRouteRequestHandler<EnsureCourierActorReq, EnsureCourierActorRes> {
+    override fun handle(
+        request: EnsureCourierActorReq,
+        context: ZLinkRouteRequestContext,
+    ): EnsureCourierActorRes {
+        val actor = ZLinkAwait.await(actors.getOrCreate(request.courierId, SampleNames.CourierActorType, request))
+        return EnsureCourierActorRes(
+            courierId = request.courierId,
+            actor = ActorRefSnapshot(
+                nodeRid = actor.nodeRid().toString(),
+                actorId = actor.actorId(),
+                generation = actor.epoch(),
+            ),
+        )
+    }
+}

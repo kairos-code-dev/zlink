@@ -11,6 +11,14 @@ fi
 
 cd "$ROOT_DIR"
 
+SAMPLE_FILTER="${ZLINK_SAMPLE_FILTER:-}"
+
+should_run_sample() {
+  local language="$1"
+  local sample="$2"
+  [[ -z "$SAMPLE_FILTER" || "$SAMPLE_FILTER" == "$sample" || "$SAMPLE_FILTER" == "$language/$sample" ]]
+}
+
 ./gradlew -Pzlink.useLocalBindings=true --no-daemon \
   :zlink-framework-testkit:contractTest \
   --tests '*SampleReleaseGateContractTest*'
@@ -46,12 +54,20 @@ run_sample_with_retry() {
 }
 
 for sample in TicTacToe Bingo; do
-  run_sample_with_retry "$SAMPLES_DIR/java/$sample/run_sample.sh"
+  if should_run_sample java "$sample"; then
+    run_sample_with_retry "$SAMPLES_DIR/java/$sample/run_sample.sh"
+  fi
 done
 
 for sample in TicTacToe Bingo; do
-  run_sample_with_retry "$SAMPLES_DIR/kotlin/$sample/run_sample.sh"
+  if should_run_sample kotlin "$sample"; then
+    run_sample_with_retry "$SAMPLES_DIR/kotlin/$sample/run_sample.sh"
+  fi
 done
+
+if should_run_sample kotlin DeliveryDispatch; then
+  run_sample_with_retry "$SAMPLES_DIR/kotlin/DeliveryDispatch/run_sample.sh"
+fi
 
 forbidden_sample_pattern="systems\\.zlink\\.(runtime|internal)"
 forbidden_sample_pattern+="|systems\\.zlink\\.contracts\\.core\\.RoutingId\\."

@@ -5,6 +5,21 @@ ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 RUN_ID="$(date +%Y%m%d-%H%M%S)-$$"
 LOG_DIR="$ROOT_DIR/logs/$RUN_ID"
 mkdir -p "$LOG_DIR"
+LOCAL_READINESS_TIMEOUT_SECONDS=3
+LOCAL_READINESS_POLL_SECONDS=0.1
+ROUTE_SETTLE_SECONDS=5
+SCENARIO_SETTLE_SECONDS=3
+HTTP_PROBE_TIMEOUT_SECONDS=3
+LOCAL_READINESS_ATTEMPTS="$(
+  python3 - "$LOCAL_READINESS_TIMEOUT_SECONDS" "$LOCAL_READINESS_POLL_SECONDS" <<'PY'
+import math
+import sys
+
+timeout = float(sys.argv[1])
+poll = float(sys.argv[2])
+print(max(1, math.ceil(timeout / poll)))
+PY
+)"
 
 REGISTRY_PROJECT="$ROOT_DIR/Server/Registry/RuntimeMonitoring.Registry.csproj"
 SERVICE_PROJECT="$ROOT_DIR/Server/Service/RuntimeMonitoring.Service.csproj"
@@ -66,19 +81,64 @@ trap cleanup EXIT
 wait_health() {
   local url="$1"
   local name="$2"
-  for _ in $(seq 1 120); do
-    if curl -fsS "$url/health" >/dev/null 2>&1; then
+  local deadline_ns
+  deadline_ns="$(
+    python3 - "$LOCAL_READINESS_TIMEOUT_SECONDS" <<PY
+import sys
+import time
+
+timeout = float(sys.argv[1])
+print(time.monotonic_ns() + int(timeout * 1_000_000_000))
+PY
+  )"
+  while true; do
+    local probe_timeout
+    probe_timeout="$(
+      python3 - "$deadline_ns" "$HTTP_PROBE_TIMEOUT_SECONDS" <<PY
+import sys
+import time
+
+deadline_ns = int(sys.argv[1])
+probe_timeout = float(sys.argv[2])
+remaining = (deadline_ns - time.monotonic_ns()) / 1_000_000_000
+if remaining <= 0:
+    print("0")
+else:
+    print(f"{min(probe_timeout, remaining):.3f}")
+PY
+    )"
+    if [[ "$probe_timeout" == "0" ]]; then
+      break
+    fi
+    if curl --max-time "$probe_timeout" \
+      --connect-timeout "$probe_timeout" \
+      -fsS "$url/health" >/dev/null 2>&1; then
       return 0
     fi
-    sleep 0.25
+    python3 - "$deadline_ns" "$LOCAL_READINESS_POLL_SECONDS" <<PY
+import sys
+import time
+
+deadline_ns = int(sys.argv[1])
+poll = float(sys.argv[2])
+remaining = (deadline_ns - time.monotonic_ns()) / 1_000_000_000
+if remaining > 0:
+    time.sleep(min(poll, remaining))
+PY
   done
-  echo "Timed out waiting for $name at $url" >&2
+  echo "Timed out waiting ${LOCAL_READINESS_TIMEOUT_SECONDS}s for $name at $url" >&2
   return 1
 }
 
 echo "log_dir=$LOG_DIR"
+dotnet build "$REGISTRY_PROJECT" --maxcpucount:1 >/dev/null
+dotnet build "$SERVICE_PROJECT" --maxcpucount:1 >/dev/null
+dotnet build "$FILTERED_SERVICE_PROJECT" --maxcpucount:1 >/dev/null
+dotnet build "$THROWING_SERVICE_PROJECT" --maxcpucount:1 >/dev/null
+dotnet build "$TRIGGER_PROJECT" --maxcpucount:1 >/dev/null
+dotnet build "$CLIENT_PROJECT" --maxcpucount:1 >/dev/null
 
-ZLINK_E2E_RID="registry" dotnet run --project "$REGISTRY_PROJECT" -- \
+ZLINK_E2E_RID="registry" dotnet run --no-build --project "$REGISTRY_PROJECT" -- \
   --rid registry \
   --http-url "$REG_URL" \
   --registry-pub-endpoint "$REG_PUB" \
@@ -89,7 +149,7 @@ ZLINK_E2E_RID="registry" dotnet run --project "$REGISTRY_PROJECT" -- \
 pids+=("$!")
 wait_health "$REG_URL" registry
 
-ZLINK_E2E_RID="svc-a" dotnet run --project "$SERVICE_PROJECT" -- \
+ZLINK_E2E_RID="svc-a" dotnet run --no-build --project "$SERVICE_PROJECT" -- \
   --rid svc-a \
   --http-url "$SVC_URL" \
   --registry-router-endpoint "$REG_ROUTER" \
@@ -102,7 +162,7 @@ ZLINK_E2E_RID="svc-a" dotnet run --project "$SERVICE_PROJECT" -- \
 pids+=("$!")
 wait_health "$SVC_URL" svc-a
 
-ZLINK_E2E_RID="svc-b" dotnet run --project "$FILTERED_SERVICE_PROJECT" -- \
+ZLINK_E2E_RID="svc-b" dotnet run --no-build --project "$FILTERED_SERVICE_PROJECT" -- \
   --rid svc-b \
   --http-url "$SVC_B_URL" \
   --registry-router-endpoint "$REG_ROUTER" \
@@ -113,7 +173,7 @@ ZLINK_E2E_RID="svc-b" dotnet run --project "$FILTERED_SERVICE_PROJECT" -- \
 pids+=("$!")
 wait_health "$SVC_B_URL" svc-b
 
-ZLINK_E2E_RID="svc-throw" ZLINK_DEBUG_FRAMEWORK_TASKS=1 dotnet run --project "$THROWING_SERVICE_PROJECT" -- \
+ZLINK_E2E_RID="svc-throw" ZLINK_DEBUG_FRAMEWORK_TASKS=1 dotnet run --no-build --project "$THROWING_SERVICE_PROJECT" -- \
   --rid svc-throw \
   --http-url "$THROW_URL" \
   --registry-router-endpoint "$REG_ROUTER" \
@@ -124,7 +184,7 @@ ZLINK_E2E_RID="svc-throw" ZLINK_DEBUG_FRAMEWORK_TASKS=1 dotnet run --project "$T
 pids+=("$!")
 wait_health "$THROW_URL" svc-throw
 
-ZLINK_E2E_RID="trigger" dotnet run --project "$TRIGGER_PROJECT" -- \
+ZLINK_E2E_RID="trigger" dotnet run --no-build --project "$TRIGGER_PROJECT" -- \
   --http-url "http://127.0.0.1:$TRIGGER_HTTP_PORT" \
   --registry-url "$REG_URL" \
   --registry-router-endpoint "$REG_ROUTER" \
@@ -137,7 +197,9 @@ ZLINK_E2E_RID="trigger" dotnet run --project "$TRIGGER_PROJECT" -- \
 pids+=("$!")
 wait_health "http://127.0.0.1:$TRIGGER_HTTP_PORT" trigger
 
-dotnet run --project "$CLIENT_PROJECT" -- \
+sleep "$ROUTE_SETTLE_SECONDS"
+
+dotnet run --no-build --project "$CLIENT_PROJECT" -- \
   --trigger-url "http://127.0.0.1:$TRIGGER_HTTP_PORT" \
   --registry-router-endpoint "$REG_ROUTER" \
   --registry-url "$REG_URL" \

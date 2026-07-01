@@ -45,6 +45,35 @@ case "$SCENARIO_SET" in
     ;;
 esac
 mkdir -p "$LOG_DIR"
+LOCAL_READINESS_TIMEOUT_SECONDS=3
+LOCAL_READINESS_POLL_SECONDS=0.1
+ROUTE_SETTLE_SECONDS=5
+SCENARIO_SETTLE_SECONDS=3
+HTTP_PROBE_TIMEOUT_SECONDS=3
+PROCESS_SHUTDOWN_TIMEOUT_SECONDS=5
+CHILD_PROCESS_TIMEOUT_SECONDS=420
+CHILD_COOLDOWN_SECONDS=8
+CLIENT_PROCESS_TIMEOUT_SECONDS=120
+LOCAL_READINESS_ATTEMPTS="$(
+  python3 - "$LOCAL_READINESS_TIMEOUT_SECONDS" "$LOCAL_READINESS_POLL_SECONDS" <<'PY'
+import math
+import sys
+
+timeout = float(sys.argv[1])
+poll = float(sys.argv[2])
+print(max(1, math.ceil(timeout / poll)))
+PY
+)"
+PROCESS_SHUTDOWN_ATTEMPTS="$(
+  python3 - "$PROCESS_SHUTDOWN_TIMEOUT_SECONDS" "$LOCAL_READINESS_POLL_SECONDS" <<'PY'
+import math
+import sys
+
+timeout = float(sys.argv[1])
+poll = float(sys.argv[2])
+print(max(1, math.ceil(timeout / poll)))
+PY
+)"
 
 build_projects() {
   dotnet build "$REGISTRY_PROJECT" --maxcpucount:1 >/dev/null
@@ -59,21 +88,13 @@ if [[ "$SCENARIO_SET" == "all" && "${ZLINK_SPOT_SERVICE_ALL_CHILD:-0}" != "1" ]]
   echo "log_dir=$LOG_DIR"
   build_projects
   for child_group in default-batch sm-g2 sm-g3 sm-g4 sm-g1 sm-q9; do
-    child_ok=0
-    for attempt in $(seq 1 "${ZLINK_SPOT_SERVICE_CHILD_ATTEMPTS:-2}"); do
-      echo "child operation_group=${child_group} attempt=${attempt}"
-      if timeout "${ZLINK_SPOT_SERVICE_CHILD_TIMEOUT:-420s}" \
-        env SCENARIO_SET="$child_group" ZLINK_SPOT_SERVICE_ALL_CHILD=1 ZLINK_SPOT_SERVICE_SKIP_BUILD=1 "$0"; then
-        child_ok=1
-        break
-      fi
-      sleep 1
-    done
-    if [[ "$child_ok" != "1" ]]; then
-      echo "child operation_group=${child_group} failed after retries" >&2
+    echo "child operation_group=${child_group}"
+    if ! timeout "${CHILD_PROCESS_TIMEOUT_SECONDS}s" \
+      env SCENARIO_SET="$child_group" ZLINK_SPOT_SERVICE_ALL_CHILD=1 ZLINK_SPOT_SERVICE_SKIP_BUILD=1 "$0"; then
+      echo "child operation_group=${child_group} failed" >&2
       exit 1
     fi
-    sleep "${ZLINK_SPOT_SERVICE_CHILD_COOLDOWN_SECONDS:-8}"
+    sleep "$CHILD_COOLDOWN_SECONDS"
   done
   echo "spot-service e2e result=passed"
   exit 0
@@ -88,7 +109,7 @@ cleanup() {
       kill -INT "-$pid" 2>/dev/null || kill -INT "$pid" 2>/dev/null || true
     fi
   done
-  for _ in $(seq 1 50); do
+  for _ in $(seq 1 "$PROCESS_SHUTDOWN_ATTEMPTS"); do
     local alive=0
     for pid in "${PIDS[@]}"; do
       if kill -0 "$pid" 2>/dev/null; then
@@ -97,7 +118,7 @@ cleanup() {
       fi
     done
     [[ "$alive" == "0" ]] && break
-    sleep 0.1
+    sleep "$LOCAL_READINESS_POLL_SECONDS"
   done
   for pid in "${PIDS[@]}"; do
     if kill -0 "$pid" 2>/dev/null; then
@@ -198,8 +219,7 @@ wait_port() {
   local port
   host="$(endpoint_host "$endpoint")"
   port="$(endpoint_port "$endpoint")"
-  local attempts="${ZLINK_SPOT_SERVICE_WAIT_PORT_ATTEMPTS:-1800}"
-  for _ in $(seq 1 "$attempts"); do
+  for _ in $(seq 1 "$LOCAL_READINESS_ATTEMPTS"); do
     if python3 - "$host" "$port" <<'PY' >/dev/null 2>&1
 import socket
 import sys
@@ -215,16 +235,72 @@ finally:
     sock.close()
 PY
     then
-      sleep "${ZLINK_SPOT_SERVICE_ENDPOINT_SETTLE_SECONDS:-0.25}"
       return 0
     fi
     if [[ -n "$pid" ]] && ! kill -0 "$pid" 2>/dev/null; then
       echo "${name} exited before readiness at ${endpoint}" >&2
       return 1
     fi
-    sleep 0.1
+    sleep "$LOCAL_READINESS_POLL_SECONDS"
   done
-  echo "Timed out waiting for ${name} at ${endpoint}" >&2
+  echo "Timed out waiting ${LOCAL_READINESS_TIMEOUT_SECONDS}s for ${name} at ${endpoint}" >&2
+  return 1
+}
+
+wait_health() {
+  local name="$1"
+  local url="$2"
+  local pid="${PIDS[-1]:-}"
+  local deadline_ns
+  deadline_ns="$(
+    python3 - "$LOCAL_READINESS_TIMEOUT_SECONDS" <<'PY'
+import sys
+import time
+
+timeout = float(sys.argv[1])
+print(time.monotonic_ns() + int(timeout * 1_000_000_000))
+PY
+  )"
+  while true; do
+    local probe_timeout
+    probe_timeout="$(
+      python3 - "$deadline_ns" "$HTTP_PROBE_TIMEOUT_SECONDS" <<'PY'
+import sys
+import time
+
+deadline_ns = int(sys.argv[1])
+probe_timeout = float(sys.argv[2])
+remaining = (deadline_ns - time.monotonic_ns()) / 1_000_000_000
+if remaining <= 0:
+    print("0")
+else:
+    print(f"{min(probe_timeout, remaining):.3f}")
+PY
+    )"
+    if [[ "$probe_timeout" == "0" ]]; then
+      break
+    fi
+    if curl --max-time "$probe_timeout" \
+      --connect-timeout "$probe_timeout" \
+      -fsS "$url/health" >/dev/null 2>&1; then
+      return 0
+    fi
+    if [[ -n "$pid" ]] && ! kill -0 "$pid" 2>/dev/null; then
+      echo "${name} exited before readiness at ${url}" >&2
+      return 1
+    fi
+    python3 - "$deadline_ns" "$LOCAL_READINESS_POLL_SECONDS" <<'PY'
+import sys
+import time
+
+deadline_ns = int(sys.argv[1])
+poll = float(sys.argv[2])
+remaining = (deadline_ns - time.monotonic_ns()) / 1_000_000_000
+if remaining > 0:
+    time.sleep(min(poll, remaining))
+PY
+  done
+  echo "Timed out waiting ${LOCAL_READINESS_TIMEOUT_SECONDS}s for ${name} at ${url}" >&2
   return 1
 }
 
@@ -232,19 +308,18 @@ wait_control_route() {
   local source_url="$1"
   local target_rid="$2"
   local name="$3"
-  local attempts="${ZLINK_SPOT_SERVICE_WAIT_ROUTE_ATTEMPTS:-180}"
   local payload
   payload="{\"value\":\"ready-${name}\"}"
-  for _ in $(seq 1 "$attempts"); do
-    if curl -fsS \
-      -H 'content-type: application/json' \
-      -d "$payload" \
-      "$source_url/channel/control-ping/$target_rid" >/dev/null 2>&1; then
-      return 0
-    fi
-    sleep 0.5
-  done
-  echo "Timed out waiting for control route ${name} via ${source_url} -> ${target_rid}" >&2
+  sleep "$ROUTE_SETTLE_SECONDS"
+  if curl --max-time "$HTTP_PROBE_TIMEOUT_SECONDS" \
+    --connect-timeout "$HTTP_PROBE_TIMEOUT_SECONDS" \
+    -fsS \
+    -H 'content-type: application/json' \
+    -d "$payload" \
+    "$source_url/channel/control-ping/$target_rid" >/dev/null 2>&1; then
+    return 0
+  fi
+  echo "Control route ${name} was not ready after route settle ${ROUTE_SETTLE_SECONDS}s via ${source_url} -> ${target_rid}" >&2
   return 1
 }
 
@@ -286,7 +361,7 @@ start_server registry "$REGISTRY_DLL" \
   --registry-pub-endpoint "$REGISTRY_PUB" \
   --registry-router-endpoint "$REGISTRY_ROUTER" \
   --log-dir "$LOG_DIR"
-wait_port registry "$REGISTRY_HTTP"
+wait_health registry "$REGISTRY_HTTP"
 wait_port registry-router "$REGISTRY_ROUTER"
 
 if [[ "$SCENARIO_SET" != "sm-q9" && "$NEED_SESSION_NODES" == "1" ]]; then
@@ -308,7 +383,7 @@ if [[ "$NEED_TLS_STREAM" == "1" ]]; then
   )
 fi
 start_server session-a "$SESSION_DLL" "${SESSION_A_ARGS[@]}"
-wait_port session-a "$SESSION_A_HTTP"
+wait_health session-a "$SESSION_A_HTTP"
 wait_port session-a-control "$SESSION_A_CONTROL"
 wait_port session-a-spot-router "$SESSION_A_SPOT_ROUTER"
 wait_port session-a-stream "$SESSION_A_STREAM"
@@ -326,7 +401,7 @@ if [[ "$NEED_SESSION_B" == "1" ]]; then
     --stream-endpoint "$SESSION_B_STREAM" \
     --evidence-file "$LOG_DIR/session-b.evidence.log" \
     --log-dir "$LOG_DIR"
-  wait_port session-b "$SESSION_B_HTTP"
+  wait_health session-b "$SESSION_B_HTTP"
   wait_port session-b-control "$SESSION_B_CONTROL"
   wait_port session-b-spot-router "$SESSION_B_SPOT_ROUTER"
   wait_port session-b-stream "$SESSION_B_STREAM"
@@ -346,7 +421,7 @@ start_server play-a "$PLAY_DLL" \
   --external-client-endpoint "$CLIENT_EXTERNAL_CHANNEL" \
   --evidence-file "$LOG_DIR/play-a.evidence.log" \
   --log-dir "$LOG_DIR"
-wait_port play-a "$PLAY_A_HTTP"
+wait_health play-a "$PLAY_A_HTTP"
 wait_port play-a-control "$PLAY_A_CONTROL"
 wait_port play-a-spot-router "$PLAY_A_SPOT_ROUTER"
 wait_port play-a-external-spot "$PLAY_A_EXTERNAL_SPOT"
@@ -362,7 +437,7 @@ start_server play-b "$PLAY_DLL" \
   --external-spot-endpoint "$PLAY_B_EXTERNAL_SPOT" \
   --evidence-file "$LOG_DIR/play-b.evidence.log" \
   --log-dir "$LOG_DIR"
-wait_port play-b "$PLAY_B_HTTP"
+wait_health play-b "$PLAY_B_HTTP"
 wait_port play-b-control "$PLAY_B_CONTROL"
 wait_port play-b-spot-router "$PLAY_B_SPOT_ROUTER"
 wait_port play-b-external-spot "$PLAY_B_EXTERNAL_SPOT"
@@ -379,7 +454,7 @@ start_server multi-node-a "$MULTI_NODE_DLL" \
   --multi-spot-router-a-endpoint "$MULTI_SPOT_ROUTER_A" \
   --evidence-file "$LOG_DIR/multi-node-a.evidence.log" \
   --log-dir "$LOG_DIR"
-wait_port multi-node-a "$MULTI_A_HTTP"
+wait_health multi-node-a "$MULTI_A_HTTP"
 wait_port multi-route-a "$MULTI_ROUTE_A"
 wait_port multi-spot-router-a "$MULTI_SPOT_ROUTER_A"
 
@@ -391,7 +466,7 @@ start_server multi-node-b "$MULTI_NODE_DLL" \
   --multi-spot-router-b-endpoint "$MULTI_SPOT_ROUTER_B" \
   --evidence-file "$LOG_DIR/multi-node-b.evidence.log" \
   --log-dir "$LOG_DIR"
-wait_port multi-node-b "$MULTI_B_HTTP"
+wait_health multi-node-b "$MULTI_B_HTTP"
 wait_port multi-route-b "$MULTI_ROUTE_B"
 wait_port multi-spot-router-b "$MULTI_SPOT_ROUTER_B"
 fi
@@ -404,7 +479,7 @@ start_server gateway "$GATEWAY_DLL" \
   --spot-pub-endpoint "$CLIENT_SPOT_PUB" \
   --evidence-file "$LOG_DIR/gateway.evidence.log" \
   --log-dir "$LOG_DIR"
-wait_port gateway "$GATEWAY_HTTP"
+wait_health gateway "$GATEWAY_HTTP"
 fi
 
 if [[ "$SCENARIO_SET" != "sm-q9" && "$NEED_SESSION_NODES" == "1" ]]; then
@@ -417,12 +492,12 @@ if [[ "$SCENARIO_SET" != "sm-q9" && "$NEED_SESSION_NODES" == "1" ]]; then
   fi
 fi
 
-sleep 2
+sleep "$ROUTE_SETTLE_SECONDS"
 
 run_client() {
   local operation_group="$1"
   echo "client operation_group=${operation_group}" >>"$LOG_DIR/client.stdout.log"
-  timeout "${ZLINK_SPOT_SERVICE_CLIENT_TIMEOUT:-120s}" dotnet "$CLIENT_DLL" \
+  timeout "${CLIENT_PROCESS_TIMEOUT_SECONDS}s" dotnet "$CLIENT_DLL" \
     --gateway-url "$GATEWAY_HTTP" \
 	    --play-a-url "$PLAY_A_HTTP" \
 	    --play-b-url "$PLAY_B_HTTP" \

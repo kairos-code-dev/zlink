@@ -15,6 +15,65 @@ CLIENT_DLL="$SCRIPT_DIR/Client/bin/Debug/net8.0/YieldDispatch.Client.dll"
 STAMP="$(date +%Y%m%d-%H%M%S)-$$"
 LOG_DIR="$SCRIPT_DIR/logs/$STAMP"
 mkdir -p "$LOG_DIR"
+LOCAL_READINESS_TIMEOUT_SECONDS=3
+LOCAL_READINESS_POLL_SECONDS=0.1
+ROUTE_SETTLE_SECONDS=5
+SCENARIO_SETTLE_SECONDS=3
+HTTP_PROBE_TIMEOUT_SECONDS=3
+PROCESS_CLEANUP_TIMEOUT_SECONDS=5
+YIELD_SHUTDOWN_TIMEOUT_SECONDS=60
+SCENARIO_MARKER_TIMEOUT_SECONDS=30
+SHUTDOWN_CLIENT_MARKER_TIMEOUT_SECONDS=90
+LOCAL_READINESS_ATTEMPTS="$(
+  python3 - "$LOCAL_READINESS_TIMEOUT_SECONDS" "$LOCAL_READINESS_POLL_SECONDS" <<'PY'
+import math
+import sys
+
+timeout = float(sys.argv[1])
+poll = float(sys.argv[2])
+print(max(1, math.ceil(timeout / poll)))
+PY
+)"
+PROCESS_CLEANUP_ATTEMPTS="$(
+  python3 - "$PROCESS_CLEANUP_TIMEOUT_SECONDS" "$LOCAL_READINESS_POLL_SECONDS" <<'PY'
+import math
+import sys
+
+timeout = float(sys.argv[1])
+poll = float(sys.argv[2])
+print(max(1, math.ceil(timeout / poll)))
+PY
+)"
+YIELD_SHUTDOWN_ATTEMPTS="$(
+  python3 - "$YIELD_SHUTDOWN_TIMEOUT_SECONDS" "$LOCAL_READINESS_POLL_SECONDS" <<'PY'
+import math
+import sys
+
+timeout = float(sys.argv[1])
+poll = float(sys.argv[2])
+print(max(1, math.ceil(timeout / poll)))
+PY
+)"
+SCENARIO_MARKER_ATTEMPTS="$(
+  python3 - "$SCENARIO_MARKER_TIMEOUT_SECONDS" "$LOCAL_READINESS_POLL_SECONDS" <<'PY'
+import math
+import sys
+
+timeout = float(sys.argv[1])
+poll = float(sys.argv[2])
+print(max(1, math.ceil(timeout / poll)))
+PY
+)"
+SHUTDOWN_CLIENT_MARKER_ATTEMPTS="$(
+  python3 - "$SHUTDOWN_CLIENT_MARKER_TIMEOUT_SECONDS" "$LOCAL_READINESS_POLL_SECONDS" <<'PY'
+import math
+import sys
+
+timeout = float(sys.argv[1])
+poll = float(sys.argv[2])
+print(max(1, math.ceil(timeout / poll)))
+PY
+)"
 
 build_projects() {
   dotnet build "$REGISTRY_PROJECT" --maxcpucount:1 >/dev/null
@@ -77,7 +136,7 @@ cleanup() {
       kill -INT "-$pid" 2>/dev/null || kill -INT "$pid" 2>/dev/null || true
     fi
   done
-  for _ in $(seq 1 50); do
+  for _ in $(seq 1 "$PROCESS_CLEANUP_ATTEMPTS"); do
     local alive=0
     for pid in "${PIDS[@]}"; do
       if kill -0 "$pid" 2>/dev/null; then
@@ -86,7 +145,7 @@ cleanup() {
       fi
     done
     [[ "$alive" == "0" ]] && break
-    sleep 0.1
+    sleep "$LOCAL_READINESS_POLL_SECONDS"
   done
   for pid in "${PIDS[@]}"; do
     if kill -0 "$pid" 2>/dev/null; then
@@ -95,20 +154,24 @@ cleanup() {
     wait "$pid" 2>/dev/null || true
   done
   pkill -TERM -f "$LOG_DIR" 2>/dev/null || true
-  sleep 0.1
+  sleep "$LOCAL_READINESS_POLL_SECONDS"
   pkill -KILL -f "$LOG_DIR" 2>/dev/null || true
 }
 trap cleanup EXIT
 trap 'cleanup; exit 143' TERM INT
 
-read -r -a PORTS <<<"$(python3 - <<'PY'
+allocate_ports() {
+  local count="$1"
+  python3 - "$count" <<'PY'
 import random
 import socket
+import sys
 
+count = int(sys.argv[1])
 sockets = []
 try:
     chosen = set()
-    while len(sockets) < 25:
+    while len(sockets) < count:
         port = random.randint(20000, 32767)
         if port in chosen:
             continue
@@ -125,33 +188,7 @@ finally:
     for sock in sockets:
         sock.close()
 PY
-)"
-
-REGISTRY_HTTP="http://127.0.0.1:${PORTS[0]}"
-REGISTRY_PUB="tcp://127.0.0.1:${PORTS[1]}"
-REGISTRY_ROUTER="tcp://127.0.0.1:${PORTS[2]}"
-DELAY_A_HTTP="http://127.0.0.1:${PORTS[3]}"
-DELAY_A_ENDPOINT="tcp://127.0.0.1:${PORTS[4]}"
-DELAY_B_HTTP="http://127.0.0.1:${PORTS[5]}"
-DELAY_B_ENDPOINT="tcp://127.0.0.1:${PORTS[6]}"
-PLAY_A_HTTP="http://127.0.0.1:${PORTS[7]}"
-PLAY_A_SPOT_ROUTER="tcp://127.0.0.1:${PORTS[8]}"
-PLAY_A_SPOT_PUB="tcp://127.0.0.1:${PORTS[9]}"
-PLAY_A_SPOT_ROUTE="tcp://127.0.0.1:${PORTS[10]}"
-PLAY_A_CONTROL="tcp://127.0.0.1:${PORTS[11]}"
-SESSION_A_HTTP="http://127.0.0.1:${PORTS[12]}"
-SESSION_A_STREAM="tcp://127.0.0.1:${PORTS[13]}"
-SESSION_A_SPOT_ROUTER="tcp://127.0.0.1:${PORTS[14]}"
-SESSION_A_CONTROL="tcp://127.0.0.1:${PORTS[15]}"
-PLAY_B_HTTP="http://127.0.0.1:${PORTS[16]}"
-PLAY_B_SPOT_ROUTER="tcp://127.0.0.1:${PORTS[17]}"
-PLAY_B_SPOT_PUB="tcp://127.0.0.1:${PORTS[18]}"
-PLAY_B_SPOT_ROUTE="tcp://127.0.0.1:${PORTS[19]}"
-PLAY_B_CONTROL="tcp://127.0.0.1:${PORTS[20]}"
-SESSION_B_HTTP="http://127.0.0.1:${PORTS[21]}"
-SESSION_B_STREAM="tcp://127.0.0.1:${PORTS[22]}"
-SESSION_B_SPOT_ROUTER="tcp://127.0.0.1:${PORTS[23]}"
-SESSION_B_CONTROL="tcp://127.0.0.1:${PORTS[24]}"
+}
 
 endpoint_port() {
   local endpoint="$1"
@@ -175,18 +212,74 @@ wait_port() {
   local port
   host="$(endpoint_host "$endpoint")"
   port="$(endpoint_port "$endpoint")"
-  for _ in $(seq 1 1200); do
+  for _ in $(seq 1 "$LOCAL_READINESS_ATTEMPTS"); do
     if (echo >"/dev/tcp/${host}/${port}") >/dev/null 2>&1; then
-      sleep 0.25
       return 0
     fi
     if [[ -n "$pid" ]] && ! kill -0 "$pid" 2>/dev/null; then
       echo "${name} exited before readiness at ${endpoint}" >&2
       return 1
     fi
-    sleep 0.1
+    sleep "$LOCAL_READINESS_POLL_SECONDS"
   done
-  echo "Timed out waiting for ${name} at ${endpoint}" >&2
+  echo "Timed out waiting ${LOCAL_READINESS_TIMEOUT_SECONDS}s for ${name} at ${endpoint}" >&2
+  return 1
+}
+
+wait_health() {
+  local name="$1"
+  local url="$2"
+  local pid="${PIDS[-1]:-}"
+  local deadline_ns
+  deadline_ns="$(
+    python3 - "$LOCAL_READINESS_TIMEOUT_SECONDS" <<'PY'
+import sys
+import time
+
+timeout = float(sys.argv[1])
+print(time.monotonic_ns() + int(timeout * 1_000_000_000))
+PY
+  )"
+  while true; do
+    local probe_timeout
+    probe_timeout="$(
+      python3 - "$deadline_ns" "$HTTP_PROBE_TIMEOUT_SECONDS" <<'PY'
+import sys
+import time
+
+deadline_ns = int(sys.argv[1])
+probe_timeout = float(sys.argv[2])
+remaining = (deadline_ns - time.monotonic_ns()) / 1_000_000_000
+if remaining <= 0:
+    print("0")
+else:
+    print(f"{min(probe_timeout, remaining):.3f}")
+PY
+    )"
+    if [[ "$probe_timeout" == "0" ]]; then
+      break
+    fi
+    if curl --max-time "$probe_timeout" \
+      --connect-timeout "$probe_timeout" \
+      -fsS "$url/health" >/dev/null 2>&1; then
+      return 0
+    fi
+    if [[ -n "$pid" ]] && ! kill -0 "$pid" 2>/dev/null; then
+      echo "${name} exited before readiness at ${url}" >&2
+      return 1
+    fi
+    python3 - "$deadline_ns" "$LOCAL_READINESS_POLL_SECONDS" <<'PY'
+import sys
+import time
+
+deadline_ns = int(sys.argv[1])
+poll = float(sys.argv[2])
+remaining = (deadline_ns - time.monotonic_ns()) / 1_000_000_000
+if remaining > 0:
+    time.sleep(min(poll, remaining))
+PY
+  done
+  echo "Timed out waiting ${LOCAL_READINESS_TIMEOUT_SECONDS}s for ${name} at ${url}" >&2
   return 1
 }
 
@@ -217,16 +310,16 @@ terminate_gracefully() {
     return 0
   fi
   kill -TERM "-$pid" 2>/dev/null || kill -TERM "$pid" 2>/dev/null || true
-  for _ in $(seq 1 600); do
+  for _ in $(seq 1 "$YIELD_SHUTDOWN_ATTEMPTS"); do
     local state
     state="$(ps -o stat= -p "$pid" 2>/dev/null || true)"
     if [[ -z "$state" || "$state" == Z* ]]; then
       wait "$pid" 2>/dev/null || true
       return 0
     fi
-    sleep 0.1
+    sleep "$LOCAL_READINESS_POLL_SECONDS"
   done
-  echo "${name} did not stop after SIGTERM while yield was pending" >&2
+  echo "${name} did not stop within ${YIELD_SHUTDOWN_TIMEOUT_SECONDS}s after SIGTERM while yield was pending" >&2
   return 1
 }
 
@@ -235,7 +328,7 @@ wait_file_contains() {
   local pattern="$2"
   local failure="$3"
   local pid="${4:-}"
-  local attempts="${5:-300}"
+  local attempts="${5:-$SCENARIO_MARKER_ATTEMPTS}"
   for _ in $(seq 1 "$attempts"); do
     if [[ -f "$file" ]] && grep -F "$pattern" "$file" >/dev/null 2>&1; then
       return 0
@@ -245,7 +338,7 @@ wait_file_contains() {
       echo "client exited before marker: $pattern" >&2
       return 1
     fi
-    sleep 0.1
+    sleep "$LOCAL_READINESS_POLL_SECONDS"
   done
   echo "$failure" >&2
   echo "missing marker: $pattern" >&2
@@ -255,7 +348,7 @@ wait_file_contains() {
 wait_process_exit() {
   local name="$1"
   local pid="$2"
-  for _ in $(seq 1 600); do
+  for _ in $(seq 1 "$YIELD_SHUTDOWN_ATTEMPTS"); do
     if [[ -r "/proc/$pid/stat" ]]; then
       local state
       state="$(awk '{print $3}' "/proc/$pid/stat")"
@@ -268,9 +361,9 @@ wait_process_exit() {
       wait "$pid"
       return $?
     fi
-    sleep 0.1
+    sleep "$LOCAL_READINESS_POLL_SECONDS"
   done
-  echo "${name} did not exit after the peer shutdown closed the pending yield request" >&2
+  echo "${name} did not exit within ${YIELD_SHUTDOWN_TIMEOUT_SECONDS}s after the peer shutdown closed the pending yield request" >&2
   return 1
 }
 
@@ -280,29 +373,45 @@ if [[ "${ZLINK_YIELD_DISPATCH_SKIP_BUILD:-0}" != "1" ]]; then
 fi
 static_checks
 
+read -r REGISTRY_HTTP_PORT REGISTRY_PUB_PORT REGISTRY_ROUTER_PORT <<<"$(allocate_ports 3)"
+REGISTRY_HTTP="http://127.0.0.1:${REGISTRY_HTTP_PORT}"
+REGISTRY_PUB="tcp://127.0.0.1:${REGISTRY_PUB_PORT}"
+REGISTRY_ROUTER="tcp://127.0.0.1:${REGISTRY_ROUTER_PORT}"
 start_server registry "$REGISTRY_DLL" \
   --http-url "$REGISTRY_HTTP" \
   --registry-pub-endpoint "$REGISTRY_PUB" \
   --registry-router-endpoint "$REGISTRY_ROUTER"
-wait_port registry "$REGISTRY_HTTP"
+wait_health registry "$REGISTRY_HTTP"
 wait_port registry-router "$REGISTRY_ROUTER"
 
+read -r DELAY_A_HTTP_PORT DELAY_A_ENDPOINT_PORT <<<"$(allocate_ports 2)"
+DELAY_A_HTTP="http://127.0.0.1:${DELAY_A_HTTP_PORT}"
+DELAY_A_ENDPOINT="tcp://127.0.0.1:${DELAY_A_ENDPOINT_PORT}"
 start_server delay-a "$DELAY_DLL" \
   --rid delay-a \
   --http-url "$DELAY_A_HTTP" \
   --delay-endpoint "$DELAY_A_ENDPOINT" \
   --log-dir "$LOG_DIR"
-wait_port delay-a "$DELAY_A_HTTP"
+wait_health delay-a "$DELAY_A_HTTP"
 wait_port delay-a-channel "$DELAY_A_ENDPOINT"
 
+read -r DELAY_B_HTTP_PORT DELAY_B_ENDPOINT_PORT <<<"$(allocate_ports 2)"
+DELAY_B_HTTP="http://127.0.0.1:${DELAY_B_HTTP_PORT}"
+DELAY_B_ENDPOINT="tcp://127.0.0.1:${DELAY_B_ENDPOINT_PORT}"
 start_server delay-b "$DELAY_DLL" \
   --rid delay-b \
   --http-url "$DELAY_B_HTTP" \
   --delay-endpoint "$DELAY_B_ENDPOINT" \
   --log-dir "$LOG_DIR"
-wait_port delay-b "$DELAY_B_HTTP"
+wait_health delay-b "$DELAY_B_HTTP"
 wait_port delay-b-channel "$DELAY_B_ENDPOINT"
 
+read -r PLAY_A_HTTP_PORT PLAY_A_SPOT_ROUTER_PORT PLAY_A_SPOT_PUB_PORT PLAY_A_SPOT_ROUTE_PORT PLAY_A_CONTROL_PORT <<<"$(allocate_ports 5)"
+PLAY_A_HTTP="http://127.0.0.1:${PLAY_A_HTTP_PORT}"
+PLAY_A_SPOT_ROUTER="tcp://127.0.0.1:${PLAY_A_SPOT_ROUTER_PORT}"
+PLAY_A_SPOT_PUB="tcp://127.0.0.1:${PLAY_A_SPOT_PUB_PORT}"
+PLAY_A_SPOT_ROUTE="tcp://127.0.0.1:${PLAY_A_SPOT_ROUTE_PORT}"
+PLAY_A_CONTROL="tcp://127.0.0.1:${PLAY_A_CONTROL_PORT}"
 start_server play-a "$PLAY_DLL" \
   --rid play-a \
   --http-url "$PLAY_A_HTTP" \
@@ -314,11 +423,17 @@ start_server play-a "$PLAY_DLL" \
   --spot-route-endpoint "$PLAY_A_SPOT_ROUTE" \
   --log-dir "$LOG_DIR"
 PLAY_A_PID="${PIDS[-1]}"
-wait_port play-a "$PLAY_A_HTTP"
+wait_health play-a "$PLAY_A_HTTP"
 wait_port play-a-control "$PLAY_A_CONTROL"
 wait_port play-a-spot-router "$PLAY_A_SPOT_ROUTER"
 wait_port play-a-spot-route "$PLAY_A_SPOT_ROUTE"
 
+read -r PLAY_B_HTTP_PORT PLAY_B_SPOT_ROUTER_PORT PLAY_B_SPOT_PUB_PORT PLAY_B_SPOT_ROUTE_PORT PLAY_B_CONTROL_PORT <<<"$(allocate_ports 5)"
+PLAY_B_HTTP="http://127.0.0.1:${PLAY_B_HTTP_PORT}"
+PLAY_B_SPOT_ROUTER="tcp://127.0.0.1:${PLAY_B_SPOT_ROUTER_PORT}"
+PLAY_B_SPOT_PUB="tcp://127.0.0.1:${PLAY_B_SPOT_PUB_PORT}"
+PLAY_B_SPOT_ROUTE="tcp://127.0.0.1:${PLAY_B_SPOT_ROUTE_PORT}"
+PLAY_B_CONTROL="tcp://127.0.0.1:${PLAY_B_CONTROL_PORT}"
 start_server play-b "$PLAY_DLL" \
   --rid play-b \
   --http-url "$PLAY_B_HTTP" \
@@ -329,11 +444,16 @@ start_server play-b "$PLAY_DLL" \
   --spot-pub-endpoint "$PLAY_B_SPOT_PUB" \
   --spot-route-endpoint "$PLAY_B_SPOT_ROUTE" \
   --log-dir "$LOG_DIR"
-wait_port play-b "$PLAY_B_HTTP"
+wait_health play-b "$PLAY_B_HTTP"
 wait_port play-b-control "$PLAY_B_CONTROL"
 wait_port play-b-spot-router "$PLAY_B_SPOT_ROUTER"
 wait_port play-b-spot-route "$PLAY_B_SPOT_ROUTE"
 
+read -r SESSION_A_HTTP_PORT SESSION_A_STREAM_PORT SESSION_A_SPOT_ROUTER_PORT SESSION_A_CONTROL_PORT <<<"$(allocate_ports 4)"
+SESSION_A_HTTP="http://127.0.0.1:${SESSION_A_HTTP_PORT}"
+SESSION_A_STREAM="tcp://127.0.0.1:${SESSION_A_STREAM_PORT}"
+SESSION_A_SPOT_ROUTER="tcp://127.0.0.1:${SESSION_A_SPOT_ROUTER_PORT}"
+SESSION_A_CONTROL="tcp://127.0.0.1:${SESSION_A_CONTROL_PORT}"
 start_server session-a "$SESSION_DLL" \
   --rid session-a \
   --http-url "$SESSION_A_HTTP" \
@@ -343,11 +463,16 @@ start_server session-a "$SESSION_DLL" \
   --spot-router-endpoint "$SESSION_A_SPOT_ROUTER" \
   --stream-endpoint "$SESSION_A_STREAM" \
   --log-dir "$LOG_DIR"
-wait_port session-a "$SESSION_A_HTTP"
+wait_health session-a "$SESSION_A_HTTP"
 wait_port session-a-control "$SESSION_A_CONTROL"
 wait_port session-a-spot-router "$SESSION_A_SPOT_ROUTER"
 wait_port session-a-stream "$SESSION_A_STREAM"
 
+read -r SESSION_B_HTTP_PORT SESSION_B_STREAM_PORT SESSION_B_SPOT_ROUTER_PORT SESSION_B_CONTROL_PORT <<<"$(allocate_ports 4)"
+SESSION_B_HTTP="http://127.0.0.1:${SESSION_B_HTTP_PORT}"
+SESSION_B_STREAM="tcp://127.0.0.1:${SESSION_B_STREAM_PORT}"
+SESSION_B_SPOT_ROUTER="tcp://127.0.0.1:${SESSION_B_SPOT_ROUTER_PORT}"
+SESSION_B_CONTROL="tcp://127.0.0.1:${SESSION_B_CONTROL_PORT}"
 start_server session-b "$SESSION_DLL" \
   --rid session-b \
   --http-url "$SESSION_B_HTTP" \
@@ -357,12 +482,12 @@ start_server session-b "$SESSION_DLL" \
   --spot-router-endpoint "$SESSION_B_SPOT_ROUTER" \
   --stream-endpoint "$SESSION_B_STREAM" \
   --log-dir "$LOG_DIR"
-wait_port session-b "$SESSION_B_HTTP"
+wait_health session-b "$SESSION_B_HTTP"
 wait_port session-b-control "$SESSION_B_CONTROL"
 wait_port session-b-spot-router "$SESSION_B_SPOT_ROUTER"
 wait_port session-b-stream "$SESSION_B_STREAM"
 
-sleep 1
+sleep "$ROUTE_SETTLE_SECONDS"
 
 dotnet "$CLIENT_DLL" \
   --scenario full \
@@ -392,7 +517,7 @@ wait_file_contains \
   "yield-dispatch shutdown wait result=passed" \
   "YD-E3 shutdown client did not observe the public closed/cancelled error." \
   "$SHUTDOWN_CLIENT_PID" \
-  900
+  "$SHUTDOWN_CLIENT_MARKER_ATTEMPTS"
 wait "$SHUTDOWN_CLIENT_PID"
 cat "$LOG_DIR/client-shutdown-wait.stdout.log"
 
@@ -407,11 +532,11 @@ start_server play-a "$PLAY_DLL" \
   --spot-route-endpoint "$PLAY_A_SPOT_ROUTE" \
   --log-dir "$LOG_DIR"
 PLAY_A_PID="${PIDS[-1]}"
-wait_port play-a "$PLAY_A_HTTP"
+wait_health play-a "$PLAY_A_HTTP"
 wait_port play-a-control "$PLAY_A_CONTROL"
 wait_port play-a-spot-router "$PLAY_A_SPOT_ROUTER"
 wait_port play-a-spot-route "$PLAY_A_SPOT_ROUTE"
-sleep 1
+sleep "$ROUTE_SETTLE_SECONDS"
 
 dotnet "$CLIENT_DLL" \
   --scenario shutdown-recovery \

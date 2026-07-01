@@ -68,6 +68,109 @@ internal sealed class EntryActorFastHandler(EvidenceStore evidence)
     }
 }
 
+[ZLinkSpotActorRequestHandler("ActorYieldReq")]
+internal sealed class SpotActorYieldHandler(EvidenceStore evidence)
+    : IZLinkSpotActorRequestHandler<YieldProbeSpot, YieldActor, ActorYieldReq, ActorYieldRes>
+{
+    public async ValueTask<ActorYieldRes> HandleAsync(
+        YieldProbeSpot spot,
+        YieldActor actor,
+        ZLinkSpotActorRequestContext context,
+        ActorYieldReq request,
+        CancellationToken cancellationToken)
+    {
+        _ = context;
+        var mailboxId = $"actor:{actor.ActorId}";
+        evidence.Add(
+            $"actor-yield-started|rid={evidence.Rid}|spot={spot.Context.SpotRid}"
+            + $"|actor={actor.ActorId}|mailbox={mailboxId}|request={request.RequestId}|handler=actor");
+        var call = spot.Context.Outbound.RequestToChannel(
+                YieldDispatchNames.DelayChannel,
+                new DelayReq(request.RequestId, request.DelayMs, $"actor-{actor.ActorId}"))
+            .PacketName("DelayReq")
+            .Timeout(TimeSpan.FromSeconds(5));
+        evidence.Add(
+            $"actor-yield-released|rid={evidence.Rid}|spot={spot.Context.SpotRid}"
+            + $"|actor={actor.ActorId}|mailbox={mailboxId}|request={request.RequestId}|handler=actor");
+        await call.Yield<DelayRes>(cancellationToken);
+        evidence.Add(
+            $"actor-yield-resumed|rid={evidence.Rid}|spot={spot.Context.SpotRid}"
+            + $"|actor={actor.ActorId}|mailbox={mailboxId}|request={request.RequestId}|handler=actor");
+        evidence.Add(
+            $"actor-yield-completed|rid={evidence.Rid}|spot={spot.Context.SpotRid}"
+            + $"|actor={actor.ActorId}|mailbox={mailboxId}|request={request.RequestId}|handler=actor");
+        return ActorReplies.Reply("YD-B", request.RequestId, actor, spot, "actor-yield-completed");
+    }
+}
+
+[ZLinkSpotActorRequestHandler("ActorFastReq")]
+internal sealed class SpotActorFastHandler(EvidenceStore evidence)
+    : IZLinkSpotActorRequestHandler<YieldProbeSpot, YieldActor, ActorFastReq, ActorYieldRes>
+{
+    public ValueTask<ActorYieldRes> HandleAsync(
+        YieldProbeSpot spot,
+        YieldActor actor,
+        ZLinkSpotActorRequestContext context,
+        ActorFastReq request,
+        CancellationToken cancellationToken)
+    {
+        _ = context;
+        cancellationToken.ThrowIfCancellationRequested();
+        var mailboxId = $"actor:{actor.ActorId}";
+        evidence.Add(
+            $"actor-fast-started|rid={evidence.Rid}|spot={spot.Context.SpotRid}"
+            + $"|actor={actor.ActorId}|mailbox={mailboxId}|request={request.RequestId}"
+            + $"|marker={request.Marker}|handler=actor");
+        evidence.Add(
+            $"actor-fast-completed|rid={evidence.Rid}|spot={spot.Context.SpotRid}"
+            + $"|actor={actor.ActorId}|mailbox={mailboxId}|request={request.RequestId}"
+            + $"|marker={request.Marker}|handler=actor");
+        return ValueTask.FromResult(ActorReplies.Reply("YD-B", request.RequestId, actor, spot, request.Marker));
+    }
+}
+
+[ZLinkSpotActorRequestHandler("ActorPushYieldReq")]
+internal sealed class SpotActorPushYieldHandler(EvidenceStore evidence)
+    : IZLinkSpotActorRequestHandler<YieldProbeSpot, YieldActor, ActorPushYieldReq, ActorYieldRes>
+{
+    public async ValueTask<ActorYieldRes> HandleAsync(
+        YieldProbeSpot spot,
+        YieldActor actor,
+        ZLinkSpotActorRequestContext context,
+        ActorPushYieldReq request,
+        CancellationToken cancellationToken)
+    {
+        _ = context;
+        var mailboxId = $"actor:{actor.ActorId}";
+        evidence.Add(
+            $"actor-push-yield-started|rid={evidence.Rid}|spot={spot.Context.SpotRid}"
+            + $"|actor={actor.ActorId}|mailbox={mailboxId}|request={request.RequestId}|handler=actor");
+        var call = spot.Context.Outbound.RequestToChannel(
+                YieldDispatchNames.DelayChannel,
+                new DelayReq(request.RequestId, request.DelayMs, $"actor-push-{actor.ActorId}"))
+            .PacketName("DelayReq")
+            .Timeout(TimeSpan.FromSeconds(5));
+        evidence.Add(
+            $"actor-push-yield-released|rid={evidence.Rid}|spot={spot.Context.SpotRid}"
+            + $"|actor={actor.ActorId}|mailbox={mailboxId}|request={request.RequestId}|handler=actor");
+        await call.Yield<DelayRes>(cancellationToken);
+        evidence.Add(
+            $"actor-push-yield-resumed|rid={evidence.Rid}|spot={spot.Context.SpotRid}"
+            + $"|actor={actor.ActorId}|mailbox={mailboxId}|request={request.RequestId}|handler=actor");
+        actor.Context.BoundSession.Send(
+                new ActorPushNotify(
+                    actor.ActorId,
+                    request.RequestId,
+                    request.Value,
+                    spot.Context.NodeRid.ToString()))
+            .PacketName("ActorPushNotify").Submit(cancellationToken);
+        evidence.Add(
+            $"actor-push-yield-completed|rid={evidence.Rid}|spot={spot.Context.SpotRid}"
+            + $"|actor={actor.ActorId}|mailbox={mailboxId}|request={request.RequestId}|handler=actor");
+        return ActorReplies.Reply("YD-D4", request.RequestId, actor, spot, "actor-push-yield-completed");
+    }
+}
+
 [ZLinkSpotActorRequestHandler("ActorJoinYieldReq")]
 internal sealed class EntryActorJoinYieldHandler(EvidenceStore evidence)
     : IZLinkEntrySpotActorRequestHandler<YieldEntrySpot, YieldActor, ActorJoinYieldReq, ActorYieldRes>

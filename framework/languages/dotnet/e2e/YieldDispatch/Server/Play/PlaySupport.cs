@@ -176,4 +176,20 @@ internal static class ActorReplies
             entrySpot.Context.NodeRid.ToString(),
             marker);
     }
+
+    public static ActorYieldRes Reply(
+        string scenarioId,
+        string requestId,
+        YieldActor actor,
+        YieldProbeSpot spot,
+        string marker)
+    {
+        return new ActorYieldRes(
+            scenarioId,
+            requestId,
+            actor.ActorId,
+            spot.Context.SpotRid.ToString(),
+            spot.Context.NodeRid.ToString(),
+            marker);
+    }
 }

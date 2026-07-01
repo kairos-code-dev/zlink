@@ -4,6 +4,14 @@
 public API 또는 harness 제어가 더 필요한 항목을 구분한다. 실행 코드는 public Spring starter,
 `ZLinkSpotManager`, `ZLinkSpotOutbound`, client/server channel builder, route mesh channel builder,
 SpotNode builder, stream connector, `ZLinkSpotPublisherClient`만 사용한다.
+Client는 HTTP driver이고, framework spot/route/stream 참여는 `Server/Gateway`, `Server/Play`,
+`Server/Publisher` 같은 server role에서 수행한다.
+
+마지막 검증:
+
+- 명령: `timeout 420s ./run_e2e.sh`
+- 결과: passed
+- 로그: `framework/languages/java/e2e/SpotService/logs/20260702-055229-7389/`
 
 공통 E2E 문서와 다른 언어의 구현에 존재하는 public 기능이 Java에 없으면 단순 미구현으로 완료
 처리하지 않는다. 다만 다른 언어 구현만으로 Java public contract를 새로 추가하지 않는다. spec 또는
@@ -56,6 +64,9 @@ draft/spec 검토 대상으로 분리한다. 공통 E2E 문서는 누락을 찾�
 - `SM-F2`: RouteMesh 채널명이 target spot egress의 실제 channel 기준으로 동작하는지 확인한다.
 - `SM-F3`: 같은 RouteMesh에서 일반 route-channel request/reply와 target spot request/send가 한
   channel 위에서 함께 구성되고, 일반 packet은 channel handler가 처리하는지 확인한다.
+
+`.NET Client/Scenarios/*.cs`에 대응하는 Java Client scenario 파일은 존재한다. 구현된 scenario는
+`Server/Gateway`의 HTTP endpoint를 호출하고, gap scenario는 선택되면 명시적으로 실패한다.
 
 ## public contract parity 또는 spec 검토 대기
 

@@ -1,10 +1,23 @@
 package systems.zlink.e2e.registrationcodec.client;
 
+import systems.zlink.e2e.registrationcodec.client.Support.ClientOptions;
+import systems.zlink.e2e.registrationcodec.client.Support.Evidence;
+import systems.zlink.e2e.registrationcodec.client.Support.ScenarioContext;
+import systems.zlink.httpclient.ZLinkHttpClient;
+
 public final class Program {
     private Program() {
     }
 
     public static void main(String[] args) {
-        new RegistrationCodecClientApplication().run(args);
+        ClientOptions options = ClientOptions.fromEnv();
+        try (
+            ZLinkHttpClient server = ZLinkHttpClient.create(options.httpEndpoint()).build();
+            ZLinkHttpClient codecRequester = ZLinkHttpClient.create(options.codecRequesterHttpEndpoint()).build()
+        ) {
+            Evidence evidence = Evidence.fromOptions(options);
+            new ScenarioRunner(new ScenarioContext(options, server, codecRequester, evidence)).run();
+            System.out.println("registration-codec e2e result=passed");
+        }
     }
 }

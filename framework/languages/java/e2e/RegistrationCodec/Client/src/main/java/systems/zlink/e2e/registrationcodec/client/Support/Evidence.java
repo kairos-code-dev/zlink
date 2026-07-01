@@ -19,6 +19,10 @@ public final class Evidence {
         this.http = http;
     }
 
+    public static Evidence fromOptions(ClientOptions options) {
+        return new Evidence(options, new ObjectMapper(), HttpClient.newHttpClient());
+    }
+
     public Contracts.EvidenceSnapshot snapshot() {
         try {
             HttpRequest request = HttpRequest.newBuilder(

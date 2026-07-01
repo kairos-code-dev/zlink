@@ -3,24 +3,33 @@ package systems.zlink.e2e.pubsub.client.Support;
 public record ClientOptions(
     String mode,
     String publisherHttp,
+    String publisherEndpoint,
+    String registryRouterEndpoint,
     String sub1Http,
     String sub2Http,
     String sub3Http,
     String publisherReadyFile,
     String prelateContinueFile,
     String lateReadyFile,
-    String lateContinueFile) {
+    String lateContinueFile,
+    String buildDir,
+    String logDir) {
     public static ClientOptions fromEnv() {
         return new ClientOptions(
             Env.get("ZLINK_JAVA_E2E_CLIENT_MODE", "default"),
             Env.get("ZLINK_JAVA_E2E_PUBLISHER_HTTP"),
+            Env.get("ZLINK_JAVA_E2E_PUBLISHER_ENDPOINT"),
+            Env.get("ZLINK_JAVA_E2E_REGISTRY_ROUTER"),
             Env.get("ZLINK_JAVA_E2E_SUB1_HTTP"),
             Env.get("ZLINK_JAVA_E2E_SUB2_HTTP"),
             Env.get("ZLINK_JAVA_E2E_SUB3_HTTP"),
             Env.get("ZLINK_JAVA_E2E_PUBLISHER_READY_FILE"),
             Env.get("ZLINK_JAVA_E2E_PRELATE_CONTINUE_FILE"),
             Env.get("ZLINK_JAVA_E2E_LATE_READY_FILE"),
-            Env.get("ZLINK_JAVA_E2E_LATE_CONTINUE_FILE"));
+            Env.get("ZLINK_JAVA_E2E_LATE_CONTINUE_FILE"),
+            Env.get("ZLINK_JAVA_E2E_BUILD_DIR",
+                System.getProperty("user.home") + "/.cache/zlink/java-e2e/PubSub"),
+            Env.get("ZLINK_JAVA_E2E_LOG_DIR", "logs"));
     }
 
     public String subscriberHttp(String rid) {

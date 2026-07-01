@@ -10,11 +10,18 @@
 
 기존 Java SpotService E2E는 단일 Gradle application에서 `ZLINK_JAVA_E2E_ROLE`로 `registry`, `play`,
 `publisher`, `client` 역할을 전환했다. 현재 구조는 기존 구현을 보존하면서 `Shared`, `Client`,
-`Server/Registry`, `Server/Play`, `Server/Publisher` Gradle subproject로 분리했다.
+`Server/Registry`, `Server/Gateway`, `Server/Play`, `Server/MultiNode`, `Server/Session`,
+`Server/Publisher` Gradle subproject로 분리했다.
 
-`.NET` 기준에는 `Gateway`, `MultiNode`, `Session` 등 더 많은 role과 `SM-*` scenario 파일이 있다.
-Java feature-map은 현재 구현된 public API 경로와 public contract/harness gap을 구분한다. gap은
-테스트 전용 adapter, raw frame 우회, 새 public API 추가로 메우지 않는다.
+`.NET` 기준의 `Gateway`, `MultiNode`, `Session` source role은 Java role project로 존재한다. Client는
+HTTP driver이고, 기존 spot/route/stream scenario 실행 책임은 `Server/Gateway`로 옮겼다. Java
+feature-map은 현재 구현된 public API 경로와 public contract/harness gap을 구분한다. gap은 테스트 전용
+adapter, raw frame 우회, 새 public API 추가로 메우지 않는다.
+
+각 `.NET` `Client/Scenarios/*.cs` 파일에는 같은 이름의 Java
+`Client/src/main/java/systems/zlink/e2e/spotservice/client/Scenarios/*.java` 파일이 있다. 아래 표의
+scenario 행은 같은 이름의 Java classification file과 실제 실행 body(`Server/Gateway` 또는 shared
+scenario executor)를 함께 의미한다.
 
 ## Inventory
 
@@ -26,7 +33,7 @@ Java feature-map은 현재 구현된 public API 경로와 public contract/harnes
 | `Shared/SpotService.Shared.csproj` | `Shared/build.gradle.kts` | build | done | shared Java library project |
 | `Shared/Messages.cs` | `Shared/src/main/java/systems/zlink/e2e/spotservice/shared/Contracts.java` | shared | done | request, reply, evidence, stream payload record |
 | `Client/SpotService.Client.csproj` | `Client/build.gradle.kts` | build | done | client application project |
-| `Client/Program.cs` | `Client/src/main/java/systems/zlink/e2e/spotservice/client/Program.java` | client | done | scenario driver spot를 생성하는 client entrypoint |
+| `Client/Program.cs` | `Client/src/main/java/systems/zlink/e2e/spotservice/client/Program.java` | client | done | HTTP driver entrypoint. `Server/Gateway`의 `/scenario/<mode>`를 호출한다. |
 | `Client/Scenarios/SmA1Scenario.cs` | `Shared/src/main/java/systems/zlink/e2e/spotservice/shared/ClientScenario.java` | scenario | done | `SM-A1` marker |
 | `Client/Scenarios/SmA2Scenario.cs` | `Shared/src/main/java/systems/zlink/e2e/spotservice/shared/ClientScenario.java` | scenario | done | `SM-A2` marker |
 | `Client/Scenarios/SmA3Scenario.cs` | `Shared/src/main/java/systems/zlink/e2e/spotservice/shared/ClientScenario.java` | scenario | done | `SM-A3` marker |
@@ -74,13 +81,13 @@ Java feature-map은 현재 구현된 public API 경로와 public contract/harnes
 | `Client/Scenarios/SmG4Scenario.cs` | `feature-map.ko.md` | scenario | gap | bound session push 부하 harness 없음 |
 | `Client/Scenarios/SmQ9Scenario.cs` | `feature-map.ko.md` | scenario | gap | Java feature-map에 완료 근거 없음 |
 | `Client/Support/ClientOptions.cs` | `Shared/src/main/java/systems/zlink/e2e/spotservice/shared/Env.java` | support | done | 환경 변수 option helper |
-| `Client/Support/ScenarioAssert.cs` | `Shared/src/main/java/systems/zlink/e2e/spotservice/shared/ClientScenario.java` | support | done | scenario assertion helper |
+| `Client/Support/ScenarioAssert.cs` | `Shared/src/main/java/systems/zlink/e2e/spotservice/shared/ClientScenario.java` | support | done | Gateway scenario executor의 assertion helper |
 | `Client/Support/SpotLifecycleOrderContext.cs` | `Shared/src/main/java/systems/zlink/e2e/spotservice/shared/ScenarioState.java` | support | done | evidence order 검증 입력 |
 | `Server/Registry/*` | `Server/Registry/src/main/java/systems/zlink/e2e/spotservice/registry/Program.java`, `Server/Registry/build.gradle.kts` | server-role | done | embedded registry role |
 | `Server/Play/*` | `Server/Play/src/main/java/systems/zlink/e2e/spotservice/play/Program.java`, `Shared/src/main/java/systems/zlink/e2e/spotservice/shared/*.java`, `Server/Play/build.gradle.kts` | server-role | done | play role 구현과 support/handler/spot 타입 |
-| `Server/Gateway/*` | `feature-map.ko.md` | server-role | gap | 별도 gateway role 미구현, Java stream 일부는 play role에 포함 |
-| `Server/MultiNode/*` | `feature-map.ko.md` | server-role | gap | multi-node 고급 actor/session scenario gap |
-| `Server/Session/*` | `feature-map.ko.md` | server-role | gap | 별도 session role 미구현 |
+| `Server/Gateway/*` | `Server/Gateway/build.gradle.kts`, `Server/Gateway/src/main/java/systems/zlink/e2e/spotservice/gateway/Program.java`, `Shared/src/main/java/systems/zlink/e2e/spotservice/shared/GatewayScenarioHttpServer.java` | server-role | done | HTTP scenario endpoint와 framework gateway process |
+| `Server/MultiNode/*` | `Server/MultiNode/build.gradle.kts`, `Server/MultiNode/src/main/java/systems/zlink/e2e/spotservice/multinode/Program.java` | server-role | partial | `.NET` source role project exists. 고급 multi-node actor/session scenario는 feature-map gap |
+| `Server/Session/*` | `Server/Session/build.gradle.kts`, `Server/Session/src/main/java/systems/zlink/e2e/spotservice/session/Program.java` | server-role | partial | `.NET` source role project exists. remote session scenario는 feature-map gap |
 | `Server/Publisher/*` | `Server/Publisher/src/main/java/systems/zlink/e2e/spotservice/publisher/Program.java`, `Server/Publisher/build.gradle.kts` | server-role | done | Java publisher role |
 
 ## 남은 gap

@@ -59,5 +59,8 @@ if (useLocalBindings) {
 include(":Shared")
 include(":Client")
 include(":Server:Registry")
+include(":Server:Gateway")
 include(":Server:Play")
+include(":Server:MultiNode")
+include(":Server:Session")
 include(":Server:Publisher")

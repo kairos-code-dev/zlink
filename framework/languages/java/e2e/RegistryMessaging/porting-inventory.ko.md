@@ -21,10 +21,10 @@
 | `Client/Program.cs` | `Client/src/main/java/systems/zlink/e2e/registrymessaging/client/Program.java` | client-entry | done | HTTP client를 만들고 scenario catalog를 실행한다. |
 | `Client/Support/ClientOptions.cs` | `Client/src/main/java/systems/zlink/e2e/registrymessaging/client/Support/ClientOptions.java` | support | done | 환경 변수 기반 실행 옵션. |
 | `Client/Support/ScenarioAssert.cs` | `Client/src/main/java/systems/zlink/e2e/registrymessaging/client/Support/ScenarioAssert.java` | support | done | scenario assertion helper. |
-| `Client/Support/DynamicClusterLauncher.cs` | `run_e2e.sh` | support | done | Java는 runner가 scale-out, scale-in, failover 프로세스 조작을 담당한다. |
+| `Client/Support/DynamicClusterLauncher.cs` | `Client/src/main/java/systems/zlink/e2e/registrymessaging/client/Support/DynamicClusterLauncher.java` | support | done | `RM-A4`, `RM-B1`, `RM-B2`에서 Client support가 registry/provider process lifecycle을 제어한다. |
 | 없음 | `Client/src/main/java/systems/zlink/e2e/registrymessaging/client/Support/RegistryMessagingHttp.java` | support | done | 역할 server별 HTTP client를 구성한다. |
 | 없음 | `Client/src/main/java/systems/zlink/e2e/registrymessaging/client/Support/ScenarioCatalog.java` | support | done | scenario 이름에 따라 RM-* 실행 순서를 고른다. |
-| 없음 | `Client/src/main/java/systems/zlink/e2e/registrymessaging/client/Support/ScenarioSignals.java` | support | done | runner phase 동기화와 짧은 대기 helper. |
+| 없음 | `Client/src/main/java/systems/zlink/e2e/registrymessaging/client/Support/ScenarioWait.java` | support | done | timeout/backpressure scenario의 명시적인 대기 helper. lifecycle phase signal 책임은 제거했다. |
 | `Client/Scenarios/RmA1DiscoveryRequestScenario.cs` | `Client/src/main/java/systems/zlink/e2e/registrymessaging/client/Scenarios/RmA1DiscoveryRequestScenario.java` | scenario | done | registry topology와 discovery request 검증. |
 | `Client/Scenarios/RmA2ManualEndpointScenario.cs` | `Client/src/main/java/systems/zlink/e2e/registrymessaging/client/Scenarios/RmA2ManualEndpointScenario.java` | scenario | done | manual endpoint request 검증. |
 | `Client/Scenarios/RmA4SameRidFailoverScenario.cs` | `Client/src/main/java/systems/zlink/e2e/registrymessaging/client/Scenarios/RmA4SameRidFailoverScenario.java` | scenario | done | same rid failover 검증. |

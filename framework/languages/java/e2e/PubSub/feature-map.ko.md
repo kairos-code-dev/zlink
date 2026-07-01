@@ -6,16 +6,16 @@
 
 - 명령: `timeout 420s ./run_e2e.sh`
 - 결과: passed
-- 로그: `framework/languages/java/e2e/PubSub/logs/20260629-123647-553789/`
+- 로그: `framework/languages/java/e2e/PubSub/logs/20260702-063513-76704/`
 
 | 시나리오 | 상태 | 근거 |
 |----------|------|------|
 | PS-A1 | 부분 구현 | publisher 역할이 public `ZLinkFanoutClient`로 fanout publish를 수행하고, client가 세 subscriber의 evidence에서 공통 연속 sequence를 확인한다. 검증 경로는 아직 HTTP evidence polling이다. |
 | PS-A2 | 부분 구현 | subscriber handler가 `ZLinkPublishContext.topic()`으로 관심 topic만 evidence에 기록하는지 확인한다. 검증 경로는 아직 HTTP evidence polling이다. |
 | PS-A3 | 부분 구현 | `sub-3`를 pre-late publish 뒤에 시작하고, 구독 전 이벤트가 replay되지 않으며 이후 publish만 받는지 확인한다. 검증 경로는 아직 HTTP evidence polling이다. |
-| PS-A4 | 부분 구현 | `sub-1` 프로세스를 종료한 동안 publish된 이벤트는 재시작 후 evidence에 없고, 재시작 뒤 publish된 이벤트는 다시 받는지 확인한다. 검증 경로는 아직 HTTP evidence polling이다. |
+| PS-A4 | 부분 구현 | Client support가 `sub-1` 프로세스를 시작, 종료, 재시작한다. 종료 중 publish된 이벤트는 재시작 후 evidence에 없고, 재시작 뒤 publish된 이벤트는 다시 받는지 확인한다. 검증 경로는 아직 HTTP evidence polling이다. |
 | PS-B1 | 부분 구현 | `sub-1` handler 지연 중에도 `sub-2`와 `sub-3`가 최신 이벤트를 계속 받는지 확인한다. 검증 경로는 아직 HTTP evidence polling이다. |
-| PS-B2 | 부분 구현 | publisher 프로세스를 실제로 종료한 뒤 새 publisher process가 보낸 이벤트를 기존 subscriber들이 받는지 확인한다. 검증 경로는 아직 HTTP evidence polling이다. |
+| PS-B2 | 부분 구현 | Client support가 publisher 프로세스를 시작, 종료, 재시작한다. 중단 중 publish 실패와 새 publisher process가 보낸 이벤트를 기존 subscriber들이 받는지 확인한다. 검증 경로는 아직 HTTP evidence polling이다. |
 | PS-C1 | 부분 구현 | 미등록 packet name publish가 subscriber observer evidence에 `HANDLER_MISSING`/`DROP`으로 남고 이후 정상 publish가 유지되는지 확인한다. 검증 경로는 아직 HTTP evidence polling이다. |
 
 ## Push 검증 gap

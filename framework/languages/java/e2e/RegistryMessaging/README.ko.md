@@ -8,6 +8,10 @@ process로 띄운다. client는 framework를 직접 호출하지 않고, `.NET` 
 endpoint를 호출한다. Consumer role은 discovery, direct, single-provider, backpressure 모드로
 나뉘어 실행되며, 각 모드는 public Spring starter와 public framework API만 사용한다.
 
+동적 provider lifecycle을 검증하는 `RM-A4`, `RM-B1`, `RM-B2`는 Client support가 registry와
+provider process를 직접 시작하고 종료한다. runner는 정적 topology 준비, client 실행, cleanup만
+담당하므로 scenario가 file signal로 shell과 조율하지 않는다.
+
 실행:
 
 ```bash

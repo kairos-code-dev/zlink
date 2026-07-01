@@ -485,3 +485,4 @@ grep -q "scenario DR-D2 passed" "${log_dir}/client-DR-D2.stdout.log"
 grep -q "scenario DR-D3 passed" "${log_dir}/client-DR-D3.stdout.log"
 grep -q "scenario DR-D4 passed" "${log_dir}/client-DR-D4.stdout.log"
 grep -Rq "message flow" "${log_dir}"/*-flow.log
+echo "discovery-registry-ha e2e result=passed"

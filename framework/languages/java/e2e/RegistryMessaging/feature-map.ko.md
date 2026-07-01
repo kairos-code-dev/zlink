@@ -13,6 +13,9 @@ public HTTP client만 사용한다.
 - `implemented`: provider, workflow, registry, consumer role은 HTTP health endpoint를 제공한다.
   provider와 workflow는 evidence 조회와 대기 endpoint도 제공한다.
 - `implemented`: scenario ID별 client 파일과 공통 support 파일을 분리했다.
+- `implemented`: `RM-A4`, `RM-B1`, `RM-B2`의 provider start/stop/replacement는
+  `Client/Support/DynamicClusterLauncher.java`와 각 scenario 파일이 수행한다. runner는 해당
+  scenario를 실행하고 결과를 수집한다.
 
 ## 구현됨
 
@@ -20,12 +23,14 @@ public HTTP client만 사용한다.
   API channel의 ready router provider가 둘 이상 보이는지, provider evidence에 request가 남는지
   함께 검증한다.
 - `RM-A2`: 수동 endpoint 연결로 provider에 직접 request를 보낸다.
-- `RM-A4`: 같은 rid를 다른 endpoint로 교체한 뒤 follow-up request를 검증한다.
+- `RM-A4`: Client support가 같은 rid의 provider process를 새 endpoint로 교체한 뒤 follow-up
+  request를 검증한다.
 - `RM-A6`: 같은 registry 안에서 서로 다른 channel의 provider가 섞이지 않는지 검증한다. profile
   provider evidence와 workflow evidence를 각각 확인하고, workflow marker가 profile provider에
   기록되지 않았는지도 확인한다.
-- `RM-B1`: 실행 중 provider를 추가하고 두 provider로 분산되는지 검증한다.
-- `RM-B2`: provider 하나를 정상 종료한 뒤 남은 provider로 request가 계속 성공하는지 검증한다.
+- `RM-B1`: Client support가 실행 중 provider를 추가하고 두 provider로 분산되는지 검증한다.
+- `RM-B2`: Client support가 provider 하나를 정상 종료한 뒤 남은 provider로 request가 계속
+  성공하는지 검증한다.
 - `RM-C1`: request와 send happy path를 함께 검증한다. request와 command가 provider evidence에
   기록됐는지도 확인한다.
 - `RM-C2`: route mesh에서 target rid request와 없는 rid 실패를 검증한다.
@@ -52,7 +57,7 @@ public HTTP client만 사용한다.
 - `timeout 420s ./run_e2e.sh`
   - 결과: common, weighted, scale-out, scale-in, failover 단계가 모두
     `registry-messaging e2e result=passed` 출력
-  - 로그: `logs/20260629-121604-457425/`
+  - 로그: `logs/20260702-060659-58435/`
 - `timeout 420s framework/languages/java/e2e/RegistryMessaging/run_e2e.sh RM-C9`
   - 결과: `scenario RM-C9 passed`, `registry-messaging e2e result=passed`
   - 로그: `logs/20260701-035750-1917120`

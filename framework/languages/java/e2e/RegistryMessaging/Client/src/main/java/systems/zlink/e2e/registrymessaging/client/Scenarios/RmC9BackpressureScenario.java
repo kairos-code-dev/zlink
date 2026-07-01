@@ -1,7 +1,7 @@
 package systems.zlink.e2e.registrymessaging.client.Scenarios;
 
 import systems.zlink.e2e.registrymessaging.client.Support.ScenarioAssert;
-import systems.zlink.e2e.registrymessaging.client.Support.ScenarioSignals;
+import systems.zlink.e2e.registrymessaging.client.Support.ScenarioWait;
 import systems.zlink.e2e.registrymessaging.shared.Contracts;
 import systems.zlink.httpclient.ZLinkHttpClient;
 
@@ -27,7 +27,7 @@ public final class RmC9BackpressureScenario {
             .toList();
         ScenarioAssert.that(outcomes.stream().allMatch("Submitted"::equals),
             "RM-C9 expected all one-way sends to be submitted without a public bounded-failure oracle");
-        ScenarioSignals.sleep(10000);
+        ScenarioWait.sleep(10000);
 
         Contracts.ProfileRes recovered = requestRecovered(backpressureConsumer);
         ScenarioAssert.that("profile:c9-recovered".equals(recovered.value()),
@@ -50,7 +50,7 @@ public final class RmC9BackpressureScenario {
                     .fetch(Contracts.ProfileRes.class);
             } catch (RuntimeException error) {
                 lastFailure = error;
-                ScenarioSignals.sleep(500);
+                ScenarioWait.sleep(500);
             }
         }
         throw lastFailure == null

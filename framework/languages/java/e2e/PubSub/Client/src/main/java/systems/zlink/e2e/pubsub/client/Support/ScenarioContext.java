@@ -6,13 +6,15 @@ import java.net.http.HttpClient;
 public record ScenarioContext(
     ClientOptions options,
     PublisherClient publisher,
-    Evidence evidence) {
+    Evidence evidence,
+    ServerProcessLauncher processes) {
     public static ScenarioContext fromEnv() {
         HttpClient http = HttpClient.newHttpClient();
         ClientOptions options = ClientOptions.fromEnv();
         return new ScenarioContext(
             options,
             new PublisherClient(http, options.publisherHttp()),
-            new Evidence(options, new ObjectMapper(), http));
+            new Evidence(options, new ObjectMapper(), http),
+            new ServerProcessLauncher(options, http));
     }
 }

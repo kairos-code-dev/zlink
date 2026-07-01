@@ -111,6 +111,15 @@ public final class ScenarioAssert {
         throw new IllegalStateException("timed out waiting for evidence", last);
     }
 
+    public static void expectPublishFailure(Runnable action, String message) {
+        try {
+            action.run();
+        } catch (RuntimeException error) {
+            return;
+        }
+        throw new IllegalStateException(message);
+    }
+
     public static void touch(String file) {
         if (file == null || file.isBlank()) {
             return;

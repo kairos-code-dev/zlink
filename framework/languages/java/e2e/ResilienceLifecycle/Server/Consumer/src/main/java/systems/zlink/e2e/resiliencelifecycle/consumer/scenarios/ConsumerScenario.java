@@ -1,4 +1,4 @@
-package systems.zlink.e2e.resiliencelifecycle.client.scenarios;
+package systems.zlink.e2e.resiliencelifecycle.consumer.scenarios;
 
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
@@ -20,13 +20,13 @@ import systems.zlink.contracts.service.registry.ServiceRole;
 import systems.zlink.framework.channels.ZLinkClient;
 import systems.zlink.framework.registry.ZLinkRegistryQueryClient;
 
-public final class ClientScenario {
+public final class ConsumerScenario {
     private final ZLinkClient client;
     private final ZLinkRegistryQueryClient registry;
     private final ObjectMapper json;
     private final HttpClient http = HttpClient.newHttpClient();
 
-    public ClientScenario(
+    public ConsumerScenario(
         ZLinkClient client,
         ZLinkRegistryQueryClient registry,
         ObjectMapper json) {
@@ -53,7 +53,40 @@ public final class ClientScenario {
             return;
         }
         if ("cleanup".equals(mode)) {
-            runResourceCleanupAndSoak();
+            runClientHostLifecycle();
+            runMixedBurst();
+            return;
+        }
+        if ("rl-b1".equals(mode)) {
+            runClientTimeoutCleanup();
+            return;
+        }
+        if ("rl-b4".equals(mode)) {
+            runDrainRestore();
+            return;
+        }
+        if ("rl-b5".equals(mode)) {
+            runDrainInFlight();
+            return;
+        }
+        if ("rl-d3".equals(mode)) {
+            runDispatchErrorMarker();
+            return;
+        }
+        if ("rl-b6".equals(mode)) {
+            runGrayFailure();
+            return;
+        }
+        if ("rl-b3".equals(mode)) {
+            runGracefulShutdown();
+            return;
+        }
+        if ("rl-c1".equals(mode)) {
+            runClientHostLifecycle();
+            return;
+        }
+        if ("rl-d5".equals(mode)) {
+            runMixedBurst();
             return;
         }
         runClientTimeoutCleanup();
@@ -145,7 +178,28 @@ public final class ClientScenario {
         sleep(Long.parseLong(Env.get("ZLINK_JAVA_E2E_STORM_EXIT_DELAY_MS", "0")));
     }
 
-    private void runResourceCleanupAndSoak() {
+    private void runClientHostLifecycle() {
+        waitForTopology(2);
+        for (int index = 0; index < 12; index++) {
+            Contracts.WorkRes reply = client.requestToChannel(
+                    Contracts.CHANNEL,
+                    new Contracts.WorkReq("rl-c1-" + index))
+                .timeout(Duration.ofSeconds(3))
+                .await(Contracts.WorkRes.class);
+            ensure(reply.value().equals("work:rl-c1-" + index),
+                "RL-C1 request payload mismatch for " + index);
+        }
+        Contracts.WorkRes followUp = client.requestToChannel(
+                Contracts.CHANNEL,
+                new Contracts.WorkReq("rl-c1-after-cleanup"))
+            .timeout(Duration.ofSeconds(3))
+            .await(Contracts.WorkRes.class);
+        ensure(followUp.value().equals("work:rl-c1-after-cleanup"),
+            "RL-C1 follow-up payload mismatch");
+        System.out.println("scenario RL-C1 passed");
+    }
+
+    private void runMixedBurst() {
         waitForTopology(2);
         long firstWindowNanos = 0;
         long lastWindowNanos = 0;
@@ -177,7 +231,6 @@ public final class ClientScenario {
         ensure(!providers.isEmpty(), "RL-D5 did not observe request replies");
         ensure(lastWindowNanos < firstWindowNanos * 5,
             "RL-D5 latency drift exceeded the harness threshold");
-        System.out.println("scenario RL-C1 passed");
         System.out.println("scenario RL-D5 passed");
     }
 

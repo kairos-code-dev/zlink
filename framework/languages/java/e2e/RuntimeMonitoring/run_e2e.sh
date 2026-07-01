@@ -4,7 +4,7 @@ set -euo pipefail
 cd "$(dirname "${BASH_SOURCE[0]}")"
 
 pids=()
-role_pattern='systems\.zlink\.e2e\.runtimemonitoring\.(client|registry|service|trigger)\.Program'
+role_pattern='systems\.zlink\.e2e\.runtimemonitoring\.(client|registry|service|filteredservice|throwingservice|trigger)\.Program'
 run_id="$(date +%Y%m%d-%H%M%S)-$$"
 log_dir="$(pwd)/logs/${run_id}"
 repo_root="$(cd ../../../../.. && pwd)"
@@ -63,7 +63,7 @@ import socket
 sockets = []
 ports = []
 try:
-    for _ in range(8):
+    for _ in range(13):
         sock = socket.socket()
         sock.bind(("127.0.0.1", 0))
         sockets.append(sock)
@@ -118,11 +118,19 @@ service_bin() {
   echo "${ZLINK_JAVA_E2E_BUILD_DIR}/Server-Service/install/runtime-monitoring-service/bin/runtime-monitoring-service"
 }
 
+filtered_service_bin() {
+  echo "${ZLINK_JAVA_E2E_BUILD_DIR}/Server-FilteredService/install/runtime-monitoring-filtered-service/bin/runtime-monitoring-filtered-service"
+}
+
+throwing_service_bin() {
+  echo "${ZLINK_JAVA_E2E_BUILD_DIR}/Server-ThrowingService/install/runtime-monitoring-throwing-service/bin/runtime-monitoring-throwing-service"
+}
+
 trigger_bin() {
   echo "${ZLINK_JAVA_E2E_BUILD_DIR}/Server-Trigger/install/runtime-monitoring-trigger/bin/runtime-monitoring-trigger"
 }
 
-read -r REG_PUB_PORT REG_ROUTER_PORT REG_HTTP_PORT API_PORT HANDSHAKE_PORT SPOT_PORT SPOT_PUB_PORT SVC_HTTP_PORT <<<"$(reserve_ports)"
+read -r REG_PUB_PORT REG_ROUTER_PORT REG_HTTP_PORT API_PORT HANDSHAKE_PORT SPOT_PORT SPOT_PUB_PORT SVC_HTTP_PORT FILTER_API_PORT FILTER_HTTP_PORT THROW_API_PORT THROW_HTTP_PORT TRIGGER_HTTP_PORT <<<"$(reserve_ports)"
 REGISTRY_PUB="$(tcp "${REG_PUB_PORT}")"
 REGISTRY_ROUTER="$(tcp "${REG_ROUTER_PORT}")"
 REGISTRY_HTTP="$(http "${REG_HTTP_PORT}")"
@@ -131,6 +139,11 @@ HANDSHAKE_ENDPOINT="$(tcp "${HANDSHAKE_PORT}")"
 SPOT_ENDPOINT="$(tcp "${SPOT_PORT}")"
 SPOT_PUB_ENDPOINT="$(tcp "${SPOT_PUB_PORT}")"
 SERVICE_HTTP="$(http "${SVC_HTTP_PORT}")"
+FILTER_API_ENDPOINT="$(tcp "${FILTER_API_PORT}")"
+FILTER_HTTP="$(http "${FILTER_HTTP_PORT}")"
+THROW_API_ENDPOINT="$(tcp "${THROW_API_PORT}")"
+THROW_HTTP="$(http "${THROW_HTTP_PORT}")"
+TRIGGER_HTTP="$(http "${TRIGGER_HTTP_PORT}")"
 
 gradle_run installDist
 
@@ -144,6 +157,7 @@ wait_port registry-router "${REGISTRY_ROUTER}"
 wait_port registry-http "${REGISTRY_HTTP}"
 
 ZLINK_JAVA_E2E_REGISTRY_ROUTER="${REGISTRY_ROUTER}" \
+ZLINK_JAVA_E2E_RID="svc-a" \
 ZLINK_JAVA_E2E_API_ENDPOINT="${API_ENDPOINT}" \
 ZLINK_JAVA_E2E_HANDSHAKE_ENDPOINT="${HANDSHAKE_ENDPOINT}" \
 ZLINK_JAVA_E2E_SPOT_ENDPOINT="${SPOT_ENDPOINT}" \
@@ -154,25 +168,52 @@ ZLINK_JAVA_E2E_LOG_DIR="${log_dir}" \
 pids+=("$!")
 wait_port service-api "${API_ENDPOINT}"
 wait_port service-http "${SERVICE_HTTP}"
-sleep 2
+
+ZLINK_JAVA_E2E_REGISTRY_ROUTER="${REGISTRY_ROUTER}" \
+ZLINK_JAVA_E2E_RID="svc-b" \
+ZLINK_JAVA_E2E_API_ENDPOINT="${FILTER_API_ENDPOINT}" \
+ZLINK_JAVA_E2E_HTTP_ENDPOINT="${FILTER_HTTP}" \
+ZLINK_JAVA_E2E_ENABLE_HANDSHAKE="false" \
+ZLINK_JAVA_E2E_ENABLE_SPOT="false" \
+ZLINK_JAVA_E2E_LOG_DIR="${log_dir}" \
+  "$(filtered_service_bin)" >"${log_dir}/filtered-service.stdout.log" 2>"${log_dir}/filtered-service.stderr.log" &
+pids+=("$!")
+wait_port filtered-service-api "${FILTER_API_ENDPOINT}"
+wait_port filtered-service-http "${FILTER_HTTP}"
+
+ZLINK_JAVA_E2E_REGISTRY_ROUTER="${REGISTRY_ROUTER}" \
+ZLINK_JAVA_E2E_RID="svc-throw" \
+ZLINK_JAVA_E2E_API_ENDPOINT="${THROW_API_ENDPOINT}" \
+ZLINK_JAVA_E2E_HTTP_ENDPOINT="${THROW_HTTP}" \
+ZLINK_JAVA_E2E_ENABLE_HANDSHAKE="false" \
+ZLINK_JAVA_E2E_ENABLE_SPOT="false" \
+ZLINK_JAVA_E2E_LOG_DIR="${log_dir}" \
+  "$(throwing_service_bin)" >"${log_dir}/throwing-service.stdout.log" 2>"${log_dir}/throwing-service.stderr.log" &
+pids+=("$!")
+wait_port throwing-service-api "${THROW_API_ENDPOINT}"
+wait_port throwing-service-http "${THROW_HTTP}"
 
 ZLINK_JAVA_E2E_API_ENDPOINT="${API_ENDPOINT}" \
 ZLINK_JAVA_E2E_HANDSHAKE_ENDPOINT="${HANDSHAKE_ENDPOINT}" \
 ZLINK_JAVA_E2E_REGISTRY_HTTP="${REGISTRY_HTTP}" \
 ZLINK_JAVA_E2E_SERVICE_HTTP="${SERVICE_HTTP}" \
+ZLINK_JAVA_E2E_TRIGGER_HTTP="${TRIGGER_HTTP}" \
+ZLINK_JAVA_E2E_LOG_DIR="${log_dir}" \
+  "$(trigger_bin)" >"${log_dir}/trigger.stdout.log" 2>"${log_dir}/trigger.stderr.log" &
+pids+=("$!")
+wait_port trigger-http "${TRIGGER_HTTP}"
+sleep 2
+
+ZLINK_JAVA_E2E_TRIGGER_HTTP="${TRIGGER_HTTP}" \
 ZLINK_JAVA_E2E_LOG_DIR="${log_dir}" \
   "$(client_bin)" >"${log_dir}/client.stdout.log" 2>"${log_dir}/client.stderr.log"
 
-ZLINK_JAVA_E2E_LOG_DIR="${log_dir}" \
-  "$(trigger_bin)" >"${log_dir}/validation.stdout.log" 2>"${log_dir}/validation.stderr.log"
-
 cat "${log_dir}/client.stdout.log"
-cat "${log_dir}/validation.stdout.log"
 grep -q "scenario MON-A1 passed" "${log_dir}/client.stdout.log"
 grep -q "scenario MON-A2 passed" "${log_dir}/client.stdout.log"
 grep -q "scenario MON-A3 passed" "${log_dir}/client.stdout.log"
 grep -q "scenario MON-A5 passed" "${log_dir}/client.stdout.log"
 grep -q "scenario MON-B1 passed" "${log_dir}/client.stdout.log"
+grep -q "scenario MON-B2 passed" "${log_dir}/client.stdout.log"
 grep -q "scenario MON-C1 passed" "${log_dir}/client.stdout.log"
-grep -q "scenario MON-B2 passed" "${log_dir}/validation.stdout.log"
 grep -Rq "message flow" "${log_dir}"/*-flow.log

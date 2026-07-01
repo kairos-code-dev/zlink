@@ -4,7 +4,7 @@ set -euo pipefail
 cd "$(dirname "${BASH_SOURCE[0]}")"
 
 pids=()
-role_pattern='systems\.zlink\.e2e\.spotservice\.(client|play|publisher|registry)\.Program'
+role_pattern='systems\.zlink\.e2e\.spotservice\.(client|gateway|play|publisher|registry)\.Program'
 run_id="$(date +%Y%m%d-%H%M%S)-$$"
 log_dir="$(pwd)/logs/${run_id}"
 repo_root="$(cd ../../../../.. && pwd)"
@@ -63,7 +63,7 @@ import socket
 sockets = []
 ports = []
 try:
-    for _ in range(17):
+    for _ in range(18):
         sock = socket.socket()
         sock.bind(("127.0.0.1", 0))
         sockets.append(sock)
@@ -133,6 +133,10 @@ publisher_bin() {
   echo "${ZLINK_JAVA_E2E_BUILD_DIR}/Server-Publisher/install/spot-service-publisher/bin/spot-service-publisher"
 }
 
+gateway_bin() {
+  echo "${ZLINK_JAVA_E2E_BUILD_DIR}/Server-Gateway/install/spot-service-gateway/bin/spot-service-gateway"
+}
+
 start_registry() {
   ZLINK_JAVA_E2E_REGISTRY_PUB="${REGISTRY_PUB}" \
   ZLINK_JAVA_E2E_REGISTRY_ROUTER="${REGISTRY_ROUTER}" \
@@ -172,6 +176,28 @@ start_play() {
   wait_port "${rid}-spot-pub" "${spot_pub}"
   wait_port "${rid}-stream" "${stream}"
   wait_port "${rid}-http" "${http}"
+}
+
+start_gateway() {
+  ZLINK_JAVA_E2E_GATEWAY_RID="client-route-mesh" \
+  ZLINK_JAVA_E2E_GATEWAY_HTTP_ENDPOINT="${HTTP_GATEWAY}" \
+  ZLINK_JAVA_E2E_ROUTE_ENDPOINT="${ROUTE_CLIENT}" \
+  ZLINK_JAVA_E2E_ROUTE_A_ENDPOINT="${ROUTE_A}" \
+  ZLINK_JAVA_E2E_ROUTE_B_ENDPOINT="${ROUTE_B}" \
+  ZLINK_JAVA_E2E_SPOT_ENDPOINT="${SPOT_CLIENT}" \
+  ZLINK_JAVA_E2E_SPOT_A_ENDPOINT="${SPOT_A}" \
+  ZLINK_JAVA_E2E_SPOT_B_ENDPOINT="${SPOT_B}" \
+  ZLINK_JAVA_E2E_INGRESS_A_ENDPOINT="${INGRESS_A}" \
+  ZLINK_JAVA_E2E_STREAM_A_ENDPOINT="${STREAM_A}" \
+  ZLINK_JAVA_E2E_STREAM_B_ENDPOINT="${STREAM_B}" \
+  ZLINK_JAVA_E2E_HTTP_A_ENDPOINT="${HTTP_A}" \
+  ZLINK_JAVA_E2E_REGISTRY_ROUTER="${REGISTRY_ROUTER}" \
+  ZLINK_JAVA_E2E_LOG_DIR="${log_dir}" \
+    "$(gateway_bin)" >"${log_dir}/gateway.stdout.log" 2>"${log_dir}/gateway.stderr.log" &
+  pids+=("$!")
+  wait_port gateway-route "${ROUTE_CLIENT}"
+  wait_port gateway-spot "${SPOT_CLIENT}"
+  wait_port gateway-http "${HTTP_GATEWAY}"
 }
 
 run_publisher() {
@@ -234,36 +260,24 @@ with urllib.request.urlopen(request, timeout=5) as response:
 PY
 }
 
-read -r REGISTRY_PUB REGISTRY_ROUTER ROUTE_A ROUTE_B ROUTE_CLIENT SPOT_A SPOT_B SPOT_CLIENT INGRESS_A INGRESS_B SPOT_PUB_A SPOT_PUB_B SPOT_PUBLISHER STREAM_A STREAM_B HTTP_A HTTP_B <<<"$(reserve_ports)"
+read -r REGISTRY_PUB REGISTRY_ROUTER ROUTE_A ROUTE_B ROUTE_CLIENT SPOT_A SPOT_B SPOT_CLIENT INGRESS_A INGRESS_B SPOT_PUB_A SPOT_PUB_B SPOT_PUBLISHER STREAM_A STREAM_B HTTP_A HTTP_B HTTP_GATEWAY <<<"$(reserve_ports)"
 
 gradle_run installDist
 
 start_registry
 start_play play-a "${ROUTE_A}" "${SPOT_A}" "${INGRESS_A}" "${HTTP_A}" "${SPOT_PUB_A}" "${STREAM_A}"
 start_play play-b "${ROUTE_B}" "${SPOT_B}" "${INGRESS_B}" "${HTTP_B}" "${SPOT_PUB_B}" "${STREAM_B}"
+start_gateway
 sleep 2
 
 run_client_mode() {
   local mode="$1"
-  local route_client
-  local spot_client
   local attempt
   local status
   for attempt in $(seq 1 5); do
-    read -r route_client spot_client <<<"$(reserve_client_endpoints)"
     set +e
     ZLINK_JAVA_E2E_CLIENT_MODE="${mode}" \
-      ZLINK_JAVA_E2E_ROUTE_ENDPOINT="${route_client}" \
-      ZLINK_JAVA_E2E_ROUTE_A_ENDPOINT="${ROUTE_A}" \
-      ZLINK_JAVA_E2E_ROUTE_B_ENDPOINT="${ROUTE_B}" \
-      ZLINK_JAVA_E2E_SPOT_ENDPOINT="${spot_client}" \
-      ZLINK_JAVA_E2E_SPOT_A_ENDPOINT="${SPOT_A}" \
-      ZLINK_JAVA_E2E_SPOT_B_ENDPOINT="${SPOT_B}" \
-      ZLINK_JAVA_E2E_INGRESS_A_ENDPOINT="${INGRESS_A}" \
-      ZLINK_JAVA_E2E_STREAM_A_ENDPOINT="${STREAM_A}" \
-      ZLINK_JAVA_E2E_STREAM_B_ENDPOINT="${STREAM_B}" \
-      ZLINK_JAVA_E2E_HTTP_A_ENDPOINT="${HTTP_A}" \
-      ZLINK_JAVA_E2E_REGISTRY_ROUTER="${REGISTRY_ROUTER}" \
+      ZLINK_JAVA_E2E_GATEWAY_HTTP_ENDPOINT="${HTTP_GATEWAY}" \
       ZLINK_JAVA_E2E_LOG_DIR="${log_dir}" \
         timeout -k 5s 30s "$(client_bin)" >"${log_dir}/client-${mode}.stdout.log" 2>"${log_dir}/client-${mode}.stderr.log"
     status="$?"
@@ -318,7 +332,7 @@ cat "${log_dir}/client.stdout.log"
 fetch_evidence play-a "${HTTP_A}"
 fetch_evidence play-b "${HTTP_B}"
 grep -Rq "message flow" "${log_dir}"/*-flow.log
-grep -q "packet=RouteReq" "${log_dir}/client-flow.log"
+grep -q "packet=RouteReq" "${log_dir}/gateway-flow.log"
 grep -q '"marker":"RouteReq"' "${log_dir}/play-a-evidence.json"
 grep -q '"value":"route-mesh-normal"' "${log_dir}/play-a-evidence.json"
 grep -q '"marker":"ActorCreated"' "${log_dir}/play-a-evidence.json"
@@ -359,3 +373,4 @@ grep -q "IdleClosed" "${log_dir}/play-a-evidence.json"
 grep -q "IdleKeptOpen" "${log_dir}/play-a-evidence.json"
 grep -q "TimerOverrunConfigured" "${log_dir}/play-a-evidence.json"
 grep -q "TimerOverrunTick" "${log_dir}/play-a-evidence.json"
+echo "spot-service e2e result=passed"

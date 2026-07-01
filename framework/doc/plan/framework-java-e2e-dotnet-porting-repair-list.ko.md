@@ -51,13 +51,12 @@ E2E 코드에서 우회하지 않는다. 먼저 원인을 확인하고, 필요�
 
 ### 1. `RegistryMessaging`
 
-현재 문제:
+수정 결과:
 
-- `.NET`은 dynamic provider lifecycle 제어를 Client support/scenario 안에서 수행한다.
-- Java는 `RM-B1`, `RM-B2`, `RM-A4` provider start/stop orchestration을 `run_e2e.sh`가 수행하고, Client
-  scenario는 file signal로 runner와 조율한다.
-- `porting-inventory.ko.md`는 이 runner delegation을 done으로 기록해 scenario/support 책임 차이가 드러나지
-  않는다.
+- `.NET`처럼 dynamic provider lifecycle 제어를 Client support/scenario 안에서 수행한다.
+- Java `RM-B1`, `RM-B2`, `RM-A4`는 `Client/Support/DynamicClusterLauncher.java`로 registry/provider
+  process를 직접 시작·종료한다.
+- `porting-inventory.ko.md`는 Client support 책임과 runner 책임을 분리해 기록한다.
 
 수정 방향:
 
@@ -68,84 +67,87 @@ E2E 코드에서 우회하지 않는다. 먼저 원인을 확인하고, 필요�
 
 ### 2. `RegistrationCodec`
 
-현재 문제:
+기존 문제:
 
 - `.NET` Client는 `ZLinkHttpClient`로 scenario를 실행한다.
 - Java Client는 `@EnableZLinkFramework`, `ZLinkFrameworkConfigurer`, `ZLinkClient` 주입으로 framework
   participant가 된다.
 
-수정 방향:
+수정 결과:
 
-- Client를 framework application에서 HTTP client driver로 바꾼다.
-- codec registration, invalid duplicate, JSON-only peer, codec requester 책임은 `Server/<Role>`로 옮긴다.
+- Client를 framework application에서 HTTP client driver로 바꿨다.
+- codec registration, invalid duplicate, JSON-only peer, codec requester 책임은 `Server/<Role>`로 옮겼다.
 - `.NET`의 `Server/Main`, `Server/InvalidDuplicate`, `Server/JsonOnlyPeer`, `Server/CodecRequester` source를
-  Java role에 각각 매핑한다.
+  Java role에 각각 매핑했다.
+- `RC-A6` invalid duplicate startup failure도 Client scenario가 process를 시작하고 검증한다.
+- 검증 로그: `framework/languages/java/e2e/RegistrationCodec/logs/20260702-063913-2326/`
 
 ### 3. `ResilienceLifecycle`
 
-현재 문제:
+기존 문제:
 
 - `.NET` Client는 여러 HTTP client와 process manager로 consumer, registry, provider role을 조작한다.
 - Java Client는 framework app으로 뜨고 `ZLinkClient`, `ZLinkRegistryQueryClient`를 직접 사용한다.
 - `.NET` 기준 `Server/Consumer` source role이 Java에는 없다.
 
-수정 방향:
+수정 결과:
 
-- `Server/Consumer` role을 추가하고 Client에 섞인 consumer/framework request 책임을 server role로 옮긴다.
-- Client는 HTTP client와 process control support만 가진다.
-- `.NET` scenario file 목록에 맞춰 monolithic `ClientScenario`를 개별 scenario 파일로 나눈다.
+- `Server/Consumer` role을 추가하고 Client에 섞인 consumer/framework request 책임을 server role로 옮겼다.
+- `Client/Support/ResilienceProcessManager.java`와 `ResilienceLifecycleSuite.java`를 추가해 provider/consumer
+  lifecycle orchestration을 Client support 책임으로 옮겼다.
+- `.NET` scenario file 목록에 맞춰 Java `Client/Scenarios/*.java` 파일을 유지하고, 미구현 scenario는
+  선택 시 명시적으로 실패하는 gap으로 남겼다.
+- 검증 로그: `framework/languages/java/e2e/ResilienceLifecycle/logs/20260702-064738-35134/`
 
 ### 4. `RuntimeMonitoring`
 
-현재 문제:
+기존 문제:
 
 - `.NET` Client는 monitoring scenario를 driver로 실행한다.
 - Java Client는 `@EnableZLinkFramework`와 `ZLinkClient` 기반 직접 request 구조다.
 - `.NET` 기준 `Server/FilteredService`, `Server/ThrowingService` role이 Java에는 없다.
 - Java Client 출력 범위는 `.NET`의 `MON-A4`, `MON-B2`, `MON-D1` 흐름까지 1:1로 대응하지 않는다.
 
-수정 방향:
+수정 결과:
 
-- Client를 framework participant에서 HTTP driver로 바꾼다.
-- `Server/FilteredService`, `Server/ThrowingService` role을 source role로 추가한다.
-- `MON-A1`부터 `MON-D1`까지 `.NET` scenario file과 공통 E2E scenario ID를 다시 매핑한다.
+- Client를 framework participant에서 HTTP driver로 바꿨다.
+- `Server/FilteredService`, `Server/ThrowingService` role을 source role로 추가했다.
+- `MON-A1`부터 `MON-D1`까지 `.NET` scenario file과 공통 E2E scenario ID를 다시 매핑했다.
+- 검증 로그: `framework/languages/java/e2e/RuntimeMonitoring/logs/20260702-053403-25370/`
 
 ### 5. `SpotService`
 
-현재 문제:
+기존 문제:
 
 - `.NET` Client는 HTTP client와 stream connector 기반 driver다.
 - Java Client는 `@EnableZLinkFramework`, `ZLinkSpotManager`, `ClientDriverSpot`로 spot을 직접 띄운다.
 - Java server role에는 `.NET` 기준 `Gateway`, `MultiNode`, `Session`이 없고, `.NET`에 없는 `Publisher`가 있다.
 
-수정 방향:
+수정 결과:
 
-- Client spot을 제거하고 HTTP client/stream connector driver로 재작성한다.
-- `Gateway`, `MultiNode`, `Play`, `Registry`, `Session` role을 `.NET` 기준으로 나눈다.
-- `Publisher` role은 공통 E2E나 `.NET` 기준 근거가 없으면 제거하거나 `not-needed`로 명시한다.
+- Client spot을 제거하고 HTTP client/stream connector driver로 재작성했다.
+- `Gateway`, `MultiNode`, `Play`, `Registry`, `Session` role을 `.NET` 기준으로 나눴다.
+- `Publisher` role은 Java 구현 보조 role로 inventory/feature-map에 근거를 기록했다.
+- 검증 로그: `framework/languages/java/e2e/SpotService/logs/20260702-055229-7389/`
 
 ### 6. `YieldDispatch`
 
-현재 문제:
+수정 결과:
 
-- stream connector 사용 자체는 맞다.
-- `.NET`의 `Client/Scenarios/*.cs` 기준과 달리 대부분 scenario가 단일 `Program.java`에 모여 있다.
-- `YD-E2` cancellation cleanup도 별도 scenario file이 아니라 `runCancellationCleanup()`에 있다.
-
-수정 방향:
-
-- 기능 구현은 최대한 보존하되, `.NET` Client scenario file 단위로 Java `Client/Scenarios`를 나눈다.
-- `Program.java`는 scenario 목록과 실행 순서만 선언하도록 줄인다.
-- `Client/Support`에는 stream connector 생성, evidence wait, assertion helper만 남긴다.
+- stream connector 기반 실행과 기존 scenario 동작은 유지했다.
+- `.NET`의 `Client/Scenarios/*.cs` 기준에 맞춰 Java `Client/Scenarios/*.java` wrapper를 추가했다.
+- `Program.java`는 stream connector 생성, diagnostic mode dispatch, scenario 실행 순서 선언만 담당한다.
+- 공통 stream connector helper와 evidence/marker assertion은 `Client/Support/YieldDispatchScenarioSupport.java`로 분리했다.
+- `ZLINK_JAVA_E2E_RUN_E3_SHUTDOWN=1 ./run_e2e.sh`는 `logs/20260702-070504-3148`에서 기본 suite와 YD-E3
+  shutdown/restart recovery를 함께 통과했다.
 
 ### 7. `DiscoveryRegistryHa`
 
-현재 문제:
+수정 결과:
 
-- Java feature map은 `DR-B2`, `DR-B3`, `DR-C1`, `DR-C2`를 runtime gap으로 표시하지만, `.NET` 기준 feature
-  map은 같은 scenario를 구현 상태로 둔다.
-- `Client/Scenarios/ClientScenario.java`는 scenario ID 하나를 실행하는 파일이 아니라 dispatch용 interface다.
-  현재 위치는 scenario ID 구현 파일만 둔다는 분류 규칙과 맞지 않는다.
+- `DR-B2`, `DR-B3`, `DR-C1`, `DR-C2`는 현재 Java runner에서 public runtime gap marker로 재확인했다.
+  `.NET`은 구현 상태지만 Java는 discovery/registry runtime 수렴 동작이 맞지 않아 완료로 표시하지 않는다.
+- `ClientScenario.java`는 scenario ID 구현 파일이 아니므로 `Client/Support`로 옮겼다.
 
 수정 방향:
 
@@ -156,35 +158,36 @@ E2E 코드에서 우회하지 않는다. 먼저 원인을 확인하고, 필요�
 
 ### 8. `PubSub`
 
-현재 문제:
+기존 문제:
 
 - `.NET`은 PS-A4 subscriber reconnect와 PS-B2 publisher restart lifecycle 제어를 Client scenario/support
   안에서 수행한다.
 - Java는 PS-A4/PS-B2의 stop/restart orchestration을 `run_e2e.sh`가 먼저 수행하고, Client scenario는
   runner가 만들어 둔 gap 또는 restart 이후 상태만 확인한다.
-- Java inventory는 이 runner delegation을 done으로 기록하고 있다.
+- Java inventory는 이 책임 분리를 잘못 done으로 기록하고 있었다.
 
-수정 방향:
+수정 결과:
 
-- PS-A4와 PS-B2의 process lifecycle control을 Java Client scenario/support 책임으로 옮긴다.
-- runner는 process 시작, 기본 readiness, client 실행, cleanup만 담당한다.
-- Java public/process harness 제약으로 Client scenario에서 제어할 수 없으면 `feature-map.ko.md`와
-  `porting-inventory.ko.md`에 harness gap으로 남기고 done으로 표시하지 않는다.
+- `Client/Support/ServerProcessLauncher.java`를 추가해 PS-A4와 PS-B2의 process lifecycle control을
+  Java Client scenario/support 책임으로 옮겼다.
+- runner는 기본 process 시작, readiness, client 실행, cleanup을 담당하고, PS-A4/PS-B2의 stop/restart
+  orchestration은 Client scenario가 수행한다.
+- 검증 로그: `framework/languages/java/e2e/PubSub/logs/20260702-063513-76704/`
 
 ## 작업 체크리스트
 
 - [x] `RegistrationCodec` Client를 HTTP driver로 바꾸고 server role 매핑을 갱신한다.
 - [x] `ResilienceLifecycle`에 `Server/Consumer`를 추가하고 Client의 framework 참여를 제거한다.
 - [x] `RuntimeMonitoring` Client를 HTTP driver로 바꾸고 `FilteredService`, `ThrowingService` role을 추가한다.
-- [ ] `SpotService` Client spot을 제거하고 `Gateway`, `MultiNode`, `Session` role을 추가한다.
-- [ ] `RegistryMessaging` RM-B1/RM-B2/RM-A4 lifecycle orchestration을 Client support로 옮긴다.
-- [ ] `YieldDispatch` scenario를 `.NET` file 단위로 나누고 `Program.java`는 실행 목록만 남긴다.
-- [ ] `DiscoveryRegistryHa` DR-B2/DR-B3/DR-C1/DR-C2 gap을 다시 판정한다.
-- [ ] `PubSub` PS-A4/PS-B2 lifecycle orchestration을 Client support로 옮긴다.
-- [ ] 각 config의 `run_e2e.sh`에 공통 local E2E 대기 기준을 적용한다.
-- [ ] 각 config의 `porting-inventory.ko.md`와 `feature-map.ko.md`를 실제 구현 상태와 맞춘다.
-- [ ] framework 기능 누락이나 버그가 나오면 원인을 고치고 회귀테스트를 추가한다.
-- [ ] 각 config의 `run_e2e.sh`를 실행하고 scenario marker와 role process evidence를 확인한다.
+- [x] `SpotService` Client spot을 제거하고 `Gateway`, `MultiNode`, `Session` role을 추가한다.
+- [x] `RegistryMessaging` RM-B1/RM-B2/RM-A4 lifecycle orchestration을 Client support로 옮긴다.
+- [x] `YieldDispatch` scenario를 `.NET` file 단위로 나누고 `Program.java`는 실행 목록만 남긴다.
+- [x] `DiscoveryRegistryHa` DR-B2/DR-B3/DR-C1/DR-C2 gap을 다시 판정한다.
+- [x] `PubSub` PS-A4/PS-B2 lifecycle orchestration을 Client support로 옮긴다.
+- [x] 각 config의 `run_e2e.sh`에 공통 local E2E 대기 기준을 적용한다.
+- [x] 각 config의 `porting-inventory.ko.md`와 `feature-map.ko.md`를 실제 구현 상태와 맞춘다.
+- [x] framework 기능 누락이나 버그가 나오면 원인을 고치고 회귀테스트를 추가한다.
+- [x] 각 config의 `run_e2e.sh`를 실행하고 scenario marker와 role process evidence를 확인한다.
 
 ## 완료 확인 절차
 
@@ -200,11 +203,11 @@ E2E 코드에서 우회하지 않는다. 먼저 원인을 확인하고, 필요�
 
 마지막에는 Codex 에이전트로 이 문서를 기준으로 반복 리뷰한다.
 
-- [ ] `.NET` source-only inventory와 Java inventory를 다시 대조한다.
-- [ ] Client가 framework runtime으로 뜨는 항목이 남아 있는지 검색한다.
-- [ ] `.NET` source role이 빠졌거나 Java extra role이 남았는지 확인한다.
-- [ ] scenario file 분류가 `.NET Client/Scenarios`와 공통 E2E scenario ID에 대응되는지 확인한다.
-- [ ] public API gap을 내부 helper나 test-only adapter로 숨긴 항목이 없는지 확인한다.
-- [ ] framework 기능 누락 또는 버그를 E2E 코드 우회로 처리한 항목이 없는지 확인한다.
-- [ ] 누락 항목이 나오면 이 문서의 수정 목록과 체크리스트에 추가한 뒤 다시 리뷰한다.
-- [ ] Codex 리뷰 결과가 `NO MISSING JAVA ITEMS`가 될 때까지 반복한다.
+- [x] `.NET` source-only inventory와 Java inventory를 다시 대조한다.
+- [x] Client가 framework runtime으로 뜨는 항목이 남아 있는지 검색한다.
+- [x] `.NET` source role이 빠졌거나 Java extra role이 남았는지 확인한다.
+- [x] scenario file 분류가 `.NET Client/Scenarios`와 공통 E2E scenario ID에 대응되는지 확인한다.
+- [x] public API gap을 내부 helper나 test-only adapter로 숨긴 항목이 없는지 확인한다.
+- [x] framework 기능 누락 또는 버그를 E2E 코드 우회로 처리한 항목이 없는지 확인한다.
+- [x] 누락 항목이 나오면 이 문서의 수정 목록과 체크리스트에 추가한 뒤 다시 리뷰한다.
+- [x] Codex 리뷰 결과가 `NO MISSING JAVA ITEMS`가 될 때까지 반복한다.

@@ -3,7 +3,14 @@
 이 문서는 Config 7 Runtime Monitoring 공통 시나리오 중 Java framework E2E가 현재 검증하는 항목과,
 public API 또는 harness 제어가 더 필요한 항목을 구분한다. 각 host는 자기 source를 public
 `ZLinkMonitoringOptionsCustomizer`로 등록하고, public `ZLinkRuntimeEventHandler`에서 evidence를
-기록한다.
+기록한다. Client는 HTTP driver이고, framework channel traffic과 malformed connection trigger는
+`Server/Trigger` role이 맡는다.
+
+마지막 검증:
+
+- 명령: `timeout 420s ./run_e2e.sh`
+- 결과: passed
+- 로그: `framework/languages/java/e2e/RuntimeMonitoring/logs/20260702-053403-25370/`
 
 ## 구현됨
 
@@ -29,3 +36,5 @@ public API 또는 harness 제어가 더 필요한 항목을 구분한다. 각 ho
 
 - `MON-A4`: failover/drain 전이를 socket/registry monitoring event로 묶어 보는 runner가 아직 없다.
 - `MON-D1`: 장애/복구 반복 중 monitoring event 연속성을 보는 장시간 harness가 아직 없다.
+- `.NET Client/Scenarios/*.cs`에 대응하는 Java Client scenario 파일은 존재한다. 구현된 scenario는
+  `Server/Trigger`의 HTTP endpoint를 호출하고, gap scenario는 선택되면 명시적으로 실패한다.

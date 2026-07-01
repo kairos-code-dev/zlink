@@ -1,0 +1,175 @@
+package systems.zlink.e2e.resiliencelifecycle.client;
+
+import java.nio.file.Files;
+import java.nio.file.Path;
+import java.util.ArrayList;
+import java.util.List;
+import java.util.concurrent.CompletableFuture;
+import systems.zlink.e2e.resiliencelifecycle.client.Scenarios.RlA1ProviderRestartScenario;
+import systems.zlink.e2e.resiliencelifecycle.client.Scenarios.RlA2ProviderEndpointRemapScenario;
+import systems.zlink.e2e.resiliencelifecycle.client.Scenarios.RlA3ReconnectStormScenario;
+import systems.zlink.e2e.resiliencelifecycle.client.Scenarios.RlA5ProviderFlappingScenario;
+import systems.zlink.e2e.resiliencelifecycle.client.Scenarios.RlB1CancellationCleanupScenario;
+import systems.zlink.e2e.resiliencelifecycle.client.Scenarios.RlB3GracefulShutdownScenario;
+import systems.zlink.e2e.resiliencelifecycle.client.Scenarios.RlB4RuntimeDrainScenario;
+import systems.zlink.e2e.resiliencelifecycle.client.Scenarios.RlB5DrainInflightScenario;
+import systems.zlink.e2e.resiliencelifecycle.client.Scenarios.RlB6GrayFaultScenario;
+import systems.zlink.e2e.resiliencelifecycle.client.Scenarios.RlC1ClientHostLifecycleScenario;
+import systems.zlink.e2e.resiliencelifecycle.client.Scenarios.RlD3DispatchErrorEvidenceScenario;
+import systems.zlink.e2e.resiliencelifecycle.client.Scenarios.RlD5MixedBurstScenario;
+import systems.zlink.e2e.resiliencelifecycle.client.Support.ClientOptions;
+import systems.zlink.e2e.resiliencelifecycle.client.Support.ConsumerScenarioClient;
+import systems.zlink.e2e.resiliencelifecycle.client.Support.ResilienceProcessManager;
+
+public final class ResilienceLifecycleSuite {
+    private final ClientOptions options;
+    private final ResilienceProcessManager processes;
+    private ResilienceProcessManager.ManagedProcess providerA;
+    private ResilienceProcessManager.ManagedProcess providerB;
+    private String currentHttpA;
+
+    public ResilienceLifecycleSuite(ClientOptions options, ResilienceProcessManager processes) {
+        this.options = options;
+        this.processes = processes;
+        this.currentHttpA = options.httpAEndpoint();
+    }
+
+    public void run() {
+        processes.prepareControlDir();
+        providerA = processes.startProvider("api-a", "api-a", options.apiAEndpoint(), options.httpAEndpoint());
+        providerB = processes.startProvider("api-b", "api-b", options.apiBEndpoint(), options.httpBEndpoint());
+        processes.sleep(2_000);
+
+        runRestart();
+        runReschedule();
+        runFlapping();
+        runDefault();
+        restartProviderB();
+        runStorm();
+        runCleanup();
+    }
+
+    private void runRestart() {
+        String consumerHttp = processes.reserveHttpEndpoint();
+        try (var consumerProcess = processes.startConsumer(
+            "consumer-restart", consumerHttp, currentHttpA, 0, options.logDir())) {
+            ConsumerScenarioClient consumer = new ConsumerScenarioClient(consumerHttp);
+            CompletableFuture<Void> scenario = CompletableFuture.runAsync(
+                () -> RlA1ProviderRestartScenario.run(consumer));
+            processes.waitSignal("a1-ready");
+            providerA.close();
+            processes.waitEndpointDown("api-a", currentHttpA);
+            processes.touchSignal("a1-down");
+            processes.waitSignal("a1-down-observed");
+            providerA = processes.startProvider("api-a", "api-a", options.apiAEndpoint(), options.httpAEndpoint());
+            processes.sleep(2_000);
+            processes.touchSignal("a1-up");
+            scenario.join();
+        }
+    }
+
+    private void runReschedule() {
+        String consumerHttp = processes.reserveHttpEndpoint();
+        try (var consumerProcess = processes.startConsumer(
+            "consumer-reschedule", consumerHttp, currentHttpA, 0, options.logDir())) {
+            ConsumerScenarioClient consumer = new ConsumerScenarioClient(consumerHttp);
+            CompletableFuture<Void> scenario = CompletableFuture.runAsync(
+                () -> RlA2ProviderEndpointRemapScenario.run(consumer));
+            processes.waitSignal("a2-ready");
+            providerA.close();
+            processes.waitEndpointDown("api-a", currentHttpA);
+            processes.touchSignal("a2-down");
+            processes.waitSignal("a2-down-observed");
+            providerA = processes.startProvider(
+                "api-a", "api-a", options.apiAReplacementEndpoint(), options.httpAReplacementEndpoint());
+            currentHttpA = options.httpAReplacementEndpoint();
+            processes.sleep(2_000);
+            processes.touchSignal("a2-up");
+            scenario.join();
+        }
+    }
+
+    private void runFlapping() {
+        String consumerHttp = processes.reserveHttpEndpoint();
+        try (var consumerProcess = processes.startConsumer(
+            "consumer-flapping", consumerHttp, currentHttpA, 0, options.logDir())) {
+            ConsumerScenarioClient consumer = new ConsumerScenarioClient(consumerHttp);
+            CompletableFuture<Void> scenario = CompletableFuture.runAsync(
+                () -> RlA5ProviderFlappingScenario.run(consumer));
+            processes.waitSignal("a5-ready");
+            for (int i = 0; i < 3; i++) {
+                providerA.close();
+                processes.waitEndpointDown("api-a", currentHttpA);
+                processes.sleep(1_000);
+                providerA = processes.startProvider(
+                    "api-a", "api-a", options.apiAReplacementEndpoint(), options.httpAReplacementEndpoint());
+                processes.sleep(2_000);
+            }
+            processes.touchSignal("a5-stop");
+            scenario.join();
+        }
+    }
+
+    private void runDefault() {
+        String consumerHttp = processes.reserveHttpEndpoint();
+        try (var consumerProcess = processes.startConsumer(
+            "consumer-default", consumerHttp, currentHttpA, 0, options.logDir())) {
+            ConsumerScenarioClient consumer = new ConsumerScenarioClient(consumerHttp);
+            RlB1CancellationCleanupScenario.run(consumer);
+            RlB4RuntimeDrainScenario.run(consumer);
+            RlB5DrainInflightScenario.run(consumer);
+            RlD3DispatchErrorEvidenceScenario.run(consumer);
+            RlB6GrayFaultScenario.run(consumer);
+            RlB3GracefulShutdownScenario.run(consumer);
+        }
+        providerB.close();
+        processes.waitEndpointDown("api-b", options.httpBEndpoint());
+    }
+
+    private void restartProviderB() {
+        providerB = processes.startProvider("api-b", "api-b", options.apiBEndpoint(), options.httpBEndpoint());
+        processes.sleep(3_000);
+    }
+
+    private void runStorm() {
+        for (int wave = 1; wave <= 2; wave++) {
+            List<CompletableFuture<Void>> scenarios = new ArrayList<>();
+            List<ResilienceProcessManager.ManagedProcess> consumers = new ArrayList<>();
+            for (int index = 1; index <= 6; index++) {
+                Path stormLogDir = Path.of(options.logDir(), "storm-" + wave + "-" + index);
+                createDirectory(stormLogDir);
+                String consumerHttp = processes.reserveHttpEndpoint();
+                consumers.add(processes.startConsumer(
+                    "consumer-storm-" + wave + "-" + index,
+                    consumerHttp,
+                    currentHttpA,
+                    index * 250L,
+                    stormLogDir.toString()));
+                ConsumerScenarioClient consumer = new ConsumerScenarioClient(consumerHttp);
+                scenarios.add(CompletableFuture.runAsync(() -> RlA3ReconnectStormScenario.run(consumer)));
+            }
+            scenarios.forEach(CompletableFuture::join);
+            for (int i = consumers.size() - 1; i >= 0; i--) {
+                consumers.get(i).close();
+            }
+        }
+    }
+
+    private void runCleanup() {
+        String consumerHttp = processes.reserveHttpEndpoint();
+        try (var consumerProcess = processes.startConsumer(
+            "consumer-cleanup", consumerHttp, currentHttpA, 0, options.logDir())) {
+            ConsumerScenarioClient consumer = new ConsumerScenarioClient(consumerHttp);
+            RlC1ClientHostLifecycleScenario.run(consumer);
+            RlD5MixedBurstScenario.run(consumer);
+        }
+    }
+
+    private static void createDirectory(Path path) {
+        try {
+            Files.createDirectories(path);
+        } catch (Exception error) {
+            throw new IllegalStateException("failed to create " + path, error);
+        }
+    }
+}

@@ -216,10 +216,12 @@ run_client_mode() {
   local suffix="$2"
   ZLINK_JAVA_E2E_CLIENT_MODE="${mode}" \
   ZLINK_JAVA_E2E_PUBLISHER_HTTP="${PUBLISHER_HTTP}" \
+  ZLINK_JAVA_E2E_PUBLISHER_ENDPOINT="${PUBLISHER_ENDPOINT}" \
+  ZLINK_JAVA_E2E_REGISTRY_ROUTER="${REGISTRY_ROUTER}" \
   ZLINK_JAVA_E2E_SUB1_HTTP="${SUB1_HTTP}" \
   ZLINK_JAVA_E2E_SUB2_HTTP="${SUB2_HTTP}" \
   ZLINK_JAVA_E2E_SUB3_HTTP="${SUB3_HTTP}" \
-  ZLINK_JAVA_E2E_LATE_CONTINUE_FILE="${LATE_CONTINUE}" \
+  ZLINK_JAVA_E2E_BUILD_DIR="${ZLINK_JAVA_E2E_BUILD_DIR}" \
   ZLINK_JAVA_E2E_LOG_DIR="${log_dir}" \
     "$(client_bin)" >"${log_dir}/client-${suffix}.stdout.log" 2>"${log_dir}/client-${suffix}.stderr.log"
   cat "${log_dir}/client-${suffix}.stdout.log"
@@ -240,6 +242,8 @@ PUBLISHER_PID="${LAST_PID}"
 
 ZLINK_JAVA_E2E_CLIENT_MODE=default \
 ZLINK_JAVA_E2E_PUBLISHER_HTTP="${PUBLISHER_HTTP}" \
+ZLINK_JAVA_E2E_PUBLISHER_ENDPOINT="${PUBLISHER_ENDPOINT}" \
+ZLINK_JAVA_E2E_REGISTRY_ROUTER="${REGISTRY_ROUTER}" \
 ZLINK_JAVA_E2E_SUB1_HTTP="${SUB1_HTTP}" \
 ZLINK_JAVA_E2E_SUB2_HTTP="${SUB2_HTTP}" \
 ZLINK_JAVA_E2E_SUB3_HTTP="${SUB3_HTTP}" \
@@ -247,6 +251,7 @@ ZLINK_JAVA_E2E_PUBLISHER_READY_FILE="${PUBLISHER_READY}" \
 ZLINK_JAVA_E2E_PRELATE_CONTINUE_FILE="${PRELATE_CONTINUE}" \
 ZLINK_JAVA_E2E_LATE_READY_FILE="${LATE_READY}" \
 ZLINK_JAVA_E2E_LATE_CONTINUE_FILE="${LATE_CONTINUE}" \
+ZLINK_JAVA_E2E_BUILD_DIR="${ZLINK_JAVA_E2E_BUILD_DIR}" \
 ZLINK_JAVA_E2E_LOG_DIR="${log_dir}" \
   "$(client_bin)" >"${log_dir}/client.stdout.log" 2>"${log_dir}/client.stderr.log" &
 CLIENT_PID="$!"
@@ -270,25 +275,14 @@ wait "${CLIENT_PID}"
 cat "${log_dir}/client.stdout.log"
 
 stop_pid "${SUB1_PID}"
-rm -f "${LATE_CONTINUE}"
-run_client_mode subscriber-restarted ps-a4 &
-PS_A4_PID="$!"
-sleep 1
-start_subscriber sub-1 alpha "${SUB1_HTTP}"
-SUB1_PID="${LAST_PID}"
-sleep 2
-touch "${LATE_CONTINUE}"
-wait "${PS_A4_PID}"
+run_client_mode subscriber-restarted ps-a4
 
-stop_pid "${SUB1_PID}"
 start_subscriber sub-1 alpha "${SUB1_HTTP}" 750
 SUB1_PID="${LAST_PID}"
 sleep 2
 run_client_mode slow-subscriber ps-b1
 
 stop_pid "${PUBLISHER_PID}"
-start_publisher publisher-restarted
-PUBLISHER_PID="${LAST_PID}"
 run_client_mode publisher-restarted ps-b2
 
 python3 - "${SUB1_HTTP}/evidence" >"${log_dir}/sub-1-evidence.json" <<'PY'
@@ -312,3 +306,4 @@ PY
 
 grep -Rq "message flow" "${log_dir}"/*-flow.log
 grep -q "HANDLER_MISSING/DROP/MissingEventMsg" "${log_dir}/sub-2-evidence.json"
+echo "pub-sub e2e result=passed"

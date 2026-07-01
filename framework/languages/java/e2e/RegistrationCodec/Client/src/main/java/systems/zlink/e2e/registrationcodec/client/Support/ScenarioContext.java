@@ -1,13 +1,10 @@
 package systems.zlink.e2e.registrationcodec.client.Support;
 
-import com.fasterxml.jackson.databind.ObjectMapper;
-import java.net.http.HttpClient;
-import systems.zlink.framework.channels.ZLinkClient;
+import systems.zlink.httpclient.ZLinkHttpClient;
 
 public record ScenarioContext(
-    ZLinkClient client,
+    ClientOptions options,
+    ZLinkHttpClient server,
+    ZLinkHttpClient codecRequester,
     Evidence evidence) {
-    public static Evidence evidenceFromEnv() {
-        return new Evidence(ClientOptions.fromEnv(), new ObjectMapper(), HttpClient.newHttpClient());
-    }
 }

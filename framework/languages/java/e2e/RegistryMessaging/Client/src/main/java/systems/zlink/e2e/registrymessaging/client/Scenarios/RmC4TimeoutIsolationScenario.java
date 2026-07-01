@@ -1,7 +1,7 @@
 package systems.zlink.e2e.registrymessaging.client.Scenarios;
 
 import systems.zlink.e2e.registrymessaging.client.Support.ScenarioAssert;
-import systems.zlink.e2e.registrymessaging.client.Support.ScenarioSignals;
+import systems.zlink.e2e.registrymessaging.client.Support.ScenarioWait;
 import systems.zlink.e2e.registrymessaging.shared.Contracts;
 import systems.zlink.httpclient.ZLinkHttpClient;
 
@@ -18,7 +18,7 @@ public final class RmC4TimeoutIsolationScenario {
             .body(new Contracts.ProfileReq("after"))
             .fetch(Contracts.ProfileRes.class);
         ScenarioAssert.that("profile:after".equals(after.value()), "RM-C4 post-timeout request failed");
-        ScenarioSignals.sleep(1100);
+        ScenarioWait.sleep(1100);
         Contracts.ProfileRes later = discoveryConsumer.post("/profile/request")
             .body(new Contracts.ProfileReq("later"))
             .fetch(Contracts.ProfileRes.class);

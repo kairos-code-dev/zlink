@@ -1,6 +1,7 @@
 package systems.zlink.e2e.runtimemonitoring.service.handlers;
 
 import systems.zlink.e2e.runtimemonitoring.shared.Contracts;
+import systems.zlink.e2e.runtimemonitoring.shared.Env;
 import systems.zlink.framework.channels.ZLinkRequestContext;
 import systems.zlink.framework.channels.ZLinkRequestHandler;
 import systems.zlink.framework.handlers.ZLinkHandlerGroup;
@@ -12,6 +13,8 @@ public final class WorkReqHandler
     public Contracts.WorkRes handle(
         Contracts.WorkReq request,
         ZLinkRequestContext context) {
-        return new Contracts.WorkRes("work:" + request.value(), "svc-a");
+        return new Contracts.WorkRes(
+            "work:" + request.value(),
+            Env.get("ZLINK_JAVA_E2E_RID", "svc-a"));
     }
 }

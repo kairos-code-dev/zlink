@@ -6,6 +6,7 @@ import org.springframework.boot.ApplicationRunner;
 import org.springframework.boot.WebApplicationType;
 import org.springframework.boot.autoconfigure.SpringBootApplication;
 import org.springframework.boot.builder.SpringApplicationBuilder;
+import org.springframework.beans.factory.ObjectProvider;
 import org.springframework.context.annotation.Bean;
 import systems.zlink.contracts.core.RoutingId;
 import systems.zlink.e2e.runtimemonitoring.service.handlers.MonitoringEventHandlers;
@@ -65,26 +66,29 @@ public final class Program {
                 .traceLabel("java-mon-service");
             options.addClientServerChannel(Contracts.CHANNEL)
                 .enableServer(Env.get("ZLINK_JAVA_E2E_API_ENDPOINT"))
-                .setRoutingId(RoutingId.from("svc-a"))
+                .setRoutingId(RoutingId.from(Env.get("ZLINK_JAVA_E2E_RID", "svc-a")))
                 .addRequestHandler(
                     WorkReqHandler.class,
                     Contracts.WorkReq.class,
                     Contracts.WorkRes.class,
                     "WorkReq");
-            options.addClientServerChannel(Contracts.HANDSHAKE_CHANNEL)
-                .enableServer(Env.get("ZLINK_JAVA_E2E_HANDSHAKE_ENDPOINT"))
-                .setRoutingId(RoutingId.from("svc-a-handshake"))
-                .addRequestHandler(
-                    WorkReqHandler.class,
-                    Contracts.WorkReq.class,
-                    Contracts.WorkRes.class,
-                    "HandshakeWorkReq");
-            ZLinkSpotNodeBuilder node = options.addSpotMesh(Contracts.SPOT_MESH)
-                ;
-            node.enableRouter(Env.get("ZLINK_JAVA_E2E_SPOT_ENDPOINT"))
-                .setRoutingId(RoutingId.from("svc-a-spot"));
-            node.enablePubSub(Env.get("ZLINK_JAVA_E2E_SPOT_PUB_ENDPOINT"));
-            node.addSpotFactory(MonitoringSpot.class);
+            if (enabled("ZLINK_JAVA_E2E_ENABLE_HANDSHAKE", true)) {
+                options.addClientServerChannel(Contracts.HANDSHAKE_CHANNEL)
+                    .enableServer(Env.get("ZLINK_JAVA_E2E_HANDSHAKE_ENDPOINT"))
+                    .setRoutingId(RoutingId.from(Env.get("ZLINK_JAVA_E2E_RID", "svc-a") + "-handshake"))
+                    .addRequestHandler(
+                        WorkReqHandler.class,
+                        Contracts.WorkReq.class,
+                        Contracts.WorkRes.class,
+                        "HandshakeWorkReq");
+            }
+            if (enabled("ZLINK_JAVA_E2E_ENABLE_SPOT", true)) {
+                ZLinkSpotNodeBuilder node = options.addSpotMesh(Contracts.SPOT_MESH);
+                node.enableRouter(Env.get("ZLINK_JAVA_E2E_SPOT_ENDPOINT"))
+                    .setRoutingId(RoutingId.from(Env.get("ZLINK_JAVA_E2E_RID", "svc-a") + "-spot"));
+                node.enablePubSub(Env.get("ZLINK_JAVA_E2E_SPOT_PUB_ENDPOINT"));
+                node.addSpotFactory(MonitoringSpot.class);
+            }
         };
     }
 
@@ -92,8 +96,12 @@ public final class Program {
     ZLinkMonitoringOptionsCustomizer monitoringOptions() {
         return options -> {
             options.addSocketEvents(Contracts.CHANNEL, ZLinkSocketEventKind.CONNECTION_READY);
-            options.addSocketEvents(Contracts.HANDSHAKE_CHANNEL);
-            options.addSpotEvents(Contracts.SPOT_MESH, Duration.ofMillis(100));
+            if (enabled("ZLINK_JAVA_E2E_ENABLE_HANDSHAKE", true)) {
+                options.addSocketEvents(Contracts.HANDSHAKE_CHANNEL);
+            }
+            if (enabled("ZLINK_JAVA_E2E_ENABLE_SPOT", true)) {
+                options.addSpotEvents(Contracts.SPOT_MESH, Duration.ofMillis(100));
+            }
         };
     }
 
@@ -103,13 +111,22 @@ public final class Program {
     }
 
     @Bean
-    ApplicationRunner createSpot(ZLinkSpotManager spots) {
-        return ignored -> spots.getOrCreate(
+    ApplicationRunner createSpot(ObjectProvider<ZLinkSpotManager> spots) {
+        return ignored -> {
+            if (!enabled("ZLINK_JAVA_E2E_ENABLE_SPOT", true)) {
+                return;
+            }
+            ZLinkSpotManager manager = spots.getIfAvailable();
+            if (manager == null) {
+                throw new IllegalStateException("spot manager is required when spot monitoring is enabled");
+            }
+            manager.getOrCreate(
                 MonitoringSpot.class,
                 RoutingId.from("monitoring-room"),
                 "bootstrap")
             .toCompletableFuture()
             .join();
+        };
     }
 
     @Bean
@@ -136,5 +153,9 @@ public final class Program {
     @Bean
     MonitoringEventHandlers.SpotRecorder spotRecorder(EvidenceState state) {
         return new MonitoringEventHandlers.SpotRecorder(state);
+    }
+
+    private static boolean enabled(String name, boolean fallback) {
+        return Boolean.parseBoolean(Env.get(name, Boolean.toString(fallback)));
     }
 }

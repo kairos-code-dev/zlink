@@ -1,6 +1,8 @@
 package systems.zlink.e2e.spotservice.shared;
 
 import java.time.Duration;
+import java.util.concurrent.CountDownLatch;
+import java.util.concurrent.TimeUnit;
 import systems.zlink.framework.CancellationToken;
 import systems.zlink.framework.messaging.ZLinkMessage;
 import systems.zlink.framework.spots.ZLinkSpot;
@@ -14,6 +16,7 @@ public final class UserSpot implements ZLinkSpot<ScenarioActor> {
     private final ScenarioState evidence;
     private String state = "";
     private boolean workerDone = true;
+    private CountDownLatch workerFollowUp;
 
     public UserSpot(
         ZLinkSpotContext context,
@@ -102,26 +105,36 @@ public final class UserSpot implements ZLinkSpot<ScenarioActor> {
         evidence.record("StateReq", context.spotRid().toString(), state);
         if (op.equals("worker-follow-up") && !workerDone) {
             evidence.record("WorkerFollowUpBeforeComplete", context.spotRid().toString(), state);
+            CountDownLatch latch = workerFollowUp;
+            if (latch != null) {
+                latch.countDown();
+            }
         }
         return state;
     }
 
     public String startWorker(String op) {
         workerDone = false;
+        workerFollowUp = new CountDownLatch(1);
         evidence.record("WorkerStarted", context.spotRid().toString(), op);
+        CountDownLatch latch = workerFollowUp;
         context.runWorker(token -> {
-            Thread.sleep(1500);
+            latch.await(5, TimeUnit.SECONDS);
             return op + "-done";
         }).submit(
             (value, token) -> {
                 workerDone = true;
+                workerFollowUp = null;
                 state = state.isBlank() ? value : state + "," + value;
                 evidence.record("WorkerCompleted", context.spotRid().toString(), value);
             },
-            (error, token) -> evidence.record(
-                "WorkerFailed",
-                context.spotRid().toString(),
-                error.getClass().getSimpleName()));
+            (error, token) -> {
+                workerFollowUp = null;
+                evidence.record(
+                    "WorkerFailed",
+                    context.spotRid().toString(),
+                    error.getClass().getSimpleName());
+            });
         return state;
     }
 

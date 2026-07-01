@@ -75,7 +75,7 @@ import socket
 sockets = []
 ports = []
 try:
-    for _ in range(18):
+    for _ in range(15):
         sock = socket.socket()
         sock.bind(("127.0.0.1", 0))
         sockets.append(sock)
@@ -129,18 +129,6 @@ PY
     sleep 0.1
   done
   echo "Timed out waiting for ${name} health at ${endpoint}" >&2
-  return 1
-}
-
-wait_marker() {
-  local file="$1"
-  for _ in $(seq 1 400); do
-    if [[ -f "${file}" ]]; then
-      return 0
-    fi
-    sleep 0.05
-  done
-  echo "Timed out waiting for marker ${file}" >&2
   return 1
 }
 
@@ -256,7 +244,7 @@ run_client() {
     "$(client_bin)" >"${log_dir}/client-${suffix}.stdout.log" 2>"${log_dir}/client-${suffix}.stderr.log"
 }
 
-read -r REGISTRY_PUB REGISTRY_ROUTER API_A API_B ROUTE_A ROUTE_B WORKFLOW_A API_A2 ROUTE_A2 REGISTRY_HTTP HTTP_API_A HTTP_API_B HTTP_WORKFLOW HTTP_DISCOVERY_CONSUMER HTTP_DIRECT_CONSUMER HTTP_SINGLE_CONSUMER HTTP_BACKPRESSURE_CONSUMER UNUSED <<<"$(reserve_ports)"
+read -r REGISTRY_PUB REGISTRY_ROUTER API_A API_B ROUTE_A ROUTE_B WORKFLOW_A REGISTRY_HTTP HTTP_API_A HTTP_API_B HTTP_WORKFLOW HTTP_DISCOVERY_CONSUMER HTTP_DIRECT_CONSUMER HTTP_SINGLE_CONSUMER HTTP_BACKPRESSURE_CONSUMER <<<"$(reserve_ports)"
 
 gradle_run installDist
 
@@ -291,55 +279,22 @@ stop_pid "${API_B_PID}"
 
 start_provider api-a "${API_A}" "${ROUTE_A}" "" api-a "" "${HTTP_API_A}"
 API_A_PID="${LAST_PID}"
-READY="${log_dir}/rm-b1-ready"
-CONTINUE="${log_dir}/rm-b1-continue"
-run_client scale-out rm-b1 env \
-  ZLINK_JAVA_E2E_READY_FILE="${READY}" \
-  ZLINK_JAVA_E2E_CONTINUE_FILE="${CONTINUE}" &
-B1_CLIENT_PID="$!"
-wait_marker "${READY}"
-start_provider api-b "${API_B}" "${ROUTE_B}" "" api-b "" "${HTTP_API_B}"
-API_B_PID="${LAST_PID}"
-sleep 5
-touch "${CONTINUE}"
-wait "${B1_CLIENT_PID}"
+run_client scale-out rm-b1 env
 cat "${log_dir}/client-rm-b1.stdout.log"
 stop_pid "${API_A_PID}"
-stop_pid "${API_B_PID}"
 
 start_provider api-a "${API_A}" "${ROUTE_A}" "" api-a "" "${HTTP_API_A}"
 API_A_PID="${LAST_PID}"
 start_provider api-b "${API_B}" "${ROUTE_B}" "" api-b "" "${HTTP_API_B}"
 API_B_PID="${LAST_PID}"
-READY="${log_dir}/rm-b2-ready"
-CONTINUE="${log_dir}/rm-b2-continue"
-run_client scale-in rm-b2 env \
-  ZLINK_JAVA_E2E_READY_FILE="${READY}" \
-  ZLINK_JAVA_E2E_CONTINUE_FILE="${CONTINUE}" &
-B2_CLIENT_PID="$!"
-wait_marker "${READY}"
-stop_pid "${API_B_PID}"
-sleep 5
-touch "${CONTINUE}"
-wait "${B2_CLIENT_PID}"
+run_client scale-in rm-b2 env
 cat "${log_dir}/client-rm-b2.stdout.log"
 stop_pid "${API_A_PID}"
+stop_pid "${API_B_PID}"
 
 start_provider api-a "${API_A}" "${ROUTE_A}" "" api-a-v1 "" "${HTTP_API_A}"
 API_A_PID="${LAST_PID}"
-READY="${log_dir}/rm-a4-ready"
-CONTINUE="${log_dir}/rm-a4-continue"
-run_client failover rm-a4 env \
-  ZLINK_JAVA_E2E_READY_FILE="${READY}" \
-  ZLINK_JAVA_E2E_CONTINUE_FILE="${CONTINUE}" &
-A4_CLIENT_PID="$!"
-wait_marker "${READY}"
-stop_pid "${API_A_PID}"
-start_provider api-a "${API_A2}" "${ROUTE_A2}" "" api-a-v2 "" "${HTTP_API_A}"
-API_A_PID="${LAST_PID}"
-sleep 5
-touch "${CONTINUE}"
-wait "${A4_CLIENT_PID}"
+run_client failover rm-a4 env
 cat "${log_dir}/client-rm-a4.stdout.log"
 stop_pid "${API_A_PID}"
 

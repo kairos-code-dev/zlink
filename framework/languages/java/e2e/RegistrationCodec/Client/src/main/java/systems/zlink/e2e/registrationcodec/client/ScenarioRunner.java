@@ -2,6 +2,8 @@ package systems.zlink.e2e.registrationcodec.client;
 
 import systems.zlink.e2e.registrationcodec.client.Scenarios.AttributeRegistrationScenario;
 import systems.zlink.e2e.registrationcodec.client.Scenarios.AutoRegistrationScenario;
+import systems.zlink.e2e.registrationcodec.client.Scenarios.CodecMismatchScenario;
+import systems.zlink.e2e.registrationcodec.client.Scenarios.InvalidRegistrationScenario;
 import systems.zlink.e2e.registrationcodec.client.Scenarios.ManualRegistrationScenario;
 import systems.zlink.e2e.registrationcodec.client.Scenarios.RcA4DiLifecycleScenario;
 import systems.zlink.e2e.registrationcodec.client.Scenarios.RcA5FilterOrderingScenario;
@@ -19,6 +21,7 @@ public final class ScenarioRunner {
     }
 
     public void run() {
+        InvalidRegistrationScenario.run(context);
         AutoRegistrationScenario.run(context);
         AttributeRegistrationScenario.run(context);
         ManualRegistrationScenario.run(context);
@@ -28,5 +31,6 @@ public final class ScenarioRunner {
         RcB2ProtobufCodecScenario.run(context);
         RcB3MessagePackCodecScenario.run(context);
         RcB4CodecCoexistenceScenario.run(context);
+        CodecMismatchScenario.run(context);
     }
 }

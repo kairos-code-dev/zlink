@@ -67,8 +67,9 @@ public final class RegistrationCodecServerApplication {
     OperationalEndpoints operationalEndpoints(
         EvidenceStore evidence,
         ObjectMapper json,
+        systems.zlink.framework.channels.ZLinkClient client,
         ServerOptions options) {
-        return new OperationalEndpoints(evidence, json, options.httpEndpoint());
+        return new OperationalEndpoints(evidence, json, client, options.httpEndpoint());
     }
 
     @Bean
@@ -86,6 +87,7 @@ public final class RegistrationCodecServerApplication {
             framework.addHandlersFromPackageOf(AutoRequestHandler.class);
             var channel = framework.addClientServerChannel(Contracts.CHANNEL)
                 .enableServer(options.serverEndpoint())
+                .enableClient(options.serverEndpoint())
                 .addHandlerGroup(Contracts.AUTO_GROUP)
                 .addHandlerGroup(Contracts.ATTR_GROUP);
             channel.addRequestHandler(

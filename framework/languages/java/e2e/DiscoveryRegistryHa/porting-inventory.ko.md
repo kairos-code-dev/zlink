@@ -10,13 +10,14 @@
 | --- | --- | --- | --- |
 | `.gitignore` | `.gitignore` | done | logs, Gradle 캐시, root/role build 산출물을 무시한다. |
 | `feature-map.ko.md` | `feature-map.ko.md` | done | 마지막 검증 결과와 `DR-B2`, `DR-B3`, `DR-C1`, `DR-C2`, `DR-C3` gap을 분리해 기록했다. |
-| `run_e2e.sh` | `run_e2e.sh` | partial | 역할별 installDist binary를 실행한다. `DR-B2`, `DR-B3`, `DR-C1`, `DR-C2`는 public runtime gap marker로 남기고, 나머지 시나리오는 `logs/20260629-164645-539461` 실행에서 통과했다. |
+| `run_e2e.sh` | `run_e2e.sh` | partial | 역할별 installDist binary를 실행한다. `DR-B2`, `DR-B3`, `DR-C1`, `DR-C2`는 public runtime gap marker로 남기고, 나머지 시나리오는 `logs/20260702-062518-33303` 실행에서 통과했다. |
 | 없음 | `README.ko.md` | done | Java 실행 구조, 시나리오 범위, 남은 runtime gap을 설명한다. |
 | `Shared/DiscoveryRegistryHa.Shared.csproj` | `Shared/build.gradle.kts` | done | 공용 DTO/helper project로 분리했다. |
 | `Shared/Messages.cs` | `Shared/src/main/java/systems/zlink/e2e/discoveryregistryha/shared/Contracts.java` | done | request, reply, wait request DTO를 공용 project에 둔다. |
 | `Client/DiscoveryRegistryHa.Client.csproj` | `Client/build.gradle.kts` | done | 별도 client application으로 분리했다. |
 | `Client/Program.cs` | `Client/src/main/java/systems/zlink/e2e/discoveryregistryha/client/Program.java` | done | scenario 이름을 대응 scenario class로 넘기는 진입점이다. 검증 로직은 support/scenario 파일로 분리했다. |
 | `Client/Support/ClientOptions.cs` | `Client/src/main/java/.../client/support/ClientOptions.java` | done | 환경 변수 기반 client 입력을 한 곳에서 해석한다. |
+| 없음 | `Client/src/main/java/.../client/support/ClientScenario.java` | support | done | scenario dispatch interface다. scenario ID 구현 파일과 구분하려고 `client/scenarios` 밖에 둔다. |
 | `Client/Support/DiscoveryApiResult.cs` | `Client/src/main/java/.../client/support/DiscoveryApiResult.java` | done | scenario 실행 결과 provider rid 집합을 담는다. |
 | `Client/Support/ScenarioAssert.cs` | `Client/src/main/java/.../client/support/ScenarioAssert.java` | done | scenario 검증 실패를 일관된 예외로 올린다. |
 | `Client/Scenarios/BasicDiscoveryScenario.cs` | `Client/src/main/java/.../client/scenarios/BasicDiscoveryScenario.java` | done | DR-A1 scenario class다. |

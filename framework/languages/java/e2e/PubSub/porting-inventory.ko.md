@@ -10,7 +10,7 @@
 
 - 명령: `timeout 420s ./run_e2e.sh`
 - 결과: passed
-- 로그: `framework/languages/java/e2e/PubSub/logs/20260629-123647-553789/`
+- 로그: `framework/languages/java/e2e/PubSub/logs/20260702-063513-76704/`
 
 ## 완료 상태 요약
 
@@ -18,6 +18,9 @@
   `:Server:Registry`, `:Server:Subscriber` Gradle subproject로 나누었다.
 - 기존 fanout, topic filter, late subscriber, subscriber reconnect, slow subscriber,
   publisher restart, missing message name scenario 구현을 보존하고 scenario별 class로 분리했다.
+- PS-A4 subscriber reconnect와 PS-B2 publisher restart의 process lifecycle control은
+  `Client/Support/ServerProcessLauncher.java`와 scenario class가 담당한다. runner는 기본 topology,
+  readiness, client 실행, cleanup만 맡는다.
 - publisher는 public `ZLinkFanoutClient`로 publish하고, client는 publisher HTTP endpoint를 호출해
   scenario를 구동한다.
 - `.NET` PubSub와 동일하게 push 기반 검증은 아직 gap이다. HTTP evidence polling을 쓰는 현재 검증
@@ -29,7 +32,7 @@
 |----------------|----------------|------|------|------|
 | `.gitignore` | `.gitignore` | root | done | logs와 모든 subproject build 산출물을 제외한다. |
 | `feature-map.ko.md` | `feature-map.ko.md` | docs | done | PS-A1~PS-C1 부분 구현과 push 검증 gap을 기록했다. |
-| `run_e2e.sh` | `run_e2e.sh` | runner | done | 역할별 installDist binary를 시작하고 health, evidence, message flow marker를 검증한다. |
+| `run_e2e.sh` | `run_e2e.sh` | runner | done | 역할별 installDist binary를 시작하고 health, evidence, message flow marker를 검증한다. PS-A4/PS-B2 process restart 제어는 Client support가 수행한다. |
 | `README.ko.md` 없음 | `README.ko.md` | docs | done | `.NET`에는 없지만 Java 산출물로 역할, 실행법, gap을 기록했다. |
 | `Shared/PubSub.Shared.csproj` | `Shared/build.gradle.kts` | build | done | Java `Shared` library project다. |
 | `Shared/Messages.cs` | `Shared/src/main/java/systems/zlink/e2e/pubsub/shared/Contracts.java` | shared | done | channel, packet name, `EventMsg`, evidence record를 공유한다. |
@@ -42,10 +45,10 @@
 | `Client/Scenarios/SlowSubscriberScenario.cs` | `Client/src/main/java/systems/zlink/e2e/pubsub/client/Scenarios/SlowSubscriberScenario.java` | scenario | done | PS-B1. 느린 subscriber가 빠른 subscriber를 막지 않는지 검증한다. |
 | `Client/Scenarios/PublisherRestartScenario.cs` | `Client/src/main/java/systems/zlink/e2e/pubsub/client/Scenarios/PublisherRestartScenario.java` | scenario | done | PS-B2. 실제 publisher process 재시작 뒤 새 publish 도달을 검증한다. |
 | `Client/Scenarios/MissingMessageNameScenario.cs` | `Client/src/main/java/systems/zlink/e2e/pubsub/client/Scenarios/MissingMessageNameScenario.java` | scenario | done | PS-C1. subscriber dispatch error marker와 정상 publish 회복을 검증한다. |
-| `Client/Support/ClientOptions.cs` | `Client/src/main/java/systems/zlink/e2e/pubsub/client/Support/ClientOptions.java` | support | done | client mode, publisher/subscriber endpoint, marker file env를 해석한다. |
+| `Client/Support/ClientOptions.cs` | `Client/src/main/java/systems/zlink/e2e/pubsub/client/Support/ClientOptions.java` | support | done | client mode, publisher/subscriber endpoint, registry endpoint, build/log dir, marker file env를 해석한다. |
 | `Client/Support/Evidence.cs` | `Client/src/main/java/systems/zlink/e2e/pubsub/client/Support/Evidence.java` | support | done | subscriber `/evidence` snapshot을 읽는다. push 검증 gap은 feature-map에 기록했다. |
 | `Client/Support/ScenarioAssert.cs` | `Client/src/main/java/systems/zlink/e2e/pubsub/client/Support/ScenarioAssert.java` | support | done | wait, assertion, common sequence helper를 모았다. |
-| `Client/Support/ServerProcessLauncher.cs` | `run_e2e.sh` | support | done | Java PubSub는 process lifecycle을 runner가 담당한다. |
+| `Client/Support/ServerProcessLauncher.cs` | `Client/src/main/java/systems/zlink/e2e/pubsub/client/Support/ServerProcessLauncher.java` | support | done | PS-A4/PS-B2에서 subscriber/publisher role binary를 Client scenario가 직접 시작하고 종료한다. |
 | `Server/Publisher/PubSub.Publisher.csproj` | `Server/Publisher/build.gradle.kts` | build | done | Java publisher application project다. |
 | `Server/Publisher/Program.cs` | `Server/Publisher/src/main/java/systems/zlink/e2e/pubsub/publisher/Program.java` | server-role | done | publisher role entrypoint다. |
 | `Server/Publisher/PublisherHostFactory.cs` | `Server/Publisher/src/main/java/systems/zlink/e2e/pubsub/publisher/PublisherApplication.java` | server-role | done | Spring host와 framework 설정을 담당한다. |
@@ -83,9 +86,9 @@
 | PS-A1 | `Client/.../Scenarios/FanoutBasicDeliveryScenario.java` | done | warm-up barrier와 공통 연속 sequence 검증을 보존했다. |
 | PS-A2 | `Client/.../Scenarios/TopicFilterScenario.java` | done | `ZLinkPublishContext.topic()` 기반 application-level filter를 보존했다. |
 | PS-A3 | `Client/.../Scenarios/LateSubscriberScenario.java` | done | pre-late publish와 late subscriber no-replay 검증을 보존했다. |
-| PS-A4 | `Client/.../Scenarios/SubscriberReconnectScenario.java` | done | disconnected interval no-replay와 재구독 후 수신을 보존했다. |
+| PS-A4 | `Client/.../Scenarios/SubscriberReconnectScenario.java` | done | Client support가 subscriber process를 시작, 종료, 재시작하고 disconnected interval no-replay와 재구독 후 수신을 검증한다. |
 | PS-B1 | `Client/.../Scenarios/SlowSubscriberScenario.java` | done | 느린 subscriber와 빠른 subscriber 격리 검증을 보존했다. |
-| PS-B2 | `Client/.../Scenarios/PublisherRestartScenario.java` | done | 실제 publisher process restart 뒤 새 publish 도달을 검증한다. |
+| PS-B2 | `Client/.../Scenarios/PublisherRestartScenario.java` | done | Client support가 publisher process를 시작, 종료, 재시작하고 중단 중 publish 실패와 재시작 후 도달을 검증한다. |
 | PS-C1 | `Client/.../Scenarios/MissingMessageNameScenario.java` | done | subscriber observer의 `HANDLER_MISSING`/`DROP` evidence와 정상 publish 회복을 검증한다. |
 
 ## 남은 gap

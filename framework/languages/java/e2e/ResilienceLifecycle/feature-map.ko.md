@@ -1,9 +1,16 @@
 # Java ResilienceLifecycle E2E feature map
 
 이 문서는 Config 5 Resilience/Lifecycle 공통 시나리오 중 Java framework E2E가 현재 검증하는
-항목과, public API 또는 harness 제어가 더 필요한 항목을 구분한다. 실행 시나리오는 public Spring
-starter, `ZLinkClient`, `ZLinkChannelRuntimeOptions`, registry discovery, registry query client만
-사용한다.
+항목과, public API 또는 harness 제어가 더 필요한 항목을 구분한다. Client는 HTTP driver이고, 실행
+시나리오의 framework 참여는 `Server/Consumer` role이 맡는다. provider/consumer process lifecycle은
+Client support가 제어한다. Consumer role은 public Spring starter, `ZLinkClient`,
+`ZLinkChannelRuntimeOptions`, registry discovery, registry query client만 사용한다.
+
+마지막 검증:
+
+- 명령: `timeout 420s ./run_e2e.sh`
+- 결과: passed
+- 로그: `framework/languages/java/e2e/ResilienceLifecycle/logs/20260702-064738-35134/`
 
 ## 구현됨
 
@@ -26,8 +33,8 @@ starter, `ZLinkClient`, `ZLinkChannelRuntimeOptions`, registry discovery, regist
   다른 provider로 가는지 검증한다.
 - `RL-B6`: provider-a에 public admin fault를 주입해 일부 request가 public 실패로 끝나는 동안,
   provider-b의 정상 reply가 계속 유지되고 follow-up request가 성공하는지 확인한다.
-- `RL-C1`: 다량의 request와 send를 처리한 client가 정상 종료하고 runner가 프로세스 종료를 확인해
-  public 경로의 cleanup을 관측한다.
+- `RL-C1`: 같은 Consumer role이 반복 request 뒤 follow-up request를 보내 public 경로의 client
+  lifecycle cleanup을 관측한다.
 - `RL-C3`: provider-a 정지 구간의 public 실패와 재기동 후 topology 회복, 후속 request 성공을
   같은 restart orchestration에서 확인한다.
 - `RL-D1`: 다수 client 프로세스가 동시에 request를 보내는 high fanout burst에서 정상 reply를
@@ -49,3 +56,5 @@ starter, `ZLinkClient`, `ZLinkChannelRuntimeOptions`, registry discovery, regist
 - `RL-D2`: observer 실패 격리를 runtime error sink와 함께 단언하는 scenario가 아직 없다.
 - `RL-D4`: error reply wire header의 code/message roundtrip을 raw envelope로 확인하는 harness가
   아직 없다.
+- `.NET Client/Scenarios/*.cs`에 대응하는 Java Client scenario 파일은 존재한다. 구현된 scenario는
+  `Server/Consumer`의 HTTP endpoint를 호출하고, gap scenario는 선택되면 명시적으로 실패한다.

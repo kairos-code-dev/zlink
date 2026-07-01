@@ -8,8 +8,10 @@
 - `Shared`: 공통 request, reply, evidence 타입과 환경 변수 helper.
 - `Server/Registry`: embedded registry와 registry monitoring source.
 - `Server/Service`: channel, spot, socket/spot monitoring source, evidence endpoint.
-- `Server/Trigger`: monitoring 등록 검증을 수행하는 trigger/validation process.
-- `Client`: request와 malformed connection을 발생시키고 각 evidence endpoint를 검증하는 scenario client.
+- `Server/FilteredService`: socket kind filter를 가진 별도 service role.
+- `Server/ThrowingService`: monitoring handler failure를 격리하는 별도 service role.
+- `Server/Trigger`: framework client와 HTTP scenario endpoint를 가진 trigger/validation process.
+- `Client`: HTTP driver process. framework runtime으로 뜨지 않고 `Server/Trigger`의 scenario endpoint를 호출한다.
 
 ## 실행
 

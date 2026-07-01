@@ -59,6 +59,18 @@ public final class Contracts {
     public record EchoRes(String value, String handler) {
     }
 
+    public record CodecScenarioRes(
+        EchoRes json,
+        String protobufValue,
+        String messagePackValue) {
+    }
+
+    public record CodecMismatchProbeRes(
+        boolean rejected,
+        String errorType,
+        String replyValue) {
+    }
+
     public record EvidenceEntry(String marker, String packetName, String value) {
     }
 

@@ -1,7 +1,6 @@
 package systems.zlink.e2e.discoveryregistryha.client;
 
 import systems.zlink.e2e.discoveryregistryha.client.scenarios.BasicDiscoveryScenario;
-import systems.zlink.e2e.discoveryregistryha.client.scenarios.ClientScenario;
 import systems.zlink.e2e.discoveryregistryha.client.scenarios.DrA2ClusterBridgeScenario;
 import systems.zlink.e2e.discoveryregistryha.client.scenarios.DrA3ClusterBridgeScenario;
 import systems.zlink.e2e.discoveryregistryha.client.scenarios.DrA4ThirdRegistryScenario;
@@ -17,6 +16,7 @@ import systems.zlink.e2e.discoveryregistryha.client.scenarios.DrD3DirectEndpoint
 import systems.zlink.e2e.discoveryregistryha.client.scenarios.DrD4DirectEndpointScenario;
 import systems.zlink.e2e.discoveryregistryha.client.support.ClientContext;
 import systems.zlink.e2e.discoveryregistryha.client.support.ClientOptions;
+import systems.zlink.e2e.discoveryregistryha.client.support.ClientScenario;
 import systems.zlink.e2e.discoveryregistryha.client.support.DiscoveryApiResult;
 
 public final class Program {

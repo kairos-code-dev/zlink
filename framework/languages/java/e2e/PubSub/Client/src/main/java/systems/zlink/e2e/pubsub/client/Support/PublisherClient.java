@@ -25,6 +25,18 @@ public final class PublisherClient {
         post("/publish/missing", topic, message);
     }
 
+    public boolean canReachHealth() {
+        try {
+            HttpRequest request = HttpRequest.newBuilder(URI.create(endpoint + "/health"))
+                .GET()
+                .build();
+            HttpResponse<String> response = http.send(request, HttpResponse.BodyHandlers.ofString());
+            return response.statusCode() >= 200 && response.statusCode() < 300;
+        } catch (Exception ignored) {
+            return false;
+        }
+    }
+
     private void post(String path, String topic, Contracts.EventMsg message) {
         String uri = endpoint + path
             + "?topic=" + encode(topic)

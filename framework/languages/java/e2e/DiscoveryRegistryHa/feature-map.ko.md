@@ -10,14 +10,15 @@
 - `../../gradlew --project-cache-dir "$HOME/.cache/zlink/java-e2e/DiscoveryRegistryHa-gradle-cache" --no-daemon installDist --stacktrace`
   - 결과: 성공
 - `./run_e2e.sh`
-  - 로그: `logs/20260629-164645-539461`
+  - 로그: `logs/20260702-062518-33303`
   - 결과: `DR-A1`, `DR-A2`, `DR-A3`, `DR-A4`, `DR-B1`, `DR-D1`, `DR-D2`, `DR-D3`, `DR-D4` 통과 후
     `DR-B2`, `DR-B3`를 gap marker로 기록했다. `DR-C1`은 살아 있는 registry의 member query가
     `api-a`를 bounded timeout 안에 보지 못해 `java-discovery-survivor-member-timeout` gap으로
     남겼다. `DR-C2`는 recovered reg-2 member view가 provider를 다시 보지 못해
     `java-discovery-recovered-registry-member-timeout` gap으로 남겼다. `DR-C3`는 registry 전체
     outage 전/중 같은 consumer process로 messaging이 유지되는지 확인하고, 복구 후 재광고와
-    messaging 수렴 검증까지 통과했다.
+    messaging 수렴 검증까지 통과했다. runner 끝에는 `discovery-registry-ha e2e result=passed`
+    marker를 출력한다.
 
 ## 구현됨
 

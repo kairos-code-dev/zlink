@@ -25,9 +25,9 @@ public final class ScenarioCatalog {
     public void run() {
         switch (ClientOptions.get("ZLINK_JAVA_E2E_SCENARIO", "common")) {
             case "common" -> runCommon();
-            case "scale-out" -> RmB1ScaleOutScenario.run(http.discoveryConsumer());
-            case "scale-in" -> RmB2ScaleInScenario.run(http.discoveryConsumer());
-            case "failover" -> RmA4SameRidFailoverScenario.run(http.discoveryConsumer());
+            case "scale-out" -> RmB1ScaleOutScenario.run();
+            case "scale-in" -> RmB2ScaleInScenario.run();
+            case "failover" -> RmA4SameRidFailoverScenario.run();
             case "weighted" -> RmC7WeightedProviderScenario.run(http.directConsumer());
             default -> throw new IllegalArgumentException(
                 "unknown scenario " + ClientOptions.get("ZLINK_JAVA_E2E_SCENARIO"));

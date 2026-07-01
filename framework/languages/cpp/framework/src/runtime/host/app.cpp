@@ -305,12 +305,6 @@ class app_state_t
     void stop_hosted_services (const std::vector<hosted_service_t *> &started) noexcept
     {
         channel_runtime_t::from (zlink.message_bus ()).shutdown ();
-        for (auto *service : started) {
-            if (auto *spot_node_service =
-                  dynamic_cast<runtime::spot_node_host_service_t *> (service)) {
-                spot_node_service->stop ();
-            }
-        }
         for (auto it = started.rbegin (); it != started.rend (); ++it) {
             (*it)->stop ();
         }

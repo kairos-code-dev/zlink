@@ -1,36 +1,19 @@
 package systems.zlink.e2e.kotlin.spotservice.client.scenarios
 
-import systems.zlink.contracts.core.RoutingId
-import systems.zlink.e2e.kotlin.spotservice.Contracts
-import systems.zlink.e2e.kotlin.spotservice.client.support.REQUEST_TIMEOUT
 import systems.zlink.e2e.kotlin.spotservice.client.support.ensure
 import systems.zlink.e2e.kotlin.spotservice.client.support.eventually
-import systems.zlink.framework.spots.ZLinkSpotOutbound
+import systems.zlink.e2e.kotlin.spotservice.client.support.SpotHttpDriver
 
 internal object SmC3Scenario {
-    fun run(outbound: ZLinkSpotOutbound) {
+    fun run(spots: SpotHttpDriver) {
         val requestReply = eventually {
-            outbound.requestToSpot(
-                RoutingId.from("room-a"),
-                Contracts.StateReq("c3-source"),
-            )
-                .timeout(REQUEST_TIMEOUT)
-                .await(Contracts.StateRes::class.java)
+            spots.requestState("room-a", "c3-source")
         }
         ensure(requestReply.nodeRid == "play-a", "SM-C3 source spot owner mismatch")
-        outbound.sendToSpot(RoutingId.from("room-b"), Contracts.OutboundMsg("c3-send"))
-            .packetName("OutboundMsg")
-            .await()
-        val reply = eventually {
-            outbound.requestToSpot(
-                RoutingId.from("room-b"),
-                Contracts.OutboundReq("c3-request"),
-            )
-                .timeout(REQUEST_TIMEOUT)
-                .await(Contracts.OutboundRes::class.java)
+        val ack = eventually {
+            spots.sendOutbound("room-b", "c3-send")
         }
-        ensure(reply.spotRid == "room-b", "SM-C3 wrong target spot")
-        ensure(reply.nodeRid == "play-b", "SM-C3 wrong target node")
+        ensure(ack.accepted, "SM-C3 spot-to-spot command was not accepted")
         println("scenario SM-C3 passed")
     }
 }

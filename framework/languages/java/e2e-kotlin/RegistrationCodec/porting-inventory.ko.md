@@ -4,10 +4,11 @@
 
 공통 문서: `framework/doc/framework/common/e2e/config-4-registration-codec.ko.md`
 
-현재 Kotlin RegistrationCodec E2E는 `Shared`, `Client`, `Server/Main`, `Server/CodecRequester`,
-`Server/JsonOnlyPeer`, `Server/InvalidDuplicate` Gradle project로 process 역할을 나눠 실행한다.
-role별 package, scenario/support 파일, CLI option parser 책임 분리는 `.NET` 기준 인벤토리에 맞춰
-완료했다.
+현재 Kotlin RegistrationCodec E2E는 `Shared`, plain HTTP `Client`, `Server/Main`,
+`Server/CodecRequester`, `Server/JsonOnlyPeer`, `Server/InvalidDuplicate` Gradle project로 process 역할을
+나눠 실행한다. Client는 framework runtime에 참여하지 않고 `Server/Main`과 `Server/CodecRequester`의
+HTTP endpoint를 호출한다. role별 package, scenario/support 파일, CLI option parser 책임 분리는 `.NET`
+기준 인벤토리에 맞춰 완료했다.
 
 상태 값:
 
@@ -22,11 +23,11 @@ role별 package, scenario/support 파일, CLI option parser 책임 분리는 `.N
 | `run_e2e.sh` | `run_e2e.sh` | runner | done | role별 installDist binary를 시작하고 readiness, cleanup, 실패 로그 출력을 수행한다. |
 | `Shared/RegistrationCodec.Shared.csproj` | `Shared/build.gradle.kts` | build | done | Shared Gradle project를 만들고 client/server role project가 의존한다. |
 | `Shared/Messages.cs` | `Shared/src/main/kotlin/systems/zlink/e2e/kotlin/registrationcodec/Contracts.kt` | shared | done | request/reply/command/evidence 타입이 Shared project에 있다. 파일 이름은 Kotlin 기존 contract naming을 유지한다. |
-| `Client/RegistrationCodec.Client.csproj` | `Client/build.gradle.kts` | build | done | Client application project를 만들었다. |
-| `Client/Program.cs` | `Client/src/main/kotlin/systems/zlink/e2e/kotlin/registrationcodec/Program.kt` | client-entry | done | Client binary entry point가 client application만 실행한다. |
-| `Client/Support/ClientOptions.cs` | `Client/src/main/kotlin/systems/zlink/e2e/kotlin/registrationcodec/client/Support/ClientOptions.kt` | support | done | Client endpoint, evidence endpoint, log dir, mode를 Spring application CLI argument로 파싱한다. |
+| `Client/RegistrationCodec.Client.csproj` | `Client/build.gradle.kts` | build | done | Client application project는 framework/Spring dependency 없이 HTTP client driver로 실행된다. |
+| `Client/Program.cs` | `Client/src/main/kotlin/systems/zlink/e2e/kotlin/registrationcodec/Program.kt` | client-entry | done | Client binary entry point가 `ClientScenario`를 plain JVM process로 실행한다. |
+| `Client/Support/ClientOptions.cs` | `Client/src/main/kotlin/systems/zlink/e2e/kotlin/registrationcodec/client/Support/ClientOptions.kt` | support | done | server HTTP endpoint, codec requester HTTP endpoint, log dir, mode를 CLI argument로 파싱한다. |
 | `Client/Support/CodecScenarioResult.cs` | `Client/src/main/kotlin/systems/zlink/e2e/kotlin/registrationcodec/client/Support/CodecScenarioResult.kt` | support | done | codec scenario response/result helper를 client support로 분리했다. |
-| `Client/Support/EvidenceText.cs` | `Client/src/main/kotlin/systems/zlink/e2e/kotlin/registrationcodec/client/Support/EvidenceText.kt` | support | done | evidence 조회/검증 helper를 client support로 분리했다. |
+| `Client/Support/EvidenceText.cs` | `Client/src/main/kotlin/systems/zlink/e2e/kotlin/registrationcodec/client/Support/ScenarioHttpClient.kt` | support | done | HTTP POST와 bounded `/evidence/wait` 호출을 담당하는 client support로 분리했다. |
 | `Client/Support/ProcessSupport.cs` | `Client/src/main/kotlin/systems/zlink/e2e/kotlin/registrationcodec/client/Support/ProcessSupport.kt` | support | not-needed | process orchestration은 `run_e2e.sh`가 맡는다. Kotlin 파일은 client mode 상수만 둔다. |
 | `Client/Support/ScenarioAssert.cs` | `Client/src/main/kotlin/systems/zlink/e2e/kotlin/registrationcodec/client/Support/ScenarioAssert.kt` | support | done | assertion/wait helper를 client support로 분리했다. |
 | `Client/Scenarios/AutoRegistrationScenario.cs` | `Client/src/main/kotlin/systems/zlink/e2e/kotlin/registrationcodec/client/Scenarios/AutoRegistrationScenario.kt` | scenario | done | RC-A1 scenario file로 분리했다. |
@@ -45,7 +46,7 @@ role별 package, scenario/support 파일, CLI option parser 책임 분리는 `.N
 | `Server/Main/RegistrationCodecServerHostFactory.cs` | `Server/Main/src/main/kotlin/systems/zlink/e2e/kotlin/registrationcodec/main/Program.kt` (`ServerApplication`) | server-role | done | codec registry, channel, handler/filter 등록이 Main server role package에서 실행된다. |
 | `Server/Main/ServerOptions.cs` | `Server/Main/src/main/kotlin/systems/zlink/e2e/kotlin/registrationcodec/main/Configuration/ServerOptions.kt` | configuration | done | server endpoint, HTTP endpoint, codec mode, log dir를 Spring application CLI argument로 파싱한다. |
 | `Server/Main/Endpoints/OperationalEndpoints.cs` | `Server/Main/src/main/kotlin/systems/zlink/e2e/kotlin/registrationcodec/main/Endpoints/OperationalEndpoints.kt` | endpoints | done | health/evidence HTTP endpoint를 Main role endpoint package로 옮겼다. |
-| `Server/Main/Endpoints/RegistrationScenarioEndpoints.cs` | `Server/Main/src/main/kotlin/systems/zlink/e2e/kotlin/registrationcodec/main/Endpoints/RegistrationScenarioEndpoints.kt` | endpoints | not-needed | Kotlin client가 public channel client로 scenario request를 직접 수행하므로 Main role HTTP scenario facade를 두지 않는다. |
+| `Server/Main/Endpoints/RegistrationScenarioEndpoints.cs` | `Server/Main/src/main/kotlin/systems/zlink/e2e/kotlin/registrationcodec/main/Endpoints/RegistrationScenarioEndpoints.kt` | endpoints | done | Client가 framework channel client를 직접 들지 않도록 `/registration/*`와 `/codec/*` HTTP endpoint에서 public framework call을 수행한다. |
 | `Server/Main/DispatchFilters.cs` | `Server/Main/src/main/kotlin/systems/zlink/e2e/kotlin/registrationcodec/main/Handlers/DispatchFilters.kt` | handlers | done | order filters를 Main role handler package로 옮겼다. |
 | `Server/Main/Handlers/CodecHandlers.cs` | `Server/Main/src/main/kotlin/systems/zlink/e2e/kotlin/registrationcodec/main/Handlers/CodecHandlers.kt` | handlers | done | codec handlers를 Main role handler package로 옮겼다. |
 | `Server/Main/Handlers/DiEchoRequestHandler.cs` | `Server/Main/src/main/kotlin/systems/zlink/e2e/kotlin/registrationcodec/main/Handlers/RegistrationHandlers.kt` | handlers | done | DI lifecycle handler는 registration handler 파일에 남기고 DI dependency probes는 infrastructure로 분리했다. |
@@ -84,12 +85,12 @@ role별 package, scenario/support 파일, CLI option parser 책임 분리는 `.N
 | 기존 Kotlin 파일 | 판단 | 목표 |
 |------------------|------|------|
 | `src/main/kotlin/.../Program.kt` | role env 분기를 제거하고 role별 project entry point로 나눴다. | role별 binary entry point로 유지한다. |
-| `src/main/kotlin/.../ClientApplication.kt` | client framework 설정과 scenario 실행이 섞여 있다. | `Client` project의 Program/Support/Scenarios로 나눈다. |
+| `src/main/kotlin/.../ClientApplication.kt` | client framework 설정과 scenario 실행이 섞여 있었다. | 제거했다. Client는 plain HTTP driver이고 framework 설정은 role server 안에만 있다. |
 | `src/main/kotlin/.../ClientScenario.kt` | 모든 scenario와 helper가 한 파일에 섞여 있다. | scenario ID별 파일과 `Client/Support`로 나눈다. |
 | `src/main/kotlin/.../Contracts.kt` | shared message/evidence 타입을 `Shared` project로 옮겼다. | Kotlin 기존 contract naming으로 유지한다. |
 | `src/main/kotlin/.../DiDependencies.kt` | server DI lifecycle support다. | Main server handler/infrastructure로 옮긴다. |
 | `src/main/kotlin/.../Env.kt` | 전역 환경 변수 helper다. | role별 CLI option parser로 대체한다. |
-| `src/main/kotlin/.../EvidenceHttpServer.kt` | server operational endpoint다. | 각 server role의 `Endpoints/OperationalEndpoints.kt`로 옮긴다. |
+| `src/main/kotlin/.../EvidenceHttpServer.kt` | server operational endpoint다. | Main role은 `Endpoints/OperationalEndpoints.kt`와 `RegistrationScenarioEndpoints.kt`로 evidence와 scenario HTTP endpoint를 함께 제공한다. |
 | `src/main/kotlin/.../Filters.kt` | server dispatch filter다. | server role의 `Handlers/DispatchFilters.kt`로 옮긴다. |
 | `src/main/kotlin/.../InvalidServerApplication.kt` | invalid duplicate role project로 옮겼다. | duplicate registration startup failure를 만드는 최소 host로 유지한다. |
 | `src/main/kotlin/.../ServerApplication.kt` | `Server/Main`과 `Server/JsonOnlyPeer` project로 분리했다. | 각 role의 CLI option parser와 host package가 분리되어 있다. |

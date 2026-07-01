@@ -1,41 +1,26 @@
 package systems.zlink.e2e.kotlin.spotservice.client.scenarios
 
-import java.time.Duration
-import systems.zlink.contracts.core.RoutingId
-import systems.zlink.e2e.kotlin.spotservice.Contracts
-import systems.zlink.e2e.kotlin.spotservice.client.support.REQUEST_TIMEOUT
 import systems.zlink.e2e.kotlin.spotservice.client.support.ensure
 import systems.zlink.e2e.kotlin.spotservice.client.support.eventually
 import systems.zlink.e2e.kotlin.spotservice.client.support.expectFailure
-import systems.zlink.framework.spots.ZLinkSpotOutbound
+import systems.zlink.e2e.kotlin.spotservice.client.support.SpotHttpDriver
 
 internal object SmC1Scenario {
-    fun runSend(outbound: ZLinkSpotOutbound) {
-        outbound.sendToSpot(RoutingId.from("room-a"), Contracts.StateMsg("cmd-c1"))
-            .await()
+    fun runSend(spots: SpotHttpDriver) {
+        spots.sendState("room-a", "cmd-c1")
         println("scenario SM-C1-send passed")
     }
 
-    fun runTimeout(outbound: ZLinkSpotOutbound) {
+    fun runTimeout(spots: SpotHttpDriver) {
         expectFailure {
-            outbound.requestToSpot(
-                RoutingId.from("room-a"),
-                Contracts.SlowReq("late"),
-            )
-                .timeout(Duration.ofMillis(100))
-                .await(Contracts.StateRes::class.java)
+            spots.requestSlow("room-a", "late", 100)
         }
         println("scenario SM-C1-timeout passed")
     }
 
-    fun runNormal(outbound: ZLinkSpotOutbound) {
+    fun runNormal(spots: SpotHttpDriver) {
         val after = eventually {
-            outbound.requestToSpot(
-                RoutingId.from("room-a"),
-                Contracts.StateReq("after-timeout"),
-            )
-                .timeout(REQUEST_TIMEOUT)
-                .await(Contracts.StateRes::class.java)
+            spots.requestState("room-a", "after-timeout")
         }
         ensure(after.value.contains("after-timeout"), "SM-C1 post-timeout request failed")
         println("scenario SM-C1 passed")

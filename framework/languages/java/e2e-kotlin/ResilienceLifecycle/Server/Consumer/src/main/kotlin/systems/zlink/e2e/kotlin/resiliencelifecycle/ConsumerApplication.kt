@@ -15,61 +15,53 @@ import systems.zlink.framework.spring.EnableZLinkFramework
 import systems.zlink.framework.spring.ZLinkFrameworkConfigurer
 
 @EnableZLinkFramework
-@SpringBootApplication(
-    proxyBeanMethods = false,
-    scanBasePackages = ["systems.zlink.e2e.kotlin.resiliencelifecycle.client"],
-)
-open class ClientApplication {
-    @Bean
-    open fun clientOptions(): ClientOptions =
-        ClientOptions.fromEnv()
-
+@SpringBootApplication(proxyBeanMethods = false)
+open class ConsumerApplication {
     @Bean
     open fun objectMapper(): ObjectMapper = ObjectMapper()
 
     @Bean
-    open fun clientFramework(clientOptions: ClientOptions): ZLinkFrameworkConfigurer =
+    open fun consumerFramework(): ZLinkFrameworkConfigurer =
         ZLinkFrameworkConfigurer { options ->
+            val logDir = Env.get("ZLINK_KOTLIN_E2E_LOG_DIR", "logs")
             options.configureDispatch()
                 .messageFlow(ZLinkMessageFlowLogMode.KEY_TRANSITIONS)
-                .traceLogFile("${clientOptions.logDir}/client-flow.log")
-                .traceLabel("kotlin-rl-client")
-            options.useDiscovery().addRegistryEndpoint(clientOptions.registryRouterEndpoint)
+                .traceLogFile("$logDir/consumer-flow.log")
+                .traceLabel("kotlin-rl-consumer")
+            options.useDiscovery().addRegistryEndpoint(Env.get("ZLINK_KOTLIN_E2E_REGISTRY_ROUTER"))
             options.addClientServerChannel(Contracts.CHANNEL).enableClient()
         }
 
     @Bean
     open fun registryQueryClient(
         backendAdapterFactory: ZLinkBackendAdapterFactory,
-        clientOptions: ClientOptions,
     ): ZLinkRegistryQueryClient =
         ZLinkRemoteRegistryQueryClient.connect(
-            clientOptions.registryRouterEndpoint,
+            Env.get("ZLINK_KOTLIN_E2E_REGISTRY_ROUTER"),
             backendAdapterFactory,
         )
 
     @Bean
-    open fun clientScenario(
+    open fun consumerHttpServer(
         client: ZLinkClient,
         registry: ObjectProvider<ZLinkRegistryQueryClient>,
         json: ObjectMapper,
-        clientOptions: ClientOptions,
-    ): ClientScenario =
-        ClientScenario(client, registry.ifAvailable, json, clientOptions)
+    ): ConsumerHttpServer =
+        ConsumerHttpServer(
+            client,
+            registry.ifAvailable,
+            json,
+            Env.get("ZLINK_KOTLIN_E2E_CONSUMER_HTTP_ENDPOINT"),
+        )
 
     companion object {
         @JvmStatic
-        fun run(vararg args: String) {
-            val context = SpringApplicationBuilder(ClientApplication::class.java)
+        fun run(vararg args: String): AutoCloseable {
+            val builder = SpringApplicationBuilder(ConsumerApplication::class.java)
                 .web(WebApplicationType.NONE)
-                .run(*args)
-            try {
-                val options = context.getBean(ClientOptions::class.java)
-                context.getBean(ClientScenario::class.java).run(options.mode)
-                println("resilience-lifecycle kotlin e2e result=passed")
-            } finally {
-                context.close()
-            }
+            builder.application().setKeepAlive(true)
+            val context = builder.run(*args)
+            return AutoCloseable { context.close() }
         }
     }
 }

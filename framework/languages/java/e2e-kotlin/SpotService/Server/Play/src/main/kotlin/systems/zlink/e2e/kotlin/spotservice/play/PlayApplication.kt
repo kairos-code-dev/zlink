@@ -19,6 +19,7 @@ import systems.zlink.framework.configuration.ClientServerChannelBuilder
 import systems.zlink.framework.configuration.ZLinkMessageFlowLogMode
 import systems.zlink.framework.configuration.ZLinkMessageFlowOutcome
 import systems.zlink.framework.configuration.ZLinkSpotNodeBuilder
+import systems.zlink.framework.channels.ZLinkRouteClient
 import systems.zlink.framework.spots.ZLinkSpotManager
 import systems.zlink.framework.spring.EnableZLinkFramework
 import systems.zlink.framework.spring.ZLinkFrameworkConfigurer
@@ -39,13 +40,15 @@ class PlayApplication {
     fun evidenceHttpServer(
         state: ScenarioState,
         json: ObjectMapper,
-        spots: ZLinkSpotManager
+        spots: ZLinkSpotManager,
+        routes: ZLinkRouteClient
     ): EvidenceHttpServer =
         EvidenceHttpServer(
             state,
             json,
             Env.get("ZLINK_KOTLIN_E2E_HTTP_ENDPOINT"),
-            spots
+            spots,
+            routes
         )
 
     @Bean

@@ -1,25 +1,20 @@
 package systems.zlink.e2e.kotlin.runtimemonitoring.client.scenarios
 
-import java.time.Duration
 import systems.zlink.e2e.kotlin.runtimemonitoring.Contracts
 import systems.zlink.e2e.kotlin.runtimemonitoring.client.ClientOptions
 import systems.zlink.e2e.kotlin.runtimemonitoring.client.MonitoringEvidenceClient
 import systems.zlink.e2e.kotlin.runtimemonitoring.client.ScenarioAssert
-import systems.zlink.framework.channels.ZLinkClient
 
 class MonC1DispatchFailureScenario(
-    private val client: ZLinkClient,
     private val options: ClientOptions,
     private val evidence: MonitoringEvidenceClient,
 ) {
     fun run() {
         repeat(12) { index ->
-            val reply = client.requestToChannel(
-                Contracts.CHANNEL,
-                Contracts.WorkReq("c1-trigger-$index"),
+            val reply = evidence.postJson(
+                "${options.triggerHttp}/profile/request/throw?value=c1-trigger-$index",
+                Contracts.WorkRes::class.java,
             )
-                .timeout(Duration.ofSeconds(3))
-                .await(Contracts.WorkRes::class.java)
             ScenarioAssert.ensure(
                 reply.value == "work:c1-trigger-$index",
                 "MON-C1 trigger reply mismatch",
@@ -33,12 +28,10 @@ class MonC1DispatchFailureScenario(
                     Contracts.CHANNEL,
                     setOf("CONNECTION_READY"),
                 )
-                val recovery = client.requestToChannel(
-                    Contracts.CHANNEL,
-                    Contracts.WorkReq("c1-after-handler-failure"),
+                val recovery = evidence.postJson(
+                    "${options.triggerHttp}/profile/request/throw?value=c1-after-handler-failure",
+                    Contracts.WorkRes::class.java,
                 )
-                    .timeout(Duration.ofSeconds(3))
-                    .await(Contracts.WorkRes::class.java)
                 ScenarioAssert.ensure(
                     recovery.value == "work:c1-after-handler-failure",
                     "MON-C1 follow-up reply mismatch",
@@ -48,12 +41,10 @@ class MonC1DispatchFailureScenario(
             }
         }
 
-        val reply = client.requestToChannel(
-            Contracts.CHANNEL,
-            Contracts.WorkReq("c1-after-handler-failure"),
+        val reply = evidence.postJson(
+            "${options.triggerHttp}/profile/request/throw?value=c1-after-handler-failure",
+            Contracts.WorkRes::class.java,
         )
-            .timeout(Duration.ofSeconds(3))
-            .await(Contracts.WorkRes::class.java)
         ScenarioAssert.ensure(
             reply.value == "work:c1-after-handler-failure",
             "MON-C1 follow-up reply mismatch",

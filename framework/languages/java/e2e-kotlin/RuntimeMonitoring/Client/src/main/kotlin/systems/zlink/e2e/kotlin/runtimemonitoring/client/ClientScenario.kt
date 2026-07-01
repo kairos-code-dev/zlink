@@ -10,22 +10,20 @@ import systems.zlink.e2e.kotlin.runtimemonitoring.client.scenarios.MonB1KindFilt
 import systems.zlink.e2e.kotlin.runtimemonitoring.client.scenarios.MonB2RegistrationValidationScenario
 import systems.zlink.e2e.kotlin.runtimemonitoring.client.scenarios.MonC1DispatchFailureScenario
 import systems.zlink.e2e.kotlin.runtimemonitoring.client.scenarios.MonD1FailureRecoveryScenario
-import systems.zlink.framework.channels.ZLinkClient
 
 class ClientScenario(
-    client: ZLinkClient,
     json: ObjectMapper,
 ) {
     private val options = ClientOptions()
     private val evidence = MonitoringEvidenceClient(json)
-    private val monA1 = MonA1SocketEventsScenario(client)
+    private val monA1 = MonA1SocketEventsScenario(options, evidence)
     private val monA2 = MonA2RegistryEventsScenario(options, evidence)
     private val monA3 = MonA3SpotEventsScenario(options, evidence)
     private val monA4 = MonA4AvailabilityTransitionScenario(options, evidence)
     private val monA5 = MonA5FixedKindsScenario(options, evidence)
-    private val monB1 = MonB1KindFilterScenario(client, options, evidence)
+    private val monB1 = MonB1KindFilterScenario(options, evidence)
     private val monB2 = MonB2RegistrationValidationScenario(options, evidence)
-    private val monC1 = MonC1DispatchFailureScenario(client, options, evidence)
+    private val monC1 = MonC1DispatchFailureScenario(options, evidence)
     private val monD1 = MonD1FailureRecoveryScenario(options, evidence)
 
     fun run() {

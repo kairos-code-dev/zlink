@@ -30,13 +30,6 @@ class MonA4AvailabilityTransitionScenario(
                 Contracts.CHANNEL,
                 setOf("WeightChanged"),
             )
-            evidence.post("${options.triggerHttp}/profile/request")
-            evidence.waitForEvent(
-                options.failoverServiceHttp,
-                "handler",
-                Contracts.CHANNEL,
-                setOf("FailoverRequest"),
-            )
             evidence.waitForEvent(
                 options.registryHttp,
                 "registry",

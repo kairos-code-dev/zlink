@@ -1,17 +1,19 @@
 # Kotlin ResilienceLifecycle E2E feature map
 
 이 문서는 Config 5 Resilience/Lifecycle 공통 시나리오 중 Kotlin E2E가 현재 검증하는 항목과,
-public API 또는 harness 제어가 더 필요한 항목을 구분한다. 실행 시나리오는 public Spring starter,
-`ZLinkClient`, `ZLinkChannelRuntimeOptions`, registry discovery, registry query client만 사용한다.
+public API 또는 harness 제어가 더 필요한 항목을 구분한다. Client process는 HTTP/process-control
+driver이며 framework runtime에 참여하지 않는다. Consumer role은 public Spring starter, `ZLinkClient`,
+registry discovery, registry query client를 사용하고, Provider role은 `ZLinkChannelRuntimeOptions`와
+provider admin/evidence endpoint를 사용한다.
 
-현재 runner는 `Shared`, `Client`, `Server/Registry`, `Server/Provider` Gradle project에서 만든
-role별 binary를 시작한다. 구현된 client scenario는 `.NET` 기준 scenario 이름에 맞춘 Kotlin file로
-분리했다. Provider role application, evidence/admin endpoint, state, dispatch-error observer,
-request/send handler와 Registry role application/configuration도 Kotlin code path로 옮겼다. Shared
-message type도 Kotlin source다. `logs/20260630-125201-4081089` runner에서 `RL-A1`, `RL-A2`,
-`RL-A3`, `RL-A5`, `RL-B1`, `RL-B3`, `RL-B4`, `RL-B5`, `RL-B6`, `RL-C1`, `RL-C3`, `RL-D1`,
-`RL-D3`, `RL-D5` marker와 각 client mode의 `resilience-lifecycle kotlin e2e result=passed`를
-확인했다.
+현재 runner는 `Shared`, `Client`, `Server/Registry`, `Server/Provider`, `Server/Consumer` Gradle
+project에서 만든 role별 binary를 시작한다. 구현된 client scenario는 `.NET` 기준 scenario 이름에 맞춘
+Kotlin file로 분리했다. Consumer role application/HTTP endpoint, Provider role application,
+evidence/admin endpoint, state, dispatch-error observer, request/send handler와 Registry role
+application/configuration도 Kotlin code path로 옮겼다. Shared message type도 Kotlin source다.
+`logs/20260702-064114-7570` runner에서 `RL-A1`, `RL-A2`, `RL-A3`, `RL-A5`, `RL-B1`, `RL-B3`,
+`RL-B4`, `RL-B5`, `RL-B6`, `RL-C1`, `RL-C3`, `RL-D1`, `RL-D3`, `RL-D5` marker와 각 client mode의
+`resilience-lifecycle kotlin e2e result=passed`를 확인했다.
 
 ## 구현됨
 
@@ -24,7 +26,7 @@ message type도 Kotlin source다. `logs/20260630-125201-4081089` runner에서 `R
 - `RL-B4`: provider admin 경로가 `clientServerChannel(name).configureServerSocket().weight(0/100)`을 호출해 runtime drain/restore를 검증한다.
 - `RL-B5`: 느린 handler가 이미 받은 request는 drain 뒤에도 정상 reply하고, drain 이후 새 request는 다른 provider로 가는지 검증한다.
 - `RL-B6`: provider-a에 public admin fault를 주입해 일부 request가 public 실패로 끝나는 동안, provider-b의 정상 reply가 계속 유지되고 follow-up request가 성공하는지 확인한다.
-- `RL-C1`: 다량의 request와 send를 처리한 client가 정상 종료하고 runner가 프로세스 종료를 확인해 public 경로의 cleanup을 관측한다.
+- `RL-C1`: 다량의 request와 send를 Consumer role을 통해 처리한 뒤 client driver가 정상 종료하고 runner가 프로세스 종료를 확인해 public 경로의 cleanup을 관측한다.
 - `RL-C3`: provider-a 정지 구간의 public 실패와 재기동 후 topology 회복, 후속 request 성공을 같은 restart orchestration에서 확인한다.
 - `RL-D1`: 다수 client 프로세스가 동시에 request를 보내는 high fanout burst에서 정상 reply를 유지하는지 확인한다.
 - `RL-D3`: 명시 `ZLinkMessageFlowObserver`가 미등록 request의 error reason/action/packetName marker를 evidence에 남기고, 이후 request가 정상 동작하는지 확인한다.
@@ -33,7 +35,7 @@ message type도 Kotlin source다. `logs/20260630-125201-4081089` runner에서 `R
 ## public API/harness 대기
 
 - `RL-A4`: rolling restart를 provider 그룹 단위로 수행하는 orchestration이 아직 없다.
-- `RL-B2`: provider 강제 종료 중 in-flight request를 관측하는 runner는 시도됐지만, Java/Kotlin client가 종료 시 native context close에서 멈추는 경로가 있어 완료 처리하지 않는다.
+- `RL-B2`: provider 강제 종료 중 in-flight request를 관측하는 runner는 시도됐지만, 강제 종료와 pending request의 public error를 결정적으로 고정하는 harness가 아직 없어 완료 처리하지 않는다.
 - `RL-C2`: public embedded-registry heartbeat interval/timeout 옵션은 추가됐다. provider 강제 종료 뒤 TTL stale entry 제거를 빠르고 결정적으로 고정하는 runner 연결은 아직 없다.
 - `RL-C4`: registry 중단 중 이미 연결된 channel request는 확인됐지만, registry 재기동 뒤 새 client의 follow-up request가 `NOT_ADMITTED`로 남는 경로가 있어 완료 처리하지 않는다.
 - `RL-D2`: observer 실패 격리를 runtime error sink와 함께 단언하는 scenario가 아직 없다.

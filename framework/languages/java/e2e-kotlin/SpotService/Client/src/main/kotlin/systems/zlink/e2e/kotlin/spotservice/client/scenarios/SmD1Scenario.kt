@@ -1,5 +1,6 @@
 package systems.zlink.e2e.kotlin.spotservice.client.scenarios
 
+import systems.zlink.e2e.kotlin.spotservice.client.support.ActorSessionScenarioContext
 import systems.zlink.e2e.kotlin.spotservice.client.support.ensure
 
 internal object SmD1Scenario {

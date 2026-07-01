@@ -11,13 +11,8 @@ import java.nio.file.Files
 import java.nio.file.Path
 import java.time.Duration
 import java.util.concurrent.TimeUnit
-import systems.zlink.contracts.service.registry.ServiceRole
-import systems.zlink.framework.channels.ZLinkClient
-import systems.zlink.framework.registry.ZLinkRegistryQueryClient
 
 class ClientScenarioContext(
-    val client: ZLinkClient,
-    val registry: ZLinkRegistryQueryClient?,
     val json: ObjectMapper,
     val options: ClientOptions,
 ) {
@@ -27,12 +22,7 @@ class ClientScenarioContext(
         val providers = linkedSetOf<String>()
         var index = 0
         while (index < attempts && providers.size < expectedCount) {
-            val reply = client.requestToChannel(
-                Contracts.CHANNEL,
-                Contracts.WorkReq("$prefix-$index"),
-            )
-                .timeout(Duration.ofSeconds(3))
-                .await(Contracts.WorkRes::class.java)
+            val reply = requestWork("$prefix-$index")
             ensure(reply.value() == "work:$prefix-$index", "reply payload mismatch for $prefix-$index")
             providers.add(reply.providerRid())
             index++
@@ -52,49 +42,21 @@ class ClientScenarioContext(
     }
 
     fun waitForTopology(expectedRouters: Int) {
-        val queryClient = registry ?: return
-        val deadline = System.nanoTime() + TimeUnit.SECONDS.toNanos(10)
-        while (System.nanoTime() < deadline) {
-            try {
-                val count = queryClient.topology().toCompletableFuture()
-                    .get(3, TimeUnit.SECONDS)
-                    .asSequence()
-                    .filter { it.channelName() == Contracts.CHANNEL }
-                    .filter { it.serviceRole() == ServiceRole.ROUTER }
-                    .count()
-                if (count >= expectedRouters) {
-                    return
-                }
-            } catch (_: Exception) {
-            }
-            sleep(200)
-        }
-        throw IllegalStateException(
-            "registry topology did not report $expectedRouters routers for ${Contracts.CHANNEL}",
+        postJson(
+            "${options.consumerHttpEndpoint}/topology/wait",
+            Contracts.TopologyWaitReq(expectedRouters, null, null),
+            Contracts.TopologyWaitRes::class.java,
+            Duration.ofSeconds(15),
         )
     }
 
     fun waitForTopologyEndpoint(routingId: String, endpoint: String) {
-        val queryClient = registry ?: throw IllegalStateException("registry query client is not configured")
-        val deadline = System.nanoTime() + TimeUnit.SECONDS.toNanos(15)
-        while (System.nanoTime() < deadline) {
-            try {
-                val found = queryClient.topology().toCompletableFuture()
-                    .get(3, TimeUnit.SECONDS)
-                    .any { entry ->
-                        entry.channelName() == Contracts.CHANNEL &&
-                            entry.serviceRole() == ServiceRole.ROUTER &&
-                            entry.routingId().toString() == routingId &&
-                            entry.endpoint() == endpoint
-                    }
-                if (found) {
-                    return
-                }
-            } catch (_: Exception) {
-            }
-            sleep(200)
-        }
-        throw IllegalStateException("registry topology did not report $routingId at $endpoint")
+        postJson(
+            "${options.consumerHttpEndpoint}/topology/wait",
+            Contracts.TopologyWaitReq(1, routingId, endpoint),
+            Contracts.TopologyWaitRes::class.java,
+            Duration.ofSeconds(20),
+        )
     }
 
     fun waitForWeight(baseUrl: String, expected: Int) {
@@ -182,13 +144,41 @@ class ClientScenarioContext(
 
     fun expectSingleProviderDownFailure(scenario: String, value: String) {
         try {
-            client.requestToChannel(Contracts.CHANNEL, Contracts.WorkReq(value))
-                .timeout(Duration.ofMillis(700))
-                .await(Contracts.WorkRes::class.java)
+            requestWork(value, Duration.ofMillis(700))
             throw IllegalStateException("$scenario down-window request unexpectedly completed")
         } catch (_: RuntimeException) {
             // The scenario only requires a public failure while the sole admissible provider is down.
         }
+    }
+
+    fun requestWork(value: String, timeout: Duration = Duration.ofSeconds(3)): Contracts.WorkRes =
+        postJson(
+            "${options.consumerHttpEndpoint}/profile/request",
+            Contracts.WorkReq(value),
+            Contracts.WorkRes::class.java,
+            timeout.plusSeconds(1),
+            "timeoutMillis" to timeout.toMillis().toString(),
+        )
+
+    fun submitWork(value: String, timeout: Duration = Duration.ofSeconds(3)): java.util.concurrent.CompletableFuture<Contracts.WorkRes> =
+        java.util.concurrent.CompletableFuture.supplyAsync { requestWork(value, timeout) }
+
+    fun sendWork(value: String) {
+        postJson(
+            "${options.consumerHttpEndpoint}/profile/send",
+            Contracts.WorkMsg(value),
+            Map::class.java,
+            Duration.ofSeconds(5),
+        )
+    }
+
+    fun requestUnhandled(value: String) {
+        postJson(
+            "${options.consumerHttpEndpoint}/profile/unhandled",
+            Contracts.UnhandledReq(value),
+            Contracts.WorkRes::class.java,
+            Duration.ofSeconds(5),
+        )
     }
 
     fun adminA(): String =
@@ -254,6 +244,35 @@ class ClientScenarioContext(
                 .build()
             val response = http.send(request, HttpResponse.BodyHandlers.ofString())
             ensure(response.statusCode() in 200..299, "POST $url returned ${response.statusCode()}")
+        } catch (error: IOException) {
+            throw IllegalStateException("POST failed: $url", error)
+        } catch (error: InterruptedException) {
+            Thread.currentThread().interrupt()
+            throw IllegalStateException("POST interrupted: $url", error)
+        }
+    }
+
+    private fun <T> postJson(
+        url: String,
+        body: Any,
+        responseType: Class<T>,
+        timeout: Duration,
+        vararg query: Pair<String, String>,
+    ): T {
+        try {
+            val uri = if (query.isEmpty()) {
+                URI.create(url)
+            } else {
+                URI.create(url + "?" + query.joinToString("&") { "${it.first}=${it.second}" })
+            }
+            val request = HttpRequest.newBuilder(uri)
+                .timeout(timeout)
+                .header("Content-Type", "application/json")
+                .POST(HttpRequest.BodyPublishers.ofByteArray(json.writeValueAsBytes(body)))
+                .build()
+            val response = http.send(request, HttpResponse.BodyHandlers.ofString())
+            ensure(response.statusCode() in 200..299, "POST $uri returned ${response.statusCode()}: ${response.body()}")
+            return json.readValue(response.body(), responseType)
         } catch (error: IOException) {
             throw IllegalStateException("POST failed: $url", error)
         } catch (error: InterruptedException) {

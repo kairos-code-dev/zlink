@@ -41,6 +41,7 @@ public final class ProbeSpot implements ZLinkSpot<ProbeActor> {
         context.handlers().addPacket(TimerStartMsgHandler.class);
         context.handlers().addPacket(TimerStopMsgHandler.class);
         context.handlers().addPacket(YieldTimeoutMsgHandler.class);
+        context.handlers().addPacket(YieldCancelMsgHandler.class);
         context.handlers().addPacket(SpotProbeMsgHandler.class);
         context.handlers().addActorRequest(ProbeActorRequestHandler.class);
         context.handlers().addActorRequest(ProbeActorJoinHandler.class);

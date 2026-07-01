@@ -9,7 +9,6 @@ class ClientOptions(
     val throwingApiEndpoint: String = Env.get("ZLINK_KOTLIN_E2E_THROWING_API_ENDPOINT"),
     val registryHttp: String = Env.get("ZLINK_KOTLIN_E2E_REGISTRY_HTTP"),
     val serviceHttp: String = Env.get("ZLINK_KOTLIN_E2E_SERVICE_HTTP"),
-    val failoverServiceHttp: String = Env.get("ZLINK_KOTLIN_E2E_FAILOVER_SERVICE_HTTP"),
     val filteredServiceHttp: String = Env.get("ZLINK_KOTLIN_E2E_FILTERED_SERVICE_HTTP"),
     val throwingServiceHttp: String = Env.get("ZLINK_KOTLIN_E2E_THROWING_SERVICE_HTTP"),
     val triggerHttp: String = Env.get("ZLINK_KOTLIN_E2E_TRIGGER_HTTP"),

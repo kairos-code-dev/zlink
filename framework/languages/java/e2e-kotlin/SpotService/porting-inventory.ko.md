@@ -1,15 +1,15 @@
 # Kotlin SpotService .NET 포팅 inventory
 
 기준 구현은 `framework/languages/dotnet/e2e/SpotService`이다. 현재 Kotlin 구현은 `Shared`, `Client`,
-`Server/Registry`, `Server/Play`, `Server/Publisher`, `Server/Gateway`, `Server/MultiNode`, `Server/Session` Gradle module을 만들고 각 module의 binary를 runner가
-호출한다. shared message contracts, 환경 변수 helper, route resolver, client application과 framework 설정,
-client driver spot, client scenario runner, 구현된 client scenario file, client support helper,
-Registry role entrypoint/application, Publisher/Gateway/Play role application, spot 구현 class, actor model/factory, stream session/auth handler,
+`Server/Registry`, `Server/Play`, `Server/Gateway`, `Server/MultiNode`, `Server/Session` Gradle module을 만들고 각 module의 binary를 runner가
+호출한다. shared message contracts, 환경 변수 helper, route resolver, plain HTTP/stream client driver,
+client scenario runner, 구현된 client scenario file, client support helper,
+Registry role entrypoint/application, Gateway/Play role application, spot 구현 class, actor model/factory, stream session/auth handler,
 ingress/route handlers, user spot state/outbound handlers, timer handlers, actor request handlers, spot
 subscription handler, evidence state store와 HTTP evidence endpoint는 `Shared`, `Client`, `Server/Registry`,
-`Server/Publisher`, `Server/Gateway`, `Server/Play`, `Server/Session` module의 `src/main/kotlin` 아래로 옮겼다. Registry role source는 `registry`
-package, Publisher role source는 `publisher` package, Gateway role source는 `gateway` package로 재분류했다. `logs/20260629-230514-1840000`에서는
-module별 `Registry.jar`, `Play.jar`, `Publisher.jar`, `Client.jar` 실행, 모든 구현된 client mode marker,
+`Server/Gateway`, `Server/Play`, `Server/Session` module의 `src/main/kotlin` 아래에 있다. Registry role source는 `registry`
+package, Gateway role source는 `gateway` package로 재분류했다. 초기 runner evidence에서는
+module별 role binary 실행, 모든 구현된 client mode marker,
 evidence marker, actor/session 묶음의 `SM-B1`, `SM-B3`, `SM-B7`, `SM-D1` 통과를 확인했다. `.NET` 기준
 Play 전용 endpoint, handler, spot file은 `play/endpoints`, `play/handlers`, `play/spots` package로 재분류했다.
 Session role entrypoint/application, stream session/auth handler, actor request handler, actor model, entry/user
@@ -42,10 +42,16 @@ control/stage/multi-node 세부 parity는 아직 완료되지 않았다.
 최신 live checkout에서는 public `actor.context().boundSession().send(...)` 경로가 stream session rid로
 직접 frame을 보내도록 runtime을 수정했다. `logs/20260630-121648-3951366` focused `actor-session`
 runner에서 `SM-B1`, `SM-B3`, `SM-B5`, `SM-B6`, `SM-B7`, `SM-B8`, `SM-D1`, `SM-D3`,
-`SM-D4`, `SM-D5`, `SM-D6`, `SM-D7`, `SM-D8`, `SM-D9`, `SM-D10`, `SM-D11`, `SM-D13`과
+`SM-D4`, `SM-D5`, `SM-D6`, `SM-D7`, `SM-D8`, `SM-D9`, `SM-D10`, `SM-D11`, `SM-D13`의
 focused 통과 marker를 확인했다. 이어 `logs/20260630-121736-3954627` full runner에서 구현된 mode와
 최종 `spot-service kotlin e2e result=passed` marker를 확인했다. 이 수정은 private/raw 우회 없이
 기존 public bound-session contract의 runtime 전달 경로를 바로잡는다.
+
+`logs/20260702-071019-20091` full runner에서는 Client가 framework runtime 없이 HTTP/stream driver로
+실행되고, Play HTTP endpoint가 public `ZLinkRouteClient`로 spot/route 작업을 수행한다. `.NET` source
+role에 없는 `Server/Publisher`와 root `ZLINK_KOTLIN_E2E_ROLE` switch는 제거했다. `SM-C4`는 Gateway
+`/spot/publish` endpoint로 검증하고, `ActorSessionScenarioSupport.kt`는 client support package로 옮겼다.
+최종 `spot-service kotlin e2e result=passed` marker를 확인했다.
 
 ## Scenario 상태
 
@@ -70,7 +76,7 @@ focused 통과 marker를 확인했다. 이어 `logs/20260630-121736-3954627` ful
 | `SM-C1` | `Client/Scenarios/SmC1Scenario.cs` | `Client/src/main/kotlin/.../client/scenarios/SmC1Scenario.kt` | done | request/send/timeout marker는 통과한다. |
 | `SM-C2` | `Client/Scenarios/SmC2Scenario.cs` | `Client/src/main/kotlin/.../client/scenarios/SmC2Scenario.kt`, `Server/Play/src/main/kotlin/.../play/spots/UserSpot.kt` | done | spot-to-channel과 publish evidence marker는 통과한다. |
 | `SM-C3` | `Client/Scenarios/SmC3Scenario.cs` | `Client/src/main/kotlin/.../client/scenarios/SmC3Scenario.kt`, `Server/Play/src/main/kotlin/.../play/spots/UserSpot.kt` | done | spot-to-spot와 publish evidence marker는 통과한다. |
-| `SM-C4` | `Client/Scenarios/SmC4Scenario.cs` | `Client/src/main/kotlin/.../client/scenarios/SmC4Scenario.kt`, `Server/Publisher/src/main/kotlin/.../publisher/PublisherApplication.kt`, `Server/Gateway/src/main/kotlin/.../gateway/GatewayApplication.kt` | done | publisher role marker와 Gateway `gateway-publish` mode가 통과했다. Gateway mode는 `/spot/publish`, Play `/evidence/wait`, alternate spot isolation을 확인하며 `logs/20260630-013008-2203737`에서 통과했다. |
+| `SM-C4` | `Client/Scenarios/SmC4Scenario.cs` | `Client/src/main/kotlin/.../client/scenarios/SmC4Scenario.kt`, `Server/Gateway/src/main/kotlin/.../gateway/GatewayApplication.kt` | done | `.NET`에 없는 Publisher role은 제거했고, Gateway mode는 `/spot/publish`, Play `/evidence/wait`, alternate spot isolation을 확인한다. `logs/20260702-071019-20091`에서 통과했다. |
 | `SM-D1` | `Client/Scenarios/SmD1Scenario.cs` | `Client/src/main/kotlin/.../client/scenarios/SmD1Scenario.kt`, `ActorSessionScenarioSupport.kt`, `Server/Session/src/main/kotlin/.../session/*` | done | local stream actor bind/relay/push marker는 Session module binary에서 통과하고 client scenario file은 분리했다. |
 | `SM-D2` | `Client/Scenarios/SmD2Scenario.cs` | 없음 | gap | remote stream session bind scenario가 없다. |
 | `SM-D3` | `Client/Scenarios/SmD3Scenario.cs` | `Client/src/main/kotlin/.../client/scenarios/SmD3Scenario.kt`, `ActorSessionScenarioSupport.kt`, `Server/Session/src/main/kotlin/.../session/*` | done | entry/user spot actor bind 비교는 public `joinSpot` 기반 actor-session 경로에서 확인한다. focused actor-session run `logs/focused-actor-session-20260630-020720-2316864`에서 `SM-D3` marker와 Session evidence가 통과했다. |
@@ -104,11 +110,11 @@ focused 통과 marker를 확인했다. 이어 `logs/20260630-121736-3954627` ful
 
 | .NET 기준 파일 그룹 | Kotlin 현재 대응 | 분류 | 상태 | 비고 |
 |---------------------|------------------|------|------|------|
-| `.gitignore`, `feature-map.ko.md`, `run_e2e.sh` | 같은 root 파일, module별 `build.gradle.kts` | config | done/gap | runner는 `Client`, `Server/Registry`, `Server/Play`, `Server/Publisher`, `Server/Gateway`, `Server/MultiNode`, `Server/Session` install build를 수행하고, Gateway `gateway-publish`와 MultiNode `multi-node` mode를 포함한 role binary를 호출한다. 물리적 파일 재분류와 남은 role gap은 아직 있다. |
+| `.gitignore`, `feature-map.ko.md`, `run_e2e.sh` | 같은 root 파일, module별 `build.gradle.kts` | config | done/gap | runner는 `Client`, `Server/Registry`, `Server/Play`, `Server/Gateway`, `Server/MultiNode`, `Server/Session` install build를 수행하고, Gateway `gateway-publish`와 MultiNode `multi-node` mode를 포함한 role binary를 호출한다. 물리적 파일 재분류와 남은 role gap은 아직 있다. |
 | `Shared/*` | `Shared/build.gradle.kts`, `Shared/src/main/kotlin/.../Contracts.kt` 등 | shared | merged | `Shared` Gradle module source tree로 옮겼지만 message 외 support helper도 임시로 포함한다. |
-| `Client/Program.cs` | `Client/build.gradle.kts`, `Client/src/main/kotlin/.../client/ClientProgram.kt`, `client/ClientApplication.kt`, `client/ClientDriverSpot.kt`, `client/ClientScenario.kt` | client | merged | Client role entrypoint, application, driver spot, scenario dispatcher는 `client` package로 재분류했다. |
+| `Client/Program.cs` | `Client/build.gradle.kts`, `Client/src/main/kotlin/.../client/ClientProgram.kt`, `client/ClientScenario.kt`, `client/support/*` | client | done | Client role은 framework runtime을 띄우지 않는 plain HTTP/stream driver다. spot/route 작업은 Play HTTP endpoint로 위임하고, stream scenario는 public stream connector로 직접 실행한다. |
 | `Client/Support/*` | `Shared/build.gradle.kts`, `Shared/src/main/kotlin/.../Env.kt`, `Client/src/main/kotlin/.../client/support/*` | support | merged | assert/wait/stream connector/HTTP evidence helper는 Client module로 옮겼다. `.NET` 기준 option object와 support 책임 재분류는 남아 있다. |
-| `Client/Scenarios/*` | `Client/src/main/kotlin/.../client/scenarios/*Scenario.kt`, `Client/src/main/kotlin/.../client/scenarios/ActorSessionScenarioSupport.kt`, `Client/src/main/kotlin/.../client/ClientScenario.kt`, `run_e2e.sh` | scenario | done/gap | 구현된 marker의 scenario file은 분리했고, 없는 scenario는 gap으로 둔다. |
+| `Client/Scenarios/*` | `Client/src/main/kotlin/.../client/scenarios/*Scenario.kt`, `Client/src/main/kotlin/.../client/support/ActorSessionScenarioSupport.kt`, `Client/src/main/kotlin/.../client/ClientScenario.kt`, `run_e2e.sh` | scenario | done/gap | 구현된 marker의 scenario file은 분리했고, scenario ID가 아닌 actor-session setup helper는 support package로 옮겼다. 없는 scenario는 gap으로 둔다. |
 | `Server/Registry/*` | `Server/Registry/build.gradle.kts`, `Server/Registry/src/main/kotlin/.../registry/RegistryProgram.kt`, `Server/Registry/src/main/kotlin/.../registry/RegistryApplication.kt` | server-role | merged | Registry module source tree와 role binary는 있고 entrypoint/application은 `registry` package로 재분류했다. support file 분리는 아직 남아 있다. |
 | `Server/Play/*` | `Server/Play/src/main/kotlin/.../play/PlayApplication.kt`, `play/handlers/*`, `play/spots/*`, `play/endpoints/EvidenceHttpServer.kt` | server-role | done/gap | Play module source tree와 `play/endpoints`, `play/handlers`, `play/spots` package로 재분류했다. |
 | `Server/Gateway/*` | `Server/Gateway/build.gradle.kts`, `gateway/GatewayProgram.kt`, `gateway/GatewayApplication.kt` | server-role | done | Gateway module과 role binary를 추가했고 public `ZLinkSpotPublisherClient` 기반 `/spot/publish` HTTP endpoint를 구현했다. full runner `gateway-publish` mode에서 `SM-C4-gateway` marker와 gateway publish evidence를 확인했다. |
@@ -130,7 +136,7 @@ public contract, 또는 검증 harness가 아직 없다는 뜻이다.
 | `Shared/SpotService.Shared.csproj` | `Shared/build.gradle.kts` | project | done | Shared Gradle module은 module-local `src/main/kotlin`을 사용한다. |
 | `Shared/Messages.cs` | `Shared/src/main/kotlin/.../Contracts.kt` | shared | merged | message contract는 Shared module source tree로 옮겼지만 support helper와 같은 package에 남아 있다. |
 | `Client/SpotService.Client.csproj` | `Client/build.gradle.kts` | project | done | Client Gradle module과 binary는 module-local `src/main/kotlin`을 사용한다. |
-| `Client/Program.cs` | `Client/src/main/kotlin/.../client/ClientProgram.kt`, `client/ClientApplication.kt`, `client/ClientDriverSpot.kt`, `client/ClientScenario.kt` | client | merged | client role source file은 Client module의 `client` package로 재분류했다. |
+| `Client/Program.cs` | `Client/build.gradle.kts`, `Client/src/main/kotlin/.../client/ClientProgram.kt`, `client/ClientScenario.kt`, `client/support/*` | client | done | Client role은 framework runtime을 띄우지 않는 plain HTTP/stream driver다. spot/route 작업은 Play HTTP endpoint로 위임하고, stream scenario는 public stream connector로 직접 실행한다. |
 | `Client/Support/ClientOptions.cs` | `Shared/src/main/kotlin/.../Env.kt`, `run_e2e.sh` | support | merged | 환경 변수는 읽지만 `.NET` 기준 option object는 아직 없다. |
 | `Client/Support/ScenarioAssert.cs` | `Client/src/main/kotlin/.../client/support/ScenarioAssert.kt` | support | done | assert helper는 Client module의 `client/support` package에 있다. |
 | `Client/Support/SpotLifecycleOrderContext.cs` | 없음 | support | gap | lifecycle order 전용 context와 대응 scenario 분리가 없다. |
@@ -153,7 +159,7 @@ public contract, 또는 검증 harness가 아직 없다는 뜻이다.
 | `Client/Scenarios/SmC1Scenario.cs` | `Client/src/main/kotlin/.../client/scenarios/SmC1Scenario.kt` | scenario | done | marker는 Client module binary에서 통과하고 scenario file은 `client/scenarios` package에 있다. |
 | `Client/Scenarios/SmC2Scenario.cs` | `Client/src/main/kotlin/.../client/scenarios/SmC2Scenario.kt`, `Server/Play/src/main/kotlin/.../play/spots/UserSpot.kt` | scenario | done | spot-to-channel과 publish evidence marker는 통과한다. |
 | `Client/Scenarios/SmC3Scenario.cs` | `Client/src/main/kotlin/.../client/scenarios/SmC3Scenario.kt`, `Server/Play/src/main/kotlin/.../play/spots/UserSpot.kt` | scenario | done | spot-to-spot와 publish evidence marker는 통과한다. |
-| `Client/Scenarios/SmC4Scenario.cs` | `Server/Publisher/src/main/kotlin/.../publisher/PublisherApplication.kt` | scenario | done | publisher role marker는 Server/Publisher module source tree와 binary에서 통과하고 file/package는 `publisher`로 재분류했다. `.NET` 기준 role taxonomy는 아직 남아 있다. |
+| `Client/Scenarios/SmC4Scenario.cs` | `Client/src/main/kotlin/.../client/scenarios/SmC4Scenario.kt`, `Server/Gateway/src/main/kotlin/.../gateway/GatewayApplication.kt` | scenario | done | `.NET`에 없는 Publisher role은 제거했다. Gateway mode가 `/spot/publish`, Play `/evidence/wait`, alternate spot isolation을 확인한다. |
 | `Client/Scenarios/SmD1Scenario.cs` | `Client/src/main/kotlin/.../client/scenarios/SmD1Scenario.kt`, `ActorSessionScenarioSupport.kt`, `Server/Session/src/main/kotlin/.../session/handlers/ScenarioSession.kt`, `ActorAuthHandler.kt` | scenario | done | client scenario file은 분리했고, Session role의 stream auth/relay handler를 사용한다. |
 | `Client/Scenarios/SmD2Scenario.cs` | 없음 | scenario | gap | remote stream session bind scenario가 없다. |
 | `Client/Scenarios/SmD3Scenario.cs` | `Client/src/main/kotlin/.../client/scenarios/SmD3Scenario.kt` | scenario | done | entry/user spot actor bind 비교 marker는 focused actor-session run `logs/focused-actor-session-20260630-020720-2316864`에서 통과했다. |
@@ -225,18 +231,18 @@ public contract, 또는 검증 harness가 아직 없다는 뜻이다.
 
 | Kotlin 파일 또는 그룹 | 판단 | 다음 작업 |
 |-----------------------|------|-----------|
-| `src/main/kotlin/.../Program.kt` | 유지 | compatibility entrypoint로 남기고, 후속 정리에서 필요하면 제거하거나 각 role module Program으로 대체한다. |
+| `src/main/kotlin/.../Program.kt` | 제거 | `.NET`처럼 role별 module entrypoint만 사용한다. |
 | `Server/Play/src/main/kotlin/.../PlayProgram.kt` | 유지 후 재분류 | Play module binary 진입점이다. 후속 정리에서 `.NET` 기준 package 이름과 `Program.kt` 위치를 맞춘다. |
 | `Client/src/main/kotlin/.../client/ClientProgram.kt` | 유지 후 재분류 | Client module binary 진입점이며 `client` package로 재분류했다. |
-| `Client/src/main/kotlin/.../client/ClientApplication.kt` | 유지 후 재분류 | Client module의 `client` package로 재분류했다. |
+| `Client/src/main/kotlin/.../client/ClientApplication.kt` | 제거 | Client는 framework runtime을 띄우지 않는다. |
 | `Client/src/main/kotlin/.../client/ClientScenario.kt` | 유지 | runner mode를 `.NET` 기준 scenario file로 연결하는 dispatcher로 둔다. |
 | `Client/src/main/kotlin/.../client/scenarios/*Scenario.kt` | 유지 후 보강 | 구현된 marker는 일부 `.NET` 기준 scenario ID별 Kotlin file로 나눴고, runner-only marker와 없는 scenario는 후속 작업에서 보강한다. |
 | `Client/src/main/kotlin/.../client/support/ScenarioAssert.kt`, `Client/src/main/kotlin/.../client/support/WaitSupport.kt`, `Client/src/main/kotlin/.../client/support/StreamConnectorSupport.kt`, `Client/src/main/kotlin/.../client/support/ClientHttpSupport.kt` | 유지 후 분리 | `.NET` 기준 `Client/Support/*` 책임 중 assert, wait, stream connector, HTTP evidence helper를 파일별로 나눴다. option object와 package 이름은 후속 정리에서 맞춘다. |
 | `Shared/src/main/kotlin/.../Contracts.kt` | 유지 | `Shared` project의 message Kotlin file로 옮겼고, 후속 정리에서 shared package 이름을 맞춘다. |
 | `Server/Registry/src/main/kotlin/.../registry/RegistryProgram.kt`, `Server/Registry/src/main/kotlin/.../registry/RegistryApplication.kt` | 유지 후 재분류 | Registry module의 `registry` package로 재분류했다. support file 분리는 후속 작업이다. |
 | `Server/Play/src/main/kotlin/.../play/PlayApplication.kt` | 유지 후 분리 | Play module source tree로 옮겼고, 후속 정리에서 `Server/Play`, `Server/Session`, `Server/MultiNode` 책임을 분리한다. |
-| `Server/Publisher/src/main/kotlin/.../publisher/PublisherProgram.kt`, `Server/Publisher/src/main/kotlin/.../publisher/PublisherApplication.kt` | 유지 후 재분류 | Publisher module source tree의 `publisher` package로 재분류했다. `.NET`에는 직접 대응하는 `Server/Publisher` role이 없으므로 `SM-C4` publisher role을 `.NET` 기준 role 중 어디에 둘지 후속 inventory에서 정리한다. |
-| `Client/src/main/kotlin/.../client/ClientDriverSpot.kt` | 유지 | Client module의 `client` package로 재분류했다. |
+| `Server/Publisher/src/main/kotlin/.../publisher/PublisherProgram.kt`, `Server/Publisher/src/main/kotlin/.../publisher/PublisherApplication.kt` | 제거 | `.NET`에 없는 extra role이다. `SM-C4` publish 검증은 Gateway role의 public publisher endpoint가 담당한다. |
+| `Client/src/main/kotlin/.../client/ClientDriverSpot.kt` | 제거 | Client spot runtime을 제거하고 plain HTTP/stream driver로 바꿨다. |
 | `Server/Play/src/main/kotlin/.../play/spots/ScenarioActor.kt`, `Server/Play/src/main/kotlin/.../play/spots/ScenarioActorFactory.kt` | 유지 후 재분류 | Play module source tree로 옮겼고, role별 project를 만들 때 actor support package로 나눈다. |
 | `Server/Play/src/main/kotlin/.../play/spots/UserSpot.kt`, `Server/Play/src/main/kotlin/.../play/spots/ScenarioEntrySpot.kt`, `Server/Play/src/main/kotlin/.../play/spots/TimerScenarioSpot.kt`, `Server/Play/src/main/kotlin/.../play/spots/MismatchedSpot.kt` | 유지 후 재분류 | Play module의 `play/spots` package로 재분류했다. role별 project 분리는 후속 작업이다. |
 | `Server/Play/src/main/kotlin/.../play/handlers/EntryActorEchoHandler.kt`, `Server/Play/src/main/kotlin/.../EntryActorJoinHandler.kt`, `Server/Play/src/main/kotlin/.../UserActorEchoHandler.kt`, `Server/Play/src/main/kotlin/.../SpotEventHandler.kt` | 유지 후 재분류 | Play module의 `play/handlers` package로 재분류했다. role별 project 분리는 후속 작업이다. |

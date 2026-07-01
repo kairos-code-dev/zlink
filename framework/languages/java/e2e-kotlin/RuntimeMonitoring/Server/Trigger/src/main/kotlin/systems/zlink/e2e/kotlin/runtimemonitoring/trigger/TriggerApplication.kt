@@ -50,7 +50,6 @@ class TriggerApplication {
                 .traceLabel("kotlin-mon-trigger")
             options.addClientServerChannel(Contracts.CHANNEL)
                 .enableClient(Env.get("ZLINK_KOTLIN_E2E_SERVICE_API_ENDPOINT"))
-                .enableClient(Env.get("ZLINK_KOTLIN_E2E_FAILOVER_API_ENDPOINT"))
         }
     }
 

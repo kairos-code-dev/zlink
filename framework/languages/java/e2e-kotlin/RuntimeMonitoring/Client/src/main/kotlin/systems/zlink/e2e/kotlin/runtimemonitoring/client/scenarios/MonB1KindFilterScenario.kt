@@ -1,30 +1,20 @@
 package systems.zlink.e2e.kotlin.runtimemonitoring.client.scenarios
 
-import java.time.Duration
 import systems.zlink.e2e.kotlin.runtimemonitoring.Contracts
 import systems.zlink.e2e.kotlin.runtimemonitoring.client.ClientOptions
 import systems.zlink.e2e.kotlin.runtimemonitoring.client.MonitoringEvidenceClient
 import systems.zlink.e2e.kotlin.runtimemonitoring.client.ScenarioAssert
-import systems.zlink.framework.channels.ZLinkClient
 
 class MonB1KindFilterScenario(
-    private val client: ZLinkClient,
     private val options: ClientOptions,
     private val evidence: MonitoringEvidenceClient,
 ) {
     fun run() {
-        repeat(4) { index ->
-            val reply = client.requestToChannel(
-                Contracts.CHANNEL,
-                Contracts.WorkReq("b1-filter-$index"),
-            )
-                .timeout(Duration.ofSeconds(3))
-                .await(Contracts.WorkRes::class.java)
-            ScenarioAssert.ensure(
-                reply.value == "work:b1-filter-$index",
-                "MON-B1 filtered request reply mismatch",
-            )
-        }
+        val reply = evidence.postJson(
+            "${options.triggerHttp}/profile/request/service-b?value=mon-b1-request",
+            Contracts.WorkRes::class.java,
+        )
+        ScenarioAssert.ensure(reply.providerRid == "svc-b", "MON-B1 direct trigger did not hit filtered service")
 
         evidence.waitForEvent(
             options.filteredServiceHttp,

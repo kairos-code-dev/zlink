@@ -7,7 +7,6 @@ import systems.zlink.e2e.kotlin.spotservice.client.scenarios.SmA4Scenario
 import systems.zlink.e2e.kotlin.spotservice.client.scenarios.SmA6Scenario
 import systems.zlink.e2e.kotlin.spotservice.client.scenarios.SmA7Scenario
 import systems.zlink.e2e.kotlin.spotservice.client.scenarios.SmA8Scenario
-import systems.zlink.e2e.kotlin.spotservice.client.scenarios.ActorSessionScenarioSupport
 import systems.zlink.e2e.kotlin.spotservice.client.scenarios.SmB1Scenario
 import systems.zlink.e2e.kotlin.spotservice.client.scenarios.SmB3Scenario
 import systems.zlink.e2e.kotlin.spotservice.client.scenarios.SmB5Scenario
@@ -38,32 +37,31 @@ import systems.zlink.e2e.kotlin.spotservice.client.scenarios.SmF2Scenario
 import systems.zlink.e2e.kotlin.spotservice.client.scenarios.SmF3Scenario
 import systems.zlink.e2e.kotlin.spotservice.client.scenarios.SmF4Scenario
 import systems.zlink.e2e.kotlin.spotservice.client.scenarios.SmQ9Scenario
-import systems.zlink.framework.channels.ZLinkRouteClient
-import systems.zlink.framework.spots.ZLinkSpotOutbound
+import systems.zlink.e2e.kotlin.spotservice.client.support.ActorSessionScenarioSupport
+import systems.zlink.e2e.kotlin.spotservice.client.support.SpotHttpDriver
 
-class ClientScenario(
-    private val outbound: ZLinkSpotOutbound,
-    private val routes: ZLinkRouteClient,
+internal class ClientScenario(
+    private val spots: SpotHttpDriver = SpotHttpDriver(),
 ) {
     fun runMode(mode: String) {
         when (mode) {
-            "state1" -> SmA1Scenario.run(outbound)
-            "state2" -> SmA2Scenario.run(outbound)
-            "send" -> SmC1Scenario.runSend(outbound)
-            "timeout" -> SmC1Scenario.runTimeout(outbound)
-            "missing" -> SmE1Scenario.run(outbound)
-            "normal" -> SmC1Scenario.runNormal(outbound)
+            "state1" -> SmA1Scenario.run(spots)
+            "state2" -> SmA2Scenario.run(spots)
+            "send" -> SmC1Scenario.runSend(spots)
+            "timeout" -> SmC1Scenario.runTimeout(spots)
+            "missing" -> SmE1Scenario.run(spots)
+            "normal" -> SmC1Scenario.runNormal(spots)
             "owner" -> {
-                SmA3Scenario.run(outbound)
-                SmA4Scenario.run(outbound)
+                SmA3Scenario.run(spots)
+                SmA4Scenario.run(spots)
             }
             "lifecycle-close" -> SmA6Scenario.run()
             "type-mismatch" -> SmA7Scenario.run()
             "route-mesh" -> {
-                SmF3Scenario.run(routes)
-                SmF2Scenario.run(outbound)
-                SmF1Scenario.run(outbound)
-                SmF4Scenario.run(outbound)
+                SmF3Scenario.run(spots)
+                SmF2Scenario.run(spots)
+                SmF1Scenario.run(spots)
+                SmF4Scenario.run(spots)
             }
             "actor-session" -> ActorSessionScenarioSupport.run { context ->
                 SmB1Scenario.run(context)
@@ -82,11 +80,11 @@ class ClientScenario(
                 SmD8Scenario.run()
                 SmD10Scenario.run()
                 SmD13Scenario.run()
-                SmD11Scenario.run(routes)
+                SmD11Scenario.run(spots)
             }
-            "worker" -> SmA8Scenario.run(outbound)
-            "spot-outbound" -> SmC2Scenario.run(outbound)
-            "spot-to-spot" -> SmC3Scenario.run(outbound)
+            "worker" -> SmA8Scenario.run(spots)
+            "spot-outbound" -> SmC2Scenario.run(spots)
+            "spot-to-spot" -> SmC3Scenario.run(spots)
             "gateway-publish" -> SmC4Scenario.run()
             "timer-basic" -> SmE2Scenario.run()
             "idle-timer" -> SmE3Scenario.run()

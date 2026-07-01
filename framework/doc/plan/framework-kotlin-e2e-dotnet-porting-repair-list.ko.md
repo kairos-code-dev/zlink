@@ -56,13 +56,12 @@ E2E 코드에서 우회하지 않는다. 먼저 원인을 확인하고, 필요�
 - `.NET` runner는 `backpressure-consumer` process를 따로 시작하고 Client option도
   `--backpressure-consumer-url`을 받는다.
 - `.NET` Client는 `RM-C9`를 `backpressureConsumer` 대상으로 실행한다.
-- Kotlin runner는 `direct-consumer`, `single-consumer`, `discovery-consumer`만 시작하고 Client option에
-  backpressure consumer URL이 없다.
-- Kotlin Client는 `RM-C9`를 `singleConsumer`로 실행한다.
+- Kotlin runner도 `backpressure-consumer`를 시작하고 Client option에 backpressure consumer URL을 넘긴다.
+- Kotlin Client는 `RM-C9`를 backpressure consumer 대상으로 실행한다.
 
 수정 방향:
 
-- Kotlin runner에 `.NET` 기준 `backpressure-consumer` role/process를 추가한다.
+- Kotlin runner에 `.NET` 기준 `backpressure-consumer` role/process를 추가했다.
 - Client option에 backpressure consumer URL을 추가하고, `RM-C9`는 해당 endpoint를 대상으로 실행한다.
 - public low-HWM 또는 backpressure 제어 API가 없어 같은 동작을 구현할 수 없으면 feature-map에 public
   contract gap으로 남기고 `singleConsumer` 대체 경로를 완료로 표시하지 않는다.
@@ -79,7 +78,7 @@ E2E 코드에서 우회하지 않는다. 먼저 원인을 확인하고, 필요�
 - Client를 HTTP client driver로 바꾼다.
 - codec peer, invalid duplicate, requester 책임은 server role로 옮긴다.
 - `ClientScenario.kt`는 HTTP endpoint 호출 scenario로 다시 나눈다.
-- `Client/Scenarios/ScenarioTimeouts.kt`처럼 scenario ID 구현이 아닌 helper는 `Client/Support`로 옮긴다.
+- scenario ID 구현이 아닌 helper는 `Client/Scenarios`에서 제거하거나 `Client/Support`로 옮긴다.
 
 ### 3. `ResilienceLifecycle`
 
@@ -113,18 +112,18 @@ E2E 코드에서 우회하지 않는다. 먼저 원인을 확인하고, 필요�
 
 현재 문제:
 
-- Kotlin Client가 `@EnableZLinkFramework`, `ZLinkSpotManager`, `ClientDriverSpot` 구조다.
-- `.NET`에 없는 `Server/Publisher`가 남아 있다.
-- `ActorSessionScenarioSupport.kt`처럼 scenario ID 구현이 아닌 support/context 파일이 `Client/Scenarios`에 있다.
+- Kotlin Client가 `@EnableZLinkFramework`, `ZLinkSpotManager`, `ClientDriverSpot` 구조였다.
+- `.NET`에 없는 `Server/Publisher`가 남아 있었다.
+- `ActorSessionScenarioSupport.kt`처럼 scenario ID 구현이 아닌 support/context 파일이 `Client/Scenarios`에 있었다.
 - Kotlin feature-map은 `.NET` 구현 scenario 일부를 gap으로 둔다.
 
 수정 방향:
 
-- Client spot을 제거하고 HTTP client/stream connector driver로 바꾼다.
+- Client spot을 제거하고 HTTP client/stream connector driver로 바꿨다.
 - `Gateway`, `MultiNode`, `Play`, `Registry`, `Session` role은 유지하되 `.NET` source role과 source file 매핑을
   다시 검증한다.
-- `Publisher`는 근거를 확인한 뒤 제거 또는 gap/not-needed로 정리한다.
-- scenario ID 구현이 아닌 support/context 파일은 `Client/Support` 또는 `Shared`로 옮긴다.
+- `Publisher`는 `.NET` source role에 없고 Gateway publish endpoint가 `SM-C4`를 담당하므로 제거했다.
+- scenario ID 구현이 아닌 support/context 파일은 `Client/Support`로 옮겼다.
 - public contract parity 또는 spec 검토 대기 항목: `SM-A5`, `SM-B2`, `SM-B4`, `SM-D2`, `SM-D12`, `SM-D14`
 - E2E/harness 대기 항목: `SM-F5`, `SM-G1`, `SM-G2`, `SM-G3`, `SM-G4`
 
@@ -132,12 +131,12 @@ E2E 코드에서 우회하지 않는다. 먼저 원인을 확인하고, 필요�
 
 현재 문제:
 
-- Kotlin Client에는 `.NET`의 `YdE2CancellationScenario.cs`에 대응하는 `E2`/cancellation scenario 구현이 없다.
+- Kotlin Client에는 `.NET`의 `YdE2CancellationScenario.cs`에 대응하는 `E2`/cancellation scenario 구현이 없었다.
 - 기존 구현도 일부 scenario가 gap/partial로 남아 있어 `.NET` 완료 범위와 다르다.
 
 수정 방향:
 
-- `YD-E2`를 public Kotlin/Java API로 구현할 수 있는지 먼저 확인한다.
+- `YD-E2`는 public `ZLinkRequestCall.yield(..., CancellationToken)`으로 구현했다.
 - public cancellation API가 없으면 내부 cancel helper로 우회하지 말고 `feature-map.ko.md`와
   `porting-inventory.ko.md`에 public contract gap으로 유지한다.
 - `YD-B2`, `YD-B3`, `YD-C3`, `YD-D4`, `YD-E3`도 `.NET` scenario file과 evidence marker 기준으로 다시 점검한다.
@@ -161,17 +160,16 @@ E2E 코드에서 우회하지 않는다. 먼저 원인을 확인하고, 필요�
 
 현재 문제:
 
-- Kotlin `SpotService`에는 root `src/main/kotlin/.../Program.kt`가 남아 있고,
-  `ZLINK_KOTLIN_E2E_ROLE` 값으로 `registry`, `play`, `publisher`, `client`, `session`을 분기한다.
+- Kotlin `SpotService`에는 root `src/main/kotlin/.../Program.kt`가 남아 있었고,
+  `ZLINK_KOTLIN_E2E_ROLE` 값으로 `registry`, `play`, `publisher`, `client`, `session`을 분기했다.
 - 이 구조는 `.NET`처럼 role별 project/process entry를 두는 기준과 다르다.
 
 수정 방향:
 
-- root role-switch entrypoint를 제거한다.
+- root role-switch entrypoint를 제거했다.
 - `Client`, `Server/Registry`, `Server/Play`, `Server/Gateway`, `Server/MultiNode`, `Server/Session`의 전용
   entrypoint만 남긴다.
-- `Publisher`와 root role switch는 같은 정리 작업에서 `.NET` 기준 근거를 확인한 뒤 제거하거나
-  `not-needed`로 명시한다.
+- `Publisher`와 root role switch는 `.NET` 기준 근거를 확인한 뒤 제거했다.
 
 ### 9. `PubSub`
 
@@ -179,17 +177,16 @@ E2E 코드에서 우회하지 않는다. 먼저 원인을 확인하고, 필요�
 
 - `.NET`은 PS-A4 subscriber reconnect와 PS-B2 publisher restart lifecycle 제어를 Client scenario/support
   안에서 수행한다.
-- Kotlin inventory는 `.NET` `Client/Support/ServerProcessLauncher.cs`를 `not-needed`로 두고, orchestration은
-  `run_e2e.sh`가 담당한다고 본다.
-- Kotlin runner가 PS-A4/PS-B2 주변에서 subscriber/publisher stop/restart를 수행하고, Kotlin Client scenario
-  file은 `ScenarioContext` method만 호출한다.
+- Kotlin도 Client support에 `ServerProcessLauncher`를 두고, PS-A4 reconnect subscriber와 PS-B2 restarted
+  publisher를 scenario 안에서 시작하고 종료한다.
+- runner는 초기 registry/publisher/subscriber 시작, client 실행, cleanup만 담당한다.
 
 수정 방향:
 
-- PS-A4와 PS-B2의 process lifecycle control을 Kotlin Client scenario/support 책임으로 옮긴다.
-- runner는 process 시작, 기본 readiness, client 실행, cleanup만 담당한다.
-- Kotlin harness 제약으로 Client scenario에서 제어할 수 없으면 `feature-map.ko.md`와
-  `porting-inventory.ko.md`에 harness gap으로 남기고 done으로 표시하지 않는다.
+- PS-A4와 PS-B2의 process lifecycle control을 Kotlin Client scenario/support 책임으로 옮겼다.
+- publisher role에는 PS-B2가 HTTP 경계에서 process down 상태를 확인할 수 있도록 `/shutdown` operational
+  endpoint를 추가했다.
+- `timeout 420s ./run_e2e.sh` 통과 로그: `framework/languages/java/e2e-kotlin/PubSub/logs/20260702-063516-76921`
 
 ## 작업 체크리스트
 
@@ -197,15 +194,15 @@ E2E 코드에서 우회하지 않는다. 먼저 원인을 확인하고, 필요�
 - [x] `ResilienceLifecycle`에 `Server/Consumer`를 추가하고 Client의 framework 참여를 제거한다.
 - [x] `RuntimeMonitoring` Client를 HTTP driver로 바꾼다.
 - [x] `RuntimeMonitoring` `FailoverService` extra role의 근거를 확인하고 제거 또는 재분류한다.
-- [ ] `SpotService` Client spot을 제거하고 `Publisher`와 root role-switch entrypoint를 정리한다.
-- [ ] `SpotService` gap scenario 목록을 public contract gap과 harness gap으로 다시 분류한다.
-- [ ] `RegistryMessaging`에 `backpressure-consumer` role과 Client option을 추가한다.
-- [ ] `YieldDispatch` YD-E2와 다른 gap scenario를 public API 기준으로 다시 판정한다.
-- [ ] `PubSub` PS-A4/PS-B2 lifecycle orchestration을 Client support로 옮긴다.
-- [ ] 각 config의 `run_e2e.sh`에 공통 local E2E 대기 기준을 적용한다.
-- [ ] 각 config의 `porting-inventory.ko.md`와 `feature-map.ko.md`를 실제 구현 상태와 맞춘다.
-- [ ] framework 기능 누락이나 버그가 나오면 원인을 고치고 회귀테스트를 추가한다.
-- [ ] 각 config의 `run_e2e.sh`를 실행하고 scenario marker와 role process evidence를 확인한다.
+- [x] `SpotService` Client spot을 제거하고 `Publisher`와 root role-switch entrypoint를 정리한다.
+- [x] `SpotService` gap scenario 목록을 public contract gap과 harness gap으로 다시 분류한다.
+- [x] `RegistryMessaging`에 `backpressure-consumer` role과 Client option을 추가한다.
+- [x] `YieldDispatch` YD-E2와 다른 gap scenario를 public API 기준으로 다시 판정한다.
+- [x] `PubSub` PS-A4/PS-B2 lifecycle orchestration을 Client support로 옮긴다.
+- [x] 각 config의 `run_e2e.sh`에 공통 local E2E 대기 기준을 적용한다.
+- [x] 각 config의 `porting-inventory.ko.md`와 `feature-map.ko.md`를 실제 구현 상태와 맞춘다.
+- [x] framework 기능 누락이나 버그가 나오면 원인을 고치고 회귀테스트를 추가한다.
+- [x] 각 config의 `run_e2e.sh`를 실행하고 scenario marker와 role process evidence를 확인한다.
 
 ## 완료 확인 절차
 
@@ -221,11 +218,31 @@ E2E 코드에서 우회하지 않는다. 먼저 원인을 확인하고, 필요�
 
 마지막에는 Codex 에이전트로 이 문서를 기준으로 반복 리뷰한다.
 
-- [ ] `.NET` source-only inventory와 Kotlin inventory를 다시 대조한다.
-- [ ] Client가 framework runtime으로 뜨는 항목이 남아 있는지 검색한다.
-- [ ] `.NET` source role이 빠졌거나 Kotlin extra role이 남았는지 확인한다.
-- [ ] scenario file 분류가 `.NET Client/Scenarios`와 공통 E2E scenario ID에 대응되는지 확인한다.
-- [ ] public API gap을 내부 helper나 test-only adapter로 숨긴 항목이 없는지 확인한다.
-- [ ] framework 기능 누락 또는 버그를 E2E 코드 우회로 처리한 항목이 없는지 확인한다.
-- [ ] 누락 항목이 나오면 이 문서의 수정 목록과 체크리스트에 추가한 뒤 다시 리뷰한다.
-- [ ] Codex 리뷰 결과가 `NO MISSING KOTLIN ITEMS`가 될 때까지 반복한다.
+- [x] `.NET` source-only inventory와 Kotlin inventory를 다시 대조한다.
+- [x] Client가 framework runtime으로 뜨는 항목이 남아 있는지 검색한다.
+- [x] `.NET` source role이 빠졌거나 Kotlin extra role이 남았는지 확인한다.
+- [x] scenario file 분류가 `.NET Client/Scenarios`와 공통 E2E scenario ID에 대응되는지 확인한다.
+- [x] public API gap을 내부 helper나 test-only adapter로 숨긴 항목이 없는지 확인한다.
+- [x] framework 기능 누락 또는 버그를 E2E 코드 우회로 처리한 항목이 없는지 확인한다.
+- [x] 누락 항목이 나오면 이 문서의 수정 목록과 체크리스트에 추가한 뒤 다시 리뷰한다.
+- [x] Codex 리뷰 결과가 `NO MISSING KOTLIN ITEMS`가 될 때까지 반복한다.
+
+## Codex 반복 리뷰 결과
+
+2026-07-02 source-only 재검토 결과: `NO MISSING KOTLIN ITEMS`.
+
+이 결과는 `.NET` source role, Kotlin source role, Client runtime 참여 여부, scenario file 분류,
+public API gap 처리, runner evidence를 다시 대조했을 때 새로 발견된 미분류 누락 항목이 없다는 뜻이다.
+이미 문서화한 gap은 완료로 숨기지 않는다. `ResilienceLifecycle`에는 public API와 harness 대기 gap,
+`SpotService`에는 public contract, spec, harness 대기 gap, `YieldDispatch`에는 partial/harness/evidence
+surface gap이 남아 있으며 각 config의 `feature-map.ko.md`와 `porting-inventory.ko.md`에 사유를 적었다.
+
+확인한 evidence:
+
+- `RegistrationCodec`: `timeout 420s ./run_e2e.sh`, `logs/20260702-071748-33038`
+- `ResilienceLifecycle`: `timeout 420s ./run_e2e.sh`, `logs/20260702-064114-7570`
+- `RuntimeMonitoring`: `timeout 420s ./run_e2e.sh`, `logs/20260702-064114-7626`
+- `SpotService`: `timeout 420s ./run_e2e.sh`, `logs/20260702-071019-20091`
+- `RegistryMessaging`: `timeout 420s ./run_e2e.sh`, `logs/20260702-063718-91897`
+- `YieldDispatch`: `timeout 420s ./run_e2e.sh`, `logs/20260702-064611-27912`
+- `PubSub`: `timeout 420s ./run_e2e.sh`, `logs/20260702-063516-76921`

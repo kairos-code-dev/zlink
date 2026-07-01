@@ -4,7 +4,7 @@ set -euo pipefail
 cd "$(dirname "${BASH_SOURCE[0]}")"
 
 pids=()
-role_pattern='systems\.zlink\.e2e\.kotlin\.runtimemonitoring\.(client|registry|service|failoverservice|filteredservice|throwingservice|trigger)\.ProgramKt'
+role_pattern='systems\.zlink\.e2e\.kotlin\.runtimemonitoring\.(client|registry|service|filteredservice|throwingservice|trigger)\.ProgramKt'
 run_id="$(date +%Y%m%d-%H%M%S)-$$"
 log_dir="$(pwd)/logs/${run_id}"
 repo_root="$(cd ../../../../.. && pwd)"
@@ -16,6 +16,9 @@ if [[ -z "${ZLINK_LIBRARY_PATH:-}" && -f "${default_core_lib}" ]]; then
 fi
 export ZLINK_KOTLIN_E2E_BUILD_DIR="${ZLINK_KOTLIN_E2E_BUILD_DIR:-${HOME}/.cache/zlink/kotlin-e2e/RuntimeMonitoring}"
 export ZLINK_KOTLIN_E2E_GRADLE_CACHE="${ZLINK_KOTLIN_E2E_GRADLE_CACHE:-${HOME}/.cache/zlink/kotlin-e2e/RuntimeMonitoring-gradle-cache}"
+JVM_ROLE_READY_ATTEMPTS=100
+PROCESS_READY_INTERVAL=0.1
+ROUTE_SETTLE_SECONDS=5
 
 print_logs() {
   local status="$1"
@@ -92,11 +95,11 @@ wait_port() {
   local endpoint="$2"
   local port
   port="$(port_of "${endpoint}")"
-  for _ in $(seq 1 600); do
+  for _ in $(seq 1 "${JVM_ROLE_READY_ATTEMPTS}"); do
     if (echo >"/dev/tcp/127.0.0.1/${port}") >/dev/null 2>&1; then
       return 0
     fi
-    sleep 0.1
+    sleep "${PROCESS_READY_INTERVAL}"
   done
   echo "Timed out waiting for ${name} at ${endpoint}" >&2
   return 1
@@ -118,10 +121,6 @@ service_bin() {
   echo "${ZLINK_KOTLIN_E2E_BUILD_DIR}/Server-Service/install/runtime-monitoring-kotlin-service/bin/runtime-monitoring-kotlin-service"
 }
 
-failover_service_bin() {
-  echo "${ZLINK_KOTLIN_E2E_BUILD_DIR}/Server-FailoverService/install/runtime-monitoring-kotlin-failover-service/bin/runtime-monitoring-kotlin-failover-service"
-}
-
 filtered_service_bin() {
   echo "${ZLINK_KOTLIN_E2E_BUILD_DIR}/Server-FilteredService/install/runtime-monitoring-kotlin-filtered-service/bin/runtime-monitoring-kotlin-filtered-service"
 }
@@ -134,7 +133,7 @@ trigger_bin() {
   echo "${ZLINK_KOTLIN_E2E_BUILD_DIR}/Server-Trigger/install/runtime-monitoring-kotlin-trigger/bin/runtime-monitoring-kotlin-trigger"
 }
 
-read -r REG_PUB_PORT REG_ROUTER_PORT REG_HTTP_PORT API_PORT HANDSHAKE_PORT SPOT_PORT SPOT_PUB_PORT SVC_HTTP_PORT FAILOVER_API_PORT FAILOVER_HTTP_PORT FILTERED_API_PORT FILTERED_HTTP_PORT THROWING_API_PORT THROWING_HTTP_PORT TRIGGER_HTTP_PORT <<<"$(reserve_ports)"
+read -r REG_PUB_PORT REG_ROUTER_PORT REG_HTTP_PORT API_PORT HANDSHAKE_PORT SPOT_PORT SPOT_PUB_PORT SVC_HTTP_PORT FILTERED_API_PORT FILTERED_HTTP_PORT THROWING_API_PORT THROWING_HTTP_PORT TRIGGER_HTTP_PORT _ _ <<<"$(reserve_ports)"
 REGISTRY_PUB="$(tcp "${REG_PUB_PORT}")"
 REGISTRY_ROUTER="$(tcp "${REG_ROUTER_PORT}")"
 REGISTRY_HTTP="$(http "${REG_HTTP_PORT}")"
@@ -143,15 +142,13 @@ HANDSHAKE_ENDPOINT="$(tcp "${HANDSHAKE_PORT}")"
 SPOT_ENDPOINT="$(tcp "${SPOT_PORT}")"
 SPOT_PUB_ENDPOINT="$(tcp "${SPOT_PUB_PORT}")"
 SERVICE_HTTP="$(http "${SVC_HTTP_PORT}")"
-FAILOVER_API_ENDPOINT="$(tcp "${FAILOVER_API_PORT}")"
-FAILOVER_SERVICE_HTTP="$(http "${FAILOVER_HTTP_PORT}")"
 FILTERED_API_ENDPOINT="$(tcp "${FILTERED_API_PORT}")"
 FILTERED_SERVICE_HTTP="$(http "${FILTERED_HTTP_PORT}")"
 THROWING_API_ENDPOINT="$(tcp "${THROWING_API_PORT}")"
 THROWING_SERVICE_HTTP="$(http "${THROWING_HTTP_PORT}")"
 TRIGGER_HTTP="$(http "${TRIGGER_HTTP_PORT}")"
 
-gradle_run clean :Client:installDist :Server:Registry:installDist :Server:Service:installDist :Server:FailoverService:installDist :Server:FilteredService:installDist :Server:ThrowingService:installDist :Server:Trigger:installDist
+gradle_run clean :Client:installDist :Server:Registry:installDist :Server:Service:installDist :Server:FilteredService:installDist :Server:ThrowingService:installDist :Server:Trigger:installDist
 
 ZLINK_KOTLIN_E2E_REGISTRY_PUB="${REGISTRY_PUB}" \
 ZLINK_KOTLIN_E2E_REGISTRY_ROUTER="${REGISTRY_ROUTER}" \
@@ -176,15 +173,6 @@ wait_port service-api "${API_ENDPOINT}"
 wait_port service-http "${SERVICE_HTTP}"
 
 ZLINK_KOTLIN_E2E_REGISTRY_ROUTER="${REGISTRY_ROUTER}" \
-ZLINK_KOTLIN_E2E_API_ENDPOINT="${FAILOVER_API_ENDPOINT}" \
-ZLINK_KOTLIN_E2E_HTTP_ENDPOINT="${FAILOVER_SERVICE_HTTP}" \
-ZLINK_KOTLIN_E2E_LOG_DIR="${log_dir}" \
-  "$(failover_service_bin)" >"${log_dir}/failover-service.stdout.log" 2>"${log_dir}/failover-service.stderr.log" &
-pids+=("$!")
-wait_port failover-service-api "${FAILOVER_API_ENDPOINT}"
-wait_port failover-service-http "${FAILOVER_SERVICE_HTTP}"
-
-ZLINK_KOTLIN_E2E_REGISTRY_ROUTER="${REGISTRY_ROUTER}" \
 ZLINK_KOTLIN_E2E_RID="svc-b" \
 ZLINK_KOTLIN_E2E_API_ENDPOINT="${FILTERED_API_ENDPOINT}" \
 ZLINK_KOTLIN_E2E_HTTP_ENDPOINT="${FILTERED_SERVICE_HTTP}" \
@@ -205,13 +193,13 @@ wait_port throwing-service-http "${THROWING_SERVICE_HTTP}"
 
 ZLINK_KOTLIN_E2E_HTTP_ENDPOINT="${TRIGGER_HTTP}" \
 ZLINK_KOTLIN_E2E_SERVICE_API_ENDPOINT="${API_ENDPOINT}" \
-ZLINK_KOTLIN_E2E_FAILOVER_API_ENDPOINT="${FAILOVER_API_ENDPOINT}" \
 ZLINK_KOTLIN_E2E_FILTERED_API_ENDPOINT="${FILTERED_API_ENDPOINT}" \
+ZLINK_KOTLIN_E2E_THROWING_API_ENDPOINT="${THROWING_API_ENDPOINT}" \
 ZLINK_KOTLIN_E2E_LOG_DIR="${log_dir}" \
   "$(trigger_bin)" >"${log_dir}/trigger.stdout.log" 2>"${log_dir}/trigger.stderr.log" &
 pids+=("$!")
 wait_port trigger-http "${TRIGGER_HTTP}"
-sleep 2
+sleep "${ROUTE_SETTLE_SECONDS}"
 
 ZLINK_KOTLIN_E2E_API_ENDPOINT="${API_ENDPOINT}" \
 ZLINK_KOTLIN_E2E_HANDSHAKE_ENDPOINT="${HANDSHAKE_ENDPOINT}" \
@@ -220,7 +208,6 @@ ZLINK_KOTLIN_E2E_THROWING_API_ENDPOINT="${THROWING_API_ENDPOINT}" \
 ZLINK_KOTLIN_E2E_REGISTRY_ROUTER="${REGISTRY_ROUTER}" \
 ZLINK_KOTLIN_E2E_REGISTRY_HTTP="${REGISTRY_HTTP}" \
 ZLINK_KOTLIN_E2E_SERVICE_HTTP="${SERVICE_HTTP}" \
-ZLINK_KOTLIN_E2E_FAILOVER_SERVICE_HTTP="${FAILOVER_SERVICE_HTTP}" \
 ZLINK_KOTLIN_E2E_FILTERED_SERVICE_HTTP="${FILTERED_SERVICE_HTTP}" \
 ZLINK_KOTLIN_E2E_THROWING_SERVICE_HTTP="${THROWING_SERVICE_HTTP}" \
 ZLINK_KOTLIN_E2E_TRIGGER_HTTP="${TRIGGER_HTTP}" \

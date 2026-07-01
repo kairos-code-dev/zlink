@@ -26,28 +26,30 @@ fun main(args: Array<String>) {
                     HttpJson(options.directConsumerUrl).use { directConsumer ->
                         HttpJson(options.singleConsumerUrl).use { singleConsumer ->
                             HttpJson(options.discoveryConsumerUrl).use { discoveryConsumer ->
-                                val scenarios = linkedMapOf<String, () -> Unit>(
-                                    "RM-A1" to { RmA1DiscoveryRequestScenario.run(providerA, providerB, registry) },
-                                    "RM-A2" to { RmA2ManualEndpointScenario.run(providerA) },
-                                    "RM-A4" to { RmA4SameRidFailoverScenario.run(options) },
-                                    "RM-A6" to { RmA6MultipleChannelsScenario.run(providerA, providerB, workflow) },
-                                    "RM-B1" to { RmB1ScaleOutScenario.run(options) },
-                                    "RM-B2" to { RmB2ScaleInScenario.run(options) },
-                                    "RM-C1" to { RmC1RequestSendScenario.run(providerA, providerB) },
-                                    "RM-C2" to { RmC2TargetedRouteScenario.run(providerA, providerB) },
-                                    "RM-C3" to { RmC3MultiProviderDistributionScenario.run(directConsumer, providerA, providerB) },
-                                    "RM-C4" to { RmC4TimeoutIsolationScenario.run(discoveryConsumer, providerA, providerB) },
-                                    "RM-C5" to { RmC5MissingPacketScenario.run(discoveryConsumer, providerA, providerB) },
-                                    "RM-C7" to { RmC7WeightedProviderScenario.run(options) },
-                                    "RM-C8" to { RmC8PayloadRoundTripScenario.run(singleConsumer, providerA) },
-                                    "RM-C9" to { RmC9BackpressureScenario.run(singleConsumer, providerA) },
-                                )
-                                if (options.scenario.equals("all", ignoreCase = true)) {
-                                    scenarios.values.forEach { it.invoke() }
-                                } else {
-                                    val scenario = scenarios[options.scenario.uppercase()]
-                                        ?: throw IllegalArgumentException("Unknown scenario '${options.scenario}'.")
-                                    scenario.invoke()
+                                HttpJson(options.backpressureConsumerUrl).use { backpressureConsumer ->
+                                    val scenarios = linkedMapOf<String, () -> Unit>(
+                                        "RM-A1" to { RmA1DiscoveryRequestScenario.run(providerA, providerB, registry) },
+                                        "RM-A2" to { RmA2ManualEndpointScenario.run(providerA) },
+                                        "RM-A4" to { RmA4SameRidFailoverScenario.run(options) },
+                                        "RM-A6" to { RmA6MultipleChannelsScenario.run(providerA, providerB, workflow) },
+                                        "RM-B1" to { RmB1ScaleOutScenario.run(options) },
+                                        "RM-B2" to { RmB2ScaleInScenario.run(options) },
+                                        "RM-C1" to { RmC1RequestSendScenario.run(providerA, providerB) },
+                                        "RM-C2" to { RmC2TargetedRouteScenario.run(providerA, providerB) },
+                                        "RM-C3" to { RmC3MultiProviderDistributionScenario.run(directConsumer, providerA, providerB) },
+                                        "RM-C4" to { RmC4TimeoutIsolationScenario.run(discoveryConsumer, providerA, providerB) },
+                                        "RM-C5" to { RmC5MissingPacketScenario.run(discoveryConsumer, providerA, providerB) },
+                                        "RM-C7" to { RmC7WeightedProviderScenario.run(options) },
+                                        "RM-C8" to { RmC8PayloadRoundTripScenario.run(singleConsumer, providerA) },
+                                        "RM-C9" to { RmC9BackpressureScenario.run(backpressureConsumer, providerA) },
+                                    )
+                                    if (options.scenario.equals("all", ignoreCase = true)) {
+                                        scenarios.values.forEach { it.invoke() }
+                                    } else {
+                                        val scenario = scenarios[options.scenario.uppercase()]
+                                            ?: throw IllegalArgumentException("Unknown scenario '${options.scenario}'.")
+                                        scenario.invoke()
+                                    }
                                 }
                             }
                         }

@@ -31,6 +31,10 @@ Consumer, Workflow role server endpoint 내부에서 public API로 수행한다.
   `RM-C3`, `RM-C4`, `RM-C5`, `RM-C7`, `RM-C8`.
 - `logs/20260701-040616-12511`: `timeout 420s framework/languages/java/e2e-kotlin/RegistryMessaging/run_e2e.sh RM-C9`
   실행 결과 `scenario RM-C9 passed`, `registry-messaging kotlin e2e result=passed`를 확인했다.
+- `logs/20260702-063718-91897`: `timeout 420s framework/languages/java/e2e-kotlin/RegistryMessaging/run_e2e.sh`
+  실행 결과 `RM-C9`를 포함한 모든 scenario marker와 `registry-messaging kotlin e2e result=passed`를
+  확인했다. 이 실행에서는 `.NET` 기준과 같이 `backpressure-consumer` role을 별도 process로 시작하고,
+  Client가 `--backpressure-consumer-url`로 받은 endpoint를 `RM-C9`에 사용한다.
 - `RM-C8` 통과 범위는 payload round-trip이다. MaxMessageSize 초과 거부는 .NET feature-map도
   framework channel runtime 미배선 한계로 별도 한계라고 기록하므로 Kotlin에서 완료로 확장하지 않는다.
 - `RM-C9`는 one-way send pressure와 recovery를 검증한다. 직접적인 HWM 오류 결과 검증은 binding/runtime 내부 테스트

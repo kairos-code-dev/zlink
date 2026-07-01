@@ -90,6 +90,29 @@ class MonitoringEvidenceClient(
         }
     }
 
+    fun <T> postJson(url: String, responseType: Class<T>): T {
+        try {
+            val response = http.send(
+                HttpRequest.newBuilder(URI.create(url))
+                    .timeout(Duration.ofSeconds(10))
+                    .header("Content-Type", "application/json")
+                    .POST(HttpRequest.BodyPublishers.noBody())
+                    .build(),
+                HttpResponse.BodyHandlers.ofString(),
+            )
+            ScenarioAssert.ensure(
+                response.statusCode() in 200..299,
+                "POST $url returned ${response.statusCode()}: ${response.body()}",
+            )
+            return json.readValue(response.body(), responseType)
+        } catch (error: IOException) {
+            throw IllegalStateException("POST failed: $url", error)
+        } catch (error: InterruptedException) {
+            Thread.currentThread().interrupt()
+            throw IllegalStateException("POST interrupted: $url", error)
+        }
+    }
+
     fun postBestEffort(url: String) {
         try {
             post(url)

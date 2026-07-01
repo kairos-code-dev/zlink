@@ -1,21 +1,13 @@
 package systems.zlink.e2e.kotlin.spotservice.client.scenarios
 
-import systems.zlink.contracts.core.RoutingId
-import systems.zlink.e2e.kotlin.spotservice.Contracts
-import systems.zlink.e2e.kotlin.spotservice.client.support.REQUEST_TIMEOUT
 import systems.zlink.e2e.kotlin.spotservice.client.support.ensure
 import systems.zlink.e2e.kotlin.spotservice.client.support.eventually
-import systems.zlink.framework.spots.ZLinkSpotOutbound
+import systems.zlink.e2e.kotlin.spotservice.client.support.SpotHttpDriver
 
 internal object SmC2Scenario {
-    fun run(outbound: ZLinkSpotOutbound) {
+    fun run(spots: SpotHttpDriver) {
         val reply = eventually {
-            outbound.requestToSpot(
-                RoutingId.from("room-a"),
-                Contracts.OutboundReq("c2"),
-            )
-                .timeout(REQUEST_TIMEOUT)
-                .await(Contracts.OutboundRes::class.java)
+            spots.requestOutbound("room-a", "c2")
         }
         ensure(reply.spotRid == "room-a", "SM-C2 wrong source spot")
         ensure(reply.nodeRid == "play-a", "SM-C2 wrong source node")

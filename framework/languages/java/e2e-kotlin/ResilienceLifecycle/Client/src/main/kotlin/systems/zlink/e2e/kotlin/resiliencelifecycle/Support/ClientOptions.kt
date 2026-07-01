@@ -3,6 +3,7 @@ package systems.zlink.e2e.kotlin.resiliencelifecycle
 data class ClientOptions(
     val mode: String,
     val registryRouterEndpoint: String,
+    val consumerHttpEndpoint: String,
     val logDir: String,
     val httpAEndpoint: String?,
     val httpBEndpoint: String?,
@@ -15,6 +16,7 @@ data class ClientOptions(
             ClientOptions(
                 mode = Env.get("ZLINK_KOTLIN_E2E_CLIENT_MODE", "default"),
                 registryRouterEndpoint = Env.get("ZLINK_KOTLIN_E2E_REGISTRY_ROUTER"),
+                consumerHttpEndpoint = Env.get("ZLINK_KOTLIN_E2E_CONSUMER_HTTP_ENDPOINT"),
                 logDir = Env.get("ZLINK_KOTLIN_E2E_LOG_DIR", "logs"),
                 httpAEndpoint = optional("ZLINK_KOTLIN_E2E_HTTP_A_ENDPOINT"),
                 httpBEndpoint = optional("ZLINK_KOTLIN_E2E_HTTP_B_ENDPOINT"),

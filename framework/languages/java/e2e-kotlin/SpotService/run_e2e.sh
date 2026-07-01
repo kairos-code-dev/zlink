@@ -9,7 +9,7 @@ SESSION_B_PID=""
 GATEWAY_PID=""
 MULTI_NODE_A_PID=""
 MULTI_NODE_B_PID=""
-role_pattern='systems\.zlink\.e2e\.kotlin\.spotservice\..*(RegistryProgram|PlayProgram|PublisherProgram|GatewayProgram|MultiNodeProgram|SessionProgram|ClientProgram)Kt'
+role_pattern='systems\.zlink\.e2e\.kotlin\.spotservice\..*(RegistryProgram|PlayProgram|GatewayProgram|MultiNodeProgram|SessionProgram|ClientProgram)Kt'
 client_role_pattern='systems\.zlink\.e2e\.kotlin\.spotservice\..*ClientProgramKt'
 run_id="$(date +%Y%m%d-%H%M%S)-$$"
 log_dir="$(pwd)/logs/${run_id}"
@@ -22,6 +22,11 @@ if [[ -z "${ZLINK_LIBRARY_PATH:-}" && -f "${default_core_lib}" ]]; then
 fi
 export ZLINK_KOTLIN_E2E_BUILD_DIR="${ZLINK_KOTLIN_E2E_BUILD_DIR:-${HOME}/.cache/zlink/kotlin-e2e/SpotService}"
 export ZLINK_KOTLIN_E2E_GRADLE_CACHE="${ZLINK_KOTLIN_E2E_GRADLE_CACHE:-${HOME}/.cache/zlink/kotlin-e2e/SpotService-gradle-cache}"
+JVM_ROLE_READY_ATTEMPTS=100
+PROCESS_READY_INTERVAL=0.1
+PROCESS_STOP_ATTEMPTS=50
+ROUTE_SETTLE_SECONDS=5
+MODE_RETRY_SETTLE_SECONDS=1
 
 print_logs() {
   local status="$1"
@@ -164,11 +169,11 @@ wait_port() {
   local endpoint="$2"
   local port
   port="$(port_of "${endpoint}")"
-  for _ in $(seq 1 600); do
+  for _ in $(seq 1 "${JVM_ROLE_READY_ATTEMPTS}"); do
     if (echo >"/dev/tcp/127.0.0.1/${port}") >/dev/null 2>&1; then
       return 0
     fi
-    sleep 0.1
+    sleep "${PROCESS_READY_INTERVAL}"
   done
   echo "Timed out waiting for ${name} at ${endpoint}" >&2
   return 1
@@ -178,10 +183,6 @@ gradle_run() {
   ../../gradlew --project-cache-dir "${ZLINK_KOTLIN_E2E_GRADLE_CACHE}" --no-daemon --no-parallel --max-workers=1 "$@" --quiet
 }
 
-app_bin() {
-  echo "${ZLINK_KOTLIN_E2E_BUILD_DIR}/install/spot-service-kotlin/bin/spot-service-kotlin"
-}
-
 role_bin() {
   case "$1" in
     client)
@@ -189,9 +190,6 @@ role_bin() {
       ;;
     play)
       echo "${ZLINK_KOTLIN_E2E_BUILD_DIR}/Server-Play/install/spot-service-kotlin-play/bin/spot-service-kotlin-play"
-      ;;
-    publisher)
-      echo "${ZLINK_KOTLIN_E2E_BUILD_DIR}/Server-Publisher/install/spot-service-kotlin-publisher/bin/spot-service-kotlin-publisher"
       ;;
     gateway)
       echo "${ZLINK_KOTLIN_E2E_BUILD_DIR}/Server-Gateway/install/spot-service-kotlin-gateway/bin/spot-service-kotlin-gateway"
@@ -255,13 +253,6 @@ start_play() {
   wait_port "${rid}-http" "${http}"
 }
 
-run_publisher() {
-  ZLINK_KOTLIN_E2E_SPOT_PUBLISHER_ENDPOINT="${SPOT_PUBLISHER}" \
-  ZLINK_KOTLIN_E2E_REGISTRY_ROUTER="${REGISTRY_ROUTER}" \
-  ZLINK_KOTLIN_E2E_LOG_DIR="${log_dir}" \
-    timeout -k 5s 30s "$(role_bin publisher)" >"${log_dir}/publisher.stdout.log" 2>"${log_dir}/publisher.stderr.log"
-}
-
 start_session() {
   read -r SPOT_SESSION_A STREAM_SESSION_A HTTP_SESSION_A <<<"$(reserve_session_endpoints)"
   read -r SPOT_SESSION_B STREAM_SESSION_B HTTP_SESSION_B <<<"$(reserve_session_endpoints)"
@@ -298,11 +289,11 @@ stop_session() {
         kill "${child}" >/dev/null 2>&1 || true
       done
       kill "${pid}" >/dev/null 2>&1 || true
-      for _ in $(seq 1 50); do
+      for _ in $(seq 1 "${PROCESS_STOP_ATTEMPTS}"); do
         if ! kill -0 "${pid}" >/dev/null 2>&1; then
           break
         fi
-        sleep 0.1
+        sleep "${PROCESS_READY_INTERVAL}"
       done
       if kill -0 "${pid}" >/dev/null 2>&1; then
         kill -9 "${pid}" >/dev/null 2>&1 || true
@@ -382,11 +373,11 @@ stop_multi_nodes() {
         kill "${child}" >/dev/null 2>&1 || true
       done
       kill "${pid}" >/dev/null 2>&1 || true
-      for _ in $(seq 1 50); do
+      for _ in $(seq 1 "${PROCESS_STOP_ATTEMPTS}"); do
         if ! kill -0 "${pid}" >/dev/null 2>&1; then
           break
         fi
-        sleep 0.1
+        sleep "${PROCESS_READY_INTERVAL}"
       done
       if kill -0 "${pid}" >/dev/null 2>&1; then
         kill -9 "${pid}" >/dev/null 2>&1 || true
@@ -451,12 +442,11 @@ with urllib.request.urlopen(request, timeout=5) as response:
 PY
 }
 
-read -r REGISTRY_PUB REGISTRY_ROUTER ROUTE_A ROUTE_B ROUTE_CLIENT SPOT_A SPOT_B SPOT_CLIENT INGRESS_A INGRESS_B SPOT_PUB_A SPOT_PUB_B SPOT_PUBLISHER STREAM_A STREAM_B HTTP_A HTTP_B <<<"$(reserve_ports)"
+read -r REGISTRY_PUB REGISTRY_ROUTER ROUTE_A ROUTE_B ROUTE_CLIENT SPOT_A SPOT_B SPOT_CLIENT INGRESS_A INGRESS_B SPOT_PUB_A SPOT_PUB_B _ STREAM_A STREAM_B HTTP_A HTTP_B <<<"$(reserve_ports)"
 
 gradle_run clean \
   :Client:installDist \
   :Server:Play:installDist \
-  :Server:Publisher:installDist \
   :Server:Gateway:installDist \
   :Server:MultiNode:installDist \
   :Server:Registry:installDist \
@@ -465,7 +455,7 @@ gradle_run clean \
 start_registry
 start_play play-a "${ROUTE_A}" "${SPOT_A}" "${INGRESS_A}" "${HTTP_A}" "${SPOT_PUB_A}" ""
 start_play play-b "${ROUTE_B}" "${SPOT_B}" "${INGRESS_B}" "${HTTP_B}" "${SPOT_PUB_B}" ""
-sleep 2
+sleep "${ROUTE_SETTLE_SECONDS}"
 
 run_client_mode() {
   local mode="$1"
@@ -513,7 +503,7 @@ run_client_mode() {
     (pgrep -f "${client_role_pattern}" 2>/dev/null || true) | while read -r pid; do
       kill -9 "${pid}" >/dev/null 2>&1 || true
     done
-    sleep 1
+    sleep "${MODE_RETRY_SETTLE_SECONDS}"
   done
   return 1
 }
@@ -525,17 +515,17 @@ for mode in ${client_modes}; do
   if [[ "${mode}" == "idle-timer" ]]; then
     create_timer_spot "${HTTP_A}" idle-close
     create_timer_spot "${HTTP_A}" idle-active
-    sleep 2
+    sleep "${ROUTE_SETTLE_SECONDS}"
   fi
   if [[ "${mode}" == "timer-overrun" ]]; then
     create_timer_spot "${HTTP_A}" timer-overrun-skip
     create_timer_spot "${HTTP_A}" timer-overrun-catchup
     create_timer_spot "${HTTP_A}" timer-overrun-delay
-    sleep 2
+    sleep "${ROUTE_SETTLE_SECONDS}"
   fi
   if [[ "${mode}" == "actor-session" ]]; then
     start_session
-    sleep 1
+    sleep "${MODE_RETRY_SETTLE_SECONDS}"
   fi
   run_client_mode "${mode}"
   if [[ "${mode}" == "actor-session" ]]; then
@@ -546,7 +536,7 @@ for mode in ${client_modes}; do
   if [[ "${mode}" == "idle-timer" ]]; then
     close_spot "${HTTP_A}" idle-active
   fi
-  sleep 2
+  sleep "${ROUTE_SETTLE_SECONDS}"
 done
 if [[ -n "${ZLINK_KOTLIN_E2E_MODES:-}" ]]; then
   cat "${log_dir}/client.stdout.log"
@@ -555,12 +545,8 @@ if [[ -n "${ZLINK_KOTLIN_E2E_MODES:-}" ]]; then
   echo "spot-service kotlin e2e focused modes=${ZLINK_KOTLIN_E2E_MODES} result=passed"
   exit 0
 fi
-run_publisher
-cat "${log_dir}/publisher.stdout.log" >>"${log_dir}/client.stdout.log"
-cat "${log_dir}/publisher.stderr.log" >>"${log_dir}/client.stderr.log"
-sleep 2
 start_gateway
-sleep 1
+sleep "${MODE_RETRY_SETTLE_SECONDS}"
 run_client_mode gateway-publish
 fetch_evidence gateway "${GATEWAY_HTTP}"
 stop_gateway
@@ -568,7 +554,7 @@ run_client_mode type-mismatch
 run_client_mode timer-basic
 run_client_mode lifecycle-close
 start_multi_nodes
-sleep 1
+sleep "${MODE_RETRY_SETTLE_SECONDS}"
 run_client_mode multi-node
 fetch_evidence multi-node-a "${MULTI_HTTP_A}"
 fetch_evidence multi-node-b "${MULTI_HTTP_B}"
@@ -578,7 +564,7 @@ cat "${log_dir}/client.stdout.log"
 fetch_evidence play-a "${HTTP_A}"
 fetch_evidence play-b "${HTTP_B}"
 grep -Rq "message flow" "${log_dir}"/*-flow.log
-grep -q "packet=RoutePingReq" "${log_dir}/client-flow.log"
+grep -q "packet=RoutePingReq" "${log_dir}/play-a-flow.log"
 grep -q '"marker":"RoutePingReq"' "${log_dir}/play-a-evidence.json"
 grep -q '"value":"route-mesh-normal"' "${log_dir}/play-a-evidence.json"
 grep -q '"marker":"ActorCreated"' "${log_dir}/session-a-evidence.json"

@@ -1,15 +1,13 @@
 package systems.zlink.e2e.kotlin.spotservice.client.scenarios
 
-import systems.zlink.contracts.core.RoutingId
 import systems.zlink.e2e.kotlin.spotservice.Contracts
 import systems.zlink.e2e.kotlin.spotservice.Env
-import systems.zlink.e2e.kotlin.spotservice.client.support.REQUEST_TIMEOUT
 import systems.zlink.e2e.kotlin.spotservice.client.support.createStreamConnector
 import systems.zlink.e2e.kotlin.spotservice.client.support.ensure
-import systems.zlink.framework.channels.ZLinkRouteClient
+import systems.zlink.e2e.kotlin.spotservice.client.support.SpotHttpDriver
 
 internal object SmD11Scenario {
-    fun run(routes: ZLinkRouteClient) {
+    fun run(spots: SpotHttpDriver) {
         val actorId = "actor-sm-d11-mixed"
         val profile = Contracts.ActorProfile("Mixed", 11, listOf("stream", "channel"))
         val connector = createStreamConnector(Env.get("ZLINK_KOTLIN_E2E_STREAM_A_ENDPOINT"))
@@ -32,17 +30,9 @@ internal object SmD11Scenario {
             }
         }
 
-        val routeReply = routes.requestTo(
-            Contracts.ROUTE_CHANNEL,
-            RoutingId.from("play-a"),
-            Contracts.RoutePingReq("channel-side"),
-        )
-            .packetName(Contracts.ROUTE_PACKET)
-            .timeout(REQUEST_TIMEOUT)
-            .await(Contracts.RoutePingRes::class.java)
+        val routeReply = spots.routePing("play-a", "channel-side")
         ensure(routeReply.nodeRid == "play-a", "SM-D11 channel request node mismatch")
         ensure(routeReply.value == "route:channel-side", "SM-D11 channel reply value mismatch")
-        ensure(routeReply.routeRid == "client-actor-session", "SM-D11 channel source routing id mismatch")
 
         println("scenario SM-D11 passed")
     }

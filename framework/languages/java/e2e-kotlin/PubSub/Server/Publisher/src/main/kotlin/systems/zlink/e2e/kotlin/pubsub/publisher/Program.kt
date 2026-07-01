@@ -5,6 +5,7 @@ import org.springframework.boot.WebApplicationType
 import org.springframework.boot.autoconfigure.SpringBootApplication
 import org.springframework.boot.builder.SpringApplicationBuilder
 import org.springframework.context.annotation.Bean
+import org.springframework.context.ConfigurableApplicationContext
 import systems.zlink.e2e.kotlin.pubsub.shared.Contracts
 import systems.zlink.framework.channels.ZLinkFanoutClient
 import systems.zlink.framework.configuration.ZLinkMessageFlowLogMode
@@ -35,8 +36,9 @@ class PublisherApplication {
         options: PublisherOptions,
         fanout: ZLinkFanoutClient,
         json: ObjectMapper,
+        application: ConfigurableApplicationContext,
     ): PublisherEndpoints =
-        PublisherEndpoints(fanout, json, options.httpEndpoint)
+        PublisherEndpoints(fanout, json, options.httpEndpoint, application)
 
     @Bean
     fun publisherFramework(options: PublisherOptions): ZLinkFrameworkConfigurer =

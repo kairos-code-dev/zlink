@@ -1,7 +1,5 @@
 package systems.zlink.e2e.kotlin.resiliencelifecycle
 
-import java.time.Duration
-
 fun ClientScenarioContext.runProviderFlappingScenario() {
     waitForTopology(2)
     signal("a5-ready")
@@ -11,9 +9,7 @@ fun ClientScenarioContext.runProviderFlappingScenario() {
     var index = 0
     while (!hasSignal("a5-stop")) {
         try {
-            val reply = client.requestToChannel(Contracts.CHANNEL, Contracts.WorkReq("a5-flap-$index"))
-                .timeout(Duration.ofSeconds(3))
-                .await(Contracts.WorkRes::class.java)
+            val reply = requestWork("a5-flap-$index")
             ensure(reply.value() == "work:a5-flap-$index", "RL-A5 reply payload mismatch")
             providers.add(reply.providerRid())
             successes++
@@ -25,9 +21,7 @@ fun ClientScenarioContext.runProviderFlappingScenario() {
         sleep(100)
     }
     waitForTopology(2)
-    val followUp = client.requestToChannel(Contracts.CHANNEL, Contracts.WorkReq("a5-follow-up"))
-        .timeout(Duration.ofSeconds(3))
-        .await(Contracts.WorkRes::class.java)
+    val followUp = requestWork("a5-follow-up")
     ensure(followUp.value() == "work:a5-follow-up", "RL-A5 follow-up payload mismatch")
     ensure(successes >= 10, "RL-A5 did not send enough traffic during flapping")
     ensure(providers.contains("api-b"), "RL-A5 did not converge to live api-b during flapping")

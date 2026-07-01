@@ -91,7 +91,7 @@ public final class ClientStreamSupport {
 
     public static void send(ZLinkStreamSendCall call) {
         try {
-            call.await();
+            call.submit().toCompletableFuture().join();
         } catch (Exception error) {
             throw new IllegalStateException("stream send failed", error);
         }

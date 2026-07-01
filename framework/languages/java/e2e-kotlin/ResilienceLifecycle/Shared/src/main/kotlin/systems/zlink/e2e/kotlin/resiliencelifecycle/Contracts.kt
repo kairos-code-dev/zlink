@@ -57,4 +57,14 @@ object Contracts {
 
         fun entries(): List<EvidenceEntry> = entries
     }
+
+    data class TopologyWaitReq @JsonCreator constructor(
+        @JsonProperty("expectedRouters") val expectedRouters: Int,
+        @JsonProperty("routingId") val routingId: String?,
+        @JsonProperty("endpoint") val endpoint: String?,
+    )
+
+    data class TopologyWaitRes @JsonCreator constructor(
+        @JsonProperty("matchedRouters") val matchedRouters: Int,
+    )
 }

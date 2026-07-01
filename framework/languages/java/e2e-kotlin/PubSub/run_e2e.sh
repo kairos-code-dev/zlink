@@ -17,6 +17,13 @@ if [[ -z "${ZLINK_LIBRARY_PATH:-}" && -f "${default_core_lib}" ]]; then
 fi
 export ZLINK_KOTLIN_E2E_BUILD_DIR="${ZLINK_KOTLIN_E2E_BUILD_DIR:-${HOME}/.cache/zlink/kotlin-e2e/PubSub}"
 export ZLINK_KOTLIN_E2E_GRADLE_CACHE="${ZLINK_KOTLIN_E2E_GRADLE_CACHE:-${HOME}/.cache/zlink/kotlin-e2e/PubSub-gradle-cache}"
+PROCESS_READY_ATTEMPTS=30
+PROCESS_READY_INTERVAL=0.1
+HTTP_READY_ATTEMPTS=12
+HTTP_READY_INTERVAL=0.25
+SCENARIO_MARKER_ATTEMPTS=30
+SCENARIO_MARKER_INTERVAL=0.1
+ROUTE_SETTLE_SECONDS=5
 
 print_logs() {
   local status="$1"
@@ -68,11 +75,11 @@ wait_port() {
   local endpoint="$2"
   local port
   port="$(port_of "${endpoint}")"
-  for _ in $(seq 1 600); do
+  for _ in $(seq 1 "${PROCESS_READY_ATTEMPTS}"); do
     if (echo >"/dev/tcp/127.0.0.1/${port}") >/dev/null 2>&1; then
       return 0
     fi
-    sleep 0.1
+    sleep "${PROCESS_READY_INTERVAL}"
   done
   echo "Timed out waiting for ${name} at ${endpoint}" >&2
   return 1
@@ -81,11 +88,11 @@ wait_port() {
 wait_health() {
   local url="$1"
   local name="$2"
-  for _ in $(seq 1 120); do
+  for _ in $(seq 1 "${HTTP_READY_ATTEMPTS}"); do
     if curl -fsS "${url}/health" >/dev/null 2>&1; then
       return 0
     fi
-    sleep 0.25
+    sleep "${HTTP_READY_INTERVAL}"
   done
   echo "Timed out waiting for ${name} at ${url}" >&2
   return 1
@@ -93,11 +100,11 @@ wait_health() {
 
 wait_marker() {
   local file="$1"
-  for _ in $(seq 1 600); do
+  for _ in $(seq 1 "${SCENARIO_MARKER_ATTEMPTS}"); do
     if [[ -f "${file}" ]]; then
       return 0
     fi
-    sleep 0.1
+    sleep "${SCENARIO_MARKER_INTERVAL}"
   done
   echo "Timed out waiting for marker ${file}" >&2
   return 1
@@ -178,6 +185,12 @@ run_client_mode() {
     --sub1-http "${SUB1_HTTP}" \
     --sub2-http "${SUB2_HTTP}" \
     --sub3-http "${SUB3_HTTP}" \
+    --reconnect-http "${RECONNECT_HTTP}" \
+    --publisher-bin "${PUBLISHER_BIN}" \
+    --subscriber-bin "${SUBSCRIBER_BIN}" \
+    --registry-router-endpoint "${REGISTRY_ROUTER}" \
+    --publisher-endpoint "${PUBLISHER_ENDPOINT}" \
+    --log-dir "${log_dir}" \
     --late-continue-file "${LATE_CONTINUE}" \
     >"${log_dir}/client-${suffix}.stdout.log" 2>"${log_dir}/client-${suffix}.stderr.log"
   cat "${log_dir}/client-${suffix}.stdout.log"
@@ -191,6 +204,7 @@ PUBLISHER_HTTP="http://127.0.0.1:$(pick_port)"
 SUB1_HTTP="http://127.0.0.1:$(pick_port)"
 SUB2_HTTP="http://127.0.0.1:$(pick_port)"
 SUB3_HTTP="http://127.0.0.1:$(pick_port)"
+RECONNECT_HTTP="http://127.0.0.1:$(pick_port)"
 
 gradle_run installDist
 
@@ -209,6 +223,12 @@ PUBLISHER_PID="${LAST_PID}"
   --sub1-http "${SUB1_HTTP}" \
   --sub2-http "${SUB2_HTTP}" \
   --sub3-http "${SUB3_HTTP}" \
+  --reconnect-http "${RECONNECT_HTTP}" \
+  --publisher-bin "${PUBLISHER_BIN}" \
+  --subscriber-bin "${SUBSCRIBER_BIN}" \
+  --registry-router-endpoint "${REGISTRY_ROUTER}" \
+  --publisher-endpoint "${PUBLISHER_ENDPOINT}" \
+  --log-dir "${log_dir}" \
   --publisher-ready-file "${PUBLISHER_READY}" \
   --prelate-continue-file "${PRELATE_CONTINUE}" \
   --late-ready-file "${LATE_READY}" \
@@ -222,39 +242,26 @@ start_subscriber sub-1 alpha "${SUB1_HTTP}"
 SUB1_PID="${LAST_PID}"
 start_subscriber sub-2 beta "${SUB2_HTTP}"
 SUB2_PID="${LAST_PID}"
-sleep 2
+sleep "${ROUTE_SETTLE_SECONDS}"
 touch "${PRELATE_CONTINUE}"
 
 wait_marker "${LATE_READY}"
 start_subscriber sub-3 gamma "${SUB3_HTTP}"
 SUB3_PID="${LAST_PID}"
-sleep 2
+sleep "${ROUTE_SETTLE_SECONDS}"
 touch "${LATE_CONTINUE}"
 
 wait "${CLIENT_PID}"
 cat "${log_dir}/client.stdout.log"
 
-stop_pid "${SUB1_PID}"
-rm -f "${LATE_CONTINUE}"
-run_client_mode subscriber-restarted ps-a4 &
-PS_A4_PID="$!"
-sleep 1
-start_subscriber sub-1 alpha "${SUB1_HTTP}"
-SUB1_PID="${LAST_PID}"
-sleep 2
-touch "${LATE_CONTINUE}"
-wait "${PS_A4_PID}"
+run_client_mode subscriber-restarted ps-a4
 
 stop_pid "${SUB1_PID}"
 start_subscriber sub-1 alpha "${SUB1_HTTP}" 750
 SUB1_PID="${LAST_PID}"
-sleep 2
+sleep "${ROUTE_SETTLE_SECONDS}"
 run_client_mode slow-subscriber ps-b1
 
-stop_pid "${PUBLISHER_PID}"
-start_publisher publisher-restarted
-PUBLISHER_PID="${LAST_PID}"
-sleep 2
 run_client_mode publisher-restarted ps-b2
 
 python3 - "${SUB1_HTTP}/evidence" >"${log_dir}/sub-1-evidence.json" <<'PY'

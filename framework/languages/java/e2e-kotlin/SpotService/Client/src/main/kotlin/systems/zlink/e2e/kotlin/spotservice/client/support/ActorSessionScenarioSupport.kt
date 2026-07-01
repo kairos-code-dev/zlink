@@ -1,14 +1,11 @@
-package systems.zlink.e2e.kotlin.spotservice.client.scenarios
+package systems.zlink.e2e.kotlin.spotservice.client.support
 
 import java.time.Duration
+import java.util.UUID
 import java.util.concurrent.CompletableFuture
 import java.util.concurrent.CopyOnWriteArrayList
 import systems.zlink.e2e.kotlin.spotservice.Contracts
 import systems.zlink.e2e.kotlin.spotservice.Env
-import systems.zlink.e2e.kotlin.spotservice.client.support.awaitUnchecked
-import systems.zlink.e2e.kotlin.spotservice.client.support.createStreamConnector
-import systems.zlink.e2e.kotlin.spotservice.client.support.expectFailure
-import systems.zlink.e2e.kotlin.spotservice.client.support.postJson
 import systems.zlink.stream.connector.ZLinkStreamConnector
 
 internal class ActorSessionScenarioContext : AutoCloseable {
@@ -19,6 +16,7 @@ internal class ActorSessionScenarioContext : AutoCloseable {
         inboundNames.add(observation.packetName())
         CompletableFuture.completedFuture(null)
     }
+    val actorId: String = "actor-local-" + UUID.randomUUID().toString().replace("-", "")
 
     val profile = Contracts.ActorProfile(
         "Player One",
@@ -52,7 +50,7 @@ internal class ActorSessionScenarioContext : AutoCloseable {
         connector.connect().await()
         unbound.connect().await()
         auth = connector
-            .request(Contracts.ActorAuthReq("actor-local-1", profile))
+            .request(Contracts.ActorAuthReq(actorId, profile))
             .await(Contracts.ActorAuthRes::class.java)
     }
 
@@ -61,7 +59,7 @@ internal class ActorSessionScenarioContext : AutoCloseable {
             .submit(Contracts.ActorPushNotify::class.java)
         entryReply = connector
             .request(Contracts.ActorEchoReq("entry-echo", 1, profile))
-            .metadata("actor-id", "actor-local-1")
+            .metadata("actor-id", actorId)
             .await(Contracts.ActorEchoRes::class.java)
         entryPush = connector.await(push).payload()
     }
@@ -69,7 +67,7 @@ internal class ActorSessionScenarioContext : AutoCloseable {
     fun joinRoom() {
         joined = connector
             .request(Contracts.ActorJoinReq("room-a", profile, profile.tags))
-            .metadata("actor-id", "actor-local-1")
+            .metadata("actor-id", actorId)
             .await(Contracts.ActorJoinRes::class.java)
     }
 
@@ -99,7 +97,7 @@ internal class ActorSessionScenarioContext : AutoCloseable {
     private fun requestUserEcho(value: String, seq: Int): Contracts.ActorEchoRes =
         connector
             .request(Contracts.ActorEchoReq(value, seq, profile))
-            .metadata("actor-id", "actor-local-1")
+            .metadata("actor-id", actorId)
             .await(Contracts.ActorEchoRes::class.java)
 
     override fun close() {

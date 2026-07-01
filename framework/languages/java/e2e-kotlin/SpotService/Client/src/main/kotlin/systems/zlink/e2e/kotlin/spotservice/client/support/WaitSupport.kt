@@ -6,11 +6,11 @@ private val EVENTUAL_TIMEOUT: Duration = Duration.ofSeconds(30)
 
 internal fun <T> eventually(action: () -> T): T {
     val deadline = System.nanoTime() + EVENTUAL_TIMEOUT.toNanos()
-    var lastFailure: RuntimeException? = null
+    var lastFailure: Exception? = null
     while (System.nanoTime() < deadline) {
         try {
             return action()
-        } catch (error: RuntimeException) {
+        } catch (error: Exception) {
             lastFailure = error
             sleep(200)
         }

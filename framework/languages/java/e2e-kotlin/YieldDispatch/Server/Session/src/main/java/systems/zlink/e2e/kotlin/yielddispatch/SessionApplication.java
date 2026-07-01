@@ -55,6 +55,7 @@ public final class SessionApplication {
                 .addSessionPacketHandler(TimerStartMsgRouteHandler.class)
                 .addSessionPacketHandler(TimerStopMsgRouteHandler.class)
                 .addSessionPacketHandler(YieldTimeoutMsgRouteHandler.class)
+                .addSessionPacketHandler(YieldCancelMsgRouteHandler.class)
                 .addSessionPacketHandler(SpotProbeMsgRouteHandler.class)
                 .addSessionPacketHandler(EvidenceReqRouteHandler.class);
         };

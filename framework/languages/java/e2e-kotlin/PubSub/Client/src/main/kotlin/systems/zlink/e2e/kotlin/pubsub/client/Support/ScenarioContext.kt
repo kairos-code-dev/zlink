@@ -4,6 +4,7 @@ import com.fasterxml.jackson.databind.ObjectMapper
 import com.fasterxml.jackson.module.kotlin.readValue
 import java.net.URI
 import java.net.URLEncoder
+import java.net.ConnectException
 import java.net.http.HttpClient
 import java.net.http.HttpRequest
 import java.net.http.HttpResponse
@@ -26,6 +27,7 @@ class ScenarioContext(
 ) {
     private val http = HttpClient.newHttpClient()
     private val publisherUrl = options.publisherHttp
+    private val processes = ServerProcessLauncher(options)
 
     fun run() {
         when (options.mode) {
@@ -53,19 +55,33 @@ class ScenarioContext(
     }
 
     fun runSubscriberRestartAfterReconnect() {
-        publish("all", EventMsg("ps-a4-down", 1, "while-sub-1-down"))
-        waitForEvent("sub-2", "ps-a4-down", 1)
+        val reconnectHttp = required(options.reconnectHttp, "reconnect-http")
+        processes.startSubscriber("sub-reconnect", "alpha", reconnectHttp).use { subscriber ->
+            waitHealthy(reconnectHttp)
+            publish("all", EventMsg("ps-a4", 1, "before-disconnect"))
+            waitForEventAt(reconnectHttp, "ps-a4", 1)
+            subscriber.stop()
+        }
 
-        waitForFile(options.lateContinueFile)
+        waitDown(reconnectHttp)
+        for (sequence in 2..4) {
+            publish("all", EventMsg("ps-a4", sequence, "gap-$sequence"))
+        }
+        waitForEvent("sub-1", "ps-a4", 4)
+        waitForEvent("sub-2", "ps-a4", 4)
 
-        publish("all", EventMsg("ps-a4-after", 2, "after-sub-1-restart"))
-        waitForEvent("sub-1", "ps-a4-after", 2)
-        waitForEvent("sub-2", "ps-a4-after", 2)
-        val restarted = snapshot("sub-1")
-        ensure(
-            !hasEvent(restarted, "ps-a4-down", 1),
-            "PS-A4 restarted subscriber received event from disconnected interval",
-        )
+        processes.startSubscriber("sub-reconnect", "alpha", reconnectHttp).use {
+            waitHealthy(reconnectHttp)
+            for (sequence in 5..8) {
+                publish("all", EventMsg("ps-a4", sequence, "after-reconnect-$sequence"))
+            }
+            waitForEventAt(reconnectHttp, "ps-a4", 8)
+            val restarted = snapshotAt(reconnectHttp)
+            ensure(
+                (2..4).none { hasEvent(restarted, "ps-a4", it) },
+                "PS-A4 restarted subscriber received event from disconnected interval",
+            )
+        }
         println("scenario PS-A4 passed")
     }
 
@@ -79,10 +95,26 @@ class ScenarioContext(
     }
 
     fun runPublisherRestartRecovery() {
-        publish("all", EventMsg("ps-b2", 1, "after-publisher-restart"))
-        waitForEvent("sub-1", "ps-b2", 1)
-        waitForEvent("sub-2", "ps-b2", 1)
-        waitForEvent("sub-3", "ps-b2", 1)
+        publish("all", EventMsg("ps-b2", 1, "before-publisher-restart"))
+        for (rid in listOf("sub-1", "sub-2", "sub-3")) {
+            waitForEvent(rid, "ps-b2", 1)
+        }
+
+        postPublisherControl("/shutdown")
+        waitDown(publisherUrl)
+        ensurePublishFailsWhilePublisherDown()
+
+        processes.startPublisher().use {
+            waitHealthy(publisherUrl)
+            sleep(500)
+            for (sequence in 3..42) {
+                publish("all", EventMsg("ps-b2", sequence, "after-publisher-restart-$sequence"))
+                sleep(100)
+            }
+            for (rid in listOf("sub-1", "sub-2", "sub-3")) {
+                waitForAnyEventInRange(rid, "ps-b2", 20..42)
+            }
+        }
         println("scenario PS-B2 passed")
     }
 
@@ -172,8 +204,39 @@ class ScenarioContext(
         ensure(response.statusCode() in 200..299, "publisher returned HTTP ${response.statusCode()}: ${response.body()}")
     }
 
+    private fun postPublisherControl(path: String) {
+        val request = HttpRequest.newBuilder(URI.create("$publisherUrl$path"))
+            .timeout(Duration.ofSeconds(5))
+            .POST(HttpRequest.BodyPublishers.noBody())
+            .build()
+        val response = http.send(request, HttpResponse.BodyHandlers.ofString())
+        ensure(response.statusCode() in 200..299, "publisher returned HTTP ${response.statusCode()}: ${response.body()}")
+    }
+
+    private fun ensurePublishFailsWhilePublisherDown() {
+        try {
+            publish("all", EventMsg("ps-b2", 2, "during-publisher-down"))
+            throw IllegalStateException("PS-B2 expected publish attempt to fail while publisher is down.")
+        } catch (error: Exception) {
+            if (!isConnectionFailure(error)) {
+                throw error
+            }
+        }
+    }
+
     private fun waitForAnyEvent(subscriberRid: String, scenario: String) {
         waitForEvidence(subscriberRid, marker = "EventMsg", scenario = scenario)
+    }
+
+    private fun waitForAnyEventInRange(
+        subscriberRid: String,
+        scenario: String,
+        range: IntRange,
+    ) {
+        waitUntil {
+            val current = snapshot(subscriberRid)
+            range.any { hasEvent(current, scenario, it) }
+        }
     }
 
     private fun waitForEvent(
@@ -219,8 +282,43 @@ class ScenarioContext(
         return json.readValue(response.body())
     }
 
+    private fun waitForEventAt(
+        endpoint: String,
+        scenario: String,
+        sequence: Int,
+    ): EvidenceSnapshot =
+        waitForEvidenceAt(endpoint, marker = "EventMsg", scenario = scenario, sequence = sequence)
+
+    private fun waitForEvidenceAt(
+        endpoint: String,
+        marker: String,
+        scenario: String? = null,
+        sequence: Int? = null,
+    ): EvidenceSnapshot {
+        val query = buildList {
+            add("marker=${encode(marker)}")
+            scenario?.let { add("scenario=${encode(it)}") }
+            sequence?.let { add("sequence=$it") }
+            add("timeoutMs=${EVIDENCE_TIMEOUT.toMillis()}")
+        }.joinToString("&")
+        val request = HttpRequest.newBuilder(URI.create("$endpoint/evidence/wait?$query"))
+            .timeout(EVIDENCE_TIMEOUT.plusSeconds(5))
+            .GET()
+            .build()
+        val response = http.send(request, HttpResponse.BodyHandlers.ofString())
+        ensure(
+            response.statusCode() in 200..299,
+            "subscriber evidence wait failed with HTTP ${response.statusCode()}: ${response.body()}",
+        )
+        return json.readValue(response.body())
+    }
+
     private fun snapshot(subscriberRid: String): EvidenceSnapshot {
         val endpoint = subscriberEndpoint(subscriberRid)
+        return snapshotAt(endpoint)
+    }
+
+    private fun snapshotAt(endpoint: String): EvidenceSnapshot {
         val request = HttpRequest.newBuilder(URI.create("$endpoint/evidence"))
             .timeout(Duration.ofSeconds(3))
             .GET()
@@ -264,6 +362,42 @@ class ScenarioContext(
         throw IllegalStateException("timed out waiting for evidence", last)
     }
 
+    private fun waitHealthy(endpoint: String) {
+        waitUntil {
+            try {
+                val request = HttpRequest.newBuilder(URI.create("$endpoint/health"))
+                    .timeout(Duration.ofSeconds(1))
+                    .GET()
+                    .build()
+                http.send(request, HttpResponse.BodyHandlers.discarding()).statusCode() == 200
+            } catch (error: Exception) {
+                if (isConnectionFailure(error)) {
+                    false
+                } else {
+                    throw error
+                }
+            }
+        }
+    }
+
+    private fun waitDown(endpoint: String) {
+        waitUntil {
+            try {
+                val request = HttpRequest.newBuilder(URI.create("$endpoint/health"))
+                    .timeout(Duration.ofSeconds(1))
+                    .GET()
+                    .build()
+                http.send(request, HttpResponse.BodyHandlers.discarding()).statusCode() != 200
+            } catch (error: Exception) {
+                if (isConnectionFailure(error)) {
+                    true
+                } else {
+                    throw error
+                }
+            }
+        }
+    }
+
     private fun touch(file: String) {
         if (file.isBlank()) {
             return
@@ -282,6 +416,20 @@ class ScenarioContext(
         if (!condition) {
             throw IllegalStateException(message)
         }
+    }
+
+    private fun required(value: String, option: String): String =
+        value.takeIf { it.isNotBlank() } ?: throw IllegalArgumentException("--$option is required for ${options.mode}.")
+
+    private fun isConnectionFailure(error: Throwable): Boolean {
+        var current: Throwable? = error
+        while (current != null) {
+            if (current is ConnectException) {
+                return true
+            }
+            current = current.cause
+        }
+        return false
     }
 
     private fun sleep(milliseconds: Long) {

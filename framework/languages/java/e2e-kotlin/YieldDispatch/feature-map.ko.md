@@ -2,10 +2,10 @@
 
 이 문서는 `framework/doc/framework/common/e2e/config-8-yield-dispatch.ko.md`를
 Kotlin framework E2E에서 어떤 공개 API 경로로 검증하는지 정리한다.
-현재 module runner는 `logs/20260630-114116-3823326`에서 `Client`, `Server/Registry`,
+현재 module runner는 `logs/20260702-064611-27912`에서 `Client`, `Server/Registry`,
 `Server/Delay`, `Server/Play`, `Server/Session` binary를 실행하고, D2 전용 mode에서 `play-b`도 추가로
 실행한다. 이 로그에서 `YD-A1`, `YD-A2`, `YD-A3`, `YD-A4`, `YD-B1`, `YD-C1`,
-`YD-C2`, `YD-E1`, `YD-D1`, `YD-D2`, `YD-D3` marker와 `yield-dispatch kotlin e2e result=passed`를 확인했다.
+`YD-C2`, `YD-E1`, `YD-E2`, `YD-D1`, `YD-D2`, `YD-D3` marker와 `yield-dispatch kotlin e2e result=passed`를 확인했다.
 
 ## 현재 runner 통과 항목
 
@@ -31,6 +31,8 @@ surface, message contract가 아직 1:1로 맞지 않는 항목은 `porting-inve
 - `YD-C2`: 같은 timer의 다음 tick이 첫 yield 완료 뒤 처리되는지 확인한다.
 - `YD-E1`: `yield(...)` timeout 뒤 같은 Spot이 probe packet을 계속 처리하는지 node-level evidence
   store로 확인한다.
+- `YD-E2`: `yield(..., CancellationToken)` cancellation 뒤 같은 Spot이 probe packet을 계속 처리하는지
+  node-level evidence store로 확인한다.
 - `YD-D1` 일부: 현재 runner가 `play-a`와 `delay-a` local topology에서 A/B/C/E1 marker를 통과한 뒤
   local topology aggregate marker를 남긴다.
 - `YD-D2` 일부: 기본 local sweep 뒤 `play-b`를 추가로 띄우고 D2 전용 client mode에서 `play-a`
@@ -54,11 +56,6 @@ surface, message contract가 아직 1:1로 맞지 않는 항목은 `porting-inve
   client marker가 통과했지만 같은 topology를 이어서 쓰는 main sweep이 `YD-B2`에서 timeout되었고,
   `logs/20260630-074614-3161019`, `logs/20260630-074527-3158860`에서는 D4 전용 actor join부터
   timeout되었다. 따라서 현재는 full runner 통과 항목으로 올리지 않는다.
-- `YD-E2` cancellation은 Java/Kotlin public `ZLinkRequestCall`에 `.NET`의
-  `Yield<T>(CancellationToken)`처럼 yield 대기를 외부 cancellation token으로 끊는 overload가 없어
-  같은 수준으로 구현하지 않는다. 현재 public surface는 `timeout(...)`, `submit(...)`,
-  `yield(...)`, `await(...)`만 제공하므로 timeout 검증(`YD-E1`)과 cancellation 검증을 같은 것으로
-  처리하지 않는다.
 - `YD-E3` shutdown/recovery는 아직 별도 runner mode로 분리되어 있지 않다. `.NET` runner는 pending
   yield marker를 확인한 뒤 `play-a`를 종료하고, client가 public closed/cancelled 계열 오류를
   관찰했는지 확인한 다음 같은 `play-a` rid로 재시작해 recovery probe marker를 검증한다. 현재 Kotlin
@@ -67,7 +64,7 @@ surface, message contract가 아직 1:1로 맞지 않는 항목은 `porting-inve
   고정한다.
 - `.NET` 기준의 `Client`, `Shared`, `Server/Registry`, `Server/Delay`, `Server/Play`,
   `Server/Session` role project는 추가했다. 현재 구현된 client marker 중 `YD-A1`, `YD-A2`,
-  `YD-A3`, `YD-A4`, `YD-B1`, `YD-C1`, `YD-C2`, `YD-E1`, `YD-D1`은
+  `YD-A3`, `YD-A4`, `YD-B1`, `YD-C1`, `YD-C2`, `YD-E1`, `YD-E2`, `YD-D1`은
   scenario file로 분리했다.
 - `YD-B2`는 같은 actor의 slow/fast request 순서와 대기 시간을 검증하려는 scenario file은 남아 있지만
   현재 runner 완료 범위에는 넣지 않는다. `.NET`의
@@ -85,7 +82,7 @@ surface, message contract가 아직 1:1로 맞지 않는 항목은 `porting-inve
   `logs/20260630-112723-3766598`, `logs/20260630-113906-3813484`에서 timeout되어 runner 완료
   marker에서 제외한다.
 - `.NET` feature-map에서 구현으로 표시한 `YD-C3`,
-  `YD-D4`, `YD-E2`, `YD-E3`은 아직 Kotlin에서 같은 수준으로
+  `YD-D4`, `YD-E3`은 아직 Kotlin에서 같은 수준으로
   검증하지 않는다. `YD-E4`는 정적 검사 일부만 추가했으며, scenario file이 connector 생성과 lifecycle을
   소유하지 못하게 막는다. 다만 `.NET`처럼 모든 client scenario가 thin helper 없이 connector를 직접 쓰는
   구조까지는 아직 맞추지 않았다.

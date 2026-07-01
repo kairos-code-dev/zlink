@@ -4,7 +4,7 @@ set -euo pipefail
 cd "$(dirname "${BASH_SOURCE[0]}")"
 
 pids=()
-role_pattern='resilience-lifecycle-kotlin-(client|registry|provider)'
+role_pattern='resilience-lifecycle-kotlin-(client|registry|provider|consumer)'
 run_id="$(date +%Y%m%d-%H%M%S)-$$"
 log_dir="$(pwd)/logs/${run_id}"
 repo_root="$(cd ../../../../.. && pwd)"
@@ -16,6 +16,12 @@ if [[ -z "${ZLINK_LIBRARY_PATH:-}" && -f "${default_core_lib}" ]]; then
 fi
 export ZLINK_KOTLIN_E2E_BUILD_DIR="${ZLINK_KOTLIN_E2E_BUILD_DIR:-${HOME}/.cache/zlink/kotlin-e2e/ResilienceLifecycle}"
 export ZLINK_KOTLIN_E2E_GRADLE_CACHE="${ZLINK_KOTLIN_E2E_GRADLE_CACHE:-${HOME}/.cache/zlink/kotlin-e2e/ResilienceLifecycle-gradle-cache}"
+JVM_ROLE_READY_ATTEMPTS=100
+PROCESS_STOP_ATTEMPTS=200
+SCENARIO_SIGNAL_ATTEMPTS=300
+POLL_INTERVAL=0.1
+ROUTE_SETTLE_SECONDS=5
+FLAP_SETTLE_SECONDS=2
 
 print_logs() {
   local status="$1"
@@ -63,7 +69,7 @@ import socket
 sockets = []
 ports = []
 try:
-    for _ in range(8):
+    for _ in range(9):
         sock = socket.socket()
         sock.bind(("127.0.0.1", 0))
         sockets.append(sock)
@@ -85,11 +91,11 @@ wait_port() {
   local endpoint="$2"
   local port
   port="$(port_of "${endpoint}")"
-  for _ in $(seq 1 600); do
+  for _ in $(seq 1 "${JVM_ROLE_READY_ATTEMPTS}"); do
     if (echo >"/dev/tcp/127.0.0.1/${port}") >/dev/null 2>&1; then
       return 0
     fi
-    sleep 0.1
+    sleep "${POLL_INTERVAL}"
   done
   echo "Timed out waiting for ${name} at ${endpoint}" >&2
   return 1
@@ -100,11 +106,11 @@ wait_port_down() {
   local endpoint="$2"
   local port
   port="$(port_of "${endpoint}")"
-  for _ in $(seq 1 200); do
+  for _ in $(seq 1 "${PROCESS_STOP_ATTEMPTS}"); do
     if ! (echo >"/dev/tcp/127.0.0.1/${port}") >/dev/null 2>&1; then
       return 0
     fi
-    sleep 0.1
+    sleep "${POLL_INTERVAL}"
   done
   echo "Timed out waiting for ${name} to stop at ${endpoint}" >&2
   return 1
@@ -112,11 +118,11 @@ wait_port_down() {
 
 wait_file() {
   local file="$1"
-  for _ in $(seq 1 300); do
+  for _ in $(seq 1 "${SCENARIO_SIGNAL_ATTEMPTS}"); do
     if [[ -f "${file}" ]]; then
       return 0
     fi
-    sleep 0.1
+    sleep "${POLL_INTERVAL}"
   done
   echo "Timed out waiting for ${file}" >&2
   return 1
@@ -147,6 +153,10 @@ provider_bin() {
   echo "${ZLINK_KOTLIN_E2E_BUILD_DIR}/Server-Provider/install/resilience-lifecycle-kotlin-provider/bin/resilience-lifecycle-kotlin-provider"
 }
 
+consumer_bin() {
+  echo "${ZLINK_KOTLIN_E2E_BUILD_DIR}/Server-Consumer/install/resilience-lifecycle-kotlin-consumer/bin/resilience-lifecycle-kotlin-consumer"
+}
+
 start_registry() {
   ZLINK_KOTLIN_E2E_REGISTRY_PUB="${REGISTRY_PUB}" \
   ZLINK_KOTLIN_E2E_REGISTRY_ROUTER="${REGISTRY_ROUTER}" \
@@ -171,7 +181,16 @@ start_provider() {
   wait_port "${rid}-http" "${http}"
 }
 
-read -r REGISTRY_PUB REGISTRY_ROUTER API_A API_B API_A_REPLACEMENT HTTP_A HTTP_B HTTP_A_REPLACEMENT <<<"$(reserve_ports)"
+start_consumer() {
+  ZLINK_KOTLIN_E2E_REGISTRY_ROUTER="${REGISTRY_ROUTER}" \
+  ZLINK_KOTLIN_E2E_CONSUMER_HTTP_ENDPOINT="${CONSUMER_HTTP}" \
+  ZLINK_KOTLIN_E2E_LOG_DIR="${log_dir}" \
+    "$(consumer_bin)" >"${log_dir}/consumer.stdout.log" 2>"${log_dir}/consumer.stderr.log" &
+  pids+=("$!")
+  wait_port consumer-http "${CONSUMER_HTTP}"
+}
+
+read -r REGISTRY_PUB REGISTRY_ROUTER API_A API_B API_A_REPLACEMENT HTTP_A HTTP_B HTTP_A_REPLACEMENT CONSUMER_HTTP <<<"$(reserve_ports)"
 
 gradle_run clean installDist
 
@@ -181,7 +200,8 @@ start_provider api-a "${API_A}" "${HTTP_A}"
 PROVIDER_A_PID="${pids[-1]}"
 start_provider api-b "${API_B}" "${HTTP_B}"
 PROVIDER_B_PID="${pids[-1]}"
-sleep 2
+start_consumer
+sleep "${ROUTE_SETTLE_SECONDS}"
 
 control_dir="${log_dir}/control"
 mkdir -p "${control_dir}"
@@ -189,6 +209,7 @@ mkdir -p "${control_dir}"
 ZLINK_KOTLIN_E2E_CLIENT_MODE=restart \
 ZLINK_KOTLIN_E2E_CONTROL_DIR="${control_dir}" \
 ZLINK_KOTLIN_E2E_REGISTRY_ROUTER="${REGISTRY_ROUTER}" \
+ZLINK_KOTLIN_E2E_CONSUMER_HTTP_ENDPOINT="${CONSUMER_HTTP}" \
 ZLINK_KOTLIN_E2E_HTTP_A_ENDPOINT="${HTTP_A}" \
 ZLINK_KOTLIN_E2E_HTTP_B_ENDPOINT="${HTTP_B}" \
 ZLINK_KOTLIN_E2E_LOG_DIR="${log_dir}" \
@@ -203,13 +224,14 @@ touch "${control_dir}/a1-down"
 wait_file "${control_dir}/a1-down-observed"
 start_provider api-a "${API_A}" "${HTTP_A}"
 PROVIDER_A_PID="${pids[-1]}"
-sleep 2
+sleep "${ROUTE_SETTLE_SECONDS}"
 touch "${control_dir}/a1-up"
 wait "${restart_client_pid}"
 
 ZLINK_KOTLIN_E2E_CLIENT_MODE=reschedule \
 ZLINK_KOTLIN_E2E_CONTROL_DIR="${control_dir}" \
 ZLINK_KOTLIN_E2E_REGISTRY_ROUTER="${REGISTRY_ROUTER}" \
+ZLINK_KOTLIN_E2E_CONSUMER_HTTP_ENDPOINT="${CONSUMER_HTTP}" \
 ZLINK_KOTLIN_E2E_API_A_REPLACEMENT_ENDPOINT="${API_A_REPLACEMENT}" \
 ZLINK_KOTLIN_E2E_HTTP_A_ENDPOINT="${HTTP_A}" \
 ZLINK_KOTLIN_E2E_HTTP_B_ENDPOINT="${HTTP_B}" \
@@ -225,13 +247,14 @@ touch "${control_dir}/a2-down"
 wait_file "${control_dir}/a2-down-observed"
 start_provider api-a "${API_A_REPLACEMENT}" "${HTTP_A_REPLACEMENT}"
 PROVIDER_A_PID="${pids[-1]}"
-sleep 2
+sleep "${ROUTE_SETTLE_SECONDS}"
 touch "${control_dir}/a2-up"
 wait "${reschedule_client_pid}"
 
 ZLINK_KOTLIN_E2E_CLIENT_MODE=flapping \
 ZLINK_KOTLIN_E2E_CONTROL_DIR="${control_dir}" \
 ZLINK_KOTLIN_E2E_REGISTRY_ROUTER="${REGISTRY_ROUTER}" \
+ZLINK_KOTLIN_E2E_CONSUMER_HTTP_ENDPOINT="${CONSUMER_HTTP}" \
 ZLINK_KOTLIN_E2E_HTTP_A_ENDPOINT="${HTTP_A_REPLACEMENT}" \
 ZLINK_KOTLIN_E2E_HTTP_B_ENDPOINT="${HTTP_B}" \
 ZLINK_KOTLIN_E2E_LOG_DIR="${log_dir}" \
@@ -243,15 +266,16 @@ wait_file "${control_dir}/a5-ready"
 for _ in $(seq 1 3); do
   stop_pid "${PROVIDER_A_PID}"
   wait_port_down api-a "${API_A_REPLACEMENT}"
-  sleep 1
+  sleep "${FLAP_SETTLE_SECONDS}"
   start_provider api-a "${API_A_REPLACEMENT}" "${HTTP_A_REPLACEMENT}"
   PROVIDER_A_PID="${pids[-1]}"
-  sleep 2
+  sleep "${ROUTE_SETTLE_SECONDS}"
 done
 touch "${control_dir}/a5-stop"
 wait "${flapping_client_pid}"
 
 ZLINK_KOTLIN_E2E_REGISTRY_ROUTER="${REGISTRY_ROUTER}" \
+ZLINK_KOTLIN_E2E_CONSUMER_HTTP_ENDPOINT="${CONSUMER_HTTP}" \
 ZLINK_KOTLIN_E2E_HTTP_A_ENDPOINT="${HTTP_A_REPLACEMENT}" \
 ZLINK_KOTLIN_E2E_HTTP_B_ENDPOINT="${HTTP_B}" \
 ZLINK_KOTLIN_E2E_LOG_DIR="${log_dir}" \
@@ -260,7 +284,7 @@ ZLINK_KOTLIN_E2E_LOG_DIR="${log_dir}" \
 wait_port_down api-b "${API_B}"
 start_provider api-b "${API_B}" "${HTTP_B}"
 PROVIDER_B_PID="${pids[-1]}"
-sleep 3
+sleep "${ROUTE_SETTLE_SECONDS}"
 
 for wave in 1 2; do
   storm_pids=()
@@ -270,6 +294,7 @@ for wave in 1 2; do
     ZLINK_KOTLIN_E2E_CLIENT_MODE=storm \
     ZLINK_KOTLIN_E2E_CONTROL_DIR="${control_dir}" \
     ZLINK_KOTLIN_E2E_REGISTRY_ROUTER="${REGISTRY_ROUTER}" \
+    ZLINK_KOTLIN_E2E_CONSUMER_HTTP_ENDPOINT="${CONSUMER_HTTP}" \
     ZLINK_KOTLIN_E2E_HTTP_A_ENDPOINT="${HTTP_A_REPLACEMENT}" \
     ZLINK_KOTLIN_E2E_HTTP_B_ENDPOINT="${HTTP_B}" \
     ZLINK_KOTLIN_E2E_STORM_EXIT_DELAY_MS="$((index * 250))" \
@@ -286,6 +311,7 @@ done
 ZLINK_KOTLIN_E2E_CLIENT_MODE=cleanup \
 ZLINK_KOTLIN_E2E_CONTROL_DIR="${control_dir}" \
 ZLINK_KOTLIN_E2E_REGISTRY_ROUTER="${REGISTRY_ROUTER}" \
+ZLINK_KOTLIN_E2E_CONSUMER_HTTP_ENDPOINT="${CONSUMER_HTTP}" \
 ZLINK_KOTLIN_E2E_HTTP_A_ENDPOINT="${HTTP_A_REPLACEMENT}" \
 ZLINK_KOTLIN_E2E_HTTP_B_ENDPOINT="${HTTP_B}" \
 ZLINK_KOTLIN_E2E_LOG_DIR="${log_dir}" \

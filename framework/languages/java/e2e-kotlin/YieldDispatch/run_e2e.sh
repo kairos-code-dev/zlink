@@ -16,6 +16,9 @@ if [[ -z "${ZLINK_LIBRARY_PATH:-}" && -f "${default_core_lib}" ]]; then
 fi
 export ZLINK_KOTLIN_E2E_BUILD_DIR="${ZLINK_KOTLIN_E2E_BUILD_DIR:-${HOME}/.cache/zlink/kotlin-e2e/YieldDispatch}"
 export ZLINK_KOTLIN_E2E_GRADLE_CACHE="${ZLINK_KOTLIN_E2E_GRADLE_CACHE:-${HOME}/.cache/zlink/kotlin-e2e/YieldDispatch-gradle-cache}"
+JVM_ROLE_READY_ATTEMPTS=100
+PROCESS_READY_INTERVAL=0.1
+ROUTE_SETTLE_SECONDS=5
 
 print_logs() {
   local status="$1"
@@ -84,11 +87,11 @@ wait_port() {
   local endpoint="$2"
   local port
   port="$(port_of "${endpoint}")"
-  for _ in $(seq 1 600); do
+  for _ in $(seq 1 "${JVM_ROLE_READY_ATTEMPTS}"); do
     if (echo >"/dev/tcp/127.0.0.1/${port}") >/dev/null 2>&1; then
       return 0
     fi
-    sleep 0.1
+    sleep "${PROCESS_READY_INTERVAL}"
   done
   echo "Timed out waiting for ${name} at ${endpoint}" >&2
   return 1
@@ -248,10 +251,10 @@ start_registry
 start_delay
 start_play play-a "${SPOT}" "${PLAY_ROUTE}" play
 start_session
-sleep 2
+sleep "${ROUTE_SETTLE_SECONDS}"
 run_client
 start_play play-b "${SPOT_B}" "${PLAY_B_ROUTE}" play-b
-sleep 2
+sleep "${ROUTE_SETTLE_SECONDS}"
 run_d2_client
 
 cat "${log_dir}/client.stdout.log"
@@ -265,6 +268,7 @@ grep -q "scenario YD-C1 passed" "${log_dir}/client.stdout.log"
 grep -q "scenario YD-C2 passed" "${log_dir}/client.stdout.log"
 grep -q "scenario YD-D1 passed" "${log_dir}/client.stdout.log"
 grep -q "scenario YD-E1 passed" "${log_dir}/client.stdout.log"
+grep -q "scenario YD-E2 passed" "${log_dir}/client.stdout.log"
 grep -q "yield-dispatch kotlin e2e result=passed" "${log_dir}/client.stdout.log"
 grep -q "scenario YD-D2 passed" "${log_dir}/client-d2.stdout.log"
 grep -q "scenario YD-D3 passed" "${log_dir}/client-d2.stdout.log"

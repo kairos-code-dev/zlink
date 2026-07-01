@@ -1,28 +1,23 @@
 package systems.zlink.e2e.kotlin.registrationcodec.client.scenarios
 
-import com.google.protobuf.StringValue
-import systems.zlink.e2e.kotlin.registrationcodec.Contracts
 import systems.zlink.e2e.kotlin.registrationcodec.client.support.CodecScenarioResult
-import systems.zlink.e2e.kotlin.registrationcodec.client.support.EvidenceText
 import systems.zlink.e2e.kotlin.registrationcodec.client.support.ScenarioAssert
-import systems.zlink.framework.channels.ZLinkClient
+import systems.zlink.e2e.kotlin.registrationcodec.client.support.ScenarioHttpClient
 
 class RcB2ProtobufCodecScenario(
-    private val client: ZLinkClient,
-    private val evidence: EvidenceText,
+    private val server: ScenarioHttpClient,
     private val assert: ScenarioAssert,
 ) {
     fun run(): CodecScenarioResult {
-        val protobufReply = client.requestToChannel(Contracts.CHANNEL, StringValue.of("protobuf-request"))
-            .packetName("ProtobufEcho")
-            .timeout(requestTimeout)
-            .await(StringValue::class.java)
-        assert.that(protobufReply.value == "echo:protobuf-request", "RC-B2 request mismatch")
-        client.sendToChannel(Contracts.CHANNEL, StringValue.of("protobuf-send"))
-            .packetName("ProtobufEcho")
-            .await()
-        evidence.waitForEvidence("Send", "ProtobufEcho", "protobuf-send")
+        val protobufReply = server.post("/codec/protobuf", null, Map::class.java)
+        val value = protobufReply["value"] as String
+        assert.that(value == "echo:protobuf-request", "RC-B2 request mismatch")
+        assert.that(
+            server.waitForEvidence("Send", "ProtobufEcho", "protobuf-send")
+                .any { it.marker == "Send" && it.packetName == "ProtobufEcho" && it.value == "protobuf-send" },
+            "RC-B2 send evidence missing",
+        )
         println("scenario RC-B2 passed")
-        return CodecScenarioResult("RC-B2", "ProtobufEcho", protobufReply.value)
+        return CodecScenarioResult("RC-B2", "ProtobufEcho", value)
     }
 }

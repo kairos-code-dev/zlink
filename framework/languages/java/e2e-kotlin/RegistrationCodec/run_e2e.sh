@@ -16,6 +16,9 @@ if [[ -z "${ZLINK_LIBRARY_PATH:-}" && -f "${default_core_lib}" ]]; then
 fi
 export ZLINK_KOTLIN_E2E_BUILD_DIR="${ZLINK_KOTLIN_E2E_BUILD_DIR:-${HOME}/.cache/zlink/kotlin-e2e/RegistrationCodec}"
 export ZLINK_KOTLIN_E2E_GRADLE_CACHE="${ZLINK_KOTLIN_E2E_GRADLE_CACHE:-${HOME}/.cache/zlink/kotlin-e2e/RegistrationCodec-gradle-cache}"
+JVM_ROLE_READY_ATTEMPTS=100
+PROCESS_READY_INTERVAL=0.1
+ROUTE_SETTLE_SECONDS=5
 
 print_logs() {
   local status="$1"
@@ -87,11 +90,11 @@ wait_port() {
   local endpoint="$2"
   local port
   port="$(port_of "${endpoint}")"
-  for _ in $(seq 1 600); do
+  for _ in $(seq 1 "${JVM_ROLE_READY_ATTEMPTS}"); do
     if (echo >"/dev/tcp/127.0.0.1/${port}") >/dev/null 2>&1; then
       return 0
     fi
-    sleep 0.1
+    sleep "${PROCESS_READY_INTERVAL}"
   done
   echo "Timed out waiting for ${name} at ${endpoint}" >&2
   return 1
@@ -147,11 +150,11 @@ echo "scenario RC-A6 passed"
 pids+=("$!")
 wait_port server "${SERVER_ENDPOINT}"
 wait_port evidence "${HTTP_ENDPOINT}"
-sleep 1
+sleep "${ROUTE_SETTLE_SECONDS}"
 
 "${CLIENT_BIN}" \
-  --server-endpoint "${SERVER_ENDPOINT}" \
   --http-endpoint "${HTTP_ENDPOINT}" \
+  --codec-requester-http-endpoint "${REQUESTER_HTTP_ENDPOINT}" \
   --log-dir "${log_dir}" \
   >"${log_dir}/client.stdout.log" 2>"${log_dir}/client.stderr.log"
 
@@ -189,7 +192,7 @@ stop_current
 pids+=("$!")
 wait_port mismatch-server "${MISMATCH_ENDPOINT}"
 wait_port mismatch-evidence "${MISMATCH_HTTP_ENDPOINT}"
-sleep 1
+sleep "${ROUTE_SETTLE_SECONDS}"
 
 "${CODEC_REQUESTER_BIN}" \
   --server-endpoint "${MISMATCH_ENDPOINT}" \
@@ -198,29 +201,16 @@ sleep 1
   >"${log_dir}/codec-requester.stdout.log" 2>"${log_dir}/codec-requester.stderr.log" &
 pids+=("$!")
 wait_port codec-requester "${REQUESTER_HTTP_ENDPOINT}"
-sleep 1
+sleep "${ROUTE_SETTLE_SECONDS}"
 
-python3 - "${REQUESTER_HTTP_ENDPOINT}" >"${log_dir}/codec-requester-result.json" <<'PY'
-import json
-import sys
-import urllib.request
+"${CLIENT_BIN}" \
+  --http-endpoint "${MISMATCH_HTTP_ENDPOINT}" \
+  --codec-requester-http-endpoint "${REQUESTER_HTTP_ENDPOINT}" \
+  --log-dir "${log_dir}" \
+  --mode codec-mismatch \
+  >"${log_dir}/mismatch-client.stdout.log" 2>"${log_dir}/mismatch-client.stderr.log"
 
-base = sys.argv[1]
-
-def post(path):
-    request = urllib.request.Request(base + path, data=b"", method="POST")
-    with urllib.request.urlopen(request, timeout=10) as response:
-        return json.loads(response.read().decode("utf-8"))
-
-json_reply = post("/codec/json/request")
-if json_reply.get("value") != "echo:json-from-requester":
-    raise SystemExit(f"json requester failed: {json_reply}")
-protobuf_reply = post("/codec/protobuf/request")
-if not protobuf_reply.get("error"):
-    raise SystemExit(f"protobuf mismatch did not fail: {protobuf_reply}")
-print(json.dumps({"json": json_reply, "protobuf": protobuf_reply}, sort_keys=True))
-PY
-
-cat "${log_dir}/codec-requester-result.json"
+cat "${log_dir}/mismatch-client.stdout.log"
 grep -q "scenario RC-A4 passed" "${log_dir}/client.stdout.log"
-echo "scenario RC-B5 passed"
+grep -q "scenario RC-B5 passed" "${log_dir}/mismatch-client.stdout.log"
+echo "registration-codec kotlin e2e result=passed"

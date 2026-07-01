@@ -7,6 +7,9 @@ cd "${ROOT_DIR}"
 RUN_ID="$(date +%Y%m%d-%H%M%S)-$$"
 LOG_DIR="${ROOT_DIR}/logs/${RUN_ID}"
 SCENARIO="${1:-all}"
+ROUTE_SETTLE_SECONDS=5
+HTTP_READY_ATTEMPTS=12
+HTTP_READY_INTERVAL=0.25
 mkdir -p "${LOG_DIR}"
 echo "log_dir=${LOG_DIR}"
 
@@ -66,11 +69,11 @@ PY
 wait_health() {
   local url="$1"
   local name="$2"
-  for _ in $(seq 1 120); do
+  for _ in $(seq 1 "${HTTP_READY_ATTEMPTS}"); do
     if curl -fsS "${url}/health" >/dev/null 2>&1; then
       return 0
     fi
-    sleep 0.25
+    sleep "${HTTP_READY_INTERVAL}"
   done
   echo "Timed out waiting for ${name} at ${url}" >&2
   return 1
@@ -107,6 +110,7 @@ WORKFLOW_HTTP_PORT="$(pick_port)"
 CONSUMER_HTTP_PORT="$(pick_port)"
 SINGLE_CONSUMER_HTTP_PORT="$(pick_port)"
 DISCOVERY_CONSUMER_HTTP_PORT="$(pick_port)"
+BACKPRESSURE_CONSUMER_HTTP_PORT="$(pick_port)"
 REG_PUB_PORT="$(pick_port)"
 REG_ROUTER_PORT="$(pick_port)"
 API_A_PORT="$(pick_port)"
@@ -189,6 +193,15 @@ start_server discovery-consumer "${CONSUMER_BIN}" \
   --log-dir "${LOG_DIR}"
 wait_health "http://127.0.0.1:${DISCOVERY_CONSUMER_HTTP_PORT}" discovery-consumer
 
+start_server backpressure-consumer "${CONSUMER_BIN}" \
+  --http-url "http://127.0.0.1:${BACKPRESSURE_CONSUMER_HTTP_PORT}" \
+  --provider-endpoint "${API_A}" \
+  --trace-label backpressure-consumer \
+  --log-dir "${LOG_DIR}"
+wait_health "http://127.0.0.1:${BACKPRESSURE_CONSUMER_HTTP_PORT}" backpressure-consumer
+
+sleep "${ROUTE_SETTLE_SECONDS}"
+
 "${CLIENT_BIN}" \
   --registry-url "http://127.0.0.1:${REG_HTTP_PORT}" \
   --provider-a-url "http://127.0.0.1:${PROVIDER_A_HTTP_PORT}" \
@@ -197,6 +210,7 @@ wait_health "http://127.0.0.1:${DISCOVERY_CONSUMER_HTTP_PORT}" discovery-consume
   --direct-consumer-url "http://127.0.0.1:${CONSUMER_HTTP_PORT}" \
   --single-consumer-url "http://127.0.0.1:${SINGLE_CONSUMER_HTTP_PORT}" \
   --discovery-consumer-url "http://127.0.0.1:${DISCOVERY_CONSUMER_HTTP_PORT}" \
+  --backpressure-consumer-url "http://127.0.0.1:${BACKPRESSURE_CONSUMER_HTTP_PORT}" \
   --registry-bin "${REGISTRY_BIN}" \
   --provider-bin "${PROVIDER_BIN}" \
   --log-dir "${LOG_DIR}" \

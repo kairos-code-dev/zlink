@@ -13,11 +13,13 @@ import java.net.URI
 import java.net.URLDecoder
 import java.nio.charset.StandardCharsets
 import java.time.Duration
+import java.util.concurrent.Executors
 import java.util.concurrent.ExecutionException
 import java.util.concurrent.TimeUnit
 import java.util.concurrent.TimeoutException
 import org.springframework.context.SmartLifecycle
 import systems.zlink.contracts.core.RoutingId
+import systems.zlink.framework.channels.ZLinkRouteClient
 import systems.zlink.framework.spots.ZLinkSpotManager
 
 class EvidenceHttpServer(
@@ -25,8 +27,10 @@ class EvidenceHttpServer(
     private val json: ObjectMapper,
     private val endpoint: String,
     private val spots: ZLinkSpotManager,
+    private val routes: ZLinkRouteClient,
 ) : SmartLifecycle {
     private var server: HttpServer? = null
+    private var executor: java.util.concurrent.ExecutorService? = null
     private var running = false
 
     override fun start() {
@@ -60,6 +64,99 @@ class EvidenceHttpServer(
                 exchange.sendResponseHeaders(200, body.size.toLong())
                 exchange.responseBody.write(body)
                 exchange.close()
+            }
+            nextServer.createContext("/spot/state/request") { exchange ->
+                handle(exchange) {
+                    requirePost(exchange)
+                    val request = readJson(exchange, Contracts.SpotStateRouteReq::class.java)
+                    val call = routes.requestToSpot(
+                        Contracts.ROUTE_CHANNEL,
+                        targetNode(request.spotRid),
+                        RoutingId.from(request.spotRid),
+                        Contracts.StateReq(request.op)
+                    )
+                        .packetName(request.packetName)
+                        .timeout(Duration.ofMillis(request.timeoutMilliseconds.coerceIn(1, 30_000).toLong()))
+                    writeJson(exchange, 200, call.await(Contracts.StateRes::class.java))
+                }
+            }
+            nextServer.createContext("/spot/state/command") { exchange ->
+                handle(exchange) {
+                    requirePost(exchange)
+                    val request = readJson(exchange, Contracts.SpotStateCommandReq::class.java)
+                    routes.sendToSpot(
+                        Contracts.ROUTE_CHANNEL,
+                        targetNode(request.spotRid),
+                        RoutingId.from(request.spotRid),
+                        Contracts.StateMsg(request.value)
+                    )
+                        .packetName(request.packetName)
+                        .await()
+                    writeJson(exchange, 200, Contracts.AckRes(true))
+                }
+            }
+            nextServer.createContext("/spot/slow/request") { exchange ->
+                handle(exchange) {
+                    requirePost(exchange)
+                    val request = readJson(exchange, Contracts.SpotSlowRouteReq::class.java)
+                    val call = routes.requestToSpot(
+                        Contracts.ROUTE_CHANNEL,
+                        targetNode(request.spotRid),
+                        RoutingId.from(request.spotRid),
+                        Contracts.SlowReq(request.value)
+                    )
+                        .timeout(Duration.ofMillis(request.timeoutMilliseconds.coerceIn(1, 30_000).toLong()))
+                    writeJson(exchange, 200, call.await(Contracts.StateRes::class.java))
+                }
+            }
+            nextServer.createContext("/spot/outbound/request") { exchange ->
+                handle(exchange) {
+                    requirePost(exchange)
+                    val request = readJson(exchange, Contracts.SpotOutboundRouteReq::class.java)
+                    val reply = routes.requestToSpot(
+                        Contracts.ROUTE_CHANNEL,
+                        targetNode(request.spotRid),
+                        RoutingId.from(request.spotRid),
+                        Contracts.OutboundReq(request.value)
+                    )
+                        .timeout(Duration.ofSeconds(5))
+                        .await(Contracts.OutboundRes::class.java)
+                    writeJson(exchange, 200, reply)
+                }
+            }
+            nextServer.createContext("/spot/outbound/command") { exchange ->
+                handle(exchange) {
+                    requirePost(exchange)
+                    val request = readJson(exchange, Contracts.SpotOutboundCommandReq::class.java)
+                    routes.sendToSpot(
+                        Contracts.ROUTE_CHANNEL,
+                        targetNode("room-a"),
+                        RoutingId.from("room-a"),
+                        Contracts.SpotToSpotCommandReq(request.spotRid, request.value)
+                    )
+                        .packetName("SpotToSpotCommandReq")
+                        .await()
+                    state.waitUntilContainsAll(
+                        listOf("SpotToSpotSend", request.value),
+                        Duration.ofSeconds(10)
+                    )
+                    writeJson(exchange, 200, Contracts.AckRes(true))
+                }
+            }
+            nextServer.createContext("/route/ping") { exchange ->
+                handle(exchange) {
+                    requirePost(exchange)
+                    val request = readJson(exchange, Contracts.RoutePingHttpReq::class.java)
+                    val reply = routes.requestTo(
+                        Contracts.ROUTE_CHANNEL,
+                        RoutingId.from(request.targetRid),
+                        Contracts.RoutePingReq(request.value)
+                    )
+                        .packetName(Contracts.ROUTE_PACKET)
+                        .timeout(Duration.ofSeconds(5))
+                        .await(Contracts.RoutePingRes::class.java)
+                    writeJson(exchange, 200, reply)
+                }
             }
             nextServer.createContext("/admin/close") { exchange ->
                 val rid = queryValue(exchange.requestURI, "rid")
@@ -178,8 +275,11 @@ class EvidenceHttpServer(
                 }
                 write(exchange, 200, "{\"mismatch\":true}\n")
             }
+            val nextExecutor = Executors.newCachedThreadPool()
+            nextServer.executor = nextExecutor
             nextServer.start()
             server = nextServer
+            executor = nextExecutor
             running = true
         } catch (error: Exception) {
             throw IllegalStateException("failed to start evidence endpoint $endpoint", error)
@@ -189,6 +289,8 @@ class EvidenceHttpServer(
     override fun stop() {
         server?.stop(0)
         server = null
+        executor?.shutdownNow()
+        executor = null
         running = false
     }
 
@@ -214,6 +316,30 @@ class EvidenceHttpServer(
         exchange.sendResponseHeaders(status, body.size.toLong())
         exchange.responseBody.write(body)
         exchange.close()
+    }
+
+    private fun <T> readJson(exchange: HttpExchange, type: Class<T>): T =
+        exchange.requestBody.use { body -> json.readValue(body, type) }
+
+    private fun targetNode(spotRid: String): RoutingId =
+        RoutingId.from(if (spotRid == "room-b") "play-b" else "play-a")
+
+    private fun writeJson(exchange: HttpExchange, status: Int, value: Any) {
+        val body = json.writeValueAsBytes(value)
+        exchange.responseHeaders.add("Content-Type", "application/json")
+        exchange.sendResponseHeaders(status, body.size.toLong())
+        exchange.responseBody.write(body)
+        exchange.close()
+    }
+
+    private fun handle(exchange: HttpExchange, action: () -> Unit) {
+        try {
+            action()
+        } catch (error: Exception) {
+            if (exchange.responseBody != null) {
+                write(exchange, 500, "${error::class.java.name}: ${error.message}\n")
+            }
+        }
     }
 
     private fun requirePost(exchange: HttpExchange) {

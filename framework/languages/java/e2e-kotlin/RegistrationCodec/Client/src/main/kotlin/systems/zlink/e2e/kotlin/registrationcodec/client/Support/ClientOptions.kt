@@ -1,8 +1,8 @@
 package systems.zlink.e2e.kotlin.registrationcodec.client.support
 
 data class ClientOptions(
-    val serverEndpoint: String,
     val httpEndpoint: String,
+    val codecRequesterHttpEndpoint: String,
     val logDir: String,
     val mode: String,
 ) {
@@ -20,8 +20,8 @@ data class ClientOptions(
 
             fun get(name: String): String? = values[name]?.lastOrNull()
             return ClientOptions(
-                serverEndpoint = get("--server-endpoint") ?: "",
                 httpEndpoint = get("--http-endpoint") ?: "",
+                codecRequesterHttpEndpoint = get("--codec-requester-http-endpoint") ?: get("--http-endpoint") ?: "",
                 logDir = get("--log-dir") ?: "logs",
                 mode = get("--mode") ?: "",
             )

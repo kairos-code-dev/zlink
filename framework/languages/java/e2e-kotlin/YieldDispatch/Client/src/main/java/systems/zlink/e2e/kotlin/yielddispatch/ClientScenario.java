@@ -11,6 +11,7 @@ import systems.zlink.e2e.kotlin.yielddispatch.scenarios.YdD1LocalTopologyScenari
 import systems.zlink.e2e.kotlin.yielddispatch.scenarios.YdD2RemoteSpotYieldScenario;
 import systems.zlink.e2e.kotlin.yielddispatch.scenarios.YdD3RouteBridgeYieldScenario;
 import systems.zlink.e2e.kotlin.yielddispatch.scenarios.YdE1TimeoutScenario;
+import systems.zlink.e2e.kotlin.yielddispatch.scenarios.YdE2CancellationScenario;
 import systems.zlink.e2e.kotlin.yielddispatch.support.ClientStreamSupport;
 import systems.zlink.e2e.kotlin.yielddispatch.support.ScenarioAssert;
 import systems.zlink.stream.connector.ZLinkStreamConnector;
@@ -34,6 +35,7 @@ public final class ClientScenario {
             YdC1TimerIsolationScenario.run(roomA);
             YdC2TimerReentryScenario.run(roomA);
             YdE1TimeoutScenario.run(roomA);
+            YdE2CancellationScenario.run(roomA);
             YdD1LocalTopologyScenario.run(roomA);
         } finally {
             ScenarioAssert.lifecycle(() -> roomA.close().await());

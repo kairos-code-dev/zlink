@@ -1,29 +1,16 @@
 package systems.zlink.e2e.kotlin.spotservice.client.scenarios
 
-import systems.zlink.contracts.core.RoutingId
-import systems.zlink.e2e.kotlin.spotservice.Contracts
-import systems.zlink.e2e.kotlin.spotservice.client.support.REQUEST_TIMEOUT
 import systems.zlink.e2e.kotlin.spotservice.client.support.ensure
 import systems.zlink.e2e.kotlin.spotservice.client.support.eventually
-import systems.zlink.framework.spots.ZLinkSpotOutbound
+import systems.zlink.e2e.kotlin.spotservice.client.support.SpotHttpDriver
 
 internal object SmA4Scenario {
-    fun run(outbound: ZLinkSpotOutbound) {
+    fun run(spots: SpotHttpDriver) {
         val first = eventually {
-            outbound.requestToSpot(
-                RoutingId.from("room-a"),
-                Contracts.StateReq("owner-stable-1"),
-            )
-                .timeout(REQUEST_TIMEOUT)
-                .await(Contracts.StateRes::class.java)
+            spots.requestState("room-a", "owner-stable-1")
         }
         val second = eventually {
-            outbound.requestToSpot(
-                RoutingId.from("room-a"),
-                Contracts.StateReq("owner-stable-2"),
-            )
-                .timeout(REQUEST_TIMEOUT)
-                .await(Contracts.StateRes::class.java)
+            spots.requestState("room-a", "owner-stable-2")
         }
         ensure(first.nodeRid == "play-a", "SM-A4 first owner mismatch")
         ensure(second.nodeRid == first.nodeRid, "SM-A4 owner was not stable")

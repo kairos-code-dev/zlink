@@ -1,28 +1,21 @@
 package systems.zlink.e2e.kotlin.registrationcodec.client.scenarios
 
-import systems.zlink.e2e.kotlin.registrationcodec.Contracts
-import systems.zlink.e2e.kotlin.registrationcodec.EchoManualMsg
-import systems.zlink.e2e.kotlin.registrationcodec.EchoManualReq
 import systems.zlink.e2e.kotlin.registrationcodec.EchoManualRes
-import systems.zlink.e2e.kotlin.registrationcodec.client.support.EvidenceText
 import systems.zlink.e2e.kotlin.registrationcodec.client.support.ScenarioAssert
-import systems.zlink.framework.channels.ZLinkClient
+import systems.zlink.e2e.kotlin.registrationcodec.client.support.ScenarioHttpClient
 
 class ManualRegistrationScenario(
-    private val client: ZLinkClient,
-    private val evidence: EvidenceText,
+    private val server: ScenarioHttpClient,
     private val assert: ScenarioAssert,
 ) {
     fun run() {
-        val manual = client.requestToChannel(Contracts.CHANNEL, EchoManualReq("manual-request"))
-            .packetName("EchoManualReq")
-            .timeout(requestTimeout)
-            .await(EchoManualRes::class.java)
+        val manual = server.post<EchoManualRes>("/registration/manual")
         assert.that(manual.value == "echo:manual-request" && manual.handler == "manual", "RC-A3 request mismatch")
-        client.sendToChannel(Contracts.CHANNEL, EchoManualMsg("manual-send"))
-            .packetName("EchoManualMsg")
-            .await()
-        evidence.waitForEvidence("Send", "EchoManualMsg", "manual-send")
+        assert.that(
+            server.waitForEvidence("Send", "EchoManualMsg", "manual-send")
+                .any { it.marker == "Send" && it.packetName == "EchoManualMsg" && it.value == "manual-send" },
+            "RC-A3 send evidence missing",
+        )
         println("scenario RC-A3 passed")
     }
 }

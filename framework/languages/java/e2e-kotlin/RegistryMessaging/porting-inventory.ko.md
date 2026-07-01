@@ -23,12 +23,12 @@ server role을 하나의 application에서 role 옵션으로 바꾸는 방식을
 | `.gitignore` | `.gitignore` | config-root | done | 기존 파일은 있으나 목표 구조의 `logs/`, Gradle 산출물 제외를 재확인한다. |
 | `README.ko.md` | `README.ko.md` | docs | done | Kotlin RegistryMessaging 보충 설명을 새로 작성한다. |
 | `feature-map.ko.md` | `feature-map.ko.md` | docs | done | RM-C9를 one-way send pressure/recovery scenario로 기록한다. |
-| `run_e2e.sh` | `run_e2e.sh` | runner | done | 기존 runner는 단일 application role 분기 실행이다. 목표는 별도 role project 시작, readiness, cleanup, 실패 로그 출력이다. |
+| `run_e2e.sh` | `run_e2e.sh` | runner | done | runner는 별도 role project를 빌드하고 `direct-consumer`, `single-consumer`, `discovery-consumer`, `backpressure-consumer`를 시작한다. |
 | `Shared/RegistryMessaging.Shared.csproj` | `Shared/build.gradle.kts` | build | done | Kotlin Shared project로 분리한다. |
 | `Shared/Messages.cs` | `Shared/src/main/kotlin/systems/zlink/e2e/kotlin/registrymessaging/shared/Messages.kt` | shared | done | 기존 `Contracts.kt`의 message 타입을 Shared로 이동하고 `Payload*`, `Workflow*`, failure result를 보강한다. |
 | `Client/RegistryMessaging.Client.csproj` | `Client/build.gradle.kts` | build | done | Kotlin Client application project로 분리한다. |
-| `Client/Program.cs` | `Client/src/main/kotlin/systems/zlink/e2e/kotlin/registrymessaging/client/Program.kt` | client-entry | done | 기존 `ClientScenario.kt`는 framework client를 직접 사용한다. 목표는 HTTP client로 실제 role server endpoint를 호출하는 scenario 목록이다. |
-| `Client/Support/ClientOptions.cs` | `Client/src/main/kotlin/systems/zlink/e2e/kotlin/registrymessaging/client/Support/ClientOptions.kt` | support | done | CLI option parsing으로 포팅한다. |
+| `Client/Program.cs` | `Client/src/main/kotlin/systems/zlink/e2e/kotlin/registrymessaging/client/Program.kt` | client-entry | done | Client는 HTTP client로 실제 role server endpoint를 호출한다. `RM-C9`는 `.NET`과 같이 backpressure consumer endpoint를 대상으로 실행한다. |
+| `Client/Support/ClientOptions.cs` | `Client/src/main/kotlin/systems/zlink/e2e/kotlin/registrymessaging/client/Support/ClientOptions.kt` | support | done | `--backpressure-consumer-url`을 포함한 CLI option parsing으로 포팅한다. |
 | `Client/Support/DynamicClusterLauncher.cs` | `Client/src/main/kotlin/systems/zlink/e2e/kotlin/registrymessaging/client/Support/DynamicClusterLauncher.kt` | support | done | RM-A4/RM-C7 동적 registry/provider 실행 support로 포팅한다. |
 | `Client/Support/ScenarioAssert.cs` | `Client/src/main/kotlin/systems/zlink/e2e/kotlin/registrymessaging/client/Support/ScenarioAssert.kt` | support | done | 공통 assertion/evidence count helper로 포팅한다. |
 | `Client/Scenarios/RmA1DiscoveryRequestScenario.cs` | `Client/src/main/kotlin/systems/zlink/e2e/kotlin/registrymessaging/client/Scenarios/RmA1DiscoveryRequestScenario.kt` | scenario | done | RM-A1. 역할 server HTTP endpoint 호출과 registry topology 확인으로 포팅한다. |
@@ -60,7 +60,7 @@ server role을 하나의 application에서 role 옵션으로 바꾸는 방식을
 | `Server/Provider/Infrastructure/EvidenceStore.cs` | `Server/Provider/src/main/kotlin/systems/zlink/e2e/kotlin/registrymessaging/provider/Infrastructure/EvidenceStore.kt` | infrastructure | done | wait 가능한 provider evidence store. |
 | `Server/Consumer/RegistryMessaging.Consumer.csproj` | `Server/Consumer/build.gradle.kts` | build | done | Consumer role application project로 분리한다. |
 | `Server/Consumer/Program.cs` | `Server/Consumer/src/main/kotlin/systems/zlink/e2e/kotlin/registrymessaging/consumer/Program.kt` | server-entry | done | 별도 consumer 실행 진입점으로 포팅한다. |
-| `Server/Consumer/ConsumerHostFactory.cs` | `Server/Consumer/src/main/kotlin/systems/zlink/e2e/kotlin/registrymessaging/consumer/Program.kt` (`ConsumerApplication`) | server-role | done | direct/single/discovery consumer 구성은 같은 파일의 `ConsumerApplication` class에 둔다. RM-C9 pressure endpoint는 consumer endpoint에 함께 둔다. |
+| `Server/Consumer/ConsumerHostFactory.cs` | `Server/Consumer/src/main/kotlin/systems/zlink/e2e/kotlin/registrymessaging/consumer/Program.kt` (`ConsumerApplication`) | server-role | done | direct/single/discovery/backpressure consumer 구성은 같은 파일의 `ConsumerApplication` class에 둔다. RM-C9 pressure endpoint는 consumer endpoint에 함께 둔다. |
 | `Server/Consumer/Configuration/ConsumerOptions.cs` | `Server/Consumer/src/main/kotlin/systems/zlink/e2e/kotlin/registrymessaging/consumer/Configuration/ConsumerOptions.kt` | configuration | done | provider endpoint 목록과 registry endpoint를 파싱한다. |
 | `Server/Consumer/Endpoints/ConsumerEndpoints.cs` | `Server/Consumer/src/main/kotlin/systems/zlink/e2e/kotlin/registrymessaging/consumer/Endpoints/ConsumerEndpoints.kt` | endpoints | done | `/profile/*` consumer endpoint로 framework 호출을 role server 안에 둔다. |
 | `Server/Workflow/RegistryMessaging.Workflow.csproj` | `Server/Workflow/build.gradle.kts` | build | done | Workflow role application project로 분리한다. |

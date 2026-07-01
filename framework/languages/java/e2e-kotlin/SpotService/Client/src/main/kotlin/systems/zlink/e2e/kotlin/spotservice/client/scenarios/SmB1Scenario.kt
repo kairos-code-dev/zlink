@@ -1,11 +1,12 @@
 package systems.zlink.e2e.kotlin.spotservice.client.scenarios
 
+import systems.zlink.e2e.kotlin.spotservice.client.support.ActorSessionScenarioContext
 import systems.zlink.e2e.kotlin.spotservice.client.support.ensure
 
 internal object SmB1Scenario {
     fun run(context: ActorSessionScenarioContext) {
         context.connectAndAuthenticate()
-        ensure(context.auth.actorId == "actor-local-1", "SM-B1 auth actor mismatch")
+        ensure(context.auth.actorId == context.actorId, "SM-B1 auth actor mismatch")
         ensure(context.auth.boundCount == 1, "SM-B1 bound actor count mismatch")
 
         context.requestEntryEcho()

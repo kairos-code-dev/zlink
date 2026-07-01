@@ -38,8 +38,28 @@ class TriggerHttpServer(
             nextServer.createContext("/profile/request") { exchange ->
                 write(exchange, requestService(), "application/json")
             }
+            nextServer.createContext("/profile/request/disconnect") { exchange ->
+                write(exchange, requestTransientService("mon-a1-request"), "application/json")
+            }
             nextServer.createContext("/profile/request/service-b") { exchange ->
-                write(exchange, requestServiceB(), "application/json")
+                write(
+                    exchange,
+                    requestTransient(
+                        Env.get("ZLINK_KOTLIN_E2E_FILTERED_API_ENDPOINT"),
+                        exchange.query("value") ?: "mon-d1-request",
+                    ),
+                    "application/json",
+                )
+            }
+            nextServer.createContext("/profile/request/throw") { exchange ->
+                write(
+                    exchange,
+                    requestTransient(
+                        Env.get("ZLINK_KOTLIN_E2E_THROWING_API_ENDPOINT"),
+                        exchange.query("value") ?: "mon-c1-request",
+                    ),
+                    "application/json",
+                )
             }
             nextServer.createContext("/validation/registration/duplicate-source") { exchange ->
                 write(exchange, MonitoringValidationApplication.verifyDuplicateSocketSource())
@@ -72,13 +92,21 @@ class TriggerHttpServer(
     }
 
     private fun requestServiceB(): String {
+        return requestTransient(Env.get("ZLINK_KOTLIN_E2E_FILTERED_API_ENDPOINT"), "mon-d1-request")
+    }
+
+    private fun requestTransientService(value: String): String {
+        return requestTransient(Env.get("ZLINK_KOTLIN_E2E_SERVICE_API_ENDPOINT"), value)
+    }
+
+    private fun requestTransient(endpoint: String, value: String): String {
         val options = DefaultZLinkFrameworkOptions()
         options.configureDispatch()
             .messageFlow(ZLinkMessageFlowLogMode.KEY_TRANSITIONS)
             .traceLogFile("${Env.get("ZLINK_KOTLIN_E2E_LOG_DIR", "logs")}/trigger-service-b-flow.log")
             .traceLabel("kotlin-mon-trigger-service-b")
         options.addClientServerChannel(Contracts.CHANNEL)
-            .enableClient(Env.get("ZLINK_KOTLIN_E2E_FILTERED_API_ENDPOINT"))
+            .enableClient(endpoint)
 
         val lifecycle = ZLinkFrameworkLifecycle(
             options,
@@ -89,7 +117,7 @@ class TriggerHttpServer(
         try {
             val reply = lifecycle.requestToChannel(
                 Contracts.CHANNEL,
-                Contracts.WorkReq("mon-d1-request"),
+                Contracts.WorkReq(value),
             )
                 .timeout(Duration.ofSeconds(3))
                 .await(Contracts.WorkRes::class.java)
@@ -127,4 +155,14 @@ class TriggerHttpServer(
         exchange.responseBody.write(body)
         exchange.close()
     }
+
+    private fun HttpExchange.query(name: String): String? =
+        requestURI.rawQuery
+            ?.split("&")
+            ?.mapNotNull {
+                val index = it.indexOf('=')
+                if (index < 0) null else it.substring(0, index) to it.substring(index + 1)
+            }
+            ?.firstOrNull { it.first == name }
+            ?.second
 }

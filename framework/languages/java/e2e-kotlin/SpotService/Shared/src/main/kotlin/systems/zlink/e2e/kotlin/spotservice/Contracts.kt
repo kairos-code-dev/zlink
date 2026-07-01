@@ -72,6 +72,58 @@ class Contracts private constructor() {
     )
 
     @JvmRecord
+    data class SpotStateRouteReq(
+        val spotRid: String,
+        val op: String,
+        val timeoutMilliseconds: Int = 5_000,
+        val packetName: String = "StateReq"
+    )
+
+    @JvmRecord
+    data class SpotStateCommandReq(
+        val spotRid: String,
+        val value: String,
+        val packetName: String = "StateMsg"
+    )
+
+    @JvmRecord
+    data class SpotSlowRouteReq(
+        val spotRid: String,
+        val value: String,
+        val timeoutMilliseconds: Int
+    )
+
+    @JvmRecord
+    data class SpotOutboundRouteReq(
+        val spotRid: String,
+        val value: String
+    )
+
+    @JvmRecord
+    data class SpotOutboundCommandReq(
+        val spotRid: String,
+        val value: String,
+        val packetName: String = "OutboundMsg"
+    )
+
+    @JvmRecord
+    data class SpotToSpotCommandReq(
+        val targetSpotRid: String,
+        val value: String
+    )
+
+    @JvmRecord
+    data class RoutePingHttpReq(
+        val targetRid: String,
+        val value: String
+    )
+
+    @JvmRecord
+    data class AckRes(
+        val accepted: Boolean
+    )
+
+    @JvmRecord
     data class MultiNodeCreateSpotReq(
         val spotRid: String,
         val delta: Int

@@ -1,9 +1,10 @@
 # Kotlin SpotService E2E feature map
 
 이 문서는 Config 2 SpotService 공통 시나리오 중 Kotlin E2E가 현재 검증하는 항목과,
-public API 또는 harness 제어가 더 필요한 항목을 구분한다. 실행 코드는 public Spring starter,
-`ZLinkSpotManager`, `ZLinkSpotOutbound`, client/server channel builder, route mesh channel builder,
-SpotNode builder, stream connector, `ZLinkSpotPublisherClient`만 사용한다.
+public API 또는 harness 제어가 더 필요한 항목을 구분한다. server role은 public Spring starter,
+`ZLinkSpotManager`, `ZLinkRouteClient`, `ZLinkSpotOutbound`, client/server channel builder, route mesh
+channel builder, SpotNode builder, stream connector, `ZLinkSpotPublisherClient`를 사용한다. Client role은
+framework runtime을 띄우지 않고 HTTP endpoint와 public stream connector만 사용한다.
 
 공통 E2E 문서와 다른 언어의 구현에 존재하는 public 기능이 Kotlin에 없으면 단순 미구현으로 완료
 처리하지 않는다. 다만 다른 언어 구현만으로 Kotlin public contract를 새로 추가하지 않는다. spec 또는
@@ -20,6 +21,9 @@ draft/spec 검토 대상으로 분리한다. 공통 E2E 문서는 누락을 찾�
 - `logs/20260630-121736-3954627` full runner에서는 `spot-outbound`, `spot-to-spot`,
   `route-mesh`, `actor-session`, `gateway-publish`, `multi-node`를 포함한 구현 mode가 통과했고,
   최종 `spot-service kotlin e2e result=passed` marker를 확인했다.
+- `logs/20260702-071019-20091` full runner에서는 Client가 framework runtime 없이 HTTP/stream driver로
+  실행되며, `Server/Publisher`와 root role-switch entrypoint 없이 모든 구현 mode와 최종
+  `spot-service kotlin e2e result=passed` marker가 통과했다.
 - 이전 `ActorPushNotify` drop은 public `boundSession().send(...)`가 actor relay path로 frame을 다시 보내던
   runtime 문제였다. 현재 구현은 bound session send를 stream session rid로 직접 보내며 private/raw
   우회를 추가하지 않았다.
@@ -27,7 +31,8 @@ draft/spec 검토 대상으로 분리한다. 공통 E2E 문서는 누락을 찾�
 ## 구현됨
 
 - `SM-A1`: public `ZLinkSpotManager.getOrCreate`로 user spot을 생성하고 evidence로 확인한다.
-- `SM-A2`: public `ZLinkSpotOutbound.requestToSpot`으로 user spot state mutation을 검증한다.
+- `SM-A2`: Client가 Play HTTP endpoint를 호출하고, Play가 public `ZLinkRouteClient.requestToSpot`으로
+  user spot state mutation을 검증한다.
 - `SM-A3`: `room-a` 요청이 해당 spot의 owner인 `play-a`에서 처리되는지 확인한다.
 - `SM-A4`: 같은 `RoutingId`인 `room-a`로 반복 보낸 요청이 같은 owner 노드에 유지되는지 확인한다.
 - `SM-A6`: Play-B HTTP admin endpoint가 public `ZLinkSpotManager.getOrCreate`로 만든 user spot을
@@ -55,16 +60,16 @@ draft/spec 검토 대상으로 분리한다. 공통 E2E 문서는 누락을 찾�
   명시 파괴하고, 같은 actor로 다시 보내는 request가 실패하는지 확인한다.
   `logs/focused-actor-session-20260630-023307-2370308`에서 `SM-B8` marker와 actor-session 통과
   marker를 확인했다.
-- `SM-C1`: 외부 consumer의 public `ZLinkSpotOutbound`로 request, send, timeout, 미등록 packet
-  negative path를 검증한다.
+- `SM-C1`: Client가 Play HTTP endpoint를 호출하고, Play가 public `ZLinkRouteClient`로 request, send,
+  timeout, 미등록 packet negative path를 검증한다.
 - `SM-C2`: spot handler 안에서 public `ZLinkSpotOutbound.requestToChannel` /
   `sendToChannel`로 외부 channel에 request/send를 내보내고, 같은 handler에서 SPOT mesh publish를
   수행해 구독 spot의 evidence를 확인한다.
-- `SM-C3`: public `ZLinkSpotOutbound.requestToSpot` / `sendToSpot`으로 user spot 사이
-  request/send가 노드 경계를 넘어 처리되는지 확인하고, SPOT mesh publish evidence를 함께 확인한다.
-- `SM-C4`: local spot factory가 없는 publisher 역할이 public `ZLinkSpotPublisherClient.publishSpot`으로
-  SPOT mesh에 publish하고, 구독 spot들이 event evidence를 남기는지 확인한다. Gateway role도 같은
-  public publisher client로 `/spot/publish` endpoint를 제공하며, client `gateway-publish` mode가
+- `SM-C3`: Client가 Play HTTP endpoint를 호출하고, source spot handler가 public
+  `ZLinkSpotOutbound.sendToSpot`으로 target user spot에 command를 보내는지 확인한다. SPOT mesh publish
+  evidence도 함께 확인한다.
+- `SM-C4`: Gateway role이 public `ZLinkSpotPublisherClient.publishSpot`으로 SPOT mesh에 publish하고,
+  구독 spot들이 event evidence를 남기는지 확인한다. client `gateway-publish` mode가
   Play role의 `/evidence/wait`로 target spot의 publish evidence를 기다리고 다른 spot으로 오배달되지
   않았는지 확인한다.
 - `SM-D1`: public stream connector와 framework `ZLinkSessionActors.bind` / `ZLinkSessionActor.relay` /
@@ -102,8 +107,8 @@ draft/spec 검토 대상으로 분리한다. 공통 E2E 문서는 누락을 찾�
   push를 정상 수신해 backpressure가 session별로 격리되는지도 확인한다.
   `logs/focused-actor-session-20260630-031506-2451994`에서 `SM-D10` marker와 actor-session 통과
   marker를 확인했다.
-- `SM-D11`: 같은 client process에서 public stream connector로 actor request를 처리한 뒤 public
-  `ZLinkRouteClient`로 Play-A route-channel request를 보내 stream 경로와 channel 경로가 함께 동작하는지
+- `SM-D11`: 같은 client process에서 public stream connector로 actor request를 처리한 뒤 Play HTTP
+  endpoint를 통해 public `ZLinkRouteClient` route-channel request를 보내 stream 경로와 channel 경로가 함께 동작하는지
   확인한다. `logs/focused-actor-session-20260630-030200-2426602`에서 `SM-D11` marker와 actor-session
   통과 marker를 확인했다.
 - `SM-D13`: heartbeat가 켜진 public stream connector가 일정 시간 연결을 유지하고, 같은 stream session에서

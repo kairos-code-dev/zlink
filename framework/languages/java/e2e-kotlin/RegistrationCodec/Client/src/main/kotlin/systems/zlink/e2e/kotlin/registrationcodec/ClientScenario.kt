@@ -12,33 +12,32 @@ import systems.zlink.e2e.kotlin.registrationcodec.client.scenarios.RcB2ProtobufC
 import systems.zlink.e2e.kotlin.registrationcodec.client.scenarios.RcB3MessagePackCodecScenario
 import systems.zlink.e2e.kotlin.registrationcodec.client.scenarios.RcB4CodecCoexistenceScenario
 import systems.zlink.e2e.kotlin.registrationcodec.client.support.ClientOptions
-import systems.zlink.e2e.kotlin.registrationcodec.client.support.EvidenceText
 import systems.zlink.e2e.kotlin.registrationcodec.client.support.ProcessSupport
 import systems.zlink.e2e.kotlin.registrationcodec.client.support.ScenarioAssert
-import systems.zlink.framework.channels.ZLinkClient
+import systems.zlink.e2e.kotlin.registrationcodec.client.support.ScenarioHttpClient
 
 class ClientScenario(
-    private val client: ZLinkClient,
     private val json: ObjectMapper,
     private val options: ClientOptions,
 ) {
     fun run() {
         val assert = ScenarioAssert()
-        val evidence = EvidenceText(options.httpEndpoint, json, assert)
+        val server = ScenarioHttpClient(options.httpEndpoint, json)
+        val codecRequester = ScenarioHttpClient(options.codecRequesterHttpEndpoint, json)
 
         if (options.mode == ProcessSupport.CODEC_MISMATCH_MODE) {
-            CodecMismatchScenario(client, assert).run()
+            CodecMismatchScenario(codecRequester, assert).run()
             return
         }
 
-        AutoRegistrationScenario(client, evidence, assert).run()
-        AttributeRegistrationScenario(client, evidence, assert).run()
-        ManualRegistrationScenario(client, evidence, assert).run()
-        RcA4DiLifecycleScenario(client, evidence, assert).run()
-        RcA5FilterOrderingScenario(client, evidence, assert).run()
-        RcB1JsonCodecScenario(client, evidence, assert).run()
-        RcB2ProtobufCodecScenario(client, evidence, assert).run()
-        RcB3MessagePackCodecScenario(client, evidence, assert).run()
-        RcB4CodecCoexistenceScenario().run()
+        AutoRegistrationScenario(server, assert).run()
+        AttributeRegistrationScenario(server, assert).run()
+        ManualRegistrationScenario(server, assert).run()
+        RcA4DiLifecycleScenario(server, assert).run()
+        RcA5FilterOrderingScenario(server, assert).run()
+        RcB1JsonCodecScenario(server, assert).run()
+        RcB2ProtobufCodecScenario(server, assert).run()
+        RcB3MessagePackCodecScenario(server, assert).run()
+        RcB4CodecCoexistenceScenario(server, assert).run()
     }
 }

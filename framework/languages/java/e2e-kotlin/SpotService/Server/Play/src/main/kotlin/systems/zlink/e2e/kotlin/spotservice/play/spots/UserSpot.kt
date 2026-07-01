@@ -26,6 +26,7 @@ class UserSpot(
         context.handlers().addPacket(StateCommandHandler::class.java)
         context.handlers().addPacket(SlowRequestHandler::class.java)
         context.handlers().addPacket(OutboundRequestHandler::class.java)
+        context.handlers().addPacket(SpotToSpotCommandHandler::class.java)
         context.handlers().addPacket(OutboundCommandHandler::class.java)
         context.handlers().addSubscribe("spot.events", SpotEventHandler::class.java)
         context.handlers().addActorRequest(UserActorEchoHandler::class.java)

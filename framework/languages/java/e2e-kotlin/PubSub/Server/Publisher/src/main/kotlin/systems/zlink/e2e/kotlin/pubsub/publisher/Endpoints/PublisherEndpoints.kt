@@ -7,6 +7,7 @@ import com.sun.net.httpserver.HttpServer
 import java.net.InetSocketAddress
 import java.net.URI
 import java.nio.charset.StandardCharsets
+import org.springframework.context.ConfigurableApplicationContext
 import org.springframework.context.SmartLifecycle
 import systems.zlink.e2e.kotlin.pubsub.shared.Contracts
 import systems.zlink.e2e.kotlin.pubsub.shared.EventMsg
@@ -16,6 +17,7 @@ class PublisherEndpoints(
     private val fanout: ZLinkFanoutClient,
     private val json: ObjectMapper,
     private val endpoint: String,
+    private val application: ConfigurableApplicationContext,
 ) : SmartLifecycle {
     private var server: HttpServer? = null
     private var running = false
@@ -45,6 +47,16 @@ class PublisherEndpoints(
                 .packetName("MissingEventMsg")
                 .await()
             exchange.writeJson(mapOf("status" to "published"))
+        }
+        httpServer.createContext("/shutdown") { exchange ->
+            val body = "stopping\n".toByteArray(StandardCharsets.UTF_8)
+            exchange.sendResponseHeaders(200, body.size.toLong())
+            exchange.responseBody.write(body)
+            exchange.close()
+            Thread {
+                Thread.sleep(100)
+                application.close()
+            }.start()
         }
         httpServer.start()
         server = httpServer

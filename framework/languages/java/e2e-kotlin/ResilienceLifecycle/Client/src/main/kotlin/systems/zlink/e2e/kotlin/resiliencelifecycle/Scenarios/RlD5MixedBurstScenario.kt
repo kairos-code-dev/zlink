@@ -1,7 +1,5 @@
 package systems.zlink.e2e.kotlin.resiliencelifecycle
 
-import java.time.Duration
-
 fun ClientScenarioContext.runMixedBurstScenarioBody() {
     var firstWindowNanos = 0L
     var lastWindowNanos = 0L
@@ -11,11 +9,9 @@ fun ClientScenarioContext.runMixedBurstScenarioBody() {
         repeat(40) { index ->
             val value = "d5-soak-$window-$index"
             if (index % 5 == 0) {
-                client.sendToChannel(Contracts.CHANNEL, Contracts.WorkMsg(value)).await()
+                sendWork(value)
             } else {
-                val reply = client.requestToChannel(Contracts.CHANNEL, Contracts.WorkReq(value))
-                    .timeout(Duration.ofSeconds(3))
-                    .await(Contracts.WorkRes::class.java)
+                val reply = requestWork(value)
                 ensure(reply.value() == "work:$value", "RL-D5 reply payload mismatch for $value")
                 providers.add(reply.providerRid())
             }

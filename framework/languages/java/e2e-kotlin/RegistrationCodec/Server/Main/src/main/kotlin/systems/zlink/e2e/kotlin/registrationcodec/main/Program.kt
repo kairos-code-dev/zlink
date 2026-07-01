@@ -25,6 +25,7 @@ import systems.zlink.e2e.kotlin.registrationcodec.PackedEchoReq
 import systems.zlink.e2e.kotlin.registrationcodec.isPackedType
 import systems.zlink.e2e.kotlin.registrationcodec.main.configuration.ServerOptions
 import systems.zlink.e2e.kotlin.registrationcodec.main.endpoints.EvidenceHttpServer
+import systems.zlink.e2e.kotlin.registrationcodec.main.endpoints.RegistrationScenarioEndpoints
 import systems.zlink.e2e.kotlin.registrationcodec.main.handlers.AttrEchoHandler
 import systems.zlink.e2e.kotlin.registrationcodec.main.handlers.AutoRequestHandler
 import systems.zlink.e2e.kotlin.registrationcodec.main.handlers.AutoSendHandler
@@ -44,6 +45,7 @@ import systems.zlink.e2e.kotlin.registrationcodec.main.infrastructure.DiSingleto
 import systems.zlink.e2e.kotlin.registrationcodec.main.infrastructure.ScenarioState
 import systems.zlink.framework.codecs.msgpack.ZLinkMessagePackCodec
 import systems.zlink.framework.codecs.protobuf.ZLinkProtobufCodec
+import systems.zlink.framework.channels.ZLinkClient
 import systems.zlink.framework.configuration.ZLinkMessageFlowLogMode
 import systems.zlink.framework.spring.EnableZLinkFramework
 import systems.zlink.framework.spring.ZLinkFrameworkConfigurer
@@ -58,8 +60,18 @@ class ServerApplication {
     @Bean fun objectMapper(): ObjectMapper = ObjectMapper()
     @Bean fun serverOptions(args: ApplicationArguments): ServerOptions =
         ServerOptions.parse(args.sourceArgs)
-    @Bean fun evidenceHttpServer(state: ScenarioState, json: ObjectMapper, serverOptions: ServerOptions): EvidenceHttpServer =
-        EvidenceHttpServer(state, json, serverOptions.httpEndpoint)
+    @Bean
+    fun evidenceHttpServer(
+        state: ScenarioState,
+        json: ObjectMapper,
+        serverOptions: ServerOptions,
+        scenarioEndpoints: RegistrationScenarioEndpoints,
+    ): EvidenceHttpServer =
+        EvidenceHttpServer(state, json, serverOptions.httpEndpoint, scenarioEndpoints)
+
+    @Bean
+    fun registrationScenarioEndpoints(client: ZLinkClient, json: ObjectMapper): RegistrationScenarioEndpoints =
+        RegistrationScenarioEndpoints(client, json)
 
     @Bean
     fun serverFramework(serverOptions: ServerOptions): ZLinkFrameworkConfigurer =
@@ -77,6 +89,7 @@ class ServerApplication {
             options.addHandlersFromPackageOf(AutoRequestHandler::class.java)
             val channel = options.addClientServerChannel(Contracts.CHANNEL)
                 .enableServer(serverOptions.serverEndpoint)
+                .enableClient(serverOptions.serverEndpoint)
                 .addHandlerGroup(Contracts.AUTO_GROUP)
                 .addHandlerGroup(Contracts.ATTR_GROUP)
             channel.addRequestHandler(ManualRequestHandler::class.java, EchoManualReq::class.java, EchoManualRes::class.java, "EchoManualReq")

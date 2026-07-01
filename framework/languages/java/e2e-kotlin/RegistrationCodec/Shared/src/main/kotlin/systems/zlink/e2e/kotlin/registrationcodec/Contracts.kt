@@ -137,6 +137,37 @@ class EvidenceSnapshot() {
     constructor(entries: List<EvidenceEntry>) : this() { this.entries = entries }
 }
 
+class EvidenceWaitReq() {
+    var marker: String = ""
+    var packetName: String = ""
+    var value: String = ""
+    var timeoutMillis: Long = 3000
+
+    constructor(marker: String, packetName: String, value: String, timeoutMillis: Long = 3000) : this() {
+        this.marker = marker
+        this.packetName = packetName
+        this.value = value
+        this.timeoutMillis = timeoutMillis
+    }
+}
+
+class EvidenceWaitRes() {
+    var entries: List<EvidenceEntry> = emptyList()
+    constructor(entries: List<EvidenceEntry>) : this() { this.entries = entries }
+}
+
+class CodecRoundtripRes() {
+    var jsonValue: String = ""
+    var protobufValue: String = ""
+    var messagePackValue: String = ""
+
+    constructor(jsonValue: String, protobufValue: String, messagePackValue: String) : this() {
+        this.jsonValue = jsonValue
+        this.protobufValue = protobufValue
+        this.messagePackValue = messagePackValue
+    }
+}
+
 fun isPackedType(type: Class<*>): Boolean =
     type == PackedEchoReq::class.java ||
         type == PackedEchoRes::class.java ||

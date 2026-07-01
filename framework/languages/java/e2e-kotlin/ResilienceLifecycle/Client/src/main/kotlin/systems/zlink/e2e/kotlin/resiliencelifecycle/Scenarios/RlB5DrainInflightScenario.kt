@@ -8,9 +8,7 @@ fun ClientScenarioContext.runDrainInflightScenario() {
     waitForWeight(adminB(), 0)
     sleep(1500)
 
-    val slow = client.requestToChannel(Contracts.CHANNEL, Contracts.WorkReq("slow"))
-        .timeout(Duration.ofSeconds(15))
-        .submit(Contracts.WorkRes::class.java)
+    val slow = submitWork("slow", Duration.ofSeconds(15))
     waitForEvidence(adminA(), "SlowStarted")
 
     post("${adminA()}/admin/drain")

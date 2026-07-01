@@ -1,25 +1,14 @@
 package systems.zlink.e2e.kotlin.spotservice.client.scenarios
 
-import systems.zlink.contracts.core.RoutingId
-import systems.zlink.e2e.kotlin.spotservice.Contracts
-import systems.zlink.e2e.kotlin.spotservice.client.support.REQUEST_TIMEOUT
 import systems.zlink.e2e.kotlin.spotservice.client.support.expectFailure
-import systems.zlink.framework.spots.ZLinkSpotOutbound
+import systems.zlink.e2e.kotlin.spotservice.client.support.SpotHttpDriver
 
 internal object SmE1Scenario {
-    fun run(outbound: ZLinkSpotOutbound) {
+    fun run(spots: SpotHttpDriver) {
         expectFailure {
-            outbound.requestToSpot(
-                RoutingId.from("room-a"),
-                Contracts.StateReq("missing"),
-            )
-                .packetName("MissingSpotPacket")
-                .timeout(REQUEST_TIMEOUT)
-                .await(Contracts.StateRes::class.java)
+            spots.requestState("room-a", "missing", packetName = "MissingSpotPacket")
         }
-        outbound.sendToSpot(RoutingId.from("room-a"), Contracts.StateMsg("missing-send"))
-            .packetName("MissingSpotMsg")
-            .await()
+        spots.sendState("room-a", "missing-send", packetName = "MissingSpotMsg")
         println("scenario SM-C1-negative passed")
         println("scenario SM-E1 passed")
     }

@@ -67,6 +67,9 @@ public final class Contracts {
     public record YieldTimeoutMsg(String requestId, long delayMillis, long timeoutMillis) {
     }
 
+    public record YieldCancelMsg(String requestId, long delayMillis, long cancelAfterMillis) {
+    }
+
     public record SpotProbeMsg(String requestId, String marker) {
     }
 

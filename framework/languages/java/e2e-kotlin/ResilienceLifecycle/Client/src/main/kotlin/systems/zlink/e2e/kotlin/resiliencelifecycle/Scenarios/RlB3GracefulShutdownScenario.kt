@@ -1,12 +1,8 @@
 package systems.zlink.e2e.kotlin.resiliencelifecycle
 
-import java.time.Duration
-
 fun ClientScenarioContext.runGracefulShutdownScenario() {
     waitForTopology(2)
-    val beforeShutdown = client.requestToChannel(Contracts.CHANNEL, Contracts.WorkReq("b3-before-shutdown"))
-        .timeout(Duration.ofSeconds(3))
-        .await(Contracts.WorkRes::class.java)
+    val beforeShutdown = requestWork("b3-before-shutdown")
     ensure(beforeShutdown.value() == "work:b3-before-shutdown", "RL-B3 pre-shutdown reply payload mismatch")
 
     post("${adminB()}/admin/shutdown")

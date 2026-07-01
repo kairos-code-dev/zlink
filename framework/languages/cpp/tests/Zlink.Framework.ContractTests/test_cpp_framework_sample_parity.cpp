@@ -531,6 +531,8 @@ TEST (CppFrameworkSampleParity, SampleReadmesDescribePublicExecutablesAndRunnerS
       << "Bingo runner must report the public client/server self-check";
     EXPECT_NE (bingo_runner.find ("\n\"$CLIENT_BIN\""), std::string::npos)
       << "Bingo runner must execute the public client binary";
+    EXPECT_NE (bingo_runner.find ("BINGO_REDIS_ENDPOINT"), std::string::npos)
+      << "Bingo runner must support externally supplied Redis";
 
     const auto deliverydispatch_runner =
       read_file (cpp_root / "samples/DeliveryDispatch/run_sample.sh");
@@ -573,6 +575,73 @@ TEST (CppFrameworkSampleParity, CommonSampleSpecsDocumentActorDestroyLifecycle)
         EXPECT_NE (spec.find ("actor를 즉시 destroy하지 않는다"), std::string::npos)
           << spec_path << " must keep disconnect separate from actor lifetime";
     }
+}
+
+TEST (CppFrameworkSampleParity, BingoUsesProtobufCodecSurface)
+{
+    const auto bingo_root = cpp_language_root () / "samples/Bingo";
+    const auto readme = read_file (bingo_root / "README.ko.md");
+    const auto inventory = read_file (bingo_root / "sample-porting-inventory.ko.md");
+    const auto common_codecs = read_file (bingo_root / "Server/common_codecs.hpp");
+    const auto session = read_file (bingo_root / "Server/Session/Sessions/bingo_session.hpp");
+    const auto client = read_file (bingo_root / "Client/main.cpp");
+
+    EXPECT_NE (readme.find ("Protobuf codec extension"), std::string::npos)
+      << "Bingo README must describe the Protobuf codec path";
+    EXPECT_EQ (readme.find ("framework 기본 JSON codec"), std::string::npos)
+      << "Bingo README must not claim JSON payloads";
+    EXPECT_NE (inventory.find ("Protobuf codec extension"), std::string::npos)
+      << "Bingo inventory must record the Protobuf codec path";
+    EXPECT_EQ (inventory.find ("framework 기본 JSON codec"), std::string::npos)
+      << "Bingo inventory must not mark JSON codec parity as done";
+    EXPECT_NE (common_codecs.find ("#include <zlink/codecs/protobuf.hpp>"), std::string::npos);
+    EXPECT_NE (common_codecs.find ("protobuf_codec_extension_t::register_payload_serializer"),
+               std::string::npos)
+      << "Bingo framework payloads must be registered with the Protobuf codec extension";
+    EXPECT_NE (session.find ("stream_codec_t::protobuf"), std::string::npos)
+      << "Bingo bound session stream relay must use the Protobuf stream codec";
+    EXPECT_NE (client.find (".codecs ().use (zlink::framework_codecs::protobuf ())"),
+               std::string::npos)
+      << "Bingo client connectors must enable the Protobuf stream codec";
+}
+
+TEST (CppFrameworkSampleParity, TicTacToeInventoryAndRunnersMatchCommonRedisContract)
+{
+    const auto tictactoe_root = cpp_language_root () / "samples/TicTacToe";
+    const auto inventory = read_file (tictactoe_root / "sample-porting-inventory.ko.md");
+    const auto shell_runner = read_file (tictactoe_root / "run_sample.sh");
+    const auto powershell_runner = read_file (tictactoe_root / "run_sample.ps1");
+    const auto readme = read_file (tictactoe_root / "README.ko.md");
+
+    EXPECT_NE (inventory.find (".NET: Client/TicTacToeClientScenario.cs"), std::string::npos)
+      << "TicTacToe inventory must map the .NET client scenario";
+    EXPECT_NE (inventory.find ("common: 2 API, 2 Play 수동 endpoint scale-out"),
+               std::string::npos)
+      << "TicTacToe inventory must record the common scale-out requirement";
+    EXPECT_NE (inventory.find ("common: 외부 Redis endpoint가 있으면 사용"),
+               std::string::npos)
+      << "TicTacToe inventory must record the external Redis runner contract";
+    EXPECT_EQ (inventory.find ("| pending |"), std::string::npos)
+      << "TicTacToe inventory must not leave pending rows";
+    EXPECT_EQ (inventory.find ("| gap |"), std::string::npos)
+      << "TicTacToe inventory must not leave unresolved gaps";
+
+    for (const auto *runner_content : {&shell_runner, &powershell_runner}) {
+        EXPECT_NE (runner_content->find ("TICTACTOE_CPP_REDIS_ENDPOINT"), std::string::npos)
+          << "TicTacToe runners must accept externally supplied Redis";
+        EXPECT_NE (runner_content->find ("api-b"), std::string::npos)
+          << "TicTacToe runners must launch a second API role";
+        EXPECT_NE (runner_content->find ("play-b"), std::string::npos)
+          << "TicTacToe runners must launch a second Play role";
+        EXPECT_NE (runner_content->find ("observer-win-milestone=verified"),
+                   std::string::npos)
+          << "TicTacToe runners must verify observer milestone delivery";
+        EXPECT_NE (runner_content->find ("tictactoe=completed"), std::string::npos)
+          << "TicTacToe runners must verify the final client marker";
+    }
+
+    EXPECT_NE (readme.find ("TICTACTOE_CPP_REDIS_ENDPOINT"), std::string::npos)
+      << "TicTacToe README must document the external Redis option";
 }
 
 TEST (CppFrameworkSampleParity, SampleActorDestroyFlowStaysInEntrySpot)
@@ -782,8 +851,10 @@ TEST (CppFrameworkSampleParity, BingoHostsUseSpotMeshCapabilitiesLikeDotNet)
                std::string::npos);
     EXPECT_EQ (common_codecs.find ("codecs.use (framework_codecs::protobuf ())"),
                std::string::npos);
-    EXPECT_EQ (client_main.find ("core_client1.codecs ().use"), std::string::npos);
-    EXPECT_EQ (client_main.find ("core_client2.codecs ().use"), std::string::npos);
+    EXPECT_NE (client_main.find ("core_client1.codecs ().use (zlink::framework_codecs::protobuf ())"),
+               std::string::npos);
+    EXPECT_NE (client_main.find ("core_client2.codecs ().use (zlink::framework_codecs::protobuf ())"),
+               std::string::npos);
     EXPECT_EQ (client.find (".add_protobuf"), std::string::npos);
     EXPECT_EQ (api_framework.find (".add_message_pack"), std::string::npos);
     EXPECT_EQ (play_factory.find (".add_message_pack"), std::string::npos);

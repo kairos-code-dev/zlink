@@ -18,7 +18,7 @@ API 위에서 보여 준다. client는 Session stream 하나에 연결하고, Pl
 - allocate room, join room, card submit handler
 - bingo room state, 3 x 3 card, server draw, winner 판단
 - Stream Connector public wait helper 기반 client push 검증
-- framework 기본 JSON codec을 사용하는 stream/channel/actor/Spot payload
+- Protobuf codec extension을 사용하는 stream/channel/actor/Spot payload
 - channel request/reply handler
 - handler logger와 callback log sink
 - STREAM packet relay
@@ -46,7 +46,8 @@ Play stream에 직접 연결하는 흐름은 TicTacToe 샘플이 맡는다.
 - `sample_cpp_framework_bingo_client`: Stream Connector 기반 client flow와 push payload self-check
 
 client scenario 실행 파일은 Stream Connector public API로 request reply와 push notification을
-검증하는 시나리오를 담고 있다. 서버 실행 파일들은 Registry, API, Play, Session 역할을
+검증하는 시나리오를 담고 있다. Stream, channel, actor, Spot payload는 C++ framework의
+Protobuf codec extension으로 등록된 typed message를 사용한다. 서버 실행 파일들은 Registry, API, Play, Session 역할을
 각각 보여 주며, 테스트 전용 fake 서버나 E2E 전용 sample target은 샘플 트리에 두지 않는다.
 script 실행 결과는 full client/server self-check 결과와 actor lifecycle sample gate 결과를
 표준 출력으로 보여 준다. actor lifecycle sample gate는 sample source가

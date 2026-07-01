@@ -6,6 +6,7 @@
 
 #include <zlink/stream_connector.hpp>
 #include <zlink/stream_e2e_client.hpp>
+#include <zlink/codecs/protobuf.hpp>
 
 #include <iostream>
 #include <string>
@@ -23,9 +24,12 @@ int main (int argc, char **argv)
 
     connector_options.endpoint = options.session_a_stream_endpoint;
     auto core_client1 = zlink::stream_connector::connector_factory_t::create (connector_options);
+    core_client1.codecs ().use (zlink::framework_codecs::protobuf ());
     connector_options.endpoint = options.session_b_stream_endpoint;
     auto core_client2 = zlink::stream_connector::connector_factory_t::create (connector_options);
+    core_client2.codecs ().use (zlink::framework_codecs::protobuf ());
     auto core_observer = zlink::stream_connector::connector_factory_t::create (connector_options);
+    core_observer.codecs ().use (zlink::framework_codecs::protobuf ());
     [[maybe_unused]] auto inbound_log1 = core_client1.observe_inbound (
       [] (const zlink::stream_connector::inbound_observation_t &observation) {
           std::cout << "stream-inbound sample=Bingo client=player1 kind="

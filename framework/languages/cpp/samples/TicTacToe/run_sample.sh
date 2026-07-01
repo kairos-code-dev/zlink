@@ -154,17 +154,18 @@ cleanup() {
 }
 trap cleanup EXIT
 
-# The sample owns its Redis: always provision a dedicated, throwaway container
-# so room-route state stays isolated per run and never touches a developer's
-# local Redis. (TICTACTOE_CPP_REDIS_ENDPOINT is intentionally derived here, not read.)
-if ! command -v docker >/dev/null 2>&1; then
-  echo "Docker is required to run the TicTacToe sample (it provisions a dedicated Redis container)." >&2
-  exit 1
+if [[ -n "${TICTACTOE_CPP_REDIS_ENDPOINT:-}" ]]; then
+  wait_port redis "$TICTACTOE_CPP_REDIS_ENDPOINT"
+else
+  if ! command -v docker >/dev/null 2>&1; then
+    echo "Docker is required to run the TicTacToe sample when TICTACTOE_CPP_REDIS_ENDPOINT is not set." >&2
+    exit 1
+  fi
+  REDIS_CONTAINER="zlink-tictactoe-cpp-redis-${RANDOM}-$$"
+  docker run -d --rm --name "$REDIS_CONTAINER" -p "127.0.0.1:${REDIS_PORT}:6379" redis:7-alpine >/dev/null
+  TICTACTOE_CPP_REDIS_ENDPOINT="127.0.0.1:${REDIS_PORT}"
+  wait_port redis "$TICTACTOE_CPP_REDIS_ENDPOINT"
 fi
-REDIS_CONTAINER="zlink-tictactoe-cpp-redis-${RANDOM}-$$"
-docker run -d --rm --name "$REDIS_CONTAINER" -p "127.0.0.1:${REDIS_PORT}:6379" redis:7-alpine >/dev/null
-TICTACTOE_CPP_REDIS_ENDPOINT="127.0.0.1:${REDIS_PORT}"
-wait_port redis "$TICTACTOE_CPP_REDIS_ENDPOINT"
 
 topology_args=(
   "--sample.topology.apiEndpoint=$API_A_ENDPOINT"

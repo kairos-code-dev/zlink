@@ -2,23 +2,37 @@
 [E2E 목차](README.ko.md) | [다음: Spot 서비스](config-2-spot-service.ko.md)
 <!-- framework-adapter-nav:end -->
 
-# Config 1 — Registry 기반 messaging 배포
+# Config 1 — Location store 기반 messaging 배포
 
 첫 e2e config다. 실제 배포와 똑같이 생긴 서버를 한 번 띄워 두고, 그 위에서 messaging과
-연결·rid resolve가 실제 사용자가 쓰듯 잘 도는지를 확인한다.
+연결·rid resolve가 실제 사용자가 쓰듯 잘 도는지를 확인한다. 연결 대상 정보는 registry
+process가 아니라, 각 노드가 공유 location store에 자동 등록한 peer location row에서 온다.
 
 ## 1. 목적과 범위
 
-확인하려는 것은 단순하다. 실 registry를 띄우고, 주소를 실제로 resolve하고, provider를 여러 개
-두고, 프로세스 경계까지 진짜로 나눈 상태 — 즉 **배포 현장과 같은 조건**에서 messaging과
-연결·rid resolve가 의도대로 도는가.
+확인하려는 것은 단순하다. 공유 location store를 두고, provider가 자기 위치를 자동 등록하고,
+consumer가 endpoint를 코드에 적지 않은 채 자동 연결하고, 프로세스 경계까지 진짜로 나눈 상태 —
+즉 **배포 현장과 같은 조건**에서 messaging과 연결·rid resolve가 의도대로 도는가.
 
 기존 unit/contract 테스트와 단언이 겹쳐도 괜찮다. 차별점은 "새로운 단언"이 아니라 "현실적인
 배포 컨텍스트 + 샘플 수준의 public API 사용"이다. 그래서 각 시나리오는 helper 없이 public
 contract를 직접 호출하고 `ensure`로 단언해서, 실제 사용 흐름이 한눈에 보이게 쓴다.
 
-여기서 다루지 않는 것(다른 config로): codec, stream, spot/actor, resilience 세부. 이 config는
-messaging + 연결/resolve에만 집중한다.
+이 config에는 registry process가 없다. 위치 정보의 기준 저장소는 location store이고, 연결
+상태의 검증 기준도 registry topology 조회가 아니라 아래 두 가지다.
+
+- peer location list: E2E는 cache 없이 store를 직접 읽는
+  `IZLinkLocationRuntimeQuery.ListPeersAsync(filter)`로 raw peer row를 확인한다. member peer
+  조회를 사용자 기능으로 검증할 때는 cache/freshness를 가진
+  `IZLinkPeerLocationResolver.ListPeersAsync(..., Refresh)`를 쓴다.
+- framework connection state: 실제 messaging 성공과 각 역할 server의 evidence로 연결이
+  실제로 성립했는지를 본다.
+
+location row 모델, owner lease, freshness 같은 계약 상세는 이 문서에서 반복하지 않는다.
+[location resolver/store draft](../draft/framework-location-resolver-store.ko.md)를 기준으로 한다.
+
+여기서 다루지 않는 것(다른 config로): codec, stream, spot/actor, resilience 세부, store
+장애/복구(Config 6). 이 config는 messaging + 연결/resolve에만 집중한다.
 
 ## 2. 서버 구성 (한 번 구동, 공유)
 
@@ -28,13 +42,26 @@ weight를 다르게 준 provider를 따로 띄운다(공유 provider는 기본 w
 
 | 역할 | 수 | 구성 |
 |------|----|------|
-| registry | 1 | discovery server. pub endpoint + router endpoint. |
-| provider (api 노드) | 2 (`api-a`, `api-b`) | 두 channel 종류를 함께 노출한다: ① registry-discovered **client-server channel**(`AddClientServerChannel`) — request handler(`ProfileRequest`)·send handler(`ProfileCommand`); ② peer-wired **route mesh**(`AddRouteMesh`) — route request handler(`ScenarioRoutePing`), routing id `api-a`/`api-b`. dispatch-error observer로 evidence 기록. 테스트용 `/evidence`·`/health` HTTP endpoint. |
-| consumer | 시나리오별 | client-server는 Discovery client(endpoint 모름, registry resolve) 또는 명시 endpoint 여러 개로 붙는다. route mesh는 자신이 route node가 되어, `EnableServer(clientEndpoint)`로 자기 endpoint를 bind하고 `SetRoutingId(...)`로 자기 routing id를 설정하며 peer를 `EnableClient(peerEndpoint)`로 붙는다(세 호출 순서는 무관 — 최종 registration으로 적용. route channel은 bind endpoint 없으면 startup 거부). |
+| location store | 1 | 공식 Redis location store extension이 사용하는 공유 Redis instance. 실행마다 전용 key prefix로 격리한다. 별도 registry process는 띄우지 않는다. |
+| provider (api 노드) | 2 (`api-a`, `api-b`) | 두 channel 종류를 함께 노출한다: ① location store 자동 연결을 쓰는 **client-server channel**(`AddClientServerChannel`) — request handler(`ProfileRequest`)·send handler(`ProfileCommand`); ② peer-wired **route mesh**(`AddRouteMesh`) — route request handler(`ScenarioRoutePing`), routing id `api-a`/`api-b`. dispatch-error observer로 evidence 기록. 테스트용 `/evidence`·`/health` HTTP endpoint. |
+| consumer | 시나리오별 | client-server는 location store 기반 자동 연결(endpoint 모름) 또는 명시 endpoint 여러 개로 붙는다. route mesh는 자신이 route node가 되어, `EnableServer(clientEndpoint)`로 자기 endpoint를 bind하고 `SetRoutingId(...)`로 자기 routing id를 설정하며 peer를 `EnableClient(peerEndpoint)`로 붙는다(세 호출 순서는 무관 — 최종 registration으로 적용. route channel은 bind endpoint 없으면 startup 거부). |
 
-client-server channel provider는 자기 logical routing id(`api-a`, `api-b`)와 channel endpoint를
-registry에 광고한다. 그래서 consumer는 channel 이름만 알면 되고, 실제 endpoint는 registry가
-알려준다. route mesh는 registry discovery를 쓰지 않고 peer endpoint로 직접 묶는다.
+client-server channel provider는 자기 logical routing id(`api-a`, `api-b`)와 channel
+endpoint를 담은 peer location row를 framework lifecycle이 store에 자동 upsert한다. 그래서
+consumer는 channel 이름만 알면 되고, 실제 endpoint는 location store에서 resolve된다. 수동
+row update/remove API는 이 config에서 사용하지 않는다(위치는 자동 lifecycle로만 갱신된다).
+route mesh는 location store 자동 연결을 쓰지 않고 peer endpoint로 직접 묶는다.
+
+store 등록은 각 역할의 `*HostFactory`에서 바로 보이게 둔다.
+
+```csharp
+// 공식 Redis extension이 peer/spot/actor/route store와 owner lease store를 함께 등록한다.
+options.AddRedisLocationStore(redis =>
+{
+    redis.ConnectionString = redisConnectionString;
+    redis.KeyPrefix = "zlink:e2e:cfg1:" + runId; // 실행별 전용 prefix로 격리
+});
+```
 
 handler 동작(공유):
 
@@ -47,10 +74,11 @@ handler 동작(공유):
 
 ## 3. 실행 모델
 
-`run_e2e.sh`가 registry → provider 순으로 띄우고(포트 readiness 확인) 그다음 client 시나리오를
-하나씩 실행한다. scale·failover 시나리오는 같은 스크립트가 추가 provider를 띄우거나 종료하고,
-weighted 시나리오(RM-C7)는 weight를 차등 설정한 provider를 띄운다. client가
-`e2e result=passed`를 출력하면 통과로 본다.
+`run_e2e.sh`가 Redis를 준비하고(기동 또는 연결 확인, 실행별 key prefix 결정) provider를 순서대로
+띄운 뒤(포트 readiness 확인) client 시나리오를 하나씩 실행한다. 실행이 끝나면 전용 prefix의
+key를 정리하거나 disposable Redis instance를 버린다. scale·failover 시나리오는 같은 스크립트가
+추가 provider를 띄우거나 종료하고, weighted 시나리오(RM-C7)는 weight를 차등 설정한 provider를
+띄운다. client가 `e2e result=passed`를 출력하면 통과로 본다.
 
 로그는 [README](README.ko.md) §6(로깅과 메시지 흐름 추적, 필수 공통)대로 모든 프로세스가 `log/`
 폴더에 파일로 남기고, message flow 추적을 `key_transitions` 이상으로 켜 `corr=`로 디버깅한다.
@@ -59,24 +87,24 @@ weighted 시나리오(RM-C7)는 weight를 차등 설정한 provider를 띄운다
 
 ### Track A — 연결과 rid resolve
 
-#### RM-A1 registry 자동 연결 + rid 자동 resolve
+#### RM-A1 location store 자동 연결 + rid 자동 resolve
 
 우선순위: `P0`
 
-**한마디로:** endpoint를 코드에 한 줄도 안 적고, registry만 보고 알아서 provider를 찾아 메시지를 보낼 수 있는가.
+**한마디로:** endpoint를 코드에 한 줄도 안 적고, 공유 location store만 보고 알아서 provider를 찾아 메시지를 보낼 수 있는가.
 
-- 절차: consumer가 endpoint 없이 channel만 등록하고 Discovery로 연결한 뒤 `ProfileRequest`를 보낸다.
-- 검증: request가 `api-a`/`api-b` 중 하나에서 처리됨(reply의 provider rid로 확인). consumer는 endpoint를 코드에 적지 않았다. 두 provider 모두 `Ready`로 topology에 보인다.
-- 세부 동작: registry 광고 → topology 수렴 → endpoint 없는 messaging.
+- 절차: consumer가 endpoint 없이 channel을 등록하고 같은 location store(`AddRedisLocationStore`, 같은 key prefix)를 등록한 뒤, 자동 연결이 성립하면 `ProfileRequest`를 보낸다.
+- 검증: request가 `api-a`/`api-b` 중 하나에서 처리됨(reply의 provider rid로 확인). consumer는 endpoint를 코드에 적지 않았다. `IZLinkLocationRuntimeQuery.ListPeersAsync(filter)`로 두 provider의 peer location row가 살아 있는 owner로 조회되고, 실제 messaging 성공으로 framework connection state가 두 provider와 연결되었음을 확인한다.
+- 세부 동작: peer row 자동 등록 → store 조회/reconcile → endpoint 없는 messaging.
 
 #### RM-A2 수동 endpoint 연결 (대조군)
 
 우선순위: `P0`
 
-**한마디로:** registry 없이 endpoint를 직접 적어 붙였을 때도, 자동 연결과 똑같은 결과가 나오는가.
+**한마디로:** location store 없이 endpoint를 직접 적어 붙였을 때도, 자동 연결과 똑같은 결과가 나오는가.
 
-- 절차: consumer가 registry 없이 provider endpoint를 직접 `EnableClient`로 등록하고 request를 보낸다.
-- 검증: 지정한 provider에서 처리. 자동 resolve 경로와 같은 reply 의미.
+- 절차: consumer가 location store 자동 연결 없이 provider endpoint를 직접 `EnableClient`로 등록하고 request를 보낸다.
+- 검증: 지정한 provider에서 처리. 자동 resolve 경로와 같은 reply 의미. auto reconcile은 manual endpoint를 끊지 않는다(manual 연결 우선).
 - 세부 동작: 수동 연결이 자동 연결과 동일 의미임을 고정.
 
 > custom resolver는 client-server channel public API에 없다(SPOT용 `AddSpotRemoteAddressResolver<T>`만 존재). 해당 검증은 Config 2(spot route resolver)에서 다룬다.
@@ -87,21 +115,21 @@ weighted 시나리오(RM-C7)는 weight를 차등 설정한 provider를 띄운다
 
 **한마디로:** 같은 rid의 provider가 죽고 다른 endpoint로 새로 떠도, consumer가 알아서 새 곳으로 갈아타는가(죽은 주소로 계속 안 가는가).
 
-- 절차: provider v1을 rid `api-a`/endpoint p1로 시작 → request로 v1 evidence 확인 → v1 종료 → provider v2를 같은 rid `api-a`/endpoint p2로 시작 → topology가 endpoint를 p2로 갱신할 때까지 대기 → consumer 재시작 없이 다시 request.
-- 검증: topology에 rid `api-a`는 하나만(중복 provider 없음). 교체 뒤 신규 request는 p2 evidence에 기록. consumer가 p1 stale endpoint로 반복 timeout 하지 않음. 이후 연속 20개 request 모두 성공.
-- 세부 동작: rid 기준 최신 endpoint 덮어쓰기 + stale 회피.
+- 절차: provider v1을 rid `api-a`/endpoint p1로 시작 → request로 v1 evidence 확인 → v1 종료 → provider v2를 같은 rid `api-a`/endpoint p2로 시작 → runtime query의 peer location list가 rid `api-a`의 endpoint를 p2로 보여줄 때까지 대기 → consumer 재시작 없이 다시 request.
+- 검증: `ListPeersAsync(filter)`의 성공 결과에서 rid `api-a`의 살아 있는 row는 하나이고 endpoint가 p2다(v1의 row는 정상 종료 remove 또는 owner lease 만료로 성공 결과에서 제외된다). 교체 뒤 신규 request는 p2 evidence에 기록. consumer가 p1 stale endpoint로 반복 timeout 하지 않음. 이후 연속 20개 request 모두 성공.
+- 세부 동작: 같은 peer key의 endpoint 변경을 peer handover로 반영 + stale 회피.
 
 > 런타임 연결 수립/재시도/해제 제어 handle은 channel messaging public API에 없다(endpoint는 startup 설정). timeout 규칙 검증은 RM-C4가 다룬다.
 
-#### RM-A6 cross-channel discovery
+#### RM-A6 다중 channel 격리 (같은 store, 다른 mesh)
 
 우선순위: `P1`
 
-**한마디로:** 한 registry에 여러 channel(`api`, `workflow` 등)이 섞여 있어도, 각 channel의 provider가 서로 섞이지 않고 독립적으로 관리되는가.
+**한마디로:** 한 location store에 여러 channel(`api`, `workflow` 등)의 peer row가 섞여 있어도, 각 channel의 provider가 서로 섞이지 않고 독립적으로 관리되는가.
 
-- 절차: 같은 registry에 서로 다른 channel(예: `api`, `workflow`)의 provider를 광고하고, consumer가 각 channel을 resolve해 request를 보낸다.
-- 검증: 각 channel의 provider 집합이 섞이지 않는다. 같은 endpoint host라도 channel name이 다르면 독립 topology로 관리된다. 한 channel scale-in이 다른 channel routing에 영향을 주지 않는다.
-- 세부 동작: channel별 독립 discovery.
+- 절차: 같은 location store(같은 key prefix)에 서로 다른 channel(예: `api`, `workflow`)의 provider가 peer row를 등록하고, consumer가 각 channel로 자동 연결해 request를 보낸다.
+- 검증: `ListPeersAsync(filter)`를 mesh name으로 filter하면 각 channel의 peer row 집합이 섞이지 않는다. 같은 endpoint host라도 channel 이름이 다르면 독립 row로 관리된다. 한 channel의 scale-in이 다른 channel의 peer row와 routing에 영향을 주지 않는다.
+- 세부 동작: mesh name 기반 peer row 격리.
 
 > Track A의 번호 `A3`·`A5`는 비어 있다(이전 개정에서 빠진 번호 — A3 자리는 위 custom resolver 노트로 갈음). 신규 시나리오는 빈 번호를 재사용하지 않고 뒤에 이어 붙인다.
 
@@ -113,9 +141,9 @@ weighted 시나리오(RM-C7)는 weight를 차등 설정한 provider를 띄운다
 
 **한마디로:** 트래픽이 흐르는 도중에 provider를 한 대 더 붙여도, consumer 재시작 없이 새 provider가 routing 대상에 들어오는가.
 
-- 절차: provider A만으로 request를 보낸다 → provider B를 추가로 시작 → topology가 2개 반영될 때까지 대기 → request를 여러 개 보낸다.
+- 절차: provider A만으로 request를 보낸다 → provider B를 추가로 시작 → runtime query의 peer location list에 B의 row가 반영될 때까지 대기 → request를 여러 개 보낸다.
 - 검증: B 추가 전엔 A만 처리. 반영 완료 뒤 검증 구간에선 A·B 모두 routing 대상. consumer 재시작 없음.
-- 세부 동작: 무중단 provider 증설 반영.
+- 세부 동작: 무중단 provider 증설 반영(peer row 추가 → reconcile connect).
 
 #### RM-B2 scale-in / graceful drain
 
@@ -123,14 +151,14 @@ weighted 시나리오(RM-C7)는 weight를 차등 설정한 provider를 띄운다
 
 **한마디로:** provider 한 대를 정상 종료해 빼도, consumer가 죽은 곳으로 안 가고 남은 provider로만 깔끔하게 흘러가는가.
 
-- 절차: A·B로 분산을 확인 → B를 정상 종료 → topology에서 B가 빠질 때까지 대기 → 다시 request.
-- 검증: B 종료 뒤 request는 A로만. consumer가 죽은 endpoint로 timeout을 반복하지 않음. 지속 request 중 scale-in이 나도 완료된 요청은 정상 reply 또는 정해진 public error로 끝나고 pending이 남지 않음.
-- 세부 동작: 무중단 provider 감축 + stale 정리.
+- 절차: A·B로 분산을 확인 → B를 정상 종료 → runtime query의 peer location list에서 B의 row가 빠질 때까지 대기 → 다시 request.
+- 검증: B 종료 뒤 request는 A로만. 정상 종료이므로 B의 peer row는 owner lease 만료를 기다리지 않고 shutdown 경로에서 제거된다. consumer가 죽은 endpoint로 timeout을 반복하지 않음. 지속 request 중 scale-in이 나도 완료된 요청은 정상 reply 또는 정해진 public error로 끝나고 pending이 남지 않음.
+- 세부 동작: 무중단 provider 감축 + shutdown 시 row 제거 + stale 정리.
 
 ### Track C — resolve된 연결 위의 messaging 세부 동작
 
-아래는 RM-A1에서 만든 registry-resolved 연결을 그대로 재사용해, messaging verb와 negative path를
-하나씩 점검한다.
+아래는 RM-A1에서 만든 location store 기반 자동 연결을 그대로 재사용해, messaging verb와
+negative path를 하나씩 점검한다.
 
 #### RM-C1 request / send happy path
 
@@ -186,9 +214,9 @@ weighted 시나리오(RM-C7)는 weight를 차등 설정한 provider를 띄운다
 
 **한마디로:** server 두 대에 weight를 다르게(예: 75 vs 25) 주면, client의 분산도 그 비율을 따라 한쪽으로 더 쏠리는가.
 
-- 절차: client-server channel의 두 provider를 서로 다른 build-time weight로 띄운다 — `api-a`는 `ConfigureServerSocket().Weight = 75`, `api-b`는 `ConfigureServerSocket().Weight = 25`(둘 다 `1..99`라 후보에서 빠지지 않음). consumer는 server가 advertise한 weight를 실제로 관측할 수 있는 연결 경로(discovery 또는 transport가 peer weight를 전달하는 수동 multi-endpoint)를 사용하고, warm-up 후 충분한 수의 request(예: 200개)를 보낸다.
+- 절차: client-server channel의 두 provider를 서로 다른 build-time weight로 띄운다 — `api-a`는 `ConfigureServerSocket().Weight = 75`, `api-b`는 `ConfigureServerSocket().Weight = 25`(둘 다 `1..99`라 후보에서 빠지지 않음). consumer는 server가 광고한 weight를 실제로 관측할 수 있는 연결 경로(location store 자동 연결 — weight는 peer location row의 `Weight` 필드에 실린다 — 또는 transport가 peer weight를 전달하는 수동 multi-endpoint)를 사용하고, warm-up 후 충분한 수의 request(예: 200개)를 보낸다.
 - 검증: 두 provider 모두 처리 대상이 되고(어느 쪽도 0이 아님), 각 provider evidence 합이 전체 request 수와 일치한다. 분산은 weight 비율을 따라 `api-a`가 `api-b`보다 **뚜렷이 많이** 처리한다(정확한 75/25는 보장값이 아니므로 "고weight가 저weight보다 분명히 많음 + 양쪽 모두 처리 + 합계 일치"로 검증한다).
-- 세부 동작: server쪽 advertised weight에 따른 client측 부하 분산.
+- 세부 동작: peer location row에 실린 server쪽 weight에 따른 client측 부하 분산.
 
 > 분산 주체 주의. client-server channel에서 server는 ROUTER, client는 DEALER다. server(ROUTER)는 자기 weight를 연결된 client(DEALER) peer에게 advertise만 하고, 비율 분산은 **client(DEALER)의 load balancer**가 수행한다. ROUTER 자신은 weight를 비율 분산이 아니라 `0`=drain / non-`0`=허용의 이진 게이트로만 쓴다. 따라서 weighted 비율(`1..99`)은 **이미 연결된 peer의 LB 분배**에만 작용하고, weight `0`(drain)은 RM-C3 분산에서 그 노드를 후보에서 빼는 별개 동작이다(drain·복귀 검증은 Config 5 RL-B에서 다룬다).
 
@@ -221,5 +249,6 @@ weighted 시나리오(RM-C7)는 weight를 차등 설정한 provider를 띄운다
 ## 5. 완료 기준
 
 - Track A·B·C의 `P0` 시나리오가 모두 통과한다.
-- 각 시나리오는 public contract만 직접 호출하고 `ensure`로 단언한다(framework 내부 우회 금지).
-- 실패 시 registry/provider/consumer 로그와 evidence로 원인 레이어를 분리한다.
+- 각 시나리오는 public contract만 직접 호출하고 `ensure`로 단언한다(framework 내부 우회 금지). raw peer row 상태 확인은 freshness 없는 `IZLinkLocationRuntimeQuery.ListPeersAsync(filter)`로, member peer 사용자 기능 검증은 `IZLinkPeerLocationResolver.ListPeersAsync(..., Refresh)`로 나눈다.
+- Redis를 쓰는 실행은 전용 key prefix로 격리하고, 실행 후 key cleanup 또는 disposable Redis instance를 사용한다.
+- 실패 시 store 연결 상태와 provider/consumer 로그·evidence로 원인 레이어를 분리한다.

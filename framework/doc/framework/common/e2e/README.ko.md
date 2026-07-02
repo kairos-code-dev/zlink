@@ -11,9 +11,9 @@
 
 - contract 테스트는 API 하나하나의 약속을 in-process로 빠르게 못 박는다.
 - 샘플은 사용자가 그대로 따라 할 수 있는 정상 흐름을 보여 준다.
-- e2e는 거기서 한발 더 나아간다. 실제 registry를 띄우고, 주소를 실제로 resolve하고, provider를
-  여러 개 두고, 프로세스 경계까지 진짜로 나눈 상태 — 즉 **배포 현장과 같은 조건**에서 기능이
-  의도대로 도는지를 본다.
+- e2e는 거기서 한발 더 나아간다. 실제 공유 location store를 두고, 위치를 실제로 resolve하고,
+  provider를 여러 개 두고, 프로세스 경계까지 진짜로 나눈 상태 — 즉 **배포 현장과 같은
+  조건**에서 기능이 의도대로 도는지를 본다.
 
 ## 1. 분류 원칙 — config 중심
 
@@ -28,8 +28,8 @@ e2e는 기능을 평면으로 죽 나열하지 않는다. **실제 배포처럼 
 
 - 기존 unit/contract/in-process 테스트와 단언이 겹쳐도 된다. 차별점은 단언의 새로움이 아니라
   현실적인 배포 컨텍스트와 sample 수준 public API 사용이다.
-- 같은 기능이라도 실 registry·실 resolve·다중 노드·프로세스 경계가 끼면 다르게 동작할 수 있다.
-  바로 그 지점을 본다.
+- 같은 기능이라도 실 공유 store·실 resolve·다중 노드·프로세스 경계가 끼면 다르게 동작할 수
+  있다. 바로 그 지점을 본다.
 
 ### 코드 작성 규칙
 
@@ -40,7 +40,7 @@ e2e는 기능을 평면으로 죽 나열하지 않는다. **실제 배포처럼 
   `HttpClient`로 e2e app endpoint를 직접 호출하지 않는다. stream connector 자체를 검증하거나,
   상태 변경·event·push처럼 값이 바뀌는 순간을 관찰해야 하는 시나리오에서는 client stream
   connector를 공개 client 표면으로 사용한다.
-- client 코드에서 channel/fanout/spot/registry framework client, framework host 구성, test-only
+- client 코드에서 channel/fanout/spot framework client, framework host 구성, test-only
   helper를 직접 사용하지 않는다. 예를 들어 `.NET` client에서는 `IZLinkChannelClient`,
   `AddZLinkFramework`, `Host.CreateDefaultBuilder`, reflection 우회, private/internal API 접근을
   쓰지 않는다.
@@ -100,8 +100,8 @@ handler, evidence 파일이 남아 있을 수 있다. 그런 config를 다른 �
 파일 위치를 그대로 복사하지 말고, 같은 역할의 코드를 아래 분류에 맞춰 배치한다.
 
 다른 언어를 작성할 때는 먼저 대응하는 `.NET` config의 역할 구성과 시나리오 흐름을 확인하고,
-같은 역할을 같은 의미의 위치에 둔다. 예를 들어 `.NET`에서 `Server/Registry`, `Server/Provider`,
-`Server/Workflow`가 별도 실행 프로젝트라면 다른 언어도 registry, provider, workflow를 하나의 서버
+같은 역할을 같은 의미의 위치에 둔다. 예를 들어 `.NET`에서 `Server/Provider`,
+`Server/Workflow`가 별도 실행 프로젝트라면 다른 언어도 provider와 workflow를 하나의 서버
 프로젝트 안에서 옵션만 바꿔 구동하지 않는다. `.NET`에서 `Client/Scenarios`와 `Client/Support`로
 나눈 흐름도 같은 의미로 유지한다.
 
@@ -155,13 +155,13 @@ client는 publisher/subscriber/main 같은 실제 역할 server의 endpoint를 �
 |------|--------|------|
 | local readiness timeout | 3초 | 새로 띄운 로컬 process의 port, health, readiness가 준비될 때까지 기다리는 최대 시간 |
 | local readiness poll interval | 0.1초 | readiness를 다시 확인하는 간격 |
-| route settle | 5초 | registry 광고, route 연결, peer 연결처럼 서버가 시작된 뒤 라우팅이 보이기까지 기다리는 시간 |
+| route settle | 5초 | location row 등록, route 연결, peer 연결처럼 서버가 시작된 뒤 라우팅이 보이기까지 기다리는 시간 |
 | scenario settle | 3초 | 시나리오 사이에 이전 작업의 비동기 evidence와 정리 작업이 끝나도록 기다리는 시간 |
 | HTTP probe/admin/evidence request timeout | 3초 | `/health`, `/evidence`, `/admin/*`, control ping 같은 로컬 HTTP probe 한 번의 최대 시간 |
 
 이 값 안에 준비되지 않는 로컬 e2e는 대기 시간을 늘려서 통과시키지 않는다. startup 순서, readiness
-endpoint, registry 광고, route propagation, stale process/port, 오래된 build artifact, lifecycle drain
-같은 원인을 먼저 찾아 수정한다. 긴 대기는 버그를 늦게 발견하게 만들기 때문에 완료 조건으로 인정하지
+endpoint, location row 등록, route propagation, stale process/port, 오래된 build artifact, lifecycle
+drain 같은 원인을 먼저 찾아 수정한다. 긴 대기는 버그를 늦게 발견하게 만들기 때문에 완료 조건으로 인정하지
 않는다.
 
 client scenario process timeout, 전체 child group timeout, shutdown/recovery처럼 시나리오 자체가 긴
@@ -178,7 +178,7 @@ snapshot 요청은 3초 HTTP 기준을 쓰지만, event가 나올 때까지 기�
 독립 실행 배포 묶음으로 옮긴다. 한 config를 포팅할 때 필요한 기본 산출물은 아래와 같다.
 
 - `Shared/`: server와 client가 함께 쓰는 request/reply/event/evidence DTO만 둔다.
-- `Server/<Role>/`: registry, provider, consumer, publisher, subscriber, play, session처럼 실제
+- `Server/<Role>/`: provider, consumer, publisher, subscriber, play, session처럼 실제
   배포에서 구분되는 역할마다 하나의 실행 앱을 둔다. 같은 역할의 복제본은 같은 프로젝트를 여러
   번 띄워도 되지만, 서로 다른 역할은 프로젝트와 폴더를 분리한다.
 - `Server/<Role>/Configuration/`: 해당 role의 실행 옵션과 인자 해석을 둔다.
@@ -226,16 +226,17 @@ snapshot 요청은 3초 HTTP 기준을 쓰지만, event가 나올 때까지 기�
 ### 2.4 서버 프로젝트 구성 규칙
 
 - 서버 역할이 다르면 `Server/<Role>/` 아래에 별도 실행 프로젝트로 둔다. 하나의 서버 프로젝트를
-  `--role`, `--mode` 옵션으로 registry/publisher/subscriber 또는 정상/오류/peer 서버처럼 바꾸지
+  `--role`, `--mode` 옵션으로 publisher/subscriber 또는 정상/오류/peer 서버처럼 바꾸지
   않는다.
-- 역할별 프로젝트 안에는 해당 역할 코드만 둔다. 예를 들어 `Server/Registry` 프로젝트 안에
+- 역할별 프로젝트 안에는 해당 역할 코드만 둔다. 예를 들어 `Server/Provider` 프로젝트 안에
   publisher/subscriber/play/session/multi-node 분기와 handler가 함께 들어 있으면 안 된다. 같은
   `Program.cs`를 여러 역할 프로젝트에 복사한 뒤 default role만 바꾸는 방식도 금지한다.
 - `Server/<Role>/`의 `<Role>`은 실제 배포에서 의미가 있는 역할이어야 한다. 이름을 `Main`,
   `Coordinator`, `Control`, `Scenario`처럼 바꿔도 시나리오 실행만 대신하고 실제 기능을 제공하지
   않는 server라면 만들 수 없다.
 - `Program.cs`는 실행 진입점만 둔다. host 구성, DI 등록, framework 설정은 `*HostFactory.cs`에 둔다.
-- `AddZLinkFramework` 또는 `AddZLinkRegistry` 설정은 `*HostFactory.cs`에서 바로 보이게 작성한다.
+- `AddZLinkFramework` 설정과 location store 등록(`AddRedisLocationStore(...)` 또는
+  `Add...LocationStore<T>()` 계열)은 `*HostFactory.cs`에서 바로 보이게 작성한다.
   얇은 wrapper/extension 메서드 뒤에 framework 설정을 숨기지 않는다.
 - `Server/Driver`, `Server/TestRunner`, `Server/ScenarioRunner` 같은 별도 실행 프로젝트는 만들지
   않는다. 폴더 이름이 다르더라도 시나리오 실행만 위임받는 server는 같은 금지 대상이다. 테스트
@@ -300,7 +301,7 @@ snapshot 요청은 3초 HTTP 기준을 쓰지만, event가 나올 때까지 기�
   확인한다.
 - 실패 시 `log_dir=...`를 출력하고, 각 role server와 client의 stdout/stderr/framework log를 남긴다.
 - 시나리오 선택은 client가 하되, client가 server-side scenario runner에 전체 실행을 위임하지 않는다.
-- scale-out, restart, crash, registry outage처럼 프로세스 제어가 필요한 경우는 스크립트나 client
+- scale-out, restart, crash, store outage처럼 프로세스 제어가 필요한 경우는 스크립트나 client
   support process manager가 담당한다. framework request/send/publish 자체는 실제 역할 server endpoint
   내부에서만 수행한다.
 
@@ -337,14 +338,14 @@ snapshot 요청은 3초 HTTP 기준을 쓰지만, event가 나올 때까지 기�
 
 | Config | 서버 구성 | 다루는 것 |
 |--------|-----------|-----------|
-| [Config 1 — Registry messaging](config-1-registry-messaging.ko.md) | registry + api 노드 2 + client-server/route channel | 자동/수동/custom resolve, connection control, scale-out/in, same-rid failover, weighted·round-robin, request·send·timeout·decode·미등록, 메시지 크기·backpressure |
-| [Config 2 — Spot 서비스](config-2-spot-service.ko.md) | registry + entry/user spot + actor + session | spot↔channel·spot↔spot messaging, actor join(local/remote)·lifecycle callback·실행순서, session bind/relay(local/remote/다중)·재접속 이전성, owner routing, timer·idle close, stream(heartbeat/TLS), channel↔spot route bridge, stateful 장애·복구(노드 crash·owner 이동·경합) |
-| [Config 3 — Pub/Sub 이벤트](config-3-pubsub.ko.md) | registry + publisher + subscriber 3 | fanout, topic filter, late subscriber, subscriber 격리, publish negative, subscriber 재연결·publisher 재시작 |
+| [Config 1 — Location messaging](config-1-location-messaging.ko.md) | location store(Redis) + api 노드 2 + client-server/route channel | location store 자동/수동 연결, rid resolve, peer location row 검증, scale-out/in, same-rid failover, weighted·round-robin, request·send·timeout·decode·미등록, 메시지 크기·backpressure |
+| [Config 2 — Spot 서비스](config-2-spot-service.ko.md) | location store + entry/user spot + actor + session | spot↔channel·spot↔spot messaging, actor join(local/remote)·lifecycle callback·실행순서, session bind/relay(local/remote/다중)·재접속 이전성, owner routing, timer·idle close, stream(heartbeat/TLS), channel↔spot route bridge, stateful 장애·복구(노드 crash·owner 이동·경합) |
+| [Config 3 — Pub/Sub 이벤트](config-3-pubsub.ko.md) | location store + publisher + subscriber 3 | fanout, topic filter, late subscriber, subscriber 격리, publish negative, subscriber 재연결·publisher 재시작 |
 | [Config 4 — 등록·codec 변주](config-4-registration-codec.ko.md) | 단순 channel 구성 2 | 자동/선언/수동 등록, startup 검증, DI lifecycle, ordering, json/protobuf/msgpack codec, codec 격리, peer 간 codec 불일치 |
-| [Config 5 — Resilience/lifecycle](config-5-resilience-lifecycle.ko.md) | 다중 노드 + registry | restart, reconnect, cancellation, in-flight crash, shutdown, 런타임 drain/restore, gray failure, partition 복구, flapping, 혼합 soak, wire 호환 |
-| [Config 6 — Discovery·Registry HA](config-6-discovery-registry-ha.ko.md) | registry 1~3 cluster + provider 2 | registry 다중화 동등성, registry scale-out/in, registry 장애 중 discovery, 충돌 광고·peer flapping, embedded/standalone 배포, topology 조회 |
-| [Config 7 — Monitoring](config-7-monitoring.ko.md) | registry + service 2 + monitor | socket/registry/spot 이벤트 runtime 관찰, 가용성 전이(failover/drain)·장애 중 관측, 다중 source 격리 |
-| [Config 8 — Spot yield dispatch](config-8-yield-dispatch.ko.md) | registry + play 노드 2 + delay service 2 + session gateway 2 | yield terminator가 현재 Spot turn을 반납하고 completion 뒤 원래 mailbox에서 재개하는지, actor·timer mailbox 격리, local/remote topology, timeout·cancellation·shutdown 경로, 언어별 동일 의미 |
+| [Config 5 — Resilience/lifecycle](config-5-resilience-lifecycle.ko.md) | 다중 노드 + location store | restart, reconnect, cancellation, in-flight crash, shutdown, 런타임 drain/restore, gray failure, 노드 단절 복구, flapping, 혼합 soak, wire 호환 |
+| [Config 6 — Store 장애·복구](config-6-store-failure-recovery.ko.md) | location store(Redis) + provider 2 + consumer | store 장애 중 fail-static(기존 연결 유지), store failure grace, owner lease 만료 stale row 제외, 복구 순서(재등록 → heartbeat 유예 → diff), polling fallback, runtime status 관측 |
+| [Config 7 — Monitoring](config-7-monitoring.ko.md) | location store + service 2 | socket/location-runtime/spot 이벤트 runtime 관찰, 가용성 전이(failover/drain)·장애 중 관측, 다중 source 격리 |
+| [Config 8 — Spot yield dispatch](config-8-yield-dispatch.ko.md) | location store + play 노드 2 + delay service 2 + session gateway 2 | yield terminator가 현재 Spot turn을 반납하고 completion 뒤 원래 mailbox에서 재개하는지, actor·timer mailbox 격리, local/remote topology, timeout·cancellation·shutdown 경로, 언어별 동일 의미 |
 
 ## 4. 우선순위
 
@@ -357,12 +358,15 @@ snapshot 요청은 3초 HTTP 기준을 쓰지만, event가 나올 때까지 기�
 ## 5. 공통 실행 원칙
 
 - 테스트는 독립된 임시 작업 디렉토리와 로그 디렉토리를 쓴다.
-- 서버 프로세스는 config가 선언한 역할대로 띄운다. registry가 필요한 config는 registry도 별도
-  프로세스로 띄운다.
+- 서버 프로세스는 config가 선언한 역할대로 띄운다. 공유 location store가 필요한 config는
+  실행 전에 store(Redis 등)를 준비하거나 별도 프로세스로 띄우고, 실행 후 key를 정리한다.
+  multi-process config의 공유 저장소는 공식 Redis extension을 기본으로 하고, 단일 process
+  smoke는 in-memory store(`UseInMemoryLocationStores()`)를 쓸 수 있다.
 - port, routing id, Redis key prefix, 저장소 경로는 실행마다 격리한다.
 - 서버 준비 여부는 sleep만으로 판단하지 않고, 포트 readiness 또는 readiness marker로 확인한다.
 - 성공 기준은 client 반환값, client stream connector가 받은 push, server evidence endpoint, 로그
-  marker를 조합한다. registry를 쓰는 config는 topology도 성공 기준에 넣는다.
+  marker를 조합한다. location store를 쓰는 config는 `IZLinkLocationRuntimeQuery`로 조회한
+  location row(peer/spot/actor)도 성공 기준에 넣는다.
 - 실패하면 각 프로세스의 stdout/stderr, framework 로그, client 마지막 요청 정보를 남긴다.
 - 실패 시 먼저 원인 레이어를 분리한다. `core-capi`, `bindings`, `framework`, `sample`, 테스트 실행
   스크립트 중 어디인지 evidence로 판정하고, 고친 레이어에 회귀 테스트를 둔다. framework 테스트를
@@ -385,7 +389,7 @@ snapshot 요청은 3초 HTTP 기준을 쓰지만, event가 나올 때까지 기�
 - 파일 sink는 부모 디렉토리를 자동 생성하는 API를 쓴다(C++ `app.logging().use_file(...)`/
   `use_rotating_file(...)`; `.NET`/Java/Node도 동일 의미 옵션). 디렉토리가 없다고 조용히 실패하면
   안 된다.
-- 프로세스마다 파일을 분리해(예: `registry.log`, `play-a.log`, `session-a.log`, `client.log`)
+- 프로세스마다 파일을 분리해(예: `provider-a.log`, `play-a.log`, `session-a.log`, `client.log`)
   어느 노드 로그인지 바로 보이게 한다.
 
 ### 6.2 메시지 흐름 추적 켜기 (디버깅 1차 도구)
@@ -423,16 +427,18 @@ message flow tracing은 언어별로 들어오는 중이다(2026-06-22 기준 C+
 
 ## 7. 시나리오 ID 규칙
 
-ID는 `config 접두사 - 트랙 - 번호`를 쓴다. 예: `RM-A1`(Registry messaging, Track A, 1번).
+ID는 `config 접두사 - 트랙 - 번호`를 쓴다. 예: `RM-A1`(Location messaging, Track A, 1번).
+Config 1의 접두사 `RM`은 시나리오 ID 연속성을 위해 유지한다(과거 registry messaging 시절의
+글자이지만, 지금은 location messaging config를 가리킨다).
 
 | 접두사 | config |
 |--------|--------|
-| `RM` | Registry messaging |
+| `RM` | Location messaging |
 | `SM` | Spot messaging |
 | `PS` | Pub/Sub |
 | `RC` | 등록·codec |
 | `RL` | Resilience/lifecycle |
-| `DR` | Discovery·Registry HA |
+| `SF` | Store 장애·복구 |
 | `MON` | Monitoring |
 | `YD` | Spot yield dispatch |
 

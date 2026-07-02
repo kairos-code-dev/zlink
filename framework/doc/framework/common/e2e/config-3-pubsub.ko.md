@@ -16,8 +16,8 @@
 
 | 역할 | 수 | 구성 |
 |------|----|------|
-| registry | 1 | discovery server. |
-| publisher | 1 (`pub-a`) | publish channel server. `EventPublish(topic, value)` 발행. registry에 광고. `/evidence`·`/health`. |
+| location store | 1 | 공식 Redis location store extension이 사용하는 공유 Redis instance. 실행마다 전용 key prefix. 각 노드는 `AddRedisLocationStore(...)`로 등록하고, fanout 연결에 필요한 peer location row는 framework lifecycle이 자동 갱신한다. |
+| publisher | 1 (`pub-a`) | publish channel server. `EventPublish(topic, value)` 발행. peer location row 자동 등록. `/evidence`·`/health`. |
 | subscriber | 3 (`sub-1`, `sub-2`, `sub-3`) | subscribe handler 보유. 받은 이벤트를 evidence로 기록. handler가 publish context.Topic으로 관심 topic만 처리. |
 | consumer | 시나리오별 | publish를 트리거하거나 직접 subscribe하는 client. |
 
@@ -27,9 +27,10 @@ dispatch에서 drop되고 observer marker가 남는다.
 
 ## 3. 실행 모델
 
-`run_e2e.sh`가 registry → publisher → subscriber 순으로 띄운다. late subscriber 시나리오는
-subscriber 하나를 일부러 늦게 띄운다. client 시나리오가 publish를 트리거하고 각 subscriber의
-evidence를 조회해 확인한다.
+`run_e2e.sh`가 Redis(전용 key prefix) 준비 → publisher → subscriber 순으로 띄운다. late
+subscriber 시나리오는 subscriber 하나를 일부러 늦게 띄운다. client 시나리오가 publish를
+트리거하고 각 subscriber의 evidence를 조회해 확인한다. 실행이 끝나면 전용 prefix의 key를
+정리하거나 disposable Redis instance를 버린다.
 
 로그는 [README](README.ko.md) §6(로깅과 메시지 흐름 추적, 필수 공통)대로 모든 프로세스가 `log/`
 폴더에 파일로 남기고, message flow 추적을 `key_transitions` 이상으로 켜 `corr=`로 디버깅한다.

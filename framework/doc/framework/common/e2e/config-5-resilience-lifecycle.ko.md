@@ -1,27 +1,27 @@
 <!-- framework-adapter-nav:start -->
-[E2E 목차](README.ko.md) | [이전: 등록·codec](config-4-registration-codec.ko.md) | [다음: Discovery·Registry HA](config-6-discovery-registry-ha.ko.md)
+[E2E 목차](README.ko.md) | [이전: 등록·codec](config-4-registration-codec.ko.md) | [다음: Store 장애·복구](config-6-store-failure-recovery.ko.md)
 <!-- framework-adapter-nav:end -->
 
 # Config 5 — Resilience·lifecycle 배포
 
-다중 노드 + registry 배포를 띄운 뒤, **프로세스를 실제로 죽이고 다시 띄우며** 복구·수명·정리가
-의도대로 도는지 본다. 비용이 큰 시나리오가 많아 대부분 `P1`·`P2`다.
+다중 노드 + 공유 location store 배포를 띄운 뒤, **프로세스를 실제로 죽이고 다시 띄우며**
+복구·수명·정리가 의도대로 도는지 본다. 비용이 큰 시나리오가 많아 대부분 `P1`·`P2`다.
 
 ## 1. 목적과 범위
 
-- 다룬다: 프로세스 restart·재스케줄, client reconnect, in-flight 중 crash, cancellation, graceful shutdown, resource·stale 정리, network/registry partition 복구, rolling·blue-green 전환, 실패 중 관측.
-- 여기서 다루지 않는 것: 정상 경로 messaging/resolve(Config 1·2), codec(Config 4).
+- 다룬다: 프로세스 restart·재스케줄, client reconnect, in-flight 중 crash, cancellation, graceful shutdown, resource·stale 정리, 노드 단절 복구, rolling·blue-green 전환, 실패 중 관측.
+- 여기서 다루지 않는 것: 정상 경로 messaging/resolve(Config 1·2), codec(Config 4), store 자체의 장애·복구 매트릭스(Config 6 — 여기서는 RL-C4가 store 독립성만 가볍게 본다).
 
 ## 2. 서버 구성 (한 번 구동 + 동적 조작)
 
 | 역할 | 수 | 구성 |
 |------|----|------|
-| registry | 1 | discovery server. partition 시나리오에서 격리 대상. |
-| provider | 2~3 | Config 1과 같은 channel provider. 시나리오가 죽이고/재시작/교체한다. |
+| location store | 1 | 공식 Redis location store extension이 사용하는 공유 Redis instance. 전용 key prefix. RL-C4에서 일시 정지 대상. |
+| provider | 2~3 | Config 1과 같은 channel provider(`AddRedisLocationStore(...)`로 store 등록, peer row 자동 갱신). 시나리오가 죽이고/재시작/교체한다. |
 | consumer | 시나리오별 | 지속 트래픽을 보내며 복구를 관측한다. |
 
-스크립트가 기본 배포를 띄운 뒤, 시나리오별로 provider/registry 프로세스를 SIGTERM·SIGKILL로
-종료하거나 새 endpoint로 재기동한다.
+스크립트가 기본 배포를 띄운 뒤, 시나리오별로 provider 프로세스(또는 RL-C4의 store 프로세스)를
+SIGTERM·SIGKILL로 종료하거나 새 endpoint로 재기동한다.
 
 ## 3. 실행 모델
 
@@ -36,9 +36,10 @@ runner는 "시작 → cleanup → 종료"만 지원하므로, 아래 시나리�
 **성공 기준 어휘:** "정해진 public error"는 시나리오마다 정확한 `ZLinkFrameworkErrorKind`
 (`RouteNotConnected`·`RequestTargetNotFound`·`RequestRejected`·`RequestFailed`) 또는
 `TimeoutException`과, 그 retriable 여부·timeout window를 명시한다. 재시도가 framework 동작인지
-client harness 동작인지도 구분한다. 복구는 "이후 follow-up request 성공 + topology query에서
-제거/추가 반영"처럼 **눈으로 확인 가능한 결과**로 판정한다(내부 pending dict는 public 표면이
-아니므로 직접 단언하지 않는다).
+client harness 동작인지도 구분한다. 복구는 "이후 follow-up request 성공 +
+`IZLinkLocationRuntimeQuery.ListPeersAsync(filter)`의 peer location list에서 제거/추가 반영"처럼
+**눈으로 확인 가능한 결과**로 판정한다(내부 pending dict는 public 표면이 아니므로 직접 단언하지
+않는다).
 
 로그는 [README](README.ko.md) §6(로깅과 메시지 흐름 추적, 필수 공통)대로 모든 프로세스가 `log/`
 폴더에 파일로 남기고, message flow 추적을 `key_transitions` 이상으로 켜 `corr=`로 디버깅한다. 특히
@@ -62,10 +63,10 @@ crash·drain·failover 시나리오는 `corr=` 흐름으로 어디서 끊겼는�
 
 우선순위: `P2`
 
-**한마디로:** provider가 다른 endpoint·같은 rid로 새로 떠도, registry가 주소를 갱신하고 consumer가 죽은 주소로 가지 않는가(in-flight·반복 복구 관점).
+**한마디로:** provider가 다른 endpoint·같은 rid로 새로 떠도, peer location row가 새 주소로 갱신되고 consumer가 죽은 주소로 가지 않는가(in-flight·반복 복구 관점).
 
-- 절차: provider를 죽이고 다른 endpoint·같은 rid로 새로 띄운다. (e2e server는 channel `SetRoutingId(...)`/`routingId(...)` 구성 옵션이 있어야 대체 provider가 같은 rid로 광고할 수 있다.)
-- 검증: registry가 rid를 새 endpoint로 갱신하고, consumer가 stale로 가지 않는다. (정상 경로는 Config 1 RM-A4, 여기선 in-flight·반복 복구 관점)
+- 절차: provider를 죽이고 다른 endpoint·같은 rid로 새로 띄운다. (e2e server는 channel `SetRoutingId(...)`/`routingId(...)` 구성 옵션이 있어야 대체 provider가 같은 rid로 등록할 수 있다.)
+- 검증: peer location row가 그 rid의 endpoint를 새 값으로 갱신하고(runtime query peer list로 확인), consumer가 stale로 가지 않는다. (정상 경로는 Config 1 RM-A4, 여기선 in-flight·반복 복구 관점)
 - 세부 동작: 재스케줄 복구.
 
 #### RL-A3 client reconnect storm
@@ -92,10 +93,10 @@ crash·drain·failover 시나리오는 `corr=` 흐름으로 어디서 끊겼는�
 
 우선순위: `P2`
 
-**한마디로:** provider 하나가 짧은 간격으로 떴다 죽었다 반복해도, consumer가 살아 있는 쪽으로 안정적으로 수렴하고 topology가 진동에 깨지지 않는가.
+**한마디로:** provider 하나가 짧은 간격으로 떴다 죽었다 반복해도, consumer가 살아 있는 쪽으로 안정적으로 수렴하고 peer location 반영이 진동에 깨지지 않는가.
 
 - 절차: provider 하나를 짧은 간격으로 down/up 반복(flapping)시키며 consumer가 request를 계속 보낸다.
-- 검증: flapping 중에도 consumer가 살아 있는 provider로 안정적으로 수렴하고, stale endpoint로 반복 timeout 하지 않는다. topology가 진동에 과민 반응해 깨지지 않는다.
+- 검증: flapping 중에도 consumer가 살아 있는 provider로 안정적으로 수렴하고, stale endpoint로 반복 timeout 하지 않는다. peer location 반영과 reconcile이 진동에 과민 반응해 깨지지 않는다.
 - 세부 동작: provider 진동 내성.
 
 ### Track B — in-flight와 shutdown
@@ -124,20 +125,20 @@ crash·drain·failover 시나리오는 `corr=` 흐름으로 어디서 끊겼는�
 
 우선순위: `P1`
 
-**한마디로:** provider를 정상 종료하면 topology에서 빠지고 consumer가 그쪽으로 안 가며, 종료 직전 끝난 request의 reply는 정상 수신되는가.
+**한마디로:** provider를 정상 종료하면 peer location list에서 빠지고 consumer가 그쪽으로 안 가며, 종료 직전 끝난 request의 reply는 정상 수신되는가.
 
 - 절차: provider에 정상 종료(`StopAsync`/lifetime stop)를 요청한다.
-- 검증: 종료 후 provider가 registry topology에서 빠지고 consumer가 그 endpoint로 더 가지 않는다(stale 회피). 종료 시점에 이미 완료된 request의 reply는 정상 수신된다. (host 종료가 아니라 "진행 중 request를 끝까지 drain"하는 런타임 drain 모드는 RL-B4·RL-B5에서 별도로 다룬다.)
-- 세부 동작: 정상 종료 시 topology 이탈 + stale 회피.
+- 검증: 종료 후 provider의 peer location row가 store에서 제거되고(runtime query peer list에서 사라짐 — shutdown 경로의 owner lease 제거 + row bulk remove) consumer가 그 endpoint로 더 가지 않는다(stale 회피). 종료 시점에 이미 완료된 request의 reply는 정상 수신된다. (host 종료가 아니라 "진행 중 request를 끝까지 drain"하는 런타임 drain 모드는 RL-B4·RL-B5에서 별도로 다룬다.)
+- 세부 동작: 정상 종료 시 location row 이탈 + stale 회피.
 
 #### RL-B4 런타임 drain / restore (무중단 배포)
 
 우선순위: `P0`
 
-**한마디로:** 운영 중 provider를 런타임에 drain하면 새 request가 그 노드로 안 가고, restore하면 다시 받는가(노드를 죽이거나 registry에서 빼지 않고).
+**한마디로:** 운영 중 provider를 런타임에 drain하면 새 request가 그 노드로 안 가고, restore하면 다시 받는가(노드를 죽이거나 location row를 지우지 않고).
 
 - 절차: provider 2대로 분산 중, 한 노드의 admin 경로에서 `IZLinkChannelRuntimeOptions.ClientServerChannel(name).ConfigureServerSocket().Weight = 0`으로 drain한다. consumer는 계속 request를 보낸다. 잠시 뒤 같은 노드를 `Weight = 100`으로 restore한다.
-- 검증: drain 후 신규 request는 그 노드 evidence에 더 기록되지 않고 살아 있는 다른 노드가 받는다(후보가 그 노드뿐이면 정해진 public error). 노드는 죽지 않고 registry topology에도 남아 있다. restore 후 다시 routing 대상이 되어 request를 받는다. consumer 재시작 없음.
+- 검증: drain 후 신규 request는 그 노드 evidence에 더 기록되지 않고 살아 있는 다른 노드가 받는다(후보가 그 노드뿐이면 정해진 public error). 노드는 죽지 않고 peer location row도 store에 남아 있다(runtime query peer list로 확인). restore 후 다시 routing 대상이 되어 request를 받는다. consumer 재시작 없음.
 - 세부 동작: peer weight 기반 런타임 graceful drain·restore(노드/소켓 종료 아님). (drain·weight 의미 상세는 `framework-channel-drain-peer-weight-plan.ko.md` 참조.)
 
 #### RL-B5 drain 중 in-flight 완료
@@ -172,15 +173,15 @@ crash·drain·failover 시나리오는 `corr=` 흐름으로 어디서 끊겼는�
 - 검증: 소켓·핸들·메모리 등 리소스가 누수 없이 정리된다.
 - 세부 동작: 리소스 정리.
 
-#### RL-C2 registry stale data cleanup
+#### RL-C2 location store stale row cleanup
 
 우선순위: `P2`
 
-**한마디로:** provider가 unregister도 못 하고 강제로 죽었을 때, registry가 TTL로 결국 stale entry를 치우고 consumer가 살아 있는 곳으로만 가는가.
+**한마디로:** provider가 row를 지우지 못하고 강제로 죽었을 때, owner lease 만료로 결국 그 row가 성공 결과에서 빠지고 consumer가 살아 있는 곳으로만 가는가.
 
-- 절차: provider를 `kill(SIGKILL)`로 비정상 종료해 unregister를 못 한 상태를 만든다(하네스 kill 연산 필요).
-- 검증: registry가 heartbeat timeout(TTL)으로 stale entry를 결국 제거하고(topology query에서 사라짐), consumer의 follow-up request가 살아 있는 provider로만 간다. (현재 scale-in 테스트는 graceful `StopAsync`만 다루므로, 이 crash+TTL 경로는 kill 하네스가 갖춰지기 전엔 미구현으로 둔다.)
-- 세부 동작: 비정상 종료 + TTL stale 정리.
+- 절차: provider를 `kill(SIGKILL)`로 비정상 종료해 row remove를 못 한 상태를 만든다(하네스 kill 연산 필요).
+- 검증: owner lease TTL 만료로 그 provider의 peer row가 resolve/list 성공 결과에서 결국 제외되고(runtime query peer list에서 사라짐 — 물리 삭제는 background cleanup 책임), consumer의 follow-up request가 살아 있는 provider로만 간다. (현재 scale-in 테스트는 graceful `StopAsync`만 다루므로, 이 crash+lease 만료 경로는 kill 하네스가 갖춰지기 전엔 미구현으로 둔다. lease 만료 자체의 정밀 검증은 Config 6 SF-C1이 담당한다.)
+- 세부 동작: 비정상 종료 + owner lease 만료 stale 정리.
 
 #### RL-C3 노드 단절(프로세스 정지) 후 복구
 
@@ -188,19 +189,19 @@ crash·drain·failover 시나리오는 `corr=` 흐름으로 어디서 끊겼는�
 
 **한마디로:** 노드가 잠시 단절됐다 복구되면, 단절 중엔 정해진 에러가 나고 복구 뒤엔 재광고·재수렴으로 정상화되며 split-brain이 안 남는가.
 
-- 절차: provider 또는 registry 노드를 정지(SIGSTOP/SIGTERM)했다가 복구·재기동한다. (실제 network partition은 proxy/iptables 같은 별도 harness가 필요하며 현재 프로세스 제어 harness 범위 밖이다. 이 시나리오는 프로세스 정지/복구로 단절을 모사한다.)
-- 검증: 단절 중엔 정해진 public error(timeout/route-not-connected 등), 복구 뒤 provider 재광고와 topology 재수렴으로 messaging이 정상화된다. split-brain snapshot이 남지 않는다.
+- 절차: provider 노드를 정지(SIGSTOP/SIGTERM)했다가 복구·재기동한다. (실제 network partition은 proxy/iptables 같은 별도 harness가 필요하며 현재 프로세스 제어 harness 범위 밖이다. 이 시나리오는 프로세스 정지/복구로 단절을 모사한다. store 프로세스 정지는 Config 6이 다룬다.)
+- 검증: 단절 중엔 정해진 public error(timeout/route-not-connected 등), 복구 뒤 provider의 owner lease와 peer row 재등록·peer location 재수렴으로 messaging이 정상화된다. stale row가 성공 결과에 남지 않는다.
 - 세부 동작: 노드 정지/복구 모사 + 재수렴.
 
-#### RL-C4 registry restart/outage 복구
+#### RL-C4 location store restart/outage 복구
 
 우선순위: `P1`
 
-**한마디로:** registry가 잠깐 죽어도 이미 연결된 채널은 계속 동작하고, registry가 살아나면 재등록·재조회로 topology가 정상화되는가.
+**한마디로:** 공유 location store가 잠깐 죽어도 이미 연결된 채널은 계속 동작하고(fail-static), store가 살아나면 재등록·재조회로 peer location이 정상화되는가.
 
-- 절차: provider·consumer가 도는 중 registry 프로세스를 `restart`한다(하네스 restart 필요).
-- 검증: registry 다운 동안 **이미 연결된 channel socket의 messaging은 계속 동작한다**(discovery는 registry에 의존하지만 수립된 연결 자체는 registry와 독립). 새 discovery·원격 topology query는 자동 재시도하지 않으므로 명시적 재조회로 확인한다. registry 복구 후 provider가 heartbeat로 재등록되고, consumer가 재조회 시 topology가 정상화되며 follow-up request가 성공한다.
-- 세부 동작: 연결 socket은 registry와 독립 + 복구 후 heartbeat 재등록·재조회.
+- 절차: provider·consumer가 도는 중 store(Redis) 프로세스를 `restart`한다(하네스 restart 필요).
+- 검증: store 다운 동안 **이미 연결된 channel socket의 messaging은 계속 동작한다**(위치 resolve는 store에 의존하지만 수립된 연결 자체는 store와 독립 — fail-static). store 다운 중 read 표면은 store 장애를 not found가 아니라 infrastructure error로 구분해 돌려준다. store 복구 후 각 노드가 owner lease와 peer row를 다시 upsert하고, runtime query peer list가 정상화되며 follow-up request가 성공한다. (재등록 순서·heartbeat 유예·grace 초과 같은 장애 매트릭스 정밀 검증은 Config 6가 담당한다 — 여기서는 "수립된 연결의 store 독립 + 복구 후 정상화"만 본다.)
+- 세부 동작: 연결 socket은 store와 독립(fail-static) + 복구 후 owner lease/row 재등록·재조회.
 
 ### Track D — 부하와 실패 중 관측
 
@@ -257,5 +258,5 @@ crash·drain·failover 시나리오는 `corr=` 흐름으로 어디서 끊겼는�
 ## 5. 완료 기준
 
 - `P1` 시나리오는 지원 언어에서 구현한다. `P2`는 선택이며 미구현 이유를 남긴다.
-- 복구 시나리오는 복구 후 follow-up request 성공 + topology query의 제거/추가 반영으로 관측한다(내부 pending/stale 상태는 public 표면이 아니므로 직접 단언하지 않는다).
+- 복구 시나리오는 복구 후 follow-up request 성공 + runtime query peer location list의 제거/추가 반영으로 관측한다(내부 pending/stale 상태는 public 표면이 아니므로 직접 단언하지 않는다).
 - public contract만 직접 호출하고 `ensure`로 단언한다.

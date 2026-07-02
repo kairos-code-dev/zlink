@@ -1274,6 +1274,11 @@ options.AddOwnerLeaseStore<TStore>();
 이 API는 store 구현체를 등록한다. store는 cache/freshness 정책을 알지 않는다. framework runtime과
 resolver가 store 위에서 policy를 적용한다.
 
+extension package를 위한 일괄 등록 지점도 함께 정의한다. `AddLocationStores(registerStores)`는 하나의
+구현체가 여섯 interface(store 5종 + change stamp)를 한 번에 등록하는 hook이며, Redis 같은 공식
+extension의 편의 builder는 이 hook 위에 구현한다. 개별 `Add...LocationStore<T>()` 등록이나 in-memory
+등록과 섞어 쓰는 것은 검증 오류다.
+
 공식 Redis extension은 아래 편의 API를 제공한다.
 
 ```csharp
@@ -1586,7 +1591,7 @@ draft가 기준이며, 정식 spec 문서에는 아직 구현되지 않은 계�
 
 ### 24.7 구현체
 
-- [ ] 공식 Redis extension — Lua/transaction 원자성, key schema 내부화, owner lease 동일 저장소,
+- [x] 공식 Redis extension — Lua/transaction 원자성, key schema 내부화, owner lease 동일 저장소,
       change stamp INCR, `AddRedisLocationStore` builder — 9절, 12절, 14.5
 - [ ] 구현체 필수 조건 전부 (unique index, 동일 물리 저장소, pagination, 장애/not-found 구분,
       polling 가능) — 11절, 12절
@@ -1595,7 +1600,7 @@ draft가 기준이며, 정식 spec 문서에는 아직 구현되지 않은 계�
 ### 24.8 검증, sample, 문서
 
 - [ ] 22절 필수 테스트 전부
-- [ ] 22절 E2E 시나리오 문서 수정 전부 (`framework/doc/framework/common/e2e/` config-1~8, README) —
+- [x] 22절 E2E 시나리오 문서 수정 전부 (`framework/doc/framework/common/e2e/` config-1~8, README) —
       E2E 코드 수정보다 먼저
 - [ ] 22절 기존 E2E 수정 항목 전부
 - [ ] 22절 기존 sample 수정 항목 전부 — registry host 프로젝트 제거, store 등록 교체, Redis/in-memory

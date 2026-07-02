@@ -1543,56 +1543,56 @@ draft가 기준이며, 정식 spec 문서에는 아직 구현되지 않은 계�
 - [x] `OwnerId` 생성 규칙 (runtime start 시 UUID) — 9절
 - [x] `NewClaim`/`Renew`/`Takeover` 성공 조건과 generation 규칙 — 7.6, 9절
 - [x] generation 전달 규칙 (write 응답으로만 전달, node 간 배포 금지) — 9절
-- [ ] 소유권 상실 규칙 (`IgnoredStale` → 광고 중단, local instance deactivate) — 9절
-- [ ] claim-then-activate 생성 순서 — 16.1, 17절
+- [x] 소유권 상실 규칙 (`IgnoredStale` → 광고 중단, local instance deactivate) — 9절
+- [x] claim-then-activate 생성 순서 — 16.1, 17절
 - [x] owner lease heartbeat (runtime당 1회, row 개별 write 금지) — 6.6, 14.4
 - [x] owner lease snapshot join과 monotonic 만료 판정 (wall clock 비교 금지) — 6.6, 7.5
 - [x] owner lease 목록 polling 갱신 (staleness 상한 = polling interval) — 6.6
 - [x] 단건 cache (enable/TTL/max entries, not-found 미cache, working set 기준) — 10절
-- [ ] peer list cache와 watch/change stamp 무효화 — 10절
+- [x] peer list cache와 watch/change stamp 무효화 — 10절
 - [ ] stale row 정의 (owner lease 만료 또는 관찰한 generation보다 오래된 row) — 8.1
 - [x] `UpdatedAt` 용도 제한 (운영 표시/정렬 보조만, 충돌 해소·유효성·freshness에 사용 금지) — 9절
 - [x] runtime query는 freshness 없이 항상 direct store read — 8.2
-- [ ] 오류 구분 표 — 19절
+- [x] 오류 구분 표 — 19절
 
 ### 24.4 자동 연결
 
-- [ ] role 허용 정책 표 — 14.2
-- [ ] target 매칭 정책과 dealer mesh pairwise initiator — 14.3
-- [ ] reconcile loop 11단계 — 14.4
-- [ ] watch 우선, polling correctness, change stamp 생략 경로 — 14.5
-- [ ] 연결 실패 backoff, 연결 실패는 row 제거 사유 아님 — 14.6
-- [ ] manual connection 우선 규칙 — 14.7
-- [ ] fail-static 표와 store failure grace — 14.8
-- [ ] store 복구 순서 (owner lease/local row 재등록 → heartbeat interval 유예 → disconnect diff) — 14.8
+- [x] role 허용 정책 표 — 14.2
+- [x] target 매칭 정책과 dealer mesh pairwise initiator — 14.3
+- [x] reconcile loop 11단계 — 14.4
+- [x] watch 우선, polling correctness, change stamp 생략 경로 — 14.5
+- [x] 연결 실패 backoff, 연결 실패는 row 제거 사유 아님 — 14.6
+- [x] manual connection 우선 규칙 — 14.7
+- [x] fail-static 표와 store failure grace — 14.8
+- [x] store 복구 순서 (owner lease/local row 재등록 → heartbeat interval 유예 → disconnect diff) — 14.8
 
 ### 24.5 spot/actor/route 조회
 
-- [ ] spot lifecycle update/remove 이벤트 표 — 15.1
-- [ ] `ResolveSpot` 알고리즘 — 15.2
-- [ ] `ListSpots` (runtime query 전용, cache 없음) — 15.3
-- [ ] actor lifecycle update/remove 이벤트 표 — 16.1
-- [ ] `ResolveActor` 알고리즘 — 16.2
-- [ ] `ListActors` (runtime query 전용, cache 없음) — 16.3
-- [ ] actor 재연결/생성 흐름 (`Refresh` 사용) — 17절
-- [ ] 수동 update/remove API 사용 범위 — 18절
+- [x] spot lifecycle update/remove 이벤트 표 — 15.1
+- [x] `ResolveSpot` 알고리즘 — 15.2
+- [x] `ListSpots` (runtime query 전용, cache 없음) — 15.3
+- [x] actor lifecycle update/remove 이벤트 표 — 16.1
+- [x] `ResolveActor` 알고리즘 — 16.2
+- [x] `ListActors` (runtime query 전용, cache 없음) — 16.3
+- [x] actor 재연결/생성 흐름 (`Refresh` 사용) — 17절
+- [x] 수동 update/remove API 사용 범위 — 18절
 
 ### 24.6 공개 표면과 등록
 
-- [ ] store 등록 API 5종 (`Add...LocationStore<T>`, `AddOwnerLeaseStore<T>`) — 3절, 20.2
-- [ ] resolver 4종 (peer는 list, spot/actor/route는 단건 전용) — 8절, 20.3
-- [ ] `IZLinkLocationRuntimeQuery` (spot/actor/route 목록은 이 표면에만) — 8.2, 20.3
-- [ ] option 목록 — 20.4
+- [x] store 등록 API 5종 (`Add...LocationStore<T>`, `AddOwnerLeaseStore<T>`) — 3절, 20.2
+- [x] resolver 4종 (peer는 list, spot/actor/route는 단건 전용) — 8절, 20.3
+- [x] `IZLinkLocationRuntimeQuery` (spot/actor/route 목록은 이 표면에만) — 8.2, 20.3
+- [x] option 목록 — 20.4
 - [ ] event source 목록 — 20.5
-- [ ] 기존 registry/discovery API 제거 목록 (compatibility wrapper 없음) — 20.1
+- [x] 기존 registry/discovery API 제거 목록 (compatibility wrapper 없음) — 20.1
 
 ### 24.7 구현체
 
 - [x] 공식 Redis extension — Lua/transaction 원자성, key schema 내부화, owner lease 동일 저장소,
       change stamp INCR, `AddRedisLocationStore` builder — 9절, 12절, 14.5
-- [ ] 구현체 필수 조건 전부 (unique index, 동일 물리 저장소, pagination, 장애/not-found 구분,
+- [x] 구현체 필수 조건 전부 (unique index, 동일 물리 저장소, pagination, 장애/not-found 구분,
       polling 가능) — 11절, 12절
-- [ ] in-memory store — 같은 interface/규칙 parity, production 사용 금지 명시 — 13절
+- [x] in-memory store — 같은 interface/규칙 parity, production 사용 금지 명시 — 13절
 
 ### 24.8 검증, sample, 문서
 

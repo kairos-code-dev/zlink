@@ -392,7 +392,9 @@ key는 framework가 만든다. store 구현체는 전달받은 key를 그대로 
 | route key | `RouteKind + RouteKey` |
 
 key 문자열 비교가 필요한 구현체는 각 구성 요소를 길이 prefix 또는 escaping이 있는 stable encoding으로
-직렬화해야 한다. 단순 문자열 이어 붙이기는 금지한다.
+직렬화해야 한다. 단순 문자열 이어 붙이기는 금지한다. routing id 구성 요소는 사람이 읽는 문자열 표현이
+아니라 routing id byte의 소문자 hex 인코딩을 사용한다. 사람이 읽는 표현은 표시 형식에 따라 충돌하거나
+언어별로 달라질 수 있기 때문이다.
 
 `AutoConnectType`과 `Role`은 닫힌 값 집합이다. auto-connect type은 route mesh, client/server, dealer
 mesh, fanout, spot mesh 5종이고 role은 router, dealer, pub, sub, spot 5종이다(14.2). .NET 첫 구현은 이를

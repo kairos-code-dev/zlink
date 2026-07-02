@@ -7,6 +7,9 @@ namespace Zlink.Framework.Locations.Redis;
 /// Serializes location keys into the canonical strings shared by every
 /// language implementation. Each segment is length-prefixed so that plain
 /// concatenation can never make two different keys collide.
+/// Routing id segments use the lossless lower-case hex encoding of the
+/// routing id bytes; human-readable representations may collide or differ
+/// across languages.
 ///
 /// This is a copy of the framework-internal
 /// Zlink.Framework.Runtime.Locations.ZLinkLocationKeyCodec, which is the
@@ -21,7 +24,7 @@ internal static class ZLinkRedisLocationKeyCodec
         // Node rid identifies the peer when present; endpoint is the
         // fallback identity for roles that have no routing id.
         var identity = key.NodeRid is { } rid
-            ? rid.ToString()
+            ? rid.ToHex()
             : key.Endpoint ?? string.Empty;
         return Encode(
             key.AutoConnectType.ToCanonicalString(),
@@ -31,7 +34,7 @@ internal static class ZLinkRedisLocationKeyCodec
     }
 
     internal static string EncodeSpotKey(ZLinkSpotLocationKey key) =>
-        Encode(key.MeshName, key.SpotRid.ToString());
+        Encode(key.MeshName, key.SpotRid.ToHex());
 
     internal static string EncodeActorKey(ZLinkActorLocationKey key) =>
         Encode(NormalizeActorType(key.ActorType), key.ActorId);

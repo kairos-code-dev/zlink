@@ -1274,6 +1274,11 @@ options.AddOwnerLeaseStore<TStore>();
 이 API는 store 구현체를 등록한다. store는 cache/freshness 정책을 알지 않는다. framework runtime과
 resolver가 store 위에서 policy를 적용한다.
 
+extension package를 위한 일괄 등록 지점도 함께 정의한다. `AddLocationStores(registerStores)`는 하나의
+구현체가 여섯 interface(store 5종 + change stamp)를 한 번에 등록하는 hook이며, Redis 같은 공식
+extension의 편의 builder는 이 hook 위에 구현한다. 개별 `Add...LocationStore<T>()` 등록이나 in-memory
+등록과 섞어 쓰는 것은 검증 오류다.
+
 공식 Redis extension은 아래 편의 API를 제공한다.
 
 ```csharp

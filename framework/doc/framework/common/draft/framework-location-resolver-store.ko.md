@@ -1550,7 +1550,7 @@ draft가 기준이며, 정식 spec 문서에는 아직 구현되지 않은 계�
 - [x] owner lease 목록 polling 갱신 (staleness 상한 = polling interval) — 6.6
 - [x] 단건 cache (enable/TTL/max entries, not-found 미cache, working set 기준) — 10절
 - [x] peer list cache와 watch/change stamp 무효화 — 10절
-- [ ] stale row 정의 (owner lease 만료 또는 관찰한 generation보다 오래된 row) — 8.1
+- [x] stale row 정의 (owner lease 만료 또는 관찰한 generation보다 오래된 row) — 8.1
 - [x] `UpdatedAt` 용도 제한 (운영 표시/정렬 보조만, 충돌 해소·유효성·freshness에 사용 금지) — 9절
 - [x] runtime query는 freshness 없이 항상 direct store read — 8.2
 - [x] 오류 구분 표 — 19절

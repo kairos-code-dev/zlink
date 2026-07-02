@@ -127,6 +127,68 @@ public sealed class LocationResolverTests
         Assert.Equal(byEmpty.ActorId, byNull.ActorId);
     }
 
+    [Fact]
+    public async Task Older_Generation_From_A_Lagging_Replica_Is_Never_A_Success()
+    {
+        var time = new ManualTimeProvider();
+        var store = new ZLinkInMemoryLocationStore(time);
+        await store.RenewOwnerLeaseAsync(OwnerA, RoutingId.From("node-1"), TimeSpan.FromMinutes(5));
+        var options = new ZLinkLocationOptions { PollingInterval = TimeSpan.Zero };
+        var tracker = new ZLinkOwnerLeaseTracker(store, options, time);
+
+        // A replica store that first serves generation 2, then lags back to
+        // generation 1, then catches up again.
+        var replica = new ScriptedActorStore(
+            InMemoryLocationStoreTests.Actor(OwnerA, 2),
+            InMemoryLocationStoreTests.Actor(OwnerA, 1),
+            InMemoryLocationStoreTests.Actor(OwnerA, 2));
+        var resolvers = new ZLinkStoreLocationResolvers(
+            options, store, store, replica, store, tracker, time);
+
+        var first = await resolvers.ResolveActorAsync(ActorKey, ZLinkResolveFreshness.Refresh);
+        Assert.Equal(2, first!.Generation);
+
+        // The lagging read must not roll the observed view backwards.
+        Assert.Null(await resolvers.ResolveActorAsync(ActorKey, ZLinkResolveFreshness.Refresh));
+
+        // An equal generation is accepted again.
+        var third = await resolvers.ResolveActorAsync(ActorKey, ZLinkResolveFreshness.Refresh);
+        Assert.Equal(2, third!.Generation);
+    }
+
+    private sealed class ScriptedActorStore(params ZLinkActorLocation[] rows) : IZLinkActorLocationStore
+    {
+        private readonly Queue<ZLinkActorLocation> _rows = new(rows);
+
+        public ValueTask<ZLinkActorLocation?> ResolveActorAsync(
+            ZLinkActorLocationKey key,
+            CancellationToken cancellationToken = default) =>
+            ValueTask.FromResult<ZLinkActorLocation?>(_rows.Count > 0 ? _rows.Dequeue() : null);
+
+        public ValueTask<ZLinkLocationWriteResult> UpdateActorAsync(
+            ZLinkActorLocation actor,
+            ZLinkLocationWriteIntent intent,
+            CancellationToken cancellationToken = default) =>
+            throw new NotSupportedException();
+
+        public ValueTask<ZLinkLocationWriteResult> RemoveActorAsync(
+            ZLinkActorLocationKey key,
+            ZLinkLocationOwnerToken owner,
+            CancellationToken cancellationToken = default) =>
+            throw new NotSupportedException();
+
+        public ValueTask<long> RemoveByOwnerAsync(
+            string ownerId,
+            CancellationToken cancellationToken = default) =>
+            throw new NotSupportedException();
+
+        public ValueTask<ZLinkLocationPage<ZLinkActorLocation>> ListActorsAsync(
+            ZLinkActorLocationFilter filter,
+            ZLinkPageRequest page = default,
+            CancellationToken cancellationToken = default) =>
+            throw new NotSupportedException();
+    }
+
     private static async Task<ResolverFixture> FixtureAsync(
         Action<ZLinkLocationOptions>? configure = null)
     {

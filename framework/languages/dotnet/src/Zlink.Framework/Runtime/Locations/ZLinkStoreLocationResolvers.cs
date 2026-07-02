@@ -23,6 +23,10 @@ internal sealed class ZLinkStoreLocationResolvers :
     private readonly PositiveCache<ZLinkSpotLocationKey, ZLinkSpotLocation> _spotCache;
     private readonly PositiveCache<ZLinkActorLocationKey, ZLinkActorLocation> _actorCache;
     private readonly PositiveCache<ZLinkRouteLocationKey, ZLinkRouteLocation> _routeCache;
+    private readonly ObservedGenerations<ZLinkPeerLocationKey> _observedPeers = new();
+    private readonly ObservedGenerations<ZLinkSpotLocationKey> _observedSpots = new();
+    private readonly ObservedGenerations<ZLinkActorLocationKey> _observedActors = new();
+    private readonly ObservedGenerations<ZLinkRouteLocationKey> _observedRoutes = new();
 
     internal ZLinkStoreLocationResolvers(
         ZLinkLocationOptions options,
@@ -68,12 +72,27 @@ internal sealed class ZLinkStoreLocationResolvers :
         }
 
         var rows = await _peerStore.ListPeersAsync(filter, cancellationToken).ConfigureAwait(false);
-        if (useCache)
+
+        // Drop rows older than a generation this runtime already observed
+        // for the same key: a lagging store replica must never roll the
+        // view backwards (monotonic read guard).
+        var fresh = new List<ZLinkPeerLocation>(rows.Count);
+        foreach (var row in rows)
         {
-            _peerListCache.Set(filter, rows, _options.CacheMaxEntries);
+            var key = new ZLinkPeerLocationKey(
+                row.AutoConnectType, row.MeshName, row.Role, row.NodeRid, row.Endpoint);
+            if (_observedPeers.Accept(key, row.Generation))
+            {
+                fresh.Add(row);
+            }
         }
 
-        return await FilterLiveAsync(rows, cancellationToken).ConfigureAwait(false);
+        if (useCache)
+        {
+            _peerListCache.Set(filter, fresh, _options.CacheMaxEntries);
+        }
+
+        return await FilterLiveAsync(fresh, cancellationToken).ConfigureAwait(false);
     }
 
     public ValueTask<ZLinkSpotLocation?> ResolveSpotAsync(
@@ -85,9 +104,11 @@ internal sealed class ZLinkStoreLocationResolvers :
             freshness,
             _options.SpotCacheEnabled,
             _spotCache,
+            _observedSpots,
             static (store, key, ct) => store.ResolveSpotAsync(key, ct),
             _spotStore,
             static row => row.OwnerId,
+            static row => row.Generation,
             cancellationToken);
 
     public ValueTask<ZLinkActorLocation?> ResolveActorAsync(
@@ -105,9 +126,11 @@ internal sealed class ZLinkStoreLocationResolvers :
             freshness,
             _options.ActorCacheEnabled,
             _actorCache,
+            _observedActors,
             static (store, key, ct) => store.ResolveActorAsync(key, ct),
             _actorStore,
             static row => row.OwnerId,
+            static row => row.Generation,
             cancellationToken);
     }
 
@@ -120,9 +143,11 @@ internal sealed class ZLinkStoreLocationResolvers :
             freshness,
             _options.RouteCacheEnabled,
             _routeCache,
+            _observedRoutes,
             static (store, key, ct) => store.ResolveRouteAsync(key, ct),
             _routeStore,
             static row => row.OwnerId,
+            static row => row.Generation,
             cancellationToken);
 
     private async ValueTask<TRow?> ResolveAsync<TStore, TKey, TRow>(
@@ -130,9 +155,11 @@ internal sealed class ZLinkStoreLocationResolvers :
         ZLinkResolveFreshness freshness,
         bool cacheEnabled,
         PositiveCache<TKey, TRow> cache,
+        ObservedGenerations<TKey> observed,
         Func<TStore, TKey, CancellationToken, ValueTask<TRow?>> resolve,
         TStore store,
         Func<TRow, string> ownerOf,
+        Func<TRow, long> generationOf,
         CancellationToken cancellationToken)
         where TKey : notnull
         where TRow : class
@@ -155,6 +182,13 @@ internal sealed class ZLinkStoreLocationResolvers :
         {
             // Not-found is never cached: a create-if-absent decision right
             // after this call must be able to see a freshly claimed row.
+            return null;
+        }
+
+        if (!observed.Accept(key, generationOf(row)))
+        {
+            // A lagging store replica returned a generation this runtime
+            // already saw superseded; stale rows never count as success.
             return null;
         }
 
@@ -189,6 +223,40 @@ internal sealed class ZLinkStoreLocationResolvers :
         }
 
         return live;
+    }
+
+    /// <summary>
+    /// Highest generation this runtime has accepted per key. A read whose
+    /// generation is strictly older than the recorded one is a lagging
+    /// replica view and never counts as a success result. Bounded; evicting
+    /// an entry only weakens the guard for that key, never correctness of
+    /// fencing (the store still enforces owner/generation on writes).
+    /// </summary>
+    private sealed class ObservedGenerations<TKey>
+        where TKey : notnull
+    {
+        private const int MaxEntries = 8192;
+        private readonly object _gate = new();
+        private readonly Dictionary<TKey, long> _generations = [];
+
+        internal bool Accept(TKey key, long generation)
+        {
+            lock (_gate)
+            {
+                if (_generations.TryGetValue(key, out var observed) && generation < observed)
+                {
+                    return false;
+                }
+
+                if (!_generations.ContainsKey(key) && _generations.Count >= MaxEntries)
+                {
+                    _generations.Clear();
+                }
+
+                _generations[key] = generation;
+                return true;
+            }
+        }
     }
 
     private sealed class PositiveCache<TKey, TValue>

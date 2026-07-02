@@ -12,20 +12,36 @@ namespace Zlink.Framework.AspNetCore;
 internal sealed class ZLinkLocationHostedService : IHostedService
 {
     private readonly ZLinkLocationRuntime _runtime;
+    private readonly ZLinkLocationAutoConnectHost _autoConnect;
+    private readonly Zlink.Framework.Runtime.Host.ZLinkFrameworkRuntime _frameworkRuntime;
 
-    public ZLinkLocationHostedService(ZLinkLocationRuntime runtime)
+    public ZLinkLocationHostedService(
+        ZLinkLocationRuntime runtime,
+        ZLinkLocationAutoConnectHost autoConnect,
+        Zlink.Framework.Runtime.Host.ZLinkFrameworkRuntime frameworkRuntime)
     {
         _runtime = runtime;
+        _autoConnect = autoConnect;
+        _frameworkRuntime = frameworkRuntime;
     }
 
-    public Task StartAsync(CancellationToken cancellationToken)
+    public async Task StartAsync(CancellationToken cancellationToken)
     {
-        // The owner id doubles as the node routing id until the auto
-        // connect runtime supplies the configured node identity.
+        // The owner id doubles as the node routing id until a configured
+        // node identity is available from the channel runtimes.
         var nodeRid = RoutingId.From(_runtime.OwnerId);
-        return _runtime.StartAsync(nodeRid, cancellationToken).AsTask();
+        await _runtime.StartAsync(nodeRid, cancellationToken).ConfigureAwait(false);
+
+        var state = await _frameworkRuntime.EnsureStartedStateAsync(cancellationToken)
+            .ConfigureAwait(false);
+        await _autoConnect.StartAsync(state, cancellationToken).ConfigureAwait(false);
     }
 
-    public Task StopAsync(CancellationToken cancellationToken) =>
-        _runtime.StopAsync(cancellationToken).AsTask();
+    public async Task StopAsync(CancellationToken cancellationToken)
+    {
+        // Stop reconcile loops (which remove the local peer rows) before
+        // the runtime drops the owner lease and bulk-removes leftovers.
+        await _autoConnect.StopAsync(cancellationToken).ConfigureAwait(false);
+        await _runtime.StopAsync(cancellationToken).ConfigureAwait(false);
+    }
 }

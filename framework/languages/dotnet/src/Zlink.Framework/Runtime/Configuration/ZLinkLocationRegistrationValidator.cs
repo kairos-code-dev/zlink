@@ -2,8 +2,16 @@ namespace Zlink.Framework.Runtime.Configuration;
 
 internal static partial class ZLinkFrameworkRegistrationValidator
 {
-    private static void ValidateLocations(Locations.ZLinkLocationRegistration locations)
+    private static void ValidateLocations(ZLinkFrameworkRegistration registration)
     {
+        var locations = registration.Locations;
+        if (locations.Enabled && registration.Discovery is not null)
+        {
+            throw new ZLinkConfigurationException(
+                "Location stores and UseDiscovery cannot be combined: location-store auto connect "
+                + "replaces core discovery. Remove UseDiscovery or the location store registration.");
+        }
+
         if (locations.UseInMemoryStores && locations.HasAnyStoreType)
         {
             throw new ZLinkConfigurationException(

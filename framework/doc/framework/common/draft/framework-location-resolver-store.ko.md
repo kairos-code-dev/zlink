@@ -1504,31 +1504,31 @@ draft가 기준이며, 정식 spec 문서에는 아직 구현되지 않은 계�
 
 ### 24.1 공통 모델
 
-- [ ] `ZLinkPeerLocation` — 6.1의 필드 전부
-- [ ] `ZLinkSpotLocation` — 6.2의 필드 전부
-- [ ] `ZLinkActorLocation` — 6.3의 필드 전부, `SpotRid` 필수 조건 포함
-- [ ] `ZLinkRouteLocation` — 6.4의 필드 전부
-- [ ] key 모델 4종과 stable encoding 규칙 — 6.5
-- [ ] `AutoConnectType`/`Role` 닫힌 값 집합과 canonical 소문자 key 직렬화, unknown 값 처리 — 6.5
-- [ ] `ZLinkOwnerLease`, `ZLinkOwnerLeaseSnapshot`(`StoreNow` 포함) — 6.6, 7.5
-- [ ] `ZLinkLocationWriteResult` 4종, `ZLinkLocationWriteIntent` 3종, `ZLinkLocationOwnerToken` — 7.6
-- [ ] `ZLinkLocationWatchFilter`, `ZLinkLocationChanged` — 7.7
-- [ ] `ZLinkResolveFreshness`(`Normal`/`Refresh` 2종) — 8절
-- [ ] filter 모델 4종 — 8.1
-- [ ] `ZLinkPageRequest`, `ZLinkLocationPage<T>` — 8.1
-- [ ] status/topology/summary 모델 — 8.2
-- [ ] `ZLinkLocationChangeStampScope` — 14.5
+- [x] `ZLinkPeerLocation` — 6.1의 필드 전부
+- [x] `ZLinkSpotLocation` — 6.2의 필드 전부
+- [x] `ZLinkActorLocation` — 6.3의 필드 전부, `SpotRid` 필수 조건 포함
+- [x] `ZLinkRouteLocation` — 6.4의 필드 전부
+- [x] key 모델 4종과 stable encoding 규칙 — 6.5
+- [x] `AutoConnectType`/`Role` 닫힌 값 집합과 canonical 소문자 key 직렬화, unknown 값 처리 — 6.5
+- [x] `ZLinkOwnerLease`, `ZLinkOwnerLeaseSnapshot`(`StoreNow` 포함) — 6.6, 7.5
+- [x] `ZLinkLocationWriteResult` 4종, `ZLinkLocationWriteIntent` 3종, `ZLinkLocationOwnerToken` — 7.6
+- [x] `ZLinkLocationWatchFilter`, `ZLinkLocationChanged` — 7.7
+- [x] `ZLinkResolveFreshness`(`Normal`/`Refresh` 2종) — 8절
+- [x] filter 모델 4종 — 8.1
+- [x] `ZLinkPageRequest`, `ZLinkLocationPage<T>` — 8.1
+- [x] status/topology/summary 모델 — 8.2
+- [x] `ZLinkLocationChangeStampScope` — 14.5
 
 ### 24.2 store interface
 
-- [ ] `IZLinkPeerLocationStore` — update(intent), remove(owner guard), `RemoveByOwnerAsync`, list — 7.1
-- [ ] `IZLinkSpotLocationStore` — 위 항목 + 단건 resolve + paged list — 7.2
-- [ ] `IZLinkActorLocationStore` — 위 항목과 동일 구성 — 7.3
-- [ ] `IZLinkRouteLocationStore` — 위 항목과 동일 구성, route kind 3종 — 7.4
-- [ ] `IZLinkOwnerLeaseStore` — renew는 upsert, remove는 shutdown/운영 복구 전용, snapshot list — 7.5
-- [ ] `IZLinkLocationWatchStore` (optional) — 7.7
-- [ ] `IZLinkLocationChangeStampStore` (optional) — 14.5
-- [ ] read는 infrastructure error 예외, write는 `StoreUnavailable` 반환 — 7.6, 19절
+- [x] `IZLinkPeerLocationStore` — update(intent), remove(owner guard), `RemoveByOwnerAsync`, list — 7.1
+- [x] `IZLinkSpotLocationStore` — 위 항목 + 단건 resolve + paged list — 7.2
+- [x] `IZLinkActorLocationStore` — 위 항목과 동일 구성 — 7.3
+- [x] `IZLinkRouteLocationStore` — 위 항목과 동일 구성, route kind 3종 — 7.4
+- [x] `IZLinkOwnerLeaseStore` — renew는 upsert, remove는 shutdown/운영 복구 전용, snapshot list — 7.5
+- [x] `IZLinkLocationWatchStore` (optional) — 7.7
+- [x] `IZLinkLocationChangeStampStore` (optional) — 14.5
+- [x] read는 infrastructure error 예외, write는 `StoreUnavailable` 반환 — 7.6, 19절
 
 ### 24.3 runtime 정책
 

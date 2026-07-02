@@ -41,6 +41,7 @@
         <Compile Include="Configuration/Registration/RegistryAndMonitoring.cs"/>
         <Compile Include="Configuration/Registration/RegistryRemoteAddresses.cs"/>
         <Compile Include="Configuration/Registration/Support.cs"/>
+        <Compile Include="Contracts/LocationContractTests.cs"/>
         <Compile Include="Contracts/ScaffoldSmokeTests.cs"/>
         <Compile Include="Contracts/SpotContractTests.cs"/>
         <Compile Include="Documentation/Regression.cs"/>

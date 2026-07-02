@@ -29,24 +29,17 @@ internal sealed class DeliveryDispatchClientScenario(ILogger logger)
         await courierB.Connect.Async(cancellationToken);
 
         // Each courier binds its own stream session to the actor chosen by the server side directory.
-        _ = await BindCourierAsync(courierA, "courier-a", cancellationToken);
-        _ = await BindCourierAsync(courierB, "courier-b", cancellationToken);
+        var courierABinding = await courierA.Request(new BindCourierSessionReq("courier-a"))
+            .Async<BindCourierSessionRes>(cancellationToken);
+        Ensure(courierABinding.CourierId == "courier-a");
+        var courierBBinding = await courierB.Request(new BindCourierSessionReq("courier-b"))
+            .Async<BindCourierSessionRes>(cancellationToken);
+        Ensure(courierBBinding.CourierId == "courier-b");
 
         // Run both dispatch paths: direct acceptance first, then timeout-based reassignment.
         await RunSuccessfulDeliveryAsync(http, customer, courierA, cancellationToken);
         await RunReassignedDeliveryAsync(http, customer, courierA, courierB, cancellationToken);
         await AssertServerEvidenceAsync(http, cancellationToken);
-    }
-
-    private static async ValueTask<BindCourierSessionRes> BindCourierAsync(
-        IZlinkStreamConnector courier,
-        string courierId,
-        CancellationToken cancellationToken)
-    {
-        // The client only identifies the courier. The server attaches the current stream session
-        // to the courier actor and replies with the actor/session binding evidence.
-        return await courier.Request(new BindCourierSessionReq(courierId))
-            .Async<BindCourierSessionRes>(cancellationToken);
     }
 
     private static async ValueTask RunSuccessfulDeliveryAsync(

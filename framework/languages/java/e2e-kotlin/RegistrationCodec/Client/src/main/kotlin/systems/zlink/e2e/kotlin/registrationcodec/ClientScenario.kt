@@ -25,19 +25,26 @@ class ClientScenario(
         val server = ScenarioHttpClient(options.httpEndpoint, json)
         val codecRequester = ScenarioHttpClient(options.codecRequesterHttpEndpoint, json)
 
-        if (options.mode == ProcessSupport.CODEC_MISMATCH_MODE) {
-            CodecMismatchScenario(codecRequester, assert).run()
-            return
+        val scenarios = linkedMapOf<String, () -> Unit>(
+            "RC-A1" to { AutoRegistrationScenario(server, assert).run() },
+            "RC-A2" to { AttributeRegistrationScenario(server, assert).run() },
+            "RC-A3" to { ManualRegistrationScenario(server, assert).run() },
+            "RC-A4" to { RcA4DiLifecycleScenario(server, assert).run() },
+            "RC-A5" to { RcA5FilterOrderingScenario(server, assert).run() },
+            "RC-B1" to { RcB1JsonCodecScenario(server, assert).run() },
+            "RC-B2" to { RcB2ProtobufCodecScenario(server, assert).run() },
+            "RC-B3" to { RcB3MessagePackCodecScenario(server, assert).run() },
+            "RC-B4" to { RcB4CodecCoexistenceScenario(server, assert).run() },
+            "RC-B5" to { CodecMismatchScenario(codecRequester, assert).run() },
+        )
+        when (options.mode) {
+            "", "all" -> scenarios.filterKeys { it != "RC-B5" }.values.forEach { it() }
+            ProcessSupport.CODEC_MISMATCH_MODE -> CodecMismatchScenario(codecRequester, assert).run()
+            else -> {
+                val run = scenarios[options.mode]
+                    ?: throw IllegalArgumentException("Unknown RegistrationCodec scenario '${options.mode}'.")
+                run()
+            }
         }
-
-        AutoRegistrationScenario(server, assert).run()
-        AttributeRegistrationScenario(server, assert).run()
-        ManualRegistrationScenario(server, assert).run()
-        RcA4DiLifecycleScenario(server, assert).run()
-        RcA5FilterOrderingScenario(server, assert).run()
-        RcB1JsonCodecScenario(server, assert).run()
-        RcB2ProtobufCodecScenario(server, assert).run()
-        RcB3MessagePackCodecScenario(server, assert).run()
-        RcB4CodecCoexistenceScenario(server, assert).run()
     }
 }

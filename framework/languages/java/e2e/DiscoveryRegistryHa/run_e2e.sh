@@ -11,11 +11,16 @@ repo_root="$(cd ../../../../.. && pwd)"
 default_core_lib="${repo_root}/core/build/lib/libzlink.so"
 mkdir -p "${log_dir}"
 echo "log_dir=${log_dir}"
+SCENARIO="${1:-all}"
 if [[ -z "${ZLINK_LIBRARY_PATH:-}" && -f "${default_core_lib}" ]]; then
   export ZLINK_LIBRARY_PATH="${default_core_lib}"
 fi
 export ZLINK_JAVA_E2E_BUILD_DIR="${ZLINK_JAVA_E2E_BUILD_DIR:-${HOME}/.cache/zlink/java-e2e/DiscoveryRegistryHa}"
 export ZLINK_JAVA_E2E_GRADLE_CACHE="${ZLINK_JAVA_E2E_GRADLE_CACHE:-${HOME}/.cache/zlink/java-e2e/DiscoveryRegistryHa-gradle-cache}"
+LOCAL_READINESS_TIMEOUT_SECONDS=3
+LOCAL_READINESS_POLL_SECONDS=0.1
+LOCAL_READINESS_ATTEMPTS=30
+SCENARIO_SETTLE_SECONDS=3
 
 print_logs() {
   local status="$1"
@@ -95,11 +100,11 @@ wait_port() {
   local endpoint="$2"
   local port
   port="$(port_of "${endpoint}")"
-  for _ in $(seq 1 600); do
+  for _ in $(seq 1 "${LOCAL_READINESS_ATTEMPTS}"); do
     if (echo >"/dev/tcp/127.0.0.1/${port}") >/dev/null 2>&1; then
       return 0
     fi
-    sleep 0.1
+    sleep "${LOCAL_READINESS_POLL_SECONDS}"
   done
   echo "Timed out waiting for ${name} at ${endpoint}" >&2
   return 1
@@ -297,8 +302,14 @@ stop_pid() {
   fi
 }
 
+should_run() {
+  local target="$1"
+  [[ "${SCENARIO}" == "all" || "${SCENARIO}" == "${target}" ]]
+}
+
 gradle_run installDist
 
+if should_run DR-A1 || should_run DR-D2; then
 read -r R1P R1R R1H A B <<<"$(reserve_ports 5)"
 REG1_PUB="$(tcp "${R1P}")"; REG1_ROUTER="$(tcp "${R1R}")"; REG1_HTTP="$(http "${R1H}")"
 API_A="$(tcp "${A}")"; API_B="$(tcp "${B}")"
@@ -306,10 +317,12 @@ start_registry dr-a1-reg1 1 "${REG1_PUB}" "${REG1_ROUTER}" "${REG1_HTTP}"
 start_provider api-a "${API_A}" "${REG1_ROUTER}"
 start_provider api-b "${API_B}" "${REG1_ROUTER}"
 sleep 2
-run_client DR-A1 "${REG1_ROUTER}" "${REG1_HTTP}" "api-a,api-b"
-run_client DR-D2 "${REG1_ROUTER}" "${REG1_HTTP}" "api-a,api-b"
+should_run DR-A1 && run_client DR-A1 "${REG1_ROUTER}" "${REG1_HTTP}" "api-a,api-b"
+should_run DR-D2 && run_client DR-D2 "${REG1_ROUTER}" "${REG1_HTTP}" "api-a,api-b"
 stop_all
+fi
 
+if should_run DR-D1; then
 read -r R1P R1R R1H A <<<"$(reserve_ports 4)"
 REG1_PUB="$(tcp "${R1P}")"; REG1_ROUTER="$(tcp "${R1R}")"; REG1_HTTP="$(http "${R1H}")"
 API_A="$(tcp "${A}")"
@@ -317,7 +330,9 @@ start_embedded dr-d1-embedded 1 "${REG1_PUB}" "${REG1_ROUTER}" "${REG1_HTTP}" ap
 sleep 2
 run_client DR-D1 "${REG1_ROUTER}" "${REG1_HTTP}" "api-a"
 stop_all
+fi
 
+if should_run DR-A2; then
 read -r R1P R1R R1H R2P R2R R2H A <<<"$(reserve_ports 7)"
 REG1_PUB="$(tcp "${R1P}")"; REG1_ROUTER="$(tcp "${R1R}")"; REG1_HTTP="$(http "${R1H}")"
 REG2_PUB="$(tcp "${R2P}")"; REG2_ROUTER="$(tcp "${R2R}")"; REG2_HTTP="$(http "${R2H}")"
@@ -325,10 +340,12 @@ API_A="$(tcp "${A}")"
 start_registry dr-a2-reg1 1 "${REG1_PUB}" "${REG1_ROUTER}" "${REG1_HTTP}" "${REG2_PUB}"
 start_registry dr-a2-reg2 2 "${REG2_PUB}" "${REG2_ROUTER}" "${REG2_HTTP}" "${REG1_PUB}"
 start_provider api-a "${API_A}" "${REG1_ROUTER}"
-sleep 3
+sleep "${SCENARIO_SETTLE_SECONDS}"
 run_client DR-A2 "${REG2_ROUTER}" "${REG2_HTTP}" "api-a"
 stop_all
+fi
 
+if should_run DR-A3 || should_run DR-D4 || should_run DR-A4; then
 read -r R1P R1R R1H R2P R2R R2H R3P R3R R3H A B <<<"$(reserve_ports 11)"
 REG1_PUB="$(tcp "${R1P}")"; REG1_ROUTER="$(tcp "${R1R}")"; REG1_HTTP="$(http "${R1H}")"
 REG2_PUB="$(tcp "${R2P}")"; REG2_ROUTER="$(tcp "${R2R}")"; REG2_HTTP="$(http "${R2H}")"
@@ -340,20 +357,30 @@ start_registry dr-a3-reg3 3 "${REG3_PUB}" "${REG3_ROUTER}" "${REG3_HTTP}" "${REG
 start_provider api-a "${API_A}" "${REG1_ROUTER}"
 start_provider api-b "${API_B}" "${REG3_ROUTER}"
 sleep 4
-run_client DR-A3 "${REG1_ROUTER}" "${REG1_HTTP},${REG2_HTTP},${REG3_HTTP}" "api-a,api-b"
-run_client DR-A3 "${REG2_ROUTER}" "${REG1_HTTP},${REG2_HTTP},${REG3_HTTP}" "api-a,api-b"
-run_client DR-A3 "${REG3_ROUTER}" "${REG1_HTTP},${REG2_HTTP},${REG3_HTTP}" "api-a,api-b"
+if should_run DR-A3; then
+  run_client DR-A3 "${REG1_ROUTER}" "${REG1_HTTP},${REG2_HTTP},${REG3_HTTP}" "api-a,api-b"
+  if [[ "${SCENARIO}" == "all" ]]; then
+    run_client DR-A3 "${REG2_ROUTER}" "${REG1_HTTP},${REG2_HTTP},${REG3_HTTP}" "api-a,api-b"
+    run_client DR-A3 "${REG3_ROUTER}" "${REG1_HTTP},${REG2_HTTP},${REG3_HTTP}" "api-a,api-b"
+  fi
+fi
+if should_run DR-D4; then
 read -r PROBE <<<"$(reserve_ports 1)"
 PROBE_HTTP="$(http "${PROBE}")"
 start_probe dr-d4-probe "${PROBE_HTTP}" "${REG2_ROUTER}"
 run_client DR-D4 "${REG2_ROUTER}" "${REG2_HTTP}" "api-a,api-b" "" "${REG2_ROUTER}" "${REG2_HTTP}" "api-a,api-b" "${PROBE_HTTP}"
+fi
+if should_run DR-A4; then
 read -r A_DUP <<<"$(reserve_ports 1)"
 API_A_DUP="$(tcp "${A_DUP}")"
 start_provider api-a "${API_A_DUP}" "${REG2_ROUTER}" api-a-duplicate
 sleep 2
 run_client DR-A4 "${REG2_ROUTER}" "${REG2_HTTP}" "api-a"
+fi
 stop_all
+fi
 
+if should_run DR-D3; then
 read -r R1P R1R R1H R2P R2R R2H A B <<<"$(reserve_ports 8)"
 REG1_PUB="$(tcp "${R1P}")"; REG1_ROUTER="$(tcp "${R1R}")"; REG1_HTTP="$(http "${R1H}")"
 REG2_PUB="$(tcp "${R2P}")"; REG2_ROUTER="$(tcp "${R2R}")"; REG2_HTTP="$(http "${R2H}")"
@@ -364,7 +391,9 @@ start_provider api-b "${API_B}" "${REG2_ROUTER}"
 sleep 4
 run_client DR-D3 "${REG1_ROUTER},${REG2_ROUTER}" "${REG1_HTTP},${REG2_HTTP}" "api-a,api-b"
 stop_all
+fi
 
+if should_run DR-B1; then
 read -r R1P R1R R1H R2P R2R R2H A <<<"$(reserve_ports 7)"
 REG1_PUB="$(tcp "${R1P}")"; REG1_ROUTER="$(tcp "${R1R}")"; REG1_HTTP="$(http "${R1H}")"
 REG2_PUB="$(tcp "${R2P}")"; REG2_ROUTER="$(tcp "${R2R}")"; REG2_HTTP="$(http "${R2H}")"
@@ -376,7 +405,9 @@ start_registry dr-b1-reg2 2 "${REG2_PUB}" "${REG2_ROUTER}" "${REG2_HTTP}" "${REG
 sleep 4
 run_client DR-B1 "${REG2_ROUTER}" "${REG2_HTTP}" "api-a"
 stop_all
+fi
 
+if should_run DR-B2; then
 read -r R1P R1R R1H R2P R2R R2H A <<<"$(reserve_ports 7)"
 REG1_PUB="$(tcp "${R1P}")"; REG1_ROUTER="$(tcp "${R1R}")"; REG1_HTTP="$(http "${R1H}")"
 REG2_PUB="$(tcp "${R2P}")"; REG2_ROUTER="$(tcp "${R2R}")"; REG2_HTTP="$(http "${R2H}")"
@@ -385,7 +416,7 @@ start_registry dr-b2-reg1 1 "${REG1_PUB}" "${REG1_ROUTER}" "${REG1_HTTP}" "${REG
 start_registry dr-b2-reg2 2 "${REG2_PUB}" "${REG2_ROUTER}" "${REG2_HTTP}" "${REG1_PUB}"
 REG2_PID="${LAST_PID}"
 start_provider api-a "${API_A}" "${REG1_ROUTER},${REG2_ROUTER}"
-sleep 3
+sleep "${SCENARIO_SETTLE_SECONDS}"
 read -r C <<<"$(reserve_ports 1)"
 CONSUMER_HTTP="$(http "${C}")"
 start_consumer "consumer-DR-B2" "${CONSUMER_HTTP}" "${REG1_ROUTER}"
@@ -394,7 +425,9 @@ sleep 1
 echo "scenario DR-B2 gap=java-discovery-dead-registry-timeout" \
   | tee "${log_dir}/client-DR-B2.stdout.log"
 stop_all
+fi
 
+if should_run DR-B3; then
 read -r R1P R1R R1H R2P R2R R2H A <<<"$(reserve_ports 7)"
 REG1_PUB="$(tcp "${R1P}")"; REG1_ROUTER="$(tcp "${R1R}")"; REG1_HTTP="$(http "${R1H}")"
 REG2_PUB="$(tcp "${R2P}")"; REG2_ROUTER="$(tcp "${R2R}")"; REG2_HTTP="$(http "${R2H}")"
@@ -414,7 +447,9 @@ done
 echo "scenario DR-B3 gap=java-discovery-peer-flap-member-timeout" \
   | tee "${log_dir}/client-DR-B3.stdout.log"
 stop_all
+fi
 
+if should_run DR-C1 || should_run DR-C2; then
 read -r R1P R1R R1H R2P R2R R2H A B <<<"$(reserve_ports 8)"
 REG1_PUB="$(tcp "${R1P}")"; REG1_ROUTER="$(tcp "${R1R}")"; REG1_HTTP="$(http "${R1H}")"
 REG2_PUB="$(tcp "${R2P}")"; REG2_ROUTER="$(tcp "${R2R}")"; REG2_HTTP="$(http "${R2H}")"
@@ -424,18 +459,22 @@ start_registry dr-c1-reg2 2 "${REG2_PUB}" "${REG2_ROUTER}" "${REG2_HTTP}" "${REG
 REG2_PID="${LAST_PID}"
 start_provider api-a "${API_A}" "${REG1_ROUTER},${REG2_ROUTER}"
 start_provider api-b "${API_B}" "${REG1_ROUTER},${REG2_ROUTER}"
-sleep 3
+sleep "${SCENARIO_SETTLE_SECONDS}"
 kill -9 "${REG2_PID}" >/dev/null 2>&1 || true
 wait "${REG2_PID}" >/dev/null 2>&1 || true
 sleep 1
 echo "scenario DR-C1 gap=java-discovery-survivor-member-timeout" \
   | tee "${log_dir}/client-DR-C1.stdout.log"
+if should_run DR-C2; then
 start_registry dr-c2-reg2-recovered 2 "${REG2_PUB}" "${REG2_ROUTER}" "${REG2_HTTP}" "${REG1_PUB}"
 sleep 4
 echo "scenario DR-C2 gap=java-discovery-recovered-registry-member-timeout" \
   | tee "${log_dir}/client-DR-C2.stdout.log"
+fi
 stop_all
+fi
 
+if should_run DR-C3; then
 read -r R1P R1R R1H R2P R2R R2H A B <<<"$(reserve_ports 8)"
 REG1_PUB="$(tcp "${R1P}")"; REG1_ROUTER="$(tcp "${R1R}")"; REG1_HTTP="$(http "${R1H}")"
 REG2_PUB="$(tcp "${R2P}")"; REG2_ROUTER="$(tcp "${R2R}")"; REG2_HTTP="$(http "${R2H}")"
@@ -448,7 +487,7 @@ start_provider api-a "${API_A}" "${REG1_ROUTER},${REG2_ROUTER}"
 API_A_PID="${LAST_PID}"
 start_provider api-b "${API_B}" "${REG1_ROUTER},${REG2_ROUTER}"
 API_B_PID="${LAST_PID}"
-sleep 3
+sleep "${SCENARIO_SETTLE_SECONDS}"
 read -r C3C <<<"$(reserve_ports 1)"
 C3_CONSUMER_HTTP="$(http "${C3C}")"
 start_consumer "consumer-DR-C3-survivor" "${C3_CONSUMER_HTTP}" "${REG1_ROUTER}"
@@ -469,20 +508,25 @@ start_provider api-b "${API_B}" "${REG1_ROUTER},${REG2_ROUTER}" api-b-recovered
 sleep 6
 run_client DR-C3 "${REG1_ROUTER},${REG2_ROUTER}" "${REG1_HTTP},${REG2_HTTP}" "api-a,api-b"
 stop_all
+fi
 
-grep -q "scenario DR-A1 passed" "${log_dir}/client-DR-A1.stdout.log"
-grep -q "scenario DR-A2 passed" "${log_dir}/client-DR-A2.stdout.log"
-grep -q "scenario DR-A3 passed" "${log_dir}/client-DR-A3.stdout.log"
-grep -q "scenario DR-A4 passed" "${log_dir}/client-DR-A4.stdout.log"
-grep -q "scenario DR-B1 passed" "${log_dir}/client-DR-B1.stdout.log"
-grep -q "scenario DR-B2 gap=java-discovery-dead-registry-timeout" "${log_dir}/client-DR-B2.stdout.log"
-grep -q "scenario DR-B3 gap=java-discovery-peer-flap-member-timeout" "${log_dir}/client-DR-B3.stdout.log"
-grep -q "scenario DR-C1 gap=java-discovery-survivor-member-timeout" "${log_dir}/client-DR-C1.stdout.log"
-grep -q "scenario DR-C2 gap=java-discovery-recovered-registry-member-timeout" "${log_dir}/client-DR-C2.stdout.log"
-grep -q "scenario DR-C3 passed" "${log_dir}/client-DR-C3.stdout.log"
-grep -q "scenario DR-D1 passed" "${log_dir}/client-DR-D1.stdout.log"
-grep -q "scenario DR-D2 passed" "${log_dir}/client-DR-D2.stdout.log"
-grep -q "scenario DR-D3 passed" "${log_dir}/client-DR-D3.stdout.log"
-grep -q "scenario DR-D4 passed" "${log_dir}/client-DR-D4.stdout.log"
+if [[ "${SCENARIO}" == "all" ]]; then
+  grep -q "scenario DR-A1 passed" "${log_dir}/client-DR-A1.stdout.log"
+  grep -q "scenario DR-A2 passed" "${log_dir}/client-DR-A2.stdout.log"
+  grep -q "scenario DR-A3 passed" "${log_dir}/client-DR-A3.stdout.log"
+  grep -q "scenario DR-A4 passed" "${log_dir}/client-DR-A4.stdout.log"
+  grep -q "scenario DR-B1 passed" "${log_dir}/client-DR-B1.stdout.log"
+  grep -q "scenario DR-B2 gap=java-discovery-dead-registry-timeout" "${log_dir}/client-DR-B2.stdout.log"
+  grep -q "scenario DR-B3 gap=java-discovery-peer-flap-member-timeout" "${log_dir}/client-DR-B3.stdout.log"
+  grep -q "scenario DR-C1 gap=java-discovery-survivor-member-timeout" "${log_dir}/client-DR-C1.stdout.log"
+  grep -q "scenario DR-C2 gap=java-discovery-recovered-registry-member-timeout" "${log_dir}/client-DR-C2.stdout.log"
+  grep -q "scenario DR-C3 passed" "${log_dir}/client-DR-C3.stdout.log"
+  grep -q "scenario DR-D1 passed" "${log_dir}/client-DR-D1.stdout.log"
+  grep -q "scenario DR-D2 passed" "${log_dir}/client-DR-D2.stdout.log"
+  grep -q "scenario DR-D3 passed" "${log_dir}/client-DR-D3.stdout.log"
+  grep -q "scenario DR-D4 passed" "${log_dir}/client-DR-D4.stdout.log"
+else
+  grep -Rq "scenario ${SCENARIO} " "${log_dir}"/client-*.stdout.log
+fi
 grep -Rq "message flow" "${log_dir}"/*-flow.log
 echo "discovery-registry-ha e2e result=passed"

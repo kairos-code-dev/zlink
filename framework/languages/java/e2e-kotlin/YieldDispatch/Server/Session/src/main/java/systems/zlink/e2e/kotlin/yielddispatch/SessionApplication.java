@@ -46,6 +46,7 @@ public final class SessionApplication {
                 .bind(Env.get("ZLINK_KOTLIN_E2E_STREAM_ENDPOINT"))
                 .registerSession(ProbeSession.class)
                 .addSessionPacketHandler(ActorAuthReqHandler.class)
+                .addSessionPacketHandler(BindActorsReqHandler.class)
                 .addSessionPacketHandler(EnsureSpotReqHandler.class)
                 .addSessionPacketHandler(RemoteSpotYieldReqRouteHandler.class)
                 .addSessionPacketHandler(HoldMsgRouteHandler.class)

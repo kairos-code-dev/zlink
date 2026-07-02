@@ -8,8 +8,10 @@ RUN_ID="$(date +%Y%m%d-%H%M%S)-$$"
 LOG_DIR="${ROOT_DIR}/logs/${RUN_ID}"
 SCENARIO="${1:-all}"
 ROUTE_SETTLE_SECONDS=5
-HTTP_READY_ATTEMPTS=12
-HTTP_READY_INTERVAL=0.25
+LOCAL_READINESS_TIMEOUT_SECONDS=3
+LOCAL_READINESS_POLL_SECONDS=0.1
+LOCAL_READINESS_ATTEMPTS=30
+HTTP_PROBE_TIMEOUT_SECONDS=3
 mkdir -p "${LOG_DIR}"
 echo "log_dir=${LOG_DIR}"
 
@@ -69,11 +71,11 @@ PY
 wait_health() {
   local url="$1"
   local name="$2"
-  for _ in $(seq 1 "${HTTP_READY_ATTEMPTS}"); do
-    if curl -fsS "${url}/health" >/dev/null 2>&1; then
+  for _ in $(seq 1 "${LOCAL_READINESS_ATTEMPTS}"); do
+    if curl --max-time "${HTTP_PROBE_TIMEOUT_SECONDS}" -fsS "${url}/health" >/dev/null 2>&1; then
       return 0
     fi
-    sleep "${HTTP_READY_INTERVAL}"
+    sleep "${LOCAL_READINESS_POLL_SECONDS}"
   done
   echo "Timed out waiting for ${name} at ${url}" >&2
   return 1

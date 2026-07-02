@@ -15,4 +15,5 @@ class ClientOptions(
     val registryRouter: String = Env.get("ZLINK_KOTLIN_E2E_REGISTRY_ROUTER"),
     val logDir: String = Env.get("ZLINK_KOTLIN_E2E_LOG_DIR"),
     val filteredServiceBin: String = Env.get("ZLINK_KOTLIN_E2E_FILTERED_SERVICE_BIN"),
+    val scenario: String = Env.get("ZLINK_KOTLIN_E2E_SCENARIO", "all"),
 )

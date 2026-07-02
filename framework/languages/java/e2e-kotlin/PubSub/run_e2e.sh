@@ -8,6 +8,7 @@ pids=()
 role_pattern='systems\.zlink\.e2e\.kotlin\.pubsub\.(client|publisher|registry|subscriber)\.ProgramKt'
 run_id="$(date +%Y%m%d-%H%M%S)-$$"
 log_dir="${ROOT_DIR}/logs/${run_id}"
+SCENARIO="${1:-all}"
 repo_root="$(cd ../../../../.. && pwd)"
 default_core_lib="${repo_root}/core/build/lib/libzlink.so"
 mkdir -p "${log_dir}"
@@ -17,10 +18,10 @@ if [[ -z "${ZLINK_LIBRARY_PATH:-}" && -f "${default_core_lib}" ]]; then
 fi
 export ZLINK_KOTLIN_E2E_BUILD_DIR="${ZLINK_KOTLIN_E2E_BUILD_DIR:-${HOME}/.cache/zlink/kotlin-e2e/PubSub}"
 export ZLINK_KOTLIN_E2E_GRADLE_CACHE="${ZLINK_KOTLIN_E2E_GRADLE_CACHE:-${HOME}/.cache/zlink/kotlin-e2e/PubSub-gradle-cache}"
-PROCESS_READY_ATTEMPTS=30
-PROCESS_READY_INTERVAL=0.1
-HTTP_READY_ATTEMPTS=12
-HTTP_READY_INTERVAL=0.25
+LOCAL_READINESS_TIMEOUT_SECONDS=3
+LOCAL_READINESS_POLL_SECONDS=0.1
+LOCAL_READINESS_ATTEMPTS=30
+HTTP_PROBE_TIMEOUT_SECONDS=3
 SCENARIO_MARKER_ATTEMPTS=30
 SCENARIO_MARKER_INTERVAL=0.1
 ROUTE_SETTLE_SECONDS=5
@@ -75,11 +76,11 @@ wait_port() {
   local endpoint="$2"
   local port
   port="$(port_of "${endpoint}")"
-  for _ in $(seq 1 "${PROCESS_READY_ATTEMPTS}"); do
+  for _ in $(seq 1 "${LOCAL_READINESS_ATTEMPTS}"); do
     if (echo >"/dev/tcp/127.0.0.1/${port}") >/dev/null 2>&1; then
       return 0
     fi
-    sleep "${PROCESS_READY_INTERVAL}"
+    sleep "${LOCAL_READINESS_POLL_SECONDS}"
   done
   echo "Timed out waiting for ${name} at ${endpoint}" >&2
   return 1
@@ -88,11 +89,11 @@ wait_port() {
 wait_health() {
   local url="$1"
   local name="$2"
-  for _ in $(seq 1 "${HTTP_READY_ATTEMPTS}"); do
-    if curl -fsS "${url}/health" >/dev/null 2>&1; then
+  for _ in $(seq 1 "${LOCAL_READINESS_ATTEMPTS}"); do
+    if curl --max-time "${HTTP_PROBE_TIMEOUT_SECONDS}" -fsS "${url}/health" >/dev/null 2>&1; then
       return 0
     fi
-    sleep "${HTTP_READY_INTERVAL}"
+    sleep "${LOCAL_READINESS_POLL_SECONDS}"
   done
   echo "Timed out waiting for ${name} at ${url}" >&2
   return 1
@@ -216,6 +217,87 @@ LATE_CONTINUE="${log_dir}/late-continue"
 start_registry
 start_publisher publisher
 PUBLISHER_PID="${LAST_PID}"
+
+case "${SCENARIO}" in
+  PS-A1|PS-A2|PS-C1)
+    start_subscriber sub-1 alpha "${SUB1_HTTP}"
+    start_subscriber sub-2 beta "${SUB2_HTTP}"
+    start_subscriber sub-3 gamma "${SUB3_HTTP}"
+    sleep "${ROUTE_SETTLE_SECONDS}"
+    run_client_mode "${SCENARIO}" "${SCENARIO}"
+    grep -q "scenario ${SCENARIO} passed" "${log_dir}/client-${SCENARIO}.stdout.log"
+    grep -Rq "message flow" "${log_dir}"/*-flow.log
+    exit 0
+    ;;
+  PS-A3)
+    "${CLIENT_BIN}" \
+      --mode "${SCENARIO}" \
+      --publisher-http "${PUBLISHER_HTTP}" \
+      --sub1-http "${SUB1_HTTP}" \
+      --sub2-http "${SUB2_HTTP}" \
+      --sub3-http "${SUB3_HTTP}" \
+      --reconnect-http "${RECONNECT_HTTP}" \
+      --publisher-bin "${PUBLISHER_BIN}" \
+      --subscriber-bin "${SUBSCRIBER_BIN}" \
+      --registry-router-endpoint "${REGISTRY_ROUTER}" \
+      --publisher-endpoint "${PUBLISHER_ENDPOINT}" \
+      --log-dir "${log_dir}" \
+      --publisher-ready-file "${PUBLISHER_READY}" \
+      --prelate-continue-file "${PRELATE_CONTINUE}" \
+      --late-ready-file "${LATE_READY}" \
+      --late-continue-file "${LATE_CONTINUE}" \
+      >"${log_dir}/client-PS-A3.stdout.log" 2>"${log_dir}/client-PS-A3.stderr.log" &
+    CLIENT_PID="$!"
+    pids+=("${CLIENT_PID}")
+    wait_marker "${PUBLISHER_READY}"
+    start_subscriber sub-1 alpha "${SUB1_HTTP}"
+    start_subscriber sub-2 beta "${SUB2_HTTP}"
+    sleep "${ROUTE_SETTLE_SECONDS}"
+    touch "${PRELATE_CONTINUE}"
+    wait_marker "${LATE_READY}"
+    start_subscriber sub-3 gamma "${SUB3_HTTP}"
+    sleep "${ROUTE_SETTLE_SECONDS}"
+    touch "${LATE_CONTINUE}"
+    wait "${CLIENT_PID}"
+    cat "${log_dir}/client-PS-A3.stdout.log"
+    grep -q "scenario PS-A3 passed" "${log_dir}/client-PS-A3.stdout.log"
+    grep -Rq "message flow" "${log_dir}"/*-flow.log
+    exit 0
+    ;;
+  PS-A4)
+    start_subscriber sub-1 alpha "${SUB1_HTTP}"
+    start_subscriber sub-2 beta "${SUB2_HTTP}"
+    run_client_mode "${SCENARIO}" "${SCENARIO}"
+    grep -q "scenario ${SCENARIO} passed" "${log_dir}/client-${SCENARIO}.stdout.log"
+    grep -Rq "message flow" "${log_dir}"/*-flow.log
+    exit 0
+    ;;
+  PS-B1)
+    start_subscriber sub-1 alpha "${SUB1_HTTP}" 750
+    start_subscriber sub-2 beta "${SUB2_HTTP}"
+    start_subscriber sub-3 gamma "${SUB3_HTTP}"
+    sleep "${ROUTE_SETTLE_SECONDS}"
+    run_client_mode "${SCENARIO}" "${SCENARIO}"
+    grep -q "scenario ${SCENARIO} passed" "${log_dir}/client-${SCENARIO}.stdout.log"
+    grep -Rq "message flow" "${log_dir}"/*-flow.log
+    exit 0
+    ;;
+  PS-B2)
+    start_subscriber sub-1 alpha "${SUB1_HTTP}"
+    start_subscriber sub-2 beta "${SUB2_HTTP}"
+    start_subscriber sub-3 gamma "${SUB3_HTTP}"
+    run_client_mode "${SCENARIO}" "${SCENARIO}"
+    grep -q "scenario ${SCENARIO} passed" "${log_dir}/client-${SCENARIO}.stdout.log"
+    grep -Rq "message flow" "${log_dir}"/*-flow.log
+    exit 0
+    ;;
+  all)
+    ;;
+  *)
+    echo "Unknown PubSub scenario: ${SCENARIO}" >&2
+    exit 1
+    ;;
+esac
 
 "${CLIENT_BIN}" \
   --mode default \

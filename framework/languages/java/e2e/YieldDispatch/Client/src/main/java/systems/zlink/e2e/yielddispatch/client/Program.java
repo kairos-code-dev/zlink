@@ -46,6 +46,37 @@ public final class Program {
                 return;
             }
 
+            String scenario = args.length > 0 ? args[0] : "all";
+            runScenario(connector, scenario);
+            System.out.println("yield-dispatch e2e result=passed");
+        } finally {
+            connector.close().await();
+        }
+    }
+
+    private static void runScenario(ZLinkStreamConnector connector, String scenario) throws Exception {
+        switch (scenario) {
+            case "all" -> runAll(connector);
+            case "YD-A1" -> YdA1BasicTerminatorScenario.run(connector);
+            case "YD-A2" -> YdA2YieldTerminatorScenario.run(connector);
+            case "YD-A3" -> YdA3ContinuationContextScenario.run(connector);
+            case "YD-A4" -> YdA4WorkerYieldScenario.run(connector);
+            case "YD-B1" -> YdB1OtherActorProgressScenario.run(connector);
+            case "YD-B2" -> YdB2SameActorReentryScenario.run(connector);
+            case "YD-B3" -> YdB3ActorJoinYieldScenario.run(connector);
+            case "YD-C1" -> YdC1TimerIsolationScenario.run(connector);
+            case "YD-C2" -> YdC2TimerReentryScenario.run(connector);
+            case "YD-C3" -> YdC3ActorTimerIsolationScenario.run(connector);
+            case "YD-D2" -> YdD2RemoteSpotYieldScenario.run(connector);
+            case "YD-D3" -> YdD3RouteBridgeYieldScenario.run(connector);
+            case "YD-D4" -> YdD4SessionRelayActorYieldScenario.run(connector);
+            case "YD-E1" -> YdE1TimeoutScenario.run(connector);
+            case "YD-E2" -> YdE2CancellationScenario.run(connector);
+            default -> throw new IllegalArgumentException("unknown YieldDispatch scenario: " + scenario);
+        }
+    }
+
+    private static void runAll(ZLinkStreamConnector connector) throws Exception {
             YdA1BasicTerminatorScenario.run(connector);
             YdA2YieldTerminatorScenario.run(connector);
             YdA3ContinuationContextScenario.run(connector);
@@ -61,9 +92,5 @@ public final class Program {
             YdD4SessionRelayActorYieldScenario.run(connector);
             YdE1TimeoutScenario.run(connector);
             YdE2CancellationScenario.run(connector);
-            System.out.println("yield-dispatch e2e result=passed");
-        } finally {
-            connector.close().await();
-        }
     }
 }

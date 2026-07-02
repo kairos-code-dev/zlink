@@ -11,13 +11,15 @@ repo_root="$(cd ../../../../.. && pwd)"
 default_core_lib="${repo_root}/core/build/lib/libzlink.so"
 mkdir -p "${log_dir}"
 echo "log_dir=${log_dir}"
+SCENARIO="${1:-all}"
 if [[ -z "${ZLINK_LIBRARY_PATH:-}" && -f "${default_core_lib}" ]]; then
   export ZLINK_LIBRARY_PATH="${default_core_lib}"
 fi
 export ZLINK_KOTLIN_E2E_BUILD_DIR="${ZLINK_KOTLIN_E2E_BUILD_DIR:-${HOME}/.cache/zlink/kotlin-e2e/YieldDispatch}"
 export ZLINK_KOTLIN_E2E_GRADLE_CACHE="${ZLINK_KOTLIN_E2E_GRADLE_CACHE:-${HOME}/.cache/zlink/kotlin-e2e/YieldDispatch-gradle-cache}"
-JVM_ROLE_READY_ATTEMPTS=100
-PROCESS_READY_INTERVAL=0.1
+LOCAL_READINESS_TIMEOUT_SECONDS=3
+LOCAL_READINESS_POLL_SECONDS=0.1
+LOCAL_READINESS_ATTEMPTS=30
 ROUTE_SETTLE_SECONDS=5
 
 print_logs() {
@@ -87,13 +89,13 @@ wait_port() {
   local endpoint="$2"
   local port
   port="$(port_of "${endpoint}")"
-  for _ in $(seq 1 "${JVM_ROLE_READY_ATTEMPTS}"); do
+  for _ in $(seq 1 "${LOCAL_READINESS_ATTEMPTS}"); do
     if (echo >"/dev/tcp/127.0.0.1/${port}") >/dev/null 2>&1; then
       return 0
     fi
-    sleep "${PROCESS_READY_INTERVAL}"
+    sleep "${LOCAL_READINESS_POLL_SECONDS}"
   done
-  echo "Timed out waiting for ${name} at ${endpoint}" >&2
+  echo "Timed out after ${LOCAL_READINESS_TIMEOUT_SECONDS}s waiting for ${name} at ${endpoint}" >&2
   return 1
 }
 
@@ -217,13 +219,13 @@ start_session() {
 
 run_client() {
   ZLINK_KOTLIN_E2E_STREAM_ENDPOINT="${STREAM}" \
-    timeout -k 5s 45s "$(client_bin)" >"${log_dir}/client.stdout.log" 2>"${log_dir}/client.stderr.log"
+    timeout -k 5s 45s "$(client_bin)" "${SCENARIO}" >"${log_dir}/client.stdout.log" 2>"${log_dir}/client.stderr.log"
 }
 
 run_d2_client() {
   ZLINK_KOTLIN_E2E_CLIENT_MODE=d2 \
   ZLINK_KOTLIN_E2E_STREAM_ENDPOINT="${STREAM}" \
-    timeout -k 5s 45s "$(client_bin)" >"${log_dir}/client-d2.stdout.log" 2>"${log_dir}/client-d2.stderr.log"
+    timeout -k 5s 45s "$(client_bin)" "${SCENARIO}" >"${log_dir}/client-d2.stdout.log" 2>"${log_dir}/client-d2.stderr.log"
 }
 
 read -r REGISTRY_PUB REGISTRY_ROUTER DELAY SPOT SESSION_SPOT PLAY_ROUTE SESSION_ROUTE STREAM SPOT_B PLAY_B_ROUTE <<<"$(reserve_ports)"
@@ -252,25 +254,47 @@ start_delay
 start_play play-a "${SPOT}" "${PLAY_ROUTE}" play
 start_session
 sleep "${ROUTE_SETTLE_SECONDS}"
-run_client
-start_play play-b "${SPOT_B}" "${PLAY_B_ROUTE}" play-b
-sleep "${ROUTE_SETTLE_SECONDS}"
-run_d2_client
+case "${SCENARIO}" in
+  all)
+    run_client
+    start_play play-b "${SPOT_B}" "${PLAY_B_ROUTE}" play-b
+    sleep "${ROUTE_SETTLE_SECONDS}"
+    run_d2_client
+    ;;
+  YD-D2|YD-D3|d2)
+    start_play play-b "${SPOT_B}" "${PLAY_B_ROUTE}" play-b
+    sleep "${ROUTE_SETTLE_SECONDS}"
+    run_d2_client
+    ;;
+  *)
+    run_client
+    ;;
+esac
 
-cat "${log_dir}/client.stdout.log"
-cat "${log_dir}/client-d2.stdout.log"
-grep -q "scenario YD-A1 passed" "${log_dir}/client.stdout.log"
-grep -q "scenario YD-A2 passed" "${log_dir}/client.stdout.log"
-grep -q "scenario YD-A3 passed" "${log_dir}/client.stdout.log"
-grep -q "scenario YD-A4 passed" "${log_dir}/client.stdout.log"
-grep -q "scenario YD-B1 passed" "${log_dir}/client.stdout.log"
-grep -q "scenario YD-C1 passed" "${log_dir}/client.stdout.log"
-grep -q "scenario YD-C2 passed" "${log_dir}/client.stdout.log"
-grep -q "scenario YD-D1 passed" "${log_dir}/client.stdout.log"
-grep -q "scenario YD-E1 passed" "${log_dir}/client.stdout.log"
-grep -q "scenario YD-E2 passed" "${log_dir}/client.stdout.log"
-grep -q "yield-dispatch kotlin e2e result=passed" "${log_dir}/client.stdout.log"
-grep -q "scenario YD-D2 passed" "${log_dir}/client-d2.stdout.log"
-grep -q "scenario YD-D3 passed" "${log_dir}/client-d2.stdout.log"
-grep -q "yield-dispatch kotlin e2e result=passed" "${log_dir}/client-d2.stdout.log"
+[[ ! -f "${log_dir}/client.stdout.log" ]] || cat "${log_dir}/client.stdout.log"
+[[ ! -f "${log_dir}/client-d2.stdout.log" ]] || cat "${log_dir}/client-d2.stdout.log"
+if [[ "${SCENARIO}" == "all" ]]; then
+  grep -q "scenario YD-A1 passed" "${log_dir}/client.stdout.log"
+  grep -q "scenario YD-A2 passed" "${log_dir}/client.stdout.log"
+  grep -q "scenario YD-A3 passed" "${log_dir}/client.stdout.log"
+  grep -q "scenario YD-A4 passed" "${log_dir}/client.stdout.log"
+  grep -q "scenario YD-B1 passed" "${log_dir}/client.stdout.log"
+  grep -q "scenario YD-B2 passed" "${log_dir}/client.stdout.log"
+  grep -q "scenario YD-B3 passed" "${log_dir}/client.stdout.log"
+  grep -q "scenario YD-C1 passed" "${log_dir}/client.stdout.log"
+  grep -q "scenario YD-C2 passed" "${log_dir}/client.stdout.log"
+  grep -q "scenario YD-D1 passed" "${log_dir}/client.stdout.log"
+  grep -q "scenario YD-E1 passed" "${log_dir}/client.stdout.log"
+  grep -q "scenario YD-E2 passed" "${log_dir}/client.stdout.log"
+  grep -q "yield-dispatch kotlin e2e result=passed" "${log_dir}/client.stdout.log"
+  grep -q "scenario YD-D2 passed" "${log_dir}/client-d2.stdout.log"
+  grep -q "scenario YD-D3 passed" "${log_dir}/client-d2.stdout.log"
+  grep -q "yield-dispatch kotlin e2e result=passed" "${log_dir}/client-d2.stdout.log"
+elif [[ "${SCENARIO}" == "YD-D2" || "${SCENARIO}" == "YD-D3" ]]; then
+  grep -q "scenario ${SCENARIO} passed" "${log_dir}/client-d2.stdout.log"
+  grep -q "yield-dispatch kotlin e2e result=passed" "${log_dir}/client-d2.stdout.log"
+else
+  grep -q "scenario ${SCENARIO} passed" "${log_dir}/client.stdout.log"
+  grep -q "yield-dispatch kotlin e2e result=passed" "${log_dir}/client.stdout.log"
+fi
 echo "yield-dispatch kotlin e2e result=passed"

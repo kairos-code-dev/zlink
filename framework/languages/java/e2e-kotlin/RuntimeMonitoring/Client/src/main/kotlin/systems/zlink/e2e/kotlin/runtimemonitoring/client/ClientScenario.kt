@@ -27,6 +27,10 @@ class ClientScenario(
     private val monD1 = MonD1FailureRecoveryScenario(options, evidence)
 
     fun run() {
+        if (options.scenario != "all") {
+            runOne(options.scenario)
+            return
+        }
         monA1.run()
         monA2.run()
         monA3.run()
@@ -36,5 +40,20 @@ class ClientScenario(
         monB2.run()
         monC1.run()
         monD1.run()
+    }
+
+    private fun runOne(scenario: String) {
+        when (scenario) {
+            "MON-A1" -> monA1.run()
+            "MON-A2" -> monA2.run()
+            "MON-A3" -> monA3.run()
+            "MON-A4" -> monA4.runDrainSubset()
+            "MON-A5" -> monA5.run()
+            "MON-B1" -> monB1.run()
+            "MON-B2" -> monB2.run()
+            "MON-C1" -> monC1.run()
+            "MON-D1" -> monD1.run()
+            else -> throw IllegalArgumentException("Unknown RuntimeMonitoring scenario '$scenario'.")
+        }
     }
 }

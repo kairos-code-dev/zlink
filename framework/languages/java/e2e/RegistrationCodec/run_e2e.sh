@@ -7,6 +7,7 @@ pids=()
 role_pattern='systems\.zlink\.e2e\.registrationcodec\.(client|main|invalidduplicate|jsononlypeer|codecrequester)\.Program'
 run_id="$(date +%Y%m%d-%H%M%S)-$$"
 log_dir="$(pwd)/logs/${run_id}"
+SCENARIO="${1:-all}"
 repo_root="$(cd ../../../../.. && pwd)"
 default_core_lib="${repo_root}/core/build/lib/libzlink.so"
 mkdir -p "${log_dir}"
@@ -16,6 +17,9 @@ if [[ -z "${ZLINK_LIBRARY_PATH:-}" && -f "${default_core_lib}" ]]; then
 fi
 export ZLINK_JAVA_E2E_BUILD_DIR="${ZLINK_JAVA_E2E_BUILD_DIR:-${HOME}/.cache/zlink/java-e2e/RegistrationCodec}"
 export ZLINK_JAVA_E2E_GRADLE_CACHE="${ZLINK_JAVA_E2E_GRADLE_CACHE:-${HOME}/.cache/zlink/java-e2e/RegistrationCodec-gradle-cache}"
+LOCAL_READINESS_TIMEOUT_SECONDS=3
+LOCAL_READINESS_POLL_SECONDS=0.1
+LOCAL_READINESS_ATTEMPTS=30
 
 print_logs() {
   local status="$1"
@@ -95,11 +99,11 @@ wait_port() {
   local endpoint="$2"
   local port
   port="$(port_of "${endpoint}")"
-  for _ in $(seq 1 600); do
+  for _ in $(seq 1 "${LOCAL_READINESS_ATTEMPTS}"); do
     if (echo >"/dev/tcp/127.0.0.1/${port}") >/dev/null 2>&1; then
       return 0
     fi
-    sleep 0.1
+    sleep "${LOCAL_READINESS_POLL_SECONDS}"
   done
   echo "Timed out waiting for ${name} at ${endpoint}" >&2
   return 1
@@ -108,13 +112,13 @@ wait_port() {
 wait_health() {
   local name="$1"
   local endpoint="$2"
-  for _ in $(seq 1 600); do
+  for _ in $(seq 1 "${LOCAL_READINESS_ATTEMPTS}"); do
     if python3 - "${endpoint}/health" <<'PY'
 import sys
 import urllib.request
 
 try:
-    with urllib.request.urlopen(sys.argv[1], timeout=0.2) as response:
+    with urllib.request.urlopen(sys.argv[1], timeout=0.1) as response:
         sys.exit(0 if 200 <= response.status < 300 else 1)
 except Exception:
     sys.exit(1)
@@ -122,7 +126,7 @@ PY
     then
       return 0
     fi
-    sleep 0.1
+    sleep "${LOCAL_READINESS_POLL_SECONDS}"
   done
   echo "Timed out waiting for ${name} health at ${endpoint}" >&2
   return 1
@@ -160,55 +164,87 @@ MISMATCH_ENDPOINT="$(tcp "${MISMATCH_PORT}")"
 MISMATCH_HTTP_ENDPOINT="$(http "${MISMATCH_HTTP_PORT}")"
 REQUESTER_HTTP_ENDPOINT="$(http "${REQUESTER_HTTP_PORT}")"
 
+run_main_scenarios=false
+run_mismatch_scenario=false
+case "${SCENARIO}" in
+  all)
+    run_main_scenarios=true
+    run_mismatch_scenario=true
+    ;;
+  RC-A6)
+    ;;
+  RC-B5)
+    run_mismatch_scenario=true
+    ;;
+  RC-A1|RC-A2|RC-A3|RC-A4|RC-A5|RC-B1|RC-B2|RC-B3|RC-B4)
+    run_main_scenarios=true
+    ;;
+  *)
+    echo "Unknown RegistrationCodec scenario: ${SCENARIO}" >&2
+    exit 1
+    ;;
+esac
+
 rm -rf "${ZLINK_JAVA_E2E_BUILD_DIR}"
 gradle_run installDist
 
-ZLINK_JAVA_E2E_SERVER_ENDPOINT="${SERVER_ENDPOINT}" \
-ZLINK_JAVA_E2E_HTTP_ENDPOINT="${HTTP_ENDPOINT}" \
-ZLINK_JAVA_E2E_LOG_DIR="${log_dir}" \
-  "$(main_bin)" >"${log_dir}/server.stdout.log" 2>"${log_dir}/server.stderr.log" &
-pids+=("$!")
-wait_port server "${SERVER_ENDPOINT}"
-wait_health server "${HTTP_ENDPOINT}"
-sleep 1
+if [[ "${run_main_scenarios}" == "true" ]]; then
+  ZLINK_JAVA_E2E_SERVER_ENDPOINT="${SERVER_ENDPOINT}" \
+  ZLINK_JAVA_E2E_HTTP_ENDPOINT="${HTTP_ENDPOINT}" \
+  ZLINK_JAVA_E2E_LOG_DIR="${log_dir}" \
+    "$(main_bin)" >"${log_dir}/server.stdout.log" 2>"${log_dir}/server.stderr.log" &
+  pids+=("$!")
+  wait_port server "${SERVER_ENDPOINT}"
+  wait_health server "${HTTP_ENDPOINT}"
+  sleep 1
+fi
 
-ZLINK_JAVA_E2E_SERVER_ENDPOINT="${MISMATCH_ENDPOINT}" \
-ZLINK_JAVA_E2E_HTTP_ENDPOINT="${MISMATCH_HTTP_ENDPOINT}" \
-ZLINK_JAVA_E2E_LOG_DIR="${log_dir}" \
-  "$(json_only_bin)" >"${log_dir}/mismatch-server.stdout.log" 2>"${log_dir}/mismatch-server.stderr.log" &
-pids+=("$!")
-wait_port mismatch-server "${MISMATCH_ENDPOINT}"
-wait_health mismatch-server "${MISMATCH_HTTP_ENDPOINT}"
-sleep 1
+if [[ "${run_mismatch_scenario}" == "true" ]]; then
+  ZLINK_JAVA_E2E_SERVER_ENDPOINT="${MISMATCH_ENDPOINT}" \
+  ZLINK_JAVA_E2E_HTTP_ENDPOINT="${MISMATCH_HTTP_ENDPOINT}" \
+  ZLINK_JAVA_E2E_LOG_DIR="${log_dir}" \
+    "$(json_only_bin)" >"${log_dir}/mismatch-server.stdout.log" 2>"${log_dir}/mismatch-server.stderr.log" &
+  pids+=("$!")
+  wait_port mismatch-server "${MISMATCH_ENDPOINT}"
+  wait_health mismatch-server "${MISMATCH_HTTP_ENDPOINT}"
+  sleep 1
 
-ZLINK_JAVA_E2E_SERVER_ENDPOINT="${MISMATCH_ENDPOINT}" \
-ZLINK_JAVA_E2E_HTTP_ENDPOINT="${REQUESTER_HTTP_ENDPOINT}" \
-ZLINK_JAVA_E2E_LOG_DIR="${log_dir}" \
-  "$(requester_bin)" >"${log_dir}/codec-requester.stdout.log" 2>"${log_dir}/codec-requester.stderr.log" &
-pids+=("$!")
-wait_health codec-requester "${REQUESTER_HTTP_ENDPOINT}"
-sleep 1
+  ZLINK_JAVA_E2E_SERVER_ENDPOINT="${MISMATCH_ENDPOINT}" \
+  ZLINK_JAVA_E2E_HTTP_ENDPOINT="${REQUESTER_HTTP_ENDPOINT}" \
+  ZLINK_JAVA_E2E_LOG_DIR="${log_dir}" \
+    "$(requester_bin)" >"${log_dir}/codec-requester.stdout.log" 2>"${log_dir}/codec-requester.stderr.log" &
+  pids+=("$!")
+  wait_health codec-requester "${REQUESTER_HTTP_ENDPOINT}"
+  sleep 1
+fi
 
 ZLINK_JAVA_E2E_SERVER_ENDPOINT="${SERVER_ENDPOINT}" \
 ZLINK_JAVA_E2E_HTTP_ENDPOINT="${HTTP_ENDPOINT}" \
 ZLINK_JAVA_E2E_CODEC_REQUESTER_HTTP_ENDPOINT="${REQUESTER_HTTP_ENDPOINT}" \
 ZLINK_JAVA_E2E_INVALID_SERVER_ENDPOINT="${INVALID_ENDPOINT}" \
+ZLINK_JAVA_E2E_SCENARIO="${SCENARIO}" \
 ZLINK_JAVA_E2E_BUILD_DIR="${ZLINK_JAVA_E2E_BUILD_DIR}" \
 ZLINK_JAVA_E2E_LOG_DIR="${log_dir}" \
   "$(client_bin)" >"${log_dir}/client.stdout.log" 2>"${log_dir}/client.stderr.log"
 
 cat "${log_dir}/client.stdout.log"
-python3 - "${HTTP_ENDPOINT}/evidence" >"${log_dir}/server-evidence.json" <<'PY'
+if [[ "${run_main_scenarios}" == "true" ]]; then
+  python3 - "${HTTP_ENDPOINT}/evidence" >"${log_dir}/server-evidence.json" <<'PY'
 import sys
 import urllib.request
 with urllib.request.urlopen(sys.argv[1], timeout=5) as response:
     sys.stdout.write(response.read().decode("utf-8"))
 PY
 
-grep -Rq "message flow" "${log_dir}"/*-flow.log
-grep -q "EchoAuto" "${log_dir}/server-evidence.json"
-grep -q "ProtobufEcho" "${log_dir}/server-evidence.json"
-grep -q "MsgpackEcho" "${log_dir}/server-evidence.json"
-grep -q "scenario RC-A4 passed" "${log_dir}/client.stdout.log"
-grep -q "scenario RC-A6 passed" "${log_dir}/client.stdout.log"
-grep -q "scenario RC-B5 passed" "${log_dir}/client.stdout.log"
+  grep -Rq "message flow" "${log_dir}"/*-flow.log
+fi
+if [[ "${SCENARIO}" == "all" ]]; then
+  grep -q "EchoAuto" "${log_dir}/server-evidence.json"
+  grep -q "ProtobufEcho" "${log_dir}/server-evidence.json"
+  grep -q "MsgpackEcho" "${log_dir}/server-evidence.json"
+  grep -q "scenario RC-A4 passed" "${log_dir}/client.stdout.log"
+  grep -q "scenario RC-A6 passed" "${log_dir}/client.stdout.log"
+  grep -q "scenario RC-B5 passed" "${log_dir}/client.stdout.log"
+else
+  grep -q "scenario ${SCENARIO} passed" "${log_dir}/client.stdout.log"
+fi

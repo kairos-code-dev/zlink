@@ -11,11 +11,15 @@ repo_root="$(cd ../../../../.. && pwd)"
 default_core_lib="${repo_root}/core/build/lib/libzlink.so"
 mkdir -p "${log_dir}"
 echo "log_dir=${log_dir}"
+SCENARIO="${1:-all}"
 if [[ -z "${ZLINK_LIBRARY_PATH:-}" && -f "${default_core_lib}" ]]; then
   export ZLINK_LIBRARY_PATH="${default_core_lib}"
 fi
 export ZLINK_JAVA_E2E_BUILD_DIR="${ZLINK_JAVA_E2E_BUILD_DIR:-${HOME}/.cache/zlink/java-e2e/ResilienceLifecycle}"
 export ZLINK_JAVA_E2E_GRADLE_CACHE="${ZLINK_JAVA_E2E_GRADLE_CACHE:-${HOME}/.cache/zlink/java-e2e/ResilienceLifecycle-gradle-cache}"
+LOCAL_READINESS_TIMEOUT_SECONDS=3
+LOCAL_READINESS_POLL_SECONDS=0.1
+LOCAL_READINESS_ATTEMPTS=30
 
 print_logs() {
   local status="$1"
@@ -85,11 +89,11 @@ wait_port() {
   local endpoint="$2"
   local port
   port="$(port_of "${endpoint}")"
-  for _ in $(seq 1 600); do
+  for _ in $(seq 1 "${LOCAL_READINESS_ATTEMPTS}"); do
     if (echo >"/dev/tcp/127.0.0.1/${port}") >/dev/null 2>&1; then
       return 0
     fi
-    sleep 0.1
+    sleep "${LOCAL_READINESS_POLL_SECONDS}"
   done
   echo "Timed out waiting for ${name} at ${endpoint}" >&2
   return 1
@@ -123,6 +127,7 @@ gradle_run installDist
 start_registry
 
 ZLINK_JAVA_E2E_CLIENT_MODE="suite" \
+ZLINK_JAVA_E2E_SCENARIO="${SCENARIO}" \
 ZLINK_JAVA_E2E_REGISTRY_ROUTER="${REGISTRY_ROUTER}" \
 ZLINK_JAVA_E2E_API_A_ENDPOINT="${API_A}" \
 ZLINK_JAVA_E2E_API_B_ENDPOINT="${API_B}" \
@@ -136,19 +141,23 @@ ZLINK_JAVA_E2E_LOG_DIR="${log_dir}" \
 
 cat "${log_dir}/client.stdout.log"
 cat "${log_dir}"/consumer-*.stdout.log
-grep -q "scenario RL-A1 passed" "${log_dir}/consumer-restart.stdout.log"
-grep -q "scenario RL-A2 passed" "${log_dir}/consumer-reschedule.stdout.log"
-grep -q "scenario RL-A3 passed" "${log_dir}"/consumer-storm-*.stdout.log
-grep -q "scenario RL-A5 passed" "${log_dir}/consumer-flapping.stdout.log"
-grep -q "scenario RL-B1 passed" "${log_dir}/consumer-default.stdout.log"
-grep -q "scenario RL-B3 passed" "${log_dir}/consumer-default.stdout.log"
-grep -q "scenario RL-B4 passed" "${log_dir}/consumer-default.stdout.log"
-grep -q "scenario RL-B5 passed" "${log_dir}/consumer-default.stdout.log"
-grep -q "scenario RL-B6 passed" "${log_dir}/consumer-default.stdout.log"
-grep -q "scenario RL-C1 passed" "${log_dir}/consumer-cleanup.stdout.log"
-grep -q "scenario RL-C3 passed" "${log_dir}/consumer-restart.stdout.log"
-grep -q "scenario RL-D1 passed" "${log_dir}"/consumer-storm-*.stdout.log
-grep -q "scenario RL-D3 passed" "${log_dir}/consumer-default.stdout.log"
-grep -q "scenario RL-D5 passed" "${log_dir}/consumer-cleanup.stdout.log"
+if [[ "${SCENARIO}" == "all" ]]; then
+  grep -q "scenario RL-A1 passed" "${log_dir}/consumer-restart.stdout.log"
+  grep -q "scenario RL-A2 passed" "${log_dir}/consumer-reschedule.stdout.log"
+  grep -q "scenario RL-A3 passed" "${log_dir}"/consumer-storm-*.stdout.log
+  grep -q "scenario RL-A5 passed" "${log_dir}/consumer-flapping.stdout.log"
+  grep -q "scenario RL-B1 passed" "${log_dir}/consumer-default.stdout.log"
+  grep -q "scenario RL-B3 passed" "${log_dir}/consumer-default.stdout.log"
+  grep -q "scenario RL-B4 passed" "${log_dir}/consumer-default.stdout.log"
+  grep -q "scenario RL-B5 passed" "${log_dir}/consumer-default.stdout.log"
+  grep -q "scenario RL-B6 passed" "${log_dir}/consumer-default.stdout.log"
+  grep -q "scenario RL-C1 passed" "${log_dir}/consumer-cleanup.stdout.log"
+  grep -q "scenario RL-C3 passed" "${log_dir}/consumer-restart.stdout.log"
+  grep -q "scenario RL-D1 passed" "${log_dir}"/consumer-storm-*.stdout.log
+  grep -q "scenario RL-D3 passed" "${log_dir}/consumer-default.stdout.log"
+  grep -q "scenario RL-D5 passed" "${log_dir}/consumer-cleanup.stdout.log"
+else
+  grep -Rq "scenario ${SCENARIO} passed" "${log_dir}"/consumer-*.stdout.log
+fi
 grep -q "resilience-lifecycle e2e result=passed" "${log_dir}/client.stdout.log"
 grep -Rq "message flow" "${log_dir}"/*-flow.log

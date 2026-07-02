@@ -7,6 +7,7 @@ pids=()
 role_pattern='systems\.zlink\.e2e\.runtimemonitoring\.(client|registry|service|filteredservice|throwingservice|trigger)\.Program'
 run_id="$(date +%Y%m%d-%H%M%S)-$$"
 log_dir="$(pwd)/logs/${run_id}"
+SCENARIO="${1:-all}"
 repo_root="$(cd ../../../../.. && pwd)"
 default_core_lib="${repo_root}/core/build/lib/libzlink.so"
 mkdir -p "${log_dir}"
@@ -16,6 +17,9 @@ if [[ -z "${ZLINK_LIBRARY_PATH:-}" && -f "${default_core_lib}" ]]; then
 fi
 export ZLINK_JAVA_E2E_BUILD_DIR="${ZLINK_JAVA_E2E_BUILD_DIR:-${HOME}/.cache/zlink/java-e2e/RuntimeMonitoring}"
 export ZLINK_JAVA_E2E_GRADLE_CACHE="${ZLINK_JAVA_E2E_GRADLE_CACHE:-${HOME}/.cache/zlink/java-e2e/RuntimeMonitoring-gradle-cache}"
+LOCAL_READINESS_TIMEOUT_SECONDS=3
+LOCAL_READINESS_POLL_SECONDS=0.1
+LOCAL_READINESS_ATTEMPTS=30
 
 print_logs() {
   local status="$1"
@@ -92,11 +96,11 @@ wait_port() {
   local endpoint="$2"
   local port
   port="$(port_of "${endpoint}")"
-  for _ in $(seq 1 600); do
+  for _ in $(seq 1 "${LOCAL_READINESS_ATTEMPTS}"); do
     if (echo >"/dev/tcp/127.0.0.1/${port}") >/dev/null 2>&1; then
       return 0
     fi
-    sleep 0.1
+    sleep "${LOCAL_READINESS_POLL_SECONDS}"
   done
   echo "Timed out waiting for ${name} at ${endpoint}" >&2
   return 1
@@ -205,15 +209,20 @@ wait_port trigger-http "${TRIGGER_HTTP}"
 sleep 2
 
 ZLINK_JAVA_E2E_TRIGGER_HTTP="${TRIGGER_HTTP}" \
+ZLINK_JAVA_E2E_SCENARIO="${SCENARIO}" \
 ZLINK_JAVA_E2E_LOG_DIR="${log_dir}" \
   "$(client_bin)" >"${log_dir}/client.stdout.log" 2>"${log_dir}/client.stderr.log"
 
 cat "${log_dir}/client.stdout.log"
-grep -q "scenario MON-A1 passed" "${log_dir}/client.stdout.log"
-grep -q "scenario MON-A2 passed" "${log_dir}/client.stdout.log"
-grep -q "scenario MON-A3 passed" "${log_dir}/client.stdout.log"
-grep -q "scenario MON-A5 passed" "${log_dir}/client.stdout.log"
-grep -q "scenario MON-B1 passed" "${log_dir}/client.stdout.log"
-grep -q "scenario MON-B2 passed" "${log_dir}/client.stdout.log"
-grep -q "scenario MON-C1 passed" "${log_dir}/client.stdout.log"
+if [[ "${SCENARIO}" == "all" ]]; then
+  grep -q "scenario MON-A1 passed" "${log_dir}/client.stdout.log"
+  grep -q "scenario MON-A2 passed" "${log_dir}/client.stdout.log"
+  grep -q "scenario MON-A3 passed" "${log_dir}/client.stdout.log"
+  grep -q "scenario MON-A5 passed" "${log_dir}/client.stdout.log"
+  grep -q "scenario MON-B1 passed" "${log_dir}/client.stdout.log"
+  grep -q "scenario MON-B2 passed" "${log_dir}/client.stdout.log"
+  grep -q "scenario MON-C1 passed" "${log_dir}/client.stdout.log"
+else
+  grep -q "scenario ${SCENARIO} passed" "${log_dir}/client.stdout.log"
+fi
 grep -Rq "message flow" "${log_dir}"/*-flow.log

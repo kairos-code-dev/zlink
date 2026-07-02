@@ -51,14 +51,21 @@ public final class ClientStreamSupport {
         String spotRid,
         String value,
         long millis) {
-        Contracts.ActorAuthRes auth = await(
-            connector.request(new Contracts.ActorAuthReq(actorId)),
-            Contracts.ActorAuthRes.class);
-        ScenarioAssert.that(actorId.equals(auth.actorId()), "actor auth mismatch");
         return await(
             connector.request(new Contracts.ActorJoinReq(spotRid, value, millis))
                 .metadata("actor-id", actorId),
             Contracts.ActorJoinRes.class);
+    }
+
+    public static Contracts.BindActorsRes bindActors(
+        ZLinkStreamConnector connector,
+        String spotRid,
+        String actorA,
+        String actorB) {
+        return await(
+            connector.request(new Contracts.BindActorsReq(spotRid, actorA, actorB))
+                .timeout(REQUEST_TIMEOUT),
+            Contracts.BindActorsRes.class);
     }
 
     public static Contracts.ProbeRes request(

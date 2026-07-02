@@ -16,6 +16,14 @@ class ClientScenario(
             "storm" -> context.runReconnectStormScenario()
             "cleanup" -> context.runClientHostLifecycleAndMixedBurstScenario()
             else -> {
+                runDefaultScenarios()
+            }
+        }
+    }
+
+    private fun runDefaultScenarios() {
+        when (context.options.scenario) {
+            "all" -> {
                 context.runClientTimeoutCleanupScenario()
                 context.runRuntimeDrainScenario()
                 context.runDrainInflightScenario()
@@ -23,6 +31,13 @@ class ClientScenario(
                 context.runGrayFaultScenario()
                 context.runGracefulShutdownScenario()
             }
+            "RL-B1" -> context.runClientTimeoutCleanupScenario()
+            "RL-B4" -> context.runRuntimeDrainScenario()
+            "RL-B5" -> context.runDrainInflightScenario()
+            "RL-D3" -> context.runDispatchErrorEvidenceScenario()
+            "RL-B6" -> context.runGrayFaultScenario()
+            "RL-B3" -> context.runGracefulShutdownScenario()
+            else -> throw IllegalArgumentException("unknown ResilienceLifecycle scenario ${context.options.scenario}")
         }
     }
 }

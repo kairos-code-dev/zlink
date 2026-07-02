@@ -35,18 +35,33 @@ public final class ResilienceLifecycleSuite {
     }
 
     public void run() {
+        run("all");
+    }
+
+    public void run(String scenario) {
         processes.prepareControlDir();
         providerA = processes.startProvider("api-a", "api-a", options.apiAEndpoint(), options.httpAEndpoint());
         providerB = processes.startProvider("api-b", "api-b", options.apiBEndpoint(), options.httpBEndpoint());
         processes.sleep(2_000);
 
-        runRestart();
-        runReschedule();
-        runFlapping();
-        runDefault();
-        restartProviderB();
-        runStorm();
-        runCleanup();
+        switch (scenario) {
+            case "all" -> {
+                runRestart();
+                runReschedule();
+                runFlapping();
+                runDefault("all");
+                restartProviderB();
+                runStorm();
+                runCleanup("all");
+            }
+            case "RL-A1", "RL-C3" -> runRestart();
+            case "RL-A2" -> runReschedule();
+            case "RL-A3", "RL-D1" -> runStorm();
+            case "RL-A5" -> runFlapping();
+            case "RL-B1", "RL-B3", "RL-B4", "RL-B5", "RL-B6", "RL-D3" -> runDefault(scenario);
+            case "RL-C1", "RL-D5" -> runCleanup(scenario);
+            default -> throw new IllegalArgumentException("unknown ResilienceLifecycle scenario: " + scenario);
+        }
     }
 
     private void runRestart() {
@@ -110,20 +125,34 @@ public final class ResilienceLifecycleSuite {
         }
     }
 
-    private void runDefault() {
+    private void runDefault(String scenario) {
         String consumerHttp = processes.reserveHttpEndpoint();
         try (var consumerProcess = processes.startConsumer(
             "consumer-default", consumerHttp, currentHttpA, 0, options.logDir())) {
             ConsumerScenarioClient consumer = new ConsumerScenarioClient(consumerHttp);
-            RlB1CancellationCleanupScenario.run(consumer);
-            RlB4RuntimeDrainScenario.run(consumer);
-            RlB5DrainInflightScenario.run(consumer);
-            RlD3DispatchErrorEvidenceScenario.run(consumer);
-            RlB6GrayFaultScenario.run(consumer);
-            RlB3GracefulShutdownScenario.run(consumer);
+            if ("all".equals(scenario) || "RL-B1".equals(scenario)) {
+                RlB1CancellationCleanupScenario.run(consumer);
+            }
+            if ("all".equals(scenario) || "RL-B4".equals(scenario)) {
+                RlB4RuntimeDrainScenario.run(consumer);
+            }
+            if ("all".equals(scenario) || "RL-B5".equals(scenario)) {
+                RlB5DrainInflightScenario.run(consumer);
+            }
+            if ("all".equals(scenario) || "RL-D3".equals(scenario)) {
+                RlD3DispatchErrorEvidenceScenario.run(consumer);
+            }
+            if ("all".equals(scenario) || "RL-B6".equals(scenario)) {
+                RlB6GrayFaultScenario.run(consumer);
+            }
+            if ("all".equals(scenario) || "RL-B3".equals(scenario)) {
+                RlB3GracefulShutdownScenario.run(consumer);
+            }
         }
-        providerB.close();
-        processes.waitEndpointDown("api-b", options.httpBEndpoint());
+        if ("all".equals(scenario)) {
+            providerB.close();
+            processes.waitEndpointDown("api-b", options.httpBEndpoint());
+        }
     }
 
     private void restartProviderB() {
@@ -155,13 +184,17 @@ public final class ResilienceLifecycleSuite {
         }
     }
 
-    private void runCleanup() {
+    private void runCleanup(String scenario) {
         String consumerHttp = processes.reserveHttpEndpoint();
         try (var consumerProcess = processes.startConsumer(
             "consumer-cleanup", consumerHttp, currentHttpA, 0, options.logDir())) {
             ConsumerScenarioClient consumer = new ConsumerScenarioClient(consumerHttp);
-            RlC1ClientHostLifecycleScenario.run(consumer);
-            RlD5MixedBurstScenario.run(consumer);
+            if ("all".equals(scenario) || "RL-C1".equals(scenario)) {
+                RlC1ClientHostLifecycleScenario.run(consumer);
+            }
+            if ("all".equals(scenario) || "RL-D5".equals(scenario)) {
+                RlD5MixedBurstScenario.run(consumer);
+            }
         }
     }
 

@@ -11,12 +11,15 @@ repo_root="$(cd ../../../../.. && pwd)"
 default_core_lib="${repo_root}/core/build/lib/libzlink.so"
 mkdir -p "${log_dir}"
 echo "log_dir=${log_dir}"
+SCENARIO="${1:-all}"
 if [[ -z "${ZLINK_LIBRARY_PATH:-}" && -f "${default_core_lib}" ]]; then
   export ZLINK_LIBRARY_PATH="${default_core_lib}"
 fi
 export ZLINK_KOTLIN_E2E_BUILD_DIR="${ZLINK_KOTLIN_E2E_BUILD_DIR:-${HOME}/.cache/zlink/kotlin-e2e/ResilienceLifecycle}"
 export ZLINK_KOTLIN_E2E_GRADLE_CACHE="${ZLINK_KOTLIN_E2E_GRADLE_CACHE:-${HOME}/.cache/zlink/kotlin-e2e/ResilienceLifecycle-gradle-cache}"
-JVM_ROLE_READY_ATTEMPTS=100
+LOCAL_READINESS_TIMEOUT_SECONDS=3
+LOCAL_READINESS_POLL_SECONDS=0.1
+LOCAL_READINESS_ATTEMPTS=30
 PROCESS_STOP_ATTEMPTS=200
 SCENARIO_SIGNAL_ATTEMPTS=300
 POLL_INTERVAL=0.1
@@ -91,7 +94,7 @@ wait_port() {
   local endpoint="$2"
   local port
   port="$(port_of "${endpoint}")"
-  for _ in $(seq 1 "${JVM_ROLE_READY_ATTEMPTS}"); do
+  for _ in $(seq 1 "${LOCAL_READINESS_ATTEMPTS}"); do
     if (echo >"/dev/tcp/127.0.0.1/${port}") >/dev/null 2>&1; then
       return 0
     fi
@@ -126,6 +129,11 @@ wait_file() {
   done
   echo "Timed out waiting for ${file}" >&2
   return 1
+}
+
+should_run() {
+  local target="$1"
+  [[ "${SCENARIO}" == "all" || "${SCENARIO}" == "${target}" ]]
 }
 
 stop_pid() {
@@ -198,6 +206,8 @@ start_registry
 REGISTRY_PID="${pids[-1]}"
 start_provider api-a "${API_A}" "${HTTP_A}"
 PROVIDER_A_PID="${pids[-1]}"
+CURRENT_API_A="${API_A}"
+CURRENT_HTTP_A="${HTTP_A}"
 start_provider api-b "${API_B}" "${HTTP_B}"
 PROVIDER_B_PID="${pids[-1]}"
 start_consumer
@@ -206,11 +216,13 @@ sleep "${ROUTE_SETTLE_SECONDS}"
 control_dir="${log_dir}/control"
 mkdir -p "${control_dir}"
 
+if should_run RL-A1 || should_run RL-C3; then
 ZLINK_KOTLIN_E2E_CLIENT_MODE=restart \
 ZLINK_KOTLIN_E2E_CONTROL_DIR="${control_dir}" \
+ZLINK_KOTLIN_E2E_SCENARIO="${SCENARIO}" \
 ZLINK_KOTLIN_E2E_REGISTRY_ROUTER="${REGISTRY_ROUTER}" \
 ZLINK_KOTLIN_E2E_CONSUMER_HTTP_ENDPOINT="${CONSUMER_HTTP}" \
-ZLINK_KOTLIN_E2E_HTTP_A_ENDPOINT="${HTTP_A}" \
+ZLINK_KOTLIN_E2E_HTTP_A_ENDPOINT="${CURRENT_HTTP_A}" \
 ZLINK_KOTLIN_E2E_HTTP_B_ENDPOINT="${HTTP_B}" \
 ZLINK_KOTLIN_E2E_LOG_DIR="${log_dir}" \
   "$(client_bin)" >"${log_dir}/client-restart.stdout.log" 2>"${log_dir}/client-restart.stderr.log" &
@@ -219,21 +231,26 @@ pids+=("${restart_client_pid}")
 
 wait_file "${control_dir}/a1-ready"
 stop_pid "${PROVIDER_A_PID}"
-wait_port_down api-a "${API_A}"
+wait_port_down api-a "${CURRENT_API_A}"
 touch "${control_dir}/a1-down"
 wait_file "${control_dir}/a1-down-observed"
 start_provider api-a "${API_A}" "${HTTP_A}"
 PROVIDER_A_PID="${pids[-1]}"
+CURRENT_API_A="${API_A}"
+CURRENT_HTTP_A="${HTTP_A}"
 sleep "${ROUTE_SETTLE_SECONDS}"
 touch "${control_dir}/a1-up"
 wait "${restart_client_pid}"
+fi
 
+if should_run RL-A2; then
 ZLINK_KOTLIN_E2E_CLIENT_MODE=reschedule \
 ZLINK_KOTLIN_E2E_CONTROL_DIR="${control_dir}" \
+ZLINK_KOTLIN_E2E_SCENARIO="${SCENARIO}" \
 ZLINK_KOTLIN_E2E_REGISTRY_ROUTER="${REGISTRY_ROUTER}" \
 ZLINK_KOTLIN_E2E_CONSUMER_HTTP_ENDPOINT="${CONSUMER_HTTP}" \
 ZLINK_KOTLIN_E2E_API_A_REPLACEMENT_ENDPOINT="${API_A_REPLACEMENT}" \
-ZLINK_KOTLIN_E2E_HTTP_A_ENDPOINT="${HTTP_A}" \
+ZLINK_KOTLIN_E2E_HTTP_A_ENDPOINT="${CURRENT_HTTP_A}" \
 ZLINK_KOTLIN_E2E_HTTP_B_ENDPOINT="${HTTP_B}" \
 ZLINK_KOTLIN_E2E_LOG_DIR="${log_dir}" \
   "$(client_bin)" >"${log_dir}/client-reschedule.stdout.log" 2>"${log_dir}/client-reschedule.stderr.log" &
@@ -242,20 +259,25 @@ pids+=("${reschedule_client_pid}")
 
 wait_file "${control_dir}/a2-ready"
 stop_pid "${PROVIDER_A_PID}"
-wait_port_down api-a "${API_A}"
+wait_port_down api-a "${CURRENT_API_A}"
 touch "${control_dir}/a2-down"
 wait_file "${control_dir}/a2-down-observed"
 start_provider api-a "${API_A_REPLACEMENT}" "${HTTP_A_REPLACEMENT}"
 PROVIDER_A_PID="${pids[-1]}"
+CURRENT_API_A="${API_A_REPLACEMENT}"
+CURRENT_HTTP_A="${HTTP_A_REPLACEMENT}"
 sleep "${ROUTE_SETTLE_SECONDS}"
 touch "${control_dir}/a2-up"
 wait "${reschedule_client_pid}"
+fi
 
+if should_run RL-A5; then
 ZLINK_KOTLIN_E2E_CLIENT_MODE=flapping \
 ZLINK_KOTLIN_E2E_CONTROL_DIR="${control_dir}" \
+ZLINK_KOTLIN_E2E_SCENARIO="${SCENARIO}" \
 ZLINK_KOTLIN_E2E_REGISTRY_ROUTER="${REGISTRY_ROUTER}" \
 ZLINK_KOTLIN_E2E_CONSUMER_HTTP_ENDPOINT="${CONSUMER_HTTP}" \
-ZLINK_KOTLIN_E2E_HTTP_A_ENDPOINT="${HTTP_A_REPLACEMENT}" \
+ZLINK_KOTLIN_E2E_HTTP_A_ENDPOINT="${CURRENT_HTTP_A}" \
 ZLINK_KOTLIN_E2E_HTTP_B_ENDPOINT="${HTTP_B}" \
 ZLINK_KOTLIN_E2E_LOG_DIR="${log_dir}" \
   "$(client_bin)" >"${log_dir}/client-flapping.stdout.log" 2>"${log_dir}/client-flapping.stderr.log" &
@@ -265,27 +287,36 @@ pids+=("${flapping_client_pid}")
 wait_file "${control_dir}/a5-ready"
 for _ in $(seq 1 3); do
   stop_pid "${PROVIDER_A_PID}"
-  wait_port_down api-a "${API_A_REPLACEMENT}"
+  wait_port_down api-a "${CURRENT_API_A}"
   sleep "${FLAP_SETTLE_SECONDS}"
   start_provider api-a "${API_A_REPLACEMENT}" "${HTTP_A_REPLACEMENT}"
   PROVIDER_A_PID="${pids[-1]}"
+  CURRENT_API_A="${API_A_REPLACEMENT}"
+  CURRENT_HTTP_A="${HTTP_A_REPLACEMENT}"
   sleep "${ROUTE_SETTLE_SECONDS}"
 done
 touch "${control_dir}/a5-stop"
 wait "${flapping_client_pid}"
+fi
 
+if should_run RL-B1 || should_run RL-B3 || should_run RL-B4 || should_run RL-B5 || should_run RL-B6 || should_run RL-D3; then
 ZLINK_KOTLIN_E2E_REGISTRY_ROUTER="${REGISTRY_ROUTER}" \
+ZLINK_KOTLIN_E2E_SCENARIO="${SCENARIO}" \
 ZLINK_KOTLIN_E2E_CONSUMER_HTTP_ENDPOINT="${CONSUMER_HTTP}" \
-ZLINK_KOTLIN_E2E_HTTP_A_ENDPOINT="${HTTP_A_REPLACEMENT}" \
+ZLINK_KOTLIN_E2E_HTTP_A_ENDPOINT="${CURRENT_HTTP_A}" \
 ZLINK_KOTLIN_E2E_HTTP_B_ENDPOINT="${HTTP_B}" \
 ZLINK_KOTLIN_E2E_LOG_DIR="${log_dir}" \
   "$(client_bin)" >"${log_dir}/client-default.stdout.log" 2>"${log_dir}/client-default.stderr.log"
+fi
 
-wait_port_down api-b "${API_B}"
-start_provider api-b "${API_B}" "${HTTP_B}"
-PROVIDER_B_PID="${pids[-1]}"
-sleep "${ROUTE_SETTLE_SECONDS}"
+if [[ "${SCENARIO}" == "all" ]]; then
+  wait_port_down api-b "${API_B}"
+  start_provider api-b "${API_B}" "${HTTP_B}"
+  PROVIDER_B_PID="${pids[-1]}"
+  sleep "${ROUTE_SETTLE_SECONDS}"
+fi
 
+if should_run RL-A3 || should_run RL-D1; then
 for wave in 1 2; do
   storm_pids=()
   for index in $(seq 1 6); do
@@ -293,9 +324,10 @@ for wave in 1 2; do
     mkdir -p "${storm_log_dir}"
     ZLINK_KOTLIN_E2E_CLIENT_MODE=storm \
     ZLINK_KOTLIN_E2E_CONTROL_DIR="${control_dir}" \
+    ZLINK_KOTLIN_E2E_SCENARIO="${SCENARIO}" \
     ZLINK_KOTLIN_E2E_REGISTRY_ROUTER="${REGISTRY_ROUTER}" \
     ZLINK_KOTLIN_E2E_CONSUMER_HTTP_ENDPOINT="${CONSUMER_HTTP}" \
-    ZLINK_KOTLIN_E2E_HTTP_A_ENDPOINT="${HTTP_A_REPLACEMENT}" \
+    ZLINK_KOTLIN_E2E_HTTP_A_ENDPOINT="${CURRENT_HTTP_A}" \
     ZLINK_KOTLIN_E2E_HTTP_B_ENDPOINT="${HTTP_B}" \
     ZLINK_KOTLIN_E2E_STORM_EXIT_DELAY_MS="$((index * 250))" \
     ZLINK_KOTLIN_E2E_LOG_DIR="${storm_log_dir}" \
@@ -307,34 +339,39 @@ for wave in 1 2; do
     wait "${pid}"
   done
 done
+fi
 
+if should_run RL-C1 || should_run RL-D5; then
 ZLINK_KOTLIN_E2E_CLIENT_MODE=cleanup \
 ZLINK_KOTLIN_E2E_CONTROL_DIR="${control_dir}" \
+ZLINK_KOTLIN_E2E_SCENARIO="${SCENARIO}" \
 ZLINK_KOTLIN_E2E_REGISTRY_ROUTER="${REGISTRY_ROUTER}" \
 ZLINK_KOTLIN_E2E_CONSUMER_HTTP_ENDPOINT="${CONSUMER_HTTP}" \
-ZLINK_KOTLIN_E2E_HTTP_A_ENDPOINT="${HTTP_A_REPLACEMENT}" \
+ZLINK_KOTLIN_E2E_HTTP_A_ENDPOINT="${CURRENT_HTTP_A}" \
 ZLINK_KOTLIN_E2E_HTTP_B_ENDPOINT="${HTTP_B}" \
 ZLINK_KOTLIN_E2E_LOG_DIR="${log_dir}" \
   "$(client_bin)" >"${log_dir}/client-cleanup.stdout.log" 2>"${log_dir}/client-cleanup.stderr.log"
+fi
 
-cat "${log_dir}/client-restart.stdout.log"
-cat "${log_dir}/client-reschedule.stdout.log"
-cat "${log_dir}/client-flapping.stdout.log"
-cat "${log_dir}"/client-storm-*.stdout.log
-cat "${log_dir}/client-cleanup.stdout.log"
-cat "${log_dir}/client-default.stdout.log"
-grep -q "scenario RL-A1 passed" "${log_dir}/client-restart.stdout.log"
-grep -q "scenario RL-A2 passed" "${log_dir}/client-reschedule.stdout.log"
-grep -q "scenario RL-A3 passed" "${log_dir}"/client-storm-*.stdout.log
-grep -q "scenario RL-A5 passed" "${log_dir}/client-flapping.stdout.log"
-grep -q "scenario RL-B1 passed" "${log_dir}/client-default.stdout.log"
-grep -q "scenario RL-B3 passed" "${log_dir}/client-default.stdout.log"
-grep -q "scenario RL-B4 passed" "${log_dir}/client-default.stdout.log"
-grep -q "scenario RL-B5 passed" "${log_dir}/client-default.stdout.log"
-grep -q "scenario RL-B6 passed" "${log_dir}/client-default.stdout.log"
-grep -q "scenario RL-C1 passed" "${log_dir}/client-cleanup.stdout.log"
-grep -q "scenario RL-C3 passed" "${log_dir}/client-restart.stdout.log"
-grep -q "scenario RL-D1 passed" "${log_dir}"/client-storm-*.stdout.log
-grep -q "scenario RL-D3 passed" "${log_dir}/client-default.stdout.log"
-grep -q "scenario RL-D5 passed" "${log_dir}/client-cleanup.stdout.log"
+for log in "${log_dir}"/client-*.stdout.log; do
+  [[ -f "${log}" ]] && cat "${log}"
+done
+if [[ "${SCENARIO}" == "all" ]]; then
+  grep -q "scenario RL-A1 passed" "${log_dir}/client-restart.stdout.log"
+  grep -q "scenario RL-A2 passed" "${log_dir}/client-reschedule.stdout.log"
+  grep -q "scenario RL-A3 passed" "${log_dir}"/client-storm-*.stdout.log
+  grep -q "scenario RL-A5 passed" "${log_dir}/client-flapping.stdout.log"
+  grep -q "scenario RL-B1 passed" "${log_dir}/client-default.stdout.log"
+  grep -q "scenario RL-B3 passed" "${log_dir}/client-default.stdout.log"
+  grep -q "scenario RL-B4 passed" "${log_dir}/client-default.stdout.log"
+  grep -q "scenario RL-B5 passed" "${log_dir}/client-default.stdout.log"
+  grep -q "scenario RL-B6 passed" "${log_dir}/client-default.stdout.log"
+  grep -q "scenario RL-C1 passed" "${log_dir}/client-cleanup.stdout.log"
+  grep -q "scenario RL-C3 passed" "${log_dir}/client-restart.stdout.log"
+  grep -q "scenario RL-D1 passed" "${log_dir}"/client-storm-*.stdout.log
+  grep -q "scenario RL-D3 passed" "${log_dir}/client-default.stdout.log"
+  grep -q "scenario RL-D5 passed" "${log_dir}/client-cleanup.stdout.log"
+else
+  grep -Rq "scenario ${SCENARIO} passed" "${log_dir}"/client-*.stdout.log
+fi
 grep -Rq "message flow" "${log_dir}"/*-flow.log

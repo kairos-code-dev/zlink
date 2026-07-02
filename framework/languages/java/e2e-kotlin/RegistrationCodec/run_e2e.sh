@@ -7,6 +7,7 @@ pids=()
 role_pattern='systems\.zlink\.e2e\.kotlin\.registrationcodec\.ProgramKt'
 run_id="$(date +%Y%m%d-%H%M%S)-$$"
 log_dir="$(pwd)/logs/${run_id}"
+SCENARIO="${1:-all}"
 repo_root="$(cd ../../../../.. && pwd)"
 default_core_lib="${repo_root}/core/build/lib/libzlink.so"
 mkdir -p "${log_dir}"
@@ -16,8 +17,9 @@ if [[ -z "${ZLINK_LIBRARY_PATH:-}" && -f "${default_core_lib}" ]]; then
 fi
 export ZLINK_KOTLIN_E2E_BUILD_DIR="${ZLINK_KOTLIN_E2E_BUILD_DIR:-${HOME}/.cache/zlink/kotlin-e2e/RegistrationCodec}"
 export ZLINK_KOTLIN_E2E_GRADLE_CACHE="${ZLINK_KOTLIN_E2E_GRADLE_CACHE:-${HOME}/.cache/zlink/kotlin-e2e/RegistrationCodec-gradle-cache}"
-JVM_ROLE_READY_ATTEMPTS=100
-PROCESS_READY_INTERVAL=0.1
+LOCAL_READINESS_TIMEOUT_SECONDS=3
+LOCAL_READINESS_POLL_SECONDS=0.1
+LOCAL_READINESS_ATTEMPTS=30
 ROUTE_SETTLE_SECONDS=5
 
 print_logs() {
@@ -90,11 +92,11 @@ wait_port() {
   local endpoint="$2"
   local port
   port="$(port_of "${endpoint}")"
-  for _ in $(seq 1 "${JVM_ROLE_READY_ATTEMPTS}"); do
+  for _ in $(seq 1 "${LOCAL_READINESS_ATTEMPTS}"); do
     if (echo >"/dev/tcp/127.0.0.1/${port}") >/dev/null 2>&1; then
       return 0
     fi
-    sleep "${PROCESS_READY_INTERVAL}"
+    sleep "${LOCAL_READINESS_POLL_SECONDS}"
   done
   echo "Timed out waiting for ${name} at ${endpoint}" >&2
   return 1
@@ -124,52 +126,82 @@ MISMATCH_ENDPOINT="$(tcp "${MISMATCH_PORT}")"
 MISMATCH_HTTP_ENDPOINT="$(http "${MISMATCH_HTTP_PORT}")"
 REQUESTER_HTTP_ENDPOINT="$(http "${REQUESTER_HTTP_PORT}")"
 
+run_invalid_scenario=false
+run_main_scenarios=false
+run_mismatch_scenario=false
+case "${SCENARIO}" in
+  all)
+    run_invalid_scenario=true
+    run_main_scenarios=true
+    run_mismatch_scenario=true
+    ;;
+  RC-A6)
+    run_invalid_scenario=true
+    ;;
+  RC-B5)
+    run_mismatch_scenario=true
+    ;;
+  RC-A1|RC-A2|RC-A3|RC-A4|RC-A5|RC-B1|RC-B2|RC-B3|RC-B4)
+    run_main_scenarios=true
+    ;;
+  *)
+    echo "Unknown RegistrationCodec scenario: ${SCENARIO}" >&2
+    exit 1
+    ;;
+esac
+
 gradle_run installDist
 
-set +e
-"${INVALID_BIN}" \
-  --server-endpoint "${INVALID_ENDPOINT}" \
-  --log-dir "${log_dir}" \
-  >"${log_dir}/invalid-server.stdout.log" 2>"${log_dir}/invalid-server.stderr.log"
-invalid_status="$?"
-set -e
-if [[ "${invalid_status}" == "0" ]]; then
-  echo "invalid registration server unexpectedly started" >&2
-  exit 1
+if [[ "${run_invalid_scenario}" == "true" ]]; then
+  set +e
+  "${INVALID_BIN}" \
+    --server-endpoint "${INVALID_ENDPOINT}" \
+    --log-dir "${log_dir}" \
+    >"${log_dir}/invalid-server.stdout.log" 2>"${log_dir}/invalid-server.stderr.log"
+  invalid_status="$?"
+  set -e
+  if [[ "${invalid_status}" == "0" ]]; then
+    echo "invalid registration server unexpectedly started" >&2
+    exit 1
+  fi
+  cat "${log_dir}/invalid-server.stdout.log" "${log_dir}/invalid-server.stderr.log" \
+    | grep -Eq "duplicate|Duplicate|registration|packet"
+  echo "scenario RC-A6 passed"
 fi
-cat "${log_dir}/invalid-server.stdout.log" "${log_dir}/invalid-server.stderr.log" \
-  | grep -Eq "duplicate|Duplicate|registration|packet"
-echo "scenario RC-A6 passed"
 
-"${MAIN_BIN}" \
-  --server-endpoint "${SERVER_ENDPOINT}" \
-  --http-endpoint "${HTTP_ENDPOINT}" \
-  --log-dir "${log_dir}" \
-  --codec-mode all \
-  >"${log_dir}/server.stdout.log" 2>"${log_dir}/server.stderr.log" &
-pids+=("$!")
-wait_port server "${SERVER_ENDPOINT}"
-wait_port evidence "${HTTP_ENDPOINT}"
-sleep "${ROUTE_SETTLE_SECONDS}"
+if [[ "${run_main_scenarios}" == "true" ]]; then
+  "${MAIN_BIN}" \
+    --server-endpoint "${SERVER_ENDPOINT}" \
+    --http-endpoint "${HTTP_ENDPOINT}" \
+    --log-dir "${log_dir}" \
+    --codec-mode all \
+    >"${log_dir}/server.stdout.log" 2>"${log_dir}/server.stderr.log" &
+  pids+=("$!")
+  wait_port server "${SERVER_ENDPOINT}"
+  wait_port evidence "${HTTP_ENDPOINT}"
+  sleep "${ROUTE_SETTLE_SECONDS}"
 
-"${CLIENT_BIN}" \
-  --http-endpoint "${HTTP_ENDPOINT}" \
-  --codec-requester-http-endpoint "${REQUESTER_HTTP_ENDPOINT}" \
-  --log-dir "${log_dir}" \
-  >"${log_dir}/client.stdout.log" 2>"${log_dir}/client.stderr.log"
+  "${CLIENT_BIN}" \
+    --http-endpoint "${HTTP_ENDPOINT}" \
+    --codec-requester-http-endpoint "${REQUESTER_HTTP_ENDPOINT}" \
+    --log-dir "${log_dir}" \
+    --mode "${SCENARIO}" \
+    >"${log_dir}/client.stdout.log" 2>"${log_dir}/client.stderr.log"
 
-cat "${log_dir}/client.stdout.log"
-python3 - "${HTTP_ENDPOINT}/evidence" >"${log_dir}/server-evidence.json" <<'PY'
+  cat "${log_dir}/client.stdout.log"
+  python3 - "${HTTP_ENDPOINT}/evidence" >"${log_dir}/server-evidence.json" <<'PY'
 import sys
 import urllib.request
 with urllib.request.urlopen(sys.argv[1], timeout=5) as response:
     sys.stdout.write(response.read().decode("utf-8"))
 PY
-
-grep -Rq "message flow" "${log_dir}"/*-flow.log
-grep -q "EchoAutoReq" "${log_dir}/server-evidence.json"
-grep -q "ProtobufEcho" "${log_dir}/server-evidence.json"
-grep -q "PackedEchoReq" "${log_dir}/server-evidence.json"
+  grep -Rq "message flow" "${log_dir}"/*-flow.log
+  if [[ "${SCENARIO}" == "all" ]]; then
+    grep -q "EchoAutoReq" "${log_dir}/server-evidence.json"
+    grep -q "ProtobufEcho" "${log_dir}/server-evidence.json"
+    grep -q "PackedEchoReq" "${log_dir}/server-evidence.json"
+  fi
+fi
 
 stop_current() {
   set +e
@@ -183,34 +215,35 @@ stop_current() {
 
 stop_current
 
-"${JSON_ONLY_BIN}" \
-  --server-endpoint "${MISMATCH_ENDPOINT}" \
-  --http-endpoint "${MISMATCH_HTTP_ENDPOINT}" \
-  --log-dir "${log_dir}" \
-  --codec-mode json-only \
-  >"${log_dir}/mismatch-server.stdout.log" 2>"${log_dir}/mismatch-server.stderr.log" &
-pids+=("$!")
-wait_port mismatch-server "${MISMATCH_ENDPOINT}"
-wait_port mismatch-evidence "${MISMATCH_HTTP_ENDPOINT}"
-sleep "${ROUTE_SETTLE_SECONDS}"
+if [[ "${run_mismatch_scenario}" == "true" ]]; then
+  "${JSON_ONLY_BIN}" \
+    --server-endpoint "${MISMATCH_ENDPOINT}" \
+    --http-endpoint "${MISMATCH_HTTP_ENDPOINT}" \
+    --log-dir "${log_dir}" \
+    --codec-mode json-only \
+    >"${log_dir}/mismatch-server.stdout.log" 2>"${log_dir}/mismatch-server.stderr.log" &
+  pids+=("$!")
+  wait_port mismatch-server "${MISMATCH_ENDPOINT}"
+  wait_port mismatch-evidence "${MISMATCH_HTTP_ENDPOINT}"
+  sleep "${ROUTE_SETTLE_SECONDS}"
 
-"${CODEC_REQUESTER_BIN}" \
-  --server-endpoint "${MISMATCH_ENDPOINT}" \
-  --http-endpoint "${REQUESTER_HTTP_ENDPOINT}" \
-  --log-dir "${log_dir}" \
-  >"${log_dir}/codec-requester.stdout.log" 2>"${log_dir}/codec-requester.stderr.log" &
-pids+=("$!")
-wait_port codec-requester "${REQUESTER_HTTP_ENDPOINT}"
-sleep "${ROUTE_SETTLE_SECONDS}"
+  "${CODEC_REQUESTER_BIN}" \
+    --server-endpoint "${MISMATCH_ENDPOINT}" \
+    --http-endpoint "${REQUESTER_HTTP_ENDPOINT}" \
+    --log-dir "${log_dir}" \
+    >"${log_dir}/codec-requester.stdout.log" 2>"${log_dir}/codec-requester.stderr.log" &
+  pids+=("$!")
+  wait_port codec-requester "${REQUESTER_HTTP_ENDPOINT}"
+  sleep "${ROUTE_SETTLE_SECONDS}"
 
-"${CLIENT_BIN}" \
-  --http-endpoint "${MISMATCH_HTTP_ENDPOINT}" \
-  --codec-requester-http-endpoint "${REQUESTER_HTTP_ENDPOINT}" \
-  --log-dir "${log_dir}" \
-  --mode codec-mismatch \
-  >"${log_dir}/mismatch-client.stdout.log" 2>"${log_dir}/mismatch-client.stderr.log"
+  "${CLIENT_BIN}" \
+    --http-endpoint "${MISMATCH_HTTP_ENDPOINT}" \
+    --codec-requester-http-endpoint "${REQUESTER_HTTP_ENDPOINT}" \
+    --log-dir "${log_dir}" \
+    --mode codec-mismatch \
+    >"${log_dir}/mismatch-client.stdout.log" 2>"${log_dir}/mismatch-client.stderr.log"
 
-cat "${log_dir}/mismatch-client.stdout.log"
-grep -q "scenario RC-A4 passed" "${log_dir}/client.stdout.log"
-grep -q "scenario RC-B5 passed" "${log_dir}/mismatch-client.stdout.log"
+  cat "${log_dir}/mismatch-client.stdout.log"
+  grep -q "scenario RC-B5 passed" "${log_dir}/mismatch-client.stdout.log"
+fi
 echo "registration-codec kotlin e2e result=passed"

@@ -46,6 +46,10 @@ public final class PlayApplication {
                 EnsureSpotRouteRequestHandler.class,
                 Contracts.EnsureSpotReq.class,
                 Contracts.EnsureSpotRes.class);
+            route.addRequestHandler(
+                PlayBindActorsHandler.class,
+                Contracts.BindActorsReq.class,
+                Contracts.BindActorsRes.class);
             options.addClientServerChannel(Contracts.DELAY_CHANNEL)
                 .enableClient(Env.get("ZLINK_KOTLIN_E2E_DELAY_ENDPOINT"));
             ZLinkSpotNodeBuilder spot = options.addSpotMesh(Contracts.SPOT_MESH)

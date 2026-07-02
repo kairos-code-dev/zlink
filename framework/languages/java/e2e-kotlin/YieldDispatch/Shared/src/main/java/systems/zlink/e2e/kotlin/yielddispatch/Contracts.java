@@ -85,6 +85,19 @@ public final class Contracts {
     public record ActorAuthRes(String actorId) {
     }
 
+    public record BindActorsReq(String spotRid, String actorA, String actorB) {
+    }
+
+    public record ActorBinding(String actorId, String nodeRid, long epoch) {
+    }
+
+    public record BindActorsRes(
+        String spotRid,
+        String actorA,
+        String actorB,
+        List<ActorBinding> actors) {
+    }
+
     public record ActorJoinReq(String spotRid, String value, long millis) {
         public ActorJoinReq(String spotRid, String value) {
             this(spotRid, value, 0);

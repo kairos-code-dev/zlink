@@ -7,6 +7,7 @@ pids=()
 role_pattern='systems\.zlink\.e2e\.pubsub\.(client|publisher|registry|subscriber)\.Program'
 run_id="$(date +%Y%m%d-%H%M%S)-$$"
 log_dir="$(pwd)/logs/${run_id}"
+SCENARIO="${1:-all}"
 repo_root="$(cd ../../../../.. && pwd)"
 default_core_lib="${repo_root}/core/build/lib/libzlink.so"
 mkdir -p "${log_dir}"
@@ -16,6 +17,9 @@ if [[ -z "${ZLINK_LIBRARY_PATH:-}" && -f "${default_core_lib}" ]]; then
 fi
 export ZLINK_JAVA_E2E_BUILD_DIR="${ZLINK_JAVA_E2E_BUILD_DIR:-${HOME}/.cache/zlink/java-e2e/PubSub}"
 export ZLINK_JAVA_E2E_GRADLE_CACHE="${ZLINK_JAVA_E2E_GRADLE_CACHE:-${HOME}/.cache/zlink/java-e2e/PubSub-gradle-cache}"
+LOCAL_READINESS_TIMEOUT_SECONDS=3
+LOCAL_READINESS_POLL_SECONDS=0.1
+LOCAL_READINESS_ATTEMPTS=30
 
 print_logs() {
   local status="$1"
@@ -97,11 +101,11 @@ wait_port() {
   local endpoint="$2"
   local port
   port="$(port_of "${endpoint}")"
-  for _ in $(seq 1 600); do
+  for _ in $(seq 1 "${LOCAL_READINESS_ATTEMPTS}"); do
     if (echo >"/dev/tcp/127.0.0.1/${port}") >/dev/null 2>&1; then
       return 0
     fi
-    sleep 0.1
+    sleep "${LOCAL_READINESS_POLL_SECONDS}"
   done
   echo "Timed out waiting for ${name} at ${endpoint}" >&2
   return 1
@@ -110,13 +114,13 @@ wait_port() {
 wait_health() {
   local name="$1"
   local endpoint="$2"
-  for _ in $(seq 1 600); do
+  for _ in $(seq 1 "${LOCAL_READINESS_ATTEMPTS}"); do
     if python3 - "${endpoint}/health" <<'PY'
 import sys
 import urllib.request
 
 try:
-    with urllib.request.urlopen(sys.argv[1], timeout=0.2) as response:
+    with urllib.request.urlopen(sys.argv[1], timeout=0.1) as response:
         sys.exit(0 if 200 <= response.status < 300 else 1)
 except Exception:
     sys.exit(1)
@@ -124,7 +128,7 @@ PY
     then
       return 0
     fi
-    sleep 0.1
+    sleep "${LOCAL_READINESS_POLL_SECONDS}"
   done
   echo "Timed out waiting for ${name} health at ${endpoint}" >&2
   return 1
@@ -239,6 +243,84 @@ LATE_CONTINUE="${log_dir}/late-continue"
 start_registry
 start_publisher publisher
 PUBLISHER_PID="${LAST_PID}"
+
+case "${SCENARIO}" in
+  PS-A1|PS-A2|PS-C1)
+    start_subscriber sub-1 alpha "${SUB1_HTTP}"
+    start_subscriber sub-2 beta "${SUB2_HTTP}"
+    start_subscriber sub-3 gamma "${SUB3_HTTP}"
+    sleep 2
+    run_client_mode "${SCENARIO}" "${SCENARIO}"
+    grep -q "scenario ${SCENARIO} passed" "${log_dir}/client-${SCENARIO}.stdout.log"
+    grep -Rq "message flow" "${log_dir}"/*-flow.log
+    exit 0
+    ;;
+  PS-A3)
+    ZLINK_JAVA_E2E_CLIENT_MODE="${SCENARIO}" \
+    ZLINK_JAVA_E2E_PUBLISHER_HTTP="${PUBLISHER_HTTP}" \
+    ZLINK_JAVA_E2E_PUBLISHER_ENDPOINT="${PUBLISHER_ENDPOINT}" \
+    ZLINK_JAVA_E2E_REGISTRY_ROUTER="${REGISTRY_ROUTER}" \
+    ZLINK_JAVA_E2E_SUB1_HTTP="${SUB1_HTTP}" \
+    ZLINK_JAVA_E2E_SUB2_HTTP="${SUB2_HTTP}" \
+    ZLINK_JAVA_E2E_SUB3_HTTP="${SUB3_HTTP}" \
+    ZLINK_JAVA_E2E_PUBLISHER_READY_FILE="${PUBLISHER_READY}" \
+    ZLINK_JAVA_E2E_PRELATE_CONTINUE_FILE="${PRELATE_CONTINUE}" \
+    ZLINK_JAVA_E2E_LATE_READY_FILE="${LATE_READY}" \
+    ZLINK_JAVA_E2E_LATE_CONTINUE_FILE="${LATE_CONTINUE}" \
+    ZLINK_JAVA_E2E_BUILD_DIR="${ZLINK_JAVA_E2E_BUILD_DIR}" \
+    ZLINK_JAVA_E2E_LOG_DIR="${log_dir}" \
+      "$(client_bin)" >"${log_dir}/client-PS-A3.stdout.log" 2>"${log_dir}/client-PS-A3.stderr.log" &
+    CLIENT_PID="$!"
+    pids+=("${CLIENT_PID}")
+    wait_marker "${PUBLISHER_READY}"
+    start_subscriber sub-1 alpha "${SUB1_HTTP}"
+    start_subscriber sub-2 beta "${SUB2_HTTP}"
+    sleep 2
+    touch "${PRELATE_CONTINUE}"
+    wait_marker "${LATE_READY}"
+    start_subscriber sub-3 gamma "${SUB3_HTTP}"
+    sleep 2
+    touch "${LATE_CONTINUE}"
+    wait "${CLIENT_PID}"
+    cat "${log_dir}/client-PS-A3.stdout.log"
+    grep -q "scenario PS-A3 passed" "${log_dir}/client-PS-A3.stdout.log"
+    grep -Rq "message flow" "${log_dir}"/*-flow.log
+    exit 0
+    ;;
+  PS-A4)
+    start_subscriber sub-2 beta "${SUB2_HTTP}"
+    run_client_mode "${SCENARIO}" "${SCENARIO}"
+    grep -q "scenario ${SCENARIO} passed" "${log_dir}/client-${SCENARIO}.stdout.log"
+    grep -Rq "message flow" "${log_dir}"/*-flow.log
+    exit 0
+    ;;
+  PS-B1)
+    start_subscriber sub-1 alpha "${SUB1_HTTP}" 750
+    start_subscriber sub-2 beta "${SUB2_HTTP}"
+    start_subscriber sub-3 gamma "${SUB3_HTTP}"
+    sleep 2
+    run_client_mode "${SCENARIO}" "${SCENARIO}"
+    grep -q "scenario ${SCENARIO} passed" "${log_dir}/client-${SCENARIO}.stdout.log"
+    grep -Rq "message flow" "${log_dir}"/*-flow.log
+    exit 0
+    ;;
+  PS-B2)
+    stop_pid "${PUBLISHER_PID}"
+    start_subscriber sub-1 alpha "${SUB1_HTTP}"
+    start_subscriber sub-2 beta "${SUB2_HTTP}"
+    start_subscriber sub-3 gamma "${SUB3_HTTP}"
+    run_client_mode "${SCENARIO}" "${SCENARIO}"
+    grep -q "scenario ${SCENARIO} passed" "${log_dir}/client-${SCENARIO}.stdout.log"
+    grep -Rq "message flow" "${log_dir}"/*-flow.log
+    exit 0
+    ;;
+  all)
+    ;;
+  *)
+    echo "Unknown PubSub scenario: ${SCENARIO}" >&2
+    exit 1
+    ;;
+esac
 
 ZLINK_JAVA_E2E_CLIENT_MODE=default \
 ZLINK_JAVA_E2E_PUBLISHER_HTTP="${PUBLISHER_HTTP}" \

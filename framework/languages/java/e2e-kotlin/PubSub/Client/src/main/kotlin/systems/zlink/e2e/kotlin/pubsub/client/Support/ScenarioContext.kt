@@ -31,6 +31,13 @@ class ScenarioContext(
 
     fun run() {
         when (options.mode) {
+            "PS-A1" -> FanoutBasicDeliveryScenario.run(this)
+            "PS-A2" -> TopicFilterScenario.run(this)
+            "PS-A3" -> runLateSubscriberOnly()
+            "PS-A4" -> SubscriberReconnectScenario.run(this)
+            "PS-B1" -> SlowSubscriberScenario.run(this)
+            "PS-B2" -> PublisherRestartScenario.run(this)
+            "PS-C1" -> MissingMessageNameScenario.run(this)
             "subscriber-restarted" -> SubscriberReconnectScenario.run(this)
             "slow-subscriber" -> SlowSubscriberScenario.run(this)
             "publisher-restarted" -> PublisherRestartScenario.run(this)
@@ -52,6 +59,19 @@ class ScenarioContext(
         TopicFilterScenario.run(this)
         LateSubscriberScenario.run(this)
         MissingMessageNameScenario.run(this)
+    }
+
+    private fun runLateSubscriberOnly() {
+        touch(options.publisherReadyFile)
+        waitForFile(options.prelateContinueFile)
+
+        publish("all", EventMsg("prelate", 0, "before-late"))
+        waitForEvent("sub-1", "prelate", 0)
+        waitForEvent("sub-2", "prelate", 0)
+        touch(options.lateReadyFile)
+        waitForFile(options.lateContinueFile)
+
+        LateSubscriberScenario.run(this)
     }
 
     fun runSubscriberRestartAfterReconnect() {

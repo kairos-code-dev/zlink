@@ -25,10 +25,24 @@ public final class ScenarioCatalog {
     public void run() {
         switch (ClientOptions.get("ZLINK_JAVA_E2E_SCENARIO", "common")) {
             case "common" -> runCommon();
+            case "RM-A1" -> RmA1DiscoveryRequestScenario.run(http.providerA(), http.providerB(), http.registry());
+            case "RM-A2" -> RmA2ManualEndpointScenario.run(http.providerA());
+            case "RM-A6" -> RmA6MultipleChannelsScenario.run(http.providerA(), http.providerB(), http.workflow());
             case "scale-out" -> RmB1ScaleOutScenario.run();
             case "scale-in" -> RmB2ScaleInScenario.run();
             case "failover" -> RmA4SameRidFailoverScenario.run();
+            case "RM-B1" -> RmB1ScaleOutScenario.run();
+            case "RM-B2" -> RmB2ScaleInScenario.run();
+            case "RM-A4" -> RmA4SameRidFailoverScenario.run();
+            case "RM-C1" -> RmC1RequestSendScenario.run(http.providerA(), http.providerB());
+            case "RM-C2" -> RmC2TargetedRouteScenario.run(http.providerA());
+            case "RM-C3" -> RmC3MultiProviderDistributionScenario.run(http.directConsumer(), "RM-C3", "multi-", 80, false);
+            case "RM-C4" -> RmC4TimeoutIsolationScenario.run(http.discoveryConsumer());
+            case "RM-C5" -> RmC5MissingPacketScenario.run(http.discoveryConsumer(), http.providerA(), http.providerB());
             case "weighted" -> RmC7WeightedProviderScenario.run(http.directConsumer());
+            case "RM-C7" -> RmC7WeightedProviderScenario.run(http.directConsumer());
+            case "RM-C8" -> RmC8PayloadRoundTripScenario.run(http.singleConsumer(), http.providerA());
+            case "RM-C9" -> RmC9BackpressureScenario.run(http.backpressureConsumer(), http.providerA());
             default -> throw new IllegalArgumentException(
                 "unknown scenario " + ClientOptions.get("ZLINK_JAVA_E2E_SCENARIO"));
         }

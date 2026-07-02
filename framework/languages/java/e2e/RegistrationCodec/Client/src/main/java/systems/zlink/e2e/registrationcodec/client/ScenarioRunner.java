@@ -21,6 +21,11 @@ public final class ScenarioRunner {
     }
 
     public void run() {
+        String scenario = context.options().scenario();
+        if (!"all".equals(scenario)) {
+            runOne(scenario);
+            return;
+        }
         InvalidRegistrationScenario.run(context);
         AutoRegistrationScenario.run(context);
         AttributeRegistrationScenario.run(context);
@@ -32,5 +37,22 @@ public final class ScenarioRunner {
         RcB3MessagePackCodecScenario.run(context);
         RcB4CodecCoexistenceScenario.run(context);
         CodecMismatchScenario.run(context);
+    }
+
+    private void runOne(String scenario) {
+        switch (scenario) {
+            case "RC-A1" -> AutoRegistrationScenario.run(context);
+            case "RC-A2" -> AttributeRegistrationScenario.run(context);
+            case "RC-A3" -> ManualRegistrationScenario.run(context);
+            case "RC-A4" -> RcA4DiLifecycleScenario.run(context);
+            case "RC-A5" -> RcA5FilterOrderingScenario.run(context);
+            case "RC-A6" -> InvalidRegistrationScenario.run(context);
+            case "RC-B1" -> RcB1JsonCodecScenario.run(context);
+            case "RC-B2" -> RcB2ProtobufCodecScenario.run(context);
+            case "RC-B3" -> RcB3MessagePackCodecScenario.run(context);
+            case "RC-B4" -> RcB4CodecCoexistenceScenario.run(context);
+            case "RC-B5" -> CodecMismatchScenario.run(context);
+            default -> throw new IllegalArgumentException("Unknown RegistrationCodec scenario '" + scenario + "'.");
+        }
     }
 }

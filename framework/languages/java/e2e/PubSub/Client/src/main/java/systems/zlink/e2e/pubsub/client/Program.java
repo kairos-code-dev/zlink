@@ -18,9 +18,13 @@ public final class Program {
     public static void main(String[] args) {
         ScenarioContext context = ScenarioContext.fromEnv();
         switch (context.options().mode()) {
-            case "subscriber-restarted" -> SubscriberReconnectScenario.run(context);
-            case "slow-subscriber" -> SlowSubscriberScenario.run(context);
-            case "publisher-restarted" -> PublisherRestartScenario.run(context);
+            case "PS-A1" -> FanoutBasicDeliveryScenario.run(context);
+            case "PS-A2" -> TopicFilterScenario.run(context);
+            case "PS-A3" -> runLateSubscriberOnly(context);
+            case "PS-A4", "subscriber-restarted" -> SubscriberReconnectScenario.run(context);
+            case "PS-B1", "slow-subscriber" -> SlowSubscriberScenario.run(context);
+            case "PS-B2", "publisher-restarted" -> PublisherRestartScenario.run(context);
+            case "PS-C1" -> MissingMessageNameScenario.run(context);
             case "default" -> runDefault(context);
             default -> throw new IllegalArgumentException("unknown mode " + context.options().mode());
         }
@@ -41,5 +45,18 @@ public final class Program {
         TopicFilterScenario.run(context);
         LateSubscriberScenario.run(context);
         MissingMessageNameScenario.run(context);
+    }
+
+    private static void runLateSubscriberOnly(ScenarioContext context) {
+        ScenarioAssert.touch(context.options().publisherReadyFile());
+        ScenarioAssert.waitForFile(context.options().prelateContinueFile());
+
+        context.publisher().publish("all", new Contracts.EventMsg("prelate", 0, "before-late"));
+        ScenarioAssert.waitForEvent(context.evidence(), "sub-1", "prelate", 0);
+        ScenarioAssert.waitForEvent(context.evidence(), "sub-2", "prelate", 0);
+        ScenarioAssert.touch(context.options().lateReadyFile());
+        ScenarioAssert.waitForFile(context.options().lateContinueFile());
+
+        LateSubscriberScenario.run(context);
     }
 }

@@ -11,11 +11,15 @@ repo_root="$(cd ../../../../.. && pwd)"
 default_core_lib="${repo_root}/core/build/lib/libzlink.so"
 mkdir -p "${log_dir}"
 echo "log_dir=${log_dir}"
+SCENARIO="${1:-all}"
 if [[ -z "${ZLINK_LIBRARY_PATH:-}" && -f "${default_core_lib}" ]]; then
   export ZLINK_LIBRARY_PATH="${default_core_lib}"
 fi
 export ZLINK_JAVA_E2E_BUILD_DIR="${ZLINK_JAVA_E2E_BUILD_DIR:-${HOME}/.cache/zlink/java-e2e/RegistryMessaging}"
 export ZLINK_JAVA_E2E_GRADLE_CACHE="${ZLINK_JAVA_E2E_GRADLE_CACHE:-${HOME}/.cache/zlink/java-e2e/RegistryMessaging-gradle-cache}"
+LOCAL_READINESS_TIMEOUT_SECONDS=3
+LOCAL_READINESS_POLL_SECONDS=0.1
+LOCAL_READINESS_ATTEMPTS=30
 
 print_logs() {
   local status="$1"
@@ -97,11 +101,11 @@ wait_port() {
   local endpoint="$2"
   local port
   port="$(port_of "${endpoint}")"
-  for _ in $(seq 1 600); do
+  for _ in $(seq 1 "${LOCAL_READINESS_ATTEMPTS}"); do
     if (echo >"/dev/tcp/127.0.0.1/${port}") >/dev/null 2>&1; then
       return 0
     fi
-    sleep 0.1
+    sleep "${LOCAL_READINESS_POLL_SECONDS}"
   done
   echo "Timed out waiting for ${name} at ${endpoint}" >&2
   return 1
@@ -112,13 +116,13 @@ wait_health() {
   local endpoint="$2"
   local port
   port="$(port_of "${endpoint}")"
-  for _ in $(seq 1 600); do
+  for _ in $(seq 1 "${LOCAL_READINESS_ATTEMPTS}"); do
     if python3 - "http://127.0.0.1:${port}/health" <<'PY'
 import sys
 import urllib.request
 
 try:
-    with urllib.request.urlopen(sys.argv[1], timeout=0.2) as response:
+    with urllib.request.urlopen(sys.argv[1], timeout=0.1) as response:
         sys.exit(0 if 200 <= response.status < 300 else 1)
 except Exception:
     sys.exit(1)
@@ -126,7 +130,7 @@ PY
     then
       return 0
     fi
-    sleep 0.1
+    sleep "${LOCAL_READINESS_POLL_SECONDS}"
   done
   echo "Timed out waiting for ${name} health at ${endpoint}" >&2
   return 1
@@ -244,6 +248,17 @@ run_client() {
     "$(client_bin)" >"${log_dir}/client-${suffix}.stdout.log" 2>"${log_dir}/client-${suffix}.stderr.log"
 }
 
+is_common_scenario() {
+  case "$1" in
+    all|RM-A1|RM-A2|RM-A6|RM-C1|RM-C2|RM-C3|RM-C4|RM-C5|RM-C8|RM-C9)
+      return 0
+      ;;
+    *)
+      return 1
+      ;;
+  esac
+}
+
 read -r REGISTRY_PUB REGISTRY_ROUTER API_A API_B ROUTE_A ROUTE_B WORKFLOW_A REGISTRY_HTTP HTTP_API_A HTTP_API_B HTTP_WORKFLOW HTTP_DISCOVERY_CONSUMER HTTP_DIRECT_CONSUMER HTTP_SINGLE_CONSUMER HTTP_BACKPRESSURE_CONSUMER <<<"$(reserve_ports)"
 
 gradle_run installDist
@@ -261,41 +276,72 @@ start_consumer direct-consumer direct "${HTTP_DIRECT_CONSUMER}" "${API_A},${API_
 start_consumer single-consumer direct "${HTTP_SINGLE_CONSUMER}" "${API_A}"
 start_consumer backpressure-consumer direct "${HTTP_BACKPRESSURE_CONSUMER}" "${API_A}"
 sleep 2
-run_client common common env
-cat "${log_dir}/client-common.stdout.log"
+if is_common_scenario "${SCENARIO}"; then
+  common_client_scenario="${SCENARIO}"
+  if [[ "${SCENARIO}" == "all" ]]; then
+    common_client_scenario="common"
+  fi
+  run_client "${common_client_scenario}" "${common_client_scenario}" env
+  cat "${log_dir}/client-${common_client_scenario}.stdout.log"
+fi
+
 stop_pid "${API_A_PID}"
 stop_pid "${API_B_PID}"
 stop_pid "${WORKFLOW_A_PID}"
 
-start_provider api-a "${API_A}" "${ROUTE_A}" "" api-a 75 "${HTTP_API_A}"
-API_A_PID="${LAST_PID}"
-start_provider api-b "${API_B}" "${ROUTE_B}" "" api-b 25 "${HTTP_API_B}"
-API_B_PID="${LAST_PID}"
-sleep 2
-run_client weighted rm-c7 env
-cat "${log_dir}/client-rm-c7.stdout.log"
-stop_pid "${API_A_PID}"
-stop_pid "${API_B_PID}"
+if [[ "${SCENARIO}" == "all" || "${SCENARIO}" == "RM-C7" ]]; then
+  start_provider api-a "${API_A}" "${ROUTE_A}" "" api-a 75 "${HTTP_API_A}"
+  API_A_PID="${LAST_PID}"
+  start_provider api-b "${API_B}" "${ROUTE_B}" "" api-b 25 "${HTTP_API_B}"
+  API_B_PID="${LAST_PID}"
+  sleep 2
+  weighted_client_scenario="${SCENARIO}"
+  if [[ "${SCENARIO}" == "all" ]]; then
+    weighted_client_scenario="weighted"
+  fi
+  run_client "${weighted_client_scenario}" rm-c7 env
+  cat "${log_dir}/client-rm-c7.stdout.log"
+  stop_pid "${API_A_PID}"
+  stop_pid "${API_B_PID}"
+fi
 
-start_provider api-a "${API_A}" "${ROUTE_A}" "" api-a "" "${HTTP_API_A}"
-API_A_PID="${LAST_PID}"
-run_client scale-out rm-b1 env
-cat "${log_dir}/client-rm-b1.stdout.log"
-stop_pid "${API_A_PID}"
+if [[ "${SCENARIO}" == "all" || "${SCENARIO}" == "RM-B1" ]]; then
+  start_provider api-a "${API_A}" "${ROUTE_A}" "" api-a "" "${HTTP_API_A}"
+  API_A_PID="${LAST_PID}"
+  scale_out_client_scenario="${SCENARIO}"
+  if [[ "${SCENARIO}" == "all" ]]; then
+    scale_out_client_scenario="scale-out"
+  fi
+  run_client "${scale_out_client_scenario}" rm-b1 env
+  cat "${log_dir}/client-rm-b1.stdout.log"
+  stop_pid "${API_A_PID}"
+fi
 
-start_provider api-a "${API_A}" "${ROUTE_A}" "" api-a "" "${HTTP_API_A}"
-API_A_PID="${LAST_PID}"
-start_provider api-b "${API_B}" "${ROUTE_B}" "" api-b "" "${HTTP_API_B}"
-API_B_PID="${LAST_PID}"
-run_client scale-in rm-b2 env
-cat "${log_dir}/client-rm-b2.stdout.log"
-stop_pid "${API_A_PID}"
-stop_pid "${API_B_PID}"
+if [[ "${SCENARIO}" == "all" || "${SCENARIO}" == "RM-B2" ]]; then
+  start_provider api-a "${API_A}" "${ROUTE_A}" "" api-a "" "${HTTP_API_A}"
+  API_A_PID="${LAST_PID}"
+  start_provider api-b "${API_B}" "${ROUTE_B}" "" api-b "" "${HTTP_API_B}"
+  API_B_PID="${LAST_PID}"
+  scale_in_client_scenario="${SCENARIO}"
+  if [[ "${SCENARIO}" == "all" ]]; then
+    scale_in_client_scenario="scale-in"
+  fi
+  run_client "${scale_in_client_scenario}" rm-b2 env
+  cat "${log_dir}/client-rm-b2.stdout.log"
+  stop_pid "${API_A_PID}"
+  stop_pid "${API_B_PID}"
+fi
 
-start_provider api-a "${API_A}" "${ROUTE_A}" "" api-a-v1 "" "${HTTP_API_A}"
-API_A_PID="${LAST_PID}"
-run_client failover rm-a4 env
-cat "${log_dir}/client-rm-a4.stdout.log"
-stop_pid "${API_A_PID}"
+if [[ "${SCENARIO}" == "all" || "${SCENARIO}" == "RM-A4" ]]; then
+  start_provider api-a "${API_A}" "${ROUTE_A}" "" api-a-v1 "" "${HTTP_API_A}"
+  API_A_PID="${LAST_PID}"
+  failover_client_scenario="${SCENARIO}"
+  if [[ "${SCENARIO}" == "all" ]]; then
+    failover_client_scenario="failover"
+  fi
+  run_client "${failover_client_scenario}" rm-a4 env
+  cat "${log_dir}/client-rm-a4.stdout.log"
+  stop_pid "${API_A_PID}"
+fi
 
 grep -Rq "message flow" "${log_dir}"/*-flow.log

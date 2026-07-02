@@ -11,11 +11,16 @@ repo_root="$(cd ../../../../.. && pwd)"
 default_core_lib="${repo_root}/core/build/lib/libzlink.so"
 mkdir -p "${log_dir}"
 echo "log_dir=${log_dir}"
+SCENARIO="${1:-all}"
 if [[ -z "${ZLINK_LIBRARY_PATH:-}" && -f "${default_core_lib}" ]]; then
   export ZLINK_LIBRARY_PATH="${default_core_lib}"
 fi
 export ZLINK_JAVA_E2E_BUILD_DIR="${ZLINK_JAVA_E2E_BUILD_DIR:-${HOME}/.cache/zlink/java-e2e/YieldDispatch}"
 export ZLINK_JAVA_E2E_GRADLE_CACHE="${ZLINK_JAVA_E2E_GRADLE_CACHE:-${HOME}/.cache/zlink/java-e2e/YieldDispatch-gradle-cache}"
+LOCAL_READINESS_TIMEOUT_SECONDS=3
+LOCAL_READINESS_POLL_SECONDS=0.1
+LOCAL_READINESS_ATTEMPTS=30
+HTTP_PROBE_TIMEOUT_SECONDS=3
 
 print_logs() {
   local status="$1"
@@ -92,11 +97,11 @@ wait_port() {
   local endpoint="$2"
   local port
   port="$(port_of "${endpoint}")"
-  for _ in $(seq 1 600); do
+  for _ in $(seq 1 "${LOCAL_READINESS_ATTEMPTS}"); do
     if (echo >"/dev/tcp/127.0.0.1/${port}") >/dev/null 2>&1; then
       return 0
     fi
-    sleep 0.1
+    sleep "${LOCAL_READINESS_POLL_SECONDS}"
   done
   echo "Timed out waiting for ${name} at ${endpoint}" >&2
   return 1
@@ -115,7 +120,7 @@ PY
     then
       return 0
     fi
-    sleep 0.1
+    sleep "${LOCAL_READINESS_POLL_SECONDS}"
   done
   echo "Timed out waiting for ${name} at ${endpoint}" >&2
   return 1
@@ -440,35 +445,41 @@ ZLINK_JAVA_E2E_PLAY_HTTP="${PLAY_A_HTTP}" \
 ZLINK_JAVA_E2E_PLAY_B_HTTP="${PLAY_B_HTTP}" \
 ZLINK_JAVA_E2E_SESSION_HTTP="${SESSION_HTTP}" \
 ZLINK_JAVA_E2E_LOG_DIR="${log_dir}" \
-  timeout -k 5s 90s "$(client_bin)" >"${log_dir}/client.stdout.log" 2>"${log_dir}/client.stderr.log"
+  timeout -k 5s 90s "$(client_bin)" "${SCENARIO}" >"${log_dir}/client.stdout.log" 2>"${log_dir}/client.stderr.log"
 
 fetch_evidence "${PLAY_A_HTTP}" "${log_dir}/play-a-evidence.json"
 fetch_evidence "${PLAY_B_HTTP}" "${log_dir}/play-b-evidence.json"
 fetch_evidence "${SESSION_HTTP}" "${log_dir}/session-evidence.json"
-write_marker_report
 cat "${log_dir}/client.stdout.log"
-grep -q "scenario YD-A1 passed" "${log_dir}/client.stdout.log"
-grep -q "scenario YD-A2 passed" "${log_dir}/client.stdout.log"
-grep -q "scenario YD-A3 passed" "${log_dir}/client.stdout.log"
-grep -q "scenario YD-A4 passed" "${log_dir}/client.stdout.log"
-grep -q "scenario YD-B1 passed" "${log_dir}/client.stdout.log"
-grep -q "scenario YD-B2 passed" "${log_dir}/client.stdout.log"
-grep -q "scenario YD-B3 passed" "${log_dir}/client.stdout.log"
-grep -q "scenario YD-C1 passed" "${log_dir}/client.stdout.log"
-grep -q "scenario YD-C2 passed" "${log_dir}/client.stdout.log"
-grep -q "scenario YD-C3 passed" "${log_dir}/client.stdout.log"
-grep -q "scenario YD-D2 passed" "${log_dir}/client.stdout.log"
-grep -q "scenario YD-D3 passed" "${log_dir}/client.stdout.log"
-grep -q "scenario YD-D4 passed" "${log_dir}/client.stdout.log"
-grep -q "scenario YD-E1 passed" "${log_dir}/client.stdout.log"
-grep -q "scenario YD-E2 passed" "${log_dir}/client.stdout.log"
+if [[ "${SCENARIO}" == "all" ]]; then
+  write_marker_report
+  grep -q "scenario YD-A1 passed" "${log_dir}/client.stdout.log"
+  grep -q "scenario YD-A2 passed" "${log_dir}/client.stdout.log"
+  grep -q "scenario YD-A3 passed" "${log_dir}/client.stdout.log"
+  grep -q "scenario YD-A4 passed" "${log_dir}/client.stdout.log"
+  grep -q "scenario YD-B1 passed" "${log_dir}/client.stdout.log"
+  grep -q "scenario YD-B2 passed" "${log_dir}/client.stdout.log"
+  grep -q "scenario YD-B3 passed" "${log_dir}/client.stdout.log"
+  grep -q "scenario YD-C1 passed" "${log_dir}/client.stdout.log"
+  grep -q "scenario YD-C2 passed" "${log_dir}/client.stdout.log"
+  grep -q "scenario YD-C3 passed" "${log_dir}/client.stdout.log"
+  grep -q "scenario YD-D2 passed" "${log_dir}/client.stdout.log"
+  grep -q "scenario YD-D3 passed" "${log_dir}/client.stdout.log"
+  grep -q "scenario YD-D4 passed" "${log_dir}/client.stdout.log"
+  grep -q "scenario YD-E1 passed" "${log_dir}/client.stdout.log"
+  grep -q "scenario YD-E2 passed" "${log_dir}/client.stdout.log"
+else
+  grep -q "scenario ${SCENARIO} passed" "${log_dir}/client.stdout.log"
+fi
 grep -q "yield-dispatch e2e result=passed" "${log_dir}/client.stdout.log"
 grep -Rq "message flow" "${log_dir}"/*-flow.log
-grep -q '"YD-E1"' "${log_dir}/yield-dispatch-marker-report.json"
-grep -q '"YD-E2"' "${log_dir}/yield-dispatch-marker-report.json"
-echo "yield-dispatch marker report=${log_dir}/yield-dispatch-marker-report.json"
+if [[ "${SCENARIO}" == "all" ]]; then
+  grep -q '"YD-E1"' "${log_dir}/yield-dispatch-marker-report.json"
+  grep -q '"YD-E2"' "${log_dir}/yield-dispatch-marker-report.json"
+  echo "yield-dispatch marker report=${log_dir}/yield-dispatch-marker-report.json"
+fi
 
-if [[ "${ZLINK_JAVA_E2E_RUN_E3_SHUTDOWN:-0}" == "1" ]]; then
+if [[ "${SCENARIO}" == "all" && "${ZLINK_JAVA_E2E_RUN_E3_SHUTDOWN:-0}" == "1" ]]; then
   SHUTDOWN_ID="yde3-$(date +%s)-$$"
   SHUTDOWN_SPOT="yield-shutdown-${run_id//[^a-zA-Z0-9]/}"
   ZLINK_JAVA_E2E_STREAM_ENDPOINT="${STREAM_ENDPOINT}" \

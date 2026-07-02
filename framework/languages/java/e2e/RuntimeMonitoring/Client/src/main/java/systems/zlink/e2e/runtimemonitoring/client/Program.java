@@ -16,6 +16,12 @@ public final class Program {
 
     public static void main(String... args) {
         TriggerScenarioClient trigger = new TriggerScenarioClient(Env.get("ZLINK_JAVA_E2E_TRIGGER_HTTP"));
+        String scenario = Env.get("ZLINK_JAVA_E2E_SCENARIO", "all");
+        if (!"all".equals(scenario)) {
+            runOne(scenario, trigger);
+            System.out.println("monitoring e2e result=passed");
+            return;
+        }
         MonA1SocketEventsScenario.run(trigger);
         MonA2RegistryEventsScenario.run(trigger);
         MonA3SpotEventsScenario.run(trigger);
@@ -24,5 +30,18 @@ public final class Program {
         MonB2RegistrationValidationScenario.run(trigger);
         MonC1DispatchFailureScenario.run(trigger);
         System.out.println("monitoring e2e result=passed");
+    }
+
+    private static void runOne(String scenario, TriggerScenarioClient trigger) {
+        switch (scenario) {
+            case "MON-A1" -> MonA1SocketEventsScenario.run(trigger);
+            case "MON-A2" -> MonA2RegistryEventsScenario.run(trigger);
+            case "MON-A3" -> MonA3SpotEventsScenario.run(trigger);
+            case "MON-A5" -> MonA5FixedKindsScenario.run(trigger);
+            case "MON-B1" -> MonB1KindFilterScenario.run(trigger);
+            case "MON-B2" -> MonB2RegistrationValidationScenario.run(trigger);
+            case "MON-C1" -> MonC1DispatchFailureScenario.run(trigger);
+            default -> throw new IllegalArgumentException("Unknown RuntimeMonitoring scenario '" + scenario + "'.");
+        }
     }
 }

@@ -11,11 +11,15 @@ repo_root="$(cd ../../../../.. && pwd)"
 default_core_lib="${repo_root}/core/build/lib/libzlink.so"
 mkdir -p "${log_dir}"
 echo "log_dir=${log_dir}"
+SCENARIO="${1:-all}"
 if [[ -z "${ZLINK_LIBRARY_PATH:-}" && -f "${default_core_lib}" ]]; then
   export ZLINK_LIBRARY_PATH="${default_core_lib}"
 fi
 export ZLINK_JAVA_E2E_BUILD_DIR="${ZLINK_JAVA_E2E_BUILD_DIR:-${HOME}/.cache/zlink/java-e2e/SpotService}"
 export ZLINK_JAVA_E2E_GRADLE_CACHE="${ZLINK_JAVA_E2E_GRADLE_CACHE:-${HOME}/.cache/zlink/java-e2e/SpotService-gradle-cache}"
+LOCAL_READINESS_TIMEOUT_SECONDS=3
+LOCAL_READINESS_POLL_SECONDS=0.1
+LOCAL_READINESS_ATTEMPTS=30
 
 print_logs() {
   local status="$1"
@@ -103,11 +107,11 @@ wait_port() {
   local endpoint="$2"
   local port
   port="$(port_of "${endpoint}")"
-  for _ in $(seq 1 600); do
+  for _ in $(seq 1 "${LOCAL_READINESS_ATTEMPTS}"); do
     if (echo >"/dev/tcp/127.0.0.1/${port}") >/dev/null 2>&1; then
       return 0
     fi
-    sleep 0.1
+    sleep "${LOCAL_READINESS_POLL_SECONDS}"
   done
   echo "Timed out waiting for ${name} at ${endpoint}" >&2
   return 1
@@ -292,9 +296,36 @@ run_client_mode() {
   return 1
 }
 
+scenario_modes() {
+  case "$1" in
+    all)
+      echo "state1 state2 send normal worker missing timeout owner spot-outbound spot-to-spot route-mesh actor-session actor-leave-disconnect actor-disconnect-notify idle-timer timer-overrun"
+      ;;
+    SM-A1) echo "state1" ;;
+    SM-A2) echo "state2" ;;
+    SM-A3|SM-A4) echo "owner" ;;
+    SM-A8) echo "worker" ;;
+    SM-B1|SM-B3|SM-B7|SM-D1) echo "actor-session" ;;
+    SM-B6) echo "actor-leave-disconnect" ;;
+    SM-C1) echo "normal" ;;
+    SM-C2) echo "spot-outbound" ;;
+    SM-C3) echo "spot-to-spot" ;;
+    SM-D5) echo "actor-disconnect-notify" ;;
+    SM-E1) echo "missing" ;;
+    SM-E3) echo "idle-timer" ;;
+    SM-E4) echo "timer-overrun" ;;
+    SM-F1|SM-F2|SM-F4) echo "route-mesh" ;;
+    *)
+      echo "SpotService Java scenario $1 is not mapped to an implemented client mode" >&2
+      return 1
+      ;;
+  esac
+}
+
 : >"${log_dir}/client.stdout.log"
 : >"${log_dir}/client.stderr.log"
-for mode in ${ZLINK_JAVA_E2E_MODES:-state1 state2 send normal worker missing timeout owner spot-outbound spot-to-spot route-mesh actor-session actor-leave-disconnect actor-disconnect-notify idle-timer timer-overrun}; do
+client_modes="${ZLINK_JAVA_E2E_MODES:-$(scenario_modes "${SCENARIO}")}"
+for mode in ${client_modes}; do
   if [[ "${mode}" == "idle-timer" ]]; then
     create_timer_spot "${HTTP_A}" idle-close
     create_timer_spot "${HTTP_A}" idle-active
@@ -312,7 +343,7 @@ for mode in ${ZLINK_JAVA_E2E_MODES:-state1 state2 send normal worker missing tim
   fi
   sleep 2
 done
-if [[ -n "${ZLINK_JAVA_E2E_MODES:-}" ]]; then
+if [[ -n "${ZLINK_JAVA_E2E_MODES:-}" || "${SCENARIO}" != "all" ]]; then
   cat "${log_dir}/client.stdout.log"
   fetch_evidence play-a "${HTTP_A}"
   fetch_evidence play-b "${HTTP_B}"

@@ -9,6 +9,7 @@ data class ClientOptions(
     val httpBEndpoint: String?,
     val apiAReplacementEndpoint: String?,
     val controlDir: String?,
+    val scenario: String,
     val stormExitDelayMillis: Long,
 ) {
     companion object {
@@ -22,6 +23,7 @@ data class ClientOptions(
                 httpBEndpoint = optional("ZLINK_KOTLIN_E2E_HTTP_B_ENDPOINT"),
                 apiAReplacementEndpoint = optional("ZLINK_KOTLIN_E2E_API_A_REPLACEMENT_ENDPOINT"),
                 controlDir = optional("ZLINK_KOTLIN_E2E_CONTROL_DIR"),
+                scenario = Env.get("ZLINK_KOTLIN_E2E_SCENARIO", "all"),
                 stormExitDelayMillis = Env.get("ZLINK_KOTLIN_E2E_STORM_EXIT_DELAY_MS", "0").toLong(),
             )
 

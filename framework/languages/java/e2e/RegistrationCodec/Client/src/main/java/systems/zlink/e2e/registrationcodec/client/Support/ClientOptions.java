@@ -5,6 +5,7 @@ public record ClientOptions(
     String httpEndpoint,
     String codecRequesterHttpEndpoint,
     String invalidServerEndpoint,
+    String scenario,
     String buildDir,
     String logDir) {
     public static ClientOptions fromEnv() {
@@ -13,6 +14,7 @@ public record ClientOptions(
             Env.get("ZLINK_JAVA_E2E_HTTP_ENDPOINT"),
             Env.get("ZLINK_JAVA_E2E_CODEC_REQUESTER_HTTP_ENDPOINT"),
             Env.get("ZLINK_JAVA_E2E_INVALID_SERVER_ENDPOINT"),
+            Env.get("ZLINK_JAVA_E2E_SCENARIO", "all"),
             Env.get("ZLINK_JAVA_E2E_BUILD_DIR",
                 System.getProperty("user.home") + "/.cache/zlink/java-e2e/RegistrationCodec"),
             Env.get("ZLINK_JAVA_E2E_LOG_DIR", "logs"));

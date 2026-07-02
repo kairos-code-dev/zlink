@@ -68,7 +68,7 @@ class PlayApplication {
                     }
                     state.record(
                         "DispatchError",
-                        error.spotRid(),
+                        error.spotRid() ?: "",
                         error.surface().toString() +
                             "|" + error.errorReason() +
                             "/" + error.errorAction() +

@@ -12,6 +12,18 @@ public final class YdB1OtherActorProgressScenario {
     }
 
     public static JoinedActors run(ZLinkStreamConnector roomA, ZLinkStreamConnector roomB) {
+        Contracts.BindActorsRes bind = ClientStreamSupport.bindActors(
+            roomA,
+            "room-a",
+            "actor-room-a",
+            "actor-room-b");
+        ScenarioAssert.that("actor-room-a".equals(bind.actorA()), "YD-B1 bind actor A mismatch");
+        ScenarioAssert.that("actor-room-b".equals(bind.actorB()), "YD-B1 bind actor B mismatch");
+        ClientStreamSupport.bindActors(
+            roomB,
+            "room-a",
+            "actor-room-a",
+            "actor-room-b");
         Contracts.ActorJoinRes joinedA = ClientStreamSupport.joinActor(
             roomA,
             "actor-room-a",

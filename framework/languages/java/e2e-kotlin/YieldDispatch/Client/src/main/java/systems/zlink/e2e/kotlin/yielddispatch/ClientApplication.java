@@ -5,11 +5,14 @@ public final class ClientApplication {
     }
 
     public static void run(String... args) {
-        String mode = Env.get("ZLINK_KOTLIN_E2E_CLIENT_MODE", "");
-        if ("d2".equals(mode)) {
-            ClientScenario.runD2();
+        String scenario = Env.get("ZLINK_KOTLIN_E2E_CLIENT_MODE", "all");
+        if (args.length > 0) {
+            scenario = args[0];
+        }
+        if ("d2".equals(scenario) || "YD-D2".equals(scenario) || "YD-D3".equals(scenario)) {
+            ClientScenario.runD2(scenario);
         } else {
-            ClientScenario.run();
+            ClientScenario.run(scenario);
         }
         System.out.println("yield-dispatch kotlin e2e result=passed");
         System.exit(0);

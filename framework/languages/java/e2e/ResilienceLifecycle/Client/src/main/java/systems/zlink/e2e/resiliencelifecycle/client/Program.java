@@ -26,7 +26,8 @@ public final class Program {
         if ("suite".equals(mode)) {
             ClientOptions options = ClientOptions.fromEnv();
             try (ResilienceProcessManager processes = new ResilienceProcessManager(options)) {
-                new ResilienceLifecycleSuite(options, processes).run();
+                new ResilienceLifecycleSuite(options, processes)
+                    .run(Env.get("ZLINK_JAVA_E2E_SCENARIO", "all"));
             }
             System.out.println("resilience-lifecycle e2e result=passed");
             return;

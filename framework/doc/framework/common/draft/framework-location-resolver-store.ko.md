@@ -995,15 +995,16 @@ local capability는 같은 mesh의 peer list를 읽은 뒤 아래 규칙으로 c
 
 | auto-connect type | connect 대상 |
 |-------------------|--------------|
-| route mesh | local router -> remote router. local과 remote가 같은 routing id 또는 같은 endpoint이면 제외한다. |
+| route mesh | local router -> remote router. local과 remote가 같은 routing id 또는 같은 endpoint이면 제외하고, pairwise initiator로 한쪽만 connect한다. |
 | client/server | local dealer -> remote router. router는 dealer로 outbound connect하지 않는다. |
 | dealer mesh | local dealer -> remote dealer. 중복 연결을 피하려고 routing id와 endpoint를 비교해 한쪽만 connect한다. |
 | fanout | local sub -> remote pub. pub는 sub로 outbound connect하지 않는다. |
-| spot mesh | local spot -> remote spot. 같은 endpoint와 같은 routing id는 제외한다. router role row는 spot endpoint metadata를 풀 때만 사용한다. |
+| spot mesh | local spot -> remote spot. 같은 endpoint와 같은 routing id는 제외하고, pairwise initiator로 한쪽만 connect한다. router role row는 spot endpoint metadata를 풀 때만 사용한다. |
 
-dealer mesh의 한쪽 선택 규칙은 기존 core 정책처럼 routing id가 둘 다 있으면 routing id byte order를
-먼저 비교하고, 없거나 같으면 endpoint 문자열을 비교한다. 비교 결과 local이 더 작은 쪽일 때만
-connect한다. 이렇게 해야 양쪽 dealer가 동시에 서로 connect하는 중복 연결을 피할 수 있다.
+pairwise initiator는 대칭 mesh(route mesh, dealer mesh, spot mesh) 공통 규칙이다. 기존 core 정책처럼
+routing id가 둘 다 있으면 routing id byte order를 먼저 비교하고, 없거나 같으면 endpoint 문자열을
+비교한다. 비교 결과 local이 더 작은 쪽일 때만 connect한다. 양쪽이 동시에 서로 connect하면 같은
+routing id에 연결이 두 개 생기고, route mesh에서는 rid 지정 요청의 라우팅이 깨진다.
 
 ### 14.4 reconcile loop
 
@@ -1117,7 +1118,7 @@ framework spot runtime은 아래 event에서 store를 자동 갱신한다.
 
 | event | 동작 |
 |-------|------|
-| spot node start | entry spot location과 node capability metadata를 update한다. |
+| spot node start | entry spot location과 node capability metadata를 update한다. entry spot row의 `SpotRid`는 spot node의 routing id다. 외부 caller는 entry spot을 node rid로 찾으므로, node 내부에서 파생한 entry spot instance rid를 key로 쓰지 않는다. |
 | user spot created | `SpotRid`, `NodeRid`, `SpotKind`, `Generation`, endpoint metadata를 update한다. |
 | user spot moved | 새 owner가 `Takeover` intent로 store가 발급한 새 generation을 받아 spot location을 update한다. |
 | user spot stopped/destroyed | owner/generation guard로 spot location을 remove한다. |

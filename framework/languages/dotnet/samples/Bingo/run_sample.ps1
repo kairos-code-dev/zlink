@@ -34,8 +34,6 @@ try {
     $basePort = if ($env:BINGO_BASE_PORT) { [int]$env:BINGO_BASE_PORT } else { 0 }
     $ports = New-SamplePorts -Count 22 -BasePort $basePort
 
-    Set-DefaultEnv "BINGO_REGISTRY_PUB_ENDPOINT" "tcp://127.0.0.1:$($ports[0])"
-    Set-DefaultEnv "BINGO_REGISTRY_ROUTER_ENDPOINT" "tcp://127.0.0.1:$($ports[1])"
     Set-DefaultEnv "BINGO_API_A_CHANNEL_ENDPOINT" "tcp://127.0.0.1:$($ports[2])"
     Set-DefaultEnv "BINGO_PLAY_A_CHANNEL_ENDPOINT" "tcp://127.0.0.1:$($ports[3])"
     Set-DefaultEnv "BINGO_SESSION_A_SPOT_ENDPOINT" "tcp://127.0.0.1:$($ports[4])"
@@ -75,8 +73,6 @@ try {
 
     Invoke-SampleDotnetBuild (Join-Path $ScriptDir "Bingo.csproj")
 
-    Start-SampleDotnetAssembly -Name "registry" -Project (Join-Path $ScriptDir "Server/Registry/Bingo.Server.Registry.csproj") -LogDirectory $LogDir | Out-Null
-    Wait-SampleTcpEndpoint "registry-router" $env:BINGO_REGISTRY_ROUTER_ENDPOINT
 
     Start-SampleDotnetAssembly -Name "api-a" -Project (Join-Path $ScriptDir "Server/Api/Bingo.Server.Api.csproj") -LogDirectory $LogDir -Arguments @("--node", "a") | Out-Null
     Wait-SampleTcpEndpoint "api-a" $env:BINGO_API_A_CHANNEL_ENDPOINT
@@ -107,6 +103,8 @@ try {
     Start-Sleep -Seconds $settleSeconds
 
     $clientLog = Join-Path $LogDir "client.log"
+    $startupDelaySeconds = if ($env:BINGO_STARTUP_DELAY_SECONDS) { [double]$env:BINGO_STARTUP_DELAY_SECONDS } else { 3.0 }
+    Start-Sleep -Seconds $startupDelaySeconds
     Invoke-SampleDotnetRun -Project (Join-Path $ScriptDir "Client/Bingo.Client.csproj") -Arguments @("--stream-a-endpoint", $env:BINGO_SESSION_A_STREAM_ENDPOINT, "--stream-b-endpoint", $env:BINGO_SESSION_B_STREAM_ENDPOINT) *> $clientLog
     if (-not (Select-String -Path $clientLog -Pattern "bingo=completed" -Quiet)) {
         throw "Bingo client did not complete."

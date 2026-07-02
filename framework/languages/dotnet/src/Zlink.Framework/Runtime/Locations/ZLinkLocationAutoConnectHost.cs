@@ -138,6 +138,11 @@ internal sealed class ZLinkLocationAutoConnectHost : IAsyncDisposable
             var manual = new HashSet<string>(
                 spot.Router.ManualConnections.Select(static connection => connection.Endpoint),
                 StringComparer.Ordinal);
+            // The row advertises the pub/sub plane endpoint so peers can
+            // wire both planes from one row (draft 6.1 metadata).
+            var metadata = spot.PubSub?.BindEndpoint is { Length: > 0 } pubEndpoint
+                ? new Dictionary<string, string> { [SpotPubEndpointMetadataKey] = pubEndpoint }
+                : null;
             AddLoop(
                 ZLinkLocationAutoConnectType.SpotMesh,
                 meshName,
@@ -145,7 +150,8 @@ internal sealed class ZLinkLocationAutoConnectHost : IAsyncDisposable
                 RidOrNull(spot.RoutingId),
                 endpoint ?? string.Empty,
                 (uint)spot.Router.SocketConfig.Weight,
-                new SpotNodeExecutor(node.Node, manual));
+                new SpotNodeExecutor(node.Node, manual),
+                metadata);
         }
 
         foreach (var loop in _loops)
@@ -172,6 +178,8 @@ internal sealed class ZLinkLocationAutoConnectHost : IAsyncDisposable
         _loops.Clear();
     }
 
+    internal const string SpotPubEndpointMetadataKey = "pub-endpoint";
+
     private void AddLoop(
         ZLinkLocationAutoConnectType type,
         string meshName,
@@ -179,7 +187,8 @@ internal sealed class ZLinkLocationAutoConnectHost : IAsyncDisposable
         RoutingId? nodeRid,
         string endpoint,
         uint weight,
-        IZLinkAutoConnectExecutor executor)
+        IZLinkAutoConnectExecutor executor,
+        IReadOnlyDictionary<string, string>? metadata = null)
     {
         // A capability with neither identity nor endpoint cannot be keyed
         // or advertised. When it also never dials (advertise-only server
@@ -193,7 +202,7 @@ internal sealed class ZLinkLocationAutoConnectHost : IAsyncDisposable
         var row = advertisable
             ? new ZLinkPeerLocation(
                 type, meshName, nodeRid, role, endpoint, weight, 0,
-                Metadata: null, Capabilities: null,
+                Metadata: metadata, Capabilities: null,
                 OwnerId: string.Empty, Generation: 0, UpdatedAt: default)
             : null;
         var reconciler = new ZLinkAutoConnectReconciler(
@@ -226,7 +235,18 @@ internal sealed class ZLinkLocationAutoConnectHost : IAsyncDisposable
         HashSet<string> manualEndpoints) : IZLinkAutoConnectExecutor
     {
         public void Connect(ZLinkAutoConnectTarget target) =>
-            Guard(() => runtime.Connect(target.Endpoint));
+            Guard(() =>
+            {
+                // Route mesh rows always carry the peer's routing id; the
+                // rid-aware dial makes rid-addressed requests routable.
+                if (target.NodeRid is { Size: > 0 } rid)
+                {
+                    runtime.Connect(rid, target.Endpoint);
+                    return;
+                }
+
+                runtime.Connect(target.Endpoint);
+            });
 
         public void Disconnect(ZLinkAutoConnectTarget target)
         {
@@ -270,10 +290,19 @@ internal sealed class ZLinkLocationAutoConnectHost : IAsyncDisposable
                 if (target.NodeRid is { Size: > 0 } rid)
                 {
                     node.ConnectPeer(rid, target.Endpoint);
-                    return;
+                }
+                else
+                {
+                    node.ConnectPeer(target.Endpoint);
                 }
 
-                node.ConnectPeer(target.Endpoint);
+                // The pub/sub plane is a second link the row advertises in
+                // metadata; without it cross-node spot publishes never
+                // arrive.
+                if (PubEndpointOf(target) is { } pubEndpoint)
+                {
+                    node.ConnectPeer(pubEndpoint);
+                }
             });
         }
 
@@ -281,8 +310,22 @@ internal sealed class ZLinkLocationAutoConnectHost : IAsyncDisposable
         {
             if (manualEndpoints.Contains(target.Endpoint)) return;
 
-            Guard(() => node.DisconnectPeer(target.Endpoint));
+            Guard(() =>
+            {
+                node.DisconnectPeer(target.Endpoint);
+                if (PubEndpointOf(target) is { } pubEndpoint)
+                {
+                    node.DisconnectPeer(pubEndpoint);
+                }
+            });
         }
+
+        private static string? PubEndpointOf(ZLinkAutoConnectTarget target) =>
+            target.Metadata is not null
+            && target.Metadata.TryGetValue(SpotPubEndpointMetadataKey, out var pubEndpoint)
+            && pubEndpoint.Length > 0
+                ? pubEndpoint
+                : null;
     }
 
     /// <summary>Connect failures never abort a reconcile tick and never

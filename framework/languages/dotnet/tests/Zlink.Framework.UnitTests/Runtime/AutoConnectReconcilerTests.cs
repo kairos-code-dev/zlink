@@ -49,19 +49,24 @@ public sealed class AutoConnectReconcilerTests
         Assert.Equal("tcp://r:1", target.Endpoint);
     }
 
-    [Fact]
-    public void Dealer_Mesh_Pairwise_Initiator_Connects_From_The_Smaller_Side_Only()
+    [Theory]
+    [InlineData(ZLinkLocationAutoConnectType.DealerMesh, ZLinkLocationRole.Dealer)]
+    [InlineData(ZLinkLocationAutoConnectType.RouteMesh, ZLinkLocationRole.Router)]
+    public void Symmetric_Mesh_Pairwise_Initiator_Connects_From_The_Smaller_Side_Only(
+        ZLinkLocationAutoConnectType type,
+        ZLinkLocationRole role)
     {
-        var smaller = Local(ZLinkLocationAutoConnectType.DealerMesh, ZLinkLocationRole.Dealer, "aa", "tcp://a:1");
-        var bigger = Local(ZLinkLocationAutoConnectType.DealerMesh, ZLinkLocationRole.Dealer, "bb", "tcp://b:1");
-        var rowSmaller = Peer(ZLinkLocationAutoConnectType.DealerMesh, ZLinkLocationRole.Dealer, "aa", "tcp://a:1");
-        var rowBigger = Peer(ZLinkLocationAutoConnectType.DealerMesh, ZLinkLocationRole.Dealer, "bb", "tcp://b:1");
+        var smaller = Local(type, role, "aa", "tcp://a:1");
+        var bigger = Local(type, role, "bb", "tcp://b:1");
+        var rowSmaller = Peer(type, role, "aa", "tcp://a:1");
+        var rowBigger = Peer(type, role, "bb", "tcp://b:1");
 
         var fromSmaller = ZLinkAutoConnectPlanner.ComputeDesired(smaller, [rowBigger]);
         var fromBigger = ZLinkAutoConnectPlanner.ComputeDesired(bigger, [rowSmaller]);
 
         // Only the byte-order smaller routing id dials, so the pair never
-        // double-connects.
+        // double-connects: two links for one routing id break rid-addressed
+        // requests on route meshes.
         Assert.Single(fromSmaller);
         Assert.Empty(fromBigger);
     }

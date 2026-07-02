@@ -78,9 +78,13 @@ internal sealed class ZLinkSpotNodeInitializer(
     }
 
     /// <summary>Spot lifecycle write (draft 15.1): spot node start
-    /// advertises the entry spot location row. A failed claim is logged
-    /// and never fails node startup: the row can only be missing until the
-    /// store recovers, and the owner lease governs its liveness.</summary>
+    /// advertises the entry spot location row. The row is keyed by the
+    /// spot node's routing id — that is the identity peers know and
+    /// address (session relay requests target the node rid), while the
+    /// entry spot instance rid is a node-internal derivation. A failed
+    /// claim is logged and never fails node startup: the row can only be
+    /// missing until the store recovers, and the owner lease governs its
+    /// liveness.</summary>
     private async ValueTask ClaimEntrySpotLocationAsync(
         ZLinkSpotNodeRegistration spotNodeRegistration,
         IZLinkBackendSpotNode node)
@@ -92,7 +96,7 @@ internal sealed class ZLinkSpotNodeInitializer(
 
         var status = await lifecycle.ClaimSpotAsync(
                 spotNodeRegistration.SpotDiscoveryChannelName ?? spotNodeRegistration.SpotNodeName,
-                node.EntrySpot().RoutingId,
+                node.RoutingId,
                 spotType: null,
                 node.RoutingId,
                 ZLinkSpotKind.Entry,

@@ -180,6 +180,13 @@ internal sealed class ZLinkRouteChannelRuntime : IAsyncDisposable
         _connections.Connect(endpoint);
     }
 
+    /// <summary>Connect to a route mesh peer advertised with a routing id;
+    /// the rid is assigned to the dial so rid-addressed requests reach it.</summary>
+    public void Connect(RoutingId peerRid, string endpoint)
+    {
+        _connections.Connect(peerRid, endpoint);
+    }
+
     public void Disconnect(string endpoint)
     {
         _connections.Disconnect(endpoint);

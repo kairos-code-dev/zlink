@@ -20,7 +20,8 @@ internal sealed record ZLinkAutoConnectTarget(
     string TargetKey,
     RoutingId? NodeRid,
     ZLinkLocationRole Role,
-    string Endpoint);
+    string Endpoint,
+    IReadOnlyDictionary<string, string>? Metadata = null);
 
 /// <summary>
 /// Pure desired-target-set computation: the role allow table and target
@@ -65,7 +66,7 @@ internal static class ZLinkAutoConnectPlanner
             }
 
             var target = new ZLinkAutoConnectTarget(
-                TargetKeyOf(peer), peer.NodeRid, peer.Role, peer.Endpoint);
+                TargetKeyOf(peer), peer.NodeRid, peer.Role, peer.Endpoint, peer.Metadata);
             desired[target.TargetKey] = target;
         }
 
@@ -96,8 +97,13 @@ internal static class ZLinkAutoConnectPlanner
     private static bool ShouldDial(ZLinkAutoConnectLocal local, ZLinkPeerLocation peer) =>
         local.AutoConnectType switch
         {
+            // Symmetric meshes use the pairwise initiator so a pair never
+            // double-connects (draft 4/14.3): both sides dialing creates two
+            // links for one routing id and breaks rid-addressed requests.
             ZLinkLocationAutoConnectType.RouteMesh =>
-                local.Role == ZLinkLocationRole.Router && peer.Role == ZLinkLocationRole.Router,
+                local.Role == ZLinkLocationRole.Router
+                && peer.Role == ZLinkLocationRole.Router
+                && LocalIsInitiator(local, peer),
             // A router never dials out to dealers; dealers dial routers.
             ZLinkLocationAutoConnectType.ClientServer =>
                 local.Role == ZLinkLocationRole.Dealer && peer.Role == ZLinkLocationRole.Router,
@@ -108,15 +114,19 @@ internal static class ZLinkAutoConnectPlanner
             // A publisher never dials out to subscribers.
             ZLinkLocationAutoConnectType.Fanout =>
                 local.Role == ZLinkLocationRole.Sub && peer.Role == ZLinkLocationRole.Pub,
+            // Spot mesh links stay bidirectional: the native spot data
+            // plane and its route bridge expect each node to dial the peers
+            // it addresses, and connect_peer_rid dedupes by rid.
             ZLinkLocationAutoConnectType.SpotMesh =>
-                local.Role == ZLinkLocationRole.Spot && peer.Role == ZLinkLocationRole.Spot,
+                local.Role == ZLinkLocationRole.Spot
+                && peer.Role == ZLinkLocationRole.Spot,
             _ => false
         };
 
     /// <summary>
-    /// Dealer mesh pairwise initiator: compare routing ids by byte order
-    /// when both exist, otherwise compare endpoints ordinally; only the
-    /// smaller side dials so the pair never double-connects.
+    /// Pairwise initiator for symmetric meshes: compare routing ids by byte
+    /// order when both exist, otherwise compare endpoints ordinally; only
+    /// the smaller side dials so the pair never double-connects.
     /// </summary>
     private static bool LocalIsInitiator(ZLinkAutoConnectLocal local, ZLinkPeerLocation peer)
     {

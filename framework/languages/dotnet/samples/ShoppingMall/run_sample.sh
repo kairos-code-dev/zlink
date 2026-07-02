@@ -10,6 +10,7 @@ mkdir -p "${LOG_DIR}" "${STORE_DIR}" "${SHOPPINGMALL_LOG_DIR}"
 rm -f "${SHOPPINGMALL_LOG_DIR}"/*.log
 
 PIDS=()
+REDIS_CONTAINER=""
 
 cleanup() {
   for ((i=${#PIDS[@]}-1; i>=0; i--)); do
@@ -37,6 +38,9 @@ cleanup() {
     fi
     wait "${pid}" 2>/dev/null || true
   done
+  if [[ -n "${REDIS_CONTAINER}" ]]; then
+    docker rm -f "${REDIS_CONTAINER}" >/dev/null 2>&1 || true
+  fi
   if [[ "${SHOPPINGMALL_KEEP_RUN_DIR:-}" != "1" ]]; then
     rm -rf "${RUN_DIR}"
   else
@@ -78,8 +82,7 @@ PY
 )"
 fi
 
-export SHOPPINGMALL_REGISTRY_PUB_ENDPOINT="${SHOPPINGMALL_REGISTRY_PUB_ENDPOINT:-tcp://127.0.0.1:${PORTS[0]}}"
-export SHOPPINGMALL_REGISTRY_ROUTER_ENDPOINT="${SHOPPINGMALL_REGISTRY_ROUTER_ENDPOINT:-tcp://127.0.0.1:${PORTS[1]}}"
+export SHOPPINGMALL_REDIS_KEY_PREFIX="${SHOPPINGMALL_REDIS_KEY_PREFIX:-shoppingmall:dotnet:${RANDOM}:$$:}"
 export SHOPPINGMALL_API_A_HTTP_URL="${SHOPPINGMALL_API_A_HTTP_URL:-http://127.0.0.1:${PORTS[2]}}"
 export SHOPPINGMALL_API_B_HTTP_URL="${SHOPPINGMALL_API_B_HTTP_URL:-http://127.0.0.1:${PORTS[3]}}"
 export SHOPPINGMALL_API_A_ROUTE_ENDPOINT="${SHOPPINGMALL_API_A_ROUTE_ENDPOINT:-tcp://127.0.0.1:${PORTS[4]}}"
@@ -154,8 +157,16 @@ start_server() {
 
 dotnet build "${SCRIPT_DIR}/ShoppingMall.csproj" --maxcpucount:1
 
-start_server registry "${SCRIPT_DIR}/Server/Registry/ShoppingMall.Registry.csproj"
-wait_port registry-router "${SHOPPINGMALL_REGISTRY_ROUTER_ENDPOINT}"
+# The sample owns its Redis: a dedicated, throwaway container is the shared
+# location store every server registers into (no registry process exists).
+if ! command -v docker >/dev/null 2>&1; then
+  echo "Docker is required to run the ShoppingMall sample (it provisions a dedicated Redis container)." >&2
+  exit 1
+fi
+REDIS_CONTAINER="shoppingmall-dotnet-redis-${RANDOM}-$$"
+docker run -d --rm --name "${REDIS_CONTAINER}" -p "127.0.0.1::6379" redis:7.2-alpine >/dev/null
+export SHOPPINGMALL_REDIS_ENDPOINT="$(docker port "${REDIS_CONTAINER}" 6379/tcp | sed -E 's/.*:([0-9]+)$/127.0.0.1:\1/')"
+wait_port redis "tcp://${SHOPPINGMALL_REDIS_ENDPOINT}"
 
 start_server workflow-a "${SCRIPT_DIR}/Server/OrderWorkflow/ShoppingMall.OrderWorkflow.csproj" --instance workflow-a
 wait_port workflow-a-route "${SHOPPINGMALL_WORKFLOW_A_ROUTE_ENDPOINT}"
@@ -176,6 +187,10 @@ wait_http api-a "${SHOPPINGMALL_API_A_HTTP_URL}"
 start_server api-b "${SCRIPT_DIR}/Server/CommerceApi/ShoppingMall.CommerceApi.csproj" --instance api-b
 wait_port api-b-route "${SHOPPINGMALL_API_B_ROUTE_ENDPOINT}"
 wait_http api-b "${SHOPPINGMALL_API_B_HTTP_URL}"
+
+# Give the auto-connect reconcile loops one or two polling intervals to
+# converge before the scenario drives traffic.
+sleep "${SHOPPINGMALL_STARTUP_DELAY_SECONDS:-3}"
 
 dotnet run --no-build --project "${SCRIPT_DIR}/Client/ShoppingMall.Client.csproj"
 

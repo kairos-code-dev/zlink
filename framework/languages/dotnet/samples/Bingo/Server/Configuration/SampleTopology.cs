@@ -3,8 +3,6 @@ using Systems.Zlink;
 namespace Bingo.Server.Configuration;
 
 public sealed record SampleTopology(
-    string RegistryPubEndpoint,
-    string RegistryRouterEndpoint,
     SampleApiNode ApiA,
     SampleApiNode ApiB,
     SamplePlayNode PlayA,
@@ -32,8 +30,6 @@ public sealed record SampleTopology(
             RoutingId.From("2202"));
 
         return new SampleTopology(
-            ReadEndpoint("BINGO_REGISTRY_PUB_ENDPOINT", "tcp://127.0.0.1:47101"),
-            ReadEndpoint("BINGO_REGISTRY_ROUTER_ENDPOINT", "tcp://127.0.0.1:47102"),
             new SampleApiNode(
                 ReadEndpoint("BINGO_API_A_CHANNEL_ENDPOINT", "tcp://127.0.0.1:47103"),
                 ReadEndpoint("BINGO_API_A_PLAY_ROUTE_ENDPOINT", "tcp://127.0.0.1:47118"),

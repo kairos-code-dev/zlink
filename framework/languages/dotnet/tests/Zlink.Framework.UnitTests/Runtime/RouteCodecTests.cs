@@ -192,6 +192,10 @@ public sealed class RouteCodecTests
             throw new NotSupportedException();
         }
 
+        public void SetConnectRoutingId(RoutingId routingId)
+        {
+        }
+
         public void SetMandatory(bool mandatory)
         {
             throw new NotSupportedException();

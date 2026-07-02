@@ -86,8 +86,6 @@ PY
 )"
 fi
 
-export BINGO_REGISTRY_PUB_ENDPOINT="${BINGO_REGISTRY_PUB_ENDPOINT:-tcp://127.0.0.1:${PORTS[0]}}"
-export BINGO_REGISTRY_ROUTER_ENDPOINT="${BINGO_REGISTRY_ROUTER_ENDPOINT:-tcp://127.0.0.1:${PORTS[1]}}"
 export BINGO_API_A_CHANNEL_ENDPOINT="${BINGO_API_A_CHANNEL_ENDPOINT:-tcp://127.0.0.1:${PORTS[2]}}"
 export BINGO_PLAY_A_CHANNEL_ENDPOINT="${BINGO_PLAY_A_CHANNEL_ENDPOINT:-tcp://127.0.0.1:${PORTS[3]}}"
 export BINGO_SESSION_A_SPOT_ENDPOINT="${BINGO_SESSION_A_SPOT_ENDPOINT:-tcp://127.0.0.1:${PORTS[4]}}"
@@ -177,9 +175,6 @@ start_server() {
 
 dotnet build "${SCRIPT_DIR}/Bingo.csproj" --maxcpucount:1
 
-start_server registry "${SCRIPT_DIR}/Server/Registry/Bingo.Server.Registry.csproj"
-wait_port registry-router "${BINGO_REGISTRY_ROUTER_ENDPOINT}"
-
 start_server play-a "${SCRIPT_DIR}/Server/Play/Bingo.Server.Play.csproj" --node a
 wait_port play-a "${BINGO_PLAY_A_CHANNEL_ENDPOINT}"
 wait_port play-a-spot-router "${BINGO_PLAY_A_SPOT_ROUTER_ENDPOINT}"
@@ -207,19 +202,39 @@ wait_port session-b-play-route "${BINGO_SESSION_B_PLAY_ROUTE_ENDPOINT}"
 
 sleep "${BINGO_STARTUP_SETTLE_SECONDS:-5}"
 
+# Give the auto-connect reconcile loops one or two polling intervals to
+# converge before the scenario drives traffic.
+sleep "${BINGO_STARTUP_DELAY_SECONDS:-3}"
+
 dotnet run --no-build --project "${SCRIPT_DIR}/Client/Bingo.Client.csproj" -- \
   --stream-a-endpoint "${BINGO_SESSION_A_STREAM_ENDPOINT}" \
   --stream-b-endpoint "${BINGO_SESSION_B_STREAM_ENDPOINT}" >"${LOG_DIR}/client.log" 2>&1
+
+
+# Server-side evidence is written asynchronously after the client exits;
+# poll briefly instead of failing on the first read.
+wait_log() {
+  local pattern="$1"
+  local file="$2"
+  for _ in $(seq 1 50); do
+    if grep -Eq "${pattern}" "${file}"; then
+      return 0
+    fi
+    sleep 0.2
+  done
+  echo "Timed out waiting for '${pattern}' in ${file}" >&2
+  return 1
+}
 
 grep -q "bingo=completed" "${LOG_DIR}/client.log"
 grep -q "stream-inbound sample=Bingo" "${LOG_DIR}/client.log"
 grep -Eq "stream-inbound sample=Bingo .* seq=[0-9]" "${LOG_DIR}/client.log"
 grep -Eq "stream-inbound sample=Bingo .* name=.*Notify" "${LOG_DIR}/client.log"
-grep -q "bingo observer room: actor left. observedRoom=.*observer=observer" "${LOG_DIR}/play-b.log"
-grep -q "bingo room: actor left. room=.*actor=player-1" "${LOG_DIR}/play-a.log"
-grep -q "bingo room: actor left. room=.*actor=player-2" "${LOG_DIR}/play-a.log"
-grep -q "entry spot: actor destroy completed. actor=player-1" "${LOG_DIR}/play-a.log"
-grep -q "entry spot: actor destroy completed. actor=player-2" "${LOG_DIR}/play-a.log"
+wait_log "bingo observer room: actor left. observedRoom=.*observer=observer" "${LOG_DIR}/play-b.log"
+wait_log "bingo room: actor left. room=.*actor=player-1" "${LOG_DIR}/play-a.log"
+wait_log "bingo room: actor left. room=.*actor=player-2" "${LOG_DIR}/play-a.log"
+wait_log "entry spot: actor destroy completed. actor=player-1" "${LOG_DIR}/play-a.log"
+wait_log "entry spot: actor destroy completed. actor=player-2" "${LOG_DIR}/play-a.log"
 require_log_count 1 "entry spot: actor left\\. actor=player-1" "${LOG_DIR}/play-a.log"
 require_log_count 1 "entry spot: actor left\\. actor=player-2" "${LOG_DIR}/play-a.log"
 require_log_count 1 "entry spot: actor destroy completed\\. actor=player-1" "${LOG_DIR}/play-a.log"

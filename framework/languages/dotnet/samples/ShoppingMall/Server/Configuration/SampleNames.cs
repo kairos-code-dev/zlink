@@ -25,8 +25,8 @@ public static class SampleTimings
 }
 
 public sealed record SampleTopology(
-    string RegistryPubEndpoint,
-    string RegistryRouterEndpoint,
+    string RedisEndpoint,
+    string RedisKeyPrefix,
     string ApiAHttpUrl,
     string ApiBHttpUrl,
     string ApiARouteEndpoint,
@@ -50,8 +50,8 @@ public sealed record SampleTopology(
     public static SampleTopology Create()
     {
         return new SampleTopology(
-            Read("SHOPPINGMALL_REGISTRY_PUB_ENDPOINT", "tcp://127.0.0.1:48201"),
-            Read("SHOPPINGMALL_REGISTRY_ROUTER_ENDPOINT", "tcp://127.0.0.1:48202"),
+            Read("SHOPPINGMALL_REDIS_ENDPOINT", "127.0.0.1:6379"),
+            Read("SHOPPINGMALL_REDIS_KEY_PREFIX", "shoppingmall:"),
             Read("SHOPPINGMALL_API_A_HTTP_URL", "http://127.0.0.1:48203"),
             Read("SHOPPINGMALL_API_B_HTTP_URL", "http://127.0.0.1:48204"),
             Read("SHOPPINGMALL_API_A_ROUTE_ENDPOINT", "tcp://127.0.0.1:48205"),

@@ -25,7 +25,9 @@ pwsh -NoProfile -ExecutionPolicy Bypass -File .\run_sample.ps1
 - `Server/CommerceApi/`는 외부 주문 요청을 받고 ZLink channel로 workflow에 전달한다.
 - `Server/OrderWorkflow/`는 주문 상태 전이, 실패 처리, projection rebuild를 담당한다.
 - `Server/Shared/`는 서버 역할 사이에서 공유하는 저장소와 도메인 코드를 담는다.
-- `Server/Registry/`는 샘플 실행 중 사용할 discovery registry를 띄운다.
+- 서버 프로세스들은 registry 없이 공유 location store(Redis)에 위치를 등록하고 자동 연결한다.
+  `run_sample.sh`가 실행마다 전용 Redis 컨테이너를 띄우고 `SHOPPINGMALL_REDIS_ENDPOINT`와
+  `SHOPPINGMALL_REDIS_KEY_PREFIX`를 주입한다.
 
 ## 성공 조건
 

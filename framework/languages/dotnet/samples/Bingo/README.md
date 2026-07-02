@@ -22,7 +22,8 @@ Directory layout:
   marks, winner detection, rare reward fan-out over Spot pub/sub, and
   session-bound push.
 - `Server/Session/` contains the stream Session server and actor relay handlers.
-- `Server/Registry/` contains the embedded discovery registry host.
+- Servers register themselves in a shared location store (the per-run Redis
+  container) and auto-connect; no registry process exists.
 
 Each top-level client/shared directory and each server role directory has its
 own project file. The root `Bingo.csproj` is the aggregate build entry point for
@@ -47,7 +48,7 @@ On Windows PowerShell:
 .\framework\languages\dotnet\samples\Bingo\run_sample.ps1
 ```
 
-The script starts one Registry, two Api servers, two Play servers, two Session
+The script starts two Api servers, two Play servers, two Session
 servers, and a Redis match queue as separate processes. It waits for their
 endpoints, waits briefly for local server connections to settle, and then runs
 the connector client. The

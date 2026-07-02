@@ -1586,7 +1586,7 @@ draft가 기준이며, 정식 spec 문서에는 아직 구현되지 않은 계�
 
 ### 24.7 구현체
 
-- [ ] 공식 Redis extension — Lua/transaction 원자성, key schema 내부화, owner lease 동일 저장소,
+- [x] 공식 Redis extension — Lua/transaction 원자성, key schema 내부화, owner lease 동일 저장소,
       change stamp INCR, `AddRedisLocationStore` builder — 9절, 12절, 14.5
 - [ ] 구현체 필수 조건 전부 (unique index, 동일 물리 저장소, pagination, 장애/not-found 구분,
       polling 가능) — 11절, 12절

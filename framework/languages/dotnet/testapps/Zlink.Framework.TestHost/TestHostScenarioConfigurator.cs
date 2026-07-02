@@ -42,19 +42,15 @@ internal static class TestHostScenarioConfigurator
         services.AddSingleton(new TestHostEventSink(options.EventFilePath));
         services.AddZLinkFramework(framework =>
         {
-            if (!string.IsNullOrWhiteSpace(options.DiscoveryEndpoint))
-
-            {
-                var channel = framework.AddClientServerChannel(options.ChannelName
-                                                               ?? throw new InvalidOperationException(
-                                                                   "Channel server mode requires --channel-name."))
-                    .EnableServer(options.ServerEndpoint
-                                  ?? throw new InvalidOperationException(
-                                      "Channel server mode requires --server-endpoint."));
-                channel
-                    .AddRequestHandler<TestHostProfileRequestHandler, TestHostProfileRequest, TestHostProfileReply>();
-                channel.AddSendHandler<TestHostProfileSendHandler, TestHostProfileSend>();
-            }
+            var channel = framework.AddClientServerChannel(options.ChannelName
+                                                           ?? throw new InvalidOperationException(
+                                                               "Channel server mode requires --channel-name."))
+                .EnableServer(options.ServerEndpoint
+                              ?? throw new InvalidOperationException(
+                                  "Channel server mode requires --server-endpoint."));
+            channel
+                .AddRequestHandler<TestHostProfileRequestHandler, TestHostProfileRequest, TestHostProfileReply>();
+            channel.AddSendHandler<TestHostProfileSendHandler, TestHostProfileSend>();
         });
     }
 
@@ -86,18 +82,14 @@ internal static class TestHostScenarioConfigurator
         services.AddZLinkFramework(framework =>
         {
             framework.AddHandlersFromAssemblyOf<Program>();
-            if (string.IsNullOrWhiteSpace(options.PublisherEndpoint))
-
-            {
-                var channel = framework.AddFanoutChannel(options.ChannelName
-                                                         ?? throw new InvalidOperationException(
-                                                             "Channel subscriber mode requires --channel-name."));
-                if (!string.IsNullOrWhiteSpace(options.PublisherEndpoint))
-                    channel.EnableSubscriber(options.PublisherEndpoint);
-                else
-                    channel.EnableSubscriber();
-                channel.AddHandlerGroup("testhost-channel-events");
-            }
+            var channel = framework.AddFanoutChannel(options.ChannelName
+                                                     ?? throw new InvalidOperationException(
+                                                         "Channel subscriber mode requires --channel-name."));
+            if (!string.IsNullOrWhiteSpace(options.PublisherEndpoint))
+                channel.EnableSubscriber(options.PublisherEndpoint);
+            else
+                channel.EnableSubscriber();
+            channel.AddHandlerGroup("testhost-channel-events");
         });
     }
 
@@ -105,16 +97,12 @@ internal static class TestHostScenarioConfigurator
     {
         services.AddZLinkFramework(framework =>
         {
-            if (!string.IsNullOrWhiteSpace(options.DiscoveryEndpoint))
-
-            {
-                framework.AddFanoutChannel(options.ChannelName
-                                           ?? throw new InvalidOperationException(
-                                               "Channel publisher mode requires --channel-name."))
-                    .EnablePublisher(options.PublisherEndpoint
-                                     ?? throw new InvalidOperationException(
-                                         "Channel publisher mode requires --publisher-endpoint."));
-            }
+            framework.AddFanoutChannel(options.ChannelName
+                                       ?? throw new InvalidOperationException(
+                                           "Channel publisher mode requires --channel-name."))
+                .EnablePublisher(options.PublisherEndpoint
+                                 ?? throw new InvalidOperationException(
+                                     "Channel publisher mode requires --publisher-endpoint."));
         });
 
         if (!string.IsNullOrWhiteSpace(options.PublishTopic))

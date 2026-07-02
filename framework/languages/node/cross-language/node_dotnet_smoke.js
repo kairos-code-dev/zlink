@@ -43,14 +43,15 @@ async function nodeClientToDotnetChannelServer(tempDir) {
   ]);
   const ctx = zlink.createContext();
   const dealer = zlink.createDealerSocket(ctx);
+  let monitor;
 
   try {
     await host.ready;
-    const monitor = dealer.monitorOpen([zlink.MonitorEventType.ConnectionReady]);
+    monitor = dealer.monitorOpen([zlink.MonitorEventType.ConnectionReady]);
     dealer.connect(endpoint);
     await waitForMonitorEvent(monitor, zlink.MonitorEventType.ConnectionReady, 7000, 'Node dealer -> dotnet channel server');
     monitor.close();
-
+    monitor = undefined;
     const registration = framework.createFrameworkRegistration({
       channels: {
         profiles: { client: { manualConnections: [endpoint] } }
@@ -81,6 +82,9 @@ async function nodeClientToDotnetChannelServer(tempDir) {
       'Node client -> dotnet channel server one-way send'
     ];
   } finally {
+    try {
+      monitor?.close();
+    } catch {}
     dealer.close();
     ctx.close();
     await host.stop();

@@ -6,6 +6,10 @@ NODE_ROOT="$(cd "$ROOT_DIR/../.." && pwd)"
 RUN_ID="$(date +%Y%m%d-%H%M%S)-$$"
 LOG_DIR="$ROOT_DIR/logs/$RUN_ID"
 SCENARIO="${1:-all}"
+LOCAL_READINESS_TIMEOUT_SECONDS=3
+LOCAL_READINESS_POLL_SECONDS=0.1
+LOCAL_READINESS_ATTEMPTS=30
+HTTP_PROBE_TIMEOUT_SECONDS=3
 mkdir -p "$LOG_DIR"
 
 pick_port() {
@@ -65,11 +69,11 @@ build_package() {
 wait_health() {
   local url="$1"
   local name="$2"
-  for _ in $(seq 1 120); do
-    if curl -fsS "$url/health" >/dev/null 2>&1; then
+  for _ in $(seq 1 "${LOCAL_READINESS_ATTEMPTS}"); do
+    if curl --max-time "${HTTP_PROBE_TIMEOUT_SECONDS}" -fsS "$url/health" >/dev/null 2>&1; then
       return 0
     fi
-    sleep 0.25
+    sleep "${LOCAL_READINESS_POLL_SECONDS}"
   done
   echo "Timed out waiting for $name at $url" >&2
   return 1
@@ -81,11 +85,11 @@ wait_port() {
   local address="${endpoint#*://}"
   local host="${address%:*}"
   local port="${address##*:}"
-  for _ in $(seq 1 120); do
-    if node -e "const net=require('node:net'); const s=net.connect({host: process.argv[1], port: Number(process.argv[2])}, () => { s.end(); process.exit(0); }); s.on('error', () => process.exit(1)); setTimeout(() => process.exit(1), 250);" "$host" "$port" >/dev/null 2>&1; then
+  for _ in $(seq 1 "${LOCAL_READINESS_ATTEMPTS}"); do
+    if node -e "const net=require('node:net'); const s=net.connect({host: process.argv[1], port: Number(process.argv[2])}, () => { s.end(); process.exit(0); }); s.on('error', () => process.exit(1)); setTimeout(() => process.exit(1), 100);" "$host" "$port" >/dev/null 2>&1; then
       return 0
     fi
-    sleep 0.25
+    sleep "${LOCAL_READINESS_POLL_SECONDS}"
   done
   echo "Timed out waiting for $name at $endpoint" >&2
   return 1

@@ -13,17 +13,30 @@ import { runRcB4 } from './Scenarios/RcB4CodecCoexistenceScenario';
 
 async function main(): Promise<void> {
   const options = parseClientOptions(process.argv.slice(2));
-  await runRcA1(options.serverUrl);
-  await runRcA2(options.serverUrl);
-  await runRcA3(options.serverUrl);
-  await runRcA4(options.serverUrl);
-  await runRcA5(options.serverUrl);
-  await runRcA6(options);
-  await runRcB1(options.serverUrl);
-  await runRcB2(options.serverUrl);
-  await runRcB3(options.serverUrl);
-  await runRcB4(options.serverUrl);
-  await runRcB5(options.codecRequesterUrl, options.jsonOnlyUrl);
+  const scenarios: Record<string, () => Promise<void>> = {
+    'RC-A1': () => runRcA1(options.serverUrl),
+    'RC-A2': () => runRcA2(options.serverUrl),
+    'RC-A3': () => runRcA3(options.serverUrl),
+    'RC-A4': () => runRcA4(options.serverUrl),
+    'RC-A5': () => runRcA5(options.serverUrl),
+    'RC-A6': () => runRcA6(options),
+    'RC-B1': () => runRcB1(options.serverUrl),
+    'RC-B2': () => runRcB2(options.serverUrl),
+    'RC-B3': () => runRcB3(options.serverUrl),
+    'RC-B4': () => runRcB4(options.serverUrl),
+    'RC-B5': () => runRcB5(options.codecRequesterUrl, options.jsonOnlyUrl)
+  };
+  if (options.scenario === 'all') {
+    for (const run of Object.values(scenarios)) {
+      await run();
+    }
+  } else {
+    const run = scenarios[options.scenario];
+    if (run === undefined) {
+      throw new Error(`Unknown RegistrationCodec scenario '${options.scenario}'.`);
+    }
+    await run();
+  }
   console.log('registration-codec e2e result=passed');
 }
 

@@ -6,6 +6,7 @@ export interface ClientOptions {
   readonly invalidHttpUrl: string;
   readonly invalidChannelEndpoint: string;
   readonly logDir: string;
+  readonly scenario: string;
 }
 
 export function parseClientOptions(args: readonly string[]): ClientOptions {
@@ -24,7 +25,8 @@ export function parseClientOptions(args: readonly string[]): ClientOptions {
     invalidMain: required(values, 'invalid-main'),
     invalidHttpUrl: required(values, 'invalid-http-url'),
     invalidChannelEndpoint: required(values, 'invalid-channel-endpoint'),
-    logDir: required(values, 'log-dir')
+    logDir: required(values, 'log-dir'),
+    scenario: values.get('scenario') ?? 'all'
   };
 }
 

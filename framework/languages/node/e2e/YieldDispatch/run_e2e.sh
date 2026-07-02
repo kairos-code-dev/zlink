@@ -6,6 +6,10 @@ NODE_ROOT="$(cd "$ROOT_DIR/../.." && pwd)"
 RUN_ID="$(date +%Y%m%d-%H%M%S)-$$"
 LOG_DIR="$ROOT_DIR/logs/$RUN_ID"
 SCENARIO="${1:-full}"
+LOCAL_READINESS_TIMEOUT_SECONDS=3
+LOCAL_READINESS_POLL_SECONDS=0.1
+LOCAL_READINESS_ATTEMPTS=30
+HTTP_PROBE_TIMEOUT_SECONDS=3
 CLIENT_SCENARIO="$SCENARIO"
 if [[ "$CLIENT_SCENARIO" == "all" ]]; then
   CLIENT_SCENARIO="full"
@@ -94,15 +98,15 @@ wait_health() {
   local url="$1"
   local name="$2"
   local pid="${3:-}"
-  for _ in $(seq 1 120); do
-    if curl -fsS "$url/health" >/dev/null 2>&1; then
+  for _ in $(seq 1 "${LOCAL_READINESS_ATTEMPTS}"); do
+    if curl --max-time "${HTTP_PROBE_TIMEOUT_SECONDS}" -fsS "$url/health" >/dev/null 2>&1; then
       return 0
     fi
     if [[ -n "$pid" ]] && ! kill -0 "$pid" 2>/dev/null; then
       echo "$name exited before readiness at $url" >&2
       return 1
     fi
-    sleep 0.25
+    sleep "${LOCAL_READINESS_POLL_SECONDS}"
   done
   echo "Timed out waiting for $name at $url" >&2
   return 1

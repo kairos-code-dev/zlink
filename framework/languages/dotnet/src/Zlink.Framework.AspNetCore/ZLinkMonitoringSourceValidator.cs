@@ -3,13 +3,19 @@ namespace Zlink.Framework.AspNetCore;
 internal sealed class ZLinkMonitoringSourceValidator(
     ZLinkMonitoringRegistration registration)
 {
-    public void ValidateRequiredRuntimes(ZLinkFrameworkRuntime? frameworkRuntime)
+    public void ValidateRequiredRuntimes(
+        ZLinkFrameworkRuntime? frameworkRuntime,
+        IZLinkLocationRuntimeQuery? locationQuery)
     {
         if (frameworkRuntime is null
             && (registration.SocketSources.Count > 0
                 || registration.SpotSources.Count > 0))
             throw new ZLinkConfigurationException(
                 "Monitoring socket or spot sources require AddZLinkFramework(...).");
+
+        if (locationQuery is null && registration.LocationRuntimeSources.Count > 0)
+            throw new ZLinkConfigurationException(
+                "Monitoring location-runtime sources require location stores registered through AddZLinkFramework(...).");
     }
 
     public async Task PreflightPollingSourcesAsync(

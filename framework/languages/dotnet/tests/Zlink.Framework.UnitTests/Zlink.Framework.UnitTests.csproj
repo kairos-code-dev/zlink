@@ -55,6 +55,7 @@
         <Compile Include="Runtime/HandlerResultAwaiterTests.cs"/>
         <Compile Include="Runtime/InMemoryLocationStoreTests.cs"/>
         <Compile Include="Runtime/LocationLifecycleTests.cs"/>
+        <Compile Include="Runtime/LocationRuntimePollingDiffTests.cs"/>
         <Compile Include="Runtime/LocationResolverTests.cs"/>
         <Compile Include="Runtime/LocationRuntimeTests.cs"/>
         <Compile Include="Runtime/MessageFlowTracerTests.cs"/>

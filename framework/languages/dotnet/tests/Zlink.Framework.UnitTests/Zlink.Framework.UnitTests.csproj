@@ -52,6 +52,8 @@
         <Compile Include="Runtime/EntrySpotActorDispatchTests.cs"/>
         <Compile Include="Runtime/EnvelopeCodecTests.cs"/>
         <Compile Include="Runtime/HandlerResultAwaiterTests.cs"/>
+        <Compile Include="Runtime/InMemoryLocationStoreTests.cs"/>
+        <Compile Include="Runtime/LocationResolverTests.cs"/>
         <Compile Include="Runtime/MessageFlowTracerTests.cs"/>
         <Compile Include="Runtime/SerialExecutorTests.cs"/>
         <Compile Include="Runtime/SpotActorHandlerRegistryTests.cs"/>

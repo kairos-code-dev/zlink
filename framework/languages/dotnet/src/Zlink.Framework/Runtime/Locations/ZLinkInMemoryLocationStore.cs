@@ -1,0 +1,489 @@
+using System.Globalization;
+
+namespace Zlink.Framework.Runtime.Locations;
+
+/// <summary>
+/// Single-process store for local development, unit tests, and sample smoke
+/// tests. It backs every location store interface plus the owner lease store
+/// in one instance, which satisfies the contract requirement that location
+/// rows and owner leases share one physical store. Never use it for
+/// production topologies where processes must share location data.
+/// </summary>
+internal sealed class ZLinkInMemoryLocationStore :
+    IZLinkPeerLocationStore,
+    IZLinkSpotLocationStore,
+    IZLinkActorLocationStore,
+    IZLinkRouteLocationStore,
+    IZLinkOwnerLeaseStore,
+    IZLinkLocationChangeStampStore
+{
+    private readonly object _gate = new();
+    private readonly TimeProvider _time;
+    private readonly Dictionary<string, ZLinkOwnerLease> _leases = [];
+    private readonly RowTable<ZLinkPeerLocation> _peers = new();
+    private readonly RowTable<ZLinkSpotLocation> _spots = new();
+    private readonly RowTable<ZLinkActorLocation> _actors = new();
+    private readonly RowTable<ZLinkRouteLocation> _routes = new();
+    private readonly Dictionary<ZLinkLocationChangeStampScope, long> _stamps = [];
+
+    public ZLinkInMemoryLocationStore(TimeProvider? timeProvider = null)
+    {
+        _time = timeProvider ?? TimeProvider.System;
+    }
+
+    public ValueTask<ZLinkLocationWriteResult> UpdatePeerAsync(
+        ZLinkPeerLocation peer,
+        ZLinkLocationWriteIntent intent,
+        CancellationToken cancellationToken = default) =>
+        ValueTask.FromResult(Write(
+            _peers,
+            ZLinkLocationKeyCodec.EncodePeerKey(new ZLinkPeerLocationKey(
+                peer.AutoConnectType, peer.MeshName, peer.Role, peer.NodeRid, peer.Endpoint)),
+            peer,
+            intent,
+            peer.OwnerId,
+            peer.Generation,
+            static row => row.OwnerId,
+            static row => row.Generation,
+            static (row, generation, now) => row with { Generation = generation, UpdatedAt = now },
+            ZLinkLocationKind.Peer,
+            peer.MeshName));
+
+    public ValueTask<ZLinkLocationWriteResult> RemovePeerAsync(
+        ZLinkPeerLocationKey key,
+        ZLinkLocationOwnerToken owner,
+        CancellationToken cancellationToken = default) =>
+        ValueTask.FromResult(Remove(
+            _peers,
+            ZLinkLocationKeyCodec.EncodePeerKey(key),
+            owner,
+            static row => row.OwnerId,
+            static row => row.Generation,
+            ZLinkLocationKind.Peer,
+            key.MeshName));
+
+    ValueTask<long> IZLinkPeerLocationStore.RemoveByOwnerAsync(
+        string ownerId,
+        CancellationToken cancellationToken) =>
+        ValueTask.FromResult(RemoveByOwner(
+            _peers, ownerId, static row => row.OwnerId, ZLinkLocationKind.Peer,
+            static row => row.MeshName));
+
+    public ValueTask<IReadOnlyList<ZLinkPeerLocation>> ListPeersAsync(
+        ZLinkPeerLocationFilter filter,
+        CancellationToken cancellationToken = default)
+    {
+        lock (_gate)
+        {
+            IReadOnlyList<ZLinkPeerLocation> items = _peers.Rows.Values
+                .Where(row => Matches(row, filter))
+                .ToArray();
+            return ValueTask.FromResult(items);
+        }
+    }
+
+    public ValueTask<ZLinkLocationWriteResult> UpdateSpotAsync(
+        ZLinkSpotLocation spot,
+        ZLinkLocationWriteIntent intent,
+        CancellationToken cancellationToken = default) =>
+        ValueTask.FromResult(Write(
+            _spots,
+            ZLinkLocationKeyCodec.EncodeSpotKey(new ZLinkSpotLocationKey(spot.MeshName, spot.SpotRid)),
+            spot,
+            intent,
+            spot.OwnerId,
+            spot.Generation,
+            static row => row.OwnerId,
+            static row => row.Generation,
+            static (row, generation, now) => row with { Generation = generation, UpdatedAt = now },
+            ZLinkLocationKind.Spot,
+            spot.MeshName));
+
+    public ValueTask<ZLinkLocationWriteResult> RemoveSpotAsync(
+        ZLinkSpotLocationKey key,
+        ZLinkLocationOwnerToken owner,
+        CancellationToken cancellationToken = default) =>
+        ValueTask.FromResult(Remove(
+            _spots,
+            ZLinkLocationKeyCodec.EncodeSpotKey(key),
+            owner,
+            static row => row.OwnerId,
+            static row => row.Generation,
+            ZLinkLocationKind.Spot,
+            key.MeshName));
+
+    ValueTask<long> IZLinkSpotLocationStore.RemoveByOwnerAsync(
+        string ownerId,
+        CancellationToken cancellationToken) =>
+        ValueTask.FromResult(RemoveByOwner(
+            _spots, ownerId, static row => row.OwnerId, ZLinkLocationKind.Spot,
+            static row => row.MeshName));
+
+    public ValueTask<ZLinkSpotLocation?> ResolveSpotAsync(
+        ZLinkSpotLocationKey key,
+        CancellationToken cancellationToken = default)
+    {
+        lock (_gate)
+        {
+            _spots.Rows.TryGetValue(ZLinkLocationKeyCodec.EncodeSpotKey(key), out var row);
+            return ValueTask.FromResult(row);
+        }
+    }
+
+    public ValueTask<ZLinkLocationPage<ZLinkSpotLocation>> ListSpotsAsync(
+        ZLinkSpotLocationFilter filter,
+        ZLinkPageRequest page = default,
+        CancellationToken cancellationToken = default)
+    {
+        lock (_gate)
+        {
+            return ValueTask.FromResult(Page(_spots, row => Matches(row, filter), page));
+        }
+    }
+
+    public ValueTask<ZLinkLocationWriteResult> UpdateActorAsync(
+        ZLinkActorLocation actor,
+        ZLinkLocationWriteIntent intent,
+        CancellationToken cancellationToken = default) =>
+        ValueTask.FromResult(Write(
+            _actors,
+            ZLinkLocationKeyCodec.EncodeActorKey(new ZLinkActorLocationKey(actor.ActorType, actor.ActorId)),
+            actor,
+            intent,
+            actor.OwnerId,
+            actor.Generation,
+            static row => row.OwnerId,
+            static row => row.Generation,
+            static (row, generation, now) => row with { Generation = generation, UpdatedAt = now },
+            ZLinkLocationKind.Actor,
+            meshName: null));
+
+    public ValueTask<ZLinkLocationWriteResult> RemoveActorAsync(
+        ZLinkActorLocationKey key,
+        ZLinkLocationOwnerToken owner,
+        CancellationToken cancellationToken = default) =>
+        ValueTask.FromResult(Remove(
+            _actors,
+            ZLinkLocationKeyCodec.EncodeActorKey(key),
+            owner,
+            static row => row.OwnerId,
+            static row => row.Generation,
+            ZLinkLocationKind.Actor,
+            meshName: null));
+
+    ValueTask<long> IZLinkActorLocationStore.RemoveByOwnerAsync(
+        string ownerId,
+        CancellationToken cancellationToken) =>
+        ValueTask.FromResult(RemoveByOwner(
+            _actors, ownerId, static row => row.OwnerId, ZLinkLocationKind.Actor,
+            static _ => null));
+
+    public ValueTask<ZLinkActorLocation?> ResolveActorAsync(
+        ZLinkActorLocationKey key,
+        CancellationToken cancellationToken = default)
+    {
+        lock (_gate)
+        {
+            _actors.Rows.TryGetValue(ZLinkLocationKeyCodec.EncodeActorKey(key), out var row);
+            return ValueTask.FromResult(row);
+        }
+    }
+
+    public ValueTask<ZLinkLocationPage<ZLinkActorLocation>> ListActorsAsync(
+        ZLinkActorLocationFilter filter,
+        ZLinkPageRequest page = default,
+        CancellationToken cancellationToken = default)
+    {
+        lock (_gate)
+        {
+            return ValueTask.FromResult(Page(_actors, row => Matches(row, filter), page));
+        }
+    }
+
+    public ValueTask<ZLinkLocationWriteResult> UpdateRouteAsync(
+        ZLinkRouteLocation route,
+        ZLinkLocationWriteIntent intent,
+        CancellationToken cancellationToken = default) =>
+        ValueTask.FromResult(Write(
+            _routes,
+            ZLinkLocationKeyCodec.EncodeRouteKey(new ZLinkRouteLocationKey(route.RouteKind, route.RouteKey)),
+            route,
+            intent,
+            route.OwnerId,
+            route.Generation,
+            static row => row.OwnerId,
+            static row => row.Generation,
+            static (row, generation, now) => row with { Generation = generation, UpdatedAt = now },
+            ZLinkLocationKind.Route,
+            meshName: null));
+
+    public ValueTask<ZLinkLocationWriteResult> RemoveRouteAsync(
+        ZLinkRouteLocationKey key,
+        ZLinkLocationOwnerToken owner,
+        CancellationToken cancellationToken = default) =>
+        ValueTask.FromResult(Remove(
+            _routes,
+            ZLinkLocationKeyCodec.EncodeRouteKey(key),
+            owner,
+            static row => row.OwnerId,
+            static row => row.Generation,
+            ZLinkLocationKind.Route,
+            meshName: null));
+
+    ValueTask<long> IZLinkRouteLocationStore.RemoveByOwnerAsync(
+        string ownerId,
+        CancellationToken cancellationToken) =>
+        ValueTask.FromResult(RemoveByOwner(
+            _routes, ownerId, static row => row.OwnerId, ZLinkLocationKind.Route,
+            static _ => null));
+
+    public ValueTask<ZLinkRouteLocation?> ResolveRouteAsync(
+        ZLinkRouteLocationKey key,
+        CancellationToken cancellationToken = default)
+    {
+        lock (_gate)
+        {
+            _routes.Rows.TryGetValue(ZLinkLocationKeyCodec.EncodeRouteKey(key), out var row);
+            return ValueTask.FromResult(row);
+        }
+    }
+
+    public ValueTask<ZLinkLocationPage<ZLinkRouteLocation>> ListRoutesAsync(
+        ZLinkRouteLocationFilter filter,
+        ZLinkPageRequest page = default,
+        CancellationToken cancellationToken = default)
+    {
+        lock (_gate)
+        {
+            return ValueTask.FromResult(Page(_routes, row => Matches(row, filter), page));
+        }
+    }
+
+    public ValueTask<ZLinkLocationWriteResult> RenewOwnerLeaseAsync(
+        string ownerId,
+        RoutingId nodeRid,
+        TimeSpan leaseTtl,
+        CancellationToken cancellationToken = default)
+    {
+        lock (_gate)
+        {
+            var now = _time.GetUtcNow();
+            _leases[ownerId] = new ZLinkOwnerLease(ownerId, nodeRid, now + leaseTtl, now);
+            return ValueTask.FromResult(ZLinkLocationWriteResult.Stored(0, now));
+        }
+    }
+
+    public ValueTask<ZLinkLocationWriteResult> RemoveOwnerLeaseAsync(
+        string ownerId,
+        CancellationToken cancellationToken = default)
+    {
+        lock (_gate)
+        {
+            var now = _time.GetUtcNow();
+            _leases.Remove(ownerId);
+            return ValueTask.FromResult(ZLinkLocationWriteResult.Stored(0, now));
+        }
+    }
+
+    public ValueTask<ZLinkOwnerLeaseSnapshot> ListOwnerLeasesAsync(
+        CancellationToken cancellationToken = default)
+    {
+        lock (_gate)
+        {
+            return ValueTask.FromResult(new ZLinkOwnerLeaseSnapshot(
+                [.. _leases.Values],
+                _time.GetUtcNow()));
+        }
+    }
+
+    public ValueTask<long> GetChangeStampAsync(
+        ZLinkLocationChangeStampScope scope,
+        CancellationToken cancellationToken = default)
+    {
+        lock (_gate)
+        {
+            _stamps.TryGetValue(scope, out var stamp);
+            return ValueTask.FromResult(stamp);
+        }
+    }
+
+    private ZLinkLocationWriteResult Write<TRow>(
+        RowTable<TRow> table,
+        string key,
+        TRow row,
+        ZLinkLocationWriteIntent intent,
+        string ownerId,
+        long generation,
+        Func<TRow, string> ownerOf,
+        Func<TRow, long> generationOf,
+        Func<TRow, long, DateTimeOffset, TRow> finalize,
+        ZLinkLocationKind kind,
+        string? meshName)
+        where TRow : class
+    {
+        lock (_gate)
+        {
+            var now = _time.GetUtcNow();
+            var exists = table.Rows.TryGetValue(key, out var current);
+            switch (intent)
+            {
+                case ZLinkLocationWriteIntent.NewClaim when exists && IsOwnerLive(ownerOf(current!), now):
+                    return ZLinkLocationWriteResult.RejectedConflict;
+
+                case ZLinkLocationWriteIntent.NewClaim:
+                case ZLinkLocationWriteIntent.Takeover:
+                {
+                    // The store issues the fencing generation atomically per
+                    // key; counters survive removal so a re-claim can never
+                    // reuse an old generation.
+                    table.Generations.TryGetValue(key, out var last);
+                    var next = last + 1;
+                    table.Generations[key] = next;
+                    table.Rows[key] = finalize(row, next, now);
+                    Bump(kind, meshName);
+                    return ZLinkLocationWriteResult.Stored(next, now);
+                }
+
+                case ZLinkLocationWriteIntent.Renew
+                    when exists && ownerOf(current!) == ownerId && generationOf(current!) == generation:
+                    table.Rows[key] = finalize(row, generation, now);
+                    Bump(kind, meshName);
+                    return ZLinkLocationWriteResult.Stored(generation, now);
+
+                default:
+                    return ZLinkLocationWriteResult.IgnoredStale;
+            }
+        }
+    }
+
+    private ZLinkLocationWriteResult Remove<TRow>(
+        RowTable<TRow> table,
+        string key,
+        ZLinkLocationOwnerToken owner,
+        Func<TRow, string> ownerOf,
+        Func<TRow, long> generationOf,
+        ZLinkLocationKind kind,
+        string? meshName)
+        where TRow : class
+    {
+        lock (_gate)
+        {
+            if (!table.Rows.TryGetValue(key, out var current)
+                || ownerOf(current) != owner.OwnerId
+                || generationOf(current) != owner.Generation)
+            {
+                return ZLinkLocationWriteResult.IgnoredStale;
+            }
+
+            table.Rows.Remove(key);
+            Bump(kind, meshName);
+            return ZLinkLocationWriteResult.Stored(owner.Generation, _time.GetUtcNow());
+        }
+    }
+
+    private long RemoveByOwner<TRow>(
+        RowTable<TRow> table,
+        string ownerId,
+        Func<TRow, string> ownerOf,
+        ZLinkLocationKind kind,
+        Func<TRow, string?> meshOf)
+        where TRow : class
+    {
+        lock (_gate)
+        {
+            var removedKeys = table.Rows
+                .Where(pair => ownerOf(pair.Value) == ownerId)
+                .Select(pair => pair.Key)
+                .ToArray();
+            foreach (var key in removedKeys)
+            {
+                var mesh = meshOf(table.Rows[key]);
+                table.Rows.Remove(key);
+                Bump(kind, mesh);
+            }
+
+            return removedKeys.Length;
+        }
+    }
+
+    private ZLinkLocationPage<TRow> Page<TRow>(
+        RowTable<TRow> table,
+        Func<TRow, bool> matches,
+        ZLinkPageRequest page)
+        where TRow : class
+    {
+        var ordered = table.Rows
+            .Where(pair => matches(pair.Value))
+            .OrderBy(pair => pair.Key, StringComparer.Ordinal)
+            .Select(pair => pair.Value)
+            .ToArray();
+
+        var offset = 0;
+        if (page.ContinuationToken is { } token
+            && int.TryParse(token, NumberStyles.None, CultureInfo.InvariantCulture, out var parsed))
+        {
+            offset = parsed;
+        }
+
+        // A page size of zero or less means the caller did not pick one; the
+        // framework layer substitutes the configured default before calling
+        // the store, so the raw store treats it as unbounded.
+        var size = page.PageSize > 0 ? page.PageSize : int.MaxValue;
+        var items = ordered.Skip(offset).Take(size).ToArray();
+        var nextOffset = offset + items.Length;
+        var next = nextOffset < ordered.Length
+            ? nextOffset.ToString(CultureInfo.InvariantCulture)
+            : null;
+        return new ZLinkLocationPage<TRow>(items, next);
+    }
+
+    private bool IsOwnerLive(string ownerId, DateTimeOffset now) =>
+        _leases.TryGetValue(ownerId, out var lease) && lease.LeaseExpiresAt > now;
+
+    private void Bump(ZLinkLocationKind kind, string? meshName)
+    {
+        BumpScope(new ZLinkLocationChangeStampScope(kind, meshName));
+        if (meshName is not null)
+        {
+            BumpScope(new ZLinkLocationChangeStampScope(kind, null));
+        }
+    }
+
+    private void BumpScope(ZLinkLocationChangeStampScope scope)
+    {
+        _stamps.TryGetValue(scope, out var stamp);
+        _stamps[scope] = stamp + 1;
+    }
+
+    private static bool Matches(ZLinkPeerLocation row, ZLinkPeerLocationFilter filter) =>
+        (filter.AutoConnectType is null || row.AutoConnectType == filter.AutoConnectType)
+        && (filter.MeshName is null || row.MeshName == filter.MeshName)
+        && (filter.Role is null || row.Role == filter.Role)
+        && (filter.NodeRid is null || Equals(row.NodeRid, filter.NodeRid))
+        && (filter.Endpoint is null || row.Endpoint == filter.Endpoint);
+
+    private static bool Matches(ZLinkSpotLocation row, ZLinkSpotLocationFilter filter) =>
+        (filter.MeshName is null || row.MeshName == filter.MeshName)
+        && (filter.SpotType is null || row.SpotType == filter.SpotType)
+        && (filter.NodeRid is null || row.NodeRid.Equals(filter.NodeRid.Value))
+        && (filter.SpotKind is null || row.SpotKind == filter.SpotKind);
+
+    private static bool Matches(ZLinkActorLocation row, ZLinkActorLocationFilter filter) =>
+        (filter.ActorType is null || row.ActorType == filter.ActorType)
+        && (filter.NodeRid is null || row.NodeRid.Equals(filter.NodeRid.Value))
+        && (filter.SpotRid is null || Equals(row.SpotRid, filter.SpotRid))
+        && (filter.LocationKind is null || row.LocationKind == filter.LocationKind);
+
+    private static bool Matches(ZLinkRouteLocation row, ZLinkRouteLocationFilter filter) =>
+        (filter.RouteKind is null || row.RouteKind == filter.RouteKind)
+        && (filter.OwnerNodeRid is null || row.OwnerNodeRid.Equals(filter.OwnerNodeRid.Value))
+        && (filter.OwnerId is null || row.OwnerId == filter.OwnerId);
+
+    private sealed class RowTable<TRow>
+        where TRow : class
+    {
+        public Dictionary<string, TRow> Rows { get; } = [];
+
+        public Dictionary<string, long> Generations { get; } = [];
+    }
+}

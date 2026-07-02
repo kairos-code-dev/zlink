@@ -119,10 +119,14 @@ public interface IZLinkOwnerLeaseStore
 {
     /// <summary>
     /// Upsert: creates the lease row when absent, extends it when present.
-    /// Called once per heartbeat interval per runtime instance.
+    /// Called once per heartbeat interval per runtime instance. The caller
+    /// passes a TTL and the store computes the absolute expiry from its own
+    /// clock; callers never produce absolute expiry times.
     /// </summary>
     ValueTask<ZLinkLocationWriteResult> RenewOwnerLeaseAsync(
-        ZLinkOwnerLease lease,
+        string ownerId,
+        RoutingId nodeRid,
+        TimeSpan leaseTtl,
         CancellationToken cancellationToken = default);
 
     /// <summary>

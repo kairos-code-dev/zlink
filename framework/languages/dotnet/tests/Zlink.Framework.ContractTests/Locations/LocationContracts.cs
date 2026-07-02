@@ -57,8 +57,8 @@ public sealed class LocationContracts
         // Owner lease: one row per runtime, snapshot carries the store time
         // so expiry is never judged against an application wall clock.
         var leases = new ExampleOwnerLeaseStore();
-        await leases.RenewOwnerLeaseAsync(new ZLinkOwnerLease(
-            ownerB, RoutingId.From("node-b"), StoreNow.AddSeconds(15), StoreNow));
+        await leases.RenewOwnerLeaseAsync(
+            ownerB, RoutingId.From("node-b"), TimeSpan.FromSeconds(15));
         var snapshot = await leases.ListOwnerLeasesAsync();
         Assert.Equal(StoreNow, snapshot.StoreNow);
         Assert.Single(snapshot.Leases);
@@ -308,10 +308,13 @@ public sealed class LocationContracts
         private readonly Dictionary<string, ZLinkOwnerLease> _leases = [];
 
         public ValueTask<ZLinkLocationWriteResult> RenewOwnerLeaseAsync(
-            ZLinkOwnerLease lease,
+            string ownerId,
+            RoutingId nodeRid,
+            TimeSpan leaseTtl,
             CancellationToken cancellationToken = default)
         {
-            _leases[lease.OwnerId] = lease;
+            // The store computes the absolute expiry from its own clock.
+            _leases[ownerId] = new ZLinkOwnerLease(ownerId, nodeRid, StoreNow + leaseTtl, StoreNow);
             return ValueTask.FromResult(ZLinkLocationWriteResult.Stored(0, StoreNow));
         }
 

@@ -561,7 +561,9 @@ route kind는 framework가 정의한 좁은 용도로만 사용한다. 초기 �
 public interface IZLinkOwnerLeaseStore
 {
     ValueTask<ZLinkLocationWriteResult> RenewOwnerLeaseAsync(
-        ZLinkOwnerLease lease,
+        string ownerId,
+        RoutingId nodeRid,
+        TimeSpan leaseTtl,
         CancellationToken ct = default);
     ValueTask<ZLinkLocationWriteResult> RemoveOwnerLeaseAsync(
         string ownerId,
@@ -574,6 +576,10 @@ public interface IZLinkOwnerLeaseStore
 owner lease는 runtime start 때 만들어지고 heartbeat interval마다 갱신된다. `RenewOwnerLeaseAsync`는
 upsert다. lease row가 없으면 만들고 있으면 연장한다. heartbeat write는 runtime instance당 한 번이므로
 store 부하는 node 수에 비례한다.
+
+renew 호출자는 절대 만료 시각이 아니라 lease TTL을 전달한다. `LeaseExpiresAt`은 store가 자기 기준
+시간으로 계산해서 기록한다. 호출자가 절대 만료 시각을 만들면 application wall clock이 계약에 다시
+들어오므로 금지한다(9절). `ZLinkOwnerLease`는 snapshot 조회의 읽기 모델이다.
 
 `ZLinkOwnerLeaseSnapshot`은 owner lease 목록과 store 기준 현재 시각(`StoreNow`)을 함께 담는다. runtime
 instance 수만큼만 반환하므로 pagination 없이 전체 목록을 돌려준다. resolver와 reconcile은 이 snapshot을

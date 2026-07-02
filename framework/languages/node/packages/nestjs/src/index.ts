@@ -2,7 +2,7 @@ import 'reflect-metadata';
 import { createRequire } from 'node:module';
 import fs from 'node:fs';
 import path from 'node:path';
-import { Inject, Injectable, Module, Optional } from '@nestjs/common';
+import { Inject, Injectable, Module } from '@nestjs/common';
 import type { DynamicModule, InjectionToken, ModuleMetadata, OnModuleDestroy, OnModuleInit, Provider } from '@nestjs/common';
 import { ContextIdFactory, DiscoveryModule, DiscoveryService, ModuleRef } from '@nestjs/core';
 import type {
@@ -41,9 +41,6 @@ import type {
   ZLinkSpot,
   ZLinkSpotActorSendHandlerRegistration,
   ZLinkSpotActorRequestHandlerRegistration,
-  ZLinkRegistryOptions,
-  ZLinkRegistryQuery,
-  ZLinkRegistryQueryClientOptions,
   ZLinkRuntimeEvent,
   ZLinkRuntimeEventHandler,
   ZLinkRuntimeEventPublisher,
@@ -56,7 +53,6 @@ import type {
   ZLinkStreamNodeOptions
 } from '@zlink-systems/framework';
 
-type RuntimeConstructor<T> = new (...args: unknown[]) => T;
 type MutableCodecRegistryOptions = {
   serializers: NonNullable<ZLinkCodecRegistryOptions['serializers']>[number][];
   streamCodecs: NonNullable<ZLinkCodecRegistryOptions['streamCodecs']>[number][];
@@ -81,30 +77,13 @@ interface FrameworkRuntimeHost {
   setSpotManager?(spotManager: unknown): void;
   createActorManagerOptions?(remoteAddressResolver?: ZLinkSpotRemoteAddressResolver): object;
   createSpotManagerOptions?(): object;
-  createRegistrySpotRemoteAddressResolver?(): ZLinkSpotRemoteAddressResolver;
-}
-
-interface RegistryRuntime {
-  readonly isStarted: boolean;
-  start(signal?: AbortSignal): Promise<void>;
-  stop(signal?: AbortSignal): Promise<void>;
-  onApplicationBootstrap?: () => Promise<void>;
-  onApplicationShutdown?: () => Promise<void>;
-}
-
-interface DisposableRegistryQueryClient {
-  dispose(): Promise<void>;
 }
 
 interface FrameworkModule {
   readonly ZLinkConfigurationException: new (message: string) => Error;
-  readonly ZLinkRegistryRuntime: RuntimeConstructor<RegistryRuntime>;
-  readonly DefaultZLinkRegistryQuery: new (runtime: RegistryRuntime) => unknown;
-  readonly DefaultZLinkRegistryQueryClient: new (options: { readonly registration: ZLinkRegistryQueryClientOptions }) => DisposableRegistryQueryClient;
   readonly ZLinkFrameworkRuntimeHost: new (options: {
     readonly registration: ZLinkFrameworkRegistration;
     readonly providerResolver?: ZLinkProviderResolver;
-    readonly monitoringRegistryQueries?: ReadonlyMap<string, ZLinkRegistryQuery>;
   }) => FrameworkRuntimeHost;
   readonly DefaultZLinkChannelClient: new (registration: ZLinkFrameworkRegistration, transport: unknown) => unknown;
   readonly DefaultZLinkFanoutClient: new (registration: ZLinkFrameworkRegistration, transport: unknown) => unknown;
@@ -115,7 +94,6 @@ interface FrameworkModule {
   readonly DefaultZLinkSpotOutbound: new (...args: unknown[]) => unknown;
   readonly ZLinkSpotSerialExecutor: new () => unknown;
   readonly ZLinkSpotWorkerRuntime: new (options?: unknown) => unknown;
-  readonly ZLinkRegistrySpotRemoteAddressResolver: new (options: { readonly registration: ZLinkFrameworkRegistration }) => ZLinkSpotRemoteAddressResolver;
   createFrameworkRegistration(options: ZLinkFrameworkRegistrationOptions): ZLinkFrameworkRegistration;
   hasSpotNode(registration: ZLinkFrameworkRegistration): boolean;
   hasActorManager(registration: ZLinkFrameworkRegistration): boolean;
@@ -130,18 +108,6 @@ type RuntimeHostWithNestLifecycle = RuntimeHost & OnModuleInit & OnModuleDestroy
 
 export interface ZLinkModuleFactoryOptions {
   readonly useFactory: (...args: unknown[]) => ZLinkModuleOptions | Promise<ZLinkModuleOptions>;
-  readonly inject?: readonly InjectionToken[];
-  readonly imports?: ModuleMetadata['imports'];
-}
-
-export interface ZLinkRegistryModuleFactoryOptions {
-  readonly useFactory: (...args: unknown[]) => ZLinkRegistryOptions | Promise<ZLinkRegistryOptions>;
-  readonly inject?: readonly InjectionToken[];
-  readonly imports?: ModuleMetadata['imports'];
-}
-
-export interface ZLinkRegistryQueryClientModuleFactoryOptions {
-  readonly useFactory: (...args: unknown[]) => ZLinkRegistryQueryClientOptions | Promise<ZLinkRegistryQueryClientOptions>;
   readonly inject?: readonly InjectionToken[];
   readonly imports?: ModuleMetadata['imports'];
 }
@@ -369,9 +335,6 @@ export const ZLINK_SPOT_PUBLISHER_CLIENT = Symbol.for('@zlink-systems/framework:
 export const ZLINK_ACTOR_MANAGER = Symbol.for('@zlink-systems/framework:actor-manager');
 export const ZLINK_SPOT_REMOTE_ADDRESS_RESOLVER = Symbol.for('@zlink-systems/framework:spot-remote-address-resolver');
 export const ZLINK_RUNTIME_EVENT_PUBLISHER = Symbol.for('@zlink-systems/framework:runtime-event-publisher');
-const ZLINK_REGISTRY_RUNTIME = Symbol.for('@zlink-systems/framework:registry-runtime');
-export const ZLINK_REGISTRY_QUERY = Symbol.for('@zlink-systems/framework:registry-query');
-export const ZLINK_REGISTRY_QUERY_CLIENT = Symbol.for('@zlink-systems/framework:registry-query-client');
 
 const nestHandlerMetadataByToken = new Map<unknown, readonly ZLinkNestHandlerMetadata[]>();
 const nestSpotActorHandlerMetadataByToken = new Map<unknown, readonly ZLinkNestSpotActorHandlerMetadata[]>();
@@ -1231,74 +1194,6 @@ export class ZLinkModule {
 }
 
 @Module({})
-export class ZLinkRegistryModule {
-  static forRoot(options: ZLinkRegistryOptions): DynamicModule {
-    const runtime = new framework.ZLinkRegistryRuntime({ registration: options });
-    const query = new framework.DefaultZLinkRegistryQuery(runtime);
-    const providers: Provider[] = [
-      { provide: ZLINK_REGISTRY_RUNTIME, useValue: runtime },
-      { provide: ZLINK_REGISTRY_QUERY, useValue: query }
-    ];
-    return {
-      module: ZLinkRegistryModule,
-      providers,
-      exports: [ZLINK_REGISTRY_QUERY]
-    };
-  }
-
-  static forRootFactory(options: ZLinkRegistryModuleFactoryOptions): DynamicModule {
-    return createRegistryDynamicModuleFromFactory({
-      module: ZLinkRegistryModule,
-      options,
-      runtimeToken: ZLINK_REGISTRY_RUNTIME,
-      queryToken: ZLINK_REGISTRY_QUERY,
-      createRuntime: (registration: ZLinkRegistryOptions) =>
-        new framework.ZLinkRegistryRuntime({ registration }),
-      createQuery: (runtime: RegistryRuntime) =>
-        new framework.DefaultZLinkRegistryQuery(runtime)
-    });
-  }
-}
-
-@Module({})
-export class ZLinkRegistryQueryClientModule implements OnModuleDestroy {
-  constructor(
-    @Optional()
-    @Inject(ZLINK_REGISTRY_QUERY_CLIENT)
-    private readonly queryClient?: DisposableRegistryQueryClient
-  ) {}
-
-  async onModuleDestroy(): Promise<void> {
-    await this.queryClient?.dispose();
-  }
-
-  static forRoot(options: ZLinkRegistryQueryClientOptions): DynamicModule {
-    return {
-      module: ZLinkRegistryQueryClientModule,
-      providers: [{
-        provide: ZLINK_REGISTRY_QUERY_CLIENT,
-        useFactory: () => new framework.DefaultZLinkRegistryQueryClient({ registration: options })
-      }],
-      exports: [ZLINK_REGISTRY_QUERY_CLIENT]
-    };
-  }
-
-  static forRootFactory(options: ZLinkRegistryQueryClientModuleFactoryOptions): DynamicModule {
-    return {
-      module: ZLinkRegistryQueryClientModule,
-      imports: options.imports,
-      providers: [{
-        provide: ZLINK_REGISTRY_QUERY_CLIENT,
-        inject: options.inject === undefined ? undefined : [...options.inject],
-        useFactory: async (...args: unknown[]) =>
-          new framework.DefaultZLinkRegistryQueryClient({ registration: await options.useFactory(...args) })
-      }],
-      exports: [ZLINK_REGISTRY_QUERY_CLIENT]
-    };
-  }
-}
-
-@Module({})
 export class ZLinkMonitoringModule {
   static forRoot(): DynamicModule {
     return {
@@ -1332,35 +1227,6 @@ export function createZLinkDynamicModule(registration: ZLinkFrameworkRegistratio
     imports: [DiscoveryModule],
     providers,
     exports: providers.map(providerToken)
-  };
-}
-
-function createRegistryDynamicModuleFromFactory(options: {
-  readonly module: Type;
-  readonly options: ZLinkRegistryModuleFactoryOptions;
-  readonly runtimeToken: InjectionToken;
-  readonly queryToken: InjectionToken;
-  readonly createRuntime: (registration: ZLinkRegistryOptions) => RegistryRuntime;
-  readonly createQuery: (
-    runtime: RegistryRuntime
-  ) => unknown;
-}): DynamicModule {
-  return {
-    module: options.module,
-    imports: options.options.imports,
-    providers: [
-      {
-        provide: options.runtimeToken,
-        inject: options.options.inject === undefined ? undefined : [...options.options.inject],
-        useFactory: async (...args: unknown[]) => options.createRuntime(await options.options.useFactory(...args))
-      },
-      {
-        provide: options.queryToken,
-        inject: [options.runtimeToken],
-        useFactory: options.createQuery
-      }
-    ],
-    exports: [options.queryToken]
   };
 }
 
@@ -2514,50 +2380,18 @@ function createRuntimeHost(
 ): RuntimeHostWithNestLifecycle {
   const runtime = new framework.ZLinkFrameworkRuntimeHost({
     registration,
-    providerResolver: createProviderResolver(moduleRef, discovery),
-    monitoringRegistryQueries: resolveMonitoringRegistryQueries(registration, moduleRef)
+    providerResolver: createProviderResolver(moduleRef, discovery)
   }) as RuntimeHostWithNestLifecycle;
   runtime.onModuleInit = async () => {
-    const embeddedRegistryRuntime = resolveEmbeddedRegistryRuntime(moduleRef);
-    suppressEmbeddedRegistryLifecycle(embeddedRegistryRuntime);
-    await embeddedRegistryRuntime?.start();
     registerDiscoveredRuntimeEventHandlers(runtime.eventPublisher, discovery);
     await runtime.start();
   };
   runtime.onModuleDestroy = async () => {
     await runtime.stop();
-    await resolveEmbeddedRegistryRuntime(moduleRef)?.stop();
   };
   runtime.onApplicationBootstrap = async () => {};
   runtime.onApplicationShutdown = async () => {};
   return runtime;
-}
-
-function resolveEmbeddedRegistryRuntime(moduleRef: ModuleRef): RegistryRuntime | undefined {
-  try {
-    return moduleRef.get(ZLINK_REGISTRY_RUNTIME, { strict: false }) as RegistryRuntime | undefined;
-  } catch {
-    return undefined;
-  }
-}
-
-function resolveMonitoringRegistryQueries(
-  registration: ZLinkFrameworkRegistration,
-  moduleRef: ModuleRef
-): ReadonlyMap<string, ZLinkRegistryQuery> | undefined {
-  if ((registration.monitoring?.registry ?? []).length === 0) {
-    return undefined;
-  }
-  let query: ZLinkRegistryQuery | undefined;
-  try {
-    query = moduleRef.get(ZLINK_REGISTRY_QUERY, { strict: false }) as ZLinkRegistryQuery | undefined;
-  } catch {
-    return undefined;
-  }
-  if (query === undefined) {
-    return undefined;
-  }
-  return new Map((registration.monitoring?.registry ?? []).map((source) => [source.sourceName, query]));
 }
 
 function registerDiscoveredRuntimeEventHandlers(
@@ -2593,14 +2427,6 @@ function discoverRuntimeEventHandlers(discovery: DiscoveryService): ZLinkRuntime
     }
   }
   return handlers;
-}
-
-function suppressEmbeddedRegistryLifecycle(runtime: RegistryRuntime | undefined): void {
-  if (runtime === undefined) {
-    return;
-  }
-  runtime.onApplicationBootstrap = async () => {};
-  runtime.onApplicationShutdown = async () => {};
 }
 
 function createProviderResolver(moduleRef: ModuleRef, discovery?: DiscoveryService): ZLinkProviderResolver {
@@ -2707,13 +2533,6 @@ async function createSpotRemoteAddressResolver(
     const resolver = await providerResolver?.create?.(resolverType);
     if (resolver === undefined) {
       throw new framework.ZLinkConfigurationException('Spot remote address resolver provider is not available.');
-    }
-    return resolver;
-  }
-  if (registration.registrySpotRemoteAddresses !== undefined) {
-    const resolver = runtime?.createRegistrySpotRemoteAddressResolver?.();
-    if (resolver === undefined) {
-      throw new framework.ZLinkConfigurationException('Registry SPOT remote address resolver requires framework runtime.');
     }
     return resolver;
   }

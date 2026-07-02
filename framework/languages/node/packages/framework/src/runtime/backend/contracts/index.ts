@@ -1,12 +1,6 @@
 import type {
-  ActorRoute,
   Received,
   RecvFlagsValue,
-  RegistryServiceSummaryEntry,
-  RegistryServiceSummaryFilter,
-  RegistryStatus,
-  RegistryTopologyEntry,
-  RegistryTopologyFilter,
   RequestCallback,
   RequestResult,
   SendFlagsValue,
@@ -14,9 +8,7 @@ import type {
   SpotNodePeerEntry,
   SpotNodeStatus,
   SpotNodeSubjectEntry,
-  SpotRoute,
   TopicMessage,
-  MemberPeerEntry,
   MonitorEventType,
   MessageLike
 } from '@zlink-systems/zlink';
@@ -79,12 +71,6 @@ export type ZLinkBackendActorJoinEntrySpotCallback = (
   parts: readonly Message[]
 ) => void;
 
-export interface ZLinkBackendDiscoveryRoute {
-  readonly ownerRoutingId: RoutingId;
-  readonly value: Message;
-  dispose(): Promise<void>;
-}
-
 export interface ZLinkBackendActorPart {
   readonly actor: ZLinkBackendActorRef;
   readonly sourceNodeRid: RoutingId;
@@ -138,19 +124,6 @@ export interface ZLinkBackendContext extends ZLinkBackendObject {
   dispose(): Promise<void>;
 }
 
-export interface ZLinkBackendDiscovery extends ZLinkBackendObject {
-  spotOwnerSyncEnabled: boolean;
-  actorRouteSyncEnabled: boolean;
-  connectRegistry(endpoint: string): void;
-  memberPeers(): readonly MemberPeerEntry[];
-  resolveSpot(spotRid: RoutingId): SpotRoute;
-  resolveActor(actorId: string): ActorRoute;
-  bindRoute(kind: number, key: Buffer, value: Buffer): void;
-  unbindRoute(kind: number, key: Buffer): void;
-  resolveRoute(kind: number, key: Buffer): ZLinkBackendDiscoveryRoute;
-  dispose(): Promise<void>;
-}
-
 export interface ZLinkBackendSocket extends ZLinkBackendObject {
   bind(endpoint: string): void;
   setChannelName(channelName: string): void;
@@ -167,7 +140,6 @@ export interface ZLinkBackendDealerSocket extends ZLinkBackendConnectableSocket 
   sendHighWaterMark: number;
   receiveHighWaterMark: number;
   sendTimeoutMs: number;
-  attachDiscovery(discovery: ZLinkBackendDiscovery): void;
   onSendReady(handler: () => void): void;
   send(message: Message | readonly Message[], flags: ZLinkBackendSendFlags): boolean;
   request(
@@ -203,7 +175,6 @@ export interface ZLinkBackendRouterSocket extends ZLinkBackendConnectableSocket 
   sendHighWaterMark: number;
   receiveHighWaterMark: number;
   sendTimeoutMs: number;
-  attachDiscovery(discovery: ZLinkBackendDiscovery): void;
   onSendReady(handler: () => void): void;
   setRoutingId(routingId: RoutingId): void;
   recv(flags?: ZLinkBackendRecvFlags): Received | undefined;
@@ -238,13 +209,11 @@ export interface ZLinkBackendRouterSocket extends ZLinkBackendConnectableSocket 
 }
 
 export interface ZLinkBackendPublisherSocket extends ZLinkBackendSocket {
-  attachDiscovery(discovery: ZLinkBackendDiscovery): void;
   onSendReady(handler: () => void): void;
   publish(topic: string, message: Message | readonly Message[], flags: ZLinkBackendSendFlags): boolean;
 }
 
 export interface ZLinkBackendSubscriberSocket extends ZLinkBackendConnectableSocket {
-  attachDiscovery(discovery: ZLinkBackendDiscovery): void;
   setSubscription(topic: string): void;
   subscribe(result: TopicMessage, flags?: ZLinkBackendRecvFlags): boolean;
 }
@@ -309,7 +278,6 @@ export interface ZLinkBackendSpotNode extends ZLinkBackendObject {
   setSubscriberRoutingId(routingId: RoutingId): void;
   setRouterBind(endpoint: string): void;
   setPubBind(endpoint: string): void;
-  attachDiscovery(discovery: ZLinkBackendDiscovery): void;
   connectPeer(endpoint: string): void;
   connectPeerRid(targetNodeRid: RoutingId, endpoint: string): void;
   disconnectPeer(endpoint: string): void;
@@ -394,33 +362,9 @@ export interface ZLinkBackendSpot extends ZLinkBackendObject {
   dispose(): Promise<void>;
 }
 
-export interface ZLinkBackendRegistry extends ZLinkBackendObject {
-  setId(registryId: number): void;
-  setHeartbeat(intervalMs: number, timeoutMs: number): void;
-  setBroadcastInterval(intervalMs: number): void;
-  addPeer(endpoint: string): void;
-  bind(pubEndpoint: string, routerEndpoint: string): void;
-  status(): RegistryStatus;
-  serviceSummary(filter?: RegistryServiceSummaryFilter): readonly RegistryServiceSummaryEntry[];
-  topology(filter?: RegistryTopologyFilter): readonly RegistryTopologyEntry[];
-  memberPeers(channelName: string): readonly MemberPeerEntry[];
-  dispose(): Promise<void>;
-}
-
-export interface ZLinkBackendRegistryQueryClient extends ZLinkBackendObject {
-  connect(endpoint: string): void;
-  topology(filter?: RegistryTopologyFilter): readonly RegistryTopologyEntry[];
-  dispose(): Promise<void>;
-}
-
 export interface ZLinkChannelBackendAdapter {
   createContext(): ZLinkBackendContext;
   createTopicMessage(): TopicMessage;
-  createDiscovery(
-    context: ZLinkBackendContext,
-    autoConnectType: number,
-    channelName: string
-  ): ZLinkBackendDiscovery;
   createDealerSocket(context: ZLinkBackendContext): ZLinkBackendDealerSocket;
   createRouterSocket(context: ZLinkBackendContext): ZLinkBackendRouterSocket;
   createPublisherSocket(context: ZLinkBackendContext): ZLinkBackendPublisherSocket;
@@ -436,11 +380,6 @@ export interface ZLinkStreamBackendAdapter {
   createStreamSocket(context: ZLinkBackendContext): ZLinkBackendStreamSocket;
 }
 
-export interface ZLinkRegistryBackendAdapter {
-  createRegistry(context: ZLinkBackendContext): ZLinkBackendRegistry;
-  createRegistryQueryClient(context: ZLinkBackendContext): ZLinkBackendRegistryQueryClient;
-}
-
 export interface ZLinkMonitoringBackendAdapter {
   openSocketMonitor(socket: ZLinkBackendSocket): ZLinkBackendSocketMonitor;
 }
@@ -449,6 +388,5 @@ export interface ZLinkBackendAdapterFactory {
   createChannelAdapter(): ZLinkChannelBackendAdapter;
   createSpotAdapter(): ZLinkSpotBackendAdapter;
   createStreamAdapter(): ZLinkStreamBackendAdapter;
-  createRegistryAdapter(): ZLinkRegistryBackendAdapter;
   createMonitoringAdapter(): ZLinkMonitoringBackendAdapter;
 }

@@ -34,7 +34,6 @@ import {
   writeTraceFile
 } from '../diagnostics';
 import {
-  ZLinkAutoConnectType,
   ZLinkDispatchErrorAction,
   ZLinkDispatchErrorReason,
   ZLinkDispatchErrorSurface,
@@ -58,7 +57,6 @@ import {
   type ZLinkRouteChannelOptions
 } from '../configuration';
 import type {
-  ZLinkBackendDiscovery,
   ZLinkBackendContext,
   ZLinkBackendDealerSocket,
   ZLinkBackendPublisherSocket,
@@ -1553,7 +1551,6 @@ class ZLinkChannelSocketRegistry {
   private readonly publishers = new Map<string, ZLinkBackendPublisherSocket>();
   private readonly subscribers = new Map<string, ZLinkBackendSubscriberSocket>();
   private readonly routeRouters = new Map<string, ZLinkBackendRouterSocket>();
-  private readonly discoveries = new Set<ZLinkBackendDiscovery>();
   private readonly submitters = new WeakMap<object, ZLinkAsyncSubmitter>();
   private readonly ownedSubmitters = new Set<ZLinkAsyncSubmitter>();
 
@@ -1569,15 +1566,13 @@ class ZLinkChannelSocketRegistry {
       ...this.channelRouters.values(),
       ...this.publishers.values(),
       ...this.subscribers.values(),
-      ...this.routeRouters.values(),
-      ...this.discoveries.values()
+      ...this.routeRouters.values()
     ];
     this.clientDealers.clear();
     this.channelRouters.clear();
     this.publishers.clear();
     this.subscribers.clear();
     this.routeRouters.clear();
-    this.discoveries.clear();
     for (const submitter of this.ownedSubmitters) {
       submitter.dispose();
     }
@@ -1605,8 +1600,6 @@ class ZLinkChannelSocketRegistry {
       for (const endpoint of client.manualConnections ?? []) {
         dealer.connect(endpoint);
       }
-    } else if (this.hasDiscovery()) {
-      dealer.attachDiscovery(this.createDiscovery(channelName, ZLinkAutoConnectType.ClientServer));
     }
     this.clientDealers.set(channelName, dealer);
     return dealer;
@@ -1637,9 +1630,6 @@ class ZLinkChannelSocketRegistry {
     applySocketConfig(router, channel.server);
     this.trackSubmitter(router);
     router.bind(channel.server.bind);
-    if (this.hasDiscovery()) {
-      router.attachDiscovery(this.createDiscovery(channelName, ZLinkAutoConnectType.ClientServer));
-    }
     this.channelRouters.set(channelName, router);
     return router;
   }
@@ -1666,9 +1656,6 @@ class ZLinkChannelSocketRegistry {
     publisher.setChannelName(channelName);
     this.trackSubmitter(publisher);
     publisher.bind(channel.publisher.bind);
-    if (this.hasDiscovery()) {
-      publisher.attachDiscovery(this.createDiscovery(channelName, ZLinkAutoConnectType.Fanout));
-    }
     this.publishers.set(channelName, publisher);
     return publisher;
   }
@@ -1691,8 +1678,6 @@ class ZLinkChannelSocketRegistry {
       for (const endpoint of channel.subscriber.manualConnections ?? []) {
         subscriber.connect(endpoint);
       }
-    } else if (this.hasDiscovery()) {
-      subscriber.attachDiscovery(this.createDiscovery(channelName, ZLinkAutoConnectType.Fanout));
     }
     this.subscribers.set(channelName, subscriber);
     return subscriber;
@@ -1734,8 +1719,6 @@ class ZLinkChannelSocketRegistry {
       for (const endpoint of routeChannel.manualConnections ?? []) {
         router.connect(endpoint);
       }
-    } else if (this.hasDiscovery()) {
-      router.attachDiscovery(this.createDiscovery(routerChannelId, ZLinkAutoConnectType.RouteMesh));
     }
     this.routeRouters.set(routerChannelId, router);
     return router;
@@ -1743,19 +1726,6 @@ class ZLinkChannelSocketRegistry {
 
   routeMeshSocket(routerChannelId: string): ZLinkBackendRouterSocket {
     return this.routeRouter(routerChannelId);
-  }
-
-  private createDiscovery(channelName: string, autoConnectType: ZLinkAutoConnectType): ZLinkBackendDiscovery {
-    const discovery = this.adapter.createDiscovery(this.context, autoConnectType, channelName);
-    for (const endpoint of this.registration.discovery?.registries ?? []) {
-      discovery.connectRegistry(endpoint);
-    }
-    this.discoveries.add(discovery);
-    return discovery;
-  }
-
-  private hasDiscovery(): boolean {
-    return (this.registration.discovery?.registries ?? []).length > 0;
   }
 
   private trackSubmitter(socket: ZLinkBackendDealerSocket | ZLinkBackendPublisherSocket | ZLinkBackendRouterSocket): void {

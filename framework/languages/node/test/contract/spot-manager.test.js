@@ -689,8 +689,8 @@ test('spot manager local actor join does not wait for entry leave callback', asy
   assert.equal(JSON.parse(result.reply.getString()), 'joined');
   assert.deepEqual(events, [
     'join:alice:hello',
-    'entry-left:alice',
     'commit',
+    'entry-left:alice',
     'joined:alice'
   ]);
   request.close();

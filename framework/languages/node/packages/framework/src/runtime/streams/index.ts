@@ -588,12 +588,6 @@ export class ZLinkStreamSessionNodeRuntime {
         this.activityVersion += 1;
         if (event.routingId === undefined) {
           const endpointKey = streamMonitorEndpointKey(event.localAddr, event.remoteAddr);
-          if (event.localAddr === undefined && event.remoteAddr === undefined) {
-            if (this.pendingEndpointlessDisconnect !== undefined) {
-              this.pendingEndpointlessDisconnect.cancelled = true;
-            }
-            this.pendingEndpointlessDisconnect = undefined;
-          }
           const unaddressed = this.firstUnaddressedSession();
           if (unaddressed !== undefined) {
             this.disconnectedEndpoints.delete(endpointKey);
@@ -622,7 +616,7 @@ export class ZLinkStreamSessionNodeRuntime {
             session.enqueueDisconnected(error);
             return;
           }
-          if (event.routingId === undefined && event.localAddr === undefined && event.remoteAddr === undefined) {
+          if (event.routingId === undefined) {
             this.enqueueEndpointlessDisconnect(error);
           }
         }
@@ -668,9 +662,6 @@ export class ZLinkStreamSessionNodeRuntime {
       }
     }
     const sessions = [...this.sessions.values()];
-    if (event.localAddr === undefined && event.remoteAddr === undefined) {
-      return undefined;
-    }
     const session = sessions.find((session) =>
       session.stream.localAddr === event.localAddr
       && session.stream.remoteAddr === event.remoteAddr

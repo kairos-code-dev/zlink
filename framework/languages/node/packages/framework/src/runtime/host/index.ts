@@ -388,13 +388,6 @@ export class ZLinkFrameworkRuntimeHost implements ZLinkFrameworkRuntime, ZLinkMe
     this.spotManager = spotManager;
   }
 
-  createRegistrySpotRemoteAddressResolver(): ZLinkSpotRemoteAddressResolver {
-    return {
-      resolve: async (spotRid: RoutingId) => this.requireSpotNodeRuntime()
-        .resolveRegistrySpotRemoteAddress(spotRid)
-    };
-  }
-
   createActorManagerOptions(remoteAddressResolver?: ZLinkSpotRemoteAddressResolver): Pick<
     ZLinkActorManagerOptions,
     | 'joinCoordinator'
@@ -993,12 +986,16 @@ export class ZLinkFrameworkRuntimeHost implements ZLinkFrameworkRuntime, ZLinkMe
         (localNodeRid === undefined || !routingIdsEqual(actorPacketTarget.targetNodeRid, localNodeRid))
       ) {
         const state = this.actorManager?.getState(actor.actorId);
-        state?.setRemoteActorPacketTarget?.(actorPacketTarget);
+        if (typeof state?.setRemoteActorPacketTarget === 'function') {
+          state.setRemoteActorPacketTarget(actorPacketTarget);
+        }
         this.sessionActorPacketTargets.set(actor, actorPacketTarget);
         this.sessionActorPacketTargetsByActor.set(sessionActorPacketTargetKey(actor), actorPacketTarget);
       } else if (reply.ok !== false) {
         const state = this.actorManager?.getState(actor.actorId);
-        state?.setRemoteActorPacketTarget?.(undefined);
+        if (typeof state?.setRemoteActorPacketTarget === 'function') {
+          state.setRemoteActorPacketTarget(undefined);
+        }
         this.sessionActorPacketTargets.delete(actor);
         this.sessionActorPacketTargetsByActor.delete(sessionActorPacketTargetKey(actor));
       }

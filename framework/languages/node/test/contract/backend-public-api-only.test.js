@@ -48,8 +48,7 @@ test('framework contract surface does not alias binding concrete types', () => {
 
 test('framework public options do not expose backend adapter factories', () => {
   const publicOptionFiles = [
-    path.join(packageRoot, 'framework', 'src', 'runtime', 'host', 'index.ts'),
-    path.join(packageRoot, 'framework', 'src', 'runtime', 'registry', 'index.ts')
+    path.join(packageRoot, 'framework', 'src', 'runtime', 'host', 'index.ts')
   ];
   const offenders = [];
 
@@ -63,6 +62,13 @@ test('framework public options do not expose backend adapter factories', () => {
   }
 
   assert.deepEqual(offenders, []);
+});
+
+test('framework runtime does not keep the removed registry implementation file', () => {
+  assert.equal(
+    fs.existsSync(path.join(packageRoot, 'framework', 'src', 'runtime', 'registry', 'index.ts')),
+    false
+  );
 });
 
 function exportedInterfaces(content) {

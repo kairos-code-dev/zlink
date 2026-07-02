@@ -240,13 +240,10 @@ test('node interface catalog names resolve in public package declarations', () =
 
   for (const name of [
     'ZLinkModule',
-    'ZLinkRegistryModule',
-    'ZLinkRegistryQueryClientModule',
     'ZLINK_CHANNEL_CLIENT',
     'ZLINK_FANOUT_CLIENT',
     'ZLINK_SPOT_MANAGER',
-    'ZLINK_ACTOR_MANAGER',
-    'ZLINK_REGISTRY_QUERY'
+    'ZLINK_ACTOR_MANAGER'
   ]) {
     if (!declarationHasSymbol(nestjsDeclarations, name)) {
       missing.push(`@zlink-systems/nestjs:${name}`);

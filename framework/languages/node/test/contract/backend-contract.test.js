@@ -4,14 +4,14 @@ const test = require('node:test');
 const zlink = require('../../../../../bindings/node/dist');
 const backend = require('../../packages/framework/dist/runtime/backend');
 
-test('backend adapter factory exposes the five backend adapters', () => {
+test('backend adapter factory exposes the supported backend adapters', () => {
   const factory = new backend.ZLinkNodeBackendAdapterFactory();
 
   assert.equal(typeof factory.createChannelAdapter, 'function');
   assert.equal(typeof factory.createSpotAdapter, 'function');
   assert.equal(typeof factory.createStreamAdapter, 'function');
-  assert.equal(typeof factory.createRegistryAdapter, 'function');
   assert.equal(typeof factory.createMonitoringAdapter, 'function');
+  assert.equal(factory.createRegistryAdapter, undefined);
 });
 
 test('backend adapter creates context and core socket wrappers through public binding API', async () => {
@@ -28,10 +28,8 @@ test('backend adapter creates context and core socket wrappers through public bi
     const topicMessage = channel.createTopicMessage();
     const subscriberPoller = channel.createReadablePoller(subscriber);
     const stream = factory.createStreamAdapter().createStreamSocket(context);
-    const registry = factory.createRegistryAdapter().createRegistry(context);
-    const registryQueryClient = factory.createRegistryAdapter().createRegistryQueryClient(context);
 
-    disposables.push(dealer, router, publisher, subscriber, subscriberPoller, stream, registry, registryQueryClient);
+    disposables.push(dealer, router, publisher, subscriber, subscriberPoller, stream);
 
     assert.equal(Array.isArray(topicMessage.parts), true);
     assert.equal(typeof dealer.dispose, 'function');
@@ -41,10 +39,6 @@ test('backend adapter creates context and core socket wrappers through public bi
     assert.equal(typeof subscriberPoller.wait, 'function');
     assert.equal(typeof subscriberPoller.dispose, 'function');
     assert.equal(typeof stream.dispose, 'function');
-    assert.equal(typeof registry.bind, 'function');
-    assert.equal(typeof registry.dispose, 'function');
-    assert.equal(typeof registryQueryClient.connect, 'function');
-    assert.equal(typeof registryQueryClient.dispose, 'function');
   } finally {
     for (const disposable of disposables.reverse()) {
       await disposable.dispose();

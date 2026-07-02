@@ -8,13 +8,17 @@ async function waitForTopology(registryEndpoint: string, timeoutMs: number): Pro
   try {
     client.connect(registryEndpoint);
     while (Date.now() < deadline) {
-      const entries = client.topology();
+      const entries = client.topology() as readonly {
+        readonly channelName?: unknown;
+        readonly state?: unknown;
+        readonly endpoint?: unknown;
+      }[];
       const ready = [
         SampleNames.dispatchChannel,
         SampleNames.courierRouteChannel,
         SampleNames.courierActorNodeRouteChannel,
         SampleNames.trackingChannel
-      ].every((channel) => entries.some((entry) =>
+      ].every((channel) => entries.some((entry): boolean =>
         entry.channelName === channel &&
         entry.state === 3 &&
         typeof entry.endpoint === 'string' &&

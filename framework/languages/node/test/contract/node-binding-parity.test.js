@@ -10,17 +10,21 @@ test('node binding exposes the public API required by framework P2-P8', () => {
     'createRouterSocket',
     'createPubSocket',
     'createSubSocket',
-    'createDiscovery',
     'createSpotNode',
-    'createStreamSocket',
-    'createRegistry',
-    'createRegistryQueryClient'
+    'createStreamSocket'
   ]) {
     assert.equal(typeof zlink[name], 'function', `${name} must be public`);
   }
+  for (const name of [
+    'createDiscovery',
+    'createRegistry',
+    'createRegistryQueryClient'
+  ]) {
+    assert.equal(zlink[name], undefined, `${name} must not be public`);
+  }
 });
 
-test('node binding public API covers discovery registry monitor and session relay wrappers', () => {
+test('node binding public API covers monitor and session relay wrappers without discovery registry wrappers', () => {
   const context = zlink.createContext();
   const closeables = [];
 
@@ -29,30 +33,23 @@ test('node binding public API covers discovery registry monitor and session rela
     const router = zlink.createRouterSocket(context);
     const publisher = zlink.createPubSocket(context);
     const subscriber = zlink.createSubSocket(context);
-    const discovery = zlink.createDiscovery(context, zlink.AutoConnectType.ClientServer, 'p15-channel');
     const spotNode = zlink.createSpotNode(context);
     const stream = zlink.createStreamSocket(context);
-    const registry = zlink.createRegistry(context);
-    const registryQueryClient = zlink.createRegistryQueryClient(context);
     const monitor = dealer.monitorOpen();
 
-    closeables.push(monitor, registryQueryClient, registry, stream, spotNode, discovery, subscriber, publisher, router, dealer);
+    closeables.push(monitor, stream, spotNode, subscriber, publisher, router, dealer);
 
-    assert.equal(typeof dealer.attachDiscovery, 'function');
-    assert.equal(typeof router.attachDiscovery, 'function');
-    assert.equal(typeof publisher.attachDiscovery, 'function');
-    assert.equal(typeof subscriber.attachDiscovery, 'function');
-    assert.equal(typeof discovery.connectRegistry, 'function');
-    assert.equal(typeof discovery.memberPeers, 'function');
-    assert.equal(typeof spotNode.attachDiscovery, 'function');
+    assert.equal(dealer.attachDiscovery, undefined);
+    assert.equal(router.attachDiscovery, undefined);
+    assert.equal(publisher.attachDiscovery, undefined);
+    assert.equal(subscriber.attachDiscovery, undefined);
+    assert.equal(spotNode.attachDiscovery, undefined);
     assert.equal(typeof spotNode.createActor, 'function');
     assert.equal(typeof stream.setPacketHandler, 'function');
     assert.equal(typeof stream.bindActor, 'function');
     assert.equal(typeof stream.unbindActor, 'function');
     assert.equal(typeof stream.sendBoundActor, 'function');
     assert.equal(typeof stream.boundActors, 'function');
-    assert.equal(typeof registry.memberPeers, 'function');
-    assert.equal(typeof registryQueryClient.topology, 'function');
     assert.equal(typeof monitor.onEvent, 'function');
     assert.equal(typeof monitor.recv, 'function');
     assert.equal(typeof monitor.status, 'function');

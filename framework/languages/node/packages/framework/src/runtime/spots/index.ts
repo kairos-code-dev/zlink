@@ -40,7 +40,6 @@ import type {
 } from '../../contracts';
 import type { Message } from '../../contracts/Common/Message';
 import {
-  ZLinkAutoConnectType,
   ZLinkDispatchErrorAction,
   ZLinkDispatchErrorReason,
   ZLinkDispatchErrorSurface,
@@ -73,7 +72,6 @@ import type {
   ZLinkBackendAdapterFactory,
   ZLinkChannelBackendAdapter,
   ZLinkBackendActorRef,
-  ZLinkBackendDiscovery,
   ZLinkBackendContext,
   ZLinkBackendSpot,
   ZLinkBackendSpotNode,
@@ -276,7 +274,6 @@ export class ZLinkSpotNodeRuntimeManager {
   private readonly entryRouteDispatches: ZLinkSpotActorJoinDispatch[] = [];
   private readonly ownedObjects: ZLinkOwnedBackendObject[] = [];
   private readonly publisherBundles = new Map<string, ZLinkSpotPublisherBundle>();
-  private readonly spotMeshDiscoveries = new Map<string, ZLinkBackendDiscovery>();
   private readonly workerRuntime: ZLinkSpotWorkerRuntime;
 
   constructor(private readonly options: ZLinkSpotNodeRuntimeManagerOptions) {
@@ -294,8 +291,7 @@ export class ZLinkSpotNodeRuntimeManager {
         context: this.options.context,
         channelAdapter,
         ownedObjects: this.ownedObjects,
-        publisherBundles: this.publisherBundles,
-        spotMeshDiscoveries: this.spotMeshDiscoveries
+        publisherBundles: this.publisherBundles
       });
     for (const [spotNodeName, spotNode] of this.options.registration.spotNodes.entries()) {
       const node = spotAdapter.createSpotNode(this.options.context, spotNodeMode(spotNode));
@@ -356,7 +352,6 @@ export class ZLinkSpotNodeRuntimeManager {
     this.nodes.clear();
     this.entryActivations.clear();
     this.entryRouteDispatches.length = 0;
-    this.spotMeshDiscoveries.clear();
     this.ownedObjects.length = 0;
     for (const bundle of this.publisherBundles.values()) {
       bundle.submitter.dispose();
@@ -493,34 +488,6 @@ export class ZLinkSpotNodeRuntimeManager {
     );
   }
 
-  resolveRegistrySpotRemoteAddress(spotRid: RoutingId): ZLinkSpotRemoteAddress {
-    const registryOptions = this.options.registration.registrySpotRemoteAddresses;
-    if (registryOptions === undefined) {
-      throw new ZLinkConfigurationException('Registry SPOT remote address resolver is not configured.');
-    }
-    const discovery = this.spotMeshDiscoveries.get(registryOptions.namespace);
-    if (discovery === undefined) {
-      throw new ZLinkConfigurationException(
-        `Registry SPOT remote address resolver requires SpotNode discovery for '${registryOptions.namespace}'.`
-      );
-    }
-    try {
-      const route = discovery.resolveSpot(spotRid);
-      return {
-        routerChannelId: resolveRegistrySpotRouterChannelId(this.options.registration),
-        targetNodeRid: String(route.ownerNodeRid),
-        spotRid: String(route.spotRid),
-        spotKind: route.spotKind as ZLinkSpotKind
-      };
-    } catch (error) {
-      throw new ZLinkFrameworkException(
-        ZLinkFrameworkErrorKind.SpotRouteNotFound,
-        `SPOT route was not found for '${spotRid}'.`,
-        true,
-        error
-      );
-    }
-  }
 }
 
 interface ZLinkSpotNodeConnectorOptions {
@@ -529,7 +496,6 @@ interface ZLinkSpotNodeConnectorOptions {
   readonly channelAdapter: ZLinkChannelBackendAdapter;
   readonly ownedObjects: ZLinkOwnedBackendObject[];
   readonly publisherBundles: Map<string, ZLinkSpotPublisherBundle>;
-  readonly spotMeshDiscoveries: Map<string, ZLinkBackendDiscovery>;
 }
 
 class ZLinkSpotNodeConnector {
@@ -569,23 +535,6 @@ class ZLinkSpotNodeConnector {
     for (const endpoint of spotNode.pubSub?.manualConnections ?? []) {
       node.connectPeer(endpoint);
     }
-    if (
-      spotNode.router !== undefined &&
-      (spotNode.router.manualConnections ?? []).length === 0 &&
-      (spotNode.router.manualPeerConnections ?? []).length === 0 &&
-      (spotNode.pubSub?.manualConnections ?? []).length === 0 &&
-      this.hasDiscovery()
-    ) {
-      const discovery = this.createDiscovery(spotNodeName, ZLinkAutoConnectType.SpotMesh);
-      if (this.options.registration.registrySpotRemoteAddresses?.namespace === spotNodeName) {
-        discovery.spotOwnerSyncEnabled = true;
-      }
-      if (this.options.registration.actorFactories.size > 0 || this.isStreamSessionRelayNode(spotNodeName)) {
-        discovery.actorRouteSyncEnabled = true;
-      }
-      node.attachDiscovery(discovery);
-      this.options.spotMeshDiscoveries.set(spotNodeName, discovery);
-    }
   }
 
   private initializeSpotPublisherClient(
@@ -600,22 +549,6 @@ class ZLinkSpotNodeConnector {
     const submitter = new ZLinkAsyncSubmitter((handler) => publisher.onSendReady(handler));
     this.options.ownedObjects.push(publisher);
     this.options.publisherBundles.set(spotNodeName, { node, spot: publisher, submitter });
-  }
-
-  private createDiscovery(
-    channelName: string,
-    autoConnectType: ZLinkAutoConnectType
-  ): ZLinkBackendDiscovery {
-    const discovery = this.options.channelAdapter.createDiscovery(this.options.context, autoConnectType, channelName);
-    for (const endpoint of this.options.registration.discovery?.registries ?? []) {
-      discovery.connectRegistry(endpoint);
-    }
-    this.options.ownedObjects.push(discovery);
-    return discovery;
-  }
-
-  private hasDiscovery(): boolean {
-    return (this.options.registration.discovery?.registries ?? []).length > 0;
   }
 
   private isStreamSessionRelayNode(spotNodeName: string): boolean {
@@ -635,24 +568,6 @@ function spotNodeMode(spotNode: ZLinkSpotNodeOptions): ZLinkBackendSpotNodeMode 
     return ZLINK_BACKEND_SPOT_NODE_MODE_PUBSUB;
   }
   return ZLINK_BACKEND_SPOT_NODE_MODE_ALL;
-}
-
-function resolveRegistrySpotRouterChannelId(registration: ZLinkFrameworkRegistration): string {
-  const explicit = registration.registrySpotRemoteAddresses?.routerChannelId;
-  if (explicit !== undefined) {
-    return explicit;
-  }
-  for (const single of registration.routeChannels) {
-    return single;
-  }
-  for (const [spotNodeName, spotNode] of registration.spotNodes) {
-    if (spotNode.router !== undefined) {
-      return spotNodeName;
-    }
-  }
-  throw new ZLinkConfigurationException(
-    'Registry SPOT remote address resolver requires a route mesh channel or router-capable SpotNode.'
-  );
 }
 
 interface ZLinkOwnedBackendObject {

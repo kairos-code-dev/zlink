@@ -2699,7 +2699,7 @@ test('framework route transport sends Spot request through accepted Spot route c
   ]);
 });
 
-test('framework runtime host attaches Discovery for router-only SessionRelay SpotNode', async () => {
+test('framework runtime host starts router-only SessionRelay SpotNode without Discovery', async () => {
   const calls = [];
   const spotNode = {
     nativeInstance: {},
@@ -2804,16 +2804,12 @@ test('framework runtime host attaches Discovery for router-only SessionRelay Spo
     'spot:create:2',
     'spot:setRoutingId:session-node',
     'spot:setRouterBind:tcp://0.0.0.0:9391',
-    'discovery:create:session:5',
-    'discovery:connectRegistry:tcp://127.0.0.1:9390',
-    'spot:attachDiscovery:session:5',
-    'discovery:dispose:session',
     'spot:dispose',
     'context:dispose'
   ]);
 });
 
-test('framework runtime host attaches Discovery for router and pubSub SpotNode after binds', async () => {
+test('framework runtime host starts router and pubSub SpotNode without Discovery after binds', async () => {
   const calls = [];
   const spotNode = {
     nativeInstance: {},
@@ -2923,11 +2919,7 @@ test('framework runtime host attaches Discovery for router and pubSub SpotNode a
     'spot:setSubscriberRoutingId:room-node',
     'spot:setRouterBind:tcp://0.0.0.0:9396',
     'spot:setPubBind:tcp://0.0.0.0:9397',
-    'discovery:create:room:5',
-    'discovery:connectRegistry:tcp://127.0.0.1:9395',
-    'spot:attachDiscovery:room:5',
     'publisher:dispose',
-    'discovery:dispose:room',
     'spot:dispose',
     'context:dispose'
   ]);

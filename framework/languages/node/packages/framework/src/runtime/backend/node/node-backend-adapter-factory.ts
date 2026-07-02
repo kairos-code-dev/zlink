@@ -5,12 +5,9 @@ import type {
   ZLinkChannelBackendAdapter,
   ZLinkBackendContext,
   ZLinkBackendDealerSocket,
-  ZLinkBackendDiscovery,
   ZLinkBackendObject,
   ZLinkBackendPublisherSocket,
   ZLinkBackendReadablePoller,
-  ZLinkBackendRegistry,
-  ZLinkBackendRegistryQueryClient,
   ZLinkBackendRouterSocket,
   ZLinkBackendSocket,
   ZLinkBackendSocketMonitor,
@@ -19,7 +16,6 @@ import type {
   ZLinkBackendStreamSocket,
   ZLinkBackendSubscriberSocket,
   ZLinkMonitoringBackendAdapter,
-  ZLinkRegistryBackendAdapter,
   ZLinkSpotBackendAdapter,
   ZLinkStreamBackendAdapter
 } from '../contracts';
@@ -41,10 +37,6 @@ export class ZLinkNodeBackendAdapterFactory implements ZLinkBackendAdapterFactor
     return new ZLinkNodeStreamBackendAdapter();
   }
 
-  createRegistryAdapter(): ZLinkRegistryBackendAdapter {
-    return new ZLinkNodeRegistryBackendAdapter();
-  }
-
   createMonitoringAdapter(): ZLinkMonitoringBackendAdapter {
     return new ZLinkNodeMonitoringBackendAdapter();
   }
@@ -57,20 +49,6 @@ class ZLinkNodeChannelBackendAdapter implements ZLinkChannelBackendAdapter {
 
   createTopicMessage(): TopicMessage {
     return new zlink.TopicMessage();
-  }
-
-  createDiscovery(
-    context: ZLinkBackendContext,
-    autoConnectType: number,
-    channelName: string
-  ): ZLinkBackendDiscovery {
-    return wrapBackendObject(
-      zlink.createDiscovery(
-        asNodeContext(context),
-        autoConnectType as Parameters<ZLinkBindingModule['createDiscovery']>[1],
-        channelName
-      )
-    ) as unknown as ZLinkBackendDiscovery;
   }
 
   createDealerSocket(context: ZLinkBackendContext): ZLinkBackendDealerSocket {
@@ -120,16 +98,6 @@ class ZLinkNodeStreamBackendAdapter implements ZLinkStreamBackendAdapter {
   }
 }
 
-class ZLinkNodeRegistryBackendAdapter implements ZLinkRegistryBackendAdapter {
-  createRegistry(context: ZLinkBackendContext): ZLinkBackendRegistry {
-    return wrapBackendObject(zlink.createRegistry(asNodeContext(context))) as unknown as ZLinkBackendRegistry;
-  }
-
-  createRegistryQueryClient(context: ZLinkBackendContext): ZLinkBackendRegistryQueryClient {
-    return wrapBackendObject(zlink.createRegistryQueryClient(asNodeContext(context))) as unknown as ZLinkBackendRegistryQueryClient;
-  }
-}
-
 class ZLinkNodeMonitoringBackendAdapter implements ZLinkMonitoringBackendAdapter {
   openSocketMonitor(socket: ZLinkBackendSocket): ZLinkBackendSocketMonitor {
     const nativeSocket = socket.nativeInstance as {
@@ -164,7 +132,6 @@ function wrapBackendObject<T extends { close(): void }>(nativeInstance: T): T & 
     get(target, property) {
       const resolved =
         resolveBackendObjectProperty(target, property) ??
-        resolveBackendDiscoveryProperty(target, property) ??
         resolveBackendSpotNodeProperty(target, property) ??
         resolveBackendRouteBridgeProperty(target, property) ??
         resolveBackendMessagingProperty(target, property);
@@ -186,30 +153,6 @@ function resolveBackendObjectProperty(target: unknown, property: string | symbol
       disableSocketLinger(target);
       await closeWithBusyRetry(target as { close(): void });
     };
-  }
-  return undefined;
-}
-
-function resolveBackendDiscoveryProperty(target: unknown, property: string | symbol): unknown {
-  if (property === 'topology') {
-    return (filter: unknown) =>
-      toFrameworkRoutingIdEntries((target as unknown as { topology(filter?: unknown): unknown })
-        .topology(toNativeTopologyFilter(filter)));
-  }
-  if (property === 'memberPeers') {
-    return (channelName: string) =>
-      toFrameworkRoutingIdEntries((target as unknown as { memberPeers(channelName: string): unknown })
-        .memberPeers(channelName));
-  }
-  if (property === 'attachDiscovery') {
-    return (discovery: ZLinkBackendDiscovery) =>
-      (target as unknown as { attachDiscovery(discovery: unknown): void })
-        .attachDiscovery(unwrapBackendObject(discovery));
-  }
-  if (property === 'resolveSpot') {
-    return (spotRid: unknown) =>
-      (target as unknown as { resolveSpot(spotRid: unknown): unknown })
-        .resolveSpot(toNativeRoutingId(spotRid));
   }
   return undefined;
 }
@@ -524,11 +467,6 @@ function wrapSocket<T extends { close(): void }>(nativeInstance: T): T & ZLinkBa
       const sessionRelay = resolveSocketSessionRelayProperty(target, property);
       if (sessionRelay !== undefined) {
         return sessionRelay;
-      }
-      if (property === 'attachDiscovery') {
-        return (discovery: ZLinkBackendDiscovery) =>
-          (target as unknown as { attachDiscovery(discovery: unknown): void })
-            .attachDiscovery(unwrapBackendObject(discovery));
       }
       const value = Reflect.get(target, property, target);
       return typeof value === 'function' ? value.bind(target) : value;

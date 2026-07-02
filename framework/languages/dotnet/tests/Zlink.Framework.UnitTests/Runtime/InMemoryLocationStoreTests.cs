@@ -151,6 +151,127 @@ public sealed class InMemoryLocationStoreTests
     }
 
     [Fact]
+    public async Task Actor_List_Filters_By_Node_Rid_Spot_Rid_And_Location_Kind()
+    {
+        var (store, _) = await CreateStoreWithLiveOwnersAsync(OwnerA);
+        IZLinkActorLocationStore actors = store;
+        await actors.UpdateActorAsync(Actor(OwnerA, 0, "actor-1"), ZLinkLocationWriteIntent.NewClaim);
+        await actors.UpdateActorAsync(
+            Actor(OwnerA, 0, "actor-2") with
+            {
+                NodeRid = RoutingId.From("node-2"),
+                LocationKind = ZLinkSpotKind.User,
+                SpotRid = RoutingId.From("spot-9"),
+                SpotKind = ZLinkSpotKind.User
+            },
+            ZLinkLocationWriteIntent.NewClaim);
+
+        var byNode = await actors.ListActorsAsync(
+            new ZLinkActorLocationFilter(NodeRid: RoutingId.From("node-2")));
+        Assert.Equal("actor-2", Assert.Single(byNode.Items).ActorId);
+
+        var bySpot = await actors.ListActorsAsync(
+            new ZLinkActorLocationFilter(SpotRid: RoutingId.From("spot-9")));
+        Assert.Equal("actor-2", Assert.Single(bySpot.Items).ActorId);
+
+        var entryOnly = await actors.ListActorsAsync(
+            new ZLinkActorLocationFilter(LocationKind: ZLinkSpotKind.Entry));
+        Assert.Equal("actor-1", Assert.Single(entryOnly.Items).ActorId);
+    }
+
+    [Fact]
+    public async Task Spot_List_Filters_By_Spot_Type_Node_Rid_And_Spot_Kind()
+    {
+        var (store, _) = await CreateStoreWithLiveOwnersAsync(OwnerA);
+        IZLinkSpotLocationStore spots = store;
+        await spots.UpdateSpotAsync(Spot(OwnerA, "spot-1"), ZLinkLocationWriteIntent.NewClaim);
+        await spots.UpdateSpotAsync(
+            Spot(OwnerA, "spot-2") with
+            {
+                SpotType = "lobby",
+                NodeRid = RoutingId.From("node-2"),
+                SpotKind = ZLinkSpotKind.Entry
+            },
+            ZLinkLocationWriteIntent.NewClaim);
+
+        var byType = await spots.ListSpotsAsync(new ZLinkSpotLocationFilter(SpotType: "lobby"));
+        Assert.Equal(RoutingId.From("spot-2"), Assert.Single(byType.Items).SpotRid);
+
+        var byNode = await spots.ListSpotsAsync(
+            new ZLinkSpotLocationFilter(NodeRid: RoutingId.From("node-2")));
+        Assert.Equal(RoutingId.From("spot-2"), Assert.Single(byNode.Items).SpotRid);
+
+        var userOnly = await spots.ListSpotsAsync(
+            new ZLinkSpotLocationFilter(SpotKind: ZLinkSpotKind.User));
+        Assert.Equal(RoutingId.From("spot-1"), Assert.Single(userOnly.Items).SpotRid);
+    }
+
+    [Fact]
+    public async Task Route_List_Filters_By_Kind_Owner_Node_Rid_And_Owner_Id()
+    {
+        var (store, _) = await CreateStoreWithLiveOwnersAsync(OwnerA, OwnerB);
+        IZLinkRouteLocationStore routes = store;
+        await routes.UpdateRouteAsync(Route(OwnerA, "session-1"), ZLinkLocationWriteIntent.NewClaim);
+        await routes.UpdateRouteAsync(
+            Route(OwnerB, "spot-name-1") with
+            {
+                RouteKind = ZLinkRouteKind.SpotName,
+                OwnerNodeRid = RoutingId.From("node-2")
+            },
+            ZLinkLocationWriteIntent.NewClaim);
+
+        var byKind = await routes.ListRoutesAsync(
+            new ZLinkRouteLocationFilter(RouteKind: ZLinkRouteKind.SpotName));
+        Assert.Equal("spot-name-1", Assert.Single(byKind.Items).RouteKey);
+
+        var byOwnerNode = await routes.ListRoutesAsync(
+            new ZLinkRouteLocationFilter(OwnerNodeRid: RoutingId.From("node-2")));
+        Assert.Equal("spot-name-1", Assert.Single(byOwnerNode.Items).RouteKey);
+
+        var byOwnerId = await routes.ListRoutesAsync(new ZLinkRouteLocationFilter(OwnerId: OwnerA));
+        Assert.Equal("session-1", Assert.Single(byOwnerId.Items).RouteKey);
+    }
+
+    [Fact]
+    public async Task Actor_And_Route_Paged_Lists_Traverse_All_Rows_With_Continuation_Tokens()
+    {
+        var (store, _) = await CreateStoreWithLiveOwnersAsync(OwnerA);
+        for (var i = 0; i < 5; i++)
+        {
+            await store.UpdateActorAsync(Actor(OwnerA, 0, $"actor-{i}"), ZLinkLocationWriteIntent.NewClaim);
+            await store.UpdateRouteAsync(Route(OwnerA, $"route-{i}"), ZLinkLocationWriteIntent.NewClaim);
+        }
+
+        var actors = new List<ZLinkActorLocation>();
+        string? token = null;
+        do
+        {
+            var page = await store.ListActorsAsync(
+                new ZLinkActorLocationFilter(ActorType: "player"),
+                new ZLinkPageRequest(PageSize: 2, ContinuationToken: token));
+            actors.AddRange(page.Items);
+            token = page.ContinuationToken;
+        }
+        while (token is not null);
+
+        Assert.Equal(5, actors.Select(static actor => actor.ActorId).Distinct().Count());
+
+        var routes = new List<ZLinkRouteLocation>();
+        token = null;
+        do
+        {
+            var page = await store.ListRoutesAsync(
+                new ZLinkRouteLocationFilter(RouteKind: ZLinkRouteKind.ActorSession),
+                new ZLinkPageRequest(PageSize: 2, ContinuationToken: token));
+            routes.AddRange(page.Items);
+            token = page.ContinuationToken;
+        }
+        while (token is not null);
+
+        Assert.Equal(5, routes.Select(static route => route.RouteKey).Distinct().Count());
+    }
+
+    [Fact]
     public async Task Change_Stamp_Increments_On_Writes_And_Is_Stable_On_Reads()
     {
         var (store, _) = await CreateStoreWithLiveOwnersAsync(OwnerA);
@@ -218,6 +339,18 @@ public sealed class InMemoryLocationStoreTests
         ownerId,
         0,
         default);
+
+    internal static ZLinkRouteLocation Route(
+        string ownerId,
+        string routeKey = "route-1",
+        long generation = 0) => new(
+        ZLinkRouteKind.ActorSession,
+        routeKey,
+        RoutingId.From("node-1"),
+        ownerId,
+        generation,
+        new byte[] { 1, 2, 3, 4 },
+        default);
 }
 
 /// <summary>
@@ -238,6 +371,18 @@ internal sealed class ManualTimeProvider : TimeProvider
     public void Advance(TimeSpan delta)
     {
         _utcNow += delta;
+        _timestamp += delta.Ticks;
+    }
+
+    /// <summary>A wall-clock jump without monotonic progress, for asserting
+    /// that lease expiry never compares application wall clocks (draft 6.6).</summary>
+    public void AdvanceWallClockOnly(TimeSpan delta)
+    {
+        _utcNow += delta;
+    }
+
+    public void AdvanceMonotonicOnly(TimeSpan delta)
+    {
         _timestamp += delta.Ticks;
     }
 }

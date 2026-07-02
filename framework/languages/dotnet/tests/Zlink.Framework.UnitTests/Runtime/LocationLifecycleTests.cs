@@ -236,6 +236,65 @@ public sealed class LocationLifecycleTests
         Assert.Null(await fixture.Store.ResolveRouteAsync(key));
     }
 
+    [Fact]
+    public async Task Actor_Reconnect_Refreshes_The_Location_And_Only_Rebinds_The_Session()
+    {
+        var fixture = await LifecycleFixture.CreateAsync();
+        // Keep resolver caches alive so the reconnect assertion proves the
+        // Refresh path bypasses a stale cache, not an expired one.
+        fixture.Options.PositiveCacheTtl = TimeSpan.FromMinutes(5);
+        var nodeA = await fixture.NodeAsync("node-a");
+        var nodeB = await fixture.NodeAsync("node-b");
+        var nodeC = await fixture.NodeAsync("node-c");
+
+        await nodeA.Lifecycle.ExecuteActorClaimThenActivateAsync(
+            ActorType, ActorId, RoutingId.From("node-a"),
+            deactivate: null,
+            activate: _ => ValueTask.FromResult("instance-a"),
+            CancellationToken.None);
+
+        // Node B has resolved the actor before and still caches node A.
+        var cached = await nodeB.Resolvers.ResolveActorAsync(new ZLinkActorLocationKey(ActorType, ActorId));
+        Assert.Equal(RoutingId.From("node-a"), cached!.NodeRid);
+
+        // The actor moves to node C behind node B's cache.
+        await nodeC.Runtime.WriteActorAsync(
+            InMemoryLocationStoreTests.Actor("ignored", 0) with { NodeRid = RoutingId.From("node-c") },
+            ZLinkLocationWriteIntent.Takeover);
+        var moved = await fixture.Store.ResolveActorAsync(new ZLinkActorLocationKey(ActorType, ActorId));
+
+        // Reconnect at node B: the claim conflicts, the existing location
+        // is re-read with Refresh (never from the stale cache), and no
+        // local instance is activated.
+        var activatedB = 0;
+        var reconnect = await nodeB.Lifecycle.ExecuteActorClaimThenActivateAsync<string>(
+            ActorType, ActorId, RoutingId.From("node-b"),
+            deactivate: null,
+            activate: _ =>
+            {
+                activatedB++;
+                return ValueTask.FromResult("instance-b");
+            },
+            CancellationToken.None);
+
+        Assert.Null(reconnect.Activated);
+        Assert.Equal(0, activatedB);
+        Assert.Equal(RoutingId.From("node-c"), reconnect.ExistingLocation!.NodeRid);
+
+        // Only the session route is rebound to the refreshed location; the
+        // actor row itself stays untouched by the reconnect.
+        var sessionRid = RoutingId.From("session-1");
+        await nodeB.Lifecycle.BindActorSessionRouteAsync(
+            sessionRid, ActorId, reconnect.ExistingLocation.NodeRid);
+        var route = await fixture.Store.ResolveRouteAsync(
+            new ZLinkRouteLocationKey(ZLinkRouteKind.ActorSession, sessionRid.ToHex()));
+        Assert.Equal(RoutingId.From("node-c"), route!.OwnerNodeRid);
+
+        var after = await fixture.Store.ResolveActorAsync(new ZLinkActorLocationKey(ActorType, ActorId));
+        Assert.Equal(moved!.Generation, after!.Generation);
+        Assert.Equal(nodeC.Runtime.OwnerId, after.OwnerId);
+    }
+
     private sealed class LifecycleFixture
     {
         private LifecycleFixture(

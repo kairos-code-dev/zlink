@@ -252,6 +252,155 @@ public sealed class RedisLocationStoreTests
     }
 
     [SkippableFact]
+    public async Task Secondary_List_Filters_Match_Row_Fields()
+    {
+        await using var store = CreateStoreWithLiveOwnersAsync(OwnerA, out var setup, OwnerB);
+        await setup;
+
+        await store.UpdateActorAsync(TestRows.Actor(OwnerA, 0, "actor-1"), ZLinkLocationWriteIntent.NewClaim);
+        await store.UpdateActorAsync(
+            TestRows.Actor(OwnerA, 0, "actor-2") with
+            {
+                NodeRid = RoutingId.From("node-2"),
+                LocationKind = ZLinkSpotKind.User,
+                SpotRid = RoutingId.From("spot-9"),
+                SpotKind = ZLinkSpotKind.User
+            },
+            ZLinkLocationWriteIntent.NewClaim);
+        var actorByNode = await store.ListActorsAsync(
+            new ZLinkActorLocationFilter(NodeRid: RoutingId.From("node-2")));
+        Assert.Equal("actor-2", Assert.Single(actorByNode.Items).ActorId);
+        var actorBySpot = await store.ListActorsAsync(
+            new ZLinkActorLocationFilter(SpotRid: RoutingId.From("spot-9")));
+        Assert.Equal("actor-2", Assert.Single(actorBySpot.Items).ActorId);
+        var actorEntryOnly = await store.ListActorsAsync(
+            new ZLinkActorLocationFilter(LocationKind: ZLinkSpotKind.Entry));
+        Assert.Equal("actor-1", Assert.Single(actorEntryOnly.Items).ActorId);
+
+        await store.UpdateSpotAsync(TestRows.Spot(OwnerA, "spot-1"), ZLinkLocationWriteIntent.NewClaim);
+        await store.UpdateSpotAsync(
+            TestRows.Spot(OwnerA, "spot-2") with
+            {
+                SpotType = "lobby",
+                NodeRid = RoutingId.From("node-2"),
+                SpotKind = ZLinkSpotKind.Entry
+            },
+            ZLinkLocationWriteIntent.NewClaim);
+        var spotByType = await store.ListSpotsAsync(new ZLinkSpotLocationFilter(SpotType: "lobby"));
+        Assert.Equal(RoutingId.From("spot-2"), Assert.Single(spotByType.Items).SpotRid);
+        var spotByNode = await store.ListSpotsAsync(
+            new ZLinkSpotLocationFilter(NodeRid: RoutingId.From("node-2")));
+        Assert.Equal(RoutingId.From("spot-2"), Assert.Single(spotByNode.Items).SpotRid);
+        var spotUserOnly = await store.ListSpotsAsync(
+            new ZLinkSpotLocationFilter(SpotKind: ZLinkSpotKind.User));
+        Assert.Equal(RoutingId.From("spot-1"), Assert.Single(spotUserOnly.Items).SpotRid);
+
+        await store.UpdateRouteAsync(TestRows.Route(OwnerA, "session-1"), ZLinkLocationWriteIntent.NewClaim);
+        await store.UpdateRouteAsync(
+            TestRows.Route(OwnerB, "spot-name-1") with
+            {
+                RouteKind = ZLinkRouteKind.SpotName,
+                OwnerNodeRid = RoutingId.From("node-2")
+            },
+            ZLinkLocationWriteIntent.NewClaim);
+        var routeByKind = await store.ListRoutesAsync(
+            new ZLinkRouteLocationFilter(RouteKind: ZLinkRouteKind.SpotName));
+        Assert.Equal("spot-name-1", Assert.Single(routeByKind.Items).RouteKey);
+        var routeByOwnerNode = await store.ListRoutesAsync(
+            new ZLinkRouteLocationFilter(OwnerNodeRid: RoutingId.From("node-2")));
+        Assert.Equal("spot-name-1", Assert.Single(routeByOwnerNode.Items).RouteKey);
+        var routeByOwnerId = await store.ListRoutesAsync(new ZLinkRouteLocationFilter(OwnerId: OwnerA));
+        Assert.Equal("session-1", Assert.Single(routeByOwnerId.Items).RouteKey);
+    }
+
+    [SkippableFact]
+    public async Task Spot_Update_Resolve_Remove_Roundtrip_Preserves_Row_Fields()
+    {
+        await using var store = CreateStoreWithLiveOwnersAsync(OwnerA, out var setup);
+        await setup;
+
+        var claimed = await store.UpdateSpotAsync(TestRows.Spot(OwnerA, "spot-1"), ZLinkLocationWriteIntent.NewClaim);
+        Assert.Equal(ZLinkLocationWriteStatus.Stored, claimed.Status);
+
+        var key = new ZLinkSpotLocationKey("play", RoutingId.From("spot-1"));
+        var resolved = await store.ResolveSpotAsync(key);
+        Assert.NotNull(resolved);
+        Assert.Equal("game", resolved!.SpotType);
+        Assert.Equal(RoutingId.From("node-1"), resolved.NodeRid);
+        Assert.Equal(ZLinkSpotKind.User, resolved.SpotKind);
+        Assert.Equal(OwnerA, resolved.OwnerId);
+        Assert.Equal(claimed.Generation, resolved.Generation);
+
+        var removed = await store.RemoveSpotAsync(key, new ZLinkLocationOwnerToken(OwnerA, claimed.Generation));
+        Assert.Equal(ZLinkLocationWriteStatus.Stored, removed.Status);
+        Assert.Null(await store.ResolveSpotAsync(key));
+    }
+
+    [SkippableFact]
+    public async Task Peer_Remove_With_Owner_Token_Deletes_The_Row()
+    {
+        await using var store = CreateStoreWithLiveOwnersAsync(OwnerA, out var setup);
+        await setup;
+
+        var claimed = await store.UpdatePeerAsync(TestRows.Peer(OwnerA), ZLinkLocationWriteIntent.NewClaim);
+        Assert.Equal(ZLinkLocationWriteStatus.Stored, claimed.Status);
+        var key = new ZLinkPeerLocationKey(
+            ZLinkLocationAutoConnectType.RouteMesh, "play", ZLinkLocationRole.Router,
+            RoutingId.From("node-1"), "tcp://127.0.0.1:5001");
+
+        // A stale token must not delete the live row; the current one must.
+        var stale = await store.RemovePeerAsync(key, new ZLinkLocationOwnerToken(OwnerA, claimed.Generation + 5));
+        Assert.Equal(ZLinkLocationWriteStatus.IgnoredStale, stale.Status);
+        Assert.Single(await store.ListPeersAsync(new ZLinkPeerLocationFilter(MeshName: "play")));
+
+        var removed = await store.RemovePeerAsync(key, new ZLinkLocationOwnerToken(OwnerA, claimed.Generation));
+        Assert.Equal(ZLinkLocationWriteStatus.Stored, removed.Status);
+        Assert.Empty(await store.ListPeersAsync(new ZLinkPeerLocationFilter(MeshName: "play")));
+    }
+
+    [SkippableFact]
+    public async Task Actor_And_Route_Paged_Lists_Traverse_All_Rows_Exactly_Once()
+    {
+        await using var store = CreateStoreWithLiveOwnersAsync(OwnerA, out var setup);
+        await setup;
+        for (var i = 0; i < 5; i++)
+        {
+            await store.UpdateActorAsync(TestRows.Actor(OwnerA, 0, $"actor-{i}"), ZLinkLocationWriteIntent.NewClaim);
+            await store.UpdateRouteAsync(TestRows.Route(OwnerA, $"route-{i}"), ZLinkLocationWriteIntent.NewClaim);
+        }
+
+        var actors = new List<ZLinkActorLocation>();
+        string? token = null;
+        do
+        {
+            var page = await store.ListActorsAsync(
+                new ZLinkActorLocationFilter(ActorType: "player"),
+                new ZLinkPageRequest(PageSize: 2, ContinuationToken: token));
+            actors.AddRange(page.Items);
+            token = page.ContinuationToken;
+        }
+        while (token is not null);
+
+        Assert.Equal(5, actors.Select(static actor => actor.ActorId).Distinct().Count());
+        Assert.Equal(5, actors.Count);
+
+        var routes = new List<ZLinkRouteLocation>();
+        token = null;
+        do
+        {
+            var page = await store.ListRoutesAsync(
+                new ZLinkRouteLocationFilter(RouteKind: ZLinkRouteKind.ActorSession),
+                new ZLinkPageRequest(PageSize: 2, ContinuationToken: token));
+            routes.AddRange(page.Items);
+            token = page.ContinuationToken;
+        }
+        while (token is not null);
+
+        Assert.Equal(5, routes.Select(static route => route.RouteKey).Distinct().Count());
+        Assert.Equal(5, routes.Count);
+    }
+
+    [SkippableFact]
     public async Task Change_Stamp_Increments_On_Writes_And_Is_Stable_On_Reads()
     {
         await using var store = CreateStoreWithLiveOwnersAsync(OwnerA, out var setup);

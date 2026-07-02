@@ -264,6 +264,9 @@ internal static class ZLinkFrameworkServiceRegistrar
         services.AddSingleton(static provider => new ZLinkLocationEventEmitter(
             provider.GetService<ZLinkMonitoringRegistration>(),
             provider.GetService<IZLinkRuntimeEventPublisher>()));
+        // One observed-generation guard per runtime, shared by every read
+        // surface, so no read path ever rolls the view backwards.
+        services.AddSingleton<ZLinkObservedLocationGenerations>();
         services.AddSingleton(static provider => new ZLinkStoreLocationResolvers(
             provider.GetRequiredService<ZLinkLocationOptions>(),
             provider.GetRequiredService<IZLinkPeerLocationStore>(),
@@ -271,7 +274,8 @@ internal static class ZLinkFrameworkServiceRegistrar
             provider.GetRequiredService<IZLinkActorLocationStore>(),
             provider.GetRequiredService<IZLinkRouteLocationStore>(),
             provider.GetRequiredService<ZLinkOwnerLeaseTracker>(),
-            events: provider.GetRequiredService<ZLinkLocationEventEmitter>()));
+            events: provider.GetRequiredService<ZLinkLocationEventEmitter>(),
+            observed: provider.GetRequiredService<ZLinkObservedLocationGenerations>()));
         services.AddSingleton<IZLinkPeerLocationResolver>(
             static provider => provider.GetRequiredService<ZLinkStoreLocationResolvers>());
         services.AddSingleton<IZLinkSpotLocationResolver>(
@@ -297,7 +301,8 @@ internal static class ZLinkFrameworkServiceRegistrar
                 provider.GetRequiredService<IZLinkRouteLocationStore>(),
                 provider.GetRequiredService<ZLinkOwnerLeaseTracker>(),
                 provider.GetRequiredService<ZLinkLocationRuntime>(),
-                provider.GetRequiredService<ZLinkStoreLocationResolvers>()));
+                provider.GetRequiredService<ZLinkStoreLocationResolvers>(),
+                provider.GetRequiredService<ZLinkObservedLocationGenerations>()));
         services.AddSingleton(static provider => new ZLinkLocationLifecycle(
             provider.GetRequiredService<ZLinkLocationRuntime>(),
             provider.GetRequiredService<IZLinkActorLocationResolver>()));

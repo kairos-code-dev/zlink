@@ -111,6 +111,130 @@ public sealed class LocationResolverTests
         Assert.Equal(0, fixture.Resolvers.ActorCacheEntryCount);
     }
 
+    [Theory]
+    [InlineData(false, true, true, true)]
+    [InlineData(true, false, true, true)]
+    [InlineData(true, true, false, false)]
+    [InlineData(false, false, false, false)]
+    public async Task Cache_Disabled_Combinations_Read_The_Store_With_Identical_Results(
+        bool peerCache,
+        bool actorCache,
+        bool spotCache,
+        bool routeCache)
+    {
+        var fixture = await FixtureAsync(options =>
+        {
+            options.PeerCacheEnabled = peerCache;
+            options.ActorCacheEnabled = actorCache;
+            options.SpotCacheEnabled = spotCache;
+            options.RouteCacheEnabled = routeCache;
+        });
+        await fixture.Store.UpdatePeerAsync(
+            InMemoryLocationStoreTests.Peer(OwnerA), ZLinkLocationWriteIntent.NewClaim);
+        await fixture.Store.UpdateActorAsync(
+            InMemoryLocationStoreTests.Actor(OwnerA, 0), ZLinkLocationWriteIntent.NewClaim);
+        await fixture.Store.UpdateSpotAsync(
+            InMemoryLocationStoreTests.Spot(OwnerA, "spot-1"), ZLinkLocationWriteIntent.NewClaim);
+        await fixture.Store.UpdateRouteAsync(
+            InMemoryLocationStoreTests.Route(OwnerA), ZLinkLocationWriteIntent.NewClaim);
+
+        // Every combination returns the same results; only the read path
+        // (cache or direct store) changes with the option.
+        for (var round = 0; round < 2; round++)
+        {
+            Assert.Single(await fixture.Resolvers.ListPeersAsync(
+                new ZLinkPeerLocationFilter(MeshName: "play")));
+            Assert.NotNull(await fixture.Resolvers.ResolveActorAsync(ActorKey));
+            Assert.NotNull(await fixture.Resolvers.ResolveSpotAsync(
+                new ZLinkSpotLocationKey("play", RoutingId.From("spot-1"))));
+            Assert.NotNull(await fixture.Resolvers.ResolveRouteAsync(
+                new ZLinkRouteLocationKey(ZLinkRouteKind.ActorSession, "route-1")));
+        }
+
+        Assert.Equal(peerCache ? 1 : 0, fixture.Resolvers.PeerCacheEntryCount);
+        Assert.Equal(actorCache ? 1 : 0, fixture.Resolvers.ActorCacheEntryCount);
+        Assert.Equal(spotCache ? 1 : 0, fixture.Resolvers.SpotCacheEntryCount);
+        Assert.Equal(routeCache ? 1 : 0, fixture.Resolvers.RouteCacheEntryCount);
+    }
+
+    [Fact]
+    public async Task Route_Rows_Of_Expired_Owner_Are_Not_Returned()
+    {
+        var fixture = await FixtureAsync();
+        await fixture.Store.UpdateRouteAsync(
+            InMemoryLocationStoreTests.Route(OwnerA), ZLinkLocationWriteIntent.NewClaim);
+        var key = new ZLinkRouteLocationKey(ZLinkRouteKind.ActorSession, "route-1");
+        Assert.NotNull(await fixture.Resolvers.ResolveRouteAsync(key));
+
+        // Owner A crashes: its lease runs out and the route row must stop
+        // resolving without any row write.
+        fixture.Time.Advance(LeaseTtl + TimeSpan.FromSeconds(1));
+
+        Assert.Null(await fixture.Resolvers.ResolveRouteAsync(key));
+    }
+
+    [Fact]
+    public async Task Peer_Rows_Outside_The_Closed_Value_Sets_Are_Ignored()
+    {
+        var time = new ManualTimeProvider();
+        var store = new ZLinkInMemoryLocationStore(time);
+        await store.RenewOwnerLeaseAsync(OwnerA, RoutingId.From("node-1"), TimeSpan.FromMinutes(5));
+        await store.UpdatePeerAsync(
+            InMemoryLocationStoreTests.Peer(OwnerA), ZLinkLocationWriteIntent.NewClaim);
+        var options = new ZLinkLocationOptions { PollingInterval = TimeSpan.Zero };
+        var tracker = new ZLinkOwnerLeaseTracker(store, options, time);
+
+        // A store (replica lag, another runtime's bug, hand-edited rows)
+        // can serve values outside the closed sets; the resolver must drop
+        // them instead of feeding them to reconcile.
+        var junk = new JunkAppendingPeerStore(
+            store,
+            InMemoryLocationStoreTests.Peer(OwnerA, "tcp://junk:1", "node-x") with
+            {
+                Role = (ZLinkLocationRole)99
+            },
+            InMemoryLocationStoreTests.Peer(OwnerA, "tcp://junk:2", "node-y") with
+            {
+                AutoConnectType = (ZLinkLocationAutoConnectType)77
+            });
+        var resolvers = new ZLinkStoreLocationResolvers(options, junk, store, store, store, tracker, time);
+
+        var rows = await resolvers.ListPeersAsync(new ZLinkPeerLocationFilter(MeshName: "play"));
+
+        var survivor = Assert.Single(rows);
+        Assert.Equal(ZLinkLocationRole.Router, survivor.Role);
+    }
+
+    private sealed class JunkAppendingPeerStore(
+        IZLinkPeerLocationStore inner,
+        params ZLinkPeerLocation[] junk) : IZLinkPeerLocationStore
+    {
+        public async ValueTask<IReadOnlyList<ZLinkPeerLocation>> ListPeersAsync(
+            ZLinkPeerLocationFilter filter,
+            CancellationToken cancellationToken = default)
+        {
+            var rows = await inner.ListPeersAsync(filter, cancellationToken);
+            return [.. rows, .. junk];
+        }
+
+        public ValueTask<ZLinkLocationWriteResult> UpdatePeerAsync(
+            ZLinkPeerLocation peer,
+            ZLinkLocationWriteIntent intent,
+            CancellationToken cancellationToken = default) =>
+            inner.UpdatePeerAsync(peer, intent, cancellationToken);
+
+        public ValueTask<ZLinkLocationWriteResult> RemovePeerAsync(
+            ZLinkPeerLocationKey key,
+            ZLinkLocationOwnerToken owner,
+            CancellationToken cancellationToken = default) =>
+            inner.RemovePeerAsync(key, owner, cancellationToken);
+
+        public ValueTask<long> RemoveByOwnerAsync(
+            string ownerId,
+            CancellationToken cancellationToken = default) =>
+            inner.RemoveByOwnerAsync(ownerId, cancellationToken);
+    }
+
     [Fact]
     public async Task Actor_Type_Null_And_Empty_Are_The_Same_Key()
     {

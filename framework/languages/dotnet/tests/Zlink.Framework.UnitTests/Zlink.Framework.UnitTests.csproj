@@ -54,10 +54,13 @@
         <Compile Include="Runtime/EnvelopeCodecTests.cs"/>
         <Compile Include="Runtime/HandlerResultAwaiterTests.cs"/>
         <Compile Include="Runtime/InMemoryLocationStoreTests.cs"/>
+        <Compile Include="Runtime/LocationEventEmitterTests.cs"/>
         <Compile Include="Runtime/LocationLifecycleTests.cs"/>
         <Compile Include="Runtime/LocationRuntimePollingDiffTests.cs"/>
         <Compile Include="Runtime/LocationResolverTests.cs"/>
+        <Compile Include="Runtime/LocationRuntimeQueryTests.cs"/>
         <Compile Include="Runtime/LocationRuntimeTests.cs"/>
+        <Compile Include="Runtime/OwnerLeaseTrackerTests.cs"/>
         <Compile Include="Runtime/MessageFlowTracerTests.cs"/>
         <Compile Include="Runtime/SerialExecutorTests.cs"/>
         <Compile Include="Runtime/SpotActorHandlerRegistryTests.cs"/>

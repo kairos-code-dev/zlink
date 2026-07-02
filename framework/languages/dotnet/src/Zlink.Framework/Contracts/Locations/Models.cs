@@ -92,6 +92,23 @@ public static class ZLinkLocationCanonicalNames
         };
         return role != ZLinkLocationRole.Invalid;
     }
+
+    /// <summary>The closed value sets of draft 6.5: rows read from a store
+    /// with values outside them are ignored by reconcile/resolve, and the
+    /// registration path rejects them as a validation error.</summary>
+    internal static bool IsKnown(ZLinkLocationAutoConnectType type) => type is
+        ZLinkLocationAutoConnectType.RouteMesh
+        or ZLinkLocationAutoConnectType.ClientServer
+        or ZLinkLocationAutoConnectType.DealerMesh
+        or ZLinkLocationAutoConnectType.Fanout
+        or ZLinkLocationAutoConnectType.SpotMesh;
+
+    internal static bool IsKnown(ZLinkLocationRole role) => role is
+        ZLinkLocationRole.Spot
+        or ZLinkLocationRole.Router
+        or ZLinkLocationRole.Dealer
+        or ZLinkLocationRole.Pub
+        or ZLinkLocationRole.Sub;
 }
 
 public sealed record ZLinkPeerLocation(

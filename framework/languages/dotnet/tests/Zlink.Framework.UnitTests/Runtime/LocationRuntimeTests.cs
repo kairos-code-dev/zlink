@@ -136,6 +136,29 @@ public sealed class LocationRuntimeTests
         Assert.Contains("all-or-nothing", exception.Message, StringComparison.Ordinal);
     }
 
+    [Fact]
+    public async Task Registration_Path_Rejects_Values_Outside_The_Closed_Sets()
+    {
+        var time = new ManualTimeProvider();
+        var store = new ZLinkInMemoryLocationStore(time);
+        var runtime = NewRuntime(store, store, time);
+        await runtime.RenewOwnerLeaseOnceAsync();
+
+        // Readers ignore out-of-set rows; the registration path must never
+        // produce one in the first place (draft 6.5 validation error).
+        await Assert.ThrowsAsync<ArgumentOutOfRangeException>(async () =>
+            await runtime.WritePeerAsync(
+                InMemoryLocationStoreTests.Peer("ignored") with { Role = (ZLinkLocationRole)99 },
+                ZLinkLocationWriteIntent.NewClaim));
+        await Assert.ThrowsAsync<ArgumentOutOfRangeException>(async () =>
+            await runtime.WritePeerAsync(
+                InMemoryLocationStoreTests.Peer("ignored") with
+                {
+                    AutoConnectType = (ZLinkLocationAutoConnectType)77
+                },
+                ZLinkLocationWriteIntent.NewClaim));
+    }
+
     private static ZLinkLocationRuntime NewRuntime(
         ZLinkInMemoryLocationStore store,
         IZLinkOwnerLeaseStore ownerLeaseStore,

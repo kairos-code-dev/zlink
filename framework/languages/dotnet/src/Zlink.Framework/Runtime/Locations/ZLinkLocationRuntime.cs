@@ -148,6 +148,19 @@ internal sealed class ZLinkLocationRuntime : IAsyncDisposable, IDisposable
         ZLinkLocationWriteIntent intent,
         CancellationToken cancellationToken = default)
     {
+        // The registration path rejects values outside the closed sets as a
+        // validation error; readers additionally ignore such rows (draft 6.5).
+        if (!ZLinkLocationCanonicalNames.IsKnown(peer.AutoConnectType))
+        {
+            throw new ArgumentOutOfRangeException(
+                nameof(peer), peer.AutoConnectType, "Unknown auto-connect type.");
+        }
+
+        if (!ZLinkLocationCanonicalNames.IsKnown(peer.Role))
+        {
+            throw new ArgumentOutOfRangeException(nameof(peer), peer.Role, "Unknown location role.");
+        }
+
         var stamped = peer with { OwnerId = OwnerId };
         var result = await GuardStoreWriteAsync(
             () => _peerStore.UpdatePeerAsync(stamped, intent, cancellationToken))

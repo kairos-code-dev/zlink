@@ -11,6 +11,8 @@ internal static partial class ZLinkFrameworkRegistrationValidator
 
         ValidateDispatchOptions(registration.DispatchOptions);
 
+        ValidateLocations(registration.Locations);
+
         if (registration.RegistrySpotRemoteAddresses is not null
             && registration.Discovery?.Endpoints.Count is not > 0
             && !registration.SpotDiscoveries.Values.Any(discovery =>

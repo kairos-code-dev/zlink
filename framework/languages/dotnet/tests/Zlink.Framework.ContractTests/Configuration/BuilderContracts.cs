@@ -254,6 +254,40 @@ public sealed class BuilderContracts
             return Discovery;
         }
 
+        public void AddPeerLocationStore<TStore>()
+            where TStore : class, IZLinkPeerLocationStore
+        {
+        }
+
+        public void AddSpotLocationStore<TStore>()
+            where TStore : class, IZLinkSpotLocationStore
+        {
+        }
+
+        public void AddActorLocationStore<TStore>()
+            where TStore : class, IZLinkActorLocationStore
+        {
+        }
+
+        public void AddRouteLocationStore<TStore>()
+            where TStore : class, IZLinkRouteLocationStore
+        {
+        }
+
+        public void AddOwnerLeaseStore<TStore>()
+            where TStore : class, IZLinkOwnerLeaseStore
+        {
+        }
+
+        public void UseInMemoryLocationStores()
+        {
+        }
+
+        public ZLinkLocationOptions ConfigureLocations()
+        {
+            return new ZLinkLocationOptions();
+        }
+
         public void UseFilter<TFilter>()
             where TFilter : class, IZLinkHandlerFilter
         {

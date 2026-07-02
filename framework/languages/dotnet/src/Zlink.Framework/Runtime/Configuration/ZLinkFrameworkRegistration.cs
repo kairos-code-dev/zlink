@@ -21,6 +21,8 @@ internal sealed class ZLinkFrameworkRegistration
 
     public List<Type> Filters { get; } = [];
 
+    public ZLinkLocationRegistration Locations { get; } = new();
+
     public HashSet<Assembly> HandlerAssemblies { get; } = [];
 
     public Type? SpotRemoteAddressResolverType { get; set; }

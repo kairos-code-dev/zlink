@@ -14,7 +14,8 @@ internal static class ZLinkFrameworkServiceRegistrar
             .AddScannedHandlers(registration)
             .AddCoreRuntime(registration)
             .AddPublicClients(registration)
-            .AddApplicationServices(registration);
+            .AddApplicationServices(registration)
+            .AddLocationRuntime(registration);
     }
 
     private static IServiceCollection AddScannedHandlers(
@@ -214,4 +215,76 @@ internal static class ZLinkFrameworkServiceRegistrar
     {
         return registration.SpotNodes.Values.Any(static spotNode => spotNode.ActorFactories.Count > 0);
     }
+    private static IServiceCollection AddLocationRuntime(
+        this IServiceCollection services,
+        ZLinkFrameworkRegistration registration)
+    {
+        var locations = registration.Locations;
+        if (!locations.Enabled) return services;
+
+        services.AddSingleton(locations.Options);
+        if (locations.UseInMemoryStores)
+        {
+            services.AddSingleton<ZLinkInMemoryLocationStore>();
+            services.AddSingleton<IZLinkPeerLocationStore>(
+                static provider => provider.GetRequiredService<ZLinkInMemoryLocationStore>());
+            services.AddSingleton<IZLinkSpotLocationStore>(
+                static provider => provider.GetRequiredService<ZLinkInMemoryLocationStore>());
+            services.AddSingleton<IZLinkActorLocationStore>(
+                static provider => provider.GetRequiredService<ZLinkInMemoryLocationStore>());
+            services.AddSingleton<IZLinkRouteLocationStore>(
+                static provider => provider.GetRequiredService<ZLinkInMemoryLocationStore>());
+            services.AddSingleton<IZLinkOwnerLeaseStore>(
+                static provider => provider.GetRequiredService<ZLinkInMemoryLocationStore>());
+            services.AddSingleton<IZLinkLocationChangeStampStore>(
+                static provider => provider.GetRequiredService<ZLinkInMemoryLocationStore>());
+        }
+        else
+        {
+            services.AddSingleton(typeof(IZLinkPeerLocationStore), locations.PeerStoreType!);
+            services.AddSingleton(typeof(IZLinkSpotLocationStore), locations.SpotStoreType!);
+            services.AddSingleton(typeof(IZLinkActorLocationStore), locations.ActorStoreType!);
+            services.AddSingleton(typeof(IZLinkRouteLocationStore), locations.RouteStoreType!);
+            services.AddSingleton(typeof(IZLinkOwnerLeaseStore), locations.OwnerLeaseStoreType!);
+        }
+
+        services.AddSingleton(static provider => new ZLinkOwnerLeaseTracker(
+            provider.GetRequiredService<IZLinkOwnerLeaseStore>(),
+            provider.GetRequiredService<ZLinkLocationOptions>()));
+        services.AddSingleton(static provider => new ZLinkStoreLocationResolvers(
+            provider.GetRequiredService<ZLinkLocationOptions>(),
+            provider.GetRequiredService<IZLinkPeerLocationStore>(),
+            provider.GetRequiredService<IZLinkSpotLocationStore>(),
+            provider.GetRequiredService<IZLinkActorLocationStore>(),
+            provider.GetRequiredService<IZLinkRouteLocationStore>(),
+            provider.GetRequiredService<ZLinkOwnerLeaseTracker>()));
+        services.AddSingleton<IZLinkPeerLocationResolver>(
+            static provider => provider.GetRequiredService<ZLinkStoreLocationResolvers>());
+        services.AddSingleton<IZLinkSpotLocationResolver>(
+            static provider => provider.GetRequiredService<ZLinkStoreLocationResolvers>());
+        services.AddSingleton<IZLinkActorLocationResolver>(
+            static provider => provider.GetRequiredService<ZLinkStoreLocationResolvers>());
+        services.AddSingleton<IZLinkRouteLocationResolver>(
+            static provider => provider.GetRequiredService<ZLinkStoreLocationResolvers>());
+        services.AddSingleton(static provider => new ZLinkLocationRuntime(
+            provider.GetRequiredService<ZLinkLocationOptions>(),
+            provider.GetRequiredService<IZLinkPeerLocationStore>(),
+            provider.GetRequiredService<IZLinkSpotLocationStore>(),
+            provider.GetRequiredService<IZLinkActorLocationStore>(),
+            provider.GetRequiredService<IZLinkRouteLocationStore>(),
+            provider.GetRequiredService<IZLinkOwnerLeaseStore>()));
+        services.AddSingleton<IZLinkLocationRuntimeQuery>(
+            static provider => new ZLinkLocationRuntimeQueryService(
+                provider.GetRequiredService<ZLinkLocationOptions>(),
+                provider.GetRequiredService<IZLinkPeerLocationStore>(),
+                provider.GetRequiredService<IZLinkSpotLocationStore>(),
+                provider.GetRequiredService<IZLinkActorLocationStore>(),
+                provider.GetRequiredService<IZLinkRouteLocationStore>(),
+                provider.GetRequiredService<ZLinkOwnerLeaseTracker>(),
+                provider.GetRequiredService<ZLinkLocationRuntime>(),
+                provider.GetRequiredService<ZLinkStoreLocationResolvers>()));
+        services.AddSingleton<IHostedService, ZLinkLocationHostedService>();
+        return services;
+    }
+
 }

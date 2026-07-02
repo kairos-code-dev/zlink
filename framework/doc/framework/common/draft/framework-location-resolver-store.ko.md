@@ -1538,19 +1538,19 @@ draft가 기준이며, 정식 spec 문서에는 아직 구현되지 않은 계�
 
 ### 24.3 runtime 정책
 
-- [ ] `OwnerId` 생성 규칙 (runtime start 시 UUID) — 9절
-- [ ] `NewClaim`/`Renew`/`Takeover` 성공 조건과 generation 규칙 — 7.6, 9절
-- [ ] generation 전달 규칙 (write 응답으로만 전달, node 간 배포 금지) — 9절
+- [x] `OwnerId` 생성 규칙 (runtime start 시 UUID) — 9절
+- [x] `NewClaim`/`Renew`/`Takeover` 성공 조건과 generation 규칙 — 7.6, 9절
+- [x] generation 전달 규칙 (write 응답으로만 전달, node 간 배포 금지) — 9절
 - [ ] 소유권 상실 규칙 (`IgnoredStale` → 광고 중단, local instance deactivate) — 9절
 - [ ] claim-then-activate 생성 순서 — 16.1, 17절
-- [ ] owner lease heartbeat (runtime당 1회, row 개별 write 금지) — 6.6, 14.4
-- [ ] owner lease snapshot join과 monotonic 만료 판정 (wall clock 비교 금지) — 6.6, 7.5
-- [ ] owner lease 목록 polling 갱신 (staleness 상한 = polling interval) — 6.6
-- [ ] 단건 cache (enable/TTL/max entries, not-found 미cache, working set 기준) — 10절
+- [x] owner lease heartbeat (runtime당 1회, row 개별 write 금지) — 6.6, 14.4
+- [x] owner lease snapshot join과 monotonic 만료 판정 (wall clock 비교 금지) — 6.6, 7.5
+- [x] owner lease 목록 polling 갱신 (staleness 상한 = polling interval) — 6.6
+- [x] 단건 cache (enable/TTL/max entries, not-found 미cache, working set 기준) — 10절
 - [ ] peer list cache와 watch/change stamp 무효화 — 10절
 - [ ] stale row 정의 (owner lease 만료 또는 관찰한 generation보다 오래된 row) — 8.1
-- [ ] `UpdatedAt` 용도 제한 (운영 표시/정렬 보조만, 충돌 해소·유효성·freshness에 사용 금지) — 9절
-- [ ] runtime query는 freshness 없이 항상 direct store read — 8.2
+- [x] `UpdatedAt` 용도 제한 (운영 표시/정렬 보조만, 충돌 해소·유효성·freshness에 사용 금지) — 9절
+- [x] runtime query는 freshness 없이 항상 direct store read — 8.2
 - [ ] 오류 구분 표 — 19절
 
 ### 24.4 자동 연결

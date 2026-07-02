@@ -109,6 +109,46 @@ internal sealed class ZLinkFrameworkOptionsBuilder : IZLinkFrameworkOptions
         return new ZLinkDiscoveryBuilder(_registration.Discovery.Endpoints);
     }
 
+    public void AddPeerLocationStore<TStore>()
+        where TStore : class, IZLinkPeerLocationStore
+    {
+        _registration.Locations.PeerStoreType = typeof(TStore);
+    }
+
+    public void AddSpotLocationStore<TStore>()
+        where TStore : class, IZLinkSpotLocationStore
+    {
+        _registration.Locations.SpotStoreType = typeof(TStore);
+    }
+
+    public void AddActorLocationStore<TStore>()
+        where TStore : class, IZLinkActorLocationStore
+    {
+        _registration.Locations.ActorStoreType = typeof(TStore);
+    }
+
+    public void AddRouteLocationStore<TStore>()
+        where TStore : class, IZLinkRouteLocationStore
+    {
+        _registration.Locations.RouteStoreType = typeof(TStore);
+    }
+
+    public void AddOwnerLeaseStore<TStore>()
+        where TStore : class, IZLinkOwnerLeaseStore
+    {
+        _registration.Locations.OwnerLeaseStoreType = typeof(TStore);
+    }
+
+    public void UseInMemoryLocationStores()
+    {
+        _registration.Locations.UseInMemoryStores = true;
+    }
+
+    public ZLinkLocationOptions ConfigureLocations()
+    {
+        return _registration.Locations.Options;
+    }
+
     public void UseFilter<TFilter>()
         where TFilter : class, IZLinkHandlerFilter
     {

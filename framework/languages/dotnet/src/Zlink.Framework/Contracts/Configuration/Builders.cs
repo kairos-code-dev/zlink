@@ -201,6 +201,30 @@ public interface IZLinkFrameworkOptions
 
     IZLinkDiscoveryBuilder UseDiscovery();
 
+    void AddPeerLocationStore<TStore>()
+        where TStore : class, Locations.IZLinkPeerLocationStore;
+
+    void AddSpotLocationStore<TStore>()
+        where TStore : class, Locations.IZLinkSpotLocationStore;
+
+    void AddActorLocationStore<TStore>()
+        where TStore : class, Locations.IZLinkActorLocationStore;
+
+    void AddRouteLocationStore<TStore>()
+        where TStore : class, Locations.IZLinkRouteLocationStore;
+
+    void AddOwnerLeaseStore<TStore>()
+        where TStore : class, Locations.IZLinkOwnerLeaseStore;
+
+    /// <summary>
+    /// Registers the framework's single-process in-memory store for every
+    /// location store role. For local development, unit tests, and sample
+    /// smoke tests only — never for multi-process production topologies.
+    /// </summary>
+    void UseInMemoryLocationStores();
+
+    Locations.ZLinkLocationOptions ConfigureLocations();
+
     void UseFilter<TFilter>()
         where TFilter : class, IZLinkHandlerFilter;
 

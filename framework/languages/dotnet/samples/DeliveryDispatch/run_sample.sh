@@ -10,6 +10,7 @@ mkdir -p "${LOG_DIR}" "${WORK_DIR}" "${DELIVERYDISPATCH_LOG_DIR}"
 rm -f "${DELIVERYDISPATCH_LOG_DIR}"/*.log
 
 PIDS=()
+REDIS_CONTAINER=""
 
 cleanup() {
   for ((i=${#PIDS[@]}-1; i>=0; i--)); do
@@ -37,6 +38,9 @@ cleanup() {
     fi
     wait "${pid}" 2>/dev/null || true
   done
+  if [[ -n "${REDIS_CONTAINER}" ]]; then
+    docker rm -f "${REDIS_CONTAINER}" >/dev/null 2>&1 || true
+  fi
   if [[ "${DELIVERYDISPATCH_KEEP_RUN_DIR:-}" != "1" ]]; then
     rm -rf "${RUN_DIR}"
   else
@@ -78,8 +82,7 @@ PY
 )"
 fi
 
-export DELIVERYDISPATCH_REGISTRY_PUB="tcp://127.0.0.1:${PORTS[0]}"
-export DELIVERYDISPATCH_REGISTRY="tcp://127.0.0.1:${PORTS[1]}"
+export DELIVERYDISPATCH_REDIS_KEY_PREFIX="${DELIVERYDISPATCH_REDIS_KEY_PREFIX:-deliverydispatch:dotnet:${RANDOM}:$$:}"
 export DELIVERYDISPATCH_DISPATCH_HTTP="http://127.0.0.1:${PORTS[2]}"
 export DELIVERYDISPATCH_COURIER_ROUTE="tcp://127.0.0.1:${PORTS[3]}"
 export DELIVERYDISPATCH_COURIER_ACTOR_NODE1_ROUTE="tcp://127.0.0.1:${PORTS[4]}"
@@ -160,8 +163,16 @@ start_server() {
 
 dotnet build "${SCRIPT_DIR}/DeliveryDispatch.sln" --maxcpucount:1
 
-start_server registry "${SCRIPT_DIR}/Server/Registry/DeliveryDispatch.Server.Registry.csproj"
-wait_port registry-router "${DELIVERYDISPATCH_REGISTRY}"
+# The sample owns its Redis: a dedicated, throwaway container is the shared
+# location store every server registers into (no registry process exists).
+if ! command -v docker >/dev/null 2>&1; then
+  echo "Docker is required to run the DeliveryDispatch sample (it provisions a dedicated Redis container)." >&2
+  exit 1
+fi
+REDIS_CONTAINER="deliverydispatch-dotnet-redis-${RANDOM}-$$"
+docker run -d --rm --name "${REDIS_CONTAINER}" -p "127.0.0.1::6379" redis:7.2-alpine >/dev/null
+export DELIVERYDISPATCH_REDIS_ENDPOINT="$(docker port "${REDIS_CONTAINER}" 6379/tcp | sed -E 's/.*:([0-9]+)$/127.0.0.1:\1/')"
+wait_port redis "tcp://${DELIVERYDISPATCH_REDIS_ENDPOINT}"
 
 start_server tracking "${SCRIPT_DIR}/Server/Tracking/DeliveryDispatch.Server.Tracking.csproj"
 wait_port tracking-route "${DELIVERYDISPATCH_TRACKING_ROUTE}"
@@ -188,6 +199,10 @@ start_server dispatch "${SCRIPT_DIR}/Server/Dispatch/DeliveryDispatch.Server.Dis
 wait_http dispatch "${DELIVERYDISPATCH_DISPATCH_HTTP}"
 
 sleep "${DELIVERYDISPATCH_STARTUP_DELAY_SECONDS:-10}"
+
+# Give the auto-connect reconcile loops one or two polling intervals to
+# converge before the scenario drives traffic.
+sleep "${DELIVERYDISPATCH_STARTUP_DELAY_SECONDS:-3}"
 
 dotnet run --no-build --project "${SCRIPT_DIR}/Client/DeliveryDispatch.Client.csproj" -- \
   --api-url "${DELIVERYDISPATCH_DISPATCH_HTTP}" \

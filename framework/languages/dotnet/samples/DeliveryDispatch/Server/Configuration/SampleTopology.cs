@@ -3,8 +3,8 @@ using Systems.Zlink;
 namespace DeliveryDispatch.Server.Configuration;
 
 public sealed record SampleTopology(
-    string RegistryRouterEndpoint,
-    string RegistryPubEndpoint,
+    string RedisEndpoint,
+    string RedisKeyPrefix,
     string DispatchHttpUrl,
     string CourierRouteEndpoint,
     string TrackingRouteEndpoint,
@@ -21,19 +21,17 @@ public sealed record SampleTopology(
     string CourierActorNode1RouterEndpoint,
     string CourierActorNode1Endpoint,
     RoutingId CourierActorNode1Rid,
-    RoutingId CourierEntrySpotNode1Rid,
     string CourierActorNode2RouteEndpoint,
     string CourierActorNode2RouterEndpoint,
     string CourierActorNode2Endpoint,
-    RoutingId CourierActorNode2Rid,
-    RoutingId CourierEntrySpotNode2Rid)
+    RoutingId CourierActorNode2Rid)
 {
     public static SampleTopology Create()
     {
-        var registry = Environment.GetEnvironmentVariable("DELIVERYDISPATCH_REGISTRY")
-                       ?? "tcp://127.0.0.1:7391";
-        var registryPub = Environment.GetEnvironmentVariable("DELIVERYDISPATCH_REGISTRY_PUB")
-                          ?? "tcp://127.0.0.1:7390";
+        var redisEndpoint = Environment.GetEnvironmentVariable("DELIVERYDISPATCH_REDIS_ENDPOINT")
+                            ?? "127.0.0.1:6379";
+        var redisKeyPrefix = Environment.GetEnvironmentVariable("DELIVERYDISPATCH_REDIS_KEY_PREFIX")
+                             ?? "deliverydispatch:";
         var dispatchHttp = Environment.GetEnvironmentVariable("DELIVERYDISPATCH_DISPATCH_HTTP")
                            ?? "http://127.0.0.1:7392";
         var courierRoute = Environment.GetEnvironmentVariable("DELIVERYDISPATCH_COURIER_ROUTE")
@@ -72,8 +70,8 @@ public sealed record SampleTopology(
                                ?? "tcp://127.0.0.1:7410";
 
         return new SampleTopology(
-            registry,
-            registryPub,
+            redisEndpoint,
+            redisKeyPrefix,
             dispatchHttp,
             courierRoute,
             trackingRoute,
@@ -90,12 +88,10 @@ public sealed record SampleTopology(
             courierSpotNode1Router,
             courierSpotNode1,
             RoutingId.From(SampleNames.CourierActorNode1),
-            RoutingId.From(SampleNames.CourierEntrySpotNode1),
             courierSpotNode2Route,
             courierSpotNode2Router,
             courierSpotNode2,
-            RoutingId.From(SampleNames.CourierActorNode2),
-            RoutingId.From(SampleNames.CourierEntrySpotNode2));
+            RoutingId.From(SampleNames.CourierActorNode2));
     }
 
     public CourierActorNodePlacement CourierPlacement(string courierId)

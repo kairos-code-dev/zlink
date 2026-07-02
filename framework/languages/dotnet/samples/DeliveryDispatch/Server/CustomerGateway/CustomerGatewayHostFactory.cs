@@ -3,6 +3,7 @@ using DeliveryDispatch.Server.CustomerGateway.Spots.EntrySpot;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Hosting;
 using Zlink.Framework.AspNetCore;
+using Zlink.Framework.Locations.Redis;
 using Zlink.Framework.Contracts.Codecs.Json;
 using Zlink.Framework.Contracts.Dispatch;
 using Zlink.Samples.Logging;
@@ -22,6 +23,11 @@ public static class CustomerGatewayHostFactory
         builder.Services.AddSingleton<CustomerActorDirectory>();
         builder.Services.AddZLinkFramework(options =>
         {
+            options.AddRedisLocationStore(redis =>
+            {
+                redis.ConnectionString = topology.RedisEndpoint;
+                redis.KeyPrefix = topology.RedisKeyPrefix;
+            });
             options.ConfigureDispatch()
                 .MessageFlow(ZLinkMessageFlowLogMode.KeyTransitions)
                 .TraceLogFile(SampleFlowLog.Path("customer-gateway"))

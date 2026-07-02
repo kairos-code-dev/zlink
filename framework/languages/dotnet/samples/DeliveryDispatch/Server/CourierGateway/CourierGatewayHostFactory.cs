@@ -3,6 +3,7 @@ using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Hosting;
 using Systems.Zlink;
 using Zlink.Framework.AspNetCore;
+using Zlink.Framework.Locations.Redis;
 using Zlink.Framework.Contracts.Dispatch;
 using Zlink.Samples.Logging;
 
@@ -21,6 +22,11 @@ public static class CourierGatewayHostFactory
         builder.Services.AddSingleton<CourierDirectory>();
         builder.Services.AddZLinkFramework(options =>
         {
+            options.AddRedisLocationStore(redis =>
+            {
+                redis.ConnectionString = topology.RedisEndpoint;
+                redis.KeyPrefix = topology.RedisKeyPrefix;
+            });
             options.ConfigureDispatch()
                 .MessageFlow(ZLinkMessageFlowLogMode.KeyTransitions)
                 .TraceLogFile(SampleFlowLog.Path("courier-gateway"))

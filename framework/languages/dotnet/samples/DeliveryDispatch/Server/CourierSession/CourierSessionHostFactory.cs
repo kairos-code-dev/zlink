@@ -2,6 +2,7 @@ using DeliveryDispatch.Server.Configuration;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Hosting;
 using Zlink.Framework.AspNetCore;
+using Zlink.Framework.Locations.Redis;
 using Zlink.Framework.Contracts.Codecs.Json;
 using Zlink.Framework.Contracts.Dispatch;
 using Zlink.Samples.Logging;
@@ -20,6 +21,11 @@ public static class CourierSessionHostFactory
         builder.Services.AddSingleton(topology);
         builder.Services.AddZLinkFramework(options =>
         {
+            options.AddRedisLocationStore(redis =>
+            {
+                redis.ConnectionString = topology.RedisEndpoint;
+                redis.KeyPrefix = topology.RedisKeyPrefix;
+            });
             options.ConfigureDispatch()
                 .MessageFlow(ZLinkMessageFlowLogMode.KeyTransitions)
                 .TraceLogFile(SampleFlowLog.Path("courier-session"))

@@ -3,6 +3,7 @@ using DeliveryDispatch.Server.CourierActorNode.Spots.EntrySpot;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Hosting;
 using Zlink.Framework.AspNetCore;
+using Zlink.Framework.Locations.Redis;
 using Zlink.Framework.Contracts.Dispatch;
 using Zlink.Samples.Logging;
 
@@ -22,6 +23,11 @@ public static class NodeHostFactory
         builder.Services.AddSingleton<ActorDirectory>();
         builder.Services.AddZLinkFramework(options =>
         {
+            options.AddRedisLocationStore(redis =>
+            {
+                redis.ConnectionString = topology.RedisEndpoint;
+                redis.KeyPrefix = topology.RedisKeyPrefix;
+            });
             options.ConfigureDispatch()
                 .MessageFlow(ZLinkMessageFlowLogMode.KeyTransitions)
                 .TraceLogFile(SampleFlowLog.Path($"courier-actor-{nodeConfig.Name}"))
@@ -36,7 +42,6 @@ public static class NodeHostFactory
             options.AddSpotMesh(SampleNames.CourierActorDiscovery)
                                 .EnableRouter(nodeConfig.SpotRouterEndpoint)
                 .SetRoutingId(nodeConfig.Rid)
-                .SetEntrySpotRoutingId(nodeConfig.EntrySpotRid)
                 .EnablePubSub(nodeConfig.SpotEndpoint)
                 .AddEntrySpot<CourierEntrySpot>()
                 .AddActorFactory<CourierActorFactory>(SampleNames.CourierActorType);
@@ -52,14 +57,12 @@ public static class NodeHostFactory
             "node1" => new NodeOptions(
                 "node1",
                 topology.CourierActorNode1Rid,
-                topology.CourierEntrySpotNode1Rid,
                 topology.CourierActorNode1RouteEndpoint,
                 topology.CourierActorNode1RouterEndpoint,
                 topology.CourierActorNode1Endpoint),
             "node2" => new NodeOptions(
                 "node2",
                 topology.CourierActorNode2Rid,
-                topology.CourierEntrySpotNode2Rid,
                 topology.CourierActorNode2RouteEndpoint,
                 topology.CourierActorNode2RouterEndpoint,
                 topology.CourierActorNode2Endpoint),
@@ -70,7 +73,6 @@ public static class NodeHostFactory
     private sealed record NodeOptions(
         string Name,
         Systems.Zlink.RoutingId Rid,
-        Systems.Zlink.RoutingId EntrySpotRid,
         string RouteEndpoint,
         string SpotRouterEndpoint,
         string SpotEndpoint);

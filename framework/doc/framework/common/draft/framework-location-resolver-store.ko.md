@@ -1595,7 +1595,7 @@ draft가 기준이며, 정식 spec 문서에는 아직 구현되지 않은 계�
 ### 24.8 검증, sample, 문서
 
 - [ ] 22절 필수 테스트 전부
-- [ ] 22절 E2E 시나리오 문서 수정 전부 (`framework/doc/framework/common/e2e/` config-1~8, README) —
+- [x] 22절 E2E 시나리오 문서 수정 전부 (`framework/doc/framework/common/e2e/` config-1~8, README) —
       E2E 코드 수정보다 먼저
 - [ ] 22절 기존 E2E 수정 항목 전부
 - [ ] 22절 기존 sample 수정 항목 전부 — registry host 프로젝트 제거, store 등록 교체, Redis/in-memory

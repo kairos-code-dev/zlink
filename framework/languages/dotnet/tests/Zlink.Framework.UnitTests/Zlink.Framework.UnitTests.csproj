@@ -45,6 +45,7 @@
         <Compile Include="Contracts/ScaffoldSmokeTests.cs"/>
         <Compile Include="Contracts/SpotContractTests.cs"/>
         <Compile Include="Documentation/Regression.cs"/>
+        <Compile Include="Runtime/AutoConnectLoopTests.cs"/>
         <Compile Include="Runtime/AutoConnectReconcilerTests.cs"/>
         <Compile Include="Runtime/BackendAdapterFactoryTests.cs"/>
         <Compile Include="Runtime/BackendMonitorWrapperTests.cs"/>

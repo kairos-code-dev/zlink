@@ -56,6 +56,10 @@ internal sealed class ZLinkAutoConnectReconciler
 
     internal IReadOnlyCollection<ZLinkAutoConnectTarget> ActiveTargets => _active.Values;
 
+    /// <summary>True while the last tick could not read the store. The loop
+    /// must not let a change stamp skip ticks in this state.</summary>
+    internal bool StoreFailed => _storeFailed;
+
     internal async ValueTask TickAsync(CancellationToken cancellationToken = default)
     {
         // Publish (or re-publish after recovery) the local row before

@@ -178,15 +178,21 @@ internal sealed class ZLinkLocationAutoConnectHost : IAsyncDisposable
         uint weight,
         IZLinkAutoConnectExecutor executor)
     {
-        // A capability with neither identity nor endpoint can neither be
-        // advertised nor keyed; nothing to reconcile.
-        if (nodeRid is null && string.IsNullOrEmpty(endpoint)) return;
+        // A capability with neither identity nor endpoint cannot be keyed
+        // or advertised. When it also never dials (advertise-only server
+        // roles) there is nothing to reconcile; a dialing capability (a
+        // client dealer or subscriber without a configured identity) still
+        // gets a dial-only loop that connects to remote rows.
+        var advertisable = nodeRid is not null || !string.IsNullOrEmpty(endpoint);
+        if (!advertisable && ReferenceEquals(executor, NullExecutor.Instance)) return;
 
         var local = new ZLinkAutoConnectLocal(type, meshName, role, nodeRid, endpoint);
-        var row = new ZLinkPeerLocation(
-            type, meshName, nodeRid, role, endpoint, weight, 0,
-            Metadata: null, Capabilities: null,
-            OwnerId: string.Empty, Generation: 0, UpdatedAt: default);
+        var row = advertisable
+            ? new ZLinkPeerLocation(
+                type, meshName, nodeRid, role, endpoint, weight, 0,
+                Metadata: null, Capabilities: null,
+                OwnerId: string.Empty, Generation: 0, UpdatedAt: default)
+            : null;
         var reconciler = new ZLinkAutoConnectReconciler(
             local, row, _runtime, _peers, executor, _options, _time, _events);
         _loops.Add(new ZLinkAutoConnectLoop(

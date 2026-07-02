@@ -15,7 +15,6 @@
     <ProjectReference Include="Client\SupportChat.Client.csproj" />
     <ProjectReference Include="Server\Api\SupportChat.Server.Api.csproj" />
     <ProjectReference Include="Server\Configuration\SupportChat.Server.Configuration.csproj" />
-    <ProjectReference Include="Server\Registry\SupportChat.Server.Registry.csproj" />
     <ProjectReference Include="Server\Session\SupportChat.Server.Session.csproj" />
     <ProjectReference Include="Server\Support\SupportChat.Server.Support.csproj" />
   </ItemGroup>

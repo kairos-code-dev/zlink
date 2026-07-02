@@ -152,6 +152,43 @@ public sealed class AutoConnectReconcilerTests
         Assert.Equal(fixture.Runtime.OwnerId, published[0].OwnerId);
     }
 
+    [Fact]
+    public async Task Dial_Only_Capability_Without_Identity_Still_Connects_And_Never_Advertises()
+    {
+        var time = new ManualTimeProvider();
+        var store = new ZLinkInMemoryLocationStore(time);
+        var options = new ZLinkLocationOptions { PollingInterval = TimeSpan.Zero };
+        var runtime = new ZLinkLocationRuntime(options, store, store, store, store, store, time);
+        await runtime.RenewOwnerLeaseOnceAsync();
+        await store.RenewOwnerLeaseAsync("peer-owner", RoutingId.From("peer-node"), TimeSpan.FromMinutes(10));
+        await store.UpdatePeerAsync(
+            Peer(ZLinkLocationAutoConnectType.ClientServer, ZLinkLocationRole.Router, "r1", "tcp://r:1"),
+            ZLinkLocationWriteIntent.NewClaim);
+
+        var tracker = new ZLinkOwnerLeaseTracker(store, options, time);
+        var resolvers = new ZLinkStoreLocationResolvers(options, store, store, store, store, tracker, time);
+        var executor = new RecordingExecutor();
+
+        // An EnableClient() dealer has neither a routing id nor an endpoint:
+        // it cannot be keyed, so it publishes no row — but it must dial.
+        var local = new ZLinkAutoConnectLocal(
+            ZLinkLocationAutoConnectType.ClientServer, "play", ZLinkLocationRole.Dealer,
+            NodeRid: null, Endpoint: string.Empty);
+        var reconciler = new ZLinkAutoConnectReconciler(
+            local, localRow: null, runtime, resolvers, executor, options, time);
+
+        await reconciler.TickAsync();
+
+        Assert.Equal("tcp://r:1", Assert.Single(executor.Connected).Endpoint);
+        var dealers = await store.ListPeersAsync(
+            new ZLinkPeerLocationFilter(MeshName: "play", Role: ZLinkLocationRole.Dealer));
+        Assert.Empty(dealers);
+
+        // Shutdown has no row to remove and only tears down connections.
+        await reconciler.ShutdownAsync();
+        Assert.Single(executor.Disconnected);
+    }
+
     private static ZLinkAutoConnectLocal Local(
         ZLinkLocationAutoConnectType type,
         ZLinkLocationRole role,

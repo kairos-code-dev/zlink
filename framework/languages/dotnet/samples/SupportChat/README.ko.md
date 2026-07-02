@@ -25,7 +25,9 @@ pwsh -NoProfile -ExecutionPolicy Bypass -File .\run_sample.ps1
 - `Server/Api/`는 외부 요청을 받고 support 역할로 전달한다.
 - `Server/Session/`은 stream session과 client push를 담당한다.
 - `Server/Support/`는 대화 actor, 상담원 배정, 메시지 상태를 관리한다.
-- `Server/Registry/`는 샘플 실행 중 사용할 discovery registry를 띄운다.
+- 서버 프로세스들은 registry 없이 공유 location store(Redis)에 위치를 등록하고 자동 연결한다.
+  `run_sample.sh`가 실행마다 전용 Redis 컨테이너를 띄우고 `SUPPORTCHAT_REDIS_ENDPOINT`와
+  `SUPPORTCHAT_REDIS_KEY_PREFIX`를 주입한다.
 
 ## 성공 조건
 

@@ -24,7 +24,7 @@ internal interface IZLinkAutoConnectExecutor
 internal sealed class ZLinkAutoConnectReconciler
 {
     private readonly ZLinkAutoConnectLocal _local;
-    private readonly ZLinkPeerLocation _localRow;
+    private readonly ZLinkPeerLocation? _localRow;
     private readonly ZLinkLocationRuntime _runtime;
     private readonly IZLinkPeerLocationResolver _peers;
     private readonly IZLinkAutoConnectExecutor _executor;
@@ -37,9 +37,15 @@ internal sealed class ZLinkAutoConnectReconciler
     private bool _storeFailed;
     private long _recoveryDeferUntil;
 
+    /// <summary>
+    /// <paramref name="localRow"/> is null for a dial-only capability that
+    /// has neither a routing id nor an endpoint (a client dealer or a
+    /// subscriber without a configured identity): it cannot be keyed or
+    /// advertised, but its reconcile loop still dials remote rows.
+    /// </summary>
     internal ZLinkAutoConnectReconciler(
         ZLinkAutoConnectLocal local,
-        ZLinkPeerLocation localRow,
+        ZLinkPeerLocation? localRow,
         ZLinkLocationRuntime runtime,
         IZLinkPeerLocationResolver peers,
         IZLinkAutoConnectExecutor executor,
@@ -163,7 +169,7 @@ internal sealed class ZLinkAutoConnectReconciler
 
     private async ValueTask PublishLocalAsync(CancellationToken cancellationToken)
     {
-        if (_localPublished)
+        if (_localRow is null || _localPublished)
         {
             return;
         }
@@ -192,7 +198,7 @@ internal sealed class ZLinkAutoConnectReconciler
     }
 
     private ZLinkPeerLocationKey LocalKey() => new(
-        _localRow.AutoConnectType,
+        _localRow!.AutoConnectType,
         _localRow.MeshName,
         _localRow.Role,
         _localRow.NodeRid,

@@ -4,7 +4,6 @@ namespace SupportChat.Server.Configuration;
 
 public static class SampleNames
 {
-    public const string RegistryChannel = "supportchat.registry";
     public const string ApiChannel = "supportchat.api";
     public const string SupportChannel = "supportchat.support";
     public const string SupportActorType = "supportchat.user";

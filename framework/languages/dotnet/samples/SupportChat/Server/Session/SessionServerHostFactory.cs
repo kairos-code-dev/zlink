@@ -3,6 +3,7 @@ using Microsoft.Extensions.Hosting;
 using SupportChat.Server.Configuration;
 using SupportChat.Server.Session.Sessions;
 using Zlink.Framework.AspNetCore;
+using Zlink.Framework.Locations.Redis;
 using Zlink.Framework.Contracts.Dispatch;
 using Zlink.Samples.Logging;
 
@@ -22,6 +23,11 @@ public static class SessionServerHostFactory
         builder.Services.AddSingleton(topology);
         builder.Services.AddZLinkFramework(options =>
         {
+            options.AddRedisLocationStore(redis =>
+            {
+                redis.ConnectionString = topology.RedisEndpoint;
+                redis.KeyPrefix = topology.RedisKeyPrefix;
+            });
             options.ConfigureDispatch()
                 .MessageFlow(ZLinkMessageFlowLogMode.KeyTransitions)
                 .TraceLogFile(SampleFlowLog.Path("session"))

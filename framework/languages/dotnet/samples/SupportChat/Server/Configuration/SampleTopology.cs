@@ -3,8 +3,8 @@ using Systems.Zlink;
 namespace SupportChat.Server.Configuration;
 
 public sealed record SampleTopology(
-    string RegistryPubEndpoint,
-    string RegistryRouterEndpoint,
+    string RedisEndpoint,
+    string RedisKeyPrefix,
     string ApiChannelEndpoint,
     string SupportChannelEndpoint,
     string SessionSpotEndpoint,
@@ -30,8 +30,8 @@ public sealed record SampleTopology(
     public static SampleTopology Create()
     {
         return new SampleTopology(
-            ReadEndpoint("SUPPORTCHAT_REGISTRY_PUB_ENDPOINT", "tcp://127.0.0.1:47201"),
-            ReadEndpoint("SUPPORTCHAT_REGISTRY_ROUTER_ENDPOINT", "tcp://127.0.0.1:47202"),
+            ReadEndpoint("SUPPORTCHAT_REDIS_ENDPOINT", "127.0.0.1:6379"),
+            ReadEndpoint("SUPPORTCHAT_REDIS_KEY_PREFIX", "supportchat:"),
             ReadEndpoint("SUPPORTCHAT_API_CHANNEL_ENDPOINT", "tcp://127.0.0.1:47203"),
             ReadEndpoint("SUPPORTCHAT_SUPPORT_CHANNEL_ENDPOINT", "tcp://127.0.0.1:47204"),
             ReadEndpoint("SUPPORTCHAT_SESSION_SPOT_ENDPOINT", "tcp://127.0.0.1:47205"),

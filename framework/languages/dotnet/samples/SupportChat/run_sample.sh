@@ -9,6 +9,7 @@ mkdir -p "${LOG_DIR}" "${SUPPORTCHAT_LOG_DIR}"
 rm -f "${SUPPORTCHAT_LOG_DIR}"/*.log
 
 PIDS=()
+REDIS_CONTAINER=""
 
 cleanup() {
   for ((i=${#PIDS[@]}-1; i>=0; i--)); do
@@ -39,6 +40,9 @@ cleanup() {
   for pid in "${PIDS[@]}"; do
     wait "${pid}" 2>/dev/null || true
   done
+  if [[ -n "${REDIS_CONTAINER}" ]]; then
+    docker rm -f "${REDIS_CONTAINER}" >/dev/null 2>&1 || true
+  fi
   if [[ "${SUPPORTCHAT_KEEP_RUN_DIR:-}" != "1" ]]; then
     rm -rf "${RUN_DIR}"
   else
@@ -49,7 +53,7 @@ trap cleanup EXIT
 
 if [[ -n "${SUPPORTCHAT_BASE_PORT:-}" ]]; then
   PORTS=()
-  for offset in $(seq 1 13); do
+  for offset in $(seq 1 11); do
     PORTS+=("$((SUPPORTCHAT_BASE_PORT + offset))")
   done
 else
@@ -60,7 +64,7 @@ import socket
 sockets = []
 try:
     chosen = set()
-    while len(sockets) < 13:
+    while len(sockets) < 11:
         port = random.randint(48000, 60999)
         if port in chosen:
             continue
@@ -80,19 +84,18 @@ PY
 )"
 fi
 
-export SUPPORTCHAT_REGISTRY_PUB_ENDPOINT="${SUPPORTCHAT_REGISTRY_PUB_ENDPOINT:-tcp://127.0.0.1:${PORTS[0]}}"
-export SUPPORTCHAT_REGISTRY_ROUTER_ENDPOINT="${SUPPORTCHAT_REGISTRY_ROUTER_ENDPOINT:-tcp://127.0.0.1:${PORTS[1]}}"
-export SUPPORTCHAT_API_CHANNEL_ENDPOINT="${SUPPORTCHAT_API_CHANNEL_ENDPOINT:-tcp://127.0.0.1:${PORTS[2]}}"
-export SUPPORTCHAT_SUPPORT_CHANNEL_ENDPOINT="${SUPPORTCHAT_SUPPORT_CHANNEL_ENDPOINT:-tcp://127.0.0.1:${PORTS[3]}}"
-export SUPPORTCHAT_SESSION_SPOT_ENDPOINT="${SUPPORTCHAT_SESSION_SPOT_ENDPOINT:-tcp://127.0.0.1:${PORTS[4]}}"
-export SUPPORTCHAT_SESSION_ROUTER_ENDPOINT="${SUPPORTCHAT_SESSION_ROUTER_ENDPOINT:-tcp://127.0.0.1:${PORTS[5]}}"
-export SUPPORTCHAT_SUPPORT_ROUTER_ENDPOINT="${SUPPORTCHAT_SUPPORT_ROUTER_ENDPOINT:-tcp://127.0.0.1:${PORTS[6]}}"
-export SUPPORTCHAT_ENTRY_SPOT_ENDPOINT="${SUPPORTCHAT_ENTRY_SPOT_ENDPOINT:-tcp://127.0.0.1:${PORTS[7]}}"
-export SUPPORTCHAT_ENTRY_SPOT_ROUTER_ENDPOINT="${SUPPORTCHAT_ENTRY_SPOT_ROUTER_ENDPOINT:-tcp://127.0.0.1:${PORTS[8]}}"
-export SUPPORTCHAT_CONVERSATION_SPOT_ENDPOINT="${SUPPORTCHAT_CONVERSATION_SPOT_ENDPOINT:-tcp://127.0.0.1:${PORTS[9]}}"
-export SUPPORTCHAT_CONVERSATION_SPOT_ROUTER_ENDPOINT="${SUPPORTCHAT_CONVERSATION_SPOT_ROUTER_ENDPOINT:-tcp://127.0.0.1:${PORTS[10]}}"
-export SUPPORTCHAT_STREAM_ENDPOINT="${SUPPORTCHAT_STREAM_ENDPOINT:-tcp://127.0.0.1:${PORTS[11]}}"
-export SUPPORTCHAT_RECONNECT_STREAM_ENDPOINT="${SUPPORTCHAT_RECONNECT_STREAM_ENDPOINT:-tcp://127.0.0.1:${PORTS[12]}}"
+export SUPPORTCHAT_API_CHANNEL_ENDPOINT="${SUPPORTCHAT_API_CHANNEL_ENDPOINT:-tcp://127.0.0.1:${PORTS[0]}}"
+export SUPPORTCHAT_SUPPORT_CHANNEL_ENDPOINT="${SUPPORTCHAT_SUPPORT_CHANNEL_ENDPOINT:-tcp://127.0.0.1:${PORTS[1]}}"
+export SUPPORTCHAT_SESSION_SPOT_ENDPOINT="${SUPPORTCHAT_SESSION_SPOT_ENDPOINT:-tcp://127.0.0.1:${PORTS[2]}}"
+export SUPPORTCHAT_SESSION_ROUTER_ENDPOINT="${SUPPORTCHAT_SESSION_ROUTER_ENDPOINT:-tcp://127.0.0.1:${PORTS[3]}}"
+export SUPPORTCHAT_SUPPORT_ROUTER_ENDPOINT="${SUPPORTCHAT_SUPPORT_ROUTER_ENDPOINT:-tcp://127.0.0.1:${PORTS[4]}}"
+export SUPPORTCHAT_ENTRY_SPOT_ENDPOINT="${SUPPORTCHAT_ENTRY_SPOT_ENDPOINT:-tcp://127.0.0.1:${PORTS[5]}}"
+export SUPPORTCHAT_ENTRY_SPOT_ROUTER_ENDPOINT="${SUPPORTCHAT_ENTRY_SPOT_ROUTER_ENDPOINT:-tcp://127.0.0.1:${PORTS[6]}}"
+export SUPPORTCHAT_CONVERSATION_SPOT_ENDPOINT="${SUPPORTCHAT_CONVERSATION_SPOT_ENDPOINT:-tcp://127.0.0.1:${PORTS[7]}}"
+export SUPPORTCHAT_CONVERSATION_SPOT_ROUTER_ENDPOINT="${SUPPORTCHAT_CONVERSATION_SPOT_ROUTER_ENDPOINT:-tcp://127.0.0.1:${PORTS[8]}}"
+export SUPPORTCHAT_STREAM_ENDPOINT="${SUPPORTCHAT_STREAM_ENDPOINT:-tcp://127.0.0.1:${PORTS[9]}}"
+export SUPPORTCHAT_RECONNECT_STREAM_ENDPOINT="${SUPPORTCHAT_RECONNECT_STREAM_ENDPOINT:-tcp://127.0.0.1:${PORTS[10]}}"
+export SUPPORTCHAT_REDIS_KEY_PREFIX="${SUPPORTCHAT_REDIS_KEY_PREFIX:-supportchat:dotnet:${RANDOM}:$$:}"
 
 endpoint_host() {
   local endpoint="$1"
@@ -138,8 +141,16 @@ start_server() {
 
 dotnet build "${SCRIPT_DIR}/SupportChat.csproj" --maxcpucount:1
 
-start_server registry "${SCRIPT_DIR}/Server/Registry/SupportChat.Server.Registry.csproj"
-wait_port registry-router "${SUPPORTCHAT_REGISTRY_ROUTER_ENDPOINT}"
+# The sample owns its Redis: a dedicated, throwaway container is the shared
+# location store every server registers into (no registry process exists).
+if ! command -v docker >/dev/null 2>&1; then
+  echo "Docker is required to run the SupportChat sample (it provisions a dedicated Redis container)." >&2
+  exit 1
+fi
+REDIS_CONTAINER="supportchat-dotnet-redis-${RANDOM}-$$"
+docker run -d --rm --name "${REDIS_CONTAINER}" -p "127.0.0.1::6379" redis:7.2-alpine >/dev/null
+export SUPPORTCHAT_REDIS_ENDPOINT="$(docker port "${REDIS_CONTAINER}" 6379/tcp | sed -E 's/.*:([0-9]+)$/127.0.0.1:\1/')"
+wait_port redis "tcp://${SUPPORTCHAT_REDIS_ENDPOINT}"
 
 start_server support "${SCRIPT_DIR}/Server/Support/SupportChat.Server.Support.csproj"
 wait_port support-channel "${SUPPORTCHAT_SUPPORT_CHANNEL_ENDPOINT}"

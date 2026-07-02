@@ -153,7 +153,6 @@ class MeshOpsConfig {
 // monitoring은 별도 ZLinkMonitoringOptionsCustomizer bean으로 켠다([09-monitoring](../09-monitoring.ko.md)).
 
 @RestController
-class TopologyController(private val registry: ZLinkRegistryQueryClient) {
     @GetMapping("/admin/topology")
     suspend fun topology(): List<ZLinkRegistryTopologyEntry> = registry.topology().await()
 }
@@ -185,7 +184,6 @@ class CorrelationFilter : ZLinkHandlerFilter {
 | 위치/분배 | Consul/xDS + Envoy `DestinationRule` | `useDiscovery`  + Registry |
 | deadline | `deadline:` 인자 | `.timeout(...)` |
 | retry/circuit | Polly(앱) | Polly/filter(앱) — 동일 |
-| 관측 | Envoy telemetry + OTel collector | `ZLinkRegistryQueryClient` + `monitoring().enable()` |
 
 ## 5. 아키텍처 비교 — 컴포넌트와 메시지 흐름
 

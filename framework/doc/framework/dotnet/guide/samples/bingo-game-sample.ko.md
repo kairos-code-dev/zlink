@@ -37,7 +37,6 @@
 | `BingoRoomSpot` | 매칭된 한 room 의 참가자, host, 게임 상태, timer, 승리 판정을 소유한다. |
 
 서버 사이의 Spot route 는 Registry 기반 framework 기본 구현을 사용한다.
-샘플 Play 서버는 `UseDiscovery().AddRegistryEndpoint(...)` 로 Registry 를 연결하고
 channel·SpotMesh 를 등록한다. Play 서버의
 actor 준비 응답은 actor id/type 과 SessionRelay remote address snapshot 을 돌려주고,
 Session 서버는 현재 STREAM session 을 그 actor handle 에 bind 한다. actor-session binding 은 framework / core runtime 내부 상태로
@@ -334,7 +333,7 @@ matching 흐름은 다음과 같다.
 | `ActorRegistryExecutionTests.EntrySpot_And_UserSpot_ActorPacketRegistries_Dispatch_ActorPackets` | Entry Spot actor handler 와 user Spot actor handler 가 각각 등록되어 dispatch 된다. |
 | `ManagerTests.Spot_Publish_Timer_And_Close_Stop_Callbacks_Work` | room timer 기반 진행과 spot lifecycle 정리가 framework timer 계약과 맞는다. |
 | `StreamConnectorTests.TcpTypedRequestCorrelatesResponse` | client connector request/reply correlation 이 유지된다. |
-| `RegressionTests.Bingo_Uses_RegistryBacked_Defaults_Without_Sample_Metadata_Store` | Bingo 샘플이 sample-only registry metadata store 없이 Registry 기본 API 를 사용한다. |
+| `RegressionTests.Bingo_Uses_Framework_Defaults_Without_Sample_Metadata_Store` | Bingo 샘플이 sample-only metadata store 없이 framework 기본 API 를 사용한다. |
 
 [^public-contract]: public contract 는 외부 사용자에게 공개되어 변경 시 호환성을 책임져야 하는 API 표면을 뜻한다.
 

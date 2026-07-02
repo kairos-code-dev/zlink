@@ -275,7 +275,6 @@ backend port 계약(dotnet `Runtime/Backend/Contracts`):
 | `ZLinkChannelBackendAdapter` | dealer/router/pub/sub socket wrapping | DealerSocket/RouterSocket/Pub/Sub |
 | `ZLinkSpotBackendAdapter` | `SpotNode`/`Spot`/timer wrapping | SpotNode/Spot/Timer |
 | `ZLinkStreamBackendAdapter` | stream socket wrapping | StreamSocket |
-| `ZLinkRegistryBackendAdapter` | `Registry`/`RegistryQueryClient` | Registry/RegistryQueryClient |
 | `ZLinkMonitoringBackendAdapter` | socket/discovery/registry/spot event source | SocketMonitor/Discovery 이벤트 |
 
 규칙(= [backend-dependency-policy](backend-dependency-policy.ko.md) 와 동일):

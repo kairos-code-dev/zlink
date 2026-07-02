@@ -64,7 +64,6 @@ zlink_close_result_t zlink_spot_destroy(void **spot_p);
   수 있으며, 호출자는 파괴 전에 unread를 끝까지 모두 읽어 처리해야 할 의무를 지지
   않는다.
 - `zlink_spot_node_destroy()`는 node와 내부 runtime 자원을 정리한다.
-- discovery에 attach된 node는 보통 `zlink_discovery_destroy()` 흐름에서 함께 정리된다.
 
 ### 명시적 routing id 기반 Spot 확보
 
@@ -318,7 +317,6 @@ zlink_connect_result_t zlink_spot_node_disconnect_peer(void *node,
 zlink_connect_result_t zlink_spot_node_disconnect_peer_rid(
   void *node,
   const zlink_routing_id_t *target_node_rid);
-zlink_config_result_t zlink_spot_node_attach_discovery(void *node,
                                                        void *discovery);
 ```
 
@@ -345,7 +343,6 @@ zlink_config_result_t zlink_spot_node_attach_discovery(void *node,
   제거하지 않고 registry/discovery 설정으로 연결 상태를 바꾼다.
 - `Spot` facade에는 별도 peer rid disconnect 함수가 없다. peer 연결은
   `SpotNode` runtime이 소유하기 때문이다.
-- `zlink_spot_node_attach_discovery()`는 SPOT channel view를 제공하는
   discovery만 받는다.
 - node에는 한 번에 하나의 active SPOT discovery view만 둘 수 있다.
 
@@ -866,7 +863,6 @@ typedef void (*zlink_actor_lookup_handler_fn)(
 
 ```
 
-`zlink_actor_route_t`는 `zlink_discovery_resolve_actor()`의 출력 타입입니다.
 `actor.node_rid`는 현재 Actor slot을 소유한 node이고,
 `current_spot_rid`는 Actor의 현재 Spot이다. `current_spot_kind`는
 Entry Spot이면 `ZLINK_SPOT_KIND_ENTRY`, user Spot이면 `ZLINK_SPOT_KIND_USER`다.
@@ -983,7 +979,6 @@ zlink_submit_result_t zlink_remote_actor_get_ref(
   submit 뒤 completion까지의 operation timeout이고, `timeout_ms == 0`이면 timeout을
   설치하지 않는다. `result` pointer는 callback 호출 중에만 유효하다. 이 함수는 Actor를
   생성하지 않고, Actor 위치를 바꾸지 않고, active route를 갱신하지 않는다.
-- `zlink_remote_actor_get_ref()`와 `zlink_discovery_resolve_actor()`는 목적이 다르다.
   전자는 caller가 target node rid와 actor id를 이미 알고 있을 때 해당 node에 직접 물어
   checked ref를 얻는 API이고, 후자는 Registry에 공개된 active route를 조회해 현재
   공개 위치를 얻는 API다.
@@ -1556,9 +1551,7 @@ payload는 직접 callback으로 전달하지 않는다.
 ### Discovery active route
 
 `zlink_actor_route_t`는 Actor의 현재 dispatch 위치를 나타낸다.
-이 route는 `ZLINK_OPT_DISCOVERY_ACTOR_ROUTE_SYNC`가 켜진 Discovery와 Registry가
 있을 때 외부 조회 결과로 관측된다. 옵션이 꺼져 있거나 Registry가 연결되지 않은
-환경에서는 local Actor 위치가 바뀌어도 `zlink_discovery_resolve_actor()`가 실패할 수
 있다.
 
 - `actor`는 active route가 가리키는 최종 Actor ref다.
@@ -1583,7 +1576,6 @@ route 갱신 시점:
 | stale Actor destroy | 변경 없음 |
 
 위 route 갱신은 join 또는 leave commit 이후 Actor를 소유하는 current `SpotNode`의
-Discovery에서 `ZLINK_OPT_DISCOVERY_ACTOR_ROUTE_SYNC`가 켜져 있고 Registry와 통신할
 수 있을 때 Registry visible 상태가 된다.
 
 ## Spot routed request 시작

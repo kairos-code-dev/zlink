@@ -4,7 +4,6 @@
 #include <Runtime/Core/context_access.hpp>
 #include <Runtime/Native/message_access.hpp>
 #include <Runtime/Service/actor_model_access.hpp>
-#include <Runtime/Service/discovery_access.hpp>
 #include <Runtime/Service/service_model_access.hpp>
 #include <Runtime/Service/spot_access.hpp>
 #include <Runtime/Options/option_ids.hpp>
@@ -184,12 +183,6 @@ void spot_node_t::disconnect_peer_rid (const routing_id_t &target_node_rid_)
     const zlink_routing_id_t native = *zlink::detail::routing_id_native (target_node_rid_);
     detail::throw_if_failed<connect_error_t> (
       static_cast<connect_result_t> (zlink_spot_node_disconnect_peer_rid (_impl->handle, &native)));
-}
-
-void spot_node_t::attach_discovery (discovery_t &discovery_)
-{
-    detail::throw_if_failed<config_error_t> (static_cast<config_result_t> (
-      zlink_spot_node_attach_discovery (_impl->handle, zlink::detail::native_handle (discovery_))));
 }
 
 void spot_node_t::set_routing_id (const routing_id_t &routing_id_)

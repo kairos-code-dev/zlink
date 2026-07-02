@@ -30,8 +30,6 @@ from ..eventing.codes import (
     PollSourceKind,
 )
 from ..service.codes import (
-    AutoConnectType,
-    ServiceRole,
     SpotNodeMode,
     SpotNodeSocketOwner,
     SpotNodeState,
@@ -41,10 +39,6 @@ from ..service.codes import (
     SpotKind,
     SpotDispatchEvent,
     SpotDispatchSubjectKind,
-    RegistryState,
-    TopologySource,
-    TopologyState,
-    ServiceKind,
     SubjectKind,
     SpotRole,
 )
@@ -71,8 +65,6 @@ __all__ = [
     "MonitorEventMask",
     "PollEventFlag",
     "PollSourceKind",
-    "AutoConnectType",
-    "ServiceRole",
     "SpotNodeMode",
     "SpotNodeSocketOwner",
     "SpotNodeState",
@@ -82,10 +74,6 @@ __all__ = [
     "SpotKind",
     "SpotDispatchEvent",
     "SpotDispatchSubjectKind",
-    "RegistryState",
-    "TopologySource",
-    "TopologyState",
-    "ServiceKind",
     "SubjectKind",
     "SpotRole",
 ]

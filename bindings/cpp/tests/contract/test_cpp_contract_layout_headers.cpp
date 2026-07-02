@@ -11,8 +11,6 @@
 #include <zlink/Contracts/Messaging/subscription_event.hpp>
 #include <zlink/Contracts/Messaging/topic_message.hpp>
 #include <zlink/Contracts/Service/operation_contracts.hpp>
-#include <zlink/Contracts/Service/discovery_models.hpp>
-#include <zlink/Contracts/Service/registry_models.hpp>
 #include <zlink/Contracts/Service/spot_node_models.hpp>
 #include <zlink/Contracts/Sockets/message_socket_contracts.hpp>
 #include <zlink/Contracts/Sockets/pubsub_socket_contracts.hpp>
@@ -40,8 +38,6 @@ static_assert (std::is_class<zlink::router_socket_t>::value,
                "public projection must expose router_socket_t");
 static_assert (std::is_class<zlink::socket_monitor_t>::value,
                "public projection must expose socket_monitor_t");
-static_assert (std::is_class<zlink::registry_status_t>::value,
-               "public projection must expose registry_status_t");
 static_assert (std::is_class<zlink::spot_node_socket_entry_t>::value,
                "public projection must expose spot_node_socket_entry_t");
 static_assert (std::is_class<zlink::service::spot_t>::value,
@@ -53,10 +49,6 @@ static_assert (std::is_class<zlink::stopwatch_t>::value,
                "public projection must expose stopwatch_t");
 static_assert (std::is_class<zlink::thread_t>::value,
                "public projection must expose thread_t");
-static_assert (std::is_enum<zlink::auto_connect_type_t>::value,
-               "public projection must expose auto_connect_type_t");
-static_assert (std::is_class<zlink::member_peer_entry_t>::value,
-               "registry_models.hpp must own member_peer_entry_t");
 static_assert (std::is_enum<zlink::poll_event_flag_t>::value,
                "poll_event.hpp must own poll_event_flag_t");
 static_assert (std::is_class<zlink::poll_event_t>::value, "poll_event.hpp must own poll_event_t");

@@ -175,8 +175,6 @@ match socket.send().message(msg).submit() {
 | `zlink_poller_new()` | `Poller::new()` |
 | `zlink_timer_new()` | `Timer::new()` |
 | `zlink_spot_node_new(ctx, opts)` | `SpotNode::new(&ctx)` |
-| `zlink_registry_new(ctx)` | `Registry::new(&ctx)` |
-| `zlink_discovery_new(ctx,...)` | `Discovery::new(&ctx, auto_connect_type, channel_name)` |
 
 ---
 

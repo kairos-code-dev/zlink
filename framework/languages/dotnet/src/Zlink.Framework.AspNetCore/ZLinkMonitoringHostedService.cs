@@ -3,18 +3,16 @@ using Microsoft.Extensions.Hosting;
 namespace Zlink.Framework.AspNetCore;
 
 internal sealed class ZLinkMonitoringHostedService(
-    IServiceProvider services,
     IZLinkBackendAdapterFactory backendAdapterFactory,
     ZLinkMonitoringRegistration registration,
     ZLinkRuntimeEventDispatcher dispatcher,
-    ZLinkFrameworkRuntime? frameworkRuntime,
-    ZLinkRegistryRuntime? registryRuntime) : IHostedService, IAsyncDisposable
+    ZLinkFrameworkRuntime? frameworkRuntime) : IHostedService, IAsyncDisposable
 {
     private readonly IZLinkMonitoringBackendAdapter
         _monitoringAdapter = backendAdapterFactory.CreateMonitoringAdapter();
 
     private readonly List<IAsyncDisposable> _monitors = [];
-    private readonly ZLinkMonitoringSourceValidator _sourceValidator = new(services, registration);
+    private readonly ZLinkMonitoringSourceValidator _sourceValidator = new(registration);
     private Task? _pollingTask;
     private CancellationTokenSource? _stopTokenSource;
     private ZLinkRuntimeTaskRunner? _taskRunner;
@@ -40,15 +38,13 @@ internal sealed class ZLinkMonitoringHostedService(
 
     public async Task StartAsync(CancellationToken cancellationToken)
     {
-        _sourceValidator.ValidateRequiredRuntimes(frameworkRuntime, registryRuntime);
+        _sourceValidator.ValidateRequiredRuntimes(frameworkRuntime);
 
         try
         {
             if (frameworkRuntime is not null) await frameworkRuntime.StartAsync(cancellationToken);
 
-            if (registryRuntime is not null) await registryRuntime.StartAsync(cancellationToken);
-
-            await _sourceValidator.PreflightPollingSourcesAsync(frameworkRuntime, registryRuntime, cancellationToken);
+            await _sourceValidator.PreflightPollingSourcesAsync(frameworkRuntime, cancellationToken);
             AttachSocketMonitors(frameworkRuntime);
         }
         catch
@@ -56,9 +52,6 @@ internal sealed class ZLinkMonitoringHostedService(
             await DisposeMonitorsAsync();
             if (frameworkRuntime is not null && frameworkRuntime.IsStarted)
                 await frameworkRuntime.StopAsync(CancellationToken.None);
-
-            if (registryRuntime is not null && registryRuntime.IsStarted)
-                await registryRuntime.StopAsync(CancellationToken.None);
 
             throw;
         }
@@ -68,13 +61,10 @@ internal sealed class ZLinkMonitoringHostedService(
             new ZLinkRuntimeErrorSink(),
             _stopTokenSource.Token);
         var pollingRunner = new ZLinkMonitoringPollingRunner(
-            services,
             registration,
-            registryEvent => QueueDispatch(registryEvent),
             spotEvent => QueueDispatch(spotEvent));
         _pollingTask = pollingRunner.RunAsync(
             frameworkRuntime,
-            registryRuntime,
             _stopTokenSource.Token);
     }
 

@@ -40,12 +40,10 @@
 | `EnableServer(endpoint)` + handler 노출(또는 SPOT route acceptance) | 허용 | inbound request/send 를 handler 가 받는다 |
 | `EnableServer(endpoint)`만 등록(handler·SPOT route 없음) | 비허용 | server 는 handler group·typed handler 매핑이나 SPOT route acceptance 가 있어야 한다(startup validation 오류) |
 | `EnableServer("")` 등록(빈 endpoint) | 비허용 | startup validation 오류 |
-| `EnableClient()`만 등록 + 전역 `UseDiscovery().AddRegistryEndpoint(...)` 있음 | 허용 | outbound request/send runtime을 만든다 |
 | `EnableClient(endpoint)` 등록 | 허용 | manual 기반 outbound request/send runtime을 만든다 |
 | `EnableClient()`만 등록 + discovery/manual 둘 다 없음 | 비허용 | startup validation 오류 |
 | `EnablePublisher(endpoint)`만 등록 | 허용 | event publish만 가능하다 |
 | `EnablePublisher("")` 등록(빈 endpoint) | 비허용 | startup validation 오류 |
-| `EnableSubscriber()` + publish handler 노출 + 전역 `UseDiscovery().AddRegistryEndpoint(...)` | 허용 | discovery 기반 event subscribe runtime을 만든다 |
 | `EnableSubscriber(endpoint)` + publish handler 노출 | 허용 | manual 기반 subscribe runtime을 만든다. publish handler 가 없으면 비허용(startup validation 오류) |
 | `EnableSubscriber()`만 등록 + discovery/manual 둘 다 없음 | 비허용 | startup validation 오류 |
 | 같은 channel에서 `server + client` 함께 등록 | 허용 | inbound와 outbound runtime을 모두 가진다 |
@@ -69,7 +67,6 @@
 | 조합 | 허용 여부 | 기대 동작 |
 |------|-----------|-----------|
 | `AddSpotMesh` 호출 | 허용 | mesh가 활성 SPOT[^spot] channel view와 단일 node를 함께 소유한다 |
-| root `UseDiscovery().AddRegistryEndpoint(...)` 없이 `AddSpotMesh`만 등록 | 허용 | top-level discovery endpoint 를 상속하거나 local-only mesh 로 시작한다 |
 | root discovery 없이 local-only spot factory | 허용 | discovery endpoint 없이 단일 local SpotNode 하나를 mesh 소유권 아래 띄운다 |
 | top-level standalone node 등록 | 비허용 | public 등록 표면에는 top-level standalone node 등록 API 가 없다. SPOT node 는 항상 `AddSpotMesh` 안에서 등록한다 |
 | 분리된 SPOT discovery 등록과 node 등록 | 비허용 | SPOT discovery 와 단일 node는 `AddSpotMesh`가 함께 등록·소유한다 |
@@ -98,7 +95,6 @@
 
 | 조합 | 허용 여부 | 기대 동작 |
 |------|-----------|-----------|
-| `AddRouteMesh(...).EnableClient()` + 전역 `UseDiscovery().AddRegistryEndpoint(...)` 있음 | 허용 | bind 없이 discovery 기반 routed client node를 만든다 |
 | `AddRouteMesh` + `EnableClient(endpoint)` 있음 | 허용 | manual 기반 routed channel node를 만든다 |
 | `AddRouteMesh` + server/client 역할 둘 다 없음 | 비허용 | startup validation 오류 |
 | routed handler 수신 channel bind endpoint 없음 | 비허용 | startup validation 오류 |
@@ -112,7 +108,6 @@
 | converter 없는 abstract/interface payload를 reply DTO에 포함 | 비허용 | startup validation 또는 첫 submit 직전에 configuration 오류 |
 | spot remote address resolver 중복 등록 | 비허용 | builder 등록 시점에 오류 |
 | Registry Spot route 기본 구현 + custom Spot remote address resolver 함께 등록 | 비허용 | startup validation 오류 |
-| Registry route 기본 구현 + `UseDiscovery().AddRegistryEndpoint(...)` 없음 | 비허용 | startup validation 오류 |
 | Registry route 기본 구현 + route mesh channel이 둘 이상이고 channel id 생략 | 비허용 | startup validation 오류 |
 | spot rid 기반 routed Spot client 사용 + spot remote address resolver 없음 | 비허용 | service 생성 또는 첫 호출에서 명확한 오류 |
 | `IZLinkBoundSession` 사용 + actor-session binding 없음 | 비허용 | 대상 actor에 묶인 session이 없으면 명확한 오류 |
@@ -136,10 +131,6 @@
 
 | 조합 | 허용 여부 | 기대 동작 |
 |------|-----------|-----------|
-| `AddZLinkRegistry(...)`만 등록 | 허용 | standalone registry host가 된다 |
-| `AddZLinkFramework(...)` + `AddZLinkRegistry(...)` 함께 등록 | 허용 | embedded registry와 framework runtime을 한 호스트에서 함께 띄운다 |
-| embedded 구성에서 `UseDiscovery().AddRegistryEndpoint(...)` endpoint를 자동 추론 | 비허용 | endpoint는 반드시 명시적으로 적어야 한다 |
-| `AddZLinkRegistryQueryClient(...)`만 등록 | 허용 | 원격 topology[^topology] 조회만 수행한다 |
 
 ## 8. Startup Validation Error 목록
 
@@ -172,9 +163,9 @@ runtime integration 테스트도 같은 변경에 함께 포함시킨다.
 
 | 테스트 케이스 | 확인 기준 |
 |---------------|-----------|
-| `ChannelsTests.AddZLinkFramework_AllowsRouteChannelManualConnections_WhenDiscoveryIsConfigured` | route mesh channel은 Discovery metadata가 있어도 명시한 manual peer로도 연결할 수 있다. |
+| `ChannelsTests.AddZLinkFramework_AllowsRouteChannelManualConnections` | route mesh channel은 명시한 manual peer로 연결할 수 있다. |
 | `HandlerExposureTests.AddZLinkFramework_Throws_WhenServerHasNoBindEndpoint` | server 역할에 bind endpoint가 없으면 실패한다. |
-| `RegistryAndMonitoringTests.AddZLinkFramework_Throws_WhenPublisherHasNoBindEndpoint` | publisher 역할에 bind endpoint가 없으면 실패한다. |
+| `ChannelsTests.AddZLinkFramework_Throws_WhenClientHasNoPeerAcquisitionPath` | client 역할에 manual peer source 가 없으면 실패한다. |
 | `NodesAndServicesTests.AddZLinkFramework_AllowsStandaloneLocalSpotNode` | Discovery mesh 없이 local-only SpotNode를 단독으로 시작할 수 있다. |
 
 [^public-contract]: public contract 는 외부 사용자에게 공개되어 변경 시 호환성을 책임져야 하는 API 표면을 뜻한다.

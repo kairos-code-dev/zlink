@@ -29,9 +29,6 @@ class SpotNode(Protocol):
     def disconnect_peer_rid(self, target_node_rid):
         """Disconnect the peer identified by ``target_node_rid``."""
         ...
-    def attach_discovery(self, discovery):
-        """Attach a discovery service so the node auto-connects discovered peers."""
-        ...
     def create_route_bridge(self, options=None):
         """Create a bridge that uses caller-owned channel sockets for SPOT routing."""
         ...

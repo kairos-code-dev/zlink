@@ -4,6 +4,7 @@
 #define __ZLINK_SERVICES_COMMON_SERVICE_EVENT_TYPES_INTERNAL_HPP_INCLUDED__
 
 #include <zlink.h>
+#include "services/discovery/discovery_registry_models_internal.hpp"
 
 typedef uint32_t zlink_discovery_monitor_event_mask_t;
 typedef uint32_t zlink_service_event_mask_internal_t;

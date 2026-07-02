@@ -23,9 +23,4 @@ internal sealed class SubSocket : SubscriberSocketBase, ISubSocket
         return RoutingId.From(Kernel.GetOption(SocketOptions.RoutingId));
     }
 
-    public void AttachDiscovery(IDiscovery discovery)
-    {
-        Kernel.AttachDiscovery(SocketInterop.RequireDiscovery(discovery,
-            nameof(discovery)));
-    }
 }

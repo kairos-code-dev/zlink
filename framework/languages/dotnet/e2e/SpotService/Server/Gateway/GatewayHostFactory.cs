@@ -35,10 +35,8 @@ internal static class GatewayHostFactory
                 .MessageFlow(ZLinkMessageFlowLogMode.KeyTransitions)
                 .TraceLogFile(Path.Combine(options.LogDir, $"{options.Rid}-flow.log"))
                 .TraceLabel(options.Rid);
-            framework.UseDiscovery().AddRegistryEndpoint(Require(options.RegistryRouterEndpoint, "--registry-router-endpoint"));
             framework.AddSpotMesh(SpotServiceNames.SpotChannel)
-                .UseRegistrySpotResolver()
-                .SetRoutingId(RoutingId.From(options.Rid))
+                                .SetRoutingId(RoutingId.From(options.Rid))
                 .EnablePubSub(Require(options.SpotPubEndpoint, "--spot-pub-endpoint"));
         });
 

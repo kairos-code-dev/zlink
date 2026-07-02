@@ -2,7 +2,6 @@
 
 import type { RoutingId } from '../../core';
 import type { MessageLike } from '../../messaging';
-import type { Discovery } from '../discovery/discovery';
 import type {
   ActorDestroyOperation,
   ActorJoinEntrySpotOperation,
@@ -45,7 +44,6 @@ export interface SpotNode {
   /** Create a publisher handle for the local SPOT topic plane. */
   createPublisher(): SpotNodePublisher;
   /** Attach a discovery service so the node auto-connects discovered peers. */
-  attachDiscovery(discovery: Discovery): void;
   /** Set the node's routing id. */
   setRoutingId(routingId: RoutingId): void;
   /** Set the routing id used by the node's publisher side. */

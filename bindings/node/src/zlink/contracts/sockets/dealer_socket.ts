@@ -2,7 +2,6 @@
 
 import type { RoutingId } from '../core';
 import type { RequestOperation } from '../messaging';
-import type { Discovery } from '../service';
 import type { PairSocket } from './pair_socket';
 import type { DealerSocketOptions } from './socket_options';
 
@@ -24,8 +23,6 @@ export interface DealerSocket extends PairSocket {
   setRoutingId(routingId: RoutingId): void;
   /** Return the routing id that identifies this DEALER to its peers. */
   getRoutingId(): RoutingId;
-  /** Attach a discovery service so this socket can reach discovered peers without manual connect. */
-  attachDiscovery(discovery: Discovery): void;
   /**
    * Begin a request: add parts on the returned builder, then submit and await a
    * reply. Parts are consumed on a successful submit.

@@ -8,7 +8,7 @@ if(POLICY CMP0048)
   cmake_policy(SET CMP0048 NEW)
 endif()
 
-project(zlink VERSION 8.4.2 LANGUAGES C CXX)
+project(zlink VERSION 8.4.3 LANGUAGES C CXX)
 
 # Internal repo targets still include the public header from core/include.
 # Define a build-only macro so in-tree code can access private build-only
@@ -881,12 +881,6 @@ set(api-service-sources
     src/api/service/service_option_api.cpp
     src/api/service/service_poller_api.cpp)
 
-set(api-discovery-sources
-    src/api/discovery/service_discovery_api.cpp)
-
-set(api-registry-sources
-    src/api/registry/service_registry_api.cpp)
-
 set(api-spot-sources
     src/api/spot/core/service_spot_route_bridge_channel_reply_internal.cpp
     src/api/spot/core/service_spot_route_bridge_codec_internal.cpp
@@ -934,8 +928,6 @@ set(api-sources
     ${api-monitoring-sources}
     ${api-socket-sources}
     ${api-service-sources}
-    ${api-discovery-sources}
-    ${api-registry-sources}
     ${api-spot-sources}
     ${api-actor-sources})
 
@@ -1018,6 +1010,13 @@ set(runtime-service-registry-sources
     src/runtime/services/registry/registry_runtime.cpp
     src/runtime/services/registry/registry_socket_owner.cpp
     src/runtime/services/registry/registry_state.cpp)
+
+if(CMAKE_CXX_COMPILER_ID MATCHES "GNU|Clang|AppleClang")
+  set_source_files_properties(
+    ${runtime-service-discovery-sources}
+    ${runtime-service-registry-sources}
+    PROPERTIES COMPILE_OPTIONS "-fvisibility=hidden")
+endif()
 
 set(runtime-service-actor-sources
     src/runtime/services/actor/gateway/service_spot_actor_gateway_protocol_internal.cpp

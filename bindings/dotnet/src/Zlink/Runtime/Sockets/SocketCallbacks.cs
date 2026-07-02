@@ -47,18 +47,6 @@ internal static class SocketInterop
         };
     }
 
-    internal static Discovery RequireDiscovery(IDiscovery discovery,
-        string paramName)
-    {
-        if (discovery == null)
-            throw new ArgumentNullException(paramName);
-        if (discovery is not Discovery concrete)
-            throw new ArgumentException(
-                "discovery must be a concrete zlink discovery instance",
-                paramName);
-        return concrete;
-    }
-
     internal static DealerSocket RequireDealerSocket(IDealerSocket socket,
         string paramName)
     {

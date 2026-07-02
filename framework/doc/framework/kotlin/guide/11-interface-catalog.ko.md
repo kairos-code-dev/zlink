@@ -35,7 +35,6 @@ Kotlin 표면은 Java framework 위의 thin coroutine 레이어다. Java와 다�
 buffering, error 의미를 **만들지 않는다.** `ZLinkSuspending*` 베이스/interface는
 내부에서 Java 콜백을 coroutine으로 잇기만 하고, 등록 표면(`addClientServerChannel`,
 `addSpotMesh`, `addStreamNode` 등)과 관리 bean(`ZLinkClient`, `ZLinkSpotManager`,
-`ZLinkRegistryQuery`)은 Java contract 그대로다. 정확한 시그니처는 Java/Kotlin 공유
 spec [handler-interfaces](../../java/spec/handler-interfaces.ko.md)를 본다.
 
 Java 표면 ↔ Kotlin 표면 1:1 대응표는

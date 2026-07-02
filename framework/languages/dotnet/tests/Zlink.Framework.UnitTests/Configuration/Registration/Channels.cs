@@ -40,7 +40,6 @@ public sealed class ChannelsTests : RegistrationValidationSupport
 
         services.AddZLinkFramework(options =>
         {
-            options.UseDiscovery().AddRegistryEndpoint("tcp://127.0.0.1:5551");
             options.AddRouteMesh("play")
                 .EnableServer("tcp://127.0.0.1:7101")
                 .EnableClient("tcp://127.0.0.1:7102");
@@ -126,7 +125,7 @@ public sealed class ChannelsTests : RegistrationValidationSupport
     }
 
     [Fact]
-    public void AddZLinkFramework_AllowsChannelClientManualConnections_WhenDiscoveryIsConfigured()
+    public void AddZLinkFramework_AllowsChannelClientManualConnections()
     {
         var services = new ServiceCollection();
 
@@ -135,19 +134,16 @@ public sealed class ChannelsTests : RegistrationValidationSupport
             {
                 var channel = options.AddClientServerChannel("profile").EnableClient("tcp://127.0.0.1:7101");
             }
-
-            options.UseDiscovery().AddRegistryEndpoint("tcp://127.0.0.1:5551");
         });
     }
 
     [Fact]
-    public void AddZLinkFramework_AllowsRouteChannelManualConnections_WhenDiscoveryIsConfigured()
+    public void AddZLinkFramework_AllowsRouteChannelManualConnections()
     {
         var services = new ServiceCollection();
 
         services.AddZLinkFramework(options =>
         {
-            options.UseDiscovery().AddRegistryEndpoint("tcp://127.0.0.1:5551");
             {
                 var routed = options.AddRouteMesh("backend");
                 routed.EnableServer("tcp://127.0.0.1:7201");
@@ -157,21 +153,17 @@ public sealed class ChannelsTests : RegistrationValidationSupport
     }
 
     [Fact]
-    public void AddZLinkFramework_AllowsRouteChannelClientOnly_WhenDiscoveryIsConfigured()
+    public void AddZLinkFramework_Throws_WhenRouteChannelClientHasNoPeerSource()
     {
         var services = new ServiceCollection();
 
-        services.AddZLinkFramework(options =>
+        var exception = Assert.Throws<ZLinkConfigurationException>(() => services.AddZLinkFramework(options =>
         {
-            options.UseDiscovery().AddRegistryEndpoint("tcp://127.0.0.1:5551");
             options.AddRouteMesh("backend")
                 .EnableClient();
-        });
+        }));
 
-        var registration = services.BuildServiceProvider().GetRequiredService<ZLinkFrameworkRegistration>();
-        var route = Assert.Single(registration.RouteChannels.Values);
-        Assert.Null(route.BindEndpoint);
-        Assert.True(route.ClientEnabled);
+        Assert.Contains("requires discovery or manual connections", exception.Message, StringComparison.Ordinal);
     }
 
     [Fact]
@@ -219,13 +211,12 @@ public sealed class ChannelsTests : RegistrationValidationSupport
     }
 
     [Fact]
-    public void AddZLinkFramework_AllowsImplicitRouteMeshBridge_WhenDiscoveryIsConfigured()
+    public void AddZLinkFramework_AllowsImplicitRouteMeshBridge_WithManualPeerSource()
     {
         var services = new ServiceCollection();
 
         services.AddZLinkFramework(options =>
         {
-            options.UseDiscovery().AddRegistryEndpoint("tcp://127.0.0.1:5551");
             {
                 var routed = options.AddRouteMesh("backend");
                 routed.EnableServer("tcp://127.0.0.1:7203");

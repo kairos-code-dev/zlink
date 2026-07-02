@@ -60,22 +60,6 @@ internal sealed class Context : IContext
         return new StreamSocket(this);
     }
 
-    public IRegistry CreateRegistry()
-    {
-        return new Registry(this);
-    }
-
-    public IRegistryQueryClient CreateRegistryQueryClient()
-    {
-        return new RegistryQueryClient(this);
-    }
-
-    public IDiscovery CreateDiscovery(AutoConnectType autoConnectType,
-        string channelName)
-    {
-        return new Discovery(this, autoConnectType, channelName);
-    }
-
     public ISpotNode CreateSpotNode()
     {
         return new SpotNode(this);

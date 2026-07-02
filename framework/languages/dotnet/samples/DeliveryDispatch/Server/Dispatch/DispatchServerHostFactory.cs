@@ -28,7 +28,6 @@ public static class DispatchServerHostFactory
                 .TraceLogFile(SampleFlowLog.Path("dispatch"))
                 .TraceLabel("dispatch");
             options.AddHandlersFromAssemblyOf(typeof(DispatchServerHostFactory));
-            options.UseDiscovery().AddRegistryEndpoint(topology.RegistryRouterEndpoint);
             options.AddClientServerChannel(SampleNames.CourierRouteChannel)
                 .EnableClient()
                 .SetRoutingId(Systems.Zlink.RoutingId.From("delivery-dispatch-courier-client"));

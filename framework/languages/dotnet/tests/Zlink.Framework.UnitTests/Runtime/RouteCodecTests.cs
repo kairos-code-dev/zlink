@@ -172,11 +172,6 @@ public sealed class RouteCodecTests
             throw new NotSupportedException();
         }
 
-        public void AttachDiscovery(IZLinkBackendDiscovery discovery)
-        {
-            throw new NotSupportedException();
-        }
-
         public void OnSendReady(Action handler)
         {
             throw new NotSupportedException();

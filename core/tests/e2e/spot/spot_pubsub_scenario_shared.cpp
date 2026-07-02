@@ -452,64 +452,6 @@ bool wait_for_spot_node_connected_peers (void *node_,
     return false;
 }
 
-void make_registry_endpoint (char *endpoint_out_, size_t endpoint_size_, int port_seed_)
-{
-    snprintf (endpoint_out_, endpoint_size_, "tcp://127.0.0.1:%d", test_port (port_seed_));
-}
-
-void *create_started_registry_with_port_seed (void *ctx_,
-                                              int *port_seed_,
-                                              char *pub_endpoint_out_,
-                                              size_t pub_size_,
-                                              char *router_endpoint_out_,
-                                              size_t router_size_)
-{
-    if (!ctx_ || !port_seed_ || !pub_endpoint_out_ || !router_endpoint_out_ || pub_size_ == 0
-        || router_size_ == 0) {
-        errno = EINVAL;
-        return NULL;
-    }
-
-    for (int attempt = 0; attempt < 32; ++attempt) {
-        void *registry = zlink_registry_new (ctx_);
-        if (!registry)
-            return NULL;
-
-        make_registry_endpoint (pub_endpoint_out_, pub_size_, *port_seed_);
-        make_registry_endpoint (router_endpoint_out_, router_size_, *port_seed_ + 1);
-
-        if (zlink_registry_bind (registry, pub_endpoint_out_, router_endpoint_out_) == 0) {
-            *port_seed_ += 2;
-            return registry;
-        }
-
-        const int err = zlink_errno ();
-        zlink_registry_destroy (&registry);
-        if (err != EADDRINUSE) {
-            errno = err;
-            return NULL;
-        }
-        *port_seed_ += 2;
-    }
-
-    errno = EADDRINUSE;
-    return NULL;
-}
-
-int connect_discovery_registry_with_retry (void *discovery_, const char *endpoint_, int timeout_ms_)
-{
-    const std::chrono::steady_clock::time_point deadline =
-      std::chrono::steady_clock::now () + std::chrono::milliseconds (timeout_ms_);
-    while (std::chrono::steady_clock::now () < deadline) {
-        if (zlink_discovery_connect_registry (discovery_, endpoint_) == 0)
-            return 0;
-        TEST_ASSERT_EQUAL_INT (EAGAIN, zlink_errno ());
-        msleep (10);
-    }
-    errno = EAGAIN;
-    return -1;
-}
-
 bool wait_for_spot_message (void *spot_sub_,
                             const char *expected_topic_,
                             const char *expected_payload_,

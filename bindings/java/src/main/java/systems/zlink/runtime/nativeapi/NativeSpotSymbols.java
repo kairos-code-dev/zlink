@@ -212,10 +212,6 @@ final class NativeSpotSymbols {
             "zlink_spot_node_actor_close_bound_session",
             FunctionDescriptor.of(ValueLayout.JAVA_INT, ValueLayout.ADDRESS,
                     ValueLayout.ADDRESS, ValueLayout.JAVA_INT));
-    static final MethodHandle MH_SPOT_NODE_ATTACH_DISCOVERY = downcall(
-            "zlink_spot_node_attach_discovery",
-            FunctionDescriptor.of(ValueLayout.JAVA_INT, ValueLayout.ADDRESS,
-                    ValueLayout.ADDRESS));
     static final MethodHandle MH_SPOT_ROUTE_BRIDGE_NEW = downcall(
             "zlink_spot_route_bridge_new",
             FunctionDescriptor.of(ValueLayout.ADDRESS, ValueLayout.ADDRESS,

@@ -272,7 +272,6 @@ systems/zlink/contracts/
 |   |   +-- SpotRoute.java
 |   +-- registry/
 |   |   +-- Registry.java
-|   |   +-- RegistryQueryClient.java
 |   |   +-- RegistryEnums/
 |   |   +-- RegistryModels/
 |   +-- spot/
@@ -359,7 +358,6 @@ systems/zlink/runtime/
 |   +-- registry/
 |   |   +-- NativeRegistry.java
 |   |   +-- NativeRegistryCodecs.java
-|   |   +-- NativeRegistryQueryClient.java
 |   +-- spot/
 |       +-- NativeActor.java
 |       +-- NativeSpot.java
@@ -491,8 +489,6 @@ factory가 생성해야 한다.
 - `createXPubSocket()`
 - `createXSubSocket()`
 - `createStreamSocket()`
-- `createRegistry()`
-- `createDiscovery(...)`
 - `createSpotNode(...)`
 
 모든 factory는 public contract interface 또는 concrete 값 타입을 반환한다.
@@ -588,7 +584,6 @@ Socket contract는 interface다. native transport 메커니즘이 아니라 동�
 - `unbind`
 - `disconnect`
 - `disconnectRid`
-- `attachDiscovery`
 - `setChannelName`
 - `getChannelName`
 - `options`

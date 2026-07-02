@@ -109,8 +109,6 @@ builder.Services.AddZLinkFramework(options =>
 
     }
 
-        options.UseDiscovery().AddRegistryEndpoint("tcp://registry1:5551");
-        options.UseDiscovery().AddRegistryEndpoint("tcp://registry2:5551");
 });
 ```
 
@@ -133,7 +131,6 @@ builder.Services.AddZLinkFramework(options =>
 
 ##### 자동 연결을 켜는 방법
 
-자동 연결은 `options.UseDiscovery().AddRegistryEndpoint(...)` 를 **한 번** 부르면 켜진다. 그 뒤에 등록되는
 모든 client / subscriber 역할은, 별도 신호 없이도 이 전역 Discovery 를 기본
 연결 방식으로 쓴다. 즉 `channel.EnableClient()` 만 호출해도, 그 channel 은 자동으로
 Discovery 기반 연결로 동작한다.
@@ -192,7 +189,6 @@ builder.Services.AddZLinkFramework(options =>
 
 channel 별 연결 방식은, 역할 등록에서 endpoint 를 직접 넘겼는지로 정해진다.
 
-| 전역 `UseDiscovery().AddRegistryEndpoint(...)` | 역할 endpoint 인자 | 그 역할의 연결 방식 |
 | --- | --- | --- |
 | 있음 | 없음 | Discovery 자동 연결 |
 | 있음 | 있음 | 수동 연결 (수동 우선) |
@@ -201,7 +197,6 @@ channel 별 연결 방식은, 역할 등록에서 endpoint 를 직접 넘겼는�
 
 정리하면 다음과 같다.
 
-- `options.UseDiscovery().AddRegistryEndpoint(...)` 는 모든 client / subscriber 역할의 **기본값**이다.
 - 특정 channel 만 수동으로 바꾸고 싶을 때는, 그 channel 안에서
   `EnableClient(endpoint)` 또는
   `EnableSubscriber(endpoint)` 를 명시한다.
@@ -265,8 +260,6 @@ builder.Services.AddZLinkFramework(options =>
 
     }
 
-        options.UseDiscovery().AddRegistryEndpoint("tcp://registry1:5551");
-        options.UseDiscovery().AddRegistryEndpoint("tcp://registry2:5551");
 });
 ```
 

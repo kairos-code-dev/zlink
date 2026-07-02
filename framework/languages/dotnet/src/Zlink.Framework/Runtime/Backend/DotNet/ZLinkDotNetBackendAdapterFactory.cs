@@ -5,8 +5,6 @@ internal sealed class ZLinkDotNetBackendAdapterFactory : IZLinkBackendAdapterFac
     private static readonly IZLinkChannelBackendAdapter ChannelAdapter = new ZLinkDotNetChannelBackendAdapter();
     private static readonly IZLinkSpotBackendAdapter SpotAdapter = new ZLinkDotNetSpotBackendAdapter();
     private static readonly IZLinkStreamBackendAdapter StreamAdapter = new ZLinkDotNetStreamBackendAdapter();
-    private static readonly IZLinkRegistryBackendAdapter RegistryAdapter = new ZLinkDotNetRegistryBackendAdapter();
-
     private static readonly IZLinkMonitoringBackendAdapter
         MonitoringAdapter = new ZLinkDotNetMonitoringBackendAdapter();
 
@@ -23,11 +21,6 @@ internal sealed class ZLinkDotNetBackendAdapterFactory : IZLinkBackendAdapterFac
     public IZLinkStreamBackendAdapter CreateStreamAdapter()
     {
         return StreamAdapter;
-    }
-
-    public IZLinkRegistryBackendAdapter CreateRegistryAdapter()
-    {
-        return RegistryAdapter;
     }
 
     public IZLinkMonitoringBackendAdapter CreateMonitoringAdapter()

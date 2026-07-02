@@ -68,13 +68,6 @@ class pub_socket_t : public publisher_socket_t
         socket_t::set_send_ready_handler (std::move (handler_));
     }
 
-    template <typename DiscoveryT> void attach_discovery (DiscoveryT &discovery_)
-    {
-        if (socket_t::attach_discovery (discovery_) != 0)
-            throw config_error_t (detail::config_result_from_errno (detail::current_errno ()),
-                                  detail::current_errno ());
-    }
-
     pub_socket_options_t options () { return pub_socket_options_t (*this); }
 
   private:
@@ -118,13 +111,6 @@ class sub_socket_t : public subscriber_socket_t
     {
         return socket_t::subscribe_part (source_rid_out_, topic_out_, part_out_, has_more_out_,
                                          flags_);
-    }
-
-    template <typename DiscoveryT> void attach_discovery (DiscoveryT &discovery_)
-    {
-        if (socket_t::attach_discovery (discovery_) != 0)
-            throw config_error_t (detail::config_result_from_errno (detail::current_errno ()),
-                                  detail::current_errno ());
     }
 
     sub_socket_options_t options () { return sub_socket_options_t (*this); }

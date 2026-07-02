@@ -56,9 +56,7 @@ ZLinkMonitoringOptionsCustomizer monitoring() {
 ```java
 @Component
 public final class RegistryMonitor
-    implements ZLinkRuntimeEventHandler<ZLinkRegistryEvent> {
     @Override
-    public void handle(ZLinkRegistryEvent event) {
         switch (event.event()) {
             case STATUS_CHANGED:
                 // event.status() 관찰

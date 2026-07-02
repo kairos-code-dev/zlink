@@ -1,11 +1,6 @@
 // SPDX-License-Identifier: MPL-2.0
 
 export {
-  AutoConnectType,
-  ServiceKind,
-  ServiceRole,
-} from './discovery/discovery_models';
-export {
   SpotDispatchEvent,
   SpotDispatchSubjectKind,
   SpotActorLifecycleEventKind,
@@ -19,11 +14,6 @@ export {
   SpotRole,
 } from './spot/spot_models';
 export type {
-  AutoConnectType as AutoConnectTypeValue,
-  ServiceKindValue,
-  ServiceRoleValue,
-} from './discovery/discovery_models';
-export type {
   SpotDispatchEvent as SpotDispatchEventValue,
   SpotDispatchSubjectKind as SpotDispatchSubjectKindValue,
   SpotActorLifecycleEventKind as SpotActorLifecycleEventKindValue,
@@ -36,13 +26,6 @@ export type {
   SpotPeerStateValue,
   SpotRoleValue,
 } from './spot/spot_models';
-export * from './discovery/discovery_models';
-export * from './registry/registry_models';
-export type { Discovery } from './discovery/discovery';
-export type { DiscoveryRoute } from './discovery/discovery';
-export type { Registry } from './registry/registry';
-export type { RegistryQueryClient } from './registry/registry_query_client';
-export type { ZlinkFactories } from './factories';
 export type { Actor } from './spot/actor';
 export type { Spot } from './spot/spot';
 export type { SpotNode } from './spot/spot_node';
@@ -67,12 +50,20 @@ export type {
   ActorJoinResult,
   ActorJoinEntrySpotResult,
   ActorLookupResult,
+  SpotNodePeerEntry,
+  SpotNodePeerFilter,
+  SpotNodeSocketEntry,
+  SpotNodeSocketFilter,
+  SpotNodeStatus,
+  SpotNodeSubjectEntry,
+  SpotNodeSubjectFilter,
   SpotActorLifecycleInfo,
   SpotActorLifecycleEvent,
   SpotNodeSpotEntry,
   SpotNodeActorEntry,
   SpotDispatchInfo,
   SpotDispatchEventHandler,
+  SubscriptionEntry,
 } from './spot/spot_models';
 export type {
   ActorBindOperation,

@@ -26,7 +26,6 @@ internal sealed partial class ZLinkFrameworkRuntime
     {
         var routeChannel = GetRouteChannel(routerChannelId);
         if (!routeChannel.CanDispatchRoutePacket(ZLinkMessageKind.Command, packetName)
-            && !routeChannel.HasKnownRoutePeer(targetNodeRid)
             && _spotRouteEgress.CanHandle(routerChannelId))
         {
             var header = ZLinkClientCallCodec.CreateEnvelope(
@@ -66,7 +65,6 @@ internal sealed partial class ZLinkFrameworkRuntime
     {
         var routeChannel = GetRouteChannel(routerChannelId);
         if (!routeChannel.CanDispatchRoutePacket(ZLinkMessageKind.Request, packetName)
-            && !routeChannel.HasKnownRoutePeer(targetNodeRid)
             && _spotRouteEgress.CanHandle(routerChannelId))
         {
             var header = ZLinkClientCallCodec.CreateEnvelope(

@@ -76,16 +76,6 @@ impl ActorRoute {
     }
 }
 
-impl SpotRoute {
-    pub(super) fn from_raw(raw: &ffi::zlink_spot_route_t) -> Self {
-        Self {
-            spot_rid: RoutingId::from_raw(raw.spot_rid),
-            owner_node_rid: RoutingId::from_raw(raw.owner_node_rid),
-            spot_kind: SpotKind::from_raw(raw.spot_kind),
-        }
-    }
-}
-
 impl ActorRecvInfo {
     pub(super) fn from_raw(raw: &ffi::zlink_actor_recv_info_t) -> Self {
         Self {

@@ -33,12 +33,6 @@ internal sealed class DealerSocket : MessageSocketBase, IDealerSocket
         return RoutingId.From(Kernel.GetOption(SocketOptions.RoutingId));
     }
 
-    public void AttachDiscovery(IDiscovery discovery)
-    {
-        Kernel.AttachDiscovery(SocketInterop.RequireDiscovery(discovery,
-            nameof(discovery)));
-    }
-
     public new void SetChannelName(string channelName)
     {
         SetChannelNameCore(channelName);

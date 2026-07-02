@@ -149,7 +149,6 @@ public sealed class QuoteHandler(IPriceStore store)
 // BFF 노드 등록(profile·pricing 의 client): 위치 해결은 Registry 하나. sidecar/Consul/xDS 없음
 options.AddClientServerChannel("profile").EnableClient();
 options.AddClientServerChannel("pricing").EnableClient();
-options.UseDiscovery().AddRegistryEndpoint("tcp://registry1:5551");
 
 // pricing 서버 노드 등록(QuoteHandler 를 server 로 노출)
 options.AddClientServerChannel("pricing")
@@ -157,12 +156,10 @@ options.AddClientServerChannel("pricing")
     .AddRequestHandler<QuoteHandler>();
 
 // 운영: standalone Registry 를 다른 프로세스에서 조회
-builder.Services.AddZLinkRegistryQueryClient(query =>
 {
     query.Endpoint = "tcp://registry1:5551";
 });
 
-app.MapGet("/admin/topology", async (IZLinkRegistryQueryClient registry) =>
     Results.Ok(await registry.TopologyAsync()));
 
 // correlation·로깅 같은 공통 처리는 filter 로 (gRPC interceptor 대체)
@@ -195,7 +192,6 @@ public sealed class CorrelationFilter(ILogger<CorrelationFilter> log) : IZLinkHa
 | 위치/분배 | Consul/xDS + Envoy `DestinationRule` | `UseDiscovery`  + Registry |
 | deadline | `deadline:` 인자 | `.Timeout(...)` |
 | retry/circuit | Polly(앱) | Polly/filter(앱) — 동일 |
-| 관측 | Envoy telemetry + OTel collector | `IZLinkRegistryQueryClient` + `AddZLinkMonitoring` |
 
 ## 5. 아키텍처 비교 — 컴포넌트와 메시지 흐름
 

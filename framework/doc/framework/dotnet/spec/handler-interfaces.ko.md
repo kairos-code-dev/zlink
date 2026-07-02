@@ -75,7 +75,6 @@
 | value | `ZLinkStreamError` | stream error detail + errno helper | 4.4 |
 | value | `ZLinkDispatchMode` | dispatch activation/performance mode enum | 4.4.3 |
 | value | `ZLinkSocketEventKind`, `ZLinkSocketEvent` | socket runtime event | 10.3 |
-| value | `ZLinkRegistryEventKind`, `ZLinkRegistryEvent` | registry runtime event | 10.3 |
 | value | `ZLinkSpotEventKind`, `ZLinkSpotEvent` | spot runtime event | 10.3 |
 | options | `IZLinkMonitoringOptions` | runtime monitoring source 등록 옵션 | 10.3 |
 | options | `IZLinkDispatchOptions` | dispatch mode configuration | 4.4.3 |
@@ -98,8 +97,6 @@
 | filter | `IZLinkHandlerFilter` | handler 전후 공통 처리 | 8 |
 | filter | `ZLinkHandlerInvocation` | filter pipeline 호출 context | 8 |
 | filter | `ZLinkHandlerDelegate` | filter pipeline next delegate | 8 |
-| registry | `IZLinkRegistryQuery` | in-process Registry 조회 | 10.1 |
-| registry | `IZLinkRegistryQueryClient` | 원격 Registry 조회 | 10.2 |
 
 ## 3. Context 인터페이스
 
@@ -2489,7 +2486,6 @@ actor id 를 가리키게 된다. 이 경우 configuration 오류로 실패한�
 이 카탈로그에서는 `AddZLinkFramework(...)` 의 builder 표면까지 함께
 고정한다. 이렇게 두는 이유는, 샘플 문서에 등장하는 표면들의 소유자를
 분명히 하기 위해서다. 해당 표면들은 `AddClientServerChannel`,
-`AddFanoutChannel`, `AddSpotMesh`, `UseDiscovery().AddRegistryEndpoint(...)`,
 `UseFilter(...)` 다.
 
 SPOT discovery 와 node 집합은 `AddSpotMesh` 안에서 함께 등록한다.
@@ -2682,14 +2678,11 @@ core socket 기본 send timeout과 같은 1000ms다. 채널별 기본 request ti
 - `AddRouteMesh`
   - route mesh 채널을 등록한다. bind endpoint, socket option, routing option,
     manual connection을 한 builder 안에서 함께 설정한다.
-- `UseDiscovery().AddRegistryEndpoint(...)`
   - 일반 channel 역할들이 공유할 registry endpoint 집합을 등록한다.
-  - `client.UseDiscovery().AddRegistryEndpoint(...)`처럼 역할 아래에 다시 두지 않는다.
 - `UseFilter<TFilter>()`
   - handler filter 타입을 framework pipeline에 등록한다.
 - `AddSpotMesh`
   - SPOT mesh discovery view와 이 프로세스의 단일 `SpotNode`를 함께 등록한다.
-    mesh builder는 자체 `UseDiscovery().AddRegistryEndpoint(...)`와
     `EnableRouter`, `EnablePubSub`, `AddSpotFactory<TSpot>(...)`,
     `AddEntrySpot<TEntrySpot>()`를 노출한다.
     SessionRelay 는 별도 node builder 를 갖지 않고, 같은 프로세스의 router 역할
@@ -2978,9 +2971,7 @@ public interface IZLinkSpotNodeBuilder
 
 public interface IZLinkSpotMeshBuilder
 {
-    IZLinkDiscoveryBuilder UseDiscovery();
 
-    IZLinkSpotMeshBuilder UseRegistrySpotResolver();
 }
 
 public interface IZLinkEntrySpotOptions
@@ -3261,20 +3252,17 @@ Registry 조회 인터페이스는 infrastructure 성격이므로 상세 정의�
 [aspnet-core-registry.ko.md](aspnet-core-registry.ko.md)의 section 7에 있다.
 여기서는 역할만 요약한다.
 
-### 10.1 IZLinkRegistryQuery
 
 같은 프로세스 안의 embedded Registry 를 조회하는 interface 다.
 
 등록 시점과 제공 내용은 다음과 같다.
 
-- `AddZLinkRegistry(...)` 시점에 자동으로 DI 에 등록된다.
 - status, service summary, topology, member peers 를 제공한다.
 
 조회 API 가 비동기인 이유는 두 가지다. registry 가 아직 시작되지 않은
 상태일 수 있고, snapshot 수집도 host lifecycle 과 맞물려 있기 때문이다.
 
 ```csharp
-public interface IZLinkRegistryQuery
 {
     ValueTask<ZLinkRegistryStatus> StatusAsync(
         CancellationToken cancellationToken = default);
@@ -3300,19 +3288,17 @@ public interface IZLinkRegistryQuery
 
 channel 이름 자체가 member peer 집합의 단위가 된다.
 
-### 10.2 IZLinkRegistryQueryClient
 
 다른 프로세스의 Registry 를 원격 조회하는 interface 다.
 
-등록은 `AddZLinkRegistryQueryClient(...)` 로 별도로 한다. topology
 snapshot 만 제공한다.
 
 원격 요청이라는 특성상, 이 interface 역시 비동기로 설계한다.
 
 ### 10.3 runtime monitoring
 
-runtime monitoring 은 운영 표면이다. socket 하부 monitor 와, registry/spot
-의 snapshot diff 를 함께 감싸는 역할이다.
+runtime monitoring 은 운영 표면이다. socket 하부 monitor 와 spot snapshot diff 를 함께
+감싸는 역할이다.
 
 공용 handler shape 는 다음과 같이 두는 편이 자연스럽다.
 
@@ -3322,10 +3308,6 @@ public interface IZLinkMonitoringOptions
     void AddSocketEvents(
         string sourceName,
         params ZLinkSocketEventKind[] events);
-
-    void AddRegistryEvents(
-        string sourceName,
-        TimeSpan interval);
 
     void AddSpotEvents(
         string sourceName,
@@ -3401,17 +3383,14 @@ public readonly record struct ZLinkSocketDiagnostic(
     ZLinkSocketNativeEventType NativeEvent,
     uint NativeValue);
 
-public enum ZLinkRegistryEventKind
 {
     StatusChanged = 0,
     TopologyChanged,
     ServiceSummaryChanged
 }
 
-public readonly record struct ZLinkRegistryEvent(
     string SourceName,
     DateTimeOffset Timestamp,
-    ZLinkRegistryEventKind Event,
     ZLinkRegistryStatus? Status,
     IReadOnlyList<ZLinkRegistryTopologyEntry>? Topology,
     IReadOnlyList<ZLinkRegistryServiceSummaryEntry>? ServiceSummary)
@@ -3795,7 +3774,6 @@ channel 이름의 위치도 정해 둔다. handler class 나 method attribute �
   기본으로 본다.
 - `spotRid` 타입은 `RoutingId` 를 사용한다. transport `RoutingId` 와
   logical spot rid 를 같은 타입으로 노출하지 않는다.
-- `IZLinkRegistryQuery` 와 `IZLinkRegistryQueryClient` 는 묶지 않는다.
   in-process 조회와 원격 조회는 lifecycle, 실패 모델, 제공 범위가 다르기
   때문이다. 그래서 별도의 interface 로 유지한다.
 
@@ -3851,7 +3829,7 @@ interface 설명을 변경하면, 아래 테스트도 함께 조정한다.
 |---------------|-----------|
 | `ScaffoldSmokeTests.PublicSurface_DoesNotExpose_BackendConcreteTypes` | framework public API가 허용된 값 타입 외의 backend concrete type을 직접 노출하지 않는다. |
 | `ScaffoldSmokeTests.PublicSurface_Removes_DirectRouteContracts_And_Exposes_ActorContracts` | direct route 계약은 빠지고 actor/session 계약은 public surface에 남아 있다. |
-| `RegistryAndMonitoringTests.AddZLinkFramework_RegistersValidatedConfigurationAndFilterTypes` | options, codec, filter, channel, stream, spot 등록 표면이 DI 등록 결과에 반영된다. |
+| `ScaffoldSmokeTests.FrameworkRoot_IsDiscoverable_FromTestRuntime` | framework root type 이 test runtime 에서 발견되고 public 등록 표면이 조립된다. |
 | `HandlerResultAwaiterTests.AwaitAsync_Returns_ValueTaskOfT_Result` | `ValueTask<T>` handler 결과를 값 타입 boxing 여부와 무관하게 기다리고 실제 reply 값을 반환한다. |
 | `ProtocolTests.SpotActorRegistry_DoesNot_Resolve_Request_To_Send_Handler` | Entry Spot/user Spot actor request packet 이 send handler 로 fallback dispatch 되지 않고, send/request 밖 stream kind 도 actor packet 으로 처리되지 않는다. |
 | `LocalSessionRelayTests.LocalSessionActorDispatch_Relays_Stream_Request_And_Replies_From_Request_Handler` | local actor relay 도 request handler 반환값으로 stream response 를 작성한다. |

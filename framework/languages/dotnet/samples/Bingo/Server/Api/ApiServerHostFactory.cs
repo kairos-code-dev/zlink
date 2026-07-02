@@ -24,7 +24,6 @@ public static class ApiServerHostFactory
                 .TraceLabel("api");
             options.AddHandlersFromAssemblyOf(typeof(ApiServerHostFactory));
             options.Codecs.Use(ZLinkProtobufCodec.Default);
-            options.UseDiscovery().AddRegistryEndpoint(topology.RegistryRouterEndpoint);
             options.AddClientServerChannel(SampleNames.ApiChannel)
                 .EnableServer(node.ChannelEndpoint)
                 .SetRoutingId(node.RouteRid)

@@ -9,9 +9,6 @@ event 를 framework event 로 바꾸고, registry 와 Spot 은 snapshot diff 로
 ```ts
 @zlinkRuntimeEventHandler()
 export class RegistryMonitor
-  implements ZLinkRuntimeEventHandler<ZLinkRegistryEvent> {
-  async handle(event: ZLinkRegistryEvent) {
-    if (event.event === ZLinkRegistryEventKind.TopologyChanged) {
       console.log(event.topology?.length ?? 0);
     }
   }

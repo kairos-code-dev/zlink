@@ -355,11 +355,6 @@ callback also succeeds and is deferred until the callback returns.
 Discovery, Registry, and SPOT runtime state is observed through snapshot and
 query APIs rather than a separate public event stream.
 
-- Discovery: `zlink_discovery_member_peers()`,
-  `zlink_discovery_resolve_spot()`, `zlink_discovery_resolve_actor()`
-- Registry: `zlink_registry_status()`,
-  `zlink_registry_service_summary()`,
-  `zlink_registry_topology()`
 - SpotNode: `zlink_spot_node_status()`,
   `zlink_spot_node_peers()`,
   `zlink_spot_node_subjects()`,
@@ -367,10 +362,6 @@ query APIs rather than a separate public event stream.
   `zlink_spot_node_spots()`,
   `zlink_spot_node_actors()`,
   `zlink_spot_actors()`
-- Registry query client: `zlink_registry_query_client_new()`,
-  `zlink_registry_query_client_connect()`,
-  `zlink_registry_query_client_topology()`,
-  `zlink_registry_query_client_destroy()`
 
 Callers that need transition detection compare successive snapshots or query
 results in application code. This keeps the public contract aligned with

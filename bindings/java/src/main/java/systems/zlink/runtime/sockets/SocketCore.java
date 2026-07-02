@@ -19,7 +19,6 @@ import systems.zlink.contracts.core.RoutingId;
 import systems.zlink.contracts.eventing.SocketMonitor;
 import systems.zlink.contracts.messaging.Message;
 import systems.zlink.contracts.messaging.Received;
-import systems.zlink.contracts.service.discovery.Discovery;
 import systems.zlink.contracts.sockets.*;
 import systems.zlink.contracts.errors.ZlinkException;
 import systems.zlink.runtime.eventing.NativeMonitorSocket;
@@ -90,7 +89,6 @@ final class SocketCore {
     private Arena streamPacketCallbackArena;
     private final ConcurrentHashMap<Integer, RoutingId> routingIdCache =
       new ConcurrentHashMap<>();
-    private volatile boolean discoveryAttached;
 
     SocketCore(NativeSocketRuntime socket) {
         this.socket = socket;
@@ -106,7 +104,6 @@ final class SocketCore {
     }
 
     void connect(String endpoint) {
-        failIfDiscoveryAttached("zlink_connect");
         try (Arena arena = Arena.ofConfined()) {
             MemorySegment addr = arena.allocateFrom(endpoint, StandardCharsets.UTF_8);
             int rc = Native.connect(socket.handle(), addr);
@@ -116,7 +113,6 @@ final class SocketCore {
     }
 
     void unbind(String endpoint) {
-        failIfDiscoveryAttached("zlink_unbind");
         try (Arena arena = Arena.ofConfined()) {
             MemorySegment addr = arena.allocateFrom(endpoint, StandardCharsets.UTF_8);
             int rc = Native.unbind(socket.handle(), addr);
@@ -126,7 +122,6 @@ final class SocketCore {
     }
 
     void disconnect(String endpoint) {
-        failIfDiscoveryAttached("zlink_disconnect");
         try (Arena arena = Arena.ofConfined()) {
             MemorySegment addr = arena.allocateFrom(endpoint, StandardCharsets.UTF_8);
             int rc = Native.disconnect(socket.handle(), addr);
@@ -137,7 +132,6 @@ final class SocketCore {
 
     void disconnectRid(RoutingId peerRid) {
         Objects.requireNonNull(peerRid, "peerRid");
-        failIfDiscoveryAttached("zlink_disconnect_rid");
         try (Arena arena = Arena.ofConfined()) {
             byte[] value = InternalAccess.routingIdTrustedBytes(peerRid);
             MemorySegment nativeRid = arena.allocate(NativeLayouts.ROUTING_ID_LAYOUT);
@@ -151,15 +145,6 @@ final class SocketCore {
             if (rc != 0)
                 throw ZlinkException.fromLastError("zlink_disconnect_rid");
         }
-    }
-
-    void attachDiscovery(Discovery discovery) {
-        Objects.requireNonNull(discovery, "discovery");
-        int rc = Native.socketAttachDiscovery(socket.handle(),
-            InternalAccess.discoveryHandle(discovery));
-        if (rc != 0)
-            throw ZlinkException.fromLastError("zlink_socket_attach_discovery");
-        discoveryAttached = true;
     }
 
     void setTlsServer(String certPem, String keyPem, boolean requireClientCert) {
@@ -400,10 +385,6 @@ final class SocketCore {
         socket.closeInternal();
     }
 
-    boolean discoveryAttached() {
-        return discoveryAttached;
-    }
-
     MemorySegment ensureSendScratch(int length) {
         if (length <= 0)
             return MemorySegment.NULL;
@@ -435,7 +416,6 @@ final class SocketCore {
         streamFramedPacketHandler = null;
         streamUInt32FramedPacketHandler = null;
         streamUInt32FramedNativeHandler = null;
-        discoveryAttached = false;
         callbackSupport.close();
         RuntimeResources.closeArena(receiveCallbackArena);
         RuntimeResources.closeArena(subscribeCallbackArena);
@@ -450,12 +430,6 @@ final class SocketCore {
         RuntimeResources.closeArena(sendScratchArena);
         sendScratchArena = null;
         sendScratch = MemorySegment.NULL;
-    }
-
-    private void failIfDiscoveryAttached(String operation) {
-        if (discoveryAttached) {
-            throw ZlinkException.fromErrno(operation, NativeSocketRuntime.ERRNO_EFSM);
-        }
     }
 
     private Arena installCallback(String callbackName,

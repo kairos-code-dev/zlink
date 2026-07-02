@@ -4,7 +4,6 @@
 
 #include "core/address.hpp"
 #include "sockets/common/socket_base.hpp"
-#include "services/discovery/socket_discovery_attachment.hpp"
 #include "transports/ipc/ipc_address.hpp"
 
 #include "transports/tcp/asio_tcp_listener.hpp"
@@ -30,12 +29,6 @@ int zlink::socket_base_t::bind_inproc_endpoint (const char *endpoint_uri_)
         connect_pending (endpoint_uri_, this);
         endpoint_runtime ().set_last_endpoint (endpoint_uri_);
         options.connected = true;
-        if (_service_attachment
-            && _service_attachment->on_bind_success (endpoint_runtime ().last_endpoint_uri ())
-                 != 0) {
-            (void) term_endpoint_internal (endpoint_runtime ().last_endpoint_uri ().c_str ());
-            return -1;
-        }
     }
     return rc;
 }
@@ -62,12 +55,6 @@ int zlink::socket_base_t::bind_transport_listener (const std::string &protocol_,
           make_unconnected_bind_endpoint_pair (endpoint_runtime ().last_endpoint_uri ()),
           static_cast<own_t *> (listener), NULL);
         options.connected = true;
-        if (_service_attachment
-            && _service_attachment->on_bind_success (endpoint_runtime ().last_endpoint_uri ())
-                 != 0) {
-            (void) term_endpoint_internal (endpoint_runtime ().last_endpoint_uri ().c_str ());
-            return -1;
-        }
         return 0;
     }
 
@@ -90,12 +77,6 @@ int zlink::socket_base_t::bind_transport_listener (const std::string &protocol_,
           make_unconnected_bind_endpoint_pair (endpoint_runtime ().last_endpoint_uri ()),
           static_cast<own_t *> (listener), NULL);
         options.connected = true;
-        if (_service_attachment
-            && _service_attachment->on_bind_success (endpoint_runtime ().last_endpoint_uri ())
-                 != 0) {
-            (void) term_endpoint_internal (endpoint_runtime ().last_endpoint_uri ().c_str ());
-            return -1;
-        }
         return 0;
     }
 #endif
@@ -119,12 +100,6 @@ int zlink::socket_base_t::bind_transport_listener (const std::string &protocol_,
           make_unconnected_bind_endpoint_pair (endpoint_runtime ().last_endpoint_uri ()),
           static_cast<own_t *> (listener), NULL);
         options.connected = true;
-        if (_service_attachment
-            && _service_attachment->on_bind_success (endpoint_runtime ().last_endpoint_uri ())
-                 != 0) {
-            (void) term_endpoint_internal (endpoint_runtime ().last_endpoint_uri ().c_str ());
-            return -1;
-        }
         return 0;
     }
 #endif
@@ -173,12 +148,6 @@ int zlink::socket_base_t::bind_transport_listener (const std::string &protocol_,
           make_unconnected_bind_endpoint_pair (endpoint_runtime ().last_endpoint_uri ()),
           static_cast<own_t *> (listener), NULL);
         options.connected = true;
-        if (_service_attachment
-            && _service_attachment->on_bind_success (endpoint_runtime ().last_endpoint_uri ())
-                 != 0) {
-            (void) term_endpoint_internal (endpoint_runtime ().last_endpoint_uri ().c_str ());
-            return -1;
-        }
         return 0;
     }
 #endif

@@ -3,8 +3,7 @@ namespace Zlink.Framework.Runtime.Host;
 internal sealed class ZLinkSpotRouteEgressDispatcher(
     ZLinkFrameworkRegistration registration,
     Func<string, ZLinkRouteChannelRuntime> getRouteChannel,
-    Func<string, ZLinkSpotNodeRuntime?> getRouteBridgeOwner,
-    Func<string, IZLinkBackendDiscovery?> getRegistrySpotDiscovery)
+    Func<string, ZLinkSpotNodeRuntime?> getRouteBridgeOwner)
 {
     public bool CanHandle(string localEgressChannelName)
     {
@@ -56,8 +55,7 @@ internal sealed class ZLinkSpotRouteEgressDispatcher(
             return new RouteEgressTarget(
                 localEgressChannelName,
                 getRouteChannel,
-                getRouteBridgeOwner,
-                getRegistrySpotDiscovery);
+                getRouteBridgeOwner);
 
         throw new ZLinkConfigurationException(
             $"Routed SPOT egress channel '{localEgressChannelName}' is not a registered RouteMesh channel.");
@@ -86,46 +84,14 @@ internal sealed class ZLinkSpotRouteEgressDispatcher(
     private sealed class RouteEgressTarget(
         string localEgressChannelName,
         Func<string, ZLinkRouteChannelRuntime> getRouteChannel,
-        Func<string, ZLinkSpotNodeRuntime?> getRouteBridgeOwner,
-        Func<string, IZLinkBackendDiscovery?> getRegistrySpotDiscovery)
+        Func<string, ZLinkSpotNodeRuntime?> getRouteBridgeOwner)
         : IEgressTarget
     {
         public bool TryResolveTargetPeerRid(
             RoutingId targetSpotRid,
             out RoutingId targetPeerRid)
         {
-            var routeChannel = getRouteChannel(localEgressChannelName);
-            if (routeChannel.Discovery is null)
-            {
-                var registryDiscovery = getRegistrySpotDiscovery(localEgressChannelName);
-                if (registryDiscovery is not null)
-                    if (TryResolveRegistrySpotDiscovery(
-                            registryDiscovery,
-                            targetSpotRid,
-                            out targetPeerRid))
-                        return true;
-
-                return TryResolveBridgeOwnerRid(out targetPeerRid);
-            }
-
-            try
-            {
-                targetPeerRid = routeChannel.Discovery.ResolveSpot(targetSpotRid).OwnerNodeRid;
-                return true;
-            }
-            catch (ZlinkConfigException error) when (error.NativeErrno is 2 or 95)
-            {
-                var registryDiscovery = getRegistrySpotDiscovery(localEgressChannelName);
-                if (registryDiscovery is not null)
-                    if (TryResolveRegistrySpotDiscovery(
-                            registryDiscovery,
-                            targetSpotRid,
-                            out targetPeerRid))
-                        return true;
-
-                targetPeerRid = default;
-                return false;
-            }
+            return TryResolveBridgeOwnerRid(out targetPeerRid);
         }
 
         public async ValueTask SendAsync(
@@ -198,23 +164,6 @@ internal sealed class ZLinkSpotRouteEgressDispatcher(
                     timeout,
                     cancellationToken)
                 .ConfigureAwait(false);
-        }
-
-        private bool TryResolveRegistrySpotDiscovery(
-            IZLinkBackendDiscovery discovery,
-            RoutingId targetSpotRid,
-            out RoutingId targetPeerRid)
-        {
-            try
-            {
-                targetPeerRid = discovery.ResolveSpot(targetSpotRid).OwnerNodeRid;
-                return true;
-            }
-            catch (ZlinkConfigException error) when (error.NativeErrno is 2 or 95)
-            {
-                targetPeerRid = default;
-                return false;
-            }
         }
 
         private bool TryResolveBridgeOwnerRid(out RoutingId targetPeerRid)

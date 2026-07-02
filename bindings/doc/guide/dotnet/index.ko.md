@@ -223,11 +223,9 @@ C 코어(`zlink.h`)에서 넘어오거나 다른 언어 바인딩과 비교할 �
 | 구독 | `zlink_set_subscription` / `zlink_subscribe_part` | `socket.SetSubscription(...)` / `socket.Subscribe(TopicMessage)` |
 | 모니터 | `zlink_socket_monitor_open` / `_recv` | `socket.MonitorOpen(...)` / `monitor.Recv()` |
 | 폴러 / 타이머 | `zlink_poller_*` / `zlink_timer_*` | `Zlink.CreatePoller()` / `Zlink.CreateTimer()` |
-| discovery | `zlink_discovery_new` / `_connect_registry` | `ctx.CreateDiscovery(...)` / `IDiscovery.ConnectRegistry(...)` |
 | spot node | `zlink_spot_node_new` / `_set_router_bind` | `ctx.CreateSpotNode()` / `node.SetRouterBind(...)` |
 | spot | `zlink_spot_new` / `zlink_spot_publish_part` | `node.CreateSpot()` / `spot.Publish(topic)...` |
 | actor | `zlink_spot_node_actor_new` / `_actor_join_spot` | `node.CreateActor(id)` / `actor.Join(spot)...` |
-| registry | `zlink_registry_new` / `_bind` | `ctx.CreateRegistry()` / `IRegistry.Bind(...)` |
 | 프록시 | `zlink_proxy` / `zlink_proxy_steerable` | `Zlink.Proxy(...)` / `Zlink.ProxySteerable(...)` |
 
 > **이름 규칙**: C의 `snake_case`는 .NET에서 `PascalCase`가 됩니다. C의 `*_part`
@@ -260,7 +258,6 @@ RID 자산이 출력에 포함되는지 확인하세요 (`dotnet publish -r <rid
 | `PubSubRecv` | PUB/SUB 토픽 |
 | `MonitorRecv` | 소켓 모니터 |
 | `StreamRecv`, `StreamPacketCallback` | STREAM + 패킷 콜백 |
-| `DiscoveryRegistry`, `RegistryQuery` | 레지스트리/디스커버리 |
 | `SpotRecv`, `SpotRequestAsync` | SpotNode/Spot |
 | `ActorRoomServer`, `ActorSinglePlayerQueue`, `ActorGatewayRelay` | 액터 |
 

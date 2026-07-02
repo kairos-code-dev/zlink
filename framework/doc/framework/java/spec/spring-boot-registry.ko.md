@@ -11,7 +11,6 @@
 ## 1. Embedded registry
 
 같은 프로세스 안에서 registry를 띄우는 표면이 필요하다. `.NET`의
-`AddZLinkRegistry(...)`에 대응하는 Java 표면은 framework channel 등록과 분리한다.
 Registry만 띄우는 host는 `@EnableZLinkFramework` 없이도 만들 수 있어야 한다.
 
 ```java
@@ -42,7 +41,6 @@ framework lifecycle이나 channel client bean을 만들지 않는다. Framework 
 Registry server의 시작과 종료도 Spring host lifetime이 맡는다. application이 registry
 runtime을 직접 만들거나 `start` 함수로 시작하는 public facade는 두지 않는다.
 application은 같은 프로세스 registry를 조회할 때도 runtime 객체가 아니라
-`ZLinkRegistryQuery` bean을 사용한다. registry runtime 구현은 Spring lifecycle bean
 뒤에 숨기며, public constructor나 public `start` 함수로 노출하지 않는다.
 
 option은 아래와 같다(필수: `pubEndpoint`, `routerEndpoint`).
@@ -66,20 +64,14 @@ host와 framework host가 같은 프로세스에 있더라도 registry option be
 
 ## 2. Query surface
 
-- in-process query: `ZLinkRegistryQuery`
-- remote query: `ZLinkRegistryQueryClient`
 
 운영 화면이나 warm-up은 이 조회 표면으로 설명하는 편이 맞다.
 
-embedded registry를 등록하면 `ZLinkRegistryQuery` bean도 함께 등록한다. Registry가
-다른 프로세스에서 동작하면 `.NET`의 `AddZLinkRegistryQueryClient(...)`에 대응하는
 별도 configurer를 사용한다.
 
 ```java
 @Configuration
-public class RegistryQueryClientConfig {
     @Bean
-    ZLinkRegistryQueryClientCustomizer registryQueryClientCustomizer() {
         return options -> {
             options.setEndpoint("tcp://127.0.0.1:5552");
         };
@@ -87,12 +79,10 @@ public class RegistryQueryClientConfig {
 }
 ```
 
-`ZLinkRegistryQuery`와 `ZLinkRegistryQueryClient`는 하나로 합치지 않는다. 전자는
 같은 프로세스의 registry runtime snapshot을 읽고, 후자는 remote query protocol을
 사용한다.
 
 ```java
-public interface ZLinkRegistryQuery {
     CompletionStage<ZLinkRegistryStatus> status();
     CompletionStage<List<ZLinkRegistryServiceSummaryEntry>> serviceSummary(
         ZLinkRegistryServiceSummaryFilter filter);
@@ -101,14 +91,11 @@ public interface ZLinkRegistryQuery {
     CompletionStage<List<ZLinkMemberPeerEntry>> memberPeers(String channelName);
 }
 
-public interface ZLinkRegistryQueryClient extends AutoCloseable {
     CompletionStage<List<ZLinkRegistryTopologyEntry>> topology(
         ZLinkRegistryTopologyFilter filter);
 }
 ```
 
-remote query client(`ZLinkRegistryQueryClient`)는 `topology(...)` 하나만 노출한다.
-status, service summary, member peer 조회는 in-process `ZLinkRegistryQuery` 전용이다.
 
 query client는 hidden retry를 하지 않는다. 연결 실패와 timeout은 호출자가 관찰할 수
 있는 실패로 반환한다.
@@ -137,7 +124,6 @@ startup 순서는 아래와 같다.
 1. registry option validation
 2. registry backend context 생성
 3. registry pub/router endpoint bind
-4. `ZLinkRegistryQuery` bean ready
 5. framework runtime start
 
 shutdown은 반대 순서다. framework runtime을 먼저 멈추고 registry endpoint를 닫는다.
@@ -148,11 +134,8 @@ shutdown은 반대 순서다. framework runtime을 먼저 멈추고 registry end
 
 - `pubEndpoint` 누락은 startup validation 오류다.
 - `routerEndpoint` 누락은 startup validation 오류다.
-- embedded registry 등록 시 `ZLinkRegistryQuery` bean이 resolve된다.
-- remote query client 등록 시 `ZLinkRegistryQueryClient` bean이 resolve된다.
 - remote query client는 topology snapshot을 읽을 수 있다.
 - Registry와 framework를 함께 등록한 host에서 registry가 먼저 bind된다.
-- request hot path는 `ZLinkRegistryQuery`를 직접 호출하지 않는다.
 
 ---
 <!-- framework-adapter-nav:bottom:start -->

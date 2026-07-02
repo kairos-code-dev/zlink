@@ -26,8 +26,6 @@
 | `core/include/zlink/eventing/api.h` | socket monitor, monitor snapshot, poll/poller, timer |
 | `core/include/zlink/service/spot.h` | SPOT handle, SPOT node, Actor operation, route bridge, publisher handle |
 | `core/include/zlink/service_common.h` | service 계층 공통 조회 타입 |
-| `core/include/zlink/service/registry.h` | registry 생성, 구성, topology, query client, registry snapshot |
-| `core/include/zlink/service/discovery.h` | discovery 생성, registry 연결, SPOT/Actor resolve, discovery peer snapshot |
 | `core/include/zlink_enum.h` | 공개 enum domain |
 | `core/include/zlink_errno.h` | 공개 errno domain |
 
@@ -46,8 +44,6 @@ translation unit이 함께 include하더라도 내부 구현 계약이며 public
 | [monitoring.ko.md](monitoring.ko.md) | 소켓 모니터, monitor snapshot, 피어 검사 |
 | [events.ko.md](events.ko.md) | canonical 이벤트 카탈로그와 readiness 의미 |
 | [service/README.ko.md](service/README.ko.md) | 서비스 계층 공통 개념과 문서 책임 분리 |
-| [service/registry.ko.md](service/registry.ko.md) | 서비스 레지스트리 생성, 구성, 클러스터링 |
-| [service/discovery.ko.md](service/discovery.ko.md) | 서비스 디스커버리, 구독, 피어 조회 |
 | [service/spot.ko.md](service/spot.ko.md) | SPOT 토픽 기반 PUB/SUB, route bridge, routed 메시징 |
 | [polling.ko.md](polling.ko.md) | 프록시 헬퍼 및 기능 조회 |
 | [utilities.ko.md](utilities.ko.md) | 타이머, 스레드, 스톱워치, 아토믹 |

@@ -26,7 +26,6 @@ internal static class FixtureSamples
         builder.Services.AddZLinkFramework(options =>
         {
             options.AddHandlersFromAssemblyOf<FixtureSendHandler>();
-            options.UseDiscovery().AddRegistryEndpoint("tcp://127.0.0.1:7100");
 
             {
                 var channel = options.AddClientServerChannel("orders");
@@ -51,7 +50,6 @@ internal static class FixtureSamples
         builder.Services.AddScoped<FixtureSpotSubscriptionHandler>();
         builder.Services.AddZLinkFramework(options =>
         {
-            options.UseDiscovery().AddRegistryEndpoint("tcp://127.0.0.1:7300");
             {
                 var spotMesh = options.AddSpotMesh("game.stage");
                 {
@@ -88,26 +86,14 @@ internal static class FixtureSamples
 
     public static IHostApplicationBuilder CreateRegistryBuilder()
     {
-        var builder = Host.CreateApplicationBuilder();
-        builder.Services.AddZLinkRegistry(options =>
-        {
-            options.PubEndpoint = "tcp://127.0.0.1:7501";
-            options.RouterEndpoint = "tcp://127.0.0.1:7502";
-        });
-        return builder;
+        throw new NotSupportedException("The core registry runtime has been removed.");
     }
 
     public static IHostApplicationBuilder CreateMonitoringBuilder()
     {
         var builder = Host.CreateApplicationBuilder();
-        builder.Services.AddZLinkRegistry(options =>
-        {
-            options.PubEndpoint = "tcp://127.0.0.1:7601";
-            options.RouterEndpoint = "tcp://127.0.0.1:7602";
-        });
         builder.Services.AddZLinkFramework(options =>
         {
-            options.UseDiscovery().AddRegistryEndpoint("tcp://127.0.0.1:7602");
 
             {
                 var channel = options.AddClientServerChannel("orders");
@@ -131,7 +117,6 @@ internal static class FixtureSamples
         builder.Services.AddZLinkMonitoring(options =>
         {
             options.AddSocketEvents("orders.server", ZLinkSocketEventKind.ConnectionReady);
-            options.AddRegistryEvents("registry", TimeSpan.FromMilliseconds(250));
             options.AddSpotEvents("stage-node", TimeSpan.FromMilliseconds(250));
         });
         return builder;
@@ -143,7 +128,6 @@ internal static class FixtureSamples
         builder.Services.AddScoped<FixtureActorPacketSession>();
         builder.Services.AddZLinkFramework(options =>
         {
-            options.UseDiscovery().AddRegistryEndpoint("tcp://127.0.0.1:7700");
             {
                 var stream = options.AddStreamNode("stream.actor");
                 stream.Bind("tcp://127.0.0.1:7701");

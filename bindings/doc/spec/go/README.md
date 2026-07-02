@@ -252,7 +252,6 @@ Go construction is exposed through public constructors and resource methods.
 - `Context.PairSocket()`, `DealerSocket()`, `RouterSocket()`, `PubSocket()`,
   `SubSocket()`, `XPubSocket()`, `XSubSocket()`, and `StreamSocket()` create
   runtime socket implementations.
-- `Context.Registry()`, `Discovery(...)`, `RegistryQueryClient()`,
   `SpotNode()`, and `SpotNodeWithOptions(...)` create service-layer
   implementations.
 - `Spot` handles are obtained through `SpotNode.Spot()`,

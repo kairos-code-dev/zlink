@@ -13,7 +13,7 @@ import { configureSocketChannelName } from './socket_base';
 import { normalizeReplyFlags } from './socket_submit_errors';
 import type { RuntimeContext as Context } from '../core/context';
 import { configCall, submitNativeError } from '../errors/native_errors';
-import { getNativeHandle, NativeHandle } from '../handles/native_handle';
+import { getNativeHandle } from '../handles/native_handle';
 import { executeNativeRequest } from '../messaging/request_executor';
 import { startRequestProgress } from '../messaging/request_progress';
 import { requireNative } from '../native/native';
@@ -47,11 +47,6 @@ export class RouterSocket extends RoutedMessageSocket {
         native.handleGetRoutingId(getNativeHandle(this)) as Buffer
       )
     );
-  }
-  attachDiscovery(discovery: NativeHandle): void {
-    configCall('socket discovery attachment failed', () => {
-      native.socketAttachDiscovery(getNativeHandle(this), getNativeHandle(discovery));
-    });
   }
   request(peerRid: RoutingId): RequestOperation {
     return new RuntimeRequestOperation((parts, cbOrTimeout, opFlags, opTimeout) =>

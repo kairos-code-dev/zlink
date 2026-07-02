@@ -12,13 +12,11 @@ ZLinkRegistryModule.forRoot({
 });
 ```
 
-같은 프로세스에서는 `ZLINK_REGISTRY_QUERY` token(주입된 객체는 `ZLinkRegistryQuery` 계약)으로 status, service summary,
 topology, member peers 를 조회한다. query 는 lazy startup 의미를 가진다.
 
 ## 2. remote query client
 
 ```ts
-ZLinkRegistryQueryClientModule.forRoot({
   endpoint: 'tcp://registry:5551',
 });
 ```

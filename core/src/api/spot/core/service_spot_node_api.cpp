@@ -533,14 +533,3 @@ zlink_spot_node_internal_sockets (void *node_,
         return zlink::config_result_internal::from_rc (-1);
     return zlink::config_result_internal::from_rc (copy_snapshot_rows (rows, entries_, count_));
 }
-
-zlink_config_result_t zlink_spot_node_attach_discovery (void *node_, void *discovery_)
-{
-    zlink::spot_node_t *node = zlink::spot_node_access_t::from_handle (node_);
-    if (!node) {
-        errno = EFAULT;
-        return ZLINK_CONFIG_INVALID_HANDLE;
-    }
-    return zlink::config_result_internal::from_rc (
-      zlink::spot_node_access_t::attach_discovery (node, discovery_));
-}

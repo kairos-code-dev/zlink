@@ -10,7 +10,7 @@ import {
 import { configureSocketChannelName } from './socket_base';
 import type { RuntimeContext as Context } from '../core/context';
 import { configCall } from '../errors/native_errors';
-import { getNativeHandle, NativeHandle } from '../handles/native_handle';
+import { getNativeHandle } from '../handles/native_handle';
 import { executeNativeRequest } from '../messaging/request_executor';
 import { startRequestProgress } from '../messaging/request_progress';
 import { requireNative } from '../native/native';
@@ -41,11 +41,6 @@ export class DealerSocket extends MessageSocket {
         requireNative().handleGetRoutingId(getNativeHandle(this)) as Buffer
       )
     );
-  }
-  attachDiscovery(discovery: NativeHandle): void {
-    configCall('socket discovery attachment failed', () => {
-      requireNative().socketAttachDiscovery(getNativeHandle(this), getNativeHandle(discovery));
-    });
   }
   request(): RequestOperation {
     return new RuntimeRequestOperation((parts, cbOrTimeout, opFlags, opTimeout) =>

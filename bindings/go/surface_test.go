@@ -221,9 +221,6 @@ func TestSurfaceCapabilities(t *testing.T) {
 	if !hasMethod((*zlink.SpotNode)(nil), "Status") {
 		t.Fatalf("SpotNode should expose Status")
 	}
-	if !hasMethod((*zlink.SpotNode)(nil), "AttachDiscovery") {
-		t.Fatalf("SpotNode should expose AttachDiscovery")
-	}
 	if !hasMethod((*zlink.SpotNode)(nil), "CreateRouteBridge") {
 		t.Fatalf("SpotNode should expose CreateRouteBridge")
 	}
@@ -311,83 +308,14 @@ func TestSurfaceCapabilities(t *testing.T) {
 	if hasMethod((*zlink.PubSocket)(nil), "ReceiveSubscriptionEvent") {
 		t.Fatalf("PubSocket should not expose ReceiveSubscriptionEvent")
 	}
-	if !hasMethod((*zlink.Context)(nil), "Registry") {
-		t.Fatalf("Context should expose Registry")
+	if hasMethod((*zlink.Context)(nil), "Registry") {
+		t.Fatalf("Context should not expose Registry")
 	}
-	if !hasMethod((*zlink.Context)(nil), "Discovery") {
-		t.Fatalf("Context should expose Discovery")
+	if hasMethod((*zlink.Context)(nil), "Discovery") {
+		t.Fatalf("Context should not expose Discovery")
 	}
-	if !hasMethod((*zlink.Context)(nil), "RegistryQueryClient") {
-		t.Fatalf("Context should expose RegistryQueryClient")
-	}
-	if !hasMethod((*zlink.Context)(nil), "Options") {
-		t.Fatalf("Context should expose ContextOptions facade")
-	}
-	if hasMethod((*zlink.Context)(nil), "SetThreadNamePrefix") {
-		t.Fatalf("Context should not expose SetThreadNamePrefix")
-	}
-	if hasMethod((*zlink.Context)(nil), "ThreadNamePrefix") {
-		t.Fatalf("Context should not expose ThreadNamePrefix")
-	}
-	if hasMethod((*zlink.Context)(nil), "SetMaxSockets") {
-		t.Fatalf("Context should not expose direct context option setters")
-	}
-	if hasMethod((*zlink.Context)(nil), "MaxSockets") {
-		t.Fatalf("Context should not expose direct context option getters")
-	}
-	if !hasMethod((*zlink.Registry)(nil), "Topology") {
-		t.Fatalf("Registry should expose Topology")
-	}
-	if !hasMethod((*zlink.Registry)(nil), "Status") {
-		t.Fatalf("Registry should expose Status")
-	}
-	if !hasMethod((*zlink.Discovery)(nil), "MemberPeers") {
-		t.Fatalf("Discovery should expose MemberPeers")
-	}
-	if !hasMethod((*zlink.Discovery)(nil), "GetValue") {
-		t.Fatalf("Discovery should expose GetValue")
-	}
-	if hasMethod((*zlink.Discovery)(nil), "GetMetadata") {
-		t.Fatalf("Discovery should not expose GetMetadata")
-	}
-	if !hasMethod((*zlink.Discovery)(nil), "BindRoute") {
-		t.Fatalf("Discovery should expose BindRoute")
-	}
-	if !hasMethod((*zlink.Discovery)(nil), "UnbindRoute") {
-		t.Fatalf("Discovery should expose UnbindRoute")
-	}
-	if !hasMethod((*zlink.Discovery)(nil), "ResolveRoute") {
-		t.Fatalf("Discovery should expose ResolveRoute")
-	}
-	if !hasMethod((*zlink.Discovery)(nil), "SetSpotOwnerSyncEnabled") {
-		t.Fatalf("Discovery should expose SetSpotOwnerSyncEnabled")
-	}
-	if !hasMethod((*zlink.Discovery)(nil), "SpotOwnerSyncEnabled") {
-		t.Fatalf("Discovery should expose SpotOwnerSyncEnabled")
-	}
-	if !hasMethod((*zlink.Discovery)(nil), "SetActorRouteSyncEnabled") {
-		t.Fatalf("Discovery should expose SetActorRouteSyncEnabled")
-	}
-	if !hasMethod((*zlink.Discovery)(nil), "ActorRouteSyncEnabled") {
-		t.Fatalf("Discovery should expose ActorRouteSyncEnabled")
-	}
-	if hasMethod((*zlink.Discovery)(nil), "MonitorOpen") {
-		t.Fatalf("Discovery should not expose MonitorOpen")
-	}
-	if !hasMethod((*zlink.Discovery)(nil), "ResolveSpot") {
-		t.Fatalf("Discovery should expose ResolveSpot")
-	}
-	if hasMethod((*zlink.Discovery)(nil), "SetDealerPeerMode") {
-		t.Fatalf("Discovery should not expose SetDealerPeerMode")
-	}
-	if !hasMethod((*zlink.Registry)(nil), "SetTLSServer") {
-		t.Fatalf("Registry should expose SetTLSServer")
-	}
-	if !hasMethod((*zlink.Registry)(nil), "SetTLSClient") {
-		t.Fatalf("Registry should expose SetTLSClient")
-	}
-	if !hasMethod((*zlink.Discovery)(nil), "SetTLSClient") {
-		t.Fatalf("Discovery should expose SetTLSClient")
+	if hasMethod((*zlink.Context)(nil), "RegistryQueryClient") {
+		t.Fatalf("Context should not expose RegistryQueryClient")
 	}
 	if !hasMethod((*zlink.SpotNode)(nil), "SetTLSServer") {
 		t.Fatalf("SpotNode should expose SetTLSServer")
@@ -518,15 +446,11 @@ func TestSurfaceActorCapabilities(t *testing.T) {
 	if !hasMethod((*zlink.StreamSocket)(nil), "BindActor") {
 		t.Fatalf("StreamSocket should expose BindActor")
 	}
-		if !hasMethod((*zlink.StreamSocket)(nil), "UnbindActor") {
+	if !hasMethod((*zlink.StreamSocket)(nil), "UnbindActor") {
 		t.Fatalf("StreamSocket should expose UnbindActor")
 	}
 	if !hasMethod((*zlink.StreamSocket)(nil), "SendBoundActor") {
 		t.Fatalf("StreamSocket should expose SendBoundActor")
-	}
-
-	if !hasMethod((*zlink.Discovery)(nil), "ResolveActor") {
-		t.Fatalf("Discovery should expose ResolveActor")
 	}
 
 	remote, err := zlink.RemoteActorRef(zlink.NewRoutingID([]byte("node")), "actor")
@@ -828,15 +752,6 @@ func TestSurfaceSpotDoesNotExposeDirectMessaging(t *testing.T) {
 	}
 	if hasMethod((*zlink.XPubSocket)(nil), "TopicsCount") {
 		t.Fatalf("XPubSocket should not expose TopicsCount")
-	}
-	if hasMethod((*zlink.Discovery)(nil), "Value") {
-		t.Fatalf("Discovery should not expose Value")
-	}
-	if hasMethod((*zlink.Discovery)(nil), "Metadata") {
-		t.Fatalf("Discovery should not expose Metadata")
-	}
-	if !hasMethod((*zlink.Registry)(nil), "Status") {
-		t.Fatalf("Registry should expose Status")
 	}
 	if !hasMethod((*zlink.SpotNode)(nil), "Status") {
 		t.Fatalf("SpotNode should expose Status")

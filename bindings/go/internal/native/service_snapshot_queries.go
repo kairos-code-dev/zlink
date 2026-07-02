@@ -69,66 +69,6 @@ func querySpotNodeInternalSockets(fetch func(*C.zlink_spot_node_socket_entry_t, 
 	)
 }
 
-func queryRegistryServiceSummary(fetch func(*C.zlink_registry_service_summary_entry_t, *C.size_t) error) ([]RegistryServiceSummaryEntry, error) {
-	return queryCountedSnapshot(
-		func() (int, error) {
-			var count C.size_t
-			if err := fetch(nil, &count); err != nil {
-				return 0, err
-			}
-			return int(count), nil
-		},
-		func(native []C.zlink_registry_service_summary_entry_t) (int, error) {
-			count := C.size_t(len(native))
-			if err := fetch(&native[0], &count); err != nil {
-				return 0, err
-			}
-			return int(count), nil
-		},
-		registryServiceSummaryEntryFromC,
-	)
-}
-
-func queryMemberPeers(fetch func(*C.zlink_member_peer_entry_t, *C.size_t) error) ([]MemberPeerEntry, error) {
-	return queryCountedSnapshot(
-		func() (int, error) {
-			var count C.size_t
-			if err := fetch(nil, &count); err != nil {
-				return 0, err
-			}
-			return int(count), nil
-		},
-		func(native []C.zlink_member_peer_entry_t) (int, error) {
-			count := C.size_t(len(native))
-			if err := fetch(&native[0], &count); err != nil {
-				return 0, err
-			}
-			return int(count), nil
-		},
-		memberPeerEntryFromC,
-	)
-}
-
-func queryRegistryTopology(fetch func(*C.zlink_registry_topology_entry_t, *C.size_t) error) ([]RegistryTopologyEntry, error) {
-	return queryCountedSnapshot(
-		func() (int, error) {
-			var count C.size_t
-			if err := fetch(nil, &count); err != nil {
-				return 0, err
-			}
-			return int(count), nil
-		},
-		func(native []C.zlink_registry_topology_entry_t) (int, error) {
-			count := C.size_t(len(native))
-			if err := fetch(&native[0], &count); err != nil {
-				return 0, err
-			}
-			return int(count), nil
-		},
-		registryTopologyEntryFromC,
-	)
-}
-
 func queryCountedSnapshot[CEntry any, T any](probe func() (int, error), fill func([]CEntry) (int, error), convert func(CEntry) T) ([]T, error) {
 	const maxSnapshotRetries = 4
 

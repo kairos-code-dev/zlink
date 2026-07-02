@@ -8,7 +8,7 @@ internal sealed partial class SocketKernel : IDisposable
 {
     public void Dispose()
     {
-        Dispose(!_discoveryAttached);
+        Dispose(true);
     }
 
     public void Close()

@@ -65,12 +65,6 @@ internal sealed partial class SpotNode : ISpotNode
         ZlinkException.ThrowConnectIfError(rc);
     }
 
-    void ISpotNode.AttachDiscovery(IDiscovery discovery)
-    {
-        AttachDiscovery(SocketInterop.RequireDiscovery(discovery,
-            nameof(discovery)));
-    }
-
     public ISpotRouteBridge CreateRouteBridge(
         SpotRouteBridgeOptions? options = null)
     {
@@ -84,20 +78,4 @@ internal sealed partial class SpotNode : ISpotNode
         return new SpotNodePublisher(this);
     }
 
-    /// <summary>
-    ///     Attaches this SPOT node to a discovery-owned service lifecycle.
-    /// </summary>
-    /// <remarks>
-    ///     Once attached, the discovery instance becomes the lifecycle owner for
-    ///     the node and is responsible for coordinated shutdown.
-    /// </remarks>
-    public void AttachDiscovery(Discovery discovery)
-    {
-        EnsureNotDisposed();
-        if (discovery == null)
-            throw new ArgumentNullException(nameof(discovery));
-        var rc = NativeMethods.zlink_spot_node_attach_discovery(Handle,
-            discovery.Handle);
-        ZlinkException.ThrowConfigIfError(rc);
-    }
 }

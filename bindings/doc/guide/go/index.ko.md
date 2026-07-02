@@ -263,8 +263,6 @@ if !ok { /* 메시지 없음 */ }
 | `zlink_spot_node_new(ctx, opts)` | `ctx.SpotNode()` |
 | `zlink_spot_node_spot_get_or_new(...)` | `node.Spot()` |
 | `zlink_spot_node_actor_new(...)` | `node.Actor("id")` |
-| `zlink_registry_new(ctx)` | `ctx.Registry()` |
-| `zlink_discovery_new(ctx, ...)` | `ctx.Discovery(type, channel)` |
 
 ---
 

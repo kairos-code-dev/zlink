@@ -6,10 +6,6 @@ public interface IZLinkMonitoringOptions
         string sourceName,
         params ZLinkSocketEventKind[] events);
 
-    void AddRegistryEvents(
-        string sourceName,
-        TimeSpan interval);
-
     void AddSpotEvents(
         string sourceName,
         TimeSpan interval);
@@ -81,21 +77,6 @@ public readonly record struct ZLinkSocketEvent(
     string LocalAddr,
     string RemoteAddr,
     ZLinkSocketDiagnostic? Diagnostic) : IZLinkRuntimeEvent;
-
-public enum ZLinkRegistryEventKind
-{
-    StatusChanged = 0,
-    TopologyChanged = 1,
-    ServiceSummaryChanged = 2
-}
-
-public readonly record struct ZLinkRegistryEvent(
-    string SourceName,
-    DateTimeOffset Timestamp,
-    ZLinkRegistryEventKind Event,
-    ZLinkRegistryStatus? Status,
-    IReadOnlyList<ZLinkRegistryTopologyEntry>? Topology,
-    IReadOnlyList<ZLinkRegistryServiceSummaryEntry>? ServiceSummary) : IZLinkRuntimeEvent;
 
 public enum ZLinkSpotEventKind
 {

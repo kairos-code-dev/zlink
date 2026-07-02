@@ -31,7 +31,6 @@ internal static class PlayHostFactory
                 .MessageFlow(ZLinkMessageFlowLogMode.KeyTransitions)
                 .TraceLogFile(Path.Combine(options.LogDir, $"{options.Rid}-flow.log"))
                 .TraceLabel(options.Rid);
-            framework.UseDiscovery().AddRegistryEndpoint(options.RegistryRouterEndpoint);
             framework.AddRouteMesh(YieldDispatchNames.ControlChannel)
                 .EnableServer(options.ControlEndpoint)
                 .EnableClient()
@@ -51,8 +50,7 @@ internal static class PlayHostFactory
                 .EnableClient()
                 .SetRoutingId(RoutingId.From(options.Rid));
             framework.AddSpotMesh(YieldDispatchNames.SpotChannel)
-                .UseRegistrySpotResolver()
-                .EnableRouter(options.SpotRouterEndpoint)
+                                .EnableRouter(options.SpotRouterEndpoint)
                 .SetRoutingId(RoutingId.From(options.Rid))
                 .EnablePubSub(options.SpotPubEndpoint)
                 .AddEntrySpot<YieldEntrySpot>()

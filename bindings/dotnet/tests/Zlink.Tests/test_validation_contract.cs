@@ -85,15 +85,8 @@ public sealed class test_validation_contract
 
         using var ctx = Zlink.CreateContext();
         using var node = ctx.CreateSpotNode();
-        using var registry = ctx.CreateRegistry();
-        using var query = ctx.CreateRegistryQueryClient();
 
-        Assert.Throws<ArgumentOutOfRangeException>(() =>
-            _ = ctx.CreateDiscovery(AutoConnectType.SpotMesh, overlong));
         Assert.Throws<ArgumentOutOfRangeException>(() => node.SetPubBind(overlong));
-        Assert.Throws<ArgumentOutOfRangeException>(() =>
-            registry.Bind(overlong, "tcp://127.0.0.1:5555"));
-        Assert.Throws<ArgumentOutOfRangeException>(() => query.Connect(overlong));
     }
 
     [Fact]
@@ -198,7 +191,8 @@ public sealed class test_validation_contract
         string maxLength = new string('a', 255);
 
         using var ctx = Zlink.CreateContext();
-        using var discovery = ctx.CreateDiscovery(AutoConnectType.SpotMesh, maxLength);
+        using var node = ctx.CreateSpotNode();
+        node.SetPubBind(CoreTestSupport.NewEndpoint("tcp", maxLength));
     }
 
     [Fact]

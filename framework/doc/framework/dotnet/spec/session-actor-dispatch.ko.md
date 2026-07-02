@@ -1216,7 +1216,6 @@ builder.Services.AddZLinkFramework(options =>
         var mesh =     options.AddSpotMesh("game.rooms");
 
     }
-    options.UseRegistrySpotRemoteAddresses("game");
     // STREAM session 등록 + routed channel 등록 (별도 문서 참고)
 });
 ```
@@ -1227,7 +1226,6 @@ DI 등록 (Play 서버):
 builder.Services.AddZLinkFramework(options =>
 {
     spot.AddActorFactory<PlayerActorFactory>("player");
-    options.UseRegistrySpotRemoteAddresses("game");
     // routed channel 등록 + spot mesh 등록 (별도 문서 참고)
 });
 ```
@@ -1254,7 +1252,6 @@ session route resolver 나 저장소 계약은 두지 않는다.
 이 절은 host 가 framework 를 띄울 때 작성하는 등록 코드 모양을 보여 준다.
 
 ```csharp
-options.UseDiscovery().AddRegistryEndpoint(registryEndpoint);
 
 options.AddRouteMesh("backend")
     .EnableServer(playEndpoint);
@@ -1494,11 +1491,9 @@ handler 를 찾지 못했거나 payload decode 에 실패한 inbound request 는
 
 이 절은 `.NET` 사용자가 connection 이나 topology[^topology] 상태를 점검할 때
 쓸 수 있는 경로를 정리한다. session actor dispatch 전용 diagnostics 인터페이스를
-따로 두지 않는다. registry/discovery 점검은 정식 `IZLinkRegistryQuery`
 ([handler-interfaces.ko.md](handler-interfaces.ko.md) §10) 표면으로 한다.
 운영 점검용이며 session actor dispatch 의 필수 API 는 아니다.
 
-`IZLinkRegistryQuery` 로 확인하는 점검 항목:
 
 - registry view
 - discovery member

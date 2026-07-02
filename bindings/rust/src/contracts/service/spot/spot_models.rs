@@ -6,53 +6,6 @@ use crate::monitor_contracts::MonitorStatus;
 use crate::routing_id::RoutingId;
 use std::marker::PhantomData;
 
-/// How a discovery service automatically wires connections between peers.
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub enum AutoConnectType {
-    /// No auto-connect topology (unset).
-    Invalid,
-    /// A mesh of routed (ROUTER) connections between peers.
-    RouteMesh,
-    /// A client-server star: clients connect to servers.
-    ClientServer,
-    /// A mesh of DEALER connections between peers.
-    DealerMesh,
-    /// A publish/subscribe fan-out from publishers to subscribers.
-    Fanout,
-    /// A mesh of spot connections between peers.
-    SpotMesh,
-}
-
-/// The messaging role a service plays in the topology.
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub enum ServiceRole {
-    /// No role (unset).
-    Invalid,
-    /// A spot.
-    Spot,
-    /// A ROUTER endpoint.
-    Router,
-    /// A DEALER endpoint.
-    Dealer,
-    /// A publisher.
-    Pub,
-    /// A subscriber.
-    Sub,
-}
-
-/// The kind of service a topology entry represents.
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub enum ServiceKind {
-    /// A discovery service.
-    Discovery,
-    /// The subscribe side of a spot.
-    SpotSub,
-    /// The publish side of a spot.
-    SpotPub,
-    /// A plain socket.
-    Socket,
-}
-
 /// The kind of a spot.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum SpotKind {
@@ -169,47 +122,6 @@ pub enum SpotPeerState {
     Connecting,
     /// The peer is connected.
     Connected,
-}
-
-/// The operational state of a registry.
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub enum RegistryState {
-    /// Not yet serving.
-    Idle,
-    /// Serving normally.
-    Active,
-    /// Serving with reduced capability.
-    Degraded,
-    /// In an error state.
-    Error,
-}
-
-/// Where a topology entry was learned from.
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub enum TopologySource {
-    /// Added manually by the application.
-    Manual,
-    /// Learned from a discovery service.
-    Discovery,
-    /// Learned from a service registry.
-    Registry,
-}
-
-/// The lifecycle state of a topology connection.
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub enum TopologyState {
-    /// The peer was discovered but not yet connected.
-    Discovered,
-    /// A connection to the peer is being established.
-    Connecting,
-    /// The peer is connected and usable.
-    Ready,
-    /// The connection to the peer was lost.
-    Lost,
-    /// The connection failed with an error.
-    Error,
-    /// The connection was stopped.
-    Stopped,
 }
 
 /// The messaging pattern a subject belongs to.

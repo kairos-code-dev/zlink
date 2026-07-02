@@ -160,7 +160,6 @@ ZLinkModule.forRoot(
 @Controller('admin')
 export class TopologyController {
   constructor(
-    @Inject(ZLINK_REGISTRY_QUERY) private readonly registry: ZLinkRegistryQuery,
   ) {}
 
   @Get('topology')
@@ -197,7 +196,6 @@ export class CorrelationFilter implements ZLinkHandlerFilter {
 | 위치/분배 | Consul/xDS + Envoy `DestinationRule` | `useDiscovery`  + Registry |
 | deadline | `deadline:` 인자 | `.timeout(...)` |
 | retry/circuit | cockatiel(앱) | cockatiel/filter(앱) — 동일 |
-| 관측 | Envoy telemetry + OTel collector | `ZLinkRegistryQuery` + monitoring 이벤트 |
 
 ## 5. 아키텍처 비교 — 컴포넌트와 메시지 흐름
 

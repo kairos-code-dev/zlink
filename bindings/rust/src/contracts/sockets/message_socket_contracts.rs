@@ -5,7 +5,7 @@ use crate::{
     BindError, CommonSocketOptions, ConfigError, ConnectError, DealerSocketOptions, HandlerError,
     Received, RecvError, RecvFlags,
 };
-use crate::{Discovery, Empty, RequestOp, RoutingId, SendOp};
+use crate::{Empty, RequestOp, RoutingId, SendOp};
 
 /// PAIR socket, a bidirectional one-to-one messaging socket.
 pub struct PairSocket {
@@ -281,12 +281,6 @@ impl DealerSocket {
         trust_system: bool,
     ) -> Result<(), ConfigError> {
         crate::socket::dealer_inner(self).set_tls_client(ca_cert, hostname, trust_system)
-    }
-
-    /// Attaches a discovery service so this socket can reach discovered peers
-    /// without manual `connect`.
-    pub fn attach_discovery(&self, discovery: &Discovery) -> Result<(), ConfigError> {
-        crate::socket::dealer_inner(self).attach_discovery(discovery)
     }
 
     /// Connects to a remote transport address. Connection is asynchronous; this

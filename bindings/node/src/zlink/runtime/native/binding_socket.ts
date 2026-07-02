@@ -69,7 +69,6 @@ export interface SocketNativeBinding {
     parts: unknown,
     flags: number
   ) => void;
-  socketAttachDiscovery: (socket: NativeHandle, discovery: NativeHandle) => void;
   socketBind: (socket: NativeHandle, endpoint: string) => void;
   socketClose: (socket: NativeHandle) => void;
   socketConnect: (socket: NativeHandle, endpoint: string) => void;

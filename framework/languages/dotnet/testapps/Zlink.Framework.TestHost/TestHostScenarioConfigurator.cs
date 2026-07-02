@@ -10,8 +10,7 @@ internal static class TestHostScenarioConfigurator
             case "idle":
                 return;
             case "registry":
-                ConfigureRegistry(services, options);
-                return;
+                throw new InvalidOperationException("The core registry runtime has been removed.");
             case "channel-server":
                 ConfigureChannelServer(services, options);
                 return;
@@ -38,28 +37,12 @@ internal static class TestHostScenarioConfigurator
         }
     }
 
-    private static void ConfigureRegistry(IServiceCollection services, TestHostOptions options)
-    {
-        services.AddZLinkRegistry(registry =>
-        {
-            registry.PubEndpoint = options.RegistryPubEndpoint
-                                   ?? throw new InvalidOperationException(
-                                       "Registry mode requires --registry-pub-endpoint.");
-            registry.RouterEndpoint = options.RegistryRouterEndpoint
-                                      ?? throw new InvalidOperationException(
-                                          "Registry mode requires --registry-router-endpoint.");
-
-            if (options.RegistryId is uint registryId) registry.RegistryId = registryId;
-        });
-    }
-
     private static void ConfigureChannelServer(IServiceCollection services, TestHostOptions options)
     {
         services.AddSingleton(new TestHostEventSink(options.EventFilePath));
         services.AddZLinkFramework(framework =>
         {
             if (!string.IsNullOrWhiteSpace(options.DiscoveryEndpoint))
-                framework.UseDiscovery().AddRegistryEndpoint(options.DiscoveryEndpoint);
 
             {
                 var channel = framework.AddClientServerChannel(options.ChannelName
@@ -104,9 +87,6 @@ internal static class TestHostScenarioConfigurator
         {
             framework.AddHandlersFromAssemblyOf<Program>();
             if (string.IsNullOrWhiteSpace(options.PublisherEndpoint))
-                framework.UseDiscovery().AddRegistryEndpoint(
-                    options.DiscoveryEndpoint
-                    ?? throw new InvalidOperationException("Channel subscriber mode requires --discovery-endpoint."));
 
             {
                 var channel = framework.AddFanoutChannel(options.ChannelName
@@ -126,7 +106,6 @@ internal static class TestHostScenarioConfigurator
         services.AddZLinkFramework(framework =>
         {
             if (!string.IsNullOrWhiteSpace(options.DiscoveryEndpoint))
-                framework.UseDiscovery().AddRegistryEndpoint(options.DiscoveryEndpoint);
 
             {
                 framework.AddFanoutChannel(options.ChannelName
@@ -153,9 +132,6 @@ internal static class TestHostScenarioConfigurator
         services.AddScoped<StartupStageSubscriptionHandler>();
         services.AddZLinkFramework(framework =>
         {
-            framework.UseDiscovery().AddRegistryEndpoint(
-                options.DiscoveryEndpoint
-                ?? throw new InvalidOperationException("SPOT node mode requires --discovery-endpoint."));
             {
                 var spotMesh = framework.AddSpotMesh(options.DiscoveryChannelName
                                                      ?? throw new InvalidOperationException(

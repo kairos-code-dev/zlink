@@ -5,13 +5,12 @@ namespace Zlink.Framework.SampleRegressionTests;
 public sealed class RegressionTests
 {
     [Fact]
-    public void Bingo_Uses_RegistryBacked_Defaults_Without_Sample_Metadata_Store()
+    public void Bingo_Uses_Framework_Defaults_Without_Sample_Metadata_Store()
     {
         var sampleRoot = ResolveSampleRoot("Bingo");
 
         AssertNoSampleRouteStore(sampleRoot);
         AssertNoSampleMetadataStore(sampleRoot);
-        AssertSampleUsesRegistryDiscovery(sampleRoot);
         AssertSessionServerUsesSessionRelay(sampleRoot, true);
         AssertSessionHandlersDoNotResolveActorRemoteAddresses(sampleRoot);
         AssertEnsureActorHandlersReturnSessionRelayRemoteAddresses(sampleRoot);
@@ -21,7 +20,7 @@ public sealed class RegressionTests
     }
 
     [Fact]
-    public void DotNet_Samples_Use_Discovery_Except_TicTacToe()
+    public void DotNet_Samples_Do_Not_Use_Legacy_Registry_Discovery()
     {
         var samplesRoot = ResolveSamplesRoot();
         var offenders = Directory
@@ -30,10 +29,10 @@ public sealed class RegressionTests
             .SelectMany(EnumerateSourceFiles)
             .Select(path => (Path: path, Text: File.ReadAllText(path)))
             .Where(static source =>
-                source.Text.Contains("EnableClient(topology.", StringComparison.Ordinal)
-                || source.Text.Contains("EnableClient(settings.", StringComparison.Ordinal)
-                || source.Text.Contains("ConnectRouter(", StringComparison.Ordinal)
-                || source.Text.Contains("ConnectPeerPub(", StringComparison.Ordinal))
+                source.Text.Contains("UseDiscovery(", StringComparison.Ordinal)
+                || source.Text.Contains("UseRegistrySpotResolver", StringComparison.Ordinal)
+                || source.Text.Contains("AddZLinkRegistry", StringComparison.Ordinal)
+                || source.Text.Contains("AddRegistryEvents", StringComparison.Ordinal))
             .Select(source => Path.GetRelativePath(samplesRoot, source.Path))
             .Order(StringComparer.Ordinal)
             .ToArray();
@@ -368,21 +367,6 @@ public sealed class RegressionTests
         Assert.DoesNotContain("BingoSessionContext", allText, StringComparison.Ordinal);
         Assert.DoesNotContain("SessionRelayPacketContext", allText, StringComparison.Ordinal);
         Assert.DoesNotContain("SessionRelayState", allText, StringComparison.Ordinal);
-    }
-
-    private static void AssertSampleUsesRegistryDiscovery(string sampleRoot)
-    {
-        var allText = string.Join(
-            Environment.NewLine,
-            EnumerateSourceFiles(sampleRoot).Select(File.ReadAllText));
-
-        Assert.Contains(
-            "UseDiscovery().AddRegistryEndpoint(topology.RegistryRouterEndpoint)",
-            allText,
-            StringComparison.Ordinal);
-        Assert.DoesNotContain("UseRegistryActorRemoteAddresses", allText, StringComparison.Ordinal);
-        Assert.DoesNotContain("UseRegistryActorSessionBindings", allText, StringComparison.Ordinal);
-        Assert.DoesNotContain("IZLinkActorSessionClient", allText, StringComparison.Ordinal);
     }
 
     private static void AssertSessionServerUsesSessionRelay(

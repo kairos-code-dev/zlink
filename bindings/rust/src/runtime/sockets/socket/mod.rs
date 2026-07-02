@@ -25,7 +25,6 @@ use std::ptr;
 use std::time::Duration;
 
 use crate::ctx::{context_handle, duration_to_millis};
-use crate::discovery_resource::Discovery;
 use crate::domain::Received;
 use crate::error::{
     BindError, CloseError, ConfigError, ConnectError, HandlerError, RecvError, RecvResult,

@@ -10,7 +10,6 @@
 #include <Runtime/Native/socket_handle.hpp>
 #include <Runtime/Core/context_access.hpp>
 #include <Runtime/Options/option_ids.hpp>
-#include <Runtime/Service/discovery_access.hpp>
 #include <Runtime/Sockets/socket_access.hpp>
 #include <Runtime/Sockets/socket_callback_state.hpp>
 #include <Runtime/Messaging/received_access.hpp>
@@ -116,12 +115,6 @@ void socket_t::set_tls_client (const std::string &ca_cert_,
       zlink_set_tls_client (detail::native_handle (*this), ca, hostname, trust_system_ ? 1 : 0);
     if (rc != 0)
         throw config_error_t (detail::config_result_from_errno (zlink_errno ()), zlink_errno ());
-}
-
-int socket_t::attach_discovery (service::discovery_t &discovery_)
-{
-    return zlink_socket_attach_discovery (detail::native_handle (*this),
-                                          zlink::detail::native_handle (discovery_));
 }
 
 socket_t::socket_t () noexcept :

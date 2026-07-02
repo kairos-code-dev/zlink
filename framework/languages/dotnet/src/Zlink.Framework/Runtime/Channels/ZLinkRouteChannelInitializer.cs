@@ -41,7 +41,6 @@ internal sealed class ZLinkRouteChannelInitializer(
         ZLinkRouteChannelRegistration routedRegistration)
     {
         IZLinkBackendRouterSocket? router = null;
-        IZLinkBackendDiscovery? discovery = null;
         try
         {
             router = adapter.CreateRouterSocket(state.Context);
@@ -53,14 +52,12 @@ internal sealed class ZLinkRouteChannelInitializer(
             router.SetMandatory(true);
             if (!string.IsNullOrWhiteSpace(routedRegistration.BindEndpoint))
                 router.Bind(routedRegistration.BindEndpoint);
-            discovery = AttachDiscoveryIfNeeded(state, adapter, routedRegistration, router);
             var handlers = new ZLinkRouteHandlerRegistry(CreateRouteHandlerDescriptors(routedRegistration));
             var runtime = new ZLinkRouteChannelRuntime(
                 services,
                 registration,
                 routedRegistration,
                 router,
-                discovery,
                 handlers,
                 new ZLinkCompositeRouteInternalPacketDispatcher(
                     new ZLinkActorEntrySpotRouteInternalPacketDispatcher(
@@ -71,8 +68,6 @@ internal sealed class ZLinkRouteChannelInitializer(
         }
         catch
         {
-            if (discovery is not null) discovery.DisposeAsync().AsTask().GetAwaiter().GetResult();
-
             if (router is not null) router.DisposeAsync().AsTask().GetAwaiter().GetResult();
 
             throw;
@@ -127,29 +122,6 @@ internal sealed class ZLinkRouteChannelInitializer(
         }
 
         return owner;
-    }
-
-    private IZLinkBackendDiscovery? AttachDiscoveryIfNeeded(
-        ZLinkFrameworkRuntimeState state,
-        IZLinkChannelBackendAdapter adapter,
-        ZLinkRouteChannelRegistration routedRegistration,
-        IZLinkBackendRouterSocket router)
-    {
-        var discoveryEndpoints = registration.Discovery?.Endpoints;
-        if (routedRegistration.ManualConnections.Count > 0
-            || discoveryEndpoints is null
-            || discoveryEndpoints.Count == 0)
-            return null;
-
-        var discovery = ZLinkBackendDiscoveryFactory.Create(
-            adapter,
-            state.Context,
-            routedRegistration.RouterChannelId,
-            ZLinkAutoConnectType.RouteMesh,
-            discoveryEndpoints);
-        discovery.SpotOwnerSyncEnabled = true;
-        router.AttachDiscovery(discovery);
-        return discovery;
     }
 
     private IEnumerable<ZLinkRouteHandlerDescriptor> CreateRouteHandlerDescriptors(

@@ -63,14 +63,12 @@
   sample은 포함하지 않는다.
 - 서비스 계층 컴포넌트를 구현하는 표면은 다음 샘플을 추가로 포함한다.
   - `discovery_registry_sample` (Discovery + Registry end-to-end)
-  - `registry_query_sample` (RegistryQueryClient로 토폴로지 조회)
 - Actor dispatch 표면을 구현하는 표면은 다음 샘플을 추가로 포함한다.
   - `actor_room_server_sample` (Spot dispatch에서 Actor별 unread state drain)
   - `actor_gateway_relay_sample` (STREAM session에서 remote Actor로 relay)
   - `actor_single_player_queue_sample` (한 사용자 queue를 Actor로 직렬화)
 - 각 샘플은 해당 컴포넌트를 구현한 경우에만 적용된다.
   - Discovery + Registry 미구현 → `discovery_registry_sample` 제외
-  - RegistryQueryClient 미구현 → `registry_query_sample` 제외
   - Actor dispatch 미구현 → `actor_*` 샘플 제외
 
 ## Official Runner Contract
@@ -238,7 +236,6 @@
 - sample은 `zlink_stream_bind_actor()`,
   `zlink_stream_send_bound_actor_part()`,
   `zlink_spot_node_actor_recv_part()`를 기준으로 작성한다.
-- Actor active route 조회가 필요하면 `zlink_discovery_resolve_actor()`를 사용한다.
   generic route lookup을 Actor 주소 조회 sample에 쓰지 않는다.
 
 ## Actor Sample Scenario Rules
@@ -696,7 +693,6 @@
   `spot_request_async_sample` 을 canonical에 포함한다.
 - Discovery + Registry를 구현한 표면은 `discovery_registry_sample` 을
   canonical에 포함한다.
-- RegistryQueryClient를 구현한 표면은 `registry_query_sample` 을 canonical에
   포함한다.
 - Actor dispatch를 구현한 표면은 세 Actor sample을 canonical에 포함한다.
 

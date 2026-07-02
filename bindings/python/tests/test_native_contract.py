@@ -20,6 +20,10 @@ class NativeContractTests(unittest.TestCase):
             "zlink_try_send_rid",
             "zlink_try_publish",
             "zlink_discovery_new_typed",
+            "zlink_discovery_new",
+            "zlink_registry_new",
+            "zlink_socket_attach_discovery",
+            "zlink_spot_node_attach_discovery",
             "zlink_spot_pub_new",
             "zlink_spot_sub_new",
         ):

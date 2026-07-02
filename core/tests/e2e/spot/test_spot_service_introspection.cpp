@@ -787,38 +787,6 @@ static void test_spot_node_default_handle_owner_keeps_defaults_private ()
     TEST_ASSERT_SUCCESS_ERRNO (zlink_ctx_term (ctx));
 }
 
-static void test_discovery_local_value_route_limit_contract ()
-{
-    void *ctx = zlink_ctx_new ();
-    TEST_ASSERT_NOT_NULL (ctx);
-
-    void *discovery = zlink_discovery_new (ctx, ZLINK_AUTO_CONNECT_CLIENT_SERVER, "route-local");
-    TEST_ASSERT_NOT_NULL (discovery);
-
-    int64_t value = 0;
-    TEST_ASSERT_SUCCESS_ERRNO (zlink_discovery_get_value (discovery, &value));
-    TEST_ASSERT_EQUAL_INT64 (0, value);
-
-    TEST_ASSERT_SUCCESS_ERRNO (zlink_discovery_set_value (discovery, -7));
-    TEST_ASSERT_SUCCESS_ERRNO (zlink_discovery_get_value (discovery, &value));
-    TEST_ASSERT_EQUAL_INT64 (-7, value);
-
-    size_t route_value_max_size = 4;
-    TEST_ASSERT_SUCCESS_ERRNO (zlink_set_option (discovery, ZLINK_OPT_ROUTE_VALUE_MAX_SIZE,
-                                                 &route_value_max_size,
-                                                 sizeof (route_value_max_size)));
-    size_t read_size = sizeof (route_value_max_size);
-    size_t route_value_max_size_read = 0;
-    TEST_ASSERT_SUCCESS_ERRNO (zlink_get_option (discovery, ZLINK_OPT_ROUTE_VALUE_MAX_SIZE,
-                                                 &route_value_max_size_read, &read_size));
-    TEST_ASSERT_EQUAL_UINT (sizeof (route_value_max_size_read), read_size);
-    TEST_ASSERT_EQUAL_UINT (route_value_max_size, route_value_max_size_read);
-
-    TEST_ASSERT_SUCCESS_ERRNO (zlink_discovery_destroy (&discovery));
-    TEST_ASSERT_SUCCESS_ERRNO (zlink_ctx_term (ctx));
-}
-
-
 static bool should_run_spot_introspection_test (const char *name_)
 {
     const char *selected = getenv ("ZLINK_TEST_CASE");
@@ -847,7 +815,6 @@ int main (int, char **)
     RUN_SPOT_INTROSPECTION_TEST (test_queue_pub_no_subscriber_success);
     RUN_SPOT_INTROSPECTION_TEST (test_queue_pub_dead_spot_fails);
     RUN_SPOT_INTROSPECTION_TEST (test_spot_node_snapshot_status_peers_subjects);
-    RUN_SPOT_INTROSPECTION_TEST (test_discovery_local_value_route_limit_contract);
 #undef RUN_SPOT_INTROSPECTION_TEST
     return UNITY_END ();
 }

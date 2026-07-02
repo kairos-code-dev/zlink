@@ -31,11 +31,6 @@ internal sealed class ZLinkBackendSpotNodeWrapper(ISpotNode nativeSpotNode) : IZ
         nativeSpotNode.SetPubBind(endpoint);
     }
 
-    public void AttachDiscovery(IZLinkBackendDiscovery discovery)
-    {
-        nativeSpotNode.AttachDiscovery(discovery.RequireNative<IDiscovery>());
-    }
-
     public void ConnectPeer(string endpoint)
     {
         nativeSpotNode.ConnectPeer(endpoint);

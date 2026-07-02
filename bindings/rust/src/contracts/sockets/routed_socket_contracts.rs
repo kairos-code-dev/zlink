@@ -2,8 +2,8 @@
 
 use crate::runtime_bridge::SocketStorage;
 use crate::{
-    BindError, CommonSocketOptions, ConfigError, ConnectError, Discovery, HandlerError, Received,
-    RecvError, RecvFlags, RouterSocketOptions,
+    BindError, CommonSocketOptions, ConfigError, ConnectError, HandlerError, Received, RecvError,
+    RecvFlags, RouterSocketOptions,
 };
 use crate::{Empty, ReplyOp, RequestOp, RoutingId, SendOp};
 
@@ -190,12 +190,6 @@ impl RouterSocket {
         trust_system: bool,
     ) -> Result<(), ConfigError> {
         crate::socket::router_inner(self).set_tls_client(ca_cert, hostname, trust_system)
-    }
-
-    /// Attaches a discovery service so this socket can reach discovered peers
-    /// without manual `connect`.
-    pub fn attach_discovery(&self, discovery: &Discovery) -> Result<(), ConfigError> {
-        crate::socket::router_inner(self).attach_discovery(discovery)
     }
 
     /// Connects to a remote transport address. Connection is asynchronous; this

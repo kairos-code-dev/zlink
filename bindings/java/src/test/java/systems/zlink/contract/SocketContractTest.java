@@ -9,13 +9,10 @@ import systems.zlink.contracts.service.spot.ActorJoinSubmitOperation;
 import systems.zlink.contracts.service.spot.ActorRef;
 import systems.zlink.contracts.service.spot.ActorRoute;
 import systems.zlink.contracts.service.spot.ActorUnbindOperation;
-import systems.zlink.contracts.service.registry.AutoConnectType;
 import systems.zlink.contracts.sockets.CommonSocketOptions;
 import systems.zlink.contracts.core.Context;
 import systems.zlink.contracts.core.Zlink;
 import systems.zlink.contracts.sockets.DealerSocket;
-import systems.zlink.contracts.service.discovery.Discovery;
-import systems.zlink.contracts.service.registry.MemberPeerEntry;
 import systems.zlink.contracts.messaging.Message;
 import systems.zlink.contracts.eventing.MonitorEventType;
 import systems.zlink.contracts.eventing.MonitorStatus;
@@ -28,7 +25,6 @@ import systems.zlink.contracts.sockets.PubSocket;
 import systems.zlink.contracts.sockets.PubSocketOptions;
 import systems.zlink.contracts.messaging.Received;
 import systems.zlink.contracts.sockets.RecvFlags;
-import systems.zlink.contracts.service.registry.Registry;
 import systems.zlink.contracts.service.spot.ReplyOperation;
 import systems.zlink.contracts.errors.ZlinkRequestException;
 import systems.zlink.contracts.service.spot.RequestOperation;
@@ -408,30 +404,12 @@ public class SocketContractTest {
         TestSupport.assumeNative();
 
         try (Context ctx = Zlink.createContext();
-             Registry registry = ctx.createRegistry();
-             Discovery discovery = ctx.createDiscovery(AutoConnectType.CLIENT_SERVER, "svc-tls");
              PairSocket socket = ctx.createPairSocket()) {
-            assertTrue(hasPublicMethod(Registry.class, "setTlsServer",
-                String.class, String.class, boolean.class));
-            assertTrue(hasPublicMethod(Registry.class, "setTlsClient",
-                String.class, String.class, boolean.class));
-            assertFalse(hasPublicMethod(Discovery.class, "setTlsServer",
-                String.class, String.class, boolean.class));
-            assertTrue(hasPublicMethod(Discovery.class, "setTlsClient",
-                String.class, String.class, boolean.class));
             assertTrue(hasPublicMethod(PairSocket.class, "monitorOpen"));
             assertTrue(hasPublicMethod(PairSocket.class, "monitorOpen",
                 systems.zlink.contracts.eventing.MonitorEventType[].class));
             assertFalse(hasPublicMethod(PairSocket.class, "monitorOpen",
                 int.class));
-            assertFalse(hasPublicMethod(Discovery.class, "monitorOpen"));
-
-            String cert = Path.of("tests/certs/server.crt").toAbsolutePath().toString();
-            String key = Path.of("tests/certs/server.key").toAbsolutePath().toString();
-            String ca = Path.of("tests/certs/ca.crt").toAbsolutePath().toString();
-            assertDoesNotThrow(() -> registry.setTlsServer(cert, key, true));
-            assertDoesNotThrow(() -> registry.setTlsClient(ca, "localhost", true));
-            assertDoesNotThrow(() -> discovery.setTlsClient(ca, "localhost", true));
             assertDoesNotThrow(() -> {
                 try (var monitor = socket.monitorOpen()) {
                     assertTrue(monitor.status().sndPendingMsgs() >= 0L);
@@ -547,20 +525,6 @@ public class SocketContractTest {
         assertTrue(hasPublicMethod(SpotNode.class, "routerHighWaterMark", int.class));
         assertTrue(hasPublicMethod(SpotNode.class, "pubSubHwmProfile"));
         assertTrue(hasPublicMethod(SpotNode.class, "pubSubHighWaterMark", int.class));
-        assertTrue(hasPublicMethod(Discovery.class, "resolveSpot",
-            RoutingId.class));
-        assertTrue(hasPublicMethod(Discovery.class, "routeValueMaxSize"));
-        assertTrue(hasPublicMethod(Discovery.class, "bindRoute",
-            int.class, byte[].class, byte[].class));
-        assertTrue(hasPublicMethod(Discovery.class, "unbindRoute",
-            int.class, byte[].class));
-        assertTrue(hasPublicMethod(Discovery.class, "resolveRoute",
-            int.class, byte[].class));
-        assertTrue(hasPublicMethod(Discovery.class, "setActorRouteSyncEnabled",
-            boolean.class));
-        assertTrue(hasPublicMethod(Discovery.class, "isActorRouteSyncEnabled"));
-        assertFalse(hasPublicMethod(Discovery.class, "setDealerPeerMode"));
-
         assertFalse(hasPublicMethod(XPubSocket.class, "onSubscribe"));
         assertFalse(hasPublicMethod(SubSocket.class, "onSubscribe"));
         assertFalse(hasPublicMethod(XSubSocket.class, "onSubscribe"));
@@ -780,14 +744,10 @@ public class SocketContractTest {
     @Test
     public void attachDiscoveryIsOnlyExposedOnSupportedSocketTypes() {
         assertFalse(hasPublicMethod(PairSocket.class, "attachDiscovery"));
-        assertTrue(hasPublicMethod(DealerSocket.class, "attachDiscovery",
-            Discovery.class));
-        assertTrue(hasPublicMethod(RouterSocket.class, "attachDiscovery",
-            Discovery.class));
-        assertTrue(hasPublicMethod(PubSocket.class, "attachDiscovery",
-            Discovery.class));
-        assertTrue(hasPublicMethod(SubSocket.class, "attachDiscovery",
-            Discovery.class));
+        assertFalse(hasPublicMethod(DealerSocket.class, "attachDiscovery"));
+        assertFalse(hasPublicMethod(RouterSocket.class, "attachDiscovery"));
+        assertFalse(hasPublicMethod(PubSocket.class, "attachDiscovery"));
+        assertFalse(hasPublicMethod(SubSocket.class, "attachDiscovery"));
         assertFalse(hasPublicMethod(XPubSocket.class, "attachDiscovery"));
         assertFalse(hasPublicMethod(XSubSocket.class, "attachDiscovery"));
         assertFalse(hasPublicMethod(StreamSocket.class, "attachDiscovery"));
@@ -798,7 +758,6 @@ public class SocketContractTest {
         TestSupport.assumeNative();
 
         try (Context ctx = Zlink.createContext();
-             Discovery discovery = ctx.createDiscovery(AutoConnectType.CLIENT_SERVER, "svc");
              SpotNode node = ctx.createSpotNode()) {
             RoutingId nodeRid = RoutingId.from(
               "spot-node".getBytes(StandardCharsets.UTF_8));
@@ -844,9 +803,6 @@ public class SocketContractTest {
             assertFalse(hasPublicMethod(SocketMonitor.class, "sendHighWaterMark"));
             assertFalse(hasPublicMethod(SocketMonitor.class, "receiveHighWaterMark"));
             assertFalse(hasPublicMethod(Context.class, "handle"));
-            assertFalse(hasPublicMethod(Discovery.class, "handle"));
-            assertFalse(hasPublicMethod(Discovery.class, "setTlsServer",
-                String.class, String.class, boolean.class));
             assertFalse(hasPublicMethod(Spot.class, "handle"));
             assertFalse(hasPublicMethod(Spot.class, "monitorOpen", int.class));
             assertFalse(hasPublicMethod(systems.zlink.contracts.service.spot.SpotNode.class,
@@ -962,7 +918,7 @@ public class SocketContractTest {
     }
 
     @Test
-    public void receivedAndMemberPeerSurfaceMatchesJavaSpec() {
+    public void receivedSurfaceMatchesJavaSpec() {
         assertFalse(Iterable.class.isAssignableFrom(Received.class));
         assertFalse(hasPublicMethod(Received.class, "iterator"));
         assertFalse(hasPublicMethod(Received.class, "routingIdOrNull"));
@@ -970,12 +926,6 @@ public class SocketContractTest {
         assertFalse(hasPublicMethod(Received.class, "spotRidOrNull"));
         assertFalse(hasPublicMethod(systems.zlink.contracts.eventing.MonitorStatus.class,
             "fromNative", MEMORY_SEGMENT_CLASS));
-        assertFalse(hasPublicMethod(
-            systems.zlink.contracts.service.registry.MemberPeerEntry.class,
-            "fromNative", MEMORY_SEGMENT_CLASS));
-        assertEquals(7, MemberPeerEntry.class.getRecordComponents().length);
-        assertEquals("weight",
-            MemberPeerEntry.class.getRecordComponents()[6].getName());
     }
 
     @Test
@@ -1000,33 +950,6 @@ public class SocketContractTest {
                 assertEquals(List.of("pair-try"),
                     List.of(received.singlePartOrThrow().toUtf8String()));
             }
-        }
-    }
-
-    @Test
-    public void attachDiscoveryGatesManualPeerApisAndSocketClose() {
-        TestSupport.assumeNative();
-
-        try (Context ctx = Zlink.createContext();
-             Discovery discovery = ctx.createDiscovery(AutoConnectType.CLIENT_SERVER, "socket-svc")) {
-            DealerSocket dealer = ctx.createDealerSocket();
-            dealer.attachDiscovery(discovery);
-
-            ZlinkException connectError = assertThrows(ZlinkException.class,
-                () -> dealer.connect("tcp://127.0.0.1:39001"));
-            assertEquals(ERRNO_EFSM, connectError.getNativeErrno());
-
-            ZlinkException disconnectError = assertThrows(ZlinkException.class,
-                () -> dealer.disconnect("tcp://127.0.0.1:39001"));
-            assertEquals(ERRNO_EFSM, disconnectError.getNativeErrno());
-
-            ZlinkException unbindError = assertThrows(ZlinkException.class,
-                () -> dealer.unbind("tcp://127.0.0.1:39001"));
-            assertEquals(ERRNO_EFSM, unbindError.getNativeErrno());
-
-            ZlinkException closeError = assertThrows(ZlinkException.class,
-                dealer::close);
-            assertEquals(ERRNO_EFSM, closeError.getNativeErrno());
         }
     }
 

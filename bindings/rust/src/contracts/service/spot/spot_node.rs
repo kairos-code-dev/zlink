@@ -3,11 +3,11 @@ use crate::spot_operations::{
     ActorDestroyOp, ActorJoinEntrySpotOp, ActorJoinOp, ActorLeaveOp, ActorLookupOp,
 };
 use crate::{
-    Actor, ActorRef, AutoHwmProfile, CloseError, ConfigError, ConnectError, Discovery, Empty,
-    Message, Ready, RoutingId, SendOp, Spot, SpotNodeActorEntry, SpotNodeOptions,
-    SpotNodePeerEntry, SpotNodePeerFilter, SpotNodePublisher, SpotNodeSocketEntry,
-    SpotNodeSocketFilter, SpotNodeSpotEntry, SpotNodeStatus, SpotNodeSubjectEntry,
-    SpotNodeSubjectFilter, SpotRouteBridge,
+    Actor, ActorRef, AutoHwmProfile, CloseError, ConfigError, ConnectError, Empty, Message, Ready,
+    RoutingId, SendOp, Spot, SpotNodeActorEntry, SpotNodeOptions, SpotNodePeerEntry,
+    SpotNodePeerFilter, SpotNodePublisher, SpotNodeSocketEntry, SpotNodeSocketFilter,
+    SpotNodeSpotEntry, SpotNodeStatus, SpotNodeSubjectEntry, SpotNodeSubjectFilter,
+    SpotRouteBridge,
 };
 
 /// A spot node: hosts spots and actors, tunes their sockets, and exposes the
@@ -59,11 +59,6 @@ impl SpotNode {
     /// Disconnects the peer identified by `target_node_rid`.
     pub fn disconnect_peer_rid(&self, target_node_rid: &RoutingId) -> Result<(), ConnectError> {
         <Self as SpotNodeContract>::disconnect_peer_rid(self, target_node_rid)
-    }
-
-    /// Attaches a discovery service so the node auto-connects discovered peers.
-    pub fn attach_discovery(&self, discovery: &Discovery) -> Result<(), ConfigError> {
-        <Self as SpotNodeContract>::attach_discovery(self, discovery)
     }
 
     /// Creates a bridge from caller-owned channel sockets to this node's SPOT routed plane.

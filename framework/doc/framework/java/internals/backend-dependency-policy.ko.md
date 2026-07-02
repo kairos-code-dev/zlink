@@ -33,11 +33,9 @@ Java backend 구현이다. `ZLinkBackendAdapterFactory` 와 5개 adapter port로
 | `ZLinkChannelBackendAdapter` | dealer/router/publisher/subscriber socket wrapping, send/request, receive pump | dealer/router/publisher/subscriber socket |
 | `ZLinkSpotBackendAdapter` | `SpotNode`/`Spot` wrapping(SpotNode 생성) | spotNode/spot |
 | `ZLinkStreamBackendAdapter` | stream socket wrapping, session attach, frame send/reply | stream socket |
-| `ZLinkRegistryBackendAdapter` | embedded `Registry`/`RegistryQueryClient` wrapping | registry/registryQueryClient |
 | `ZLinkMonitoringBackendAdapter` | socket/discovery/registry/spot event source를 framework typed event로 변환 | socket monitor/discovery 이벤트 |
 
 factory는 `createChannelAdapter`, `createSpotAdapter`, `createStreamAdapter`,
-`createRegistryAdapter`, `createMonitoringAdapter` 5개 메서드만 노출한다.
 
 ### 3.1 Java binding wrapper 목록
 
@@ -78,7 +76,6 @@ concrete type과 객체 모델은 framework public contract에 직접 노출하�
 - dealer/router/publisher/subscriber socket, stream socket
 - binding `Discovery`
 - binding `SpotNode`, `Spot`
-- binding `Registry`, `RegistryQueryClient`
 - native receive loop, monitor handle, timer handle
 - internal frame encoder/decoder concrete type
 

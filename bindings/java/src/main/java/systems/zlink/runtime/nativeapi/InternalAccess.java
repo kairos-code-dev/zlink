@@ -11,7 +11,6 @@ import systems.zlink.contracts.eventing.ZlinkTimer;
 import systems.zlink.contracts.messaging.Message;
 import systems.zlink.contracts.messaging.Received;
 import systems.zlink.contracts.messaging.TopicMessage;
-import systems.zlink.contracts.service.discovery.Discovery;
 import systems.zlink.contracts.service.spot.ActorRef;
 import systems.zlink.contracts.service.spot.ReplyHandler;
 import systems.zlink.contracts.service.spot.Spot;
@@ -46,9 +45,7 @@ import java.util.function.BiFunction;
  * reflection or MethodHandle-based private access.
  */
 public final class InternalAccess {
-    private static volatile ContextAccess contextAccess;
-    private static volatile DiscoveryAccess discoveryAccess;
-    private static volatile SocketAccess socketAccess;
+    private static volatile ContextAccess contextAccess;    private static volatile SocketAccess socketAccess;
     private static volatile RuntimeSocketAccess runtimeSocketAccess;
     private static volatile SpotAccess spotAccess;
     private static volatile SpotNodeAccess spotNodeAccess;
@@ -63,10 +60,6 @@ public final class InternalAccess {
         void setOption(Context context, ContextOption option, int value);
         void setOptionData(Context context, ContextOption option, String value);
         int getOption(Context context, ContextOption option);
-    }
-
-    public interface DiscoveryAccess {
-        MemorySegment handle(Discovery discovery);
     }
 
     public interface SocketAccess {
@@ -172,10 +165,6 @@ public final class InternalAccess {
         contextAccess = Objects.requireNonNull(access, "access");
     }
 
-    public static void register(DiscoveryAccess access) {
-        discoveryAccess = Objects.requireNonNull(access, "access");
-    }
-
     public static void register(SocketAccess access) {
         socketAccess = Objects.requireNonNull(access, "access");
     }
@@ -222,10 +211,6 @@ public final class InternalAccess {
 
     public static int contextGetOption(Context context, ContextOption option) {
         return contextAccess().getOption(context, option);
-    }
-
-    public static MemorySegment discoveryHandle(Discovery discovery) {
-        return discoveryAccess().handle(discovery);
     }
 
     public static MemorySegment socketHandle(Socket socket) {
@@ -678,11 +663,6 @@ public final class InternalAccess {
         if (contextAccess == null)
             load("systems.zlink.runtime.core.NativeContext");
         return require(contextAccess, Context.class);
-    }
-
-    private static DiscoveryAccess discoveryAccess() {
-        if (discoveryAccess == null) load(Discovery.class);
-        return require(discoveryAccess, Discovery.class);
     }
 
     private static SocketAccess socketAccess() {

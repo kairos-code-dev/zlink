@@ -233,7 +233,6 @@ Go 생성은 공개 생성자와 리소스 메서드로 노출된다.
 - `Context.PairSocket()`, `DealerSocket()`, `RouterSocket()`, `PubSocket()`,
   `SubSocket()`, `XPubSocket()`, `XSubSocket()`, `StreamSocket()`이 런타임 소켓
   구현을 생성한다.
-- `Context.Registry()`, `Discovery(...)`, `RegistryQueryClient()`,
   `SpotNode()`, `SpotNodeWithOptions(...)`가 서비스 계층 구현을 생성한다.
 - `Spot` 핸들은 `SpotNode.Spot()`, `EntrySpot()`, `GetOrCreateSpot(...)`,
   `SpotLookup(...)`을 통해 얻는다. `Spot` 직접 생성은 공개되지 않는다.

@@ -40,7 +40,6 @@ internal static class Program
                 .TraceLogFile(SampleFlowLog.Path(missionName))
                 .TraceLabel(missionName);
             options.AddHandlersFromAssemblyOf(typeof(Program));
-            options.UseDiscovery().AddRegistryEndpoint(topology.RegistryRouterEndpoint);
             options.AddFanoutChannel(SampleNames.FanoutChannel)
                 .EnableSubscriber()
                 .EnableSubscriber()

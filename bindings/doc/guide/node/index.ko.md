@@ -176,8 +176,6 @@ try {
 | `zlink_poller_new()` | `zlink.createPoller()` |
 | `zlink_timer_new()` | `zlink.createTimer()` |
 | `zlink_spot_node_new(ctx, opts)` | `zlink.createSpotNode(ctx)` |
-| `zlink_registry_new(ctx)` | `zlink.createRegistry(ctx)` |
-| `zlink_discovery_new(ctx,...)` | `zlink.createDiscovery(ctx, type, ch)` |
 
 ---
 

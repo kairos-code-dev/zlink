@@ -74,14 +74,6 @@ func TestNullByteValidation(t *testing.T) {
 	if err := sub.UnsetSubscription("bad\x00topic"); err == nil {
 		t.Fatalf("UnsetSubscription() with null byte should fail")
 	}
-	if _, err := ctx.Discovery(zlink.AutoConnectClientServer, strings.Repeat("s", 256)); err == nil {
-		t.Fatalf("Discovery() with oversized channel name should fail")
-	}
-	if discovery, err := ctx.Discovery(zlink.AutoConnectClientServer, strings.Repeat("s", 255)); err != nil {
-		t.Fatalf("Discovery() with max-sized channel name error = %v", err)
-	} else {
-		discovery.Close()
-	}
 }
 
 func TestNilInputValidation(t *testing.T) {

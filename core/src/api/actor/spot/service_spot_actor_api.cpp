@@ -24,7 +24,6 @@
 #include "api/core/config_result_internal.hpp"
 #include "api/message/submit_result_internal.hpp"
 #include "api/message/handler_result_internal.hpp"
-#include "services/discovery/discovery_access.hpp"
 #include "services/spot/runtime/spot_handle.hpp"
 #include "services/spot/common/spot_message_parts_internal.hpp"
 #include "services/spot/node/spot_node.hpp"
@@ -3322,52 +3321,6 @@ extern "C" zlink_request_result_t zlink_spot_node_actor_close_bound_session (
     if (readable_actor)
         notify_actor_readable (readable_actor);
     return ZLINK_REQUEST_OK;
-}
-
-extern "C" zlink_config_result_t zlink_discovery_resolve_actor (void *discovery_,
-                                                                const char *actor_id_,
-                                                                zlink_actor_route_t *route_out_)
-{
-    if (!valid_actor_id (actor_id_) || !route_out_) {
-        errno = EINVAL;
-        return ZLINK_CONFIG_INVALID_ARGUMENT;
-    }
-    zlink::discovery_t *discovery = zlink::discovery_access_t::from_handle (discovery_);
-    if (!discovery) {
-        errno = EINVAL;
-        return ZLINK_CONFIG_INVALID_ARGUMENT;
-    }
-
-    zlink_routing_id_t owner_rid;
-    zlink_msg_t value;
-    memset (&owner_rid, 0, sizeof (owner_rid));
-    memset (&value, 0, sizeof (value));
-    if (zlink::discovery_access_t::resolve_route (discovery, ZLINK_ROUTE_KIND_ACTOR, actor_id_,
-                                                  strlen (actor_id_), &owner_rid, &value)
-        != 0) {
-        {
-            std::lock_guard<std::timed_mutex> lock (actor_runtime ().mutex);
-            if (find_active_route_locked (actor_id_, route_out_)
-                && actor_route_is_current_location (*route_out_, actor_id_))
-                return ZLINK_CONFIG_OK;
-        }
-        errno = ENOENT;
-        return ZLINK_CONFIG_NOT_FOUND;
-    }
-
-    if (zlink_msg_size (&value) != sizeof (*route_out_)) {
-        (void) zlink_msg_close (&value);
-        errno = ENOENT;
-        return ZLINK_CONFIG_NOT_FOUND;
-    }
-    memcpy (route_out_, zlink_msg_data (&value), sizeof (*route_out_));
-    (void) zlink_msg_close (&value);
-    if (!actor_route_is_current_location (*route_out_, actor_id_)) {
-        memset (route_out_, 0, sizeof (*route_out_));
-        errno = ENOENT;
-        return ZLINK_CONFIG_NOT_FOUND;
-    }
-    return ZLINK_CONFIG_OK;
 }
 
 extern "C" zlink_config_result_t

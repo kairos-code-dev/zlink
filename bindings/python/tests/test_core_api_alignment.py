@@ -149,10 +149,12 @@ class CoreApiAlignmentTests(unittest.TestCase):
         self.assertTrue(hasattr(zlink.StreamSocket, "bind_actor"))
         self.assertTrue(hasattr(zlink.StreamSocket, "unbind_actor"))
         self.assertTrue(hasattr(zlink.StreamSocket, "send_bound_actor"))
-        self.assertTrue(hasattr(zlink.Discovery, "resolve_actor"))
-        self.assertTrue(hasattr(zlink.Discovery, "bind_route"))
-        self.assertTrue(hasattr(zlink.Discovery, "unbind_route"))
-        self.assertTrue(hasattr(zlink.Discovery, "resolve_route"))
+        self.assertFalse(hasattr(zlink, "Discovery"))
+        self.assertFalse(hasattr(zlink, "create_discovery"))
+        self.assertFalse(hasattr(zlink.DealerSocket, "attach_discovery"))
+        self.assertFalse(hasattr(zlink.RouterSocket, "attach_discovery"))
+        self.assertFalse(hasattr(zlink.PubSocket, "attach_discovery"))
+        self.assertFalse(hasattr(zlink.SubSocket, "attach_discovery"))
         self.assertTrue(hasattr(zlink.SpotDispatchInfo, "recv_actor_part"))
         self.assertTrue(hasattr(zlink.Actor, "ref"))
         self.assertTrue(hasattr(zlink.Actor, "join"))
@@ -718,19 +720,6 @@ class CoreApiAlignmentTests(unittest.TestCase):
                     self.assertTrue(
                         any(entry.subject == TOPIC.decode("utf-8") for entry in subjects)
                     )
-
-    def test_discovery_surface_exposes_resolution_without_dealer_peer_mode(self):
-        ctx = zlink.create_context()
-
-        with ctx:
-            with zlink.create_discovery(
-                ctx, zlink.AutoConnectType.CLIENT_SERVER, "svc"
-            ) as discovery:
-                self.assertTrue(hasattr(discovery, "resolve_spot"))
-                self.assertTrue(hasattr(discovery, "spot_owner_sync_enabled"))
-                self.assertTrue(hasattr(type(discovery), "actor_route_sync_enabled"))
-                self.assertFalse(hasattr(discovery, "set_dealer_peer_mode"))
-                self.assertFalse(hasattr(zlink, "DiscoveryDealerPeerMode"))
 
     def test_message_and_routing_id_helpers_use_canonical_names(self):
         ctx = zlink.create_context()

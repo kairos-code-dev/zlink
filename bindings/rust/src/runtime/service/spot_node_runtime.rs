@@ -168,12 +168,6 @@ impl SpotNodePublicRuntime for SpotNode {
         })
     }
 
-    fn attach_discovery(&self, discovery: &Discovery) -> Result<(), ConfigError> {
-        check_config_rc(unsafe {
-            ffi::zlink_spot_node_attach_discovery(spot_node_handle(self), discovery.raw())
-        })
-    }
-
     fn router_high_water_mark(&self) -> Result<i32, ConfigError> {
         get_spot_node_option_i32(
             self,
@@ -590,14 +584,86 @@ impl SpotNodePublicRuntime for SpotNode {
         &self,
         filter: Option<&SpotNodeSubjectFilter>,
     ) -> Result<Vec<SpotNodeSubjectEntry>, ConfigError> {
-        self.subjects_query_opt(filter)
+        let query = |filter_ptr| {
+            let count = count_entries_config(|count| unsafe {
+                ffi::zlink_spot_node_subjects(
+                    spot_node_handle(self),
+                    filter_ptr,
+                    ptr::null_mut(),
+                    count,
+                )
+            })?;
+            if count == 0 {
+                return Ok(Vec::new());
+            }
+
+            let mut entries =
+                vec![unsafe { std::mem::zeroed::<ffi::zlink_spot_node_subject_entry_t>() }; count];
+            let actual = read_entries_config(
+                count,
+                |entries_ptr, count_ptr| unsafe {
+                    ffi::zlink_spot_node_subjects(
+                        spot_node_handle(self),
+                        filter_ptr,
+                        entries_ptr,
+                        count_ptr,
+                    )
+                },
+                entries.as_mut_ptr(),
+            )?;
+            Ok(entries[..actual]
+                .iter()
+                .map(SpotNodeSubjectEntry::from_raw)
+                .collect())
+        };
+
+        match filter {
+            Some(filter) => with_spot_node_subject_filter_config(filter, query),
+            None => query(ptr::null()),
+        }
     }
 
     fn internal_sockets(
         &self,
         filter: Option<&SpotNodeSocketFilter>,
     ) -> Result<Vec<SpotNodeSocketEntry>, ConfigError> {
-        self.internal_sockets_opt(filter)
+        let query = |filter_ptr| {
+            let count = count_entries_config(|count| unsafe {
+                ffi::zlink_spot_node_internal_sockets(
+                    spot_node_handle(self),
+                    filter_ptr,
+                    ptr::null_mut(),
+                    count,
+                )
+            })?;
+            if count == 0 {
+                return Ok(Vec::new());
+            }
+
+            let mut entries =
+                vec![unsafe { std::mem::zeroed::<ffi::zlink_spot_node_socket_entry_t>() }; count];
+            let actual = read_entries_config(
+                count,
+                |entries_ptr, count_ptr| unsafe {
+                    ffi::zlink_spot_node_internal_sockets(
+                        spot_node_handle(self),
+                        filter_ptr,
+                        entries_ptr,
+                        count_ptr,
+                    )
+                },
+                entries.as_mut_ptr(),
+            )?;
+            Ok(entries[..actual]
+                .iter()
+                .map(SpotNodeSocketEntry::from_raw)
+                .collect())
+        };
+
+        match filter {
+            Some(filter) => with_spot_node_socket_filter_config(filter, query),
+            None => query(ptr::null()),
+        }
     }
 
     fn spots(&self) -> Result<Vec<SpotNodeSpotEntry>, ConfigError> {

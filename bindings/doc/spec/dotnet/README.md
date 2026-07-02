@@ -233,7 +233,6 @@ other wrapper binding documents mirror:
   behavior.
 - Eventing resource roles: monitor socket contract, `IPoller`, poll event
   source contracts, and `IZlinkTimer`.
-- Service resource roles: `IRegistry`, `IRegistryQueryClient`, `IDiscovery`,
   `ISpotNode`, `ISpot`, and `IActor` or the equivalent actor resource contract
   when actor handles are exposed.
 - Operation builder roles: send, routed send, request, reply, publish, channel
@@ -390,7 +389,6 @@ Interfaces define behavior; construction is provided by public factories.
   `CreateRouterSocket()`, `CreatePubSocket()`, `CreateSubSocket()`,
   `CreateXPubSocket()`, `CreateXSubSocket()`, and `CreateStreamSocket()`
   create runtime socket implementations.
-- `IContext.CreateRegistry()`, `CreateRegistryQueryClient()`,
   `CreateDiscovery(...)`, `CreateSpotNode()`, and
   `CreateSpotNode(SpotNodeMode)` create service-layer implementations.
 - `Spot` handles are obtained through `ISpotNode.CreateSpot()`,

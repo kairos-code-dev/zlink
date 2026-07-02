@@ -330,12 +330,10 @@ returns `handled=true`, the bridge has consumed the SPOT relay packet.
 
 Core does not expose Actor-direct ROUTER APIs such as
 `zlink_router_send_actor()`. A caller that starts from an Actor id first calls
-`zlink_discovery_resolve_actor()` and then passes `route.actor.node_rid` and
 `route.current_spot_rid` to the existing Spot routed API.
 
 ```c
 zlink_actor_route_t route;
-if (zlink_discovery_resolve_actor(discovery, actor_id, &route)
     == ZLINK_CONFIG_OK) {
     zlink_router_send_spot(router,
                            &route.actor.node_rid,

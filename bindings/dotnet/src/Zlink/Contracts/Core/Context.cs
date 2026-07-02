@@ -3,12 +3,11 @@
 namespace Systems.Zlink;
 
 /// <summary>
-///     A messaging context: the factory and owner of sockets and services.
+///     A messaging context: the factory and owner of sockets and SPOT nodes.
 /// </summary>
 /// <remarks>
-///     Every socket, registry, discovery, and spot node created here is owned by
-///     the caller and must be disposed. Disposing the context terminates anything
-///     still open under it.
+///     Every socket and spot node created here is owned by the caller and must be
+///     disposed. Disposing the context terminates anything still open under it.
 /// </remarks>
 public interface IContext : IDisposable, IAsyncDisposable
 {
@@ -56,23 +55,6 @@ public interface IContext : IDisposable, IAsyncDisposable
     ///     Creates a stream socket.
     /// </summary>
     IStreamSocket CreateStreamSocket();
-
-    /// <summary>
-    ///     Creates a registry.
-    /// </summary>
-    IRegistry CreateRegistry();
-
-    /// <summary>
-    ///     Creates a registry query client.
-    /// </summary>
-    IRegistryQueryClient CreateRegistryQueryClient();
-
-    /// <summary>
-    ///     Creates a discovery service for <paramref name="channelName" /> that
-    ///     connects peers according to <paramref name="autoConnectType" />.
-    /// </summary>
-    IDiscovery CreateDiscovery(AutoConnectType autoConnectType,
-        string channelName);
 
     /// <summary>
     ///     Creates a spot node in the default mode.

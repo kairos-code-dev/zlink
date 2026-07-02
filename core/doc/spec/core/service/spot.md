@@ -327,7 +327,6 @@ zlink_connect_result_t zlink_spot_node_disconnect_peer(void *node,
 zlink_connect_result_t zlink_spot_node_disconnect_peer_rid(
   void *node,
   const zlink_routing_id_t *target_node_rid);
-zlink_config_result_t zlink_spot_node_attach_discovery(void *node,
                                                        void *discovery);
 ```
 
@@ -354,7 +353,6 @@ zlink_config_result_t zlink_spot_node_attach_discovery(void *node,
   instead of directly adding or removing endpoints managed by discovery.
 - The `Spot` facade has no separate peer-rid disconnect function because peer
   connections are owned by the `SpotNode` runtime.
-- `zlink_spot_node_attach_discovery()` requires a discovery handle that exposes
   a SPOT channel view.
 - A node may have only one active SPOT discovery view at a time.
 
@@ -1022,7 +1020,6 @@ typedef void (*zlink_actor_lookup_handler_fn)(
 
 ```
 
-`zlink_actor_route_t` is returned by `zlink_discovery_resolve_actor()`.
 `actor.node_rid` is the node that owns the current Actor slot,
 `current_spot_rid` is the Actor's current Spot, and `current_spot_kind`
 is `ZLINK_SPOT_KIND_ENTRY` or `ZLINK_SPOT_KIND_USER`.
@@ -1160,7 +1157,6 @@ zlink_submit_result_t zlink_remote_actor_get_ref(
   installs no timeout. The `result` pointer is valid only inside the callback.
   This function does not create Actors, does not move them, and does not
   publish or update active routes.
-- `zlink_remote_actor_get_ref()` and `zlink_discovery_resolve_actor()` differ
   in purpose: the former asks a known target node directly for a checked ref,
   while the latter queries the Registry-published active route for the
   currently public location.
@@ -1791,8 +1787,6 @@ Delivery rules:
 
 `zlink_actor_route_t` represents an Actor's current dispatch location. The
 route is observable via Registry-backed queries when the owner `SpotNode`'s
-Discovery has `ZLINK_OPT_DISCOVERY_ACTOR_ROUTE_SYNC` enabled and is connected
-to the Registry. Otherwise `zlink_discovery_resolve_actor()` may return a
 not-found-class failure even after the local Actor location changes.
 
 - `actor` is the final Actor ref the route points to.
@@ -1818,7 +1812,6 @@ Active route timing:
 
 The route updates above become Registry-visible after the join or leave
 commit when the current `SpotNode` owning the Actor has
-`ZLINK_OPT_DISCOVERY_ACTOR_ROUTE_SYNC` enabled and is connected to a
 Registry.
 
 ## Constraint summary

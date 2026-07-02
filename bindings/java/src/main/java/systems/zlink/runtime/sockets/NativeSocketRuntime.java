@@ -5,7 +5,6 @@ package systems.zlink.runtime.sockets;
 import systems.zlink.runtime.nativeapi.ContractAccess;
 
 import systems.zlink.contracts.core.Context;
-import systems.zlink.contracts.service.discovery.Discovery;
 import systems.zlink.contracts.messaging.Message;
 import systems.zlink.contracts.eventing.MonitorEventType;
 import systems.zlink.contracts.eventing.SocketMonitor;
@@ -113,11 +112,6 @@ final class NativeSocketRuntime implements AutoCloseable {
     /** Disconnects the socket from the endpoint. */
     public void disconnect(String endpoint) {
         socketCore.disconnect(endpoint);
-    }
-
-    /** Attaches a fixed-service discovery view to the socket. */
-    public void attachDiscovery(Discovery discovery) {
-        socketCore.attachDiscovery(discovery);
     }
 
     public void setChannelName(String channelName) {
@@ -612,10 +606,6 @@ final class NativeSocketRuntime implements AutoCloseable {
     }
 
     void closeInternal() {
-        if (socketCore.discoveryAttached()) {
-            throw ZlinkException.fromErrno("zlink_close",
-                ERRNO_EFSM);
-        }
         if (handle != null && handle.address() != 0) {
             RequestProgressPump.stopSocketProgress(handle);
             RequestProgressPump.stopSpotProgress(handle);

@@ -14,9 +14,6 @@
 |------|---------------------|---------------|------|
 | context | framework runtime context 생성과 종료 | `createContext`, `Context.close`, `Context.shutdown` | gap 없음 |
 | channel socket | dealer/router/pub/sub 생성, discovery attach, send ready, monitor open | `createDealerSocket`, `createRouterSocket`, `createPubSocket`, `createSubSocket`, socket public methods | gap 없음 |
-| discovery | registry 연결, member peer 조회, spot/actor route 해석 | `createDiscovery`, `Discovery.connectRegistry`, `memberPeers`, `resolveSpot`, `resolveActor` | gap 없음 |
-| spot node | SpotNode 생성, route bridge, actor 생성, session relay 대상 | `createSpotNode`, `SpotNode.createActor`, `attachDiscovery`, `createRouteBridge`, `createPublisher` | gap 없음 |
-| registry | embedded registry와 query client 생성·조회 | `createRegistry`, `createRegistryQueryClient` | gap 없음 |
 | monitoring | socket monitor 생성, event callback, status/recv | `Socket.monitorOpen`, `MonitorSocket.onEvent`, `recv`, `status` | gap 없음 |
 
 ## 2. 회귀 테스트

@@ -30,12 +30,6 @@ internal sealed class RouterSocket : ConnectableRoutedMessageSocketBase,
 
     public new RouterSocketOptions Options { get; }
 
-    public void AttachDiscovery(IDiscovery discovery)
-    {
-        Kernel.AttachDiscovery(SocketInterop.RequireDiscovery(discovery,
-            nameof(discovery)));
-    }
-
     public void SetRoutingId(RoutingId routingId)
     {
         Kernel.SetOption(SocketOptions.RoutingId, routingId.ToBytes());

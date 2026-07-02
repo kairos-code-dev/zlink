@@ -126,9 +126,7 @@ typedef enum zlink_option_t
     ZLINK_OPT_ZMP_METADATA = 0x3030,
     ZLINK_OPT_ROUTE_VALUE_MAX_SIZE = 0x3032,
     ZLINK_OPT_RID_DUPLICATE_POLICY = 0x3033,
-    ZLINK_OPT_AUTO_HWM_MSG_UNIT_BYTES = 0x3034,
-    ZLINK_OPT_DISCOVERY_SPOT_OWNER_SYNC = 0x3035,
-    ZLINK_OPT_DISCOVERY_ACTOR_ROUTE_SYNC = 0x3036
+    ZLINK_OPT_AUTO_HWM_MSG_UNIT_BYTES = 0x3034
 } zlink_option_t;
 
 typedef enum zlink_submit_retry_mode_t
@@ -206,14 +204,6 @@ typedef enum zlink_spot_option_t
 {
     ZLINK_SPOT_OPT_REQUEST_TIMEOUT_MS = 0x3701
 } zlink_spot_option_t;
-
-typedef enum zlink_registry_option_t
-{
-    ZLINK_REGISTRY_OPT_ID = 0x3801,
-    ZLINK_REGISTRY_OPT_HEARTBEAT_INTERVAL_MS = 0x3802,
-    ZLINK_REGISTRY_OPT_HEARTBEAT_TIMEOUT_MS = 0x3803,
-    ZLINK_REGISTRY_OPT_BROADCAST_INTERVAL_MS = 0x3804
-} zlink_registry_option_t;
 
 typedef enum zlink_disconnect_reason_t
 {
@@ -323,16 +313,6 @@ typedef enum zlink_monitor_status_detail_flag_e
     ZLINK_MONITOR_STATUS_DETAIL_AUTO_HWM_BUFFERS = 1u << 4
 } zlink_monitor_status_detail_flag_e;
 
-typedef enum zlink_auto_connect_type_t
-{
-    ZLINK_AUTO_CONNECT_INVALID = 0,
-    ZLINK_AUTO_CONNECT_ROUTE_MESH = 1,
-    ZLINK_AUTO_CONNECT_CLIENT_SERVER = 2,
-    ZLINK_AUTO_CONNECT_DEALER_MESH = 3,
-    ZLINK_AUTO_CONNECT_FANOUT = 4,
-    ZLINK_AUTO_CONNECT_SPOT_MESH = 5
-} zlink_auto_connect_type_t;
-
 typedef enum zlink_service_role_t
 {
     ZLINK_SERVICE_ROLE_INVALID = 0,
@@ -357,14 +337,6 @@ typedef enum zlink_spot_role_t
     ZLINK_SPOT_ROLE_PUB = 1,
     ZLINK_SPOT_ROLE_SUB = 2
 } zlink_spot_role_t;
-
-typedef enum zlink_service_kind_t
-{
-    ZLINK_SERVICE_KIND_DISCOVERY = 1,
-    ZLINK_SERVICE_KIND_SPOT_SUB = 3,
-    ZLINK_SERVICE_KIND_SPOT_PUB = 4,
-    ZLINK_SERVICE_KIND_SOCKET = 5
-} zlink_service_kind_t;
 
 typedef uint32_t zlink_service_event_detail_mask_t;
 
@@ -420,31 +392,6 @@ typedef enum zlink_spot_peer_state_t
     ZLINK_SPOT_PEER_STATE_CONNECTING = 2,
     ZLINK_SPOT_PEER_STATE_CONNECTED = 3
 } zlink_spot_peer_state_t;
-
-typedef enum zlink_registry_state_t
-{
-    ZLINK_REGISTRY_STATE_IDLE = 1,
-    ZLINK_REGISTRY_STATE_ACTIVE = 2,
-    ZLINK_REGISTRY_STATE_DEGRADED = 3,
-    ZLINK_REGISTRY_STATE_ERROR = 4
-} zlink_registry_state_t;
-
-typedef enum zlink_topology_source_t
-{
-    ZLINK_TOPOLOGY_SOURCE_MANUAL = 1,
-    ZLINK_TOPOLOGY_SOURCE_DISCOVERY = 2,
-    ZLINK_TOPOLOGY_SOURCE_REGISTRY = 3
-} zlink_topology_source_t;
-
-typedef enum zlink_topology_state_t
-{
-    ZLINK_TOPOLOGY_STATE_DISCOVERED = 1,
-    ZLINK_TOPOLOGY_STATE_CONNECTING = 2,
-    ZLINK_TOPOLOGY_STATE_READY = 3,
-    ZLINK_TOPOLOGY_STATE_LOST = 4,
-    ZLINK_TOPOLOGY_STATE_ERROR = 5,
-    ZLINK_TOPOLOGY_STATE_STOPPED = 6
-} zlink_topology_state_t;
 
 typedef enum zlink_poller_source_kind_t
 {

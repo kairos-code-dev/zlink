@@ -7,9 +7,6 @@ const net = require('node:net');
 const zlink = require('@zlink-systems/zlink');
 const spotActorModels = require('../dist/zlink/runtime/service/spot/actor_models');
 
-const AUTO_CONNECT_SPOT_MESH = 5;
-const AUTO_CONNECT_CLIENT_SERVER = 2;
-const AUTO_CONNECT_FANOUT = 4;
 const SERVICE_ROLE_SPOT = 2;
 const SERVICE_KIND_SPOT_PUB = 4;
 
@@ -33,50 +30,15 @@ async function reservePort() {
   return port;
 }
 
-async function waitFor(deadlineMs, read) {
-  const deadline = Date.now() + deadlineMs;
-  while (Date.now() < deadline) {
-    const value = read();
-    if (value) {
-      return value;
-    }
-    await new Promise((resolve) => setImmediate(resolve));
-  }
-  return null;
-}
-
 test('service objects expose aligned monitor and query surface', () => {
   const ctx = zlink.createContext();
-  const registry = zlink.createRegistry(ctx);
-  const discovery = zlink.createDiscovery(ctx, AUTO_CONNECT_SPOT_MESH, 'svc');
   const node = zlink.createSpotNode(ctx);
   const spot = node.createSpot();
-  const query = zlink.createRegistryQueryClient(ctx);
   ctx.recalculateAutoHwm();
 
-  registry.bind('inproc://registry-pub', 'inproc://registry-router');
-  query.connect('inproc://registry-router');
-  discovery.setValue(7);
-  assert.equal(discovery.spotOwnerSyncEnabled, false);
-  discovery.spotOwnerSyncEnabled = true;
-  assert.equal(discovery.spotOwnerSyncEnabled, true);
-  assert.equal(discovery.actorRouteSyncEnabled, false);
-  discovery.actorRouteSyncEnabled = true;
-  assert.equal(discovery.actorRouteSyncEnabled, true);
-
-  assert.equal(registry.status().topologyEntryCount, 0);
-  assert.deepEqual(registry.serviceSummary(), []);
-  assert.deepEqual(registry.topology(), []);
-  assert.deepEqual(registry.topology(), []);
-  assert.deepEqual(query.topology(), []);
-  assert.equal(discovery.getValue(), 7);
-  assert.deepEqual(discovery.memberPeers(), []);
-  assert.equal(discovery.memberPeerMetadata, undefined);
-  assert.equal(typeof discovery.bindRoute, 'function');
-  assert.equal(typeof discovery.unbindRoute, 'function');
-  assert.equal(typeof discovery.resolveRoute, 'function');
-  assert.equal(typeof discovery.resolveSpot, 'function');
-  assert.equal(discovery.setDealerPeerMode, undefined);
+  assert.equal(zlink.createRegistry, undefined);
+  assert.equal(zlink.createDiscovery, undefined);
+  assert.equal(zlink.createRegistryQueryClient, undefined);
   assert.equal(typeof spot.setDispatchHandler, 'function');
   assert.equal(spot.drainChannelReplyFrom, undefined);
   assert.equal(node.peers().length, 0);
@@ -104,26 +66,22 @@ test('service objects expose aligned monitor and query surface', () => {
   assert.equal(zlink.SpotNodeOption, undefined);
   assert.equal(zlink.SpotNodePubMode, undefined);
   assert.equal(zlink.SpotNodePubQueueFullPolicy, undefined);
-  assert.equal(discovery.monitorOpen, undefined);
   assert.equal(zlink.MonitorSocket, undefined);
   assert.equal(zlink.SpotNode, undefined);
-  assert.equal(registry.setEndpoints, undefined);
-  assert.equal(registry.start, undefined);
-  assert.equal(registry.setSockOpt, undefined);
+  assert.equal(zlink.Registry, undefined);
+  assert.equal(zlink.Discovery, undefined);
+  assert.equal(zlink.RegistryQueryClient, undefined);
   assert.equal(node.setDiscovery, undefined);
+  assert.equal(node.attachDiscovery, undefined);
   assert.equal(node.register, undefined);
   assert.equal(node.unregister, undefined);
   assert.equal(node.pubSocket, undefined);
   assert.equal(node.subSocket, undefined);
   assert.equal(node.pubPeers, undefined);
   assert.equal(node.subPeers, undefined);
-  assert.throws(() => registry.bind('inproc://registry-pub-2', 'inproc://registry-router-2'), /busy|only be called once/i);
 
-  query.close();
   spot.close();
   node.close();
-  discovery.close();
-  registry.close();
   ctx.close();
 });
 
@@ -214,8 +172,6 @@ test('context options, shutdown, and tls facades follow the aligned surface', ()
   const ctx = zlink.createContext();
   const pair = zlink.createPairSocket(ctx);
   const dealer = zlink.createDealerSocket(ctx);
-  const registry = zlink.createRegistry(ctx);
-  const discovery = zlink.createDiscovery(ctx, AUTO_CONNECT_SPOT_MESH, 'surface-tls');
   const node = zlink.createSpotNode(ctx);
 
   assert.equal(typeof ctx.shutdown, 'function');
@@ -257,18 +213,11 @@ test('context options, shutdown, and tls facades follow the aligned surface', ()
   assert.equal(typeof pair.getChannelName, 'undefined');
   assert.equal(typeof dealer.setChannelName, 'function');
   assert.equal(typeof dealer.getChannelName, 'function');
-  assert.equal(typeof registry.setTlsServer, 'function');
-  assert.equal(typeof registry.setTlsClient, 'function');
-  assert.equal(typeof discovery.setTlsServer, 'undefined');
-  assert.equal(typeof discovery.setTlsClient, 'function');
   assert.equal(typeof node.setTlsServer, 'function');
   assert.equal(typeof node.setTlsClient, 'function');
 
   assert.throws(() => pair.setTlsServer(Buffer.from('cert'), 'key'), /cert/);
   assert.throws(() => pair.setTlsClient(Buffer.from('ca'), 'host'), /ca/);
-  assert.throws(() => registry.setTlsServer(Buffer.from('cert'), 'key'), /cert/);
-  assert.throws(() => registry.setTlsClient(Buffer.from('ca'), 'host'), /ca/);
-  assert.throws(() => discovery.setTlsClient(Buffer.from('ca'), 'host'), /ca/);
   assert.throws(() => node.setTlsServer(Buffer.from('cert'), 'key'), /cert/);
   assert.throws(() => node.setTlsClient(Buffer.from('ca'), 'host'), /ca/);
   const message = zlink.Message.from('message');
@@ -294,8 +243,6 @@ test('context options, shutdown, and tls facades follow the aligned surface', ()
   assert.equal(zlink.Message.allocate(0).isEmpty(), true);
 
   node.close();
-  discovery.close();
-  registry.close();
   dealer.close();
   pair.close();
   ctx.shutdown();
@@ -336,123 +283,20 @@ test('native failures surface documented zlink error classes', () => {
   }
 });
 
-test('spot close leaves spot node alive and discovery close tears down attached participants', async () => {
+test('spot close leaves spot node alive', async () => {
   const ctx = zlink.createContext();
   const standaloneNode = zlink.createSpotNode(ctx);
   const spot = standaloneNode.createSpot();
-  const discovery = zlink.createDiscovery(ctx, AUTO_CONNECT_SPOT_MESH, 'participant-close');
-  const attachedNode = zlink.createSpotNode(ctx);
   const standaloneEndpoint = `tcp://127.0.0.1:${await reservePort()}`;
 
   standaloneNode.setPubBind(standaloneEndpoint);
   assert.ok(standaloneNode.status().nodeRoutingId instanceof zlink.RoutingId);
-  attachedNode.attachDiscovery(discovery);
   spot.close();
 
   assert.equal(standaloneNode.status().configuredPeerCount, 0);
 
-  discovery.close();
-  assert.throws(() => attachedNode.status(), /shutdown|closed|transport/i);
-
   standaloneNode.close();
   ctx.close();
-});
-
-test('discovery requires a channel name in the aligned api', () => {
-  const ctx = zlink.createContext();
-  assert.throws(() => zlink.createDiscovery(ctx, AUTO_CONNECT_SPOT_MESH), /channelName/);
-  assert.throws(() => zlink.createDiscovery(ctx, AUTO_CONNECT_SPOT_MESH, ''), /channelName/);
-  assert.throws(() => zlink.createDiscovery(ctx, AUTO_CONNECT_SPOT_MESH, 'x'.repeat(256)), /255 bytes/);
-  ctx.close();
-});
-
-test('registry, discovery, and query client expose canonical service discovery flow', async () => {
-  const ctx = zlink.createContext();
-  const registry = zlink.createRegistry(ctx);
-  const query = zlink.createRegistryQueryClient(ctx);
-  const providerDiscovery = zlink.createDiscovery(ctx, AUTO_CONNECT_SPOT_MESH, 'service-found');
-  const watcherDiscovery = zlink.createDiscovery(ctx, AUTO_CONNECT_SPOT_MESH, 'service-found');
-  const node = zlink.createSpotNode(ctx);
-  const pubPort = await reservePort();
-  const routerPort = await reservePort();
-  const servicePort = await reservePort();
-  const pubEndpoint = `tcp://127.0.0.1:${pubPort}`;
-  const routerEndpoint = `tcp://127.0.0.1:${routerPort}`;
-  const serviceEndpoint = `tcp://127.0.0.1:${servicePort}`;
-
-  try {
-    registry.bind(pubEndpoint, routerEndpoint);
-    query.connect(routerEndpoint);
-    providerDiscovery.connectRegistry(routerEndpoint);
-    watcherDiscovery.connectRegistry(routerEndpoint);
-    node.attachDiscovery(providerDiscovery);
-    node.setPubBind(serviceEndpoint);
-
-    const topologyEntry = await waitFor(5000, () => (
-      registry.topology().find((entry) => entry.channelName === 'service-found') ?? null
-    ));
-    assert.ok(topologyEntry);
-    assert.equal(topologyEntry.channelName, 'service-found');
-
-    const serviceSummary = await waitFor(5000, () => {
-      const [entry] = registry.serviceSummary({
-        channelName: 'service-found'
-      });
-      return entry ?? null;
-    });
-    assert.ok(serviceSummary);
-    assert.equal(serviceSummary.channelName, 'service-found');
-
-    const queryEntry = await waitFor(5000, () => (
-      query.topology({ channelName: 'service-found' }).find((entry) => (
-        entry.channelName === 'service-found'
-      )) ?? null
-    ));
-    assert.ok(queryEntry);
-    assert.equal(queryEntry.channelName, 'service-found');
-
-    const peers = registry.memberPeers('service-found');
-    assert.ok(Array.isArray(peers));
-    assert.ok(peers.some((peer) => peer.channelName === 'service-found' && peer.endpoint.length > 0));
-
-    const discoveryPeer = await waitFor(5000, () => (
-      watcherDiscovery.memberPeers().find((peer) => peer.endpoint === serviceEndpoint) ?? null
-    ));
-    assert.ok(discoveryPeer);
-
-    assert.equal(registry.memberPeerMetadata, undefined);
-    assert.equal(watcherDiscovery.memberPeerMetadata, undefined);
-  } finally {
-    watcherDiscovery.close();
-    providerDiscovery.close();
-    query.close();
-    registry.close();
-    ctx.close();
-  }
-});
-
-test('attachDiscovery blocks manual lifecycle entry points on canonical sockets and spot nodes', () => {
-  const ctx = zlink.createContext();
-  const socketDiscovery = zlink.createDiscovery(ctx, AUTO_CONNECT_FANOUT, 'attached-socket');
-  const spotDiscovery = zlink.createDiscovery(ctx, AUTO_CONNECT_SPOT_MESH, 'attached-spot');
-  const pub = zlink.createPubSocket(ctx);
-  const node = zlink.createSpotNode(ctx);
-
-  try {
-    pub.attachDiscovery(socketDiscovery);
-    node.attachDiscovery(spotDiscovery);
-
-    assert.throws(() => pub.connect('tcp://127.0.0.1:32001'), /busy|state|current|discovery/i);
-    assert.throws(() => pub.disconnect('tcp://127.0.0.1:32001'), /busy|state|current|discovery/i);
-    assert.throws(() => pub.unbind('tcp://127.0.0.1:32001'), /busy|state|current|discovery/i);
-    assert.throws(() => pub.close(), /busy|state|current|discovery/i);
-    assert.throws(() => node.connectPeer('tcp://127.0.0.1:32002'), /busy|state|current|discovery/i);
-    assert.throws(() => node.disconnectPeer('tcp://127.0.0.1:32002'), /busy|state|current|discovery/i);
-  } finally {
-    spotDiscovery.close();
-    socketDiscovery.close();
-    ctx.close();
-  }
 });
 
 test('canonical socket options are exposed through typed facades', () => {

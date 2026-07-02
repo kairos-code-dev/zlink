@@ -26,11 +26,6 @@ internal sealed class ZLinkBackendRouterSocketWrapper(IRouterSocket nativeSocket
         nativeSocket.Options.ReceiveHighWaterMark = value;
     }
 
-    public void AttachDiscovery(IZLinkBackendDiscovery discovery)
-    {
-        nativeSocket.AttachDiscovery(discovery.RequireNative<IDiscovery>());
-    }
-
     public void Connect(string endpoint)
     {
         nativeSocket.Connect(endpoint);

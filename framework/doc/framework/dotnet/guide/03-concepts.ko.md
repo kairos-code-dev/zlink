@@ -33,8 +33,7 @@ ZLink framework 는 **다섯 가지 핵심 개념**으로 선다:
 | **Entry Spot** | actor 가 생성 직후 머무는 **기본 실행 위치** |
 | **STREAM(스트림)** | 외부 client(모바일·게임)와의 **연결 지향 양방향 채널**. 연결 수명·재연결을 framework 가 관리 |
 | **session(세션)** | STREAM 연결 하나에 대응하는 **서버 측 객체** |
-| **Registry(레지스트리)** | 어떤 서비스가 어디 떠 있는지 모으는 **중앙 디렉터리 서버** |
-| **Discovery(디스커버리)** | client 가 Registry 를 보고 **연결 대상을 자동으로 찾는** 것 |
+| **location store(위치 저장소)** | channel·SPOT 같은 논리 이름을 실제 endpoint 로 풀기 위한 외부 저장소 |
 | **RoutingId** | 노드·스팟의 **논리 주소**(특정 인스턴스를 가리키는 식별자) |
 | **correlation(상관)** | 요청과 그 응답을 **짝지어 주는** 식별 정보. framework 가 자동 처리 |
 | **deadline / timeout** | 응답을 **얼마나 기다릴지**의 상한 시간 |
@@ -44,8 +43,10 @@ ZLink framework 는 **다섯 가지 핵심 개념**으로 선다:
 ## 1. channel — 서버 간 연결
 
 channel 은 **서버↔서버 연결을 묶는 논리 이름**이다. 주소(`host:port`)가 아니라
-`"orders"` 같은 이름으로 부르고, 실제 위치는 registry/discovery(§5)가 푼다. 배포
-값(주소·topology)은 handler 가 아니라 **channel 등록**이 소유하므로,
+`"orders"` 같은 이름으로 부른다. 현재 공개 표면에서는 server/publisher 역할이 자기
+endpoint 를 명시하고, client/subscriber 역할은 수동 연결을 쓰거나 별도 location runtime
+설계가 확정된 뒤 이름 기반 연결을 사용한다. 배포 값(주소·topology)은 handler 가 아니라
+**channel 등록**이 소유하므로,
 `[ZLinkRequest]` 같은 attribute 는 channel 이름을 인자로 받지 않는다.
 
 **channel 종류(kind)** — 서버 간 연결 방식이 다르다:
@@ -158,29 +159,17 @@ graph LR
 
 상세는 [08-stream](08-stream.ko.md).
 
-## 5. registry / discovery — 주소 자동 연결
+## 5. location — 주소 해석
 
-앱 코드는 **channel 이름만** 안다. 실제 peer 주소(`host:port`)는 **Registry +
-Discovery** 가 해결한다.
+앱 코드는 가능하면 channel 이름 같은 논리 이름만 알고, 실제 peer 주소(`host:port`)는
+배포 환경이 제공하는 location store 가 풀어야 한다. Core C API의 Discovery/Registry
+표면은 제거되었으므로, .NET guide 는 제거된 API를 전제로 한 자동 연결 예제를 현재
+계약처럼 설명하지 않는다.
 
-- **Registry** — 어느 노드가 어떤 channel 을 어디(endpoint)서 제공하는지 모아 두는
-  디렉터리 서버. server/publisher 역할이 startup 에 자기 endpoint 를 등록·heartbeat.
-- **Discovery** — `options.UseDiscovery().AddRegistryEndpoint(...)` 를 켠 client/subscriber
-  가 Registry 의 해당 channel view 를 구독해 provider endpoint 를 받아 **자동 연결**하고,
-  provider 집합이 바뀌면 **자동 재연결**한다(앱 재시작 불필요).
-
-```mermaid
-graph LR
-    SV["server<br/>(provider)"] -->|"endpoint 등록·heartbeat"| REG["Registry"]
-    CL["client"] -->|"channel view 구독"| REG
-    REG -.->|"provider endpoint 전달"| CL
-    CL -.->|"자동 연결 / 재연결"| SV
-```
-
-주소 해결 → 자동 연결 sequence 는 [02-getting-started §7](02-getting-started.ko.md)이
-그림으로 보여 주고, 운영·배포 모델은 [09-registry](09-registry.ko.md)가 다룬다.
-Registry 없이 endpoint 를 직접 지정하는 **수동 연결**도 가능하다(역할 단위,
-[04-channel-messaging §6](04-channel-messaging.ko.md)).
+현재 공개 guide 에서 바로 사용할 수 있는 연결 방식은 endpoint 를 역할 등록에 명시하는
+수동 연결이다(역할 단위, [04-channel-messaging §6](04-channel-messaging.ko.md)).
+이름 기반 자동 연결은 location runtime 설계가 정식 공개 계약으로 확정된 뒤 별도 guide 에서
+다룬다.
 
 ## 6. 보조 — 실행·구성 모델
 
@@ -390,10 +379,8 @@ stateDiagram-v2
 
   | 표면 | 역할 | 다루는 장 |
   |------|------|-----------|
-  | `builder.Services.AddZLinkFramework(...)` | channel/SPOT/STREAM/Discovery 선언 | 4~8장 |
+  | `builder.Services.AddZLinkFramework(...)` | channel/SPOT/STREAM 선언 | 4~8장 |
   | `options.AddClientServerChannel(...)` / `AddFanoutChannel` | channel 종류·역할 선언 | [4장](04-channel-messaging.ko.md) |
-  | `options.UseDiscovery(...)` | Registry 기반 endpoint 발견 | [8장](09-registry.ko.md) |
-  | `builder.Services.AddZLinkRegistry(...)` | Registry 서버 실행 | [8장](09-registry.ko.md) |
   | runtime event handler | monitoring event 관찰 | [9장](10-monitoring.ko.md) |
 
 ## 7. 더 깊이

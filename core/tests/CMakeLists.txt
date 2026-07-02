@@ -105,13 +105,9 @@ set(tests
   ${INTEGRATION_TEST_ROOT}/test_pubsub_filter_xpub
   ${INTEGRATION_TEST_ROOT}/test_xpub_nodrop
   ${INTEGRATION_TEST_ROOT}/test_spot_dispatch_event
-  ${INTEGRATION_TEST_ROOT}/test_spot_actor_dispatch
   ${INTEGRATION_TEST_ROOT}/test_spot_poller
   ${INTEGRATION_TEST_ROOT}/test_spot_route_bridge_api
   ${INTEGRATION_TEST_ROOT}/test_spot_runtime_activation
-  ${INTEGRATION_TEST_ROOT}/test_discovery_resolve_spot
-  ${INTEGRATION_TEST_ROOT}/test_peer_admission
-  ${INTEGRATION_TEST_ROOT}/test_discovery_socket_auto_connect_policy
   ${INTEGRATION_TEST_ROOT}/test_timer_poller
   ${INTEGRATION_TEST_ROOT}/test_router_handover
   ${INTEGRATION_TEST_ROOT}/test_router_mandatory
@@ -398,12 +394,6 @@ foreach(test_source ${tests})
         PROPERTIES
           TIMEOUT 30)
     endif()
-    if(${test} STREQUAL "test_discovery_resolve_spot")
-      set_tests_properties(
-        ${test}
-        PROPERTIES
-          TIMEOUT 30)
-    endif()
     if(${test} STREQUAL "test_multi_stream_benchmark_process")
       set_tests_properties(${test} PROPERTIES TIMEOUT 120)
     endif()
@@ -454,8 +444,7 @@ if(TARGET test_spot_pubsub_scenario)
       ${E2E_TEST_ROOT}/spot/spot_pubsub_scenario_shared.cpp
       ${E2E_TEST_ROOT}/spot/spot_pubsub_scenario_peer_cases.cpp
       ${E2E_TEST_ROOT}/spot/spot_pubsub_scenario_callback_cases.cpp
-      ${E2E_TEST_ROOT}/spot/spot_pubsub_scenario_node_cases.cpp
-      ${E2E_TEST_ROOT}/spot/spot_pubsub_scenario_discovery_cases.cpp)
+      ${E2E_TEST_ROOT}/spot/spot_pubsub_scenario_node_cases.cpp)
 endif()
 
 if(TARGET test_scenario_stream_zmq)
@@ -518,13 +507,6 @@ if(TARGET test_monitor_socket_contract)
 endif()
 if(TARGET test_monitor_perf_contract)
   set_tests_properties(test_monitor_perf_contract PROPERTIES TIMEOUT 30)
-endif()
-if(TARGET test_discovery_socket_auto_connect_policy)
-  set_tests_properties(
-    test_discovery_socket_auto_connect_policy
-    PROPERTIES
-      TIMEOUT 60
-      RESOURCE_LOCK "${NETWORK_INTEGRATION_RESOURCE_LOCK}")
 endif()
 if(TARGET test_helper_request_sequence_failure)
   set_tests_properties(
@@ -787,8 +769,7 @@ set(SPOT_SERVICE_INTROSPECTION_TEST_SPECS
     test_spot_service_introspection_queue_dedupe=test_queue_sub_exact_pattern_dedupe
     test_spot_service_introspection_queue_no_subscriber=test_queue_pub_no_subscriber_success
     test_spot_service_introspection_queue_dead_spot=test_queue_pub_dead_spot_fails
-    test_spot_service_introspection_snapshots=test_spot_node_snapshot_status_peers_subjects
-    test_spot_service_introspection_route_limit=test_discovery_local_value_route_limit_contract)
+    test_spot_service_introspection_snapshots=test_spot_node_snapshot_status_peers_subjects)
 extract_case_names_from_specs(
   SPOT_SERVICE_INTROSPECTION_CASES
   SPOT_SERVICE_INTROSPECTION_TEST_SPECS)
@@ -804,8 +785,7 @@ set(SPOT_PUBSUB_LOCAL_PREFIX_TEST_SPECS
 
 set(SPOT_PUBSUB_LOCAL_SUFFIX_TEST_SPECS
     test_spot_pubsub_scenario_sub_handler_basic=test_spot_sub_handler_basic
-    test_spot_pubsub_scenario_recv_handle_isolation=test_spot_recv_callback_isolated_by_handle
-    test_spot_pubsub_scenario_node_discovery_interop=test_spot_node_discovery_direct_and_child_interop)
+    test_spot_pubsub_scenario_recv_handle_isolation=test_spot_recv_callback_isolated_by_handle)
 
 set(SPOT_PUBSUB_LOCAL_TEST_SPECS
     ${SPOT_PUBSUB_LOCAL_PREFIX_TEST_SPECS}
@@ -1097,8 +1077,6 @@ set(UNREGISTERED_TEST_ALLOWLIST
     test_router_auto_id_format
     test_router_handover
     test_router_mandatory_hwm
-    test_spot_multi_service_discovery
-    test_spot_multi_service_discovery_scale
     test_router_multiple_dealers
     test_reconnect_ivl
     test_reconnect_options

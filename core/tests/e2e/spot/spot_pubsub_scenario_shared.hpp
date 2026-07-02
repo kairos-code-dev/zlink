@@ -92,16 +92,6 @@ int bind_spot_node_with_port_seed (void *node_,
                                    const char *prefix_,
                                    int *port_seed_,
                                    char *endpoint_out_);
-void *create_started_registry_with_port_seed (void *ctx_,
-                                              int *port_seed_,
-                                              char *pub_endpoint_out_,
-                                              size_t pub_size_,
-                                              char *router_endpoint_out_,
-                                              size_t router_size_);
-int connect_discovery_registry_with_retry (void *discovery_,
-                                           const char *endpoint_,
-                                           int timeout_ms_);
-
 void run_spot_peer_tcp_test ();
 void run_spot_peer_reverse_tcp_test ();
 
@@ -113,6 +103,5 @@ void test_spot_sub_handler_basic ();
 void test_spot_recv_callback_isolated_by_handle ();
 void test_spot_node_direct_local_and_child_interop ();
 void test_spot_node_publisher_local_spot_subscribe_surface ();
-void test_spot_node_discovery_direct_and_child_interop ();
 
 #endif

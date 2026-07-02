@@ -285,48 +285,6 @@ static inline void sample_pause_ms (int timeout_ms_)
 #endif
 }
 
-/* ---- Discovery / readiness helpers -------------------------------------- */
-
-static inline int
-wait_for_discovery_service (void *discovery_, const char *channel_name_, int timeout_ms)
-{
-    struct timespec start;
-    clock_gettime (CLOCK_MONOTONIC, &start);
-
-    for (;;) {
-        size_t count = 0;
-        if (zlink_discovery_member_peers (discovery_, NULL, &count) == 0 && count > 0) {
-            zlink_member_peer_entry_t *entries =
-              (zlink_member_peer_entry_t *) calloc (count, sizeof (*entries));
-            assert (entries != NULL);
-            if (zlink_discovery_member_peers (discovery_, entries, &count) == 0) {
-                for (size_t i = 0; i < count; ++i) {
-                    if (!channel_name_ || strcmp (entries[i].channel_name, channel_name_) == 0) {
-                        free (entries);
-                        return 1;
-                    }
-                }
-            }
-            free (entries);
-        }
-
-        struct timespec now;
-        clock_gettime (CLOCK_MONOTONIC, &now);
-        long elapsed_ms = (long) (now.tv_sec - start.tv_sec) * 1000
-                          + (long) (now.tv_nsec - start.tv_nsec) / 1000000;
-        long remaining = (long) timeout_ms - elapsed_ms;
-        if (remaining <= 0)
-            break;
-        if (remaining > 10)
-            remaining = 10;
-
-        zlink_pollitem_t item = {NULL, 0, 0, 0};
-        (void) zlink_poll (&item, 0, remaining, NULL);
-    }
-
-    return 0;
-}
-
 static inline int wait_for_spot_node_subject_ready (void *node_, int timeout_ms)
 {
     struct timespec start;

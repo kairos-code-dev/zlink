@@ -4,7 +4,6 @@ package systems.zlink.perf;
 
 import systems.zlink.contracts.core.Context;
 import systems.zlink.contracts.sockets.DealerSocket;
-import systems.zlink.contracts.service.discovery.Discovery;
 import systems.zlink.contracts.messaging.Message;
 import systems.zlink.contracts.eventing.MonitorEventType;
 import systems.zlink.contracts.eventing.SocketMonitor;
@@ -13,7 +12,6 @@ import systems.zlink.contracts.messaging.Received;
 import systems.zlink.contracts.errors.ZlinkRecvException;
 import systems.zlink.contracts.sockets.RecvFlags;
 import systems.zlink.contracts.sockets.RecvResult;
-import systems.zlink.contracts.service.registry.Registry;
 import systems.zlink.contracts.sockets.RouterSocket;
 import systems.zlink.contracts.sockets.Socket;
 import systems.zlink.contracts.sockets.SocketType;
@@ -218,14 +216,6 @@ public final class PerfUtil {
 
     public static void configureClientTls(SpotNode node, String transport) {
         PerfTransport.configureClientTls(node, transport);
-    }
-
-    public static void configureServerTls(Registry registry, String transport) {
-        PerfTransport.configureServerTls(registry, transport);
-    }
-
-    public static void configureClientTls(Discovery discovery, String transport) {
-        PerfTransport.configureClientTls(discovery, transport);
     }
 
     public static Context newContext(Config config) {

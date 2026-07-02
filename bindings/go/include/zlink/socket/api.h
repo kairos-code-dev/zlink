@@ -118,7 +118,6 @@ ZLINK_EXPORT zlink_handler_result_t zlink_recv_handler (void *s_,
 ZLINK_EXPORT zlink_handler_result_t zlink_stream_packet_handler (
   void *stream_, zlink_stream_packet_handler_fn handler_, void *userdata_);
 
-
 ZLINK_EXPORT zlink_submit_result_t zlink_stream_bind_actor (void *stream_,
                                                             const zlink_routing_id_t *session_rid_,
                                                             const zlink_actor_ref_t *actor_,
@@ -178,11 +177,9 @@ ZLINK_EXPORT zlink_handler_result_t zlink_send_ready_handler (void *s_,
  * correctness, and close/destroy uses a stricter lifecycle gate. If another
  * thread has an in-flight callback or admitted API on the same handle, close
  * fails with errno=EBUSY. Once close is accepted, new API entry fails with
- * errno=ESHUTDOWN. Discovery-attached raw service participants also reject
- * close until their owning discovery is destroyed. Self-close from a
- * send-ready or monitor callback is deferred until callback epilogue. For
- * STREAM raw callbacks, close from inside the raw callback is not supported
- * and fails with errno=EBUSY.
+ * errno=ESHUTDOWN. Self-close from a send-ready or monitor callback is
+ * deferred until callback epilogue. For STREAM raw callbacks, close from
+ * inside the raw callback is not supported and fails with errno=EBUSY.
  */
 ZLINK_EXPORT zlink_close_result_t zlink_close (void *s_);
 
@@ -299,22 +296,9 @@ ZLINK_EXPORT zlink_connect_result_t zlink_disconnect (void *s_, const char *addr
  * @brief Disconnect the connected peer whose source routing id matches peer_rid_.
  *
  * Success means the matching pipe was asked to terminate asynchronously.
- * Discovery-attached sockets reject this manual lifecycle change.
  */
 ZLINK_EXPORT zlink_connect_result_t zlink_disconnect_rid (void *s_,
                                                           const zlink_routing_id_t *peer_rid_);
-
-/**
- * @brief Attach a raw ROUTER/DEALER/PUB/SUB socket to a discovery service view.
- *
- * Attached sockets delegate provider registration, peer refresh, and shutdown
- * ownership to the discovery instance.
- *
- * While attached, manual `connect`, `disconnect`, `unbind`, and `close`
- * operations fail. Destroy the discovery instance to terminate the attached
- * socket lifecycle.
- */
-ZLINK_EXPORT zlink_config_result_t zlink_socket_attach_discovery (void *socket_, void *discovery_);
 
 /* ========== Helper substrate layer (*_part) ========== */
 ZLINK_EXPORT zlink_submit_result_t zlink_send_part (void *s_,

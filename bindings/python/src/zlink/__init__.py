@@ -30,15 +30,6 @@ from .contracts import (
     MonitorStatus,
     MonitorEvent,
     MonitorSocket,
-    Registry,
-    Discovery,
-    MemberPeerEntry,
-    RegistryStatus,
-    RegistryServiceSummaryEntry,
-    RegistryServiceSummaryFilter,
-    RegistryTopologyEntry,
-    RegistryTopologyFilter,
-    RegistryQueryClient,
     SendOp,
     RequestOp,
     RequestCallbackOp,
@@ -50,7 +41,6 @@ from .contracts import (
     ActorRef,
     ActorJoinRequest,
     ActorRoute,
-    SpotRoute,
     ActorRecvInfo,
     ActorJoinInfo,
     remote_actor_ref,
@@ -98,8 +88,6 @@ from .contracts import (
     MonitorEventMask,
     DisconnectReason,
     PollEventFlag,
-    AutoConnectType,
-    ServiceRole,
     SpotNodeMode,
     SpotNodeSocketOwner,
     SpotNodeState,
@@ -110,10 +98,6 @@ from .contracts import (
     SpotActorLifecycleEventKind,
     SpotDispatchEvent,
     SpotDispatchSubjectKind,
-    RegistryState,
-    TopologySource,
-    TopologyState,
-    ServiceKind,
     SubjectKind,
     SpotRole,
     PollSourceKind,
@@ -128,7 +112,6 @@ from ._runtime.eventing.monitor import open_socket_monitor as _runtime_open_sock
 from ._runtime.messaging import message_materializer as _messaging_runtime
 from ._runtime.options import option_mapping as _socket_options_runtime
 from ._runtime.sockets import socket_base_impl as _socket_runtime
-from ._runtime.service.discovery import discovery as _discovery_runtime
 from ._runtime.service.spot import spot as _spot_runtime
 from . import contracts as _contracts_projection
 from .contracts import messaging as _messaging_contracts_projection
@@ -169,9 +152,6 @@ create_sub_socket_options = _socket_options_runtime.create_sub_socket_options
 create_pub_socket_options = _socket_options_runtime.create_pub_socket_options
 create_router_socket_options = _socket_options_runtime.create_router_socket_options
 
-create_registry = _discovery_runtime.create_registry
-create_discovery = _discovery_runtime.create_discovery
-create_registry_query_client = _discovery_runtime.create_registry_query_client
 create_spot_node = _spot_runtime.create_spot_node
 create_spot = _spot_runtime.create_spot
 
@@ -237,18 +217,6 @@ __all__ = [
     "MonitorStatus",
     "MonitorEvent",
     "MonitorSocket",
-    "Registry",
-    "create_registry",
-    "Discovery",
-    "create_discovery",
-    "MemberPeerEntry",
-    "RegistryStatus",
-    "RegistryServiceSummaryEntry",
-    "RegistryServiceSummaryFilter",
-    "RegistryTopologyEntry",
-    "RegistryTopologyFilter",
-    "RegistryQueryClient",
-    "create_registry_query_client",
     "SendOp",
     "RequestOp",
     "RequestCallbackOp",
@@ -310,8 +278,6 @@ __all__ = [
     "MonitorEventMask",
     "DisconnectReason",
     "PollEventFlag",
-    "AutoConnectType",
-    "ServiceRole",
     "SpotNodeMode",
     "SpotNodeSocketOwner",
     "SpotNodeState",
@@ -322,10 +288,6 @@ __all__ = [
     "SpotActorLifecycleEventKind",
     "SpotDispatchEvent",
     "SpotDispatchSubjectKind",
-    "RegistryState",
-    "TopologySource",
-    "TopologyState",
-    "ServiceKind",
     "SubjectKind",
     "SpotRole",
     "PollSourceKind",

@@ -10,7 +10,6 @@
 #include "api/core/config_result_internal.hpp"
 #include "core/address.hpp"
 #include "sockets/proxy/proxy.hpp"
-#include "services/discovery/discovery_access.hpp"
 
 #ifndef ZLINK_INTERNAL_EXPORT
 #if defined _WIN32 && defined DLL_EXPORT && !defined ZLINK_STATIC
@@ -64,18 +63,6 @@ zlink_connect_result_t zlink_disconnect_rid (void *s_, const zlink_routing_id_t 
     if (!handle.socket)
         return zlink::connect_result_internal::from_errno (EFAULT);
     return zlink::connect_result_internal::from_rc (handle.socket->term_peer_rid (peer_rid_));
-}
-
-zlink_config_result_t zlink_socket_attach_discovery (void *s_, void *discovery_)
-{
-    socket_handle_t handle = as_socket_handle (s_);
-    if (!handle.socket)
-        return ZLINK_CONFIG_INVALID_HANDLE;
-
-    zlink::discovery_t *discovery = zlink::discovery_access_t::from_handle (discovery_);
-    if (!discovery)
-        return ZLINK_CONFIG_INVALID_ARGUMENT;
-    return zlink::config_result_internal::from_rc (handle.socket->attach_discovery (discovery));
 }
 
 int zlink_stream_attach_raw (void *s_, zlink_stream_on_raw_fn on_raw_)

@@ -77,7 +77,6 @@ bridge를 타고 spot으로 *들어가는* inbound 경로. spot→spot(#1)도, s
 // === 받는 노드 (spot 호스팅 + 외부 route 수신) — 프로세스당 노드 1개(Q9) ===
 builder.Services.AddZLinkFramework(options =>
 {
-    options.UseDiscovery().AddRegistryEndpoint("tcp://registry1:5551");
 
     // 외부→spot route용 RouteMesh 채널만 설정 — accept/egress/attach 호출 없음
     options.AddRouteMesh("api").EnableServer("tcp://0.0.0.0:9001");   // (구 AddRouteMeshChannel)

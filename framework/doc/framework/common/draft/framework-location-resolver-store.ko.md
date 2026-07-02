@@ -95,7 +95,6 @@ registry/discovery 의존 지점을 제거하고 같은 사용자 기능을 loca
 
 따라서 구현 중 판단 기준은 아래와 같다.
 
-- core의 `zlink_discovery_*`, `zlink_registry_*` API를 새 framework 기능의 내부 구현으로 호출하지 않는다.
 - 기존 framework의 `UseRegistry...` resolver, embedded registry host, registry topology query endpoint는
   location store/resolver/runtime query로 교체한다.
 - 자동 연결은 core service list broadcast를 재현하지 않고, peer location list와 watch/polling으로
@@ -1250,7 +1249,6 @@ id를 동시에 만드는 race에서 진 쪽은 instance를 만들기 전에 `Re
 
 | 기존 API/개념 | 처리 | 대체 |
 |---------------|------|------|
-| `UseRegistrySpotResolver()` | 제거 | `AddSpotLocationStore<T>()` 또는 공식 Redis extension 등록 후 기본 `IZLinkSpotLocationResolver` 사용 |
 | `UseRegistryActorResolver()` 계열 | 제거 | `AddActorLocationStore<T>()` 또는 공식 Redis extension 등록 후 기본 `IZLinkActorLocationResolver` 사용 |
 | `UseRegistryRouteResolver()` 계열 | 제거 | `AddRouteLocationStore<T>()` 또는 공식 Redis extension 등록 후 기본 `IZLinkRouteLocationResolver` 사용 |
 | `UseDiscovery(...)`가 registry endpoint를 직접 받는 channel 설정 | 대체 | location store 기반 자동 연결 option으로 대체 |
@@ -1438,7 +1436,6 @@ E2E와 언어별 E2E는 수정된 문서를 따라간다.
   연결 혼합”이 아니라 “location-store 자동 연결과 manual 연결 혼합”으로 바뀐다.
 - 기존 registry 장애/HA 테스트는 store 장애/복구 테스트로 바꾼다. Redis extension E2E에서는 Redis
   연결 끊김, 재연결, owner lease 만료, stale row 제거, polling fallback을 검증한다.
-- 기존 `zlink_discovery_member_peers()` 또는 registry member peer 조회를 사용하던 검증은 용도에 따라
   나눈다. member peer 사용자 기능 검증은 `IZLinkPeerLocationResolver.ListPeersAsync(..., Refresh)`로,
   E2E의 raw peer row 상태 확인은 freshness 없는 `IZLinkLocationRuntimeQuery.ListPeersAsync(filter)`로
   바꾼다.

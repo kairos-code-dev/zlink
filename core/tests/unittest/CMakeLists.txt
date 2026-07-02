@@ -4,7 +4,6 @@ cmake_minimum_required(VERSION 3.10)
 set(unittests
     unittest_ypipe
     unittest_poller
-    unittest_service_mode_policy
     unittest_fast_mutex
     unittest_mtrie
     unittest_ip_resolver
@@ -15,15 +14,12 @@ set(unittests
     unittest_msg_view
     unittest_ctx_runtime
     unittest_service_runtime_base
-    unittest_discovery_service_state
-    unittest_discovery_route_store
     unittest_spot_data_plane_protocol
     unittest_spot_data_plane_budget
     unittest_spot_runtime_control_state
     unittest_spot_dispatch_seriality
     unittest_socket_runtime
     unittest_spot_subject_access
-    unittest_registry_access
     unittest_typed_option
     unittest_public_contract_headers
     unittest_request_timeout_scheduler
@@ -75,13 +71,6 @@ foreach(test ${unittests})
 
   set_tests_properties(${test} PROPERTIES TIMEOUT 10)
   set_tests_properties(${test} PROPERTIES LABELS "unittest;parallel-safe")
-
-  if(${test} STREQUAL "unittest_service_mode_policy")
-    set_tests_properties(${test} PROPERTIES
-      TIMEOUT 30
-      RUN_SERIAL TRUE
-      LABELS "unittest;serial")
-  endif()
 
   # Unit tests link through testutil-static and the static core library only.
   # Some CMake versions still propagate the shared libzlink target through

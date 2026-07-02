@@ -22,8 +22,6 @@ $samples = @(
     "ActorRoomServer/ActorRoomServer.csproj"
     "ActorGatewayRelay/ActorGatewayRelay.csproj"
     "ActorSinglePlayerQueue/ActorSinglePlayerQueue.csproj"
-    "DiscoveryRegistry/DiscoveryRegistry.csproj"
-    "RegistryQuery/RegistryQuery.csproj"
 )
 
 $passed = 0

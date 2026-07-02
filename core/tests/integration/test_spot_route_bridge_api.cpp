@@ -661,9 +661,8 @@ void test_handle_router_received_request_replies_to_channel_peer ()
                                                  &has_more, ZLINK_RECV_FLAGS_DONTWAIT));
     TEST_ASSERT_NOT_NULL (source_node_rid);
     TEST_ASSERT_NOT_EQUAL (0, local_request_seq);
-    TEST_ASSERT_EQUAL_INT (strlen ("bridge-router-local"), source_node_rid->size);
-    TEST_ASSERT_EQUAL_MEMORY ("bridge-router-local", source_node_rid->data,
-                              strlen ("bridge-router-local"));
+    TEST_ASSERT_EQUAL_INT (strlen ("bridge:mesh"), source_node_rid->size);
+    TEST_ASSERT_EQUAL_MEMORY ("bridge:mesh", source_node_rid->data, strlen ("bridge:mesh"));
     TEST_ASSERT_EQUAL_INT (ZLINK_PART_FINAL, has_more);
     TEST_ASSERT_EQUAL_INT (strlen ("question"), zlink_msg_size (&received));
     TEST_ASSERT_EQUAL_MEMORY ("question", zlink_msg_data (&received), strlen ("question"));

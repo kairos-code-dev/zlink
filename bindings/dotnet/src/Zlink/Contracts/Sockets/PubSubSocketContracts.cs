@@ -78,11 +78,6 @@ public interface IPubSocket : IPublisherSocket
     /// </summary>
     RoutingId GetRoutingId();
 
-    /// <summary>
-    ///     Attaches a discovery service so publishes can reach discovered
-    ///     subscribers without manual connect.
-    /// </summary>
-    void AttachDiscovery(IDiscovery discovery);
 }
 
 /// <summary>
@@ -107,11 +102,6 @@ public interface ISubSocket : ISubscriberSocket
     /// </summary>
     RoutingId GetRoutingId();
 
-    /// <summary>
-    ///     Attaches a discovery service so subscriptions can reach discovered
-    ///     publishers without manual connect.
-    /// </summary>
-    void AttachDiscovery(IDiscovery discovery);
 }
 
 /// <summary>

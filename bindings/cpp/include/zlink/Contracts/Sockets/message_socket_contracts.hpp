@@ -89,13 +89,6 @@ class dealer_socket_t : public message_socket_t
 
     dealer_socket_options_t options () { return dealer_socket_options_t (*this); }
 
-    template <typename DiscoveryT> void attach_discovery (DiscoveryT &discovery_)
-    {
-        if (socket_t::attach_discovery (discovery_) != 0)
-            throw config_error_t (detail::config_result_from_errno (detail::current_errno ()),
-                                  detail::current_errno ());
-    }
-
   private:
     std::chrono::milliseconds _default_request_timeout;
     using message_socket_t::recv;

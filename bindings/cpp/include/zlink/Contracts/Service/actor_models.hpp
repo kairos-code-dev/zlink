@@ -259,25 +259,6 @@ struct actor_route_t
     friend struct detail::actor_model_access_t;
 };
 
-struct spot_route_t
-{
-    spot_route_t () :
-        spot_rid (detail::unchecked_empty_routing_id ()),
-        owner_node_rid (detail::unchecked_empty_routing_id ()),
-        spot_kind_value (spot_kind::invalid)
-    {
-    }
-
-    spot_kind kind () const noexcept { return spot_kind_value; }
-
-    routing_id_t spot_rid;
-    routing_id_t owner_node_rid;
-    spot_kind spot_kind_value;
-
-  private:
-    friend struct detail::actor_model_access_t;
-};
-
 struct actor_part_t
 {
     actor_part_t () : info (), part (), has_more (false) {}

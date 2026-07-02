@@ -9,10 +9,6 @@ import systems.zlink.runtime.nativeapi.ContractAccess;
 import systems.zlink.contracts.errors.ZlinkConfigException;
 import systems.zlink.contracts.errors.ConfigResult;
 import systems.zlink.contracts.errors.ZlinkException;
-import systems.zlink.contracts.service.discovery.Discovery;
-import systems.zlink.contracts.service.registry.AutoConnectType;
-import systems.zlink.contracts.service.registry.Registry;
-import systems.zlink.contracts.service.registry.RegistryQueryClient;
 import systems.zlink.contracts.service.spot.SpotNode;
 import systems.zlink.contracts.service.spot.SpotNodeMode;
 import systems.zlink.contracts.service.spot.SpotNodeOptions;
@@ -28,9 +24,6 @@ import systems.zlink.runtime.nativeapi.InternalAccess;
 import systems.zlink.runtime.nativeapi.Native;
 import systems.zlink.runtime.nativeapi.NativeErrno;
 import systems.zlink.runtime.nativeapi.NativeHelpers;
-import systems.zlink.runtime.service.discovery.NativeDiscovery;
-import systems.zlink.runtime.service.registry.NativeRegistry;
-import systems.zlink.runtime.service.registry.NativeRegistryQueryClient;
 import systems.zlink.runtime.service.spot.NativeSpotNode;
 import systems.zlink.runtime.sockets.NativeSockets;
 import java.lang.foreign.Arena;
@@ -140,22 +133,6 @@ final class NativeContext implements Context {
     @Override
     public StreamSocket createStreamSocket() {
         return NativeSockets.stream(this);
-    }
-
-    @Override
-    public Registry createRegistry() {
-        return NativeRegistry.create(this);
-    }
-
-    @Override
-    public RegistryQueryClient createRegistryQueryClient() {
-        return NativeRegistryQueryClient.create(this);
-    }
-
-    @Override
-    public Discovery createDiscovery(AutoConnectType autoConnectType,
-                                     String channelName) {
-        return NativeDiscovery.create(this, autoConnectType, channelName);
     }
 
     @Override

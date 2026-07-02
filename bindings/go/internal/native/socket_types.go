@@ -78,13 +78,6 @@ func newPubSocket(ctx *Context, socketType C.zlink_socket_type_t) (*PubSocket, e
 	}, nil
 }
 
-func (s *PubSocket) AttachDiscovery(discovery *Discovery) error {
-	if discovery == nil || discovery.closed {
-		return &ConfigError{Result: ConfigInvalidHandle, nativeErrno: int(C.EFAULT)}
-	}
-	return configErrorFromResult(C.zlink_socket_attach_discovery(s.raw(), discovery.raw()))
-}
-
 func (s *PubSocket) Publish(topic string) SendOp {
 	return newSendBuilder(nil, func(parts []sendBuilderPart, flags SendFlags) error {
 		return s.withCString(topic, func(cstr *C.char) error {
@@ -107,13 +100,6 @@ func newSubSocket(ctx *Context, socketType C.zlink_socket_type_t) (*SubSocket, e
 	return &SubSocket{
 		subscribeSocket: &subscribeSocket{connectionSocket: &connectionSocket{socketCore: core}},
 	}, nil
-}
-
-func (s *SubSocket) AttachDiscovery(discovery *Discovery) error {
-	if discovery == nil || discovery.closed {
-		return &ConfigError{Result: ConfigInvalidHandle, nativeErrno: int(C.EFAULT)}
-	}
-	return configErrorFromResult(C.zlink_socket_attach_discovery(s.raw(), discovery.raw()))
 }
 
 func (s *SubSocket) SubscriptionAt(index int) (string, bool, error) {
@@ -184,13 +170,6 @@ func (s *DealerSocket) SetRequestTimeout(value time.Duration) error {
 	}
 	raw := C.int(ms)
 	return configErrorFromResult(C.zlink_set_dealer_option(s.raw(), C.ZLINK_DEALER_OPT_REQUEST_TIMEOUT_MS, unsafe.Pointer(&raw), C.size_t(C.sizeof_int)))
-}
-
-func (s *DealerSocket) AttachDiscovery(discovery *Discovery) error {
-	if discovery == nil || discovery.closed {
-		return &ConfigError{Result: ConfigInvalidHandle, nativeErrno: int(C.EFAULT)}
-	}
-	return configErrorFromResult(C.zlink_socket_attach_discovery(s.raw(), discovery.raw()))
 }
 
 func (s *DealerSocket) Send() SendOp {
@@ -302,13 +281,6 @@ func (s *RouterSocket) SetConnectRoutingID(id RoutingID) error {
 
 func (s *RouterSocket) RoutingID() (RoutingID, error) {
 	return getHandleRoutingID(s.raw())
-}
-
-func (s *RouterSocket) AttachDiscovery(discovery *Discovery) error {
-	if discovery == nil || discovery.closed {
-		return &ConfigError{Result: ConfigInvalidHandle, nativeErrno: int(C.EFAULT)}
-	}
-	return configErrorFromResult(C.zlink_socket_attach_discovery(s.raw(), discovery.raw()))
 }
 
 type XPubSocket struct {

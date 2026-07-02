@@ -25,10 +25,6 @@
 namespace zlink
 {
 
-namespace service
-{
-class discovery_t;
-} // namespace service
 class socket_t;
 namespace detail
 {
@@ -73,8 +69,6 @@ class socket_t
                          bool trust_system_ = false);
 
   protected:
-    [[nodiscard]] int attach_discovery (service::discovery_t &discovery_);
-
     socket_t () noexcept;
 
     socket_t (context_t &ctx_, socket_type type_);

@@ -35,8 +35,6 @@ internal static class MultiNodeHostFactory
                     $"multi-node role requires rid '{SpotServiceNames.MultiSpotNodeA}' or '{SpotServiceNames.MultiSpotNodeB}'.");
 
             framework.AddHandlersFromAssemblyOf(typeof(Program));
-            framework.UseDiscovery()
-                .AddRegistryEndpoint(Require(options.RegistryRouterEndpoint, "--registry-router-endpoint"));
             if (isNodeA)
             {
                 var routeEndpoint = Require(options.MultiRouteAEndpoint, "--multi-route-a-endpoint");
@@ -47,8 +45,7 @@ internal static class MultiNodeHostFactory
                     .AddRequestHandler<MultiNodeCreateSpotAHandler, MultiNodeCreateSpotReq, MultiNodeCreateSpotRes>(
                         "MultiNodeCreateSpotReq");
                 framework.AddSpotMesh(SpotServiceNames.MultiSpotNodeA)
-                    .UseRegistrySpotResolver()
-                    .EnableRouter(Require(options.MultiSpotRouterAEndpoint, "--multi-spot-router-a-endpoint"))
+                                        .EnableRouter(Require(options.MultiSpotRouterAEndpoint, "--multi-spot-router-a-endpoint"))
                     .SetRoutingId(RoutingId.From(SpotServiceNames.MultiSpotNodeA))
                     .AddSpotFactory<MultiNodeSpotA>();
             }
@@ -63,8 +60,7 @@ internal static class MultiNodeHostFactory
                     .AddRequestHandler<MultiNodeCreateSpotBHandler, MultiNodeCreateSpotReq, MultiNodeCreateSpotRes>(
                         "MultiNodeCreateSpotReq");
                 framework.AddSpotMesh(SpotServiceNames.MultiSpotNodeB)
-                    .UseRegistrySpotResolver()
-                    .EnableRouter(Require(options.MultiSpotRouterBEndpoint, "--multi-spot-router-b-endpoint"))
+                                        .EnableRouter(Require(options.MultiSpotRouterBEndpoint, "--multi-spot-router-b-endpoint"))
                     .SetRoutingId(RoutingId.From(SpotServiceNames.MultiSpotNodeB))
                     .AddSpotFactory<MultiNodeSpotB>();
             }

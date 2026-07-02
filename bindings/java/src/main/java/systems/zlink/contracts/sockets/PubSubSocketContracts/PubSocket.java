@@ -3,7 +3,6 @@
 package systems.zlink.contracts.sockets;
 
 import systems.zlink.contracts.core.RoutingId;
-import systems.zlink.contracts.service.discovery.Discovery;
 import systems.zlink.contracts.service.spot.SendOperation;
 
 /** A topic-filtered publisher that drops messages with no matching subscriber. */
@@ -13,7 +12,6 @@ public interface PubSocket extends Socket {
     void unbind(String endpoint);
     void disconnect(String endpoint);
     void disconnectRid(RoutingId routingId);
-    void attachDiscovery(Discovery discovery);
     void setRoutingId(RoutingId rid);
     SendOperation publish(String topicId);
     @Override PubSocketOptions options();

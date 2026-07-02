@@ -42,8 +42,6 @@ client다. 이 client들은 bean으로 등록할 수 있지만, 없는 channel�
 | `ZLinkSpotOutbound` | 최소 1개 SpotNode | Spring DI resolve 실패 |
 | `ZLinkSpotPublisherClient` | attached Spot publisher client 역할 | Spring DI resolve 실패 |
 | `ZLinkActorManager` | SpotNode + actor factory | Spring DI resolve 실패 |
-| `ZLinkRegistryQuery` | embedded registry | Spring DI resolve 실패 |
-| `ZLinkRegistryQueryClient` | query client 설정 | Spring DI resolve 실패 |
 
 bound session은 별도 factory bean이 아니라 `ZLinkActorContext.boundSession()`으로 노출된다.
 actor runtime state에 저장된 현재 session rid와 binding token을 쓰며, binding이 없는

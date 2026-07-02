@@ -146,8 +146,6 @@ except zlink.SubmitError as e:
 | `zlink_msg_data(msg)` | `part.to_bytes()` |
 | `zlink_routing_id_t` | `zlink.RoutingId(b"id")` |
 | `zlink_spot_node_new(ctx, opts)` | `zlink.create_spot_node(ctx)` |
-| `zlink_registry_new(ctx)` | `zlink.create_registry(ctx)` |
-| `zlink_discovery_new(ctx,...)` | `zlink.create_discovery(ctx, type, ch)` |
 
 ---
 

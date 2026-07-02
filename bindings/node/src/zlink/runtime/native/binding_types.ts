@@ -9,20 +9,8 @@ import type {
   MonitorStatusRaw
 } from '../eventing/monitor_raw';
 import type {
-  RegistryServiceSummaryFilter,
-  RegistryTopologyFilter,
   SubscriptionEntry
 } from '../../contracts/service';
-import type {
-  MemberPeerEntryRaw,
-  RegistryServiceSummaryEntryRaw,
-  RegistryStatusRaw,
-  RegistryTopologyEntryRaw
-} from '../service/registry/registry_support';
-import type {
-  DiscoveryActorRouteRaw,
-  DiscoverySpotRouteRaw
-} from '../service/discovery/discovery';
 import type {
   ActorJoinEntrySpotResultRaw,
   ActorJoinResultRaw,
@@ -68,18 +56,10 @@ export type {
   ActorLookupResultRaw,
   ActorPartRaw,
   ActorRefRaw,
-  DiscoveryActorRouteRaw,
-  DiscoverySpotRouteRaw,
-  MemberPeerEntryRaw,
   MonitorEventValueRaw,
   MonitorStatusRaw,
   NativeReceivedRaw,
   NativeTopicMessageRaw,
-  RegistryServiceSummaryEntryRaw,
-  RegistryServiceSummaryFilter,
-  RegistryStatusRaw,
-  RegistryTopologyEntryRaw,
-  RegistryTopologyFilter,
   SpotActorJoinRecvRaw,
   SpotActorLifecycleRaw,
   SpotDispatchRaw,

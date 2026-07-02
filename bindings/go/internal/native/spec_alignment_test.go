@@ -247,15 +247,9 @@ func TestExportedSpecShapeForMonitorDiscoveryAndErrors(t *testing.T) {
 	assertField("DisconnectedSubTargetCount", reflect.TypeOf(SpotNodeStatus{}), reflect.Uint32)
 	assertField("DisconnectedRoutedTargetCount", reflect.TypeOf(SpotNodeStatus{}), reflect.Uint32)
 	assertField("ConnectedSinceMs", reflect.TypeOf(SpotNodePeerEntry{}), reflect.Uint64)
-	assertField("LastReportedMs", reflect.TypeOf(RegistryTopologyEntry{}), reflect.Uint64)
 	assertNoField("LastChangedMS", reflect.TypeOf(SpotNodeStatus{}))
 	assertNoField("ConnectedSinceMS", reflect.TypeOf(SpotNodePeerEntry{}))
-	assertNoField("LastReportedMS", reflect.TypeOf(RegistryTopologyEntry{}))
 
-	assertField("AutoConnectType", reflect.TypeOf(RegistryServiceSummaryFilter{}), reflect.Pointer)
-	assertField("ServiceRole", reflect.TypeOf(RegistryServiceSummaryFilter{}), reflect.Pointer)
-	assertField("ChannelName", reflect.TypeOf(RegistryServiceSummaryFilter{}), reflect.Pointer)
-	assertField("RoutingID", reflect.TypeOf(RegistryTopologyFilter{}), reflect.Pointer)
 	assertField("PeerEndpoint", reflect.TypeOf(SpotNodePeerFilter{}), reflect.Pointer)
 	assertField("Role", reflect.TypeOf(SpotNodeSubjectFilter{}), reflect.Pointer)
 
@@ -264,8 +258,6 @@ func TestExportedSpecShapeForMonitorDiscoveryAndErrors(t *testing.T) {
 		name string
 	}{
 		{reflect.TypeOf(&MonitorEvent{}), "HasRoutingID"},
-		{reflect.TypeOf(&MemberPeerEntry{}), "HasRoutingID"},
-		{reflect.TypeOf(&RegistryTopologyEntry{}), "HasRoutingID"},
 		{reflect.TypeOf(&SpotNodeStatus{}), "HasNodeRoutingID"},
 	}
 	for _, method := range methodNames {
@@ -320,7 +312,4 @@ func TestExportedSpecShapeForSpotServiceBindingTypes(t *testing.T) {
 	}
 
 	assertField("Weight", reflect.TypeOf(SpotNodePeerEntry{}), reflect.Uint32)
-	assertField("Weight", reflect.TypeOf(MemberPeerEntry{}), reflect.Uint32)
-	assertField("AutoConnectType", reflect.TypeOf(MemberPeerEntry{}), reflect.Uint32)
-	assertField("ChannelName", reflect.TypeOf(MemberPeerEntry{}), reflect.String)
 }

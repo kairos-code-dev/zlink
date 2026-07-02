@@ -190,7 +190,6 @@ await events
 | Unary `Empty` / fire-and-forget | one-way send | `IZLinkChannelClient.SendToChannel(...).Submit` ([4](04-channel-messaging.ko.md)) |
 | Server streaming / 이벤트 피드 | pub/sub fan-out | `IZLinkFanoutClient.Publish` + `IZLinkPublishHandler<T>` ([4](04-channel-messaging.ko.md)) |
 | Client/Bidi streaming | STREAM session | `IZLinkSession`/`IZLinkSessionContext` ([7](08-stream.ko.md), §5) |
-| Service discovery(DNS/xDS) | Registry + Discovery | `UseDiscovery` + `IZLinkRegistryQuery` ([8](09-registry.ko.md), §6) |
 | Interceptor | handler filter | `IZLinkHandlerFilter` ([4](04-channel-messaging.ko.md) §5, §1.4) |
 | Deadline/timeout | request timeout | `IZLinkRequestCall.Timeout(...)` (§1.1) |
 | Metadata/trailer | metadata 정책 | `ConfigureMetadata` + `IZLinkMessageMetadataPolicy` (§2.1, §5.2) |
@@ -217,8 +216,6 @@ options.AddHandlersFromAssemblyOf<Program>();
 options.ConfigureMetadata().AddForwardedMetadataKey("trace-id");  // 이 key 만 다운스트림으로 전달 허용(허용 목록)
 spot.AddActorFactory<PlayerActorFactory>("player");
 options.AddSpotRemoteAddressResolver<MySpotResolver>();
-options.UseRegistrySpotRemoteAddresses("game").RouterChannelId = "play-router"; // 반환 옵션에 후속 설정 — spot 주소 해석 시 경유할 router channel
-options.UseDiscovery().AddRegistryEndpoint("tcp://127.0.0.1:6000");
 options.AddSpotMesh("play-spots");
 options.UseFilter<AuditingFilter>();
 options.ConfigureDispatch().SpotDispatchMode = ZLinkDispatchMode.Compiled;
@@ -227,9 +224,7 @@ options.ConfigureDispatch().SpotDispatchMode = ZLinkDispatchMode.Compiled;
 | 인터페이스 | 역할 |
 |------------|------|
 | `IZLinkFrameworkOptions` | framework 최상위 등록 표면. channel/spot/stream node 등록, codec, handler scan, discovery, filter, dispatch, actor factory 를 모두 소유 |
-| `IZLinkDiscoveryBuilder` | `UseDiscovery(...)` 안에서 discovery endpoint 를 `AddRegistryEndpoint(endpoint)` 로 추가한다 |
 | `IZLinkMetadataPolicyBuilder` | 응용 metadata 전달 정책(`AddForwardedMetadataKey(key)`) |
-| `IZLinkRegistrySpotRemoteAddressesOptions` | Registry 기반 spot 주소 해석 옵션(`RouterChannelId`) |
 
 검증: `BuilderContracts.Framework_options_register_the_top_level_runtime_surface`.
 
@@ -304,7 +299,7 @@ options.ConfigureDispatch().SpotDispatchMode = ZLinkDispatchMode.Compiled;
 |------------|------|
 | `IZLinkStreamNodeBuilder` | stream node(`Bind`, `RegisterSession<TSession>`) |
 | `IZLinkSpotNodeBuilder` | spot node 등록 표면(`EnableRouter`, `EnablePubSub`, entry/spot factory) |
-| `IZLinkSpotMeshBuilder` | discovery 기반 spot mesh와 단일 spot node(`UseDiscovery`, router/pub-sub/factory 설정) |
+| `IZLinkSpotMeshBuilder` | spot mesh와 단일 spot node(router/pub-sub/factory 설정) |
 
 검증: `BuilderContracts.Spot_and_stream_builders_declare_node_local_roles_and_channel_attachments`.
 
@@ -623,40 +618,12 @@ var traceId = metadata.Find("trace-id");        // 없으면 null
 
 검증: `StreamContracts.Bound_session_sends_to_the_bound_session_without_exposing_stream_transport`.
 
-## 6. Registry — status · topology · client options
-
-> 사용법은 [09-registry](09-registry.ko.md). 검증 클래스는 `RegistryContracts`.
-
-```csharp
-options.PubEndpoint = "tcp://127.0.0.1:6001";   // IZLinkRegistryOptions
-options.RouterEndpoint = "tcp://127.0.0.1:6002";
-options.AddPeer("tcp://127.0.0.1:7001");
-
-var clientOptions = new ExampleRegistryQueryClientOptions { Endpoint = options.RouterEndpoint };
-
-// in-process query 는 Status/Topology 등 전부 제공
-var status = await query.StatusAsync();                 // IZLinkRegistryQuery
-var topology = await query.TopologyAsync(new ZLinkRegistryTopologyFilter(ChannelName: "play"));
-// 원격 client 는 Topology 만 제공한다(C API 제약)
-var snapshot = await client.TopologyAsync();                    // IZLinkRegistryQueryClient
-```
-
-| 인터페이스 | 역할 |
-|------------|------|
-| `IZLinkRegistryOptions` | Registry 서버 설정(`PubEndpoint`, `RouterEndpoint`, `RegistryId`, heartbeat/broadcast interval, `AddPeer`) |
-| `IZLinkRegistryQuery` | in-process Registry 조회(`StatusAsync`, `ServiceSummaryAsync`, `TopologyAsync`, `MemberPeersAsync`) |
-| `IZLinkRegistryQueryClient` | 원격 Registry 조회. topology `TopologyAsync` 만 제공(C API 제약) |
-| `IZLinkRegistryQueryClientOptions` | 원격 query client 의 `Endpoint`(ROUTER) |
-
-검증: `RegistryContracts.Registry_contracts_describe_status_topology_and_client_options`.
-
-## 7. Monitoring — source 등록과 runtime event handler
+## 6. Monitoring — source 등록과 runtime event handler
 
 > 사용법은 [10-monitoring](10-monitoring.ko.md). 검증 클래스는 `EventingContracts`.
 
 ```csharp
 options.AddSocketEvents("router", ZLinkSocketEventKind.Connected); // 인자 = (source 이름, 받을 event kind)
-options.AddRegistryEvents("registry", TimeSpan.FromSeconds(1));     // TimeSpan = snapshot polling 주기(항상 명시)
 options.AddSpotEvents("spot-node", TimeSpan.FromSeconds(1));
 
 public sealed class SocketEventHandler : IZLinkRuntimeEventHandler<ZLinkSocketEvent>
@@ -670,14 +637,14 @@ await publisher.PublishAsync(socketEvent, ct);   // IZLinkRuntimeEventPublisher
 
 | 인터페이스 | 역할 |
 |------------|------|
-| `IZLinkMonitoringOptions` | monitoring source 등록(`AddSocketEvents`, `AddRegistryEvents`, `AddSpotEvents`). `AddZLinkMonitoring(...)` 의 표면 |
-| `IZLinkRuntimeEvent` | 모든 runtime event payload 의 마커. socket/registry/spot event 가 구현 |
+| `IZLinkMonitoringOptions` | monitoring source 등록(`AddSocketEvents`, `AddSpotEvents`). `AddZLinkMonitoring(...)` 의 표면 |
+| `IZLinkRuntimeEvent` | 모든 runtime event payload 의 마커. socket/spot event 가 구현 |
 | `IZLinkRuntimeEventHandler<TEvent>` | 특정 event 타입 수신 handler. DI 로 생성·호출 |
 | `IZLinkRuntimeEventPublisher` | runtime event 발행 표면(`PublishAsync<TEvent>` where `TEvent : IZLinkRuntimeEvent`) |
 
 검증: `EventingContracts.Eventing_contracts_wire_event_sources_to_typed_runtime_handlers`.
 
-## 8. Timer — 등록된 timer 핸들
+## 7. Timer — 등록된 timer 핸들
 
 > 사용법은 [05-spot](05-spot.ko.md) §3. 검증 클래스는 `TimerContracts`.
 
@@ -705,7 +672,6 @@ await timer.CancelAsync();   // IZLinkTimer
 | `Workers` | `SpotContracts`(`IZLinkWorkerCall<>`·`IZLinkWorkerOptions`) | (위 Spots 에 포함) |
 | `Actors` | `ActorContracts` | 1 |
 | `Streams` | `StreamContracts` | 3 |
-| `Registry` | `RegistryContracts` | 1 |
 | `Eventing` | `EventingContracts` | 1 |
 | `Timers` | `TimerContracts` | 1 |
 | `Dispatch` | `ConnectionAndConfigContracts`(`IZLinkDispatchOptions`) | (위 4 에 포함) |

@@ -63,11 +63,6 @@ public interface IDealerSocket : IMessageSocket
     RoutingId GetRoutingId();
 
     /// <summary>
-    ///     Attach a discovery service used by this socket for route-aware operations.
-    /// </summary>
-    void AttachDiscovery(IDiscovery discovery);
-
-    /// <summary>
     ///     Set the logical channel name used by this socket.
     /// </summary>
     new void SetChannelName(string channelName);

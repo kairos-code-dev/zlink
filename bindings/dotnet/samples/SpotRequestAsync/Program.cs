@@ -11,15 +11,17 @@ internal static class Program
 
         using var ctx = Zlink.CreateContext();
         using var requesterNode = ctx.CreateSpotNode();
-        using var requesterDealer = ctx.CreateDealerSocket();
+        using var requesterRouter = ctx.CreateRouterSocket();
         using var responderRouter = ctx.CreateRouterSocket();
         using var bridge = requesterNode.CreateRouteBridge();
         string endpoint = SampleSupport.NewEndpoint("tcp", "spot-request-async");
         const string channelName = "orders";
-        requesterDealer.SetRoutingId(RoutingId.From("requester-channel-client"));
+        RoutingId responderNodeRid = RoutingId.From("responder-node");
+        requesterRouter.SetRoutingId(RoutingId.From("requester-node"));
+        responderRouter.SetRoutingId(responderNodeRid);
         responderRouter.Bind(endpoint);
-        requesterDealer.Connect(endpoint);
-        bridge.AttachDealerChannel(channelName, requesterDealer);
+        requesterRouter.Connect(endpoint);
+        bridge.AttachRouterChannel(channelName, requesterRouter);
 
         Task responderTask = Task.Run(() =>
         {
@@ -41,7 +43,7 @@ internal static class Program
         var completion =
             new TaskCompletionSource<IReadOnlyList<Message>>(
                 TaskCreationOptions.RunContinuationsAsynchronously);
-        bridge.Request(channelName, RoutingId.From("requester-spot"),
+        bridge.Request(channelName, responderNodeRid, RoutingId.From("requester-spot"),
             new[] { request }, (result, parts) =>
             {
                 if (result == RequestResult.Ok)

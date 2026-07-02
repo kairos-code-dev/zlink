@@ -78,9 +78,6 @@ public sealed class test_socket_surface
             "Systems.Zlink.SocketMonitor",
             "Systems.Zlink.Poller",
             "Systems.Zlink.Timer",
-            "Systems.Zlink.Registry",
-            "Systems.Zlink.RegistryQueryClient",
-            "Systems.Zlink.Discovery",
             "Systems.Zlink.SpotNode",
             "Systems.Zlink.Spot",
             "Systems.Zlink.Actor",
@@ -158,15 +155,9 @@ public sealed class test_socket_surface
         Assert.Equal(typeof(IStreamSocket),
             typeof(IContext).GetMethod(nameof(IContext.CreateStreamSocket))!
                 .ReturnType);
-        Assert.Equal(typeof(IRegistry),
-            typeof(IContext).GetMethod(nameof(IContext.CreateRegistry))!
-                .ReturnType);
-        Assert.Equal(typeof(IRegistryQueryClient),
-            typeof(IContext).GetMethod(nameof(IContext.CreateRegistryQueryClient))!
-                .ReturnType);
-        Assert.Equal(typeof(IDiscovery),
-            typeof(IContext).GetMethod(nameof(IContext.CreateDiscovery))!
-                .ReturnType);
+        Assert.Null(typeof(IContext).GetMethod("CreateRegistry"));
+        Assert.Null(typeof(IContext).GetMethod("CreateRegistryQueryClient"));
+        Assert.Null(typeof(IContext).GetMethod("CreateDiscovery"));
         Assert.Equal(typeof(ISpotNode),
             typeof(IContext).GetMethod(nameof(IContext.CreateSpotNode),
                 Type.EmptyTypes)!.ReturnType);
@@ -236,14 +227,10 @@ public sealed class test_socket_surface
             typeof(string)));
         Assert.True(HasPublicInstanceMethod(typeof(IStreamSocket),
             nameof(IStreamSocket.BoundActors), typeof(RoutingId)));
-        Assert.True(HasPublicInstanceMethod(typeof(IDealerSocket),
-            nameof(IDealerSocket.AttachDiscovery), typeof(IDiscovery)));
-        Assert.True(HasPublicInstanceMethod(typeof(IRouterSocket),
-            nameof(IRouterSocket.AttachDiscovery), typeof(IDiscovery)));
-        Assert.True(HasPublicInstanceMethod(typeof(IPubSocket),
-            nameof(IPubSocket.AttachDiscovery), typeof(IDiscovery)));
-        Assert.True(HasPublicInstanceMethod(typeof(ISubSocket),
-            nameof(ISubSocket.AttachDiscovery), typeof(IDiscovery)));
+        AssertNoPublicInstanceMethod(typeof(IDealerSocket), "AttachDiscovery");
+        AssertNoPublicInstanceMethod(typeof(IRouterSocket), "AttachDiscovery");
+        AssertNoPublicInstanceMethod(typeof(IPubSocket), "AttachDiscovery");
+        AssertNoPublicInstanceMethod(typeof(ISubSocket), "AttachDiscovery");
 
         Assert.True(typeof(IAsyncDisposable).IsAssignableFrom(typeof(IContext)));
         Assert.True(typeof(IAsyncDisposable).IsAssignableFrom(typeof(ISocket)));
@@ -252,9 +239,6 @@ public sealed class test_socket_surface
         Assert.True(typeof(IAsyncDisposable).IsAssignableFrom(typeof(IPoller)));
         Assert.True(typeof(IAsyncDisposable).IsAssignableFrom(typeof(IAtomicCounter)));
         Assert.True(typeof(IAsyncDisposable).IsAssignableFrom(typeof(IZlinkStopwatch)));
-        Assert.True(typeof(IAsyncDisposable).IsAssignableFrom(typeof(IRegistry)));
-        Assert.True(typeof(IAsyncDisposable).IsAssignableFrom(typeof(IDiscovery)));
-        Assert.True(typeof(IAsyncDisposable).IsAssignableFrom(typeof(IRegistryQueryClient)));
         Assert.True(typeof(IAsyncDisposable).IsAssignableFrom(typeof(ISpotNode)));
         Assert.True(typeof(IAsyncDisposable).IsAssignableFrom(typeof(ISpot)));
         Assert.True(typeof(IAsyncDisposable).IsAssignableFrom(typeof(IActor)));
@@ -386,41 +370,10 @@ public sealed class test_socket_surface
         Assert.Null(typeof(ISpot).GetMethod("RequestToChannelAsync"));
         Assert.Null(typeof(ISpot).GetMethod("DrainChannelReplyFrom"));
 
-        Assert.False(HasPublicInstanceMethod(typeof(IDiscovery),
-            "MemberPeerMetadata", typeof(ServiceRole), typeof(string)));
-        Assert.False(HasPublicInstanceMethod(typeof(IDiscovery),
-            "SetSpotOwnerSyncEnabled", typeof(bool)));
-        Assert.False(HasPublicInstanceMethod(typeof(IDiscovery),
-            "GetSpotOwnerSyncEnabled"));
-        Assert.Equal(typeof(bool),
-            typeof(IDiscovery).GetProperty(nameof(IDiscovery.SpotOwnerSyncEnabled))!
-                .PropertyType);
-        Assert.True(HasPublicInstanceMethod(typeof(IDiscovery), "BindRoute",
-            typeof(uint), typeof(ReadOnlySpan<byte>), typeof(ReadOnlySpan<byte>)));
-        Assert.True(HasPublicInstanceMethod(typeof(IDiscovery), "UnbindRoute",
-            typeof(uint), typeof(ReadOnlySpan<byte>)));
-        Assert.True(HasPublicInstanceMethod(typeof(IDiscovery), "ResolveRoute",
-            typeof(uint), typeof(ReadOnlySpan<byte>)));
-        Assert.True(HasPublicInstanceMethod(typeof(IDiscovery),
-            nameof(IDiscovery.ResolveActor), typeof(string)));
-        AssertNoPublicInstanceMethod(typeof(IDiscovery), "SetDealerPeerMode");
-        AssertNoPublicInstanceMethod(typeof(IDiscovery), "MonitorOpen");
-        AssertNoPublicInstanceMethod(typeof(IDiscovery), "GetMemberPeerMetadata");
-        Assert.Equal(typeof(bool),
-            typeof(IDiscovery).GetProperty(
-                nameof(IDiscovery.ActorRouteSyncEnabled))!.PropertyType);
-
-        Assert.NotNull(typeof(AutoConnectType));
         Assert.Equal(typeof(int), Enum.GetUnderlyingType(typeof(SubjectKind)));
         Assert.Equal(typeof(string),
             typeof(Message).GetMethod(nameof(Message.GetProperty))!
                 .ReturnParameter.ParameterType);
-
-        ParameterInfo registryTopologyFilter =
-            typeof(IRegistry).GetMethod(nameof(IRegistry.Topology))!
-                .GetParameters().Single();
-        Assert.True(registryTopologyFilter.HasDefaultValue);
-        Assert.Null(registryTopologyFilter.DefaultValue);
 
         Assert.Equal(typeof(ActorRef),
             typeof(SpotActorLifecycleInfo)

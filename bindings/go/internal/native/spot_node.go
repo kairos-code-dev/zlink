@@ -147,17 +147,6 @@ func (n *SpotNode) ConnectPeer(endpoint string) error {
 	})
 }
 
-func (n *SpotNode) AttachDiscovery(discovery *Discovery) error {
-	if discovery == nil || discovery.closed {
-		return &ConfigError{Result: ConfigInvalidHandle, nativeErrno: int(C.EFAULT)}
-	}
-	handle, err := n.handleOrError()
-	if err != nil {
-		return err
-	}
-	return configErrorFromResult(C.zlink_spot_node_attach_discovery(handle, discovery.raw()))
-}
-
 func (n *SpotNode) lookupDealer(handle unsafe.Pointer) *DealerSocket {
 	if v, ok := n.dealerRegistry.Load(handle); ok {
 		return v.(*DealerSocket)

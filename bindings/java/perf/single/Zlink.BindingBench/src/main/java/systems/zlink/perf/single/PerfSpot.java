@@ -3,13 +3,11 @@
 package systems.zlink.perf.single;
 
 import systems.zlink.contracts.core.Zlink;
-import systems.zlink.contracts.service.discovery.Discovery;
 import systems.zlink.contracts.messaging.Message;
 import systems.zlink.contracts.eventing.PollEventFlags;
 import systems.zlink.contracts.eventing.PollEvents;
 import systems.zlink.contracts.eventing.Poller;
 import systems.zlink.contracts.sockets.RecvFlags;
-import systems.zlink.contracts.service.registry.Registry;
 import systems.zlink.contracts.core.RoutingId;
 import systems.zlink.contracts.sockets.SendFlags;
 import systems.zlink.contracts.service.spot.Spot;

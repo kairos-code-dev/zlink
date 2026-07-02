@@ -220,7 +220,6 @@ socket 인터페이스, `ISpotNode`, `IPoller`, `IZlinkTimer` 같은 공개 계�
   family 인터페이스를 둔다.
 - Eventing 리소스 역할: monitor socket 계약, `IPoller`, poll event source
   계약, `IZlinkTimer`.
-- Service 리소스 역할: `IRegistry`, `IRegistryQueryClient`, `IDiscovery`,
   `ISpotNode`, `ISpot`, 그리고 Actor handle이 노출될 때의 `IActor` 또는
   동등한 actor 리소스 계약.
 - Operation builder 역할: send, routed send, request, reply, publish,
@@ -371,7 +370,6 @@ facade 연결을 위해 내부적으로 런타임 코드에 위임할 수 있지
   `CreateRouterSocket()`, `CreatePubSocket()`, `CreateSubSocket()`,
   `CreateXPubSocket()`, `CreateXSubSocket()`, `CreateStreamSocket()`은
   런타임 socket 구현을 만든다.
-- `IContext.CreateRegistry()`, `CreateRegistryQueryClient()`,
   `CreateDiscovery(...)`, `CreateSpotNode()`, `CreateSpotNode(SpotNodeMode)`는
   서비스 계층 구현을 만든다.
 - `Spot` 핸들은 `ISpotNode.CreateSpot()`, `ISpotNode.EntrySpot()`,

@@ -11,20 +11,7 @@ import "C"
 import (
 	"errors"
 	"syscall"
-	"unsafe"
 )
-
-func withDiscoveryCString(d *Discovery, value string, fn func(*C.char) error) error {
-	if d == nil || d.closed {
-		return stateError("discovery is closed")
-	}
-	if err := validateEndpointString(value); err != nil {
-		return err
-	}
-	cstr := C.CString(value)
-	defer C.free(unsafe.Pointer(cstr))
-	return fn(cstr)
-}
 
 func checkRC(result any) error {
 	code := resultCodeInt(result)
@@ -57,28 +44,4 @@ func lastError() error {
 
 func isNativeErrorCode(err error, code int) bool {
 	return errors.Is(err, syscall.Errno(code))
-}
-
-func withRegistryCString(r *Registry, value string, fn func(*C.char) error) error {
-	if r == nil || r.closed {
-		return stateError("registry is closed")
-	}
-	if err := validateEndpointString(value); err != nil {
-		return err
-	}
-	cstr := C.CString(value)
-	defer C.free(unsafe.Pointer(cstr))
-	return fn(cstr)
-}
-
-func withRegistryQueryCString(c *RegistryQueryClient, value string, fn func(*C.char) error) error {
-	if c == nil || c.closed {
-		return stateError("registry query client is closed")
-	}
-	if err := validateEndpointString(value); err != nil {
-		return err
-	}
-	cstr := C.CString(value)
-	defer C.free(unsafe.Pointer(cstr))
-	return fn(cstr)
 }

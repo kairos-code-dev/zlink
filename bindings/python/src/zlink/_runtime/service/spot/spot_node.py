@@ -103,13 +103,6 @@ class SpotNode(SpotNodeActorMixin, SpotNodeSnapshotMixin):
         if rc != 0:
             _raise_result_error(ConnectError, ConnectResult, rc, lib().zlink_errno())
 
-    def attach_discovery(self, discovery):
-        rc = lib().zlink_spot_node_attach_discovery(
-            self._handle, discovery._handle
-        )
-        if rc != 0:
-            _raise_result_error(ConfigError, ConfigResult, rc, lib().zlink_errno())
-
     def _get_spot_node_option_int32(self, option: int | SpotNodeOption):
         opt = int(option)
         native = ctypes.c_int32(0)

@@ -49,10 +49,6 @@ internal static partial class NativeMethods
         ref ZlinkRoutingId targetNodeRid);
 
     [DllImport(LibraryName, CallingConvention = CallingConvention.Cdecl)]
-    internal static extern int zlink_spot_node_attach_discovery(IntPtr node,
-        IntPtr discovery);
-
-    [DllImport(LibraryName, CallingConvention = CallingConvention.Cdecl)]
     internal static extern int zlink_set_spot_node_option(IntPtr node,
         SpotNodeOption option, IntPtr value, nuint valueSize);
 

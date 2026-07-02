@@ -32,7 +32,6 @@ internal static class SessionHostFactory
                 .MessageFlow(ZLinkMessageFlowLogMode.KeyTransitions)
                 .TraceLogFile(Path.Combine(options.LogDir, $"{options.Rid}-flow.log"))
                 .TraceLabel(options.Rid);
-            framework.UseDiscovery().AddRegistryEndpoint(options.RegistryRouterEndpoint);
             framework.AddRouteMesh(YieldDispatchNames.ControlChannel)
                 .EnableServer(options.ControlEndpoint)
                 .EnableClient()
@@ -41,8 +40,7 @@ internal static class SessionHostFactory
                 .EnableClient()
                 .SetRoutingId(RoutingId.From(options.Rid));
             framework.AddSpotMesh(YieldDispatchNames.SpotChannel)
-                .UseRegistrySpotResolver()
-                .EnableRouter(options.SpotRouterEndpoint)
+                                .EnableRouter(options.SpotRouterEndpoint)
                 .SetRoutingId(RoutingId.From(options.Rid))
                 .AddEntrySpot<SessionYieldEntrySpot>()
                 .AddActorFactory<SessionYieldActorFactory>(YieldDispatchNames.ActorType);

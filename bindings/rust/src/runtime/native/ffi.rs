@@ -39,12 +39,6 @@ impl zlink_routing_id_t {
 
 pub const ZLINK_ACTOR_ID_MAX: usize = 256;
 
-pub type zlink_registry_option_t = u32;
-pub const ZLINK_REGISTRY_OPT_ID: zlink_registry_option_t = 0x3801;
-pub const ZLINK_REGISTRY_OPT_HEARTBEAT_INTERVAL_MS: zlink_registry_option_t = 0x3802;
-pub const ZLINK_REGISTRY_OPT_HEARTBEAT_TIMEOUT_MS: zlink_registry_option_t = 0x3803;
-pub const ZLINK_REGISTRY_OPT_BROADCAST_INTERVAL_MS: zlink_registry_option_t = 0x3804;
-
 #[repr(C)]
 #[derive(Copy, Clone, Debug, PartialEq, Eq)]
 pub struct zlink_actor_ref_t {
@@ -681,47 +675,6 @@ pub type zlink_spot_dispatch_event_handler_fn = unsafe extern "C" fn(
     userdata: *mut c_void,
 );
 
-// ---------------------------------------------------------------------------
-// Service discovery types
-// ---------------------------------------------------------------------------
-
-#[repr(C)]
-#[derive(Copy, Clone, Debug, PartialEq, Eq)]
-pub enum zlink_auto_connect_type_t {
-    ZLINK_AUTO_CONNECT_INVALID = 0,
-    ZLINK_AUTO_CONNECT_ROUTE_MESH = 1,
-    ZLINK_AUTO_CONNECT_CLIENT_SERVER = 2,
-    ZLINK_AUTO_CONNECT_DEALER_MESH = 3,
-    ZLINK_AUTO_CONNECT_FANOUT = 4,
-    ZLINK_AUTO_CONNECT_SPOT_MESH = 5,
-}
-
-pub type zlink_route_kind_t = u32;
-pub const ZLINK_ROUTE_KIND_INVALID: zlink_route_kind_t = 0;
-pub const ZLINK_ROUTE_KIND_ACTOR: zlink_route_kind_t = 1;
-pub const ZLINK_ROUTE_KIND_SPOT_NAME: zlink_route_kind_t = 2;
-pub const ZLINK_ROUTE_KIND_ACTOR_SESSION: zlink_route_kind_t = 3;
-
-#[repr(C)]
-#[derive(Copy, Clone, Debug, PartialEq, Eq)]
-pub enum zlink_service_role_t {
-    ZLINK_SERVICE_ROLE_INVALID = 0,
-    ZLINK_SERVICE_ROLE_SPOT = 2,
-    ZLINK_SERVICE_ROLE_ROUTER = 3,
-    ZLINK_SERVICE_ROLE_DEALER = 4,
-    ZLINK_SERVICE_ROLE_PUB = 5,
-    ZLINK_SERVICE_ROLE_SUB = 6,
-}
-
-#[repr(C)]
-#[derive(Copy, Clone, Debug, PartialEq, Eq)]
-pub enum zlink_service_kind_t {
-    ZLINK_SERVICE_KIND_DISCOVERY = 1,
-    ZLINK_SERVICE_KIND_SPOT_SUB = 3,
-    ZLINK_SERVICE_KIND_SPOT_PUB = 4,
-    ZLINK_SERVICE_KIND_SOCKET = 5,
-}
-
 #[repr(C)]
 #[derive(Copy, Clone, Debug, PartialEq, Eq)]
 pub enum zlink_monitor_target_kind_t {
@@ -836,120 +789,6 @@ pub struct zlink_spot_node_subject_filter_t {
     pub role: zlink_spot_role_t,
     pub subject: [c_char; 256],
     pub subject_kind: u32,
-}
-
-#[repr(C)]
-#[derive(Copy, Clone, Debug, PartialEq, Eq)]
-pub enum zlink_registry_state_t {
-    ZLINK_REGISTRY_STATE_IDLE = 1,
-    ZLINK_REGISTRY_STATE_ACTIVE = 2,
-    ZLINK_REGISTRY_STATE_DEGRADED = 3,
-    ZLINK_REGISTRY_STATE_ERROR = 4,
-}
-
-#[repr(C)]
-#[derive(Copy, Clone)]
-pub struct zlink_registry_status_t {
-    pub registry_id: u32,
-    pub bind_endpoint: [c_char; 256],
-    pub state: zlink_registry_state_t,
-    pub topology_entry_count: u32,
-    pub peer_registry_count: u32,
-    pub connected_peer_registry_count: u32,
-    pub list_seq: u64,
-    pub last_error: i32,
-    pub last_changed_ms: u64,
-}
-
-#[repr(C)]
-#[derive(Copy, Clone)]
-pub struct zlink_registry_service_summary_entry_t {
-    pub auto_connect_type: zlink_auto_connect_type_t,
-    pub service_role: zlink_service_role_t,
-    pub channel_name: [c_char; 256],
-    pub total_count: u32,
-    pub connecting_count: u32,
-    pub ready_count: u32,
-    pub error_count: u32,
-    pub stopped_count: u32,
-    pub last_reported_ms: u64,
-}
-
-#[repr(C)]
-#[derive(Copy, Clone)]
-pub struct zlink_registry_service_summary_filter_t {
-    pub auto_connect_type: zlink_auto_connect_type_t,
-    pub service_role: zlink_service_role_t,
-    pub channel_name: [c_char; 256],
-}
-
-#[repr(C)]
-#[derive(Copy, Clone)]
-pub struct zlink_member_peer_entry_t {
-    pub auto_connect_type: zlink_auto_connect_type_t,
-    pub service_role: zlink_service_role_t,
-    pub channel_name: [c_char; 256],
-    pub endpoint: [c_char; 256],
-    pub weight: u32,
-    pub routing_id: zlink_routing_id_t,
-    pub value: i64,
-}
-
-#[repr(C)]
-#[derive(Copy, Clone, Debug, PartialEq, Eq)]
-pub enum zlink_topology_source_t {
-    ZLINK_TOPOLOGY_SOURCE_MANUAL = 1,
-    ZLINK_TOPOLOGY_SOURCE_DISCOVERY = 2,
-    ZLINK_TOPOLOGY_SOURCE_REGISTRY = 3,
-}
-
-#[repr(C)]
-#[derive(Copy, Clone, Debug, PartialEq, Eq)]
-pub enum zlink_topology_state_t {
-    ZLINK_TOPOLOGY_STATE_DISCOVERED = 1,
-    ZLINK_TOPOLOGY_STATE_CONNECTING = 2,
-    ZLINK_TOPOLOGY_STATE_READY = 3,
-    ZLINK_TOPOLOGY_STATE_LOST = 4,
-    ZLINK_TOPOLOGY_STATE_ERROR = 5,
-    ZLINK_TOPOLOGY_STATE_STOPPED = 6,
-}
-
-#[repr(C)]
-#[derive(Copy, Clone)]
-pub struct zlink_registry_topology_entry_t {
-    pub auto_connect_type: zlink_auto_connect_type_t,
-    pub routing_id: zlink_routing_id_t,
-    pub service_kind: zlink_service_kind_t,
-    pub service_role: zlink_service_role_t,
-    pub channel_name: [c_char; 256],
-    pub endpoint: [c_char; 256],
-    pub source: zlink_topology_source_t,
-    pub state: zlink_topology_state_t,
-    pub desired_count: u32,
-    pub ready_count: u32,
-    pub error_code: u32,
-    pub last_reported_ms: u64,
-    pub spot_kind: zlink_spot_kind_t,
-}
-
-#[repr(C)]
-#[derive(Copy, Clone, Debug, PartialEq, Eq)]
-pub struct zlink_spot_route_t {
-    pub spot_rid: zlink_routing_id_t,
-    pub owner_node_rid: zlink_routing_id_t,
-    pub spot_kind: zlink_spot_kind_t,
-}
-
-#[repr(C)]
-#[derive(Copy, Clone)]
-pub struct zlink_registry_topology_filter_t {
-    pub auto_connect_type: zlink_auto_connect_type_t,
-    pub service_kind: zlink_service_kind_t,
-    pub service_role: zlink_service_role_t,
-    pub channel_name: [c_char; 256],
-    pub routing_id: zlink_routing_id_t,
-    pub state: zlink_topology_state_t,
-    pub source: zlink_topology_source_t,
 }
 
 // ---------------------------------------------------------------------------
@@ -1195,7 +1034,6 @@ unsafe extern "C" {
     pub fn zlink_unbind(socket: *mut c_void, addr: *const c_char) -> c_int;
     pub fn zlink_disconnect(socket: *mut c_void, addr: *const c_char) -> c_int;
     pub fn zlink_disconnect_rid(socket: *mut c_void, peer_rid: *const zlink_routing_id_t) -> c_int;
-    pub fn zlink_socket_attach_discovery(socket: *mut c_void, discovery: *mut c_void) -> c_int;
     pub fn zlink_socket_set_channel_name(socket: *mut c_void, channel_name: *const c_char)
     -> c_int;
     pub fn zlink_socket_get_channel_name(
@@ -1353,75 +1191,6 @@ unsafe extern "C" {
     pub fn zlink_monitor_close(monitor_p: *mut *mut c_void) -> c_int;
     pub fn zlink_monitor_ignore_handler(event: *const zlink_monitor_event_t, userdata: *mut c_void);
 
-    // -- Registry ----------------------------------------------------------
-    pub fn zlink_registry_new(ctx: *mut c_void) -> *mut c_void;
-    pub fn zlink_registry_bind(
-        registry: *mut c_void,
-        pub_endpoint: *const c_char,
-        router_endpoint: *const c_char,
-    ) -> c_int;
-    pub fn zlink_registry_set(
-        registry: *mut c_void,
-        option: zlink_registry_option_t,
-        value: u32,
-    ) -> c_int;
-    pub fn zlink_registry_get(
-        registry: *mut c_void,
-        option: zlink_registry_option_t,
-        error_out: *mut c_int,
-    ) -> u32;
-    pub fn zlink_registry_add_peer(
-        registry: *mut c_void,
-        peer_pub_endpoint: *const c_char,
-    ) -> c_int;
-    pub fn zlink_registry_destroy(registry_p: *mut *mut c_void) -> c_int;
-
-    // -- Discovery ---------------------------------------------------------
-    pub fn zlink_discovery_new(
-        ctx: *mut c_void,
-        auto_connect_type: zlink_auto_connect_type_t,
-        channel_name: *const c_char,
-    ) -> *mut c_void;
-    pub fn zlink_discovery_connect_registry(
-        discovery: *mut c_void,
-        registry_endpoint: *const c_char,
-    ) -> c_int;
-    pub fn zlink_discovery_set_value(discovery: *mut c_void, value: i64) -> c_int;
-    pub fn zlink_discovery_get_value(discovery: *mut c_void, value_out: *mut i64) -> c_int;
-    pub fn zlink_discovery_resolve_spot(
-        discovery: *mut c_void,
-        spot_rid: *const zlink_routing_id_t,
-        route_out: *mut zlink_spot_route_t,
-    ) -> c_int;
-    pub fn zlink_discovery_resolve_actor(
-        discovery: *mut c_void,
-        actor_id: *const c_char,
-        route_out: *mut zlink_actor_route_t,
-    ) -> c_int;
-    pub fn zlink_discovery_bind_route(
-        discovery: *mut c_void,
-        kind: zlink_route_kind_t,
-        key: *const c_void,
-        key_size: usize,
-        value: *const c_void,
-        value_size: usize,
-    ) -> c_int;
-    pub fn zlink_discovery_unbind_route(
-        discovery: *mut c_void,
-        kind: zlink_route_kind_t,
-        key: *const c_void,
-        key_size: usize,
-    ) -> c_int;
-    pub fn zlink_discovery_resolve_route(
-        discovery: *mut c_void,
-        kind: zlink_route_kind_t,
-        key: *const c_void,
-        key_size: usize,
-        owner_rid_out: *mut zlink_routing_id_t,
-        value_out: *mut zlink_msg_t,
-    ) -> c_int;
-    pub fn zlink_discovery_destroy(discovery_p: *mut *mut c_void) -> c_int;
-
     // -- Spot --------------------------------------------------------------
     pub fn zlink_spot_new(node: *mut c_void) -> *mut c_void;
     pub fn zlink_spot_destroy(spot_p: *mut *mut c_void) -> c_int;
@@ -1527,7 +1296,6 @@ unsafe extern "C" {
         node: *mut c_void,
         target_node_rid: *const zlink_routing_id_t,
     ) -> c_int;
-    pub fn zlink_spot_node_attach_discovery(node: *mut c_void, discovery: *mut c_void) -> c_int;
     pub fn zlink_spot_route_bridge_new(
         ctx: *mut c_void,
         spot_node: *mut c_void,
@@ -1689,7 +1457,7 @@ unsafe extern "C" {
         flags: zlink_recv_flags_t,
     ) -> c_int;
 
-    // -- Spot / registry snapshot -------------------------------------------
+    // -- Spot snapshot ------------------------------------------------------
     pub fn zlink_spot_node_status(node: *mut c_void, out: *mut zlink_spot_node_status_t) -> c_int;
     pub fn zlink_spot_node_peers(
         node: *mut c_void,
@@ -1718,44 +1486,6 @@ unsafe extern "C" {
         entries: *mut zlink_actor_ref_t,
         count: *mut usize,
     ) -> c_int;
-    pub fn zlink_registry_status(registry: *mut c_void, out: *mut zlink_registry_status_t)
-    -> c_int;
-    pub fn zlink_registry_service_summary(
-        registry: *mut c_void,
-        filter: *const zlink_registry_service_summary_filter_t,
-        entries: *mut zlink_registry_service_summary_entry_t,
-        count: *mut usize,
-    ) -> c_int;
-    pub fn zlink_registry_member_peers(
-        registry: *mut c_void,
-        channel_name: *const c_char,
-        entries: *mut zlink_member_peer_entry_t,
-        count: *mut usize,
-    ) -> c_int;
-    pub fn zlink_discovery_member_peers(
-        discovery: *mut c_void,
-        entries: *mut zlink_member_peer_entry_t,
-        count: *mut usize,
-    ) -> c_int;
-    pub fn zlink_registry_topology(
-        registry: *mut c_void,
-        filter: *const zlink_registry_topology_filter_t,
-        entries: *mut zlink_registry_topology_entry_t,
-        count: *mut usize,
-    ) -> c_int;
-    pub fn zlink_registry_query_client_new(ctx: *mut c_void) -> *mut c_void;
-    pub fn zlink_registry_query_client_connect(
-        client: *mut c_void,
-        endpoint: *const c_char,
-    ) -> c_int;
-    pub fn zlink_registry_query_client_topology(
-        client: *mut c_void,
-        filter: *const zlink_registry_topology_filter_t,
-        entries: *mut zlink_registry_topology_entry_t,
-        count: *mut usize,
-    ) -> c_int;
-    pub fn zlink_registry_query_client_destroy(client_p: *mut *mut c_void) -> c_int;
-
     // -- Poller ------------------------------------------------------------
     pub fn zlink_poll(
         items: *mut zlink_pollitem_t,

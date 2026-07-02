@@ -12,7 +12,7 @@ channel request를 보내는 부분만 본다.
 
 - ASP.NET Core endpoint는 외부 요청을 받는 진입점이다.
 - `IZLinkChannelClient`는 다른 서버의 channel handler로 request를 보낸다.
-- 처음에는 Registry 없이 **수동 연결**로 endpoint를 직접 지정한다.
+- 처음에는 외부 위치 저장소 없이 **수동 연결**로 endpoint를 직접 지정한다.
 
 등록 시그니처와 옵션 전체는 [04-channel-messaging](04-channel-messaging.ko.md)과
 [spec/aspnet-core-channel-messaging](../spec/aspnet-core-channel-messaging.ko.md)이
@@ -52,7 +52,7 @@ sequenceDiagram
     Api-->>Client: HTTP 200 CreateGameHttpRes
 ```
 
-이 흐름에서 API 서버는 Play 서버 주소를 Discovery로 찾지 않는다. 설정값으로 Play endpoint 를 읽어
+이 흐름에서 API 서버는 Play 서버 주소를 자동으로 찾지 않는다. 설정값으로 Play endpoint 를 읽어
 `EnableClient(endpoint)`로 직접 연결한다. 처음 읽을 때는 이 방식이 가장 단순하다.
 
 > **이 장은 단순화한다.** 실제 `TicTacToe` 샘플은 Play 노드를 **여러 개**(`Play(0)`/`Play(1)`,
@@ -98,7 +98,7 @@ builder.Services.AddZLinkFramework(options =>
 {
 
     options.AddClientServerChannel(SampleChannels.Play)
-        .EnableClient(settings.PlayChannelEndpoint);  // 수동 연결 — Registry 없이 Play endpoint 를 설정으로 직접 지정(7장 자동연결과 대비)
+        .EnableClient(settings.PlayChannelEndpoint);  // 수동 연결 — Play endpoint 를 설정으로 직접 지정
 });
 
 var app = builder.Build();
@@ -187,125 +187,15 @@ client는 API 서버에 `POST /games`를 보내고, 이어서 반환된 `OwnerPl
 접속을 진행한다. 이 장은 그중 `POST /games`에서 `CreateGameReq`로 이어지는 부분만
 설명한다.
 
-## 7. 자동 연결 — Registry/Discovery
+## 7. 자동 연결의 위치
 
-수동 연결 다음 단계는 **Registry/Discovery 자동 연결**이다. 앞의 TicTacToe 흐름은
-client 가 server endpoint(host:port)를 직접 알아야 했다. 자동 연결에서는 **앱 코드가
-channel 이름만 알고**, 실제 주소 조회와 channel client 연결은 framework runtime 이
-처리한다.
+Core C API의 Discovery/Registry 표면은 제거되었다. 이 문서는 현재 공개 .NET framework
+표면에서 바로 사용할 수 있는 수동 연결 흐름만 설명한다.
 
-- **Registry** — 어느 노드가 어떤 channel 을 어디(endpoint)서 제공하는지 모아 두는
-  디렉터리 서버다. **control-plane** 만 담당하고, 실제 request/reply 데이터는 지나가지
-  않는다.
-- **Discovery** — `UseDiscovery(...)` 를 켜면 **각 서버의 framework runtime 안에서 도는
-  agent** 다. 매 서버에서 Discovery 가 ① Registry 로 control socket 을 연결하고,
-  ② 자기 역할을 등록한 뒤 주기적으로 **heartbeat** 를 보내며, ③ Registry 가 뿌린
-  topology 를 받아 **peer 와 직접 소켓을 연결**한다(provider 가 바뀌면 자동 갱신).
-
-그래서 자동 연결은 두 평면으로 나뉜다.
-
-- **control-plane** — 각 서버의 Discovery ↔ Registry. server 역할은 자기 endpoint 를
-  등록하고, client 역할은 필요한 channel view 를 받는다. Registry 서버의 기본 설정은
-  heartbeat 주기 5초, timeout 15초다. timeout 안에 heartbeat 가 들어오지 않으면
-  Registry 가 그 역할을 lost 로 보고 topology 에서 빼고 재broadcast 한다.
-- **data-plane** — Discovery 가 topology 로 알게 된 endpoint 로 **노드끼리 직접**
-  DEALER→ROUTER 소켓을 맺는다. 이후 request/reply 는 Registry 를 거치지 않고 이 직접
-  소켓으로 흐른다.
-
-Discovery 와 Registry 연결만 떼어 보면 다음 순서다.
-
-```mermaid
-sequenceDiagram
-  participant P as Play Discovery<br/>server role
-  participant R as Registry
-  participant A as API Discovery<br/>client role
-
-  P->>R: control socket 연결
-  A->>R: control socket 연결
-  P->>R: server 역할 등록<br/>channel=bingo.play, endpoint=PlayChannelEndpoint
-  A->>R: client 역할 등록<br/>channel=bingo.play
-  loop heartbeat 주기
-    P->>R: heartbeat
-    A->>R: heartbeat
-  end
-  R-->>A: topology broadcast<br/>provider=PlayChannelEndpoint
-  A->>P: received endpoint 로 channel socket connect
-```
-
-그 결과 만들어진 직접 연결까지 포함하면 전체 흐름은 다음과 같다.
-
-```mermaid
-sequenceDiagram
-  participant P as Play 서버<br/>EnableServer + Discovery
-  participant R as Registry
-  participant A as API 서버<br/>EnableClient + Discovery
-  participant C as sample client
-
-  rect rgb(245, 247, 250)
-    Note over P,R,A: control-plane — 각 서버의 Discovery ↔ Registry
-    P->>R: Discovery: control socket 연결
-    A->>R: Discovery: control socket 연결
-    P->>R: Discovery: 역할 등록 (server "bingo.play" @ PlayChannelEndpoint)
-    A->>R: Discovery: 역할 등록 (client "bingo.play")
-    loop heartbeat 주기 (Registry 기본 5초)
-      P->>R: Discovery: heartbeat (server 역할 alive)
-      A->>R: Discovery: heartbeat (client 역할 alive)
-    end
-    R-->>A: topology broadcast: "bingo.play" providers = [PlayChannelEndpoint]
-    A->>P: Discovery: provider endpoint 으로 DEALER→ROUTER 직접 소켓 연결
-    Note over R: Registry 는 디렉터리(control-plane)일 뿐 — 데이터는 안 지난다
-  end
-
-  rect rgb(250, 248, 240)
-    Note over C,P: data-plane — Registry 경유 없음
-    C->>A: HTTP/API request
-    A->>P: RequestToChannel("bingo.play", ...) — 위에서 맺은 직접 소켓으로
-    P-->>A: reply
-    A-->>C: HTTP/API response
-  end
-
-  Note over R,A: provider 추가·이탈 → Registry 재broadcast → API Discovery 가 직접 소켓 갱신
-```
-
-실제 `.NET Bingo` 샘플이 이 흐름을 그대로 보여 준다. Registry 프로세스를 띄우고,
-API/Play 서버가 같은 Registry를 바라보게 한다.
-
-```csharp
-// Bingo.Server.Registry.RegistryHostFactory
-builder.Services.AddZLinkRegistry(options =>
-{
-    options.PubEndpoint = topology.RegistryPubEndpoint;        // topology broadcast 를 내보내는 PUB
-    options.RouterEndpoint = topology.RegistryRouterEndpoint;  // 역할 등록·control 을 받는 ROUTER
-});
-```
-
-API 서버는 Play endpoint를 직접 쓰지 않고 `EnableClient()`만 선언한다.
-
-```csharp
-// Bingo.Server.Api.ApiServerHostFactory
-options.UseDiscovery().AddRegistryEndpoint(topology.RegistryRouterEndpoint); // client 는 Registry 만 알면 됨(provider 주소는 모름)
-{
-    var channel = options.AddClientServerChannel(SampleNames.PlayChannel);
-    channel.EnableClient();   // endpoint 인자 없음 = 주소를 Discovery 가 채운다(TicTacToe 의 EnableClient(endpoint) 수동연결과 대비)
-
-}
-```
-
-Play 서버는 자기 endpoint를 server 역할로 열고 같은 Registry를 바라본다.
-
-```csharp
-// Bingo.Server.Play.PlayServerHostFactory
-options.UseDiscovery().AddRegistryEndpoint(topology.RegistryRouterEndpoint); // API 와 동일한 Registry 를 가리켜야 같은 topology 에 묶임
-{
-    var channel = options.AddClientServerChannel(SampleNames.PlayChannel);
-        channel.EnableServer(topology.PlayChannelEndpoint);   // server 는 자기 주소를 명시해 Registry 에 등록(client 의 인자 없는 EnableClient 와 대칭)
-    channel.AddHandlerGroup("play");                          // group 단위 등록(handler 개별 등록 AddRequestHandler<> 와 다른 방식)
-
-}
-```
-
-즉 `TicTacToe`는 “endpoint를 직접 알고 연결하는 최소 흐름”, `Bingo`는
-“Registry가 endpoint를 찾아 주는 흐름”으로 읽으면 된다.
+channel client 가 endpoint 를 직접 받지 않고 channel 이름만으로 연결 대상을 찾는 기능은
+location runtime 과 location store 설계에서 다룬다. 그 기능이 정식 공개 계약으로 확정되기
+전까지 sample 과 guide 는 제거된 Core C Discovery/Registry API 를 전제로 한 예제를 싣지
+않는다.
 
 ## 8. 잘 안 될 때
 
@@ -324,7 +214,6 @@ options.UseDiscovery().AddRegistryEndpoint(topology.RegistryRouterEndpoint); // 
 | request/send/pub-sub 전체 사용법 | [04-channel-messaging](04-channel-messaging.ko.md) |
 | room/stage 같은 동적 노드 | [05-spot](05-spot.ko.md) |
 | 외부 game/mobile client 받기 | [08-stream](08-stream.ko.md) |
-| 자동 연결과 Registry 운영 | [09-registry](09-registry.ko.md) |
 | 실행 가능한 전체 예제 | [guide/samples](samples/channel-messaging-samples.ko.md) |
 
 ---

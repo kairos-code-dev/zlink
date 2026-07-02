@@ -30,7 +30,6 @@ public static class SessionServerHostFactory
                 .TraceLabel("session");
             options.AddHandlersFromAssemblyOf(typeof(SessionServerHostFactory));
             options.Codecs.Use(ZLinkProtobufCodec.Default);
-            options.UseDiscovery().AddRegistryEndpoint(topology.RegistryRouterEndpoint);
             options.AddClientServerChannel(SampleNames.ApiChannel)
                 .EnableClient();
             options.AddRouteMesh(SampleNames.PlayChannel)

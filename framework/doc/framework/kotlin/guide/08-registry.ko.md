@@ -24,7 +24,6 @@ flowchart LR
 
 ## 2. Embedded registry
 
-embedded registry를 등록하면 `ZLinkRegistryQuery` bean도 함께 등록한다.
 Registry server의 시작과 종료는 Spring host lifetime이 맡는다. application이 registry
 runtime을 직접 만들거나 `start` 함수로 시작하는 방법은 public contract로 노출하지
 않는다.
@@ -64,15 +63,12 @@ Kotlin framework는 Java framework option bean을 그대로 사용한다. 별도
 
 ## 4. topology 조회
 
-### in-process — `ZLinkRegistryQuery`
 
-embedded Registry를 등록하면 `ZLinkRegistryQuery`가 DI에 자동 등록된다. 운영 점검,
 warm-up 확인, 관리 화면에 쓴다. controller는 `suspend fun`으로 두고 `.await()`로
 조회 결과를 기다린다.
 
 ```kotlin
 @RestController
-class TopologyController(private val registry: ZLinkRegistryQuery) {
     @GetMapping("/admin/topology")
     suspend fun topology(): List<ZLinkRegistryTopologyEntry> =
         registry.topology().await()
@@ -86,25 +82,19 @@ class TopologyController(private val registry: ZLinkRegistryQuery) {
 }
 ```
 
-### 원격 — `ZLinkRegistryQueryClient`
 
 다른 프로세스의 Registry를 조회할 때는 별도 등록한다.
 
 ```kotlin
 @Bean
-fun queryClient(): ZLinkRegistryQueryClientCustomizer =
-    ZLinkRegistryQueryClientCustomizer { options ->
         options.endpoint = "tcp://127.0.0.1:5551"
     }
 ```
 
-| 항목 | `ZLinkRegistryQuery` | `ZLinkRegistryQueryClient` |
 |------|----------------------|-----------------------------|
 | 대상 | 같은 프로세스 embedded Registry | 다른 프로세스 Registry |
-| 등록 | embedded Registry 등록 시 자동 | `ZLinkRegistryQueryClientCustomizer` 별도 |
 | 제공 | status·service·topology·member peers | topology snapshot만 |
 
-`ZLinkRegistryQuery`와 `ZLinkRegistryQueryClient`는 합치지 않는다. 전자는 같은
 프로세스 runtime snapshot을 읽고, 후자는 remote query protocol을 사용한다. 원격
 client가 좁은 이유는 하부 C API가 topology snapshot만 지원하기 때문이다. 연결
 실패 시 framework가 몰래 retry하지 않으니 retry는 호출자/monitoring에서 명시한다.

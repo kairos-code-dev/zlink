@@ -279,8 +279,6 @@ try (Message msg = Message.from("data")) {
 | `zlink_spot_node_new(ctx, opts)` | `ctx.createSpotNode()` |
 | `zlink_spot_new(node)` | `node.createSpot()` |
 | `zlink_spot_node_actor_new(...)` | `node.createActor("id")` |
-| `zlink_registry_new(ctx)` | `ctx.createRegistry()` |
-| `zlink_discovery_new(ctx, ...)` | `ctx.createDiscovery(type, channel)` |
 
 ---
 
@@ -324,7 +322,6 @@ if (Zlink.has("draft")) {
 | `StreamRecvSample` | STREAM 원시 TCP |
 | `StreamPacketCallbackSample` | STREAM 패킷 콜백 |
 | `MonitorRecvSample` | 모니터 이벤트 수신 |
-| `DiscoveryRegistrySample` | Registry + Discovery 기본 |
 | `RegistryQuerySample` | Registry 토폴로지 쿼리 |
 | `SpotRecvSample` | SpotNode/Spot PUB/SUB |
 | `SpotRequestAsyncSample` | SpotNode 비동기 요청 |

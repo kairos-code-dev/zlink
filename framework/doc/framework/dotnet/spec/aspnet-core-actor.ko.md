@@ -1027,7 +1027,6 @@ Play 서버는 다음과 같이 등록한다.
 builder.Services.AddZLinkFramework(options =>
 {
     spot.AddActorFactory<PlayerActorFactory>("player");
-    options.UseRegistrySpotRemoteAddresses("game");
 
     {
         var mesh =     options.AddSpotMesh("game.stage");

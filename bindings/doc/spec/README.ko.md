@@ -1410,7 +1410,6 @@ surface 배치는 아래 `Actor Dispatch Policy` 절을 따른다.
   - `onSubscribe(...)`
   - `setSendReadyHandler(...)`
   - `setRoutingId(...)`, `getRoutingId()`
-  - `attachDiscovery(...)`
   - `attachStreamRaw(...)`, `detachStream()`
   - `streamAttach(...)`, `streamAttachRaw(...)`, `streamDetach()`
   - `streamPeerRoutingId(...)`, `streamSend(...)`
@@ -1423,7 +1422,6 @@ surface 배치는 아래 `Actor Dispatch Policy` 절을 따른다.
   - 예: subscriber-only base의 `setSubscription`, `unsetSubscription`,
     `subscribe`
   - 예: publisher-only base의 `publish`, `setSendReadyHandler`
-  - 예: discovery-capable socket base의 `attachDiscovery`
 - 위 역할은 역할 matrix에서 `Y`인 concrete socket type에만
   public으로 존재해야 한다.
 - 역할 matrix에서 `—`인 socket type에 대해 base 경유 우회 호출이 가능하면
@@ -2102,7 +2100,6 @@ raw `zlink_*_t` 구조체를 바인딩 API 표면으로 노출하지 않고 `cla
 - Future/Promise 완료 연결 같은 구현 상태(pending map 등)는 소켓 클래스
   내부에 두고, 외부로는 메서드만 노출한다.
 - 예외는 **서로 다른 소켓 타입을 조합**하는 service-layer surface 뿐이다
-  (예: `Spot`, `SpotNode`, `Registry`, `Discovery`, `RegistryQueryClient`).
   이들은 단일 소켓 함수 wrapper 가 아니라 독립된 service 계약이다.
 - 이 규칙은 전 바인딩(C++/Java/.NET/Node/Python/Go/Rust) 에 동일하게
   적용되며, spec 파일에서 위반이 발견되면 **즉시 수정 대상**이다.
@@ -2185,9 +2182,7 @@ raw direct callback `onReceive` 는 canonical public binding API 가 아니다.
 | Pub options (verbose, verboser, noDrop, manual 등) | Pub, XPub |
 | Sub options (topicsCount) | Sub, XSub |
 | RoutingId (set/get) | Dealer, Router, Stream |
-| `attachDiscovery` | Dealer, Router, Pub, Sub |
 
-- `attachDiscovery` 후 해당 소켓에서 `connect`, `disconnect`,
   `disconnectRid`, `unbind`, `close`는 차단된다. Discovery `close`가 소켓
   lifecycle을 관리한다.
 
@@ -2211,7 +2206,6 @@ raw direct callback `onReceive` 는 canonical public binding API 가 아니다.
     반드시 `send(routingId, ...)` 형태여야 한다.
   - `StreamSocket`에 `connect`, `disconnect`, `disconnectRid` 노출 금지 —
     `STREAM`은 bind-only socket이다.
-  - `PairSocket` / `XPubSocket` / `StreamSocket` / `XSubSocket`에 `attachDiscovery` 금지 —
     Dealer, Router, Pub, Sub에만 허용된다.
   - `XPubSocket`에 `onSubscribe` 콜백 금지 —
     XPub는 `receiveSubscriptionEvent`만 허용된다.
@@ -2344,7 +2338,6 @@ Discovery
 SpotNode
   |-- bind
   |-- raw mesh: connectPeer, disconnectPeer
-  |-- channel access: attachDiscovery, createRouteBridge,
   |   createPublisher
   |-- actor: create, lookup, remote create, join, leave
   |-- introspection: status, peers, peers(filter),
@@ -2372,7 +2365,6 @@ StreamSocket
   |-- bindActor, unbindActor
   `-- sendBoundActor
 
-RegistryQueryClient
   |-- connect
   |-- snapshot
   `-- close
@@ -2417,7 +2409,6 @@ handle, Actor recv/join helper처럼 Actor 계약을 구성하는 public type과
   `zlink_stream_unbind_actor` (async submit),
   `zlink_stream_send_bound_actor_part`,
   `zlink_stream_bound_actors`
-- `Discovery` 축: `zlink_discovery_resolve_actor`
 - snapshot 축: `zlink_spot_node_spots`,
   `zlink_spot_node_actors`, `zlink_spot_actors`
 
@@ -2521,7 +2512,6 @@ plane readiness다. 바인딩은 `Spot.recvActorJoin` 또는 동등한 public �
 | `createSpot` | Y |
 | `entrySpot` | Y |
 | `spotLookup` | Y |
-| `attachDiscovery` | Y |
 | `setTlsServer` | Y |
 | `setTlsClient` | Y |
 | `status` | Y |
@@ -2541,7 +2531,6 @@ plane readiness다. 바인딩은 `Spot.recvActorJoin` 또는 동등한 public �
   `entrySpot` 은 `zlink_spot_node_entry_spot()` 을 언어별 typed `Spot`
   factory로 감싼다. `spotLookup` 은 `zlink_spot_node_spot_lookup()` 을
   언어별 typed `Spot` 조회 표면으로 감싼다.
-- channel-aware public 설명에서는 `attachDiscovery`, `createRouteBridge`,
   `createPublisher`를 중심으로 다룬다.
 
 ### Actor Capability Matrix
@@ -2574,7 +2563,6 @@ Actor dispatch는 `SpotNode`, `Actor`, `Spot`, `StreamSocket`, `Discovery`에
 | STREAM unbind Actor | `StreamSocket` / session facade | `zlink_stream_unbind_actor` |
 | STREAM send bound Actor | `StreamSocket` / session facade | `zlink_stream_send_bound_actor_part` |
 | STREAM bound Actor snapshot | `StreamSocket` / session facade | `zlink_stream_bound_actors` |
-| active Actor route resolve | `Discovery` | `zlink_discovery_resolve_actor` |
 | node Spot snapshot | `SpotNode` | `zlink_spot_node_spots` |
 | node Actor snapshot | `SpotNode` | `zlink_spot_node_actors` |
 | Spot joined Actor snapshot | `Spot` | `zlink_spot_actors` |
@@ -2650,11 +2638,9 @@ Actor dispatch는 `SpotNode`, `Actor`, `Spot`, `StreamSocket`, `Discovery`에
   동시에 바인드한다.
 - cluster 모드에서는 `addPeer`로 다른 Registry와 동기화한다.
 
-### RegistryQueryClient Capability Matrix (`Target`)
 - 이 matrix는 `Target`이다. 전체 바인딩 필수가 아니며, 구현하는 바인딩만
   아래 표를 따른다.
 
-| Capability | RegistryQueryClient |
 |---|---|
 | `connect` | Y |
 | `snapshot` (필터 기반) | Y |
@@ -2728,7 +2714,6 @@ Actor dispatch는 `SpotNode`, `Actor`, `Spot`, `StreamSocket`, `Discovery`에
 | SpotNode | `disconnectPeer` | raw peer 연결 해제 |
 | SpotNode | `createRouteBridge` | caller/channel runtime 소유 socket을 SPOT route bridge에 등록 |
 | SpotNode | `createPublisher` | SpotNode의 topic publish ingress에 쓰는 publisher handle 생성 |
-| SpotNode | `attachDiscovery` | Discovery 연결 |
 | SpotNode | `setTlsServer` | TLS 서버 설정 |
 | SpotNode | `setTlsClient` | TLS 클라이언트 설정 |
 | SpotNode | `status` | 노드 상태 스냅샷 |
@@ -2767,9 +2752,6 @@ Actor dispatch는 `SpotNode`, `Actor`, `Spot`, `StreamSocket`, `Discovery`에
 | Registry | `topology` | 토폴로지 스냅샷 |
 | Registry | `topology(filter)` | 토폴로지 필터 조회 |
 | Registry | `close` | Registry 종료 |
-| RegistryQueryClient | `connect` | Registry에 연결 |
-| RegistryQueryClient | `snapshot` | 토폴로지 스냅샷 (필터 선택) |
-| RegistryQueryClient | `close` | 클라이언트 종료 |
 
 ### 서비스 계층 테스트 정책
 - 서비스 계층은 sample이나 perf에서 직접 검증되지 않는 컴포넌트를 포함한다.
@@ -2782,7 +2764,6 @@ Actor dispatch는 `SpotNode`, `Actor`, `Spot`, `StreamSocket`, `Discovery`에
 - Spot 역할 matrix 정렬 확인
 - Discovery 역할 matrix 정렬 확인
 - Registry 역할 matrix 정렬 확인 (구현된 경우)
-- RegistryQueryClient 역할 matrix 정렬 확인 (구현된 경우)
 - service TLS helper 존재 확인
 - typed domain object 존재 확인 (SpotNodeStatus, MemberPeerEntry,
   SpotNodeSocketEntry, SpotNodeSpotEntry, SpotNodeActorEntry 등)
@@ -2794,7 +2775,6 @@ Actor dispatch는 `SpotNode`, `Actor`, `Spot`, `StreamSocket`, `Discovery`에
 - Discovery: create/connectRegistry/close lifecycle 누수 없음
 - Discovery close 시 연결된 participant(SpotNode 등) 종료 확인
 - Registry: create/bind/close lifecycle 누수 없음 (구현된 경우)
-- RegistryQueryClient: create/connect/close lifecycle (구현된 경우)
 - 예외/오류 경로에서도 native 리소스가 정리되는지 확인
 
 #### 서비스 계층 Behavior 테스트
@@ -2814,8 +2794,6 @@ Actor dispatch는 `SpotNode`, `Actor`, `Spot`, `StreamSocket`, `Discovery`에
   (Registry 구현된 경우)
 - Registry status 결과 확인 (구현된 경우)
 - Registry topology/topology(filter) 결과 확인 (구현된 경우)
-- RegistryQueryClient snapshot 결과 확인 (구현된 경우)
-- Socket attachDiscovery → connect/disconnect/disconnectRid/unbind/close 차단 확인
   (Discovery 지원 시)
 
 #### 서비스 계층 Introspection 테스트
@@ -2859,7 +2837,6 @@ Actor dispatch는 `SpotNode`, `Actor`, `Spot`, `StreamSocket`, `Discovery`에
 | SpotNode + Spot | 해당 바인딩에 spot 지원이 있으면 Required |
 | Discovery | 해당 바인딩에 discovery 지원이 있으면 Required |
 | Registry | Target (서버 측 컴포넌트, 전체 바인딩 필수 아님) |
-| RegistryQueryClient | Target (조회 전용 클라이언트) |
 
 ### Callback API 정책
 - callback 등록 API는 각 소켓 타입의 역할에 따라 노출한다.
@@ -3206,7 +3183,6 @@ zlink_connect_result_t zlink_spot_node_disconnect_peer(void *node,
     const char *peer_endpoint);
 zlink_connect_result_t zlink_spot_node_disconnect_peer_rid(void *node,
     const zlink_routing_id_t *peer_rid);
-zlink_config_result_t zlink_spot_node_attach_discovery(void *node,
     void *discovery);
 
 void *zlink_spot_route_bridge_new(
@@ -4934,7 +4910,6 @@ perf 정책은 [`doc/perf/PERF_POLICY.md`](../../../doc/perf/PERF_POLICY.md)에�
    - Socket Capability Matrix의 모든 `—` 항목이 public API에 노출되지 않는다.
    - 해당 바인딩이 구현하는 서비스 계층 컴포넌트의 Capability Matrix도
      동일하게 정렬한다.
-   - `Target`으로 표시된 컴포넌트(Registry, RegistryQueryClient)는 해당
      바인딩이 구현하지 않으면 종료 조건에서 제외한다.
    - Surface test가 이를 검증하고 통과한다.
 

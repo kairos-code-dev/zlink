@@ -38,8 +38,6 @@
         <Compile Include="Configuration/Registration/Channels.cs"/>
         <Compile Include="Configuration/Registration/HandlerExposure.cs"/>
         <Compile Include="Configuration/Registration/NodesAndServices.cs"/>
-        <Compile Include="Configuration/Registration/RegistryAndMonitoring.cs"/>
-        <Compile Include="Configuration/Registration/RegistryRemoteAddresses.cs"/>
         <Compile Include="Configuration/Registration/Support.cs"/>
         <Compile Include="Contracts/LocationContractTests.cs"/>
         <Compile Include="Contracts/ScaffoldSmokeTests.cs"/>

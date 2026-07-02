@@ -104,11 +104,6 @@ public interface ISpotNode : IDisposable, IAsyncDisposable
     void DisconnectPeerRid(RoutingId targetNodeRid);
 
     /// <summary>
-    ///     Attaches a discovery service.
-    /// </summary>
-    void AttachDiscovery(IDiscovery discovery);
-
-    /// <summary>
     ///     Creates a route bridge that borrows channel sockets owned by the caller.
     /// </summary>
     ISpotRouteBridge CreateRouteBridge(

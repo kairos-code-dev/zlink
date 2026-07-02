@@ -62,22 +62,3 @@ func validateSpotNodeSocketFilter(filter SpotNodeSocketFilter) error {
 	}
 	return nil
 }
-
-func validateRegistryServiceSummaryFilter(filter RegistryServiceSummaryFilter) error {
-	if filter.ChannelName == nil {
-		return nil
-	}
-	return validateFixedCString("channel_name", *filter.ChannelName)
-}
-
-func validateRegistryTopologyFilter(filter RegistryTopologyFilter) error {
-	if filter.ChannelName != nil {
-		if err := validateFixedCString("channel_name", *filter.ChannelName); err != nil {
-			return err
-		}
-	}
-	if filter.RoutingID != nil && filter.RoutingID.Size() == 0 {
-		return validationError("routing_id is empty")
-	}
-	return nil
-}

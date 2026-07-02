@@ -48,11 +48,6 @@ public interface IRouterSocket : IConnectableRoutedMessageSocket
     new RouterSocketOptions Options { get; }
 
     /// <summary>
-    ///     Attach a discovery service used by this socket for route-aware operations.
-    /// </summary>
-    void AttachDiscovery(IDiscovery discovery);
-
-    /// <summary>
     ///     Set the routing id used by this ROUTER socket.
     /// </summary>
     void SetRoutingId(RoutingId routingId);

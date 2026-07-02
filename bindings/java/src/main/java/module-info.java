@@ -7,7 +7,6 @@ module systems.zlink {
     exports systems.zlink.contracts.eventing;
     exports systems.zlink.contracts.messaging;
     exports systems.zlink.contracts.sockets;
-    exports systems.zlink.contracts.service.discovery;
     exports systems.zlink.contracts.service.registry;
     exports systems.zlink.contracts.service.spot;
 }

@@ -377,7 +377,6 @@ yield 전에 상태 변경을 확정하지 않는 방식으로 작성한다. 이
 
 | server 또는 node | 내부 module 또는 ZLink 요소 | 설명 |
 |------------------|-----------------------------|------|
-| `Registry` | `AddZLinkRegistry` | discovery readiness를 제공한다. |
 | `Dispatch server` | ASP.NET HTTP API, `AddClientServerChannel` server/client, `DispatchWorker` module | 고객 HTTP 요청을 받고, courier 후보 선택과 timeout 재시도를 처리한다. |
 | `CourierGateway server` | `CourierChannel` handler module, `CourierDirectory` module | offer 요청을 받고, courier id를 actor node rid와 session route로 해석한다. |
 | `CourierSession server` | `AddStreamNode`, `CourierSession` | 배송원 stream 연결을 받고, courier id와 session route를 gateway에 bind 요청한다. |

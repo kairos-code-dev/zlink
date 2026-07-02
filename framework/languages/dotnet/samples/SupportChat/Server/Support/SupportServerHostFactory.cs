@@ -37,7 +37,6 @@ public static class SupportServerHostFactory
                 .TraceLogFile(SampleFlowLog.Path("support"))
                 .TraceLabel("support");
             options.AddHandlersFromAssemblyOf(typeof(SupportServerHostFactory));
-            options.UseDiscovery().AddRegistryEndpoint(topology.RegistryRouterEndpoint);
             options.AddClientServerChannel(SampleNames.SupportChannel)
                 .EnableServer(topology.SupportChannelEndpoint)
                 .AddHandlerGroup("support");

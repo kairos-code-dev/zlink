@@ -8,7 +8,6 @@ const net = require('node:net');
 const path = require('node:path');
 const zlink = require('@zlink-systems/zlink');
 
-const AUTO_CONNECT_SPOT_MESH = 5;
 async function reservePort() {
   const server = net.createServer();
   server.listen(0, '127.0.0.1');
@@ -145,34 +144,6 @@ test('spot node status snapshot starts empty', async () => {
   spot.close();
   node.close();
   ctx.close();
-});
-
-test('discovery member peers reflect service-up state', async () => {
-  const ctx = zlink.createContext();
-  const registry = zlink.createRegistry(ctx);
-  const providerDiscovery = zlink.createDiscovery(ctx, AUTO_CONNECT_SPOT_MESH, 'monitor-service-up');
-  const watcherDiscovery = zlink.createDiscovery(ctx, AUTO_CONNECT_SPOT_MESH, 'monitor-service-up');
-  const node = zlink.createSpotNode(ctx);
-  const pubEndpoint = `tcp://127.0.0.1:${await reservePort()}`;
-  const routerEndpoint = `tcp://127.0.0.1:${await reservePort()}`;
-
-  try {
-    registry.bind(pubEndpoint, routerEndpoint);
-    providerDiscovery.connectRegistry(routerEndpoint);
-    watcherDiscovery.connectRegistry(routerEndpoint);
-    node.attachDiscovery(providerDiscovery);
-    await setPubBindOnReservedPort(node);
-
-    const peer = await waitFor(5000, () =>
-      watcherDiscovery.memberPeers().find((entry) =>
-        entry.channelName === 'monitor-service-up' && entry.endpoint.length > 0));
-    assert.ok(peer);
-  } finally {
-    watcherDiscovery.close();
-    providerDiscovery.close();
-    registry.close();
-    ctx.close();
-  }
 });
 
 test('spot node subject status reflects remote sub readiness after direct peer connect', async () => {

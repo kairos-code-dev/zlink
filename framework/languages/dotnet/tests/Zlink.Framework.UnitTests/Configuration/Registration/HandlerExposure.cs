@@ -81,10 +81,9 @@ public sealed class HandlerExposureTests : RegistrationValidationSupport
         var exception = Assert.Throws<ZLinkConfigurationException>(() =>
             services.AddZLinkFramework(options =>
             {
-                options.UseDiscovery().AddRegistryEndpoint("tcp://127.0.0.1:5551");
                 {
                     var channel = options.AddFanoutChannel("profile.events");
-                    channel.EnableSubscriber();
+                    channel.EnableSubscriber("tcp://127.0.0.1:7201");
                 }
             }));
 
@@ -267,7 +266,6 @@ public sealed class HandlerExposureTests : RegistrationValidationSupport
 
         services.AddZLinkFramework(options =>
         {
-            options.UseDiscovery().AddRegistryEndpoint("tcp://127.0.0.1:5551");
             {
                 var channel = options.AddRouteMesh("route").EnableServer("tcp://0.0.0.0:5700");
                 channel.SetRoutingId(RoutingId.From("route-node"));
@@ -317,7 +315,6 @@ public sealed class HandlerExposureTests : RegistrationValidationSupport
 
         services.AddZLinkFramework(options =>
         {
-            options.UseDiscovery().AddRegistryEndpoint("tcp://127.0.0.1:5551");
             {
                 var channel = options.AddRouteMesh("backend");
                 channel.EnableServer("tcp://127.0.0.1:7101");
@@ -325,7 +322,7 @@ public sealed class HandlerExposureTests : RegistrationValidationSupport
             }
             {
                 var channel = options.AddFanoutChannel("events");
-                channel.EnableSubscriber();
+                channel.EnableSubscriber("tcp://127.0.0.1:7202");
                 channel.AddPublishHandler<TestPublishHandler>();
             }
         });

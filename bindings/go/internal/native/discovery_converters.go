@@ -4,7 +4,6 @@ package native
 
 /*
 #include <stdint.h>
-#include <stdlib.h>
 #include "zlink.h"
 */
 import "C"
@@ -13,46 +12,6 @@ import (
 	"strings"
 	"unsafe"
 )
-
-func (f RegistryServiceSummaryFilter) toC() C.zlink_registry_service_summary_filter_t {
-	var out C.zlink_registry_service_summary_filter_t
-	if f.AutoConnectType != nil {
-		out.auto_connect_type = C.zlink_auto_connect_type_t(*f.AutoConnectType)
-	}
-	if f.ServiceRole != nil {
-		out.service_role = C.zlink_service_role_t(*f.ServiceRole)
-	}
-	if f.ChannelName != nil {
-		mustCopyFixedCString(unsafe.Pointer(&out.channel_name[0]), 256, *f.ChannelName)
-	}
-	return out
-}
-
-func (f RegistryTopologyFilter) toC() C.zlink_registry_topology_filter_t {
-	var out C.zlink_registry_topology_filter_t
-	if f.AutoConnectType != nil {
-		out.auto_connect_type = C.zlink_auto_connect_type_t(*f.AutoConnectType)
-	}
-	if f.ServiceKind != nil {
-		out.service_kind = C.zlink_service_kind_t(*f.ServiceKind)
-	}
-	if f.ServiceRole != nil {
-		out.service_role = C.zlink_service_role_t(*f.ServiceRole)
-	}
-	if f.ChannelName != nil {
-		mustCopyFixedCString(unsafe.Pointer(&out.channel_name[0]), 256, *f.ChannelName)
-	}
-	if f.RoutingID != nil {
-		out.routing_id = f.RoutingID.toC()
-	}
-	if f.State != nil {
-		out.state = C.zlink_topology_state_t(*f.State)
-	}
-	if f.Source != nil {
-		out.source = C.zlink_topology_source_t(*f.Source)
-	}
-	return out
-}
 
 func (f SpotNodePeerFilter) toC() C.zlink_spot_node_peer_filter_t {
 	var out C.zlink_spot_node_peer_filter_t
@@ -162,71 +121,5 @@ func spotNodeSocketEntryFromC(raw C.zlink_spot_node_socket_entry_t) SpotNodeSock
 		SocketType:     SocketType(raw.socket_type),
 		AutoHwmVisible: uint32(raw.auto_hwm_visible) != 0,
 		MonitorStatus:  monitorStatusFromC(raw.monitor_status),
-	}
-}
-
-func registryStatusFromC(raw C.zlink_registry_status_t) *RegistryStatus {
-	return &RegistryStatus{
-		RegistryID:                 uint32(raw.registry_id),
-		BindEndpoint:               C.GoString(&raw.bind_endpoint[0]),
-		State:                      RegistryState(raw.state),
-		TopologyEntryCount:         uint32(raw.topology_entry_count),
-		PeerRegistryCount:          uint32(raw.peer_registry_count),
-		ConnectedPeerRegistryCount: uint32(raw.connected_peer_registry_count),
-		ListSeq:                    uint64(raw.list_seq),
-		LastError:                  int32(raw.last_error),
-		LastChangedMs:              uint64(raw.last_changed_ms),
-	}
-}
-
-func registryServiceSummaryEntryFromC(raw C.zlink_registry_service_summary_entry_t) RegistryServiceSummaryEntry {
-	return RegistryServiceSummaryEntry{
-		AutoConnectType: AutoConnectType(raw.auto_connect_type),
-		ServiceRole:     ServiceRole(raw.service_role),
-		ChannelName:     C.GoString(&raw.channel_name[0]),
-		TotalCount:      uint32(raw.total_count),
-		ConnectingCount: uint32(raw.connecting_count),
-		ReadyCount:      uint32(raw.ready_count),
-		ErrorCount:      uint32(raw.error_count),
-		StoppedCount:    uint32(raw.stopped_count),
-		LastReportedMs:  uint64(raw.last_reported_ms),
-	}
-}
-
-func memberPeerEntryFromC(raw C.zlink_member_peer_entry_t) MemberPeerEntry {
-	return MemberPeerEntry{
-		AutoConnectType: AutoConnectType(raw.auto_connect_type),
-		ServiceRole:     ServiceRole(raw.service_role),
-		ChannelName:     C.GoString(&raw.channel_name[0]),
-		Endpoint:        C.GoString(&raw.endpoint[0]),
-		RoutingID:       routingIDFromC(raw.routing_id),
-		Weight:          uint32(raw.weight),
-		Value:           int64(raw.value),
-	}
-}
-
-func registryTopologyEntryFromC(raw C.zlink_registry_topology_entry_t) RegistryTopologyEntry {
-	return RegistryTopologyEntry{
-		AutoConnectType: AutoConnectType(raw.auto_connect_type),
-		RoutingID:       routingIDFromC(raw.routing_id),
-		ServiceKind:     ServiceKind(raw.service_kind),
-		ServiceRole:     ServiceRole(raw.service_role),
-		ChannelName:     C.GoString(&raw.channel_name[0]),
-		Endpoint:        C.GoString(&raw.endpoint[0]),
-		Source:          TopologySource(raw.source),
-		State:           TopologyState(raw.state),
-		DesiredCount:    uint32(raw.desired_count),
-		ReadyCount:      uint32(raw.ready_count),
-		ErrorCode:       uint32(raw.error_code),
-		LastReportedMs:  uint64(raw.last_reported_ms),
-		SpotKind:        SpotKind(raw.spot_kind),
-	}
-}
-
-func spotRouteFromC(raw C.zlink_spot_route_t) SpotRoute {
-	return SpotRoute{
-		SpotRID:      routingIDFromC(raw.spot_rid),
-		OwnerNodeRID: routingIDFromC(raw.owner_node_rid),
-		SpotKind:     SpotKind(raw.spot_kind),
 	}
 }

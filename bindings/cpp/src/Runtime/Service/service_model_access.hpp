@@ -4,7 +4,6 @@
 
 #include "actor_model_access.hpp"
 #include "../Core/routing_id_access.hpp"
-#include <zlink/Contracts/Service/registry_models.hpp>
 #include <zlink/Contracts/Service/spot_node_models.hpp>
 
 #include <zlink.h>
@@ -14,41 +13,6 @@ namespace zlink::detail
 
 struct service_model_access_t
 {
-    static member_peer_entry_t from_native (const zlink_member_peer_entry_t &entry_)
-    {
-        member_peer_entry_t out;
-        out.auto_connect_type_ = static_cast<zlink::auto_connect_type> (entry_.auto_connect_type);
-        out.service_role_ = static_cast<zlink::service_role> (entry_.service_role);
-        out.channel_name_ = fixed_string_to_string (entry_.channel_name);
-        out.endpoint_ = fixed_string_to_string (entry_.endpoint);
-        out.routing_id_ = entry_.routing_id.size > 0
-                            ? std::optional<routing_id_t> (native_routing_id (entry_.routing_id))
-                            : std::nullopt;
-        out.weight_ = entry_.weight;
-        out.value_ = entry_.value;
-        return out;
-    }
-
-    static registry_topology_entry_t from_native (const zlink_registry_topology_entry_t &entry_)
-    {
-        registry_topology_entry_t out;
-        out.auto_connect_type_ = static_cast<zlink::auto_connect_type> (entry_.auto_connect_type);
-        out.routing_id_ = entry_.routing_id.size > 0
-                            ? std::optional<routing_id_t> (native_routing_id (entry_.routing_id))
-                            : std::nullopt;
-        out.service_kind_ = static_cast<zlink::service_kind> (entry_.service_kind);
-        out.service_role_ = static_cast<zlink::service_role> (entry_.service_role);
-        out.channel_name_ = fixed_string_to_string (entry_.channel_name);
-        out.endpoint_ = fixed_string_to_string (entry_.endpoint);
-        out.source_ = static_cast<topology_source> (entry_.source);
-        out.state_ = static_cast<topology_state> (entry_.state);
-        out.desired_count_ = entry_.desired_count;
-        out.ready_count_ = entry_.ready_count;
-        out.error_code_ = entry_.error_code;
-        out.last_reported_ms_ = entry_.last_reported_ms;
-        return out;
-    }
-
     static spot_node_status_t from_native (const zlink_spot_node_status_t &status_)
     {
         spot_node_status_t out;
@@ -66,37 +30,6 @@ struct service_model_access_t
         out.ready_subject_count_ = status_.ready_subject_count;
         out.disconnected_sub_target_count_ = status_.disconnected_sub_target_count;
         out.disconnected_routed_target_count_ = status_.disconnected_routed_target_count;
-        out.last_error_ = status_.last_error;
-        out.last_changed_ms_ = status_.last_changed_ms;
-        return out;
-    }
-
-    static registry_service_summary_entry_t
-    from_native (const zlink_registry_service_summary_entry_t &entry_)
-    {
-        registry_service_summary_entry_t out;
-        out.auto_connect_type_ = static_cast<zlink::auto_connect_type> (entry_.auto_connect_type);
-        out.service_role_ = static_cast<zlink::service_role> (entry_.service_role);
-        out.channel_name_ = fixed_string_to_string (entry_.channel_name);
-        out.total_count_ = entry_.total_count;
-        out.connecting_count_ = entry_.connecting_count;
-        out.ready_count_ = entry_.ready_count;
-        out.error_count_ = entry_.error_count;
-        out.stopped_count_ = entry_.stopped_count;
-        out.last_reported_ms_ = entry_.last_reported_ms;
-        return out;
-    }
-
-    static registry_status_t from_native (const zlink_registry_status_t &status_)
-    {
-        registry_status_t out;
-        out.registry_id_ = status_.registry_id;
-        out.bind_endpoint_ = fixed_string_to_string (status_.bind_endpoint);
-        out.state_ = static_cast<registry_state> (status_.state);
-        out.topology_entry_count_ = status_.topology_entry_count;
-        out.peer_registry_count_ = status_.peer_registry_count;
-        out.connected_peer_registry_count_ = status_.connected_peer_registry_count;
-        out.list_seq_ = status_.list_seq;
         out.last_error_ = status_.last_error;
         out.last_changed_ms_ = status_.last_changed_ms;
         return out;

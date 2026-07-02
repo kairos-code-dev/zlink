@@ -95,7 +95,6 @@ Kotlin handler의 결과를 Java sync handler 호출의 반환값 또는 예외�
 | handler | `ZLinkRuntimeEventHandler<TEvent>` | runtime monitoring event handler |
 | options | `ZLinkMonitoringOptions` | runtime monitoring source 등록 |
 | value | `ZLinkSocketEventKind`, `ZLinkSocketEvent` | socket runtime event |
-| value | `ZLinkRegistryEventKind`, `ZLinkRegistryEvent` | registry runtime event |
 | value | `ZLinkSpotEventKind`, `ZLinkSpotEvent` | spot runtime event |
 | serializer | `ZLinkMessageSerializer` | payload codec 추상화 |
 | options | `ZLinkCodecRegistryBuilder` | JSON/MessagePack/Protobuf codec 등록 |
@@ -110,7 +109,6 @@ Kotlin handler의 결과를 Java sync handler 호출의 반환값 또는 예외�
 | timer | `ZLinkTimer` | `SPOT` lifecycle timer handle |
 | filter | `ZLinkHandlerFilter` | handler 전후 공통 처리 |
 | marker | `ZLinkRequest<TReply>` | request/reply 타입 연결 marker |
-| registry | `ZLinkRegistryQuery`, `ZLinkRegistryQueryClient` | registry 조회 |
 
 ## 2. Context
 
@@ -1091,16 +1089,13 @@ public record ZLinkSocketEvent(
     @Nullable ZLinkSocketDiagnostic diagnostic) implements ZLinkRuntimeEvent {
 }
 
-public enum ZLinkRegistryEventKind {
     STATUS_CHANGED,
     TOPOLOGY_CHANGED,
     SERVICE_SUMMARY_CHANGED
 }
 
-public record ZLinkRegistryEvent(
     String sourceName,
     Instant timestamp,
-    ZLinkRegistryEventKind event,
     @Nullable ZLinkRegistryStatus status,
     @Nullable List<ZLinkRegistryTopologyEntry> topology,
     @Nullable List<ZLinkRegistryServiceSummaryEntry> serviceSummary) implements ZLinkRuntimeEvent {

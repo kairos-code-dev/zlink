@@ -6,6 +6,7 @@
 #include "core/ctx.hpp"
 #include "services/common/service_public_api.hpp"
 #include "services/common/service_runtime_base.hpp"
+#include "services/discovery/discovery_registry_models_internal.hpp"
 #include "services/discovery/discovery_observer.hpp"
 #include "services/discovery/discovery_runtime_internal.hpp"
 #include "utils/atomic_counter.hpp"

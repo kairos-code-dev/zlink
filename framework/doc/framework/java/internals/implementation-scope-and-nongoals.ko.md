@@ -19,8 +19,6 @@
   (`ZLinkAsyncSerialQueue`/`ZLinkSpotDispatchQueue`, session/spot 콜백 직렬 dispatch)와
   worker pool(`ZLinkWorkerPool`)
 - codec registry와 JSON 기본 codec
-- embedded registry와 `ZLinkRegistryQuery`
-- remote `ZLinkRegistryQueryClient`
 - monitoring source와 typed runtime event handler
 - Spot mesh, SpotNode, Entry Spot, user Spot factory
 - `ZLinkSpotManager`, `ZLinkSpotOutbound`, `ZLinkSpotPublisherClient`

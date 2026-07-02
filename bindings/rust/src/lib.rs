@@ -34,8 +34,6 @@ mod core_context;
 mod core_utilities;
 #[path = "runtime/handles/ctx.rs"]
 mod ctx;
-#[path = "contracts/service/discovery/discovery.rs"]
-mod discovery_resource;
 #[path = "contracts/messaging/received.rs"]
 mod domain;
 #[path = "contracts/errors/errors.rs"]
@@ -70,12 +68,6 @@ mod poller_contracts;
 mod pubsub_socket_contracts;
 #[path = "runtime/messaging/domain.rs"]
 mod received_operations;
-#[path = "contracts/service/registry/registry_models.rs"]
-mod registry_models;
-#[path = "contracts/service/registry/registry_query_client.rs"]
-mod registry_query_client_resource;
-#[path = "contracts/service/registry/registry.rs"]
-mod registry_resource;
 #[path = "contracts/errors/results.rs"]
 mod results;
 #[path = "contracts/sockets/routed_socket_contracts.rs"]
@@ -111,14 +103,13 @@ mod topic_message_contract;
 
 pub use actor_models::{
     ActorJoinEntrySpotResult, ActorJoinInfo, ActorJoinRequest, ActorJoinResult, ActorLookupResult,
-    ActorRecvInfo, ActorRef, ActorRoute, DiscoveryRoute, SpotActorLifecycleEvent,
-    SpotActorLifecycleEventKind, SpotActorLifecycleInfo, SpotNodeActorEntry, SpotRoute,
+    ActorRecvInfo, ActorRef, ActorRoute, SpotActorLifecycleEvent, SpotActorLifecycleEventKind,
+    SpotActorLifecycleInfo, SpotNodeActorEntry,
 };
 pub use actor_received::ActorReceived;
 pub use actor_resource::Actor;
 pub use core_context::{AutoHwmProfile, AutoHwmRecalcReason, Context, ContextOptions};
 pub use core_utilities::{AtomicCounter, Stopwatch, Thread};
-pub use discovery_resource::{Discovery, RouteKind};
 pub use domain::Received;
 pub use error::{
     BindError, CloseError, ConfigError, ConnectError, HandlerError, RecvError, RequestError,
@@ -140,12 +131,6 @@ pub use poller_contracts::{
     POLLCOMPLETION, POLLIN, POLLOUT, PollEvent, PollItem, PollSourceKind, Pollable, Poller, Timer,
 };
 pub use pubsub_socket_contracts::{PubSocket, SubSocket, XPubSocket, XSubSocket};
-pub use registry_models::{
-    MemberPeerEntry, RegistryServiceSummaryEntry, RegistryServiceSummaryFilter, RegistryStatus,
-    RegistryTopologyEntry, RegistryTopologyFilter,
-};
-pub use registry_query_client_resource::RegistryQueryClient;
-pub use registry_resource::Registry;
 pub use results::{
     BindResult, CloseResult, ConfigResult, ConnectResult, HandlerResult, RecvResult, RequestResult,
     SubmitResult,
@@ -153,12 +138,10 @@ pub use results::{
 pub use routed_socket_contracts::RouterSocket;
 pub use routing_id::RoutingId;
 pub use spot_models::{
-    AutoConnectType, RegistryState, ServiceKind, ServiceRole, SocketType, SpotDispatchEvent,
-    SpotDispatchInfo, SpotKind, SpotNodeMode, SpotNodeOptions, SpotNodePeerEntry,
-    SpotNodePeerFilter, SpotNodeSocketEntry, SpotNodeSocketFilter, SpotNodeSocketOwner,
-    SpotNodeSpotEntry, SpotNodeState, SpotNodeStatus, SpotNodeSubjectEntry, SpotNodeSubjectFilter,
-    SpotPeerKind, SpotPeerSource, SpotPeerState, SpotRole, SubjectKind, TopologySource,
-    TopologyState,
+    SocketType, SpotDispatchEvent, SpotDispatchInfo, SpotKind, SpotNodeMode, SpotNodeOptions,
+    SpotNodePeerEntry, SpotNodePeerFilter, SpotNodeSocketEntry, SpotNodeSocketFilter,
+    SpotNodeSocketOwner, SpotNodeSpotEntry, SpotNodeState, SpotNodeStatus, SpotNodeSubjectEntry,
+    SpotNodeSubjectFilter, SpotPeerKind, SpotPeerSource, SpotPeerState, SpotRole, SubjectKind,
 };
 pub use spot_node_resource::SpotNode;
 pub use spot_operations::{

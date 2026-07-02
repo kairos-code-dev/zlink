@@ -2,7 +2,6 @@
 
 import { randomBytes } from 'node:crypto';
 import { RuntimeContext as Context } from '../../core/context';
-import { Discovery } from '../discovery/discovery';
 import { Actor } from './actor';
 import { Spot } from './spot';
 import { SpotNodePublisher, SpotRouteBridge } from './spot_route_bridge';
@@ -84,11 +83,6 @@ export class SpotNode extends NativeHandle {
   }
   createPublisher(): SpotNodePublisher {
     return new SpotNodePublisher(this);
-  }
-  attachDiscovery(discovery: Discovery): void {
-    configCall('spot node discovery attachment failed', () => {
-      requireNative().spotNodeSetDiscovery(this._native, getNativeHandle(discovery));
-    });
   }
   setRoutingId(routingId: RoutingId): void {
     const normalizedRoutingId = normalizeRoutingId(routingId);

@@ -74,10 +74,8 @@ public final class ProfileSocketMonitor
 
 @Component
 public final class RegistryMonitor
-    implements ZLinkRuntimeEventHandler<ZLinkRegistryEvent> {
 
     @Override
-    public void handle(ZLinkRegistryEvent event) {
     }
 }
 ```

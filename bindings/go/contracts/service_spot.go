@@ -47,6 +47,12 @@ type (
 	SpotNodeActorEntry = impl.SpotNodeActorEntry
 	// Actor is a handle to a local actor: join/leave spots, receive its messages, and send to its bound session.
 	Actor = impl.Actor
+	// SpotKind identifies whether a spot is an entry spot or a user spot.
+	SpotKind = impl.SpotKind
+	// SubjectKind identifies the kind of subject served by a spot node.
+	SubjectKind = impl.SubjectKind
+	// SpotRole identifies whether a SPOT subject is served by a publisher or subscriber role.
+	SpotRole = impl.SpotRole
 	// ActorJoinResult is the outcome of an actor join.
 	ActorJoinResult = impl.ActorJoinResult
 	// ActorJoinCompletion carries the result and reply parts of a completed actor join.
@@ -114,6 +120,14 @@ const (
 	SpotRouteBridgeCapabilitySpotRoute = impl.SpotRouteBridgeCapabilitySpotRoute
 	// SpotRouteBridgeRouteOnly allows only SPOT route relay traffic.
 	SpotRouteBridgeRouteOnly = impl.SpotRouteBridgeRouteOnly
+	SpotKindInvalid          = impl.SpotKindInvalid
+	SpotKindEntry            = impl.SpotKindEntry
+	SpotKindUser             = impl.SpotKindUser
+	SubjectKindNone          = impl.SubjectKindNone
+	SubjectKindTopic         = impl.SubjectKindTopic
+	SubjectKindPattern       = impl.SubjectKindPattern
+	SpotRolePub              = impl.SpotRolePub
+	SpotRoleSub              = impl.SpotRoleSub
 	// SpotNodeSocketOwnerAny matches any owner (no filter).
 	SpotNodeSocketOwnerAny = impl.SpotNodeSocketOwnerAny
 	// SpotNodeSocketOwnerNode matches sockets owned by the node itself.

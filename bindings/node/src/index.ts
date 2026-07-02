@@ -31,9 +31,6 @@ import {
   RuntimeXSubSocket,
 } from './zlink/runtime/sockets';
 import {
-  RuntimeDiscovery,
-  RuntimeRegistry,
-  RuntimeRegistryQueryClient,
   RuntimeSpotNode,
 } from './zlink/runtime/service';
 import {
@@ -44,16 +41,12 @@ import {
 } from './zlink/runtime/public_bridge';
 import type {
   AtomicCounter,
-  AutoConnectTypeValue,
   Context,
   DealerSocket,
-  Discovery,
   PairSocket,
   Poller,
   PollEvents,
   PubSocket,
-  Registry,
-  RegistryQueryClient,
   RouterSocket,
   Spot,
   SpotNode,
@@ -101,22 +94,6 @@ export function createRouterSocket(ctx: Context): RouterSocket {
 
 export function createStreamSocket(ctx: Context): StreamSocket {
   return asPublicContract<StreamSocket>(new RuntimeStreamSocket(asRuntimeContext(ctx)));
-}
-
-export function createRegistry(ctx: Context): Registry {
-  return asPublicContract<Registry>(new RuntimeRegistry(asRuntimeContext(ctx)));
-}
-
-export function createRegistryQueryClient(ctx: Context): RegistryQueryClient {
-  return asPublicContract<RegistryQueryClient>(new RuntimeRegistryQueryClient(asRuntimeContext(ctx)));
-}
-
-export function createDiscovery(
-  ctx: Context,
-  autoConnectType: AutoConnectTypeValue,
-  channelName: string
-): Discovery {
-  return asPublicContract<Discovery>(new RuntimeDiscovery(asRuntimeContext(ctx), autoConnectType, channelName));
 }
 
 export function createSpotNode(ctx: Context, mode?: SpotNodeModeValue): SpotNode {

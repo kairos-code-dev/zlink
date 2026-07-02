@@ -14,8 +14,6 @@ internal interface IZLinkBackendSpotNode : IZLinkBackendObject, IAsyncDisposable
 
     void SetPubBind(string endpoint);
 
-    void AttachDiscovery(IZLinkBackendDiscovery discovery);
-
     void ConnectPeer(string endpoint);
 
     void ConnectPeer(RoutingId peerRid, string endpoint);

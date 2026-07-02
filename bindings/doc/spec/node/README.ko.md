@@ -285,7 +285,6 @@ TypeScript 인터페이스를 먼저 정의한다.
   `PubSocket`, `SubSocket`, `XPubSocket`, `XSubSocket`, `StreamSocket`.
 - eventing 역할: `MonitorSocket`, `Poller`, poll event source, `Timer`,
   `Stopwatch`, `AtomicCounter`.
-- service 역할: `Registry`, `RegistryQueryClient`, `Discovery`, `SpotNode`,
   `Spot`, `Actor`.
 - operation builder: send, routed send, request, reply, publish, channel
   send/request, SPOT send/request/reply, actor create, actor join, actor join
@@ -439,7 +438,6 @@ operation을 따라 짓는다. `router_socket.ts`, `spot_node.ts`,
 
 다음 형태들은 명시적인 정렬 실패다.
 
-- `runtime/service/service.ts`가 `Registry`, `RegistryQueryClient`,
   `Discovery`, `SpotNode`, `Spot`, `Actor` 구현을 한 파일에 담은 경우.
 - `runtime/eventing/eventing.ts`가 monitor socket, poll events, poller, timer,
   stopwatch, counter 구현을 한 파일에 담은 경우.
@@ -465,7 +463,6 @@ operation을 따라 짓는다. `router_socket.ts`, `spot_node.ts`,
   `createRouterSocket()`, `createPubSocket()`, `createSubSocket()`,
   `createXPubSocket()`, `createXSubSocket()`, `createStreamSocket()`는 런타임 소켓
   구현을 생성한다.
-- `Context.createRegistry()`, `createDiscovery(...)`, `createSpotNode(...)`는
   서비스 계층 구현을 생성한다.
 - `Spot` 핸들은 `SpotNode.createSpot()`, `entrySpot()`,
   `getOrCreateSpot(...)`, `spotLookup(...)`을 통해 얻는다. 직접적인 `Spot`

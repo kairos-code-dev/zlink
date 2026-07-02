@@ -42,15 +42,12 @@ internal static class ServiceHostFactory
         builder.WebHost.UseUrls(options.HttpUrl);
         builder.Services.AddSingleton(new EvidenceStore(options.EvidenceFile));
         builder.Services.AddScoped<IZLinkRuntimeEventHandler<ZLinkSocketEvent>, SocketEventRecorder>();
-        builder.Services.AddScoped<IZLinkRuntimeEventHandler<ZLinkRegistryEvent>, RegistryEventRecorder>();
         builder.Services.AddScoped<IZLinkRuntimeEventHandler<ZLinkSpotEvent>, SpotEventRecorder>();
         if (profile == ServiceMonitorProfile.Throwing)
             builder.Services.AddScoped<IZLinkRuntimeEventHandler<ZLinkSocketEvent>, ThrowingSocketEventRecorder>();
 
         builder.Services.AddZLinkFramework(framework =>
         {
-            framework.UseDiscovery()
-                .AddRegistryEndpoint(Require(options.RegistryRouterEndpoint, "--registry-router-endpoint"));
             framework.ConfigureDispatch()
                 .MessageFlow(ZLinkMessageFlowLogMode.KeyTransitions)
                 .TraceLogFile(Path.Combine(options.LogDir, $"{options.Rid}-flow.log"))

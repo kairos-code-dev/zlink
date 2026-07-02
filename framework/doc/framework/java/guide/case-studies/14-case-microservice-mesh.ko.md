@@ -153,7 +153,6 @@ public class MeshOpsConfig implements ZLinkFrameworkConfigurer {
 @RestController
 public final class TopologyController {
     @GetMapping("/admin/topology")
-    List<ZLinkRegistryTopologyEntry> topology(ZLinkRegistryQueryClient registry) {
         return registry.topology().toCompletableFuture().join();
     }
 }
@@ -184,7 +183,6 @@ public final class CorrelationFilter implements ZLinkHandlerFilter {
 | 위치/분배 | Consul/xDS + Envoy `DestinationRule` | `useDiscovery`  + Registry |
 | deadline | `deadline:` 인자 | `.timeout(...)` |
 | retry/circuit | Polly(앱) | Polly/filter(앱) — 동일 |
-| 관측 | Envoy telemetry + OTel collector | `ZLinkRegistryQueryClient` + `monitoring().enable()` |
 
 ## 5. 아키텍처 비교 — 컴포넌트와 메시지 흐름
 

@@ -62,7 +62,6 @@ framework 등록은 다음 모양이 자연스럽다.
 ```csharp
 builder.Services.AddZLinkFramework(options =>
 {
-        options.UseDiscovery().AddRegistryEndpoint("tcp://registry-1:5551");
 
     {
         var channel =     options.AddClientServerChannel("profile");
@@ -89,43 +88,23 @@ builder.Services.AddZLinkMonitoring(monitor =>
         ZLinkSocketEventKind.ConnectionReady,
         ZLinkSocketEventKind.Disconnected);
 
-    monitor.AddRegistryEvents(
-        "registry",
-        TimeSpan.FromSeconds(1));
-
     monitor.AddSpotEvents(
         "stage-node",
         TimeSpan.FromSeconds(1));
 });
 ```
 
-`AddZLinkMonitoring(...)` 은 source 등록만 맡는다. 즉 실제 socket, registry,
-spot source 는 같은 애플리케이션에 `AddZLinkFramework(...)` 또는
-`AddZLinkRegistry(...)` 로 이미 올라와 있어야 한다.
+`AddZLinkMonitoring(...)` 은 source 등록만 맡는다. 즉 실제 socket, spot source 는
+같은 애플리케이션에 `AddZLinkFramework(...)` 또는
 
-여기서 한 가지 짚어 둘 점이 있다. 일반 channel 역할[^capability] 와 SPOT
-mesh 는 각자 discovery source 를 가질 수 있다.
-
-- 일반 channel: framework 등록 루트의 `UseDiscovery().AddRegistryEndpoint(...)` 가 공급한다.
-- SPOT mesh: root `UseDiscovery().AddRegistryEndpoint(...)` 로
-  endpoint 를 지정할 수 있고, 지정하지 않으면 framework 루트 discovery endpoint 를 상속한다.
+여기서 한 가지 짚어 둘 점이 있다. 일반 channel 역할[^capability] 과 SPOT mesh 는
+각자 monitoring source 이름을 가진다.
 
 source 이름은 다음 규칙으로 잡는 편이 자연스럽다.
 
 - socket
   - `channel + capability` 형태
   - 예: `profile.server`, `profile.client`
-- discovery
-  - framework는 별도의 monitoring source 이름을 두지 않는다.
-  - 현재 provider 상태는 `IZLinkRegistryQuery.TopologyAsync(...)`,
-    `ServiceSummaryAsync(...)`, `MemberPeersAsync(...)`로 조회한다.
-  - application logging 쪽에서 discovery 활동을 별도 식별자로 남기고 싶다면,
-    `profile.client.discovery`, `game.stage.discovery` 같은 이름을 application
-    logging convention으로 둘 수는 있다. 이 이름은 framework monitoring source의
-    등록 이름이 아니다.
-- registry
-  - infrastructure source 이름
-  - 예: `registry`
 - spot
   - spot node 등록 이름
   - 예: `stage-node`
@@ -143,10 +122,6 @@ public interface IZLinkMonitoringOptions
     void AddSocketEvents(
         string sourceName,
         params ZLinkSocketEventKind[] events);
-
-    void AddRegistryEvents(
-        string sourceName,
-        TimeSpan interval);
 
     void AddSpotEvents(
         string sourceName,
@@ -228,7 +203,6 @@ public sealed class ProfileServerSocketMonitor
 
 ```csharp
 public sealed class RegistryMonitor
-    : IZLinkRuntimeEventHandler<ZLinkRegistryEvent>
 {
     private readonly ILogger<RegistryMonitor> _logger;
 
@@ -238,18 +212,15 @@ public sealed class RegistryMonitor
     }
 
     public ValueTask HandleAsync(
-        ZLinkRegistryEvent @event,
         CancellationToken cancellationToken)
     {
         switch (@event.Event)
         {
-            case ZLinkRegistryEventKind.StatusChanged:
                 _logger.LogInformation(
                     "registry status changed: {State}",
                     @event.Status?.State);
                 break;
 
-            case ZLinkRegistryEventKind.TopologyChanged:
                 _logger.LogInformation(
                     "registry topology changed: {Count}",
                     @event.Topology?.Count ?? 0);
@@ -383,19 +354,15 @@ internal 타입이다. 따라서 application 코드에서 직접 다루지 않�
 Monitoring 문서의 항목은 다음을 확인한다.
 
 - 등록한 source 이름이 실제 runtime 역할과 맞는지
-- Registry 와 SPOT 상태 변화가 typed event 와 snapshot 으로 관찰되는지
+- SPOT 상태 변화와 socket 상태 변화가 typed event 로 관찰되는지
 - timer handler failure 가 polling interval 을 기다리지 않고 typed event 로 관찰되는지
 - raw monitor event 를 그대로 외부로 새어 보내지 않는다는 정책이 public surface
   테스트에서도 유지되는지
 
 | 테스트 케이스 | 확인 기준 |
 |---------------|-----------|
-| `RegistryAndMonitoringTests.AddZLinkMonitoring_Throws_WhenSocketSourceDoesNotMatchRegisteredCapability` | 존재하지 않는 monitoring source 이름은 startup validation 예외로 이어진다. |
-| `EventsTests.RegistryMonitoring_Emits_StatusChanged_For_EmbeddedRegistry` | embedded Registry의 상태 변경 event가 발생한다. |
-| `EventsTests.RegistryMonitoring_Emits_Topology_And_ServiceSummary_When_FrameworkHostRegisters` | framework host 등록 후 topology와 service summary event가 발생한다. |
-| `EventsTests.SpotMonitoring_Emits_SubjectsChanged_When_SpotIsCreated` | spot 생성 후 subject 변화 event가 발생한다. |
-| `EventsTests.SpotMonitoring_Emits_PeersChanged_When_RemoteNodeAppears` | remote spot node가 나타나면 peer 변화 event가 발생한다. |
-| `TimerTests.SpotTimer_Reports_Handler_Exception_To_Monitoring` | timer handler 예외가 `TimerHandlerFailed` event와 `ZLinkSpotTimerDiagnostic` payload로 발생한다. |
+| `CoverageCriticalRuntimeTests.MonitoringEventMapper_MapsAndFiltersSocketEvents` | socket runtime event 를 public monitoring event 로 매핑하고 내부 event 는 밖으로 내보내지 않는다. |
+| `CoverageCriticalRuntimeTests.SpotTimerFailureEventFactory_MapsStoppedAndContinuingFailures` | timer handler 예외가 계속 실행되는 실패와 timer 중단 실패를 구분해 typed event 로 만들어진다. |
 
 ## 9. 메시지 흐름 추적 (dispatch 관측)
 

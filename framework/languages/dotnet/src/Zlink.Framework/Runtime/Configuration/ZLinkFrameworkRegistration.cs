@@ -27,8 +27,6 @@ internal sealed class ZLinkFrameworkRegistration
 
     public Type? SpotRemoteAddressResolverType { get; set; }
 
-    public ZLinkRegistrySpotRemoteAddressesRegistration? RegistrySpotRemoteAddresses { get; set; }
-
     public Dictionary<string, ZLinkChannelRegistration> Channels { get; } = new(StringComparer.Ordinal);
 
     public Dictionary<string, ZLinkRouteChannelRegistration> RouteChannels { get; } = new(StringComparer.Ordinal);
@@ -36,8 +34,6 @@ internal sealed class ZLinkFrameworkRegistration
     public Dictionary<string, ZLinkStreamNodeRegistration> StreamNodes { get; } = new(StringComparer.Ordinal);
 
     public Dictionary<string, ZLinkSpotNodeRegistration> SpotNodes { get; } = new(StringComparer.Ordinal);
-
-    public ZLinkDiscoveryRegistration? Discovery { get; set; }
 
     public Dictionary<string, ZLinkSpotDiscoveryRegistration> SpotDiscoveries { get; } = new(StringComparer.Ordinal);
 
@@ -59,11 +55,11 @@ internal sealed class ZLinkFrameworkRegistration
     }
 }
 
-internal sealed class ZLinkRegistrySpotRemoteAddressesRegistration : IZLinkRegistrySpotRemoteAddressesOptions
+internal enum ZLinkAutoConnectType
 {
-    public required string Namespace { get; init; }
-
-    public string? RouterChannelId { get; set; }
+    Invalid = 0,
+    ClientServer = 2,
+    Fanout = 4
 }
 
 internal class ZLinkDiscoveryRegistration

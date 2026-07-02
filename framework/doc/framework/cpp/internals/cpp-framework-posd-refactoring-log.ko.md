@@ -8825,8 +8825,6 @@ request timeout은 call object가, pending queue 한도는 runtime builder가 �
 
 ### 발견한 위험 신호
 
-- `.NET` framework는 `IZLinkRegistryQueryClient`와
-  `IZLinkRegistryQueryClientOptions.Endpoint`로 remote registry topology snapshot을 조회한다.
 - C++ draft도 remote registry query client를 필수 표면으로 적고 있었지만, framework public
   header에는 in-process `registry_query_t`만 있었다.
 - 사용자가 C++ binding의 `zlink::service::registry_query_client_t`, native context, native

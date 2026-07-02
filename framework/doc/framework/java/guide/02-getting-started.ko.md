@@ -23,7 +23,6 @@ application은 `@EnableZLinkFramework`와 Spring bean 등록으로 channel, hand
 Spot, stream 구성을 넘긴다. runtime을 직접 만들거나 `start` 함수로 시작하는 방법은
 public contract로 노출하지 않는다.
 애플리케이션 코드는 `ZLinkClient`, `ZLinkRouteClient`, `ZLinkSpotManager`,
-`ZLinkRegistryQuery`처럼 Spring bean으로 등록되는 public contract만 주입받는다.
 runtime 구현 class 이름을 직접 참조해도 시작 함수나 public 생성자는 제공하지 않는다.
 Java classpath 환경에서는 package 내부 class 이름 자체를 완전히 숨기기 어렵기 때문에,
 Spring Boot starter가 lifecycle owner가 되는 방식을 public 사용 경로로 고정한다.

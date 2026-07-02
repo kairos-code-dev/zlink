@@ -4,15 +4,6 @@ export {
   Actor as RuntimeActor,
 } from './spot/actor';
 export {
-  Discovery as RuntimeDiscovery,
-} from './discovery/discovery';
-export {
-  Registry as RuntimeRegistry,
-} from './registry/registry';
-export {
-  RegistryQueryClient as RuntimeRegistryQueryClient,
-} from './registry/registry_query_client';
-export {
   Spot as RuntimeSpot,
 } from './spot/spot';
 export {

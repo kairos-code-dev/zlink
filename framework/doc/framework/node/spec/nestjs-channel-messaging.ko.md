@@ -91,7 +91,6 @@ dotnet 의 `AddZLinkFramework(options => ...)` 빌더 람다는, node 에서
 | `channel.AddRequestHandler<H, TReq, TRep>()` | `zlinkRequestHandler(group, packet)` + `.addHandlerGroup(group)` |
 | `channel.AddSendHandler<H, TMsg>()` | `zlinkSendHandler(group, packet)` + `.addHandlerGroup(group)` |
 | `channel.AddPublishHandler<H, TMsg>()` | `zlinkPublishHandler(group, packet)` + `.addHandlerGroup(group)` |
-| `options.UseDiscovery().AddRegistryEndpoint(...)` | `.useDiscovery().addRegistryEndpoint(...)` |
 | `options.RequestTimeout = ...` | `requestTimeoutMs: number` |
 | `options.Codecs.Use(ZLinkProtobufCodec.Default)` | `zlinkFramework().codecs().use(zlinkProtobufCodec())` |
 | `options.AddHandlersFromAssemblyOf<T>()` | NestJS `providers` + handler decorator discovery |
@@ -166,13 +165,11 @@ export class AppModule {}
 
 ##### 자동 연결을 켜는 방법
 
-자동 연결은 `discovery: { registries: [...] }` 를 **한 번** 두면 켜진다(dotnet
-`options.UseDiscovery(...AddRegistryEndpoint...)` 대응). 그 뒤에 등록되는 모든 client / subscriber 역할
-는, 별도 신호 없이도 이 전역 Discovery 를 기본 연결 방식으로 쓴다. 즉 `client: {}` 만
-선언해도, 그 channel 은 자동으로 Discovery 기반 연결로 동작한다.
+자동 연결은 location runtime 과 location store 설계에서 다룬다. Core C API의
+Discovery/Registry 표면은 제거되었으므로, 이 spec 은 제거된 endpoint 등록 API 를 현재
+NestJS 표면처럼 설명하지 않는다.
 
-> 현재 단계에서는 Discovery registry endpoint 를 channel 별로 다르게 두는 표면을
-> 두지 않는다. registry 목록은 앱 전체에서 한 벌만 관리한다.
+> 현재 단계에서는 channel 별 location store 구성을 정식 공개 계약으로 두지 않는다.
 
 #### 수동 연결 예시
 

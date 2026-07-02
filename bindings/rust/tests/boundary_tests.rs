@@ -5,7 +5,7 @@ use std::sync::{Arc, Barrier};
 use std::thread;
 use std::time::Duration;
 
-use zlink::{AutoConnectType, Context, Discovery, Message, RoutingId, SpotNode};
+use zlink::{Context, Message, RoutingId, SpotNode};
 
 fn assert_send_sync<T: Send + Sync>() {}
 
@@ -146,25 +146,6 @@ fn message_try_from_str() {
     let msg = Message::try_from(b"world");
     assert!(msg.is_ok());
     assert_eq!(msg.unwrap().as_str().unwrap(), "world");
-}
-
-#[test]
-fn discovery_channel_name_over_255_rejected() {
-    let ctx = Context::new().unwrap();
-    let too_long = "s".repeat(256);
-    let result = Discovery::new(&ctx, AutoConnectType::SpotMesh, &too_long);
-    assert!(
-        result.is_err(),
-        "channel_name over 255 bytes must be rejected"
-    );
-}
-
-#[test]
-fn discovery_channel_name_255_accepted() {
-    let ctx = Context::new().unwrap();
-    let max_len = "s".repeat(255);
-    let result = Discovery::new(&ctx, AutoConnectType::SpotMesh, &max_len);
-    assert!(result.is_ok(), "255-byte channel_name must be accepted");
 }
 
 #[test]

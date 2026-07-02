@@ -168,9 +168,6 @@ add_library(zlink_cpp STATIC
   src/Runtime/Sockets/stream.cpp
   src/Runtime/Service/actor.cpp
   src/Runtime/Service/actor_operations.cpp
-  src/Runtime/Service/discovery.cpp
-  src/Runtime/Service/query.cpp
-  src/Runtime/Service/registry.cpp
   src/Runtime/Service/reply_operations.cpp
   src/Runtime/Service/request_reply.cpp
   src/Runtime/Service/send_operations.cpp
@@ -303,10 +300,7 @@ if(ZLINK_CPP_BUILD_SAMPLES)
     dealer_router_recv_sample.cpp
     stream_recv_sample.cpp
     stream_packet_callback_sample.cpp
-    spot_recv_sample.cpp
     monitor_recv_sample.cpp
-    discovery_registry_sample.cpp
-    registry_query_sample.cpp
     actor_room_server_sample.cpp
     actor_gateway_relay_sample.cpp
     actor_single_player_queue_sample.cpp
@@ -367,10 +361,8 @@ if(ZLINK_CPP_BUILD_TESTS)
     test_cpp_contract_message.cpp
     test_cpp_contract_socket.cpp
     test_cpp_contract_request_reply.cpp
-    test_cpp_contract_callback_mode.cpp
     test_cpp_contract_options.cpp
     test_cpp_contract_monitor.cpp
-    test_cpp_contract_service.cpp
     test_cpp_contract_actor_header.cpp
     test_cpp_contract_layout_headers.cpp
     test_cpp_contract_behavior.cpp

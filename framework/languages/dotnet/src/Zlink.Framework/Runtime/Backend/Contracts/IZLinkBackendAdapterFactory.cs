@@ -8,7 +8,5 @@ internal interface IZLinkBackendAdapterFactory
 
     IZLinkStreamBackendAdapter CreateStreamAdapter();
 
-    IZLinkRegistryBackendAdapter CreateRegistryAdapter();
-
     IZLinkMonitoringBackendAdapter CreateMonitoringAdapter();
 }

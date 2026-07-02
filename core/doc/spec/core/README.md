@@ -28,8 +28,6 @@ headers.
 | `core/include/zlink/eventing/api.h` | Socket monitors, monitor snapshots, poll/poller, and timers |
 | `core/include/zlink/service/spot.h` | SPOT handle, SPOT node, actor operations, route bridge, and publisher handle |
 | `core/include/zlink/service_common.h` | Shared service-layer query types |
-| `core/include/zlink/service/registry.h` | Registry creation, configuration, topology, query client, and registry snapshots |
-| `core/include/zlink/service/discovery.h` | Discovery creation, registry connection, SPOT/Actor resolve, and discovery peer snapshots |
 | `core/include/zlink_enum.h` | Public enum domains |
 | `core/include/zlink_errno.h` | Public errno domain |
 
@@ -49,8 +47,6 @@ included by several core translation units.
 | [monitoring.md](monitoring.md) | Socket monitors, monitor snapshots, and peer inspection |
 | [events.md](events.md) | Canonical event catalog and readiness semantics |
 | [service/README.md](service/README.md) | Shared service-layer concepts and document split |
-| [service/registry.md](service/registry.md) | Service registry creation, configuration, and clustering |
-| [service/discovery.md](service/discovery.md) | Service discovery, subscription, and peer lookup |
 | [service/spot.md](service/spot.md) | SPOT topic-based PUB/SUB, route bridge, and routed messaging |
 | [polling.md](polling.md) | Proxy helpers and capability query |
 | [utilities.md](utilities.md) | Timers, threads, stopwatch, and atomics |

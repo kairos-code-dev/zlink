@@ -111,9 +111,7 @@ fn spot_route_bridge_router_send_reaches_router() {
     bridge_router
         .set_routing_id(&RoutingId::from(b"rust-bridge-client"))
         .unwrap();
-    router
-        .set_routing_id(&target_node)
-        .unwrap();
+    router.set_routing_id(&target_node).unwrap();
     router.bind("inproc://rust-spot-route-bridge").unwrap();
     bridge_router
         .connect("inproc://rust-spot-route-bridge")

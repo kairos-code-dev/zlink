@@ -2,24 +2,6 @@
 
 from enum import IntEnum, IntFlag
 
-class AutoConnectType(IntEnum):
-    """How a discovery service automatically wires connections between peers (route mesh, client-server, dealer mesh, fanout, spot mesh)."""
-    INVALID = 0
-    ROUTE_MESH = 1
-    CLIENT_SERVER = 2
-    DEALER_MESH = 3
-    FANOUT = 4
-    SPOT_MESH = 5
-
-class ServiceRole(IntEnum):
-    """The messaging role a service plays in the topology."""
-    INVALID = 0
-    SPOT = 2
-    ROUTER = 3
-    DEALER = 4
-    PUB = 5
-    SUB = 6
-
 class SpotNodeMode(IntEnum):
     """Which messaging patterns a spot node enables (pub/sub, routed, or all)."""
     PUBSUB = 1
@@ -85,35 +67,6 @@ class SpotDispatchSubjectKind(IntEnum):
     CHANNEL_DEALER = 3
     ACTOR = 4
 
-class RegistryState(IntEnum):
-    """The operational state of a registry."""
-    IDLE = 1
-    ACTIVE = 2
-    DEGRADED = 3
-    ERROR = 4
-
-class TopologySource(IntEnum):
-    """Where a topology entry was learned from."""
-    MANUAL = 1
-    DISCOVERY = 2
-    REGISTRY = 3
-
-class TopologyState(IntEnum):
-    """The lifecycle state of a topology connection."""
-    DISCOVERED = 1
-    CONNECTING = 2
-    READY = 3
-    LOST = 4
-    ERROR = 5
-    STOPPED = 6
-
-class ServiceKind(IntEnum):
-    """The kind of service a topology entry represents."""
-    DISCOVERY = 1
-    SPOT_SUB = 3
-    SPOT_PUB = 4
-    SOCKET = 5
-
 class SubjectKind(IntEnum):
     """The messaging pattern a subject belongs to."""
     NONE = 0
@@ -126,8 +79,6 @@ class SpotRole(IntEnum):
     SUB = 2
 
 __all__ = [
-    "AutoConnectType",
-    "ServiceRole",
     "SpotNodeMode",
     "SpotNodeSocketOwner",
     "SpotNodeState",
@@ -137,10 +88,6 @@ __all__ = [
     "SpotKind",
     "SpotDispatchEvent",
     "SpotDispatchSubjectKind",
-    "RegistryState",
-    "TopologySource",
-    "TopologyState",
-    "ServiceKind",
     "SubjectKind",
     "SpotRole",
 ]

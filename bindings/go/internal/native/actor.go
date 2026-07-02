@@ -480,21 +480,6 @@ func (n *SpotNode) Actors() ([]SpotNodeActorEntry, error) {
 	return out, nil
 }
 
-// --- Discovery ---
-
-func (d *Discovery) ResolveActor(actorID string) (ActorRoute, error) {
-	if d == nil || d.closed {
-		return ActorRoute{}, stateError("discovery is closed")
-	}
-	return withActorIDCString(actorID, func(actorIDC *C.char) (ActorRoute, error) {
-		var raw C.zlink_actor_route_t
-		if err := configErrorFromResult(C.zlink_discovery_resolve_actor(d.raw(), actorIDC, &raw)); err != nil {
-			return ActorRoute{}, err
-		}
-		return *actorRouteFromC(raw), nil
-	})
-}
-
 // --- StreamSocket actor methods ---
 
 // BindActor returns an Actor bind operation builder. The stream is bound to

@@ -63,7 +63,6 @@ from .socket_base import (
     _BindSocket,
     _DealerOptionSocket,
     _EndpointSocket,
-    _DiscoveryAttachSocket,
     _MessageSocket,
     _PublisherOptionSocket,
     _PublisherSocket,
@@ -292,7 +291,6 @@ class PairSocket(_SendReadySocket, _EndpointSocket, _MessageSocket):
 
 class DealerSocket(
     _SendReadySocket,
-    _DiscoveryAttachSocket,
     _EndpointSocket,
     _DealerOptionSocket,
     _RoutingIdSocket,
@@ -384,7 +382,6 @@ class DealerSocket(
 
 class RouterSocket(
     _SendReadySocket,
-    _DiscoveryAttachSocket,
     _EndpointSocket,
     _RouterOptionSocket,
     _RoutingIdSocket,
@@ -873,7 +870,6 @@ class StreamSocket(
 
 class PubSocket(
     _SendReadySocket,
-    _DiscoveryAttachSocket,
     _EndpointSocket,
     _PublisherOptionSocket,
     _PublisherSocket,
@@ -892,7 +888,6 @@ class PubSocket(
 
 
 class SubSocket(
-    _DiscoveryAttachSocket,
     _EndpointSocket,
     _SubscriberOptionSocket,
     _SubscriberSocket,

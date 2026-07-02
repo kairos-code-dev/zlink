@@ -12,7 +12,6 @@
 #include "core/pipe.hpp"
 #include "core/session_base.hpp"
 #include "sockets/common/socket_base.hpp"
-#include "services/discovery/socket_discovery_attachment.hpp"
 #include "transports/ipc/ipc_address.hpp"
 #include "transports/tcp/tcp_address.hpp"
 
@@ -87,10 +86,6 @@ int zlink::socket_base_t::check_protocol (const std::string &protocol_) const
 
 int zlink::socket_base_t::bind (const char *endpoint_uri_)
 {
-    if (_service_attachment && _service_attachment->on_public_bind_begin (endpoint_uri_) != 0) {
-        return -1;
-    }
-
     if (unlikely (_ctx_terminated)) {
         errno = ETERM;
         return -1;
@@ -129,8 +124,6 @@ int zlink::socket_base_t::bind (const char *endpoint_uri_)
 
 int zlink::socket_base_t::connect (const char *endpoint_uri_)
 {
-    if (_service_attachment && _service_attachment->on_public_connect () != 0)
-        return -1;
     return connect_internal (endpoint_uri_);
 }
 
@@ -415,10 +408,6 @@ int zlink::socket_base_t::term_endpoint_internal (const char *endpoint_uri_)
 
 int zlink::socket_base_t::term_endpoint (const char *endpoint_uri_)
 {
-    if (_service_attachment && _service_attachment->on_public_term_endpoint () != 0) {
-        return -1;
-    }
-
     socket_public_api_scope_t admission (lifecycle_coordinator ());
     if (!admission.acquired ())
         return -1;
@@ -427,10 +416,6 @@ int zlink::socket_base_t::term_endpoint (const char *endpoint_uri_)
 
 int zlink::socket_base_t::term_peer_rid (const zlink_routing_id_t *peer_rid_)
 {
-    if (_service_attachment && _service_attachment->on_public_disconnect_rid () != 0) {
-        return -1;
-    }
-
     if (!peer_rid_ || peer_rid_->size == 0) {
         errno = EINVAL;
         return -1;

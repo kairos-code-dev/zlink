@@ -4,7 +4,6 @@ package systems.zlink.contracts.service.spot;
 
 import systems.zlink.contracts.core.RoutingId;
 import systems.zlink.contracts.messaging.Message;
-import systems.zlink.contracts.service.discovery.Discovery;
 import systems.zlink.contracts.sockets.AutoHwmProfile;
 import systems.zlink.contracts.sockets.DealerSocket;
 import systems.zlink.contracts.sockets.PubSocket;
@@ -34,7 +33,6 @@ public interface SpotNode extends AutoCloseable {
 
     void disconnectPeerRid(RoutingId targetNodeRid);
 
-    void attachDiscovery(Discovery discovery);
 
     SpotRouteBridge createRouteBridge();
 

@@ -428,8 +428,6 @@ use a default profile of `LOCAL_FAILURE`/100ms/2 attempts.
 | `ZLINK_OPT_BLOCKY` | Legacy option: block on context termination (`int`; 0 or 1) |
 | `ZLINK_OPT_INVERT_MATCHING` | Invert topic matching (`int`; 0 or 1) |
 | `ZLINK_OPT_ZMP_METADATA` | Attach ZMP metadata properties to outgoing connections (`binary`) |
-| `ZLINK_OPT_DISCOVERY_SPOT_OWNER_SYNC` | Whether Discovery publishes SPOT owner rows to Registry (`int`; 0 = default, 1 = enabled, other values fail with `EINVAL`) |
-| `ZLINK_OPT_DISCOVERY_ACTOR_ROUTE_SYNC` | Whether Discovery publishes actor route rows to Registry (`int`; 0 = default, 1 = enabled, other values fail with `EINVAL`) |
 
 ##### Read-only (get only)
 
@@ -777,12 +775,10 @@ diagnostics.
 
 ---
 
-### zlink_socket_attach_discovery
 
 Attach a raw socket to a discovery service view.
 
 ```c
-zlink_config_result_t zlink_socket_attach_discovery (void *socket_, void *discovery_);
 ```
 
 Attaches a raw ROUTER, DEALER, PUB, or SUB socket to a discovery service

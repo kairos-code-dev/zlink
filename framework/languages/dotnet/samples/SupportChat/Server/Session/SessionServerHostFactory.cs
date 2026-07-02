@@ -27,7 +27,6 @@ public static class SessionServerHostFactory
                 .TraceLogFile(SampleFlowLog.Path("session"))
                 .TraceLabel("session");
             options.AddHandlersFromAssemblyOf(typeof(SessionServerHostFactory));
-            options.UseDiscovery().AddRegistryEndpoint(topology.RegistryRouterEndpoint);
             options.AddClientServerChannel(SampleNames.ApiChannel)
                 .EnableClient();
             options.AddClientServerChannel(SampleNames.SupportChannel)

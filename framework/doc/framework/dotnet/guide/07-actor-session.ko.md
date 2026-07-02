@@ -342,10 +342,6 @@ public sealed class DeliveryStatusFanoutHandler(CustomerSessionDirectory session
 session relay 는 actor id/type logical handle 과 core SessionRelay 를 사용한다. actor 위치 조회용
 public resolver 는 없다(actor↔session binding 은 framework 내부 상태).
 
-| 등록 | 역할 |
-|------|------|
-| `options.UseRegistrySpotRemoteAddresses("game")` | spot owner 조회 + spot 이름 directory |
-
 Redis/DB 같은 별도 저장소가 필요하면 spot remote address resolver 만 custom 으로 등록한다:
 `AddSpotRemoteAddressResolver<T>()`. actor-session binding 은 session bind 시 actor runtime state 에
 저장되는 framework 내부 상태다.
@@ -391,8 +387,6 @@ builder.Services.AddZLinkFramework(options =>
     options.AddStreamNode("client-stream")   // gateway 는 위 game.session 노드로 자동 연결
         .Bind("tcp://0.0.0.0:9000")
         .RegisterSession<TicTacToeSession>();
-
-    options.UseRegistrySpotRemoteAddresses("game");
 });
 ```
 
@@ -401,7 +395,6 @@ builder.Services.AddZLinkFramework(options =>
 ```csharp
 builder.Services.AddZLinkFramework(options =>
 {
-        options.UseDiscovery().AddRegistryEndpoint("tcp://registry1:5551");
 
     spot.AddActorFactory<PlayerActorFactory>("player");  // actor 와 Spot 은 Play 서버가 호스팅(Session 서버엔 이 factory 가 없다)
 
@@ -416,8 +409,6 @@ builder.Services.AddZLinkFramework(options =>
         }
 
     }
-
-    options.UseRegistrySpotRemoteAddresses("game");
 });
 ```
 

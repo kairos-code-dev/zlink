@@ -426,8 +426,6 @@ managed SPOT/service outbound 내부 경로는 기본 profile로
 | `ZLINK_OPT_BLOCKY` | context 종료 시 블로킹 (`int`, 레거시) |
 | `ZLINK_OPT_INVERT_MATCHING` | 토픽 매칭 반전 (`int`) |
 | `ZLINK_OPT_ZMP_METADATA` | ZMP 메타데이터 첨부 (`binary`) |
-| `ZLINK_OPT_DISCOVERY_SPOT_OWNER_SYNC` | Discovery가 SPOT owner row를 Registry에 publish할지 여부 (`int`; 0=기본값, 1=활성화, 그 외 값은 `EINVAL`) |
-| `ZLINK_OPT_DISCOVERY_ACTOR_ROUTE_SYNC` | Discovery가 actor route row를 Registry에 publish할지 여부 (`int`; 0=기본값, 1=활성화, 그 외 값은 `EINVAL`) |
 
 ##### Read-only
 
@@ -766,12 +764,10 @@ lifecycle 소유권 충돌은 `ZLINK_CONNECT_BUSY`입니다. `zlink_errno()`는
 
 ---
 
-### zlink_socket_attach_discovery
 
 raw 소켓을 discovery 서비스 뷰에 부착합니다.
 
 ```c
-zlink_config_result_t zlink_socket_attach_discovery (void *socket_, void *discovery_);
 ```
 
 raw ROUTER, DEALER, PUB, SUB 소켓을 discovery 서비스 뷰에 부착합니다.

@@ -41,13 +41,6 @@ class router_socket_t : public routed_message_socket_t
                                               const routing_id_t &dest_spot_rid_,
                                               uint64_t request_seq_);
 
-    template <typename DiscoveryT> void attach_discovery (DiscoveryT &discovery_)
-    {
-        if (socket_t::attach_discovery (discovery_) != 0)
-            throw config_error_t (detail::config_result_from_errno (detail::current_errno ()),
-                                  detail::current_errno ());
-    }
-
     router_socket_options_t options () { return router_socket_options_t (*this); }
 
   private:

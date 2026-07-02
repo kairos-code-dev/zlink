@@ -216,8 +216,7 @@ export interface ZLinkRuntimeEventHandler<TEvent extends ZLinkRuntimeEvent> {
 ```
 
 > `.NET` 의 `AddSocketEvents(sourceName, params events[])` /
-> `AddRegistryEvents(sourceName, interval)` / `AddSpotEvents(sourceName, interval)`
-> 세 메서드는 위 `socket` / `registry` / `spot` 배열 키에 1:1 대응한다.
+> `AddSpotEvents(sourceName, interval)` 메서드는 위 `socket` / `spot` 배열 키에 대응한다.
 > 내부적으로 .NET 은 source 이름이 비어 있거나 중복이면 `ZLinkConfigurationException`
 > 을 던진다. node 는 동일하게 startup validation 에서 거부한다(빈 이름, interval ≤ 0,
 > 중복 source 이름).
@@ -282,14 +281,11 @@ export interface ZLinkSocketEvent extends ZLinkRuntimeEvent {
 ### 4.3 registry event 타입
 
 ```ts
-export enum ZLinkRegistryEventKind {
   StatusChanged = 0,
   TopologyChanged = 1,
   ServiceSummaryChanged = 2,
 }
 
-export interface ZLinkRegistryEvent extends ZLinkRuntimeEvent {
-  readonly event: ZLinkRegistryEventKind;
   readonly status?: ZLinkRegistryStatus;
   readonly topology?: readonly ZLinkRegistryTopologyEntry[];
   readonly serviceSummary?: readonly ZLinkRegistryServiceSummaryEntry[];
@@ -400,16 +396,12 @@ export class ProfileServerSocketMonitor
 ```ts
 @zlinkRuntimeEventHandler()
 export class RegistryMonitor
-  implements ZLinkRuntimeEventHandler<ZLinkRegistryEvent> {
   constructor(private readonly logger: Logger) {}
 
-  async handle(event: ZLinkRegistryEvent): Promise<void> {
     switch (event.event) {
-      case ZLinkRegistryEventKind.StatusChanged:
         this.logger.log(`registry status changed: ${event.status?.state}`);
         break;
 
-      case ZLinkRegistryEventKind.TopologyChanged:
         this.logger.log(
           `registry topology changed: ${event.topology?.length ?? 0}`,
         );
@@ -486,7 +478,6 @@ client 를 주입해서 직접 조회한다.
 export class DiscoveryStatusProbe {
   constructor(
     @Inject(ZLINK_REGISTRY_QUERY)
-    private readonly registry: ZLinkRegistryQuery,
   ) {}
 
   async probe(): Promise<void> {

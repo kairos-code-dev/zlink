@@ -191,8 +191,7 @@ typedef enum zlink_connect_result_t
 
 /*  Configuration result (701+).                                             */
 /*  Applies to set/get_option, set/get_routing_id, set_tls,                  */
-/*  set/unset_subscription, subscription_at, attach_discovery,               */
-/*  registry/discovery config.                                               */
+/*  set/unset_subscription, subscription_at, and service configuration.       */
 typedef enum zlink_config_result_t
 {
     ZLINK_CONFIG_OK = 0,

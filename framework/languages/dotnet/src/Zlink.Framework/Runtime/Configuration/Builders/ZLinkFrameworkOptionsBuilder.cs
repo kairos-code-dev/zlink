@@ -66,19 +66,6 @@ internal sealed class ZLinkFrameworkOptionsBuilder : IZLinkFrameworkOptions
         _registration.SpotRemoteAddressResolverType = typeof(TResolver);
     }
 
-    public IZLinkRegistrySpotRemoteAddressesOptions UseRegistrySpotRemoteAddresses(
-        string namespaceName)
-    {
-        EnsureSpotRemoteAddressResolverAvailable();
-
-        var options = new ZLinkRegistrySpotRemoteAddressesRegistration
-        {
-            Namespace = ValidateRegistryNamespace(namespaceName)
-        };
-        _registration.RegistrySpotRemoteAddresses = options;
-        return options;
-    }
-
     public IZLinkClientServerChannelBuilder AddClientServerChannel(string channelName)
     {
         var channel = AddChannelRegistration(channelName, ZLinkAutoConnectType.ClientServer);
@@ -101,12 +88,6 @@ internal sealed class ZLinkFrameworkOptionsBuilder : IZLinkFrameworkOptions
             $"Duplicate route mesh channel name '{channelName}'.");
 
         return new ZLinkRouteChannelBuilder(routeChannel);
-    }
-
-    public IZLinkDiscoveryBuilder UseDiscovery()
-    {
-        _registration.Discovery ??= new ZLinkDiscoveryRegistration();
-        return new ZLinkDiscoveryBuilder(_registration.Discovery.Endpoints);
     }
 
     public void AddPeerLocationStore<TStore>()
@@ -196,7 +177,7 @@ internal sealed class ZLinkFrameworkOptionsBuilder : IZLinkFrameworkOptions
             channelName);
         spotNode.SpotDiscoveryChannelName = discovery.ChannelName;
 
-        return new ZLinkSpotMeshBuilder(_registration, discovery, spotNode);
+        return new ZLinkSpotMeshBuilder(spotNode);
     }
 
     private ZLinkChannelRegistration AddChannelRegistration(
@@ -217,42 +198,15 @@ internal sealed class ZLinkFrameworkOptionsBuilder : IZLinkFrameworkOptions
 
     private void EnsureSpotRemoteAddressResolverAvailable()
     {
-        if (_registration.SpotRemoteAddressResolverType is not null
-            || _registration.RegistrySpotRemoteAddresses is not null)
+        if (_registration.SpotRemoteAddressResolverType is not null)
             throw new ZLinkConfigurationException("SPOT remote address resolver is already registered.");
-    }
-
-    private static string ValidateRegistryNamespace(string namespaceName)
-    {
-        if (string.IsNullOrWhiteSpace(namespaceName)
-            || !string.Equals(namespaceName, namespaceName.Trim(), StringComparison.Ordinal))
-            throw new ZLinkConfigurationException("Registry route namespace must not be empty or padded.");
-
-        return namespaceName;
     }
 }
 
-internal sealed class ZLinkSpotMeshBuilder(
-    ZLinkFrameworkRegistration registration,
-    ZLinkSpotDiscoveryRegistration discovery,
-    ZLinkSpotNodeRegistration spotNode)
+internal sealed class ZLinkSpotMeshBuilder(ZLinkSpotNodeRegistration spotNode)
     : IZLinkSpotMeshBuilder
 {
     private ZLinkSpotNodeBuilder? _nodeBuilder;
-
-    public IZLinkSpotMeshBuilder UseRegistrySpotResolver()
-    {
-        if (registration.SpotRemoteAddressResolverType is not null
-            || registration.RegistrySpotRemoteAddresses is not null)
-            throw new ZLinkConfigurationException("SPOT remote address resolver is already registered.");
-
-        registration.RegistrySpotRemoteAddresses = new ZLinkRegistrySpotRemoteAddressesRegistration
-        {
-            Namespace = discovery.ChannelName,
-            RouterChannelId = discovery.ChannelName
-        };
-        return this;
-    }
 
     public IZLinkSpotNodeBuilder EnableRouter(string endpoint)
     {

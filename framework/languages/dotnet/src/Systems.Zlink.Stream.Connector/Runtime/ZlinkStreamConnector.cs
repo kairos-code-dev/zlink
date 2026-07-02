@@ -183,6 +183,17 @@ internal sealed class ZlinkStreamConnector : IZlinkStreamConnectorInternal
         }
     }
 
+    void IZlinkStreamConnectorInternal.ValidateSendEncoded(
+        ZlinkStreamMessageKind kind,
+        string name,
+        ZlinkStreamEncodedPayload payload,
+        ZlinkStreamMetadata metadata,
+        bool compress)
+    {
+        var frame = _frameSender.BuildOutboundFrame(kind, name, payload, metadata, compress, null);
+        _frameSender.ValidateSendReady(frame.HeaderBytes, frame.PayloadBytes);
+    }
+
     async ValueTask<ZlinkStreamEncodedPayload> IZlinkStreamConnectorInternal.RequestEncodedAsync(
         string name,
         ZlinkStreamEncodedPayload payload,

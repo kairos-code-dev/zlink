@@ -285,7 +285,6 @@ systems/zlink/contracts/
 |   |   +-- SpotRoute.java
 |   +-- registry/
 |   |   +-- Registry.java
-|   |   +-- RegistryQueryClient.java
 |   |   +-- RegistryEnums/
 |   |   +-- RegistryModels/
 |   +-- spot/
@@ -373,7 +372,6 @@ systems/zlink/runtime/
 |   +-- registry/
 |   |   +-- NativeRegistry.java
 |   |   +-- NativeRegistryCodecs.java
-|   |   +-- NativeRegistryQueryClient.java
 |   +-- spot/
 |       +-- NativeActor.java
 |       +-- NativeSpot.java
@@ -506,8 +504,6 @@ Required context factory methods:
 - `createXPubSocket()`
 - `createXSubSocket()`
 - `createStreamSocket()`
-- `createRegistry()`
-- `createDiscovery(...)`
 - `createSpotNode(...)`
 
 Every factory returns a public contract interface or concrete value type. It
@@ -607,7 +603,6 @@ Common socket behavior belongs in `Socket`:
 - `unbind`
 - `disconnect`
 - `disconnectRid`
-- `attachDiscovery`
 - `setChannelName`
 - `getChannelName`
 - `options`

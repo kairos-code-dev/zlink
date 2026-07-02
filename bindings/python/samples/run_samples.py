@@ -17,8 +17,6 @@ CANONICAL_SAMPLES = [
     "monitor_recv_sample.py",
     "spot_recv_sample.py",
     "spot_request_callback_sample.py",
-    "discovery_registry_sample.py",
-    "registry_query_sample.py",
     "actor_room_server_sample.py",
     "actor_gateway_relay_sample.py",
     "actor_single_player_queue_sample.py",

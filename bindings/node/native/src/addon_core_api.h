@@ -28,7 +28,6 @@ napi_value socket_disconnect (napi_env env, napi_callback_info info);
 napi_value socket_disconnect_rid (napi_env env, napi_callback_info info);
 napi_value socket_set_tls_server (napi_env env, napi_callback_info info);
 napi_value socket_set_tls_client (napi_env env, napi_callback_info info);
-napi_value socket_attach_discovery (napi_env env, napi_callback_info info);
 napi_value socket_send (napi_env env, napi_callback_info info);
 napi_value socket_send_parts (napi_env env, napi_callback_info info);
 napi_value socket_publish (napi_env env, napi_callback_info info);

@@ -40,12 +40,20 @@ internal sealed class ZlinkStreamSendBuilder : IZlinkStreamSendCall
 
     public void Submit(CancellationToken cancellationToken = default)
     {
+        _state.EnsureNotExecuted();
+        var name = _state.ResolveMessageName();
+        _connector.ValidateSendEncoded(
+            ZlinkStreamMessageKind.Send,
+            name,
+            _body,
+            _state.Metadata,
+            _state.Compress);
+
         _ = SubmitAsync(cancellationToken).AsTask();
     }
 
     private async ValueTask SubmitAsync(CancellationToken cancellationToken)
     {
-        _state.EnsureNotExecuted();
         await _connector.SendEncodedAsync(
             ZlinkStreamMessageKind.Send,
             _state.ResolveMessageName(),

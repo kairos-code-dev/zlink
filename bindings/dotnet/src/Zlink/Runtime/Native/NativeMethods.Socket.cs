@@ -173,10 +173,6 @@ internal static partial class NativeMethods
         int option, IntPtr value, ref nuint length);
 
     [DllImport(LibraryName, CallingConvention = CallingConvention.Cdecl)]
-    internal static extern int zlink_socket_attach_discovery(IntPtr socket,
-        IntPtr discovery);
-
-    [DllImport(LibraryName, CallingConvention = CallingConvention.Cdecl)]
     internal static extern int zlink_stream_bind_actor(IntPtr stream,
         ref ZlinkRoutingId sessionRid,
         ref ZlinkActorRef actor,

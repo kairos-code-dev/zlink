@@ -48,14 +48,6 @@ class EnumValueTests(unittest.TestCase):
         self.assertEqual(int(zlink.ErrorCode.EFSM), 156384763)
         self.assertEqual(int(zlink.ErrorCode.EMTHREAD), 156384766)
 
-    def test_auto_connect_type_values(self):
-        self.assertEqual(int(zlink.AutoConnectType.INVALID), 0)
-        self.assertEqual(int(zlink.AutoConnectType.ROUTE_MESH), 1)
-        self.assertEqual(int(zlink.AutoConnectType.CLIENT_SERVER), 2)
-        self.assertEqual(int(zlink.AutoConnectType.DEALER_MESH), 3)
-        self.assertEqual(int(zlink.AutoConnectType.FANOUT), 4)
-        self.assertEqual(int(zlink.AutoConnectType.SPOT_MESH), 5)
-
     def test_spot_role_values(self):
         self.assertEqual(int(zlink.SpotDispatchEvent.CHANNEL_REPLY_READABLE), 4)
         self.assertEqual(int(zlink.SpotDispatchEvent.ACTOR_READABLE), 5)

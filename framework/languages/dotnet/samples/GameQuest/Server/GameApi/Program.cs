@@ -45,7 +45,6 @@ internal static class Program
                 .TraceLogFile(SampleFlowLog.Path(apiName))
                 .TraceLabel(apiName);
             options.AddHandlersFromAssemblyOf(typeof(Program));
-            options.UseDiscovery().AddRegistryEndpoint(topology.RegistryRouterEndpoint);
             options.AddFanoutChannel(SampleNames.FanoutChannel)
                 .EnablePublisher(topology.FanoutPublisherEndpointForApi(apiName));
             options.AddStreamNode(SampleNames.StreamNode)

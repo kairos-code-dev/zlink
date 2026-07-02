@@ -36,7 +36,6 @@ Registry 는 channel 등록, heartbeat[^heartbeat], topology[^topology] broadcas
 - `NestJS` 애플리케이션에 Registry를 embedded 방식으로 올리는 방법
 - Registry의 동작을 결정하는 설정값(heartbeat, broadcast 주기, clustering)
 - topology snapshot/query 표면을 DI[^di]로 사용하는 방법
-- `ZLinkRegistryQueryClient`를 통해 원격 Registry의 topology를 조회하는 방법
 
 ## 2. 기반이 되는 Node.js binding
 
@@ -47,15 +46,12 @@ Registry 는 channel 등록, heartbeat[^heartbeat], topology[^topology] broadcas
 - `Registry` -- Registry 서버 인스턴스를 나타낸다. `bind(pubEndpoint,
   routerEndpoint)` 로 서버를 띄운다. 그리고 `setId`, `addPeer`, `setHeartbeat`,
   `setBroadcastInterval` 로 동작을 조정한다.
-- `RegistryQueryClient` -- 원격 Registry 에 topology 를 묻는 클라이언트다.
   `connect(endpoint)` 로 접속한 뒤 `topology(filter?)` 를 통해 조회한다.
 
 이 문서가 새로 만드는 Registry 기능은 없다. 이미 존재하는 binding 표면을
 `NestJS` 의 lifecycle 과 DI 안에 자연스럽게 녹여 내는 일에 초점이 있다.
 
-이 binding 객체(`Registry`, `RegistryQueryClient`)는 framework public 표면에
 직접 노출되지 않는다. backend 어댑터 내부에서만 감싸며, framework 가 노출하는
-것은 §7 의 `ZLinkRegistryQuery` / `ZLinkRegistryQueryClient` provider 뿐이다.
 
 ## 3. 두 가지 배포 모델
 
@@ -210,7 +206,6 @@ ID 를 그대로 둔다). 그 밖의 endpoint 누락이나 0 이하 주기는 st
 ### 5.2 Registry 클러스터링
 
 운영 환경에서 Registry 를 하나만 두면 그 자체가 단일 장애점이 되어 버린다. C
-API 는 `zlink_registry_add_peer()` 로 peer Registry 의 PUB endpoint 를 등록해
 두는 방식을 제공한다. 이렇게 두면 Registry 끼리 서로의 topology 를 동기화할 수
 있다.
 
@@ -282,11 +277,9 @@ ZLinkRegistryModule.forRoot({
 });
 ```
 
-이렇게 등록하면 framework 가 `ZLinkRegistryQuery` 를 DI 컨테이너에 provider 로
 함께 등록해 둔다.
 
 ```ts
-export interface ZLinkRegistryQuery {
   status(): Promise<ZLinkRegistryStatus>;
 
   serviceSummary(
@@ -310,7 +303,6 @@ export interface ZLinkRegistryQuery {
 > 되기 전에 query 가 호출되면, 표면이 먼저 startup 을 한 번 수행한 뒤 snapshot 을
 > 읽는다(dotnet `ExecuteAsync` 동작과 동일).
 
-provider 는 token 으로 주입받는다. NestJS 표준에 맞게 `ZLinkRegistryQuery` 를
 주입 token 으로 사용한다.
 
 ```ts
@@ -318,7 +310,6 @@ provider 는 token 으로 주입받는다. NestJS 표준에 맞게 `ZLinkRegistr
 export class AdminController {
   constructor(
     @Inject(ZLINK_REGISTRY_QUERY)
-    private readonly registry: ZLinkRegistryQuery,
   ) {}
 
   @Get('topology')
@@ -340,7 +331,6 @@ export class AdminController {
 
 ### 7.2 원격 조회
 
-Registry 가 다른 프로세스에서 동작하는 경우에는 `ZLinkRegistryQueryClient` 로
 원격 조회를 수행한다.
 
 framework 에서는 다음과 같이 등록한다.
@@ -348,7 +338,6 @@ framework 에서는 다음과 같이 등록한다.
 ```ts
 @Module({
   imports: [
-    ZLinkRegistryQueryClientModule.forRoot({
       endpoint: 'tcp://registry-1:5551',
     }),
   ],
@@ -356,10 +345,8 @@ framework 에서는 다음과 같이 등록한다.
 export class AppModule {}
 ```
 
-이렇게 등록해 두면 `ZLinkRegistryQueryClient` 를 DI 를 통해 주입받아 쓸 수 있다.
 
 ```ts
-export interface ZLinkRegistryQueryClient {
   topology(
     filter?: ZLinkRegistryTopologyFilter,
   ): Promise<ZLinkRegistryTopologyEntry[]>;
@@ -375,7 +362,6 @@ export interface ZLinkRegistryQueryClient {
 export class AdminController {
   constructor(
     @Inject(ZLINK_REGISTRY_QUERY_CLIENT)
-    private readonly query: ZLinkRegistryQueryClient,
   ) {}
 
   @Get('topology')
@@ -389,15 +375,11 @@ export class AdminController {
 
 이 절은 두 조회 표면이 어떤 점에서 다른지를 한 표로 정리한다.
 
-| 항목 | `ZLinkRegistryQuery` | `ZLinkRegistryQueryClient` |
 |------|----------------------|---------------------------|
 | 대상 | 같은 프로세스 안의 embedded Registry | 다른 프로세스에 떠 있는 Registry |
-| 등록 | `ZLinkRegistryModule.forRoot(...)` 시 자동 등록 | `ZLinkRegistryQueryClientModule.forRoot(...)`로 별도 등록 |
 | 제공 API | status, service summary, topology, member peers | topology snapshot만 |
 | 네트워크 | 없음(in-process 호출) | ROUTER endpoint로 요청 전송 |
 
-`ZLinkRegistryQueryClient` 가 제공하는 API 폭이 in-process 보다 좁은 이유가 있다.
-하부 C API 인 `zlink_registry_query_client_topology` 이 topology snapshot 만
 지원하기 때문이다.
 
 ### 7.4 query 모델
@@ -526,7 +508,6 @@ export class AppModule {}
 export class AdminController {
   constructor(
     @Inject(ZLINK_REGISTRY_QUERY)
-    private readonly registry: ZLinkRegistryQuery,
   ) {}
 
   @Get('topology')
@@ -565,7 +546,6 @@ export class RegistryModule {}
 export class RegistryAdminController {
   constructor(
     @Inject(ZLINK_REGISTRY_QUERY)
-    private readonly registry: ZLinkRegistryQuery,
   ) {}
 
   @Get('health')
@@ -593,7 +573,6 @@ export class RegistryAdminController {
 ```ts
 @Module({
   imports: [
-    ZLinkRegistryQueryClientModule.forRoot({
       endpoint: 'tcp://registry-1:5551',
     }),
   ],
@@ -607,7 +586,6 @@ export class AppModule {}
 export class TopologyController {
   constructor(
     @Inject(ZLINK_REGISTRY_QUERY_CLIENT)
-    private readonly query: ZLinkRegistryQueryClient,
   ) {}
 
   @Get('topology')
@@ -619,32 +597,14 @@ export class TopologyController {
 
 ### 8.4 Registry 기반 route 기본 구현 사용
 
-Registry 를 사용하는 actor/Spot route 샘플은 별도 파일 metadata store 를 만들지
-않고 framework 의 Registry 기반 기본 구현을 사용한다. session 위치는 Registry 로
-검색하지 않고 session bind 시 actor runtime state 에 저장한다.
+Core C API의 Discovery/Registry 표면은 제거되었다. NestJS framework spec 은 제거된
+Registry endpoint 등록이나 registry 기반 Spot remote address 옵션을 현재 공개 계약으로
+설명하지 않는다.
 
-```ts
-ZLinkModule.forRoot(
-  zlinkFramework()
-    .useDiscovery()
-      .addRegistryEndpoint('tcp://127.0.0.1:5551')
-    .addRouteMesh('play')
-      .enableRouter('tcp://0.0.0.0:7201')
-    .options({
-      registrySpotRemoteAddresses: { namespace: 'game' },
-    })
-    .build()
-);
-```
-
-`registrySpotRemoteAddresses`(dotnet `UseRegistrySpotRemoteAddresses(...)`)는
-Spot owner 조회와 Spot RID directory 를 함께 등록한다. actor-session route 는
-session bind 시 actor runtime state 에 저장된다.
-
-이 API 들은 Registry 를 일반 key-value 저장소처럼 노출하지 않는다. framework 는
-Discovery 가 제공하는 owner-bound route/topology 를 사용하고, application 은 route
-key 나 payload 형식을 알 필요가 없다. Redis 나 database 같은 별도 저장소가 필요한
-경우에만 custom resolver(dotnet `AddSpotRemoteAddressResolver<T>()`)를 등록한다.
+Spot owner 조회와 Spot RID directory 는 location runtime 설계가 정식 공개 계약으로
+확정된 뒤 별도 표면에서 다룬다. actor-session route 는 session bind 시 actor runtime
+state 에 저장되며, application 은 route key 나 payload 형식을 알 필요가 없다. Redis 나
+database 같은 별도 저장소가 필요한 경우에는 공개 resolver 확장점으로 분리해 설계한다.
 
 ## 9. 결정된 기준
 
@@ -654,7 +614,6 @@ key 나 payload 형식을 알 필요가 없다. Redis 나 database 같은 별도
   경우, framework 가 Registry lifecycle 을 먼저 bind 하도록 startup 순서를
   자동으로 맞춰 준다.
 - Registry 용 health check 는 NestJS Terminus indicator 등으로 자동 등록하지
-  않는다. health endpoint 가 필요하다면, 응용 측에서 `ZLinkRegistryQuery` 를
   사용해 명시적으로 노출하는 것을 기본으로 본다.
 - embedded 구성이라 해도 `discovery.registries` 가 같은 프로세스의 Registry 를
   자동으로 찾아 주지는 않는다. Discovery endpoint 는 문서와 설정에 분명히
@@ -662,10 +621,8 @@ key 나 payload 형식을 알 필요가 없다. Redis 나 database 같은 별도
 - Registry 기반 route 기본 구현은 `discovery` 와 별개로 명시적으로 켠다.
   `discovery` 만으로 actor remote address resolver, Spot remote address resolver,
   actor-session route 저장소는 public API 로 제공하지 않는다.
-- `ZLinkRegistryQuery` 와 `ZLinkRegistryQueryClient` 는 하나로 묶지 않는다.
 - topology 변경 알림은 `Observable`(RxJS) 보다 framework 의 일반 handler /
   callback 표면 위로 올리는 쪽을 기본 방향으로 본다.
-- `ZLinkRegistryQueryClient` 는 연결 실패 시 framework 가 몰래 retry 를 끼워 넣지
   않는다. retry 가 필요하다면 호출자나 monitoring 계층에서 명시적으로 정책을
   정한다.
 
@@ -688,9 +645,6 @@ Registry 가 framework 보다 먼저 시작되어야 한다는 순서 또한 회
 | `RegistryAndMonitoring.forRoot_Throws_WhenPubEndpointIsMissing` | Registry pub endpoint 누락은 startup validation 예외로 드러난다. |
 | `RegistryAndMonitoring.forRoot_Throws_WhenRouterEndpointIsMissing` | Registry router endpoint 누락은 startup validation 예외로 드러난다. |
 | `Host_Starts_EmbeddedRegistry_Before_FrameworkRuntime` | embedded Registry가 framework runtime보다 먼저 시작된다. |
-| `EmbeddedRegistry_Query_Provider_Resolves_And_Reads_Status` | `ZLinkRegistryQuery`가 DI에서 resolve되고 status snapshot을 읽어 온다. |
-| `RemoteRegistryQueryClient_Can_Read_Topology_Snapshot` | 별도 host의 query client가 remote topology snapshot을 정상 조회한다. |
-| `RemoteRegistryQueryClient_Reads_FrameworkTopology_From_TestHostProcesses` | 여러 프로세스 구성에서도 framework topology 조회가 성공한다. |
 
 회귀 기준의 정식 목록은
 [regression-test-matrix](../internals/regression-test-matrix.ko.md) 가 소유한다.

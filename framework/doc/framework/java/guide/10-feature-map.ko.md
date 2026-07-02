@@ -28,7 +28,6 @@
 | actor에서 client push | 높음 | actor가 자기 client로 one-way push | `ZLinkBoundSession.send` | [07](06-actor-session.ko.md) |
 | 외부 client STREAM (서버) | 중간 | 외부 client(TCP/WS)를 framework로 받기 | `ZLinkSession` | [08](07-stream.ko.md) |
 | Stream Connector (client) | 중간 | client 측에서 STREAM 서버에 접속 | `ZLinkStreamConnector` | [08](07-stream.ko.md) |
-| topology 조회 | 중간 | 클러스터 topology snapshot/query | `ZLinkRegistryQuery` | [09](08-registry.ko.md) |
 | runtime monitoring | 낮음 | socket/registry/spot 이벤트 관찰 | `ZLinkRuntimeEventHandler<T>` | [10](09-monitoring.ko.md) |
 
 ## 3. 빠른 선택 가이드

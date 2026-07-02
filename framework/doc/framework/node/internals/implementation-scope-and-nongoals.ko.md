@@ -42,8 +42,6 @@
 - spot 의 packet / subscribe / timer descriptor
 - stream node 등록(`.addStreamNode(...)`) 과 framework Header 기반 packet session
   등록
-- registry 등록(`ZLinkRegistryModule.forRoot(...)`), `ZLinkRegistryQuery`
-  (`memberPeers(channelName, signal?)`), `ZLinkRegistryQueryClient`
 - monitoring 등록(`ZLinkMonitoringOptions`) 과
   socket / registry / spot 모니터링 source
 - `NestJS DI`[^di] 와 lifecycle hook[^lifecycle-hook]

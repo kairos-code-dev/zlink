@@ -20,7 +20,6 @@
 #include "sockets/stream/stream.hpp"
 #include "sockets/pubsub/xpub.hpp"
 #include "sockets/pubsub/xsub.hpp"
-#include "services/discovery/socket_discovery_attachment.hpp"
 
 namespace
 {
@@ -125,7 +124,6 @@ zlink::socket_base_t::socket_base_t (ctx_t *parent_, uint32_t tid_, int sid_) :
     _auto_hwm_send_attempts (0),
     _auto_hwm_send_blocked_attempts (0),
     _local_peer_weight (100),
-    _service_attachment (NULL),
     _channel_name_locked (false)
 {
     _term_pipe_acks_registered = 0;
@@ -384,7 +382,6 @@ static void copy_routing_id (zlink_routing_id_t *out_, const zlink::blob_t &rout
 
 zlink::socket_base_t::~socket_base_t ()
 {
-    LIBZLINK_DELETE (_service_attachment);
     if (_mailbox)
         LIBZLINK_DELETE (_mailbox);
 

@@ -142,7 +142,7 @@ public sealed class test_optimization_guard
     {
         string source = ReadZlinkSource();
 
-        Assert.Contains("ResetForReuse(resetTopic: false)", source,
+        Assert.Contains("ResetForReuse(false)", source,
             StringComparison.Ordinal);
         Assert.Contains("avoiding a transient empty", source,
             StringComparison.Ordinal);

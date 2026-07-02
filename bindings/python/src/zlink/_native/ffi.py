@@ -298,84 +298,6 @@ class ZlinkSpotDispatchInfo(ctypes.Structure):
     ]
 
 
-class ZlinkMemberPeerEntry(ctypes.Structure):
-    _fields_ = [
-        ("auto_connect_type", ctypes.c_int),
-        ("service_role", ctypes.c_int),
-        ("channel_name", ctypes.c_char * 256),
-        ("endpoint", ctypes.c_char * 256),
-        ("weight", ctypes.c_uint32),
-        ("routing_id", ZlinkRoutingId),
-        ("value", ctypes.c_int64),
-    ]
-
-
-class ZlinkRegistryStatus(ctypes.Structure):
-    _fields_ = [
-        ("registry_id", ctypes.c_uint32),
-        ("bind_endpoint", ctypes.c_char * 256),
-        ("state", ctypes.c_uint32),
-        ("topology_entry_count", ctypes.c_uint32),
-        ("peer_registry_count", ctypes.c_uint32),
-        ("connected_peer_registry_count", ctypes.c_uint32),
-        ("list_seq", ctypes.c_uint64),
-        ("last_error", ctypes.c_int32),
-        ("last_changed_ms", ctypes.c_uint64),
-    ]
-
-
-class ZlinkRegistryServiceSummaryEntry(ctypes.Structure):
-    _fields_ = [
-        ("auto_connect_type", ctypes.c_int),
-        ("service_role", ctypes.c_int),
-        ("channel_name", ctypes.c_char * 256),
-        ("total_count", ctypes.c_uint32),
-        ("connecting_count", ctypes.c_uint32),
-        ("ready_count", ctypes.c_uint32),
-        ("error_count", ctypes.c_uint32),
-        ("stopped_count", ctypes.c_uint32),
-        ("last_reported_ms", ctypes.c_uint64),
-    ]
-
-
-class ZlinkRegistryServiceSummaryFilter(ctypes.Structure):
-    _fields_ = [
-        ("auto_connect_type", ctypes.c_int),
-        ("service_role", ctypes.c_int),
-        ("channel_name", ctypes.c_char * 256),
-    ]
-
-
-class ZlinkRegistryTopologyEntry(ctypes.Structure):
-    _fields_ = [
-        ("auto_connect_type", ctypes.c_int),
-        ("routing_id", ZlinkRoutingId),
-        ("service_kind", ctypes.c_uint32),
-        ("service_role", ctypes.c_int),
-        ("channel_name", ctypes.c_char * 256),
-        ("endpoint", ctypes.c_char * 256),
-        ("source", ctypes.c_uint32),
-        ("state", ctypes.c_uint32),
-        ("desired_count", ctypes.c_uint32),
-        ("ready_count", ctypes.c_uint32),
-        ("error_code", ctypes.c_uint32),
-        ("last_reported_ms", ctypes.c_uint64),
-        ("spot_kind", ctypes.c_int),
-    ]
-
-
-class ZlinkRegistryTopologyFilter(ctypes.Structure):
-    _fields_ = [
-        ("auto_connect_type", ctypes.c_int),
-        ("service_kind", ctypes.c_uint32),
-        ("service_role", ctypes.c_int),
-        ("channel_name", ctypes.c_char * 256),
-        ("routing_id", ZlinkRoutingId),
-        ("state", ctypes.c_uint32),
-        ("source", ctypes.c_uint32),
-    ]
-
-
 if os.name == "nt":
     if ctypes.sizeof(ctypes.c_void_p) == 8:
         ZlinkFD = ctypes.c_ulonglong
@@ -747,11 +669,6 @@ class _Lib:
             ctypes.c_int,
         )
         self._require(
-            "zlink_socket_attach_discovery",
-            [ctypes.c_void_p, ctypes.c_void_p],
-            ctypes.c_int,
-        )
-        self._require(
             "zlink_socket_set_channel_name",
             [ctypes.c_void_p, ctypes.c_char_p],
             ctypes.c_int,
@@ -924,140 +841,6 @@ class _Lib:
         )
         self._require("zlink_timer_handler", [ctypes.c_void_p, ctypes.c_void_p, ctypes.c_void_p], ctypes.c_int)
 
-        self._require("zlink_registry_new", [ctypes.c_void_p], ctypes.c_void_p)
-        self._require(
-            "zlink_registry_bind",
-            [ctypes.c_void_p, ctypes.c_char_p, ctypes.c_char_p],
-            ctypes.c_int,
-        )
-        self._require(
-            "zlink_registry_set_id",
-            [ctypes.c_void_p, ctypes.c_uint32],
-            ctypes.c_int,
-        )
-        self._require(
-            "zlink_registry_set",
-            [ctypes.c_void_p, ctypes.c_int, ctypes.c_uint32],
-            ctypes.c_int,
-        )
-        self._require(
-            "zlink_registry_get",
-            [ctypes.c_void_p, ctypes.c_int, ctypes.POINTER(ctypes.c_int)],
-            ctypes.c_uint32,
-        )
-        self._require(
-            "zlink_registry_add_peer",
-            [ctypes.c_void_p, ctypes.c_char_p],
-            ctypes.c_int,
-        )
-        self._require(
-            "zlink_registry_set_heartbeat",
-            [ctypes.c_void_p, ctypes.c_uint32, ctypes.c_uint32],
-            ctypes.c_int,
-        )
-        self._require(
-            "zlink_registry_set_broadcast_interval",
-            [ctypes.c_void_p, ctypes.c_uint32],
-            ctypes.c_int,
-        )
-        self._require(
-            "zlink_registry_destroy",
-            [ctypes.POINTER(ctypes.c_void_p)],
-            ctypes.c_int,
-        )
-        self._require(
-            "zlink_registry_status",
-            [ctypes.c_void_p, ctypes.POINTER(ZlinkRegistryStatus)],
-            ctypes.c_int,
-        )
-        self._require(
-            "zlink_registry_service_summary",
-            [
-                ctypes.c_void_p,
-                ctypes.POINTER(ZlinkRegistryServiceSummaryFilter),
-                ctypes.POINTER(ZlinkRegistryServiceSummaryEntry),
-                ctypes.POINTER(ctypes.c_size_t),
-            ],
-            ctypes.c_int,
-        )
-        self._require(
-            "zlink_registry_member_peers",
-            [
-                ctypes.c_void_p,
-                ctypes.c_char_p,
-                ctypes.POINTER(ZlinkMemberPeerEntry),
-                ctypes.POINTER(ctypes.c_size_t),
-            ],
-            ctypes.c_int,
-        )
-        self._require(
-            "zlink_discovery_new",
-            [ctypes.c_void_p, ctypes.c_int, ctypes.c_char_p],
-            ctypes.c_void_p,
-        )
-        self._require(
-            "zlink_discovery_connect_registry",
-            [ctypes.c_void_p, ctypes.c_char_p],
-            ctypes.c_int,
-        )
-        self._require(
-            "zlink_discovery_set_value",
-            [ctypes.c_void_p, ctypes.c_int64],
-            ctypes.c_int,
-        )
-        self._require(
-            "zlink_discovery_get_value",
-            [ctypes.c_void_p, ctypes.POINTER(ctypes.c_int64)],
-            ctypes.c_int,
-        )
-        self._require(
-            "zlink_discovery_resolve_spot",
-            [
-                ctypes.c_void_p,
-                ctypes.POINTER(ZlinkRoutingId),
-                ctypes.POINTER(ZlinkSpotRoute),
-            ],
-            ctypes.c_int,
-        )
-        self._require(
-            "zlink_discovery_resolve_actor",
-            [ctypes.c_void_p, ctypes.c_char_p, ctypes.POINTER(ZlinkActorRoute)],
-            ctypes.c_int,
-        )
-        self._require(
-            "zlink_discovery_bind_route",
-            [
-                ctypes.c_void_p,
-                ctypes.c_uint32,
-                ctypes.c_void_p,
-                ctypes.c_size_t,
-                ctypes.c_void_p,
-                ctypes.c_size_t,
-            ],
-            ctypes.c_int,
-        )
-        self._require(
-            "zlink_discovery_unbind_route",
-            [ctypes.c_void_p, ctypes.c_uint32, ctypes.c_void_p, ctypes.c_size_t],
-            ctypes.c_int,
-        )
-        self._require(
-            "zlink_discovery_resolve_route",
-            [
-                ctypes.c_void_p,
-                ctypes.c_uint32,
-                ctypes.c_void_p,
-                ctypes.c_size_t,
-                ctypes.POINTER(ZlinkRoutingId),
-                ctypes.POINTER(ZlinkMsg),
-            ],
-            ctypes.c_int,
-        )
-        self._require(
-            "zlink_discovery_destroy",
-            [ctypes.POINTER(ctypes.c_void_p)],
-            ctypes.c_int,
-        )
 
         self._require("zlink_spot_new", [ctypes.c_void_p], ctypes.c_void_p)
         self._require(
@@ -1237,11 +1020,6 @@ class _Lib:
         self._require(
             "zlink_spot_node_disconnect_peer_rid",
             [ctypes.c_void_p, ctypes.POINTER(ZlinkRoutingId)],
-            ctypes.c_int,
-        )
-        self._require(
-            "zlink_spot_node_attach_discovery",
-            [ctypes.c_void_p, ctypes.c_void_p],
             ctypes.c_int,
         )
         self._require(
@@ -1615,59 +1393,6 @@ class _Lib:
             ctypes.c_int,
         )
 
-        self._require(
-            "zlink_discovery_member_peers",
-            [
-                ctypes.c_void_p,
-                ctypes.POINTER(ZlinkMemberPeerEntry),
-                ctypes.POINTER(ctypes.c_size_t),
-            ],
-            ctypes.c_int,
-        )
-        self._require(
-            "zlink_registry_topology",
-            [
-                ctypes.c_void_p,
-                ctypes.POINTER(ZlinkRegistryTopologyEntry),
-                ctypes.POINTER(ctypes.c_size_t),
-            ],
-            ctypes.c_int,
-        )
-        self._require(
-            "zlink_registry_topology",
-            [
-                ctypes.c_void_p,
-                ctypes.POINTER(ZlinkRegistryTopologyFilter),
-                ctypes.POINTER(ZlinkRegistryTopologyEntry),
-                ctypes.POINTER(ctypes.c_size_t),
-            ],
-            ctypes.c_int,
-        )
-        self._require(
-            "zlink_registry_query_client_new",
-            [ctypes.c_void_p],
-            ctypes.c_void_p,
-        )
-        self._require(
-            "zlink_registry_query_client_connect",
-            [ctypes.c_void_p, ctypes.c_char_p],
-            ctypes.c_int,
-        )
-        self._require(
-            "zlink_registry_query_client_topology",
-            [
-                ctypes.c_void_p,
-                ctypes.POINTER(ZlinkRegistryTopologyFilter),
-                ctypes.POINTER(ZlinkRegistryTopologyEntry),
-                ctypes.POINTER(ctypes.c_size_t),
-            ],
-            ctypes.c_int,
-        )
-        self._require(
-            "zlink_registry_query_client_destroy",
-            [ctypes.POINTER(ctypes.c_void_p)],
-            ctypes.c_int,
-        )
 
         self._require(
             "zlink_poll",

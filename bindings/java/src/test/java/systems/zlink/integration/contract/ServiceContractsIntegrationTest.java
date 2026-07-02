@@ -1,13 +1,9 @@
 package systems.zlink.integration.contract;
 
 import systems.zlink.TestSupport;
-import systems.zlink.contracts.service.registry.AutoConnectType;
 import systems.zlink.contracts.core.Context;
 import systems.zlink.contracts.core.Zlink;
-import systems.zlink.contracts.service.discovery.Discovery;
 import systems.zlink.contracts.sockets.PairSocket;
-import systems.zlink.contracts.service.registry.Registry;
-import systems.zlink.contracts.service.registry.RegistryQueryClient;
 import systems.zlink.contracts.service.spot.Spot;
 import systems.zlink.contracts.service.spot.SpotNode;
 import org.junit.jupiter.api.Test;
@@ -15,53 +11,13 @@ import java.util.concurrent.atomic.AtomicReference;
 import java.util.concurrent.TimeUnit;
 import java.time.Duration;
 import java.time.Instant;
-import java.nio.file.Path;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
-import static org.junit.jupiter.api.Assertions.assertNotNull;
 import static org.junit.jupiter.api.Assertions.assertNull;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
 class ServiceContractsIntegrationTest {
-    @Test
-    void discoveryRegistryAndSpotNodeExposeCanonicalSnapshots() {
-        TestSupport.assumeNative();
-
-        String registryPub = TestSupport.tcpEndpoint();
-        String registryRouter = TestSupport.tcpEndpoint();
-
-        try (Context ctx = Zlink.createContext();
-            Registry registry = ctx.createRegistry();
-             Discovery discovery = ctx.createDiscovery(AutoConnectType.CLIENT_SERVER, "svc-alpha");
-             SpotNode node = ctx.createSpotNode();
-             RegistryQueryClient queryClient = ctx.createRegistryQueryClient()) {
-            registry.bind(registryPub, registryRouter);
-            queryClient.connect(registryRouter);
-            discovery.connectRegistry(registryRouter);
-            discovery.setValue(7L);
-            String cert = Path.of("tests/certs/server.crt").toAbsolutePath().toString();
-            String key = Path.of("tests/certs/server.key").toAbsolutePath().toString();
-            String ca = Path.of("tests/certs/ca.crt").toAbsolutePath().toString();
-            registry.setTlsServer(cert, key, true);
-            registry.setTlsClient(ca, "localhost", true);
-            discovery.setTlsClient(ca, "localhost", true);
-
-            assertEquals(7L, discovery.getValue());
-            assertTrue(discovery.memberPeers().isEmpty());
-
-            assertEquals(0, registry.status().topologyEntryCount());
-            assertTrue(registry.serviceSummary().isEmpty());
-            assertTrue(registry.topology().isEmpty());
-            assertTrue(registry.memberPeers("svc-alpha").isEmpty());
-            assertTrue(queryClient.topology().isEmpty());
-
-            assertEquals(0, node.status().configuredPeerCount());
-            assertTrue(node.peers().isEmpty());
-            assertTrue(node.subjects().isEmpty());
-        }
-    }
-
     @Test
     void monitorStatusExposesCanonicalMonitorState() {
         TestSupport.assumeNative();

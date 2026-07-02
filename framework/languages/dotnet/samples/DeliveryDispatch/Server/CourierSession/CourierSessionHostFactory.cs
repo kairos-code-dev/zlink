@@ -25,13 +25,11 @@ public static class CourierSessionHostFactory
                 .TraceLogFile(SampleFlowLog.Path("courier-session"))
                 .TraceLabel("courier-session");
             options.AddHandlersFromAssemblyOf(typeof(CourierSessionHostFactory));
-            options.UseDiscovery().AddRegistryEndpoint(topology.RegistryRouterEndpoint);
             options.AddClientServerChannel(SampleNames.CourierRouteChannel)
                 .EnableClient()
                 .SetRoutingId(Systems.Zlink.RoutingId.From("delivery-courier-session-client"));
             options.AddSpotMesh(SampleNames.CourierActorDiscovery)
-                .UseRegistrySpotResolver()
-                .EnableRouter(topology.CourierSessionSpotRouterEndpoint)
+                                .EnableRouter(topology.CourierSessionSpotRouterEndpoint)
                 .SetRoutingId(topology.CourierSessionSpotNodeRid)
                 .EnablePubSub(topology.CourierSessionSpotEndpoint);
             options.AddStreamNode(SampleNames.CourierStreamNode)

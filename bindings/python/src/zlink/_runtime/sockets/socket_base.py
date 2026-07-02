@@ -606,12 +606,6 @@ class _Socket(_BaseSocket):
             _raise_result_error(ConfigError, ConfigResult, rc, lib().zlink_errno())
 
 
-class _DiscoveryAttachSocket:
-    def attach_discovery(self, discovery):
-        rc = lib().zlink_socket_attach_discovery(self._handle, discovery._handle)
-        if rc != 0:
-            _raise_result_error(ConfigError, ConfigResult, rc, lib().zlink_errno())
-
 
 class _SendReadySocket:
     def on_send_ready(self, handler):

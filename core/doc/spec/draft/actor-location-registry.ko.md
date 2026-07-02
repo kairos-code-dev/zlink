@@ -46,10 +46,6 @@ framework의 actor 재연결, stream session 재bind, 사용자별 push 흐름�
 - `ZLINK_ROUTE_KIND_ACTOR`
 - `zlink_actor_ref_t`
 - `zlink_actor_route_t`
-- `zlink_discovery_resolve_actor(...)`
-- generic route API인 `zlink_discovery_bind_route(...)`,
-  `zlink_discovery_unbind_route(...)`,
-  `zlink_discovery_resolve_route(...)`
 
 하지만 이 선언만으로는 정식 공개 계약이 충분하지 않다.
 
@@ -58,7 +54,6 @@ framework의 actor 재연결, stream session 재bind, 사용자별 push 흐름�
 - entry spot actor와 일반 spot actor의 위치 차이가 문서화되어 있지 않다.
 - registry query client에서 actor route를 조회하는 계약이 분리되어 있지 않다.
 - stale cleanup, generation, owner 교체 규칙이 actor route 관점에서 명확하지 않다.
-- bindings와 framework가 `UseRegistrySpotResolver()`와 같은 방식으로 actor resolver를
   켤 수 있는 계약이 없다.
 
 따라서 구현 전 첫 단계는 현재 선언과 실제 구현을 감사하고, 아래 To-Be 계약과 충돌하는
@@ -172,11 +167,9 @@ typedef struct zlink_route_location_cache_options_t
     uint32_t negative_ttl_ms;
 } zlink_route_location_cache_options_t;
 
-ZLINK_EXPORT zlink_config_result_t zlink_discovery_set_route_location_cache_options(
     void *discovery,
     const zlink_route_location_cache_options_t *options);
 
-ZLINK_EXPORT zlink_config_result_t zlink_discovery_get_route_location_cache_options(
     void *discovery,
     zlink_route_location_cache_options_t *options_out);
 ```
@@ -204,10 +197,8 @@ spot 위치 churn이 큰 환경은 spot cache를 끄고 actor location만 cache�
 ### 6.3 spot resolver와의 관계
 
 spot 조회도 actor와 같은 route location cache를 사용한다. 과도기 API를 별도로 두지 않고,
-기존 `zlink_discovery_resolve_spot(...)` 시그니처를 freshness mode를 받는 형태로 변경한다.
 
 ```c
-ZLINK_EXPORT zlink_config_result_t zlink_discovery_resolve_spot(
     void *discovery,
     const zlink_routing_id_t *spot_rid,
     zlink_route_resolve_mode_t mode,
@@ -285,7 +276,6 @@ typedef struct zlink_actor_location_t
 
 `zlink_actor_route_t`는 이미 public header에 존재하지만 새 계약에서는 표준 반환 타입으로
 사용하지 않는다. 이번 변경에서는 이전 API 유지를 목표로 하지 않으므로, 구현 단계에서 `zlink_actor_route_t`와
-`zlink_discovery_resolve_actor(...)`를 제거하거나 내부 전용 타입으로 내린다. 공개 actor 위치
 계약은 `zlink_actor_location_t` 하나로 정리한다.
 
 ## 8. Discovery actor location API 초안
@@ -300,7 +290,6 @@ Discovery는 registry와 연결된 service participant 관점에서 actor locati
 ### 8.1 수동 갱신
 
 ```c
-ZLINK_EXPORT zlink_config_result_t zlink_discovery_update_actor_location(
     void *discovery,
     const zlink_actor_location_t *location);
 ```
@@ -320,7 +309,6 @@ ZLINK_EXPORT zlink_config_result_t zlink_discovery_update_actor_location(
 ### 8.2 수동 제거
 
 ```c
-ZLINK_EXPORT zlink_config_result_t zlink_discovery_remove_actor_location(
     void *discovery,
     const char *actor_type,
     const char *actor_id);
@@ -337,7 +325,6 @@ ZLINK_EXPORT zlink_config_result_t zlink_discovery_remove_actor_location(
 ### 8.3 조회
 
 ```c
-ZLINK_EXPORT zlink_config_result_t zlink_discovery_resolve_actor_location(
     void *discovery,
     const char *actor_type,
     const char *actor_id,
@@ -353,8 +340,6 @@ ZLINK_EXPORT zlink_config_result_t zlink_discovery_resolve_actor_location(
 - `actor_type == NULL`은 empty actor type과 같다.
 - `mode`는 actor/spot 공통 route location cache의 freshness 요구를 따른다.
 
-기존 `zlink_discovery_resolve_actor(...)`는 유지하지 않는다. actor 조회는
-`zlink_discovery_resolve_actor_location(...)`로만 제공한다.
 
 ## 9. Registry query client API 초안
 
@@ -364,7 +349,6 @@ remote query client는 현재 topology 중심이다. actor location을 운영/�
 ### 9.1 단건 조회
 
 ```c
-ZLINK_EXPORT zlink_config_result_t zlink_registry_query_client_actor_location(
     void *client,
     const char *actor_type,
     const char *actor_id,
@@ -380,17 +364,13 @@ ZLINK_EXPORT zlink_config_result_t zlink_registry_query_client_actor_location(
 ### 9.2 목록 조회
 
 ```c
-typedef struct zlink_registry_actor_location_filter_t
 {
     char actor_type[ZLINK_ACTOR_TYPE_MAX];
     char actor_id[ZLINK_ACTOR_ID_MAX];
     zlink_routing_id_t node_rid;
     zlink_actor_location_kind_t location_kind;
-} zlink_registry_actor_location_filter_t;
 
-ZLINK_EXPORT zlink_config_result_t zlink_registry_query_client_actor_locations(
     void *client,
-    const zlink_registry_actor_location_filter_t *filter,
     zlink_actor_location_t *entries,
     size_t *count);
 ```
@@ -404,22 +384,18 @@ ZLINK_EXPORT zlink_config_result_t zlink_registry_query_client_actor_locations(
 registry in-process query도 같은 의미의 API를 제공한다.
 
 ```c
-ZLINK_EXPORT zlink_config_result_t zlink_registry_actor_location(
     void *registry,
     const char *actor_type,
     const char *actor_id,
     zlink_actor_location_t *location_out);
 
-ZLINK_EXPORT zlink_config_result_t zlink_registry_actor_locations(
     void *registry,
-    const zlink_registry_actor_location_filter_t *filter,
     zlink_actor_location_t *entries,
     size_t *count);
 ```
 
 ## 10. Generic route API와의 관계
 
-`zlink_discovery_bind_route(...)` / `resolve_route(...)`가 내부 구현에 필요하면 유지할 수 있다.
 다만 actor location과 spot location의 공개 표준은 typed API다.
 
 typed API가 필요한 이유:

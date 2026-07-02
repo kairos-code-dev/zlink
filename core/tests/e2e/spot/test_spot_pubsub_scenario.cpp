@@ -13,8 +13,7 @@ static bool should_run_spot_e2e_smoke_test (const char *name_)
                                               "test_spot_aggregate_subscription_refcount",
                                               "test_spot_node_direct_local_and_child_interop",
                                               "test_spot_sub_handler_basic",
-                                              "test_spot_recv_callback_isolated_by_handle",
-                                              "test_spot_node_discovery_direct_and_child_interop"};
+                                              "test_spot_recv_callback_isolated_by_handle"};
     for (size_t i = 0; i < sizeof (smoke_cases) / sizeof (smoke_cases[0]); ++i) {
         if (strcmp (smoke_cases[i], name_) == 0)
             return true;
@@ -53,7 +52,6 @@ int main (int, char **)
     RUN_SPOT_TEST (test_spot_node_publisher_local_spot_subscribe_surface);
     RUN_SPOT_TEST (test_spot_sub_handler_basic);
     RUN_SPOT_TEST (test_spot_recv_callback_isolated_by_handle);
-    RUN_SPOT_TEST (test_spot_node_discovery_direct_and_child_interop);
 #undef RUN_SPOT_TEST
     return UNITY_END ();
 }

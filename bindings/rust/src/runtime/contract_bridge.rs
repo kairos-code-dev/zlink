@@ -28,7 +28,7 @@ use crate::spot_operations::{
     ActorLookupOp, CallbackReady, Empty, Ready, ReplyOp, RequestOp, SendOp,
 };
 use crate::topic_message_contract::TopicMessage;
-use crate::{Actor, Discovery, Received, Spot, SpotNodeActorEntry};
+use crate::{Actor, Received, Spot, SpotNodeActorEntry};
 
 pub(crate) trait MessageRuntime: Any + Send {
     fn as_any_mut(&mut self) -> &mut dyn Any;
@@ -214,21 +214,6 @@ pub(crate) trait SubSocketOptionRuntime {
     fn topics_count(&self) -> Result<i32, ConfigError>;
 }
 
-pub(crate) trait DiscoveryRuntime: Any + Send {
-    fn as_any(&self) -> &dyn Any;
-    fn as_any_mut(&mut self) -> &mut dyn Any;
-}
-
-pub(crate) trait RegistryRuntime: Any + Send {
-    fn as_any(&self) -> &dyn Any;
-    fn as_any_mut(&mut self) -> &mut dyn Any;
-}
-
-pub(crate) trait RegistryQueryClientRuntime: Any + Send {
-    fn as_any(&self) -> &dyn Any;
-    fn as_any_mut(&mut self) -> &mut dyn Any;
-}
-
 pub(crate) trait ActorRuntime: Any + Send {
     fn as_any(&self) -> &dyn Any;
     fn as_any_mut(&mut self) -> &mut dyn Any;
@@ -395,15 +380,12 @@ pub(crate) use ActorRuntime as ActorStorage;
 pub(crate) use CommonSocketOptionRuntime as CommonSocketOptionEndpoint;
 pub(crate) use ContextRuntime as ContextStorage;
 pub(crate) use DealerSocketOptionRuntime as DealerSocketOptionEndpoint;
-pub(crate) use DiscoveryRuntime as DiscoveryStorage;
 pub(crate) use MessageRuntime as MessageStorage;
 pub(crate) use PairSocketRuntime as PairSocketStorage;
 pub(crate) use PollerRuntime as PollerStorage;
 pub(crate) use PubSocketOptionRuntime as PubSocketOptionEndpoint;
 pub(crate) use ReceivedReplyRuntime as ReceivedReplyContext;
 pub(crate) use ReceivedSendRuntime as ReceivedSendContext;
-pub(crate) use RegistryQueryClientRuntime as RegistryQueryClientStorage;
-pub(crate) use RegistryRuntime as RegistryStorage;
 pub(crate) use ReplyOpEmptyRuntime as ReplyOpEmptyContract;
 pub(crate) use ReplyOpReadyRuntime as ReplyOpReadyContract;
 pub(crate) use ReplyOpRuntime as ReplyOpStorage;
@@ -495,7 +477,6 @@ pub(crate) trait SpotNodePublicRuntime {
     fn connect_peer(&self, peer_endpoint: &str) -> Result<(), ConnectError>;
     fn disconnect_peer(&self, peer_endpoint: &str) -> Result<(), ConnectError>;
     fn disconnect_peer_rid(&self, target_node_rid: &RoutingId) -> Result<(), ConnectError>;
-    fn attach_discovery(&self, discovery: &Discovery) -> Result<(), ConfigError>;
     fn router_high_water_mark(&self) -> Result<i32, ConfigError>;
     fn set_router_high_water_mark(&self, value: i32) -> Result<(), ConfigError>;
     fn pubsub_high_water_mark(&self) -> Result<i32, ConfigError>;

@@ -1,16 +1,13 @@
 package systems.zlink;
 
-import systems.zlink.contracts.service.registry.AutoConnectType;
 import systems.zlink.contracts.core.Context;
 import systems.zlink.contracts.core.Zlink;
-import systems.zlink.contracts.service.discovery.Discovery;
 import systems.zlink.contracts.messaging.Message;
 import systems.zlink.contracts.errors.ZlinkBindException;
 import systems.zlink.contracts.errors.ZlinkSubmitException;
 import systems.zlink.contracts.sockets.PairSocket;
 import systems.zlink.contracts.messaging.Received;
 import systems.zlink.contracts.sockets.RecvFlags;
-import systems.zlink.contracts.service.registry.Registry;
 import systems.zlink.contracts.sockets.RequestResult;
 import systems.zlink.contracts.core.RoutingId;
 import systems.zlink.contracts.sockets.SendFlags;
@@ -77,17 +74,10 @@ public class CallbackModeContractTest {
         Thread testThread = Thread.currentThread();
 
         try (Context ctx = Zlink.createContext();
-             Registry registry = ctx.createRegistry();
-             Discovery discovery = ctx.createDiscovery(AutoConnectType.SPOT_MESH, channelName);
              SpotNode publisherNode = ctx.createSpotNode();
              SpotNode subscriberNode = ctx.createSpotNode();
              Spot publisher = publisherNode.createSpot();
              Spot subscriber = subscriberNode.createSpot()) {
-            String registryPub = TestSupport.tcpEndpoint();
-            String registryRouter = TestSupport.tcpEndpoint();
-            registry.bind(registryPub, registryRouter);
-            discovery.connectRegistry(registryRouter);
-            publisherNode.attachDiscovery(discovery);
             bindPubWithRetry(publisherNode);
             String endpoint = publisherNode.status().localEndpoint();
             subscriberNode.connectPeer(endpoint);
@@ -126,17 +116,10 @@ public class CallbackModeContractTest {
         CountDownLatch delivered = new CountDownLatch(1);
 
         try (Context ctx = Zlink.createContext();
-             Registry registry = ctx.createRegistry();
-             Discovery discovery = ctx.createDiscovery(AutoConnectType.SPOT_MESH, "dispatch-drain");
              SpotNode publisherNode = ctx.createSpotNode();
              SpotNode subscriberNode = ctx.createSpotNode();
              Spot publisher = publisherNode.createSpot();
              Spot subscriber = subscriberNode.createSpot()) {
-            String registryPub = TestSupport.tcpEndpoint();
-            String registryRouter = TestSupport.tcpEndpoint();
-            registry.bind(registryPub, registryRouter);
-            discovery.connectRegistry(registryRouter);
-            publisherNode.attachDiscovery(discovery);
             bindPubWithRetry(publisherNode);
             subscriberNode.connectPeer(publisherNode.status()
                 .localEndpoint());

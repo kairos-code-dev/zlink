@@ -10,10 +10,8 @@ public sealed class BuilderContracts
     [Fact]
     [ContractExample(
         typeof(IZLinkFrameworkOptions),
-        typeof(IZLinkDiscoveryBuilder),
         typeof(IZLinkMetadataPolicyBuilder),
-        typeof(IZLinkStreamCompressionBuilder),
-        typeof(IZLinkRegistrySpotRemoteAddressesOptions))]
+        typeof(IZLinkStreamCompressionBuilder))]
     public void Framework_options_register_the_top_level_runtime_surface()
     {
         var options = new FrameworkOptions();
@@ -24,26 +22,20 @@ public sealed class BuilderContracts
         options.AddHandlersFromAssembly(typeof(BuilderContracts).Assembly);
         options.ConfigureMetadata().AddForwardedMetadataKey("trace-id");
         options.AddSpotRemoteAddressResolver<SpotRemoteAddressResolver>();
-        options.UseRegistrySpotRemoteAddresses("game").RouterChannelId = "play-router";
-        options.UseDiscovery().AddRegistryEndpoint("tcp://127.0.0.1:6000");
         options.UseFilter<HandlerFilter>();
         options.ConfigureDispatch().SpotDispatchMode = ZLinkDispatchMode.Compiled;
 
         Assert.Contains("trace-id", options.Metadata.ForwardedKeys);
-        Assert.Contains("tcp://127.0.0.1:6000", options.Discovery.Endpoints);
-        Assert.Equal("play-router", options.SpotRemoteAddresses.RouterChannelId);
         Assert.Equal(TimeSpan.FromSeconds(1), options.DefaultSocketSendTimeout);
     }
 
     [Fact]
-    public void Nested_configuration_objects_expose_socket_routing_and_registry_settings()
+    public void Nested_configuration_objects_expose_socket_and_routing_settings()
     {
         var options = new FrameworkOptions();
 
         options.DefaultRequestTimeout = TimeSpan.FromSeconds(3);
         Assert.Equal(TimeSpan.FromSeconds(3), options.DefaultRequestTimeout);
-        options.UseRegistrySpotRemoteAddresses("rooms").RouterChannelId = "room-node";
-        Assert.Equal("room-node", options.SpotRemoteAddresses.RouterChannelId);
 
         var clientServer = options.AddClientServerChannel("api");
         clientServer.ConfigureClientSocket().SendTimeout = TimeSpan.FromSeconds(1);
@@ -58,7 +50,7 @@ public sealed class BuilderContracts
         Assert.Equal(TimeSpan.FromSeconds(1), routeMesh.ConfigureSocket().SendTimeout);
 
         var spotMesh = options.AddSpotMesh("rooms");
-        Assert.Same(spotMesh, spotMesh.UseRegistrySpotResolver());
+        Assert.Same(spotMesh, spotMesh.SetRoutingId(RoutingId.From("rooms-a")));
     }
 
     [Fact]
@@ -131,7 +123,6 @@ public sealed class BuilderContracts
         }
 
         {
-            options.UseDiscovery().AddRegistryEndpoint("tcp://127.0.0.1:6001");
             var mesh = options.AddSpotMesh("play-spots");
             ConfigureSpotNode(mesh);
         }
@@ -185,10 +176,6 @@ public sealed class BuilderContracts
 
         public MetadataPolicyBuilder Metadata { get; } = new();
 
-        public DiscoveryBuilder Discovery { get; } = new();
-
-        public RegistrySpotRemoteAddressesOptions SpotRemoteAddresses { get; } = new();
-
         public List<string> Channels { get; } = [];
 
         public List<string> StreamNodes { get; } = [];
@@ -226,11 +213,6 @@ public sealed class BuilderContracts
         {
         }
 
-        public IZLinkRegistrySpotRemoteAddressesOptions UseRegistrySpotRemoteAddresses(string namespaceName)
-        {
-            return SpotRemoteAddresses;
-        }
-
         public IZLinkClientServerChannelBuilder AddClientServerChannel(string channelName)
         {
             Channels.Add(channelName);
@@ -247,11 +229,6 @@ public sealed class BuilderContracts
         {
             Channels.Add(channelName);
             return new RouteMeshChannelBuilder();
-        }
-
-        public IZLinkDiscoveryBuilder UseDiscovery()
-        {
-            return Discovery;
         }
 
         public void AddPeerLocationStore<TStore>()
@@ -314,17 +291,6 @@ public sealed class BuilderContracts
             SpotMeshes.Add(channelName);
             SpotNodes.Add(channelName);
             return new SpotMeshBuilder();
-        }
-    }
-
-    private sealed class DiscoveryBuilder : IZLinkDiscoveryBuilder
-    {
-        public List<string> Endpoints { get; } = [];
-
-        public IZLinkDiscoveryBuilder AddRegistryEndpoint(string endpoint)
-        {
-            Endpoints.Add(endpoint);
-            return this;
         }
     }
 
@@ -395,11 +361,6 @@ public sealed class BuilderContracts
         {
             ForwardedKeys.Add(key);
         }
-    }
-
-    private sealed class RegistrySpotRemoteAddressesOptions : IZLinkRegistrySpotRemoteAddressesOptions
-    {
-        public string? RouterChannelId { get; set; }
     }
 
     private sealed class ClientServerChannelBuilder : IZLinkClientServerChannelBuilder
@@ -690,15 +651,6 @@ public sealed class BuilderContracts
 
     private sealed class SpotMeshBuilder : SpotNodeBuilder, IZLinkSpotMeshBuilder
     {
-        public IZLinkSpotMeshBuilder UseRegistrySpotResolver()
-        {
-            return this;
-        }
-
-        public IZLinkDiscoveryBuilder UseDiscovery()
-        {
-            return new DiscoveryBuilder();
-        }
     }
 
     private sealed class ActorFactory : IZLinkActorFactory

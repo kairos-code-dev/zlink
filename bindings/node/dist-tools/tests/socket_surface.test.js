@@ -15,7 +15,7 @@ test('canonical socket classes expose only directionally valid methods', () => {
     const stream = zlink.createStreamSocket(ctx);
     assert.equal(typeof pub.publish, 'function');
     assert.equal(typeof pub.setSendReadyHandler, 'function');
-    assert.equal(typeof pub.attachDiscovery, 'function');
+    assert.equal(pub.attachDiscovery, undefined);
     assert.equal(typeof pub.options, 'object');
     assert.equal(typeof Object.getOwnPropertyDescriptor(Object.getPrototypeOf(pub.options), 'verbose').set, 'function');
     assert.equal(pub.send, undefined);
@@ -34,7 +34,7 @@ test('canonical socket classes expose only directionally valid methods', () => {
     assert.equal(sub.subscribePayloadInto, undefined);
     assert.equal(typeof sub.setSubscription, 'function');
     assert.equal(typeof sub.unsetSubscription, 'function');
-    assert.equal(typeof sub.attachDiscovery, 'function');
+    assert.equal(sub.attachDiscovery, undefined);
     assert.equal(typeof sub.options, 'object');
     assert.equal(sub.send, undefined);
     assert.equal(sub.setSockOpt, undefined);
@@ -69,7 +69,7 @@ test('canonical socket classes expose only directionally valid methods', () => {
     assert.equal(dealer.setSockOpt, undefined);
     assert.equal(typeof dealer.setRoutingId, 'function');
     assert.equal(typeof dealer.getRoutingId, 'function');
-    assert.equal(typeof dealer.attachDiscovery, 'function');
+    assert.equal(dealer.attachDiscovery, undefined);
     assert.equal(dealer.onReceive, undefined);
     assert.equal(typeof stream.send, 'function');
     assert.equal(stream.trySend, undefined);
@@ -100,7 +100,7 @@ test('canonical socket classes expose only directionally valid methods', () => {
     assert.equal(router.setSockOpt, undefined);
     assert.equal(typeof router.setRoutingId, 'function');
     assert.equal(typeof router.getRoutingId, 'function');
-    assert.equal(typeof router.attachDiscovery, 'function');
+    assert.equal(router.attachDiscovery, undefined);
     assert.equal(router.onReceive, undefined);
     assert.equal(typeof router.request, 'function');
     assert.equal(typeof router.reply, 'function');

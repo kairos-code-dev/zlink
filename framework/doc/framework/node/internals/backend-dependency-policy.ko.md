@@ -69,7 +69,6 @@ compatibility layer[^compatibility-layer] 를 끼워 줄 수 있는 종류다.
 - `SpotNode`
 - `Spot`
 - `Registry`
-- `RegistryQueryClient`
 - 하부의 timer, recv loop, raw socket monitor 같은 객체
 
 이 객체들은 backend 구현 세부에 가깝다. 따라서 public surface[^public-surface]

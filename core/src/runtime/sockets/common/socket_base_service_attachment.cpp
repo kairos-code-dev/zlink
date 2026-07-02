@@ -3,7 +3,6 @@
 #include "utils/precompiled.hpp"
 
 #include "sockets/common/socket_base.hpp"
-#include "services/discovery/socket_discovery_attachment.hpp"
 #include "utils/likely.hpp"
 
 int zlink::socket_base_t::set_peer_weight (uint32_t weight_)
@@ -29,8 +28,6 @@ int zlink::socket_base_t::set_peer_weight (uint32_t weight_)
             return 0;
         _local_peer_weight = weight_;
         options.peer_weight = static_cast<int> (weight_);
-        if (_service_attachment)
-            _service_attachment->on_local_peer_weight_changed ();
         xlocal_peer_weight_changed ();
     }
     return 0;
@@ -70,9 +67,6 @@ int zlink::socket_base_t::close ()
 
 int zlink::socket_base_t::close (int handoff_timeout_ms_)
 {
-    if (_service_attachment && _service_attachment->on_public_close () != 0)
-        return -1;
-
     const bool from_self_callback = socket_send_ready_dispatch_scope_t::dispatching_socket (this);
     if (!lifecycle_coordinator ().begin_close_or_fail_busy (from_self_callback))
         return -1;
@@ -81,16 +75,4 @@ int zlink::socket_base_t::close (int handoff_timeout_ms_)
 
     finish_close_handoff (handoff_timeout_ms_);
     return 0;
-}
-
-int zlink::socket_base_t::attach_discovery (discovery_t *discovery_)
-{
-    if (!_service_attachment) {
-        _service_attachment = new (std::nothrow) socket_discovery_attachment_t (this);
-        if (!_service_attachment) {
-            errno = ENOMEM;
-            return -1;
-        }
-    }
-    return _service_attachment->attach (discovery_);
 }

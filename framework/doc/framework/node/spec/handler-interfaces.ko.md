@@ -187,14 +187,11 @@ export interface ActorRef {
 | filter | `ZLinkHandlerInvocation` | filter pipeline 호출 context | 8 |
 | filter | `ZLinkHandlerDelegate` | filter pipeline next delegate | 8 |
 | serializer | `ZLinkMessageSerializer` | `Message` payload 직렬화/역직렬화 | 4.5 |
-| registry | `ZLinkRegistryQuery` | in-process Registry 조회 | 10.1 |
-| registry | `ZLinkRegistryQueryClient` | 원격 Registry 조회 | 10.2 |
 | options | `ZLinkMonitoringOptions` | runtime monitoring source 등록 옵션 | 10.3 |
 | handler | `ZLinkRuntimeEventHandler<TEvent>` | runtime monitoring event handler | 10.3 |
 | value | `ZLinkRuntimeEvent` | runtime event 공통 기반 | 10.3 |
 | publisher | `ZLinkRuntimeEventPublisher` | runtime event publish 표면 | 10.3 |
 | value | `ZLinkSocketEventKind`, `ZLinkSocketEvent` | socket runtime event | 10.3 |
-| value | `ZLinkRegistryEventKind`, `ZLinkRegistryEvent` | registry runtime event | 10.3 |
 | value | `ZLinkSpotEventKind`, `ZLinkSpotEvent` | spot runtime event | 10.3 |
 
 decorator 와 enum, registry/monitoring model 의 전체 목록은 §11(decorator),
@@ -1817,14 +1814,11 @@ const reply = await client
 
 ## 10. Registry / Monitoring 인터페이스
 
-### 10.1 ZLinkRegistryQuery
 
-같은 프로세스의 embedded Registry 를 조회한다. `AddZLinkRegistry(...)` 시점에 DI 에 등록되며
 status, service summary, topology, member peers 를 제공한다. 비동기인 이유는 registry 가 아직
 시작되지 않았을 수 있고 snapshot 수집이 host lifecycle 과 맞물리기 때문이다.
 
 ```ts
-export interface ZLinkRegistryQuery {
   status(): Promise<ZLinkRegistryStatus>;
   serviceSummary(filter?: ZLinkRegistryServiceSummaryFilter): Promise<ZLinkRegistryServiceSummaryEntry[]>;
   topology(filter?: ZLinkRegistryTopologyFilter): Promise<ZLinkRegistryTopologyEntry[]>;
@@ -1832,26 +1826,20 @@ export interface ZLinkRegistryQuery {
 }
 ```
 
-> 코드 기준: dotnet `IZLinkRegistryQuery.TopologyAsync` 는 filter 오버로드 하나만 있다(스펙
 > 문서가 무인자 오버로드를 따로 적었지만 코드는 optional filter 하나). `MemberPeersAsync` 는
 > `channelName` 하나만 받는다.
 
-### 10.2 ZLinkRegistryQueryClient
 
-다른 프로세스의 Registry 를 원격 조회한다. `AddZLinkRegistryQueryClient(...)` 로 별도 등록하며
 topology snapshot 만 제공한다. 원격 요청 특성상 비동기다.
 
 ```ts
-export interface ZLinkRegistryQueryClient {
   topology(filter?: ZLinkRegistryTopologyFilter): Promise<ZLinkRegistryTopologyEntry[]>;
 }
 
-export interface ZLinkRegistryQueryClientOptions {
   endpoint: string;
 }
 ```
 
-embedded Registry 를 띄우는 옵션(`AddZLinkRegistry`)도 코드에 있다.
 
 ```ts
 export interface ZLinkRegistryOptions {
@@ -1900,10 +1888,8 @@ export interface ZLinkRuntimeEventPublisher {
 }
 ```
 
-> 코드 기준: dotnet `IZLinkMonitoringOptions` 는 `AddSocketEvents` / `AddRegistryEvents` /
-> `AddSpotEvents` 세 메서드만 가진다(기존 draft 의 `addDiscoveryEvents` 는 코드에 없다.
-> discovery 상태는 runtime event 로 올리지 않고 registry topology/service/member snapshot 으로
-> 조회한다). `AddSocketEvents(sourceName)` 에서 event 목록을 비우면 해당 source 의 모든 logical
+> 코드 기준: dotnet `IZLinkMonitoringOptions` 는 `AddSocketEvents` /
+> `AddSpotEvents` 메서드를 가진다. `AddSocketEvents(sourceName)` 에서 event 목록을 비우면 해당 source 의 모든 logical
 > event kind 를 구독한다는 의미다.
 
 event 표면은 두 단계다. event kind 는 enum, callback payload 는 record(TS interface)다.
@@ -1951,14 +1937,11 @@ export interface ZLinkSocketEvent extends ZLinkRuntimeEvent {
   readonly diagnostic?: ZLinkSocketDiagnostic;
 }
 
-export enum ZLinkRegistryEventKind {
   StatusChanged = 'statusChanged',
   TopologyChanged = 'topologyChanged',
   ServiceSummaryChanged = 'serviceSummaryChanged',
 }
 
-export interface ZLinkRegistryEvent extends ZLinkRuntimeEvent {
-  readonly event: ZLinkRegistryEventKind;
   readonly status?: ZLinkRegistryStatus;
   readonly topology?: readonly ZLinkRegistryTopologyEntry[];
   readonly serviceSummary?: readonly ZLinkRegistryServiceSummaryEntry[];
@@ -2265,7 +2248,6 @@ outbound-only 앱이라면 server 역할을 가진 channel 이 아예 없을 수
 - framework runtime 은 `ZLinkChannelClient` 위에 channel 별 typed wrapper 를 공식 기본 표면으로
   제공하지 않는다. 필요하면 응용/확장 패키지가 얹는다.
 - `spotRid` 타입은 `RoutingId` 를 쓴다. transport `RoutingId` 와 logical spot rid 를 같은 타입으로 노출한다.
-- `ZLinkRegistryQuery` 와 `ZLinkRegistryQueryClient` 는 묶지 않는다. in-process 조회와 원격 조회는
   lifecycle/실패 모델/제공 범위가 다르다.
 
 ### 14.1 message flow observer

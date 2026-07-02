@@ -1,4 +1,4 @@
-// 자립형 가이드 예제: SPOT → 채널(DEALER→ROUTER) 요청.
+// 자립형 가이드 예제: SPOT → 채널(ROUTER→ROUTER) 요청.
 // 게임룸(Spot)이 API 서버(채널 서비스)에 outgame 데이터를 요청한다.
 //   dotnet run --project samples/SpotChannelExample
 using SampleCommon;
@@ -11,16 +11,18 @@ internal static class Program
         // --8<-- [start:doc]
         using var ctx = Zlink.CreateContext();
         using var roomNode = ctx.CreateSpotNode();
-        using var roomDealer = ctx.CreateDealerSocket();
+        using var roomRouter = ctx.CreateRouterSocket();
         using var apiRouter = ctx.CreateRouterSocket();
         using var bridge = roomNode.CreateRouteBridge();
 
         const string channel = "api";
         string endpoint = SampleSupport.NewEndpoint("tcp", "spot-channel");
-        roomDealer.SetRoutingId(RoutingId.From("room-channel-client"));
+        RoutingId apiNodeRid = RoutingId.From("api-node");
+        roomRouter.SetRoutingId(RoutingId.From("room-node"));
+        apiRouter.SetRoutingId(apiNodeRid);
         apiRouter.Bind(endpoint);
-        roomDealer.Connect(endpoint);
-        bridge.AttachDealerChannel(channel, roomDealer);
+        roomRouter.Connect(endpoint);
+        bridge.AttachRouterChannel(channel, roomRouter);
 
         // API 서버(ROUTER)는 별도 스레드에서 요청을 받아 응답한다.
         var server = Task.Run(() =>
@@ -43,7 +45,7 @@ internal static class Program
                 TaskCreationOptions.RunContinuationsAsynchronously);
         using Message requestMessage = Message.From("get-profile");
         RoutingId targetSpot = RoutingId.From("room");
-        bridge.Request(channel, targetSpot, new[] { requestMessage },
+        bridge.Request(channel, apiNodeRid, targetSpot, new[] { requestMessage },
             (result, replyParts) =>
             {
                 if (result == RequestResult.Ok)

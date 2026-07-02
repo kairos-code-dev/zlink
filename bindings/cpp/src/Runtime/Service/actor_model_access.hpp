@@ -158,15 +158,6 @@ struct actor_model_access_t
         return out;
     }
 
-    static spot_route_t from_native (const zlink_spot_route_t &native_)
-    {
-        spot_route_t out;
-        out.spot_rid = native_routing_id (native_.spot_rid);
-        out.owner_node_rid = native_routing_id (native_.owner_node_rid);
-        out.spot_kind_value = static_cast<spot_kind> (native_.spot_kind);
-        return out;
-    }
-
     static spot_dispatch_info_t from_native (const zlink_spot_dispatch_info_t &native_)
     {
         spot_dispatch_info_t out;

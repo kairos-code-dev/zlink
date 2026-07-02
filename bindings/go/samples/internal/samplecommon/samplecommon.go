@@ -143,22 +143,6 @@ func WaitSpotPeerConnected(node *zlink.SpotNode, timeout time.Duration) {
 	})
 }
 
-func WaitTopologyEntry(fetch func() ([]zlink.RegistryTopologyEntry, error), channelName string) *zlink.RegistryTopologyEntry {
-	deadline := time.Now().Add(5 * time.Second)
-	for time.Now().Before(deadline) {
-		entries, err := fetch()
-		Must(err)
-		for i := range entries {
-			if entries[i].ChannelName == channelName {
-				return &entries[i]
-			}
-		}
-		runtime.Gosched()
-	}
-	Must(fmt.Errorf("timed out waiting for topology entry"))
-	return nil
-}
-
 func isTemporaryEmpty(err error) bool {
 	if err == nil {
 		return false

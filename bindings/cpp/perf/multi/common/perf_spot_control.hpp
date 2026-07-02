@@ -696,13 +696,12 @@ inline bool initialize_client_control_session (
   const multi_bench_settings_t &settings_,
   size_t msg_size_,
   std::unique_ptr<SpotNode> *control_node_out_,
-  std::unique_ptr<zlink::service::discovery_t> *control_discovery_out_,
   std::unique_ptr<SpotHandle> *control_spot_out_,
   std::string *local_control_endpoint_out_)
 {
-    if (!control_node_out_ || !control_discovery_out_ || !control_spot_out_
-        || !local_control_endpoint_out_ || remote_control_endpoint_.empty ()
-        || control_topic_.empty () || channel_name_.empty ()) {
+    if (!control_node_out_ || !control_spot_out_ || !local_control_endpoint_out_
+        || remote_control_endpoint_.empty () || control_topic_.empty ()
+        || channel_name_.empty ()) {
         errno = EINVAL;
         return false;
     }
@@ -710,12 +709,6 @@ inline bool initialize_client_control_session (
     std::unique_ptr<SpotNode> control_node (new SpotNode (ctx_));
     if (!control_node->valid ())
         return false;
-
-    std::unique_ptr<zlink::service::discovery_t> control_discovery (
-      new zlink::service::discovery_t (ctx_, zlink::auto_connect_type::spot_mesh, channel_name_));
-    if (!control_discovery->valid ())
-        return false;
-    control_node->attach_discovery (*control_discovery);
 
     if (!configure_spot_control_tls (*control_node, transport_))
         return false;
@@ -746,7 +739,6 @@ inline bool initialize_client_control_session (
 
     *local_control_endpoint_out_ = local_control_endpoint;
     *control_node_out_ = std::move (control_node);
-    *control_discovery_out_ = std::move (control_discovery);
     *control_spot_out_ = std::move (control_spot);
     return true;
 }

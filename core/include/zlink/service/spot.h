@@ -38,7 +38,7 @@ typedef struct zlink_spot_node_options_t
 } zlink_spot_node_options_t;
 
 /**
- * @brief Create a SPOT node runtime for topology, discovery, and lifecycle.
+ * @brief Create a SPOT node runtime for topology and lifecycle.
  *
  * If options is NULL or options->mode is 0, the node enables all SPOT
  * features. A node created with PUBSUB mode rejects routed request/reply APIs
@@ -50,7 +50,7 @@ ZLINK_EXPORT void *zlink_spot_node_new (void *ctx, const zlink_spot_node_options
 /**
  * @brief Destroy a SPOT node and release all resources.
  *
- * Attached spot nodes are normally shut down by `zlink_discovery_destroy()`.
+ * Destroying a node releases the node-owned sockets and dispatch resources.
  */
 ZLINK_EXPORT zlink_close_result_t zlink_spot_node_destroy (void **node_p);
 
@@ -220,21 +220,12 @@ zlink_spot_node_connect_peer_rid (void *node,
 /**
  * @brief Disconnect from a peer SPOT node endpoint.
  *
- * Returns EBUSY if discovery is already attached.
+ * Returns EBUSY if the peer connection is still in use.
  */
 ZLINK_EXPORT zlink_connect_result_t zlink_spot_node_disconnect_peer (void *node,
                                                                      const char *peer_endpoint);
 ZLINK_EXPORT zlink_connect_result_t
 zlink_spot_node_disconnect_peer_rid (void *node, const zlink_routing_id_t *target_node_rid);
-
-/**
- * @brief Attach a Discovery instance for discovery-owned SPOT peer connection.
- *
- * The discovery must provide a SPOT channel view. After attach, the node takes
- * its mesh identity from that channel view and discovery destroy owns
- * participant shutdown.
- */
-ZLINK_EXPORT zlink_config_result_t zlink_spot_node_attach_discovery (void *node, void *discovery);
 
 #define ZLINK_SPOT_ROUTE_BRIDGE_CAP_SPOT_ROUTE 0x00000001u
 #define ZLINK_SPOT_ROUTE_BRIDGE_ROUTE_ONLY ZLINK_SPOT_ROUTE_BRIDGE_CAP_SPOT_ROUTE

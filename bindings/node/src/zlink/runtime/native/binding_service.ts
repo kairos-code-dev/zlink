@@ -3,20 +3,12 @@
 import type {
   ActorPartRaw,
   ActorRefRaw,
-  DiscoveryActorRouteRaw,
-  DiscoverySpotRouteRaw,
-  MemberPeerEntryRaw,
   NativeActorEntryJoinCallback,
   NativeActorJoinCallback,
   NativeActorLookupCallback,
   NativeHandle,
   NativeRequestCallback,
   NativeTopicMessageRaw,
-  RegistryServiceSummaryEntryRaw,
-  RegistryServiceSummaryFilter,
-  RegistryStatusRaw,
-  RegistryTopologyEntryRaw,
-  RegistryTopologyFilter,
   SpotActorJoinRecvRaw,
   SpotActorLifecycleRaw,
   SpotDispatchRaw,
@@ -31,79 +23,6 @@ import type {
 } from './binding_types';
 
 export interface ServiceNativeBinding {
-  discoveryConnectRegistry: (discovery: NativeHandle, endpoint: string) => void;
-  discoveryBindRoute: (
-    discovery: NativeHandle,
-    kind: number,
-    key: Buffer,
-    value: Buffer
-  ) => void;
-  discoveryDestroy: (discovery: NativeHandle) => void;
-  discoveryGetProviders: (discovery: NativeHandle) => MemberPeerEntryRaw[];
-  discoveryGetValue: (discovery: NativeHandle) => number;
-  discoveryNew: (
-    ctx: NativeHandle,
-    autoConnectType: number,
-    channelName: string
-  ) => NativeHandle;
-  discoveryResolveActor: (discovery: NativeHandle, actorId: string) => DiscoveryActorRouteRaw;
-  discoveryResolveRoute: (discovery: NativeHandle, kind: number, key: Buffer) => {
-    ownerRoutingId: Buffer;
-    value: Buffer;
-  };
-  discoveryResolveSpot: (discovery: NativeHandle, spotRid: Buffer) => DiscoverySpotRouteRaw;
-  discoverySetTlsClient: (
-    discovery: NativeHandle,
-    ca: string,
-    hostname: string,
-    trustSystem: number
-  ) => void;
-  discoverySetValue: (discovery: NativeHandle, value: number) => void;
-  discoveryUnbindRoute: (discovery: NativeHandle, kind: number, key: Buffer) => void;
-  registryAddPeer: (registry: NativeHandle, pubEndpoint: string) => void;
-  registryDestroy: (registry: NativeHandle) => void;
-  registryMemberPeers: (registry: NativeHandle, channelName: string) => MemberPeerEntryRaw[];
-  registryNew: (ctx: NativeHandle) => NativeHandle;
-  registryQueryClientConnect: (client: NativeHandle, endpoint: string) => void;
-  registryQueryClientNew: (ctx: NativeHandle) => NativeHandle;
-  registryQueryDestroy: (client: NativeHandle) => void;
-  registryQueryTopology: (
-    client: NativeHandle,
-    filter?: RegistryTopologyFilter
-  ) => RegistryTopologyEntryRaw[];
-  registryServiceSummary: (
-    registry: NativeHandle,
-    filter?: RegistryServiceSummaryFilter
-  ) => RegistryServiceSummaryEntryRaw[];
-  registrySetBroadcastInterval: (registry: NativeHandle, intervalMs: number) => void;
-  registrySetEndpoints: (
-    registry: NativeHandle,
-    pubEndpoint: string,
-    routerEndpoint: string
-  ) => void;
-  registrySetHeartbeat: (
-    registry: NativeHandle,
-    intervalMs: number,
-    timeoutMs: number
-  ) => void;
-  registrySetId: (registry: NativeHandle, id: number) => void;
-  registrySetTlsClient: (
-    registry: NativeHandle,
-    ca: string,
-    hostname: string,
-    trustSystem: number
-  ) => void;
-  registrySetTlsServer: (
-    registry: NativeHandle,
-    cert: string,
-    key: string,
-    requireClientCert: number
-  ) => void;
-  registryStatus: (registry: NativeHandle) => RegistryStatusRaw;
-  registryTopology: (
-    registry: NativeHandle,
-    filter?: RegistryTopologyFilter
-  ) => RegistryTopologyEntryRaw[];
   remoteActorGetRef: (
     node: NativeHandle,
     targetNodeRid: Buffer,
@@ -237,7 +156,6 @@ export interface ServiceNativeBinding {
   spotNodePeersQuery: (node: NativeHandle, filter?: unknown) => SpotNodePeerEntryRaw[];
   spotNodeProcessRoutedRouter: (node: NativeHandle) => void;
   spotNodeTryProcessRoutedRouterParts: (node: NativeHandle, parts: unknown) => boolean;
-  spotNodeSetDiscovery: (node: NativeHandle, discovery: NativeHandle) => void;
   spotNodeSetOption: (node: NativeHandle, option: number, value: Buffer) => void;
   spotNodeSetPubBind: (node: NativeHandle, endpoint: string) => void;
   spotNodeSetPubRoutingId: (node: NativeHandle, routingId: Buffer) => void;

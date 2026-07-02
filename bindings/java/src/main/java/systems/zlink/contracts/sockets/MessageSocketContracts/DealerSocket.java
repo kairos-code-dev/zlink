@@ -4,7 +4,6 @@ package systems.zlink.contracts.sockets;
 
 import systems.zlink.contracts.core.RoutingId;
 import systems.zlink.contracts.messaging.Received;
-import systems.zlink.contracts.service.discovery.Discovery;
 import systems.zlink.contracts.service.spot.RequestOperation;
 import systems.zlink.contracts.service.spot.SendOperation;
 
@@ -15,7 +14,6 @@ public interface DealerSocket extends Socket {
     void unbind(String endpoint);
     void disconnect(String endpoint);
     void disconnectRid(RoutingId routingId);
-    void attachDiscovery(Discovery discovery);
     String getChannelName();
     void setRoutingId(RoutingId rid);
     RoutingId getRoutingId();

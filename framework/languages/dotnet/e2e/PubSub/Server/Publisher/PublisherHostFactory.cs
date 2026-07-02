@@ -17,7 +17,6 @@ internal static class PublisherHostFactory
 
         builder.Services.AddZLinkFramework(framework =>
         {
-            framework.UseDiscovery().AddRegistryEndpoint(options.RegistryRouterEndpoint);
             ConfigureFlow(framework.ConfigureDispatch(), options.LogDir, options.Rid);
             framework.AddFanoutChannel(PubSubNames.Channel)
                 .EnablePublisher(options.PublisherEndpoint);

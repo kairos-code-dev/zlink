@@ -41,7 +41,6 @@ public static class PlayServerHostFactory
                 .TraceLabel("play");
             options.AddHandlersFromAssemblyOf(typeof(PlayServerHostFactory));
             options.Codecs.Use(ZLinkProtobufCodec.Default);
-            options.UseDiscovery().AddRegistryEndpoint(topology.RegistryRouterEndpoint);
             options.AddClientServerChannel(SampleNames.ApiChannel)
                 .EnableClient();
 
@@ -50,8 +49,7 @@ public static class PlayServerHostFactory
                 .EnableClient()
                 .SetRoutingId(node.NodeRid)
                 .AddHandlerGroup("play");
-            options.AddSpotMesh(SampleNames.RoomSpotDiscovery).UseRegistrySpotResolver()
-                .EnableRouter(node.SpotRouterEndpoint)
+            options.AddSpotMesh(SampleNames.RoomSpotDiscovery)                .EnableRouter(node.SpotRouterEndpoint)
                 .SetRoutingId(node.NodeRid)
                 .EnablePubSub(node.SpotPubEndpoint)
                 .AddEntrySpot<BingoEntrySpot>()

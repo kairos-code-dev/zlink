@@ -1575,20 +1575,6 @@ napi_value router_spot_reply (napi_env env, napi_callback_info info)
     return ok;
 }
 
-napi_value discovery_resolve_actor (napi_env env, napi_callback_info info)
-{
-    napi_value argv[2];
-    size_t argc = 2;
-    napi_get_cb_info (env, info, &argc, argv, NULL, NULL);
-    void *discovery = NULL;
-    napi_get_value_external (env, argv[0], &discovery);
-    std::string actor_id = get_string (env, argv[1]);
-    zlink_actor_route_t route;
-    int rc = zlink_discovery_resolve_actor (discovery, actor_id.c_str (), &route);
-    if (rc != ZLINK_CONFIG_OK)
-        return throw_last_error (env, "discoveryResolveActor failed");
-    return create_actor_route_value (env, route);
-}
 
 napi_value spot_node_new (napi_env env, napi_callback_info info)
 {
@@ -1776,22 +1762,6 @@ napi_value spot_node_disconnect_peer_rid (napi_env env, napi_callback_info info)
     return ok;
 }
 
-napi_value spot_node_set_discovery (napi_env env, napi_callback_info info)
-{
-    napi_value argv[2];
-    size_t argc = 2;
-    napi_get_cb_info (env, info, &argc, argv, NULL, NULL);
-    void *node = NULL;
-    void *discovery = NULL;
-    napi_get_value_external (env, argv[0], &node);
-    napi_get_value_external (env, argv[1], &discovery);
-    int rc = zlink_spot_node_attach_discovery (node, discovery);
-    if (rc != 0)
-        return throw_last_error (env, "spot_node_attach_discovery failed");
-    napi_value ok;
-    napi_get_undefined (env, &ok);
-    return ok;
-}
 
 napi_value spot_route_bridge_new (napi_env env, napi_callback_info info)
 {

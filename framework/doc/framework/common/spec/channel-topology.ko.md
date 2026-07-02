@@ -50,7 +50,6 @@
 - 같은 `channel name`에 속한 provider 집합은 discovery가 자동으로 갱신한다.
 
 수동 연결을 쓰면 그 channel의 provider 집합을 직접 설정한다. 운영 점검이나 제어
-plane에서는 Registry topology snapshot/query 또는 원격 `RegistryQueryClient`로
 전체 provider 집합을 읽을 수도 있다.
 
 여기서 중요한 점은 연결 정책을 `channel` 전체가 아니라 **channel 안의 역할별

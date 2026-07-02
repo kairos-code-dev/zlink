@@ -188,7 +188,6 @@ abstract class NativeSocketBase implements Socket {
     public void unbind(String endpoint) { runtime.unbind(endpoint); }
     public void disconnect(String endpoint) { runtime.disconnect(endpoint); }
     public void disconnectRid(RoutingId peerRid) { runtime.disconnectRid(peerRid); }
-    public void attachDiscovery(systems.zlink.contracts.service.discovery.Discovery discovery) { runtime.attachDiscovery(discovery); }
     public void setChannelName(String channelName) { runtime.setChannelName(channelName); }
     public String getChannelName() { return runtime.getChannelName(); }
     void attachStreamRaw(StreamRawPacketHandler handler) { runtime.attachStreamRaw(handler); }

@@ -1,7 +1,6 @@
 /* SPDX-License-Identifier: MPL-2.0 */
 #pragma once
 
-#include "registry_models.hpp"
 #include "actor_models.hpp"
 #include "../Core/routing_id.hpp"
 #include "../Eventing/status.hpp"

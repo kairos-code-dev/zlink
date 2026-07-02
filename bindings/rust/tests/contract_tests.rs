@@ -51,7 +51,7 @@ fn direct_common_header_version_matches_package() {
         .map(str::trim)
         .find(|line| !line.is_empty())
         .unwrap_or("");
-    assert_eq!(version_patch, "0");
+    assert_eq!(version_patch, "3");
 }
 
 #[test]

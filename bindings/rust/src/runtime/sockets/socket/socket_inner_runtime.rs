@@ -98,10 +98,6 @@ impl SocketInner {
         check_connect_rc(unsafe { ffi::zlink_disconnect_rid(self.handle, peer_rid.as_raw()) })
     }
 
-    pub(crate) fn attach_discovery(&self, discovery: &Discovery) -> Result<(), ConfigError> {
-        check_config_rc(unsafe { ffi::zlink_socket_attach_discovery(self.handle, discovery.raw()) })
-    }
-
     pub(crate) fn set_channel_name(&self, channel_name: &str) -> Result<(), ConfigError> {
         let c = CString::new(channel_name).map_err(|_| config_validation_error())?;
         check_config_rc(unsafe { ffi::zlink_socket_set_channel_name(self.handle, c.as_ptr()) })

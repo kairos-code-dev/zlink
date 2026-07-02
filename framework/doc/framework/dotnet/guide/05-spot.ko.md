@@ -18,7 +18,6 @@
 accept/egress 를 호출하거나 raw `DEALER`·`ROUTER`·`PUB` socket 을 `SpotNode` 에 붙일 필요가 없다.
 
 단, 자동으로 깔리는 것은 transport(소켓 배선)까지다. "이 `spotRid` 를 가진 room 이 지금 어느 노드에
-있나"를 찾아 주는 일은 **별도 스위치**가 필요하다 — SpotMesh 에 `UseRegistrySpotResolver()` 를 켜면
 framework 가 registry 를 통해 `spotRid → 소유 노드 주소`를 resolve 한다. 이걸 빼면 같은 프로세스의
 local bridge 가 가진 spot 으로는 fallback 으로 닿지만, **다른 노드가 소유한 spot 까지는 라우팅하지
 못한다.** 그래서 spot 을 여러 노드에 분산하는 배포에서는 사실상 필수이고, 아래 §2·§5 의 spot 호스팅
@@ -85,11 +84,9 @@ discovery 기반 mesh 로 묶는 형태가 표준이다.
 ```csharp
 builder.Services.AddZLinkFramework(options =>
 {
-    options.UseDiscovery().AddRegistryEndpoint("tcp://registry1:5551"); // 자동 연결에 쓸 Registry 는 options 에 한 번 등록한다.
     var mesh = options.AddSpotMesh("game.stage");
     // 외부→spot send/request 를 받을 노드라면 resolver 를 켠다: spotRid 로 소유 노드를
     // registry 에서 찾아 준다(이 mesh 이름을 namespace 로 사용). 빼면 외부→spot 가 안 닿는다.
-    mesh.UseRegistrySpotResolver();
     // 같은 channel("game.stage") 노드끼리 자동 연결되는 핵심: root discovery 로 등록한
     // registry 에 자기 router/pub-sub bind endpoint 를 등록하고, registry 가
     // 알려준 peer 들과 router↔router·pub/sub mesh 를 알아서 배선한다. 그래서 별도
@@ -128,7 +125,6 @@ node 역할은 서로 독립이다.
 | `AddEntrySpot<TEntrySpot>()` | Entry Spot handler registry 부착(actor 사용 시, [actor spec](../spec/aspnet-core-actor.ko.md)) |
 
 > **node 함수 vs mesh 함수.** 위 표의 함수들은 노드 한 대의 소켓·타입을 켠다. 반면
-> `UseRegistrySpotResolver()` 는 `AddSpotMesh(...)` 가 돌려주는 **mesh 빌더**에 거는 mesh 수준
 > 함수다. 이 함수는 외부에서 `spotRid` 로 들어온 메시지를 받을 때, 그 spotRid 의 소유 노드를
 > registry 로 찾도록 켠다. spot 을 여러 노드에 분산해 외부→spot 을 받는 노드라면 켠다. 같은
 > resolver 를 두 번 등록하면 시작 예외다.
@@ -218,7 +214,6 @@ flowchart LR
 **자동 연결 vs 수동 연결.** `EnableRouter`/`EnablePubSub` 는 *이 노드의 소켓을 여는 것*까지다. 그
 소켓이 **같은 channel 의 다른 노드와 어떻게 이어지는지**는 두 방식이 있다.
 
-- **자동(discovery — 표준).** `UseDiscovery().AddRegistryEndpoint(...)` 가 있으면 각 노드가 자기
   router/pub bind endpoint 를 registry 에 등록하고, registry 가 알려준 같은 channel peer 들과
   router↔router·sub↔pub 를 **런타임이 알아서 잇는다.** connect 코드가 없다.
 - **수동(discovery 없이 직접 지정).** peer 주소를 코드로 박는다. 내 router 가 어느 peer router 로
@@ -229,7 +224,6 @@ flowchart LR
 ```csharp
 // (A) 자동 — discovery 가 peer 를 찾아 mesh 를 잇는다 (connect 코드 없음)
 var node = options.AddSpotMesh("game.stage");
-node.UseDiscovery().AddRegistryEndpoint("tcp://registry1:5551");
 node.EnableRouter("tcp://0.0.0.0:9001");   // 내 router 소켓을 이 endpoint 에 bind
 node.EnablePubSub("tcp://0.0.0.0:9000");   // 내 pub/sub 소켓을 이 endpoint 에 bind
 
@@ -275,7 +269,6 @@ flowchart LR
 
 spot↔spot·actor 까지 포함한 전체 연결·handler·배선 표는 **§5 「한눈에 보기」**에서 한 번에 본다. 여기 §2 그림은 "함수가 켜는 SpotNode 소켓 ↔ channel" 한 축만 떼어 본 것이다.
 
-> top-level `UseDiscovery().AddRegistryEndpoint(...)` 를 등록하면 `AddSpotMesh` 는 그 discovery endpoint 를
 > 기본으로 사용한다. mesh 단위로 다른 endpoint 를 따로 지정하지 않는다. 단일 노드만 띄우는 local 테스트도 `AddSpotMesh(...)`가 반환한
 > builder 에 router, pub/sub, factory 를 바로 설정한다.
 
@@ -761,7 +754,6 @@ flowchart LR
 | 종류 | spot 안에서 (`Outbound`) | spot 밖에서 (주입 client) | 받는 handler (§3 등록) | 연결 배선 |
 |------|---------------------------|----------------------------|------------------------|-----------|
 | topic | `Publish(topic, …)` | `IZLinkSpotPublisherClient.PublishSpot(mesh, topic, …)` | `AddSubscribe<T>(topic)` → `IZLinkSpotSubscriptionHandler` | 같은 SpotMesh pub colocation → **자동** (보내는 쪽 SpotMesh + `EnablePubSub`) |
-| spot packet | `SendToSpot / RequestToSpot(spotRid, …)` | `IZLinkRouteClient.Send / Request(routeMesh, spotRid, …)` | `AddPacket<T>` → `IZLinkSpotPacketHandler` · `IZLinkSpotRequestHandler` | spot↔spot: 양쪽 `EnableRouter` + discovery(자동)<br>외부→spot: RouteMesh channel + SpotNode colocation(transport 자동) + 받는 SpotMesh 에 **`UseRegistrySpotResolver()`**(spotRid→노드 resolve) |
 | actor packet | — | session `actorRef.RelayAsync(…)` | `AddActorPacket<T, TActor>` → `IZLinkSpotActorSendHandler` · `IZLinkSpotActorRequestHandler` | STREAM gateway 자동(같은 프로세스 SpotNode) + `EnableRouter` + `AddEntrySpot` + `AddActorFactory` |
 | 일반 channel | `SendToChannel / RequestToChannel(name, …)` | (그 channel 의 handler, [04](04-channel-messaging.ko.md)) | 그 channel 의 handler | `AddClientServerChannel(name).EnableClient()` ↔ 그 channel server |
 
@@ -967,8 +959,6 @@ builder.Services.AddZLinkFramework(options =>
     options.AddRouteMesh("api").EnableServer("tcp://0.0.0.0:9201");  // spot packet — 외부→spot 자동 bridge
 
     var node = options.AddSpotMesh("game.stage");
-    node.UseRegistrySpotResolver();                         // 외부→spot: spotRid → 소유 노드 resolve (필수)
-    node.UseDiscovery().AddRegistryEndpoint("tcp://registry1:5551");
     node.EnableRouter("tcp://0.0.0.0:9001");                // spot↔spot · actor packet
     node.EnablePubSub("tcp://0.0.0.0:9000");                // topic publish/subscribe
     node.AddEntrySpot<StageEntrySpot>();                    // actor packet — entry spot
@@ -981,7 +971,6 @@ builder.Services.AddZLinkFramework(options =>
 ```csharp
 builder.Services.AddZLinkFramework(options =>
 {
-    options.UseDiscovery().AddRegistryEndpoint("tcp://registry1:5551");
 
     // spot packet — RouteMesh "api" 로 routeClient.Request. target 노드는 spotRid 로 resolve
     options.AddRouteMesh("api").EnableClient("tcp://play-node-1:9201");
@@ -1016,7 +1005,6 @@ membership 정책, broadcast 정책, 입장/권한, `stageId -> 주소` 조회�
 - **`Publish` 가 안 된다** → 노드에 `EnablePubSub(endpoint)` 가 없다.
 - **외부→spot route 가 안 닿는다** → 세 가지를 확인한다. (1) 받는 프로세스에서 `AddRouteMesh(name)` 가
   `SpotNode` 와 같은 프로세스에 있는지(자동 bridge 조건), (2) 보내는 쪽이 같은 RouteMesh channel 이름을
-  쓰는지, (3) 받는 SpotMesh 에 `UseRegistrySpotResolver()` 가 켜져 있는지. 특히 (3)이 빠지면 다른
   노드가 소유한 spotRid 를 registry 에서 못 찾아, 같은 프로세스에 없는 spot 으로는 메시지가 닿지 않는다.
 - **Spot factory 타입 중복** → 같은 `SpotNode` 안에서 같은 타입을 두 번 등록하면 시작 예외.
 - **`AddSpotMesh` 가 시작 예외** → 같은 channel 이름으로 두 번 등록했다. 한 프로세스에 여러

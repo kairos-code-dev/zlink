@@ -9,7 +9,6 @@
 #include "../Sockets/socket_contracts.hpp"
 #include "../Sockets/results.hpp"
 #include "actor_models.hpp"
-#include "discovery.hpp"
 #include "spot_node_models.hpp"
 
 #include <chrono>
@@ -100,8 +99,6 @@ class spot_node_t
     void disconnect_peer (const std::string &endpoint_);
 
     void disconnect_peer_rid (const routing_id_t &target_node_rid_);
-
-    void attach_discovery (discovery_t &discovery_);
 
     void set_routing_id (const routing_id_t &routing_id_);
 

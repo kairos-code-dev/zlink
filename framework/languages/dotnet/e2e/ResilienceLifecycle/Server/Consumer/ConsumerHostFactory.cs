@@ -29,7 +29,6 @@ internal static class ConsumerHostFactory
         builder.WebHost.UseUrls(options.HttpUrl);
         builder.Services.AddZLinkFramework(framework =>
         {
-            framework.UseDiscovery().AddRegistryEndpoint(options.RegistryRouterEndpoint);
             framework.ConfigureDispatch()
                 .MessageFlow(ZLinkMessageFlowLogMode.KeyTransitions)
                 .TraceLogFile(Path.Combine(options.LogDir, "consumer-flow.log"))
@@ -114,7 +113,6 @@ internal static class ConsumerHostFactory
             {
                 services.AddZLinkFramework(framework =>
                 {
-                    framework.UseDiscovery().AddRegistryEndpoint(options.RegistryRouterEndpoint);
                     framework.ConfigureDispatch()
                         .MessageFlow(ZLinkMessageFlowLogMode.KeyTransitions)
                         .TraceLogFile(Path.Combine(options.LogDir, $"{traceLabel}-flow.log"))

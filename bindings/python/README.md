@@ -56,7 +56,6 @@ methods:
 - `XPubSocket`
 - `XSubSocket`
 - `SpotNode` / `Spot`
-- `Registry` / `Discovery` / `RegistryQueryClient`
 
 Examples of policy-enforced capability boundaries:
 
@@ -76,10 +75,6 @@ Examples of policy-enforced capability boundaries:
   `set_subscription`, `unset_subscription`, `on_send_ready`,
   `reply_to_spot`, `reply_to_router`, `recv_routed_into`,
   `recv_actor_lifecycle`, and `on_dispatch_event`, but not direct `recv` / `send`
-- `attach_discovery()` is only available on the discovery-aware socket subset,
-  and after `attach_discovery` the native lifecycle contract blocks manual
-  `connect`, `disconnect`, `unbind`, and `close`
-
 Common hot-path helpers are value-typed:
 
 - `Message`
@@ -102,16 +97,6 @@ Common hot-path helpers are value-typed:
 - `Stopwatch`
 - `Thread`
 - `AtomicCounter`
-
-Service and topology helpers are also surfaced as domain objects:
-
-- `ServiceEvent`
-- `MemberPeerEntry`
-- `RegistryStatus`
-- `RegistryTopologyEntry`
-- `RegistryServiceSummaryEntry`
-- `RegistryTopologyFilter`
-- `RegistryServiceSummaryFilter`
 
 `TopicMessage` and `SubscriptionEvent` carry `channel_name` for service-aware
 SPOT flows. Raw `SUB` / `XSUB` results leave that field empty.

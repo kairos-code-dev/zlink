@@ -42,8 +42,6 @@ class ctx_t;
 class msg_t;
 class pipe_t;
 class io_thread_t;
-class discovery_t;
-class socket_discovery_attachment_t;
 class socket_base_t;
 
 namespace socket_reqrep_internal
@@ -122,7 +120,6 @@ class socket_base_t : public own_t,
     int get_events_internal (int events_, uint32_t *out_);
     void set_all_pipes_nodelay ();
     int bind (const char *endpoint_uri_);
-    int attach_discovery (discovery_t *discovery_);
     int connect (const char *endpoint_uri_);
     int term_endpoint (const char *endpoint_uri_);
     int term_peer_rid (const zlink_routing_id_t *peer_rid_);
@@ -578,7 +575,6 @@ class socket_base_t : public own_t,
     alignas (64) std::atomic<uint64_t> _auto_hwm_send_attempts;
     alignas (64) std::atomic<uint64_t> _auto_hwm_send_blocked_attempts;
     uint32_t _local_peer_weight;
-    socket_discovery_attachment_t *_service_attachment;
     std::string _channel_name;
     bool _channel_name_locked;
 

@@ -66,8 +66,6 @@ builder.Services.AddZLinkFramework(options =>
 
     }
 
-        options.UseDiscovery().AddRegistryEndpoint("tcp://registry1:5551");
-        options.UseDiscovery().AddRegistryEndpoint("tcp://registry2:5551");
 });
 ```
 
@@ -128,7 +126,6 @@ builder.Services.AddZLinkFramework(options =>
 
     }
 
-        options.UseDiscovery().AddRegistryEndpoint("tcp://registry1:5551");
 
     {
         var channel =     options.AddClientServerChannel("account");
@@ -203,7 +200,6 @@ builder.Services.AddZLinkFramework(options =>
         .EnableClient("tcp://10.0.10.15:7101")
         .EnableClient("tcp://10.0.10.16:7101");
 
-    options.UseDiscovery().AddRegistryEndpoint("tcp://registry1:5551");
 });
 ```
 
@@ -229,7 +225,6 @@ builder.Services.AddZLinkFramework(options =>
 
     }
 
-        options.UseDiscovery().AddRegistryEndpoint("tcp://registry1:5551");
 });
 ```
 
@@ -251,7 +246,6 @@ builder.Services.AddZLinkFramework(options =>
 
     }
 
-        options.UseDiscovery().AddRegistryEndpoint("tcp://registry1:5551");
 });
 
 var app = builder.Build();
@@ -327,8 +321,6 @@ builder.Services.AddZLinkFramework(options =>
 
     }
 
-        options.UseDiscovery().AddRegistryEndpoint("tcp://registry1:5551");
-        options.UseDiscovery().AddRegistryEndpoint("tcp://registry2:5551");
     // Handler type을 DI에 등록하고 attribute scan 후보를 발견한다.
     // 실제 노출 channel은 위의 AddHandlerGroup(...) 호출이 정한다.
     options.AddHandlersFromAssemblyOf<Program>();

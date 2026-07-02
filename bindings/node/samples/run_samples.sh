@@ -12,7 +12,6 @@ samples=(
   "dist-tools/samples/pair_recv_sample.js"
   "dist-tools/samples/pubsub_recv_sample.js"
   "dist-tools/samples/dealer_router_recv_sample.js"
-  "dist-tools/samples/spot_recv_sample.js"
   "dist-tools/samples/spot_request_sample.js"
   "dist-tools/samples/spot_channel_example.js"
   "dist-tools/samples/spot_pubsub_example.js"
@@ -27,8 +26,6 @@ samples=(
   "dist-tools/samples/actor_room_example.js"
   "dist-tools/samples/actor_sequential_example.js"
   "dist-tools/samples/monitor_recv_sample.js"
-  "dist-tools/samples/discovery_registry_sample.js"
-  "dist-tools/samples/registry_query_sample.js"
 )
 
 passed=0

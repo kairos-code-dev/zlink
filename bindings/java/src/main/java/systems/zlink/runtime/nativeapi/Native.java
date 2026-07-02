@@ -73,12 +73,7 @@ public final class Native {
     private static final MethodHandle MH_DISCONNECT = downcall("zlink_disconnect",
             FunctionDescriptor.of(ValueLayout.JAVA_INT, ValueLayout.ADDRESS, ValueLayout.ADDRESS));
     private static final MethodHandle MH_DISCONNECT_RID = downcall("zlink_disconnect_rid",
-            FunctionDescriptor.of(ValueLayout.JAVA_INT, ValueLayout.ADDRESS, ValueLayout.ADDRESS));
-    private static final MethodHandle MH_SOCKET_ATTACH_DISCOVERY = downcall(
-            "zlink_socket_attach_discovery",
-            FunctionDescriptor.of(ValueLayout.JAVA_INT, ValueLayout.ADDRESS,
-                    ValueLayout.ADDRESS));
-    private static final MethodHandle MH_SOCKET_SET_CHANNEL_NAME = downcall(
+            FunctionDescriptor.of(ValueLayout.JAVA_INT, ValueLayout.ADDRESS, ValueLayout.ADDRESS));    private static final MethodHandle MH_SOCKET_SET_CHANNEL_NAME = downcall(
             "zlink_socket_set_channel_name",
             FunctionDescriptor.of(ValueLayout.JAVA_INT, ValueLayout.ADDRESS,
                     ValueLayout.ADDRESS));
@@ -638,17 +633,6 @@ public final class Native {
             return (int) MH_DISCONNECT_RID.invokeExact(socket, peerRid);
         } catch (Throwable t) {
             throw new RuntimeException("zlink_disconnect_rid failed", t);
-        }
-    }
-
-    public static int socketAttachDiscovery(MemorySegment socket,
-                                            MemorySegment discovery) {
-        try {
-            return (int) MH_SOCKET_ATTACH_DISCOVERY.invokeExact(socket,
-                discovery);
-        } catch (Throwable t) {
-            throw new RuntimeException("zlink_socket_attach_discovery failed",
-              t);
         }
     }
 
@@ -1934,158 +1918,6 @@ public final class Native {
         return NativePollerSymbols.pollerWait(poller, event, timeoutMs);
     }
 
-    public static MemorySegment registryNew(MemorySegment ctx) {
-        return NativeRegistrySymbols.registryNew(ctx);
-    }
-
-    public static int registryBind(MemorySegment reg, MemorySegment pub,
-                                   MemorySegment router) {
-        return NativeRegistrySymbols.registryBind(reg, pub, router);
-    }
-
-    public static int registrySetOption(MemorySegment reg, int option, int value) {
-        return NativeRegistrySymbols.registrySetOption(reg, option, value);
-    }
-
-    public static int registryGetOption(MemorySegment reg, int option,
-                                        MemorySegment valueOut,
-                                        MemorySegment errorOut) {
-        return NativeRegistrySymbols.registryGetOption(reg, option, valueOut,
-            errorOut);
-    }
-
-    public static int registryAddPeer(MemorySegment reg, MemorySegment peer) {
-        return NativeRegistrySymbols.registryAddPeer(reg, peer);
-    }
-
-    public static int registryDestroy(MemorySegment regPtr) {
-        return NativeRegistrySymbols.registryDestroy(regPtr);
-    }
-
-    public static int registryStatus(MemorySegment registry,
-                                             MemorySegment out) {
-        return NativeRegistrySymbols.registryStatus(registry, out);
-    }
-
-    public static int registryServiceSummary(MemorySegment registry,
-                                                     MemorySegment filter,
-                                                     MemorySegment entries,
-                                                     MemorySegment count) {
-        return NativeRegistrySymbols.registryServiceSummary(registry, filter,
-            entries, count);
-    }
-
-    public static int registryMemberPeers(MemorySegment registry,
-                                          MemorySegment channelName,
-                                          MemorySegment entries,
-                                          MemorySegment count) {
-        return NativeRegistrySymbols.registryMemberPeers(registry, channelName,
-            entries, count);
-    }
-
-    public static int registryTopology(MemorySegment registry,
-                                               MemorySegment entries,
-                                               MemorySegment count) {
-        return NativeRegistrySymbols.registryTopology(registry, entries, count);
-    }
-
-    public static int registryTopology(MemorySegment registry,
-                                       MemorySegment filter,
-                                       MemorySegment entries,
-                                       MemorySegment count) {
-        return NativeRegistrySymbols.registryTopology(registry, filter, entries,
-            count);
-    }
-
-    public static MemorySegment registryQueryClientNew(MemorySegment ctx) {
-        return NativeRegistrySymbols.registryQueryClientNew(ctx);
-    }
-
-    public static int registryQueryClientConnect(MemorySegment client,
-                                                 MemorySegment endpoint) {
-        return NativeRegistrySymbols.registryQueryClientConnect(client,
-            endpoint);
-    }
-
-    public static int registryQuerySnapshot(MemorySegment client,
-                                            MemorySegment filter,
-                                            MemorySegment entries,
-                                            MemorySegment count) {
-        return NativeRegistrySymbols.registryQuerySnapshot(client, filter,
-            entries, count);
-    }
-
-    public static int registryQueryDestroy(MemorySegment clientPtr) {
-        return NativeRegistrySymbols.registryQueryDestroy(clientPtr);
-    }
-
-    public static MemorySegment discoveryNewFixed(MemorySegment ctx,
-                                                  int autoConnectType,
-                                                  MemorySegment channelName) {
-        return NativeDiscoverySymbols.discoveryNewFixed(ctx, autoConnectType,
-            channelName);
-    }
-
-    public static int discoveryConnectRegistry(MemorySegment disc, MemorySegment pub) {
-        return NativeDiscoverySymbols.discoveryConnectRegistry(disc, pub);
-    }
-
-    public static int discoveryResolveSpot(MemorySegment discovery,
-                                           MemorySegment spotRid,
-                                           MemorySegment routeOut) {
-        return NativeDiscoverySymbols.discoveryResolveSpot(discovery, spotRid,
-            routeOut);
-    }
-
-    public static int discoveryResolveActor(MemorySegment discovery,
-                                            MemorySegment actorId,
-                                            MemorySegment routeOut) {
-        return NativeDiscoverySymbols.discoveryResolveActor(discovery, actorId,
-            routeOut);
-    }
-
-    public static int discoveryBindRoute(MemorySegment discovery, int kind,
-                                         MemorySegment key, long keySize,
-                                         MemorySegment value,
-                                         long valueSize) {
-        return NativeDiscoverySymbols.discoveryBindRoute(discovery, kind, key,
-            keySize, value, valueSize);
-    }
-
-    public static int discoveryUnbindRoute(MemorySegment discovery, int kind,
-                                           MemorySegment key, long keySize) {
-        return NativeDiscoverySymbols.discoveryUnbindRoute(discovery, kind, key,
-            keySize);
-    }
-
-    public static int discoveryResolveRoute(MemorySegment discovery, int kind,
-                                            MemorySegment key, long keySize,
-                                            MemorySegment ownerRoutingIdOut,
-                                            MemorySegment valueOut) {
-        return NativeDiscoverySymbols.discoveryResolveRoute(discovery, kind,
-            key, keySize, ownerRoutingIdOut, valueOut);
-    }
-
-    public static int discoverySetValue(MemorySegment disc, long value) {
-        return NativeDiscoverySymbols.discoverySetValue(disc, value);
-    }
-
-    public static int discoveryGetValue(MemorySegment disc,
-                                        MemorySegment valueOut) {
-        return NativeDiscoverySymbols.discoveryGetValue(disc, valueOut);
-    }
-
-    public static int discoveryDestroy(MemorySegment discPtr) {
-        return NativeDiscoverySymbols.discoveryDestroy(discPtr);
-    }
-
-    public static int discoveryMemberPeers(MemorySegment discovery,
-                                           MemorySegment entries,
-                                           MemorySegment count) {
-        return NativeDiscoverySymbols.discoveryMemberPeers(discovery, entries,
-            count);
-    }
-
     public static MemorySegment spotNodeNew(MemorySegment ctx) {
         return spotNodeNew(ctx, MemorySegment.NULL);
     }
@@ -2451,17 +2283,6 @@ public final class Native {
         }
     }
 
-    public static int spotNodeSetDiscovery(MemorySegment node,
-                                           MemorySegment disc,
-                                           MemorySegment service) {
-        try {
-            return (int) NativeSpotSymbols.MH_SPOT_NODE_SET_DISC.invokeExact(node, disc, service);
-        } catch (Throwable t) {
-            throw new RuntimeException("zlink_spot_node_set_discovery failed",
-              t);
-        }
-    }
-
     public static int spotNodeSetTlsServer(MemorySegment node,
                                            MemorySegment cert,
                                            MemorySegment key) {
@@ -2482,17 +2303,6 @@ public final class Native {
               trust);
         } catch (Throwable t) {
             throw new RuntimeException("zlink_spot_node_set_tls_client failed",
-              t);
-        }
-    }
-
-    public static int spotNodeAttachDiscovery(MemorySegment node,
-                                              MemorySegment discovery) {
-        try {
-            return (int) NativeSpotSymbols.MH_SPOT_NODE_ATTACH_DISCOVERY.invokeExact(node,
-              discovery);
-        } catch (Throwable t) {
-            throw new RuntimeException("zlink_spot_node_attach_discovery failed",
               t);
         }
     }

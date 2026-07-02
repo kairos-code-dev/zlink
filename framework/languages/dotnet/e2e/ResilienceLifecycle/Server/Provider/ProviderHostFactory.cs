@@ -26,8 +26,6 @@ internal static class ProviderHostFactory
 
         builder.Services.AddZLinkFramework(framework =>
         {
-            framework.UseDiscovery()
-                .AddRegistryEndpoint(Require(options.RegistryRouterEndpoint, "--registry-router-endpoint"));
             framework.ConfigureDispatch()
                 .SetMessageFlowObserver<EvidenceDispatchErrorObserver>()
                 .MessageFlow(ZLinkMessageFlowLogMode.KeyTransitions)

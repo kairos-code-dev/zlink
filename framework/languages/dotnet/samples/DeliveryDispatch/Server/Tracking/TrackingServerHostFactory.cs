@@ -26,7 +26,6 @@ public static class TrackingServerHostFactory
                 .TraceLogFile(SampleFlowLog.Path("tracking"))
                 .TraceLabel("tracking");
             options.AddHandlersFromAssemblyOf(typeof(DeliveryStatusChangedHandler));
-            options.UseDiscovery().AddRegistryEndpoint(topology.RegistryRouterEndpoint);
             options.AddClientServerChannel(SampleNames.TrackingRouteChannel)
                 .EnableServer(topology.TrackingRouteEndpoint)
                 .SetRoutingId(RoutingId.From("delivery-tracking-server"))

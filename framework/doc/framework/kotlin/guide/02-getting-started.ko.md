@@ -24,7 +24,6 @@ framework는 Spring Boot host lifetime 안에서 시작하고 종료한다. appl
 `@EnableZLinkFramework`와 `ZLinkFrameworkConfigurer` bean으로 channel, handler,
 Spot, stream 구성을 넘긴다. runtime을 직접 만들거나 `start` 함수로 시작하는 방법은
 public contract로 노출하지 않는다. 애플리케이션 코드는 `ZLinkClient`,
-`ZLinkRouteClient`, `ZLinkSpotManager`, `ZLinkRegistryQuery`처럼 Spring bean으로
 등록되는 public contract만 주입받는다.
 
 ### coroutine handler 켜기

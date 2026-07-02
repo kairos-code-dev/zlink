@@ -3,7 +3,6 @@
 #include "addon_exports.h"
 
 #include "addon_core_api.h"
-#include "addon_discovery_api.h"
 #include "addon_spot_api.h"
 
 #define ZLINK_METHOD(js_name, native_fn)                                                           \
@@ -42,7 +41,6 @@ void define_core_exports (napi_env env, napi_value exports)
       ZLINK_METHOD ("socketDisconnectRid", socket_disconnect_rid),
       ZLINK_METHOD ("socketSetTlsServer", socket_set_tls_server),
       ZLINK_METHOD ("socketSetTlsClient", socket_set_tls_client),
-      ZLINK_METHOD ("socketAttachDiscovery", socket_attach_discovery),
       ZLINK_METHOD ("socketSend", socket_send),
       ZLINK_METHOD ("socketSendParts", socket_send_parts),
       ZLINK_METHOD ("socketPublish", socket_publish),
@@ -130,42 +128,6 @@ void define_core_exports (napi_env env, napi_value exports)
     define_exports (env, exports, descs, sizeof (descs) / sizeof (*descs));
 }
 
-void define_discovery_exports (napi_env env, napi_value exports)
-{
-    napi_property_descriptor descs[] = {
-      ZLINK_METHOD ("registryNew", registry_new),
-      ZLINK_METHOD ("registrySetEndpoints", registry_set_endpoints),
-      ZLINK_METHOD ("registrySetId", registry_set_id),
-      ZLINK_METHOD ("registryAddPeer", registry_add_peer),
-      ZLINK_METHOD ("registrySetHeartbeat", registry_set_heartbeat),
-      ZLINK_METHOD ("registrySetBroadcastInterval", registry_set_broadcast),
-      ZLINK_METHOD ("registrySetTlsServer", registry_set_tls_server),
-      ZLINK_METHOD ("registrySetTlsClient", registry_set_tls_client),
-      ZLINK_METHOD ("registryStatus", registry_status),
-      ZLINK_METHOD ("registryServiceSummary", registry_service_summary),
-      ZLINK_METHOD ("registryTopology", registry_topology),
-      ZLINK_METHOD ("registryMemberPeers", registry_member_peers),
-      ZLINK_METHOD ("registryQueryClientNew", registry_query_client_new),
-      ZLINK_METHOD ("registryQueryClientConnect", registry_query_client_connect),
-      ZLINK_METHOD ("registryQueryTopology", registry_query_topology),
-      ZLINK_METHOD ("registryQueryDestroy", registry_query_destroy),
-      ZLINK_METHOD ("registryDestroy", registry_destroy),
-      ZLINK_METHOD ("discoveryNew", discovery_new),
-      ZLINK_METHOD ("discoveryConnectRegistry", discovery_connect),
-      ZLINK_METHOD ("discoveryGetProviders", discovery_get_providers),
-      ZLINK_METHOD ("discoverySetValue", discovery_set_value),
-      ZLINK_METHOD ("discoveryGetValue", discovery_get_value),
-      ZLINK_METHOD ("discoveryResolveSpot", discovery_resolve_spot),
-      ZLINK_METHOD ("discoveryResolveActor", discovery_resolve_actor),
-      ZLINK_METHOD ("discoveryBindRoute", discovery_bind_route),
-      ZLINK_METHOD ("discoveryUnbindRoute", discovery_unbind_route),
-      ZLINK_METHOD ("discoveryResolveRoute", discovery_resolve_route),
-      ZLINK_METHOD ("discoverySetTlsClient", discovery_set_tls_client),
-      ZLINK_METHOD ("discoveryDestroy", discovery_destroy),
-    };
-    define_exports (env, exports, descs, sizeof (descs) / sizeof (*descs));
-}
-
 void define_spot_exports (napi_env env, napi_value exports)
 {
     napi_property_descriptor descs[] = {
@@ -179,7 +141,6 @@ void define_spot_exports (napi_env env, napi_value exports)
       ZLINK_METHOD ("spotNodeConnectPeerRidPub", spot_node_connect_peer_rid),
       ZLINK_METHOD ("spotNodeDisconnectPeerPub", spot_node_disconnect_peer),
       ZLINK_METHOD ("spotNodeDisconnectPeerRidPub", spot_node_disconnect_peer_rid),
-      ZLINK_METHOD ("spotNodeSetDiscovery", spot_node_set_discovery),
       ZLINK_METHOD ("spotRouteBridgeNew", spot_route_bridge_new),
       ZLINK_METHOD ("spotRouteBridgeClose", spot_route_bridge_close),
       ZLINK_METHOD ("spotRouteBridgeAttachRouterChannel",

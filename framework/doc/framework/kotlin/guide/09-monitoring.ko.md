@@ -58,11 +58,7 @@ fun monitoring(): ZLinkMonitoringOptionsCustomizer =
 
 ```kotlin
 @Component
-class RegistryMonitor : ZLinkRuntimeEventHandler<ZLinkRegistryEvent> {
-    override fun handle(event: ZLinkRegistryEvent) {
         when (event.event()) {
-            ZLinkRegistryEventKind.STATUS_CHANGED -> { /* event.status() 관찰 */ }
-            ZLinkRegistryEventKind.TOPOLOGY_CHANGED -> { /* event.topology() 관찰 */ }
             else -> {}
         }
     }

@@ -1,10 +1,9 @@
 //! Service surface tests - verify channel/query/introspection APIs exist.
 
 use zlink::{
-    ActorReceived, AutoConnectType, Context, Discovery, Message, POLLIN, POLLOUT, PairSocket,
-    PollEvent, PollSourceKind, Poller, Received, RecvFlags, Registry, RegistryQueryClient,
-    RouteKind, RoutingId, SendFlags, SocketMonitor, Spot, SpotDispatchInfo, SpotNode,
-    SubscriptionEvent, Timer,
+    ActorReceived, Context, Message, POLLIN, POLLOUT, PairSocket, PollEvent, PollSourceKind,
+    Poller, Received, RecvFlags, RoutingId, SendFlags, SocketMonitor, Spot, SpotDispatchInfo,
+    SpotNode, SubscriptionEvent, Timer,
 };
 
 fn reserve_tcp_port() -> u16 {
@@ -12,13 +11,6 @@ fn reserve_tcp_port() -> u16 {
     let port = listener.local_addr().unwrap().port();
     drop(listener);
     port
-}
-
-#[test]
-fn discovery_member_surfaces_exist() {
-    let ctx = Context::new().unwrap();
-    let discovery = Discovery::new(&ctx, AutoConnectType::ClientServer, "svc").unwrap();
-    let _ = discovery.member_peers().unwrap();
 }
 
 #[test]
@@ -101,83 +93,11 @@ fn spot_callback_surfaces_exist() {
 #[test]
 fn service_close_surfaces_exist() {
     let ctx = Context::new().unwrap();
-    let mut discovery = Discovery::new(&ctx, AutoConnectType::SpotMesh, "svc-close").unwrap();
     let mut node = SpotNode::new(&ctx).unwrap();
     let mut spot = node.create_spot().unwrap();
-    let mut registry = Registry::new(&ctx).unwrap();
-    let mut query = RegistryQueryClient::new(&ctx).unwrap();
 
     spot.close().unwrap();
     node.close().unwrap();
-    discovery.close().unwrap();
-    registry.close().unwrap();
-    query.close().unwrap();
-}
-
-#[test]
-fn socket_attach_discovery_blocks_manual_connect_and_close() {
-    let ctx = Context::new().unwrap();
-    let discovery = Discovery::new(&ctx, AutoConnectType::ClientServer, "svc-attach").unwrap();
-    let mut dealer = ctx.dealer_socket().unwrap();
-
-    dealer.attach_discovery(&discovery).unwrap();
-    assert!(dealer.connect("tcp://127.0.0.1:1").is_err());
-    assert!(dealer.disconnect("tcp://127.0.0.1:1").is_err());
-    assert!(dealer.unbind("tcp://127.0.0.1:1").is_err());
-    assert!(dealer.close().is_err());
-}
-
-#[test]
-fn discovery_close_terminates_attached_socket_lifecycle() {
-    let ctx = Context::new().unwrap();
-    let mut discovery =
-        Discovery::new(&ctx, AutoConnectType::ClientServer, "svc-attach-close").unwrap();
-    let dealer = ctx.dealer_socket().unwrap();
-    dealer.attach_discovery(&discovery).unwrap();
-    discovery.close().unwrap();
-    assert!(dealer.connect("tcp://127.0.0.1:1").is_err());
-}
-
-#[test]
-fn registry_snapshot_and_query_surfaces_exist() {
-    let ctx = Context::new().unwrap();
-    let registry = Registry::new(&ctx).unwrap();
-    let _ = registry.status().unwrap();
-    let _ = registry.service_summary().unwrap();
-    let _ = registry.topology().unwrap();
-    let _ = registry.set_tls_server("cert", "key", false);
-    let _ = registry.set_tls_client("ca", "localhost", true);
-}
-
-#[test]
-fn registry_query_client_surface_exists() {
-    let ctx = Context::new().unwrap();
-    let client = RegistryQueryClient::new(&ctx).unwrap();
-    let _ = client.topology(None);
-}
-
-#[test]
-fn discovery_tls_client_surface_exists() {
-    let ctx = Context::new().unwrap();
-    let discovery = Discovery::new(&ctx, AutoConnectType::SpotMesh, "svc-tls").unwrap();
-    let _ = discovery.set_tls_client("ca", "localhost", true);
-}
-
-#[test]
-fn discovery_resolve_spot_surface_exists() {
-    let ctx = Context::new().unwrap();
-    let discovery = Discovery::new(&ctx, AutoConnectType::SpotMesh, "svc-resolve").unwrap();
-    assert!(!discovery.spot_owner_sync_enabled().unwrap());
-    discovery.set_spot_owner_sync_enabled(true).unwrap();
-    assert!(discovery.spot_owner_sync_enabled().unwrap());
-    assert!(!discovery.actor_route_sync_enabled().unwrap());
-    discovery.set_actor_route_sync_enabled(true).unwrap();
-    assert!(discovery.actor_route_sync_enabled().unwrap());
-    let _ = discovery.resolve_spot(&RoutingId::from(b"spot-rid"));
-    let _ = discovery.resolve_actor("actor-rid");
-    let _ = discovery.bind_route(RouteKind::ActorSession, b"session", b"value");
-    let _ = discovery.unbind_route(RouteKind::ActorSession, b"session");
-    let _ = discovery.resolve_route(RouteKind::ActorSession, b"session");
 }
 
 #[test]

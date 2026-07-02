@@ -7,8 +7,6 @@
 #include <zlink/eventing/api.h>
 #include <zlink/message/api.h>
 #include <zlink/service/actor.h>
-#include <zlink/service/discovery.h>
-#include <zlink/service/registry.h>
 #include <zlink/service/spot.h>
 #include <zlink/socket/api.h>
 
@@ -31,8 +29,6 @@ void test_grouped_contract_headers_compile ()
     TEST_ASSERT_NOT_NULL (reinterpret_cast<void *> (&zlink_socket));
     TEST_ASSERT_NOT_NULL (reinterpret_cast<void *> (&zlink_socket_monitor_open));
     TEST_ASSERT_NOT_NULL (reinterpret_cast<void *> (&zlink_spot_node_new));
-    TEST_ASSERT_NOT_NULL (reinterpret_cast<void *> (&zlink_registry_new));
-    TEST_ASSERT_NOT_NULL (reinterpret_cast<void *> (&zlink_discovery_new));
     TEST_ASSERT_EQUAL_INT (ZLINK_ACTOR_ID_MAX, 256);
 }
 

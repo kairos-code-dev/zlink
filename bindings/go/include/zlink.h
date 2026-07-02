@@ -7,7 +7,7 @@
     zlink.h directly do not need to parse nested public headers. */
 #define ZLINK_VERSION_MAJOR 8
 #define ZLINK_VERSION_MINOR 4
-#define ZLINK_VERSION_PATCH 2
+#define ZLINK_VERSION_PATCH 3
 
 #define ZLINK_MAKE_VERSION(major, minor, patch) ((major) * 10000 + (minor) * 100 + (patch))
 #define ZLINK_VERSION                                                                              \
@@ -21,8 +21,6 @@
 #include <zlink/eventing/api.h>
 #include <zlink/service/spot.h>
 #include <zlink/service_common.h>
-#include <zlink/service/registry.h>
-#include <zlink/service/discovery.h>
 
 #undef ZLINK_EXPORT
 

@@ -1,6 +1,6 @@
 [package]
 name = "zlink"
-version = "8.4.2"
+version = "8.4.3"
 edition = "2024"
 rust-version = "1.85"
 description = "Rust bindings for the zlink messaging library"
@@ -64,24 +64,12 @@ name = "stream_packet_callback_sample"
 path = "samples/stream_packet_callback_sample.rs"
 
 [[example]]
-name = "spot_recv_sample"
-path = "samples/spot_recv_sample.rs"
-
-[[example]]
 name = "spot_request_callback_sample"
 path = "samples/spot_request_callback_sample.rs"
 
 [[example]]
 name = "monitor_recv_sample"
 path = "samples/monitor_recv_sample.rs"
-
-[[example]]
-name = "discovery_registry_sample"
-path = "samples/discovery_registry_sample.rs"
-
-[[example]]
-name = "registry_query_sample"
-path = "samples/registry_query_sample.rs"
 
 [[example]]
 name = "actor_room_server_sample"

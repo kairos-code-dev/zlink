@@ -323,12 +323,10 @@ socket은 물리적으로 inbound를 받을 수 있으므로, inbound 허용 여
 
 core는 `zlink_router_send_actor()` 같은 Actor direct ROUTER API를 제공하지
 않는다. Actor id에서 현재 위치를 찾아야 하는 호출자는 먼저 Discovery로
-`zlink_discovery_resolve_actor()`를 호출하고, 반환된 `route.actor.node_rid`와
 `route.current_spot_rid`를 기존 Spot routed API에 넘긴다.
 
 ```c
 zlink_actor_route_t route;
-if (zlink_discovery_resolve_actor(discovery, actor_id, &route)
     == ZLINK_CONFIG_OK) {
     zlink_router_send_spot(router,
                            &route.actor.node_rid,

@@ -8,7 +8,6 @@ import systems.zlink.contracts.errors.ZlinkException;
 import systems.zlink.contracts.errors.ConfigResult;
 import systems.zlink.contracts.core.Context;
 import systems.zlink.contracts.sockets.DealerSocket;
-import systems.zlink.contracts.service.discovery.Discovery;
 import systems.zlink.contracts.sockets.PubSocket;
 import systems.zlink.contracts.core.RoutingId;
 import systems.zlink.contracts.messaging.Message;
@@ -197,17 +196,6 @@ public final class NativeSpotNode implements SpotNode {
                 throw InternalAccess.zlinkExceptionFromLastError(
                   "zlink_spot_node_disconnect_peer_rid");
             }
-        }
-    }
-
-    /** Attaches a fixed-service discovery view to the node. */
-    public void attachDiscovery(Discovery discovery) {
-        Objects.requireNonNull(discovery, "discovery");
-        int rc = Native.spotNodeAttachDiscovery(handle,
-            InternalAccess.discoveryHandle(discovery));
-        if (rc != 0) {
-            throw InternalAccess.zlinkExceptionFromLastError(
-              "zlink_spot_node_attach_discovery");
         }
     }
 

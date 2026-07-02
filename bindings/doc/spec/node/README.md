@@ -299,7 +299,6 @@ roles before writing or exposing runtime classes:
   `StreamSocket`.
 - Eventing roles: `MonitorSocket`, `Poller`, poll event source, `Timer`,
   `Stopwatch`, and `AtomicCounter` when those resources are present.
-- Service roles: `Registry`, `RegistryQueryClient`, `Discovery`, `SpotNode`,
   `Spot`, and `Actor`.
 - Operation builders: send, routed send, request, reply, publish,
   channel send/request, SPOT send/request/reply, actor create, actor join, and
@@ -471,7 +470,6 @@ become a hidden aggregate and must be split into `socket_base.ts`,
 
 The following shapes are explicit alignment failures:
 
-- `runtime/service/service.ts` contains `Registry`, `RegistryQueryClient`,
   `Discovery`, `SpotNode`, `Spot`, and `Actor` implementations in one file,
   even if it also re-exports those implementations.
 - `runtime/eventing/eventing.ts` contains monitor socket, poll events, poller,
@@ -500,7 +498,6 @@ and public contract methods.
   `createRouterSocket()`, `createPubSocket()`, `createSubSocket()`,
   `createXPubSocket()`, `createXSubSocket()`, and `createStreamSocket()`
   create native-backed socket implementations.
-- `Context.createRegistry()`, `createDiscovery(...)`, and
   `createSpotNode(...)` create service-layer implementations.
 - `Spot` handles are obtained through `SpotNode.createSpot()`,
   `entrySpot()`, `getOrCreateSpot(...)`, or `spotLookup(...)`; direct `Spot`

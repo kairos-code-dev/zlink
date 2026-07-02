@@ -14,7 +14,6 @@ from ...messaging.request_reply import _ensure_reply_flags_supported, _timeout_t
 from ....contracts.core.options import AutoHwmProfile
 from ....contracts.sockets.codes import SocketType
 from ....contracts.service.codes import (
-    ServiceKind,
     SpotActorLifecycleEventKind,
     SpotDispatchEvent,
     SpotDispatchSubjectKind,

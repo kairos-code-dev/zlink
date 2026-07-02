@@ -130,14 +130,10 @@ export class PricingModule {}
 
 ### 2.2 Registry / Registry Query Client 모듈
 
-.NET 은 `AddZLinkFramework` 와 별개로 `AddZLinkRegistry`(embedded registry 구동)
-와 `AddZLinkRegistryQueryClient`(원격 registry 조회 전용 client)를 둔다. Node
 도 별도 module 로 매핑한다.
 
 | .NET 확장 메서드 | node module | 역할 |
 |------|------|------|
-| `services.AddZLinkRegistry(reg => ...)` | `ZLinkRegistryModule.forRoot(options)` / `forRootFactory(...)` | embedded Registry 를 bind·구동하고 `ZLINK_REGISTRY_QUERY` provider 노출 |
-| `services.AddZLinkRegistryQueryClient(c => ...)` | `ZLinkRegistryQueryClientModule.forRoot(options)` / `forRootFactory(...)` | 원격 Registry 에 connect 해 topology 조회만 하는 client(`ZLINK_REGISTRY_QUERY_CLIENT`) |
 | `services.AddZLinkMonitoring(m => ...)` | `ZLinkMonitoringOptions` + `ZLinkMonitoringModule.forRoot()` | runtime/registry/spot/socket 이벤트 source([nestjs-monitoring](nestjs-monitoring.ko.md)) |
 
 ```ts
@@ -161,7 +157,6 @@ export class RegistryModule {}
 // node — 원격 Registry 조회 전용 client
 @Module({
   imports: [
-    ZLinkRegistryQueryClientModule.forRoot({
       endpoint: 'tcp://registry-1.internal:7402',
     }),
   ],
@@ -376,7 +371,6 @@ framework 의 **유일한** backend 의존은 .NET
 | `ZLinkChannelBackendAdapter` | `IZLinkChannelBackendAdapter` | context/discovery + dealer/router/pub/sub socket 생성 | Context/Discovery/DealerSocket/RouterSocket/Pub/Sub |
 | `ZLinkSpotBackendAdapter` | `IZLinkSpotBackendAdapter` | `SpotNode` 생성 | SpotNode |
 | `ZLinkStreamBackendAdapter` | `IZLinkStreamBackendAdapter` | stream socket 생성 | StreamSocket |
-| `ZLinkRegistryBackendAdapter` | `IZLinkRegistryBackendAdapter` | `Registry` / `RegistryQueryClient` 생성 | Registry/RegistryQueryClient |
 | `ZLinkMonitoringBackendAdapter` | `IZLinkMonitoringBackendAdapter` | socket monitor 열기 | SocketMonitor |
 
 ### 5.3 `ZLinkBackendAdapterFactory`
@@ -390,7 +384,6 @@ interface ZLinkBackendAdapterFactory {
   createChannelAdapter(): ZLinkChannelBackendAdapter;
   createSpotAdapter(): ZLinkSpotBackendAdapter;
   createStreamAdapter(): ZLinkStreamBackendAdapter;
-  createRegistryAdapter(): ZLinkRegistryBackendAdapter;
   createMonitoringAdapter(): ZLinkMonitoringBackendAdapter;
 }
 ```
@@ -403,7 +396,6 @@ interface ZLinkBackendAdapterFactory {
 ```ts
 interface ZLinkChannelBackendAdapter {
   createContext(): ZLinkBackendContext;
-  createDiscovery(
     context: ZLinkBackendContext,
     autoConnectType: ZLinkAutoConnectType,
     channelName: string,
@@ -443,10 +435,7 @@ interface ZLinkStreamBackendAdapter {
 
 ```ts
 interface ZLinkRegistryBackendAdapter {
-  createRegistry(context: ZLinkBackendContext): ZLinkBackendRegistry;
-  createRegistryQueryClient(
     context: ZLinkBackendContext,
-  ): ZLinkBackendRegistryQueryClient;
 }
 ```
 
@@ -493,7 +482,6 @@ interface ZLinkBackendConnectableSocket extends ZLinkBackendSocket {
 }
 
 interface ZLinkBackendDealerSocket extends ZLinkBackendConnectableSocket {
-  attachDiscovery(discovery: ZLinkBackendDiscovery): void;
   onSendReady(handler: () => void): void;
   send(message: Message, flags: SendFlags): boolean;
   send(parts: readonly Message[], flags: SendFlags): boolean;
@@ -507,7 +495,6 @@ interface ZLinkBackendDealerSocket extends ZLinkBackendConnectableSocket {
 }
 
 interface ZLinkBackendRouterSocket extends ZLinkBackendConnectableSocket {
-  attachDiscovery(discovery: ZLinkBackendDiscovery): void;
   onSendReady(handler: () => void): void;
   setRoutingId(routingId: RoutingId): void;
   recv(flags?: RecvFlags): Received | undefined;
@@ -539,14 +526,12 @@ interface ZLinkBackendRouterSocket extends ZLinkBackendConnectableSocket {
 }
 
 interface ZLinkBackendPublisherSocket extends ZLinkBackendSocket {
-  attachDiscovery(discovery: ZLinkBackendDiscovery): void;
   onSendReady(handler: () => void): void;
   publish(topic: string, message: Message, flags: SendFlags): boolean;
   publish(topic: string, parts: readonly Message[], flags: SendFlags): boolean;
 }
 
 interface ZLinkBackendSubscriberSocket extends ZLinkBackendConnectableSocket {
-  attachDiscovery(discovery: ZLinkBackendDiscovery): void;
   setSubscription(topic: string): void;
   subscribe(result: TopicMessage, flags?: RecvFlags): boolean;
 }
@@ -591,7 +576,6 @@ interface ZLinkBackendSpotNode extends ZLinkBackendObject {
   setRoutingId(routingId: RoutingId): void;
   setRouterBind(endpoint: string): void;
   setPubBind(endpoint: string): void;
-  attachDiscovery(discovery: ZLinkBackendDiscovery): void;
   connectPeer(endpoint: string): void;
   disconnectPeer(endpoint: string): void;
   createRouteBridge(options?: ZLinkSpotRouteBridgeOptions): ZLinkBackendSpotRouteBridge;
@@ -685,7 +669,6 @@ interface ZLinkBackendRegistry extends ZLinkBackendObject {
   dispose(): Promise<void>;
 }
 
-interface ZLinkBackendRegistryQueryClient extends ZLinkBackendObject {
   connect(endpoint: string): void;
   topology(filter?: ZLinkRegistryTopologyFilter): readonly ZLinkRegistryTopologyEntry[];
   dispose(): Promise<void>;
@@ -709,7 +692,6 @@ interface ZLinkBackendRegistryQueryClient extends ZLinkBackendObject {
 | spot | `Spot` | `ZLinkBackendSpot` |
 | stream | `StreamSocket` | `ZLinkBackendStreamSocket` |
 | registry | `Registry` | `ZLinkBackendRegistry` |
-| registryQueryClient | `RegistryQueryClient` | `ZLinkBackendRegistryQueryClient` |
 | monitor | `SocketMonitor` | `ZLinkBackendSocketMonitor` |
 
 이 12개 wrapper + 5개 어댑터 + 1개 factory(`ZLinkNodeBackendAdapterFactory`)가

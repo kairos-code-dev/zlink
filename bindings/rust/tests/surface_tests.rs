@@ -6,9 +6,9 @@
 //! - Monitor canonical surface exists (recv)
 
 use zlink::{
-    AtomicCounter, AutoConnectType, Context, Discovery, Message, MonitorEvent, Received, RecvError,
-    RecvFlags, RidDuplicatePolicy, RoutingId, SendFlags, SendResult, SocketMonitor, SpotNode,
-    Stopwatch, StreamSocket, SubmitRetryMode, SubscriptionEvent, Thread, TopicMessage, XPubSocket,
+    AtomicCounter, Context, Message, MonitorEvent, Received, RecvError, RecvFlags,
+    RidDuplicatePolicy, RoutingId, SendFlags, SendResult, SocketMonitor, SpotNode, Stopwatch,
+    StreamSocket, SubmitRetryMode, SubscriptionEvent, Thread, TopicMessage, XPubSocket,
 };
 
 // ---------------------------------------------------------------------------
@@ -78,21 +78,6 @@ fn sub_socket_has_subscribe_no_send() {
     let mut message = TopicMessage::empty();
     let _ = sock.subscribe(&mut message, RecvFlags::DONT_WAIT);
     // No send on SubSocket – compile-time enforced
-}
-
-#[test]
-fn discovery_attach_surface_exists_on_supported_sockets() {
-    let ctx = Context::new().unwrap();
-    let discovery = Discovery::new(&ctx, AutoConnectType::ClientServer, "surface-svc").unwrap();
-    let dealer = ctx.dealer_socket().unwrap();
-    let router = ctx.router_socket().unwrap();
-    let pub_sock = ctx.pub_socket().unwrap();
-    let sub_sock = ctx.sub_socket().unwrap();
-
-    let _ = dealer.attach_discovery(&discovery);
-    let _ = router.attach_discovery(&discovery);
-    let _ = pub_sock.attach_discovery(&discovery);
-    let _ = sub_sock.attach_discovery(&discovery);
 }
 
 #[test]

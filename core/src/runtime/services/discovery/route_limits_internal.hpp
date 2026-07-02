@@ -3,7 +3,7 @@
 #ifndef __ZLINK_DISCOVERY_ROUTE_LIMITS_INTERNAL_HPP_INCLUDED__
 #define __ZLINK_DISCOVERY_ROUTE_LIMITS_INTERNAL_HPP_INCLUDED__
 
-#include <zlink/service/discovery.h>
+#include "services/discovery/discovery_registry_models_internal.hpp"
 
 #include <stddef.h>
 

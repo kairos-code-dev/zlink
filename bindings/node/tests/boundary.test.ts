@@ -4,8 +4,6 @@ const test = require('node:test');
 const assert = require('node:assert/strict');
 const zlink = require('@zlink-systems/zlink');
 
-const AUTO_CONNECT_SPOT_MESH = 5;
-
 test('routing id accepts 255-byte maximum and rejects overflow', () => {
   const ctx = zlink.createContext();
   const dealer = zlink.createDealerSocket(ctx);
@@ -37,27 +35,16 @@ test('routing id accepts 255-byte maximum and rejects overflow', () => {
 test('fixed-size c-string inputs reject embedded nulls and overflow', () => {
   const ctx = zlink.createContext();
   const pair = zlink.createPairSocket(ctx);
-  const registry = zlink.createRegistry(ctx);
-  const query = zlink.createRegistryQueryClient(ctx);
-  const discovery = zlink.createDiscovery(ctx, AUTO_CONNECT_SPOT_MESH, 'svc');
   const node = zlink.createSpotNode(ctx);
   const spot = node.createSpot();
-  const maxChannelName = 's'.repeat(255);
 
   assert.throws(() => pair.bind('tcp://127.0.0.1:5555\0bad'), /embedded null/);
   assert.throws(() => pair.unbind('x'.repeat(256)), /at most 255 bytes/);
-  assert.throws(() => registry.bind('x'.repeat(256), 'tcp://127.0.0.1:5556'), /255 bytes/);
-  assert.throws(() => query.connect('tcp://127.0.0.1:5556\0bad'), /embedded null/);
-  assert.throws(() => discovery.connectRegistry('x'.repeat(256)), /255 bytes/);
   assert.throws(() => node.setPubBind('tcp://127.0.0.1:5557\0bad'), /embedded null/);
   assert.throws(() => spot.setSubscription('topic\0bad'), /embedded null/);
-  assert.doesNotThrow(() => zlink.createDiscovery(ctx, AUTO_CONNECT_SPOT_MESH, maxChannelName).close());
 
   spot.close();
   node.close();
-  discovery.close();
-  query.close();
-  registry.close();
   pair.close();
   ctx.close();
 });

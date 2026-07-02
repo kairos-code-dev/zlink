@@ -42,7 +42,6 @@
         <Compile Include="Locations/LocationContracts.cs"/>
         <Compile Include="Handlers/HandlerContracts.cs"/>
         <Compile Include="Eventing/EventingContracts.cs"/>
-        <Compile Include="Registry/RegistryContracts.cs"/>
         <Compile Include="Spots/SpotContracts.cs"/>
         <Compile Include="Streams/StreamContracts.cs"/>
         <Compile Include="Support/ContractExampleAttribute.cs"/>

@@ -10,17 +10,6 @@
 extern "C" {
 #endif
 
-typedef struct zlink_member_peer_entry_t
-{
-    zlink_auto_connect_type_t auto_connect_type;
-    zlink_service_role_t service_role;
-    char channel_name[256];
-    char endpoint[256];
-    uint32_t weight;
-    zlink_routing_id_t routing_id;
-    int64_t value;
-} zlink_member_peer_entry_t;
-
 typedef enum zlink_spot_kind_t
 {
     ZLINK_SPOT_KIND_INVALID = 0,

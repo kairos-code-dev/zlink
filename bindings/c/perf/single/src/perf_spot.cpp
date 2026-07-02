@@ -468,9 +468,6 @@ bool run_active_window (void *publisher_,
 void cleanup_spot_case (void **subscriber_,
                         void **stop_publisher_,
                         void **publisher_,
-                        void **subscriber_discovery_,
-                        void **publisher_discovery_,
-                        void **registry_,
                         void **subscriber_node_,
                         void **publisher_node_)
 {
@@ -480,12 +477,6 @@ void cleanup_spot_case (void **subscriber_,
         zlink_spot_destroy (stop_publisher_);
     if (publisher_ && *publisher_)
         zlink_spot_destroy (publisher_);
-    if (subscriber_discovery_ && *subscriber_discovery_)
-        (void) zlink_discovery_destroy (subscriber_discovery_);
-    if (publisher_discovery_ && *publisher_discovery_)
-        (void) zlink_discovery_destroy (publisher_discovery_);
-    if (registry_ && *registry_)
-        (void) zlink_registry_destroy (registry_);
     if (subscriber_node_ && *subscriber_node_)
         (void) zlink_spot_node_destroy (subscriber_node_);
     if (publisher_node_ && *publisher_node_)
@@ -520,17 +511,14 @@ int run_case (const std::string &lib_name_, const std::string &transport_, size_
 
     void *publisher_node = zlink_spot_node_new (ctx.get (), NULL);
     void *subscriber_node = zlink_spot_node_new (ctx.get (), NULL);
-    void *registry = NULL;
-    void *publisher_discovery = NULL;
-    void *subscriber_discovery = NULL;
     void *publisher = NULL;
     void *stop_publisher = NULL;
     void *subscriber = NULL;
     if (!publisher_node || !subscriber_node) {
         if (bench_debug_enabled ())
             std::cerr << "[perf-spot] object creation failed" << std::endl;
-        cleanup_spot_case (&subscriber, &stop_publisher, &publisher, &subscriber_discovery,
-                           &publisher_discovery, &registry, &subscriber_node, &publisher_node);
+        cleanup_spot_case (&subscriber, &stop_publisher, &publisher, &subscriber_node,
+                           &publisher_node);
         print_fail ();
         return 1;
     }
@@ -541,8 +529,8 @@ int run_case (const std::string &lib_name_, const std::string &transport_, size_
         || !setup_tls_client (subscriber_node, transport_)) {
         if (bench_debug_enabled ())
             std::cerr << "[perf-spot] tls setup failed err=" << zlink_errno () << std::endl;
-        cleanup_spot_case (&subscriber, &stop_publisher, &publisher, &subscriber_discovery,
-                           &publisher_discovery, &registry, &subscriber_node, &publisher_node);
+        cleanup_spot_case (&subscriber, &stop_publisher, &publisher, &subscriber_node,
+                           &publisher_node);
         print_fail ();
         return 1;
     }
@@ -556,8 +544,8 @@ int run_case (const std::string &lib_name_, const std::string &transport_, size_
     if (!publisher || !stop_publisher || !subscriber) {
         if (bench_debug_enabled ())
             std::cerr << "[perf-spot] spot handle creation failed" << std::endl;
-        cleanup_spot_case (&subscriber, &stop_publisher, &publisher, &subscriber_discovery,
-                           &publisher_discovery, &registry, &subscriber_node, &publisher_node);
+        cleanup_spot_case (&subscriber, &stop_publisher, &publisher, &subscriber_node,
+                           &publisher_node);
         print_fail ();
         return 1;
     }
@@ -572,8 +560,8 @@ int run_case (const std::string &lib_name_, const std::string &transport_, size_
     if (zlink_set_subscription (subscriber, k_topic) != ZLINK_CONFIG_OK) {
         if (bench_debug_enabled ())
             std::cerr << "[perf-spot] set subscription failed err=" << zlink_errno () << std::endl;
-        cleanup_spot_case (&subscriber, &stop_publisher, &publisher, &subscriber_discovery,
-                           &publisher_discovery, &registry, &subscriber_node, &publisher_node);
+        cleanup_spot_case (&subscriber, &stop_publisher, &publisher, &subscriber_node,
+                           &publisher_node);
         print_fail ();
         return 1;
     }
@@ -586,8 +574,8 @@ int run_case (const std::string &lib_name_, const std::string &transport_, size_
             std::cerr << "[perf-spot] node direct connect failed" << " pub=" << publisher_endpoint
                       << " err=" << zlink_errno () << std::endl;
         }
-        cleanup_spot_case (&subscriber, &stop_publisher, &publisher, &subscriber_discovery,
-                           &publisher_discovery, &registry, &subscriber_node, &publisher_node);
+        cleanup_spot_case (&subscriber, &stop_publisher, &publisher, &subscriber_node,
+                           &publisher_node);
         print_fail ();
         return 1;
     }
@@ -598,16 +586,16 @@ int run_case (const std::string &lib_name_, const std::string &transport_, size_
     if (!wait_for_spot_ready_barrier (publisher, subscriber, &state, msg_size_, ready_timeout_ms)) {
         if (bench_debug_enabled ())
             std::cerr << "[perf-spot] ready barrier failed" << std::endl;
-        cleanup_spot_case (&subscriber, &stop_publisher, &publisher, &subscriber_discovery,
-                           &publisher_discovery, &registry, &subscriber_node, &publisher_node);
+        cleanup_spot_case (&subscriber, &stop_publisher, &publisher, &subscriber_node,
+                           &publisher_node);
         print_fail ();
         return 1;
     }
     if (!run_spot_post_ready_settle ()) {
         if (bench_debug_enabled ())
             std::cerr << "[perf-spot] post-ready settle failed" << std::endl;
-        cleanup_spot_case (&subscriber, &stop_publisher, &publisher, &subscriber_discovery,
-                           &publisher_discovery, &registry, &subscriber_node, &publisher_node);
+        cleanup_spot_case (&subscriber, &stop_publisher, &publisher, &subscriber_node,
+                           &publisher_node);
         print_fail ();
         return 1;
     }

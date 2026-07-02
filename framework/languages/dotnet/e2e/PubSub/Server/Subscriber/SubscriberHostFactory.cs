@@ -18,7 +18,6 @@ internal static class SubscriberHostFactory
 
         builder.Services.AddZLinkFramework(framework =>
         {
-            framework.UseDiscovery().AddRegistryEndpoint(options.RegistryRouterEndpoint);
             ConfigureFlow(framework.ConfigureDispatch(), options.LogDir, options.Rid);
             framework.AddFanoutChannel(PubSubNames.Channel)
                 .EnableSubscriber(options.PublisherEndpoint)

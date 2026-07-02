@@ -49,14 +49,4 @@ internal sealed partial class SocketKernel : IDisposable
         ZlinkException.ThrowConnectIfError(rc);
     }
 
-    public void AttachDiscovery(Discovery discovery)
-    {
-        if (discovery == null)
-            throw new ArgumentNullException(nameof(discovery));
-
-        var rc = NativeMethods.zlink_socket_attach_discovery(Handle,
-            discovery.Handle);
-        ZlinkException.ThrowConfigIfError(rc);
-        _discoveryAttached = true;
-    }
 }

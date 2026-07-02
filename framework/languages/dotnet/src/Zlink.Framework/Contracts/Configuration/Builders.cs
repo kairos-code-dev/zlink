@@ -19,11 +19,6 @@ public interface IZLinkRouteMeshChannelOptions
     IZLinkSocketConfig ConfigureSocket();
 }
 
-public interface IZLinkDiscoveryBuilder
-{
-    IZLinkDiscoveryBuilder AddRegistryEndpoint(string endpoint);
-}
-
 public interface IZLinkStreamCompressionBuilder
 {
     IZLinkStreamCompressionBuilder UseDefault();
@@ -159,15 +154,7 @@ public interface IZLinkSpotNodeBuilder
         where TFactory : class, IZLinkActorFactory;
 }
 
-public interface IZLinkSpotMeshBuilder : IZLinkSpotNodeBuilder
-{
-    IZLinkSpotMeshBuilder UseRegistrySpotResolver();
-}
-
-public interface IZLinkRegistrySpotRemoteAddressesOptions
-{
-    string? RouterChannelId { get; set; }
-}
+public interface IZLinkSpotMeshBuilder : IZLinkSpotNodeBuilder;
 
 public interface IZLinkFrameworkOptions
 {
@@ -190,16 +177,11 @@ public interface IZLinkFrameworkOptions
     void AddSpotRemoteAddressResolver<TResolver>()
         where TResolver : class, IZLinkSpotRemoteAddressResolver;
 
-    IZLinkRegistrySpotRemoteAddressesOptions UseRegistrySpotRemoteAddresses(
-        string namespaceName);
-
     IZLinkClientServerChannelBuilder AddClientServerChannel(string channelName);
 
     IZLinkFanoutChannelBuilder AddFanoutChannel(string channelName);
 
     IZLinkRouteMeshChannelBuilder AddRouteMesh(string channelName);
-
-    IZLinkDiscoveryBuilder UseDiscovery();
 
     void AddPeerLocationStore<TStore>()
         where TStore : class, Locations.IZLinkPeerLocationStore;

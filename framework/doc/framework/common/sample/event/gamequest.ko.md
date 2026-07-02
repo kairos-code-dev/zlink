@@ -53,68 +53,87 @@ GameQuest는 **"stateful actor가 stateless 웹 대비 시스템을 어떻게 �
 | reward idempotency | 중복 지급 0 | `EventId` dedupe + durable 결정 기록 |
 | 저지연 push | 진행을 실시간처럼 표시 | owner spot → bound session 직접 push |
 
-## 3. 웹 방식으로 짜면 (복잡성의 뿌리 = statelessness)
+## 3. 웹 방식으로 짜면 (MMORPG 뒷단 처리)
 
-같은 문제를 전형적인 분산 웹 스택으로 견고하게 짜면 아래 조각이 필요하다.
+싱글 게임이라면 client가 quest 진행을 계산하고 서버는 결과만 저장해도 된다 — 공유도 경쟁도
+없으니 그걸로 충분하고, 이 샘플의 비교 대상이 아니다.
+
+MMORPG는 다르다. kill·item·area 같은 gameplay event는 **room/field 서버**에서 발생하는데, quest
+판정을 room/field에서 직접 하기는 어렵다. player가 room을 넘나들고 room은 수명이 짧아서, 같은
+player의 이벤트를 한 곳에 모아 순서대로 처리하려면 복잡도가 크게 올라간다. 그래서 전통적으로는
+room/field가 이벤트를 **LB를 거쳐 뒷단 web으로 넘겨** 중앙에서 처리한다. 그 web을 어떻게
+짓느냐가 비교의 핵심이다.
 
 ```mermaid
 graph TD
-    C[Client]
+    C[Game Client]
+    RF["Room/Field 서버<br/>(gameplay 발생)"]
     LB[Load Balancer]
     JOB[재동기화 잡]
 
-    subgraph CP["stateless 컴퓨트 · 상태 없음"]
-        API["API / WS 티어"]
-        QC["Quest 소비자"]
-        PUSH["WS push gateway"]
+    subgraph BE["뒷단 web backend (per-player 처리를 손수 조립)"]
+        subgraph CP["stateless 컴퓨트"]
+            QC["Quest 소비자"]
+            PUSH["push gateway"]
+        end
+        subgraph ST["직렬화·일관성·전달용 외부 상태"]
+            LOG[("log · partition")]
+            DB[("DB + 동시성")]
+            CACHE[("캐시")]
+            RM[("read model")]
+            PS[("pub/sub")]
+            PRES[("presence")]
+        end
     end
 
-    subgraph ST["외부 상태 · 전부 밖으로 나감"]
-        LOG[("Kafka / Redis Streams<br/>durable log · PlayerId partition")]
-        DB[("DB<br/>+ optimistic concurrency")]
-        CACHE[("Redis 캐시")]
-        RM[("read model store")]
-        PS[("Redis pub/sub")]
-        PRES[("presence store")]
-    end
-
-    C -->|action| LB --> API
-    API -->|append| LOG
+    C -->|접속·gameplay| RF
+    RF -->|event 전달| LB --> LOG
     LOG -->|consume| QC
     QC -->|load| CACHE
     CACHE -.miss.-> DB
-    QC -->|apply · version check| DB
+    QC -->|apply·version check| DB
     QC -->|update| RM
     QC -->|notify| PS
     PS -->|연결 노드 lookup| PRES
-    PS --> PUSH -->|push| C
-    C -->|progress 조회| API
-    API -->|read| RM
+    PS --> PUSH -->|notify| RF
+    RF -->|push| C
     JOB -.보정.-> DB
 ```
 
-조각을 세어 보면 **stateless 컴퓨트 3개를 외부 상태 6개가 둘러싼다**. 각 store는 왜 필요한가 —
-log(순서·재생·분배), DB+동시성(상태·충돌 방지), 캐시(DB 읽기 회피), read model(진행 조회),
-pub/sub+presence(알림을 연결 가진 노드로 라우팅). 여기에 재동기화 잡까지 붙는다.
+핵심은 room/field가 **못 하는** "밖에서의 per-player 직렬화"를 web backend가 대신 떠맡는다는 것.
+그 하나를 위해 log(순서·재생)+DB+동시성(충돌 방지)+캐시+read model+pub/sub+presence를 **손으로
+조립**하고, 재동기화 잡까지 붙는다. 즉 복잡성은 게으름이 아니라 "per-actor 직렬화 인프라를 직접
+지어야 함"에서 나온다.
 
 복잡성의 뿌리는 **statelessness**다. 웹은 LB 뒤 수평 확장을 위해 서비스를 stateless로 두는데,
 그러면 **상태가 전부 밖(DB)으로 나가고**, 그 결과 매 이벤트가 분산 load-modify-store가 되며,
 동시성 제어·캐시·pub/sub 라우팅이 줄줄이 딸려온다.
 
-## 4. ZLink로 짜면 (owner-actor가 조각을 걷어낸다)
+## 4. ZLink로 짜면 (base system이 직렬화를 제공)
 
-ZLink는 상태를 밖으로 밀어내지 않는다. **player당 owner spot(actor)이 그 player의 상태를
-메모리에 품고** 모든 event를 직렬로 처리한다.
+ZLink도 처리를 room/field 밖으로 뺀다 — 같은 이유(room 전이·transient)다. 차이는 **per-actor
+직렬화가 base system(spot)으로 기본 제공**된다는 것. room/field 역할(client를 쥐고 event를
+내보내는 edge)은 entry-spot을 가진 `Session Server`가 맡고, 이벤트를 그 player의 owner spot으로
+**owner routing만** 하면 spot이 순서·일관성·상태를 인프라 차원에서 보장한다. 그래서 §3의
+log+DB+동시성+캐시+pub/sub+presence를 손으로 조립할 필요가 없다.
 
-```text
-Client ⇄ WebSocket ⇄ Session Server
-                       │ entry-spot: 연결마다 session actor 생성·bind (PlayerId)
-                       │ client 메시징 → session actor
-                       ▼ session actor가 owner routing (by PlayerId)
-                 PlayerQuestSpot (per-player owner spot)
-                   - 메모리 상태로 quest 조건 평가
-                   - DB에 durable 상태/결정 기록
-                   - notify ─▶ bound session ─▶ WebSocket ─▶ Client
+```mermaid
+graph TD
+    C[Game Client]
+    SS["Session Server (room/field edge)<br/>entry-spot · session actor"]
+
+    subgraph BASE["ZLink base system (직렬화를 기본 제공)"]
+        SP["PlayerQuestSpot<br/>per-actor 직렬화 · 상태"]
+        EVS[("QuestEventStore")]
+        RM[("QuestReadModelStore")]
+    end
+
+    C -->|접속·gameplay| SS
+    SS -->|owner routing by PlayerId| SP
+    SP -->|append · replay| EVS
+    SP -->|projection| RM
+    SP -->|notify| SS
+    SS -->|push| C
 ```
 
 `Session Server`는 client WebSocket을 종단하고, 연결마다 **session actor를 만들어 entry-spot에
@@ -123,7 +142,7 @@ authoritative gameplay 처리 후 gameplay event를 만들어 **그 player에 �
 owner routing으로 메시징**한다. 그 spot이 조건 평가·상태 기록·notify를 전부 소유한다. notify는
 bound session을 통해 연결을 가진 `Session Server`로 돌아간다.
 
-웹 방식의 조각들이 왜 사라지는가.
+§3의 조각들이 왜 사라지는가 — room/field가 못 하던 per-actor 직렬화를 base system이 대신하므로.
 
 | 웹 방식 구성요소 | 왜 필요했나 | ZLink에서 사라지는 이유 |
 |------|------|------|
@@ -148,10 +167,11 @@ bound session을 통해 연결을 가진 `Session Server`로 돌아간다.
 | 노드 장애 | 단순(stateless, 즉시 대체) | owner spot rehydrate + re-home 필요 |
 | cross-player 집계 | 로그에 소비자 추가로 쉬움 | spot이 파생 event 방출 → 별도 aggregator(13절) |
 
-명제: **per-player·저지연·게임 수준 내구성 워크로드에서 ZLink owner-actor 모델은 stateless
-웹이 강요하는 우발적 복잡성을 걷어낸다 — 내구성과 장애 복구의 단순함을 일부 내주고, 그건 게임
-도메인이 force-reset으로 감당한다.** 엄격한 무손실이나 무거운 cross-player 집계가 필요하면 로그
-중심 방식이 제자리를 가진다.
+명제: **MMORPG는 어느 방식이든 per-player 처리를 room/field 밖으로 뺀다. 차이는 그 per-actor
+직렬화·일관성 인프라를 web backend로 *손수 조립*하느냐, ZLink base system(spot)이 *기본 제공*
+하느냐다.** ZLink는 그 조립을 없애는 대신 내구성과 장애 복구의 단순함을 일부 내주고, 그건 게임
+도메인이 force-reset으로 감당한다. 무손실이 필요한 경로(reward·경제)는 spot 위에 durable 조각을
+선택적으로 얹으면 되며, 데이터별 tier 구분은 §9 "production 확장"에서 다룬다.
 
 ## 6. 서버 구성
 
@@ -310,8 +330,20 @@ event stream이고, `QuestReadModelStore`는 언제든 replay로 다시 만들 �
   이후 replay 결과에도 반영한다. `SyncQuestProgressReq`(수동/주기)나 운영상 force-reset으로
   트리거한다. 게임 도메인이라 절대 무손실이 아니어도 되는 이유가 여기 있다.
 
-무손실이 필요하면 owner로의 전달 경로에 durable log(Redis Streams/Kafka)를 끼우는 확장 경로가
-있다. 샘플 기본은 lossy 전달 + event sourcing + 보정이다.
+### production 확장 — reliability tier를 데이터별로 나눈다
+
+제대로 된 MMORPG라고 모든 데이터를 무손실로 처리하지는 않는다. spot 기반 직렬화는 그대로 두고,
+경로별로 tier만 다르게 얹는다.
+
+- **quest/mission 진행** (고빈도·tolerant): 샘플 기본대로 **lossy 전달 + event sourcing + reset
+  보정**으로 충분하다. 유실돼도 reconcile로 복구되므로 durable log가 없어도 된다.
+- **reward·경제·거래** (저빈도·치명적): owner로의 **ingest 경로에 durable log(Redis Streams/Kafka)
+  나 outbox를 끼워 무손실**로 하고, 지급 결정은 **durable·트랜잭셔널 store**에 기록한다.
+
+즉 "제대로"는 §3의 web backend로 갈아타는 게 아니라, **§4의 spot(직렬화·realtime) 위에 durable
+조각을 reward-bearing 경로에만 선택적으로 얹는** 것이다. spot이 직렬화·동시성·캐시·pub/sub를
+이미 대체하므로, §3에서 실제로 남겨 얹는 건 **durable log(ingest)와 결정 store뿐**이다. 샘플은
+진행 tier만 구현하고 reward tier는 확장으로 둔다.
 
 ## 10. DDD·Hexagonal 구조
 

@@ -36,7 +36,7 @@ internal static class TriggerValidation
             var builder = Host.CreateApplicationBuilder();
             builder.Services.AddZLinkMonitoring(monitor =>
             {
-                monitor.AddRegistryEvents("registry", TimeSpan.Zero);
+                monitor.AddSpotEvents("spot", TimeSpan.Zero);
             });
         });
         return $"mon-b2|interval={interval.Message}";

@@ -143,7 +143,6 @@ connector 테스트 이름은 Java connector 테스트에 고정된 현재 이�
 
 monitoring은 discovery source를 노출하지 않는다(discovery 상태는 registry
 snapshot/query로만 관찰). 따라서 "socket/registry/spot" event만 둔다.
-`EmbeddedRegistryTest.remoteRegistryQueryClient_canReadTopologySnapshot`은
 embedded registry의 router endpoint에 remote query client가 연결해 topology
 snapshot API를 호출하는 native integration gate다. 현재 channel discovery 등록은
 별도 행에서 닫기 전이므로 snapshot 내용은 비어 있을 수 있지만, query client 연결과
@@ -153,8 +152,6 @@ filter 전달은 실제 binding public API 경로로 검증한다.
 |------|------|--------------|-----------|
 | registry pub endpoint missing | unit | `RegistryAndMonitoringTest.addZLinkRegistry_throws_whenPubEndpointIsMissing` | startup validation 오류 |
 | registry router endpoint missing | unit | `RegistryAndMonitoringTest.addZLinkRegistry_throws_whenRouterEndpointIsMissing` | startup validation 오류 |
-| embedded registry query | integration-single-process | `EmbeddedRegistryTest.embeddedRegistry_queryService_resolvesAndReadsStatus` | `ZLinkRegistryQuery` snapshot 조회 |
-| remote registry query client | integration-single-process | `EmbeddedRegistryTest.remoteRegistryQueryClient_canReadTopologySnapshot` | 같은 JVM 안에서 embedded registry와 remote TCP query client를 분리해 topology snapshot 조회 |
 | monitoring source validation | unit | `RegistryAndMonitoringTest.addZLinkMonitoring_throws_whenSocketSourceIsUnknownOnStartup` | source 이름 불일치 차단 |
 | socket event | unit | `MonitoringEventsTest.socketMonitoring_emitsConnectedEvent` | typed event handler 호출 |
 | registry/spot snapshot diff | unit | `MonitoringEventsTest.registryMonitoring_emitsStatusChanged_forEmbeddedRegistry` / `spotMonitoring_emitsSubjectsChanged_whenSpotIsCreated` | 명시 `pollSnapshots()`가 변경분만 typed event handler로 발행 |
@@ -172,8 +169,6 @@ transport error callback public API가 추가되어야 한다.
 | 항목 | 계층 | JUnit 테스트 | 통과 기준 |
 |------|------|--------------|-----------|
 | host start/stop | unit | `HostTest.host_startsAndStops_frameworkRuntimeContext` | `SmartLifecycle` 시작·종료에 맞춰 runtime context 생성·정리 |
-| registry before framework + query DI | unit | `HostTest.host_startsEmbeddedRegistry_beforeFrameworkRuntime` / `host_startsEmbeddedRegistryWithoutFrameworkWhenFrameworkIsNotEnabled` / `host_doesNotRegisterRegistryQuery_withoutEmbeddedRegistry` | embedded registry가 framework runtime보다 먼저 시동한다. Registry-only host는 `@EnableZLinkFramework` 없이 registry와 `ZLinkRegistryQuery`만 등록하고, framework lifecycle/client bean은 등록하지 않는다 |
-| remote registry query client DI | unit | `HostTest.host_doesNotRegisterRegistryQueryClient_withoutCustomizer` / `host_registersRegistryQueryClient_whenCustomizerExists` / `host_rejectsRegistryQueryClientCustomizer_withoutEndpoint` | query client configurer가 있을 때만 `ZLinkRegistryQueryClient` bean 등록, endpoint 누락 validation |
 | Spring multi-target clients | unit | `ZLinkFrameworkAutoConfigurationTest.autoConfigurationStartsFrameworkLifecycleAndExposesClientBean` / `enableZLinkFrameworkImportsFrameworkAutoConfiguration` / `multiTargetClientsThrowConfigurationExceptionWhenChannelIsMissing` | `@EnableZLinkFramework` import 기반 auto-configuration, channel/fanout/route client bean 노출과 missing channel configuration error |
 | Spring Spot publisher DI 노출 | unit | `ZLinkFrameworkAutoConfigurationTest.spotPublisherClientIsBeanOnlyWhenPublisherCapabilityExists` | attached Spot publisher 역할이 있을 때만 `ZLinkSpotPublisherClient` bean 등록 |
 | Spring handler constructor injection | unit | `ZLinkFrameworkAutoConfigurationTest.handlerFactoryCreatesHandlersWithSpringConstructorInjection` | Spring `BeanFactory` 기반 handler 생성으로 constructor dependency 주입 |

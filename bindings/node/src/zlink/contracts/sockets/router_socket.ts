@@ -3,7 +3,6 @@
 import type { RoutingId } from '../core';
 import type { Received } from '../messaging';
 import type { ReplyOperation, RequestOperation, SendOperation } from '../messaging';
-import type { Discovery } from '../service';
 import type { RecvFlags } from './socket_constants';
 import type { RouterSocketOptions } from './socket_options';
 import type { ConnectableSocket } from './socket';
@@ -36,8 +35,6 @@ export interface RouterSocket extends ConnectableSocket {
   setRoutingId(routingId: RoutingId): void;
   /** Return the routing id that identifies this ROUTER to its peers. */
   getRoutingId(): RoutingId;
-  /** Attach a discovery service for route-aware operations. */
-  attachDiscovery(discovery: Discovery): void;
   /** Begin a request to peer `peerRid`; parts are consumed on submit and a reply is awaited. */
   request(peerRid: RoutingId): RequestOperation;
   /** Begin a reply to request `requestSeq` from `peerRid`; parts are consumed on a successful submit. */

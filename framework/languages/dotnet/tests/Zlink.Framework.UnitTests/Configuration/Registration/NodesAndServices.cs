@@ -108,13 +108,12 @@ public sealed class NodesAndServicesTests : RegistrationValidationSupport
     }
 
     [Fact]
-    public void AddZLinkFramework_AllowsSpotMeshToInheritGlobalDiscovery()
+    public void AddZLinkFramework_RegistersSpotMeshWithoutDiscoveryEndpoints()
     {
         var services = new ServiceCollection();
 
         services.AddZLinkFramework(options =>
         {
-            options.UseDiscovery().AddRegistryEndpoint("tcp://127.0.0.1:5551");
             {
                 var mesh = options.AddSpotMesh("game.stage");
                 {
@@ -129,8 +128,6 @@ public sealed class NodesAndServicesTests : RegistrationValidationSupport
 
         var registration = services.BuildServiceProvider().GetRequiredService<ZLinkFrameworkRegistration>();
         Assert.Empty(registration.SpotDiscovery!.Endpoints);
-        Assert.Equal(["tcp://127.0.0.1:5551"],
-            ZLinkFrameworkRegistrationValidator.ResolveSpotDiscoveryEndpoints(registration));
     }
 
     [Fact]
@@ -141,7 +138,6 @@ public sealed class NodesAndServicesTests : RegistrationValidationSupport
         var exception = Assert.Throws<ZLinkConfigurationException>(() =>
             services.AddZLinkFramework(options =>
             {
-                options.UseDiscovery().AddRegistryEndpoint("tcp://127.0.0.1:5551");
                 {
                     var mesh = options.AddSpotMesh("game.stage");
                     {
@@ -449,7 +445,6 @@ public sealed class NodesAndServicesTests : RegistrationValidationSupport
 
         services.AddZLinkFramework(options =>
         {
-            options.UseDiscovery().AddRegistryEndpoint("tcp://127.0.0.1:5551");
             {
                 var routed = options.AddRouteMesh("gateway");
                 routed.EnableServer("tcp://127.0.0.1:6202");

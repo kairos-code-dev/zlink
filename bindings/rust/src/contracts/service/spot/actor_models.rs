@@ -33,25 +33,6 @@ pub struct ActorRoute {
     pub current_spot_kind: SpotKind,
 }
 
-/// The resolved route to a spot: the spot, its owning node, and its kind.
-#[derive(Debug, Clone, PartialEq, Eq)]
-pub struct SpotRoute {
-    /// The spot's routing id.
-    pub spot_rid: RoutingId,
-    /// The routing id of the node that owns the spot.
-    pub owner_node_rid: RoutingId,
-    /// The kind of spot.
-    pub spot_kind: SpotKind,
-}
-
-/// A resolved custom route entry: the owning node routing id and a value payload.
-pub struct DiscoveryRoute {
-    /// The routing id of the peer that owns this route.
-    pub owner_routing_id: RoutingId,
-    /// The bound value payload.
-    pub value: Message,
-}
-
 /// Metadata about a message received for an actor.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct ActorRecvInfo {

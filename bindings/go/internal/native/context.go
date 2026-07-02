@@ -323,15 +323,3 @@ func (c *Context) SpotNode() (*SpotNode, error) {
 func (c *Context) SpotNodeWithOptions(options SpotNodeOptions) (*SpotNode, error) {
 	return newSpotNodeWithOptions(c, &options)
 }
-
-func (c *Context) Registry() (*Registry, error) {
-	return newRegistry(c)
-}
-
-func (c *Context) Discovery(autoConnectType AutoConnectType, channelName string) (*Discovery, error) {
-	return newDiscovery(c, autoConnectType, channelName)
-}
-
-func (c *Context) RegistryQueryClient() (*RegistryQueryClient, error) {
-	return newRegistryQueryClient(c)
-}

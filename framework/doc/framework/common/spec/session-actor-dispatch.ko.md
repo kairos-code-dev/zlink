@@ -1025,15 +1025,15 @@ session actor helper와 resolver 기반 `SessionProxy` 표면으로 통일하는
 | route not found error | play route가 없거나 actor-session binding이 없으면 transport send를 시도하지 않고 명확한 error로 실패한다. |
 | unauthenticated dispatch 차단 | session callback이 인증 전 domain packet을 play server로 보내지 않는다. |
 
-### 19.5 discovery와 registry metadata sample
+### 19.5 location metadata sample
 
 | 테스트 | 확인 내용 |
 |--------|-----------|
-| discovery service/routed channel | 수동 연결 없이 registry/discovery로 service request와 routed request가 통과한다. |
-| discovery/manual 혼합 실패 | 같은 역할에서 두 방식을 섞으면 startup에서 실패한다. |
-| discovery failure를 retry로 숨기지 않음 | sample과 helper가 retry loop나 warmup sleep 없이 실패를 드러낸다. |
-| registry metadata resolver sample | registry discovery metadata sample이 actor/spot resolver 구현에서 route를 읽는다. |
-| registry 기본 구현 없음 | framework DI 기본값으로 registry 기반 resolver가 자동 등록되지 않는다. |
+| location service/routed channel | 수동 연결 없이 location store 로 service request와 routed request가 통과한다. |
+| location/manual 혼합 실패 | 같은 역할에서 두 방식을 섞으면 startup에서 실패한다. |
+| location failure를 retry로 숨기지 않음 | sample과 helper가 retry loop나 warmup sleep 없이 실패를 드러낸다. |
+| location metadata resolver sample | location metadata sample이 actor/spot resolver 구현에서 route를 읽는다. |
+| location 기본 구현 없음 | framework DI 기본값으로 외부 저장소 기반 resolver가 자동 등록되지 않는다. |
 
 sample 검증도 필요하다.
 
@@ -1042,7 +1042,7 @@ sample 검증도 필요하다.
 - session actor dispatch sample은 fake transport를 사용하지 않는다.
 - session actor dispatch sample은 service channel과 routed channel 모두 수동 연결을
   사용하지 않는다. server bind endpoint는 provider 등록용이고, client 연결은
-  `UseDiscovery(...)` 기반 자동 연결로만 표현한다.
+  location 기반 자동 연결로만 표현한다.
 - session actor dispatch sample은 retry나 route warmup sleep을 사용하지 않는다.
 - session actor dispatch sample은 direct target send/request API를 사용하지 않는다.
   session -> actor 방향은 actor create/dispatch helper를 쓰고, actor -> client 방향은
@@ -1089,7 +1089,7 @@ sample 검증도 필요하다.
   내부 상태로만 수행된다.
 - stale disconnect는 binding token 조건으로 새 actor-session binding을 지우지 못한다.
 - sample serializer helper가 없다.
-- routed discovery 연결은 `UseDiscovery(...)` 계열 선언으로만 표현된다.
+- routed location 연결은 정식 location runtime 선언으로만 표현된다.
 - 실패를 감추는 retry helper나 warmup sleep이 없다.
 - request/reply matching은 request sequence 기준으로 검증된다.
 - direct target send/request API는 public sample과 guide에 나오지 않는다.

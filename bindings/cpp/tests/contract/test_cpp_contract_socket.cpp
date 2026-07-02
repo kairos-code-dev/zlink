@@ -153,20 +153,6 @@ template <typename SocketT> class has_raw_common_option_get_t
     static const bool value = decltype (test<SocketT> (0))::value;
 };
 
-template <typename SocketT> class has_attach_discovery_t
-{
-  private:
-    template <typename T>
-    static auto test (int) -> decltype (std::declval<T &> ().attach_discovery (
-                                          std::declval<zlink::service::discovery_t &> ()),
-                                        std::true_type ());
-
-    template <typename> static std::false_type test (...);
-
-  public:
-    static const bool value = decltype (test<SocketT> (0))::value;
-};
-
 template <typename SocketT> class has_connect_t
 {
   private:
@@ -228,8 +214,6 @@ static_assert (has_send_builder_t<zlink::pair_socket_t>::value,
 static_assert (has_receive_t<zlink::pair_socket_t>::value, "pair_socket_t must expose recv");
 static_assert (has_single_part_recv_t<zlink::pair_socket_t>::value,
                "pair_socket_t must expose single-part recv");
-static_assert (!has_attach_discovery_t<zlink::pair_socket_t>::value,
-               "pair_socket_t must not expose attach_discovery");
 static_assert (!has_raw_common_option_set_t<zlink::pair_socket_t>::value,
                "pair_socket_t must not expose raw common option setters");
 static_assert (!has_raw_common_option_get_t<zlink::pair_socket_t>::value,
@@ -241,8 +225,6 @@ static_assert (has_send_builder_t<zlink::dealer_socket_t>::value,
 static_assert (has_receive_t<zlink::dealer_socket_t>::value, "dealer_socket_t must expose recv");
 static_assert (has_single_part_recv_t<zlink::dealer_socket_t>::value,
                "dealer_socket_t must expose single-part recv");
-static_assert (has_attach_discovery_t<zlink::dealer_socket_t>::value,
-               "dealer_socket_t must expose attach_discovery");
 static_assert (!has_routed_send_t<zlink::router_socket_t>::value,
                "router_socket_t must not expose direct routed send");
 static_assert (has_routed_send_builder_t<zlink::router_socket_t>::value,
@@ -252,22 +234,12 @@ static_assert (has_routed_single_part_recv_t<zlink::router_socket_t>::value,
                "router_socket_t must expose routed single-part recv");
 static_assert (!has_recv_spot_t<zlink::router_socket_t>::value,
                "router_socket_t must not expose recv_spot");
-static_assert (has_attach_discovery_t<zlink::router_socket_t>::value,
-               "router_socket_t must expose attach_discovery");
-static_assert (has_attach_discovery_t<zlink::pub_socket_t>::value,
-               "pub_socket_t must expose attach_discovery");
 static_assert (has_publish_builder_t<zlink::pub_socket_t>::value,
                "pub_socket_t must expose publish builder");
-static_assert (has_attach_discovery_t<zlink::sub_socket_t>::value,
-               "sub_socket_t must expose attach_discovery");
 static_assert (has_subscribe_part_t<zlink::sub_socket_t>::value,
                "sub_socket_t must expose single-part subscribe");
-static_assert (!has_attach_discovery_t<zlink::xpub_socket_t>::value,
-               "xpub_socket_t must not expose attach_discovery");
 static_assert (has_publish_builder_t<zlink::xpub_socket_t>::value,
                "xpub_socket_t must expose publish builder");
-static_assert (!has_attach_discovery_t<zlink::xsub_socket_t>::value,
-               "xsub_socket_t must not expose attach_discovery");
 static_assert (has_subscribe_part_t<zlink::xsub_socket_t>::value,
                "xsub_socket_t must expose single-part subscribe");
 static_assert (!has_routed_send_t<zlink::stream_socket_t>::value,
@@ -275,8 +247,6 @@ static_assert (!has_routed_send_t<zlink::stream_socket_t>::value,
 static_assert (has_routed_send_builder_t<zlink::stream_socket_t>::value,
                "stream_socket_t must expose routed send builder");
 static_assert (has_receive_t<zlink::stream_socket_t>::value, "stream_socket_t must expose recv");
-static_assert (!has_attach_discovery_t<zlink::stream_socket_t>::value,
-               "stream_socket_t must not expose attach_discovery");
 static_assert (!has_connect_t<zlink::stream_socket_t>::value,
                "stream_socket_t must not expose connect");
 static_assert (!has_disconnect_t<zlink::stream_socket_t>::value,

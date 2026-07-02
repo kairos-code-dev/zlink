@@ -27,7 +27,6 @@ public static class NodeHostFactory
                 .TraceLogFile(SampleFlowLog.Path($"courier-actor-{nodeConfig.Name}"))
                 .TraceLabel($"courier-actor-{nodeConfig.Name}");
             options.AddHandlersFromAssemblyOf(typeof(NodeHostFactory));
-            options.UseDiscovery().AddRegistryEndpoint(topology.RegistryRouterEndpoint);
             options.AddRouteMesh(SampleNames.CourierActorNodeRouteChannel)
                 .SetRoutingId(nodeConfig.Rid)
                 .AddHandlerGroup(SampleNames.CourierActorNodeRouteChannel)
@@ -35,8 +34,7 @@ public static class NodeHostFactory
                 .EnableClient();
 
             options.AddSpotMesh(SampleNames.CourierActorDiscovery)
-                .UseRegistrySpotResolver()
-                .EnableRouter(nodeConfig.SpotRouterEndpoint)
+                                .EnableRouter(nodeConfig.SpotRouterEndpoint)
                 .SetRoutingId(nodeConfig.Rid)
                 .SetEntrySpotRoutingId(nodeConfig.EntrySpotRid)
                 .EnablePubSub(nodeConfig.SpotEndpoint)

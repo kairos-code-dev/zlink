@@ -5,7 +5,6 @@ package systems.zlink.contracts.sockets;
 import systems.zlink.contracts.core.RoutingId;
 import systems.zlink.contracts.messaging.SubscriptionEntry;
 import systems.zlink.contracts.messaging.TopicMessage;
-import systems.zlink.contracts.service.discovery.Discovery;
 import java.util.Optional;
 
 /** A receive-only subscriber filtered by its subscriptions. */
@@ -15,7 +14,6 @@ public interface SubSocket extends Socket {
     void unbind(String endpoint);
     void disconnect(String endpoint);
     void disconnectRid(RoutingId routingId);
-    void attachDiscovery(Discovery discovery);
     void setSubscription(String filter);
     void unsetSubscription(String filter);
     Optional<SubscriptionEntry> subscriptionAt(int index);

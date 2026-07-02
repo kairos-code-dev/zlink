@@ -141,7 +141,6 @@
 | `ZLinkRegistryModule.forRoot(...)`만 등록 | 허용 | standalone registry host가 된다 |
 | `ZLinkModule.forRoot(...)` + `ZLinkRegistryModule.forRoot(...)` 함께 등록 | 허용 | embedded registry와 framework runtime을 한 호스트에서 함께 띄운다 |
 | embedded 구성에서 `discovery` endpoint를 자동 추론 | 비허용 | endpoint는 반드시 명시적으로 적어야 한다 |
-| `ZLinkRegistryQueryClientModule.forRoot(...)`만 등록 | 허용 | 원격 topology[^topology] 조회만 수행한다 |
 
 ## 8. Startup Validation Error 목록
 

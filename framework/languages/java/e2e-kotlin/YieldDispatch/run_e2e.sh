@@ -232,7 +232,7 @@ read -r REGISTRY_PUB REGISTRY_ROUTER DELAY SPOT SESSION_SPOT PLAY_ROUTE SESSION_
 
 static_checks
 gradle_run :Client:installDist :Server:Registry:installDist :Server:Delay:installDist :Server:Play:installDist :Server:Session:installDist
-bindings_jar="${repo_root}/bindings/java/build/libs/zlink-java-8.4.2.jar"
+bindings_jar="${repo_root}/bindings/java/build/libs/zlink-java-8.4.3.jar"
 python3 - "${bindings_jar}" <<'PY' || "${repo_root}/framework/languages/java/gradlew" \
   --project-cache-dir "${ZLINK_KOTLIN_E2E_GRADLE_CACHE}" \
   --no-daemon --no-parallel --max-workers=1 \
@@ -245,10 +245,10 @@ with zipfile.ZipFile(path) as jar:
     if bad is not None:
         raise SystemExit(f"bad jar entry: {bad}")
 PY
-cp "${bindings_jar}" "${ZLINK_KOTLIN_E2E_BUILD_DIR}/Server-Registry/install/yield-dispatch-kotlin-registry/lib/zlink-java-8.4.2.jar"
-cp "${bindings_jar}" "${ZLINK_KOTLIN_E2E_BUILD_DIR}/Server-Delay/install/yield-dispatch-kotlin-delay/lib/zlink-java-8.4.2.jar"
-cp "${bindings_jar}" "${ZLINK_KOTLIN_E2E_BUILD_DIR}/Server-Play/install/yield-dispatch-kotlin-play/lib/zlink-java-8.4.2.jar"
-cp "${bindings_jar}" "${ZLINK_KOTLIN_E2E_BUILD_DIR}/Server-Session/install/yield-dispatch-kotlin-session/lib/zlink-java-8.4.2.jar"
+cp "${bindings_jar}" "${ZLINK_KOTLIN_E2E_BUILD_DIR}/Server-Registry/install/yield-dispatch-kotlin-registry/lib/zlink-java-8.4.3.jar"
+cp "${bindings_jar}" "${ZLINK_KOTLIN_E2E_BUILD_DIR}/Server-Delay/install/yield-dispatch-kotlin-delay/lib/zlink-java-8.4.3.jar"
+cp "${bindings_jar}" "${ZLINK_KOTLIN_E2E_BUILD_DIR}/Server-Play/install/yield-dispatch-kotlin-play/lib/zlink-java-8.4.3.jar"
+cp "${bindings_jar}" "${ZLINK_KOTLIN_E2E_BUILD_DIR}/Server-Session/install/yield-dispatch-kotlin-session/lib/zlink-java-8.4.3.jar"
 start_registry
 start_delay
 start_play play-a "${SPOT}" "${PLAY_ROUTE}" play

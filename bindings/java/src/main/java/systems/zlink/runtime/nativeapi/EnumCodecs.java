@@ -2,13 +2,11 @@
 
 package systems.zlink.runtime.nativeapi;
 
-import systems.zlink.contracts.service.registry.AutoConnectType;
 import systems.zlink.contracts.sockets.AutoHwmProfile;
 import systems.zlink.contracts.sockets.AutoHwmRecalcReason;
 import systems.zlink.contracts.eventing.MonitorEventType;
 import systems.zlink.contracts.eventing.MonitorSourceKind;
 import systems.zlink.contracts.eventing.PollEventFlags;
-import systems.zlink.contracts.service.registry.RegistryState;
 import systems.zlink.contracts.sockets.RidDuplicatePolicy;
 import systems.zlink.contracts.service.registry.SubjectKind;
 import systems.zlink.contracts.service.registry.ServiceKind;
@@ -24,8 +22,6 @@ import systems.zlink.contracts.service.spot.SpotPeerKind;
 import systems.zlink.contracts.service.spot.SpotPeerSource;
 import systems.zlink.contracts.service.spot.SpotPeerState;
 import systems.zlink.contracts.service.spot.SpotRole;
-import systems.zlink.contracts.service.registry.TopologySource;
-import systems.zlink.contracts.service.registry.TopologyState;
 import java.util.EnumSet;
 
 /**
@@ -265,29 +261,6 @@ public final class EnumCodecs {
         };
     }
 
-    public static int autoConnectTypeValue(AutoConnectType value) {
-        return switch (value) {
-            case INVALID -> 0;
-            case ROUTE_MESH -> 1;
-            case CLIENT_SERVER -> 2;
-            case DEALER_MESH -> 3;
-            case FANOUT -> 4;
-            case SPOT_MESH -> 5;
-        };
-    }
-
-    public static AutoConnectType autoConnectTypeFromValue(int value) {
-        return switch (value) {
-            case 0 -> AutoConnectType.INVALID;
-            case 1 -> AutoConnectType.ROUTE_MESH;
-            case 2 -> AutoConnectType.CLIENT_SERVER;
-            case 3 -> AutoConnectType.DEALER_MESH;
-            case 4 -> AutoConnectType.FANOUT;
-            case 5 -> AutoConnectType.SPOT_MESH;
-            default -> throw invalid("AutoConnectType", value);
-        };
-    }
-
     public static int serviceRoleValue(ServiceRole value) {
         return switch (value) {
             case INVALID -> 0;
@@ -346,65 +319,6 @@ public final class EnumCodecs {
             case 4 -> ServiceKind.SPOT_PUB;
             case 5 -> ServiceKind.SOCKET;
             default -> throw invalid("ServiceKind", value);
-        };
-    }
-
-    public static RegistryState registryStateFromValue(int value) {
-        return switch (value) {
-            case 1 -> RegistryState.IDLE;
-            case 2 -> RegistryState.ACTIVE;
-            case 3 -> RegistryState.DEGRADED;
-            case 4 -> RegistryState.ERROR;
-            default -> throw invalid("RegistryState", value);
-        };
-    }
-
-    public static int registryStateValue(RegistryState value) {
-        return switch (value) {
-            case IDLE -> 1;
-            case ACTIVE -> 2;
-            case DEGRADED -> 3;
-            case ERROR -> 4;
-        };
-    }
-
-    public static int topologySourceValue(TopologySource value) {
-        return switch (value) {
-            case MANUAL -> 1;
-            case DISCOVERY -> 2;
-            case REGISTRY -> 3;
-        };
-    }
-
-    public static TopologySource topologySourceFromValue(int value) {
-        return switch (value) {
-            case 1 -> TopologySource.MANUAL;
-            case 2 -> TopologySource.DISCOVERY;
-            case 3 -> TopologySource.REGISTRY;
-            default -> throw invalid("TopologySource", value);
-        };
-    }
-
-    public static int topologyStateValue(TopologyState value) {
-        return switch (value) {
-            case DISCOVERED -> 1;
-            case CONNECTING -> 2;
-            case READY -> 3;
-            case LOST -> 4;
-            case ERROR -> 5;
-            case STOPPED -> 6;
-        };
-    }
-
-    public static TopologyState topologyStateFromValue(int value) {
-        return switch (value) {
-            case 1 -> TopologyState.DISCOVERED;
-            case 2 -> TopologyState.CONNECTING;
-            case 3 -> TopologyState.READY;
-            case 4 -> TopologyState.LOST;
-            case 5 -> TopologyState.ERROR;
-            case 6 -> TopologyState.STOPPED;
-            default -> throw invalid("TopologyState", value);
         };
     }
 

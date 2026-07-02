@@ -322,7 +322,6 @@ typedef enum zlink_close_result_t
 | Context close | `zlink_ctx_term`, `zlink_ctx_shutdown` |
 | Socket close | `zlink_close` |
 | Monitor close | `zlink_monitor_close` |
-| Service destroy | `zlink_registry_destroy`, `zlink_discovery_destroy`, `zlink_spot_destroy`, `zlink_spot_node_destroy`, `zlink_registry_query_client_destroy` |
 | Utility destroy | `zlink_poller_destroy`, `zlink_timer_destroy` |
 
 ---
@@ -358,7 +357,6 @@ typedef enum zlink_bind_result_t
 
 | Category | Functions |
 |---|---|
-| Bind | `zlink_bind`, `zlink_registry_bind` |
 
 ---
 
@@ -397,7 +395,6 @@ typedef enum zlink_connect_result_t
 
 | Category | Functions |
 |---|---|
-| Connect | `zlink_connect`, `zlink_spot_node_connect_peer`, `zlink_spot_node_connect_peer_rid`, `zlink_discovery_connect_registry`, `zlink_registry_query_client_connect` |
 | Disconnect | `zlink_disconnect`, `zlink_disconnect_rid`, `zlink_spot_node_disconnect_peer`, `zlink_spot_node_disconnect_peer_rid` |
 | Unbind | `zlink_unbind` |
 
@@ -446,14 +443,12 @@ and malformed relay packets use `EPROTO`.
 
 ### Actor/Spot Route Lookup Errors
 
-`zlink_discovery_resolve_actor()` returns `ZLINK_CONFIG_INVALID_ARGUMENT` and
 `EINVAL` when the Actor id is missing, empty, too long, or the output pointer is
 missing. It returns `ZLINK_CONFIG_NOT_FOUND` and `ENOENT` when the Actor route
 row is missing, the row value is not exactly `sizeof(zlink_actor_route_t)`, the
 route key does not match `value.actor.actor_id`, or the current Spot rid/kind is
 not valid.
 
-`zlink_discovery_resolve_spot()` returns `ZLINK_CONFIG_INVALID_ARGUMENT` and
 `EINVAL` when `discovery`, `spot_rid`, or the output pointer is missing, or when
 `spot_rid` is empty. It returns `ZLINK_CONFIG_NOT_FOUND` and `ENOENT` when the
 Spot owner topology row is missing, the owner node rid is empty, or `spot_kind`
@@ -477,9 +472,6 @@ forever by default.
 | Subscription | `zlink_set_subscription`, `zlink_unset_subscription`, `zlink_subscription_at` |
 | SPOT route bridge/publisher | `zlink_spot_route_bridge_new`, `zlink_spot_route_bridge_attach_router_channel`, `zlink_spot_route_bridge_send`, `zlink_spot_route_bridge_request`, `zlink_spot_route_bridge_handle_router_received`, `zlink_spot_route_bridge_drain`, `zlink_spot_route_bridge_close`, `zlink_spot_node_publisher_new`, `zlink_spot_node_publisher_publish`, `zlink_spot_node_publisher_close` |
 | SpotNode lifecycle/lookup/bind | `zlink_spot_node_entry_spot`, `zlink_spot_node_spot_lookup`, `zlink_spot_node_spot_get_or_new`, `zlink_spot_node_actor_new`, `zlink_spot_node_actor_new_with_request`, `zlink_spot_node_actor_lookup`, `zlink_spot_node_actor_bind_remote_session`, `zlink_spot_node_set_router_bind`, `zlink_spot_node_set_pub_bind` |
-| Registry config | `zlink_registry_set_id`, `zlink_registry_set`, `zlink_registry_add_peer`, `zlink_registry_set_heartbeat`, `zlink_registry_set_broadcast_interval` |
-| Discovery config | `zlink_discovery_resolve_spot`, `zlink_discovery_resolve_actor`, `zlink_discovery_set_value`, `zlink_discovery_get_value`, `zlink_discovery_member_peers`, `zlink_discovery_bind_route`, `zlink_discovery_unbind_route`, `zlink_discovery_resolve_route` |
-| Snapshot/query | `zlink_spot_node_status`, `zlink_spot_node_peers`, `zlink_spot_node_subjects`, `zlink_spot_node_internal_sockets`, `zlink_spot_node_spots`, `zlink_spot_node_actors`, `zlink_spot_actors`, `zlink_stream_bound_actors`, `zlink_registry_status`, `zlink_registry_service_summary`, `zlink_registry_member_peers`, `zlink_registry_topology`, `zlink_registry_query_client_topology`, `zlink_monitor_status` |
 | Poller config | `zlink_poller_add`, `zlink_poller_modify`, `zlink_poller_remove`, `zlink_poller_add_fd`, `zlink_poller_add_timer`, `zlink_poller_modify_fd`, `zlink_poller_remove_fd`, `zlink_poller_remove_timer` |
 | Proxy | `zlink_proxy`, `zlink_proxy_steerable` |
 | Timer config | `zlink_timer_start`, `zlink_timer_stop` |
@@ -488,9 +480,6 @@ forever by default.
 `int` APIs with `error_out_`. They do
 not directly return `zlink_config_result_t`.
 
-`zlink_registry_set()` returns `NOT_SUPPORTED` for an unknown
-`zlink_registry_option_t`, `INVALID_ARGUMENT` when the scalar value is `0`,
-and `INVALID_HANDLE` for a NULL or invalid Registry handle. `zlink_registry_get()`
 returns the option value on success. On failure it returns `0`; when
 `error_out_` is not NULL it also stores the normalized `zlink_config_result_t`.
 
@@ -649,7 +638,4 @@ the same public result with `EFAULT`.
 | `zlink_request_result_t` | `zlink_reply_handler_fn` (completion callback), `zlink_actor_join_spot_handler_fn` (completion callback), `zlink_actor_join_entry_spot_handler_fn` (completion callback), `zlink_actor_lookup_handler_fn` (completion callback), `zlink_spot_node_actor_close_bound_session` |
 | `zlink_recv_result_t` | `zlink_router_recv_part`, `zlink_dealer_recv_part`, `zlink_spot_recv_part`, `zlink_recv_part`, `zlink_subscribe_part`, `zlink_xpub_recv_part`, `zlink_spot_subscribe_part`, `zlink_spot_recv_subscription_event`, `zlink_spot_recv_actor_lifecycle`, `zlink_spot_recv_actor_lifecycle_with_request`, `zlink_socket_monitor_recv`, `zlink_timer_recv`, `zlink_spot_node_actor_recv_part`, `zlink_spot_actor_join_recv` |
 | `zlink_handler_result_t` | `zlink_recv_handler` (raw STREAM only), `zlink_stream_packet_handler`, `zlink_send_ready_handler`, `zlink_spot_dispatch_event_handler`, `zlink_socket_monitor_handler`, `zlink_timer_handler` |
-| `zlink_close_result_t` | `zlink_ctx_term`, `zlink_ctx_shutdown`, `zlink_close`, `zlink_monitor_close`, `zlink_registry_destroy`, `zlink_discovery_destroy`, `zlink_spot_destroy`, `zlink_spot_node_destroy`, `zlink_registry_query_client_destroy`, `zlink_poller_destroy`, `zlink_timer_destroy` |
-| `zlink_bind_result_t` | `zlink_bind`, `zlink_registry_bind` |
-| `zlink_connect_result_t` | `zlink_connect`, `zlink_disconnect`, `zlink_disconnect_rid`, `zlink_unbind`, `zlink_spot_node_connect_peer`, `zlink_spot_node_connect_peer_rid`, `zlink_spot_node_disconnect_peer`, `zlink_spot_node_disconnect_peer_rid`, `zlink_discovery_connect_registry`, `zlink_registry_query_client_connect` |
 | `zlink_config_result_t` | `zlink_ctx_set`, `zlink_ctx_auto_hwm_recalculate`, message lifecycle functions (`zlink_msg_init` family + `zlink_msg_adopt`), all socket option/routing/subscription configuration functions, all attach functions, all SpotNode lifecycle/lookup/bind/bind functions, all registry/discovery configuration functions, all snapshot/query functions, all poller mutation functions, `zlink_proxy`, `zlink_proxy_steerable`, `zlink_timer_start`, `zlink_timer_stop`, `zlink_monitor_status` |

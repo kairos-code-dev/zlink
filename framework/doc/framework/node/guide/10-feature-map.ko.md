@@ -5,14 +5,11 @@
 | .NET | Node/NestJS |
 |------|-------------|
 | `AddZLinkFramework(...)` | `ZLinkModule.forRoot(...)` |
-| `AddZLinkRegistry(...)` | `ZLinkRegistryModule.forRoot(...)` |
 | `IZLinkChannelClient` | `ZLinkChannelClient` |
 | `IZLinkFanoutClient` | `ZLinkFanoutClient` |
 | `IZLinkSpotManager` | `ZLinkSpotManager` |
 | `Yield(...)` | `yield(...)` |
 | `IZLinkActorManager` | `ZLinkActorManager` |
-| `IZLinkRegistryQuery` | `ZLinkRegistryQuery` |
-| `IZLinkRegistryQueryClient` | `ZLinkRegistryQueryClient` |
 | `IZLinkRuntimeEventHandler<T>` | `ZLinkRuntimeEventHandler<T>` |
 | `Systems.Zlink.Stream.Connector` | `@zlink-systems/stream-connector` |
 

@@ -7,7 +7,6 @@
 
 - `ZLinkModule`
 - `ZLinkRegistryModule`
-- `ZLinkRegistryQueryClientModule`
 - `ZLINK_CHANNEL_CLIENT`
 - `ZLINK_FANOUT_CLIENT`
 - `ZLINK_SPOT_MANAGER`

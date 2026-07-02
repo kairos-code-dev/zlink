@@ -3,7 +3,6 @@
 import type { SubscriptionEvent, TopicMessage } from '../messaging';
 import type { SendOperation } from '../messaging';
 import type { SubscriptionEntry } from '../service';
-import type { Discovery } from '../service';
 import type { RecvFlags } from './socket_constants';
 import type { PubSocketOptions, SubSocketOptions } from './socket_options';
 import type { ConnectableSocket } from './socket';
@@ -21,8 +20,6 @@ export interface PubSocket extends ConnectableSocket {
   setSendReadyHandler(handler: () => void): void;
   /** Set the logical channel name used to identify this socket in routing and discovery. */
   setChannelName(channelName: string): void;
-  /** Attach a discovery service so publishes reach discovered subscribers without manual connect. */
-  attachDiscovery(discovery: Discovery): void;
 }
 
 /** XPUB socket: like PUB, but also surfaces subscriber subscription and unsubscription events. */
@@ -51,8 +48,6 @@ export interface SubSocket extends ConnectableSocket {
    * `RecvFlags.DontWait` is set and none is available.
    */
   subscribe(result: TopicMessage, flags?: RecvFlags): boolean;
-  /** Attach a discovery service so subscriptions reach discovered publishers without manual connect. */
-  attachDiscovery(discovery: Discovery): void;
 }
 
 /** XSUB socket: a subscriber whose subscriptions are carried as messages. */

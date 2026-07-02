@@ -10,6 +10,13 @@ internal interface IZlinkStreamConnectorInternal : IZlinkStreamConnector
         bool compress,
         CancellationToken cancellationToken);
 
+    void ValidateSendEncoded(
+        ZlinkStreamMessageKind kind,
+        string name,
+        ZlinkStreamEncodedPayload payload,
+        ZlinkStreamMetadata metadata,
+        bool compress);
+
     ValueTask<ZlinkStreamEncodedPayload> RequestEncodedAsync(
         string name,
         ZlinkStreamEncodedPayload payload,

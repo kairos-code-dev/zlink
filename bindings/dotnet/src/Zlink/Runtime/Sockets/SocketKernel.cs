@@ -15,7 +15,6 @@ internal sealed partial class SocketKernel : IDisposable
     private readonly SocketHandle _handle;
     private readonly SocketOptionAccessor _options;
     private readonly SocketTypePolicy _policy;
-    private bool _discoveryAttached;
     private string? _publishTopicCacheKey;
     private byte[]? _publishTopicCacheUtf8;
     private bool _streamAttached;

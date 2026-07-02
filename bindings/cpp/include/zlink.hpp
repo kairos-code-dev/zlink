@@ -23,12 +23,9 @@
 #include "zlink/Contracts/Eventing/poller.hpp"
 #include "zlink/Contracts/Eventing/poll_event.hpp"
 #include "zlink/Contracts/Eventing/timers.hpp"
-#include "zlink/Contracts/Service/registry.hpp"
-#include "zlink/Contracts/Service/discovery.hpp"
 #include "zlink/Contracts/Service/spot_node.hpp"
 #include "zlink/Contracts/Service/spot.hpp"
 #include "zlink/Contracts/Service/actor.hpp"
-#include "zlink/Contracts/Service/registry_models.hpp"
 #include "zlink/Contracts/Service/spot_node_models.hpp"
 #include "zlink/Contracts/Service/operation_contracts.hpp"
 

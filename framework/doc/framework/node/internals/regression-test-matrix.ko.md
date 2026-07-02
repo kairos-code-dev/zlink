@@ -273,12 +273,10 @@ CI workflow 가 만들어 내는 native artifact 조합은 위 여섯 플랫폼 
 
 > dotnet `ContractTests/Registry`, `ContractTests/Eventing`,
 > `E2ETests/Registry`, `E2ETests/Monitoring` 미러. embedded registry 시동 순서,
-> `ZLinkRegistryQuery`, monitoring typed event 를 검증한다.
 
 | 항목 | 계층 | 통과 기준 |
 |------|------|-----------|
 | embedded registry 시작 순서 | `integration-single-process` | framework discovery가 registry bind 이후에 시작된다 |
-| registry query DI | `integration-single-process` | `ZLinkRegistryQuery` resolve와 snapshot 조회가 성공한다 |
 | 원격 query client | `integration-multi-process` | topology snapshot 조회가 성공한다 |
 | monitoring source 이름 불일치 | `unit` | startup validation 예외 |
 | registry polling diff | `integration-multi-process` | topology, status, service summary event가 발생한다 |

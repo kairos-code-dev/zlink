@@ -210,8 +210,6 @@ try {
 | `zlink_spot_node_new(ctx, opts)` | `zlink::service::spot_node_t{ctx}` |
 | `zlink_spot_new(node)` | `node.create_spot()` |
 | `zlink_spot_node_actor_new(...)` | `node.create_actor("id")` |
-| `zlink_registry_new(ctx)` | `zlink::service::registry_t{ctx}` |
-| `zlink_discovery_new(ctx,...)` | `zlink::service::discovery_t{ctx, type, ch}` |
 
 ---
 

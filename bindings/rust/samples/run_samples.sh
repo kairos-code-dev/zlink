@@ -33,7 +33,6 @@ echo "Running samples:"
 echo ""
 
 run_sample pair_recv_sample
-run_sample spot_recv_sample
 run_sample request_reply_callback_sample
 run_sample pubsub_recv_sample
 run_sample dealer_router_recv_sample
@@ -41,8 +40,6 @@ run_sample stream_recv_sample
 run_sample stream_packet_callback_sample
 run_sample spot_request_callback_sample
 run_sample monitor_recv_sample
-run_sample discovery_registry_sample
-run_sample registry_query_sample
 run_sample actor_room_server_sample
 run_sample actor_gateway_relay_sample
 run_sample actor_single_player_queue_sample

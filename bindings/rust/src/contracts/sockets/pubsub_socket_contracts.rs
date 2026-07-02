@@ -2,8 +2,8 @@
 
 use crate::runtime_bridge::SocketStorage;
 use crate::{
-    BindError, CommonSocketOptions, ConfigError, ConnectError, Discovery, HandlerError,
-    PubSocketOptions, RecvError, RecvFlags, SubSocketOptions, SubscriptionEvent, TopicMessage,
+    BindError, CommonSocketOptions, ConfigError, ConnectError, HandlerError, PubSocketOptions,
+    RecvError, RecvFlags, SubSocketOptions, SubscriptionEvent, TopicMessage,
 };
 use crate::{Empty, SendOp};
 
@@ -115,12 +115,6 @@ macro_rules! impl_pubsub_common {
                 trust_system: bool,
             ) -> Result<(), ConfigError> {
                 $inner(self).set_tls_client(ca_cert, hostname, trust_system)
-            }
-
-            /// Attaches a discovery service so this socket can reach discovered
-            /// peers without manual `connect`.
-            pub fn attach_discovery(&self, discovery: &Discovery) -> Result<(), ConfigError> {
-                $inner(self).attach_discovery(discovery)
             }
 
             /// Connects to a remote transport address. Connection is

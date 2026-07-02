@@ -8,9 +8,8 @@
 
 ## 1. 한줄 요약
 
-**네, zlink 핸들은 스레드 안전(thread-safe)합니다.** 소켓, SPOT, Discovery
-핸들 하나를 여러 스레드에서 공유하면서 별도의 mutex나 lock 없이 API를
-호출해도 됩니다.
+**네, zlink 핸들은 스레드 안전(thread-safe)합니다.** 소켓과 SPOT 핸들
+하나를 여러 스레드에서 공유하면서 별도의 mutex나 lock 없이 API를 호출해도 됩니다.
 
 ```
   Thread A --- zlink_send(socket, ...) ---+

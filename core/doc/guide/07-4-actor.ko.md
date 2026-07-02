@@ -125,12 +125,11 @@ case ZLINK_SPOT_DISPATCH_EVENT_ACTOR_READABLE: {
 }
 ```
 
-Actor 주소를 다른 노드에서 알아야 하면, Actor 소유 Discovery에서
-`ZLINK_OPT_DISCOVERY_ACTOR_ROUTE_SYNC`를 켜고
-the removed discovery actor resolver API로 조회한다(join은 조회 선행조건이 아니다). **route sync가 켜져 있으면 활성 경로
-(active route)는 Actor 생성 시점에 Entry Spot을 가리키며 게시되고, user Spot join
-성공 시 join한 user Spot으로, 명시적 leave 성공 시 다시 Entry Spot으로 갱신된다.**
-STREAM 세션 바인딩이나 해제는 활성 경로를 바꾸지 않는다.
+Actor 위치는 SPOT/Actor 생명주기에 속한다. Actor를 만들면 Entry Spot에 놓이고,
+user Spot join이 성공하면 join한 user Spot으로 이동하며, 명시적 leave가
+성공하면 다시 Entry Spot으로 돌아간다. STREAM 세션 바인딩이나 해제는 Actor
+위치를 바꾸지 않는다. 제거된 Discovery/Registry route resolver API는 현재
+공개 계약에 포함되지 않는다.
 
 로컬 노드에서 ID로 기존 Actor를 조회하려면:
 

@@ -526,38 +526,6 @@ If the handshake is not completed within this time, the connection is closed.
 
 ---
 
-## 24. Discovery Sync Options
-
-### DISCOVERY_SPOT_OWNER_SYNC
-
-| | |
-|---|---|
-| **What it does** | Enables Discovery to publish SPOT owner rows to Registry |
-| **Type** | `int` (0 = disabled [default], 1 = enabled) |
-| **API** | `zlink_set_option()` / `zlink_get_option()` with `ZLINK_OPT_DISCOVERY_SPOT_OWNER_SYNC` |
-
-When enabled, the Discovery instance reports which SpotNode owns each SPOT
-routing id to the Registry. Other nodes can then resolve owner node ids via
-the removed registry query API without a live Discovery connection.
-
-Values other than 0 or 1 fail with `EINVAL`.
-
-### DISCOVERY_ACTOR_ROUTE_SYNC
-
-| | |
-|---|---|
-| **What it does** | Enables Discovery to publish actor route rows to Registry |
-| **Type** | `int` (0 = disabled [default], 1 = enabled) |
-| **API** | `zlink_set_option()` / `zlink_get_option()` with `ZLINK_OPT_DISCOVERY_ACTOR_ROUTE_SYNC` |
-
-When enabled, the Discovery instance reports actor routing entries to the
-Registry. This allows external nodes to resolve actor routes via
-the removed registry query API.
-
-Values other than 0 or 1 fail with `EINVAL`.
-
----
-
 ## Per-Socket-Type Default Overrides
 
 Some socket types override common defaults at creation time:
@@ -604,9 +572,9 @@ Beyond common options, socket-type-specific options use dedicated APIs:
 
 ## Socket Channel Name
 
-Assign a logical channel name to any socket for use with Discovery and
-Registry. The channel name is what Discovery and Registry use to identify the
-service role of the socket.
+Assign a logical channel name to any socket. Frameworks and applications can
+use this metadata to keep route-channel configuration explicit without encoding
+the channel into transport endpoints.
 
 ```c
 /* Set the channel name */
@@ -618,9 +586,8 @@ size_t len = 0;
 zlink_socket_get_channel_name(socket, buf, sizeof(buf), &len);
 ```
 
-This is equivalent to setting the channel name at socket-attach time.
-Changing the channel name after a socket is attached to a Discovery is not
-supported.
+The channel name is metadata only. It does not connect the socket and does not
+restore the removed public Discovery or Registry C APIs.
 
 ---
 <!-- zlink-nav:bottom:start -->

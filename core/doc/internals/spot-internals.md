@@ -645,9 +645,10 @@ the Actor from a user Spot back to the Entry Spot. Session bind and unbind are
 not prerequisites for the active route and do not change the Actor location.
 When the Actor named by an active route is destroyed, the route is removed;
 when a destroy targets an Actor of a different generation than the one in the
-route, the route is preserved. These updates become Registry-visible when the
-owning `SpotNode`'s Discovery has `ZLINK_OPT_DISCOVERY_ACTOR_ROUTE_SYNC`
-enabled and is connected to the Registry.
+route, the route is preserved. Public Discovery/Registry route synchronization
+APIs were removed from the current core contract, so this route state remains
+an internal SPOT/Actor lifecycle detail unless a future contract defines a
+new synchronization surface.
 
 ### 9.4 Actor lifecycle event
 

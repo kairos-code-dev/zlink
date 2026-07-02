@@ -111,7 +111,7 @@ Service-local seam provided by each service. Prevents the API layer from knowing
 | `discovery_access_t` | `services/discovery/discovery_access.hpp` | Discovery lifecycle, connect_registry, option, monitor |
 | `registry_access_t` | `services/registry/registry_access.hpp` | Registry lifecycle, bind, config, snapshot/query |
 | `registry_query_access_t` | `services/registry/registry_query_access.hpp` | Remote Registry topology query client |
-| `spot_node_access_t` | `services/spot/spot_node_access.hpp` | SpotNode lifecycle, bind, peer connect, discovery attach |
+| `spot_node_access_t` | `services/spot/spot_node_access.hpp` | SpotNode lifecycle, bind, peer connect, internal attachment coordination |
 | `spot_subject_access` (free function) | `services/spot/spot_subject_access.hpp` | Publish, subscribe, option, handler, monitor, type casting |
 
 `service_public_api_guard_t` is the common admission/close guard for all services. It tracks public-API entry and the close/busy state, and provides destroy lifecycle gates (`EBUSY`/`ESHUTDOWN`). Callback-mode tracking lives separately in `service_mode_state_t`.

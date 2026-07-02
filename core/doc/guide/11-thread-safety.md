@@ -8,9 +8,9 @@
 
 ## 1. The Short Answer
 
-**Yes, zlink handles are thread-safe.** You can share a single socket,
-SPOT, or Discovery handle across multiple threads and call its
-APIs without adding your own mutex or lock.
+**Yes, zlink handles are thread-safe.** You can share a single socket or SPOT
+handle across multiple threads and call its APIs without adding your own mutex
+or lock.
 
 ```
   Thread A --- zlink_send(socket, ...) ---+
@@ -33,7 +33,7 @@ public APIs into three categories so you know what to expect:
 | Category | What it covers | Thread-safe? | Notes |
 |---|---|---|---|
 | **Sending** | `send`, `publish`, `send_rid` | Yes — fully concurrent | Multiple threads can call these on the same handle simultaneously. This is the fast path, optimized for throughput. |
-| **Configuration** | `bind`, `connect`, `disconnect`, `set_option`, `subscribe`, `unsubscribe`, `monitor_open`, `attach_discovery`, queries | Yes — one at a time | Safe to call from any thread. The library processes these one at a time, so don't call them in a tight per-message loop. |
+| **Configuration** | `bind`, `connect`, `disconnect`, `set_option`, `subscribe`, `unsubscribe`, `monitor_open`, queries | Yes — one at a time | Safe to call from any thread. The library processes these one at a time, so don't call them in a tight per-message loop. |
 | **Cleanup** | `close`, `destroy` | Yes — with clear error codes | If another thread is still using the handle, close returns `ZLINK_CLOSE_BUSY` instead of crashing. Details in [section 4](#4-closing-handles-safely). |
 
 **In plain terms:** send as much as you want from any thread. Connect,
@@ -165,7 +165,7 @@ zlink returns a clear error code instead:
 |---|---|---|
 | You call `close`/`destroy` while another thread is mid-call on the same handle | Close is **rejected** — the handle stays alive | `ZLINK_CLOSE_BUSY` |
 | You call any API after `close` has been accepted | The call is **rejected** — the handle is shutting down | `ZLINK_CLOSE_SHUTDOWN` (or matching `*_TERMINATED` on the per-function result) |
-| You call `close`/`destroy` twice | Second call returns immediately | Socket: `EALREADY`; service handle (SPOT/Discovery/Registry): `ESHUTDOWN` |
+| You call `close`/`destroy` twice | Second call returns immediately | Socket: `EALREADY`; SPOT service handle: `ESHUTDOWN` |
 
 After `ZLINK_CLOSE_BUSY`, the handle goes back to normal — nothing is
 damaged, you can keep using it or try closing again later.

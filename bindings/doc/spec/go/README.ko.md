@@ -89,8 +89,6 @@ bindings/go/
 |   +-- messaging.go
 |   +-- sockets.go
 |   +-- eventing.go
-|   +-- service_registry.go
-|   +-- service_discovery.go
 |   +-- service_spot.go
 |   +-- errors.go
 +-- internal/
@@ -204,8 +202,7 @@ Go는 import 경로가 공개 API이므로 공개 통합 `contracts` 패키지 �
 - `sockets.go`: socket family, typed option, 콜백, request/reply,
   publish/subscribe, stream packet API, operation builder.
 - `eventing.go`: monitor, poller, poll event, timer, handler 계약.
-- `service_registry.go`, `service_discovery.go`, `service_spot.go`: 서비스
-  계층 계약과 도메인 모델.
+- `service_spot.go`: 서비스 계층 계약과 도메인 모델.
 - `errors.go`: export 에러 값, 에러 타입, result 도메인.
 
 작은 콜백 타입, enum 값, result 헬퍼는 의미를 부여하는 근처 계약 파일에 둘 수
@@ -258,7 +255,7 @@ Go 생성은 공개 생성자와 리소스 메서드로 노출된다.
   publish/subscribe 표면.
 - `Eventing`: monitor, monitor snapshot/event, poller, poll event, timer, 공개
   poll 헬퍼.
-- `Service`: registry, discovery, SPOT node, SPOT 핸들, topology 모델, Actor
+- `Service`: SPOT node, SPOT 핸들, topology 모델, Actor
   ref, Actor 수명, operation builder.
 - `Errors`: export 에러 값 또는 typed 에러 도메인.
 - Enum, flag, result 식별자는 의미를 정의하는 카테고리에 둔다. 단순히 문법으로
@@ -323,7 +320,7 @@ Go 생성은 공개 생성자와 리소스 메서드로 노출된다.
   콜백, request/reply, publish/subscribe, stream packet API를 포함한다.
 - Eventing 식별자는 monitor, monitor snapshot/event, poller, poll event, timer를
   포함한다.
-- Service 식별자는 registry, discovery, SPOT node, SPOT 핸들, topology
+- Service 식별자는 SPOT node, SPOT 핸들, topology
   snapshot, Actor ref, Actor 수명, operation builder를 포함한다.
 - Error 식별자는 core result 도메인을 보존한다.
 - Enum 식별자는 패키지 간에 공유되는 공개 enum 도메인을 포함한다.
@@ -342,7 +339,7 @@ Go 패키지는 공통 .NET 표준 정책에 정합될 때 다음 안정된 사�
   message, subscription event, stream packet 콜백.
 - 모든 socket family와 typed option.
 - Monitor, poller, timer, readiness 의미.
-- Registry, discovery, SPOT node, SPOT 핸들, topology snapshot, Actor, stream
+- SPOT node, SPOT 핸들, topology snapshot, Actor, stream
   Actor 바인딩.
 
 공개 Go 형태는 API를 관용적으로 묶거나 이름을 바꿀 수 있지만, core operation의
@@ -432,13 +429,6 @@ Go는 Actor와 Spot 경로 lookup 결과를 export 값 타입으로 노출한다
   노출한다.
 
 Go는 ROUTER-to-Actor 또는 Actor-to-ROUTER 직접 메시징 메서드를 추가하지 않는다.
-호출자는 `ResolveActor` 또는 `ResolveSpot`을 기존의 Spot routed send/request
-API와 조합한다.
-
-## Discovery route table
-
-Go는 discovery route table을 `Discovery.BindRoute(...)`,
-`Discovery.UnbindRoute(...)`, `Discovery.ResolveRoute(...)`로 노출한다.
-`RouteKind` 값은 코어와 같이 `RouteKindInvalid = 0`, `RouteKindActor = 1`,
-`RouteKindSpotName = 2`, `RouteKindActorSession = 3`이다. `ResolveRoute(...)`는
-owner routing ID와 route 값을 `Message`로 담은 `DiscoveryRoute`를 반환한다.
+호출자는 Spot routed API와 `SpotNode` 또는 자체 protocol state가 제공하는
+Actor ref를 조합한다. Go는 제거된 Discovery route table이나 resolver API를
+compatibility helper로 되살리면 안 된다.

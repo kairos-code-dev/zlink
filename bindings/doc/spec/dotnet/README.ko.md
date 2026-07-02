@@ -104,12 +104,9 @@ bindings/dotnet/
 |   |   |   |   +-- Timer.cs
 |   |   |   |   +-- ZlinkPoll.cs
 |   |   |   +-- Service/
-|   |   |   |   +-- Registry.cs
-|   |   |   |   +-- Discovery.cs
 |   |   |   |   +-- SpotNode.cs
 |   |   |   |   +-- Spot.cs
 |   |   |   |   +-- Actor.cs
-|   |   |   |   +-- RegistryModels.cs
 |   |   |   |   +-- SpotNodeModels.cs
 |   |   |   +-- Errors/
 |   |   |   |   +-- Errors.cs
@@ -309,13 +306,13 @@ receive-path 값을 캐시할 수 있지만, equality와 공개 동작은 오직
 - `Sockets/`: socket 동작 계약, socket 능력 인터페이스, 타입화된 옵션 facade.
 - `Eventing/`: monitor, monitor snapshot/event, poller, timer, poll event
   계약. 공개되는 경우 static poll 헬퍼도 여기에 포함한다.
-- `Service/`: registry, discovery, SPOT node, SPOT handle, topology 모델,
+- `Service/`: SPOT node, SPOT handle, topology 모델,
   actor ref, actor 생명주기, service 전용 operation builder.
 - `Errors/`: 예외 계층과 에러 도메인 매핑.
 
 각 카테고리 안의 파일은 구현 순서가 아니라 사용자 노출 개념에 따라 나뉜다.
 공통 messaging 연산은 send, request, reply로 나뉘고, service topology 모델은
-registry 모델, SPOT node 모델, 공유 topology enum으로 나뉜다. Request result와
+SPOT node 모델과 공유 topology enum으로 나뉜다. Request result와
 콜백 타입은 socket enum 파일이 아니라 messaging request 계약에 속한다. 수신
 메시지 종류는 받은 메시지 metadata와 함께 둔다. SPOT node 모드, socket
 snapshot, Spot snapshot, actor snapshot은 SPOT node 모델에 속한다.
@@ -347,7 +344,7 @@ P/Invoke나 런타임 브리지 코드를 읽지 않고도 이 폴더에서 발�
   옵션 접근자, 수신 헬퍼, operation 구현 클래스.
 - `Eventing/`: poller, timer, monitor 상태, 콜백 전달, 이벤트 materialize
   헬퍼.
-- `Service/`: registry, discovery, SPOT node, Spot, Actor, topology 변환기,
+- `Service/`: SPOT node, Spot, Actor, topology 변환기,
   service 옵션 지원, service operation 구현.
 - `Errors/`: 경계 검증, 네이티브 result 매핑, errno 변환.
 - `Buffers/`: routing-id 코덱, payload buffer ownership, copy/borrow 정책,
@@ -370,8 +367,8 @@ facade 연결을 위해 내부적으로 런타임 코드에 위임할 수 있지
   `CreateRouterSocket()`, `CreatePubSocket()`, `CreateSubSocket()`,
   `CreateXPubSocket()`, `CreateXSubSocket()`, `CreateStreamSocket()`은
   런타임 socket 구현을 만든다.
-  `CreateDiscovery(...)`, `CreateSpotNode()`, `CreateSpotNode(SpotNodeMode)`는
-  서비스 계층 구현을 만든다.
+- `IContext.CreateSpotNode()`와 `CreateSpotNode(SpotNodeMode)`는 서비스 계층
+  구현을 만든다.
 - `Spot` 핸들은 `ISpotNode.CreateSpot()`, `ISpotNode.EntrySpot()`,
   `ISpotNode.GetOrCreateSpot(...)`, `ISpotNode.SpotLookup(...)`을 통해 얻는다.
   `Spot`을 직접 생성하는 것은 공개되지 않는다. `GetOrCreateSpot(...)`은
@@ -403,7 +400,7 @@ C보다 좁거나 더 관용적일 수 있지만, 의미는 동일하게 유지�
   channel name, request/reply, publish/subscribe, 콜백 표면.
 - socket monitor, monitor event/snapshot, poller, poll event, timer,
   SPOT과의 timer 통합.
-- registry, discovery, SPOT node, SPOT handle, topology snapshot, actor ref,
+- SPOT node, SPOT handle, topology snapshot, actor ref,
   actor 연산, actor 생명주기, stream actor binding.
 - submit, request, recv, handler, close, bind, connect, config 실패에 대한
   타입화된 예외.
@@ -437,7 +434,7 @@ SPOT의 `SubscribeReadable`과 `RoutedReadable` dispatch 이벤트는 readiness
 SPOT은 서비스 계층 API이며, raw socket의 누출이 아니다.
 
 - `ISpotNode`는 node 생명주기, route identity, peer 연결,
-  discovery/channel 부착, 외부 pub ingress 부착, topology snapshot, spot 생성,
+  route bridge/channel coordination, 외부 pub ingress 부착, topology snapshot, spot 생성,
   actor 생성을 소유한다.
 - `ISpot`은 SPOT topic publish/subscribe, routed send/request/reply,
   routed receive, dispatch 이벤트, actor join receive/reply, actor 생명주기
@@ -526,14 +523,6 @@ SPOT은 서비스 계층 API이며, raw socket의 누출이 아니다.
   kind/현재 Spot 필드를 노출한다.
 
 바인딩은 ROUTER↔Actor 직접 메시징 메서드를 추가하지 않는다. 프레임워크 코드와
-애플리케이션은 `Discovery.ResolveActor()`와 `Discovery.ResolveSpot()`을 통해
-Actor 또는 Spot route를 resolve한 뒤, 기존 Spot routed send/request API를
-사용한다.
-
-## Discovery route table
-
-`.NET`은 discovery route table을 `IDiscovery.BindRoute(...)`,
-`IDiscovery.UnbindRoute(...)`, `IDiscovery.ResolveRoute(...)`로 노출한다.
-`DiscoveryRouteKind` 값은 코어와 같이 `Invalid = 0`, `Actor = 1`,
-`SpotName = 2`, `ActorSession = 3`이다. `ResolveRoute(...)`는 `OwnerRoutingId`와
-route `Value`를 `Message`로 담은 `DiscoveryRoute`를 반환한다.
+애플리케이션은 Spot routed API와 `SpotNode` 또는 자체 protocol state가 제공하는
+Actor ref를 조합한다. 바인딩은 제거된 Discovery route table이나 resolver API를
+compatibility helper로 되살리면 안 된다.

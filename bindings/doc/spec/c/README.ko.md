@@ -121,8 +121,7 @@ C 리뷰는 `core/include/zlink.h`에서 다음 그룹을 점검한다.
 - 소켓 생명주기, bind/connect, disconnect, 옵션, TLS 헬퍼, routing id,
   send, receive, request, reply, publish, subscribe, stream API.
 - 이벤팅 API: monitor, poller, timer, 콜백 등록, readiness 의미.
-- registry, discovery, SPOT node, SPOT handle, topology snapshot, actor,
-  service 계층 API.
+- SPOT node, SPOT handle, topology snapshot, actor, service 계층 API.
 - error/result enum과 errno 매핑.
 
 `core/include/zlink.h`에 기능이 있으면 C 바인딩은 그것을 공개 헤더를 통해

@@ -97,13 +97,12 @@ case ZLINK_SPOT_DISPATCH_EVENT_ACTOR_READABLE: {
 }
 ```
 
-To make an Actor address discoverable from another node, enable
-`ZLINK_OPT_DISCOVERY_ACTOR_ROUTE_SYNC` on the Actor owner Discovery, move the
-Actor to a user Spot, then query with the removed discovery actor resolver API.
-**With route sync enabled, the active route is published at Actor creation
-pointing to the Entry Spot, then updated to the joined user Spot when a join
-succeeds, and back to the Entry Spot when an explicit leave succeeds.** STREAM
-session bind and unbind do not change the active route.
+Actor location belongs to the SPOT/Actor lifecycle. Creating an Actor places
+it on the Entry Spot, a successful join moves it to the joined user Spot, and
+a successful explicit leave moves it back to the Entry Spot. STREAM session
+bind and unbind do not change the Actor location. The removed
+Discovery/Registry route resolver APIs are not part of the current public
+contract.
 
 To look up an existing Actor by id on the local node:
 

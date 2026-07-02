@@ -8,7 +8,7 @@
 
 ## 1. 개요
 
-zlink의 공개 핸들(소켓, SPOT, Discovery, Registry, 모니터)은
+zlink의 공개 핸들(소켓, SPOT, 모니터)은
 기본적으로 thread-safe이지만, 모든 API의 비용이 같지는 않습니다.
 내부적으로 라이브러리는 모든 공개 API를 세 가지 계층 중 하나로 분류하고,
 각 계층은 고유한 순서 의미론과 성능 제약, 에러 규칙을 따릅니다.
@@ -54,11 +54,9 @@ enqueue된 메시지는 teardown 전에 소진됩니다 (drain-then-close).
 - `zlink_bind()` / `zlink_connect()` / `zlink_disconnect()`
 - `zlink_set_option()` / `zlink_get_option()`
 - `zlink_set_subscription()` / `zlink_unset_subscription()`
-- the removed SPOT discovery attach API
 - `zlink_*_monitor_open()`
 - `zlink_send_ready_handler()`
-- the removed registry peer API / the removed registry option API`
-- Heavy query: the removed registry topology API, 스냅샷 함수
+- 현재 공개 계약에 남아 있는 snapshot/query 함수
 
 **정확성 우선 직렬화:**
 
@@ -144,25 +142,13 @@ send queue에 발행합니다 — 단일 스레드 send에 쓰는 것과 같은
 
 - **공개 계약:** `spot_publish`는 hot-path 계층을 따릅니다. `SpotNode`는
   topology와 설정을 소유하며 직접 publish hot path를 제공하지 않습니다.
-  구독 변경, peer mutation, `attach_discovery`는 control path를 따릅니다.
+  구독 변경과 peer mutation은 control path를 따릅니다.
 - **Internal child:** `spot_pub` / `spot_sub`는 내부 구현 단위입니다.
   공개 thread-safety 계약의 직접 대상이 아닙니다 — parent/facade
   계약이 이들을 포함합니다. Child ordering과 open/destroy
   선형화는 내부 구현 관심사입니다.
 
-### 3.3 Discovery / Registry
-
-Discovery와 Registry는 control-plane 중심 subject입니다. Hot-path
-send API가 없습니다.
-
-- 정확성과 가시성이 주요 관심사입니다.
-- 내부 직렬화가 topology query, peer mutation, heartbeat 설정의
-  일관성을 보장합니다.
-- `attach_discovery`로 SPOT Node에 연결될 때,
-  Discovery/Registry 직렬화가 parent data-plane 성능을 저하시키면
-  안 됩니다.
-
-### 3.4 Monitor
+### 3.3 Monitor
 
 Monitor는 control-plane 중심 subject입니다.
 
@@ -174,8 +160,7 @@ Monitor는 control-plane 중심 subject입니다.
 
 ## 4. Service Public API Guard
 
-`service_public_api.hpp` 는 SPOT, SPOT Node, Discovery,
-Registry 가 lifecycle 과 control-path 계층을 구현할 때 쓰는
+`service_public_api.hpp` 는 SPOT과 SPOT Node가 lifecycle 과 control-path 계층을 구현할 때 쓰는
 `service_public_api_guard_t` 클래스를 제공합니다.
 
 **구현:**

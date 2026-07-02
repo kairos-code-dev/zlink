@@ -92,13 +92,9 @@ bindings/cpp/
 |       |   |   +-- events.hpp
 |       |   |   +-- status.hpp
 |       |   +-- Service/
-|       |   |   +-- registry.hpp
-|       |   |   +-- discovery.hpp
 |       |   |   +-- spot_node.hpp
 |       |   |   +-- spot.hpp
 |       |   |   +-- actor.hpp
-|       |   |   +-- discovery_models.hpp
-|       |   |   +-- registry_models.hpp
 |       |   |   +-- spot_node_models.hpp
 |       |   |   +-- actor_models.hpp
 |       |   |   +-- operation_contracts.hpp
@@ -136,10 +132,7 @@ bindings/cpp/
 |       +-- Service/
 |       |   +-- actor.cpp
 |       |   +-- actor_ops.cpp
-|       |   +-- discovery.cpp
 |       |   +-- detail.hpp
-|       |   +-- registry.cpp
-|       |   +-- query.cpp
 |       |   +-- request_reply.cpp
 |       |   +-- spot.cpp
 |       |   +-- spot_node.cpp
@@ -215,7 +208,7 @@ dispatch가 없도록 한다.
 | Messaging | `message_t`, `received_t`, `topic_message_t`, `subscription_event_t`, multipart 헬퍼 | `Contracts/Messaging/` |
 | Sockets | `pair_socket_t`, `dealer_socket_t`, `router_socket_t`, `pub_socket_t`, `sub_socket_t`, `xpub_socket_t`, `xsub_socket_t`, `stream_socket_t`, send/recv/request/reply 빌더 | `Contracts/Sockets/` |
 | Eventing | `socket_monitor_t`, monitor 이벤트, poller, poll 이벤트, timer, readiness 헬퍼 | `Contracts/Eventing/` |
-| Service | `registry_t`, `discovery_t`, `spot_node_t`, `spot_t`, `actor_ref_t`, actor 생명주기 모델, service operation 빌더 | `Contracts/Service/` |
+| Service | `spot_node_t`, `spot_t`, `actor_ref_t`, actor 생명주기 모델, service operation 빌더 | `Contracts/Service/` |
 | Errors | 공개 예외와 result 도메인 타입 | `Contracts/Errors/` |
 
 위 지도는 공개 API 색인이다. 계약 표면 개요의 C++ 등가물이며, `IContext`, `ISpot`,
@@ -396,7 +389,7 @@ C++가 header-only를 벗어나면 바인딩은 컴파일된 산출물을 하나
   표면.
 - `Eventing/`: monitor, monitor snapshot/event, poller, poll event, timer, 공개 poll
   헬퍼.
-- `Service/`: registry, discovery, SPOT node, SPOT handle, 토폴로지 모델, actor ref,
+- `Service/`: SPOT node, SPOT handle, 토폴로지 모델, actor ref,
   actor 생명주기, operation 빌더.
 - `Errors/`: 예외 또는 타입 지정 error-result 도메인.
 - enum, flag, result 타입은 의미를 정의하는 카테고리 안에 둔다. 문법별로 묶기 위한
@@ -452,7 +445,7 @@ C++가 header-only를 벗어나면 바인딩은 컴파일된 산출물을 하나
 - Eventing: socket monitor, monitor event, monitor snapshot, poller, one-shot `poll(...)`,
   poll event, timer,
   readiness flag.
-- Services: registry, discovery, SPOT node, SPOT handle, 토폴로지 snapshot, actor ref,
+- Services: SPOT node, SPOT handle, 토폴로지 snapshot, actor ref,
   actor 생명주기, actor operation.
 - Errors: 코어 result 도메인을 보존하는 타입 지정 예외 또는 error-result 표면.
 
@@ -529,13 +522,6 @@ C++는 Actor와 Spot 라우트 조회 결과를 구체 계약 타입으로 노�
   kind/현재 Spot 필드를 노출한다.
 
 C++는 ROUTER-to-Actor 또는 Actor-to-ROUTER 직접 메시징 메서드를 도입하지 않는다.
-애플리케이션은 `discovery_t::resolve_actor()` 또는 `discovery_t::resolve_spot()`을 Spot
-routed API와 조합해 쓴다.
-
-## Discovery route table
-
-C++는 discovery route table을 `discovery_t::bind_route(...)`,
-`discovery_t::unbind_route(...)`, `discovery_t::resolve_route(...)`로 노출한다.
-`route_kind` 값은 코어와 같이 `invalid = 0`, `actor = 1`, `spot_name = 2`,
-`actor_session = 3`이다. `resolve_route(...)`는 owner routing id와 route 값을
-`message_t`로 담은 `discovery_route_t`를 반환한다.
+애플리케이션은 Spot routed API와 `spot_node_t` 또는 자체 protocol state가
+제공하는 Actor ref를 조합한다. C++는 제거된 Discovery route table이나
+resolver API를 compatibility helper로 되살리면 안 된다.

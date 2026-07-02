@@ -127,8 +127,7 @@ A C review checks these groups in `core/include/zlink.h`.
   send, receive, request, reply, publish, subscribe, and stream APIs.
 - Eventing APIs: monitor, poller, timer, callback registration, and readiness
   semantics.
-- Registry, discovery, SPOT node, SPOT handle, topology snapshot, actor, and
-  service-layer APIs.
+- SPOT node, SPOT handle, topology snapshot, actor, and service-layer APIs.
 - Error/result enums and errno mapping.
 
 When a capability exists in `core/include/zlink.h`, the C binding exposes it

@@ -96,12 +96,6 @@ bindings/rust/
 |   |   |   +-- monitor.rs
 |   |   |   +-- poller.rs
 |   |   +-- service/
-|   |   |   +-- registry/
-|   |   |   |   +-- registry.rs
-|   |   |   |   +-- registry_query_client.rs
-|   |   |   |   +-- registry_models.rs
-|   |   |   +-- discovery/
-|   |   |   |   +-- discovery.rs
 |   |   |   +-- spot/
 |   |   |   |   +-- spot_node.rs
 |   |   |   |   +-- spot.rs
@@ -130,11 +124,6 @@ bindings/rust/
 |   |   |   +-- poller.rs
 |   |   |   +-- timer.rs
 |   |   +-- service/
-|   |   |   +-- registry/
-|   |   |   |   +-- registry.rs
-|   |   |   |   +-- registry_query_client.rs
-|   |   |   +-- discovery/
-|   |   |   |   +-- discovery.rs
 |   |   |   +-- spot/
 |   |   |   |   +-- spot_node.rs
 |   |   |   |   +-- spot.rs
@@ -258,8 +247,8 @@ Trait는 호출자에게 대체 가능한 동작이나 generic bound가 필요�
   계약, stream packet handler 계약, socket flag.
 - `eventing/`: monitor, monitor event/status, poller, poll event, timer, event
   handler 계약.
-- `service/`: service 표면이 충분히 클 때 더 잘 읽히도록 `registry/`,
-  `discovery/`, `spot/` 하위 모듈로 나눈다.
+- `service/`: SPOT node, Spot, Actor, topology model, service operation builder를
+  담는 `spot/` 하위 모듈로 둔다.
 - `errors/`: 공개 error 타입, result 도메인, error-code 매핑.
 
 공개 리소스 동작을 위한 단일 통합 `models.rs`나 런타임 export barrel은 피한다.
@@ -277,7 +266,7 @@ Trait는 호출자에게 대체 가능한 동작이나 generic bound가 필요�
 - `sockets/`: socket base 타입, socket kernel, 모든 socket family의 socket 구현,
   콜백 adapter, operation 구현 타입.
 - `eventing/`: poller/timer/monitor 구현과 event materialization 헬퍼.
-- `service/`: registry, discovery, SPOT node, Spot, Actor, topology, service
+- `service/`: SPOT node, Spot, Actor, topology, service
   operation 구현.
 - `errors/`: 네이티브 에러 변환과 검증 헬퍼.
 - `native/`: FFI 바인딩, 네이티브 로딩, raw 핸들, unsafe 경계 코드.
@@ -295,8 +284,7 @@ Trait는 호출자에게 대체 가능한 동작이나 generic bound가 필요�
   `create_router_socket()`, `create_pub_socket()`, `create_sub_socket()`,
   `create_xpub_socket()`, `create_xsub_socket()`, `create_stream_socket()`은
   네이티브 기반 socket 구현을 생성한다.
-- `Context::create_registry()`, `create_discovery(...)`,
-  `create_spot_node(...)`는 service 계층 구현을 생성한다.
+- `Context::create_spot_node(...)`는 service 계층 구현을 생성한다.
 - `Spot` 핸들은 `SpotNode::create_spot(...)`, `entry_spot()`,
   `get_or_create_spot(...)`, 또는 `spot_lookup(...)`을 통해 얻는다. 직접적인
   `Spot` 생성은 공개되지 않는다.
@@ -322,7 +310,7 @@ Trait는 호출자에게 대체 가능한 동작이나 generic bound가 필요�
   publish/subscribe 표면.
 - `eventing/`: monitor, monitor snapshot/event, poller, poll event, timer, 공개
   poll 헬퍼.
-- `service/`: registry, discovery, SPOT node, SPOT 핸들, topology model, actor
+- `service/`: SPOT node, SPOT 핸들, topology model, actor
   ref, actor lifecycle, operation builder.
 - `errors/`: typed error/result 도메인.
 - Enum, flag, result 타입은 그 의미를 정의하는 카테고리에 둔다. 구문으로 선언을
@@ -373,7 +361,7 @@ Crate는 명확한 공개 모듈 또는 re-export를 노출해야 한다.
 - Sockets: pair, dealer, router, pub, sub, xpub, xsub, stream, typed option,
   콜백, request/reply, publish/subscribe, stream packet API.
 - Eventing: monitor, monitor snapshot/event, poller, poll event, timer.
-- Service: registry, discovery, SPOT node, SPOT 핸들, topology snapshot, actor
+- Service: SPOT node, SPOT 핸들, topology snapshot, actor
   ref, actor lifecycle, operation builder.
 - Error: core 의미를 보존하는 typed error/result 도메인.
 
@@ -393,7 +381,7 @@ FFI 모듈은 private으로 유지한다.
   `XSubSocket::subscription_at(index)`는 해당 인덱스의 subscription filter와
   pattern 여부를 반환한다. 해당 인덱스가 없으면 `None`을 반환한다.
 - Monitor, poller, timer, readiness 의미.
-- Registry, discovery, SPOT node, SPOT 핸들, topology snapshot, actor, stream
+- SPOT node, SPOT 핸들, topology snapshot, actor, stream
   actor binding.
 
 Rust 이름과 ownership 모델은 C와 다를 수 있지만, 동작은 core 능력의 의미와
@@ -494,13 +482,6 @@ Rust는 Actor와 Spot route 조회 결과를 공개 값 타입으로 노출한�
   노출한다.
 
 Rust는 ROUTER-to-Actor 또는 Actor-to-ROUTER 직접 메시징 메서드를 추가하지
-않는다. 호출자는 `resolve_actor()` 또는 `resolve_spot()`을 기존 Spot routed
-API와 조합한다.
-
-## Discovery route table
-
-Rust는 discovery route table을 `Discovery::bind_route(...)`,
-`Discovery::unbind_route(...)`, `Discovery::resolve_route(...)`로 노출한다.
-`RouteKind` 값은 코어와 같이 `Invalid = 0`, `Actor = 1`, `SpotName = 2`,
-`ActorSession = 3`이다. `resolve_route(...)`는 owner routing id와 route 값을
-`Message`로 담은 `DiscoveryRoute`를 반환한다.
+않는다. 호출자는 Spot routed API와 `SpotNode` 또는 자체 protocol state가
+제공하는 Actor ref를 조합한다. Rust는 제거된 Discovery route table이나
+resolver API를 compatibility helper로 되살리면 안 된다.

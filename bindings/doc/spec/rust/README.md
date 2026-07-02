@@ -111,12 +111,6 @@ bindings/rust/
 |   |   |   +-- monitor.rs
 |   |   |   +-- poller.rs
 |   |   +-- service/
-|   |   |   +-- registry/
-|   |   |   |   +-- registry.rs
-|   |   |   |   +-- registry_query_client.rs
-|   |   |   |   +-- registry_models.rs
-|   |   |   +-- discovery/
-|   |   |   |   +-- discovery.rs
 |   |   |   +-- spot/
 |   |   |   |   +-- spot_node.rs
 |   |   |   |   +-- spot.rs
@@ -147,11 +141,6 @@ bindings/rust/
 |   |   |   +-- poller.rs
 |   |   |   +-- timer.rs
 |   |   +-- service/
-|   |   |   +-- registry/
-|   |   |   |   +-- registry.rs
-|   |   |   |   +-- registry_query_client.rs
-|   |   |   +-- discovery/
-|   |   |   |   +-- discovery.rs
 |   |   |   +-- spot/
 |   |   |   |   +-- spot_node.rs
 |   |   |   |   +-- spot.rs
@@ -291,9 +280,8 @@ same public concept in Rust quickly.
   socket flags.
 - `eventing/`: monitor, monitor event/status, poller, poll events, timer, and
   event handler contracts.
-- `service/`: `registry/`, `discovery/`, and `spot/` submodules. The Rust
-  binding uses these submodules because the service surface is large enough to
-  read better that way.
+- `service/`: `spot/` submodule for SPOT node, Spot, Actor, topology models,
+  and service operation builders.
 - `errors/`: public error types, result domains, and error-code mapping.
 
 Avoid a single aggregate `models.rs` or runtime-export barrel for public
@@ -317,7 +305,7 @@ Runtime source mirrors the runtime classification in the
   every socket family, callback adapters, and operation implementation types.
 - `eventing/`: poller/timer/monitor implementations and event
   materialization helpers.
-- `service/`: registry, discovery, SPOT node, Spot, Actor, topology, and
+- `service/`: SPOT node, Spot, Actor, topology, and
   service operation implementations.
 - `options/`: option validation and native option id/value mapping.
 - `errors/`: native error translation and validation helpers.
@@ -339,8 +327,7 @@ methods.
   `create_router_socket()`, `create_pub_socket()`, `create_sub_socket()`,
   `create_xpub_socket()`, `create_xsub_socket()`, and
   `create_stream_socket()` create native-backed socket implementations.
-- `Context::create_registry()`, `create_discovery(...)`, and
-  `create_spot_node(...)` create service-layer implementations.
+- `Context::create_spot_node(...)` creates the service-layer implementation.
 - `Spot` handles are obtained through `SpotNode::create_spot(...)`,
   `entry_spot()`, `get_or_create_spot(...)`, or `spot_lookup(...)`; direct
   `Spot` construction is not public.
@@ -366,7 +353,7 @@ and are the review ownership map for public crate items and re-exports.
   and publish/subscribe surfaces.
 - `eventing/`: monitor, monitor snapshot/event, poller, poll event, timer, and
   public poll helpers.
-- `service/`: registry, discovery, SPOT node, SPOT handle, topology models,
+- `service/`: SPOT node, SPOT handle, topology models,
   actor refs, actor lifecycle, and operation builders.
 - `errors/`: typed error/result domains.
 - Enum, flag, and result types live in the category that defines their meaning.
@@ -419,7 +406,7 @@ The crate should expose clear public modules or re-exports.
 - Sockets: pair, dealer, router, pub, sub, xpub, xsub, stream, typed options,
   callbacks, request/reply, publish/subscribe, and stream packet APIs.
 - Eventing: monitor, monitor snapshot/event, poller, poll event, and timer.
-- Service: registry, discovery, SPOT node, SPOT handle, topology snapshots,
+- Service: SPOT node, SPOT handle, topology snapshots,
   actor refs, actor lifecycle, and operation builders.
 - Error: typed error/result domains preserving core semantics.
 
@@ -439,7 +426,7 @@ binding is aligned to the shared .NET-standard policy.
   and `XSubSocket::subscription_at(index)` return the subscription filter and
   pattern flag for the index, or `None` when the index is absent.
 - Monitor, poller, timer, and readiness semantics.
-- Registry, discovery, SPOT node, SPOT handle, topology snapshots, actors, and
+- SPOT node, SPOT handle, topology snapshots, actors, and
   stream actor binding.
 
 Rust names and ownership models may differ from C, but behavior must match the
@@ -541,13 +528,6 @@ Rust exposes Actor and Spot route lookup results through public value types.
   core snapshots.
 
 Rust must not add ROUTER-to-Actor or Actor-to-ROUTER direct messaging methods.
-Callers compose `resolve_actor()` or `resolve_spot()` with the existing Spot
-routed APIs.
-
-## Discovery Route Table
-
-Rust exposes the discovery route table through `Discovery::bind_route(...)`,
-`Discovery::unbind_route(...)`, and `Discovery::resolve_route(...)`.
-`RouteKind` uses the core values `Invalid = 0`, `Actor = 1`, `SpotName = 2`,
-and `ActorSession = 3`. `resolve_route(...)` returns a `DiscoveryRoute`
-containing the owner routing id and the route value as a `Message`.
+Callers use the Spot routed APIs and the Actor refs supplied by `SpotNode` or
+by their own protocol state. Rust must not reintroduce the removed Discovery
+route table or resolver APIs as compatibility helpers.

@@ -124,13 +124,6 @@ bindings/node/
 |   |   |   |   +-- poller.ts
 |   |   |   |   +-- timer.ts
 |   |   |   +-- service/
-|   |   |   |   +-- registry/
-|   |   |   |   |   +-- registry.ts
-|   |   |   |   |   +-- registry_query_client.ts
-|   |   |   |   |   +-- registry_models.ts
-|   |   |   |   +-- discovery/
-|   |   |   |   |   +-- discovery.ts
-|   |   |   |   |   +-- discovery_models.ts
 |   |   |   |   +-- spot/
 |   |   |   |   |   +-- spot_node.ts
 |   |   |   |   |   +-- spot.ts
@@ -175,11 +168,6 @@ bindings/node/
 |   |   |   |   +-- option_mapping.ts
 |   |   |   |   +-- validation.ts
 |   |   |   +-- service/
-|   |   |   |   +-- registry/
-|   |   |   |   |   +-- registry.ts
-|   |   |   |   |   +-- registry_query_client.ts
-|   |   |   |   +-- discovery/
-|   |   |   |   |   +-- discovery.ts
 |   |   |   |   +-- spot/
 |   |   |   |   |   +-- spot_node.ts
 |   |   |   |   |   +-- spot.ts
@@ -336,7 +324,7 @@ perf나 샘플이 네이티브 객체에 더 빨리 접근하도록 문서화되
   publish/subscribe 표면.
 - `eventing/`: monitor, monitor snapshot/event, poller, poll event, timer, 공개
   poll 헬퍼.
-- `service/`: registry, discovery, SPOT node, SPOT 핸들, 토폴로지 모델,
+- `service/`: SPOT node, SPOT 핸들, 토폴로지 모델,
   Actor 참조, Actor 생명주기, operation 빌더.
 - `errors/`: 타입 있는 에러 클래스 또는 태그된 에러 도메인.
 - enum, flag, result, literal-union 타입은 그 의미를 정의하는 카테고리에 산다.
@@ -356,9 +344,8 @@ TypeScript 관용 표기를 유지한다.
   스트림 packet handler 계약, 소켓 플래그.
 - `eventing/`: monitor, monitor event/status, poller, poll events, timer, 이벤트
   handler 계약.
-- `service/`: 서비스 표면이 크게 자라 가독성이 더 좋을 때 `registry/`,
-  `discovery/`, `spot/` 하위 폴더를 사용한다. `registry.ts`,
-  `registry_query_client.ts`, `discovery.ts`, `spot_node.ts`, `spot.ts`,
+- `service/`: SPOT node, Spot, Actor, topology model, service operation builder를
+  담는 `spot/` 하위 폴더를 사용한다. `spot_node.ts`, `spot.ts`,
   `actor.ts`, `spot_operations.ts` 같은 이름 있는 파일을 사용하고, 모델 파일은
   해당 서비스 도메인과 함께 묶는다.
 - `errors/`: 공개 에러 클래스, result 도메인, 에러 코드 매핑.
@@ -393,9 +380,8 @@ TypeScript 관용 표기를 유지한다.
   관련 이벤트 materialization 헬퍼.
 - `options/`: context, socket, service가 공유하는 option 검증과 native option
   id/value 매핑.
-- `service/`: registry, registry query client, discovery, SPOT node, Spot,
-  Actor, 토폴로지, 서비스 operation 구현. 구현이 충분히 커지면 `registry/`,
-  `discovery/`, `spot/` 하위 폴더를 사용한다.
+- `service/`: SPOT node, Spot, Actor, 토폴로지, 서비스 operation 구현. 구현이
+  충분히 커지면 `spot/` 하위 폴더를 사용한다.
 - `errors/`: 네이티브 에러 변환과 검증 헬퍼.
 - `native/`: 네이티브 addon 로딩, 플랫폼 lookup, N-API 바인딩 표면.
 - `internal/`: 표준 .NET 런타임 분류에 맞지 않는 작은 비공개 glue만 둔다. 표준
@@ -415,11 +401,9 @@ TypeScript 관용 표기를 유지한다.
 것이다.
 
 런타임 구현 파일의 이름은 네이티브 기반 구현이라는 사실이 아니라 구현하는 리소스나
-operation을 따라 짓는다. `router_socket.ts`, `spot_node.ts`,
-`registry_query_client.ts`, `poller.ts`, `timer.ts`를 사용하며,
-`default_router_socket.ts`, `default_spot_node.ts`,
-`default_registry_query_client.ts`, `default_poller.ts` 등의 이름은 사용하지
-않는다.
+operation을 따라 짓는다. `router_socket.ts`, `spot_node.ts`, `poller.ts`,
+`timer.ts`를 사용하며, `default_router_socket.ts`, `default_spot_node.ts`,
+`default_poller.ts` 등의 이름은 사용하지 않는다.
 
 공유 헬퍼는 두 번째 공개 구현 aggregate가 되어선 안 된다. `runtime/internal/*`은
 여러 런타임 분류를 가로지르는 좁은 private glue를 소유할 수 있으나, 공개 리소스의
@@ -438,7 +422,7 @@ operation을 따라 짓는다. `router_socket.ts`, `spot_node.ts`,
 
 다음 형태들은 명시적인 정렬 실패다.
 
-  `Discovery`, `SpotNode`, `Spot`, `Actor` 구현을 한 파일에 담은 경우.
+  `SpotNode`, `Spot`, `Actor` 구현을 한 파일에 담은 경우.
 - `runtime/eventing/eventing.ts`가 monitor socket, poll events, poller, timer,
   stopwatch, counter 구현을 한 파일에 담은 경우.
 - `runtime/core/context.ts`가 context, context options, 무관한 런타임 헬퍼 구현을
@@ -538,7 +522,7 @@ operation을 따라 짓는다. `router_socket.ts`, `spot_node.ts`,
 - Sockets: pair, dealer, router, pub, sub, xpub, xsub, stream, 타입 있는 옵션,
   callback, request/reply, publish/subscribe, 스트림 packet API.
 - Eventing: monitor, monitor snapshot/event, poller, poll event, timer.
-- Service: registry, discovery, SPOT node, SPOT 핸들, 토폴로지 스냅샷, Actor
+- Service: SPOT node, SPOT 핸들, 토폴로지 스냅샷, Actor
   참조, Actor 생명주기, operation 빌더.
 - Errors: 타입 있는 에러 클래스 또는 core result 도메인을 보존하는 태그된 에러
   객체.
@@ -554,7 +538,7 @@ operation을 따라 짓는다. `router_socket.ts`, `spot_node.ts`,
   구독 이벤트, 스트림 packet 콜백.
 - 모든 소켓 패밀리와 그 타입 있는 옵션.
 - Monitor, poller, timer, readiness 의미.
-- Registry, discovery, SPOT node, SPOT 핸들, 토폴로지 스냅샷, Actor, 스트림
+- SPOT node, SPOT 핸들, 토폴로지 스냅샷, Actor, 스트림
   Actor 바인딩.
 
 바인딩은 적절할 때 동기 또는 비동기 형식을 노출할 수 있으나, core operation의
@@ -656,12 +640,6 @@ Node는 Actor와 Spot route 조회 결과를 공개 JavaScript 객체와 일치�
   노출한다.
 
 Node는 ROUTER-to-Actor나 Actor-to-ROUTER 직접 메시징 메서드를 추가하지 않는다.
-호출자는 `resolveActor()` 또는 `resolveSpot()`을 기존 Spot routed API와 조합한다.
-
-## Discovery route table
-
-Node는 discovery route table을 `Discovery.bindRoute(...)`,
-`Discovery.unbindRoute(...)`, `Discovery.resolveRoute(...)`로 노출한다.
-`DiscoveryRouteKind` 값은 코어와 같이 `Invalid = 0`, `Actor = 1`,
-`SpotName = 2`, `ActorSession = 3`이다. `resolveRoute(...)`는 owner routing id와
-route 값을 `Message`로 담은 `DiscoveryRoute`를 반환한다.
+호출자는 SPOT routed API와 `SpotNode` 또는 자체 protocol state가 제공하는
+Actor ref를 조합한다. Node는 제거된 Discovery route table이나 resolver API를
+compatibility helper로 되살리면 안 된다.

@@ -84,8 +84,6 @@ bindings/java/src/main/java/systems/zlink/
 |   +-- sockets/
 |   +-- eventing/
 |   +-- service/
-|   |   +-- registry/
-|   |   +-- discovery/
 |   |   +-- spot/
 |   +-- errors/
 +-- internal/
@@ -95,8 +93,6 @@ bindings/java/src/main/java/systems/zlink/
 |   +-- sockets/
 |   +-- eventing/
 |   +-- service/
-|   |   +-- registry/
-|   |   +-- discovery/
 |   |   +-- spot/
 |   +-- errors/
 |   +-- nativeapi/
@@ -130,8 +126,6 @@ Java contract 카테고리는 규범적이다.
 | `systems.zlink.contracts.messaging` | 메시지 값, 수신 envelope, topic message, subscription event, payload ownership, 공통 메시지 메타데이터. |
 | `systems.zlink.contracts.sockets` | Socket resource contract, socket operation builder, socket option, send/recv/request/reply/publish surface. |
 | `systems.zlink.contracts.eventing` | Poller, poll event, monitor socket, monitor snapshot, timer resource contract. |
-| `systems.zlink.contracts.service.registry` | Registry resource contract, registry query/filter 모델, registry snapshot 모델. |
-| `systems.zlink.contracts.service.discovery` | Discovery resource contract, discovery filter, discovery snapshot 모델. |
 | `systems.zlink.contracts.service.spot` | SpotNode, Spot, Actor, route/admission handler, actor lifecycle, service operation builder. |
 | `systems.zlink.contracts.errors` | Public exception과 typed error/result 도메인. |
 
@@ -143,7 +137,7 @@ Runtime 패키지는 동일한 .NET 표준 분류를 Java 패키지 이름으로
 | `systems.zlink.runtime.messaging` | 메시지 materialization, multipart progress, request progress, request 실행. |
 | `systems.zlink.runtime.sockets` | Socket kernel, socket family 구현, callback adapter, socket operation 실행. |
 | `systems.zlink.runtime.eventing` | Monitor, poller, poll event, timer, dispatch loop 구현. |
-| `systems.zlink.runtime.service.*` | Registry, discovery, SpotNode, Spot, Actor, topology, service operation 구현. |
+| `systems.zlink.runtime.service.*` | SpotNode, Spot, Actor, topology, service operation 구현. |
 | `systems.zlink.runtime.errors` | Native errno/result를 public exception/result 도메인으로 변환. |
 | `systems.zlink.runtime.nativeapi` | JNI/Panama 선언, ABI mirror, 심볼 로딩, native artifact lookup. |
 
@@ -267,14 +261,8 @@ systems/zlink/contracts/
 |   +-- SubscriptionEvent.java
 |   +-- TopicMessage.java
 +-- service/
-|   +-- discovery/
-|   |   +-- Discovery.java
-|   |   +-- SpotRoute.java
-|   +-- registry/
-|   |   +-- Registry.java
-|   |   +-- RegistryEnums/
-|   |   +-- RegistryModels/
 |   +-- spot/
+|   |   +-- SpotRoute.java
 |       +-- Actor.java
 |       +-- Spot.java
 |       +-- SpotDispatchInfo.java
@@ -353,11 +341,6 @@ systems/zlink/runtime/
 |   +-- NativePoller.java
 |   +-- NativeTimer.java
 +-- service/
-|   +-- discovery/
-|   |   +-- NativeDiscovery.java
-|   +-- registry/
-|   |   +-- NativeRegistry.java
-|   |   +-- NativeRegistryCodecs.java
 |   +-- spot/
 |       +-- NativeActor.java
 |       +-- NativeSpot.java
@@ -403,8 +386,6 @@ factory가 생성해야 한다.
 - `MonitorSocket`
 - `Poller`
 - `Timer`
-- `Registry`
-- `Discovery`
 - `SpotNode`
 - `Spot`
 - Java surface가 actor handle 또는 actor lifecycle resource를 native-backed
@@ -744,16 +725,9 @@ Actor와 SPOT route 결과는 concrete contract 모델이다:
 - Invalid kind는 성공한 route 결과가 아니다.
 
 Java는 ROUTER-to-Actor 또는 Actor-to-ROUTER 직접 메시징 메서드를 추가하지 않는다.
-호출자는 기존 SPOT routed API와 `Discovery.resolveActor()` 또는
-`Discovery.resolveSpot()`을 조합한다.
-
-## Discovery route table
-
-Java는 discovery route table을 `Discovery.bindRoute(...)`,
-`Discovery.unbindRoute(...)`, `Discovery.resolveRoute(...)`로 노출한다. route
-kind 값은 코어 계약과 같이 invalid `0`, actor `1`, spot name `2`, actor session
-`3`이다. `resolveRoute(...)`는 `ownerRoutingId()`와 route `value()`를 `Message`로
-담은 `DiscoveryRoute`를 반환한다.
+호출자는 SPOT routed API와 `SpotNode` 또는 자체 protocol state가 제공하는
+Actor ref를 조합한다. Java는 제거된 Discovery route table이나 resolver API를
+compatibility helper로 되살리면 안 된다.
 
 ## Spot Get-Or-Create
 
@@ -808,7 +782,7 @@ concrete contract resource에서 helper 클래스만 추출하는 것으로 시�
 
 다음 항목이 모두 참일 때에만 Java 바인딩이 정렬된 것으로 본다:
 
-- `Context`, socket, eventing resource, registry, discovery, SpotNode, Spot,
+- `Context`, socket, eventing resource, SpotNode, Spot,
   Actor의 native-backed resource가 public contract interface다.
 - runtime native-backed 구현이 `systems.zlink.runtime.*` 아래에 있다.
 - factory 진입점이 contract interface를 반환하고 runtime 클래스 이름을 감춘다.

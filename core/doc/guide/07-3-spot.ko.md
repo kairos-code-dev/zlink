@@ -18,8 +18,8 @@
 SPOT은 `SpotNode`와 `Spot` 두 층으로 나뉜다.
 
 - `SpotNode`
-  노드 토폴로지와 디스커버리(discovery) 기반 연결, 수동 피어 연결, 채널 호출용
-  `DEALER`, 외부 발행 유입(publish ingress)을 관리한다.
+  노드 토폴로지, 수동 피어 연결, route bridge, 외부 발행 유입(publish ingress)을
+  관리한다.
 - `Spot`
   애플리케이션이 실제로 쓰는 facade(facade, 단순화된 인터페이스)다. 토픽 발행/구독, 라우팅 수신,
   채널 전송/요청을 제공한다.
@@ -27,8 +27,8 @@ SPOT은 `SpotNode`와 `Spot` 두 층으로 나뉜다.
 일반적인 순서는 다음과 같다.
 
 1. `SpotNode`를 만든다.
-2. bind 또는 discovery attach로 노드를 네트워크에 올린다.
-3. 필요하면 채널 호출용 `DEALER`를 붙인다.
+2. bind하거나 토폴로지에 필요한 raw peer를 연결한다.
+3. 외부 channel runtime이 SPOT route를 넘겨야 하면 route bridge를 만든다.
 4. `Spot` facade를 만든다.
 5. `Spot`으로 publish/subscribe 또는 채널 호출을 사용한다.
 
@@ -219,12 +219,10 @@ int rc = zlink_spot_subscribe(
 - 채널 호출은 항상 등록된 `DEALER`를 통해서만 나간다.
 - 등록 함수는 소켓 생성이나 연결(connect)을 대신하지 않는다.
 
-**자동 경로**는 Discovery가 `DEALER` 연결을 대신 관리한다. 피어가 Registry에 등록되면
-자동으로 연결이 맺어진다. **수동 경로**는 호출자가 `DEALER` 소켓을 만들고 직접
-`connect()`를 호출해야 한다. 두 방식의 채널 호출 동작은 동일하며 피어 발견과 연결
-관리 방식만 다르다.
+현재 공개 C API는 수동 연결 경로를 사용한다. 호출자가 `DEALER` 소켓을 만들고
+알고 있는 endpoint에 `connect()`를 호출한 뒤 route bridge에 등록한다.
 
-### 5.1 자동 연결 경로
+### 5.1 제거된 자동 연결 경로
 
 이전 자동 연결 경로는 공개 discovery handle을 사용했으며 core 8.4.3에서
 C 계약에서 제거되었다. 대체 location runtime/store 계약이 공개되기 전까지
@@ -263,8 +261,7 @@ zlink_spot_request_channel(
   2000);
 ```
 
-같은 `channel_name`에 `DEALER`를 두 개 등록할 수 없다. 자동 연결과 수동
-연결도 이름이 같으면 충돌로 처리된다.
+같은 `channel_name`에 `DEALER`를 두 개 등록할 수 없다.
 
 ## 6. dispatch 이벤트 핸들러로 통합 소비
 

@@ -118,7 +118,7 @@ API facade 의 규칙:
 | `discovery_access_t` | `services/discovery/` | Discovery lifecycle, connect_registry, option, monitor |
 | `registry_access_t` | `services/registry/` | Registry lifecycle, bind, config, snapshot/query |
 | `registry_query_access_t` | `services/registry/` | 원격 Registry topology query |
-| `spot_node_access_t` | `services/spot/` | SpotNode lifecycle, bind, discovery attach |
+| `spot_node_access_t` | `services/spot/` | SpotNode lifecycle, bind, internal attachment coordination |
 | `spot_subject_access` (free function) | `services/spot/` | publish, subscribe, option, handler, monitor, type casting |
 
 `service_public_api_guard_t` 는 모든 서비스에 공통되는 입장 허용/close 가드다.

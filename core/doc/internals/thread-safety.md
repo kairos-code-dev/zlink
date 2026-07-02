@@ -8,8 +8,8 @@ cannot do), see [Thread-Safety Guide](../guide/11-thread-safety.md).
 
 ## 1. Overview
 
-zlink's public handles (sockets, SPOT, Discovery, Registry,
-monitors) are thread-safe by default, but not all APIs carry the same
+zlink's public handles (sockets, SPOT, monitors) are thread-safe by default,
+but not all APIs carry the same
 cost. Internally the library classifies every public API into one of
 three tiers, each with its own ordering semantics, performance
 constraints, and error rules.
@@ -58,11 +58,9 @@ enqueued messages drain before teardown completes (drain-then-close).
 - `zlink_bind()` / `zlink_connect()` / `zlink_disconnect()`
 - `zlink_set_option()` / `zlink_get_option()`
 - `zlink_set_subscription()` / `zlink_unset_subscription()`
-- the removed SPOT discovery attach API
 - `zlink_*_monitor_open()`
 - `zlink_send_ready_handler()`
-- the removed registry peer API / the removed registry option API`
-- Heavy queries: the removed registry topology API, snapshot functions
+- Snapshot/query functions that remain in the public contract
 
 **Correctness-first serialization:**
 
@@ -153,27 +151,14 @@ concurrent entry.
 
 - **Public contract:** `spot_publish` follows the hot-path tier. `SpotNode`
   owns topology and configuration; it does not provide a direct publish hot
-  path. Subscription changes, peer mutations, and `attach_discovery` follow
-  the control path.
+  path. Subscription changes and peer mutations follow the control path.
 - **Internal children:** `spot_pub` / `spot_sub` are internal
   implementation units. They are not direct subjects of the public
   thread-safety contract — the parent/facade contract covers them.
   Child ordering and open/destroy linearization are internal
   implementation concerns.
 
-### 3.3 Discovery / Registry
-
-Discovery and Registry are control-plane-centric subjects. They have no
-hot-path send APIs.
-
-- Correctness and visibility are the primary concerns.
-- Internal serialization ensures that topology queries, peer mutations,
-  and heartbeat configuration are consistent.
-- Discovery/Registry serialization must not degrade the parent
-  data-plane performance when `attach_discovery` links them to a
-  SPOT Node.
-
-### 3.4 Monitor
+### 3.3 Monitor
 
 Monitor is a control-plane-centric subject.
 
@@ -185,7 +170,7 @@ Monitor is a control-plane-centric subject.
 ## 4. Service Public API Guard
 
 `service_public_api.hpp` provides the `service_public_api_guard_t`
-class used by SPOT, SPOT Node, Discovery, and Registry to
+class used by SPOT and SPOT Node to
 implement the lifecycle and control-path tiers.
 
 **Implementation:**

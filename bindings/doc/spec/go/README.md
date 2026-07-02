@@ -105,8 +105,6 @@ bindings/go/
 |   +-- messaging.go
 |   +-- sockets.go
 |   +-- eventing.go
-|   +-- service_registry.go
-|   +-- service_discovery.go
 |   +-- service_spot.go
 |   +-- errors.go
 +-- internal/
@@ -221,8 +219,7 @@ public API. Use source files inside that package to mirror the .NET
 - `sockets.go`: socket families, typed options, callbacks, request/reply,
   publish/subscribe, stream packet APIs, and operation builders.
 - `eventing.go`: monitor, poller, poll events, timer, and handler contracts.
-- `service_registry.go`, `service_discovery.go`, and `service_spot.go`:
-  service-layer contracts and domain models.
+- `service_spot.go`: service-layer contracts and domain models.
 - `errors.go`: exported error values, error types, and result domains.
 
 Small callback types, enum values, and result helpers may live in the nearby
@@ -280,7 +277,7 @@ subpackage names.
   and publish/subscribe surfaces.
 - `Eventing`: monitor, monitor snapshot/event, poller, poll event, timer, and
   public poll helpers.
-- `Service`: registry, discovery, SPOT node, SPOT handle, topology models,
+- `Service`: SPOT node, SPOT handle, topology models,
   actor refs, actor lifecycle, and operation builders.
 - `Errors`: exported error values or typed error domains.
 - Enum, flag, and result identifiers live in the category that defines their
@@ -349,7 +346,7 @@ Keep the public `contracts` package tree easy to scan.
   options, callbacks, request/reply, publish/subscribe, and stream packet APIs.
 - Eventing identifiers cover monitor, monitor snapshot/event, poller, poll
   event, and timer.
-- Service identifiers cover registry, discovery, SPOT node, SPOT handle,
+- Service identifiers cover SPOT node, SPOT handle,
   topology snapshots, actor refs, actor lifecycle, and operation builders.
 - Error identifiers preserve core result domains.
 - Enum identifiers cover public enum domains shared across packages.
@@ -368,7 +365,7 @@ binding is aligned to the shared .NET-standard policy.
   messages, subscription events, and stream packet callbacks.
 - All socket families and their typed options.
 - Monitor, poller, timer, and readiness semantics.
-- Registry, discovery, SPOT node, SPOT handle, topology snapshots, actors, and
+- SPOT node, SPOT handle, topology snapshots, actors, and
   stream actor binding.
 
 The public Go shape may group or rename APIs idiomatically, but it must not
@@ -462,14 +459,6 @@ Go exposes Actor and Spot route lookup results through exported value types.
   core snapshots.
 
 Go must not add ROUTER-to-Actor or Actor-to-ROUTER direct messaging methods.
-Callers compose `ResolveActor` or `ResolveSpot` with the existing Spot routed
-send/request APIs.
-
-## Discovery Route Table
-
-Go exposes the discovery route table through `Discovery.BindRoute(...)`,
-`Discovery.UnbindRoute(...)`, and `Discovery.ResolveRoute(...)`. `RouteKind`
-uses the core values `RouteKindInvalid = 0`, `RouteKindActor = 1`,
-`RouteKindSpotName = 2`, and `RouteKindActorSession = 3`.
-`ResolveRoute(...)` returns a `DiscoveryRoute` containing the owner routing ID
-and the route value as a `Message`.
+Callers use the Spot routed APIs and the Actor refs supplied by `SpotNode` or
+by their own protocol state. Go must not reintroduce the removed Discovery
+route table or resolver APIs as compatibility helpers.

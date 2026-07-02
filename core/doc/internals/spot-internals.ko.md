@@ -648,9 +648,10 @@ Spot join이 성공해 commit되는 시점에 user Spot 위치로 갱신한다. 
 Entry Spot으로 leave가 성공해 위치가 실제로 바뀌면 다시 Entry Spot 위치로 갱신한다.
 session bind/unbind는 active route의 필수 조건이 아니고, 위치를 직접 바꾸지도 않는다.
 active route가 가리키던 Actor가 destroy되면 그 route를 제거한다. 단, active route가
-다른 generation의 Actor를 가리키고 있으면 destroy는 그 route를 건드리지 않는다. 이
-동작은 Actor owner `SpotNode`의 Discovery에서 `ZLINK_OPT_DISCOVERY_ACTOR_ROUTE_SYNC`가
-켜져 있고 Registry와 통신할 수 있을 때 Registry에 보이는(visible) 상태가 된다.
+다른 generation의 Actor를 가리키고 있으면 destroy는 그 route를 건드리지 않는다.
+Public Discovery/Registry route synchronization API는 현재 core 계약에서 제거되었으므로
+이 route 상태는 새 동기화 표면이 별도 계약으로 정의되기 전까지 내부 SPOT/Actor
+생명주기 정보다.
 
 ### 9.4 Actor lifecycle event
 

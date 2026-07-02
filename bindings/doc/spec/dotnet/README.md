@@ -109,12 +109,9 @@ bindings/dotnet/
 |   |   |   |   +-- Timer.cs
 |   |   |   |   +-- ZlinkPoll.cs
 |   |   |   +-- Service/
-|   |   |   |   +-- Registry.cs
-|   |   |   |   +-- Discovery.cs
 |   |   |   |   +-- SpotNode.cs
 |   |   |   |   +-- Spot.cs
 |   |   |   |   +-- Actor.cs
-|   |   |   |   +-- RegistryModels.cs
 |   |   |   |   +-- SpotNodeModels.cs
 |   |   |   +-- Errors/
 |   |   |   |   +-- Errors.cs
@@ -323,14 +320,14 @@ defined only by the immutable byte value.
   typed option facades.
 - `Eventing/`: monitor, monitor snapshot/event, poller, timer, and poll
   event contracts. Static poll helpers are included here when public.
-- `Service/`: registry, discovery, SPOT node, SPOT handle, topology models,
+- `Service/`: SPOT node, SPOT handle, topology models,
   actor refs, actor lifecycle, and service-specific operation builders.
 - `Errors/`: exception hierarchy and error-domain mapping.
 
 Files inside each category follow the user-facing concept, not implementation
 sequence. Common messaging operations are split as send, request, and reply;
-service topology models are split between registry models, SPOT node models,
-and shared topology enums. Request result and callback types belong with
+service topology models are split between SPOT node models and shared topology
+enums. Request result and callback types belong with
 messaging request contracts, not socket enum files. Received message kind
 belongs with received-message metadata. SPOT node modes, socket snapshots, Spot
 snapshots, and actor snapshots belong with SPOT node models.
@@ -364,7 +361,7 @@ from this folder without reading P/Invoke or runtime bridge code.
   implementation classes.
 - `Eventing/`: poller, timer, monitor state, callback delivery, and event
   materialization helpers.
-- `Service/`: registry, discovery, SPOT node, Spot, Actor, topology converters,
+- `Service/`: SPOT node, Spot, Actor, topology converters,
   service option support, and service operation implementations.
 - `Errors/`: boundary validation, native result mapping, and errno translation.
 - `Buffers/`: routing-id codec, payload buffer ownership, copy/borrow policy,
@@ -389,8 +386,9 @@ Interfaces define behavior; construction is provided by public factories.
   `CreateRouterSocket()`, `CreatePubSocket()`, `CreateSubSocket()`,
   `CreateXPubSocket()`, `CreateXSubSocket()`, and `CreateStreamSocket()`
   create runtime socket implementations.
-  `CreateDiscovery(...)`, `CreateSpotNode()`, and
-  `CreateSpotNode(SpotNodeMode)` create service-layer implementations.
+  create runtime socket implementations.
+- `IContext.CreateSpotNode()` and `CreateSpotNode(SpotNodeMode)` create
+  service-layer implementations.
 - `Spot` handles are obtained through `ISpotNode.CreateSpot()`,
   `ISpotNode.EntrySpot()`, `ISpotNode.GetOrCreateSpot(...)`, or
   `ISpotNode.SpotLookup(...)`; direct `Spot` construction is not public.
@@ -424,7 +422,7 @@ the same.
   id, channel name, request/reply, publish/subscribe, and callback surfaces.
 - Socket monitor, monitor event/snapshot, poller, poll events, timer, and
   timer integration with SPOT.
-- Registry, discovery, SPOT node, SPOT handle, topology snapshots, actor refs,
+- SPOT node, SPOT handle, topology snapshots, actor refs,
   actor operations, actor lifecycle, and stream actor binding.
 - Typed exceptions for submit, request, recv, handler, close, bind, connect,
   and config failures.
@@ -457,7 +455,7 @@ notifications. Callers drain the matching receive API until it reports no data.
 SPOT is a service-layer API, not a raw socket leak.
 
 - `ISpotNode` owns node lifecycle, route identity, peer connections,
-  discovery/channel attachments, external pub ingress attachment, topology
+  route bridge/channel coordination, external pub ingress attachment, topology
   snapshots, spot creation, and actor creation.
 - `ISpot` owns SPOT topic publish/subscribe, routed send/request/reply,
   routed receive, dispatch events, actor join receive/reply, and actor
@@ -548,15 +546,7 @@ Required verification after .NET binding changes. Run these commands from
   Spot fields as the core snapshots.
 
 The binding must not add ROUTER-to-Actor or Actor-to-ROUTER direct messaging
-methods. Framework code and applications resolve Actor or Spot routes through
-`Discovery.ResolveActor()` and `Discovery.ResolveSpot()`, then use existing Spot
-routed send/request APIs.
-
-## Discovery Route Table
-
-`.NET` exposes the discovery route table through `IDiscovery.BindRoute(...)`,
-`IDiscovery.UnbindRoute(...)`, and `IDiscovery.ResolveRoute(...)`.
-`DiscoveryRouteKind` uses the core values `Invalid = 0`, `Actor = 1`,
-`SpotName = 2`, and `ActorSession = 3`. `ResolveRoute(...)` returns a
-`DiscoveryRoute` containing `OwnerRoutingId` and the route `Value` as a
-`Message`.
+methods. Framework code and applications use the Spot routed APIs and the
+Actor refs supplied by `SpotNode` or by their own protocol state. The binding
+must not reintroduce the removed Discovery route table or resolver APIs as
+compatibility helpers.

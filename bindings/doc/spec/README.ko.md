@@ -73,7 +73,7 @@ public 타입이 어떤 범주에 속하는지는 바인딩마다 같은 기준�
 | `messaging` | 메시지 데이터와 수신 결과 계약 | `Message`, `Received`, topic message, subscription event, multipart payload helper처럼 socket 종류와 독립적인 payload 타입 |
 | `sockets` | socket 종류와 socket 작업 계약 | `PairSocket`, `DealerSocket`, `RouterSocket`, `PubSocket`, `SubSocket`, `StreamSocket`, socket interface, send/recv/publish/request/reply builder, socket option |
 | `eventing` | 대기, 이벤트 소스, 관찰 계약 | `Poller`, `PollEvent`, timer, monitor socket, monitor event, monitor snapshot |
-| `service` | core service layer 계약 | discovery, registry, Spot, Actor dispatch처럼 service domain에 속하는 public 타입 |
+| `service` | core service layer 계약 | Spot, Actor dispatch처럼 service domain에 속하는 public 타입 |
 | `errors` | public 오류와 실패 표현 계약 | base exception, bind/connect/send/recv/submit/config/request exception, public error code/result mapping |
 
 ### 계약 범주 규칙
@@ -82,7 +82,7 @@ public 타입이 어떤 범주에 속하는지는 바인딩마다 같은 기준�
   contract 하위 범주는 runtime 내부 구조를 그대로 반영하면 안 된다.
 - `core`는 작게 유지한다. 특정 도메인을 알아야 설명되는 타입은 `core`에 두지
   않고 해당 도메인 범주에 둔다.
-- `service`는 `discovery`, `registry`, `spot` 같은 하위 도메인을 둘 수 있다.
+- `service`는 `spot`, `actor` 같은 하위 도메인을 둘 수 있다.
   하위 도메인은 사용자가 독립 개념으로 배워야 할 때만 만든다.
 - `eventing`은 monitoring만 뜻하지 않는다. poller, timer, monitor처럼 이벤트를
   기다리거나 관찰하는 public 계약을 함께 담는다.
@@ -174,7 +174,7 @@ type, public builder/facade처럼 사용자가 직접 의존하는 타입을 둔
 `TopicMessage`, enum/result/flags 같은 값 객체나 단순 데이터 타입은 별도 interface로
 쪼개지 않는다. interface는 사용자가 다형적으로 받아야 하는 역할에만 둔다. 예를
 들어 socket 공통 역할, poll target, monitor target, codec, handler/callback,
-registry/query/spot client 역할이 이에 해당한다.
+SPOT client 역할이 이에 해당한다.
 
 `runtime`은 public contract를 실행하는 구현 영역이다. socket send/recv 흐름,
 message materialization, poller/timer/monitor loop, service runtime, native
@@ -198,7 +198,7 @@ C를 제외한 wrapper binding은 `.NET` binding처럼 공개 인터페이스/�
 - native handle을 직접 소유하거나, core helper substrate를 호출하거나, callback
   trampoline과 request progress를 관리하거나, marshalling을 수행하는 타입은 runtime
   또는 native bridge source에 둔다.
-- `Context`, socket, poller, timer, registry, discovery, SpotNode, Spot, Actor처럼
+- `Context`, socket, poller, timer, SpotNode, Spot, Actor처럼
   사용자가 구현체보다 역할에 의존하는 편이 자연스러운 resource type은 언어가
   지원하는 방식으로 contract role과 default implementation을 분리한다.
 - `Message`, `RoutingId`, `Received`, `TopicMessage`, snapshot DTO, enum/flags/result
@@ -221,7 +221,7 @@ function 이름, request pump, callback trampoline, buffer marshalling 순서를
   `sockets`, `service`, `eventing` 같은 category 파일 하나가 여러 public resource의
   실제 동작을 모두 담고 있으면 contract/runtime 분리가 된 것이 아니다.
 - native-backed resource 구현은 resource별 파일에 둔다. 예를 들어 socket family,
-  poller, timer, registry, discovery, SpotNode, Spot, Actor는 각각의 구현 파일을
+  poller, timer, SpotNode, Spot, Actor는 각각의 구현 파일을
   가져야 한다. 파일명은 언어 관례에 맞추되 resource 이름이나 operation 이름을
   드러내야 한다.
 - 공통 helper 파일은 public resource 구현의 대체 장소가 아니다. helper 파일에는
@@ -251,7 +251,7 @@ public 개념이거나, 같은 변경 이유를 공유하는 작고 강하게 �
   base 계약과, stream packet handler delegate는 stream socket 계약과 함께 둔다.
 - send/request/reply 같은 staged operation builder 계약은 같은 도메인 변경 이유를
   공유하므로 한 operation contract 파일로 묶을 수 있다.
-- Actor join, actor management, registry model, SpotNode snapshot model처럼 서비스
+- Actor join, actor management, SpotNode snapshot model처럼 서비스
   하위 도메인이 뚜렷한 묶음은 도메인별 파일로 둔다. 단, 모델 파일이 너무 커져서
   peer/status/socket/actor snapshot처럼 서로 다른 변경 이유가 생기면 그때 나눈다.
 - runtime 구현 파일도 같은 원칙을 따른다. 구현 파일 하나가 여러 native-backed
@@ -323,7 +323,7 @@ pass-through class를 늘리면 안 된다.
 | `messaging` | native message part 조립, multipart 처리, message 변환, request progress |
 | `sockets` | socket operation 실행, send/recv/publish/request/reply 흐름 |
 | `eventing` | poller, timer, monitor, event dispatch loop |
-| `service` | discovery, registry, Spot, Actor service runtime |
+| `service` | Spot, Actor service runtime |
 | `options` | public option 검증, native option mapping |
 | `errors` | native errno/result를 public exception/result로 변환 |
 | `buffers` | byte buffer, direct buffer, pooled buffer, pinned memory, copy/borrow 정책 |
@@ -647,7 +647,7 @@ import path로 노출하지 않는다. 대신 public package/module tree 안의 
 - `Messaging/`: message, routing id, received, topic message, multipart.
 - `Sockets/`: socket contracts, socket implementations, socket options.
 - `Eventing/`: monitor, poller, timer, readiness event.
-- `Service/`: registry, discovery, SPOT, actor, topology.
+- `Service/`: SPOT, actor, SPOT topology.
 - `Errors/`: public error/result/exception domains and runtime mapping.
 - `Native/`: runtime/internal source 아래에만 두는 native bridge category.
 
@@ -1134,7 +1134,6 @@ streamSocket.bindActor(sessionRid, actorRef)
   정책 문서와 해당 언어 spec 을 함께 바꾸어 별도 raw/low-level surface 로
   분리해야 한다.
 - SPOT 은 channel-aware 모델이다. 바인딩은
-  `attach_discovery(...)`,
   `create_route_bridge(...)` 또는 동등한 typed bridge,
   `create_publisher(...)` 또는 동등한 publisher handle,
   `send_to_channel`, `send_to_spot`, `request_to_channel`,
@@ -1224,9 +1223,6 @@ streamSocket.bindActor(sessionRid, actorRef)
   추가하지 않는다. 수신 모드 해제와 callback 정리는 socket close 가 맡는다.
 - `zlink_recv_handler()` 는 raw `STREAM` 전용이다. `PAIR`/`DEALER`/`SUB`/
   `XSUB`/`ROUTER` 에 attach 하면 `ZLINK_HANDLER_NOT_SUPPORTED` 로 실패한다.
-- Discovery auto-connect 으로 같은 서비스의 두 ROUTER 가 쌍을 이룰 때,
-  내부 정책이 `(routing_id, advertise endpoint)` 전순서로 initiator 를
-  선정한다. 사용자가 설정하는 옵션이 아니다.
 - socket 기본값: `ZLINK_ROUTER_OPT_MANDATORY` = `1`,
   `ZLINK_OPT_RID_DUPLICATE_POLICY` = `ZLINK_RID_DUPLICATE_REJECT`,
   `ZLINK_PUB_OPT_NODROP` = `1`.
@@ -1238,8 +1234,8 @@ streamSocket.bindActor(sessionRid, actorRef)
 아래 계약을 각 언어 관례에 맞는 이름과 타입으로 풀어서 적어야 한다.
 
 Actor dispatch는 SPOT messaging의 부가 기능이 아니라 service layer의 독립 공개
-기능이다. 다만 lifecycle과 routing이 `SpotNode`, `Spot`, `StreamSocket`,
-`Discovery`에 걸쳐 있으므로 각 공개 타입의 책임을 나누어 노출한다. 구체적인
+기능이다. lifecycle과 routing은 `SpotNode`, `Spot`, `StreamSocket`이 나누어
+소유하므로 각 공개 타입의 책임을 나누어 노출한다. 구체적인
 surface 배치는 아래 `Actor Dispatch Policy` 절을 따른다.
 
 - Actor id는 비어 있지 않은 UTF-8 문자열이며 최대 255 bytes다. NUL 문자는
@@ -1285,10 +1281,8 @@ surface 배치는 아래 `Actor Dispatch Policy` 절을 따른다.
   시작해야 하는 Actor는 application이 해당 SpotNode에서 직접 `actor_new`로
   생성한다. 원격 Actor의 checked ref가 필요하면 async `remote_actor_get_ref`
   lookup을 사용한다.
-- Discovery Actor active route는 Actor 생성 시점이나 STREAM bind 시점이 아니라
-  **user Spot join 성공 commit 시점**에 publish하고, user Spot에서 Entry Spot
-  으로 leave가 성공하면 Entry Spot 위치로 갱신한다. session bind/unbind는 active
-  route를 만들거나 제거하지 않는다.
+- Actor 위치는 Actor 생성, Spot join/leave, Actor destroy 흐름에서 갱신된다.
+  STREAM session bind/unbind는 Actor 위치를 만들거나 제거하지 않는다.
 - session attach와 Actor 위치 이동은 서로 다른 상태 전이다. user Spot으로 join
   하는 데 bound STREAM session은 필요하지 않다. Actor 위치 이동은 session
   mapping을 자동으로 바꾸지 않는다.
@@ -2056,10 +2050,6 @@ socket monitor 가 제공하는 런타임 상태 스냅샷. 모든 바인딩이 
 모든 바인딩이 **필드 목록을 spec 에 명시**해야 한다 (C 구조체를 그대로
 노출하면 안 되며 언어별 named field 로 래핑).
 
-- `MemberPeerEntry` — discovery 가 제공하는 멤버 peer 정보.
-  `weight` (또는 언어 관례의 동등 필드) 를 포함해야 한다.
-- `RegistryTopologyEntry` — registry 의 topology 엔트리
-- `RegistryServiceSummaryEntry` — registry service summary 엔트리
 - `SpotNodeStatus` — spot node 상태 스냅샷
 - `SpotNodePeerEntry` — spot node peer 엔트리.
   `weight` 를 포함해야 한다.
@@ -2183,8 +2173,7 @@ raw direct callback `onReceive` 는 canonical public binding API 가 아니다.
 | Sub options (topicsCount) | Sub, XSub |
 | RoutingId (set/get) | Dealer, Router, Stream |
 
-  `disconnectRid`, `unbind`, `close`는 차단된다. Discovery `close`가 소켓
-  lifecycle을 관리한다.
+  `disconnectRid`, `unbind`, `close`는 차단된다.
 
 ## 언어별 스펙 파일 준수 규칙
 
@@ -2249,12 +2238,11 @@ raw direct callback `onReceive` 는 canonical public binding API 가 아니다.
 - 그러나 C API의 어떤 기능도 바인딩 스펙에서 누락되면 안 된다.
 - 새로운 C API가 `zlink.h`에 추가되면 모든 언어 스펙 파일도 함께 갱신해야 한다.
 ## 서비스 계층 정책
-- 이 섹션은 소켓 레이어 위에 올라가는 서비스 계층(Spot, Actor, Discovery,
-  Registry)의 public API 정책을 정의한다.
+- 이 섹션은 소켓 레이어 위에 올라가는 서비스 계층(Spot, Actor)의 public API
+  정책을 정의한다.
 - 서비스 계층도 소켓 계층과 동일한 POSD 원칙, naming policy, error policy,
   ownership policy, testing policy를 따른다.
-- 서비스 계층의 기준은 `core/include/zlink.h`의 Spot/Actor/Discovery/Registry
-  C API다.
+- 서비스 계층의 기준은 `core/include/zlink.h`의 Spot/Actor C API다.
 
 ### Spot / SpotNode Lifecycle (POSD 원칙)
 
@@ -2285,19 +2273,15 @@ raw direct callback `onReceive` 는 canonical public binding API 가 아니다.
 
 - **Primary (핵심)**: 일반 사용자가 자주 쓰는 snapshot/query surface.
   `bindings/<lang>/README.md` 의 상위 섹션에 기술한다.
-  - `MemberPeerEntry` (discovery.memberPeers 결과)
   - `SpotNodeStatus` (spot node 상태)
-  - `RegistryTopologyEntry` (registry.topology 결과)
 
 - **Advanced / Diagnostic (진단용)**: 디버깅 / 운영 모니터링 등 특수 용도.
   spec 에서 "Advanced" 또는 "Diagnostic" 하위 섹션으로 분리 기술한다.
-  - `RegistryServiceSummaryEntry`, `RegistryStatus`
   - `SpotNodePeerEntry`, `SpotNodeSubjectEntry`
   - `SpotNodeSocketEntry`, `SpotNodeSpotEntry`,
     `SpotNodeActorEntry`
-  - 각종 filter 타입 (`RegistryTopologyFilter`,
-    `RegistryServiceSummaryFilter`, `SpotNodePeerFilter`,
-    `SpotNodeSubjectFilter`, `SpotNodeSocketFilter`)
+  - 각종 filter 타입 (`SpotNodePeerFilter`, `SpotNodeSubjectFilter`,
+    `SpotNodeSocketFilter`)
 
 Primary 타입만으로 기본 사용 시나리오가 성립해야 한다. Advanced 타입을
 배우지 않고도 "서비스 등록 / 검색 / 연결" 흐름이 완결돼야 한다.
@@ -2315,26 +2299,12 @@ Primary 타입만으로 기본 사용 시나리오가 성립해야 한다. Advan
   raw `errno()` accessor 는 private 또는 삭제.
 
 ### 서비스 계층 아키텍처
-- 서비스 계층은 여섯 개의 공개 축으로 구성된다. Actor는 별도 handle과 value
-  object를 갖는 독립 축이지만, 생성과 routing은 `SpotNode`, join 처리는
-  `Spot`, STREAM session 연결은 `StreamSocket`, route 조회는 `Discovery`가
-  담당한다.
+- 서비스 계층의 현재 공개 축은 `SpotNode`, `Spot`, `Actor`,
+  `StreamSocket`의 Actor binding 표면, 그리고 SPOT route bridge/publisher
+  표면이다. Public Discovery/Registry handle은 core 8.4.3에서 제거되었으므로
+  새 바인딩 표면으로 되살리면 안 된다.
 
 ```
-Registry
-  |-- bind
-  |-- cluster: addPeer
-  |-- config: setId, setHeartbeat, setBroadcastInterval
-  `-- introspection: status, serviceSummary,
-      memberPeers, topology, topology(filter)
-
-Discovery
-  |-- connectRegistry
-  |-- attributes: setValue, getValue
-  |-- routes: resolveSpot, resolveActor
-  |-- introspection: memberPeers
-  `-- lifecycle: close attached participants
-
 SpotNode
   |-- bind
   |-- raw mesh: connectPeer, disconnectPeer
@@ -2374,7 +2344,7 @@ StreamSocket
 
 Actor dispatch는 현재 core 공개 헤더에 존재하는 정식 service layer 계약이다.
 바인딩은 Actor를 SPOT 내부 세부사항으로 숨기지 않고, `SpotNode`, `Spot`,
-`Actor`, `StreamSocket`, `Discovery`에 걸친 별도 공개 기능으로 정리한다.
+`Actor`, `StreamSocket`에 걸친 별도 공개 기능으로 정리한다.
 
 언어가 header, module, package, namespace처럼 public surface를 나누는 단위를
 제공한다면 Actor는 독립 entrypoint를 가져야 한다. 이 entrypoint는 단순히
@@ -2420,7 +2390,6 @@ handle, Actor recv/join helper처럼 Actor 계약을 구성하는 public type과
 | `Actor` | Actor ref 보유, Actor recv, bound STREAM session message send, bound session close |
 | `Spot` | Actor join request recv/reply, Actor lifecycle event receive, 현재 Spot에 join된 Actor snapshot |
 | `StreamSocket` / session facade | async STREAM session Actor bind/unbind, bound Actor 대상 send, session attach 목록 조회 |
-| `Discovery` | active Actor route 조회 |
 
 바인딩은 아래 도메인 객체를 public contract로 제공해야 한다. 이름은 언어 관례에
 맞게 변환할 수 있지만 필드 의미는 바꾸지 않는다.
@@ -2476,12 +2445,8 @@ handle, Actor recv/join helper처럼 Actor 계약을 구성하는 public type과
   된다.
 - STREAM에서 Actor로 보내는 public API는 bound session과 actor id를 선택자로
   사용한다.
-- Discovery Actor active route는 Actor 생성 시점이나 STREAM bind 시점이 아니라
-  user Spot join 성공 commit 시점에 publish되고, user Spot에서 Entry Spot으로
-  leave가 성공하면 Entry Spot 위치로 갱신된다. session bind/unbind는 active
-  route에 영향을 주지 않는다.
-- `ZLINK_OPT_DISCOVERY_ACTOR_ROUTE_SYNC` 는 Discovery의 typed option/property로
-  노출한다. raw option bag으로 노출하지 않는다.
+- Actor 위치는 Actor 생성, Spot join/leave, Actor destroy 흐름에서 갱신된다.
+  STREAM session bind/unbind는 Actor 위치를 바꾸지 않는다.
 - Actor별 queue limit option은 없다. 바인딩은 이를 public option으로 만들면
   안 된다.
 - 제거된 Actor ref 함수, stream actor lookup/send helper, session actor key
@@ -2535,16 +2500,15 @@ plane readiness다. 바인딩은 `Spot.recvActorJoin` 또는 동등한 public �
 
 ### Actor Capability Matrix
 
-Actor dispatch는 `SpotNode`, `Actor`, `Spot`, `StreamSocket`, `Discovery`에
-걸친 독립 service layer 기능이다. 각 바인딩은 아래 역할을 언어별
-관례에 맞는 public surface로 노출해야 한다.
+Actor dispatch는 `SpotNode`, `Actor`, `Spot`, `StreamSocket`에 걸친 독립
+service layer 기능이다. 각 바인딩은 아래 역할을 언어별 관례에 맞는 public
+surface로 노출해야 한다.
 
 | Capability | Public owner | Core substrate |
 |---|---|---|
 | local Actor create | `SpotNode` | `zlink_spot_node_actor_new` |
 | local Actor lookup | `SpotNode` | `zlink_spot_node_actor_lookup` |
 | unchecked remote Actor ref | `SpotNode` | `zlink_remote_actor_get_ref` |
-| remote Actor lookup (async) | `SpotNode` | `zlink_remote_actor_get_ref` |
 | Actor destroy by ref | `SpotNode` | `zlink_spot_node_actor_destroy` |
 | owned Actor close/destroy | `Actor` | `zlink_spot_node_actor_destroy` |
 | Spot Actor lifecycle receive | `Spot` | `zlink_spot_recv_actor_lifecycle` |
@@ -2592,72 +2556,18 @@ Actor dispatch는 `SpotNode`, `Actor`, `Spot`, `StreamSocket`, `Discovery`에
 - Spot은 `bind`/`connect`를 갖지 않는다 (SpotNode가 담당).
 - Spot `close`는 facade만 해제하고 SpotNode는 살아 있다.
 
-### Discovery Capability Matrix
+### 제거된 Discovery / Registry capability
 
-| Capability | Discovery |
-|---|---|
-| `connectRegistry` | Y |
-| `setValue` / `getValue` | Y |
-| `spotOwnerSyncEnabled` | Y |
-| `actorRouteSyncEnabled` | Y |
-| `setTlsClient` | Y |
-| `resolveSpot` / `resolveActor` | Y |
-| `memberPeers` | Y |
-| `close` | Y |
-
-- Discovery는 생성 시 `autoConnectType`과 `channelName`을 고정한다.
-- 이후 변경할 수 없다.
-- `spotOwnerSyncEnabled` 는 `ZLINK_OPT_DISCOVERY_SPOT_OWNER_SYNC` 의 typed
-  option/property다. `actorRouteSyncEnabled` 는
-  `ZLINK_OPT_DISCOVERY_ACTOR_ROUTE_SYNC` 의 typed option/property다.
-- `close` 시 연결된 모든 participant(SpotNode 등)가 종료된다.
-- Discovery는 data plane이 아니라 서비스 등록/발견 plane이다.
-
-### Registry Capability Matrix (`Target`)
-- 이 matrix는 `Target`이다. 전체 바인딩 필수가 아니며, 구현하는 바인딩만
-  아래 표를 따른다.
-
-| Capability | Registry |
-|---|---|
-| `bind` (pubEndpoint, routerEndpoint) | Y |
-| `setId` | Y |
-| `addPeer` | Y (클러스터 동기화) |
-| `setHeartbeat` (interval, timeout) | Y |
-| `setBroadcastInterval` | Y |
-| `setTlsServer` | Y |
-| `setTlsClient` | Y |
-| `status` | Y |
-| `serviceSummary` | Y |
-| `memberPeers` | Y |
-| `topology` | Y |
-| `topology(filter)` | Y |
-| `close` | Y |
-
-- Registry는 서버 측 컴포넌트다.
-- PUB endpoint(서비스 목록 브로드캐스트)와 ROUTER endpoint(등록 수신)를
-  동시에 바인드한다.
-- cluster 모드에서는 `addPeer`로 다른 Registry와 동기화한다.
-
-- 이 matrix는 `Target`이다. 전체 바인딩 필수가 아니며, 구현하는 바인딩만
-  아래 표를 따른다.
-
-|---|---|
-| `connect` | Y |
-| `snapshot` (필터 기반) | Y |
-| `close` | Y |
-
-- 원격에서 Registry 토폴로지를 조회하기 위한 클라이언트다.
-- Discovery와 별개로 사용할 수 있다.
+공개 Discovery와 Registry C API는 core 8.4.3에서 core 계약에서 제거되었다.
+바인딩은 Discovery/Registry factory, resolver method, sync option, registry
+query client, compatibility alias를 현재 API로 노출하면 안 된다.
 
 ### 서비스 관찰성 정책
 - 공개 서비스 계층 관찰은 별도 monitor handle 대신 snapshot/query surface로 한다.
-- Discovery 관찰은 `memberPeers`를 기준으로 한다.
 - SPOT(SpotNode, Spot) 관찰은 `status`, `peers`,
   `peers(filter)`, `subjects`, `spots`, `actors` API를
   사용한다. 내부 socket 진단이 필요한 바인딩은 `internalSockets`을
   별도 diagnostic 표면으로 둔다.
-- Registry 관찰은 `status`, `serviceSummary`,
-  `topology`, `topology(filter)`를 사용한다.
 - 상태 전이가 필요하면 연속된 snapshot/query 결과를 비교한다.
 - SocketMonitor callback 해제 정책은 기존과 같다.
   - callback 등록 API가 있는 경우 `close()`로만 해제한다
@@ -2667,10 +2577,6 @@ Actor dispatch는 `SpotNode`, `Actor`, `Spot`, `StreamSocket`, `Discovery`에
 - 최소 핵심 domain object:
   - `MonitorStatus`: monitor 상태 스냅샷
   - `SpotNodeStatus`: SpotNode 상태 (state, peer count 등)
-  - `MemberPeerEntry`: 서비스 멤버 peer 정보
-  - `RegistryTopologyEntry`: 토폴로지 엔트리
-  - `RegistryStatus`: Registry 상태
-  - `RegistryServiceSummaryEntry`: 서비스 요약 엔트리
 - Advanced / Diagnostic domain object:
   - `SpotNodePeerEntry`: peer 정보
   - `SpotNodeSubjectEntry`: subject 정보
@@ -2681,19 +2587,13 @@ Actor dispatch는 `SpotNode`, `Actor`, `Spot`, `StreamSocket`, `Discovery`에
   - `SpotNodePeerFilter`: peer 조회 필터
   - `SpotNodeSubjectFilter`: subject 조회 필터
   - `SpotNodeSocketFilter`: 내부 socket 진단 필터
-  - `RegistryServiceSummaryFilter`: 서비스 요약 조회 필터
-  - `RegistryTopologyFilter`: 토폴로지 조회 필터
 - enum/value object:
-  - `AutoConnectType`: `ROUTE_MESH`, `CLIENT_SERVER`, `DEALER_MESH`, `FANOUT`, `SPOT_MESH`
-  - `ServiceRole`: `SPOT`, `ROUTER`, `DEALER`, `PUB`, `SUB`
+  - `SpotRole`: `PUB`, `SUB`
+  - `SubjectKind`: `NONE`, `TOPIC`, `PATTERN`
   - `SpotNodeState`: `IDLE`, `CONNECTING`, `PARTIAL_READY`, `READY`, `ERROR`
   - `MonitorSourceKind`: `SOCKET`, `SPOT_PUB`, `SPOT_SUB`
   - `SpotPeerSource`: `MANUAL`, `DISCOVERY`, `MIXED`
   - `SpotPeerState`: `CONFIGURED`, `CONNECTING`, `CONNECTED`
-  - `RegistryState`: `IDLE`, `ACTIVE`, `DEGRADED`, `ERROR`
-  - `TopologySource`: `MANUAL`, `DISCOVERY`, `REGISTRY`
-  - `TopologyState`: `DISCOVERED`, `CONNECTING`, `READY`, `LOST`,
-    `ERROR`, `STOPPED`
 - `MonitorStatus.isReady()` 또는 동등한 편의 accessor는 raw socket
   monitor source에서만 ready 의미를 해석한다. `SPOT_PUB`, `SPOT_SUB`
   source에서는 ready bit를 SPOT readiness로 확장 해석하면 안 된다.
@@ -2733,48 +2633,23 @@ Actor dispatch는 `SpotNode`, `Actor`, `Spot`, `StreamSocket`, `Discovery`에
 | Spot | `setSendReadyHandler` | send ready callback handler 등록 |
 | Spot | `recvActorLifecycle` | Actor join/leave lifecycle event 수신 |
 | Spot | `close` | facade 종료 |
-| Discovery | `connectRegistry` | Registry에 연결 |
-| Discovery | `setValue` / `getValue` | 서비스 값 설정/조회 |
-| Discovery | `setTlsClient` | Registry 연결 TLS 클라이언트 설정 |
-| Discovery | `resolveSpot` / `resolveActor` | SPOT owner와 Actor active route 조회 |
-| Discovery | `memberPeers` | 멤버 peer 목록 조회 |
-| Discovery | `close` | Discovery 종료 (participant 포함) |
-| Registry | `bind` | PUB + ROUTER endpoint 바인드 |
-| Registry | `setId` | Registry ID 설정 |
-| Registry | `addPeer` | 클러스터 peer 추가 |
-| Registry | `setHeartbeat` | heartbeat interval/timeout 설정 |
-| Registry | `setBroadcastInterval` | 브로드캐스트 주기 설정 |
-| Registry | `setTlsServer` | Registry TLS 서버 설정 |
-| Registry | `setTlsClient` | Registry cluster peer TLS 클라이언트 설정 |
-| Registry | `status` | Registry 상태 스냅샷 |
-| Registry | `serviceSummary` | 서비스 요약 스냅샷 |
-| Registry | `memberPeers` | 멤버 peer 목록 조회 |
-| Registry | `topology` | 토폴로지 스냅샷 |
-| Registry | `topology(filter)` | 토폴로지 필터 조회 |
-| Registry | `close` | Registry 종료 |
 
 ### 서비스 계층 테스트 정책
-- 서비스 계층은 sample이나 perf에서 직접 검증되지 않는 컴포넌트를 포함한다.
-- 특히 Discovery와 Registry는 테스트가 유일한 검증 경로다.
-- 래핑 코드라도 FFI 매핑, lifecycle, 타입 변환이 올바른지 반드시 테스트해야 한다.
+- 서비스 계층은 sample이나 perf에서 직접 검증되지 않는 컴포넌트를 포함하므로
+  FFI 매핑, lifecycle, 타입 변환이 올바른지 테스트해야 한다.
 - 서비스 계층도 Test Matrix와 동일한 카테고리로 테스트한다.
 
 #### 서비스 계층 Surface 테스트
 - SpotNode 역할 matrix 정렬 확인
 - Spot 역할 matrix 정렬 확인
-- Discovery 역할 matrix 정렬 확인
-- Registry 역할 matrix 정렬 확인 (구현된 경우)
 - service TLS helper 존재 확인
-- typed domain object 존재 확인 (SpotNodeStatus, MemberPeerEntry,
+- typed domain object 존재 확인 (SpotNodeStatus, SpotNodePeerEntry,
   SpotNodeSocketEntry, SpotNodeSpotEntry, SpotNodeActorEntry 등)
-- typed enum 존재 확인 (AutoConnectType, ServiceRole, SpotNodeState 등)
+- typed enum 존재 확인 (SpotRole, SubjectKind, SpotNodeState 등)
 
 #### 서비스 계층 Contract 테스트
 - SpotNode: create/bind/close lifecycle 누수 없음
 - Spot: create/close lifecycle (SpotNode는 살아 있어야 함)
-- Discovery: create/connectRegistry/close lifecycle 누수 없음
-- Discovery close 시 연결된 participant(SpotNode 등) 종료 확인
-- Registry: create/bind/close lifecycle 누수 없음 (구현된 경우)
 - 예외/오류 경로에서도 native 리소스가 정리되는지 확인
 
 #### 서비스 계층 Behavior 테스트
@@ -2786,15 +2661,6 @@ Actor dispatch는 `SpotNode`, `Actor`, `Spot`, `StreamSocket`, `Discovery`에
 - Spot receiveSubscriptionEvent 경로 확인
 - SpotRouteBridge attach/send/request/handleReceived 경로 동작 확인
 - SpotNode publisher handle publish 경로 동작 확인
-- Discovery connectRegistry → 서비스 등록 경로 성공
-- Discovery setValue/getValue round-trip 확인
-- Discovery resolveSpot/resolveActor 경로 확인
-- Discovery memberPeers 조회 확인
-- Registry bind → Discovery connectRegistry → 서비스 발견 경로 성공
-  (Registry 구현된 경우)
-- Registry status 결과 확인 (구현된 경우)
-- Registry topology/topology(filter) 결과 확인 (구현된 경우)
-  (Discovery 지원 시)
 
 #### 서비스 계층 Introspection 테스트
 - SpotNode status → SpotNodeStatus 필드 검증
@@ -2802,21 +2668,15 @@ Actor dispatch는 `SpotNode`, `Actor`, `Spot`, `StreamSocket`, `Discovery`에
 - SpotNode peers → SpotNodePeerEntry 목록 검증
 - SpotNode peers(filter) → 필터 적용 결과 검증
 - SpotNode subjects → SpotNodeSubjectEntry 목록 검증
-- Registry status → RegistryStatus 필드 검증 (구현된 경우)
-- Registry serviceSummary → 필터 적용 결과 검증 (구현된 경우)
-- Registry memberPeers → MemberPeerEntry 목록 검증 (구현된 경우)
-- Registry topology → RegistryTopologyEntry 목록 검증 (구현된 경우)
-- Discovery memberPeers → MemberPeerEntry 목록 검증
-- Discovery route resolve → owner RoutingId와 value 반환 검증
 
 #### 서비스 계층 테스트 범위
 
-| Test Category | SpotNode+Spot | Discovery | Registry | QueryClient |
-|---|---|---|---|---|
-| Surface | Required | Required | 구현 시 Required | 구현 시 Required |
-| Contract | Required | Required | 구현 시 Required | 구현 시 Required |
-| Behavior | Required | Required | 구현 시 Required | 구현 시 Required |
-| Introspection | Required | Required | 구현 시 Required | 구현 시 Required |
+| Test Category | SpotNode+Spot | Actor | Stream Actor Binding |
+|---|---|---|---|
+| Surface | Required | Required | Required |
+| Contract | Required | Required | Required |
+| Behavior | Required | Required | Required |
+| Introspection | Required | Required | Required |
 
 - service/spot 계열이 없는 바인딩은 이 테스트를 제외할 수 있다.
 - 여기서 monitor 설명은 socket monitor 기준이다.
@@ -2835,8 +2695,6 @@ Actor dispatch는 `SpotNode`, `Actor`, `Spot`, `StreamSocket`, `Discovery`에
 | Component | 요구 수준 |
 |---|---|
 | SpotNode + Spot | 해당 바인딩에 spot 지원이 있으면 Required |
-| Discovery | 해당 바인딩에 discovery 지원이 있으면 Required |
-| Registry | Target (서버 측 컴포넌트, 전체 바인딩 필수 아님) |
 
 ### Callback API 정책
 - callback 등록 API는 각 소켓 타입의 역할에 따라 노출한다.
@@ -3183,7 +3041,6 @@ zlink_connect_result_t zlink_spot_node_disconnect_peer(void *node,
     const char *peer_endpoint);
 zlink_connect_result_t zlink_spot_node_disconnect_peer_rid(void *node,
     const zlink_routing_id_t *peer_rid);
-    void *discovery);
 
 void *zlink_spot_route_bridge_new(
     void *ctx,
@@ -3267,7 +3124,6 @@ typed option/property로 이 두 값을 노출하고, raw option bag을 canonica
 바인딩 규칙:
 - `SpotNode` 와 `Spot` 은 별도 typed handle 로 노출한다.
 - `Spot` 은 `SpotNode` 위에 올라가는 facade 다. `SpotNode` 해제 시 `Spot` 도 무효가 된다.
-- SPOT channel view는 `attach_discovery()`로 닫는다.
 - Spot에서 다른 channel로 보내거나 `ROUTER` channel에서 Spot relay packet을 받을 때는
   `SpotRouteBridge`를 사용한다. bridge에 등록되는 `ROUTER` socket은 caller 또는
   channel runtime이 계속 소유한다.
@@ -4650,12 +4506,12 @@ ownership 관리, native loader, package boundary, hot path 최적화를 함께 
 - readiness event 값은 data plane contract를 대체하지 않는다는 점을 검증한다.
 
 ### Conditional: Service 테스트
-- registry/discovery/spot/actor public API를 제공하는 바인딩은 해당 service lifecycle을
-  최소 경로로 검증한다.
-- discovery attach 이후 close/connect/unbind 같은 lifecycle 제약이 public API에서
-  native 계약대로 전달되는지 확인한다.
-- spot publish/subscribe, spot request/reply, topology/status snapshot은 public
-  surface가 있으면 roundtrip을 검증한다.
+- spot/actor public API를 제공하는 바인딩은 해당 service lifecycle을 최소 경로로
+  검증한다.
+- close/connect/unbind 같은 lifecycle 제약이 public API에서 native 계약대로
+  전달되는지 확인한다.
+- spot publish/subscribe, spot request/reply, SPOT status/snapshot은 public
+  surface가 있으면 roundtrip 또는 snapshot 검증을 수행한다.
 - service test는 service layer 바인딩 계약 검증이 목적이다. core service 전체
   matrix를 모든 언어에서 다시 실행하지 않는다.
 
@@ -4902,8 +4758,6 @@ perf 정책은 [`doc/perf/PERF_POLICY.md`](../../../doc/perf/PERF_POLICY.md)에�
     제공하는 바인딩에 적용
   - `Language-specific` 항목: 해당 런타임 위험이 있는 바인딩에 적용
   - `Recommended` 항목(예: 샘플): 공개 배포 바인딩에 적용
-  - `Target` 항목(예: Registry): 해당 바인딩이 구현한 경우에만 적용
-  - 구현하지 않기로 한 `Target` 컴포넌트는 종료 조건에서 제외한다.
 
 1. **Capability Matrix 완전 정렬**
    - Socket Capability Matrix의 모든 `Y` 항목이 public API에 존재한다.
@@ -5159,11 +5013,9 @@ alignment 과정에서 canonical multipart 경로 쪽으로 정리하면서 제�
 메시지 하나가 계속 구분될 수 있어야 한다. admission handler는 callback 동안만
 유효한 borrowed payload view를 받는다.
 
-Registry scalar 설정은 registry option 표면을 canonical API로 사용한다. 바인딩은
-registry id, heartbeat interval, heartbeat timeout, broadcast interval에 대해
-typed option을 노출한다. 기존의 이름 있는 setter는 해당 언어 README가 호환성
-alias를 명시적으로 유지하기로 한 바인딩에서만 남길 수 있고, 그렇지 않으면 정렬
-작업에서 제거한다.
+Public Registry scalar 설정은 core 8.4.3에서 공개 Discovery/Registry C API와 함께
+제거되었다. 바인딩은 registry option 표면, 이름 있는 registry setter,
+compatibility alias를 현재 공개 API로 유지하면 안 된다.
 
 ## Spot Route Bridge API
 

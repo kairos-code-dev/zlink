@@ -309,13 +309,9 @@ bindings/cpp/
 |       |   |   +-- events.hpp
 |       |   |   +-- status.hpp
 |       |   +-- Service/
-|       |   |   +-- registry.hpp
-|       |   |   +-- discovery.hpp
 |       |   |   +-- spot_node.hpp
 |       |   |   +-- spot.hpp
 |       |   |   +-- actor.hpp
-|       |   |   +-- discovery_models.hpp
-|       |   |   +-- registry_models.hpp
 |       |   |   +-- spot_node_models.hpp
 |       |   |   +-- actor_models.hpp
 |       |   |   +-- operation_contracts.hpp
@@ -353,9 +349,7 @@ bindings/cpp/
 |       +-- Service/
 |       |   +-- actor.cpp
 |       |   +-- actor_ops.cpp
-|       |   +-- discovery.cpp
 |       |   +-- detail.hpp
-|       |   +-- registry.cpp
 |       |   +-- request_reply.cpp
 |       |   +-- spot.cpp
 |       |   +-- spot_node.cpp
@@ -463,9 +457,8 @@ to the owning contract header.
 - Eventing: `socket_monitor_t`, monitor events, poller, one-shot `poll(...)`,
   poll event, timer, and
   readiness helpers live in `Contracts/Eventing/`.
-- Service: `registry_t`, `discovery_t`, `spot_node_t`, `spot_t`,
-  `actor_ref_t`, actor lifecycle models, and service operation builders live in
-  `Contracts/Service/`.
+- Service: `spot_node_t`, `spot_t`, `actor_ref_t`, actor lifecycle models, and
+  service operation builders live in `Contracts/Service/`.
 - Errors: public exception and result-domain types live in `Contracts/Errors/`.
 
 The map above is the public API index. It is the C++ equivalent of a contract
@@ -848,7 +841,7 @@ RAII/Pimpl idioms.
   socket options, send/recv/request/reply/publish surfaces.
 - `Contracts/Eventing`: monitor, poller, poll events, timer, and event handler
   contracts.
-- `Contracts/Service`: registry, discovery, SpotNode, Spot, Actor, topology,
+- `Contracts/Service`: SpotNode, Spot, Actor, topology,
   and service operation builders.
 - `Contracts/Errors`: public error/result domains.
 - `src/Runtime/Core`: context implementation and runtime facade support.
@@ -861,7 +854,7 @@ RAII/Pimpl idioms.
 - `src/Runtime/Sockets`: socket kernels and socket family implementations.
 - `src/Runtime/Eventing`: monitor, poller, poll event, timer, and dispatch
   loop implementations.
-- `src/Runtime/Service`: registry, discovery, SpotNode, Spot, Actor, topology,
+- `src/Runtime/Service`: SpotNode, Spot, Actor, topology,
   and service operation implementations.
 - `src/Runtime/Options`: option validation and native option id/value mapping.
 - `src/Runtime/Errors`: native errno/result conversion into public error
@@ -914,7 +907,7 @@ artifact. The completed binding therefore maintains these build rules:
   and publish/subscribe surfaces.
 - `Eventing/`: monitor, monitor snapshot/event, poller, poll event, timer, and
   public poll helpers.
-- `Service/`: registry, discovery, SPOT node, SPOT handle, topology models,
+- `Service/`: SPOT node, SPOT handle, topology models,
   actor refs, actor lifecycle, and operation builders.
 - `Errors/`: exception or typed error-result domains.
 - Enum, flag, and result types live in the category that defines their meaning.
@@ -971,7 +964,7 @@ The public headers cover these groups in the completed C++ binding.
   request/reply surfaces.
 - Eventing: socket monitor, monitor event, monitor snapshot, poller, poll
   event, timer, and readiness flags.
-- Services: registry, discovery, SPOT node, SPOT handle, topology snapshots,
+- Services: SPOT node, SPOT handle, topology snapshots,
   actor refs, actor lifecycle, and actor operations.
 - Errors: typed exception or error-result surfaces that preserve the core
   result domains.
@@ -1088,14 +1081,6 @@ C++ exposes Actor and Spot route lookup results as concrete contract types.
   kind/current Spot fields as the core snapshots.
 
 C++ must not introduce ROUTER-to-Actor or Actor-to-ROUTER direct messaging
-methods. Applications compose `discovery_t::resolve_actor()` or
-`discovery_t::resolve_spot()` with the Spot routed APIs.
-
-## Discovery Route Table
-
-C++ exposes the discovery route table through `discovery_t::bind_route(...)`,
-`discovery_t::unbind_route(...)`, and `discovery_t::resolve_route(...)`.
-`route_kind` uses the core values `invalid = 0`, `actor = 1`,
-`spot_name = 2`, and `actor_session = 3`. `resolve_route(...)` returns a
-`discovery_route_t` containing the owner routing id and the route value as a
-`message_t`.
+methods. Applications use the Spot routed APIs and the Actor refs supplied by
+`spot_node_t` or by their own protocol state. C++ must not reintroduce the
+removed Discovery route table or resolver APIs as compatibility helpers.

@@ -131,13 +131,6 @@ bindings/node/
 |   |   |   |   +-- poller.ts
 |   |   |   |   +-- timer.ts
 |   |   |   +-- service/
-|   |   |   |   +-- registry/
-|   |   |   |   |   +-- registry.ts
-|   |   |   |   |   +-- registry_query_client.ts
-|   |   |   |   |   +-- registry_models.ts
-|   |   |   |   +-- discovery/
-|   |   |   |   |   +-- discovery.ts
-|   |   |   |   |   +-- discovery_models.ts
 |   |   |   |   +-- spot/
 |   |   |   |   |   +-- spot_node.ts
 |   |   |   |   |   +-- spot.ts
@@ -182,11 +175,6 @@ bindings/node/
 |   |   |   |   +-- option_mapping.ts
 |   |   |   |   +-- validation.ts
 |   |   |   +-- service/
-|   |   |   |   +-- registry/
-|   |   |   |   |   +-- registry.ts
-|   |   |   |   |   +-- registry_query_client.ts
-|   |   |   |   +-- discovery/
-|   |   |   |   |   +-- discovery.ts
 |   |   |   |   +-- spot/
 |   |   |   |   |   +-- spot_node.ts
 |   |   |   |   |   +-- spot.ts
@@ -352,7 +340,7 @@ and published TypeScript declarations.
   and publish/subscribe surfaces.
 - `eventing/`: monitor, monitor snapshot/event, poller, poll event, timer, and
   public poll helpers.
-- `service/`: registry, discovery, SPOT node, SPOT handle, topology models,
+- `service/`: SPOT node, SPOT handle, topology models,
   actor refs, actor lifecycle, and operation builders.
 - `errors/`: typed error classes or tagged error domains.
 - Enum, flag, result, and literal-union types live in the category that defines
@@ -375,11 +363,8 @@ stay idiomatic TypeScript.
   builder contracts, stream packet handler contracts, and socket flags.
 - `eventing/`: monitor, monitor event/status, poller, poll events, timer, and
   event handler contracts.
-- `service/`: `registry/`, `discovery/`, and `spot/` subfolders when the
-  service surface is large enough to read better that way. Use named files
-  such as `registry.ts`, `registry_query_client.ts`, `discovery.ts`,
-  `spot_node.ts`, `spot.ts`, `actor.ts`, `spot_operations.ts`, and model files
-  grouped with their service domain.
+- `service/`: `spot/` subfolder for SPOT node, Spot, Actor, topology models,
+  and service operation builders.
 - `errors/`: public error classes, result domains, and error-code mapping.
 
 Avoid a single aggregate `models.ts` or runtime-export barrel for public
@@ -415,10 +400,9 @@ file names should describe the resource or operation they implement.
   `timer.ts`, and related event materialization helpers.
 - `options/`: option validation and native option id/value mapping shared by
   context, sockets, and services.
-- `service/`: registry, registry query client, discovery, SPOT node, Spot,
-  Actor, topology, and service operation implementations. Use
-  `registry/`, `discovery/`, and `spot/` subfolders when the implementation is
-  large enough.
+- `service/`: SPOT node, Spot, Actor, topology, and service operation
+  implementations. Use a `spot/` subfolder when the implementation is large
+  enough.
 - `errors/`: native error translation and validation helpers.
 - `native/`: native addon loading, platform lookup, and N-API binding surface.
 - `internal/`: private glue that does not fit a standard .NET runtime
@@ -444,11 +428,10 @@ split is not aligned.
 
 Runtime implementation files should be named after the resource or operation
 they implement, not after the fact that they are native-backed
-implementations. Use `router_socket.ts`, `spot_node.ts`,
-`registry_query_client.ts`, `poller.ts`, and `timer.ts`; do not use
+implementations. Use `router_socket.ts`, `spot_node.ts`, `poller.ts`, and
+`timer.ts`; do not use
 `default_router_socket.ts`,
-`default_spot_node.ts`, `default_registry_query_client.ts`,
-`default_poller.ts`, or similar names.
+`default_spot_node.ts`, `default_poller.ts`, or similar names.
 
 Shared helpers must not become a second public implementation aggregate.
 `runtime/internal/*` may own narrow private glue such as request pumping that
@@ -470,7 +453,7 @@ become a hidden aggregate and must be split into `socket_base.ts`,
 
 The following shapes are explicit alignment failures:
 
-  `Discovery`, `SpotNode`, `Spot`, and `Actor` implementations in one file,
+- `SpotNode`, `Spot`, and `Actor` implementations in one file,
   even if it also re-exports those implementations.
 - `runtime/eventing/eventing.ts` contains monitor socket, poll events, poller,
   timer, stopwatch, and counter implementations in one file, even if those
@@ -578,7 +561,7 @@ The package entrypoint should group the API around domain concepts.
 - Sockets: pair, dealer, router, pub, sub, xpub, xsub, stream, typed options,
   callbacks, request/reply, publish/subscribe, and stream packet APIs.
 - Eventing: monitor, monitor snapshot/event, poller, poll event, and timer.
-- Service: registry, discovery, SPOT node, SPOT handle, topology snapshots,
+- Service: SPOT node, SPOT handle, topology snapshots,
   actor refs, actor lifecycle, and operation builders.
 - Errors: typed error classes or tagged error objects preserving core result
   domains.
@@ -594,7 +577,7 @@ the binding is aligned to the shared .NET-standard policy.
   messages, subscription events, and stream packet callbacks.
 - All socket families and their typed options.
 - Monitor, poller, timer, and readiness semantics.
-- Registry, discovery, SPOT node, SPOT handle, topology snapshots, actors, and
+- SPOT node, SPOT handle, topology snapshots, actors, and
   stream actor binding.
 
 The binding may expose synchronous or asynchronous forms where appropriate,
@@ -711,14 +694,6 @@ objects and matching TypeScript declarations.
   core snapshots.
 
 Node must not add ROUTER-to-Actor or Actor-to-ROUTER direct messaging methods.
-Callers compose `resolveActor()` or `resolveSpot()` with the existing Spot
-routed APIs.
-
-## Discovery Route Table
-
-Node exposes the discovery route table through `Discovery.bindRoute(...)`,
-`Discovery.unbindRoute(...)`, and `Discovery.resolveRoute(...)`.
-`DiscoveryRouteKind` uses the core values `Invalid = 0`, `Actor = 1`,
-`SpotName = 2`, and `ActorSession = 3`. `resolveRoute(...)` returns a
-`DiscoveryRoute` containing the owner routing id and the route value as a
-`Message`.
+Callers use the SPOT routed APIs and the Actor refs supplied by `SpotNode`
+or by their own protocol state. Node must not reintroduce the removed
+Discovery route table or resolver APIs as compatibility helpers.

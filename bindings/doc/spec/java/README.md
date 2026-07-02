@@ -87,8 +87,6 @@ bindings/java/src/main/java/systems/zlink/
 |   +-- sockets/
 |   +-- eventing/
 |   +-- service/
-|   |   +-- registry/
-|   |   +-- discovery/
 |   |   +-- spot/
 |   +-- errors/
 +-- internal/
@@ -98,8 +96,6 @@ bindings/java/src/main/java/systems/zlink/
 |   +-- sockets/
 |   +-- eventing/
 |   +-- service/
-|   |   +-- registry/
-|   |   +-- discovery/
 |   |   +-- spot/
 |   +-- errors/
 |   +-- nativeapi/
@@ -135,8 +131,6 @@ The Java contract categories are normative.
 | `systems.zlink.contracts.messaging` | Message values, received envelopes, topic messages, subscription events, payload ownership, common message metadata. |
 | `systems.zlink.contracts.sockets` | Socket resource contracts, socket operation builders, socket options, send/recv/request/reply/publish surfaces. |
 | `systems.zlink.contracts.eventing` | Poller, poll events, monitor socket, monitor snapshots, timer resource contracts. |
-| `systems.zlink.contracts.service.registry` | Registry resource contract, registry query/filter models, registry snapshot models. |
-| `systems.zlink.contracts.service.discovery` | Discovery resource contract, discovery filters, and discovery snapshot models. |
 | `systems.zlink.contracts.service.spot` | SpotNode, Spot, Actor, route/admission handlers, actor lifecycle, and service operation builders. |
 | `systems.zlink.contracts.errors` | Public exception and typed error/result domains. |
 
@@ -149,7 +143,7 @@ names:
 | `systems.zlink.runtime.messaging` | Message materialization, multipart progress, request progress, and request execution. |
 | `systems.zlink.runtime.sockets` | Socket kernels, socket family implementations, callback adapters, and socket operation execution. |
 | `systems.zlink.runtime.eventing` | Monitor, poller, poll event, timer, and dispatch loop implementations. |
-| `systems.zlink.runtime.service.*` | Registry, discovery, SpotNode, Spot, Actor, topology, and service operation implementations. |
+| `systems.zlink.runtime.service.*` | SpotNode, Spot, Actor, topology, and service operation implementations. |
 | `systems.zlink.runtime.errors` | Native errno/result conversion into public exception/result domains. |
 | `systems.zlink.runtime.nativeapi` | JNI/Panama declarations, ABI mirrors, symbol loading, and native artifact lookup. |
 
@@ -280,17 +274,11 @@ systems/zlink/contracts/
 |   +-- SubscriptionEvent.java
 |   +-- TopicMessage.java
 +-- service/
-|   +-- discovery/
-|   |   +-- Discovery.java
-|   |   +-- SpotRoute.java
-|   +-- registry/
-|   |   +-- Registry.java
-|   |   +-- RegistryEnums/
-|   |   +-- RegistryModels/
 |   +-- spot/
 |       +-- Actor.java
 |       +-- Spot.java
 |       +-- SpotDispatchInfo.java
+|       +-- SpotRoute.java
 |       +-- SpotNode.java
 |       +-- ActorJoinOperations/
 |       +-- ActorManagementOperations/
@@ -367,11 +355,6 @@ systems/zlink/runtime/
 |   +-- NativePoller.java
 |   +-- NativeTimer.java
 +-- service/
-|   +-- discovery/
-|   |   +-- NativeDiscovery.java
-|   +-- registry/
-|   |   +-- NativeRegistry.java
-|   |   +-- NativeRegistryCodecs.java
 |   +-- spot/
 |       +-- NativeActor.java
 |       +-- NativeSpot.java
@@ -418,8 +401,6 @@ interfaces and must be created by factories.
 - `MonitorSocket`
 - `Poller`
 - `Timer`
-- `Registry`
-- `Discovery`
 - `SpotNode`
 - `Spot`
 - Actor resource contracts when the Java surface exposes actor handles or actor
@@ -768,16 +749,9 @@ Actor and SPOT route results are concrete contract models:
 - Invalid kind is not a successful route result.
 
 Java must not add ROUTER-to-Actor or Actor-to-ROUTER direct messaging methods.
-Callers compose `Discovery.resolveActor()` or `Discovery.resolveSpot()` with
-existing SPOT routed APIs.
-
-## Discovery Route Table
-
-Java exposes the discovery route table through `Discovery.bindRoute(...)`,
-`Discovery.unbindRoute(...)`, and `Discovery.resolveRoute(...)`. Route kind
-values follow the core contract: invalid `0`, actor `1`, spot name `2`, and
-actor session `3`. `resolveRoute(...)` returns a `DiscoveryRoute` containing
-`ownerRoutingId()` and the route `value()` as a `Message`.
+Callers use the SPOT routed APIs and the Actor refs supplied by `SpotNode`
+or by their own protocol state. Java must not reintroduce the removed
+Discovery route table or resolver APIs as compatibility helpers.
 
 ## Spot Get-Or-Create
 
@@ -834,7 +808,7 @@ resource design in place.
 
 The Java binding is aligned only when all items are true:
 
-- `Context`, sockets, eventing resources, registry, discovery, SpotNode, Spot,
+- `Context`, sockets, eventing resources, SpotNode, Spot,
   and Actor native-backed resources are public contract interfaces.
 - Runtime native-backed implementations live under `systems.zlink.runtime.*`.
 - Factory entrypoints return contract interfaces and hide runtime class names.

@@ -121,13 +121,6 @@ bindings/python/
 |   |   |   |   +-- poller.py
 |   |   |   |   +-- timer.py
 |   |   |   +-- service/
-|   |   |   |   +-- registry/
-|   |   |   |   |   +-- registry.py
-|   |   |   |   |   +-- registry_query_client.py
-|   |   |   |   |   +-- registry_models.py
-|   |   |   |   +-- discovery/
-|   |   |   |   |   +-- discovery.py
-|   |   |   |   |   +-- discovery_models.py
 |   |   |   |   +-- spot/
 |   |   |   |   |   +-- spot_node.py
 |   |   |   |   |   +-- spot.py
@@ -153,11 +146,6 @@ bindings/python/
 |   |   |   |   +-- poller.py
 |   |   |   |   +-- timer.py
 |   |   |   +-- service/
-|   |   |   |   +-- registry/
-|   |   |   |   |   +-- registry.py
-|   |   |   |   |   +-- registry_query_client.py
-|   |   |   |   +-- discovery/
-|   |   |   |   |   +-- discovery.py
 |   |   |   |   +-- spot/
 |   |   |   |   |   +-- spot_node.py
 |   |   |   |   |   +-- spot.py
@@ -286,9 +274,8 @@ the same public concept in Python quickly.
   socket flags.
 - `eventing/`: monitor, monitor event/status, poller, poll events, timer, and
   event handler contracts.
-- `service/`: `registry/`, `discovery/`, and `spot/` subpackages. The Python
-  binding uses these subpackages because the service surface is large enough to
-  read better that way.
+- `service/`: `spot/` subpackage for SPOT node, Spot, Actor, topology models,
+  and service operation builders.
 - `errors/`: public exception classes, result domains, and error-code mapping.
 
 Avoid a single aggregate `models.py` or private runtime-export barrel for
@@ -312,7 +299,7 @@ Runtime source mirrors the runtime classification in the
   every socket family, callback adapters, and operation implementation classes.
 - `eventing/`: poller/timer/monitor implementations and event
   materialization helpers.
-- `service/`: registry, discovery, SPOT node, Spot, Actor, topology, and
+- `service/`: SPOT node, Spot, Actor, topology, and
   service operation implementations.
 - `options/`: option validation and native option id/value mapping.
 - `errors/`: native error translation and validation helpers.
@@ -412,8 +399,7 @@ methods.
   `create_sub_socket(...)`, `create_xpub_socket(...)`,
   `create_xsub_socket(...)`, and `create_stream_socket(...)` create
   native-backed socket implementations.
-- `create_registry(...)`, `create_discovery(...)`, and
-  `create_spot_node(...)` create service-layer implementations.
+- `create_spot_node(...)` creates the service-layer implementation.
 - `Spot` handles are obtained through `SpotNode.create_spot()`,
   `entry_spot()`, `get_or_create_spot(...)`, or `spot_lookup(...)`; direct
   `Spot` construction is not public.
@@ -441,7 +427,7 @@ from `zlink`.
   and publish/subscribe surfaces.
 - `eventing/`: monitor, monitor snapshot/event, poller, poll event, timer, and
   public poll helpers.
-- `service/`: registry, discovery, SPOT node, SPOT handle, topology models,
+- `service/`: SPOT node, SPOT handle, topology models,
   actor refs, actor lifecycle, and operation builders.
 - `errors/`: typed exception domains.
 - Enum, flag, and result types live in the category that defines their meaning.
@@ -490,7 +476,7 @@ The `zlink` package should expose domain-level groups.
 - Sockets: pair, dealer, router, pub, sub, xpub, xsub, stream, typed options,
   callbacks, request/reply, publish/subscribe, and stream packet APIs.
 - Eventing: monitor, monitor snapshot/event, poller, poll event, and timer.
-- Service: registry, discovery, SPOT node, SPOT handle, topology snapshots,
+- Service: SPOT node, SPOT handle, topology snapshots,
   actor refs, actor lifecycle, and operation builders.
 - Errors: typed exception classes preserving core result domains.
 
@@ -507,7 +493,7 @@ binding is aligned to the shared .NET-standard policy.
   and `XSubSocket.subscription_at(index)` return the subscription filter and
   pattern flag for the index, or `None` when the index is absent.
 - Monitor, poller, timer, and readiness semantics.
-- Registry, discovery, SPOT node, SPOT handle, topology snapshots, actors, and
+- SPOT node, SPOT handle, topology snapshots, actors, and
   stream actor binding.
 
 Python names may follow Python style, but behavior must match the core
@@ -619,14 +605,6 @@ objects.
   core snapshots.
 
 Python must not add ROUTER-to-Actor or Actor-to-ROUTER direct messaging
-methods. Callers compose `resolve_actor()` or `resolve_spot()` with the existing
-Spot routed APIs.
-
-## Discovery Route Table
-
-Python exposes the discovery route table through `Discovery.bind_route(...)`,
-`Discovery.unbind_route(...)`, and `Discovery.resolve_route(...)`. The route
-kind integer uses the core values `0` for invalid, `1` for actor, `2` for spot
-name, and `3` for actor session. `resolve_route(...)` returns a
-`DiscoveryRoute` containing the owner routing id and the route value as a
-`Message`.
+methods. Callers use the Spot routed APIs and the Actor refs supplied by
+`SpotNode` or by their own protocol state. Python must not reintroduce the
+removed Discovery route table or resolver APIs as compatibility helpers.

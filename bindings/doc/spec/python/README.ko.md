@@ -112,13 +112,6 @@ bindings/python/
 |   |   |   |   +-- poller.py
 |   |   |   |   +-- timer.py
 |   |   |   +-- service/
-|   |   |   |   +-- registry/
-|   |   |   |   |   +-- registry.py
-|   |   |   |   |   +-- registry_query_client.py
-|   |   |   |   |   +-- registry_models.py
-|   |   |   |   +-- discovery/
-|   |   |   |   |   +-- discovery.py
-|   |   |   |   |   +-- discovery_models.py
 |   |   |   |   +-- spot/
 |   |   |   |   |   +-- spot_node.py
 |   |   |   |   |   +-- spot.py
@@ -144,11 +137,6 @@ bindings/python/
 |   |   |   |   +-- poller.py
 |   |   |   |   +-- timer.py
 |   |   |   +-- service/
-|   |   |   |   +-- registry/
-|   |   |   |   |   +-- registry.py
-|   |   |   |   |   +-- registry_query_client.py
-|   |   |   |   +-- discovery/
-|   |   |   |   |   +-- discovery.py
 |   |   |   |   +-- spot/
 |   |   |   |   |   +-- spot_node.py
 |   |   |   |   |   +-- spot.py
@@ -263,8 +251,8 @@ Python에서 빠르게 찾을 수 있도록 동일한 개념적 파일 그룹화
   계약, 스트림 패킷 핸들러 계약, 소켓 플래그.
 - `eventing/`: 모니터, monitor event/status, poller, poll event, timer, 이벤트
   핸들러 계약.
-- `service/`: 서비스 표면이 분리해서 읽는 편이 나을 만큼 크다면 `registry/`,
-  `discovery/`, `spot/` 서브패키지로 둔다.
+- `service/`: SPOT node, Spot, Actor, topology 모델, service operation builder를
+  담는 `spot/` 서브패키지로 둔다.
 - `errors/`: 공개 예외 클래스, result 도메인, error 코드 매핑.
 
 공개 리소스 동작을 위한 단일 집계 `models.py`나 비공개 런타임 export barrel을
@@ -282,7 +270,7 @@ Python에서 빠르게 찾을 수 있도록 동일한 개념적 파일 그룹화
 - `sockets/`: 소켓 베이스 클래스, 소켓 커널, 모든 소켓 패밀리의 소켓 구현, 콜백
   어댑터, operation 구현 클래스.
 - `eventing/`: poller/timer/monitor 구현과 이벤트 materialization 헬퍼.
-- `service/`: registry, discovery, SPOT 노드, Spot, Actor, topology, 서비스
+- `service/`: SPOT 노드, Spot, Actor, topology, 서비스
   operation 구현.
 - `errors/`: 네이티브 에러 변환과 검증 헬퍼.
 - `_native/`: 확장 로딩, 플랫폼 lookup, 네이티브 바인딩 표면.
@@ -371,8 +359,7 @@ Python 패키지는 컴파일된 확장 모듈을 wheel에 포함해야 한다. 
   `create_sub_socket(...)`, `create_xpub_socket(...)`,
   `create_xsub_socket(...)`, `create_stream_socket(...)`은 네이티브 기반 소켓 구현을
   생성한다.
-- `create_registry(...)`, `create_discovery(...)`, `create_spot_node(...)`는 서비스
-  계층 구현을 생성한다.
+- `create_spot_node(...)`는 서비스 계층 구현을 생성한다.
 - `Spot` 핸들은 `SpotNode.create_spot()`, `entry_spot()`,
   `get_or_create_spot(...)`, `spot_lookup(...)`을 통해 얻는다. `Spot`의 직접
   생성은 공개되지 않는다.
@@ -398,7 +385,7 @@ Python 패키지는 컴파일된 확장 모듈을 wheel에 포함해야 한다. 
   subscribe 표면.
 - `eventing/`: 모니터, monitor snapshot/event, poller, poll event, timer, 공개
   poll 헬퍼.
-- `service/`: registry, discovery, SPOT 노드, SPOT 핸들, topology 모델, actor
+- `service/`: SPOT 노드, SPOT 핸들, topology 모델, actor
   ref, actor 생명주기, operation 빌더.
 - `errors/`: 타입드 예외 도메인.
 - enum, flag, result 타입은 그 의미를 정의하는 카테고리에 둔다. 단지 문법으로
@@ -446,7 +433,7 @@ Python 패키지는 컴파일된 확장 모듈을 wheel에 포함해야 한다. 
 - Sockets: pair, dealer, router, pub, sub, xpub, xsub, stream, 타입드 옵션,
   콜백, request/reply, publish/subscribe, 스트림 패킷 API.
 - Eventing: 모니터, monitor snapshot/event, poller, poll event, timer.
-- Service: registry, discovery, SPOT 노드, SPOT 핸들, topology 스냅샷, actor
+- Service: SPOT 노드, SPOT 핸들, topology 스냅샷, actor
   ref, actor 생명주기, operation 빌더.
 - Errors: 코어 result 도메인을 보존하는 타입드 예외 클래스.
 
@@ -463,7 +450,7 @@ Python 패키지는 컴파일된 확장 모듈을 wheel에 포함해야 한다. 
   `XSubSocket.subscription_at(index)`는 해당 인덱스의 subscription filter와
   pattern 여부를 반환한다. 해당 인덱스가 없으면 `None`을 반환한다.
 - 모니터, poller, timer, readiness 의미.
-- registry, discovery, SPOT 노드, SPOT 핸들, topology 스냅샷, actor, 스트림
+- SPOT 노드, SPOT 핸들, topology 스냅샷, actor, 스트림
   actor 바인딩.
 
 Python 이름은 Python 스타일을 따를 수 있지만, 동작은 코어 기능의 의미와
@@ -567,13 +554,6 @@ Python은 Actor와 Spot 경로 lookup 결과를 공개 result 객체로 노출�
   노출한다.
 
 Python은 ROUTER-to-Actor 또는 Actor-to-ROUTER 직접 메시징 메서드를 추가하지
-않는다. 호출자는 `resolve_actor()` 또는 `resolve_spot()`을 기존 Spot routed
-API와 조합해서 사용한다.
-
-## Discovery route table
-
-Python은 discovery route table을 `Discovery.bind_route(...)`,
-`Discovery.unbind_route(...)`, `Discovery.resolve_route(...)`로 노출한다. route
-kind 정수 값은 코어와 같이 invalid `0`, actor `1`, spot name `2`, actor session
-`3`이다. `resolve_route(...)`는 owner routing id와 route 값을 `Message`로 담은
-`DiscoveryRoute`를 반환한다.
+않는다. 호출자는 Spot routed API와 `SpotNode` 또는 자체 protocol state가
+제공하는 Actor ref를 조합한다. Python은 제거된 Discovery route table이나
+resolver API를 compatibility helper로 되살리면 안 된다.

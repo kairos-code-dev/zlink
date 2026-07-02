@@ -14,8 +14,8 @@ For exact API contracts, see the [SPOT spec](../spec/core/service/spot.md).
 SPOT has two layers.
 
 - `SpotNode`
-  Owns node topology, discovery-backed wiring, manual peer wiring,
-  channel-call `DEALER` attachments, and external publish ingress.
+  Owns node topology, manual peer wiring, route bridges, and external publish
+  ingress.
 - `Spot`
   The facade your application uses for topic publish/subscribe, routed recv,
   and channel send/request.
@@ -23,8 +23,8 @@ SPOT has two layers.
 The usual flow is:
 
 1. Create a `SpotNode`.
-2. Bind it or attach discovery.
-3. Attach channel dealers if you need channel calls.
+2. Bind it or connect raw peers when your topology needs them.
+3. Create a route bridge if an external channel runtime must feed SPOT routes.
 4. Create a `Spot` facade.
 5. Use the `Spot` for topic traffic or channel calls.
 
@@ -216,14 +216,10 @@ Two rules matter:
 - Channel calls always use attached `DEALER` sockets.
 - Attach functions never create sockets and never call `connect()` for you.
 
-The **automatic path** lets a Discovery instance manage DEALER connections on
-your behalf — peers are located and connected automatically as they register.
-The **manual path** requires you to create the DEALER socket and call
-`connect()` yourself to each known endpoint. Both result in identical channel
-call behavior; the difference is only in peer discovery and connection
-management.
+The current public C API uses the manual path: create the `DEALER`, connect it
+to the known endpoints, and attach it to the route bridge.
 
-### 5.1 Automatic path
+### 5.1 Removed automatic path
 
 The previous automatic path used public discovery handles and was removed from
 the C contract in core 8.4.3. Keep channel bridge examples on the manual path
@@ -260,8 +256,7 @@ zlink_spot_request_channel(
   2000);
 ```
 
-You cannot register two dealers for the same channel name. Automatic and manual
-attach collide in the same namespace.
+You cannot register two dealers for the same channel name.
 
 ### 5.4 Channel request reply and the dispatch stream
 

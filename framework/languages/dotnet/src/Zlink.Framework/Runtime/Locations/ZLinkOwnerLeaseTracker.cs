@@ -13,7 +13,10 @@ internal sealed class ZLinkOwnerLeaseTracker
     private readonly ZLinkLocationOptions _options;
     private readonly TimeProvider _time;
     private readonly SemaphoreSlim _refreshGate = new(1, 1);
+    private readonly object _liveSetGate = new();
     private volatile Snapshot? _snapshot;
+    private string? _liveSetFingerprint;
+    private long _liveSetVersion;
 
     internal ZLinkOwnerLeaseTracker(
         IZLinkOwnerLeaseStore store,
@@ -37,6 +40,38 @@ internal sealed class ZLinkOwnerLeaseTracker
 
         var elapsedSinceFetch = _time.GetElapsedTime(snapshot.FetchedAt);
         return lease.LeaseExpiresAt - snapshot.StoreNow - elapsedSinceFetch > TimeSpan.Zero;
+    }
+
+    /// <summary>
+    /// Version of the set of currently live owners. The desired target set
+    /// is a join of rows and leases, so a reconcile tick must not be
+    /// skipped just because no row changed: an owner appearing (its rows
+    /// become visible) or expiring (its rows must drop) changes the join
+    /// without any row write. The version bumps only on membership changes,
+    /// never on plain renewals, so a healthy steady state keeps the change
+    /// stamp skip effective.
+    /// </summary>
+    internal async ValueTask<long> GetLiveOwnerSetVersionAsync(
+        CancellationToken cancellationToken = default)
+    {
+        var snapshot = await GetSnapshotAsync(cancellationToken).ConfigureAwait(false);
+        var elapsedSinceFetch = _time.GetElapsedTime(snapshot.FetchedAt);
+        var live = snapshot.Leases.Values
+            .Where(lease => lease.LeaseExpiresAt - snapshot.StoreNow - elapsedSinceFetch > TimeSpan.Zero)
+            .Select(static lease => lease.OwnerId)
+            .Order(StringComparer.Ordinal);
+        var fingerprint = string.Join('\n', live);
+
+        lock (_liveSetGate)
+        {
+            if (!string.Equals(fingerprint, _liveSetFingerprint, StringComparison.Ordinal))
+            {
+                _liveSetFingerprint = fingerprint;
+                _liveSetVersion++;
+            }
+
+            return _liveSetVersion;
+        }
     }
 
     private async ValueTask<Snapshot> GetSnapshotAsync(CancellationToken cancellationToken)

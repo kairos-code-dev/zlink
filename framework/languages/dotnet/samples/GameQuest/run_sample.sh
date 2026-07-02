@@ -10,6 +10,7 @@ mkdir -p "${LOG_DIR}" "${STORE_DIR}" "${GAMEQUEST_LOG_DIR}"
 rm -f "${GAMEQUEST_LOG_DIR}"/*.log
 
 PIDS=()
+REDIS_CONTAINER=""
 
 cleanup() {
   for ((i=${#PIDS[@]}-1; i>=0; i--)); do
@@ -37,6 +38,9 @@ cleanup() {
     fi
     wait "${pid}" 2>/dev/null || true
   done
+  if [[ -n "${REDIS_CONTAINER}" ]]; then
+    docker rm -f "${REDIS_CONTAINER}" >/dev/null 2>&1 || true
+  fi
   if [[ "${GAMEQUEST_KEEP_RUN_DIR:-}" != "1" ]]; then
     rm -rf "${RUN_DIR}"
   else
@@ -78,8 +82,7 @@ PY
 )"
 fi
 
-export GAMEQUEST_REGISTRY_PUB_ENDPOINT="${GAMEQUEST_REGISTRY_PUB_ENDPOINT:-tcp://127.0.0.1:${PORTS[0]}}"
-export GAMEQUEST_REGISTRY_ROUTER_ENDPOINT="${GAMEQUEST_REGISTRY_ROUTER_ENDPOINT:-tcp://127.0.0.1:${PORTS[1]}}"
+export GAMEQUEST_REDIS_KEY_PREFIX="${GAMEQUEST_REDIS_KEY_PREFIX:-gamequest:dotnet:${RANDOM}:$$:}"
 export GAMEQUEST_FANOUT_PUBLISHER_A_ENDPOINT="${GAMEQUEST_FANOUT_PUBLISHER_A_ENDPOINT:-tcp://127.0.0.1:${PORTS[2]}}"
 export GAMEQUEST_FANOUT_PUBLISHER_B_ENDPOINT="${GAMEQUEST_FANOUT_PUBLISHER_B_ENDPOINT:-tcp://127.0.0.1:${PORTS[13]}}"
 export GAMEQUEST_GAMEAPI_A_HTTP_BASE_URL="${GAMEQUEST_GAMEAPI_A_HTTP_BASE_URL:-http://127.0.0.1:${PORTS[3]}}"
@@ -156,8 +159,16 @@ start_server() {
 
 dotnet build "${SCRIPT_DIR}/GameQuest.csproj" --maxcpucount:1
 
-start_server registry "${SCRIPT_DIR}/Server/Registry/GameQuest.Registry.csproj"
-wait_port registry-router "${GAMEQUEST_REGISTRY_ROUTER_ENDPOINT}"
+# The sample owns its Redis: a dedicated, throwaway container is the shared
+# location store every server registers into (no registry process exists).
+if ! command -v docker >/dev/null 2>&1; then
+  echo "Docker is required to run the GameQuest sample (it provisions a dedicated Redis container)." >&2
+  exit 1
+fi
+REDIS_CONTAINER="gamequest-dotnet-redis-${RANDOM}-$$"
+docker run -d --rm --name "${REDIS_CONTAINER}" -p "127.0.0.1::6379" redis:7.2-alpine >/dev/null
+export GAMEQUEST_REDIS_ENDPOINT="$(docker port "${REDIS_CONTAINER}" 6379/tcp | sed -E 's/.*:([0-9]+)$/127.0.0.1:\1/')"
+wait_port redis "tcp://${GAMEQUEST_REDIS_ENDPOINT}"
 
 ASPNETCORE_URLS="${GAMEQUEST_MISSION_A_HTTP_URL}" GAMEQUEST_MISSION_NAME="mission-a" \
   start_server mission-a "${SCRIPT_DIR}/Server/QuestMission/GameQuest.QuestMission.csproj"
@@ -180,6 +191,11 @@ ASPNETCORE_URLS="${GAMEQUEST_GAMEAPI_B_HTTP_BASE_URL}" GAMEQUEST_API_NAME="api-b
   start_server api-b "${SCRIPT_DIR}/Server/GameApi/GameQuest.GameApi.csproj"
 wait_port api-b-stream "${GAMEQUEST_API_B_STREAM_BIND_ENDPOINT}"
 wait_http api-b "${GAMEQUEST_GAMEAPI_B_HTTP_BASE_URL}"
+
+# Give the auto-connect reconcile loops one or two polling intervals to
+# converge (fanout subscribers dial rows they discover in the store).
+sleep "${GAMEQUEST_STARTUP_DELAY_SECONDS:-3}"
+
 
 dotnet run --no-build --project "${SCRIPT_DIR}/Client/GameQuest.Client.csproj"
 

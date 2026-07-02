@@ -315,7 +315,8 @@ internal static class ZLinkFrameworkServiceRegistrar
             provider.GetRequiredService<ZLinkLocationOptions>(),
             provider.GetService<IZLinkLocationChangeStampStore>(),
             provider.GetService<IZLinkLocationWatchStore>(),
-            events: provider.GetRequiredService<ZLinkLocationEventEmitter>()));
+            events: provider.GetRequiredService<ZLinkLocationEventEmitter>(),
+            leaseTracker: provider.GetRequiredService<ZLinkOwnerLeaseTracker>()));
         services.AddSingleton<IHostedService, ZLinkLocationHostedService>();
         return services;
     }

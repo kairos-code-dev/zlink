@@ -25,7 +25,9 @@ pwsh -NoProfile -ExecutionPolicy Bypass -File .\run_sample.ps1
 - `Client/`는 두 플레이어의 stream connector를 열고 self-check 시나리오를 실행한다.
 - `Server/GameApi/`는 플레이어 session, 게임 이벤트 접수, client push를 담당한다.
 - `Server/QuestMission/`은 퀘스트 진행 상태를 계산하고 완료 결과를 GameApi로 보낸다.
-- `Server/Registry/`는 샘플 실행 중 사용할 discovery registry를 띄운다.
+- 서버 프로세스들은 registry 없이 공유 location store(Redis)에 위치를 등록하고 자동 연결한다.
+  `run_sample.sh`가 실행마다 전용 Redis 컨테이너를 띄우고 `GAMEQUEST_REDIS_ENDPOINT`와
+  `GAMEQUEST_REDIS_KEY_PREFIX`를 주입한다.
 - `Server/Configuration/`은 역할별 endpoint, channel, packet 설정을 모은다.
 
 ## 성공 조건

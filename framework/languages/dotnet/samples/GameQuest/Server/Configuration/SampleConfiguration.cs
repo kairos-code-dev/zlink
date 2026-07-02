@@ -34,7 +34,8 @@ public static class QuestStatuses
 }
 
 public sealed record GameQuestTopology(
-    string RegistryRouterEndpoint,
+    string RedisEndpoint,
+    string RedisKeyPrefix,
     string FanoutPublisherAEndpoint,
     string FanoutPublisherBEndpoint,
     string GameApiAHttpBaseUrl,
@@ -52,7 +53,8 @@ public sealed record GameQuestTopology(
     RoutingId MissionBSpotRid)
 {
     public static GameQuestTopology FromEnvironment() => new(
-        Required("GAMEQUEST_REGISTRY_ROUTER_ENDPOINT"),
+        Required("GAMEQUEST_REDIS_ENDPOINT"),
+        Environment.GetEnvironmentVariable("GAMEQUEST_REDIS_KEY_PREFIX") ?? "gamequest:",
         Required("GAMEQUEST_FANOUT_PUBLISHER_A_ENDPOINT"),
         Required("GAMEQUEST_FANOUT_PUBLISHER_B_ENDPOINT"),
         Required("GAMEQUEST_GAMEAPI_A_HTTP_BASE_URL"),

@@ -1060,6 +1060,13 @@ scope는 location kind와 mesh name이다. stamp는 해당 scope의 row가 바�
 실제 변경이 있을 때만 일어난다. change stamp가 없는 구현체는 full list polling으로 동작하되, polling
 interval을 mesh 크기에 맞춰 늘릴 수 있어야 한다.
 
+change stamp는 row 변경만 추적한다. desired target set은 row와 owner lease의 join이므로, tick 생략
+조건은 change stamp와 live owner 집합(만료되지 않은 owner lease의 owner 집합) 둘 다 변하지 않았을
+때다. 신규 node의 lease 등장(그 owner의 row가 유효해짐)이나 crash로 인한 lease 만료(그 owner의
+row를 desired set에서 빼야 함)는 row write 없이 join 결과를 바꾸므로, live owner 집합이 바뀐 tick은
+목록 조회를 건너뛰지 않는다. lease 연장은 집합을 바꾸지 않으므로 정상 상태 tick 비용은 여전히
+O(1)이다. live owner 집합은 6.6의 owner lease snapshot에서 local로 계산한다.
+
 ### 14.6 연결 실행
 
 framework runtime은 target set이 정해진 뒤 core socket API로 connect/disconnect만 수행한다.

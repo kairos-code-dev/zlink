@@ -29,6 +29,7 @@ internal sealed class ZLinkAutoConnectReconciler
     private readonly IZLinkPeerLocationResolver _peers;
     private readonly IZLinkAutoConnectExecutor _executor;
     private readonly ZLinkLocationOptions _options;
+    private readonly ZLinkLocationEventEmitter _events;
     private readonly TimeProvider _time;
     private readonly Dictionary<string, ZLinkAutoConnectTarget> _active = new(StringComparer.Ordinal);
     private long _localGeneration;
@@ -43,7 +44,8 @@ internal sealed class ZLinkAutoConnectReconciler
         IZLinkPeerLocationResolver peers,
         IZLinkAutoConnectExecutor executor,
         ZLinkLocationOptions options,
-        TimeProvider? timeProvider = null)
+        TimeProvider? timeProvider = null,
+        ZLinkLocationEventEmitter? events = null)
     {
         _local = local;
         _localRow = localRow;
@@ -51,6 +53,7 @@ internal sealed class ZLinkAutoConnectReconciler
         _peers = peers;
         _executor = executor;
         _options = options;
+        _events = events ?? ZLinkLocationEventEmitter.Disabled;
         _time = timeProvider ?? TimeProvider.System;
     }
 
@@ -97,12 +100,15 @@ internal sealed class ZLinkAutoConnectReconciler
 
         var desired = ZLinkAutoConnectPlanner.ComputeDesired(_local, rows);
 
+        var connected = new List<string>();
+        var disconnected = new List<string>();
         foreach (var (key, target) in desired)
         {
             if (!_active.TryGetValue(key, out var current))
             {
                 _executor.Connect(target);
                 _active[key] = target;
+                connected.Add(target.Endpoint);
                 continue;
             }
 
@@ -113,19 +119,28 @@ internal sealed class ZLinkAutoConnectReconciler
                 _executor.Disconnect(current);
                 _executor.Connect(target);
                 _active[key] = target;
+                disconnected.Add(current.Endpoint);
+                connected.Add(target.Endpoint);
             }
         }
 
-        if (_time.GetTimestamp() < _recoveryDeferUntil)
+        if (_time.GetTimestamp() >= _recoveryDeferUntil)
         {
-            return;
+            var toRemove = _active.Keys.Where(key => !desired.ContainsKey(key)).ToArray();
+            foreach (var key in toRemove)
+            {
+                _executor.Disconnect(_active[key]);
+                disconnected.Add(_active[key].Endpoint);
+                _active.Remove(key);
+            }
         }
 
-        var toRemove = _active.Keys.Where(key => !desired.ContainsKey(key)).ToArray();
-        foreach (var key in toRemove)
+        if (connected.Count > 0 || disconnected.Count > 0)
         {
-            _executor.Disconnect(_active[key]);
-            _active.Remove(key);
+            await _events.DesiredSetChangedAsync(
+                new ZLinkAutoConnectDesiredSetChange(
+                    _local.AutoConnectType, _local.MeshName, connected, disconnected),
+                cancellationToken).ConfigureAwait(false);
         }
     }
 

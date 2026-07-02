@@ -16,6 +16,26 @@ public interface IZLinkMonitoringOptions
     void AddLocationRuntimeEvents(
         string sourceName,
         TimeSpan interval);
+
+    /// <summary>Publishes <see cref="ZLinkLocationPeerEvent"/>s when this
+    /// runtime writes or removes a peer row and when an auto-connect
+    /// desired target set changes. Requires location stores (draft 20.5).</summary>
+    void AddLocationPeerEvents(string sourceName);
+
+    /// <summary>Publishes <see cref="ZLinkLocationSpotEvent"/>s when this
+    /// runtime writes or removes a spot row and when a spot resolve
+    /// misses. Requires location stores (draft 20.5).</summary>
+    void AddLocationSpotEvents(string sourceName);
+
+    /// <summary>Publishes <see cref="ZLinkLocationActorEvent"/>s when this
+    /// runtime writes or removes an actor row and when an actor resolve
+    /// misses. Requires location stores (draft 20.5).</summary>
+    void AddLocationActorEvents(string sourceName);
+
+    /// <summary>Publishes <see cref="ZLinkLocationRouteEvent"/>s when this
+    /// runtime writes or removes a route row and when a route resolve
+    /// misses. Requires location stores (draft 20.5).</summary>
+    void AddLocationRouteEvents(string sourceName);
 }
 
 public interface IZLinkRuntimeEvent
@@ -89,8 +109,18 @@ public enum ZLinkLocationRuntimeEventKind
 {
     StatusChanged = 0,
     TopologyChanged = 1,
-    ServiceSummaryChanged = 2
+    ServiceSummaryChanged = 2,
+    StoreUnavailable = 3,
+    StoreRecovered = 4,
+    CacheInvalidated = 5
 }
+
+/// <summary>A resolver cache entry that was dropped for correctness (its
+/// owner lease expired) rather than by TTL or capacity. The key is the
+/// canonical location key string of the invalidated entry.</summary>
+public readonly record struct ZLinkLocationCacheInvalidation(
+    ZLinkLocationKind Kind,
+    string CanonicalKey);
 
 public readonly record struct ZLinkLocationRuntimeEvent(
     string SourceName,
@@ -98,7 +128,73 @@ public readonly record struct ZLinkLocationRuntimeEvent(
     ZLinkLocationRuntimeEventKind Event,
     ZLinkLocationRuntimeStatus? Status,
     IReadOnlyList<ZLinkLocationTopologyEntry>? Topology,
-    IReadOnlyList<ZLinkLocationServiceSummary>? ServiceSummary) : IZLinkRuntimeEvent;
+    IReadOnlyList<ZLinkLocationServiceSummary>? ServiceSummary,
+    ZLinkLocationCacheInvalidation? CacheInvalidation = null) : IZLinkRuntimeEvent;
+
+public enum ZLinkLocationPeerEventKind
+{
+    RowUpdated = 0,
+    RowRemoved = 1,
+    DesiredSetChanged = 2
+}
+
+/// <summary>Connect/disconnect diff one reconcile tick applied to an
+/// auto-connect desired target set.</summary>
+public readonly record struct ZLinkAutoConnectDesiredSetChange(
+    ZLinkLocationAutoConnectType AutoConnectType,
+    string MeshName,
+    IReadOnlyList<string> ConnectedEndpoints,
+    IReadOnlyList<string> DisconnectedEndpoints);
+
+public readonly record struct ZLinkLocationPeerEvent(
+    string SourceName,
+    DateTimeOffset Timestamp,
+    ZLinkLocationPeerEventKind Event,
+    ZLinkPeerLocationKey? Key,
+    ZLinkPeerLocation? Peer,
+    ZLinkAutoConnectDesiredSetChange? DesiredSetChange) : IZLinkRuntimeEvent;
+
+public enum ZLinkLocationSpotEventKind
+{
+    RowUpdated = 0,
+    RowRemoved = 1,
+    ResolveMiss = 2
+}
+
+public readonly record struct ZLinkLocationSpotEvent(
+    string SourceName,
+    DateTimeOffset Timestamp,
+    ZLinkLocationSpotEventKind Event,
+    ZLinkSpotLocationKey Key,
+    ZLinkSpotLocation? Spot) : IZLinkRuntimeEvent;
+
+public enum ZLinkLocationActorEventKind
+{
+    RowUpdated = 0,
+    RowRemoved = 1,
+    ResolveMiss = 2
+}
+
+public readonly record struct ZLinkLocationActorEvent(
+    string SourceName,
+    DateTimeOffset Timestamp,
+    ZLinkLocationActorEventKind Event,
+    ZLinkActorLocationKey Key,
+    ZLinkActorLocation? Actor) : IZLinkRuntimeEvent;
+
+public enum ZLinkLocationRouteEventKind
+{
+    RowUpdated = 0,
+    RowRemoved = 1,
+    ResolveMiss = 2
+}
+
+public readonly record struct ZLinkLocationRouteEvent(
+    string SourceName,
+    DateTimeOffset Timestamp,
+    ZLinkLocationRouteEventKind Event,
+    ZLinkRouteLocationKey Key,
+    ZLinkRouteLocation? Route) : IZLinkRuntimeEvent;
 
 public enum ZLinkSpotEventKind
 {

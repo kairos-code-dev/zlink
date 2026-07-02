@@ -18,6 +18,10 @@ public sealed class EventingContracts
         options.AddSocketEvents("router", ZLinkSocketEventKind.Connected);
         options.AddSpotEvents("spot-node", TimeSpan.FromSeconds(1));
         options.AddLocationRuntimeEvents("locations", TimeSpan.FromSeconds(1));
+        options.AddLocationPeerEvents("location-peer");
+        options.AddLocationSpotEvents("location-spot");
+        options.AddLocationActorEvents("location-actor");
+        options.AddLocationRouteEvents("location-route");
 
         var handler = new SocketEventHandler();
         var publisher = new ExampleRuntimeEventPublisher();
@@ -34,7 +38,17 @@ public sealed class EventingContracts
 
         await publisher.PublishAsync(@event, CancellationToken.None);
 
-        Assert.Equal(["router:socket", "spot-node:spot", "locations:location-runtime"], options.Sources);
+        Assert.Equal(
+            [
+                "router:socket",
+                "spot-node:spot",
+                "locations:location-runtime",
+                "location-peer:location-peer",
+                "location-spot:location-spot",
+                "location-actor:location-actor",
+                "location-route:location-route"
+            ],
+            options.Sources);
         Assert.Equal(ZLinkSocketEventKind.Connected, handler.LastEvent?.Event);
     }
 
@@ -63,6 +77,26 @@ public sealed class EventingContracts
             TimeSpan interval)
         {
             _sources.Add($"{sourceName}:location-runtime");
+        }
+
+        public void AddLocationPeerEvents(string sourceName)
+        {
+            _sources.Add($"{sourceName}:location-peer");
+        }
+
+        public void AddLocationSpotEvents(string sourceName)
+        {
+            _sources.Add($"{sourceName}:location-spot");
+        }
+
+        public void AddLocationActorEvents(string sourceName)
+        {
+            _sources.Add($"{sourceName}:location-actor");
+        }
+
+        public void AddLocationRouteEvents(string sourceName)
+        {
+            _sources.Add($"{sourceName}:location-route");
         }
     }
 

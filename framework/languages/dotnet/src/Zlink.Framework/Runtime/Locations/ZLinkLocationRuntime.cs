@@ -16,6 +16,7 @@ internal sealed class ZLinkLocationRuntime : IAsyncDisposable, IDisposable
     private readonly IZLinkActorLocationStore _actorStore;
     private readonly IZLinkRouteLocationStore _routeStore;
     private readonly IZLinkOwnerLeaseStore _ownerLeaseStore;
+    private readonly ZLinkLocationEventEmitter _events;
     private readonly TimeProvider _time;
     private readonly object _stateGate = new();
     private CancellationTokenSource? _heartbeatCts;
@@ -30,7 +31,8 @@ internal sealed class ZLinkLocationRuntime : IAsyncDisposable, IDisposable
         IZLinkActorLocationStore actorStore,
         IZLinkRouteLocationStore routeStore,
         IZLinkOwnerLeaseStore ownerLeaseStore,
-        TimeProvider? timeProvider = null)
+        TimeProvider? timeProvider = null,
+        ZLinkLocationEventEmitter? events = null)
     {
         _options = options;
         _peerStore = peerStore;
@@ -38,6 +40,7 @@ internal sealed class ZLinkLocationRuntime : IAsyncDisposable, IDisposable
         _actorStore = actorStore;
         _routeStore = routeStore;
         _ownerLeaseStore = ownerLeaseStore;
+        _events = events ?? ZLinkLocationEventEmitter.Disabled;
         _time = timeProvider ?? TimeProvider.System;
     }
 
@@ -151,6 +154,13 @@ internal sealed class ZLinkLocationRuntime : IAsyncDisposable, IDisposable
             .ConfigureAwait(false);
         NotifyIfStale(result, ZLinkLocationKind.Peer, ZLinkLocationKeyCodec.EncodePeerKey(
             new ZLinkPeerLocationKey(peer.AutoConnectType, peer.MeshName, peer.Role, peer.NodeRid, peer.Endpoint)));
+        if (result.Status == ZLinkLocationWriteStatus.Stored)
+        {
+            await _events.PeerRowUpdatedAsync(
+                stamped with { Generation = result.Generation, UpdatedAt = result.UpdatedAt },
+                cancellationToken).ConfigureAwait(false);
+        }
+
         return result;
     }
 
@@ -165,6 +175,13 @@ internal sealed class ZLinkLocationRuntime : IAsyncDisposable, IDisposable
             .ConfigureAwait(false);
         NotifyIfStale(result, ZLinkLocationKind.Spot, ZLinkLocationKeyCodec.EncodeSpotKey(
             new ZLinkSpotLocationKey(spot.MeshName, spot.SpotRid)));
+        if (result.Status == ZLinkLocationWriteStatus.Stored)
+        {
+            await _events.SpotRowUpdatedAsync(
+                stamped with { Generation = result.Generation, UpdatedAt = result.UpdatedAt },
+                cancellationToken).ConfigureAwait(false);
+        }
+
         return result;
     }
 
@@ -183,6 +200,13 @@ internal sealed class ZLinkLocationRuntime : IAsyncDisposable, IDisposable
             .ConfigureAwait(false);
         NotifyIfStale(result, ZLinkLocationKind.Actor, ZLinkLocationKeyCodec.EncodeActorKey(
             new ZLinkActorLocationKey(stamped.ActorType, stamped.ActorId)));
+        if (result.Status == ZLinkLocationWriteStatus.Stored)
+        {
+            await _events.ActorRowUpdatedAsync(
+                stamped with { Generation = result.Generation, UpdatedAt = result.UpdatedAt },
+                cancellationToken).ConfigureAwait(false);
+        }
+
         return result;
     }
 
@@ -197,6 +221,13 @@ internal sealed class ZLinkLocationRuntime : IAsyncDisposable, IDisposable
             .ConfigureAwait(false);
         NotifyIfStale(result, ZLinkLocationKind.Route, ZLinkLocationKeyCodec.EncodeRouteKey(
             new ZLinkRouteLocationKey(route.RouteKind, route.RouteKey)));
+        if (result.Status == ZLinkLocationWriteStatus.Stored)
+        {
+            await _events.RouteRowUpdatedAsync(
+                stamped with { Generation = result.Generation, UpdatedAt = result.UpdatedAt },
+                cancellationToken).ConfigureAwait(false);
+        }
+
         return result;
     }
 
@@ -209,6 +240,11 @@ internal sealed class ZLinkLocationRuntime : IAsyncDisposable, IDisposable
             () => _spotStore.RemoveSpotAsync(key, new ZLinkLocationOwnerToken(OwnerId, generation), cancellationToken))
             .ConfigureAwait(false);
         NotifyIfStale(result, ZLinkLocationKind.Spot, ZLinkLocationKeyCodec.EncodeSpotKey(key));
+        if (result.Status == ZLinkLocationWriteStatus.Stored)
+        {
+            await _events.SpotRowRemovedAsync(key, cancellationToken).ConfigureAwait(false);
+        }
+
         return result;
     }
 
@@ -225,6 +261,11 @@ internal sealed class ZLinkLocationRuntime : IAsyncDisposable, IDisposable
             () => _actorStore.RemoveActorAsync(normalized, new ZLinkLocationOwnerToken(OwnerId, generation), cancellationToken))
             .ConfigureAwait(false);
         NotifyIfStale(result, ZLinkLocationKind.Actor, ZLinkLocationKeyCodec.EncodeActorKey(normalized));
+        if (result.Status == ZLinkLocationWriteStatus.Stored)
+        {
+            await _events.ActorRowRemovedAsync(normalized, cancellationToken).ConfigureAwait(false);
+        }
+
         return result;
     }
 
@@ -237,6 +278,11 @@ internal sealed class ZLinkLocationRuntime : IAsyncDisposable, IDisposable
             () => _peerStore.RemovePeerAsync(key, new ZLinkLocationOwnerToken(OwnerId, generation), cancellationToken))
             .ConfigureAwait(false);
         NotifyIfStale(result, ZLinkLocationKind.Peer, ZLinkLocationKeyCodec.EncodePeerKey(key));
+        if (result.Status == ZLinkLocationWriteStatus.Stored)
+        {
+            await _events.PeerRowRemovedAsync(key, cancellationToken).ConfigureAwait(false);
+        }
+
         return result;
     }
 
@@ -249,6 +295,11 @@ internal sealed class ZLinkLocationRuntime : IAsyncDisposable, IDisposable
             () => _routeStore.RemoveRouteAsync(key, new ZLinkLocationOwnerToken(OwnerId, generation), cancellationToken))
             .ConfigureAwait(false);
         NotifyIfStale(result, ZLinkLocationKind.Route, ZLinkLocationKeyCodec.EncodeRouteKey(key));
+        if (result.Status == ZLinkLocationWriteStatus.Stored)
+        {
+            await _events.RouteRowRemovedAsync(key, cancellationToken).ConfigureAwait(false);
+        }
+
         return result;
     }
 

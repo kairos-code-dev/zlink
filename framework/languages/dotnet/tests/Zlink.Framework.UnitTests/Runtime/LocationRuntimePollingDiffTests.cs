@@ -50,11 +50,51 @@ public sealed class LocationRuntimePollingDiffTests
         // A topology endpoint changes while status and summaries stay put.
         diff.DispatchChanges(Snapshot(storeHealthy: true, "tcp://127.0.0.1:9001"), Timestamp, events.Add);
         Assert.Equal(ZLinkLocationRuntimeEventKind.TopologyChanged, Assert.Single(events).Event);
+    }
+
+    [Fact]
+    public void Store_Health_Transitions_Publish_Unavailable_And_Recovered()
+    {
+        var diff = new ZLinkLocationRuntimePollingEventDiff("locations");
+        var events = new List<ZLinkLocationRuntimeEvent>();
+        diff.DispatchChanges(Snapshot(storeHealthy: true, "tcp://127.0.0.1:9000"), Timestamp, events.Add);
         events.Clear();
 
-        // Store health flips: only the status section changes.
-        diff.DispatchChanges(Snapshot(storeHealthy: false, "tcp://127.0.0.1:9001"), Timestamp, events.Add);
-        Assert.Equal(ZLinkLocationRuntimeEventKind.StatusChanged, Assert.Single(events).Event);
+        // Health flips down: the status change and the outage transition.
+        diff.DispatchChanges(Snapshot(storeHealthy: false, "tcp://127.0.0.1:9000"), Timestamp, events.Add);
+        Assert.Equal(
+            [
+                ZLinkLocationRuntimeEventKind.StatusChanged,
+                ZLinkLocationRuntimeEventKind.StoreUnavailable
+            ],
+            events.Select(static @event => @event.Event).ToArray());
+        events.Clear();
+
+        // Still down: no repeated transition event.
+        diff.DispatchChanges(Snapshot(storeHealthy: false, "tcp://127.0.0.1:9000"), Timestamp, events.Add);
+        Assert.Empty(events);
+
+        // Health flips back up: the recovery transition.
+        diff.DispatchChanges(Snapshot(storeHealthy: true, "tcp://127.0.0.1:9000"), Timestamp, events.Add);
+        Assert.Equal(
+            [
+                ZLinkLocationRuntimeEventKind.StatusChanged,
+                ZLinkLocationRuntimeEventKind.StoreRecovered
+            ],
+            events.Select(static @event => @event.Event).ToArray());
+    }
+
+    [Fact]
+    public void First_Snapshot_With_Unhealthy_Store_Publishes_StoreUnavailable()
+    {
+        var diff = new ZLinkLocationRuntimePollingEventDiff("locations");
+        var events = new List<ZLinkLocationRuntimeEvent>();
+
+        diff.DispatchChanges(Snapshot(storeHealthy: false, "tcp://127.0.0.1:9000"), Timestamp, events.Add);
+
+        Assert.Contains(
+            ZLinkLocationRuntimeEventKind.StoreUnavailable,
+            events.Select(static @event => @event.Event));
     }
 
     private static readonly DateTimeOffset Timestamp = new(2026, 7, 2, 0, 0, 0, TimeSpan.Zero);

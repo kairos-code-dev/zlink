@@ -1594,7 +1594,7 @@ draft가 기준이며, 정식 spec 문서에는 아직 구현되지 않은 계�
 - [x] resolver 4종 (peer는 list, spot/actor/route는 단건 전용) — 8절, 20.3
 - [x] `IZLinkLocationRuntimeQuery` (spot/actor/route 목록은 이 표면에만) — 8.2, 20.3
 - [x] option 목록 — 20.4
-- [ ] event source 목록 — 20.5
+- [x] event source 목록 — 20.5
 - [x] 기존 registry/discovery API 제거 목록 (compatibility wrapper 없음) — 20.1
 
 ### 24.7 구현체

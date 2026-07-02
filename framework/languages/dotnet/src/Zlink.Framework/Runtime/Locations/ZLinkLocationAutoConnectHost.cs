@@ -17,6 +17,7 @@ internal sealed class ZLinkLocationAutoConnectHost : IAsyncDisposable
     private readonly ZLinkLocationOptions _options;
     private readonly IZLinkLocationChangeStampStore? _stampStore;
     private readonly IZLinkLocationWatchStore? _watchStore;
+    private readonly ZLinkLocationEventEmitter _events;
     private readonly TimeProvider _time;
     private readonly List<ZLinkAutoConnectLoop> _loops = [];
 
@@ -26,13 +27,15 @@ internal sealed class ZLinkLocationAutoConnectHost : IAsyncDisposable
         ZLinkLocationOptions options,
         IZLinkLocationChangeStampStore? stampStore = null,
         IZLinkLocationWatchStore? watchStore = null,
-        TimeProvider? timeProvider = null)
+        TimeProvider? timeProvider = null,
+        ZLinkLocationEventEmitter? events = null)
     {
         _runtime = runtime;
         _peers = peers;
         _options = options;
         _stampStore = stampStore;
         _watchStore = watchStore;
+        _events = events ?? ZLinkLocationEventEmitter.Disabled;
         _time = timeProvider ?? TimeProvider.System;
     }
 
@@ -185,7 +188,7 @@ internal sealed class ZLinkLocationAutoConnectHost : IAsyncDisposable
             Metadata: null, Capabilities: null,
             OwnerId: string.Empty, Generation: 0, UpdatedAt: default);
         var reconciler = new ZLinkAutoConnectReconciler(
-            local, row, _runtime, _peers, executor, _options, _time);
+            local, row, _runtime, _peers, executor, _options, _time, _events);
         _loops.Add(new ZLinkAutoConnectLoop(
             reconciler, local, _options, _stampStore, _watchStore, _time));
     }

@@ -23,6 +23,26 @@ internal sealed class ZLinkLocationRuntimePollingEventDiff(string sourceName)
                 null,
                 null));
 
+        // A healthy store is the baseline: the first snapshot only reports
+        // an outage, and later snapshots report health transitions.
+        var previousHealthy = _previous?.Status.StoreHealthy ?? true;
+        if (previousHealthy && !current.Status.StoreHealthy)
+            dispatch(new ZLinkLocationRuntimeEvent(
+                sourceName,
+                timestamp,
+                ZLinkLocationRuntimeEventKind.StoreUnavailable,
+                current.Status,
+                null,
+                null));
+        else if (!previousHealthy && current.Status.StoreHealthy)
+            dispatch(new ZLinkLocationRuntimeEvent(
+                sourceName,
+                timestamp,
+                ZLinkLocationRuntimeEventKind.StoreRecovered,
+                current.Status,
+                null,
+                null));
+
         if (_previous is null || !_previous.Topology.SequenceEqual(current.Topology))
             dispatch(new ZLinkLocationRuntimeEvent(
                 sourceName,

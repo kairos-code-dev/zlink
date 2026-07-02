@@ -258,13 +258,20 @@ internal static class ZLinkFrameworkServiceRegistrar
         services.AddSingleton(static provider => new ZLinkOwnerLeaseTracker(
             provider.GetRequiredService<IZLinkOwnerLeaseStore>(),
             provider.GetRequiredService<ZLinkLocationOptions>()));
+        // The emitter is enabled only when AddZLinkMonitoring registered
+        // location sources and the dispatcher; otherwise every emit is a
+        // no-op and location flows pay nothing.
+        services.AddSingleton(static provider => new ZLinkLocationEventEmitter(
+            provider.GetService<ZLinkMonitoringRegistration>(),
+            provider.GetService<IZLinkRuntimeEventPublisher>()));
         services.AddSingleton(static provider => new ZLinkStoreLocationResolvers(
             provider.GetRequiredService<ZLinkLocationOptions>(),
             provider.GetRequiredService<IZLinkPeerLocationStore>(),
             provider.GetRequiredService<IZLinkSpotLocationStore>(),
             provider.GetRequiredService<IZLinkActorLocationStore>(),
             provider.GetRequiredService<IZLinkRouteLocationStore>(),
-            provider.GetRequiredService<ZLinkOwnerLeaseTracker>()));
+            provider.GetRequiredService<ZLinkOwnerLeaseTracker>(),
+            events: provider.GetRequiredService<ZLinkLocationEventEmitter>()));
         services.AddSingleton<IZLinkPeerLocationResolver>(
             static provider => provider.GetRequiredService<ZLinkStoreLocationResolvers>());
         services.AddSingleton<IZLinkSpotLocationResolver>(
@@ -279,7 +286,8 @@ internal static class ZLinkFrameworkServiceRegistrar
             provider.GetRequiredService<IZLinkSpotLocationStore>(),
             provider.GetRequiredService<IZLinkActorLocationStore>(),
             provider.GetRequiredService<IZLinkRouteLocationStore>(),
-            provider.GetRequiredService<IZLinkOwnerLeaseStore>()));
+            provider.GetRequiredService<IZLinkOwnerLeaseStore>(),
+            events: provider.GetRequiredService<ZLinkLocationEventEmitter>()));
         services.AddSingleton<IZLinkLocationRuntimeQuery>(
             static provider => new ZLinkLocationRuntimeQueryService(
                 provider.GetRequiredService<ZLinkLocationOptions>(),
@@ -301,7 +309,8 @@ internal static class ZLinkFrameworkServiceRegistrar
             provider.GetRequiredService<IZLinkPeerLocationResolver>(),
             provider.GetRequiredService<ZLinkLocationOptions>(),
             provider.GetService<IZLinkLocationChangeStampStore>(),
-            provider.GetService<IZLinkLocationWatchStore>()));
+            provider.GetService<IZLinkLocationWatchStore>(),
+            events: provider.GetRequiredService<ZLinkLocationEventEmitter>()));
         services.AddSingleton<IHostedService, ZLinkLocationHostedService>();
         return services;
     }

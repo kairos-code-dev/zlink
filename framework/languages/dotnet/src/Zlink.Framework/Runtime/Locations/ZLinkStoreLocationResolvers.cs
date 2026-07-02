@@ -18,6 +18,7 @@ internal sealed class ZLinkStoreLocationResolvers :
     private readonly IZLinkActorLocationStore _actorStore;
     private readonly IZLinkRouteLocationStore _routeStore;
     private readonly ZLinkOwnerLeaseTracker _leaseTracker;
+    private readonly ZLinkLocationEventEmitter _events;
     private readonly TimeProvider _time;
     private readonly PositiveCache<ZLinkPeerLocationFilter, IReadOnlyList<ZLinkPeerLocation>> _peerListCache;
     private readonly PositiveCache<ZLinkSpotLocationKey, ZLinkSpotLocation> _spotCache;
@@ -35,7 +36,8 @@ internal sealed class ZLinkStoreLocationResolvers :
         IZLinkActorLocationStore actorStore,
         IZLinkRouteLocationStore routeStore,
         ZLinkOwnerLeaseTracker leaseTracker,
-        TimeProvider? timeProvider = null)
+        TimeProvider? timeProvider = null,
+        ZLinkLocationEventEmitter? events = null)
     {
         _options = options;
         _peerStore = peerStore;
@@ -43,6 +45,7 @@ internal sealed class ZLinkStoreLocationResolvers :
         _actorStore = actorStore;
         _routeStore = routeStore;
         _leaseTracker = leaseTracker;
+        _events = events ?? ZLinkLocationEventEmitter.Disabled;
         _time = timeProvider ?? TimeProvider.System;
         _peerListCache = new PositiveCache<ZLinkPeerLocationFilter, IReadOnlyList<ZLinkPeerLocation>>(_time);
         _spotCache = new PositiveCache<ZLinkSpotLocationKey, ZLinkSpotLocation>(_time);
@@ -95,11 +98,12 @@ internal sealed class ZLinkStoreLocationResolvers :
         return await FilterLiveAsync(fresh, cancellationToken).ConfigureAwait(false);
     }
 
-    public ValueTask<ZLinkSpotLocation?> ResolveSpotAsync(
+    public async ValueTask<ZLinkSpotLocation?> ResolveSpotAsync(
         ZLinkSpotLocationKey key,
         ZLinkResolveFreshness freshness = ZLinkResolveFreshness.Normal,
-        CancellationToken cancellationToken = default) =>
-        ResolveAsync(
+        CancellationToken cancellationToken = default)
+    {
+        var row = await ResolveAsync(
             key,
             freshness,
             _options.SpotCacheEnabled,
@@ -109,9 +113,18 @@ internal sealed class ZLinkStoreLocationResolvers :
             _spotStore,
             static row => row.OwnerId,
             static row => row.Generation,
-            cancellationToken);
+            ZLinkLocationKind.Spot,
+            static key => ZLinkLocationKeyCodec.EncodeSpotKey(key),
+            cancellationToken).ConfigureAwait(false);
+        if (row is null)
+        {
+            await _events.SpotResolveMissAsync(key, cancellationToken).ConfigureAwait(false);
+        }
 
-    public ValueTask<ZLinkActorLocation?> ResolveActorAsync(
+        return row;
+    }
+
+    public async ValueTask<ZLinkActorLocation?> ResolveActorAsync(
         ZLinkActorLocationKey key,
         ZLinkResolveFreshness freshness = ZLinkResolveFreshness.Normal,
         CancellationToken cancellationToken = default)
@@ -121,7 +134,7 @@ internal sealed class ZLinkStoreLocationResolvers :
         {
             ActorType = ZLinkLocationKeyCodec.NormalizeActorType(key.ActorType)
         };
-        return ResolveAsync(
+        var row = await ResolveAsync(
             normalized,
             freshness,
             _options.ActorCacheEnabled,
@@ -131,14 +144,23 @@ internal sealed class ZLinkStoreLocationResolvers :
             _actorStore,
             static row => row.OwnerId,
             static row => row.Generation,
-            cancellationToken);
+            ZLinkLocationKind.Actor,
+            static key => ZLinkLocationKeyCodec.EncodeActorKey(key),
+            cancellationToken).ConfigureAwait(false);
+        if (row is null)
+        {
+            await _events.ActorResolveMissAsync(normalized, cancellationToken).ConfigureAwait(false);
+        }
+
+        return row;
     }
 
-    public ValueTask<ZLinkRouteLocation?> ResolveRouteAsync(
+    public async ValueTask<ZLinkRouteLocation?> ResolveRouteAsync(
         ZLinkRouteLocationKey key,
         ZLinkResolveFreshness freshness = ZLinkResolveFreshness.Normal,
-        CancellationToken cancellationToken = default) =>
-        ResolveAsync(
+        CancellationToken cancellationToken = default)
+    {
+        var row = await ResolveAsync(
             key,
             freshness,
             _options.RouteCacheEnabled,
@@ -148,7 +170,16 @@ internal sealed class ZLinkStoreLocationResolvers :
             _routeStore,
             static row => row.OwnerId,
             static row => row.Generation,
-            cancellationToken);
+            ZLinkLocationKind.Route,
+            static key => ZLinkLocationKeyCodec.EncodeRouteKey(key),
+            cancellationToken).ConfigureAwait(false);
+        if (row is null)
+        {
+            await _events.RouteResolveMissAsync(key, cancellationToken).ConfigureAwait(false);
+        }
+
+        return row;
+    }
 
     private async ValueTask<TRow?> ResolveAsync<TStore, TKey, TRow>(
         TKey key,
@@ -160,6 +191,8 @@ internal sealed class ZLinkStoreLocationResolvers :
         TStore store,
         Func<TRow, string> ownerOf,
         Func<TRow, long> generationOf,
+        ZLinkLocationKind kind,
+        Func<TKey, string> canonicalKeyOf,
         CancellationToken cancellationToken)
         where TKey : notnull
         where TRow : class
@@ -175,6 +208,8 @@ internal sealed class ZLinkStoreLocationResolvers :
             }
 
             cache.Remove(key);
+            await _events.CacheInvalidatedAsync(kind, canonicalKeyOf(key), cancellationToken)
+                .ConfigureAwait(false);
         }
 
         var row = await resolve(store, key, cancellationToken).ConfigureAwait(false);

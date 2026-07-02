@@ -1274,8 +1274,6 @@ set(public_contract_group_headers
     include/zlink/eventing/api.h
     include/zlink/message/api.h
     include/zlink/service/actor.h
-    include/zlink/service/discovery.h
-    include/zlink/service/registry.h
     include/zlink/service/spot.h
     include/zlink/socket/api.h)
 

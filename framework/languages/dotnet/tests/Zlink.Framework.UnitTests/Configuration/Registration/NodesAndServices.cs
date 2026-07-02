@@ -1,6 +1,7 @@
 using Microsoft.Extensions.DependencyInjection;
 using Zlink.Framework.AspNetCore;
 using Zlink.Framework.Contracts.Messaging;
+using Zlink.Framework.Runtime.Locations;
 
 namespace Zlink.Framework.UnitTests;
 
@@ -457,5 +458,70 @@ public sealed class NodesAndServicesTests : RegistrationValidationSupport
 
         using var provider = services.BuildServiceProvider();
         Assert.Null(provider.GetService<IZLinkSpotOutbound>());
+    }
+
+    [Fact]
+    public void AddZLinkFramework_AddLocationStores_ResolvesEveryStoreRoleToOneInstance()
+    {
+        var services = new ServiceCollection();
+
+        services.AddZLinkFramework(options =>
+        {
+            // Extension-package style bulk registration: one physical
+            // store instance backs every location store contract.
+            options.AddLocationStores(static stores =>
+            {
+                stores.AddSingleton<ZLinkInMemoryLocationStore>();
+                stores.AddSingleton<IZLinkPeerLocationStore>(
+                    static provider => provider.GetRequiredService<ZLinkInMemoryLocationStore>());
+                stores.AddSingleton<IZLinkSpotLocationStore>(
+                    static provider => provider.GetRequiredService<ZLinkInMemoryLocationStore>());
+                stores.AddSingleton<IZLinkActorLocationStore>(
+                    static provider => provider.GetRequiredService<ZLinkInMemoryLocationStore>());
+                stores.AddSingleton<IZLinkRouteLocationStore>(
+                    static provider => provider.GetRequiredService<ZLinkInMemoryLocationStore>());
+                stores.AddSingleton<IZLinkOwnerLeaseStore>(
+                    static provider => provider.GetRequiredService<ZLinkInMemoryLocationStore>());
+                stores.AddSingleton<IZLinkLocationChangeStampStore>(
+                    static provider => provider.GetRequiredService<ZLinkInMemoryLocationStore>());
+            });
+        });
+
+        using var provider = services.BuildServiceProvider();
+        var backing = provider.GetRequiredService<ZLinkInMemoryLocationStore>();
+
+        Assert.Same(backing, provider.GetRequiredService<IZLinkPeerLocationStore>());
+        Assert.Same(backing, provider.GetRequiredService<IZLinkSpotLocationStore>());
+        Assert.Same(backing, provider.GetRequiredService<IZLinkActorLocationStore>());
+        Assert.Same(backing, provider.GetRequiredService<IZLinkRouteLocationStore>());
+        Assert.Same(backing, provider.GetRequiredService<IZLinkOwnerLeaseStore>());
+        Assert.Same(backing, provider.GetRequiredService<IZLinkLocationChangeStampStore>());
+
+        // The location runtime surface comes up on top of the hook exactly
+        // as it does for the per-role registrations.
+        Assert.NotNull(provider.GetService<IZLinkLocationRuntimeQuery>());
+        Assert.NotNull(provider.GetService<IZLinkPeerLocationResolver>());
+    }
+
+    [Fact]
+    public void AddZLinkFramework_Throws_WhenAddLocationStoresIsCombinedWithOtherStoreRegistrations()
+    {
+        var inMemory = new ServiceCollection();
+        var inMemoryConflict = Assert.Throws<ZLinkConfigurationException>(() =>
+            inMemory.AddZLinkFramework(options =>
+            {
+                options.UseInMemoryLocationStores();
+                options.AddLocationStores(static _ => { });
+            }));
+        Assert.Contains("AddLocationStores", inMemoryConflict.Message, StringComparison.Ordinal);
+
+        var perRole = new ServiceCollection();
+        var perRoleConflict = Assert.Throws<ZLinkConfigurationException>(() =>
+            perRole.AddZLinkFramework(options =>
+            {
+                options.AddPeerLocationStore<ZLinkInMemoryLocationStore>();
+                options.AddLocationStores(static _ => { });
+            }));
+        Assert.Contains("AddLocationStores", perRoleConflict.Message, StringComparison.Ordinal);
     }
 }

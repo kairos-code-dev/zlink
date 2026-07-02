@@ -260,6 +260,11 @@ public sealed class BuilderContracts
         {
         }
 
+        public void AddLocationStores(
+            Action<Microsoft.Extensions.DependencyInjection.IServiceCollection> registerStores)
+        {
+        }
+
         public ZLinkLocationOptions ConfigureLocations()
         {
             return new ZLinkLocationOptions();

@@ -207,6 +207,17 @@ public interface IZLinkFrameworkOptions
     /// </summary>
     void UseInMemoryLocationStores();
 
+    /// <summary>
+    /// Bulk store registration hook for location store extension packages
+    /// (draft 20.2). The callback must register every location store
+    /// contract (peer, spot, actor, route, owner lease — plus the optional
+    /// change stamp and watch stores) onto one physical store. Mutually
+    /// exclusive with UseInMemoryLocationStores and the per-role
+    /// Add*LocationStore registrations.
+    /// </summary>
+    void AddLocationStores(
+        Action<Microsoft.Extensions.DependencyInjection.IServiceCollection> registerStores);
+
     Locations.ZLinkLocationOptions ConfigureLocations();
 
     void UseFilter<TFilter>()

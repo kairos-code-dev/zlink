@@ -85,15 +85,14 @@ parsed_tcp_endpoint_t parse_stream_endpoint (const stream_snapshot_t &stream)
                                     : parse_tcp_endpoint (stream.bind_endpoint);
 }
 
-template <typename TStream>
-std::vector<std::uint8_t> read_exact (TStream &socket, std::size_t size)
+template <typename TStream> std::vector<std::uint8_t> read_exact (TStream &socket, std::size_t size)
 {
     std::vector<std::uint8_t> bytes (size);
     std::size_t offset = 0;
     while (offset < bytes.size ()) {
         boost::system::error_code error;
-        const auto read = socket.read_some (
-          asio::buffer (bytes.data () + offset, bytes.size () - offset), error);
+        const auto read =
+          socket.read_some (asio::buffer (bytes.data () + offset, bytes.size () - offset), error);
         if (error) {
             throw boost::system::system_error (error);
         }
@@ -162,9 +161,8 @@ class stream_host_service_t::listener_t
             }
             if (stream_uses_tls (_stream)) {
 #ifdef ZLINK_FRAMEWORK_STREAM_WITH_OPENSSL
-                auto tls_connection =
-                  std::make_shared<ssl::stream<tcp::socket>> (std::move (*connection),
-                                                              _tls_context);
+                auto tls_connection = std::make_shared<ssl::stream<tcp::socket>> (
+                  std::move (*connection), _tls_context);
                 {
                     const std::lock_guard<std::mutex> lock (_sockets_mutex);
                     _sockets.erase (connection.get ());
@@ -244,33 +242,30 @@ class stream_host_service_t::listener_t
     {
         auto prefix = read_exact (socket, 6);
         const auto header_size = static_cast<std::size_t> ((prefix[0] << 8) | prefix[1]);
-        const auto payload_size =
-          (static_cast<std::size_t> (prefix[2]) << 24)
-          | (static_cast<std::size_t> (prefix[3]) << 16)
-          | (static_cast<std::size_t> (prefix[4]) << 8)
-          | static_cast<std::size_t> (prefix[5]);
+        const auto payload_size = (static_cast<std::size_t> (prefix[2]) << 24)
+                                  | (static_cast<std::size_t> (prefix[3]) << 16)
+                                  | (static_cast<std::size_t> (prefix[4]) << 8)
+                                  | static_cast<std::size_t> (prefix[5]);
         auto header_bytes = read_exact (socket, header_size);
         auto payload_bytes = read_exact (socket, payload_size);
         auto header = _runtime.decode_header (header_bytes);
         if (!header) {
-            throw framework_exception_t (
-              header.error_kind (),
-              header.error () ? header.error ()->what () : "STREAM header decode failed");
+            throw framework_exception_t (header.error_kind (), header.error ()
+                                                                 ? header.error ()->what ()
+                                                                 : "STREAM header decode failed");
         }
         return {header.value (), message_from_bytes (payload_bytes)};
     }
 
     template <typename TStream>
-    void write_frame (TStream &socket,
-                      const stream_header_t &header,
-                      const zlink::message_t &payload)
+    void
+    write_frame (TStream &socket, const stream_header_t &header, const zlink::message_t &payload)
     {
         auto encoded_header = _runtime.encode_header (header);
         if (!encoded_header) {
-            throw framework_exception_t (
-              encoded_header.error_kind (),
-              encoded_header.error () ? encoded_header.error ()->what ()
-                                      : "STREAM header encode failed");
+            throw framework_exception_t (encoded_header.error_kind (),
+                                         encoded_header.error () ? encoded_header.error ()->what ()
+                                                                 : "STREAM header encode failed");
         }
         const auto payload_bytes = message_bytes (payload);
         std::vector<std::uint8_t> frame;
@@ -282,7 +277,8 @@ class stream_host_service_t::listener_t
         frame.push_back (static_cast<std::uint8_t> ((payload_bytes.size () >> 16) & 0xff));
         frame.push_back (static_cast<std::uint8_t> ((payload_bytes.size () >> 8) & 0xff));
         frame.push_back (static_cast<std::uint8_t> (payload_bytes.size () & 0xff));
-        frame.insert (frame.end (), encoded_header.value ().begin (), encoded_header.value ().end ());
+        frame.insert (frame.end (), encoded_header.value ().begin (),
+                      encoded_header.value ().end ());
         frame.insert (frame.end (), payload_bytes.begin (), payload_bytes.end ());
         boost::asio::write (socket, boost::asio::buffer (frame));
     }
@@ -310,10 +306,8 @@ class stream_host_service_t::listener_t
     }
 
     template <typename TStream>
-    void flush_writes (TStream &socket,
-                       stream_t &stream,
-                       std::size_t &flushed,
-                       std::mutex &write_mutex)
+    void
+    flush_writes (TStream &socket, stream_t &stream, std::size_t &flushed, std::mutex &write_mutex)
     {
         const auto headers = _runtime.written_headers (stream);
         const auto payloads = _runtime.written_payloads (stream);
@@ -339,9 +333,9 @@ class stream_host_service_t::listener_t
         auto write_mutex = std::make_shared<std::mutex> ();
         if (attach_immediate_writer) {
             _runtime.attach_transport_writer (
-              stream, [this, connection, write_mutex] (const stream_header_t &header,
-                                                       const zlink::message_t &payload)
-                        -> result_t<void> {
+              stream,
+              [this, connection, write_mutex] (const stream_header_t &header,
+                                               const zlink::message_t &payload) -> result_t<void> {
                   try {
                       const std::lock_guard<std::mutex> lock (*write_mutex);
                       write_frame (*connection, header, payload);
@@ -349,11 +343,11 @@ class stream_host_service_t::listener_t
                   }
                   catch (const framework_exception_t &error) {
                       return result_t<void>::failure (error.kind (), error.what (),
-                                                     error.is_retriable ());
+                                                      error.is_retriable ());
                   }
                   catch (const std::exception &error) {
                       return result_t<void>::failure (framework_error_kind_t::disconnected,
-                                                     error.what ());
+                                                      error.what ());
                   }
               });
         }
@@ -372,9 +366,8 @@ class stream_host_service_t::listener_t
                 dispatch_workers.emplace_back (
                   [this, &session, &stream, connection, write_mutex, frame = std::move (frame)] {
                       try {
-                          if (auto dispatched = _runtime.dispatch_packet (session, stream,
-                                                                          frame.header,
-                                                                          frame.payload);
+                          if (auto dispatched = _runtime.dispatch_packet (
+                                session, stream, frame.header, frame.payload);
                               !dispatched) {
                               if (frame.header.kind () == stream_message_kind_t::request) {
                                   const std::lock_guard<std::mutex> lock (*write_mutex);

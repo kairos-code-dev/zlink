@@ -145,9 +145,9 @@ static_assert (!has_yield<zlink::framework::route_request_call_t>);
 static_assert (std::is_same_v<
                decltype (std::declval<zlink::framework::channel_request_call_t &> ().async<int> ()),
                zlink::framework::task_t<int>>);
-static_assert (std::is_same_v<decltype (std::declval<zlink::framework::channel_request_call_t &> ()
-                                          .yield<int> ()),
-                              zlink::framework::task_t<int>>);
+static_assert (std::is_same_v<
+               decltype (std::declval<zlink::framework::channel_request_call_t &> ().yield<int> ()),
+               zlink::framework::task_t<int>>);
 static_assert (
   std::is_same_v<decltype (std::declval<zlink::framework::route_request_call_t &> ().async<int> ()),
                  zlink::framework::task_t<int>>);
@@ -518,10 +518,9 @@ static_assert (
                              .set_tls_server ("server.crt", "server.key")),
                  zlink::framework::stream_node_options_builder_t &>);
 
-static_assert (
-  std::is_same_v<decltype (std::declval<zlink::framework::stream_builder_t &> ()
-                             .set_tls_server ("server.crt", "server.key")),
-                 zlink::framework::stream_builder_t &>);
+static_assert (std::is_same_v<decltype (std::declval<zlink::framework::stream_builder_t &> ()
+                                          .set_tls_server ("server.crt", "server.key")),
+                              zlink::framework::stream_builder_t &>);
 
 static_assert (
   std::is_same_v<decltype (std::declval<zlink::framework::fanout_channel_builder_t &> ()
@@ -651,13 +650,13 @@ static_assert (
                    std::declval<zlink::framework::spot_rid_t> (),
                    std::declval<const zlink::framework::message_t &> ())),
                  zlink::framework::actor_join_spot_call_t>);
-static_assert (std::is_same_v<decltype (std::declval<zlink::framework::actor_join_spot_call_t &> ()
-                                          .yield ()),
-                              zlink::framework::task_t<zlink::framework::actor_join_result_t>>);
-static_assert (std::is_same_v<
-               decltype (std::declval<zlink::framework::actor_join_spot_call_t &> ()
-                           .yield<std::string> ()),
-               zlink::framework::task_t<zlink::framework::typed_actor_join_result_t<std::string>>>);
+static_assert (
+  std::is_same_v<decltype (std::declval<zlink::framework::actor_join_spot_call_t &> ().yield ()),
+                 zlink::framework::task_t<zlink::framework::actor_join_result_t>>);
+static_assert (
+  std::is_same_v<
+    decltype (std::declval<zlink::framework::actor_join_spot_call_t &> ().yield<std::string> ()),
+    zlink::framework::task_t<zlink::framework::typed_actor_join_result_t<std::string>>>);
 static_assert (
   std::is_same_v<
     decltype (std::declval<zlink::framework::actor_join_entry_spot_call_t &> ().yield ()),
@@ -736,6 +735,16 @@ static_assert (
   std::is_same_v<decltype (std::declval<const zlink::framework::registry_query_client_t &> ()
                              .topology (std::declval<zlink::framework::topology_filter_t> ())),
                  zlink::framework::result_t<std::vector<zlink::framework::topology_entry_t>>>);
+
+static_assert (
+  std::is_same_v<decltype (std::declval<const zlink::framework::registry_query_client_t &> ()
+                             .member_peers (std::declval<std::string> ())),
+                 zlink::framework::result_t<std::vector<zlink::framework::member_peer_t>>>);
+
+static_assert (
+  std::is_same_v<
+    decltype (std::declval<const zlink::framework::registry_query_client_t &> ().status ()),
+    zlink::framework::result_t<zlink::framework::registry_status_t>>);
 
 static_assert (
   std::is_same_v<decltype (std::declval<zlink::framework::message_metadata_policy_t &> ()

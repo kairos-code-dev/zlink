@@ -18,9 +18,9 @@ class offload_executor_t
   public:
     explicit offload_executor_t (std::size_t worker_count = 1, std::size_t max_queue_length = 0);
     offload_executor_t (std::size_t min_worker_count,
-                         std::size_t max_worker_count,
-                         std::size_t max_queue_length,
-                         std::chrono::milliseconds idle_timeout);
+                        std::size_t max_worker_count,
+                        std::size_t max_queue_length,
+                        std::chrono::milliseconds idle_timeout);
     ~offload_executor_t ();
 
     offload_executor_t (const offload_executor_t &) = delete;
@@ -44,7 +44,7 @@ class offload_executor_t
     std::size_t _min_worker_count = 1;
     std::size_t _max_worker_count = 1;
     std::size_t _max_queue_length = 0;
-    std::chrono::milliseconds _idle_timeout {0};
+    std::chrono::milliseconds _idle_timeout{0};
     bool _stopping = false;
     std::size_t _active = 0;
     std::size_t _live_workers = 0;

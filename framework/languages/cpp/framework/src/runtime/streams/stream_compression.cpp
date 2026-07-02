@@ -81,7 +81,8 @@ class lz4_stream_compression_codec_t final : public stream_compression_codec_t
             throw std::runtime_error ("LZ4 payload is missing original size");
         }
         const auto original_size = read_u32 (input);
-        if (original_size > static_cast<std::uint32_t> (std::numeric_limits<std::int32_t>::max ())) {
+        if (original_size
+            > static_cast<std::uint32_t> (std::numeric_limits<std::int32_t>::max ())) {
             throw std::runtime_error ("LZ4 payload exceeds fixed size limit");
         }
         if (original_size > max_decompressed_size) {

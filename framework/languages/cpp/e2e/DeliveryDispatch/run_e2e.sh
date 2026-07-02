@@ -11,6 +11,33 @@ BIN_DIR="$BUILD_DIR"
 if [[ ! -x "$BIN_DIR/zlink_cpp_e2e_delivery_dispatch_client" && -x "$BIN_DIR/linux-ninja-debug/zlink_cpp_e2e_delivery_dispatch_client" ]]; then
   BIN_DIR="$BIN_DIR/linux-ninja-debug"
 fi
+LOCAL_READINESS_TIMEOUT_SECONDS=3
+LOCAL_READINESS_POLL_SECONDS=0.1
+ROUTE_SETTLE_SECONDS=5
+SCENARIO_SETTLE_SECONDS=3
+HTTP_PROBE_TIMEOUT_SECONDS=3
+PROCESS_SHUTDOWN_TIMEOUT_SECONDS=2
+PROCESS_SHUTDOWN_POLL_SECONDS=0.05
+LOCAL_READINESS_ATTEMPTS="$(
+  python3 - "$LOCAL_READINESS_TIMEOUT_SECONDS" "$LOCAL_READINESS_POLL_SECONDS" <<'PY'
+import math
+import sys
+
+timeout = float(sys.argv[1])
+poll = float(sys.argv[2])
+print(max(1, math.ceil(timeout / poll)))
+PY
+)"
+PROCESS_SHUTDOWN_ATTEMPTS="$(
+  python3 - "$PROCESS_SHUTDOWN_TIMEOUT_SECONDS" "$PROCESS_SHUTDOWN_POLL_SECONDS" <<'PY'
+import math
+import sys
+
+timeout = float(sys.argv[1])
+poll = float(sys.argv[2])
+print(max(1, math.ceil(timeout / poll)))
+PY
+)"
 
 PIDS=()
 LOG_DIR="$DELIVERYDISPATCH_LOG_DIR/last-run"
@@ -20,11 +47,11 @@ cleanup() {
   for pid in "${PIDS[@]}"; do
     if kill -0 "${pid}" >/dev/null 2>&1; then
       kill "${pid}" >/dev/null 2>&1 || true
-      for _ in $(seq 1 40); do
+      for _ in $(seq 1 "$PROCESS_SHUTDOWN_ATTEMPTS"); do
         if ! kill -0 "${pid}" >/dev/null 2>&1; then
           break
         fi
-        sleep 0.05
+        sleep "$PROCESS_SHUTDOWN_POLL_SECONDS"
       done
       if kill -0 "${pid}" >/dev/null 2>&1; then
         kill -9 "${pid}" >/dev/null 2>&1 || true
@@ -107,13 +134,13 @@ port_of() {
 wait_port() {
   local label="$1"
   local port="$2"
-  for _ in $(seq 1 30); do
+  for _ in $(seq 1 "$LOCAL_READINESS_ATTEMPTS"); do
     if (echo >"/dev/tcp/127.0.0.1/${port}") >/dev/null 2>&1; then
       return 0
     fi
-    sleep 0.1
+    sleep "$LOCAL_READINESS_POLL_SECONDS"
   done
-  echo "timed out waiting for ${label} on ${port}" >&2
+  echo "timed out waiting ${LOCAL_READINESS_TIMEOUT_SECONDS}s for ${label} on ${port}" >&2
   dump_logs
   return 1
 }

@@ -15,26 +15,26 @@
 namespace zlink::framework::e2e::resilience_lifecycle::client
 {
 
-inline void run_quick_resilience_scenario (zlink::framework::channel_client_t &channels)
+inline void run_quick_resilience_scenario ()
 {
     const auto deadline = std::chrono::steady_clock::now () + std::chrono::seconds (6);
     while (std::chrono::steady_clock::now () < deadline) {
-        auto task = channels.request (api_channel, profile_req_t{.value = "rl-quick"})
-                      .timeout (std::chrono::milliseconds (1000))
-                      .async<profile_res_t> ();
-        if (task.result ().has_value () && !task.result ().value ().provider_rid.empty ()) {
-            std::cout << "scenario quick passed\n";
-            return;
+        try {
+            const auto reply = post_consumer_profile ("rl-quick");
+            if (!reply.provider_rid.empty ()) {
+                std::cout << "scenario quick passed\n";
+                return;
+            }
+        }
+        catch (const std::exception &) {
         }
         std::this_thread::sleep_for (std::chrono::milliseconds (200));
     }
     throw std::runtime_error ("quick scenario did not recover within timeout");
 }
 
-inline void run_rl_a3_reconnect_storm_probe (zlink::framework::channel_client_t &channels)
+inline void run_rl_a3_reconnect_storm_probe ()
 {
-    (void) channels;
-
     auto consumer = zlink::http_client::client_t::create ()
                       .base_url (env_or ("ZLINK_CPP_E2E_HTTP_CONSUMER_ENDPOINT"))
                       .timeout (std::chrono::milliseconds (10000))

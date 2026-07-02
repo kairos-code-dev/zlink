@@ -10,18 +10,16 @@
 namespace zlink::framework::e2e::registry_messaging::client
 {
 
-inline void run_rm_c7_weighted_provider_scenario (zlink::framework::channel_client_t &channels)
+inline void run_rm_c7_weighted_provider_scenario ()
 {
+    const auto provider_a_url = env_or ("ZLINK_CPP_E2E_HTTP_A_ENDPOINT");
     std::map<std::string, int> counts;
     constexpr int request_count = 100;
     for (int index = 0; index < request_count; ++index) {
-        auto task = channels
-                      .request (api_channel,
-                                profile_req_t{.value = "weighted-" + std::to_string (index)})
-                      .timeout (std::chrono::milliseconds (750))
-                      .async<profile_res_t> ();
-        ensure (task.result ().has_value (), "RM-C7 weighted request failed");
-        ++counts[task.result ().value ().provider_rid];
+        auto reply = post_json<profile_req_t, profile_res_t> (
+          provider_a_url, "/profile/request",
+          profile_req_t{.value = "weighted-" + std::to_string (index)});
+        ++counts[reply.provider_rid];
     }
     ensure (counts["api-a"] > 0 && counts["api-b"] > 0,
             "RM-C7 did not use both weighted providers");

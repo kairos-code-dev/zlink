@@ -75,11 +75,8 @@ inline void wait_evidence_prefix (const std::string &base_url,
     throw std::runtime_error ("timed out waiting for evidence prefix " + marker + "=" + prefix);
 }
 
-inline void run_rl_a4_drain_and_green_endpoint_scenario (
-  zlink::framework::channel_client_t &channels)
+inline void run_rl_a4_drain_and_green_endpoint_scenario ()
 {
-    (void) channels;
-
     const auto options = read_client_options ();
     auto consumer = zlink::http_client::client_t::create ()
                       .base_url (options.http_consumer_endpoint)

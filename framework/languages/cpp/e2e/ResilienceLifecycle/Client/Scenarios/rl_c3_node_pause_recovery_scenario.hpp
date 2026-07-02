@@ -70,10 +70,8 @@ inline void wait_c3_provider_evidence_prefix (const std::string &base_url,
     throw std::runtime_error ("RL-C3 did not record provider evidence " + prefix);
 }
 
-inline void run_rl_c3_node_pause_recovery_probe (zlink::framework::channel_client_t &channels)
+inline void run_rl_c3_node_pause_recovery_probe ()
 {
-    (void) channels;
-
     auto consumer = zlink::http_client::client_t::create ()
                       .base_url (env_or ("ZLINK_CPP_E2E_HTTP_CONSUMER_ENDPOINT"))
                       .timeout (std::chrono::milliseconds (10000))

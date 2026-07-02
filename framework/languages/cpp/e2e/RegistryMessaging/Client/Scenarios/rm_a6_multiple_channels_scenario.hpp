@@ -9,22 +9,20 @@
 namespace zlink::framework::e2e::registry_messaging::client
 {
 
-inline void run_rm_a6_multiple_channels_scenario (zlink::framework::channel_client_t &channels)
+inline void run_rm_a6_multiple_channels_scenario ()
 {
-    auto api = channels.request (api_channel, profile_req_t{.value = "a6-api"})
-                 .timeout (std::chrono::milliseconds (2000))
-                 .async<profile_res_t> ();
-    ensure (api.result ().has_value (), "RM-A6 api channel request failed");
-    ensure (api.result ().value ().provider_rid.rfind ("api-", 0) == 0,
+    auto api = post_json<profile_req_t, profile_res_t> (
+      env_or ("ZLINK_CPP_E2E_HTTP_A_ENDPOINT"), "/profile/request",
+      profile_req_t{.value = "a6-api"});
+    ensure (api.provider_rid.rfind ("api-", 0) == 0,
             "RM-A6 api channel resolved a non-api provider");
 
-    auto workflow = channels.request (workflow_channel, workflow_req_t{.value = "a6-workflow"})
-                      .timeout (std::chrono::milliseconds (2000))
-                      .async<workflow_res_t> ();
-    ensure (workflow.result ().has_value (), "RM-A6 workflow channel request failed");
-    ensure (workflow.result ().value ().value == "workflow:a6-workflow",
+    auto workflow = post_json<workflow_req_t, workflow_res_t> (
+      env_or ("ZLINK_CPP_E2E_HTTP_WORKFLOW_ENDPOINT"), "/workflow/request",
+      workflow_req_t{.value = "a6-workflow"});
+    ensure (workflow.value == "workflow:a6-workflow",
             "RM-A6 workflow reply value mismatch");
-    ensure (workflow.result ().value ().provider_rid == "workflow-a",
+    ensure (workflow.provider_rid == "workflow-a",
             "RM-A6 workflow channel resolved the wrong provider");
 
     const auto evidence_a = fetch_evidence (env_or ("ZLINK_CPP_E2E_HTTP_A_ENDPOINT"));

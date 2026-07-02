@@ -55,8 +55,7 @@ framework_exception_t map_native_route_exception (const std::exception &error)
         request_error != nullptr) {
         if (request_error->result () == zlink::request_result_t::timed_out) {
             return framework_exception_t (framework_error_kind_t::route_not_connected,
-                                          "native route request disconnected before reply",
-                                          true);
+                                          "native route request disconnected before reply", true);
         }
         if (request_error->result () == zlink::request_result_t::not_connected
             || is_route_unreachable_errno (request_error->internal_errno ())) {
@@ -92,9 +91,8 @@ result_t<void> wait_for_route_request_callback (
   const std::function<bool ()> &stopping)
 {
     const auto has_deadline = timeout > std::chrono::milliseconds::zero ();
-    const auto deadline = has_deadline
-                            ? std::chrono::steady_clock::now () + timeout
-                            : std::chrono::steady_clock::time_point::max ();
+    const auto deadline = has_deadline ? std::chrono::steady_clock::now () + timeout
+                                       : std::chrono::steady_clock::time_point::max ();
     while (true) {
         {
             std::lock_guard lock (callback_state->mutex);
@@ -107,15 +105,13 @@ result_t<void> wait_for_route_request_callback (
                                             "native route backend is shutting down");
         }
         if (has_deadline && std::chrono::steady_clock::now () >= deadline) {
-            return result_t<void>::failure (
-              framework_error_kind_t::disconnected,
-              "native route request disconnected before reply");
+            return result_t<void>::failure (framework_error_kind_t::disconnected,
+                                            "native route request disconnected before reply");
         }
         auto wait_time = std::chrono::milliseconds (50);
         if (has_deadline) {
-            const auto remaining =
-              std::chrono::duration_cast<std::chrono::milliseconds> (
-                deadline - std::chrono::steady_clock::now ());
+            const auto remaining = std::chrono::duration_cast<std::chrono::milliseconds> (
+              deadline - std::chrono::steady_clock::now ());
             if (remaining < wait_time) {
                 wait_time = remaining > std::chrono::milliseconds::zero ()
                               ? remaining
@@ -129,8 +125,7 @@ result_t<void> wait_for_route_request_callback (
 
 } // namespace
 
-native_route_backend_t::native_route_backend_t (zlink::router_socket_t &router) :
-    _router (&router)
+native_route_backend_t::native_route_backend_t (zlink::router_socket_t &router) : _router (&router)
 {
 }
 
@@ -140,19 +135,15 @@ native_route_backend_t::native_route_backend_t (zlink::router_socket_t &router,
 {
 }
 
-native_route_backend_t::native_route_backend_t (
-  zlink::router_socket_t &router,
-  std::atomic_bool &stop,
-  std::vector<std::string> reconnect_endpoints) :
-    _router (&router),
-    _stop (&stop),
-    _reconnect_endpoints (std::move (reconnect_endpoints))
+native_route_backend_t::native_route_backend_t (zlink::router_socket_t &router,
+                                                std::atomic_bool &stop,
+                                                std::vector<std::string> reconnect_endpoints) :
+    _router (&router), _stop (&stop), _reconnect_endpoints (std::move (reconnect_endpoints))
 {
 }
 
 void native_route_backend_t::attach_spot_route_bridge (
-  std::unique_ptr<zlink::service::spot_route_bridge_t> bridge,
-  std::string channel_name)
+  std::unique_ptr<zlink::service::spot_route_bridge_t> bridge, std::string channel_name)
 {
     std::lock_guard route_lock (_router_mutex);
     _spot_route_bridge = std::shared_ptr<zlink::service::spot_route_bridge_t> (std::move (bridge));
@@ -257,8 +248,8 @@ native_route_backend_t::submit_request (const zlink::routing_id_t &target_node_r
                       framework_error_kind_t::request_failed,
                       "native route bridge request was not submitted");
                 }
-                if (auto waited = wait_for_route_request_callback (
-                      callback_state, timeout, [this] { return stopping (); });
+                if (auto waited = wait_for_route_request_callback (callback_state, timeout,
+                                                                   [this] { return stopping (); });
                     !waited) {
                     forget_peer (target_node_rid);
                     return result_t<runtime::messaging::message_parts_t>::failure (
@@ -299,11 +290,10 @@ native_route_backend_t::submit_request (const zlink::routing_id_t &target_node_r
         }
         if (!submitted) {
             return result_t<runtime::messaging::message_parts_t>::failure (
-              framework_error_kind_t::request_failed,
-              "native route request was not submitted");
+              framework_error_kind_t::request_failed, "native route request was not submitted");
         }
-        if (auto waited = wait_for_route_request_callback (
-              callback_state, timeout, [this] { return stopping (); });
+        if (auto waited = wait_for_route_request_callback (callback_state, timeout,
+                                                           [this] { return stopping (); });
             !waited) {
             forget_peer (target_node_rid);
             return result_t<runtime::messaging::message_parts_t>::failure (
@@ -320,15 +310,14 @@ native_route_backend_t::submit_request (const zlink::routing_id_t &target_node_r
     }
     catch (const std::exception &ex) {
         const auto error = map_native_route_exception (ex);
-        return result_t<runtime::messaging::message_parts_t>::failure (
-          error.kind (), error.what (), error.is_retriable ());
+        return result_t<runtime::messaging::message_parts_t>::failure (error.kind (), error.what (),
+                                                                       error.is_retriable ());
     }
 }
 
-bool native_route_backend_t::handle_router_received (
-  const zlink::routing_id_t &source_node_rid,
-  std::vector<zlink::message_t> &parts,
-  std::optional<std::uint64_t> request_seq)
+bool native_route_backend_t::handle_router_received (const zlink::routing_id_t &source_node_rid,
+                                                     std::vector<zlink::message_t> &parts,
+                                                     std::optional<std::uint64_t> request_seq)
 {
     std::shared_ptr<zlink::service::spot_route_bridge_t> bridge;
     std::string channel_name;

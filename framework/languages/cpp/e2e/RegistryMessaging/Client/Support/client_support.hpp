@@ -4,7 +4,6 @@
 
 #include "../../Shared/registry_messaging_contracts.hpp"
 
-#include <zlink/framework.hpp>
 #include <zlink/http_client.hpp>
 
 #include <chrono>
@@ -54,10 +53,6 @@ inline void wait_for_file (const std::string &path)
         std::this_thread::sleep_for (std::chrono::milliseconds (50));
     }
     throw std::runtime_error ("timed out waiting for " + path);
-}
-
-inline void configure_common_codecs (zlink::framework::codec_options_builder_t codecs)
-{
 }
 
 inline evidence_snapshot_t fetch_evidence (const std::string &base_url)
@@ -139,6 +134,22 @@ inline void wait_provider_evidence_contains (const std::string &marker,
         std::this_thread::sleep_for (std::chrono::milliseconds (100));
     }
     throw std::runtime_error ("timed out waiting for provider evidence " + marker + "=" + value);
+}
+
+inline evidence_snapshot_t wait_evidence_contains (const std::string &base_url,
+                                                   const std::string &marker,
+                                                   const std::string &value,
+                                                   std::chrono::milliseconds timeout)
+{
+    const auto deadline = std::chrono::steady_clock::now () + timeout;
+    while (std::chrono::steady_clock::now () < deadline) {
+        auto snapshot = fetch_evidence (base_url);
+        if (evidence_contains (snapshot, marker, value)) {
+            return snapshot;
+        }
+        std::this_thread::sleep_for (std::chrono::milliseconds (100));
+    }
+    throw std::runtime_error ("timed out waiting for evidence " + marker + "=" + value);
 }
 
 } // namespace zlink::framework::e2e::registry_messaging::client

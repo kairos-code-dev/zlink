@@ -121,7 +121,8 @@ int main ()
     auto query = zlink.registry_query ();
     const auto status = query.status ();
     if (status.state != zlink::framework::registry_state_t::running
-        || status.registry_id != "local-registry" || status.peer_count != 1) {
+        || status.registry_id != "local-registry" || status.peer_count != 1
+        || status.connected_peer_count != 1) {
         return 4;
     }
     if (query.service_summary ().size () < 2 || query.topology ().size () < 2) {
@@ -258,7 +259,8 @@ int main ()
       gateway.manager ()
         .bind (zlink::framework::actor_ref_t (
           zlink::framework::node_rid_t::from_string ("remote-node"), "player", "alice", 1))
-        .async ().result ();
+        .async ()
+        .result ();
     if (!actor) {
         return 15;
     }
@@ -309,8 +311,7 @@ int main ()
         || *framework_spots[0].router_bind_endpoint != framework_router_endpoint
         || !framework_spots[0].pub_bind_endpoint
         || *framework_spots[0].pub_bind_endpoint != framework_pub_endpoint
-        || !framework_spots[0].routing_id
-        || framework_spots[0].routing_id->to_string () != "7300"
+        || !framework_spots[0].routing_id || framework_spots[0].routing_id->to_string () != "7300"
         || framework_spots[0].router_manual_connections.size () != 1
         || framework_spots[0].router_manual_connections[0] != "tcp://router-peer:7302"
         || framework_spots[0].pub_sub_manual_connections.size () != 1
@@ -345,8 +346,7 @@ int main ()
     const auto manual_route_endpoint = unique_tcp ("manual-accepted-route");
     const auto manual_route_router_endpoint = unique_tcp ("manual-accepted-router");
     manual_route_options.add_route_mesh ("manual.api").enable_server (manual_route_endpoint);
-    manual_route_options.add_spot_mesh ("manual-node")
-      .enable_router (manual_route_router_endpoint);
+    manual_route_options.add_spot_mesh ("manual-node").enable_router (manual_route_router_endpoint);
     manual_route_options.apply ();
     const auto manual_route_spots = manual_route_zlink.spot_nodes ();
     if (manual_route_spots.size () != 1
@@ -423,9 +423,28 @@ int main ()
             std::this_thread::sleep_for (25ms);
         }
     }
+    bool remote_peer_found = false;
+    const auto peer_deadline = std::chrono::steady_clock::now () + 5s;
+    while (std::chrono::steady_clock::now () < peer_deadline && !remote_peer_found) {
+        auto remote_peers = remote_client.member_peers ("remote.play");
+        if (remote_peers) {
+            for (const auto &peer : remote_peers.value ()) {
+                if (peer.channel_name == "remote.play" && peer.endpoint == provider_endpoint) {
+                    remote_peer_found = true;
+                    break;
+                }
+            }
+        }
+        if (!remote_peer_found) {
+            std::this_thread::sleep_for (25ms);
+        }
+    }
     remote_client.close ();
     if (!remote_found) {
         return 29;
+    }
+    if (!remote_peer_found) {
+        return 30;
     }
 
     return 0;

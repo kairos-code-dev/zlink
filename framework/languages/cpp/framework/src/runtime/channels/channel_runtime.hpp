@@ -35,8 +35,7 @@ class stream_runtime_state_t;
 class channel_native_client_t;
 class channel_native_publisher_t;
 
-result_t<void> validate_channel_native_reply (
-  const runtime::messaging::message_parts_t &parts);
+result_t<void> validate_channel_native_reply (const runtime::messaging::message_parts_t &parts);
 
 class capability_builder_state_t
 {
@@ -107,6 +106,7 @@ class channel_runtime_state_t
     std::map<std::string, route_handler_registry_t> route_handlers;
     std::map<std::string, zlink::peer_weight_t> server_peer_weight_overrides;
     std::map<std::string, std::uint64_t> weighted_discovery_cursors;
+    std::map<std::string, std::string> last_discovery_request_endpoints;
     std::map<std::uint64_t, channel_reliability_event_t> pending_operations;
     std::vector<outbound_call_record_t> outbound_calls;
     dispatch_options_t dispatch;

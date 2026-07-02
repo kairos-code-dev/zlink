@@ -10,9 +10,6 @@
 
 namespace e2e = zlink::framework::e2e::spot_service;
 
-namespace
-{
-
 template <const char *NodeName> class multi_node_spot_t : public zlink::framework::spot_t
 {
   public:
@@ -55,5 +52,3 @@ inline constexpr char multi_node_b_name[] = "multi-b";
 
 using multi_node_spot_a_t = multi_node_spot_t<multi_node_a_name>;
 using multi_node_spot_b_t = multi_node_spot_t<multi_node_b_name>;
-
-} // namespace

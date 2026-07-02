@@ -10,17 +10,22 @@ namespace zlink::framework::e2e::pubsub::client
 
 inline void run_publisher_restart_scenario (const std::string &publisher_url)
 {
-    const auto phase = env_or ("ZLINK_CPP_E2E_PUBLISHER_RESTART_PHASE", "before");
-    if (phase == "before") {
-        publish (publisher_url, topic_fanout, "before-publisher-restart-1");
-    } else if (phase == "after") {
-        for (int index = 20; index <= 42; ++index) {
-            publish (publisher_url, topic_fanout,
-                     "after-publisher-restart-" + std::to_string (index));
-            std::this_thread::sleep_for (std::chrono::milliseconds (100));
-        }
-    } else {
-        throw std::runtime_error ("unknown publisher restart phase " + phase);
+    publish (publisher_url, topic_fanout, "before-publisher-restart-1");
+
+    post_empty (publisher_url, "/shutdown");
+    wait_http_health ("publisher", publisher_url, false);
+    ensure (!try_post_empty (publisher_url,
+                             "/publish/event?topic=" + url_encode (topic_fanout)
+                               + "&value=during-publisher-down"),
+            "PS-B2 expected publish attempt to fail while publisher is down");
+
+    auto restarted_publisher = start_publisher_process ("pub-restart", publisher_url);
+    write_pid_file (env_or ("ZLINK_CPP_E2E_RESTARTED_PUBLISHER_PID_FILE"),
+                    restarted_publisher.pid ());
+    for (int index = 20; index <= 42; ++index) {
+        publish (publisher_url, topic_fanout,
+                 "after-publisher-restart-" + std::to_string (index));
+        std::this_thread::sleep_for (std::chrono::milliseconds (100));
     }
     std::cout << "scenario PS-B2 passed\n";
 }

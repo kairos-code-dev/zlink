@@ -79,6 +79,7 @@ struct registry_status_t
     std::string pub_endpoint;
     std::string router_endpoint;
     std::size_t peer_count = 0;
+    std::size_t connected_peer_count = 0;
 };
 
 struct service_summary_entry_t
@@ -232,6 +233,8 @@ class registry_query_client_t
     result_t<void> connect (std::string endpoint);
     result_t<std::vector<topology_entry_t>> topology () const;
     result_t<std::vector<topology_entry_t>> topology (const topology_filter_t &filter) const;
+    result_t<std::vector<member_peer_t>> member_peers (std::string channel_name) const;
+    result_t<registry_status_t> status () const;
     void close () noexcept;
 
   private:

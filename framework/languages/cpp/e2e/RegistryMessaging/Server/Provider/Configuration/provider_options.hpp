@@ -51,6 +51,7 @@ struct provider_options_t
     std::string embedded_registry_pub;
     std::string embedded_registry_router;
     std::vector<std::string> embedded_registry_peers;
+    std::vector<std::string> route_peers;
     std::string log_dir;
     std::optional<int> server_weight;
     std::optional<int> max_message_size;
@@ -69,6 +70,7 @@ inline provider_options_t read_provider_options ()
             .embedded_registry_router = env_or ("ZLINK_CPP_E2E_EMBEDDED_REGISTRY_ROUTER"),
             .embedded_registry_peers =
               split_csv (env_or ("ZLINK_CPP_E2E_EMBEDDED_REGISTRY_PEERS")),
+            .route_peers = split_csv (env_or ("ZLINK_CPP_E2E_ROUTE_PEERS")),
             .log_dir = env_or ("ZLINK_CPP_E2E_LOG_DIR", "logs"),
             .server_weight = parse_int_env ("ZLINK_CPP_E2E_SERVER_WEIGHT"),
             .max_message_size = parse_int_env ("ZLINK_CPP_E2E_MAX_MESSAGE_SIZE")};

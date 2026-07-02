@@ -25,13 +25,13 @@
 | `Client/Support/ClientOptions.cs` | `Client/Support/client_support.hpp`; `run_e2e.sh` | client-support | done | env parsing, marker 대기, Publisher HTTP 호출 helper가 대응한다. |
 | `Client/Support/Evidence.cs` | `run_e2e.sh`; `Server/Subscriber/Endpoints/operational_endpoints.hpp` | client-support | done | runner Python helper가 subscriber role server의 bounded `/evidence/wait`를 호출해 evidence line을 검증하고, 각 검증 결과를 `verify.log`에 남긴다. |
 | `Client/Support/ScenarioAssert.cs` | `Client/Support/client_support.hpp`; `run_e2e.sh` | client-support | done | client process assert와 runner evidence assert가 분리되어 있고, scenario별 성공 조건은 `/evidence/wait` 결과와 `verify.log` marker로 확인한다. |
-| `Client/Support/ServerProcessLauncher.cs` | `run_e2e.sh` | runner-support | done | 프로세스 시작/정지/재시작은 shell runner가 담당한다. |
+| `Client/Support/ServerProcessLauncher.cs` | `Client/Support/client_support.hpp` | client-support | done | PS-A4 reconnect subscriber와 PS-B2 restarted publisher는 Client support가 role executable을 시작하고 종료/재시작을 제어한다. runner는 always-on baseline role 시작과 final cleanup만 담당한다. |
 | `Client/Scenarios/FanoutBasicDeliveryScenario.cs` | `Client/Scenarios/fanout_basic_delivery_scenario.hpp`; `run_e2e.sh` | scenario | done | PS-A1 발행 흐름과 세 subscriber의 공통 sequence 수신을 `/evidence/wait`로 검증한다. |
 | `Client/Scenarios/TopicFilterScenario.cs` | `Client/Scenarios/topic_filter_scenario.hpp`; `run_e2e.sh` | scenario | done | PS-A2 발행 흐름과 accepted/ignored topic evidence를 `/evidence/wait`로 검증한다. |
 | `Client/Scenarios/LateSubscriberScenario.cs` | `Client/Scenarios/late_subscriber_scenario.hpp`; `run_e2e.sh` | scenario | done | PS-A3 발행 흐름과 late subscriber 합류/비replay 조건을 `/evidence/wait`와 negative line check로 검증한다. |
-| `Client/Scenarios/SubscriberReconnectScenario.cs` | `Client/Scenarios/subscriber_reconnect_scenario.hpp`; `run_e2e.sh` | scenario | done | PS-A4 발행 흐름과 subscriber restart orchestration, 재구독 이후 수신/끊김 구간 비replay 조건을 검증한다. |
+| `Client/Scenarios/SubscriberReconnectScenario.cs` | `Client/Scenarios/subscriber_reconnect_scenario.hpp`; `Client/Support/client_support.hpp` | scenario | done | PS-A4 발행 흐름과 subscriber restart orchestration, 재구독 이후 수신/끊김 구간 비replay 조건을 Client가 제어하고 검증한다. |
 | `Client/Scenarios/SlowSubscriberScenario.cs` | `Client/Scenarios/slow_subscriber_scenario.hpp`; `run_e2e.sh` | scenario | done | PS-B1 발행 흐름과 빠른 subscriber 격리 수신을 `/evidence/wait`로 검증한다. |
-| `Client/Scenarios/PublisherRestartScenario.cs` | `Client/Scenarios/publisher_restart_scenario.hpp`; `run_e2e.sh` | scenario | done | PS-B2 발행 흐름과 Publisher role server restart 이후 수신을 `/evidence/wait`로 검증한다. |
+| `Client/Scenarios/PublisherRestartScenario.cs` | `Client/Scenarios/publisher_restart_scenario.hpp`; `Client/Support/client_support.hpp` | scenario | done | PS-B2 발행 흐름과 Publisher role server shutdown/restart를 Client가 제어하고, restart 이후 수신을 `/evidence/wait`로 검증한다. |
 | `Client/Scenarios/MissingMessageNameScenario.cs` | `Client/Scenarios/missing_message_name_scenario.hpp`; `run_e2e.sh` | scenario | done | PS-C1 negative 발행 흐름, subscriber dispatch error, 후속 정상 publish를 `/evidence/wait`로 검증한다. |
 | `Server/Registry/Configuration/HostFactorySupport.cs` | `Server/Shared/server_support.hpp` | server-role | done | 공통 logging/codec/flow helper가 대응한다. |
 | `Server/Registry/Configuration/RegistryOptions.cs` | `Server/Registry/Configuration/registry_options.hpp`; `run_e2e.sh` | configuration | done | registry endpoint/env parsing이 대응한다. |
@@ -70,13 +70,27 @@
 | `PS-A1` | `Client/Scenarios/fanout_basic_delivery_scenario.hpp`; `run_e2e.sh` | done | fanout 발행과 세 subscriber의 공통 sequence 수신을 `/evidence/wait`로 검증한다. |
 | `PS-A2` | `Client/Scenarios/topic_filter_scenario.hpp`; `run_e2e.sh` | done | 관심 topic accepted evidence와 비관심 topic ignored evidence를 `/evidence/wait`로 검증한다. |
 | `PS-A3` | `Client/Scenarios/late_subscriber_scenario.hpp`; `run_e2e.sh` | done | late subscriber 합류 흐름과 합류 전 발행분 비replay를 검증한다. |
-| `PS-A4` | `Client/Scenarios/subscriber_reconnect_scenario.hpp`; `run_e2e.sh` | done | subscriber reconnect 흐름과 끊김 구간 비replay를 검증한다. |
+| `PS-A4` | `Client/Scenarios/subscriber_reconnect_scenario.hpp`; `Client/Support/client_support.hpp` | done | Client가 reconnect subscriber process를 중지/재시작하고 끊김 구간 비replay를 검증한다. |
 | `PS-B1` | `Client/Scenarios/slow_subscriber_scenario.hpp`; `run_e2e.sh` | done | slow subscriber 격리 흐름을 빠른 subscriber evidence wait로 검증한다. |
-| `PS-B2` | `Client/Scenarios/publisher_restart_scenario.hpp`; `run_e2e.sh` | done | Publisher role server restart 이후 발행한 값을 검증한다. |
+| `PS-B2` | `Client/Scenarios/publisher_restart_scenario.hpp`; `Client/Support/client_support.hpp` | done | Client가 Publisher role server shutdown/restart를 제어하고 재시작 이후 발행한 값을 검증한다. |
 | `PS-C1` | `Client/Scenarios/missing_message_name_scenario.hpp`; `run_e2e.sh` | done | missing message name error와 후속 정상 publish를 검증한다. |
 
 ## 검증
 
+- 2026-07-02: `timeout 240s framework/languages/cpp/e2e/PubSub/run_e2e.sh all`
+  - 결과: 통과
+  - 로그: `logs/20260702-085350-88854`
+  - 의미: PS-A1, PS-A2, PS-A3, PS-A4, PS-B1, PS-B2, PS-C1 전체가 bounded subscriber
+    evidence wait 경로로 통과했다. runner 출력은 `verify basic/topic/late/reconnect/slow/publisher-restart/negative passed`,
+    `snapshot registry evidence written`, `snapshot publisher evidence written`,
+    `pubsub e2e result=passed`를 포함한다.
+- 2026-07-02: `timeout 420s framework/languages/cpp/e2e/PubSub/run_e2e.sh all`
+  - 결과: 통과
+  - 로그: `logs/20260702-093832-63001`
+  - 의미: PS-A4 reconnect subscriber lifecycle과 PS-B2 publisher shutdown/restart lifecycle을 Client support로
+    옮긴 뒤에도 PS-A1, PS-A2, PS-A3, PS-A4, PS-B1, PS-B2, PS-C1 전체가 통과했다.
+    출력은 `verify basic/topic/late/reconnect/slow/publisher-restart/negative passed`와
+    `pubsub e2e result=passed`를 포함한다.
 - 2026-06-30: `./framework/languages/cpp/e2e/PubSub/run_e2e.sh all`
   - 결과: 통과
   - 로그: `logs/20260630-082052-3253217`

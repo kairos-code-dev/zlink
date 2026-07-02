@@ -10,27 +10,19 @@
 namespace zlink::framework::e2e::resilience_lifecycle::client
 {
 
-inline profile_res_t request_profile (zlink::framework::channel_client_t &channels,
-                                        const std::string &channel,
-                                        const std::string &value,
-                                        const std::string &marker,
-                                        std::chrono::milliseconds timeout =
-                                          std::chrono::milliseconds (2000))
+inline profile_res_t request_profile (const std::string &value,
+                                      const std::string &marker,
+                                      std::chrono::milliseconds timeout =
+                                        std::chrono::milliseconds (3000))
 {
-    auto task = channels.request (channel, profile_req_t{.value = value, .marker = marker})
-                  .timeout (timeout)
-                  .async<profile_res_t> ();
-    ensure (task.result ().has_value (), "profile request failed: " + value);
-    return task.result ().value ();
+    return post_consumer_profile (value, marker, "/profile/request", timeout);
 }
 
-inline profile_res_t request_profile (zlink::framework::channel_client_t &channels,
-                                        const std::string &channel,
-                                        const std::string &value,
-                                        std::chrono::milliseconds timeout =
-                                          std::chrono::milliseconds (2000))
+inline profile_res_t request_profile (const std::string &value,
+                                      std::chrono::milliseconds timeout =
+                                        std::chrono::milliseconds (3000))
 {
-    return request_profile (channels, channel, value, value, timeout);
+    return request_profile (value, value, timeout);
 }
 
 } // namespace zlink::framework::e2e::resilience_lifecycle::client

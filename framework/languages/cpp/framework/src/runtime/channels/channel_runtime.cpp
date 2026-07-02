@@ -315,15 +315,14 @@ void apply_dispatch_options (zlink_builder_t &builder, const dispatch_options_t 
     builder._state->stream_runtime->dispatch = options;
 }
 
-result_t<zlink::message_t>
-channel_runtime_t::dispatch_request (std::string channel_name,
-                                     std::string topic,
-                                     std::string packet_name,
-                                     service_provider_t &services,
-                                     serializer_registry_t &serializers,
-                                     const handler_registry_t &handlers,
-                                     const zlink::message_t &message,
-                                     std::string_view content_type) const
+result_t<zlink::message_t> channel_runtime_t::dispatch_request (std::string channel_name,
+                                                                std::string topic,
+                                                                std::string packet_name,
+                                                                service_provider_t &services,
+                                                                serializer_registry_t &serializers,
+                                                                const handler_registry_t &handlers,
+                                                                const zlink::message_t &message,
+                                                                std::string_view content_type) const
 {
     if (!is_enabled (server_capability (*_state, channel_name))) {
         return result_t<zlink::message_t>::failure (framework_error_kind_t::route_not_connected,
@@ -342,9 +341,8 @@ result_t<void> channel_runtime_t::dispatch_send (std::string channel_name,
                                                  const zlink::message_t &message,
                                                  std::string_view content_type) const
 {
-    auto result =
-      handlers.invoke (channel_name, topic, packet_name, services, serializers, message,
-                       content_type);
+    auto result = handlers.invoke (channel_name, topic, packet_name, services, serializers, message,
+                                   content_type);
     if (!result) {
         return result_t<void>::failure (result.error_kind (), result.error ()
                                                                 ? result.error ()->what ()
@@ -487,10 +485,8 @@ void channel_runtime_t::bind_discovery (discovery_snapshot_t discovery) noexcept
         for (const auto &endpoint : _state->discovery.registry_endpoints) {
             monitoring_runtime_t (_state->monitoring)
               .publish_discovery (discovery_event_payload_t{
-                runtime_event_base_t{"channel.discovery"},
-                discovery_event_kind_t::connected,
-                endpoint,
-                "registry endpoint configured"});
+                runtime_event_base_t{"channel.discovery"}, discovery_event_kind_t::connected,
+                endpoint, "registry endpoint configured"});
         }
     }
 }
@@ -517,12 +513,9 @@ void channel_runtime_t::publish_socket_event (const std::string &channel_name,
         return;
     }
     monitoring_runtime_t (_state->monitoring)
-      .publish_socket (socket_event_payload_t{runtime_event_base_t{channel_name},
-                                              event,
-                                              std::move (local_address),
-                                              std::move (remote_address),
-                                              native_event,
-                                              native_value});
+      .publish_socket (socket_event_payload_t{runtime_event_base_t{channel_name}, event,
+                                              std::move (local_address), std::move (remote_address),
+                                              native_event, native_value});
 }
 
 void channel_runtime_t::set_server_peer_weight (const std::string &channel_name,
@@ -559,11 +552,11 @@ namespace zlink::framework
 namespace
 {
 
-runtime::messaging::message_parts_t encode_route_payload_parts (
-  runtime::messaging::envelope_header_t header,
-  std::type_index payload_type,
-  const route_client_t::payload_encoder_t &encode_payload,
-  serializer_registry_t &serializers)
+runtime::messaging::message_parts_t
+encode_route_payload_parts (runtime::messaging::envelope_header_t header,
+                            std::type_index payload_type,
+                            const route_client_t::payload_encoder_t &encode_payload,
+                            serializer_registry_t &serializers)
 {
     header.content_type = serializers.content_type (payload_type);
     runtime::messaging::envelope_codec_t envelope;
@@ -641,8 +634,7 @@ capability_builder_t &capability_builder_t::send_high_water_mark (zlink::message
     return *this;
 }
 
-capability_builder_t &
-capability_builder_t::receive_high_water_mark (zlink::message_count_t value)
+capability_builder_t &capability_builder_t::receive_high_water_mark (zlink::message_count_t value)
 {
     auto &snapshot = capability_snapshot (*_state);
     snapshot.enabled = true;
@@ -702,8 +694,8 @@ capability_builder_t channel_builder_t::enable_server ()
 
 capability_builder_t channel_builder_t::enable_client ()
 {
-    auto builder = enable_capability (
-      detail::select_capability (*_state, channel_capability_t::client));
+    auto builder =
+      enable_capability (detail::select_capability (*_state, channel_capability_t::client));
     detail::select_capability (*_state, channel_capability_t::client).discovery = true;
     return builder;
 }
@@ -715,8 +707,8 @@ capability_builder_t channel_builder_t::enable_publisher ()
 
 capability_builder_t channel_builder_t::enable_subscriber ()
 {
-    auto builder = enable_capability (
-      detail::select_capability (*_state, channel_capability_t::subscriber));
+    auto builder =
+      enable_capability (detail::select_capability (*_state, channel_capability_t::subscriber));
     detail::select_capability (*_state, channel_capability_t::subscriber).discovery = true;
     return builder;
 }
@@ -864,25 +856,24 @@ message_bus_t::submit_request (std::string channel_name,
 }
 
 task_t<zlink::message_t>
-message_bus_t::submit_request_message_async (
-  std::string channel_name,
-  std::string packet_name,
-  std::type_index request_type,
-  payload_encoder_t encode_payload,
-  std::chrono::milliseconds timeout,
-  channel_request_call_t::metadata_map_t metadata)
+message_bus_t::submit_request_message_async (std::string channel_name,
+                                             std::string packet_name,
+                                             std::type_index request_type,
+                                             payload_encoder_t encode_payload,
+                                             std::chrono::milliseconds timeout,
+                                             channel_request_call_t::metadata_map_t metadata)
 {
     auto state = _state;
     return runtime::handler_coroutine_executor ().submit<zlink::message_t> (
       [state, channel_name = std::move (channel_name), packet_name = std::move (packet_name),
        request_type, encode_payload = std::move (encode_payload), timeout,
-       metadata = std::move (metadata)] () mutable
-      -> boost::asio::awaitable<result_t<zlink::message_t>> {
-          auto result = message_bus_t (state)
-                          .submit_request (std::move (channel_name), std::move (packet_name),
-                                           request_type, std::move (encode_payload), timeout,
-                                           metadata)
-                          .message ();
+       metadata =
+         std::move (metadata)] () mutable -> boost::asio::awaitable<result_t<zlink::message_t>> {
+          auto result =
+            message_bus_t (state)
+              .submit_request (std::move (channel_name), std::move (packet_name), request_type,
+                               std::move (encode_payload), timeout, metadata)
+              .message ();
           co_return result;
       });
 }
@@ -908,15 +899,14 @@ result_t<void> message_bus_t::submit_publish (std::string channel_name,
                                               const send_call_t::metadata_map_t &metadata)
 {
     return detail::channel_outbound_exchange_t (_state).submit_publish (
-      std::move (channel_name), std::move (topic), std::move (packet_name),
-      event_type, std::move (encode_payload), timeout, metadata);
+      std::move (channel_name), std::move (topic), std::move (packet_name), event_type,
+      std::move (encode_payload), timeout, metadata);
 }
 
 channel_server_socket_runtime_options_t::channel_server_socket_runtime_options_t () = default;
 
 channel_server_socket_runtime_options_t::channel_server_socket_runtime_options_t (
-  std::shared_ptr<detail::channel_runtime_state_t> state,
-  std::string channel_name) :
+  std::shared_ptr<detail::channel_runtime_state_t> state, std::string channel_name) :
     _state (std::move (state)), _channel_name (std::move (channel_name))
 {
 }
@@ -926,8 +916,7 @@ channel_server_socket_runtime_options_t::~channel_server_socket_runtime_options_
 channel_server_socket_runtime_options_t::channel_server_socket_runtime_options_t (
   channel_server_socket_runtime_options_t &&) noexcept = default;
 
-channel_server_socket_runtime_options_t &
-channel_server_socket_runtime_options_t::operator= (
+channel_server_socket_runtime_options_t &channel_server_socket_runtime_options_t::operator= (
   channel_server_socket_runtime_options_t &&) noexcept = default;
 
 channel_server_socket_runtime_options_t &
@@ -940,8 +929,7 @@ channel_server_socket_runtime_options_t::peer_weight (zlink::peer_weight_t value
 client_server_channel_runtime_options_t::client_server_channel_runtime_options_t () = default;
 
 client_server_channel_runtime_options_t::client_server_channel_runtime_options_t (
-  std::shared_ptr<detail::channel_runtime_state_t> state,
-  std::string channel_name) :
+  std::shared_ptr<detail::channel_runtime_state_t> state, std::string channel_name) :
     _state (std::move (state)), _channel_name (std::move (channel_name))
 {
 }
@@ -951,8 +939,7 @@ client_server_channel_runtime_options_t::~client_server_channel_runtime_options_
 client_server_channel_runtime_options_t::client_server_channel_runtime_options_t (
   client_server_channel_runtime_options_t &&) noexcept = default;
 
-client_server_channel_runtime_options_t &
-client_server_channel_runtime_options_t::operator= (
+client_server_channel_runtime_options_t &client_server_channel_runtime_options_t::operator= (
   client_server_channel_runtime_options_t &&) noexcept = default;
 
 channel_server_socket_runtime_options_t
@@ -963,7 +950,9 @@ client_server_channel_runtime_options_t::configure_server_socket () const
 
 channel_runtime_options_t::channel_runtime_options_t () = default;
 
-channel_runtime_options_t::channel_runtime_options_t (message_bus_t bus) : _state (bus._state) {}
+channel_runtime_options_t::channel_runtime_options_t (message_bus_t bus) : _state (bus._state)
+{
+}
 
 channel_runtime_options_t::~channel_runtime_options_t () = default;
 
@@ -1193,15 +1182,15 @@ route_client_t::submit_request_erased (const std::shared_ptr<detail::route_clien
       });
 }
 
-result_t<void> route_client_t::submit_spot_send_erased (
-  const std::shared_ptr<detail::route_client_state_t> &state,
-  const std::string &router_channel_id,
-  const zlink::routing_id_t &target_node_rid,
-  const spot_rid_t &target_spot_rid,
-  const std::string &packet_name,
-  std::type_index message_type,
-  payload_encoder_t encode_payload,
-  const route_send_call_t::metadata_map_t &metadata)
+result_t<void>
+route_client_t::submit_spot_send_erased (const std::shared_ptr<detail::route_client_state_t> &state,
+                                         const std::string &router_channel_id,
+                                         const zlink::routing_id_t &target_node_rid,
+                                         const spot_rid_t &target_spot_rid,
+                                         const std::string &packet_name,
+                                         std::type_index message_type,
+                                         payload_encoder_t encode_payload,
+                                         const route_send_call_t::metadata_map_t &metadata)
 {
     if (!state || !state->runtime || state->serializers == nullptr) {
         return result_t<void>::failure (framework_error_kind_t::request_protocol_error,
@@ -1237,8 +1226,8 @@ result_t<void> route_client_t::submit_spot_send_erased (
         return result_t<void>::failure (error.kind (), error.what (), error.is_retriable ());
     }
     auto submitted = runtime::handler_coroutine_executor ().submit<void> (
-      [state, router_channel_id, target_node_rid,
-       spot_rid, parts = std::move (parts)] () mutable -> boost::asio::awaitable<result_t<void>> {
+      [state, router_channel_id, target_node_rid, spot_rid,
+       parts = std::move (parts)] () mutable -> boost::asio::awaitable<result_t<void>> {
           try {
               detail::channel_runtime_manager_t manager (state->runtime);
               auto &runtime = manager.get_route_channel (router_channel_id);
@@ -1307,8 +1296,8 @@ task_t<std::uint64_t> route_client_t::submit_spot_request_erased (
           result_t<std::uint64_t>::failure (error.kind (), error.what (), error.is_retriable ()));
     }
     return runtime::handler_coroutine_executor ().submit<std::uint64_t> (
-      [state, router_channel_id, target_node_rid,
-       spot_rid, parts = std::move (parts)] () mutable -> boost::asio::awaitable<result_t<std::uint64_t>> {
+      [state, router_channel_id, target_node_rid, spot_rid,
+       parts = std::move (parts)] () mutable -> boost::asio::awaitable<result_t<std::uint64_t>> {
           try {
               detail::channel_runtime_manager_t manager (state->runtime);
               auto &runtime = manager.get_route_channel (router_channel_id);
@@ -1428,8 +1417,8 @@ task_t<zlink::message_t> route_client_t::submit_request_reply_message_erased (
                                                              error.is_retriable ());
           }
           catch (const std::exception &error) {
-              co_return result_t<zlink::message_t>::failure (
-                framework_error_kind_t::request_failed, error.what ());
+              co_return result_t<zlink::message_t>::failure (framework_error_kind_t::request_failed,
+                                                             error.what ());
           }
       });
 }
@@ -1492,8 +1481,8 @@ task_t<zlink::message_t> route_client_t::submit_spot_request_reply_message_erase
               detail::channel_runtime_manager_t manager (state->runtime);
               auto &runtime = manager.get_route_channel (router_channel_id);
               runtime::messaging::envelope_codec_t envelope;
-              auto reply = runtime.request_reply_spot_parts (
-                target_node_rid, spot_rid, std::move (parts), effective_timeout);
+              auto reply = runtime.request_reply_spot_parts (target_node_rid, spot_rid,
+                                                             std::move (parts), effective_timeout);
               if (!reply) {
                   co_return result_t<zlink::message_t>::failure (
                     reply.error_kind (),
@@ -1538,8 +1527,8 @@ task_t<zlink::message_t> route_client_t::submit_spot_request_reply_message_erase
                                                              error.is_retriable ());
           }
           catch (const std::exception &error) {
-              co_return result_t<zlink::message_t>::failure (
-                framework_error_kind_t::request_failed, error.what ());
+              co_return result_t<zlink::message_t>::failure (framework_error_kind_t::request_failed,
+                                                             error.what ());
           }
       });
 }

@@ -104,9 +104,8 @@ template <typename TCategory = void> class logger_t
 
     // Structured form for dynamic field sets (e.g. message-flow tracing). Lets sinks
     // / collectors ingest key/value fields instead of parsing a formatted line.
-    void log_with_fields (log_level_t level,
-                          std::string message,
-                          std::vector<log_field_t> fields) const
+    void
+    log_with_fields (log_level_t level, std::string message, std::vector<log_field_t> fields) const
     {
         detail::emit_log (_state, static_cast<int> (level), _category, std::move (message),
                           std::move (fields));

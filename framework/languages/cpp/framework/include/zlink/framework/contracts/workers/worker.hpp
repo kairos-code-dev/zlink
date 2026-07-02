@@ -60,14 +60,12 @@ template <typename TResult, typename TWork> result_t<TResult> run_worker_body (T
 template <typename TResult> class worker_call_t
 {
   public:
-    using executor_t = std::function<task_t<TResult> (
-      std::optional<std::chrono::milliseconds>, detail::worker_completion_mode_t)>;
+    using executor_t = std::function<task_t<TResult> (std::optional<std::chrono::milliseconds>,
+                                                      detail::worker_completion_mode_t)>;
     using completion_callback_t = std::function<task_t<void> (result_t<TResult>)>;
 
     worker_call_t () = default;
-    explicit worker_call_t (executor_t executor) : _executor (std::move (executor))
-    {
-    }
+    explicit worker_call_t (executor_t executor) : _executor (std::move (executor)) {}
 
     worker_call_t &timeout (std::chrono::milliseconds value)
     {
@@ -102,14 +100,14 @@ template <typename TResult> class worker_call_t
         }
         auto yield_turn = detail::capture_current_serial_yield_turn ();
         if (!yield_turn) {
-            return task_t<TResult> (result_t<TResult>::failure (
-              framework_error_kind_t::request_protocol_error,
-              "yield requires a framework Spot handler turn"));
+            return task_t<TResult> (
+              result_t<TResult>::failure (framework_error_kind_t::request_protocol_error,
+                                          "yield requires a framework Spot handler turn"));
         }
         if (!yield_turn->release ()) {
-            return task_t<TResult> (result_t<TResult>::failure (
-              framework_error_kind_t::request_protocol_error,
-              "yield could not release the current Spot handler turn"));
+            return task_t<TResult> (
+              result_t<TResult>::failure (framework_error_kind_t::request_protocol_error,
+                                          "yield could not release the current Spot handler turn"));
         }
         return detail::reschedule_task (
           _executor (_timeout, detail::worker_completion_mode_t::owner_queue),

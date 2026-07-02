@@ -5,10 +5,60 @@
 
 #include <zlink/framework.hpp>
 
+#include <chrono>
 #include <cstdint>
+#include <stdexcept>
+#include <string>
+#include <thread>
 
 namespace zlink::framework::e2e::registry_messaging::provider
 {
+
+inline profile_res_t request_profile_with_retry (zlink::framework::channel_client_t &channels,
+                                                 const std::string &channel_name,
+                                                 const profile_req_t &request)
+{
+    const auto deadline = std::chrono::steady_clock::now () + std::chrono::seconds (30);
+    std::string last_error = "profile request failed";
+    while (std::chrono::steady_clock::now () < deadline) {
+        auto call = channels.request (channel_name, request)
+                      .timeout (std::chrono::seconds (5))
+                      .async<profile_res_t> ();
+        const auto &reply = call.result ();
+        if (reply) {
+            return reply.value ();
+        }
+        if (reply.error ()) {
+            last_error = reply.error ()->what ();
+        }
+        std::this_thread::sleep_for (std::chrono::milliseconds (100));
+    }
+    throw std::runtime_error ("timed out waiting for profile request channel route: "
+                              + last_error);
+}
+
+inline scenario_route_res_t request_route_with_retry (zlink::framework::route_client_t &routes,
+                                                      const zlink::routing_id_t &target,
+                                                      const scenario_route_req_t &request)
+{
+    const auto deadline = std::chrono::steady_clock::now () + std::chrono::seconds (30);
+    std::string last_error = "route request failed";
+    while (std::chrono::steady_clock::now () < deadline) {
+        auto call = routes.request (route_channel, target, request)
+                      .packet_name ("ScenarioRouteReq")
+                      .timeout (std::chrono::seconds (5))
+                      .async<scenario_route_res_t> ();
+        const auto &reply = call.result ();
+        if (reply) {
+            return reply.value ();
+        }
+        if (reply.error ()) {
+            last_error = reply.error ()->what ();
+        }
+        std::this_thread::sleep_for (std::chrono::milliseconds (100));
+    }
+    throw std::runtime_error ("timed out waiting for route mesh target: " + last_error);
+}
 
 class evidence_handler_t
 {
@@ -26,6 +76,122 @@ class evidence_handler_t
 
   private:
     scenario_state_t &_state;
+};
+
+class http_profile_request_handler_t
+{
+  public:
+    using dependency_types = zlink::framework::dependency_list_t<zlink::framework::channel_client_t>;
+    using request_type = profile_req_t;
+    using reply_type = profile_res_t;
+
+    explicit http_profile_request_handler_t (zlink::framework::channel_client_t &channels) :
+        _channels (channels)
+    {
+    }
+
+    profile_res_t handle (const profile_req_t &request)
+    {
+        return request_profile_with_retry (_channels, api_channel, request);
+    }
+
+  private:
+    zlink::framework::channel_client_t &_channels;
+};
+
+class http_manual_profile_request_handler_t
+{
+  public:
+    using dependency_types = zlink::framework::dependency_list_t<zlink::framework::channel_client_t>;
+    using request_type = profile_req_t;
+    using reply_type = profile_res_t;
+
+    explicit http_manual_profile_request_handler_t (zlink::framework::channel_client_t &channels) :
+        _channels (channels)
+    {
+    }
+
+    profile_res_t handle (const profile_req_t &request)
+    {
+        return request_profile_with_retry (_channels, "registry.messaging.api.manual", request);
+    }
+
+  private:
+    zlink::framework::channel_client_t &_channels;
+};
+
+class http_profile_command_handler_t
+{
+  public:
+    using dependency_types = zlink::framework::dependency_list_t<zlink::framework::channel_client_t>;
+    using request_type = profile_msg_t;
+    using reply_type = operation_status_t;
+
+    explicit http_profile_command_handler_t (zlink::framework::channel_client_t &channels) :
+        _channels (channels)
+    {
+    }
+
+    operation_status_t handle (const profile_msg_t &command)
+    {
+        _channels.send (api_channel, command).submit ();
+        return {.status = "sent"};
+    }
+
+  private:
+    zlink::framework::channel_client_t &_channels;
+};
+
+class http_route_request_handler_t
+{
+  public:
+    using dependency_types = zlink::framework::dependency_list_t<zlink::framework::route_client_t>;
+    using request_type = scenario_route_req_t;
+    using reply_type = scenario_route_res_t;
+
+    explicit http_route_request_handler_t (zlink::framework::route_client_t &routes) :
+        _routes (routes)
+    {
+    }
+
+    scenario_route_res_t handle (const scenario_route_req_t &request)
+    {
+        return request_route_with_retry (_routes, zlink::routing_id_t::from (std::string ("api-b")),
+                                         request);
+    }
+
+  private:
+    zlink::framework::route_client_t &_routes;
+};
+
+class http_route_missing_handler_t
+{
+  public:
+    using dependency_types = zlink::framework::dependency_list_t<zlink::framework::route_client_t>;
+    using request_type = scenario_route_req_t;
+    using reply_type = request_failure_res_t;
+
+    explicit http_route_missing_handler_t (zlink::framework::route_client_t &routes) :
+        _routes (routes)
+    {
+    }
+
+    request_failure_res_t handle (const scenario_route_req_t &request)
+    {
+        auto call = _routes.request (route_channel,
+                                     zlink::routing_id_t::from (std::string ("missing-rid")),
+                                     request)
+                      .packet_name ("ScenarioRouteReq")
+                      .timeout (std::chrono::milliseconds (300))
+                      .async<scenario_route_res_t> ();
+        return {.failed = !call.result ().has_value (),
+                .error_type = call.result ().error ()
+                                ? call.result ().error ()->what ()
+                                : "route request failed"};
+    }
+
+  private:
+    zlink::framework::route_client_t &_routes;
 };
 
 class server_weight_handler_t

@@ -18,4 +18,4 @@
 | `RM-C5` | 구현 | discovery consumer HTTP role이 미등록 packet request 실패와 send drop 이후 정상 request 복구를 검증한다. |
 | `RM-C7` | 구현 | `server_peer_weight`로 build-time server weight를 다르게 준 provider 두 개를 띄우고, registry-discovered client에서 high-weight provider가 더 많이 처리되는지 검증한다. |
 | `RM-C8` | 구현 | single consumer HTTP role이 `PayloadReq`/`PayloadRes`로 소형, 대형, near-large payload의 length와 SHA-256 왕복을 검증한다. `server_max_message_size`를 낮춘 별도 provider에서 초과 payload가 C++ public timeout error로 끝나는 것과 이후 정상 request 복구를 검증한다. |
-| `RM-C9` | 구현 | backpressure consumer HTTP role이 느린 send handler에 다량 `ProfileMsg`를 제출하고, provider evidence와 backlog 해소 뒤 후속 request 복구를 검증한다. public send submit은 bounded-failure oracle을 노출하지 않는다. 최신 focused 통과 로그: `logs/20260701-141721-60851`; 최신 full sweep parent 로그: `logs/20260701-141526-48855`. |
+| `RM-C9` | 구현 | backpressure consumer HTTP role이 느린 send handler에 다량 `ProfileMsg`를 제출하고, provider evidence와 backlog 해소 뒤 후속 request 복구를 검증한다. public send submit은 bounded-failure oracle을 노출하지 않는다. 최신 focused 통과 로그: `logs/20260701-141721-60851`; 최신 HTTP-only client full sweep parent 로그: `logs/20260702-064828-39071`. |

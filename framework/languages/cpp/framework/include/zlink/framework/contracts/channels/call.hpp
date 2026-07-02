@@ -72,9 +72,9 @@ template <typename TReply> class request_call_t
             return task_t<TReply> (*_immediate);
         }
         if (!_submit) {
-            return task_t<TReply> (result_t<TReply>::failure (
-              framework_error_kind_t::request_protocol_error,
-              "request call is not bound to a channel client"));
+            return task_t<TReply> (
+              result_t<TReply>::failure (framework_error_kind_t::request_protocol_error,
+                                         "request call is not bound to a channel client"));
         }
         return _submit (_packet_name, _timeout, _metadata);
     }
@@ -85,20 +85,20 @@ template <typename TReply> class request_call_t
             return task_t<TReply> (*_immediate);
         }
         if (!_submit) {
-            return task_t<TReply> (result_t<TReply>::failure (
-              framework_error_kind_t::request_protocol_error,
-              "request call is not bound to a channel client"));
+            return task_t<TReply> (
+              result_t<TReply>::failure (framework_error_kind_t::request_protocol_error,
+                                         "request call is not bound to a channel client"));
         }
         auto yield_turn = detail::capture_current_serial_yield_turn ();
         if (!yield_turn) {
-            return task_t<TReply> (result_t<TReply>::failure (
-              framework_error_kind_t::request_protocol_error,
-              "yield requires a framework Spot handler turn"));
+            return task_t<TReply> (
+              result_t<TReply>::failure (framework_error_kind_t::request_protocol_error,
+                                         "yield requires a framework Spot handler turn"));
         }
         if (!yield_turn->release ()) {
-            return task_t<TReply> (result_t<TReply>::failure (
-              framework_error_kind_t::request_protocol_error,
-              "yield could not release the current Spot handler turn"));
+            return task_t<TReply> (
+              result_t<TReply>::failure (framework_error_kind_t::request_protocol_error,
+                                         "yield could not release the current Spot handler turn"));
         }
         return detail::reschedule_task (_submit (_packet_name, _timeout, _metadata),
                                         yield_turn->resume_scheduler ());
@@ -151,58 +151,53 @@ class channel_request_call_t
     template <typename TReply> task_t<TReply> async ()
     {
         if (!_submit) {
-            co_return result_t<TReply>::failure (
-              framework_error_kind_t::request_protocol_error,
-              "request call is not bound to a channel client");
+            co_return result_t<TReply>::failure (framework_error_kind_t::request_protocol_error,
+                                                 "request call is not bound to a channel client");
         }
         auto reply = co_await _submit (_packet_name, _timeout, _metadata);
         if (_serializers == nullptr) {
-            co_return result_t<TReply>::failure (
-              framework_error_kind_t::request_protocol_error,
-              "channel request has no serializer registry");
+            co_return result_t<TReply>::failure (framework_error_kind_t::request_protocol_error,
+                                                 "channel request has no serializer registry");
         }
         try {
             co_return _serializers->get<TReply> ().deserialize (
               detail::encoded_payload_from_raw (reply));
         }
         catch (const framework_exception_t &error) {
-            co_return result_t<TReply>::failure (
-              error.kind (), error.what (), error.is_retriable ());
+            co_return result_t<TReply>::failure (error.kind (), error.what (),
+                                                 error.is_retriable ());
         }
     }
 
     template <typename TReply> task_t<TReply> yield ()
     {
         if (!_submit) {
-            co_return result_t<TReply>::failure (
-              framework_error_kind_t::request_protocol_error,
-              "request call is not bound to a channel client");
+            co_return result_t<TReply>::failure (framework_error_kind_t::request_protocol_error,
+                                                 "request call is not bound to a channel client");
         }
         auto yield_turn = detail::capture_current_serial_yield_turn ();
         if (!yield_turn) {
-            co_return result_t<TReply>::failure (
-              framework_error_kind_t::request_protocol_error,
-              "yield requires a framework Spot handler turn");
+            co_return result_t<TReply>::failure (framework_error_kind_t::request_protocol_error,
+                                                 "yield requires a framework Spot handler turn");
         }
         if (!yield_turn->release ()) {
             co_return result_t<TReply>::failure (
               framework_error_kind_t::request_protocol_error,
               "yield could not release the current Spot handler turn");
         }
-        auto reply = co_await detail::reschedule_task (
-          _submit (_packet_name, _timeout, _metadata), yield_turn->resume_scheduler ());
+        auto reply = co_await detail::reschedule_task (_submit (_packet_name, _timeout, _metadata),
+                                                       yield_turn->resume_scheduler ());
         if (_serializers == nullptr) {
-            co_return result_t<TReply>::failure (
-              framework_error_kind_t::request_protocol_error,
-              "channel request has no serializer registry");
+            co_return result_t<TReply>::failure (framework_error_kind_t::request_protocol_error,
+                                                 "channel request has no serializer registry");
         }
         try {
             co_return _serializers->get<TReply> ().deserialize (
               detail::encoded_payload_from_raw (reply));
         }
         catch (const framework_exception_t &error) {
-            co_return result_t<TReply>::failure (
-              error.kind (), error.what (), error.is_retriable ());
+            co_return result_t<TReply>::failure (error.kind (), error.what (),
+                                                 error.is_retriable ());
         }
     }
 
@@ -246,10 +241,7 @@ class send_call_t
         return *this;
     }
 
-    void submit ()
-    {
-        (void) submit_now ();
-    }
+    void submit () { (void) submit_now (); }
 
   private:
     result_t<void> submit_now ()
@@ -274,9 +266,7 @@ class send_call_t
 class bound_session_send_call_t
 {
   public:
-    explicit bound_session_send_call_t (send_call_t call) : _call (std::move (call))
-    {
-    }
+    explicit bound_session_send_call_t (send_call_t call) : _call (std::move (call)) {}
 
     bound_session_send_call_t &timeout (std::chrono::milliseconds timeout)
     {

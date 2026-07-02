@@ -65,14 +65,12 @@ class channel_host_service_t::server_loop_t
                                                + "' discovery attach failed: " + error.what ());
             }
         }
-        _monitor = _router->monitor_open (zlink::monitor_event::connected
-                                          | zlink::monitor_event::accepted
-                                          | zlink::monitor_event::connection_ready
-                                          | zlink::monitor_event::disconnected
-                                          | zlink::monitor_event::closed
-                                          | zlink::monitor_event::handshake_failed_no_detail
-                                          | zlink::monitor_event::handshake_failed_protocol
-                                          | zlink::monitor_event::handshake_failed_auth);
+        _monitor = _router->monitor_open (
+          zlink::monitor_event::connected | zlink::monitor_event::accepted
+          | zlink::monitor_event::connection_ready | zlink::monitor_event::disconnected
+          | zlink::monitor_event::closed | zlink::monitor_event::handshake_failed_no_detail
+          | zlink::monitor_event::handshake_failed_protocol
+          | zlink::monitor_event::handshake_failed_auth);
         for (const auto &endpoint : _endpoints) {
             _router->bind (endpoint);
         }
@@ -158,10 +156,7 @@ class channel_host_service_t::server_loop_t
         zlink::framework::runtime::messaging::message_parts_t parts;
     };
 
-    static zlink::message_t clone (const zlink::message_t &message)
-    {
-        return message;
-    }
+    static zlink::message_t clone (const zlink::message_t &message) { return message; }
 
     static zlink::framework::runtime::messaging::message_parts_t
     copy_parts (const std::vector<zlink::message_t> &parts)
@@ -254,8 +249,8 @@ class channel_host_service_t::server_loop_t
     void apply_runtime_options ()
     {
         const auto peer_weight = _runtime.server_peer_weight_override (_channel_name);
-        if (!peer_weight || (_applied_peer_weight && _applied_peer_weight->value ()
-                                                     == peer_weight->value ())) {
+        if (!peer_weight
+            || (_applied_peer_weight && _applied_peer_weight->value () == peer_weight->value ())) {
             return;
         }
         _router->options ().peer_weight (*peer_weight);
@@ -315,17 +310,14 @@ class channel_host_service_t::server_loop_t
                     _pending_handshake_remotes.erase (event->remote_addr);
                 } else if (*kind == socket_event_kind_t::disconnected
                            && _pending_handshake_remotes.erase (event->remote_addr) != 0) {
-                    _runtime.publish_socket_event (_channel_name,
-                                                   socket_event_kind_t::handshake_failed,
-                                                   event->local_addr, event->remote_addr,
-                                                   static_cast<std::uint32_t> (event->event),
-                                                   event->value);
+                    _runtime.publish_socket_event (
+                      _channel_name, socket_event_kind_t::handshake_failed, event->local_addr,
+                      event->remote_addr, static_cast<std::uint32_t> (event->event), event->value);
                 }
             }
             _runtime.publish_socket_event (_channel_name, *kind, event->local_addr,
                                            event->remote_addr,
-                                           static_cast<std::uint32_t> (event->event),
-                                           event->value);
+                                           static_cast<std::uint32_t> (event->event), event->value);
         }
     }
 
@@ -429,10 +421,7 @@ class channel_host_service_t::subscriber_loop_t
     }
 
   private:
-    static zlink::message_t clone (const zlink::message_t &message)
-    {
-        return message;
-    }
+    static zlink::message_t clone (const zlink::message_t &message) { return message; }
 
     static zlink::framework::runtime::messaging::message_parts_t
     copy_parts (const std::vector<zlink::message_t> &parts)

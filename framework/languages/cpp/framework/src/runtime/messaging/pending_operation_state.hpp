@@ -31,10 +31,7 @@ struct pending_operation_state_t
         return true;
     }
 
-    bool try_fail (std::exception_ptr) noexcept
-    {
-        return try_complete ();
-    }
+    bool try_fail (std::exception_ptr) noexcept { return try_complete (); }
 };
 
 } // namespace zlink::framework::detail

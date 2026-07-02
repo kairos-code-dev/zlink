@@ -14,11 +14,17 @@
 
 #include <algorithm>
 #include <cerrno>
+#include <cstring>
 #include <exception>
+#include <fcntl.h>
 #include <future>
+#include <netdb.h>
 #include <mutex>
 #include <optional>
+#include <poll.h>
 #include <thread>
+#include <sys/socket.h>
+#include <unistd.h>
 #include <utility>
 
 namespace zlink::framework::detail
@@ -72,6 +78,74 @@ bool runtime_is_stopping (const channel_runtime_state_t &state)
     return state.shutdown || state.closed;
 }
 
+std::optional<std::pair<std::string, std::string>> parse_tcp_endpoint (
+  const std::string &endpoint)
+{
+    constexpr const char *prefix = "tcp://";
+    if (endpoint.rfind (prefix, 0) != 0) {
+        return std::nullopt;
+    }
+    const auto address = endpoint.substr (std::strlen (prefix));
+    const auto separator = address.rfind (':');
+    if (separator == std::string::npos || separator == 0 || separator + 1 >= address.size ()) {
+        return std::nullopt;
+    }
+    return std::make_pair (address.substr (0, separator), address.substr (separator + 1));
+}
+
+bool tcp_endpoint_accepts_connection (const std::string &endpoint,
+                                      std::chrono::milliseconds timeout)
+{
+    const auto parsed = parse_tcp_endpoint (endpoint);
+    if (!parsed) {
+        return true;
+    }
+
+    addrinfo hints{};
+    hints.ai_socktype = SOCK_STREAM;
+    hints.ai_family = AF_UNSPEC;
+    addrinfo *addresses = nullptr;
+    if (getaddrinfo (parsed->first.c_str (), parsed->second.c_str (), &hints, &addresses) != 0) {
+        return false;
+    }
+    std::unique_ptr<addrinfo, decltype (&freeaddrinfo)> cleanup (addresses, freeaddrinfo);
+    const auto poll_timeout =
+      static_cast<int> (std::max<std::chrono::milliseconds> (timeout, std::chrono::milliseconds (1))
+                          .count ());
+
+    for (auto *address = addresses; address != nullptr; address = address->ai_next) {
+        const int fd = ::socket (address->ai_family, address->ai_socktype, address->ai_protocol);
+        if (fd < 0) {
+            continue;
+        }
+        const int flags = fcntl (fd, F_GETFL, 0);
+        if (flags >= 0) {
+            (void) fcntl (fd, F_SETFL, flags | O_NONBLOCK);
+        }
+        const int connected = ::connect (fd, address->ai_addr, address->ai_addrlen);
+        if (connected == 0) {
+            ::close (fd);
+            return true;
+        }
+        if (errno == EINPROGRESS) {
+            pollfd poll_entry{};
+            poll_entry.fd = fd;
+            poll_entry.events = POLLOUT;
+            if (::poll (&poll_entry, 1, poll_timeout) > 0) {
+                int error = 0;
+                socklen_t error_size = sizeof (error);
+                if (::getsockopt (fd, SOL_SOCKET, SO_ERROR, &error, &error_size) == 0
+                    && error == 0) {
+                    ::close (fd);
+                    return true;
+                }
+            }
+        }
+        ::close (fd);
+    }
+    return false;
+}
+
 struct socket_close_guard_t
 {
     zlink::socket_t *socket = nullptr;
@@ -88,6 +162,37 @@ struct socket_close_guard_t
         }
     }
 };
+
+void abandon_pending_native_request (
+  std::unique_ptr<zlink::context_t> &context,
+  std::unique_ptr<zlink::dealer_socket_t> &dealer,
+  socket_close_guard_t &close_dealer,
+  std::unique_ptr<zlink::service::discovery_t> &discovery,
+  std::unique_ptr<zlink::async_result_t<std::vector<zlink::message_t>>> &native_request)
+{
+    if (dealer) {
+        dealer->options ().linger (std::chrono::milliseconds (0));
+    }
+    if (context) {
+        try {
+            context->options ().blocky (false);
+        }
+        catch (...) {
+        }
+        try {
+            context->shutdown ();
+        }
+        catch (...) {
+        }
+    }
+    close_dealer.socket = nullptr;
+    dealer.reset ();
+    // The native request API has no cancel handle. Abandon this per-request
+    // context so public timeout/shutdown semantics can complete promptly.
+    (void) discovery.release ();
+    (void) context.release ();
+    (void) native_request.release ();
+}
 
 framework_exception_t map_native_request_exception (const std::exception &error)
 {
@@ -185,6 +290,29 @@ select_weighted_discovery_endpoint (const std::shared_ptr<channel_runtime_state_
         }
         std::this_thread::sleep_for (std::chrono::milliseconds (50));
     }
+}
+
+std::optional<std::string>
+last_discovery_request_endpoint (const std::shared_ptr<channel_runtime_state_t> &state,
+                                 const std::string &channel_name)
+{
+    std::lock_guard lock (state->mutex);
+    const auto found = state->last_discovery_request_endpoints.find (channel_name);
+    if (found == state->last_discovery_request_endpoints.end () || found->second.empty ()) {
+        return std::nullopt;
+    }
+    return found->second;
+}
+
+void remember_discovery_request_endpoint (const std::shared_ptr<channel_runtime_state_t> &state,
+                                          const std::string &channel_name,
+                                          const std::optional<std::string> &endpoint)
+{
+    if (!endpoint || endpoint->empty ()) {
+        return;
+    }
+    std::lock_guard lock (state->mutex);
+    state->last_discovery_request_endpoints[channel_name] = *endpoint;
 }
 
 } // namespace
@@ -374,6 +502,7 @@ channel_outbound_exchange_t::submit_request (std::string channel_name,
             const std::size_t attempt_count =
               client_uses_discovery && endpoints.empty () ? 1 : endpoints.size ();
             for (std::size_t attempt = 0; attempt < attempt_count; ++attempt) {
+                std::optional<std::string> discovery_request_endpoint;
                 try {
                     const auto connect_timeout = remaining_timeout ();
                     if (timeout > std::chrono::milliseconds::zero ()
@@ -395,12 +524,30 @@ channel_outbound_exchange_t::submit_request (std::string channel_name,
                     if (client_uses_discovery && endpoints.empty ()) {
                         discovery = std::make_unique<zlink::service::discovery_t> (
                           *context, zlink::auto_connect_type::client_server, channel_name);
+                        bool connected_registry = false;
                         for (const auto &registry_endpoint : _state->discovery.registry_endpoints) {
+                            const auto registry_timeout = remaining_timeout ();
+                            if (timeout > std::chrono::milliseconds::zero ()
+                                && registry_timeout <= std::chrono::milliseconds::zero ()) {
+                                throw framework_exception_t (framework_error_kind_t::timeout,
+                                                             "channel request timed out");
+                            }
+                            if (!tcp_endpoint_accepts_connection (registry_endpoint,
+                                                                  registry_timeout)) {
+                                continue;
+                            }
                             connect_registry_with_retry (*discovery, registry_endpoint);
+                            connected_registry = true;
                         }
-                        auto endpoint = select_weighted_discovery_endpoint (
-                          _state, *discovery, channel_name, connect_timeout);
+                        auto endpoint = connected_registry
+                                          ? select_weighted_discovery_endpoint (
+                                              _state, *discovery, channel_name, connect_timeout)
+                                          : last_discovery_request_endpoint (_state, channel_name);
+                        if (!endpoint) {
+                            endpoint = last_discovery_request_endpoint (_state, channel_name);
+                        }
                         if (endpoint) {
+                            discovery_request_endpoint = endpoint;
                             dealer->connect (*endpoint);
                         } else {
                             dealer->attach_discovery (*discovery);
@@ -433,30 +580,15 @@ channel_outbound_exchange_t::submit_request (std::string channel_name,
                     while (native_request->wait_for (std::chrono::milliseconds (50))
                            != std::future_status::ready) {
                         if (runtime_is_stopping (*_state)) {
-                            dealer->options ().linger (std::chrono::milliseconds (0));
-                            try {
-                                context->options ().blocky (false);
-                            }
-                            catch (...) {
-                            }
-                            try {
-                                context->shutdown ();
-                            }
-                            catch (...) {
-                            }
-                            close_dealer.socket = nullptr;
-                            dealer.reset ();
-                            // The native request API has no cancel handle. During framework
-                            // shutdown, abandon this per-request native context so the Spot
-                            // handler can complete with a public shutdown error.
-                            (void) discovery.release ();
-                            (void) context.release ();
-                            (void) native_request.release ();
+                            abandon_pending_native_request (
+                              context, dealer, close_dealer, discovery, native_request);
                             throw framework_exception_t (framework_error_kind_t::shutdown,
                                                          "channel runtime is shutting down");
                         }
                         if (timeout > std::chrono::milliseconds::zero ()
                             && std::chrono::steady_clock::now () >= deadline) {
+                            abandon_pending_native_request (
+                              context, dealer, close_dealer, discovery, native_request);
                             throw framework_exception_t (framework_error_kind_t::timeout,
                                                          "channel request timed out");
                         }
@@ -482,6 +614,10 @@ channel_outbound_exchange_t::submit_request (std::string channel_name,
                                                        : "channel reply decode failed");
                     }
                     reply_parts = std::move (candidate_reply_parts);
+                    if (client_uses_discovery && endpoints.empty ()) {
+                        remember_discovery_request_endpoint (
+                          _state, channel_name, discovery_request_endpoint);
+                    }
                     received_reply = true;
                     break;
                 }

@@ -4,6 +4,44 @@ set -euo pipefail
 ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 FRAMEWORK_DIR="$(cd "$ROOT_DIR/../.." && pwd)"
 BUILD_DIR="${ZLINK_CPP_E2E_BUILD_DIR:-$FRAMEWORK_DIR/build}"
+LOCAL_READINESS_TIMEOUT_SECONDS=3
+LOCAL_READINESS_POLL_SECONDS=0.1
+ROUTE_SETTLE_SECONDS=5
+SCENARIO_SETTLE_SECONDS=3
+HTTP_PROBE_TIMEOUT_SECONDS=3
+PROCESS_SHUTDOWN_TIMEOUT_SECONDS=3
+PROCESS_SHUTDOWN_POLL_SECONDS=0.1
+SCENARIO_MARKER_TIMEOUT_SECONDS=30
+LOCAL_READINESS_ATTEMPTS="$(
+  python3 - "$LOCAL_READINESS_TIMEOUT_SECONDS" "$LOCAL_READINESS_POLL_SECONDS" <<'PY'
+import math
+import sys
+
+timeout = float(sys.argv[1])
+poll = float(sys.argv[2])
+print(max(1, math.ceil(timeout / poll)))
+PY
+)"
+PROCESS_SHUTDOWN_ATTEMPTS="$(
+  python3 - "$PROCESS_SHUTDOWN_TIMEOUT_SECONDS" "$PROCESS_SHUTDOWN_POLL_SECONDS" <<'PY'
+import math
+import sys
+
+timeout = float(sys.argv[1])
+poll = float(sys.argv[2])
+print(max(1, math.ceil(timeout / poll)))
+PY
+)"
+SCENARIO_MARKER_ATTEMPTS="$(
+  python3 - "$SCENARIO_MARKER_TIMEOUT_SECONDS" "$LOCAL_READINESS_POLL_SECONDS" <<'PY'
+import math
+import sys
+
+timeout = float(sys.argv[1])
+poll = float(sys.argv[2])
+print(max(1, math.ceil(timeout / poll)))
+PY
+)"
 RUN_ID="$(date +%Y%m%d-%H%M%S)-$$"
 LOG_DIR="$ROOT_DIR/logs/$RUN_ID"
 mkdir -p "$LOG_DIR"
@@ -113,7 +151,7 @@ cleanup() {
       kill "$pid" >/dev/null 2>&1 || true
     fi
   done
-  for _ in $(seq 1 20); do
+  for _ in $(seq 1 "$PROCESS_SHUTDOWN_ATTEMPTS"); do
     local alive=0
     for pid in "${PIDS[@]:-}"; do
       if kill -0 "$pid" >/dev/null 2>&1; then
@@ -122,7 +160,7 @@ cleanup() {
       fi
     done
     [[ $alive -eq 0 ]] && break
-    sleep 0.05
+    sleep "$PROCESS_SHUTDOWN_POLL_SECONDS"
   done
   for pid in "${PIDS[@]:-}"; do
     if kill -0 "$pid" >/dev/null 2>&1; then
@@ -156,13 +194,13 @@ wait_port() {
   local port
   host="$(host_of "$endpoint")"
   port="$(port_of "$endpoint")"
-  for _ in $(seq 1 60); do
+  for _ in $(seq 1 "$LOCAL_READINESS_ATTEMPTS"); do
     if (echo >"/dev/tcp/${host}/${port}") >/dev/null 2>&1; then
       return 0
     fi
-    sleep 0.05
+    sleep "$LOCAL_READINESS_POLL_SECONDS"
   done
-  echo "Timed out waiting for $name at $endpoint" >&2
+  echo "Timed out waiting ${LOCAL_READINESS_TIMEOUT_SECONDS}s for $name at $endpoint" >&2
   return 1
 }
 
@@ -217,7 +255,7 @@ wait_file_contains() {
   local pattern="$2"
   local message="$3"
   local watched_pid="${4:-}"
-  local attempts="${5:-60}"
+  local attempts="${5:-$SCENARIO_MARKER_ATTEMPTS}"
   for _ in $(seq 1 "$attempts"); do
     if [[ -f "$file" ]] && grep -Fq "$pattern" "$file"; then
       return 0
@@ -228,7 +266,7 @@ wait_file_contains() {
       fi
       break
     fi
-    sleep 0.05
+    sleep "$LOCAL_READINESS_POLL_SECONDS"
   done
   echo "$message" >&2
   return 1
@@ -238,12 +276,12 @@ terminate_gracefully() {
   local name="$1"
   local pid="$2"
   kill "$pid" >/dev/null 2>&1 || true
-  for _ in $(seq 1 60); do
+  for _ in $(seq 1 "$PROCESS_SHUTDOWN_ATTEMPTS"); do
     if ! kill -0 "$pid" >/dev/null 2>&1; then
       wait "$pid" >/dev/null 2>&1 || true
       return 0
     fi
-    sleep 0.05
+    sleep "$PROCESS_SHUTDOWN_POLL_SECONDS"
   done
   echo "$name did not exit after SIGTERM" >&2
   kill -9 "$pid" >/dev/null 2>&1 || true
@@ -380,7 +418,7 @@ wait "$SHUTDOWN_CLIENT_PID"
 
 start_play_role play-a "$PLAY_A_HTTP" "$PLAY_A_CONTROL" "$PLAY_A_SPOT_ROUTE" "$PLAY_A_SPOT_ROUTER" "$PLAY_A_SPOT_PUB" "$DELAY_A_ENDPOINT"
 PLAY_A_PID="${PIDS[-1]}"
-sleep 1
+  sleep "$SCENARIO_SETTLE_SECONDS"
 
 ZLINK_CPP_E2E_STREAM_ENDPOINT="$SESSION_A_STREAM" \
 ZLINK_CPP_E2E_SESSION_B_STREAM_ENDPOINT="$SESSION_B_STREAM" \

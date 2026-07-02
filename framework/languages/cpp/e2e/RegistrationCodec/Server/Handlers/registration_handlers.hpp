@@ -56,4 +56,37 @@ class manual_route_handler_t
     }
 };
 
+class manual_channel_request_handler_t
+{
+  public:
+    using request_type = echo_manual_req_t;
+    using reply_type = echo_manual_res_t;
+
+    echo_manual_res_t handle (const echo_manual_req_t &request,
+                              const zlink::framework::request_context_t &context)
+    {
+        return {.value = "manual:" + request.value,
+                .packet_name = context.packet_name,
+                .content_type = context.content_type};
+    }
+};
+
+class manual_channel_send_handler_t
+{
+  public:
+    using dependency_types = zlink::framework::dependency_list_t<scenario_state_t>;
+    using message_type = echo_manual_msg_t;
+
+    explicit manual_channel_send_handler_t (scenario_state_t &state) : _state (state) {}
+
+    void handle (const echo_manual_msg_t &message,
+                 const zlink::framework::send_context_t &context)
+    {
+        _state.record ("RC-A3-send", context.content_type + ":" + message.value);
+    }
+
+  private:
+    scenario_state_t &_state;
+};
+
 } // namespace zlink::framework::e2e::registration_codec::server

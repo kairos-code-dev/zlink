@@ -3,7 +3,6 @@
 
 #include "../../Shared/spot_service_contracts.hpp"
 
-#include <zlink/framework.hpp>
 #include <zlink/http_client.hpp>
 
 #include <chrono>
@@ -28,27 +27,21 @@ inline multi_node_create_spot_res_t post_sm_q9_create (
     return nlohmann::json::parse (raw.value ().body).get<multi_node_create_spot_res_t> ();
 }
 
-inline state_res_t request_sm_q9_state (zlink::framework::route_client_t &routes,
-                                        const std::string &route_channel,
-                                        const std::string &target_node_rid,
+inline state_res_t request_sm_q9_state (zlink::http_client::client_t &client,
                                         const std::string &spot_rid,
                                         int delta,
                                         const std::string &label)
 {
-    auto reply = routes
-                   .request (route_channel, zlink::routing_id_t::from (target_node_rid),
-                             zlink::framework::spot_rid_t::from_string (spot_rid),
-                             state_req_t{.op = "add", .amount = delta})
-                   .packet_name ("StateReq")
-                   .timeout (std::chrono::milliseconds (3000))
-                   .async<state_res_t> ()
-                   .result ();
-    if (reply.has_value ()) {
-        return reply.value ();
+    auto raw = client.post ("/spot/state/request")
+                 .body (multi_node_state_route_req_t{.spot_rid = spot_rid, .delta = delta})
+                 .submit_raw ()
+                 .result ();
+    if (raw && raw.value ().status < 400) {
+        return nlohmann::json::parse (raw.value ().body).get<state_res_t> ();
     }
     throw std::runtime_error (
       "SM-Q9 state request failed for " + label + ": "
-      + (reply.error () ? reply.error ()->what () : "unknown route error"));
+      + (raw ? raw.value ().body : (raw.error () ? raw.error ()->what () : "HTTP failed")));
 }
 
 inline evidence_snapshot_t fetch_sm_q9_evidence (zlink::http_client::client_t &client,
@@ -77,12 +70,15 @@ inline int count_sm_q9_state_evidence (const evidence_snapshot_t &snapshot,
     return count;
 }
 
-inline void run_sm_q9_scenario (zlink::framework::route_client_t &routes,
-                                const std::string &multi_a_http_endpoint,
-                                const std::string &multi_b_http_endpoint)
+inline void run_sm_q9_scenario (const std::string &multi_a_http_endpoint,
+                                const std::string &multi_b_http_endpoint,
+                                const std::string &multi_a_request_http_endpoint,
+                                const std::string &multi_b_request_http_endpoint)
 {
-    if (multi_a_http_endpoint.empty () || multi_b_http_endpoint.empty ()) {
-        throw std::runtime_error ("SM-Q9 requires both multi-node HTTP endpoints");
+    if (multi_a_http_endpoint.empty () || multi_b_http_endpoint.empty ()
+        || multi_a_request_http_endpoint.empty () || multi_b_request_http_endpoint.empty ()) {
+        throw std::runtime_error (
+          "SM-Q9 requires multi-node and route-requester HTTP endpoints");
     }
 
     auto multi_a = zlink::http_client::client_t::create ()
@@ -91,6 +87,12 @@ inline void run_sm_q9_scenario (zlink::framework::route_client_t &routes,
     auto multi_b = zlink::http_client::client_t::create ()
                      .base_url (multi_b_http_endpoint)
                      .build ();
+    auto requester_a = zlink::http_client::client_t::create ()
+                         .base_url (multi_a_request_http_endpoint)
+                         .build ();
+    auto requester_b = zlink::http_client::client_t::create ()
+                         .base_url (multi_b_request_http_endpoint)
+                         .build ();
 
     constexpr auto spot_a = "spot-sm-q9-a-cpp";
     constexpr auto spot_b = "spot-sm-q9-b-cpp";
@@ -98,10 +100,8 @@ inline void run_sm_q9_scenario (zlink::framework::route_client_t &routes,
     const auto created_a =
       post_sm_q9_create (multi_a, multi_node_create_spot_req_t{.spot_rid = spot_a},
                          "node A");
-    const auto first_a = request_sm_q9_state (routes, multi_route_channel_a, "multi-a", spot_a,
-                                              11, "node A first");
-    const auto direct_a = request_sm_q9_state (routes, multi_route_channel_a, "multi-a", spot_a,
-                                               0, "node A direct");
+    const auto first_a = request_sm_q9_state (requester_a, spot_a, 11, "node A first");
+    const auto direct_a = request_sm_q9_state (requester_a, spot_a, 0, "node A direct");
     const auto evidence_a = fetch_sm_q9_evidence (multi_a, "node A");
 
     if (created_a.node_rid != "multi-a") {
@@ -118,10 +118,8 @@ inline void run_sm_q9_scenario (zlink::framework::route_client_t &routes,
     const auto created_b =
       post_sm_q9_create (multi_b, multi_node_create_spot_req_t{.spot_rid = spot_b},
                          "node B");
-    const auto first_b = request_sm_q9_state (routes, multi_route_channel_b, "multi-b", spot_b,
-                                              17, "node B first");
-    const auto direct_b = request_sm_q9_state (routes, multi_route_channel_b, "multi-b", spot_b,
-                                               0, "node B direct");
+    const auto first_b = request_sm_q9_state (requester_b, spot_b, 17, "node B first");
+    const auto direct_b = request_sm_q9_state (requester_b, spot_b, 0, "node B direct");
     const auto evidence_b = fetch_sm_q9_evidence (multi_b, "node B");
 
     if (created_b.node_rid != "multi-b") {

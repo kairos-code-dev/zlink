@@ -50,10 +50,8 @@ inline void wait_provider_weight_on (zlink::http_client::client_t &provider, int
       .value ();
 }
 
-inline void run_rl_b4_runtime_drain_scenario (zlink::framework::channel_client_t &channels)
+inline void run_rl_b4_runtime_drain_scenario ()
 {
-    (void) channels;
-
     auto consumer = zlink::http_client::client_t::create ()
                       .base_url (env_or ("ZLINK_CPP_E2E_HTTP_CONSUMER_ENDPOINT"))
                       .timeout (std::chrono::milliseconds (10000))

@@ -8,23 +8,13 @@
 namespace zlink::framework::e2e::registration_codec::client
 {
 
-inline void run_messagepack_codec_scenario (zlink::framework::channel_client_t &channels,
-                                            const std::string &http_endpoint)
+inline void run_messagepack_codec_scenario (const codec_roundtrip_scenario_res_t &roundtrip)
 {
-    auto request =
-      channels.request (api_channel, messagepack_roundtrip_req_t{.value = "b3"})
-        .timeout (std::chrono::milliseconds (2000))
-        .async<messagepack_roundtrip_res_t> ();
-    ensure (request.result ().has_value (), "RC-B3 request failed");
-    ensure (request.result ().value ().value == "messagepack:b3", "RC-B3 reply mismatch");
-    ensure (request.result ().value ().content_type == "application/x-msgpack",
+    ensure (roundtrip.messagepack.value == "messagepack:b3", "RC-B3 reply mismatch");
+    ensure (roundtrip.messagepack.content_type == "application/x-msgpack",
             "RC-B3 content type mismatch");
-
-    channels.send (api_channel, messagepack_codec_msg_t{.value = "send-b3"})
-      .timeout (std::chrono::milliseconds (2000))
-      .submit ();
-    ensure (evidence_contains (http_endpoint, "RC-B3-send", "application/x-msgpack:send-b3"),
-            "RC-B3 send evidence mismatch");
+    wait_evidence_contains (env_or ("ZLINK_CPP_E2E_HTTP_ENDPOINT"), "RC-B3-send",
+                            "application/x-msgpack:send-b3", std::chrono::seconds (10));
     std::cout << "scenario RC-B3 passed\n";
 }
 

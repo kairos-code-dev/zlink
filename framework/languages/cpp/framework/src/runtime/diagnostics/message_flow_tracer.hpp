@@ -27,8 +27,8 @@ namespace zlink::framework::detail
 //
 // Mode gating (modes are ordered off < errors_only < key_transitions < verbose
 // < diagnostic):
-    //   * received / dispatched / replied / sent / reply_received require key_transitions+.
-    //   * dropped / error require errors_only or higher.
+//   * received / dispatched / replied / sent / reply_received require key_transitions+.
+//   * dropped / error require errors_only or higher.
 //   * message sizes are appended only at verbose+ when include_message_sizes.
 class message_flow_tracer_t
 {
@@ -55,13 +55,13 @@ class message_flow_tracer_t
 
     // Lazy form: the event (and its string fields) is built only after the cheap
     // mode/sample gate passes, so an "off" dispatch pays nothing but the gate.
-    template <typename Fn> void trace (message_flow_outcome_t outcome, Fn &&build_event) const noexcept
+    template <typename Fn>
+    void trace (message_flow_outcome_t outcome, Fn &&build_event) const noexcept
     {
         if (!enabled_for (outcome)) {
             return;
         }
-        if (outcome != message_flow_outcome_t::dropped
-            && outcome != message_flow_outcome_t::error
+        if (outcome != message_flow_outcome_t::dropped && outcome != message_flow_outcome_t::error
             && !sample (_options->diagnostics.sample_rate ())) {
             return;
         }
@@ -105,15 +105,14 @@ class message_flow_tracer_t
               const message_flow_event_t &event) { callback (event); },
           [logger = _options->diagnostics_logger] {
               observer_failure_count ().fetch_add (1, std::memory_order_relaxed);
-              diagnostic_event_sink_t::log_or_clog (
-                logger, log_level_t::error, "message flow observer failed",
-                "zlink framework observer error:", {});
+              diagnostic_event_sink_t::log_or_clog (logger, log_level_t::error,
+                                                    "message flow observer failed",
+                                                    "zlink framework observer error:", {});
           },
           [] { observer_dropped_count ().fetch_add (1, std::memory_order_relaxed); });
     }
 
   public:
-
     static std::uint64_t traced () noexcept
     {
         return traced_count ().load (std::memory_order_relaxed);
@@ -198,8 +197,8 @@ class message_flow_tracer_t
             // sink renders them and a collector callback gets record.fields); fall
             // back to a flat clog line when no logger is wired (tests, no-app usage).
             diagnostic_event_sink_t::log_or_clog (_options->diagnostics_logger, log_level_t::info,
-                                                  "message flow", "zlink flow:",
-                                                  std::move (fields));
+                                                  "message flow",
+                                                  "zlink flow:", std::move (fields));
         }
         catch (...) {
             observer_failure_count ().fetch_add (1, std::memory_order_relaxed);

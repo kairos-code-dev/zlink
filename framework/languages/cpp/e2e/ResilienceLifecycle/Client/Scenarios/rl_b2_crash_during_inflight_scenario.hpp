@@ -33,10 +33,8 @@ inline bool file_contains (const std::string &path, const std::string &text)
     return false;
 }
 
-inline void run_inflight_crash_scenario (zlink::framework::channel_client_t &channels)
+inline void run_inflight_crash_scenario ()
 {
-    (void) channels;
-
     auto consumer = zlink::http_client::client_t::create ()
                       .base_url (env_or ("ZLINK_CPP_E2E_HTTP_CONSUMER_ENDPOINT"))
                       .timeout (std::chrono::milliseconds (10000))

@@ -85,10 +85,9 @@ result_t<runtime::messaging::message_parts_t> channel_packet_dispatcher_t::dispa
     }
 
     if (header.value ().kind == runtime::messaging::message_kind_t::request) {
-        auto reply = _runtime.dispatch_request (channel_name, header.value ().topic.value_or (""),
-                                                header.value ().message_name, services, serializers,
-                                                handlers, body.value (),
-                                                header.value ().content_type);
+        auto reply = _runtime.dispatch_request (
+          channel_name, header.value ().topic.value_or (""), header.value ().message_name, services,
+          serializers, handlers, body.value (), header.value ().content_type);
         channel_reply_writer_t writer;
         if (!reply) {
             framework_exception_t error (reply.error_kind (), reply.error ()
@@ -128,10 +127,9 @@ result_t<runtime::messaging::message_parts_t> channel_packet_dispatcher_t::dispa
 
     if (header.value ().kind == runtime::messaging::message_kind_t::command
         || header.value ().kind == runtime::messaging::message_kind_t::publish) {
-        auto result = _runtime.dispatch_send (channel_name, header.value ().topic.value_or (""),
-                                              header.value ().message_name, services, serializers,
-                                              handlers, body.value (),
-                                              header.value ().content_type);
+        auto result = _runtime.dispatch_send (
+          channel_name, header.value ().topic.value_or (""), header.value ().message_name, services,
+          serializers, handlers, body.value (), header.value ().content_type);
         if (!result) {
             dispatch_error_reporter_t (_runtime.dispatch_options ())
               .report (message_dispatch_error_event_t{

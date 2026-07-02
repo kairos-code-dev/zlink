@@ -69,9 +69,8 @@ result_t<zlink::message_t> spot_route_internal_dispatcher_t::dispatch_request (
 
     try {
         if (header.message_name == spot_actor_packet_route_request_t::packet_name) {
-            auto request =
-              _serializers->get<spot_actor_packet_route_request_t> ().deserialize (
-                detail::encoded_payload_from_raw (body.value ()));
+            auto request = _serializers->get<spot_actor_packet_route_request_t> ().deserialize (
+              detail::encoded_payload_from_raw (body.value ()));
             auto runtime = _runtime;
             auto actor_ref = actor_ref_from_spot_route (request);
             auto actor_gateway = bind_actor_route (actor_ref, header, received);
@@ -98,9 +97,8 @@ result_t<zlink::message_t> spot_route_internal_dispatcher_t::dispatch_request (
               .has_reply = relayed.value ().has_value (),
               .payload =
                 relayed.value () ? relayed.value ()->to_bytes () : std::vector<std::uint8_t>{}};
-            return result_t<zlink::message_t>::success (
-              detail::encoded_payload_to_raw (
-                _serializers->get<spot_actor_packet_route_reply_t> ().serialize (reply)));
+            return result_t<zlink::message_t>::success (detail::encoded_payload_to_raw (
+              _serializers->get<spot_actor_packet_route_reply_t> ().serialize (reply)));
         }
         if (header.message_name == spot_actor_disconnect_route_request_t::packet_name) {
             auto request = _serializers->get<spot_actor_disconnect_route_request_t> ().deserialize (
@@ -113,34 +111,30 @@ result_t<zlink::message_t> spot_route_internal_dispatcher_t::dispatch_request (
                                                 ? disconnected.error ()->what ()
                                                 : "remote actor disconnect notify failed");
             }
-            return result_t<zlink::message_t>::success (
-              detail::encoded_payload_to_raw (
-                _serializers->get<spot_actor_disconnect_route_reply_t> ().serialize (
-                  spot_actor_disconnect_route_reply_t{})));
+            return result_t<zlink::message_t>::success (detail::encoded_payload_to_raw (
+              _serializers->get<spot_actor_disconnect_route_reply_t> ().serialize (
+                spot_actor_disconnect_route_reply_t{})));
         }
-        auto request =
-          _serializers->get<spot_actor_join_route_request_t> ().deserialize (
-            detail::encoded_payload_from_raw (body.value ()));
+        auto request = _serializers->get<spot_actor_join_route_request_t> ().deserialize (
+          detail::encoded_payload_from_raw (body.value ()));
         auto runtime = _runtime;
         auto actor_ref = actor_ref_from_spot_route (request);
         bind_actor_route (actor_ref, header, received);
-        auto joined = request.spot_rid.empty ()
-                        ? runtime.join_actor_to_entry_spot_erased (
-                            actor_ref, actor_ref.node_rid (),
-                            zlink::message_t::from (request.payload))
-                        : runtime.join_remote_actor_to_spot_erased (
-                            actor_ref, spot_rid_t::from_string (request.spot_rid),
-                            zlink::message_t::from (request.payload),
-                            _actor_gateway.actor_context (actor_ref));
+        auto joined =
+          request.spot_rid.empty ()
+            ? runtime.join_actor_to_entry_spot_erased (actor_ref, actor_ref.node_rid (),
+                                                       zlink::message_t::from (request.payload))
+            : runtime.join_remote_actor_to_spot_erased (
+                actor_ref, spot_rid_t::from_string (request.spot_rid),
+                zlink::message_t::from (request.payload), _actor_gateway.actor_context (actor_ref));
         if (!joined) {
             return result_t<zlink::message_t>::failure (
               joined.error_kind (),
               joined.error () ? joined.error ()->what () : "remote actor join failed");
         }
         auto reply = make_spot_actor_join_route_reply (joined.value ());
-        return result_t<zlink::message_t>::success (
-          detail::encoded_payload_to_raw (
-            _serializers->get<spot_actor_join_route_reply_t> ().serialize (reply)));
+        return result_t<zlink::message_t>::success (detail::encoded_payload_to_raw (
+          _serializers->get<spot_actor_join_route_reply_t> ().serialize (reply)));
     }
     catch (const framework_exception_t &error) {
         return result_t<zlink::message_t>::failure (error.kind (), error.what (),

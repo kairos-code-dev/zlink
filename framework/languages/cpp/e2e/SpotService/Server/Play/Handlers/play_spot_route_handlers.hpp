@@ -112,6 +112,39 @@ class direct_spot_route_handler_t
     zlink::framework::route_client_t &_routes;
 };
 
+class direct_spot_command_route_handler_t
+{
+  public:
+    using dependency_types =
+      zlink::framework::dependency_list_t<zlink::framework::route_client_t>;
+
+    explicit direct_spot_command_route_handler_t (zlink::framework::route_client_t &routes) :
+        _routes (routes)
+    {
+    }
+
+    zlink::framework::http_response_t handle (const zlink::framework::http_request_t &http)
+    {
+        const auto request =
+          nlohmann::json::parse (http.body).get<e2e::direct_spot_route_req_t> ();
+        _routes
+          .send (e2e::route_channel,
+                 zlink::routing_id_t::from (request.target_node_rid),
+                 zlink::framework::spot_rid_t::from_string (request.spot_rid),
+                 e2e::direct_spot_msg_t{request.source_actor_id, request.value})
+          .packet_name ("DirectSpotMsg")
+          .submit ();
+
+        zlink::framework::http_response_t response;
+        response.body = nlohmann::json (e2e::spot_state_command_route_res_t{.accepted = true})
+                          .dump ();
+        return response;
+    }
+
+  private:
+    zlink::framework::route_client_t &_routes;
+};
+
 class spot_stage_probe_route_handler_t
 {
   public:

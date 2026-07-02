@@ -8,23 +8,13 @@
 namespace zlink::framework::e2e::registration_codec::client
 {
 
-inline void run_protobuf_codec_scenario (zlink::framework::channel_client_t &channels,
-                                         const std::string &http_endpoint)
+inline void run_protobuf_codec_scenario (const codec_roundtrip_scenario_res_t &roundtrip)
 {
-    auto request =
-      channels.request (api_channel, protobuf_roundtrip_req_t{.value = "b2"})
-        .timeout (std::chrono::milliseconds (2000))
-        .async<protobuf_roundtrip_res_t> ();
-    ensure (request.result ().has_value (), "RC-B2 request failed");
-    ensure (request.result ().value ().value == "protobuf:b2", "RC-B2 reply mismatch");
-    ensure (request.result ().value ().content_type == "application/x-protobuf",
+    ensure (roundtrip.protobuf.value == "protobuf:b2", "RC-B2 reply mismatch");
+    ensure (roundtrip.protobuf.content_type == "application/x-protobuf",
             "RC-B2 content type mismatch");
-
-    channels.send (api_channel, protobuf_codec_msg_t{.value = "send-b2"})
-      .timeout (std::chrono::milliseconds (2000))
-      .submit ();
-    ensure (evidence_contains (http_endpoint, "RC-B2-send", "application/x-protobuf:send-b2"),
-            "RC-B2 send evidence mismatch");
+    wait_evidence_contains (env_or ("ZLINK_CPP_E2E_HTTP_ENDPOINT"), "RC-B2-send",
+                            "application/x-protobuf:send-b2", std::chrono::seconds (10));
     std::cout << "scenario RC-B2 passed\n";
 }
 

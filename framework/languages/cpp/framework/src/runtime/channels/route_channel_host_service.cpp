@@ -26,8 +26,7 @@ namespace zlink::framework::runtime
 namespace
 {
 
-class native_spot_route_discovery_bridge_t final
-  : public detail::spot_route_discovery_bridge_t
+class native_spot_route_discovery_bridge_t final : public detail::spot_route_discovery_bridge_t
 {
   public:
     native_spot_route_discovery_bridge_t (zlink::context_t &context,
@@ -41,10 +40,7 @@ class native_spot_route_discovery_bridge_t final
 
     zlink::service::discovery_t &discovery () noexcept { return *_discovery; }
 
-    void connect_registries ()
-    {
-        ensure_connected ();
-    }
+    void connect_registries () { ensure_connected (); }
 
     result_t<void> bind_spot_route (const spot_route_t &route) override
     {
@@ -59,9 +55,9 @@ class native_spot_route_discovery_bridge_t final
             return result_t<void>::success ();
         }
         catch (const std::exception &error) {
-            return result_t<void>::failure (
-              framework_error_kind_t::request_failed,
-              std::string ("registry SPOT route bind failed: ") + error.what ());
+            return result_t<void>::failure (framework_error_kind_t::request_failed,
+                                            std::string ("registry SPOT route bind failed: ")
+                                              + error.what ());
         }
     }
 
@@ -73,9 +69,9 @@ class native_spot_route_discovery_bridge_t final
             auto route = _discovery->resolve_route (
               zlink::route_kind_t::spot_name,
               std::as_bytes (std::span<const char> (key.data (), key.size ())));
-            return result_t<spot_route_t>::success (spot_route_t{
-              node_rid_t::from_string (route.owner_routing_id.to_string ()),
-              std::move (spot_rid), route.value.to_string ()});
+            return result_t<spot_route_t>::success (
+              spot_route_t{node_rid_t::from_string (route.owner_routing_id.to_string ()),
+                           std::move (spot_rid), route.value.to_string ()});
         }
         catch (const std::exception &error) {
             return result_t<spot_route_t>::failure (
@@ -119,7 +115,9 @@ class route_channel_host_service_t::route_loop_t
         _runtime (&_manager.get_route_channel (route_channel_id)),
         _route_channel_id (std::move (route_channel_id)),
         _internal_packets (std::move (internal_packets)),
-        _dispatcher (_route_channel_id, services, serializers,
+        _dispatcher (_route_channel_id,
+                     services,
+                     serializers,
                      _manager.get_route_handlers (_runtime->router_channel_id ()),
                      _internal_packets ? *_internal_packets : _no_internal_packets,
                      detail::channel_runtime_t::from (bus).dispatch_options ()),
@@ -143,10 +141,10 @@ class route_channel_host_service_t::route_loop_t
                 _router->bind (_runtime->bind_endpoint ());
             }
             catch (const std::exception &error) {
-                throw framework_exception_t (
-                  framework_error_kind_t::request_failed,
-                  "route channel '" + _route_channel_id + "' bind failed at "
-                    + _runtime->bind_endpoint () + ": " + error.what ());
+                throw framework_exception_t (framework_error_kind_t::request_failed,
+                                             "route channel '" + _route_channel_id
+                                               + "' bind failed at " + _runtime->bind_endpoint ()
+                                               + ": " + error.what ());
             }
         }
         const bool accepts_spot_routes = accepts_spot_routes_from (spot_nodes);
@@ -158,15 +156,13 @@ class route_channel_host_service_t::route_loop_t
                 _spot_route_discovery->connect_registries ();
                 _router->attach_discovery (_spot_route_discovery->discovery ());
                 if (accepts_spot_routes) {
-                    registry.attach_spot_route_discovery (_route_channel_id,
-                                                          _spot_route_discovery);
+                    registry.attach_spot_route_discovery (_route_channel_id, _spot_route_discovery);
                 }
             }
             catch (const std::exception &error) {
-                throw framework_exception_t (
-                  framework_error_kind_t::request_failed,
-                  "route channel '" + _route_channel_id
-                    + "' discovery attach failed: " + error.what ());
+                throw framework_exception_t (framework_error_kind_t::request_failed,
+                                             "route channel '" + _route_channel_id
+                                               + "' discovery attach failed: " + error.what ());
             }
         }
         for (const auto &endpoint : _runtime->manual_connections ()) {
@@ -291,35 +287,29 @@ class route_channel_host_service_t::route_loop_t
             }
             auto native_node = spot_node.runtime.native_node ();
             if (!native_node) {
-                throw framework_exception_t (
-                  framework_error_kind_t::request_failed,
-                  "accepted SPOT route channel '" + _route_channel_id
-                    + "' requires an active native SpotNode");
+                throw framework_exception_t (framework_error_kind_t::request_failed,
+                                             "accepted SPOT route channel '" + _route_channel_id
+                                               + "' requires an active native SpotNode");
             }
-            auto bridge =
-              std::make_unique<zlink::service::spot_route_bridge_t> (
-                native_node->create_route_bridge ());
+            auto bridge = std::make_unique<zlink::service::spot_route_bridge_t> (
+              native_node->create_route_bridge ());
             try {
                 bridge->attach_router_channel (_route_channel_id, *_router);
             }
             catch (const std::exception &error) {
-                throw framework_exception_t (
-                  framework_error_kind_t::request_failed,
-                  "route channel '" + _route_channel_id
-                    + "' SPOT route bridge attach failed: " + error.what ());
+                throw framework_exception_t (framework_error_kind_t::request_failed,
+                                             "route channel '" + _route_channel_id
+                                               + "' SPOT route bridge attach failed: "
+                                               + error.what ());
             }
             _backend->attach_spot_route_bridge (std::move (bridge), _route_channel_id);
             return;
         }
     }
 
-    static zlink::message_t clone (const zlink::message_t &message)
-    {
-        return message;
-    }
+    static zlink::message_t clone (const zlink::message_t &message) { return message; }
 
-    static std::vector<zlink::message_t> clone_messages (
-      const std::vector<zlink::message_t> &parts)
+    static std::vector<zlink::message_t> clone_messages (const std::vector<zlink::message_t> &parts)
     {
         std::vector<zlink::message_t> copied;
         copied.reserve (parts.size ());
@@ -351,8 +341,8 @@ class route_channel_host_service_t::route_loop_t
         for (std::size_t index = 0; index < parts.size (); ++index) {
             copied.push_back (clone (parts[index]));
         }
-        auto operation = _router->reply (*completed.target_rid, completed.request_seq)
-                           .message (copied[0]);
+        auto operation =
+          _router->reply (*completed.target_rid, completed.request_seq).message (copied[0]);
         for (std::size_t index = 1; index < copied.size (); ++index) {
             operation = std::move (operation).message (copied[index]);
         }
@@ -364,23 +354,21 @@ class route_channel_host_service_t::route_loop_t
         auto routing_id = *received.routing_id ();
         const auto request_seq = received.request_seq ();
         std::lock_guard<std::mutex> lock (_workers_mutex);
-        _workers.emplace_back (
-          [this, routing_id = std::move (routing_id), request_seq,
-           copied = std::move (copied)] () mutable {
-              auto dispatched = _dispatcher.dispatch (detail::route_received_packet_t{
-                routing_id, request_seq,
-                zlink::framework::runtime::messaging::message_parts_t (std::move (copied))});
-              if (!dispatched || !dispatched.value ()) {
-                  return;
-              }
-              if (!request_seq) {
-                  return;
-              }
-              std::lock_guard<std::mutex> reply_lock (_replies_mutex);
-              _replies.push_back (
-                completed_reply_t{std::move (routing_id), *request_seq,
-                                  std::move (dispatched.value ()->parts)});
-          });
+        _workers.emplace_back ([this, routing_id = std::move (routing_id), request_seq,
+                                copied = std::move (copied)] () mutable {
+            auto dispatched = _dispatcher.dispatch (detail::route_received_packet_t{
+              routing_id, request_seq,
+              zlink::framework::runtime::messaging::message_parts_t (std::move (copied))});
+            if (!dispatched || !dispatched.value ()) {
+                return;
+            }
+            if (!request_seq) {
+                return;
+            }
+            std::lock_guard<std::mutex> reply_lock (_replies_mutex);
+            _replies.push_back (completed_reply_t{std::move (routing_id), *request_seq,
+                                                  std::move (dispatched.value ()->parts)});
+        });
     }
 
     void flush_replies ()
@@ -399,8 +387,7 @@ class route_channel_host_service_t::route_loop_t
                 reply (completed);
             }
             catch (const std::exception &error) {
-                std::cerr << "zlink framework route late reply ignored: " << error.what ()
-                          << '\n';
+                std::cerr << "zlink framework route late reply ignored: " << error.what () << '\n';
             }
             catch (...) {
                 std::cerr << "zlink framework route late reply ignored\n";
@@ -472,10 +459,10 @@ void route_channel_host_service_t::start (service_provider_t &services)
             found != _internal_dispatchers.end ()) {
             internal_packets = found->second;
         }
-        auto loop = std::make_unique<route_loop_t> (
-          _bus, route_channel_id, services, *_serializers,
-          detail::registry_runtime_t::from (_registry), _discovery, _spot_nodes,
-          internal_packets, _stop);
+        auto loop =
+          std::make_unique<route_loop_t> (_bus, route_channel_id, services, *_serializers,
+                                          detail::registry_runtime_t::from (_registry), _discovery,
+                                          _spot_nodes, internal_packets, _stop);
         auto *raw = loop.get ();
         _loops.push_back (std::move (loop));
         _threads.emplace_back ([this, raw] {

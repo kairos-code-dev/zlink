@@ -4,6 +4,21 @@ set -euo pipefail
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 CPP_DIR="$(cd "$SCRIPT_DIR/../.." && pwd)"
 BUILD_DIR="${ZLINK_CPP_E2E_BUILD_DIR:-$CPP_DIR/build}"
+LOCAL_READINESS_TIMEOUT_SECONDS=3
+LOCAL_READINESS_POLL_SECONDS=0.1
+ROUTE_SETTLE_SECONDS=5
+SCENARIO_SETTLE_SECONDS=3
+HTTP_PROBE_TIMEOUT_SECONDS=3
+LOCAL_READINESS_ATTEMPTS="$(
+  python3 - "$LOCAL_READINESS_TIMEOUT_SECONDS" "$LOCAL_READINESS_POLL_SECONDS" <<'PY'
+import math
+import sys
+
+timeout = float(sys.argv[1])
+poll = float(sys.argv[2])
+print(max(1, math.ceil(timeout / poll)))
+PY
+)"
 
 read -r REGISTRY_PUB REGISTRY_ROUTER API_A API_B ROUTE_A ROUTE_B WORKFLOW_A HTTP_REGISTRY HTTP_A HTTP_B HTTP_WORKFLOW HTTP_DIRECT_CONSUMER HTTP_SINGLE_CONSUMER HTTP_DISCOVERY_CONSUMER HTTP_BACKPRESSURE_CONSUMER CLIENT_ROUTE API_A2 ROUTE_A2 HTTP_A2 <<<"$(python3 - <<'PY'
 import socket
@@ -73,13 +88,13 @@ wait_port() {
   local host="127.0.0.1"
   local port
   port="$(port_of "$endpoint")"
-  for _ in $(seq 1 60); do
+  for _ in $(seq 1 "$LOCAL_READINESS_ATTEMPTS"); do
     if (echo >"/dev/tcp/${host}/${port}") >/dev/null 2>&1; then
       return 0
     fi
-    sleep 0.05
+    sleep "$LOCAL_READINESS_POLL_SECONDS"
   done
-  echo "Timed out waiting for $name at $endpoint" >&2
+  echo "Timed out waiting ${LOCAL_READINESS_TIMEOUT_SECONDS}s for $name at $endpoint" >&2
   return 1
 }
 
@@ -110,6 +125,7 @@ start_provider() {
     ZLINK_CPP_E2E_PROVIDER_INSTANCE="$instance" \
     ZLINK_CPP_E2E_API_ENDPOINT="$api" \
     ZLINK_CPP_E2E_ROUTE_ENDPOINT="$route" \
+    ZLINK_CPP_E2E_ROUTE_PEERS="$ROUTE_A,$ROUTE_B" \
     ZLINK_CPP_E2E_HTTP_ENDPOINT="$http" \
     ZLINK_CPP_E2E_REGISTRY_ROUTER="$REGISTRY_ROUTER" \
     ZLINK_CPP_E2E_LOG_DIR="$LOG_DIR" \
@@ -163,13 +179,13 @@ stop_pid() {
 
 wait_marker() {
   local file="$1"
-  for _ in $(seq 1 60); do
+  for _ in $(seq 1 "$LOCAL_READINESS_ATTEMPTS"); do
     if [[ -f "$file" ]]; then
       return 0
     fi
-    sleep 0.05
+    sleep "$LOCAL_READINESS_POLL_SECONDS"
   done
-  echo "Timed out waiting for marker $file" >&2
+  echo "Timed out waiting ${LOCAL_READINESS_TIMEOUT_SECONDS}s for marker $file" >&2
   return 1
 }
 
@@ -185,6 +201,7 @@ run_client() {
   ZLINK_CPP_E2E_ROUTE_B_ENDPOINT="$ROUTE_B" \
   ZLINK_CPP_E2E_HTTP_A_ENDPOINT="$HTTP_A" \
   ZLINK_CPP_E2E_HTTP_B_ENDPOINT="$HTTP_B" \
+  ZLINK_CPP_E2E_HTTP_A2_ENDPOINT="$HTTP_A2" \
   ZLINK_CPP_E2E_HTTP_WORKFLOW_ENDPOINT="$HTTP_WORKFLOW" \
   ZLINK_CPP_E2E_DIRECT_CONSUMER_URL="$HTTP_DIRECT_CONSUMER" \
   ZLINK_CPP_E2E_SINGLE_CONSUMER_URL="$HTTP_SINGLE_CONSUMER" \
@@ -228,7 +245,7 @@ start_registry
 if [[ "$SCENARIO" == "RM-A2" || "$SCENARIO" == "rm-a2" ]]; then
   start_provider api-a "$API_A" "$ROUTE_A" "$HTTP_A"
   API_A_PID="$LAST_PID"
-  sleep 1
+  sleep "$ROUTE_SETTLE_SECONDS"
   run_client rm-a2 rm-a2 env
   cat "$LOG_DIR/client-rm-a2.stdout.log"
   exit 0
@@ -239,7 +256,7 @@ if [[ "$SCENARIO" == "RM-A1" || "$SCENARIO" == "rm-a1" ]]; then
   API_A_PID="$LAST_PID"
   start_provider api-b "$API_B" "$ROUTE_B" "$HTTP_B"
   API_B_PID="$LAST_PID"
-  sleep 1
+  sleep "$ROUTE_SETTLE_SECONDS"
   run_client rm-a1 rm-a1 env
   cat "$LOG_DIR/client-rm-a1.stdout.log"
   exit 0
@@ -258,7 +275,7 @@ if [[ "$SCENARIO" == "RM-A4" || "$SCENARIO" == "rm-a4" ]]; then
   stop_pid "$API_A_PID"
   start_provider api-a "$API_A2" "$ROUTE_A2" "$HTTP_A2" api-a-v2
   API_A_PID="$LAST_PID"
-  sleep 5
+  sleep "$ROUTE_SETTLE_SECONDS"
   touch "$CONTINUE"
   wait "$A4_CLIENT_PID"
   cat "$LOG_DIR/client-rm-a4.stdout.log"
@@ -272,7 +289,7 @@ if [[ "$SCENARIO" == "RM-A6" || "$SCENARIO" == "rm-a6" ]]; then
   API_B_PID="$LAST_PID"
   start_workflow_provider workflow-a "$WORKFLOW_A"
   WORKFLOW_A_PID="$LAST_PID"
-  sleep 1
+  sleep "$ROUTE_SETTLE_SECONDS"
   run_client rm-a6 rm-a6 env
   cat "$LOG_DIR/client-rm-a6.stdout.log"
   exit 0
@@ -290,7 +307,7 @@ if [[ "$SCENARIO" == "RM-B1" || "$SCENARIO" == "rm-b1" ]]; then
   wait_marker "$READY"
   start_provider api-b "$API_B" "$ROUTE_B" "$HTTP_B"
   API_B_PID="$LAST_PID"
-  sleep 5
+  sleep "$ROUTE_SETTLE_SECONDS"
   touch "$CONTINUE"
   wait "$B1_CLIENT_PID"
   cat "$LOG_DIR/client-rm-b1.stdout.log"
@@ -310,7 +327,7 @@ if [[ "$SCENARIO" == "RM-B2" || "$SCENARIO" == "rm-b2" ]]; then
   B2_CLIENT_PID="$!"
   wait_marker "$READY"
   stop_pid "$API_B_PID"
-  sleep 5
+  sleep "$ROUTE_SETTLE_SECONDS"
   touch "$CONTINUE"
   wait "$B2_CLIENT_PID"
   cat "$LOG_DIR/client-rm-b2.stdout.log"
@@ -322,7 +339,7 @@ if [[ "$SCENARIO" == "RM-C1" || "$SCENARIO" == "rm-c1" ]]; then
   API_A_PID="$LAST_PID"
   start_provider api-b "$API_B" "$ROUTE_B" "$HTTP_B"
   API_B_PID="$LAST_PID"
-  sleep 1
+  sleep "$ROUTE_SETTLE_SECONDS"
   run_client rm-c1 rm-c1 env
   cat "$LOG_DIR/client-rm-c1.stdout.log"
   exit 0
@@ -333,7 +350,7 @@ if [[ "$SCENARIO" == "RM-C2" || "$SCENARIO" == "rm-c2" ]]; then
   API_A_PID="$LAST_PID"
   start_provider api-b "$API_B" "$ROUTE_B" "$HTTP_B"
   API_B_PID="$LAST_PID"
-  sleep 1
+  sleep "$ROUTE_SETTLE_SECONDS"
   run_client rm-c2 rm-c2 env
   cat "$LOG_DIR/client-rm-c2.stdout.log"
   exit 0
@@ -346,7 +363,7 @@ if [[ "$SCENARIO" == "RM-C3" || "$SCENARIO" == "rm-c3" ]]; then
   API_B_PID="$LAST_PID"
   start_consumer direct-consumer "$HTTP_DIRECT_CONSUMER" "$API_A,$API_B" ""
   DIRECT_CONSUMER_PID="$LAST_PID"
-  sleep 1
+  sleep "$ROUTE_SETTLE_SECONDS"
   run_client rm-c3 rm-c3 env
   cat "$LOG_DIR/client-rm-c3.stdout.log"
   exit 0
@@ -359,7 +376,7 @@ if [[ "$SCENARIO" == "RM-C4" || "$SCENARIO" == "rm-c4" ]]; then
   API_B_PID="$LAST_PID"
   start_consumer discovery-consumer "$HTTP_DISCOVERY_CONSUMER" "" "$REGISTRY_ROUTER"
   DISCOVERY_CONSUMER_PID="$LAST_PID"
-  sleep 1
+  sleep "$ROUTE_SETTLE_SECONDS"
   run_client rm-c4 rm-c4 env
   cat "$LOG_DIR/client-rm-c4.stdout.log"
   exit 0
@@ -372,7 +389,7 @@ if [[ "$SCENARIO" == "RM-C5" || "$SCENARIO" == "rm-c5" ]]; then
   API_B_PID="$LAST_PID"
   start_consumer discovery-consumer "$HTTP_DISCOVERY_CONSUMER" "" "$REGISTRY_ROUTER"
   DISCOVERY_CONSUMER_PID="$LAST_PID"
-  sleep 1
+  sleep "$ROUTE_SETTLE_SECONDS"
   run_client rm-c5 rm-c5 env
   cat "$LOG_DIR/client-rm-c5.stdout.log"
   exit 0
@@ -383,7 +400,7 @@ if [[ "$SCENARIO" == "RM-C7" || "$SCENARIO" == "rm-c7" ]]; then
   API_A_PID="$LAST_PID"
   start_provider api-b "$API_B" "$ROUTE_B" "$HTTP_B" api-b ZLINK_CPP_E2E_SERVER_WEIGHT=25
   API_B_PID="$LAST_PID"
-  sleep 1
+  sleep "$ROUTE_SETTLE_SECONDS"
   run_client rm-c7 rm-c7 env
   cat "$LOG_DIR/client-rm-c7.stdout.log"
   exit 0
@@ -396,7 +413,7 @@ if [[ "$SCENARIO" == "RM-C8" || "$SCENARIO" == "rm-c8" ]]; then
   API_B_PID="$LAST_PID"
   start_consumer single-consumer "$HTTP_SINGLE_CONSUMER" "$API_A" ""
   SINGLE_CONSUMER_PID="$LAST_PID"
-  sleep 1
+  sleep "$ROUTE_SETTLE_SECONDS"
   run_client rm-c8 rm-c8 env
   cat "$LOG_DIR/client-rm-c8.stdout.log"
   stop_pid "$SINGLE_CONSUMER_PID"
@@ -407,7 +424,7 @@ if [[ "$SCENARIO" == "RM-C8" || "$SCENARIO" == "rm-c8" ]]; then
   API_A_PID="$LAST_PID"
   start_consumer single-consumer-max "$HTTP_SINGLE_CONSUMER" "$API_A" ""
   SINGLE_CONSUMER_PID="$LAST_PID"
-  sleep 1
+  sleep "$ROUTE_SETTLE_SECONDS"
   run_client rm-c8-max rm-c8-max env
   cat "$LOG_DIR/client-rm-c8-max.stdout.log"
   exit 0
@@ -418,7 +435,7 @@ if [[ "$SCENARIO" == "RM-C9" || "$SCENARIO" == "rm-c9" ]]; then
   API_A_PID="$LAST_PID"
   start_consumer backpressure-consumer "$HTTP_BACKPRESSURE_CONSUMER" "$API_A" ""
   BACKPRESSURE_CONSUMER_PID="$LAST_PID"
-  sleep 1
+  sleep "$ROUTE_SETTLE_SECONDS"
   run_client rm-c9 rm-c9 env
   cat "$LOG_DIR/client-rm-c9.stdout.log"
   exit 0

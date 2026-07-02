@@ -139,8 +139,9 @@ class spot_context_state_t
     std::shared_ptr<worker_scheduler_t> worker_scheduler;
     spot_lifecycle_callbacks_t lifecycle;
     std::map<std::type_index, std::function<void (void *, void *)>> on_actor_joined_callbacks;
-    std::map<std::type_index,
-             std::function<void (void *, void *, const zlink::message_t &, serializer_registry_t &)>>
+    std::map<
+      std::type_index,
+      std::function<void (void *, void *, const zlink::message_t &, serializer_registry_t &)>>
       onCreateActor_callbacks;
     std::map<std::type_index, std::function<void (void *, void *)>> onLeaveActor_callbacks;
     std::map<std::type_index, std::function<void (void *, void *)>> onDisconnectActor_callbacks;
@@ -439,7 +440,8 @@ class spot_node_runtime_t
     invoke_actor_join_callback (TSpot &spot, TActor &actor, const zlink::message_t &request)
     {
         if constexpr (has_framework_actor_join_callback<TSpot, TActor>) {
-            return spot.on_actor_join (actor, message_t::from_raw (request, _state->channel_runtime->serializers));
+            return spot.on_actor_join (
+              actor, message_t::from_raw (request, _state->channel_runtime->serializers));
         } else {
             return spot.on_actor_join (actor, request);
         }
@@ -512,9 +514,9 @@ class spot_node_runtime_t
         commit_actor_left<TActor> (actor_ref, actor);
         auto &context_state = *context._state;
         const auto key = actor_key (actor_ref);
-        record_actor_context_route_unlocked (
-          *_state, key, effective_spot_node_rid (_state->snapshot), context_state,
-          actor_ref.generation () + 1);
+        record_actor_context_route_unlocked (*_state, key,
+                                             effective_spot_node_rid (_state->snapshot),
+                                             context_state, actor_ref.generation () + 1);
         context_state.on_actor_joined_callbacks[std::type_index (typeid (TActor))] =
           [] (void *spot, void *actor) {
               if constexpr (has_on_actor_joined_callback<TSpot, TActor>) {
@@ -533,7 +535,7 @@ class spot_node_runtime_t
                   static_cast<TSpot *> (spot)->onCreateActor (*static_cast<TActor *> (actor),
                                                               request);
               } else if constexpr (std::is_base_of_v<entry_spot_t, TSpot>
-                            && has_onCreateActor_callback<TSpot, TActor>) {
+                                   && has_onCreateActor_callback<TSpot, TActor>) {
                   static_cast<TSpot *> (spot)->onCreateActor (*static_cast<TActor *> (actor));
               }
           };
@@ -549,10 +551,10 @@ class spot_node_runtime_t
                   static_cast<TSpot *> (spot)->onDisconnectActor (*static_cast<TActor *> (actor));
               }
           };
-        auto committed = actor_ref_t (
-          node_rid_t::from_string (effective_spot_node_rid (_state->snapshot)),
-          std::string (actor_ref.actor_type ()), std::string (actor_ref.actor_id ()),
-          actor_ref.generation () + 1);
+        auto committed =
+          actor_ref_t (node_rid_t::from_string (effective_spot_node_rid (_state->snapshot)),
+                       std::string (actor_ref.actor_type ()), std::string (actor_ref.actor_id ()),
+                       actor_ref.generation () + 1);
         if constexpr (std::is_base_of_v<entry_spot_t, TSpot>) {
             if (_state->actor_created_keys.insert (key).second) {
                 notify_onCreateActor<TActor> (context_state, actor, create_request);

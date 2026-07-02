@@ -4,7 +4,6 @@
 #include "../../Shared/resilience_lifecycle_contracts.hpp"
 #include "scenario_assert.hpp"
 
-#include <zlink/framework.hpp>
 #include <zlink/http_client.hpp>
 
 #include <chrono>
@@ -13,10 +12,6 @@
 namespace zlink::framework::e2e::resilience_lifecycle::client
 {
 
-inline void configure_common_codecs (zlink::framework::codec_options_builder_t)
-{
-}
-
 inline evidence_snapshot_t fetch_evidence (const std::string &base_url)
 {
     auto client = zlink::http_client::client_t::create ()
@@ -24,6 +19,59 @@ inline evidence_snapshot_t fetch_evidence (const std::string &base_url)
                     .timeout (std::chrono::milliseconds (1000))
                     .build ();
     return client.get ("/evidence").fetch<evidence_snapshot_t> ();
+}
+
+inline profile_res_t post_consumer_profile (const std::string &value,
+                                            const std::string &marker = {},
+                                            const std::string &path = "/profile/request",
+                                            std::chrono::milliseconds timeout =
+                                              std::chrono::milliseconds (3000))
+{
+    auto client = zlink::http_client::client_t::create ()
+                    .base_url (env_or ("ZLINK_CPP_E2E_HTTP_CONSUMER_ENDPOINT"))
+                    .timeout (timeout)
+                    .build ();
+    auto request = profile_req_t{.value = value, .marker = marker.empty () ? value : marker};
+    return client.post (path).body (request).fetch<profile_res_t> ();
+}
+
+inline zlink::http_client::raw_http_response_t
+post_consumer_profile_raw (const std::string &value,
+                           const std::string &marker = {},
+                           const std::string &path = "/profile/request",
+                           std::chrono::milliseconds timeout = std::chrono::milliseconds (3000))
+{
+    auto client = zlink::http_client::client_t::create ()
+                    .base_url (env_or ("ZLINK_CPP_E2E_HTTP_CONSUMER_ENDPOINT"))
+                    .timeout (timeout)
+                    .build ();
+    auto request = profile_req_t{.value = value, .marker = marker.empty () ? value : marker};
+    auto result = client.post (path).body (request).submit_raw ().result ();
+    ensure (result.has_value (), "consumer HTTP request failed");
+    return result.value ();
+}
+
+inline request_failure_res_t post_consumer_missing (const std::string &value)
+{
+    auto client = zlink::http_client::client_t::create ()
+                    .base_url (env_or ("ZLINK_CPP_E2E_HTTP_CONSUMER_ENDPOINT"))
+                    .timeout (std::chrono::milliseconds (3000))
+                    .build ();
+    return client.post ("/profile/request/missing")
+      .body (profile_req_t{.value = value, .marker = value})
+      .fetch<request_failure_res_t> ();
+}
+
+inline operation_status_t post_consumer_command (const std::string &command_id,
+                                                 const std::string &path = "/profile/command")
+{
+    auto client = zlink::http_client::client_t::create ()
+                    .base_url (env_or ("ZLINK_CPP_E2E_HTTP_CONSUMER_ENDPOINT"))
+                    .timeout (std::chrono::milliseconds (3000))
+                    .build ();
+    return client.post (path)
+      .body (profile_msg_t{.command_id = command_id, .marker = command_id})
+      .fetch<operation_status_t> ();
 }
 
 inline void post_provider_admin (const std::string &base_url, const std::string &path)

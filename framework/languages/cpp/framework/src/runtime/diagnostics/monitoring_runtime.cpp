@@ -297,18 +297,24 @@ void monitoring_runtime_t::publish_registry_snapshot (
     if (topology.empty () && summary.empty ()) {
         publish (registry_event_payload_t{runtime_event_base_t{std::move (source_name)},
                                           registry_event_kind_t::status_changed,
-                                          std::move (status), {}, {}});
+                                          std::move (status),
+                                          {},
+                                          {}});
         return;
     }
     if (!topology.empty ()) {
         publish (registry_event_payload_t{runtime_event_base_t{source_name},
-                                          registry_event_kind_t::topology_changed, status,
-                                          topology, {}});
+                                          registry_event_kind_t::topology_changed,
+                                          status,
+                                          topology,
+                                          {}});
     }
     if (!summary.empty ()) {
         publish (registry_event_payload_t{runtime_event_base_t{std::move (source_name)},
                                           registry_event_kind_t::service_summary_changed,
-                                          std::move (status), {}, std::move (summary)});
+                                          std::move (status),
+                                          {},
+                                          std::move (summary)});
     }
 }
 

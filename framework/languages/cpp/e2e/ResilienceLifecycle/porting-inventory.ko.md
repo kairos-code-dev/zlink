@@ -3,7 +3,9 @@
 기준 구현: `framework/languages/dotnet/e2e/ResilienceLifecycle`
 
 현재 C++ `ResilienceLifecycle`은 전용 Registry, Provider, Consumer, Client target과
-runner 아래에서 public recovery 흐름을 검증한다. `.NET`의 `ResilienceProcessManager`가 맡는
+runner 아래에서 public recovery 흐름을 검증한다. Client target은 `.NET` 기준처럼 HTTP endpoint만
+호출하고, framework channel client는 Consumer/Provider/Registry role 안에 둔다. `.NET`의
+`ResilienceProcessManager`가 맡는
 provider/registry 재시작, health 대기, 종료, 로그 저장 책임은 C++ runner가 같은 의미로 담당한다.
 이는 언어별 harness 배치 차이일 뿐 scenario나 public 동작 차이가 아니다.
 
@@ -17,7 +19,7 @@ provider/registry 재시작, health 대기, 종료, 로그 저장 책임은 C++ 
 | `Shared/ResilienceLifecycle.Shared.csproj` | `framework/languages/cpp/CMakeLists.txt` | build | done | ResilienceLifecycle 전용 C++ target 묶음이 추가됐다. |
 | `Shared/Messages.cs` | `Shared/resilience_lifecycle_contracts.hpp`, `Shared/resilience_lifecycle_messages.hpp` | shared | done | ResilienceLifecycle 전용 message file과 contract facade가 있고 profile request/reply/send/failure/status DTO가 `.NET`식 marker 필드를 지원한다. 내부 namespace, handler group, channel 이름도 ResilienceLifecycle 전용 값으로 정리했다. |
 | `Client/ResilienceLifecycle.Client.csproj` | `framework/languages/cpp/CMakeLists.txt` | build | done | 전용 client target이 추가됐다. |
-| `Client/Program.cs` | `Client/main.cpp`, `Client/Support/client_options.hpp` | client | done | 전용 target 아래 client dispatcher가 있고 endpoint/scenario env 값을 전용 option 객체로 모은다. 낡은 `rm-*` selector는 제거했고 ResilienceLifecycle scenario 이름만 실행한다. |
+| `Client/Program.cs` | `Client/main.cpp`, `Client/Support/client_options.hpp` | client | done | HTTP-only client dispatcher가 있고 endpoint/scenario env 값을 전용 option 객체로 모은다. 낡은 `rm-*` selector는 제거했고 ResilienceLifecycle scenario 이름만 실행한다. |
 | `Client/Support/ClientOptions.cs` | `Client/Support/client_options.hpp` | support | done | C++ runner가 env로 주입한 endpoint와 scenario 값을 전용 option 객체로 읽는다. |
 | `Client/Support/LifecycleApiResult.cs` | `Client/Support/lifecycle_api_result.hpp`, `Client/Support/resilience_request_support.hpp` | support | done | provider evidence HTTP fetch/wait와 lifecycle request helper를 전용 support 파일로 분리했다. |
 | `Client/Support/ResilienceProcessManager.cs` | `run_e2e.sh`; `Client/Support/client_support.hpp` | support | done | `.NET` client support가 담당하는 provider/registry process 시작, health 대기, 종료, stdout/stderr 로그 저장 책임은 C++ runner의 `start_provider`, `start_registry`, `stop_pid`, `kill_pid`, readiness 대기 함수가 맡는다. client helper는 scenario 동기화용 marker 파일을 처리한다. |
@@ -28,7 +30,7 @@ provider/registry 재시작, health 대기, 종료, 로그 저장 책임은 C++ 
 | `Client/Scenarios/RlA3ReconnectStormScenario.cs` | `Client/Scenarios/rl_a3_reconnect_storm_scenario.hpp`; `run_e2e.sh` | scenario | done | 전용 client scenario가 Consumer HTTP `/profile/request/new-client`를 24번 호출하고, 각 reply의 provider id와 provider evidence marker를 검증한다. |
 | `Client/Scenarios/RlA4DrainAndGreenEndpointScenario.cs` | `Client/Scenarios/rl_a4_drain_and_green_endpoint_scenario.hpp`, `run_e2e.sh` | scenario | done | provider B drain, green provider endpoint 시작, original provider shutdown, Registry Ready 1, green evidence, green shutdown, original provider 복구, restored evidence를 `.NET` 순서로 검증한다. |
 | `Client/Scenarios/RlA5ProviderFlappingScenario.cs` | `Client/Scenarios/rl_a5_provider_flapping_scenario.hpp`, `run_e2e.sh` | scenario | done | runner가 provider B stop/restart cycle을 담당하고, 전용 client scenario가 down window의 `api-a` 수렴, up window의 request 성공, provider B evidence prefix를 검증한다. |
-| `Client/Scenarios/RlB1CancellationCleanupScenario.cs` | `run_e2e.sh`, `Server/Consumer/main.cpp`, `Client/Scenarios/rl_b1_cancellation_cleanup_scenario.hpp` | scenario | done | runner가 Consumer HTTP `/profile/request/timeout/100`으로 timeout 실패 payload를 확인하고, 같은 consumer의 `/profile/request` 후속 request 정상화를 검증한다. 전용 client scenario도 남아 있어 client target에서 같은 public timeout cleanup 흐름을 검증할 수 있다. |
+| `Client/Scenarios/RlB1CancellationCleanupScenario.cs` | `run_e2e.sh`, `Server/Consumer/main.cpp`, `Client/Scenarios/rl_b1_cancellation_cleanup_scenario.hpp` | scenario | done | runner와 HTTP-only client scenario가 Consumer HTTP `/profile/request/timeout/100`으로 timeout 실패 payload를 확인하고, 같은 consumer의 `/profile/request` 후속 request 정상화를 검증한다. |
 | `Client/Scenarios/RlB2CrashDuringInflightScenario.cs` | `Client/Scenarios/rl_b2_crash_during_inflight_scenario.hpp`; `run_e2e.sh` | scenario | done | Consumer HTTP slow request를 열고 provider B file evidence start marker를 확인한 뒤 provider B crash, Registry Ready 0 수렴, in-flight request 실패, `api-a` follow-up, provider B 재기동 뒤 restored evidence를 검증한다. |
 | `Client/Scenarios/RlB3GracefulShutdownScenario.cs` | `Client/Scenarios/rl_b3_graceful_shutdown_scenario.hpp`, `run_e2e.sh` | scenario | done | provider 정상 종료 뒤 남은 provider로 request가 성공하는지 RL 전용 scenario로 검증한다. |
 | `Client/Scenarios/RlB4RuntimeDrainScenario.cs` | `Client/Scenarios/rl_b4_runtime_drain_scenario.hpp`; `run_e2e.sh` | scenario | done | 전용 client scenario가 provider B drain/restore, drained 신규 request `api-a` 수렴, provider B evidence 불변, provider A drained evidence, provider B restored evidence를 `.NET` 순서로 검증한다. |
@@ -37,10 +39,10 @@ provider/registry 재시작, health 대기, 종료, 로그 저장 책임은 C++ 
 | `Client/Scenarios/RlC1ClientHostLifecycleScenario.cs` | `Client/Scenarios/rl_c1_client_host_lifecycle_scenario.hpp`, `Server/Consumer/Endpoints/consumer_endpoints.hpp`, `run_e2e.sh` | scenario | done | 전용 client scenario가 Consumer HTTP `/profile/request/new-client`로 요청마다 transient client host를 만들어 request를 보내고, 반복 request와 cleanup follow-up marker가 provider evidence에 남는지 검증한다. |
 | `Client/Scenarios/RlC2TopologyRecoveryScenario.cs` | `run_e2e.sh`, `Server/Consumer/Endpoints/consumer_endpoints.hpp` | scenario | done | provider crash 뒤 Consumer HTTP `/profile/request/new-client`가 `api-a`로 수렴하는지 확인하고, provider B 재기동 뒤 restored marker가 `api-b` evidence에 남는지 검증한다. |
 | `Client/Scenarios/RlC3NodePauseRecoveryScenario.cs` | `Client/Scenarios/rl_c3_node_pause_recovery_scenario.hpp`, `run_e2e.sh`, `Server/Consumer/Endpoints/consumer_endpoints.hpp` | scenario | done | 전용 client scenario가 provider B `/shutdown`, Consumer HTTP `/profile/request`의 `api-a` 수렴, provider B 재기동 뒤 Registry `/topology/wait` Ready 1, recovered marker가 `api-b` evidence에 남는지 검증한다. |
-| `Client/Scenarios/RlC4RegistryOutageScenario.cs` | `Client/Scenarios/rl_c4_registry_outage_scenario.hpp`; `run_e2e.sh` | scenario | done | registry outage 중 established manual channel request가 계속 성공하는지 검증한다. registry와 provider A 재기동 뒤 새 discovery client request와 provider evidence도 검증한다. |
+| `Client/Scenarios/RlC4RegistryOutageScenario.cs` | `Client/Scenarios/rl_c4_registry_outage_scenario.hpp`; `Server/Consumer/Endpoints/consumer_endpoints.hpp`; `run_e2e.sh` | scenario | done | HTTP-only client가 Consumer endpoint를 호출하고, Consumer role의 established manual channel request가 registry outage 중 계속 성공하는지 검증한다. registry와 provider A 재기동 뒤 Consumer new-client request와 provider evidence도 검증한다. |
 | `Client/Scenarios/RlD1HighFanoutScenario.cs` | `run_e2e.sh`, `Server/Consumer/Endpoints/consumer_endpoints.hpp` | scenario | done | runner가 Consumer HTTP `/profile/request`로 120개 request burst를 만들고 provider evidence에서 `rl-d1-` marker가 남는지 검증한다. |
 | `Client/Scenarios/RlD2ObserverFaultScenario.cs` | `Client/Scenarios/rl_d2_observer_fault_scenario.hpp` | scenario | done | provider observer fault mode를 켠 뒤 missing request dispatch error evidence, observer exception isolation, follow-up request evidence를 검증한다. |
-| `Client/Scenarios/RlD3DispatchErrorEvidenceScenario.cs` | `run_e2e.sh`, `Server/Consumer/main.cpp`, `Server/Consumer/Endpoints/consumer_endpoints.hpp` | scenario | done | runner가 Consumer HTTP `/profile/request/missing`을 호출하고 provider flow log에서 missing request의 `handler_missing`/`reply_error` marker를 검증한다. |
+| `Client/Scenarios/RlD3DispatchErrorEvidenceScenario.cs` | `Client/Scenarios/rl_d3_dispatch_error_evidence_scenario.hpp`; `run_e2e.sh`, `Server/Consumer/main.cpp`, `Server/Consumer/Endpoints/consumer_endpoints.hpp` | scenario | done | HTTP-only client와 runner가 Consumer HTTP `/profile/request/missing`, `/profile/command/missing`, `/profile/request`를 호출하고 provider flow log에서 missing request/send marker를 검증한다. |
 | `Client/Scenarios/RlD4MissingRequestHandlerScenario.cs` | `Client/Scenarios/rl_d4_missing_request_handler_scenario.hpp`; `Server/Consumer/Endpoints/consumer_endpoints.hpp`; `run_e2e.sh` | scenario | done | 전용 client scenario가 Consumer HTTP `/profile/request/missing`을 호출하고 public failure payload와 provider dispatch error evidence를 검증한다. |
 | `Client/Scenarios/RlD5MixedBurstScenario.cs` | `Client/Scenarios/rl_d5_mixed_burst_scenario.hpp`; `Server/Consumer/Endpoints/consumer_endpoints.hpp`; `run_e2e.sh` | scenario | done | 전용 client scenario가 Consumer HTTP `/profile/request`와 `/profile/command`로 request/send mixed burst workload를 만들고 provider evidence에서 request/send marker가 남는지 검증한다. |
 | `Server/Registry/ResilienceLifecycle.Registry.csproj` | `framework/languages/cpp/CMakeLists.txt` | build | done | registry role target이 추가됐다. |
@@ -61,7 +63,7 @@ provider/registry 재시작, health 대기, 종료, 로그 저장 책임은 C++ 
 | `Server/Provider/Handlers/ProviderHandlers.cs` | `Server/Provider/Handlers/provider_handlers.hpp` | handler | done | request/send/slow handler가 있고, provider fault state가 `gray`일 때 gray request 실패와 `ProfileFault` evidence를 기록한다. |
 | `Server/Consumer/ResilienceLifecycle.Consumer.csproj` | `framework/languages/cpp/CMakeLists.txt` | build | done | consumer role target이 추가됐다. |
 | `Server/Consumer/Program.cs` | `Server/Consumer/main.cpp` | server-role | done | consumer role 진입점이 있고, ResilienceLifecycle 전용 consumer configuration/endpoint wrapper를 사용한다. |
-| `Server/Consumer/ConsumerHostFactory.cs` | `Server/Consumer/consumer_host_factory.hpp`, `Server/Consumer/main.cpp`, `Server/Consumer/Configuration/consumer_options.hpp`, `Server/Consumer/Endpoints/consumer_endpoints.hpp` | server-role | done | long-running consumer HTTP host가 `/health`, `/profile/request`, `/profile/request/timeout/100`, `/profile/request/missing`, `/profile/command`, `/profile/request/new-client` endpoint를 제공한다. `/profile/request/new-client`는 `.NET`처럼 요청마다 새 client host를 만들고 별도 flow log를 남긴다. option 읽기, endpoint handler, host wiring은 ResilienceLifecycle 전용 파일로 분리했고, endpoint handler는 ResilienceLifecycle marker contract를 보존한다. runner는 smoke, RL-B1, RL-C1, RL-C2, RL-C3, RL-D1, RL-D3, RL-D4, RL-D5에서 이 HTTP 경로를 사용한다. |
+| `Server/Consumer/ConsumerHostFactory.cs` | `Server/Consumer/consumer_host_factory.hpp`, `Server/Consumer/main.cpp`, `Server/Consumer/Configuration/consumer_options.hpp`, `Server/Consumer/Endpoints/consumer_endpoints.hpp` | server-role | done | long-running consumer HTTP host가 `/health`, `/profile/request`, `/profile/request/manual`, `/profile/request/timeout/100`, `/profile/request/missing`, `/profile/command`, `/profile/command/missing`, `/profile/request/new-client` endpoint를 제공한다. `/profile/request/new-client`는 `.NET`처럼 요청마다 새 client host를 만들고 별도 flow log를 남긴다. option 읽기, endpoint handler, host wiring은 ResilienceLifecycle 전용 파일로 분리했고, endpoint handler는 ResilienceLifecycle marker contract를 보존한다. runner는 smoke, RL-B1, RL-C1, RL-C2, RL-C3, RL-C4, RL-D1, RL-D3, RL-D4, RL-D5에서 이 HTTP 경로를 사용한다. |
 
 ## Scenario ID 대응
 
@@ -308,6 +310,13 @@ provider/registry 재시작, health 대기, 종료, 로그 저장 책임은 C++ 
 - 2026-07-01: `cmake --build framework/languages/cpp/build --target zlink_cpp_e2e_resilience_lifecycle_client -j 4`
   - 결과: 통과
   - 의미: RL-A3가 Consumer HTTP `/profile/request/new-client` 24회 storm과 provider evidence 검증을 전용 client scenario 안에서 수행하도록 바꾼 뒤 client target이 빌드된다.
+- 2026-07-02: `cmake --build framework/languages/cpp/build --target zlink_cpp_e2e_resilience_lifecycle_consumer zlink_cpp_e2e_resilience_lifecycle_client`
+  - 결과: 통과
+  - 의미: C++ client를 HTTP-only dispatcher로 바꾸고 Consumer HTTP endpoint에 established manual request와 missing command 경로를 추가한 뒤 consumer/client target이 빌드된다.
+- 2026-07-02: `timeout 420s framework/languages/cpp/e2e/ResilienceLifecycle/run_e2e.sh`
+  - 결과: 통과
+  - 로그: `logs/20260702-072155-43811`
+  - 의미: HTTP-only client가 Consumer/Registry/Provider HTTP endpoint만 호출하고, framework channel client는 Consumer/Provider/Registry role 안에서 실행된다. Consumer smoke, RL-A1, RL-A2, RL-A3, RL-A4, RL-A5, RL-B1, RL-B2, RL-B3, RL-B4, RL-B5, RL-B6, RL-C1, RL-C2, RL-C3, RL-C4, RL-D1, RL-D2, RL-D3, RL-D4, RL-D5가 통과했다.
 - 2026-07-01: `timeout 1200s framework/languages/cpp/e2e/ResilienceLifecycle/run_e2e.sh`
   - 결과: 통과
   - 로그: `logs/20260701-060806-82776`

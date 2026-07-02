@@ -95,8 +95,7 @@ int main ()
                 ++registry_events;
             }
             if (event.source_name == "registry"
-                && event.event
-                     == zlink::framework::registry_event_kind_t::service_summary_changed
+                && event.event == zlink::framework::registry_event_kind_t::service_summary_changed
                 && !event.service_summary.empty ()) {
                 ++registry_summary_events;
             }
@@ -184,18 +183,18 @@ int main ()
     runtime.publish_registry_snapshot (
       "registry",
       zlink::framework::registry_status_t{zlink::framework::registry_state_t::running, "registry",
-                                          "tcp://0.0.0.0:5550", "tcp://0.0.0.0:5551", 0},
+                                          "tcp://0.0.0.0:5550", "tcp://0.0.0.0:5551", 0, 0},
       {zlink::framework::topology_entry_t{"node", zlink::framework::service_kind_t::spot,
                                           zlink::framework::service_role_t::spot_node, "stage-node",
                                           zlink::framework::topology_source_t::embedded,
                                           zlink::framework::topology_state_t::active}},
-      {zlink::framework::service_summary_entry_t{
-        "stage-node", zlink::framework::service_kind_t::spot,
-        zlink::framework::service_role_t::spot_node, 1}});
+      {zlink::framework::service_summary_entry_t{"stage-node",
+                                                 zlink::framework::service_kind_t::spot,
+                                                 zlink::framework::service_role_t::spot_node, 1}});
     runtime.publish_registry_snapshot (
       "ignored.registry",
       zlink::framework::registry_status_t{zlink::framework::registry_state_t::running, "registry",
-                                          "tcp://0.0.0.0:5550", "tcp://0.0.0.0:5551", 0},
+                                          "tcp://0.0.0.0:5550", "tcp://0.0.0.0:5551", 0, 0},
       {zlink::framework::topology_entry_t{"node", zlink::framework::service_kind_t::spot,
                                           zlink::framework::service_role_t::spot_node, "stage-node",
                                           zlink::framework::topology_source_t::embedded,
@@ -374,11 +373,8 @@ int main ()
     zlink::framework::detail::monitoring_runtime_t::from (failure_app.monitoring ())
       .publish_socket (zlink::framework::socket_event_payload_t{
         zlink::framework::runtime_event_base_t{"failure.server"},
-        zlink::framework::socket_event_kind_t::connected,
-        "tcp://127.0.0.1:7001",
-        "tcp://127.0.0.1:7002",
-        1,
-        0});
+        zlink::framework::socket_event_kind_t::connected, "tcp://127.0.0.1:7001",
+        "tcp://127.0.0.1:7002", 1, 0});
     if (!monitoring_handler_failure_isolated) {
         return 16;
     }

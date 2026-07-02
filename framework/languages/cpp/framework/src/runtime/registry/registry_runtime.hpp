@@ -34,8 +34,7 @@ class registry_runtime_state_t
     std::vector<topology_entry_t> topology;
     std::vector<member_peer_t> member_peers;
     std::map<std::string, spot_route_t> spot_routes;
-    std::map<std::string, std::shared_ptr<spot_route_discovery_bridge_t>>
-      spot_route_discoveries;
+    std::map<std::string, std::shared_ptr<spot_route_discovery_bridge_t>> spot_route_discoveries;
     std::size_t spot_lookup_count = 0;
     bool embedded_registry_enabled = false;
     std::shared_ptr<monitoring_runtime_state_t> monitoring;
@@ -51,9 +50,8 @@ class registry_runtime_t
     result_t<void> validate (const zlink_builder_state_t &builder) const;
     void project_topology (const zlink_builder_state_t &builder);
     void add_spot_route (spot_route_t route);
-    void attach_spot_route_discovery (
-      std::string route_channel_name,
-      std::shared_ptr<spot_route_discovery_bridge_t> discovery);
+    void attach_spot_route_discovery (std::string route_channel_name,
+                                      std::shared_ptr<spot_route_discovery_bridge_t> discovery);
     void detach_spot_route_discovery (const std::string &route_channel_name) noexcept;
     void cleanup_stale_spot_routes (const std::set<std::string> &active_spot_rids);
     result_t<spot_route_t> resolve_spot_remote_address (spot_rid_t spot_rid);

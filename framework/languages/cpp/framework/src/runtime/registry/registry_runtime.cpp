@@ -140,6 +140,19 @@ topology_state_t from_native_topology_state (zlink::topology_state_t state)
     return topology_state_t::unknown;
 }
 
+registry_state_t from_native_registry_state (zlink::registry_state_t state)
+{
+    switch (state) {
+        case zlink::registry_state_t::active:
+        case zlink::registry_state_t::degraded:
+            return registry_state_t::running;
+        case zlink::registry_state_t::idle:
+        case zlink::registry_state_t::error:
+            return registry_state_t::stopped;
+    }
+    return registry_state_t::stopped;
+}
+
 zlink::registry_topology_filter_t to_native_filter (const topology_filter_t &filter)
 {
     zlink::registry_topology_filter_t native;
@@ -174,6 +187,23 @@ topology_entry_t from_native_topology_entry (const zlink::registry_topology_entr
                             from_native_topology_state (entry.state ()),
                             entry.endpoint (),
                             entry.routing_id ()};
+}
+
+member_peer_t from_native_member_peer_entry (const zlink::member_peer_entry_t &entry)
+{
+    return member_peer_t{entry.channel_name (),
+                         entry.routing_id () ? entry.routing_id ()->to_string () : std::string (),
+                         entry.endpoint ()};
+}
+
+registry_status_t from_native_registry_status (const zlink::registry_status_t &status)
+{
+    return registry_status_t{from_native_registry_state (status.state ()),
+                             std::to_string (status.registry_id ()),
+                             std::string (),
+                             status.bind_endpoint (),
+                             status.peer_registry_count (),
+                             status.connected_peer_registry_count ()};
 }
 
 framework_error_kind_t map_registry_client_error (const std::exception &ex)
@@ -335,10 +365,13 @@ registry_query_t &registry_query_t::operator= (registry_query_t &&) noexcept = d
 
 registry_status_t registry_query_t::status () const
 {
-    return registry_status_t{
-      _state->embedded_registry_enabled ? registry_state_t::running : registry_state_t::stopped,
-      _state->options.registry_id, _state->options.pub_endpoint, _state->options.router_endpoint,
-      _state->options.peer_pub_endpoints.size ()};
+    return registry_status_t{_state->embedded_registry_enabled ? registry_state_t::running
+                                                               : registry_state_t::stopped,
+                             _state->options.registry_id,
+                             _state->options.pub_endpoint,
+                             _state->options.router_endpoint,
+                             _state->options.peer_pub_endpoints.size (),
+                             _state->options.peer_pub_endpoints.size ()};
 }
 
 std::vector<service_summary_entry_t> registry_query_t::service_summary () const
@@ -487,6 +520,43 @@ registry_query_client_t::topology (const topology_filter_t &filter) const
     catch (const std::exception &ex) {
         return result_t<std::vector<topology_entry_t>>::failure (map_registry_client_error (ex),
                                                                  ex.what ());
+    }
+}
+
+result_t<std::vector<member_peer_t>>
+registry_query_client_t::member_peers (std::string channel_name) const
+{
+    if (!_impl->client) {
+        return result_t<std::vector<member_peer_t>>::failure (
+          framework_error_kind_t::disconnected, "registry query client is not connected");
+    }
+    try {
+        const auto native = _impl->client->member_peers (channel_name);
+        std::vector<member_peer_t> mapped;
+        mapped.reserve (native.size ());
+        for (const auto &entry : native) {
+            mapped.push_back (from_native_member_peer_entry (entry));
+        }
+        return result_t<std::vector<member_peer_t>>::success (std::move (mapped));
+    }
+    catch (const std::exception &ex) {
+        return result_t<std::vector<member_peer_t>>::failure (map_registry_client_error (ex),
+                                                              ex.what ());
+    }
+}
+
+result_t<registry_status_t> registry_query_client_t::status () const
+{
+    if (!_impl->client) {
+        return result_t<registry_status_t>::failure (framework_error_kind_t::disconnected,
+                                                     "registry query client is not connected");
+    }
+    try {
+        return result_t<registry_status_t>::success (
+          from_native_registry_status (_impl->client->status ()));
+    }
+    catch (const std::exception &ex) {
+        return result_t<registry_status_t>::failure (map_registry_client_error (ex), ex.what ());
     }
 }
 
@@ -668,11 +738,11 @@ void registry_runtime_t::project_topology (const zlink_builder_state_t &builder)
     }
     if (_state->monitoring) {
         monitoring_runtime_t (_state->monitoring)
-          .publish_registry_snapshot (
-            "registry",
-            registry_status_t{registry_state_t::running, "registry", _state->options.pub_endpoint,
-                              _state->options.router_endpoint, 0},
-            _state->topology, _state->services);
+          .publish_registry_snapshot ("registry",
+                                      registry_status_t{registry_state_t::running, "registry",
+                                                        _state->options.pub_endpoint,
+                                                        _state->options.router_endpoint, 0},
+                                      _state->topology, _state->services);
     }
 }
 
@@ -727,8 +797,7 @@ void registry_runtime_t::add_spot_route (spot_route_t route)
 }
 
 void registry_runtime_t::attach_spot_route_discovery (
-  std::string route_channel_name,
-  std::shared_ptr<spot_route_discovery_bridge_t> discovery)
+  std::string route_channel_name, std::shared_ptr<spot_route_discovery_bridge_t> discovery)
 {
     if (route_channel_name.empty () || !discovery) {
         return;

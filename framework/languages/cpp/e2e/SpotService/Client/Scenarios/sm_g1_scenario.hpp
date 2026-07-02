@@ -3,7 +3,6 @@
 
 #include "../../Shared/spot_service_contracts.hpp"
 
-#include <zlink/framework.hpp>
 #include <zlink/stream_connector.hpp>
 #include <zlink/stream_e2e_client.hpp>
 
@@ -61,14 +60,12 @@ inline void sm_g1_wait_signal_file (const std::string &path, const std::string &
     throw std::runtime_error ("SM-G1 timed out waiting for " + label);
 }
 
-inline void run_sm_g1_crash_observation_scenario (zlink::framework::route_client_t &routes,
-                                                  const std::string &stream_endpoint,
+inline void run_sm_g1_crash_observation_scenario (const std::string &stream_endpoint,
                                                   const std::string &alternate_stream_endpoint,
                                                   const std::string &crash_ready_file,
                                                   const std::string &crash_go_file,
                                                   const std::string &crash_observed_file)
 {
-    (void) routes;
     if (stream_endpoint.empty () || alternate_stream_endpoint.empty ()) {
         throw std::runtime_error (
           "ZLINK_CPP_E2E_STREAM_ENDPOINT and ZLINK_CPP_E2E_ALT_STREAM_ENDPOINT are required for SM-G1");
@@ -165,10 +162,8 @@ inline void run_sm_g1_crash_observation_scenario (zlink::framework::route_client
     std::cout << "scenario SM-G1 crash observed passed\n";
 }
 
-inline void run_sm_g1_crash_recovery_scenario (zlink::framework::route_client_t &routes,
-                                               const std::string &stream_endpoint)
+inline void run_sm_g1_crash_recovery_scenario (const std::string &stream_endpoint)
 {
-    (void) routes;
     if (stream_endpoint.empty ()) {
         throw std::runtime_error ("ZLINK_CPP_E2E_STREAM_ENDPOINT is required for SM-G1 recovery");
     }

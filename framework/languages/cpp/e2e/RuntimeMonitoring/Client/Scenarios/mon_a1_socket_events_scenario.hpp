@@ -5,7 +5,6 @@
 #include "../Support/client_support.hpp"
 #include "../../Shared/runtime_monitoring_contracts.hpp"
 
-#include <zlink/framework.hpp>
 #include <zlink/http_client.hpp>
 
 #include <chrono>
@@ -15,24 +14,10 @@
 namespace zlink::framework::e2e::runtime_monitoring::client
 {
 
-inline void run_mon_a1_socket_events_scenario (zlink::framework::channel_client_t &channels,
-                                               const client_options_t &options)
+inline void run_mon_a1_socket_events_scenario (const client_options_t &options)
 {
-    profile_res_t reply;
-    if (!options.trigger_url.empty ()) {
-        reply = post_profile_request (options.trigger_url, "/profile/request/service-a",
-                                      profile_req_t{.value = "monitor", .marker = "mon-a1"});
-    } else {
-        auto request = channels.request (profile_channel,
-                                         profile_req_t{.value = "monitor", .marker = "mon-a1"})
-                         .timeout (std::chrono::milliseconds (3000))
-                         .async<profile_res_t> ();
-        const auto &result = request.result ();
-        ensure (result.has_value (),
-                "MON-A1 request failed: "
-                  + std::string (result.error () ? result.error ()->what () : "unknown"));
-        reply = result.value ();
-    }
+    auto reply = post_profile_request (options.trigger_url, "/profile/request/service-a",
+                                       profile_req_t{.value = "monitor", .marker = "mon-a1"});
     ensure (reply.value == "profile:monitor" && reply.marker == "mon-a1",
             "MON-A1 reply payload mismatch");
 

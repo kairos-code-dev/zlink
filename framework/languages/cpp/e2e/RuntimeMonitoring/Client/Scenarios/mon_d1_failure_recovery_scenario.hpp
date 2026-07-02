@@ -4,9 +4,6 @@
 
 #include "../Support/client_support.hpp"
 #include "../../Shared/runtime_monitoring_contracts.hpp"
-#include "mon_a1_socket_events_scenario.hpp"
-
-#include <zlink/framework.hpp>
 
 #include <chrono>
 #include <iostream>
@@ -14,8 +11,7 @@
 namespace zlink::framework::e2e::runtime_monitoring::client
 {
 
-inline void run_mon_d1_failure_recovery_scenario (zlink::framework::channel_client_t &channels,
-                                                  const client_options_t &options)
+inline void run_mon_d1_failure_recovery_scenario (const client_options_t &options)
 {
     constexpr auto registry_topology_event =
       "monitor-registry|source=registry|kind=TopologyChanged";
@@ -23,22 +19,8 @@ inline void run_mon_d1_failure_recovery_scenario (zlink::framework::channel_clie
     const auto initial_registry_topology_count =
       count_contains (initial_registry_evidence, registry_topology_event);
 
-    profile_res_t reply;
-    if (!options.trigger_url.empty ()) {
-        reply = post_profile_request (options.trigger_url, "/profile/request/service-b",
-                                      profile_req_t{.value = "restart", .marker = "mon-d1"});
-    } else {
-        auto request = channels
-                         .request (profile_channel,
-                                   profile_req_t{.value = "restart", .marker = "mon-d1"})
-                         .timeout (std::chrono::milliseconds (3000))
-                         .async<profile_res_t> ();
-        const auto &result = request.result ();
-        ensure (result.has_value (),
-                "MON-D1 restarted service request failed: "
-                  + std::string (result.error () ? result.error ()->what () : "unknown"));
-        reply = result.value ();
-    }
+    auto reply = post_profile_request (options.trigger_url, "/profile/request/service-b",
+                                       profile_req_t{.value = "restart", .marker = "mon-d1"});
     ensure (reply.provider_rid == "svc-b" && reply.marker == "mon-d1"
               && reply.value == "profile:restart",
             "MON-D1 restarted service reply mismatch");

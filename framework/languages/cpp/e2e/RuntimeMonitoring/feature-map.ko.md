@@ -3,9 +3,10 @@
 기준 문서: `framework/doc/framework/common/e2e/config-7-monitoring.ko.md`
 
 이 디렉터리는 기존 `Monitoring` 보조 runner를 대체하기 위한 Config 7 전용 포팅 위치다. 현재 구현은
-registry, service, filtered service, throwing service, trigger, client role을 분리해서 실행하고,
-C++ public monitoring builder와 runtime event evidence로 MON-A1부터 MON-D1까지 검증한다. trigger는
-검증을 유도하는 HTTP 역할로만 사용하고, runtime source event가 없는 항목을 trigger marker만으로
+registry, service, filtered service, throwing service, trigger, client role을 분리해서 실행한다.
+client role은 `.NET` baseline처럼 HTTP만 호출하고, framework channel request나 monitoring validation은
+trigger/service/registry role 내부 endpoint가 담당한다. C++ public monitoring builder와 runtime event
+evidence로 MON-A1부터 MON-D1까지 검증하며, trigger marker만으로 runtime source event가 없는 항목을
 완료 처리하지 않는다.
 
 | 시나리오 | 상태 | 근거 |
@@ -18,14 +19,19 @@ C++ public monitoring builder와 runtime event evidence로 MON-A1부터 MON-D1�
 | `MON-B1` | 구현 | filtered service role이 socket event kind filter를 `ConnectionReady`에 적용하고, 해당 event만 evidence에 남는지 검증한다. |
 | `MON-B2` | 구현 | trigger role의 validation endpoint가 C++ public builder의 중복 socket source, 비양수 registry interval, missing spot/socket source framework 적용 검증을 실행하고 client가 결과를 단언한다. |
 | `MON-C1` | 구현 | throwing service mode가 monitoring handler 예외를 발생시키고, runtime이 `monitoring-event-dispatch` stderr marker를 남기며 trigger role의 후속 messaging request가 계속 성공하는지 검증한다. |
-| `MON-D1` | 구현 | runner가 filtered service를 `/shutdown`으로 중지한 뒤 같은 endpoint로 재시작하고, trigger role의 direct request, restarted service evidence, restart 이후 registry `TopologyChanged` continuity evidence를 검증한다. |
+| `MON-D1` | 구현 | runner가 filtered service를 `/shutdown`으로 중지한 뒤 같은 endpoint로 재시작하고, client가 trigger HTTP endpoint를 통해 restarted service evidence와 restart 이후 registry `TopologyChanged` continuity evidence를 검증한다. |
 
 ## 유지 기준
 
 - `.NET RuntimeMonitoring`의 registry, service, filtered service, throwing service, trigger, client 역할은
-  C++ target으로 분리했고 log wait, validation, handshake failure endpoint를 사용한다.
+  C++ target으로 분리했다. client target은 HTTP-only driver이고, log wait, validation, handshake failure
+  endpoint는 trigger/server role에서 제공한다.
 - 기존 `Monitoring` runner는 PubSub flow log 보조 검증이므로 Config 7 완료 증거로 승격하지 않는다.
 - `run_e2e.sh`는 local port readiness timeout을 기본 3초로 두고, MON-A1/MON-B1/MON-D1에서 실제
   message dispatch가 발생한 service와 trigger role의 message-flow trace 파일을 필수 증거로 확인한다.
 - 현재 MON-A1~MON-D1에는 public monitoring API gap이 없다. 이후 새 항목에서 public monitoring API로
   수집할 수 없는 항목이 나오면 trigger-only marker로 메우지 않고 별도 gap으로 기록한다.
+- 2026-07-02 검증:
+  - `cmake --build framework/languages/cpp/build --target zlink_cpp_e2e_runtime_monitoring_registry zlink_cpp_e2e_runtime_monitoring_service zlink_cpp_e2e_runtime_monitoring_filtered_service zlink_cpp_e2e_runtime_monitoring_throwing_service zlink_cpp_e2e_runtime_monitoring_trigger zlink_cpp_e2e_runtime_monitoring_client -j 4`
+  - `timeout 420s framework/languages/cpp/e2e/RuntimeMonitoring/run_e2e.sh`
+  - 로그: `logs/20260702-073103-59798`

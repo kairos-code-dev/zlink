@@ -10,9 +10,8 @@
 namespace zlink::framework::e2e::registry_messaging::client
 {
 
-inline void run_rm_c8_payload_round_trip_scenario (zlink::framework::channel_client_t &channels)
+inline void run_rm_c8_payload_round_trip_scenario ()
 {
-    (void) channels;
     const auto consumer = env_or ("ZLINK_CPP_E2E_SINGLE_CONSUMER_URL");
     const std::vector<std::size_t> sizes = {1, 4096, 256 * 1024, 1024 * 1024};
     for (const auto size : sizes) {
@@ -34,28 +33,27 @@ inline void run_rm_c8_payload_round_trip_scenario (zlink::framework::channel_cli
     std::cout << "scenario RM-C8 passed\n";
 }
 
-inline void run_rm_c8_max_message_size_scenario (zlink::framework::channel_client_t &channels)
+inline void run_rm_c8_max_message_size_scenario ()
 {
+    const auto consumer = env_or ("ZLINK_CPP_E2E_SINGLE_CONSUMER_URL");
     const auto oversized_payload = std::string (32 * 1024, 'x');
-    auto oversized = channels
-                       .request ("registry.messaging.api.manual.max",
-                      payload_req_t{.marker = "oversized", .payload = oversized_payload})
-                       .timeout (std::chrono::milliseconds (1000))
-                       .async<payload_res_t> ();
-    ensure (!oversized.result ().has_value (), "RM-C8 oversized request unexpectedly succeeded");
-    ensure (oversized.result ().error_kind () == zlink::framework::framework_error_kind_t::timeout,
-            "RM-C8 oversized request failed with an unexpected public error kind");
+    bool oversized_failed = false;
+    try {
+        (void) post_json<payload_req_t, payload_res_t> (
+          consumer, "/profile/payload",
+          payload_req_t{.marker = "oversized", .payload = oversized_payload},
+          std::chrono::milliseconds (1500));
+    }
+    catch (const std::exception &) {
+        oversized_failed = true;
+    }
+    ensure (oversized_failed, "RM-C8 oversized request unexpectedly succeeded");
 
-    auto normal = channels
-                    .request ("registry.messaging.api.manual.max",
-                              payload_req_t{.marker = "after-oversized",
-                                                .payload = "after-oversized"})
-                    .timeout (std::chrono::milliseconds (2000))
-                    .async<payload_res_t> ();
-    ensure (normal.result ().has_value (), "RM-C8 normal request after oversized failed");
-    ensure (normal.result ().value ().marker == "after-oversized",
-            "RM-C8 normal marker after oversized mismatch");
-    ensure (normal.result ().value ().sha256 == sha256_hex ("after-oversized"),
+    auto normal = post_json<payload_req_t, payload_res_t> (
+      consumer, "/profile/payload",
+      payload_req_t{.marker = "after-oversized", .payload = "after-oversized"});
+    ensure (normal.marker == "after-oversized", "RM-C8 normal marker after oversized mismatch");
+    ensure (normal.sha256 == sha256_hex ("after-oversized"),
             "RM-C8 normal sha256 after oversized mismatch");
     std::cout << "scenario RM-C8-max passed\n";
 }

@@ -36,7 +36,8 @@ inline int run_multi_node_server (int argc, char **argv)
         options.services ()
           .add_singleton<scenario_state_t> (std::move (state))
           .add_transient<multi_node_create_local_handler_t, scenario_state_t,
-                         zlink::framework::spot_node_manager_t> ()
+                         zlink::framework::spot_node_manager_t,
+                         zlink::framework::route_client_t> ()
           .add_transient<multi_node_state_route_handler_t, scenario_state_t,
                          zlink::framework::route_client_t> ();
         configure_codecs (options.codecs ());

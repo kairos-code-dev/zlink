@@ -71,8 +71,7 @@ bool composite_route_internal_packet_dispatcher_t::can_handle_request (
 }
 
 result_t<void> composite_route_internal_packet_dispatcher_t::dispatch_send (
-  const route_received_packet_t &received,
-  service_provider_t &services) const
+  const route_received_packet_t &received, service_provider_t &services) const
 {
     auto header = runtime::messaging::envelope_codec_t{}.decode_header (received.parts);
     if (!header) {

@@ -33,10 +33,10 @@ struct route_outbound_packet_t
 class route_channel_runtime_t
 {
   public:
-    using send_backend_t = std::function<result_t<void> (
-      const zlink::routing_id_t &,
-      const std::optional<zlink::routing_id_t> &,
-      const runtime::messaging::message_parts_t &)>;
+    using send_backend_t =
+      std::function<result_t<void> (const zlink::routing_id_t &,
+                                    const std::optional<zlink::routing_id_t> &,
+                                    const runtime::messaging::message_parts_t &)>;
     using request_backend_t = std::function<result_t<runtime::messaging::message_parts_t> (
       const zlink::routing_id_t &,
       const std::optional<zlink::routing_id_t> &,
@@ -123,15 +123,15 @@ class route_channel_runtime_t
     std::size_t pending_request_count () const noexcept;
 
   private:
-    route_outbound_packet_t &append_outbound_unlocked (
-      const zlink::routing_id_t &target_node_rid,
-      std::optional<zlink::routing_id_t> target_spot_rid,
-      runtime::messaging::message_parts_t parts,
-      std::optional<std::uint64_t> request_seq);
-    result_t<std::uint64_t> register_request_unlocked (
-      const zlink::routing_id_t &target_node_rid,
-      std::optional<zlink::routing_id_t> target_spot_rid,
-      runtime::messaging::message_parts_t parts);
+    route_outbound_packet_t &
+    append_outbound_unlocked (const zlink::routing_id_t &target_node_rid,
+                              std::optional<zlink::routing_id_t> target_spot_rid,
+                              runtime::messaging::message_parts_t parts,
+                              std::optional<std::uint64_t> request_seq);
+    result_t<std::uint64_t>
+    register_request_unlocked (const zlink::routing_id_t &target_node_rid,
+                               std::optional<zlink::routing_id_t> target_spot_rid,
+                               runtime::messaging::message_parts_t parts);
     result_t<void> ensure_connected () const;
 
     std::string _router_channel_id;

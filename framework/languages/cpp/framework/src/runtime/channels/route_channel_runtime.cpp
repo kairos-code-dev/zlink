@@ -116,8 +116,8 @@ route_channel_runtime_t::submit_send_parts (const zlink::routing_id_t &target_no
         if (auto connected = ensure_connected (); !connected) {
             return connected;
         }
-        auto &packet = append_outbound_unlocked (target_node_rid, std::nullopt, std::move (parts),
-                                                 std::nullopt);
+        auto &packet =
+          append_outbound_unlocked (target_node_rid, std::nullopt, std::move (parts), std::nullopt);
         if (_send_backend) {
             backend = _send_backend;
             backend_target = packet.target_node_rid;
@@ -164,7 +164,8 @@ route_channel_runtime_t::request_reply_parts (const zlink::routing_id_t &target_
         if (!_request_backend) {
             _pending_requests.remove (request_seq);
             return result_t<runtime::messaging::message_parts_t>::failure (
-              framework_error_kind_t::timeout, "route request reply was not completed by a backend");
+              framework_error_kind_t::timeout,
+              "route request reply was not completed by a backend");
         }
         backend = _request_backend;
     }
@@ -190,8 +191,8 @@ route_channel_runtime_t::submit_spot_send_parts (const zlink::routing_id_t &targ
         if (auto connected = ensure_connected (); !connected) {
             return connected;
         }
-        auto &packet = append_outbound_unlocked (target_node_rid, target_spot_rid, std::move (parts),
-                                                 std::nullopt);
+        auto &packet = append_outbound_unlocked (target_node_rid, target_spot_rid,
+                                                 std::move (parts), std::nullopt);
         if (_send_backend) {
             backend = _send_backend;
             backend_target = packet.target_node_rid;
@@ -227,14 +228,13 @@ route_channel_runtime_t::request_to_spot_parts (const zlink::routing_id_t &targe
         }
     }
     if (backend) {
-        auto reply = backend (target_node_rid, target_spot_rid, parts,
-                              default_request_timeout ());
+        auto reply = backend (target_node_rid, target_spot_rid, parts, default_request_timeout ());
         std::lock_guard lock (_mutex);
         _pending_requests.remove (request_seq);
         if (!reply) {
-            return result_t<std::uint64_t>::failure (
-              reply.error_kind (),
-              reply.error () ? reply.error ()->what () : "route spot request failed");
+            return result_t<std::uint64_t>::failure (reply.error_kind (),
+                                                     reply.error () ? reply.error ()->what ()
+                                                                    : "route spot request failed");
         }
     }
     return result_t<std::uint64_t>::success (request_seq);

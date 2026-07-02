@@ -103,10 +103,9 @@ handler_registry_t &handler_registry_t::send_raw (std::string channel_name,
     return add_handler (
       {std::move (channel_name), std::move (topic), packet, handler_kind_t::raw, options.execution,
        std::type_index (typeid (void)), std::type_index (typeid (zlink::message_t))},
-      [handler =
-         std::move (handler)] (service_provider_t &, serializer_registry_t &,
-                               const zlink::message_t &message,
-                               std::string_view) -> task_t<zlink::message_t> {
+      [handler = std::move (handler)] (service_provider_t &, serializer_registry_t &,
+                                       const zlink::message_t &message,
+                                       std::string_view) -> task_t<zlink::message_t> {
           const auto result = handler (payload_view_t (detail::encoded_payload_from_raw (message)));
           if (!result) {
               return task_t<zlink::message_t> (result_t<zlink::message_t>::failure (
@@ -208,8 +207,8 @@ task_t<zlink::message_t> handler_registry_t::invoke_async (std::string_view chan
     return runtime::handler_coroutine_executor ().submit<zlink::message_t> (
       [this, entry, filters = std::move (filters), &services, &serializers,
        owned_message = std::move (owned_message),
-       owned_content_type = std::move (
-         owned_content_type)] () -> boost::asio::awaitable<result_t<zlink::message_t>> {
+       owned_content_type =
+         std::move (owned_content_type)] () -> boost::asio::awaitable<result_t<zlink::message_t>> {
           result_t<zlink::message_t> result = result_t<zlink::message_t>::failure (
             framework_error_kind_t::request_failed, "handler failed");
           try {
@@ -220,8 +219,8 @@ task_t<zlink::message_t> handler_registry_t::invoke_async (std::string_view chan
               using chain_t = std::function<task_t<zlink::message_t> (std::size_t)>;
               auto chain = std::make_shared<chain_t> ();
               *chain = [&services, &serializers, &context, &filters, entry, owned_message,
-                        &owned_content_type, chain] (
-                         std::size_t index) -> task_t<zlink::message_t> {
+                        &owned_content_type,
+                        chain] (std::size_t index) -> task_t<zlink::message_t> {
                   if (index >= filters.size ()) {
                       return entry->invoker (services, serializers, *owned_message,
                                              owned_content_type);

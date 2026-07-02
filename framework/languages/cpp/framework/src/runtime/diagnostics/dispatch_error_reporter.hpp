@@ -21,7 +21,9 @@ namespace zlink::framework::detail
 class dispatch_error_reporter_t
 {
   public:
-    explicit dispatch_error_reporter_t (dispatch_options_t options) : _options (std::move (options)) {}
+    explicit dispatch_error_reporter_t (dispatch_options_t options) : _options (std::move (options))
+    {
+    }
 
     void report (message_dispatch_error_event_t event) const noexcept
     {
@@ -33,20 +35,11 @@ class dispatch_error_reporter_t
             log_default (event);
         }
         message_flow_tracer_t (_options).trace (message_flow_event_t{
-          message_flow_outcome_t::error,
-          event.surface,
-          event.message_kind,
-          std::move (event.packet_name),
-          std::move (event.channel_name),
-          std::move (event.topic),
-          std::move (event.correlation_id),
-          std::move (event.source_rid),
-          std::move (event.spot_rid),
-          std::move (event.actor_id),
-          std::nullopt,
-          event.reason,
-          event.action,
-          event.exception});
+          message_flow_outcome_t::error, event.surface, event.message_kind,
+          std::move (event.packet_name), std::move (event.channel_name), std::move (event.topic),
+          std::move (event.correlation_id), std::move (event.source_rid),
+          std::move (event.spot_rid), std::move (event.actor_id), std::nullopt, event.reason,
+          event.action, event.exception});
     }
 
     static std::uint64_t reported () noexcept

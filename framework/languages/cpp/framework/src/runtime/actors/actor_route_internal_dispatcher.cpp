@@ -9,8 +9,7 @@ namespace zlink::framework::detail
 {
 
 actor_route_internal_dispatcher_t::actor_route_internal_dispatcher_t (
-  actor_gateway_runtime_t runtime,
-  serializer_registry_t &serializers) :
+  actor_gateway_runtime_t runtime, serializer_registry_t &serializers) :
     _runtime (std::move (runtime)), _serializers (&serializers)
 {
 }
@@ -32,33 +31,32 @@ actor_route_internal_dispatcher_t::dispatch_send (const route_received_packet_t 
     (void) services;
     auto body = runtime::messaging::envelope_codec_t{}.decode_body (received.parts);
     if (!body) {
-        return result_t<void>::failure (
-          body.error_kind (),
-          body.error () ? body.error ()->what () : "actor route send body missing");
+        return result_t<void>::failure (body.error_kind (), body.error ()
+                                                              ? body.error ()->what ()
+                                                              : "actor route send body missing");
     }
 
     try {
-        auto request =
-          _serializers->get<actor_bound_session_route_request_t> ().deserialize (
-            detail::encoded_payload_from_raw (body.value ()));
+        auto request = _serializers->get<actor_bound_session_route_request_t> ().deserialize (
+          detail::encoded_payload_from_raw (body.value ()));
         auto actor_ref = actor_ref_from_bound_session_route (request);
         auto runtime = _runtime;
         auto updated = runtime.update_actor_ref (actor_ref);
         if (!updated) {
-            return result_t<void>::failure (
-              updated.error_kind (),
-              updated.error () ? updated.error ()->what () : "actor ref update failed");
+            return result_t<void>::failure (updated.error_kind (), updated.error ()
+                                                                     ? updated.error ()->what ()
+                                                                     : "actor ref update failed");
         }
-        return runtime.dispatch_bound_session_send (
-          actor_ref, request.packet_name_value, zlink::message_t::from (request.payload));
+        return runtime.dispatch_bound_session_send (actor_ref, request.packet_name_value,
+                                                    zlink::message_t::from (request.payload));
     }
     catch (const framework_exception_t &error) {
         return result_t<void>::failure (error.kind (), error.what (), error.is_retriable ());
     }
     catch (const std::exception &error) {
-        return result_t<void>::failure (
-          framework_error_kind_t::request_protocol_error,
-          std::string ("actor route send decode failed: ") + error.what ());
+        return result_t<void>::failure (framework_error_kind_t::request_protocol_error,
+                                        std::string ("actor route send decode failed: ")
+                                          + error.what ());
     }
 }
 
@@ -77,9 +75,8 @@ result_t<zlink::message_t> actor_route_internal_dispatcher_t::dispatch_request (
     }
 
     try {
-        auto request =
-          _serializers->get<actor_bound_session_route_request_t> ().deserialize (
-            detail::encoded_payload_from_raw (body.value ()));
+        auto request = _serializers->get<actor_bound_session_route_request_t> ().deserialize (
+          detail::encoded_payload_from_raw (body.value ()));
         auto actor_ref = actor_ref_from_bound_session_route (request);
         auto runtime = _runtime;
         auto updated = runtime.update_actor_ref (actor_ref);
@@ -92,14 +89,13 @@ result_t<zlink::message_t> actor_route_internal_dispatcher_t::dispatch_request (
           actor_ref, request.packet_name_value, zlink::message_t::from (request.payload));
         if (!dispatched) {
             return result_t<zlink::message_t>::failure (
-              dispatched.error_kind (),
-              dispatched.error () ? dispatched.error ()->what ()
-                                  : "routed actor bound session send failed");
+              dispatched.error_kind (), dispatched.error ()
+                                          ? dispatched.error ()->what ()
+                                          : "routed actor bound session send failed");
         }
-        return result_t<zlink::message_t>::success (
-          detail::encoded_payload_to_raw (
-            _serializers->get<actor_bound_session_route_reply_t> ().serialize (
-              actor_bound_session_route_reply_t{.accepted = true})));
+        return result_t<zlink::message_t>::success (detail::encoded_payload_to_raw (
+          _serializers->get<actor_bound_session_route_reply_t> ().serialize (
+            actor_bound_session_route_reply_t{.accepted = true})));
     }
     catch (const framework_exception_t &error) {
         return result_t<zlink::message_t>::failure (error.kind (), error.what (),

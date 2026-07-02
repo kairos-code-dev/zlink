@@ -25,7 +25,6 @@ struct client_options_t
     std::string filtered_service_url;
     std::string throw_service_url;
     std::string trigger_url;
-    std::string direct_channel_endpoint;
     std::string log_dir;
 };
 
@@ -39,7 +38,6 @@ inline client_options_t read_client_options ()
       .filtered_service_url = env_or ("ZLINK_CPP_E2E_FILTERED_SERVICE_URL"),
       .throw_service_url = env_or ("ZLINK_CPP_E2E_THROW_SERVICE_URL"),
       .trigger_url = env_or ("ZLINK_CPP_E2E_TRIGGER_URL"),
-      .direct_channel_endpoint = env_or ("ZLINK_CPP_E2E_DIRECT_CHANNEL_ENDPOINT"),
       .log_dir = env_or ("ZLINK_CPP_E2E_LOG_DIR"),
     };
 }

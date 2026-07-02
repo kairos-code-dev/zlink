@@ -18,10 +18,8 @@ namespace zlink::framework::detail
 class timer_state_t
 {
   public:
-    using handler_invoker_t =
-      std::function<task_t<zlink::message_t> (void *,
-                                              serializer_registry_t &,
-                                              const timer_tick_t &)>;
+    using handler_invoker_t = std::function<task_t<zlink::message_t> (
+      void *, serializer_registry_t &, const timer_tick_t &)>;
 
     std::string name;
     std::chrono::milliseconds period{0};
@@ -55,8 +53,7 @@ class timer_runtime_t
                                  const std::shared_ptr<timer_state_t> &state,
                                  std::uint64_t fire_count);
 
-    task_t<timer_tick_t> dispatch_fire_count_async (timer_t &timer,
-                                                    std::uint64_t fire_count) const;
+    task_t<timer_tick_t> dispatch_fire_count_async (timer_t &timer, std::uint64_t fire_count) const;
 
     void cancel_all () const noexcept;
     std::vector<timer_failure_event_t> failure_events (const timer_t &timer) const;

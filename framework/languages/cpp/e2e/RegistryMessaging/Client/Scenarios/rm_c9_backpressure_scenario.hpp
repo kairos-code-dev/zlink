@@ -11,9 +11,8 @@
 namespace zlink::framework::e2e::registry_messaging::client
 {
 
-inline void run_rm_c9_backpressure_scenario (zlink::framework::channel_client_t &channels)
+inline void run_rm_c9_backpressure_scenario ()
 {
-    (void) channels;
     const auto consumer = env_or ("ZLINK_CPP_E2E_BACKPRESSURE_CONSUMER_URL");
     constexpr int slow_send_count = 8;
     post_raw (consumer, "/profile/backpressure/reset");

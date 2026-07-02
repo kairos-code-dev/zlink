@@ -133,15 +133,9 @@ class http_host_service_t::listener_t
 #endif
     }
 
-    void stop_workers () noexcept
-    {
-        stop_and_join_workers ();
-    }
+    void stop_workers () noexcept { stop_and_join_workers (); }
 
-    void wait_for_workers () noexcept
-    {
-        stop_and_join_workers ();
-    }
+    void wait_for_workers () noexcept { stop_and_join_workers (); }
 
     void stop_and_join_workers () noexcept
     {
@@ -274,8 +268,8 @@ class http_host_service_t::listener_t
             }
             auto request = parser.release ();
             _active_requests.fetch_add (1, std::memory_order_acq_rel);
-            auto request_guard = std::unique_ptr<void, void (*) (void *)> (
-              this, [] (void *listener) {
+            auto request_guard =
+              std::unique_ptr<void, void (*) (void *)> (this, [] (void *listener) {
                   static_cast<listener_t *> (listener)->_active_requests.fetch_sub (
                     1, std::memory_order_acq_rel);
               });

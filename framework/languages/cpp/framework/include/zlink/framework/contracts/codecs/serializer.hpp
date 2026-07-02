@@ -32,7 +32,7 @@ template <typename T, typename = void> struct is_json_serializable_t : std::fals
 
 template <typename T>
 struct is_json_serializable_t<T, std::void_t<decltype (nlohmann::json (std::declval<T> ()))>>
-  : std::true_type
+    : std::true_type
 {
 };
 
@@ -43,8 +43,7 @@ template <typename T, typename = void> struct is_json_deserializable_t : std::fa
 template <typename T>
 struct is_json_deserializable_t<
   T,
-  std::void_t<decltype (std::declval<nlohmann::json> ().template get<T> ())>>
-  : std::true_type
+  std::void_t<decltype (std::declval<nlohmann::json> ().template get<T> ())>> : std::true_type
 {
 };
 
@@ -188,8 +187,7 @@ class serializer_registry_t
                   [] (const encoded_payload_t &payload) {
                       return payload.to_raw ().template parse_json<T> ();
                   });
-            }
-            else {
+            } else {
                 return serializer_t<T> (
                   [] (const T &) -> encoded_payload_t {
                       throw framework_exception_t (

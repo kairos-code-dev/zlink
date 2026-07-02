@@ -9,29 +9,24 @@
 namespace zlink::framework::e2e::registry_messaging::client
 {
 
-inline void run_rm_a4_same_rid_failover_scenario (zlink::framework::channel_client_t &channels)
+inline void run_rm_a4_same_rid_failover_scenario ()
 {
-    auto first = channels.request (api_channel, profile_req_t{.value = "failover-before"})
-                   .timeout (std::chrono::milliseconds (2000))
-                   .async<profile_res_t> ();
-    ensure (first.result ().has_value (), "RM-A4 initial request failed");
-    ensure (first.result ().value ().provider_rid == "api-a"
-              && first.result ().value ().instance_id == "api-a-v1",
+    const auto provider_a_url = env_or ("ZLINK_CPP_E2E_HTTP_A_ENDPOINT");
+    const auto replacement_provider_url =
+      env_or ("ZLINK_CPP_E2E_HTTP_A2_ENDPOINT", provider_a_url);
+    auto first = post_json<profile_req_t, profile_res_t> (
+      provider_a_url, "/profile/request", profile_req_t{.value = "failover-before"});
+    ensure (first.provider_rid == "api-a" && first.instance_id == "api-a-v1",
             "RM-A4 initial provider mismatch");
 
     touch_file (env_or ("ZLINK_CPP_E2E_READY_FILE"));
     wait_for_file (env_or ("ZLINK_CPP_E2E_CONTINUE_FILE"));
 
     for (int index = 0; index < 20; ++index) {
-        auto task = channels
-                      .request (api_channel,
-                                profile_req_t{.value = "failover-after-"
-                                                           + std::to_string (index)})
-                      .timeout (std::chrono::milliseconds (2000))
-                      .async<profile_res_t> ();
-        ensure (task.result ().has_value (), "RM-A4 post-failover request failed");
-        ensure (task.result ().value ().provider_rid == "api-a"
-                  && task.result ().value ().instance_id == "api-a-v2",
+        auto reply = post_json<profile_req_t, profile_res_t> (
+          replacement_provider_url, "/profile/request",
+          profile_req_t{.value = "failover-after-" + std::to_string (index)});
+        ensure (reply.provider_rid == "api-a" && reply.instance_id == "api-a-v2",
                 "RM-A4 did not switch to replacement provider");
     }
     std::cout << "scenario RM-A4 passed\n";

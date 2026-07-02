@@ -10,27 +10,19 @@
 namespace zlink::framework::e2e::registry_messaging::client
 {
 
-inline void run_rm_a1_discovery_request_scenario (zlink::framework::channel_client_t &channels)
+inline void run_rm_a1_discovery_request_scenario ()
 {
-    std::set<std::string> providers;
-    for (int index = 0; index < 80 && providers.size () < 2; ++index) {
-        auto task = channels.request (api_channel,
-                                      profile_req_t{.value = "auto-" + std::to_string (index)})
-                      .timeout (std::chrono::milliseconds (2000))
-                      .async<profile_res_t> ();
-        const auto &result = task.result ();
-        ensure (result.has_value (),
-                "RM-A1 request failed: "
-                  + std::string (result.error () ? result.error ()->what () : "unknown"));
-        ensure (result.value ().value.rfind ("profile:auto-", 0) == 0,
-                "RM-A1 reply payload mismatch");
-        providers.insert (result.value ().provider_rid);
-    }
-    ensure (providers.contains ("api-a") && providers.contains ("api-b"),
-            "RM-A1 did not reach both providers");
+    const auto provider_a_url = env_or ("ZLINK_CPP_E2E_HTTP_A_ENDPOINT");
+    const auto provider_b_url = env_or ("ZLINK_CPP_E2E_HTTP_B_ENDPOINT");
+    const auto registry_url = env_or ("ZLINK_CPP_E2E_HTTP_REGISTRY_ENDPOINT");
+    const auto reply = post_json<profile_req_t, profile_res_t> (
+      provider_a_url, "/profile/request", profile_req_t{.value = "rm-a1"});
+    ensure (reply.value == "profile:rm-a1", "RM-A1 reply payload mismatch");
+    ensure (reply.provider_rid == "api-a" || reply.provider_rid == "api-b",
+            "RM-A1 provider rid was not api-a/api-b");
 
     auto registry_client = zlink::http_client::client_t::create ()
-                             .base_url (env_or ("ZLINK_CPP_E2E_HTTP_REGISTRY_ENDPOINT"))
+                             .base_url (registry_url)
                              .timeout (std::chrono::milliseconds (1000))
                              .build ();
     int ready_providers = 0;
@@ -49,6 +41,11 @@ inline void run_rm_a1_discovery_request_scenario (zlink::framework::channel_clie
         }
     }
     ensure (ready_providers >= 2, "RM-A1 expected two ready api providers in registry topology");
+    if (reply.provider_rid == "api-a") {
+        wait_evidence_contains (provider_a_url, "ProfileReq", "rm-a1", std::chrono::seconds (10));
+    } else {
+        wait_evidence_contains (provider_b_url, "ProfileReq", "rm-a1", std::chrono::seconds (10));
+    }
     std::cout << "scenario RM-A1 passed\n";
 }
 

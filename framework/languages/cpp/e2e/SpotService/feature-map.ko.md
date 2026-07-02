@@ -1,7 +1,9 @@
 # C++ SpotService E2E feature map
 
-이 파일은 Config 2 SpotService 시나리오 중 C++ framework 공개 API로 바로 검증한 항목과,
+이 파일은 Config 2 SpotService 시나리오 중 C++ framework 공개 API로 검증한 항목과,
 현재 공개 표면이 없어 E2E 앱에서 내부 패킷을 직접 만들지 않기로 한 항목을 구분한다.
+외부 C++ client는 `.NET` 기준과 같이 HTTP client와 stream connector만 사용한다. route client와
+spot route 요청은 server HTTP endpoint 뒤에서 public framework API로 수행한다.
 
 ## 구현됨
 
@@ -36,8 +38,9 @@
   join callback, 후속 actor packet handler의 순서를 검증한다.
 - `SM-B8`: stream auth로 actor를 붙인 뒤 entry spot의 public `destroyActor`로 actor를 명시 파괴하고,
   destroy evidence와 post-destroy request 실패를 검증한다.
-- `SM-C1`: 외부 route client가 특정 target node와 spot id로 request/send를 보내면 해당 spot이
-  처리하고, handler-missing/timeout 이후 정상 request가 오염되지 않는지 검증한다.
+- `SM-C1`: HTTP client가 Play role endpoint를 호출하고, server-owned route client가 특정 target
+  node와 spot id로 request/send를 보내면 해당 spot이 처리하는지 검증한다. handler-missing/timeout
+  이후 정상 request가 오염되지 않는지도 함께 확인한다.
 - `SM-C2`: spot handler가 외부 channel로 request/send를 내보내고, SPOT mesh publish를 수행하는
   흐름을 검증한다.
 - `SM-C3`: 한 user spot이 다른 user spot으로 public `request_to`/`send_to`를 수행하고,
@@ -84,12 +87,13 @@
 - `SM-E4`: public `timer_options_t`의 overrun policy별로 지연된 timer handler를 실행하고,
   `timer_tick_t`의 delivery/scheduled/skipped evidence로 skip, bounded catch-up, delayed next tick
   동작을 검증한다.
-- `SM-F1`: route client가 target spot id를 지정해 request/send를 보내는 public API 경로를
-  검증하고, `.NET`식 lifecycle context group에서는 같은 context spot에 state request와 command를
+- `SM-F1`: HTTP client가 Play role endpoint를 호출하고, server-owned route client가 target spot
+  id를 지정해 request/send를 보내는 public API 경로를 검증한다. `.NET`식 lifecycle context group에서는
+  같은 context spot에 state request와 command를 보낸다.
+- `SM-F2`: HTTP client가 Play role endpoint를 호출하고, server-owned route client가 route mesh
+  channel에서 target node와 target spot을 함께 지정해 cross-node spot request/send를 수행하는지
+  검증한다. `.NET`식 lifecycle context group에서는 같은 context spot에 후속 state request와 command를
   보낸다.
-- `SM-F2`: route mesh channel에서 target node와 target spot을 함께 지정해 cross-node spot
-  request/send가 동작하는지 검증하고, `.NET`식 lifecycle context group에서는 같은 context spot에
-  후속 state request와 command를 보낸다.
 - `SM-F3`: `Client/Scenarios/sm_f3_scenario.hpp`가 같은 route mesh channel에서 일반 route packet과
   spot route packet이 함께 오가도 각각 올바른 dispatcher로 분기되는지 검증한다.
 - `SM-F4`: 존재하지 않는 target spot, handler 없는 spot route request, slow spot timeout이
@@ -108,9 +112,10 @@
   `ActorJoined`/`ActorLeft` evidence가 정확히 1회씩 남는지 검증한다.
 - `SM-G4`: 다수 stream client가 각각 다른 actor에 bind된 상태에서 동시에 push를 트리거하고,
   각 client가 자기 actor의 `ActorPushNotify`만 수신하는지 검증한다.
-- `SM-Q9`: `.NET`의 multi-node route-to-spot scaffold에 대응해 multi-node A/B role을 실제로 띄우고,
-  외부 C++ route client가 각 node의 target spot id로 `StateReq`를 보내 같은 spot state와 evidence가
-  유지되는지 검증한다.
+- `SM-Q9`: `.NET`의 multi-node route-to-spot scaffold에 대응해 multi-node A/B role을 실제로 띄운다.
+  외부 client는 HTTP만 호출하고, C++ requester role이 server-side public route client와 bridge-only
+  spot node를 소유한다. requester가 target node와 target spot을 지정해 `StateReq`를 보내면 같은 spot
+  state와 evidence가 유지되는지 검증한다.
 
 ## 남은 시나리오
 

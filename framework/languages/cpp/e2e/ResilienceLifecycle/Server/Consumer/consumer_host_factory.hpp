@@ -23,6 +23,10 @@ inline void configure_consumer_host (zlink::framework::zlink_framework_options_t
     auto channel = framework.add_client_server_channel (api_channel);
     framework.use_discovery ().add_registry_endpoint (options.registry_router);
     channel.enable_client ();
+    if (!options.provider_endpoints.empty ()) {
+        framework.add_client_server_channel ("resilience.lifecycle.api.manual")
+          .enable_client (options.provider_endpoints.front ());
+    }
     framework.http ()
       .listen (options.http_endpoint)
       .configure_server ([] (zlink::framework::http_server_options_builder_t &server) {
@@ -30,9 +34,11 @@ inline void configure_consumer_host (zlink::framework::zlink_framework_options_t
       })
       .map_health ("/health")
       .map_post<profile_request_handler_t> ("/profile/request")
+      .map_post<manual_profile_request_handler_t> ("/profile/request/manual")
       .map_post<slow_request_handler_t> ("/profile/request/timeout/100")
       .map_post<missing_request_handler_t> ("/profile/request/missing")
       .map_post<profile_command_handler_t> ("/profile/command")
+      .map_post<missing_profile_command_handler_t> ("/profile/command/missing")
       .map_post<new_client_profile_request_handler_t> ("/profile/request/new-client");
 }
 

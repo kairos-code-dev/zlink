@@ -9,15 +9,16 @@
 namespace zlink::framework::e2e::registry_messaging::client
 {
 
-inline void run_rm_c1_request_send_scenario (zlink::framework::channel_client_t &channels)
+inline void run_rm_c1_request_send_scenario ()
 {
-    auto request = channels.request (api_channel, profile_req_t{.value = "c1"})
-                     .timeout (std::chrono::milliseconds (2000))
-                     .async<profile_res_t> ();
-    ensure (request.result ().has_value (), "RM-C1 request failed");
-    ensure (request.result ().value ().value == "profile:c1", "RM-C1 reply mismatch");
+    const auto provider_a_url = env_or ("ZLINK_CPP_E2E_HTTP_A_ENDPOINT");
+    auto request = post_json<profile_req_t, profile_res_t> (
+      provider_a_url, "/profile/request", profile_req_t{.value = "c1"});
+    ensure (request.value == "profile:c1", "RM-C1 reply mismatch");
 
-    channels.send (api_channel, profile_msg_t{.command_id = "cmd-c1"}).submit ();
+    auto sent = post_json<profile_msg_t, operation_status_t> (
+      provider_a_url, "/profile/command", profile_msg_t{.command_id = "cmd-c1"});
+    ensure (sent.status == "sent", "RM-C1 send endpoint failed");
     std::this_thread::sleep_for (std::chrono::milliseconds (100));
 
     const auto evidence_a = fetch_evidence (env_or ("ZLINK_CPP_E2E_HTTP_A_ENDPOINT"));

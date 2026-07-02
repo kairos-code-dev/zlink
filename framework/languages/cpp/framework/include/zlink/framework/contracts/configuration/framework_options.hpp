@@ -155,7 +155,7 @@ class handler_options_builder_t
                     detail::message_name<request_type> (),
                     static_cast<task_t<reply_type> (THandler::*) (
                       const request_type &, const route_handler_context_t &)> (&THandler::handle));
-            });
+              });
         }
     }
 
@@ -379,16 +379,14 @@ class client_server_channel_builder_t
         return *this;
     }
 
-    client_server_channel_builder_t &
-    server_send_high_water_mark (zlink::message_count_t value)
+    client_server_channel_builder_t &server_send_high_water_mark (zlink::message_count_t value)
     {
         _server_send_high_water_mark = value;
         apply_channel ();
         return *this;
     }
 
-    client_server_channel_builder_t &
-    server_receive_high_water_mark (zlink::message_count_t value)
+    client_server_channel_builder_t &server_receive_high_water_mark (zlink::message_count_t value)
     {
         _server_receive_high_water_mark = value;
         apply_channel ();
@@ -435,8 +433,7 @@ class client_server_channel_builder_t
         return *this;
     }
 
-    client_server_channel_builder_t &
-    client_receive_high_water_mark (zlink::message_count_t value)
+    client_server_channel_builder_t &client_receive_high_water_mark (zlink::message_count_t value)
     {
         _client_receive_high_water_mark = value;
         apply_channel ();
@@ -516,9 +513,9 @@ class client_server_channel_builder_t
           "client_server_channel:" + channel_name,
           [channel_name, server_endpoint, routing_id, server_send_high_water_mark,
            server_receive_high_water_mark, server_max_message_size, server_peer_weight,
-           client_enabled, client_endpoints, client_uses_discovery,
-           client_send_high_water_mark, client_receive_high_water_mark, client_max_message_size,
-           client_peer_weight, default_request_timeout] (zlink_builder_t &zlink) {
+           client_enabled, client_endpoints, client_uses_discovery, client_send_high_water_mark,
+           client_receive_high_water_mark, client_max_message_size, client_peer_weight,
+           default_request_timeout] (zlink_builder_t &zlink) {
               auto channel = zlink.channel (channel_name);
               if (default_request_timeout) {
                   channel.default_request_timeout (*default_request_timeout);
@@ -734,7 +731,8 @@ class route_mesh_channel_builder_t
     route_mesh_channel_builder_t &enable_client ()
     {
         _options->route_mesh_channels_with_client.insert (_channel_name);
-        _options->discovery_backed_capabilities.insert ("route mesh channel '" + _channel_name + "'");
+        _options->discovery_backed_capabilities.insert ("route mesh channel '" + _channel_name
+                                                        + "'");
         _manual_connections.clear ();
         apply ();
         return *this;
@@ -744,7 +742,8 @@ class route_mesh_channel_builder_t
     {
         detail::require_non_blank (endpoint, "route mesh client endpoint is required");
         _options->route_mesh_channels_with_client.insert (_channel_name);
-        _options->discovery_backed_capabilities.erase ("route mesh channel '" + _channel_name + "'");
+        _options->discovery_backed_capabilities.erase ("route mesh channel '" + _channel_name
+                                                       + "'");
         _manual_connections.push_back (std::move (endpoint));
         apply ();
         return *this;
@@ -1127,10 +1126,8 @@ class stream_node_options_builder_t
     stream_node_options_builder_t &set_tls_server (std::string certificate_file,
                                                    std::string private_key_file)
     {
-        detail::require_non_blank (certificate_file,
-                                   "STREAM TLS certificate file is required");
-        detail::require_non_blank (private_key_file,
-                                   "STREAM TLS private key file is required");
+        detail::require_non_blank (certificate_file, "STREAM TLS certificate file is required");
+        detail::require_non_blank (private_key_file, "STREAM TLS private key file is required");
         _tls_certificate_file = std::move (certificate_file);
         _tls_private_key_file = std::move (private_key_file);
         apply ();
@@ -1183,9 +1180,8 @@ class stream_node_options_builder_t
         const auto tls_certificate_file = _tls_certificate_file;
         const auto tls_private_key_file = _tls_private_key_file;
         _options->set_zlink_action (
-          "stream_node:" + stream_name,
-          [stream_name, endpoint, session_name, tls_certificate_file,
-           tls_private_key_file] (zlink_builder_t &zlink) {
+          "stream_node:" + stream_name, [stream_name, endpoint, session_name, tls_certificate_file,
+                                         tls_private_key_file] (zlink_builder_t &zlink) {
               auto stream = zlink.stream (stream_name);
               if (!endpoint.empty ()) {
                   stream.bind (endpoint);
@@ -1246,8 +1242,7 @@ class stream_compression_options_builder_t
     void set (std::shared_ptr<const stream_compression_codec_t> codec)
     {
         _options->set_zlink_action (
-          "stream_compression",
-          [codec = std::move (codec)] (zlink_builder_t &zlink) mutable {
+          "stream_compression", [codec = std::move (codec)] (zlink_builder_t &zlink) mutable {
               detail::apply_stream_compression_codec (zlink, std::move (codec));
           });
     }
@@ -1287,10 +1282,7 @@ class zlink_framework_options_t
         return handler_options_builder_t (*_services, *_handlers, *_serializers, _handler_groups);
     }
 
-    codec_options_builder_t codecs ()
-    {
-        return codec_options_builder_t (*_serializers);
-    }
+    codec_options_builder_t codecs () { return codec_options_builder_t (*_serializers); }
 
     metadata_policy_builder_t metadata () { return metadata_policy_builder_t (_options); }
 

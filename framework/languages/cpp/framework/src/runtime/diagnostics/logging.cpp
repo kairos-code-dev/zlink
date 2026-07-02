@@ -170,9 +170,9 @@ void emit_log (const std::shared_ptr<logging_state_t> &state,
             if (state->max_captured_records > 0
                 && state->captured_records.size () >= state->max_captured_records) {
                 const auto keep = state->max_captured_records / 2;
-                state->captured_records.erase (
-                  state->captured_records.begin (),
-                  state->captured_records.end () - static_cast<std::ptrdiff_t> (keep));
+                state->captured_records.erase (state->captured_records.begin (),
+                                               state->captured_records.end ()
+                                                 - static_cast<std::ptrdiff_t> (keep));
             }
             state->captured_records.push_back (record);
         }

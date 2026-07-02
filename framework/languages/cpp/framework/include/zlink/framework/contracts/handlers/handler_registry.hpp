@@ -135,11 +135,11 @@ class handler_registry_t
            options.execution, std::type_index (typeid (TOwner)),
            std::type_index (typeid (TRequest))},
           [method] (service_provider_t &services, serializer_registry_t &serializers,
-                    const zlink::message_t &message,
-                    std::string_view) -> task_t<zlink::message_t> {
+                    const zlink::message_t &message, std::string_view) -> task_t<zlink::message_t> {
               try {
                   auto &owner = services.get_required<TOwner> ();
-                  auto request = serializers.get<TRequest> ().deserialize (detail::encoded_payload_from_raw (message));
+                  auto request = serializers.get<TRequest> ().deserialize (
+                    detail::encoded_payload_from_raw (message));
                   auto reply = (owner.*method) (request);
                   return task_t<zlink::message_t> (result_t<zlink::message_t>::success (
                     detail::encoded_payload_to_raw (serializers.get<TReply> ().serialize (reply))));
@@ -163,11 +163,11 @@ class handler_registry_t
            options.execution, std::type_index (typeid (TOwner)),
            std::type_index (typeid (TRequest))},
           [method] (service_provider_t &services, serializer_registry_t &serializers,
-                    const zlink::message_t &message,
-                    std::string_view) -> task_t<zlink::message_t> {
+                    const zlink::message_t &message, std::string_view) -> task_t<zlink::message_t> {
               try {
                   auto &owner = services.get_required<TOwner> ();
-                  auto request = serializers.get<TRequest> ().deserialize (detail::encoded_payload_from_raw (message));
+                  auto request = serializers.get<TRequest> ().deserialize (
+                    detail::encoded_payload_from_raw (message));
                   auto reply = co_await (owner.*method) (request);
                   co_return result_t<zlink::message_t>::success (
                     detail::encoded_payload_to_raw (serializers.get<TReply> ().serialize (reply)));
@@ -203,7 +203,8 @@ class handler_registry_t
             std::string_view content_type) -> task_t<zlink::message_t> {
               try {
                   auto &owner = services.get_required<TOwner> ();
-                  auto request = serializers.get<TRequest> ().deserialize (detail::encoded_payload_from_raw (message));
+                  auto request = serializers.get<TRequest> ().deserialize (
+                    detail::encoded_payload_from_raw (message));
                   auto dynamic_context = with_content_type (context, content_type);
                   auto reply = (owner.*method) (request, dynamic_context);
                   return task_t<zlink::message_t> (result_t<zlink::message_t>::success (
@@ -232,25 +233,26 @@ class handler_registry_t
                                         std::type_index (typeid (TOwner)),
                                         std::type_index (typeid (TRequest))};
         auto context = make_request_context (descriptor);
-        return add_handler (std::move (descriptor),
-                            [method, context = std::move (context)] (
-                              service_provider_t &services, serializer_registry_t &serializers,
-                              const zlink::message_t &message,
-                              std::string_view content_type) -> task_t<zlink::message_t> {
-                                try {
-                                    auto &owner = services.get_required<TOwner> ();
-                                    auto request =
-                                      serializers.get<TRequest> ().deserialize (detail::encoded_payload_from_raw (message));
-                                    auto dynamic_context = with_content_type (context, content_type);
-                                    auto reply = co_await (owner.*method) (request, dynamic_context);
-                                    co_return result_t<zlink::message_t>::success (
+        return add_handler (
+          std::move (descriptor),
+          [method, context = std::move (context)] (
+            service_provider_t &services, serializer_registry_t &serializers,
+            const zlink::message_t &message,
+            std::string_view content_type) -> task_t<zlink::message_t> {
+              try {
+                  auto &owner = services.get_required<TOwner> ();
+                  auto request = serializers.get<TRequest> ().deserialize (
+                    detail::encoded_payload_from_raw (message));
+                  auto dynamic_context = with_content_type (context, content_type);
+                  auto reply = co_await (owner.*method) (request, dynamic_context);
+                  co_return result_t<zlink::message_t>::success (
                     detail::encoded_payload_to_raw (serializers.get<TReply> ().serialize (reply)));
-                                }
-                                catch (...) {
-                                    co_return detail::current_exception_to_message_result (
-                                      "handler threw an exception");
-                                }
-                            });
+              }
+              catch (...) {
+                  co_return detail::current_exception_to_message_result (
+                    "handler threw an exception");
+              }
+          });
     }
 
     template <typename TOwner, typename TRequest, typename TReply>
@@ -454,11 +456,11 @@ class handler_registry_t
           {std::move (channel_name), std::move (topic), packet, kind, options.execution,
            std::type_index (typeid (TOwner)), std::type_index (typeid (TPayload))},
           [method] (service_provider_t &services, serializer_registry_t &serializers,
-                    const zlink::message_t &message,
-                    std::string_view) -> task_t<zlink::message_t> {
+                    const zlink::message_t &message, std::string_view) -> task_t<zlink::message_t> {
               try {
                   auto &owner = services.get_required<TOwner> ();
-                  auto payload = serializers.get<TPayload> ().deserialize (detail::encoded_payload_from_raw (message));
+                  auto payload = serializers.get<TPayload> ().deserialize (
+                    detail::encoded_payload_from_raw (message));
                   (owner.*method) (payload);
                   return task_t<zlink::message_t> (
                     result_t<zlink::message_t>::success (zlink::message_t{}));
@@ -482,11 +484,11 @@ class handler_registry_t
           {std::move (channel_name), std::move (topic), packet, kind, options.execution,
            std::type_index (typeid (TOwner)), std::type_index (typeid (TPayload))},
           [method] (service_provider_t &services, serializer_registry_t &serializers,
-                    const zlink::message_t &message,
-                    std::string_view) -> task_t<zlink::message_t> {
+                    const zlink::message_t &message, std::string_view) -> task_t<zlink::message_t> {
               try {
                   auto &owner = services.get_required<TOwner> ();
-                  auto payload = serializers.get<TPayload> ().deserialize (detail::encoded_payload_from_raw (message));
+                  auto payload = serializers.get<TPayload> ().deserialize (
+                    detail::encoded_payload_from_raw (message));
                   co_await (owner.*method) (payload);
                   co_return result_t<zlink::message_t>::success (zlink::message_t{});
               }
@@ -548,7 +550,8 @@ class handler_registry_t
             std::string_view content_type) -> task_t<zlink::message_t> {
               try {
                   auto &owner = services.get_required<TOwner> ();
-                  auto payload = serializers.get<TPayload> ().deserialize (detail::encoded_payload_from_raw (message));
+                  auto payload = serializers.get<TPayload> ().deserialize (
+                    detail::encoded_payload_from_raw (message));
                   auto dynamic_context = with_content_type (context, content_type);
                   (owner.*method) (payload, dynamic_context);
                   return task_t<zlink::message_t> (
@@ -586,7 +589,8 @@ class handler_registry_t
             std::string_view content_type) -> task_t<zlink::message_t> {
               try {
                   auto &owner = services.get_required<TOwner> ();
-                  auto payload = serializers.get<TPayload> ().deserialize (detail::encoded_payload_from_raw (message));
+                  auto payload = serializers.get<TPayload> ().deserialize (
+                    detail::encoded_payload_from_raw (message));
                   auto dynamic_context = with_content_type (context, content_type);
                   co_await (owner.*method) (payload, dynamic_context);
                   co_return result_t<zlink::message_t>::success (zlink::message_t{});

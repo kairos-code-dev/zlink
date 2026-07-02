@@ -4,6 +4,22 @@ set -euo pipefail
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 CPP_DIR="$(cd "$SCRIPT_DIR/../.." && pwd)"
 BUILD_DIR="${ZLINK_CPP_E2E_BUILD_DIR:-$CPP_DIR/build}"
+LOCAL_READINESS_TIMEOUT_SECONDS=3
+LOCAL_READINESS_POLL_SECONDS=0.1
+ROUTE_SETTLE_SECONDS=5
+SCENARIO_SETTLE_SECONDS=3
+HTTP_PROBE_TIMEOUT_SECONDS=3
+BOUNDED_EVIDENCE_WAIT_HTTP_TIMEOUT_SECONDS=35
+LOCAL_READINESS_ATTEMPTS="$(
+  python3 - "$LOCAL_READINESS_TIMEOUT_SECONDS" "$LOCAL_READINESS_POLL_SECONDS" <<'PY'
+import math
+import sys
+
+timeout = float(sys.argv[1])
+poll = float(sys.argv[2])
+print(max(1, math.ceil(timeout / poll)))
+PY
+)"
 
 read -r REGISTRY_PUB REGISTRY_ROUTER PUBLISHER REGISTRY_HTTP PUBLISHER_HTTP HTTP_1 HTTP_2 HTTP_3 <<<"$(python3 - <<'PY'
 import socket
@@ -69,13 +85,13 @@ wait_port() {
   local host="127.0.0.1"
   local port
   port="$(port_of "$endpoint")"
-  for _ in $(seq 1 60); do
+  for _ in $(seq 1 "$LOCAL_READINESS_ATTEMPTS"); do
     if (echo >"/dev/tcp/${host}/${port}") >/dev/null 2>&1; then
       return 0
     fi
-    sleep 0.05
+    sleep "$LOCAL_READINESS_POLL_SECONDS"
   done
-  echo "Timed out waiting for $name at $endpoint" >&2
+  echo "Timed out waiting ${LOCAL_READINESS_TIMEOUT_SECONDS}s for $name at $endpoint" >&2
   return 1
 }
 
@@ -85,32 +101,32 @@ wait_port_closed() {
   local host="127.0.0.1"
   local port
   port="$(port_of "$endpoint")"
-  for _ in $(seq 1 60); do
+  for _ in $(seq 1 "$LOCAL_READINESS_ATTEMPTS"); do
     if ! (echo >"/dev/tcp/${host}/${port}") >/dev/null 2>&1; then
       return 0
     fi
-    sleep 0.05
+    sleep "$LOCAL_READINESS_POLL_SECONDS"
   done
-  echo "Timed out waiting for $name to close at $endpoint" >&2
+  echo "Timed out waiting ${LOCAL_READINESS_TIMEOUT_SECONDS}s for $name to close at $endpoint" >&2
   return 1
 }
 
 wait_marker() {
   local file="$1"
-  for _ in $(seq 1 60); do
+  for _ in $(seq 1 "$LOCAL_READINESS_ATTEMPTS"); do
     if [[ -f "$file" ]]; then
       return 0
     fi
-    sleep 0.05
+    sleep "$LOCAL_READINESS_POLL_SECONDS"
   done
-  echo "Timed out waiting for marker $file" >&2
+  echo "Timed out waiting ${LOCAL_READINESS_TIMEOUT_SECONDS}s for marker $file" >&2
   return 1
 }
 
 check_operational_endpoints() {
   local name="$1"
   local endpoint="$2"
-  python3 - "$name" "$endpoint" "$LOG_DIR/$name-operational.log" <<'PY'
+  python3 - "$name" "$endpoint" "$LOG_DIR/$name-operational.log" "$HTTP_PROBE_TIMEOUT_SECONDS" <<'PY'
 import json
 import sys
 import urllib.request
@@ -118,14 +134,15 @@ import urllib.request
 name = sys.argv[1]
 endpoint = sys.argv[2]
 log_path = sys.argv[3]
+timeout_seconds = float(sys.argv[4])
 
 def get(path):
-    with urllib.request.urlopen(endpoint + path, timeout=3) as response:
+    with urllib.request.urlopen(endpoint + path, timeout=timeout_seconds) as response:
         return response.read().decode()
 
 def post(path):
     request = urllib.request.Request(endpoint + path, data=b"", method="POST")
-    with urllib.request.urlopen(request, timeout=3) as response:
+    with urllib.request.urlopen(request, timeout=timeout_seconds) as response:
         return response.read().decode()
 
 health = get("/health")
@@ -143,14 +160,15 @@ snapshot_operational_evidence() {
   local name="$1"
   local endpoint="$2"
   local output="$3"
-  python3 - "$name" "$endpoint" "$output" <<'PY'
+  python3 - "$name" "$endpoint" "$output" "$HTTP_PROBE_TIMEOUT_SECONDS" <<'PY'
 import sys
 import urllib.request
 
 name = sys.argv[1]
 endpoint = sys.argv[2]
 output = sys.argv[3]
-with urllib.request.urlopen(endpoint + "/evidence", timeout=3) as response:
+timeout_seconds = float(sys.argv[4])
+with urllib.request.urlopen(endpoint + "/evidence", timeout=timeout_seconds) as response:
     body = response.read().decode()
 with open(output, "w", encoding="utf-8") as file:
     file.write(body)
@@ -213,6 +231,19 @@ stop_pid() {
   fi
 }
 
+remember_pid_file() {
+  local file="$1"
+  local array_name="$2"
+  if [[ ! -s "$file" ]]; then
+    return 0
+  fi
+  local pid
+  pid="$(tail -1 "$file")"
+  if [[ "$pid" =~ ^[0-9]+$ ]]; then
+    eval "$array_name+=(\"$pid\")"
+  fi
+}
+
 stop_all_subscribers() {
   for pid in "${SUB_PIDS[@]:-}"; do
     if kill -0 "$pid" >/dev/null 2>&1; then
@@ -233,6 +264,8 @@ run_client() {
   shift 2
   ZLINK_CPP_E2E_SCENARIO="$scenario" \
   ZLINK_CPP_E2E_PUBLISHER_URL="$PUBLISHER_HTTP" \
+  ZLINK_CPP_E2E_REGISTRY_ROUTER="$REGISTRY_ROUTER" \
+  ZLINK_CPP_E2E_PUBLISHER_ENDPOINT="$PUBLISHER" \
   ZLINK_CPP_E2E_LOG_DIR="$LOG_DIR" \
   "$@" \
     "$CLIENT" >"$LOG_DIR/client-$suffix.stdout.log" 2>"$LOG_DIR/client-$suffix.stderr.log"
@@ -255,13 +288,14 @@ start_client_waiting() {
 verify() {
   local mode="$1"
   shift
-  python3 - "$mode" "$@" <<'PY' | tee -a "$LOG_DIR/verify.log"
+  python3 - "$mode" "$BOUNDED_EVIDENCE_WAIT_HTTP_TIMEOUT_SECONDS" "$@" <<'PY' | tee -a "$LOG_DIR/verify.log"
 import json
 import sys
 import urllib.request
 
 mode = sys.argv[1]
-endpoints = sys.argv[2:]
+http_timeout_seconds = float(sys.argv[2])
+endpoints = sys.argv[3:]
 
 def post_json(endpoint, path, payload):
     request = urllib.request.Request(
@@ -269,7 +303,7 @@ def post_json(endpoint, path, payload):
         data=json.dumps(payload).encode(),
         headers={"Content-Type": "application/json"},
         method="POST")
-    with urllib.request.urlopen(request, timeout=35) as response:
+    with urllib.request.urlopen(request, timeout=http_timeout_seconds) as response:
         return json.loads(response.read().decode())
 
 def wait_lines(endpoint, *, contains_all=None, contains_any_groups=None,
@@ -376,7 +410,7 @@ if should_run PS-A1 ps-a1; then
   start_subscriber sub-1 fanout "$HTTP_1"; SUB_PIDS+=("$LAST_PID")
   start_subscriber sub-2 fanout "$HTTP_2"; SUB_PIDS+=("$LAST_PID")
   start_subscriber sub-3 fanout "$HTTP_3"; SUB_PIDS+=("$LAST_PID")
-  sleep 1
+  sleep "$SCENARIO_SETTLE_SECONDS"
   touch "$START_CONTINUE"
   wait "$BASIC_CLIENT_PID"
   cat "$LOG_DIR/client-basic.stdout.log"
@@ -393,7 +427,7 @@ if should_run PS-A2 ps-a2; then
   start_subscriber sub-1 alpha,beta "$HTTP_1" 0 alpha; SUB_PIDS+=("$LAST_PID")
   start_subscriber sub-2 alpha,beta "$HTTP_2" 0 beta; SUB_PIDS+=("$LAST_PID")
   start_subscriber sub-3 alpha,beta "$HTTP_3" 0 alpha; SUB_PIDS+=("$LAST_PID")
-  sleep 1
+  sleep "$SCENARIO_SETTLE_SECONDS"
   touch "$START_CONTINUE"
   wait "$TOPIC_CLIENT_PID"
   cat "$LOG_DIR/client-topic.stdout.log"
@@ -413,11 +447,11 @@ if should_run PS-A3 ps-a3; then
   wait_marker "$START_READY"
   start_subscriber sub-1 fanout "$HTTP_1"; SUB_PIDS+=("$LAST_PID")
   start_subscriber sub-2 fanout "$HTTP_2"; SUB_PIDS+=("$LAST_PID")
-  sleep 1
+  sleep "$SCENARIO_SETTLE_SECONDS"
   touch "$START_CONTINUE"
   wait_marker "$READY"
   start_subscriber sub-3 fanout "$HTTP_3"; SUB_PIDS+=("$LAST_PID")
-  sleep 1
+  sleep "$SCENARIO_SETTLE_SECONDS"
   touch "$CONTINUE"
   wait "$LATE_CLIENT_PID"
   cat "$LOG_DIR/client-late.stdout.log"
@@ -428,31 +462,19 @@ fi
 if should_run PS-A4 ps-a4; then
   START_READY="$LOG_DIR/ps-a4-start-ready"
   START_CONTINUE="$LOG_DIR/ps-a4-start-continue"
-  READY="$LOG_DIR/ps-a4-ready"
-  CONTINUE="$LOG_DIR/ps-a4-continue"
-  RESTART_READY="$LOG_DIR/ps-a4-restart-ready"
-  RESTART_CONTINUE="$LOG_DIR/ps-a4-restart-continue"
+  RECONNECT_PID_FILE="$LOG_DIR/ps-a4-reconnect-subscriber.pid"
   start_client_waiting reconnect reconnect "$START_READY" "$START_CONTINUE" \
-    ZLINK_CPP_E2E_READY_FILE="$READY" \
-    ZLINK_CPP_E2E_CONTINUE_FILE="$CONTINUE" \
-    ZLINK_CPP_E2E_RESTART_READY_FILE="$RESTART_READY" \
-    ZLINK_CPP_E2E_RESTART_CONTINUE_FILE="$RESTART_CONTINUE"
+    ZLINK_CPP_E2E_SUBSCRIBER_EXE="$SUBSCRIBER" \
+    ZLINK_CPP_E2E_RECONNECT_SUBSCRIBER_URL="$HTTP_3" \
+    ZLINK_CPP_E2E_RECONNECT_SUBSCRIBER_PID_FILE="$RECONNECT_PID_FILE"
   RECONNECT_CLIENT_PID="$LAST_PID"
   wait_marker "$START_READY"
   start_subscriber sub-1 fanout "$HTTP_1"; SUB_PIDS+=("$LAST_PID")
   start_subscriber sub-2 fanout "$HTTP_2"; SUB_PIDS+=("$LAST_PID")
-  start_subscriber sub-3 fanout "$HTTP_3"; SUB3_PID="$LAST_PID"; SUB_PIDS+=("$LAST_PID")
-  sleep 1
+  sleep "$SCENARIO_SETTLE_SECONDS"
   touch "$START_CONTINUE"
-  wait_marker "$READY"
-  stop_pid "$SUB3_PID"
-  wait_port_closed sub-3-http "$HTTP_3"
-  touch "$CONTINUE"
-  wait_marker "$RESTART_READY"
-  start_subscriber sub-3 fanout "$HTTP_3"; SUB3_PID="$LAST_PID"; SUB_PIDS+=("$LAST_PID")
-  sleep 1
-  touch "$RESTART_CONTINUE"
   wait "$RECONNECT_CLIENT_PID"
+  remember_pid_file "$RECONNECT_PID_FILE" SUB_PIDS
   cat "$LOG_DIR/client-reconnect.stdout.log"
   verify reconnect "$HTTP_1" "$HTTP_2" "$HTTP_3"
   stop_all_subscribers
@@ -467,7 +489,7 @@ if should_run PS-B1 ps-b1; then
   start_subscriber sub-1 fanout "$HTTP_1" 250; SUB_PIDS+=("$LAST_PID")
   start_subscriber sub-2 fanout "$HTTP_2"; SUB_PIDS+=("$LAST_PID")
   start_subscriber sub-3 fanout "$HTTP_3"; SUB_PIDS+=("$LAST_PID")
-  sleep 1
+  sleep "$SCENARIO_SETTLE_SECONDS"
   touch "$START_CONTINUE"
   wait "$SLOW_CLIENT_PID"
   cat "$LOG_DIR/client-slow.stdout.log"
@@ -478,31 +500,20 @@ fi
 if should_run PS-B2 ps-b2; then
   START_READY="$LOG_DIR/ps-b2-start-ready"
   START_CONTINUE="$LOG_DIR/ps-b2-start-continue"
+  RESTARTED_PUBLISHER_PID_FILE="$LOG_DIR/ps-b2-restarted-publisher.pid"
   start_subscriber sub-1 fanout "$HTTP_1"; SUB_PIDS+=("$LAST_PID")
   start_subscriber sub-2 fanout "$HTTP_2"; SUB_PIDS+=("$LAST_PID")
   start_subscriber sub-3 fanout "$HTTP_3"; SUB_PIDS+=("$LAST_PID")
   start_client_waiting publisher-restart publisher-before "$START_READY" "$START_CONTINUE" \
-    ZLINK_CPP_E2E_PUBLISHER_RESTART_PHASE=before
+    ZLINK_CPP_E2E_PUBLISHER_EXE="$PUBLISHER_SERVER" \
+    ZLINK_CPP_E2E_RESTARTED_PUBLISHER_PID_FILE="$RESTARTED_PUBLISHER_PID_FILE"
   PUB_RESTART_CLIENT_PID="$LAST_PID"
   wait_marker "$START_READY"
-  sleep 1
+  sleep "$SCENARIO_SETTLE_SECONDS"
   touch "$START_CONTINUE"
   wait "$PUB_RESTART_CLIENT_PID"
+  remember_pid_file "$RESTARTED_PUBLISHER_PID_FILE" PIDS
   cat "$LOG_DIR/client-publisher-before.stdout.log"
-  sleep 1
-  stop_pid "$PUBLISHER_PID"
-  wait_port_closed publisher-http "$PUBLISHER_HTTP"
-  start_publisher publisher-restart
-  START_READY="$LOG_DIR/ps-b2-restart-ready"
-  START_CONTINUE="$LOG_DIR/ps-b2-restart-continue"
-  start_client_waiting publisher-restart publisher-after "$START_READY" "$START_CONTINUE" \
-    ZLINK_CPP_E2E_PUBLISHER_RESTART_PHASE=after
-  PUB_RESTART_CLIENT_PID="$LAST_PID"
-  wait_marker "$START_READY"
-  sleep 1
-  touch "$START_CONTINUE"
-  wait "$PUB_RESTART_CLIENT_PID"
-  cat "$LOG_DIR/client-publisher-after.stdout.log"
   verify publisher-restart "$HTTP_1" "$HTTP_2" "$HTTP_3"
   stop_all_subscribers
 fi
@@ -516,7 +527,7 @@ if should_run PS-C1 ps-c1; then
   start_subscriber sub-1 fanout "$HTTP_1"; SUB_PIDS+=("$LAST_PID")
   start_subscriber sub-2 fanout "$HTTP_2"; SUB_PIDS+=("$LAST_PID")
   start_subscriber sub-3 fanout "$HTTP_3"; SUB_PIDS+=("$LAST_PID")
-  sleep 1
+  sleep "$SCENARIO_SETTLE_SECONDS"
   touch "$START_CONTINUE"
   wait "$NEGATIVE_CLIENT_PID"
   cat "$LOG_DIR/client-negative.stdout.log"

@@ -99,6 +99,7 @@ int main (int argc, char **argv)
         if (!options.api_endpoint.empty ()) {
             auto channel = framework.add_client_server_channel (e2e::api_channel);
             channel.enable_server (options.api_endpoint)
+              .enable_client ()
               .set_routing_id (zlink::routing_id_t::from (options.rid));
             if (options.server_weight) {
                 channel.server_peer_weight (
@@ -109,21 +110,33 @@ int main (int argc, char **argv)
                   zlink::byte_size_t::bytes (static_cast<std::int64_t> (*options.max_message_size)));
             }
             channel.use_handler_group (e2e::handler_group);
+            framework.add_client_server_channel ("registry.messaging.api.manual")
+              .enable_client (options.api_endpoint);
         }
         if (!options.route_endpoint.empty ()) {
-            framework.add_route_mesh (e2e::route_channel)
+            auto route = framework.add_route_mesh (e2e::route_channel)
               .enable_server (options.route_endpoint)
               .set_routing_id (zlink::routing_id_t::from (options.rid))
               .add_request_handler<rm_provider::route_ping_handler_t,
                                    e2e::scenario_route_req_t,
                                    e2e::scenario_route_res_t> ("ScenarioRouteReq",
                                                        &rm_provider::route_ping_handler_t::handle);
+            for (const auto &peer : options.route_peers) {
+                if (peer != options.route_endpoint) {
+                    route.enable_client (peer);
+                }
+            }
         }
         if (!options.http_endpoint.empty ()) {
             framework.http ()
               .listen (options.http_endpoint)
               .map_health ("/health")
               .map_get<rm_provider::evidence_handler_t> ("/evidence")
+              .map_post<rm_provider::http_profile_request_handler_t> ("/profile/request")
+              .map_post<rm_provider::http_manual_profile_request_handler_t> ("/profile/manual")
+              .map_post<rm_provider::http_profile_command_handler_t> ("/profile/command")
+              .map_post<rm_provider::http_route_request_handler_t> ("/profile/route/request")
+              .map_post<rm_provider::http_route_missing_handler_t> ("/profile/route/missing")
               .map_post<rm_provider::server_weight_handler_t> ("/admin/server-weight");
         }
         framework.handlers ()

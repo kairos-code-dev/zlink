@@ -12,7 +12,7 @@ offload_executor_t::offload_executor_t (std::size_t worker_count, std::size_t ma
     offload_executor_t (worker_count == 0 ? 1 : worker_count,
                         worker_count == 0 ? 1 : worker_count,
                         max_queue_length,
-                        std::chrono::milliseconds {0})
+                        std::chrono::milliseconds{0})
 {
 }
 
@@ -107,7 +107,8 @@ void offload_executor_t::worker_loop ()
                 _ready.wait (lock, [this] { return _stopping || !_queue.empty (); });
                 ready = true;
             } else {
-                ready = _ready.wait_for (lock, _idle_timeout, [this] { return _stopping || !_queue.empty (); });
+                ready = _ready.wait_for (lock, _idle_timeout,
+                                         [this] { return _stopping || !_queue.empty (); });
             }
             --_idle_workers;
             if (!ready && _queue.empty () && _live_workers > _min_worker_count) {

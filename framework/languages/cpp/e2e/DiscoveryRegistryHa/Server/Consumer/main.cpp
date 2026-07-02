@@ -1,0 +1,36 @@
+/* SPDX-License-Identifier: MPL-2.0 */
+
+#include "Configuration/consumer_options.hpp"
+#include "Endpoints/consumer_endpoints.hpp"
+
+#include "../../Shared/discovery_registry_ha_contracts.hpp"
+
+#include <zlink/framework.hpp>
+
+namespace drha = zlink::framework::e2e::discovery_registry_ha;
+namespace drha_consumer = zlink::framework::e2e::discovery_registry_ha::consumer;
+
+int main (int argc, char **argv)
+{
+    const auto options = drha_consumer::read_consumer_options ();
+    auto app = zlink::framework::app_t::create ();
+    app.logging ()
+      .use_file (options.log_dir + "/" + options.rid + ".log")
+      .set_min_level (zlink::framework::log_level_t::debug);
+    app.add_zlink_framework ([&] (zlink::framework::zlink_framework_options_t &framework) {
+        framework.configure_dispatch ()
+          .message_flow (zlink::framework::message_flow_log_mode_t::key_transitions)
+          .trace_log_file (options.log_dir + "/" + options.rid + "-flow.log")
+          .trace_label ("cpp-drha-" + options.rid);
+        for (const auto &endpoint : options.registry_router_endpoints) {
+            framework.use_discovery ().add_registry_endpoint (endpoint);
+        }
+        framework.add_client_server_channel (drha::api_channel).enable_client ();
+        framework.http ()
+          .listen (options.http_endpoint)
+          .map_health ("/health")
+          .map_post<drha_consumer::profile_request_handler_t> ("/profile/request")
+          .map_post<drha_consumer::profile_request_wait_handler_t> ("/profile/request/wait");
+    });
+    return app.run (argc, argv);
+}

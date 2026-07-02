@@ -8,21 +8,16 @@
 namespace zlink::framework::e2e::registration_codec::client
 {
 
-inline void run_manual_registration_scenario (zlink::framework::route_client_t &routes)
+inline void run_manual_registration_scenario ()
 {
-    auto request =
-      routes
-        .request (route_channel, zlink::routing_id_t::from (std::string ("rc-server")),
-                  echo_manual_req_t{.value = "manual"})
-        .packet_name ("EchoManual")
-        .timeout (std::chrono::milliseconds (2000))
-        .async<echo_manual_res_t> ();
-    ensure (request.result ().has_value (), "RC-A3 route request failed");
-    ensure (request.result ().value ().value == "manual:manual", "RC-A3 reply mismatch");
-    ensure (request.result ().value ().packet_name == "EchoManual",
-            "RC-A3 packet name mismatch");
-    ensure (request.result ().value ().content_type == "application/json",
-            "RC-A3 content type mismatch");
+    const auto reply =
+      post_empty<echo_manual_res_t> (env_or ("ZLINK_CPP_E2E_HTTP_ENDPOINT"),
+                                    "/registration/manual");
+    ensure (reply.value == "manual:manual", "RC-A3 reply mismatch");
+    ensure (reply.packet_name == "EchoManual", "RC-A3 packet name mismatch");
+    ensure (reply.content_type == "application/json", "RC-A3 content type mismatch");
+    wait_evidence_contains (env_or ("ZLINK_CPP_E2E_HTTP_ENDPOINT"), "RC-A3-send",
+                            "application/json:send-a3", std::chrono::seconds (10));
     std::cout << "scenario RC-A3 passed\n";
 }
 

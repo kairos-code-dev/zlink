@@ -4,8 +4,11 @@ set -euo pipefail
 ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 FRAMEWORK_DIR="$(cd "$ROOT_DIR/../.." && pwd)"
 BUILD_DIR="${ZLINK_CPP_E2E_BUILD_DIR:-$FRAMEWORK_DIR/build}"
-LOCAL_READINESS_TIMEOUT_SECONDS="${ZLINK_CPP_E2E_LOCAL_READINESS_TIMEOUT_SECONDS:-3}"
-LOCAL_READINESS_POLL_SECONDS="0.05"
+LOCAL_READINESS_TIMEOUT_SECONDS=3
+LOCAL_READINESS_POLL_SECONDS=0.1
+ROUTE_SETTLE_SECONDS=5
+SCENARIO_SETTLE_SECONDS=3
+HTTP_PROBE_TIMEOUT_SECONDS=3
 LOCAL_READINESS_ATTEMPTS="$(
   python3 - "$LOCAL_READINESS_TIMEOUT_SECONDS" "$LOCAL_READINESS_POLL_SECONDS" <<'PY'
 import math
@@ -107,14 +110,15 @@ wait_port_closed() {
 
 stop_service_http() {
   local endpoint="$1"
-  python3 - "$endpoint" <<'PY'
+  python3 - "$endpoint" "$HTTP_PROBE_TIMEOUT_SECONDS" <<'PY'
 import sys
 import urllib.request
 
 base = sys.argv[1]
+timeout_seconds = float(sys.argv[2])
 request = urllib.request.Request(f"{base}/shutdown", data=b"", method="POST")
 try:
-    urllib.request.urlopen(request, timeout=1).read()
+    urllib.request.urlopen(request, timeout=timeout_seconds).read()
 except Exception:
     pass
 PY
@@ -176,6 +180,8 @@ ZLINK_CPP_E2E_LOG_DIR="$LOG_DIR" \
 PIDS+=("$!")
 wait_port trigger "$HTTP_TRIGGER"
 
+sleep "$ROUTE_SETTLE_SECONDS"
+
 ZLINK_CPP_E2E_REGISTRY_ROUTER="$REG_ROUTER" \
 ZLINK_CPP_E2E_REGISTRY_URL="$HTTP_REG" \
 ZLINK_CPP_E2E_SERVICE_URL="$HTTP_SERVICE" \
@@ -224,7 +230,6 @@ ZLINK_CPP_E2E_REGISTRY_ROUTER="$REG_ROUTER" \
 ZLINK_CPP_E2E_REGISTRY_URL="$HTTP_REG" \
 ZLINK_CPP_E2E_FILTERED_SERVICE_URL="$HTTP_FILTERED" \
 ZLINK_CPP_E2E_TRIGGER_URL="$HTTP_TRIGGER" \
-ZLINK_CPP_E2E_DIRECT_CHANNEL_ENDPOINT="$CHANNEL_FILTERED" \
 ZLINK_CPP_E2E_LOG_DIR="$LOG_DIR" \
   "$CLIENT" \
   >"$LOG_DIR/client-d1.stdout.log" 2>"$LOG_DIR/client-d1.stderr.log"

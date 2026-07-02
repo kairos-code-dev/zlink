@@ -11,8 +11,8 @@
 | `Shared/Messages.cs` | `Shared/spot_service_contracts.hpp` | shared | done | payload, evidence, stream message DTO 대응 |
 | `Shared/SpotService.Shared.csproj` | `CMakeLists.txt` | build | not-needed | C++는 상위 CMake target에 통합된다. |
 | `Client/SpotService.Client.csproj` | `CMakeLists.txt` | build | not-needed | C++는 `zlink_cpp_e2e_spot_service_client` target으로 빌드된다. |
-| `Client/Program.cs` | `Client/main.cpp` | client | done | scenario 실행 순서와 client framework 설정 |
-| `Client/Support/ClientOptions.cs` | `run_e2e.sh`, `Client/Support/client_options.hpp`, `Client/main.cpp` | support | done | `.NET`은 CLI argument parser로 endpoint와 scenario 값을 받지만, C++는 runner env 주입과 client option 객체로 같은 실행 계약을 유지한다. |
+| `Client/Program.cs` | `Client/main.cpp` | client | done | `.NET`과 같이 외부 client는 HTTP client와 stream connector만 사용한다. route client와 spot route 요청은 server HTTP endpoint 뒤에 둔다. |
+| `Client/Support/ClientOptions.cs` | `run_e2e.sh`, `Client/Support/client_options.hpp`, `Client/main.cpp` | support | done | `.NET`은 CLI argument parser로 endpoint와 scenario 값을 받지만, C++는 runner env 주입과 HTTP/stream endpoint option 객체로 같은 실행 계약을 유지한다. |
 | `Client/Support/ScenarioAssert.cs` | `Client/Support/client_support.hpp` | support | done | `ensure(...)` helper와 scenario별 예외로 대응 |
 | `Client/Support/SpotLifecycleOrderContext.cs` | `Client/Support/spot_lifecycle_order_context.hpp`, `Client/main.cpp` | support | done | `.NET`의 shared spot rid/current value context를 C++ grouped mode에서 같은 의미로 유지한다. |
 | `Client/Scenarios/SmA1Scenario.cs` | `Client/Scenarios/sm_a1_scenario.hpp`, `Client/main.cpp` | scenario | done | SM-A1 |
@@ -53,8 +53,8 @@
 | `Client/Scenarios/SmE2Scenario.cs` | `Client/Scenarios/sm_e2_scenario.hpp`, `Server/Play/Spots/play_actor_model.hpp`, `run_e2e.sh` | scenario | done | SM-E2 public spot timer tick evidence |
 | `Client/Scenarios/SmE3Scenario.cs` | `Client/Scenarios/sm_e3_scenario.hpp`, `Server/Play/Spots/play_actor_model.hpp`, `Server/Play/Handlers/play_spot_route_handlers.hpp`, `run_e2e.sh` | scenario | done | SM-E3 public spot create lifecycle에서 idle timer를 등록하고 timer handler의 public close와 닫힌 spot request 실패를 검증한다. |
 | `Client/Scenarios/SmE4Scenario.cs` | `Client/Scenarios/sm_e4_scenario.hpp`, `Server/Play/Spots/play_actor_model.hpp`, `Server/Play/Handlers/play_spot_route_handlers.hpp`, `run_e2e.sh` | scenario | done | SM-E4 public timer overrun policy와 tick delivery/scheduled/skipped evidence를 검증한다. |
-| `Client/Scenarios/SmF1Scenario.cs` | `Client/Scenarios/sm_f1_scenario.hpp`, `Client/main.cpp` | scenario | done | SM-F1 |
-| `Client/Scenarios/SmF2Scenario.cs` | `Client/Scenarios/sm_f2_scenario.hpp`, `Client/main.cpp` | scenario | done | SM-F2 |
+| `Client/Scenarios/SmF1Scenario.cs` | `Client/Scenarios/sm_f1_scenario.hpp`, `Client/main.cpp`, `Server/Play/Endpoints/spot_interaction_endpoints.hpp` | scenario | done | HTTP client가 `/spot/direct`와 `/spot/direct-command`를 호출하고, Play role endpoint가 public route client로 request/send를 보낸다. |
+| `Client/Scenarios/SmF2Scenario.cs` | `Client/Scenarios/sm_f2_scenario.hpp`, `Client/main.cpp`, `Server/Play/Endpoints/spot_interaction_endpoints.hpp` | scenario | done | HTTP client가 Play role endpoint를 호출하고, server-owned public route client가 cross-node spot request/send를 수행한다. |
 | 공통 E2E `SM-F3` | `Client/Scenarios/sm_f3_scenario.hpp`, `Client/main.cpp` | scenario | done | `.NET`에는 별도 scenario 파일이 없지만 feature-map과 공통 Config 2에 있는 SM-F3를 C++ scenario header로 분리했다. 같은 route mesh channel에서 일반 route request와 target spot route request가 함께 처리되는지 검증한다. |
 | `Client/Scenarios/SmF4Scenario.cs` | `Client/Scenarios/sm_f4_scenario.hpp`, `Client/main.cpp` | scenario | done | SM-F4 |
 | 공통 E2E `SM-F5` | `Client/Scenarios/sm_f5_scenario.hpp`, `Client/main.cpp` | scenario | done | `.NET`에는 별도 scenario 파일이 없지만 feature-map과 공통 Config 2에 있는 SM-F5를 C++ scenario header로 분리했다. spot route negative 뒤 같은 route channel의 일반 route request와 target spot route request가 계속 성공하는지 검증한다. |
@@ -62,7 +62,7 @@
 | `Client/Scenarios/SmG2Scenario.cs` | `Client/Scenarios/sm_g2_scenario.hpp` | scenario | done | SM-G2 |
 | `Client/Scenarios/SmG3Scenario.cs` | `Client/Scenarios/sm_g3_scenario.hpp` | scenario | done | `.NET`처럼 두 stream client를 먼저 순차 auth/bind한 뒤 ping/leave만 동시에 실행한다. 이전 C++ 구현은 auth/join까지 동시에 실행해 session `StreamBound` evidence가 중복될 수 있었다. |
 | `Client/Scenarios/SmG4Scenario.cs` | `Client/Scenarios/sm_g4_scenario.hpp` | scenario | done | SM-G4 |
-| `Client/Scenarios/SmQ9Scenario.cs` | `Client/Scenarios/sm_q9_scenario.hpp`, `Server/MultiNode/`, `run_e2e.sh` | scenario | done | `.NET`의 multi-node route-to-spot 흐름에 대응해 multi-node A/B role을 띄우고, 외부 route client가 target spot id로 state request를 보내 state/evidence가 유지되는지 검증한다. |
+| `Client/Scenarios/SmQ9Scenario.cs` | `Client/Scenarios/sm_q9_scenario.hpp`, `Server/MultiNode/`, `Server/MultiNodeRequester/`, `run_e2e.sh` | scenario | done | `.NET`의 multi-node route-to-spot 흐름에 대응해 외부 client는 HTTP만 호출한다. C++ requester role은 server-side public route client와 bridge-only spot node를 소유해 multi-node spot state request를 보낸다. |
 | `Server/Registry/Program.cs` | `Server/Registry/main.cpp` | server-role | done | registry role 진입점 |
 | `Server/Registry/RegistryHostFactory.cs` | `Server/Registry/registry_host_factory.hpp` | server-role | done | registry host factory 책임을 role-local header로 분리했다. |
 | `Server/Registry/RegistrySupport.cs` | `Server/Shared/Support/env.hpp`, `Server/Registry/registry_host_factory.hpp` | support | done | registry role의 env option helper와 host 설정을 shared runtime 없이 분리했다. |
@@ -73,7 +73,7 @@
 | `Server/Play/SpotService.Play.csproj` | `CMakeLists.txt` | build | not-needed | C++는 상위 CMake target에 통합된다. |
 | `Server/Play/Endpoints/OperationalEndpoints.cs` | `Server/Play/Endpoints/operational_endpoints.hpp`, `Server/Shared/Endpoints/evidence_endpoint.hpp`, `Server/Shared/Handlers/channel_control_ping_handler.hpp` | endpoint | done | health/evidence/evidence-wait/control-ping/shutdown/crash mapping을 endpoint 파일로 분리했고, `/evidence/wait`는 SM-A6 focused run에서 직접 검증했다. |
 | `Server/Play/Endpoints/SpotFailureEndpoints.cs` | `Server/Play/Endpoints/spot_failure_endpoints.hpp`, `Server/Play/Handlers/play_spot_route_handlers.hpp` | endpoint | done | slow, missing-handler request/command, missing-target, missing-route, spot-to-spot timeout/negative endpoint mapping을 endpoint 파일로 분리했고 SM-E1 focused run에서 missing-handler/missing-target endpoint를 직접 검증했다. |
-| `Server/Play/Endpoints/SpotInteractionEndpoints.cs` | `Server/Play/Endpoints/spot_interaction_endpoints.hpp`, `Server/Play/Handlers/play_actor_handlers.hpp`, `Server/Play/Handlers/play_spot_route_handlers.hpp` | endpoint | done | 구현된 spot interaction endpoint mapping과 publish-wait endpoint는 endpoint 파일로 분리했고 SM-C4 focused run에서 `/spot/publish/wait`를 직접 검증했다. idle-close endpoint는 SM-E3 focused run에서 검증했고 overrun timer endpoint는 SM-E4 focused run에서 검증했다. `/spot/worker/start`와 `/spot/worker/complete`는 SM-A8 focused run에서 검증했다. `/spot/stage/request`와 `/spot/stage/timer`는 SM-A5 focused run에서 검증했다. |
+| `Server/Play/Endpoints/SpotInteractionEndpoints.cs` | `Server/Play/Endpoints/spot_interaction_endpoints.hpp`, `Server/Play/Handlers/play_actor_handlers.hpp`, `Server/Play/Handlers/play_spot_route_handlers.hpp` | endpoint | done | 구현된 spot interaction endpoint mapping과 publish-wait endpoint는 endpoint 파일로 분리했고 SM-C4 focused run에서 `/spot/publish/wait`를 직접 검증했다. idle-close endpoint는 SM-E3 focused run에서 검증했고 overrun timer endpoint는 SM-E4 focused run에서 검증했다. `/spot/worker/start`와 `/spot/worker/complete`는 SM-A8 focused run에서 검증했다. `/spot/stage/request`, `/spot/stage/timer`, `/spot/direct-command`는 server-owned public API bridge로 검증했다. |
 | `Server/Play/Endpoints/SpotLifecycleEndpoints.cs` | `Server/Play/Endpoints/spot_lifecycle_endpoints.hpp`, `Server/Play/Handlers/play_control_handlers.hpp`, `Server/Play/Handlers/play_spot_route_handlers.hpp` | endpoint | done | lifecycle create/alternate/close/type-mismatch endpoint mapping은 endpoint 파일로 분리했다. C++의 state request/command route mapping은 interaction endpoint 파일에 둔다. |
 | `Server/Play/Handlers/PlayActorHandlers.cs` | `Server/Play/Handlers/play_actor_handlers.hpp`, `Server/Play/Spots/play_actor_model.hpp` | handler | done | actor/channel HTTP bridge와 channel handlers는 handler 파일로 분리했고, spot actor packet handler 구현은 role-local spot model에 유지했다. |
 | `Server/Play/Handlers/PlayControlHandlers.cs` | `Server/Play/Handlers/play_control_handlers.hpp`, `Server/Shared/Handlers/channel_control_ping_handler.hpp` | handler | done | ensure/lifecycle/create/close/type-mismatch control handler는 play handler 파일로 분리했고, play/session 공통 control-ping handler는 shared handler로 분리했다. |
@@ -98,7 +98,7 @@
 | `Server/MultiNode/MultiNodeHostFactory.cs` | `Server/MultiNode/multi_node_host_factory.hpp` | server-role | done | public framework API로 route mesh, spot mesh, HTTP evidence endpoint를 구성하고 SM-Q9 runtime proof에서 검증한다. |
 | `Server/MultiNode/MultiNodeSupport.cs` | `Server/MultiNode/multi_node_host_factory.hpp`, `Server/Shared/Support/env.hpp`, `Server/Shared/Support/codecs.hpp`, `Server/Shared/Endpoints/evidence_endpoint.hpp`, `Server/Shared/scenario_state.hpp` | support | done | MultiNode role이 shared env/codec/evidence support를 재사용하며 SM-Q9 runtime proof에서 검증한다. |
 | `Server/MultiNode/SpotService.MultiNode.csproj` | `CMakeLists.txt` | build | not-needed | C++는 상위 CMake target에 통합된다. |
-| `Server/MultiNode/Handlers/MultiNodeControlHandlers.cs` | `Server/MultiNode/Handlers/multi_node_handlers.hpp` | handler | done | create-local HTTP bridge와 route-to-spot state request handler를 MultiNode handler 파일로 분리했고 SM-Q9 runtime proof에서 검증한다. |
+| `Server/MultiNode/Handlers/MultiNodeControlHandlers.cs` | `Server/MultiNode/Handlers/multi_node_handlers.hpp`, `Server/MultiNodeRequester/main.cpp` | handler | done | create-local HTTP bridge는 MultiNode role에 두고, route-to-spot state request는 C++ requester role의 server-owned public route client가 수행한다. SM-Q9 runtime proof에서 검증한다. |
 | `Server/MultiNode/Handlers/MultiNodeSessionHandlers.cs` | `Server/Session/Handlers/session_session_handlers.hpp` | handler | done | multi-node stream session binding/relay 책임은 session handler 파일로 분리했다. |
 | `Server/MultiNode/Handlers/MultiNodeStageHandlers.cs` | `Server/MultiNode/Spots/multi_node_spots.hpp` | handler | done | MultiNode spot의 state request handler로 대응한다. SM-A5의 stage/timer 흐름은 Play role에서 별도로 검증한다. |
 | `Server/MultiNode/Spots/MultiNodeActorModel.cs` | `Server/MultiNode/Spots/multi_node_spots.hpp` | spot | done | SM-Q9에 필요한 MultiNode spot state model을 role-local spot 파일로 구현한다. |
@@ -106,6 +106,57 @@
 
 ## 현재 검증
 
+- 2026-07-02 최신 focused proof:
+  - `timeout 180s framework/languages/cpp/e2e/SpotService/run_e2e.sh SM-F1`
+    - 결과: passed
+    - 로그: `framework/languages/cpp/e2e/SpotService/logs/20260702-074110-72004`
+  - `timeout 180s framework/languages/cpp/e2e/SpotService/run_e2e.sh SM-F2`
+    - 결과: passed
+    - 로그: `framework/languages/cpp/e2e/SpotService/logs/20260702-074115-72505`
+  - `timeout 180s framework/languages/cpp/e2e/SpotService/run_e2e.sh SM-F3`
+    - 결과: passed
+    - 로그: `framework/languages/cpp/e2e/SpotService/logs/20260702-074121-73025`
+  - `timeout 180s framework/languages/cpp/e2e/SpotService/run_e2e.sh SM-F4`
+    - 결과: passed
+    - 로그: `framework/languages/cpp/e2e/SpotService/logs/20260702-074127-73547`
+  - `timeout 180s framework/languages/cpp/e2e/SpotService/run_e2e.sh SM-F5`
+    - 결과: passed
+    - 로그: `framework/languages/cpp/e2e/SpotService/logs/20260702-074203-74354`
+  - `timeout 180s framework/languages/cpp/e2e/SpotService/run_e2e.sh SM-D13`
+    - 결과: passed
+    - 로그: `framework/languages/cpp/e2e/SpotService/logs/20260702-080928-26665`
+  - `timeout 180s framework/languages/cpp/e2e/SpotService/run_e2e.sh SM-C3`
+    - 결과: passed
+    - 로그: `framework/languages/cpp/e2e/SpotService/logs/20260702-081439-53179`
+  - `timeout 180s framework/languages/cpp/e2e/SpotService/run_e2e.sh SM-A5`
+    - 결과: passed
+    - 로그: `framework/languages/cpp/e2e/SpotService/logs/20260702-081827-75327`
+  - `timeout 180s framework/languages/cpp/e2e/SpotService/run_e2e.sh SM-A1-A2-A4-F1-F2`
+    - 결과: passed
+    - 로그: `framework/languages/cpp/e2e/SpotService/logs/20260702-082321-99573`
+  - `timeout 180s framework/languages/cpp/e2e/SpotService/run_e2e.sh SM-B6`
+    - 결과: passed
+    - 로그: `framework/languages/cpp/e2e/SpotService/logs/20260702-082640-12176`
+  - `timeout 180s framework/languages/cpp/e2e/SpotService/run_e2e.sh SM-B7`
+    - 결과: passed
+    - 로그: `framework/languages/cpp/e2e/SpotService/logs/20260702-083633-46949`
+  - `timeout 180s framework/languages/cpp/e2e/SpotService/run_e2e.sh SM-G3`
+    - 결과: passed
+    - 로그: `framework/languages/cpp/e2e/SpotService/logs/20260702-084820-77205`
+  - `timeout 180s framework/languages/cpp/e2e/SpotService/run_e2e.sh SM-G4`
+    - 결과: passed
+    - 로그: `framework/languages/cpp/e2e/SpotService/logs/20260702-084855-81660`
+  - `timeout 180s framework/languages/cpp/e2e/SpotService/run_e2e.sh SM-G1`
+    - 결과: passed
+    - 로그: `framework/languages/cpp/e2e/SpotService/logs/20260702-084837-78951`
+  - `timeout 180s framework/languages/cpp/e2e/SpotService/run_e2e.sh SM-Q9`
+    - 결과: passed
+    - 로그: `framework/languages/cpp/e2e/SpotService/logs/20260702-084837-78969`
+- 2026-07-02 parent `all` runner:
+  - 결과: passed
+  - 로그: `framework/languages/cpp/e2e/SpotService/logs/20260702-092843-42150`
+  - 비고: child sweep이 SM-B1~SM-Q9를 순서대로 실행했고, SM-G3 포함 모든 child가 passed marker를
+    남긴 뒤 parent도 `spot-service e2e result=passed`로 끝났다.
 - `cmake --build framework/languages/cpp/build --target zlink_cpp_e2e_spot_service_registry zlink_cpp_e2e_spot_service_play zlink_cpp_e2e_spot_service_session zlink_cpp_e2e_spot_service_client`
   - 결과: passed
 - `cmake --build framework/languages/cpp/build --target zlink_cpp_e2e_spot_service_play zlink_cpp_e2e_spot_service_client`
@@ -296,7 +347,7 @@
 - `timeout 240s framework/languages/cpp/e2e/SpotService/run_e2e.sh SM-Q9`
   - 결과: passed
   - 로그: `framework/languages/cpp/e2e/SpotService/logs/20260630-185724-816862`
-  - 비고: multi-node A/B process를 띄우고 외부 route client가 각 node의 target spot id로 state request를 보내 `.NET` SmQ9Scenario와 같은 state/evidence 검증을 수행했다.
+  - 비고: multi-node A/B process를 띄우고 server-owned requester role이 각 node의 target spot id로 state request를 보내 `.NET` SmQ9Scenario와 같은 state/evidence 검증을 수행했다.
 - `./framework/languages/cpp/e2e/SpotService/run_e2e.sh all`
   - 결과: passed
   - 로그: `framework/languages/cpp/e2e/SpotService/logs/20260630-075600-3183386`

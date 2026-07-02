@@ -8,6 +8,10 @@ actor join, timer, bound session send, worker call에 `yield()` 공개 표면이
 stream connector client request가 session gateway를 거쳐 play node의 Spot/Entry Spot handler까지
 도달하는 전체 배포 경로다.
 
+최신 full runner proof는 `logs/20260702-085155-85387`이다. 이 실행은 YD-A1~YD-D4, YD-E1,
+YD-E3, YD-E4 static gate, YD-E5 report 생성을 통과했고, YD-E2는 public cancellation token 계약
+gap으로 유지한다.
+
 | 시나리오 | 상태 | 근거 |
 |----------|------|------|
 | `YD-A1` | done | `run_e2e.sh`가 stream connector client request -> Session gateway -> Play Spot handler -> Delay service 경로를 통과한다. 최신 full 통과 로그: `logs/20260701-191329-11276`, 출력: `scenario YD-A1 passed`. Session host도 spot mesh를 열어 public `route_client_t` spot request overload가 route bridge를 통해 Play Spot handler로 들어간다. |

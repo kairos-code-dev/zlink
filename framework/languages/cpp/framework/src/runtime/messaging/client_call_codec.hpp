@@ -64,8 +64,8 @@ class client_call_codec_t
                                                                     : "Reply body is missing.");
         }
         try {
-            return result_t<TReply>::success (
-              serializers.get<TReply> ().deserialize (detail::encoded_payload_from_raw (body.value ())));
+            return result_t<TReply>::success (serializers.get<TReply> ().deserialize (
+              detail::encoded_payload_from_raw (body.value ())));
         }
         catch (const framework_exception_t &error) {
             return result_t<TReply>::failure (error.kind (), error.what (), error.is_retriable ());

@@ -8,23 +8,12 @@
 namespace zlink::framework::e2e::registration_codec::client
 {
 
-inline void run_json_codec_scenario (zlink::framework::channel_client_t &channels,
-                                     const std::string &http_endpoint)
+inline void run_json_codec_scenario (const codec_roundtrip_scenario_res_t &roundtrip)
 {
-    auto request =
-      channels.request (api_channel, json_roundtrip_req_t{.value = "b1"})
-        .timeout (std::chrono::milliseconds (2000))
-        .async<json_roundtrip_res_t> ();
-    ensure (request.result ().has_value (), "RC-B1 request failed");
-    ensure (request.result ().value ().value == "json:b1", "RC-B1 reply mismatch");
-    ensure (request.result ().value ().content_type == "application/json",
-            "RC-B1 content type mismatch");
-
-    channels.send (api_channel, json_codec_msg_t{.value = "send-b1"})
-      .timeout (std::chrono::milliseconds (2000))
-      .submit ();
-    ensure (evidence_contains (http_endpoint, "RC-B1-send", "application/json:send-b1"),
-            "RC-B1 send evidence mismatch");
+    ensure (roundtrip.json.value == "json:b1", "RC-B1 reply mismatch");
+    ensure (roundtrip.json.content_type == "application/json", "RC-B1 content type mismatch");
+    wait_evidence_contains (env_or ("ZLINK_CPP_E2E_HTTP_ENDPOINT"), "RC-B1-send",
+                            "application/json:send-b1", std::chrono::seconds (10));
     std::cout << "scenario RC-B1 passed\n";
 }
 

@@ -20,9 +20,7 @@ namespace zlink::framework::detail
 class diagnostic_event_sink_t
 {
   public:
-    static void append_field (std::vector<log_field_t> &fields,
-                              const char *key,
-                              std::string value)
+    static void append_field (std::vector<log_field_t> &fields, const char *key, std::string value)
     {
         fields.push_back (log_field_t{key, std::move (value)});
     }
@@ -92,10 +90,7 @@ class diagnostic_event_sink_t
         std::unique_ptr<runtime::offload_executor_t> executor =
           std::make_unique<runtime::offload_executor_t> (1, 1024);
 
-        ~observer_executor_holder_t ()
-        {
-            executor.reset ();
-        }
+        ~observer_executor_holder_t () { executor.reset (); }
     };
 
     static runtime::offload_executor_t &observer_executor ()

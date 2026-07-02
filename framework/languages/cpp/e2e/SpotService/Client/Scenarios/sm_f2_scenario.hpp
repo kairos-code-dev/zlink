@@ -4,7 +4,6 @@
 #include "../Support/spot_lifecycle_order_context.hpp"
 #include "../../Shared/spot_service_contracts.hpp"
 
-#include <zlink/framework.hpp>
 #include <zlink/http_client.hpp>
 
 #include <chrono>
@@ -70,30 +69,47 @@ inline void run_sm_f2_scenario (const std::string &play_http_endpoint,
     }
 }
 
-inline void run_sm_f2_scenario (zlink::framework::route_client_t &routes,
-                                const zlink::framework::spot_rid_t &remote_spot)
+inline void run_sm_f2_scenario (const std::string &play_http_endpoint,
+                                const std::string &remote_spot)
 {
-    auto state_route_reply =
-      routes
-        .request (route_channel, zlink::routing_id_t::from (std::string ("play-b")), remote_spot,
-                  direct_spot_req_t{"external-client", "route-direct-f2"})
-        .packet_name ("DirectSpotReq")
-        .timeout (std::chrono::milliseconds (3000))
-        .async<direct_spot_res_t> ()
+    auto api = zlink::http_client::client_t::create ()
+                 .base_url (play_http_endpoint)
+                 .timeout (std::chrono::milliseconds (3000))
+                 .build ();
+    auto raw =
+      api.post ("/spot/direct")
+        .body (direct_spot_route_req_t{.target_node_rid = "play-b",
+                                       .spot_rid = remote_spot,
+                                       .value = "route-direct-f2",
+                                       .source_actor_id = "external-client"})
+        .submit_raw ()
         .result ();
-    if (!state_route_reply.has_value ()) {
-        throw std::runtime_error ("SM-F2 direct spot request failed");
+    if (!raw || raw.value ().status >= 400) {
+        const auto error = raw ? raw.value ().body
+                               : (raw.error () ? raw.error ()->what () : "HTTP failed");
+        throw std::runtime_error ("SM-F2 direct spot request failed: " + error);
     }
-    if (state_route_reply.value ().owner_node_rid != "play-b"
-        || state_route_reply.value ().value != "route-direct-f2:reply") {
+    const auto state_route_reply =
+      nlohmann::json::parse (raw.value ().body).get<direct_spot_res_t> ();
+    if (state_route_reply.owner_node_rid != "play-b"
+        || state_route_reply.value != "route-direct-f2:reply") {
         throw std::runtime_error ("SM-F2 direct spot reply mismatch");
     }
 
-    routes
-      .send (route_channel, zlink::routing_id_t::from (std::string ("play-b")), remote_spot,
-             direct_spot_msg_t{"external-client", "route-direct-f2:command"})
-      .packet_name ("DirectSpotMsg")
-      .submit ();
+    auto command =
+      api.post ("/spot/direct-command")
+        .body (direct_spot_route_req_t{.target_node_rid = "play-b",
+                                       .spot_rid = remote_spot,
+                                       .value = "route-direct-f2:command",
+                                       .source_actor_id = "external-client"})
+        .submit_raw ()
+        .result ();
+    if (!command || command.value ().status >= 400) {
+        const auto error = command ? command.value ().body
+                                  : (command.error () ? command.error ()->what ()
+                                                     : "HTTP failed");
+        throw std::runtime_error ("SM-F2 direct spot command failed: " + error);
+    }
 
     std::cout << "scenario SM-F2 passed\n";
 }

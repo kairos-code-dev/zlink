@@ -3,7 +3,7 @@
 
 #include "../../Shared/spot_service_contracts.hpp"
 
-#include <zlink/framework.hpp>
+#include <zlink/http_client.hpp>
 
 #include <chrono>
 #include <iostream>
@@ -13,31 +13,42 @@
 namespace zlink::framework::e2e::spot_service::client::scenarios
 {
 
-inline void run_sm_f3_scenario (zlink::framework::route_client_t &routes,
-                                const zlink::framework::spot_rid_t &remote_spot)
+inline void run_sm_f3_scenario (const std::string &play_http_endpoint,
+                                const std::string &play_b_http_endpoint,
+                                const std::string &remote_spot)
 {
+    auto play = zlink::http_client::client_t::create ()
+                  .base_url (play_http_endpoint)
+                  .timeout (std::chrono::milliseconds (3000))
+                  .build ();
     auto normal_route_after_spot =
-      routes
-        .request (route_channel, zlink::routing_id_t::from (std::string ("play-b")),
-                  ensure_actor_req_t{"route-mixed-f3", "Route Mixed"})
-        .packet_name ("EnsureActor")
-        .timeout (std::chrono::milliseconds (3000))
-        .async<ensure_actor_res_t> ()
+      play.post ("/channel/control-ping")
+        .body (channel_control_ping_req_t{.target_node_rid = "play-b",
+                                          .value = "route-mixed-f3"})
+        .submit_raw ()
         .result ();
-    if (!normal_route_after_spot.has_value ()) {
+    if (!normal_route_after_spot || normal_route_after_spot.value ().status >= 400) {
         throw std::runtime_error ("SM-F3 normal route packet failed after spot route");
     }
 
-    auto spot_route_after_normal =
-      routes
-        .request (route_channel, zlink::routing_id_t::from (std::string ("play-b")), remote_spot,
-                  direct_spot_req_t{"external-client", "route-mixed"})
-        .packet_name ("DirectSpotReq")
-        .timeout (std::chrono::milliseconds (3000))
-        .async<direct_spot_res_t> ()
+    auto play_b = zlink::http_client::client_t::create ()
+                    .base_url (play_http_endpoint)
+                    .timeout (std::chrono::milliseconds (3000))
+                    .build ();
+    auto raw =
+      play_b.post ("/spot/direct")
+        .body (direct_spot_route_req_t{.target_node_rid = "play-b",
+                                       .spot_rid = remote_spot,
+                                       .value = "route-mixed",
+                                       .source_actor_id = "external-client"})
+        .submit_raw ()
         .result ();
-    if (!spot_route_after_normal.has_value ()
-        || spot_route_after_normal.value ().value != "route-mixed:reply") {
+    if (!raw || raw.value ().status >= 400) {
+        throw std::runtime_error ("SM-F3 spot route packet failed after normal route");
+    }
+    const auto spot_route_after_normal =
+      nlohmann::json::parse (raw.value ().body).get<direct_spot_res_t> ();
+    if (spot_route_after_normal.value != "route-mixed:reply") {
         throw std::runtime_error ("SM-F3 spot route packet failed after normal route");
     }
 

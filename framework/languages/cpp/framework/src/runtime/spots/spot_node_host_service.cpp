@@ -46,9 +46,8 @@ struct spot_node_host_service_t::native_node_t
     }
 };
 
-spot_node_host_service_t::spot_node_host_service_t (
-  std::vector<node_runtime_t> spot_nodes,
-  discovery_snapshot_t discovery) :
+spot_node_host_service_t::spot_node_host_service_t (std::vector<node_runtime_t> spot_nodes,
+                                                    discovery_snapshot_t discovery) :
     _spot_nodes (std::move (spot_nodes)), _discovery (std::move (discovery))
 {
 }

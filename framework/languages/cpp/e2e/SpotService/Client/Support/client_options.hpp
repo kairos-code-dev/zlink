@@ -31,6 +31,8 @@ struct client_options_t
     std::string play_b_http_endpoint;
     std::string multi_a_http_endpoint;
     std::string multi_b_http_endpoint;
+    std::string multi_a_request_http_endpoint;
+    std::string multi_b_request_http_endpoint;
     std::string session_http_endpoint;
     std::string gateway_http_endpoint;
     std::string registry_router;
@@ -63,6 +65,10 @@ struct client_options_t
                 .play_b_http_endpoint = env_or ("ZLINK_CPP_E2E_PLAY_B_HTTP_ENDPOINT"),
                 .multi_a_http_endpoint = env_or ("ZLINK_CPP_E2E_MULTI_A_HTTP_ENDPOINT"),
                 .multi_b_http_endpoint = env_or ("ZLINK_CPP_E2E_MULTI_B_HTTP_ENDPOINT"),
+                .multi_a_request_http_endpoint =
+                  env_or ("ZLINK_CPP_E2E_MULTI_A_REQUEST_HTTP_ENDPOINT"),
+                .multi_b_request_http_endpoint =
+                  env_or ("ZLINK_CPP_E2E_MULTI_B_REQUEST_HTTP_ENDPOINT"),
                 .session_http_endpoint = env_or ("ZLINK_CPP_E2E_SESSION_HTTP_ENDPOINT"),
                 .gateway_http_endpoint = env_or ("ZLINK_CPP_E2E_GATEWAY_HTTP_ENDPOINT"),
                 .registry_router = env_or ("ZLINK_CPP_E2E_REGISTRY_ROUTER"),

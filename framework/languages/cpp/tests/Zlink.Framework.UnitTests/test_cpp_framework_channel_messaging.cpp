@@ -1363,6 +1363,7 @@ int main ()
 
     zlink::framework::zlink_builder_t discovery_client_builder;
     discovery_client_builder.discovery ().connect_registry (discovery_registry_router);
+    discovery_client_builder.discovery ().connect_registry (unique_tcp_endpoint ());
     discovery_client_builder.channel ("hosted-discovery").enable_client ();
     auto discovery_client_runtime =
       zlink::framework::detail::channel_runtime_t::from (discovery_client_builder.message_bus ());
@@ -1386,13 +1387,44 @@ int main ()
         }
         std::this_thread::sleep_for (std::chrono::milliseconds (25));
     }
-    discovery_hosted_service.stop ();
-    discovery_registry.close ();
-    discovery_context.shutdown ();
-    discovery_context.term ();
     if (!discovery_reply_completed || discovery_reply_value.value != 133) {
+        discovery_hosted_service.stop ();
+        discovery_registry.close ();
+        discovery_context.shutdown ();
+        discovery_context.term ();
         return 88;
     }
+    discovery_registry.close ();
+    auto outage_reply = discovery_client_builder.request_client ("hosted-discovery")
+                          .request (request_t{35})
+                          .packet_name ("request")
+                          .timeout (std::chrono::milliseconds (1000))
+                          .async<reply_t> ()
+                          .result ();
+    if (!outage_reply || outage_reply.value ().value != 135) {
+        discovery_hosted_service.stop ();
+        discovery_context.shutdown ();
+        discovery_context.term ();
+        return 90;
+    }
+    discovery_hosted_service.stop ();
+    const auto stale_start = std::chrono::steady_clock::now ();
+    auto stale_reply = discovery_client_builder.request_client ("hosted-discovery")
+                         .request (request_t{34})
+                         .packet_name ("request")
+                         .timeout (std::chrono::milliseconds (100))
+                         .async<reply_t> ()
+                         .result ();
+    const auto stale_elapsed = std::chrono::steady_clock::now () - stale_start;
+    if (stale_reply
+        || stale_reply.error_kind () != zlink::framework::framework_error_kind_t::timeout
+        || stale_elapsed > std::chrono::seconds (2)) {
+        discovery_context.shutdown ();
+        discovery_context.term ();
+        return 89;
+    }
+    discovery_context.shutdown ();
+    discovery_context.term ();
 
     zlink::framework::zlink_builder_t nested_hosted_builder;
     const auto nested_hosted_endpoint = unique_tcp_endpoint ();

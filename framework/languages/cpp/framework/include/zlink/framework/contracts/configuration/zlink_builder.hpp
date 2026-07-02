@@ -27,9 +27,8 @@ class spot_node_runtime_t;
 class zlink_builder_state_t;
 void apply_dispatch_options (zlink_builder_t &builder, const dispatch_options_t &options);
 void bind_stream_serializers (zlink_builder_t &builder, serializer_registry_t &serializers);
-void apply_stream_compression_codec (
-  zlink_builder_t &builder,
-  std::shared_ptr<const stream_compression_codec_t> codec);
+void apply_stream_compression_codec (zlink_builder_t &builder,
+                                     std::shared_ptr<const stream_compression_codec_t> codec);
 void drain_zlink_builder_runtime (zlink_builder_t &builder) noexcept;
 void bind_zlink_monitoring (zlink_builder_t &builder, const monitoring_builder_t &monitoring);
 } // namespace detail
@@ -76,8 +75,7 @@ class zlink_builder_t
     friend void detail::bind_stream_serializers (zlink_builder_t &builder,
                                                  serializer_registry_t &serializers);
     friend void detail::apply_stream_compression_codec (
-      zlink_builder_t &builder,
-      std::shared_ptr<const stream_compression_codec_t> codec);
+      zlink_builder_t &builder, std::shared_ptr<const stream_compression_codec_t> codec);
     friend void detail::drain_zlink_builder_runtime (zlink_builder_t &builder) noexcept;
     friend void detail::bind_zlink_monitoring (zlink_builder_t &builder,
                                                const monitoring_builder_t &monitoring);

@@ -15,10 +15,8 @@
 namespace zlink::framework::e2e::resilience_lifecycle::client
 {
 
-inline void run_rl_a5_provider_flapping_probe (zlink::framework::channel_client_t &channels)
+inline void run_rl_a5_provider_flapping_probe ()
 {
-    (void) channels;
-
     const auto phase = env_or ("ZLINK_CPP_E2E_FLAP_PHASE");
     const auto cycle = env_or ("ZLINK_CPP_E2E_FLAP_CYCLE", "0");
     auto consumer = zlink::http_client::client_t::create ()

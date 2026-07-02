@@ -10,9 +10,14 @@
 #include <stdexcept>
 #include <string>
 #include <thread>
+#include <utility>
+#include <vector>
 
 #include <arpa/inet.h>
+#include <csignal>
+#include <fcntl.h>
 #include <netdb.h>
+#include <sys/wait.h>
 #include <sys/socket.h>
 #include <unistd.h>
 
@@ -57,6 +62,14 @@ inline void wait_for_file (const std::string &path)
     throw std::runtime_error ("timed out waiting for " + path);
 }
 
+inline int env_int_or (const char *name, int fallback)
+{
+    if (const char *value = std::getenv (name); value != nullptr && *value != '\0') {
+        return std::stoi (value);
+    }
+    return fallback;
+}
+
 struct http_endpoint_t
 {
     std::string host;
@@ -99,7 +112,10 @@ inline std::string url_encode (const std::string &value)
     return encoded;
 }
 
-inline void post_empty (const std::string &base_url, const std::string &path_and_query)
+inline bool request_empty (const std::string &method,
+                           const std::string &base_url,
+                           const std::string &path_and_query,
+                           bool require_success = true)
 {
     const auto endpoint = parse_http_endpoint (base_url);
     addrinfo hints{};
@@ -123,17 +139,23 @@ inline void post_empty (const std::string &base_url, const std::string &path_and
     }
     freeaddrinfo (resolved);
     if (socket_fd < 0) {
+        if (!require_success) {
+            return false;
+        }
         throw std::runtime_error ("failed to connect to publisher HTTP endpoint");
     }
 
-    const auto request = "POST " + path_and_query + " HTTP/1.1\r\nHost: " + endpoint.host + ":"
-      + endpoint.port + "\r\nContent-Length: 0\r\nConnection: close\r\n\r\n";
+    const auto request = method + " " + path_and_query + " HTTP/1.1\r\nHost: " + endpoint.host
+      + ":" + endpoint.port + "\r\nContent-Length: 0\r\nConnection: close\r\n\r\n";
     const char *cursor = request.data ();
     auto remaining = request.size ();
     while (remaining > 0) {
         const auto sent = send (socket_fd, cursor, remaining, 0);
         if (sent <= 0) {
             close (socket_fd);
+            if (!require_success) {
+                return false;
+            }
             throw std::runtime_error ("failed to send publisher HTTP request");
         }
         cursor += sent;
@@ -146,6 +168,9 @@ inline void post_empty (const std::string &base_url, const std::string &path_and
         const auto received = recv (socket_fd, buffer, sizeof (buffer), 0);
         if (received < 0) {
             close (socket_fd);
+            if (!require_success) {
+                return false;
+            }
             throw std::runtime_error ("failed to read publisher HTTP response");
         }
         if (received == 0) {
@@ -155,8 +180,27 @@ inline void post_empty (const std::string &base_url, const std::string &path_and
     }
     close (socket_fd);
     if (response.rfind ("HTTP/1.1 200", 0) != 0 && response.rfind ("HTTP/1.0 200", 0) != 0) {
+        if (!require_success) {
+            return false;
+        }
         throw std::runtime_error ("publisher HTTP request failed: " + response.substr (0, 80));
     }
+    return true;
+}
+
+inline void post_empty (const std::string &base_url, const std::string &path_and_query)
+{
+    (void) request_empty ("POST", base_url, path_and_query);
+}
+
+inline bool try_post_empty (const std::string &base_url, const std::string &path_and_query)
+{
+    return request_empty ("POST", base_url, path_and_query, false);
+}
+
+inline bool try_get (const std::string &base_url, const std::string &path)
+{
+    return request_empty ("GET", base_url, path, false);
 }
 
 inline void publish (const std::string &publisher_url,
@@ -167,6 +211,128 @@ inline void publish (const std::string &publisher_url,
     const auto path = std::string (missing_packet ? "/publish/missing" : "/publish/event")
       + "?topic=" + url_encode (topic) + "&value=" + url_encode (value);
     post_empty (publisher_url, path);
+}
+
+inline void wait_http_health (const std::string &name, const std::string &base_url, bool expected_up)
+{
+    const auto timeout_ms = env_int_or ("ZLINK_CPP_E2E_LOCAL_READINESS_TIMEOUT_MS", 3000);
+    const auto deadline = std::chrono::steady_clock::now () + std::chrono::milliseconds (timeout_ms);
+    while (std::chrono::steady_clock::now () < deadline) {
+        const bool healthy = try_get (base_url, "/health");
+        if (healthy == expected_up) {
+            return;
+        }
+        std::this_thread::sleep_for (std::chrono::milliseconds (100));
+    }
+    throw std::runtime_error ("timed out waiting for " + name
+                              + (expected_up ? " health" : " shutdown"));
+}
+
+class child_process_t
+{
+  public:
+    child_process_t () = default;
+    explicit child_process_t (pid_t pid) : _pid (pid) {}
+
+    pid_t pid () const noexcept { return _pid; }
+
+    void terminate ()
+    {
+        if (_pid <= 0) {
+            return;
+        }
+        (void) ::kill (_pid, SIGTERM);
+        for (int attempt = 0; attempt < 30; ++attempt) {
+            int status = 0;
+            const auto waited = ::waitpid (_pid, &status, WNOHANG);
+            if (waited == _pid) {
+                _pid = -1;
+                return;
+            }
+            std::this_thread::sleep_for (std::chrono::milliseconds (100));
+        }
+        (void) ::kill (_pid, SIGKILL);
+        (void) ::waitpid (_pid, nullptr, 0);
+        _pid = -1;
+    }
+
+  private:
+    pid_t _pid = -1;
+};
+
+inline void write_pid_file (const std::string &path, pid_t pid)
+{
+    if (path.empty () || pid <= 0) {
+        return;
+    }
+    std::ofstream file (path);
+    file << pid << "\n";
+}
+
+inline child_process_t start_process (
+  const std::string &name,
+  const std::string &executable,
+  const std::vector<std::pair<std::string, std::string>> &environment)
+{
+    ensure (!executable.empty (), "missing executable path for " + name);
+    const auto log_dir = env_or ("ZLINK_CPP_E2E_LOG_DIR", "logs");
+    std::filesystem::create_directories (log_dir);
+    const auto stdout_path = std::filesystem::path (log_dir) / (name + ".stdout.log");
+    const auto stderr_path = std::filesystem::path (log_dir) / (name + ".stderr.log");
+    const auto pid = ::fork ();
+    if (pid < 0) {
+        throw std::runtime_error ("failed to fork " + name);
+    }
+    if (pid == 0) {
+        const int stdout_fd =
+          ::open (stdout_path.c_str (), O_CREAT | O_WRONLY | O_TRUNC, 0644);
+        const int stderr_fd =
+          ::open (stderr_path.c_str (), O_CREAT | O_WRONLY | O_TRUNC, 0644);
+        if (stdout_fd >= 0) {
+            (void) ::dup2 (stdout_fd, STDOUT_FILENO);
+        }
+        if (stderr_fd >= 0) {
+            (void) ::dup2 (stderr_fd, STDERR_FILENO);
+        }
+        for (const auto &[key, value] : environment) {
+            ::setenv (key.c_str (), value.c_str (), 1);
+        }
+        ::execl (executable.c_str (), executable.c_str (), static_cast<char *> (nullptr));
+        _exit (127);
+    }
+    return child_process_t (pid);
+}
+
+inline child_process_t start_subscriber_process (const std::string &name,
+                                                 const std::string &http_url,
+                                                 const std::string &subscriber_id,
+                                                 const std::string &topics,
+                                                 const std::string &accepted_topics)
+{
+    auto child = start_process (
+      name, env_or ("ZLINK_CPP_E2E_SUBSCRIBER_EXE"),
+      {{"ZLINK_CPP_E2E_SUBSCRIBER_ID", subscriber_id},
+       {"ZLINK_CPP_E2E_TOPICS", topics},
+       {"ZLINK_CPP_E2E_ACCEPTED_TOPICS", accepted_topics},
+       {"ZLINK_CPP_E2E_HTTP_ENDPOINT", http_url},
+       {"ZLINK_CPP_E2E_REGISTRY_ROUTER", env_or ("ZLINK_CPP_E2E_REGISTRY_ROUTER")},
+       {"ZLINK_CPP_E2E_PUBLISHER_ENDPOINT", env_or ("ZLINK_CPP_E2E_PUBLISHER_ENDPOINT")},
+       {"ZLINK_CPP_E2E_LOG_DIR", env_or ("ZLINK_CPP_E2E_LOG_DIR", "logs")}});
+    wait_http_health (name, http_url, true);
+    return child;
+}
+
+inline child_process_t start_publisher_process (const std::string &name,
+                                                const std::string &http_url)
+{
+    auto child = start_process (
+      name, env_or ("ZLINK_CPP_E2E_PUBLISHER_EXE"),
+      {{"ZLINK_CPP_E2E_PUBLISHER_HTTP_ENDPOINT", http_url},
+       {"ZLINK_CPP_E2E_REGISTRY_ROUTER", env_or ("ZLINK_CPP_E2E_REGISTRY_ROUTER")},
+       {"ZLINK_CPP_E2E_PUBLISHER_ENDPOINT", env_or ("ZLINK_CPP_E2E_PUBLISHER_ENDPOINT")},
+       {"ZLINK_CPP_E2E_LOG_DIR", env_or ("ZLINK_CPP_E2E_LOG_DIR", "logs")}});
+    wait_http_health (name, http_url, true);
+    return child;
 }
 
 } // namespace zlink::framework::e2e::pubsub::client

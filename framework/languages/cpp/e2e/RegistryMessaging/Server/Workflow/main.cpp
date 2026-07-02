@@ -41,6 +41,7 @@ int main (int argc, char **argv)
         framework.use_discovery ().add_registry_endpoint (options.registry_router);
         framework.add_client_server_channel (e2e::workflow_channel)
           .enable_server (options.workflow_endpoint)
+          .enable_client ()
           .set_routing_id (zlink::routing_id_t::from (options.rid))
           .use_handler_group (e2e::handler_group);
         framework.handlers ()
@@ -50,7 +51,8 @@ int main (int argc, char **argv)
             framework.http ()
               .listen (options.http_endpoint)
               .map_health ("/health")
-              .map_get<rm_workflow::evidence_handler_t> ("/evidence");
+              .map_get<rm_workflow::evidence_handler_t> ("/evidence")
+              .map_post<rm_workflow::http_workflow_request_handler_t> ("/workflow/request");
         }
     });
     return app.run (argc, argv);

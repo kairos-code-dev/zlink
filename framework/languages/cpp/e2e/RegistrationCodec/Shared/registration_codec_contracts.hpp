@@ -32,6 +32,7 @@ struct echo_auto_msg_t
 
 struct echo_manual_req_t
 {
+    static constexpr const char *packet_name = "EchoManual";
     std::string value;
 };
 
@@ -40,6 +41,12 @@ struct echo_manual_res_t
     std::string value;
     std::string packet_name;
     std::string content_type;
+};
+
+struct echo_manual_msg_t
+{
+    static constexpr const char *packet_name = "EchoManualMsg";
+    std::string value;
 };
 
 struct json_roundtrip_req_t
@@ -154,6 +161,33 @@ struct filter_order_res_t
     std::vector<std::string> order;
 };
 
+struct lifecycle_scenario_res_t
+{
+    scoped_lifecycle_res_t first;
+    scoped_lifecycle_res_t second;
+    scoped_lifecycle_stats_res_t stats;
+};
+
+struct codec_roundtrip_scenario_res_t
+{
+    json_roundtrip_res_t json;
+    protobuf_roundtrip_res_t protobuf;
+    messagepack_roundtrip_res_t messagepack;
+};
+
+struct codec_coexistence_scenario_res_t
+{
+    json_roundtrip_res_t json;
+    custom_roundtrip_res_t custom;
+    protobuf_roundtrip_res_t protobuf;
+    messagepack_roundtrip_res_t messagepack;
+};
+
+struct operation_status_t
+{
+    std::string status;
+};
+
 struct evidence_entry_t
 {
     std::string marker;
@@ -217,6 +251,16 @@ inline void from_json (const nlohmann::json &json, echo_manual_res_t &value)
     json.at ("value").get_to (value.value);
     json.at ("packet_name").get_to (value.packet_name);
     json.at ("content_type").get_to (value.content_type);
+}
+
+inline void to_json (nlohmann::json &json, const echo_manual_msg_t &value)
+{
+    json = nlohmann::json{{"value", value.value}};
+}
+
+inline void from_json (const nlohmann::json &json, echo_manual_msg_t &value)
+{
+    json.at ("value").get_to (value.value);
 }
 
 inline void to_json (nlohmann::json &json, const json_roundtrip_req_t &value)
@@ -417,6 +461,58 @@ inline void from_json (const nlohmann::json &json, filter_order_res_t &value)
 {
     json.at ("value").get_to (value.value);
     json.at ("order").get_to (value.order);
+}
+
+inline void to_json (nlohmann::json &json, const lifecycle_scenario_res_t &value)
+{
+    json = nlohmann::json{{"first", value.first}, {"second", value.second}, {"stats", value.stats}};
+}
+
+inline void from_json (const nlohmann::json &json, lifecycle_scenario_res_t &value)
+{
+    json.at ("first").get_to (value.first);
+    json.at ("second").get_to (value.second);
+    json.at ("stats").get_to (value.stats);
+}
+
+inline void to_json (nlohmann::json &json, const codec_roundtrip_scenario_res_t &value)
+{
+    json = nlohmann::json{{"json", value.json},
+                          {"protobuf", value.protobuf},
+                          {"messagepack", value.messagepack}};
+}
+
+inline void from_json (const nlohmann::json &json, codec_roundtrip_scenario_res_t &value)
+{
+    json.at ("json").get_to (value.json);
+    json.at ("protobuf").get_to (value.protobuf);
+    json.at ("messagepack").get_to (value.messagepack);
+}
+
+inline void to_json (nlohmann::json &json, const codec_coexistence_scenario_res_t &value)
+{
+    json = nlohmann::json{{"json", value.json},
+                          {"custom", value.custom},
+                          {"protobuf", value.protobuf},
+                          {"messagepack", value.messagepack}};
+}
+
+inline void from_json (const nlohmann::json &json, codec_coexistence_scenario_res_t &value)
+{
+    json.at ("json").get_to (value.json);
+    json.at ("custom").get_to (value.custom);
+    json.at ("protobuf").get_to (value.protobuf);
+    json.at ("messagepack").get_to (value.messagepack);
+}
+
+inline void to_json (nlohmann::json &json, const operation_status_t &value)
+{
+    json = nlohmann::json{{"status", value.status}};
+}
+
+inline void from_json (const nlohmann::json &json, operation_status_t &value)
+{
+    json.at ("status").get_to (value.status);
 }
 
 inline void to_json (nlohmann::json &json, const evidence_entry_t &value)

@@ -112,8 +112,7 @@ void timer_runtime_t::post_fire_count (const std::shared_ptr<spot_context_state_
         return;
     }
     const bool posted = context->try_post_serial_async (
-      "spot-timer:" + state->name,
-      [context, state, fire_count] (auto complete) mutable {
+      "spot-timer:" + state->name, [context, state, fire_count] (auto complete) mutable {
           framework::timer_t timer (state);
           auto runtime = timer_runtime_t (context);
           auto task = runtime.dispatch_fire_count_async (timer, fire_count);
@@ -180,8 +179,8 @@ void record_timer_failure (const std::shared_ptr<spot_context_state_t> &context,
                            bool stopped,
                            std::string message)
 {
-    timer_failure_event_t failure{state->name, state->handler_type, state->delivery_index,
-                                  stopped, std::move (message)};
+    timer_failure_event_t failure{state->name, state->handler_type, state->delivery_index, stopped,
+                                  std::move (message)};
     state->failure_events.push_back (failure);
     if (context && context->node && context->node->monitoring) {
         monitoring_runtime_t (context->node->monitoring)
@@ -243,9 +242,8 @@ timer_runtime_t::dispatch_fire_count (timer_t &timer,
     }
 }
 
-task_t<timer_tick_t> timer_runtime_t::dispatch_fire_count_async (
-  timer_t &timer,
-  std::uint64_t fire_count) const
+task_t<timer_tick_t> timer_runtime_t::dispatch_fire_count_async (timer_t &timer,
+                                                                 std::uint64_t fire_count) const
 {
     auto state = timer._state;
     auto context = _context;
@@ -258,19 +256,19 @@ task_t<timer_tick_t> timer_runtime_t::dispatch_fire_count_async (
         if (state->running) {
             state->pending_fire = true;
             state->pending_fire_count = fire_count;
-            co_return result_t<timer_tick_t>::failure (
-              framework_error_kind_t::request_rejected, "SPOT timer callback is already running");
+            co_return result_t<timer_tick_t>::failure (framework_error_kind_t::request_rejected,
+                                                       "SPOT timer callback is already running");
         }
         state->running = true;
     }
     if (!state->handler_invoker) {
-        co_return result_t<timer_tick_t>::failure (
-          framework_error_kind_t::request_protocol_error, "SPOT timer handler is not configured");
+        co_return result_t<timer_tick_t>::failure (framework_error_kind_t::request_protocol_error,
+                                                   "SPOT timer handler is not configured");
     }
     if (!context || !context->spot_instance || !context->channel_runtime
         || !context->channel_runtime->serializers) {
-        co_return result_t<timer_tick_t>::failure (
-          framework_error_kind_t::request_protocol_error, "SPOT timer context is not configured");
+        co_return result_t<timer_tick_t>::failure (framework_error_kind_t::request_protocol_error,
+                                                   "SPOT timer context is not configured");
     }
 
     context->enter_callback ();
@@ -294,8 +292,8 @@ task_t<timer_tick_t> timer_runtime_t::dispatch_fire_count_async (
     try {
         auto tick = make_tick (*state, fire_count);
         auto spot_keep_alive = context->spot_instance;
-        auto handler_task = state->handler_invoker (
-          spot_keep_alive.get (), *context->channel_runtime->serializers, tick);
+        auto handler_task = state->handler_invoker (spot_keep_alive.get (),
+                                                    *context->channel_runtime->serializers, tick);
         (void) co_await handler_task;
         reset_running ();
         co_return result_t<timer_tick_t>::success (std::move (tick));

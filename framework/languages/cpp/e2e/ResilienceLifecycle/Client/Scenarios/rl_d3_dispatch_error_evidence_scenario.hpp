@@ -9,21 +9,14 @@
 namespace zlink::framework::e2e::resilience_lifecycle::client
 {
 
-inline void run_rl_d3_dispatch_error_evidence_scenario (
-  zlink::framework::channel_client_t &channels)
+inline void run_rl_d3_dispatch_error_evidence_scenario ()
 {
-    auto missing = channels.request (api_channel, profile_req_t{.value = "rl-d3-missing"})
-                     .packet_name ("MissingProfileReq")
-                     .timeout (std::chrono::milliseconds (2000))
-                     .async<profile_res_t> ();
-    ensure (!missing.result ().has_value (), "RL-D3 missing request unexpectedly succeeded");
-    channels.send (api_channel, profile_msg_t{.command_id = "rl-d3-missing-send"})
-      .packet_name ("MissingProfileMsg")
-      .submit ();
-    auto normal = channels.request (api_channel, profile_req_t{.value = "rl-d3-normal"})
-                    .timeout (std::chrono::milliseconds (2000))
-                    .async<profile_res_t> ();
-    ensure (normal.result ().has_value (), "RL-D3 normal request after missing packet failed");
+    const auto missing = post_consumer_missing ("rl-d3-missing");
+    ensure (missing.failed, "RL-D3 missing request unexpectedly succeeded");
+    post_consumer_command ("rl-d3-missing-send", "/profile/command/missing");
+    const auto normal = post_consumer_profile ("rl-d3-normal");
+    ensure (normal.value == "profile:rl-d3-normal",
+            "RL-D3 normal request after missing packet failed");
 
     std::this_thread::sleep_for (std::chrono::milliseconds (200));
     const auto evidence_a = fetch_evidence (env_or ("ZLINK_CPP_E2E_HTTP_A_ENDPOINT"));

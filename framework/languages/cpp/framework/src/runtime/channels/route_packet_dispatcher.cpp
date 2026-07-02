@@ -68,20 +68,19 @@ void route_packet_dispatcher_t::trace_flow (
   const route_received_packet_t &received,
   const runtime::messaging::envelope_header_t &header) const
 {
-    message_flow_tracer_t (_dispatch_options)
-      .trace (outcome, [&] {
-          return message_flow_event_t{outcome,
-                                      dispatch_error_surface_t::route_mesh_channel,
-                                      kind,
-                                      header.message_name,
-                                      _router_channel_id,
-                                      header.topic,
-                                      header.correlation_id,
-                                      received.source_node_rid.to_string (),
-                                      std::nullopt,
-                                      std::nullopt,
-                                      std::nullopt};
-      });
+    message_flow_tracer_t (_dispatch_options).trace (outcome, [&] {
+        return message_flow_event_t{outcome,
+                                    dispatch_error_surface_t::route_mesh_channel,
+                                    kind,
+                                    header.message_name,
+                                    _router_channel_id,
+                                    header.topic,
+                                    header.correlation_id,
+                                    received.source_node_rid.to_string (),
+                                    std::nullopt,
+                                    std::nullopt,
+                                    std::nullopt};
+    });
 }
 
 result_t<std::optional<route_dispatch_reply_t>>
@@ -105,18 +104,10 @@ route_packet_dispatcher_t::dispatch_send (const route_received_packet_t &receive
              == nullptr) {
         dispatch_error_reporter_t (_dispatch_options)
           .report (message_dispatch_error_event_t{
-            dispatch_error_surface_t::route_mesh_channel,
-            dispatch_message_kind_t::send,
-            dispatch_error_reason_t::handler_missing,
-            dispatch_error_action_t::drop,
-            header.message_name,
-            _router_channel_id,
-            header.topic,
-            std::nullopt,
-            std::nullopt,
-            received.source_node_rid.to_string (),
-            header.correlation_id,
-            std::exception_ptr{}});
+            dispatch_error_surface_t::route_mesh_channel, dispatch_message_kind_t::send,
+            dispatch_error_reason_t::handler_missing, dispatch_error_action_t::drop,
+            header.message_name, _router_channel_id, header.topic, std::nullopt, std::nullopt,
+            received.source_node_rid.to_string (), header.correlation_id, std::exception_ptr{}});
         return result_t<std::optional<route_dispatch_reply_t>>::success (std::nullopt);
     }
 
@@ -124,17 +115,10 @@ route_packet_dispatcher_t::dispatch_send (const route_received_packet_t &receive
     if (!body) {
         dispatch_error_reporter_t (_dispatch_options)
           .report (message_dispatch_error_event_t{
-            dispatch_error_surface_t::route_mesh_channel,
-            dispatch_message_kind_t::send,
-            dispatch_error_reason_t::payload_decode_failed,
-            dispatch_error_action_t::drop,
-            header.message_name,
-            _router_channel_id,
-            header.topic,
-            std::nullopt,
-            std::nullopt,
-            received.source_node_rid.to_string (),
-            header.correlation_id,
+            dispatch_error_surface_t::route_mesh_channel, dispatch_message_kind_t::send,
+            dispatch_error_reason_t::payload_decode_failed, dispatch_error_action_t::drop,
+            header.message_name, _router_channel_id, header.topic, std::nullopt, std::nullopt,
+            received.source_node_rid.to_string (), header.correlation_id,
             body.error () ? std::make_exception_ptr (*body.error ()) : std::exception_ptr{}});
         return result_t<std::optional<route_dispatch_reply_t>>::failure (
           body.error_kind (),
@@ -149,24 +133,18 @@ route_packet_dispatcher_t::dispatch_send (const route_received_packet_t &receive
     if (!dispatched) {
         dispatch_error_reporter_t (_dispatch_options)
           .report (message_dispatch_error_event_t{
-            dispatch_error_surface_t::route_mesh_channel,
-            dispatch_message_kind_t::send,
-            dispatch_reason_from_error (dispatched.error_kind ()),
-            dispatch_error_action_t::drop,
-            header.message_name,
-            _router_channel_id,
-            header.topic,
-            std::nullopt,
-            std::nullopt,
-            received.source_node_rid.to_string (),
-            header.correlation_id,
+            dispatch_error_surface_t::route_mesh_channel, dispatch_message_kind_t::send,
+            dispatch_reason_from_error (dispatched.error_kind ()), dispatch_error_action_t::drop,
+            header.message_name, _router_channel_id, header.topic, std::nullopt, std::nullopt,
+            received.source_node_rid.to_string (), header.correlation_id,
             dispatched.error () ? std::make_exception_ptr (*dispatched.error ())
                                 : std::exception_ptr{}});
         return result_t<std::optional<route_dispatch_reply_t>>::failure (
           dispatched.error_kind (),
           dispatched.error () ? dispatched.error ()->what () : "routed send handler failed");
     }
-    trace_flow (message_flow_outcome_t::dispatched, dispatch_message_kind_t::send, received, header);
+    trace_flow (message_flow_outcome_t::dispatched, dispatch_message_kind_t::send, received,
+                header);
     return result_t<std::optional<route_dispatch_reply_t>>::success (std::nullopt);
 }
 
@@ -206,9 +184,9 @@ result_t<std::optional<route_dispatch_reply_t>> route_packet_dispatcher_t::dispa
 
     auto body = runtime::messaging::envelope_codec_t{}.decode_body (received.parts);
     if (!body) {
-        framework_exception_t error (body.error_kind (),
-                                     body.error () ? body.error ()->what ()
-                                                   : "route request body missing");
+        framework_exception_t error (body.error_kind (), body.error ()
+                                                           ? body.error ()->what ()
+                                                           : "route request body missing");
         return reply_error (received, header, error);
     }
     framework::route_handler_context_t context{_router_channel_id, received.source_node_rid,
@@ -223,7 +201,8 @@ result_t<std::optional<route_dispatch_reply_t>> route_packet_dispatcher_t::dispa
                                                             : "routed request handler failed");
         return reply_error (received, header, error);
     }
-    trace_flow (message_flow_outcome_t::replied, dispatch_message_kind_t::response, received, header);
+    trace_flow (message_flow_outcome_t::replied, dispatch_message_kind_t::response, received,
+                header);
     channel_reply_writer_t writer;
     return result_t<std::optional<route_dispatch_reply_t>>::success (route_dispatch_reply_t{
       received.source_node_rid, received.request_seq,
@@ -240,17 +219,10 @@ route_packet_dispatcher_t::reply_error (const route_received_packet_t &received,
 {
     dispatch_error_reporter_t (_dispatch_options)
       .report (message_dispatch_error_event_t{
-        dispatch_error_surface_t::route_mesh_channel,
-        dispatch_message_kind_t::request,
-        dispatch_reason_from_error (error.kind ()),
-        dispatch_error_action_t::reply_error,
-        header.message_name,
-        _router_channel_id,
-        header.topic,
-        std::nullopt,
-        std::nullopt,
-        received.source_node_rid.to_string (),
-        header.correlation_id,
+        dispatch_error_surface_t::route_mesh_channel, dispatch_message_kind_t::request,
+        dispatch_reason_from_error (error.kind ()), dispatch_error_action_t::reply_error,
+        header.message_name, _router_channel_id, header.topic, std::nullopt, std::nullopt,
+        received.source_node_rid.to_string (), header.correlation_id,
         std::make_exception_ptr (error)});
     channel_reply_writer_t writer;
     auto reply = writer.reply_raw_envelope (

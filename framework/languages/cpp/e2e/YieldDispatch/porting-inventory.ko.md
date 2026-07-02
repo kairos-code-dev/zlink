@@ -95,6 +95,12 @@ Spot/Entry Spot handler까지 도달해야 하므로, HTTP trigger나 direct Spo
 
 ## 검증
 
+- 2026-07-02: `timeout 240s framework/languages/cpp/e2e/YieldDispatch/run_e2e.sh`
+  - 결과: 통과
+  - 로그: `logs/20260702-085155-85387`
+  - 의미: 현재 트리에서 YD-A1~YD-D4, YD-E1, YD-E3, YD-E4 static gate, YD-E5 report 생성이 통과했다.
+    runner 출력은 `scenario YD-D1 passed`, `scenario YD-E5 passed`, `yield-dispatch e2e result=passed`를
+    포함한다. report는 YD-E2를 public cancellation token 계약 gap으로 유지한다.
 - 2026-06-30: `cmake --build framework/languages/cpp/build --target zlink_cpp_e2e_yield_dispatch_registry zlink_cpp_e2e_yield_dispatch_delay zlink_cpp_e2e_yield_dispatch_play zlink_cpp_e2e_yield_dispatch_session zlink_cpp_e2e_yield_dispatch_client`
   - 결과: 통과
 - 2026-06-30: `./framework/languages/cpp/e2e/YieldDispatch/run_e2e.sh`

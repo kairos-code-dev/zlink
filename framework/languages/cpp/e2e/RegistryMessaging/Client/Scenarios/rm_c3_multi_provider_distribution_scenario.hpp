@@ -10,10 +10,8 @@
 namespace zlink::framework::e2e::registry_messaging::client
 {
 
-inline void run_rm_c3_multi_provider_distribution_scenario (
-  zlink::framework::channel_client_t &channels)
+inline void run_rm_c3_multi_provider_distribution_scenario ()
 {
-    (void) channels;
     const auto before_a = fetch_evidence (env_or ("ZLINK_CPP_E2E_HTTP_A_ENDPOINT"));
     const auto before_b = fetch_evidence (env_or ("ZLINK_CPP_E2E_HTTP_B_ENDPOINT"));
     const std::string marker = "rm-c3";

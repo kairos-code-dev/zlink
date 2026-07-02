@@ -4,6 +4,34 @@ set -euo pipefail
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 CPP_DIR="$(cd "$SCRIPT_DIR/../.." && pwd)"
 BUILD_DIR="${ZLINK_CPP_E2E_BUILD_DIR:-$CPP_DIR/build}"
+LOCAL_READINESS_TIMEOUT_SECONDS=3
+LOCAL_READINESS_POLL_SECONDS=0.1
+ROUTE_SETTLE_SECONDS=5
+SCENARIO_SETTLE_SECONDS=3
+HTTP_PROBE_TIMEOUT_SECONDS=3
+SCENARIO_MARKER_TIMEOUT_SECONDS=30
+TOPOLOGY_WAIT_TIMEOUT_MILLISECONDS=30000
+TOPOLOGY_WAIT_HTTP_TIMEOUT_SECONDS=35
+LOCAL_READINESS_ATTEMPTS="$(
+  python3 - "$LOCAL_READINESS_TIMEOUT_SECONDS" "$LOCAL_READINESS_POLL_SECONDS" <<'PY'
+import math
+import sys
+
+timeout = float(sys.argv[1])
+poll = float(sys.argv[2])
+print(max(1, math.ceil(timeout / poll)))
+PY
+)"
+SCENARIO_MARKER_ATTEMPTS="$(
+  python3 - "$SCENARIO_MARKER_TIMEOUT_SECONDS" "$LOCAL_READINESS_POLL_SECONDS" <<'PY'
+import math
+import sys
+
+timeout = float(sys.argv[1])
+poll = float(sys.argv[2])
+print(max(1, math.ceil(timeout / poll)))
+PY
+)"
 
 read -r REGISTRY_PUB REGISTRY_ROUTER API_A API_B ROUTE_A ROUTE_B DEALER_A DEALER_B API_B_GREEN ROUTE_B_GREEN HTTP_REGISTRY HTTP_A HTTP_B HTTP_CONSUMER HTTP_B_GREEN CLIENT_ROUTE <<<"$(python3 - <<'PY'
 import socket
@@ -67,25 +95,25 @@ wait_port() {
   local endpoint="$2"
   local port
   port="$(port_of "$endpoint")"
-  for _ in $(seq 1 60); do
+  for _ in $(seq 1 "$LOCAL_READINESS_ATTEMPTS"); do
     if (echo >"/dev/tcp/127.0.0.1/${port}") >/dev/null 2>&1; then
       return 0
     fi
-    sleep 0.05
+    sleep "$LOCAL_READINESS_POLL_SECONDS"
   done
-  echo "Timed out waiting for $name at $endpoint" >&2
+  echo "Timed out waiting ${LOCAL_READINESS_TIMEOUT_SECONDS}s for $name at $endpoint" >&2
   return 1
 }
 
 wait_marker() {
   local file="$1"
-  for _ in $(seq 1 600); do
+  for _ in $(seq 1 "$SCENARIO_MARKER_ATTEMPTS"); do
     if [[ -f "$file" ]]; then
       return 0
     fi
-    sleep 0.05
+    sleep "$LOCAL_READINESS_POLL_SECONDS"
   done
-  echo "Timed out waiting for marker $file" >&2
+  echo "Timed out waiting ${SCENARIO_MARKER_TIMEOUT_SECONDS}s for marker $file" >&2
   return 1
 }
 
@@ -108,30 +136,40 @@ kill_pid() {
 crash_provider() {
   local http="$1"
   local pid="$2"
-  python3 - "$http" <<'PY'
+  python3 - "$http" "$HTTP_PROBE_TIMEOUT_SECONDS" <<'PY'
 import sys
 import urllib.request
 
 base = sys.argv[1]
+probe_timeout = float(sys.argv[2])
 request = urllib.request.Request(f"{base}/admin/crash", data=b"", method="POST")
-with urllib.request.urlopen(request, timeout=3):
+with urllib.request.urlopen(request, timeout=probe_timeout):
     pass
 PY
-  for _ in $(seq 1 12); do
-    if ! python3 - "$http" <<'PY' >/dev/null 2>&1
+  if python3 - "$http" "$HTTP_PROBE_TIMEOUT_SECONDS" "$LOCAL_READINESS_TIMEOUT_SECONDS" "$LOCAL_READINESS_POLL_SECONDS" <<'PY'
 import sys
+import time
 import urllib.request
 
-with urllib.request.urlopen(f"{sys.argv[1]}/health", timeout=1) as response:
-    if response.status != 200:
-        raise SystemExit(1)
+base = sys.argv[1]
+probe_timeout = float(sys.argv[2])
+readiness_timeout = float(sys.argv[3])
+poll_seconds = float(sys.argv[4])
+deadline = time.monotonic() + readiness_timeout
+while time.monotonic() < deadline:
+    try:
+        with urllib.request.urlopen(f"{base}/health", timeout=probe_timeout) as response:
+            if response.status != 200:
+                raise SystemExit(0)
+    except Exception:
+        raise SystemExit(0)
+    time.sleep(poll_seconds)
+raise SystemExit(1)
 PY
-    then
-      wait "$pid" >/dev/null 2>&1 || true
-      return 0
-    fi
-    sleep 0.25
-  done
+  then
+    wait "$pid" >/dev/null 2>&1 || true
+    return 0
+  fi
   echo "Timed out waiting for provider crash at $http" >&2
   return 1
 }
@@ -145,7 +183,7 @@ set_server_weight() {
   elif [[ "$weight" == "100" ]]; then
     path="/admin/restore"
   fi
-  python3 - "$http" "$weight" "$path" <<'PY'
+  python3 - "$http" "$weight" "$path" "$HTTP_PROBE_TIMEOUT_SECONDS" <<'PY'
 import json
 import sys
 import urllib.request
@@ -153,12 +191,13 @@ import urllib.request
 base = sys.argv[1]
 weight = sys.argv[2]
 path = sys.argv[3]
+timeout_seconds = float(sys.argv[4])
 request = urllib.request.Request(
     f"{base}{path}",
     data=b"",
     method="POST",
 )
-with urllib.request.urlopen(request, timeout=3) as response:
+with urllib.request.urlopen(request, timeout=timeout_seconds) as response:
     if response.status != 200:
         raise SystemExit(f"unexpected status {response.status}")
 wait = urllib.request.Request(
@@ -167,7 +206,7 @@ wait = urllib.request.Request(
     headers={"Content-Type": "application/json"},
     method="POST",
 )
-with urllib.request.urlopen(wait, timeout=3) as response:
+with urllib.request.urlopen(wait, timeout=timeout_seconds) as response:
     if response.status != 200:
         raise SystemExit(f"unexpected weight wait status {response.status}")
 PY
@@ -183,7 +222,7 @@ post_consumer_profile_request() {
   local value="$2"
   local marker="$3"
   local expected_provider="${4:-}"
-  python3 - "$HTTP_CONSUMER" "$path" "$value" "$marker" "$expected_provider" <<'PY'
+  python3 - "$HTTP_CONSUMER" "$path" "$value" "$marker" "$expected_provider" "$HTTP_PROBE_TIMEOUT_SECONDS" <<'PY'
 import json
 import sys
 import urllib.request
@@ -193,6 +232,7 @@ path = sys.argv[2]
 value = sys.argv[3]
 marker = sys.argv[4]
 expected_provider = sys.argv[5]
+timeout_seconds = float(sys.argv[6])
 payload = {"value": value}
 if marker:
     payload["marker"] = marker
@@ -202,7 +242,7 @@ request = urllib.request.Request(
     headers={"Content-Type": "application/json"},
     method="POST",
 )
-with urllib.request.urlopen(request, timeout=3) as response:
+with urllib.request.urlopen(request, timeout=timeout_seconds) as response:
     body = response.read().decode("utf-8")
     if response.status != 200:
         raise SystemExit(f"unexpected status {response.status}: {body}")
@@ -220,7 +260,7 @@ post_consumer_profile_burst() {
   local value="$1"
   local marker_prefix="$2"
   local count="$3"
-  python3 - "$HTTP_CONSUMER" "$value" "$marker_prefix" "$count" <<'PY'
+  python3 - "$HTTP_CONSUMER" "$value" "$marker_prefix" "$count" "$HTTP_PROBE_TIMEOUT_SECONDS" <<'PY'
 import concurrent.futures
 import json
 import sys
@@ -231,6 +271,7 @@ base = sys.argv[1]
 value = sys.argv[2]
 marker_prefix = sys.argv[3]
 count = int(sys.argv[4])
+timeout_seconds = float(sys.argv[5])
 
 def post(index):
     marker = f"{marker_prefix}{index}"
@@ -241,7 +282,7 @@ def post(index):
         method="POST",
     )
     try:
-        response = urllib.request.urlopen(request, timeout=3)
+        response = urllib.request.urlopen(request, timeout=timeout_seconds)
     except urllib.error.HTTPError as error:
         body = error.read().decode("utf-8", errors="replace")
         raise RuntimeError(f"unexpected status {error.code} for {marker}: {body}") from error
@@ -261,7 +302,7 @@ PY
 post_consumer_command_burst() {
   local marker_prefix="$1"
   local count="$2"
-  python3 - "$HTTP_CONSUMER" "$marker_prefix" "$count" <<'PY'
+  python3 - "$HTTP_CONSUMER" "$marker_prefix" "$count" "$HTTP_PROBE_TIMEOUT_SECONDS" <<'PY'
 import concurrent.futures
 import json
 import sys
@@ -270,6 +311,7 @@ import urllib.request
 base = sys.argv[1]
 marker_prefix = sys.argv[2]
 count = int(sys.argv[3])
+timeout_seconds = float(sys.argv[4])
 
 def post(index):
     marker = f"{marker_prefix}{index}"
@@ -279,7 +321,7 @@ def post(index):
         headers={"Content-Type": "application/json"},
         method="POST",
     )
-    with urllib.request.urlopen(request, timeout=3) as response:
+    with urllib.request.urlopen(request, timeout=timeout_seconds) as response:
         body = response.read().decode("utf-8")
         if response.status != 200:
             raise RuntimeError(f"unexpected status {response.status}: {body}")
@@ -295,7 +337,7 @@ PY
 wait_provider_evidence_value_prefix() {
   local prefix="$1"
   local expected_provider="${2:-}"
-  python3 - "$HTTP_A" "$HTTP_B" "$prefix" "$expected_provider" <<'PY'
+  python3 - "$HTTP_A" "$HTTP_B" "$prefix" "$expected_provider" "$SCENARIO_MARKER_TIMEOUT_SECONDS" "$HTTP_PROBE_TIMEOUT_SECONDS" <<'PY'
 import json
 import sys
 import time
@@ -304,11 +346,12 @@ import urllib.request
 urls = [sys.argv[1], sys.argv[2]]
 prefix = sys.argv[3]
 expected_provider = sys.argv[4]
-deadline = time.monotonic() + 15
+deadline = time.monotonic() + float(sys.argv[5])
+probe_timeout = float(sys.argv[6])
 while time.monotonic() < deadline:
     for base in urls:
         try:
-            with urllib.request.urlopen(f"{base}/evidence", timeout=2) as response:
+            with urllib.request.urlopen(f"{base}/evidence", timeout=probe_timeout) as response:
                 payload = json.loads(response.read().decode("utf-8"))
         except Exception:
             continue
@@ -328,7 +371,7 @@ wait_registry_topology() {
   local routing_id="$1"
   local state="${2:-Ready}"
   local expected_count="${3:-1}"
-  python3 - "$HTTP_REGISTRY" "$routing_id" "$state" "$expected_count" <<'PY'
+  python3 - "$HTTP_REGISTRY" "$routing_id" "$state" "$expected_count" "$TOPOLOGY_WAIT_TIMEOUT_MILLISECONDS" "$TOPOLOGY_WAIT_HTTP_TIMEOUT_SECONDS" <<'PY'
 import json
 import sys
 import urllib.request
@@ -337,18 +380,20 @@ base = sys.argv[1]
 routing_id = sys.argv[2]
 state = sys.argv[3]
 expected_count = int(sys.argv[4])
+topology_wait_timeout_milliseconds = int(sys.argv[5])
+http_timeout_seconds = float(sys.argv[6])
 request = urllib.request.Request(
     f"{base}/topology/wait",
     data=json.dumps({
         "routing_id": routing_id,
         "state": state,
         "expected_count": expected_count,
-        "timeout_milliseconds": 30000,
+        "timeout_milliseconds": topology_wait_timeout_milliseconds,
     }).encode("utf-8"),
     headers={"Content-Type": "application/json"},
     method="POST",
 )
-with urllib.request.urlopen(request, timeout=35) as response:
+with urllib.request.urlopen(request, timeout=http_timeout_seconds) as response:
     body = response.read().decode("utf-8")
     if response.status != 200:
         raise SystemExit(f"unexpected topology wait status {response.status}: {body}")
@@ -420,6 +465,7 @@ start_provider() {
 start_consumer() {
   ZLINK_CPP_E2E_HTTP_ENDPOINT="$HTTP_CONSUMER" \
   ZLINK_CPP_E2E_REGISTRY_ROUTER="$REGISTRY_ROUTER" \
+  ZLINK_CPP_E2E_PROVIDER_ENDPOINTS="$API_A,$API_B" \
   ZLINK_CPP_E2E_LOG_DIR="$LOG_DIR" \
     "$CONSUMER" >"$LOG_DIR/consumer.stdout.log" 2>"$LOG_DIR/consumer.stderr.log" &
   LAST_PID="$!"
@@ -454,20 +500,21 @@ run_client() {
 
 post_consumer_timeout_request() {
   local marker="$1"
-  python3 - "$HTTP_CONSUMER" "$marker" <<'PY'
+  python3 - "$HTTP_CONSUMER" "$marker" "$HTTP_PROBE_TIMEOUT_SECONDS" <<'PY'
 import json
 import sys
 import urllib.request
 
 base = sys.argv[1]
 marker = sys.argv[2]
+timeout_seconds = float(sys.argv[3])
 request = urllib.request.Request(
     f"{base}/profile/request/timeout/100",
     data=json.dumps({"value": marker}).encode("utf-8"),
     headers={"Content-Type": "application/json"},
     method="POST",
 )
-with urllib.request.urlopen(request, timeout=3) as response:
+with urllib.request.urlopen(request, timeout=timeout_seconds) as response:
     body = response.read().decode("utf-8")
     if response.status != 200:
         raise SystemExit(f"unexpected status {response.status}: {body}")
@@ -479,20 +526,21 @@ PY
 
 post_consumer_missing_request() {
   local marker="$1"
-  python3 - "$HTTP_CONSUMER" "$marker" <<'PY'
+  python3 - "$HTTP_CONSUMER" "$marker" "$HTTP_PROBE_TIMEOUT_SECONDS" <<'PY'
 import json
 import sys
 import urllib.request
 
 base = sys.argv[1]
 marker = sys.argv[2]
+timeout_seconds = float(sys.argv[3])
 request = urllib.request.Request(
     f"{base}/profile/request/missing",
     data=json.dumps({"value": marker}).encode("utf-8"),
     headers={"Content-Type": "application/json"},
     method="POST",
 )
-with urllib.request.urlopen(request, timeout=3) as response:
+with urllib.request.urlopen(request, timeout=timeout_seconds) as response:
     body = response.read().decode("utf-8")
     if response.status != 200:
         raise SystemExit(f"unexpected status {response.status}: {body}")
@@ -511,7 +559,7 @@ start_provider api-b "$API_B" "$ROUTE_B" "$DEALER_B" "$HTTP_B"
 API_B_PID="$LAST_PID"
 start_consumer
 CONSUMER_PID="$LAST_PID"
-sleep 1
+sleep "$ROUTE_SETTLE_SECONDS"
 post_consumer_profile "rl-consumer-smoke"
 grep -q "message flow" "$LOG_DIR/consumer-flow.log"
 echo "scenario RL-consumer passed"
@@ -543,7 +591,7 @@ wait_marker "$READY"
 stop_pid "$API_A_PID"
 start_provider api-a "$API_A" "$ROUTE_A" "$DEALER_A" "$HTTP_A" api-a-v2
 API_A_PID="$LAST_PID"
-sleep 5
+sleep "$ROUTE_SETTLE_SECONDS"
 touch "$CONTINUE"
 wait "$A1_CLIENT_PID"
 grep -q "scenario RL-A1 client passed" "$LOG_DIR/client-rl-a1.stdout.log"
@@ -562,7 +610,7 @@ wait_marker "$READY"
 stop_pid "$API_A_PID"
 start_provider api-a "$API_B" "$ROUTE_B" "$DEALER_B" "$HTTP_B" api-a-v2
 API_A_PID="$LAST_PID"
-sleep 5
+sleep "$ROUTE_SETTLE_SECONDS"
 touch "$CONTINUE"
 wait "$A2_CLIENT_PID"
 grep -q "scenario RL-A2 client passed" "$LOG_DIR/client-rl-a2.stdout.log"
@@ -581,7 +629,7 @@ run_client rl-b3 rl-b3 env \
 B3_CLIENT_PID="$!"
 wait_marker "$READY"
 stop_pid "$API_B_PID"
-sleep 5
+sleep "$ROUTE_SETTLE_SECONDS"
 touch "$CONTINUE"
 wait "$B3_CLIENT_PID"
 grep -q "scenario RL-B3 client passed" "$LOG_DIR/client-rl-b3.stdout.log"
@@ -618,7 +666,7 @@ post_consumer_new_client_burst "fast" "rl-c2-after-crash-" 8 "api-a"
 wait_provider_evidence_value_prefix "rl-c2-after-crash-" "api-a"
 start_provider api-b "$API_B" "$ROUTE_B" "$DEALER_B" "$HTTP_B"
 API_B_PID="$LAST_PID"
-sleep 1
+sleep "$ROUTE_SETTLE_SECONDS"
 post_consumer_profile_burst "fast" "rl-c2-restored-" 40
 wait_provider_evidence_value_prefix "rl-c2-restored-" "api-b"
 echo "scenario RL-C2 passed"
@@ -729,18 +777,18 @@ run_client registry-outage rl-c4 env \
 C4_CLIENT_PID="$!"
 wait_marker "$READY"
 stop_pid "$REGISTRY_PID"
-sleep 1
+sleep "$ROUTE_SETTLE_SECONDS"
 touch "$CONTINUE"
 wait_marker "$OUTAGE_VERIFIED"
 start_registry
 REGISTRY_PID="$LAST_PID"
-sleep 5
+sleep "$ROUTE_SETTLE_SECONDS"
 wait "$C4_CLIENT_PID"
 grep -q "scenario RL-C4 passed" "$LOG_DIR/client-rl-c4.stdout.log"
 stop_pid "$API_A_PID"
 start_provider api-a "$API_A" "$ROUTE_A" "$DEALER_A" "$HTTP_A"
 API_A_PID="$LAST_PID"
-sleep 5
+sleep "$ROUTE_SETTLE_SECONDS"
 run_client registry-recovered rl-c4-recovered env
 grep -q "scenario RL-C4 recovery passed" "$LOG_DIR/client-rl-c4-recovered.stdout.log"
 echo "scenario RL-C4 passed"
@@ -751,7 +799,7 @@ start_provider api-a "$API_A" "$ROUTE_A" "$DEALER_A" "$HTTP_A"
 API_A_PID="$LAST_PID"
 start_provider api-b "$API_B" "$ROUTE_B" "$DEALER_B" "$HTTP_B"
 API_B_PID="$LAST_PID"
-sleep 1
+sleep "$ROUTE_SETTLE_SECONDS"
 post_consumer_profile_burst "fast" "rl-d1-" 120
 wait_provider_evidence_value_prefix "rl-d1-"
 echo "scenario RL-D1 passed"

@@ -252,7 +252,8 @@ struct spot_actor_admission_callbacks_t
       void *, void *, const zlink::message_t &, serializer_registry_t &)>
       join;
     std::function<void (void *, void *)> on_actor_joined;
-    std::function<void (void *, void *, const zlink::message_t &, serializer_registry_t &)> onCreateActor;
+    std::function<void (void *, void *, const zlink::message_t &, serializer_registry_t &)>
+      onCreateActor;
     std::function<void (void *, void *)> onLeaveActor;
     std::function<void (void *, void *)> onDisconnectActor;
     bool entry_spot = false;
@@ -321,17 +322,17 @@ task_t<zlink::message_t> complete_spot_member_call (TResult &&result,
                 co_return result_t<zlink::message_t>::success (zlink::message_t{});
             } else {
                 auto value = co_await result;
-                co_return result_t<zlink::message_t>::success (
-                  detail::encoded_payload_to_raw (serializers.get<value_type> ().serialize (value)));
+                co_return result_t<zlink::message_t>::success (detail::encoded_payload_to_raw (
+                  serializers.get<value_type> ().serialize (value)));
             }
         }
         catch (const framework_exception_t &error) {
-            co_return result_t<zlink::message_t>::failure (
-              error.kind (), error.what (), error.is_retriable ());
+            co_return result_t<zlink::message_t>::failure (error.kind (), error.what (),
+                                                           error.is_retriable ());
         }
         catch (const std::exception &error) {
-            co_return result_t<zlink::message_t>::failure (
-              framework_error_kind_t::request_failed, error.what ());
+            co_return result_t<zlink::message_t>::failure (framework_error_kind_t::request_failed,
+                                                           error.what ());
         }
     } else if constexpr (std::is_void_v<result_type>) {
         co_return result_t<zlink::message_t>::success (zlink::message_t{});
@@ -538,7 +539,8 @@ class spot_context_t
               const auto complete_on_current_turn =
                 completion_mode == detail::worker_completion_mode_t::current_turn && yield_turn;
               detail::task_completion_source_t<result_type> completion (
-                complete_on_current_turn ? yield_turn->resume_scheduler () : detail::task_scheduler_t{});
+                complete_on_current_turn ? yield_turn->resume_scheduler ()
+                                         : detail::task_scheduler_t{});
               auto task = completion.task ();
               auto shared_work = std::make_shared<TWork> (std::move (work));
               auto completed = std::make_shared<std::atomic_bool> (false);
@@ -563,22 +565,22 @@ class spot_context_t
                       }
                   }).detach ();
               }
-              const auto scheduled = scheduler->try_schedule ([scheduler, shared_work, completion,
-                                                               completed,
-                                                               complete_on_current_turn] () mutable {
-                  auto result = detail::run_worker_body<result_type> (*shared_work);
-                  if (!completed->exchange (true)) {
-                      auto complete_result =
-                        [completion, result = std::move (result)] () mutable {
-                          completion.complete (std::move (result));
+              const auto scheduled =
+                scheduler->try_schedule ([scheduler, shared_work, completion, completed,
+                                          complete_on_current_turn] () mutable {
+                    auto result = detail::run_worker_body<result_type> (*shared_work);
+                    if (!completed->exchange (true)) {
+                        auto complete_result = [completion,
+                                                result = std::move (result)] () mutable {
+                            completion.complete (std::move (result));
                         };
-                      if (complete_on_current_turn) {
-                          complete_result ();
-                      } else {
-                          scheduler->post_owner (std::move (complete_result));
-                      }
-                  }
-              });
+                        if (complete_on_current_turn) {
+                            complete_result ();
+                        } else {
+                            scheduler->post_owner (std::move (complete_result));
+                        }
+                    }
+                });
               if (!scheduled) {
                   completed->store (true);
                   auto complete_full = [completion] () mutable {
@@ -677,7 +679,8 @@ class spot_context_t
                   }
                   try {
                       auto reply = co_await submit (packet_name, timeout, metadata);
-                      co_return serializers->get<TReply> ().deserialize (detail::encoded_payload_from_raw (reply));
+                      co_return serializers->get<TReply> ().deserialize (
+                        detail::encoded_payload_from_raw (reply));
                   }
                   catch (const framework_exception_t &error) {
                       co_return result_t<TReply>::failure (error.kind (), error.what (),
@@ -716,12 +719,13 @@ class spot_context_t
                        std::type_index actor_type,
                        void *actor,
                        std::function<void (void *, const actor_ref_t &)> update_actor_ref);
-    timer_t add_timer_erased (std::string name,
-                              std::chrono::milliseconds period,
-                              timer_options_t options,
-                              std::type_index handler_type,
-                              std::function<task_t<zlink::message_t> (
-                                void *, serializer_registry_t &, const timer_tick_t &)> handler_invoker);
+    timer_t
+    add_timer_erased (std::string name,
+                      std::chrono::milliseconds period,
+                      timer_options_t options,
+                      std::type_index handler_type,
+                      std::function<task_t<zlink::message_t> (
+                        void *, serializer_registry_t &, const timer_tick_t &)> handler_invoker);
     task_t<bool> close_erased ();
 
     friend void detail::drain_spot_node_executors (detail::spot_node_builder_state_t &node);
@@ -795,8 +799,7 @@ class spot_handler_registry_t
         using spot_type = typename traits::spot_type;
         using message_type = detail::spot_handler_payload_arg_t<traits>;
         if constexpr (traits::arg_count == 2) {
-            using context_type =
-              detail::unqualified_spot_arg_t<typename traits::template arg_t<0>>;
+            using context_type = detail::unqualified_spot_arg_t<typename traits::template arg_t<0>>;
             static_assert (std::is_same_v<context_type, spot_packet_context_t>,
                            "SPOT packet context must be spot_packet_context_t");
         }
@@ -809,12 +812,12 @@ class spot_handler_registry_t
             void *spot, void *, service_provider_t &, serializer_registry_t &serializers,
             const zlink::message_t &message, const spot_actor_message_metadata_t &metadata) {
               auto &typed_spot = *static_cast<spot_type *> (spot);
-              auto payload = std::make_shared<message_type> (
-                serializers.get<message_type> ().deserialize (detail::encoded_payload_from_raw (message)));
+              auto payload =
+                std::make_shared<message_type> (serializers.get<message_type> ().deserialize (
+                  detail::encoded_payload_from_raw (message)));
               if constexpr (traits::arg_count == 2) {
-                  auto context = std::make_shared<spot_packet_context_t> (
-                    spot_packet_context_t{registered_packet_name, metadata.content_type, metadata,
-                                          false});
+                  auto context = std::make_shared<spot_packet_context_t> (spot_packet_context_t{
+                    registered_packet_name, metadata.content_type, metadata, false});
                   return detail::invoke_spot_member_keepalive (
                     [&typed_spot, context, payload] {
                         return (typed_spot.*Method) (*context, *payload);
@@ -822,8 +825,8 @@ class spot_handler_registry_t
                     serializers, context, payload);
               } else {
                   return detail::invoke_spot_member_keepalive (
-                    [&typed_spot, payload] { return (typed_spot.*Method) (*payload); },
-                    serializers, payload);
+                    [&typed_spot, payload] { return (typed_spot.*Method) (*payload); }, serializers,
+                    payload);
               }
           });
     }
@@ -843,7 +846,8 @@ class spot_handler_registry_t
               const zlink::message_t &message, const spot_actor_message_metadata_t &) {
               auto &typed_spot = *static_cast<spot_type *> (spot);
               auto payload =
-                std::make_shared<event_type> (serializers.get<event_type> ().deserialize (detail::encoded_payload_from_raw (message)));
+                std::make_shared<event_type> (serializers.get<event_type> ().deserialize (
+                  detail::encoded_payload_from_raw (message)));
               return detail::invoke_spot_member_keepalive (
                 [&typed_spot, payload] { return (typed_spot.*Method) (*payload); }, serializers,
                 payload);
@@ -877,8 +881,9 @@ class spot_handler_registry_t
             const zlink::message_t &message, const spot_actor_message_metadata_t &metadata) {
               auto &typed_spot = *static_cast<spot_type *> (spot);
               auto &typed_actor = *static_cast<actor_type *> (actor);
-              auto payload = std::make_shared<message_type> (
-                serializers.get<message_type> ().deserialize (detail::encoded_payload_from_raw (message)));
+              auto payload =
+                std::make_shared<message_type> (serializers.get<message_type> ().deserialize (
+                  detail::encoded_payload_from_raw (message)));
               auto send_context = std::make_shared<spot_actor_send_context_t> (
                 spot_actor_send_context_t{registered_packet_name, metadata.content_type, metadata});
               auto request_context =
@@ -1131,9 +1136,8 @@ class spot_publisher_client_t
     }
 
   private:
-    task_t<void> publish_raw (std::string channel_name,
-                              std::string topic,
-                              zlink::message_t payload) const;
+    task_t<void>
+    publish_raw (std::string channel_name, std::string topic, zlink::message_t payload) const;
 
     spot_node_manager_t _manager;
     serializer_registry_t *_serializers = nullptr;

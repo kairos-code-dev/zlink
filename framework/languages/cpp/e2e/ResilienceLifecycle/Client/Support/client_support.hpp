@@ -8,8 +8,6 @@
 #include "scenario_assert.hpp"
 #include "topology_entry_result.hpp"
 
-#include <zlink/framework.hpp>
-
 namespace zlink::framework::e2e::resilience_lifecycle::client
 {
 
@@ -29,11 +27,14 @@ using resilience_lifecycle::scenario_route_res_t;
 
 using resilience_lifecycle::client::any_provider_evidence_contains;
 using resilience_lifecycle::client::client_options_t;
-using resilience_lifecycle::client::configure_common_codecs;
 using resilience_lifecycle::client::ensure;
 using resilience_lifecycle::client::env_or;
 using resilience_lifecycle::client::evidence_contains;
 using resilience_lifecycle::client::fetch_evidence;
+using resilience_lifecycle::client::post_consumer_command;
+using resilience_lifecycle::client::post_consumer_missing;
+using resilience_lifecycle::client::post_consumer_profile;
+using resilience_lifecycle::client::post_consumer_profile_raw;
 using resilience_lifecycle::client::read_client_options;
 using resilience_lifecycle::client::topology_entry_result_t;
 using resilience_lifecycle::client::touch_file;

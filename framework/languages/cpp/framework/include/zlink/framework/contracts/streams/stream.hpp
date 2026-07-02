@@ -218,8 +218,8 @@ class packet_stream_session_t
         (void) stream;
         (void) dispatch;
         (void) payload;
-        return task_t<void> (result_t<void>::failure (
-          framework_error_kind_t::handler_not_found, "stream packet handler is not implemented"));
+        return task_t<void> (result_t<void>::failure (framework_error_kind_t::handler_not_found,
+                                                      "stream packet handler is not implemented"));
     }
 };
 
@@ -244,8 +244,7 @@ class stream_builder_t
     stream_builder_t &operator= (const stream_builder_t &) = default;
 
     stream_builder_t &bind (std::string endpoint);
-    stream_builder_t &set_tls_server (std::string certificate_file,
-                                      std::string private_key_file);
+    stream_builder_t &set_tls_server (std::string certificate_file, std::string private_key_file);
     stream_builder_t &register_session (std::string session_name);
     stream_snapshot_t snapshot () const;
 

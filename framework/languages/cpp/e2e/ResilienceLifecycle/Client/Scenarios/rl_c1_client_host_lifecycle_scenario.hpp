@@ -44,10 +44,8 @@ inline void wait_provider_evidence_prefix (const std::string &prefix)
     throw std::runtime_error ("RL-C1 did not record expected provider evidence " + prefix);
 }
 
-inline void run_rl_c1_client_host_lifecycle_probe (zlink::framework::channel_client_t &channels)
+inline void run_rl_c1_client_host_lifecycle_probe ()
 {
-    (void) channels;
-
     auto consumer = zlink::http_client::client_t::create ()
                       .base_url (env_or ("ZLINK_CPP_E2E_HTTP_CONSUMER_ENDPOINT"))
                       .timeout (std::chrono::milliseconds (10000))

@@ -202,16 +202,16 @@ struct dispatch_options_t
     // output sink is configured; otherwise left empty to preserve clog behavior.
     std::optional<logger_t<>> diagnostics_logger;
 
-    dispatch_options_t &set_message_flow_observer (
-      std::shared_ptr<message_flow_observer_t> observer)
+    dispatch_options_t &
+    set_message_flow_observer (std::shared_ptr<message_flow_observer_t> observer)
     {
         message_flow_observer = std::move (observer);
         message_flow_callback = {};
         return *this;
     }
 
-    dispatch_options_t &set_message_flow_observer (
-      std::function<void (const message_flow_event_t &)> observer)
+    dispatch_options_t &
+    set_message_flow_observer (std::function<void (const message_flow_event_t &)> observer)
     {
         message_flow_callback = std::move (observer);
         message_flow_observer.reset ();
@@ -261,8 +261,8 @@ struct dispatch_options_t
 
     // Install a shared, runtime-mutable mode cell (host wiring for runtime toggle;
     // app_t::set_message_flow_mode flips it). Overrides the configured message_flow.
-    dispatch_options_t &message_flow_live (
-      std::shared_ptr<std::atomic<message_flow_log_mode_t>> live)
+    dispatch_options_t &
+    message_flow_live (std::shared_ptr<std::atomic<message_flow_log_mode_t>> live)
     {
         diagnostics._live_mode = std::move (live);
         return *this;

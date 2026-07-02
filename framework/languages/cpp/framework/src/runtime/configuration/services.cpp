@@ -33,7 +33,8 @@ class service_registry_t
         const auto found = descriptors.find (type);
         if (found == descriptors.end ()) {
             throw framework_exception_t (framework_error_kind_t::request_target_not_found,
-                                         std::string ("service is not registered: ") + type.name ());
+                                         std::string ("service is not registered: ")
+                                           + type.name ());
         }
         return found->second;
     }

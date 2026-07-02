@@ -2,7 +2,8 @@
 
 이 문서는 `framework/languages/dotnet/e2e/RegistrationCodec`의 파일을 기준으로 C++
 `RegistrationCodec` E2E의 대응 파일과 남은 gap을 기록한다. 현재 C++ 구현은 client scenario/support와
-server configuration/handler/endpoint/support를 분리했고, invalid role과 JSON-only peer role도 별도
+server configuration/handler/endpoint/support를 분리했고, invalid role, JSON-only peer role,
+codec requester role도 별도
 executable로 분리한다.
 
 `.NET` 전용 attribute 등록은 C++ framework의 현재 public contract에 동일한 표면이 없으므로 새 public
@@ -22,10 +23,10 @@ Protobuf/MessagePack은 C++ public codec extension을 사용해 실제 E2E로 �
 |----------------|---------------|------|------|------|
 | `.gitignore` | `.gitignore` | config | done | 실행 로그를 제외한다. |
 | `feature-map.ko.md` | `feature-map.ko.md` | docs | done | C++ public API로 검증한 항목과 C++ public contract gap을 분리한다. |
-| `run_e2e.sh` | `run_e2e.sh` | runner | done | server/client, invalid role, JSON-only peer role을 각각 별도 executable로 실행한다. |
+| `run_e2e.sh` | `run_e2e.sh` | runner | done | server/client, invalid role, JSON-only peer role, codec requester role을 각각 별도 executable로 실행한다. |
 | `Shared/Messages.cs` | `Shared/registration_codec_contracts.hpp` | shared | done | JSON/Protobuf/MessagePack/custom serializer용 DTO와 evidence DTO가 대응한다. |
 | `Shared/RegistrationCodec.Shared.csproj` | `Shared/registration_codec_contracts.hpp` | build | not-needed | C++ shared contract는 header로 포함된다. |
-| `Client/Program.cs` | `Client/main.cpp` | client-entry | done | scenario dispatch와 framework client 구성을 수행한다. scenario 본문과 support helper는 별도 header로 분리했다. |
+| `Client/Program.cs` | `Client/main.cpp` | client-entry | done | .NET 기준처럼 HTTP client로 server endpoint를 호출해 scenario를 dispatch한다. framework runtime은 client가 아니라 server/codec requester role이 소유한다. scenario 본문과 support helper는 별도 header로 분리했다. |
 | `Client/RegistrationCodec.Client.csproj` | `framework/languages/cpp/CMakeLists.txt` | build | done | `zlink_cpp_e2e_registration_codec_client` target이 대응한다. |
 | `Client/Support/ClientOptions.cs` | `Client/Support/client_support.hpp`; `run_e2e.sh` | client-support | done | env parsing과 endpoint orchestration이 대응한다. |
 | `Client/Support/CodecScenarioResult.cs` | not-needed | client-support | not-needed | C++ client는 typed reply를 직접 검사한다. |
@@ -34,7 +35,7 @@ Protobuf/MessagePack은 C++ public codec extension을 사용해 실제 E2E로 �
 | `Client/Support/ScenarioAssert.cs` | `Client/Support/client_support.hpp`; `run_e2e.sh` | client-support | done | C++ `ensure`와 shell failure checks가 대응한다. |
 | `Client/Scenarios/AutoRegistrationScenario.cs` | `Client/Scenarios/auto_registration_scenario.hpp` | scenario | done | `RC-A1` request/send handler group 등록을 검증한다. |
 | `Client/Scenarios/AttributeRegistrationScenario.cs` | not-implemented | scenario | gap | `RC-A2`는 annotation/decorator 기반 request/send handler 등록 scenario다. C++ public API에는 대응 annotation/decorator 계약이 없다. 공개 계약 후보는 `framework/doc/framework/common/draft/handler-registration-annotations.ko.md`에 분리했다. |
-| `Client/Scenarios/ManualRegistrationScenario.cs` | `Client/Scenarios/manual_registration_scenario.hpp` | scenario | done | `RC-A3` route mesh 명시 handler 등록을 검증한다. |
+| `Client/Scenarios/ManualRegistrationScenario.cs` | `Client/Scenarios/manual_registration_scenario.hpp` | scenario | done | `RC-A3` 수동 channel handler 등록을 HTTP endpoint 경유로 검증한다. |
 | `Client/Scenarios/RcA4DiLifecycleScenario.cs` | `Client/Scenarios/rc_a4_di_lifecycle_scenario.hpp` | scenario | done | `RC-A4` scoped/singleton lifecycle을 검증한다. |
 | `Client/Scenarios/RcA5FilterOrderingScenario.cs` | `Client/Scenarios/rc_a5_filter_ordering_scenario.hpp` | scenario | done | `RC-A5` filter before/after 순서를 검증한다. |
 | `Client/Scenarios/InvalidRegistrationScenario.cs` | `run_e2e.sh`; `Server/Support/server_host.hpp` | scenario | done | `RC-A6` duplicate/wrong-group/unsupported-channel startup failure를 검증한다. |
@@ -42,7 +43,7 @@ Protobuf/MessagePack은 C++ public codec extension을 사용해 실제 E2E로 �
 | `Client/Scenarios/RcB2ProtobufCodecScenario.cs` | `Client/Scenarios/rc_b2_protobuf_codec_scenario.hpp`; `Server/Handlers/codec_handlers.hpp`; `Server/Support/server_host.hpp` | scenario | done | C++ Protobuf codec extension request/send와 content-type evidence가 대응한다. |
 | `Client/Scenarios/RcB3MessagePackCodecScenario.cs` | `Client/Scenarios/rc_b3_messagepack_codec_scenario.hpp`; `Server/Handlers/codec_handlers.hpp`; `Server/Support/server_host.hpp` | scenario | done | C++ MessagePack codec extension request/send와 content-type evidence가 대응한다. |
 | `Client/Scenarios/RcB4CodecCoexistenceScenario.cs` | `Client/Scenarios/rc_b4_codec_coexistence_scenario.hpp`; `Server/Handlers/codec_handlers.hpp`; `Server/Support/server_host.hpp` | scenario | done | JSON, Protobuf, MessagePack, custom serializer 공존을 검증한다. |
-| `Client/Scenarios/CodecMismatchScenario.cs` | `Client/Scenarios/codec_mismatch_scenario.hpp`; `Server/Support/server_host.hpp`; `run_e2e.sh` | scenario | done | JSON-only peer에 Protobuf content-type request를 보내 C++ fallback 관측과 JSON recovery를 검증한다. |
+| `Client/Scenarios/CodecMismatchScenario.cs` | `Client/Scenarios/codec_mismatch_scenario.hpp`; `Server/CodecRequester/main.cpp`; `Server/Support/server_host.hpp`; `run_e2e.sh` | scenario | done | HTTP-only client가 codec requester endpoint를 호출하고, requester가 JSON-only peer에 Protobuf content-type request를 보내 fallback 관측과 JSON recovery를 검증한다. |
 | `Server/Main/Program.cs` | `Server/main.cpp` | server-entry | done | 정상 server entry가 대응한다. |
 | `Server/Main/RegistrationCodecServerHostFactory.cs` | `Server/Support/server_host.hpp` | server-role | done | 정상 framework 구성이 대응한다. |
 | `Server/Main/ServerOptions.cs` | `Server/Configuration/server_options.hpp`; `run_e2e.sh` | configuration | done | env 기반 endpoint/log option이 대응한다. |
@@ -53,7 +54,7 @@ Protobuf/MessagePack은 C++ public codec extension을 사용해 실제 E2E로 �
 | `Server/Main/Infrastructure/EvidenceStore.cs` | `Server/Infrastructure/scenario_state.hpp` | infrastructure | done | scenario state/evidence snapshot이 대응한다. |
 | `Server/Main/Infrastructure/Probes.cs` | `Server/Support/server_host.hpp`; `Client/Scenarios/`; `run_e2e.sh` | infrastructure | done | C++는 typed reply와 startup failure로 probe를 직접 검증한다. 이 차이는 검증 배치 차이이며 RC scenario public 동작 차이가 아니다. |
 | `Server/Main/Endpoints/OperationalEndpoints.cs` | `Server/Endpoints/operational_endpoints.hpp` | endpoint | done | `/health`와 `/evidence`가 대응한다. |
-| `Server/Main/Endpoints/RegistrationScenarioEndpoints.cs` | not-needed | endpoint | not-needed | C++ client가 framework channel/route public API를 직접 호출한다. |
+| `Server/Main/Endpoints/RegistrationScenarioEndpoints.cs` | `Server/Endpoints/operational_endpoints.hpp` | endpoint | done | C++도 .NET 기준처럼 HTTP scenario endpoint가 framework channel public API를 호출한다. |
 | `Server/Main/RegistrationCodec.Server.csproj` | `framework/languages/cpp/CMakeLists.txt` | build | done | `zlink_cpp_e2e_registration_codec_server` target이 대응한다. |
 | `Server/InvalidDuplicate/Program.cs` | `Server/InvalidDuplicate/main.cpp` | server-entry | done | invalid role 전용 executable entry가 대응한다. |
 | `Server/InvalidDuplicate/RegistrationCodecServerHostFactory.cs` | `Server/Support/server_host.hpp` | invalid-role | done | invalid mode별 startup failure 구성을 공통 host support에서 선택한다. |
@@ -74,13 +75,13 @@ Protobuf/MessagePack은 C++ public codec extension을 사용해 실제 E2E로 �
 | `Server/JsonOnlyPeer/Handlers/CodecHandlers.cs` | `Server/Handlers/codec_handlers.hpp`; `Server/Support/server_host.hpp` | handler | done | mismatch handler와 JSON codec handler가 JSON-only peer에서 실행된다. |
 | `Server/JsonOnlyPeer/Handlers/DiEchoRequestHandler.cs` | `Server/Handlers/di_lifecycle_handlers.hpp` | handler | done | JSON-only peer와 정상 role이 같은 DI handler type을 공유한다. |
 | `Server/JsonOnlyPeer/Infrastructure/EvidenceStore.cs` | `Server/Infrastructure/scenario_state.hpp` | infrastructure | done | mismatch content-type evidence와 JSON recovery evidence가 대응한다. |
-| `Server/JsonOnlyPeer/Infrastructure/Probes.cs` | `Client/Scenarios/codec_mismatch_scenario.hpp`; `run_e2e.sh` | infrastructure | done | C++ client가 JSON-only peer에 직접 request를 보내 probe를 수행한다. |
+| `Server/JsonOnlyPeer/Infrastructure/Probes.cs` | `Client/Scenarios/codec_mismatch_scenario.hpp`; `Server/CodecRequester/main.cpp`; `run_e2e.sh` | infrastructure | done | codec requester가 JSON-only peer에 request를 보내고, HTTP-only client는 requester endpoint 결과를 검증한다. |
 | `Server/JsonOnlyPeer/OperationalEndpoints.cs` | `Server/Endpoints/operational_endpoints.hpp` | endpoint | done | `/health`와 `/evidence` endpoint가 대응한다. |
 | `Server/JsonOnlyPeer/RegistrationCodec.JsonOnlyPeer.csproj` | `framework/languages/cpp/CMakeLists.txt` | build | done | `zlink_cpp_e2e_registration_codec_json_only_peer` target이 대응한다. |
-| `Server/CodecRequester/Program.cs` | `Client/main.cpp` | codec-role | done | `ZLINK_CPP_E2E_SCENARIO=b5` client mode가 codec requester 역할을 수행한다. |
-| `Server/CodecRequester/CodecRequesterHostFactory.cs` | `Client/main.cpp`; `Client/Scenarios/codec_mismatch_scenario.hpp` | codec-role | done | requester framework setup은 C++ client entry와 scenario header에 합쳐져 있다. |
-| `Server/CodecRequester/CodecRequesterOptions.cs` | `Client/Support/client_support.hpp`; `run_e2e.sh` | configuration | done | codec requester endpoint/log option을 env로 전달한다. |
-| `Server/CodecRequester/RegistrationCodec.CodecRequester.csproj` | `framework/languages/cpp/CMakeLists.txt` | build | done | 별도 requester executable 대신 `zlink_cpp_e2e_registration_codec_client` target의 `b5` mode가 대응한다. |
+| `Server/CodecRequester/Program.cs` | `Server/CodecRequester/main.cpp` | codec-role | done | Protobuf/MessagePack codec을 등록한 requester server role이 JSON-only peer channel endpoint로 request를 보낸다. |
+| `Server/CodecRequester/CodecRequesterHostFactory.cs` | `Server/CodecRequester/main.cpp`; `Server/Endpoints/operational_endpoints.hpp` | codec-role | done | requester framework setup과 `/codec/mismatch` HTTP endpoint가 대응한다. |
+| `Server/CodecRequester/CodecRequesterOptions.cs` | `Server/CodecRequester/main.cpp`; `run_e2e.sh` | configuration | done | codec requester channel endpoint, HTTP endpoint, log option을 env로 전달한다. |
+| `Server/CodecRequester/RegistrationCodec.CodecRequester.csproj` | `framework/languages/cpp/CMakeLists.txt` | build | done | `zlink_cpp_e2e_registration_codec_codec_requester` target이 대응한다. |
 
 ## 공통 scenario ID 대응
 
@@ -88,7 +89,7 @@ Protobuf/MessagePack은 C++ public codec extension을 사용해 실제 E2E로 �
 |-------------|---------------|------|------|
 | `RC-A1` | `Client/Scenarios/auto_registration_scenario.hpp`; `Server/Handlers/registration_handlers.hpp` | done | handler group 기반 request/send 등록을 검증한다. |
 | `RC-A2` | `feature-map.ko.md` | gap | annotation/decorator 기반 request/send handler 등록이며 C++ public API에는 대응 계약이 없다. 공개 계약 후보는 `framework/doc/framework/common/draft/handler-registration-annotations.ko.md`에 분리했다. |
-| `RC-A3` | `Client/Scenarios/manual_registration_scenario.hpp`; `Server/Handlers/registration_handlers.hpp`; `Server/Support/server_host.hpp` | done | route mesh 명시 handler 등록을 검증한다. |
+| `RC-A3` | `Client/Scenarios/manual_registration_scenario.hpp`; `Server/Handlers/registration_handlers.hpp`; `Server/Support/server_host.hpp` | done | 수동 channel request/send handler 등록을 검증한다. |
 | `RC-A4` | `Client/Scenarios/rc_a4_di_lifecycle_scenario.hpp`; `Server/Handlers/di_lifecycle_handlers.hpp` | done | scoped dependency 교체, singleton 유지, scoped dispose count를 검증한다. |
 | `RC-A5` | `Client/Scenarios/rc_a5_filter_ordering_scenario.hpp`; `Server/Handlers/filter_order_handlers.hpp` | done | filter ordering을 검증한다. |
 | `RC-A6` | `run_e2e.sh`; `Server/Support/server_host.hpp` | done | invalid startup failure를 검증한다. |
@@ -96,7 +97,7 @@ Protobuf/MessagePack은 C++ public codec extension을 사용해 실제 E2E로 �
 | `RC-B2` | `Client/Scenarios/rc_b2_protobuf_codec_scenario.hpp`; `Server/Handlers/codec_handlers.hpp`; `Server/Support/server_host.hpp` | done | Protobuf codec extension request/send와 content-type evidence를 검증한다. |
 | `RC-B3` | `Client/Scenarios/rc_b3_messagepack_codec_scenario.hpp`; `Server/Handlers/codec_handlers.hpp`; `Server/Support/server_host.hpp` | done | MessagePack codec extension request/send와 content-type evidence를 검증한다. |
 | `RC-B4` | `Client/Scenarios/rc_b4_codec_coexistence_scenario.hpp`; `Server/Handlers/codec_handlers.hpp`; `Server/Support/server_host.hpp` | done | JSON/Protobuf/MessagePack/custom serializer 공존을 검증한다. |
-| `RC-B5` | `Client/Scenarios/codec_mismatch_scenario.hpp`; `Server/Support/server_host.hpp`; `run_e2e.sh` | done | JSON-only peer fallback 관측과 JSON recovery를 검증한다. |
+| `RC-B5` | `Client/Scenarios/codec_mismatch_scenario.hpp`; `Server/CodecRequester/main.cpp`; `Server/Support/server_host.hpp`; `run_e2e.sh` | done | codec requester가 JSON-only peer fallback 관측과 JSON recovery를 검증한다. |
 
 ## 검증
 
@@ -129,3 +130,12 @@ Protobuf/MessagePack은 C++ public codec extension을 사용해 실제 E2E로 �
     RC-A2는 annotation/decorator public contract gap으로 유지한다. 최종
     `registration-codec e2e result=passed` marker는 RC-A6 invalid startup checks 뒤에 runner가
     한 번만 출력한다.
+- 2026-07-02: `cmake --build framework/languages/cpp/build --target zlink_cpp_e2e_registration_codec_server zlink_cpp_e2e_registration_codec_invalid_duplicate zlink_cpp_e2e_registration_codec_json_only_peer zlink_cpp_e2e_registration_codec_codec_requester zlink_cpp_e2e_registration_codec_client`
+  - 결과: 통과
+  - 의미: HTTP-only client, 정상 server, JSON-only peer, codec requester, invalid role target이 빌드된다.
+- 2026-07-02: `timeout 420s framework/languages/cpp/e2e/RegistrationCodec/run_e2e.sh`
+  - 결과: 통과
+  - 로그: `logs/20260702-070838-14667`
+  - 의미: 현재 트리에서 HTTP-only client가 server/codec requester HTTP endpoint만 호출한다. RC-A1, RC-A3,
+    RC-A4, RC-A5, RC-A6, RC-B1, RC-B2, RC-B3, RC-B4, RC-B5를 검증했고, RC-A2는
+    annotation/decorator public contract gap으로 유지한다.

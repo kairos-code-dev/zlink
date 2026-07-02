@@ -49,9 +49,8 @@ bool monitoring_socket_source_exists (const std::vector<channel_snapshot_t> &cha
                                       const std::string &source_name)
 {
     const auto channel_name_exists =
-      std::any_of (channels.begin (), channels.end (), [&] (const channel_snapshot_t &channel) {
-          return channel.name == source_name;
-      });
+      std::any_of (channels.begin (), channels.end (),
+                   [&] (const channel_snapshot_t &channel) { return channel.name == source_name; });
     if (channel_name_exists) {
         return true;
     }
@@ -65,15 +64,16 @@ bool monitoring_socket_source_exists (const std::vector<channel_snapshot_t> &cha
     }
     const auto channel_name = source_name.substr (0, separator);
     const auto capability = source_name.substr (separator + 1);
-    return std::any_of (channels.begin (), channels.end (), [&] (const channel_snapshot_t &channel) {
-        if (channel.name != channel_name) {
-            return false;
-        }
-        return (capability == "server" && channel.server.enabled)
-               || (capability == "client" && channel.client.enabled)
-               || (capability == "publisher" && channel.publisher.enabled)
-               || (capability == "subscriber" && channel.subscriber.enabled);
-    });
+    return std::any_of (channels.begin (), channels.end (),
+                        [&] (const channel_snapshot_t &channel) {
+                            if (channel.name != channel_name) {
+                                return false;
+                            }
+                            return (capability == "server" && channel.server.enabled)
+                                   || (capability == "client" && channel.client.enabled)
+                                   || (capability == "publisher" && channel.publisher.enabled)
+                                   || (capability == "subscriber" && channel.subscriber.enabled);
+                        });
 }
 
 service_kind_t registry_native_service_kind (zlink::service_kind_t kind)
@@ -156,17 +156,20 @@ registry_native_topology (const std::vector<zlink::registry_topology_entry_t> &e
     std::vector<topology_entry_t> mapped;
     mapped.reserve (entries.size ());
     for (const auto &entry : entries) {
-        mapped.push_back (topology_entry_t{
-          {}, registry_native_service_kind (entry.service_kind ()),
-          registry_native_service_role (entry.service_role ()), entry.channel_name (),
-          registry_native_topology_source (entry.source ()),
-          registry_native_topology_state (entry.state ()), entry.endpoint (), entry.routing_id ()});
+        mapped.push_back (topology_entry_t{{},
+                                           registry_native_service_kind (entry.service_kind ()),
+                                           registry_native_service_role (entry.service_role ()),
+                                           entry.channel_name (),
+                                           registry_native_topology_source (entry.source ()),
+                                           registry_native_topology_state (entry.state ()),
+                                           entry.endpoint (),
+                                           entry.routing_id ()});
     }
     return mapped;
 }
 
-std::vector<service_summary_entry_t> registry_native_summary (
-  const std::vector<zlink::registry_service_summary_entry_t> &entries)
+std::vector<service_summary_entry_t>
+registry_native_summary (const std::vector<zlink::registry_service_summary_entry_t> &entries)
 {
     std::vector<service_summary_entry_t> mapped;
     mapped.reserve (entries.size ());
@@ -245,10 +248,9 @@ class registry_host_service_t final : public hosted_service_t
           .publish_registry_snapshot (
             "registry",
             registry_status_t{registry_native_state (status.state ()),
-                              std::to_string (status.registry_id ()),
-                              _options.pub_endpoint,
-                              _options.router_endpoint,
-                              status.peer_registry_count ()},
+                              std::to_string (status.registry_id ()), _options.pub_endpoint,
+                              _options.router_endpoint, status.peer_registry_count (),
+                              status.connected_peer_registry_count ()},
             {}, {});
     }
 
@@ -264,9 +266,9 @@ class registry_host_service_t final : public hosted_service_t
                         "registry",
                         registry_status_t{registry_native_state (status.state ()),
                                           std::to_string (status.registry_id ()),
-                                          _options.pub_endpoint,
-                                          _options.router_endpoint,
-                                          status.peer_registry_count ()},
+                                          _options.pub_endpoint, _options.router_endpoint,
+                                          status.peer_registry_count (),
+                                          status.connected_peer_registry_count ()},
                         registry_native_topology (registry.topology ()),
                         registry_native_summary (registry.service_summary ()));
                 }
@@ -288,10 +290,7 @@ class app_state_t
 {
   public:
     app_state_t () : metrics (monitoring) {}
-    ~app_state_t ()
-    {
-        hosted_services.clear ();
-    }
+    ~app_state_t () { hosted_services.clear (); }
 
     void start_hosted_services (service_provider_t &provider,
                                 std::vector<hosted_service_t *> &started)

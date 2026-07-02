@@ -992,6 +992,48 @@ if(ZLINK_FRAMEWORK_CPP_BUILD_TESTS)
 endif()
 
 if(ZLINK_FRAMEWORK_CPP_BUILD_E2E)
+  add_executable(zlink_cpp_e2e_discovery_registry_ha_registry
+    e2e/DiscoveryRegistryHa/Server/Registry/main.cpp)
+  target_link_libraries(zlink_cpp_e2e_discovery_registry_ha_registry PRIVATE
+    zlink::framework)
+  target_include_directories(zlink_cpp_e2e_discovery_registry_ha_registry PRIVATE
+    ${ZLINK_FRAMEWORK_CPP_DIR}/framework/src)
+
+  add_executable(zlink_cpp_e2e_discovery_registry_ha_provider
+    e2e/DiscoveryRegistryHa/Server/Provider/main.cpp)
+  target_link_libraries(zlink_cpp_e2e_discovery_registry_ha_provider PRIVATE
+    zlink::framework)
+  target_include_directories(zlink_cpp_e2e_discovery_registry_ha_provider PRIVATE
+    ${ZLINK_FRAMEWORK_CPP_DIR}/framework/src)
+
+  add_executable(zlink_cpp_e2e_discovery_registry_ha_consumer
+    e2e/DiscoveryRegistryHa/Server/Consumer/main.cpp)
+  target_link_libraries(zlink_cpp_e2e_discovery_registry_ha_consumer PRIVATE
+    zlink::framework)
+  target_include_directories(zlink_cpp_e2e_discovery_registry_ha_consumer PRIVATE
+    ${ZLINK_FRAMEWORK_CPP_DIR}/framework/src)
+
+  add_executable(zlink_cpp_e2e_discovery_registry_ha_embedded
+    e2e/DiscoveryRegistryHa/Server/Embedded/main.cpp)
+  target_link_libraries(zlink_cpp_e2e_discovery_registry_ha_embedded PRIVATE
+    zlink::framework)
+  target_include_directories(zlink_cpp_e2e_discovery_registry_ha_embedded PRIVATE
+    ${ZLINK_FRAMEWORK_CPP_DIR}/framework/src)
+
+  add_executable(zlink_cpp_e2e_discovery_registry_ha_probe
+    e2e/DiscoveryRegistryHa/Server/Probe/main.cpp)
+  target_link_libraries(zlink_cpp_e2e_discovery_registry_ha_probe PRIVATE
+    zlink::framework)
+  target_include_directories(zlink_cpp_e2e_discovery_registry_ha_probe PRIVATE
+    ${ZLINK_FRAMEWORK_CPP_DIR}/framework/src)
+
+  add_executable(zlink_cpp_e2e_discovery_registry_ha_client
+    e2e/DiscoveryRegistryHa/Client/main.cpp)
+  target_link_libraries(zlink_cpp_e2e_discovery_registry_ha_client PRIVATE
+    zlink::http_client)
+  target_include_directories(zlink_cpp_e2e_discovery_registry_ha_client PRIVATE
+    ${ZLINK_FRAMEWORK_CPP_DIR}/framework/src)
+
   add_executable(zlink_cpp_e2e_registry_messaging_registry
     e2e/RegistryMessaging/Server/Registry/main.cpp)
   target_link_libraries(zlink_cpp_e2e_registry_messaging_registry PRIVATE
@@ -1061,10 +1103,14 @@ if(ZLINK_FRAMEWORK_CPP_BUILD_E2E)
     zlink::framework
     zlink::http_client)
 
+  add_executable(zlink_cpp_e2e_spot_service_multinode_requester
+    e2e/SpotService/Server/MultiNodeRequester/main.cpp)
+  target_link_libraries(zlink_cpp_e2e_spot_service_multinode_requester PRIVATE
+    zlink::framework)
+
   add_executable(zlink_cpp_e2e_spot_service_client
     e2e/SpotService/Client/main.cpp)
   target_link_libraries(zlink_cpp_e2e_spot_service_client PRIVATE
-    zlink::framework
     zlink::http_client
     zlink::stream_e2e_client)
 
@@ -1161,13 +1207,19 @@ if(ZLINK_FRAMEWORK_CPP_BUILD_E2E)
   target_include_directories(zlink_cpp_e2e_registration_codec_json_only_peer PRIVATE
     ${ZLINK_FRAMEWORK_CPP_DIR}/framework/src)
 
+  add_executable(zlink_cpp_e2e_registration_codec_codec_requester
+    e2e/RegistrationCodec/Server/CodecRequester/main.cpp)
+  target_link_libraries(zlink_cpp_e2e_registration_codec_codec_requester PRIVATE
+    zlink::framework
+    zlink::framework_codec_protobuf
+    zlink::framework_codec_messagepack)
+  target_include_directories(zlink_cpp_e2e_registration_codec_codec_requester PRIVATE
+    ${ZLINK_FRAMEWORK_CPP_DIR}/framework/src)
+
   add_executable(zlink_cpp_e2e_registration_codec_client
     e2e/RegistrationCodec/Client/main.cpp)
   target_link_libraries(zlink_cpp_e2e_registration_codec_client PRIVATE
-    zlink::framework
-    zlink::http_client
-    zlink::framework_codec_protobuf
-    zlink::framework_codec_messagepack)
+    zlink::http_client)
   target_include_directories(zlink_cpp_e2e_registration_codec_client PRIVATE
     ${ZLINK_FRAMEWORK_CPP_DIR}/framework/src)
 
@@ -1251,7 +1303,6 @@ if(ZLINK_FRAMEWORK_CPP_BUILD_E2E)
   add_executable(zlink_cpp_e2e_resilience_lifecycle_client
     e2e/ResilienceLifecycle/Client/main.cpp)
   target_link_libraries(zlink_cpp_e2e_resilience_lifecycle_client PRIVATE
-    zlink::framework
     zlink::http_client
     OpenSSL::Crypto)
   target_include_directories(zlink_cpp_e2e_resilience_lifecycle_client PRIVATE
@@ -1259,10 +1310,6 @@ if(ZLINK_FRAMEWORK_CPP_BUILD_E2E)
 
   add_executable(zlink_cpp_e2e_runtime_monitoring_client
     e2e/RuntimeMonitoring/Client/main.cpp)
-  target_link_libraries(zlink_cpp_e2e_runtime_monitoring_client PRIVATE
-    zlink::framework)
-  target_include_directories(zlink_cpp_e2e_runtime_monitoring_client PRIVATE
-    ${ZLINK_FRAMEWORK_CPP_DIR}/framework/src)
   target_link_libraries(zlink_cpp_e2e_runtime_monitoring_client PRIVATE
     zlink::http_client)
 

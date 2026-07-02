@@ -4,13 +4,28 @@ set -euo pipefail
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 CPP_DIR="$(cd "$SCRIPT_DIR/../.." && pwd)"
 BUILD_DIR="${ZLINK_CPP_E2E_BUILD_DIR:-$CPP_DIR/build}"
+LOCAL_READINESS_TIMEOUT_SECONDS=3
+LOCAL_READINESS_POLL_SECONDS=0.1
+ROUTE_SETTLE_SECONDS=5
+SCENARIO_SETTLE_SECONDS=3
+HTTP_PROBE_TIMEOUT_SECONDS=3
+LOCAL_READINESS_ATTEMPTS="$(
+  python3 - "$LOCAL_READINESS_TIMEOUT_SECONDS" "$LOCAL_READINESS_POLL_SECONDS" <<'PY'
+import math
+import sys
 
-read -r API ROUTE HTTP CLIENT_ROUTE JSON_ONLY_API JSON_ONLY_HTTP INVALID <<<"$(python3 - <<'PY'
+timeout = float(sys.argv[1])
+poll = float(sys.argv[2])
+print(max(1, math.ceil(timeout / poll)))
+PY
+)"
+
+read -r API ROUTE HTTP CLIENT_ROUTE JSON_ONLY_API JSON_ONLY_HTTP INVALID REQUESTER_HTTP <<<"$(python3 - <<'PY'
 import socket
 
 sockets = []
 ports = []
-for _ in range(7):
+for _ in range(8):
     s = socket.socket()
     s.bind(("127.0.0.1", 0))
     sockets.append(s)
@@ -21,7 +36,8 @@ print(f"http://127.0.0.1:{ports[2]}", end=" ")
 print(f"tcp://127.0.0.1:{ports[3]}", end=" ")
 print(f"tcp://127.0.0.1:{ports[4]}", end=" ")
 print(f"http://127.0.0.1:{ports[5]}", end=" ")
-print(f"tcp://127.0.0.1:{ports[6]}")
+print(f"tcp://127.0.0.1:{ports[6]}", end=" ")
+print(f"http://127.0.0.1:{ports[7]}")
 for s in sockets:
     s.close()
 PY
@@ -37,11 +53,13 @@ cmake --build "$BUILD_DIR" --target \
   zlink_cpp_e2e_registration_codec_server \
   zlink_cpp_e2e_registration_codec_invalid_duplicate \
   zlink_cpp_e2e_registration_codec_json_only_peer \
+  zlink_cpp_e2e_registration_codec_codec_requester \
   zlink_cpp_e2e_registration_codec_client >/dev/null
 
 SERVER="$BUILD_DIR/zlink_cpp_e2e_registration_codec_server"
 INVALID_SERVER="$BUILD_DIR/zlink_cpp_e2e_registration_codec_invalid_duplicate"
 JSON_ONLY_SERVER="$BUILD_DIR/zlink_cpp_e2e_registration_codec_json_only_peer"
+CODEC_REQUESTER="$BUILD_DIR/zlink_cpp_e2e_registration_codec_codec_requester"
 CLIENT="$BUILD_DIR/zlink_cpp_e2e_registration_codec_client"
 PIDS=()
 
@@ -71,13 +89,13 @@ wait_port() {
   local host="127.0.0.1"
   local port
   port="$(port_of "$endpoint")"
-  for _ in $(seq 1 60); do
+  for _ in $(seq 1 "$LOCAL_READINESS_ATTEMPTS"); do
     if (echo >"/dev/tcp/${host}/${port}") >/dev/null 2>&1; then
       return 0
     fi
-    sleep 0.05
+    sleep "$LOCAL_READINESS_POLL_SECONDS"
   done
-  echo "Timed out waiting for $name at $endpoint" >&2
+  echo "Timed out waiting ${LOCAL_READINESS_TIMEOUT_SECONDS}s for $name at $endpoint" >&2
   return 1
 }
 
@@ -118,6 +136,15 @@ PIDS+=("$!")
 wait_port json-only-api "$JSON_ONLY_API"
 wait_port json-only-http "$JSON_ONLY_HTTP"
 
+ZLINK_CPP_E2E_API_ENDPOINT="$JSON_ONLY_API" \
+ZLINK_CPP_E2E_HTTP_ENDPOINT="$REQUESTER_HTTP" \
+ZLINK_CPP_E2E_LOG_DIR="$LOG_DIR" \
+  "$CODEC_REQUESTER" >"$LOG_DIR/codec-requester.stdout.log" 2>"$LOG_DIR/codec-requester.stderr.log" &
+PIDS+=("$!")
+wait_port codec-requester-http "$REQUESTER_HTTP"
+
+sleep "$ROUTE_SETTLE_SECONDS"
+
 ZLINK_CPP_E2E_API_ENDPOINT="$API" \
 ZLINK_CPP_E2E_ROUTE_ENDPOINT="$ROUTE" \
 ZLINK_CPP_E2E_CLIENT_ROUTE_ENDPOINT="$CLIENT_ROUTE" \
@@ -130,7 +157,7 @@ ZLINK_CPP_E2E_SCENARIO=b5 \
 ZLINK_CPP_E2E_API_ENDPOINT="$JSON_ONLY_API" \
 ZLINK_CPP_E2E_ROUTE_ENDPOINT="$ROUTE" \
 ZLINK_CPP_E2E_CLIENT_ROUTE_ENDPOINT="$CLIENT_ROUTE" \
-ZLINK_CPP_E2E_HTTP_ENDPOINT="$JSON_ONLY_HTTP" \
+ZLINK_CPP_E2E_HTTP_ENDPOINT="$REQUESTER_HTTP" \
 ZLINK_CPP_E2E_LOG_DIR="$LOG_DIR" \
   "$CLIENT" >"$LOG_DIR/client-b5.stdout.log" 2>"$LOG_DIR/client-b5.stderr.log"
 cat "$LOG_DIR/client-b5.stdout.log"

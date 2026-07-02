@@ -9,9 +9,8 @@
 namespace zlink::framework::e2e::registry_messaging::client
 {
 
-inline void run_rm_c4_timeout_isolation_scenario (zlink::framework::channel_client_t &channels)
+inline void run_rm_c4_timeout_isolation_scenario ()
 {
-    (void) channels;
     const auto consumer = env_or ("ZLINK_CPP_E2E_DISCOVERY_CONSUMER_URL");
     const auto timeout = post_json<profile_req_t, request_failure_res_t> (
       consumer, "/profile/slow-request", profile_req_t{.value = "slow"});

@@ -154,11 +154,13 @@ inline void configure_channels (zlink::framework::zlink_framework_options_t &opt
 {
     options.add_client_server_channel (api_channel)
       .enable_server (server.api_endpoint)
+      .enable_client (server.api_endpoint)
       .use_handler_group (handler_group);
     if (server.server_mode != "json-only-peer") {
         options.add_route_mesh (route_channel)
           .enable_server (server.route_endpoint)
           .set_routing_id (zlink::routing_id_t::from ("rc-server"))
+          .enable_client (server.route_endpoint)
           .add_request_handler<manual_route_handler_t, echo_manual_req_t, echo_manual_res_t> (
             "EchoManual", &manual_route_handler_t::handle);
     }
@@ -169,7 +171,14 @@ inline void configure_http (zlink::framework::http_options_builder_t &http,
 {
     http.listen (server.http_endpoint)
       .map_health ("/health")
-      .map_get<evidence_handler_t> ("/evidence");
+      .map_get<evidence_handler_t> ("/evidence")
+      .map_post<registration_auto_handler_t> ("/registration/auto")
+      .map_post<registration_manual_handler_t> ("/registration/manual")
+      .map_post<registration_di_lifecycle_handler_t> ("/registration/di-lifecycle")
+      .map_post<registration_filter_order_handler_t> ("/registration/filter-order")
+      .map_post<codec_roundtrip_handler_t> ("/codec/roundtrip")
+      .map_post<codec_coexistence_handler_t> ("/codec/coexistence")
+      .map_post<codec_mismatch_handler_t> ("/codec/mismatch");
 }
 
 inline void configure_handlers (zlink::framework::handler_options_builder_t handlers)
@@ -177,6 +186,8 @@ inline void configure_handlers (zlink::framework::handler_options_builder_t hand
     handlers.group (handler_group)
       .add<auto_request_handler_t> ()
       .add_send<auto_send_handler_t> ()
+      .add<manual_channel_request_handler_t> ()
+      .add_send<manual_channel_send_handler_t> ()
       .add<scoped_lifecycle_handler_t> ()
       .add<scoped_lifecycle_stats_handler_t> ()
       .add<filter_order_handler_t> ()

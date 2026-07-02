@@ -1357,6 +1357,13 @@ E2E 수정의 기준이 된다. Java, Kotlin, Node.js, C++ framework는 .NET 구
    바꾼다. embedded registry process, `UseRegistry...` resolver, registry topology endpoint에 의존하는
    경로를 제거한다.
 8. .NET 문서와 공통 spec draft를 맞춘 뒤 다른 언어 포팅 inventory를 작성한다.
+9. 구현이 안정된 뒤 POSD/DDD 기준 리팩토링 루프를 돈다.
+   AGENTS.md의 POSD 원칙(깊은 모듈, 정보 은닉, 복잡성 하향, 오류를 정의로 제거, 위험 신호 제거)과
+   DDD 관점(owner lease, claim, fencing, reconcile 같은 location 도메인 개념이 코드 구조와 이름에
+   그대로 드러나는가)으로 리뷰하고, 의미 있는 리팩토링 요소만 적용한다. 단순 취향 변경이나
+   이동을 위한 이동은 하지 않는다. 리팩토링마다 전체 테스트 green을 유지하고, public contract는
+   바꾸지 않는다. 계약 변경이 필요해 보이면 리팩토링이 아니라 draft 수정으로 분리한다.
+   리뷰에서 의미 있는 요소가 더 나오지 않을 때까지 리뷰-리팩토링을 반복한다.
 
 포팅 순서:
 
@@ -1365,6 +1372,8 @@ E2E 수정의 기준이 된다. Java, Kotlin, Node.js, C++ framework는 .NET 구
 3. 각 언어의 기존 registry/discovery E2E를 location store E2E로 바꾼다.
 4. 포팅 중 해당 언어에서 바로 구현할 수 없는 항목은 feature map에 gap으로 남기고, sample 코드에
    private helper나 raw 우회 경로를 넣지 않는다.
+5. 각 언어 포팅이 안정된 뒤 .NET과 같은 POSD/DDD 리팩토링 루프를 적용한다(위 9단계와 같은 기준,
+   의미 있는 요소 소진까지 반복).
 
 ## 22. 회귀 테스트
 
@@ -1603,4 +1612,6 @@ draft가 기준이며, 정식 spec 문서에는 아직 구현되지 않은 계�
 - [ ] 22절 기존 sample 수정 항목 전부 — registry host 프로젝트 제거, store 등록 교체, Redis/in-memory
       선택, actor 재연결 흐름, run script, README
 - [ ] 5.1 흐름 다이어그램이 최종 계약과 일치함 (계약 변경 시 함께 갱신)
+- [ ] POSD/DDD 리팩토링 루프 완료 — 의미 있는 요소가 리뷰에서 더 나오지 않고 전체 테스트 green
+      (21절 9단계, 포팅 5단계)
 - [ ] 23절 spec 반영 순서 (구현 완료 후)

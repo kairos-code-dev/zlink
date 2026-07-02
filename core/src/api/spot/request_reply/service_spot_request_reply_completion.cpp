@@ -483,8 +483,8 @@ extern "C" int zlink_spot_drain_channel_reply (void *spot_, void *dealer_subject
 {
     std::shared_ptr<zlink::spot_reqrep_internal::spot_request_reply_state_t> state =
       zlink::spot_reqrep_internal::try_find_spot_state (spot_);
-    return zlink::spot_reqrep_internal::drain_spot_channel_reply_completions_from (
-      state, spot_, dealer_subject_);
+    return zlink::spot_reqrep_internal::drain_spot_channel_reply_completions_from (state, spot_,
+                                                                                   dealer_subject_);
 }
 
 int zlink::spot_reqrep_internal::drain_spot_completion_progress (

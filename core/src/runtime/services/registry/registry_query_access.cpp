@@ -101,6 +101,39 @@ static int recv_topology_reply_frames (zlink::socket_base_t *socket_,
     *count_ = remote_count;
     return 0;
 }
+
+static int recv_member_peers_reply_frames (zlink::socket_base_t *socket_,
+                                           zlink_member_peer_entry_t *entries_,
+                                           size_t *count_)
+{
+    if (!socket_ || !count_) {
+        errno = EINVAL;
+        return -1;
+    }
+
+    std::vector<zlink_member_peer_entry_t> decoded;
+    if (zlink::discovery_registry_rpc::recv_member_peers_reply_entries (socket_, &decoded) != 0)
+        return -1;
+
+    const size_t remote_count = decoded.size ();
+
+    if (!entries_) {
+        *count_ = remote_count;
+        return 0;
+    }
+
+    if (*count_ < remote_count) {
+        *count_ = remote_count;
+        errno = ENOBUFS;
+        return -1;
+    }
+
+    for (size_t i = 0; i < remote_count; ++i)
+        entries_[i] = decoded[i];
+
+    *count_ = remote_count;
+    return 0;
+}
 }
 
 namespace zlink
@@ -165,6 +198,71 @@ int registry_query_access_t::topology_query (void *client_,
         return -1;
 
     return recv_topology_reply_frames (client->dealer, entries_, count_);
+}
+
+int registry_query_access_t::member_peers_query (void *client_,
+                                                 const char *channel_name_,
+                                                 zlink_member_peer_entry_t *entries_,
+                                                 size_t *count_)
+{
+    registry_query_client_t *client = as_registry_query_client (client_);
+    if (!client || !client->dealer) {
+        errno = EFAULT;
+        return -1;
+    }
+    if (!channel_name_ || channel_name_[0] == '\0') {
+        errno = EINVAL;
+        return -1;
+    }
+
+    service_public_api_scope_t admission (client->public_api);
+    if (!admission.acquired ())
+        return -1;
+
+    scoped_lock_t lock (client->sync);
+    if (!client->dealer) {
+        errno = EFAULT;
+        return -1;
+    }
+
+    if (discovery_protocol::send_u16 (static_cast<void *> (client->dealer),
+                                      discovery_protocol::msg_member_peers_query, ZLINK_SNDMORE)
+          < 0
+        || discovery_protocol::send_string (static_cast<void *> (client->dealer), channel_name_, 0)
+             < 0)
+        return -1;
+
+    return recv_member_peers_reply_frames (client->dealer, entries_, count_);
+}
+
+int registry_query_access_t::status_query (void *client_, zlink_registry_status_t *status_)
+{
+    registry_query_client_t *client = as_registry_query_client (client_);
+    if (!client || !client->dealer) {
+        errno = EFAULT;
+        return -1;
+    }
+    if (!status_) {
+        errno = EINVAL;
+        return -1;
+    }
+
+    service_public_api_scope_t admission (client->public_api);
+    if (!admission.acquired ())
+        return -1;
+
+    scoped_lock_t lock (client->sync);
+    if (!client->dealer) {
+        errno = EFAULT;
+        return -1;
+    }
+
+    if (discovery_protocol::send_u16 (static_cast<void *> (client->dealer),
+                                      discovery_protocol::msg_registry_status_query, 0)
+        < 0)
+        return -1;
+
+    return zlink::discovery_registry_rpc::recv_registry_status_reply (client->dealer, status_);
 }
 
 int registry_query_access_t::destroy (void **client_p_)

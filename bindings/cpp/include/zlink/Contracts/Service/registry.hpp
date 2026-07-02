@@ -124,6 +124,10 @@ class registry_query_client_t
     std::vector<registry_topology_entry_t>
     topology (const registry_topology_filter_t *filter_ = nullptr) const;
 
+    std::vector<member_peer_entry_t> member_peers (const std::string &channel_name_) const;
+
+    registry_status_t status () const;
+
     void close ();
 
   private:

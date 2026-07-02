@@ -375,8 +375,8 @@ int discovery_t::resolve_route (zlink_route_kind_t kind_,
     }
 
     return discovery_registry_rpc::resolve_route (_ctx, _bootstrap_runtime, uplink, kind_, key_,
-                                                 key_size_, _channel_name, owner_rid_out_,
-                                                 value_out_);
+                                                  key_size_, _channel_name, owner_rid_out_,
+                                                  value_out_);
 }
 
 int discovery_t::register_service (const char *endpoint_,

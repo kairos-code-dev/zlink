@@ -201,8 +201,7 @@ int recv_logical_spot_subscription (spot_handle_t *spot_,
             return -1;
         }
         if (!message->parts[i].empty ())
-            memcpy (zlink_msg_data (&frame), message->parts[i].data (),
-                    message->parts[i].size ());
+            memcpy (zlink_msg_data (&frame), message->parts[i].data (), message->parts[i].size ());
         if (zlink::recv_tls_view::push (&frame) != 0) {
             zlink_msg_close (&frame);
             zlink::recv_tls_view::abort ();

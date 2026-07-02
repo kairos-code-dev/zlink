@@ -116,10 +116,10 @@ bool combined_starts_with_peer_pub_route (const std::vector<zlink_msg_t> &combin
 }
 
 int send_routed_router_once (zlink::spot_runtime_t *runtime_,
-                               const zlink_routing_id_t *route_id_,
-                               zlink_msg_t *combined_,
-                               size_t combined_count_,
-                               zlink_send_flags_t flags_)
+                             const zlink_routing_id_t *route_id_,
+                             zlink_msg_t *combined_,
+                             size_t combined_count_,
+                             zlink_send_flags_t flags_)
 {
     if (!runtime_ || !runtime_->routed_router || !route_id_ || !combined_ || combined_count_ == 0) {
         errno = EFAULT;
@@ -131,21 +131,20 @@ int send_routed_router_once (zlink::spot_runtime_t *runtime_,
     }
 
     if ((flags_ & ZLINK_DONTWAIT) == 0) {
-        if (zlink::wait_socket_events_internal (runtime_->routed_router, ZLINK_POLLOUT, 100)
-            <= 0) {
+        if (zlink::wait_socket_events_internal (runtime_->routed_router, ZLINK_POLLOUT, 100) <= 0) {
             if (spot_direct_route_debug_enabled ()) {
                 const std::string route_id = routing_id_debug_string (*route_id_);
-                std::fprintf (
-                  stderr, "[spot-direct] routed-router wait pollout failed errno=%d route=%s\n",
-                  errno, route_id.c_str ());
+                std::fprintf (stderr,
+                              "[spot-direct] routed-router wait pollout failed errno=%d route=%s\n",
+                              errno, route_id.c_str ());
             }
             errno = errno != 0 ? errno : EAGAIN;
             return -1;
         }
     }
 
-    const int rc = zlink::logical_multipart_send_routed (
-      runtime_->routed_router, route_id_, combined_, combined_count_, flags_);
+    const int rc = zlink::logical_multipart_send_routed (runtime_->routed_router, route_id_,
+                                                         combined_, combined_count_, flags_);
     if (spot_direct_route_debug_enabled ()) {
         const std::string route_id = routing_id_debug_string (*route_id_);
         std::fprintf (stderr,
@@ -156,9 +155,9 @@ int send_routed_router_once (zlink::spot_runtime_t *runtime_,
 }
 
 int send_routed_router_once (zlink::spot_runtime_t *runtime_,
-                               const zlink_routing_id_t *route_id_,
-                               std::vector<zlink_msg_t> *combined_,
-                               zlink_send_flags_t flags_)
+                             const zlink_routing_id_t *route_id_,
+                             std::vector<zlink_msg_t> *combined_,
+                             zlink_send_flags_t flags_)
 {
     if (!combined_ || combined_->empty ()) {
         errno = EFAULT;
@@ -169,10 +168,10 @@ int send_routed_router_once (zlink::spot_runtime_t *runtime_,
 }
 
 int send_routed_router_once (zlink::spot_runtime_t *runtime_,
-                               const std::string &route_id_,
-                               zlink_msg_t *combined_,
-                               size_t combined_count_,
-                               zlink_send_flags_t flags_)
+                             const std::string &route_id_,
+                             zlink_msg_t *combined_,
+                             size_t combined_count_,
+                             zlink_send_flags_t flags_)
 {
     zlink_routing_id_t route_id;
     if (!routing_id_from_key (route_id_, &route_id)) {
@@ -183,9 +182,9 @@ int send_routed_router_once (zlink::spot_runtime_t *runtime_,
 }
 
 int send_routed_router_once (zlink::spot_runtime_t *runtime_,
-                               const std::string &route_id_,
-                               std::vector<zlink_msg_t> *combined_,
-                               zlink_send_flags_t flags_)
+                             const std::string &route_id_,
+                             std::vector<zlink_msg_t> *combined_,
+                             zlink_send_flags_t flags_)
 {
     zlink_routing_id_t route_id;
     if (!routing_id_from_key (route_id_, &route_id)) {
@@ -196,10 +195,10 @@ int send_routed_router_once (zlink::spot_runtime_t *runtime_,
 }
 
 int dispatch_routed_router_delivery_with_envelope (zlink::spot_node_t *origin_node_,
-                                                     zlink_send_flags_t flags_,
-                                                     zlink_msg_t *combined_,
-                                                     size_t combined_count_,
-                                                     const parsed_spot_envelope_t &envelope_)
+                                                   zlink_send_flags_t flags_,
+                                                   zlink_msg_t *combined_,
+                                                   size_t combined_count_,
+                                                   const parsed_spot_envelope_t &envelope_)
 {
     if (!origin_node_ || !combined_ || combined_count_ == 0) {
         errno = EFAULT;
@@ -239,22 +238,22 @@ int dispatch_routed_router_delivery_with_envelope (zlink::spot_node_t *origin_no
 }
 
 int dispatch_routed_router_delivery_with_envelope (zlink::spot_node_t *origin_node_,
-                                                     zlink_send_flags_t flags_,
-                                                     std::vector<zlink_msg_t> *combined_,
-                                                     const parsed_spot_envelope_t &envelope_)
+                                                   zlink_send_flags_t flags_,
+                                                   std::vector<zlink_msg_t> *combined_,
+                                                   const parsed_spot_envelope_t &envelope_)
 {
     if (!combined_ || combined_->empty ()) {
         errno = EFAULT;
         return -1;
     }
-    return dispatch_routed_router_delivery_with_envelope (
-      origin_node_, flags_, &(*combined_)[0], combined_->size (), envelope_);
+    return dispatch_routed_router_delivery_with_envelope (origin_node_, flags_, &(*combined_)[0],
+                                                          combined_->size (), envelope_);
 }
 
 int dispatch_routed_router_delivery (zlink::spot_node_t *origin_node_,
-                                       zlink_send_flags_t flags_,
-                                       zlink_msg_t *combined_,
-                                       size_t combined_count_)
+                                     zlink_send_flags_t flags_,
+                                     zlink_msg_t *combined_,
+                                     size_t combined_count_)
 {
     if (!combined_ || combined_count_ == 0) {
         errno = EFAULT;
@@ -280,8 +279,8 @@ int dispatch_routed_router_delivery (zlink::spot_node_t *origin_node_,
 }
 
 int dispatch_routed_router_delivery (zlink::spot_node_t *origin_node_,
-                                       zlink_send_flags_t flags_,
-                                       std::vector<zlink_msg_t> *combined_)
+                                     zlink_send_flags_t flags_,
+                                     std::vector<zlink_msg_t> *combined_)
 {
     if (!combined_ || combined_->empty ()) {
         errno = EFAULT;
@@ -381,7 +380,8 @@ int process_routed_send_entry_on_data_plane (zlink::spot_runtime_t *runtime_,
 
     if (zlink::spot_reqrep_internal::should_process_spot_routed_locally (runtime_->owner,
                                                                          envelope)) {
-        if (envelope.destination_class == zlink::spot_routed_protocol::actor_gateway_endpoint_class) {
+        if (envelope.destination_class
+            == zlink::spot_routed_protocol::actor_gateway_endpoint_class) {
             return zlink::spot_actor_internal::process_gateway_delivery (
               runtime_->owner, &envelope.source_node_rid_value, envelope.payload_parts,
               envelope.payload_part_count);
@@ -390,17 +390,16 @@ int process_routed_send_entry_on_data_plane (zlink::spot_runtime_t *runtime_,
     }
 
     return dispatch_routed_router_delivery_with_envelope (runtime_->owner, flags_, combined_,
-                                                            envelope);
+                                                          envelope);
 }
 
 void spot_routed_router_dispatch (const zlink_routing_id_t *,
-                                    zlink_msg_t *parts_,
-                                    size_t part_count_,
-                                    void *userdata_)
+                                  zlink_msg_t *parts_,
+                                  size_t part_count_,
+                                  void *userdata_)
 {
     if (spot_direct_route_debug_enabled ()) {
-        std::fprintf (stderr, "[spot-direct] routed-router dispatch parts=%zu\n",
-                      part_count_);
+        std::fprintf (stderr, "[spot-direct] routed-router dispatch parts=%zu\n", part_count_);
     }
     zlink::spot_node_t *node = static_cast<zlink::spot_node_t *> (userdata_);
     if (!node || !parts_ || part_count_ == 0) {
@@ -427,8 +426,7 @@ void spot_routed_router_dispatch (const zlink_routing_id_t *,
     }
 
     if (combined_starts_with_peer_pub_route (combined)) {
-        if (zlink::spot_reqrep_internal::enqueue_runtime_routed_router_ingress (runtime,
-                                                                                  &combined)
+        if (zlink::spot_reqrep_internal::enqueue_runtime_routed_router_ingress (runtime, &combined)
             != 0) {
             zlink::request_reply::close_built_parts (&combined);
         }
@@ -436,7 +434,7 @@ void spot_routed_router_dispatch (const zlink_routing_id_t *,
     }
 
     (void) zlink::spot_reqrep_internal::process_routed_router_combined_for_data_plane (node,
-                                                                                         &combined);
+                                                                                       &combined);
 }
 }
 
@@ -451,8 +449,7 @@ extern "C" int zlink_spot_install_routed_router_dispatch (void *node_, void *soc
 
     if (socket->socket_msg_dispatch_active ()) {
         if (spot_direct_route_debug_enabled ()) {
-            std::fprintf (stderr,
-                          "[spot-direct] routed-router dispatch already active socket=%d\n",
+            std::fprintf (stderr, "[spot-direct] routed-router dispatch already active socket=%d\n",
                           socket->socket_id ());
         }
         return 0;
@@ -461,8 +458,9 @@ extern "C" int zlink_spot_install_routed_router_dispatch (void *node_, void *soc
     const int rc =
       socket->socket_set_msg_handler_with_userdata (&spot_routed_router_dispatch, NULL, node);
     if (spot_direct_route_debug_enabled ()) {
-        std::fprintf (stderr, "[spot-direct] routed-router dispatch install rc=%d errno=%d "
-                              "socket=%d\n",
+        std::fprintf (stderr,
+                      "[spot-direct] routed-router dispatch install rc=%d errno=%d "
+                      "socket=%d\n",
                       rc, errno, socket->socket_id ());
     }
     return rc;

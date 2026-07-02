@@ -97,6 +97,12 @@ void registry_t::handle_router (void *router_)
         case discovery_protocol::msg_topology_query:
             handle_topology_query (router_, &frames[0], frames.size (), sender);
             break;
+        case discovery_protocol::msg_member_peers_query:
+            handle_member_peers_query (router_, &frames[0], frames.size (), sender);
+            break;
+        case discovery_protocol::msg_registry_status_query:
+            handle_registry_status_query (router_, sender);
+            break;
         case discovery_protocol::msg_update_attributes:
             handle_update_attributes (router_, &frames[0], frames.size (), sender);
             break;

@@ -164,6 +164,7 @@ class spot_node_service_attachments_t
                                            std::vector<socket_base_t *> *sockets_to_close_out_);
     void collect_pending_service_discoveries_locked (
       std::vector<std::pair<std::string, discovery_t *>> *out_);
+
   private:
     spot_node_service_attachment_state_t _state;
 };

@@ -142,7 +142,7 @@ int process_route_combined_message (void *node_,
 }
 
 int recv_combined_routed_router_message (zlink::socket_base_t *socket_,
-                                           std::vector<zlink_msg_t> *out_)
+                                         std::vector<zlink_msg_t> *out_)
 {
     if (!socket_ || !out_) {
         errno = EFAULT;
@@ -213,8 +213,8 @@ extern "C" int zlink_spot_process_routed_router (void *node_, void *socket_)
             }
             if (spot_direct_route_debug_enabled () && errno != EAGAIN) {
                 std::fprintf (stderr,
-                              "[spot-direct] routed-router recv failed errno=%d socket=%d\n",
-                              errno, socket->socket_id ());
+                              "[spot-direct] routed-router recv failed errno=%d socket=%d\n", errno,
+                              socket->socket_id ());
             }
             if (errno == EAGAIN)
                 return 0;
@@ -246,14 +246,12 @@ extern "C" ZLINK_INTERNAL_EXPORT int zlink_spot_drain_routed_router_ingress (voi
     }
     if (runtime->execution.data_plane_state.routed_router->socket_msg_dispatch_active ())
         return 0;
-    return zlink_spot_process_routed_router (
-      node_, runtime->execution.data_plane_state.routed_router);
+    return zlink_spot_process_routed_router (node_,
+                                             runtime->execution.data_plane_state.routed_router);
 }
 
-extern "C" ZLINK_INTERNAL_EXPORT int zlink_spot_try_process_routed_router_parts (void *node_,
-                                                                                 zlink_msg_t *parts_,
-                                                                                 size_t part_count_,
-                                                                                 int *processed_out_)
+extern "C" ZLINK_INTERNAL_EXPORT int zlink_spot_try_process_routed_router_parts (
+  void *node_, zlink_msg_t *parts_, size_t part_count_, int *processed_out_)
 {
     if (processed_out_)
         *processed_out_ = 0;
@@ -263,8 +261,7 @@ extern "C" ZLINK_INTERNAL_EXPORT int zlink_spot_try_process_routed_router_parts 
     }
 
     zlink::spot_reqrep_internal::parsed_spot_envelope_t envelope;
-    if (!zlink::spot_reqrep_internal::parse_spot_routed_envelope (parts_, part_count_,
-                                                                  &envelope)) {
+    if (!zlink::spot_reqrep_internal::parse_spot_routed_envelope (parts_, part_count_, &envelope)) {
         errno = 0;
         return 0;
     }

@@ -223,6 +223,23 @@ zlink_registry_query_client_topology (void *client_,
       zlink::registry_query_access_t::topology_query (client_, filter_, entries_, count_));
 }
 
+zlink_config_result_t zlink_registry_query_client_member_peers (void *client_,
+                                                                const char *channel_name_,
+                                                                zlink_member_peer_entry_t *entries_,
+                                                                size_t *count_)
+{
+    return zlink::config_result_internal::from_rc (
+      zlink::registry_query_access_t::member_peers_query (client_, channel_name_, entries_,
+                                                          count_));
+}
+
+zlink_config_result_t zlink_registry_query_client_status (void *client_,
+                                                          zlink_registry_status_t *status_)
+{
+    return zlink::config_result_internal::from_rc (
+      zlink::registry_query_access_t::status_query (client_, status_));
+}
+
 zlink_close_result_t zlink_registry_query_client_destroy (void **client_p_)
 {
     return zlink::close_result_internal::from_rc (

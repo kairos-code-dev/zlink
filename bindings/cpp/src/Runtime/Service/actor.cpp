@@ -75,14 +75,14 @@ actor_t::actor_t (spot_node_t &node_,
     std::memset (&native, 0, sizeof (native));
     int rc = 0;
     if (request_.empty ()) {
-        rc = zlink_spot_node_actor_new_with_request (
-          zlink::detail::native_handle (node_), actor_id_.c_str (), nullptr, 0, &native);
+        rc = zlink_spot_node_actor_new_with_request (zlink::detail::native_handle (node_),
+                                                     actor_id_.c_str (), nullptr, 0, &native);
     } else {
         rc = zlink::detail::submit_message_array (
           request_, [&] (zlink_msg_t *parts_, size_t part_count_) {
-              return zlink_spot_node_actor_new_with_request (
-                zlink::detail::native_handle (node_), actor_id_.c_str (), parts_, part_count_,
-                &native);
+              return zlink_spot_node_actor_new_with_request (zlink::detail::native_handle (node_),
+                                                             actor_id_.c_str (), parts_,
+                                                             part_count_, &native);
           });
     }
     const config_result_t result = static_cast<config_result_t> (rc);

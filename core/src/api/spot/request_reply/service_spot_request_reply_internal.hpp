@@ -317,10 +317,10 @@ int enqueue_runtime_routed_send (zlink::spot_runtime_t *runtime_,
                                  int sndtimeo_ms_);
 int drain_runtime_routed_send_queue (zlink::spot_runtime_t *runtime_);
 int enqueue_runtime_routed_router_ingress (zlink::spot_runtime_t *runtime_,
-                                             std::vector<zlink_msg_t> *parts_);
+                                           std::vector<zlink_msg_t> *parts_);
 int drain_runtime_routed_router_ingress_queue (zlink::spot_runtime_t *runtime_);
 int process_routed_router_combined_for_data_plane (zlink::spot_node_t *node_,
-                                                     std::vector<zlink_msg_t> *combined_);
+                                                   std::vector<zlink_msg_t> *combined_);
 size_t spot_request_reply_message_part_count (size_t payload_part_count_);
 size_t spot_routed_message_part_count (size_t payload_part_count_);
 int build_spot_request_reply_message_into (uint8_t source_class_,

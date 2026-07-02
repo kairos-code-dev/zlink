@@ -246,8 +246,7 @@ class spot_node_t : public discovery_observer_t
     void stop_data_plane_sockets ();
     int start_data_plane ();
     int send_data_plane_command (const char *verb_, const char *arg_ = NULL) const;
-    int send_data_plane_command (const char *verb_,
-                                 const std::vector<std::string> &args_) const;
+    int send_data_plane_command (const char *verb_, const std::vector<std::string> &args_) const;
     int wait_facade_peer (socket_base_t *socket_) const;
     int wait_owned_socket_removals (int timeout_ms_);
     spot_pub_t *create_spot_pub_with_defaults (const pub_defaults_t &defaults_,
@@ -307,12 +306,11 @@ class spot_node_t : public discovery_observer_t
                                                    const std::set<std::string> &current_filters_);
     void notify_service_subscribe_readable ();
     int validate_destroyable_handles_locked () const;
-    void begin_destroy_detach_phase (
-      discovery_t **discovery_out_,
-      std::map<std::string, discovery_t *> *service_discoveries_out_,
-      std::vector<std::string> *active_peer_endpoints_out_,
-      std::string *bound_endpoint_out_,
-      std::string *router_bind_endpoint_out_);
+    void begin_destroy_detach_phase (discovery_t **discovery_out_,
+                                     std::map<std::string, discovery_t *> *service_discoveries_out_,
+                                     std::vector<std::string> *active_peer_endpoints_out_,
+                                     std::string *bound_endpoint_out_,
+                                     std::string *router_bind_endpoint_out_);
     void clear_service_attachment_runtime_locked (
       std::deque<attachment_monitor_handle_t> *monitors_out_);
     void close_attachment_monitors (std::deque<attachment_monitor_handle_t> *monitors_);

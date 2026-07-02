@@ -294,8 +294,8 @@ spot_t::publish_impl (const char *topic_, std::vector<message_t> &parts_, send_f
 }
 
 [[nodiscard]] int spot_t::try_publish_result_impl (send_result_t &result_out_,
-                                                       const char *topic_,
-                                                       std::vector<message_t> &parts_)
+                                                   const char *topic_,
+                                                   std::vector<message_t> &parts_)
 {
     if (!_impl->handle) {
         errno = _impl->last_error != 0 ? _impl->last_error : EFAULT;
@@ -314,9 +314,8 @@ spot_t::publish_impl (const char *topic_, std::vector<message_t> &parts_, send_f
       });
 }
 
-[[nodiscard]] int spot_t::try_publish_result_impl (send_result_t &result_out_,
-                                                       const char *topic_,
-                                                       message_t &part_)
+[[nodiscard]] int
+spot_t::try_publish_result_impl (send_result_t &result_out_, const char *topic_, message_t &part_)
 {
     if (!_impl->handle) {
         errno = _impl->last_error != 0 ? _impl->last_error : EFAULT;

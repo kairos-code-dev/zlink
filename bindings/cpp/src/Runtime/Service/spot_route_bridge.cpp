@@ -86,8 +86,8 @@ spot_route_bridge_t::spot_route_bridge_t (void *ctx_handle_, spot_node_t &node_)
     std::memset (&options, 0, sizeof (options));
     options.struct_size = sizeof (options);
     options.default_request_timeout_ms = 30000;
-    _impl->handle = zlink_spot_route_bridge_new (
-      ctx_handle_, zlink::detail::native_handle (node_), &options);
+    _impl->handle =
+      zlink_spot_route_bridge_new (ctx_handle_, zlink::detail::native_handle (node_), &options);
     if (!_impl->handle)
         _last_error = errno != 0 ? errno : EFAULT;
 }
@@ -192,8 +192,7 @@ spot_route_bridge_t::request (const std::string &channel_name_,
             _impl->handle, channel_name_.c_str (),
             zlink::detail::routing_id_native (target_node_rid_),
             zlink::detail::routing_id_native (target_spot_rid_), native_parts_, part_count_,
-            &detail::request_callback_trampoline, state.get (), ZLINK_SEND_FLAGS_NONE,
-            timeout_ms);
+            &detail::request_callback_trampoline, state.get (), ZLINK_SEND_FLAGS_NONE, timeout_ms);
       });
     if (raw_rc == -1)
         throw zlink::detail::last_error ();
@@ -255,7 +254,8 @@ bool spot_route_bridge_t::handle_router_received (const std::string &channel_nam
 
     bool handled = false;
     const auto restore = [&] {
-        zlink::detail::restore_parts_from_native (parts_, native_parts.data (), native_parts.size ());
+        zlink::detail::restore_parts_from_native (parts_, native_parts.data (),
+                                                  native_parts.size ());
     };
 
     const int rc = zlink_spot_route_bridge_handle_router_received (

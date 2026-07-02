@@ -36,6 +36,10 @@ static const uint16_t msg_bind_route = 0x000E;
 static const uint16_t msg_unbind_route = 0x000F;
 static const uint16_t msg_resolve_route = 0x0010;
 static const uint16_t msg_resolve_route_reply = 0x0011;
+static const uint16_t msg_member_peers_query = 0x0012;
+static const uint16_t msg_member_peers_reply = 0x0013;
+static const uint16_t msg_registry_status_query = 0x0014;
+static const uint16_t msg_registry_status_reply = 0x0015;
 
 enum reply_status_t
 {
@@ -530,6 +534,58 @@ inline bool decode_topology_reply (const std::vector<zlink_msg_t> &frames_,
                 sizeof (entry));
         entries_out_->push_back (entry);
     }
+    return true;
+}
+
+inline bool decode_member_peers_reply (const std::vector<zlink_msg_t> &frames_,
+                                       std::vector<zlink_member_peer_entry_t> *entries_out_)
+{
+    if (!entries_out_) {
+        errno = EINVAL;
+        return false;
+    }
+
+    entries_out_->clear ();
+    uint16_t msg_id = 0;
+    uint32_t count = 0;
+    if (frames_.size () < 2 || !read_u16 (frames_[0], &msg_id) || msg_id != msg_member_peers_reply
+        || !read_u32 (frames_[1], &count) || frames_.size () != static_cast<size_t> (count) + 2) {
+        errno = EPROTO;
+        return false;
+    }
+
+    entries_out_->reserve (count);
+    for (uint32_t i = 0; i < count; ++i) {
+        zlink_member_peer_entry_t entry;
+        memset (&entry, 0, sizeof (entry));
+        if (zlink_msg_size (&frames_[i + 2]) != sizeof (entry)) {
+            errno = EPROTO;
+            return false;
+        }
+        memcpy (&entry, zlink_msg_data (const_cast<zlink_msg_t *> (&frames_[i + 2])),
+                sizeof (entry));
+        entries_out_->push_back (entry);
+    }
+    return true;
+}
+
+inline bool decode_registry_status_reply (const std::vector<zlink_msg_t> &frames_,
+                                          zlink_registry_status_t *status_out_)
+{
+    if (!status_out_) {
+        errno = EINVAL;
+        return false;
+    }
+
+    uint16_t msg_id = 0;
+    if (frames_.size () != 2 || !read_u16 (frames_[0], &msg_id)
+        || msg_id != msg_registry_status_reply
+        || zlink_msg_size (const_cast<zlink_msg_t *> (&frames_[1])) != sizeof (*status_out_)) {
+        errno = EPROTO;
+        return false;
+    }
+    memcpy (status_out_, zlink_msg_data (const_cast<zlink_msg_t *> (&frames_[1])),
+            sizeof (*status_out_));
     return true;
 }
 

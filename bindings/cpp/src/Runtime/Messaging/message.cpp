@@ -241,7 +241,7 @@ message_t external_message_t::from (std::span<std::byte> bytes_,
 {
     if (!free_fn_)
         throw std::invalid_argument ("external message free callback must not be null");
-    message_t msg {message_t::no_init_t ()};
+    message_t msg{message_t::no_init_t ()};
     if (zlink_msg_init_data (detail::native_handle (msg), bytes_.data (), bytes_.size (),
                              reinterpret_cast<zlink_free_fn *> (free_fn_), hint_)
         == 0)

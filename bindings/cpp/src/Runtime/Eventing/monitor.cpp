@@ -44,8 +44,7 @@ monitor_status_t make_monitor_status (const zlink_monitor_status_t &native_)
     status.auto_hwm_unit_budget_bytes = native_.auto_hwm_unit_budget_bytes;
     status.auto_hwm_size_cap = native_.auto_hwm_size_cap;
     status.auto_hwm_socket_message_slots = native_.auto_hwm_socket_message_slots;
-    status.auto_hwm_connection_bucket_enabled =
-      native_.auto_hwm_connection_bucket_enabled != 0;
+    status.auto_hwm_connection_bucket_enabled = native_.auto_hwm_connection_bucket_enabled != 0;
     status.auto_hwm_connection_bucket_count = native_.auto_hwm_connection_bucket_count;
     status.auto_hwm_connection_bucket_index = native_.auto_hwm_connection_bucket_index;
     status.auto_hwm_connection_bucket_hwm_4k = native_.auto_hwm_connection_bucket_hwm_4k;

@@ -200,14 +200,16 @@ void spot_node_t::set_routing_id (const routing_id_t &routing_id_)
 
 void spot_node_t::set_publisher_routing_id (const routing_id_t &routing_id_)
 {
-    detail::throw_if_failed<config_error_t> (static_cast<config_result_t> (
-      zlink_spot_node_set_pub_routing_id (_impl->handle, routing_id_.data (), routing_id_.size ())));
+    detail::throw_if_failed<config_error_t> (
+      static_cast<config_result_t> (zlink_spot_node_set_pub_routing_id (
+        _impl->handle, routing_id_.data (), routing_id_.size ())));
 }
 
 void spot_node_t::set_subscriber_routing_id (const routing_id_t &routing_id_)
 {
-    detail::throw_if_failed<config_error_t> (static_cast<config_result_t> (
-      zlink_spot_node_set_sub_routing_id (_impl->handle, routing_id_.data (), routing_id_.size ())));
+    detail::throw_if_failed<config_error_t> (
+      static_cast<config_result_t> (zlink_spot_node_set_sub_routing_id (
+        _impl->handle, routing_id_.data (), routing_id_.size ())));
 }
 
 void spot_node_t::get_routing_id (routing_id_t &out_) const

@@ -92,11 +92,11 @@ static void apply_internal_auto_hwm (ctx_t *ctx_,
     if (!ctx_ || !socket_)
         return;
 
-    apply_spot_internal_auto_hwm (ctx_, socket_,
-                                  spot_internal_auto_hwm_policy_t{
-                                    role_, socket_type_, managed_connections_, active_connections_,
-                                    0, 0, apply_sndhwm_, apply_rcvhwm_, auto_hwm_scope_none, 1, 0,
-                                    connection_bucket_enabled_});
+    apply_spot_internal_auto_hwm (
+      ctx_, socket_,
+      spot_internal_auto_hwm_policy_t{role_, socket_type_, managed_connections_,
+                                      active_connections_, 0, 0, apply_sndhwm_, apply_rcvhwm_,
+                                      auto_hwm_scope_none, 1, 0, connection_bucket_enabled_});
 }
 
 static void close_mesh_peer_observer (spot_node_t *node_, spot_data_plane_runtime_state_t *state_)
@@ -122,8 +122,7 @@ static void close_mesh_peer_observer (spot_node_t *node_, spot_data_plane_runtim
         spot_data_plane_debug_logf ("mesh_xsub stop monitor end\n");
     }
     if (pub_monitor) {
-        spot_data_plane_debug_logf ("close pub_monitor begin sid=%d\n",
-                                    pub_monitor->socket_id ());
+        spot_data_plane_debug_logf ("close pub_monitor begin sid=%d\n", pub_monitor->socket_id ());
         spot_node_access_t::untrack_owned_socket (node_, pub_monitor);
         (void) socket_close_ops_t::request_close (pub_monitor, 0);
         spot_data_plane_debug_logf ("close pub_monitor end\n");
@@ -261,7 +260,7 @@ static int configure_runtime_sockets (spot_runtime_t *runtime_,
     if (runtime_ && runtime_->owner && runtime_->owner->node_routing_id (&node_rid) == 0
         && node_rid.size > 0 && state_->routed_router) {
         state_->routed_router->setsockopt (ZLINK_INTERNAL_OPT_ROUTING_ID, node_rid.data,
-                                             node_rid.size);
+                                           node_rid.size);
     }
     zlink_routing_id_t mesh_pub_rid;
     memset (&mesh_pub_rid, 0, sizeof (mesh_pub_rid));
@@ -373,20 +372,18 @@ static int configure_runtime_sockets (spot_runtime_t *runtime_,
     if (state_->routed_router) {
         if (router_hwm_override) {
             state_->routed_router->setsockopt (ZLINK_INTERNAL_OPT_RCVHWM, &routed_router_rcvhwm,
-                                                 sizeof (routed_router_rcvhwm));
+                                               sizeof (routed_router_rcvhwm));
             state_->routed_router->setsockopt (ZLINK_INTERNAL_OPT_SNDHWM, &routed_router_sndhwm,
-                                                 sizeof (routed_router_sndhwm));
+                                               sizeof (routed_router_sndhwm));
         }
-        state_->routed_router->setsockopt (ZLINK_INTERNAL_OPT_RCVTIMEO, &neg_one,
-                                             sizeof (neg_one));
+        state_->routed_router->setsockopt (ZLINK_INTERNAL_OPT_RCVTIMEO, &neg_one, sizeof (neg_one));
         state_->routed_router->setsockopt (ZLINK_INTERNAL_OPT_SNDTIMEO, &zero, sizeof (zero));
-        state_->routed_router->setsockopt (ZLINK_INTERNAL_OPT_SUBMIT_RETRY_MODE,
-                                             &submit_retry_mode, sizeof (submit_retry_mode));
+        state_->routed_router->setsockopt (ZLINK_INTERNAL_OPT_SUBMIT_RETRY_MODE, &submit_retry_mode,
+                                           sizeof (submit_retry_mode));
         state_->routed_router->setsockopt (ZLINK_INTERNAL_OPT_SUBMIT_RETRY_TIMEOUT,
-                                             &submit_retry_timeout, sizeof (submit_retry_timeout));
+                                           &submit_retry_timeout, sizeof (submit_retry_timeout));
         state_->routed_router->setsockopt (ZLINK_INTERNAL_OPT_SUBMIT_RETRY_ATTEMPTS,
-                                             &submit_retry_attempts,
-                                             sizeof (submit_retry_attempts));
+                                           &submit_retry_attempts, sizeof (submit_retry_attempts));
     }
     state_->mesh_pub_hwm.current_sndhwm =
       state_->mesh_pub

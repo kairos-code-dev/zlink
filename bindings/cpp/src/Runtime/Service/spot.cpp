@@ -86,8 +86,7 @@ void submit_reply_messages (std::vector<message_t> &parts_, SubmitPart submit_pa
         detail::move_to_native_or_reject (parts_[i], &native);
         const zlink_part_flag_t part_flag =
           i + 1 < parts_.size () ? ZLINK_PART_MORE : ZLINK_PART_FINAL;
-        const submit_result_t rc = static_cast<submit_result_t> (
-          submit_part_ (&native, part_flag));
+        const submit_result_t rc = static_cast<submit_result_t> (submit_part_ (&native, part_flag));
         if (rc != submit_result_t::ok) {
             (void) zlink_msg_close (&native);
             throw submit_error_t (rc, zlink_errno ());
@@ -232,10 +231,9 @@ void spot_t::reply_to_spot (const routing_id_t &dest_node_rid_,
 {
     zlink::detail::throw_if_reply_flags_unsupported (flags_);
     submit_reply_messages (parts_, [&] (zlink_msg_t *part_out_, zlink_part_flag_t part_flag_) {
-        return zlink_spot_reply_spot_part (_impl->handle,
-                                           zlink::detail::routing_id_native (dest_node_rid_),
-                                           zlink::detail::routing_id_native (dest_spot_rid_),
-                                           request_seq_, part_out_, part_flag_);
+        return zlink_spot_reply_spot_part (
+          _impl->handle, zlink::detail::routing_id_native (dest_node_rid_),
+          zlink::detail::routing_id_native (dest_spot_rid_), request_seq_, part_out_, part_flag_);
     });
 }
 
@@ -413,8 +411,8 @@ std::optional<spot_actor_lifecycle_event_t> spot_t::recv_actor_lifecycle (recv_f
     std::memset (&native_event, 0, sizeof (native_event));
     zlink_msg_t *parts = nullptr;
     size_t part_count = 0;
-    const recv_result_t rc = static_cast<recv_result_t> (
-      zlink_spot_recv_actor_lifecycle_with_request (
+    const recv_result_t rc =
+      static_cast<recv_result_t> (zlink_spot_recv_actor_lifecycle_with_request (
         _impl->handle, &native_event, &parts, &part_count,
         static_cast<zlink_recv_flags_t> (static_cast<int> (flags_))));
     if (rc == recv_result_t::no_data && flags_ == recv_flags_t::dontwait)

@@ -64,8 +64,7 @@ struct spot_internal_auto_hwm_policy_t
     bool connection_bucket_enabled;
 };
 
-inline auto_hwm_socket_plan_t
-spot_internal_auto_hwm_plan (
+inline auto_hwm_socket_plan_t spot_internal_auto_hwm_plan (
   ctx_t *ctx_,
   const spot_internal_auto_hwm_policy_t &policy_,
   bool connection_bucket_hysteresis_enabled_ = false,
@@ -127,8 +126,9 @@ inline void apply_spot_internal_auto_hwm (ctx_t *ctx_,
         return;
 
     const zlink_auto_hwm_profile_t profile = ctx_->auto_hwm_profile ();
-    const int configured_message_unit =
-      policy_.message_unit_bytes > 0 ? policy_.message_unit_bytes : ctx_->auto_hwm_msg_unit_bytes ();
+    const int configured_message_unit = policy_.message_unit_bytes > 0
+                                          ? policy_.message_unit_bytes
+                                          : ctx_->auto_hwm_msg_unit_bytes ();
     const uint64_t effective_message_bytes =
       configured_message_unit > 0 ? static_cast<uint64_t> (configured_message_unit) : 4096ull;
 
@@ -137,10 +137,10 @@ inline void apply_spot_internal_auto_hwm (ctx_t *ctx_,
     if (policy_.connection_bucket_enabled) {
         zlink_auto_hwm_profile_t previous_profile = ZLINK_AUTO_HWM_PROFILE_BALANCED;
         uint64_t previous_message_bytes = 0;
-        hysteresis_enabled = socket_->auto_hwm_connection_bucket_state (
-                               &previous_bucket_index, &previous_profile, &previous_message_bytes)
-                             && previous_profile == profile
-                             && previous_message_bytes == effective_message_bytes;
+        hysteresis_enabled =
+          socket_->auto_hwm_connection_bucket_state (&previous_bucket_index, &previous_profile,
+                                                     &previous_message_bytes)
+          && previous_profile == profile && previous_message_bytes == effective_message_bytes;
     }
 
     const auto_hwm_socket_plan_t socket_plan =
@@ -169,13 +169,13 @@ inline void apply_spot_internal_auto_hwm (ctx_t *ctx_,
                                           ZLINK_AUTO_HWM_RECALC_REASON_NONE);
     if (socket_plan.connection_bucket_enabled
         && socket_plan.connection_bucket_index != auto_hwm_connection_bucket_none) {
-        socket_->set_auto_hwm_connection_bucket_state (
-          socket_plan.connection_bucket_index, profile, socket_plan.effective_message_bytes);
+        socket_->set_auto_hwm_connection_bucket_state (socket_plan.connection_bucket_index, profile,
+                                                       socket_plan.effective_message_bytes);
     } else {
         socket_->clear_auto_hwm_connection_bucket_state ();
     }
-    socket_->clear_auto_hwm_manual_overrides (policy_.apply_sndhwm, policy_.apply_rcvhwm,
-                                              false, false);
+    socket_->clear_auto_hwm_manual_overrides (policy_.apply_sndhwm, policy_.apply_rcvhwm, false,
+                                              false);
 }
 }
 

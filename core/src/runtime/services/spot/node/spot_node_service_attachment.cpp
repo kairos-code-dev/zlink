@@ -52,8 +52,7 @@ socket_base_t *spot_node_t::select_service_router (const std::string &channel_na
     std::map<std::string, service_attachment_t>::iterator it =
       service_attachments ().attachments.find (channel_name_);
     if (it == service_attachments ().attachments.end ()) {
-        errno =
-          service_attachments ().discoveries.count (channel_name_) != 0 ? ENOTCONN : ENOENT;
+        errno = service_attachments ().discoveries.count (channel_name_) != 0 ? ENOTCONN : ENOENT;
         return NULL;
     }
     service_attachment_t &attachment = it->second;
@@ -80,8 +79,7 @@ socket_base_t *spot_node_t::service_pub_socket (const std::string &channel_name_
     std::map<std::string, service_attachment_t>::const_iterator it =
       service_attachments ().attachments.find (channel_name_);
     if (it == service_attachments ().attachments.end ()) {
-        errno =
-          service_attachments ().discoveries.count (channel_name_) != 0 ? ENOTCONN : ENOENT;
+        errno = service_attachments ().discoveries.count (channel_name_) != 0 ? ENOTCONN : ENOENT;
         return NULL;
     }
     if (it->second.has_manual_pubsub ())
@@ -154,11 +152,9 @@ void spot_node_service_attachments_t::collect_pending_service_discoveries_locked
     if (!out_)
         return;
     out_->clear ();
-    for (std::set<std::string>::const_iterator it =
-           _state.pending_refresh_services.begin ();
+    for (std::set<std::string>::const_iterator it = _state.pending_refresh_services.begin ();
          it != _state.pending_refresh_services.end (); ++it) {
-        std::map<std::string, discovery_t *>::const_iterator dit =
-          _state.discoveries.find (*it);
+        std::map<std::string, discovery_t *>::const_iterator dit = _state.discoveries.find (*it);
         if (dit != _state.discoveries.end ())
             out_->push_back (*dit);
     }
@@ -293,8 +289,7 @@ void spot_node_t::install_service_discovery_sockets (const std::string &channel_
         service_attachment_t &attachment = service_attachments ().attachments[channel_name_];
         if (!attachment.discovered.pub) {
             attachment.discovered.pub = plan_.pub_socket;
-            _service_attachments.register_monitor_locked (plan_.pub_socket, monitor,
-                                                          channel_name_);
+            _service_attachments.register_monitor_locked (plan_.pub_socket, monitor, channel_name_);
             mutated = true;
         } else {
             if (monitor)
@@ -320,8 +315,7 @@ void spot_node_t::install_service_discovery_sockets (const std::string &channel_
             attachment.discovered.sub = plan_.sub_socket;
             attachment.mark_auto_sub_replay_pending (
               service_attachment_t::discovered_state_t::auto_sub_replay_initial);
-            _service_attachments.register_monitor_locked (plan_.sub_socket, monitor,
-                                                          channel_name_);
+            _service_attachments.register_monitor_locked (plan_.sub_socket, monitor, channel_name_);
             mutated = true;
         } else {
             if (monitor)

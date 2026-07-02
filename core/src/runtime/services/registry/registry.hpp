@@ -408,6 +408,11 @@ class registry_t
                                 const zlink_msg_t *frames_,
                                 size_t frame_count_,
                                 const zlink_routing_id_t &sender_id_);
+    void handle_member_peers_query (void *router_,
+                                    const zlink_msg_t *frames_,
+                                    size_t frame_count_,
+                                    const zlink_routing_id_t &sender_id_);
+    void handle_registry_status_query (void *router_, const zlink_routing_id_t &sender_id_);
     void handle_bind_route (void *router_,
                             const zlink_msg_t *frames_,
                             size_t frame_count_,
@@ -438,6 +443,12 @@ class registry_t
     void send_topology_reply (void *router_,
                               const zlink_routing_id_t &sender_id_,
                               const std::vector<zlink_registry_topology_entry_t> &entries_);
+    void send_member_peers_reply (void *router_,
+                                  const zlink_routing_id_t &sender_id_,
+                                  const std::vector<zlink_member_peer_entry_t> &entries_);
+    void send_registry_status_reply (void *router_,
+                                     const zlink_routing_id_t &sender_id_,
+                                     const zlink_registry_status_t &status_);
     void send_route_reply (void *router_,
                            const zlink_routing_id_t &sender_id_,
                            uint8_t status_,

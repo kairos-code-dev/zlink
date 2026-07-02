@@ -207,6 +207,38 @@ int recv_topology_reply_entries (socket_base_t *socket_,
     return ok ? 0 : -1;
 }
 
+int recv_member_peers_reply_entries (socket_base_t *socket_,
+                                     std::vector<zlink_member_peer_entry_t> *entries_out_)
+{
+    if (!socket_ || !entries_out_) {
+        errno = EINVAL;
+        return -1;
+    }
+
+    entries_out_->clear ();
+    scoped_msg_frames_t frames;
+    if (!recv_msg_sequence_socket_wait (socket_, &frames, 500))
+        return -1;
+
+    const bool ok = discovery_protocol::decode_member_peers_reply (frames, entries_out_);
+    return ok ? 0 : -1;
+}
+
+int recv_registry_status_reply (socket_base_t *socket_, zlink_registry_status_t *status_out_)
+{
+    if (!socket_ || !status_out_) {
+        errno = EINVAL;
+        return -1;
+    }
+
+    scoped_msg_frames_t frames;
+    if (!recv_msg_sequence_socket_wait (socket_, &frames, 500))
+        return -1;
+
+    const bool ok = discovery_protocol::decode_registry_status_reply (frames, status_out_);
+    return ok ? 0 : -1;
+}
+
 int recv_route_reply (socket_base_t *socket_,
                       zlink_routing_id_t *owner_rid_out_,
                       zlink_msg_t *value_out_)

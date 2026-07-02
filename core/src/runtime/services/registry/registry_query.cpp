@@ -536,3 +536,82 @@ void zlink::registry_t::send_topology_reply (
                                         (i + 1 == entries_.size ()) ? 0 : ZLINK_SNDMORE);
     }
 }
+
+void zlink::registry_t::handle_member_peers_query (void *router_,
+                                                   const zlink_msg_t *frames_,
+                                                   size_t frame_count_,
+                                                   const zlink_routing_id_t &sender_id_)
+{
+    if (frame_count_ < 2) {
+        send_member_peers_reply (router_, sender_id_, {});
+        return;
+    }
+
+    const std::string channel_name = discovery_protocol::read_string (frames_[1]);
+    std::vector<zlink_member_peer_entry_t> entries;
+    size_t count = 0;
+    if (member_peers (channel_name.c_str (), NULL, &count) == 0 && count > 0) {
+        entries.resize (count);
+        if (member_peers (channel_name.c_str (), entries.data (), &count) == 0) {
+            entries.resize (count);
+        } else {
+            entries.clear ();
+        }
+    }
+    send_member_peers_reply (router_, sender_id_, entries);
+}
+
+void zlink::registry_t::send_member_peers_reply (
+  void *router_,
+  const zlink_routing_id_t &sender_id_,
+  const std::vector<zlink_member_peer_entry_t> &entries_)
+{
+    zlink_msg_t id_frame;
+    zlink_msg_init_size (&id_frame, sender_id_.size);
+    if (sender_id_.size > 0)
+        memcpy (zlink_msg_data (&id_frame), sender_id_.data, sender_id_.size);
+    if (zlink::send_msg_internal (router_, &id_frame, ZLINK_SNDMORE) == -1) {
+        zlink_msg_close (&id_frame);
+        return;
+    }
+
+    discovery_protocol::send_u16 (router_, discovery_protocol::msg_member_peers_reply,
+                                  ZLINK_SNDMORE);
+    discovery_protocol::send_u32 (router_, static_cast<uint32_t> (entries_.size ()),
+                                  entries_.empty () ? 0 : ZLINK_SNDMORE);
+    for (size_t i = 0; i < entries_.size (); ++i) {
+        discovery_protocol::send_frame (router_, &entries_[i], sizeof (entries_[i]),
+                                        (i + 1 == entries_.size ()) ? 0 : ZLINK_SNDMORE);
+    }
+}
+
+void zlink::registry_t::handle_registry_status_query (void *router_,
+                                                      const zlink_routing_id_t &sender_id_)
+{
+    zlink_registry_status_t status;
+    memset (&status, 0, sizeof (status));
+    if (status_snapshot (&status) != 0) {
+        memset (&status, 0, sizeof (status));
+        status.state = ZLINK_REGISTRY_STATE_ERROR;
+        status.last_error = errno;
+    }
+    send_registry_status_reply (router_, sender_id_, status);
+}
+
+void zlink::registry_t::send_registry_status_reply (void *router_,
+                                                    const zlink_routing_id_t &sender_id_,
+                                                    const zlink_registry_status_t &status_)
+{
+    zlink_msg_t id_frame;
+    zlink_msg_init_size (&id_frame, sender_id_.size);
+    if (sender_id_.size > 0)
+        memcpy (zlink_msg_data (&id_frame), sender_id_.data, sender_id_.size);
+    if (zlink::send_msg_internal (router_, &id_frame, ZLINK_SNDMORE) == -1) {
+        zlink_msg_close (&id_frame);
+        return;
+    }
+
+    discovery_protocol::send_u16 (router_, discovery_protocol::msg_registry_status_reply,
+                                  ZLINK_SNDMORE);
+    discovery_protocol::send_frame (router_, &status_, sizeof (status_), 0);
+}

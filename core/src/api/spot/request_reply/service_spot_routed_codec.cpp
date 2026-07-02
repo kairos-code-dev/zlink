@@ -148,8 +148,9 @@ bool zlink::spot_reqrep_internal::parse_spot_routed_envelope (zlink_msg_t *parts
     return parse_packed_spot_routed_envelope (parts_, part_count_, out_);
 }
 
-bool zlink::spot_reqrep_internal::peek_spot_routed_destination_node_rid (
-  zlink_msg_t *parts_, size_t part_count_, zlink_routing_id_t *out_)
+bool zlink::spot_reqrep_internal::peek_spot_routed_destination_node_rid (zlink_msg_t *parts_,
+                                                                         size_t part_count_,
+                                                                         zlink_routing_id_t *out_)
 {
     return peek_packed_destination_node_rid (parts_, part_count_, out_);
 }

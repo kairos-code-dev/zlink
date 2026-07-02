@@ -223,9 +223,9 @@ void discovery_t::bind_route (route_kind_t kind_,
 
 void discovery_t::unbind_route (route_kind_t kind_, std::span<const std::byte> key_)
 {
-    detail::throw_if_failed<config_error_t> (static_cast<config_result_t> (
-      zlink_discovery_unbind_route (_impl->handle, static_cast<zlink_route_kind_t> (kind_),
-                                    key_.data (), key_.size ())));
+    detail::throw_if_failed<config_error_t> (
+      static_cast<config_result_t> (zlink_discovery_unbind_route (
+        _impl->handle, static_cast<zlink_route_kind_t> (kind_), key_.data (), key_.size ())));
 }
 
 void discovery_t::unbind_route (route_kind_t kind_, std::span<const uint8_t> key_)

@@ -12,9 +12,8 @@ namespace detail
 {
 
 template <typename SubmitPart>
-async_result_t<std::vector<message_t>> submit_request_part_awaitable (message_t &part_,
-                                                                  std::function<void ()> progress_,
-                                                                  SubmitPart submit_part_)
+async_result_t<std::vector<message_t>> submit_request_part_awaitable (
+  message_t &part_, std::function<void ()> progress_, SubmitPart submit_part_)
 {
     if (!part_.valid ())
         throw submit_error_t (submit_result_t::invalid_argument, EINVAL);
@@ -66,9 +65,8 @@ bool submit_request_part_callback (message_t &part_,
 }
 
 template <typename SubmitPart>
-async_result_t<std::vector<message_t>> submit_request_parts_awaitable (std::vector<message_t> &parts_,
-                                                                   std::function<void ()> progress_,
-                                                                   SubmitPart submit_part_)
+async_result_t<std::vector<message_t>> submit_request_parts_awaitable (
+  std::vector<message_t> &parts_, std::function<void ()> progress_, SubmitPart submit_part_)
 {
     std::unique_ptr<request_state_t> state (make_future_request_state ());
     std::future<std::vector<message_t>> future = state->promise->get_future ();

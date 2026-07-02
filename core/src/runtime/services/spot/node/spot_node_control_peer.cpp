@@ -136,8 +136,7 @@ void spot_node_t::refresh_discovery_peers ()
                     std::map<std::string, uint32_t>::const_iterator weight_it =
                       _peer_state.peer_weight_by_rid.find (rid_it->first);
                     new_weight_by_rid[rid_it->first] =
-                      weight_it == _peer_state.peer_weight_by_rid.end () ? 100
-                                                                         : weight_it->second;
+                      weight_it == _peer_state.peer_weight_by_rid.end () ? 100 : weight_it->second;
                 }
             }
         }

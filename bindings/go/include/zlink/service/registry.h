@@ -157,6 +157,13 @@ zlink_registry_query_client_topology (void *client,
                                       const zlink_registry_topology_filter_t *filter,
                                       zlink_registry_topology_entry_t *entries,
                                       size_t *count);
+ZLINK_EXPORT zlink_config_result_t
+zlink_registry_query_client_member_peers (void *client,
+                                          const char *channel_name,
+                                          zlink_member_peer_entry_t *entries,
+                                          size_t *count);
+ZLINK_EXPORT zlink_config_result_t
+zlink_registry_query_client_status (void *client, zlink_registry_status_t *status);
 
 ZLINK_EXPORT zlink_close_result_t zlink_registry_query_client_destroy (void **client_p);
 

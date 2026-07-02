@@ -516,9 +516,9 @@ zlink_submit_result_t spot_reply_spot_impl (void *spot_,
         }
         if (zlink::spot_reqrep_internal::build_spot_request_reply_message_into (
               routed_protocol::spot_endpoint_class, source_identity.node_rid,
-              source_identity.spot_rid, routed_protocol::spot_endpoint_class,
-              destination_node_rid, destination_spot_rid, zlink::request_reply::reply_type,
-              request_seq_, parts_, part_count_, combined, combined_count)
+              source_identity.spot_rid, routed_protocol::spot_endpoint_class, destination_node_rid,
+              destination_spot_rid, zlink::request_reply::reply_type, request_seq_, parts_,
+              part_count_, combined, combined_count)
             != 0) {
             return zlink::submit_result_internal::from_errno (errno);
         }
@@ -588,9 +588,8 @@ zlink_submit_result_t spot_send_spot_impl (void *spot_,
         }
         if (zlink::spot_reqrep_internal::build_spot_routed_message_into (
               routed_protocol::spot_endpoint_class, source_identity.node_rid,
-              source_identity.spot_rid, routed_protocol::spot_endpoint_class,
-              destination_node_rid, destination_spot_rid, parts_, part_count_, combined,
-              combined_count)
+              source_identity.spot_rid, routed_protocol::spot_endpoint_class, destination_node_rid,
+              destination_spot_rid, parts_, part_count_, combined, combined_count)
             != 0) {
             return zlink::submit_result_internal::from_errno (errno);
         }
@@ -641,9 +640,8 @@ zlink_submit_result_t spot_reply_router_impl (void *spot_,
 
     spot_handle_t *spot = as_spot_handle (spot_);
     const std::string peer_rid = routing_id_key (peer_rid_);
-    const bool local_target =
-      has_local_spot_route_target (routed_protocol::router_endpoint_class, std::string (),
-                                   peer_rid, source_identity.node_rid);
+    const bool local_target = has_local_spot_route_target (
+      routed_protocol::router_endpoint_class, std::string (), peer_rid, source_identity.node_rid);
     if (!local_target) {
         const size_t combined_count =
           zlink::spot_reqrep_internal::spot_request_reply_message_part_count (part_count_);

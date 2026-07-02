@@ -407,8 +407,8 @@ int zlink::spot_reqrep_internal::build_spot_request_reply_message (
       part_count_, &(*out_)[0], total_part_count);
 }
 
-size_t zlink::spot_reqrep_internal::spot_request_reply_message_part_count (
-  size_t payload_part_count_)
+size_t
+zlink::spot_reqrep_internal::spot_request_reply_message_part_count (size_t payload_part_count_)
 {
     return packed_spot_routed_control_part_count + zlink::request_reply::control_part_count
            + payload_part_count_;
@@ -461,10 +461,9 @@ int zlink::spot_reqrep_internal::build_spot_request_reply_message_into (
     }
 
     for (size_t i = 0; i < part_count_; ++i) {
-        if (zlink_msg_move (
-              &out_[packed_spot_routed_control_part_count
-                    + zlink::request_reply::control_part_count + i],
-              &parts_[i])
+        if (zlink_msg_move (&out_[packed_spot_routed_control_part_count
+                                  + zlink::request_reply::control_part_count + i],
+                            &parts_[i])
             != 0) {
             const int saved_errno = errno;
             zlink::request_reply::close_built_parts (out_, out_count_);
@@ -495,10 +494,10 @@ int zlink::spot_reqrep_internal::build_spot_routed_message (
 
     const size_t total_part_count = spot_routed_message_part_count (part_count_);
     out_->resize (total_part_count);
-    return build_spot_routed_message_into (
-      source_class_, source_node_rid_, source_endpoint_rid_, destination_class_,
-      destination_node_rid_, destination_endpoint_rid_, parts_, part_count_, &(*out_)[0],
-      total_part_count);
+    return build_spot_routed_message_into (source_class_, source_node_rid_, source_endpoint_rid_,
+                                           destination_class_, destination_node_rid_,
+                                           destination_endpoint_rid_, parts_, part_count_,
+                                           &(*out_)[0], total_part_count);
 }
 
 size_t zlink::spot_reqrep_internal::spot_routed_message_part_count (size_t payload_part_count_)

@@ -77,9 +77,8 @@ int drain_endpoint_reply_progress (spot_route_bridge_t *bridge_, bridge_endpoint
           zlink::socket_reqrep_internal::find_request_reply_state (
             make_socket_handle (endpoint_.socket));
         if (socket_state) {
-            const int socket_drained =
-              zlink::socket_reqrep_internal::drain_reply_completions (socket_state,
-                                                                      endpoint_.socket);
+            const int socket_drained = zlink::socket_reqrep_internal::drain_reply_completions (
+              socket_state, endpoint_.socket);
             if (socket_drained < 0)
                 return -1;
             drained += socket_drained;
@@ -93,9 +92,8 @@ int drain_endpoint_reply_progress (spot_route_bridge_t *bridge_, bridge_endpoint
          it != spots.end (); ++it) {
         if (!*it || !(*it)->request_reply_state)
             continue;
-        void *owner = (*it)->request_reply_state->owner
-                        ? (*it)->request_reply_state->owner
-                        : static_cast<void *> ((*it).get ());
+        void *owner = (*it)->request_reply_state->owner ? (*it)->request_reply_state->owner
+                                                        : static_cast<void *> ((*it).get ());
         const int spot_drained =
           zlink::spot_reqrep_internal::drain_spot_channel_reply_completions_from (
             (*it)->request_reply_state, owner, endpoint_.socket);
@@ -121,9 +119,7 @@ int drain_endpoint_reply_progress (spot_route_bridge_t *bridge_, bridge_endpoint
     return drained;
 }
 
-bool build_endpoint_source_rid (void *socket_,
-                                const char *channel_name_,
-                                zlink_routing_id_t *out_)
+bool build_endpoint_source_rid (void *socket_, const char *channel_name_, zlink_routing_id_t *out_)
 {
     (void) socket_;
     if (!out_ || !valid_channel_name (channel_name_)) {
@@ -307,13 +303,14 @@ int attach_channel (spot_route_bridge_t *bridge_,
     if (!build_endpoint_source_rid (socket_, channel_name_, &endpoint.bridge_source_rid))
         return -1;
     endpoint.bridge_source_key = zlink::routing_id_key (endpoint.bridge_source_rid);
-    endpoint.reply_adapter_state = zlink::spot_reqrep_internal::find_or_create_router_state (socket_);
+    endpoint.reply_adapter_state =
+      zlink::spot_reqrep_internal::find_or_create_router_state (socket_);
     if (!endpoint.reply_adapter_state) {
         errno = EFAULT;
         return -1;
     }
     zlink::spot_reqrep_internal::bind_router_state_rid (socket_, endpoint.bridge_source_key,
-                                                       endpoint.reply_adapter_state);
+                                                        endpoint.reply_adapter_state);
     bridge_->endpoints[channel_name] = endpoint;
     return 0;
 }
@@ -381,8 +378,8 @@ int handle_received_common (spot_route_bridge_t *bridge_,
 
         const zlink_routing_id_t *reply_peer_rid = source_node_rid_;
 
-        const int rc = deliver_request_relay_to_local_spot (
-          bridge_, &endpoint, reply_peer_rid, request_seq_, &relay);
+        const int rc = deliver_request_relay_to_local_spot (bridge_, &endpoint, reply_peer_rid,
+                                                            request_seq_, &relay);
         if (rc != 0) {
             if (errno == EPROTO)
                 ++bridge_->malformed_inbound_count;
@@ -477,8 +474,8 @@ int zlink_spot_route_bridge_send (void *bridge_,
 
     int rc = -1;
     if (endpoint.socket_type == ZLINK_CORE_SOCKET_ROUTER) {
-        rc = zlink_socket_send_rid_internal (endpoint.socket, target_node_rid_,
-                                            relay_parts.data (), relay_parts.size (), flags_);
+        rc = zlink_socket_send_rid_internal (endpoint.socket, target_node_rid_, relay_parts.data (),
+                                             relay_parts.size (), flags_);
     } else {
         errno = EINVAL;
         rc = -1;
@@ -551,8 +548,8 @@ int zlink_spot_route_bridge_handle_router_received (void *bridge_,
     spot_route_bridge_t *bridge = as_bridge (bridge_);
     if (!bridge)
         return -1;
-    return handle_received_common (bridge, channel_name_, source_node_rid_, request_seq_,
-                                   parts_, part_count_, handled_);
+    return handle_received_common (bridge, channel_name_, source_node_rid_, request_seq_, parts_,
+                                   part_count_, handled_);
 }
 
 int zlink_spot_route_bridge_drain (void *bridge_)

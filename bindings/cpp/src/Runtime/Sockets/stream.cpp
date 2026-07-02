@@ -116,9 +116,9 @@ std::vector<actor_ref_t> stream_socket_t::bound_actors (const routing_id_t &sess
 
     std::vector<zlink_actor_ref_t> entries (count);
     size_t actual = count;
-    detail::throw_if_failed<config_error_t> (static_cast<config_result_t> (
-      zlink_stream_bound_actors (detail::native_handle (*this), &session, entries.data (),
-                                 &actual)));
+    detail::throw_if_failed<config_error_t> (
+      static_cast<config_result_t> (zlink_stream_bound_actors (
+        detail::native_handle (*this), &session, entries.data (), &actual)));
     if (actual < entries.size ())
         entries.resize (actual);
 

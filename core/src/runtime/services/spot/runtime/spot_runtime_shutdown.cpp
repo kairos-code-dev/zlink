@@ -279,8 +279,7 @@ int spot_runtime_t::abortive_stop ()
     std::vector<socket_base_t *> attachment_sockets;
     {
         scoped_lock_t lock (attachment_state.sync);
-        for (std::map<uint64_t, spot_attachment_t>::iterator it =
-               attachment_state.items.begin ();
+        for (std::map<uint64_t, spot_attachment_t>::iterator it = attachment_state.items.begin ();
              it != attachment_state.items.end (); ++it) {
             if (it->second.socket)
                 attachment_sockets.push_back (it->second.socket);

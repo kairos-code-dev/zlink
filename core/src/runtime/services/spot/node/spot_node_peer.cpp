@@ -76,7 +76,8 @@ int spot_node_t::connect_peer_pub_rid (const zlink_routing_id_t *target_node_rid
     if (!admission.acquired ())
         return -1;
 
-    if (!valid_routing_id (target_node_rid_) || !peer_pub_endpoint_ || peer_pub_endpoint_[0] == '\0') {
+    if (!valid_routing_id (target_node_rid_) || !peer_pub_endpoint_
+        || peer_pub_endpoint_[0] == '\0') {
         errno = EINVAL;
         return -1;
     }

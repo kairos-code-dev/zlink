@@ -80,8 +80,8 @@ int zlink_spot_node_publisher_publish (void *publisher_,
     if (!admission.acquired ())
         return -1;
     zlink::spot_runtime_t *runtime = zlink::spot_node_access_t::runtime (publisher->node);
-    return zlink::spot_data_plane_forwarder_t::enqueue_publish_ingress (
-      runtime, topic_, parts_, part_count_, flags_, -1);
+    return zlink::spot_data_plane_forwarder_t::enqueue_publish_ingress (runtime, topic_, parts_,
+                                                                        part_count_, flags_, -1);
 }
 
 int zlink_spot_node_publisher_close (void *publisher_)

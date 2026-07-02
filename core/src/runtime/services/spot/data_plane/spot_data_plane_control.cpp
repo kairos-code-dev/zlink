@@ -261,8 +261,8 @@ static int handle_bind_pub_command (const ctrl_command_context_t &ctx_, const st
         }
 
         if (ctx_.runtime->routed_router && !route_bind_endpoint.empty ()
-            && (spot_node_access_t::apply_tls_server (ctx_.node, ctx_.runtime->routed_router,
-                                                      cert, key)
+            && (spot_node_access_t::apply_tls_server (ctx_.node, ctx_.runtime->routed_router, cert,
+                                                      key)
                   != 0
                 || ctx_.runtime->routed_router->bind (route_bind_endpoint.c_str ()) != 0)) {
             saved_errno = errno != 0 ? errno : EIO;
@@ -281,7 +281,7 @@ static int handle_bind_pub_command (const ctrl_command_context_t &ctx_, const st
             char resolved_router[256] = {0};
             size_t resolved_router_size = sizeof (resolved_router);
             if (ctx_.runtime->routed_router->getsockopt (ZLINK_INTERNAL_OPT_LAST_ENDPOINT,
-                                                           resolved_router, &resolved_router_size)
+                                                         resolved_router, &resolved_router_size)
                 == 0) {
                 const size_t len =
                   resolved_router_size > 0 ? strnlen (resolved_router, resolved_router_size) : 0;
@@ -291,10 +291,10 @@ static int handle_bind_pub_command (const ctrl_command_context_t &ctx_, const st
         }
         ctx_.runtime->bound_endpoint = resolved_endpoint;
         if (spot_debug::enabled ("ZLINK_DEBUG_SPOT_DIRECT_ROUTE")) {
-            std::fprintf (
-              stderr, "[spot-direct] bind routed router socket=%d endpoint=%s\n",
-              ctx_.runtime->routed_router ? ctx_.runtime->routed_router->socket_id () : -1,
-              ctx_.runtime->routed_router_bind_endpoint.c_str ());
+            std::fprintf (stderr, "[spot-direct] bind routed router socket=%d endpoint=%s\n",
+                          ctx_.runtime->routed_router ? ctx_.runtime->routed_router->socket_id ()
+                                                      : -1,
+                          ctx_.runtime->routed_router_bind_endpoint.c_str ());
         }
         spot_node_access_t::mark_bound_endpoint_and_server_tls_locked (ctx_.node,
                                                                        resolved_endpoint);
@@ -312,8 +312,8 @@ static int handle_connect_peer_pub_command (const ctrl_command_context_t &ctx_,
 
     const std::string &arg_ = args_[1];
     const std::string peer_rid = args_.size () > 2 ? args_[2] : std::string ();
-    const bool existing_peer = ctx_.state->peer_ctrl_endpoints.find (arg_)
-                               != ctx_.state->peer_ctrl_endpoints.end ();
+    const bool existing_peer =
+      ctx_.state->peer_ctrl_endpoints.find (arg_) != ctx_.state->peer_ctrl_endpoints.end ();
     std::string ca;
     std::string host;
     int trust = 0;

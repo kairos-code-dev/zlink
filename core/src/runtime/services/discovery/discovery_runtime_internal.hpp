@@ -98,7 +98,7 @@ class discovery_service_state_t
 
   private:
     std::vector<provider_info_t> _providers;
-    std::map<uint32_t, std::vector<provider_info_t> > _providers_by_registry;
+    std::map<uint32_t, std::vector<provider_info_t>> _providers_by_registry;
     std::map<uint32_t, uint64_t> _registry_seq;
     std::set<discovery_observer_t *> _observers;
     size_t _observer_callbacks_inflight;

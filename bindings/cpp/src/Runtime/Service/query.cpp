@@ -130,9 +130,8 @@ registry_query_client_t::topology (const registry_topology_filter_t *filter_) co
     std::vector<zlink_registry_topology_entry_t> native (count);
     if (count > 0) {
         while (true) {
-            const auto result = static_cast<config_result_t> (
-              zlink_registry_query_client_topology (
-                _impl->handle, filter_ptr, native.data (), &count));
+            const auto result = static_cast<config_result_t> (zlink_registry_query_client_topology (
+              _impl->handle, filter_ptr, native.data (), &count));
             if (result == config_result_t::ok) {
                 native.resize (count);
                 break;
@@ -149,6 +148,46 @@ registry_query_client_t::topology (const registry_topology_filter_t *filter_) co
     for (size_t i = 0; i < native.size (); ++i)
         entries.push_back (zlink::detail::service_model_access_t::from_native (native[i]));
     return entries;
+}
+
+std::vector<member_peer_entry_t>
+registry_query_client_t::member_peers (const std::string &channel_name_) const
+{
+    zlink::detail::validate_bounded_c_string (channel_name_, 255u, "channel_name");
+    size_t count = 0;
+    detail::throw_if_failed<config_error_t> (
+      static_cast<config_result_t> (zlink_registry_query_client_member_peers (
+        _impl->handle, channel_name_.c_str (), nullptr, &count)));
+    std::vector<zlink_member_peer_entry_t> native (count);
+    if (count > 0) {
+        while (true) {
+            const auto result =
+              static_cast<config_result_t> (zlink_registry_query_client_member_peers (
+                _impl->handle, channel_name_.c_str (), native.data (), &count));
+            if (result == config_result_t::ok) {
+                native.resize (count);
+                break;
+            }
+            if (result == config_result_t::internal_error && zlink_errno () == ENOBUFS) {
+                native.resize (count);
+                continue;
+            }
+            detail::throw_if_failed<config_error_t> (result);
+        }
+    }
+    std::vector<member_peer_entry_t> entries;
+    entries.reserve (native.size ());
+    for (size_t i = 0; i < native.size (); ++i)
+        entries.push_back (zlink::detail::service_model_access_t::from_native (native[i]));
+    return entries;
+}
+
+registry_status_t registry_query_client_t::status () const
+{
+    zlink_registry_status_t native;
+    detail::throw_if_failed<config_error_t> (
+      static_cast<config_result_t> (zlink_registry_query_client_status (_impl->handle, &native)));
+    return zlink::detail::service_model_access_t::from_native (native);
 }
 
 void registry_query_client_t::close ()

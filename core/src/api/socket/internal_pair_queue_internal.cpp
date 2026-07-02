@@ -149,11 +149,10 @@ void zlink::internal_pair_queue::close (queue_t *queue_)
     if (!queue_)
         return;
 
-    debug_internal_pair_queue ("close queue=%p rx=%d tx=%d endpoint=%s\n",
-                               static_cast<void *> (queue_),
-                               queue_->_rx ? queue_->_rx->socket_id () : -1,
-                               queue_->_tx ? queue_->_tx->socket_id () : -1,
-                               queue_->_endpoint.c_str ());
+    debug_internal_pair_queue (
+      "close queue=%p rx=%d tx=%d endpoint=%s\n", static_cast<void *> (queue_),
+      queue_->_rx ? queue_->_rx->socket_id () : -1, queue_->_tx ? queue_->_tx->socket_id () : -1,
+      queue_->_endpoint.c_str ());
     if (queue_->_tx) {
         close_internal_pair_socket (queue_->_tx);
         queue_->_tx = NULL;

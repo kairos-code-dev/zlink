@@ -111,15 +111,13 @@ std::vector<std::string> spot_runtime_external_routes_t::route_ids_for_destinati
     scoped_lock_t lock (sync);
     if (!destination_node_rid_.empty ())
         route_ids.push_back (destination_node_rid_);
-    for (std::map<std::string, std::string>::const_iterator it =
-           route_ids_by_endpoint.begin ();
+    for (std::map<std::string, std::string>::const_iterator it = route_ids_by_endpoint.begin ();
          it != route_ids_by_endpoint.end (); ++it) {
         if (it->second == destination_node_rid_) {
             return route_ids;
         }
     }
-    for (std::map<std::string, std::string>::const_iterator it =
-           route_ids_by_endpoint.begin ();
+    for (std::map<std::string, std::string>::const_iterator it = route_ids_by_endpoint.begin ();
          it != route_ids_by_endpoint.end (); ++it) {
         if (!it->second.empty ())
             route_ids.push_back (it->second);

@@ -43,9 +43,9 @@ static void refresh_runtime_router_admission_hwm (spot_runtime_t *runtime_, int 
 
     if (runtime_->routed_router) {
         (void) runtime_->routed_router->setsockopt (ZLINK_INTERNAL_OPT_SNDHWM, &hwm_,
-                                                      sizeof (hwm_));
+                                                    sizeof (hwm_));
         (void) runtime_->routed_router->setsockopt (ZLINK_INTERNAL_OPT_RCVHWM, &hwm_,
-                                                      sizeof (hwm_));
+                                                    sizeof (hwm_));
     }
 }
 
@@ -118,9 +118,9 @@ refresh_runtime_auto_hwm_msg_unit (spot_runtime_t *runtime_, const void *optval_
                                                 sizeof (pubsub_hwm));
     if (router_hwm_override && runtime_->routed_router) {
         (void) runtime_->routed_router->setsockopt (ZLINK_INTERNAL_OPT_SNDHWM, &router_hwm,
-                                                      sizeof (router_hwm));
+                                                    sizeof (router_hwm));
         (void) runtime_->routed_router->setsockopt (ZLINK_INTERNAL_OPT_RCVHWM, &router_hwm,
-                                                      sizeof (router_hwm));
+                                                    sizeof (router_hwm));
     }
 }
 
@@ -143,9 +143,9 @@ static void spot_internal_receiver_fanout_handler (const zlink_routing_id_t *sou
 }
 
 static bool apply_runtime_tuning_option (spot_node_runtime_tuning_t *config_,
-                                      int option_,
-                                      const void *optval_,
-                                      size_t optvallen_)
+                                         int option_,
+                                         const void *optval_,
+                                         size_t optvallen_)
 {
     if (!config_ || !optval_ || optvallen_ == 0 || optvallen_ > sizeof (int))
         return false;
@@ -193,10 +193,10 @@ static bool apply_runtime_tuning_option (spot_node_runtime_tuning_t *config_,
 }
 
 static bool read_runtime_tuning_option (ctx_t *ctx_,
-                                     const spot_runtime_t *runtime_,
-                                     const spot_node_runtime_tuning_t &config_,
-                                     int option_,
-                                     int *value_out_)
+                                        const spot_runtime_t *runtime_,
+                                        const spot_node_runtime_tuning_t &config_,
+                                        int option_,
+                                        int *value_out_)
 {
     if (!value_out_)
         return false;

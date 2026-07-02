@@ -23,11 +23,7 @@ const size_t control_header_size = 30u;
 const char endpoint_name[] = "__zlink.actor-gateway";
 
 frame_t::frame_t () :
-    kind (0),
-    part_flag (ZLINK_PART_FINAL),
-    generation (0),
-    request_id (0),
-    join_result_code (0)
+    kind (0), part_flag (ZLINK_PART_FINAL), generation (0), request_id (0), join_result_code (0)
 {
     memset (&session_rid, 0, sizeof (session_rid));
     memset (actor_id, 0, sizeof (actor_id));

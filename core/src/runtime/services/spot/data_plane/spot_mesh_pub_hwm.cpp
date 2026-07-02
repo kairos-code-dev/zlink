@@ -169,9 +169,9 @@ void spot_mesh_pub_hwm_t::refresh_live_sockets (spot_runtime_t *runtime_,
             const int desired = spot_node_router_admission_hwm (hwm);
             if (desired > 0) {
                 (void) routed_router_->setsockopt (ZLINK_INTERNAL_OPT_SNDHWM, &desired,
-                                                     sizeof (desired));
+                                                   sizeof (desired));
                 (void) routed_router_->setsockopt (ZLINK_INTERNAL_OPT_RCVHWM, &desired,
-                                                     sizeof (desired));
+                                                   sizeof (desired));
             }
         } else {
             apply_spot_internal_auto_hwm (

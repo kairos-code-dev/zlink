@@ -124,8 +124,7 @@ void spot_node_service_attachments_t::remove_monitors_by_owner_locked (
 {
     if (sockets_.empty ())
         return;
-    for (std::deque<spot_node_attachment_monitor_handle_t>::iterator mit =
-           _state.monitors.begin ();
+    for (std::deque<spot_node_attachment_monitor_handle_t>::iterator mit = _state.monitors.begin ();
          mit != _state.monitors.end ();) {
         bool matched = false;
         for (size_t i = 0; i < sockets_.size (); ++i) {
@@ -151,8 +150,7 @@ bool spot_node_service_attachments_t::detach_discovered_service_locked (
         return false;
     sockets_to_close_out_->clear ();
 
-    for (std::map<std::string, discovery_t *>::iterator it =
-           _state.discoveries.begin ();
+    for (std::map<std::string, discovery_t *>::iterator it = _state.discoveries.begin ();
          it != _state.discoveries.end (); ++it) {
         if (it->second != discovery_)
             continue;

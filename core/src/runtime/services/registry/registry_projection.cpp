@@ -240,16 +240,15 @@ bool registry_t::replace_route_observation_for_advertiser_locked (const route_en
     }
 
     int route_error = 0;
-    if (!route_store_can_fit_locked (entry_, replaced_memory, replaces_owner_route,
-                                     &route_error)) {
+    if (!route_store_can_fit_locked (entry_, replaced_memory, replaces_owner_route, &route_error)) {
         if (err_out_)
             *err_out_ = route_error;
         return false;
     }
 
     route_key_set_t dirty_routes;
-    erase_route_observations_by_route_advertiser_locked (
-      entry_.key, entry_.advertising_registry, &dirty_routes);
+    erase_route_observations_by_route_advertiser_locked (entry_.key, entry_.advertising_registry,
+                                                         &dirty_routes);
     upsert_route_observation_locked (entry_, &dirty_routes);
     materialize_dirty_routes_locked (dirty_routes);
     if (err_out_)

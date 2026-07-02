@@ -18,8 +18,7 @@ struct lifecycle_event_t
 
     ~lifecycle_event_t () { zlink::spot_clear_msg_parts (&request_parts); }
 
-    lifecycle_event_t (lifecycle_event_t &&other_) noexcept :
-        kind (other_.kind), info (other_.info)
+    lifecycle_event_t (lifecycle_event_t &&other_) noexcept : kind (other_.kind), info (other_.info)
     {
         request_parts.swap (other_.request_parts);
     }

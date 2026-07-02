@@ -156,7 +156,8 @@ void thread_entry (void *userdata_)
 
 } // namespace
 
-thread_t::thread_t (std::function<void ()> task_) : _state (std::make_unique<state> (std::move (task_)))
+thread_t::thread_t (std::function<void ()> task_) :
+    _state (std::make_unique<state> (std::move (task_)))
 {
     if (!_state->task)
         throw config_error_t (config_result_t::invalid_argument, EINVAL);

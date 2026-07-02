@@ -206,8 +206,7 @@ int spot_node_t::set_sub_routing_id (const void *data_, size_t size_)
 
     if (_runtime) {
         if (_runtime->mesh_xsub
-            && _runtime->mesh_xsub->setsockopt (ZLINK_INTERNAL_OPT_ROUTING_ID, next.data,
-                                                next.size)
+            && _runtime->mesh_xsub->setsockopt (ZLINK_INTERNAL_OPT_ROUTING_ID, next.data, next.size)
                  != 0)
             return -1;
         if (_runtime->pub_ingress_sub

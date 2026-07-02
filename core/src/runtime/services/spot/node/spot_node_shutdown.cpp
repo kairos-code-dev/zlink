@@ -193,8 +193,7 @@ int spot_node_t::destroy ()
         spot_shutdown_logf_local (false, "step=unregister_complete node=%p",
                                   static_cast<void *> (this));
     }
-    spot_shutdown_logf_local (false, "step=detach_phase_begin node=%p",
-                              static_cast<void *> (this));
+    spot_shutdown_logf_local (false, "step=detach_phase_begin node=%p", static_cast<void *> (this));
     begin_destroy_detach_phase (&discovery, &service_discoveries, &active_peer_endpoints,
                                 &bound_endpoint, &router_bind_endpoint);
     spot_shutdown_logf_local (false, "step=detach_phase_complete node=%p peers=%zu",

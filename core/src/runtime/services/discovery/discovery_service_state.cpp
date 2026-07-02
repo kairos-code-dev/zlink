@@ -53,14 +53,13 @@ static bool provider_less_local (const provider_info_t &lhs_, const provider_inf
 }
 
 static void merge_registry_provider_snapshots_local (
-  const std::map<uint32_t, std::vector<provider_info_t> > &snapshots_,
+  const std::map<uint32_t, std::vector<provider_info_t>> &snapshots_,
   std::vector<provider_info_t> *out_)
 {
     if (!out_)
         return;
     out_->clear ();
-    for (std::map<uint32_t, std::vector<provider_info_t> >::const_iterator it =
-           snapshots_.begin ();
+    for (std::map<uint32_t, std::vector<provider_info_t>>::const_iterator it = snapshots_.begin ();
          it != snapshots_.end (); ++it) {
         out_->insert (out_->end (), it->second.begin (), it->second.end ());
     }

@@ -232,7 +232,8 @@ void reply_to_channel_request (zlink_request_result_t result_,
     }
 
     for (size_t i = 0; i < part_count_; ++i) {
-        const zlink_part_flag_t part_flag = i + 1 < part_count_ ? ZLINK_PART_MORE : ZLINK_PART_FINAL;
+        const zlink_part_flag_t part_flag =
+          i + 1 < part_count_ ? ZLINK_PART_MORE : ZLINK_PART_FINAL;
         if (zlink_router_reply_part (pending->router_socket, &pending->peer_rid,
                                      pending->request_seq, &parts_[i], part_flag)
             != ZLINK_SUBMIT_OK) {

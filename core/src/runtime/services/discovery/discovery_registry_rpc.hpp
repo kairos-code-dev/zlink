@@ -32,6 +32,9 @@ int recv_status_ack (socket_base_t *socket_,
                      std::string *error_out_);
 int recv_topology_reply_entries (socket_base_t *socket_,
                                  std::vector<zlink_registry_topology_entry_t> *entries_out_);
+int recv_member_peers_reply_entries (socket_base_t *socket_,
+                                     std::vector<zlink_member_peer_entry_t> *entries_out_);
+int recv_registry_status_reply (socket_base_t *socket_, zlink_registry_status_t *status_out_);
 int recv_route_reply (socket_base_t *socket_,
                       zlink_routing_id_t *owner_rid_out_,
                       zlink_msg_t *value_out_);

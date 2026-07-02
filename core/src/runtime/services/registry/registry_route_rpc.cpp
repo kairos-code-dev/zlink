@@ -203,9 +203,8 @@ void zlink::registry_t::handle_unbind_route (void *router_,
                 const uint32_t advertising_registry =
                   _coordination_state.registry_id == 0 ? 1 : _coordination_state.registry_id;
                 int route_error = 0;
-                if (!erase_route_observation_for_owner_locked (route_key, owner,
-                                                               advertising_registry,
-                                                               &route_error)) {
+                if (!erase_route_observation_for_owner_locked (
+                      route_key, owner, advertising_registry, &route_error)) {
                     status = discovery_protocol::status_not_found;
                     error = "route not found";
                 } else {

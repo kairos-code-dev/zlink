@@ -101,12 +101,11 @@ submit_actor_join_entry_spot_awaitable (detail::actor_join_state_t &state_)
         throw submit_error_t (submit_result_t::invalid_handle, zlink_errno ());
     const zlink_routing_id_t dest_node_rid =
       zlink::detail::routing_id_native_value (state_.dest_node_rid);
-    const int rc = detail::submit_message_array (
-      state_.parts, [&] (zlink_msg_t *native_, size_t part_count_) {
+    const int rc =
+      detail::submit_message_array (state_.parts, [&] (zlink_msg_t *native_, size_t part_count_) {
           return zlink_spot_node_actor_join_entry_spot (
-            state_.node, zlink::detail::actor_ref_native (state_.actor), &dest_node_rid,
-            native_, part_count_, &detail::actor_join_entry_spot_result_trampoline,
-            request_state.get (),
+            state_.node, zlink::detail::actor_ref_native (state_.actor), &dest_node_rid, native_,
+            part_count_, &detail::actor_join_entry_spot_result_trampoline, request_state.get (),
             static_cast<zlink_send_flags_t> (static_cast<int> (state_.flags)),
             zlink::detail::native_timeout_ms (state_.timeout));
       });
@@ -125,12 +124,11 @@ bool submit_actor_join_entry_spot_callback (detail::actor_join_state_t &state_,
         throw submit_error_t (submit_result_t::invalid_handle, zlink_errno ());
     const zlink_routing_id_t dest_node_rid =
       zlink::detail::routing_id_native_value (state_.dest_node_rid);
-    const int rc = detail::submit_message_array (
-      state_.parts, [&] (zlink_msg_t *native_, size_t part_count_) {
+    const int rc =
+      detail::submit_message_array (state_.parts, [&] (zlink_msg_t *native_, size_t part_count_) {
           return zlink_spot_node_actor_join_entry_spot (
-            state_.node, zlink::detail::actor_ref_native (state_.actor), &dest_node_rid,
-            native_, part_count_, &detail::actor_join_entry_spot_result_trampoline,
-            request_state.get (),
+            state_.node, zlink::detail::actor_ref_native (state_.actor), &dest_node_rid, native_,
+            part_count_, &detail::actor_join_entry_spot_result_trampoline, request_state.get (),
             static_cast<zlink_send_flags_t> (static_cast<int> (state_.flags)),
             zlink::detail::native_timeout_ms (state_.timeout));
       });
@@ -289,8 +287,7 @@ const detail::actor_join_state_t &actor_join_entry_spot_operation_t::state () co
     return (*_state);
 }
 
-actor_join_entry_spot_operation_t &&
-actor_join_entry_spot_operation_t::message (message_t &part_) &&
+actor_join_entry_spot_operation_t &&actor_join_entry_spot_operation_t::message (message_t &part_) &&
 {
     state ().parts.push_back (std::move (part_));
     return std::move (*this);
@@ -642,10 +639,8 @@ actor_join_operation_t spot_node_t::join_actor (const actor_ref_t &actor_,
     return actor_join_operation_t (std::move (state));
 }
 
-actor_join_entry_spot_operation_t
-spot_node_t::join_actor_entry_spot (const actor_ref_t &actor_,
-                                    const routing_id_t &dest_node_rid_,
-                                    message_t &request_)
+actor_join_entry_spot_operation_t spot_node_t::join_actor_entry_spot (
+  const actor_ref_t &actor_, const routing_id_t &dest_node_rid_, message_t &request_)
 {
     detail::actor_join_state_t state;
     state.node = zlink::detail::native_handle (*this);

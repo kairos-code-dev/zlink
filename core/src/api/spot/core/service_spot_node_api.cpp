@@ -42,7 +42,7 @@ int refresh_routed_router_identity (zlink::spot_node_t *node)
     if (node->node_routing_id (&node_rid) != 0 || node_rid.size == 0)
         return -1;
     return runtime->routed_router->setsockopt (ZLINK_INTERNAL_OPT_ROUTING_ID, node_rid.data,
-                                                 node_rid.size);
+                                               node_rid.size);
 }
 
 int ensure_routed_router_ready (zlink::spot_node_t *node)
@@ -436,10 +436,9 @@ zlink_connect_result_t zlink_spot_node_connect_peer (void *node_, const char *pe
       zlink::spot_node_access_t::connect_peer (node, peer_endpoint_));
 }
 
-zlink_connect_result_t
-zlink_spot_node_connect_peer_rid (void *node_,
-                                  const zlink_routing_id_t *target_node_rid_,
-                                  const char *peer_endpoint_)
+zlink_connect_result_t zlink_spot_node_connect_peer_rid (void *node_,
+                                                         const zlink_routing_id_t *target_node_rid_,
+                                                         const char *peer_endpoint_)
 {
     zlink::spot_node_t *node = zlink::spot_node_access_t::from_handle (node_);
     if (!node) {

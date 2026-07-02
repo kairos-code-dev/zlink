@@ -26,8 +26,8 @@ class spot_runtime_external_routes_t
     std::string erase (const std::string &peer_endpoint_);
     std::vector<std::string> clear ();
     size_t size () const;
-    std::vector<std::string> route_ids_for_destination (
-      const std::string &destination_node_rid_) const;
+    std::vector<std::string>
+    route_ids_for_destination (const std::string &destination_node_rid_) const;
 
   private:
     mutable mutex_t sync;

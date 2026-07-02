@@ -270,8 +270,9 @@ int spot_node_t::unregister_registered ()
     return 0;
 }
 
-void spot_node_service_attachments_t::register_monitor_locked (
-  socket_base_t *owner_socket_, void *monitor_handle_, const std::string &channel_name_)
+void spot_node_service_attachments_t::register_monitor_locked (socket_base_t *owner_socket_,
+                                                               void *monitor_handle_,
+                                                               const std::string &channel_name_)
 {
     spot_node_attachment_monitor_handle_t monitor_entry;
     monitor_entry.handle = monitor_handle_;
@@ -430,8 +431,7 @@ void spot_node_t::on_discovery_destroyed (discovery_t *discovery_)
     std::vector<socket_base_t *> sockets_to_close;
     {
         scoped_lock_t lock (_sync);
-        if (_service_attachments.detach_discovered_service_locked (discovery_,
-                                                                   &sockets_to_close)) {
+        if (_service_attachments.detach_discovered_service_locked (discovery_, &sockets_to_close)) {
             spot_shutdown_logf_local (false, "step=detach_discovered_service node=%p sockets=%zu",
                                       static_cast<void *> (this), sockets_to_close.size ());
             _summary_state.summary_last_changed_ms = zlink::clock_t ().now_ms ();

@@ -54,6 +54,7 @@ internal sealed class ZLinkSpotNodeInitializer(
                 ConnectManualPeers(spotNodeRegistration, nodeRuntime);
 
                 await nodeRuntime.InitializeEntrySpotAsync().ConfigureAwait(false);
+                await ClaimEntrySpotLocationAsync(spotNodeRegistration, node).ConfigureAwait(false);
             }
             catch
             {
@@ -74,6 +75,33 @@ internal sealed class ZLinkSpotNodeInitializer(
             _ => throw new ZLinkConfigurationException(
                 $"SPOT node '{registration.SpotNodeName}' must enable router or pub/sub capability.")
         };
+    }
+
+    /// <summary>Spot lifecycle write (draft 15.1): spot node start
+    /// advertises the entry spot location row. A failed claim is logged
+    /// and never fails node startup: the row can only be missing until the
+    /// store recovers, and the owner lease governs its liveness.</summary>
+    private async ValueTask ClaimEntrySpotLocationAsync(
+        ZLinkSpotNodeRegistration spotNodeRegistration,
+        IZLinkBackendSpotNode node)
+    {
+        if (spotNodeRegistration.Router is null) return;
+
+        if (services.GetService(typeof(ZLinkLocationLifecycle)) is not ZLinkLocationLifecycle lifecycle)
+            return;
+
+        var status = await lifecycle.ClaimSpotAsync(
+                spotNodeRegistration.SpotDiscoveryChannelName ?? spotNodeRegistration.SpotNodeName,
+                node.EntrySpot().RoutingId,
+                spotType: null,
+                node.RoutingId,
+                ZLinkSpotKind.Entry,
+                spotNodeRegistration.Router.BindEndpoint,
+                deactivate: null)
+            .ConfigureAwait(false);
+        if (status != ZLinkLocationWriteStatus.Stored)
+            ZLinkFrameworkDebugLog.SpotDiscovery(
+                $"entry spot location claim for '{spotNodeRegistration.SpotNodeName}' returned {status}");
     }
 
     private static void ConnectManualPeers(

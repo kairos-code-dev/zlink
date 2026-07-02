@@ -7,6 +7,9 @@ internal sealed partial class ZLinkActorSessionManager(
 {
     private readonly ZLinkActorSessionRegistry _actorSessions = new();
 
+    private ZLinkLocationLifecycle? LocationLifecycle =>
+        services.GetService(typeof(ZLinkLocationLifecycle)) as ZLinkLocationLifecycle;
+
     private ZLinkActorCreationCoordinator? _actorCreationInitialized;
     private ZLinkActorDispatchRouter? _dispatchRouterInitialized;
 

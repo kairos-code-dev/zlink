@@ -3,7 +3,8 @@ namespace Zlink.Framework.Runtime.Host;
 internal sealed class ZLinkSpotRouteEgressDispatcher(
     ZLinkFrameworkRegistration registration,
     Func<string, ZLinkRouteChannelRuntime> getRouteChannel,
-    Func<string, ZLinkSpotNodeRuntime?> getRouteBridgeOwner)
+    Func<string, ZLinkSpotNodeRuntime?> getRouteBridgeOwner,
+    Func<ZLinkSpotLocationRidResolver?> getSpotLocationResolver)
 {
     public bool CanHandle(string localEgressChannelName)
     {
@@ -17,7 +18,9 @@ internal sealed class ZLinkSpotRouteEgressDispatcher(
         CancellationToken cancellationToken)
     {
         var target = ResolveTarget(localEgressChannelName);
-        if (!target.TryResolveTargetPeerRid(targetSpotRid, out var targetPeerRid)) return false;
+        if (await target.ResolveTargetPeerRidAsync(targetSpotRid, cancellationToken)
+                .ConfigureAwait(false) is not { } targetPeerRid)
+            return false;
 
         await target.SendAsync(
                 targetPeerRid,
@@ -36,7 +39,8 @@ internal sealed class ZLinkSpotRouteEgressDispatcher(
         CancellationToken cancellationToken)
     {
         var target = ResolveTarget(localEgressChannelName);
-        if (!target.TryResolveTargetPeerRid(targetSpotRid, out var targetPeerRid))
+        if (await target.ResolveTargetPeerRidAsync(targetSpotRid, cancellationToken)
+                .ConfigureAwait(false) is not { } targetPeerRid)
             return SpotRouteEgressRequestResult.NotHandled;
 
         var reply = await target.RequestAsync(
@@ -55,7 +59,8 @@ internal sealed class ZLinkSpotRouteEgressDispatcher(
             return new RouteEgressTarget(
                 localEgressChannelName,
                 getRouteChannel,
-                getRouteBridgeOwner);
+                getRouteBridgeOwner,
+                getSpotLocationResolver);
 
         throw new ZLinkConfigurationException(
             $"Routed SPOT egress channel '{localEgressChannelName}' is not a registered RouteMesh channel.");
@@ -63,9 +68,9 @@ internal sealed class ZLinkSpotRouteEgressDispatcher(
 
     private interface IEgressTarget
     {
-        bool TryResolveTargetPeerRid(
+        ValueTask<RoutingId?> ResolveTargetPeerRidAsync(
             RoutingId targetSpotRid,
-            out RoutingId targetPeerRid);
+            CancellationToken cancellationToken);
 
         ValueTask SendAsync(
             RoutingId targetPeerRid,
@@ -84,14 +89,27 @@ internal sealed class ZLinkSpotRouteEgressDispatcher(
     private sealed class RouteEgressTarget(
         string localEgressChannelName,
         Func<string, ZLinkRouteChannelRuntime> getRouteChannel,
-        Func<string, ZLinkSpotNodeRuntime?> getRouteBridgeOwner)
+        Func<string, ZLinkSpotNodeRuntime?> getRouteBridgeOwner,
+        Func<ZLinkSpotLocationRidResolver?> getSpotLocationResolver)
         : IEgressTarget
     {
-        public bool TryResolveTargetPeerRid(
+        public async ValueTask<RoutingId?> ResolveTargetPeerRidAsync(
             RoutingId targetSpotRid,
-            out RoutingId targetPeerRid)
+            CancellationToken cancellationToken)
         {
-            return TryResolveBridgeOwnerRid(out targetPeerRid);
+            // The location row is authoritative when the store is enabled
+            // (it may point off-node); the local route-bridge owner is the
+            // fallback, mirroring the removed discovery-first ordering.
+            if (getSpotLocationResolver() is { } resolver)
+            {
+                var row = await resolver.ResolveAsync(targetSpotRid, cancellationToken)
+                    .ConfigureAwait(false);
+                if (row is not null) return row.NodeRid;
+            }
+
+            return TryResolveBridgeOwnerRid(out var targetPeerRid)
+                ? targetPeerRid
+                : null;
         }
 
         public async ValueTask SendAsync(

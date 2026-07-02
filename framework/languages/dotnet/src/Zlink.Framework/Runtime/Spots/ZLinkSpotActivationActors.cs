@@ -139,6 +139,17 @@ internal sealed partial class ZLinkSpotActivation
         CancellationToken cancellationToken)
     {
         await _actorLifecycle.JoinAsync(actor, cancellationToken).ConfigureAwait(false);
+
+        if (_runtime.LocationLifecycle is { } locations)
+        {
+            var actorState = _runtime.GetOrCreateActorState(actor.ActorId);
+            await locations.NotifyActorJoinedSpotAsync(
+                    actorState.ActorType ?? string.Empty,
+                    actor.ActorId,
+                    SpotRid,
+                    cancellationToken)
+                .ConfigureAwait(false);
+        }
     }
 
     private async ValueTask LeaveActorCoreAsync(
@@ -164,6 +175,13 @@ internal sealed partial class ZLinkSpotActivation
         _actors.RemoveIfCurrent(actor);
         var actorState = _runtime.GetOrCreateActorState(actor.ActorId);
         if (ReferenceEquals(actorState.Activation, this)) actorState.Activation = null;
+
+        if (_runtime.LocationLifecycle is { } locations)
+            await locations.NotifyActorLeftSpotAsync(
+                    actorState.ActorType ?? string.Empty,
+                    actor.ActorId,
+                    cancellationToken)
+                .ConfigureAwait(false);
 
         if (_actorHandlers is not null
             && _actorHandlers.TryResolveLeft(actor.GetType(), out var descriptor)

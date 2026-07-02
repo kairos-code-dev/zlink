@@ -98,8 +98,14 @@ internal sealed partial class ZLinkFrameworkRuntime
                              .ConfigureAwait(false)
                          ?? throw new InvalidOperationException($"SPOT '{spotRid}' is not active.");
 
-        var creation = await CreateLocalActorAsync(actorId, actorType, cancellationToken)
-            .ConfigureAwait(false);
+        // Hosting handoff: the source node still owns the location row, so
+        // the local claim may fence it out with Takeover (draft section 9).
+        CreateActorResult creation;
+        using (ZLinkLocationLifecycle.EnterActorTakeoverScope())
+        {
+            creation = await CreateLocalActorAsync(actorId, actorType, cancellationToken)
+                .ConfigureAwait(false);
+        }
         var actorState = GetOrCreateActorState(actorId);
         var actorRef = actorState.NativeActorRef
                        ?? throw new ZLinkFrameworkException(
@@ -347,6 +353,16 @@ internal sealed partial class ZLinkFrameworkRuntime
         return _actors.GetOrCreateActorState(actorId);
     }
 
+    internal ValueTask DeactivateActorOnOwnershipLossAsync(
+        string actorId,
+        CancellationToken cancellationToken = default)
+    {
+        return _actors.DeactivateActorOnOwnershipLossAsync(actorId, cancellationToken);
+    }
+
+    internal ZLinkLocationLifecycle? LocationLifecycle =>
+        Services.GetService(typeof(ZLinkLocationLifecycle)) as ZLinkLocationLifecycle;
+
     internal void BindSessionActor(
         string actorId,
         ZLinkSessionContext context,
@@ -387,12 +403,17 @@ internal sealed partial class ZLinkFrameworkRuntime
     {
         GetOrCreateActorState(actorId).BindSession(sessionNodeRid, sessionRid, bindingToken);
         ActorBoundSessions.Register(this, actorId, sessionRid, bindingToken);
+        LocationLifecycle?.OnActorSessionBound(
+            sessionRid,
+            actorId,
+            GetActorSpotNode()?.RoutingId ?? default);
     }
 
     internal void UnbindActorSession(
         string actorId,
         string bindingToken)
     {
+        NotifyActorSessionRouteUnbound(actorId, bindingToken);
         GetOrCreateActorState(actorId).UnbindSession(bindingToken);
         ActorBoundSessions.Unregister(this, actorId, bindingToken);
     }
@@ -404,8 +425,18 @@ internal sealed partial class ZLinkFrameworkRuntime
         if (TryGetSessionActorContext(actorId, bindingToken, out var context))
             UnbindSessionActor(actorId, context, bindingToken);
 
+        NotifyActorSessionRouteUnbound(actorId, bindingToken);
         GetOrCreateActorState(actorId).UnbindSession(bindingToken);
         ActorBoundSessions.Unregister(this, actorId, bindingToken);
+    }
+
+    private void NotifyActorSessionRouteUnbound(string actorId, string bindingToken)
+    {
+        if (LocationLifecycle is not { } lifecycle) return;
+
+        if (GetOrCreateActorState(actorId).TryGetBoundSession(out var session)
+            && string.Equals(session.BindingToken, bindingToken, StringComparison.Ordinal))
+            lifecycle.OnActorSessionUnbound(session.SessionRid);
     }
 
     internal void CleanupActorSessionsForSession(RoutingId sessionRid)

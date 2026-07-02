@@ -159,6 +159,14 @@ internal static class ZLinkFrameworkServiceRegistrar
                 typeof(IZLinkSpotRemoteAddressResolver),
                 provider => provider.GetRequiredService(registration.SpotRemoteAddressResolverType));
         }
+        else if (registration.Locations.Enabled)
+        {
+            // Default spot remote address resolution over the location
+            // store; a user-registered resolver always wins.
+            services.AddSingleton<IZLinkSpotRemoteAddressResolver>(static provider =>
+                new ZLinkLocationSpotRemoteAddressResolver(
+                    provider.GetRequiredService<ZLinkSpotLocationRidResolver>()));
+        }
 
         return services;
     }
@@ -276,6 +284,12 @@ internal static class ZLinkFrameworkServiceRegistrar
                 provider.GetRequiredService<ZLinkOwnerLeaseTracker>(),
                 provider.GetRequiredService<ZLinkLocationRuntime>(),
                 provider.GetRequiredService<ZLinkStoreLocationResolvers>()));
+        services.AddSingleton(static provider => new ZLinkLocationLifecycle(
+            provider.GetRequiredService<ZLinkLocationRuntime>(),
+            provider.GetRequiredService<IZLinkActorLocationResolver>()));
+        services.AddSingleton(provider => new ZLinkSpotLocationRidResolver(
+            registration,
+            provider.GetRequiredService<IZLinkSpotLocationResolver>()));
         services.AddSingleton(static provider => new ZLinkLocationAutoConnectHost(
             provider.GetRequiredService<ZLinkLocationRuntime>(),
             provider.GetRequiredService<IZLinkPeerLocationResolver>(),

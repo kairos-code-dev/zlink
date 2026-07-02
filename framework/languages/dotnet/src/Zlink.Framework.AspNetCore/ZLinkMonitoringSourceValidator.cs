@@ -1,9 +1,6 @@
-using Microsoft.Extensions.DependencyInjection;
-
 namespace Zlink.Framework.AspNetCore;
 
 internal sealed class ZLinkMonitoringSourceValidator(
-    IServiceProvider services,
     ZLinkMonitoringRegistration registration)
 {
     public void ValidateRequiredRuntimes(ZLinkFrameworkRuntime? frameworkRuntime)

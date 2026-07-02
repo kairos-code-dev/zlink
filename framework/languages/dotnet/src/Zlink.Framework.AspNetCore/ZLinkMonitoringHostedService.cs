@@ -3,7 +3,6 @@ using Microsoft.Extensions.Hosting;
 namespace Zlink.Framework.AspNetCore;
 
 internal sealed class ZLinkMonitoringHostedService(
-    IServiceProvider services,
     IZLinkBackendAdapterFactory backendAdapterFactory,
     ZLinkMonitoringRegistration registration,
     ZLinkRuntimeEventDispatcher dispatcher,
@@ -13,7 +12,7 @@ internal sealed class ZLinkMonitoringHostedService(
         _monitoringAdapter = backendAdapterFactory.CreateMonitoringAdapter();
 
     private readonly List<IAsyncDisposable> _monitors = [];
-    private readonly ZLinkMonitoringSourceValidator _sourceValidator = new(services, registration);
+    private readonly ZLinkMonitoringSourceValidator _sourceValidator = new(registration);
     private Task? _pollingTask;
     private CancellationTokenSource? _stopTokenSource;
     private ZLinkRuntimeTaskRunner? _taskRunner;

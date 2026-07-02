@@ -35,11 +35,16 @@ internal sealed class ZLinkActorEntrySpotRouteInternalPacketDispatcher(
                           typeof(ZLinkActorEntrySpotRouteJoinRequest))
                       ?? throw new InvalidOperationException("Actor EntrySpot route join request was empty.");
 
-        var created = await runtime.CreateLocalActorAsync(
-                request.ActorId,
-                request.ActorType,
-                cancellationToken)
-            .ConfigureAwait(false);
+        // Hosting handoff from the source node (see JoinRoutedActorAsync).
+        CreateActorResult created;
+        using (ZLinkLocationLifecycle.EnterActorTakeoverScope())
+        {
+            created = await runtime.CreateLocalActorAsync(
+                    request.ActorId,
+                    request.ActorType,
+                    cancellationToken)
+                .ConfigureAwait(false);
+        }
         var actor = created.Actor;
         var state = runtime.GetOrCreateActorState(actor.ActorId);
         var nativeRef = state.NativeActorRef

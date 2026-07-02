@@ -9,6 +9,9 @@ internal sealed class ZLinkActorCreationCoordinator(
     Func<ZLinkActorRuntimeState, ZLinkActorContext> ensureActorContext,
     Func<IZLinkActor, ZLinkActorRuntimeState, ZLinkActorContext> bindActorContext)
 {
+    private ZLinkLocationLifecycle? Lifecycle =>
+        services.GetService(typeof(ZLinkLocationLifecycle)) as ZLinkLocationLifecycle;
+
     public async ValueTask<CreateActorResult> CreateAndBindActorAsync(
         ZLinkActorRuntimeState state,
         string actorId,
@@ -31,6 +34,7 @@ internal sealed class ZLinkActorCreationCoordinator(
                 () => CreateActorCoreAsync(
                     state,
                     actorId,
+                    actorType,
                     factoryType,
                     createRequest,
                     CancellationToken.None).AsTask(),
@@ -54,6 +58,53 @@ internal sealed class ZLinkActorCreationCoordinator(
     }
 
     private async ValueTask<IZLinkActor> CreateActorCoreAsync(
+        ZLinkActorRuntimeState state,
+        string actorId,
+        string actorType,
+        Type factoryType,
+        ZLinkMessage createRequest,
+        CancellationToken cancellationToken)
+    {
+        if (Lifecycle is not { } lifecycle)
+            return await ActivateActorCoreAsync(state, actorId, factoryType, createRequest, cancellationToken)
+                .ConfigureAwait(false);
+
+        // Claim-then-activate (location resolver store draft, section 17):
+        // the actor location claim must succeed before any instance exists.
+        // A losing claimer backs off without activating.
+        var outcome = await lifecycle.ExecuteActorClaimThenActivateAsync(
+                actorType,
+                actorId,
+                getActorSpotNode()?.RoutingId ?? default,
+                deactivate: _ => runtime.DeactivateActorOnOwnershipLossAsync(actorId),
+                activate: ct => ActivateActorCoreAsync(state, actorId, factoryType, createRequest, ct),
+                cancellationToken)
+            .ConfigureAwait(false);
+        if (outcome.Activated is not { } actor)
+        {
+            var location = outcome.ExistingLocation;
+            throw new ZLinkFrameworkException(
+                ZLinkFrameworkErrorKind.ActorCreateFailed,
+                location is null
+                    ? $"Actor '{actorId}' location claim was rejected and no live location row was found."
+                    : $"Actor '{actorId}' is already active on node '{location.NodeRid}' (location claim conflict).");
+        }
+
+        if (state.NativeActorRef is { } nativeRef)
+            await lifecycle.SetActorRefAsync(
+                    actorType,
+                    actorId,
+                    ZLinkLocationLifecycle.SerializeActorRef(
+                        nativeRef.NodeRid,
+                        nativeRef.ActorId,
+                        nativeRef.Generation),
+                    cancellationToken)
+                .ConfigureAwait(false);
+
+        return actor;
+    }
+
+    private async ValueTask<IZLinkActor> ActivateActorCoreAsync(
         ZLinkActorRuntimeState state,
         string actorId,
         Type factoryType,

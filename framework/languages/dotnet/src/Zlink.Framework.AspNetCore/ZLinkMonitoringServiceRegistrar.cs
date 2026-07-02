@@ -17,7 +17,6 @@ internal static class ZLinkMonitoringServiceRegistrar
             provider.GetRequiredService<ZLinkRuntimeEventDispatcher>());
         services.AddSingleton<IHostedService>(static provider =>
             new ZLinkMonitoringHostedService(
-                provider,
                 provider.GetRequiredService<IZLinkBackendAdapterFactory>(),
                 provider.GetRequiredService<ZLinkMonitoringRegistration>(),
                 provider.GetRequiredService<ZLinkRuntimeEventDispatcher>(),

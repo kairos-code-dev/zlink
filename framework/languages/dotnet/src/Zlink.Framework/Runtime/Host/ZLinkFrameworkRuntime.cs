@@ -59,7 +59,8 @@ internal sealed partial class ZLinkFrameworkRuntime
         _spotRouteEgress = new ZLinkSpotRouteEgressDispatcher(
             Registration,
             _channelFacade.GetRouteChannel,
-            GetSpotRouteBridgeOwner);
+            GetSpotRouteBridgeOwner,
+            () => Services.GetService(typeof(ZLinkSpotLocationRidResolver)) as ZLinkSpotLocationRidResolver);
     }
 
     public IZLinkBackendContext? Context => _state?.Context;

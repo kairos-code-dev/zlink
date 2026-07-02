@@ -177,6 +177,14 @@ E2E 코드에서 우회하지 않는다. 먼저 원인을 확인하고, 필요�
 - framework E2E 목록에 남길 경우에는 `.NET e2e` baseline이 없다는 사실과 extra role/process shape를
   feature-map과 plan에 명확히 표시한다.
 
+현재 판정:
+
+- `DeliveryDispatch`는 `.NET e2e` baseline이 없으므로 `.NET DeliveryDispatch` 샘플 기준의
+  sample-derived C++ E2E로 유지한다.
+- 기준과 role/source layout은 `framework/languages/cpp/e2e/DeliveryDispatch/porting-inventory.ko.md`와
+  `framework/languages/cpp/e2e/DeliveryDispatch/feature-map.ko.md`가 관리한다.
+- C++ framework E2E plan의 config 표에도 `.NET DeliveryDispatch` sample 기준이라고 명시되어 있다.
+
 ### 9. `PubSub`
 
 현재 문제:
@@ -197,19 +205,46 @@ E2E 코드에서 우회하지 않는다. 먼저 원인을 확인하고, 필요�
 
 ## 작업 체크리스트
 
-- [ ] `DiscoveryRegistryHa` config를 새로 추가하고 `.NET` source role을 inventory로 매핑한다.
-- [ ] `RegistryMessaging` Client를 HTTP driver로 바꾸고 `RM-C3` batch endpoint를 맞춘다.
-- [ ] `RegistrationCodec` Client를 HTTP driver로 바꾸고 `CodecRequester` role을 분리한다.
-- [ ] `ResilienceLifecycle` Client framework host를 제거하고 HTTP/process driver로 바꾼다.
-- [ ] `RuntimeMonitoring` Client framework participant 구조를 제거한다.
-- [ ] `SpotService` Client fallback framework participant block을 제거한다.
-- [ ] `YieldDispatch` YD-E2 gap 문구를 feature-map, inventory, language plan에 같은 의미로 맞춘다.
-- [ ] `DeliveryDispatch`를 framework E2E scope에서 제외할지 sample-derived E2E로 둘지 명시한다.
-- [ ] `PubSub` PS-A4/PS-B2 lifecycle orchestration을 Client support로 옮긴다.
-- [ ] 각 config의 `run_e2e.sh`에 공통 local E2E 대기 기준을 적용한다.
-- [ ] 각 config의 `porting-inventory.ko.md`와 `feature-map.ko.md`를 실제 구현 상태와 맞춘다.
-- [ ] framework 기능 누락이나 버그가 나오면 원인을 고치고 회귀테스트를 추가한다.
-- [ ] 각 config의 `run_e2e.sh`를 실행하고 scenario marker와 role process evidence를 확인한다.
+- [x] `DiscoveryRegistryHa` config를 새로 추가하고 `.NET` source role을 inventory로 매핑한다.
+- [x] `RegistryMessaging` Client를 HTTP driver로 바꾸고 `RM-C3` batch endpoint를 맞춘다.
+- [x] `RegistrationCodec` Client를 HTTP driver로 바꾸고 `CodecRequester` role을 분리한다.
+- [x] `ResilienceLifecycle` Client framework host를 제거하고 HTTP/process driver로 바꾼다.
+- [x] `RuntimeMonitoring` Client framework participant 구조를 제거한다.
+- [x] `SpotService` Client fallback framework participant block을 제거한다.
+- [x] `YieldDispatch` YD-E2 gap 문구를 feature-map, inventory, language plan에 같은 의미로 맞춘다.
+- [x] `DeliveryDispatch`를 framework E2E scope에서 제외할지 sample-derived E2E로 둘지 명시한다.
+- [x] `PubSub` PS-A4/PS-B2 lifecycle orchestration을 Client support로 옮긴다.
+- [x] 각 config의 `run_e2e.sh`에 공통 local E2E 대기 기준을 적용한다.
+- [x] 각 config의 `porting-inventory.ko.md`와 `feature-map.ko.md`를 실제 구현 상태와 맞춘다.
+- [x] framework 기능 누락이나 버그가 나오면 원인을 고치고 회귀테스트를 추가한다.
+- [x] 각 config의 `run_e2e.sh`를 실행하고 scenario marker와 role process evidence를 확인한다.
+
+현재 검증 요약:
+
+- `DiscoveryRegistryHa`: DR-A1~DR-D4 전체 runner 통과. 최신 aggregate 로그는
+  `framework/languages/cpp/e2e/DiscoveryRegistryHa/logs/20260702-092354-30903`부터
+  `logs/20260702-092633-39492`까지이며, DR-C3 registry outage runtime bug는 framework regression과 함께
+  수정했다.
+- `RegistryMessaging`: HTTP driver와 RM-C3 batch endpoint 구조로 runner 통과. 최신 full sweep은
+  `framework/languages/cpp/e2e/RegistryMessaging/logs/20260702-094137-67143`부터
+  `logs/20260702-094424-76004`까지다.
+- `RegistrationCodec`: HTTP driver와 `CodecRequester` role split 완료. RC-A2는 C++ public
+  annotation/decorator registration 계약이 없어 public contract gap으로 유지한다. 최신 로그는
+  `framework/languages/cpp/e2e/RegistrationCodec/logs/20260702-094446-76626`이다.
+- `ResilienceLifecycle`: Client framework host 제거 후 HTTP/process driver 구조로 runner 통과. 최신 로그는
+  `framework/languages/cpp/e2e/ResilienceLifecycle/logs/20260702-094506-77388`이다.
+- `RuntimeMonitoring`: Client framework participant 제거 후 HTTP/evidence driver 구조로 runner 통과. 최신
+  로그는 `framework/languages/cpp/e2e/RuntimeMonitoring/logs/20260702-094846-88252`이다.
+- `SpotService`: Client fallback framework participant 제거 후 focused child sweep `all` runner 통과. 최신
+  parent 로그는 `framework/languages/cpp/e2e/SpotService/logs/20260702-092843-42150`이고 마지막 child
+  로그는 `logs/20260702-093224-55770`이다.
+- `YieldDispatch`: YD-A/B/C/D/E1/E3/E4/E5 runner 통과. YD-E2는 C++ public yield cancellation token 계약이
+  없어 public contract gap으로 유지한다. 최신 로그는
+  `framework/languages/cpp/e2e/YieldDispatch/logs/20260702-094908-89179`이다.
+- `DeliveryDispatch`: `.NET DeliveryDispatch` sample-derived C++ E2E로 분류하고 runner 통과. 최신 로그는
+  `framework/languages/cpp/e2e/DeliveryDispatch/logs/last-run`이다.
+- `PubSub`: PS-A4/PS-B2 process lifecycle control을 Client support로 옮긴 뒤 `all` runner 통과. 최신 로그는
+  `framework/languages/cpp/e2e/PubSub/logs/20260702-093832-63001`이다.
 
 ## 완료 확인 절차
 
@@ -225,11 +260,20 @@ E2E 코드에서 우회하지 않는다. 먼저 원인을 확인하고, 필요�
 
 마지막에는 Codex 에이전트로 이 문서를 기준으로 반복 리뷰한다.
 
-- [ ] `.NET` source-only inventory와 C++ inventory를 다시 대조한다.
-- [ ] Client가 framework runtime으로 뜨는 항목이 남아 있는지 검색한다.
-- [ ] `.NET` source role이 빠졌거나 C++ extra role이 남았는지 확인한다.
-- [ ] scenario file 분류가 `.NET Client/Scenarios`와 공통 E2E scenario ID에 대응되는지 확인한다.
-- [ ] public API gap을 내부 helper나 test-only adapter로 숨긴 항목이 없는지 확인한다.
-- [ ] framework 기능 누락 또는 버그를 E2E 코드 우회로 처리한 항목이 없는지 확인한다.
-- [ ] 누락 항목이 나오면 이 문서의 수정 목록과 체크리스트에 추가한 뒤 다시 리뷰한다.
-- [ ] Codex 리뷰 결과가 `NO MISSING CPP ITEMS`가 될 때까지 반복한다.
+- [x] `.NET` source-only inventory와 C++ inventory를 다시 대조한다.
+- [x] Client가 framework runtime으로 뜨는 항목이 남아 있는지 검색한다.
+- [x] `.NET` source role이 빠졌거나 C++ extra role이 남았는지 확인한다.
+- [x] scenario file 분류가 `.NET Client/Scenarios`와 공통 E2E scenario ID에 대응되는지 확인한다.
+- [x] public API gap을 내부 helper나 test-only adapter로 숨긴 항목이 없는지 확인한다.
+- [x] framework 기능 누락 또는 버그를 E2E 코드 우회로 처리한 항목이 없는지 확인한다.
+- [x] 누락 항목이 나오면 이 문서의 수정 목록과 체크리스트에 추가한 뒤 다시 리뷰한다.
+- [x] Codex 리뷰 결과가 `NO MISSING CPP ITEMS`가 될 때까지 반복한다.
+
+최종 반복 리뷰 결과: `NO MISSING CPP ITEMS`
+
+- `.NET e2e` 기준 config 8개와 `DeliveryDispatch` sample-derived 기준 모두 source-only inventory 누락이 없다.
+- C++ Client tree에는 `app_t`, `hosted_service_t`, `add_zlink_framework`, `channel_client_t`,
+  `request_client(...)`, `message_bus(...)`, `enable_client(...)` 같은 framework runtime participant 패턴이
+  남아 있지 않다.
+- 남은 gap은 구현 누락이 아니라 C++ public contract가 아직 없는 `RegistrationCodec` RC-A2와
+  `YieldDispatch` YD-E2뿐이며, 둘 다 feature-map/inventory/draft 문서에 public contract gap으로 기록했다.

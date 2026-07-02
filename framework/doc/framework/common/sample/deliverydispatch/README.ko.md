@@ -29,15 +29,15 @@ stream session binding이 하나의 업무 흐름 안에서 어떻게 연결되�
 - 고객 client는 배송 생성 HTTP API와 상태 수신 stream endpoint를 사용한다.
 - Dispatch server는 외부 HTTP 요청을 내부 dispatch channel request로 바꾸고, 같은 server
   안의 worker가 배송원 선택, timeout, 재배정을 처리한다.
-- CourierSession server는 배송원 client의 stream 연결을 받고, courier id와 session route를
-  CourierGateway server에 bind 요청한다.
-- CourierGateway server는 courier id를 어느 SpotNode의 actor에 둘지 정하고, courier id와
-  actor node rid, session route를 함께 기억한다.
+- CourierSession server는 배송원 client의 stream 연결을 받고, courier id에 맞는
+  actor 위치를 먼저 찾는다. 이미 actor가 있으면 현재 session route만 다시 bind하고,
+  없으면 Courier spot server node에 actor 생성을 요청한 뒤 session route를 bind한다.
 - Courier spot server node는 배송원 actor와 entry spot을 가지며, 배송 제안을 actor로
-  전달한다.
+  전달한다. 배송원 actor는 자기 courier id와 현재 session route를 기억한다.
 - Tracking 서버는 배송 상태 event를 기록하고 고객 actor에 보낼 상태 알림을 만든다.
-- CustomerGateway server는 고객 stream session과 customer actor를 bind하고 상태 알림을
-  client에 push한다.
+- CustomerGateway server는 고객 stream 연결을 받으면 customer id에 맞는 actor 위치를 먼저
+  찾는다. 이미 actor가 있으면 현재 session만 다시 bind하고, 없으면 customer actor를 만든 뒤
+  상태 알림을 client에 push한다.
 - client scenario는 성공 배차와 timeout 재배차를 모두 검증한다.
 
 DeliveryDispatch는 CRUD API 샘플이 아니다. 중요한 상태가 여러 역할 사이를 바로 이동하고
@@ -130,13 +130,13 @@ ZLink는 고객의 HTTP 요청이나 WebSocket 연결을 없애지 않는다. �
 
 | 기존 웹 시스템 구성 | ZLink 샘플의 대응 | 설명 |
 |--------------------|------------------|------|
-| Delivery API + dispatch worker | `Dispatch server` | 고객 HTTP 요청을 받고, 같은 server 안의 worker가 후보 배송원을 고른 뒤 단일 courier channel로 제안을 보낸다. |
-| Courier API 또는 worker | `CourierGateway server` + `CourierSession server` + `Courier spot server node` | Gateway가 courier id를 actor 위치와 session route로 해석하고, spot server의 actor가 session route로 제안을 push한다. |
+| Delivery API + dispatch worker | `Dispatch server` | 고객 HTTP 요청을 받고, 같은 server 안의 worker가 후보 배송원을 고른 뒤 courier actor route로 제안을 보낸다. |
+| Courier API 또는 worker | `CourierSession server` + `Courier spot server node` | CourierSession이 stream 연결을 받으면 기존 courier actor 위치를 먼저 찾고, 없을 때만 actor를 만든다. courier actor는 자기 session route를 기억한 뒤 제안을 push한다. |
 | Delivery event table | `Tracking server` + evidence store | 상태 이벤트를 기록하고 고객에게 보낼 알림을 만든다. |
-| Session map 또는 socket registry | `CustomerActor` + bound session | 고객 actor와 현재 stream session을 연결해 특정 고객에게만 status를 push한다. |
-| WebSocket/SSE server | `CustomerGateway server` | 고객 stream 연결을 받고, 고객 actor를 session과 bind한다. |
+| Session map 또는 socket registry | `CustomerActor` + bound session | 고객 actor가 현재 stream session을 기억해 특정 고객에게만 status를 push한다. |
+| WebSocket/SSE server | `CustomerGateway server` | 고객 stream 연결을 받고, 기존 customer actor를 찾은 뒤 현재 session을 bind한다. 없을 때만 actor를 만든다. |
 | Actor entry point | `CustomerEntrySpot`, `CourierEntrySpot` | actor가 들어오는 입구이며, server side에서 actor를 찾는 기준점이다. |
-| Courier placement/directory | `CourierDirectory` | 배송원 id를 어느 SpotNode의 actor로 둘지 정하고, courier id, actor node rid, session route를 기억한다. |
+| Courier placement/directory | courier placement policy + `CourierActor` | 배송원 id를 어느 SpotNode의 actor로 둘지 정하는 정책은 호출 지점에 두고, courier별 session route는 해당 courier actor가 기억한다. |
 
 ```mermaid
 flowchart LR
@@ -148,7 +148,6 @@ flowchart LR
 
     subgraph ServerSide[Server side]
         DispatchServer["Dispatch<br/>server"]
-        CourierGatewayServer["CourierGateway<br/>server"]
         CourierSessionServer["CourierSession<br/>server"]
         CourierSpotServer1["Courier spot node 1<br/>server"]
         CourierSpotServer2["Courier spot node 2<br/>server"]
@@ -162,12 +161,12 @@ flowchart LR
     CourierClientA --> CourierSessionServer
     CourierClientB --> CourierSessionServer
 
-    DispatchServer -->|DispatchWorker module uses courier channel| CourierGatewayServer
+    DispatchServer -->|DispatchWorker module targets courier actor| CourierSpotServer1
+    DispatchServer -->|DispatchWorker module targets courier actor| CourierSpotServer2
     DispatchServer -->|DispatchWorker module emits status| TrackingServer
 
-    CourierGatewayServer -->|handler and directory target entry spot| CourierSpotServer1
-    CourierGatewayServer -->|handler and directory target entry spot| CourierSpotServer2
-    CourierSessionServer -->|session bind request| CourierGatewayServer
+    CourierSessionServer -->|bind session route to courier actor| CourierSpotServer1
+    CourierSessionServer -->|bind session route to courier actor| CourierSpotServer2
     CourierSpotServer1 -->|actor pushes through session route| CourierSessionServer
     CourierSpotServer2 -->|actor pushes through session route| CourierSessionServer
 
@@ -190,11 +189,10 @@ server node 1/2`는 실제 actor와 entry spot을 가진 node다. 두 역할은 
 |----------|-----------|------|
 | `DeliveryDispatch.Registry` | registry host | 서버 endpoint를 발견 가능하게 한다. |
 | `DeliveryDispatch.Dispatch` | HTTP API, dispatch channel server/client, dispatch worker | `POST /deliveries`를 받고 배차 요청 접수, 배송원 제안, timeout, 재배정, 상태 event 생성을 맡는다. |
-| `DeliveryDispatch.CourierGateway` | courier channel server, courier directory | courier id를 actor node rid와 session route로 해석한다. |
-| `DeliveryDispatch.CourierSession` | stream server, courier session | 배송원 client stream 연결을 받고 courier id와 session route를 gateway에 bind 요청한다. |
-| `DeliveryDispatch.CourierSpotNode1/2` | courier entry spot, courier actor | 선택된 node에서 배송원 actor를 만들고 actor 메시지 진입점을 제공한다. |
+| `DeliveryDispatch.CourierSession` | stream server, courier session | 배송원 client stream 연결을 받고, 기존 courier actor를 찾은 뒤 현재 session route를 bind한다. 없을 때만 actor 생성을 요청한다. |
+| `DeliveryDispatch.CourierSpotNode1/2` | courier entry spot, courier actor | 선택된 node에서 배송원 actor를 만들고, actor가 courier id와 현재 session route를 기억한다. |
 | `DeliveryDispatch.Tracking` | tracking channel server, evidence store | 상태 event 기록과 고객 알림 생성을 맡는다. |
-| `DeliveryDispatch.CustomerGateway` | stream server, customer entry spot, customer actor | 고객 연결, customer actor/session bind, status push를 맡는다. |
+| `DeliveryDispatch.CustomerGateway` | stream server, customer entry spot, customer actor | 고객 연결을 받고, 기존 customer actor를 찾은 뒤 현재 session을 bind한다. 없을 때만 actor를 만들고 status push를 맡는다. |
 | `DeliveryDispatch.Client` | HTTP client, stream connector | 배송 생성, subscription, status notify 검증을 수행한다. |
 
 언어별 샘플은 프로세스 이름과 프로젝트 이름을 언어 관용에 맞게 바꿀 수 있다. 다만 위 역할
@@ -209,7 +207,6 @@ actor 실행 위치가 섞이지 않게 나눈다.
 |------|---------------|
 | `Registry` | registry host와 discovery readiness 확인 |
 | `Dispatch server` | HTTP endpoint, client-server channel server/client, background dispatch worker |
-| `CourierGateway server` | client-server channel server, courier directory |
 | `CourierSession server` | stream node, courier session callback |
 | `Courier spot server node 1/2` | Spot mesh, courier entry spot, courier actor |
 | `Tracking server` | client-server channel server, evidence store |
@@ -220,17 +217,21 @@ actor 실행 위치가 섞이지 않게 나눈다.
 
 | 이름 | Framework 요소 | 연결 |
 |------|----------------|------|
-| `deliverydispatch.courier` | client-server channel | `DispatchWorker module -> CourierChannel handler` |
 | `deliverydispatch.tracking` | client-server channel | `CustomerSession/DispatchWorker module -> Tracking` |
 | `delivery-customers` | Spot mesh | `CustomerEntrySpot`에서 customer actor 관리 |
-| `delivery-couriers` | Spot mesh + route mesh | `CourierChannel handler -> target SpotNode rid -> CourierEntrySpot -> CourierActor` |
+| `delivery-couriers` | Spot mesh + route mesh | `CourierSession/DispatchWorker module -> target SpotNode rid -> CourierEntrySpot -> CourierActor` |
 
 `delivery-couriers`는 배송원마다 하나씩 늘어나는 channel이 아니다. 모든 배송원 actor가
-같은 mesh 안에 있고, `CourierDirectory`는 courier id가 어느 SpotNode의 actor에 있는지와
-어떤 session route로 client에 push할지를 기억한다. `DispatchWorker module`은 courier id가
-들어 있는 offer를 단일 courier channel에 보낼 뿐이고, actor 위치 조회와 target SpotNode
-선택은 courier channel handler가 숨긴다. `CourierEntrySpot`은 SpotNode마다 하나인 actor
-진입점이므로, handler는 조회한 SpotNode rid로 해당 node의 entry spot 쪽 actor를 찾는다.
+같은 mesh 안에 있고, courier id가 어느 SpotNode의 actor에 들어갈지는 placement policy가
+정한다. courier별 session route는 별도 gateway나 registry가 아니라 해당 courier actor가
+기억한다. `DispatchWorker module`은 courier id가 들어 있는 offer를 target SpotNode의
+route handler로 보내고, route handler는 해당 node의 entry spot 아래 actor를 찾는다.
+`CourierEntrySpot`은 SpotNode마다 하나인 actor 진입점이다.
+
+stream client가 다시 연결될 때는 courier와 customer 모두 같은 규칙을 따른다. 먼저 actor
+위치를 discovery 또는 actor directory에서 찾고, 기존 actor가 있으면 새 session만 다시
+bind한다. 기존 actor가 없을 때만 entry spot을 통해 actor를 만든다. 이렇게 해야 재연결해도
+사용자가 보던 actor 상태가 유지되고, session route만 최신 연결로 바뀐다.
 
 ## 7. Message 계약
 
@@ -255,14 +256,14 @@ interface, type alias처럼 자기 언어에 맞는 표현으로 같은 필드�
 | Message | 방향 | 필드 | 의미 |
 |---------|------|------|------|
 | `AssignDelivery` | Dispatch server HTTP API module -> dispatch channel module | `DeliveryId`, `CustomerId`, `PickupAddress`, `DropoffAddress` | 배차 대상 배송을 내부 dispatch 흐름에 넣는다. |
-| `BindCourierSessionReq` | Courier client -> CourierSession server stream, CourierSession server -> CourierActor | `CourierId`, `Actor`, `SessionRoute` | client는 `CourierId`만 보내고, CourierSession server는 actor bind relay 때 actor 위치와 session route를 채워 actor node가 bound session을 알 수 있게 한다. |
+| `BindCourierSessionReq` | Courier client -> CourierSession server stream, CourierSession server -> CourierActor | `CourierId`, `Actor`, `SessionRoute` | client는 `CourierId`만 보낸다. CourierSession server는 기존 actor 위치를 먼저 찾고, actor bind relay 때 actor 위치와 session route를 채워 actor node가 현재 session을 알 수 있게 한다. |
 | `BindCourierSessionRes` | CourierActor -> CourierSession server, CourierSession server -> Courier client | `CourierId`, `Actor`, `SessionRoute` | 배송원 actor와 stream session binding이 끝났음을 반환한다. |
-| `BindCourierReq` | CourierSession server -> CourierGateway server | `CourierId`, `SessionRoute` | 배송원 stream session route를 courier id와 연결한다. |
-| `BindCourierRes` | CourierGateway server -> CourierSession server | `CourierId`, `Actor`, `SessionRoute` | 배송원 actor 위치와 session route 연결이 끝났음을 알린다. |
-| `EnsureCourierActorReq` | CourierGateway server -> target SpotNode | `CourierId` | 선택된 SpotNode의 `CourierEntrySpot` 아래에 배송원 actor가 존재하도록 만든다. |
-| `EnsureCourierActorRes` | target SpotNode -> CourierGateway server | `CourierId`, `Actor` | 배송원 actor 위치를 반환한다. |
-| `OfferDeliveryReq` | DispatchWorker module -> CourierGateway server | `DeliveryId`, `CourierId`, `PickupAddress`, `DropoffAddress` | 특정 배송원에게 배송 제안을 보낸다. |
-| `OfferDeliveryRes` | CourierGateway server -> DispatchWorker module | `DeliveryId`, `CourierId`, `Accepted`, `Reason` | 배송원이 제안을 수락했는지 반환한다. |
+| `FindCourierActorReq` | CourierSession server 또는 DispatchWorker module -> actor directory/discovery | `CourierId` | courier id에 연결된 기존 배송원 actor 위치가 있는지 찾는다. |
+| `FindCourierActorRes` | actor directory/discovery -> CourierSession server 또는 DispatchWorker module | `CourierId`, `Actor` | 기존 배송원 actor가 있으면 위치를 반환한다. 없으면 비어 있는 결과를 반환한다. |
+| `EnsureCourierActorReq` | CourierSession server 또는 DispatchWorker module -> target SpotNode | `CourierId` | 기존 actor가 없을 때 선택된 SpotNode의 `CourierEntrySpot` 아래에 배송원 actor가 존재하도록 만든다. |
+| `EnsureCourierActorRes` | target SpotNode -> CourierSession server 또는 DispatchWorker module | `CourierId`, `Actor` | 배송원 actor 위치를 반환한다. |
+| `OfferDeliveryReq` | DispatchWorker module -> target SpotNode -> CourierActor | `DeliveryId`, `CourierId`, `PickupAddress`, `DropoffAddress` | 특정 배송원 actor에게 배송 제안을 보낸다. |
+| `OfferDeliveryRes` | CourierActor -> target SpotNode -> DispatchWorker module | `DeliveryId`, `CourierId`, `Accepted`, `Reason` | 배송원이 제안을 수락했는지 반환한다. |
 
 ### 7.3 Tracking과 actor/session bind
 
@@ -270,7 +271,9 @@ interface, type alias처럼 자기 언어에 맞는 표현으로 같은 필드�
 |---------|------|------|------|
 | `DeliveryStatusChangedReq` | DispatchWorker module -> Tracking server | `DeliveryId`, `Status`, `CourierId`, `OccurredAt` | 상태 event를 Tracking 서버에 기록한다. |
 | `DeliveryStatusChangedRes` | Tracking server -> DispatchWorker module | `DeliveryId`, `Status` | Tracking 서버가 상태 event를 처리했음을 반환한다. |
-| `EnsureCustomerActorReq` | CustomerGateway server -> CustomerEntrySpot module | `CustomerId` | 고객 actor가 존재하도록 만든다. |
+| `FindCustomerActorReq` | CustomerGateway server -> actor directory/discovery | `CustomerId` | customer id에 연결된 기존 고객 actor 위치가 있는지 찾는다. |
+| `FindCustomerActorRes` | actor directory/discovery -> CustomerGateway server | `CustomerId`, `ActorRef` | 기존 고객 actor가 있으면 위치를 반환한다. 없으면 비어 있는 결과를 반환한다. |
+| `EnsureCustomerActorReq` | CustomerGateway server -> CustomerEntrySpot module | `CustomerId` | 기존 actor가 없을 때 고객 actor가 존재하도록 만든다. |
 | `EnsureCustomerActorRes` | CustomerEntrySpot module -> CustomerGateway server | `CustomerId`, `ActorRef` | 고객 actor 참조를 반환한다. |
 
 `Status` 값은 최소한 아래 값을 포함한다.
@@ -292,24 +295,19 @@ sequenceDiagram
     participant CustomerClient as Customer Client
     participant CourierClient as Courier Client A
 
+    box CourierSession server
+        participant CourierSession as CourierSession module
+    end
+
     box Dispatch server
         participant DispatchHttp as HTTP endpoint module
         participant DispatchWorker as DispatchWorker module
-    end
-
-    box CourierGateway server
-        participant CourierChannel as CourierChannel handler module
-        participant CourierDirectory as CourierDirectory module
     end
 
     box Courier spot server node 1
         participant CourierRoute as Courier node handler module
         participant CourierEntry as CourierEntrySpot module
         participant CourierActor as CourierActor module courier-a
-    end
-
-    box CourierSession server
-        participant CourierSession as CourierSession module
     end
 
     box Tracking server
@@ -324,19 +322,19 @@ sequenceDiagram
 
     CourierClient->>CourierSession: connect stream
     CourierClient->>CourierSession: BindCourierSessionReq(courier-a)
-    CourierSession->>CourierDirectory: BindCourierReq(courier-a, session route)
-    CourierDirectory->>CourierRoute: EnsureCourierActorReq(courier-a)
-    CourierRoute->>CourierEntry: create or find actor
+    CourierSession->>CourierRoute: FindCourierActorReq(courier-a)
+    CourierRoute-->>CourierSession: no existing actor
+    CourierSession->>CourierRoute: EnsureCourierActorReq(courier-a)
+    CourierRoute->>CourierEntry: create actor
     CourierSession->>CourierActor: BindAsync and relay BindCourierSessionReq
     CustomerClient->>CustomerSession: SubscribeDeliveryReq(delivery-success)
+    CustomerSession->>CustomerEntry: FindCustomerActorReq(customer id)
+    CustomerEntry-->>CustomerSession: no existing actor
     CustomerSession->>CustomerEntry: EnsureCustomerActorReq(customer id)
     CustomerEntry->>CustomerActor: bind session
     CustomerClient->>DispatchHttp: POST /deliveries
     DispatchHttp->>DispatchWorker: enqueue work
-    DispatchWorker->>CourierChannel: OfferDeliveryReq(courier-a)
-    CourierChannel->>CourierDirectory: resolve courier-a node rid
-    CourierDirectory-->>CourierChannel: node rid
-    CourierChannel->>CourierRoute: OfferDeliveryReq to node rid
+    DispatchWorker->>CourierRoute: OfferDeliveryReq to courier-a node
     CourierRoute->>CourierEntry: find actor owned by entry spot
     CourierEntry->>CourierActor: dispatch offer
     CourierActor->>CourierSession: push offer by session route
@@ -345,8 +343,7 @@ sequenceDiagram
     CourierSession-->>CourierActor: decision
     CourierActor-->>CourierEntry: OfferDeliveryRes accepted
     CourierEntry-->>CourierRoute: OfferDeliveryRes accepted
-    CourierRoute-->>CourierChannel: OfferDeliveryRes accepted
-    CourierChannel-->>DispatchWorker: OfferDeliveryRes accepted
+    CourierRoute-->>DispatchWorker: OfferDeliveryRes accepted
     DispatchWorker->>Tracking: DeliveryStatusChangedReq Assigned
     DispatchWorker->>Tracking: DeliveryStatusChangedReq Accepted
     DispatchWorker->>Tracking: DeliveryStatusChangedReq PickedUp
@@ -365,14 +362,13 @@ sequenceDiagram
     participant CourierClientA as Courier Client A
     participant CourierClientB as Courier Client B
 
+    box CourierSession server
+        participant CourierSession as CourierSession module
+    end
+
     box Dispatch server
         participant DispatchHttp as HTTP endpoint module
         participant DispatchWorker as DispatchWorker module
-    end
-
-    box CourierGateway server
-        participant CourierChannel as CourierChannel handler module
-        participant CourierDirectory as CourierDirectory module
     end
 
     box Courier spot server nodes
@@ -382,10 +378,6 @@ sequenceDiagram
         participant CourierRouteB as Courier node handler module node 2
         participant CourierEntryB as CourierEntrySpot module node 2
         participant CourierActorB as CourierActor module courier-b
-    end
-
-    box CourierSession server
-        participant CourierSession as CourierSession module
     end
 
     box Tracking server
@@ -400,24 +392,26 @@ sequenceDiagram
 
     CourierClientA->>CourierSession: connect stream
     CourierClientA->>CourierSession: BindCourierSessionReq(courier-a)
-    CourierSession->>CourierDirectory: BindCourierReq(courier-a, session route)
-    CourierDirectory->>CourierRouteA: EnsureCourierActorReq(courier-a)
-    CourierRouteA->>CourierEntryA: create or find actor
+    CourierSession->>CourierRouteA: FindCourierActorReq(courier-a)
+    CourierRouteA-->>CourierSession: no existing actor
+    CourierSession->>CourierRouteA: EnsureCourierActorReq(courier-a)
+    CourierRouteA->>CourierEntryA: create actor
     CourierSession->>CourierActorA: BindAsync and relay BindCourierSessionReq
     CourierClientB->>CourierSession: connect stream
     CourierClientB->>CourierSession: BindCourierSessionReq(courier-b)
-    CourierSession->>CourierDirectory: BindCourierReq(courier-b, session route)
-    CourierDirectory->>CourierRouteB: EnsureCourierActorReq(courier-b)
-    CourierRouteB->>CourierEntryB: create or find actor
+    CourierSession->>CourierRouteB: FindCourierActorReq(courier-b)
+    CourierRouteB-->>CourierSession: no existing actor
+    CourierSession->>CourierRouteB: EnsureCourierActorReq(courier-b)
+    CourierRouteB->>CourierEntryB: create actor
     CourierSession->>CourierActorB: BindAsync and relay BindCourierSessionReq
     CustomerClient->>CustomerSession: SubscribeDeliveryReq(delivery-reassign)
+    CustomerSession->>CustomerEntry: FindCustomerActorReq(customer id)
+    CustomerEntry-->>CustomerSession: no existing actor
     CustomerSession->>CustomerEntry: EnsureCustomerActorReq(customer id)
     CustomerEntry->>CustomerActor: bind session
     CustomerClient->>DispatchHttp: POST /deliveries
     DispatchHttp->>DispatchWorker: enqueue work
-    DispatchWorker->>CourierChannel: OfferDeliveryReq(courier-a)
-    CourierChannel->>CourierDirectory: resolve courier-a node rid
-    CourierChannel->>CourierRouteA: OfferDeliveryReq to node 1
+    DispatchWorker->>CourierRouteA: OfferDeliveryReq to courier-a node
     CourierRouteA->>CourierEntryA: find actor owned by entry spot
     CourierEntryA->>CourierActorA: dispatch offer
     CourierActorA->>CourierSession: push offer by session route
@@ -425,13 +419,10 @@ sequenceDiagram
     CourierClientA--x CourierSession: no response before timeout
     CourierActorA--x CourierEntryA: no response before timeout
     CourierEntryA--x CourierRouteA: no response before timeout
-    CourierRouteA--x CourierChannel: no response before timeout
-    CourierChannel--x DispatchWorker: no response before timeout
+    CourierRouteA--x DispatchWorker: no response before timeout
     DispatchWorker->>Tracking: DeliveryStatusChangedReq Assigned
     DispatchWorker->>Tracking: DeliveryStatusChangedReq Reassigned
-    DispatchWorker->>CourierChannel: OfferDeliveryReq(courier-b)
-    CourierChannel->>CourierDirectory: resolve courier-b node rid
-    CourierChannel->>CourierRouteB: OfferDeliveryReq to node 2
+    DispatchWorker->>CourierRouteB: OfferDeliveryReq to courier-b node
     CourierRouteB->>CourierEntryB: find actor owned by entry spot
     CourierEntryB->>CourierActorB: dispatch offer
     CourierActorB->>CourierSession: push offer by session route
@@ -440,8 +431,7 @@ sequenceDiagram
     CourierSession-->>CourierActorB: decision
     CourierActorB-->>CourierEntryB: OfferDeliveryRes accepted
     CourierEntryB-->>CourierRouteB: OfferDeliveryRes accepted
-    CourierRouteB-->>CourierChannel: OfferDeliveryRes accepted
-    CourierChannel-->>DispatchWorker: OfferDeliveryRes accepted
+    CourierRouteB-->>DispatchWorker: OfferDeliveryRes accepted
     DispatchWorker->>Tracking: DeliveryStatusChangedReq Accepted
     DispatchWorker->>Tracking: DeliveryStatusChangedReq Delivered
     Tracking->>CustomerEntry: notify customer id
@@ -472,14 +462,6 @@ Server/Dispatch/
         CourierClient
         TrackingClient
 
-Server/CourierGateway/
-  Application/
-    CourierDirectory
-  Infrastructure/
-    ZLink/
-      Handlers/
-        OfferDeliveryHandler
-
 Server/CourierSession/
   Infrastructure/
     ZLink/
@@ -493,6 +475,10 @@ Server/CourierSpotNode/
     ZLink/
       Actors/
         CourierActor
+      Handlers/
+        FindCourierActorHandler
+        EnsureCourierActorHandler
+        OfferDeliveryHandler
       Spots/
         CourierEntrySpot
 
@@ -518,6 +504,8 @@ Server/CustomerGateway/
       Sessions/
         CustomerSession
       Handlers/
+        FindCustomerActorHandler
+        EnsureCustomerActorHandler
         SubscribeDeliveryHandler
       Stores/
         CustomerSessionDirectory
@@ -527,11 +515,12 @@ Server/CustomerGateway/
 
 - Dispatch server는 HTTP 변환, dispatch channel, worker를 한 server 안에 둘 수 있다.
 - DispatchWorker module은 배차 흐름과 timeout 재시도를 소유한다.
-- CourierGateway server는 courier id를 actor node rid와 session route로 해석한다.
-- CourierSession server는 배송원 stream 연결과 session route bind 요청만 맡는다.
-- Courier spot server node는 actor 생성과 actor 메시지 진입점만 맡는다.
+- CourierSession server는 배송원 stream 연결을 받고, 기존 courier actor를 찾은 뒤 session
+  route를 bind한다. 기존 actor가 없을 때만 새 actor 생성을 요청한다.
+- Courier spot server node는 actor 생성, actor 메시지 진입점, courier별 session route를 맡는다.
 - Tracking은 상태 event 기록과 고객 알림 생성을 맡는다.
-- CustomerGateway server는 고객 stream session, customer actor bind, client push를 맡는다.
+- CustomerGateway server는 고객 stream 연결을 받고, 기존 customer actor를 찾은 뒤 session을
+  bind한다. 기존 actor가 없을 때만 새 actor를 만든다.
 
 ## 10. Client self-check 기준
 
@@ -566,10 +555,9 @@ push message 대기는 stream connector의 public wait interface를 사용한다
 3. CustomerGateway 서버를 시작한다.
 4. CourierSession 서버를 시작한다.
 5. Courier spot server node 1과 node 2를 시작한다.
-6. CourierGateway 서버를 시작한다.
-7. Dispatch 서버를 시작한다.
-8. Client scenario가 배송원 A/B stream 연결, 성공 배차, timeout 재배차를 실행한다.
-9. Evidence check가 상태 순서를 검증한다.
+6. Dispatch 서버를 시작한다.
+7. Client scenario가 배송원 A/B stream 연결, 성공 배차, timeout 재배차를 실행한다.
+8. Evidence check가 상태 순서를 검증한다.
 
 샘플 성공 로그는 아래 의미를 포함해야 한다.
 

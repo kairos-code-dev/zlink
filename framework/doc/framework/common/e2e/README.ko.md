@@ -143,7 +143,36 @@ client는 publisher/subscriber/main 같은 실제 역할 server의 endpoint를 �
 그 위치까지 그대로 따라 하지 않는다. 별도 driver server를 띄운 뒤 client가 그 driver에 "전체
 시나리오 실행"을 맡기는 구조는 이 문서의 표준 구조가 아니다.
 
-### 2.1 언어별 포팅 단위
+### 2.1 로컬 E2E 대기 기준
+
+모든 framework e2e runner는 로컬 실행에서 같은 대기 기준을 사용한다. 기준값은 각 `run_e2e.sh`
+상단의 명시적인 config 상수로 둔다. 환경변수는 느린 CI나 진단용 override가 필요할 때만 사용할 수
+있고, 기본 완료 증거는 override 없이 이 값으로 통과한 실행 결과여야 한다.
+
+기본값은 아래와 같다.
+
+| 항목 | 기본값 | 의미 |
+|------|--------|------|
+| local readiness timeout | 3초 | 새로 띄운 로컬 process의 port, health, readiness가 준비될 때까지 기다리는 최대 시간 |
+| local readiness poll interval | 0.1초 | readiness를 다시 확인하는 간격 |
+| route settle | 5초 | registry 광고, route 연결, peer 연결처럼 서버가 시작된 뒤 라우팅이 보이기까지 기다리는 시간 |
+| scenario settle | 3초 | 시나리오 사이에 이전 작업의 비동기 evidence와 정리 작업이 끝나도록 기다리는 시간 |
+| HTTP probe/admin/evidence request timeout | 3초 | `/health`, `/evidence`, `/admin/*`, control ping 같은 로컬 HTTP probe 한 번의 최대 시간 |
+
+이 값 안에 준비되지 않는 로컬 e2e는 대기 시간을 늘려서 통과시키지 않는다. startup 순서, readiness
+endpoint, registry 광고, route propagation, stale process/port, 오래된 build artifact, lifecycle drain
+같은 원인을 먼저 찾아 수정한다. 긴 대기는 버그를 늦게 발견하게 만들기 때문에 완료 조건으로 인정하지
+않는다.
+
+client scenario process timeout, 전체 child group timeout, shutdown/recovery처럼 시나리오 자체가 긴
+작업을 검증하는 timeout은 위 readiness/settle 기준과 분리해서 이름을 붙인다. 이런 timeout은 테스트
+프로세스의 상한이나 검증 대상 동작의 일부이지, 로컬 process가 준비되기를 기다리는 readiness 값이
+아니다.
+bounded evidence wait처럼 서버가 시나리오 event를 기다리는 요청도 같은 원칙을 따른다. 단순 evidence
+snapshot 요청은 3초 HTTP 기준을 쓰지만, event가 나올 때까지 기다리는 bounded wait는 별도 이름의
+시나리오 대기값으로 분리한다.
+
+### 2.2 언어별 포팅 단위
 
 다른 언어에 e2e를 추가할 때는 config 하나를 작은 테스트 파일 묶음으로 보지 말고, `.NET`과 같은
 독립 실행 배포 묶음으로 옮긴다. 한 config를 포팅할 때 필요한 기본 산출물은 아래와 같다.
@@ -172,7 +201,7 @@ client는 publisher/subscriber/main 같은 실제 역할 server의 endpoint를 �
 언어별 파일 확장자나 프로젝트 파일 이름은 자연스럽게 바꿔도 된다. 하지만 위 역할 경계와 파일
 분류가 바뀌면 언어별 e2e 결과를 서로 비교할 수 없으므로 완료로 보지 않는다.
 
-### 2.2 역할 서버와 endpoint 형태
+### 2.3 역할 서버와 endpoint 형태
 
 역할 server는 사용자가 배포하는 app을 작게 만든 것이다. client가 호출하는 endpoint도 이 관점에서
 정한다.
@@ -194,7 +223,7 @@ client는 publisher/subscriber/main 같은 실제 역할 server의 endpoint를 �
   subscriber server의 bounded evidence wait를 사용한다. client stream connector로 별도 observer를
   추가해 subscriber 역할을 우회하지 않는다.
 
-### 2.3 서버 프로젝트 구성 규칙
+### 2.4 서버 프로젝트 구성 규칙
 
 - 서버 역할이 다르면 `Server/<Role>/` 아래에 별도 실행 프로젝트로 둔다. 하나의 서버 프로젝트를
   `--role`, `--mode` 옵션으로 registry/publisher/subscriber 또는 정상/오류/peer 서버처럼 바꾸지
@@ -228,7 +257,7 @@ client는 publisher/subscriber/main 같은 실제 역할 server의 endpoint를 �
 - `Shared/`는 server와 client가 함께 쓰는 메시지·계약 타입만 둔다. server-only host factory,
   handler, filter, evidence store를 config의 top-level `Shared/`에 넣지 않는다.
 
-### 2.4 client 프로젝트 구성 규칙
+### 2.5 client 프로젝트 구성 규칙
 
 - client는 `Client/Program.cs`에서 시나리오를 순차 실행한다.
 - `Client/Program.cs`에는 옵션 파싱, HTTP client 생성, scenario 호출 순서만 둔다. 개별 scenario의

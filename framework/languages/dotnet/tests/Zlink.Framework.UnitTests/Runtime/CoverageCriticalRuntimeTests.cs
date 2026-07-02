@@ -1,7 +1,6 @@
 using System.Buffers.Binary;
 using System.Net;
 using System.Net.Sockets;
-using System.Text;
 using K4os.Compression.LZ4;
 using Microsoft.Extensions.Hosting;
 using Systems.Zlink.Stream.Connector.Contracts;
@@ -114,69 +113,6 @@ public sealed class CoverageCriticalRuntimeTests
 
         Assert.Same(startTask, completed);
         await Assert.ThrowsAnyAsync<Exception>(async () => await startTask);
-    }
-
-    [Fact]
-    public void RegistryRoutePayloadCodec_RoundTripsIdentityStringsRoutingIdsAndUInt64()
-    {
-        var identity = ZLinkRegistryRoutePayloadCodec.EncodeIdentity(
-            3,
-            "game",
-            "room-7",
-            "too large");
-
-        var decoded = ZLinkRegistryRoutePayloadCodec.DecodeIdentity(
-            identity,
-            3,
-            "invalid");
-
-        Assert.True(decoded.Matches("game", "room-7"));
-        Assert.Equal(identity.Length, decoded.Offset);
-        Assert.Equal("game\0room-7", Encoding.UTF8.GetString(
-            ZLinkRegistryRoutePayloadCodec.EncodeNamespacedKey("game", "room-7")));
-
-        var rid = RoutingId.From("spot-rid");
-        var buffer = new byte[
-            ZLinkRegistryRoutePayloadCodec.EncodedStringLength("payload", "too large")
-            + ZLinkRegistryRoutePayloadCodec.EncodedRoutingIdLength(rid, "rid too large")
-            + sizeof(ulong)];
-        var offset = 0;
-        ZLinkRegistryRoutePayloadCodec.WriteString(buffer, ref offset, "payload", "too large");
-        ZLinkRegistryRoutePayloadCodec.WriteRoutingId(buffer, ref offset, rid, "rid too large");
-        ZLinkRegistryRoutePayloadCodec.WriteUInt64(buffer, ref offset, 0x0102030405060708UL);
-
-        offset = 0;
-        Assert.Equal("payload", ZLinkRegistryRoutePayloadCodec.ReadString(buffer, ref offset, "invalid"));
-        Assert.Equal(rid, ZLinkRegistryRoutePayloadCodec.ReadRoutingId(buffer, ref offset, "invalid"));
-        Assert.Equal(0x0102030405060708UL, ZLinkRegistryRoutePayloadCodec.ReadUInt64(buffer, ref offset, "invalid"));
-        ZLinkRegistryRoutePayloadCodec.EnsureFullyRead(buffer, offset, "invalid");
-    }
-
-    [Fact]
-    public void RegistryRoutePayloadCodec_RejectsMalformedPayloadsAndOversizedValues()
-    {
-        Assert.Throws<FormatException>(() => ZLinkRegistryRoutePayloadCodec.DecodeIdentity(
-            [9],
-            3,
-            "invalid"));
-
-        Assert.Throws<FormatException>(() =>
-        {
-            var offset = 0;
-            _ = ZLinkRegistryRoutePayloadCodec.ReadString([0, 4, 1], ref offset, "invalid");
-        });
-
-        Assert.Throws<FormatException>(() => ZLinkRegistryRoutePayloadCodec.EnsureFullyRead(
-            [1, 2, 3],
-            2,
-            "invalid"));
-
-        var large = new string('x', ushort.MaxValue + 1);
-        Assert.Throws<ZLinkConfigurationException>(() => ZLinkRegistryRoutePayloadCodec.EncodeIdentity(
-            1,
-            large,
-            "id",
-            "too large"));
     }
 
     [Fact]

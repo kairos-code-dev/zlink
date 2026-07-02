@@ -39,8 +39,6 @@ internal sealed class ZLinkFrameworkRuntimeState : IAsyncDisposable
 
     public Dictionary<string, ZLinkSpotNodeRuntime> SpotNodes { get; } = new(StringComparer.Ordinal);
 
-    public Dictionary<string, IZLinkBackendDiscovery> SpotDiscoveries { get; } = new(StringComparer.Ordinal);
-
     public Dictionary<string, ZLinkStreamNodeRuntime> StreamNodes { get; } = new(StringComparer.Ordinal);
 
     public List<Task> ListenerTasks { get; } = [];
@@ -52,8 +50,6 @@ internal sealed class ZLinkFrameworkRuntimeState : IAsyncDisposable
         foreach (var node in SpotNodes.Values) await DisposeSafelyAsync(node);
 
         foreach (var routed in RouteChannels.Values) await DisposeSafelyAsync(routed);
-
-        foreach (var discovery in SpotDiscoveries.Values) await DisposeSafelyAsync(discovery);
 
         foreach (var stream in StreamNodes.Values) await DisposeSafelyAsync(stream);
 

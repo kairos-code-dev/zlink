@@ -4,9 +4,6 @@ internal sealed class ZLinkMonitoringRegistration
 {
     public Dictionary<string, ZLinkSocketMonitoringRegistration> SocketSources { get; } = new(StringComparer.Ordinal);
 
-    public Dictionary<string, ZLinkPollingMonitoringRegistration> RegistrySources { get; } =
-        new(StringComparer.Ordinal);
-
     public Dictionary<string, ZLinkPollingMonitoringRegistration> SpotSources { get; } = new(StringComparer.Ordinal);
 }
 
@@ -38,15 +35,6 @@ internal sealed class ZLinkMonitoringOptionsModel(ZLinkMonitoringRegistration re
         if (!registration.SocketSources.TryAdd(entry.SourceName, entry))
             throw new ZLinkConfigurationException(
                 $"Duplicate monitoring socket source '{entry.SourceName}'.");
-    }
-
-    public void AddRegistryEvents(string sourceName, TimeSpan interval)
-    {
-        AddPollingSource(
-            registration.RegistrySources,
-            "registry",
-            sourceName,
-            interval);
     }
 
     public void AddSpotEvents(string sourceName, TimeSpan interval)

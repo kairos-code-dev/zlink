@@ -5,8 +5,7 @@ namespace Zlink.Framework.Runtime.Spots;
 internal sealed class ZLinkSpotNodeBundleRegistry(
     ZLinkFrameworkRegistration frameworkRegistration,
     IZLinkBackendSpotNode node,
-    CancellationToken stopToken,
-    Action connectDiscoveredPubSubPeers) : IAsyncDisposable
+    CancellationToken stopToken) : IAsyncDisposable
 {
     private readonly object _gate = new();
     private readonly Dictionary<string, ZLinkSpotPublisherBundle> _publisherBundles = new(StringComparer.Ordinal);
@@ -46,8 +45,6 @@ internal sealed class ZLinkSpotNodeBundleRegistry(
         lock (_gate)
         {
             if (_publisherBundles.TryGetValue(channelName, out var existing)) return existing;
-
-            connectDiscoveredPubSubPeers();
 
             var bundle = CreatePublisherBundle();
 

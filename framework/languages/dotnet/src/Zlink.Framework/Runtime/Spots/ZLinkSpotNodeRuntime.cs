@@ -5,8 +5,6 @@ namespace Zlink.Framework.Runtime.Spots;
 internal sealed class ZLinkSpotNodeRuntime : IAsyncDisposable
 {
     private readonly ZLinkSpotNodeBundleRegistry _bundles;
-    private readonly ZLinkSpotDiscoveryLoop _discoveryLoop;
-    private readonly ZLinkSpotDiscoveryReconciler _discoveryReconciler;
     private readonly ZLinkFrameworkRegistration _frameworkRegistration;
     private readonly ZLinkSpotMonitoringSnapshotProvider _monitoringSnapshots;
     private readonly ZLinkSpotPeerConnectionSet _peerConnections = new();
@@ -38,32 +36,18 @@ internal sealed class ZLinkSpotNodeRuntime : IAsyncDisposable
             _stopSource.Token);
         _monitoringSnapshots = new ZLinkSpotMonitoringSnapshotProvider(node);
         EntrySpotActorDispatch = new ZLinkEntrySpotActorDispatch(registration.SpotNodeName);
-        _discoveryReconciler = new ZLinkSpotDiscoveryReconciler(
-            spotChannelName,
-            node,
-            _peerConnections,
-            () => SpotDiscovery,
-            registration.Router is not null,
-            registration.PubSub is not null);
-        _discoveryLoop = new ZLinkSpotDiscoveryLoop(
-            registration.SpotNodeName,
-            _taskRunner,
-            _stopSource.Token,
-            ConnectDiscoveredPubSubPeers);
         _peerConnector = new ZLinkSpotPeerConnector(node, _peerConnections);
         _bundles = new ZLinkSpotNodeBundleRegistry(
             frameworkRegistration,
             node,
-            _stopSource.Token,
-            ConnectDiscoveredPubSubPeers);
+            _stopSource.Token);
         _spots = new ZLinkSpotNodeCatalog(
             services,
             runtime,
             frameworkRegistration,
             registration,
             node,
-            spotChannelName,
-            ConnectDiscoveredPubSubPeers);
+            spotChannelName);
     }
 
     public string Name => Registration.SpotNodeName;
@@ -80,13 +64,9 @@ internal sealed class ZLinkSpotNodeRuntime : IAsyncDisposable
 
     internal ZLinkEntrySpotActorDispatch EntrySpotActorDispatch { get; }
 
-    public IZLinkBackendDiscovery? SpotDiscovery { get; set; }
-
     public async ValueTask DisposeAsync()
     {
         _stopSource.Cancel();
-
-        await _discoveryLoop.StopAsync().ConfigureAwait(false);
 
         await _spots.DisposeAsync();
 
@@ -129,11 +109,6 @@ internal sealed class ZLinkSpotNodeRuntime : IAsyncDisposable
 
         new ZLinkEntrySpotDispatchPump(_runtime, activation, _taskRunner)
             .Attach(entrySpot);
-    }
-
-    public void StartDiscoveryPeerReconciliation()
-    {
-        _discoveryLoop.StartIfNeeded(() => SpotDiscovery is not null);
     }
 
     public ZLinkSpotMonitoringSnapshot GetMonitoringSnapshot()
@@ -234,22 +209,6 @@ internal sealed class ZLinkSpotNodeRuntime : IAsyncDisposable
     public IReadOnlyList<string> ListPubSubConnections()
     {
         return _peerConnections.ListPubSubManual();
-    }
-
-    public void ConnectDiscoveredPubSubPeers()
-    {
-        if (SpotDiscovery is not null
-            && Registration.Router?.BindEndpoint is { Length: > 0 } routerEndpoint)
-        {
-            var bound = ZLinkSpotRouterEndpointDiscovery.TryBindLocalEndpoint(
-                SpotDiscovery,
-                Node.RoutingId,
-                routerEndpoint);
-            ZLinkFrameworkDebugLog.SpotDiscovery(
-                $"bind-local rid={Node.RoutingId.ToHex()} endpoint={routerEndpoint} bound={bound}");
-        }
-
-        _discoveryReconciler.ConnectDiscoveredPubSubPeers();
     }
 
     private async ValueTask<ZLinkEntrySpotActivation?> CreateEntrySpotActivationAsync(

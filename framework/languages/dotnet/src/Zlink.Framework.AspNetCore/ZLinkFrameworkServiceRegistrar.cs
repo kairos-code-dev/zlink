@@ -106,8 +106,7 @@ internal static class ZLinkFrameworkServiceRegistrar
                 provider.GetRequiredService<IZLinkBackendAdapterFactory>(),
                 provider.GetRequiredService<ZLinkFrameworkRegistration>(),
                 provider.GetRequiredService<ZLinkHandlerRegistry>(),
-                provider.GetRequiredService<ZLinkHandlerDispatcher>(),
-                provider.GetService<ZLinkRegistryRuntime>()));
+                provider.GetRequiredService<ZLinkHandlerDispatcher>()));
         services.AddSingleton<IZLinkMessageMetadataPolicy, ZLinkMessageMetadataPolicy>();
         services.AddSingleton<IHostedService, ZLinkFrameworkHostedService>();
 
@@ -159,12 +158,6 @@ internal static class ZLinkFrameworkServiceRegistrar
             services.AddSingleton(
                 typeof(IZLinkSpotRemoteAddressResolver),
                 provider => provider.GetRequiredService(registration.SpotRemoteAddressResolverType));
-        }
-        else if (registration.RegistrySpotRemoteAddresses is not null)
-        {
-            services.AddSingleton<ZLinkRegistrySpotRemoteAddressResolver>();
-            services.AddSingleton<IZLinkSpotRemoteAddressResolver>(static provider =>
-                provider.GetRequiredService<ZLinkRegistrySpotRemoteAddressResolver>());
         }
 
         return services;

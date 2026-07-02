@@ -6,8 +6,7 @@ internal sealed class ZLinkSpotNodeCatalog(
     ZLinkFrameworkRegistration frameworkRegistration,
     ZLinkSpotNodeRegistration registration,
     IZLinkBackendSpotNode node,
-    string spotChannelName,
-    Action connectDiscoveredPubSubPeers) : IAsyncDisposable
+    string spotChannelName) : IAsyncDisposable
 {
     private readonly ZLinkSpotActivationFactory _activationFactory = new(
         services,
@@ -15,8 +14,7 @@ internal sealed class ZLinkSpotNodeCatalog(
         frameworkRegistration,
         registration,
         node,
-        spotChannelName,
-        connectDiscoveredPubSubPeers);
+        spotChannelName);
 
     private readonly object _gate = new();
     private readonly Dictionary<RoutingId, PendingSpotCreation> _pending = [];

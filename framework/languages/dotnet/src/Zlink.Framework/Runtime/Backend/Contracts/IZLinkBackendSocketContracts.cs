@@ -1,26 +1,5 @@
 namespace Zlink.Framework.Runtime.Backend.Contracts;
 
-internal interface IZLinkBackendDiscovery : IZLinkBackendObject, IAsyncDisposable
-{
-    bool SpotOwnerSyncEnabled { get; set; }
-
-    bool ActorRouteSyncEnabled { get; set; }
-
-    void ConnectRegistry(string endpoint);
-
-    IReadOnlyList<ZLinkMemberPeerEntry> MemberPeers();
-
-    SpotRoute ResolveSpot(RoutingId spotRid);
-
-    ActorRoute ResolveActor(string actorId);
-
-    void BindRoute(uint kind, ReadOnlySpan<byte> key, ReadOnlySpan<byte> value);
-
-    void UnbindRoute(uint kind, ReadOnlySpan<byte> key);
-
-    ZLinkBackendDiscoveryRoute ResolveRoute(uint kind, ReadOnlySpan<byte> key);
-}
-
 internal interface IZLinkBackendSocket : IZLinkBackendObject, IAsyncDisposable
 {
     void Bind(string endpoint);
@@ -55,8 +34,6 @@ internal interface IZLinkBackendDealerSocket : IZLinkBackendConnectableSocket, I
 {
     void SetRoutingId(RoutingId routingId);
 
-    void AttachDiscovery(IZLinkBackendDiscovery discovery);
-
     void OnSendReady(Action handler);
 
     bool Send(Message message, SendFlags flags);
@@ -81,8 +58,6 @@ internal interface IZLinkBackendDealerSocket : IZLinkBackendConnectableSocket, I
 internal interface IZLinkBackendRouterSocket : IZLinkBackendConnectableSocket, IZLinkBackendWeightedSocket,
     IZLinkBackendSocketOptions
 {
-    void AttachDiscovery(IZLinkBackendDiscovery discovery);
-
     void OnSendReady(Action handler);
 
     void SetRoutingId(RoutingId routingId);
@@ -144,8 +119,6 @@ internal interface IZLinkBackendPublisherSocket : IZLinkBackendSocket, IZLinkBac
 {
     void SetRoutingId(RoutingId routingId);
 
-    void AttachDiscovery(IZLinkBackendDiscovery discovery);
-
     void OnSendReady(Action handler);
 
     bool Publish(
@@ -162,8 +135,6 @@ internal interface IZLinkBackendPublisherSocket : IZLinkBackendSocket, IZLinkBac
 internal interface IZLinkBackendSubscriberSocket : IZLinkBackendConnectableSocket, IZLinkBackendSocketOptions
 {
     void SetRoutingId(RoutingId routingId);
-
-    void AttachDiscovery(IZLinkBackendDiscovery discovery);
 
     void SetSubscription(string topic);
 

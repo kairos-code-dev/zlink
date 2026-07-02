@@ -26,15 +26,11 @@ internal sealed class ZLinkChannelRuntimeBundle : IAsyncDisposable
 
     public SemaphoreSlim ReceiveGate { get; } = new(1, 1);
 
-    public IZLinkBackendDiscovery? Discovery { get; set; }
-
     public IZLinkBackendSpotRouteBridge? SpotRouteBridge { get; set; }
 
     public async ValueTask DisposeAsync()
     {
         if (Submitter is not null) await Submitter.DisposeAsync();
-
-        if (Discovery is not null) await Discovery.DisposeAsync();
 
         if (SpotRouteBridge is not null) await SpotRouteBridge.DisposeAsync();
 

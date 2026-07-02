@@ -27,8 +27,6 @@ internal sealed class ZLinkFrameworkRegistration
 
     public Type? SpotRemoteAddressResolverType { get; set; }
 
-    public ZLinkRegistrySpotRemoteAddressesRegistration? RegistrySpotRemoteAddresses { get; set; }
-
     public Dictionary<string, ZLinkChannelRegistration> Channels { get; } = new(StringComparer.Ordinal);
 
     public Dictionary<string, ZLinkRouteChannelRegistration> RouteChannels { get; } = new(StringComparer.Ordinal);
@@ -36,8 +34,6 @@ internal sealed class ZLinkFrameworkRegistration
     public Dictionary<string, ZLinkStreamNodeRegistration> StreamNodes { get; } = new(StringComparer.Ordinal);
 
     public Dictionary<string, ZLinkSpotNodeRegistration> SpotNodes { get; } = new(StringComparer.Ordinal);
-
-    public ZLinkDiscoveryRegistration? Discovery { get; set; }
 
     public Dictionary<string, ZLinkSpotDiscoveryRegistration> SpotDiscoveries { get; } = new(StringComparer.Ordinal);
 
@@ -59,24 +55,15 @@ internal sealed class ZLinkFrameworkRegistration
     }
 }
 
-internal sealed class ZLinkRegistrySpotRemoteAddressesRegistration : IZLinkRegistrySpotRemoteAddressesOptions
-{
-    public required string Namespace { get; init; }
-
-    public string? RouterChannelId { get; set; }
-}
-
-internal class ZLinkDiscoveryRegistration
-{
-    public List<string> Endpoints { get; } = [];
-}
-
 internal sealed class ZLinkMetadataPolicyRegistration
 {
     public HashSet<string> ForwardedApplicationKeys { get; } = new(StringComparer.Ordinal);
 }
 
-internal sealed class ZLinkSpotDiscoveryRegistration : ZLinkDiscoveryRegistration
+// spot mesh channel marker: AddSpotMesh(...) 가 mesh 채널 이름을 등록하고,
+// spot node 가 SpotDiscoveryChannelName 으로 이를 참조한다. peer 획득은
+// location-store 자동 연결 또는 수동 연결이 담당한다.
+internal sealed class ZLinkSpotDiscoveryRegistration
 {
     public required string ChannelName { get; init; }
 }

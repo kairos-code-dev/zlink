@@ -133,7 +133,7 @@ backend 의존 정책은 framework 의 public API 와 adapter factory 두 축으
 | 테스트 케이스 | 확인 기준 |
 |---------------|-----------|
 | `ScaffoldSmokeTests.PublicSurface_DoesNotExpose_BackendConcreteTypes` | 허용한 값 타입을 제외하면, backend concrete type 이 public surface 에 나타나지 않는다. |
-| `BackendAdapterFactoryTests.BackendFactory_Creates_Channel_Registry_Spot_And_Stream_Wrappers` | backend factory 가 channel, Registry, SPOT, STREAM wrapper 를 모두 만들어 낸다. |
+| `BackendAdapterFactoryTests.BackendFactory_Creates_Channel_Spot_And_Stream_Wrappers` | backend factory 가 channel, SPOT, STREAM wrapper 를 모두 만들어 낸다. |
 | `BackendAdapterFactoryTests.BackendFactory_Creates_MonitoringAdapter` | monitoring adapter 생성 경로가 backend 내부 안에 머문다. |
 
 [^public-contract]: public contract 는 외부 사용자에게 공개되어 변경 시 호환성을 책임져야 하는 API 표면을 뜻한다.

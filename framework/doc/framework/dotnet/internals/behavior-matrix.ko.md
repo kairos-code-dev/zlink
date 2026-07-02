@@ -172,7 +172,7 @@ runtime integration 테스트도 같은 변경에 함께 포함시킨다.
 
 | 테스트 케이스 | 확인 기준 |
 |---------------|-----------|
-| `ChannelsTests.AddZLinkFramework_AllowsRouteChannelManualConnections_WhenDiscoveryIsConfigured` | route mesh channel은 Discovery metadata가 있어도 명시한 manual peer로도 연결할 수 있다. |
+| `ChannelsTests.AddZLinkFramework_AllowsRouteChannelManualConnections_WhenLocationAutoConnectIsConfigured` | route mesh channel은 location 자동 연결이 구성되어도 명시한 manual peer로도 연결할 수 있다. |
 | `HandlerExposureTests.AddZLinkFramework_Throws_WhenServerHasNoBindEndpoint` | server 역할에 bind endpoint가 없으면 실패한다. |
 | `RegistryAndMonitoringTests.AddZLinkFramework_Throws_WhenPublisherHasNoBindEndpoint` | publisher 역할에 bind endpoint가 없으면 실패한다. |
 | `NodesAndServicesTests.AddZLinkFramework_AllowsStandaloneLocalSpotNode` | Discovery mesh 없이 local-only SpotNode를 단독으로 시작할 수 있다. |

@@ -51,7 +51,6 @@ internal sealed class ZLinkSpotNodeInitializer(
             state.SpotNodes.Add(spotNodeRegistration.SpotNodeName, nodeRuntime);
             try
             {
-                AttachDiscoveryIfConfigured(state, channelAdapter, spotNodeRegistration, node, nodeRuntime);
                 ConnectManualPeers(spotNodeRegistration, nodeRuntime);
 
                 await nodeRuntime.InitializeEntrySpotAsync().ConfigureAwait(false);
@@ -75,37 +74,6 @@ internal sealed class ZLinkSpotNodeInitializer(
             _ => throw new ZLinkConfigurationException(
                 $"SPOT node '{registration.SpotNodeName}' must enable router or pub/sub capability.")
         };
-    }
-
-    private void AttachDiscoveryIfConfigured(
-        ZLinkFrameworkRuntimeState state,
-        IZLinkChannelBackendAdapter channelAdapter,
-        ZLinkSpotNodeRegistration spotNodeRegistration,
-        IZLinkBackendSpotNode node,
-        ZLinkSpotNodeRuntime nodeRuntime)
-    {
-        if (string.IsNullOrWhiteSpace(spotNodeRegistration.SpotDiscoveryChannelName)
-            || !registration.SpotDiscoveries.TryGetValue(
-                spotNodeRegistration.SpotDiscoveryChannelName,
-                out var spotDiscovery))
-            return;
-
-        var endpoints = ZLinkFrameworkRegistrationValidator.ResolveSpotDiscoveryEndpoints(
-            registration,
-            spotDiscovery);
-        if (endpoints.Count == 0) return;
-
-        var discovery = ZLinkBackendDiscoveryFactory.Create(
-            channelAdapter,
-            state.Context,
-            spotDiscovery.ChannelName,
-            ZLinkAutoConnectType.SpotMesh,
-            endpoints);
-        if (registration.RegistrySpotRemoteAddresses is not null) discovery.SpotOwnerSyncEnabled = true;
-        node.AttachDiscovery(discovery);
-        nodeRuntime.SpotDiscovery = discovery;
-        nodeRuntime.StartDiscoveryPeerReconciliation();
-        state.SpotDiscoveries.Add($"{spotNodeRegistration.SpotNodeName}.discovery", discovery);
     }
 
     private static void ConnectManualPeers(

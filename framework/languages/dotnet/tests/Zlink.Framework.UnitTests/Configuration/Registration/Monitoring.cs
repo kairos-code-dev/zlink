@@ -5,7 +5,7 @@ using Zlink.Framework.Codecs.Protobuf;
 
 namespace Zlink.Framework.UnitTests;
 
-public sealed class RegistryAndMonitoringTests : RegistrationValidationSupport
+public sealed class MonitoringTests : RegistrationValidationSupport
 {
     [Fact]
     public void RemovedSpotEgressClient_DI_IsNotExposed_AsPublicCapability()
@@ -77,8 +77,7 @@ public sealed class RegistryAndMonitoringTests : RegistrationValidationSupport
                 var dispatch = options.ConfigureDispatch();
                 dispatch.SpotDispatchMode = ZLinkDispatchMode.Dynamic;
             }
-            options.UseDiscovery().AddRegistryEndpoint("tcp://127.0.0.1:5551");
-
+            options.UseInMemoryLocationStores();
 
             {
                 var channel = options.AddClientServerChannel("profile");
@@ -127,7 +126,7 @@ public sealed class RegistryAndMonitoringTests : RegistrationValidationSupport
         Assert.Equal(TimeSpan.FromMilliseconds(1000), registration.DefaultSocketSendTimeout);
         Assert.Contains("application/x-protobuf", registration.Codecs.Serializers.Keys);
         Assert.Equal(ZLinkDispatchMode.Dynamic, registration.DispatchOptions.SpotDispatchMode);
-        Assert.NotNull(registration.Discovery);
+        Assert.True(registration.Locations.Enabled);
         Assert.NotNull(registration.SpotDiscovery);
         Assert.Contains("profile", registration.Channels.Keys);
         Assert.Contains("stream.node", registration.StreamNodes.Keys);
@@ -158,28 +157,6 @@ public sealed class RegistryAndMonitoringTests : RegistrationValidationSupport
         Assert.Equal(TimeSpan.FromSeconds(3), registration.ResolveRouteRequestTimeout("route"));
         Assert.Equal(TimeSpan.FromSeconds(30), registration.ResolveChannelRequestTimeout("missing"));
         Assert.Equal(TimeSpan.FromSeconds(30), registration.ResolveRouteRequestTimeout("missing"));
-    }
-
-    [Fact]
-    public void AddZLinkRegistry_Throws_WhenPubEndpointIsMissing()
-    {
-        var services = new ServiceCollection();
-
-        var exception = Assert.Throws<ZLinkConfigurationException>(() =>
-            services.AddZLinkRegistry(options => { options.RouterEndpoint = "tcp://127.0.0.1:5551"; }));
-
-        Assert.Contains("pub endpoint", exception.Message, StringComparison.OrdinalIgnoreCase);
-    }
-
-    [Fact]
-    public void AddZLinkRegistry_Throws_WhenRouterEndpointIsMissing()
-    {
-        var services = new ServiceCollection();
-
-        var exception = Assert.Throws<ZLinkConfigurationException>(() =>
-            services.AddZLinkRegistry(options => { options.PubEndpoint = "tcp://127.0.0.1:5550"; }));
-
-        Assert.Contains("router endpoint", exception.Message, StringComparison.OrdinalIgnoreCase);
     }
 
     [Fact]

@@ -16,7 +16,6 @@ internal sealed partial class ZLinkFrameworkRuntime
     private readonly ZLinkFrameworkChannelFacade _channelFacade;
     private readonly ZLinkChannelRuntimeManager _channels;
     private readonly SemaphoreSlim _gate = new(1, 1);
-    private readonly ZLinkRegistryRuntime? _registryRuntime;
     private readonly ZLinkFrameworkSessionBindings _sessionBindings = new();
     private readonly ZLinkFrameworkSpotFacade _spotFacade;
     private readonly ZLinkSpotRouteEgressDispatcher _spotRouteEgress;
@@ -34,13 +33,11 @@ internal sealed partial class ZLinkFrameworkRuntime
         IZLinkBackendAdapterFactory backendAdapterFactory,
         ZLinkFrameworkRegistration registration,
         ZLinkHandlerRegistry handlerRegistry,
-        ZLinkHandlerDispatcher dispatcher,
-        ZLinkRegistryRuntime? registryRuntime = null)
+        ZLinkHandlerDispatcher dispatcher)
     {
         Services = services;
         _backendAdapterFactory = backendAdapterFactory;
         Registration = registration;
-        _registryRuntime = registryRuntime;
         var components = ZLinkFrameworkRuntimeComponentFactory.Create(
             this,
             services,
@@ -62,8 +59,7 @@ internal sealed partial class ZLinkFrameworkRuntime
         _spotRouteEgress = new ZLinkSpotRouteEgressDispatcher(
             Registration,
             _channelFacade.GetRouteChannel,
-            GetSpotRouteBridgeOwner,
-            GetRegistrySpotDiscovery);
+            GetSpotRouteBridgeOwner);
     }
 
     public IZLinkBackendContext? Context => _state?.Context;
@@ -104,26 +100,6 @@ internal sealed partial class ZLinkFrameworkRuntime
             return state.SpotRouteBridgeOwners.TryGetValue(routerChannelId, out var owner)
                 ? owner
                 : null;
-        }
-    }
-
-    private IZLinkBackendDiscovery? GetRegistrySpotDiscovery(string routerChannelId)
-    {
-        var state = _state;
-        if (state is null) return null;
-
-        var options = Registration.RegistrySpotRemoteAddresses;
-        if (options is null) return null;
-
-        lock (state.SyncRoot)
-        {
-            if (state.SpotDiscoveries.TryGetValue($"{options.Namespace}.registry-spot", out var discovery))
-                return discovery;
-
-            var resolvedRouterChannelId = ZLinkRegistryRouteRuntime.ResolveRouterChannelId(
-                state,
-                options.RouterChannelId);
-            return ZLinkRegistryRouteRuntime.ResolveSpotDiscovery(state, resolvedRouterChannelId);
         }
     }
 
@@ -170,8 +146,6 @@ internal sealed partial class ZLinkFrameworkRuntime
 
     public async ValueTask StartAsync(CancellationToken cancellationToken)
     {
-        if (_registryRuntime is not null) await _registryRuntime.StartAsync(cancellationToken);
-
         await _gate.WaitAsync(cancellationToken);
         try
         {
@@ -222,8 +196,6 @@ internal sealed partial class ZLinkFrameworkRuntime
         }
 
         workerPoolToDispose?.Dispose();
-
-        if (_registryRuntime is not null) await _registryRuntime.StopAsync(cancellationToken);
     }
 
     private async ValueTask<ZLinkFrameworkRuntimeState> GetStartedStateAsync(

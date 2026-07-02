@@ -51,51 +51,6 @@ public static class ServiceCollectionExtensions
         return services;
     }
 
-    public static IServiceCollection AddZLinkRegistry(
-        this IServiceCollection services,
-        Action<IZLinkRegistryOptions> configure)
-    {
-        ArgumentNullException.ThrowIfNull(services);
-        ArgumentNullException.ThrowIfNull(configure);
-
-        var registration = new ZLinkRegistryRegistration();
-        var builder = new ZLinkRegistryOptionsModel(registration);
-
-        configure(builder);
-        ZLinkRegistryRegistrationValidator.Validate(registration);
-
-        services.AddSingleton(registration);
-        services.TryAddSingleton<IZLinkBackendAdapterFactory, ZLinkDotNetBackendAdapterFactory>();
-        services.AddSingleton<ZLinkRegistryRuntime>();
-        services.AddSingleton<IZLinkRegistryQuery, ZLinkRegistryQuery>();
-        services.AddSingleton<IHostedService>(static provider =>
-            new ZLinkRegistryHostedService(
-                provider.GetRequiredService<ZLinkRegistryRuntime>(),
-                provider.GetService<ZLinkFrameworkRuntime>()));
-
-        return services;
-    }
-
-    public static IServiceCollection AddZLinkRegistryQueryClient(
-        this IServiceCollection services,
-        Action<IZLinkRegistryQueryClientOptions> configure)
-    {
-        ArgumentNullException.ThrowIfNull(services);
-        ArgumentNullException.ThrowIfNull(configure);
-
-        var registration = new ZLinkRegistryQueryClientRegistration();
-        var builder = new ZLinkRegistryQueryClientOptionsModel(registration);
-
-        configure(builder);
-        ZLinkRegistryQueryClientRegistrationValidator.Validate(registration);
-
-        services.AddSingleton(registration);
-        services.TryAddSingleton<IZLinkBackendAdapterFactory, ZLinkDotNetBackendAdapterFactory>();
-        services.AddSingleton<IZLinkRegistryQueryClient, ZLinkRegistryQueryClientService>();
-
-        return services;
-    }
-
     public static IServiceCollection AddZLinkMonitoring(
         this IServiceCollection services,
         Action<IZLinkMonitoringOptions> configure)

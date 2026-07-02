@@ -309,8 +309,6 @@ public sealed class EntrySpotActorDispatchTests
     {
         public IZLinkChannelBackendAdapter CreateChannelAdapter() => throw new NotSupportedException();
 
-        public IZLinkRegistryBackendAdapter CreateRegistryAdapter() => throw new NotSupportedException();
-
         public IZLinkSpotBackendAdapter CreateSpotAdapter() => throw new NotSupportedException();
 
         public IZLinkStreamBackendAdapter CreateStreamAdapter() => throw new NotSupportedException();

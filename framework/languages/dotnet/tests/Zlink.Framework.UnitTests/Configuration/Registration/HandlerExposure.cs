@@ -81,7 +81,7 @@ public sealed class HandlerExposureTests : RegistrationValidationSupport
         var exception = Assert.Throws<ZLinkConfigurationException>(() =>
             services.AddZLinkFramework(options =>
             {
-                options.UseDiscovery().AddRegistryEndpoint("tcp://127.0.0.1:5551");
+                options.UseInMemoryLocationStores();
                 {
                     var channel = options.AddFanoutChannel("profile.events");
                     channel.EnableSubscriber();
@@ -261,13 +261,13 @@ public sealed class HandlerExposureTests : RegistrationValidationSupport
     }
 
     [Fact]
-    public void AddZLinkFramework_RouteMeshEnableServer_BindsSharedRouterWithDiscovery()
+    public void AddZLinkFramework_RouteMeshEnableServer_BindsSharedRouter()
     {
         var services = new ServiceCollection();
 
         services.AddZLinkFramework(options =>
         {
-            options.UseDiscovery().AddRegistryEndpoint("tcp://127.0.0.1:5551");
+            options.UseInMemoryLocationStores();
             {
                 var channel = options.AddRouteMesh("route").EnableServer("tcp://0.0.0.0:5700");
                 channel.SetRoutingId(RoutingId.From("route-node"));
@@ -317,7 +317,7 @@ public sealed class HandlerExposureTests : RegistrationValidationSupport
 
         services.AddZLinkFramework(options =>
         {
-            options.UseDiscovery().AddRegistryEndpoint("tcp://127.0.0.1:5551");
+            options.UseInMemoryLocationStores();
             {
                 var channel = options.AddRouteMesh("backend");
                 channel.EnableServer("tcp://127.0.0.1:7101");

@@ -24,7 +24,7 @@ internal sealed class ZLinkChannelBundleFactory(
                 dealer.SetRoutingId(localRid);
             }
 
-            // weight 는 bind/connect/discovery 前에 적용해 default-weight 노출 창을 없앤다.
+            // weight 는 bind/connect 前에 적용해 default-weight 노출 창을 없앤다.
             dealer.SetPeerWeight(channel.Client.SocketConfig.Weight);
             if (!string.IsNullOrWhiteSpace(channel.Client.BindEndpoint)) dealer.Bind(channel.Client.BindEndpoint);
 
@@ -39,15 +39,6 @@ internal sealed class ZLinkChannelBundleFactory(
 
             if (channel.Client.ManualConnections.Count > 0)
                 AttachManualConnections(bundle, dealer, channel.Client.ManualConnections);
-            else
-                AttachDiscovery(
-                    bundle,
-                    adapter,
-                    state.Context,
-                    channelName,
-                    ZLinkAutoConnectType.ClientServer,
-                    registration.Discovery?.Endpoints ?? [],
-                    dealer.AttachDiscovery);
 
             return bundle;
         }
@@ -86,16 +77,6 @@ internal sealed class ZLinkChannelBundleFactory(
             router.Bind(channel.Server!.BindEndpoint!);
             bundle = new ZLinkChannelRuntimeBundle(router, localRid: localRid, socketRole: "router");
 
-            if (registration.Discovery is not null)
-                AttachDiscovery(
-                    bundle,
-                    adapter,
-                    state.Context,
-                    channelName,
-                    ZLinkAutoConnectType.ClientServer,
-                    registration.Discovery.Endpoints,
-                    router.AttachDiscovery);
-
             return bundle;
         }
         catch
@@ -133,15 +114,6 @@ internal sealed class ZLinkChannelBundleFactory(
 
             if (channel.Subscriber!.ManualConnections.Count > 0)
                 AttachManualConnections(bundle, subscriber, channel.Subscriber.ManualConnections);
-            else
-                AttachDiscovery(
-                    bundle,
-                    adapter,
-                    state.Context,
-                    channelName,
-                    ZLinkAutoConnectType.Fanout,
-                    registration.Discovery?.Endpoints ?? [],
-                    subscriber.AttachDiscovery);
 
             return bundle;
         }
@@ -186,16 +158,6 @@ internal sealed class ZLinkChannelBundleFactory(
                 localRid,
                 "pub");
 
-            if (registration.Discovery is not null)
-                AttachDiscovery(
-                    bundle,
-                    adapter,
-                    state.Context,
-                    channelName,
-                    ZLinkAutoConnectType.Fanout,
-                    registration.Discovery.Endpoints,
-                    publisher.AttachDiscovery);
-
             return bundle;
         }
         catch
@@ -227,25 +189,6 @@ internal sealed class ZLinkChannelBundleFactory(
             socket.Connect(endpoint);
             _ = bundle.TryAddManualConnection(endpoint);
         }
-    }
-
-    private static void AttachDiscovery(
-        ZLinkChannelRuntimeBundle bundle,
-        IZLinkChannelBackendAdapter adapter,
-        IZLinkBackendContext context,
-        string channelName,
-        ZLinkAutoConnectType autoConnectType,
-        IReadOnlyList<string> endpoints,
-        Action<IZLinkBackendDiscovery> attachDiscovery)
-    {
-        var discovery = ZLinkBackendDiscoveryFactory.Create(
-            adapter,
-            context,
-            channelName,
-            autoConnectType,
-            endpoints);
-        attachDiscovery(discovery);
-        bundle.Discovery = discovery;
     }
 
     private static void DisposeFailedBundle(ZLinkChannelRuntimeBundle bundle)

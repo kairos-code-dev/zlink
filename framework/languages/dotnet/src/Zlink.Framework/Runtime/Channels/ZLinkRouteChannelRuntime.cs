@@ -26,14 +26,12 @@ internal sealed class ZLinkRouteChannelRuntime : IAsyncDisposable
         ZLinkFrameworkRegistration frameworkRegistration,
         ZLinkRouteChannelRegistration registration,
         IZLinkBackendRouterSocket router,
-        IZLinkBackendDiscovery? discovery,
         ZLinkRouteHandlerRegistry handlers,
         IZLinkRouteInternalPacketDispatcher? internalPackets,
         CancellationToken stopToken)
     {
         _registration = registration;
         _router = router;
-        Discovery = discovery;
         _handlers = handlers;
         _internalPackets = internalPackets ?? ZLinkNoRouteInternalPacketDispatcher.Instance;
         _codecs = frameworkRegistration.Codecs;
@@ -79,8 +77,6 @@ internal sealed class ZLinkRouteChannelRuntime : IAsyncDisposable
     // route mesh 의 serving socket(weight 적용 대상). server·client 가 공유하는 단일 ROUTER.
     internal IZLinkBackendWeightedSocket ServingSocket => _router;
 
-    public IZLinkBackendDiscovery? Discovery { get; }
-
     internal bool HasSpotRouteBridge => _spotRouteBridge is not null;
 
     public async ValueTask DisposeAsync()
@@ -103,8 +99,6 @@ internal sealed class ZLinkRouteChannelRuntime : IAsyncDisposable
 
         await _submitter.DisposeAsync();
 
-        if (Discovery is not null) await Discovery.DisposeAsync();
-
         if (_spotRouteBridge is not null) await _spotRouteBridge.DisposeAsync();
 
         await _router.DisposeAsync();
@@ -123,14 +117,6 @@ internal sealed class ZLinkRouteChannelRuntime : IAsyncDisposable
                                         || _handlers.TryGet(RouterChannelId, kind, packetName, out _),
             _ => false
         };
-    }
-
-    internal bool HasKnownRoutePeer(RoutingId targetNodeRid)
-    {
-        if (Discovery is null) return false;
-
-        return Discovery.MemberPeers()
-            .Any(peer => peer.RoutingId == targetNodeRid);
     }
 
     public void AttachSpotRouteBridge(

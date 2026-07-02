@@ -29,11 +29,6 @@ internal sealed class ZLinkBackendPublisherSocketWrapper(IPubSocket nativeSocket
         nativeSocket.Options.ReceiveHighWaterMark = value;
     }
 
-    public void AttachDiscovery(IZLinkBackendDiscovery discovery)
-    {
-        nativeSocket.AttachDiscovery(discovery.RequireNative<IDiscovery>());
-    }
-
     public void OnSendReady(Action handler)
     {
         nativeSocket.OnSendReady(handler);

@@ -45,11 +45,6 @@ internal sealed class ZLinkBackendDealerSocketWrapper(IDealerSocket nativeSocket
         nativeSocket.SetRoutingId(routingId);
     }
 
-    public void AttachDiscovery(IZLinkBackendDiscovery discovery)
-    {
-        nativeSocket.AttachDiscovery(discovery.RequireNative<IDiscovery>());
-    }
-
     public void OnSendReady(Action handler)
     {
         nativeSocket.OnSendReady(handler);

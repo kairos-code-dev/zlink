@@ -48,22 +48,6 @@ internal delegate void ActorJoinEntrySpotCallback(
     ZLinkBackendActorJoinEntrySpotResult result,
     IReadOnlyList<Message> parts);
 
-internal sealed record ZLinkBackendDiscoveryRoute(
-    RoutingId OwnerRoutingId,
-    Message Value) : IDisposable, IAsyncDisposable
-{
-    public ValueTask DisposeAsync()
-    {
-        Value.Dispose();
-        return ValueTask.CompletedTask;
-    }
-
-    public void Dispose()
-    {
-        Value.Dispose();
-    }
-}
-
 internal readonly record struct ZLinkBackendSpotActorLifecycleInfo(
     ZLinkBackendActorRef? PreviousActor,
     ZLinkBackendActorRef? CurrentActor,

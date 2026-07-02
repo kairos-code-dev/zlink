@@ -13,23 +13,10 @@ internal static partial class ZLinkFrameworkRegistrationValidator
 
         ValidateLocations(registration);
 
-        if (registration.RegistrySpotRemoteAddresses is not null
-            && registration.Discovery?.Endpoints.Count is not > 0
-            && !registration.SpotDiscoveries.Values.Any(discovery =>
-                ResolveSpotDiscoveryEndpoints(registration, discovery).Count > 0))
-            throw new ZLinkConfigurationException(
-                "Registry remote address resolver requires discovery endpoints from UseDiscovery(...AddRegistryEndpoint...).");
-
-        ValidateRegistryRouteChannel(
-            registration.RegistrySpotRemoteAddresses is not null,
-            registration.RegistrySpotRemoteAddresses?.RouterChannelId,
-            registration,
-            "Registry SPOT remote address resolver");
-
         foreach (var channel in registration.Channels.Values)
             ValidateChannel(
                 channel,
-                registration.Discovery is not null,
+                registration.Locations.Enabled,
                 false,
                 handlerGroups,
                 channelHandlerEndpoints);
@@ -39,8 +26,7 @@ internal static partial class ZLinkFrameworkRegistrationValidator
         foreach (var routed in registration.RouteChannels.Values)
             ValidateRouteChannel(
                 routed,
-                registration.Discovery is not null,
-                registration.SpotNodes.Values.Any(static spotNode => spotNode.Router is not null),
+                registration.Locations.Enabled,
                 handlerGroups,
                 routeHandlerEndpoints);
 
@@ -134,31 +120,6 @@ internal static partial class ZLinkFrameworkRegistrationValidator
         entries.Add(entry);
     }
 
-    private static void ValidateRegistryRouteChannel(
-        bool enabled,
-        string? routerChannelId,
-        ZLinkFrameworkRegistration registration,
-        string capabilityName)
-    {
-        if (!enabled) return;
-
-        if (!string.IsNullOrWhiteSpace(routerChannelId))
-        {
-            if (!registration.RouteChannels.ContainsKey(routerChannelId)
-                && !registration.SpotNodes.ContainsKey(routerChannelId))
-                throw new ZLinkConfigurationException(
-                    $"{capabilityName} references unknown route mesh channel or SPOT node '{routerChannelId}'.");
-
-            return;
-        }
-
-        var routerCapableSpotNodeCount =
-            registration.SpotNodes.Values.Count(static spotNode => spotNode.Router is not null);
-        if (registration.RouteChannels.Count + routerCapableSpotNodeCount != 1)
-            throw new ZLinkConfigurationException(
-                $"{capabilityName} requires RouterChannelId when there is not exactly one route mesh channel or router-capable SPOT node.");
-    }
-
     private static void ValidateStreamNode(
         ZLinkStreamNodeRegistration streamNode,
         ZLinkFrameworkRegistration registration)
@@ -170,18 +131,5 @@ internal static partial class ZLinkFrameworkRegistrationValidator
         if (streamNode.HeaderSessionType is null)
             throw new ZLinkConfigurationException(
                 $"STREAM node '{streamNode.StreamNodeName}' must register a header stream session.");
-    }
-
-    internal static IReadOnlyList<string> ResolveSpotDiscoveryEndpoints(
-        ZLinkFrameworkRegistration registration,
-        ZLinkSpotDiscoveryRegistration? discovery = null)
-    {
-        if (discovery is { Endpoints.Count: > 0 }) return discovery.Endpoints;
-
-        if (discovery is null
-            && registration.SpotDiscovery is { Endpoints.Count: > 0 } singleDiscovery)
-            return singleDiscovery.Endpoints;
-
-        return registration.Discovery?.Endpoints ?? [];
     }
 }

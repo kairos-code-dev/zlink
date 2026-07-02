@@ -47,7 +47,6 @@ public sealed class NodesAndServicesTests : RegistrationValidationSupport
         var registration = services.BuildServiceProvider().GetRequiredService<ZLinkFrameworkRegistration>();
         Assert.Single(registration.SpotNodes);
         Assert.NotNull(registration.SpotDiscovery);
-        Assert.Empty(registration.SpotDiscovery.Endpoints);
     }
 
     [Fact]
@@ -108,32 +107,6 @@ public sealed class NodesAndServicesTests : RegistrationValidationSupport
     }
 
     [Fact]
-    public void AddZLinkFramework_AllowsSpotMeshToInheritGlobalDiscovery()
-    {
-        var services = new ServiceCollection();
-
-        services.AddZLinkFramework(options =>
-        {
-            options.UseDiscovery().AddRegistryEndpoint("tcp://127.0.0.1:5551");
-            {
-                var mesh = options.AddSpotMesh("game.stage");
-                {
-                    var spot = mesh;
-                    {
-                        var router = spot.EnableRouter("tcp://127.0.0.1:9000");
-                    }
-                    spot.AddSpotFactory<TestSpot>();
-                }
-            }
-        });
-
-        var registration = services.BuildServiceProvider().GetRequiredService<ZLinkFrameworkRegistration>();
-        Assert.Empty(registration.SpotDiscovery!.Endpoints);
-        Assert.Equal(["tcp://127.0.0.1:5551"],
-            ZLinkFrameworkRegistrationValidator.ResolveSpotDiscoveryEndpoints(registration));
-    }
-
-    [Fact]
     public void AddZLinkFramework_Throws_WhenSpotFactoryTypeIsDuplicatedAcrossNodes()
     {
         var services = new ServiceCollection();
@@ -141,7 +114,6 @@ public sealed class NodesAndServicesTests : RegistrationValidationSupport
         var exception = Assert.Throws<ZLinkConfigurationException>(() =>
             services.AddZLinkFramework(options =>
             {
-                options.UseDiscovery().AddRegistryEndpoint("tcp://127.0.0.1:5551");
                 {
                     var mesh = options.AddSpotMesh("game.stage");
                     {
@@ -449,7 +421,6 @@ public sealed class NodesAndServicesTests : RegistrationValidationSupport
 
         services.AddZLinkFramework(options =>
         {
-            options.UseDiscovery().AddRegistryEndpoint("tcp://127.0.0.1:5551");
             {
                 var routed = options.AddRouteMesh("gateway");
                 routed.EnableServer("tcp://127.0.0.1:6202");

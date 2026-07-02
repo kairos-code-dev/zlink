@@ -2,74 +2,6 @@ namespace Zlink.Framework.Runtime.Backend.DotNet.Mappings;
 
 internal static class ZLinkDotNetBackendMappings
 {
-    public static ZLinkRegistryStatus ToFramework(this RegistryStatus status)
-    {
-        return new ZLinkRegistryStatus(
-            status.RegistryId,
-            status.BindEndpoint,
-            (ZLinkRegistryState)status.State,
-            status.TopologyEntryCount,
-            status.PeerRegistryCount,
-            status.ConnectedPeerRegistryCount,
-            status.ListSeq,
-            status.LastError,
-            status.LastChangedMs);
-    }
-
-    public static ZLinkRegistryServiceSummaryEntry ToFramework(this RegistryServiceSummaryEntry entry)
-    {
-        return new ZLinkRegistryServiceSummaryEntry(
-            (ZLinkAutoConnectType)entry.AutoConnectType,
-            (ZLinkServiceRole)entry.ServiceRole,
-            entry.ChannelName,
-            entry.TotalCount,
-            entry.ConnectingCount,
-            entry.ReadyCount,
-            entry.ErrorCount,
-            entry.StoppedCount,
-            entry.LastReportedMs);
-    }
-
-    public static ZLinkRegistryTopologyEntry ToFramework(this RegistryTopologyEntry entry)
-    {
-        return new ZLinkRegistryTopologyEntry(
-            (ZLinkAutoConnectType)entry.AutoConnectType,
-            entry.RoutingId,
-            (ZLinkServiceKind)entry.ServiceKind,
-            (ZLinkServiceRole)entry.ServiceRole,
-            entry.ChannelName,
-            entry.Endpoint,
-            (ZLinkTopologySource)entry.Source,
-            (ZLinkTopologyState)entry.State,
-            entry.DesiredCount,
-            entry.ReadyCount,
-            entry.ErrorCode,
-            entry.LastReportedMs,
-            entry.SpotKind.ToFramework());
-    }
-
-    public static ZLinkMemberPeerEntry ToFramework(this MemberPeerEntry entry)
-    {
-        return new ZLinkMemberPeerEntry(
-            (ZLinkAutoConnectType)entry.AutoConnectType,
-            (ZLinkServiceRole)entry.ServiceRole,
-            entry.ChannelName,
-            entry.Endpoint,
-            entry.RoutingId,
-            entry.Value,
-            entry.Weight);
-    }
-
-    public static ZLinkSpotKind ToFramework(this SpotKind spotKind)
-    {
-        return spotKind switch
-        {
-            SpotKind.Entry => ZLinkSpotKind.Entry,
-            SpotKind.User => ZLinkSpotKind.User,
-            _ => ZLinkSpotKind.Invalid
-        };
-    }
-
     public static ZLinkSpotNodeStatus ToFramework(this SpotNodeStatus status)
     {
         return new ZLinkSpotNodeStatus(
@@ -109,30 +41,6 @@ internal static class ZLinkDotNetBackendMappings
             entry.ReadyPeerCount,
             entry.ActivePeerCount,
             entry.LastChangedMs);
-    }
-
-    public static RegistryServiceSummaryFilter? ToNative(this ZLinkRegistryServiceSummaryFilter? filter)
-    {
-        if (filter is null) return null;
-
-        return new RegistryServiceSummaryFilter(
-            filter.AutoConnectType is null ? null : (AutoConnectType?)filter.AutoConnectType,
-            filter.ServiceRole is null ? null : (ServiceRole?)filter.ServiceRole,
-            filter.ChannelName);
-    }
-
-    public static RegistryTopologyFilter? ToNative(this ZLinkRegistryTopologyFilter? filter)
-    {
-        if (filter is null) return null;
-
-        return new RegistryTopologyFilter(
-            filter.AutoConnectType is null ? null : (AutoConnectType?)filter.AutoConnectType,
-            filter.ServiceKind is null ? null : (ServiceKind?)filter.ServiceKind,
-            filter.ServiceRole is null ? null : (ServiceRole?)filter.ServiceRole,
-            filter.ChannelName,
-            filter.RoutingId,
-            filter.State is null ? null : (TopologyState?)filter.State,
-            filter.Source is null ? null : (TopologySource?)filter.Source);
     }
 
     public static ZLinkBackendSocketMonitorEvent ToFramework(this MonitorEvent monitorEvent)

@@ -110,7 +110,7 @@ surface 테스트를 같이 갱신해야 한다.
 |---------------|-----------|
 | `ScaffoldSmokeTests.PublicSurface_Removes_DirectRouteContracts_And_Exposes_ActorContracts` | 비목표인 direct route public 호출은 사라지고, actor / session 표면은 그대로 남아 있다. |
 | `ScaffoldSmokeTests.PublicSurface_DoesNotExpose_BackendConcreteTypes` | backend 교체 범위 밖의 concrete type 이 public API 로 새어 나오지 않는다. |
-| `BackendAdapterFactoryTests.BackendFactory_Creates_Channel_Registry_Spot_And_Stream_Wrappers` | 현재 구현 범위인 channel, Registry, SPOT, STREAM backend wrapper 가 정상적으로 생성된다. |
+| `BackendAdapterFactoryTests.BackendFactory_Creates_Channel_Spot_And_Stream_Wrappers` | 현재 구현 범위인 channel, SPOT, STREAM backend wrapper 가 정상적으로 생성된다. |
 | `RegressionTests.DotNetDraftDocuments_AllExposeRegressionTestSection` | 범위 문서를 포함한 모든 draft 문서가 회귀 테스트 단락을 유지한다. |
 
 [^public-contract]: public contract 는 외부 사용자에게 공개되어 변경 시 호환성을 책임져야 하는 API 표면을 뜻한다.

@@ -8,18 +8,6 @@ internal sealed class ZLinkDotNetChannelBackendAdapter : IZLinkChannelBackendAda
             Systems.Zlink.Zlink.CreateContext());
     }
 
-    public IZLinkBackendDiscovery CreateDiscovery(
-        IZLinkBackendContext context,
-        ZLinkAutoConnectType autoConnectType,
-        string channelName)
-    {
-        var nativeContext = context.RequireNative<IContext>();
-
-        return new ZLinkBackendDiscoveryWrapper(
-            nativeContext.CreateDiscovery((AutoConnectType)autoConnectType,
-                channelName));
-    }
-
     public IZLinkBackendDealerSocket CreateDealerSocket(IZLinkBackendContext context)
     {
         var socket = context.RequireNative<IContext>().CreateDealerSocket();
@@ -72,21 +60,6 @@ internal sealed class ZLinkDotNetStreamBackendAdapter : IZLinkStreamBackendAdapt
         socket.Options.Linger = TimeSpan.Zero;
         return new ZLinkBackendStreamSocketWrapper(
             socket);
-    }
-}
-
-internal sealed class ZLinkDotNetRegistryBackendAdapter : IZLinkRegistryBackendAdapter
-{
-    public IZLinkBackendRegistry CreateRegistry(IZLinkBackendContext context)
-    {
-        return new ZLinkBackendRegistryWrapper(
-            context.RequireNative<IContext>().CreateRegistry());
-    }
-
-    public IZLinkBackendRegistryQueryClient CreateRegistryQueryClient(IZLinkBackendContext context)
-    {
-        return new ZLinkBackendRegistryQueryClientWrapper(
-            context.RequireNative<IContext>().CreateRegistryQueryClient());
     }
 }
 

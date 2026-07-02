@@ -2,8 +2,6 @@
 
 package systems.zlink.contracts.service.spot;
 
-import systems.zlink.contracts.service.registry.SubjectKind;
-
 /**
  * Filters a spot node subject query; null fields match anything.
  * @param role restrict to subjects with this pub/sub role, or null for any

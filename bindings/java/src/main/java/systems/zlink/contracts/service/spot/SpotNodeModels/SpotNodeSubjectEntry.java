@@ -2,8 +2,6 @@
 
 package systems.zlink.contracts.service.spot;
 
-import systems.zlink.contracts.service.registry.SubjectKind;
-
 /**
  * One subject (topic or pattern) served by a spot node.
  * @param role the subject's pub/sub role

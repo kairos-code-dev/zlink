@@ -128,7 +128,7 @@ local topic plane으로 publish할 때는 node에서 만든 publisher handle을 
 공개 `Spot` facade 하나가 올라가 channel send/request, 피어 라우팅 통신,
 publish/subscribe를 함께 수행한다.
 
-- SPOT mesh: `zlink_spot_node_attach_discovery()` — SPOT channel view를
+- SPOT mesh: the removed SPOT discovery attach API — SPOT channel view를
   가진 Discovery 하나를 연결하면 같은 channel의 다른 `SpotNode`와 자동 연결된다
 - channel send/request: `zlink_spot_route_bridge_*` — channel이 소유한
   `DEALER` 또는 `ROUTER` socket을 bridge에 등록한다
@@ -182,7 +182,7 @@ SPOT 추상화 없이 소켓 수준에서 위치투명 통신을 제공한다.
 
 ```mermaid
 flowchart LR
-    A["C API<br/>(zlink_discovery_*, zlink_registry_*, etc.)"] --> B["service_api.cpp<br/>(validate + delegate)"]
+    A["C API<br/>(service APIs)"] --> B["service_api.cpp<br/>(validate + delegate)"]
     B --> C["*_access.hpp<br/>(service-local 접합 지점)"]
     C --> D["Service Runtime<br/>(concrete implementation)"]
 ```
@@ -215,7 +215,7 @@ flowchart LR
 1. 핸들 전용 가중치 옵션을 `0`으로 설정한다.
 2. 연결된 피어가 자신의 가중치 캐시를 갱신할 시간을 둔다. 이 갱신은
    소켓 모니터의 `ZLINK_EVENT_PEER_WEIGHT_CHANGED`로 확인할 수 있다.
-   서비스 계층 관점이 필요하면 `zlink_discovery_member_peers()`를 주기적으로
+   서비스 계층 관점이 필요하면 the removed discovery member API를 주기적으로
    읽어 이전 결과와 비교한다(Discovery 핸들 자체에는 socket monitor를 열 수 없다).
 3. 진행 중인 reply가 완료될 때까지 기다린다. 운영 시 이 시간은 보통 SLA를
    기준으로 설정한다.

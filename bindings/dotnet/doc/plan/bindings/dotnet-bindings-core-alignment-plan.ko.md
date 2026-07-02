@@ -626,20 +626,19 @@ public sealed class ServiceMonitor : IDisposable
    - `zlink_spot_pub_*`, `zlink_spot_sub_*`
    - `zlink_stream_attach_len32be`, `zlink_stream_send*`
    - 구형 monitor/poller/timer 전용 항목
-3. 새 export를 추가한다.
+3. 새 export를 추가할 때는 현재 `core/include/zlink.h`와 실제 동적
+   라이브러리 export 목록에 남아 있는 항목만 기준으로 삼는다.
+   discovery attach 계열과 discovery/registry prefix 계열은 core
+   8.4.3 이후 공개 C API에서 제거된 항목이므로 다시 선언하지 않는다.
    - `zlink_set_option/get_option`
    - `zlink_set/get_*_option`
    - `zlink_set/get_routing_id`
    - `zlink_set_tls_server/client`
    - `zlink_recv_handler`, `zlink_subscribe_handler`,
      `zlink_send_ready_handler`
-   - `zlink_socket_attach_discovery`
    - `zlink_socket_monitor_open/handler/recv`,
      `zlink_service_monitor_open/handler/recv`,
      `zlink_monitor_status`, `zlink_monitor_close`
-   - `zlink_discovery_set/get_value`, `set/get_metadata`
-   - `zlink_registry_*_snapshot`, `topology_*`,
-     `member_peers`, `member_peer_metadata`
    - `zlink_spot_node_*_snapshot/query`
    - `zlink_publish_part`, `zlink_subscribe_part`,
      `zlink_set_subscription`, `zlink_unset_subscription`

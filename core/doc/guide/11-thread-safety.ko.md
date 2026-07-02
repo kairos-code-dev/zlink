@@ -107,11 +107,9 @@ int main(void)
 - `zlink_bind()` / `zlink_connect()` / `zlink_disconnect()`
 - `zlink_set_option()` / `zlink_get_option()`
 - `zlink_set_subscription()` / `zlink_unset_subscription()`
-- `zlink_spot_node_attach_discovery()`
 - `zlink_socket_monitor_open()`
 - `zlink_send_ready_handler()`
 - `zlink_set_option()`
-- `zlink_registry_add_peer()` / `zlink_registry_set()`
 - 조회/스냅샷 함수
 
 **전송과 설정은 자유롭게 섞어 쓸 수 있습니다.** 예를 들어 한 스레드가
@@ -156,8 +154,6 @@ void *setup_thread(void *arg)
 | Socket | `send` | bind, connect, set_option 등 | `close` |
 | SPOT | `publish` | subscribe, unsubscribe 등 | `destroy` |
 | SPOT Node | *(송신 없음; data plane은 `Spot` 사용)* | bind, connect_peer 등 | `destroy` |
-| Discovery | *(없음)* | connect_registry 등 | `destroy` |
-| Registry | *(없음)* | bind, add_peer 등 | `destroy` |
 
 ## 4. 핸들 안전하게 닫기
 

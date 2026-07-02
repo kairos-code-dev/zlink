@@ -82,7 +82,7 @@ publisher handle created from the node. A single public `Spot` facade sits on
 top of the node and drives channel send/request, peer routed communication, and
 publish/subscribe.
 
-- SPOT mesh: `zlink_spot_node_attach_discovery()` attaches one Discovery
+- SPOT mesh: the removed SPOT discovery attach API attaches one Discovery
   with a SPOT channel view; peers in the same channel auto-connect.
 - Channel send/request: `zlink_spot_route_bridge_*` borrows a channel-owned
   `DEALER` or `ROUTER` socket.
@@ -136,7 +136,7 @@ All services follow a common access layer pattern:
 
 ```mermaid
 flowchart LR
-    A["C API<br/>(zlink_discovery_*, zlink_registry_*, etc.)"] --> B["service_api.cpp<br/>(validate + delegate)"]
+    A["C API<br/>(service APIs)"] --> B["service_api.cpp<br/>(validate + delegate)"]
     B --> C["*_access.hpp<br/>(service-local seam)"]
     C --> D["Service Runtime<br/>(concrete implementation)"]
 ```

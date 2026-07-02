@@ -58,11 +58,11 @@ enqueued messages drain before teardown completes (drain-then-close).
 - `zlink_bind()` / `zlink_connect()` / `zlink_disconnect()`
 - `zlink_set_option()` / `zlink_get_option()`
 - `zlink_set_subscription()` / `zlink_unset_subscription()`
-- `zlink_spot_node_attach_discovery()`
+- the removed SPOT discovery attach API
 - `zlink_*_monitor_open()`
 - `zlink_send_ready_handler()`
-- `zlink_registry_add_peer()` / `zlink_registry_set()``
-- Heavy queries: `zlink_registry_topology()`, snapshot functions
+- the removed registry peer API / the removed registry option API`
+- Heavy queries: the removed registry topology API, snapshot functions
 
 **Correctness-first serialization:**
 
@@ -89,7 +89,7 @@ but not forced through the heaviest serialization lane.
 
 - `zlink_close()` (sockets)
 - `zlink_spot_destroy()` / `zlink_spot_node_destroy()`
-- `zlink_discovery_destroy()` / `zlink_registry_destroy()`
+- removed discovery/registry destroy APIs
 - Monitor handle `close` / `destroy`
 
 **Admission gate mechanism:**

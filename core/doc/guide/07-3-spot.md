@@ -121,25 +121,11 @@ zlink_spot_node_connect_peer(b, "tcp://127.0.0.1:7101");
 
 This is fine for tests and fixed topologies.
 
-### 3.2 Discovery-backed wiring
+### 3.2 Automatic location wiring
 
-```c
-void *node = zlink_spot_node_new(ctx, NULL);
-zlink_spot_node_set_pub_bind(node, "tcp://127.0.0.1:0");
-
-void *discovery = zlink_discovery_new(
-  ctx,
-  ZLINK_AUTO_CONNECT_SPOT_MESH,
-  "alpha");
-zlink_discovery_connect_registry(discovery, "tcp://127.0.0.1:5551");
-
-zlink_spot_node_attach_discovery(node, discovery);
-```
-
-Here `"alpha"` is the SPOT channel view for this node.
-
-After `attach_discovery()`, do not mix in manual `connect_peer()` calls for the
-same node. The current contract blocks that with `EBUSY`.
+The former public discovery-backed SPOT wiring was removed from the C contract
+in core 8.4.3. Use explicit peer endpoints with `connect_peer()` until the
+framework location runtime/store replacement is available.
 
 If you do not have the peer endpoint but you know the target node routing id,
 call `zlink_spot_node_disconnect_peer_rid()` on the `SpotNode` to close that
@@ -239,28 +225,9 @@ management.
 
 ### 5.1 Automatic path
 
-```c
-void *node = zlink_spot_node_new(ctx, NULL);
-
-void *spot_discovery = zlink_discovery_new(
-  ctx,
-  ZLINK_AUTO_CONNECT_SPOT_MESH,
-  "alpha");
-zlink_discovery_connect_registry(spot_discovery, "tcp://127.0.0.1:5551");
-zlink_spot_node_attach_discovery(node, spot_discovery);
-
-void *orders_discovery = zlink_discovery_new(
-  ctx,
-  ZLINK_AUTO_CONNECT_CLIENT_SERVER,
-  "orders");
-zlink_discovery_connect_registry(orders_discovery, "tcp://127.0.0.1:5551");
-
-void *dealer = zlink_socket(ctx, ZLINK_SOCKET_DEALER);
-zlink_socket_attach_discovery(dealer, orders_discovery);
-
-void *bridge = zlink_spot_route_bridge_new(ctx, node, NULL);
-zlink_spot_route_bridge_attach_dealer_channel(bridge, "orders", dealer, NULL);
-```
+The previous automatic path used public discovery handles and was removed from
+the C contract in core 8.4.3. Keep channel bridge examples on the manual path
+below until the replacement location runtime/store contract is published.
 
 ### 5.2 Manual path
 

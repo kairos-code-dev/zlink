@@ -128,29 +128,11 @@ zlink_spot_node_connect_peer(b, "tcp://127.0.0.1:7101");
 
 이 방식은 테스트나 소규모 고정 토폴로지에 적합하다.
 
-### 3.2 Discovery 기반 연결
+### 3.2 자동 위치 연결
 
-운영 환경에서는 Discovery를 붙여 SPOT mesh를 자동으로 구성하는 편이 낫다.
-
-```c
-void *node = zlink_spot_node_new(ctx, NULL);
-zlink_spot_node_set_pub_bind(node, "tcp://127.0.0.1:0");
-
-void *discovery = zlink_discovery_new(
-  ctx,
-  ZLINK_AUTO_CONNECT_SPOT_MESH,
-  "alpha");
-zlink_discovery_connect_registry(discovery, "tcp://127.0.0.1:5551");
-
-zlink_spot_node_attach_discovery(node, discovery);
-```
-
-여기서 `"alpha"`는 이 Discovery view가 보는 SPOT 채널 이름이다.
-같은 채널 view를 공유하는 다른 SPOT 피어끼리 자동 연결된다.
-
-`attach_discovery()`를 쓴 뒤에는 같은 노드에 `connect_peer()`나
-`disconnect_peer()`를 혼용하지 않는 편이 좋다. 현재 계약도 Discovery 연결
-후 수동 피어 연결을 `EBUSY`로 막는다.
+예전 공개 discovery 기반 SPOT 연결은 core 8.4.3에서 C 계약에서 제거되었다.
+framework location runtime/store 대체 계약이 준비되기 전까지는 명시적 피어
+엔드포인트와 `connect_peer()`를 사용한다.
 
 피어 엔드포인트를 모르고 대상 노드의 라우팅 ID만 알고 있으면
 `zlink_spot_node_disconnect_peer_rid()`로 해당 피어 노드 연결을 종료할 수 있다.
@@ -244,34 +226,9 @@ int rc = zlink_spot_subscribe(
 
 ### 5.1 자동 연결 경로
 
-이 방식은 Discovery가 관리하는 `DEALER`를 노드에 등록한다.
-
-```c
-void *node = zlink_spot_node_new(ctx, NULL);
-
-void *spot_discovery = zlink_discovery_new(
-  ctx,
-  ZLINK_AUTO_CONNECT_SPOT_MESH,
-  "alpha");
-zlink_discovery_connect_registry(spot_discovery, "tcp://127.0.0.1:5551");
-zlink_spot_node_attach_discovery(node, spot_discovery);
-
-void *orders_discovery = zlink_discovery_new(
-  ctx,
-  ZLINK_AUTO_CONNECT_CLIENT_SERVER,
-  "orders");
-zlink_discovery_connect_registry(orders_discovery, "tcp://127.0.0.1:5551");
-
-void *dealer = zlink_socket(ctx, ZLINK_SOCKET_DEALER);
-
-void *bridge = zlink_spot_route_bridge_new(ctx, node, NULL);
-zlink_spot_route_bridge_attach_dealer_channel(bridge, "orders", dealer, NULL);
-```
-
-여기서 `SpotNode` 자신이 속한 SPOT 채널은 `"alpha"`이고
-등록하는 `DEALER`는 `"orders"` 채널을 바라본다.
-같은 이름을 써도 계약 위반은 아니지만, 혼동을 피하려면 다른 이름을
-사용하는 편이 낫다.
+이전 자동 연결 경로는 공개 discovery handle을 사용했으며 core 8.4.3에서
+C 계약에서 제거되었다. 대체 location runtime/store 계약이 공개되기 전까지
+channel bridge 예제는 아래 수동 연결 경로를 기준으로 유지한다.
 
 ### 5.2 수동 연결 경로
 

@@ -54,11 +54,11 @@ enqueue된 메시지는 teardown 전에 소진됩니다 (drain-then-close).
 - `zlink_bind()` / `zlink_connect()` / `zlink_disconnect()`
 - `zlink_set_option()` / `zlink_get_option()`
 - `zlink_set_subscription()` / `zlink_unset_subscription()`
-- `zlink_spot_node_attach_discovery()`
+- the removed SPOT discovery attach API
 - `zlink_*_monitor_open()`
 - `zlink_send_ready_handler()`
-- `zlink_registry_add_peer()` / `zlink_registry_set()``
-- Heavy query: `zlink_registry_topology()`, 스냅샷 함수
+- the removed registry peer API / the removed registry option API`
+- Heavy query: the removed registry topology API, 스냅샷 함수
 
 **정확성 우선 직렬화:**
 
@@ -83,7 +83,7 @@ enqueue된 메시지는 teardown 전에 소진됩니다 (drain-then-close).
 
 - `zlink_close()` (소켓)
 - `zlink_spot_destroy()` / `zlink_spot_node_destroy()`
-- `zlink_discovery_destroy()` / `zlink_registry_destroy()`
+- 제거된 discovery/registry destroy API
 - Monitor 핸들 `close` / `destroy`
 
 **입장 허용 게이트(Admission gate) 메커니즘:**

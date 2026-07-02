@@ -160,7 +160,7 @@ dashboards. Once every known peer is `0`, new
 submits start failing with `ZLINK_SUBMIT_NOT_ADMITTED`.
 
 If you want the service-layer view of the same change, poll the
-`Discovery` view with `zlink_discovery_member_peers()` and compare the
+`Discovery` view with the removed discovery member API and compare the
 returned peer set over time. The current public contract has no separate
 service-event stream for Discovery.
 
@@ -361,9 +361,9 @@ The current public C API does not expose a separate service-event
 handle. For service-layer checks, read snapshots or query results and
 compare them over time.
 
-- Discovery membership: `zlink_discovery_member_peers()`
-- Registry overview: `zlink_registry_status()`,
-  `zlink_registry_topology()`
+- Discovery membership: the removed discovery member API
+- Registry overview: the removed registry status API,
+  the removed registry topology API
 - Spot node state: `zlink_spot_node_status()`,
   `zlink_spot_node_peers()`,
   `zlink_spot_node_subjects()`
@@ -561,12 +561,9 @@ broadcast_control_start();
 a point-in-time view of the current state. Use them for dashboards,
 health checks, and debugging.
 
-```c
-/* Check current registry health */
-zlink_registry_status_t status;
-zlink_registry_status(registry, &status);
-printf("state=%d\n", status.state);
-```
+The former registry health example used a public registry API that was removed
+from the C contract in core 8.4.3. Use current socket and SPOT monitor
+snapshots for core-level dashboards.
 
 ## 12. Poller API
 

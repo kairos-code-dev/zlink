@@ -109,11 +109,9 @@ Includes:
 - `zlink_bind()` / `zlink_connect()` / `zlink_disconnect()`
 - `zlink_set_option()` / `zlink_get_option()`
 - `zlink_set_subscription()` / `zlink_unset_subscription()`
-- `zlink_spot_node_attach_discovery()`
 - `zlink_socket_monitor_open()`
 - `zlink_send_ready_handler()`
 - `zlink_set_option()`
-- `zlink_registry_add_peer()` / `zlink_registry_set()`
 - Query/snapshot functions
 
 **You can mix sending and configuration freely.** For example, one thread
@@ -156,9 +154,7 @@ Every handle type follows the same three-category model:
 |---|---|---|---|
 | Socket (PAIR/DEALER/ROUTER/...) | `zlink_send` | bind, connect, disconnect, set_option, subscribe, monitor_open | `zlink_close` |
 | SPOT | `zlink_publish` | subscribe, unsubscribe, set_pub_option, set_sub_option | `zlink_spot_destroy` |
-| SPOT Node | *(no sending; data plane uses `Spot`)* | bind, connect_peer, disconnect_peer, attach_discovery, subscribe, unsubscribe | `zlink_spot_node_destroy` |
-| Discovery | *(no sending — config only)* | connect_registry, set_routing_id, monitor_open | `zlink_discovery_destroy` |
-| Registry | *(no sending — config only)* | bind, add_peer, set_heartbeat, set_broadcast_interval, topology(filter) | `zlink_registry_destroy` |
+| SPOT Node | *(no sending; data plane uses `Spot`)* | bind, connect_peer, disconnect_peer, subscribe, unsubscribe | `zlink_spot_node_destroy` |
 
 ## 4. Closing Handles Safely
 

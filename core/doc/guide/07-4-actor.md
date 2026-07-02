@@ -99,7 +99,7 @@ case ZLINK_SPOT_DISPATCH_EVENT_ACTOR_READABLE: {
 
 To make an Actor address discoverable from another node, enable
 `ZLINK_OPT_DISCOVERY_ACTOR_ROUTE_SYNC` on the Actor owner Discovery, move the
-Actor to a user Spot, then query with `zlink_discovery_resolve_actor()`.
+Actor to a user Spot, then query with the removed discovery actor resolver API.
 **With route sync enabled, the active route is published at Actor creation
 pointing to the Entry Spot, then updated to the joined user Spot when a join
 succeeds, and back to the Entry Spot when an explicit leave succeeds.** STREAM

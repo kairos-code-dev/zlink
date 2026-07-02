@@ -624,8 +624,7 @@ Configures TLS server mode on the socket. `cert_` and `key_` are paths to
 PEM-encoded certificate and private key files. Set `require_client_cert_`
 to 1 to require client certificate authentication.
 
-For service handles, TLS support is surface-specific. Discovery accepts
-client TLS, Registry accepts client/server TLS, and SPOT accepts TLS only
+For service handles, TLS support is surface-specific. SPOT accepts TLS only
 for `SpotNode` handles. Unified `Spot` and SPOT child pub/sub handles fail
 with `ENOTSUP`.
 
@@ -651,8 +650,7 @@ PEM-encoded CA certificate bundle. `hostname_` sets the expected hostname
 for SNI and certificate verification. Set `trust_system_` to 1 to also
 trust the system CA certificate store.
 
-For service handles, TLS support is surface-specific. Discovery accepts
-client TLS, Registry accepts client/server TLS, and SPOT accepts TLS only
+For service handles, TLS support is surface-specific. SPOT accepts TLS only
 for `SpotNode` handles. Unified `Spot` and SPOT child pub/sub handles fail
 with `ENOTSUP`.
 
@@ -762,9 +760,6 @@ ROUTER and STREAM use their routing maps for lookup. For STREAM,
 the current connected-pipe source routing id snapshot. If more than one pipe
 has the same routing id, the target is ambiguous and the call fails.
 
-On sockets attached to Discovery, manual connection control is rejected with
-`ZLINK_CONNECT_BUSY`.
-
 **Returns:** `ZLINK_CONNECT_OK` on success. Missing target maps to
 `ZLINK_CONNECT_NOT_FOUND`, duplicate routing id maps to
 `ZLINK_CONNECT_CONFLICT`, and lifecycle ownership conflict maps to
@@ -775,22 +770,6 @@ diagnostics.
 
 ---
 
-
-Attach a raw socket to a discovery service view.
-
-```c
-```
-
-Attaches a raw ROUTER, DEALER, PUB, or SUB socket to a discovery service
-view. While attached, manual `connect`, `disconnect`, `unbind`, and `close`
-operations fail. Destroy the discovery instance to terminate the attached
-socket lifecycle.
-
-**Returns:** `ZLINK_CONFIG_OK` on success; otherwise a `zlink_config_result_t` value. `zlink_errno()` retains the detailed internal errno for diagnostics.
-
-**See also:** `zlink_socket`, `zlink_close`
-
----
 
 ### zlink_send_ready_handler
 

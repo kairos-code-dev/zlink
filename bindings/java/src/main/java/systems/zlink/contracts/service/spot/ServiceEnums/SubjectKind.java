@@ -1,8 +1,8 @@
 /* SPDX-License-Identifier: MPL-2.0 */
 
-package systems.zlink.contracts.service.registry;
+package systems.zlink.contracts.service.spot;
 
-/** How a subscription subject is matched. */
+/** How a Spot subscription subject is matched. */
 public enum SubjectKind {
     /** No subject. */
     NONE(0),

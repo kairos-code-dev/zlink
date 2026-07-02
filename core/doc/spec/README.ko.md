@@ -28,8 +28,6 @@
 | [monitoring.ko.md](core/monitoring.ko.md) | 소켓 모니터, monitor snapshot, 피어 검사 |
 | [events.ko.md](core/events.ko.md) | canonical 이벤트 카탈로그와 readiness 의미 |
 | [service/README.ko.md](core/service/README.ko.md) | 서비스 계층 공통 개념과 문서 책임 분리 |
-| [registry.ko.md](core/service/registry.ko.md) | 서비스 레지스트리 생성, 구성, 클러스터링 |
-| [discovery.ko.md](core/service/discovery.ko.md) | 서비스 디스커버리, 구독, 피어 조회 |
 | [spot.ko.md](core/service/spot.ko.md) | SPOT 토픽 기반 PUB/SUB, route bridge, routed 메시징 |
 | [polling.ko.md](core/polling.ko.md) | 프록시 헬퍼 및 기능 조회 |
 | [utilities.ko.md](core/utilities.ko.md) | 타이머, 스레드, 스톱워치, 아토믹 |

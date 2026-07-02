@@ -161,7 +161,7 @@ ROUTER가 모두 `0`이면 새 submit이 `ZLINK_SUBMIT_NOT_ADMITTED`로
 실패하기 시작한다.
 
 서비스 계층에서 같은 변화를 보려면
-`zlink_discovery_member_peers()`를 주기적으로 읽고 이전 결과와 비교한다.
+the removed discovery member API를 주기적으로 읽고 이전 결과와 비교한다.
 현재 공개 계약에는 별도 서비스 이벤트 스트림이 없다.
 
 ## 5. 이벤트 흐름 다이어그램
@@ -356,9 +356,9 @@ void on_monitor(const zlink_monitor_event_t *ev, void *userdata)
 현재 공개 C API에는 별도 서비스 이벤트 핸들이 없다. 서비스 계층
 상태는 스냅샷 또는 조회 결과를 읽고 시간에 따라 비교해서 확인한다.
 
-- Discovery membership: `zlink_discovery_member_peers()`
-- Registry overview: `zlink_registry_status()`,
-  `zlink_registry_topology()`
+- Discovery membership: the removed discovery member API
+- Registry overview: the removed registry status API,
+  the removed registry topology API
 - Spot node state: `zlink_spot_node_status()`,
   `zlink_spot_node_peers()`,
   `zlink_spot_node_subjects()`
@@ -562,12 +562,9 @@ broadcast_control_start();
 `zlink_monitor_status()`과 `zlink_*_status()`은
 현재 상태를 조회하는 용도다. 운영 대시보드, 상태 확인(health check), 디버깅에 활용한다.
 
-```c
-/* Check current registry health */
-zlink_registry_status_t status;
-zlink_registry_status(registry, &status);
-printf("state=%d\n", status.state);
-```
+예전 registry health 예제는 core 8.4.3에서 공개 C 계약에서 제거된 registry
+API를 사용했다. core 수준 dashboard에는 현재 socket과 SPOT monitor snapshot을
+사용한다.
 
 ## 12. Poller API
 

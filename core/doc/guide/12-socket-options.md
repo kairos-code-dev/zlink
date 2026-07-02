@@ -538,7 +538,7 @@ If the handshake is not completed within this time, the connection is closed.
 
 When enabled, the Discovery instance reports which SpotNode owns each SPOT
 routing id to the Registry. Other nodes can then resolve owner node ids via
-`zlink_registry_query_client_topology()` without a live Discovery connection.
+the removed registry query API without a live Discovery connection.
 
 Values other than 0 or 1 fail with `EINVAL`.
 
@@ -552,7 +552,7 @@ Values other than 0 or 1 fail with `EINVAL`.
 
 When enabled, the Discovery instance reports actor routing entries to the
 Registry. This allows external nodes to resolve actor routes via
-`zlink_registry_query_client_topology()`.
+the removed registry query API.
 
 Values other than 0 or 1 fail with `EINVAL`.
 

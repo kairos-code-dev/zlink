@@ -8,9 +8,6 @@ import systems.zlink.contracts.eventing.MonitorEventType;
 import systems.zlink.contracts.eventing.MonitorSourceKind;
 import systems.zlink.contracts.eventing.PollEventFlags;
 import systems.zlink.contracts.sockets.RidDuplicatePolicy;
-import systems.zlink.contracts.service.registry.SubjectKind;
-import systems.zlink.contracts.service.registry.ServiceKind;
-import systems.zlink.contracts.service.registry.ServiceRole;
 import systems.zlink.contracts.sockets.SocketType;
 import systems.zlink.contracts.service.spot.SpotDispatchEvent;
 import systems.zlink.contracts.service.spot.SpotDispatchSubjectKind;
@@ -22,6 +19,7 @@ import systems.zlink.contracts.service.spot.SpotPeerKind;
 import systems.zlink.contracts.service.spot.SpotPeerSource;
 import systems.zlink.contracts.service.spot.SpotPeerState;
 import systems.zlink.contracts.service.spot.SpotRole;
+import systems.zlink.contracts.service.spot.SubjectKind;
 import java.util.EnumSet;
 
 /**
@@ -261,29 +259,6 @@ public final class EnumCodecs {
         };
     }
 
-    public static int serviceRoleValue(ServiceRole value) {
-        return switch (value) {
-            case INVALID -> 0;
-            case SPOT -> 2;
-            case ROUTER -> 3;
-            case DEALER -> 4;
-            case PUB -> 5;
-            case SUB -> 6;
-        };
-    }
-
-    public static ServiceRole serviceRoleFromValue(int value) {
-        return switch (value) {
-            case 0 -> ServiceRole.INVALID;
-            case 2 -> ServiceRole.SPOT;
-            case 3 -> ServiceRole.ROUTER;
-            case 4 -> ServiceRole.DEALER;
-            case 5 -> ServiceRole.PUB;
-            case 6 -> ServiceRole.SUB;
-            default -> throw invalid("ServiceRole", value);
-        };
-    }
-
     public static int serviceEventSubjectKindValue(
       SubjectKind value) {
         return switch (value) {
@@ -300,25 +275,6 @@ public final class EnumCodecs {
             case 1 -> SubjectKind.TOPIC;
             case 2 -> SubjectKind.PATTERN;
             default -> throw invalid("SubjectKind", value);
-        };
-    }
-
-    public static int serviceKindValue(ServiceKind value) {
-        return switch (value) {
-            case DISCOVERY -> 1;
-            case SPOT_SUB -> 3;
-            case SPOT_PUB -> 4;
-            case SOCKET -> 5;
-        };
-    }
-
-    public static ServiceKind serviceKindFromValue(int value) {
-        return switch (value) {
-            case 1 -> ServiceKind.DISCOVERY;
-            case 3 -> ServiceKind.SPOT_SUB;
-            case 4 -> ServiceKind.SPOT_PUB;
-            case 5 -> ServiceKind.SOCKET;
-            default -> throw invalid("ServiceKind", value);
         };
     }
 

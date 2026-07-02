@@ -1,5 +1,5 @@
 <!-- framework-adapter-nav:start -->
-[E2E 목차](README.ko.md) | [이전: Registry messaging](config-1-registry-messaging.ko.md) | [다음: Pub/Sub](config-3-pubsub.ko.md)
+[E2E 목차](README.ko.md) | [이전: Location messaging](config-1-location-messaging.ko.md) | [다음: Pub/Sub](config-3-pubsub.ko.md)
 <!-- framework-adapter-nav:end -->
 
 # Config 2 — Spot 기반 서비스 배포
@@ -16,16 +16,16 @@ bound session이 붙는 배포다. 이걸 한 번 띄워 두고 spot messaging�
 ## 1. 목적과 범위
 
 - 다룬다: channel↔spot, spot↔spot messaging(send/request/publish), entry/user spot 생성과 상태, actor join과 remote actor, bound session push, stream session, RouteMesh 기반 외부 channel→특정 spot route bridge(혼재 트래픽·에러 계약·소유권 독립).
-- 여기서 다루지 않는 것(다른 config로): codec 변주, registry scale/failover(Config 1), resilience(Config 5).
+- 여기서 다루지 않는 것(다른 config로): codec 변주, 연결·scale·failover(Config 1), resilience(Config 5), location store 장애/복구(Config 6).
 
 ## 2. 서버 구성 (한 번 구동, 공유)
 
 | 역할 | 수 | 구성 |
 |------|----|------|
-| registry | 1 | discovery server. |
-| play(actor) 노드 | 2 (`play-a`, `play-b`) | entry spot + user spot + actor mailbox 호스트. SpotNode(`EnableRouter`)에 entry/user spot·actor handler·spot timer. registry에 광고. `/evidence`·`/health`. |
+| location store | 1 | 공식 Redis location store extension이 사용하는 공유 Redis instance. 실행마다 전용 key prefix. 각 노드는 `AddRedisLocationStore(...)`로 등록하고, peer/spot location row는 framework lifecycle이 자동 갱신한다. |
+| play(actor) 노드 | 2 (`play-a`, `play-b`) | entry spot + user spot + actor mailbox 호스트. SpotNode(`EnableRouter`)에 entry/user spot·actor handler·spot timer. peer/spot location row 자동 등록. `/evidence`·`/health`. |
 | session(gateway) 노드 | 2 (`session-a`, `session-b`) | stream session 호스트. 로컬 SpotNode(`EnableRouter`) + `AddStreamNode(...)` — session relay 입구는 같은 프로세스의 SpotNode 로 자동 연결. 각자 stream endpoint. **연결 서버**(로직은 play 노드). |
-| consumer | 시나리오별 | channel client + stream client. entry spot은 registry로 resolve. |
+| consumer | 시나리오별 | channel client + stream client. entry spot은 location store 기반으로 resolve(자기도 같은 store를 등록). |
 
 이 배포의 핵심은 **연결과 로직을 나눠 둔 것**이다. client는 session(gateway) 노드에 stream으로
 붙지만, actor는 play 노드에 산다(session 노드는 STREAM/auth/relay 전용이라 actor를 직접
@@ -52,8 +52,9 @@ handler 동작(공유):
 
 ## 3. 실행 모델
 
-`run_e2e.sh`가 registry → spot 노드 → session 노드 순으로 띄우고 client 시나리오를 순차
-실행한다. stream 시나리오는 consumer가 stream client로 접속한다.
+`run_e2e.sh`가 Redis(전용 key prefix) 준비 → spot 노드 → session 노드 순으로 띄우고 client
+시나리오를 순차 실행한다. stream 시나리오는 consumer가 stream client로 접속한다. 실행이 끝나면
+전용 prefix의 key를 정리하거나 disposable Redis instance를 버린다.
 
 로그는 [README](README.ko.md) §6(로깅과 메시지 흐름 추적, 필수 공통)대로 모든 프로세스가 `log/`
 폴더에 파일로 남기고, message flow 추적을 `key_transitions` 이상으로 켜 `corr=`로 디버깅한다.
@@ -68,9 +69,9 @@ handler 동작(공유):
 
 **한마디로:** entry spot에 join을 보내면, user spot이 새로 만들어지고 그 id가 reply로 돌아오는가.
 
-- 절차: consumer가 registry로 entry spot을 resolve하고 `JoinReq`를 보낸다.
-- 검증: entry spot이 user spot을 생성하고 reply에 spot id가 담긴다. spot evidence에 생성 기록.
-- 세부 동작: entry spot dispatch + spot 생성.
+- 절차: consumer가 location store 기반 resolve로 entry spot을 찾아 `JoinReq`를 보낸다.
+- 검증: entry spot이 user spot을 생성하고 reply에 spot id가 담긴다. spot evidence에 생성 기록. 생성된 user spot의 location row가 `IZLinkLocationRuntimeQuery.ListSpotsAsync(filter)`로 조회된다(spot lifecycle의 자동 row 등록 확인).
+- 세부 동작: entry spot dispatch + spot 생성 + spot location row 자동 등록.
 
 #### SM-A2 user spot request와 state mutation
 
@@ -606,4 +607,4 @@ target spot packet이 함께 오가도 서로 오염되지 않는지 검증한�
 
 - Track A~G의 `P0` 시나리오가 모두 통과한다.
 - public contract만 직접 호출하고 `ensure`로 단언한다(low-level relay packet 조립·내부 helper 금지).
-- 실패 시 registry/spot/session/consumer 로그와 evidence로 원인 레이어를 분리한다.
+- 실패 시 store 연결 상태와 spot/session/consumer 로그·evidence로 원인 레이어를 분리한다.

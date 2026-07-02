@@ -19,7 +19,7 @@ handler를 등록하는 방식과 codec(직렬화 방식)을 이리저리 바꿔
 ## 1. 목적과 범위
 
 - 다룬다: 자동/attribute/수동 등록(각 request·send), DI lifecycle, filter ordering, 등록 검증(startup), 전역 codec registry에서 JSON/Protobuf/MessagePack 공존(payload 타입/content-type 기반).
-- 여기서 다루지 않는 것: registry scale(Config 1), spot/stream(Config 2), pub/sub(Config 3).
+- 여기서 다루지 않는 것: 연결·scale·resolve(Config 1), spot/stream(Config 2), pub/sub(Config 3).
 
 ## 2. 서버 구성 (한 번 구동, 공유)
 
@@ -32,6 +32,10 @@ handler 의미(공유): 등록 방식이 다른 handler들도 전부 `Echo*Req(v
 같은 의미로 구현한다. codec variant handler는 codec별 전용 DTO를 받아 같은 의미를 구현한다.
 즉 이 config가 보려는 핵심은 하나다 — "등록 방식이나 codec이 달라도 같은 reply·evidence가
 나오는가".
+
+연결 전제: 이 config는 위치 resolve를 다루지 않으므로 client는 server endpoint에 직접
+연결한다(수동 연결). 공유 location store 등록이 필요 없고, 언어별로 단일 process smoke 실행이
+필요한 경우에만 `UseInMemoryLocationStores()`를 사용할 수 있다.
 
 ## 3. 실행 모델
 

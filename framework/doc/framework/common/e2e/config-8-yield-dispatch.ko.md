@@ -23,8 +23,8 @@ mailbox에서 handler continuation을 재개한다. 이때 같은 actor와 같�
 - 다룬다: 기본 terminator와 `yield` terminator의 차이, Spot outbound request yield, actor join
   yield, worker offload yield, actor mailbox 격리, timer mailbox 격리, local/remote Spot topology,
   route bridge를 통한 handler 처리, timeout·cancellation·shutdown 때의 cleanup.
-- 여기서 다루지 않는다: 처리량 수치 비교(공통 perf 문서), codec 변주(Config 4), registry
-  failover(Config 6), 장기 장애 복구(Config 5).
+- 여기서 다루지 않는다: 처리량 수치 비교(공통 perf 문서), codec 변주(Config 4), location store
+  장애/복구(Config 6), 장기 장애 복구(Config 5).
 - public contract 근거는 공통 비동기 실행 정책의 `yield` 의미다. 언어별 이름은 각 언어 public API를
   따른다(`Yield(...)`, `yield(...)`, `yield(call, ...)`, `yield()` 등). 이름만 다르고 의미는 같아야
   한다. 특정 언어에 아직 같은 공개 API가 없으면 내부 helper로 메우지 않고 feature-map에 공통
@@ -39,8 +39,8 @@ mailbox에서 handler continuation을 재개한다. 이때 같은 actor와 같�
 
 | 역할 | 수 | 구성 |
 |------|----|------|
-| registry | 1 | discovery server. |
-| play 노드 | 2 (`play-a`, `play-b`) | Entry Spot + `YieldProbeSpot` + actor mailbox + timer handler + worker offload. SpotNode는 router와 pub/sub를 켜고 registry에 광고한다. |
+| location store | 1 | 공식 Redis location store extension이 사용하는 공유 Redis instance. 실행마다 전용 key prefix. 각 노드는 `AddRedisLocationStore(...)`로 등록하고, peer/spot location row는 framework lifecycle이 자동 갱신한다. |
+| play 노드 | 2 (`play-a`, `play-b`) | Entry Spot + `YieldProbeSpot` + actor mailbox + timer handler + worker offload. SpotNode는 router와 pub/sub를 켜고 peer/spot location row를 자동 등록한다. |
 | delay service | 2 (`delay-a`, `delay-b`) | client-server channel request를 받아 지정한 시간 뒤 reply한다. handler가 `yield`로 기다릴 외부 I/O 역할을 한다. route mesh request로는 `yield`를 검증하지 않는다. |
 | session gateway | 2 (`session-a`, `session-b`) | stream session을 받고 play 노드에 시나리오 packet을 relay한다. actor bind/relay는 YD-D4에서 검증한다. |
 | consumer | 시나리오별 | 언어별 stream connector로 session gateway에 연결한다. HTTP endpoint는 health/evidence 조회에만 쓰고, yield 시나리오 시작은 TicTacToe/Bingo 샘플처럼 실제 connector request로 보낸다. framework client를 직접 들고 Spot을 호출하지 않는다. |
@@ -62,9 +62,10 @@ worker offload 시나리오는 delay service를 쓰지 않는다. handler가 fra
 
 ## 3. 실행 모델
 
-`run_e2e.sh`가 registry → delay service → play 노드 → session gateway 순으로 띄우고 client 시나리오를 순차 실행한다.
-각 시나리오는 session gateway의 stream endpoint에 connector로 접속한 뒤 request packet을 보내
-Spot/actor/timer 작업을 만든다.
+`run_e2e.sh`가 Redis(전용 key prefix) 준비 → delay service → play 노드 → session gateway 순으로
+띄우고 client 시나리오를 순차 실행한다. 각 시나리오는 session gateway의 stream endpoint에
+connector로 접속한 뒤 request packet을 보내 Spot/actor/timer 작업을 만든다. 실행이 끝나면 전용
+prefix의 key를 정리하거나 disposable Redis instance를 버린다.
 
 언어별 구현은 TicTacToe/Bingo 샘플처럼 실제 client connector 연결을 통해 시나리오를 시작해야 한다.
 테스트 driver가 play 노드의 route client, Spot manager, actor manager를 직접 들고 시작 packet을 만들면

@@ -41,6 +41,7 @@ internal sealed partial class ZLinkActorSessionManager
 
         if (actorRef is not { } currentActorRef) return;
 
+        var actorType = state.ActorType;
         try
         {
             var node = getActorSpotNode()
@@ -62,6 +63,13 @@ internal sealed partial class ZLinkActorSessionManager
             if (boundSession is { } session) runtime.RemoveActorSessionBinding(actor.ActorId, session.BindingToken);
 
             _actorSessions.RemoveIfCurrent(actor.ActorId, state);
+
+            if (LocationLifecycle is { } lifecycle)
+                await lifecycle.ReleaseActorAsync(
+                        actorType ?? string.Empty,
+                        actor.ActorId,
+                        CancellationToken.None)
+                    .ConfigureAwait(false);
         }
         catch
         {

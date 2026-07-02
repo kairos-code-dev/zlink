@@ -6,8 +6,7 @@ internal sealed class ZLinkSpotNodeCatalog(
     ZLinkFrameworkRegistration frameworkRegistration,
     ZLinkSpotNodeRegistration registration,
     IZLinkBackendSpotNode node,
-    string spotChannelName,
-    Action connectDiscoveredPubSubPeers) : IAsyncDisposable
+    string spotChannelName) : IAsyncDisposable
 {
     private readonly ZLinkSpotActivationFactory _activationFactory = new(
         services,
@@ -15,12 +14,14 @@ internal sealed class ZLinkSpotNodeCatalog(
         frameworkRegistration,
         registration,
         node,
-        spotChannelName,
-        connectDiscoveredPubSubPeers);
+        spotChannelName);
 
     private readonly object _gate = new();
     private readonly Dictionary<RoutingId, PendingSpotCreation> _pending = [];
     private readonly Dictionary<RoutingId, ZLinkSpotActivation> _spots = [];
+
+    private ZLinkLocationLifecycle? Lifecycle =>
+        services.GetService(typeof(ZLinkLocationLifecycle)) as ZLinkLocationLifecycle;
 
     public IReadOnlyCollection<ZLinkSpotActivation> Spots => SnapshotActivations();
 
@@ -74,6 +75,9 @@ internal sealed class ZLinkSpotNodeCatalog(
             {
                 _spots.Add(activation.SpotRid, activation);
             }
+
+            await ClaimSpotLocationAsync(activation, spotType, cancellationToken)
+                .ConfigureAwait(false);
 
             return new ZLinkSpotCreateResult(
                 activation.SpotRid,
@@ -176,6 +180,9 @@ internal sealed class ZLinkSpotNodeCatalog(
                 _spots.Add(activation.SpotRid, activation);
             }
 
+            await ClaimSpotLocationAsync(activation, spotType, cancellationToken)
+                .ConfigureAwait(false);
+
             var result = new ZLinkSpotCreateResult(
                 activation.SpotRid,
                 ZLinkSpotCreateState.Created,
@@ -246,6 +253,8 @@ internal sealed class ZLinkSpotNodeCatalog(
             _spots.Remove(spotRid);
         }
 
+        await ReleaseSpotLocationAsync(spotRid).ConfigureAwait(false);
+
         if (ReferenceEquals(ZLinkSpotAmbientContext.CurrentOrDefault, activation))
         {
             _ = CloseActivationAfterCurrentTurnAsync(activation).ContinueWith(
@@ -259,6 +268,44 @@ internal sealed class ZLinkSpotNodeCatalog(
         await activation.CloseAsync(cancellationToken);
         await activation.DisposeAsync();
         return true;
+    }
+
+    /// <summary>Spot lifecycle write (draft 15.1): a created user spot
+    /// claims its location row; the store-issued generation stays with the
+    /// tracked entry so stop/destroy can present the owner token. A claim
+    /// that cannot be stored fails the creation, because an unadvertised
+    /// or doubly-claimed spot rid would break single-activation.</summary>
+    private async ValueTask ClaimSpotLocationAsync(
+        ZLinkSpotActivation activation,
+        Type spotType,
+        CancellationToken cancellationToken)
+    {
+        if (Lifecycle is not { } lifecycle) return;
+
+        var spotRid = activation.SpotRid;
+        var status = await lifecycle.ClaimSpotAsync(
+                spotChannelName,
+                spotRid,
+                spotType.FullName,
+                node.RoutingId,
+                ZLinkSpotKind.User,
+                registration.Router?.BindEndpoint,
+                deactivate: async ct => _ = await CloseAsync(spotRid, ct).ConfigureAwait(false),
+                cancellationToken)
+            .ConfigureAwait(false);
+        if (status == ZLinkLocationWriteStatus.Stored) return;
+
+        throw new ZLinkFrameworkException(
+            ZLinkFrameworkErrorKind.SpotCreateFailed,
+            status == ZLinkLocationWriteStatus.RejectedConflict
+                ? $"SPOT '{spotRid}' location in mesh '{spotChannelName}' is owned by another node."
+                : $"SPOT '{spotRid}' location claim failed because the location store is unavailable.");
+    }
+
+    private async ValueTask ReleaseSpotLocationAsync(RoutingId spotRid)
+    {
+        if (Lifecycle is { } lifecycle)
+            await lifecycle.ReleaseSpotAsync(spotChannelName, spotRid).ConfigureAwait(false);
     }
 
     private IReadOnlyCollection<ZLinkSpotActivation> SnapshotActivations()

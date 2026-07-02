@@ -4,8 +4,7 @@ internal static partial class ZLinkFrameworkRegistrationValidator
 {
     private static void ValidateRouteChannel(
         ZLinkRouteChannelRegistration routed,
-        bool discoveryConfigured,
-        bool acceptedBySpotRouteChannel,
+        bool autoConnectConfigured,
         IReadOnlyDictionary<string, HashSet<ZLinkHandlerGroupCatalogEntry>> handlerGroups,
         IReadOnlyList<ZLinkRouteHandlerEndpointDescriptor> scannedEndpoints)
     {
@@ -14,16 +13,10 @@ internal static partial class ZLinkFrameworkRegistrationValidator
             throw new ZLinkConfigurationException(
                 $"Route channel '{routed.RouterChannelId}' must enable server or client capability.");
 
-        var manualAcceptedSpotRouteWithDiscoveryMetadata =
-            acceptedBySpotRouteChannel
-            && routed.ManualConnections.Count > 0
-            && discoveryConfigured;
-
-        if (routed.ClientEnabled
-            && !manualAcceptedSpotRouteWithDiscoveryMetadata)
+        if (routed.ClientEnabled)
             ZLinkPeerAcquisitionPolicy.RequirePeerSource(
                 $"Route channel '{routed.RouterChannelId}'",
-                discoveryConfigured,
+                autoConnectConfigured,
                 routed.ManualConnections);
 
         ValidateRouteMappedGroups(routed, handlerGroups);

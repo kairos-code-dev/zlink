@@ -16,7 +16,7 @@ internal static partial class ZLinkFrameworkRegistrationValidator
         foreach (var channel in registration.Channels.Values)
             ValidateChannel(
                 channel,
-                false,
+                registration.Locations.Enabled,
                 false,
                 handlerGroups,
                 channelHandlerEndpoints);
@@ -26,8 +26,7 @@ internal static partial class ZLinkFrameworkRegistrationValidator
         foreach (var routed in registration.RouteChannels.Values)
             ValidateRouteChannel(
                 routed,
-                false,
-                registration.SpotNodes.Values.Any(static spotNode => spotNode.Router is not null),
+                registration.Locations.Enabled,
                 handlerGroups,
                 routeHandlerEndpoints);
 
@@ -133,5 +132,4 @@ internal static partial class ZLinkFrameworkRegistrationValidator
             throw new ZLinkConfigurationException(
                 $"STREAM node '{streamNode.StreamNodeName}' must register a header stream session.");
     }
-
 }

@@ -4,7 +4,7 @@ internal static partial class ZLinkFrameworkRegistrationValidator
 {
     private static void ValidateChannel(
         ZLinkChannelRegistration channel,
-        bool discoveryConfigured,
+        bool autoConnectConfigured,
         bool acceptedBySpotRouteChannel,
         IReadOnlyDictionary<string, HashSet<ZLinkHandlerGroupCatalogEntry>> handlerGroups,
         IReadOnlyList<ZLinkHandlerEndpointDescriptor> scannedEndpoints)
@@ -23,7 +23,7 @@ internal static partial class ZLinkFrameworkRegistrationValidator
 
             ZLinkPeerAcquisitionPolicy.RequirePeerSource(
                 $"channel '{channel.ChannelName}' client",
-                discoveryConfigured,
+                autoConnectConfigured,
                 channel.Client.ManualConnections);
         }
 
@@ -34,7 +34,7 @@ internal static partial class ZLinkFrameworkRegistrationValidator
         if (channel.Subscriber is not null)
             ZLinkPeerAcquisitionPolicy.RequirePeerSource(
                 $"channel '{channel.ChannelName}' subscriber",
-                discoveryConfigured,
+                autoConnectConfigured,
                 channel.Subscriber.ManualConnections);
 
         ValidateChannelHandlerExposure(channel, acceptedBySpotRouteChannel, handlerGroups, scannedEndpoints);

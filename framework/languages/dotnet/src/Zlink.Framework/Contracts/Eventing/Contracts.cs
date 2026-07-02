@@ -9,6 +9,13 @@ public interface IZLinkMonitoringOptions
     void AddSpotEvents(
         string sourceName,
         TimeSpan interval);
+
+    /// <summary>Polls the location runtime query surface and publishes
+    /// <see cref="ZLinkLocationRuntimeEvent"/> diffs. Requires location
+    /// stores to be registered (draft 20.5).</summary>
+    void AddLocationRuntimeEvents(
+        string sourceName,
+        TimeSpan interval);
 }
 
 public interface IZLinkRuntimeEvent
@@ -77,6 +84,21 @@ public readonly record struct ZLinkSocketEvent(
     string LocalAddr,
     string RemoteAddr,
     ZLinkSocketDiagnostic? Diagnostic) : IZLinkRuntimeEvent;
+
+public enum ZLinkLocationRuntimeEventKind
+{
+    StatusChanged = 0,
+    TopologyChanged = 1,
+    ServiceSummaryChanged = 2
+}
+
+public readonly record struct ZLinkLocationRuntimeEvent(
+    string SourceName,
+    DateTimeOffset Timestamp,
+    ZLinkLocationRuntimeEventKind Event,
+    ZLinkLocationRuntimeStatus? Status,
+    IReadOnlyList<ZLinkLocationTopologyEntry>? Topology,
+    IReadOnlyList<ZLinkLocationServiceSummary>? ServiceSummary) : IZLinkRuntimeEvent;
 
 public enum ZLinkSpotEventKind
 {

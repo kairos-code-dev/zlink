@@ -93,6 +93,17 @@ public sealed class RegressionTests
             "TopologyTests"
         };
 
+    // Core registry/discovery removal (framework-location-resolver-store draft,
+    // section 20.1) deleted these test classes. The dotnet spec documents that
+    // still reference them are rewritten by the draft's documentation plan
+    // (section 23); until then their stale references are exempt.
+    private static readonly IReadOnlySet<string> RemovedRegistryTestClasses =
+        new HashSet<string>(StringComparer.Ordinal)
+        {
+            "RegistryAndMonitoringTests",
+            "RegistryRemoteAddressesTests"
+        };
+
     [Fact]
     public void DotNetDraftDocuments_AllExposeRegressionTestSection()
     {
@@ -286,6 +297,8 @@ public sealed class RegressionTests
             {
                 if (IsRemovedE2ETestReference(reference)) continue;
 
+                if (IsRemovedRegistryTestReference(reference)) continue;
+
                 Assert.Contains(reference, activeTests);
             }
         }
@@ -431,6 +444,15 @@ public sealed class RegressionTests
 
         var className = reference[..separatorIndex];
         return RemovedE2ETestClasses.Contains(className);
+    }
+
+    private static bool IsRemovedRegistryTestReference(string reference)
+    {
+        var separatorIndex = reference.IndexOf('.');
+        if (separatorIndex <= 0) return false;
+
+        var className = reference[..separatorIndex];
+        return RemovedRegistryTestClasses.Contains(className);
     }
 
     private static bool HasFactOrTheoryAttribute(string text, int methodIndex)

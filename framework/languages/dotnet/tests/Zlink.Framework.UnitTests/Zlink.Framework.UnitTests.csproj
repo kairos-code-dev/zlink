@@ -38,6 +38,7 @@
         <Compile Include="Configuration/Registration/Channels.cs"/>
         <Compile Include="Configuration/Registration/HandlerExposure.cs"/>
         <Compile Include="Configuration/Registration/NodesAndServices.cs"/>
+        <Compile Include="Configuration/Registration/Monitoring.cs"/>
         <Compile Include="Configuration/Registration/Support.cs"/>
         <Compile Include="Contracts/LocationContractTests.cs"/>
         <Compile Include="Contracts/ScaffoldSmokeTests.cs"/>
@@ -53,6 +54,8 @@
         <Compile Include="Runtime/EnvelopeCodecTests.cs"/>
         <Compile Include="Runtime/HandlerResultAwaiterTests.cs"/>
         <Compile Include="Runtime/InMemoryLocationStoreTests.cs"/>
+        <Compile Include="Runtime/LocationLifecycleTests.cs"/>
+        <Compile Include="Runtime/LocationRuntimePollingDiffTests.cs"/>
         <Compile Include="Runtime/LocationResolverTests.cs"/>
         <Compile Include="Runtime/LocationRuntimeTests.cs"/>
         <Compile Include="Runtime/MessageFlowTracerTests.cs"/>

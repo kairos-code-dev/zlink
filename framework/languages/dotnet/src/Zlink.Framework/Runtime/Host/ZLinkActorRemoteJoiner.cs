@@ -143,6 +143,10 @@ internal sealed class ZLinkActorRemoteJoiner(
         await RebindRemoteSessionActorAsync(actorState, targetActorRef, cancellationToken)
             .ConfigureAwait(false);
         actorState.InvalidateContext();
+        // The target runtime claimed the actor location with Takeover as
+        // part of hosting the joined instance; this owner releases its row.
+        await actorSessionManager.ReleaseActorLocationAfterMoveAsync(actorState, cancellationToken)
+            .ConfigureAwait(false);
     }
 
     private async ValueTask<ZLinkSpotRemoteAddress> ResolveRemoteActorJoinTargetAsync(

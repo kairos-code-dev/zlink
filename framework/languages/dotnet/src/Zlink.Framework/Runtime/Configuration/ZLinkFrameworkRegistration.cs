@@ -55,24 +55,15 @@ internal sealed class ZLinkFrameworkRegistration
     }
 }
 
-internal enum ZLinkAutoConnectType
-{
-    Invalid = 0,
-    ClientServer = 2,
-    Fanout = 4
-}
-
-internal class ZLinkDiscoveryRegistration
-{
-    public List<string> Endpoints { get; } = [];
-}
-
 internal sealed class ZLinkMetadataPolicyRegistration
 {
     public HashSet<string> ForwardedApplicationKeys { get; } = new(StringComparer.Ordinal);
 }
 
-internal sealed class ZLinkSpotDiscoveryRegistration : ZLinkDiscoveryRegistration
+// spot mesh channel marker: AddSpotMesh(...) 가 mesh 채널 이름을 등록하고,
+// spot node 가 SpotDiscoveryChannelName 으로 이를 참조한다. peer 획득은
+// location-store 자동 연결 또는 수동 연결이 담당한다.
+internal sealed class ZLinkSpotDiscoveryRegistration
 {
     public required string ChannelName { get; init; }
 }

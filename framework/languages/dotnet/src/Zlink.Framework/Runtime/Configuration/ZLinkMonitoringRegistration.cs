@@ -5,6 +5,9 @@ internal sealed class ZLinkMonitoringRegistration
     public Dictionary<string, ZLinkSocketMonitoringRegistration> SocketSources { get; } = new(StringComparer.Ordinal);
 
     public Dictionary<string, ZLinkPollingMonitoringRegistration> SpotSources { get; } = new(StringComparer.Ordinal);
+
+    public Dictionary<string, ZLinkPollingMonitoringRegistration> LocationRuntimeSources { get; } =
+        new(StringComparer.Ordinal);
 }
 
 internal sealed class ZLinkSocketMonitoringRegistration
@@ -42,6 +45,15 @@ internal sealed class ZLinkMonitoringOptionsModel(ZLinkMonitoringRegistration re
         AddPollingSource(
             registration.SpotSources,
             "spot",
+            sourceName,
+            interval);
+    }
+
+    public void AddLocationRuntimeEvents(string sourceName, TimeSpan interval)
+    {
+        AddPollingSource(
+            registration.LocationRuntimeSources,
+            "location-runtime",
             sourceName,
             interval);
     }

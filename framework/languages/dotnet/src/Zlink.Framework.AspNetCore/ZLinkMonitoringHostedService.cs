@@ -6,7 +6,8 @@ internal sealed class ZLinkMonitoringHostedService(
     IZLinkBackendAdapterFactory backendAdapterFactory,
     ZLinkMonitoringRegistration registration,
     ZLinkRuntimeEventDispatcher dispatcher,
-    ZLinkFrameworkRuntime? frameworkRuntime) : IHostedService, IAsyncDisposable
+    ZLinkFrameworkRuntime? frameworkRuntime,
+    IZLinkLocationRuntimeQuery? locationQuery) : IHostedService, IAsyncDisposable
 {
     private readonly IZLinkMonitoringBackendAdapter
         _monitoringAdapter = backendAdapterFactory.CreateMonitoringAdapter();
@@ -38,7 +39,7 @@ internal sealed class ZLinkMonitoringHostedService(
 
     public async Task StartAsync(CancellationToken cancellationToken)
     {
-        _sourceValidator.ValidateRequiredRuntimes(frameworkRuntime);
+        _sourceValidator.ValidateRequiredRuntimes(frameworkRuntime, locationQuery);
 
         try
         {
@@ -62,9 +63,11 @@ internal sealed class ZLinkMonitoringHostedService(
             _stopTokenSource.Token);
         var pollingRunner = new ZLinkMonitoringPollingRunner(
             registration,
-            spotEvent => QueueDispatch(spotEvent));
+            spotEvent => QueueDispatch(spotEvent),
+            locationEvent => QueueDispatch(locationEvent));
         _pollingTask = pollingRunner.RunAsync(
             frameworkRuntime,
+            locationQuery,
             _stopTokenSource.Token);
     }
 

@@ -34,12 +34,13 @@ public sealed class ChannelsTests : RegistrationValidationSupport
     }
 
     [Fact]
-    public void GlobalDiscovery_DoesNotConflict_WithManualRouteMeshClient()
+    public void LocationAutoConnect_DoesNotConflict_WithManualRouteMeshClient()
     {
         var services = new ServiceCollection();
 
         services.AddZLinkFramework(options =>
         {
+            options.UseInMemoryLocationStores();
             options.AddRouteMesh("play")
                 .EnableServer("tcp://127.0.0.1:7101")
                 .EnableClient("tcp://127.0.0.1:7102");
@@ -125,7 +126,7 @@ public sealed class ChannelsTests : RegistrationValidationSupport
     }
 
     [Fact]
-    public void AddZLinkFramework_AllowsChannelClientManualConnections()
+    public void AddZLinkFramework_AllowsChannelClientManualConnections_WhenLocationAutoConnectIsConfigured()
     {
         var services = new ServiceCollection();
 
@@ -134,16 +135,19 @@ public sealed class ChannelsTests : RegistrationValidationSupport
             {
                 var channel = options.AddClientServerChannel("profile").EnableClient("tcp://127.0.0.1:7101");
             }
+
+            options.UseInMemoryLocationStores();
         });
     }
 
     [Fact]
-    public void AddZLinkFramework_AllowsRouteChannelManualConnections()
+    public void AddZLinkFramework_AllowsRouteChannelManualConnections_WhenLocationAutoConnectIsConfigured()
     {
         var services = new ServiceCollection();
 
         services.AddZLinkFramework(options =>
         {
+            options.UseInMemoryLocationStores();
             {
                 var routed = options.AddRouteMesh("backend");
                 routed.EnableServer("tcp://127.0.0.1:7201");
@@ -153,17 +157,21 @@ public sealed class ChannelsTests : RegistrationValidationSupport
     }
 
     [Fact]
-    public void AddZLinkFramework_Throws_WhenRouteChannelClientHasNoPeerSource()
+    public void AddZLinkFramework_AllowsRouteChannelClientOnly_WhenLocationAutoConnectIsConfigured()
     {
         var services = new ServiceCollection();
 
-        var exception = Assert.Throws<ZLinkConfigurationException>(() => services.AddZLinkFramework(options =>
+        services.AddZLinkFramework(options =>
         {
+            options.UseInMemoryLocationStores();
             options.AddRouteMesh("backend")
                 .EnableClient();
-        }));
+        });
 
-        Assert.Contains("requires discovery or manual connections", exception.Message, StringComparison.Ordinal);
+        var registration = services.BuildServiceProvider().GetRequiredService<ZLinkFrameworkRegistration>();
+        var route = Assert.Single(registration.RouteChannels.Values);
+        Assert.Null(route.BindEndpoint);
+        Assert.True(route.ClientEnabled);
     }
 
     [Fact]
@@ -207,16 +215,17 @@ public sealed class ChannelsTests : RegistrationValidationSupport
                     .EnableClient();
             }));
 
-        Assert.Contains("requires discovery or manual connections", exception.Message, StringComparison.Ordinal);
+        Assert.Contains("requires location auto connect or manual connections", exception.Message, StringComparison.Ordinal);
     }
 
     [Fact]
-    public void AddZLinkFramework_AllowsImplicitRouteMeshBridge_WithManualPeerSource()
+    public void AddZLinkFramework_AllowsImplicitRouteMeshBridge_WhenLocationAutoConnectIsConfigured()
     {
         var services = new ServiceCollection();
 
         services.AddZLinkFramework(options =>
         {
+            options.UseInMemoryLocationStores();
             {
                 var routed = options.AddRouteMesh("backend");
                 routed.EnableServer("tcp://127.0.0.1:7203");
@@ -242,6 +251,6 @@ public sealed class ChannelsTests : RegistrationValidationSupport
         var exception = Assert.Throws<ZLinkConfigurationException>(() =>
             services.AddZLinkFramework(options => { options.AddClientServerChannel("profile").EnableClient(); }));
 
-        Assert.Contains("requires discovery or manual connections", exception.Message, StringComparison.Ordinal);
+        Assert.Contains("requires location auto connect or manual connections", exception.Message, StringComparison.Ordinal);
     }
 }

@@ -20,6 +20,10 @@ internal sealed class ZLinkLocationRegistration
 
     public bool UseInMemoryStores { get; set; }
 
+    /// <summary>Extension-package bulk registration (draft 20.2): registers
+    /// every store contract onto one implementation in a single callback.</summary>
+    public Action<Microsoft.Extensions.DependencyInjection.IServiceCollection>? StoreServices { get; set; }
+
     public ZLinkLocationOptions Options { get; } = new();
 
     public bool HasAnyStoreType =>
@@ -36,5 +40,5 @@ internal sealed class ZLinkLocationRegistration
         && RouteStoreType is not null
         && OwnerLeaseStoreType is not null;
 
-    public bool Enabled => UseInMemoryStores || HasAnyStoreType;
+    public bool Enabled => UseInMemoryStores || HasAnyStoreType || StoreServices is not null;
 }

@@ -125,6 +125,14 @@ internal sealed class ZLinkFrameworkOptionsBuilder : IZLinkFrameworkOptions
         _registration.Locations.UseInMemoryStores = true;
     }
 
+    public void AddLocationStores(
+        Action<Microsoft.Extensions.DependencyInjection.IServiceCollection> registerStores)
+    {
+        ArgumentNullException.ThrowIfNull(registerStores);
+
+        _registration.Locations.StoreServices = registerStores;
+    }
+
     public ZLinkLocationOptions ConfigureLocations()
     {
         return _registration.Locations.Options;

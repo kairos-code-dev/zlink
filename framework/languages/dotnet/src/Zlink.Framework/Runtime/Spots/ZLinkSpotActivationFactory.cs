@@ -8,8 +8,7 @@ internal sealed class ZLinkSpotActivationFactory(
     ZLinkFrameworkRegistration frameworkRegistration,
     ZLinkSpotNodeRegistration registration,
     IZLinkBackendSpotNode node,
-    string spotChannelName,
-    Action connectDiscoveredPubSubPeers)
+    string spotChannelName)
 {
     public async ValueTask<ZLinkSpotActivationCreateResult> CreateAsync(
         Type spotType,
@@ -17,7 +16,6 @@ internal sealed class ZLinkSpotActivationFactory(
         ZLinkMessage request,
         CancellationToken cancellationToken)
     {
-        connectDiscoveredPubSubPeers();
         var spotScope = services.CreateAsyncScope();
         ZLinkSpotActivation? activation = null;
         try

@@ -242,6 +242,13 @@ internal sealed class ZLinkFrameworkActorFacade(
         return actorSessionManager.GetOrCreateState(actorId);
     }
 
+    public ValueTask DeactivateActorOnOwnershipLossAsync(
+        string actorId,
+        CancellationToken cancellationToken = default)
+    {
+        return actorSessionManager.DeactivateActorOnOwnershipLossAsync(actorId, cancellationToken);
+    }
+
     private static ActorRef ToActorRef(ZLinkActorRuntimeState actorState)
     {
         var actorRef = actorState.NativeActorRef

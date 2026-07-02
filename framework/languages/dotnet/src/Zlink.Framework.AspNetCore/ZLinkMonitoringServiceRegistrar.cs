@@ -20,7 +20,8 @@ internal static class ZLinkMonitoringServiceRegistrar
                 provider.GetRequiredService<IZLinkBackendAdapterFactory>(),
                 provider.GetRequiredService<ZLinkMonitoringRegistration>(),
                 provider.GetRequiredService<ZLinkRuntimeEventDispatcher>(),
-                provider.GetService<ZLinkFrameworkRuntime>()));
+                provider.GetService<ZLinkFrameworkRuntime>(),
+                provider.GetService<IZLinkLocationRuntimeQuery>()));
 
         return services;
     }

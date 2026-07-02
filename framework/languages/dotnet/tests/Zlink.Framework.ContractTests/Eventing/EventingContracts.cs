@@ -17,6 +17,7 @@ public sealed class EventingContracts
         var options = new ExampleMonitoringOptions();
         options.AddSocketEvents("router", ZLinkSocketEventKind.Connected);
         options.AddSpotEvents("spot-node", TimeSpan.FromSeconds(1));
+        options.AddLocationRuntimeEvents("locations", TimeSpan.FromSeconds(1));
 
         var handler = new SocketEventHandler();
         var publisher = new ExampleRuntimeEventPublisher();
@@ -33,7 +34,7 @@ public sealed class EventingContracts
 
         await publisher.PublishAsync(@event, CancellationToken.None);
 
-        Assert.Equal(["router:socket", "spot-node:spot"], options.Sources);
+        Assert.Equal(["router:socket", "spot-node:spot", "locations:location-runtime"], options.Sources);
         Assert.Equal(ZLinkSocketEventKind.Connected, handler.LastEvent?.Event);
     }
 
@@ -55,6 +56,13 @@ public sealed class EventingContracts
             TimeSpan interval)
         {
             _sources.Add($"{sourceName}:spot");
+        }
+
+        public void AddLocationRuntimeEvents(
+            string sourceName,
+            TimeSpan interval)
+        {
+            _sources.Add($"{sourceName}:location-runtime");
         }
     }
 

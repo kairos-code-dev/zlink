@@ -98,7 +98,18 @@ internal sealed class ZLinkActorEntrySpotJoinCoordinator(
                     result.Actor.NodeRid,
                     cancellationToken)
                 .ConfigureAwait(false);
-            if (result.Actor.NodeRid != actorRef.NodeRid) actorState.InvalidateContext();
+            if (result.Actor.NodeRid != actorRef.NodeRid)
+            {
+                actorState.InvalidateContext();
+                // Native entry-spot join: no framework runtime claims the
+                // row on the target, so this owner renews it with the new
+                // node rid instead of releasing it.
+                await actorSessionManager.RenewActorLocationAfterEntrySpotMoveAsync(
+                        actorState,
+                        result.Actor.NodeRid,
+                        cancellationToken)
+                    .ConfigureAwait(false);
+            }
         }
 
         return new ZLinkActorJoinResult(
@@ -174,7 +185,14 @@ internal sealed class ZLinkActorEntrySpotJoinCoordinator(
                 previousActivation,
                 cancellationToken)
             .ConfigureAwait(false);
-        if (targetRef.NodeRid != sourceActorRef.NodeRid) actorState.InvalidateContext();
+        if (targetRef.NodeRid != sourceActorRef.NodeRid)
+        {
+            actorState.InvalidateContext();
+            // Routed entry-spot join: the target runtime creates the actor
+            // through its own claim (Takeover); this owner releases.
+            await actorSessionManager.ReleaseActorLocationAfterMoveAsync(actorState, cancellationToken)
+                .ConfigureAwait(false);
+        }
 
         return new ZLinkActorJoinResult(
             true,
@@ -225,7 +243,17 @@ internal sealed class ZLinkActorEntrySpotJoinCoordinator(
                 targetRef.NodeRid,
                 cancellationToken)
             .ConfigureAwait(false);
-        if (targetRef.NodeRid != sourceActorRef.NodeRid) actorState.InvalidateContext();
+        if (targetRef.NodeRid != sourceActorRef.NodeRid)
+        {
+            actorState.InvalidateContext();
+            // Local cross-node entry-spot move within this process keeps
+            // the same owner; renew the row with the new node rid.
+            await actorSessionManager.RenewActorLocationAfterEntrySpotMoveAsync(
+                    actorState,
+                    targetRef.NodeRid,
+                    cancellationToken)
+                .ConfigureAwait(false);
+        }
 
         return new ZLinkActorJoinResult(
             true,

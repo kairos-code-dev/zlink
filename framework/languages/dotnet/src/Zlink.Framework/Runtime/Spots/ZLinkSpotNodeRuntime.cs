@@ -40,16 +40,14 @@ internal sealed class ZLinkSpotNodeRuntime : IAsyncDisposable
         _bundles = new ZLinkSpotNodeBundleRegistry(
             frameworkRegistration,
             node,
-            _stopSource.Token,
-            ConnectDiscoveredPubSubPeers);
+            _stopSource.Token);
         _spots = new ZLinkSpotNodeCatalog(
             services,
             runtime,
             frameworkRegistration,
             registration,
             node,
-            spotChannelName,
-            ConnectDiscoveredPubSubPeers);
+            spotChannelName);
     }
 
     public string Name => Registration.SpotNodeName;
@@ -111,10 +109,6 @@ internal sealed class ZLinkSpotNodeRuntime : IAsyncDisposable
 
         new ZLinkEntrySpotDispatchPump(_runtime, activation, _taskRunner)
             .Attach(entrySpot);
-    }
-
-    public void StartDiscoveryPeerReconciliation()
-    {
     }
 
     public ZLinkSpotMonitoringSnapshot GetMonitoringSnapshot()
@@ -215,10 +209,6 @@ internal sealed class ZLinkSpotNodeRuntime : IAsyncDisposable
     public IReadOnlyList<string> ListPubSubConnections()
     {
         return _peerConnections.ListPubSubManual();
-    }
-
-    public void ConnectDiscoveredPubSubPeers()
-    {
     }
 
     private async ValueTask<ZLinkEntrySpotActivation?> CreateEntrySpotActivationAsync(

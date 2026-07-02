@@ -47,7 +47,7 @@ internal sealed class ZLinkRouteChannelInitializer(
             router.SetChannelName(routedRegistration.RouterChannelId);
             ZLinkChannelBundleFactory.ApplySocketConfig(router, routedRegistration.SocketConfig);
             if (routedRegistration.RoutingId.Size > 0) router.SetRoutingId(routedRegistration.RoutingId);
-            // weight 는 bind/discovery 前에 적용해 default-weight 노출 창을 없앤다.
+            // weight 는 bind 前에 적용해 default-weight 노출 창을 없앤다.
             router.SetPeerWeight(routedRegistration.SocketConfig.Weight);
             router.SetMandatory(true);
             if (!string.IsNullOrWhiteSpace(routedRegistration.BindEndpoint))

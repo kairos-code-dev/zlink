@@ -24,7 +24,7 @@ internal sealed class ZLinkChannelBundleFactory(
                 dealer.SetRoutingId(localRid);
             }
 
-            // weight 는 bind/connect/discovery 前에 적용해 default-weight 노출 창을 없앤다.
+            // weight 는 bind/connect 前에 적용해 default-weight 노출 창을 없앤다.
             dealer.SetPeerWeight(channel.Client.SocketConfig.Weight);
             if (!string.IsNullOrWhiteSpace(channel.Client.BindEndpoint)) dealer.Bind(channel.Client.BindEndpoint);
 

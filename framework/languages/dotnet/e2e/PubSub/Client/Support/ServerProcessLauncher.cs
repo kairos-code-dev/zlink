@@ -9,10 +9,10 @@ internal sealed class ServerProcessLauncher(ClientOptions options)
         var startInfo = CreateServerStartInfo(options.SubscriberProject, name);
         startInfo.ArgumentList.Add("--http-url");
         startInfo.ArgumentList.Add(httpUrl);
-        startInfo.ArgumentList.Add("--registry-router-endpoint");
-        startInfo.ArgumentList.Add(options.RegistryRouterEndpoint);
-        startInfo.ArgumentList.Add("--publisher-endpoint");
-        startInfo.ArgumentList.Add(options.PublisherEndpoint);
+        startInfo.ArgumentList.Add("--redis-endpoint");
+        startInfo.ArgumentList.Add(options.RedisEndpoint);
+        startInfo.ArgumentList.Add("--redis-key-prefix");
+        startInfo.ArgumentList.Add(options.RedisKeyPrefix);
         startInfo.ArgumentList.Add("--evidence-file");
         startInfo.ArgumentList.Add(Path.Combine(options.LogDir, evidenceFile));
         startInfo.ArgumentList.Add("--log-dir");
@@ -26,8 +26,10 @@ internal sealed class ServerProcessLauncher(ClientOptions options)
         var startInfo = CreateServerStartInfo(options.PublisherProject, "pub-a");
         startInfo.ArgumentList.Add("--http-url");
         startInfo.ArgumentList.Add(options.PublisherUrl);
-        startInfo.ArgumentList.Add("--registry-router-endpoint");
-        startInfo.ArgumentList.Add(options.RegistryRouterEndpoint);
+        startInfo.ArgumentList.Add("--redis-endpoint");
+        startInfo.ArgumentList.Add(options.RedisEndpoint);
+        startInfo.ArgumentList.Add("--redis-key-prefix");
+        startInfo.ArgumentList.Add(options.RedisKeyPrefix);
         startInfo.ArgumentList.Add("--publisher-endpoint");
         startInfo.ArgumentList.Add(options.PublisherEndpoint);
         startInfo.ArgumentList.Add("--evidence-file");

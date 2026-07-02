@@ -2,6 +2,7 @@ using PubSub.Server.Subscriber.Configuration;
 using PubSub.Server.Subscriber.Handlers;
 using PubSub.Shared;
 using Zlink.Framework.AspNetCore;
+using Zlink.Framework.Locations.Redis;
 using Zlink.Framework.Contracts.Dispatch;
 
 namespace PubSub.Server.Subscriber;
@@ -18,9 +19,16 @@ internal static class SubscriberHostFactory
 
         builder.Services.AddZLinkFramework(framework =>
         {
+            framework.AddRedisLocationStore(redis =>
+            {
+                redis.ConnectionString = options.RedisEndpoint;
+                redis.KeyPrefix = options.RedisKeyPrefix;
+            });
             ConfigureFlow(framework.ConfigureDispatch(), options.LogDir, options.Rid);
+            // The subscriber dials the publisher rows it discovers in the
+            // location store; no endpoint is configured here.
             framework.AddFanoutChannel(PubSubNames.Channel)
-                .EnableSubscriber(options.PublisherEndpoint)
+                .EnableSubscriber()
                 .AddPublishHandler<EventMsgHandler, EventMsg>("EventMsg");
         });
 

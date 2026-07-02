@@ -3,7 +3,8 @@ namespace PubSub.Client.Support;
 internal sealed record ClientOptions(
     string PublisherUrl,
     string LateSubscriberUrl,
-    string RegistryRouterEndpoint,
+    string RedisEndpoint,
+    string RedisKeyPrefix,
     string PublisherEndpoint,
     string PublisherProject,
     string SubscriberProject,
@@ -56,7 +57,8 @@ internal sealed record ClientOptions(
         return new ClientOptions(
             GetOne("--publisher-url"),
             GetOne("--late-subscriber-url"),
-            GetOne("--registry-router-endpoint"),
+            GetOne("--redis-endpoint"),
+            GetOne("--redis-key-prefix"),
             GetOne("--publisher-endpoint"),
             GetOne("--publisher-project"),
             GetOne("--subscriber-project"),

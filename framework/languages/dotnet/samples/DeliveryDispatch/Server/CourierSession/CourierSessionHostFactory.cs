@@ -32,6 +32,13 @@ public static class CourierSessionHostFactory
             options.AddClientServerChannel(SampleNames.CourierRouteChannel)
                 .EnableClient()
                 .SetRoutingId(Systems.Zlink.RoutingId.From("delivery-courier-session-client"));
+            // The bound-actor session relay rides the courier route mesh;
+            // the session joins dial-only under its spot node identity so
+            // the relay path to the actor nodes exists (Bingo/YieldDispatch
+            // 참조 topology와 동일).
+            options.AddRouteMesh(SampleNames.CourierActorNodeRouteChannel)
+                .EnableClient()
+                .SetRoutingId(topology.CourierSessionSpotNodeRid);
             options.AddSpotMesh(SampleNames.CourierActorDiscovery)
                                 .EnableRouter(topology.CourierSessionSpotRouterEndpoint)
                 .SetRoutingId(topology.CourierSessionSpotNodeRid)

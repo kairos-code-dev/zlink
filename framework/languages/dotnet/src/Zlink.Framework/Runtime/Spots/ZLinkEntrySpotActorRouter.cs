@@ -10,6 +10,7 @@ internal sealed class ZLinkEntrySpotActorRouter
         Message body,
         CancellationToken cancellationToken)
     {
+        _ = runtimeState;
         foreach (var node in state.SpotNodes.Values)
         {
             var dispatch = node.EntrySpotActorDispatch;
@@ -17,14 +18,14 @@ internal sealed class ZLinkEntrySpotActorRouter
                 || descriptor is null)
                 continue;
 
-            await runtimeState.ExecuteDispatchAsync(
+            // The only caller (the dispatch router's send path) already
+            // holds this actor's dispatch turn; re-entering the mailbox
+            // here deadlocks the actor permanently.
+            await dispatch.InvokePacketAsync(
+                    descriptor,
+                    actor,
                     header,
-                    ct => dispatch.InvokePacketAsync(
-                        descriptor,
-                        actor,
-                        header,
-                        body,
-                        ct),
+                    body,
                     cancellationToken)
                 .ConfigureAwait(false);
 
@@ -40,6 +41,7 @@ internal sealed class ZLinkEntrySpotActorRouter
         ZLinkActorRuntimeState runtimeState,
         ZlinkStreamHeader header,
         Message body,
+        bool callerOwnsDispatchTurn,
         CancellationToken cancellationToken)
     {
         foreach (var node in state.SpotNodes.Values)
@@ -49,16 +51,28 @@ internal sealed class ZLinkEntrySpotActorRouter
                 || descriptor is null)
                 continue;
 
-            var reply = await runtimeState.ExecuteDispatchAsync(
-                    header,
-                    ct => dispatch.InvokePacketForReplyAsync(
+            // A caller inside the actor's dispatch turn (the dispatch
+            // router) must not re-enter the mailbox — that deadlocks the
+            // actor. Turnless callers (the entry pump) still serialize
+            // through it.
+            var reply = callerOwnsDispatchTurn
+                ? await dispatch.InvokePacketForReplyAsync(
                         descriptor,
                         actor,
                         header,
                         body,
-                        ct),
-                    cancellationToken)
-                .ConfigureAwait(false);
+                        cancellationToken)
+                    .ConfigureAwait(false)
+                : await runtimeState.ExecuteDispatchAsync(
+                        header,
+                        ct => dispatch.InvokePacketForReplyAsync(
+                            descriptor,
+                            actor,
+                            header,
+                            body,
+                            ct),
+                        cancellationToken)
+                    .ConfigureAwait(false);
             return new EntrySpotActorReplyDispatchResult(true, reply);
         }
 

@@ -163,6 +163,7 @@ internal sealed class ZLinkActorDispatchRouter(
                 state,
                 header,
                 payload,
+                callerOwnsDispatchTurn: true,
                 cancellationToken)
             .ConfigureAwait(false);
         if (entryResult.Handled)

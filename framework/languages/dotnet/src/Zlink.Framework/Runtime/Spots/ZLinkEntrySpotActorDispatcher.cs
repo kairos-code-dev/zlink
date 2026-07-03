@@ -123,7 +123,11 @@ internal static class ZLinkEntrySpotActorDispatcher
             sourceSessionRid,
             BuildNativeBoundSessionToken(sourceSessionRid));
 
-        if (header.RequestSeq is not null)
+        // Only genuine requests take the reply path: a relayed Send can
+        // carry a request seq (stream-level bookkeeping), and treating it
+        // as a request dead-ends in a reply lookup that re-enters this
+        // actor's dispatch turn.
+        if (header.Kind == ZlinkStreamMessageKind.Request && header.RequestSeq is not null)
         {
             var liveActivation = actorState.LiveActivation;
             var reply = liveActivation is not null
@@ -175,6 +179,7 @@ internal static class ZLinkEntrySpotActorDispatcher
                 actorState,
                 header,
                 body,
+                callerOwnsDispatchTurn: false,
                 cancellationToken)
             .ConfigureAwait(false);
         return result.Handled

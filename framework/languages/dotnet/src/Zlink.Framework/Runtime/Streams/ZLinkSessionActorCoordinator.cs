@@ -111,7 +111,9 @@ internal sealed class ZLinkSessionActorCoordinator(
         CancellationToken cancellationToken)
     {
         using var actorPayload = payload.Copy();
-        if (header.RequestSeq is not null)
+        // Only genuine requests take the reply path (a relayed Send can
+        // carry a request seq from stream-level bookkeeping).
+        if (header.Kind == ZlinkStreamMessageKind.Request && header.RequestSeq is not null)
         {
             await using var boundSessionScope = ZLinkBoundSessionDispatchScope.Enter(actorRef.ActorId);
             try

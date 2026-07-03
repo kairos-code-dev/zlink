@@ -134,6 +134,7 @@ internal sealed class ZLinkSpotRuntimeManager(
         ZLinkActorRuntimeState runtimeState,
         ZlinkStreamHeader header,
         Message body,
+        bool callerOwnsDispatchTurn,
         CancellationToken cancellationToken)
     {
         return await _entrySpotActors.TrySubmitForReplyAsync(
@@ -142,6 +143,7 @@ internal sealed class ZLinkSpotRuntimeManager(
                 runtimeState,
                 header,
                 body,
+                callerOwnsDispatchTurn,
                 cancellationToken)
             .ConfigureAwait(false);
     }

@@ -81,6 +81,7 @@ internal sealed partial class ZLinkFrameworkRuntime
         ZLinkActorRuntimeState runtimeState,
         ZlinkStreamHeader header,
         Message payload,
+        bool callerOwnsDispatchTurn,
         CancellationToken cancellationToken = default)
     {
         var state = GetOrStartState();
@@ -90,6 +91,7 @@ internal sealed partial class ZLinkFrameworkRuntime
                 runtimeState,
                 header,
                 payload,
+                callerOwnsDispatchTurn,
                 cancellationToken)
             .ConfigureAwait(false);
     }

@@ -60,8 +60,7 @@ internal sealed partial class ZLinkFrameworkRuntime
             Registration,
             _channelFacade.GetRouteChannel,
             GetSpotRouteBridgeOwner,
-            () => Services.GetService(typeof(ZLinkSpotLocationRidResolver)) as ZLinkSpotLocationRidResolver,
-            () => Services.GetService(typeof(IZLinkPeerLocationResolver)) as IZLinkPeerLocationResolver);
+            () => Services.GetService(typeof(ZLinkSpotLocationRidResolver)) as ZLinkSpotLocationRidResolver);
     }
 
     public IZLinkBackendContext? Context => _state?.Context;

@@ -21,7 +21,8 @@ internal sealed record ZLinkAutoConnectTarget(
     RoutingId? NodeRid,
     ZLinkLocationRole Role,
     string Endpoint,
-    IReadOnlyDictionary<string, string>? Metadata = null);
+    IReadOnlyDictionary<string, string>? Metadata = null,
+    string? OwnerId = null);
 
 /// <summary>
 /// Pure desired-target-set computation: the role allow table and target
@@ -66,7 +67,8 @@ internal static class ZLinkAutoConnectPlanner
             }
 
             var target = new ZLinkAutoConnectTarget(
-                TargetKeyOf(peer), peer.NodeRid, peer.Role, peer.Endpoint, peer.Metadata);
+                TargetKeyOf(peer), peer.NodeRid, peer.Role, peer.Endpoint, peer.Metadata,
+                peer.OwnerId);
             desired[target.TargetKey] = target;
         }
 
@@ -126,10 +128,17 @@ internal static class ZLinkAutoConnectPlanner
     /// <summary>
     /// Pairwise initiator for symmetric meshes: compare routing ids by byte
     /// order when both exist, otherwise compare endpoints ordinally; only
-    /// the smaller side dials so the pair never double-connects.
+    /// the smaller side dials so the pair never double-connects. A member
+    /// with no endpoint cannot be dialed, so it always initiates toward
+    /// dialable peers regardless of the order.
     /// </summary>
     private static bool LocalIsInitiator(ZLinkAutoConnectLocal local, ZLinkPeerLocation peer)
     {
+        if (string.IsNullOrEmpty(local.Endpoint))
+        {
+            return true;
+        }
+
         if (local.NodeRid is { Size: > 0 } localRid && peer.NodeRid is { Size: > 0 } peerRid)
         {
             var byRid = string.CompareOrdinal(localRid.ToHex(), peerRid.ToHex());

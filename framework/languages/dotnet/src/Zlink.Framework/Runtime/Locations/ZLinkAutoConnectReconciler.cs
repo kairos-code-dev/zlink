@@ -118,10 +118,12 @@ internal sealed class ZLinkAutoConnectReconciler
                 continue;
             }
 
-            if (!string.Equals(current.Endpoint, target.Endpoint, StringComparison.Ordinal))
+            if (!string.Equals(current.Endpoint, target.Endpoint, StringComparison.Ordinal)
+                || !string.Equals(current.OwnerId, target.OwnerId, StringComparison.Ordinal))
             {
-                // Same peer key with a new endpoint is a handover: replace
-                // the old connection with the new endpoint.
+                // Same peer key with a new endpoint or a new owner is a
+                // handover: a restarted peer re-claims its row under a new
+                // owner and needs a fresh dial even at the old endpoint.
                 _executor.Disconnect(current);
                 _executor.Connect(target);
                 _active[key] = target;

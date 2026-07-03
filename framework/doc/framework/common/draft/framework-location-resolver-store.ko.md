@@ -857,6 +857,12 @@ Redis extension은 generation claim, owner lease refresh, owner-guarded remove�
 
 ## 10. 캐시 정책
 
+> **대체 예정**: 이 절의 캐시 정책은
+> [framework-spot-address-messaging.ko.md](framework-spot-address-messaging.ko.md) 초안에서
+> 제거하기로 결정했다. spot 메시징 표면이 spot full 주소(node rid + spot rid)를 받는 모델로
+> 바뀌면 per-send resolve가 사라져 캐시의 존재 이유가 없어진다. 두 문서가 충돌하면 그 문서가
+> 우선한다. 아래 내용은 구현 반영 전까지의 기존 계약 기록이다.
+
 이 절의 cache 정책은 새 framework location resolver 기능이다. 기존 core discovery의 spot owner cache,
 service list snapshot cache, membership sequence 기반 무효화 방식을 그대로 가져오지 않는다. 새 정책은
 peer, spot, actor, route resolver가 같은 freshness 의미를 사용하도록 정의한다.
@@ -999,12 +1005,22 @@ local capability는 같은 mesh의 peer list를 읽은 뒤 아래 규칙으로 c
 | client/server | local dealer -> remote router. router는 dealer로 outbound connect하지 않는다. |
 | dealer mesh | local dealer -> remote dealer. 중복 연결을 피하려고 routing id와 endpoint를 비교해 한쪽만 connect한다. |
 | fanout | local sub -> remote pub. pub는 sub로 outbound connect하지 않는다. |
-| spot mesh | local spot -> remote spot. 같은 endpoint와 같은 routing id는 제외하고, pairwise initiator로 한쪽만 connect한다. router role row는 spot endpoint metadata를 풀 때만 사용한다. |
+| spot mesh | local spot -> remote spot. 같은 endpoint와 같은 routing id는 제외하고 **양방향으로 connect한다**. native spot data plane과 route bridge는 각 node가 자기가 주소 지정하는 peer로 직접 dial한 링크를 전제하며, rid 지정 connect가 rid 기준으로 중복을 흡수한다. router role row는 spot endpoint metadata를 풀 때만 사용한다. |
 
-pairwise initiator는 대칭 mesh(route mesh, dealer mesh, spot mesh) 공통 규칙이다. 기존 core 정책처럼
+pairwise initiator는 대칭 route/dealer mesh 공통 규칙이다. 기존 core 정책처럼
 routing id가 둘 다 있으면 routing id byte order를 먼저 비교하고, 없거나 같으면 endpoint 문자열을
 비교한다. 비교 결과 local이 더 작은 쪽일 때만 connect한다. 양쪽이 동시에 서로 connect하면 같은
 routing id에 연결이 두 개 생기고, route mesh에서는 rid 지정 요청의 라우팅이 깨진다.
+
+initiator 순서에는 예외가 하나 있다. **endpoint 없이 참여하는 구성원(dial 전용: bind endpoint가
+없는 route mesh client 등)은 누구도 그쪽으로 dial할 수 없으므로, id 순서와 무관하게 항상 자기가
+dial한다.** 이 예외가 없으면 dial 전용 구성원이 initiator가 아닌 쌍에서 아무도 연결을 만들지
+않는 교착이 생긴다.
+
+connect 대상의 재연결 판정은 target key(role + node rid)가 같아도 **row의 endpoint 또는 owner가
+바뀌면 handover**로 처리한다: 기존 연결을 끊고 새로 dial한다. 같은 rid와 endpoint로 재시작한
+peer는 새 owner id로 row를 다시 claim하므로, owner 변화가 죽은 프로세스를 향한 링크를
+살아 있는 프로세스로 교체하는 신호가 된다.
 
 ### 14.4 reconcile loop
 

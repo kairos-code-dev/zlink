@@ -72,6 +72,22 @@ public sealed class AutoConnectReconcilerTests
     }
 
     [Fact]
+    public void Endpoint_Less_Mesh_Member_Always_Dials_Dialable_Peers()
+    {
+        // "zz" sorts after "aa", so the plain initiator rule would tell the
+        // endpoint-less member to wait — but nobody can dial it, so it must
+        // initiate regardless of the id order.
+        var dialOnly = new ZLinkAutoConnectLocal(
+            ZLinkLocationAutoConnectType.RouteMesh, "play", ZLinkLocationRole.Router,
+            RoutingId.From("zz"), string.Empty);
+        var server = Peer(ZLinkLocationAutoConnectType.RouteMesh, ZLinkLocationRole.Router, "aa", "tcp://a:1");
+
+        var desired = ZLinkAutoConnectPlanner.ComputeDesired(dialOnly, [server]);
+
+        Assert.Single(desired);
+    }
+
+    [Fact]
     public async Task Reconcile_Connects_New_Targets_And_Disconnects_Vanished_Ones()
     {
         var fixture = await FixtureAsync();
@@ -100,6 +116,31 @@ public sealed class AutoConnectReconcilerTests
         await fixture.Reconciler.TickAsync();
 
         Assert.Equal(["tcp://r:1", "tcp://r:9"], fixture.Executor.Connected.Select(t => t.Endpoint));
+        var dropped = Assert.Single(fixture.Executor.Disconnected);
+        Assert.Equal("tcp://r:1", dropped.Endpoint);
+    }
+
+    [Fact]
+    public async Task Owner_Change_For_The_Same_Peer_Key_Is_A_Handover()
+    {
+        var fixture = await FixtureAsync();
+        await fixture.PublishPeerAsync("r1", "tcp://r:1");
+        await fixture.Reconciler.TickAsync();
+
+        // The peer restarts: same rid and endpoint, re-claimed by a new
+        // owner. The old dial points at a dead process, so the reconciler
+        // must replace the connection even though nothing else changed.
+        await fixture.Store.RenewOwnerLeaseAsync(
+            "peer-owner-2", RoutingId.From("peer-node-2"), TimeSpan.FromMinutes(10));
+        var restarted = Peer(
+            ZLinkLocationAutoConnectType.ClientServer,
+            ZLinkLocationRole.Router,
+            "r1",
+            "tcp://r:1") with { OwnerId = "peer-owner-2" };
+        await fixture.Store.UpdatePeerAsync(restarted, ZLinkLocationWriteIntent.Takeover);
+        await fixture.Reconciler.TickAsync();
+
+        Assert.Equal(["tcp://r:1", "tcp://r:1"], fixture.Executor.Connected.Select(t => t.Endpoint));
         var dropped = Assert.Single(fixture.Executor.Disconnected);
         Assert.Equal("tcp://r:1", dropped.Endpoint);
     }

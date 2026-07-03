@@ -266,19 +266,22 @@ actor가 어느 노드 어느 spot에 사는지 알 필요가 없다.
 
 actor 안에서 user Spot에 join할 때도 같은 규칙이다. actor context의 `JoinSpot(...)`
 public 시그니처는 **`RoutingId spotRid`** 를 받는다. actor handler 표면에는
-문자열 spot 이름을 노출하지 않는다. domain key에서 `RoutingId`를 얻는 규칙은 application
-spot route resolver가 푼다. application 코드는 `gameId`, `matchId`, `roomId` 같은
-domain key를 그대로 들고 다니면 된다.
+문자열 spot 이름을 노출하지 않는다. domain key(`gameId`, `matchId`, `roomId` 등)에서
+`RoutingId`를 만드는 규칙은 application의 것이고, application 코드는 domain key를
+그대로 들고 다니면 된다.
 
-framework는 application이 등록한 actor/spot resolver에 라우팅을 위임한다.
+위치 조회는 framework의 location resolver가 맡는다
+([location runtime §5](location-runtime.ko.md)). 기본 구현은 등록된 location store를
+읽고, 결과로 **주소**를 돌려준다.
 
 | resolver | 책임 |
 | --- | --- |
-| actor route resolver | actor id → 그 actor가 사는 routed channel + 노드 routing id |
-| spot route resolver | spot rid → user Spot 위치 |
+| actor location resolver | actor(type + id) → 그 actor가 위치한 spot의 주소(`ZLinkSpotAddress`) |
+| spot location resolver | spot rid → 그 spot의 주소 |
 
-application 저장소(in-memory cache, Redis, registry 등)는 application이 소유한다.
-framework는 그 저장소를 만들지 않는다.
+위치의 저장소는 application이 등록한 location store(예: 공식 Redis extension)다.
+framework는 특정 store 제품을 강제하지 않고, row의 등록·갱신은 actor/spot lifecycle이
+자동으로 수행한다.
 
 ## 7. Session actor dispatch (gateway) 패턴
 
@@ -330,7 +333,7 @@ binding마다 이름은 케이싱 규칙에 따라 다르지만, 의미는 다�
 
 - `.NET`: [aspnet-core-actor.ko.md](../../dotnet/spec/aspnet-core-actor.ko.md)
   -- `IZLinkActor`, `IZLinkActorContext`, `IZLinkActorFactory`, typed handler
-  인터페이스, `IZLinkActorClient`, `IZLinkSessionProxy`, 등록 API
+  인터페이스, `IZLinkActorManager`, `IZLinkBoundSession`, 등록 API
 - `Java`, `Node`, `Python`, `Go`, `Rust`, `C++` 등 다른 binding은 각자 디렉토리
   안에 같은 의미의 표면을 같은 cross-language 네이밍 규칙으로 적는다 (자세한
   규칙은 [README.ko.md §5.2.1](../README.ko.md) 참고).

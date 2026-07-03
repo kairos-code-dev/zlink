@@ -114,8 +114,8 @@ reply matching은 framework helper 안에 있을 때 더 자연스럽다. applic
 - store 기반 자동 연결은 수동 연결과 섞이지 않으며, 자동 연결 실패를 retry로 숨기지 않는다.
 - 일반 send/request public API와 session actor helper는 `RoutingId`, `SpotNodeId` 같은
   transport 위치값을 직접 요구하지 않는다.
-- actor와 현재 stream session의 묶음은 사용자가 `CreateAndBindActorAsync(...)` 또는
-  `BindActorHandleAsync(...)`를 호출할 때 framework/core 내부 binding으로 갱신한다.
+- actor와 현재 stream session의 묶음은 사용자가 생성-후-bind(`GetOrCreateAsync` + `BindAsync`) 또는
+  `session.Actors.BindAsync(...)`를 호출할 때 framework/core 내부 binding으로 갱신한다.
 - 기존 direct target send/request API와 session gateway naming은 새 public surface에서
   제거한다.
 
@@ -142,7 +142,7 @@ actor가 이미 존재할 때 create 요청을 어떻게 처리할지, 재연결
 | red flag | 현재 모습 | 위반되는 원칙 | 개선 방향 |
 |----------|-----------|---------------|-----------|
 | 얕은 raw actor dispatch handler | envelope를 받고 packet name으로 분기한 뒤 domain service를 호출한다. | 깊은 모듈 | actor/node/spot 실행 문맥의 typed handler registry가 dispatch와 decode를 맡는다. |
-| 정보 누출 | `RoutingId`가 game scenario와 proxy code에 퍼진다. | 정보 은닉 | actor/game route resolver가 transport 위치를 숨긴다. |
+| 정보 누출 | `RoutingId`가 game scenario와 proxy code에 퍼진다. | 정보 은닉 | location resolver가 transport 위치를 숨긴다. |
 | 특수/범용 코드 혼합 | sample session code가 auth, lookup, relay, stream reply를 함께 가진다. | 복잡성을 아래로 | actor create/dispatch helper가 request sequence 보존과 relay envelope 조립만 맡는다. |
 | 시간적 분해 | "먼저 resolve, 그 다음 relay" 순서가 호출자 코드에 반복된다. | 오류를 정의로 제거 | framework call builder가 resolve 후 request를 하나의 의미로 제공한다. |
 | 문자열 dispatch | packet name 문자열과 type decode가 별도로 맞아야 한다. | 오류를 정의로 제거 | type 기반 packet metadata와 handler 등록을 사용한다. |
@@ -164,7 +164,7 @@ actor가 이미 존재할 때 create 요청을 어떻게 처리할지, 재연결
 
 ### 6.2 대안 B: actor create/dispatch helper를 추가한다
 
-두 번째 방법은 기존 낮은 수준 API 위에 typed handler, route resolver, actor
+두 번째 방법은 기존 낮은 수준 API 위에 typed handler, location resolver, actor
 create/dispatch helper를 추가하는 방식이다.
 
 이 방식에서는 낮은 수준 public API를 목표 표면으로 교체한다. 일반 application은
@@ -184,7 +184,7 @@ envelope 조립, request sequence 보존처럼 반복되면 위험한 작업만 
 | 축 | 역할 |
 |----|------|
 | actor/node/spot handlers | relayed message를 실행 문맥 안에서 typed message로 처리한다. |
-| actor/spot route resolvers | actor와 spot domain key를 transport target으로 해석한다. |
+| actor/spot location resolvers | actor id 와 spot rid 를 주소(`ZLinkSpotAddress`)로 해석한다. |
 | session actor helpers | session server가 선택한 actor create/dispatch를 request sequence 손실 없이 수행한다. |
 
 아래 그림은 책임 경계를 보여 준다.
@@ -305,7 +305,7 @@ stream session에서 actor dispatch로 넘어갈 때 framework는 아래 규칙�
 기본 metadata policy는 application metadata를 전달하지 않는다. sample에서
 trace id 같은 값을 보여 주려면 framework 등록 단계에서 명시 허용 목록을 둔다.
 이 설정은 handler route를 고르는 데 쓰지 않는다. message dispatch key는 packet name과
-message kind이고, route resolver 입력은 `actorId` 또는 `spotRid`로 제한한다.
+message kind이고, location resolver 입력은 `actorId` 또는 `spotRid`로 제한한다.
 
 구체 .NET 시그니처(`ZLinkMessageMetadata`, `IZLinkMessageMetadataPolicy`,
 `options.ConfigureMetadata(...)`)는
@@ -362,8 +362,8 @@ startup validation은 아래 조건을 확인한다.
 
 | 조건 | 실패 이유 |
 |------|-----------|
-| `IZLinkSessionProxy`를 사용하지만 현재 actor-session binding이 없다. | actor가 어떤 client stream으로 보내야 하는지 확인할 수 없다. |
-| actor client를 사용하지만 actor route resolver가 없다. | actor id를 actor node 위치로 해석할 수 없다. |
+| `IZLinkBoundSession`를 사용하지만 현재 actor-session binding이 없다. | actor가 어떤 client stream으로 보내야 하는지 확인할 수 없다. |
+| actor 위치 조회가 필요한데 location store 가 등록되지 않았다. | actor id를 actor 위치로 해석할 수 없다. |
 | 같은 actor type에 factory가 둘 이상 등록된다. | actor create target이 모호하다. |
 | 같은 실행 문맥에 같은 packet handler가 둘 이상 등록된다. | dispatch target이 모호하다. |
 | raw relay handler와 typed dispatch가 같은 routed channel에 함께 등록된다. | envelope 처리 주체가 두 개가 된다. |
@@ -414,7 +414,7 @@ resolver가 raw message 객체나 packet switch를 직접 보지 않게 해야 r
 dispatcher가 되지 않는다.
 
 session 위치는 공개 resolver로 두지 않는다. actor가 client에게 메시지를 보낼 때 필요한
-session binding은 framework/core runtime 내부 상태다. `IZLinkSessionProxy` 같은 표면은
+session binding은 framework/core runtime 내부 상태다. `IZLinkBoundSession` 같은 표면은
 actor id나 현재 actor context를 받아 내부 binding을 사용해야 하며, application이
 `actorId -> session node` resolver를 구현하게 하지 않는다.
 
@@ -422,17 +422,15 @@ resolver가 반환하는 target node 식별값(`RoutingId`류)은 사용자가 �
 직접 다루는 값이 아니다. transport 위치값은 resolver 구현체와 framework routed
 transport 내부에만 머물러야 한다.
 
-actor route resolver는 actor id만 알고 actor runtime으로 message를 보내는 public
-actor client(`IZLinkActorClient` 류)에서 사용한다. session callback이 이미
-`CreateAndBindActorAsync(...)` 또는 `BindActorHandleAsync(...)`로 받은 actor ref를 들고
-있으면 actor route resolver를 다시 호출하지 않는다. `DispatchToActorAsync(actorRef, ...)`
-는 ref 안의 resolved target을 사용하므로 resolver cache나 route store를 다시
-조회하지 않는다.
+actor location resolver는 actor id만 알고 그 actor의 위치를 찾아야 하는 흐름(재연결의
+"있으면 re-bind" 판단 등)에서 사용한다. session callback이 이미 bind로 받은 actor
+handle(`IZLinkSessionActor` — `Ref`와 `RelayAsync(...)`)을 들고 있으면 위치를 다시
+조회하지 않는다. relay는 handle 안의 actor ref를 사용하므로 store를 다시 읽지 않는다.
 
-구체 .NET 시그니처(`IZLinkActorPlayRouteResolver`, `ZLinkActorRoute`,
-`IZLinkActorClient` builder)는
-[bindings/dotnet/session-actor-dispatch.ko.md](../../dotnet/spec/session-actor-dispatch.ko.md)
-§5, §6을 참고한다.
+구체 .NET 표면(`IZLinkSessionActors.BindAsync(...)`, `IZLinkSessionActor.RelayAsync(...)`,
+`IZLinkActorManager`)은
+[bindings/dotnet/session-actor-dispatch.ko.md](../../dotnet/spec/session-actor-dispatch.ko.md)를
+참고한다.
 
 ### 9.3 resolver가 숨기는 정보
 
@@ -515,7 +513,7 @@ transport 세부 작업만 helper로 제공한다.
 1. stream packet을 받는다.
 2. 인증 packet이면 application이 actor id와 actor type을 결정한다.
 3. local `SpotNode` actor runtime에 actor를 만들거나 기존 actor handle을 얻기 위해
-   `CreateAndBindActorAsync(...)` 또는 `BindActorHandleAsync(...)`를 호출한다.
+   actor 생성/조회(`IZLinkActorManager.GetOrCreateAsync`) 후 `session.Actors.BindAsync(...)`를 호출한다.
 4. packet별로 actor dispatch, session-local reply, error reply 중 하나를 고른다.
 5. request이면 원래 stream request sequence로 reply한다.
 
@@ -523,83 +521,83 @@ framework는 이 결정을 자동으로 하지 않는다. 대신 아래 작업�
 
 | helper | framework가 숨기는 작업 |
 |--------|------------------------|
-| `CreateAndBindActorAsync(...)` | 현재 node의 actor runtime에 actor 생성 요청, 현재 actor-session binding 갱신 |
-| `BindActorHandleAsync(...)` | local `SpotNode` actor runtime의 dispatch handle 생성, 현재 actor-session binding 갱신 |
-| `DispatchToActorAsync(...)` | actor dispatch envelope와 원본 stream request sequence를 보존한 actor dispatch |
+| 생성-후-bind(`GetOrCreateAsync` + `BindAsync`) | 현재 node의 actor runtime에 actor 생성 요청, 현재 actor-session binding 갱신 |
+| `session.Actors.BindAsync(...)` | local `SpotNode` actor runtime의 dispatch handle 생성, 현재 actor-session binding 갱신 |
+| `handle.RelayAsync(...)` | actor dispatch envelope와 원본 stream request sequence를 보존한 actor dispatch |
 
 ### 10.2 제안 session context API
 
 session context는 handler registry를 갖지 않는다. 사용자는 기존 session callback 안에서
 직접 분기한다. session context가 노출해야 하는 핵심 helper는 셋이다.
 
-- `CreateAndBindActorAsync(actorId, actorType, ct)` -- 현재 session host의 actor runtime에
+- actor 생성+bind (`IZLinkActorManager.GetOrCreateAsync(...)` 후 `session.Actors.BindAsync(...)`) -- 현재 session host의 actor runtime에
   create 요청을 보낸다. actor 생성과 session bind를 한 호출에 묶는다.
-- `BindActorHandleAsync(actorId, actorType, ct)` -- 현재 session host의 local
+- 기존 actor bind (`session.Actors.BindAsync(actorRef, ct)`) -- 현재 session host의 local
   `SpotNode` actor runtime에서 dispatch handle을 만든다. remote node를 직접 지정하지 않는다.
-- `DispatchToActorAsync(actorRef, header, payload, ct)` -- actor dispatch envelope와
+- `handle.RelayAsync(payload, ct)` -- actor dispatch envelope와
   원본 stream request sequence를 보존한 actor dispatch.
 
-`IZLinkActorRef` (binding별 동등 이름)는 local `SpotNode` actor runtime의 actor에 대한
+session actor handle(`IZLinkSessionActor`) (binding별 동등 이름)는 local `SpotNode` actor runtime의 actor에 대한
 dispatch handle만 노출한다. application actor 객체(`IZLinkActor`) 자체와는 다른 표면이다.
 actor ref는 application actor 객체가 아니므로 `Configure()`나 handler registry를 갖지 않는다.
 
-구체 .NET 시그니처(`IZLinkSessionContext`, `IZLinkActorRef`)는
+구체 .NET 시그니처(`IZLinkSessionContext`, session actor handle(`IZLinkSessionActor`))는
 [handler-interfaces.ko.md §4.4](../../dotnet/spec/handler-interfaces.ko.md)와
 [bindings/dotnet/session-actor-dispatch.ko.md](../../dotnet/spec/session-actor-dispatch.ko.md)
 §7-8을 참고한다.
 
-`CreateAndBindActorAsync(...)`는 현재 session host가 가진 actor runtime에 create 요청을 보낸다.
+생성-후-bind(`GetOrCreateAsync` + `BindAsync`)는 현재 session host가 가진 actor runtime에 create 요청을 보낸다.
 이 함수는 actor 생성과 현재 session binding metadata 생성을 하나의 작업으로 묶어,
 후속 dispatch가 항상 같은 actor ref 표면을 사용하게 한다.
 
-`BindActorHandleAsync(...)`도 remote node 선택을 받지 않는다. actor는 local `SpotNode`
+`session.Actors.BindAsync(...)`도 remote node 선택을 받지 않는다. actor는 local `SpotNode`
 actor runtime에서만 생성되므로, 이 helper는 actor id와 actor type으로 local actor handle을
 준비하고 현재 session binding metadata를 만든다. 이미 존재하는 actor를 재사용할지,
 중복 생성으로 실패할지는 local actor runtime과 factory 정책을 따른다.
 
-`CreateAndBindActorAsync(...)`와 `BindActorHandleAsync(...)`는 같은 후속 dispatch 표면을
-반환하지만 같은 종류의 create 요청은 아니다. `CreateAndBindActorAsync(...)`만 현재 node의 actor
-runtime에 명시 create를 요청한다. `BindActorHandleAsync(...)`는 local actor runtime의
+생성-후-bind 와 기존-actor-bind는 같은 후속 dispatch 표면을
+반환하지만 같은 종류의 create 요청은 아니다. 생성-후-bind(`GetOrCreateAsync` + `BindAsync`)만 현재 node의 actor
+runtime에 명시 create를 요청한다. `session.Actors.BindAsync(...)`는 local actor runtime의
 handle을 준비하고 현재 actor-session binding을 갱신한다. framework session helper는
 remote node actor 생성 정책을 만들지 않는다.
 
-명시 create와 handle 준비는 이후 같은 `IZLinkActorRef` 표면으로 dispatch된다. 사용자가
+명시 create와 handle 준비는 이후 같은 session actor handle(`IZLinkSessionActor`) 표면으로 dispatch된다. 사용자가
 packet마다 `RoutingId`를 넘기지 않게 하고, actor 생성과 session binding을 local
 `SpotNode` actor runtime 안에 가두는 것이 이 표면의 목적이다.
 
-`IZLinkActor`와 `IZLinkActorRef`는 의도적으로 분리한다. `IZLinkActor`는 actor node에서
+`IZLinkActor`와 session actor handle(`IZLinkSessionActor`)는 의도적으로 분리한다. `IZLinkActor`는 actor node에서
 실제로 생성되는 application 객체이고, constructor로 받은 `IZLinkActorContext` 안에서
-handler를 등록한다. `IZLinkActorRef`는 session이 actor로 dispatch하기 위해 들고 있는
+handler를 등록한다. session actor handle(`IZLinkSessionActor`)는 session이 actor로 dispatch하기 위해 들고 있는
 handle이다. actor ref는 application actor 객체가 아니므로 `Configure()`나 handler registry를
 갖지 않는다.
 
 ### 10.2.1 actor create lifecycle
 
-`CreateAndBindActorAsync(...)`와 `BindActorHandleAsync(...)`는 session-bound actor 경로에서
+생성-후-bind 와 기존-actor-bind는 session-bound actor 경로에서
 actor ref와 session binding metadata를 한 호출 안에서 함께 준비하는 helper다.
-`CreateAndBindActorAsync(...)`는 local actor 생성까지 묶고, `BindActorHandleAsync(...)`는
+생성-후-bind(`GetOrCreateAsync` + `BindAsync`)는 local actor 생성까지 묶고, `session.Actors.BindAsync(...)`는
 local actor handle 준비와 현재 actor-session binding 갱신만 묶는다. unbound standalone actor는 이
 표면으로 만들지 않으며, actor node 측 별도 등록 표면(예: actor node가 직접 부르는
 `CreateActor` 계열 helper)으로 다룬다.
 
 1. framework가 현재 session에 대한 새 `BindingToken`을 만든다.
-2. `CreateAndBindActorAsync(...)`이면 현재 node의 actor runtime에 create 요청을 보내고,
-   `BindActorHandleAsync(...)`이면 local actor runtime에서 `IZLinkActorRef`를 준비한다.
-3. local create가 actor를 만들거나 기존 actor를 반환하면 같은 `IZLinkActorRef` 표면으로
+2. 생성-후-bind(`GetOrCreateAsync` + `BindAsync`)이면 현재 node의 actor runtime에 create 요청을 보내고,
+   `session.Actors.BindAsync(...)`이면 local actor runtime에서 session actor handle(`IZLinkSessionActor`)를 준비한다.
+3. local create가 actor를 만들거나 기존 actor를 반환하면 같은 session actor handle(`IZLinkSessionActor`) 표면으로
    감싼다.
 4. current session server의 local binding table에
    `actorId -> sessionId + bindingToken`을 기록한다.
 5. framework/core runtime의 actor-session binding 상태를 갱신한다.
-6. binding 갱신이 끝나면 `IZLinkActorRef`를 caller에게 반환한다.
+6. binding 갱신이 끝나면 session actor handle(`IZLinkSessionActor`)를 caller에게 반환한다.
 
 binding 갱신이 실패하면 create helper는 실패해야 한다. 이때 framework는 current session
 server의 local binding table에서 같은 `bindingToken`을 가진 entry를 제거한다.
-`CreateAndBindActorAsync(...)`로 local actor가 이미 만들어졌다면 그 actor lifetime은 actor
+생성-후-bind(`GetOrCreateAsync` + `BindAsync`)로 local actor가 이미 만들어졌다면 그 actor lifetime은 actor
 runtime 정책을 따른다. session binding 실패는 client-facing route 실패이기 때문이다.
 
-`BindActorHandleAsync(...)`는 target node 선택을 하지 않고 target node id를 받지도
+session actor bind 는 target node 선택을 하지 않고 target node id를 받지도
 않는다. 다른 node의 actor로 보내야 하는 흐름은 session actor helper가 아니라 actor
-route resolver와 `IZLinkActorClient` 같은 actor 호출 표면으로 다룬다.
+location resolver로 주소를 얻는 actor 호출 경로로 다룬다.
 
 session close 또는 stream disconnect가 발생하면 framework는 current session server가
 가진 actor binding마다 아래 순서로 정리한다.
@@ -625,10 +623,10 @@ session callback 안에서 정책 code는 아래 흐름을 따른다 (framework�
 
 1. stream packet을 받는다.
 2. 인증 packet이면 application이 actor id와 actor type을 결정한 뒤
-   `CreateAndBindActorAsync(...)` 또는 `BindActorHandleAsync(...)`를 호출한다. helper가
+   actor 생성/조회(`IZLinkActorManager.GetOrCreateAsync`) 후 `session.Actors.BindAsync(...)`를 호출한다. helper가
    local actor 생성 또는 local handle 준비, session binding metadata 생성, 내부 binding 갱신을
    한 묶음으로 처리한다.
-3. 인증된 actor가 있는 packet은 `DispatchToActorAsync(actorRef, header, payload, ct)`로
+3. 인증된 actor가 있는 packet은 `handle.RelayAsync(payload, ct)`로
    actor 실행 문맥으로 넘긴다. 인증되지 않은 packet은 application이 명시 error로
    거부한다.
 4. session-local reply가 필요한 경우 session context의 reply helper를 사용한다.
@@ -636,7 +634,7 @@ session callback 안에서 정책 code는 아래 흐름을 따른다 (framework�
    application code는 sequence를 직접 다루지 않는다.
 
 구체 .NET 코드 예시(`TicTacToeSession.OnDispatchAsync(...)`,
-`Context.BindActorHandleAsync(...)`, `Context.Reply(...).Submit(...)`,
+`session.Actors.BindAsync(...)`, `Context.Reply(...).Submit(...)`,
 `ZLinkFrameworkException` 던지기)는
 [bindings/dotnet/session-actor-dispatch.ko.md](../../dotnet/spec/session-actor-dispatch.ko.md)
 §8을 참고한다.
@@ -646,7 +644,7 @@ framework가 맡는 규칙은 아래로 제한한다.
 - 원본 stream request sequence를 보존한다.
 - 원본 payload bytes는 sample serializer가 아니라 framework codec/message 경로로
   다룬다.
-- `DispatchToActorAsync(...)`는 raw stream frame relay 세부 처리를 숨긴다.
+- `handle.RelayAsync(...)`는 raw stream frame relay 세부 처리를 숨긴다.
 - reply matching은 message name이 아니라 request sequence 기준으로 유지한다.
 
 ### 10.4 Session과 SessionProxy의 공통 흐름
@@ -697,8 +695,7 @@ caller가 `RoutingId`를 모르더라도 같은 routed mesh 위에서 request/re
 호출자는 `RoutingId`를 모르지만, binding 조회 실패는 명확한 예외 또는 error result로
 받아야 한다.
 
-구체 .NET 시그니처(`IZLinkSessionProxy`, `IZLinkSessionProxySendCall`,
-`IZLinkSessionProxyRequestCall`)와 사용 예시는
+구체 .NET 시그니처(`IZLinkBoundSession`, `IZLinkBoundSessionSendCall`)와 사용 예시는
 [bindings/dotnet/session-actor-dispatch.ko.md](../../dotnet/spec/session-actor-dispatch.ko.md)
 §4를 참고한다.
 
@@ -717,7 +714,7 @@ client session으로 가는 방향만 `SessionProxy`다.
 
 | 제거할 이름 | 목표 표면 | 처리 |
 |-------------|-----------|------|
-| `IZLinkSessionGateway` | `IZLinkSessionProxy`와 session actor helper | 하나의 gateway 객체로 합치지 않는다. |
+| `IZLinkSessionGateway` | `IZLinkBoundSession`와 session actor helper | 하나의 gateway 객체로 합치지 않는다. |
 | `EnableSessionGateway()` | session actor helper와 session proxy service 등록 | 하나의 gateway feature switch로 묶지 않는다. |
 | `SendToActor(...)` | `SessionProxy.Send(actorId, message)` | actor -> client 방향 호출로만 남긴다. |
 | `RequestActor(...)` | `SessionProxy.Request(actorId, request)` | reply type은 기존 call builder 규칙을 따른다. |
@@ -782,10 +779,10 @@ actor route와 같은 문제가 `Spot` 호출에도 있다. 사용자가 `SpotRi
 보낼 수 없고 `SpotNodeId`나 node `RoutingId`까지 알아야 한다면, transport 위치 정보가
 application 코드에 새어 나온다.
 
-framework public surface는 spot rid 기반 호출이 node 경계를 넘을 때
-spot route resolver를 사용한다. session-gateway sample에서 game room이 같은 Play
-서버 안에만 있으면 resolver 호출이 드러나지 않을 수 있지만, 문서의 cross-node 계약은
-spot resolver를 포함해야 한다. 멀티게임 sample의 game room은 도메인 핵심 실행 문맥이므로
+framework public surface는 spot 호출이 node 경계를 넘을 때 spot location
+resolver로 얻은 주소를 사용한다. session-gateway sample에서 game room이 같은 Play
+서버 안에만 있으면 resolve가 드러나지 않을 수 있지만, 문서의 cross-node 계약은
+resolve-보관-재resolve 규칙을 포함해야 한다. 멀티게임 sample의 game room은 도메인 핵심 실행 문맥이므로
 Play 서버 안에서는 `IZLinkSpotManager`로 room SPOT을 만든다. client는 match id나 room
 name을 지정하지 않는다. `MatchId`는 생성된 room의 `SpotRid` hex이며, actor가 join한
 room 안에서 `PlaceMarkReq`가 처리된다. location row는 actor play route sample,
@@ -901,8 +898,8 @@ domain message handler는 actor 실행 문맥에만 등록된다.
   등록한다.
 - host 등록 -- transport(routed channel, stream node)와 actor factory만 등록한다.
 - session callback -- 인증 packet에서 actor id와 actor type을 결정한 뒤
-  `CreateAndBindActorAsync(...)` 또는 `BindActorHandleAsync(...)`를 호출하고, 이후 packet은
-  `DispatchToActorAsync(actorRef, header, payload, ct)`로 넘긴다.
+  actor 생성/조회(`IZLinkActorManager.GetOrCreateAsync`) 후 `session.Actors.BindAsync(...)`를 호출하고, 이후 packet은
+  `handle.RelayAsync(payload, ct)`로 넘긴다.
 
 framework가 보장하는 부분은 local actor create 또는 handle 준비와 현재 session binding
 metadata 갱신을 한 흐름으로 묶고, dispatch helper가 원본 request sequence와 codec 경로를
@@ -923,7 +920,7 @@ framework가 공통 error kind를 제공해야 한다.
 |------------|-----------|
 | `ActorNotAuthenticated` | 인증되지 않은 session이 relay 대상 packet을 보냈다. |
 | `ActorRouteNotFound` | play route를 찾지 못했다. resolver 결과의 `RouterChannelId` 또는 `TargetNodeRid`가 빠지면 같은 error로 본다. |
-| `ActorCreateFailed` | `CreateAndBindActorAsync(...)`에서 local actor를 만들지 못했다. |
+| `ActorCreateFailed` | 생성-후-bind(`GetOrCreateAsync` + `BindAsync`)에서 local actor를 만들지 못했다. |
 | `ActorAlreadyExists` | local actor runtime 정책상 같은 actor id의 중복 create를 허용하지 않는다. |
 | `ActorSessionNotBound` | `SessionProxy` 대상 actor의 session binding이 없다. |
 | `SessionProxyTimeout` | session proxy request가 제한 시간 안에 완료되지 않았다. |
@@ -956,9 +953,9 @@ session actor helper와 resolver 기반 `SessionProxy` 표면으로 통일하는
   public sample과 guide에서 제거한다.
 - `IZLinkSessionGateway.SendToActor(...targetSessionNodeRid...)`류 direct target API는
   제거한다.
-- 새 `IZLinkSessionProxy` API는 actor -> client 방향의 기본 권장 표면으로 추가한다.
-- session -> actor 방향은 `CreateAndBindActorAsync(...)`, `BindActorHandleAsync(...)`,
-  `DispatchToActorAsync(...)`로 표현한다.
+- 새 `IZLinkBoundSession` API는 actor -> client 방향의 기본 권장 표면으로 추가한다.
+- session -> actor 방향은 생성-후-bind(`GetOrCreateAsync` + `BindAsync`), `session.Actors.BindAsync(...)`,
+  `handle.RelayAsync(...)`로 표현한다.
 
 내부 runtime에는 resolved transport helper가 필요할 수 있다. 그러나 public application
 표면에 같이 노출하면 사용자가 두 사용법 사이에서 판단해야 하므로, 정식 문서와 sample에는
@@ -980,33 +977,32 @@ session actor helper와 resolver 기반 `SessionProxy` 표면으로 통일하는
 | old public API 제거 | `EnableSessionGateway()`, `AddSessionProxyHandler(...)`, `OpenActorRelay(...)`, `SendToActor(...)`, `RequestActor(...)`가 새 public sample과 guide에 남지 않는다. |
 | raw relay public registration 제거 | raw relay public handler와 typed dispatch를 같은 routed channel에서 동시에 켤 수 없다. |
 
-### 19.2 route resolver와 direct target 제거
+### 19.2 location resolve와 direct target 제거
 
 | 테스트 | 확인 내용 |
 |--------|-----------|
-| route resolver play path | `IZLinkActorClient`가 actor id로 play route를 찾고 routed message를 보낸다. |
-| route resolver spot path | spot rid 기반 호출과 `JoinSpot(...)`이 spot route를 찾고 routed message를 보낸다. |
-| session proxy binding path | session proxy가 actor-session binding으로 session router id와 session id를 찾아 client에게 보낸다. |
-| dispatch ref path | `DispatchToActorAsync(...)`는 이미 받은 `IZLinkActorRef` target을 사용하고 play route resolver를 다시 호출하지 않는다. |
-| resolver 입력 제한 | actor resolver는 `actorId`만, spot resolver는 spot rid만 입력으로 받고 metadata, packet name, payload를 받지 않는다. |
-| missing play resolver validation | `IZLinkActorClient` 사용 시 play route resolver가 없으면 startup 또는 첫 호출에서 명확한 framework error가 난다. |
-| missing spot resolver validation | spot rid 기반 client 또는 `JoinSpot(...)` 사용 시 spot route resolver가 없으면 명확한 framework error가 난다. |
-| missing actor-session binding validation | `IZLinkSessionProxy` 사용 시 actor-session binding이 없으면 명확한 framework error가 난다. |
+| actor resolve path | actor location resolver가 actor id로 주소를 찾고, 그 주소로 routed message가 간다. |
+| spot resolve path | spot location resolver가 spot rid로 주소를 찾고, `JoinSpot(...)`과 spot 호출이 그 주소로 routed message를 보낸다. |
+| session proxy binding path | bound session push가 actor-session binding으로 client 대상 session을 찾아 보낸다. |
+| bound handle path | session bind로 받은 actor handle relay는 위치를 다시 조회하지 않는다. |
+| resolver 입력 제한 | actor resolver는 `actorType + actorId`만, spot resolver는 spot rid만 입력으로 받고 metadata, packet name, payload를 받지 않는다. |
+| missing store validation | 위치 조회가 필요한 표면 사용 시 location store가 없으면 명확한 framework error가 난다. |
+| missing actor-session binding validation | `IZLinkBoundSession` 사용 시 actor-session binding이 없으면 명확한 framework error가 난다. |
 | direct target send/request 제거 | public send/request sample과 guide에서 `RoutingId` target을 직접 받는 API를 사용하지 않는다. |
 
 ### 19.3 actor create와 session location lifecycle
 
 | 테스트 | 확인 내용 |
 |--------|-----------|
-| local actor create | `CreateAndBindActorAsync(...)`가 현재 node actor runtime에 create 요청을 보내고 actor-session binding을 조건부 갱신한다. |
-| local actor handle | `BindActorHandleAsync(...)`가 local `SpotNode` actor runtime의 handle을 만들고 session binding metadata를 전달한다. |
+| local actor create | 생성-후-bind(`GetOrCreateAsync` + `BindAsync`)가 현재 node actor runtime에 create 요청을 보내고 actor-session binding을 조건부 갱신한다. |
+| local actor handle | `session.Actors.BindAsync(...)`가 local `SpotNode` actor runtime의 handle을 만들고 session binding metadata를 전달한다. |
 | binding update failure rollback | actor-session binding 갱신이 실패하면 helper가 실패하고 local binding table의 같은 token entry를 제거한다. |
 | disconnect unbind | stream close 뒤 같은 `sessionId + bindingToken` entry만 actor-session binding에서 제거한다. |
 | disconnect does not destroy | stream close 또는 stale unbind가 room leave나 Entry Spot destroy를 자동으로 실행하지 않는다. |
 | stale unbind 차단 | 이전 stream의 늦은 unbind가 새 binding token을 가진 actor-session binding을 지우지 못한다. |
 | stale session binding 차단 | target session server가 binding token이 맞지 않는 `SessionProxy` message를 거부한다. |
 | reconnect binding 교체 | 같은 actor가 다른 session server에 연결하면 새 actor-session binding이 사용된다. |
-| direct node 지정 차단 | `BindActorHandleAsync(...)`는 target node `RoutingId`를 받지 않는다. |
+| direct node 지정 차단 | `session.Actors.BindAsync(...)`는 target node `RoutingId`를 받지 않는다. |
 
 ### 19.4 metadata, codec, timeout, error
 
@@ -1054,12 +1050,12 @@ sample 검증도 필요하다.
 1. actor/node/spot 실행 문맥의 typed handler registry 연동을 추가한다.
 2. old raw actor relay public registration을 제거하고, internal adapter path가 typed
    dispatch와 같은 routed channel에서 동시에 켜지지 않게 검증한다.
-3. actor/spot route resolver interfaces와 DI 등록을 추가한다.
+3. actor/spot location resolver 기본 구현과 DI 등록을 연결한다.
 4. actor-session binding 갱신과 token 검증을 runtime 내부 상태로 추가한다.
 5. `ZLinkMessageMetadata` snapshot 전달 규칙을 추가한다.
-6. `IZLinkSessionProxy`에 actor-session binding 기반 call surface를 추가한다.
-7. `CreateAndBindActorAsync(...)`, `BindActorHandleAsync(...)`,
-   `DispatchToActorAsync(...)` session actor dispatch helper를 추가한다. session-gateway
+6. `IZLinkBoundSession`에 actor-session binding 기반 call surface를 추가한다.
+7. 생성-후-bind(`GetOrCreateAsync` + `BindAsync`), `session.Actors.BindAsync(...)`,
+   `handle.RelayAsync(...)` session actor dispatch helper를 추가한다. session-gateway
    sample은 local `SpotNode` actor runtime 기반 handle model만 사용한다.
 8. direct target send/request API를 public sample과 guide에서 제거하고
    internal/resolved helper로 분류한다.

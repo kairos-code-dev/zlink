@@ -49,9 +49,9 @@
   설명한다.
 - outbound `DEALER(client)`가 받은 메시지는 기본적으로 reply 매칭 대상으로 보고,
   일반 handler dispatch 경로에 넣지 않는다.
-- `SPOT` 쪽 public request도 기본 application 표면에서는 resolver가 target을 숨기는
-  형태를 우선한다. resolved route를 받는 transport helper가 필요하면 runtime/internal
-  표면으로 둔다.
+- `SPOT` 쪽 public request는 resolve 로 얻은 주소(`ZLinkSpotAddress`)를 받는다 —
+  위치값을 낱개(`targetRid + spotRid`)로 받는 표면은 두지 않는다
+  ([spot 주소 메시징](spot-address-messaging.ko.md)).
 
 ### 3.2 command
 
@@ -67,10 +67,10 @@
 - 다만 같은 SPOT mesh 안의 `spot-to-spot` send는
   `ROUTER <-> ROUTER` routed 경로로 설명한다.
 - SPOT 쪽은 routed 호출보다 route bridge channel socket을 통한
-  `SendChannel(...).Submit(...)` 같은 표면이 먼저 보이는 편이 더 자연스럽다.
-- caller가 `targetRid`와 `spotId`를 이미 알고 있더라도, 기본 application public
-  surface에서는 direct target send를 먼저 보여 주지 않는다. 위치값은 resolver 구현체와
-  runtime transport helper 안에 가둔다.
+  `SendToChannel(...).Submit(...)` 같은 표면이 먼저 보이는 편이 더 자연스럽다.
+- caller가 위치값을 이미 알고 있더라도, 기본 application public surface에서는
+  낱개 위치값을 받는 direct target send를 보여 주지 않는다. 위치는 항상
+  resolve 로 얻은 주소 값 하나로만 다룬다.
 - command send는 기본 one-way submit을 뜻한다. framework는 blocking send를 task로
   감싸지 않고 nonblocking send와 ready notification을 이용해서 backpressure를
   내부에서 처리한다.

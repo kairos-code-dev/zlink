@@ -125,8 +125,8 @@
   server-to-server message를 multipart로 유지한다. handler 표면에서 raw header를
   숨기는 일과 transport에서 header/payload를 한 메시지로 합치는 일은 다르다.
 - session server와 play server를 분리하는 구조에서는 `actorId`를 client-facing
-  공개 키로 사용한다. session -> actor 방향은 actor create/dispatch helper로,
-  actor -> client 방향은 `IZLinkSessionProxy`로 나눈다. actor 개념의 라이프사이클
+  공개 키로 사용한다. session -> actor 방향은 actor bind/relay helper로,
+  actor -> client 방향은 bound session(`IZLinkBoundSession`)으로 나눈다. actor 개념의 라이프사이클
   과 표면은 [actor-model.ko.md](actor-model.ko.md)에서, gateway use case의 사용성
   결정은 [session-actor-dispatch.ko.md](session-actor-dispatch.ko.md)에서
   본다.
@@ -436,7 +436,7 @@ channel 설정도 없을 때 전역 기본값을 사용한다.
 - actor join으로 현재 `Spot`이 바뀌면, join 완료 뒤의 actor dispatch는 새 `Spot`
   실행 문맥에서 처리되어야 한다. framework는 join 상태 갱신과 packet dispatch
   선택 사이의 경합을 막아야 한다.
-- actor 코드는 `IZLinkClient`나 `IZLinkSpotClient`를 직접 고르지 않고,
+- actor 코드는 channel client 나 spot outbound 를 직접 고르지 않고,
   actor context를 통해 channel request/send와 client stream reply/send를 수행한다.
   context는 join 전에는 일반 channel client 경로를, join 후에는 현재 `Spot`에
   route bridge channel socket 경로를 선택한다.

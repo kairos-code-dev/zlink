@@ -10,8 +10,8 @@
 Bingo 샘플은 client가 하나의 Session 서버 stream 연결만 유지해도 인증, 매칭,
 게임 진행, server push를 모두 처리할 수 있음을 보여 준다. Session 서버는 client
 연결과 actor binding을 맡고, Play 서버는 player actor와 room Spot을 소유한다.
-API 서버는 인증과 매칭 요청을 처리하며, Registry는 서버 간 endpoint 발견을 맡는다.
-샘플은 `api-a`, `api-b`, `play-a`, `play-b`, `session-a`, `session-b`를 실행해
+API 서버는 인증과 매칭 요청을 처리하며, 서버 간 endpoint 발견은 공유 location store가
+맡는다. 샘플은 `api-a`, `api-b`, `play-a`, `play-b`, `session-a`, `session-b`를 실행해
 gateway 구조에서도 scale-out, remote Spot join, Spot pub/sub event fan-out이 함께
 동작하는지 보여 준다.
 
@@ -23,10 +23,11 @@ gateway 구조에서도 scale-out, remote Spot join, Spot pub/sub event fan-out�
 - client packet은 bound actor로 relay된다.
 - API 서버는 매칭 요청을 받고 Play 서버에 room 배정을 요청한다.
 - Play 서버는 Redis-backed match queue를 사용해 waiting room state를 공유한다.
-- Redis는 matching state 공유에만 사용하고, room Spot owner lookup은 Registry/Discovery가
-  맡는다.
+- match queue Redis는 matching state 공유에만 사용하고, room Spot owner lookup은
+  location store가 맡는다.
 - Play 서버는 Entry Spot에서 room Spot으로 actor를 join시킨다. player actor와 room Spot이
-  서로 다른 Play 서버에 있으면 Registry-backed resolver를 통해 remote Spot join이 실행된다.
+  서로 다른 Play 서버에 있으면 location store 기반 resolver를 통해 remote Spot join이
+  실행된다.
 - client는 자기 bingo card를 입력해 room Spot에 제출한다.
 - room Spot은 제출된 카드, 번호 추첨, mark, 승리 판정을 소유한다.
 - 두 player client의 card가 모두 제출되면 room Spot이 server timer로 번호를 뽑고,
@@ -34,7 +35,7 @@ gateway 구조에서도 scale-out, remote Spot join, Spot pub/sub event fan-out�
 - 승자가 나오고 결과 처리 중 희귀 보상이 지급되면 owner `BingoRoom`은 Spot pub/sub
   topic으로 `BingoRewardAcquiredEvent`를 publish하고, 다른 Play 서버의 `BingoRoom`은
   event를 받아 observer client로 push한다.
-- Registry/Discovery를 사용해 서버 간 endpoint를 자동으로 발견하고 연결한다.
+- 공유 location store를 사용해 서버 간 endpoint를 자동으로 발견하고 연결한다.
 - handler는 interface 구현체를 framework에 명시 등록하는 방식을 사용한다.
 - Bingo의 stream, channel, actor, room Spot payload는 Protobuf를 사용한다.
 
@@ -61,7 +62,7 @@ graph LR
     APIB[Api B]
     PA[Play A]
     PB[Play B]
-    R[Registry]
+    LS[("Location Store<br/>공유 저장소 · 예: Redis")]
     REDIS[(Redis match queue)]
 
     C -->|STREAM player-1 packets| SA
@@ -82,12 +83,12 @@ graph LR
     PB -->|Observer push| SB
     SA -->|STREAM Notify| C
     SB -->|STREAM Notify| C
-    SA -. discovery .-> R
-    SB -. discovery .-> R
-    APIA -. discovery .-> R
-    APIB -. discovery .-> R
-    PA -. discovery .-> R
-    PB -. discovery .-> R
+    SA -. peer discovery .-> LS
+    SB -. peer discovery .-> LS
+    APIA -. peer discovery .-> LS
+    APIB -. peer discovery .-> LS
+    PA -. peer discovery .-> LS
+    PB -. peer discovery .-> LS
 ```
 
 client가 직접 연결하는 서버는 Session 서버뿐이다. API 서버와 Play 서버는
@@ -100,22 +101,22 @@ client-facing stream endpoint를 열지 않는다. Session 서버는 인증과 s
 owner가 되어야 한다. client self-check는 특정 서버 이름이 아니라 응답에 담긴 actor node
 rid와 room owner node rid를 비교해 cross-node join과 pub/sub 수신을 검증한다.
 샘플 설정은 `SessionA -> PlayA`, `SessionB -> PlayB`처럼 actor 생성 preferred node를
-정한다. 이 설정은 endpoint 직접 연결이 아니라 Registry/Discovery 위의 node rid 선택이다.
+정한다. 이 설정은 endpoint 직접 연결이 아니라 location store 위의 node rid 선택이다.
 
 ## 3. 자동 연결 방식
 
-Bingo는 Registry/Discovery 기반 자동 연결을 사용한다. 각 서버는 자신이 제공하는
-channel, stream, Spot node endpoint를 Registry에 등록하고, 다른 서버는 service 이름으로
-상대 endpoint를 찾는다.
+Bingo는 공유 location store 기반 자동 연결을 사용한다. 각 서버는 자신이 제공하는
+channel, stream, Spot node endpoint를 location store에 등록하고, 다른 서버는 service
+이름으로 상대 endpoint를 찾는다. 등록·조회·자동 연결 lifecycle은 framework가 처리한다.
 
 | 연결 | 연결 방식 | 이유 |
 |------|-----------|------|
-| Session -> API channel | Discovery 자동 연결 | Session 서버가 API 서버 주소를 직접 들고 있지 않게 한다. |
-| API -> Play channel | Discovery 자동 연결 | matching API가 현재 Play 서버 endpoint를 Registry에서 찾는다. |
-| Session -> Play session relay | Registry 기반 actor locator | Session 서버가 Play 서버 actor의 위치를 직접 관리하지 않게 한다. |
-| Play actor -> remote room Spot | Registry-backed Spot resolver | actor가 다른 Play 서버의 room Spot에 join할 수 있게 한다. |
-| Play Spot pub/sub -> Play Spot pub/sub | Discovery 자동 연결 | reward event를 다른 Play 서버의 `BingoRoom`으로 fan-out한다. |
-| Play -> Session bound push | Registry 기반 session route | Play 서버가 현재 client session 위치를 framework route로 찾는다. |
+| Session -> API channel | location store 기반 자동 연결 | Session 서버가 API 서버 주소를 직접 들고 있지 않게 한다. |
+| API -> Play channel | location store 기반 자동 연결 | matching API가 현재 Play 서버 endpoint를 location store에서 찾는다. |
+| Session -> Play session relay | location store 기반 actor locator | Session 서버가 Play 서버 actor의 위치를 직접 관리하지 않게 한다. |
+| Play actor -> remote room Spot | location store 기반 Spot resolver | actor가 다른 Play 서버의 room Spot에 join할 수 있게 한다. |
+| Play Spot pub/sub -> Play Spot pub/sub | location store 기반 자동 연결 | reward event를 다른 Play 서버의 `BingoRoom`으로 fan-out한다. |
+| Play -> Session bound push | location store 기반 session route | Play 서버가 현재 client session 위치를 framework route로 찾는다. |
 | Play -> Redis match queue | Redis endpoint 설정 | 여러 Play 서버가 waiting room state를 공유한다. |
 
 이 샘플이 자동 연결을 쓰는 이유는 운영형 gateway 구조에서 서버 증설과 endpoint
@@ -125,11 +126,14 @@ channel, stream, Spot node endpoint를 Registry에 등록하고, 다른 서버�
 Spot pub/sub mesh에서 실제 transport 연결 방향은 `SUB -> peer PUB`이다. 다만 두 Play
 SpotNode는 모두 publish와 subscribe를 할 수 있으므로 `PlayA.SUB -> PlayB.PUB`와
 `PlayB.SUB -> PlayA.PUB`가 모두 성립해야 한다. 언어별 샘플은 이 연결을 수동 endpoint
-코드로 만들지 말고 framework의 public Spot pub/sub 설정과 Discovery 자동 연결에 맡긴다.
+코드로 만들지 말고 framework의 public Spot pub/sub 설정과 location store 기반 자동
+연결에 맡긴다.
 
-Redis는 Registry/Discovery를 대신하지 않는다. Redis에는 matching 중인 waiting room의
-짧은 상태만 저장한다. room Spot owner 조회, actor route, session route, Spot pub/sub
-peer 발견은 Registry/Discovery와 framework resolver가 맡는다.
+Bingo는 Redis를 두 가지 다른 용도로 쓴다. 하나는 framework의 location store 구현체로,
+peer discovery·actor route·session route·Spot pub/sub peer 발견을 담당한다. 다른 하나는
+§3.1의 match queue로, matching 중인 waiting room의 짧은 상태만 저장한다. 두 용도는
+같은 Redis 인스턴스를 공유할 수 있지만 책임은 다르다 — room Spot owner 조회 같은
+위치 정보는 location store가, waiting room state 공유는 match queue가 맡는다.
 
 ### 3.1 Redis match queue
 
@@ -154,15 +158,15 @@ bingo:match:{Mode} {
 Spot을 만들고 Redis에 waiting room record를 atomic하게 저장한다. 두 번째 player가 matching을
 요청하면 allocator는 같은 record에 actor id를 reserve하고 같은 `RoomId`와
 `OwnerPlayNodeRid`를 반환한다. actor가 어느 Play 서버에 있든 room join은 `RoomId`에서 만든
-Spot routing id로 수행하며, owner가 다른 Play 서버이면 Registry-backed resolver가 remote
-room Spot 위치를 찾아 준다.
+Spot routing id로 수행하며, owner가 다른 Play 서버이면 location store 기반 resolver가
+remote room Spot 위치를 찾아 준다.
 
 동시 matching 때문에 같은 mode의 waiting room이 둘 생기면 scale-out 검증이 깨진다.
 언어별 구현은 Redis transaction, Lua script, 또는 같은 수준의 atomic operation으로
 room 생성과 actor reservation을 하나의 결정으로 처리해야 한다. 샘플 전용 in-memory
 fallback으로 성공시키면 안 된다.
 
-### 3.2 Redis 실행 책임
+### 3.2 Match queue Redis 실행 책임
 
 샘플 애플리케이션은 Docker를 직접 호출하지 않는다. Docker container 준비는 runner의
 책임이다.
@@ -183,7 +187,6 @@ fallback으로 성공시키면 안 된다.
 
 | 프로세스 | 구성 요소 | 책임 |
 |----------|-----------|------|
-| `Bingo.Registry` | registry host | Session, API, Play 서버 endpoint를 발견 가능하게 한다. |
 | `Bingo.Api` | `Api` channel server | access token 인증과 matching API 요청을 처리한다. |
 | `Bingo.Api` | `Play` channel client | Play 서버에 room 배정을 요청한다. |
 | `Bingo.Session` | stream server | client 연결, 인증 packet, actor binding, actor relay를 처리한다. |
@@ -193,16 +196,16 @@ fallback으로 성공시키면 안 된다.
 | `Bingo.Play` | `BingoRoom` room Spot | game room에서는 room 참가자, 제출된 카드, draw deck, 승리 판정, player Notify 생성을 소유한다. observer용 local room에서는 reward topic 수신과 observer push 전달만 맡는다. |
 | `Bingo.Play` | `Play` channel server | API 서버의 room 배정 요청을 받는다. |
 | `Bingo.Play` | Redis match queue adapter | 여러 Play 서버가 같은 waiting room state를 공유하게 한다. |
+| `Location Store` | framework location store 계약의 공유 저장소 구현체(예: Redis) | Session·API·Play peer discovery(자동 연결)와 actor/session/Spot 위치 조회를 담으며, 등록·조회·lifecycle 정책은 framework가 소유. |
 
 ## 5. 디렉토리와 파일 구성
 
-Bingo 샘플은 Session, API, Play, Registry가 분리된 gateway형 게임 샘플이다. 규모가
+Bingo 샘플은 Session, API, Play가 분리된 gateway형 게임 샘플이다. 규모가
 TicTacToe보다 크기 때문에 DDD와 헥사고날 아키텍처의 경계를 더 분명히 유지해야 한다.
 이 구조는 C++, Java, Kotlin, TypeScript, .NET 샘플을 작성할 때 함께 따라야 하는
 공통 기준이다. 언어별 빌드 도구, 파일 확장자, package/module 표현은 달라질 수 있지만,
 `Client`, `Shared`, `Server/Api`, `Server/Session`, `Server/Play/Domain`,
-`Server/Play/Application`, `Server/Play/Infrastructure`, `Server/Registry` 경계와 각 책임은
-유지해야 한다.
+`Server/Play/Application`, `Server/Play/Infrastructure` 경계와 각 책임은 유지해야 한다.
 
 ```text
 Bingo/
@@ -221,10 +224,6 @@ Bingo/
     Contracts/
       bingo_messages.proto
   Server/
-    Registry/
-      Program
-      RegistryHostFactory
-      registry build/module files
     Api/
       Program
       ApiServerHostFactory
@@ -265,14 +264,17 @@ Bingo/
           Matchmaking/
             RedisBingoMatchQueue
           Spots/
-            BingoEntrySpot
-            BingoRoom
-            Handlers/
-              ObserveBingoEventsHandler
-              MatchBingoActorHandler
-              StopObservingBingoEventsHandler
-              BingoRewardAcquiredEventHandler
-              SubmitBingoCardHandler
+            EntrySpot/
+              BingoEntrySpot
+              Handlers/
+                ObserveBingoEventsHandler
+                MatchBingoActorHandler
+            BingoRoomSpot/
+              BingoRoom
+              Handlers/
+                StopObservingBingoEventsHandler
+                BingoRewardAcquiredEventHandler
+                SubmitBingoCardHandler
 ```
 
 위 구조는 파일명 고정 규칙이 아니라 역할과 경계의 기준이다. 예를 들어 Java/Kotlin은
@@ -288,7 +290,6 @@ package와 class 이름으로, TypeScript는 module과 file 이름으로, C++은
 | `Client/BingoClientScenario` | sample scenario | 인증, matching, observer 등록, card 제출, draw push, rare reward publish 수신, final state 검증을 순서대로 수행한다. |
 | `Shared/Configuration/*` | shared settings | sample service 이름, packet 이름, endpoint topology를 공유한다. |
 | `Shared/Contracts/*` | shared contract | Protobuf schema처럼 언어 간 동일해야 하는 payload 계약을 둔다. |
-| `Server/Registry/*` | discovery adapter | 각 서버의 channel, stream, Spot endpoint를 발견 가능하게 한다. |
 | `Server/Api/*` | API channel adapter | 인증과 matching 요청을 처리하고 Play 서버 room allocation으로 연결한다. |
 | `Server/Session/*` | stream gateway adapter | client stream, 인증, actor binding, bound session relay를 처리한다. |
 | `Server/Play/Domain/Bingo/*` | domain model | card, draw deck, room status, winner 판정 같은 게임 규칙을 framework 타입 없이 표현한다. |
@@ -296,7 +297,7 @@ package와 class 이름으로, TypeScript는 module과 file 이름으로, C++은
 | `Server/Play/Infrastructure/ZLink/*` | ZLink adapter | channel, actor, Spot callback, bound session push, Spot pub/sub publish/subscribe를 application/domain 호출로 변환한다. |
 | `Server/Play/Infrastructure/ZLink/Matchmaking/*` | external adapter | Redis를 사용해 mode별 waiting room record와 actor reservation을 atomic하게 저장한다. |
 
-의존 방향은 `Infrastructure -> Application -> Domain`이다. Domain은 ZLink framework, Registry,
+의존 방향은 `Infrastructure -> Application -> Domain`이다. Domain은 ZLink framework, location store,
 stream session, session relay, logger를 알지 않는다. Application은 room 배정 같은 use
 case 조율만 맡고, server endpoint 발견, session binding, push 전송 같은 외부 입출력은
 adapter에 둔다. 이 규칙 덕분에 다른 언어로 옮겨도 gateway 구조와 게임 규칙의 위치가
@@ -315,7 +316,7 @@ TypeScript에서도 작성되어야 한다. 언어 문법과 빌드 도구는 �
 
 언어별 구현은 아래 기준을 만족해야 한다.
 
-- 샘플 루트에는 client, shared contracts, registry, api, session, play 역할이
+- 샘플 루트에는 client, shared contracts, api, session, play 역할이
   한 번만 보이게 구성한다. IDE나 build tool에서 같은 역할의 프로젝트나 module이 중복으로
   보이면 안 된다.
 - 각 실행 역할은 명시적인 entry point를 가진다. 실행 시작 코드는 짧게 두고, host 구성과
@@ -327,23 +328,23 @@ TypeScript에서도 작성되어야 한다. 언어 문법과 빌드 도구는 �
 - Bingo의 payload codec은 Protobuf다. stream, channel, actor, room Spot payload는 같은
   schema와 같은 packet 이름을 사용하고, JSON이나 MessagePack으로 바꾸지 않는다.
 - client self-check는 별도 테스트 프로젝트가 아니라 샘플 client 실행 흐름 안에 둔다.
-  샘플 실행은 Registry, API 2개, Session 2개, Play 2개 server를 띄우고 client가 Session
+  샘플 실행은 API 2개, Session 2개, Play 2개 server를 띄우고 client가 Session
   stream에 접속해 `bingo=completed`와 server evidence에 해당하는 성공 결과를 만들 수 있어야
   한다.
 - runner는 서버 프로세스를 띄운 뒤 필요한 TCP endpoint가 열린 것을 확인하고, 짧은 안정화
   시간을 둔 뒤 client self-check를 시작한다. 별도 readiness 프로젝트나 게임 시나리오
   안의 pub/sub 확인 message를 사용하지 않는다.
-- 샘플 실행에는 Redis가 필요하다. 애플리케이션 코드는 Redis endpoint만 설정으로 받고,
-  Docker container 생성이나 종료를 직접 맡지 않는다. `run_sample`은 외부 Redis endpoint가
+- 샘플 실행에는 match queue Redis가 필요하다. 애플리케이션 코드는 Redis endpoint만 설정으로
+  받고, Docker container 생성이나 종료를 직접 맡지 않는다. `run_sample`은 외부 Redis endpoint가
   주어지지 않으면 Docker로 Redis container를 준비하고, 샘플 종료 시 정리한다.
 - Redis client dependency는 match queue adapter 안에만 둔다. handler, actor, Spot, Domain
   코드가 Redis client 타입을 직접 참조하면 안 된다.
-- Redis는 waiting room matching state 공유에만 사용한다. Spot owner lookup, actor route,
-  session route, Spot pub/sub peer discovery를 Redis로 우회하면 Bingo 샘플의
-  Registry/Discovery 목적이 흐려진다.
-- actor가 room에 join하는 흐름은 각 언어 framework의 public actor/Spot API와 Registry-backed
-  public spot remote address resolver 계약을 사용해야 한다. 샘플을 통과시키기 위해
-  framework의 internal runtime 객체나 sample-local route helper로 remote join 경로를
+- match queue Redis는 waiting room matching state 공유에만 사용한다. Spot owner lookup,
+  actor route, session route, Spot pub/sub peer discovery를 match queue Redis로 우회하면
+  Bingo 샘플의 location store 자동 연결 목적이 흐려진다.
+- actor가 room에 join하는 흐름은 각 언어 framework의 public actor/Spot API와 location
+  store 기반 public spot remote address resolver 계약을 사용해야 한다. 샘플을 통과시키기
+  위해 framework의 internal runtime 객체나 sample-local route helper로 remote join 경로를
   우회하면 안 된다.
 - Spot pub/sub 흐름은 각 언어 framework의 public Spot pub/sub API를 사용해야 한다.
   `BingoRoom`은 public publish API로 reward event를 발행하고, 같은 `BingoRoom` 타입이
@@ -366,13 +367,13 @@ TypeScript에서도 작성되어야 한다. 언어 문법과 빌드 도구는 �
   드러나야 한다.
 - Session 서버는 gateway 역할만 한다. 인증, actor binding, packet relay, bound session
   push 수신을 맡고, card 검증, draw, winner 판정 같은 게임 규칙을 해석하지 않는다.
-- Domain에는 card, draw deck, room status, winner 판정만 둔다. Registry, stream session,
+- Domain에는 card, draw deck, room status, winner 판정만 둔다. location store, stream session,
   session relay, handler, logger, codec, endpoint 설정은 Domain으로 들어오면 안 된다.
 - Application은 room allocation use case를 조율한다. framework callback을 직접 받거나
   transport 세부 구현을 다루지 않는다.
-- Infrastructure는 Registry/Discovery, channel, stream session, actor, Spot, timer,
-  notification publish, codec 연결을 맡는다. handler나 Spot adapter가 card 판정, draw
-  order, winner 판정을 직접 구현하면 안 된다.
+- Infrastructure는 location store 자동 연결, channel, stream session, actor, Spot, timer,
+  bound session push, reward Spot pub/sub publish, codec 연결을 맡는다. handler나 Spot
+  adapter가 card 판정, draw order, winner 판정을 직접 구현하면 안 된다.
 
 이 기준은 샘플의 모양을 통일하려는 목적만이 아니다. 같은 시나리오를 여러 언어에서
 나란히 읽었을 때 framework 기능 차이와 언어 차이만 보이고, 샘플 구조 차이 때문에
@@ -417,8 +418,6 @@ Server/Play/
             StopObservingBingoEventsHandler
             BingoRewardAcquiredEventHandler
             SubmitBingoCardHandler
-          Notifications/
-            BingoNotificationPublisher
 ```
 
 역할은 아래처럼 나눈다.
@@ -819,8 +818,12 @@ sequenceDiagram
     A2->>E2: Join room request
     E2->>R: Remote JoinSpot to owner room
     R-->>A1: PlayerJoinedNotify(client2 joined)
+    A1->>S1: Bound session PlayerJoinedNotify
+    S1-->>C1: PlayerJoinedNotify
     R->>R: Start automatically
     R-->>A1: BingoGameStartedNotify
+    A1->>S1: Bound session BingoGameStartedNotify
+    S1-->>C1: BingoGameStartedNotify
     R-->>A2: BingoRoomJoinRes(running)
     A2->>S2: Bound session BingoGameStartedNotify
     S2-->>C2: BingoGameStartedNotify
@@ -830,11 +833,15 @@ sequenceDiagram
     S2->>A2: Relay to bound actor
     A2->>R: Submit card
     R-->>A2: SubmitBingoCardRes(running)
+    A2-->>S2: SubmitBingoCardRes(running)
+    S2-->>C2: SubmitBingoCardRes(running)
     C1->>S1: SubmitBingoCardReq
     S1->>A1: Relay to bound actor
     A1->>R: Submit card
     R->>R: Start draw timer
     R-->>A1: SubmitBingoCardRes(running)
+    A1-->>S1: SubmitBingoCardRes(running)
+    S1-->>C1: SubmitBingoCardRes(running)
 ```
 
 첫 player가 들어오면 room은 대기 상태가 된다. 두 번째 player가 같은 room에 들어오면
@@ -843,8 +850,8 @@ room은 별도 `StartBingoGameReq` 없이 자동으로 `Running` 상태가 되�
 제출한다. 두 player client의 card가 모두 제출되면 room Spot이 draw timer를 시작하고,
 일정 간격으로 번호를 뽑아 양쪽 client에 `BingoNumberDrawnNotify`를 보낸다.
 Redis match queue는 같은 mode의 waiting room을 두 Play 서버가 공유하기 위한 장치다.
-room Spot owner 위치 조회와 remote `JoinSpot` route는 Redis가 아니라 Registry-backed
-resolver가 처리해야 한다.
+room Spot owner 위치 조회와 remote `JoinSpot` route는 match queue Redis가 아니라
+location store 기반 resolver가 처리해야 한다.
 
 `BingoGameStartedNotify` 전달 책임은 join 상태에 따라 나눈다. owner `BingoRoom`은 이미
 room 안에 있던 player에게 room event로 start notify를 보낸다. 반면 방금 remote
@@ -978,7 +985,7 @@ sequenceDiagram
     R->>A: Mark destroy after Entry Spot join
     R->>R: leaveActor(A)
     R->>R: onLeaveActor(A)
-    A->>E: onJoinedActor(A)
+    R->>E: framework moves actor, onJoinedActor(A)
     E->>E: destroyActor(A)
     E->>N: Destroy native actor ref
     E->>E: Remove actor registry and session binding
@@ -1004,12 +1011,11 @@ evidence를 남겨야 한다.
 
 - client 세 개가 Session 서버에 하나의 stream 연결만 연다. player-1은 Session A에,
   player-2와 observer는 Session B에 연결한다.
-- Session 2개, API 2개, Play 2개, Registry 1개가 별도 실행 모드 또는 별도 프로세스로
-  구분되어 있다.
-- Session, API, Play 서버는 Registry/Discovery로 서로를 자동 발견한다.
+- Session 2개, API 2개, Play 2개가 별도 실행 모드 또는 별도 프로세스로 구분되어 있다.
+- Session, API, Play 서버는 공유 location store로 서로를 자동 발견한다.
 - Redis match queue를 사용해 두 Play 서버가 waiting room state를 공유한다.
-- Redis는 matching state 공유에만 사용하고, Spot owner lookup과 pub/sub peer discovery를
-  대신하지 않는다.
+- match queue Redis는 matching state 공유에만 사용하고, Spot owner lookup과 pub/sub peer
+  discovery를 대신하지 않는다.
 - 두 player client와 observer client가 서로 다른 actor로 인증된다.
 - player-1 actor와 player-2 actor는 서로 다른 Play SpotNode에 생성된다.
 - Session 서버가 인증된 stream session을 Play 서버 actor에 bind한다.

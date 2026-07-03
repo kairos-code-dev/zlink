@@ -21,6 +21,12 @@ API 서버와 주문 처리 owner를 서로 다른 서버로 나눠도 상태 �
 - `OrderReadModelStore`는 조회에 쓰는 조회 모델(projection)을 담는다.
 - `CommerceStateStore`는 장바구니 스냅샷, 재고 예약, 결제 결과, 멱등 키 매핑을 담는다.
 
+**범위**: 이 샘플은 장바구니 구성이 끝나고 사용자가 **결제하기 버튼을 누른 시점**(`StartOrderReq`
+전송)부터 시작한다. `CartId`가 가리키는 장바구니, 상품 조회, 담기/빼기 같은 장바구니 조작은 범위
+밖이며 이미 존재한다고 전제한다. 어렵고 되돌리기 까다로운 문제(중복 클릭, 재고 경합, 결제 실패
+보상, 서버 장애 뒤 재개)는 결제하기를 누른 이후에 생기고, 그 이전의 장바구니 관리는 되돌리기 쉬운
+단순 CRUD라 이 정도 장치가 필요 없다.
+
 주문 도메인이 이 목적에 잘 맞는 이유는 상태 전이가 뚜렷하고 보상이 자연스럽기 때문이다. 재고를
 예약한 뒤 결제가 실패하면 예약을 되돌려야 하고, 사용자가 결제 버튼을 다시 누르거나 네트워크
 재시도로 같은 요청이 여러 번 들어오는 일도 흔하다. 이벤트 소싱은 "시스템을 크게 키우려고"가
@@ -70,7 +76,7 @@ ShoppingMall은 GameQuest와 달리 **유실이 허용되지 않는 도메인**�
 웹 백엔드로 지으면, 가장 어려운 부분은 **한 주문의 여러 단계 전이를 순서대로, 중복 없이, 중간에
 죽어도 이어서 진행하는 것**이다.
 
-먼저 정직하게 짚자. 재고·결제가 이 샘플처럼 **한 저장소(RDB) 안의 로컬 연산**이라면, 가장 단순한
+먼저 한계를 분리한다. 재고·결제가 이 샘플처럼 **한 저장소(RDB) 안의 로컬 연산**이라면, 가장 단순한
 웹 형태는 아래 그림이 아니라 **트랜잭션 하나 + 상태 컬럼 + `IdempotencyKey` unique 제약**이다.
 이 경우 outbox도 saga 오케스트레이터도 필요 없다. 그러니 이 비교가 겨냥하는 건 "웹은 무조건
 복잡하다"가 아니다.
@@ -87,7 +93,7 @@ graph TD
     LB[로드 밸런서]
     SCHED["스케줄러 / 타이머<br/>(멈춘 saga 재개)"]
 
-    subgraph BE["주문 웹 백엔드 (주문 조율을 손으로 조립)"]
+    subgraph BE["주문 웹 백엔드 (주문 조율을 직접 구성)"]
         subgraph CP["상태 없는 처리부"]
             API["주문 API"]
             SAGA["saga 오케스트레이터<br/>/ 단계 소비자"]
@@ -136,15 +142,14 @@ graph TD
   안 나가거나, 그 반대가 된다(이중 쓰기 문제).
 - **스케줄러/타이머**: 예약까지만 하고 다음 단계 전에 죽은 주문을 재개하고, 바깥 호출에 타임아웃을
   건다. saga가 멈춘 채 방치되면 재고가 묶인다.
-- **멱등 저장소**: 결제 버튼 재클릭·재시도를 같은 주문으로 모은다.
+- **멱등 저장소**: `IdempotencyKey → OrderId` 매핑을 담아, 결제 버튼 재클릭·재시도를 같은 주문으로
+  모은다. 별도 제품이 아니라 대개 RDB의 테이블 하나다(`IdempotencyKey`에 unique 제약을 걸면
+  먼저 쓴 요청이 이기는 게 그 제약으로 보장된다) — 주문 상태 DB와 물리적으로 같은 DB인 경우도 많다.
 - **조회 모델**: 주문 상태 조회를 상태 DB 경합 없이 받아 준다.
 
-이걸 손으로 조립하는 대신 웹 진영에서 가장 강한 답은 **워크플로 엔진(Temporal·Camunda·Step
-Functions 등)** 을 쓰는 것이다. 유실 없는 실행·타이머·재시도·보상(saga)을 엔진이 제공하므로
-오케스트레이터·outbox·스케줄러를 직접 짓지 않아도 된다. 대신 그 엔진의 운영(워커, 작업 큐, 상태
-저장소, 버전 관리되는 워크플로 코드)을 책임진다. ShoppingMall은 이 책임 중 **주문당 실행 주체
-하나가 상태를 소유하고 이벤트 소싱으로 진행하는 부분**을 ZLink owner spot으로 표현하고, 단계
-로직·재개 트리거·바깥 효과의 멱등성은 샘플이 직접 소유한다(§9).
+ShoppingMall은 이 조각들 중 **주문당 실행 주체 하나가 상태를 소유하고 이벤트 소싱으로
+진행하는 부분**을 ZLink owner spot으로 표현하고, 단계 로직·재개 트리거·바깥 효과의 멱등성은
+샘플이 직접 소유한다(§9).
 
 이 샘플의 가장 강한 논거는 saga 스택 자체가 아니라 **바깥 효과를 재시도해도 안전하다는 점**이다.
 트랜잭션으로 못 감싸는 결제 승인은, 죽었다 재시도해도 같은 결제가 두 번 일어나면 안 된다. 그래서
@@ -179,25 +184,32 @@ graph TD
     SP -->|기록 · 재생| EVS
     SP -->|조회 모델| RM
     SP -->|재고·결제·매핑| CS
-    SP -->|③ 진행 결과 State| API
-    API -->|④ 주문 결과 응답| C
-    C -->|이후 상태 조회| API
+    SP -->|③ Created 상태 즉시 반환| API
+    API -->|④ 주문 접수 응답| C
+    SP -.배경에서 계속 진행.-> SP
+    C -->|이후 상태 조회 · 폴링| API
     API -->|읽기| RM
 ```
 
-응답이 오가는 모양이 웹 방식과의 차이를 드러낸다. 주문 시작 명령이 owner spot으로 라우팅되면(②)
-그 spot이 주문 처리를 진행하고 결과 `OrderState`를 돌려주며(③), `CommerceApi`는 그 결과를 그대로
-응답한다(④). 웹 방식은 상태를 들고 있지 않아 "접수됨"만 돌려주고 폴링을 강제했지만, ZLink는 owner
-spot이 주문 상태를 소유하므로 요청을 처리한 그 흐름에서 결과를 바로 돌려줄 수 있다. (응답을 결제
-지연과 떼어내고 싶으면 `Created`까지만 돌려주고 이후를 재개로 잇는 변형을 쓴다 — §9.3.) 이후 상태
-조회는 `CommerceApi`가 조회 모델을 직접 읽어 응답한다.
+응답이 오가는 모양이 웹 방식과 비슷해 보이지만 이유가 다르다는 게 차이다. 주문 시작 명령이 owner
+spot으로 라우팅되면(②) 그 spot은 `Created`까지만 만들고 그 상태를 즉시 돌려주며(③),
+`CommerceApi`는 그 결과를 그대로 응답한다(④). 결제 승인처럼 지연이 예측 안 되는 단계를 HTTP
+응답 시간에 묶지 않기 위해서다. owner spot은 `Created`를 만든 뒤 재개 명령을 스스로, 응답을
+기다리지 않고 예약한다(§9.3) — 그 재개가 예약 → 승인 → 확정을 배경에서 진행하는 시점은 응답
+반환과 엄격한 순서가 없다. 클라이언트는 그 진행 결과를
+`GetOrderStateReq` 폴링으로 확인한다. 웹 방식도 "접수됨"만 돌려주고 폴링을 강제했다는 점은
+같지만(§3), 그 이유는 상태를 들고 있지 않아서였고, ZLink는 owner spot이 상태를 소유하고도
+**의도적으로** 응답을 짧게 끊는다는 점이 다르다 — 필요하면 spot이 얼마든지 끝까지 진행하고 결과를
+동기로 돌려줄 수도 있지만, 결제 지연을 클라이언트 요청에 묶지 않으려고 그렇게 하지 않는다.
 
 `CommerceApi`는 HTTP 요청을 상태 없이 받아, `IdempotencyKey`로 기존 `OrderId`가 있는지 확인하고
 `CommerceStateStore`에 대기(pending) 매핑을 예약한 뒤, 주문 처리 명령을 `OrderWorkflowSpot`으로
 라우팅한다. owner spot이 아직 없으면 첫 명령에서 만들어진다. 그 spot이 상태 전이·이벤트 기록·모듈
-호출·조회 모델 갱신을 전부 소유한다. 서버 위치 발견(`CommerceApi`가 `OrderWorkflow` mesh를 찾는
-것)은 framework의 location store 계약을 쓴다 — 공유 저장소 구현체(예: Redis)만 꽂으면 등록·조회·
-자동 연결은 framework가 알아서 한다.
+호출·조회 모델 갱신을 전부 소유한다(구현 방식은 spot 자신의 handler가 직접 처리할 수도, spot
+활성화를 보장한 뒤 같은 owner 보장 위에서 동작하는 서비스가 처리할 수도 있다 — 어느 쪽이든
+per-order 직렬화는 owner routing이 보장한다). 서버 위치 발견(`CommerceApi`가 `OrderWorkflow`
+mesh를 찾는 것)은 framework의 location store 계약을 쓴다 — 공유 저장소 구현체(예: Redis)만
+꽂으면 등록·조회·자동 연결은 framework가 알아서 한다.
 
 §3의 조각이 왜 사라지는가 — 주문당 순서 처리와 상태 소유를 base system이 대신하기 때문이다.
 
@@ -215,10 +227,24 @@ spot이 주문 상태를 소유하므로 요청을 처리한 그 흐름에서 �
 락·오케스트레이터·outbox·로그 같은 조율 인프라이고, 그 자리를 owner spot의 순서 실행과 이벤트
 접기가 대신한다.
 
+한눈에 보면:
+
+| 그대로 유지 | 형태만 바뀜 | 완전히 사라짐 |
+|---|---|---|
+| CommerceApi(주문 API) | 주문 상태 DB → OrderEventStore + owner 메모리 | saga 오케스트레이터/조율 상태 |
+| 멱등 저장소(매핑) | 로드 밸런서는 남되 owner 라우팅이 부작용 제거 | outbox |
+| 조회 모델 | | 스케줄러/타이머 |
+| 재고 서비스·PSP(외부 의존) | | 주문별 락·분산 락 |
+
+진입부(API·멱등·조회 모델·외부 의존)는 웹과 ZLink가 거의 같다. 사라지는 건 **"진행 지점을 어디
+저장하고, 누가 다음 단계로 몰고, 멈추면 누가 깨우나"** 라는 조율 인프라 3종이며, ZLink는 이 셋을
+각각 이벤트 스트림·이벤트 접기·스트림 재생 하나로 흡수한다(§9.2).
+
 ## 5. 운영 특성
 
-ShoppingMall은 유실이 허용되지 않는 도메인이라 GameQuest와 반대 지점에 선다. 아래 특성을
-GameQuest 진행 tier와 나란히 보면 두 샘플의 역할 분담이 분명해진다.
+ShoppingMall은 유실이 허용되지 않는 도메인이라 [GameQuest](gamequest.ko.md)와 반대 지점에 선다.
+아래 특성을 GameQuest 진행 tier와 나란히 보면 두 샘플의 역할 분담이 분명해진다(같은 대비 표가
+[GameQuest §5](gamequest.ko.md)에도 대칭으로 실려 있다).
 
 | 축 | ShoppingMall (무손실 주문 처리) | GameQuest (진행 tier, 참고) |
 |------|------|------|
@@ -313,8 +339,10 @@ graph LR
     API2 -->|주문 B owner 라우팅| O2
     WF1 -->|호스팅| O1
     WF2 -->|호스팅| O2
-    O1 -->|기록 · 조회 모델| ES
-    O2 -->|기록 · 조회 모델| ES
+    O1 -->|기록 · 재생| ES
+    O2 -->|기록 · 재생| ES
+    O1 -->|조회 모델 갱신| RS
+    O2 -->|조회 모델 갱신| RS
     API1 -->|조회 모델 읽기| RS
     API2 -->|조회 모델 읽기| RS
 ```
@@ -358,9 +386,11 @@ owner로 이어 준다.
 
 `CommerceApi`는 HTTP를 상태 없이 받는다. 시작 요청은 어느 서버가 받아도 `OrderId` owner로
 전달되고, 상태 조회는 조회 모델을 읽어 응답한다. `OrderId`는 `StartOrderReq`를 처음 처리할 때
-만든다. `CommerceStateStore`는 `IdempotencyKey→OrderId` 매핑과 그 처리 상태를 저장한다. 새 주문은
-먼저 대기(pending) 매핑을 예약해서 같은 `IdempotencyKey` 재시도가 같은 `OrderId`로 가게 하고,
-`OrderStartedEvent` 기록과 `Created` 조회 모델 갱신이 끝난 뒤에만 매핑을 확정(started)한다.
+만든다. `CommerceStateStore`는 `IdempotencyKey→OrderId` 매핑과 그 처리 상태를 저장하며, 이
+저장소는 `CommerceApi`와 `OrderWorkflow` 양쪽이 공유해서 쓴다. `CommerceApi`가 먼저 대기(pending)
+매핑을 예약해서 같은 `IdempotencyKey` 재시도가 같은 `OrderId`로 가게 하고, owner spot이
+`OrderStartedEvent` 기록과 `Created` 조회 모델 갱신을 끝낸 뒤(§9.1) 응답을 돌려주기 전에 그
+매핑을 확정(started)한다 — `CommerceApi`가 응답을 받은 뒤 확정하는 게 아니다.
 `OrderStartedEvent.SourceCommandId`에는 `IdempotencyKey` 값을 쓴다.
 
 ### 왜 UserId가 아니라 OrderId를 owner 키로 쓰나
@@ -405,6 +435,11 @@ owner spot을 무엇에 매칭할지는 "가장 자연스러운 엔티티"가 �
 
 ## 9. 이벤트 소싱과 주문 처리 진행
 
+아래에서 "owner spot이 진행한다/호출한다/기록한다"는 표현은 그 spot이 소유한 per-order
+직렬화·상태를 가리키는 것이지, 반드시 spot 자신의 메시지 handler가 그 코드를 실행한다는 뜻은
+아니다 — §4가 이미 밝혔듯, 실제 구현은 spot handler가 직접 처리할 수도, owner 활성화를 보장한
+뒤 같은 직렬화 보장 위에서 별도 서비스 코드가 처리할 수도 있다.
+
 이 샘플의 핵심은 owner spot이 **여러 단계의 주문 처리를 어떻게 유실 없이 진행하고 복구하는가**다.
 `OrderWorkflowSpot`은 현재 상태를 그대로 저장하지 않는다. **도메인 이벤트를 덧붙이고, 그 이벤트를
 다시 재생해 상태를 복원하는 이벤트 소싱 집계(aggregate)**이며, 다음 단계는 이벤트를 접은(fold)
@@ -412,7 +447,11 @@ owner spot을 무엇에 매칭할지는 "가장 자연스러운 엔티티"가 �
 
 ### 9.1 처리 루프
 
-owner spot이 주문 명령(`StartOrderWorkflowReq`, 또는 재개용 `ContinueOrderWorkflowReq`)을 받으면:
+owner spot이 주문 명령(`StartOrderWorkflowReq`, `ContinueOrderWorkflowReq`)을 받으면 공통으로
+아래 루프를 태운다. **`StartOrderWorkflowReq`는 이 루프를 한 단계((none)→Created)만 돌리고
+멈춰서 응답한다. `ContinueOrderWorkflowReq`는 같은 루프를 다음 단계가 없을 때까지(종료까지)
+돌린다.** 두 명령이 서로 다른 코드를 쓰는 게 아니라, 같은 루프를 "몇 단계 돌리고 멈추는가"만
+다르다 — 자세한 시작/재개 관계는 §9.3에서 다룬다.
 
 ```text
 주문 명령 c (OrderId) 처리:
@@ -420,8 +459,9 @@ owner spot이 주문 명령(`StartOrderWorkflowReq`, 또는 재개용 `ContinueO
         (처음 깨어난 경우 빈 aggregate)
   2. c.SourceCommandId가 이미 스트림에 있으면 조회 모델을 fold와 맞춘 뒤 반환      # 명령 중복 제거
   3. aggregate가 종료(Confirmed/Failed)면 조회 모델을 fold 결과와 맞춘 뒤 반환      # 재진입·조회 모델 치유
-  4. 다음 단계가 없을 때까지 fold 결과로 다음 단계를 판정하며 진행:
-        (none)                     → OrderStartedEvent → Created
+  4. (StartOrderWorkflowReq는 아래 한 단계만, ContinueOrderWorkflowReq는 다음 단계가
+     없을 때까지) fold 결과로 다음 단계를 판정하며 진행:
+        (none)                     → OrderStartedEvent → Created        # Start는 여기서 멈춤
         Created                    → 재고 예약(module 최초결과):
                                        성공 → InventoryReservedEvent
                                        실패 → InventoryReservationFailedEvent
@@ -434,7 +474,8 @@ owner spot이 주문 명령(`StartOrderWorkflowReq`, 또는 재개용 `ContinueO
         InventoryReservationFailed → OrderFailedEvent               # terminal
   5. 각 단계에서 도메인 이벤트를 기대 Version으로 기록한 뒤 fold·조회 모델 갱신
         (기록 = 상태 전이, 조회 모델은 기록 직후 반영)
-  6. 더 진행할 단계가 없으면(종료 도달) 현재 OrderState를 명령 응답으로 반환
+  6. 이번 명령이 멈추기로 한 지점에 도달하면(Start는 Created, Continue는 종료) 그 시점의
+     OrderState를 명령 응답으로 반환
 ```
 
 step 3에서 종료 상태여도 조회 모델을 fold와 맞추는 이유가 있다. 종료 이벤트를 기록한 직후, 조회
@@ -498,27 +539,36 @@ scheduler every N초:                                    # 멈춘 saga 재개
 
 ```text
 # ShoppingMall — 진행 지점·조율·재개가 owner 안 한 덩어리로 접힌다
-on WorkflowCommand(orderId):                            # §9.1 그 루프
+on WorkflowCommand(orderId, stopAfterFirstStep):        # §9.1 그 루프 (Start=true, Continue=false)
   agg = replay(OrderEventStore[orderId])                # 진행 지점 = 스트림
   step = nextStep(agg)                                  # 조율 = 이벤트 접기
   while step:                                           # 시작이든 재개든 같은 코드
     ev = runStep(step, deterministicId(orderId, step))  # 재고/결제 모듈 호출
     append(OrderEventStore, ev, expectedVersion)        # 기록 = 상태 전이(이중 쓰기 없음)
     updateProjection(ev); agg.fold(ev)
+    if stopAfterFirstStep: return agg.state             # Start는 Created 딱 한 단계에서 멈춤
     step = nextStep(agg)
-  return agg.state                                      # 결과를 그 자리에서 반환
-# 재개: 같은 함수를 다시 호출하면 replay가 멈춘 지점을 복원 → nextStep이 이어 준다
+  return agg.state                                      # Continue는 종료까지 돌고 그 상태를 반환
+# 재개: 같은 함수를 stopAfterFirstStep=false로 다시 부르면 replay가 멈춘 지점을 복원 → nextStep이 이어 준다
 ```
 
 ### 9.3 시작·진행·응답
 
-`StartOrderWorkflowReq` handler는 위 루프를 돌려 주문 처리를 **owner 안에서 진행하고 결과
-`OrderState`를 돌려준다**. 샘플 기본은 handler가 종료(Confirmed/Failed)까지 진행한 상태를
-돌려준다 — 주문마다 owner가 다르므로, 한 주문의 결제 지연이 다른 주문을 막지 않는다.
+`StartOrderWorkflowReq` handler는 위 루프를 **`Created`까지만 돌리고 그 상태를 즉시 응답으로
+돌려준다.** 결제 승인처럼 지연을 예측할 수 없는 단계를 HTTP 응답 시간에 묶지 않기 위해서다.
+handler는 `Created`를 만든 뒤 같은 흐름 안에서 스스로 `ContinueOrderWorkflowReq` 호출을
+**기다리지 않고 예약**한다. 그 재개 호출은 응답을 반환하는 것과 별개로(응답보다 먼저 시작될 수도,
+동시에 진행될 수도 있다) 배경에서 나머지 단계(예약 → 승인 → 확정/보상)를 진행하며, 클라이언트가
+그 결과를 실제로 보는 시점은 항상 응답 이후의 `GetOrderStateReq` 폴링이다.
 
-응답을 주문 처리 완료까지 기다리지 않게 하려면(결제 지연과 HTTP 응답을 떼어내려면) `Created`까지만
-돌려주고 이후 단계를 재개로 잇는 변형을 쓴다. 이때 진행을 잇는 방아쇠를 반드시 명시해야 한다(9.5).
-이 변형은 production 확장으로 두고, 기본 샘플은 동기 진행으로 흐름을 단순하게 유지한다.
+이 "시작이 스스로 재개를 예약"하는 동작은 §9.5의 crash 뒤 재개와 **같은 메커니즘**이다. 다음
+단계가 fold 결과로 정해지므로, 재개 호출이 시작 쪽에서 예약되든, 외부 훑기가 나중에 걸든
+루프 코드는 다르지 않다 — 차이는 그 재개를 "누가, 언제" 부르느냐뿐이다. 그래서 이 설계는 동기/
+비동기 두 갈래 코드를 갖는 게 아니라, "시작은 항상 `Created`까지 + 재개 호출 하나"로 통일된다.
+
+응답까지 terminal 상태를 기다리는 완전 동기 변형도 만들 수는 있다 — handler가 자기 재개 호출을
+기다렸다가 최종 `OrderState`를 돌려주면 된다. 다만 그러면 결제 지연이 그대로 HTTP 응답 지연이
+되므로, 이 샘플은 그 변형을 기본으로 두지 않는다.
 
 ### 9.4 무손실을 떠받치는 규칙
 
@@ -563,14 +613,21 @@ PSP를 다시 호출하면 PSP가 최초 결과(승인/거절)를 그대로 돌�
 시점에 재개해 이어야 한다. 현재 샘플은 결제를 동기 성공/실패로 단순화해 이 비동기 경우를 다루지
 않고 production 확장으로 둔다.
 
-재개 경로는 두 가지다.
+재개 경로는 하나의 메커니즘(`ContinueOrderWorkflowReq(OrderId)`가 9.1 루프를 다시 태운다)을
+"누가, 언제" 부르느냐로 나눠 쓴다.
 
-- **명시적 재개 명령**: `ContinueOrderWorkflowReq(OrderId)`가 9.1 루프를 다시 태운다. fold가 다음
-  단계를 "결제 승인 시도"로 판정하므로 예약 단계는 건너뛰고 결제부터 잇는다.
-- **재개 방아쇠**: 기본 샘플은 클라이언트 재시도(같은 `IdempotencyKey`의 `StartOrderReq`, 또는
-  `GetOrderState` 뒤 사용자 재시도)가 재개를 부른다. production에서는 아직 종료가 아닌 주문을
-  주기적으로 훑어 `ContinueOrderWorkflowReq`를 보내는 **복구 훑기**를 둔다(재고가 묶이므로 방치할
-  수 없다). 샘플은 클라이언트가 부르는 재개만 검증하고, 훑기는 확장으로 둔다.
+- **정상 진행**: §9.3에서 본 것처럼, `Created`를 응답한 owner spot이 같은 흐름에서 스스로
+  재개를 호출한다. 이게 이 샘플의 기본 경로이며, 대부분의 진행은 crash 없이 이 자기 호출만으로
+  끝까지 간다.
+- **crash 뒤 복구 방아쇠**: 자기 호출 자체가 중간에 죽으면(위 세 가지 경우) 그 주문은 아무도
+  깨우지 않는 한 멈춰 있다. 기본 샘플은 클라이언트 재시도(같은 `IdempotencyKey`의
+  `StartOrderReq`, 또는 `GetOrderState` 뒤 사용자 재시도)가 이 복구 재개를 부른다.
+  production에서는 아직 종료가 아닌 주문을 주기적으로 훑어 `ContinueOrderWorkflowReq`를 보내는
+  **복구 훑기**를 둔다(재고가 묶이므로 방치할 수 없다). 샘플은 클라이언트가 부르는 복구 재개만
+  검증하고, 훑기는 확장으로 둔다.
+
+fold가 다음 단계를 "결제 승인 시도"처럼 정확히 판정하므로, 정상 진행이든 crash 복구든 예약이
+끝난 주문은 예약 단계를 건너뛰고 다음부터 잇는다 — 코드 경로는 항상 하나다.
 
 재개가 무손실인 근거는 9.4의 결정적 id와 명령 중복 제거다. 재개는 이미 기록된 이벤트를 다시 쓰지
 않고(fold가 건너뛴다), 바깥 효과는 같은 id로 최초 결과를 돌려받으므로, 몇 번을 재개해도 결과가
@@ -774,6 +831,12 @@ sequenceDiagram
     O->>O: SourceCommandId 중복 제거 · 다음 단계 판정
     O->>ES: OrderStarted 기록 (기대 Version)
     O->>RS: 조회 모델 Created
+    O->>CS: 매핑 확정(started)
+    O->>O: ContinueOrderWorkflowReq 예약 (기다리지 않음, fire-and-forget)
+    O-->>API: StartOrderWorkflowRes(Created)
+    API-->>C: StartOrderRes(OrderId, Created)
+
+    Note over O: 예약된 재개는 응답 반환과 별개로 배경에서 진행 (엄격한 선후 순서 없음)
     O->>CS: 재고 예약(결정적 ReservationId)
     O->>ES: InventoryReserved 기록
     O->>RS: 조회 모델 InventoryReserved
@@ -782,18 +845,24 @@ sequenceDiagram
     O->>RS: 조회 모델 PaymentAuthorized
     O->>ES: OrderConfirmed 기록
     O->>RS: 조회 모델 Confirmed
-    O-->>API: StartOrderWorkflowRes(State)
-    API->>CS: 매핑 확정(started)
-    API-->>C: StartOrderRes(OrderId, Status)
 
+    C->>API: HTTP GetOrderStateReq (폴링)
+    API->>RS: 조회 모델 읽기
+    RS-->>API: OrderState(Created 또는 진행 중)
+    API-->>C: GetOrderStateRes(State)
+    Note over C,API: 진행이 끝날 때까지 반복 폴링
     C->>API: HTTP GetOrderStateReq
     API->>RS: 조회 모델 읽기
-    RS-->>API: OrderState
-    API-->>C: GetOrderStateRes(State)
+    RS-->>API: OrderState(Confirmed)
+    API-->>C: GetOrderStateRes(Confirmed)
 ```
 
-재고/결제 실패 분기는 §13의 이벤트 순서를 따른다. 죽은 뒤 재개는 §9.5의
-`ContinueOrderWorkflowReq`로 같은 루프를 다시 태운다.
+`StartOrderRes`는 `Created`만 담고 즉시 돌아온다. owner spot은 `Created`를 만든 시점에 재개
+호출을 기다리지 않고 예약하며(§9.3), 예약부터 확정까지는 그 재개가 응답 반환과 별개로 배경에서
+진행한다 — 재개가 응답보다 먼저 일부 진행되거나 나중에 진행될 수 있고, 이 순서는 보장하지 않는다.
+클라이언트는 `GetOrderStateReq` 폴링으로 진행을 확인한다. 재고/결제 실패 분기는 §13의 이벤트
+순서를 따른다. 배경 재개가 중간에 죽으면 §9.5의 복구 재개가 같은 `ContinueOrderWorkflowReq`로
+같은 루프를 다시 태운다.
 
 ## 13. 보정과 중복 처리
 
@@ -876,30 +945,35 @@ sequenceDiagram
 - 클라이언트는 `CommerceApi` HTTP 엔드포인트만 쓴다.
 - 재고·결제·주문 내부 모듈이나 저장소 엔드포인트를 직접 쓰지 않는다.
 - 응답 검증은 요청 직후에 한다.
-- 동기 기본에서는 `StartOrderRes`가 종료 상태(`Confirmed`/`Failed`)를 담는다. 응답이 종료 상태가
-  아닌 경우(재개 대기 등)에만 `GetOrderStateReq`를 반복 조회해 종료를 확인한다.
+- **새 주문**(처음 보는 `IdempotencyKey`)의 `StartOrderRes`는 `Created`만 담고 즉시 돌아온다.
+  이후 진행은 `GetOrderStateReq`를 반복 조회해 종료 상태(`Confirmed`/`Failed`)를 확인한다.
+  **이미 확정된 매핑의 `IdempotencyKey`로 다시 시작하면**(중복 시작) `StartOrderRes`는 그
+  주문이 지금 도달한 상태(`Created`일 수도, 이미 `Confirmed`/`Failed`일 수도 있다)를 그대로
+  담아 돌아온다 — §13의 "확정된 매핑은 같은 조회 모델을 반환한다"와 같은 규칙이다. 종료 여부를
+  확정적으로 확인할 때는 응답 상태를 믿지 말고 항상 `GetOrderStateReq`로 재확인한다.
 - 저장소 검증은 서버 쪽 assertion으로 한다.
 
 시나리오:
 
-- **성공 주문**: `StartOrderReq` → `StartOrderRes`가 `Confirmed`인지 즉시 검증 →
-  `ReservationId`·`PaymentId`·`Amount`·`Currency` 검증 → 서버 쪽에서
-  `OrderStarted/InventoryReserved/PaymentAuthorized/OrderConfirmed` 기록 검증 →
-  `GetOrderStateReq`가 같은 `Confirmed`를 돌려주는지 검증.
+- **성공 주문**: `StartOrderReq` → `StartOrderRes`가 `Created`인지 즉시 검증 → `GetOrderStateReq`
+  반복 조회로 `Confirmed` 도달 확인 → `ReservationId`·`PaymentId`·`Amount`·`Currency` 검증 →
+  서버 쪽에서 `OrderStarted/InventoryReserved/PaymentAuthorized/OrderConfirmed` 기록 검증.
 - **중복 시작(멱등)**: 같은 `IdempotencyKey` 재전송 → 같은 `OrderId` → `OrderStartedEvent` 중복
   기록 없음, 조회 모델 중복 변경 없음.
 - **동시 시작 경쟁**: 같은 `IdempotencyKey`를 두 `CommerceApi`에 동시 전송 → 두 응답의 `OrderId`가
   같은지 검증(먼저 쓴 쪽이 이김) → `OrderStartedEvent` 한 번만 기록.
 - **대기 복구**: test hook으로 대기 매핑만 만들고 `Created` 생성을 중단 → 같은 `IdempotencyKey`
   재전송 → 새 `OrderId` 없이 대기 owner로 보내 → `OrderStarted`·`Created` 완료 후 매핑 확정.
-- **재고 실패**: 재고 부족 장바구니 → `StartOrderRes`가 `Failed` → `Reason`이 재고 실패 →
-  결제 미실행 검증.
-- **결제 실패·보상**: 결제 실패 결제수단 → `StartOrderRes`가 `Failed` →
+- **재고 실패**: 재고 부족 장바구니 → `GetOrderStateReq` 반복 조회로 `Failed` 도달 → `Reason`이
+  재고 실패 → 결제 미실행 검증.
+- **결제 실패·보상**: 결제 실패 결제수단 → `GetOrderStateReq` 반복 조회로 `Failed` 도달 →
   `InventoryReleased`·`OrderFailed` 기록 검증 → `Reason`이 결제 실패.
-- **죽은 뒤 재개**: test hook으로 `InventoryReserved`까지만 진행하고 중단(중간 상태 생성) →
-  `ContinueOrderWorkflowReq` → 예약 단계 건너뛰고 결제부터 재개해 `Confirmed` 도달, 결정적 id로
-  중복 예약 없음 검증. 종료 이벤트 기록 후 조회 모델 갱신을 중단한 경우도 재개가 조회 모델을
-  치유하는지 검증.
+- **죽은 뒤 재개**: test hook으로 배경 재개를 `InventoryReserved`까지만 진행하고 중단(중간 상태
+  생성) → 복구용 `ContinueOrderWorkflowReq` → 예약 단계 건너뛰고 결제부터 재개해 `Confirmed`
+  도달, 결정적 id로 중복 예약 없음 검증. 종료 이벤트 기록 후 조회 모델 갱신을 중단한 경우도
+  재개가 조회 모델을 치유하는지 검증. (**구현 목표** — 이 문서 작성 시점의 `.NET` client
+  self-check에는 "대기 복구"용 `/self-check/idempotency/pending` 같은 중단 test hook이 아직
+  없다. 새 구현이 이 시나리오를 실제로 돌리려면 같은 방식의 test hook을 먼저 추가해야 한다.)
 - **조회 모델 재생성**: 대상 `OrderId` 조회 모델 삭제 → `RebuildOrderProjectionReq` →
   `OrderEventStore` 재생만으로 조회 모델 복원 검증.
 - **조회 지연**: 시작 후 즉시 조회하지 않고 종료까지 둔 뒤 조회 → 반복 조회해도 같은 최종 상태,

@@ -19,12 +19,12 @@ smoke 검증 순서를 따라야 한다. 언어별 API 모양은 달라도 사�
 
 | 샘플 | 목적 | 서버 구성 | 연결 방식 | Handler 등록 방식 | 기본 payload codec |
 |------|------|-----------|-----------|-------------------|--------------------|
-| [Bingo](bingo/README.ko.md) | session gateway, actor binding, Entry Spot, room Spot, timer, bound push를 한 흐름으로 보여 준다. | `Session`, `Api`, `Play`, `Registry` 분리 | Registry/Discovery 자동 연결 | typed handler 계약 명시 등록 | Protobuf |
+| [Bingo](bingo/README.ko.md) | session gateway, actor binding, Entry Spot, room Spot, timer, bound push를 한 흐름으로 보여 준다. | `Session`, `Api`, `Play` 분리 | location store 기반 자동 연결 | typed handler 계약 명시 등록 | Protobuf |
 | [TicTacToe](tictactoe/README.ko.md) | 2개 API와 2개 Play로 수동 endpoint scale-out, Redis 기반 room route 조회, 실시간 게임 흐름을 보여 준다. | `Api` 2개, `Play` 2개, 별도 `Session` 서버 없이 `Play`가 stream session을 함께 소유 | 수동 endpoint 연결 + Redis room route store | 선언형 등록 우선, 불가능하면 명시 등록 | JSON |
-| [SupportChat](supportchat/README.ko.md) | 고객과 상담원이 같은 conversation Spot에서 대화하고, reconnect, idle timer, close, bound push를 확인한다. | `Session`, `Api`, `Support`, `Registry` 분리 | Registry/Discovery 자동 연결 | typed handler와 domain event publisher | JSON |
-| [DeliveryDispatch](deliverydispatch/README.ko.md) | 배송 배차, timeout 재배정, 상태 fanout, 고객 stream push를 확인한다. | `DispatchApi`, `DispatchCenter`, `Courier`, `Tracking`, `Session`, `Registry` 분리 | Registry/Discovery 자동 연결 | channel handler, fanout subscriber, Spot actor join | JSON |
-| [ShoppingMall](event/shoppingmall.ko.md) | 단일 Commerce API 서버 타입에서 event-sourced 주문 workflow와 projection을 구성한다. | `CommerceApi`, `OrderWorkflow`, `Registry` 분리 | Registry/Discovery 자동 연결 | event-sourced OrderWorkflow Spot, projection adapter | JSON |
-| [GameQuest](event/gamequest.ko.md) | stateless Game API action event를 ZLink fanout으로 받아 event sourced quest aggregate와 projection을 갱신한다. | `GameApi`, `QuestMission`, `Registry` 분리 | Registry/Discovery 자동 연결 | fanout subscriber, event-sourced PlayerQuest Spot, projection adapter | JSON |
+| [SupportChat](supportchat/README.ko.md) | 고객과 상담원이 같은 conversation Spot에서 대화하고, reconnect, idle timer, close, bound push를 확인한다. | `Session`, `Api`, `Support` 분리 | location store 기반 자동 연결 | typed handler와 domain event publisher | JSON |
+| [DeliveryDispatch](deliverydispatch/README.ko.md) | 배송 배차, timeout 재배정, 상태 push, 고객 stream push를 확인한다. | `Dispatch`, `CourierSession`, `CourierSpotNode` 2개, `Tracking`, `CustomerGateway` 분리 | location store 기반 자동 연결 | channel handler, Spot actor join | JSON |
+| [ShoppingMall](event/shoppingmall.ko.md) | `CommerceApi`(HTTP edge)와 `OrderWorkflow`(주문 owner)를 분리해 event-sourced 주문 처리와 조회 모델을 구성한다. | `CommerceApi`, `OrderWorkflow` 분리 | location store 기반 자동 연결 | event-sourced OrderWorkflowSpot, 조회 모델 adapter | JSON |
+| [GameQuest](event/gamequest.ko.md) | gameplay event를 player별 owner spot에 모아 event sourced quest aggregate와 조회 모델을 갱신한다. | `Session Server`, `PlayerQuestSpot` owner를 spot-mesh로 분산 | location store 기반 자동 연결 | owner routing handler, event-sourced PlayerQuestSpot, 조회 모델 adapter | JSON |
 
 ## 메시지 이름 원칙
 
@@ -48,6 +48,22 @@ request로 호출하는 메시지는 업무 이름이 `Changed`, `Accepted`, `Cr
 할 수 있다. 이미 존재하는 샘플 메시지를 손볼 때도 호출 방식 기준으로 `Req`/`Res`, `Msg`,
 `Notify` 중 하나로 정리한다.
 
+이 규칙은 stream, channel, actor, Spot 경계를 실제로 넘나드는 ZLink wire message에
+적용한다. 아래 두 경우는 wire message가 아니므로 예외로 둔다.
+
+- **도메인 event stream(SoR) 레코드**: event sourcing 샘플(ShoppingMall, GameQuest)의
+  `OrderStartedEvent`, `QuestProgressed`처럼 event store에 append되는 도메인 이벤트는 이 규칙의
+  대상이 아니다. 이 이름은 그 자체로 전송되는 packet이 아니라 durable store 안에 쌓이는
+  기록이며, event sourcing 어휘가 곧 도메인 표현이라 `Event` 접미어를 강제하지도, 금지하지도
+  않는다 — 도메인이 자연스러운 이름(`OrderStartedEvent`, `QuestProgressed`)을 정한다.
+- **in-process 도메인/application port 계약**: 같은 서버 프로세스 안에서 도메인 module을
+  호출하는 port DTO(예: `ReserveInventoryCommand`)는 ZLink로 dispatch되지 않는 언어 중립
+  계약이므로 `Command`/`Result` 접미어를 유지할 수 있다.
+
+반대로 entry-spot에서 owner spot으로 실제 `SendToSpot`/`RequestToSpot`으로 전달되는
+내부 메시지는 예외가 아니다. 이런 메시지는 호출 방식에 맞춰 `Msg`(one-way send) 또는
+`Req`/`Res`(request/reply)로 이름 붙인다.
+
 ## 언어별 구현 수준
 
 공통 시나리오는 샘플이 최종적으로 보여 주어야 하는 역할과 흐름을 정의한다. 다만 언어별 샘플은
@@ -62,8 +78,8 @@ request로 호출하는 메시지는 업무 이름이 `Changed`, `Accepted`, `Cr
 | ShoppingMall | .NET | Java, Kotlin, Node.js, C++ |
 | GameQuest | .NET, Java, Kotlin | Node.js, C++ |
 
-full 구조 구현은 공통 시나리오의 Spot owner, actor/session, fanout, registry/discovery 경계를
-샘플 코드에 그대로 둔 구현이다. compact 구현은 같은 업무 흐름과 client self-check를 제공하지만,
+full 구조 구현은 공통 시나리오의 Spot owner, actor/session, fanout, location store 기반 자동
+연결과 위치 조회 경계를 샘플 코드에 그대로 둔 구현이다. compact 구현은 같은 업무 흐름과 client self-check를 제공하지만,
 일부 상태 소유 흐름을 일반 channel handler나 role service로 접어 넣은 구현이다. compact 구현을
 full 구조라고 설명하면 안 된다. full 구조로 승격할 때는 먼저 해당 언어의 framework public API와
 공통 시나리오 문서가 요구하는 Spot owner 경계를 맞춘 뒤 sample regression을 갱신한다.
@@ -85,7 +101,7 @@ C++은 `yield()`를 사용한다. TicTacToe의 game join처럼 handler가 게임
 ## 샘플 포팅 기준
 
 Bingo와 TicTacToe는 각자 맡은 기능을 보여 주는 예외 샘플이다. Bingo는 Protobuf
-payload와 Registry/Discovery 기반 gateway 분리를 보여 주고, TicTacToe는 Redis room route
+payload와 location store 기반 gateway 분리를 보여 주고, TicTacToe는 Redis room route
 store와 수동 endpoint 기반 scale-out 흐름을 보여 준다.
 
 그 밖의 정본 샘플(SupportChat, DeliveryDispatch, ShoppingMall, GameQuest)은
@@ -96,7 +112,7 @@ store와 수동 endpoint 기반 scale-out 흐름을 보여 준다.
 - Protobuf나 MessagePack이 필요한 샘플은 framework codec extension package를 설치하고
   구성 단계에서 extension을 등록한다. 샘플의 DTO, handler, client 호출 모양은 codec 때문에
   바꾸지 않는다.
-- 서버 간 연결은 Registry/Discovery 기반 자동 연결로 구성한다. 샘플 코드가 endpoint
+- 서버 간 연결은 공유 location store 기반 자동 연결로 구성한다. 샘플 코드가 endpoint
   연결 순서나 route warmup을 직접 관리하지 않게 하기 위해서다.
 - framework가 handler를 스캔하고 등록할 수 있는 언어에서는 모든 handler를 자동 등록한다.
   샘플마다 handler 목록을 반복해서 적으면 public 사용 예시가 장황해지고, handler 추가
@@ -183,7 +199,7 @@ observer, 기본 로그로 처리하게 둔다. 샘플 handler는 성공 경로�
 - inline object literal은 한 함수 안에서만 쓰는 local state, 테스트 보조 값, 파싱 결과처럼
   wire 계약이 아닌 값에만 사용한다. 샘플은 짧은 데모보다 여러 언어에서 같은 메시지
   흐름을 비교할 수 있는 가시성을 우선한다.
-- Bingo와 TicTacToe는 같은 기능을 반복해서 보여 주지 않는다. Bingo는 Registry/Discovery를
+- Bingo와 TicTacToe는 같은 기능을 반복해서 보여 주지 않는다. Bingo는 공유 location store를
   이용한 분리 gateway 구조를, TicTacToe는 수동 endpoint와 Redis room route store를 쓰는
   scale-out 구조를 맡는다.
 - codec 선택은 샘플의 역할을 방해하지 않도록 단순하게 둔다. Bingo는 여러 언어가 공유하는

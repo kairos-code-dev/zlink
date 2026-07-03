@@ -174,13 +174,27 @@ GameQuest는 진행 tier와 reward/economy tier를 분리해서 설명한다. �
 보정 가능한 경로를 대상으로 한다. 실제 재화 지급처럼 무손실이 필요한 경로는 durable log나 outbox를
 추가하는 production 확장으로 둔다.
 
-| 축 | GameQuest 기본 경로 |
-|------|------|
-| per-event 처리 | owner spot 메모리 상태에 적용하고 domain event를 append한다. |
-| 내구성 | gameplay event 전달은 best-effort다. 유실은 `GameplayStateStore` snapshot 기반 reconcile로 보정한다. |
-| 노드 장애 | 다음 owner messaging 또는 reconcile에서 owner spot을 다시 활성화하고 `QuestEventStore` replay로 복원한다. 복구 전까지 짧은 공백이 있을 수 있다. |
-| client push | session binding이 있으면 bound session으로 notify한다. binding이 없으면 상태만 기록하고 reconnect 후 조회로 복원한다. |
-| cross-player 집계 | owner spot이 파생 event를 방출하고 별도 aggregator가 처리한다(13절). |
+GameQuest는 유실을 허용하는 대신 실시간성을 얻는 도메인이라 [ShoppingMall](shoppingmall.ko.md)과
+반대 지점에 선다. 아래 특성을 ShoppingMall의 무손실 주문 처리와 나란히 보면 두 샘플의 역할
+분담이 분명해진다(대비 표는 [ShoppingMall §5](shoppingmall.ko.md)에도 대칭으로 실려 있다).
+
+| 축 | GameQuest (진행 tier) | ShoppingMall (무손실 주문 처리, 참고) |
+|------|------|------|
+| 전달 | gameplay event 전달은 best-effort다. 유실은 `GameplayStateStore` snapshot 기반 reconcile로 보정한다. | 명령을 owner에 유실 없이 기록(유실 불가) |
+| 동시성 | owner 하나(차단 불필요, 유실 허용) | owner 하나 + 기대 버전으로 이전 owner 차단 |
+| 이벤트당 비용 | owner spot 메모리 상태에 적용하고 domain event를 append한다. | 상태 = 이벤트 접기. 기록이 곧 상태 전이 |
+| 노드 장애 | 다음 owner messaging 또는 reconcile에서 owner spot을 다시 활성화하고 `QuestEventStore` replay로 복원한다. 복구 전까지 짧은 공백이 있을 수 있다. | 다른 노드가 이어받아(re-home) 다시 재생으로 복원, 기대 버전이 두 owner가 겹치는 순간을 차단 |
+| 멈춘 작업 | 유실은 reset/reconcile로 흡수 | 명시적 재개 명령으로 잇는다 — 재고가 묶이므로 필수 |
+| 조회 | 실시간 전송(push). session binding이 없으면 상태만 기록하고 reconnect 후 조회로 복원한다. | 조회 모델 폴링(`GetOrderStateReq`) |
+
+두 샘플 다 owner 하나로 순서를 잡지만, 여러 owner를 가로지르는 집계는 표에 없다 — GameQuest는
+owner spot이 파생 event를 방출해 별도 aggregator가 cross-player 집계를 하고(13절), ShoppingMall은
+같은 방식을 §14에서 다룬다. 두 경로 다 개별 owner의 처리 루프 밖에서 일어나는 확장이다.
+
+핵심은 이렇다. **진행 tier는 유실돼도 reset/reconcile로 흡수할 수 있으므로, owner spot 하나로
+순서만 잡으면 충분하고 기대 버전 차단이나 명시적 재개 같은 무손실 장치는 필요 없다.** 주문
+처리처럼 무손실이 필요한 도메인은 그 장치를 얹어야 하며, 그 구체적인 이유는
+[ShoppingMall §5](shoppingmall.ko.md)에서 다룬다.
 
 ## 6. 서버 구성
 
@@ -312,7 +326,7 @@ aggregate**다. 즉 event sourcing이 별도 서비스나 외부 log가 아니�
 domain spot의 처리 루프 — gameplay event 한 건이 도착하면:
 
 ```text
-on GameplayEvent e:
+on GameplayMsg e:
   1. (최초 활성) QuestEventStore에서 이 player의 quest event stream을 replay
         → in-memory aggregate 복원  (snapshot이 있으면 snapshot + 꼬리만)
   2. e.EventId가 이미 반영됐으면 무시                       # idempotency
@@ -426,7 +440,7 @@ SessionServer/
       QuestPolicy                # 완료·보상 판정
       QuestEvents                # Progressed, Completed, RewardGranted, Reconciled
     Application/
-      ApplyGameplayEventUseCase  # event → 평가 → domain event append → projection
+      ApplyGameplayMsgUseCase    # gameplay msg → 평가 → domain event append → projection
       GetQuestProgressUseCase
       ReconcileQuestUseCase      # 보정 → Reconciled event
     Ports/
@@ -438,7 +452,7 @@ SessionServer/
       Spots/
         PlayerQuestSpot          # per-player owner actor (event-sourced aggregate)
         Handlers/
-          ApplyGameplayEventHandler
+          ApplyGameplayMsgHandler
           GetQuestProgressHandler
           ReconcileQuestHandler
       Store/
@@ -485,7 +499,7 @@ QuestCompletedNotify { PlayerId, Progress: QuestProgress, RewardGranted: bool }
 ### 11.2 entry-spot → owner spot (샘플 내부 메시징)
 
 ```text
-GameplayEvent {
+GameplayMsg {
   EventId: string
   PlayerId: string          # owner routing key
   Type: string              # MonsterKilled | ItemCollected | ...
@@ -544,7 +558,7 @@ sequenceDiagram
     C->>ES: KillMonsterReq
     ES->>ES: authoritative 처리 → MonsterKilled(EventId)
     ES-->>C: KillMonsterRes(EventId)
-    ES-->>P: GameplayEvent (owner routing by PlayerId)
+    ES->>P: GameplayMsg (owner routing by PlayerId)
 
     P->>EVS: stream replay → aggregate 복원 (최초 활성)
     P->>P: e.EventId dedupe · 매칭 quest 평가 · fold

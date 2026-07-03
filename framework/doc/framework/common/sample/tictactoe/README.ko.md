@@ -8,7 +8,7 @@
 
 ## 1. 목적
 
-TicTacToe는 Registry/Discovery 없이 직접 endpoint를 설정해 scale-out을 구성하는
+TicTacToe는 location store 기반 자동 연결 없이 직접 endpoint를 설정해 scale-out을 구성하는
 기본 샘플이다. API 역할은 room 생성과 인증 발급을 맡고, Play 역할은 client stream
 session, actor, room Spot을 함께 호스팅한다. 샘플은 `api-a`, `api-b`, `play-a`,
 `play-b`를 실행해 API와 Play가 모두 2개 이상일 때도 같은 게임 흐름이 유지되는지
@@ -41,7 +41,7 @@ address resolver 계약 뒤에 숨긴다.
 - client는 API 서버에서 받은 Play endpoint 목록으로 직접 stream 연결을 만든다.
 - Play session은 인증 후 actor를 만들고 현재 stream session에 bind한다.
 - room Spot은 board, turn, 승패 판정을 소유한다.
-- 연결은 Registry/Discovery 없이 수동 endpoint 설정과 Redis room route store로 구성한다.
+- 연결은 location store 기반 자동 연결 없이 수동 endpoint 설정과 Redis room route store로 구성한다.
 - handler 등록은 attribute, annotation, decorator 같은 선언형 방식을 우선 사용한다.
 - TicTacToe의 stream, channel, actor, room Spot payload는 JSON을 사용한다.
 
@@ -292,7 +292,7 @@ TicTacToe 샘플은 모든 framework 언어에서 같은 public framework 모델
 
 ## 6. 수동 연결 방식
 
-TicTacToe는 Registry/Discovery 자동 연결을 사용하지 않는다. API 서버와 Play 서버는 샘플
+TicTacToe는 location store 기반 자동 연결을 사용하지 않는다. API 서버와 Play 서버는 샘플
 설정에 적힌 endpoint를 직접 사용하고, room Spot 위치는 Redis room route store에서 찾는다.
 
 | 연결 | 설정 주체 | 예시 의미 |
@@ -306,9 +306,9 @@ TicTacToe는 Registry/Discovery 자동 연결을 사용하지 않는다. API 서
 | client -> Play stream | API 응답 | 생성된 room이 사용할 Play stream endpoint 목록 |
 
 이 샘플이 수동 연결을 쓰는 이유는 자동 발견이 없는 기본 배선도 framework로 표현할 수
-있음을 보여 주기 위해서다. Registry/Discovery 자동 연결은 Bingo 샘플이 맡는다.
+있음을 보여 주기 위해서다. 공유 location store 기반 자동 연결은 Bingo 샘플이 맡는다.
 
-Redis는 Registry/Discovery를 대신하는 자동 연결 장치가 아니다. Redis에는 room Spot의
+Redis는 location store 기반 자동 연결을 대신하는 장치가 아니다. 여기 쓰는 Redis에는 room Spot의
 위치만 저장한다. endpoint 목록, process 실행 순서, channel 연결은 여전히 샘플 설정과
 runner가 명시적으로 제공한다.
 
@@ -957,7 +957,7 @@ backend call, runtime event, 또는 framework 테스트 중 하나로 아래 사
 
 | 항목 | TicTacToe | Bingo |
 |------|-----------|-------|
-| 연결 방식 | 수동 endpoint 설정 + Redis room route store | Registry/Discovery 자동 연결 |
+| 연결 방식 | 수동 endpoint 설정 + Redis room route store | 공유 location store 기반 자동 연결 |
 | client API 요청 | API 서버로 직접 보낸다. | Session stream 하나로 보낸다. |
 | 게임 stream 연결 | API 응답의 Play endpoint 목록으로 서로 다른 Play 서버에 직접 연결한다. | Session 서버 연결 하나만 유지한다. |
 | Session 서버 | 별도 프로세스 없음. Play 서버가 session과 room을 함께 소유한다. | 별도 Session 서버가 client stream과 actor binding을 소유한다. |
@@ -969,7 +969,7 @@ backend call, runtime event, 또는 framework 테스트 중 하나로 아래 사
 
 - API 역할 2개와 Play 역할 2개가 별도 실행 모드 또는 별도 프로세스로 구분되어 있다.
 - 별도 Session 서버 프로세스는 없다.
-- Registry/Discovery 자동 연결을 사용하지 않고 수동 endpoint로 channel을 연결한다.
+- location store 기반 자동 연결을 사용하지 않고 수동 endpoint로 channel을 연결한다.
 - Play 서버끼리는 remote room Spot request를 보낼 수 있도록 SpotNode router endpoint를
   수동으로 연결한다.
 - Play 서버끼리는 milestone event fan-out을 보낼 수 있도록 SpotNode pub/sub endpoint를

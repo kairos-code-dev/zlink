@@ -30,7 +30,7 @@ internal sealed class ZLinkLocationLifecycle : IDisposable
     private static readonly AsyncLocal<bool> TakeoverScope = new();
 
     private readonly ZLinkLocationRuntime _runtime;
-    private readonly IZLinkActorLocationResolver _actorResolver;
+    private readonly ZLinkStoreLocationResolvers _actorResolver;
     private readonly object _gate = new();
     private readonly Dictionary<string, TrackedActor> _actors = new(StringComparer.Ordinal);
     private readonly Dictionary<string, TrackedSpot> _spots = new(StringComparer.Ordinal);
@@ -38,7 +38,7 @@ internal sealed class ZLinkLocationLifecycle : IDisposable
 
     internal ZLinkLocationLifecycle(
         ZLinkLocationRuntime runtime,
-        IZLinkActorLocationResolver actorResolver)
+        ZLinkStoreLocationResolvers actorResolver)
     {
         _runtime = runtime;
         _actorResolver = actorResolver;
@@ -428,9 +428,8 @@ internal sealed class ZLinkLocationLifecycle : IDisposable
     {
         try
         {
-            return await _actorResolver.ResolveActorAsync(
+            return await _actorResolver.ResolveActorRowAsync(
                     new ZLinkActorLocationKey(actorType, actorId),
-                    ZLinkResolveFreshness.Refresh,
                     cancellationToken)
                 .ConfigureAwait(false);
         }

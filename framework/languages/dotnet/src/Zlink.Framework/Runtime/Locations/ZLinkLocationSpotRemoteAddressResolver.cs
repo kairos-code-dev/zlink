@@ -3,20 +3,20 @@ namespace Zlink.Framework.Runtime.Locations;
 /// <summary>
 /// Resolves a spot rid to its live location row by trying every spot mesh
 /// channel name registered on this node (the same value the auto-connect
-/// host advertises under: SpotDiscoveryChannelName ?? SpotNodeName). Each
-/// candidate mesh gets a Normal try first; the misses are retried once with
-/// Refresh so a reconnect-style lookup never fails on cache staleness alone.
+/// host advertises under: SpotDiscoveryChannelName ?? SpotNodeName). Every
+/// try reads the store — resolvers have no cache. Scheduled for removal
+/// with the address-based egress (spot-address messaging draft §10.3).
 /// </summary>
 internal sealed class ZLinkSpotLocationRidResolver
 {
     private readonly IReadOnlyList<string> _meshNames;
-    private readonly IZLinkSpotLocationResolver _spots;
+    private readonly ZLinkStoreLocationResolvers _rows;
 
     internal ZLinkSpotLocationRidResolver(
         ZLinkFrameworkRegistration registration,
-        IZLinkSpotLocationResolver spots)
+        ZLinkStoreLocationResolvers rows)
     {
-        _spots = spots;
+        _rows = rows;
         _meshNames = registration.SpotNodes.Values
             .Select(static node => node.SpotDiscoveryChannelName ?? node.SpotNodeName)
             .Concat(registration.SpotDiscoveries.Keys)
@@ -28,23 +28,15 @@ internal sealed class ZLinkSpotLocationRidResolver
         RoutingId spotRid,
         CancellationToken cancellationToken)
     {
-        foreach (var freshness in new[]
-                 {
-                     ZLinkResolveFreshness.Normal,
-                     ZLinkResolveFreshness.Refresh
-                 })
+        foreach (var meshName in _meshNames)
         {
-            foreach (var meshName in _meshNames)
+            var row = await _rows.ResolveSpotRowAsync(
+                    new ZLinkSpotLocationKey(meshName, spotRid),
+                    cancellationToken)
+                .ConfigureAwait(false);
+            if (row is not null)
             {
-                var row = await _spots.ResolveSpotAsync(
-                        new ZLinkSpotLocationKey(meshName, spotRid),
-                        freshness,
-                        cancellationToken)
-                    .ConfigureAwait(false);
-                if (row is not null)
-                {
-                    return row;
-                }
+                return row;
             }
         }
 

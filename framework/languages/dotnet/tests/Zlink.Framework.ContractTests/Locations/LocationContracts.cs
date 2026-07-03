@@ -109,28 +109,26 @@ public sealed class LocationContracts
         typeof(IZLinkSpotLocationResolver),
         typeof(IZLinkActorLocationResolver),
         typeof(IZLinkRouteLocationResolver))]
-    public async Task Resolvers_are_single_resolve_surfaces_with_freshness()
+    public async Task Resolvers_are_cacheless_lookup_surfaces_returning_addresses()
     {
         var resolver = new ExampleLocationResolver();
 
-        // Normal allows cache hits; Refresh always re-reads the store and is
-        // required on reconnect and create-if-absent decisions.
-        var peersNormal = await resolver.ListPeersAsync(
+        // Every read reaches the store; there is no freshness knob because
+        // there is no resolver cache (spot-address messaging draft).
+        var peers = await resolver.ListPeersAsync(
             new ZLinkPeerLocationFilter(MeshName: "play"));
-        var peersFresh = await resolver.ListPeersAsync(
-            new ZLinkPeerLocationFilter(MeshName: "play"),
-            ZLinkResolveFreshness.Refresh);
-        Assert.Single(peersNormal);
-        Assert.Single(peersFresh);
+        Assert.Single(peers);
 
-        var spot = await resolver.ResolveSpotAsync(
-            new ZLinkSpotLocationKey("play", RoutingId.From("spot-1")));
-        Assert.NotNull(spot);
+        // Messaging lookups return spot addresses the caller holds and
+        // re-resolves on failure; an entry spot address has
+        // NodeRid == SpotRid.
+        var spotAddress = await resolver.ResolveSpotAddressAsync(RoutingId.From("spot-1"));
+        Assert.NotNull(spotAddress);
+        Assert.Equal(RoutingId.From("spot-1"), spotAddress.Value.SpotRid);
 
-        var actor = await resolver.ResolveActorAsync(
-            new ZLinkActorLocationKey("player", "actor-1"),
-            ZLinkResolveFreshness.Refresh);
-        Assert.NotNull(actor);
+        var actorAddress = await resolver.ResolveActorSpotAddressAsync("player", "actor-1");
+        Assert.NotNull(actorAddress);
+        Assert.True(actorAddress.Value.NodeRid.Size > 0);
 
         var route = await resolver.ResolveRouteAsync(
             new ZLinkRouteLocationKey(ZLinkRouteKind.ActorSession, "session-1"));
@@ -467,28 +465,27 @@ public sealed class LocationContracts
     {
         public ValueTask<IReadOnlyList<ZLinkPeerLocation>> ListPeersAsync(
             ZLinkPeerLocationFilter filter,
-            ZLinkResolveFreshness freshness = ZLinkResolveFreshness.Normal,
             CancellationToken cancellationToken = default)
         {
             IReadOnlyList<ZLinkPeerLocation> items = [MakePeer("owner-a")];
             return ValueTask.FromResult(items);
         }
 
-        public ValueTask<ZLinkSpotLocation?> ResolveSpotAsync(
-            ZLinkSpotLocationKey key,
-            ZLinkResolveFreshness freshness = ZLinkResolveFreshness.Normal,
+        public ValueTask<ZLinkSpotAddress?> ResolveSpotAddressAsync(
+            RoutingId spotRid,
             CancellationToken cancellationToken = default) =>
-            ValueTask.FromResult<ZLinkSpotLocation?>(MakeSpot("owner-a"));
+            ValueTask.FromResult<ZLinkSpotAddress?>(
+                new ZLinkSpotAddress(RoutingId.From("node-1"), spotRid));
 
-        public ValueTask<ZLinkActorLocation?> ResolveActorAsync(
-            ZLinkActorLocationKey key,
-            ZLinkResolveFreshness freshness = ZLinkResolveFreshness.Normal,
+        public ValueTask<ZLinkSpotAddress?> ResolveActorSpotAddressAsync(
+            string actorType,
+            string actorId,
             CancellationToken cancellationToken = default) =>
-            ValueTask.FromResult<ZLinkActorLocation?>(MakeActor("owner-a", 1));
+            ValueTask.FromResult<ZLinkSpotAddress?>(
+                new ZLinkSpotAddress(RoutingId.From("node-1"), RoutingId.From("spot-1")));
 
         public ValueTask<ZLinkRouteLocation?> ResolveRouteAsync(
             ZLinkRouteLocationKey key,
-            ZLinkResolveFreshness freshness = ZLinkResolveFreshness.Normal,
             CancellationToken cancellationToken = default) =>
             ValueTask.FromResult<ZLinkRouteLocation?>(MakeRoute("owner-a"));
     }
@@ -504,11 +501,7 @@ public sealed class LocationContracts
                 LastRefreshAt: StoreNow,
                 LastError: null,
                 OwnerLeaseHealthy: true,
-                OwnerLeaseRenewedAt: StoreNow,
-                PeerCacheEntryCount: 1,
-                SpotCacheEntryCount: 0,
-                ActorCacheEntryCount: 0,
-                RouteCacheEntryCount: 0));
+                OwnerLeaseRenewedAt: StoreNow));
 
         public ValueTask<IReadOnlyList<ZLinkPeerLocation>> ListPeersAsync(
             ZLinkPeerLocationFilter filter,

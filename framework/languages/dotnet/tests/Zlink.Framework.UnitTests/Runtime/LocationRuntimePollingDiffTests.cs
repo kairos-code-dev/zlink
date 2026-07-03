@@ -108,11 +108,7 @@ public sealed class LocationRuntimePollingDiffTests
                 LastRefreshAt: null,
                 LastError: null,
                 OwnerLeaseHealthy: storeHealthy,
-                OwnerLeaseRenewedAt: null,
-                PeerCacheEntryCount: 0,
-                SpotCacheEntryCount: 0,
-                ActorCacheEntryCount: 0,
-                RouteCacheEntryCount: 0),
+                OwnerLeaseRenewedAt: null),
             [
                 new ZLinkLocationTopologyEntry(
                     ZLinkLocationKind.Peer,

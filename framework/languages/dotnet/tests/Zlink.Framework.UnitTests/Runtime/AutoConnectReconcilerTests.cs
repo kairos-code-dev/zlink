@@ -342,11 +342,10 @@ public sealed class AutoConnectReconcilerTests
 
         public ValueTask<IReadOnlyList<ZLinkPeerLocation>> ListPeersAsync(
             ZLinkPeerLocationFilter filter,
-            ZLinkResolveFreshness freshness = ZLinkResolveFreshness.Normal,
             CancellationToken cancellationToken = default) =>
             Fail
                 ? throw new InvalidOperationException("store unreachable")
-                : inner.ListPeersAsync(filter, freshness, cancellationToken);
+                : inner.ListPeersAsync(filter, cancellationToken);
     }
 
     private sealed class RecordingExecutor : IZLinkAutoConnectExecutor

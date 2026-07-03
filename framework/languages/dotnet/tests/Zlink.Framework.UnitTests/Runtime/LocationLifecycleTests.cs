@@ -240,9 +240,6 @@ public sealed class LocationLifecycleTests
     public async Task Actor_Reconnect_Refreshes_The_Location_And_Only_Rebinds_The_Session()
     {
         var fixture = await LifecycleFixture.CreateAsync();
-        // Keep resolver caches alive so the reconnect assertion proves the
-        // Refresh path bypasses a stale cache, not an expired one.
-        fixture.Options.PositiveCacheTtl = TimeSpan.FromMinutes(5);
         var nodeA = await fixture.NodeAsync("node-a");
         var nodeB = await fixture.NodeAsync("node-b");
         var nodeC = await fixture.NodeAsync("node-c");
@@ -254,7 +251,7 @@ public sealed class LocationLifecycleTests
             CancellationToken.None);
 
         // Node B has resolved the actor before and still caches node A.
-        var cached = await nodeB.Resolvers.ResolveActorAsync(new ZLinkActorLocationKey(ActorType, ActorId));
+        var cached = await nodeB.Resolvers.ResolveActorRowAsync(new ZLinkActorLocationKey(ActorType, ActorId));
         Assert.Equal(RoutingId.From("node-a"), cached!.NodeRid);
 
         // The actor moves to node C behind node B's cache.

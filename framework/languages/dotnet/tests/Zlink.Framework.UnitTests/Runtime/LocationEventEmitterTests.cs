@@ -52,32 +52,11 @@ public sealed class LocationEventEmitterTests
     {
         var fixture = await FixtureAsync();
 
-        Assert.Null(await fixture.Resolvers.ResolveActorAsync(new ZLinkActorLocationKey("player", "ghost")));
+        Assert.Null(await fixture.Resolvers.ResolveActorRowAsync(new ZLinkActorLocationKey("player", "ghost")));
 
         var miss = Assert.Single(fixture.Publisher.Events.OfType<ZLinkLocationActorEvent>());
         Assert.Equal(ZLinkLocationActorEventKind.ResolveMiss, miss.Event);
         Assert.Equal("ghost", miss.Key.ActorId);
-    }
-
-    [Fact]
-    public async Task Expired_Owner_On_A_Cache_Hit_Publishes_CacheInvalidated()
-    {
-        var fixture = await FixtureAsync();
-        await fixture.Store.UpdateActorAsync(
-            InMemoryLocationStoreTests.Actor("row-owner", 0), ZLinkLocationWriteIntent.NewClaim);
-        var key = new ZLinkActorLocationKey("player", "actor-1");
-        Assert.NotNull(await fixture.Resolvers.ResolveActorAsync(key));
-
-        // The row owner crashes; the cached entry must be dropped for
-        // correctness on the next hit, which is the invalidation event.
-        fixture.Time.Advance(LeaseTtl + TimeSpan.FromSeconds(1));
-        Assert.Null(await fixture.Resolvers.ResolveActorAsync(key));
-
-        var invalidated = Assert.Single(
-            fixture.Publisher.Events.OfType<ZLinkLocationRuntimeEvent>(),
-            static @event => @event.Event == ZLinkLocationRuntimeEventKind.CacheInvalidated);
-        Assert.Equal("locations", invalidated.SourceName);
-        Assert.Equal(ZLinkLocationKind.Actor, invalidated.CacheInvalidation!.Value.Kind);
     }
 
     [Fact]
@@ -113,7 +92,7 @@ public sealed class LocationEventEmitterTests
 
         var actor = InMemoryLocationStoreTests.Actor("ignored", 0);
         await fixture.Runtime.WriteActorAsync(actor, ZLinkLocationWriteIntent.NewClaim);
-        Assert.Null(await fixture.Resolvers.ResolveActorAsync(new ZLinkActorLocationKey("player", "ghost")));
+        Assert.Null(await fixture.Resolvers.ResolveActorRowAsync(new ZLinkActorLocationKey("player", "ghost")));
         await fixture.Reconciler.TickAsync();
 
         Assert.Empty(fixture.Publisher.Events);
@@ -128,7 +107,6 @@ public sealed class LocationEventEmitterTests
             PollingInterval = TimeSpan.Zero,
             // Keep cache entries alive past the lease TTL so the dead-owner
             // invalidation path (not TTL expiry) is what drops them.
-            PositiveCacheTtl = TimeSpan.FromMinutes(5)
         };
 
         var registration = new ZLinkMonitoringRegistration();

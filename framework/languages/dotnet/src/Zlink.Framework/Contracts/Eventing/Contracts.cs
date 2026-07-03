@@ -111,16 +111,8 @@ public enum ZLinkLocationRuntimeEventKind
     TopologyChanged = 1,
     ServiceSummaryChanged = 2,
     StoreUnavailable = 3,
-    StoreRecovered = 4,
-    CacheInvalidated = 5
+    StoreRecovered = 4
 }
-
-/// <summary>A resolver cache entry that was dropped for correctness (its
-/// owner lease expired) rather than by TTL or capacity. The key is the
-/// canonical location key string of the invalidated entry.</summary>
-public readonly record struct ZLinkLocationCacheInvalidation(
-    ZLinkLocationKind Kind,
-    string CanonicalKey);
 
 public readonly record struct ZLinkLocationRuntimeEvent(
     string SourceName,
@@ -128,8 +120,7 @@ public readonly record struct ZLinkLocationRuntimeEvent(
     ZLinkLocationRuntimeEventKind Event,
     ZLinkLocationRuntimeStatus? Status,
     IReadOnlyList<ZLinkLocationTopologyEntry>? Topology,
-    IReadOnlyList<ZLinkLocationServiceSummary>? ServiceSummary,
-    ZLinkLocationCacheInvalidation? CacheInvalidation = null) : IZLinkRuntimeEvent;
+    IReadOnlyList<ZLinkLocationServiceSummary>? ServiceSummary) : IZLinkRuntimeEvent;
 
 public enum ZLinkLocationPeerEventKind
 {

@@ -187,6 +187,16 @@ public readonly record struct ZLinkSpotLocationKey(
     string MeshName,
     RoutingId SpotRid);
 
+/// <summary>
+/// The logical messaging address of one spot in a mesh: the owner node and
+/// the spot itself. Resolved once through a resolver, held by the caller,
+/// and re-resolved on failure — the send path never resolves. An entry
+/// spot's address has <c>NodeRid == SpotRid</c>.
+/// </summary>
+public readonly record struct ZLinkSpotAddress(
+    RoutingId NodeRid,
+    RoutingId SpotRid);
+
 public readonly record struct ZLinkActorLocationKey(
     string ActorType,
     string ActorId);
@@ -304,11 +314,7 @@ public sealed record ZLinkLocationRuntimeStatus(
     DateTimeOffset? LastRefreshAt,
     string? LastError,
     bool OwnerLeaseHealthy,
-    DateTimeOffset? OwnerLeaseRenewedAt,
-    int PeerCacheEntryCount,
-    int SpotCacheEntryCount,
-    int ActorCacheEntryCount,
-    int RouteCacheEntryCount);
+    DateTimeOffset? OwnerLeaseRenewedAt);
 
 public enum ZLinkLocationTopologyState
 {

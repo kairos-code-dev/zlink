@@ -37,24 +37,22 @@ public sealed class LocationRuntimeQueryTests
     }
 
     [Fact]
-    public async Task Queries_Read_The_Store_Directly_And_Bypass_The_Resolver_Cache()
+    public async Task Queries_Read_The_Store_Directly()
     {
         var fixture = await FixtureAsync();
         await fixture.Store.UpdateActorAsync(
             InMemoryLocationStoreTests.Actor(LiveOwner, 0), ZLinkLocationWriteIntent.NewClaim);
 
-        // Prime the resolver cache with the current row.
         var key = new ZLinkActorLocationKey("player", "actor-1");
-        Assert.Equal(LiveOwner, (await fixture.Resolvers.ResolveActorAsync(key))!.OwnerId);
+        Assert.Equal(LiveOwner, (await fixture.Resolvers.ResolveActorRowAsync(key))!.OwnerId);
 
-        // The row moves behind the cache's back.
         await fixture.Store.UpdateActorAsync(
             InMemoryLocationStoreTests.Actor(DeadOwner, 0) with { NodeRid = RoutingId.From("node-2") },
             ZLinkLocationWriteIntent.Takeover);
 
-        // A Normal resolve still serves the cached row, but the runtime
-        // query reads the store and sees the takeover immediately.
-        Assert.Equal(LiveOwner, (await fixture.Resolvers.ResolveActorAsync(key))!.OwnerId);
+        // Without a resolver cache the takeover is visible immediately on
+        // both surfaces; the runtime query reads the raw store rows.
+        Assert.Equal(DeadOwner, (await fixture.Resolvers.ResolveActorRowAsync(key))!.OwnerId);
         var queried = await fixture.Query.ListActorsAsync(new ZLinkActorLocationFilter());
         Assert.Equal(DeadOwner, Assert.Single(queried.Items).OwnerId);
     }
@@ -149,7 +147,6 @@ public sealed class LocationRuntimeQueryTests
             PollingInterval = TimeSpan.Zero,
             // Keep resolver cache entries alive across the test so the
             // bypass assertion contrasts cache hits with direct reads.
-            PositiveCacheTtl = TimeSpan.FromMinutes(5)
         };
         var tracker = new ZLinkOwnerLeaseTracker(store, options, time);
         var resolvers = new ZLinkStoreLocationResolvers(

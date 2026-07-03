@@ -50,11 +50,7 @@ internal sealed class ZLinkLocationRuntimeQueryService : IZLinkLocationRuntimeQu
             LastRefreshAt: _runtime.OwnerLeaseRenewedAt,
             LastError: _runtime.LastError,
             OwnerLeaseHealthy: _runtime.OwnerLeaseHealthy,
-            OwnerLeaseRenewedAt: _runtime.OwnerLeaseRenewedAt,
-            PeerCacheEntryCount: _resolvers.PeerCacheEntryCount,
-            SpotCacheEntryCount: _resolvers.SpotCacheEntryCount,
-            ActorCacheEntryCount: _resolvers.ActorCacheEntryCount,
-            RouteCacheEntryCount: _resolvers.RouteCacheEntryCount));
+            OwnerLeaseRenewedAt: _runtime.OwnerLeaseRenewedAt));
 
     public async ValueTask<IReadOnlyList<ZLinkPeerLocation>> ListPeersAsync(
         ZLinkPeerLocationFilter filter,

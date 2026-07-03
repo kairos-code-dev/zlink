@@ -96,15 +96,6 @@ internal sealed class ZLinkLocationEventEmitter
         EmitAsync(_routeSources, source => new ZLinkLocationRouteEvent(
             source, DateTimeOffset.UtcNow, ZLinkLocationRouteEventKind.ResolveMiss, key, null), ct);
 
-    internal ValueTask CacheInvalidatedAsync(
-        ZLinkLocationKind kind,
-        string canonicalKey,
-        CancellationToken ct) =>
-        EmitAsync(_runtimeSources, source => new ZLinkLocationRuntimeEvent(
-            source, DateTimeOffset.UtcNow, ZLinkLocationRuntimeEventKind.CacheInvalidated,
-            null, null, null,
-            new ZLinkLocationCacheInvalidation(kind, canonicalKey)), ct);
-
     private async ValueTask EmitAsync<TEvent>(
         IReadOnlyCollection<string> sources,
         Func<string, TEvent> create,
@@ -129,4 +120,5 @@ internal sealed class ZLinkLocationEventEmitter
             }
         }
     }
+
 }

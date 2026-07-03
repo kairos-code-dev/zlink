@@ -114,11 +114,10 @@ public sealed class AutoConnectLoopTests
 
         public ValueTask<IReadOnlyList<ZLinkPeerLocation>> ListPeersAsync(
             ZLinkPeerLocationFilter filter,
-            ZLinkResolveFreshness freshness = ZLinkResolveFreshness.Normal,
             CancellationToken cancellationToken = default)
         {
             ListCalls++;
-            return inner.ListPeersAsync(filter, freshness, cancellationToken);
+            return inner.ListPeersAsync(filter, cancellationToken);
         }
     }
 

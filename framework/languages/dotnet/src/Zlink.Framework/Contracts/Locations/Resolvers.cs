@@ -1,42 +1,41 @@
 namespace Zlink.Framework.Contracts.Locations;
 
 /// <summary>
-/// Per-call cache behavior for resolver reads. Normal allows cache hits;
-/// Refresh always reads the store and refreshes the cache with the result.
-/// Reconnect and create-if-absent decisions must use Refresh.
-/// </summary>
-public enum ZLinkResolveFreshness
-{
-    Normal = 0,
-    Refresh = 1
-}
-
-/// <summary>
-/// Peer list read surface for auto connect. This is the only list surface
-/// that goes through a cache and accepts freshness; diagnostics use
+/// Peer list read surface for auto connect. Every read reaches the store
+/// and joins owner liveness; there is no resolver cache. Diagnostics use
 /// <see cref="IZLinkLocationRuntimeQuery"/> instead.
 /// </summary>
 public interface IZLinkPeerLocationResolver
 {
     ValueTask<IReadOnlyList<ZLinkPeerLocation>> ListPeersAsync(
         ZLinkPeerLocationFilter filter,
-        ZLinkResolveFreshness freshness = ZLinkResolveFreshness.Normal,
         CancellationToken cancellationToken = default);
 }
 
+/// <summary>
+/// Messaging lookup: spot rid to its full address. Callers resolve once,
+/// hold the address for the spot's lifecycle, and re-resolve on failure.
+/// Lifecycle flows that need generations read location rows through the
+/// store/runtime surfaces instead.
+/// </summary>
 public interface IZLinkSpotLocationResolver
 {
-    ValueTask<ZLinkSpotLocation?> ResolveSpotAsync(
-        ZLinkSpotLocationKey key,
-        ZLinkResolveFreshness freshness = ZLinkResolveFreshness.Normal,
+    /// <summary>Null when no live row exists (unknown spot or expired owner lease).</summary>
+    ValueTask<ZLinkSpotAddress?> ResolveSpotAddressAsync(
+        RoutingId spotRid,
         CancellationToken cancellationToken = default);
 }
 
+/// <summary>
+/// Messaging lookup: actor id to the full address of the spot it lives on
+/// (the entry spot address for ENTRY_SPOT actors, the user spot address for
+/// USER_SPOT actors).
+/// </summary>
 public interface IZLinkActorLocationResolver
 {
-    ValueTask<ZLinkActorLocation?> ResolveActorAsync(
-        ZLinkActorLocationKey key,
-        ZLinkResolveFreshness freshness = ZLinkResolveFreshness.Normal,
+    ValueTask<ZLinkSpotAddress?> ResolveActorSpotAddressAsync(
+        string actorType,
+        string actorId,
         CancellationToken cancellationToken = default);
 }
 
@@ -44,7 +43,6 @@ public interface IZLinkRouteLocationResolver
 {
     ValueTask<ZLinkRouteLocation?> ResolveRouteAsync(
         ZLinkRouteLocationKey key,
-        ZLinkResolveFreshness freshness = ZLinkResolveFreshness.Normal,
         CancellationToken cancellationToken = default);
 }
 

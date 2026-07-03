@@ -96,7 +96,6 @@ internal sealed class ZLinkAutoConnectReconciler
                 new ZLinkPeerLocationFilter(
                     AutoConnectType: _local.AutoConnectType,
                     MeshName: _local.MeshName),
-                ZLinkResolveFreshness.Refresh,
                 cancellationToken).ConfigureAwait(false);
         }
         catch (Exception)

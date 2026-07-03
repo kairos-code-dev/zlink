@@ -293,11 +293,26 @@ internal sealed class ZLinkSpotRouteEgressDispatcher(
                     targetPeerRid,
                     targetSpotRid,
                     parts,
-                    (result, reply) => ZLinkRawReplyCompletion.Complete(
-                        result,
-                        reply,
-                        completion,
-                        $"SPOT route bridge request failed with result '{result}'."),
+                    (result, reply) =>
+                    {
+                        // NotFound from a spot-addressed request means the
+                        // target node answered "no such spot here": a stale
+                        // spot address, not an unknown node.
+                        if (result == RequestResult.NotFound)
+                        {
+                            ZLinkMessageParts.DisposeAll(reply);
+                            completion.TrySetException(new ZLinkFrameworkException(
+                                ZLinkFrameworkErrorKind.SpotRouteNotFound,
+                                $"SPOT '{targetSpotRid}' does not live on node '{targetPeerRid}'."));
+                            return;
+                        }
+
+                        ZLinkRawReplyCompletion.Complete(
+                            result,
+                            reply,
+                            completion,
+                            $"SPOT route bridge request failed with result '{result}'.");
+                    },
                     timeout))
                 return null;
 

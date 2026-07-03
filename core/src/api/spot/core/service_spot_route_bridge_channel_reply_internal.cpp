@@ -197,6 +197,22 @@ void cancel_pending_replies (
         delete_pending_reply (pending[i]);
 }
 
+void send_channel_request_error (socket_base_t *router_socket_,
+                                 const zlink_routing_id_t *peer_rid_,
+                                 uint64_t channel_request_seq_,
+                                 zlink_request_result_t result_)
+{
+    if (!router_socket_ || !peer_rid_ || channel_request_seq_ == 0)
+        return;
+    zlink_msg_t errno_part;
+    zlink_msg_init (&errno_part);
+    if (init_errno_part (&errno_part, request_result_errno (result_)) != 0)
+        return;
+    (void) socket_reqrep_internal::send_request_reply_message (
+      router_socket_, peer_rid_, &errno_part, 1, ZLINK_DONTWAIT,
+      request_reply::error_reply_type, channel_request_seq_);
+}
+
 void reply_to_channel_request (zlink_request_result_t result_,
                                zlink_msg_t *parts_,
                                size_t part_count_,

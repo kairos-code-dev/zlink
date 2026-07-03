@@ -525,6 +525,102 @@ void test_bridge_request_router_uses_target_node_rid ()
     TEST_ASSERT_SUCCESS_ERRNO (zlink_ctx_term (ctx));
 }
 
+void test_bridge_request_to_missing_spot_replies_not_found ()
+{
+    void *ctx = zlink_ctx_new ();
+    TEST_ASSERT_NOT_NULL (ctx);
+    TEST_ASSERT_SUCCESS_ERRNO (zlink_ctx_set (ctx, ZLINK_MAX_SOCKETS, 128));
+
+    void *client_node = zlink_spot_node_new (ctx, NULL);
+    void *server_node = zlink_spot_node_new (ctx, NULL);
+    TEST_ASSERT_NOT_NULL (client_node);
+    TEST_ASSERT_NOT_NULL (server_node);
+    TEST_ASSERT_SUCCESS_ERRNO (zlink_set_routing_id (server_node, "missing-spot-server-node",
+                                                     strlen ("missing-spot-server-node")));
+
+    void *client_router = zlink_socket (ctx, ZLINK_SOCKET_ROUTER);
+    void *server_router = zlink_socket (ctx, ZLINK_SOCKET_ROUTER);
+    TEST_ASSERT_NOT_NULL (client_router);
+    TEST_ASSERT_NOT_NULL (server_router);
+    TEST_ASSERT_SUCCESS_ERRNO (zlink_set_routing_id (client_router, "missing-spot-client",
+                                                     strlen ("missing-spot-client")));
+    TEST_ASSERT_SUCCESS_ERRNO (zlink_set_routing_id (server_router, "missing-spot-server",
+                                                     strlen ("missing-spot-server")));
+
+    int mandatory = 1;
+    TEST_ASSERT_SUCCESS_ERRNO (zlink_set_router_option (
+      client_router, ZLINK_ROUTER_OPT_MANDATORY, &mandatory, sizeof (mandatory)));
+    TEST_ASSERT_SUCCESS_ERRNO (zlink_bind (server_router, "inproc://spot-route-bridge-missing"));
+    TEST_ASSERT_SUCCESS_ERRNO (
+      zlink_connect (client_router, "inproc://spot-route-bridge-missing"));
+    std::this_thread::sleep_for (std::chrono::milliseconds (50));
+
+    void *client_bridge = zlink_spot_route_bridge_new (ctx, client_node, NULL);
+    void *server_bridge = zlink_spot_route_bridge_new (ctx, server_node, NULL);
+    TEST_ASSERT_NOT_NULL (client_bridge);
+    TEST_ASSERT_NOT_NULL (server_bridge);
+    TEST_ASSERT_SUCCESS_ERRNO (
+      zlink_spot_route_bridge_attach_router_channel (client_bridge, "mesh", client_router, NULL));
+    TEST_ASSERT_SUCCESS_ERRNO (
+      zlink_spot_route_bridge_attach_router_channel (server_bridge, "mesh", server_router, NULL));
+
+    zlink_routing_id_t target_node_rid;
+    memset (&target_node_rid, 0, sizeof (target_node_rid));
+    target_node_rid.size = strlen ("missing-spot-server");
+    memcpy (target_node_rid.data, "missing-spot-server", target_node_rid.size);
+
+    zlink_routing_id_t missing_spot_rid;
+    memset (&missing_spot_rid, 0, sizeof (missing_spot_rid));
+    missing_spot_rid.size = strlen ("no-such-spot");
+    memcpy (missing_spot_rid.data, "no-such-spot", missing_spot_rid.size);
+
+    reply_probe_t reply_probe;
+    zlink_msg_t payload;
+    init_text_part (&payload, "anyone-there");
+    TEST_ASSERT_SUCCESS_ERRNO (zlink_spot_route_bridge_request (
+      client_bridge, "mesh", &target_node_rid, &missing_spot_rid, &payload, 1, &capture_reply,
+      &reply_probe, ZLINK_SEND_FLAGS_NONE, 1000));
+
+    //  Feed the relay frames into the server bridge the way a receive pump
+    //  would; the addressed spot does not live on this node.
+    zlink_msg_t request_parts[8];
+    size_t request_part_count = 0;
+    const zlink_routing_id_t *source_node_rid = NULL;
+    const zlink_routing_id_t *source_spot_rid = NULL;
+    uint64_t request_seq = 0;
+    zlink_part_flag_t has_more = ZLINK_PART_MORE;
+    while (has_more == ZLINK_PART_MORE && request_part_count < 8) {
+        zlink_msg_init (&request_parts[request_part_count]);
+        TEST_ASSERT_EQUAL_INT (
+          ZLINK_RECV_OK,
+          zlink_router_recv_part (server_router, &source_node_rid, &source_spot_rid, &request_seq,
+                                  &request_parts[request_part_count], &has_more,
+                                  ZLINK_RECV_FLAGS_NONE));
+        ++request_part_count;
+    }
+    TEST_ASSERT_EQUAL_INT (ZLINK_PART_FINAL, has_more);
+    TEST_ASSERT_NOT_NULL (source_node_rid);
+    TEST_ASSERT_NOT_EQUAL (0, request_seq);
+
+    bool handled = false;
+    TEST_ASSERT_SUCCESS_ERRNO (zlink_spot_route_bridge_handle_router_received (
+      server_bridge, "mesh", source_node_rid, request_seq, request_parts, request_part_count,
+      &handled));
+    TEST_ASSERT_TRUE (handled);
+
+    //  The requester completes with NOT_FOUND well before the 1s timeout.
+    TEST_ASSERT_TRUE (wait_for_reply (&reply_probe, client_router));
+    TEST_ASSERT_EQUAL_INT (ZLINK_REQUEST_NOT_FOUND, reply_probe.result);
+
+    TEST_ASSERT_SUCCESS_ERRNO (zlink_spot_route_bridge_close (client_bridge));
+    TEST_ASSERT_SUCCESS_ERRNO (zlink_spot_route_bridge_close (server_bridge));
+    TEST_ASSERT_SUCCESS_ERRNO (zlink_close (client_router));
+    TEST_ASSERT_SUCCESS_ERRNO (zlink_close (server_router));
+    TEST_ASSERT_SUCCESS_ERRNO (zlink_spot_node_destroy (&client_node));
+    TEST_ASSERT_SUCCESS_ERRNO (zlink_spot_node_destroy (&server_node));
+    TEST_ASSERT_SUCCESS_ERRNO (zlink_ctx_term (ctx));
+}
+
 void test_handle_received_rejects_malformed_and_request_relay ()
 {
     void *ctx = zlink_ctx_new ();
@@ -818,6 +914,7 @@ int main ()
     RUN_TEST (test_bridge_send_router_uses_target_node_rid);
     RUN_TEST (test_bridge_send_router_relay_delivers_to_target_bridge_spot);
     RUN_TEST (test_bridge_request_router_uses_target_node_rid);
+    RUN_TEST (test_bridge_request_to_missing_spot_replies_not_found);
     RUN_TEST (test_handle_received_rejects_malformed_and_request_relay);
     RUN_TEST (test_handle_router_received_request_replies_to_channel_peer);
     RUN_TEST (test_bridge_close_cancels_pending_router_reply);

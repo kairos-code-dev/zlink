@@ -204,8 +204,13 @@ int deliver_request_relay_to_local_spot (spot_route_bridge_t *bridge_,
       zlink::spot_reqrep_internal::find_spot_state_by_identity (
         zlink::routing_id_key (local_node_rid), zlink::routing_id_key (relay_->target_spot_rid));
     if (!target_state) {
-        errno = ENOENT;
-        return -1;
+        //  The node is alive but the addressed spot does not live here.
+        //  Reply NOT_FOUND so the requester can tell a stale spot address
+        //  from a dead node instead of waiting for the request timeout.
+        channel_reply::send_channel_request_error (endpoint_->socket, source_node_rid_,
+                                                   channel_request_seq_, ZLINK_REQUEST_NOT_FOUND);
+        codec::close_decoded_relay_parts (relay_);
+        return 0;
     }
     if (!endpoint_->reply_adapter_state) {
         errno = EFAULT;

@@ -38,6 +38,13 @@ void reply_to_channel_request (zlink_request_result_t result_,
                                zlink_msg_t *parts_,
                                size_t part_count_,
                                void *userdata_);
+//  Completes a channel request immediately with an error result, without a
+//  registered pending reply. Used when the request can be judged on arrival
+//  (e.g. the addressed spot does not live on this node).
+void send_channel_request_error (socket_base_t *router_socket_,
+                                 const zlink_routing_id_t *peer_rid_,
+                                 uint64_t channel_request_seq_,
+                                 zlink_request_result_t result_);
 
 }
 }

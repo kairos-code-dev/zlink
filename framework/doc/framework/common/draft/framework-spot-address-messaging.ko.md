@@ -179,6 +179,9 @@ IZLinkRequestCall RequestToSpot<TRequest>(ZLinkSpotAddress address, TRequest req
 - **원격 spot 전달의 wire form은 route socket 위의 spot route bridge relay framing 하나로
   고정한다.** 소켓 수준 SendToSpot framing과 bridge relay framing이 혼용되면 수신 pump가
   한쪽을 일반 envelope로 오인해 drop한다. 포팅 언어는 이 framing 하나만 구현한다.
+  이 고정은 **framework node 간 route channel 평면에 한정**한다. 외부 connector client
+  (`IZLinkRouteClient`, `IZLinkSpotPublisherClient`)가 spot node router 평면으로 직접 보내는
+  inbound는 기존 계약 그대로이며 이 절의 범위가 아니다.
 - entry spot 대상 메시징은 `ZLinkSpotAddress(nodeRid, nodeRid)`로 표현된다.
 
 ### 사용 패턴 — 조회 1회, 로직에서 재사용
@@ -229,6 +232,13 @@ owner 이동, node 장애, 그리고 정상 lifecycle의 spot destroy(actor 1:1 
 | node 도달, spot 부재 | 수신측, 오류 reply 1왕복 | `SpotRouteNotFound` | 재resolve 후 재시도 |
 | 전송 후 무응답 | timeout | timeout | 도메인 정책 (요청 중복 위험을 고려) |
 
+"모르는 node"와 "미연결"의 로컬 판정은 **자동연결 reconciler의 peer snapshot(§8이 캐시가
+아닌 알고리즘 상태로 유지하는 것)과 소켓 연결 상태에서만** 나온다: desired set에 있는데 연결이
+아직 수렴하지 않았으면 미연결, desired set에도 없으면 모르는 node다. 이 판정을 위해 전송
+경로에서 store를 읽지 않는다 — 읽는 순간 이 문서의 제1원칙(숨은 store I/O 금지)이 §7에서
+깨진다. 자동연결 없이 수동 connect만 쓰는 구성은 snapshot이 없으므로 이 구분 없이 기존
+동작(연결 수렴 대기)을 유지한다.
+
 미연결을 즉시 오류로 반환하면 startup·mesh 수렴 창에서 오류가 호출자에게 그대로 드러난다.
 이건 의도된 동작이다 — 그 창을 매끄럽게 넘기는 대기·재시도 편의는 submitter가 몰래 하는 게
 아니라 §3의 helper 경계(명시적 재시도 정책 파라미터) 안에서 제공한다.
@@ -272,6 +282,9 @@ sequenceDiagram
 - errno는 기존 `ZLinkFrameworkErrorKind`의 `SpotRouteNotFound`(spot 부재),
   `ActorRouteNotFound`(actor 대상), `RequestTargetNotFound`(모르는 node),
   `RouteNotConnected`(미연결)를 그대로 쓴다. 새 종류를 추가하지 않는다.
+- `RouteNotConnected`의 `IsRetriable=true`는 "**전송 전 실패라 요청 중복 없이 안전하게
+  재시도할 수 있다**"는 의미다. timeout(전송 후 무응답)과의 대비가 이 분류표의 실질
+  가치다 — timeout 재시도는 요청 중복 위험을 호출자가 감수해야 한다.
 - destroy된 spot의 주소는 재resolve가 null을 반환한다. 재활성(placement 경로)할지 포기할지는
   도메인 결정이다.
 - **spot 이동·재활성은 메시지 순서·전달 경계다.** 이동 창에서 이전 주소로의 in-flight 전송은
@@ -291,7 +304,7 @@ sequenceDiagram
 
 | 현재 동작 | 문제 | 정비 |
 |-----------|------|------|
-| 미연결 node로의 send/request를 submitter가 재시도 대상(NotConnected)으로 분류하고, 최종적으로 generic timeout으로 끝낸다 | 로컬에서 즉시 판정 가능한 실패가 timeout 뒤에 숨어, 호출자가 재resolve 시점을 알 수 없다 | submitter의 NotConnected 재시도 흡수를 제거하고 위 fail-fast 분류표대로 즉시 반환한다. 회귀 테스트 대상 |
+| 미연결 node로의 send/request를 submitter가 재시도 대상(NotConnected)으로 분류하고, 최종적으로 generic timeout으로 끝낸다 | 로컬에서 즉시 판정 가능한 실패가 timeout 뒤에 숨어, 호출자가 재resolve 시점을 알 수 없다 | **rid 지정 router 전송 경로에 한정해** NotConnected 재시도 흡수를 제거하고 위 fail-fast 분류표대로 즉시 반환한다. dealer/pub의 connect-창 버퍼링(client/server 채널이 dial 직후 send하는 패턴)은 유지한다. 실제 구현 지점은 두 곳 — egress의 bridge 호출부(원격 spot request는 bridge native `start_request` 경로라 framework submitter를 타지 않는다)와 route mesh 직접 요청의 submitter. 회귀 테스트 대상 |
 | send는 fire-and-forget submit이라 local submit 실패도 무통지다 | §7 표의 drop 시멘틱보다 나쁜 상태 — 로컬 큐에서 죽어도 관측할 수 없다 | 최소 debug/monitoring event로 submit 실패를 관측 가능하게 한다 |
 | `SpotRouteNotFound`는 수신측 bridge가 spot 부재 시 오류 reply를 보내야 성립한다 | 아직 검증되지 않은 가정이다 | 수신측 bridge의 spot 부재 오류 reply를 구현·검증 범위에 포함한다 |
 
@@ -388,3 +401,16 @@ sequenceDiagram
   선택됨. 미참여 mesh 주소는 대기 없이 즉시 구성 오류.
 - egress dispatcher: location resolver 의존이 없음(전송 경로에서 store 호출 0 검증).
 - 자동연결: peer snapshot + change stamp 동작이 캐시 제거와 무관하게 유지됨.
+
+## 12. 진행 확인표
+
+- [ ] 전송 스택 정비: request 실패 fail-fast 분류 — rid 지정 router 경로 한정, 판정 소스 = reconciler snapshot + 소켓 상태 (§7)
+- [ ] 전송 스택 정비: send submit 실패 관측 event (§7)
+- [ ] 전송 스택 정비: 수신측 bridge spot 부재 오류 reply 구현·검증 (§7)
+- [ ] contracts: `ZLinkSpotAddress` + resolver 시그니처 교체 + freshness 제거 (§4, §5)
+- [ ] runtime: resolver 캐시 제거 (§8)
+- [ ] runtime: egress 주소 기반 전환 + per-send resolve 제거 + `bffb264e2` 경로 제거 (§6, §8)
+- [ ] runtime: framework 내부 호출자(bound session notify, actor session relay) 주소 보관·재resolve 전환 (§6)
+- [ ] 샘플: GameQuest·SupportChat·DeliveryDispatch 조회 1회 + 보관 패턴 정리 (§10.4)
+- [ ] E2E: config-2 spot service 갱신 + DD courier 결정 릴레이·YD shutdown-recovery 잔여 실패 소화 (§10.4)
+- [ ] 문서: §9 수정 목록 반영 (location resolver/store 초안 갱신)

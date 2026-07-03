@@ -6,6 +6,13 @@
 >
 > 이 문서는 core registry/discovery에 의존하지 않고 framework가 자동 연결, spot 위치 조회,
 > actor 위치 조회를 제공하기 위한 공통 계약 후보를 정의한다.
+>
+> **대체 예정 범위**: 이 문서의 캐시/freshness 관련 서술 전체 — §8의 `ZLinkResolveFreshness`,
+> §10 캐시 정책, §15.2/§15.3·§16.2/§16.3의 cache 단계, §20.4의 cache option, §20.5의
+> `CacheInvalidated`, §24.3의 cache 확인 항목 — 는
+> [framework-spot-address-messaging.ko.md](framework-spot-address-messaging.ko.md)에서 제거하기로
+> 결정했다(spot 메시징이 spot full 주소를 받는 모델로 바뀌면서 캐시의 존재 이유가 사라짐).
+> 어느 절에서든 두 문서가 충돌하면 그 문서가 우선한다.
 
 ## 1. 목적
 
@@ -1328,6 +1335,10 @@ options.AddRedisLocationStore(redis =>
 
 ### 20.4 새로 추가할 option
 
+> 아래 표의 cache 관련 option 6개(peer/spot/actor/route cache enabled, positive TTL, max
+> entries)는 [framework-spot-address-messaging.ko.md](framework-spot-address-messaging.ko.md)의
+> 캐시 제거 결정으로 추가하지 않는다.
+
 | option | 의미 |
 |--------|------|
 | peer cache enabled | peer list cache 사용 여부 |
@@ -1583,8 +1594,8 @@ draft가 기준이며, 정식 spec 문서에는 아직 구현되지 않은 계�
 - [x] owner lease heartbeat (runtime당 1회, row 개별 write 금지) — 6.6, 14.4
 - [x] owner lease snapshot join과 monotonic 만료 판정 (wall clock 비교 금지) — 6.6, 7.5
 - [x] owner lease 목록 polling 갱신 (staleness 상한 = polling interval) — 6.6
-- [x] 단건 cache (enable/TTL/max entries, not-found 미cache, working set 기준) — 10절
-- [x] peer list cache와 watch/change stamp 무효화 — 10절
+- [x] 단건 cache (enable/TTL/max entries, not-found 미cache, working set 기준) — 10절 (대체 예정: spot-address 초안이 캐시 제거)
+- [x] peer list cache와 watch/change stamp 무효화 — 10절 (대체 예정: peer snapshot은 reconciler 내부 상태로 재분류)
 - [x] stale row 정의 (owner lease 만료 또는 관찰한 generation보다 오래된 row) — 8.1
 - [x] `UpdatedAt` 용도 제한 (운영 표시/정렬 보조만, 충돌 해소·유효성·freshness에 사용 금지) — 9절
 - [x] runtime query는 freshness 없이 항상 direct store read — 8.2

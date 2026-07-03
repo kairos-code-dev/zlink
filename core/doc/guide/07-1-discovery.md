@@ -15,6 +15,6 @@ Applications should not create or attach public discovery handles. Current
 public service APIs are documented in the SPOT and socket guides, and the
 exact C contract is defined by `core/include/zlink.h`.
 
-Framework-level automatic location and routing is being replaced by the
-location runtime/store design tracked in
-`framework/doc/framework/common/draft/framework-location-resolver-store.ko.md`.
+Framework-level automatic location lookup and routing moved to the location
+runtime/store. The formal contract lives in
+`framework/doc/framework/common/spec/location-runtime.ko.md`.

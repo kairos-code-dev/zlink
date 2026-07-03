@@ -8,4 +8,4 @@
 
 Do not use this page as implementation guidance for new public contracts.
 Replacement framework topology and location behavior is tracked separately in
-the location runtime/store draft.
+`framework/doc/framework/common/spec/location-runtime.ko.md`.

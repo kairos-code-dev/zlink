@@ -15,6 +15,6 @@ Applications should not create public registry handles or query registry
 topology through the core C API. The current public C contract is
 `core/include/zlink.h`.
 
-Framework-level location lookup, topology, and status replacement work is
-tracked in
-`framework/doc/framework/common/draft/framework-location-resolver-store.ko.md`.
+Framework-level location lookup, topology, and status moved to the location
+runtime query. The formal contract lives in
+`framework/doc/framework/common/spec/location-runtime.ko.md`.

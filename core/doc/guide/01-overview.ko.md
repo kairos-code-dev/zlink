@@ -36,7 +36,7 @@ zlink는 [libzmq](https://github.com/zeromq/libzmq) v4.3.5 기반의 현대적 �
 |  validate + delegate, per-handle admission guard     |
 +------------------------------------------------------+
 |  Service Layer                                       |
-|  Discovery · SPOT · Actor · Registry                 |
+|  SPOT · Actor (공개) · 내부 위치 런타임               |
 |  service access seam (*_access) · lifecycle · runtime|
 +------------------------------------------------------+
 |  Socket Semantic / Runtime                           |
@@ -68,7 +68,7 @@ zlink는 [libzmq](https://github.com/zeromq/libzmq) v4.3.5 기반의 현대적 �
 | 계층 | 역할 |
 |------|------|
 | Public API Facade | C API 진입점. validate + delegate만 수행 |
-| Service Layer | Discovery/SPOT(+Actor)/Registry 의미와 lifecycle. access seam으로 API와 연결 |
+| Service Layer | SPOT(+Actor) 의미와 lifecycle. access seam으로 API와 연결. (예전 Discovery/Registry 모듈은 내부 전용으로만 남아 있고 공개 계약이 아니다) |
 | Socket Semantic/Runtime | socket family 의미와 공통 runtime이 분리 |
 | Runtime Core | context, shutdown, option dispatch, multipart send |
 | Engine Layer | Boost.Asio 기반 poller, io_context 실행 기반 |
@@ -111,8 +111,6 @@ zlink는 [libzmq](https://github.com/zeromq/libzmq) v4.3.5 기반의 현대적 �
 
 | 서비스 | 역할 |
 |--------|------|
-| **Discovery** | Registry를 구독해 서비스 목록을 로컬 캐시로 유지 |
-| **Registry** | 서비스 엔트리 등록·관리, SERVICE_LIST 브로드캐스트 |
 | **SPOT** | 위치 투명(location-transparent, 상대 주소를 몰라도 통신 가능) 토픽 pub/sub + routed mesh 통신. `SpotNode`가 transport를 소유하고 `Spot` facade가 data plane을 제공 |
 | **Actor** | SPOT 안에서 STREAM 세션 메시지를 라우팅 대상으로 묶는 세션 기반 주소 지정 단위. `SpotNode`가 Actor 테이블을 관리하고 `Entry Spot`에서 메시지를 전달한다 |
 

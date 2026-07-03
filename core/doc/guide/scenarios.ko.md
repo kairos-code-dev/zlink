@@ -21,7 +21,6 @@
 | 2 | **부하 분산 요청/응답** | DEALER ↔ ROUTER | 라우팅된 요청, fan-out 워커 | `DealerRouterRecv` / `dealer_router_recv_sample` |
 | 3 | **비동기 요청/응답** | DEALER | correlation·timeout이 있는 RPC | `RequestReplyAsync` / `request_reply_async_sample` |
 | 4 | **토픽 Pub/Sub** | PUB / SUB | 토픽 기반 이벤트 fan-out | `PubSubRecv` / `pubsub_recv_sample` |
-| 5 | **Discovery + Registry** | 서비스 계층 | 이름 기반 발견·자동 연결 | `DiscoveryRegistry`, `RegistryQuery` |
 | 6 | **SPOT 메시징** | SPOT | 동적 상태 단위 + 토픽/라우팅 | `SpotRecv`, `SpotRequestAsync` |
 | 7 | **Actor 룸 서버** | SPOT + Actor + STREAM | 세션↔엔티티 binding, 룸 dispatch | `ActorRoomServer`, `ActorSinglePlayerQueue`, `ActorGatewayRelay` |
 | 8 | **STREAM 패킷** | STREAM | 외부 raw TCP 클라이언트 | `StreamPacketCallback` / `stream_packet_callback_sample` |

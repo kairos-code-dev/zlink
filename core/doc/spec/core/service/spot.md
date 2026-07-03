@@ -13,7 +13,7 @@ draft documents.
 The public SPOT surface is split into two handles.
 
 - `SpotNode`
-  Owns SPOT topology, discovery-backed peer wiring, manual peer wiring,
+  Owns SPOT topology, manual peer wiring (endpoint/rid),
   channel-call `DEALER` registration, and external publish ingress.
 - `Spot`
   A data-plane facade created on top of an existing `SpotNode`.
@@ -160,20 +160,20 @@ To set a fixed rid, obtain a facade with `zlink_spot_node_entry_spot()` and call
 
 Entry Spot rid changes are only allowed during the **configuration phase**.
 The configuration phase ends when **any one** of the following first occurs:
-the first Actor is created, a Discovery is attached, the SpotNode is bound or
-connected, or a Spot owner route or Actor active route is published.
+the first Actor is created, the SpotNode is bound or connected, the spot
+lookup index is populated (first spot acquisition), or the actor runtime
+records its first actor.
 
-> **Spot owner route**: a Discovery-published record that maps a Spot's routing
-> id to the SpotNode that owns it, enabling peer nodes to route messages to
-> that Spot by rid.
->
-> **Actor active route**: a Discovery-published record that maps an Actor id to
-> the Spot currently holding that Actor, used for remote Actor relay.
+> The core does not publish location records. The spot rid → facade mapping
+> lives in the node-local lookup index, and the actor id → spot mapping lives
+> in the node-local actor runtime. Sharing locations across nodes (which node
+> owns which spot/actor) is the responsibility of a higher layer (the
+> framework location runtime/store).
 
 - Changing the Entry Spot rid after any Actor has been created fails with
   `ZLINK_CONFIG_INVALID_STATE` and `errno == EBUSY`.
-- The Entry Spot rid cannot be changed after it has been published as an Actor active route
-  or Spot owner route.
+- The Entry Spot rid cannot be changed after it has entered the node's
+  lookup index (first spot acquisition) or actor runtime state.
 - The Entry Spot rid must not duplicate any other live user Spot rid within the same `SpotNode`.
 
 ### Spot lookup
@@ -205,8 +205,9 @@ ZLINK_EXPORT zlink_config_result_t zlink_spot_node_spot_lookup(
   Entry Spot before removing the Spot.
 - Looking up the Entry Spot rid returns an Entry Spot facade. The Entry Spot logical state
   is owned by the `SpotNode`, so closing the last facade does not remove it.
-- Remote Spot lookup is handled by Discovery Spot owner resolve. This function only looks
-  up Spots within the local `SpotNode`.
+- Remote Spot lookup is not a core contract (a higher layer resolves the
+  location and routes by address). This function only looks up Spots within
+  the local `SpotNode`.
 
 ## SpotNode contract
 
@@ -252,7 +253,7 @@ are not part of the public contract, and their old enum numbers are reserved.
 
 SpotNode and Spot do not expose a public weight setting. Peer weight can be
 configured only on raw ROUTER and DEALER sockets. Spot peer snapshots may still
-show a `weight` field; it is a remote peer state value learned from discovery
+show a `weight` field; it is a remote peer state value learned from peer
 or peer signaling, not a Spot/SpotNode local option.
 
 SpotNode is a topology and configuration handle, not a topic publisher. Calling
@@ -307,7 +308,7 @@ zlink_config_result_t zlink_spot_node_internal_sockets(
 - `PUBSUB` mode does not create routed sockets, and `ROUTED` mode does not
   create topic sockets. Snapshot calls do not activate disabled planes.
 
-### Topology and discovery
+### Topology and peer wiring
 
 ```c
 zlink_config_result_t zlink_spot_node_set_router_bind(
@@ -316,6 +317,10 @@ zlink_config_result_t zlink_spot_node_set_router_bind(
 zlink_config_result_t zlink_spot_node_set_pub_bind(
   void *node,
   const char *endpoint);
+zlink_config_result_t zlink_spot_node_set_pub_routing_id(
+  void *node, const void *data, size_t size);
+zlink_config_result_t zlink_spot_node_set_sub_routing_id(
+  void *node, const void *data, size_t size);
 zlink_connect_result_t zlink_spot_node_connect_peer(void *node,
                                                     const char *peer_endpoint);
 zlink_connect_result_t zlink_spot_node_connect_peer_rid(
@@ -327,11 +332,14 @@ zlink_connect_result_t zlink_spot_node_disconnect_peer(void *node,
 zlink_connect_result_t zlink_spot_node_disconnect_peer_rid(
   void *node,
   const zlink_routing_id_t *target_node_rid);
-                                                       void *discovery);
 ```
 
 - `zlink_spot_node_set_router_bind()` configures the router socket endpoint
   used for routed ingress. A ROUTED-mode node starts from this call.
+- `zlink_spot_node_set_pub_routing_id()` / `zlink_spot_node_set_sub_routing_id()`
+  set the routing id of the PUB/SUB plane sockets. They are allowed only during
+  the pre-bind configuration phase; argument validation and failure codes match
+  the other `set_*` functions.
 - `zlink_spot_node_set_pub_bind()` configures the PUB/SUB mesh endpoint and
   starts the PUB/SUB plane. In ALL mode, call
   `zlink_spot_node_set_router_bind()` first when the node also needs routed
@@ -348,13 +356,13 @@ zlink_connect_result_t zlink_spot_node_disconnect_peer_rid(
 - `zlink_spot_node_disconnect_peer_rid()` disconnects a peer node by target
   node routing id. It does not target an individual spot routing id under that
   node.
-- When discovery is attached, the discovery reconciler may use the same peer
-  connection APIs. Callers should change registry/discovery configuration
-  instead of directly adding or removing endpoints managed by discovery.
+- A higher layer that manages the peer set automatically (the framework
+  location runtime, for example) uses these same peer connection APIs. Do not
+  add or remove endpoints under automatic management by hand — the connection
+  state must have a single owner.
 - The `Spot` facade has no separate peer-rid disconnect function because peer
   connections are owned by the `SpotNode` runtime.
   a SPOT channel view.
-- A node may have only one active SPOT discovery view at a time.
 
 ### SPOT route channel bridge
 
@@ -453,6 +461,11 @@ int zlink_spot_route_bridge_handle_router_received(
   with `ENOTSUP` and counted as a rejected inbound.
 - A frame on an endpoint without `ZLINK_SPOT_ROUTE_BRIDGE_CAP_SPOT_ROUTE` is
   rejected with `EPERM` and counted as a rejected inbound.
+- When an inbound SPOT relay **request** addresses a spot that does not live
+  on this node (the node is alive, the addressed spot is absent), the bridge
+  replies with a `ZLINK_REQUEST_NOT_FOUND` error on the same `request_seq`.
+  The requester uses this error to tell a stale spot address from a dead node
+  (timeout). One-way relay sends are dropped without an error reply.
 - Malformed SPOT relay frames are dropped and counted as malformed inbound.
 
 ```c
@@ -1156,10 +1169,10 @@ zlink_submit_result_t zlink_remote_actor_get_ref(
   is the operation timeout from submit to completion; `timeout_ms == 0`
   installs no timeout. The `result` pointer is valid only inside the callback.
   This function does not create Actors, does not move them, and does not
-  publish or update active routes.
-  in purpose: the former asks a known target node directly for a checked ref,
-  while the latter queries the Registry-published active route for the
-  currently public location.
+  update active routes. It is a confirmation path for callers that already
+  know the target node rid and actor id; looking up which node holds an actor
+  is not a core contract — a higher layer (the framework location runtime)
+  owns that lookup.
 
 ### Remote Actor placement model
 
@@ -1537,7 +1550,7 @@ The session owner does not store the Actor's joined Spot state. The Actor
 owner does not store the STREAM session's application state. A successful
 session attach does not create or update an active route; a successful detach
 does not remove an active route. The active route update timing is described
-in the [Discovery active route](#discovery-active-route) section.
+in the [Actor active route](#actor-active-route-node-local-location-state) section.
 
 `zlink_stream_bind_actor()` / `zlink_stream_unbind_actor()` contracts:
 
@@ -1783,16 +1796,18 @@ Delivery rules:
 - Re-entering join, leave, or destroy on the same Actor from inside a
   lifecycle event is not supported.
 
-### Discovery active route
+### Actor active route (node-local location state)
 
-`zlink_actor_route_t` represents an Actor's current dispatch location. The
-route is observable via Registry-backed queries when the owner `SpotNode`'s
-not-found-class failure even after the local Actor location changes.
+`zlink_actor_route_t` is a value type representing an Actor's current dispatch
+location. The core does not publish this state outside the node — the
+node-local actor runtime uses it to pick dispatch targets, and sharing
+locations across nodes is the responsibility of a higher layer (the framework
+location runtime).
 
 - `actor` is the final Actor ref the route points to.
 - `current_spot_rid` is the Actor's current Spot.
 - `current_spot_kind` identifies Entry Spot or user Spot.
-- The route is published after a join commit.
+- The route is updated after a join commit.
 - The route does not indicate whether a session is bound.
 
 Active route timing:
@@ -1810,13 +1825,13 @@ Active route timing:
 | Matching Actor destroy | Route removed |
 | Stale Actor destroy | No change |
 
-The route updates above become Registry-visible after the join or leave
-commit when the current `SpotNode` owning the Actor has
-Registry.
+The route updates above are reflected only in the internal state of the
+current `SpotNode` owning the Actor after the join or leave commit. Sharing
+the location outside the node is the responsibility of a higher layer.
 
 ## Constraint summary
 
-- SPOT mesh auto-connect applies only to SPOT discovery peers.
+- SPOT mesh peer wiring targets SPOT mesh peers only (manual connect or a higher layer's automatic management).
 - Generic socket providers do not become SPOT mesh peers.
 - New channel calls go through `zlink_spot_route_bridge_*`. Legacy channel
   calls depend on the deprecated attached `DEALER` path.

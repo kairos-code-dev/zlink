@@ -120,8 +120,8 @@ zlink_connect_result_t rc = zlink_disconnect_rid(socket, &source_rid);
 ```
 
 Missing targets return `ZLINK_CONNECT_NOT_FOUND`, duplicate peer routing ids
-return `ZLINK_CONNECT_CONFLICT`, and Discovery-owned attached sockets return
-`ZLINK_CONNECT_BUSY`.
+return `ZLINK_CONNECT_CONFLICT`, and sockets whose connection lifecycle is
+managed by another owner (a higher-level runtime) return `ZLINK_CONNECT_BUSY`.
 
 ## 8. Common Receive Interface
 

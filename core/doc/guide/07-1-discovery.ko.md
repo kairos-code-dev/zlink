@@ -14,6 +14,5 @@
 현재 공개 service API는 SPOT과 socket 가이드에 설명되어 있으며, 정확한 C 계약은
 `core/include/zlink.h`가 기준이다.
 
-framework 수준 자동 위치 조회와 라우팅은
-`framework/doc/framework/common/draft/framework-location-resolver-store.ko.md`에서
-추적하는 location runtime/store 설계로 대체하는 중이다.
+framework 수준 자동 위치 조회와 라우팅은 location runtime/store 로 대체되었다.
+정식 계약은 `framework/doc/framework/common/spec/location-runtime.ko.md`를 본다.

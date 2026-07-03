@@ -13,6 +13,5 @@
 애플리케이션은 공개 registry handle을 만들거나 core C API로 registry topology를
 조회해서는 안 된다. 현재 공개 C 계약은 `core/include/zlink.h`가 기준이다.
 
-framework 수준 위치 조회, topology, status 대체 작업은
-`framework/doc/framework/common/draft/framework-location-resolver-store.ko.md`에서
-추적한다.
+framework 수준 위치 조회, topology, status 는 location runtime query 로 대체되었다.
+정식 계약은 `framework/doc/framework/common/spec/location-runtime.ko.md`를 본다.

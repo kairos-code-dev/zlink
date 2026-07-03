@@ -117,8 +117,8 @@ zlink_connect_result_t rc = zlink_disconnect_rid(socket, &source_rid);
 ```
 
 대상이 없으면 `ZLINK_CONNECT_NOT_FOUND`, 같은 routing id를 가진 peer가 둘
-이상이면 `ZLINK_CONNECT_CONFLICT`, discovery가 소유한 소켓이면
-`ZLINK_CONNECT_BUSY`가 반환된다.
+이상이면 `ZLINK_CONNECT_CONFLICT`, 연결 lifecycle을 다른 소유자(상위 runtime)가
+관리하는 소켓이면 `ZLINK_CONNECT_BUSY`가 반환된다.
 
 ## 8. 공통 수신 인터페이스
 

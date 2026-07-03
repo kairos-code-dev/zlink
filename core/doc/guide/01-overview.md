@@ -35,7 +35,7 @@ Note: `pgm://` and `epgm://` are currently disabled and unsupported in zlink.
 |  validate + delegate, per-handle admission guard     |
 +------------------------------------------------------+
 |  Service Layer                                       |
-|  Discovery · SPOT · Actor · Registry                 |
+|  SPOT · Actor (public) · internal location runtime   |
 |  service access seam (*_access) · lifecycle · runtime|
 +------------------------------------------------------+
 |  Socket Semantic / Runtime                           |
@@ -67,7 +67,7 @@ Key roles per layer:
 | Layer | Role |
 |-------|------|
 | Public API Facade | C API entry point. Validate + delegate only; does not know concrete service/socket details |
-| Service Layer | Discovery/SPOT(+Actor)/Registry semantics and lifecycle. Connected to the API layer via service-local access seams |
+| Service Layer | SPOT(+Actor) semantics and lifecycle. Connected to the API layer via service-local access seams. (The former Discovery/Registry modules remain internal-only and are not public contracts) |
 | Socket Semantic/Runtime | Socket family semantics (semantic) and common mechanism (runtime components) are separated |
 | Runtime Core | Context, shutdown, close/drain orchestration, option dispatch, logical multipart send |
 | Engine Layer | Boost.Asio-based poller, io_context, mailbox execution backbone |
@@ -111,8 +111,6 @@ lifecycle.
 
 | Service | Role |
 |---------|------|
-| **Discovery** | Subscribes to the Registry and maintains a local cache of the service list |
-| **Registry** | Registers and manages service entries; broadcasts the SERVICE_LIST |
 | **SPOT** | Location-transparent topic pub/sub + routed communication mesh. `SpotNode` owns the transports; `Spot` facades provide the data plane |
 | **Actor** | Session-based addressing unit inside SPOT. Funnels STREAM session messages into a `Spot` dispatch context. `SpotNode` manages the Actor table; `Entry Spot` handles initial dispatch |
 

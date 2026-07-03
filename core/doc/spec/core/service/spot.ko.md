@@ -12,8 +12,9 @@
 SPOT 공개 표면은 두 핸들로 나뉜다.
 
 - `SpotNode`
-  SPOT 토폴로지, discovery 기반 peer 연결, 수동 peer 연결, channel 호출용
-  `DEALER` 등록, 외부 publish ingress 등록을 관리한다.
+  SPOT 토폴로지, 수동 peer 연결(endpoint/rid 지정), channel 호출용
+  `DEALER` 등록, 외부 publish ingress 등록을 관리한다. peer 목록을 외부에서
+  자동으로 채우는 계층(framework location runtime 등)도 같은 peer 연결 API를 쓴다.
 - `Spot`
   `SpotNode` 위에 올라가는 데이터 평면 facade이다. 토픽 publish/subscribe,
   routed recv/reply, channel send/request를 제공한다.
@@ -157,18 +158,17 @@ application이 고정 rid를 원하면 `zlink_spot_node_entry_spot()`으로 faca
 
 Entry Spot rid 설정은 **configuration phase**에서만 허용한다.
 configuration phase는 아래 중 **어느 하나라도** 처음 발생하는 시점에 끝난다:
-첫 Actor 생성, Discovery attach, SpotNode bind/connect, Spot owner route publish,
-Actor active route publish.
+첫 Actor 생성, SpotNode bind/connect, spot lookup index 게시(첫 spot 확보),
+actor 게시(첫 actor 생성 완료).
 
-> **Spot owner route**: Discovery에 게시되는 레코드로, Spot의 routing id를 소유
-> SpotNode에 매핑한다. 원격 노드가 rid 기반으로 해당 Spot에 메시지를 라우팅할 수 있게 해 준다.
->
-> **Actor active route**: Discovery에 게시되는 레코드로, Actor id를 현재 해당 Actor를
-> 보유한 Spot에 매핑한다. 원격 Actor relay에 사용된다.
+> core는 위치 레코드를 외부에 게시하지 않는다. spot rid → facade 매핑은 node 내부
+> lookup index가, actor id → spot 매핑은 node 내부 actor runtime이 가진다. 노드 사이의
+> 위치 공유(어느 node가 어느 spot/actor를 가졌는가)는 상위 계층(framework location
+> runtime/store)의 책임이다.
 
 - Actor가 하나라도 생성된 뒤 Entry Spot rid를 바꾸려고 하면
   `ZLINK_CONFIG_INVALID_STATE`로 실패하고 `errno`는 `EBUSY`다.
-- Entry Spot rid가 Actor active route나 Spot owner route로 publish된 뒤에는 바꿀 수 없다.
+- Entry Spot rid가 node lookup index(첫 spot 확보)나 actor runtime 상태에 들어간 뒤에는 바꿀 수 없다.
 - Entry Spot rid는 같은 `SpotNode` 안 다른 user Spot rid와 중복될 수 없다.
 
 ### Spot 조회
@@ -201,8 +201,8 @@ ZLINK_EXPORT zlink_config_result_t zlink_spot_node_spot_lookup(
   Entry Spot으로 leave해야 한다.
 - Entry Spot rid로 lookup하면 Entry Spot facade를 반환한다. Entry Spot logical state는
   `SpotNode`가 소유하므로 마지막 facade가 닫혀도 제거되지 않는다.
-- remote Spot 조회는 Discovery Spot owner resolve가 담당한다. 이 함수는 local `SpotNode`
-  안의 Spot만 조회한다.
+- remote Spot 조회는 core 계약이 아니다(상위 계층이 위치를 조회해 주소로 라우팅한다).
+  이 함수는 local `SpotNode` 안의 Spot만 조회한다.
 
 ## SpotNode 계약
 
@@ -246,7 +246,7 @@ HWM `0`을 사용한다. 제거된 방향별 SpotNode HWM option과 queue hard l
 
 SpotNode와 Spot에는 public weight 설정 옵션이 없습니다. peer weight는 raw
 ROUTER와 DEALER 소켓에서만 설정합니다. Spot peer snapshot에 남아 있는
-`weight` 필드는 discovery나 peer 신호에서 배운 remote peer 상태이며,
+`weight` 필드는 peer 신호에서 배운 remote peer 상태이며,
 Spot/SpotNode의 로컬 옵션이 아닙니다.
 
 SpotNode는 topology와 설정 handle이며 topic publisher가 아니다. SpotNode에
@@ -297,7 +297,7 @@ zlink_config_result_t zlink_spot_node_internal_sockets(
 - `PUBSUB` mode에서는 routed socket이 생성되지 않고, `ROUTED` mode에서는 topic
   socket이 생성되지 않는다. snapshot 호출은 꺼진 plane을 활성화하지 않는다.
 
-### 토폴로지와 discovery
+### 토폴로지와 peer 연결
 
 ```c
 zlink_config_result_t zlink_spot_node_set_router_bind(
@@ -306,6 +306,10 @@ zlink_config_result_t zlink_spot_node_set_router_bind(
 zlink_config_result_t zlink_spot_node_set_pub_bind(
   void *node,
   const char *endpoint);
+zlink_config_result_t zlink_spot_node_set_pub_routing_id(
+  void *node, const void *data, size_t size);
+zlink_config_result_t zlink_spot_node_set_sub_routing_id(
+  void *node, const void *data, size_t size);
 zlink_connect_result_t zlink_spot_node_connect_peer(void *node,
                                                     const char *peer_endpoint);
 zlink_connect_result_t zlink_spot_node_connect_peer_rid(
@@ -317,11 +321,13 @@ zlink_connect_result_t zlink_spot_node_disconnect_peer(void *node,
 zlink_connect_result_t zlink_spot_node_disconnect_peer_rid(
   void *node,
   const zlink_routing_id_t *target_node_rid);
-                                                       void *discovery);
 ```
 
 - `zlink_spot_node_set_router_bind()`는 routed ingress에 사용할 router socket
   endpoint를 설정한다. `ROUTED` mode node는 이 호출로 시작한다.
+- `zlink_spot_node_set_pub_routing_id()` / `zlink_spot_node_set_sub_routing_id()`는
+  PUB/SUB plane socket의 routing id를 설정한다. bind 이전 구성 단계에서만 허용되고,
+  인자 검증과 실패 코드는 다른 `set_*` 함수와 같다.
 - `zlink_spot_node_set_pub_bind()`는 PUB/SUB mesh endpoint를 설정하고
   PUB/SUB plane을 시작한다. `ALL` mode에서 router와 pub/sub을 함께 쓰는
   node는 `zlink_spot_node_set_router_bind()`를 먼저 호출한 뒤
@@ -338,13 +344,11 @@ zlink_connect_result_t zlink_spot_node_disconnect_peer_rid(
 - `zlink_spot_node_disconnect_peer_rid()`는 target node routing id를 기준으로
   peer node 연결을 종료한다. target node 아래의 개별 spot routing id는 이
   API의 대상이 아니다.
-- discovery가 attach된 node에서도 discovery reconciler는 같은 peer 연결 API를
-  사용할 수 있다. 호출자는 discovery가 관리하는 endpoint를 직접 추가하거나
-  제거하지 않고 registry/discovery 설정으로 연결 상태를 바꾼다.
+- peer 목록을 자동으로 관리하는 상위 계층(framework location runtime 등)도 같은
+  peer 연결 API를 사용한다. 자동 관리 아래의 endpoint를 호출자가 직접 추가/제거하면
+  연결 상태의 진실 공급원이 둘이 되므로 피한다.
 - `Spot` facade에는 별도 peer rid disconnect 함수가 없다. peer 연결은
   `SpotNode` runtime이 소유하기 때문이다.
-  discovery만 받는다.
-- node에는 한 번에 하나의 active SPOT discovery view만 둘 수 있다.
 
 ### SPOT route channel bridge
 
@@ -441,6 +445,11 @@ int zlink_spot_route_bridge_handle_router_received(
   `ENOTSUP`로 거부하고 reject counter에 반영한다.
 - `ZLINK_SPOT_ROUTE_BRIDGE_CAP_SPOT_ROUTE`가 없는 endpoint의 frame은 `EPERM`로
   거부하고 reject counter에 반영한다.
+- inbound SPOT relay **request**의 target spot이 이 node에 없으면(수신 node는
+  살아 있으나 addressed spot 부재), bridge는 같은 `request_seq`로
+  `ZLINK_REQUEST_NOT_FOUND` 오류 reply를 requester에게 돌려준다. 요청자는 이
+  오류로 "낡은 spot 주소"를 "죽은 node"(timeout)와 구분한다. one-way relay
+  send는 오류 reply 없이 버려진다.
 - 형식이 깨진 SPOT relay frame은 버리고 malformed counter에 반영한다.
 
 ```c
@@ -495,18 +504,15 @@ ZLINK_EXPORT zlink_config_result_t zlink_socket_get_channel_name (
 ```
 
 - setter는 socket에 fixed logical channel name metadata를 기록한다.
-- 이 metadata는 transport connect, bind, routing, discovery를 자동으로 바꾸지 않는다.
+- 이 metadata는 transport connect, bind, routing을 자동으로 바꾸지 않는다.
 - getter는 현재 기록된 channel name을 돌려준다.
 - channel name이 설정되지 않은 socket이면 `ENOENT`로 실패한다.
 - 비어 있거나 잘못된 `channel_name`은 `EINVAL`이다.
-- attach나 discovery가 귀속을 확정한 뒤에는 setter 변경을 `EBUSY` 또는 `EINVAL`로
+- attach가 귀속을 확정한 뒤에는 setter 변경을 `EBUSY` 또는 `EINVAL`로
   거부한다.
 
 attach와의 관계는 아래처럼 고정한다.
 
-- discovery attach 시 socket metadata가 비어 있으면 discovery channel 이름을 채운다.
-- discovery attach 시 기록된 값과 discovery channel이 같으면 허용한다.
-- discovery attach 시 기록된 값과 discovery channel이 다르면 `EINVAL`이다.
 - manual attach 시 socket metadata가 비어 있으면 attach 인자의 `channel_name`을 채운다.
 - manual attach 시 기록된 값과 attach 인자가 같으면 허용한다.
 - manual attach 시 기록된 값과 attach 인자가 다르면 `EINVAL`이다.
@@ -979,9 +985,9 @@ zlink_submit_result_t zlink_remote_actor_get_ref(
   submit 뒤 completion까지의 operation timeout이고, `timeout_ms == 0`이면 timeout을
   설치하지 않는다. `result` pointer는 callback 호출 중에만 유효하다. 이 함수는 Actor를
   생성하지 않고, Actor 위치를 바꾸지 않고, active route를 갱신하지 않는다.
-  전자는 caller가 target node rid와 actor id를 이미 알고 있을 때 해당 node에 직접 물어
-  checked ref를 얻는 API이고, 후자는 Registry에 공개된 active route를 조회해 현재
-  공개 위치를 얻는 API다.
+  이 API는 caller가 target node rid와 actor id를 이미 알고 있을 때 해당 node에 직접
+  물어 checked ref를 얻는 확인 경로다. "actor가 어느 node에 있는가"의 조회는 core
+  계약이 아니며 상위 계층(framework location runtime)이 담당한다.
 
 ### Remote Actor 생성 모델
 
@@ -1327,7 +1333,7 @@ session owner node와 Actor owner node는 같을 수도 다를 수도 있다.
 - Actor owner는 STREAM session의 application state를 저장하지 않는다.
 - session attach 성공은 active route를 만들거나 갱신하지 않는다. session detach
   성공도 active route를 제거하지 않는다. active route 갱신 시점은
-  [Discovery active route](#discovery-active-route) 절을 본다.
+  [Actor active route](#actor-active-route-node-내부-위치-상태) 절을 본다.
 
 `zlink_stream_bind_actor()` / `zlink_stream_unbind_actor()` 계약:
 
@@ -1548,26 +1554,26 @@ payload는 직접 callback으로 전달하지 않는다.
 - lifecycle event 안에서 같은 Actor에 대해 join, leave, destroy를 재진입 호출하는
   것은 지원하지 않는다.
 
-### Discovery active route
+### Actor active route (node 내부 위치 상태)
 
-`zlink_actor_route_t`는 Actor의 현재 dispatch 위치를 나타낸다.
-있을 때 외부 조회 결과로 관측된다. 옵션이 꺼져 있거나 Registry가 연결되지 않은
-있다.
+`zlink_actor_route_t`는 Actor의 현재 dispatch 위치를 나타내는 값 타입이다. core는
+이 상태를 외부에 게시하지 않는다 — node 내부 actor runtime이 dispatch 대상을 고르는
+데 쓰고, 노드 사이 위치 공유는 상위 계층(framework location runtime)의 책임이다.
 
 - `actor`는 active route가 가리키는 최종 Actor ref다.
 - `current_spot_rid`는 Actor의 current Spot이다.
 - `current_spot_kind`는 Entry Spot 또는 user Spot 여부를 나타낸다.
-- route는 join commit 뒤 공개된다.
+- route는 join commit 뒤 갱신된다.
 - route는 session bind 여부를 나타내지 않는다.
 
 route 갱신 시점:
 
 | 이벤트 | route 동작 |
 |--------|------------|
-| local Actor 생성 | 공개하지 않음 |
-| local user Spot join 성공 | user Spot 위치로 공개 또는 갱신 |
-| remote user Spot join 성공 | target node user Spot 위치로 공개 또는 갱신 |
-| user Spot에서 explicit leave 성공 | Entry Spot 위치로 공개 또는 갱신 |
+| local Actor 생성 | 갱신하지 않음(Entry Spot 소속은 암묵) |
+| local user Spot join 성공 | user Spot 위치로 갱신 |
+| remote user Spot join 성공 | target node user Spot 위치로 갱신 |
+| user Spot에서 explicit leave 성공 | Entry Spot 위치로 갱신 |
 | join reject | 변경 없음 |
 | join timeout | 변경 없음 |
 | session bind 성공 | 변경 없음 |
@@ -1576,7 +1582,7 @@ route 갱신 시점:
 | stale Actor destroy | 변경 없음 |
 
 위 route 갱신은 join 또는 leave commit 이후 Actor를 소유하는 current `SpotNode`의
-수 있을 때 Registry visible 상태가 된다.
+내부 상태에만 반영된다. 노드 밖으로의 위치 공유는 상위 계층의 책임이다.
 
 ## Spot routed request 시작
 
@@ -1749,12 +1755,12 @@ zlink_config_result_t zlink_spot_actors(
 
 ## 제약 요약
 
-- `SpotNode` mesh peer 자동 연결 대상은 SPOT discovery peer뿐이다.
+- `SpotNode` mesh peer 연결 대상은 SPOT mesh peer 뿐이다(수동 connect 또는 상위 계층의 자동 관리).
 - 일반 socket service provider는 `SpotNode` mesh peer로 섞이지 않는다.
 - 새 channel 호출은 `zlink_spot_route_bridge_*`가 처리한다. legacy channel
   호출 API는 deprecated attach 경로에 의존하므로 새 코드에서 쓰지 않는다.
 - `SpotNode.router`를 channel 호출 경로로 우회해서 쓰지 않는다.
-- discovery attach와 수동 peer connect를 같은 peer 관계에 동시에 섞지 않는다.
+- 상위 계층의 자동 peer 관리와 수동 peer connect 를 같은 peer 관계에 동시에 섞지 않는다.
 - deprecated attach 함수는 인자 검증 뒤 `ENOTSUP`으로 실패하며 socket 생성과
   connect를 수행하지 않는다.
 - bridge에 attach된 channel socket은 계속 호출자 또는 channel runtime 소유다.

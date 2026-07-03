@@ -7,7 +7,7 @@ var options = ClientOptions.Parse(args);
 using var consumer = ZLinkHttpClient.Create(options.ConsumerUrl)
     .Timeout(TimeSpan.FromMinutes(10))
     .Build();
-using var registry = ZLinkHttpClient.Create(options.RegistryUrl)
+using var registry = ZLinkHttpClient.Create(options.TopologyUrl)
     .Timeout(TimeSpan.FromMinutes(10))
     .Build();
 await using var processes = new ResilienceProcessManager(options);

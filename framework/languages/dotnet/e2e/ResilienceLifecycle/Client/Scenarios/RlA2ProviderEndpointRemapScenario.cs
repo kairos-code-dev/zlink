@@ -21,10 +21,8 @@ internal static class RlA2ProviderEndpointRemapScenario
         await registry.Post("/topology/wait")
             .Body(new TopologyWaitReq("api-b", "Ready", 1))
             .SubmitAsync<TopologyEntryRes[]>();
-        await SendRequestBatchAsync(consumer, "rl-a2-rescheduled");
-        await replacementProvider.Post("/evidence/wait")
-            .Body(new EvidenceWaitReq(["marker=rl-a2-rescheduled-"], []))
-            .SubmitAsync<string[]>();
+        await ProviderTrafficProbe.DriveUntilProviderServesAsync(
+            consumer, replacementProvider, "rl-a2-rescheduled", "RL-A2");
 
         await replacementProvider.Post("/shutdown").SubmitRawAsync();
         await WaitUntilUnavailableAsync(replacementProvider);
@@ -34,10 +32,8 @@ internal static class RlA2ProviderEndpointRemapScenario
         await registry.Post("/topology/wait")
             .Body(new TopologyWaitReq("api-b", "Ready", 1))
             .SubmitAsync<TopologyEntryRes[]>();
-        await SendRequestBatchAsync(consumer, "rl-a2-original-restored");
-        await providerB.Post("/evidence/wait")
-            .Body(new EvidenceWaitReq(["marker=rl-a2-original-restored-"], []))
-            .SubmitAsync<string[]>();
+        await ProviderTrafficProbe.DriveUntilProviderServesAsync(
+            consumer, providerB, "rl-a2-original-restored", "RL-A2");
 
         Console.WriteLine("scenario RL-A2 passed");
     }

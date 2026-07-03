@@ -62,34 +62,39 @@ internal sealed class ResilienceProcessManager(ClientOptions options) : IAsyncDi
         return new ProviderStartResult("api-b", "started", options.ProviderBGreenUrl, options.ProviderBGreenEndpoint);
     }
 
-    public async Task StartRegistryAsync()
+    /// <summary>
+    /// Pauses the run's Redis container: the location store becomes
+    /// unreachable while every established connection keeps working
+    /// (fail-static, RL-C4).
+    /// </summary>
+    public async Task PauseStoreAsync()
     {
-        var process = StartProcess(
-            "registry-restart",
-            "registry",
-            options.RegistryProject,
-            [
-                "--rid", "registry",
-                "--http-url", options.RegistryUrl,
-                "--registry-pub-endpoint", options.RegistryPubEndpoint,
-                "--registry-router-endpoint", options.RegistryRouterEndpoint,
-                "--log-dir", options.LogDir
-            ],
-            options.RegistryUrl);
-        await process.WaitReadyAsync();
+        await RunDockerAsync("pause", options.RedisContainer);
     }
 
-    public async Task WaitRegistryHealthAsync(bool expectedHealthy, TimeSpan timeout)
+    public async Task UnpauseStoreAsync()
     {
-        var deadline = DateTimeOffset.UtcNow + timeout;
-        while (DateTimeOffset.UtcNow < deadline)
+        await RunDockerAsync("unpause", options.RedisContainer);
+    }
+
+    private static async Task RunDockerAsync(string verb, string container)
+    {
+        var startInfo = new ProcessStartInfo("docker")
         {
-            if (await IsHealthyAsync(options.RegistryUrl) == expectedHealthy) return;
-
-            await Task.Delay(250);
+            RedirectStandardOutput = true,
+            RedirectStandardError = true,
+            UseShellExecute = false
+        };
+        startInfo.ArgumentList.Add(verb);
+        startInfo.ArgumentList.Add(container);
+        using var process = Process.Start(startInfo)
+                            ?? throw new InvalidOperationException($"Failed to run docker {verb}.");
+        await process.WaitForExitAsync();
+        if (process.ExitCode != 0)
+        {
+            var error = await process.StandardError.ReadToEndAsync();
+            throw new InvalidOperationException($"docker {verb} {container} failed: {error}");
         }
-
-        throw new TimeoutException($"Registry health did not become {expectedHealthy}.");
     }
 
     private ManagedProcess StartProvider(
@@ -106,7 +111,8 @@ internal sealed class ResilienceProcessManager(ClientOptions options) : IAsyncDi
             [
                 "--rid", rid,
                 "--http-url", url,
-                "--registry-router-endpoint", options.RegistryRouterEndpoint,
+                "--redis-endpoint", options.RedisEndpoint,
+                "--redis-key-prefix", options.RedisKeyPrefix,
                 "--channel-endpoint", endpoint,
                 "--evidence-file", evidenceFile,
                 "--log-dir", options.LogDir

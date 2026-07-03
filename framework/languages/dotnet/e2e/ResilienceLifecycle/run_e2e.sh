@@ -22,7 +22,6 @@ print(max(1, math.ceil(timeout / poll)))
 PY
 )"
 
-REGISTRY_PROJECT="$ROOT_DIR/Server/Registry/ResilienceLifecycle.Registry.csproj"
 PROVIDER_PROJECT="$ROOT_DIR/Server/Provider/ResilienceLifecycle.Provider.csproj"
 CONSUMER_PROJECT="$ROOT_DIR/Server/Consumer/ResilienceLifecycle.Consumer.csproj"
 CLIENT_PROJECT="$ROOT_DIR/Client/ResilienceLifecycle.Client.csproj"
@@ -37,12 +36,9 @@ s.close()
 PY
 }
 
-REG_HTTP_PORT="$(pick_port)"
 API_A_HTTP_PORT="$(pick_port)"
 API_B_HTTP_PORT="$(pick_port)"
 CONSUMER_HTTP_PORT="$(pick_port)"
-REG_PUB_PORT="$(pick_port)"
-REG_ROUTER_PORT="$(pick_port)"
 API_A_PORT="$(pick_port)"
 API_B_PORT="$(pick_port)"
 API_B_REMAP_HTTP_PORT="$(pick_port)"
@@ -50,8 +46,6 @@ API_B_REMAP_PORT="$(pick_port)"
 API_B_GREEN_HTTP_PORT="$(pick_port)"
 API_B_GREEN_PORT="$(pick_port)"
 
-REG_PUB="tcp://127.0.0.1:$REG_PUB_PORT"
-REG_ROUTER="tcp://127.0.0.1:$REG_ROUTER_PORT"
 API_A="tcp://127.0.0.1:$API_A_PORT"
 API_B="tcp://127.0.0.1:$API_B_PORT"
 API_A_URL="http://127.0.0.1:$API_A_HTTP_PORT"
@@ -63,6 +57,10 @@ API_B_GREEN="tcp://127.0.0.1:$API_B_GREEN_PORT"
 
 pids=()
 cleanup() {
+  if [[ -n "${REDIS_CONTAINER:-}" ]]; then
+    docker unpause "$REDIS_CONTAINER" >/dev/null 2>&1 || true
+    docker rm -f "$REDIS_CONTAINER" >/dev/null 2>&1 || true
+  fi
   local code=$?
   for pid in "${pids[@]:-}"; do
     if kill -0 "$pid" 2>/dev/null; then
@@ -139,23 +137,26 @@ start_server() {
 }
 
 echo "log_dir=$LOG_DIR"
-dotnet build "$REGISTRY_PROJECT" --maxcpucount:1 >/dev/null
 dotnet build "$PROVIDER_PROJECT" --maxcpucount:1 >/dev/null
 dotnet build "$CONSUMER_PROJECT" --maxcpucount:1 >/dev/null
 dotnet build "$CLIENT_PROJECT" --maxcpucount:1 >/dev/null
 
-start_server registry "$REGISTRY_PROJECT" \
-  --rid registry \
-  --http-url "http://127.0.0.1:$REG_HTTP_PORT" \
-  --registry-pub-endpoint "$REG_PUB" \
-  --registry-router-endpoint "$REG_ROUTER" \
-  --log-dir "$LOG_DIR"
-wait_health "http://127.0.0.1:$REG_HTTP_PORT" registry
+# The run owns its Redis: a dedicated, throwaway container is the shared
+# location store every server registers into (no registry process exists).
+if ! command -v docker >/dev/null 2>&1; then
+  echo "Docker is required to run the ResilienceLifecycle E2E (it provisions a dedicated Redis container)." >&2
+  exit 1
+fi
+REDIS_CONTAINER="resilience-e2e-redis-$$"
+docker run -d --rm --name "$REDIS_CONTAINER" -p "127.0.0.1::6379" redis:7.2-alpine >/dev/null
+REDIS_ENDPOINT="$(docker port "$REDIS_CONTAINER" 6379/tcp | sed -E 's/.*:([0-9]+)$/127.0.0.1:\1/')"
+REDIS_KEY_PREFIX="resilience-e2e:$$:"
 
 start_server api-a "$PROVIDER_PROJECT" \
   --rid api-a \
   --http-url "$API_A_URL" \
-  --registry-router-endpoint "$REG_ROUTER" \
+  --redis-endpoint "$REDIS_ENDPOINT" \
+  --redis-key-prefix "$REDIS_KEY_PREFIX" \
   --channel-endpoint "$API_A" \
   --evidence-file "$LOG_DIR/api-a.evidence.log" \
   --log-dir "$LOG_DIR"
@@ -164,7 +165,8 @@ wait_health "$API_A_URL" api-a
 start_server api-b "$PROVIDER_PROJECT" \
   --rid api-b \
   --http-url "$API_B_URL" \
-  --registry-router-endpoint "$REG_ROUTER" \
+  --redis-endpoint "$REDIS_ENDPOINT" \
+  --redis-key-prefix "$REDIS_KEY_PREFIX" \
   --channel-endpoint "$API_B" \
   --evidence-file "$LOG_DIR/api-b.evidence.log" \
   --log-dir "$LOG_DIR"
@@ -172,7 +174,8 @@ wait_health "$API_B_URL" api-b
 
 start_server consumer "$CONSUMER_PROJECT" \
   --http-url "http://127.0.0.1:$CONSUMER_HTTP_PORT" \
-  --registry-router-endpoint "$REG_ROUTER" \
+  --redis-endpoint "$REDIS_ENDPOINT" \
+  --redis-key-prefix "$REDIS_KEY_PREFIX" \
   --log-dir "$LOG_DIR"
 wait_health "http://127.0.0.1:$CONSUMER_HTTP_PORT" consumer
 
@@ -180,9 +183,10 @@ sleep "$ROUTE_SETTLE_SECONDS"
 
 dotnet run --no-build --project "$CLIENT_PROJECT" -- \
   --consumer-url "http://127.0.0.1:$CONSUMER_HTTP_PORT" \
-  --registry-url "http://127.0.0.1:$REG_HTTP_PORT" \
-  --registry-pub-endpoint "$REG_PUB" \
-  --registry-router-endpoint "$REG_ROUTER" \
+  --topology-url "http://127.0.0.1:$CONSUMER_HTTP_PORT" \
+  --redis-endpoint "$REDIS_ENDPOINT" \
+  --redis-key-prefix "$REDIS_KEY_PREFIX" \
+  --redis-container "$REDIS_CONTAINER" \
   --provider-a-url "$API_A_URL" \
   --provider-a-endpoint "$API_A" \
   --provider-a-evidence-file "$LOG_DIR/api-a.evidence.log" \
@@ -193,7 +197,6 @@ dotnet run --no-build --project "$CLIENT_PROJECT" -- \
   --provider-b-remap-endpoint "$API_B_REMAP" \
   --provider-b-green-url "$API_B_GREEN_URL" \
   --provider-b-green-endpoint "$API_B_GREEN" \
-  --registry-project "$REGISTRY_PROJECT" \
   --provider-project "$PROVIDER_PROJECT" \
   --log-dir "$LOG_DIR" \
   --scenario "$SCENARIO" \

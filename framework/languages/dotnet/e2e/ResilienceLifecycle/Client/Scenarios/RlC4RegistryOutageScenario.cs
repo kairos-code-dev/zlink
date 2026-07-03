@@ -4,7 +4,8 @@ using Zlink.HttpClient;
 
 namespace ResilienceLifecycle.Client.Scenarios;
 
-// RL-C4 verifies established direct traffic during registry outage and later discovery recovery.
+// RL-C4 verifies established direct traffic during a location store
+// outage (fail-static) and resolve recovery after the store returns.
 internal static class RlC4RegistryOutageScenario
 {
     public static async Task RunAsync(
@@ -17,15 +18,16 @@ internal static class RlC4RegistryOutageScenario
         var before = (await consumer.Post("/profile/request")
             .Body(new ProfileReq("fast", "rl-c4-before-outage"))
             .SubmitAsync<ProfileRes>()).Body;
-        ScenarioAssert.That(before.Value == "profile:fast", "RL-C4 request failed before registry outage.");
+        ScenarioAssert.That(before.Value == "profile:fast", "RL-C4 request failed before the store outage.");
 
-        await registry.Post("/shutdown").SubmitRawAsync();
-        await processes.WaitRegistryHealthAsync(false, TimeSpan.FromSeconds(30));
+        // The store goes away; every established connection must keep
+        // working (fail-static) while resolves are impossible.
+        await processes.PauseStoreAsync();
 
         var during = (await consumer.Post("/profile/request")
             .Body(new ProfileReq("fast", "rl-c4-during-outage"))
             .SubmitAsync<ProfileRes>()).Body;
-        ScenarioAssert.That(during.Value == "profile:fast", "RL-C4 existing channel failed during registry outage.");
+        ScenarioAssert.That(during.Value == "profile:fast", "RL-C4 existing channel failed during the store outage.");
 
         {
             using var timeout = new CancellationTokenSource(TimeSpan.FromSeconds(15));
@@ -58,10 +60,10 @@ internal static class RlC4RegistryOutageScenario
                 "RL-C4 did not record expected evidence 'marker=rl-c4-during-outage'.");
         }
 
-        await processes.StartRegistryAsync();
+        await processes.UnpauseStoreAsync();
         await providerA.Post("/shutdown").SubmitRawAsync();
         await WaitUntilAsync(async () => !await IsHealthyAsync(providerA),
-            "RL-C4 expected api-a restart after registry recovery.");
+            "RL-C4 expected api-a restart after store recovery.");
         await processes.StartProviderAAsync();
         await registry.Post("/topology/wait")
             .Body(new TopologyWaitReq("api-a", "Ready", 1))
@@ -70,7 +72,7 @@ internal static class RlC4RegistryOutageScenario
         var after = (await consumer.Post("/profile/request/new-client")
             .Body(new ProfileReq("fast", "rl-c4-after-restart"))
             .SubmitAsync<ProfileRes>()).Body;
-        ScenarioAssert.That(after.Value == "profile:fast", "RL-C4 follow-up request failed after registry restart.");
+        ScenarioAssert.That(after.Value == "profile:fast", "RL-C4 follow-up request failed after store recovery.");
 
         {
             using var timeout = new CancellationTokenSource(TimeSpan.FromSeconds(15));

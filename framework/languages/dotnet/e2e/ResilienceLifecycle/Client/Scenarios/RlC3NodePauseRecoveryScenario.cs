@@ -27,13 +27,12 @@ internal static class RlC3NodePauseRecoveryScenario
         await registry.Post("/topology/wait")
             .Body(new TopologyWaitReq("api-b", "Ready", 1))
             .SubmitAsync<TopologyEntryRes[]>();
-        for (var i = 0; i < 40; i++)
-        {
-            var reply = (await consumer.Post("/profile/request")
-                .Body(new ProfileReq("fast", $"rl-c3-recovered-{i}"))
-                .SubmitAsync<ProfileRes>()).Body;
-            ScenarioAssert.That(reply.Value == "profile:fast", "RL-C3 recovered request returned an unexpected value.");
-        }
+        await ProviderTrafficProbe.DriveUntilProviderServesAsync(
+            consumer,
+            providerB,
+            "rl-c3-recovered",
+            "RL-C3",
+            "profile-request|rid=api-b|marker=rl-c3-recovered-");
 
         {
             using var timeout = new CancellationTokenSource(TimeSpan.FromSeconds(15));

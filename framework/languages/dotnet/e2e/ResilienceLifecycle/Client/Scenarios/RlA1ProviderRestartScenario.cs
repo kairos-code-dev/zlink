@@ -63,18 +63,8 @@ internal static class RlA1ProviderRestartScenario
             await Task.Delay(100);
         }
 
-        for (var i = 0; i < 32; i++)
-        {
-            var marker = $"rl-a1-restored-{i}";
-            var reply = (await consumer.Post("/profile/request")
-                .Body(new ProfileReq("fast", marker))
-                .SubmitAsync<ProfileRes>()).Body;
-            ScenarioAssert.That(reply.Value == "profile:fast", "RL-A1 restored request returned an unexpected value.");
-        }
-
-        await providerB.Post("/evidence/wait")
-            .Body(new EvidenceWaitReq(["marker=rl-a1-restored-"], []))
-            .SubmitAsync<string[]>();
+        await ProviderTrafficProbe.DriveUntilProviderServesAsync(
+            consumer, providerB, "rl-a1-restored", "RL-A1");
 
         Console.WriteLine("scenario RL-A1 passed");
     }

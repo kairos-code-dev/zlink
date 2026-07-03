@@ -64,19 +64,12 @@ internal static class RlA5ProviderFlappingScenario
             await registry.Post("/topology/wait")
                 .Body(new TopologyWaitReq("api-b", "Ready", 1))
                 .SubmitAsync<TopologyEntryRes[]>();
-            for (var i = 0; i < 24; i++)
-            {
-                var marker = $"rl-a5-up-{cycle}-{i}";
-                var reply = (await consumer.Post("/profile/request")
-                    .Body(new ProfileReq("fast", marker))
-                    .SubmitAsync<ProfileRes>()).Body;
-                ScenarioAssert.That(reply.Value == "profile:fast",
-                    "RL-A5 up-window request returned an unexpected value.");
-            }
-
-            await providerB.Post("/evidence/wait")
-                .Body(new EvidenceWaitReq([$"profile-request|rid=api-b|marker=rl-a5-up-{cycle}-"], []))
-                .SubmitAsync<string[]>();
+            await ProviderTrafficProbe.DriveUntilProviderServesAsync(
+                consumer,
+                providerB,
+                $"rl-a5-up-{cycle}",
+                "RL-A5",
+                $"profile-request|rid=api-b|marker=rl-a5-up-{cycle}-");
         }
 
         Console.WriteLine("scenario RL-A5 passed");

@@ -10,6 +10,10 @@ using Zlink.Framework.Contracts.Channels;
 using Zlink.Framework.Contracts.Dispatch;
 using Zlink.Framework.Contracts.Errors;
 
+using Systems.Zlink;
+using Zlink.Framework.Contracts.Locations;
+using Zlink.Framework.Locations.Redis;
+
 namespace ResilienceLifecycle.Server.Consumer;
 
 internal static class ConsumerHostFactory
@@ -29,6 +33,9 @@ internal static class ConsumerHostFactory
         builder.WebHost.UseUrls(options.HttpUrl);
         builder.Services.AddZLinkFramework(framework =>
         {
+            framework.AddLocationStore(new ZLinkRedisLocationStore(redis => redis
+                .SetConnectionString(options.RedisEndpoint)
+                .SetKeyPrefix(options.RedisKeyPrefix)));
             framework.ConfigureDispatch()
                 .MessageFlow(ZLinkMessageFlowLogMode.KeyTransitions)
                 .TraceLogFile(Path.Combine(options.LogDir, "consumer-flow.log"))
@@ -38,6 +45,38 @@ internal static class ConsumerHostFactory
 
         var app = builder.Build();
         app.MapGet("/health", () => Results.Ok(new { status = "ready" }));
+        // Topology waits observe the peer location list — the operational
+        // surface the scenarios verify recovery against (config-5 §3).
+        app.MapPost("/topology/wait", async (
+            IZLinkLocationRuntimeQuery query,
+            TopologyWaitReq request) =>
+        {
+            var deadline = DateTimeOffset.UtcNow + TimeSpan.FromMilliseconds(request.TimeoutMilliseconds);
+            while (true)
+            {
+                var peers = await query.ListPeersAsync(new ZLinkPeerLocationFilter());
+                var matches = peers
+                    .Where(peer => peer.NodeRid is { Size: > 0 } rid
+                                   && rid == RoutingId.From(request.RoutingId))
+                    .ToArray();
+                var satisfied = request.ExpectedCount == 0
+                    ? matches.Length == 0
+                    : matches.Length >= request.ExpectedCount;
+                if (satisfied)
+                    return Results.Ok(matches
+                        .Select(peer => new TopologyEntryRes(
+                            peer.NodeRid?.ToString(),
+                            peer.Endpoint,
+                            "Ready"))
+                        .ToArray());
+
+                if (DateTimeOffset.UtcNow >= deadline)
+                    return Results.Problem(
+                        $"Topology wait for '{request.RoutingId}' (expected {request.ExpectedCount}) timed out.");
+
+                await Task.Delay(150);
+            }
+        });
         app.MapPost("/profile/request", async (
             ProfileReq request,
             IZLinkChannelClient channel) =>
@@ -113,6 +152,9 @@ internal static class ConsumerHostFactory
             {
                 services.AddZLinkFramework(framework =>
                 {
+                    framework.AddLocationStore(new ZLinkRedisLocationStore(redis => redis
+                        .SetConnectionString(options.RedisEndpoint)
+                        .SetKeyPrefix(options.RedisKeyPrefix)));
                     framework.ConfigureDispatch()
                         .MessageFlow(ZLinkMessageFlowLogMode.KeyTransitions)
                         .TraceLogFile(Path.Combine(options.LogDir, $"{traceLabel}-flow.log"))
@@ -151,8 +193,13 @@ internal static class ConsumerHostFactory
                     .Timeout(TimeSpan.FromSeconds(5))
                     .Async<ProfileRes>();
             }
-            catch (ZLinkFrameworkException ex) when (IsRetriableStartupFailure(ex))
+            catch (Exception ex) when (
+                ex is TimeoutException
+                || (ex is ZLinkFrameworkException framework && IsRetriableStartupFailure(framework)))
             {
+                // A request that rode a dying connection times out inside
+                // the down window; the next attempt takes the surviving
+                // provider once reconcile drops the dead link.
                 last = ex;
                 await Task.Delay(TimeSpan.FromMilliseconds(100));
             }
@@ -170,7 +217,8 @@ internal static class ConsumerHostFactory
 
 internal sealed record ConsumerOptions(
     string HttpUrl,
-    string RegistryRouterEndpoint,
+    string RedisEndpoint,
+    string RedisKeyPrefix,
     string LogDir)
 {
     public static ConsumerOptions Parse(string[] args)
@@ -178,7 +226,8 @@ internal sealed record ConsumerOptions(
         var values = ParseArgs(args);
         return new ConsumerOptions(
             Require(values, "http-url"),
-            Require(values, "registry-router-endpoint"),
+            Require(values, "redis-endpoint"),
+            Require(values, "redis-key-prefix"),
             Require(values, "log-dir"));
     }
 
@@ -209,3 +258,5 @@ internal sealed record ConsumerOptions(
             ? value
             : throw new ArgumentException($"--{key} is required.");
 }
+
+internal sealed record TopologyEntryRes(string? RoutingId, string Endpoint, string State);

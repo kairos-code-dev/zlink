@@ -4,6 +4,8 @@ using Systems.Zlink;
 using Zlink.Framework.AspNetCore;
 using Zlink.Framework.Contracts.Dispatch;
 
+using Zlink.Framework.Locations.Redis;
+
 namespace ResilienceLifecycle.Server.Provider;
 
 internal static class ProviderHostFactory
@@ -26,6 +28,11 @@ internal static class ProviderHostFactory
 
         builder.Services.AddZLinkFramework(framework =>
         {
+            if (!string.IsNullOrWhiteSpace(options.RedisEndpoint))
+                framework.AddLocationStore(new ZLinkRedisLocationStore(redis => redis
+                    .SetConnectionString(options.RedisEndpoint)
+                    .SetKeyPrefix(options.RedisKeyPrefix
+                                  ?? throw new InvalidOperationException("--redis-key-prefix is required."))));
             framework.ConfigureDispatch()
                 .SetMessageFlowObserver<EvidenceDispatchErrorObserver>()
                 .MessageFlow(ZLinkMessageFlowLogMode.KeyTransitions)

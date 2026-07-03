@@ -130,8 +130,8 @@ internal sealed record ServerOptions(
     string Rid,
     string HttpUrl,
     string LogDir,
-    string? RegistryPubEndpoint,
-    string? RegistryRouterEndpoint,
+    string? RedisEndpoint,
+    string? RedisKeyPrefix,
     string? ChannelEndpoint,
     string? EvidenceFile,
     int Weight)
@@ -167,8 +167,8 @@ internal sealed record ServerOptions(
             Get("--rid") ?? "node",
             Get("--http-url") ?? "http://127.0.0.1:0",
             Get("--log-dir") ?? "logs",
-            Get("--registry-pub-endpoint"),
-            Get("--registry-router-endpoint"),
+            Get("--redis-endpoint"),
+            Get("--redis-key-prefix"),
             Get("--channel-endpoint"),
             Get("--evidence-file"),
             int.TryParse(Get("--weight"), out var weight) ? weight : 100);

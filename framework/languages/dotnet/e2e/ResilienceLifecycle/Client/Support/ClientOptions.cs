@@ -2,9 +2,10 @@ namespace ResilienceLifecycle.Client.Support;
 
 internal sealed record ClientOptions(
     string ConsumerUrl,
-    string RegistryUrl,
-    string RegistryPubEndpoint,
-    string RegistryRouterEndpoint,
+    string TopologyUrl,
+    string RedisEndpoint,
+    string RedisKeyPrefix,
+    string RedisContainer,
     string ProviderAUrl,
     string ProviderAEndpoint,
     string ProviderAEvidenceFile,
@@ -15,7 +16,6 @@ internal sealed record ClientOptions(
     string ProviderBRemapEndpoint,
     string ProviderBGreenUrl,
     string ProviderBGreenEndpoint,
-    string RegistryProject,
     string ProviderProject,
     string LogDir,
     string Scenario)
@@ -37,9 +37,10 @@ internal sealed record ClientOptions(
             values.TryGetValue("consumer-url", out var consumerUrl) && !string.IsNullOrWhiteSpace(consumerUrl)
                 ? consumerUrl
                 : throw new ArgumentException("--consumer-url is required."),
-            Require(values, "registry-url"),
-            Require(values, "registry-pub-endpoint"),
-            Require(values, "registry-router-endpoint"),
+            Require(values, "topology-url"),
+            Require(values, "redis-endpoint"),
+            Require(values, "redis-key-prefix"),
+            Require(values, "redis-container"),
             values.TryGetValue("provider-a-url", out var providerAUrl) && !string.IsNullOrWhiteSpace(providerAUrl)
                 ? providerAUrl
                 : throw new ArgumentException("--provider-a-url is required."),
@@ -54,7 +55,6 @@ internal sealed record ClientOptions(
             Require(values, "provider-b-remap-endpoint"),
             Require(values, "provider-b-green-url"),
             Require(values, "provider-b-green-endpoint"),
-            Require(values, "registry-project"),
             Require(values, "provider-project"),
             Require(values, "log-dir"),
             values.TryGetValue("scenario", out var scenario) && !string.IsNullOrWhiteSpace(scenario)

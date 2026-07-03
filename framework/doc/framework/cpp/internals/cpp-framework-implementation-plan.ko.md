@@ -615,7 +615,7 @@ framework와 같은 사용성으로 제공하는 것이다.
 - server/client/publisher/subscriber capability
 - `bind(...)`
 - `connect(...)`
-- `use_discovery(...)`
+- location store 기반 자동 연결
 - `request_client_t`
 - `publisher_t`
 - request timeout
@@ -873,8 +873,8 @@ framework runtime에 통합하는 것이다.
 검증:
 
 ```bash
-ctest --test-dir framework/languages/cpp/build -L framework-zlink-registry
-ctest --test-dir framework/languages/cpp/build -L framework-regression -R registry
+ctest --test-dir framework/languages/cpp/build -L framework-location
+ctest --test-dir framework/languages/cpp/build -L framework-regression -R location
 ```
 
 ### Goal 16. Monitoring, Health, Observability
@@ -935,8 +935,8 @@ ctest --test-dir framework/languages/cpp/build -L framework-unit -R monitoring
 
 - `.NET`의 `AddZLinkFramework(options => ...)`에 해당하는 C++ 고수준 진입점은
   `app_t::add_zlink_framework(options_callback)`다.
-- JSON은 기본 codec이므로 별도 등록하지 않는다. MessagePack, Protobuf, custom codec은
-  extension으로 등록하고 message type을 모두 나열하지 않는다.
+- JSON은 기본 codec이므로 별도 등록하지 않는다. JSON codec 사용만 선언하고 message type을 모두 나열하지
+  않는다. MessagePack, Protobuf, custom codec은 extension으로 등록한다.
 - handler 생성자 의존성은 `dependency_list_t<Dep...>`와 DI 생성자 주입으로 처리한다.
 - sample `main.cpp`와 role `*HostFactory`에는 handler용 DI factory, serializer smoke 검증,
   낮은 수준 zlink builder 람다를 두지 않는다.
@@ -1481,14 +1481,7 @@ ctest --test-dir framework/languages/cpp/build -L connector-unreal-smoke
 검증:
 
 ```bash
-ctest --test-dir framework/languages/cpp/build -L framework-sample-smoke
 ctest --test-dir framework/languages/cpp/build -L framework-sample-parity
-ctest --test-dir framework/languages/cpp/build -L framework-sample-api
-ctest --test-dir framework/languages/cpp/build -L framework-sample-bingo
-ctest --test-dir framework/languages/cpp/build -L framework-sample-play
-ctest --test-dir framework/languages/cpp/build -L framework-sample-registry
-ctest --test-dir framework/languages/cpp/build -L framework-sample-session
-ctest --test-dir framework/languages/cpp/build -L framework-sample-tictactoe
 ```
 
 ### Goal 22. Final Regression, Package, Extension Boundary
@@ -1542,7 +1535,7 @@ ctest --test-dir framework/languages/cpp/build -L framework-zlink-channel --outp
 ctest --test-dir framework/languages/cpp/build -L framework-zlink-spot --output-on-failure
 ctest --test-dir framework/languages/cpp/build -L framework-zlink-stream --output-on-failure
 ctest --test-dir framework/languages/cpp/build -L framework-zlink-actor-gateway --output-on-failure
-ctest --test-dir framework/languages/cpp/build -L framework-zlink-registry --output-on-failure
+ctest --test-dir framework/languages/cpp/build -L framework-location --output-on-failure
 ctest --test-dir framework/languages/cpp/build -L framework-http --output-on-failure
 ctest --test-dir framework/languages/cpp/build -L framework-http-e2e --output-on-failure
 ctest --test-dir framework/languages/cpp/build -L framework-http-perf --output-on-failure
@@ -1554,14 +1547,7 @@ ctest --test-dir framework/languages/cpp/build -L http-client-regression --outpu
 ctest --test-dir framework/languages/cpp/build -L http-client-e2e --output-on-failure
 ctest --test-dir framework/languages/cpp/build -L http-client-https --output-on-failure
 ctest --test-dir framework/languages/cpp/build -L parity --output-on-failure
-ctest --test-dir framework/languages/cpp/build -L framework-sample-smoke --output-on-failure
 ctest --test-dir framework/languages/cpp/build -L framework-sample-parity --output-on-failure
-ctest --test-dir framework/languages/cpp/build -L framework-sample-api --output-on-failure
-ctest --test-dir framework/languages/cpp/build -L framework-sample-bingo --output-on-failure
-ctest --test-dir framework/languages/cpp/build -L framework-sample-registry --output-on-failure
-ctest --test-dir framework/languages/cpp/build -L framework-sample-play --output-on-failure
-ctest --test-dir framework/languages/cpp/build -L framework-sample-session --output-on-failure
-ctest --test-dir framework/languages/cpp/build -L framework-sample-tictactoe --output-on-failure
 ctest --test-dir framework/languages/cpp/build -L connector-unit --output-on-failure
 ctest --test-dir framework/languages/cpp/build -L connector-integration --output-on-failure
 ctest --test-dir framework/languages/cpp/build -L connector-contract --output-on-failure
@@ -1630,13 +1616,13 @@ git diff --check -- framework/languages/cpp bindings/cpp
 | async/coroutine submit | Goal 3, Goal 7, Goal 9, Goal 13, Goal 18, Goal 20 | `framework-unit`, `framework-regression`, `http-client-*` |
 | channel request/reply | Goal 9 | `framework-zlink-channel` |
 | send/event/pub-sub | Goal 9 | `framework-zlink-channel` |
-| route channel | Goal 9, Goal 15 | `framework-zlink-channel`, `framework-zlink-registry` |
+| route channel | Goal 9, Goal 15 | `framework-zlink-channel`, `framework-location` |
 | backpressure/reliability | Goal 10 | `framework-regression` |
 | SPOT lifecycle | Goal 11 | `framework-zlink-spot` |
 | SPOT timer | Goal 12 | `framework-zlink-spot`, `timer` |
 | STREAM packet | Goal 13 | `framework-zlink-stream` |
 | ActorGateway relay | Goal 14 | `framework-zlink-actor-gateway` |
-| Registry/discovery | Goal 15 | `framework-zlink-registry` |
+| location resolver/store | Goal 15 | `framework-location` |
 | monitoring/health/logging | Goal 4, Goal 16 | `framework-observability` |
 | module/hosted service | Goal 17 | `framework-integration` |
 | ZLink HTTP client | Goal 18 | `http-client-*` |
@@ -1654,7 +1640,7 @@ concrete label을 선택한다.
 | `http-client-*` | `http-client-contract`, `http-client-unit`, `http-client-e2e`, `http-client-https`, `http-client-regression` |
 | `connector-*` | `connector-unit`, `connector-integration`, `connector-e2e`, `connector-contract`, `connector-protocol`, `connector-transport`, `connector-typed`, `connector-package` |
 | `connector-unreal-*` | `connector-unreal-contract`, `connector-unreal-compile`, `connector-unreal-smoke` |
-| `framework-sample-*` | `framework-sample-smoke`, `framework-sample-parity`, `framework-sample-api`, `framework-sample-bingo`, `framework-sample-play`, `framework-sample-registry`, `framework-sample-session`, `framework-sample-tictactoe` |
+| `framework-sample-*` | `framework-sample-parity` |
 
 ## 8. Goal 실행용 문구
 

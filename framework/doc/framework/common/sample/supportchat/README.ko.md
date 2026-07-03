@@ -1087,6 +1087,12 @@ session gateway 구조가 흐려진다.
 
 아래 항목은 언어별 샘플 구현과 smoke test로 확인해야 하는 기준이다.
 
+- runner는 실행할 때마다 SupportChat 전용 Docker Redis 컨테이너를 직접 띄우고, 그 컨테이너에서 얻은
+  endpoint와 실행별 key prefix를 Session, API, Support 서버에 전달한다. 외부 Redis endpoint 재사용
+  mode는 제공하지 않는다.
+- runner가 사용하는 Redis container 이름, host port, key prefix, log directory는 실행별로 고유해야
+  한다. cleanup은 그 실행이 만든 container만 대상으로 삼고, 다른 테스트나 다른 샘플의 Redis container나
+  log 파일을 지우지 않는다.
 - client 두 종류(customer, agent)가 각각 Session 서버에 하나의 stream 연결만 연다.
 - Session, API, Support 서버는 공유 location store로 서로를 자동 발견한다.
 - 인증 후 Session 서버는 current stream session을 Support 서버 actor에 bind한다. 상담원은 roster actor에 bind된다.

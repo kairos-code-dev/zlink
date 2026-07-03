@@ -264,6 +264,8 @@ interface, type alias처럼 자기 언어에 맞는 표현으로 같은 필드�
 | `AssignDeliveryMsg` | Dispatch server HTTP API module -> dispatch channel module | `DeliveryId`, `CustomerId`, `PickupAddress`, `DropoffAddress` | 배차 대상 배송을 내부 dispatch 흐름에 넣는다(응답 없는 one-way send). |
 | `BindCourierSessionReq` | Courier client -> CourierSession server stream, CourierSession server -> CourierActor | `CourierId`, `Actor`, `SessionRoute` | client는 `CourierId`만 보낸다. CourierSession server는 기존 actor 위치를 먼저 찾고, actor bind relay 때 actor 위치와 session route를 채워 actor node가 현재 session을 알 수 있게 한다. |
 | `BindCourierSessionRes` | CourierActor -> CourierSession server, CourierSession server -> Courier client | `CourierId`, `Actor`, `SessionRoute` | 배송원 actor와 stream session binding이 끝났음을 반환한다. |
+| `BindCourierReq` | CourierSession server -> CourierActor | `CourierId`, `SessionRoute` | 이미 존재하는 배송원 actor에 현재 stream session route를 연결한다. |
+| `BindCourierRes` | CourierActor -> CourierSession server | `CourierId`, `Actor`, `SessionRoute` | 배송원 actor가 현재 session route를 기억했음을 반환한다. |
 | `FindCourierActorReq` | CourierSession server 또는 DispatchWorker module -> actor directory/discovery | `CourierId` | courier id에 연결된 기존 배송원 actor 위치가 있는지 찾는다. |
 | `FindCourierActorRes` | actor directory/discovery -> CourierSession server 또는 DispatchWorker module | `CourierId`, `Actor` | 기존 배송원 actor가 있으면 위치를 반환한다. 없으면 비어 있는 결과를 반환한다. |
 | `EnsureCourierActorReq` | CourierSession server 또는 DispatchWorker module -> target SpotNode | `CourierId` | 기존 actor가 없을 때 선택된 SpotNode의 `CourierEntrySpot` 아래에 배송원 actor가 존재하도록 만든다. |

@@ -145,8 +145,12 @@ store에 도달하고 owner lease join으로 유효성을 판정한다.
 | `IZLinkRouteLocationResolver` | `ResolveRouteAsync(key)` | owner-bound route 단건 resolve |
 
 - 메시징 resolver는 **주소**(`ZLinkSpotAddress` = `NodeRid + SpotRid`; mesh는 전송 문맥이
-  결정)를 반환한다. 호출자가 주소를 보관하고 전송 실패 시 재resolve한다. 전송 경로는
-  조회하지 않는다. 상세는 [spot 주소 메시징](spot-address-messaging.ko.md)이 정본이다.
+  결정)를 반환한다. 호출자가 주소를 보관하고 전송 실패 시 재resolve한다. 상세는
+  [spot 주소 메시징](spot-address-messaging.ko.md)이 정본이다.
+- location store 기반 Spot remote address resolver는 spot row의 mesh 이름으로 route mesh
+  channel을 고른다. spot mesh 이름과 route mesh channel 이름이 다르면 location option에
+  `spot mesh -> route mesh channel` 매핑을 등록해야 한다. 매핑이 없으면 같은 이름을 사용한다.
+  이 매핑은 전송 channel 선택만 정하고, store row key나 spot lifecycle mesh 이름을 바꾸지 않는다.
 - spot/actor/route resolver는 단건 resolve만 노출한다. 목록 조회는 peer resolver의 peer list,
   운영 조회 표면, store interface에만 둔다.
 - generation이 필요한 lifecycle 흐름(재연결/없으면 생성 판단, takeover)은 resolver가 아니라
@@ -236,6 +240,7 @@ options.AddLocationStore(new ZLinkRedisLocationStore(redis => redis
 | polling interval | watch/stamp가 없거나 이벤트가 없을 때 store 재조회 주기 | 1s |
 | list page size | 목록 조회 기본 page 크기 | 1000 |
 | store failure grace | store 장애 중 신규 outbound connect를 허용하는 완충 시간 | 30s |
+| spot router channel map | spot mesh 이름과 route mesh channel 이름이 다를 때 쓰는 전송 channel 매핑 | 빈 map |
 
 cache 관련 option은 없다(캐시 제거 결정).
 

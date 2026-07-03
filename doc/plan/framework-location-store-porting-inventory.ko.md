@@ -69,6 +69,21 @@ Redis extension 등록 방식 추가 → 기존 registry/discovery E2E를 locati
    재작성), store 장애/복구 검증(SF-*)이 그 축을 대체한다.
 6. **Redis cluster** — 공식 extension의 Lua는 row/gen/index key가 한 slot에 있어야 한다.
    cluster 배포는 hash-tagged key prefix가 전제라는 점을 각 언어 extension 문서에 명시한다.
+7. **Redis 호출은 반드시 논블로킹** — `location-store-redis.ko.md`가 "Redis 응답 지연/실패가
+   framework runtime을 블록하면 안 된다"를 명문화한다. .NET(`StackExchange.Redis` async API,
+   `ValueTask`/`ConfigureAwait(false)` 전 구간)과 Node.js(`redis` client의 Promise 기반
+   `sendCommand`, 이벤트 루프 논블로킹 소켓)는 이미 이 계약을 지킨다. 나머지 언어는 포팅 시
+   같은 수준을 실측으로 증명해야 한다.
+   - **Kotlin**: 코루틴 기반이므로 Redis client가 진짜 suspend 논블로킹이어야 한다(예: Lettuce
+     코루틴 확장). Jedis 같은 블로킹 전용 client는 쓰지 않는다. 부득이하게 블로킹 client를
+     감싸면 반드시 `Dispatchers.IO`로 격리하고, 코루틴 연산에 쓰이는 `Dispatchers.Default`
+     공유 스레드풀과 절대 공유하지 않는다.
+   - **C++**: 이 Redis I/O가 core 메시징 엔진의 고정 I/O 스레드(`PERF_IO_THREADS=4`,
+     spec-fixed — 늘리지 말 것)와 스레드를 공유하면 안 된다. 논블로킹 client(예:
+     `redis-plus-plus` async 인터페이스, 또는 hiredis + libevent/libuv)를 전용 이벤트
+     루프/스레드에서 돌려 core I/O 경로와 격리한다.
+   - 공통 검증: Redis를 인위적으로 느리게 만든 상태에서 무관한 동시 spot/actor 처리(코루틴/
+     이벤트 루프 task)의 p99 latency가 영향받지 않는지 부하 테스트로 확인한다.
 
 ## 5. 다음 갱신 시점
 

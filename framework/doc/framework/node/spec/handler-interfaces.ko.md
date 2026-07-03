@@ -2,7 +2,7 @@
 [문서 목록](../README.ko.md) | [표면 매핑 정책](../internals/dotnet-to-node-surface-mapping.ko.md) | [다음: ZLink Framework NestJS Channel Messaging](nestjs-channel-messaging.ko.md)
 <!-- framework-adapter-nav:end -->
 
-[Node.js 묶음](../README.ko.md) | [channel](nestjs-channel-messaging.ko.md) | [SPOT](nestjs-spot.ko.md) | [STREAM](nestjs-stream.ko.md) | [Actor](nestjs-actor.ko.md) | [Monitoring](nestjs-monitoring.ko.md) | [Registry](nestjs-registry.ko.md)
+[Node.js 묶음](../README.ko.md) | [channel](nestjs-channel-messaging.ko.md) | [SPOT](nestjs-spot.ko.md) | [STREAM](nestjs-stream.ko.md) | [Actor](nestjs-actor.ko.md) | [Monitoring](nestjs-monitoring.ko.md)
 
 # ZLink Framework Node.js Interface Catalog
 
@@ -49,7 +49,7 @@ framework 가 나온다. 개념·의미론·동작은 dotnet 과 동일하고, �
 - STREAM 통합 → [nestjs-stream.ko.md](nestjs-stream.ko.md)
 - STREAM 샘플 → [정본 샘플](../README.ko.md)
 - Actor 통합 → [nestjs-actor.ko.md](nestjs-actor.ko.md)
-- Registry 통합 → [nestjs-registry.ko.md](nestjs-registry.ko.md)
+- location store 통합 → location resolver/store 공통 계약
 
 ### 1.1 공통 표면 규칙
 
@@ -169,7 +169,7 @@ export interface ActorRef {
 | builder | `ZLinkSpotNodeBuilder` | SPOT node 등록 builder | 6.3 |
 | builder | `ZLinkSpotMeshBuilder` | SPOT mesh 등록 builder | 6.3 |
 | builder | `ZLinkSpotMeshNodeBuilder` | SPOT mesh node 등록 builder | 6.3 |
-| builder | `useDiscovery().addRegistryEndpoint(endpoint)` | discovery endpoint 직접 추가 | 6.1 |
+| builder | `useInMemoryLocationStores()` / `addLocationStore(...)` | location store 등록 | 6.1 |
 | builder | `ZLinkMetadataPolicyBuilder` | metadata forward 정책 builder | 6.1 |
 | options | `ZLinkSocketConfig` | 공통 socket 옵션 | 6.4 |
 | options | `ZLinkRouteConfig` | routed peer 정책 옵션 | 6.4 |
@@ -177,7 +177,7 @@ export interface ActorRef {
 | options | `ZLinkSpotPublisherConfig` | spot publisher 옵션 | 6.4 |
 | options | `ZLinkSpotSubscriberConfig` | spot subscriber 옵션 | 6.4 |
 | options | `ZLinkEntrySpotOptions` | Entry Spot routing id 옵션 | 6.4 |
-| options | `ZLinkRegistrySpotRemoteAddressesOptions` | registry 기반 spot 주소 옵션 | 6.1 |
+| options | `ZLinkLocationOptions` | location store 갱신, lease, watch 설정 | 6.1 |
 | config | `ZLinkEndpointConnections` | manual 연결 편집 표면 | 6.2 |
 | timer | `ZLinkTimer` | timer handle | 7 |
 | options | `ZLinkTimerOptions` | timer 옵션 | 7 |
@@ -194,8 +194,8 @@ export interface ActorRef {
 | value | `ZLinkSocketEventKind`, `ZLinkSocketEvent` | socket runtime event | 10.3 |
 | value | `ZLinkSpotEventKind`, `ZLinkSpotEvent` | spot runtime event | 10.3 |
 
-decorator 와 enum, registry/monitoring model 의 전체 목록은 §11(decorator),
-§10.3(monitoring), §10.4(registry/monitoring models)에 둔다.
+decorator 와 enum, location/monitoring model 의 전체 목록은 §11(decorator),
+§10.3(monitoring), §10.4(location/monitoring models)에 둔다.
 
 ## 3. Context 인터페이스
 
@@ -1393,8 +1393,14 @@ function createFrameworkRegistrationWithBuilder(
   configure: (options: ZLinkFrameworkOptions) => void): ZLinkFrameworkRegistration;
 
 export interface ZLinkFrameworkOptions {
-  addRegistryEndpoint(endpoint: string): this;
-  addRegistryEndpoint(endpoint: string): this;
+  useInMemoryLocationStores(): this;
+  addLocationStore(store: IZLinkLocationStore): this;
+  addPeerLocationStore(store: ZLinkLocationStoreProvider<IZLinkPeerLocationStore>): this;
+  addSpotLocationStore(store: ZLinkLocationStoreProvider<IZLinkSpotLocationStore>): this;
+  addActorLocationStore(store: ZLinkLocationStoreProvider<IZLinkActorLocationStore>): this;
+  addRouteLocationStore(store: ZLinkLocationStoreProvider<IZLinkRouteLocationStore>): this;
+  addOwnerLeaseStore(store: ZLinkLocationStoreProvider<IZLinkOwnerLeaseStore>): this;
+  configureLocations(): ZLinkLocationOptions;
   addSpotFactory<TSpot extends ZLinkSpot>(spotType: Type<TSpot>): this;
   addSpotMesh(channelName: string): ZLinkSpotMeshBuilder;
   addClientServerChannel(name: string): ZLinkClientServerChannelBuilder;
@@ -1411,15 +1417,15 @@ export interface ZLinkMetadataPolicyBuilder {
 ```
 
 > 구현 기준: builder 는 현재 runtime registration 이 실제로 소비하는 channel,
-> stream node, SpotNode, discovery, spot factory 구성을 만든다. codec/filter/handler
-> discovery/registry remote address 표면은 선언적 module options 로 둔다.
+> stream node, SpotNode, location store, spot factory 구성을 만든다. codec/filter/handler
+> 표면은 선언적 module options 로도 둘 수 있다.
 
 각 메서드 의미:
 
 - `addClientServerChannel(...)`: request/send 용 client-server 채널 등록.
 - `addFanoutChannel(...)`: pub/sub fanout 채널 등록.
 - `addRouteChannel(...)` / `addRouteMesh(...)`: route channel 등록.
-- `useDiscovery().addRegistryEndpoint(...)`: 일반 channel 역할이 공유할 registry endpoint 집합 등록.
+- `useInMemoryLocationStores()` / `addLocationStore(...)`: 위치 조회와 자동 연결에 쓸 location store 등록.
 - `addStreamNode(...)`: STREAM node 등록(한 node 에 session 하나만).
 - `addSpotFactory(...)`: `ZLinkSpotManager` 가 사용할 spot factory 타입 등록.
 - `addSpotMesh(channelName)`: SPOT mesh 아래 SpotNode 등록.
@@ -1427,7 +1433,7 @@ export interface ZLinkMetadataPolicyBuilder {
 #### (A) NestJS module-options 대응
 
 하위 설정 람다는 NestJS fluent builder 로 옮긴다. 정확한 메서드와 형태는 각 채널별 spec
-(`nestjs-channel-messaging`, `nestjs-spot`, `nestjs-stream`, `nestjs-registry`)이 확정한다.
+(`nestjs-channel-messaging`, `nestjs-spot`, `nestjs-stream`)이 확정한다.
 
 ```ts
 @Module({
@@ -1440,8 +1446,7 @@ export interface ZLinkMetadataPolicyBuilder {
         })
         .codecs()
           .use(zlinkProtobufCodec())
-        .useDiscovery()
-          .addRegistryEndpoint('tcp://registry:7000')
+        .useInMemoryLocationStores()
         .addClientServerChannel('api')
           .enableServer('tcp://0.0.0.0:7101')
           .addHandlerGroup('api')
@@ -1465,14 +1470,14 @@ export class AppModule {}
 | `addRouteMesh(name)` | `addRouteMesh(name)` | nestjs-channel-messaging |
 | `addSpotMesh(name)` | `addSpotMesh(name)` | nestjs-spot |
 | `addStreamNode(name)` | `addStreamNode(name)` | nestjs-stream |
-| `useDiscovery().addRegistryEndpoint(...)` | `useDiscovery().addRegistryEndpoint(...)` | nestjs-registry |
+| `configureLocationStore(...)` | `addLocationStore(...)` / `configureLocations()` | handler-interfaces §10 |
 | `useFilter(...)` | `filters: [FilterClass]` | handler-interfaces §8 |
 | `configureDispatch(...)` | `dispatch: { spotDispatchMode, streamDispatchMode, unhandled, diagnostics }` | §4.4.3 |
 | `addHandlersFromModule(s)(...)` | `discover: { modules / include }` | 매핑 정책 §4.2 |
 | `addSpotMesh(...).actorFactory(...)` | SpotNode `actorFactories` | nestjs-actor |
 | `codecs` | `codecs().use(zlinkProtobufCodec())`  | §4.5 |
 | `configureMetadata(...)` | `metadata: { forward: [...] }` | nestjs-actor |
-| `useRegistrySpotRemoteAddresses(...)` | `spotRemoteAddresses: { namespace, routerChannelId? }` | nestjs-spot |
+| location resolver/store | `useInMemoryLocationStores()` / `addLocationStore(...)` | handler-interfaces §10 |
 
 #### channel builder
 
@@ -1612,9 +1617,7 @@ export interface ZLinkSpotNodeBuilder {
 /** mesh node 는 spot node builder 를 그대로 확장한다. */
 export interface ZLinkSpotMeshNodeBuilder extends ZLinkSpotNodeBuilder {}
 
-export interface ZLinkSpotMeshBuilder extends ZLinkSpotNodeBuilder {
-  useDiscovery(): ZLinkDiscoveryBuilder;
-}
+export interface ZLinkSpotMeshBuilder extends ZLinkSpotNodeBuilder {}
 ```
 
 > Node builder 에서도 node 자체 `bind(...)` 는 없다. router/pubSub endpoint 는
@@ -1812,56 +1815,93 @@ const reply = await client
 > `@ZLinkPacket` / `packetName` 에 의존한다. 순수 구조적 타입(plain interface)만 쓰면 packet
 > key 를 명시해야 한다(코드로 검증되는 제약). 의미가 아니라 표면 제약이다.
 
-## 10. Registry / Monitoring 인터페이스
+## 10. Location / Monitoring 인터페이스
 
-
-status, service summary, topology, member peers 를 제공한다. 비동기인 이유는 registry 가 아직
-시작되지 않았을 수 있고 snapshot 수집이 host lifecycle 과 맞물리기 때문이다.
+location runtime query 는 peer, Spot, actor, route 위치 행과 runtime snapshot 을 조회한다.
+비동기인 이유는 store 접근과 host lifecycle 이 맞물리고, Redis 같은 외부 store 는 네트워크
+오류와 지연을 가질 수 있기 때문이다.
 
 ```ts
-  status(): Promise<ZLinkRegistryStatus>;
-  serviceSummary(filter?: ZLinkRegistryServiceSummaryFilter): Promise<ZLinkRegistryServiceSummaryEntry[]>;
-  topology(filter?: ZLinkRegistryTopologyFilter): Promise<ZLinkRegistryTopologyEntry[]>;
-  memberPeers(channelName: string): Promise<ZLinkMemberPeerEntry[]>;
+export interface IZLinkLocationRuntimeQuery {
+  getStatus(signal?: AbortSignal): Promise<ZLinkLocationRuntimeStatus>;
+  listPeers(filter: ZLinkPeerLocationFilter, signal?: AbortSignal): Promise<readonly ZLinkPeerLocation[]>;
+  listSpots(
+    filter: ZLinkSpotLocationFilter,
+    page?: ZLinkPageRequest,
+    signal?: AbortSignal
+  ): Promise<ZLinkLocationPage<ZLinkSpotLocation>>;
+  listActors(
+    filter: ZLinkActorLocationFilter,
+    page?: ZLinkPageRequest,
+    signal?: AbortSignal
+  ): Promise<ZLinkLocationPage<ZLinkActorLocation>>;
+  listRoutes(
+    filter: ZLinkRouteLocationFilter,
+    page?: ZLinkPageRequest,
+    signal?: AbortSignal
+  ): Promise<ZLinkLocationPage<ZLinkRouteLocation>>;
+  listTopology(
+    filter: ZLinkLocationTopologyFilter,
+    page?: ZLinkPageRequest,
+    signal?: AbortSignal
+  ): Promise<ZLinkLocationPage<ZLinkLocationTopologyEntry>>;
+  listServiceSummaries(
+    filter: ZLinkLocationServiceSummaryFilter,
+    signal?: AbortSignal
+  ): Promise<readonly ZLinkLocationServiceSummary[]>;
 }
 ```
 
-> 문서가 무인자 오버로드를 따로 적었지만 코드는 optional filter 하나). `MemberPeersAsync` 는
-> `channelName` 하나만 받는다.
-
-
-topology snapshot 만 제공한다. 원격 요청 특성상 비동기다.
+location store 는 행의 소유권과 generation 을 함께 저장한다. 호출자는 message 전송 경로에서
+store 구현을 직접 다루지 않고, framework 가 등록된 store 를 통해 필요한 위치를 갱신하고 조회한다.
 
 ```ts
-  topology(filter?: ZLinkRegistryTopologyFilter): Promise<ZLinkRegistryTopologyEntry[]>;
+export interface IZLinkLocationStore extends
+  IZLinkPeerLocationStore,
+  IZLinkSpotLocationStore,
+  IZLinkActorLocationStore,
+  IZLinkRouteLocationStore,
+  IZLinkOwnerLeaseStore {}
+
+export interface IZLinkPeerLocationResolver {
+  listPeers(filter: ZLinkPeerLocationFilter, signal?: AbortSignal): Promise<readonly ZLinkPeerLocation[]>;
 }
 
-  endpoint: string;
+export interface IZLinkSpotLocationResolver {
+  resolveSpotAddress(
+    meshName: string,
+    spotRid: RoutingId,
+    signal?: AbortSignal
+  ): Promise<ZLinkSpotAddress | undefined>;
 }
-```
 
+export interface IZLinkActorLocationResolver {
+  resolveActorSpotAddress(
+    actorType: string,
+    actorId: string,
+    signal?: AbortSignal
+  ): Promise<ZLinkSpotAddress | undefined>;
+}
 
-```ts
-export interface ZLinkRegistryOptions {
-  pubEndpoint: string;
-  routerEndpoint: string;
-  registryId: number;
-  heartbeatIntervalMs: number;
-  heartbeatTimeoutMs: number;
-  broadcastIntervalMs: number;
-  addPeer(peerPubEndpoint: string): void;
+export interface IZLinkRouteLocationResolver {
+  resolveRoute(key: ZLinkRouteLocationKey, signal?: AbortSignal): Promise<ZLinkRouteLocation | undefined>;
 }
 ```
 
 ### 10.3 runtime monitoring
 
-runtime monitoring 은 운영 표면이다. socket 하부 monitor 와 registry/spot snapshot diff 를 감싼다.
+runtime monitoring 은 운영 표면이다. socket 하부 monitor, location store snapshot/event,
+Spot snapshot diff 를 감싼다.
 
 ```ts
 export interface ZLinkMonitoringOptions {
   socket?: ZLinkSocketMonitoringRegistration[];
-  registry?: ZLinkPollingMonitoringRegistration[];
   spot?: ZLinkPollingMonitoringRegistration[];
+  locationRuntime?: ZLinkPollingMonitoringRegistration[];
+  locationPeer?: ZLinkLocationMonitoringRegistration[];
+  locationSpot?: ZLinkLocationMonitoringRegistration[];
+  locationActor?: ZLinkLocationMonitoringRegistration[];
+  locationRoute?: ZLinkLocationMonitoringRegistration[];
 }
 
 export interface ZLinkSocketMonitoringRegistration {
@@ -1874,6 +1914,10 @@ export interface ZLinkPollingMonitoringRegistration {
   readonly intervalMs: number;
 }
 
+export interface ZLinkLocationMonitoringRegistration {
+  readonly sourceName: string;
+}
+
 export interface ZLinkRuntimeEvent {
   readonly sourceName: string;
   readonly timestamp: Date;
@@ -1884,6 +1928,7 @@ export interface ZLinkRuntimeEventHandler<TEvent extends ZLinkRuntimeEvent> {
 }
 
 export interface ZLinkRuntimeEventPublisher {
+  register<TEvent extends ZLinkRuntimeEvent>(handler: ZLinkRuntimeEventHandler<TEvent>): void;
   publish<TEvent extends ZLinkRuntimeEvent>(event: TEvent): Promise<void>;
 }
 ```
@@ -1937,14 +1982,77 @@ export interface ZLinkSocketEvent extends ZLinkRuntimeEvent {
   readonly diagnostic?: ZLinkSocketDiagnostic;
 }
 
-  StatusChanged = 'statusChanged',
-  TopologyChanged = 'topologyChanged',
-  ServiceSummaryChanged = 'serviceSummaryChanged',
+export enum ZLinkLocationRuntimeEventKind {
+  StatusChanged = 0,
+  TopologyChanged = 1,
+  ServiceSummaryChanged = 2,
+  StoreUnavailable = 3,
+  StoreRecovered = 4,
 }
 
-  readonly status?: ZLinkRegistryStatus;
-  readonly topology?: readonly ZLinkRegistryTopologyEntry[];
-  readonly serviceSummary?: readonly ZLinkRegistryServiceSummaryEntry[];
+export interface ZLinkLocationRuntimeEvent extends ZLinkRuntimeEvent {
+  readonly event: ZLinkLocationRuntimeEventKind;
+  readonly status?: ZLinkLocationRuntimeStatus;
+  readonly topology?: readonly ZLinkLocationTopologyEntry[];
+  readonly topologyFilter?: ZLinkLocationTopologyFilter;
+  readonly serviceSummary?: readonly ZLinkLocationServiceSummary[];
+  readonly serviceSummaryFilter?: ZLinkLocationServiceSummaryFilter;
+}
+
+export enum ZLinkLocationPeerEventKind {
+  RowUpdated = 0,
+  RowRemoved = 1,
+  DesiredSetChanged = 2
+}
+
+export interface ZLinkAutoConnectDesiredSetChange {
+  readonly autoConnectType: ZLinkLocationAutoConnectType;
+  readonly meshName: string;
+  readonly connectedEndpoints: readonly string[];
+  readonly disconnectedEndpoints: readonly string[];
+}
+
+export interface ZLinkLocationPeerEvent extends ZLinkRuntimeEvent {
+  readonly event: ZLinkLocationPeerEventKind;
+  readonly key?: string;
+  readonly peer?: ZLinkPeerLocation;
+  readonly desiredSetChange?: ZLinkAutoConnectDesiredSetChange;
+}
+
+export enum ZLinkLocationSpotEventKind {
+  RowUpdated = 0,
+  RowRemoved = 1,
+  ResolveMiss = 2
+}
+
+export interface ZLinkLocationSpotEvent extends ZLinkRuntimeEvent {
+  readonly event: ZLinkLocationSpotEventKind;
+  readonly key: ZLinkSpotLocationKey;
+  readonly spot?: ZLinkSpotLocation;
+}
+
+export enum ZLinkLocationActorEventKind {
+  RowUpdated = 0,
+  RowRemoved = 1,
+  ResolveMiss = 2
+}
+
+export interface ZLinkLocationActorEvent extends ZLinkRuntimeEvent {
+  readonly event: ZLinkLocationActorEventKind;
+  readonly key: ZLinkActorLocationKey;
+  readonly actor?: ZLinkActorLocation;
+}
+
+export enum ZLinkLocationRouteEventKind {
+  RowUpdated = 0,
+  RowRemoved = 1,
+  ResolveMiss = 2
+}
+
+export interface ZLinkLocationRouteEvent extends ZLinkRuntimeEvent {
+  readonly event: ZLinkLocationRouteEventKind;
+  readonly key: ZLinkRouteLocationKey;
+  readonly route?: ZLinkRouteLocation;
 }
 
 export enum ZLinkSpotEventKind {
@@ -1987,64 +2095,149 @@ exception 객체 자체는 public payload 에 넣지 않고 `ZLinkSpotTimerDiagn
 요약만 담는다.
 
 source 의미: socket event 는 `SocketMonitor` 를 감싸며 source 이름은 `channel.capability` 또는
-`spotNode.capability` 형태(`profile.server`, `stage-node.router`)다. registry/spot event 는 raw
-monitor 가 아니라 status/topology/summary 또는 status/peers/subjects 의 polling + diff 합성이다.
-discovery 상태는 runtime event 로 올리지 않고 registry snapshot 으로 조회한다.
+`spotNode.capability` 형태(`profile.server`, `stage-node.router`)다. location runtime event 는
+store status/topology/summary 의 polling + diff 합성이고, location row event 는 peer, Spot,
+actor, route 행의 갱신과 조회 miss 를 나타낸다. Spot event 는 raw monitor 가 아니라
+status/peers/subjects 의 polling + diff 합성이다.
 
-### 10.4 Registry / Spot monitoring model
+### 10.4 Location / Spot monitoring model
 
-monitoring/registry event payload 에 쓰이는 model 과 enum 이다. 상세 의미는
-[nestjs-registry.ko.md](nestjs-registry.ko.md) / [nestjs-monitoring.ko.md](nestjs-monitoring.ko.md)
-가 소유한다. 여기서는 표면만 고정한다.
+monitoring/location event payload 에 쓰이는 model 과 enum 이다. 상세 의미는 location
+resolver/store 공통 계약과 [nestjs-monitoring.ko.md](nestjs-monitoring.ko.md)가 소유한다.
+여기서는 표면만 고정한다.
 
 ```ts
-export enum ZLinkAutoConnectType {
-  Invalid = 'invalid', RouteMesh = 'routeMesh', ClientServer = 'clientServer',
-  Fanout = 'fanout', SpotMesh = 'spotMesh',
-}
-export enum ZLinkServiceKind { Discovery = 'discovery', SpotSub = 'spotSub', SpotPub = 'spotPub', Socket = 'socket' }
-export enum ZLinkServiceRole { Invalid = 'invalid', Spot = 'spot', Router = 'router', Dealer = 'dealer', Pub = 'pub', Sub = 'sub' }
-export enum ZLinkRegistryState { Idle = 'idle', Active = 'active', Degraded = 'degraded', Error = 'error' }
-export enum ZLinkTopologySource { Manual = 'manual', Discovery = 'discovery', Registry = 'registry' }
-export enum ZLinkTopologyState {
-  Discovered = 'discovered', Connecting = 'connecting', Ready = 'ready', Lost = 'lost', Error = 'error', Stopped = 'stopped',
-}
-export enum ZLinkAdmissionState { Serving = 'serving', Draining = 'draining' }
-
-export interface ZLinkRegistryServiceSummaryFilter {
-  autoConnectType?: ZLinkAutoConnectType;
-  serviceRole?: ZLinkServiceRole;
-  channelName?: string;
-}
-export interface ZLinkRegistryTopologyFilter {
-  autoConnectType?: ZLinkAutoConnectType;
-  serviceKind?: ZLinkServiceKind;
-  serviceRole?: ZLinkServiceRole;
-  channelName?: string;
-  routingId?: RoutingId;
-  state?: ZLinkTopologyState;
-  source?: ZLinkTopologySource;
+export enum ZLinkLocationAutoConnectType {
+  Invalid = 0,
+  RouteMesh = 1,
+  ClientServer = 2,
+  DealerMesh = 3,
+  Fanout = 4,
+  SpotMesh = 5
 }
 
-export interface ZLinkRegistryStatus {
-  registryId: number; bindEndpoint: string; state: ZLinkRegistryState;
-  topologyEntryCount: number; peerRegistryCount: number; connectedPeerRegistryCount: number;
-  listSeq: bigint; lastError: number; lastChangedMs: bigint;
+export enum ZLinkLocationRole {
+  Invalid = 0,
+  Spot = 2,
+  Router = 3,
+  Dealer = 4,
+  Pub = 5,
+  Sub = 6
 }
-export interface ZLinkRegistryServiceSummaryEntry {
-  autoConnectType: ZLinkAutoConnectType; serviceRole: ZLinkServiceRole; channelName: string;
-  totalCount: number; connectingCount: number; readyCount: number; errorCount: number;
-  stoppedCount: number; lastReportedMs: bigint;
+
+export enum ZLinkRouteKind {
+  Invalid = 0,
+  ActorSession = 1,
+  SpotName = 2,
+  FrameworkRoute = 3
 }
-export interface ZLinkRegistryTopologyEntry {
-  autoConnectType: ZLinkAutoConnectType; routingId?: RoutingId; serviceKind: ZLinkServiceKind;
-  serviceRole: ZLinkServiceRole; channelName: string; endpoint: string; source: ZLinkTopologySource;
-  state: ZLinkTopologyState; desiredCount: number; readyCount: number; errorCode: number;
-  lastReportedMs: bigint; spotKind: ZLinkSpotKind;
+
+export enum ZLinkLocationKind {
+  Peer = 1,
+  Spot = 2,
+  Actor = 3,
+  Route = 4
 }
-export interface ZLinkMemberPeerEntry {
-  autoConnectType: ZLinkAutoConnectType; serviceRole: ZLinkServiceRole; channelName: string;
-  endpoint: string; routingId?: RoutingId; value: bigint; weight: number;
+
+export function zlinkLocationAutoConnectTypeName(type: ZLinkLocationAutoConnectType): string;
+export function zlinkLocationRoleName(role: ZLinkLocationRole): string;
+export function tryParseZLinkLocationAutoConnectType(value: string): ZLinkLocationAutoConnectType | undefined;
+export function tryParseZLinkLocationRole(value: string): ZLinkLocationRole | undefined;
+
+export interface ZLinkPeerLocation {
+  readonly autoConnectType: ZLinkLocationAutoConnectType;
+  readonly meshName: string;
+  readonly nodeRid?: RoutingId;
+  readonly role: ZLinkLocationRole;
+  readonly endpoint: string;
+  readonly weight: number;
+  readonly value: bigint;
+  readonly ownerId: string;
+  readonly generation: bigint;
+  readonly updatedAt: Date;
+}
+
+export interface ZLinkSpotLocation {
+  readonly meshName: string;
+  readonly spotRid: RoutingId;
+  readonly nodeRid: RoutingId;
+  readonly spotKind: ZLinkSpotKind;
+  readonly ownerId: string;
+  readonly generation: bigint;
+  readonly updatedAt: Date;
+}
+
+export interface ZLinkActorLocation {
+  readonly actorType: string;
+  readonly actorId: string;
+  readonly actorRef: string;
+  readonly nodeRid: RoutingId;
+  readonly generation: bigint;
+  readonly locationKind: ZLinkSpotKind;
+  readonly spotMeshName: string;
+  readonly spotKind: ZLinkSpotKind;
+  readonly ownerId: string;
+  readonly updatedAt: Date;
+}
+
+export interface ZLinkRouteLocation {
+  readonly routeKind: ZLinkRouteKind;
+  readonly routeKey: string;
+  readonly ownerNodeRid: RoutingId;
+  readonly ownerId: string;
+  readonly generation: bigint;
+  readonly value: Uint8Array;
+  readonly updatedAt: Date;
+}
+
+export interface ZLinkOwnerLease {
+  readonly ownerId: string;
+  readonly nodeRid: RoutingId;
+  readonly leaseExpiresAt: Date;
+  readonly updatedAt: Date;
+}
+
+export interface ZLinkLocationRuntimeStatus {
+  readonly storeHealthy: boolean;
+  readonly watchEnabled: boolean;
+  readonly pollingIntervalMs: number;
+  readonly lastRefreshAt?: Date;
+  readonly lastError?: string;
+  readonly ownerLeaseHealthy: boolean;
+  readonly ownerLeaseRenewedAt?: Date;
+}
+
+export enum ZLinkLocationTopologyState {
+  Discovered = 1,
+  Connecting = 2,
+  Ready = 3,
+  Lost = 4,
+  Error = 5,
+  Stopped = 6
+}
+
+export interface ZLinkLocationTopologyEntry {
+  readonly kind: ZLinkLocationKind;
+  readonly meshName?: string;
+  readonly role?: ZLinkLocationRole;
+  readonly nodeRid?: RoutingId;
+  readonly endpoint?: string;
+  readonly state: ZLinkLocationTopologyState;
+  readonly desiredCount: number;
+  readonly readyCount: number;
+  readonly errorCode: number;
+  readonly updatedAt: Date;
+}
+
+export interface ZLinkLocationServiceSummary {
+  readonly meshName: string;
+  readonly autoConnectType: ZLinkLocationAutoConnectType;
+  readonly role: ZLinkLocationRole;
+  readonly totalCount: number;
+  readonly readyCount: number;
+  readonly errorCount: number;
+  readonly stoppedCount: number;
+  readonly updatedAt: Date;
 }
 
 export enum ZLinkSpotNodeState { Idle = 'idle', Connecting = 'connecting', PartialReady = 'partialReady', Ready = 'ready', Error = 'error' }

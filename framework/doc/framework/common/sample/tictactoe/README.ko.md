@@ -249,11 +249,11 @@ TicTacToe 샘플은 모든 framework 언어에서 같은 public framework 모델
   샘플 실행은 실제 server를 띄우고 client가 접속해 `tictactoe=completed`에 해당하는
   성공 결과를 만들 수 있어야 한다.
 - 샘플 실행에는 Redis가 필요하다. 애플리케이션 코드는 Redis endpoint만 설정으로 받고,
-  Docker container 생성이나 종료를 직접 맡지 않는다. `run_sample`은 외부 Redis endpoint가
-  주어지지 않으면 Docker로 Redis container를 준비하고, 샘플 종료 시 정리한다.
-- `run_sample`이 Redis container를 직접 준비할 때는 실행마다 임시 container와 localhost
-  포트를 사용해야 한다. 외부 Redis endpoint를 명시한 경우에도 실행별 key prefix를 설정해
-  다른 테스트나 다른 샘플 실행의 room route와 섞이지 않게 해야 한다.
+  Docker container 생성이나 종료를 직접 맡지 않는다. `run_sample`은 실행마다 자기 실행에만
+  쓰는 전용 Docker Redis container를 준비하고, 샘플 종료 시 자신이 만든 container만 정리한다.
+- `run_sample`이 Redis container를 직접 준비할 때는 실행마다 고유한 container 이름, Docker가
+  배정한 localhost port, 실행별 key prefix를 사용해야 한다. 외부 Redis endpoint 재사용 mode는
+  제공하지 않는다. 이렇게 해야 동시에 도는 다른 테스트나 다른 샘플 실행의 room route와 섞이지 않는다.
 - Redis client dependency는 room route store adapter 안에만 둔다. handler, actor, Spot,
   Domain 코드가 Redis client 타입을 직접 참조하면 안 된다.
 - actor가 room에 join하는 흐름은 각 언어 framework의 public actor/Spot API와 public spot
@@ -420,12 +420,13 @@ C++ 샘플은 `redis-plus-plus`를 사용한다. C++ framework는 이미 C++20�
 샘플 애플리케이션은 Docker를 직접 호출하지 않는다. Docker container 준비는 runner의
 책임이다.
 
-- `run_sample`은 Redis endpoint 설정이 이미 있으면 그 Redis를 사용한다.
-- Redis endpoint 설정이 없으면 runner가 pinned Redis image로 container를 띄우고 ready
-  상태를 확인한 뒤 endpoint를 API/Play 프로세스에 전달한다.
-- runner는 정상 종료와 실패 종료 모두에서 Redis container를 정리한다.
-- Docker를 사용할 수 없고 Redis endpoint도 없으면 runner는 명확한 오류를 출력하고 중단한다.
-- C++, .NET, Java, Kotlin, Node 샘플은 모두 같은 Redis endpoint 계약을 사용한다.
+- `run_sample`은 실행마다 전용 Redis container를 띄우고 ready 상태를 확인한 뒤 endpoint를
+  API/Play 프로세스에 전달한다.
+- runner는 정상 종료와 실패 종료 모두에서 자신이 만든 Redis container를 정리한다.
+- Docker를 사용할 수 없으면 runner는 명확한 오류를 출력하고 중단한다.
+- 외부 Redis endpoint 재사용 mode는 제공하지 않는다. Redis endpoint는 runner가 만든 container에서
+  파생한 값을 사용한다.
+- C++, .NET, Java, Kotlin, Node 샘플은 모두 같은 runner-owned Redis container 계약을 사용한다.
 
 ## 7. Handler 등록 방식
 
@@ -981,7 +982,7 @@ backend call, runtime event, 또는 framework 테스트 중 하나로 아래 사
   우회하지 않는다.
 - 모든 언어 샘플은 milestone 알림에 public Spot pub/sub API를 사용한다. internal socket,
   channel publish 우회, 샘플 전용 fan-out helper로 대체하지 않는다.
-- `run_sample`은 Redis endpoint가 없으면 Docker로 Redis container를 준비하고 종료 시
+- `run_sample`은 실행마다 전용 Docker Redis container를 준비하고 종료 시 자신이 만든 container만
   정리한다.
 - client는 room 생성 같은 API 요청만 API 서버로 보낸다.
 - client는 API 응답으로 받은 Play 서버 stream endpoint 목록에만 직접 연결한다.

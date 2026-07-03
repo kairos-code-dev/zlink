@@ -84,6 +84,24 @@ public sealed class ZLinkRedisLocationStore :
         _prefix = options.KeyPrefix;
     }
 
+    /// <summary>
+    /// Builder-style configuration, matching the framework's channel and
+    /// mesh builders: <c>new ZLinkRedisLocationStore(redis => redis
+    /// .SetConnectionString(...).SetKeyPrefix(...))</c>.
+    /// </summary>
+    public ZLinkRedisLocationStore(Action<ZLinkRedisLocationOptions> configure)
+        : this(Configure(configure))
+    {
+    }
+
+    private static ZLinkRedisLocationOptions Configure(Action<ZLinkRedisLocationOptions> configure)
+    {
+        ArgumentNullException.ThrowIfNull(configure);
+        var options = new ZLinkRedisLocationOptions();
+        configure(options);
+        return options;
+    }
+
     // ----- peer store ------------------------------------------------------
 
     public ValueTask<ZLinkLocationWriteResult> UpdatePeerAsync(

@@ -24,6 +24,27 @@ public sealed class ZLinkRedisLocationOptions
     /// never reads or writes keys outside this prefix.</summary>
     public string KeyPrefix { get; set; } = string.Empty;
 
+    public ZLinkRedisLocationOptions SetConnectionString(string connectionString)
+    {
+        ArgumentException.ThrowIfNullOrEmpty(connectionString);
+        ConnectionString = connectionString;
+        return this;
+    }
+
+    public ZLinkRedisLocationOptions SetConfiguration(ConfigurationOptions configuration)
+    {
+        ArgumentNullException.ThrowIfNull(configuration);
+        ConfigurationOptions = configuration;
+        return this;
+    }
+
+    public ZLinkRedisLocationOptions SetKeyPrefix(string keyPrefix)
+    {
+        ArgumentException.ThrowIfNullOrEmpty(keyPrefix);
+        KeyPrefix = keyPrefix;
+        return this;
+    }
+
     internal ConfigurationOptions BuildConfiguration()
     {
         var configuration = ConfigurationOptions is { } explicitOptions

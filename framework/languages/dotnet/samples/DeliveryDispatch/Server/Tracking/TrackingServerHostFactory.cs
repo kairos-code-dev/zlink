@@ -22,11 +22,9 @@ public static class TrackingServerHostFactory
         builder.Services.AddSingleton<EvidenceStore>();
         builder.Services.AddZLinkFramework(options =>
         {
-            options.AddLocationStore(new ZLinkRedisLocationStore(new ZLinkRedisLocationOptions
-            {
-                ConnectionString = topology.RedisEndpoint,
-                KeyPrefix = topology.RedisKeyPrefix,
-            }));
+            options.AddLocationStore(new ZLinkRedisLocationStore(redis => redis
+                .SetConnectionString(topology.RedisEndpoint)
+                .SetKeyPrefix(topology.RedisKeyPrefix)));
             options.ConfigureDispatch()
                 .MessageFlow(ZLinkMessageFlowLogMode.KeyTransitions)
                 .TraceLogFile(SampleFlowLog.Path("tracking"))

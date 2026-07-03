@@ -1312,11 +1312,9 @@ extension package를 위한 통합 등록 지점은 `AddLocationStore(instance)`
 개별 `Add...LocationStore<T>()` 등록이나 in-memory 등록과 섞어 쓰는 것은 검증 오류다.
 
 ```csharp
-options.AddLocationStore(new ZLinkRedisLocationStore(new ZLinkRedisLocationOptions
-{
-    ConnectionString = "...",
-    KeyPrefix = "zlink:sample",
-}));
+options.AddLocationStore(new ZLinkRedisLocationStore(redis => redis
+    .SetConnectionString("...")
+    .SetKeyPrefix("zlink:sample")));
 ```
 
 ### 20.3 새로 추가할 resolver/query API

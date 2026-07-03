@@ -72,7 +72,7 @@
 특히 다음 항목은 이 디렉토리 전체에 공통으로 적용된다.
 
 - 네이밍 규칙은
-  [doc/spec/bindings/README.md](/home/hep7/project/kairos/zlink/doc/spec/bindings/README.md)
+  [공통 스펙 README §5.2.1](../common/README.ko.md#521-네이밍-규칙)
   의 `Naming Policy`를 그대로 따른다. `.NET`에서는 public API 전체를
   `PascalCase`로 적고, 단어 구성 자체를 임의로 바꾸지 않는다.
 - `Zlink` 와 `ZLink` 의 casing 의도는 다음과 같이 본다.
@@ -147,7 +147,7 @@
 | [guide/06-actor-spot.ko.md](guide/06-actor-spot.ko.md) | actor 모델과 Spot 의 actor 호스팅(lifecycle 콜백·트리거 함수, location 축) |
 | [guide/07-actor-session.ko.md](guide/07-actor-session.ko.md) | session ↔ actor relay·binding·bound session push (binding 축) |
 | [guide/08-stream.ko.md](guide/08-stream.ko.md) | 외부 client STREAM 서버와 Stream Connector 사용법 |
-| [guide/09-registry.ko.md](guide/09-registry.ko.md) | Registry 구동, clustering, topology 조회 사용법 |
+| [guide/09-location.ko.md](guide/09-location.ko.md) | location store 등록, 자동 연결, 운영 조회 사용법 |
 | [guide/10-monitoring.ko.md](guide/10-monitoring.ko.md) | socket / registry / spot runtime 이벤트 관찰 사용법 |
 | [guide/11-feature-map.ko.md](guide/11-feature-map.ko.md) | 기능 × 난이도 × 언제 쓰나 매트릭스 |
 | [guide/12-interface-catalog.ko.md](guide/12-interface-catalog.ko.md) | 모든 계약 인터페이스를 ContractTests 검증 코드로 색인 |

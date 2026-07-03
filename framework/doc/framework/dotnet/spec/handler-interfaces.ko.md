@@ -4,7 +4,7 @@
 
 [스펙 목차](../../common/README.ko.md)
 
-[.NET 묶음](../README.ko.md) | [channel](aspnet-core-channel-messaging.ko.md) | [channel 샘플](../guide/samples/channel-messaging-samples.ko.md) | [SPOT](aspnet-core-spot.ko.md) | [SPOT 샘플](../guide/samples/spot-samples.ko.md) | [STREAM](aspnet-core-stream.ko.md) | [STREAM 샘플](../guide/samples/stream-samples.ko.md) | [Monitoring](aspnet-core-monitoring.ko.md) | [Registry](aspnet-core-registry.ko.md)
+[.NET 묶음](../README.ko.md) | [channel](aspnet-core-channel-messaging.ko.md) | [channel 샘플](../guide/samples/channel-messaging-samples.ko.md) | [SPOT](aspnet-core-spot.ko.md) | [SPOT 샘플](../guide/samples/spot-samples.ko.md) | [STREAM](aspnet-core-stream.ko.md) | [STREAM 샘플](../guide/samples/stream-samples.ko.md) | [Monitoring](aspnet-core-monitoring.ko.md) | [Location](aspnet-core-location.ko.md)
 
 # ZLink Framework .NET Interface Catalog
 
@@ -31,8 +31,8 @@
   [aspnet-core-stream.ko.md](aspnet-core-stream.ko.md)
 - STREAM 샘플 →
   [stream-samples.ko.md](../guide/samples/stream-samples.ko.md)
-- Registry 통합 →
-  [aspnet-core-registry.ko.md](aspnet-core-registry.ko.md)
+- Location 통합 →
+  [aspnet-core-location.ko.md](aspnet-core-location.ko.md)
 
 ## 2. 인터페이스 전체 목록
 
@@ -3248,54 +3248,50 @@ public sealed class ZLinkPacketAttribute : Attribute
 이 metadata는 outbound 기본 해석과 inbound handler 기본 매핑 양쪽에서 공통으로
 사용한다.
 
-## 10. Registry 조회 인터페이스
+## 10. Location 조회 인터페이스
 
-Registry 조회 인터페이스는 infrastructure 성격이므로 상세 정의는
-[aspnet-core-registry.ko.md](aspnet-core-registry.ko.md)의 section 7에 있다.
+위치 조회 인터페이스는 infrastructure 성격이므로 상세 정의는
+[aspnet-core-location.ko.md](aspnet-core-location.ko.md)와
+[공통 location runtime 스펙](../../common/spec/location-runtime.ko.md)에 있다.
 여기서는 역할만 요약한다.
 
-
-같은 프로세스 안의 embedded Registry 를 조회하는 interface 다.
-
-등록 시점과 제공 내용은 다음과 같다.
-
-- status, service summary, topology, member peers 를 제공한다.
-
-조회 API 가 비동기인 이유는 두 가지다. registry 가 아직 시작되지 않은
-상태일 수 있고, snapshot 수집도 host lifecycle 과 맞물려 있기 때문이다.
+location store 를 등록한 배포에서 DI 로 노출되는 조회 표면이다. 캐시가 없고,
+모든 조회는 store 에 도달하며 owner lease join 으로 유효성을 판정한다.
 
 ```csharp
+public interface IZLinkLocationRuntimeQuery
 {
-    ValueTask<ZLinkRegistryStatus> StatusAsync(
+    ValueTask<ZLinkLocationRuntimeStatus> GetStatusAsync(
         CancellationToken cancellationToken = default);
 
-    ValueTask<ZLinkRegistryServiceSummaryEntry[]> ServiceSummaryAsync(
-        ZLinkRegistryServiceSummaryFilter? filter = null,
+    ValueTask<IReadOnlyList<ZLinkPeerLocation>> ListPeersAsync(
+        ZLinkPeerLocationFilter filter,
         CancellationToken cancellationToken = default);
 
-    ValueTask<ZLinkRegistryTopologyEntry[]> TopologyAsync(
-        CancellationToken cancellationToken = default);
+    // ListSpotsAsync / ListActorsAsync / ListRoutesAsync (paged),
+    // ListTopologyAsync, ListServiceSummariesAsync — aspnet-core-location 참조
+}
 
-    ValueTask<ZLinkRegistryTopologyEntry[]> TopologyAsync(
-        ZLinkRegistryTopologyFilter? filter = null,
+public interface IZLinkSpotLocationResolver
+{
+    ValueTask<ZLinkSpotAddress?> ResolveSpotAddressAsync(
+        RoutingId spotRid,
         CancellationToken cancellationToken = default);
+}
 
-    ValueTask<ZLinkMemberPeerEntry[]> MemberPeersAsync(
-        string channelName,
+public interface IZLinkActorLocationResolver
+{
+    ValueTask<ZLinkSpotAddress?> ResolveActorSpotAddressAsync(
+        string actorType,
+        string actorId,
         CancellationToken cancellationToken = default);
 }
 ```
 
-`MemberPeersAsync(...)` 는 `channelName` 하나만 인자로 받는다.
-
-channel 이름 자체가 member peer 집합의 단위가 된다.
-
-
-다른 프로세스의 Registry 를 원격 조회하는 interface 다.
-
-snapshot 만 제공한다.
-
-원격 요청이라는 특성상, 이 interface 역시 비동기로 설계한다.
+- 조회 API 가 비동기인 이유는 저장소가 프로세스 밖(store)에 있기 때문이다.
+- 죽은 서버의 row 는 owner lease 만료 후 성공 결과에서 자동 제외된다.
+- 메시징 resolver 는 주소(`ZLinkSpotAddress`)를 반환하고 호출자가 보관한다 —
+  전송 실패 시 재resolve 한다([spot 주소 메시징](../../common/spec/spot-address-messaging.ko.md)).
 
 ### 10.3 runtime monitoring
 
@@ -3312,6 +3308,10 @@ public interface IZLinkMonitoringOptions
         params ZLinkSocketEventKind[] events);
 
     void AddSpotEvents(
+        string sourceName,
+        TimeSpan interval);
+
+    void AddLocationRuntimeEvents(
         string sourceName,
         TimeSpan interval);
 }
@@ -3385,17 +3385,22 @@ public readonly record struct ZLinkSocketDiagnostic(
     ZLinkSocketNativeEventType NativeEvent,
     uint NativeValue);
 
+public enum ZLinkLocationRuntimeEventKind
 {
     StatusChanged = 0,
     TopologyChanged,
-    ServiceSummaryChanged
+    ServiceSummaryChanged,
+    StoreUnavailable,
+    StoreRecovered
 }
 
+public readonly record struct ZLinkLocationRuntimeEvent(
     string SourceName,
     DateTimeOffset Timestamp,
-    ZLinkRegistryStatus? Status,
-    IReadOnlyList<ZLinkRegistryTopologyEntry>? Topology,
-    IReadOnlyList<ZLinkRegistryServiceSummaryEntry>? ServiceSummary)
+    ZLinkLocationRuntimeEventKind Event,
+    ZLinkLocationRuntimeStatus? Status,
+    IReadOnlyList<ZLinkLocationTopologyEntry>? Topology,
+    IReadOnlyList<ZLinkLocationServiceSummary>? ServiceSummary)
     : IZLinkRuntimeEvent;
 
 public enum ZLinkSpotEventKind
@@ -3448,14 +3453,10 @@ public readonly record struct ZLinkSpotEvent(
   - source 이름은 `channel + capability` 또는 `spot node + capability`
     형태가 자연스럽다.
   - 예: `profile.server`, `profile.client`, `stage-node.router`
-- discovery state
-  - runtime event 로 올리지 않는다.
-  - 현재 provider 상태는 registry topology/service/member snapshot 으로
-    조회한다.
-- registry event
-  - 하부 raw monitor 가 아니다. 다음 호출들의 polling + diff 로 합성한다.
-    `StatusAsync()`, `TopologyAsync()`,
-    `ServiceSummaryAsync()`.
+- location event
+  - 하부 raw monitor 가 아니다. location runtime query 의 polling + diff 로
+    합성한다(`GetStatusAsync()`, `ListTopologyAsync()`, `ListServiceSummariesAsync()`).
+  - store 장애는 source 를 죽이지 않고 `StoreUnavailable` 이벤트로 강등된다.
 - spot event
   - 하부 raw monitor 가 아니다. 다음 호출들의 polling + diff 로 합성한다.
     `Status()`, `Peers()`, `Subjects()`.

@@ -3,6 +3,7 @@ set -euo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 RUN_DIR="$(mktemp -d)"
+RUN_ID="$(basename "${RUN_DIR}")-$$-${RANDOM}"
 LOG_DIR="${RUN_DIR}/logs"
 export BINGO_LOG_DIR="${BINGO_LOG_DIR:-${SCRIPT_DIR}/logs}"
 mkdir -p "${LOG_DIR}" "${BINGO_LOG_DIR}"
@@ -10,7 +11,7 @@ rm -f "${BINGO_LOG_DIR}"/*.log
 
 PIDS=()
 REDIS_CONTAINER=""
-export BINGO_REDIS_KEY_PREFIX="${BINGO_REDIS_KEY_PREFIX:-bingo:dotnet:${RANDOM}:$$:}"
+export BINGO_REDIS_KEY_PREFIX="bingo:dotnet:${RUN_ID}:"
 
 cleanup() {
   set +e
@@ -147,14 +148,11 @@ require_log_count() {
   fi
 }
 
-# The sample owns its Redis: always provision a dedicated, throwaway container
-# so room-allocation state stays isolated per run and never touches a developer's
-# local Redis. (BINGO_REDIS_ENDPOINT is intentionally derived here, not read.)
 if ! command -v docker >/dev/null 2>&1; then
-  echo "Docker is required to run the Bingo sample (it provisions a dedicated Redis container)." >&2
+  echo "Docker is required to run the Bingo sample." >&2
   exit 1
 fi
-REDIS_CONTAINER="bingo-dotnet-redis-${RANDOM}-$$"
+REDIS_CONTAINER="zlink-bingo-dotnet-redis-${RUN_ID}"
 docker run -d --rm --name "${REDIS_CONTAINER}" -p "127.0.0.1::6379" redis:7.2-alpine >/dev/null
 export BINGO_REDIS_ENDPOINT="$(docker port "${REDIS_CONTAINER}" 6379/tcp | sed -E 's/.*:([0-9]+)$/127.0.0.1:\1/')"
 wait_port redis "tcp://${BINGO_REDIS_ENDPOINT}"
@@ -199,12 +197,6 @@ start_server session-b "${SCRIPT_DIR}/Server/Session/Bingo.Server.Session.csproj
 wait_port session-b-router "${BINGO_SESSION_B_ROUTER_ENDPOINT}"
 wait_port session-b-stream "${BINGO_SESSION_B_STREAM_ENDPOINT}"
 wait_port session-b-play-route "${BINGO_SESSION_B_PLAY_ROUTE_ENDPOINT}"
-
-sleep "${BINGO_STARTUP_SETTLE_SECONDS:-5}"
-
-# Give the auto-connect reconcile loops one or two polling intervals to
-# converge before the scenario drives traffic.
-sleep "${BINGO_STARTUP_DELAY_SECONDS:-3}"
 
 dotnet run --no-build --project "${SCRIPT_DIR}/Client/Bingo.Client.csproj" -- \
   --stream-a-endpoint "${BINGO_SESSION_A_STREAM_ENDPOINT}" \

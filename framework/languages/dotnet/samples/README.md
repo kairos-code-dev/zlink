@@ -2,7 +2,7 @@
 
 | Sample | Purpose |
 |--------|---------|
-| [TicTacToe](TicTacToe) | Tic-tac-toe API server, play server, standalone client, game creation, STREAM authentication, actor game join, move requests, and game-state messages. Uses JSON payloads. |
+| [TicTacToe](TicTacToe) | Tic-tac-toe sample with two API roles, two Play roles, manual endpoint mapping, Redis room routes, host/guest/observer stream clients, actor game join, move requests, milestone push, and game-state messages. Uses JSON payloads. |
 | [Bingo](Bingo) | Matching room sample with four authenticated clients, Entry Spot admission, host-start checks, timer draws, automatic marks, same-sequence winners, and bound-session push notifications. Uses Protobuf payloads. |
 | [SupportChat](SupportChat) | Multi-role support conversation sample with API, support, session, registry, probe, and client roles. |
 | [ShoppingMall](ShoppingMall) | Order workflow sample with replicated commerce API and order workflow roles. |
@@ -40,8 +40,11 @@ client or probe self-check. Server code reads role-local configuration and then
 passes the bound settings into `AddZLinkFramework(...)`.
 
 TicTacToe demonstrates file-backed configuration with
-`Microsoft.Extensions.Configuration`: the runner writes a temporary
-`appsettings.json`, and server roles read it through `--config`.
+`Microsoft.Extensions.Configuration`: the runner writes temporary role-specific
+settings for `api-a`, `api-b`, `play-a`, and `play-b`, and each server role reads
+its own file through `--config`. TicTacToe is the manual endpoint sample: it
+does not use the framework location store, but it does pass a Redis endpoint and
+key prefix to the room route store.
 
 The multi-role samples use role-local configuration classes under
 `Server/Configuration` and environment variables supplied by the runner. The
@@ -52,8 +55,10 @@ Manual server runs should prefer a config file over long endpoint argument
 lists:
 
 ```bash
-dotnet run --project TicTacToe/Server -- play --config ./appsettings.json
-dotnet run --project TicTacToe/Server -- api --config ./appsettings.json
+dotnet run --project TicTacToe/Server -- play-a --config ./appsettings.play-a.json
+dotnet run --project TicTacToe/Server -- play-b --config ./appsettings.play-b.json
+dotnet run --project TicTacToe/Server -- api-a --config ./appsettings.api-a.json
+dotnet run --project TicTacToe/Server -- api-b --config ./appsettings.api-b.json
 ```
 
 The runner remains responsible for process orchestration. Server role code

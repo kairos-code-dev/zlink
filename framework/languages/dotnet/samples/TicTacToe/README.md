@@ -1,19 +1,25 @@
 # Tic Tac Toe Sample
 
-This sample maps a two-player tic-tac-toe flow onto `Zlink.Framework`:
+This sample maps a scale-out tic-tac-toe flow onto `Zlink.Framework`:
 
-1. the client calls the API server over HTTP,
-2. the API server asks the play server to create a game over a ZLink channel,
-3. the API server returns the play endpoint and game id,
-4. two clients connect to the play STREAM endpoint,
-5. each client sends `AuthenticateReq` to the play server,
-6. the play session asks the API server to authenticate over the `Api` channel,
-7. the API server returns `actorId`, and the play session creates a play actor whose `ActorId` is that `actorId`,
-8. both actors join the same tic-tac-toe game,
-9. the actors send `PlaceMarkReq` packets until player X wins,
-10. the game pushes `PlayerJoinedNotify` to the waiting opponent when the second player joins,
-11. the game pushes `GameStateNotify` after joins and moves,
-12. the game SPOT runs a timer that marks the current player as timed out if a turn takes too long.
+1. the runner starts two API roles, `api-a` and `api-b`,
+2. the runner starts two Play roles, `play-a` and `play-b`,
+3. each API role has manually configured Play channel endpoints,
+4. each Play role has manually configured API channel endpoints and peer Spot endpoints,
+5. the client calls an API role over HTTP to create a room,
+6. the API role asks a Play role to create the room over a ZLink channel,
+7. the Play role records the room owner route in Redis,
+8. the API response returns the room id, `PlayEndpoints`, and `PlayNodes`,
+9. the host stream client connects to the owner Play endpoint,
+10. the guest and observer stream clients connect to the other Play endpoint,
+11. each stream client sends `AuthenticateReq` to the Play server,
+12. the Play session asks an API role to authenticate over the `Api` channel,
+13. the host and guest actors join the same tic-tac-toe room,
+14. the observer actor subscribes to milestone notifications through `ObserveMilestoneReq`,
+15. the actors send `PlaceMarkReq` packets until player X wins,
+16. the room pushes `PlayerJoinedNotify` and `GameStateNotify`,
+17. the owner room publishes the win milestone and the observer receives `WinMilestoneNotify`,
+18. the host and guest send `LeaveGameReq`, and the server destroys both entry-spot actors.
 
 Packet type names use `Req` for request packets, `Res` for response packets,
 and `Notify` for server push packets.
@@ -42,22 +48,38 @@ On Windows PowerShell:
 The standalone client lives in [`Client`](Client). Use it when you want to
 read or run just the client side of the flow. `Program` reads the client options
 and runs `TicTacToeClientScenario`; the scenario calls HTTP `POST /games`, reads
-the returned Play endpoint, creates the two stream connectors, and then verifies
-authentication, joins, moves, and pushes.
+the returned `PlayEndpoints` and `PlayNodes`, creates host, guest, and observer
+stream connectors, then verifies authentication, joins, moves, regular pushes,
+observer milestone push, and leave cleanup.
 The request, response, and push DTOs live in [`Shared`](Shared) so the
 server and client use the same protocol contract. The reusable client flow lives
 in [`Client`](Client); the sample runner starts the server roles and then
 runs that client as the self-check.
 
-The server executable also supports separate roles:
+The server executable supports one role per process. The runner uses the
+four explicit modes below:
 
 ```bash
-dotnet run --project framework/languages/dotnet/samples/TicTacToe/Server -- play --config ./appsettings.json
-dotnet run --project framework/languages/dotnet/samples/TicTacToe/Server -- api --config ./appsettings.json
+dotnet run --project framework/languages/dotnet/samples/TicTacToe/Server -- play-a --config ./appsettings.play-a.json
+dotnet run --project framework/languages/dotnet/samples/TicTacToe/Server -- play-b --config ./appsettings.play-b.json
+dotnet run --project framework/languages/dotnet/samples/TicTacToe/Server -- api-a --config ./appsettings.api-a.json
+dotnet run --project framework/languages/dotnet/samples/TicTacToe/Server -- api-b --config ./appsettings.api-b.json
 dotnet run --project framework/languages/dotnet/samples/TicTacToe/Client
 ```
 
 The server reads `Sample` settings from the config file through
-`Microsoft.Extensions.Configuration`. The runner writes a temporary
-`appsettings.json`, starts the `play` and `api` roles with `--config`, waits for
-their endpoints, and then runs the standalone client.
+`Microsoft.Extensions.Configuration`. The runner writes temporary role-specific
+settings, starts `play-a`, `play-b`, `api-a`, and `api-b` with `--config`, waits
+for stream, channel, Spot route, Spot pub/sub, HTTP, and Redis endpoints, and
+then runs the standalone client. The runner fails if the logs do not contain
+stream-inbound response and push evidence, observer milestone verification,
+`LeaveGameReq` completion for both players, entry-spot actor destroy evidence
+for both players, and framework message-flow logs.
+
+Redis is required for the room route store. The runner always provisions a
+dedicated Redis Docker container for the current execution, asks Docker to
+assign a free loopback host port, derives `TICTACTOE_REDIS_ENDPOINT` from that
+container, and removes only that container on success or failure. It does not
+reuse an externally supplied Redis endpoint. The runner also supplies a
+`TICTACTOE_REDIS_KEY_PREFIX` that includes the sample name and execution id so
+parallel sample runs do not share room route keys.

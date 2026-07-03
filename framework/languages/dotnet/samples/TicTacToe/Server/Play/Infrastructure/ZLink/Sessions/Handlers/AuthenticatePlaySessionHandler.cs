@@ -10,7 +10,6 @@ namespace TicTacToe.Server.Play.Infrastructure.ZLink.Sessions.Handlers;
 internal sealed class AuthenticatePlaySessionHandler(
     IZLinkActorManager actors,
     IZLinkChannelClient channels,
-    SampleSettings settings,
     ILogger<AuthenticatePlaySessionHandler> logger)
     : IZLinkSessionPacketHandler<IZLinkSessionContext>
 {
@@ -66,9 +65,6 @@ internal sealed class AuthenticatePlaySessionHandler(
             SampleTypes.PlayerActor,
             player,
             cancellationToken);
-
-        _ = settings;
-
         logger.LogInformation(
             "play stream: binding actor to session. sessionId={SessionId}, actor={ActorId}",
             context.SessionId,

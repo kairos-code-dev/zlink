@@ -1,73 +1,90 @@
 using System.Text.Json;
+using ShoppingMall.Server.Configuration;
 using ShoppingMall.Server.Shared.Domain;
 using ShoppingMall.Server.Shared.Ports.Outbound;
 using ShoppingMall.Shared.Contracts;
+using StackExchange.Redis;
 
 namespace ShoppingMall.Server.Shared.Store;
 
-public sealed class FileCommerceStores(string directory) :
+public sealed class RedisCommerceStores :
     IOrderEventStore,
     IOrderReadModelStore,
-    ICommerceStateStore
+    ICommerceStateStore,
+    IAsyncDisposable
 {
     private static readonly JsonSerializerOptions JsonOptions = new(JsonSerializerDefaults.Web)
     {
         WriteIndented = true
     };
 
-    private readonly string _lockFile = Path.Combine(directory, "commerce-state.lock");
+    private readonly IDatabase _database;
+    private readonly string _lockKey;
+    private readonly ConnectionMultiplexer _redis;
+    private readonly string _stateKey;
 
-    private readonly string _stateFile = Path.Combine(directory, "commerce-state.json");
+    public RedisCommerceStores(SampleTopology topology)
+    {
+        _redis = ConnectionMultiplexer.Connect(topology.RedisEndpoint);
+        _database = _redis.GetDatabase();
+        _stateKey = $"{topology.RedisKeyPrefix}shoppingmall:commerce-state";
+        _lockKey = $"{topology.RedisKeyPrefix}shoppingmall:commerce-state:lock";
+    }
 
-    public ValueTask<CartSeed> GetCartAsync(
+    public async ValueTask DisposeAsync()
+    {
+        await _redis.CloseAsync().ConfigureAwait(false);
+        _redis.Dispose();
+    }
+
+    public async ValueTask<CartSeed> GetCartAsync(
         string cartId,
         CancellationToken cancellationToken)
     {
-        cancellationToken.ThrowIfCancellationRequested();
-        return ValueTask.FromResult(WithState(state => state.Carts.TryGetValue(cartId, out var cart)
-            ? cart
-            : throw new InvalidOperationException($"Cart '{cartId}' does not exist.")));
+        return await WithStateAsync(
+            state => state.Carts.TryGetValue(cartId, out var current)
+                ? current
+                : throw new InvalidOperationException($"Cart '{cartId}' does not exist."),
+            cancellationToken).ConfigureAwait(false);
     }
 
-    public ValueTask ValidateShippingAddressAsync(
+    public async ValueTask ValidateShippingAddressAsync(
         string shippingAddressId,
         CancellationToken cancellationToken)
     {
-        cancellationToken.ThrowIfCancellationRequested();
-        WithState(state =>
+        await WithStateAsync(state =>
         {
             if (!state.ShippingAddresses.Contains(shippingAddressId))
                 throw new InvalidOperationException($"Shipping address '{shippingAddressId}' does not exist.");
-        });
-        return ValueTask.CompletedTask;
+        }, cancellationToken).ConfigureAwait(false);
     }
 
-    public ValueTask<PaymentMethodSeed> GetPaymentMethodAsync(
+    public async ValueTask<PaymentMethodSeed> GetPaymentMethodAsync(
         string paymentMethodId,
         CancellationToken cancellationToken)
     {
-        cancellationToken.ThrowIfCancellationRequested();
-        return ValueTask.FromResult(WithState(state => state.PaymentMethods.TryGetValue(paymentMethodId, out var method)
-            ? method
-            : throw new InvalidOperationException($"Payment method '{paymentMethodId}' does not exist.")));
+        return await WithStateAsync(
+            state => state.PaymentMethods.TryGetValue(paymentMethodId, out var current)
+                ? current
+                : throw new InvalidOperationException($"Payment method '{paymentMethodId}' does not exist."),
+            cancellationToken).ConfigureAwait(false);
     }
 
-    public ValueTask<IdempotencyMapping?> FindIdempotencyAsync(
+    public async ValueTask<IdempotencyMapping?> FindIdempotencyAsync(
         string idempotencyKey,
         CancellationToken cancellationToken)
     {
-        cancellationToken.ThrowIfCancellationRequested();
-        var mapping = WithState(state => state.Idempotency.GetValueOrDefault(idempotencyKey));
-        return ValueTask.FromResult(mapping);
+        return await WithStateAsync(
+            state => state.Idempotency.GetValueOrDefault(idempotencyKey),
+            cancellationToken).ConfigureAwait(false);
     }
 
-    public ValueTask<IdempotencyMapping> ReserveIdempotencyAsync(
+    public async ValueTask<IdempotencyMapping> ReserveIdempotencyAsync(
         string idempotencyKey,
         string ownerInstanceId,
         CancellationToken cancellationToken)
     {
-        cancellationToken.ThrowIfCancellationRequested();
-        var mapping = WithState(state =>
+        return await WithStateAsync(state =>
         {
             if (state.Idempotency.TryGetValue(idempotencyKey, out var existing)) return existing;
 
@@ -75,49 +92,69 @@ public sealed class FileCommerceStores(string directory) :
             var created = new IdempotencyMapping(idempotencyKey, orderId, ownerInstanceId, false);
             state.Idempotency[idempotencyKey] = created;
             return created;
-        });
-        return ValueTask.FromResult(mapping);
+        }, cancellationToken).ConfigureAwait(false);
     }
 
-    public ValueTask MarkIdempotencyStartedAsync(
+    public async ValueTask MarkIdempotencyStartedAsync(
         string idempotencyKey,
         CancellationToken cancellationToken)
     {
-        cancellationToken.ThrowIfCancellationRequested();
-        WithState(state =>
+        await WithStateAsync(state =>
         {
             var mapping = state.Idempotency[idempotencyKey];
             state.Idempotency[idempotencyKey] = mapping with { Started = true };
-        });
-        return ValueTask.CompletedTask;
+        }, cancellationToken).ConfigureAwait(false);
     }
 
-    public ValueTask CreatePendingMappingAsync(
+    public async ValueTask CreatePendingMappingAsync(
         string idempotencyKey,
         string orderId,
         string ownerInstanceId,
         CancellationToken cancellationToken)
     {
-        cancellationToken.ThrowIfCancellationRequested();
-        WithState(state =>
+        await WithStateAsync(state =>
         {
             state.Idempotency[idempotencyKey] = new IdempotencyMapping(
                 idempotencyKey,
                 orderId,
                 ownerInstanceId,
                 false);
-        });
-        return ValueTask.CompletedTask;
+        }, cancellationToken).ConfigureAwait(false);
     }
 
-    public ValueTask<ReserveInventoryResult> ReserveInventoryAsync(
+    public async ValueTask SaveOrderPaymentMethodAsync(
         string orderId,
+        string paymentMethodId,
+        CancellationToken cancellationToken)
+    {
+        await WithStateAsync(
+            state => state.OrderPaymentMethods[orderId] = paymentMethodId,
+            cancellationToken).ConfigureAwait(false);
+    }
+
+    public async ValueTask<string> GetOrderPaymentMethodAsync(
+        string orderId,
+        CancellationToken cancellationToken)
+    {
+        return await WithStateAsync(
+            state => state.OrderPaymentMethods.TryGetValue(orderId, out var current)
+                ? current
+                : throw new InvalidOperationException($"Payment method for order '{orderId}' does not exist."),
+            cancellationToken).ConfigureAwait(false);
+    }
+
+    public async ValueTask<ReserveInventoryResult> ReserveInventoryAsync(
+        string orderId,
+        string reservationId,
         IReadOnlyList<OrderLineInput> lines,
         CancellationToken cancellationToken)
     {
-        cancellationToken.ThrowIfCancellationRequested();
-        var result = WithState(state =>
+        return await WithStateAsync(state =>
         {
+            if (state.Reservations.TryGetValue(reservationId, out var existing)
+                && string.Equals(existing.OrderId, orderId, StringComparison.Ordinal))
+                return new ReserveInventoryResult(true, reservationId, null);
+
             foreach (var line in lines)
             {
                 var available = state.Inventory.GetValueOrDefault(line.Sku);
@@ -127,55 +164,49 @@ public sealed class FileCommerceStores(string directory) :
 
             foreach (var line in lines) state.Inventory[line.Sku] -= line.Quantity;
 
-            var reservationId = $"reservation-{orderId}";
-            state.Reservations[reservationId] = orderId;
+            state.Reservations[reservationId] = new InventoryReservation(
+                orderId,
+                lines.Select(static line => new InventoryReservationLine(line.Sku, line.Quantity)).ToArray());
             return new ReserveInventoryResult(true, reservationId, null);
-        });
-        return ValueTask.FromResult(result);
+        }, cancellationToken).ConfigureAwait(false);
     }
 
-    public ValueTask SaveOrderPaymentMethodAsync(
-        string orderId,
-        string paymentMethodId,
-        CancellationToken cancellationToken)
-    {
-        cancellationToken.ThrowIfCancellationRequested();
-        WithState(state => state.OrderPaymentMethods[orderId] = paymentMethodId);
-        return ValueTask.CompletedTask;
-    }
-
-    public ValueTask<string> GetOrderPaymentMethodAsync(
-        string orderId,
-        CancellationToken cancellationToken)
-    {
-        cancellationToken.ThrowIfCancellationRequested();
-        var paymentMethodId = WithState(state => state.OrderPaymentMethods.TryGetValue(orderId, out var current)
-            ? current
-            : throw new InvalidOperationException($"Payment method for order '{orderId}' does not exist."));
-        return ValueTask.FromResult(paymentMethodId);
-    }
-
-    public ValueTask ReleaseInventoryAsync(
+    public async ValueTask ReleaseInventoryAsync(
         string orderId,
         string reservationId,
         string reason,
         CancellationToken cancellationToken)
     {
-        cancellationToken.ThrowIfCancellationRequested();
-        WithState(state => state.ReleasedReservations[reservationId] = reason);
-        return ValueTask.CompletedTask;
+        await WithStateAsync(state =>
+        {
+            if (state.ReleasedReservations.ContainsKey(reservationId)) return;
+            if (state.Reservations.TryGetValue(reservationId, out var reservation)
+                && string.Equals(reservation.OrderId, orderId, StringComparison.Ordinal))
+            {
+                foreach (var line in reservation.Lines)
+                    state.Inventory[line.Sku] = state.Inventory.GetValueOrDefault(line.Sku) + line.Quantity;
+            }
+
+            state.ReleasedReservations[reservationId] = reason;
+        }, cancellationToken).ConfigureAwait(false);
     }
 
-    public ValueTask<AuthorizePaymentResult> AuthorizePaymentAsync(
+    public async ValueTask<AuthorizePaymentResult> AuthorizePaymentAsync(
         string orderId,
+        string paymentId,
         string paymentMethodId,
         decimal amount,
         string currency,
         CancellationToken cancellationToken)
     {
-        cancellationToken.ThrowIfCancellationRequested();
-        var result = WithState(state =>
+        return await WithStateAsync(state =>
         {
+            if (state.Payments.ContainsKey(paymentId))
+                return new AuthorizePaymentResult(true, paymentId, null);
+
+            if (state.PaymentAttempts.TryGetValue(orderId, out var existingFailure))
+                return new AuthorizePaymentResult(false, null, existingFailure);
+
             var method = state.PaymentMethods[paymentMethodId];
             if (!method.ShouldAuthorize)
             {
@@ -183,32 +214,29 @@ public sealed class FileCommerceStores(string directory) :
                 return new AuthorizePaymentResult(false, null, state.PaymentAttempts[orderId]);
             }
 
-            var paymentId = $"payment-{orderId}";
             state.Payments[paymentId] = $"{amount:0.00} {currency}";
             return new AuthorizePaymentResult(true, paymentId, null);
-        });
-        return ValueTask.FromResult(result);
+        }, cancellationToken).ConfigureAwait(false);
     }
 
-    public ValueTask<IReadOnlyList<StoredOrderEvent>> ReadAsync(
+    public async ValueTask<IReadOnlyList<StoredOrderEvent>> ReadAsync(
         string orderId,
         CancellationToken cancellationToken)
     {
-        cancellationToken.ThrowIfCancellationRequested();
-        var events = WithState(state => state.Events.TryGetValue(orderId, out var current)
-            ? current.OrderBy(static item => item.Version).ToArray()
-            : []);
-        return ValueTask.FromResult<IReadOnlyList<StoredOrderEvent>>(events);
+        return await WithStateAsync<IReadOnlyList<StoredOrderEvent>>(
+            state => state.Events.TryGetValue(orderId, out var current)
+                ? current.OrderBy(static item => item.Version).ToArray()
+                : [],
+            cancellationToken).ConfigureAwait(false);
     }
 
-    public ValueTask AppendAsync(
+    public async ValueTask AppendAsync(
         string orderId,
         long expectedVersion,
         IReadOnlyList<OrderDomainEvent> events,
         CancellationToken cancellationToken)
     {
-        cancellationToken.ThrowIfCancellationRequested();
-        WithState(state =>
+        await WithStateAsync(state =>
         {
             if (!state.Events.TryGetValue(orderId, out var stream))
             {
@@ -218,8 +246,7 @@ public sealed class FileCommerceStores(string directory) :
 
             var currentVersion = stream.Count == 0 ? 0 : stream.Max(static item => item.Version);
             if (currentVersion != expectedVersion)
-                throw new InvalidOperationException(
-                    $"Order stream version mismatch. order={orderId}, expected={expectedVersion}, actual={currentVersion}");
+                throw new OrderStreamVersionConflictException(orderId, expectedVersion, currentVersion);
 
             foreach (var domainEvent in events)
             {
@@ -240,41 +267,39 @@ public sealed class FileCommerceStores(string directory) :
                     ++currentVersion,
                     domainEvent.CreatedAtUnixMs));
             }
-        });
-        return ValueTask.CompletedTask;
+        }, cancellationToken).ConfigureAwait(false);
     }
 
-    public ValueTask<OrderState?> FindAsync(
+    public async ValueTask<OrderState?> FindAsync(
         string orderId,
         CancellationToken cancellationToken)
     {
-        cancellationToken.ThrowIfCancellationRequested();
-        var state = WithState(current => current.ReadModels.GetValueOrDefault(orderId));
-        return ValueTask.FromResult(state);
+        return await WithStateAsync(
+            state => state.ReadModels.GetValueOrDefault(orderId),
+            cancellationToken).ConfigureAwait(false);
     }
 
-    public ValueTask SaveAsync(
+    public async ValueTask SaveAsync(
         OrderState state,
         CancellationToken cancellationToken)
     {
-        cancellationToken.ThrowIfCancellationRequested();
-        WithState(current => current.ReadModels[state.OrderId] = state);
-        return ValueTask.CompletedTask;
+        await WithStateAsync(
+            current => current.ReadModels[state.OrderId] = state,
+            cancellationToken).ConfigureAwait(false);
     }
 
-    public ValueTask DeleteAsync(
+    public async ValueTask DeleteAsync(
         string orderId,
         CancellationToken cancellationToken)
     {
-        cancellationToken.ThrowIfCancellationRequested();
-        WithState(state => state.ReadModels.Remove(orderId));
-        return ValueTask.CompletedTask;
+        await WithStateAsync(
+            state => state.ReadModels.Remove(orderId),
+            cancellationToken).ConfigureAwait(false);
     }
 
     public void SeedDefaults()
     {
-        Directory.CreateDirectory(directory);
-        WithState(state =>
+        WithStateAsync(state =>
         {
             state.Carts.TryAdd("cart-success", new CartSeed(
                 "cart-success",
@@ -302,15 +327,14 @@ public sealed class FileCommerceStores(string directory) :
 
             state.ShippingAddresses.Add("addr-home");
             state.ShippingAddresses.Add("addr-office");
-        });
+        }, CancellationToken.None).AsTask().GetAwaiter().GetResult();
     }
 
-    public ValueTask<StoreEvidence> EvidenceAsync(
+    public async ValueTask<StoreEvidence> EvidenceAsync(
         IReadOnlyList<string> orderIds,
         CancellationToken cancellationToken)
     {
-        cancellationToken.ThrowIfCancellationRequested();
-        var evidence = WithState(state =>
+        return await WithStateAsync(state =>
         {
             var events = orderIds.ToDictionary(
                 static orderId => orderId,
@@ -323,8 +347,7 @@ public sealed class FileCommerceStores(string directory) :
                 state.PaymentAttempts.Count,
                 state.ReleasedReservations.Count,
                 state.Idempotency.Values.Count(static item => item.Started));
-        });
-        return ValueTask.FromResult(evidence);
+        }, cancellationToken).ConfigureAwait(false);
     }
 
     private static bool IsDuplicateSemanticEvent(
@@ -345,51 +368,64 @@ public sealed class FileCommerceStores(string directory) :
         };
     }
 
-    private T WithState<T>(Func<PersistedCommerceState, T> action)
+    private async ValueTask<string> AcquireLockAsync(CancellationToken cancellationToken)
     {
-        using var guard = AcquireLock();
-        var state = ReadState();
-        var result = action(state);
-        WriteState(state);
-        return result;
+        var token = $"{Environment.ProcessId}:{Guid.NewGuid():N}";
+        while (true)
+        {
+            cancellationToken.ThrowIfCancellationRequested();
+            if (await _database.LockTakeAsync(_lockKey, token, TimeSpan.FromSeconds(20)).ConfigureAwait(false))
+                return token;
+            await Task.Delay(10, cancellationToken).ConfigureAwait(false);
+        }
     }
 
-    private void WithState(Action<PersistedCommerceState> action)
+    private ValueTask ReleaseLockAsync(string token)
     {
-        WithState(state =>
+        return new ValueTask(_database.LockReleaseAsync(_lockKey, token));
+    }
+
+    private async ValueTask<PersistedCommerceState> ReadStateAsync()
+    {
+        var json = await _database.StringGetAsync(_stateKey).ConfigureAwait(false);
+        return json.IsNullOrEmpty
+            ? new PersistedCommerceState()
+            : JsonSerializer.Deserialize<PersistedCommerceState>((string)json!, JsonOptions)
+              ?? new PersistedCommerceState();
+    }
+
+    private ValueTask WriteStateAsync(PersistedCommerceState state)
+    {
+        return new ValueTask(_database.StringSetAsync(_stateKey, JsonSerializer.Serialize(state, JsonOptions)));
+    }
+
+    private async ValueTask<T> WithStateAsync<T>(
+        Func<PersistedCommerceState, T> action,
+        CancellationToken cancellationToken)
+    {
+        var token = await AcquireLockAsync(cancellationToken).ConfigureAwait(false);
+        try
+        {
+            var state = await ReadStateAsync().ConfigureAwait(false);
+            var result = action(state);
+            await WriteStateAsync(state).ConfigureAwait(false);
+            return result;
+        }
+        finally
+        {
+            await ReleaseLockAsync(token).ConfigureAwait(false);
+        }
+    }
+
+    private async ValueTask WithStateAsync(
+        Action<PersistedCommerceState> action,
+        CancellationToken cancellationToken)
+    {
+        await WithStateAsync(state =>
         {
             action(state);
             return true;
-        });
-    }
-
-    private FileStream AcquireLock()
-    {
-        Directory.CreateDirectory(directory);
-        while (true)
-            try
-            {
-                return new FileStream(_lockFile, FileMode.OpenOrCreate, FileAccess.ReadWrite, FileShare.None);
-            }
-            catch (IOException)
-            {
-                Thread.Sleep(10);
-            }
-    }
-
-    private PersistedCommerceState ReadState()
-    {
-        if (!File.Exists(_stateFile)) return new PersistedCommerceState();
-
-        var json = File.ReadAllText(_stateFile);
-        return string.IsNullOrWhiteSpace(json)
-            ? new PersistedCommerceState()
-            : JsonSerializer.Deserialize<PersistedCommerceState>(json, JsonOptions) ?? new PersistedCommerceState();
-    }
-
-    private void WriteState(PersistedCommerceState state)
-    {
-        File.WriteAllText(_stateFile, JsonSerializer.Serialize(state, JsonOptions));
+        }, cancellationToken).ConfigureAwait(false);
     }
 }
 
@@ -411,7 +447,7 @@ internal sealed class PersistedCommerceState
 
     public Dictionary<string, OrderState> ReadModels { get; set; } = new(StringComparer.Ordinal);
 
-    public Dictionary<string, string> Reservations { get; set; } = new(StringComparer.Ordinal);
+    public Dictionary<string, InventoryReservation> Reservations { get; set; } = new(StringComparer.Ordinal);
 
     public Dictionary<string, string> ReleasedReservations { get; set; } = new(StringComparer.Ordinal);
 
@@ -421,3 +457,11 @@ internal sealed class PersistedCommerceState
 
     public Dictionary<string, string> OrderPaymentMethods { get; set; } = new(StringComparer.Ordinal);
 }
+
+internal sealed record InventoryReservation(
+    string OrderId,
+    InventoryReservationLine[] Lines);
+
+internal sealed record InventoryReservationLine(
+    string Sku,
+    int Quantity);

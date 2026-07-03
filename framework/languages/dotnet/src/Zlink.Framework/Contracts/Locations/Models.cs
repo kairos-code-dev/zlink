@@ -146,7 +146,10 @@ public sealed record ZLinkActorLocation(
     RoutingId? SpotRid,
     ZLinkSpotKind SpotKind,
     string OwnerId,
-    DateTimeOffset UpdatedAt);
+    DateTimeOffset UpdatedAt)
+{
+    public string SpotMeshName { get; init; } = string.Empty;
+}
 
 public sealed record ZLinkRouteLocation(
     ZLinkRouteKind RouteKind,

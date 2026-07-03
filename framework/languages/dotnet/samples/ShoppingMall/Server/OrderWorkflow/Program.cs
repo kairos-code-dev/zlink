@@ -1,14 +1,19 @@
 using ShoppingMall.Server.Configuration;
 using ShoppingMall.Server.OrderWorkflow.Application.OrderWorkflow;
+using ShoppingMall.Server.OrderWorkflow.Application.SelfCheck;
 using ShoppingMall.Server.OrderWorkflow.Infrastructure.ZLink.Handlers;
 using ShoppingMall.Server.OrderWorkflow.Infrastructure.ZLink.Spots.OrderWorkflowSpot;
 using ShoppingMall.Server.Shared.Ports.Outbound;
 using ShoppingMall.Server.Shared.Store;
 using ShoppingMall.Shared.Contracts;
 using Zlink.Framework.AspNetCore;
+using Zlink.Framework.Contracts.Channels;
 using Zlink.Framework.Locations.Redis;
 using Zlink.Framework.Contracts.Dispatch;
+using Zlink.Framework.Contracts.Locations;
+using Zlink.Framework.Contracts.Spots;
 using Zlink.Samples.Logging;
+using Systems.Zlink;
 
 namespace ShoppingMall.Server.OrderWorkflow;
 
@@ -30,14 +35,15 @@ internal static class Program
         builder.WebHost.UseUrls(instance.HttpUrl);
         builder.Services.AddSingleton(topology);
         builder.Services.AddSingleton(instance);
-        builder.Services.AddSingleton(new FileCommerceStores(topology.StoreDirectory));
+        builder.Services.AddSingleton(new RedisCommerceStores(topology));
         builder.Services.AddSingleton<IOrderEventStore>(static provider =>
-            provider.GetRequiredService<FileCommerceStores>());
+            provider.GetRequiredService<RedisCommerceStores>());
         builder.Services.AddSingleton<IOrderReadModelStore>(static provider =>
-            provider.GetRequiredService<FileCommerceStores>());
+            provider.GetRequiredService<RedisCommerceStores>());
         builder.Services.AddSingleton<ICommerceStateStore>(static provider =>
-            provider.GetRequiredService<FileCommerceStores>());
+            provider.GetRequiredService<RedisCommerceStores>());
         builder.Services.AddSingleton<OrderWorkflowService>();
+        builder.Services.AddSingleton<OrderWorkflowSelfCheckService>();
 
         builder.Services.AddZLinkFramework(options =>
         {
@@ -65,6 +71,23 @@ internal static class Program
 
         var app = builder.Build();
         app.MapGet("/health", () => Results.Ok(new { ready = true, instance = instance.InstanceId }));
+        app.MapPost("/self-check/workflow/inventory-reserved", async (
+            StartOrderWorkflowReq request,
+            IZLinkSpotManager spots,
+            IZLinkRouteClient routes,
+            WorkflowInstanceTopology instance,
+            CancellationToken cancellationToken) =>
+        {
+            await spots.GetOrCreateAsync<OrderWorkflowSpot>(
+                RoutingId.From(request.OrderId),
+                new OrderWorkflowSpotCreateReq(request.OrderId),
+                cancellationToken);
+            var address = new ZLinkSpotAddress(instance.SpotRid, RoutingId.From(request.OrderId));
+            var response = await routes
+                .RequestToSpot(SampleNames.OrderWorkflowRouteChannel, address, new PrepareInventoryReservedCheckpointReq(request))
+                .Async<StartOrderWorkflowRes>(cancellationToken);
+            return Results.Ok(response);
+        });
         await app.RunAsync();
     }
 

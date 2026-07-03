@@ -1,16 +1,21 @@
 using Zlink.Framework.Contracts.Streams;
 using DeliveryDispatch.Shared.Contracts;
+using Microsoft.Extensions.Logging;
 
 namespace DeliveryDispatch.Server.CourierSession;
 
 internal sealed class CourierSession(
     IZLinkSessionContext context,
-    IZLinkSessionPacketDispatcher<IZLinkSessionContext> handlers) : IZLinkSession
+    IZLinkSessionPacketDispatcher<IZLinkSessionContext> handlers,
+    ILogger<CourierSession> logger) : IZLinkSession
 {
     public IZLinkSessionContext Context { get; } = context;
 
     public ValueTask OnConnectedAsync(CancellationToken cancellationToken)
     {
+        logger.LogInformation(
+            "deliverydispatch courier-session: connected session={SessionId}",
+            Context.SessionId);
         return ValueTask.CompletedTask;
     }
 
@@ -26,6 +31,11 @@ internal sealed class CourierSession(
         ZLinkStreamError error,
         CancellationToken cancellationToken)
     {
+        logger.LogError(
+            "deliverydispatch courier-session: stream error code={Code} message={Message} session={SessionId}",
+            error.Error,
+            error.Diagnostic?.Message,
+            Context.SessionId);
         return ValueTask.CompletedTask;
     }
 
@@ -34,6 +44,10 @@ internal sealed class CourierSession(
         Zlink.Framework.Contracts.Messaging.ZLinkMessage payload,
         CancellationToken cancellationToken)
     {
+        logger.LogInformation(
+            "deliverydispatch courier-session: dispatch packet={PacketName} session={SessionId}",
+            dispatch.PacketName,
+            Context.SessionId);
         if (await handlers.TryHandleAsync(Context, dispatch, payload, cancellationToken))
         {
             return;

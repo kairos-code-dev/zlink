@@ -8,6 +8,28 @@ using Zlink.Framework.Contracts.Handlers;
 namespace DeliveryDispatch.Server.CourierActorNode;
 
 [ZLinkHandlerGroup(SampleNames.CourierActorNodeRouteChannel)]
+internal sealed class FindCourierActorRouteHandler(IZLinkActorManager actorManager)
+    : IZLinkRouteRequestHandler<FindCourierActorReq, FindCourierActorRes>
+{
+    public async ValueTask<FindCourierActorRes> HandleAsync(
+        FindCourierActorReq request,
+        ZLinkRouteRequestContext context,
+        CancellationToken cancellationToken)
+    {
+        var actor = await actorManager.FindAsync(request.CourierId, cancellationToken);
+        if (actor is null)
+        {
+            return new FindCourierActorRes(request.CourierId, null);
+        }
+
+        var actorRef = actor.Value;
+        return new FindCourierActorRes(
+            request.CourierId,
+            new ActorRefSnapshot(actorRef.NodeRid.ToString(), actorRef.ActorId, actorRef.Generation));
+    }
+}
+
+[ZLinkHandlerGroup(SampleNames.CourierActorNodeRouteChannel)]
 internal sealed class EnsureCourierActorRouteHandler(
     IZLinkActorManager actorManager,
     ILogger<EnsureCourierActorRouteHandler> logger)
@@ -44,11 +66,8 @@ internal sealed class OfferDeliveryRouteHandler(
         ZLinkRouteRequestContext context,
         CancellationToken cancellationToken)
     {
-        var actorRef = await actorManager.GetOrCreateAsync(
-            request.CourierId,
-            SampleNames.CourierActorType,
-            request,
-            cancellationToken);
+        var actorRef = await actorManager.FindAsync(request.CourierId, cancellationToken)
+                       ?? throw new InvalidOperationException($"Courier actor is not bound: {request.CourierId}");
         var actor = actors.Require(actorRef.ActorId);
         using var timeoutSource = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
         timeoutSource.CancelAfter(SampleTimings.CourierDecisionTimeout);

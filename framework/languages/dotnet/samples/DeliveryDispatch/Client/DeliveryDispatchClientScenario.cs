@@ -32,9 +32,12 @@ internal sealed class DeliveryDispatchClientScenario(ILogger logger)
         var courierABinding = await courierA.Request(new BindCourierSessionReq("courier-a"))
             .Async<BindCourierSessionRes>(cancellationToken);
         Ensure(courierABinding.CourierId == "courier-a");
+        Ensure(courierABinding.Actor.NodeRid == "delivery-courier-node-1");
         var courierBBinding = await courierB.Request(new BindCourierSessionReq("courier-b"))
             .Async<BindCourierSessionRes>(cancellationToken);
         Ensure(courierBBinding.CourierId == "courier-b");
+        Ensure(courierBBinding.Actor.NodeRid == "delivery-courier-node-2");
+        logger.LogInformation("topology=ready");
 
         // Run both dispatch paths: direct acceptance first, then timeout-based reassignment.
         await RunSuccessfulDeliveryAsync(http, customer, courierA, cancellationToken);
@@ -55,22 +58,6 @@ internal sealed class DeliveryDispatchClientScenario(ILogger logger)
         // Register waits before creating the delivery so push messages cannot race past the client.
         var offer = courier.WaitFor<OfferDeliveryNotify>()
             .Where(message => message.Payload.DeliveryId == deliveryId)
-            .Async(cancellationToken);
-        var assigned = customer.WaitFor<DeliveryStatusNotify>()
-            .Where(message =>
-                message.Payload.DeliveryId == deliveryId && message.Payload.Status == DeliveryStatus.Assigned)
-            .Async(cancellationToken);
-        var accepted = customer.WaitFor<DeliveryStatusNotify>()
-            .Where(message =>
-                message.Payload.DeliveryId == deliveryId && message.Payload.Status == DeliveryStatus.Accepted)
-            .Async(cancellationToken);
-        var pickedUp = customer.WaitFor<DeliveryStatusNotify>()
-            .Where(message =>
-                message.Payload.DeliveryId == deliveryId && message.Payload.Status == DeliveryStatus.PickedUp)
-            .Async(cancellationToken);
-        var delivered = customer.WaitFor<DeliveryStatusNotify>()
-            .Where(message =>
-                message.Payload.DeliveryId == deliveryId && message.Payload.Status == DeliveryStatus.Delivered)
             .Async(cancellationToken);
 
         var subscribed = await customer.Request(new SubscribeDeliveryReq(deliveryId))
@@ -95,10 +82,15 @@ internal sealed class DeliveryDispatchClientScenario(ILogger logger)
                 null))
             .Submit(cancellationToken);
 
-        Ensure((await assigned).Payload.CourierId == "courier-a");
-        Ensure((await accepted).Payload.CourierId == "courier-a");
-        Ensure((await pickedUp).Payload.CourierId == "courier-a");
-        Ensure((await delivered).Payload.CourierId == "courier-a");
+        var assigned = await WaitForStatusAsync(customer, deliveryId, DeliveryStatus.Assigned, cancellationToken);
+        var accepted = await WaitForStatusAsync(customer, deliveryId, DeliveryStatus.Accepted, cancellationToken);
+        var pickedUp = await WaitForStatusAsync(customer, deliveryId, DeliveryStatus.PickedUp, cancellationToken);
+        var delivered = await WaitForStatusAsync(customer, deliveryId, DeliveryStatus.Delivered, cancellationToken);
+
+        Ensure(assigned.CourierId == "courier-a");
+        Ensure(accepted.CourierId == "courier-a");
+        Ensure(pickedUp.CourierId == "courier-a");
+        Ensure(delivered.CourierId == "courier-a");
     }
 
     private async ValueTask RunReassignedDeliveryAsync(
@@ -120,22 +112,6 @@ internal sealed class DeliveryDispatchClientScenario(ILogger logger)
         var secondOffer = courierB.WaitFor<OfferDeliveryNotify>()
             .Where(message => message.Payload.DeliveryId == deliveryId)
             .Where(message => message.Payload.CourierId == "courier-b")
-            .Async(cancellationToken);
-        var assigned = customer.WaitFor<DeliveryStatusNotify>()
-            .Where(message =>
-                message.Payload.DeliveryId == deliveryId && message.Payload.Status == DeliveryStatus.Assigned)
-            .Async(cancellationToken);
-        var reassigned = customer.WaitFor<DeliveryStatusNotify>()
-            .Where(message =>
-                message.Payload.DeliveryId == deliveryId && message.Payload.Status == DeliveryStatus.Reassigned)
-            .Async(cancellationToken);
-        var accepted = customer.WaitFor<DeliveryStatusNotify>()
-            .Where(message =>
-                message.Payload.DeliveryId == deliveryId && message.Payload.Status == DeliveryStatus.Accepted)
-            .Async(cancellationToken);
-        var delivered = customer.WaitFor<DeliveryStatusNotify>()
-            .Where(message =>
-                message.Payload.DeliveryId == deliveryId && message.Payload.Status == DeliveryStatus.Delivered)
             .Async(cancellationToken);
 
         var subscribed = await customer.Request(new SubscribeDeliveryReq(deliveryId))
@@ -162,11 +138,29 @@ internal sealed class DeliveryDispatchClientScenario(ILogger logger)
                 null))
             .Submit(cancellationToken);
 
-        Ensure((await assigned).Payload.CourierId == "courier-a");
-        Ensure((await reassigned).Payload.CourierId == "courier-b");
-        Ensure((await accepted).Payload.CourierId == "courier-b");
-        Ensure((await delivered).Payload.CourierId == "courier-b");
+        var assigned = await WaitForStatusAsync(customer, deliveryId, DeliveryStatus.Assigned, cancellationToken);
+        var reassigned = await WaitForStatusAsync(customer, deliveryId, DeliveryStatus.Reassigned, cancellationToken);
+        var accepted = await WaitForStatusAsync(customer, deliveryId, DeliveryStatus.Accepted, cancellationToken);
+        var delivered = await WaitForStatusAsync(customer, deliveryId, DeliveryStatus.Delivered, cancellationToken);
+
+        Ensure(assigned.CourierId == "courier-a");
+        Ensure(reassigned.CourierId == "courier-b");
+        Ensure(accepted.CourierId == "courier-b");
+        Ensure(delivered.CourierId == "courier-b");
         logger.LogInformation("deliverydispatch-reassignment=completed");
+    }
+
+    private static async ValueTask<DeliveryStatusNotify> WaitForStatusAsync(
+        IZlinkStreamConnector customer,
+        string deliveryId,
+        DeliveryStatus status,
+        CancellationToken cancellationToken)
+    {
+        var message = await customer.WaitFor<DeliveryStatusNotify>()
+            .Where(message =>
+                message.Payload.DeliveryId == deliveryId && message.Payload.Status == status)
+            .Async(cancellationToken);
+        return message.Payload;
     }
 
     private ValueTask AssertServerEvidenceAsync(

@@ -1,7 +1,10 @@
 using DeliveryDispatch.Server.Configuration;
 using DeliveryDispatch.Shared.Contracts;
 using Microsoft.Extensions.Logging;
+using Systems.Zlink;
 using Zlink.Framework.AspNetCore;
+using Zlink.Framework.Contracts.Channels;
+using Zlink.Framework.Contracts.Locations;
 using Zlink.Framework.Locations.Redis;
 using Zlink.Framework.Contracts.Dispatch;
 using Zlink.Samples.Logging;
@@ -21,6 +24,8 @@ public static class DispatchServerHostFactory
         builder.Services.AddSingleton(topology);
         builder.Services.AddSingleton<EvidenceStore>();
         builder.Services.AddSingleton<DispatchWorkQueue>();
+        builder.Services.AddSingleton<CourierOfferPort>();
+        builder.Services.AddSingleton<DeliveryStatusPublisher>();
         builder.Services.AddHostedService<DispatchWorker>();
         builder.Services.AddZLinkFramework(options =>
         {
@@ -32,7 +37,12 @@ public static class DispatchServerHostFactory
                 .TraceLogFile(SampleFlowLog.Path("dispatch"))
                 .TraceLabel("dispatch");
             options.AddHandlersFromAssemblyOf(typeof(DispatchServerHostFactory));
-            options.AddClientServerChannel(SampleNames.CourierRouteChannel)
+            options.AddClientServerChannel(SampleNames.DispatchChannel)
+                .EnableServer(topology.DispatchChannelEndpoint)
+                .EnableClient()
+                .SetRoutingId(Systems.Zlink.RoutingId.From("delivery-dispatch-channel"))
+                .AddHandlerGroup(SampleNames.DispatchChannel);
+            options.AddRouteMesh(SampleNames.CourierActorNodeRouteChannel)
                 .EnableClient()
                 .SetRoutingId(Systems.Zlink.RoutingId.From("delivery-dispatch-courier-client"));
             options.AddClientServerChannel(SampleNames.TrackingRouteChannel)
@@ -41,19 +51,36 @@ public static class DispatchServerHostFactory
         });
 
         var app = builder.Build();
-        app.MapGet("/health", () => Results.Ok(new { ready = true, role = "dispatch" }));
-        app.MapPost("/deliveries", async (
+        app.MapGet("/health", async (
+            IZLinkLocationRuntimeQuery locations,
+            CancellationToken cancellationToken) =>
+        {
+            var node1Ready = await HasReadyCourierRouteAsync(
+                locations,
+                topology.CourierActorNode1Rid,
+                cancellationToken);
+            var node2Ready = await HasReadyCourierRouteAsync(
+                locations,
+                topology.CourierActorNode2Rid,
+                cancellationToken);
+            return node1Ready && node2Ready
+                ? Results.Ok(new { ready = true, role = "dispatch" })
+                : Results.StatusCode(StatusCodes.Status503ServiceUnavailable);
+        });
+        app.MapPost("/deliveries", (
             CreateDeliveryReq request,
-            DispatchWorkQueue queue,
+            Zlink.Framework.Contracts.Channels.IZLinkChannelClient channels,
             ILoggerFactory loggerFactory,
             CancellationToken cancellationToken) =>
         {
-            var assign = new AssignDelivery(
+            var assign = new AssignDeliveryMsg(
                 request.DeliveryId,
                 request.CustomerId,
                 request.PickupAddress,
                 request.DropoffAddress);
-            await queue.EnqueueAsync(assign, cancellationToken);
+            channels.SendToChannel(SampleNames.DispatchChannel, assign)
+                .PacketName(nameof(AssignDeliveryMsg))
+                .Submit(cancellationToken);
             loggerFactory.CreateLogger("DeliveryDispatch.Server.Dispatch")
                 .LogInformation("deliverydispatch api: created delivery={DeliveryId}", request.DeliveryId);
             return Results.Ok(new CreateDeliveryRes(request.DeliveryId));
@@ -73,7 +100,6 @@ public static class DispatchServerHostFactory
                 DeliveryStatus.Assigned,
                 DeliveryStatus.Reassigned,
                 DeliveryStatus.Accepted,
-                DeliveryStatus.PickedUp,
                 DeliveryStatus.Delivered);
             return Results.Ok(new ServerAssertionRes(success && reassigned, evidence.ReadLines()));
         });
@@ -81,4 +107,26 @@ public static class DispatchServerHostFactory
         return app;
     }
 
+    private static async ValueTask<bool> HasReadyCourierRouteAsync(
+        IZLinkLocationRuntimeQuery locations,
+        RoutingId nodeRid,
+        CancellationToken cancellationToken)
+    {
+        try
+        {
+            var routes = await locations.ListTopologyAsync(
+                new ZLinkLocationTopologyFilter(
+                    Kind: ZLinkLocationKind.Peer,
+                    MeshName: SampleNames.CourierActorNodeRouteChannel,
+                    Role: ZLinkLocationRole.Router,
+                    NodeRid: nodeRid,
+                    State: ZLinkLocationTopologyState.Ready),
+                cancellationToken: cancellationToken);
+            return routes.Items.Count > 0;
+        }
+        catch
+        {
+            return false;
+        }
+    }
 }

@@ -26,10 +26,12 @@ internal sealed record RoomRoute(
 internal sealed class RedisRoomRouteStore : IRoomRouteStore, IAsyncDisposable
 {
     private readonly IDatabase _database;
+    private readonly string _keyPrefix;
     private readonly ConnectionMultiplexer _redis;
 
     public RedisRoomRouteStore(SampleSettings settings)
     {
+        _keyPrefix = settings.RedisKeyPrefix;
         _redis = ConnectionMultiplexer.Connect(settings.RedisEndpoint);
         _database = _redis.GetDatabase();
     }
@@ -80,9 +82,9 @@ internal sealed class RedisRoomRouteStore : IRoomRouteStore, IAsyncDisposable
             Require(map, "SpotKind", roomId));
     }
 
-    private static string Key(string roomId)
+    private string Key(string roomId)
     {
-        return $"tictactoe:rooms:{roomId}";
+        return $"{_keyPrefix}rooms:{roomId}";
     }
 
     private static string Require(

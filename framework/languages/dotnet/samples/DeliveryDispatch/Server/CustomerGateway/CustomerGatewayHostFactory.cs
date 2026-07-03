@@ -2,6 +2,7 @@ using DeliveryDispatch.Server.Configuration;
 using DeliveryDispatch.Server.CustomerGateway.Spots.EntrySpot;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Hosting;
+using Systems.Zlink;
 using Zlink.Framework.AspNetCore;
 using Zlink.Framework.Locations.Redis;
 using Zlink.Framework.Contracts.Codecs.Json;
@@ -21,6 +22,7 @@ public static class CustomerGatewayHostFactory
             "customer-gateway");
         builder.Services.AddSingleton(topology);
         builder.Services.AddSingleton<CustomerActorDirectory>();
+        builder.Services.AddSingleton<CustomerActorAccess>();
         builder.Services.AddZLinkFramework(options =>
         {
             options.AddLocationStore(new ZLinkRedisLocationStore(redis => redis
@@ -31,14 +33,10 @@ public static class CustomerGatewayHostFactory
                 .TraceLogFile(SampleFlowLog.Path("customer-gateway"))
                 .TraceLabel("customer-gateway");
             options.AddHandlersFromAssemblyOf(typeof(CustomerGatewayHostFactory));
-            options.AddClientServerChannel(SampleNames.CustomerRouteChannel)
-                .EnableServer(topology.CustomerRouteEndpoint)
-                .EnableClient()
-                .SetRoutingId(Systems.Zlink.RoutingId.From("delivery-customer-gateway-server"))
-                .AddHandlerGroup(SampleNames.CustomerRouteChannel);
             options.AddSpotMesh(SampleNames.CustomerActorDiscovery)
                 .EnableRouter(topology.CustomerSpotRouterEndpoint)
                 .SetRoutingId(topology.CustomerSpotNodeRid)
+                .SetEntrySpotRoutingId(topology.CustomerSpotNodeRid)
                 .EnablePubSub(topology.CustomerSpotEndpoint)
                 .AddEntrySpot<CustomerEntrySpot>()
                 .AddActorFactory<CustomerActorFactory>(SampleNames.CustomerActorType);

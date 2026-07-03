@@ -49,9 +49,9 @@ On Windows PowerShell:
 ```
 
 The script starts two Api servers, two Play servers, two Session
-servers, and a Redis match queue as separate processes. It waits for their
-endpoints, waits briefly for local server connections to settle, and then runs
-the connector client. The
+servers, and Redis-backed store access as separate processes. It waits for the
+public endpoints that the client and server roles use, and then runs the
+connector client. The
 client flow is self-checking. It fails if the three connectors do not
 authenticate as distinct actors, match into one room across Play nodes, observe
 the rare reward event from the non-owner Play node, or deliver push
@@ -59,10 +59,11 @@ notifications to the bound client sessions. After the game finishes, the server
 self-check also verifies that room actors leave the room Spot, return to Entry
 Spot, and are destroyed from the Entry Spot context.
 
-The runner always provisions a dedicated Redis Docker container on a
-Docker-assigned loopback port, derives `BINGO_REDIS_ENDPOINT` from it, and
-removes that container on success or failure, so each run's room-allocation
-state stays isolated and never touches a developer's local Redis. Docker is
-therefore required to run the sample. The runner also supplies a unique
-`BINGO_REDIS_KEY_PREFIX` for each execution so parallel sample runs do not share
-Redis match queue keys.
+Redis is required for two responsibilities: framework location store data and
+the Bingo match queue. The runner always provisions a dedicated Redis Docker
+container for the current execution, asks Docker to assign a free loopback host
+port, derives `BINGO_REDIS_ENDPOINT` from that container, and removes only that
+container on success or failure. It does not reuse an externally supplied Redis
+endpoint. The runner also supplies a `BINGO_REDIS_KEY_PREFIX` that includes the
+sample name and execution id so parallel sample runs do not share location store
+or match queue keys.

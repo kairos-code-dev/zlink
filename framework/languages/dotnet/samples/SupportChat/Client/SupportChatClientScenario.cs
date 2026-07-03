@@ -7,15 +7,13 @@ namespace SupportChat.Client;
 
 internal sealed class SupportChatClientScenario
 {
-    // ConversationId rides in stream metadata, so conversation packets carry it there
-    // (not in the body) and the Session server routes each to the right room (§9.2).
     private const string Cid = SampleNames.ConversationIdMetadataKey;
 
     // End-to-end client story for one agent : many customers (§16, §17):
     // 1. One agent registers availability.
     // 2. Two customers open conversations; the same agent is assigned to both and joins each.
     // 3. Each room keeps its own MessageSeq; typing is one-way.
-    // 4. The agent reconnects and re-joins both rooms.
+    // 4. The customer and agent reconnect and re-join their rooms.
     // 5. One room auto-closes on idle; the other is closed explicitly; then messages are rejected.
     // 6. With no available agent, a new customer stays WaitingForAgent.
     public async ValueTask RunAsync(
@@ -23,6 +21,7 @@ internal sealed class SupportChatClientScenario
         IZlinkStreamConnector customer1,
         IZlinkStreamConnector customer2,
         IZlinkStreamConnector reconnectingAgent,
+        IZlinkStreamConnector reconnectingCustomer,
         IZlinkStreamConnector waitingCustomer,
         CancellationToken cancellationToken = default)
     {
@@ -46,7 +45,9 @@ internal sealed class SupportChatClientScenario
         Ensure((await assigned1ForAgent).Payload.ConversationId == cid1);
 
         var joined1ForCustomer = customer1.WaitFor<ParticipantJoinedNotify>().Async(cancellationToken);
-        var agentJoin1 = await JoinAsync(agent, cid1, cancellationToken);
+        var agentRoom1 = Conversation(agent, cid1);
+        var customerRoom1 = Conversation(customer1, cid1);
+        var agentJoin1 = await agentRoom1.JoinAsync(cancellationToken);
         Ensure(agentJoin1.State.Status == ConversationStatuses.Active);
         Ensure(agentJoin1.State.AgentActorId == "agent-1");
         Ensure(agentJoin1.State.Subject == "checkout payment failed");
@@ -57,14 +58,14 @@ internal sealed class SupportChatClientScenario
 
         // Agent greets, customer replies; sequence is assigned per conversation.
         var greeting1ForCustomer = customer1.WaitFor<ChatMessageNotify>().Async(cancellationToken);
-        var greet1 = await SendChatAsync(agent, cid1, "How can I help?", cancellationToken);
+        var greet1 = await agentRoom1.SendChatAsync("How can I help?", cancellationToken);
         Ensure(greet1.Message.MessageSeq == 1UL);
         var greeting1 = await greeting1ForCustomer;
         Ensure(greeting1.Payload.ConversationId == cid1);
         Ensure(greeting1.Payload.Message.MessageSeq == 1UL);
 
         var reply1ForAgent = agent.WaitFor<ChatMessageNotify>().Async(cancellationToken);
-        var reply1 = await SendChatAsync(customer1, cid1, "Payment keeps failing.", cancellationToken);
+        var reply1 = await customerRoom1.SendChatAsync("Payment keeps failing.", cancellationToken);
         Ensure(reply1.Message.MessageSeq == 2UL);
         var reply1Push = await reply1ForAgent;
         Ensure(reply1Push.Payload.ConversationId == cid1);
@@ -83,14 +84,16 @@ internal sealed class SupportChatClientScenario
         Ensure((await assigned2ForAgent).Payload.ConversationId == cid2);
 
         var joined2ForCustomer = customer2.WaitFor<ParticipantJoinedNotify>().Async(cancellationToken);
-        var agentJoin2 = await JoinAsync(agent, cid2, cancellationToken);
+        var agentRoom2 = Conversation(agent, cid2);
+        var customerRoom2 = Conversation(customer2, cid2);
+        var agentJoin2 = await agentRoom2.JoinAsync(cancellationToken);
         Ensure(agentJoin2.State.Status == ConversationStatuses.Active);
         Ensure(agentJoin2.State.Subject == "cannot log in");
         Ensure((await joined2ForCustomer).Payload.ConversationId == cid2);
 
         // The rooms are independent: cid2 starts its own MessageSeq at 1.
         var greeting2ForCustomer = customer2.WaitFor<ChatMessageNotify>().Async(cancellationToken);
-        var greet2 = await SendChatAsync(agent, cid2, "Let me check your account.", cancellationToken);
+        var greet2 = await agentRoom2.SendChatAsync("Let me check your account.", cancellationToken);
         Ensure(greet2.Message.MessageSeq == 1UL);
         var greeting2 = await greeting2ForCustomer;
         Ensure(greeting2.Payload.ConversationId == cid2);
@@ -98,11 +101,22 @@ internal sealed class SupportChatClientScenario
 
         // Typing is a one-way send; only the other participant is notified.
         var typingForCustomer1 = customer1.WaitFor<TypingChangedNotify>().Async(cancellationToken);
-        agent.Send(new SetTypingReq(true)).Metadata(Cid, cid1).Submit(cancellationToken);
+        agentRoom1.SendTyping(true, cancellationToken);
         var typing1 = await typingForCustomer1;
         Ensure(typing1.Payload.ConversationId == cid1);
         Ensure(typing1.Payload.ActorId == "agent-1");
         Ensure(typing1.Payload.IsTyping);
+
+        // Reconnect customer 1 with the same token and re-read the current room state.
+        await customer1.Close.Async(cancellationToken);
+        await reconnectingCustomer.Connect.Async(cancellationToken);
+        Ensure((await reconnectingCustomer.Request(new AuthenticateReq("customer-1"))
+            .Async<AuthenticateRes>(cancellationToken)).ActorId == "customer-1");
+        customerRoom1 = Conversation(reconnectingCustomer, cid1);
+        var customerRejoin1 = await customerRoom1.JoinAsync(cancellationToken);
+        Ensure(customerRejoin1.State.Subject == "checkout payment failed");
+        Ensure(customerRejoin1.State.Status == ConversationStatuses.Active);
+        Ensure(customerRejoin1.State.LastMessageSeq == 2UL);
 
         // Reconnect the agent on a fresh session. Close the old connection first (as a
         // real reconnect does), re-declare availability so the roster's push route
@@ -113,30 +127,32 @@ internal sealed class SupportChatClientScenario
             .Async<AuthenticateRes>(cancellationToken)).ActorId == "agent-1");
         Ensure((await reconnectingAgent.Request(new SetAgentAvailableReq(true))
             .Async<SetAgentAvailableRes>(cancellationToken)).IsAvailable);
-        Ensure((await JoinAsync(reconnectingAgent, cid1, cancellationToken)).State.Subject == "checkout payment failed");
-        Ensure((await JoinAsync(reconnectingAgent, cid2, cancellationToken)).State.Subject == "cannot log in");
+        var reconnectedRoom1 = Conversation(reconnectingAgent, cid1);
+        var reconnectedRoom2 = Conversation(reconnectingAgent, cid2);
+        Ensure((await reconnectedRoom1.JoinAsync(cancellationToken)).State.Subject == "checkout payment failed");
+        Ensure((await reconnectedRoom2.JoinAsync(cancellationToken)).State.Subject == "cannot log in");
 
         // Arm cid1 idle + auto-close waiters (both sides) before cid1 can close.
         var idleTimeout = SampleNames.IdleTimeout + SampleNames.CloseGraceTimeout + SampleNames.RequestTimeout;
-        var idle1ForCustomer = customer1.WaitFor<ConversationIdleNotify>().Timeout(idleTimeout).Async(cancellationToken);
+        var idle1ForCustomer = reconnectingCustomer.WaitFor<ConversationIdleNotify>().Timeout(idleTimeout).Async(cancellationToken);
         var idle1ForAgent = reconnectingAgent.WaitFor<ConversationIdleNotify>()
             .Where(m => m.Payload.ConversationId == cid1).Timeout(idleTimeout).Async(cancellationToken);
-        var closed1ForCustomer = customer1.WaitFor<ConversationClosedNotify>().Timeout(idleTimeout).Async(cancellationToken);
+        var closed1ForCustomer = reconnectingCustomer.WaitFor<ConversationClosedNotify>().Timeout(idleTimeout).Async(cancellationToken);
         var closed1ForAgent = reconnectingAgent.WaitFor<ConversationClosedNotify>()
             .Where(m => m.Payload.ConversationId == cid1).Timeout(idleTimeout).Async(cancellationToken);
 
         // Explicitly close cid2 from the customer; only the agent is notified.
         var closed2ForAgent = reconnectingAgent.WaitFor<ConversationClosedNotify>()
             .Where(m => m.Payload.ConversationId == cid2).Timeout(idleTimeout).Async(cancellationToken);
-        var closed2 = await customer2.Request(new CloseConversationReq("resolved")).Metadata(Cid, cid2)
-            .Async<CloseConversationRes>(cancellationToken);
+        var closed2 = await customerRoom2.CloseAsync("resolved", cancellationToken);
         Ensure(closed2.State.Status == ConversationStatuses.Closed);
-        Ensure((await closed2ForAgent).Payload.ConversationId == cid2);
+        var closed2Agent = await closed2ForAgent;
+        Ensure(closed2Agent.Payload.ConversationId == cid2);
+        Ensure(closed2Agent.Payload.State.Status == ConversationStatuses.Closed);
 
         // Closing an already-closed conversation returns an error response.
         await ExpectFailureAsync(
-            customer2.Request(new CloseConversationReq("again")).Metadata(Cid, cid2)
-                .Async<CloseConversationRes>(cancellationToken).AsTask(),
+            customerRoom2.CloseAsync("again", cancellationToken).AsTask(),
             "Closed conversation must reject a duplicate close.");
 
         // cid1 idles first (both sides notified WaitingForClose), then auto-closes.
@@ -145,12 +161,22 @@ internal sealed class SupportChatClientScenario
         Ensure(idle1Agent.Payload.ConversationId == cid1);
         Ensure(idle1Agent.Payload.State.Status == ConversationStatuses.WaitingForClose);
         Ensure((await closed1ForCustomer).Payload.State.Status == ConversationStatuses.Closed);
-        Ensure((await closed1ForAgent).Payload.ConversationId == cid1);
+        var closed1Agent = await closed1ForAgent;
+        Ensure(closed1Agent.Payload.ConversationId == cid1);
+        Ensure(closed1Agent.Payload.State.Status == ConversationStatuses.Closed);
 
         // A closed conversation rejects further messages.
         await ExpectFailureAsync(
-            SendChatAsync(customer1, cid1, "are you there?", cancellationToken).AsTask(),
+            customerRoom1.SendChatAsync("are you there?", cancellationToken).AsTask(),
             "Closed conversation must reject follow-up messages.");
+        var closedTypingForAgent = reconnectingAgent.WaitFor<TypingChangedNotify>()
+            .Where(m => m.Payload.ConversationId == cid1).Timeout(TimeSpan.FromMilliseconds(500))
+            .Async(cancellationToken);
+        customerRoom1.SendTyping(true, cancellationToken);
+        await ExpectTimeoutAsync(
+            closedTypingForAgent.AsTask(),
+            "Closed conversation must ignore typing sends without notifying participants.");
+        Console.WriteLine("supportchat-closed-typing-ignore=verified");
 
         // With the agent unavailable and no capacity elsewhere, a new customer waits.
         Ensure(!(await reconnectingAgent.Request(new SetAgentAvailableReq(false))
@@ -175,23 +201,35 @@ internal sealed class SupportChatClientScenario
             cancellationToken);
     }
 
-    private static ValueTask<JoinConversationRes> JoinAsync(
-        IZlinkStreamConnector connector,
-        string conversationId,
-        CancellationToken cancellationToken)
-    {
-        return connector.Request(new JoinConversationReq()).Metadata(Cid, conversationId)
-            .Async<JoinConversationRes>(cancellationToken);
-    }
+    private static ConversationClient Conversation(IZlinkStreamConnector connector, string conversationId) =>
+        new(connector, conversationId);
 
-    private static ValueTask<SendChatMessageRes> SendChatAsync(
-        IZlinkStreamConnector connector,
-        string conversationId,
-        string text,
-        CancellationToken cancellationToken)
+    private readonly struct ConversationClient(IZlinkStreamConnector connector, string conversationId)
     {
-        return connector.Request(new SendChatMessageReq(text)).Metadata(Cid, conversationId)
-            .Async<SendChatMessageRes>(cancellationToken);
+        // ConversationId rides in stream metadata, not in the body. Keeping that detail
+        // here lets the scenario read as conversation work instead of route wiring.
+        public ValueTask<JoinConversationRes> JoinAsync(CancellationToken cancellationToken)
+        {
+            return connector.Request(new JoinConversationReq()).Metadata(Cid, conversationId)
+                .Async<JoinConversationRes>(cancellationToken);
+        }
+
+        public ValueTask<SendChatMessageRes> SendChatAsync(string text, CancellationToken cancellationToken)
+        {
+            return connector.Request(new SendChatMessageReq(text)).Metadata(Cid, conversationId)
+                .Async<SendChatMessageRes>(cancellationToken);
+        }
+
+        public void SendTyping(bool isTyping, CancellationToken cancellationToken)
+        {
+            connector.Send(new SetTypingReq(isTyping)).Metadata(Cid, conversationId).Submit(cancellationToken);
+        }
+
+        public ValueTask<CloseConversationRes> CloseAsync(string? reason, CancellationToken cancellationToken)
+        {
+            return connector.Request(new CloseConversationReq(reason)).Metadata(Cid, conversationId)
+                .Async<CloseConversationRes>(cancellationToken);
+        }
     }
 
     private static void Ensure(
@@ -209,6 +247,20 @@ internal sealed class SupportChatClientScenario
             await request;
         }
         catch (Exception error) when (error is not OperationCanceledException)
+        {
+            return;
+        }
+
+        throw new InvalidOperationException(message);
+    }
+
+    private static async Task ExpectTimeoutAsync(Task request, string message)
+    {
+        try
+        {
+            await request;
+        }
+        catch (TimeoutException)
         {
             return;
         }

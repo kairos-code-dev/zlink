@@ -63,14 +63,3 @@ public sealed record ContinueOrderWorkflowRes(OrderState State);
 public sealed record RebuildOrderProjectionReq(string OrderId);
 
 public sealed record RebuildOrderProjectionRes(OrderState State);
-
-public sealed record ServerAssertionReq(
-    string SuccessfulOrderId,
-    string PendingRecoveredOrderId,
-    string InventoryFailureOrderId,
-    string PaymentFailureOrderId,
-    string ScaleOutOrderId);
-
-public sealed record ServerAssertionRes(
-    bool Passed,
-    string[] Evidence);

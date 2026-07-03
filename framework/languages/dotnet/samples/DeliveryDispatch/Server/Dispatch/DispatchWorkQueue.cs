@@ -5,16 +5,16 @@ namespace DeliveryDispatch.Server.Dispatch;
 
 internal sealed class DispatchWorkQueue
 {
-    private readonly Channel<AssignDelivery> _queue = Channel.CreateUnbounded<AssignDelivery>();
+    private readonly Channel<AssignDeliveryMsg> _queue = Channel.CreateUnbounded<AssignDeliveryMsg>();
 
     public ValueTask EnqueueAsync(
-        AssignDelivery request,
+        AssignDeliveryMsg request,
         CancellationToken cancellationToken)
     {
         return _queue.Writer.WriteAsync(request, cancellationToken);
     }
 
-    public IAsyncEnumerable<AssignDelivery> ReadAllAsync(CancellationToken cancellationToken)
+    public IAsyncEnumerable<AssignDeliveryMsg> ReadAllAsync(CancellationToken cancellationToken)
     {
         return _queue.Reader.ReadAllAsync(cancellationToken);
     }

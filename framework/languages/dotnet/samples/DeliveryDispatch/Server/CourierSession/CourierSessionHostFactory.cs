@@ -19,6 +19,7 @@ public static class CourierSessionHostFactory
             SampleLogging.DirectoryFromEnvironment("DELIVERYDISPATCH_LOG_DIR"),
             "courier-session");
         builder.Services.AddSingleton(topology);
+        builder.Services.AddSingleton<CourierSessionBinder>();
         builder.Services.AddZLinkFramework(options =>
         {
             options.AddLocationStore(new ZLinkRedisLocationStore(redis => redis
@@ -29,13 +30,9 @@ public static class CourierSessionHostFactory
                 .TraceLogFile(SampleFlowLog.Path("courier-session"))
                 .TraceLabel("courier-session");
             options.AddHandlersFromAssemblyOf(typeof(CourierSessionHostFactory));
-            options.AddClientServerChannel(SampleNames.CourierRouteChannel)
-                .EnableClient()
-                .SetRoutingId(Systems.Zlink.RoutingId.From("delivery-courier-session-client"));
             // The bound-actor session relay rides the courier route mesh;
             // the session joins dial-only under its spot node identity so
-            // the relay path to the actor nodes exists (Bingo/YieldDispatch
-            // 참조 topology와 동일).
+            // actor nodes can route delivery offers back to bound sessions.
             options.AddRouteMesh(SampleNames.CourierActorNodeRouteChannel)
                 .EnableClient()
                 .SetRoutingId(topology.CourierSessionSpotNodeRid);

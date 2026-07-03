@@ -157,6 +157,16 @@ internal sealed partial class ZLinkEntrySpotActivation
             cancellationToken).ConfigureAwait(false);
     }
 
+    public async ValueTask DispatchRouteAsync(
+        Received received,
+        CancellationToken cancellationToken)
+    {
+        await ExecuteAsync(
+            static (activation, state, ct) => activation._dispatcher.DispatchRouteAsync(state, ct),
+            received,
+            cancellationToken).ConfigureAwait(false);
+    }
+
     public async ValueTask DispatchActorJoinDrainAsync(CancellationToken cancellationToken)
     {
         await ExecuteAsync(

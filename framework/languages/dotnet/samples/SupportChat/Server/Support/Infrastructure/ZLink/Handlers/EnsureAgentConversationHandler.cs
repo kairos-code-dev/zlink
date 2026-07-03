@@ -8,11 +8,11 @@ using Zlink.Framework.Contracts.Handlers;
 
 namespace SupportChat.Server.Support.Infrastructure.ZLink.Handlers;
 
-// Creates (or reuses) the per-conversation agent actor for one assigned conversation
-// and joins it into that ConversationSpot. The actor's ParticipantId is the agent's
-// roster id, so the conversation sees a single human agent regardless of which
-// per-conversation actor carries the traffic (§9.1). Called by the Session server when
-// the agent client joins an assigned conversation.
+// Creates (or reuses) the conversation agent actor for one assigned conversation and
+// joins it into that ConversationSpot. The actor's ParticipantId is the agent's roster
+// id, so the conversation sees a single human agent regardless of which conversation
+// actor carries inbound traffic (§9.1). Called by the Session server when the agent
+// client joins an assigned conversation.
 [ZLinkHandlerGroup("support")]
 internal sealed class EnsureAgentConversationHandler(
     IZLinkActorManager actors,

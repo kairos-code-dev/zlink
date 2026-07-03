@@ -20,6 +20,7 @@ public sealed class EvidenceStore
         var line = string.Join(
             "|",
             status.DeliveryId,
+            status.CustomerId,
             status.Status,
             status.CourierId ?? string.Empty,
             status.OccurredAt.ToUnixTimeMilliseconds().ToString());
@@ -54,8 +55,9 @@ public sealed class EvidenceStore
         var parts = line.Split('|');
         return new DeliveryStatusChangedReq(
             parts[0],
-            Enum.Parse<DeliveryStatus>(parts[1]),
-            string.IsNullOrEmpty(parts[2]) ? null : parts[2],
-            DateTimeOffset.FromUnixTimeMilliseconds(long.Parse(parts[3])));
+            parts[1],
+            Enum.Parse<DeliveryStatus>(parts[2]),
+            string.IsNullOrEmpty(parts[3]) ? null : parts[3],
+            DateTimeOffset.FromUnixTimeMilliseconds(long.Parse(parts[4])));
     }
 }

@@ -3,11 +3,11 @@ set -euo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 RUN_DIR="$(mktemp -d)"
+RUN_ID="$(basename "${RUN_DIR}")-$$-${RANDOM}"
 LOG_DIR="${RUN_DIR}/logs"
-STORE_DIR="${RUN_DIR}/store"
-export GAMEQUEST_LOG_DIR="${GAMEQUEST_LOG_DIR:-${SCRIPT_DIR}/logs}"
-mkdir -p "${LOG_DIR}" "${STORE_DIR}" "${GAMEQUEST_LOG_DIR}"
-rm -f "${GAMEQUEST_LOG_DIR}"/*.log
+SAMPLE_LOG_DIR="${RUN_DIR}/sample-logs"
+export GAMEQUEST_LOG_DIR="${SAMPLE_LOG_DIR}"
+mkdir -p "${LOG_DIR}" "${SAMPLE_LOG_DIR}"
 
 PIDS=()
 REDIS_CONTAINER=""
@@ -49,20 +49,14 @@ cleanup() {
 }
 trap cleanup EXIT
 
-if [[ -n "${GAMEQUEST_BASE_PORT:-}" ]]; then
-  PORTS=()
-  for offset in $(seq 1 14); do
-    PORTS+=("$((GAMEQUEST_BASE_PORT + offset))")
-  done
-else
-  read -r -a PORTS <<<"$(python3 - <<'PY'
+read -r -a PORTS <<<"$(python3 - <<'PY'
 import random
 import socket
 
 sockets = []
 chosen = set()
 try:
-    while len(sockets) < 14:
+    while len(sockets) < 16:
         port = random.randint(41000, 60999)
         if port in chosen:
             continue
@@ -80,24 +74,24 @@ finally:
         sock.close()
 PY
 )"
-fi
 
-export GAMEQUEST_REDIS_KEY_PREFIX="${GAMEQUEST_REDIS_KEY_PREFIX:-gamequest:dotnet:${RANDOM}:$$:}"
-export GAMEQUEST_FANOUT_PUBLISHER_A_ENDPOINT="${GAMEQUEST_FANOUT_PUBLISHER_A_ENDPOINT:-tcp://127.0.0.1:${PORTS[2]}}"
-export GAMEQUEST_FANOUT_PUBLISHER_B_ENDPOINT="${GAMEQUEST_FANOUT_PUBLISHER_B_ENDPOINT:-tcp://127.0.0.1:${PORTS[13]}}"
-export GAMEQUEST_GAMEAPI_A_HTTP_BASE_URL="${GAMEQUEST_GAMEAPI_A_HTTP_BASE_URL:-http://127.0.0.1:${PORTS[3]}}"
-export GAMEQUEST_GAMEAPI_B_HTTP_BASE_URL="${GAMEQUEST_GAMEAPI_B_HTTP_BASE_URL:-http://127.0.0.1:${PORTS[4]}}"
-export GAMEQUEST_GAMEAPI_A_STREAM_ENDPOINT="${GAMEQUEST_GAMEAPI_A_STREAM_ENDPOINT:-ws://127.0.0.1:${PORTS[3]}/quest/ws}"
-export GAMEQUEST_GAMEAPI_B_STREAM_ENDPOINT="${GAMEQUEST_GAMEAPI_B_STREAM_ENDPOINT:-ws://127.0.0.1:${PORTS[4]}/quest/ws}"
-export GAMEQUEST_API_A_STREAM_BIND_ENDPOINT="${GAMEQUEST_API_A_STREAM_BIND_ENDPOINT:-tcp://127.0.0.1:${PORTS[5]}}"
-export GAMEQUEST_API_B_STREAM_BIND_ENDPOINT="${GAMEQUEST_API_B_STREAM_BIND_ENDPOINT:-tcp://127.0.0.1:${PORTS[6]}}"
-export GAMEQUEST_MISSION_A_HTTP_URL="${GAMEQUEST_MISSION_A_HTTP_URL:-http://127.0.0.1:${PORTS[7]}}"
-export GAMEQUEST_MISSION_B_HTTP_URL="${GAMEQUEST_MISSION_B_HTTP_URL:-http://127.0.0.1:${PORTS[8]}}"
-export GAMEQUEST_MISSION_A_SPOT_ENDPOINT="${GAMEQUEST_MISSION_A_SPOT_ENDPOINT:-tcp://127.0.0.1:${PORTS[9]}}"
-export GAMEQUEST_MISSION_A_SPOT_ROUTER_ENDPOINT="${GAMEQUEST_MISSION_A_SPOT_ROUTER_ENDPOINT:-tcp://127.0.0.1:${PORTS[10]}}"
-export GAMEQUEST_MISSION_B_SPOT_ENDPOINT="${GAMEQUEST_MISSION_B_SPOT_ENDPOINT:-tcp://127.0.0.1:${PORTS[11]}}"
-export GAMEQUEST_MISSION_B_SPOT_ROUTER_ENDPOINT="${GAMEQUEST_MISSION_B_SPOT_ROUTER_ENDPOINT:-tcp://127.0.0.1:${PORTS[12]}}"
-export GAMEQUEST_STORE_DIR="${GAMEQUEST_STORE_DIR:-${STORE_DIR}}"
+export GAMEQUEST_REDIS_KEY_PREFIX="gamequest:dotnet:${RUN_ID}:"
+export GAMEQUEST_GAMEAPI_A_ROUTE_ENDPOINT="tcp://127.0.0.1:${PORTS[2]}"
+export GAMEQUEST_GAMEAPI_B_ROUTE_ENDPOINT="tcp://127.0.0.1:${PORTS[13]}"
+export GAMEQUEST_GAMEAPI_A_HTTP_BASE_URL="http://127.0.0.1:${PORTS[3]}"
+export GAMEQUEST_GAMEAPI_B_HTTP_BASE_URL="http://127.0.0.1:${PORTS[4]}"
+export GAMEQUEST_GAMEAPI_A_STREAM_ENDPOINT="ws://127.0.0.1:${PORTS[3]}/quest/ws"
+export GAMEQUEST_GAMEAPI_B_STREAM_ENDPOINT="ws://127.0.0.1:${PORTS[4]}/quest/ws"
+export GAMEQUEST_API_A_STREAM_BIND_ENDPOINT="tcp://127.0.0.1:${PORTS[5]}"
+export GAMEQUEST_API_B_STREAM_BIND_ENDPOINT="tcp://127.0.0.1:${PORTS[6]}"
+export GAMEQUEST_MISSION_A_HTTP_URL="http://127.0.0.1:${PORTS[7]}"
+export GAMEQUEST_MISSION_B_HTTP_URL="http://127.0.0.1:${PORTS[8]}"
+export GAMEQUEST_MISSION_A_SPOT_ENDPOINT="tcp://127.0.0.1:${PORTS[9]}"
+export GAMEQUEST_MISSION_A_SPOT_ROUTER_ENDPOINT="tcp://127.0.0.1:${PORTS[10]}"
+export GAMEQUEST_MISSION_B_SPOT_ENDPOINT="tcp://127.0.0.1:${PORTS[11]}"
+export GAMEQUEST_MISSION_B_SPOT_ROUTER_ENDPOINT="tcp://127.0.0.1:${PORTS[12]}"
+export GAMEQUEST_MISSION_A_ROUTE_ENDPOINT="tcp://127.0.0.1:${PORTS[14]}"
+export GAMEQUEST_MISSION_B_ROUTE_ENDPOINT="tcp://127.0.0.1:${PORTS[15]}"
 
 endpoint_host() {
   local endpoint="$1"
@@ -165,7 +159,7 @@ if ! command -v docker >/dev/null 2>&1; then
   echo "Docker is required to run the GameQuest sample (it provisions a dedicated Redis container)." >&2
   exit 1
 fi
-REDIS_CONTAINER="gamequest-dotnet-redis-${RANDOM}-$$"
+REDIS_CONTAINER="zlink-gamequest-dotnet-redis-${RUN_ID}"
 docker run -d --rm --name "${REDIS_CONTAINER}" -p "127.0.0.1::6379" redis:7.2-alpine >/dev/null
 export GAMEQUEST_REDIS_ENDPOINT="$(docker port "${REDIS_CONTAINER}" 6379/tcp | sed -E 's/.*:([0-9]+)$/127.0.0.1:\1/')"
 wait_port redis "tcp://${GAMEQUEST_REDIS_ENDPOINT}"
@@ -174,38 +168,37 @@ ASPNETCORE_URLS="${GAMEQUEST_MISSION_A_HTTP_URL}" GAMEQUEST_MISSION_NAME="missio
   start_server mission-a "${SCRIPT_DIR}/Server/QuestMission/GameQuest.QuestMission.csproj"
 wait_port mission-a-spot-router "${GAMEQUEST_MISSION_A_SPOT_ROUTER_ENDPOINT}"
 wait_port mission-a-spot-pub "${GAMEQUEST_MISSION_A_SPOT_ENDPOINT}"
+wait_port mission-a-route "${GAMEQUEST_MISSION_A_ROUTE_ENDPOINT}"
 wait_http mission-a "${GAMEQUEST_MISSION_A_HTTP_URL}"
 
 ASPNETCORE_URLS="${GAMEQUEST_MISSION_B_HTTP_URL}" GAMEQUEST_MISSION_NAME="mission-b" \
   start_server mission-b "${SCRIPT_DIR}/Server/QuestMission/GameQuest.QuestMission.csproj"
 wait_port mission-b-spot-router "${GAMEQUEST_MISSION_B_SPOT_ROUTER_ENDPOINT}"
 wait_port mission-b-spot-pub "${GAMEQUEST_MISSION_B_SPOT_ENDPOINT}"
+wait_port mission-b-route "${GAMEQUEST_MISSION_B_ROUTE_ENDPOINT}"
 wait_http mission-b "${GAMEQUEST_MISSION_B_HTTP_URL}"
 
 ASPNETCORE_URLS="${GAMEQUEST_GAMEAPI_A_HTTP_BASE_URL}" GAMEQUEST_API_NAME="api-a" GAMEQUEST_STREAM_BIND_ENDPOINT="${GAMEQUEST_API_A_STREAM_BIND_ENDPOINT}" \
   start_server api-a "${SCRIPT_DIR}/Server/GameApi/GameQuest.GameApi.csproj"
 wait_port api-a-stream "${GAMEQUEST_API_A_STREAM_BIND_ENDPOINT}"
+wait_port api-a-route "${GAMEQUEST_GAMEAPI_A_ROUTE_ENDPOINT}"
 wait_http api-a "${GAMEQUEST_GAMEAPI_A_HTTP_BASE_URL}"
 
 ASPNETCORE_URLS="${GAMEQUEST_GAMEAPI_B_HTTP_BASE_URL}" GAMEQUEST_API_NAME="api-b" GAMEQUEST_STREAM_BIND_ENDPOINT="${GAMEQUEST_API_B_STREAM_BIND_ENDPOINT}" \
   start_server api-b "${SCRIPT_DIR}/Server/GameApi/GameQuest.GameApi.csproj"
 wait_port api-b-stream "${GAMEQUEST_API_B_STREAM_BIND_ENDPOINT}"
+wait_port api-b-route "${GAMEQUEST_GAMEAPI_B_ROUTE_ENDPOINT}"
 wait_http api-b "${GAMEQUEST_GAMEAPI_B_HTTP_BASE_URL}"
 
-# Give the auto-connect reconcile loops one or two polling intervals to
-# converge (fanout subscribers dial rows they discover in the store).
-sleep "${GAMEQUEST_STARTUP_DELAY_SECONDS:-3}"
+dotnet run --no-build --project "${SCRIPT_DIR}/Client/GameQuest.Client.csproj" >"${LOG_DIR}/client.log" 2>&1
 
-
-dotnet run --no-build --project "${SCRIPT_DIR}/Client/GameQuest.Client.csproj"
-
-grep -q "gamequest api event published" "${LOG_DIR}/api-a.log"
-grep -q "gamequest api event published" "${LOG_DIR}/api-b.log"
+grep -q "gamequest api event routed" "${LOG_DIR}/api-a.log"
+grep -q "gamequest api event routed" "${LOG_DIR}/api-b.log"
 grep -q "gamequest mission processed" "${LOG_DIR}/mission-a.log"
 grep -q "gamequest mission processed" "${LOG_DIR}/mission-b.log"
 grep -q "gamequest player quest spot ready" "${LOG_DIR}/mission-a.log"
 grep -q "gamequest player quest spot ready" "${LOG_DIR}/mission-b.log"
-grep -q "QuestProgressReconciledEvent" "${STORE_DIR}/quest-events.json"
 curl -fsS -X POST "${GAMEQUEST_GAMEAPI_A_HTTP_BASE_URL}/self-check/assert" | grep -q '"passed":true'
-grep -Rq "message flow" "${GAMEQUEST_LOG_DIR}"
+curl -fsS "${GAMEQUEST_MISSION_A_HTTP_URL}/self-check/events" | grep -q "QuestProgressReconciledEvent"
+grep -Rq "message flow" "${SAMPLE_LOG_DIR}"
 echo "gamequest-server-evidence=completed"

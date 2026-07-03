@@ -4,8 +4,13 @@ $ScriptDir = Split-Path -Parent $MyInvocation.MyCommand.Path
 . (Join-Path $ScriptDir "../sample_runner.ps1")
 
 $RunDir = New-SampleRunDirectory "bingo-dotnet"
+$RunId = "$PID-$([Guid]::NewGuid().ToString('N'))"
 $LogDir = Join-Path $RunDir "logs"
+$SampleLogDir = if ($env:BINGO_LOG_DIR) { $env:BINGO_LOG_DIR } else { Join-Path $ScriptDir "logs" }
 New-Item -ItemType Directory -Force -Path $LogDir | Out-Null
+New-Item -ItemType Directory -Force -Path $SampleLogDir | Out-Null
+Remove-Item -Path (Join-Path $SampleLogDir "*.log") -Force -ErrorAction SilentlyContinue
+$env:BINGO_LOG_DIR = $SampleLogDir
 $RedisContainer = $null
 
 function Set-DefaultEnv {
@@ -28,8 +33,46 @@ function Require-LogCount {
     }
 }
 
+function Wait-LogContains {
+    param(
+        [Parameter(Mandatory = $true)][string]$Path,
+        [Parameter(Mandatory = $true)][string]$Pattern,
+        [Parameter(Mandatory = $true)][string]$Description,
+        [int]$Attempts = 50
+    )
+
+    for ($i = 0; $i -lt $Attempts; $i++) {
+        if (Select-String -Path $Path -Pattern $Pattern -Quiet) {
+            return
+        }
+        Start-Sleep -Milliseconds 200
+    }
+
+    throw "$Description was not found."
+}
+
+function Wait-SampleLogContains {
+    param(
+        [Parameter(Mandatory = $true)][string]$Pattern,
+        [Parameter(Mandatory = $true)][string]$Description,
+        [int]$Attempts = 50
+    )
+
+    for ($i = 0; $i -lt $Attempts; $i++) {
+        $match = Get-ChildItem -Path $SampleLogDir -Filter "*.log" |
+            Select-String -Pattern $Pattern -List |
+            Select-Object -First 1
+        if ($null -ne $match) {
+            return
+        }
+        Start-Sleep -Milliseconds 200
+    }
+
+    throw "$Description was not found."
+}
+
 try {
-    Set-DefaultEnv "BINGO_REDIS_KEY_PREFIX" "bingo:dotnet:${PID}:$([Guid]::NewGuid().ToString('N')):"
+    [Environment]::SetEnvironmentVariable("BINGO_REDIS_KEY_PREFIX", "bingo:dotnet:${RunId}:", "Process")
 
     $basePort = if ($env:BINGO_BASE_PORT) { [int]$env:BINGO_BASE_PORT } else { 0 }
     $ports = New-SamplePorts -Count 22 -BasePort $basePort
@@ -54,15 +97,12 @@ try {
     Set-DefaultEnv "BINGO_SESSION_B_PLAY_ROUTE_ENDPOINT" "tcp://127.0.0.1:$($ports[20])"
     Set-DefaultEnv "BINGO_METADATA_DIR" (Join-Path $RunDir "metadata")
 
-    # The sample owns its Redis: always provision a dedicated, throwaway container
-    # so room-allocation state stays isolated per run and never touches a developer's
-    # local Redis. (BINGO_REDIS_ENDPOINT is intentionally derived here, not read.)
     $docker = Get-Command docker -ErrorAction SilentlyContinue
     if ($null -eq $docker) {
-        throw "Docker is required to run the Bingo sample (it provisions a dedicated Redis container)."
+        throw "Docker is required to run the Bingo sample."
     }
 
-    $RedisContainer = "bingo-dotnet-redis-$PID-$([Guid]::NewGuid().ToString('N'))"
+    $RedisContainer = "zlink-bingo-dotnet-redis-$RunId"
     & docker run -d --rm --name $RedisContainer -p "127.0.0.1::6379" redis:7.2-alpine | Out-Null
     if ($LASTEXITCODE -ne 0) {
         throw "Failed to start Redis container."
@@ -99,12 +139,7 @@ try {
     Wait-SampleTcpEndpoint "session-b-stream" $env:BINGO_SESSION_B_STREAM_ENDPOINT
     Wait-SampleTcpEndpoint "session-b-play-route" $env:BINGO_SESSION_B_PLAY_ROUTE_ENDPOINT
 
-    $settleSeconds = if ($env:BINGO_STARTUP_SETTLE_SECONDS) { [double]$env:BINGO_STARTUP_SETTLE_SECONDS } else { 2.0 }
-    Start-Sleep -Seconds $settleSeconds
-
     $clientLog = Join-Path $LogDir "client.log"
-    $startupDelaySeconds = if ($env:BINGO_STARTUP_DELAY_SECONDS) { [double]$env:BINGO_STARTUP_DELAY_SECONDS } else { 3.0 }
-    Start-Sleep -Seconds $startupDelaySeconds
     Invoke-SampleDotnetRun -Project (Join-Path $ScriptDir "Client/Bingo.Client.csproj") -Arguments @("--stream-a-endpoint", $env:BINGO_SESSION_A_STREAM_ENDPOINT, "--stream-b-endpoint", $env:BINGO_SESSION_B_STREAM_ENDPOINT) *> $clientLog
     if (-not (Select-String -Path $clientLog -Pattern "bingo=completed" -Quiet)) {
         throw "Bingo client did not complete."
@@ -121,20 +156,15 @@ try {
 
     $playA = Join-Path $LogDir "play-a.out.log"
     $playB = Join-Path $LogDir "play-b.out.log"
-    if (-not (Select-String -Path $playB -Pattern "bingo observer room: actor left. observedRoom=.*observer=observer" -Quiet)) {
-        throw "Observer room leave evidence was not found."
-    }
-    if (-not (Select-String -Path $playA -Pattern "bingo room: actor left. room=.*actor=player-1" -Quiet)) {
-        throw "player-1 room leave evidence was not found."
-    }
-    if (-not (Select-String -Path $playA -Pattern "bingo room: actor left. room=.*actor=player-2" -Quiet)) {
-        throw "player-2 room leave evidence was not found."
-    }
+    Wait-LogContains $playB "bingo observer room: actor left. observedRoom=.*observer=observer" "Observer room leave evidence"
+    Wait-LogContains $playA "bingo room: actor left. room=.*actor=player-1" "player-1 room leave evidence"
+    Wait-LogContains $playA "bingo room: actor left. room=.*actor=player-2" "player-2 room leave evidence"
     Require-LogCount -Path $playA -Pattern "entry spot: actor left\. actor=player-1" -Expected 1
     Require-LogCount -Path $playA -Pattern "entry spot: actor left\. actor=player-2" -Expected 1
     Require-LogCount -Path $playA -Pattern "entry spot: actor destroy completed\. actor=player-1" -Expected 1
     Require-LogCount -Path $playA -Pattern "entry spot: actor destroy completed\. actor=player-2" -Expected 1
     Require-LogCount -Path $playB -Pattern "entry spot: actor destroy completed\. actor=observer" -Expected 0
+    Wait-SampleLogContains "message flow" "Bingo message-flow evidence"
 }
 finally {
     Stop-SampleProcesses

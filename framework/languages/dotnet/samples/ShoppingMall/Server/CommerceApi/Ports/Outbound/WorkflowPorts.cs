@@ -25,4 +25,11 @@ internal interface ICommerceApiPeerClient
         CancellationToken cancellationToken);
 }
 
+internal interface IOrderWorkflowSelfCheckClient
+{
+    ValueTask<OrderState> PrepareInventoryReservedCheckpointAsync(
+        StartOrderWorkflowReq command,
+        CancellationToken cancellationToken);
+}
+
 internal sealed record CommerceApiInstanceOptions(string InstanceId);

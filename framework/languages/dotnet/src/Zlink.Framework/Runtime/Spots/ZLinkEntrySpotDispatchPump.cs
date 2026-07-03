@@ -28,9 +28,20 @@ internal sealed class ZLinkEntrySpotDispatchPump(
             switch (info.Event)
             {
                 case ZLinkBackendSpotDispatchEvent.RouteReadable:
-                    taskRunner.RunDetached(
-                        "entry-spot-route-dispatch",
-                        ct => activation.DispatchRouteDrainAsync(ct));
+                    if (info.RoutedMessages is { Count: > 0 } routedMessages)
+                    {
+                        foreach (var received in routedMessages)
+                            taskRunner.RunDetached(
+                                "entry-spot-route-dispatch",
+                                ct => activation.DispatchRouteAsync(received, ct));
+                    }
+                    else
+                    {
+                        taskRunner.RunDetached(
+                            "entry-spot-route-dispatch",
+                            ct => activation.DispatchRouteDrainAsync(ct));
+                    }
+
                     return;
                 case ZLinkBackendSpotDispatchEvent.ChannelReplyReadable:
                     info.DrainChannelReply?.Invoke();

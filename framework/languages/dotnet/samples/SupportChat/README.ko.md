@@ -26,11 +26,14 @@ pwsh -NoProfile -ExecutionPolicy Bypass -File .\run_sample.ps1
 - `Server/Session/`은 stream session과 client push를 담당한다.
 - `Server/Support/`는 대화 actor, 상담원 배정, 메시지 상태를 관리한다.
 - 서버 프로세스들은 registry 없이 공유 location store(Redis)에 위치를 등록하고 자동 연결한다.
-  `run_sample.sh`가 실행마다 전용 Redis 컨테이너를 띄우고 `SUPPORTCHAT_REDIS_ENDPOINT`와
-  `SUPPORTCHAT_REDIS_KEY_PREFIX`를 주입한다.
+  runner는 실행할 때마다 전용 Docker Redis 컨테이너를 띄우고, 그 컨테이너에서 얻은
+  `SUPPORTCHAT_REDIS_ENDPOINT`와 실행별 `SUPPORTCHAT_REDIS_KEY_PREFIX`를 서버 역할에
+  주입한다. 외부 Redis endpoint 재사용 mode는 제공하지 않는다. 컨테이너 이름, host port,
+  key prefix, log directory는 실행별로 달라 동시에 도는 다른 테스트와 섞이지 않는다.
 
 ## 성공 조건
 
 클라이언트 시나리오는 대화 열기, 상담원 참여, 메시지 송수신, session push를 검증한다.
-`run_sample.sh`는 client log에서 `supportchat=completed`를 확인하고, 서버 evidence
-확인이 끝나면 `supportchat-server-evidence=completed`를 출력한다.
+`run_sample.sh`와 `run_sample.ps1`은 client log에서 `supportchat=completed`를 확인하고,
+서버 evidence와 message-flow evidence 확인이 끝나면 `supportchat-server-evidence=completed`를
+출력한다.

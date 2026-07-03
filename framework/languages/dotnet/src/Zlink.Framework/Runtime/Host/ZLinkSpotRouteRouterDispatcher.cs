@@ -49,7 +49,7 @@ internal sealed class ZLinkSpotRouteRouterDispatcher(
         RoutingId targetNodeRid,
         out ZLinkSpotNodeRuntime spotNodeRuntime)
     {
-        var candidate = ResolveRouterSpotNode(state, routerChannelId, targetNodeRid);
+        var candidate = ResolveRouterSpotNodeByRoutingId(state, targetNodeRid);
         if (candidate is not null)
         {
             spotNodeRuntime = candidate;
@@ -58,6 +58,18 @@ internal sealed class ZLinkSpotRouteRouterDispatcher(
 
         spotNodeRuntime = null!;
         return false;
+    }
+
+    private static ZLinkSpotNodeRuntime? ResolveRouterSpotNodeByRoutingId(
+        ZLinkFrameworkRuntimeState state,
+        RoutingId targetNodeRid)
+    {
+        foreach (var candidate in state.SpotNodes.Values)
+            if (candidate.Registration.Router is not null
+                && candidate.Node.RoutingId == targetNodeRid)
+                return candidate;
+
+        return null;
     }
 
     private static ZLinkSpotNodeRuntime? ResolveSingleRouterSpotNode(

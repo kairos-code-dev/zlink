@@ -3,11 +3,11 @@ set -euo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 RUN_DIR="$(mktemp -d)"
+RUN_ID="$(basename "${RUN_DIR}")-$$-${RANDOM}"
 LOG_DIR="${RUN_DIR}/logs"
-STORE_DIR="${RUN_DIR}/store"
-export SHOPPINGMALL_LOG_DIR="${SHOPPINGMALL_LOG_DIR:-${SCRIPT_DIR}/logs}"
-mkdir -p "${LOG_DIR}" "${STORE_DIR}" "${SHOPPINGMALL_LOG_DIR}"
-rm -f "${SHOPPINGMALL_LOG_DIR}"/*.log
+SAMPLE_LOG_DIR="${RUN_DIR}/sample-logs"
+export SHOPPINGMALL_LOG_DIR="${SAMPLE_LOG_DIR}"
+mkdir -p "${LOG_DIR}" "${SAMPLE_LOG_DIR}"
 
 PIDS=()
 REDIS_CONTAINER=""
@@ -49,20 +49,14 @@ cleanup() {
 }
 trap cleanup EXIT
 
-if [[ -n "${SHOPPINGMALL_BASE_PORT:-}" ]]; then
-  PORTS=()
-  for offset in $(seq 1 14); do
-    PORTS+=("$((SHOPPINGMALL_BASE_PORT + offset))")
-  done
-else
-  read -r -a PORTS <<<"$(python3 - <<'PY'
+read -r -a PORTS <<<"$(python3 - <<'PY'
 import random
 import socket
 
 sockets = []
 chosen = set()
 try:
-    while len(sockets) < 14:
+    while len(sockets) < 12:
         port = random.randint(41000, 60999)
         if port in chosen:
             continue
@@ -80,22 +74,20 @@ finally:
         sock.close()
 PY
 )"
-fi
 
-export SHOPPINGMALL_REDIS_KEY_PREFIX="${SHOPPINGMALL_REDIS_KEY_PREFIX:-shoppingmall:dotnet:${RANDOM}:$$:}"
-export SHOPPINGMALL_API_A_HTTP_URL="${SHOPPINGMALL_API_A_HTTP_URL:-http://127.0.0.1:${PORTS[2]}}"
-export SHOPPINGMALL_API_B_HTTP_URL="${SHOPPINGMALL_API_B_HTTP_URL:-http://127.0.0.1:${PORTS[3]}}"
-export SHOPPINGMALL_API_A_ROUTE_ENDPOINT="${SHOPPINGMALL_API_A_ROUTE_ENDPOINT:-tcp://127.0.0.1:${PORTS[4]}}"
-export SHOPPINGMALL_API_B_ROUTE_ENDPOINT="${SHOPPINGMALL_API_B_ROUTE_ENDPOINT:-tcp://127.0.0.1:${PORTS[5]}}"
-export SHOPPINGMALL_WORKFLOW_A_HTTP_URL="${SHOPPINGMALL_WORKFLOW_A_HTTP_URL:-http://127.0.0.1:${PORTS[6]}}"
-export SHOPPINGMALL_WORKFLOW_B_HTTP_URL="${SHOPPINGMALL_WORKFLOW_B_HTTP_URL:-http://127.0.0.1:${PORTS[7]}}"
-export SHOPPINGMALL_WORKFLOW_A_ROUTE_ENDPOINT="${SHOPPINGMALL_WORKFLOW_A_ROUTE_ENDPOINT:-tcp://127.0.0.1:${PORTS[8]}}"
-export SHOPPINGMALL_WORKFLOW_B_ROUTE_ENDPOINT="${SHOPPINGMALL_WORKFLOW_B_ROUTE_ENDPOINT:-tcp://127.0.0.1:${PORTS[9]}}"
-export SHOPPINGMALL_WORKFLOW_A_SPOT_ENDPOINT="${SHOPPINGMALL_WORKFLOW_A_SPOT_ENDPOINT:-tcp://127.0.0.1:${PORTS[10]}}"
-export SHOPPINGMALL_WORKFLOW_A_SPOT_ROUTER_ENDPOINT="${SHOPPINGMALL_WORKFLOW_A_SPOT_ROUTER_ENDPOINT:-tcp://127.0.0.1:${PORTS[11]}}"
-export SHOPPINGMALL_WORKFLOW_B_SPOT_ENDPOINT="${SHOPPINGMALL_WORKFLOW_B_SPOT_ENDPOINT:-tcp://127.0.0.1:${PORTS[12]}}"
-export SHOPPINGMALL_WORKFLOW_B_SPOT_ROUTER_ENDPOINT="${SHOPPINGMALL_WORKFLOW_B_SPOT_ROUTER_ENDPOINT:-tcp://127.0.0.1:${PORTS[13]}}"
-export SHOPPINGMALL_STORE_DIR="${SHOPPINGMALL_STORE_DIR:-${STORE_DIR}}"
+export SHOPPINGMALL_REDIS_KEY_PREFIX="shoppingmall:dotnet:${RUN_ID}:"
+export SHOPPINGMALL_API_A_HTTP_URL="http://127.0.0.1:${PORTS[0]}"
+export SHOPPINGMALL_API_B_HTTP_URL="http://127.0.0.1:${PORTS[1]}"
+export SHOPPINGMALL_API_A_ROUTE_ENDPOINT="tcp://127.0.0.1:${PORTS[2]}"
+export SHOPPINGMALL_API_B_ROUTE_ENDPOINT="tcp://127.0.0.1:${PORTS[3]}"
+export SHOPPINGMALL_WORKFLOW_A_HTTP_URL="http://127.0.0.1:${PORTS[4]}"
+export SHOPPINGMALL_WORKFLOW_B_HTTP_URL="http://127.0.0.1:${PORTS[5]}"
+export SHOPPINGMALL_WORKFLOW_A_ROUTE_ENDPOINT="tcp://127.0.0.1:${PORTS[6]}"
+export SHOPPINGMALL_WORKFLOW_B_ROUTE_ENDPOINT="tcp://127.0.0.1:${PORTS[7]}"
+export SHOPPINGMALL_WORKFLOW_A_SPOT_ENDPOINT="tcp://127.0.0.1:${PORTS[8]}"
+export SHOPPINGMALL_WORKFLOW_A_SPOT_ROUTER_ENDPOINT="tcp://127.0.0.1:${PORTS[9]}"
+export SHOPPINGMALL_WORKFLOW_B_SPOT_ENDPOINT="tcp://127.0.0.1:${PORTS[10]}"
+export SHOPPINGMALL_WORKFLOW_B_SPOT_ROUTER_ENDPOINT="tcp://127.0.0.1:${PORTS[11]}"
 
 endpoint_host() {
   local endpoint="$1"
@@ -163,7 +155,7 @@ if ! command -v docker >/dev/null 2>&1; then
   echo "Docker is required to run the ShoppingMall sample (it provisions a dedicated Redis container)." >&2
   exit 1
 fi
-REDIS_CONTAINER="shoppingmall-dotnet-redis-${RANDOM}-$$"
+REDIS_CONTAINER="zlink-shoppingmall-dotnet-redis-${RUN_ID}"
 docker run -d --rm --name "${REDIS_CONTAINER}" -p "127.0.0.1::6379" redis:7.2-alpine >/dev/null
 export SHOPPINGMALL_REDIS_ENDPOINT="$(docker port "${REDIS_CONTAINER}" 6379/tcp | sed -E 's/.*:([0-9]+)$/127.0.0.1:\1/')"
 wait_port redis "tcp://${SHOPPINGMALL_REDIS_ENDPOINT}"
@@ -188,12 +180,9 @@ start_server api-b "${SCRIPT_DIR}/Server/CommerceApi/ShoppingMall.CommerceApi.cs
 wait_port api-b-route "${SHOPPINGMALL_API_B_ROUTE_ENDPOINT}"
 wait_http api-b "${SHOPPINGMALL_API_B_HTTP_URL}"
 
-# Give the auto-connect reconcile loops one or two polling intervals to
-# converge before the scenario drives traffic.
-sleep "${SHOPPINGMALL_STARTUP_DELAY_SECONDS:-3}"
+dotnet run --no-build --project "${SCRIPT_DIR}/Client/ShoppingMall.Client.csproj" >"${LOG_DIR}/client.log" 2>&1
 
-dotnet run --no-build --project "${SCRIPT_DIR}/Client/ShoppingMall.Client.csproj"
-
+grep -q "shoppingmall=completed" "${SHOPPINGMALL_LOG_DIR}/client.log"
 grep -q "shoppingmall order: started" "${LOG_DIR}/workflow-a.log"
 grep -q "shoppingmall order: started" "${LOG_DIR}/workflow-b.log"
 grep -q "shoppingmall evidence:" "${LOG_DIR}/api-a.log"

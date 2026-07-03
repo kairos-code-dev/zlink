@@ -4,36 +4,29 @@ $ScriptDir = Split-Path -Parent $MyInvocation.MyCommand.Path
 . (Join-Path $ScriptDir "../sample_runner.ps1")
 
 $RunDir = New-SampleRunDirectory "shoppingmall-dotnet"
+$RunId = "$PID-$([Guid]::NewGuid().ToString('N'))"
 $RedisContainer = $null
 $LogDir = Join-Path $RunDir "logs"
-$StoreDir = Join-Path $RunDir "store"
-New-Item -ItemType Directory -Force -Path $LogDir, $StoreDir | Out-Null
-
-function Set-DefaultEnv {
-    param([string]$Name, [string]$Value)
-    if (-not [Environment]::GetEnvironmentVariable($Name, "Process")) {
-        [Environment]::SetEnvironmentVariable($Name, $Value, "Process")
-    }
-}
+$SampleLogDir = Join-Path $RunDir "sample-logs"
+New-Item -ItemType Directory -Force -Path $LogDir, $SampleLogDir | Out-Null
 
 try {
-    $basePort = if ($env:SHOPPINGMALL_BASE_PORT) { [int]$env:SHOPPINGMALL_BASE_PORT } else { 0 }
-    $ports = New-SamplePorts -Count 14 -BasePort $basePort
+    $ports = New-SamplePorts -Count 12 -BasePort 0
 
-    Set-DefaultEnv "SHOPPINGMALL_REDIS_KEY_PREFIX" "shoppingmall:dotnet:${PID}:$([Guid]::NewGuid().ToString('N')):"
-    Set-DefaultEnv "SHOPPINGMALL_API_A_HTTP_URL" "http://127.0.0.1:$($ports[2])"
-    Set-DefaultEnv "SHOPPINGMALL_API_B_HTTP_URL" "http://127.0.0.1:$($ports[3])"
-    Set-DefaultEnv "SHOPPINGMALL_API_A_ROUTE_ENDPOINT" "tcp://127.0.0.1:$($ports[4])"
-    Set-DefaultEnv "SHOPPINGMALL_API_B_ROUTE_ENDPOINT" "tcp://127.0.0.1:$($ports[5])"
-    Set-DefaultEnv "SHOPPINGMALL_WORKFLOW_A_HTTP_URL" "http://127.0.0.1:$($ports[6])"
-    Set-DefaultEnv "SHOPPINGMALL_WORKFLOW_B_HTTP_URL" "http://127.0.0.1:$($ports[7])"
-    Set-DefaultEnv "SHOPPINGMALL_WORKFLOW_A_ROUTE_ENDPOINT" "tcp://127.0.0.1:$($ports[8])"
-    Set-DefaultEnv "SHOPPINGMALL_WORKFLOW_B_ROUTE_ENDPOINT" "tcp://127.0.0.1:$($ports[9])"
-    Set-DefaultEnv "SHOPPINGMALL_WORKFLOW_A_SPOT_ENDPOINT" "tcp://127.0.0.1:$($ports[10])"
-    Set-DefaultEnv "SHOPPINGMALL_WORKFLOW_A_SPOT_ROUTER_ENDPOINT" "tcp://127.0.0.1:$($ports[11])"
-    Set-DefaultEnv "SHOPPINGMALL_WORKFLOW_B_SPOT_ENDPOINT" "tcp://127.0.0.1:$($ports[12])"
-    Set-DefaultEnv "SHOPPINGMALL_WORKFLOW_B_SPOT_ROUTER_ENDPOINT" "tcp://127.0.0.1:$($ports[13])"
-    Set-DefaultEnv "SHOPPINGMALL_STORE_DIR" $StoreDir
+    $env:SHOPPINGMALL_LOG_DIR = $SampleLogDir
+    $env:SHOPPINGMALL_REDIS_KEY_PREFIX = "shoppingmall:dotnet:${RunId}:"
+    $env:SHOPPINGMALL_API_A_HTTP_URL = "http://127.0.0.1:$($ports[0])"
+    $env:SHOPPINGMALL_API_B_HTTP_URL = "http://127.0.0.1:$($ports[1])"
+    $env:SHOPPINGMALL_API_A_ROUTE_ENDPOINT = "tcp://127.0.0.1:$($ports[2])"
+    $env:SHOPPINGMALL_API_B_ROUTE_ENDPOINT = "tcp://127.0.0.1:$($ports[3])"
+    $env:SHOPPINGMALL_WORKFLOW_A_HTTP_URL = "http://127.0.0.1:$($ports[4])"
+    $env:SHOPPINGMALL_WORKFLOW_B_HTTP_URL = "http://127.0.0.1:$($ports[5])"
+    $env:SHOPPINGMALL_WORKFLOW_A_ROUTE_ENDPOINT = "tcp://127.0.0.1:$($ports[6])"
+    $env:SHOPPINGMALL_WORKFLOW_B_ROUTE_ENDPOINT = "tcp://127.0.0.1:$($ports[7])"
+    $env:SHOPPINGMALL_WORKFLOW_A_SPOT_ENDPOINT = "tcp://127.0.0.1:$($ports[8])"
+    $env:SHOPPINGMALL_WORKFLOW_A_SPOT_ROUTER_ENDPOINT = "tcp://127.0.0.1:$($ports[9])"
+    $env:SHOPPINGMALL_WORKFLOW_B_SPOT_ENDPOINT = "tcp://127.0.0.1:$($ports[10])"
+    $env:SHOPPINGMALL_WORKFLOW_B_SPOT_ROUTER_ENDPOINT = "tcp://127.0.0.1:$($ports[11])"
 
     Invoke-SampleDotnetBuild (Join-Path $ScriptDir "ShoppingMall.csproj")
 
@@ -42,7 +35,7 @@ try {
     if (-not (Get-Command docker -ErrorAction SilentlyContinue)) {
         throw "Docker is required to run the ShoppingMall sample (it provisions a dedicated Redis container)."
     }
-    $RedisContainer = "shoppingmall-dotnet-redis-$PID-$([Guid]::NewGuid().ToString('N'))"
+    $RedisContainer = "zlink-shoppingmall-dotnet-redis-$RunId"
     & docker run -d --rm --name $RedisContainer -p "127.0.0.1::6379" redis:7.2-alpine | Out-Null
     if ($LASTEXITCODE -ne 0) {
         throw "Failed to start Redis container."
@@ -71,12 +64,17 @@ try {
     Wait-SampleTcpEndpoint "api-b-route" $env:SHOPPINGMALL_API_B_ROUTE_ENDPOINT
     Wait-SampleHttpHealth "api-b" $env:SHOPPINGMALL_API_B_HTTP_URL
 
-    $startupDelaySeconds = if ($env:SHOPPINGMALL_STARTUP_DELAY_SECONDS) { [double]$env:SHOPPINGMALL_STARTUP_DELAY_SECONDS } else { 3.0 }
-    Start-Sleep -Seconds $startupDelaySeconds
     Invoke-SampleDotnetRun -Project (Join-Path $ScriptDir "Client/ShoppingMall.Client.csproj")
 
-    Assert-SampleLogContains -LogDirectory $LogDir -Pattern "shoppingmall order: started"
+    Assert-SampleLogContains -LogDirectory $SampleLogDir -Pattern "shoppingmall=completed"
+    if (-not (Select-String -Path (Join-Path $LogDir "workflow-a.out.log") -SimpleMatch "shoppingmall order: started" -Quiet)) {
+        throw "workflow-a did not record a shoppingmall order start."
+    }
+    if (-not (Select-String -Path (Join-Path $LogDir "workflow-b.out.log") -SimpleMatch "shoppingmall order: started" -Quiet)) {
+        throw "workflow-b did not record a shoppingmall order start."
+    }
     Assert-SampleLogContains -LogDirectory $LogDir -Pattern "shoppingmall evidence:"
+    Assert-SampleLogContains -LogDirectory $SampleLogDir -Pattern "message flow"
     Write-Host "shoppingmall-server-evidence=completed"
 }
 finally {

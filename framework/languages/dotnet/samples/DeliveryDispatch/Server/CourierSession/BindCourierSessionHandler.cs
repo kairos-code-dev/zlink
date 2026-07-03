@@ -1,15 +1,10 @@
-using DeliveryDispatch.Server.Configuration;
 using DeliveryDispatch.Shared.Contracts;
-using Microsoft.Extensions.Logging;
-using Systems.Zlink;
-using Zlink.Framework.Contracts.Channels;
 using Zlink.Framework.Contracts.Streams;
 
 namespace DeliveryDispatch.Server.CourierSession;
 
 internal sealed class BindCourierSessionHandler(
-    IZLinkChannelClient channels,
-    ILogger<BindCourierSessionHandler> logger)
+    CourierSessionBinder binder)
     : IZLinkSessionPacketHandler<IZLinkSessionContext>
 {
     public string PacketName => nameof(BindCourierSessionReq);
@@ -21,31 +16,7 @@ internal sealed class BindCourierSessionHandler(
         CancellationToken cancellationToken)
     {
         var request = payload.Decode<BindCourierSessionReq>();
-        var sessionRoute = context.SessionId;
-        var bound = await channels.RequestToChannel(
-                SampleNames.CourierRouteChannel,
-                new BindCourierReq(request.CourierId, sessionRoute))
-            .Async<BindCourierRes>(cancellationToken);
-
-        var boundActor = context.Actors.Find(bound.Actor.ActorId);
-        if (boundActor is null)
-        {
-            boundActor = await context.Actors.BindAsync(
-                new ActorRef(
-                    RoutingId.From(bound.Actor.NodeRid),
-                    bound.Actor.ActorId,
-                    bound.Actor.Generation),
-                cancellationToken);
-        }
-
-        logger.LogInformation(
-            "deliverydispatch courier-session: bound courier={CourierId} session={SessionId}",
-            bound.CourierId,
-            context.SessionId);
-
-        await boundActor.RelayAsync(
-            Zlink.Framework.Contracts.Messaging.ZLinkMessage.From(
-                new BindCourierSessionReq(bound.CourierId, bound.Actor, bound.SessionRoute)),
-            cancellationToken);
+        var bound = await binder.BindAsync(request.CourierId, context, cancellationToken);
+        context.Client.Reply(bound).Submit();
     }
 }

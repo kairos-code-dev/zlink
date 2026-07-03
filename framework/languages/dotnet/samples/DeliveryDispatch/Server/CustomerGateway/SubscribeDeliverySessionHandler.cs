@@ -2,14 +2,14 @@ using DeliveryDispatch.Server.Configuration;
 using DeliveryDispatch.Shared.Contracts;
 using Microsoft.Extensions.Logging;
 using Systems.Zlink;
-using Zlink.Framework.Contracts.Channels;
+using Zlink.Framework.Contracts.Actors;
 using Zlink.Framework.Contracts.Streams;
 
 namespace DeliveryDispatch.Server.CustomerGateway;
 
 internal sealed class SubscribeDeliverySessionHandler(
-    IZLinkChannelClient channels,
-    CustomerActorDirectory actors,
+    CustomerActorAccess actors,
+    CustomerActorDirectory directory,
     ILogger<SubscribeDeliverySessionHandler> logger)
     : IZLinkSessionPacketHandler<IZLinkSessionContext>
 {
@@ -24,34 +24,38 @@ internal sealed class SubscribeDeliverySessionHandler(
         CancellationToken cancellationToken)
     {
         var request = payload.Decode<SubscribeDeliveryReq>();
-        var ensured = await channels.RequestToChannel(
-                SampleNames.CustomerRouteChannel,
-                new EnsureCustomerActorReq(CustomerId))
-            .Async<EnsureCustomerActorRes>(cancellationToken);
+        var found = await actors.FindAsync(
+            new FindCustomerActorReq(CustomerId),
+            cancellationToken);
+        var actor = found.Actor;
+        if (actor is null)
+        {
+            var ensured = await actors.EnsureAsync(
+                new EnsureCustomerActorReq(CustomerId),
+                cancellationToken);
+            actor = ensured.Actor;
+        }
 
-        var boundActor = context.Actors.Find(ensured.Actor.ActorId);
+        var boundActor = context.Actors.Find(actor.ActorId);
         if (boundActor is null)
         {
             boundActor = await context.Actors.BindAsync(
                 new ActorRef(
-                    RoutingId.From(ensured.Actor.NodeRid),
-                    ensured.Actor.ActorId,
-                    ensured.Actor.Generation),
+                    RoutingId.From(actor.NodeRid),
+                    actor.ActorId,
+                    actor.Generation),
                 cancellationToken);
             logger.LogInformation(
                 "deliverydispatch customer-session: bound customer actor={ActorId} session={SessionId}",
-                ensured.Actor.ActorId,
+                actor.ActorId,
                 context.SessionId);
         }
 
-        actors.Subscribe(ensured.CustomerId, request.DeliveryId);
+        directory.Subscribe(CustomerId, request.DeliveryId);
         logger.LogInformation(
             "deliverydispatch customer-session: subscribed customer={CustomerId} delivery={DeliveryId}",
-            ensured.CustomerId,
+            CustomerId,
             request.DeliveryId);
-
-        context.Client
-            .Reply(new SubscribeDeliveryRes(request.DeliveryId))
-            .Submit();
+        context.Client.Reply(new SubscribeDeliveryRes(request.DeliveryId)).Submit();
     }
 }

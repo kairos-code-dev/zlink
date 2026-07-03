@@ -26,12 +26,15 @@ pwsh -NoProfile -ExecutionPolicy Bypass -File .\run_sample.ps1
 - `Server/OrderWorkflow/`는 주문 상태 전이, 실패 처리, projection rebuild를 담당한다.
 - `Server/Shared/`는 서버 역할 사이에서 공유하는 저장소와 도메인 코드를 담는다.
 - 서버 프로세스들은 registry 없이 공유 location store(Redis)에 위치를 등록하고 자동 연결한다.
-  `run_sample.sh`가 실행마다 전용 Redis 컨테이너를 띄우고 `SHOPPINGMALL_REDIS_ENDPOINT`와
-  `SHOPPINGMALL_REDIS_KEY_PREFIX`를 주입한다.
+- 주문 이벤트 스트림, 조회 모델, 장바구니·재고·결제·멱등 상태도 같은 Redis 안에 저장한다.
+  Redis key는 실행별 `SHOPPINGMALL_REDIS_KEY_PREFIX` 아래에만 만들어진다.
+- `run_sample.sh`와 `run_sample.ps1`는 실행마다 전용 Redis Docker 컨테이너를 직접 띄운다.
+  외부 Redis endpoint 재사용 mode는 제공하지 않는다. 컨테이너 이름, Docker host port,
+  Redis key prefix, log directory가 모두 실행별로 달라서 동시에 도는 다른 테스트와 섞이지 않는다.
 
 ## 성공 조건
 
-클라이언트 시나리오는 정상 주문, 멱등성, pending 상태, 재고 실패, 결제 실패,
-projection rebuild, 일관성, scale-out 경로를 검증한다. `run_sample.sh`는 client
-log에서 `shoppingmall=completed`를 확인하고, 서버 evidence 확인이 끝나면
-`shoppingmall-server-evidence=completed`를 출력한다.
+클라이언트 시나리오는 정상 주문, 멱등성, 같은 멱등 키의 동시 시작 경쟁, pending 상태,
+`InventoryReserved` 이후 명시 재개, 재고 실패, 결제 실패, projection rebuild, 일관성,
+scale-out 경로를 검증한다. `run_sample.sh`는 client log에서 `shoppingmall=completed`를
+확인하고, 서버 evidence 확인이 끝나면 `shoppingmall-server-evidence=completed`를 출력한다.

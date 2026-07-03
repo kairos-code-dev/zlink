@@ -80,6 +80,35 @@ public sealed class EntrySpotActorDispatchTests
         Assert.Contains("Yield requires a framework Spot handler turn", error.Message, StringComparison.Ordinal);
     }
 
+    [Fact]
+    public async Task EntrySpotRouteDispatch_UsesRoutedMessagesAlreadyDrainedByBackendCallback()
+    {
+        var probe = new RouteDispatchProbe();
+        var services = new ServiceCollection()
+            .AddSingleton(probe)
+            .AddTransient<ProbeRouteHandler>()
+            .BuildServiceProvider();
+        var spot = new CapturingSpot();
+        var (activation, runtime) = CreateActivationWithRuntime(services, spot);
+        await using var _ = activation.ConfigureAwait(false);
+        activation.Configure();
+
+        var pump = new ZLinkEntrySpotDispatchPump(
+            runtime,
+            activation,
+            new ZLinkRuntimeTaskRunner(new ThrowingRuntimeErrorSink(), CancellationToken.None));
+        pump.Attach(spot);
+
+        var received = CreateRoutedReceived("routed-ok");
+        spot.RaiseDispatch(new ZLinkBackendSpotDispatchInfo(
+            ZLinkBackendSpotDispatchEvent.RouteReadable,
+            RoutedMessages: [received]));
+
+        Assert.Equal(
+            "routed-ok",
+            await probe.Message.Task.WaitAsync(TimeSpan.FromSeconds(5)));
+    }
+
     private static async Task DispatchAsync(
         ZLinkEntrySpotActivation activation,
         ZLinkSpotActorPacketDescriptor descriptor,
@@ -114,6 +143,13 @@ public sealed class EntrySpotActorDispatchTests
 
     private static ZLinkEntrySpotActivation CreateActivation(IServiceProvider services)
     {
+        return CreateActivationWithRuntime(services, new CapturingSpot()).Activation;
+    }
+
+    private static (ZLinkEntrySpotActivation Activation, ZLinkFrameworkRuntime Runtime) CreateActivationWithRuntime(
+        IServiceProvider services,
+        IZLinkBackendSpot spot)
+    {
         var registration = new ZLinkFrameworkRegistration();
         var runtime = new ZLinkFrameworkRuntime(
             services,
@@ -122,16 +158,58 @@ public sealed class EntrySpotActorDispatchTests
             new ZLinkHandlerRegistry([]),
             new ZLinkHandlerDispatcher(services.GetRequiredService<IServiceScopeFactory>(), registration));
 
-        return new ZLinkEntrySpotActivation(
+        return (new ZLinkEntrySpotActivation(
             runtime,
             services,
-            new CapturingSpot(),
+            spot,
             typeof(ProbeEntrySpot),
             RoutingId.From("entry-node"),
             "entry",
             "entry-channel",
             TimeSpan.FromSeconds(5),
-            TimeSpan.FromSeconds(1));
+            TimeSpan.FromSeconds(1)), runtime);
+    }
+
+    private static Received CreateRoutedReceived(string value)
+    {
+        var header = ZLinkClientCallCodec.CreateEnvelope(
+            ZLinkMessageKind.Command,
+            "entry-channel",
+            nameof(ProbeRouteMessage));
+        var parts = ZLinkClientCallCodec.EncodeEnvelopeParts(
+            header,
+            new ProbeRouteMessage(value));
+        using var context = global::Systems.Zlink.Zlink.CreateContext();
+        using var node = context.CreateSpotNode();
+        using var sender = node.CreateSpot();
+        using var receiver = node.CreateSpot();
+        var nodeRid = RoutingId.From("route-source-node");
+        var senderRid = RoutingId.From("route-source-spot");
+        var receiverRid = RoutingId.From("route-receiver-spot");
+
+        node.SetRoutingId(nodeRid);
+        sender.SetRoutingId(senderRid);
+        receiver.SetRoutingId(receiverRid);
+        sender.SendToSpot(nodeRid, receiverRid)
+            .Messages(parts)
+            .Submit();
+
+        var received = Received.Create();
+        if (!WaitUntil(() => receiver.RecvRouted(received, RecvFlags.DontWait), TimeSpan.FromSeconds(5)))
+            throw new TimeoutException("Timed out creating a routed Received message for the entry spot dispatch test.");
+        return received;
+    }
+
+    private static bool WaitUntil(Func<bool> predicate, TimeSpan timeout)
+    {
+        var deadline = DateTime.UtcNow.Add(timeout);
+        while (DateTime.UtcNow < deadline)
+        {
+            if (predicate()) return true;
+            Thread.Sleep(10);
+        }
+
+        return false;
     }
 
     private sealed class DispatchProbe
@@ -164,9 +242,33 @@ public sealed class EntrySpotActorDispatchTests
 
         public void Configure()
         {
+            Context.Handlers.AddPacket<ProbeRouteHandler>();
             Context.Handlers.AddActorSend<ProbeActorSendHandler, ProbeActor>("first");
             Context.Handlers.AddActorSend<ProbeActorSendHandler, ProbeActor>("second");
             Context.Handlers.AddActorSend<ProbeActorYieldHandler, ProbeActor>("yield");
+        }
+    }
+
+    private sealed record ProbeRouteMessage(string Value);
+
+    private sealed class RouteDispatchProbe
+    {
+        public TaskCompletionSource<string> Message { get; } =
+            new(TaskCreationOptions.RunContinuationsAsynchronously);
+    }
+
+    private sealed class ProbeRouteHandler(RouteDispatchProbe probe)
+        : IZLinkSpotPacketHandler<ProbeEntrySpot, ProbeRouteMessage>
+    {
+        public ValueTask HandleAsync(
+            ProbeEntrySpot spot,
+            ProbeRouteMessage message,
+            CancellationToken cancellationToken)
+        {
+            _ = spot;
+            _ = cancellationToken;
+            probe.Message.SetResult(message.Value);
+            return ValueTask.CompletedTask;
         }
     }
 
@@ -222,6 +324,8 @@ public sealed class EntrySpotActorDispatchTests
 
     private sealed class CapturingSpot : IZLinkBackendSpot
     {
+        private Action<ZLinkBackendSpotDispatchInfo>? _dispatchHandler;
+
         public object NativeInstance => this;
 
         public RoutingId RoutingId => RoutingId.From("entry-spot");
@@ -236,7 +340,15 @@ public sealed class EntrySpotActorDispatchTests
 
         public bool RecvRoute(Received result, RecvFlags flags) => false;
 
-        public void OnDispatchEvent(Action<ZLinkBackendSpotDispatchInfo> handler) { }
+        public void OnDispatchEvent(Action<ZLinkBackendSpotDispatchInfo> handler)
+        {
+            _dispatchHandler = handler;
+        }
+
+        public void RaiseDispatch(ZLinkBackendSpotDispatchInfo info)
+        {
+            (_dispatchHandler ?? throw new InvalidOperationException("Dispatch handler was not attached.")).Invoke(info);
+        }
 
         public void OnSendReady(Action handler) { }
 
@@ -314,5 +426,18 @@ public sealed class EntrySpotActorDispatchTests
         public IZLinkStreamBackendAdapter CreateStreamAdapter() => throw new NotSupportedException();
 
         public IZLinkMonitoringBackendAdapter CreateMonitoringAdapter() => throw new NotSupportedException();
+    }
+
+    private sealed class ThrowingRuntimeErrorSink : IZLinkRuntimeErrorSink
+    {
+        public void ReportHandlerException(Exception exception)
+        {
+            throw new InvalidOperationException("Runtime handler failed.", exception);
+        }
+
+        public void ReportRuntimeTaskException(string name, Exception exception)
+        {
+            throw new InvalidOperationException($"Runtime task '{name}' failed.", exception);
+        }
     }
 }

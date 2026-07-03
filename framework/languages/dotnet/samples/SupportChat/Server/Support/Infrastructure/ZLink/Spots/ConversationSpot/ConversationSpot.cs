@@ -20,12 +20,9 @@ internal sealed class ConversationSpot(
 {
     internal static readonly TimeSpan IdleCheckPeriod = TimeSpan.FromMilliseconds(200);
 
-    // Push recipients keyed by participant id (customer id or agent roster id). The
-    // value is the actor whose bound session receives pushes. For the customer that is
-    // its own actor; for an agent it is the single roster actor, because an agent
-    // session's per-conversation actors are used only for inbound handling — outbound
-    // pushes to a session's non-first actor are not reliably delivered, so all of an
-    // agent's rooms fan out through its one roster actor (disambiguated by ConversationId).
+    // Push recipients keyed by participant id. Customer events go to the customer's
+    // actor, while agent events go to the roster actor that represents the human agent
+    // across all rooms. ConversationId on each notification disambiguates the room.
     private readonly Dictionary<string, SupportUserActor> _actors = new(StringComparer.Ordinal);
     private Conversation? _conversation;
 
@@ -178,7 +175,6 @@ internal sealed class ConversationSpot(
         var conversation = RequireConversation();
         var change = conversation.JoinAgent(agent.ParticipantId, agent.DisplayName, NowUnixMs());
         agent.JoinConversation(conversation.ConversationId);
-        // Fan out this room's pushes through the agent's single roster actor.
         _actors[agent.ParticipantId] = directory.Get(agent.ParticipantId).Actor;
         return change;
     }
@@ -188,6 +184,15 @@ internal sealed class ConversationSpot(
     private async ValueTask PublishChangeAsync(ConversationChange change, CancellationToken cancellationToken)
     {
         await notifications.PublishAsync(change.Events, _actors, cancellationToken);
+        foreach (var item in change.Events)
+        {
+            logger.LogInformation(
+                "support conversation: state changed. conversation={ConversationId}, status={Status}, event={EventKind}",
+                item.State.ConversationId,
+                item.State.Status,
+                item.Kind);
+        }
+
         if (change.Events.Any(static item => item.Kind == ConversationEventKind.Closed))
             assignment.ReleaseConversation(RequireConversation().ConversationId);
     }

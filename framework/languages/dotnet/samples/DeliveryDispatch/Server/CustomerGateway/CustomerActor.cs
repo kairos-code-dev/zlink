@@ -1,3 +1,4 @@
+using DeliveryDispatch.Shared.Contracts;
 using Zlink.Framework.Contracts.Actors;
 
 namespace DeliveryDispatch.Server.CustomerGateway;
@@ -9,6 +10,20 @@ internal sealed class CustomerActor(
     public string ActorId { get; } = actorId;
 
     public IZLinkActorContext Context { get; } = context;
+
+    public ValueTask PushStatusAsync(
+        DeliveryStatusUpdatedMsg status,
+        CancellationToken cancellationToken)
+    {
+        Context.BoundSession
+            .Send(new DeliveryStatusNotify(
+                status.DeliveryId,
+                status.Status,
+                status.CourierId,
+                status.OccurredAt))
+            .Submit(cancellationToken);
+        return ValueTask.CompletedTask;
+    }
 }
 
 internal sealed class CustomerActorFactory : IZLinkActorFactory

@@ -84,6 +84,67 @@ public sealed class RouteCodecTests
         Assert.Equal("ROUTE:reply", router.ReplyBody);
     }
 
+    [Fact]
+    public void RouteChannelRuntime_DrainsSpotRouteBridge_AfterAcceptedSend()
+    {
+        var runtime = CreateRouteChannelRuntime();
+        var bridge = new RecordingSpotRouteBridge(sendAccepted: true, requestAccepted: true);
+        runtime.AttachSpotRouteBridge(bridge, null!);
+        var parts = new[] { Message.From("payload") };
+
+        try
+        {
+            Assert.True(runtime.TrySendViaSpotRouteBridge(
+                RoutingId.From("target-node"),
+                RoutingId.From("target-spot"),
+                parts));
+            Assert.Equal(1, bridge.SendCount);
+            Assert.Equal(1, bridge.DrainCount);
+        }
+        finally
+        {
+            ZLinkMessageParts.DisposeAll(parts);
+        }
+    }
+
+    [Fact]
+    public void RouteChannelRuntime_DrainsSpotRouteBridge_AfterAcceptedRequest()
+    {
+        var runtime = CreateRouteChannelRuntime();
+        var bridge = new RecordingSpotRouteBridge(sendAccepted: true, requestAccepted: true);
+        runtime.AttachSpotRouteBridge(bridge, null!);
+        var parts = new[] { Message.From("payload") };
+
+        try
+        {
+            Assert.True(runtime.TryRequestViaSpotRouteBridge(
+                RoutingId.From("target-node"),
+                RoutingId.From("target-spot"),
+                parts,
+                static (_, _) => { },
+                TimeSpan.FromSeconds(1)));
+            Assert.Equal(1, bridge.RequestCount);
+            Assert.Equal(1, bridge.DrainCount);
+        }
+        finally
+        {
+            ZLinkMessageParts.DisposeAll(parts);
+        }
+    }
+
+    private static ZLinkRouteChannelRuntime CreateRouteChannelRuntime()
+    {
+        var services = new ServiceCollection().BuildServiceProvider();
+        return new ZLinkRouteChannelRuntime(
+            services,
+            new ZLinkFrameworkRegistration(),
+            new ZLinkRouteChannelRegistration { RouterChannelId = "route-test" },
+            new RecordingRouter(),
+            new ZLinkRouteHandlerRegistry([]),
+            null,
+            CancellationToken.None);
+    }
+
     private sealed record RouteProbe(string Text);
 
     private sealed record RouteProbeReply(string Text);
@@ -174,7 +235,7 @@ public sealed class RouteCodecTests
 
         public void OnSendReady(Action handler)
         {
-            throw new NotSupportedException();
+            _ = handler;
         }
 
         public void SetSendHighWaterMark(int value)
@@ -267,6 +328,88 @@ public sealed class RouteCodecTests
             _ = requestSeq;
             ReplyContentType = ZLinkEnvelopeCodec.DecodeHeader(parts).ContentType;
             ReplyBody = parts[1].GetString();
+        }
+    }
+
+    private sealed class RecordingSpotRouteBridge(
+        bool sendAccepted,
+        bool requestAccepted) : IZLinkBackendSpotRouteBridge
+    {
+        public int SendCount { get; private set; }
+
+        public int RequestCount { get; private set; }
+
+        public int DrainCount { get; private set; }
+
+        public object NativeInstance => this;
+
+        public ValueTask DisposeAsync()
+        {
+            return ValueTask.CompletedTask;
+        }
+
+        public void AttachRouterChannel(
+            string channelName,
+            IZLinkBackendRouterSocket router,
+            SpotRouteBridgeEndpointOptions? options = null)
+        {
+            _ = channelName;
+            _ = router;
+            _ = options;
+        }
+
+        public bool Send(
+            string channelName,
+            RoutingId targetNodeRid,
+            RoutingId targetSpotRid,
+            IReadOnlyList<Message> parts,
+            SendFlags flags)
+        {
+            _ = channelName;
+            _ = targetNodeRid;
+            _ = targetSpotRid;
+            _ = parts;
+            _ = flags;
+            SendCount++;
+            return sendAccepted;
+        }
+
+        public bool Request(
+            string channelName,
+            RoutingId targetNodeRid,
+            RoutingId targetSpotRid,
+            IReadOnlyList<Message> parts,
+            RequestCallback callback,
+            SendFlags flags,
+            TimeSpan? timeout)
+        {
+            _ = channelName;
+            _ = targetNodeRid;
+            _ = targetSpotRid;
+            _ = parts;
+            _ = callback;
+            _ = flags;
+            _ = timeout;
+            RequestCount++;
+            return requestAccepted;
+        }
+
+        public bool HandleRouterReceived(
+            string channelName,
+            RoutingId sourceNodeRid,
+            ulong requestSeq,
+            IReadOnlyList<Message> parts)
+        {
+            _ = channelName;
+            _ = sourceNodeRid;
+            _ = requestSeq;
+            _ = parts;
+            return false;
+        }
+
+        public void Drain()
+        {
+            DrainCount++;
         }
     }
 }

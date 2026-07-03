@@ -8,7 +8,7 @@ using Zlink.Framework.Contracts.Spots;
 namespace SupportChat.Server.Support.Infrastructure.ZLink.Spots.EntrySpot.Handlers;
 
 internal sealed class SetAgentAvailableHandler(
-    AgentAvailabilityDirectory availability,
+    AgentAssignmentService assignment,
     IZLinkActorManager actorManager,
     SupportActorDirectory actors)
     : IZLinkEntrySpotActorRequestHandler<SupportEntrySpot, SupportUserActor, SetAgentAvailableReq, SetAgentAvailableRes>
@@ -27,7 +27,7 @@ internal sealed class SetAgentAvailableHandler(
                        ?? throw new InvalidOperationException(
                            $"Support actor ref is not available. actor={actor.ActorId}");
         actors.AddOrUpdate(actor, actorRef);
-        availability.SetAvailable(actor.ActorId, actor.DisplayName, message.IsAvailable);
+        assignment.SetAvailable(actor.ActorId, actor.DisplayName, message.IsAvailable);
         return new SetAgentAvailableRes(message.IsAvailable);
     }
 }

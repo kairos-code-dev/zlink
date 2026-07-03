@@ -27,14 +27,12 @@ public sealed record EnsureCustomerActorRes(
     string CustomerId,
     ActorRefSnapshot Actor);
 
-public sealed record BindCourierReq(
-    string CourierId,
-    string SessionRoute);
+public sealed record FindCustomerActorReq(
+    string CustomerId);
 
-public sealed record BindCourierRes(
-    string CourierId,
-    ActorRefSnapshot Actor,
-    string SessionRoute);
+public sealed record FindCustomerActorRes(
+    string CustomerId,
+    ActorRefSnapshot? Actor);
 
 public sealed record BindCourierSessionReq(
     string CourierId,
@@ -53,13 +51,20 @@ public sealed record EnsureCourierActorRes(
     string CourierId,
     ActorRefSnapshot Actor);
 
+public sealed record FindCourierActorReq(
+    string CourierId);
+
+public sealed record FindCourierActorRes(
+    string CourierId,
+    ActorRefSnapshot? Actor);
+
 public sealed record SubscribeDeliveryReq(
     string DeliveryId);
 
 public sealed record SubscribeDeliveryRes(
     string DeliveryId);
 
-public sealed record AssignDelivery(
+public sealed record AssignDeliveryMsg(
     string DeliveryId,
     string CustomerId,
     string PickupAddress,
@@ -89,14 +94,9 @@ public sealed record CourierDecisionMsg(
     bool Accepted,
     string? Reason);
 
-public sealed record ReassignDelivery(
-    string DeliveryId,
-    string PreviousCourierId,
-    string NextCourierId,
-    string Reason);
-
 public sealed record DeliveryStatusChangedReq(
     string DeliveryId,
+    string CustomerId,
     DeliveryStatus Status,
     string? CourierId,
     DateTimeOffset OccurredAt);
@@ -107,6 +107,13 @@ public sealed record DeliveryStatusChangedRes(
 
 public sealed record DeliveryStatusNotify(
     string DeliveryId,
+    DeliveryStatus Status,
+    string? CourierId,
+    DateTimeOffset OccurredAt);
+
+public sealed record DeliveryStatusUpdatedMsg(
+    string DeliveryId,
+    string CustomerId,
     DeliveryStatus Status,
     string? CourierId,
     DateTimeOffset OccurredAt);

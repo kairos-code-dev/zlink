@@ -3,13 +3,15 @@ set -euo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 RUN_DIR="$(mktemp -d)"
+RUN_ID="$(basename "${RUN_DIR}")-$$-${RANDOM}"
 LOG_DIR="${RUN_DIR}/logs"
-export TICTACTOE_LOG_DIR="${TICTACTOE_LOG_DIR:-${SCRIPT_DIR}/logs}"
+SAMPLE_LOG_DIR="${RUN_DIR}/sample-logs"
+export TICTACTOE_LOG_DIR="${SAMPLE_LOG_DIR}"
 mkdir -p "${LOG_DIR}" "${TICTACTOE_LOG_DIR}"
-rm -f "${TICTACTOE_LOG_DIR}"/*.log
 
 PIDS=()
 REDIS_CONTAINER_ID=""
+export TICTACTOE_REDIS_KEY_PREFIX="tictactoe:dotnet:${RUN_ID}:"
 
 cleanup() {
   for ((i=${#PIDS[@]}-1; i>=0; i--)); do
@@ -51,13 +53,7 @@ cleanup() {
 }
 trap cleanup EXIT
 
-if [[ -n "${TICTACTOE_BASE_PORT:-}" ]]; then
-  PORTS=()
-  for offset in $(seq 1 13); do
-    PORTS+=("$((TICTACTOE_BASE_PORT + offset))")
-  done
-else
-  read -r -a PORTS <<<"$(python3 - <<'PY'
+read -r -a PORTS <<<"$(python3 - <<'PY'
 import random
 import socket
 
@@ -82,36 +78,33 @@ finally:
         sock.close()
 PY
 )"
-fi
 
-API_A_BIND_URL="${TICTACTOE_API_A_BIND_URL:-http://127.0.0.1:${PORTS[0]}}"
-API_B_BIND_URL="${TICTACTOE_API_B_BIND_URL:-http://127.0.0.1:${PORTS[1]}}"
-API_A_PUBLIC_URL="${TICTACTOE_API_A_PUBLIC_URL:-${API_A_BIND_URL}}"
-API_B_PUBLIC_URL="${TICTACTOE_API_B_PUBLIC_URL:-${API_B_BIND_URL}}"
-API_A_CHANNEL_ENDPOINT="${TICTACTOE_API_A_CHANNEL_ENDPOINT:-tcp://127.0.0.1:${PORTS[2]}}"
-API_B_CHANNEL_ENDPOINT="${TICTACTOE_API_B_CHANNEL_ENDPOINT:-tcp://127.0.0.1:${PORTS[3]}}"
-PLAY_A_CHANNEL_ENDPOINT="${TICTACTOE_PLAY_A_CHANNEL_ENDPOINT:-tcp://127.0.0.1:${PORTS[4]}}"
-PLAY_B_CHANNEL_ENDPOINT="${TICTACTOE_PLAY_B_CHANNEL_ENDPOINT:-tcp://127.0.0.1:${PORTS[5]}}"
-PLAY_A_ENDPOINT="${TICTACTOE_PLAY_A_ENDPOINT:-tcp://127.0.0.1:${PORTS[6]}}"
-PLAY_B_ENDPOINT="${TICTACTOE_PLAY_B_ENDPOINT:-tcp://127.0.0.1:${PORTS[7]}}"
-SPOT_A_ENDPOINT="${TICTACTOE_SPOT_A_ENDPOINT:-tcp://127.0.0.1:${PORTS[8]}}"
-SPOT_B_ENDPOINT="${TICTACTOE_SPOT_B_ENDPOINT:-tcp://127.0.0.1:${PORTS[9]}}"
-SPOT_A_PUBSUB_ENDPOINT="${TICTACTOE_SPOT_A_PUBSUB_ENDPOINT:-tcp://127.0.0.1:${PORTS[10]}}"
-SPOT_B_PUBSUB_ENDPOINT="${TICTACTOE_SPOT_B_PUBSUB_ENDPOINT:-tcp://127.0.0.1:${PORTS[11]}}"
+API_A_BIND_URL="http://127.0.0.1:${PORTS[0]}"
+API_B_BIND_URL="http://127.0.0.1:${PORTS[1]}"
+API_A_PUBLIC_URL="${API_A_BIND_URL}"
+API_B_PUBLIC_URL="${API_B_BIND_URL}"
+API_A_CHANNEL_ENDPOINT="tcp://127.0.0.1:${PORTS[2]}"
+API_B_CHANNEL_ENDPOINT="tcp://127.0.0.1:${PORTS[3]}"
+PLAY_A_CHANNEL_ENDPOINT="tcp://127.0.0.1:${PORTS[4]}"
+PLAY_B_CHANNEL_ENDPOINT="tcp://127.0.0.1:${PORTS[5]}"
+PLAY_A_ENDPOINT="tcp://127.0.0.1:${PORTS[6]}"
+PLAY_B_ENDPOINT="tcp://127.0.0.1:${PORTS[7]}"
+SPOT_A_ENDPOINT="tcp://127.0.0.1:${PORTS[8]}"
+SPOT_B_ENDPOINT="tcp://127.0.0.1:${PORTS[9]}"
+SPOT_A_PUBSUB_ENDPOINT="tcp://127.0.0.1:${PORTS[10]}"
+SPOT_B_PUBSUB_ENDPOINT="tcp://127.0.0.1:${PORTS[11]}"
 API_A_CONFIG_FILE="${RUN_DIR}/appsettings.api-a.json"
 API_B_CONFIG_FILE="${RUN_DIR}/appsettings.api-b.json"
 PLAY_A_CONFIG_FILE="${RUN_DIR}/appsettings.play-a.json"
 PLAY_B_CONFIG_FILE="${RUN_DIR}/appsettings.play-b.json"
 
-# The sample owns its Redis: always provision a dedicated, throwaway container
-# so room-route state stays isolated per run and never touches a developer's
-# local Redis. (TICTACTOE_REDIS_ENDPOINT is intentionally derived here, not read.)
 if ! command -v docker >/dev/null 2>&1; then
-  echo "Docker is required to run the TicTacToe sample (it provisions a dedicated Redis container)." >&2
+  echo "Docker is required to run the TicTacToe sample." >&2
   exit 1
 fi
-REDIS_CONTAINER_ID="$(docker run -d --rm --name "zlink-tictactoe-dotnet-redis-${RANDOM}-$$" -p "127.0.0.1::6379" redis:7-alpine)"
-REDIS_ENDPOINT="$(docker port "${REDIS_CONTAINER_ID}" 6379/tcp | sed -E 's/.*:([0-9]+)$/127.0.0.1:\1/')"
+REDIS_CONTAINER_ID="$(docker run -d --rm --name "zlink-tictactoe-dotnet-redis-${RUN_ID}" -p "127.0.0.1::6379" redis:7.2-alpine)"
+export TICTACTOE_REDIS_ENDPOINT="$(docker port "${REDIS_CONTAINER_ID}" 6379/tcp | sed -E 's/.*:([0-9]+)$/127.0.0.1:\1/')"
+REDIS_ENDPOINT="${TICTACTOE_REDIS_ENDPOINT}"
 
 python3 - "${API_A_CONFIG_FILE}" "${API_B_CONFIG_FILE}" "${PLAY_A_CONFIG_FILE}" "${PLAY_B_CONFIG_FILE}" <<PY
 import json
@@ -137,6 +130,7 @@ def sample(instance_name, api_index, play_index, peer_play_index):
             "PeerSpotEndpoint": ["${SPOT_A_ENDPOINT}", "${SPOT_B_ENDPOINT}"][peer_play_index],
             "PeerSpotPubEndpoint": ["${SPOT_A_PUBSUB_ENDPOINT}", "${SPOT_B_PUBSUB_ENDPOINT}"][peer_play_index],
             "RedisEndpoint": "${REDIS_ENDPOINT}",
+            "RedisKeyPrefix": "${TICTACTOE_REDIS_KEY_PREFIX}",
             "LogDirectory": "${LOG_DIR}"
         }
     }
@@ -220,7 +214,6 @@ wait_port play-b-stream "${PLAY_B_ENDPOINT}"
 wait_port play-b-channel "${PLAY_B_CHANNEL_ENDPOINT}"
 wait_port play-b-spot "${SPOT_B_ENDPOINT}"
 wait_port play-b-spot-pubsub "${SPOT_B_PUBSUB_ENDPOINT}"
-sleep 2
 
 start_server api-a api-a "${API_A_CONFIG_FILE}"
 wait_port api-a-http "${API_A_BIND_URL}"
@@ -236,13 +229,18 @@ wait_log_contains "stream inbound evidence" "stream-inbound sample=TicTacToe" "$
 wait_log_contains "stream inbound sequenced packet" "stream-inbound sample=TicTacToe .* seq=[0-9]" "${LOG_DIR}/client.log"
 wait_log_contains "stream inbound notify packet" "stream-inbound sample=TicTacToe .* name=.*Notify" "${LOG_DIR}/client.log"
 wait_log_contains "observer milestone verification" "observer-win-milestone=verified" "${LOG_DIR}/client.log"
-wait_log_contains "player-x leave completion" "actor: LeaveGameMsg completed. actor=player-x" "${LOG_DIR}"/play-*.log
-wait_log_contains "player-o leave completion" "actor: LeaveGameMsg completed. actor=player-o" "${LOG_DIR}"/play-*.log
+wait_log_contains "player-x leave completion" "actor: LeaveGameReq completed. actor=player-x" "${LOG_DIR}"/play-*.log
+wait_log_contains "player-o leave completion" "actor: LeaveGameReq completed. actor=player-o" "${LOG_DIR}"/play-*.log
 wait_log_contains "player-x actor destroy completion" "entry spot: actor destroy completed. actor=player-x" "${LOG_DIR}"/play-*.log
 wait_log_contains "player-o actor destroy completion" "entry spot: actor destroy completed. actor=player-o" "${LOG_DIR}"/play-*.log
 if grep -R -q "dispatch-error" "${LOG_DIR}"; then
   echo "Unexpected dispatch-error in TicTacToe sample logs." >&2
   grep -R -n "dispatch-error" "${LOG_DIR}" >&2 || true
+  exit 1
+fi
+if grep -R -q "message flow outcome=error" "${TICTACTOE_LOG_DIR}"; then
+  echo "Unexpected message-flow error in TicTacToe sample logs." >&2
+  grep -R -n "message flow outcome=error" "${TICTACTOE_LOG_DIR}" >&2 || true
   exit 1
 fi
 grep -Rq "message flow" "${TICTACTOE_LOG_DIR}"

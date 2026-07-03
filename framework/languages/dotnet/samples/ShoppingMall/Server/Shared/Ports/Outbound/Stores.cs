@@ -75,6 +75,7 @@ public interface ICommerceStateStore
 
     ValueTask<ReserveInventoryResult> ReserveInventoryAsync(
         string orderId,
+        string reservationId,
         IReadOnlyList<OrderLineInput> lines,
         CancellationToken cancellationToken);
 
@@ -86,6 +87,7 @@ public interface ICommerceStateStore
 
     ValueTask<AuthorizePaymentResult> AuthorizePaymentAsync(
         string orderId,
+        string paymentId,
         string paymentMethodId,
         decimal amount,
         string currency,
@@ -112,3 +114,17 @@ public sealed record StoreEvidence(
     int PaymentFailureCount,
     int ReleasedReservationCount,
     int StartedIdempotencyCount);
+
+public sealed class OrderStreamVersionConflictException(
+    string orderId,
+    long expectedVersion,
+    long actualVersion)
+    : Exception(
+        $"Order stream version mismatch. order={orderId}, expected={expectedVersion}, actual={actualVersion}")
+{
+    public string OrderId { get; } = orderId;
+
+    public long ExpectedVersion { get; } = expectedVersion;
+
+    public long ActualVersion { get; } = actualVersion;
+}

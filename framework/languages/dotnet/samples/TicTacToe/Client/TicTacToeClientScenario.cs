@@ -94,6 +94,7 @@ public sealed class TicTacToeClientScenario(ILogger logger)
         Ensure(client1SawClient2Join.Payload.DisplayName == client2Authentication.Player.DisplayName);
         Ensure(client1SawClient2Join.Payload.Level == client2Authentication.Player.Level);
         Ensure(client1SawClient2Join.Payload.Mark == TicTacToeMarks.O);
+        Ensure(client1SawClient2Join.Payload.RoomId == room.RoomId);
         Ensure(client1SawClient2Join.Payload.State.Status == TicTacToeGameStatuses.InProgress);
         Ensure(client2.ReceivedCount(nameof(PlayerJoinedNotify)) == 0);
 
@@ -110,6 +111,8 @@ public sealed class TicTacToeClientScenario(ILogger logger)
         var client1Move1 = await client1.Request(new PlaceMarkReq(0)).Async<PlaceMarkRes>(cancellationToken);
         Ensure(client1Move1.State.Board == "X........");
         Ensure(client1Move1.State.NextTurn == TicTacToeMarks.O);
+        Ensure(client1Move1.State.LastMoveActorId == options.XActorId);
+        Ensure(client1Move1.State.LastMoveCell == 0);
 
         var client2SawClient1Move1 = await client2.WaitFor<GameStateNotify>()
             .Where(message => message.Payload.State.LastMoveActorId == options.XActorId
@@ -122,6 +125,8 @@ public sealed class TicTacToeClientScenario(ILogger logger)
         var client2Move1 = await client2.Request(new PlaceMarkReq(3)).Async<PlaceMarkRes>(cancellationToken);
         Ensure(client2Move1.State.Board == "X..O.....");
         Ensure(client2Move1.State.NextTurn == TicTacToeMarks.X);
+        Ensure(client2Move1.State.LastMoveActorId == options.OActorId);
+        Ensure(client2Move1.State.LastMoveCell == 3);
 
         var client1SawClient2Move1 = await client1.WaitFor<GameStateNotify>()
             .Where(message => message.Payload.State.LastMoveActorId == options.OActorId
@@ -134,6 +139,8 @@ public sealed class TicTacToeClientScenario(ILogger logger)
         var client1Move2 = await client1.Request(new PlaceMarkReq(1)).Async<PlaceMarkRes>(cancellationToken);
         Ensure(client1Move2.State.Board == "XX.O.....");
         Ensure(client1Move2.State.NextTurn == TicTacToeMarks.O);
+        Ensure(client1Move2.State.LastMoveActorId == options.XActorId);
+        Ensure(client1Move2.State.LastMoveCell == 1);
 
         var client2SawClient1Move2 = await client2.WaitFor<GameStateNotify>()
             .Where(message => message.Payload.State.LastMoveActorId == options.XActorId
@@ -146,6 +153,8 @@ public sealed class TicTacToeClientScenario(ILogger logger)
         var client2Move2 = await client2.Request(new PlaceMarkReq(4)).Async<PlaceMarkRes>(cancellationToken);
         Ensure(client2Move2.State.Board == "XX.OO....");
         Ensure(client2Move2.State.NextTurn == TicTacToeMarks.X);
+        Ensure(client2Move2.State.LastMoveActorId == options.OActorId);
+        Ensure(client2Move2.State.LastMoveCell == 4);
 
         var client1SawClient2Move2 = await client1.WaitFor<GameStateNotify>()
             .Where(message => message.Payload.State.LastMoveActorId == options.OActorId
@@ -159,6 +168,8 @@ public sealed class TicTacToeClientScenario(ILogger logger)
         Ensure(client1FinalMove.State.Board == "XXXOO....");
         Ensure(client1FinalMove.State.Status == TicTacToeGameStatuses.Won);
         Ensure(client1FinalMove.State.Winner == options.XActorId);
+        Ensure(client1FinalMove.State.LastMoveActorId == options.XActorId);
+        Ensure(client1FinalMove.State.LastMoveCell == 2);
 
         var client2SawFinal = await client2.WaitFor<GameStateNotify>()
             .Where(message => message.Payload.State.Status == TicTacToeGameStatuses.Won
@@ -181,8 +192,8 @@ public sealed class TicTacToeClientScenario(ILogger logger)
             observerSawMilestone.Payload.Wins,
             observerSawMilestone.Payload.ReceivingSpotNodeRid);
 
-        client1.Send(new LeaveGameMsg(room.RoomId)).Submit(cancellationToken);
-        client2.Send(new LeaveGameMsg(room.RoomId)).Submit(cancellationToken);
+        client1.Send(new LeaveGameReq(room.RoomId)).Submit(cancellationToken);
+        client2.Send(new LeaveGameReq(room.RoomId)).Submit(cancellationToken);
     }
 
     private static void Ensure(

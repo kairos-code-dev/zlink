@@ -4,45 +4,86 @@ $ScriptDir = Split-Path -Parent $MyInvocation.MyCommand.Path
 . (Join-Path $ScriptDir "../sample_runner.ps1")
 
 $RunDir = New-SampleRunDirectory "tictactoe-dotnet"
+$RunId = "$PID-$([Guid]::NewGuid().ToString('N'))"
 $LogDir = Join-Path $RunDir "logs"
+$SampleLogDir = Join-Path $RunDir "sample-logs"
 New-Item -ItemType Directory -Force -Path $LogDir | Out-Null
+New-Item -ItemType Directory -Force -Path $SampleLogDir | Out-Null
+$env:TICTACTOE_LOG_DIR = $SampleLogDir
 $redisContainerId = $null
 
-try {
-    $basePort = if ($env:TICTACTOE_BASE_PORT) { [int]$env:TICTACTOE_BASE_PORT } else { 0 }
-    $ports = New-SamplePorts -Count 13 -BasePort $basePort
+function Wait-LogContains {
+    param(
+        [Parameter(Mandatory = $true)][string]$Path,
+        [Parameter(Mandatory = $true)][string]$Pattern,
+        [Parameter(Mandatory = $true)][string]$Description,
+        [int]$Attempts = 50
+    )
 
-    $apiABindUrl = if ($env:TICTACTOE_API_A_BIND_URL) { $env:TICTACTOE_API_A_BIND_URL } else { "http://127.0.0.1:$($ports[0])" }
-    $apiBBindUrl = if ($env:TICTACTOE_API_B_BIND_URL) { $env:TICTACTOE_API_B_BIND_URL } else { "http://127.0.0.1:$($ports[1])" }
-    $apiAPublicUrl = if ($env:TICTACTOE_API_A_PUBLIC_URL) { $env:TICTACTOE_API_A_PUBLIC_URL } else { $apiABindUrl }
-    $apiBPublicUrl = if ($env:TICTACTOE_API_B_PUBLIC_URL) { $env:TICTACTOE_API_B_PUBLIC_URL } else { $apiBBindUrl }
-    $apiAChannelEndpoint = if ($env:TICTACTOE_API_A_CHANNEL_ENDPOINT) { $env:TICTACTOE_API_A_CHANNEL_ENDPOINT } else { "tcp://127.0.0.1:$($ports[2])" }
-    $apiBChannelEndpoint = if ($env:TICTACTOE_API_B_CHANNEL_ENDPOINT) { $env:TICTACTOE_API_B_CHANNEL_ENDPOINT } else { "tcp://127.0.0.1:$($ports[3])" }
-    $playAChannelEndpoint = if ($env:TICTACTOE_PLAY_A_CHANNEL_ENDPOINT) { $env:TICTACTOE_PLAY_A_CHANNEL_ENDPOINT } else { "tcp://127.0.0.1:$($ports[4])" }
-    $playBChannelEndpoint = if ($env:TICTACTOE_PLAY_B_CHANNEL_ENDPOINT) { $env:TICTACTOE_PLAY_B_CHANNEL_ENDPOINT } else { "tcp://127.0.0.1:$($ports[5])" }
-    $playAEndpoint = if ($env:TICTACTOE_PLAY_A_ENDPOINT) { $env:TICTACTOE_PLAY_A_ENDPOINT } else { "tcp://127.0.0.1:$($ports[6])" }
-    $playBEndpoint = if ($env:TICTACTOE_PLAY_B_ENDPOINT) { $env:TICTACTOE_PLAY_B_ENDPOINT } else { "tcp://127.0.0.1:$($ports[7])" }
-    $spotAEndpoint = if ($env:TICTACTOE_SPOT_A_ENDPOINT) { $env:TICTACTOE_SPOT_A_ENDPOINT } else { "tcp://127.0.0.1:$($ports[8])" }
-    $spotBEndpoint = if ($env:TICTACTOE_SPOT_B_ENDPOINT) { $env:TICTACTOE_SPOT_B_ENDPOINT } else { "tcp://127.0.0.1:$($ports[9])" }
-    $spotAPubSubEndpoint = if ($env:TICTACTOE_SPOT_A_PUBSUB_ENDPOINT) { $env:TICTACTOE_SPOT_A_PUBSUB_ENDPOINT } else { "tcp://127.0.0.1:$($ports[10])" }
-    $spotBPubSubEndpoint = if ($env:TICTACTOE_SPOT_B_PUBSUB_ENDPOINT) { $env:TICTACTOE_SPOT_B_PUBSUB_ENDPOINT } else { "tcp://127.0.0.1:$($ports[11])" }
+    for ($i = 0; $i -lt $Attempts; $i++) {
+        if (Select-String -Path $Path -Pattern $Pattern -Quiet) {
+            return
+        }
+        Start-Sleep -Milliseconds 200
+    }
+
+    throw "$Description was not found."
+}
+
+function Wait-SampleLogContains {
+    param(
+        [Parameter(Mandatory = $true)][string]$Pattern,
+        [Parameter(Mandatory = $true)][string]$Description,
+        [int]$Attempts = 50
+    )
+
+    for ($i = 0; $i -lt $Attempts; $i++) {
+        $match = Get-ChildItem -Path $SampleLogDir -Filter "*.log" |
+            Select-String -Pattern $Pattern -List |
+            Select-Object -First 1
+        if ($null -ne $match) {
+            return
+        }
+        Start-Sleep -Milliseconds 200
+    }
+
+    throw "$Description was not found."
+}
+
+try {
+    $env:TICTACTOE_REDIS_KEY_PREFIX = "tictactoe:dotnet:${RunId}:"
+
+    $ports = New-SamplePorts -Count 13 -BasePort 0
+
+    $apiABindUrl = "http://127.0.0.1:$($ports[0])"
+    $apiBBindUrl = "http://127.0.0.1:$($ports[1])"
+    $apiAPublicUrl = $apiABindUrl
+    $apiBPublicUrl = $apiBBindUrl
+    $apiAChannelEndpoint = "tcp://127.0.0.1:$($ports[2])"
+    $apiBChannelEndpoint = "tcp://127.0.0.1:$($ports[3])"
+    $playAChannelEndpoint = "tcp://127.0.0.1:$($ports[4])"
+    $playBChannelEndpoint = "tcp://127.0.0.1:$($ports[5])"
+    $playAEndpoint = "tcp://127.0.0.1:$($ports[6])"
+    $playBEndpoint = "tcp://127.0.0.1:$($ports[7])"
+    $spotAEndpoint = "tcp://127.0.0.1:$($ports[8])"
+    $spotBEndpoint = "tcp://127.0.0.1:$($ports[9])"
+    $spotAPubSubEndpoint = "tcp://127.0.0.1:$($ports[10])"
+    $spotBPubSubEndpoint = "tcp://127.0.0.1:$($ports[11])"
     $apiAConfigFile = Join-Path $RunDir "appsettings.api-a.json"
     $apiBConfigFile = Join-Path $RunDir "appsettings.api-b.json"
     $playAConfigFile = Join-Path $RunDir "appsettings.play-a.json"
     $playBConfigFile = Join-Path $RunDir "appsettings.play-b.json"
 
-    # The sample owns its Redis: always provision a dedicated, throwaway container
-    # so room-route state stays isolated per run and never touches a developer's
-    # local Redis. (TICTACTOE_REDIS_ENDPOINT is intentionally derived here, not read.)
     if (-not (Get-Command docker -ErrorAction SilentlyContinue)) {
-        throw "Docker is required to run the TicTacToe sample (it provisions a dedicated Redis container)."
+        throw "Docker is required to run the TicTacToe sample."
     }
-    $redisContainerId = (& docker run -d --rm --name "zlink-tictactoe-dotnet-redis-$PID-$([Guid]::NewGuid().ToString('N'))" -p "127.0.0.1::6379" redis:7-alpine).Trim()
+    $redisContainerId = (& docker run -d --rm --name "zlink-tictactoe-dotnet-redis-$RunId" -p "127.0.0.1::6379" redis:7.2-alpine).Trim()
     if ($LASTEXITCODE -ne 0) {
         throw "docker failed to start Redis."
     }
     $redisPort = (& docker port $redisContainerId "6379/tcp") -replace '^.*:', ''
-    $redisEndpoint = "127.0.0.1:$redisPort"
+    $env:TICTACTOE_REDIS_ENDPOINT = "127.0.0.1:$redisPort"
+    $redisEndpoint = $env:TICTACTOE_REDIS_ENDPOINT
 
     function New-TicTacToeSettings {
         param(
@@ -69,6 +110,7 @@ try {
                 PeerSpotEndpoint = @($spotAEndpoint, $spotBEndpoint)[$PeerPlayIndex]
                 PeerSpotPubEndpoint = @($spotAPubSubEndpoint, $spotBPubSubEndpoint)[$PeerPlayIndex]
                 RedisEndpoint = $redisEndpoint
+                RedisKeyPrefix = $env:TICTACTOE_REDIS_KEY_PREFIX
                 LogDirectory = $LogDir
             }
         }
@@ -93,7 +135,6 @@ try {
     Wait-SampleTcpEndpoint "play-b-channel" $playBChannelEndpoint
     Wait-SampleTcpEndpoint "play-b-spot" $spotBEndpoint
     Wait-SampleTcpEndpoint "play-b-spot-pubsub" $spotBPubSubEndpoint
-    Start-Sleep -Seconds 2
 
     Start-SampleDotnetAssembly -Name "api-a" -Project (Join-Path $ScriptDir "Server/TicTacToe.Server.csproj") -LogDirectory $LogDir -Arguments @("api-a", "--config", $apiAConfigFile) | Out-Null
     Wait-SampleTcpEndpoint "api-a-http" $apiABindUrl
@@ -105,31 +146,28 @@ try {
 
     $clientLog = Join-Path $LogDir "client.log"
     Invoke-SampleDotnetRun -Project (Join-Path $ScriptDir "Client/TicTacToe.Client.csproj") -Arguments @("--api-url", $apiAPublicUrl) *> $clientLog
-    if (-not (Select-String -Path $clientLog -Pattern "stream-inbound sample=TicTacToe" -Quiet)) {
-        throw "TicTacToe client did not write stream-inbound marker."
-    }
-    if (-not (Select-String -Path $clientLog -Pattern "stream-inbound sample=TicTacToe .* seq=[0-9]" -Quiet)) {
-        throw "TicTacToe client did not write sequenced stream-inbound response marker."
-    }
-    if (-not (Select-String -Path $clientLog -Pattern "stream-inbound sample=TicTacToe .* name=.*Notify" -Quiet)) {
-        throw "TicTacToe client did not write stream-inbound push marker."
-    }
-    if (-not (Select-String -Path $clientLog -Pattern "observer-win-milestone=verified" -Quiet)) {
-        throw "TicTacToe client did not verify observer win milestone notification."
-    }
+    Wait-LogContains $clientLog "stream-inbound sample=TicTacToe" "TicTacToe stream-inbound marker"
+    Wait-LogContains $clientLog "stream-inbound sample=TicTacToe .* seq=[0-9]" "TicTacToe sequenced stream-inbound response marker"
+    Wait-LogContains $clientLog "stream-inbound sample=TicTacToe .* name=.*Notify" "TicTacToe stream-inbound push marker"
+    Wait-LogContains $clientLog "observer-win-milestone=verified" "TicTacToe observer win milestone notification"
     $playLogs = Join-Path $LogDir "play-*.log"
-    if (-not (Select-String -Path $playLogs -Pattern "actor: LeaveGameReq completed. actor=player-x" -Quiet)) {
-        throw "TicTacToe play log did not include player-x LeaveGameReq completion."
+    Wait-LogContains $playLogs "actor: LeaveGameReq completed. actor=player-x" "TicTacToe player-x LeaveGameReq completion"
+    Wait-LogContains $playLogs "actor: LeaveGameReq completed. actor=player-o" "TicTacToe player-o LeaveGameReq completion"
+    Wait-LogContains $playLogs "entry spot: actor destroy completed. actor=player-x" "TicTacToe player-x destroy completion"
+    Wait-LogContains $playLogs "entry spot: actor destroy completed. actor=player-o" "TicTacToe player-o destroy completion"
+    $dispatchError = Get-ChildItem -Path $LogDir -Filter "*.log" |
+        Select-String -Pattern "dispatch-error" -List |
+        Select-Object -First 1
+    if ($null -ne $dispatchError) {
+        throw "Unexpected dispatch-error in TicTacToe sample logs."
     }
-    if (-not (Select-String -Path $playLogs -Pattern "actor: LeaveGameReq completed. actor=player-o" -Quiet)) {
-        throw "TicTacToe play log did not include player-o LeaveGameReq completion."
+    $messageFlowError = Get-ChildItem -Path $SampleLogDir -Filter "*.log" |
+        Select-String -Pattern "message flow outcome=error" -List |
+        Select-Object -First 1
+    if ($null -ne $messageFlowError) {
+        throw "Unexpected message-flow error in TicTacToe sample logs."
     }
-    if (-not (Select-String -Path $playLogs -Pattern "entry spot: actor destroy completed. actor=player-x" -Quiet)) {
-        throw "TicTacToe play log did not include player-x destroy completion."
-    }
-    if (-not (Select-String -Path $playLogs -Pattern "entry spot: actor destroy completed. actor=player-o" -Quiet)) {
-        throw "TicTacToe play log did not include player-o destroy completion."
-    }
+    Wait-SampleLogContains "message flow" "TicTacToe message-flow evidence"
 }
 finally {
     Stop-SampleProcesses

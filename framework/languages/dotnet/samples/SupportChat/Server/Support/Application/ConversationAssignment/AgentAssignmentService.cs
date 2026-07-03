@@ -7,6 +7,14 @@ internal sealed class AgentAssignmentService(AgentAvailabilityDirectory availabi
 {
     private readonly Dictionary<string, string> _reservations = new(StringComparer.Ordinal);
 
+    // Availability is exposed through this service so reconnect can restore capacity
+    // from the reservations that survived the temporary session disconnect.
+    public void SetAvailable(string rosterActorId, string displayName, bool isAvailable)
+    {
+        var activeConversations = _reservations.Values.Count(id => string.Equals(id, rosterActorId, StringComparison.Ordinal));
+        availability.SetAvailable(rosterActorId, displayName, isAvailable, activeConversations);
+    }
+
     // Reserves a capacity-available agent for the conversation and returns it, or null
     // when the conversation is already assigned or no agent has spare capacity.
     public AvailableAgent? AssignForConversation(string conversationId)

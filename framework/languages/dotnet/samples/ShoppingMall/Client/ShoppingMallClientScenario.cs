@@ -29,7 +29,7 @@ internal sealed class ShoppingMallClientScenario
         Ensure(!string.IsNullOrWhiteSpace(success.OrderId));
 
         var created = await GetOrderAsync(apiA, success.OrderId, cancellationToken);
-        Ensure(IsCreatedOrConfirmed(created));
+        Ensure(IsStartedOrConfirmed(created));
         Ensure(created.ShippingAddressId == successReq.ShippingAddressId);
 
         var confirmed = await WaitForStatusAsync(apiA, success.OrderId, OrderStatuses.Confirmed, cancellationToken);
@@ -40,6 +40,21 @@ internal sealed class ShoppingMallClientScenario
 
         var duplicate = apiB.Post("/orders/start").Body(successReq).Fetch<StartOrderRes>();
         Ensure(duplicate.OrderId == success.OrderId);
+
+        var concurrentReq = new StartOrderReq(
+            "cart-success",
+            "addr-office",
+            "pm-ok",
+            "order-concurrent-001");
+        var concurrentA = Task.Run(() => apiA.Post("/orders/start").Body(concurrentReq).Fetch<StartOrderRes>(),
+            cancellationToken);
+        var concurrentB = Task.Run(() => apiB.Post("/orders/start").Body(concurrentReq).Fetch<StartOrderRes>(),
+            cancellationToken);
+        await Task.WhenAll(concurrentA, concurrentB);
+        Ensure(concurrentA.Result.OrderId == concurrentB.Result.OrderId);
+        var concurrentConfirmed =
+            await WaitForStatusAsync(apiA, concurrentA.Result.OrderId, OrderStatuses.Confirmed, cancellationToken);
+        Ensure(concurrentConfirmed.Status == OrderStatuses.Confirmed);
 
         var pendingReq = new StartOrderReq(
             "cart-success",
@@ -59,8 +74,23 @@ internal sealed class ShoppingMallClientScenario
         Ensure(pending.OrderId == "order-pending-0001");
         Ensure(pending.Status == OrderStatuses.Created);
         var pendingCreated = await GetOrderAsync(apiA, pending.OrderId, cancellationToken);
-        Ensure(IsCreatedOrConfirmed(pendingCreated));
+        Ensure(IsStartedOrConfirmed(pendingCreated));
         Ensure(pendingCreated.ShippingAddressId == pendingReq.ShippingAddressId);
+
+        var resumeReq = new StartOrderReq(
+            "cart-success",
+            "addr-home",
+            "pm-ok",
+            "order-resume-001");
+        var inventoryReserved = apiA.Post("/self-check/workflow/inventory-reserved")
+            .Body(resumeReq)
+            .Fetch<StartOrderRes>();
+        Ensure(inventoryReserved.Status == OrderStatuses.InventoryReserved);
+        var resumed = apiB.Post($"/self-check/workflow/{inventoryReserved.OrderId}/continue")
+            .Fetch<ContinueOrderWorkflowRes>();
+        Ensure(resumed.State.Status == OrderStatuses.Confirmed);
+        Ensure(resumed.State.ReservationId == $"reservation-{inventoryReserved.OrderId}");
+        Ensure(resumed.State.PaymentId == $"payment-{inventoryReserved.OrderId}");
 
         var inventoryReq = new StartOrderReq(
             "cart-inventory-fail",
@@ -86,6 +116,13 @@ internal sealed class ShoppingMallClientScenario
         var deleteProjection = await apiA.Post($"/self-check/projection/{success.OrderId}/delete")
             .SubmitRawAsync(cancellationToken);
         Ensure(deleteProjection.Status is >= 200 and < 300);
+        var healedByContinue = apiB.Post($"/self-check/workflow/{success.OrderId}/continue")
+            .Fetch<ContinueOrderWorkflowRes>();
+        Ensure(healedByContinue.State.Status == OrderStatuses.Confirmed);
+
+        var deleteProjectionAgain = await apiA.Post($"/self-check/projection/{success.OrderId}/delete")
+            .SubmitRawAsync(cancellationToken);
+        Ensure(deleteProjectionAgain.Status is >= 200 and < 300);
         var rebuilt = apiA.Post($"/self-check/projection/{success.OrderId}/rebuild")
             .Fetch<RebuildOrderProjectionRes>();
         Ensure(rebuilt.State.Status == OrderStatuses.Confirmed);
@@ -110,6 +147,8 @@ internal sealed class ShoppingMallClientScenario
             .Body(new ServerAssertionReq(
                 success.OrderId,
                 pending.OrderId,
+                concurrentA.Result.OrderId,
+                inventoryReserved.OrderId,
                 inventoryStarted.OrderId,
                 paymentStarted.OrderId,
                 scale.OrderId))
@@ -153,9 +192,24 @@ internal sealed class ShoppingMallClientScenario
         if (!condition) throw new InvalidOperationException($"Ensure failed: {expression}");
     }
 
-    private static bool IsCreatedOrConfirmed(OrderState state)
+    private static bool IsStartedOrConfirmed(OrderState state)
     {
         return state.Status == OrderStatuses.Created
+               || state.Status == OrderStatuses.InventoryReserved
+               || state.Status == OrderStatuses.PaymentAuthorized
                || state.Status == OrderStatuses.Confirmed;
     }
 }
+
+internal sealed record ServerAssertionReq(
+    string SuccessfulOrderId,
+    string PendingRecoveredOrderId,
+    string ConcurrentOrderId,
+    string ResumedOrderId,
+    string InventoryFailureOrderId,
+    string PaymentFailureOrderId,
+    string ScaleOutOrderId);
+
+internal sealed record ServerAssertionRes(
+    bool Passed,
+    string[] Evidence);

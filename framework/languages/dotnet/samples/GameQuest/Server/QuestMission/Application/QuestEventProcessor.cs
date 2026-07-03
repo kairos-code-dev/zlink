@@ -6,10 +6,8 @@ namespace GameQuest.QuestMission.Application;
 
 internal sealed class QuestEventProcessor(
     IQuestStore store,
-    IPlayerQuestOwnerProvisioner playerQuestOwners,
     IGameApiSnapshotClient snapshots,
     IQuestProgressNotifier notifications,
-    QuestOwnerRouter ownerRouter,
     ILogger<QuestEventProcessor> logger)
 {
     private readonly string _missionName = Environment.GetEnvironmentVariable("GAMEQUEST_MISSION_NAME") ?? "mission";
@@ -19,15 +17,13 @@ internal sealed class QuestEventProcessor(
         GameplayEventEnvelope gameplayEvent,
         CancellationToken cancellationToken)
     {
-        if (!ownerRouter.IsLocalOwner(gameplayEvent.PlayerId)) return;
-
         var definition = gameplayEvent.EventType == "SnapshotKillCount"
             ? QuestCatalog.All.First(definition => definition.QuestId == QuestIds.FirstHunt)
             : QuestCatalog.Match(gameplayEvent);
         if (definition is null) return;
 
-        await playerQuestOwners.EnsureAsync(gameplayEvent.PlayerId, cancellationToken);
-        var before = await store.ReadProgressAsync(gameplayEvent.PlayerId, definition.QuestId, cancellationToken);
+        var stream = await store.ReadQuestStreamAsync(gameplayEvent.PlayerId, definition.QuestId, cancellationToken);
+        var before = _projectionBuilder.Replay(definition, stream);
         if (await store.HasSourceEventAsync(gameplayEvent.PlayerId, definition.QuestId, gameplayEvent.EventId,
                 cancellationToken)) return;
 
@@ -58,9 +54,6 @@ internal sealed class QuestEventProcessor(
         SyncQuestProgressReq request,
         CancellationToken cancellationToken)
     {
-        if (!ownerRouter.IsLocalOwner(request.PlayerId))
-            return new SyncQuestProgressRes(await store.ReadProjectionAsync(request.PlayerId, cancellationToken));
-
         var snapshotRequest = new GetGameplaySnapshotReq(request.PlayerId);
         var snapshot = await snapshots.ReadSnapshotAsync(snapshotRequest, cancellationToken);
         var killCount = snapshot.KillCounts.Sum(kill => kill.Count);
@@ -102,13 +95,13 @@ internal sealed class QuestEventProcessor(
 
 internal interface IQuestStore
 {
-    ValueTask<QuestProgress?> ReadProgressAsync(
-        string playerId,
-        string questId,
-        CancellationToken cancellationToken);
-
     ValueTask<QuestProgress[]> ReadProjectionAsync(
         string playerId,
+        CancellationToken cancellationToken);
+
+    ValueTask<StoredQuestEvent[]> ReadQuestStreamAsync(
+        string playerId,
+        string questId,
         CancellationToken cancellationToken);
 
     ValueTask<bool> HasSourceEventAsync(
@@ -120,13 +113,6 @@ internal interface IQuestStore
     ValueTask<bool> AppendAndProjectAsync(
         QuestProgress projection,
         IReadOnlyList<StoredQuestEvent> events,
-        CancellationToken cancellationToken);
-}
-
-internal interface IPlayerQuestOwnerProvisioner
-{
-    ValueTask EnsureAsync(
-        string playerId,
         CancellationToken cancellationToken);
 }
 

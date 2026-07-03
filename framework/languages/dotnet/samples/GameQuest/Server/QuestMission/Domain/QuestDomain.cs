@@ -27,6 +27,45 @@ internal static class QuestCatalog
 
 internal sealed class QuestProjectionBuilder
 {
+    public QuestProgress? Replay(QuestDefinition definition, IReadOnlyList<StoredQuestEvent> stream)
+    {
+        if (stream.Count == 0) return null;
+
+        var currentCount = 0;
+        var status = QuestStatuses.Active;
+        string? lastEventId = null;
+        long updatedAtUnixMs = 0;
+        foreach (var @event in stream.OrderBy(e => e.Version))
+        {
+            using var payload = JsonDocument.Parse(@event.Payload);
+            var root = payload.RootElement;
+            if (@event.EventType is nameof(QuestProgressedEvent) or nameof(QuestProgressReconciledEvent))
+            {
+                currentCount = root.GetProperty("CurrentCount").GetInt32();
+                if (@event.EventType == nameof(QuestProgressedEvent)
+                    && root.TryGetProperty("RequiredCount", out var required))
+                    definition = definition with { Required = required.GetInt32() };
+            }
+
+            if (@event.EventType == nameof(QuestCompletedEvent))
+                status = QuestStatuses.Completed;
+            else if (@event.EventType == nameof(QuestRewardGrantedEvent))
+                status = QuestStatuses.RewardGranted;
+
+            lastEventId = @event.SourceEventId;
+            updatedAtUnixMs = Math.Max(updatedAtUnixMs, @event.CreatedAtUnixMs);
+        }
+
+        return new QuestProgress(
+            stream[0].PlayerId,
+            definition.QuestId,
+            status,
+            currentCount,
+            definition.Required,
+            lastEventId,
+            updatedAtUnixMs);
+    }
+
     public QuestProgress Apply(QuestDefinition definition, QuestProgress? current, GameplayEventEnvelope gameplayEvent)
     {
         var nextCount = gameplayEvent.EventType == "SnapshotKillCount"

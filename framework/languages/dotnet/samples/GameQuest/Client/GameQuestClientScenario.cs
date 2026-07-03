@@ -22,16 +22,17 @@ internal sealed class GameQuestClientScenario(GameQuestTopology topology)
     {
         using var apiA = ZLinkHttpClient.Create(topology.GameApiAHttpBaseUrl).Build();
         using var apiB = ZLinkHttpClient.Create(topology.GameApiBHttpBaseUrl).Build();
+        using var missionA = ZLinkHttpClient.Create(topology.MissionAHttpBaseUrl).Build();
+        using var missionB = ZLinkHttpClient.Create(topology.MissionBHttpBaseUrl).Build();
 
         await apiAStream.Connect.Async(cancellationToken);
-        var subscribed = await apiAStream.Request(new SubscribeQuestReq("player-alice"))
-            .Async<SubscribeQuestRes>(cancellationToken);
-        Ensure(subscribed.ActiveQuests.Length == 0);
+        var joined = await apiAStream.Request(new JoinSessionReq("player-alice"))
+            .Async<JoinSessionRes>(cancellationToken);
+        Ensure(joined.ActiveQuests.Length == 0);
 
         var firstProgress = apiAStream.WaitFor<QuestProgressNotify>().Async(cancellationToken);
-        var firstKill = apiA.Post("/combat/kill")
-            .Body(new KillMonsterReq("player-alice", "wolf", "forest", "kill-1"))
-            .Fetch<KillMonsterRes>();
+        var firstKill = await apiAStream.Request(new KillMonsterReq("player-alice", "wolf", "forest", "kill-1"))
+            .Async<KillMonsterRes>(cancellationToken);
         Ensure(firstKill.EventId == "player-alice-kill-1");
         var firstProgressPush = await firstProgress;
         Ensure(firstProgressPush.Payload.PlayerId == "player-alice");
@@ -39,27 +40,23 @@ internal sealed class GameQuestClientScenario(GameQuestTopology topology)
         Ensure(firstProgressPush.Payload.Progress.CurrentCount == 1);
 
         var completeFirstHunt = apiAStream.WaitFor<QuestCompletedNotify>().Async(cancellationToken);
-        _ = apiA.Post("/combat/kill")
-            .Body(new KillMonsterReq("player-alice", "wolf", "forest", "kill-2"))
-            .Fetch<KillMonsterRes>();
-        var thirdKill = apiA.Post("/combat/kill")
-            .Body(new KillMonsterReq("player-alice", "wolf", "forest", "kill-3"))
-            .Fetch<KillMonsterRes>();
+        _ = await apiAStream.Request(new KillMonsterReq("player-alice", "wolf", "forest", "kill-2"))
+            .Async<KillMonsterRes>(cancellationToken);
+        var thirdKill = await apiAStream.Request(new KillMonsterReq("player-alice", "wolf", "forest", "kill-3"))
+            .Async<KillMonsterRes>(cancellationToken);
         Ensure(thirdKill.EventId == "player-alice-kill-3");
         var completeFirstHuntPush = await completeFirstHunt;
         Ensure(completeFirstHuntPush.Payload.PlayerId == "player-alice");
         Ensure(completeFirstHuntPush.Payload.Progress.QuestId == QuestIds.FirstHunt);
         Ensure(completeFirstHuntPush.Payload.RewardGranted);
 
-        var duplicate = apiA.Post("/combat/kill")
-            .Body(new KillMonsterReq("player-alice", "wolf", "forest", "kill-3"))
-            .Fetch<KillMonsterRes>();
+        var duplicate = await apiAStream.Request(new KillMonsterReq("player-alice", "wolf", "forest", "kill-3"))
+            .Async<KillMonsterRes>(cancellationToken);
         Ensure(duplicate.EventId == thirdKill.EventId);
 
         var auctionComplete = apiAStream.WaitFor<QuestCompletedNotify>().Async(cancellationToken);
-        var auction = apiA.Post("/feature/unlock")
-            .Body(new UnlockFeatureReq("player-alice", "auction", "unlock-auction"))
-            .Fetch<UnlockFeatureRes>();
+        var auction = await apiAStream.Request(new UnlockFeatureReq("player-alice", "auction", "unlock-auction"))
+            .Async<UnlockFeatureRes>(cancellationToken);
         Ensure(auction.EventId == "player-alice-unlock-auction");
         var auctionCompletePush = await auctionComplete;
         Ensure(auctionCompletePush.Payload.PlayerId == "player-alice");
@@ -70,27 +67,31 @@ internal sealed class GameQuestClientScenario(GameQuestTopology topology)
             .Fetch<GetGameplaySnapshotRes>();
         Ensure(snapshot.UnlockedFeatureIds.Contains("auction", StringComparer.Ordinal));
 
-        var tutorial = apiA.Post("/mission/complete")
-            .Body(new CompleteMissionReq("player-alice", "tutorial", "mission-tutorial"))
-            .Fetch<CompleteMissionRes>();
+        var closeOwnerA = await missionA.Post("/self-check/owner/player-alice/close")
+            .SubmitRawAsync(cancellationToken);
+        var closeOwnerB = await missionB.Post("/self-check/owner/player-alice/close")
+            .SubmitRawAsync(cancellationToken);
+        Ensure(closeOwnerA.Status is >= 200 and < 300);
+        Ensure(closeOwnerB.Status is >= 200 and < 300);
+
+        var tutorial = await apiAStream.Request(new CompleteMissionReq("player-alice", "tutorial", "mission-tutorial"))
+            .Async<CompleteMissionRes>(cancellationToken);
         Ensure(tutorial.EventId == "player-alice-mission-tutorial");
 
-        var ruins = apiA.Post("/world/enter")
-            .Body(new EnterAreaReq("player-alice", "ruins", "enter-ruins"))
-            .Fetch<EnterAreaRes>();
+        var ruins = await apiAStream.Request(new EnterAreaReq("player-alice", "ruins", "enter-ruins"))
+            .Async<EnterAreaRes>(cancellationToken);
         Ensure(ruins.EventId == "player-alice-enter-ruins");
 
-        var offlineItem = apiA.Post("/inventory/collect")
-            .Body(new CollectItemReq("player-bob", "healing-herb", 1, "herb-1"))
-            .Fetch<CollectItemRes>();
+        var offlineItem = await apiAStream.Request(new CollectItemReq("player-bob", "healing-herb", 1, "herb-1"))
+            .Async<CollectItemRes>(cancellationToken);
         Ensure(offlineItem.EventId == "player-bob-herb-1");
 
         await apiBStream.Connect.Async(cancellationToken);
-        var bobSubscribed = await apiBStream.Request(new SubscribeQuestReq("player-bob"))
-            .Async<SubscribeQuestRes>(cancellationToken);
-        var bobProgress = bobSubscribed.ActiveQuests.Any(p =>
+        var bobJoined = await apiBStream.Request(new JoinSessionReq("player-bob"))
+            .Async<JoinSessionRes>(cancellationToken);
+        var bobProgress = bobJoined.ActiveQuests.Any(p =>
             p is { QuestId: QuestIds.HerbGathering, CurrentCount: 1 })
-            ? bobSubscribed.ActiveQuests
+            ? bobJoined.ActiveQuests
             : await WaitForStreamProjectionAsync(
                 apiBStream,
                 "player-bob",
@@ -98,9 +99,8 @@ internal sealed class GameQuestClientScenario(GameQuestTopology topology)
                 cancellationToken);
         Ensure(bobProgress.Any(p => p is { QuestId: QuestIds.HerbGathering, CurrentCount: 1 }));
         var herbCompletedOnReconnectedStream = apiBStream.WaitFor<QuestCompletedNotify>().Async(cancellationToken);
-        var onlineItem = apiB.Post("/inventory/collect")
-            .Body(new CollectItemReq("player-bob", "healing-herb", 4, "herb-2"))
-            .Fetch<CollectItemRes>();
+        var onlineItem = await apiBStream.Request(new CollectItemReq("player-bob", "healing-herb", 4, "herb-2"))
+            .Async<CollectItemRes>(cancellationToken);
         Ensure(onlineItem.EventId == "player-bob-herb-2");
         var herbCompletedOnReconnectedStreamPush = await herbCompletedOnReconnectedStream;
         Ensure(herbCompletedOnReconnectedStreamPush.Payload.PlayerId == "player-bob");

@@ -1,4 +1,3 @@
-using DeliveryDispatch.Server.CustomerGateway.Spots.EntrySpot.Handlers;
 using DeliveryDispatch.Shared.Contracts;
 using Microsoft.Extensions.Logging;
 using Zlink.Framework.Contracts.Messaging;
@@ -15,19 +14,13 @@ internal sealed class CustomerEntrySpot(
 
     public void Configure()
     {
-        Context.Handlers.AddActorRequest<SubscribeDeliveryActorHandler, CustomerActor>(nameof(SubscribeDeliveryReq));
     }
 
-    public SubscribeDeliveryRes SubscribeCustomer(
-        string customerId,
-        string deliveryId)
+    public async ValueTask PushStatusAsync(
+        DeliveryStatusUpdatedMsg status,
+        CancellationToken cancellationToken)
     {
-        actors.Subscribe(customerId, deliveryId);
-        logger.LogInformation(
-            "deliverydispatch customer-entry: subscribed customer={CustomerId} delivery={DeliveryId}",
-            customerId,
-            deliveryId);
-        return new SubscribeDeliveryRes(deliveryId);
+        await actors.PushAsync(status, cancellationToken);
     }
 
     public ValueTask OnCreateActorAsync(

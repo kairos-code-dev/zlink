@@ -31,12 +31,13 @@ internal static class Program
         builder.Services.AddSingleton(topology);
         builder.Services.AddSingleton<GameQuestStore>();
         builder.Services.AddSingleton<IGameplayEventStore>(sp => sp.GetRequiredService<GameQuestStore>());
-        builder.Services.AddSingleton<IGameplayEventPublisher, GameplayEventPublisher>();
+        builder.Services.AddSingleton<IQuestSessionStore>(sp => sp.GetRequiredService<GameQuestStore>());
+        builder.Services.AddSingleton<IGameplayEventOwnerDispatcher, GameplayEventOwnerDispatcher>();
         builder.Services.AddSingleton<IQuestProgressSynchronizer, HttpQuestProgressSynchronizer>();
         builder.Services.AddSingleton<GameQuestSessionRegistry>();
         builder.Services.AddScoped<GameplayActionService>();
+        builder.Services.AddScoped<JoinQuestSessionUseCase>();
         builder.Services.AddScoped<GameQuestSession>();
-        builder.Services.AddScoped<SubscribeQuestHandler>();
         builder.Services.AddScoped<GetQuestProgressHandler>();
         builder.Services.AddScoped<SyncQuestProgressHandler>();
         builder.Services.AddZLinkFramework(options =>
@@ -49,8 +50,9 @@ internal static class Program
                 .TraceLogFile(SampleFlowLog.Path(apiName))
                 .TraceLabel(apiName);
             options.AddHandlersFromAssemblyOf(typeof(Program));
-            options.AddFanoutChannel(SampleNames.FanoutChannel)
-                .EnablePublisher(topology.FanoutPublisherEndpointForApi(apiName));
+            options.AddRouteMesh(SampleNames.QuestOwnerRouteChannel)
+                .EnableServer(topology.RouteEndpointForApi(apiName))
+                .SetRoutingId(topology.RouteRidForApi(apiName));
             options.AddStreamNode(SampleNames.StreamNode)
                 .Bind(Environment.GetEnvironmentVariable("GAMEQUEST_STREAM_BIND_ENDPOINT")
                       ?? throw new InvalidOperationException("GAMEQUEST_STREAM_BIND_ENDPOINT is required."))
@@ -72,51 +74,6 @@ internal static class Program
             }
 
             await BridgeWebSocketToStreamAsync(context);
-        });
-
-        app.MapPost("/combat/kill", async (
-            [FromBody] KillMonsterReq request,
-            GameplayActionService actions,
-            CancellationToken cancellationToken) =>
-        {
-            var response = await actions.KillMonsterAsync(request, cancellationToken);
-            return Results.Ok(response);
-        });
-
-        app.MapPost("/inventory/collect", async (
-            [FromBody] CollectItemReq request,
-            GameplayActionService actions,
-            CancellationToken cancellationToken) =>
-        {
-            var response = await actions.CollectItemAsync(request, cancellationToken);
-            return Results.Ok(response);
-        });
-
-        app.MapPost("/mission/complete", async (
-            [FromBody] CompleteMissionReq request,
-            GameplayActionService actions,
-            CancellationToken cancellationToken) =>
-        {
-            var response = await actions.CompleteMissionAsync(request, cancellationToken);
-            return Results.Ok(response);
-        });
-
-        app.MapPost("/world/enter", async (
-            [FromBody] EnterAreaReq request,
-            GameplayActionService actions,
-            CancellationToken cancellationToken) =>
-        {
-            var response = await actions.EnterAreaAsync(request, cancellationToken);
-            return Results.Ok(response);
-        });
-
-        app.MapPost("/feature/unlock", async (
-            [FromBody] UnlockFeatureReq request,
-            GameplayActionService actions,
-            CancellationToken cancellationToken) =>
-        {
-            var response = await actions.UnlockFeatureAsync(request, cancellationToken);
-            return Results.Ok(response);
         });
 
         app.MapGet("/quest/progress/{playerId}", async (
@@ -194,6 +151,7 @@ internal static class Program
             var bindings = await store.ReadBindingHistoryAsync(cancellationToken);
             var activeBindings = await store.ReadBindingsAsync(cancellationToken);
             var events = await store.ReadQuestEventsAsync(cancellationToken);
+            var rehydrates = await store.ReadOwnerRehydrateEvidenceAsync(cancellationToken);
             var passed = alice.Any(p => p is { QuestId: QuestIds.FirstHunt, Status: QuestStatuses.RewardGranted })
                          && alice.Any(p => p is { QuestId: QuestIds.OpenAuction, Status: QuestStatuses.RewardGranted })
                          && bob.Any(p => p is { QuestId: QuestIds.HerbGathering, Status: QuestStatuses.RewardGranted })
@@ -208,6 +166,8 @@ internal static class Program
                          && Count(events, "player-alice", QuestIds.OpenAuction, nameof(QuestRewardGrantedEvent)) == 1
                          && Count(events, "player-bob", QuestIds.HerbGathering, nameof(QuestCompletedEvent)) == 1
                          && Count(events, "player-bob", QuestIds.HerbGathering, nameof(QuestRewardGrantedEvent)) == 1
+                         && rehydrates.GetValueOrDefault("player-alice") >= 2
+                         && rehydrates.GetValueOrDefault("player-bob") >= 1
                          && events
                              .GroupBy(e => (e.PlayerId, e.QuestId, e.Version))
                              .All(group => group.Count() == 1);
@@ -217,6 +177,7 @@ internal static class Program
                         $"binding:{binding.PlayerId}:{binding.ConnectionId}:{binding.GameApiInstanceId}"))
                     .Concat(events.Select(e =>
                         $"event:{e.PlayerId}:{e.QuestId}:{e.EventType}:v{e.Version}:source={e.SourceEventId}"))
+                    .Concat(rehydrates.Select(pair => $"rehydrated:{pair.Key}:{pair.Value}"))
                     .Order(StringComparer.Ordinal)
                     .ToArray()));
         });

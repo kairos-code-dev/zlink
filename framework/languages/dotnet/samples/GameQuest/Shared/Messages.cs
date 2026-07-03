@@ -20,9 +20,9 @@ public sealed record UnlockFeatureReq(string PlayerId, string FeatureId, string 
 
 public sealed record UnlockFeatureRes(string EventId);
 
-public sealed record SubscribeQuestReq(string PlayerId);
+public sealed record JoinSessionReq(string PlayerId);
 
-public sealed record SubscribeQuestRes(QuestProgress[] ActiveQuests);
+public sealed record JoinSessionRes(QuestProgress[] ActiveQuests);
 
 public sealed record GetQuestProgressReq(string PlayerId);
 

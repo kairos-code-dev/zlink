@@ -2,8 +2,9 @@
 
 `GameQuest`는 게임 API 역할과 퀘스트 미션 역할을 분리해서 플레이어별 퀘스트
 진행을 검증하는 .NET Framework 샘플이다. 클라이언트는 stream session에
-연결하고, 서버는 ZLink channel과 session push를 사용해서 게임 이벤트 처리,
-퀘스트 완료 알림, 진행 상태 재구성을 수행한다.
+연결하고, GameApi는 gameplay action을 검증한 뒤 `PlayerId` 기준 owner route로
+`PlayerQuestSpot`에 보낸다. owner spot은 quest event stream을 replay해서 진행을
+판정하고, session push로 퀘스트 완료와 진행 상태를 보낸다.
 
 ## 실행
 
@@ -23,16 +24,21 @@ pwsh -NoProfile -ExecutionPolicy Bypass -File .\run_sample.ps1
 
 - `Shared/`는 클라이언트와 서버가 함께 쓰는 요청, 응답, 알림 계약을 담는다.
 - `Client/`는 두 플레이어의 stream connector를 열고 self-check 시나리오를 실행한다.
-- `Server/GameApi/`는 플레이어 session, 게임 이벤트 접수, client push를 담당한다.
-- `Server/QuestMission/`은 퀘스트 진행 상태를 계산하고 완료 결과를 GameApi로 보낸다.
-- 서버 프로세스들은 registry 없이 공유 location store(Redis)에 위치를 등록하고 자동 연결한다.
-  `run_sample.sh`가 실행마다 전용 Redis 컨테이너를 띄우고 `GAMEQUEST_REDIS_ENDPOINT`와
-  `GAMEQUEST_REDIS_KEY_PREFIX`를 주입한다.
+- `Server/GameApi/`는 플레이어 session, 게임 이벤트 접수, owner route 전송, client push를 담당한다.
+- `Server/QuestMission/`은 `PlayerQuestSpot`을 호스팅하고, quest event stream replay와 projection 갱신을 담당한다.
+- 서버 프로세스들은 registry 없이 공유 Redis location store에 위치를 등록하고 자동 연결한다.
+  quest event stream, read model, gameplay fact, session binding self-check 상태도 같은 실행의 Redis에
+  저장한다.
+- shell/PowerShell runner는 실행마다 전용 Redis Docker 컨테이너를 직접 띄운다. 외부 Redis endpoint
+  재사용 mode는 제공하지 않는다. container 이름, host port, `GAMEQUEST_REDIS_KEY_PREFIX`, log directory는
+  sample 이름과 실행 id를 포함해 매 실행마다 달라서 동시에 도는 다른 테스트와 섞이지 않는다.
 - `Server/Configuration/`은 역할별 endpoint, channel, packet 설정을 모은다.
 
 ## 성공 조건
 
-클라이언트 시나리오는 첫 사냥, 경매 개방, 멱등성, projection rebuild, 두 번째
-플레이어 진행 동기화를 검증한다. 클라이언트 self-check가 실패하면 runner가
-중단된다. 서버 evidence 확인이 끝나면 runner가
+클라이언트 시나리오는 `JoinSessionReq` 이후 같은 stream으로 첫 사냥, 경매 개방, gameplay action,
+진행 push, 멱등성, projection rebuild, owner spot close 뒤 재활성, 두 번째 플레이어 진행 동기화를
+검증한다. projection delete/rebuild, owner 메시징 없이 누락된 gameplay fact를 만드는 보정 hook,
+server assertion은 검증용 HTTP endpoint로 남긴다. 클라이언트 self-check가 실패하면 runner가 중단된다.
+서버 evidence 확인이 끝나면 runner가
 `gamequest-server-evidence=completed`를 출력한다.

@@ -23,6 +23,7 @@ internal sealed record SampleSettings(
     string PeerSpotEndpoint,
     string PeerSpotPubEndpoint,
     string RedisEndpoint,
+    string RedisKeyPrefix,
     string LogDirectory)
 {
     public IReadOnlyList<PlayNodeInfo> PlayNodes =>
@@ -37,7 +38,6 @@ internal sealed record SampleSettings(
         var builder = new ConfigurationBuilder();
         if (!string.IsNullOrWhiteSpace(configPath)) builder.AddJsonFile(configPath, false);
 
-        builder.AddEnvironmentVariables("TICTACTOE_");
         var section = builder.Build().GetSection("Sample");
         var apiIndex = ReadInt(section[nameof(ApiIndex)], defaults.ApiIndex);
         var playIndex = ReadInt(section[nameof(PlayIndex)], defaults.PlayIndex);
@@ -70,6 +70,7 @@ internal sealed record SampleSettings(
             section[nameof(PeerSpotEndpoint)] ?? At(spotEndpoints, peerPlayIndex),
             section[nameof(PeerSpotPubEndpoint)] ?? At(spotPubSubEndpoints, peerPlayIndex),
             section[nameof(RedisEndpoint)] ?? defaults.RedisEndpoint,
+            section[nameof(RedisKeyPrefix)] ?? defaults.RedisKeyPrefix,
             section[nameof(LogDirectory)] ?? defaults.LogDirectory);
 
         var resolved = ApplyArgs(configured, args);
@@ -116,6 +117,7 @@ internal sealed record SampleSettings(
             At(spotEndpoints, peerPlayIndex),
             At(spotPubSubEndpoints, peerPlayIndex),
             string.Empty,
+            "tictactoe:",
             Path.Combine("logs", "tictactoe"));
     }
 
@@ -131,6 +133,7 @@ internal sealed record SampleSettings(
         string? spotPubSub = null;
         string? playSpotNodeRid = null;
         string? redisEndpoint = null;
+        string? redisKeyPrefix = null;
         string? logDirectory = null;
 
         for (var i = 0; i < args.Length; i++)
@@ -175,6 +178,9 @@ internal sealed record SampleSettings(
                 case "--redis-endpoint":
                     redisEndpoint = ReadValue();
                     break;
+                case "--redis-key-prefix":
+                    redisKeyPrefix = ReadValue();
+                    break;
                 case "--log-dir":
                     logDirectory = ReadValue();
                     break;
@@ -202,6 +208,7 @@ internal sealed record SampleSettings(
             defaults.PeerSpotEndpoint,
             defaults.PeerSpotPubEndpoint,
             redisEndpoint ?? defaults.RedisEndpoint,
+            redisKeyPrefix ?? defaults.RedisKeyPrefix,
             logDirectory ?? defaults.LogDirectory);
     }
 

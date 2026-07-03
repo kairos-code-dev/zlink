@@ -3,13 +3,15 @@ set -euo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 RUN_DIR="$(mktemp -d)"
+RUN_ID="$(basename "${RUN_DIR}")-$$-${RANDOM}"
 LOG_DIR="${RUN_DIR}/logs"
-export SUPPORTCHAT_LOG_DIR="${SUPPORTCHAT_LOG_DIR:-${SCRIPT_DIR}/logs}"
+SAMPLE_LOG_DIR="${RUN_DIR}/sample-logs"
+export SUPPORTCHAT_LOG_DIR="${SAMPLE_LOG_DIR}"
 mkdir -p "${LOG_DIR}" "${SUPPORTCHAT_LOG_DIR}"
-rm -f "${SUPPORTCHAT_LOG_DIR}"/*.log
 
 PIDS=()
 REDIS_CONTAINER=""
+export SUPPORTCHAT_REDIS_KEY_PREFIX="supportchat:dotnet:${RUN_ID}:"
 
 cleanup() {
   for ((i=${#PIDS[@]}-1; i>=0; i--)); do
@@ -51,20 +53,14 @@ cleanup() {
 }
 trap cleanup EXIT
 
-if [[ -n "${SUPPORTCHAT_BASE_PORT:-}" ]]; then
-  PORTS=()
-  for offset in $(seq 1 11); do
-    PORTS+=("$((SUPPORTCHAT_BASE_PORT + offset))")
-  done
-else
-  read -r -a PORTS <<<"$(python3 - <<'PY'
+read -r -a PORTS <<<"$(python3 - <<'PY'
 import random
 import socket
 
 sockets = []
 try:
     chosen = set()
-    while len(sockets) < 11:
+    while len(sockets) < 7:
         port = random.randint(48000, 60999)
         if port in chosen:
             continue
@@ -82,20 +78,14 @@ finally:
         sock.close()
 PY
 )"
-fi
 
-export SUPPORTCHAT_API_CHANNEL_ENDPOINT="${SUPPORTCHAT_API_CHANNEL_ENDPOINT:-tcp://127.0.0.1:${PORTS[0]}}"
-export SUPPORTCHAT_SUPPORT_CHANNEL_ENDPOINT="${SUPPORTCHAT_SUPPORT_CHANNEL_ENDPOINT:-tcp://127.0.0.1:${PORTS[1]}}"
-export SUPPORTCHAT_SESSION_SPOT_ENDPOINT="${SUPPORTCHAT_SESSION_SPOT_ENDPOINT:-tcp://127.0.0.1:${PORTS[2]}}"
-export SUPPORTCHAT_SESSION_ROUTER_ENDPOINT="${SUPPORTCHAT_SESSION_ROUTER_ENDPOINT:-tcp://127.0.0.1:${PORTS[3]}}"
-export SUPPORTCHAT_SUPPORT_ROUTER_ENDPOINT="${SUPPORTCHAT_SUPPORT_ROUTER_ENDPOINT:-tcp://127.0.0.1:${PORTS[4]}}"
-export SUPPORTCHAT_ENTRY_SPOT_ENDPOINT="${SUPPORTCHAT_ENTRY_SPOT_ENDPOINT:-tcp://127.0.0.1:${PORTS[5]}}"
-export SUPPORTCHAT_ENTRY_SPOT_ROUTER_ENDPOINT="${SUPPORTCHAT_ENTRY_SPOT_ROUTER_ENDPOINT:-tcp://127.0.0.1:${PORTS[6]}}"
-export SUPPORTCHAT_CONVERSATION_SPOT_ENDPOINT="${SUPPORTCHAT_CONVERSATION_SPOT_ENDPOINT:-tcp://127.0.0.1:${PORTS[7]}}"
-export SUPPORTCHAT_CONVERSATION_SPOT_ROUTER_ENDPOINT="${SUPPORTCHAT_CONVERSATION_SPOT_ROUTER_ENDPOINT:-tcp://127.0.0.1:${PORTS[8]}}"
-export SUPPORTCHAT_STREAM_ENDPOINT="${SUPPORTCHAT_STREAM_ENDPOINT:-tcp://127.0.0.1:${PORTS[9]}}"
-export SUPPORTCHAT_RECONNECT_STREAM_ENDPOINT="${SUPPORTCHAT_RECONNECT_STREAM_ENDPOINT:-tcp://127.0.0.1:${PORTS[10]}}"
-export SUPPORTCHAT_REDIS_KEY_PREFIX="${SUPPORTCHAT_REDIS_KEY_PREFIX:-supportchat:dotnet:${RANDOM}:$$:}"
+export SUPPORTCHAT_API_CHANNEL_ENDPOINT="tcp://127.0.0.1:${PORTS[0]}"
+export SUPPORTCHAT_SUPPORT_CHANNEL_ENDPOINT="tcp://127.0.0.1:${PORTS[1]}"
+export SUPPORTCHAT_SESSION_SPOT_ENDPOINT="tcp://127.0.0.1:${PORTS[2]}"
+export SUPPORTCHAT_SESSION_ROUTER_ENDPOINT="tcp://127.0.0.1:${PORTS[3]}"
+export SUPPORTCHAT_ENTRY_SPOT_ENDPOINT="tcp://127.0.0.1:${PORTS[4]}"
+export SUPPORTCHAT_ENTRY_SPOT_ROUTER_ENDPOINT="tcp://127.0.0.1:${PORTS[5]}"
+export SUPPORTCHAT_STREAM_ENDPOINT="tcp://127.0.0.1:${PORTS[6]}"
 
 endpoint_host() {
   local endpoint="$1"
@@ -139,18 +129,29 @@ start_server() {
   PIDS+=("$!")
 }
 
-dotnet build "${SCRIPT_DIR}/SupportChat.csproj" --maxcpucount:1
+wait_log() {
+  local pattern="$1"
+  local file="$2"
+  for _ in $(seq 1 50); do
+    if grep -Eq "${pattern}" "${file}"; then
+      return 0
+    fi
+    sleep 0.2
+  done
+  echo "Timed out waiting for '${pattern}' in ${file}" >&2
+  return 1
+}
 
-# The sample owns its Redis: a dedicated, throwaway container is the shared
-# location store every server registers into (no registry process exists).
 if ! command -v docker >/dev/null 2>&1; then
-  echo "Docker is required to run the SupportChat sample (it provisions a dedicated Redis container)." >&2
+  echo "Docker is required to run the SupportChat sample." >&2
   exit 1
 fi
-REDIS_CONTAINER="supportchat-dotnet-redis-${RANDOM}-$$"
+REDIS_CONTAINER="zlink-supportchat-dotnet-redis-${RUN_ID}"
 docker run -d --rm --name "${REDIS_CONTAINER}" -p "127.0.0.1::6379" redis:7.2-alpine >/dev/null
 export SUPPORTCHAT_REDIS_ENDPOINT="$(docker port "${REDIS_CONTAINER}" 6379/tcp | sed -E 's/.*:([0-9]+)$/127.0.0.1:\1/')"
 wait_port redis "tcp://${SUPPORTCHAT_REDIS_ENDPOINT}"
+
+dotnet build "${SCRIPT_DIR}/SupportChat.csproj" --maxcpucount:1
 
 start_server support "${SCRIPT_DIR}/Server/Support/SupportChat.Server.Support.csproj"
 wait_port support-channel "${SUPPORTCHAT_SUPPORT_CHANNEL_ENDPOINT}"
@@ -165,12 +166,16 @@ wait_port session-route "${SUPPORTCHAT_SESSION_SPOT_ENDPOINT}"
 wait_port session-router "${SUPPORTCHAT_SESSION_ROUTER_ENDPOINT}"
 wait_port session-stream "${SUPPORTCHAT_STREAM_ENDPOINT}"
 
-sleep "${SUPPORTCHAT_STARTUP_DELAY_SECONDS:-3}"
-
 dotnet run --no-build --project "${SCRIPT_DIR}/Client/SupportChat.Client.csproj" -- \
-  --stream-endpoint "${SUPPORTCHAT_STREAM_ENDPOINT}"
+  --stream-endpoint "${SUPPORTCHAT_STREAM_ENDPOINT}" >"${LOG_DIR}/client.log" 2>&1
 
-grep -q "support conversation: created" "${LOG_DIR}/support.log"
-grep -q "support conversation: actor joined" "${LOG_DIR}/support.log"
+grep -q "supportchat=completed" "${LOG_DIR}/client.log"
+grep -q "supportchat-closed-typing-ignore=verified" "${LOG_DIR}/client.log"
+wait_log "support conversation: created" "${LOG_DIR}/support.log"
+wait_log "support conversation: actor joined" "${LOG_DIR}/support.log"
+wait_log "status=WaitingForAgent" "${LOG_DIR}/support.log"
+wait_log "status=Active" "${LOG_DIR}/support.log"
+wait_log "status=WaitingForClose" "${LOG_DIR}/support.log"
+wait_log "status=Closed" "${LOG_DIR}/support.log"
 grep -Rq "message flow" "${SUPPORTCHAT_LOG_DIR}"
 echo "supportchat-server-evidence=completed"

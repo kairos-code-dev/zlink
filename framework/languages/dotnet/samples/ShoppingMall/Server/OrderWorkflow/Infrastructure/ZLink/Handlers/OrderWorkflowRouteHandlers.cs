@@ -1,15 +1,18 @@
+using ShoppingMall.Server.Configuration;
 using ShoppingMall.Server.OrderWorkflow.Application.OrderWorkflow;
 using ShoppingMall.Server.OrderWorkflow.Infrastructure.ZLink.Spots.OrderWorkflowSpot;
 using ShoppingMall.Shared.Contracts;
 using Systems.Zlink;
 using Zlink.Framework.Contracts.Channels;
+using Zlink.Framework.Contracts.Locations;
 using Zlink.Framework.Contracts.Spots;
 
 namespace ShoppingMall.Server.OrderWorkflow.Infrastructure.ZLink.Handlers;
 
 internal sealed class StartOrderWorkflowRouteHandler(
     IZLinkSpotManager spots,
-    OrderWorkflowService workflow,
+    IZLinkRouteClient routes,
+    WorkflowInstanceTopology instance,
     ILogger<StartOrderWorkflowRouteHandler> logger)
     : IZLinkRouteRequestHandler<StartOrderWorkflowReq, StartOrderWorkflowRes>
 {
@@ -21,27 +24,24 @@ internal sealed class StartOrderWorkflowRouteHandler(
         logger.LogInformation(
             "shoppingmall workflow route: StartOrderWorkflowReq order={OrderId}",
             request.OrderId);
-        await EnsureSpotAsync(spots, request.OrderId, cancellationToken);
-        var state = await workflow.StartAsync(request, cancellationToken);
-        _ = ContinueAfterStartAsync(workflow, request.OrderId)
-            .ContinueWith(
-                static task => _ = task.Exception,
-                CancellationToken.None,
-                TaskContinuationOptions.OnlyOnFaulted | TaskContinuationOptions.ExecuteSynchronously,
-                TaskScheduler.Default);
+        var address = await EnsureSpotAsync(spots, instance, request.OrderId, cancellationToken);
+        var response = await routes
+            .RequestToSpot(SampleNames.OrderWorkflowRouteChannel, address, request)
+            .Async<StartOrderWorkflowRes>(cancellationToken);
         logger.LogInformation(
             "shoppingmall workflow route: delivered StartOrderWorkflowReq to spot owner. order={OrderId}, status={Status}",
-            state.OrderId,
-            state.Status);
+            response.State.OrderId,
+            response.State.Status);
         logger.LogInformation(
             "shoppingmall order: started order={OrderId} status={Status}",
-            state.OrderId,
-            state.Status);
-        return new StartOrderWorkflowRes(state);
+            response.State.OrderId,
+            response.State.Status);
+        return response;
     }
 
-    internal static async ValueTask EnsureSpotAsync(
+    internal static async ValueTask<ZLinkSpotAddress> EnsureSpotAsync(
         IZLinkSpotManager spots,
+        WorkflowInstanceTopology instance,
         string orderId,
         CancellationToken cancellationToken)
     {
@@ -49,20 +49,14 @@ internal sealed class StartOrderWorkflowRouteHandler(
             RoutingId.From(orderId),
             new OrderWorkflowSpotCreateReq(orderId),
             cancellationToken);
-    }
-
-    private static async Task ContinueAfterStartAsync(
-        OrderWorkflowService workflow,
-        string orderId)
-    {
-        await workflow.ContinueAsync(new ContinueOrderWorkflowReq(orderId), CancellationToken.None)
-            .ConfigureAwait(false);
+        return new ZLinkSpotAddress(instance.SpotRid, RoutingId.From(orderId));
     }
 }
 
 internal sealed class ContinueOrderWorkflowRouteHandler(
     IZLinkSpotManager spots,
-    OrderWorkflowService workflow)
+    IZLinkRouteClient routes,
+    WorkflowInstanceTopology instance)
     : IZLinkRouteRequestHandler<ContinueOrderWorkflowReq, ContinueOrderWorkflowRes>
 {
     public async ValueTask<ContinueOrderWorkflowRes> HandleAsync(
@@ -70,15 +64,21 @@ internal sealed class ContinueOrderWorkflowRouteHandler(
         ZLinkRouteRequestContext context,
         CancellationToken cancellationToken)
     {
-        await StartOrderWorkflowRouteHandler.EnsureSpotAsync(spots, request.OrderId, cancellationToken);
-        var state = await workflow.ContinueAsync(request, cancellationToken);
-        return new ContinueOrderWorkflowRes(state);
+        var address = await StartOrderWorkflowRouteHandler.EnsureSpotAsync(
+            spots,
+            instance,
+            request.OrderId,
+            cancellationToken);
+        return await routes
+            .RequestToSpot(SampleNames.OrderWorkflowRouteChannel, address, request)
+            .Async<ContinueOrderWorkflowRes>(cancellationToken);
     }
 }
 
 internal sealed class RebuildOrderProjectionRouteHandler(
     IZLinkSpotManager spots,
-    OrderWorkflowService workflow,
+    IZLinkRouteClient routes,
+    WorkflowInstanceTopology instance,
     ILogger<RebuildOrderProjectionRouteHandler> logger)
     : IZLinkRouteRequestHandler<RebuildOrderProjectionReq, RebuildOrderProjectionRes>
 {
@@ -87,12 +87,18 @@ internal sealed class RebuildOrderProjectionRouteHandler(
         ZLinkRouteRequestContext context,
         CancellationToken cancellationToken)
     {
-        await StartOrderWorkflowRouteHandler.EnsureSpotAsync(spots, request.OrderId, cancellationToken);
-        var state = await workflow.RebuildProjectionAsync(request.OrderId, cancellationToken);
+        var address = await StartOrderWorkflowRouteHandler.EnsureSpotAsync(
+            spots,
+            instance,
+            request.OrderId,
+            cancellationToken);
+        var response = await routes
+            .RequestToSpot(SampleNames.OrderWorkflowRouteChannel, address, request)
+            .Async<RebuildOrderProjectionRes>(cancellationToken);
         logger.LogInformation(
             "shoppingmall order: projection rebuilt order={OrderId} status={Status}",
-            state.OrderId,
-            state.Status);
-        return new RebuildOrderProjectionRes(state);
+            response.State.OrderId,
+            response.State.Status);
+        return response;
     }
 }

@@ -1,5 +1,3 @@
-using System.Security.Cryptography;
-using System.Text;
 using System.Text.Json;
 using GameQuest.GameApi.Application;
 using GameQuest.Server.Configuration;
@@ -7,22 +5,27 @@ using GameQuest.Shared;
 
 namespace GameQuest.GameApi.Infrastructure.Store;
 
-internal sealed class GameQuestStore : IGameplayEventStore
+internal sealed class GameQuestStore : IGameplayEventStore, IQuestSessionStore, IAsyncDisposable
 {
-    private static readonly JsonSerializerOptions JsonOptions = new(JsonSerializerDefaults.Web);
-    private readonly string _directory;
+    private readonly string _keyPrefix;
+    private readonly RedisJsonStore _redis;
 
     public GameQuestStore(GameQuestTopology topology)
     {
-        _directory = topology.StoreDirectory;
-        Directory.CreateDirectory(_directory);
+        _redis = new RedisJsonStore(topology.RedisEndpoint);
+        _keyPrefix = $"{topology.RedisKeyPrefix}gamequest:";
+    }
+
+    public async ValueTask DisposeAsync()
+    {
+        await _redis.DisposeAsync().ConfigureAwait(false);
     }
 
     public async ValueTask<GameplayEventEnvelope> GetOrAddGameplayEventAsync(
         GameplayEventEnvelope candidate,
         CancellationToken cancellationToken)
     {
-        var path = Path.Combine(_directory, "gameplay-events.json");
+        var path = Key("gameplay-events");
         return await UpdateAsync(
             path,
             new List<GameplayEventEnvelope>(),
@@ -44,7 +47,7 @@ internal sealed class GameQuestStore : IGameplayEventStore
         int count,
         CancellationToken cancellationToken)
     {
-        var path = Path.Combine(_directory, "unpublished-kills.json");
+        var path = Key("unpublished-kills");
         await UpdateAsync(
             path,
             new Dictionary<string, int>(StringComparer.Ordinal),
@@ -61,11 +64,11 @@ internal sealed class GameQuestStore : IGameplayEventStore
         CancellationToken cancellationToken)
     {
         var events = await ReadAsync<List<GameplayEventEnvelope>>(
-            Path.Combine(_directory, "gameplay-events.json"),
+            Key("gameplay-events"),
             [],
             cancellationToken);
         var unpublished = await ReadAsync<Dictionary<string, int>>(
-            Path.Combine(_directory, "unpublished-kills.json"),
+            Key("unpublished-kills"),
             new Dictionary<string, int>(StringComparer.Ordinal),
             cancellationToken);
         return events
@@ -79,11 +82,11 @@ internal sealed class GameQuestStore : IGameplayEventStore
         CancellationToken cancellationToken)
     {
         var events = await ReadAsync<List<GameplayEventEnvelope>>(
-            Path.Combine(_directory, "gameplay-events.json"),
+            Key("gameplay-events"),
             [],
             cancellationToken);
         var unpublishedKills = await ReadAsync<Dictionary<string, int>>(
-            Path.Combine(_directory, "unpublished-kills.json"),
+            Key("unpublished-kills"),
             new Dictionary<string, int>(StringComparer.Ordinal),
             cancellationToken);
 
@@ -136,7 +139,7 @@ internal sealed class GameQuestStore : IGameplayEventStore
         CancellationToken cancellationToken)
     {
         await UpdateAsync(
-            Path.Combine(_directory, "quest-subscriptions.json"),
+            Key("quest-subscriptions"),
             new List<BindQuestSessionReq>(),
             bindings =>
             {
@@ -146,7 +149,7 @@ internal sealed class GameQuestStore : IGameplayEventStore
             },
             cancellationToken);
         await UpdateAsync(
-            Path.Combine(_directory, "quest-subscription-history.json"),
+            Key("quest-subscription-history"),
             new List<BindQuestSessionReq>(),
             bindings =>
             {
@@ -166,7 +169,7 @@ internal sealed class GameQuestStore : IGameplayEventStore
         CancellationToken cancellationToken)
     {
         var removed = await UpdateAsync(
-            Path.Combine(_directory, "quest-subscriptions.json"),
+            Key("quest-subscriptions"),
             new List<BindQuestSessionReq>(),
             bindings =>
             {
@@ -183,7 +186,7 @@ internal sealed class GameQuestStore : IGameplayEventStore
     public async ValueTask<BindQuestSessionReq[]> ReadBindingsAsync(CancellationToken cancellationToken)
     {
         var bindings = await ReadAsync<List<BindQuestSessionReq>>(
-            Path.Combine(_directory, "quest-subscriptions.json"),
+            Key("quest-subscriptions"),
             [],
             cancellationToken);
         return bindings.OrderBy(binding => binding.PlayerId, StringComparer.Ordinal).ToArray();
@@ -192,7 +195,7 @@ internal sealed class GameQuestStore : IGameplayEventStore
     public async ValueTask<BindQuestSessionReq[]> ReadBindingHistoryAsync(CancellationToken cancellationToken)
     {
         var bindings = await ReadAsync<List<BindQuestSessionReq>>(
-            Path.Combine(_directory, "quest-subscription-history.json"),
+            Key("quest-subscription-history"),
             [],
             cancellationToken);
         return bindings.OrderBy(binding => binding.PlayerId, StringComparer.Ordinal).ToArray();
@@ -203,7 +206,7 @@ internal sealed class GameQuestStore : IGameplayEventStore
         CancellationToken cancellationToken)
     {
         var all = await ReadAsync<List<QuestProgress>>(
-            Path.Combine(_directory, "quest-projection.json"),
+            Key("quest-projection"),
             [],
             cancellationToken);
         return all
@@ -218,7 +221,7 @@ internal sealed class GameQuestStore : IGameplayEventStore
         CancellationToken cancellationToken)
     {
         await UpdateAsync(
-            Path.Combine(_directory, "quest-projection.json"),
+            Key("quest-projection"),
             new List<QuestProgress>(),
             projection =>
             {
@@ -275,7 +278,7 @@ internal sealed class GameQuestStore : IGameplayEventStore
             lastEventId,
             updatedAtUnixMs);
         await UpdateAsync(
-            Path.Combine(_directory, "quest-projection.json"),
+            Key("quest-projection"),
             new List<QuestProgress>(),
             projection =>
             {
@@ -292,7 +295,7 @@ internal sealed class GameQuestStore : IGameplayEventStore
     public async ValueTask<StoredQuestEvent[]> ReadQuestEventsAsync(CancellationToken cancellationToken)
     {
         var events = await ReadAsync<List<StoredQuestEvent>>(
-            Path.Combine(_directory, "quest-events.json"),
+            Key("quest-events"),
             [],
             cancellationToken);
         return events
@@ -302,44 +305,30 @@ internal sealed class GameQuestStore : IGameplayEventStore
             .ToArray();
     }
 
-    private static async ValueTask<TResult> UpdateAsync<T, TResult>(
-        string path,
+    public async ValueTask<Dictionary<string, int>> ReadOwnerRehydrateEvidenceAsync(CancellationToken cancellationToken)
+    {
+        return await ReadAsync<Dictionary<string, int>>(
+            Key("owner-rehydrates"),
+            new Dictionary<string, int>(StringComparer.Ordinal),
+            cancellationToken);
+    }
+
+    private async ValueTask<TResult> UpdateAsync<T, TResult>(
+        string key,
         T fallback,
         Func<T, TResult> update,
         CancellationToken cancellationToken)
     {
-        Directory.CreateDirectory(Path.GetDirectoryName(path)!);
-        using var mutex = new Mutex(false, MutexName(path));
-        mutex.WaitOne();
-        try
-        {
-            var value = await ReadAsync(path, fallback, cancellationToken);
-            var result = update(value);
-            File.WriteAllText(path, JsonSerializer.Serialize(value, JsonOptions));
-            return result;
-        }
-        finally
-        {
-            mutex.ReleaseMutex();
-        }
+        return await _redis.UpdateAsync(key, fallback, update, cancellationToken).ConfigureAwait(false);
     }
 
-    private static async ValueTask<T> ReadAsync<T>(
-        string path,
+    private ValueTask<T> ReadAsync<T>(
+        string key,
         T fallback,
         CancellationToken cancellationToken)
     {
-        if (!File.Exists(path)) return fallback;
-
-        await Task.CompletedTask;
-        var json = File.ReadAllText(path);
-        return JsonSerializer.Deserialize<T>(json, JsonOptions) ?? fallback;
+        return _redis.ReadAsync(key, fallback, cancellationToken);
     }
 
-    private static string MutexName(string path)
-    {
-        return "GameQuest-" +
-               Convert.ToHexString(
-                   SHA256.HashData(Encoding.UTF8.GetBytes(path)));
-    }
+    private string Key(string name) => $"{_keyPrefix}{name}";
 }

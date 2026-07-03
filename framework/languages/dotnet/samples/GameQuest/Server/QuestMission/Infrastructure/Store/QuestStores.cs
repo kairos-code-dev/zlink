@@ -1,30 +1,35 @@
-using System.Security.Cryptography;
-using System.Text;
-using System.Text.Json;
 using GameQuest.QuestMission.Application;
 using GameQuest.Server.Configuration;
 using GameQuest.Shared;
 
 namespace GameQuest.QuestMission.Infrastructure.Store;
 
-internal sealed class QuestStore : IQuestStore
+internal sealed class QuestStore : IQuestStore, IAsyncDisposable
 {
-    private static readonly JsonSerializerOptions JsonOptions = new(JsonSerializerDefaults.Web);
-    private readonly string _directory;
+    private readonly string _keyPrefix;
+    private readonly RedisJsonStore _redis;
 
     public QuestStore(GameQuestTopology topology)
     {
-        _directory = topology.StoreDirectory;
-        Directory.CreateDirectory(_directory);
+        _redis = new RedisJsonStore(topology.RedisEndpoint);
+        _keyPrefix = $"{topology.RedisKeyPrefix}gamequest:";
     }
 
-    public async ValueTask<QuestProgress?> ReadProgressAsync(
+    public async ValueTask DisposeAsync()
+    {
+        await _redis.DisposeAsync().ConfigureAwait(false);
+    }
+
+    public async ValueTask<StoredQuestEvent[]> ReadQuestStreamAsync(
         string playerId,
         string questId,
         CancellationToken cancellationToken)
     {
-        var all = await ReadProjectionAsync(playerId, cancellationToken);
-        return all.FirstOrDefault(p => p.QuestId == questId);
+        var events = await ReadEventsAsync(cancellationToken);
+        return events
+            .Where(e => e.PlayerId == playerId && e.QuestId == questId)
+            .OrderBy(e => e.Version)
+            .ToArray();
     }
 
     public async ValueTask<QuestProgress[]> ReadProjectionAsync(
@@ -32,7 +37,7 @@ internal sealed class QuestStore : IQuestStore
         CancellationToken cancellationToken)
     {
         var all = await ReadAsync<List<QuestProgress>>(
-            Path.Combine(_directory, "quest-projection.json"),
+            Key("quest-projection"),
             [],
             cancellationToken);
         return all
@@ -61,7 +66,7 @@ internal sealed class QuestStore : IQuestStore
     {
         var appended = false;
         await UpdateAsync(
-            Path.Combine(_directory, "quest-events.json"),
+            Key("quest-events"),
             new List<StoredQuestEvent>(),
             stored =>
             {
@@ -88,7 +93,7 @@ internal sealed class QuestStore : IQuestStore
         if (!appended) return false;
 
         await UpdateAsync(
-            Path.Combine(_directory, "quest-projection.json"),
+            Key("quest-projection"),
             new List<QuestProgress>(),
             projection =>
             {
@@ -102,7 +107,7 @@ internal sealed class QuestStore : IQuestStore
     public async ValueTask<StoredQuestEvent[]> ReadEventsAsync(CancellationToken cancellationToken)
     {
         var events = await ReadAsync<List<StoredQuestEvent>>(
-            Path.Combine(_directory, "quest-events.json"),
+            Key("quest-events"),
             [],
             cancellationToken);
         return events
@@ -112,40 +117,41 @@ internal sealed class QuestStore : IQuestStore
             .ToArray();
     }
 
-    private static async ValueTask UpdateAsync<T>(
-        string path,
+    public async ValueTask RecordOwnerRehydratedAsync(
+        string playerId,
+        CancellationToken cancellationToken)
+    {
+        await UpdateAsync(
+            Key("owner-rehydrates"),
+            new Dictionary<string, int>(StringComparer.Ordinal),
+            evidence =>
+            {
+                evidence[playerId] = evidence.GetValueOrDefault(playerId) + 1;
+            },
+            cancellationToken);
+    }
+
+    public async ValueTask<Dictionary<string, int>> ReadOwnerRehydrateCountsAsync(CancellationToken cancellationToken)
+    {
+        return await ReadAsync(
+            Key("owner-rehydrates"),
+            new Dictionary<string, int>(StringComparer.Ordinal),
+            cancellationToken);
+    }
+
+    private async ValueTask UpdateAsync<T>(
+        string key,
         T fallback,
         Action<T> update,
         CancellationToken cancellationToken)
     {
-        Directory.CreateDirectory(Path.GetDirectoryName(path)!);
-        using var mutex = new Mutex(false, MutexName(path));
-        mutex.WaitOne();
-        try
-        {
-            var value = await ReadAsync(path, fallback, cancellationToken);
-            update(value);
-            File.WriteAllText(path, JsonSerializer.Serialize(value, JsonOptions));
-        }
-        finally
-        {
-            mutex.ReleaseMutex();
-        }
+        await _redis.UpdateAsync(key, fallback, update, cancellationToken).ConfigureAwait(false);
     }
 
-    private static async ValueTask<T> ReadAsync<T>(string path, T fallback, CancellationToken cancellationToken)
+    private ValueTask<T> ReadAsync<T>(string key, T fallback, CancellationToken cancellationToken)
     {
-        if (!File.Exists(path)) return fallback;
-
-        await Task.CompletedTask;
-        var json = File.ReadAllText(path);
-        return JsonSerializer.Deserialize<T>(json, JsonOptions) ?? fallback;
+        return _redis.ReadAsync(key, fallback, cancellationToken);
     }
 
-    private static string MutexName(string path)
-    {
-        return "GameQuest-" +
-               Convert.ToHexString(
-                   SHA256.HashData(Encoding.UTF8.GetBytes(path)));
-    }
+    private string Key(string name) => $"{_keyPrefix}{name}";
 }

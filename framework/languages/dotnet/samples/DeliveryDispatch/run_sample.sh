@@ -51,7 +51,7 @@ trap cleanup EXIT
 
 if [[ -n "${DELIVERYDISPATCH_BASE_PORT:-}" ]]; then
   PORTS=()
-  for offset in $(seq 1 18); do
+  for offset in $(seq 1 19); do
     PORTS+=("$((DELIVERYDISPATCH_BASE_PORT + offset))")
   done
 else
@@ -62,7 +62,7 @@ import socket
 sockets = []
 chosen = set()
 try:
-    while len(sockets) < 18:
+    while len(sockets) < 19:
         port = random.randint(41000, 60999)
         if port in chosen:
             continue
@@ -84,21 +84,22 @@ fi
 
 export DELIVERYDISPATCH_REDIS_KEY_PREFIX="${DELIVERYDISPATCH_REDIS_KEY_PREFIX:-deliverydispatch:dotnet:${RANDOM}:$$:}"
 export DELIVERYDISPATCH_DISPATCH_HTTP="http://127.0.0.1:${PORTS[2]}"
-export DELIVERYDISPATCH_COURIER_ROUTE="tcp://127.0.0.1:${PORTS[3]}"
+export DELIVERYDISPATCH_DISPATCH_CHANNEL="tcp://127.0.0.1:${PORTS[3]}"
 export DELIVERYDISPATCH_COURIER_ACTOR_NODE1_ROUTE="tcp://127.0.0.1:${PORTS[4]}"
 export DELIVERYDISPATCH_TRACKING_ROUTE="tcp://127.0.0.1:${PORTS[5]}"
-export DELIVERYDISPATCH_CUSTOMER_ROUTE="tcp://127.0.0.1:${PORTS[6]}"
-export DELIVERYDISPATCH_CUSTOMER_STREAM="tcp://127.0.0.1:${PORTS[7]}"
-export DELIVERYDISPATCH_CUSTOMER_SPOT_ROUTER="tcp://127.0.0.1:${PORTS[8]}"
-export DELIVERYDISPATCH_CUSTOMER_SPOT="tcp://127.0.0.1:${PORTS[9]}"
-export DELIVERYDISPATCH_COURIER_STREAM="tcp://127.0.0.1:${PORTS[10]}"
-export DELIVERYDISPATCH_COURIER_SESSION_SPOT_ROUTER="tcp://127.0.0.1:${PORTS[11]}"
-export DELIVERYDISPATCH_COURIER_SESSION_SPOT="tcp://127.0.0.1:${PORTS[12]}"
-export DELIVERYDISPATCH_COURIER_ACTOR_NODE1_ROUTER="tcp://127.0.0.1:${PORTS[13]}"
-export DELIVERYDISPATCH_COURIER_ACTOR_NODE1="tcp://127.0.0.1:${PORTS[14]}"
-export DELIVERYDISPATCH_COURIER_ACTOR_NODE2_ROUTE="tcp://127.0.0.1:${PORTS[15]}"
-export DELIVERYDISPATCH_COURIER_ACTOR_NODE2_ROUTER="tcp://127.0.0.1:${PORTS[16]}"
-export DELIVERYDISPATCH_COURIER_ACTOR_NODE2="tcp://127.0.0.1:${PORTS[17]}"
+export DELIVERYDISPATCH_TRACKING_SPOT_ROUTER="tcp://127.0.0.1:${PORTS[6]}"
+export DELIVERYDISPATCH_TRACKING_SPOT="tcp://127.0.0.1:${PORTS[7]}"
+export DELIVERYDISPATCH_CUSTOMER_STREAM="tcp://127.0.0.1:${PORTS[8]}"
+export DELIVERYDISPATCH_CUSTOMER_SPOT_ROUTER="tcp://127.0.0.1:${PORTS[9]}"
+export DELIVERYDISPATCH_CUSTOMER_SPOT="tcp://127.0.0.1:${PORTS[10]}"
+export DELIVERYDISPATCH_COURIER_STREAM="tcp://127.0.0.1:${PORTS[11]}"
+export DELIVERYDISPATCH_COURIER_SESSION_SPOT_ROUTER="tcp://127.0.0.1:${PORTS[12]}"
+export DELIVERYDISPATCH_COURIER_SESSION_SPOT="tcp://127.0.0.1:${PORTS[13]}"
+export DELIVERYDISPATCH_COURIER_ACTOR_NODE1_ROUTER="tcp://127.0.0.1:${PORTS[14]}"
+export DELIVERYDISPATCH_COURIER_ACTOR_NODE1="tcp://127.0.0.1:${PORTS[15]}"
+export DELIVERYDISPATCH_COURIER_ACTOR_NODE2_ROUTE="tcp://127.0.0.1:${PORTS[16]}"
+export DELIVERYDISPATCH_COURIER_ACTOR_NODE2_ROUTER="tcp://127.0.0.1:${PORTS[17]}"
+export DELIVERYDISPATCH_COURIER_ACTOR_NODE2="tcp://127.0.0.1:${PORTS[18]}"
 export DELIVERYDISPATCH_WORK_DIR="${WORK_DIR}"
 
 endpoint_host() {
@@ -161,25 +162,40 @@ start_server() {
   PIDS+=("$!")
 }
 
-dotnet build "${SCRIPT_DIR}/DeliveryDispatch.sln" --maxcpucount:1
+wait_log() {
+  local pattern="$1"
+  local file="$2"
+  for _ in $(seq 1 80); do
+    if grep -Eq "${pattern}" "${file}"; then
+      return 0
+    fi
+    sleep 0.2
+  done
+  echo "Timed out waiting for '${pattern}' in ${file}" >&2
+  return 1
+}
 
-# The sample owns its Redis: a dedicated, throwaway container is the shared
-# location store every server registers into (no registry process exists).
-if ! command -v docker >/dev/null 2>&1; then
-  echo "Docker is required to run the DeliveryDispatch sample (it provisions a dedicated Redis container)." >&2
-  exit 1
+if [[ -z "${DELIVERYDISPATCH_REDIS_ENDPOINT:-}" ]]; then
+  if ! command -v docker >/dev/null 2>&1; then
+    echo "Docker is required to run the DeliveryDispatch sample when DELIVERYDISPATCH_REDIS_ENDPOINT is not set." >&2
+    exit 1
+  fi
+  REDIS_CONTAINER="deliverydispatch-dotnet-redis-${RANDOM}-$$"
+  docker run -d --rm --name "${REDIS_CONTAINER}" -p "127.0.0.1::6379" redis:7.2-alpine >/dev/null
+  export DELIVERYDISPATCH_REDIS_ENDPOINT="$(docker port "${REDIS_CONTAINER}" 6379/tcp | sed -E 's/.*:([0-9]+)$/127.0.0.1:\1/')"
 fi
-REDIS_CONTAINER="deliverydispatch-dotnet-redis-${RANDOM}-$$"
-docker run -d --rm --name "${REDIS_CONTAINER}" -p "127.0.0.1::6379" redis:7.2-alpine >/dev/null
-export DELIVERYDISPATCH_REDIS_ENDPOINT="$(docker port "${REDIS_CONTAINER}" 6379/tcp | sed -E 's/.*:([0-9]+)$/127.0.0.1:\1/')"
 wait_port redis "tcp://${DELIVERYDISPATCH_REDIS_ENDPOINT}"
+
+dotnet build "${SCRIPT_DIR}/DeliveryDispatch.sln" --maxcpucount:1
 
 start_server tracking "${SCRIPT_DIR}/Server/Tracking/DeliveryDispatch.Server.Tracking.csproj"
 wait_port tracking-route "${DELIVERYDISPATCH_TRACKING_ROUTE}"
+wait_port tracking-spot-router "${DELIVERYDISPATCH_TRACKING_SPOT_ROUTER}"
+wait_port tracking-spot "${DELIVERYDISPATCH_TRACKING_SPOT}"
 
 start_server customer-gateway "${SCRIPT_DIR}/Server/CustomerGateway/DeliveryDispatch.Server.CustomerGateway.csproj"
-wait_port customer-route "${DELIVERYDISPATCH_CUSTOMER_ROUTE}"
 wait_port customer-stream "${DELIVERYDISPATCH_CUSTOMER_STREAM}"
+wait_port customer-spot-router "${DELIVERYDISPATCH_CUSTOMER_SPOT_ROUTER}"
 
 start_server courier-session "${SCRIPT_DIR}/Server/CourierSession/DeliveryDispatch.Server.CourierSession.csproj"
 wait_port courier-session-stream "${DELIVERYDISPATCH_COURIER_STREAM}"
@@ -192,25 +208,21 @@ start_server courier-actor-node2 "${SCRIPT_DIR}/Server/CourierActorNode/Delivery
 wait_port courier-actor-node2-route "${DELIVERYDISPATCH_COURIER_ACTOR_NODE2_ROUTE}"
 wait_port courier-actor-node2-router "${DELIVERYDISPATCH_COURIER_ACTOR_NODE2_ROUTER}"
 
-start_server courier-gateway "${SCRIPT_DIR}/Server/CourierGateway/DeliveryDispatch.Server.CourierGateway.csproj"
-wait_port courier-route "${DELIVERYDISPATCH_COURIER_ROUTE}"
-
 start_server dispatch "${SCRIPT_DIR}/Server/Dispatch/DeliveryDispatch.Server.Dispatch.csproj"
 wait_http dispatch "${DELIVERYDISPATCH_DISPATCH_HTTP}"
-
-sleep "${DELIVERYDISPATCH_STARTUP_DELAY_SECONDS:-10}"
-
-# Give the auto-connect reconcile loops one or two polling intervals to
-# converge before the scenario drives traffic.
-sleep "${DELIVERYDISPATCH_STARTUP_DELAY_SECONDS:-3}"
 
 dotnet run --no-build --project "${SCRIPT_DIR}/Client/DeliveryDispatch.Client.csproj" -- \
   --api-url "${DELIVERYDISPATCH_DISPATCH_HTTP}" \
   --stream-endpoint "${DELIVERYDISPATCH_CUSTOMER_STREAM}" \
-  --courier-stream-endpoint "${DELIVERYDISPATCH_COURIER_STREAM}"
+  --courier-stream-endpoint "${DELIVERYDISPATCH_COURIER_STREAM}" >"${LOG_DIR}/client.log" 2>&1
 
-grep -q "deliverydispatch tracking: status" "${LOG_DIR}/tracking.log"
-grep -q "deliverydispatch customer-session: bound customer" "${LOG_DIR}/customer-gateway.log"
-grep -q "deliverydispatch courier-session: bound courier=courier-a" "${LOG_DIR}/courier-session.log"
-grep -q "deliverydispatch courier-session: bound courier=courier-b" "${LOG_DIR}/courier-session.log"
+grep -q "deliverydispatch=completed" "${LOG_DIR}/client.log"
+grep -q "topology=ready" "${LOG_DIR}/client.log"
+grep -q "deliverydispatch-reassignment=completed" "${LOG_DIR}/client.log"
+grep -q "deliverydispatch-server-evidence=completed" "${LOG_DIR}/client.log"
+wait_log "deliverydispatch tracking: status" "${LOG_DIR}/tracking.log"
+wait_log "deliverydispatch customer-session: bound customer" "${LOG_DIR}/customer-gateway.log"
+wait_log "deliverydispatch courier-session: bound courier=courier-a" "${LOG_DIR}/courier-session.log"
+wait_log "deliverydispatch courier-session: bound courier=courier-b" "${LOG_DIR}/courier-session.log"
 grep -Rq "message flow" "${DELIVERYDISPATCH_LOG_DIR}"
+echo "deliverydispatch-runner-evidence=completed"

@@ -20,6 +20,919 @@ public sealed class RegressionTests
     }
 
     [Fact]
+    public void Bingo_Runner_Uses_Isolated_Docker_Redis()
+    {
+        var sampleRoot = ResolveSampleRoot("Bingo");
+        var shellRunner = File.ReadAllText(Path.Combine(sampleRoot, "run_sample.sh"));
+        var powershellRunner = File.ReadAllText(Path.Combine(sampleRoot, "run_sample.ps1"));
+        var readme = File.ReadAllText(Path.Combine(sampleRoot, "README.md"));
+
+        Assert.Contains("RUN_ID=\"$(basename \"${RUN_DIR}\")-$$-${RANDOM}\"", shellRunner, StringComparison.Ordinal);
+        Assert.Contains("export BINGO_REDIS_KEY_PREFIX=\"bingo:dotnet:${RUN_ID}:\"", shellRunner, StringComparison.Ordinal);
+        Assert.Contains("REDIS_CONTAINER=\"zlink-bingo-dotnet-redis-${RUN_ID}\"", shellRunner, StringComparison.Ordinal);
+        Assert.Contains("docker run -d --rm --name \"${REDIS_CONTAINER}\"", shellRunner, StringComparison.Ordinal);
+        Assert.Contains("-p \"127.0.0.1::6379\"", shellRunner, StringComparison.Ordinal);
+        Assert.Contains("if [[ -n \"${REDIS_CONTAINER}\" ]]; then", shellRunner, StringComparison.Ordinal);
+        Assert.DoesNotContain("if [[ -z \"${BINGO_REDIS_ENDPOINT:-}\" ]]", shellRunner, StringComparison.Ordinal);
+        Assert.DoesNotContain("when BINGO_REDIS_ENDPOINT is not set", shellRunner, StringComparison.Ordinal);
+        Assert.DoesNotContain("BINGO_STARTUP_DELAY_SECONDS", shellRunner, StringComparison.Ordinal);
+        Assert.DoesNotContain("BINGO_STARTUP_SETTLE_SECONDS", shellRunner, StringComparison.Ordinal);
+        Assert.DoesNotContain("auto-connect reconcile loops", shellRunner, StringComparison.Ordinal);
+        Assert.DoesNotContain("intentionally derived here, not read", shellRunner, StringComparison.Ordinal);
+
+        Assert.Contains("$RunId = \"$PID-$([Guid]::NewGuid().ToString('N'))\"", powershellRunner, StringComparison.Ordinal);
+        Assert.Contains("[Environment]::SetEnvironmentVariable(\"BINGO_REDIS_KEY_PREFIX\", \"bingo:dotnet:${RunId}:\", \"Process\")",
+            powershellRunner, StringComparison.Ordinal);
+        Assert.Contains("$RedisContainer = \"zlink-bingo-dotnet-redis-$RunId\"", powershellRunner, StringComparison.Ordinal);
+        Assert.Contains("docker run -d --rm --name $RedisContainer", powershellRunner, StringComparison.Ordinal);
+        Assert.Contains("-p \"127.0.0.1::6379\"", powershellRunner, StringComparison.Ordinal);
+        Assert.Contains("if ($RedisContainer)", powershellRunner, StringComparison.Ordinal);
+        Assert.DoesNotContain("if (-not $env:BINGO_REDIS_ENDPOINT)", powershellRunner, StringComparison.Ordinal);
+        Assert.DoesNotContain("when BINGO_REDIS_ENDPOINT is not set", powershellRunner, StringComparison.Ordinal);
+        Assert.DoesNotContain("BINGO_STARTUP_DELAY_SECONDS", powershellRunner, StringComparison.Ordinal);
+        Assert.DoesNotContain("BINGO_STARTUP_SETTLE_SECONDS", powershellRunner, StringComparison.Ordinal);
+        Assert.Contains("$env:BINGO_LOG_DIR = $SampleLogDir", powershellRunner, StringComparison.Ordinal);
+        Assert.Contains("function Wait-LogContains", powershellRunner, StringComparison.Ordinal);
+        Assert.Contains("Select-String -Pattern $Pattern -List", powershellRunner, StringComparison.Ordinal);
+        Assert.DoesNotContain("Select-String -Pattern $Pattern -Quiet", powershellRunner, StringComparison.Ordinal);
+        Assert.Contains("Wait-SampleLogContains \"message flow\" \"Bingo message-flow evidence\"", powershellRunner,
+            StringComparison.Ordinal);
+        Assert.DoesNotContain("intentionally derived here, not read", powershellRunner, StringComparison.Ordinal);
+
+        Assert.Contains("always provisions a dedicated Redis Docker", readme, StringComparison.Ordinal);
+        Assert.Contains("does not", readme, StringComparison.Ordinal);
+        Assert.Contains("reuse an externally supplied Redis", readme, StringComparison.Ordinal);
+        Assert.Contains("endpoint", readme, StringComparison.Ordinal);
+        Assert.Contains("sample name and execution id", readme, StringComparison.Ordinal);
+        Assert.Contains("public endpoints", readme, StringComparison.Ordinal);
+        Assert.DoesNotContain("waits briefly", readme, StringComparison.Ordinal);
+        Assert.Contains("parallel sample runs do not share location store", readme, StringComparison.Ordinal);
+        Assert.Contains("or match queue keys", readme, StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public void TicTacToe_Runner_Uses_Isolated_Docker_Redis()
+    {
+        var sampleRoot = ResolveSampleRoot("TicTacToe");
+        var shellRunner = File.ReadAllText(Path.Combine(sampleRoot, "run_sample.sh"));
+        var powershellRunner = File.ReadAllText(Path.Combine(sampleRoot, "run_sample.ps1"));
+        var settings = File.ReadAllText(Path.Combine(sampleRoot, "Server", "Configuration", "SampleSettings.cs"));
+        var readme = File.ReadAllText(Path.Combine(sampleRoot, "README.md"));
+
+        Assert.Contains("RUN_ID=\"$(basename \"${RUN_DIR}\")-$$-${RANDOM}\"", shellRunner, StringComparison.Ordinal);
+        Assert.Contains("export TICTACTOE_REDIS_KEY_PREFIX=\"tictactoe:dotnet:${RUN_ID}:\"", shellRunner,
+            StringComparison.Ordinal);
+        Assert.Contains("--name \"zlink-tictactoe-dotnet-redis-${RUN_ID}\"", shellRunner, StringComparison.Ordinal);
+        Assert.Contains("-p \"127.0.0.1::6379\"", shellRunner, StringComparison.Ordinal);
+        Assert.Contains("SAMPLE_LOG_DIR=\"${RUN_DIR}/sample-logs\"", shellRunner, StringComparison.Ordinal);
+        Assert.Contains("export TICTACTOE_LOG_DIR=\"${SAMPLE_LOG_DIR}\"", shellRunner, StringComparison.Ordinal);
+        Assert.DoesNotContain("if [[ -z \"${TICTACTOE_REDIS_ENDPOINT:-}\" ]]", shellRunner, StringComparison.Ordinal);
+        Assert.DoesNotContain("when TICTACTOE_REDIS_ENDPOINT is not set", shellRunner, StringComparison.Ordinal);
+        Assert.DoesNotContain("TICTACTOE_BASE_PORT", shellRunner, StringComparison.Ordinal);
+        Assert.DoesNotContain("${TICTACTOE_API_A_BIND_URL", shellRunner, StringComparison.Ordinal);
+        Assert.DoesNotContain("${TICTACTOE_API_B_BIND_URL", shellRunner, StringComparison.Ordinal);
+        Assert.DoesNotContain("${TICTACTOE_API_A_PUBLIC_URL", shellRunner, StringComparison.Ordinal);
+        Assert.DoesNotContain("${TICTACTOE_API_B_PUBLIC_URL", shellRunner, StringComparison.Ordinal);
+        Assert.DoesNotContain("${TICTACTOE_API_A_CHANNEL_ENDPOINT", shellRunner, StringComparison.Ordinal);
+        Assert.DoesNotContain("${TICTACTOE_API_B_CHANNEL_ENDPOINT", shellRunner, StringComparison.Ordinal);
+        Assert.DoesNotContain("${TICTACTOE_PLAY_A_CHANNEL_ENDPOINT", shellRunner, StringComparison.Ordinal);
+        Assert.DoesNotContain("${TICTACTOE_PLAY_B_CHANNEL_ENDPOINT", shellRunner, StringComparison.Ordinal);
+        Assert.DoesNotContain("${TICTACTOE_PLAY_A_ENDPOINT", shellRunner, StringComparison.Ordinal);
+        Assert.DoesNotContain("${TICTACTOE_PLAY_B_ENDPOINT", shellRunner, StringComparison.Ordinal);
+        Assert.DoesNotContain("${TICTACTOE_SPOT_A_ENDPOINT", shellRunner, StringComparison.Ordinal);
+        Assert.DoesNotContain("${TICTACTOE_SPOT_B_ENDPOINT", shellRunner, StringComparison.Ordinal);
+        Assert.DoesNotContain("${TICTACTOE_SPOT_A_PUBSUB_ENDPOINT", shellRunner, StringComparison.Ordinal);
+        Assert.DoesNotContain("${TICTACTOE_SPOT_B_PUBSUB_ENDPOINT", shellRunner, StringComparison.Ordinal);
+        Assert.DoesNotContain("${TICTACTOE_LOG_DIR:-", shellRunner, StringComparison.Ordinal);
+        Assert.DoesNotContain("rm -f \"${TICTACTOE_LOG_DIR}\"/*.log", shellRunner, StringComparison.Ordinal);
+        Assert.Contains("TICTACTOE_REDIS_KEY_PREFIX", shellRunner, StringComparison.Ordinal);
+        Assert.Contains("\"RedisKeyPrefix\": \"${TICTACTOE_REDIS_KEY_PREFIX}\"", shellRunner,
+            StringComparison.Ordinal);
+        Assert.DoesNotContain("intentionally derived here, not read", shellRunner, StringComparison.Ordinal);
+        Assert.DoesNotContain("sleep 2", shellRunner, StringComparison.Ordinal);
+
+        Assert.Contains("$RunId = \"$PID-$([Guid]::NewGuid().ToString('N'))\"", powershellRunner,
+            StringComparison.Ordinal);
+        Assert.Contains("$env:TICTACTOE_REDIS_KEY_PREFIX = \"tictactoe:dotnet:${RunId}:\"", powershellRunner,
+            StringComparison.Ordinal);
+        Assert.Contains("--name \"zlink-tictactoe-dotnet-redis-$RunId\"", powershellRunner,
+            StringComparison.Ordinal);
+        Assert.Contains("-p \"127.0.0.1::6379\"", powershellRunner, StringComparison.Ordinal);
+        Assert.Contains("$SampleLogDir = Join-Path $RunDir \"sample-logs\"", powershellRunner,
+            StringComparison.Ordinal);
+        Assert.Contains("$ports = New-SamplePorts -Count 13 -BasePort 0", powershellRunner,
+            StringComparison.Ordinal);
+        Assert.DoesNotContain("if (-not $env:TICTACTOE_REDIS_ENDPOINT)", powershellRunner, StringComparison.Ordinal);
+        Assert.DoesNotContain("when TICTACTOE_REDIS_ENDPOINT is not set", powershellRunner, StringComparison.Ordinal);
+        Assert.DoesNotContain("$env:TICTACTOE_BASE_PORT", powershellRunner, StringComparison.Ordinal);
+        Assert.DoesNotContain("$env:TICTACTOE_API_A_BIND_URL", powershellRunner, StringComparison.Ordinal);
+        Assert.DoesNotContain("$env:TICTACTOE_API_B_BIND_URL", powershellRunner, StringComparison.Ordinal);
+        Assert.DoesNotContain("$env:TICTACTOE_API_A_PUBLIC_URL", powershellRunner, StringComparison.Ordinal);
+        Assert.DoesNotContain("$env:TICTACTOE_API_B_PUBLIC_URL", powershellRunner, StringComparison.Ordinal);
+        Assert.DoesNotContain("$env:TICTACTOE_API_A_CHANNEL_ENDPOINT", powershellRunner, StringComparison.Ordinal);
+        Assert.DoesNotContain("$env:TICTACTOE_API_B_CHANNEL_ENDPOINT", powershellRunner, StringComparison.Ordinal);
+        Assert.DoesNotContain("$env:TICTACTOE_PLAY_A_CHANNEL_ENDPOINT", powershellRunner, StringComparison.Ordinal);
+        Assert.DoesNotContain("$env:TICTACTOE_PLAY_B_CHANNEL_ENDPOINT", powershellRunner, StringComparison.Ordinal);
+        Assert.DoesNotContain("$env:TICTACTOE_PLAY_A_ENDPOINT", powershellRunner, StringComparison.Ordinal);
+        Assert.DoesNotContain("$env:TICTACTOE_PLAY_B_ENDPOINT", powershellRunner, StringComparison.Ordinal);
+        Assert.DoesNotContain("$env:TICTACTOE_SPOT_A_ENDPOINT", powershellRunner, StringComparison.Ordinal);
+        Assert.DoesNotContain("$env:TICTACTOE_SPOT_B_ENDPOINT", powershellRunner, StringComparison.Ordinal);
+        Assert.DoesNotContain("$env:TICTACTOE_SPOT_A_PUBSUB_ENDPOINT", powershellRunner, StringComparison.Ordinal);
+        Assert.DoesNotContain("$env:TICTACTOE_SPOT_B_PUBSUB_ENDPOINT", powershellRunner, StringComparison.Ordinal);
+        Assert.DoesNotContain("if ($env:TICTACTOE_LOG_DIR)", powershellRunner, StringComparison.Ordinal);
+        Assert.DoesNotContain("Remove-Item -Path (Join-Path $SampleLogDir \"*.log\")", powershellRunner,
+            StringComparison.Ordinal);
+        Assert.Contains("TICTACTOE_REDIS_KEY_PREFIX", powershellRunner, StringComparison.Ordinal);
+        Assert.Contains("RedisKeyPrefix = $env:TICTACTOE_REDIS_KEY_PREFIX", powershellRunner,
+            StringComparison.Ordinal);
+        Assert.DoesNotContain("intentionally derived here, not read", powershellRunner, StringComparison.Ordinal);
+        Assert.DoesNotContain("Start-Sleep -Seconds 2", powershellRunner, StringComparison.Ordinal);
+
+        Assert.DoesNotContain("AddEnvironmentVariables(\"TICTACTOE_\")", settings, StringComparison.Ordinal);
+        Assert.Contains("section[nameof(RedisEndpoint)]", settings, StringComparison.Ordinal);
+        Assert.Contains("section[nameof(RedisKeyPrefix)]", settings, StringComparison.Ordinal);
+
+        Assert.Contains("Redis is required for the room route store", readme, StringComparison.Ordinal);
+        Assert.Contains("always provisions a", readme, StringComparison.Ordinal);
+        Assert.Contains("does not", readme, StringComparison.Ordinal);
+        Assert.Contains("reuse an externally supplied Redis endpoint", readme, StringComparison.Ordinal);
+        Assert.Contains("sample name and execution id", readme, StringComparison.Ordinal);
+        Assert.Contains("`TICTACTOE_REDIS_KEY_PREFIX`", readme, StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public void TicTacToe_Runner_Verifies_Client_And_Server_Evidence()
+    {
+        var sampleRoot = ResolveSampleRoot("TicTacToe");
+        var shellRunner = File.ReadAllText(Path.Combine(sampleRoot, "run_sample.sh"));
+        var powershellRunner = File.ReadAllText(Path.Combine(sampleRoot, "run_sample.ps1"));
+
+        Assert.Contains("stream-inbound sample=TicTacToe", shellRunner, StringComparison.Ordinal);
+        Assert.Contains("stream-inbound sample=TicTacToe .* seq=[0-9]", shellRunner, StringComparison.Ordinal);
+        Assert.Contains("stream-inbound sample=TicTacToe .* name=.*Notify", shellRunner, StringComparison.Ordinal);
+        Assert.Contains("observer-win-milestone=verified", shellRunner, StringComparison.Ordinal);
+        Assert.Contains("actor: LeaveGameReq completed. actor=player-x", shellRunner, StringComparison.Ordinal);
+        Assert.Contains("actor: LeaveGameReq completed. actor=player-o", shellRunner, StringComparison.Ordinal);
+        Assert.Contains("entry spot: actor destroy completed. actor=player-x", shellRunner, StringComparison.Ordinal);
+        Assert.Contains("entry spot: actor destroy completed. actor=player-o", shellRunner, StringComparison.Ordinal);
+        Assert.Contains("grep -R -q \"dispatch-error\"", shellRunner, StringComparison.Ordinal);
+        Assert.Contains("grep -R -q \"message flow outcome=error\"", shellRunner, StringComparison.Ordinal);
+        Assert.Contains("grep -Rq \"message flow\"", shellRunner, StringComparison.Ordinal);
+        Assert.DoesNotContain("LeaveGameMsg", shellRunner, StringComparison.Ordinal);
+
+        Assert.Contains("stream-inbound sample=TicTacToe", powershellRunner, StringComparison.Ordinal);
+        Assert.Contains("stream-inbound sample=TicTacToe .* seq=[0-9]", powershellRunner,
+            StringComparison.Ordinal);
+        Assert.Contains("stream-inbound sample=TicTacToe .* name=.*Notify", powershellRunner,
+            StringComparison.Ordinal);
+        Assert.Contains("observer-win-milestone=verified", powershellRunner, StringComparison.Ordinal);
+        Assert.Contains("actor: LeaveGameReq completed. actor=player-x", powershellRunner,
+            StringComparison.Ordinal);
+        Assert.Contains("actor: LeaveGameReq completed. actor=player-o", powershellRunner,
+            StringComparison.Ordinal);
+        Assert.Contains("entry spot: actor destroy completed. actor=player-x", powershellRunner,
+            StringComparison.Ordinal);
+        Assert.Contains("entry spot: actor destroy completed. actor=player-o", powershellRunner,
+            StringComparison.Ordinal);
+        Assert.Contains("Wait-SampleLogContains \"message flow\" \"TicTacToe message-flow evidence\"",
+            powershellRunner, StringComparison.Ordinal);
+        Assert.Contains("Select-String -Pattern $Pattern -List", powershellRunner, StringComparison.Ordinal);
+        Assert.Contains("Select-String -Pattern \"dispatch-error\" -List", powershellRunner, StringComparison.Ordinal);
+        Assert.Contains("Select-String -Pattern \"message flow outcome=error\" -List", powershellRunner,
+            StringComparison.Ordinal);
+        Assert.DoesNotContain("Select-String -Pattern $Pattern -Quiet", powershellRunner, StringComparison.Ordinal);
+        Assert.DoesNotContain("Select-String -Pattern \"dispatch-error\" -Quiet", powershellRunner,
+            StringComparison.Ordinal);
+        Assert.DoesNotContain("LeaveGameMsg", powershellRunner, StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public void TicTacToe_RoomRouteStore_Uses_Prefixed_Redis_Routes()
+    {
+        var sampleRoot = ResolveSampleRoot("TicTacToe");
+        var settings = File.ReadAllText(Path.Combine(sampleRoot, "Server", "Configuration", "SampleSettings.cs"));
+        var routeStore = File.ReadAllText(Path.Combine(sampleRoot, "Server", "Configuration", "RedisRoomRouteStore.cs"));
+
+        Assert.Contains("string RedisKeyPrefix", settings, StringComparison.Ordinal);
+        Assert.Contains("case \"--redis-key-prefix\"", settings, StringComparison.Ordinal);
+        Assert.Contains("settings.RedisKeyPrefix", routeStore, StringComparison.Ordinal);
+        Assert.Contains("return $\"{_keyPrefix}rooms:{roomId}\"", routeStore, StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public void TicTacToe_ClientScenario_Matches_Common_Flow()
+    {
+        var sampleRoot = ResolveSampleRoot("TicTacToe");
+        var messages = File.ReadAllText(Path.Combine(sampleRoot, "Shared", "Contracts", "Messages.cs"));
+        var clientScenario = File.ReadAllText(Path.Combine(sampleRoot, "Client", "TicTacToeClientScenario.cs"));
+        var authenticateHandler = File.ReadAllText(Path.Combine(sampleRoot, "Server", "Play", "Infrastructure",
+            "ZLink", "Sessions", "Handlers", "AuthenticatePlaySessionHandler.cs"));
+
+        Assert.Contains("record LeaveGameReq", messages, StringComparison.Ordinal);
+        Assert.DoesNotContain("LeaveGameMsg", messages, StringComparison.Ordinal);
+
+        Assert.Contains("client1SawClient2Join.Payload.RoomId == room.RoomId", clientScenario,
+            StringComparison.Ordinal);
+        Assert.Contains("client1Move1.State.LastMoveActorId == options.XActorId", clientScenario,
+            StringComparison.Ordinal);
+        Assert.Contains("client1Move1.State.LastMoveCell == 0", clientScenario, StringComparison.Ordinal);
+        Assert.Contains("client2Move1.State.LastMoveActorId == options.OActorId", clientScenario,
+            StringComparison.Ordinal);
+        Assert.Contains("client2Move1.State.LastMoveCell == 3", clientScenario, StringComparison.Ordinal);
+        Assert.Contains("client1Move2.State.LastMoveActorId == options.XActorId", clientScenario,
+            StringComparison.Ordinal);
+        Assert.Contains("client1Move2.State.LastMoveCell == 1", clientScenario, StringComparison.Ordinal);
+        Assert.Contains("client2Move2.State.LastMoveActorId == options.OActorId", clientScenario,
+            StringComparison.Ordinal);
+        Assert.Contains("client2Move2.State.LastMoveCell == 4", clientScenario, StringComparison.Ordinal);
+        Assert.Contains("client1FinalMove.State.LastMoveActorId == options.XActorId", clientScenario,
+            StringComparison.Ordinal);
+        Assert.Contains("client1FinalMove.State.LastMoveCell == 2", clientScenario, StringComparison.Ordinal);
+        Assert.DoesNotContain("SampleSettings settings", authenticateHandler, StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public void TicTacToe_Docs_Match_ScaleOut_RoomRoute_Flow()
+    {
+        var sampleRoot = ResolveSampleRoot("TicTacToe");
+        var readme = File.ReadAllText(Path.Combine(sampleRoot, "README.md"));
+        var clientReadme = File.ReadAllText(Path.Combine(sampleRoot, "Client", "README.md"));
+        var samplesReadme = File.ReadAllText(Path.Combine(ResolveSamplesRoot(), "README.md"));
+
+        Assert.Contains("two API roles", readme, StringComparison.Ordinal);
+        Assert.Contains("two Play roles", readme, StringComparison.Ordinal);
+        Assert.Contains("`PlayEndpoints` and `PlayNodes`", readme, StringComparison.Ordinal);
+        Assert.Contains("host, guest, and observer", readme, StringComparison.Ordinal);
+        Assert.Contains("observer milestone verification", readme, StringComparison.Ordinal);
+        Assert.Contains("`LeaveGameReq` completion for both players", readme, StringComparison.Ordinal);
+        Assert.Contains("entry-spot actor destroy evidence", readme, StringComparison.Ordinal);
+        Assert.DoesNotContain("the play server to create a game", readme, StringComparison.Ordinal);
+        Assert.DoesNotContain("creates the two stream connectors", readme, StringComparison.Ordinal);
+
+        Assert.Contains("--observer-actor-id", clientReadme, StringComparison.Ordinal);
+        Assert.Contains("three STREAM connections", clientReadme, StringComparison.Ordinal);
+        Assert.Contains("observer", clientReadme, StringComparison.Ordinal);
+        Assert.Contains("ObserveMilestoneReq", clientReadme, StringComparison.Ordinal);
+        Assert.Contains("WinMilestoneNotify", clientReadme, StringComparison.Ordinal);
+        Assert.Contains("LeaveGameReq", clientReadme, StringComparison.Ordinal);
+        Assert.DoesNotContain("opens two STREAM connections", clientReadme, StringComparison.Ordinal);
+
+        Assert.Contains("two API roles", samplesReadme, StringComparison.Ordinal);
+        Assert.Contains("two Play roles", samplesReadme, StringComparison.Ordinal);
+        Assert.Contains("manual endpoint", samplesReadme, StringComparison.Ordinal);
+        Assert.Contains("Redis room routes", samplesReadme, StringComparison.Ordinal);
+        Assert.Contains("play-a --config ./appsettings.play-a.json", samplesReadme, StringComparison.Ordinal);
+        Assert.Contains("play-b --config ./appsettings.play-b.json", samplesReadme, StringComparison.Ordinal);
+        Assert.Contains("api-a --config ./appsettings.api-a.json", samplesReadme, StringComparison.Ordinal);
+        Assert.Contains("api-b --config ./appsettings.api-b.json", samplesReadme, StringComparison.Ordinal);
+        Assert.DoesNotContain("temporary appsettings.json", samplesReadme, StringComparison.Ordinal);
+        Assert.DoesNotContain("-- play --config ./appsettings.json", samplesReadme, StringComparison.Ordinal);
+        Assert.DoesNotContain("-- api --config ./appsettings.json", samplesReadme, StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public void SupportChat_Runner_Uses_Isolated_Docker_Redis_And_Location_Store()
+    {
+        var sampleRoot = ResolveSampleRoot("SupportChat");
+        var shellRunner = File.ReadAllText(Path.Combine(sampleRoot, "run_sample.sh"));
+        var powershellRunner = File.ReadAllText(Path.Combine(sampleRoot, "run_sample.ps1"));
+        var readme = File.ReadAllText(Path.Combine(sampleRoot, "README.ko.md"));
+        var apiHost = File.ReadAllText(Path.Combine(sampleRoot, "Server", "Api", "ApiServerHostFactory.cs"));
+        var sessionHost = File.ReadAllText(Path.Combine(sampleRoot, "Server", "Session", "SessionServerHostFactory.cs"));
+        var supportHost = File.ReadAllText(Path.Combine(sampleRoot, "Server", "Support", "SupportServerHostFactory.cs"));
+        var topology = File.ReadAllText(Path.Combine(sampleRoot, "Server", "Configuration", "SampleTopology.cs"));
+        var sharedMessages = File.ReadAllText(Path.Combine(sampleRoot, "Shared", "Contracts", "Messages.cs"));
+        var serverContracts = File.ReadAllText(Path.Combine(sampleRoot, "Server", "Configuration", "SupportServerContracts.cs"));
+        var assignment = File.ReadAllText(Path.Combine(sampleRoot, "Server", "Support", "Application",
+            "ConversationAssignment", "AgentAssignmentService.cs"));
+        var availability = File.ReadAllText(Path.Combine(sampleRoot, "Server", "Support", "Application",
+            "ConversationAssignment", "AgentAvailabilityDirectory.cs"));
+        var availableHandler = File.ReadAllText(Path.Combine(sampleRoot, "Server", "Support", "Infrastructure",
+            "ZLink", "Spots", "EntrySpot", "Handlers", "SetAgentAvailableHandler.cs"));
+        var entrySpot = File.ReadAllText(Path.Combine(sampleRoot, "Server", "Support", "Infrastructure", "ZLink",
+            "Spots", "EntrySpot", "SupportEntrySpot.cs"));
+        var conversationSpot = File.ReadAllText(Path.Combine(sampleRoot, "Server", "Support", "Infrastructure",
+            "ZLink", "Spots", "ConversationSpot", "ConversationSpot.cs"));
+        var clientScenario = File.ReadAllText(Path.Combine(sampleRoot, "Client", "SupportChatClientScenario.cs"));
+
+        Assert.Contains("RUN_ID=\"$(basename \"${RUN_DIR}\")-$$-${RANDOM}\"", shellRunner, StringComparison.Ordinal);
+        Assert.Contains("SAMPLE_LOG_DIR=\"${RUN_DIR}/sample-logs\"", shellRunner, StringComparison.Ordinal);
+        Assert.Contains("export SUPPORTCHAT_LOG_DIR=\"${SAMPLE_LOG_DIR}\"", shellRunner, StringComparison.Ordinal);
+        Assert.Contains("export SUPPORTCHAT_REDIS_KEY_PREFIX=\"supportchat:dotnet:${RUN_ID}:\"", shellRunner,
+            StringComparison.Ordinal);
+        Assert.Contains("REDIS_CONTAINER=\"zlink-supportchat-dotnet-redis-${RUN_ID}\"", shellRunner,
+            StringComparison.Ordinal);
+        Assert.Contains("docker run -d --rm --name \"${REDIS_CONTAINER}\"", shellRunner, StringComparison.Ordinal);
+        Assert.Contains("if [[ -n \"${REDIS_CONTAINER}\" ]]; then", shellRunner, StringComparison.Ordinal);
+        Assert.Contains("-p \"127.0.0.1::6379\"", shellRunner, StringComparison.Ordinal);
+        Assert.DoesNotContain("if [[ -z \"${SUPPORTCHAT_REDIS_ENDPOINT:-}\" ]]", shellRunner, StringComparison.Ordinal);
+        Assert.DoesNotContain("when SUPPORTCHAT_REDIS_ENDPOINT is not set", shellRunner, StringComparison.Ordinal);
+        Assert.DoesNotContain("SUPPORTCHAT_BASE_PORT", shellRunner, StringComparison.Ordinal);
+        Assert.DoesNotContain("${SUPPORTCHAT_API_CHANNEL_ENDPOINT:-", shellRunner, StringComparison.Ordinal);
+        Assert.DoesNotContain("${SUPPORTCHAT_SUPPORT_CHANNEL_ENDPOINT:-", shellRunner, StringComparison.Ordinal);
+        Assert.DoesNotContain("${SUPPORTCHAT_SESSION_SPOT_ENDPOINT:-", shellRunner, StringComparison.Ordinal);
+        Assert.DoesNotContain("${SUPPORTCHAT_SESSION_ROUTER_ENDPOINT:-", shellRunner, StringComparison.Ordinal);
+        Assert.DoesNotContain("${SUPPORTCHAT_SUPPORT_ROUTER_ENDPOINT:-", shellRunner, StringComparison.Ordinal);
+        Assert.DoesNotContain("export SUPPORTCHAT_SUPPORT_ROUTER_ENDPOINT=", shellRunner, StringComparison.Ordinal);
+        Assert.DoesNotContain("${SUPPORTCHAT_ENTRY_SPOT_ENDPOINT:-", shellRunner, StringComparison.Ordinal);
+        Assert.DoesNotContain("${SUPPORTCHAT_ENTRY_SPOT_ROUTER_ENDPOINT:-", shellRunner, StringComparison.Ordinal);
+        Assert.DoesNotContain("${SUPPORTCHAT_CONVERSATION_SPOT_ENDPOINT:-", shellRunner, StringComparison.Ordinal);
+        Assert.DoesNotContain("${SUPPORTCHAT_CONVERSATION_SPOT_ROUTER_ENDPOINT:-", shellRunner, StringComparison.Ordinal);
+        Assert.DoesNotContain("export SUPPORTCHAT_CONVERSATION_SPOT_ENDPOINT=", shellRunner, StringComparison.Ordinal);
+        Assert.DoesNotContain("export SUPPORTCHAT_CONVERSATION_SPOT_ROUTER_ENDPOINT=", shellRunner, StringComparison.Ordinal);
+        Assert.DoesNotContain("${SUPPORTCHAT_STREAM_ENDPOINT:-", shellRunner, StringComparison.Ordinal);
+        Assert.DoesNotContain("${SUPPORTCHAT_RECONNECT_STREAM_ENDPOINT:-", shellRunner, StringComparison.Ordinal);
+        Assert.DoesNotContain("export SUPPORTCHAT_RECONNECT_STREAM_ENDPOINT=", shellRunner, StringComparison.Ordinal);
+        Assert.DoesNotContain("${SUPPORTCHAT_REDIS_KEY_PREFIX:-", shellRunner, StringComparison.Ordinal);
+        Assert.DoesNotContain("${SUPPORTCHAT_LOG_DIR:-", shellRunner, StringComparison.Ordinal);
+        Assert.DoesNotContain("rm -f \"${SUPPORTCHAT_LOG_DIR}\"/*.log", shellRunner, StringComparison.Ordinal);
+        Assert.Contains("supportchat=completed", shellRunner, StringComparison.Ordinal);
+        Assert.Contains("supportchat-closed-typing-ignore=verified", shellRunner, StringComparison.Ordinal);
+        Assert.Contains("supportchat-server-evidence=completed", shellRunner, StringComparison.Ordinal);
+        Assert.Contains("status=WaitingForAgent", shellRunner, StringComparison.Ordinal);
+        Assert.Contains("status=Active", shellRunner, StringComparison.Ordinal);
+        Assert.Contains("status=WaitingForClose", shellRunner, StringComparison.Ordinal);
+        Assert.Contains("status=Closed", shellRunner, StringComparison.Ordinal);
+        Assert.Contains("grep -Rq \"message flow\" \"${SUPPORTCHAT_LOG_DIR}\"", shellRunner,
+            StringComparison.Ordinal);
+        Assert.DoesNotContain("SUPPORTCHAT_STARTUP_DELAY_SECONDS", shellRunner, StringComparison.Ordinal);
+
+        Assert.Contains("$RunId = \"$PID-$([Guid]::NewGuid().ToString('N'))\"", powershellRunner,
+            StringComparison.Ordinal);
+        Assert.Contains("$SampleLogDir = Join-Path $RunDir \"sample-logs\"", powershellRunner,
+            StringComparison.Ordinal);
+        Assert.Contains("$ports = New-SamplePorts -Count 7 -BasePort 0", powershellRunner,
+            StringComparison.Ordinal);
+        Assert.Contains("$env:SUPPORTCHAT_REDIS_KEY_PREFIX = \"supportchat:dotnet:${RunId}:\"",
+            powershellRunner, StringComparison.Ordinal);
+        Assert.Contains("$RedisContainer = \"zlink-supportchat-dotnet-redis-$RunId\"", powershellRunner,
+            StringComparison.Ordinal);
+        Assert.Contains("docker run -d --rm --name $RedisContainer", powershellRunner, StringComparison.Ordinal);
+        Assert.Contains("if ($RedisContainer)", powershellRunner, StringComparison.Ordinal);
+        Assert.Contains("$env:SUPPORTCHAT_LOG_DIR = $SampleLogDir", powershellRunner, StringComparison.Ordinal);
+        Assert.Contains("-p \"127.0.0.1::6379\"", powershellRunner, StringComparison.Ordinal);
+        Assert.DoesNotContain("if (-not $env:SUPPORTCHAT_REDIS_ENDPOINT)", powershellRunner, StringComparison.Ordinal);
+        Assert.DoesNotContain("when SUPPORTCHAT_REDIS_ENDPOINT is not set", powershellRunner, StringComparison.Ordinal);
+        Assert.DoesNotContain("$env:SUPPORTCHAT_BASE_PORT", powershellRunner, StringComparison.Ordinal);
+        Assert.DoesNotContain("$env:SUPPORTCHAT_API_CHANNEL_ENDPOINT) {", powershellRunner, StringComparison.Ordinal);
+        Assert.DoesNotContain("$env:SUPPORTCHAT_SUPPORT_CHANNEL_ENDPOINT) {", powershellRunner, StringComparison.Ordinal);
+        Assert.DoesNotContain("$env:SUPPORTCHAT_SESSION_SPOT_ENDPOINT) {", powershellRunner, StringComparison.Ordinal);
+        Assert.DoesNotContain("$env:SUPPORTCHAT_SESSION_ROUTER_ENDPOINT) {", powershellRunner, StringComparison.Ordinal);
+        Assert.DoesNotContain("$env:SUPPORTCHAT_SUPPORT_ROUTER_ENDPOINT) {", powershellRunner, StringComparison.Ordinal);
+        Assert.DoesNotContain("$env:SUPPORTCHAT_SUPPORT_ROUTER_ENDPOINT =", powershellRunner, StringComparison.Ordinal);
+        Assert.DoesNotContain("$env:SUPPORTCHAT_ENTRY_SPOT_ENDPOINT) {", powershellRunner, StringComparison.Ordinal);
+        Assert.DoesNotContain("$env:SUPPORTCHAT_ENTRY_SPOT_ROUTER_ENDPOINT) {", powershellRunner, StringComparison.Ordinal);
+        Assert.DoesNotContain("$env:SUPPORTCHAT_CONVERSATION_SPOT_ENDPOINT) {", powershellRunner, StringComparison.Ordinal);
+        Assert.DoesNotContain("$env:SUPPORTCHAT_CONVERSATION_SPOT_ROUTER_ENDPOINT) {", powershellRunner, StringComparison.Ordinal);
+        Assert.DoesNotContain("$env:SUPPORTCHAT_CONVERSATION_SPOT_ENDPOINT =", powershellRunner, StringComparison.Ordinal);
+        Assert.DoesNotContain("$env:SUPPORTCHAT_CONVERSATION_SPOT_ROUTER_ENDPOINT =", powershellRunner, StringComparison.Ordinal);
+        Assert.DoesNotContain("$env:SUPPORTCHAT_STREAM_ENDPOINT) {", powershellRunner, StringComparison.Ordinal);
+        Assert.DoesNotContain("$env:SUPPORTCHAT_RECONNECT_STREAM_ENDPOINT) {", powershellRunner, StringComparison.Ordinal);
+        Assert.DoesNotContain("$env:SUPPORTCHAT_RECONNECT_STREAM_ENDPOINT =", powershellRunner, StringComparison.Ordinal);
+        Assert.DoesNotContain("if ($env:SUPPORTCHAT_LOG_DIR)", powershellRunner, StringComparison.Ordinal);
+        Assert.DoesNotContain("Set-DefaultEnv", powershellRunner, StringComparison.Ordinal);
+        Assert.DoesNotContain("Remove-Item -Path (Join-Path $SampleLogDir \"*.log\")", powershellRunner,
+            StringComparison.Ordinal);
+        Assert.Contains("supportchat=completed", powershellRunner, StringComparison.Ordinal);
+        Assert.Contains("supportchat-closed-typing-ignore=verified", powershellRunner, StringComparison.Ordinal);
+        Assert.Contains("supportchat-server-evidence=completed", powershellRunner, StringComparison.Ordinal);
+        Assert.Contains("status=WaitingForAgent", powershellRunner, StringComparison.Ordinal);
+        Assert.Contains("status=Active", powershellRunner, StringComparison.Ordinal);
+        Assert.Contains("status=WaitingForClose", powershellRunner, StringComparison.Ordinal);
+        Assert.Contains("status=Closed", powershellRunner, StringComparison.Ordinal);
+        Assert.Contains("Wait-SampleLogContains \"message flow\" \"SupportChat message-flow evidence\"",
+            powershellRunner, StringComparison.Ordinal);
+        Assert.Contains("Select-String -Pattern $Pattern -List", powershellRunner, StringComparison.Ordinal);
+        Assert.DoesNotContain("SUPPORTCHAT_STARTUP_DELAY_SECONDS", powershellRunner, StringComparison.Ordinal);
+
+        Assert.Contains("SUPPORTCHAT_REDIS_ENDPOINT", topology, StringComparison.Ordinal);
+        Assert.Contains("SUPPORTCHAT_REDIS_KEY_PREFIX", topology, StringComparison.Ordinal);
+        Assert.DoesNotContain("ActorRefSnapshot", sharedMessages, StringComparison.Ordinal);
+        Assert.DoesNotContain("EnsureSupportUserActorReq", sharedMessages, StringComparison.Ordinal);
+        Assert.Contains("public sealed record ActorRefSnapshot", serverContracts, StringComparison.Ordinal);
+        Assert.Contains("public sealed record EnsureSupportUserActorReq", serverContracts, StringComparison.Ordinal);
+        AssertLocationStoreHost(apiHost);
+        AssertLocationStoreHost(sessionHost);
+        AssertLocationStoreHost(supportHost);
+        Assert.Contains("_reservations.Values.Count", assignment, StringComparison.Ordinal);
+        Assert.Contains("availability.SetAvailable(rosterActorId, displayName, isAvailable, activeConversations)",
+            assignment, StringComparison.Ordinal);
+        Assert.Contains("int activeConversations", availability, StringComparison.Ordinal);
+        Assert.Contains("assignment.SetAvailable(actor.ActorId, actor.DisplayName, message.IsAvailable)",
+            availableHandler, StringComparison.Ordinal);
+        Assert.Contains("assignment.SetAvailable(actor.ActorId, actor.DisplayName, false)", entrySpot,
+            StringComparison.Ordinal);
+        Assert.Contains("support conversation: state changed", conversationSpot, StringComparison.Ordinal);
+        Assert.Contains("supportchat-closed-typing-ignore=verified", clientScenario, StringComparison.Ordinal);
+        Assert.Contains("ExpectTimeoutAsync", clientScenario, StringComparison.Ordinal);
+
+        Assert.Contains("외부 Redis endpoint 재사용 mode는 제공하지 않는다", readme, StringComparison.Ordinal);
+        Assert.Contains("실행별 `SUPPORTCHAT_REDIS_KEY_PREFIX`", readme, StringComparison.Ordinal);
+        Assert.Contains("동시에 도는 다른 테스트와 섞이지 않는다", readme, StringComparison.Ordinal);
+        Assert.Contains("message-flow evidence", readme, StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public void ShoppingMall_Runner_Uses_Isolated_Docker_Redis_And_Redis_Stores()
+    {
+        var sampleRoot = ResolveSampleRoot("ShoppingMall");
+        var shellRunner = File.ReadAllText(Path.Combine(sampleRoot, "run_sample.sh"));
+        var powershellRunner = File.ReadAllText(Path.Combine(sampleRoot, "run_sample.ps1"));
+        var topology = File.ReadAllText(Path.Combine(sampleRoot, "Server", "Configuration", "SampleNames.cs"));
+        var commerceApi = File.ReadAllText(Path.Combine(sampleRoot, "Server", "CommerceApi", "Program.cs"));
+        var commerceWorkflowPorts = File.ReadAllText(Path.Combine(sampleRoot, "Server", "CommerceApi", "Ports",
+            "Outbound", "WorkflowPorts.cs"));
+        var commerceSelfCheckClient = File.ReadAllText(Path.Combine(sampleRoot, "Server", "CommerceApi",
+            "Infrastructure", "Http", "HttpOrderWorkflowSelfCheckClient.cs"));
+        var workflow = File.ReadAllText(Path.Combine(sampleRoot, "Server", "OrderWorkflow", "Program.cs"));
+        var workflowService = File.ReadAllText(Path.Combine(sampleRoot, "Server", "OrderWorkflow", "Application",
+            "OrderWorkflow", "OrderWorkflowService.cs"));
+        var workflowSelfCheck = File.ReadAllText(Path.Combine(sampleRoot, "Server", "OrderWorkflow", "Application",
+            "SelfCheck", "OrderWorkflowSelfCheckService.cs"));
+        var workflowSpot = File.ReadAllText(Path.Combine(sampleRoot, "Server", "OrderWorkflow", "Infrastructure",
+            "ZLink", "Spots", "OrderWorkflowSpot", "OrderWorkflowSpot.cs"));
+        var startUseCase = File.ReadAllText(Path.Combine(sampleRoot, "Server", "CommerceApi", "Application",
+            "OrderWorkflow", "StartOrderUseCase.cs"));
+        var routeHandlers = File.ReadAllText(Path.Combine(sampleRoot, "Server", "OrderWorkflow", "Infrastructure",
+            "ZLink", "Handlers", "OrderWorkflowRouteHandlers.cs"));
+        var messages = File.ReadAllText(Path.Combine(sampleRoot, "Shared", "Contracts", "Messages.cs"));
+        var clientScenario = File.ReadAllText(Path.Combine(sampleRoot, "Client", "ShoppingMallClientScenario.cs"));
+        var stores = File.ReadAllText(Path.Combine(sampleRoot, "Server", "Shared", "Store", "RedisCommerceStores.cs"));
+        var readme = File.ReadAllText(Path.Combine(sampleRoot, "README.ko.md"));
+
+        Assert.Contains("RUN_ID=\"$(basename \"${RUN_DIR}\")-$$-${RANDOM}\"", shellRunner, StringComparison.Ordinal);
+        Assert.Contains("SAMPLE_LOG_DIR=\"${RUN_DIR}/sample-logs\"", shellRunner, StringComparison.Ordinal);
+        Assert.Contains("export SHOPPINGMALL_LOG_DIR=\"${SAMPLE_LOG_DIR}\"", shellRunner, StringComparison.Ordinal);
+        Assert.Contains("export SHOPPINGMALL_REDIS_KEY_PREFIX=\"shoppingmall:dotnet:${RUN_ID}:\"", shellRunner,
+            StringComparison.Ordinal);
+        Assert.Contains("REDIS_CONTAINER=\"zlink-shoppingmall-dotnet-redis-${RUN_ID}\"", shellRunner,
+            StringComparison.Ordinal);
+        Assert.Contains("docker run -d --rm --name \"${REDIS_CONTAINER}\"", shellRunner, StringComparison.Ordinal);
+        Assert.Contains("-p \"127.0.0.1::6379\"", shellRunner, StringComparison.Ordinal);
+        Assert.Contains("if [[ -n \"${REDIS_CONTAINER}\" ]]; then", shellRunner, StringComparison.Ordinal);
+        Assert.DoesNotContain("SHOPPINGMALL_BASE_PORT", shellRunner, StringComparison.Ordinal);
+        Assert.DoesNotContain("${SHOPPINGMALL_API_A_HTTP_URL:-", shellRunner, StringComparison.Ordinal);
+        Assert.DoesNotContain("${SHOPPINGMALL_API_B_HTTP_URL:-", shellRunner, StringComparison.Ordinal);
+        Assert.DoesNotContain("${SHOPPINGMALL_API_A_ROUTE_ENDPOINT:-", shellRunner, StringComparison.Ordinal);
+        Assert.DoesNotContain("${SHOPPINGMALL_API_B_ROUTE_ENDPOINT:-", shellRunner, StringComparison.Ordinal);
+        Assert.DoesNotContain("${SHOPPINGMALL_WORKFLOW_A_HTTP_URL:-", shellRunner, StringComparison.Ordinal);
+        Assert.DoesNotContain("${SHOPPINGMALL_WORKFLOW_B_HTTP_URL:-", shellRunner, StringComparison.Ordinal);
+        Assert.DoesNotContain("${SHOPPINGMALL_WORKFLOW_A_ROUTE_ENDPOINT:-", shellRunner, StringComparison.Ordinal);
+        Assert.DoesNotContain("${SHOPPINGMALL_WORKFLOW_B_ROUTE_ENDPOINT:-", shellRunner, StringComparison.Ordinal);
+        Assert.DoesNotContain("${SHOPPINGMALL_WORKFLOW_A_SPOT_ENDPOINT:-", shellRunner, StringComparison.Ordinal);
+        Assert.DoesNotContain("${SHOPPINGMALL_WORKFLOW_A_SPOT_ROUTER_ENDPOINT:-", shellRunner, StringComparison.Ordinal);
+        Assert.DoesNotContain("${SHOPPINGMALL_WORKFLOW_B_SPOT_ENDPOINT:-", shellRunner, StringComparison.Ordinal);
+        Assert.DoesNotContain("${SHOPPINGMALL_WORKFLOW_B_SPOT_ROUTER_ENDPOINT:-", shellRunner, StringComparison.Ordinal);
+        Assert.DoesNotContain("${SHOPPINGMALL_REDIS_KEY_PREFIX:-", shellRunner, StringComparison.Ordinal);
+        Assert.DoesNotContain("${SHOPPINGMALL_LOG_DIR:-", shellRunner, StringComparison.Ordinal);
+        Assert.DoesNotContain("SHOPPINGMALL_STORE_DIR", shellRunner, StringComparison.Ordinal);
+        Assert.DoesNotContain("rm -f \"${SHOPPINGMALL_LOG_DIR}\"/*.log", shellRunner, StringComparison.Ordinal);
+        Assert.DoesNotContain("SHOPPINGMALL_STARTUP_DELAY_SECONDS", shellRunner, StringComparison.Ordinal);
+        Assert.Contains("shoppingmall=completed", shellRunner, StringComparison.Ordinal);
+        Assert.Contains("shoppingmall-server-evidence=completed", shellRunner, StringComparison.Ordinal);
+        Assert.Contains("grep -Rq \"message flow\" \"${SHOPPINGMALL_LOG_DIR}\"", shellRunner,
+            StringComparison.Ordinal);
+
+        Assert.Contains("$RunId = \"$PID-$([Guid]::NewGuid().ToString('N'))\"", powershellRunner,
+            StringComparison.Ordinal);
+        Assert.Contains("$SampleLogDir = Join-Path $RunDir \"sample-logs\"", powershellRunner,
+            StringComparison.Ordinal);
+        Assert.Contains("$ports = New-SamplePorts -Count 12 -BasePort 0", powershellRunner,
+            StringComparison.Ordinal);
+        Assert.Contains("$env:SHOPPINGMALL_LOG_DIR = $SampleLogDir", powershellRunner, StringComparison.Ordinal);
+        Assert.Contains("$env:SHOPPINGMALL_REDIS_KEY_PREFIX = \"shoppingmall:dotnet:${RunId}:\"",
+            powershellRunner, StringComparison.Ordinal);
+        Assert.Contains("$RedisContainer = \"zlink-shoppingmall-dotnet-redis-$RunId\"", powershellRunner,
+            StringComparison.Ordinal);
+        Assert.Contains("docker run -d --rm --name $RedisContainer", powershellRunner, StringComparison.Ordinal);
+        Assert.Contains("-p \"127.0.0.1::6379\"", powershellRunner, StringComparison.Ordinal);
+        Assert.DoesNotContain("Set-DefaultEnv", powershellRunner, StringComparison.Ordinal);
+        Assert.DoesNotContain("$env:SHOPPINGMALL_BASE_PORT", powershellRunner, StringComparison.Ordinal);
+        Assert.DoesNotContain("$env:SHOPPINGMALL_STORE_DIR", powershellRunner, StringComparison.Ordinal);
+        Assert.DoesNotContain("SHOPPINGMALL_STARTUP_DELAY_SECONDS", powershellRunner, StringComparison.Ordinal);
+        Assert.Contains("Assert-SampleLogContains -LogDirectory $SampleLogDir -Pattern \"shoppingmall=completed\"",
+            powershellRunner, StringComparison.Ordinal);
+        Assert.Contains("Join-Path $LogDir \"workflow-a.out.log\"", powershellRunner, StringComparison.Ordinal);
+        Assert.Contains("Join-Path $LogDir \"workflow-b.out.log\"", powershellRunner, StringComparison.Ordinal);
+        Assert.Contains("workflow-a did not record a shoppingmall order start", powershellRunner,
+            StringComparison.Ordinal);
+        Assert.Contains("workflow-b did not record a shoppingmall order start", powershellRunner,
+            StringComparison.Ordinal);
+        Assert.Contains("Assert-SampleLogContains -LogDirectory $SampleLogDir -Pattern \"message flow\"",
+            powershellRunner, StringComparison.Ordinal);
+
+        Assert.Contains("SHOPPINGMALL_REDIS_ENDPOINT", topology, StringComparison.Ordinal);
+        Assert.Contains("SHOPPINGMALL_REDIS_KEY_PREFIX", topology, StringComparison.Ordinal);
+        Assert.DoesNotContain("SHOPPINGMALL_STORE_DIR", topology, StringComparison.Ordinal);
+        Assert.Contains("new RedisCommerceStores(topology)", commerceApi, StringComparison.Ordinal);
+        Assert.Contains("new RedisCommerceStores(topology)", workflow, StringComparison.Ordinal);
+        Assert.Contains("/self-check/workflow/inventory-reserved", commerceApi, StringComparison.Ordinal);
+        Assert.Contains("/self-check/workflow/inventory-reserved", workflow, StringComparison.Ordinal);
+        Assert.Contains("/self-check/workflow/{orderId}/continue", commerceApi, StringComparison.Ordinal);
+        Assert.Contains("PrepareInventoryReservedOrderUseCase", commerceApi, StringComparison.Ordinal);
+        Assert.Contains("IOrderWorkflowSelfCheckClient", commerceWorkflowPorts, StringComparison.Ordinal);
+        Assert.Contains("HttpOrderWorkflowSelfCheckClient", commerceSelfCheckClient, StringComparison.Ordinal);
+        Assert.DoesNotContain("var cart = await commerce.GetCartAsync", commerceApi, StringComparison.Ordinal);
+        Assert.DoesNotContain("ReserveIdempotencyAsync", commerceApi, StringComparison.Ordinal);
+        Assert.Contains("evidence.StartedIdempotencyCount == 7", commerceApi, StringComparison.Ordinal);
+        Assert.Contains("owners={topology.ForOrderId(request.SuccessfulOrderId).InstanceId},{topology.ForOrderId(request.ScaleOutOrderId).InstanceId}",
+            commerceApi, StringComparison.Ordinal);
+        Assert.Contains("ownersDiffer", commerceApi, StringComparison.Ordinal);
+        Assert.DoesNotContain("ServerAssertionReq", messages, StringComparison.Ordinal);
+        Assert.DoesNotContain("ServerAssertionRes", messages, StringComparison.Ordinal);
+        Assert.Contains("internal sealed record ServerAssertionReq", commerceApi, StringComparison.Ordinal);
+        Assert.Contains("internal sealed record ServerAssertionReq", clientScenario, StringComparison.Ordinal);
+        Assert.DoesNotContain("StartOrderWorkflowToInventoryReq", messages, StringComparison.Ordinal);
+        Assert.DoesNotContain("StartOrderWorkflowToInventoryRes", messages, StringComparison.Ordinal);
+        Assert.DoesNotContain("StartOrderWorkflowToInventoryRouteHandler", routeHandlers, StringComparison.Ordinal);
+        Assert.DoesNotContain("StartToInventoryAsync", workflowService, StringComparison.Ordinal);
+        Assert.Contains("OrderWorkflowSelfCheckService", workflow, StringComparison.Ordinal);
+        Assert.Contains("PrepareInventoryReservedCheckpointReq", workflowSpot, StringComparison.Ordinal);
+        Assert.Contains("ContinueUntilInventoryReservedAsync(command.OrderId, cancellationToken)", workflowSelfCheck,
+            StringComparison.Ordinal);
+        Assert.Contains("RequestToSpot(SampleNames.OrderWorkflowRouteChannel", routeHandlers, StringComparison.Ordinal);
+        Assert.DoesNotContain("workflow.StartAsync(request", routeHandlers, StringComparison.Ordinal);
+        Assert.DoesNotContain("workflow.ContinueAsync(request", routeHandlers, StringComparison.Ordinal);
+        Assert.DoesNotContain("workflow.RebuildProjectionAsync", routeHandlers, StringComparison.Ordinal);
+        Assert.Contains("StartAndContinueAsync", workflowService, StringComparison.Ordinal);
+        Assert.DoesNotContain("ContinueAfterStartAsync", workflowSpot, StringComparison.Ordinal);
+        Assert.Contains("!string.Equals(mapping.OwnerInstanceId, options.InstanceId, StringComparison.Ordinal)",
+            startUseCase, StringComparison.Ordinal);
+        Assert.Contains("peers.ForwardStartAsync(mapping.OwnerInstanceId, request, cancellationToken)",
+            startUseCase, StringComparison.Ordinal);
+        Assert.Contains("Task.WhenAll(concurrentA, concurrentB)", clientScenario, StringComparison.Ordinal);
+        Assert.Contains("concurrentA.Result.OrderId == concurrentB.Result.OrderId", clientScenario,
+            StringComparison.Ordinal);
+        Assert.Contains("/self-check/workflow/inventory-reserved", clientScenario, StringComparison.Ordinal);
+        Assert.Contains($"/self-check/workflow/{{inventoryReserved.OrderId}}/continue", clientScenario,
+            StringComparison.Ordinal);
+        Assert.Contains("resumed.State.ReservationId == $\"reservation-{inventoryReserved.OrderId}\"",
+            clientScenario, StringComparison.Ordinal);
+        Assert.Contains("resumed.State.PaymentId == $\"payment-{inventoryReserved.OrderId}\"",
+            clientScenario, StringComparison.Ordinal);
+        Assert.Contains($"/self-check/workflow/{{success.OrderId}}/continue", clientScenario,
+            StringComparison.Ordinal);
+        Assert.Contains("healedByContinue.State.Status == OrderStatuses.Confirmed", clientScenario,
+            StringComparison.Ordinal);
+        Assert.Contains("OrderStatuses.InventoryReserved", clientScenario, StringComparison.Ordinal);
+        Assert.Contains("OrderStatuses.PaymentAuthorized", clientScenario, StringComparison.Ordinal);
+        Assert.Contains("SaveProjectionFromEventsAsync(stored, cancellationToken)", workflowService,
+            StringComparison.Ordinal);
+        Assert.Contains("static status => status is OrderStatuses.Confirmed or OrderStatuses.Failed",
+            workflowService, StringComparison.Ordinal);
+        Assert.Contains("CancellationToken.None", workflowService, StringComparison.Ordinal);
+        Assert.Contains("ContinueWorkflowInBackgroundAsync", workflowService, StringComparison.Ordinal);
+        Assert.Contains("catch (OrderStreamVersionConflictException)", workflowService, StringComparison.Ordinal);
+        Assert.Contains("throw new OrderStreamVersionConflictException", stores, StringComparison.Ordinal);
+        Assert.Contains("if (aggregate.HasProcessedMsg(command.IdempotencyKey))", workflowService,
+            StringComparison.Ordinal);
+        Assert.Contains("await commerce.MarkIdempotencyStartedAsync(command.IdempotencyKey, cancellationToken);",
+            workflowService, StringComparison.Ordinal);
+        Assert.Contains("return await SaveProjectionFromEventsAsync(stored, cancellationToken);", workflowService,
+            StringComparison.Ordinal);
+        Assert.Contains("OrderStatuses.PaymentFailed => await ReleaseInventoryAsync", workflowService,
+            StringComparison.Ordinal);
+        Assert.Contains("OrderStatuses.InventoryReleased => aggregate.FailAfterInventoryRelease", workflowService,
+            StringComparison.Ordinal);
+        Assert.Contains("public sealed class RedisCommerceStores", stores, StringComparison.Ordinal);
+        Assert.Contains("ConnectionMultiplexer.Connect(topology.RedisEndpoint)", stores, StringComparison.Ordinal);
+        Assert.Contains("topology.RedisKeyPrefix", stores, StringComparison.Ordinal);
+        Assert.Contains("_database.LockTakeAsync", stores, StringComparison.Ordinal);
+        Assert.Contains("string reservationId", stores, StringComparison.Ordinal);
+        Assert.Contains("string paymentId", stores, StringComparison.Ordinal);
+        Assert.Contains("state.Reservations.TryGetValue(reservationId", stores, StringComparison.Ordinal);
+        Assert.Contains("InventoryReservationLine", stores, StringComparison.Ordinal);
+        Assert.Contains("state.Inventory[line.Sku] = state.Inventory.GetValueOrDefault(line.Sku) + line.Quantity",
+            stores, StringComparison.Ordinal);
+        Assert.Contains("state.Payments.ContainsKey(paymentId)", stores, StringComparison.Ordinal);
+        Assert.Contains("AcquireLockAsync(cancellationToken)", stores, StringComparison.Ordinal);
+        Assert.Contains("Task.Delay(10, cancellationToken)", stores, StringComparison.Ordinal);
+        Assert.DoesNotContain("File.ReadAllText", stores, StringComparison.Ordinal);
+        Assert.DoesNotContain("File.WriteAllText", stores, StringComparison.Ordinal);
+        Assert.DoesNotContain("FileStream", stores, StringComparison.Ordinal);
+
+        Assert.Contains("주문 이벤트 스트림, 조회 모델, 장바구니·재고·결제·멱등 상태도 같은 Redis", readme,
+            StringComparison.Ordinal);
+        Assert.Contains("외부 Redis endpoint 재사용 mode는 제공하지 않는다", readme, StringComparison.Ordinal);
+        Assert.Contains("동시에 도는 다른 테스트와 섞이지 않는다", readme, StringComparison.Ordinal);
+        Assert.Contains("같은 멱등 키의 동시 시작 경쟁", readme, StringComparison.Ordinal);
+        Assert.Contains("`InventoryReserved` 이후 명시 재개", readme, StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public void GameQuest_Runner_Uses_Isolated_Docker_Redis_And_Stream_Actions()
+    {
+        var sampleRoot = ResolveSampleRoot("GameQuest");
+        var shellRunner = File.ReadAllText(Path.Combine(sampleRoot, "run_sample.sh"));
+        var powershellRunner = File.ReadAllText(Path.Combine(sampleRoot, "run_sample.ps1"));
+        var messages = File.ReadAllText(Path.Combine(sampleRoot, "Shared", "Messages.cs"));
+        var clientScenario = File.ReadAllText(Path.Combine(sampleRoot, "Client", "GameQuestClientScenario.cs"));
+        var sessionHandlers = File.ReadAllText(Path.Combine(sampleRoot, "Server", "GameApi", "Session",
+            "GameQuestSessionHandlers.cs"));
+        var topology = File.ReadAllText(Path.Combine(sampleRoot, "Server", "Configuration", "SampleConfiguration.cs"));
+        var gameApiStore = File.ReadAllText(Path.Combine(sampleRoot, "Server", "GameApi", "Infrastructure", "Store",
+            "GameQuestStores.cs"));
+        var questStore = File.ReadAllText(Path.Combine(sampleRoot, "Server", "QuestMission", "Infrastructure", "Store",
+            "QuestStores.cs"));
+        var questProcessor = File.ReadAllText(Path.Combine(sampleRoot, "Server", "QuestMission", "Application",
+            "QuestEventProcessor.cs"));
+        var redisJsonStore = File.ReadAllText(Path.Combine(sampleRoot, "Server", "Configuration", "RedisJsonStore.cs"));
+        var gameApiProgram = File.ReadAllText(Path.Combine(sampleRoot, "Server", "GameApi", "Program.cs"));
+        var missionProgram = File.ReadAllText(Path.Combine(sampleRoot, "Server", "QuestMission", "Program.cs"));
+        var playerQuestProvisioner = File.ReadAllText(Path.Combine(sampleRoot, "Server", "QuestMission",
+            "Infrastructure", "ZLink", "PlayerQuestSpotProvisioner.cs"));
+        var gameplayIngress = File.ReadAllText(Path.Combine(sampleRoot, "Server", "QuestMission", "Infrastructure",
+            "ZLink", "GameplayEventRouteHandler.cs"));
+        var playerQuestSpot = File.ReadAllText(Path.Combine(sampleRoot, "Server", "QuestMission", "Infrastructure",
+            "ZLink", "Spots", "PlayerQuestSpot", "PlayerQuestSpot.cs"));
+        var questDomain = File.ReadAllText(Path.Combine(sampleRoot, "Server", "QuestMission", "Domain",
+            "QuestDomain.cs"));
+        var actionService = File.ReadAllText(Path.Combine(sampleRoot, "Server", "GameApi", "Application",
+            "GameplayActionService.cs"));
+        var eventDispatcher = File.ReadAllText(Path.Combine(sampleRoot, "Server", "GameApi", "Infrastructure",
+            "ZLink", "GameplayEventOwnerDispatcher.cs"));
+        var readme = File.ReadAllText(Path.Combine(sampleRoot, "README.ko.md"));
+
+        Assert.Contains("RUN_ID=\"$(basename \"${RUN_DIR}\")-$$-${RANDOM}\"", shellRunner, StringComparison.Ordinal);
+        Assert.Contains("SAMPLE_LOG_DIR=\"${RUN_DIR}/sample-logs\"", shellRunner, StringComparison.Ordinal);
+        Assert.Contains("export GAMEQUEST_LOG_DIR=\"${SAMPLE_LOG_DIR}\"", shellRunner, StringComparison.Ordinal);
+        Assert.Contains("export GAMEQUEST_REDIS_KEY_PREFIX=\"gamequest:dotnet:${RUN_ID}:\"", shellRunner,
+            StringComparison.Ordinal);
+        Assert.Contains("REDIS_CONTAINER=\"zlink-gamequest-dotnet-redis-${RUN_ID}\"", shellRunner,
+            StringComparison.Ordinal);
+        Assert.Contains("-p \"127.0.0.1::6379\"", shellRunner, StringComparison.Ordinal);
+        Assert.DoesNotContain("GAMEQUEST_BASE_PORT", shellRunner, StringComparison.Ordinal);
+        Assert.DoesNotContain("${GAMEQUEST_GAMEAPI_A_HTTP_BASE_URL:-", shellRunner, StringComparison.Ordinal);
+        Assert.DoesNotContain("${GAMEQUEST_REDIS_KEY_PREFIX:-", shellRunner, StringComparison.Ordinal);
+        Assert.DoesNotContain("GAMEQUEST_STORE_DIR", shellRunner, StringComparison.Ordinal);
+        Assert.DoesNotContain("GAMEQUEST_STARTUP_DELAY_SECONDS", shellRunner, StringComparison.Ordinal);
+        Assert.Contains("grep -Rq \"message flow\" \"${SAMPLE_LOG_DIR}\"", shellRunner, StringComparison.Ordinal);
+
+        Assert.Contains("$RunId = \"$PID-$([Guid]::NewGuid().ToString('N'))\"", powershellRunner,
+            StringComparison.Ordinal);
+        Assert.Contains("$SampleLogDir = Join-Path $RunDir \"sample-logs\"", powershellRunner,
+            StringComparison.Ordinal);
+        Assert.Contains("$ports = New-SamplePorts -Count 16 -BasePort 0", powershellRunner,
+            StringComparison.Ordinal);
+        Assert.Contains("$env:GAMEQUEST_REDIS_KEY_PREFIX = \"gamequest:dotnet:${RunId}:\"", powershellRunner,
+            StringComparison.Ordinal);
+        Assert.Contains("$RedisContainer = \"zlink-gamequest-dotnet-redis-$RunId\"", powershellRunner,
+            StringComparison.Ordinal);
+        Assert.DoesNotContain("Set-DefaultEnv", powershellRunner, StringComparison.Ordinal);
+        Assert.DoesNotContain("GAMEQUEST_BASE_PORT", powershellRunner, StringComparison.Ordinal);
+        Assert.DoesNotContain("GAMEQUEST_STORE_DIR", powershellRunner, StringComparison.Ordinal);
+        Assert.DoesNotContain("GAMEQUEST_STARTUP_DELAY_SECONDS", powershellRunner, StringComparison.Ordinal);
+        Assert.Contains("Assert-SampleLogContains -LogDirectory $SampleLogDir -Pattern \"message flow\"",
+            powershellRunner, StringComparison.Ordinal);
+
+        Assert.Contains("record JoinSessionReq", messages, StringComparison.Ordinal);
+        Assert.Contains("record JoinSessionRes", messages, StringComparison.Ordinal);
+        Assert.DoesNotContain("SubscribeQuestReq", messages, StringComparison.Ordinal);
+        Assert.DoesNotContain("SubscribeQuestRes", messages, StringComparison.Ordinal);
+        Assert.DoesNotContain("ApplyGameplayEventReq", messages, StringComparison.Ordinal);
+        Assert.DoesNotContain("ApplyGameplayEventRes", messages, StringComparison.Ordinal);
+        Assert.Contains("record ApplyGameplayEventReq", topology, StringComparison.Ordinal);
+        Assert.Contains("record ApplyGameplayEventRes", topology, StringComparison.Ordinal);
+        Assert.Contains("apiAStream.Request(new JoinSessionReq", clientScenario, StringComparison.Ordinal);
+        Assert.Contains("apiAStream.Request(new KillMonsterReq", clientScenario, StringComparison.Ordinal);
+        Assert.Contains("apiAStream.Request(new UnlockFeatureReq", clientScenario, StringComparison.Ordinal);
+        Assert.Contains("apiAStream.Request(new CompleteMissionReq", clientScenario, StringComparison.Ordinal);
+        Assert.Contains("apiAStream.Request(new EnterAreaReq", clientScenario, StringComparison.Ordinal);
+        Assert.Contains("apiBStream.Request(new CollectItemReq", clientScenario, StringComparison.Ordinal);
+        Assert.Contains("/self-check/owner/player-alice/close", clientScenario, StringComparison.Ordinal);
+        Assert.DoesNotContain("Post(\"/combat/kill\")", clientScenario, StringComparison.Ordinal);
+        Assert.DoesNotContain("Post(\"/inventory/collect\")", clientScenario, StringComparison.Ordinal);
+        Assert.Contains("class JoinSessionHandler", sessionHandlers, StringComparison.Ordinal);
+        Assert.Contains("JoinQuestSessionUseCase", sessionHandlers, StringComparison.Ordinal);
+        Assert.DoesNotContain("SubscribeQuestHandler", sessionHandlers, StringComparison.Ordinal);
+        Assert.Contains("class KillMonsterHandler", sessionHandlers, StringComparison.Ordinal);
+        Assert.Contains("class CollectItemHandler", sessionHandlers, StringComparison.Ordinal);
+        Assert.Contains("class CompleteMissionHandler", sessionHandlers, StringComparison.Ordinal);
+        Assert.Contains("class EnterAreaHandler", sessionHandlers, StringComparison.Ordinal);
+        Assert.Contains("class UnlockFeatureHandler", sessionHandlers, StringComparison.Ordinal);
+
+        Assert.DoesNotContain("MapPost(\"/combat/kill\"", gameApiProgram, StringComparison.Ordinal);
+        Assert.DoesNotContain("MapPost(\"/inventory/collect\"", gameApiProgram, StringComparison.Ordinal);
+        Assert.DoesNotContain("MapPost(\"/mission/complete\"", gameApiProgram, StringComparison.Ordinal);
+        Assert.DoesNotContain("MapPost(\"/world/enter\"", gameApiProgram, StringComparison.Ordinal);
+        Assert.DoesNotContain("MapPost(\"/feature/unlock\"", gameApiProgram, StringComparison.Ordinal);
+        Assert.DoesNotContain("AddFanoutChannel", gameApiProgram, StringComparison.Ordinal);
+        Assert.DoesNotContain("AddFanoutChannel", missionProgram, StringComparison.Ordinal);
+        Assert.Contains("AddRouteMesh(SampleNames.QuestOwnerRouteChannel)", gameApiProgram, StringComparison.Ordinal);
+        Assert.Contains("AddRouteMesh(SampleNames.QuestOwnerRouteChannel)", missionProgram, StringComparison.Ordinal);
+
+        Assert.DoesNotContain("StoreDirectory", topology, StringComparison.Ordinal);
+        Assert.DoesNotContain("GAMEQUEST_STORE_DIR", topology, StringComparison.Ordinal);
+        Assert.Contains("new RedisJsonStore(topology.RedisEndpoint)", gameApiStore, StringComparison.Ordinal);
+        Assert.Contains("new RedisJsonStore(topology.RedisEndpoint)", questStore, StringComparison.Ordinal);
+        Assert.Contains("topology.RedisKeyPrefix", gameApiStore, StringComparison.Ordinal);
+        Assert.Contains("topology.RedisKeyPrefix", questStore, StringComparison.Ordinal);
+        Assert.Contains("_database.LockTakeAsync", redisJsonStore, StringComparison.Ordinal);
+        Assert.DoesNotContain("_database.LockTakeAsync", gameApiStore, StringComparison.Ordinal);
+        Assert.DoesNotContain("_database.LockTakeAsync", questStore, StringComparison.Ordinal);
+        Assert.DoesNotContain("File.ReadAllText", gameApiStore, StringComparison.Ordinal);
+        Assert.DoesNotContain("File.WriteAllText", gameApiStore, StringComparison.Ordinal);
+        Assert.DoesNotContain("File.ReadAllText", questStore, StringComparison.Ordinal);
+        Assert.DoesNotContain("File.WriteAllText", questStore, StringComparison.Ordinal);
+        Assert.Contains("IZLinkRouteRequestHandler<ApplyGameplayEventReq, ApplyGameplayEventRes>", gameplayIngress,
+            StringComparison.Ordinal);
+        Assert.Contains("playerQuestOwners.ApplyGameplayEventAsync", gameplayIngress, StringComparison.Ordinal);
+        Assert.Contains("ownerRouter.IsLocalOwner", gameplayIngress, StringComparison.Ordinal);
+        Assert.Contains("IGameplayEventOwnerDispatcher", actionService, StringComparison.Ordinal);
+        Assert.Contains("Request(SampleNames.QuestOwnerRouteChannel", eventDispatcher, StringComparison.Ordinal);
+        Assert.Contains("topology.OwnerRouteRid(gameplayEvent.PlayerId)", eventDispatcher, StringComparison.Ordinal);
+        Assert.DoesNotContain("interface IPlayerQuestOwnerProvisioner", questProcessor, StringComparison.Ordinal);
+        Assert.DoesNotContain("IPlayerQuestOwnerProvisioner", gameplayIngress, StringComparison.Ordinal);
+        Assert.DoesNotContain("ValueTask EnsureAsync", questProcessor, StringComparison.Ordinal);
+        Assert.DoesNotContain("public async ValueTask EnsureAsync", playerQuestProvisioner,
+            StringComparison.Ordinal);
+        Assert.Contains("RequestToSpot(SampleNames.QuestSpotDiscovery", playerQuestProvisioner,
+            StringComparison.Ordinal);
+        Assert.Contains("IZLinkSpotRequestHandler<PlayerQuestSpot, ApplyGameplayEventReq, ApplyGameplayEventRes>",
+            playerQuestSpot, StringComparison.Ordinal);
+        Assert.Contains("processor.ProcessAsync(request.Event, cancellationToken)", playerQuestSpot,
+            StringComparison.Ordinal);
+        Assert.Contains("ReadQuestStreamAsync(gameplayEvent.PlayerId, definition.QuestId", questProcessor,
+            StringComparison.Ordinal);
+        Assert.Contains("Replay(QuestDefinition definition, IReadOnlyList<StoredQuestEvent> stream)", questDomain,
+            StringComparison.Ordinal);
+        Assert.Contains("RecordOwnerRehydratedAsync", playerQuestSpot, StringComparison.Ordinal);
+        Assert.Contains("spots.CloseAsync(spotRid, cancellationToken)", missionProgram, StringComparison.Ordinal);
+        Assert.Contains("ReadOwnerRehydrateEvidenceAsync", gameApiProgram, StringComparison.Ordinal);
+        Assert.Contains("rehydrates.GetValueOrDefault(\"player-alice\") >= 2", gameApiProgram, StringComparison.Ordinal);
+        Assert.Contains("rehydrated:{pair.Key}:{pair.Value}", gameApiProgram, StringComparison.Ordinal);
+
+        Assert.Contains("외부 Redis endpoint", readme, StringComparison.Ordinal);
+        Assert.Contains("재사용 mode는 제공하지 않는다", readme, StringComparison.Ordinal);
+        Assert.Contains("같은 stream으로", readme, StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public void DeliveryDispatch_Runner_Reuses_External_Redis_And_Uses_Location_Store()
+    {
+        var sampleRoot = ResolveSampleRoot("DeliveryDispatch");
+        var shellRunner = File.ReadAllText(Path.Combine(sampleRoot, "run_sample.sh"));
+        var powershellRunner = File.ReadAllText(Path.Combine(sampleRoot, "run_sample.ps1"));
+        var readme = File.ReadAllText(Path.Combine(sampleRoot, "README.ko.md"));
+        var topology = File.ReadAllText(Path.Combine(sampleRoot, "Server", "Configuration", "SampleTopology.cs"));
+
+        Assert.Contains("if [[ -z \"${DELIVERYDISPATCH_REDIS_ENDPOINT:-}\" ]]", shellRunner,
+            StringComparison.Ordinal);
+        Assert.Contains("docker run -d --rm --name \"${REDIS_CONTAINER}\"", shellRunner, StringComparison.Ordinal);
+        Assert.Contains("if [[ -n \"${REDIS_CONTAINER}\" ]]; then", shellRunner, StringComparison.Ordinal);
+        Assert.Contains("DELIVERYDISPATCH_REDIS_KEY_PREFIX", shellRunner, StringComparison.Ordinal);
+        Assert.Contains("deliverydispatch=completed", shellRunner, StringComparison.Ordinal);
+        Assert.Contains("topology=ready", shellRunner, StringComparison.Ordinal);
+        Assert.Contains("deliverydispatch-reassignment=completed", shellRunner, StringComparison.Ordinal);
+        Assert.Contains("deliverydispatch-server-evidence=completed", shellRunner, StringComparison.Ordinal);
+        Assert.Contains("deliverydispatch-runner-evidence=completed", shellRunner, StringComparison.Ordinal);
+        Assert.Contains("grep -Rq \"message flow\" \"${DELIVERYDISPATCH_LOG_DIR}\"", shellRunner,
+            StringComparison.Ordinal);
+        Assert.DoesNotContain("DELIVERYDISPATCH_STARTUP_DELAY_SECONDS", shellRunner, StringComparison.Ordinal);
+        Assert.DoesNotContain("DELIVERYDISPATCH_STARTUP_SETTLE_SECONDS", shellRunner, StringComparison.Ordinal);
+
+        Assert.Contains("if (-not $env:DELIVERYDISPATCH_REDIS_ENDPOINT)", powershellRunner,
+            StringComparison.Ordinal);
+        Assert.Contains("docker run -d --rm --name $RedisContainer", powershellRunner, StringComparison.Ordinal);
+        Assert.Contains("if ($RedisContainer)", powershellRunner, StringComparison.Ordinal);
+        Assert.Contains("$env:DELIVERYDISPATCH_LOG_DIR = $SampleLogDir", powershellRunner,
+            StringComparison.Ordinal);
+        Assert.Contains("DELIVERYDISPATCH_REDIS_KEY_PREFIX", powershellRunner, StringComparison.Ordinal);
+        Assert.Contains("deliverydispatch=completed", powershellRunner, StringComparison.Ordinal);
+        Assert.Contains("topology=ready", powershellRunner, StringComparison.Ordinal);
+        Assert.Contains("deliverydispatch-reassignment=completed", powershellRunner, StringComparison.Ordinal);
+        Assert.Contains("deliverydispatch-server-evidence=completed", powershellRunner, StringComparison.Ordinal);
+        Assert.Contains("deliverydispatch-runner-evidence=completed", powershellRunner, StringComparison.Ordinal);
+        Assert.Contains("Wait-SampleLogContains \"message flow\" \"DeliveryDispatch message-flow evidence\"",
+            powershellRunner, StringComparison.Ordinal);
+        Assert.Contains("Select-String -Pattern $Pattern -List", powershellRunner, StringComparison.Ordinal);
+        Assert.DoesNotContain("DELIVERYDISPATCH_STARTUP_DELAY_SECONDS", powershellRunner,
+            StringComparison.Ordinal);
+        Assert.DoesNotContain("DELIVERYDISPATCH_STARTUP_SETTLE_SECONDS", powershellRunner,
+            StringComparison.Ordinal);
+
+        Assert.Contains("DELIVERYDISPATCH_REDIS_ENDPOINT", topology, StringComparison.Ordinal);
+        Assert.Contains("DELIVERYDISPATCH_REDIS_KEY_PREFIX", topology, StringComparison.Ordinal);
+        foreach (var hostFactory in Directory.EnumerateFiles(Path.Combine(sampleRoot, "Server"), "*HostFactory.cs",
+                     SearchOption.AllDirectories))
+        {
+            AssertLocationStoreHost(File.ReadAllText(hostFactory));
+        }
+
+        Assert.Contains("`DELIVERYDISPATCH_REDIS_ENDPOINT`가 이미 있으면", readme, StringComparison.Ordinal);
+        Assert.Contains("그 Redis를 재사용하고 정리하지 않는다", readme, StringComparison.Ordinal);
+        Assert.Contains("`run_sample.sh`와 `run_sample.ps1`", readme, StringComparison.Ordinal);
+        Assert.Contains("AssignDeliveryMsg", readme, StringComparison.Ordinal);
+        Assert.DoesNotContain("`AssignDelivery`", readme, StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public void DeliveryDispatch_Contracts_Match_Common_Role_Model()
+    {
+        var sampleRoot = ResolveSampleRoot("DeliveryDispatch");
+        var readme = File.ReadAllText(Path.Combine(sampleRoot, "README.ko.md"));
+        var shellRunner = File.ReadAllText(Path.Combine(sampleRoot, "run_sample.sh"));
+        var powershellRunner = File.ReadAllText(Path.Combine(sampleRoot, "run_sample.ps1"));
+        var topology = File.ReadAllText(Path.Combine(sampleRoot, "Server", "Configuration", "SampleTopology.cs"));
+        var messages = File.ReadAllText(Path.Combine(sampleRoot, "Shared", "Contracts", "Messages.cs"));
+        var courierRoutes = File.ReadAllText(Path.Combine(sampleRoot, "Server", "CourierActorNode", "RouteHandlers.cs"));
+        var customerSession = File.ReadAllText(Path.Combine(sampleRoot, "Server", "CustomerGateway",
+            "SubscribeDeliverySessionHandler.cs"));
+        var customerStatusHandler = File.ReadAllText(Path.Combine(sampleRoot, "Server", "CustomerGateway",
+            "Spots", "EntrySpot", "Handlers", "DeliveryStatusUpdatedHandler.cs"));
+        var customerAccess = File.ReadAllText(Path.Combine(sampleRoot, "Server", "CustomerGateway",
+            "CustomerActorAccess.cs"));
+        var clientScenario = File.ReadAllText(Path.Combine(sampleRoot, "Client", "DeliveryDispatchClientScenario.cs"));
+
+        Assert.Contains("record AssignDeliveryMsg", messages, StringComparison.Ordinal);
+        Assert.Contains("record FindCourierActorReq", messages, StringComparison.Ordinal);
+        Assert.Contains("record FindCustomerActorReq", messages, StringComparison.Ordinal);
+        Assert.Contains("record DeliveryStatusUpdatedMsg", messages, StringComparison.Ordinal);
+        Assert.Contains("record BindCourierSessionReq", messages, StringComparison.Ordinal);
+        Assert.Contains("record BindCourierSessionRes", messages, StringComparison.Ordinal);
+        Assert.Contains("ActorRefSnapshot? Actor = null", messages, StringComparison.Ordinal);
+        Assert.Contains("string? SessionRoute = null", messages, StringComparison.Ordinal);
+        Assert.DoesNotContain("record DeliveryStatusUpdatedRes", messages, StringComparison.Ordinal);
+        Assert.DoesNotContain("record BindCourierReq", messages, StringComparison.Ordinal);
+        Assert.DoesNotContain("record ReassignDelivery", messages, StringComparison.Ordinal);
+        Assert.Contains("FindAsync(request.CourierId", courierRoutes, StringComparison.Ordinal);
+        Assert.Contains("FindAsync(request.CustomerId", customerAccess, StringComparison.Ordinal);
+        Assert.Contains("GetOrCreateAsync(", customerAccess, StringComparison.Ordinal);
+        Assert.Contains("new FindCustomerActorReq(CustomerId)", customerSession, StringComparison.Ordinal);
+        Assert.Contains("new EnsureCustomerActorReq(CustomerId)", customerSession, StringComparison.Ordinal);
+        Assert.Contains("IZLinkSpotPacketHandler<CustomerEntrySpot, DeliveryStatusUpdatedMsg>",
+            customerStatusHandler, StringComparison.Ordinal);
+        Assert.Contains(".Actor.NodeRid", clientScenario, StringComparison.Ordinal);
+        Assert.Contains("WaitForStatusAsync(customer, deliveryId, DeliveryStatus.Assigned", clientScenario,
+            StringComparison.Ordinal);
+        Assert.Contains("WaitForStatusAsync(customer, deliveryId, DeliveryStatus.Reassigned", clientScenario,
+            StringComparison.Ordinal);
+        Assert.Contains("deliverydispatch courier-session: bound courier=courier-a", shellRunner,
+            StringComparison.Ordinal);
+        Assert.Contains("deliverydispatch courier-session: bound courier=courier-b", shellRunner,
+            StringComparison.Ordinal);
+        Assert.DoesNotContain("CourierGateway", readme, StringComparison.Ordinal);
+        Assert.DoesNotContain("deliverydispatch.courier", readme, StringComparison.Ordinal);
+        Assert.DoesNotContain("courier-gateway", shellRunner, StringComparison.Ordinal);
+        Assert.DoesNotContain("courier-gateway", powershellRunner, StringComparison.Ordinal);
+        Assert.DoesNotContain("DELIVERYDISPATCH_COURIER_ROUTE", topology, StringComparison.Ordinal);
+        Assert.DoesNotContain("DELIVERYDISPATCH_CUSTOMER_ROUTE", topology, StringComparison.Ordinal);
+        Assert.DoesNotContain("DELIVERYDISPATCH_COURIER_ROUTE", shellRunner, StringComparison.Ordinal);
+        Assert.DoesNotContain("DELIVERYDISPATCH_CUSTOMER_ROUTE", shellRunner, StringComparison.Ordinal);
+        Assert.DoesNotContain("DELIVERYDISPATCH_COURIER_ROUTE", powershellRunner, StringComparison.Ordinal);
+        Assert.DoesNotContain("DELIVERYDISPATCH_CUSTOMER_ROUTE", powershellRunner, StringComparison.Ordinal);
+        Assert.False(Directory.Exists(Path.Combine(sampleRoot, "Server", "CourierGateway")));
+    }
+
+    [Fact]
+    public void DeliveryDispatch_CourierSession_Bind_Registers_Binder_And_Replies_To_Client()
+    {
+        var sampleRoot = ResolveSampleRoot("DeliveryDispatch");
+        var courierSessionBinder = File.ReadAllText(Path.Combine(sampleRoot, "Server", "CourierSession",
+            "CourierSessionBinder.cs"));
+        var courierSessionHandler = File.ReadAllText(Path.Combine(sampleRoot, "Server", "CourierSession",
+            "BindCourierSessionHandler.cs"));
+        var courierSessionHost = File.ReadAllText(Path.Combine(sampleRoot, "Server", "CourierSession",
+            "CourierSessionHostFactory.cs"));
+
+        Assert.Contains("new FindCourierActorReq(courierId)", courierSessionBinder, StringComparison.Ordinal);
+        Assert.Contains("new EnsureCourierActorReq(courierId)", courierSessionBinder, StringComparison.Ordinal);
+        Assert.Contains("context.Actors.BindAsync", courierSessionBinder, StringComparison.Ordinal);
+        Assert.Contains("builder.Services.AddSingleton<CourierSessionBinder>()", courierSessionHost,
+            StringComparison.Ordinal);
+        Assert.Contains("await binder.BindAsync(request.CourierId", courierSessionHandler, StringComparison.Ordinal);
+        Assert.Contains("context.Client.Reply(bound).Submit()", courierSessionHandler, StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public void DeliveryDispatch_Dispatch_Uses_Readiness_Health_Without_Business_Request_Retry()
+    {
+        var sampleRoot = ResolveSampleRoot("DeliveryDispatch");
+        var dispatchHost = File.ReadAllText(Path.Combine(sampleRoot, "Server", "Dispatch",
+            "DispatchServerHostFactory.cs"));
+        var dispatchAdapters = File.ReadAllText(Path.Combine(sampleRoot, "Server", "Dispatch",
+            "DispatchZLinkAdapters.cs"));
+        var dispatchWorker = File.ReadAllText(Path.Combine(sampleRoot, "Server", "Dispatch",
+            "DispatchWorker.cs"));
+
+        Assert.Contains("HasReadyCourierRouteAsync", dispatchHost, StringComparison.Ordinal);
+        Assert.Contains("IZLinkLocationRuntimeQuery", dispatchHost, StringComparison.Ordinal);
+        Assert.Contains("StatusCodes.Status503ServiceUnavailable", dispatchHost, StringComparison.Ordinal);
+        Assert.DoesNotContain("new FindCourierActorReq(\"__health__\")", dispatchHost, StringComparison.Ordinal);
+        Assert.DoesNotContain("RequestWithRetryAsync", dispatchAdapters, StringComparison.Ordinal);
+        Assert.DoesNotContain("Task.Delay(100", dispatchAdapters, StringComparison.Ordinal);
+        Assert.DoesNotContain("catch (Exception error)", dispatchAdapters, StringComparison.Ordinal);
+        Assert.DoesNotContain("catch (Exception error)", dispatchWorker, StringComparison.Ordinal);
+        Assert.DoesNotContain("courier timeout", dispatchWorker, StringComparison.Ordinal);
+        Assert.Contains("RequestAsync<FindCourierActorReq, FindCourierActorRes>", dispatchAdapters,
+            StringComparison.Ordinal);
+        Assert.Contains("RequestAsync<OfferDeliveryReq, OfferDeliveryRes>", dispatchAdapters,
+            StringComparison.Ordinal);
+        Assert.Contains("RequestAsync<DeliveryStatusChangedReq, DeliveryStatusChangedRes>", dispatchAdapters,
+            StringComparison.Ordinal);
+    }
+
+    [Fact]
     public void DotNet_Samples_Do_Not_Use_Legacy_Registry_Discovery()
     {
         var samplesRoot = ResolveSamplesRoot();
@@ -140,6 +1053,13 @@ public sealed class RegressionTests
         AssertSampleUsesJsonPayloads(ticTacToeRoot);
         AssertCodecHelpersStayConfinedToRawLifecycleBoundaries(bingoRoot);
         AssertCodecHelpersStayConfinedToRawLifecycleBoundaries(ticTacToeRoot);
+    }
+
+    private static void AssertLocationStoreHost(string hostFactory)
+    {
+        Assert.Contains("AddLocationStore(new ZLinkRedisLocationStore", hostFactory, StringComparison.Ordinal);
+        Assert.Contains(".SetConnectionString(topology.RedisEndpoint)", hostFactory, StringComparison.Ordinal);
+        Assert.Contains(".SetKeyPrefix(topology.RedisKeyPrefix)", hostFactory, StringComparison.Ordinal);
     }
 
     private static void AssertSampleUsesProtobufPayloads(string sampleRoot)
@@ -540,4 +1460,5 @@ public sealed class RegressionTests
         throw new DirectoryNotFoundException(
             "Could not find framework/languages/dotnet/samples from test runtime.");
     }
+
 }

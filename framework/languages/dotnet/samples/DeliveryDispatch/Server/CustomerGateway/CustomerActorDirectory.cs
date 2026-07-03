@@ -26,7 +26,7 @@ internal sealed class CustomerActorDirectory(ILogger<CustomerActorDirectory> log
     }
 
     public ValueTask PushAsync(
-        DeliveryStatusChangedReq status,
+        DeliveryStatusUpdatedMsg status,
         CancellationToken cancellationToken)
     {
         CustomerActor? actor = null;
@@ -46,13 +46,6 @@ internal sealed class CustomerActorDirectory(ILogger<CustomerActorDirectory> log
             return ValueTask.CompletedTask;
         }
 
-        actor.Context.BoundSession
-            .Send(new DeliveryStatusNotify(
-                status.DeliveryId,
-                status.Status,
-                status.CourierId,
-                status.OccurredAt))
-            .Submit(cancellationToken);
-        return ValueTask.CompletedTask;
+        return actor.PushStatusAsync(status, cancellationToken);
     }
 }

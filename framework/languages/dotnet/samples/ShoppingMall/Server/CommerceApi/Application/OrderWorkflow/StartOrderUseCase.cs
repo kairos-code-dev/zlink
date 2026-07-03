@@ -5,6 +5,7 @@ using ShoppingMall.Shared.Contracts;
 namespace ShoppingMall.Server.CommerceApi.Application.OrderWorkflow;
 
 internal sealed class StartOrderUseCase(
+    OrderStartPreparation preparation,
     ICommerceStateStore commerce,
     IOrderReadModelStore readModels,
     IOrderWorkflowRouter workflows,
@@ -28,20 +29,48 @@ internal sealed class StartOrderUseCase(
             && !string.Equals(existing.OwnerInstanceId, options.InstanceId, StringComparison.Ordinal))
             return await peers.ForwardStartAsync(existing.OwnerInstanceId, request, cancellationToken);
 
-        var cart = await commerce.GetCartAsync(request.CartId, cancellationToken);
-        await commerce.ValidateShippingAddressAsync(request.ShippingAddressId, cancellationToken);
-        _ = await commerce.GetPaymentMethodAsync(request.PaymentMethodId, cancellationToken);
+        var cart = await preparation.LoadCartAndValidateAsync(request, cancellationToken);
 
         var mapping = existing ?? await commerce.ReserveIdempotencyAsync(
             request.IdempotencyKey,
             options.InstanceId,
             cancellationToken);
+        if (!string.Equals(mapping.OwnerInstanceId, options.InstanceId, StringComparison.Ordinal))
+            return await peers.ForwardStartAsync(mapping.OwnerInstanceId, request, cancellationToken);
+
+        var command = await preparation.BuildCommandAsync(request, mapping, cart, cancellationToken);
+        var state = existing is null
+            ? await workflows.StartAsync(command, cancellationToken)
+            : await readModels.FindAsync(mapping.OrderId, cancellationToken)
+              ?? await workflows.StartAsync(command, cancellationToken);
+        return new StartOrderRes(state.OrderId, state.Status);
+    }
+}
+
+internal sealed class OrderStartPreparation(ICommerceStateStore commerce)
+{
+    public async ValueTask<CartSeed> LoadCartAndValidateAsync(
+        StartOrderReq request,
+        CancellationToken cancellationToken)
+    {
+        var cart = await commerce.GetCartAsync(request.CartId, cancellationToken);
+        await commerce.ValidateShippingAddressAsync(request.ShippingAddressId, cancellationToken);
+        _ = await commerce.GetPaymentMethodAsync(request.PaymentMethodId, cancellationToken);
+        return cart;
+    }
+
+    public async ValueTask<StartOrderWorkflowReq> BuildCommandAsync(
+        StartOrderReq request,
+        IdempotencyMapping mapping,
+        CartSeed cart,
+        CancellationToken cancellationToken)
+    {
         await commerce.SaveOrderPaymentMethodAsync(
             mapping.OrderId,
             request.PaymentMethodId,
             cancellationToken);
 
-        var command = new StartOrderWorkflowReq(
+        return new StartOrderWorkflowReq(
             mapping.OrderId,
             request.CartId,
             request.ShippingAddressId,
@@ -50,10 +79,26 @@ internal sealed class StartOrderUseCase(
             cart.Lines,
             cart.Amount,
             cart.Currency);
-        var state = existing is null
-            ? await workflows.StartAsync(command, cancellationToken)
-            : await readModels.FindAsync(mapping.OrderId, cancellationToken)
-              ?? await workflows.StartAsync(command, cancellationToken);
+    }
+}
+
+internal sealed class PrepareInventoryReservedOrderUseCase(
+    OrderStartPreparation preparation,
+    ICommerceStateStore commerce,
+    IOrderWorkflowSelfCheckClient workflowSelfChecks,
+    CommerceApiInstanceOptions options)
+{
+    public async ValueTask<StartOrderRes> ExecuteAsync(
+        StartOrderReq request,
+        CancellationToken cancellationToken)
+    {
+        var cart = await preparation.LoadCartAndValidateAsync(request, cancellationToken);
+        var mapping = await commerce.ReserveIdempotencyAsync(
+            request.IdempotencyKey,
+            options.InstanceId,
+            cancellationToken);
+        var command = await preparation.BuildCommandAsync(request, mapping, cart, cancellationToken);
+        var state = await workflowSelfChecks.PrepareInventoryReservedCheckpointAsync(command, cancellationToken);
         return new StartOrderRes(state.OrderId, state.Status);
     }
 }

@@ -8,6 +8,7 @@
     </PropertyGroup>
 
     <ItemGroup>
+        <PackageReference Include="StackExchange.Redis"/>
         <ProjectReference Include="../Configuration/ShoppingMall.Server.Configuration.csproj"/>
         <ProjectReference Include="../../Shared/ShoppingMall.Shared.csproj"/>
     </ItemGroup>

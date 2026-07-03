@@ -20,6 +20,7 @@ internal static class Program
         await using var customer1 = CreateClient(streamEndpoint);
         await using var customer2 = CreateClient(streamEndpoint);
         await using var reconnectingAgent = CreateClient(streamEndpoint);
+        await using var reconnectingCustomer = CreateClient(streamEndpoint);
         await using var waitingCustomer = CreateClient(streamEndpoint);
 
         await new SupportChatClientScenario().RunAsync(
@@ -27,6 +28,7 @@ internal static class Program
             customer1,
             customer2,
             reconnectingAgent,
+            reconnectingCustomer,
             waitingCustomer);
 
         logger.LogInformation("supportchat=completed");

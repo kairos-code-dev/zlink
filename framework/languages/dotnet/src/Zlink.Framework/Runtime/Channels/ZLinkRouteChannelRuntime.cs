@@ -136,12 +136,14 @@ internal sealed class ZLinkRouteChannelRuntime : IAsyncDisposable
     {
         if (_spotRouteBridge is null) return false;
 
-        return _spotRouteBridge.Send(
+        var accepted = _spotRouteBridge.Send(
             RouterChannelId,
             targetNodeRid,
             targetSpotRid,
             parts,
             SendFlags.None);
+        if (accepted) _spotRouteBridge.Drain();
+        return accepted;
     }
 
     internal bool TryRequestViaSpotRouteBridge(
@@ -153,7 +155,7 @@ internal sealed class ZLinkRouteChannelRuntime : IAsyncDisposable
     {
         if (_spotRouteBridge is null) return false;
 
-        return _spotRouteBridge.Request(
+        var accepted = _spotRouteBridge.Request(
             RouterChannelId,
             targetNodeRid,
             targetSpotRid,
@@ -161,6 +163,8 @@ internal sealed class ZLinkRouteChannelRuntime : IAsyncDisposable
             callback,
             SendFlags.None,
             timeout);
+        if (accepted) _spotRouteBridge.Drain();
+        return accepted;
     }
 
     public void Start()

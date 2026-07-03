@@ -11,7 +11,7 @@ internal sealed class SupportUserActor(
     public string Role { get; private set; } = string.Empty;
 
     // Conversation-domain identity: the customer's ActorId, or the agent's roster id
-    // for a per-conversation agent actor. Defaults to ActorId.
+    // for a conversation agent actor. Defaults to ActorId.
     public string ParticipantId { get; private set; } = actorId;
 
     public string ConversationId { get; private set; } = string.Empty;

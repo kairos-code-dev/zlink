@@ -13,7 +13,7 @@ namespace SupportChat.Server.Support.Infrastructure.ZLink.Spots.EntrySpot;
 internal sealed class SupportEntrySpot(
     IZLinkEntrySpotContext context,
     SupportActorDirectory directory,
-    AgentAvailabilityDirectory availability,
+    AgentAssignmentService assignment,
     IZLinkActorManager actorManager,
     ILogger<SupportEntrySpot> logger) : IZLinkEntrySpot<SupportUserActor>
 {
@@ -80,7 +80,7 @@ internal sealed class SupportEntrySpot(
     {
         if (string.Equals(actor.Role, SupportChatRoles.Agent, StringComparison.Ordinal))
         {
-            availability.SetAvailable(actor.ActorId, string.Empty, false);
+            assignment.SetAvailable(actor.ActorId, actor.DisplayName, false);
             logger.LogInformation(
                 "support entry: agent disconnected, availability removed. actor={ActorId}",
                 actor.ActorId);

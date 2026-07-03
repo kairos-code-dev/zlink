@@ -98,7 +98,7 @@ public sealed record SampleTopology(
         {
             throw new InvalidOperationException(
                 $"Environment variable '{name}' is required. Run the sample via run_sample.sh/run_sample.ps1, "
-                + "which provisions an isolated Redis container, or set it to an external Redis endpoint explicitly.");
+                + "which provisions an isolated Redis container and passes its endpoint to every server role.");
         }
 
         return value;

@@ -3,6 +3,8 @@ namespace ShoppingMall.Client.Configuration;
 public static class OrderStatuses
 {
     public const string Created = "Created";
+    public const string InventoryReserved = "InventoryReserved";
+    public const string PaymentAuthorized = "PaymentAuthorized";
     public const string Confirmed = "Confirmed";
     public const string Failed = "Failed";
 }

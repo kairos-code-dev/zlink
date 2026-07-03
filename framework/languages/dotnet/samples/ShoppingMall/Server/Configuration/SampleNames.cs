@@ -14,6 +14,8 @@ public static class OrderStatuses
     public const string Created = "Created";
     public const string InventoryReserved = "InventoryReserved";
     public const string PaymentAuthorized = "PaymentAuthorized";
+    public const string PaymentFailed = "PaymentFailed";
+    public const string InventoryReleased = "InventoryReleased";
     public const string Confirmed = "Confirmed";
     public const string Failed = "Failed";
 }
@@ -39,7 +41,6 @@ public sealed record SampleTopology(
     string WorkflowASpotRouterEndpoint,
     string WorkflowBSpotEndpoint,
     string WorkflowBSpotRouterEndpoint,
-    string StoreDirectory,
     RoutingId ApiARouteRid,
     RoutingId ApiBRouteRid,
     RoutingId WorkflowARouteRid,
@@ -64,7 +65,6 @@ public sealed record SampleTopology(
             Read("SHOPPINGMALL_WORKFLOW_A_SPOT_ROUTER_ENDPOINT", "tcp://127.0.0.1:48212"),
             Read("SHOPPINGMALL_WORKFLOW_B_SPOT_ENDPOINT", "tcp://127.0.0.1:48213"),
             Read("SHOPPINGMALL_WORKFLOW_B_SPOT_ROUTER_ENDPOINT", "tcp://127.0.0.1:48214"),
-            Read("SHOPPINGMALL_STORE_DIR", Path.Combine(Path.GetTempPath(), "shoppingmall-order-store")),
             RoutingId.From("6001"),
             RoutingId.From("6002"),
             RoutingId.From("6201"),

@@ -34,9 +34,11 @@ public static class TrackingServerHostFactory
                 .EnableServer(topology.TrackingRouteEndpoint)
                 .SetRoutingId(RoutingId.From("delivery-tracking-server"))
                 .AddHandlerGroup(SampleNames.TrackingRouteChannel);
-            options.AddClientServerChannel(SampleNames.CustomerRouteChannel)
-                .EnableClient()
-                .SetRoutingId(RoutingId.From("delivery-tracking-customer-client"));
+            options.AddSpotMesh(SampleNames.CustomerActorDiscovery)
+                .EnableRouter(topology.TrackingSpotRouterEndpoint)
+                .SetRoutingId(RoutingId.From("delivery-tracking-spot-node"))
+                .SetEntrySpotRoutingId(RoutingId.From("delivery-tracking-spot-node"))
+                .EnablePubSub(topology.TrackingSpotEndpoint);
         });
 
         return builder.Build();

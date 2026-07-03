@@ -1,4 +1,5 @@
 using DeliveryDispatch.Server.CourierActorNode.Spots.EntrySpot.Handlers;
+using DeliveryDispatch.Server.Configuration;
 using DeliveryDispatch.Shared.Contracts;
 using Microsoft.Extensions.Logging;
 using Zlink.Framework.Contracts.Messaging;
@@ -15,7 +16,8 @@ internal sealed class CourierEntrySpot(
 
     public void Configure()
     {
-        Context.Handlers.AddActorRequest<BindCourierSessionActorHandler, CourierActor>(nameof(BindCourierSessionReq));
+        Context.Handlers.AddActorRequest<BindCourierSessionActorHandler, CourierActor>(
+            nameof(BindCourierSessionReq));
         Context.Handlers.AddActorPacket<CourierDecisionActorHandler, CourierActor>(nameof(CourierDecisionMsg));
     }
 

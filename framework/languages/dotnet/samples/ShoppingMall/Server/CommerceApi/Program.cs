@@ -1,3 +1,4 @@
+using System.Net.Http.Json;
 using ShoppingMall.Server.CommerceApi.Application.OrderWorkflow;
 using ShoppingMall.Server.CommerceApi.Infrastructure.Http;
 using ShoppingMall.Server.CommerceApi.Infrastructure.ZLink;
@@ -32,14 +33,17 @@ internal static class Program
         builder.WebHost.UseUrls(instance.HttpUrl);
         builder.Services.AddSingleton(topology);
         builder.Services.AddSingleton(new CommerceApiInstanceOptions(instance.InstanceId));
-        builder.Services.AddSingleton(new FileCommerceStores(topology.StoreDirectory));
+        builder.Services.AddSingleton(new RedisCommerceStores(topology));
         builder.Services.AddSingleton<IOrderReadModelStore>(static provider =>
-            provider.GetRequiredService<FileCommerceStores>());
+            provider.GetRequiredService<RedisCommerceStores>());
         builder.Services.AddSingleton<ICommerceStateStore>(static provider =>
-            provider.GetRequiredService<FileCommerceStores>());
+            provider.GetRequiredService<RedisCommerceStores>());
         builder.Services.AddSingleton<IOrderWorkflowRouter, ZLinkOrderWorkflowRouter>();
+        builder.Services.AddSingleton<IOrderWorkflowSelfCheckClient, HttpOrderWorkflowSelfCheckClient>();
         builder.Services.AddSingleton<ICommerceApiPeerClient, HttpCommerceApiPeerClient>();
+        builder.Services.AddSingleton<OrderStartPreparation>();
         builder.Services.AddSingleton<StartOrderUseCase>();
+        builder.Services.AddSingleton<PrepareInventoryReservedOrderUseCase>();
         builder.Services.AddSingleton<GetOrderStateUseCase>();
 
         builder.Services.AddZLinkFramework(options =>
@@ -57,7 +61,7 @@ internal static class Program
         });
 
         var app = builder.Build();
-        app.Services.GetRequiredService<FileCommerceStores>().SeedDefaults();
+        app.Services.GetRequiredService<RedisCommerceStores>().SeedDefaults();
 
         app.MapGet("/health", () => Results.Ok(new { ready = true, instance = instance.InstanceId }));
         app.MapPost("/orders/start", async (
@@ -112,9 +116,25 @@ internal static class Program
                 cancellationToken);
             return Results.Ok();
         });
+        app.MapPost("/self-check/workflow/inventory-reserved", async (
+            StartOrderReq request,
+            PrepareInventoryReservedOrderUseCase useCase,
+            CancellationToken cancellationToken) =>
+        {
+            return Results.Ok(await useCase.ExecuteAsync(request, cancellationToken));
+        });
+        app.MapPost("/self-check/workflow/{orderId}/continue", async (
+            string orderId,
+            IOrderWorkflowRouter workflows,
+            CancellationToken cancellationToken) =>
+        {
+            var state = await workflows.ContinueAsync(new ContinueOrderWorkflowReq(orderId), cancellationToken);
+            return Results.Ok(new ContinueOrderWorkflowRes(state));
+        });
         app.MapPost("/self-check/assert", async (
             ServerAssertionReq request,
-            FileCommerceStores stores,
+            RedisCommerceStores stores,
+            SampleTopology topology,
             ILoggerFactory loggerFactory,
             CancellationToken cancellationToken) =>
         {
@@ -122,6 +142,8 @@ internal static class Program
                 [
                     request.SuccessfulOrderId,
                     request.PendingRecoveredOrderId,
+                    request.ConcurrentOrderId,
+                    request.ResumedOrderId,
                     request.InventoryFailureOrderId,
                     request.PaymentFailureOrderId,
                     request.ScaleOutOrderId
@@ -132,7 +154,12 @@ internal static class Program
                 .Append($"paymentFailures={evidence.PaymentFailureCount}")
                 .Append($"releasedReservations={evidence.ReleasedReservationCount}")
                 .Append($"startedIdempotency={evidence.StartedIdempotencyCount}")
+                .Append($"owners={topology.ForOrderId(request.SuccessfulOrderId).InstanceId},{topology.ForOrderId(request.ScaleOutOrderId).InstanceId}")
                 .ToArray();
+            var ownersDiffer = !string.Equals(
+                topology.ForOrderId(request.SuccessfulOrderId).InstanceId,
+                topology.ForOrderId(request.ScaleOutOrderId).InstanceId,
+                StringComparison.Ordinal);
             var passed =
                 HasSequence(evidence, request.SuccessfulOrderId,
                     nameof(OrderStartedEvent),
@@ -140,7 +167,20 @@ internal static class Program
                     nameof(PaymentAuthorizedEvent),
                     nameof(OrderConfirmedEvent))
                 && HasPrefix(evidence, request.PendingRecoveredOrderId,
-                    nameof(OrderStartedEvent))
+                    nameof(OrderStartedEvent),
+                    nameof(InventoryReservedEvent),
+                    nameof(PaymentAuthorizedEvent),
+                    nameof(OrderConfirmedEvent))
+                && HasSequence(evidence, request.ConcurrentOrderId,
+                    nameof(OrderStartedEvent),
+                    nameof(InventoryReservedEvent),
+                    nameof(PaymentAuthorizedEvent),
+                    nameof(OrderConfirmedEvent))
+                && HasSequence(evidence, request.ResumedOrderId,
+                    nameof(OrderStartedEvent),
+                    nameof(InventoryReservedEvent),
+                    nameof(PaymentAuthorizedEvent),
+                    nameof(OrderConfirmedEvent))
                 && HasSequence(evidence, request.InventoryFailureOrderId,
                     nameof(OrderStartedEvent),
                     nameof(InventoryReservationFailedEvent),
@@ -158,7 +198,8 @@ internal static class Program
                     nameof(OrderConfirmedEvent))
                 && evidence.ReleasedReservationCount >= 1
                 && evidence.PaymentFailureCount >= 1
-                && evidence.StartedIdempotencyCount == 5;
+                && evidence.StartedIdempotencyCount == 7
+                && ownersDiffer;
             loggerFactory.CreateLogger("ShoppingMall.Server.CommerceApi")
                 .LogInformation("shoppingmall evidence: {Evidence}", string.Join("; ", lines));
             return Results.Ok(new ServerAssertionRes(passed, lines));
@@ -197,3 +238,16 @@ internal sealed record PendingMappingHttpReq(
     string IdempotencyKey,
     string OrderId,
     string OwnerInstanceId);
+
+internal sealed record ServerAssertionReq(
+    string SuccessfulOrderId,
+    string PendingRecoveredOrderId,
+    string ConcurrentOrderId,
+    string ResumedOrderId,
+    string InventoryFailureOrderId,
+    string PaymentFailureOrderId,
+    string ScaleOutOrderId);
+
+internal sealed record ServerAssertionRes(
+    bool Passed,
+    string[] Evidence);

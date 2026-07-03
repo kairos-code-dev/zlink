@@ -139,13 +139,18 @@ internal sealed class ZLinkAutoConnectLoop : IAsyncDisposable
 
     private async Task LoopAsync(CancellationToken cancellationToken)
     {
+        // One live semaphore waiter across iterations: a fresh WaitAsync per
+        // tick would leave the losing waiter queued, and the next wake
+        // signal would be consumed by that abandoned waiter and lost.
+        Task? woken = null;
         while (!cancellationToken.IsCancellationRequested)
         {
             try
             {
                 var delay = Task.Delay(_options.PollingInterval, _time, cancellationToken);
-                var woken = _wake.WaitAsync(cancellationToken);
+                woken ??= _wake.WaitAsync(cancellationToken);
                 await Task.WhenAny(delay, woken).ConfigureAwait(false);
+                if (woken.IsCompleted) woken = null;
             }
             catch (OperationCanceledException)
             {

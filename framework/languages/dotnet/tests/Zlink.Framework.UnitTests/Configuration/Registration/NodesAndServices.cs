@@ -86,10 +86,10 @@ public sealed class NodesAndServicesTests : RegistrationValidationSupport
 
         var registration = services.BuildServiceProvider().GetRequiredService<ZLinkFrameworkRegistration>();
         Assert.Equal(new[] { "play-node", "session-node" }, registration.SpotNodes.Keys);
-        Assert.Equal(new[] { "play-node", "session-node" }, registration.SpotDiscoveries.Keys);
+        Assert.Equal(new[] { "play-node", "session-node" }, registration.SpotMeshChannels.Keys);
         Assert.Null(registration.SpotDiscovery);
-        Assert.Equal("play-node", registration.SpotNodes["play-node"].SpotDiscoveryChannelName);
-        Assert.Equal("session-node", registration.SpotNodes["session-node"].SpotDiscoveryChannelName);
+        Assert.Equal("play-node", registration.SpotNodes["play-node"].SpotMeshChannelName);
+        Assert.Equal("session-node", registration.SpotNodes["session-node"].SpotMeshChannelName);
     }
 
     [Fact]

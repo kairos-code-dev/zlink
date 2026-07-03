@@ -171,9 +171,9 @@ internal sealed class ZLinkFrameworkOptionsBuilder : IZLinkFrameworkOptions
             throw new ZLinkConfigurationException("SPOT mesh channel name must not be empty.");
 
         var discovery = ZLinkRegistrationBuilderGuard.AddUnique(
-            _registration.SpotDiscoveries,
+            _registration.SpotMeshChannels,
             channelName,
-            () => new ZLinkSpotDiscoveryRegistration
+            () => new ZLinkSpotMeshChannelRegistration
             {
                 ChannelName = channelName
             },
@@ -182,7 +182,7 @@ internal sealed class ZLinkFrameworkOptionsBuilder : IZLinkFrameworkOptions
         var spotNode = ZLinkRegistrationBuilderGuard.RegisterSpotNode(
             _registration.SpotNodes,
             channelName);
-        spotNode.SpotDiscoveryChannelName = discovery.ChannelName;
+        spotNode.SpotMeshChannelName = discovery.ChannelName;
 
         return new ZLinkSpotMeshBuilder(spotNode);
     }

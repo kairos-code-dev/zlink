@@ -115,10 +115,10 @@ public sealed class LocationResolverTests
             InMemoryLocationStoreTests.Spot(OwnerA, "spot-1"), ZLinkLocationWriteIntent.NewClaim);
 
         var registration = new ZLinkFrameworkRegistration();
-        registration.SpotDiscoveries.Add(
-            "other", new ZLinkSpotDiscoveryRegistration { ChannelName = "other" });
-        registration.SpotDiscoveries.Add(
-            "play", new ZLinkSpotDiscoveryRegistration { ChannelName = "play" });
+        registration.SpotMeshChannels.Add(
+            "other", new ZLinkSpotMeshChannelRegistration { ChannelName = "other" });
+        registration.SpotMeshChannels.Add(
+            "play", new ZLinkSpotMeshChannelRegistration { ChannelName = "play" });
         var addresses = new ZLinkLocationAddressResolvers(registration, fixture.Resolvers);
 
         var address = await addresses.ResolveSpotAddressAsync(RoutingId.From("spot-1"));

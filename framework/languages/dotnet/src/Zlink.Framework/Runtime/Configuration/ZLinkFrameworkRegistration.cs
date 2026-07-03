@@ -35,10 +35,10 @@ internal sealed class ZLinkFrameworkRegistration
 
     public Dictionary<string, ZLinkSpotNodeRegistration> SpotNodes { get; } = new(StringComparer.Ordinal);
 
-    public Dictionary<string, ZLinkSpotDiscoveryRegistration> SpotDiscoveries { get; } = new(StringComparer.Ordinal);
+    public Dictionary<string, ZLinkSpotMeshChannelRegistration> SpotMeshChannels { get; } = new(StringComparer.Ordinal);
 
-    public ZLinkSpotDiscoveryRegistration? SpotDiscovery
-        => SpotDiscoveries.Count == 1 ? SpotDiscoveries.Values.Single() : null;
+    public ZLinkSpotMeshChannelRegistration? SpotDiscovery
+        => SpotMeshChannels.Count == 1 ? SpotMeshChannels.Values.Single() : null;
 
     public TimeSpan ResolveChannelRequestTimeout(string channelName)
     {
@@ -60,10 +60,10 @@ internal sealed class ZLinkMetadataPolicyRegistration
     public HashSet<string> ForwardedApplicationKeys { get; } = new(StringComparer.Ordinal);
 }
 
-// spot mesh channel marker: AddSpotMesh(...) 가 mesh 채널 이름을 등록하고,
-// spot node 가 SpotDiscoveryChannelName 으로 이를 참조한다. peer 획득은
-// location-store 자동 연결 또는 수동 연결이 담당한다.
-internal sealed class ZLinkSpotDiscoveryRegistration
+// spot mesh channel marker: AddSpotMesh(...) registers the mesh channel
+// name and the spot node references it through SpotMeshChannelName. Peer
+// acquisition is owned by location-store auto-connect or manual wiring.
+internal sealed class ZLinkSpotMeshChannelRegistration
 {
     public required string ChannelName { get; init; }
 }
@@ -186,7 +186,7 @@ internal sealed class ZLinkSpotNodeRegistration
 {
     public required string SpotNodeName { get; init; }
 
-    public string? SpotDiscoveryChannelName { get; set; }
+    public string? SpotMeshChannelName { get; set; }
 
     public ZLinkSpotRouterCapabilityRegistration? Router { get; set; }
 

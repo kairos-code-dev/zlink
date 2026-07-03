@@ -3,7 +3,7 @@ namespace Zlink.Framework.Runtime.Locations;
 /// <summary>
 /// Resolves a spot rid to its live location row by trying every spot mesh
 /// channel name registered on this node (the same value the auto-connect
-/// host advertises under: SpotDiscoveryChannelName ?? SpotNodeName). Every
+/// host advertises under: SpotMeshChannelName ?? SpotNodeName). Every
 /// try reads the store — resolvers have no cache. Scheduled for removal
 /// with the address-based egress (spot-address messaging draft §10.3).
 /// </summary>
@@ -18,8 +18,8 @@ internal sealed class ZLinkSpotLocationRidResolver
     {
         _rows = rows;
         _meshNames = registration.SpotNodes.Values
-            .Select(static node => node.SpotDiscoveryChannelName ?? node.SpotNodeName)
-            .Concat(registration.SpotDiscoveries.Keys)
+            .Select(static node => node.SpotMeshChannelName ?? node.SpotNodeName)
+            .Concat(registration.SpotMeshChannels.Keys)
             .Distinct(StringComparer.Ordinal)
             .ToArray();
     }

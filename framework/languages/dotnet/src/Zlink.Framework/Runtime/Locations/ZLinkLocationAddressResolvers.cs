@@ -21,8 +21,8 @@ internal sealed class ZLinkLocationAddressResolvers :
     {
         _rows = rows;
         _meshNames = registration.SpotNodes.Values
-            .Select(static node => node.SpotDiscoveryChannelName ?? node.SpotNodeName)
-            .Concat(registration.SpotDiscoveries.Keys)
+            .Select(static node => node.SpotMeshChannelName ?? node.SpotNodeName)
+            .Concat(registration.SpotMeshChannels.Keys)
             .Distinct(StringComparer.Ordinal)
             .ToArray();
     }

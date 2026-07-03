@@ -181,8 +181,8 @@ public sealed class LocationLifecycleTests
         var spotRid = RoutingId.From("spot-9");
 
         var registration = new ZLinkFrameworkRegistration();
-        registration.SpotDiscoveries.Add(
-            "mesh", new ZLinkSpotDiscoveryRegistration { ChannelName = "mesh" });
+        registration.SpotMeshChannels.Add(
+            "mesh", new ZLinkSpotMeshChannelRegistration { ChannelName = "mesh" });
         var resolver = new ZLinkLocationSpotRemoteAddressResolver(
             new ZLinkSpotLocationRidResolver(registration, node.Resolvers));
 

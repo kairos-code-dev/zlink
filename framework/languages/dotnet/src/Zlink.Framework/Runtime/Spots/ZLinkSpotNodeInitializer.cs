@@ -38,7 +38,7 @@ internal sealed class ZLinkSpotNodeInitializer(
                 state.Context,
                 channelAdapter,
                 node,
-                spotNodeRegistration.SpotDiscoveryChannelName ?? spotNodeRegistration.SpotNodeName);
+                spotNodeRegistration.SpotMeshChannelName ?? spotNodeRegistration.SpotNodeName);
 
             nodeRuntime.ApplyEntrySpotRoutingIdBeforeBind();
             if (spotNodeRegistration.Router is not null
@@ -95,7 +95,7 @@ internal sealed class ZLinkSpotNodeInitializer(
             return;
 
         var status = await lifecycle.ClaimSpotAsync(
-                spotNodeRegistration.SpotDiscoveryChannelName ?? spotNodeRegistration.SpotNodeName,
+                spotNodeRegistration.SpotMeshChannelName ?? spotNodeRegistration.SpotNodeName,
                 node.RoutingId,
                 spotType: null,
                 node.RoutingId,

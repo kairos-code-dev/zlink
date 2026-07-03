@@ -136,7 +136,7 @@ internal sealed class ZLinkLocationAutoConnectHost : IAsyncDisposable, IZLinkAut
         {
             if (!state.SpotNodes.TryGetValue(name, out var node) || spot.Router is null) continue;
 
-            var meshName = spot.SpotDiscoveryChannelName ?? spot.SpotNodeName;
+            var meshName = spot.SpotMeshChannelName ?? spot.SpotNodeName;
             var endpoint = spot.Router.BindEndpoint ?? node.Node.Status().LocalEndpoint;
             var manual = new HashSet<string>(
                 spot.Router.ManualConnections.Select(static connection => connection.Endpoint),

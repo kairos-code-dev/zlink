@@ -263,7 +263,7 @@ binding 만 새 stream 으로 옮겨 붙는다.
 | 샘플 | 맡는 난제 | 핵심 요소 | codec |
 |------|-----------|-----------|:-----:|
 | [TicTacToe](../samples/tictactoe-game-sample.ko.md) | 가장 작은 실시간 game 흐름 | 수동 endpoint, STREAM auth, room Spot | MessagePack |
-| [Bingo](../samples/bingo-game-sample.ko.md) | matching room + 분리 gateway | Registry/Discovery, Entry Spot, timer, bound push | Protobuf |
+| [Bingo](../samples/bingo-game-sample.ko.md) | matching room + 분리 gateway | location store 자동 연결, Entry Spot, timer, bound push | Protobuf |
 | ShoppingMall 류 GameQuest | gameplay event 누적 → quest 진행 | **fanout 구독 + event sourcing + projection** | JSON |
 
 TicTacToe·Bingo 는 §3 의 STREAM·SPOT·actor 를 실시간 방 루프로 보여 주는 deep-dive

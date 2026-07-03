@@ -9,7 +9,7 @@
 > 다룬다. 이 문서는 그 의미가 `.NET`에서 어떤 모양으로 보이는지 정리한다.
 
 ZLink framework 는 **다섯 가지 핵심 개념**으로 선다:
-**channel · spot · actor · stream · registry/discovery**. 나머지 챕터는 전부 이
+**channel · spot · actor · stream · location**. 나머지 챕터는 전부 이
 다섯의 변주다. 낯선 단어가 나오면 먼저 §0 용어 표에서 한 줄로 잡고, §1~§5 에서 다섯
 개념을 차례로 본다. §6 은 이들을 받치는 실행·구성 모델이다.
 
@@ -162,12 +162,14 @@ graph LR
 ## 5. location — 주소 해석
 
 앱 코드는 가능하면 channel 이름 같은 논리 이름만 알고, 실제 peer 주소(`host:port`)는
-배포 환경이 제공하는 location store 가 풀어야 한다. Core C API의 Discovery/Registry
-표면은 제거되었으므로, .NET guide 는 제거된 API를 전제로 한 자동 연결 예제를 현재
-계약처럼 설명하지 않는다.
+배포가 공유하는 **location store** 가 푼다. 각 서버는 시작할 때 자기 위치(peer row)를
+store 에 자동 등록하고, client 는 channel 이름만으로 store 에서 상대를 찾아 연결한다.
+서버가 늘고 줄면 연결도 따라간다 — 사용법은 [09-location](09-location.ko.md), 계약은
+[공통 스펙](../../common/spec/location-runtime.ko.md)이 다룬다.
 
-현재 공개 guide 에서 바로 사용할 수 있는 연결 방식은 endpoint 를 역할 등록에 명시하는
-수동 연결이다(역할 단위, [04-channel-messaging §6](04-channel-messaging.ko.md)).
+store 없이 endpoint 를 역할 등록에 직접 적는 수동 연결도 그대로 지원한다(개발·테스트·
+소규모 고정 배포, [04-channel-messaging §6](04-channel-messaging.ko.md)). 같은 역할에서
+두 방식을 섞을 수는 없다.
 이름 기반 자동 연결은 location runtime 설계가 정식 공개 계약으로 확정된 뒤 별도 guide 에서
 다룬다.
 
@@ -261,7 +263,7 @@ options.AddClientServerChannel("orders")
 
 다음 구성 오류는 lazy first-call 로 미루지 않고 **host startup 에서
 즉시** 예외로 막힌다: channel 이름 중복, 같은 channel 안 `kind + packet name` 중복,
-client 역할에 Discovery·수동 연결 둘 다 없음, 허용되지 않는 handler 반환형.
+client 역할에 자동 연결(store)·수동 연결 둘 다 없음, 허용되지 않는 handler 반환형.
 
 ### 6.2 실행 모델 — `async`/`await`, `ValueTask`
 

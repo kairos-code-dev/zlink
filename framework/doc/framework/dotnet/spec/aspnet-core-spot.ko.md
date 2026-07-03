@@ -669,15 +669,17 @@ reply `ZLinkMessage`로 호출자에게 전달한다.
 
 - 현재 SPOT channel 안의 topic publish
 - route bridge가 참조하는 다른 channel runtime socket을 통한 channel send / request
-- spot rid 기반 routed spot send / request
+- spot 주소(`ZLinkSpotAddress`) 기반 routed spot send / request
 
 각 표면이 맡는 역할은 다음과 같다.
 
 - `SendToChannel(...)` / `RequestToChannel(...)` 는 route bridge channel socket을
   사용한다.
-- `SendToSpot(...)` / `RequestToSpot(...)` 는 spot remote address resolver 가 찾은 target
-  route 를 이용한다.
-- `targetRid + spotRid` 를 직접 받는 raw 호출은 하부 바인딩에 남아 있더라도,
+- `SendToSpot(...)` / `RequestToSpot(...)` 는 호출자가 resolve 해서 보관한
+  `ZLinkSpotAddress` 를 받는다. 전송 경로는 위치를 조회하지 않으며, 주소가 낡으면
+  요청이 `SpotRouteNotFound` 류의 오류로 실패해 재resolve 를 유도한다
+  ([공통 spot 주소 메시징 스펙](../../common/spec/spot-address-messaging.ko.md)).
+- `targetRid + spotRid` 를 낱개로 받는 raw 호출은 하부 바인딩에 남아 있더라도,
   application guide 의 기본 API 로는 문서화하지 않는다.
 
 `IZLinkSpotOutbound` 인터페이스의 전체 정의는
@@ -690,11 +692,11 @@ SPOT 구현 안에서는 이 호출 표면이 `IZLinkSpotContext.Outbound` 와
 timer 는 `IZLinkSpotContext.AddTimer<THandler>(...)` 처럼 spot lifecycle
 registration 표면으로 두는 쪽이 더 자연스럽다.
 
-현재 `.NET` framework 표면은 channel 이름 기준 호출과 spot key 기반 호출을
-구분한다. `targetRid + spotRid` 를 직접 받는 raw route 함수가 하부 바인딩에 있어도,
-framework application 문서에서는 backend / internal transport helper 로만
-다룬다. 일반 application 은 `IZLinkSpotRemoteAddressResolver` 가 숨긴 위치값을 직접
-보지 않는다.
+현재 `.NET` framework 표면은 channel 이름 기준 호출과 spot 주소 기반 호출을
+구분한다. `targetRid + spotRid` 를 낱개로 받는 raw route 함수가 하부 바인딩에 있어도,
+framework application 문서에서는 backend / internal transport helper 로만 다룬다.
+일반 application 은 주소를 `IZLinkSpotLocationResolver` 로 얻고, 주소 안의 위치값을
+낱개로 풀어 쓰지 않는다.
 
 예를 들면 다음과 같이 사용할 수 있다.
 
@@ -711,11 +713,12 @@ var reply = await spot.Context.Outbound
         new GetStageStateRequest())
     .Async<GetStageStateReply>(cancellationToken);
 
-await spot.Context.Outbound
+// stageAddress 는 IZLinkSpotLocationResolver 로 한 번 조회해 보관한 값이다.
+spot.Context.Outbound
     .SendToSpot(
-        stage.SpotRid,
+        stageAddress,
         new StageNoticeMessage())
-    .Async(cancellationToken);
+    .Submit(cancellationToken);
 ```
 
 `Stage wrapper` 같은 상위 모델을 생각하면 timer 도 함께 필요하다. 다만 현재
@@ -771,11 +774,12 @@ var reply = await spot.Context.Outbound
         new GetStageStateRequest())
     .Async<GetStageStateReply>(cancellationToken);
 
-await spot.Context.Outbound
+// stageAddress 는 IZLinkSpotLocationResolver 로 한 번 조회해 보관한 값이다.
+spot.Context.Outbound
     .SendToSpot(
-        stage.SpotRid,
+        stageAddress,
         new StageNoticeMessage())
-    .Async(cancellationToken);
+    .Submit(cancellationToken);
 
 await spot.Context.Outbound
     .Publish(

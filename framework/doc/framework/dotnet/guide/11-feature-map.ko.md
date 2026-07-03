@@ -29,10 +29,11 @@
 | Stage wrapper | 중간 | `playhouse` Stage 류를 SPOT 위에 얹을 때 | [5](05-spot.ko.md) | [stage-wrapper](../spec/stage-wrapper-on-spot.ko.md) |
 | actor / Entry Spot | 높음 | session 과 묶인 actor 로 packet 자동 dispatch | [6](06-actor-spot.ko.md) | [actor](../spec/aspnet-core-actor.ko.md) |
 | session actor dispatch | 높음 | 연결 서버와 로직 서버를 분리(재접속 이전성) | [6](06-actor-spot.ko.md) | [session-actor-dispatch](../spec/session-actor-dispatch.ko.md) |
-| STREAM session(서버) | 중간 | 외부 client(TCP/WS)를 framework 로 받기 | [7](08-stream.ko.md) | [stream](../spec/aspnet-core-stream.ko.md) |
-| Stream Connector(client) | 중간 | client 측에서 STREAM 서버에 접속 | [7](08-stream.ko.md) | [streaming-client](samples/streaming-client.ko.md) |
-| Location 자동 연결·운영 조회 | 중간 | store 기반 자동 연결과 runtime query | [9](09-location.ko.md) | [location runtime](../../common/spec/location-runtime.ko.md) |
-| runtime monitoring | 낮음 | socket/registry/spot 이벤트 관찰 | [9](10-monitoring.ko.md) | [monitoring](../spec/aspnet-core-monitoring.ko.md) |
+| STREAM session(서버) | 중간 | 외부 client(TCP/WS)를 framework 로 받기 | [8](08-stream.ko.md) | [stream](../spec/aspnet-core-stream.ko.md) |
+| Stream Connector(client) | 중간 | client 측에서 STREAM 서버에 접속 | [8](08-stream.ko.md) | [streaming-client](samples/streaming-client.ko.md) |
+| Location 자동 연결·운영 조회 | 중간 | endpoint 를 코드에 적지 않고 서버 증감을 따라가고 싶을 때 | [9](09-location.ko.md) | [location runtime](../../common/spec/location-runtime.ko.md) |
+| spot 주소 메시징 | 중간 | 다른 노드의 spot/actor 로 반복해서 보낼 때(조회 1회 후 주소 보관) | [5](05-spot.ko.md) §5 | [spot 주소 메시징](../../common/spec/spot-address-messaging.ko.md) |
+| runtime monitoring | 낮음 | socket/location/spot 이벤트 관찰 | [10](10-monitoring.ko.md) | [monitoring](../spec/aspnet-core-monitoring.ko.md) |
 
 ## 3. 빠른 선택 가이드
 
@@ -69,7 +70,7 @@ flowchart TD
 | 샘플 | 핵심 기능 묶음 | codec | 케이스 스터디 | deep-dive 문서 |
 |------|----------------|:-----:|---------------|----------------|
 | TicTacToe | 수동 endpoint 직접 연결, STREAM auth, actor game join | JSON | [15 실시간 게임](case-studies/15-case-realtime-game.ko.md) | [TicTacToe](samples/tictactoe-game-sample.ko.md) |
-| Bingo | Registry/Discovery 분리 gateway, Entry Spot, room Spot timer, bound push | Protobuf | [15 실시간 게임](case-studies/15-case-realtime-game.ko.md) | [Bingo](samples/bingo-game-sample.ko.md) |
+| Bingo | location store 자동 연결, 분리 gateway, Entry Spot, room Spot timer, bound push | Protobuf | [15 실시간 게임](case-studies/15-case-realtime-game.ko.md) | [Bingo](samples/bingo-game-sample.ko.md) |
 | SupportChat | conversation Spot, reconnect 이전성, idle timer→close, bound push | JSON | [17 채팅·메시징](case-studies/17-case-chat-messaging.ko.md) | [SupportChat](samples/supportchat-sample.ko.md) |
 | DeliveryDispatch | HTTP intake, timeout 재배정, status fanout, delivery Spot, 고객 push | JSON | [16 라이드헤일링](case-studies/16-case-ride-hailing.ko.md) | [DeliveryDispatch](samples/deliverydispatch-sample.ko.md) |
 | ShoppingMall | event sourcing, OrderId owner routing, projection rebuild, 보상, scale-out | JSON | [13 전자상거래 체크아웃](case-studies/13-case-ecommerce-checkout.ko.md) | [ShoppingMall](samples/shoppingmall-sample.ko.md) |

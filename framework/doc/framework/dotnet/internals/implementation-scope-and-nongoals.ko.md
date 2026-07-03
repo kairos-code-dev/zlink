@@ -37,7 +37,7 @@
   기준은 group mapping 모델에 맞춘다.
 - spot 의 packet / subscribe / timer descriptor
 - `AddStreamNode(...)` 와 framework Header 기반 packet session 등록
-- `AddZLinkMonitoring(...)` 과 socket / registry / spot 모니터링 source
+- `AddZLinkMonitoring(...)` 과 socket / location / spot 모니터링 source
 - `.NET DI`[^di] 와 hosted service[^hosted-service] lifecycle 통합
 - backend adapter layer[^backend-adapter] 와 backend dependency policy 적용
 - 기본 codec[^codec] 은 framework core 가 JSON 하나로 고정(lock-in) 한다.
@@ -64,7 +64,7 @@
 - stage wrapper[^stage-wrapper] 전용 metadata / membership 모델
 - `targetRid + spotId` 형태의 direct routed public 호출 표면
 - framework 기본 표면에 두는 channel 별 typed wrapper
-- automatic embedded registry discovery endpoint 추론
+- location store 연결 정보의 자동 추론(store 는 항상 명시 등록한다)
 - `IHealthCheck` 자동 등록
 - `IObservable` 기반 topology[^topology] event 표면
 - framework 기본 패키지 안에 포함된 추가 protobuf/msgpack serializer 구현체(JSON 기본 codec 은 포함)

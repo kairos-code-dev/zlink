@@ -36,7 +36,7 @@ core는 SpotNode bind 이후 Entry Spot rid 변경을 잠그기 때문에 이 �
 1. `ApplyEntrySpotRoutingIdBeforeBind()`로 `ConfigureEntrySpot(...)`에 설정된
    `RoutingId`를 native Entry Spot facade(`entrySpot.SetRoutingId(...)`)에 적용한다.
 2. router/pub bind endpoint를 설정한다(`SetRouterBind`/`SetPubBind`).
-3. discovery, manual peer, accepted spot route channel, publisher 같은 node 역할을 붙인다.
+3. store 자동 연결, manual peer, accepted spot route channel, publisher 같은 node 역할을 붙인다.
 4. `InitializeEntrySpotAsync()`로 Entry Spot 을 초기화한다(activation·dispatch pump 포함).
 5. 이후 생성되는 Actor 는 설정된 Entry Spot rid 를 사용한다.
 
@@ -48,7 +48,7 @@ core는 SpotNode bind 이후 Entry Spot rid 변경을 잠그기 때문에 이 �
 
 ## Route 의미
 
-framework가 core discovery route를 노출할 때 Entry Spot과 user Spot을 구분한다.
+framework가 spot location row를 노출할 때 Entry Spot과 user Spot을 구분한다.
 구현된 표면은 `ZLinkSpotRemoteAddress`(`TargetNodeRid`, `SpotRid`, `SpotKind`)다.
 
 - `ZLinkSpotRemoteAddress.SpotKind`가 `Entry`이면 `SpotRid`는 Entry Spot rid다.

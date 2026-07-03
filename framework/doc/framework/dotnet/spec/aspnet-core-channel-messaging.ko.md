@@ -4,7 +4,7 @@
 
 [스펙 목차](../../common/README.ko.md)
 
-[.NET 묶음](../README.ko.md) | [인터페이스](handler-interfaces.ko.md) | [channel 샘플](../guide/samples/channel-messaging-samples.ko.md) | [SPOT](aspnet-core-spot.ko.md) | [STREAM](aspnet-core-stream.ko.md) | [Registry](aspnet-core-registry.ko.md)
+[.NET 묶음](../README.ko.md) | [인터페이스](handler-interfaces.ko.md) | [channel 샘플](../guide/samples/channel-messaging-samples.ko.md) | [SPOT](aspnet-core-spot.ko.md) | [STREAM](aspnet-core-stream.ko.md) | [Location](aspnet-core-location.ko.md)
 
 # ZLink Framework ASP.NET Core Channel Messaging
 
@@ -26,7 +26,7 @@ route mesh `ROUTER` socket은 channel runtime 소유이며, `SpotNode`에 직접
 - **channel 이름**[^channel]만 알면 다른 서비스를 호출할 수 있어야 한다.
 - 공용 outbound client[^outbound]를 DI[^di]로 받아서 그대로 쓸 수 있어야 한다.
 - event를 publish[^pubsub]할 수 있어야 한다.
-- channel 단위로 Discovery[^discovery] 기반 자동 연결을 켤 수 있어야 한다.
+- channel 단위로 location store 기반 자동 연결[^autoconnect]을 켤 수 있어야 한다.
 - handler[^handler]를 등록하면 DI 컨테이너와 자연스럽게 맞물려야 한다.
 
 여기서 outbound client 는 두 곳에서 같은 모양으로 쓸 수 있어야 한다.
@@ -34,7 +34,7 @@ route mesh `ROUTER` socket은 channel runtime 소유이며, `SpotNode`에 직접
 - ZLink 메시지 handler 안.
 - 기존 `ASP.NET Core` HTTP handler 또는 controller 안.
 
-사용자가 `DealerSocket`[^dealer], `RouterSocket`[^router], `Discovery` 를 직접 조립할
+사용자가 `DealerSocket`[^dealer], `RouterSocket`[^router], 자동 연결 배선을 직접 조립할
 필요는 없다. 한 단계 위에 있는 표면만 다루도록 만들겠다는 뜻이다. 구체적으로는
 `AddZLinkFramework(...)`, `IZLinkChannelClient`, handler 등록 정도가 그 표면이다.
 
@@ -47,7 +47,7 @@ route mesh `ROUTER` socket은 channel runtime 소유이며, `SpotNode`에 직접
 
 이 문서는 아래 `.NET` binding 기능을 토대로 본다.
 
-- `Discovery`
+- location store 기반 자동 연결
 - `DealerSocket`
 - `RouterSocket`
 - request-reply helper
@@ -131,12 +131,12 @@ builder.Services.AddZLinkFramework(options =>
 
 ##### 자동 연결을 켜는 방법
 
-모든 client / subscriber 역할은, 별도 신호 없이도 이 전역 Discovery 를 기본
+모든 client / subscriber 역할은, location store 가 등록되어 있으면 이를 기본
 연결 방식으로 쓴다. 즉 `channel.EnableClient()` 만 호출해도, 그 channel 은 자동으로
-Discovery 기반 연결로 동작한다.
+store 기반 연결로 동작한다.
 
-> Discovery registry endpoint 는 channel 별로 다르게 두는 표면을
-> 두지 않는다. registry 목록은 앱 전체에서 한 벌만 관리한다.
+> store 연결 정보는 channel 별로 다르게 두는 표면을 두지 않는다.
+> store 등록(`AddLocationStore`)은 앱 전체에서 한 벌만 관리한다.
 
 #### 수동 연결 예시
 
@@ -157,7 +157,7 @@ builder.Services.AddZLinkFramework(options =>
 });
 ```
 
-이 경우 framework 는 해당 channel 에 Discovery 를 강제하지 않는다. 그 channel 의
+이 경우 framework 는 해당 channel 에 자동 연결을 강제하지 않는다. 그 channel 의
 client 역할은 사용자가 직접 적어 준 peer 목록만 보고 연결을 관리한다.
 
 수동 연결은 remote `RoutingId`[^rid] 를 받지 않는다. 이유는 다음과 같다.
@@ -165,7 +165,7 @@ binding 하부 모델이 "이미 connect 된 DEALER 를 attach 한다" 는 방�
 표면도 endpoint 집합만 다루는 편이 자연스럽기 때문이다.
 
 server 역할의 논리 routing id는 server 쪽에서 정한다. 같은 서비스를 재시작하면서 endpoint가
-바뀌더라도 논리 routing id가 같으면 Discovery topology에서는 같은 제공자의 새 endpoint로
+바뀌더라도 논리 routing id가 같으면 store 의 peer row 기준으로는 같은 제공자의 새 endpoint로
 교체된다.
 
 ```csharp
@@ -184,13 +184,13 @@ builder.Services.AddZLinkFramework(options =>
 - "같은 channel 의 같은 client 에서 두 방식을 섞는다" 는 말이 **아니다**.
 - **서로 다른 channel 끼리**, 다른 방식을 골라 쓸 수 있다는 뜻이다.
 
-예를 들면 `profile` channel 은 Discovery 자동 연결로 두고, `account` channel 은 수동
+예를 들면 `profile` channel 은 store 자동 연결로 두고, `account` channel 은 수동
 연결로 둘 수 있다.
 
 channel 별 연결 방식은, 역할 등록에서 endpoint 를 직접 넘겼는지로 정해진다.
 
 | --- | --- | --- |
-| 있음 | 없음 | Discovery 자동 연결 |
+| 있음 | 없음 | store 자동 연결 |
 | 있음 | 있음 | 수동 연결 (수동 우선) |
 | 없음 | 있음 | 수동 연결 |
 | 없음 | 없음 | startup validation[^startupvalidation] 오류 |
@@ -200,16 +200,16 @@ channel 별 연결 방식은, 역할 등록에서 endpoint 를 직접 넘겼는�
 - 특정 channel 만 수동으로 바꾸고 싶을 때는, 그 channel 안에서
   `EnableClient(endpoint)` 또는
   `EnableSubscriber(endpoint)` 를 명시한다.
-- 이때 명시한 역할만 수동으로 분류되고, 나머지는 그대로 전역 Discovery 를 쓴다.
+- 이때 명시한 역할만 수동으로 분류되고, 나머지는 그대로 store 자동 연결을 쓴다.
 
-이렇게 나눠 두는 이유는 zlink core 의 동작 때문이다. Discovery 가 붙은 DEALER 는,
+이렇게 나눠 두는 이유는 연결 집합의 소유권 때문이다. 자동 연결이 관리하는 DEALER 는,
 수동 `connect`, `disconnect`, `unbind`, `close` 를 받지 않는다. 따라서 framework 역시
 같은 channel runtime 안에서 두 방식을 섞는 모델로 설명할 수 없다.
 
 route channel(`AddRouteMesh`)도 역할 단위로 읽는다. `EnableServer(endpoint)`는
-local `ROUTER` endpoint를 열고, `EnableClient()`는 discovery로 찾은 peer로
+local `ROUTER` endpoint를 열고, `EnableClient()`는 store 에서 찾은 peer로
 outbound request/send를 보낸다. `EnableClient(endpoint)`는 bind 없이 수동 peer에
-연결하는 client-only channel을 만든다. 전역 Discovery가 있더라도 수동 peer를 함께
+연결하는 client-only channel을 만든다. store 가 등록되어 있어도 수동 peer를 함께
 명시할 수 있으며, 이때 수동 peer는 실제 transport 연결로 쓰인다.
 
 #### SPOT route 수신과 router-capable channel
@@ -277,7 +277,7 @@ builder.Services.AddZLinkFramework(options =>
 - `IZLinkChannelClient` 는 DI 로 주입받는다.
 - 호출 대상은 gateway 주소가 아니라 **channel 이름**이다.
 - runtime 은 등록된 channel 역할을 보고, 필요한 만큼만 runtime 을 만든다.
-- client 역할이 있는 channel 은, 그 channel 전용 Discovery 뷰와 outbound DEALER
+- client 역할이 있는 channel 은, 그 channel 전용 peer 뷰와 outbound DEALER
   를 하나씩 가진다.
 
 여기서 outbound DEALER 는 framework 입장에서 주로 한 가지 역할을 맡는다. 바로
@@ -584,7 +584,7 @@ request-response 와 event 는, 서로 별도 표면으로 보이는 편이 자�
 아래 시퀀스는 `GetProfileRequest` packet 이 local ROUTER 로 들어왔을 때의 흐름을
 보여 준다. runtime 이 handler 를 찾고, DI 로 객체를 만들고, 응답을 돌려보내는 과정이다.
 
-한 가지 주의할 점이 있다. outbound channel runtime 은 startup 시점에, Discovery 자동
+한 가지 주의할 점이 있다. outbound channel runtime 은 startup 시점에, store 자동
 연결과 수동 연결 중 **하나만** 골라 둔다.
 
 ```mermaid
@@ -593,7 +593,7 @@ sequenceDiagram
     participant RP as Remote Peer
     participant RT as ZLink Runtime
     participant CH as Channel Runtime
-    participant DISC as Discovery
+    participant DISC as 자동 연결(store)
     participant MC as Manual Connections
     participant DSP as Dispatcher
     participant REG as Handler Registry
@@ -606,7 +606,7 @@ sequenceDiagram
 
     Note over RT,MC: startup stage
     RT->>CH: GetOrCreateChannel("profile")
-    alt discovery-based connection
+    alt store 자동 연결
         CH->>DISC: Attach channel view("profile")
         DISC-->>CH: provider rid set / endpoint updates
     else manual connection
@@ -664,7 +664,7 @@ sequenceDiagram
 
 이 흐름에서 짚어 둘 부분은 다음과 같다.
 
-- outbound channel runtime 은, Discovery 자동 연결과 수동 연결 중 **하나만** 고른다.
+- outbound channel runtime 은, store 자동 연결과 수동 연결 중 **하나만** 고른다.
 - 한 앱 안에서 channel 마다 서로 다른 방식을 골라도 된다. 예를 들어 `profile` 은 자동
   연결로, `account` 는 수동 연결로 운영할 수 있다.
 - 일반 request / send handler dispatch 는 local ROUTER (server) ingress 를 기준으로
@@ -896,7 +896,7 @@ ZLink handler filter[^filter] 로 둔다.
 `IZLinkHandlerFilter` 인터페이스 정의와 등록 방법은,
 [handler-interfaces.ko.md](handler-interfaces.ko.md) §8 을 참고한다.
 
-## 7. Discovery와 channel runtime
+## 7. 자동 연결과 channel runtime
 
 이 절에서는 호출자가 channel 이름만 알아도 동작하도록 만드는 핵심 모델과, 그 모델이
 왜 필요한지를 짧게 정리한다.
@@ -905,10 +905,10 @@ ZLink handler filter[^filter] 로 둔다.
 
 - 호출자는 **channel 이름** 만 지정한다.
 - `IZLinkChannelClient` 는, 등록된 channel 이름마다 별도의 channel runtime 을 가진다.
-- 각 channel 은 그 channel view 에 묶인 Discovery 와 outbound DEALER 소켓을 가진다.
-- Discovery 가, 그 channel view 의 provider 목록을 유지한다.
+- 각 channel 은 그 channel view 에 묶인 자동 연결 reconcile 과 outbound DEALER 소켓을 가진다.
+- 자동 연결 reconcile 이, store 의 peer row 로 그 channel view 의 provider 목록을 유지한다.
 - framework 는, 그 channel 의 rid 집합과 연결 상태를 보고 요청을 보낸다.
-- 필요하면 운영 점검용으로, 별도 서비스가 `Registry`[^registry] 의 snapshot / query
+- 필요하면 운영 점검용으로, 별도 서비스가 location store[^store] 를 읽는 runtime query 의 status / peer 목록
   결과를 읽어 현재 topology[^topology] 를 노출할 수 있다.
 
 ### 7.2 왜 중요한가
@@ -953,7 +953,7 @@ typed request payload 와 context 를 받는다. multipart 구조는 adapter 내
 
 여기서 한 가지 짚어 둘 점이 있다. `options.Codecs.*` 는 binding core 에 codec 구현을
 직접 끼워 넣는다는 뜻이 아니다. 별도의 codec extension / provider 를 framework
-registry 에 등록하는 흐름이라는 점에 유의한다.
+store 의 peer row 로 등록하는 흐름이라는 점에 유의한다.
 
 ```csharp
 builder.Services.AddZLinkFramework(options =>
@@ -970,7 +970,7 @@ builder.Services.AddZLinkFramework(options =>
 `ASP.NET Core` 에서는 다음 lifecycle[^lifecycle] 단계가 중요하다.
 
 - 앱 시작 시, runtime 부팅
-- Discovery 연결 수립
+- store 자동 연결 수립
 - handler dispatcher 시작
 - 앱 종료 시, graceful shutdown
 
@@ -1010,7 +1010,7 @@ metric, publish 는 Debug 로그 또는 metric 과 observer event 를 남긴다.
 channel 문서의 항목은 다음 흐름이 함께 깨지지 않아야 한다.
 
 - 등록 검증
-- 수동 / Discovery 연결
+- 수동 / store 자동 연결
 - handler group
 - HTTP handler 사용
 
@@ -1024,9 +1024,9 @@ channel 문서의 항목은 다음 흐름이 함께 깨지지 않아야 한다.
 | 테스트 케이스 | 확인 기준 |
 |---------------|-----------|
 | `ChannelsTests.AddZLinkFramework_Throws_WhenChannelNameIsDuplicated` | 같은 channel 이름을 중복 등록하면 startup validation 예외가 난다. |
-| `ChannelsTests.AddZLinkFramework_Throws_WhenClientHasNoPeerAcquisitionPath` | client 역할에 Discovery나 수동 연결이 없으면 시작 전에 실패한다. |
+| `ChannelsTests.AddZLinkFramework_Throws_WhenClientHasNoPeerAcquisitionPath` | client 역할에 자동 연결(store)이나 수동 연결이 없으면 시작 전에 실패한다. |
 | `ClientServerTests.ManualClient_Request_And_Send_Work_Across_Hosts` | 수동 연결 client가 request와 send를 모두 처리한다. |
-| `ClientServerTests.DiscoveryClient_Request_And_Send_Work_Across_Hosts` | Discovery 기반 client가 request와 send를 모두 처리한다. |
+| E2E Config 1 (`LocationMessaging`) | store 자동 연결 기반 client 가 request 와 send 를 실제 다중 프로세스에서 처리한다. |
 | `ZLinkAsyncSubmitterTests.Async_DrainsPendingItemFromReadyCallback` | async submitter가 ready callback에서 pending item을 비우고 중복 전송하지 않는다. |
 
 ---
@@ -1049,9 +1049,9 @@ channel 문서의 항목은 다음 흐름이 함께 깨지지 않아야 한다.
 [^pubsub]: **publish / subscribe** 는 1:N 이벤트 fan-out 패턴이다. publisher 가 토픽에
     이벤트를 보내면 그 토픽을 구독한 모든 subscriber 가 함께 받는다.
 
-[^discovery]: **Discovery** 는 zlink core 의 자동 peer 발견 메커니즘이다. registry
-    노드에 channel 의 provider 목록이 등록되어 있고, client 는 그 목록을 받아 자동으로
-    연결한다. 수동 endpoint 관리가 필요 없다.
+[^autoconnect]: **location store 기반 자동 연결**은 각 서버가 자기 위치(peer row)를
+    공유 store 에 등록하고, client 가 그 목록을 읽어 자동으로 연결하는 메커니즘이다.
+    수동 endpoint 관리가 필요 없다([09-location](../guide/09-location.ko.md)).
 
 [^handler]: **handler** 는 들어온 메시지를 처리하는 사용자 코드다. request handler 는
     응답을 돌려주고, send handler 는 단방향으로 받기만 하며, event handler 는 publish 된
@@ -1112,10 +1112,10 @@ channel 문서의 항목은 다음 흐름이 함께 깨지지 않아야 한다.
 [^filter]: **filter** 는 handler 호출 앞뒤를 둘러싸는 공통 처리 컴포넌트다. logging,
     validation, exception mapping 같은 cross-cutting 처리를 한 곳에 모을 때 쓴다.
 
-[^registry]: **Registry** 는 zlink core 가 제공하는 topology 정보 저장소다. 어떤 channel
-    에 어떤 provider 가 떠 있는지 같은 정보를 보관한다.
+[^store]: **location store** 는 배포가 공유하는 위치 저장소(예: Redis extension)다.
+    어떤 channel 에 어떤 provider 가 떠 있는지를 peer row 로 보관한다.
 
-[^topology]: **topology** 는 어떤 노드(channel, spot, registry 등)가 어디에 있는지, 그리고
+[^topology]: **topology** 는 어떤 노드(channel, spot 등)가 어디에 있는지, 그리고
     서로 어떻게 연결되어 있는지를 나타내는 구성 정보다.
 
 [^lifecycle]: **lifecycle** 은 컴포넌트가 시작·실행·종료를 거치는 단계 흐름을 가리킨다.

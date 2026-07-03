@@ -5,7 +5,7 @@
 # 13. ZLink 을 어디에 쓰나 — 내부 서비스 통신과 실시간 상태 서버 패턴
 
 > ZLink 은 단순 RPC 라이브러리가 아니라, `.NET` 백엔드에서 **논리 channel, 연결
-> 수명, 동적 상태 노드(SPOT), pub/sub, discovery 를 한 framework 안에서 묶어 주는
+> 수명, 동적 상태 노드(SPOT), pub/sub, 위치 기반 자동 연결을 한 framework 안에서 묶어 주는
 > 서버 간·실시간 메시징 계층**이다. 특히 "서비스가 어디 떠 있는지", "client 가
 > 어디 붙어 있는지", "room/zone/symbol 같은 상태 단위를 어떻게 직렬 처리할지" 가
 > **반복 문제로 나올 때** 효과가 크다.
@@ -36,7 +36,7 @@ ZLink 의 체감 장점은 "인프라 박스가 빠진다"보다 **"개발자가
 응용은 도메인 단위(channel/spot/session)만 다루고, 나머지는 framework 가 가져간다.
 
 - **channel name 만 알고 호출한다** — 대상 host/port/stub 를 모른다.
-- **service location 과 peer 분배**는 Registry/Discovery 가 맡는다.
+- **service location 과 peer 분배**는 location store 기반 자동 연결이 맡는다([09-location](09-location.ko.md)).
 - **request correlation 과 reply 대기**는 framework 가 맡는다.
 - **client 연결 수명과 packet framing** 은 STREAM 이 맡는다.
 - **room/zone/symbol 상태 직렬성**은 SPOT 실행 큐가 맡는다.
@@ -101,7 +101,7 @@ channel/spot 계약으로 메시징할 수 있다.
 | 케이스 | 무엇을 보나 | ZLink 핵심 기능 |
 |--------|-------------|-----------------|
 | [13 전자상거래 체크아웃](case-studies/13-case-ecommerce-checkout.ko.md) | channel messaging 기본형(request/send/pub-sub) | channel + pub/sub |
-| [14 내부 마이크로서비스 mesh + 운영](case-studies/14-case-microservice-mesh.ko.md) | service discovery 와 운영·topology | channel  + Registry + monitoring |
+| [14 내부 마이크로서비스 mesh + 운영](case-studies/14-case-microservice-mesh.ko.md) | service discovery 와 운영·topology | channel + location store + monitoring |
 | [15 실시간 멀티플레이 게임](case-studies/15-case-realtime-game.ko.md) | STREAM+SPOT+actor 가 모두 필요한 강한 사례 | STREAM + SPOT + actor + session dispatch |
 | [16 라이드헤일링 디스패치](case-studies/16-case-ride-hailing.ko.md) | zone 상태와 위치 fan-out | STREAM + pub/sub + zone SPOT |
 | [17 채팅·메시징](case-studies/17-case-chat-messaging.ko.md) | room membership 과 presence | STREAM + room SPOT + BoundSession |
@@ -270,7 +270,7 @@ sequenceDiagram
 |----------------------------------|------------|------|
 | "stub/channel 을 재사용하라" | `IZLinkChannelClient` 가 DI singleton, socket 수명은 framework | 호출마다 만들 일 없음 |
 | RPC deadline | `RequestToChannel(...).Timeout(...)` | reply 대기 시간 |
-| L7 로드밸런싱(Envoy/Istio) | channel name + `Discovery` 가 peer 분배 | sidecar 불필요 |
+| L7 로드밸런싱(Envoy/Istio) | channel name + store 자동 연결이 peer 분배 | sidecar 불필요 |
 | interceptor | `IZLinkHandlerFilter` | [4](04-channel-messaging.ko.md) §5 |
 | 이벤트 broker(Kafka/NATS) | fanout channel pub/sub | 실시간 fan-out 한정. 영속/replay 는 broker 유지 |
 | 통합 관측(mesh telemetry) | runtime monitoring 이벤트 | [10-monitoring](10-monitoring.ko.md) |

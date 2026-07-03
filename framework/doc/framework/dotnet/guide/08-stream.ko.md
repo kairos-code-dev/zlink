@@ -273,7 +273,7 @@ if (string.IsNullOrWhiteSpace(spotRid))
     throw new InvalidOperationException("spot-rid metadata is required.");
 
 // "spot.route" = spot 으로 가는 RouteMesh channel 이름(앱이 등록한 이름).
-// 운영 코드는 보통 이 호출을 discovery 경합 대비 재시도로 감싼다.
+// 운영 코드는 보통 이 호출을 자동 연결 수렴 창 대비 재시도로 감싼다.
 routes.Send("spot.route", RoutingId.From(spotRid), command)
     .PacketName(dispatch.PacketName)
     .Submit(ct);

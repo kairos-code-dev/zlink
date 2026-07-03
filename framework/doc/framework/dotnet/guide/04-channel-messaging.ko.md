@@ -37,7 +37,7 @@ flowchart LR
 
 channel messaging 은 일반 웹·마이크로서비스 백엔드에서 **서비스 간 gRPC 를
 대체**하는 용도로 쓴다. 서비스마다 host:port 를 알리거나 앞단에
-gateway/로드밸런서를 둘 필요 없이, 논리 `channel name` + discovery 로 호출을 묶는다.
+gateway/로드밸런서를 둘 필요 없이, 논리 `channel name` + location store 자동 연결로 호출을 묶는다.
 `.proto` IDL·HTTP/2 전용 인프라·코드 생성 없이 DTO(record)와 typed handler 만으로
 gRPC 의 네 가지 호출 형태를 얻는다.
 
@@ -94,8 +94,8 @@ var placed = await client
 | `AddRouteMesh` | ROUTER mesh | `EnableServer` / `EnableClient` | routing id 주소 라우팅 (§9) |
 
 이 챕터 §2~§7 은 가장 흔한 **client-server**(request/send)와 **fanout**(pub/sub)을
-다룬다. 수평 확장은 client-server channel 에 여러 endpoint 를 연결하거나 discovery 를
-사용해서 처리한다. 주소 라우팅용 **route mesh** 는 대상 `RoutingId` 를 함께 지정해야
+다룬다. 수평 확장은 client-server channel 에 여러 endpoint 를 연결하거나 location store
+자동 연결([09-location](09-location.ko.md))을 사용해서 처리한다. 주소 라우팅용 **route mesh** 는 대상 `RoutingId` 를 함께 지정해야
 하므로 `IZLinkRouteClient` 와 route 전용 handler 를 쓴다.
 [§8](#8-client-server-수평-확장)·[§9](#9-route-mesh--주소-라우팅)에서 따로 다룬다.
 소켓 구조 그림은 [03-concepts §1](03-concepts.ko.md#1-channel--서버-간-연결).
@@ -349,7 +349,7 @@ public sealed class ProfileService(IZLinkFanoutClient publisher)
 - `IZLinkFanoutClient` 는 fanout channel 에 publish 하는 DI client 이다.
 
 > **구독 연결.** 구독자는 `AddFanoutChannel(name).EnableSubscriber()` 로 채널을 구독한다.
-> discovery 없이 publisher 에 직접 붙을 때는 endpoint 를 주는 `EnableSubscriber(publisherEndpoint)`
+> store 자동 연결 없이 publisher 에 직접 붙을 때는 endpoint 를 주는 `EnableSubscriber(publisherEndpoint)`
 > 오버로드를 쓴다.
 
 > **구독자 쪽 topic 필터링(.NET).** 구독자는 채널을 구독할 때 topic 을 지정하지 않고, 받은
@@ -416,13 +416,13 @@ options.AddClientServerChannel("profile")
 endpoint 인자는 startup 설정이다. host 시작 뒤 실행 중인 socket 을 직접 제어하는
 handle 이 아니다. **단 하나, 가용성(drain/restore)은 런타임에 바꿀 수 있다 — 아래 참조.**
 
-Discovery 모드는 peer 소유권이 Discovery 에 있다. 실행 중 endpoint 변경이 필요한
-운영 환경에서는 discovery 쪽 등록 정보를 갱신하거나, 애플리케이션을 재시작해
-수동 연결 설정을 다시 적용하는 방식으로 처리한다.
+자동 연결 모드는 peer 목록의 소유권이 location store 에 있다. 서버가 새 endpoint 로
+다시 뜨면 store 의 peer row 가 갱신되고 client 연결이 따라간다 — 별도 조작이 필요
+없다. 수동 연결은 설정을 바꾼 뒤 애플리케이션을 재시작해 다시 적용한다.
 
 ### 운영 drain / restore (런타임)
 
-유지보수·rolling 재시작·scale-in 직전에, 노드를 죽이거나 registry 에서 빼지 않고
+유지보수·rolling 재시작·scale-in 직전에, 노드를 죽이거나 store 의 peer row 를 빼지 않고
 **새 요청 수신만 멈추고 싶을 때** 가 있다. 이걸 위해 `IZLinkChannelRuntimeOptions`
 (DI singleton) 을 주입받아 channel 의 serving 역할을 런타임에 drain 한다.
 
@@ -445,7 +445,7 @@ app.MapPost("/admin/channels/orders/restore",
 
 - `Weight = 0`(drain) 은 serving socket 을 **닫지 않는다**. 이미 들어온 in-flight 요청은
   끝까지 처리·reply 하고, 그 시점 이후 peer 들이 그 노드를 새 요청 대상에서 뺀다.
-  registry 에서 빠지지도 않는다(graceful drain).
+  store 의 peer row 도 그대로 남는다(graceful drain).
 - `Weight = 100` 으로 정상 복귀한다. `1..99` 로 두면 연결된 peer 의 분배 비율을 낮춘다(weighted).
 - 같은 `Weight` 를 **build-time 초기값**으로도 쓰고, route mesh serving 역할도 같은
   `ConfigureSocket` 접근자 패턴으로 연다(접근자별 대상은 아래 주석 참고):

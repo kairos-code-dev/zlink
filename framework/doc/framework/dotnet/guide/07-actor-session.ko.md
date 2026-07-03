@@ -91,7 +91,7 @@ builder.Services.AddZLinkFramework(options =>
 | session→play relay | **네트워크 홉** | **in-process**(저지연) |
 | 스케일 | session·play **독립 증설**(연결 폭증 ↔ 로직 부하 각각) | **한 단위로 묶임**(따로 못 늘림) |
 | 장애 격리 | 강함(역할별 프로세스) | 약함(session·play 상호 영향) |
-| 운영·배포 | 프로세스·discovery·registry 배선 복잡 | **한 프로세스, 단순** |
+| 운영·배포 | 프로세스가 늘고 store 배선 필요 | **한 프로세스, 단순** |
 | 적합 | 대규모, 연결/로직 부하 특성이 다름, 무중단 스케일·배포 | 프로토타입·소규모·단순 게임·단일 리전 |
 | 샘플 | **Bingo** | **TicTacToe** |
 
@@ -337,16 +337,18 @@ public sealed class DeliveryStatusFanoutHandler(CustomerSessionDirectory session
 }
 ```
 
-## 4. resolver — Spot lookup 만 public
+## 4. resolver — 위치 조회는 주소 하나로
 
-session relay 는 actor id/type logical handle 과 core SessionRelay 를 사용한다. actor 위치 조회용
-public resolver 는 없다(actor↔session binding 은 framework 내부 상태).
+session relay 는 actor id/type logical handle 과 core SessionRelay 를 사용한다. actor 가 어느
+spot 에 있는지 조회하고 싶으면 `IZLinkActorLocationResolver.ResolveActorSpotAddressAsync(
+actorType, actorId)` 를 쓴다 — location store 를 읽어 actor 가 위치한 spot 의 주소
+(`ZLinkSpotAddress`)를 돌려준다(재연결 시 "있으면 re-bind, 없으면 생성" 판단이 대표 사용처,
+[09-location §4](09-location.ko.md)). 반면 **actor↔session binding 은 framework 내부 상태**라
+조회용 public 표면이 없다 — actor 가 client 로 push 할 때는 `Context.BoundSession` 을 쓰면 된다.
 
-Redis/DB 같은 별도 저장소가 필요하면 spot remote address resolver 만 custom 으로 등록한다:
-`AddSpotRemoteAddressResolver<T>()`. actor-session binding 은 session bind 시 actor runtime state 에
-저장되는 framework 내부 상태다.
-
-`IZLinkSpotRemoteAddressResolver` 는 `JoinSpot(spotRid, ...)` 가 노드 경계를 넘을 때만 필요하다.
+spot rid → 주소 변환을 기본(location store) 대신 직접 구현으로 바꾸고 싶을 때만
+`AddSpotRemoteAddressResolver<T>()` 를 등록한다. `JoinSpot(spotRid, ...)` 가 노드 경계를 넘을 때
+이 변환이 쓰인다.
 
 ## 5. 오류 처리 — `ZLinkFrameworkException`
 

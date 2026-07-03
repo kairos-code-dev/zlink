@@ -25,9 +25,9 @@
 
 - 등록 단계에서 이미 판정할 수 있는 설정 오류는 host 가 시작되기 전에
   fail-fast[^fail-fast] 한다.
-- 같은 역할 안에서는 `Discovery` 기반 자동 연결과 manual 연결을 섞지
+- 같은 역할 안에서는 location store 기반 자동 연결과 manual 연결을 섞지
   않는다.
-- outbound 역할에 manual 연결도 없고 discovery 등록도 없으면 거부한다.
+- outbound 역할에 manual 연결도 없고 store 자동 연결도 없으면 거부한다.
   peer 를 어디서 가져올지 알 길이 없기 때문이다.
 - 같은 항목을 중복으로 등록한 경우, 조용히 덮어쓰지 않고 예외로 처리한다.
 
@@ -41,14 +41,14 @@
 | `EnableServer(endpoint)`만 등록(handler·SPOT route 없음) | 비허용 | server 는 handler group·typed handler 매핑이나 SPOT route acceptance 가 있어야 한다(startup validation 오류) |
 | `EnableServer("")` 등록(빈 endpoint) | 비허용 | startup validation 오류 |
 | `EnableClient(endpoint)` 등록 | 허용 | manual 기반 outbound request/send runtime을 만든다 |
-| `EnableClient()`만 등록 + discovery/manual 둘 다 없음 | 비허용 | startup validation 오류 |
+| `EnableClient()`만 등록 + 자동 연결(store)/manual 둘 다 없음 | 비허용 | startup validation 오류 |
 | `EnablePublisher(endpoint)`만 등록 | 허용 | event publish만 가능하다 |
 | `EnablePublisher("")` 등록(빈 endpoint) | 비허용 | startup validation 오류 |
 | `EnableSubscriber(endpoint)` + publish handler 노출 | 허용 | manual 기반 subscribe runtime을 만든다. publish handler 가 없으면 비허용(startup validation 오류) |
-| `EnableSubscriber()`만 등록 + discovery/manual 둘 다 없음 | 비허용 | startup validation 오류 |
+| `EnableSubscriber()`만 등록 + 자동 연결(store)/manual 둘 다 없음 | 비허용 | startup validation 오류 |
 | 같은 channel에서 `server + client` 함께 등록 | 허용 | inbound와 outbound runtime을 모두 가진다 |
 | 같은 channel에서 `publisher + subscriber` 함께 등록 | 허용 | event fan-out과 수신을 모두 가진다 |
-| route mesh 역할에서 discovery + manual 함께 등록 | 비허용 | route mesh 는 `RequireSinglePeerSource` 로 둘을 섞을 수 없다(startup validation 오류). client/server·subscriber 는 `RequirePeerSource` 라 둘을 함께 둘 수 있다. 단, routed Spot route mesh egress 는 수동 연결을 실제 transport 로 쓰고 discovery/query 를 target ROUTER `RoutingId` metadata 조회에만 쓰는 좁은 예외를 둔다 |
+| route mesh 역할에서 자동 연결 + manual 함께 등록 | 비허용 | route mesh 는 `RequireSinglePeerSource` 로 둘을 섞을 수 없다(startup validation 오류). client/server·subscriber 는 `RequirePeerSource` 라 둘을 함께 둘 수 있다 |
 | 같은 channel server에 같은 `kind + packetName` handler 중복 | 비허용 | startup validation 오류 |
 | 다른 channel server에 같은 `kind + packetName` handler 등록 | 허용 | channel별로 handler namespace가 분리되어 있다 |
 | client/server channel에 publish handler 등록(typed 또는 publish 그룹 매핑) | 비허용 | startup validation 오류: `client/server channel '{name}' cannot register publish handlers` |
@@ -67,15 +67,15 @@
 | 조합 | 허용 여부 | 기대 동작 |
 |------|-----------|-----------|
 | `AddSpotMesh` 호출 | 허용 | mesh가 활성 SPOT[^spot] channel view와 단일 node를 함께 소유한다 |
-| root discovery 없이 local-only spot factory | 허용 | discovery endpoint 없이 단일 local SpotNode 하나를 mesh 소유권 아래 띄운다 |
+| store 등록 없이 local-only spot factory | 허용 | store 없이 단일 local SpotNode 하나를 mesh 소유권 아래 띄운다 |
 | top-level standalone node 등록 | 비허용 | public 등록 표면에는 top-level standalone node 등록 API 가 없다. SPOT node 는 항상 `AddSpotMesh` 안에서 등록한다 |
-| 분리된 SPOT discovery 등록과 node 등록 | 비허용 | SPOT discovery 와 단일 node는 `AddSpotMesh`가 함께 등록·소유한다 |
+| 분리된 SPOT mesh 채널 등록과 node 등록 | 비허용 | SPOT mesh 채널과 단일 node는 `AddSpotMesh`가 함께 등록·소유한다 |
 | 같은 프로세스에 SPOT node 여러 개 | 비허용 | Q9 모델에서는 `AddSpotMesh(channelName)` 이 그 프로세스의 단일 SpotNode 이다 |
 | router-capable `AddSpotMesh(...)`를 stream SessionRelay 로 참조 | 허용 | session relay ingress 를 일반 SpotNode router 역할로 시작한다 |
 | 같은 `SpotNode`에 같은 `spotRid` factory 중복 등록 | 비허용 | startup validation 오류 |
 | 같은 `SpotNode`에 Entry Spot[^entry-spot] registry 중복 등록 | 비허용 | startup validation 오류 |
 | `router` 역할만 등록 | 허용 | inbound routed call만 받는다 |
-| route bridge channel socket 역할 등록 + channel discovery/manual 경로 있음 | 허용 | spot 내부에서 outbound channel 호출이 가능하다 |
+| route bridge channel socket 역할 등록 + channel 자동/manual 연결 경로 있음 | 허용 | spot 내부에서 outbound channel 호출이 가능하다 |
 | route bridge channel socket 역할 등록 + channel peer acquisition 경로 없음 | 비허용 | startup validation 오류 |
 | local spot factory 없는 외부 publish node는 `IZLinkSpotPublisherClient` 사용 | 허용 | Spot publisher client 역할만 둔 `SpotNode` 로 특정 SPOT channel publish만 수행한다 |
 
@@ -121,7 +121,7 @@
 | `AddZLinkMonitoring(...)` + 등록된 socket source 이름 | 허용 | 해당 source에 event handler를 연결한다 |
 | `AddZLinkMonitoring(...)` + 등록된 registry source 이름 | 허용 | snapshot diff polling[^snapshot-diff-polling]을 시작한다 |
 | `AddZLinkMonitoring(...)` + 등록된 spot source 이름 | 허용 | snapshot diff polling을 시작한다 |
-| `AddZLinkMonitoring(...)` + discovery source 이름 | 비허용 | discovery 상태는 registry snapshot/query로 조회하는 것이 원칙이다 |
+| `AddZLinkMonitoring(...)` + 임의 discovery source 이름 | 비허용 | 자동 연결 상태는 `location-runtime` source 와 runtime query 로 관찰하는 것이 원칙이다 |
 | 존재하지 않는 source 이름 등록 | 비허용 | startup validation 오류 |
 | polling source인데 interval이 0 이하 | 비허용 | startup validation 오류 |
 
@@ -139,8 +139,8 @@
 - duplicate channel 이름
 - duplicate `spotNodeName`
 - duplicate `spotRid` factory
-- outbound 역할에 discovery/manual 경로가 둘 다 없는 경우
-- 같은 역할 안에서 discovery/manual 혼용
+- outbound 역할에 자동/manual 연결 경로가 둘 다 없는 경우
+- 같은 역할 안에서 자동/manual 연결 혼용
 - monitoring 등록 시 존재하지 않는 source를 지정한 경우
 - 같은 stream node에 session을 중복 등록한 경우
 - bind endpoint가 없는 stream node
@@ -166,7 +166,7 @@ runtime integration 테스트도 같은 변경에 함께 포함시킨다.
 | `ChannelsTests.AddZLinkFramework_AllowsRouteChannelManualConnections_WhenLocationAutoConnectIsConfigured` | route mesh channel은 location 자동 연결이 구성되어도 명시한 manual peer로도 연결할 수 있다. |
 | `HandlerExposureTests.AddZLinkFramework_Throws_WhenServerHasNoBindEndpoint` | server 역할에 bind endpoint가 없으면 실패한다. |
 | `ChannelsTests.AddZLinkFramework_Throws_WhenClientHasNoPeerAcquisitionPath` | client 역할에 manual peer source 가 없으면 실패한다. |
-| `NodesAndServicesTests.AddZLinkFramework_AllowsStandaloneLocalSpotNode` | Discovery mesh 없이 local-only SpotNode를 단독으로 시작할 수 있다. |
+| `NodesAndServicesTests.AddZLinkFramework_AllowsStandaloneLocalSpotNode` | store mesh 없이 local-only SpotNode를 단독으로 시작할 수 있다. |
 
 [^public-contract]: public contract 는 외부 사용자에게 공개되어 변경 시 호환성을 책임져야 하는 API 표면을 뜻한다.
 [^capability]: **역할**은 어떤 노드(channel, spot 등)가 외부에 노출하는 기능 단위(예: server, client, publisher, subscriber)를 가리킨다.

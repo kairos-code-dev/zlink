@@ -244,7 +244,7 @@ public sealed class PlaceOrderHandler(
          |                 |                |   channel name
          +-----------------+----------------+
                    +-------v--------+
-                   | Registry       |   discovery view
+                   | location store |   (Redis) peer row 공유
                    +----------------+
   +------------------+
   | fanout channel   |   order.events (live fan-out)

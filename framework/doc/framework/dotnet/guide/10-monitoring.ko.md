@@ -7,8 +7,8 @@
 > 정식 계약은 [spec/aspnet-core-monitoring](../spec/aspnet-core-monitoring.ko.md)가
 > 다룬다.
 
-handler 호출만으로는 운영을 다 볼 수 없다. socket connect/disconnect, registry
-status/topology 변화, spot peer/subject 변화, timer handler 실패 같은 **runtime
+handler 호출만으로는 운영을 다 볼 수 없다. socket connect/disconnect, 위치·연결
+projection 변화, spot peer/subject 변화, timer handler 실패 같은 **runtime
 변화**도 framework 표면에서 받아야 한다. monitoring 이 이를 source 별로 통일된
 방식으로 노출한다.
 
@@ -20,9 +20,8 @@ status/topology 변화, spot peer/subject 변화, timer handler 실패 같은 **
 | source | 방식 |
 |--------|------|
 | socket | raw monitor 기반 event (connect/disconnect/handshake 등) |
-| registry | 주기적 snapshot diff 기반 event 합성 |
+| location | 주기적 snapshot diff 기반 event 합성 (`location-runtime` source, [09-location](09-location.ko.md)) |
 | spot | 주기적 snapshot diff 기반 + timer 실패는 즉시 |
-| location | `location-runtime` source(StatusChanged/TopologyChanged/ServiceSummaryChanged 등)와 runtime query 로 조회([09-location](09-location.ko.md)) |
 
 공통 규칙: event kind 는 `enum`, payload 는 `record struct`, 응용은
 `IZLinkRuntimeEventHandler<TEvent>` 를 DI 에 등록해 수신한다.
@@ -32,7 +31,7 @@ DI 에 등록된 handler 를 scope 안에서 꺼내 호출한다(HTTP 요청 han
 
 ```mermaid
 flowchart LR
-  SRC["source: socket / registry / spot"] -->|"변화 발생"| FW["framework runtime"]
+  SRC["source: socket / location / spot"] -->|"변화 발생"| FW["framework runtime"]
   FW -->|"typed event 로 전달"| H["IZLinkRuntimeEventHandler 등록<br/>(DI scope 에서 호출)"]
 ```
 
@@ -50,6 +49,9 @@ builder.Services.AddZLinkMonitoring(monitor =>
         ZLinkSocketEventKind.Disconnected);
 
     monitor.AddSpotEvents("stage-node", TimeSpan.FromSeconds(1));
+
+    // location store 를 등록한 배포에서 — 자기 노드의 위치/연결 projection 변화를 받는다
+    monitor.AddLocationRuntimeEvents("location-runtime", TimeSpan.FromSeconds(1));
 });
 
 // AddZLinkMonitoring 은 source 등록만 한다 — event handler 는 자동 등록되지 않으니 직접 DI 로 등록한다.
@@ -58,7 +60,8 @@ builder.Services.AddScoped<
     IZLinkRuntimeEventHandler<ZLinkSocketEvent>,
     ProfileServerSocketMonitor>();
 builder.Services.AddScoped<
-    RegistryMonitor>();
+    IZLinkRuntimeEventHandler<ZLinkLocationRuntimeEvent>,
+    LocationMonitor>();
 builder.Services.AddScoped<
     IZLinkRuntimeEventHandler<ZLinkSpotEvent>,
     StageNodeMonitor>();
@@ -67,13 +70,12 @@ builder.Services.AddScoped<
 - socket source 이름은 `channel + capability`(예: `profile.server`,
   `profile.client`) 형태다. capability 는 `server`, `client`, `publisher`,
   `subscriber` 중 하나다. spot 은 spot node 등록 이름(예: `stage-node`)이다.
-- registry source 이름(예: `registry`)은 event 의 `SourceName` 으로 들어가는
-  하나를 조회하므로, registry source 이름을 별도 infrastructure 등록 이름으로
-  검증하지 않는다.
-- registry/spot polling 주기는 **항상 명시**해야 한다(숨은 기본 주기 없음 — 운영
+- location source 이름(예: `location-runtime`)은 event 의 `SourceName` 으로만
+  쓰이는 자유 문자열이라 별도 infrastructure 등록 이름으로 검증하지 않는다.
+- location/spot polling 주기는 **항상 명시**해야 한다(숨은 기본 주기 없음 — 운영
   코드가 polling 비용을 설정에서 바로 읽도록).
 - socket source 가 등록된 channel capability 와 맞지 않거나, spot source 가 등록된
-  spot node 이름과 맞지 않으면 시작 단계 예외다. registry event 는 source 이름보다
+  spot node 이름과 맞지 않으면 시작 단계 예외다. location event 는 source 이름보다
 - `AddSocketEvents(...)` 에 kind 를 안 넘기면 그 source 가 지원하는 모든 이벤트를
   받는다.
 
@@ -118,18 +120,29 @@ public sealed class ProfileServerSocketMonitor(ILogger<ProfileServerSocketMonito
 socket event 만 native monitor event/value 를 진단 정보로 함께 노출한다
 (`Diagnostic.NativeEvent`, `Diagnostic.NativeValue`).
 
-### registry
+### location
+
+location store 를 등록한 배포([09-location](09-location.ko.md))에서, 자기 노드의 위치
+projection(살아 있는 peer, 연결 상태, store 건강)이 바뀔 때 이벤트가 온다.
 
 ```csharp
-public sealed class RegistryMonitor(ILogger<RegistryMonitor> logger)
+public sealed class LocationMonitor(ILogger<LocationMonitor> logger)
+    : IZLinkRuntimeEventHandler<ZLinkLocationRuntimeEvent>
 {
+    public ValueTask HandleAsync(ZLinkLocationRuntimeEvent @event, CancellationToken ct)
     {
-        switch (@event.Event)   // 3종 고정: StatusChanged / TopologyChanged / ServiceSummaryChanged
+        switch (@event.Event)
         {
-                // raw monitor 가 없어 주기 snapshot 을 직전 값과 비교해 합성한 이벤트(그래서 polling 주기가 필요).
-                logger.LogInformation("registry status: {State}", @event.Status?.State);
+            case ZLinkLocationRuntimeEventKind.TopologyChanged:
+                // 서버가 추가/제거되어 살아 있는 peer 구성이 바뀌었다
+                logger.LogInformation("topology: {Count} entries", @event.Topology?.Count ?? 0);
                 break;
-                logger.LogInformation("registry topology: {Count}", @event.Topology?.Count ?? 0);
+            case ZLinkLocationRuntimeEventKind.StoreUnavailable:
+                // store 가 죽었다 — 기존 연결은 유지되지만(fail-static) 새 위치 반영이 멈춘다
+                logger.LogWarning("location store unavailable: {Error}", @event.Status?.LastError);
+                break;
+            case ZLinkLocationRuntimeEventKind.StoreRecovered:
+                logger.LogInformation("location store recovered");
                 break;
         }
         return ValueTask.CompletedTask;
@@ -137,9 +150,11 @@ public sealed class RegistryMonitor(ILogger<RegistryMonitor> logger)
 }
 ```
 
-registry event 는 `StatusChanged`, `TopologyChanged`, `ServiceSummaryChanged` **3종
-고정**이다. 하부 raw monitor 가 없어 framework 가 주기적으로 snapshot 을 읽어
-직전 값과 비교해 합성한다.
+kind 는 `StatusChanged` / `TopologyChanged` / `ServiceSummaryChanged` /
+`StoreUnavailable` / `StoreRecovered` **5종 고정**이다. 하부 raw monitor 가 없어
+framework 가 `interval` 주기로 runtime query 결과를 읽어 직전 값과 비교해 합성한다.
+store 가 죽어도 이 source 는 죽지 않는다 — 조회 실패는 `StoreUnavailable` 이벤트 한
+번으로 강등되고, 복구되면 `StoreRecovered` 가 온다.
 
 ### spot
 
@@ -186,11 +201,13 @@ spot event 는 `StatusChanged`, `PeersChanged`, `SubjectsChanged`,
 
 - **이벤트가 안 온다** → `AddZLinkMonitoring` 은 source 등록만 한다. 해당 source 가
   `IZLinkRuntimeEventHandler<TEvent>` 구현체가 DI 에 등록됐는지 확인한다.
-- **discovery 상태를 받고 싶다** → discovery 는 runtime event 가 아니다. Registry
-  location runtime query 로 조회한다([09-location](09-location.ko.md) §3).
+- **자동 연결 상태를 받고 싶다** → `location-runtime` source 의 이벤트
+  (`AddLocationRuntimeEvents`)를 받거나, 시점 조회는 location runtime query 를 쓴다
+  ([09-location](09-location.ko.md) §3).
 - **health/metric endpoint 를 기대한다** → `AddZLinkMonitoring(...)` 은 socket/
-  registry/spot runtime event source 를 등록한다. 별도 health check 또는 metric
-  조회 표면으로 직접 노출한다([09-location](09-location.ko.md) §3).
+  location/spot runtime event source 를 등록할 뿐 HTTP endpoint 를 만들지 않는다.
+  health check 나 metric 은 이벤트와 runtime query 를 읽어 앱이 직접 노출한다
+  ([09-location](09-location.ko.md) §3).
 - **등록되지 않은 메시지를 알고 싶다** → `ConfigureDispatch()` 에
   `IZLinkMessageFlowObserver` 를 등록한다. request 실패는 error reply 로 돌아가고,
   send/publish/subscription/actor send 실패는 drop 되지만 로그, metric, observer event 로 남는다.
@@ -200,7 +217,7 @@ spot event 는 `StatusChanged`, `PeersChanged`, `SubjectsChanged`,
 
 ## 5. 메시지 흐름 추적 — 메시지 생애주기 관찰
 
-monitoring 이 socket/registry/spot 의 **상태 변화**를 본다면, 메시지 흐름 추적은 메시지
+monitoring 이 socket/location/spot 의 **상태 변화**를 본다면, 메시지 흐름 추적은 메시지
 하나가 **도착했는지 / handler 로 전달됐는지 / 응답이 나갔는지**를 dispatch 경로에서 기록한다.
 로그를 `corr=` 로 grep 하면 한 요청의 생애주기를 노드 간에 이어서 추적할 수 있다. dispatch 를
 제어하는 게 아니라 관측만 한다.

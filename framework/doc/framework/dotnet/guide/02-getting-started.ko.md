@@ -189,13 +189,11 @@ client는 API 서버에 `POST /games`를 보내고, 이어서 반환된 `OwnerPl
 
 ## 7. 자동 연결의 위치
 
-Core C API의 Discovery/Registry 표면은 제거되었다. 이 문서는 현재 공개 .NET framework
-표면에서 바로 사용할 수 있는 수동 연결 흐름만 설명한다.
-
-channel client 가 endpoint 를 직접 받지 않고 channel 이름만으로 연결 대상을 찾는 기능은
-location runtime 과 location store 설계에서 다룬다. 그 기능이 정식 공개 계약으로 확정되기
-전까지 sample 과 guide 는 제거된 Core C Discovery/Registry API 를 전제로 한 예제를 싣지
-않는다.
+이 장의 예제는 배선을 눈으로 따라가기 쉽게 endpoint 를 직접 적는 **수동 연결**로
+설명했다. 실제 배포에서 서버가 늘고 주소가 바뀌는 환경이라면, endpoint 를 코드에 적지
+않고 channel 이름만으로 연결 대상을 찾는 **location store 기반 자동 연결**을 쓴다 —
+store 인스턴스 하나를 등록하면 서버는 자기 위치를 자동으로 알리고 client 는 그걸 보고
+붙는다. [09-location](09-location.ko.md)에서 이어서 본다.
 
 ## 8. 잘 안 될 때
 

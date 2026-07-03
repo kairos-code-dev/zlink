@@ -375,12 +375,14 @@ public interface IZLinkSpotHandlerRegistry : IZLinkActorHandlerRegistry
 
 public interface IZLinkSpotOutbound
 {
+    // 주소(ZLinkSpotAddress)는 IZLinkSpotLocationResolver 로 한 번 조회해 보관한다.
+    // 전송 시점에는 어떤 위치 조회도 일어나지 않는다(공통 spot 주소 메시징 스펙).
     IZLinkSendCall SendToSpot<TMessage>(
-        RoutingId spotRid,
+        ZLinkSpotAddress address,
         TMessage message);
 
     IZLinkRequestCall RequestToSpot<TRequest>(
-        RoutingId spotRid,
+        ZLinkSpotAddress address,
         TRequest request);
 
     IZLinkPublishCall Publish<TEvent>(

@@ -10,7 +10,7 @@
 > 아키텍처 매핑 문서다.
 
 > **이 케이스에서 ZLink 이 좋은 지점**
-> - 다수 서비스 호출·BFF fan-out 을 channel name  + Registry 로 묶어 sidecar·별도 discovery 를 줄인다.
+> - 다수 서비스 호출·BFF fan-out 을 channel name + location store 로 묶어 sidecar·별도 discovery 를 줄인다.
 > - **그대로 남는 것**: retry·circuit-breaking·correlation 추적·외부 공개 API.
 > - 즉 ZLink 은 호출 배선·위치 해결을 줄이고, 복원력 정책은 그대로 앱이 진다.
 
@@ -116,7 +116,7 @@ public sealed class CorrelationInterceptor : Interceptor
 control plane, Consul/xDS, OpenTelemetry collector + tracing 백엔드, correlation
 interceptor.
 
-## 3. ZLink 스택 — channel 이름  + Registry
+## 3. ZLink 스택 — channel 이름 + location store
 
 ```csharp
 // BFF: stub 없이 IZLinkChannelClient 하나로 channel 이름만 바꿔 fan-out
@@ -146,21 +146,24 @@ public sealed class QuoteHandler(IPriceStore store)
 ```
 
 ```csharp
-// BFF 노드 등록(profile·pricing 의 client): 위치 해결은 Registry 하나. sidecar/Consul/xDS 없음
+// 모든 노드 공통: 위치 해결은 공유 location store 하나. sidecar/Consul/xDS 없음
+options.AddLocationStore(new ZLinkRedisLocationStore(redis => redis
+    .SetConnectionString("redis-host:6379")
+    .SetKeyPrefix("mesh:prod")));
+
+// BFF 노드 등록(profile·pricing 의 client): endpoint 없이 channel 이름만
 options.AddClientServerChannel("profile").EnableClient();
 options.AddClientServerChannel("pricing").EnableClient();
 
 // pricing 서버 노드 등록(QuoteHandler 를 server 로 노출)
 options.AddClientServerChannel("pricing")
     .EnableServer("tcp://0.0.0.0:6001")
+    .SetRoutingId(RoutingId.From("pricing-1"))
     .AddRequestHandler<QuoteHandler>();
 
-// 운영: standalone Registry 를 다른 프로세스에서 조회
-{
-    query.Endpoint = "tcp://registry1:5551";
-});
-
-    Results.Ok(await registry.TopologyAsync()));
+// 운영: 살아 있는 peer 와 상태를 runtime query 로 조회 (09-location §3)
+app.MapGet("/ops/topology", async (IZLinkLocationRuntimeQuery query) =>
+    Results.Ok(await query.ListPeersAsync(new ZLinkPeerLocationFilter())));
 
 // correlation·로깅 같은 공통 처리는 filter 로 (gRPC interceptor 대체)
 options.UseFilter<CorrelationFilter>();        // IZLinkHandlerFilter
@@ -189,7 +192,7 @@ public sealed class CorrelationFilter(ILogger<CorrelationFilter> log) : IZLinkHa
 | 축 | 기존(gRPC + mesh) | ZLink |
 |----|-------------------|-------|
 | 계약/호출 | 서비스별 생성 stub `profile.GetAsync(...)` | `client.RequestToChannel("profile", ...)` channel 이름 |
-| 위치/분배 | Consul/xDS + Envoy `DestinationRule` | `UseDiscovery`  + Registry |
+| 위치/분배 | Consul/xDS + Envoy `DestinationRule` | location store 자동 연결 |
 | deadline | `deadline:` 인자 | `.Timeout(...)` |
 | retry/circuit | Polly(앱) | Polly/filter(앱) — 동일 |
 
@@ -214,7 +217,7 @@ public sealed class CorrelationFilter(ILogger<CorrelationFilter> log) : IZLinkHa
 ```
 
 ```text
-[ZLink]  ZLink Framework  + Registry
+[ZLink]  ZLink Framework + location store
 
   +--------+ +--------+ +--------+ +--------+
   | bff    | | profile| | pricing| |  ...   |   each app + ZLink Framework
@@ -223,7 +226,7 @@ public sealed class CorrelationFilter(ILogger<CorrelationFilter> log) : IZLinkHa
       |          |          |          |   channel name
       +----------+----+-----+----------+
               +--------v---------+
-              | Registry         |   discovery + topology
+              | location store   |   peer row + 운영 조회
               +------------------+
   (tracing/metrics store stays; app feeds monitoring events into it)
 ```

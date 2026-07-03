@@ -44,7 +44,7 @@
 같다.
 
 - `Spot`은 특정 service가 아니라 `SpotNode`에 종속된다는 점
-- attach된 SPOT `Discovery`가 `SpotNode`의 active channel view를 정한다는 점
+- `AddSpotMesh(...)` 로 등록한 mesh 채널이 `SpotNode`의 active channel view를 정한다는 점
 - 다른 channel 호출을 route bridge channel socket 경로로 풀어준다는 점
 - `spotRid`와 topic publish를 구분해서 설명하는 점
 - `IZLinkSpotManager`로 spot 생성 lifecycle을 따로 분리해 둔 점
@@ -65,7 +65,7 @@
 - publish/subscribe
 - timer 등록과 취소
 - DI[^di], handler, filter, context
-- discovery[^discovery]와 수동 연결
+- store 자동 연결[^autoconnect]과 수동 연결
 - 같은 `spot`에 대한 dispatch 직렬화 같은 실행 계약
 
 반면 다음 항목은 `SPOT` 자체보다 한 단계 위의 상위 모델에 가깝다.
@@ -459,11 +459,11 @@ wrapper 전용 API 가 생기면, 이 표에는 실제로 실행되는 테스트
 [^membership]: membership은 어떤 그룹(stage, room 등)에 누가 속해 있는지를 표현하는 정보다. 입장·퇴장 정책과 broadcast 대상 결정의 기반이 된다.
 [^lifecycle]: lifecycle은 객체나 노드가 생성부터 소멸까지 거치는 단계들과 그 사이의 정해진 호출 규약을 가리킨다.
 [^di]: DI(Dependency Injection)는 객체가 필요한 의존 컴포넌트를 직접 생성하지 않고 컨테이너로부터 주입받는 방식이다. `ASP.NET Core`에서는 `IServiceCollection` 기반으로 처리한다.
-[^discovery]: discovery는 분산 환경에서 어떤 서비스가 어느 endpoint에 있는지를 자동으로 알아내는 메커니즘이다. ZLink에서는 registry가 그 역할을 한다.
+[^autoconnect]: store 자동 연결은 분산 환경에서 어떤 서비스가 어느 endpoint에 있는지를 location store 의 peer row 로 알아내 자동으로 잇는 메커니즘이다.
 [^mailbox]: mailbox는 액터 모델에서 메시지를 순서대로 쌓아 두는 큐를 가리킨다. actor는 자신의 mailbox에서 메시지를 하나씩 꺼내 처리한다.
 [^heartbeat]: heartbeat는 연결이 살아 있는지를 확인하기 위해 일정 주기로 보내는 짧은 신호 메시지다.
 [^per-spot-scope]: per-spot scope는 spot 하나가 살아 있는 동안에만 유지되는 DI scope다. spot이 사라지면 그 scope에서 만든 객체들도 함께 정리된다.
-[^registry]: registry는 분산 노드의 위치, 상태, topology 정보를 모아 두는 서비스다. discovery의 데이터 출처 역할을 한다.
+[^registry]: 여기서 registry 는 handler 등록 표면(handler registry)을 말한다 — 위치 저장소가 아니다.
 
 ---
 <!-- framework-adapter-nav:bottom:start -->

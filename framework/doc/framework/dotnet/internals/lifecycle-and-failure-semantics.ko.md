@@ -23,7 +23,7 @@ shutdown 순서 같은 동작 약속도 문서로 단단히 닫혀 있어야 한
 1. registration surface[^registration-surface] 파싱
 2. 중복된 이름, 잘못된 역할[^capability] 조합, 누락된 endpoint 같은 설정의 검증
 3. `Context` 와 framework runtime 생성
-4. embedded 구성이라면 Registry[^registry] bind
+4. location store[^store] 등록이 있으면 store 연결과 자기 peer row/owner lease 등록
 5. channel runtime, spot node, stream node 시작
 6. monitoring source attach
 7. application host ready
@@ -32,8 +32,8 @@ shutdown 순서 같은 동작 약속도 문서로 단단히 닫혀 있어야 한
 
 - 설정 검증에서 걸리면, bind / connect 단계에 들어가기 전에 그 자리에서 바로
   예외를 던진다.
-- embedded registry 가 있는 구성에서는 Registry 가 먼저 bind 되어야 한다.
-  그래야 그 위에서 돌아갈 discovery 기반 channel 과 SPOT[^spot] mesh 가
+- location store 가 있는 구성에서는 store 등록이 먼저 이루어져야 한다.
+  그래야 그 위에서 돌아갈 store 자동 연결 channel 과 SPOT[^spot] mesh 가
   정상적으로 시작될 수 있다.
 - monitoring 은 감시 대상 source 가 만들어진 뒤에 attach 한다.
 
@@ -50,7 +50,7 @@ shutdown 순서 같은 동작 약속도 문서로 단단히 닫혀 있어야 한
 반대로 다음 상황은 startup 실패로 다루지 않고, runtime event 와 reconnect 정책
 쪽으로 넘긴다.
 
-- 이미 시작된 뒤에 일어나는 discovery provider down
+- 이미 시작된 뒤에 일어나는 provider down
 - 이미 연결되어 있던 peer 가 일시적으로 disconnect 되는 경우
 - polling 기반 source 의 일시적 query 실패
 
@@ -59,7 +59,7 @@ shutdown 순서 같은 동작 약속도 문서로 단단히 닫혀 있어야 한
 기본 shutdown 순서는 다음과 같이 본다.
 
 1. monitoring source detach
-2. SpotNode → route channel → SPOT discovery → stream node → channel bundle(client/publisher/subscriber/server) 순으로 dispose
+2. SpotNode → route channel → SPOT mesh 채널 → stream node → channel bundle(client/publisher/subscriber/server) 순으로 dispose
 3. embedded Registry stop
 4. `Context` dispose
 
@@ -98,15 +98,15 @@ nonblocking send, pending queue, ready notification 조합으로 내부에서 �
 
 ## 6. Reconnect 와 Monitoring 의미
 
-- discovery 기반 역할은 provider 집합이 바뀔 때마다 runtime 이 알아서
+- store 자동 연결 역할은 peer row 집합이 바뀔 때마다 runtime 이 알아서
   따라간다.
 - 반면 manual 역할의 경우, framework 가 자동 reconnect 정책을 안에
   숨겨서 끼워 넣지 않는다. reconnect 가 필요하면 명시적인 `Connect(...)`
   호출이나 상위의 retry policy 가 책임진다.
 - socket 단의 이벤트는 하부 monitor event 를 그대로 감싼다.
-- registry 와 spot 쪽은 다르게 다룬다. polling 과 snapshot diff 를 기반으로
+- location 과 spot 쪽 관측은 polling 과 snapshot diff 를 기반으로
   framework 가 다시 만든 synthetic event 로 올린다.
-- discovery 상태 자체는 별도의 event 로 노출하지 않는다. 대신 registry 의
+- 자동 연결의 개별 connect/disconnect 는 socket event 로, projection 변화는 location 의
   snapshot 이나 query 로 확인하게 한다.
 
 ## 7. Stream Session Error 의미
@@ -188,7 +188,7 @@ lifecycle 과 failure semantics 항목은 다음을 모두 테스트로 못 박�
 [^startup-validation]: startup validation 은 host 가 본격적으로 동작하기 전에 설정과 등록 정보를 검사해서, 잘못된 구성이라면 그 자리에서 막아 내는 단계다.
 [^registration-surface]: registration surface 는 `AddZLinkFramework(...)` 같은 등록 호출을 통해 framework 에 쌓이는 설정의 집합을 가리킨다.
 [^capability]: **역할**은 어떤 노드(channel, spot 등)가 외부에 노출하는 기능 단위(예: server, client, publisher, subscriber)를 가리킨다.
-[^registry]: Registry 는 어느 노드가 어떤 역할을 어디서 제공하는지를 모아 두고, 다른 노드가 그 정보를 조회할 수 있게 해 주는 컴포넌트다.
+[^store]: Registry 는 어느 노드가 어떤 역할을 어디서 제공하는지를 모아 두고, 다른 노드가 그 정보를 조회할 수 있게 해 주는 컴포넌트다.
 [^spot]: `SPOT` 은 동적으로 생성·소멸되는 논리적 노드(예: room, stage 등) 단위로 메시지를 라우팅하는 추상이다.
 [^fail-fast]: fail-fast 는 잘못된 설정이나 상태를 발견하면 즉시 예외를 던지고 실행을 멈춰서, 더 큰 문제로 번지는 것을 막는 전략이다.
 [^synthetic-event]: synthetic event 는 backend 가 직접 발생시키는 이벤트가 아니라, framework 가 snapshot 의 차이나 polling 결과를 보고 합성해서 만들어 내는 이벤트를 가리킨다.

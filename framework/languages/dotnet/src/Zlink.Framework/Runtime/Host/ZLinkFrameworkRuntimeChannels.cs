@@ -17,9 +17,41 @@ internal sealed partial class ZLinkFrameworkRuntime
         return _channelFacade.GetRouteChannel(routerChannelId);
     }
 
-    // EHOSTUNREACH from a mandatory router send: the routing id is not a
-    // directly connected peer of the route socket.
-    private const int HostUnreachableErrno = 113;
+    /// <summary>
+    /// True when the target is advertised as a live route mesh peer of this
+    /// channel: auto connect dials such peers directly, so the route socket
+    /// is the delivery path. Spot rids and unknown nodes return false and
+    /// go through the spot route egress instead. Without a location store
+    /// the legacy egress-first ordering applies.
+    /// </summary>
+    private async ValueTask<bool> IsDirectRouteMeshPeerAsync(
+        string routerChannelId,
+        RoutingId targetNodeRid,
+        CancellationToken cancellationToken)
+    {
+        if (Services.GetService(typeof(IZLinkPeerLocationResolver)) is not IZLinkPeerLocationResolver peers)
+        {
+            return false;
+        }
+
+        try
+        {
+            var rows = await peers.ListPeersAsync(
+                    new ZLinkPeerLocationFilter(
+                        AutoConnectType: ZLinkLocationAutoConnectType.RouteMesh,
+                        MeshName: routerChannelId,
+                        NodeRid: targetNodeRid),
+                    cancellationToken: cancellationToken)
+                .ConfigureAwait(false);
+            return rows.Count > 0;
+        }
+        catch (Exception)
+        {
+            // A store outage never breaks delivery; the egress path still
+            // carries the message.
+            return false;
+        }
+    }
 
     internal async ValueTask SubmitRouteSendAsync<TMessage>(
         string routerChannelId,
@@ -29,11 +61,12 @@ internal sealed partial class ZLinkFrameworkRuntime
         CancellationToken cancellationToken)
     {
         // A directly connected route mesh peer is always the first choice;
-        // the spot route egress (relay over the spot plane) only serves
-        // targets the route socket cannot reach, e.g. spot rids or nodes
-        // this runtime never dials directly.
+        // the spot route egress (relay over the spot plane) serves targets
+        // the route socket cannot reach, e.g. spot rids or nodes this
+        // runtime never dials directly.
         var routeChannel = GetRouteChannel(routerChannelId);
-        try
+        if (await IsDirectRouteMeshPeerAsync(routerChannelId, targetNodeRid, cancellationToken)
+                .ConfigureAwait(false))
         {
             await routeChannel.SubmitSendAsync(
                     targetNodeRid,
@@ -43,33 +76,35 @@ internal sealed partial class ZLinkFrameworkRuntime
                 .ConfigureAwait(false);
             return;
         }
-        catch (ZlinkException exception) when (
-            exception.NativeErrno == HostUnreachableErrno
-            && !routeChannel.CanDispatchRoutePacket(ZLinkMessageKind.Command, packetName)
+
+        if (!routeChannel.CanDispatchRoutePacket(ZLinkMessageKind.Command, packetName)
             && _spotRouteEgress.CanHandle(routerChannelId))
         {
+            var header = ZLinkClientCallCodec.CreateEnvelope(
+                ZLinkMessageKind.Command,
+                routerChannelId,
+                packetName);
+            var parts = ZLinkClientCallCodec.EncodeEnvelopeParts(
+                header,
+                message,
+                Registration.Codecs);
+            if (await _spotRouteEgress.TrySendAsync(
+                        routerChannelId,
+                        targetNodeRid,
+                        parts,
+                        cancellationToken)
+                    .ConfigureAwait(false))
+                return;
+
+            ZLinkMessageParts.DisposeAll(parts);
         }
 
-        var header = ZLinkClientCallCodec.CreateEnvelope(
-            ZLinkMessageKind.Command,
-            routerChannelId,
-            packetName);
-        var parts = ZLinkClientCallCodec.EncodeEnvelopeParts(
-            header,
-            message,
-            Registration.Codecs);
-        if (await _spotRouteEgress.TrySendAsync(
-                    routerChannelId,
-                    targetNodeRid,
-                    parts,
-                    cancellationToken)
-                .ConfigureAwait(false))
-            return;
-
-        ZLinkMessageParts.DisposeAll(parts);
-        throw new ZLinkFrameworkException(
-            ZLinkFrameworkErrorKind.ActorRouteNotFound,
-            $"Route channel '{routerChannelId}' has no path to '{targetNodeRid}' for '{packetName}'.");
+        await routeChannel.SubmitSendAsync(
+                targetNodeRid,
+                packetName,
+                message,
+                cancellationToken)
+            .ConfigureAwait(false);
     }
 
     internal async ValueTask<TReply> SubmitRouteRequestAsync<TRequest, TReply>(
@@ -81,7 +116,8 @@ internal sealed partial class ZLinkFrameworkRuntime
         CancellationToken cancellationToken)
     {
         var routeChannel = GetRouteChannel(routerChannelId);
-        try
+        if (await IsDirectRouteMeshPeerAsync(routerChannelId, targetNodeRid, cancellationToken)
+                .ConfigureAwait(false))
         {
             return await routeChannel.RequestAsync<TRequest, TReply>(
                     targetNodeRid,
@@ -91,40 +127,43 @@ internal sealed partial class ZLinkFrameworkRuntime
                     cancellationToken)
                 .ConfigureAwait(false);
         }
-        catch (ZlinkException exception) when (
-            exception.NativeErrno == HostUnreachableErrno
-            && !routeChannel.CanDispatchRoutePacket(ZLinkMessageKind.Request, packetName)
+
+        if (!routeChannel.CanDispatchRoutePacket(ZLinkMessageKind.Request, packetName)
             && _spotRouteEgress.CanHandle(routerChannelId))
         {
+            var header = ZLinkClientCallCodec.CreateEnvelope(
+                ZLinkMessageKind.Request,
+                routerChannelId,
+                packetName,
+                timeout);
+            var parts = ZLinkClientCallCodec.EncodeEnvelopeParts(
+                header,
+                request,
+                Registration.Codecs);
+            var result = await _spotRouteEgress.TryRequestAsync(
+                    routerChannelId,
+                    targetNodeRid,
+                    parts,
+                    timeout,
+                    cancellationToken)
+                .ConfigureAwait(false);
+            if (result.WasHandled)
+                return ZLinkClientCallCodec.DecodeEnvelopeReplyAndDispose<TReply>(
+                    result.Reply,
+                    "Route SPOT reply was empty.",
+                    $"Route SPOT request failed for '{packetName}'.",
+                    Registration.Codecs);
+
+            ZLinkMessageParts.DisposeAll(parts);
         }
 
-        var header = ZLinkClientCallCodec.CreateEnvelope(
-            ZLinkMessageKind.Request,
-            routerChannelId,
-            packetName,
-            timeout);
-        var parts = ZLinkClientCallCodec.EncodeEnvelopeParts(
-            header,
-            request,
-            Registration.Codecs);
-        var result = await _spotRouteEgress.TryRequestAsync(
-                routerChannelId,
+        return await routeChannel.RequestAsync<TRequest, TReply>(
                 targetNodeRid,
-                parts,
+                packetName,
+                request,
                 timeout,
                 cancellationToken)
             .ConfigureAwait(false);
-        if (result.WasHandled)
-            return ZLinkClientCallCodec.DecodeEnvelopeReplyAndDispose<TReply>(
-                result.Reply,
-                "Route SPOT reply was empty.",
-                $"Route SPOT request failed for '{packetName}'.",
-                Registration.Codecs);
-
-        ZLinkMessageParts.DisposeAll(parts);
-        throw new ZLinkFrameworkException(
-            ZLinkFrameworkErrorKind.ActorRouteNotFound,
-            $"Route channel '{routerChannelId}' has no path to '{targetNodeRid}' for '{packetName}'.");
     }
 
     internal async ValueTask SendToSpotViaRouterChannelAsync(

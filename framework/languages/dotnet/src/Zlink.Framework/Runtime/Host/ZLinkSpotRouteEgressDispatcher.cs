@@ -4,7 +4,8 @@ internal sealed class ZLinkSpotRouteEgressDispatcher(
     ZLinkFrameworkRegistration registration,
     Func<string, ZLinkRouteChannelRuntime> getRouteChannel,
     Func<string, ZLinkSpotNodeRuntime?> getRouteBridgeOwner,
-    Func<ZLinkSpotLocationRidResolver?> getSpotLocationResolver)
+    Func<ZLinkSpotLocationRidResolver?> getSpotLocationResolver,
+    Func<IZLinkPeerLocationResolver?>? getPeerResolver = null)
 {
     public bool CanHandle(string localEgressChannelName)
     {
@@ -60,7 +61,8 @@ internal sealed class ZLinkSpotRouteEgressDispatcher(
                 localEgressChannelName,
                 getRouteChannel,
                 getRouteBridgeOwner,
-                getSpotLocationResolver);
+                getSpotLocationResolver,
+                getPeerResolver);
 
         throw new ZLinkConfigurationException(
             $"Routed SPOT egress channel '{localEgressChannelName}' is not a registered RouteMesh channel.");
@@ -90,9 +92,44 @@ internal sealed class ZLinkSpotRouteEgressDispatcher(
         string localEgressChannelName,
         Func<string, ZLinkRouteChannelRuntime> getRouteChannel,
         Func<string, ZLinkSpotNodeRuntime?> getRouteBridgeOwner,
-        Func<ZLinkSpotLocationRidResolver?> getSpotLocationResolver)
+        Func<ZLinkSpotLocationRidResolver?> getSpotLocationResolver,
+        Func<IZLinkPeerLocationResolver?>? getPeerResolver)
         : IEgressTarget
     {
+        /// <summary>
+        /// A live route mesh row for the target node in this channel's mesh
+        /// means auto connect dials it directly, so the route socket is the
+        /// delivery path; the spot route bridge only serves topologies where
+        /// no direct route link exists.
+        /// </summary>
+        private async ValueTask<bool> IsDirectRoutePeerAsync(
+            RoutingId targetPeerRid,
+            CancellationToken cancellationToken)
+        {
+            if (getPeerResolver?.Invoke() is not { } peers)
+            {
+                return false;
+            }
+
+            try
+            {
+                var rows = await peers.ListPeersAsync(
+                        new ZLinkPeerLocationFilter(
+                            AutoConnectType: ZLinkLocationAutoConnectType.RouteMesh,
+                            MeshName: localEgressChannelName,
+                            NodeRid: targetPeerRid),
+                        cancellationToken: cancellationToken)
+                    .ConfigureAwait(false);
+                return rows.Count > 0;
+            }
+            catch (Exception)
+            {
+                // A store outage never breaks delivery: fall back to the
+                // bridge-first order.
+                return false;
+            }
+        }
+
         public async ValueTask<RoutingId?> ResolveTargetPeerRidAsync(
             RoutingId targetSpotRid,
             CancellationToken cancellationToken)
@@ -125,6 +162,19 @@ internal sealed class ZLinkSpotRouteEgressDispatcher(
                 return;
 
             var routeChannel = getRouteChannel(localEgressChannelName);
+            if (await IsDirectRoutePeerAsync(targetPeerRid, cancellationToken).ConfigureAwait(false))
+            {
+                await routeChannel
+                    .SubmitSpotRouteSendPartsAsync(
+                        targetPeerRid,
+                        targetSpotRid,
+                        parts,
+                        cancellationToken)
+                    .ConfigureAwait(false);
+                return;
+            }
+
+
             if (routeChannel.TrySendViaSpotRouteBridge(
                     targetPeerRid,
                     targetSpotRid,
@@ -160,6 +210,18 @@ internal sealed class ZLinkSpotRouteEgressDispatcher(
             if (localOwnerReply is not null) return localOwnerReply;
 
             var routeChannel = getRouteChannel(localEgressChannelName);
+            if (await IsDirectRoutePeerAsync(targetPeerRid, cancellationToken).ConfigureAwait(false))
+            {
+                return await routeChannel
+                    .RequestToSpotPartsAsync(
+                        targetPeerRid,
+                        targetSpotRid,
+                        parts,
+                        timeout,
+                        cancellationToken)
+                    .ConfigureAwait(false);
+            }
+
             var bridgeReply = await TryRequestViaSpotRouteBridgeAsync(
                     routeChannel,
                     targetPeerRid,

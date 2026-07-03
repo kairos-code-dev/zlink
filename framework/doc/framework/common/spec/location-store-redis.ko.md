@@ -1,5 +1,5 @@
 <!-- framework-adapter-nav:start -->
-[문서 목록](../../../README.ko.md) | [이전: Location Runtime](location-runtime.ko.md) | [다음: Use Case Validation](usecase-validation.ko.md)
+[문서 목록](../../../README.ko.md) | [이전: Location Runtime](location-runtime.ko.md) | [다음: Spot 주소 기반 메시징](spot-address-messaging.ko.md)
 <!-- framework-adapter-nav:end -->
 
 [스펙 목차](../README.ko.md)

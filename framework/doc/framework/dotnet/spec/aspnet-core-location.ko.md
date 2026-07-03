@@ -32,8 +32,9 @@ store 를 등록하면 아래 서비스가 DI 에 등록된다. 캐시가 없다
 | `IZLinkRouteLocationResolver` | `ResolveRouteAsync(ZLinkRouteLocationKey)` |
 | `IZLinkLocationRuntimeQuery` | `GetStatusAsync`, `ListPeersAsync`, `ListSpotsAsync`, `ListActorsAsync`, `ListRoutesAsync`, `ListTopologyAsync`, `ListServiceSummariesAsync` |
 
-`ZLinkSpotAddress` 는 `MeshName + NodeRid + SpotRid` 값 객체다. 호출자가 보관하고 전송
-실패 시 재resolve 한다.
+`ZLinkSpotAddress` 는 `NodeRid + SpotRid` 값 객체다(mesh 는 전송 문맥의 채널이 결정).
+호출자가 보관하고 전송 실패 시 재resolve 한다. 실패 분류·재시도 의미는
+[공통 spot 주소 메시징 스펙](../../common/spec/spot-address-messaging.ko.md)을 따른다.
 
 ## 3. 자동 연결과 채널 표면의 관계
 

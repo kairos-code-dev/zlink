@@ -1,5 +1,12 @@
 # Framework Spot 주소 기반 메시징 전환과 캐시 제거 계획 초안
 
+> **정식 스펙으로 이관됨(2026-07-03)**: 확정 계약은
+> [spec/spot-address-messaging.ko.md](../spec/spot-address-messaging.ko.md)가 정본이다.
+> 이 초안은 전환의 배경·구현 순서·확인표 기록으로 남긴다. 구현 과정에서 §4의 주소 모델은
+> mesh를 주소가 아니라 전송 문맥(채널)이 결정하는 2필드(`NodeRid + SpotRid`)로 확정됐고,
+> §5의 spot 조회도 mesh 파라미터 없이 참여 mesh 검색으로 확정됐다 — 차이의 근거는 정식
+> 스펙 §1을 본다.
+
 > 이 문서는 구현 전 초안이다. 현재 공개 계약이 아니며, framework 구현, 언어별 API, 회귀 테스트가
 > 끝난 뒤 정식 spec/guide 문서에 나누어 반영한다.
 >

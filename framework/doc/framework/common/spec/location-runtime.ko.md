@@ -144,9 +144,9 @@ store에 도달하고 owner lease join으로 유효성을 판정한다.
 | `IZLinkActorLocationResolver` | `ResolveActorSpotAddressAsync(actorType, actorId)` → `ZLinkSpotAddress?` | 메시징 조회: actor → 그 actor가 위치한 spot의 full 주소 |
 | `IZLinkRouteLocationResolver` | `ResolveRouteAsync(key)` | owner-bound route 단건 resolve |
 
-- 메시징 resolver는 **주소**(`ZLinkSpotAddress` = `MeshName + NodeRid + SpotRid`)를 반환한다.
-  호출자가 주소를 보관하고 전송 실패 시 재resolve한다. 전송 경로는 조회하지 않는다. 상세는
-  [spot 주소 메시징 draft](../draft/framework-spot-address-messaging.ko.md)를 따른다.
+- 메시징 resolver는 **주소**(`ZLinkSpotAddress` = `NodeRid + SpotRid`; mesh는 전송 문맥이
+  결정)를 반환한다. 호출자가 주소를 보관하고 전송 실패 시 재resolve한다. 전송 경로는
+  조회하지 않는다. 상세는 [spot 주소 메시징](spot-address-messaging.ko.md)이 정본이다.
 - spot/actor/route resolver는 단건 resolve만 노출한다. 목록 조회는 peer resolver의 peer list,
   운영 조회 표면, store interface에만 둔다.
 - generation이 필요한 lifecycle 흐름(재연결/없으면 생성 판단, takeover)은 resolver가 아니라

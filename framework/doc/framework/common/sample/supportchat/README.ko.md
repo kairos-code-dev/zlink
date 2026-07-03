@@ -13,8 +13,8 @@ SupportChat은 고객 상담 채팅 흐름으로 framework가 실제 서비스�
 자기 client로 Session 서버 stream endpoint에 연결한다. 실제 상담처럼 **한 상담원은
 동시에 여러 고객 대화를 처리하며**, 하나의 stream session 위에 방마다 conversation
 actor를 두어 나눠 응대한다. Support 서버는 customer actor, 상담원 roster·conversation
-actor, conversation Spot을 소유하고, API 서버는 상담 티켓 생성(conversation allocation)을 맡고, Registry는 서버 간
-endpoint 발견을 맡는다.
+actor, conversation Spot을 소유하고, API 서버는 상담 티켓 생성(conversation allocation)을 맡고,
+공유 location store는 서버 간 endpoint 발견을 맡는다.
 
 샘플로 구현할 때 확인할 핵심은 아래와 같다.
 
@@ -29,7 +29,7 @@ endpoint 발견을 맡는다.
 - customer와 agent가 보낸 채팅 메시지는 conversation Spot에서 순서를 부여받고 상대방에게 push된다.
 - reconnect가 발생하면 같은 actor에 새 stream session이 bind되고 conversation 상태는 유지된다.
 - idle timer가 일정 시간 동안 새 메시지가 없는 conversation을 `WaitingForClose` 또는 `Closed`로 전환한다.
-- Registry/Discovery를 사용해 Session, API, Support 서버가 서로의 endpoint를 자동으로 찾는다.
+- 공유 location store를 사용해 Session, API, Support 서버가 서로의 endpoint를 자동으로 찾는다.
 
 SupportChat은 client가 Session 서버 하나에만 연결하는 session gateway 구조를 사용해,
 업무형 대화 상태, 재접속, 상담 종료 흐름을 보여 주는 운영형 multi-server 샘플이다.
@@ -50,7 +50,7 @@ graph LR
     S[Session Server]
     API[Api Server]
     SUP[Support Server]
-    R[Registry]
+    LS[("Location Store<br/>공유 저장소 · 예: Redis")]
 
     C -->|STREAM packets| S
     A -->|STREAM packets| S
@@ -61,9 +61,9 @@ graph LR
     SUP -->|Bound session Notify| S
     S -->|STREAM Notify| C
     S -->|STREAM Notify| A
-    S -. discovery .-> R
-    API -. discovery .-> R
-    SUP -. discovery .-> R
+    S -. peer discovery .-> LS
+    API -. peer discovery .-> LS
+    SUP -. peer discovery .-> LS
 ```
 
 customer client와 agent client가 직접 연결하는 서버는 Session 서버뿐이다. API 서버와
@@ -74,15 +74,15 @@ conversation Spot에 join한 뒤 domain state를 처리한다.
 
 ## 3. 자동 연결 방식
 
-SupportChat은 Registry/Discovery 기반 자동 연결을 사용한다.
+SupportChat은 공유 location store 기반 자동 연결을 사용한다.
 
 | 연결 | 연결 방식 | 이유 |
 |------|-----------|------|
-| Session -> API channel | Discovery 자동 연결 | Session 서버가 인증 요청을 처리할 때 API 서버 주소를 직접 들고 있지 않게 한다. |
-| Support -> API channel | Discovery 자동 연결 | Support actor가 상담 시작 orchestration을 API 서버에 요청한다. |
-| API -> Support channel | Discovery 자동 연결 | API 서버가 conversation 생성(allocation) 요청을 Support 서버로 보낸다. |
-| Session -> Support session relay | Registry 기반 actor locator | Session 서버가 Support 서버 actor의 위치를 직접 관리하지 않게 한다. |
-| Support -> Session bound push | Registry 기반 session route | Support 서버가 현재 client session 위치를 framework route로 찾는다. |
+| Session -> API channel | location store 기반 자동 연결 | Session 서버가 인증 요청을 처리할 때 API 서버 주소를 직접 들고 있지 않게 한다. |
+| Support -> API channel | location store 기반 자동 연결 | Support actor가 상담 시작 orchestration을 API 서버에 요청한다. |
+| API -> Support channel | location store 기반 자동 연결 | API 서버가 conversation 생성(allocation) 요청을 Support 서버로 보낸다. |
+| Session -> Support session relay | location store 기반 actor locator | Session 서버가 Support 서버 actor의 위치를 직접 관리하지 않게 한다. |
+| Support -> Session bound push | location store 기반 session route | Support 서버가 현재 client session 위치를 framework route로 찾는다. |
 
 이 샘플은 자동 연결, actor binding, bound session push를 함께 보여 주는 역할을 맡는다.
 
@@ -92,7 +92,7 @@ SupportChat은 client 요청을 세 서버가 나눠 처리하는 session gatewa
 
 | 역할 | 책임 |
 |------|------|
-| Session 서버 | `AuthenticateReq`만 session lifecycle packet으로 처리하고, 인증 이후 conversation packet은 `ConversationId`로 대상 conversation actor를 골라 relay한다. |
+| Session 서버 | `AuthenticateReq`만 session lifecycle packet으로 처리하고, 인증 이후 conversation packet은 `ConversationId`로 대상 actor를 골라 relay한다(상담원은 conversation actor, 고객은 신원 actor — §9.1). |
 | Support actor | `OpenConversationReq`를 처리해 API 서버에 `OpenConversationApiReq`로 상담 시작을 요청한다. |
 | API 서버 | token 검증과 상담 시작 orchestration을 맡고, `AllocateConversationReq`로 conversation 생성을 Support 서버에 요청한다. 상담원 배정은 Support 서버가 in-process로 처리한다. |
 | Support 서버 | `SupportEntrySpot`을 actor admission 지점으로 두고, `ConversationSpot`이 대화 상태·메시지 순서·typing·idle timer·close 상태를 소유한다. |
@@ -102,7 +102,6 @@ SupportChat은 client 요청을 세 서버가 나눠 처리하는 session gatewa
 
 | 프로세스 | 구성 요소 | 책임 |
 |----------|-----------|------|
-| `SupportChat.Registry` | registry host | Session, API, Support 서버 endpoint를 발견 가능하게 한다. |
 | `SupportChat.Api` | `Api` channel server | Session 서버의 token 검증과 Support actor의 상담 시작 orchestration 요청을 처리한다. |
 | `SupportChat.Api` | `Support` channel client | Support 서버에 conversation 생성(allocation)을 요청한다. |
 | `SupportChat.Session` | stream server | client 연결, 인증 packet, actor binding, actor relay를 처리한다. |
@@ -112,6 +111,7 @@ SupportChat은 client 요청을 세 서버가 나눠 처리하는 session gatewa
 | `SupportChat.Support` | `SupportEntrySpot` | actor가 conversation에 들어가기 전 admission 지점을 맡는다. |
 | `SupportChat.Support` | `ConversationSpot` | 참여자, 메시지 순서, typing 상태, idle timer, close 상태를 소유한다. |
 | `SupportChat.Support` | `Support` channel server | API 서버의 conversation 생성 요청과 Session 서버의 상담원 conversation actor 준비 요청을 받는다. |
+| `Location Store` | framework location store 계약의 공유 저장소 구현체(예: Redis) | Session·API·Support peer discovery(자동 연결)와 actor/session 위치 조회를 담으며, 등록·조회·lifecycle 정책은 framework가 소유. |
 
 ## 6. Support 서버 디렉토리 구조
 
@@ -185,7 +185,7 @@ SupportChat은 업무형 샘플이므로 domain model의 경계가 특히 분명
 이 문서에서 DDD는 복잡한 enterprise framework를 도입하라는 뜻이 아니라,
 상담 도메인에서 바뀌기 쉬운 규칙과 framework transport 세부 구현을 분리하라는 기준이다.
 Hexagonal Architecture는 domain 중심에 inbound/outbound port를 두고 ZLink, stream,
-registry, timer, logger 같은 외부 세부 사항을 adapter 밖으로 밀어내는 구조를 뜻한다.
+location store, timer, logger 같은 외부 세부 사항을 adapter 밖으로 밀어내는 구조를 뜻한다.
 
 ### 7.1 Domain Model
 
@@ -202,7 +202,7 @@ registry, timer, logger 같은 외부 세부 사항을 adapter 밖으로 밀어�
 | `ConversationPolicy` | conversation당 1:1 참여자 제한, text 길이, idle timeout, close grace timeout, close 가능 조건을 정의한다. |
 | `ConversationEvent` | participant joined, assigned, message appended, typing changed, idle, closed 같은 domain event를 표현한다. |
 
-Domain은 ZLink actor, Spot, session, stream connector, channel client, registry endpoint,
+Domain은 ZLink actor, Spot, session, stream connector, channel client, location store endpoint,
 timer handle, logger, DI container를 알면 안 된다. 예를 들어 `Conversation.SendMessage`
 같은 method는 `BoundSession.Send(...)`를 직접 호출하지 않고 `ConversationEvent`를 반환한다.
 adapter가 이 event를 `ChatMessageNotify` 같은 push message로 바꾼다.
@@ -237,8 +237,8 @@ SupportChat의 port는 domain/application이 외부에 기대는 최소 계약�
 | `Clock` 또는 time provider | outbound | timer handler가 현재 시각을 domain에 전달한다. |
 | `AuthenticationPort` | inbound API boundary | API handler가 token을 검증하고 actor identity를 반환한다. |
 
-Infrastructure 계층은 framework 객체, codec, logging, handler/decorator 등록, Registry/Discovery
-설정, Spot lifecycle, actor/session binding을 맡는다. Adapter가 domain 규칙을 직접
+Infrastructure 계층은 framework 객체, codec, logging, handler/decorator 등록, location store
+자동 연결 설정, Spot lifecycle, actor/session binding을 맡는다. Adapter가 domain 규칙을 직접
 판정하면 안 된다. 예를 들어 `SendChatMessageHandler`는 text 길이, closed 상태, participant
 여부를 직접 검사하지 않고 `Conversation`에 요청한다. `ConversationIdleTimerHandler`는
 timer tick을 domain에 전달할 뿐 idle 전이와 close 전이를 직접 계산하지 않는다.
@@ -318,15 +318,24 @@ actor id가 아니라 상담원 신원(roster) id를 담아 client가 사람 단
 ### 9.2 ConversationId 라우팅
 
 conversation 범위 client packet은 `ConversationId`를 **stream message metadata(header)
-필드**로 실어 보낸다. Session 서버는 이 metadata만 읽어 대상 conversation actor를 고르므로
-domain payload를 해석하지 않는다(세션이 domain schema에 결합되지 않는다). payload를
+필드**로 실어 보낸다. Session 서버는 이 metadata만 읽어 대상 actor(상담원은 conversation
+actor, 고객은 신원 actor)를 고르므로 domain payload를 해석하지 않는다(세션이 domain schema에
+결합되지 않는다). payload를
 디코드해 라우팅하는 방식은 쓰지 않는다. 규칙은 아래와 같다.
 
-- Session 서버는 session마다 `ConversationId -> bound conversation actor` 맵을 유지한다.
-- `JoinConversationReq`(metadata `ConversationId`)는 맵에 없으면 그 conversation actor를 만들어 session에 bind하고 맵에 등록한 뒤 relay한다(부트스트랩).
-- 상담원의 `SendChatMessageReq`, `SetTypingReq`, `CloseConversationReq`는 metadata `ConversationId`로 맵에서 방별 conversation actor를 찾아 relay한다.
+- Session 서버는 session마다 `ConversationId -> bound conversation actor` 맵을 유지한다. 이
+  맵에는 상담원의 per-conversation actor만 등록된다 — 고객은 conversation actor가 없다(§9.1).
+- **상담원**의 `JoinConversationReq`(metadata `ConversationId`)는 맵에 없으면 그 상담원의
+  conversation actor를 만들어 session에 bind하고 맵에 등록한 뒤 relay한다(부트스트랩). 이후
+  `SendChatMessageReq`, `SetTypingReq`, `CloseConversationReq`도 metadata `ConversationId`로
+  맵에서 방별 conversation actor를 찾아 relay한다.
+- **고객**은 conversation actor를 따로 만들지 않고 신원 actor가 곧 참여자이므로(§9.1), 고객이
+  보내는 `JoinConversationReq`를 포함한 모든 conversation packet은 맵에 등록된 적이 없어 맵
+  조회가 항상 miss이고, 그때마다 새로 만들지 않고 신원(customer) actor로 relay된다.
 - metadata `ConversationId`가 없는 packet(`SetAgentAvailableReq`, `OpenConversationReq`)은 신원 actor(고객 actor 또는 상담원 roster actor)로 relay한다.
-- 고객은 conversation actor를 따로 만들지 않고 신원 actor가 곧 참여자이므로(§9.1), 고객의 conversation packet은 맵에 없어 신원 actor로 relay된다. 즉 세션은 `ConversationId`가 맵에 있으면 그 conversation actor로, 없으면 신원 actor로 보낸다.
+- 정리하면 세션은 `ConversationId`가 맵에 있으면 그 conversation actor로, 없으면 신원 actor로
+  보낸다 — 다만 맵에 새로 등록(부트스트랩)하는 것은 상담원 join뿐이고, 고객의 map-miss는 항상
+  신원 actor로 끝난다.
 
 metadata가 라우팅의 단일 출처이므로 inbound conversation packet의 payload에는
 `ConversationId` 필드를 두지 않는다. 대상 conversation actor가 속한 Spot이 어느
@@ -570,7 +579,8 @@ Spot routing id를 만든다. client DTO에는 routing id hex 문자열을 노�
 conversation 범위 packet(`JoinConversationReq`, `SendChatMessageReq`, `SetTypingReq`,
 `CloseConversationReq`)은 `ConversationId`를 payload가 아니라 stream message metadata로
 실어 보내고, Session 서버는 그 metadata만으로 한 session의 여러 bound actor 중 대상
-conversation actor를 골라 relay한다(§9.2). `ConversationState.AgentActorId`와
+actor를 골라 relay한다(상담원은 conversation actor, 고객은 신원 actor — §9.2).
+`ConversationState.AgentActorId`와
 `ParticipantJoinedNotify.ActorId`에는 내부 conversation actor id가 아니라 상담원
 신원(roster) id를 담는다.
 
@@ -716,7 +726,8 @@ conversation은 아직 `WaitingForAgent`다. 상담원 client는 이 notify를 �
 상담원 conversation actor를 같은 session에 bind하고 `ConversationSpot`에 join시키면
 conversation은 `Active`가 되고 customer에게 `ParticipantJoinedNotify`가 전달된다. 한
 상담원이 여러 conversation에 배정되면 이 conversation actor가 방마다 하나씩 생기고, 이후
-customer와 상담원은 각자의 conversation actor를 통해 메시지를 주고받는다.
+상담원은 그 conversation actor를 통해, customer는 자기 신원 actor를 통해(§9.1) 메시지를
+주고받는다.
 
 이 문서의 시퀀스·시나리오에서 conversation packet에 붙인 `(convId, …)`·`(conv-1, …)`
 표기 중 `convId`/`conv-*`는 payload 필드가 아니라 metadata `ConversationId`를 뜻한다(§9.2).
@@ -875,16 +886,17 @@ sequenceDiagram
     S->>S: Bind new stream session to same actor
     S-->>C: AuthenticateRes
     C->>S: JoinConversationReq (metadata ConversationId)
-    Note over S: ConversationId로 conversation actor를 새 session에 다시 bind (§9.2)
-    S->>A: Relay to conversation actor
+    Note over S: customer는 별도 conversation actor가 없으므로(§9.1) CustomerActor 자신을<br/>새 session에 다시 bind
+    S->>A: Relay to CustomerActor
     A->>R: Join or refresh membership
     R-->>A: JoinConversationRes(current state)
     A-->>S: JoinConversationRes
     S-->>C: JoinConversationRes
 ```
 
-reconnect는 conversation state와 actor를 새로 만들지 않는다. Session 서버는 새 stream
-session에 기존 actor를 다시 bind한다. customer는 reconnect 뒤 `JoinConversationReq`로 자기
+reconnect는 conversation state와 actor를 새로 만들지 않는다. Session 서버는 actor 위치를
+resolve로 찾아(`ResolveActorSpotAddressAsync` — location store 도달) 기존 actor를 새 stream
+session에 다시 bind한다. resolve가 null이면 그때만 생성 경로(claim-then-activate)로 간다. customer는 reconnect 뒤 `JoinConversationReq`로 자기
 conversation state를 다시 확인한다. 상담원은 roster actor를 다시 bind한 뒤
 `SetAgentAvailableReq(true)`로 상담 가능 상태를 다시 등록하고(이때 roster의 bound session
 경로가 새 session으로 갱신된다), 열려 있던 conversation마다 `JoinConversationReq`로 그
@@ -935,7 +947,7 @@ sequenceDiagram
     C->>S: AuthenticateReq(same token)
     Note over S: 새 stream session을 기존 actor에 다시 bind
     S-->>C: AuthenticateRes
-    C->>S: JoinConversationReq
+    C->>S: JoinConversationReq (metadata ConversationId, customer는 신원 actor로 relay)
     S-->>C: JoinConversationRes(current state)
 
     S-->>C: ConversationIdleNotify
@@ -995,6 +1007,8 @@ sequenceDiagram
     S-->>A: AuthenticateRes
     A->>S: SetAgentAvailableReq(true)
     S-->>A: SetAgentAvailableRes(true)
+    A->>S: JoinConversationReq(conv-1)
+    S-->>A: JoinConversationRes(conv-1, current state)
     A->>S: JoinConversationReq(conv-2)
     S-->>A: JoinConversationRes(conv-2, current state)
 
@@ -1074,7 +1088,7 @@ session gateway 구조가 흐려진다.
 아래 항목은 언어별 샘플 구현과 smoke test로 확인해야 하는 기준이다.
 
 - client 두 종류(customer, agent)가 각각 Session 서버에 하나의 stream 연결만 연다.
-- Session, API, Support 서버는 Registry/Discovery로 서로를 자동 발견한다.
+- Session, API, Support 서버는 공유 location store로 서로를 자동 발견한다.
 - 인증 후 Session 서버는 current stream session을 Support 서버 actor에 bind한다. 상담원은 roster actor에 bind된다.
 - agent client는 인증 후 `SetAgentAvailableReq(true)`로 상담 가능 상태를 등록한다.
 - customer가 `OpenConversationReq`를 보내면 conversation이 생성되고 customer actor가 join한다.
@@ -1083,7 +1097,9 @@ session gateway 구조가 흐려진다.
 - 배정 가능한(용량 남은) agent가 없으면 conversation은 오류가 아니라 `WaitingForAgent` 상태로 남는다.
 - customer actor와 상담원 conversation actor는 같은 `ConversationSpot`에 join되어 있어야 한다.
 - 한 상담원이 용량 한도까지 여러 conversation에 동시에 배정되고, 각 방은 독립된 `MessageSeq`·idle·close 상태를 갖는다.
-- Session 서버는 한 session의 여러 bound actor 중 `ConversationId`로 대상 conversation actor를 골라 relay한다.
+- Session 서버는 한 session의 여러 bound actor 중 `ConversationId`로 대상 actor를 골라 relay한다.
+  agent는 그 conversation의 conversation actor로, 별도 conversation actor가 없는 customer는
+  자기 신원(customer) actor로 간다(§9.1).
 - agent가 먼저 greeting 메시지를 보내고, customer는 `ChatMessageNotify`로 `MessageSeq = 1`을 받는다.
 - customer가 답변 메시지를 보내고, agent는 `ChatMessageNotify`로 `MessageSeq = 2`를 받는다.
 - typing 변경은 one-way send로 보내고 상대방 `TypingChangedNotify`로만 검증한다(요청자 응답 없음).

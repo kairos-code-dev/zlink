@@ -1,0 +1,50 @@
+using StoreFailure.Client.Support;
+using Zlink.HttpClient;
+
+namespace StoreFailure.Client.Scenarios;
+
+// SF-B2: past the store failure grace, only NEW outbound connects stop;
+// connections that were already ready keep serving as long as their
+// transport lives.
+internal static class SfB2GraceExceededScenario
+{
+    public static async Task RunAsync(
+        ClientOptions options,
+        ZLinkHttpClient consumer,
+        StoreFailureProcessManager processes)
+    {
+        await processes.PauseStoreAsync();
+        try
+        {
+            // Drive traffic through the whole grace window and beyond it:
+            // every request must ride the established connections.
+            await SfProbe.DriveRequestsAsync(
+                consumer,
+                "sf-b2-grace",
+                options.StoreFailureGrace + options.HeartbeatInterval * 2,
+                "SF-B2");
+
+            var status = await SfProbe.GetStatusAsync(consumer);
+            ScenarioAssert.That(
+                !status.StoreHealthy,
+                "SF-B2: the store outage was not visible in runtime status past the grace.");
+        }
+        finally
+        {
+            await processes.UnpauseStoreAsync();
+        }
+
+        await SfProbe.WaitStatusAsync(
+            consumer,
+            status => status is { StoreHealthy: true, OwnerLeaseHealthy: true },
+            options.HeartbeatInterval * 8,
+            "SF-B2: the consumer's runtime status did not recover after the outage.");
+        await SfProbe.WaitPeersAsync(
+            consumer,
+            peers => SfProbe.HasRid(peers, "api-a") && SfProbe.HasRid(peers, "api-b"),
+            options.OwnerLeaseTtl + options.HeartbeatInterval * 4,
+            "SF-B2: provider rows did not return to the live list after recovery.");
+
+        Console.WriteLine("scenario SF-B2 passed");
+    }
+}

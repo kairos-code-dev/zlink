@@ -1,0 +1,47 @@
+using StoreFailure.Client.Support;
+using Zlink.HttpClient;
+
+namespace StoreFailure.Client.Scenarios;
+
+// SF-A1: with a healthy store, both provider rows are live, requests are
+// served, and every node's runtime status reads healthy — the baseline
+// the failure scenarios diff against.
+internal static class SfA1BaselineScenario
+{
+    public static async Task RunAsync(
+        ClientOptions options,
+        ZLinkHttpClient consumer,
+        ZLinkHttpClient providerA,
+        ZLinkHttpClient providerB)
+    {
+        await SfProbe.WaitPeersAsync(
+            consumer,
+            peers => SfProbe.HasRid(peers, "api-a") && SfProbe.HasRid(peers, "api-b"),
+            options.OwnerLeaseTtl + options.PollingInterval * 4,
+            "SF-A1: both provider rows did not appear in the consumer's peer list.");
+
+        var served = new HashSet<string>(StringComparer.Ordinal);
+        for (var i = 0; i < 8; i++)
+        {
+            var reply = await SfProbe.RequestAsync(consumer, $"sf-a1-{i}");
+            ScenarioAssert.That(reply.Value == "profile:fast", "SF-A1: request returned an unexpected value.");
+            served.Add(reply.ProviderRid);
+        }
+
+        ScenarioAssert.That(served.Count > 0, "SF-A1: no provider served the baseline traffic.");
+
+        foreach (var (node, name) in new[] { (consumer, "consumer"), (providerA, "api-a"), (providerB, "api-b") })
+        {
+            var status = await SfProbe.WaitStatusAsync(
+                node,
+                current => current is { StoreHealthy: true, OwnerLeaseHealthy: true },
+                options.HeartbeatInterval * 4,
+                $"SF-A1: {name} runtime status did not report a healthy store and lease.");
+            ScenarioAssert.That(
+                status.LastRefreshAt is not null,
+                $"SF-A1: {name} did not report a last refresh timestamp.");
+        }
+
+        Console.WriteLine("scenario SF-A1 passed");
+    }
+}

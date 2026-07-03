@@ -1,0 +1,53 @@
+using StoreFailure.Client.Support;
+using StoreFailure.Shared;
+using Zlink.HttpClient;
+
+namespace StoreFailure.Client.Scenarios;
+
+// SF-D3: one outage cycle shows up in runtime status as an ordered
+// healthy -> unhealthy(+last error, lease failure) -> healthy(+fresh
+// refresh) transition.
+internal static class SfD3StatusTransitionScenario
+{
+    public static async Task RunAsync(
+        ClientOptions options,
+        ZLinkHttpClient consumer,
+        StoreFailureProcessManager processes)
+    {
+        var before = await SfProbe.WaitStatusAsync(
+            consumer,
+            status => status is { StoreHealthy: true, OwnerLeaseHealthy: true },
+            options.HeartbeatInterval * 6,
+            "SF-D3: the pre-outage status was not healthy.");
+
+        await processes.PauseStoreAsync();
+        RuntimeStatusRes during;
+        try
+        {
+            during = await SfProbe.WaitStatusAsync(
+                consumer,
+                status => status is { StoreHealthy: false, LastError: not null, OwnerLeaseHealthy: false },
+                options.HeartbeatInterval * 8,
+                "SF-D3: the outage did not surface as unhealthy status with a last error.");
+        }
+        finally
+        {
+            await processes.UnpauseStoreAsync();
+        }
+
+        var after = await SfProbe.WaitStatusAsync(
+            consumer,
+            status => status is { StoreHealthy: true, OwnerLeaseHealthy: true, LastRefreshAt: not null },
+            options.HeartbeatInterval * 8,
+            "SF-D3: status did not return to healthy after recovery.");
+
+        ScenarioAssert.That(
+            before.LastRefreshAt is not null && after.LastRefreshAt > before.LastRefreshAt,
+            "SF-D3: the post-recovery refresh timestamp did not advance.");
+        ScenarioAssert.That(
+            !during.WatchEnabled && during.LastError is not null,
+            "SF-D3: outage status fields (watch/polling, last error) were not observable.");
+
+        Console.WriteLine("scenario SF-D3 passed");
+    }
+}

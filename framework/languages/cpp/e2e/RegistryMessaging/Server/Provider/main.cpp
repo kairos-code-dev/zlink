@@ -5,6 +5,7 @@
 #include "Handlers/provider_handlers.hpp"
 #include "Infrastructure/scenario_state.hpp"
 
+#include "../../Shared/location_store_registration.hpp"
 #include "../../Shared/registry_messaging_contracts.hpp"
 
 #include <zlink/framework.hpp>
@@ -86,16 +87,7 @@ int main (int argc, char **argv)
         framework.services ().add_transient<rm_provider::server_weight_handler_t,
                                             zlink::framework::channel_runtime_options_t> ();
         configure_common_codecs (framework.codecs ());
-        if (!options.embedded_registry_pub.empty () && !options.embedded_registry_router.empty ()) {
-            framework.enable_registry (options.embedded_registry_pub,
-                                       options.embedded_registry_router);
-            for (const auto &peer : options.embedded_registry_peers) {
-                framework.add_registry_peer (peer);
-            }
-        }
-        for (const auto &endpoint : rm_provider::split_csv (options.registry_router)) {
-            framework.use_discovery ().add_registry_endpoint (endpoint);
-        }
+        e2e::add_redis_location_store (framework, options.redis_endpoint, options.redis_key_prefix);
         if (!options.api_endpoint.empty ()) {
             auto channel = framework.add_client_server_channel (e2e::api_channel);
             channel.enable_server (options.api_endpoint)
@@ -137,6 +129,7 @@ int main (int argc, char **argv)
               .map_post<rm_provider::http_profile_command_handler_t> ("/profile/command")
               .map_post<rm_provider::http_route_request_handler_t> ("/profile/route/request")
               .map_post<rm_provider::http_route_missing_handler_t> ("/profile/route/missing")
+              .map_get<rm_provider::peer_locations_handler_t> ("/locations/peers")
               .map_post<rm_provider::server_weight_handler_t> ("/admin/server-weight");
         }
         framework.handlers ()

@@ -13,14 +13,24 @@ int main ()
     namespace ext = zlink::framework::extensions;
 
     auto descriptors = ext::known_extensions ();
-    if (descriptors.size () != 11) {
+    if (descriptors.size () != 12) {
         return 1;
     }
+    bool found_locations_redis = false;
     for (const auto &descriptor : descriptors) {
+        if (descriptor.name == "locations-redis") {
+            found_locations_redis =
+              descriptor.target_name == "zlink::framework_locations_redis"
+              && !descriptor.depends_on_core_only;
+            continue;
+        }
         if (descriptor.target_name.rfind ("zlink::framework_extension_", 0) != 0
             || !descriptor.depends_on_core_only) {
             return 2;
         }
+    }
+    if (!found_locations_redis) {
+        return 9;
     }
 
     zlink::framework::monitoring_builder_t monitoring;

@@ -6,6 +6,12 @@
     "gtest",
     "lz4",
     "nlohmann-json",
-    "openssl"
+    "openssl",
+    {
+      "name": "redis-plus-plus",
+      "features": [
+        "async-std"
+      ]
+    }
   ]
 }

@@ -31,12 +31,12 @@ inline void run_mon_a5_fixed_kinds_scenario (const client_options_t &options)
     ensure (any_contains (socket_entries, "kind=HandshakeFailed"),
             "MON-A5 handshake failure evidence missing");
 
-    const auto registry_entries = wait_evidence_contains (
-      options.registry_url,
-      "monitor-registry|source=registry|kind=StatusChanged",
+    const auto location_entries = wait_evidence_contains (
+      options.service_url,
+      "monitor-location|source=location-runtime|kind=StatusChanged",
       std::chrono::milliseconds (10000));
-    ensure (any_contains (registry_entries, "kind=StatusChanged"),
-            "MON-A5 registry status evidence missing");
+    ensure (any_contains (location_entries, "kind=StatusChanged"),
+            "MON-A5 location status evidence missing");
 
     const auto spot_status_entries = wait_evidence_contains (
       options.service_url,

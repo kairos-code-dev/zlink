@@ -172,7 +172,7 @@ main ()
                   .build ();
   (void) client;
   auto extensions = zlink::framework::extensions::known_extensions ();
-  if (extensions.size () != 11) {
+  if (extensions.size () != 12) {
     return 2;
   }
   auto packet =
@@ -216,8 +216,13 @@ else()
     "LD_LIBRARY_PATH=${consumer_install_prefix}/lib:$ENV{LD_LIBRARY_PATH}")
 endif()
 
+set(consumer_gcov_prefix "${consumer_run_dir}/gcov")
+file(MAKE_DIRECTORY "${consumer_gcov_prefix}")
+
 execute_process(
   COMMAND "${CMAKE_COMMAND}" -E env "${runtime_path}"
+          "GCOV_PREFIX=${consumer_gcov_prefix}"
+          "GCOV_PREFIX_STRIP=0"
           "${consumer_build_dir}/consumer"
   RESULT_VARIABLE run_result)
 if(NOT run_result EQUAL 0)

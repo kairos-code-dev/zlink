@@ -73,9 +73,9 @@ health_builder_t &health_builder_t::add_channel_check (std::string name)
     return add_check ("channel", std::move (name), health_check_scope_t::readiness);
 }
 
-health_builder_t &health_builder_t::add_registry_check (std::string name)
+health_builder_t &health_builder_t::add_location_check (std::string name)
 {
-    return add_check ("registry", std::move (name), health_check_scope_t::readiness);
+    return add_check ("location", std::move (name), health_check_scope_t::readiness);
 }
 
 health_builder_t &health_builder_t::add_stream_endpoint_check (std::string name)

@@ -8,6 +8,7 @@
 #include "Spots/play_spot_types.hpp"
 #include "Support/play_support.hpp"
 #include "../Shared/codecs.hpp"
+#include "../Shared/location_store.hpp"
 
 #include <zlink/framework.hpp>
 
@@ -38,13 +39,15 @@ inline zlink::framework::app_t create_play_host ()
         options.services ()
           .add_singleton<evidence_store_t> (std::move (evidence))
           .add_transient<bind_yield_actors_handler_t, evidence_store_t,
-                         zlink::framework::spot_node_manager_t> ()
+                         zlink::framework::spot_node_manager_t,
+                         zlink::framework::session_actor_manager_t> ()
           .add_transient<ensure_spot_handler_t, evidence_store_t,
                          zlink::framework::spot_node_manager_t> ()
           .add_transient<evidence_handler_t, evidence_store_t> ()
           .add_transient<evidence_wait_handler_t, evidence_store_t> ();
         server::configure_codecs (options.codecs ());
-        options.use_discovery ().add_registry_endpoint (play_options.registry_router);
+        server::add_redis_location_store (options, play_options.redis_endpoint,
+                                          play_options.redis_key_prefix);
         options.add_client_server_channel (yd::delay_channel)
           .enable_client (play_options.delay_endpoint)
           .set_routing_id (zlink::routing_id_t::from (play_options.node_rid));
@@ -64,11 +67,15 @@ inline zlink::framework::app_t create_play_host ()
           .add_request_handler<evidence_wait_handler_t, yd::yield_evidence_wait_req_t,
                                yd::yield_evidence_res_t> (
             yd::yield_evidence_wait_req_t::packet_name, &evidence_wait_handler_t::handle);
+        options.add_route_mesh (yd::spot_route_channel)
+          .enable_server (play_options.spot_route_endpoint)
+          .enable_client ()
+          .set_routing_id (zlink::routing_id_t::from (play_options.node_rid));
         options.add_spot_mesh (yd::spot_channel)
-          .use_registry_spot_resolver (yd::control_channel)
           .set_routing_id (zlink::routing_id_t::from (play_options.node_rid))
           .enable_router (play_options.spot_router_endpoint)
           .enable_pub_sub (play_options.spot_pub_endpoint)
+          .accept_route_mesh (yd::spot_route_channel)
           .add_entry_spot<yield_entry_spot_t> (
             [evidence_ptr] { return std::make_shared<yield_entry_spot_t> (*evidence_ptr); })
           .add_spot<yield_probe_spot_t> (

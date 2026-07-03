@@ -13,8 +13,12 @@ struct session_options_t
     std::string log_dir;
     std::string node_rid;
     std::string http_endpoint;
-    std::string registry_router;
+    std::string redis_endpoint;
+    std::string redis_key_prefix;
     std::string control_endpoint;
+    std::string control_peer_endpoint;
+    std::string spot_route_endpoint;
+    std::string spot_route_peer_endpoint;
     std::string spot_router_endpoint;
     std::string spot_pub_endpoint;
     std::string stream_endpoint;
@@ -26,8 +30,12 @@ inline session_options_t read_session_options ()
       .log_dir = server::env_or ("ZLINK_CPP_E2E_LOG_DIR", "logs"),
       .node_rid = server::env_or ("ZLINK_CPP_E2E_NODE_RID", "session-a"),
       .http_endpoint = server::env_or ("ZLINK_CPP_E2E_HTTP_ENDPOINT"),
-      .registry_router = server::env_or ("ZLINK_CPP_E2E_REGISTRY_ROUTER"),
+      .redis_endpoint = server::env_or ("ZLINK_CPP_E2E_REDIS_ENDPOINT"),
+      .redis_key_prefix = server::env_or ("ZLINK_CPP_E2E_REDIS_KEY_PREFIX"),
       .control_endpoint = server::env_or ("ZLINK_CPP_E2E_CONTROL_ENDPOINT"),
+      .control_peer_endpoint = server::env_or ("ZLINK_CPP_E2E_CONTROL_PEER_ENDPOINT", ""),
+      .spot_route_endpoint = server::env_or ("ZLINK_CPP_E2E_SPOT_ROUTE_ENDPOINT"),
+      .spot_route_peer_endpoint = server::env_or ("ZLINK_CPP_E2E_SPOT_ROUTE_PEER_ENDPOINT", ""),
       .spot_router_endpoint = server::env_or ("ZLINK_CPP_E2E_SPOT_ROUTER_ENDPOINT"),
       .spot_pub_endpoint = server::env_or ("ZLINK_CPP_E2E_SPOT_PUB_ENDPOINT"),
       .stream_endpoint = server::env_or ("ZLINK_CPP_E2E_STREAM_ENDPOINT")};

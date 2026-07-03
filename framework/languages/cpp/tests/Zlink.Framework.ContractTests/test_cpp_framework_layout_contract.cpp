@@ -135,8 +135,30 @@ bool public_headers_do_not_expose_runtime_dependencies (const std::filesystem::p
                 const auto relative = std::filesystem::relative (entry.path (), root);
                 const auto relative_text = relative.generic_string ();
                 if ((relative_text == "framework/include/zlink/framework/codecs/json.hpp"
-                     || relative_text == "zlink/framework/codecs/json.hpp")
+                     || relative_text
+                          == "framework/include/zlink/framework/codecs/json_stream_connector.hpp"
+                     || relative_text
+                          == "framework/include/zlink/framework/contracts/codecs/serializer.hpp"
+                     || relative_text == "zlink/framework/codecs/json.hpp"
+                     || relative_text == "zlink/framework/codecs/json_stream_connector.hpp"
+                     || relative_text == "zlink/framework/contracts/codecs/serializer.hpp")
                     && (needle == "#include <nlohmann" || needle == "nlohmann::")) {
+                    continue;
+                }
+                if ((relative_text
+                       == "connector/core/include/zlink/stream_connector/contracts/calls/"
+                          "zlink_stream_calls.hpp"
+                     || relative_text
+                          == "zlink/stream_connector/contracts/calls/zlink_stream_calls.hpp")
+                    && (needle == "#include <future>" || needle == "std::future"
+                        || needle == "std::promise")) {
+                    continue;
+                }
+                if ((relative_text
+                       == "framework/include/zlink/framework/contracts/locations/location.hpp"
+                     || relative_text
+                          == "zlink/framework/contracts/locations/location.hpp")
+                    && needle == "#include <zlink/Contracts/Service") {
                     continue;
                 }
                 if (line.find (needle) != std::string::npos) {
@@ -350,11 +372,7 @@ bool implementation_plan_expands_label_wildcards (const std::filesystem::path &r
       "`connector-protocol`, `connector-transport`, `connector-typed`, `connector-package` |",
       "| `connector-unreal-*` | `connector-unreal-contract`, `connector-unreal-compile`, "
       "`connector-unreal-smoke` |",
-      "| `framework-sample-*` | `framework-sample-smoke`, `framework-sample-parity`, "
-      "`framework-sample-api`, "
-      "`framework-sample-bingo`, `framework-sample-play`, "
-      "`framework-sample-registry`, "
-      "`framework-sample-session`, `framework-sample-tictactoe` |"};
+      "| `framework-sample-*` | `framework-sample-parity` |"};
     for (const auto &row : rows) {
         if (table.find (row) == std::string::npos) {
             std::cerr << "implementation plan lacks label wildcard expansion: " << row << '\n';
@@ -588,7 +606,7 @@ bool implementation_plan_goal9_covers_channel_messaging (const std::filesystem::
       "server/client/publisher/subscriber capability",
       "`bind(...)`",
       "`connect(...)`",
-      "`use_discovery(...)`",
+      "location store 기반 자동 연결",
       "`request_client_t`",
       "`publisher_t`",
       "request timeout",
@@ -1063,8 +1081,8 @@ bool implementation_plan_goal15_covers_registry_topology (const std::filesystem:
     }
 
     const std::string commands[] = {
-      "ctest --test-dir framework/languages/cpp/build -L framework-zlink-registry",
-      "ctest --test-dir framework/languages/cpp/build -L framework-regression -R registry"};
+      "ctest --test-dir framework/languages/cpp/build -L framework-location",
+      "ctest --test-dir framework/languages/cpp/build -L framework-regression -R location"};
     for (const auto &command : commands) {
         if (goal.find (command) == std::string::npos) {
             std::cerr << "Goal 15 verification commands lack: " << command << '\n';
@@ -1339,7 +1357,7 @@ bool implementation_plan_goal19_covers_http_hosting (const std::filesystem::path
     return ok;
 }
 
-bool registry_draft_matches_monitoring_contract (const std::filesystem::path &root)
+bool registry_spec_does_not_reintroduce_monitoring_contract (const std::filesystem::path &root)
 {
     const auto path = root / "../../doc/framework/cpp/spec/cpp-registry.ko.md";
     std::ifstream input (path);
@@ -1348,22 +1366,15 @@ bool registry_draft_matches_monitoring_contract (const std::filesystem::path &ro
     const auto text = buffer.str ();
 
     bool ok = true;
-    const std::string required[] = {"Registry snapshot event는 등록된 monitoring source에만 전달",
-                                    "topology나 service summary", "typed monitoring event"};
-    for (const auto &needle : required) {
-        if (text.find (needle) == std::string::npos) {
-            std::cerr << "registry draft no longer documents implemented "
-                      << "monitoring contract: " << needle << '\n';
-            ok = false;
-        }
-    }
-
-    const std::string stale[] = {"Registry snapshot diff event는 설정된 interval을 따르고",
+    const std::string stale[] = {"Registry snapshot event는 등록된 monitoring source에만 전달",
+                                 "topology나 service summary",
+                                 "typed monitoring event",
+                                 "Registry snapshot diff event는 설정된 interval을 따르고",
                                  "monitoring 통합 단계에서 별도 regression으로 고정한다"};
     for (const auto &needle : stale) {
         if (text.find (needle) != std::string::npos) {
-            std::cerr << "registry draft still treats implemented monitoring "
-                      << "contract as pending: " << needle << '\n';
+            std::cerr << "registry spec reintroduced legacy monitoring contract: " << needle
+                      << '\n';
             ok = false;
         }
     }
@@ -1389,14 +1400,7 @@ bool implementation_plan_goal21_covers_sample_labels (const std::filesystem::pat
 
     bool ok = true;
     const std::string commands[] = {
-      "ctest --test-dir framework/languages/cpp/build -L framework-sample-smoke",
-      "ctest --test-dir framework/languages/cpp/build -L framework-sample-parity",
-      "ctest --test-dir framework/languages/cpp/build -L framework-sample-api",
-      "ctest --test-dir framework/languages/cpp/build -L framework-sample-bingo",
-      "ctest --test-dir framework/languages/cpp/build -L framework-sample-play",
-      "ctest --test-dir framework/languages/cpp/build -L framework-sample-registry",
-      "ctest --test-dir framework/languages/cpp/build -L framework-sample-session",
-      "ctest --test-dir framework/languages/cpp/build -L framework-sample-tictactoe"};
+      "ctest --test-dir framework/languages/cpp/build -L framework-sample-parity"};
     for (const auto &command : commands) {
         if (goal.find (command) == std::string::npos) {
             std::cerr << "Goal 21 verification commands lack: " << command << '\n';
@@ -1434,8 +1438,7 @@ bool implementation_plan_goal22_covers_final_label_axes (const std::filesystem::
       "--output-on-failure",
       "ctest --test-dir framework/languages/cpp/build -L framework-zlink-actor-gateway "
       "--output-on-failure",
-      "ctest --test-dir framework/languages/cpp/build -L framework-zlink-registry "
-      "--output-on-failure",
+      "ctest --test-dir framework/languages/cpp/build -L framework-location --output-on-failure",
       "ctest --test-dir framework/languages/cpp/build -L framework-http --output-on-failure",
       "ctest --test-dir framework/languages/cpp/build -L framework-http-e2e --output-on-failure",
       "ctest --test-dir framework/languages/cpp/build -L framework-config --output-on-failure",
@@ -1448,19 +1451,7 @@ bool implementation_plan_goal22_covers_final_label_axes (const std::filesystem::
       "ctest --test-dir framework/languages/cpp/build -L http-client-e2e --output-on-failure",
       "ctest --test-dir framework/languages/cpp/build -L http-client-https --output-on-failure",
       "ctest --test-dir framework/languages/cpp/build -L parity --output-on-failure",
-      "ctest --test-dir framework/languages/cpp/build -L framework-sample-smoke "
-      "--output-on-failure",
       "ctest --test-dir framework/languages/cpp/build -L framework-sample-parity "
-      "--output-on-failure",
-      "ctest --test-dir framework/languages/cpp/build -L framework-sample-api --output-on-failure",
-      "ctest --test-dir framework/languages/cpp/build -L framework-sample-bingo "
-      "--output-on-failure",
-      "ctest --test-dir framework/languages/cpp/build -L framework-sample-registry "
-      "--output-on-failure",
-      "ctest --test-dir framework/languages/cpp/build -L framework-sample-play --output-on-failure",
-      "ctest --test-dir framework/languages/cpp/build -L framework-sample-session "
-      "--output-on-failure",
-      "ctest --test-dir framework/languages/cpp/build -L framework-sample-tictactoe "
       "--output-on-failure",
       "ctest --test-dir framework/languages/cpp/build -L connector-unit --output-on-failure",
       "ctest --test-dir framework/languages/cpp/build -L connector-integration --output-on-failure",
@@ -2051,7 +2042,8 @@ int main ()
     ok &= require_exists (root / "samples/Bingo/run_sample.sh");
     ok &= require_exists (root / "samples/Bingo/run_sample.ps1");
     ok &= require_exists (root / "samples/Bingo/Shared/Contracts/messages.hpp");
-    ok &= require_exists (root / "samples/Bingo/Shared/Contracts/bingo_messages.proto");
+    ok &= require_absent (root / "samples/Bingo/Shared/Contracts/bingo_messages.proto",
+                          "Bingo C++ sample keeps message contracts in headers");
     ok &= require_absent (root / "samples/Bingo/Shared" / "Configuration",
                           "Bingo Shared must contain message contracts only");
     ok &= require_absent (root / "samples/Bingo/Shared" / "sample.hpp",
@@ -2108,7 +2100,8 @@ int main ()
       root
       / "samples/Bingo/Server/Play/Infrastructure/ZLink/Handlers/ensure_player_actor_handler.hpp");
     ok &= require_exists (root / "samples/Bingo/Server/Play/play_server_host_factory.hpp");
-    ok &= require_exists (root / "samples/Bingo/Server/Registry/registry_host_factory.hpp");
+    ok &= require_absent (root / "samples/Bingo/Server/Registry",
+                          "Bingo uses Redis location store instead of a registry role");
     ok &= require_exists (root / "samples/Bingo/Server/Session/main.cpp");
     ok &= require_exists (root / "samples/Bingo/Server/Session/session_server_host_factory.hpp");
     ok &= require_exists (root / "samples/Bingo/Server/Session/Sessions/bingo_session.hpp");
@@ -2592,7 +2585,7 @@ int main ()
     ok &= implementation_plan_goal20_covers_connector_labels (root);
     ok &= implementation_plan_goal21_covers_sample_labels (root);
     ok &= implementation_plan_goal22_covers_final_label_axes (root);
-    ok &= registry_draft_matches_monitoring_contract (root);
+    ok &= registry_spec_does_not_reintroduce_monitoring_contract (root);
     ok &= cmake_extension_boundaries_hold (root);
 
     return ok ? 0 : 1;

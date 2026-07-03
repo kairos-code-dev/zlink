@@ -4,18 +4,19 @@
 #include "Handlers/provider_handlers.hpp"
 #include "Infrastructure/provider_evidence_store.hpp"
 
-#include "../../Shared/discovery_registry_ha_contracts.hpp"
+#include "../../Shared/store_failure_contracts.hpp"
+#include "../Shared/location_store.hpp"
 
 #include <zlink/framework.hpp>
 
 #include <memory>
 
-namespace drha = zlink::framework::e2e::discovery_registry_ha;
-namespace drha_provider = zlink::framework::e2e::discovery_registry_ha::provider;
+namespace sf = zlink::framework::e2e::store_failure;
+namespace sf_provider = zlink::framework::e2e::store_failure::provider;
 
 int main (int argc, char **argv)
 {
-    const auto options = drha_provider::read_provider_options ();
+    const auto options = sf_provider::read_provider_options ();
     auto app = zlink::framework::app_t::create ();
     app.logging ()
       .use_file (options.log_dir + "/" + options.log_name + ".log")
@@ -24,22 +25,26 @@ int main (int argc, char **argv)
         framework.configure_dispatch ()
           .message_flow (zlink::framework::message_flow_log_mode_t::key_transitions)
           .trace_log_file (options.log_dir + "/" + options.log_name + "-flow.log")
-          .trace_label ("cpp-drha-" + options.log_name);
-        framework.use_discovery ().add_registry_endpoint (options.registry_router_endpoint);
-        framework.services ().add_singleton<drha_provider::provider_evidence_store_t> (
-          std::make_unique<drha_provider::provider_evidence_store_t> (options.rid));
-        auto channel = framework.add_client_server_channel (drha::api_channel);
+          .trace_label ("cpp-store-failure-" + options.log_name);
+        sf::server::add_redis_location_store (framework, options.redis_endpoint,
+                                              options.redis_key_prefix);
+        framework.services ().add_singleton<sf_provider::provider_evidence_store_t> (
+          std::make_unique<sf_provider::provider_evidence_store_t> (options.rid));
+        auto channel = framework.add_client_server_channel (sf::api_channel);
         channel.enable_server (options.channel_endpoint)
           .set_routing_id (zlink::routing_id_t::from (options.rid))
-          .use_handler_group (drha::handler_group);
+          .use_handler_group (sf::handler_group);
         framework.handlers ()
-          .group (drha::handler_group)
-          .add<drha_provider::profile_request_handler_t> ();
+          .group (sf::handler_group)
+          .add<sf_provider::profile_request_handler_t> ();
         framework.http ()
           .listen (options.http_endpoint)
           .map_health ("/health")
-          .map_get<drha_provider::evidence_snapshot_handler_t> ("/evidence")
-          .map_post<drha_provider::evidence_wait_handler_t> ("/evidence/wait");
+          .map_get<sf_provider::query_status_handler_t> ("/query/status")
+          .map_get<sf_provider::evidence_snapshot_handler_t> ("/evidence")
+          .map_post<sf_provider::evidence_wait_handler_t> ("/evidence/wait")
+          .map_post<sf_provider::shutdown_handler_t> ("/shutdown")
+          .map_post<sf_provider::crash_handler_t> ("/admin/crash");
     });
     return app.run (argc, argv);
 }

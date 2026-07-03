@@ -315,8 +315,8 @@ inline child_process_t start_subscriber_process (const std::string &name,
        {"ZLINK_CPP_E2E_TOPICS", topics},
        {"ZLINK_CPP_E2E_ACCEPTED_TOPICS", accepted_topics},
        {"ZLINK_CPP_E2E_HTTP_ENDPOINT", http_url},
-       {"ZLINK_CPP_E2E_REGISTRY_ROUTER", env_or ("ZLINK_CPP_E2E_REGISTRY_ROUTER")},
-       {"ZLINK_CPP_E2E_PUBLISHER_ENDPOINT", env_or ("ZLINK_CPP_E2E_PUBLISHER_ENDPOINT")},
+       {"ZLINK_CPP_E2E_REDIS_ENDPOINT", env_or ("ZLINK_CPP_E2E_REDIS_ENDPOINT")},
+       {"ZLINK_CPP_E2E_REDIS_KEY_PREFIX", env_or ("ZLINK_CPP_E2E_REDIS_KEY_PREFIX")},
        {"ZLINK_CPP_E2E_LOG_DIR", env_or ("ZLINK_CPP_E2E_LOG_DIR", "logs")}});
     wait_http_health (name, http_url, true);
     return child;
@@ -328,7 +328,8 @@ inline child_process_t start_publisher_process (const std::string &name,
     auto child = start_process (
       name, env_or ("ZLINK_CPP_E2E_PUBLISHER_EXE"),
       {{"ZLINK_CPP_E2E_PUBLISHER_HTTP_ENDPOINT", http_url},
-       {"ZLINK_CPP_E2E_REGISTRY_ROUTER", env_or ("ZLINK_CPP_E2E_REGISTRY_ROUTER")},
+       {"ZLINK_CPP_E2E_REDIS_ENDPOINT", env_or ("ZLINK_CPP_E2E_REDIS_ENDPOINT")},
+       {"ZLINK_CPP_E2E_REDIS_KEY_PREFIX", env_or ("ZLINK_CPP_E2E_REDIS_KEY_PREFIX")},
        {"ZLINK_CPP_E2E_PUBLISHER_ENDPOINT", env_or ("ZLINK_CPP_E2E_PUBLISHER_ENDPOINT")},
        {"ZLINK_CPP_E2E_LOG_DIR", env_or ("ZLINK_CPP_E2E_LOG_DIR", "logs")}});
     wait_http_health (name, http_url, true);

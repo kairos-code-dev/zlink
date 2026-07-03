@@ -3,6 +3,7 @@
 
 #include "../../Shared/spot_service_contracts.hpp"
 #include "../Shared/scenario_state.hpp"
+#include "../Shared/Support/location_store.hpp"
 
 #include <zlink/framework.hpp>
 
@@ -98,7 +99,8 @@ inline int run_gateway_server (int argc, char **argv)
     const auto spot_router_endpoint = env_or ("ZLINK_CPP_E2E_SPOT_ROUTER_ENDPOINT");
     const auto pubsub_endpoint = env_or ("ZLINK_CPP_E2E_PUBSUB_ENDPOINT");
     const auto http_endpoint = env_or ("ZLINK_CPP_E2E_HTTP_ENDPOINT");
-    const auto registry_router = env_or ("ZLINK_CPP_E2E_REGISTRY_ROUTER");
+    const auto redis_endpoint = env_or ("ZLINK_CPP_E2E_REDIS_ENDPOINT");
+    const auto redis_key_prefix = env_or ("ZLINK_CPP_E2E_REDIS_KEY_PREFIX");
 
     app.logging ()
       .use_file (log_dir + "/" + node_rid + ".log")
@@ -115,7 +117,7 @@ inline int run_gateway_server (int argc, char **argv)
           .add_transient<gateway_publish_handler_t, scenario_state_t,
                          zlink::framework::spot_publisher_client_t> ();
         configure_gateway_codecs (options.codecs ());
-        options.use_discovery ().add_registry_endpoint (registry_router);
+        add_redis_location_store (options, redis_endpoint, redis_key_prefix);
         auto route = options.add_route_mesh (e2e::route_channel)
                        .enable_server (route_endpoint)
                        .set_routing_id (zlink::routing_id_t::from (node_rid))
@@ -127,7 +129,6 @@ inline int run_gateway_server (int argc, char **argv)
             route.enable_client (route_b_endpoint);
         }
         options.add_spot_mesh (e2e::spot_mesh)
-          .use_registry_spot_resolver (e2e::route_channel)
           .set_routing_id (zlink::routing_id_t::from (node_rid))
           .enable_router (spot_router_endpoint)
           .enable_pub_sub (pubsub_endpoint);

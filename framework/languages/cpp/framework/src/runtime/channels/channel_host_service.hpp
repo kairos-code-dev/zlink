@@ -18,7 +18,6 @@ class channel_host_service_t final : public hosted_service_t
   public:
     channel_host_service_t (message_bus_t bus,
                             std::vector<channel_snapshot_t> channels,
-                            discovery_snapshot_t discovery,
                             handler_registry_t &handlers,
                             serializer_registry_t &serializers);
     ~channel_host_service_t () override;
@@ -32,7 +31,6 @@ class channel_host_service_t final : public hosted_service_t
 
     message_bus_t _bus;
     std::vector<channel_snapshot_t> _channels;
-    discovery_snapshot_t _discovery;
     handler_registry_t *_handlers;
     serializer_registry_t *_serializers;
     service_provider_t *_services = nullptr;

@@ -20,9 +20,11 @@ struct service_options_t
 {
     std::string rid = env_or ("ZLINK_CPP_E2E_RID", "svc-a");
     std::string http_endpoint = env_or ("ZLINK_CPP_E2E_HTTP_ENDPOINT");
-    std::string registry_router = env_or ("ZLINK_CPP_E2E_REGISTRY_ROUTER");
+    std::string redis_endpoint = env_or ("ZLINK_CPP_E2E_REDIS_ENDPOINT");
+    std::string redis_key_prefix = env_or ("ZLINK_CPP_E2E_REDIS_KEY_PREFIX");
     std::string channel_endpoint = env_or ("ZLINK_CPP_E2E_CHANNEL_ENDPOINT");
-    std::string spot_endpoint = env_or ("ZLINK_CPP_E2E_SPOT_ENDPOINT");
+    std::string spot_router_endpoint = env_or ("ZLINK_CPP_E2E_SPOT_ROUTER_ENDPOINT");
+    std::string spot_pub_endpoint = env_or ("ZLINK_CPP_E2E_SPOT_PUB_ENDPOINT");
     std::string evidence_file = env_or ("ZLINK_CPP_E2E_EVIDENCE_FILE");
     std::string monitor_profile = env_or ("ZLINK_CPP_E2E_MONITOR_PROFILE", "all");
     std::string log_dir = env_or ("ZLINK_CPP_E2E_LOG_DIR");

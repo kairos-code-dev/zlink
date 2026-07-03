@@ -5,6 +5,12 @@
 외부 C++ client는 `.NET` 기준과 같이 HTTP client와 stream connector만 사용한다. route client와
 spot route 요청은 server HTTP endpoint 뒤에서 public framework API로 수행한다.
 
+## 최신 검증
+
+- 2026-07-03 Redis location store 전환 후 `ZLINK_CPP_E2E_BUILD_DIR=/home/hep7/project/kairos/zlink/framework/languages/cpp/build-redis-vcpkg timeout 900s framework/languages/cpp/e2e/SpotService/run_e2e.sh all` 통과.
+  - 로그: `framework/languages/cpp/e2e/SpotService/logs/20260703-194121-30065`
+  - runner는 registry role 없이 Redis location store와 scenario별 key prefix를 사용한다.
+
 ## 구현됨
 
 - `SM-A1`: entry spot join과 `.NET`식 lifecycle context group의 spot create로 user spot 생성과

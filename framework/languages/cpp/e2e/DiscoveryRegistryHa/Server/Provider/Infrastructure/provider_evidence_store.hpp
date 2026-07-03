@@ -1,14 +1,14 @@
 /* SPDX-License-Identifier: MPL-2.0 */
 #pragma once
 
-#include "../../../Shared/discovery_registry_ha_contracts.hpp"
+#include "../../../Shared/store_failure_contracts.hpp"
 
 #include <mutex>
 #include <string>
 #include <utility>
 #include <vector>
 
-namespace zlink::framework::e2e::discovery_registry_ha::provider
+namespace zlink::framework::e2e::store_failure::provider
 {
 
 class provider_evidence_store_t
@@ -49,4 +49,4 @@ class provider_evidence_store_t
     std::vector<evidence_entry_t> _entries;
 };
 
-} // namespace zlink::framework::e2e::discovery_registry_ha::provider
+} // namespace zlink::framework::e2e::store_failure::provider

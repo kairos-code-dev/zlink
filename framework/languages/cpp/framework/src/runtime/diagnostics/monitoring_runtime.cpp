@@ -135,21 +135,13 @@ monitoring_builder_t::add_socket_events (std::string source_name,
     return *this;
 }
 
-monitoring_builder_t &monitoring_builder_t::add_discovery_events (std::string source_name)
-{
-    validate_source_name (source_name, "discovery");
-    ensure_unique_source (_state->discovery_sources, source_name, "discovery");
-    _state->discovery_sources.push_back (std::move (source_name));
-    return *this;
-}
-
-monitoring_builder_t &monitoring_builder_t::add_registry_events (std::string source_name,
+monitoring_builder_t &monitoring_builder_t::add_location_events (std::string source_name,
                                                                  std::chrono::milliseconds interval)
 {
-    validate_source_name (source_name, "registry");
-    validate_polling_interval (interval, "registry");
-    ensure_unique_source (_state->registry_sources, source_name, "registry");
-    _state->registry_sources.push_back (
+    validate_source_name (source_name, "location");
+    validate_polling_interval (interval, "location");
+    ensure_unique_source (_state->location_sources, source_name, "location");
+    _state->location_sources.push_back (
       detail::monitoring_source_registration_t{std::move (source_name), interval});
     return *this;
 }
@@ -277,41 +269,34 @@ void monitoring_runtime_t::publish_socket (socket_event_payload_t event) const
     publish (std::move (event));
 }
 
-void monitoring_runtime_t::publish_discovery (discovery_event_payload_t event) const
-{
-    if (!contains_source (_state->discovery_sources, event.source_name)) {
-        return;
-    }
-    publish (std::move (event));
-}
-
-void monitoring_runtime_t::publish_registry_snapshot (
+void monitoring_runtime_t::publish_location_snapshot (
   std::string source_name,
-  registry_status_t status,
-  std::vector<topology_entry_t> topology,
-  std::vector<service_summary_entry_t> summary) const
+  location_runtime_status_t status,
+  std::vector<location_topology_entry_t> topology,
+  std::vector<location_service_summary_t> summary) const
 {
-    if (!contains_source (_state->registry_sources, source_name)) {
+    if (!contains_source (_state->location_sources, source_name)) {
         return;
     }
+    auto status_event = location_event_payload_t{runtime_event_base_t{source_name},
+                                                 location_event_kind_t::status_changed,
+                                                 status,
+                                                 {},
+                                                 {}};
+    publish (std::move (status_event));
     if (topology.empty () && summary.empty ()) {
-        publish (registry_event_payload_t{runtime_event_base_t{std::move (source_name)},
-                                          registry_event_kind_t::status_changed,
-                                          std::move (status),
-                                          {},
-                                          {}});
         return;
     }
     if (!topology.empty ()) {
-        publish (registry_event_payload_t{runtime_event_base_t{source_name},
-                                          registry_event_kind_t::topology_changed,
+        publish (location_event_payload_t{runtime_event_base_t{source_name},
+                                          location_event_kind_t::topology_changed,
                                           status,
                                           topology,
                                           {}});
     }
     if (!summary.empty ()) {
-        publish (registry_event_payload_t{runtime_event_base_t{std::move (source_name)},
-                                          registry_event_kind_t::service_summary_changed,
+        publish (location_event_payload_t{runtime_event_base_t{std::move (source_name)},
+                                          location_event_kind_t::service_summary_changed,
                                           std::move (status),
                                           {},
                                           std::move (summary)});

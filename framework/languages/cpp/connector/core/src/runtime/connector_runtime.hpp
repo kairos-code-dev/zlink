@@ -43,7 +43,7 @@ struct pending_request_t
 {
     std::uint64_t request_seq = 0;
     packet_t packet;
-    std::function<void (result_t<zlink::message_t>)> callback;
+    std::function<void (result_t<request_reply_t>)> callback;
     std::shared_ptr<boost::asio::steady_timer> timeout_timer;
 };
 

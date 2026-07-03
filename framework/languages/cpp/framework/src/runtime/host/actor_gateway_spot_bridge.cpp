@@ -7,6 +7,8 @@
 #include "runtime/spots/spot_route_packets.hpp"
 #include "runtime/spots/spot_runtime.hpp"
 
+#include <zlink/framework/contracts/locations/location.hpp>
+
 namespace zlink::framework::detail
 {
 
@@ -31,8 +33,7 @@ join_actor_to_spot_through_route (spot_node_runtime_t runtime,
 {
     auto route = runtime.resolve_spot (spot_rid);
     if (!route || route->node_rid.empty () || route->node_rid.value () == local_spot_node_rid) {
-        return runtime.join_remote_actor_to_spot_erased (actor_ref, std::move (spot_rid), payload,
-                                                         actor_gateway.actor_context (actor_ref));
+        return runtime.join_actor_to_spot_erased (actor_ref, std::move (spot_rid), payload);
     }
     if (!route_channel_name || route_channel_name->empty ()) {
         return result_t<actor_join_reply_t>::failure (
@@ -158,6 +159,28 @@ relay_actor_packet_through_route (spot_node_runtime_t runtime,
     }
     const auto spot_rid = runtime.actor_spot (actor_ref);
     if (!spot_rid) {
+        try {
+            auto &resolver = provider.get_required<actor_location_resolver_t> ();
+            auto resolved = resolver
+                              .resolve_actor_spot_address (std::string (actor_ref.actor_type ()),
+                                                           std::string (actor_ref.actor_id ()))
+                              .result ();
+            if (!resolved) {
+                return result_t<std::optional<zlink::message_t>>::failure (
+                  resolved.error_kind (),
+                  resolved.error () ? resolved.error ()->what ()
+                                    : "actor location resolve failed");
+            }
+            if (resolved.value ()) {
+                auto route = spot_route_t{
+                  node_rid_t::from_string (resolved.value ()->node_rid.to_string ()),
+                  spot_rid_t::from_string (resolved.value ()->spot_rid.to_string ()),
+                  resolved.value ()->mesh_name};
+                return send_remote (route, route.spot_rid);
+            }
+        }
+        catch (const framework_exception_t &) {
+        }
         if (!actor_ref.node_rid ().empty ()
             && actor_ref.node_rid ().value () != runtime.node_rid ().value ()) {
             return send_remote (spot_route_t{actor_ref.node_rid (), spot_rid_t{}, std::string{}},
@@ -234,6 +257,14 @@ bool rid_targets_node (std::string_view rid, std::string_view node_rid)
 {
     return rid.size () > node_rid.size () && rid.substr (0, node_rid.size ()) == node_rid
            && rid[node_rid.size ()] == ':';
+}
+
+std::optional<std::string> default_spot_route_channel (const spot_node_snapshot_t &spot_node)
+{
+    if (spot_node.accepted_route_channels.size () != 1) {
+        return std::nullopt;
+    }
+    return spot_node.accepted_route_channels.front ().channel_name;
 }
 
 template <typename Relay>
@@ -369,7 +400,7 @@ void configure_actor_gateway_spot_bridge (
         });
         actor_gateway_spot_nodes.push_back (actor_gateway_spot_node_binding_t{
           *runtime, zlink.route_client (serializers), std::string (runtime->node_rid ().value ()),
-          spot_node.registry_spot_route_channel});
+          default_spot_route_channel (spot_node)});
     }
     if (actor_gateway_spot_nodes.empty ()) {
         return;

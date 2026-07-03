@@ -5,6 +5,7 @@
 #include "../Shared/Endpoints/evidence_endpoint.hpp"
 #include "../Shared/Support/codecs.hpp"
 #include "../Shared/Support/env.hpp"
+#include "../Shared/Support/location_store.hpp"
 
 #include <zlink/framework.hpp>
 
@@ -21,7 +22,8 @@ inline int run_multi_node_server (int argc, char **argv)
     const auto spot_router_endpoint = env_or ("ZLINK_CPP_E2E_SPOT_ROUTER_ENDPOINT");
     const auto pubsub_endpoint = env_or ("ZLINK_CPP_E2E_PUBSUB_ENDPOINT");
     const auto http_endpoint = env_or ("ZLINK_CPP_E2E_HTTP_ENDPOINT");
-    const auto registry_router = env_or ("ZLINK_CPP_E2E_REGISTRY_ROUTER");
+    const auto redis_endpoint = env_or ("ZLINK_CPP_E2E_REDIS_ENDPOINT");
+    const auto redis_key_prefix = env_or ("ZLINK_CPP_E2E_REDIS_KEY_PREFIX");
 
     app.logging ()
       .use_file (log_dir + "/" + node_rid + ".log")
@@ -41,7 +43,7 @@ inline int run_multi_node_server (int argc, char **argv)
           .add_transient<multi_node_state_route_handler_t, scenario_state_t,
                          zlink::framework::route_client_t> ();
         configure_codecs (options.codecs ());
-        options.use_discovery ().add_registry_endpoint (registry_router);
+        add_redis_location_store (options, redis_endpoint, redis_key_prefix);
 
         auto route = options.add_route_mesh (multi_node_route_channel_for (node_rid))
                        .enable_server (route_endpoint)
@@ -59,7 +61,6 @@ inline int run_multi_node_server (int argc, char **argv)
             route.enable_client (peer_route_endpoint);
         }
         auto spot = options.add_spot_mesh (e2e::spot_mesh)
-                      .use_registry_spot_resolver (multi_node_route_channel_for (node_rid))
                       .set_routing_id (zlink::routing_id_t::from (node_rid))
                       .enable_router (spot_router_endpoint)
                       .enable_pub_sub (pubsub_endpoint);

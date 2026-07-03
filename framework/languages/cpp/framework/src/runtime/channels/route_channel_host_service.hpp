@@ -3,7 +3,6 @@
 
 #include <zlink/framework/contracts/channels/channel.hpp>
 #include <zlink/framework/contracts/configuration/module.hpp>
-#include <zlink/framework/contracts/registry/registry.hpp>
 
 #include "runtime/spots/spot_runtime.hpp"
 
@@ -34,8 +33,6 @@ class route_channel_host_service_t final : public hosted_service_t
     route_channel_host_service_t (
       message_bus_t bus,
       serializer_registry_t &serializers,
-      registry_query_t registry,
-      discovery_snapshot_t discovery,
       std::vector<spot_node_runtime_t> spot_nodes,
       std::map<std::string, std::shared_ptr<detail::route_internal_packet_dispatcher_t>>
         internal_dispatchers = {});
@@ -49,8 +46,6 @@ class route_channel_host_service_t final : public hosted_service_t
 
     message_bus_t _bus;
     serializer_registry_t *_serializers;
-    registry_query_t _registry;
-    discovery_snapshot_t _discovery;
     std::vector<spot_node_runtime_t> _spot_nodes;
     std::map<std::string, std::shared_ptr<detail::route_internal_packet_dispatcher_t>>
       _internal_dispatchers;

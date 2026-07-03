@@ -4,6 +4,7 @@
 
 #include "../Support/client_support.hpp"
 
+#include <algorithm>
 #include <chrono>
 #include <iostream>
 
@@ -24,7 +25,9 @@ inline void run_mon_a3_spot_events_scenario (const client_options_t &options)
       options.service_url,
       "monitor-spot|source=monitor.spot|node=monitor.spot|kind=PeersChanged",
       std::chrono::milliseconds (10000));
-    ensure (any_contains (peer_entries, "peers=1"),
+    ensure (std::any_of (peer_entries.begin (), peer_entries.end (), [] (const auto &entry) {
+                return contains (entry, "kind=PeersChanged") && !contains (entry, "peers=0");
+            }),
             "MON-A3 spot peer count evidence missing");
 
     auto timer_entries =

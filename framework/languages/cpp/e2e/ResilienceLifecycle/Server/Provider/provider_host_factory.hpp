@@ -10,6 +10,7 @@
 #include "Infrastructure/server_weight_state.hpp"
 
 #include "../../Shared/resilience_lifecycle_messages.hpp"
+#include "../Shared/location_store.hpp"
 
 #include <zlink/framework.hpp>
 
@@ -30,6 +31,7 @@ inline void configure_provider_host (zlink::framework::zlink_framework_options_t
       .message_flow (zlink::framework::message_flow_log_mode_t::key_transitions)
       .trace_log_file (options.log_dir + "/" + options.rid + "-flow.log")
       .trace_label ("cpp-rl-" + options.rid);
+    server::add_redis_location_store (framework, options.redis_endpoint, options.redis_key_prefix);
     auto evidence =
       std::make_unique<evidence_store_t> (options.rid, options.instance_id, options.evidence_file);
     auto *evidence_ptr = evidence.get ();
@@ -46,16 +48,6 @@ inline void configure_provider_host (zlink::framework::zlink_framework_options_t
                                         evidence_store_t,
                                         server_weight_state_t> ();
     configure_common_codecs (framework.codecs ());
-    if (!options.embedded_registry_pub.empty () && !options.embedded_registry_router.empty ()) {
-        framework.enable_registry (options.embedded_registry_pub,
-                                   options.embedded_registry_router);
-        for (const auto &peer : options.embedded_registry_peers) {
-            framework.add_registry_peer (peer);
-        }
-    }
-    for (const auto &endpoint : split_csv (options.registry_router)) {
-        framework.use_discovery ().add_registry_endpoint (endpoint);
-    }
     if (!options.api_endpoint.empty ()) {
         auto channel = framework.add_client_server_channel (api_channel);
         channel.enable_server (options.api_endpoint)

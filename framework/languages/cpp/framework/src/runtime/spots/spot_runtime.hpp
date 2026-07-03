@@ -4,7 +4,7 @@
 #include "runtime/channels/channel_runtime.hpp"
 #include "runtime/dispatch/offload_executor.hpp"
 #include "runtime/execution/serial_execution_queue.hpp"
-#include "runtime/registry/registry_runtime.hpp"
+#include "runtime/locations/location_lifecycle.hpp"
 
 #include <zlink/framework/contracts/actors/actor.hpp>
 #include <zlink/framework/contracts/dispatch/execution.hpp>
@@ -44,7 +44,8 @@ class spot_node_builder_state_t
     std::weak_ptr<service::spot_node_t> native_node;
     std::shared_ptr<channel_runtime_state_t> channel_runtime;
     dispatch_options_t dispatch;
-    std::shared_ptr<registry_runtime_state_t> registry_runtime;
+    runtime::location_lifecycle_t *location_lifecycle = nullptr;
+    spot_location_resolver_t *spot_location_resolver = nullptr;
     std::shared_ptr<monitoring_runtime_state_t> monitoring;
     std::map<std::string, spot_rid_t> actor_spot_rids;
     std::map<std::string, std::uint64_t> actor_generations;
@@ -97,6 +98,10 @@ class spot_context_state_t
             lifecycle.on_closing (spot_instance.get ());
         }
         const auto rid = std::string (spot_rid.value ());
+        if (node->location_lifecycle) {
+            (void) node->location_lifecycle->release_spot (
+              spot_location_key_t{node->snapshot.name, zlink::routing_id_t::from (rid)});
+        }
         node->spot_contexts_by_rid.erase (rid);
         node->spot_names_by_rid.erase (rid);
         node->native_spots_by_rid.erase (rid);
@@ -222,6 +227,8 @@ class spot_node_runtime_t
     const std::vector<std::string> &ordering_log (const spot_context_t &context) const;
     void attach_native_node (std::shared_ptr<service::spot_node_t> node);
     void detach_native_node ();
+    void bind_location_lifecycle (runtime::location_lifecycle_t &lifecycle);
+    void bind_spot_location_resolver (spot_location_resolver_t &resolver);
     std::shared_ptr<service::spot_node_t> native_node () const;
     void publish_peer_snapshot_if_changed ();
     std::vector<spot_context_t> active_contexts () const;

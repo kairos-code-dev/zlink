@@ -43,11 +43,34 @@ inline void wait_provider_evidence_prefix_on (const std::string &base_url,
 
 inline void wait_provider_weight_on (zlink::http_client::client_t &provider, int expected)
 {
-    provider.post ("/admin/weight/wait")
-      .body (nlohmann::json{{"expected", expected}}.dump (), "application/json")
-      .submit_raw ()
-      .result ()
-      .value ();
+    auto result = provider.post ("/admin/weight/wait")
+                    .body (nlohmann::json{{"expected", expected}}.dump (), "application/json")
+                    .submit_raw ()
+                    .result ();
+    if (!result) {
+        throw std::runtime_error (result.error () ? result.error ()->what ()
+                                                  : "provider weight wait failed");
+    }
+    if (result.value ().status >= 400) {
+        throw std::runtime_error ("provider weight wait failed with status "
+                                  + std::to_string (result.value ().status) + ": "
+                                  + result.value ().body);
+    }
+}
+
+inline void post_provider_admin_on (zlink::http_client::client_t &provider,
+                                    const std::string &path)
+{
+    auto result = provider.post (path).submit_raw ().result ();
+    if (!result) {
+        throw std::runtime_error (result.error () ? result.error ()->what ()
+                                                  : "provider admin call failed");
+    }
+    if (result.value ().status >= 400) {
+        throw std::runtime_error ("provider admin call failed with status "
+                                  + std::to_string (result.value ().status) + " for " + path
+                                  + ": " + result.value ().body);
+    }
 }
 
 inline void run_rl_b4_runtime_drain_scenario ()
@@ -62,7 +85,7 @@ inline void run_rl_b4_runtime_drain_scenario ()
                         .build ();
 
     const auto before_drain = fetch_evidence (env_or ("ZLINK_CPP_E2E_HTTP_B_ENDPOINT"));
-    provider_b.post ("/admin/drain").submit_raw ().result ().value ();
+    post_provider_admin_on (provider_b, "/admin/drain");
     wait_provider_weight_on (provider_b, 0);
 
     for (int index = 0; index < 20; ++index) {
@@ -81,7 +104,7 @@ inline void run_rl_b4_runtime_drain_scenario ()
     wait_provider_evidence_prefix_on (env_or ("ZLINK_CPP_E2E_HTTP_A_ENDPOINT"),
                                       "rl-b4-drained-");
 
-    provider_b.post ("/admin/restore").submit_raw ().result ().value ();
+    post_provider_admin_on (provider_b, "/admin/restore");
     wait_provider_weight_on (provider_b, 100);
 
     for (int index = 0; index < 40; ++index) {

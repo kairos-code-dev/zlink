@@ -17,10 +17,6 @@ struct sample_topology_t
     static sample_topology_t bind (const configuration_section_t &section)
     {
         sample_topology_t topology;
-        topology.registry_pub_endpoint =
-          section.get ("registryPubEndpoint").value_or (topology.registry_pub_endpoint);
-        topology.registry_router_endpoint =
-          section.get ("registryRouterEndpoint").value_or (topology.registry_router_endpoint);
         topology.api_channel_endpoint =
           section.get ("apiChannelEndpoint").value_or (topology.api_channel_endpoint);
         topology.api_a_channel_endpoint =
@@ -100,8 +96,6 @@ struct sample_topology_t
         return topology;
     }
 
-    std::string registry_pub_endpoint = "tcp://127.0.0.1:47101";
-    std::string registry_router_endpoint = "tcp://127.0.0.1:47102";
     std::string api_channel_endpoint = "tcp://127.0.0.1:47103";
     std::string api_a_channel_endpoint = "tcp://127.0.0.1:47103";
     std::string api_b_channel_endpoint = "tcp://127.0.0.1:47117";

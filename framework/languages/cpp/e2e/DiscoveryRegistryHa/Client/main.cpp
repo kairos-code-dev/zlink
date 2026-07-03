@@ -1,59 +1,245 @@
 /* SPDX-License-Identifier: MPL-2.0 */
 
-#include "Scenarios/dr_a1_basic_discovery_scenario.hpp"
-#include "Scenarios/dr_a2_cluster_bridge_scenario.hpp"
-#include "Scenarios/dr_a3_cluster_bridge_scenario.hpp"
-#include "Scenarios/dr_a4_third_registry_scenario.hpp"
-#include "Scenarios/dr_b1_late_start_registry_scenario.hpp"
-#include "Scenarios/dr_b2_live_endpoint_continuity_scenario.hpp"
-#include "Scenarios/dr_b3_peer_flapping_scenario.hpp"
-#include "Scenarios/dr_c1_registry_down_scenario.hpp"
-#include "Scenarios/dr_c2_registry_recovery_scenario.hpp"
-#include "Scenarios/dr_c3_all_registry_outage_scenario.hpp"
-#include "Scenarios/dr_d1_embedded_deployment_scenario.hpp"
-#include "Scenarios/dr_d2_standalone_deployment_scenario.hpp"
-#include "Scenarios/dr_d3_mixed_deployment_scenario.hpp"
-#include "Scenarios/dr_d4_topology_query_scenario.hpp"
 #include "Support/client_support.hpp"
 
+#include <chrono>
 #include <iostream>
 
-namespace drha_client = zlink::framework::e2e::discovery_registry_ha::client;
+namespace sf_client = zlink::framework::e2e::store_failure::client;
+
+namespace
+{
+
+struct options_t
+{
+    std::string scenario = sf_client::env_or ("ZLINK_CPP_SF_SCENARIO", "SF-A1");
+    std::string consumer_url = sf_client::env_or ("ZLINK_CPP_SF_CONSUMER_URL");
+    std::string provider_a_url = sf_client::env_or ("ZLINK_CPP_SF_PROVIDER_A_URL");
+    std::string provider_b_url = sf_client::env_or ("ZLINK_CPP_SF_PROVIDER_B_URL");
+    std::chrono::milliseconds heartbeat{
+      sf_client::env_int ("ZLINK_CPP_SF_LOCATION_HEARTBEAT_MS", 1000)};
+    std::chrono::milliseconds lease_ttl{
+      sf_client::env_int ("ZLINK_CPP_SF_LOCATION_LEASE_TTL_MS", 3000)};
+    std::chrono::milliseconds polling{sf_client::env_int ("ZLINK_CPP_SF_LOCATION_POLLING_MS", 500)};
+    std::chrono::milliseconds grace{sf_client::env_int ("ZLINK_CPP_SF_LOCATION_GRACE_MS", 6000)};
+};
+
+void baseline (const options_t &options)
+{
+    sf_client::wait_peers (
+      options.consumer_url,
+      [] (const auto &peers) {
+          return sf_client::has_rid (peers, "api-a") && sf_client::has_rid (peers, "api-b");
+      },
+      options.lease_ttl + options.polling * 8, "SF-A1 providers did not appear");
+
+    std::set<std::string> served;
+    for (int i = 0; i < 8; ++i) {
+        auto reply = sf_client::request_profile (options.consumer_url, "sf-a1-" + std::to_string (i));
+        sf_client::ensure (reply.value == "profile:fast", "SF-A1 unexpected reply");
+        served.insert (reply.provider_rid);
+    }
+    sf_client::ensure (!served.empty (), "SF-A1 no provider served traffic");
+
+    for (const auto &url : {options.consumer_url, options.provider_a_url, options.provider_b_url}) {
+        sf_client::wait_status (
+          url,
+          [] (const auto &status) {
+              return status.store_healthy && status.owner_lease_healthy
+                     && status.has_last_refresh_at;
+          },
+          options.heartbeat * 8, "SF-A1 status was not healthy");
+    }
+    std::cout << "scenario SF-A1 passed\n";
+}
+
+void polling_fallback (const options_t &options)
+{
+    const auto status = sf_client::get_status (options.consumer_url);
+    sf_client::ensure (!status.watch_enabled, "SF-A2 consumer unexpectedly reports watch enabled");
+    sf_client::wait_peers (
+      options.consumer_url,
+      [] (const auto &peers) {
+          return sf_client::has_rid (peers, "api-a") && sf_client::has_rid (peers, "api-b");
+      },
+      options.lease_ttl + options.polling * 8, "SF-A2 providers did not appear through polling");
+    sf_client::post_empty (options.provider_b_url, "/shutdown");
+    sf_client::wait_down (options.provider_b_url);
+    sf_client::wait_peers (
+      options.consumer_url,
+      [] (const auto &peers) { return !sf_client::has_rid (peers, "api-b"); },
+      options.lease_ttl, "SF-A2 removed provider did not disappear through polling");
+    std::cout << "scenario SF-A2 passed\n";
+}
+
+void fail_static (const options_t &options)
+{
+    sf_client::docker ("pause");
+    try {
+        sf_client::drive_requests (options.consumer_url, "sf-b1", options.lease_ttl * 7 / 10,
+                                   "SF-B1");
+        sf_client::wait_status (
+          options.consumer_url,
+          [] (const auto &status) { return !status.store_healthy && !status.last_error.empty (); },
+          options.heartbeat * 8, "SF-B1 outage status was not visible");
+    }
+    catch (...) {
+        sf_client::docker ("unpause");
+        throw;
+    }
+    sf_client::docker ("unpause");
+    sf_client::wait_status (
+      options.consumer_url,
+      [] (const auto &status) { return status.store_healthy && status.owner_lease_healthy; },
+      options.heartbeat * 10, "SF-B1 status did not recover");
+    std::cout << "scenario SF-B1 passed\n";
+}
+
+void grace_exceeded (const options_t &options)
+{
+    sf_client::docker ("pause");
+    try {
+        sf_client::drive_requests (options.consumer_url, "sf-b2", options.grace + options.heartbeat * 2,
+                                   "SF-B2");
+        const auto status = sf_client::get_status (options.consumer_url);
+        sf_client::ensure (!status.store_healthy, "SF-B2 outage was not visible after grace");
+    }
+    catch (...) {
+        sf_client::docker ("unpause");
+        throw;
+    }
+    sf_client::docker ("unpause");
+    sf_client::wait_status (
+      options.consumer_url,
+      [] (const auto &status) { return status.store_healthy && status.owner_lease_healthy; },
+      options.heartbeat * 10, "SF-B2 status did not recover");
+    std::cout << "scenario SF-B2 passed\n";
+}
+
+void crash_lease_expiry (const options_t &options)
+{
+    sf_client::post_empty (options.provider_b_url, "/admin/crash");
+    sf_client::wait_down (options.provider_b_url);
+    sf_client::wait_peers (
+      options.consumer_url,
+      [] (const auto &peers) { return !sf_client::has_rid (peers, "api-b"); },
+      options.lease_ttl * 3 + options.polling * 8, "SF-C1 api-b row did not expire");
+    std::this_thread::sleep_for (options.polling * 4);
+    for (int i = 0; i < 8; ++i) {
+        auto reply = sf_client::request_profile (options.consumer_url, "sf-c1-" + std::to_string (i));
+        sf_client::ensure (reply.provider_rid == "api-a", "SF-C1 routed to dead provider");
+    }
+    std::cout << "scenario SF-C1 passed\n";
+}
+
+void graceful_removal (const options_t &options)
+{
+    sf_client::post_empty (options.provider_b_url, "/shutdown");
+    sf_client::wait_down (options.provider_b_url);
+    sf_client::wait_peers (
+      options.consumer_url,
+      [] (const auto &peers) { return !sf_client::has_rid (peers, "api-b"); }, options.lease_ttl,
+      "SF-C2 api-b row did not disappear on shutdown");
+    for (int i = 0; i < 6; ++i) {
+        auto reply = sf_client::request_profile (options.consumer_url, "sf-c2-" + std::to_string (i));
+        sf_client::ensure (reply.provider_rid == "api-a", "SF-C2 routed to stopped provider");
+    }
+    std::cout << "scenario SF-C2 passed\n";
+}
+
+void short_recovery (const options_t &options)
+{
+    sf_client::docker ("pause");
+    std::this_thread::sleep_for (options.lease_ttl / 2);
+    sf_client::docker ("unpause");
+    sf_client::wait_status (
+      options.consumer_url,
+      [] (const auto &status) { return status.store_healthy && status.owner_lease_healthy; },
+      options.heartbeat * 10, "SF-D1 status did not recover");
+    sf_client::drive_requests (options.consumer_url, "sf-d1", options.lease_ttl, "SF-D1");
+    std::cout << "scenario SF-D1 passed\n";
+}
+
+void long_recovery (const options_t &options)
+{
+    sf_client::docker ("pause");
+    sf_client::post_empty (options.provider_b_url, "/admin/crash");
+    sf_client::wait_down (options.provider_b_url);
+    std::this_thread::sleep_for (options.lease_ttl + options.heartbeat);
+    sf_client::docker ("unpause");
+
+    sf_client::wait_peers (
+      options.consumer_url,
+      [] (const auto &peers) { return sf_client::has_rid (peers, "api-a"); },
+      options.heartbeat * 8, "SF-D2 surviving provider did not re-register");
+    sf_client::wait_peers (
+      options.consumer_url,
+      [] (const auto &peers) { return !sf_client::has_rid (peers, "api-b"); },
+      options.lease_ttl * 3 + options.polling * 8, "SF-D2 dead provider did not disappear");
+    for (int i = 0; i < 8; ++i) {
+        auto reply =
+          sf_client::request_profile (options.consumer_url, "sf-d2-after-" + std::to_string (i));
+        sf_client::ensure (reply.provider_rid == "api-a", "SF-D2 routed to dead provider");
+    }
+    std::cout << "scenario SF-D2 passed\n";
+}
+
+void status_transition (const options_t &options)
+{
+    sf_client::wait_status (
+      options.consumer_url,
+      [] (const auto &status) { return status.store_healthy && status.owner_lease_healthy; },
+      options.heartbeat * 8, "SF-D3 initial status was not healthy");
+    sf_client::docker ("pause");
+    try {
+        sf_client::wait_status (
+          options.consumer_url,
+          [] (const auto &status) {
+              return !status.store_healthy && !status.owner_lease_healthy
+                     && !status.last_error.empty ();
+          },
+          options.heartbeat * 10, "SF-D3 outage status was not visible");
+    }
+    catch (...) {
+        sf_client::docker ("unpause");
+        throw;
+    }
+    sf_client::docker ("unpause");
+    sf_client::wait_status (
+      options.consumer_url,
+      [] (const auto &status) {
+          return status.store_healthy && status.owner_lease_healthy && status.has_last_refresh_at;
+      },
+      options.heartbeat * 10, "SF-D3 status did not recover");
+    std::cout << "scenario SF-D3 passed\n";
+}
+
+} // namespace
 
 int main ()
 {
-    const auto scenario = drha_client::env_or ("ZLINK_CPP_DRHA_SCENARIO", "DR-A1");
-    if (scenario == "DR-A1") {
-        drha_client::run_dr_a1_basic_discovery_scenario ();
-    } else if (scenario == "DR-A2") {
-        drha_client::run_dr_a2_cluster_bridge_scenario ();
-    } else if (scenario == "DR-A3") {
-        drha_client::run_dr_a3_cluster_bridge_scenario ();
-    } else if (scenario == "DR-A4") {
-        drha_client::run_dr_a4_third_registry_scenario ();
-    } else if (scenario == "DR-B1") {
-        drha_client::run_dr_b1_late_start_registry_scenario ();
-    } else if (scenario == "DR-B2") {
-        drha_client::run_dr_b2_live_endpoint_continuity_scenario ();
-    } else if (scenario == "DR-B3") {
-        drha_client::run_dr_b3_peer_flapping_scenario ();
-    } else if (scenario == "DR-C1") {
-        drha_client::run_dr_c1_registry_down_scenario ();
-    } else if (scenario == "DR-C2") {
-        drha_client::run_dr_c2_registry_recovery_scenario ();
-    } else if (scenario == "DR-C3") {
-        drha_client::run_dr_c3_all_registry_outage_scenario ();
-    } else if (scenario == "DR-D1") {
-        drha_client::run_dr_d1_embedded_deployment_scenario ();
-    } else if (scenario == "DR-D2") {
-        drha_client::run_dr_d2_standalone_deployment_scenario ();
-    } else if (scenario == "DR-D3") {
-        drha_client::run_dr_d3_mixed_deployment_scenario ();
-    } else if (scenario == "DR-D4") {
-        drha_client::run_dr_d4_topology_query_scenario ();
+    const options_t options;
+    if (options.scenario == "SF-A1") {
+        baseline (options);
+    } else if (options.scenario == "SF-A2") {
+        polling_fallback (options);
+    } else if (options.scenario == "SF-B1") {
+        fail_static (options);
+    } else if (options.scenario == "SF-B2") {
+        grace_exceeded (options);
+    } else if (options.scenario == "SF-C1") {
+        crash_lease_expiry (options);
+    } else if (options.scenario == "SF-C2") {
+        graceful_removal (options);
+    } else if (options.scenario == "SF-D1") {
+        short_recovery (options);
+    } else if (options.scenario == "SF-D2") {
+        long_recovery (options);
+    } else if (options.scenario == "SF-D3") {
+        status_transition (options);
     } else {
-        throw std::runtime_error ("Unsupported DiscoveryRegistryHa scenario: " + scenario);
+        throw std::runtime_error ("Unsupported StoreFailure scenario: " + options.scenario);
     }
-    std::cout << "discovery-registry-ha client scenario=" << scenario << " result=passed\n";
+    std::cout << "store-failure client scenario=" << options.scenario << " result=passed\n";
     return 0;
 }

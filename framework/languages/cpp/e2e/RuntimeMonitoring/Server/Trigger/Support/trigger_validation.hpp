@@ -37,7 +37,7 @@ inline std::string verify_polling_interval ()
     using namespace std::chrono_literals;
     const auto error = capture_validation_error ([] {
         auto app = zlink::framework::app_t::create ();
-        app.monitoring ().add_registry_events ("registry", 0ms);
+        app.monitoring ().add_location_events ("location-runtime", 0ms);
     });
     return "mon-b2|interval=" + error;
 }

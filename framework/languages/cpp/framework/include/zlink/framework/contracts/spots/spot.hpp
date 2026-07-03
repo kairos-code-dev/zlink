@@ -424,8 +424,6 @@ struct spot_node_snapshot_t
     std::optional<std::string> discovery_channel_name;
     std::vector<std::string> spot_names;
     std::optional<std::string> entry_spot_name;
-    bool registry_spot_remote_addresses_enabled = false;
-    std::optional<std::string> registry_spot_route_channel;
     std::vector<accepted_spot_route_channel_t> accepted_route_channels;
     std::vector<std::string> actor_types;
 };
@@ -1206,11 +1204,6 @@ class spot_node_builder_t
     spot_node_builder_t &enable_pub_sub (std::string endpoint);
     spot_node_builder_t &connect_pub_sub (std::string endpoint);
     spot_node_builder_t &connect_peer_pub (std::string endpoint);
-    spot_node_builder_t &use_discovery (std::string channel_name);
-    spot_node_builder_t &use_registry_spot_remote_addresses ();
-    spot_node_builder_t &use_registry_spot_remote_addresses (std::string route_channel_name);
-    spot_node_builder_t &use_registry_spot_resolver ();
-    spot_node_builder_t &use_registry_spot_resolver (std::string route_channel_name);
     template <typename TSpot> spot_node_builder_t &add_spot (std::string spot_name)
     {
         static_assert (std::is_base_of_v<spot_t, TSpot>,

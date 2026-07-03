@@ -14,7 +14,7 @@
 #include "Scenarios/rl_c1_client_host_lifecycle_scenario.hpp"
 #include "Scenarios/rl_c2_topology_recovery_scenario.hpp"
 #include "Scenarios/rl_c3_node_pause_recovery_scenario.hpp"
-#include "Scenarios/rl_c4_registry_outage_scenario.hpp"
+#include "Scenarios/rl_c4_location_store_outage_scenario.hpp"
 #include "Scenarios/rl_d1_high_fanout_scenario.hpp"
 #include "Scenarios/rl_d2_observer_fault_scenario.hpp"
 #include "Scenarios/rl_d3_dispatch_error_evidence_scenario.hpp"
@@ -36,10 +36,10 @@ int main (int argc, char **argv)
         const auto scenario = rl_client::env_or ("ZLINK_CPP_E2E_SCENARIO", "rl-a3");
         if (scenario == "inflight-crash") {
             rl_client::run_inflight_crash_scenario ();
-        } else if (scenario == "registry-outage") {
-            rl_client::run_registry_outage_scenario ();
-        } else if (scenario == "registry-recovered") {
-            rl_client::run_registry_recovered_scenario ();
+        } else if (scenario == "location-store-outage") {
+            rl_client::run_location_store_outage_scenario ();
+        } else if (scenario == "location-store-recovered") {
+            rl_client::run_location_store_recovered_scenario ();
         } else if (scenario == "observer-fault") {
             rl_client::run_observer_fault_scenario ();
         } else if (scenario == "rl-a1") {

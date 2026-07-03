@@ -11,7 +11,7 @@
 #include <zlink/framework/contracts/eventing/events.hpp>
 #include <zlink/framework/contracts/handlers/handler_registry.hpp>
 #include <zlink/framework/contracts/http/http.hpp>
-#include <zlink/framework/contracts/registry/registry.hpp>
+#include <zlink/framework/contracts/locations/location.hpp>
 
 #include <algorithm>
 #include <cctype>
@@ -325,30 +325,6 @@ class codec_options_builder_t
     serializer_registry_t *_serializers;
 };
 
-class discovery_options_builder_t
-{
-  public:
-    explicit discovery_options_builder_t (
-      std::shared_ptr<detail::framework_options_state_t> options) :
-        _options (std::move (options))
-    {
-    }
-
-    discovery_options_builder_t &add_registry_endpoint (std::string registry_router_endpoint)
-    {
-        detail::require_non_blank (registry_router_endpoint, "discovery endpoint is required");
-        _options->registry_discovery_endpoints.push_back (registry_router_endpoint);
-        _options->add_zlink_action ([registry_router_endpoint = std::move (
-                                       registry_router_endpoint)] (zlink_builder_t &zlink) mutable {
-            zlink.discovery ().connect_registry (std::move (registry_router_endpoint));
-        });
-        return *this;
-    }
-
-  private:
-    std::shared_ptr<detail::framework_options_state_t> _options;
-};
-
 class client_server_channel_builder_t
 {
   public:
@@ -493,7 +469,6 @@ class client_server_channel_builder_t
         const auto client_max_message_size = _client_max_message_size;
         const auto client_peer_weight = _client_peer_weight;
         const auto default_request_timeout = _default_request_timeout;
-        const auto discovery_capability = "client_server_channel '" + channel_name + "' client";
         if (!server_endpoint.empty ()) {
             _options->client_server_channels_with_server.insert (channel_name);
         } else {
@@ -503,11 +478,6 @@ class client_server_channel_builder_t
             _options->client_server_channels_with_client.insert (channel_name);
         } else {
             _options->client_server_channels_with_client.erase (channel_name);
-        }
-        if (client_enabled && client_uses_discovery) {
-            _options->discovery_backed_capabilities.insert (discovery_capability);
-        } else {
-            _options->discovery_backed_capabilities.erase (discovery_capability);
         }
         _options->set_zlink_action (
           "client_server_channel:" + channel_name,
@@ -647,7 +617,6 @@ class fanout_channel_builder_t
         const auto subscriber_enabled = _subscriber_enabled;
         const auto subscriber_endpoints = _subscriber_endpoints;
         const auto subscriber_uses_discovery = _subscriber_uses_discovery;
-        const auto discovery_capability = "fanout_channel '" + channel_name + "' subscriber";
         if (subscriber_enabled) {
             _options->fanout_channels_with_subscriber.insert (channel_name);
         } else {
@@ -657,11 +626,6 @@ class fanout_channel_builder_t
             _options->fanout_channels_with_publisher.insert (channel_name);
         } else {
             _options->fanout_channels_with_publisher.erase (channel_name);
-        }
-        if (subscriber_enabled && subscriber_uses_discovery) {
-            _options->discovery_backed_capabilities.insert (discovery_capability);
-        } else {
-            _options->discovery_backed_capabilities.erase (discovery_capability);
         }
         _options->set_zlink_action ("fanout_channel:" + channel_name,
                                     [channel_name, publisher_endpoint, subscriber_enabled,
@@ -731,8 +695,6 @@ class route_mesh_channel_builder_t
     route_mesh_channel_builder_t &enable_client ()
     {
         _options->route_mesh_channels_with_client.insert (_channel_name);
-        _options->discovery_backed_capabilities.insert ("route mesh channel '" + _channel_name
-                                                        + "'");
         _manual_connections.clear ();
         apply ();
         return *this;
@@ -742,8 +704,6 @@ class route_mesh_channel_builder_t
     {
         detail::require_non_blank (endpoint, "route mesh client endpoint is required");
         _options->route_mesh_channels_with_client.insert (_channel_name);
-        _options->discovery_backed_capabilities.erase ("route mesh channel '" + _channel_name
-                                                       + "'");
         _manual_connections.push_back (std::move (endpoint));
         apply ();
         return *this;
@@ -927,20 +887,10 @@ class spot_node_options_builder_t
         return connect_pub_sub (std::move (endpoint));
     }
 
-    spot_node_options_builder_t &use_registry_spot_resolver ()
+    spot_node_options_builder_t &accept_route_mesh (std::string route_channel_name)
     {
-        _options->registry_spot_remote_addresses_enabled = true;
-        _options->registry_spot_route_channel.reset ();
-        apply ();
-        return *this;
-    }
-
-    spot_node_options_builder_t &use_registry_spot_resolver (std::string route_channel_name)
-    {
-        detail::require_non_blank (route_channel_name,
-                                   "registry spot resolver route channel is required");
-        _options->registry_spot_remote_addresses_enabled = true;
-        _options->registry_spot_route_channel = std::move (route_channel_name);
+        detail::require_non_blank (route_channel_name, "accepted SPOT route channel is required");
+        _accepted_route_channels.push_back (std::move (route_channel_name));
         apply ();
         return *this;
     }
@@ -1011,6 +961,7 @@ class spot_node_options_builder_t
         const auto routing_id = _routing_id;
         const auto router_manual_connections = _router_manual_connections;
         const auto pub_sub_manual_connections = _pub_sub_manual_connections;
+        const auto accepted_route_channels = _accepted_route_channels;
         const auto actions = _actions;
         const auto options = _options;
         auto configure = [=] (spot_node_builder_t &spot_node) {
@@ -1032,17 +983,14 @@ class spot_node_options_builder_t
                     spot_node.connect_pub_sub (endpoint);
                 }
             }
-            spot_node.use_discovery (spot_node_name);
-            if (options->registry_spot_remote_addresses_enabled) {
-                if (options->registry_spot_route_channel) {
-                    spot_node.use_registry_spot_remote_addresses (
-                      *options->registry_spot_route_channel);
-                } else {
-                    spot_node.use_registry_spot_remote_addresses ();
+            if (accepted_route_channels.empty ()) {
+                for (const auto &route_channel_name : options->route_mesh_channels) {
+                    spot_node.accept_implicit_route_mesh (route_channel_name);
                 }
-            }
-            for (const auto &route_channel_name : options->route_mesh_channels) {
-                spot_node.accept_implicit_route_mesh (route_channel_name);
+            } else {
+                for (const auto &route_channel_name : accepted_route_channels) {
+                    spot_node.accept_implicit_route_mesh (route_channel_name);
+                }
             }
             for (const auto &action : actions) {
                 action (spot_node);
@@ -1066,6 +1014,7 @@ class spot_node_options_builder_t
     std::optional<zlink::routing_id_t> _routing_id;
     std::vector<std::string> _router_manual_connections;
     std::vector<std::string> _pub_sub_manual_connections;
+    std::vector<std::string> _accepted_route_channels;
     std::vector<std::function<void (spot_node_builder_t &)>> _actions;
 };
 
@@ -1074,32 +1023,9 @@ class spot_mesh_builder_t : public spot_node_options_builder_t
   public:
     spot_mesh_builder_t (std::string channel_name,
                          std::shared_ptr<detail::framework_options_state_t> options) :
-        spot_node_options_builder_t (channel_name, options),
-        _channel_name (std::move (channel_name)),
-        _options (std::move (options))
+        spot_node_options_builder_t (std::move (channel_name), std::move (options))
     {
-        detail::require_non_blank (_channel_name, "SPOT mesh channel name is required");
     }
-
-    spot_mesh_builder_t &use_registry_spot_resolver ()
-    {
-        _options->registry_spot_remote_addresses_enabled = true;
-        _options->registry_spot_route_channel.reset ();
-        return *this;
-    }
-
-    spot_mesh_builder_t &use_registry_spot_resolver (std::string route_channel_name)
-    {
-        detail::require_non_blank (route_channel_name,
-                                   "registry spot resolver route channel is required");
-        _options->registry_spot_remote_addresses_enabled = true;
-        _options->registry_spot_route_channel = std::move (route_channel_name);
-        return *this;
-    }
-
-  private:
-    std::string _channel_name;
-    std::shared_ptr<detail::framework_options_state_t> _options;
 };
 
 class stream_node_options_builder_t
@@ -1290,7 +1216,9 @@ class zlink_framework_options_t
 
     dispatch_options_t dispatch_options () const { return _options->dispatch; }
 
-    discovery_options_builder_t use_discovery () { return discovery_options_builder_t (_options); }
+    location_options_t &configure_locations () { return _options->locations; }
+
+    location_options_t location_options () const { return _options->locations; }
 
     zlink_framework_options_t &set_default_request_timeout (std::chrono::milliseconds timeout)
     {
@@ -1306,26 +1234,75 @@ class zlink_framework_options_t
 
     service_collection_t &services () noexcept { return *_services; }
 
-    zlink_framework_options_t &enable_registry (std::string pub_endpoint,
-                                                std::string router_endpoint)
+    template <typename TStore> zlink_framework_options_t &add_peer_location_store ()
     {
-        detail::require_non_blank (pub_endpoint, "registry pub endpoint is required");
-        detail::require_non_blank (router_endpoint, "registry router endpoint is required");
-        _options->add_zlink_action (
-          [pub_endpoint = std::move (pub_endpoint),
-           router_endpoint = std::move (router_endpoint)] (zlink_builder_t &zlink) mutable {
-              zlink.enable_registry ().bind (std::move (pub_endpoint), std::move (router_endpoint));
-          });
+        static_assert (std::is_base_of_v<peer_location_store_t, TStore>,
+                       "TStore must implement peer_location_store_t");
+        static_assert (std::is_base_of_v<location_store_t, TStore>,
+                       "C++ per-role location store registration requires a location_store_t");
+        _options->peer_location_store_type = std::type_index (typeid (TStore));
+        register_location_store_type<TStore> ();
         return *this;
     }
 
-    zlink_framework_options_t &add_registry_peer (std::string peer_pub_endpoint)
+    template <typename TStore> zlink_framework_options_t &add_spot_location_store ()
     {
-        detail::require_non_blank (peer_pub_endpoint, "registry peer pub endpoint is required");
-        _options->add_zlink_action (
-          [peer_pub_endpoint = std::move (peer_pub_endpoint)] (zlink_builder_t &zlink) mutable {
-              zlink.enable_registry ().add_peer (std::move (peer_pub_endpoint));
-          });
+        static_assert (std::is_base_of_v<spot_location_store_t, TStore>,
+                       "TStore must implement spot_location_store_t");
+        static_assert (std::is_base_of_v<location_store_t, TStore>,
+                       "C++ per-role location store registration requires a location_store_t");
+        _options->spot_location_store_type = std::type_index (typeid (TStore));
+        register_location_store_type<TStore> ();
+        return *this;
+    }
+
+    template <typename TStore> zlink_framework_options_t &add_actor_location_store ()
+    {
+        static_assert (std::is_base_of_v<actor_location_store_t, TStore>,
+                       "TStore must implement actor_location_store_t");
+        static_assert (std::is_base_of_v<location_store_t, TStore>,
+                       "C++ per-role location store registration requires a location_store_t");
+        _options->actor_location_store_type = std::type_index (typeid (TStore));
+        register_location_store_type<TStore> ();
+        return *this;
+    }
+
+    template <typename TStore> zlink_framework_options_t &add_route_location_store ()
+    {
+        static_assert (std::is_base_of_v<route_location_store_t, TStore>,
+                       "TStore must implement route_location_store_t");
+        static_assert (std::is_base_of_v<location_store_t, TStore>,
+                       "C++ per-role location store registration requires a location_store_t");
+        _options->route_location_store_type = std::type_index (typeid (TStore));
+        register_location_store_type<TStore> ();
+        return *this;
+    }
+
+    template <typename TStore> zlink_framework_options_t &add_owner_lease_store ()
+    {
+        static_assert (std::is_base_of_v<owner_lease_store_t, TStore>,
+                       "TStore must implement owner_lease_store_t");
+        static_assert (std::is_base_of_v<location_store_t, TStore>,
+                       "C++ per-role location store registration requires a location_store_t");
+        _options->owner_lease_store_type = std::type_index (typeid (TStore));
+        register_location_store_type<TStore> ();
+        return *this;
+    }
+
+    zlink_framework_options_t &use_in_memory_location_stores ()
+    {
+        _options->use_in_memory_location_stores = true;
+        return *this;
+    }
+
+    zlink_framework_options_t &add_location_store (std::shared_ptr<location_store_t> store)
+    {
+        if (!store) {
+            throw framework_exception_t (framework_error_kind_t::request_protocol_error,
+                                         "location store instance must not be null");
+        }
+        _options->has_location_store_instance = true;
+        register_location_store_instance (std::move (store));
         return *this;
     }
 
@@ -1343,32 +1320,6 @@ class zlink_framework_options_t
     route_mesh_channel_builder_t add_route_mesh (std::string channel_name)
     {
         return route_mesh_channel_builder_t (std::move (channel_name), _options, _handler_groups);
-    }
-
-    zlink_framework_options_t &use_registry_spot_remote_addresses ()
-    {
-        _options->registry_spot_remote_addresses_enabled = true;
-        _options->registry_spot_route_channel.reset ();
-        return *this;
-    }
-
-    zlink_framework_options_t &use_registry_spot_remote_addresses (std::string route_channel_name)
-    {
-        detail::require_non_blank (route_channel_name,
-                                   "registry spot remote address route channel is required");
-        _options->registry_spot_remote_addresses_enabled = true;
-        _options->registry_spot_route_channel = std::move (route_channel_name);
-        return *this;
-    }
-
-    zlink_framework_options_t &use_registry_spot_resolver ()
-    {
-        return use_registry_spot_remote_addresses ();
-    }
-
-    zlink_framework_options_t &use_registry_spot_resolver (std::string route_channel_name)
-    {
-        return use_registry_spot_remote_addresses (std::move (route_channel_name));
     }
 
     spot_mesh_builder_t add_spot_mesh (std::string channel_name)
@@ -1442,6 +1393,35 @@ class zlink_framework_options_t
     }
 
   private:
+    template <typename TStore> void register_location_store_type ()
+    {
+        if (_services->contains (std::type_index (typeid (location_store_t)))) {
+            return;
+        }
+        static_assert (std::is_default_constructible_v<TStore>,
+                       "location store type registration requires a default constructor");
+        auto store = std::make_shared<TStore> ();
+        register_location_store_instance (std::static_pointer_cast<location_store_t> (store));
+    }
+
+    void register_location_store_instance (std::shared_ptr<location_store_t> store)
+    {
+        _services->add_factory<location_store_t> (
+          [store] (service_provider_t &) {
+              return std::static_pointer_cast<location_store_t> (store);
+          },
+          service_lifetime_t::singleton);
+        if (auto change_stamp_store =
+              std::dynamic_pointer_cast<location_change_stamp_store_t> (store)) {
+            _services->add_factory<location_change_stamp_store_t> (
+              [change_stamp_store] (service_provider_t &) {
+                  return std::static_pointer_cast<location_change_stamp_store_t> (
+                    change_stamp_store);
+              },
+              service_lifetime_t::singleton);
+        }
+    }
+
     service_collection_t *_services;
     handler_registry_t *_handlers;
     serializer_registry_t *_serializers;

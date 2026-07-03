@@ -3,16 +3,17 @@
 #include "Configuration/consumer_options.hpp"
 #include "Endpoints/consumer_endpoints.hpp"
 
-#include "../../Shared/discovery_registry_ha_contracts.hpp"
+#include "../../Shared/store_failure_contracts.hpp"
+#include "../Shared/location_store.hpp"
 
 #include <zlink/framework.hpp>
 
-namespace drha = zlink::framework::e2e::discovery_registry_ha;
-namespace drha_consumer = zlink::framework::e2e::discovery_registry_ha::consumer;
+namespace sf = zlink::framework::e2e::store_failure;
+namespace sf_consumer = zlink::framework::e2e::store_failure::consumer;
 
 int main (int argc, char **argv)
 {
-    const auto options = drha_consumer::read_consumer_options ();
+    const auto options = sf_consumer::read_consumer_options ();
     auto app = zlink::framework::app_t::create ();
     app.logging ()
       .use_file (options.log_dir + "/" + options.rid + ".log")
@@ -21,16 +22,18 @@ int main (int argc, char **argv)
         framework.configure_dispatch ()
           .message_flow (zlink::framework::message_flow_log_mode_t::key_transitions)
           .trace_log_file (options.log_dir + "/" + options.rid + "-flow.log")
-          .trace_label ("cpp-drha-" + options.rid);
-        for (const auto &endpoint : options.registry_router_endpoints) {
-            framework.use_discovery ().add_registry_endpoint (endpoint);
-        }
-        framework.add_client_server_channel (drha::api_channel).enable_client ();
+          .trace_label ("cpp-store-failure-" + options.rid);
+        sf::server::add_redis_location_store (framework, options.redis_endpoint,
+                                              options.redis_key_prefix);
+        framework.add_client_server_channel (sf::api_channel).enable_client ();
         framework.http ()
           .listen (options.http_endpoint)
           .map_health ("/health")
-          .map_post<drha_consumer::profile_request_handler_t> ("/profile/request")
-          .map_post<drha_consumer::profile_request_wait_handler_t> ("/profile/request/wait");
+          .map_get<sf_consumer::query_status_handler_t> ("/query/status")
+          .map_get<sf_consumer::query_peers_handler_t> ("/query/peers")
+          .map_post<sf_consumer::profile_request_handler_t> ("/profile/request")
+          .map_post<sf_consumer::profile_request_timeout_handler_t> (
+            "/profile/request/timeout/{milliseconds}");
     });
     return app.run (argc, argv);
 }

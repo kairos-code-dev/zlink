@@ -8,17 +8,17 @@ inventory다. C++ 샘플은 public framework API와 Stream Connector public wait
 
 | 기준 | C++ 대응 | 분류 | 상태 | 비고 |
 |------|----------|------|------|------|
-| `.NET: Bingo.csproj`, `Bingo.sln` | `framework/languages/cpp/CMakeLists.txt` | build-root | done | CMake target이 registry/api/play/session/client 실행 파일을 만든다. |
+| `.NET: Bingo.csproj`, `Bingo.sln` | `framework/languages/cpp/CMakeLists.txt` | build-root | done | CMake target이 api/play/session/client 실행 파일을 만든다. Registry process는 공유 location store 전환으로 제거했다. |
 | `.NET: Shared/Contracts/bingo_messages.proto` | `Shared/Contracts/messages.hpp`; `Server/common_codecs.hpp` | shared-contract | done | `.NET` proto message 이름과 field 의미를 C++ typed message로 대응하고, C++ framework Protobuf codec extension serializer로 등록한다. |
 | `.NET: Shared/Contracts/SampleConstants.cs` | `Shared/Contracts/messages.hpp`, `Server/Configuration/sample_names.hpp` | shared-contract | done | packet 이름, player id, mode, reward 상수를 C++ public message/header로 대응한다. |
 | `.NET: Client/Program.cs` | `Client/main.cpp` | client-entry | done | Session stream connector 세 개를 만들고 client scenario를 실행한다. |
 | `.NET: Client/Configuration/SampleNames.cs` | `Client/Configuration/sample_topology.hpp`, `Client/Configuration/sample_configuration.hpp` | client-config | done | client endpoint와 sample 설정을 C++ CLI/env 설정으로 받는다. |
 | `.NET: Client/BingoClientScenario.cs` | `Client/bingo_client_scenario.hpp` | client-scenario | done | authenticate, match, observe, submit, draw, reward, stop-observe self-check를 수행한다. |
 | `.NET: Server/Configuration/SampleNames.cs` | `Server/Configuration/sample_names.hpp` | server-config | done | service, channel, stream, spot 이름을 서버 역할에서 공유한다. |
-| `.NET: Server/Configuration/SampleTopology.cs` | `Server/Configuration/sample_topology.hpp` | server-config | done | registry, api, play, session, Redis endpoint와 node rid를 설정한다. |
+| `.NET: Server/Configuration/SampleTopology.cs` | `Server/Configuration/sample_topology.hpp` | server-config | done | api, play, session, Redis endpoint와 node rid를 설정한다. Redis는 match queue와 framework location store가 key prefix를 나눠 함께 사용한다. |
 | `.NET: Server/Configuration/SampleFlowLog.cs` | `Server/sample_log_dir.hpp`, role별 `main.cpp` | server-evidence | done | message-flow log를 sample logs 디렉터리에 남긴다. |
-| `.NET: Server/Registry/Program.cs` | `Server/Registry/main.cpp`, `Server/Registry/registry_host_factory.hpp` | server-role | done | Registry host를 별도 process로 실행한다. |
-| `.NET: Server/Registry/RegistryHostFactory.cs` | `Server/Registry/registry_host_factory.hpp` | server-role | done | Registry publish/router endpoint를 구성한다. |
+| `.NET: Server/Registry/Program.cs` | not-needed | server-role | removed | C++ Bingo는 registry process 대신 Redis `redis_location_store_t`를 등록한다. |
+| `.NET: Server/Registry/RegistryHostFactory.cs` | not-needed | server-role | removed | registry host factory는 삭제했다. 서버 간 endpoint 발견은 framework location store가 맡는다. |
 | `.NET: Server/Api/Program.cs` | `Server/Api/main.cpp` | server-role | done | API 역할을 별도 process로 실행한다. |
 | `.NET: Server/Api/ApiServerHostFactory.cs` | `Server/Api/api_server_host_factory.hpp`, `Server/Api/api_server_framework.hpp` | server-role | done | API channel server와 Play channel client를 구성한다. |
 | `.NET: Server/Api/Handlers/AuthenticatePlayerHandler.cs` | `Server/Api/Handlers/authenticate_player_handler.hpp` | handler | done | access token 인증 응답과 actor preferred node 정보를 만든다. |
@@ -60,12 +60,12 @@ inventory다. C++ 샘플은 public framework API와 Stream Connector public wait
 | 기준 | C++ 대응 | 분류 | 상태 | 비고 |
 |------|----------|------|------|------|
 | `common: client는 Session stream endpoint 하나만 직접 연결` | `Client/main.cpp`, `Client/bingo_client_scenario.hpp`, `run_sample.sh` | validation | done | client는 session-a/session-b stream endpoint만 받는다. |
-| `common: Registry, API 2개, Session 2개, Play 2개 실행` | `run_sample.sh`, `run_samples.sh` | validation | done | runner가 registry, api-a, api-b, session-a, session-b, play-a, play-b를 별도 process로 띄운다. |
+| `common: API 2개, Session 2개, Play 2개 실행` | `run_sample.sh`, `run_sample.ps1` | validation | done | runner가 api-a, api-b, session-a, session-b, play-a, play-b를 별도 process로 띄운다. Registry process는 사용하지 않는다. |
 | `common: API 인증과 matching 요청` | `Server/Api/Handlers/authenticate_player_handler.hpp`, `Server/Api/Handlers/match_bingo_handler.hpp` | message-flow | done | API channel handler가 인증과 match 요청을 맡는다. |
 | `common: Session 인증, actor binding, packet relay` | `Server/Session/Sessions/bingo_session.hpp`, `Server/Session/Sessions/Handlers/authenticate_session_handler.hpp` | message-flow | done | session은 gateway 책임만 갖고 게임 규칙을 해석하지 않는다. |
 | `common: Play actor 생성과 Entry Spot join` | `Server/Play/Infrastructure/ZLink/Handlers/ensure_player_actor_handler.hpp`, `Server/Play/Infrastructure/ZLink/Spots/EntrySpot/bingo_entry_spot.hpp` | message-flow | done | actor 생성과 room admission이 Play public framework 경로에 있다. |
 | `common: Redis-backed match queue` | `Server/Play/Infrastructure/ZLink/Matchmaking/redis_bingo_match_queue.hpp` | external-adapter | done | Redis client dependency는 match queue adapter 안에 있다. |
-| `common: remote Spot join은 Registry-backed resolver 사용` | `Server/Play/play_server_host_factory.hpp`, `Server/Play/Infrastructure/ZLink/Spots/EntrySpot/bingo_entry_spot.hpp` | message-flow | done | room owner가 다른 Play node일 때 public Spot join 경로를 사용한다. |
+| `common: remote Spot join은 location store 기반 resolver 사용` | `Server/Play/play_server_host_factory.hpp`, `Server/Play/Infrastructure/ZLink/Spots/EntrySpot/bingo_entry_spot.hpp`, `Server/Configuration/location_store.hpp` | message-flow | done | room owner가 다른 Play node일 때 public Spot join 경로를 사용하고 Redis location store로 target Spot 위치를 찾는다. |
 | `common: Spot pub/sub reward fan-out` | `Server/Play/Infrastructure/ZLink/Spots/BingoRoomSpot/bingo_room_spot.hpp` | message-flow | done | `bingo.room.reward` 의미의 reward event를 room Spot에서 publish/subscribe한다. |
 | `common: payload codec` | `Shared/Contracts/messages.hpp`, `Server/common_codecs.hpp`, `Server/Session/Sessions/bingo_session.hpp`, `Client/main.cpp` | codec | done | stream, channel, actor, Spot payload는 C++ framework Protobuf codec extension과 `application/x-protobuf` stream codec 경로를 사용한다. |
 | `common: public connector wait interface로 push 대기` | `Client/bingo_client_scenario.hpp` | validation | done | wait filter와 future를 직접 사용하고 sample-local inbox로 숨기지 않는다. |
@@ -75,7 +75,7 @@ inventory다. C++ 샘플은 public framework API와 Stream Connector public wait
 | `common: 외부 Redis endpoint가 있으면 사용` | `run_sample.sh` | runner | done | `BINGO_REDIS_ENDPOINT`가 있으면 Docker를 띄우지 않고 해당 endpoint를 readiness 확인 후 사용한다. |
 | `common: Redis endpoint가 없으면 runner가 Docker Redis 준비` | `run_sample.sh` | runner | done | 전용 Redis container를 만들고 cleanup에서 제거한다. |
 | `common: Redis key prefix 격리` | `run_sample.sh`, `Server/Configuration/sample_topology.hpp` | runner | done | 실행마다 고유한 `BINGO_REDIS_KEY_PREFIX`를 전달한다. |
-| `common: compact 구현 금지` | `Server/Api`, `Server/Session`, `Server/Play`, `Server/Registry` | structure | done | 단일 `--role` 실행 파일이 아니라 역할별 실행 파일로 분리되어 있다. |
+| `common: compact 구현 금지` | `Server/Api`, `Server/Session`, `Server/Play` | structure | done | 단일 `--role` 실행 파일이 아니라 역할별 실행 파일로 분리되어 있다. |
 | `common: Domain은 framework 타입을 모름` | `Server/Play/Domain/Bingo/*.hpp` | layering | done | card, game, room rule 타입을 Play domain 아래에 둔다. |
 
 ## 남은 gap

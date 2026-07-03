@@ -528,9 +528,9 @@ std::optional<result_t<inbound_frame_t>> try_take_inbound_frame (connector_state
 
 void complete_pending_request (std::shared_ptr<connector_state_t> state,
                                std::uint64_t request_seq,
-                               result_t<zlink::message_t> result)
+                               result_t<request_reply_t> result)
 {
-    std::function<void (result_t<zlink::message_t>)> callback;
+    std::function<void (result_t<request_reply_t>)> callback;
     {
         std::lock_guard<std::mutex> lock (state->transport_mutex);
         auto found = state->pending_requests.find (request_seq);
@@ -591,7 +591,7 @@ void route_inbound_packet (std::shared_ptr<connector_state_t> state, packet_t pa
 void process_inbound_buffer (std::shared_ptr<connector_state_t> state,
                              std::optional<error_t> transport_error)
 {
-    std::vector<std::pair<std::uint64_t, result_t<zlink::message_t>>> completed_requests;
+    std::vector<std::pair<std::uint64_t, result_t<request_reply_t>>> completed_requests;
     std::vector<packet_t> pushed_packets;
     bool reschedule = false;
     {
@@ -626,13 +626,14 @@ void process_inbound_buffer (std::shared_ptr<connector_state_t> state,
                      != state->pending_requests.end ()) {
                 completed_requests.emplace_back (
                   *value.request_seq,
-                  result_t<zlink::message_t>::success (std::move (value.packet.payload)));
+                  result_t<request_reply_t>::success (
+                    request_reply_t{value.packet.codec, std::move (value.packet.payload)}));
             } else if (value.kind == message_kind_t::error && value.request_seq
                        && state->pending_requests.find (*value.request_seq)
                             != state->pending_requests.end ()) {
                 completed_requests.emplace_back (
                   *value.request_seq,
-                  result_t<zlink::message_t>::failure (
+                  result_t<request_reply_t>::failure (
                     error_code_t::remote_error, value.packet.payload.to_string ()));
             } else {
                 pushed_packets.push_back (std::move (value.packet));
@@ -665,7 +666,7 @@ void process_inbound_buffer (std::shared_ptr<connector_state_t> state,
         change_state (state, connection_state_t::disconnected, *transport_error);
         for (auto request_seq : request_ids) {
             complete_pending_request (state, request_seq,
-                                      result_t<zlink::message_t>::failure (
+                                      result_t<request_reply_t>::failure (
                                         transport_error->code, transport_error->message));
         }
     } else if (reschedule) {
@@ -882,7 +883,7 @@ void start_read_loop (std::shared_ptr<connector_state_t> state)
 void submit_request_async (std::shared_ptr<void> state_handle,
                            packet_t packet,
                            std::chrono::milliseconds timeout,
-                           std::function<void (result_t<zlink::message_t>)> callback);
+                           std::function<void (result_t<request_reply_t>)> callback);
 
 result_t<void> submit_send (std::shared_ptr<connector_state_t> state, packet_t packet)
 {
@@ -918,9 +919,9 @@ void submit_send_async (std::shared_ptr<connector_state_t> state,
     start_next_async_send (std::move (state));
 }
 
-result_t<zlink::message_t> submit_request (std::shared_ptr<void> state_handle,
-                                           packet_t packet,
-                                           std::chrono::milliseconds timeout)
+result_t<request_reply_t> submit_request (std::shared_ptr<void> state_handle,
+                                          packet_t packet,
+                                          std::chrono::milliseconds timeout)
 {
     auto state = std::static_pointer_cast<connector_state_t> (std::move (state_handle));
     bool use_async_request_pump = false;
@@ -931,27 +932,27 @@ result_t<zlink::message_t> submit_request (std::shared_ptr<void> state_handle,
           && (state->read_in_progress || !state->pending_waits.empty ());
     }
     if (use_async_request_pump) {
-        auto promise = std::make_shared<std::promise<result_t<zlink::message_t>>> ();
+        auto promise = std::make_shared<std::promise<result_t<request_reply_t>>> ();
         auto future = promise->get_future ();
         submit_request_async (
           state, std::move (packet), timeout,
-          [promise] (result_t<zlink::message_t> result) mutable {
+          [promise] (result_t<request_reply_t> result) mutable {
               promise->set_value (std::move (result));
           });
         return future.get ();
     }
     std::unique_lock<std::mutex> lock (state->transport_mutex);
     if (state->close_requested.load ()) {
-        return result_t<zlink::message_t>::failure (error_code_t::closed,
-                                                    "stream connector is closed");
+        return result_t<request_reply_t>::failure (error_code_t::closed,
+                                                   "stream connector is closed");
     }
     if (!is_transport_connected (*state)) {
-        return result_t<zlink::message_t>::failure (error_code_t::disconnected,
-                                                    "stream connector is not connected");
+        return result_t<request_reply_t>::failure (error_code_t::disconnected,
+                                                   "stream connector is not connected");
     }
     if (auto validation = validate_packet_limits (*state, packet); !validation) {
         publish_error (*state, *validation.error ());
-        return result_t<zlink::message_t>::failure (
+        return result_t<request_reply_t>::failure (
           validation.error_code (),
           validation.error () ? validation.error ()->message : "stream request validation failed");
     }
@@ -962,12 +963,12 @@ result_t<zlink::message_t> submit_request (std::shared_ptr<void> state_handle,
         !written) {
         publish_error (*state, *written.error ());
         state->pending_requests.erase (seq);
-        return result_t<zlink::message_t>::failure (written.error_code (),
-                                                    written.error ()->message);
+        return result_t<request_reply_t>::failure (written.error_code (),
+                                                   written.error ()->message);
     }
     std::deque<std::function<void ()>> deliveries;
     auto complete_request =
-      [&lock, &deliveries] (result_t<zlink::message_t> result) mutable {
+      [&lock, &deliveries] (result_t<request_reply_t> result) mutable {
           lock.unlock ();
           while (!deliveries.empty ()) {
               auto delivery = std::move (deliveries.front ());
@@ -983,18 +984,19 @@ result_t<zlink::message_t> submit_request (std::shared_ptr<void> state_handle,
         auto received = read_inbound_frame (state, deadline);
         if (!received) {
             state->pending_requests.erase (seq);
-            return complete_request (result_t<zlink::message_t>::failure (
+            return complete_request (result_t<request_reply_t>::failure (
               received.error_code (), received.error ()->message));
         }
         auto frame = std::move (received.value ());
         if (frame.kind == message_kind_t::response && frame.request_seq == seq) {
             state->pending_requests.erase (seq);
             return complete_request (
-              result_t<zlink::message_t>::success (std::move (frame.packet.payload)));
+              result_t<request_reply_t>::success (
+                request_reply_t{frame.packet.codec, std::move (frame.packet.payload)}));
         }
         if (frame.kind == message_kind_t::error && frame.request_seq == seq) {
             state->pending_requests.erase (seq);
-            return complete_request (result_t<zlink::message_t>::failure (
+            return complete_request (result_t<request_reply_t>::failure (
               error_code_t::remote_error, frame.packet.payload.to_string ()));
         }
         if (frame.kind == message_kind_t::response || frame.kind == message_kind_t::error) {
@@ -1018,12 +1020,12 @@ result_t<zlink::message_t> submit_request (std::shared_ptr<void> state_handle,
 void submit_request_async (std::shared_ptr<void> state_handle,
                            packet_t packet,
                            std::chrono::milliseconds timeout,
-                           std::function<void (result_t<zlink::message_t>)> callback)
+                           std::function<void (result_t<request_reply_t>)> callback)
 {
     if (!state_handle) {
         if (callback) {
-            callback (result_t<zlink::message_t>::failure (error_code_t::configuration_error,
-                                                           "request call has no connector"));
+            callback (result_t<request_reply_t>::failure (error_code_t::configuration_error,
+                                                          "request call has no connector"));
         }
         return;
     }
@@ -1031,18 +1033,18 @@ void submit_request_async (std::shared_ptr<void> state_handle,
     auto state = std::static_pointer_cast<connector_state_t> (std::move (state_handle));
     std::uint64_t seq = 0;
     std::vector<std::uint8_t> outbound_frame;
-    std::optional<result_t<zlink::message_t>> immediate_result;
+    std::optional<result_t<request_reply_t>> immediate_result;
     {
         std::lock_guard<std::mutex> lock (state->transport_mutex);
         if (state->close_requested.load ()) {
-            immediate_result = result_t<zlink::message_t>::failure (error_code_t::closed,
-                                                                    "stream connector is closed");
+            immediate_result = result_t<request_reply_t>::failure (error_code_t::closed,
+                                                                   "stream connector is closed");
         } else if (!is_transport_connected (*state)) {
-            immediate_result = result_t<zlink::message_t>::failure (
+            immediate_result = result_t<request_reply_t>::failure (
               error_code_t::disconnected, "stream connector is not connected");
         } else if (auto validation = validate_packet_limits (*state, packet); !validation) {
             publish_error (*state, *validation.error ());
-            immediate_result = result_t<zlink::message_t>::failure (
+            immediate_result = result_t<request_reply_t>::failure (
               validation.error_code (), validation.error () ? validation.error ()->message
                                                             : "stream request validation failed");
         } else {
@@ -1056,7 +1058,7 @@ void submit_request_async (std::shared_ptr<void> state_handle,
                     callback = std::move (found->second.callback);
                     state->pending_requests.erase (found);
                 }
-                immediate_result = result_t<zlink::message_t>::failure (
+                immediate_result = result_t<request_reply_t>::failure (
                   encoded.error_code (),
                   encoded.error () ? encoded.error ()->message : "stream request encode failed");
             } else {
@@ -1080,7 +1082,7 @@ void submit_request_async (std::shared_ptr<void> state_handle,
           if (!written) {
               complete_pending_request (
                 state, seq,
-                result_t<zlink::message_t>::failure (
+                result_t<request_reply_t>::failure (
                   written.error_code (),
                   written.error () ? written.error ()->message : "stream request write failed"));
               return;
@@ -1088,8 +1090,8 @@ void submit_request_async (std::shared_ptr<void> state_handle,
           auto timeout_timer = post_runtime_operation_after (timeout, [state, seq] {
               complete_pending_request (
                 state, seq,
-                result_t<zlink::message_t>::failure (error_code_t::request_timeout,
-                                                     "stream connector request timed out"));
+                result_t<request_reply_t>::failure (error_code_t::request_timeout,
+                                                    "stream connector request timed out"));
           });
           {
               std::lock_guard<std::mutex> lock (state->transport_mutex);

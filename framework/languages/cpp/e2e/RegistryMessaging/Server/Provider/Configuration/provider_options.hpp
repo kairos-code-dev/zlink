@@ -47,10 +47,8 @@ struct provider_options_t
     std::string api_endpoint;
     std::string route_endpoint;
     std::string http_endpoint;
-    std::string registry_router;
-    std::string embedded_registry_pub;
-    std::string embedded_registry_router;
-    std::vector<std::string> embedded_registry_peers;
+    std::string redis_endpoint;
+    std::string redis_key_prefix;
     std::vector<std::string> route_peers;
     std::string log_dir;
     std::optional<int> server_weight;
@@ -65,11 +63,8 @@ inline provider_options_t read_provider_options ()
             .api_endpoint = env_or ("ZLINK_CPP_E2E_API_ENDPOINT"),
             .route_endpoint = env_or ("ZLINK_CPP_E2E_ROUTE_ENDPOINT"),
             .http_endpoint = env_or ("ZLINK_CPP_E2E_HTTP_ENDPOINT"),
-            .registry_router = env_or ("ZLINK_CPP_E2E_REGISTRY_ROUTER"),
-            .embedded_registry_pub = env_or ("ZLINK_CPP_E2E_EMBEDDED_REGISTRY_PUB"),
-            .embedded_registry_router = env_or ("ZLINK_CPP_E2E_EMBEDDED_REGISTRY_ROUTER"),
-            .embedded_registry_peers =
-              split_csv (env_or ("ZLINK_CPP_E2E_EMBEDDED_REGISTRY_PEERS")),
+            .redis_endpoint = env_or ("ZLINK_CPP_E2E_REDIS_ENDPOINT"),
+            .redis_key_prefix = env_or ("ZLINK_CPP_E2E_REDIS_KEY_PREFIX"),
             .route_peers = split_csv (env_or ("ZLINK_CPP_E2E_ROUTE_PEERS")),
             .log_dir = env_or ("ZLINK_CPP_E2E_LOG_DIR", "logs"),
             .server_weight = parse_int_env ("ZLINK_CPP_E2E_SERVER_WEIGHT"),

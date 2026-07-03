@@ -5,6 +5,7 @@
 #include "Handlers/workflow_handlers.hpp"
 #include "Infrastructure/scenario_state.hpp"
 
+#include "../../Shared/location_store_registration.hpp"
 #include "../../Shared/registry_messaging_contracts.hpp"
 
 #include <zlink/framework.hpp>
@@ -38,7 +39,7 @@ int main (int argc, char **argv)
         framework.services ().add_singleton<rm_workflow::scenario_state_t> (
           std::make_unique<rm_workflow::scenario_state_t> (options.rid, options.instance_id));
         configure_common_codecs (framework.codecs ());
-        framework.use_discovery ().add_registry_endpoint (options.registry_router);
+        e2e::add_redis_location_store (framework, options.redis_endpoint, options.redis_key_prefix);
         framework.add_client_server_channel (e2e::workflow_channel)
           .enable_server (options.workflow_endpoint)
           .enable_client ()

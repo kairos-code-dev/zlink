@@ -1,5 +1,6 @@
 /* SPDX-License-Identifier: MPL-2.0 */
 
+#include "../Configuration/location_store.hpp"
 #include "../Configuration/sample_names.hpp"
 #include "../Configuration/sample_topology.hpp"
 #include "../common_codecs.hpp"
@@ -258,7 +259,7 @@ int main (int argc, char **argv)
         auto *sessions =
           &options.services ().build_provider ().get_required<customer_session_directory_t> ();
         add_deliverydispatch_json_codecs (options.codecs ());
-        options.use_discovery ().add_registry_endpoint (topology.registry_router_endpoint);
+        add_deliverydispatch_location_store (options, topology);
         options.add_client_server_channel (sample_names_t::tracking_route_channel).enable_client ();
         options.add_fanout_channel (sample_names_t::status_fanout_channel)
           .enable_subscriber (topology.status_fanout_endpoint)

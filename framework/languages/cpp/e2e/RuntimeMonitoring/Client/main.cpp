@@ -1,7 +1,7 @@
 /* SPDX-License-Identifier: MPL-2.0 */
 
 #include "Scenarios/mon_a1_socket_events_scenario.hpp"
-#include "Scenarios/mon_a2_registry_events_scenario.hpp"
+#include "Scenarios/mon_a2_location_events_scenario.hpp"
 #include "Scenarios/mon_a3_spot_events_scenario.hpp"
 #include "Scenarios/mon_a4_availability_transition_scenario.hpp"
 #include "Scenarios/mon_a5_fixed_kinds_scenario.hpp"
@@ -27,7 +27,7 @@ int run_scenarios (const client_options_t &client_options)
         rm_client::run_mon_d1_failure_recovery_scenario (client_options);
     } else {
         rm_client::run_mon_a1_socket_events_scenario (client_options);
-        rm_client::run_mon_a2_registry_events_scenario (client_options);
+        rm_client::run_mon_a2_location_events_scenario (client_options);
         rm_client::run_mon_a3_spot_events_scenario (client_options);
         rm_client::run_mon_a5_fixed_kinds_scenario (client_options);
         rm_client::run_mon_a4_availability_transition_scenario (client_options);

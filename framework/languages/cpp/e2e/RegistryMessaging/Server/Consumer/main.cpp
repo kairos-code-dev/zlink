@@ -3,6 +3,7 @@
 #include "Configuration/consumer_options.hpp"
 #include "Endpoints/consumer_endpoints.hpp"
 
+#include "../../Shared/location_store_registration.hpp"
 #include "../../Shared/registry_messaging_contracts.hpp"
 
 #include <zlink/framework.hpp>
@@ -23,8 +24,8 @@ int main (int argc, char **argv)
           .trace_log_file (options.log_dir + "/" + options.trace_label + "-flow.log")
           .trace_label (options.trace_label);
         auto channel = framework.add_client_server_channel (rm::api_channel);
-        if (!options.registry_router.empty ()) {
-            framework.use_discovery ().add_registry_endpoint (options.registry_router);
+        if (!options.redis_endpoint.empty ()) {
+            rm::add_redis_location_store (framework, options.redis_endpoint, options.redis_key_prefix);
             channel.enable_client ();
         } else {
             for (const auto &endpoint : options.provider_endpoints) {

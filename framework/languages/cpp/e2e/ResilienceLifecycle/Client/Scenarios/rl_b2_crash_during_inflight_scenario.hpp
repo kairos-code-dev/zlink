@@ -47,9 +47,9 @@ inline void run_inflight_crash_scenario ()
                         .base_url (env_or ("ZLINK_CPP_E2E_HTTP_B_ENDPOINT"))
                         .timeout (std::chrono::milliseconds (10000))
                         .build ();
-    auto registry = zlink::http_client::client_t::create ()
-                      .base_url (env_or ("ZLINK_CPP_E2E_HTTP_REGISTRY_ENDPOINT"))
-                      .timeout (std::chrono::milliseconds (10000))
+    auto topology = zlink::http_client::client_t::create ()
+                      .base_url (env_or ("ZLINK_CPP_E2E_HTTP_CONSUMER_ENDPOINT"))
+                      .timeout (std::chrono::milliseconds (35000))
                       .build ();
 
     provider_a.post ("/admin/drain").submit_raw ().result ().value ();
@@ -61,7 +61,7 @@ inline void run_inflight_crash_scenario ()
 
     const std::string marker = "rl-b2-slow";
     auto pending = std::async (std::launch::async, [&consumer, marker] {
-        auto response = consumer.post ("/profile/request")
+        auto response = consumer.post ("/profile/request/manual-b")
                           .body (profile_req_t{.value = "slow", .marker = marker})
                           .timeout (std::chrono::milliseconds (500))
                           .submit<profile_res_t> ()
@@ -83,7 +83,7 @@ inline void run_inflight_crash_scenario ()
     touch_file (env_or ("ZLINK_CPP_E2E_READY_FILE"));
     wait_for_file (env_or ("ZLINK_CPP_E2E_CONTINUE_FILE"));
 
-    registry.post ("/topology/wait")
+    topology.post ("/topology/wait")
       .body (nlohmann::json{{"routingId", "api-b"},
                             {"state", "Ready"},
                             {"expectedCount", 0},
@@ -113,7 +113,7 @@ inline void run_inflight_crash_scenario ()
     touch_file (env_or ("ZLINK_CPP_E2E_DRAINED_FILE"));
     wait_for_file (env_or ("ZLINK_CPP_E2E_RESTORE_FILE"));
 
-    registry.post ("/topology/wait")
+    topology.post ("/topology/wait")
       .body (nlohmann::json{{"routingId", "api-b"},
                             {"state", "Ready"},
                             {"expectedCount", 1},

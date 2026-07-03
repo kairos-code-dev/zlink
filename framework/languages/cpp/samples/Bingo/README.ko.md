@@ -1,6 +1,6 @@
 # Bingo
 
-이 샘플은 공통 Bingo 시나리오의 Session, Api, Play, Registry 역할 구분을 C++ public
+이 샘플은 공통 Bingo 시나리오의 Session, Api, Play 역할 구분을 C++ public
 API 위에서 보여 준다. client는 Session stream 하나에 연결하고, Play 서버는
 `Domain`, `Application`, `Infrastructure/ZLink` 구조로 게임 규칙과 framework 연결 코드를
 나누어 둔다.
@@ -8,7 +8,7 @@ API 위에서 보여 준다. client는 Session stream 하나에 연결하고, Pl
 포함 범위는 아래와 같다.
 
 - sample topology와 endpoint 이름
-- registry host 구성
+- 공유 location store 기반 자동 연결
 - API channel server/client 구성
 - play channel server 구성
 - session stream endpoint 구성
@@ -34,12 +34,11 @@ API 위에서 보여 준다. client는 Session stream 하나에 연결하고, Pl
 - monitoring source 등록
 - offload handler option
 
-이 샘플은 Registry/Discovery 자동 연결과 session gateway 흐름을 맡는다. 수동 endpoint로
+이 샘플은 공유 location store 기반 자동 연결과 session gateway 흐름을 맡는다. 수동 endpoint로
 Play stream에 직접 연결하는 흐름은 TicTacToe 샘플이 맡는다.
 
 실행 파일은 아래 역할로 나뉜다.
 
-- `sample_cpp_framework_bingo_registry`: registry host 구성
 - `sample_cpp_framework_bingo_api`: API channel과 authenticate handler
 - `sample_cpp_framework_bingo_play`: play channel, room domain, room handlers, publish, Spot timer
 - `sample_cpp_framework_bingo_session`: STREAM endpoint와 session packet dispatch
@@ -47,21 +46,21 @@ Play stream에 직접 연결하는 흐름은 TicTacToe 샘플이 맡는다.
 
 client scenario 실행 파일은 Stream Connector public API로 request reply와 push notification을
 검증하는 시나리오를 담고 있다. Stream, channel, actor, Spot payload는 C++ framework의
-Protobuf codec extension으로 등록된 typed message를 사용한다. 서버 실행 파일들은 Registry, API, Play, Session 역할을
+Protobuf codec extension으로 등록된 typed message를 사용한다. 서버 실행 파일들은 API, Play, Session 역할을
 각각 보여 주며, 테스트 전용 fake 서버나 E2E 전용 sample target은 샘플 트리에 두지 않는다.
 script 실행 결과는 full client/server self-check 결과와 actor lifecycle sample gate 결과를
 표준 출력으로 보여 준다. actor lifecycle sample gate는 sample source가
 Entry Spot에서만 `destroyActor`를 호출하는지 확인하고, runtime test로 `leaveActor` 후
 Entry Spot destroy와 destroy가 `onLeaveActor`를 호출하지 않는다라는 callback isolation을
 검증한다. 같은 gate는 destroy 뒤 actor lookup에서 사라지는지와 같은 actor id 재생성이
-가능한지도 확인한다. runner는 Registry, API, Play, Session 서버를 별도 process로 계속
+가능한지도 확인한다. runner는 API, Play, Session 서버를 별도 process로 계속
 실행한 뒤 public client 실행 파일로 authenticate, match, card submit, server draw, winner
 판단 흐름을 검증한다.
 
 ## 실행과 설정
 
 서버 실행 파일은 `--config`로 받은 설정 파일을 `app.config()`로 읽고 `sample.topology`를
-`sample_topology_t`에 bind한 뒤 자기 role 만 실행한다. Registry, API, Play, Session 서버는
+`sample_topology_t`에 bind한 뒤 자기 role 만 실행한다. API, Play, Session 서버는
 모두 별도 process 로 실행한다. 서버 role 을 계속 실행하려면 설정 파일의
 `sample.host.keepRunning` 값을 `true`로 둔다.
 
@@ -82,7 +81,7 @@ Windows PowerShell에서는 아래 script 를 실행한다.
 ```
 
 script 는 CTest sample parity와 actor lifecycle runtime gate를 먼저 실행한다. 그 다음
-Registry, API, Play, Session 서버 실행 파일을 계속 실행 모드로 띄우고 public client
+API, Play, Session 서버 실행 파일을 계속 실행 모드로 띄우고 public client
 실행 파일로 full client/server self-check 를 수행한다.
 
 `BINGO_REDIS_ENDPOINT`가 있으면 script 는 그 Redis를 사용한다. 값이 없으면 전용 Redis

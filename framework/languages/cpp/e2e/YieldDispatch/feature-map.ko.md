@@ -8,7 +8,8 @@ actor join, timer, bound session send, worker call에 `yield()` 공개 표면이
 stream connector client request가 session gateway를 거쳐 play node의 Spot/Entry Spot handler까지
 도달하는 전체 배포 경로다.
 
-최신 full runner proof는 `logs/20260702-085155-85387`이다. 이 실행은 YD-A1~YD-D4, YD-E1,
+최신 full runner proof는 `logs/20260703-222236-90101`이다. 이 실행은 Redis location store 기반으로
+registry role 없이 YD-A1~YD-D4, YD-E1,
 YD-E3, YD-E4 static gate, YD-E5 report 생성을 통과했고, YD-E2는 public cancellation token 계약
 gap으로 유지한다.
 
@@ -36,8 +37,9 @@ gap으로 유지한다.
 
 ## 다음 구현 기준
 
-- 첫 구현 slice는 `.NET` 구조처럼 Registry, Delay, Play, Session, Client target을 나누고,
-  `run_e2e.sh`가 실제 stream connector client request로 scenario를 시작한다. 현재 Track A의
+- 현재 slice는 Delay, Play, Session, Client target을 Redis location store로 연결하고,
+  `run_e2e.sh`가 실제 stream connector client request로 scenario를 시작한다. registry role과
+  registry discovery endpoint는 사용하지 않는다. 현재 Track A의
   YD-A1~YD-A4, Track B의 YD-B1~YD-B3, Track C의 YD-C1~YD-C3, Track D의 YD-D1~YD-D4, Track E의
   YD-E1, YD-E3, YD-E4 static gate, YD-E5 report 생성은 runner 증거가 있다. 남은 항목은 public cancellation token 계약이 필요한 YD-E2 gap이다.
 - yield 검증을 HTTP endpoint나 direct route/Spot test driver로 시작하지 않는다.

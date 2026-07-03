@@ -21,7 +21,8 @@ struct workflow_options_t
     std::string instance_id;
     std::string workflow_endpoint;
     std::string http_endpoint;
-    std::string registry_router;
+    std::string redis_endpoint;
+    std::string redis_key_prefix;
     std::string log_dir;
 };
 
@@ -32,7 +33,8 @@ inline workflow_options_t read_workflow_options ()
             .instance_id = env_or ("ZLINK_CPP_E2E_PROVIDER_INSTANCE", rid),
             .workflow_endpoint = env_or ("ZLINK_CPP_E2E_WORKFLOW_ENDPOINT"),
             .http_endpoint = env_or ("ZLINK_CPP_E2E_HTTP_ENDPOINT"),
-            .registry_router = env_or ("ZLINK_CPP_E2E_REGISTRY_ROUTER"),
+            .redis_endpoint = env_or ("ZLINK_CPP_E2E_REDIS_ENDPOINT"),
+            .redis_key_prefix = env_or ("ZLINK_CPP_E2E_REDIS_KEY_PREFIX"),
             .log_dir = env_or ("ZLINK_CPP_E2E_LOG_DIR", "logs")};
 }
 

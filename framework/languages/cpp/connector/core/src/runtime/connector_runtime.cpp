@@ -837,7 +837,7 @@ result_t<void> close_state (std::shared_ptr<detail::connector_state_t> state)
             if (request.callback) {
                 closed_request_callbacks.push_back (
                   [callback = std::move (request.callback)] () mutable {
-                      callback (result_t<zlink::message_t>::failure (
+                      callback (result_t<detail::request_reply_t>::failure (
                         error_code_t::closed, "stream connector is closed"));
                   });
             }

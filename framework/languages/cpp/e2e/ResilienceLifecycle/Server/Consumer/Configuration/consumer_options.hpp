@@ -33,7 +33,8 @@ inline std::vector<std::string> split_csv (const std::string &text)
 struct consumer_options_t
 {
     std::string http_endpoint;
-    std::string registry_router;
+    std::string redis_endpoint;
+    std::string redis_key_prefix;
     std::vector<std::string> provider_endpoints;
     std::string log_dir;
     std::string trace_label;
@@ -42,7 +43,8 @@ struct consumer_options_t
 inline consumer_options_t read_consumer_options ()
 {
     return {.http_endpoint = env_or ("ZLINK_CPP_E2E_HTTP_ENDPOINT"),
-            .registry_router = env_or ("ZLINK_CPP_E2E_REGISTRY_ROUTER"),
+            .redis_endpoint = env_or ("ZLINK_CPP_E2E_REDIS_ENDPOINT"),
+            .redis_key_prefix = env_or ("ZLINK_CPP_E2E_REDIS_KEY_PREFIX"),
             .provider_endpoints = split_csv (env_or ("ZLINK_CPP_E2E_PROVIDER_ENDPOINTS")),
             .log_dir = env_or ("ZLINK_CPP_E2E_LOG_DIR", "logs"),
             .trace_label = env_or ("ZLINK_CPP_E2E_TRACE_LABEL", "consumer")};

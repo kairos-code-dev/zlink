@@ -12,7 +12,6 @@
 #include "runtime/channels/route_channel_registration.hpp"
 #include "runtime/channels/route_channel_runtime.hpp"
 #include "runtime/messaging/envelope_codec.hpp"
-#include "runtime/registry/registry_runtime.hpp"
 #include "runtime/streams/stream_runtime.hpp"
 
 #include <cstdint>
@@ -110,7 +109,6 @@ class channel_runtime_state_t
     std::map<std::uint64_t, channel_reliability_event_t> pending_operations;
     std::vector<outbound_call_record_t> outbound_calls;
     dispatch_options_t dispatch;
-    discovery_snapshot_t discovery;
     serializer_registry_t *serializers = nullptr;
     std::shared_ptr<monitoring_runtime_state_t> monitoring;
     bool shutdown = false;
@@ -128,8 +126,6 @@ class zlink_builder_state_t
     std::shared_ptr<channel_runtime_state_t> runtime = std::make_shared<channel_runtime_state_t> ();
     std::map<std::string, std::shared_ptr<spot_node_builder_state_t>> spot_nodes;
     std::map<std::string, std::shared_ptr<route_channel_builder_state_t>> route_channels;
-    std::shared_ptr<registry_runtime_state_t> registry_runtime =
-      std::make_shared<registry_runtime_state_t> ();
     std::shared_ptr<stream_runtime_state_t> stream_runtime =
       std::make_shared<stream_runtime_state_t> ();
 };
@@ -171,7 +167,6 @@ class channel_runtime_t
     std::size_t pending_limit () const noexcept;
     std::vector<channel_runtime_state_t::outbound_call_record_t> outbound_calls () const;
     void bind_serializers (serializer_registry_t &serializers) noexcept;
-    void bind_discovery (discovery_snapshot_t discovery) noexcept;
     dispatch_options_t dispatch_options () const;
     const dispatch_options_t &dispatch_options_ref () const noexcept { return _state->dispatch; }
     void drain () noexcept;

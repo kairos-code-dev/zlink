@@ -22,12 +22,18 @@ namespace zlink::stream_connector
 
 namespace detail
 {
-result_t<zlink::message_t>
+struct request_reply_t
+{
+    codec_t codec = codec_t::raw;
+    zlink::message_t payload;
+};
+
+result_t<request_reply_t>
 submit_request (std::shared_ptr<void> state, packet_t packet, std::chrono::milliseconds timeout);
 void submit_request_async (std::shared_ptr<void> state,
                            packet_t packet,
                            std::chrono::milliseconds timeout,
-                           std::function<void (result_t<zlink::message_t>)> callback);
+                           std::function<void (result_t<request_reply_t>)> callback);
 result_t<packet_t> submit_wait (std::shared_ptr<void> state,
                                 std::string packet_name,
                                 std::function<bool (const packet_t &)> predicate,
@@ -152,7 +158,7 @@ class request_call_t
         const auto timeout = _timeout;
         detail::submit_request_async (
           state, std::move (packet), timeout,
-          [callback = std::move (callback)] (result_t<zlink::message_t> reply) mutable {
+          [callback = std::move (callback)] (result_t<detail::request_reply_t> reply) mutable {
               erased_result_t erased (std::move (reply));
               auto result = erased.template as<TReply> ();
               if (callback) {
@@ -167,7 +173,8 @@ class request_call_t
     class erased_result_t
     {
       public:
-        explicit erased_result_t (result_t<zlink::message_t> result) : _result (std::move (result))
+        explicit erased_result_t (result_t<detail::request_reply_t> result) :
+            _result (std::move (result))
         {
         }
 
@@ -179,14 +186,21 @@ class request_call_t
                                                                       : "request failed");
             }
             if constexpr (std::is_same_v<T, zlink::message_t>) {
-                return result_t<T>::success (_result.value ());
+                return result_t<T>::success (_result.value ().payload);
             } else {
-                return result_t<T>::success (_result.value ().template parse_json<T> ());
+                T value{};
+                try {
+                    detail::apply_packet_payload (value, _result.value ().codec,
+                                                  _result.value ().payload, 0);
+                } catch (const std::exception &ex) {
+                    return result_t<T>::failure (error_code_t::frame_decode_failed, ex.what ());
+                }
+                return result_t<T>::success (std::move (value));
             }
         }
 
       private:
-        result_t<zlink::message_t> _result;
+        result_t<detail::request_reply_t> _result;
     };
 
     request_call_t (std::shared_ptr<void> state,

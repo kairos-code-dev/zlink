@@ -2,7 +2,6 @@
 #pragma once
 
 #include <zlink/framework/contracts/channels/channel.hpp>
-#include <zlink/framework/contracts/registry/registry.hpp>
 #include <zlink/framework/contracts/spots/spot.hpp>
 #include <zlink/framework/contracts/streams/stream.hpp>
 
@@ -49,21 +48,15 @@ class zlink_builder_t
     zlink_builder_t &default_request_timeout (std::chrono::milliseconds timeout);
     zlink_builder_t &on_retry (retry_hook_t hook);
     zlink_builder_t &on_dead_letter (dead_letter_hook_t hook);
-    registry_builder_t enable_registry ();
-    discovery_builder_t discovery ();
     route_channel_builder_t route_channel (std::string route_channel_name);
     channel_builder_t channel (std::string channel_name);
     spot_node_builder_t add_spot_node (std::string spot_node_name);
     stream_builder_t stream (std::string stream_name);
 
     std::vector<channel_snapshot_t> channels () const;
-    registry_options_snapshot_t registry_options () const;
-    discovery_snapshot_t discovery_options () const;
     std::vector<std::string> route_channels () const;
     std::vector<spot_node_snapshot_t> spot_nodes () const;
     std::vector<stream_snapshot_t> streams () const;
-    result_t<void> validate_registry () const;
-    registry_query_t registry_query () const;
     message_bus_t message_bus () const;
     request_client_t request_client (std::string channel_name) const;
     publisher_t publisher () const;
@@ -80,7 +73,6 @@ class zlink_builder_t
     friend void detail::bind_zlink_monitoring (zlink_builder_t &builder,
                                                const monitoring_builder_t &monitoring);
     friend class detail::channel_runtime_manager_t;
-    friend class detail::registry_runtime_t;
     friend class detail::spot_node_runtime_t;
     friend class detail::stream_runtime_t;
     std::shared_ptr<detail::zlink_builder_state_t> _state;

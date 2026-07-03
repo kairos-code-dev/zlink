@@ -570,7 +570,6 @@ int main ()
       .trace_sample_rate (0.5)
       .include_message_sizes (true)
       .include_native_diagnostics (true);
-    options.use_discovery ().add_registry_endpoint ("tcp://127.0.0.1:9102");
     options.add_client_server_channel ("api-channel")
       .enable_server ("tcp://127.0.0.1:9103")
       .enable_client ()
@@ -962,7 +961,6 @@ int main ()
         zlink::framework::monitoring_builder_t valid_monitoring;
         zlink::framework::zlink_framework_options_t valid_options (
           valid_services, valid_handlers, valid_serializers, valid_zlink, valid_monitoring);
-        valid_options.use_discovery ().add_registry_endpoint ("tcp://127.0.0.1:9304");
         valid_options.add_route_mesh ("spot-route").enable_server ("tcp://127.0.0.1:9301");
         valid_options.add_spot_mesh ("spot-routes")
           .enable_router ("tcp://127.0.0.1:9302");
@@ -1015,7 +1013,6 @@ int main ()
         zlink::framework::zlink_framework_options_t invalid_options (
           invalid_services, invalid_handlers, invalid_serializers, invalid_zlink,
           invalid_monitoring);
-        invalid_options.use_discovery ().add_registry_endpoint ("tcp://127.0.0.1:9303");
         invalid_options.add_fanout_channel ("empty-events").enable_subscriber ();
         invalid_options.apply ();
     }
@@ -1053,7 +1050,7 @@ int main ()
         return 34;
     }
 
-    bool route_no_arg_client_without_discovery_failed = false;
+    bool route_no_arg_client_without_discovery_succeeded = true;
     try {
         zlink::framework::service_collection_t valid_services;
         zlink::framework::handler_registry_t valid_handlers;
@@ -1068,12 +1065,10 @@ int main ()
         valid_options.apply ();
     }
     catch (const zlink::framework::framework_exception_t &error) {
-        route_no_arg_client_without_discovery_failed =
-          error.kind () == zlink::framework::framework_error_kind_t::request_protocol_error
-          && std::string (error.what ()).find ("requires registry discovery")
-               != std::string::npos;
+        (void) error;
+        route_no_arg_client_without_discovery_succeeded = false;
     }
-    if (!route_no_arg_client_without_discovery_failed) {
+    if (!route_no_arg_client_without_discovery_succeeded) {
         return 65;
     }
 
@@ -1210,22 +1205,6 @@ int main ()
 
     if (!options_failure_contains (
           [] (zlink::framework::zlink_framework_options_t &invalid_options) {
-              invalid_options.use_registry_spot_remote_addresses (" ");
-          },
-          "route channel is required")) {
-        return 46;
-    }
-
-    if (!options_failure_contains (
-          [] (zlink::framework::zlink_framework_options_t &invalid_options) {
-              invalid_options.use_discovery ().add_registry_endpoint (" ");
-          },
-          "discovery endpoint is required")) {
-        return 60;
-    }
-
-    if (!options_failure_contains (
-          [] (zlink::framework::zlink_framework_options_t &invalid_options) {
               invalid_options.metadata ().add_forwarded_metadata_key (" ");
           },
           "metadata key must not be empty")) {
@@ -1245,7 +1224,6 @@ int main ()
 
     if (!options_failure_contains (
           [] (zlink::framework::zlink_framework_options_t &invalid_options) {
-              invalid_options.use_discovery ().add_registry_endpoint ("tcp://127.0.0.1:9336");
               invalid_options.add_spot_mesh ("first").enable_pub_sub ("tcp://127.0.0.1:9338");
               invalid_options.add_spot_mesh ("second").enable_pub_sub ("tcp://127.0.0.1:9339");
           },
@@ -1253,7 +1231,7 @@ int main ()
         return 54;
     }
 
-    bool missing_discovery_failed = false;
+    bool location_backed_client_succeeded = true;
     try {
         zlink::framework::service_collection_t invalid_services;
         zlink::framework::handler_registry_t invalid_handlers;
@@ -1267,11 +1245,10 @@ int main ()
         invalid_options.apply ();
     }
     catch (const zlink::framework::framework_exception_t &error) {
-        missing_discovery_failed =
-          error.kind () == zlink::framework::framework_error_kind_t::request_protocol_error
-          && std::string (error.what ()).find ("requires registry discovery") != std::string::npos;
+        (void) error;
+        location_backed_client_succeeded = false;
     }
-    if (!missing_discovery_failed) {
+    if (!location_backed_client_succeeded) {
         return 23;
     }
 
@@ -1323,11 +1300,6 @@ int main ()
         return 64;
     }
 
-    const auto discovery = zlink.discovery_options ();
-    if (discovery.registry_endpoints.size () != 1
-        || discovery.registry_endpoints.front () != "tcp://127.0.0.1:9102") {
-        return 10;
-    }
     const auto routes = zlink.route_channels ();
     if (routes.size () != 1 || routes.front () != "route-channel") {
         return 64;

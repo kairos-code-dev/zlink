@@ -46,23 +46,6 @@ zlink::stream_socket_t &framework_runtime_t::stream_socket ()
     return *_stream;
 }
 
-zlink::service::discovery_t &framework_runtime_t::discovery ()
-{
-    if (!_discovery) {
-        _discovery = std::make_unique<zlink::service::discovery_t> (
-          *_context, zlink::auto_connect_type::route_mesh, "framework");
-    }
-    return *_discovery;
-}
-
-zlink::service::registry_t &framework_runtime_t::registry ()
-{
-    if (!_registry) {
-        _registry = std::make_unique<zlink::service::registry_t> (*_context);
-    }
-    return *_registry;
-}
-
 zlink::service::spot_node_t &framework_runtime_t::add_spot_node ()
 {
     if (!_spot_node) {
@@ -74,8 +57,6 @@ zlink::service::spot_node_t &framework_runtime_t::add_spot_node ()
 void framework_runtime_t::drain ()
 {
     _spot_node.reset ();
-    _registry.reset ();
-    _discovery.reset ();
     _stream.reset ();
     _dealer.reset ();
     _router.reset ();

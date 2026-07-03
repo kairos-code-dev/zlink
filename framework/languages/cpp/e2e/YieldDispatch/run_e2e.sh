@@ -3,10 +3,9 @@ set -euo pipefail
 
 ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 FRAMEWORK_DIR="$(cd "$ROOT_DIR/../.." && pwd)"
-BUILD_DIR="${ZLINK_CPP_E2E_BUILD_DIR:-$FRAMEWORK_DIR/build}"
+BUILD_DIR="${ZLINK_CPP_E2E_BUILD_DIR:-$FRAMEWORK_DIR/build-redis-vcpkg}"
 LOCAL_READINESS_TIMEOUT_SECONDS=3
 LOCAL_READINESS_POLL_SECONDS=0.1
-ROUTE_SETTLE_SECONDS=5
 SCENARIO_SETTLE_SECONDS=3
 HTTP_PROBE_TIMEOUT_SECONDS=3
 PROCESS_SHUTDOWN_TIMEOUT_SECONDS=3
@@ -47,12 +46,11 @@ LOG_DIR="$ROOT_DIR/logs/$RUN_ID"
 mkdir -p "$LOG_DIR"
 echo "log_dir=$LOG_DIR"
 
-read -r REG_HTTP REG_PUB REG_ROUTER \
-  DELAY_A_HTTP DELAY_A_ENDPOINT DELAY_B_HTTP DELAY_B_ENDPOINT \
+read -r DELAY_A_HTTP DELAY_A_ENDPOINT DELAY_B_HTTP DELAY_B_ENDPOINT \
   PLAY_A_HTTP PLAY_A_CONTROL PLAY_A_SPOT_ROUTE PLAY_A_SPOT_ROUTER PLAY_A_SPOT_PUB \
   PLAY_B_HTTP PLAY_B_CONTROL PLAY_B_SPOT_ROUTE PLAY_B_SPOT_ROUTER PLAY_B_SPOT_PUB \
   SESSION_A_HTTP SESSION_A_STREAM SESSION_A_SPOT_ROUTER SESSION_A_SPOT_PUB \
-  SESSION_B_HTTP SESSION_B_STREAM SESSION_B_SPOT_ROUTER SESSION_B_SPOT_PUB <<<"$(python3 - <<'PY'
+  SESSION_B_HTTP SESSION_B_STREAM SESSION_B_SPOT_ROUTER SESSION_B_SPOT_PUB REDIS_PORT <<<"$(python3 - <<'PY'
 import os
 import random
 import socket
@@ -74,35 +72,33 @@ for port in random.sample(available, len(available)):
         continue
     sockets.append(sock)
     ports.append(sock.getsockname()[1])
-    if len(ports) == 25:
+    if len(ports) == 23:
         break
-if len(ports) != 25:
-    raise SystemExit(f"failed to allocate 25 local ports, allocated {len(ports)}")
+if len(ports) != 23:
+    raise SystemExit(f"failed to allocate 23 local ports, allocated {len(ports)}")
 print(f"http://{host}:{ports[0]}", end=" ")
 print(f"tcp://{host}:{ports[1]}", end=" ")
-print(f"tcp://{host}:{ports[2]}", end=" ")
-print(f"http://{host}:{ports[3]}", end=" ")
-print(f"tcp://{host}:{ports[4]}", end=" ")
-print(f"http://{host}:{ports[5]}", end=" ")
+print(f"http://{host}:{ports[2]}", end=" ")
+print(f"tcp://{host}:{ports[3]}", end=" ")
+print(f"http://{host}:{ports[4]}", end=" ")
+print(f"tcp://{host}:{ports[5]}", end=" ")
 print(f"tcp://{host}:{ports[6]}", end=" ")
-print(f"http://{host}:{ports[7]}", end=" ")
+print(f"tcp://{host}:{ports[7]}", end=" ")
 print(f"tcp://{host}:{ports[8]}", end=" ")
-print(f"tcp://{host}:{ports[9]}", end=" ")
+print(f"http://{host}:{ports[9]}", end=" ")
 print(f"tcp://{host}:{ports[10]}", end=" ")
 print(f"tcp://{host}:{ports[11]}", end=" ")
-print(f"http://{host}:{ports[12]}", end=" ")
+print(f"tcp://{host}:{ports[12]}", end=" ")
 print(f"tcp://{host}:{ports[13]}", end=" ")
-print(f"tcp://{host}:{ports[14]}", end=" ")
+print(f"http://{host}:{ports[14]}", end=" ")
 print(f"tcp://{host}:{ports[15]}", end=" ")
 print(f"tcp://{host}:{ports[16]}", end=" ")
-print(f"http://{host}:{ports[17]}", end=" ")
-print(f"tcp://{host}:{ports[18]}", end=" ")
+print(f"tcp://{host}:{ports[17]}", end=" ")
+print(f"http://{host}:{ports[18]}", end=" ")
 print(f"tcp://{host}:{ports[19]}", end=" ")
 print(f"tcp://{host}:{ports[20]}", end=" ")
-print(f"http://{host}:{ports[21]}", end=" ")
-print(f"tcp://{host}:{ports[22]}", end=" ")
-print(f"tcp://{host}:{ports[23]}", end=" ")
-print(f"tcp://{host}:{ports[24]}")
+print(f"tcp://{host}:{ports[21]}", end=" ")
+print(ports[22])
 for sock in sockets:
     sock.close()
 PY
@@ -110,17 +106,18 @@ PY
 
 cmake -S "$FRAMEWORK_DIR" -B "$BUILD_DIR" -DZLINK_FRAMEWORK_CPP_BUILD_SAMPLES=OFF >/dev/null
 cmake --build "$BUILD_DIR" --target \
-  zlink_cpp_e2e_yield_dispatch_registry \
   zlink_cpp_e2e_yield_dispatch_delay \
   zlink_cpp_e2e_yield_dispatch_play \
   zlink_cpp_e2e_yield_dispatch_session \
   zlink_cpp_e2e_yield_dispatch_client >/dev/null
 
-REGISTRY="$BUILD_DIR/zlink_cpp_e2e_yield_dispatch_registry"
 DELAY="$BUILD_DIR/zlink_cpp_e2e_yield_dispatch_delay"
 PLAY="$BUILD_DIR/zlink_cpp_e2e_yield_dispatch_play"
 SESSION="$BUILD_DIR/zlink_cpp_e2e_yield_dispatch_session"
 CLIENT="$BUILD_DIR/zlink_cpp_e2e_yield_dispatch_client"
+REDIS_CONTAINER="zlink-cpp-yield-dispatch-${RUN_ID}"
+REDIS_ENDPOINT="127.0.0.1:${REDIS_PORT}"
+REDIS_KEY_PREFIX="zlink:cpp:yield-dispatch:${RUN_ID}"
 PIDS=()
 
 launch_process() {
@@ -168,6 +165,7 @@ cleanup() {
     fi
   done
   wait >/dev/null 2>&1 || true
+  docker rm -f "$REDIS_CONTAINER" >/dev/null 2>&1 || true
   if [[ $code -ne 0 ]]; then
     echo "E2E failed. Logs: $LOG_DIR" >&2
     print_failure_logs
@@ -250,6 +248,18 @@ static_checks() {
 
 static_checks
 
+docker run --rm -d \
+  --name "$REDIS_CONTAINER" \
+  -p "127.0.0.1:${REDIS_PORT}:6379" \
+  redis:7-alpine >/dev/null
+
+for _ in $(seq 1 80); do
+  if docker exec "$REDIS_CONTAINER" redis-cli ping >/dev/null 2>&1; then
+    break
+  fi
+  sleep 0.1
+done
+
 wait_file_contains() {
   local file="$1"
   local pattern="$2"
@@ -289,14 +299,6 @@ terminate_gracefully() {
   return 1
 }
 
-ZLINK_CPP_E2E_HTTP_ENDPOINT="$REG_HTTP" \
-ZLINK_CPP_E2E_REGISTRY_PUB="$REG_PUB" \
-ZLINK_CPP_E2E_REGISTRY_ROUTER="$REG_ROUTER" \
-ZLINK_CPP_E2E_LOG_DIR="$LOG_DIR" \
-  "$REGISTRY" >"$LOG_DIR/registry.stdout.log" 2>"$LOG_DIR/registry.stderr.log" &
-PIDS+=("$!")
-wait_port registry "$REG_HTTP"
-
 start_delay_role() {
   local name="$1"
   local http_endpoint="$2"
@@ -322,12 +324,13 @@ start_play_role() {
   local delay_endpoint="$7"
   ZLINK_CPP_E2E_NODE_RID="$name" \
   ZLINK_CPP_E2E_HTTP_ENDPOINT="$http_endpoint" \
+  ZLINK_CPP_E2E_REDIS_ENDPOINT="$REDIS_ENDPOINT" \
+  ZLINK_CPP_E2E_REDIS_KEY_PREFIX="$REDIS_KEY_PREFIX" \
   ZLINK_CPP_E2E_CONTROL_ENDPOINT="$control_endpoint" \
   ZLINK_CPP_E2E_DELAY_ENDPOINT="$delay_endpoint" \
   ZLINK_CPP_E2E_SPOT_ROUTE_ENDPOINT="$spot_route_endpoint" \
   ZLINK_CPP_E2E_SPOT_ROUTER_ENDPOINT="$spot_router_endpoint" \
   ZLINK_CPP_E2E_SPOT_PUB_ENDPOINT="$spot_pub_endpoint" \
-  ZLINK_CPP_E2E_REGISTRY_ROUTER="$REG_ROUTER" \
   ZLINK_CPP_E2E_LOG_DIR="$LOG_DIR" \
     launch_process "$LOG_DIR/$name.stdout.log" "$LOG_DIR/$name.stderr.log" \
       "${ZLINK_CPP_E2E_PLAY_WRAPPER:-}" "$PLAY"
@@ -341,15 +344,22 @@ start_session_role() {
   local http_endpoint="$2"
   local stream_endpoint="$3"
   local control_endpoint="$4"
-  local spot_router_endpoint="$5"
-  local spot_pub_endpoint="$6"
+  local control_peer_endpoint="$5"
+  local spot_route_endpoint="$6"
+  local spot_route_peer_endpoint="$7"
+  local spot_router_endpoint="$8"
+  local spot_pub_endpoint="$9"
   ZLINK_CPP_E2E_NODE_RID="$name" \
   ZLINK_CPP_E2E_HTTP_ENDPOINT="$http_endpoint" \
+  ZLINK_CPP_E2E_REDIS_ENDPOINT="$REDIS_ENDPOINT" \
+  ZLINK_CPP_E2E_REDIS_KEY_PREFIX="$REDIS_KEY_PREFIX" \
   ZLINK_CPP_E2E_STREAM_ENDPOINT="$stream_endpoint" \
   ZLINK_CPP_E2E_CONTROL_ENDPOINT="$control_endpoint" \
+  ZLINK_CPP_E2E_CONTROL_PEER_ENDPOINT="$control_peer_endpoint" \
+  ZLINK_CPP_E2E_SPOT_ROUTE_ENDPOINT="$spot_route_endpoint" \
+  ZLINK_CPP_E2E_SPOT_ROUTE_PEER_ENDPOINT="$spot_route_peer_endpoint" \
   ZLINK_CPP_E2E_SPOT_ROUTER_ENDPOINT="$spot_router_endpoint" \
   ZLINK_CPP_E2E_SPOT_PUB_ENDPOINT="$spot_pub_endpoint" \
-  ZLINK_CPP_E2E_REGISTRY_ROUTER="$REG_ROUTER" \
   ZLINK_CPP_E2E_LOG_DIR="$LOG_DIR" \
     launch_process "$LOG_DIR/$name.stdout.log" "$LOG_DIR/$name.stderr.log" \
       "${ZLINK_CPP_E2E_SESSION_WRAPPER:-}" "$SESSION"
@@ -363,8 +373,8 @@ start_delay_role delay-b "$DELAY_B_HTTP" "$DELAY_B_ENDPOINT"
 start_play_role play-a "$PLAY_A_HTTP" "$PLAY_A_CONTROL" "$PLAY_A_SPOT_ROUTE" "$PLAY_A_SPOT_ROUTER" "$PLAY_A_SPOT_PUB" "$DELAY_A_ENDPOINT"
 PLAY_A_PID="${PIDS[-1]}"
 start_play_role play-b "$PLAY_B_HTTP" "$PLAY_B_CONTROL" "$PLAY_B_SPOT_ROUTE" "$PLAY_B_SPOT_ROUTER" "$PLAY_B_SPOT_PUB" "$DELAY_B_ENDPOINT"
-start_session_role session-a "$SESSION_A_HTTP" "$SESSION_A_STREAM" "$PLAY_A_CONTROL" "$SESSION_A_SPOT_ROUTER" "$SESSION_A_SPOT_PUB"
-start_session_role session-b "$SESSION_B_HTTP" "$SESSION_B_STREAM" "$PLAY_B_CONTROL" "$SESSION_B_SPOT_ROUTER" "$SESSION_B_SPOT_PUB"
+start_session_role session-a "$SESSION_A_HTTP" "$SESSION_A_STREAM" "$PLAY_A_CONTROL" "$PLAY_B_CONTROL" "$PLAY_A_SPOT_ROUTE" "$PLAY_B_SPOT_ROUTE" "$SESSION_A_SPOT_ROUTER" "$SESSION_A_SPOT_PUB"
+start_session_role session-b "$SESSION_B_HTTP" "$SESSION_B_STREAM" "$PLAY_B_CONTROL" "$PLAY_A_CONTROL" "$PLAY_B_SPOT_ROUTE" "$PLAY_A_SPOT_ROUTE" "$SESSION_B_SPOT_ROUTER" "$SESSION_B_SPOT_PUB"
 
 ZLINK_CPP_E2E_STREAM_ENDPOINT="$SESSION_A_STREAM" \
 ZLINK_CPP_E2E_SESSION_B_STREAM_ENDPOINT="$SESSION_B_STREAM" \

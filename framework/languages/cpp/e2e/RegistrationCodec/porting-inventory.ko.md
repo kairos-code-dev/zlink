@@ -101,6 +101,13 @@ Protobuf/MessagePack은 C++ public codec extension을 사용해 실제 E2E로 �
 
 ## 검증
 
+- 2026-07-03: `ZLINK_CPP_E2E_BUILD_DIR=/home/hep7/project/kairos/zlink/framework/languages/cpp/build-redis-vcpkg timeout 420s framework/languages/cpp/e2e/RegistrationCodec/run_e2e.sh`
+  - 결과: 통과
+  - 로그: `logs/20260703-200739-24698`
+  - 의미: location store 포팅 이후 현재 트리에서 정상 server, JSON-only peer, codec requester,
+    invalid role, HTTP-only client runner가 모두 통과했다. RC-A1, RC-A3, RC-A4, RC-A5, RC-A6,
+    RC-B1, RC-B2, RC-B3, RC-B4, RC-B5를 검증했고, RC-A2는 annotation/decorator public contract
+    gap으로 유지한다. Config-4는 수동 endpoint 연결 config라 Redis location store 등록이 필요 없다.
 - 2026-06-30: `cmake --build framework/languages/cpp/build --target zlink_cpp_e2e_registration_codec_server zlink_cpp_e2e_registration_codec_invalid_duplicate zlink_cpp_e2e_registration_codec_json_only_peer zlink_cpp_e2e_registration_codec_client`
   - 결과: 통과
 - 2026-06-30: `./framework/languages/cpp/e2e/RegistrationCodec/run_e2e.sh`

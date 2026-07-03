@@ -12,7 +12,7 @@ CMake sample target과 runner를 둔다.
 |----------------|---------------|------|------|------|
 | `.gitignore` | `.gitignore` | config | done | 실행 산출물을 제외한다. |
 | `README.ko.md` | `README.ko.md`; `feature-map.ko.md` | docs | done | 실행 방법과 검증 항목을 C++ 기준으로 기록한다. |
-| `run_sample.sh` | `run_sample.sh` | runner | done | registry, tracking, customer gateway, courier session, courier gateway, courier actor node 2개, dispatch center, dispatch API, probe, client를 실행한다. customer stream과 courier stream endpoint도 분리한다. |
+| `run_sample.sh` | `run_sample.sh` | runner | done | Redis location store, tracking, customer gateway, courier session, courier gateway, courier actor node 2개, dispatch center, dispatch API, probe, client를 실행한다. customer stream과 courier stream endpoint도 분리한다. |
 | `Shared/DeliveryDispatch.Shared.csproj` | `framework/languages/cpp/CMakeLists.txt` | build | done | shared header를 각 target include 경로로 사용한다. |
 | `Shared/Contracts/Messages.cs` | `Shared/Contracts/messages.hpp` | shared | done | delivery request, reply, notify, evidence, `BindCourierReq`, `BindCourierSessionReq`, `EnsureCourierActorReq`, offer notify, courier decision DTO가 대응한다. CustomerGateway와 Courier 쪽 actor-bound session 경로도 대응한다. |
 | `Server/Configuration/DeliveryDispatch.Server.Configuration.csproj` | `framework/languages/cpp/CMakeLists.txt` | build | done | configuration headers를 각 role target에서 include한다. |
@@ -20,9 +20,9 @@ CMake sample target과 runner를 둔다.
 | `Server/Configuration/SampleFlowLog.cs` | `sample_log_dir.hpp`; role `main.cpp` trace option | infrastructure | done | role별 message-flow log 파일 경로를 제공한다. |
 | `Server/Configuration/SampleNames.cs` | `Server/Configuration/sample_names.hpp` | configuration | done | channel, route, actor, spot 이름이 대응한다. |
 | `Server/Configuration/SampleTopology.cs` | `Server/Configuration/sample_topology.hpp` | configuration | done | role endpoint 환경 변수를 해석한다. |
-| `Server/Registry/DeliveryDispatch.Server.Registry.csproj` | `framework/languages/cpp/CMakeLists.txt` | build | done | registry target이 대응한다. |
-| `Server/Registry/RegistryHostFactory.cs` | `Server/Registry/main.cpp` | server-role | done | C++ registry role은 main에서 host를 구성한다. |
-| `Server/Registry/Program.cs` | `Server/Registry/main.cpp` | server-role | done | registry role 진입점이다. |
+| `Server/Registry/DeliveryDispatch.Server.Registry.csproj` | not-needed | build | removed | C++ sample은 Redis location store 기반 자동 연결을 사용하므로 registry target을 빌드하지 않는다. |
+| `Server/Registry/RegistryHostFactory.cs` | not-needed | server-role | removed | registry host factory 역할은 location store 등록으로 대체됐다. |
+| `Server/Registry/Program.cs` | not-needed | server-role | removed | registry role 진입점은 삭제했다. |
 | `Server/Tracking/DeliveryDispatch.Server.Tracking.csproj` | `framework/languages/cpp/CMakeLists.txt` | build | done | tracking target이 대응한다. |
 | `Server/Tracking/TrackingServerHostFactory.cs` | `Server/Tracking/main.cpp` | server-role | done | C++ tracking role은 main에서 tracking route, status publisher, handler group을 구성한다. |
 | `Server/Tracking/Handlers.cs` | `Server/Tracking/Handlers/tracking_handlers.hpp` | handler | done | actor ensure, delivery subscription, status changed handler가 대응한다. |

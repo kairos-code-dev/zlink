@@ -1,5 +1,6 @@
 /* SPDX-License-Identifier: MPL-2.0 */
 
+#include "../Configuration/location_store.hpp"
 #include "../Configuration/sample_names.hpp"
 #include "../Configuration/sample_topology.hpp"
 #include "../DispatchInternal/dispatch_messages.hpp"
@@ -104,7 +105,7 @@ int main (int argc, char **argv)
           .trace_log_file (deliverydispatch_log_dir () + "/flow-dispatch-center.log")
           .trace_label ("deliverydispatch-dispatch-center");
         add_deliverydispatch_json_codecs (options.codecs ());
-        options.use_discovery ().add_registry_endpoint (topology.registry_router_endpoint);
+        add_deliverydispatch_location_store (options, topology);
         options.add_client_server_channel (sample_names_t::dispatch_route_channel)
           .enable_server (topology.dispatch_center_route_endpoint)
           .use_handler_group ("dispatch");

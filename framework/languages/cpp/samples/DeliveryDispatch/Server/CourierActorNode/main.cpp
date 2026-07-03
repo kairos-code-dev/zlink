@@ -1,5 +1,6 @@
 /* SPDX-License-Identifier: MPL-2.0 */
 
+#include "../Configuration/location_store.hpp"
 #include "../Configuration/sample_names.hpp"
 #include "../Configuration/sample_topology.hpp"
 #include "../common_codecs.hpp"
@@ -291,7 +292,7 @@ int main (int argc, char **argv)
           .trace_log_file (deliverydispatch_log_dir () + "/flow-" + node_rid + ".log")
           .trace_label ("deliverydispatch-" + node_rid);
         add_deliverydispatch_json_codecs (options.codecs ());
-        options.use_discovery ().add_registry_endpoint (topology.registry_router_endpoint);
+        add_deliverydispatch_location_store (options, topology);
         auto decisions = std::make_unique<courier_decision_directory_t> ();
         auto *decisions_ptr = decisions.get ();
         auto runtime = std::make_unique<courier_actor_runtime_t> (
@@ -313,7 +314,7 @@ int main (int argc, char **argv)
                                offer_delivery_res_t> (
             offer_delivery_req_t::packet_name, &actor_node_offer_delivery_handler_t::handle);
         options.add_spot_mesh (sample_names_t::courier_actor_discovery)
-          .use_registry_spot_resolver (sample_names_t::courier_actor_node_route_channel)
+          .accept_route_mesh (sample_names_t::courier_actor_node_route_channel)
           .set_routing_id (zlink::routing_id_t::from (node_rid))
           .enable_router (spot_router_endpoint)
           .enable_pub_sub (spot_endpoint)

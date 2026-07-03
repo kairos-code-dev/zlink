@@ -262,7 +262,6 @@ namespace
 void drain_zlink_builder_state_runtime (zlink_builder_state_t &state) noexcept
 {
     state.stream_runtime.reset ();
-    state.registry_runtime.reset ();
     state.route_channels.clear ();
     for (auto &[_, spot_node] : state.spot_nodes) {
         if (spot_node && spot_node->worker_executor) {
@@ -298,7 +297,6 @@ void bind_zlink_monitoring (zlink_builder_t &builder, const monitoring_builder_t
     }
     auto state = monitoring_runtime_t::from (monitoring).state ();
     builder._state->runtime->monitoring = state;
-    builder._state->registry_runtime->monitoring = state;
     for (auto &[_, spot_node] : builder._state->spot_nodes) {
         if (spot_node) {
             spot_node->monitoring = state;
@@ -478,19 +476,6 @@ void channel_runtime_t::bind_serializers (serializer_registry_t &serializers) no
     _state->serializers = &serializers;
 }
 
-void channel_runtime_t::bind_discovery (discovery_snapshot_t discovery) noexcept
-{
-    _state->discovery = std::move (discovery);
-    if (_state->monitoring) {
-        for (const auto &endpoint : _state->discovery.registry_endpoints) {
-            monitoring_runtime_t (_state->monitoring)
-              .publish_discovery (discovery_event_payload_t{
-                runtime_event_base_t{"channel.discovery"}, discovery_event_kind_t::connected,
-                endpoint, "registry endpoint configured"});
-        }
-    }
-}
-
 dispatch_options_t channel_runtime_t::dispatch_options () const
 {
     return _state->dispatch;
@@ -603,7 +588,6 @@ capability_builder_t &capability_builder_t::operator= (capability_builder_t &&) 
 capability_builder_t &capability_builder_t::bind (std::string endpoint)
 {
     auto &snapshot = capability_snapshot (*_state);
-    snapshot.discovery = false;
     snapshot.enabled = true;
     snapshot.bind_endpoints.push_back (std::move (endpoint));
     return *this;
@@ -689,7 +673,10 @@ capability_builder_t channel_builder_t::enable_capability (channel_capability_sn
 
 capability_builder_t channel_builder_t::enable_server ()
 {
-    return enable_capability (detail::select_capability (*_state, channel_capability_t::server));
+    auto builder =
+      enable_capability (detail::select_capability (*_state, channel_capability_t::server));
+    detail::select_capability (*_state, channel_capability_t::server).discovery = true;
+    return builder;
 }
 
 capability_builder_t channel_builder_t::enable_client ()
@@ -702,7 +689,10 @@ capability_builder_t channel_builder_t::enable_client ()
 
 capability_builder_t channel_builder_t::enable_publisher ()
 {
-    return enable_capability (detail::select_capability (*_state, channel_capability_t::publisher));
+    auto builder =
+      enable_capability (detail::select_capability (*_state, channel_capability_t::publisher));
+    detail::select_capability (*_state, channel_capability_t::publisher).discovery = true;
+    return builder;
 }
 
 capability_builder_t channel_builder_t::enable_subscriber ()
@@ -1586,12 +1576,37 @@ channel_builder_t zlink_builder_t::channel (std::string channel_name)
     return channel_builder_t (state);
 }
 
+route_channel_builder_t zlink_builder_t::route_channel (std::string route_channel_name)
+{
+    if (route_channel_name.empty ()) {
+        throw framework_exception_t (framework_error_kind_t::request_protocol_error,
+                                     "route channel name is required");
+    }
+    if (auto found = _state->route_channels.find (route_channel_name);
+        found != _state->route_channels.end ()) {
+        return route_channel_builder_t (found->second);
+    }
+    auto state = std::make_shared<detail::route_channel_builder_state_t> (route_channel_name);
+    _state->route_channels[route_channel_name] = state;
+    return route_channel_builder_t (state);
+}
+
 std::vector<channel_snapshot_t> zlink_builder_t::channels () const
 {
     std::vector<channel_snapshot_t> result;
     result.reserve (_state->runtime->channels.size ());
     for (const auto &[_, snapshot] : _state->runtime->channels) {
         result.push_back (snapshot);
+    }
+    return result;
+}
+
+std::vector<std::string> zlink_builder_t::route_channels () const
+{
+    std::vector<std::string> result;
+    result.reserve (_state->route_channels.size ());
+    for (const auto &[name, _] : _state->route_channels) {
+        result.push_back (name);
     }
     return result;
 }

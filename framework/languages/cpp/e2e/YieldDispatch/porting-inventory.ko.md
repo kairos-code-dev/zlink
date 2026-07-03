@@ -2,8 +2,9 @@
 
 기준 구현: `framework/languages/dotnet/e2e/YieldDispatch`
 
-현재 C++ `YieldDispatch`는 role target, Track A YD-A1~YD-A4, Track B YD-B1~YD-B3, Track C YD-C1~YD-C3, Track D YD-D1~YD-D4, Track E YD-E1/YD-E3 실행 코드, YD-E4 정적 검증, YD-E5 report 생성을
-갖췄다. 이 inventory는
+현재 C++ `YieldDispatch`는 Redis location store 기반 Delay, Play, Session, Client role target,
+Track A YD-A1~YD-A4, Track B YD-B1~YD-B3, Track C YD-C1~YD-C3, Track D YD-D1~YD-D4,
+Track E YD-E1/YD-E3 실행 코드, YD-E4 정적 검증, YD-E5 report 생성을 갖췄다. 이 inventory는
 `.NET` Config 8 파일을 기준으로 C++에 만들어야 할 역할, shared contract, client scenario, support 파일을
 계속 고정한다. Config 8은 stream connector client request가 session gateway를 거쳐 play node의
 Spot/Entry Spot handler까지 도달해야 하므로, HTTP trigger나 direct Spot/route test driver로 대체하지
@@ -15,7 +16,7 @@ Spot/Entry Spot handler까지 도달해야 하므로, HTTP trigger나 direct Spo
 |----------------|---------------|------|------|------|
 | `.gitignore` | `.gitignore` | metadata | done | C++ YieldDispatch 로그와 임시 산출물 제외 규칙을 추가했다. |
 | `feature-map.ko.md` | `feature-map.ko.md` | docs | done | 아직 구현되지 않은 scenario와 public gap을 완료로 과장하지 않는다. |
-| `run_e2e.sh` | `run_e2e.sh` | runner | done | registry, delay A/B, play A/B, session A/B, client를 빌드하고 readiness와 정적 검사를 수행한다. 이 runner는 E2E target만 필요하므로 configure 때 C++ sample target은 끈다. YD-A1~YD-A4, YD-B1~YD-B3, YD-C1~YD-C3, YD-D1~YD-D4, YD-E1/YD-E3 runner, YD-E4 static gate, YD-E5 report 생성을 반복 검증한다. YD-E2는 runner 미완료가 아니라 public yield cancellation token contract gap이다. |
+| `run_e2e.sh` | `run_e2e.sh` | runner | done | Redis container와 per-run key prefix를 준비하고, delay A/B, play A/B, session A/B, client를 빌드한 뒤 readiness와 정적 검사를 수행한다. registry role은 사용하지 않는다. 이 runner는 E2E target만 필요하므로 configure 때 C++ sample target은 끈다. YD-A1~YD-A4, YD-B1~YD-B3, YD-C1~YD-C3, YD-D1~YD-D4, YD-E1/YD-E3 runner, YD-E4 static gate, YD-E5 report 생성을 반복 검증한다. YD-E2는 runner 미완료가 아니라 public yield cancellation token contract gap이다. 최신 Redis location store full runner proof는 `logs/20260703-222236-90101`이다. |
 | `Shared/YieldDispatch.Shared.csproj` | `framework/languages/cpp/CMakeLists.txt` | build | done | role/client target 묶음은 추가됐다. shared는 header로 포함된다. |
 | `Shared/Messages.cs` | `Shared/yield_dispatch_contracts.hpp` | shared | done | Track A용 ensure/evidence/delay/hold/yield/worker/probe DTO, actor binding/yield/fast/join-yield/push-yield DTO, timer command, D2 remote Spot yield DTO, E1 timeout DTO, E2 cancellation DTO, E3 shutdown DTO와 JSON 매핑이 있다. stream connector typed request/reply/notify가 실제 JSON payload를 쓰도록 `to_stream_payload`/`from_stream_payload` hook도 제공한다. E2 scenario 자체는 C++ public yield cancellation token surface가 없어 gap으로 남긴다. |
 | `Client/GlobalUsings.cs` | not-needed | client | not-needed | C++에는 대응 파일이 필요 없다. |
@@ -40,9 +41,9 @@ Spot/Entry Spot handler까지 도달해야 하므로, HTTP trigger나 direct Spo
 | `Client/Scenarios/YdE1TimeoutScenario.cs` | `Client/Scenarios/yd_e1_timeout_scenario.hpp` | scenario | done | yield timeout 뒤 같은 Spot mailbox cleanup 검증은 별도 scenario header에서 runner로 통과했다. |
 | `Client/Scenarios/YdE2CancellationScenario.cs` | `Client/Scenarios/yd_e2_cancellation_scenario.hpp` | scenario | gap | 공통 E2E는 cancellation이 yield 대기와 continuation을 정리해야 한다고 요구하고, `.NET` 기준은 `Yield<DelayReply>(CancellationToken)`으로 handler 내부 cancellation token을 넘긴다. C++ `cpp-framework-interfaces` spec은 public cancellation token과 cancellation registration을 두지 않는다고 명시하고, 현재 public yield call surface에도 cancellation token 인자가 없으므로 private cancel 우회 없이 public contract gap으로 남긴다. 공개 계약 후보는 `framework/doc/framework/common/draft/yield-cancellation.ko.md`에 분리했다. |
 | `Client/Scenarios/ShutdownYieldScenario.cs` | `Client/Scenarios/shutdown_yield_scenario.hpp` | scenario | done | pending yield 중 play node shutdown과 recovery 검증은 별도 scenario header와 runner orchestration으로 통과했다. |
-| `Server/Registry/YieldDispatch.Registry.csproj` | `framework/languages/cpp/CMakeLists.txt` | build | done | registry target이 있다. |
-| `Server/Registry/Program.cs` | `Server/Registry/main.cpp` | server-role | done | registry role entrypoint가 있다. discovery registry host 구성은 factory header로 분리했다. |
-| `Server/Registry/RegistryHostFactory.cs` | `Server/Registry/registry_host_factory.hpp`; `Server/Registry/Support/registry_support.hpp` | server-role | done | registry pub/router endpoint, dispatch trace, health endpoint 구성을 factory header로 분리했고, registry option 읽기는 support header로 분리했다. Registry target과 runner로 검증했다. |
+| `Server/Registry/YieldDispatch.Registry.csproj` | not-needed | build | removed | C++ Config 8은 Redis location store 기반 auto-connect를 사용하므로 registry target을 빌드하지 않는다. |
+| `Server/Registry/Program.cs` | not-needed | server-role | removed | registry role entrypoint는 삭제했다. |
+| `Server/Registry/RegistryHostFactory.cs` | not-needed | server-role | removed | registry host factory와 registry option support는 삭제했다. Play/Session role은 Redis `redis_location_store_t`를 공유한다. |
 | `Server/Delay/YieldDispatch.Delay.csproj` | `framework/languages/cpp/CMakeLists.txt` | build | done | delay service target이 있다. |
 | `Server/Delay/Program.cs` | `Server/Delay/main.cpp` | server-role | done | delay service entrypoint가 있다. delay host 구성은 factory header로 분리했다. |
 | `Server/Delay/DelayHostFactory.cs` | `Server/Delay/delay_host_factory.hpp`; `Server/Delay/Support/delay_support.hpp` | server-role | done | delay channel server, handler registration, dispatch trace, health endpoint 구성을 factory header로 분리했고, delay option 읽기는 support header로 분리했다. Delay target과 runner로 검증했다. |

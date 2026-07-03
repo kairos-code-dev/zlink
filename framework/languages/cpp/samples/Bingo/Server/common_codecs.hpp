@@ -1,6 +1,8 @@
 /* SPDX-License-Identifier: MPL-2.0 */
 #pragma once
 
+#include "../Shared/Contracts/messages.hpp"
+
 #include <zlink/framework.hpp>
 #include <zlink/codecs/protobuf.hpp>
 

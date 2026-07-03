@@ -24,7 +24,6 @@ function Find-Binary([string]$Name) {
     throw "Missing executable: $Name. Build C++ samples first or set ZLINK_CPP_BUILD_DIR."
 }
 
-$RegistryBin = Find-Binary "sample_cpp_framework_bingo_registry"
 $ApiBin = Find-Binary "sample_cpp_framework_bingo_api"
 $PlayBin = Find-Binary "sample_cpp_framework_bingo_play"
 $SessionBin = Find-Binary "sample_cpp_framework_bingo_session"
@@ -163,8 +162,6 @@ try {
     )
 
     $ports = Reserve-Endpoints 22
-    $registryPubEndpoint = if ($env:BINGO_REGISTRY_PUB_ENDPOINT) { $env:BINGO_REGISTRY_PUB_ENDPOINT } else { "tcp://$($ports[0])" }
-    $registryRouterEndpoint = if ($env:BINGO_REGISTRY_ROUTER_ENDPOINT) { $env:BINGO_REGISTRY_ROUTER_ENDPOINT } else { "tcp://$($ports[1])" }
     $apiAChannelEndpoint = if ($env:BINGO_API_A_CHANNEL_ENDPOINT) { $env:BINGO_API_A_CHANNEL_ENDPOINT } else { "tcp://$($ports[2])" }
     $playAChannelEndpoint = if ($env:BINGO_PLAY_A_CHANNEL_ENDPOINT) { $env:BINGO_PLAY_A_CHANNEL_ENDPOINT } else { "tcp://$($ports[3])" }
     $sessionASpotEndpoint = if ($env:BINGO_SESSION_A_SPOT_ENDPOINT) { $env:BINGO_SESSION_A_SPOT_ENDPOINT } else { "tcp://$($ports[4])" }
@@ -202,8 +199,6 @@ try {
     Wait-Endpoint "redis" "tcp://$redisEndpoint"
 
     $topologyArgs = @(
-        "--sample.topology.registryPubEndpoint=$registryPubEndpoint",
-        "--sample.topology.registryRouterEndpoint=$registryRouterEndpoint",
         "--sample.topology.apiChannelEndpoint=$apiAChannelEndpoint",
         "--sample.topology.apiAChannelEndpoint=$apiAChannelEndpoint",
         "--sample.topology.apiBChannelEndpoint=$apiBChannelEndpoint",
@@ -226,9 +221,6 @@ try {
         "--sample.topology.redisKeyPrefix=$RedisKeyPrefix"
     )
     $serverArgs = @("--sample.host.keepRunning", "true") + $topologyArgs
-
-    Start-Server "registry" $RegistryBin $serverArgs
-    Wait-Endpoint "registry-router" $registryRouterEndpoint
 
     Start-Server "api-a" $ApiBin ($serverArgs + @("--sample.topology.apiNode=a"))
     Wait-Endpoint "api-a" $apiAChannelEndpoint

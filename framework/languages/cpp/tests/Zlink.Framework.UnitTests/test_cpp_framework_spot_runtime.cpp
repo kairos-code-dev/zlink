@@ -8,6 +8,9 @@
 #include "runtime/channels/channel_runtime_manager.hpp"
 #include "runtime/channels/route_handler_registry.hpp"
 #include "runtime/channels/route_packet_dispatcher.hpp"
+#include "runtime/locations/in_memory_location_store.hpp"
+#include "runtime/locations/location_lifecycle.hpp"
+#include "runtime/locations/location_runtime.hpp"
 #include "runtime/spots/spot_route_internal_dispatcher.hpp"
 #include "runtime/spots/spot_route_packets.hpp"
 #include "runtime/spots/spot_runtime.hpp"
@@ -47,6 +50,27 @@ class test_spot_context_t : public zlink::framework::spot_context_t
         zlink::framework::spot_context_t (std::move (state))
     {
     }
+};
+
+class recording_spot_location_resolver_t final
+    : public zlink::framework::spot_location_resolver_t
+{
+  public:
+    zlink::framework::task_t<std::optional<zlink::framework::spot_address_t>>
+    resolve_spot_address (std::string mesh_name, zlink::routing_id_t spot_rid) override
+    {
+        last_mesh_name = std::move (mesh_name);
+        last_spot_rid = spot_rid.to_string ();
+        ++calls;
+        return zlink::framework::task_t<std::optional<zlink::framework::spot_address_t>> (
+          zlink::framework::result_t<std::optional<zlink::framework::spot_address_t>>::success (
+            address));
+    }
+
+    std::optional<zlink::framework::spot_address_t> address;
+    int calls = 0;
+    std::string last_mesh_name;
+    std::string last_spot_rid;
 };
 
 class controlled_worker_scheduler_t final : public zlink::framework::detail::worker_scheduler_t
@@ -243,6 +267,8 @@ struct relay_spot_t : public zlink::framework::spot_t
 
     void onLeaveActor (relay_actor_t &) { left_count++; }
 
+    void onDisconnectActor (relay_actor_t &) { disconnected_count++; }
+
     relay_reply_t on_relay (relay_actor_t &actor,
                             zlink::framework::spot_actor_request_context_t &,
                             const relay_request_t &request)
@@ -251,6 +277,7 @@ struct relay_spot_t : public zlink::framework::spot_t
     }
 
     static inline int left_count{};
+    static inline int disconnected_count{};
 };
 
 struct entry_dispatch_probe_actor_t
@@ -855,7 +882,6 @@ int main ()
       .connect_router ("tcp://127.0.0.1:9003")
       .enable_pub_sub ("tcp://0.0.0.0:9004")
       .connect_pub_sub ("tcp://127.0.0.1:9005")
-      .use_discovery ("game.stage")
       .add_entry_spot<entry_spot_t> ()
       .add_actor_factory<player_actor_factory_t> ("player")
       .add_spot<stage_spot_t> ("stage");
@@ -871,7 +897,7 @@ int main ()
         || snapshots[0].pub_sub_manual_connections.size () != 1
         || snapshots[0].pub_sub_manual_connections[0] != "tcp://127.0.0.1:9005"
         || !snapshots[0].discovery_channel_name
-        || *snapshots[0].discovery_channel_name != "game.stage"
+        || *snapshots[0].discovery_channel_name != "stage-spot-node"
         || snapshots[0].spot_names.size () != 2 || snapshots[0].entry_spot_name != "entry"
         || snapshots[0].actor_types.size () != 1) {
         return 1;
@@ -910,7 +936,6 @@ int main ()
     builder = manual_host.add_spot_node ("manual-stage");
     auto create_factory_spot = [] { return std::make_shared<factory_spot_t> ("factory-reply"); };
     builder.bind ("tcp://0.0.0.0:9001")
-      .use_discovery ("game.stage")
       .add_entry_spot<entry_spot_t> ()
       .add_actor_factory<player_actor_factory_t> ("player")
       .add_spot<stage_spot_t> ("stage")
@@ -930,6 +955,97 @@ int main ()
     if (context.node_rid ().empty () || context.spot_rid ().empty ()
         || context.spot_name () != "stage") {
         return 2;
+    }
+    auto context_manager = context.manager ();
+    const auto manager_created = context_manager.create_spot ("stage");
+    if (manager_created.state != zlink::framework::spot_create_state_t::created
+        || manager_created.context.spot_name () != "stage"
+        || !context_manager.find_spot (manager_created.spot_rid)
+        || context_manager.spot_name_for (manager_created.spot_rid) != "stage"
+        || !context_manager.resolve_spot (manager_created.spot_rid)
+        || context_manager.list_spots ().empty ()) {
+        return 133;
+    }
+    const auto manager_close = context_manager.close_spot (manager_created.spot_rid).result ();
+    if (!manager_close || !manager_close.value ()
+        || context_manager.find_spot (manager_created.spot_rid)) {
+        return 135;
+    }
+    const auto manager_typed_create_count = stage_spot_t::create_count;
+    auto manager_typed_created =
+      context_manager.create_spot ("stage", std::string ("manager-create-request"));
+    if (manager_typed_created.state != zlink::framework::spot_create_state_t::created
+        || stage_spot_t::create_count != manager_typed_create_count + 1
+        || stage_spot_t::last_create_request != "manager-create-request") {
+        return 137;
+    }
+    const auto manager_requested_rid =
+      zlink::framework::spot_rid_t::from_string ("manager-requested-stage");
+    auto manager_get_or_create =
+      context_manager.get_or_create_spot ("stage", manager_requested_rid,
+                                          std::string ("manager-get-request"));
+    auto manager_existing = context_manager.get_or_create_spot (
+      "stage", manager_requested_rid, std::string ("manager-ignored-request"));
+    if (manager_get_or_create.state != zlink::framework::spot_create_state_t::created
+        || manager_existing.state != zlink::framework::spot_create_state_t::existing
+        || manager_get_or_create.spot_rid.value () != "manager-requested-stage"
+        || manager_existing.spot_rid.value () != "manager-requested-stage"
+        || !context_manager.find_spot (manager_requested_rid)) {
+        return 138;
+    }
+    if (!context_manager.close_spot (manager_typed_created.spot_rid).result ().value ()
+        || !context_manager.close_spot (manager_requested_rid).result ().value ()) {
+        return 139;
+    }
+    zlink::framework::spot_node_manager_t empty_manager;
+    bool empty_manager_create_failed = false;
+    try {
+        (void) empty_manager.create_spot ("missing");
+    }
+    catch (const zlink::framework::framework_exception_t &error) {
+        empty_manager_create_failed =
+          error.kind () == zlink::framework::framework_error_kind_t::spot_create_failed;
+    }
+    if (!empty_manager_create_failed || empty_manager.find_spot (context.spot_rid ())
+                                          || !empty_manager.list_spots ().empty ()) {
+        return 136;
+    }
+    context
+      .send_to (zlink::framework::node_rid_t{}, zlink::framework::spot_rid_t{},
+                move_request_t{1})
+      .packet_name ("move")
+      .submit ();
+    const auto empty_spot_route_request =
+      context
+        .request_to<move_reply_t> (zlink::framework::node_rid_t{},
+                                   zlink::framework::spot_rid_t{}, move_request_t{1})
+        .packet_name ("move")
+        .async ()
+        .result ();
+    if (empty_spot_route_request
+        || empty_spot_route_request.error_kind ()
+             != zlink::framework::framework_error_kind_t::spot_route_not_found) {
+        return 112;
+    }
+    zlink::framework::zlink_builder_t no_route_host;
+    auto no_route_builder = no_route_host.add_spot_node ("no-route-stage");
+    zlink::framework::detail::channel_runtime_t::from (no_route_host.message_bus ())
+      .bind_serializers (manual_serializers);
+    no_route_builder.add_spot<stage_spot_t> ("stage");
+    auto no_route_spot = no_route_builder.create_spot ("stage");
+    auto no_route_context = no_route_spot.context;
+    const auto no_route_request =
+      no_route_context
+        .request_to<move_reply_t> (zlink::framework::node_rid_t::from_string ("remote-node"),
+                                   zlink::framework::spot_rid_t::from_string ("remote-spot"),
+                                   move_request_t{2})
+        .packet_name ("move")
+        .async ()
+        .result ();
+    if (no_route_request
+        || no_route_request.error_kind ()
+             != zlink::framework::framework_error_kind_t::spot_route_not_found) {
+        return 113;
     }
 
     const auto local_name = builder.spot_name_for (context.spot_rid ());
@@ -957,18 +1073,21 @@ int main ()
     if (!remote_route || remote_route->spot_name != "remote-stage") {
         return 5;
     }
-
-    zlink::framework::zlink_builder_t registry_host;
-    auto registry_owner = registry_host.add_spot_node ("registry-owner");
-    registry_owner.add_spot<stage_spot_t> ("stage");
-    auto registry_lookup = registry_host.add_spot_node ("registry-lookup");
-    registry_lookup.use_registry_spot_resolver ().add_spot<stage_spot_t> ("stage");
-    const auto registry_owned_spot = registry_owner.get_or_create_spot (
-      "stage", zlink::framework::spot_rid_t::from_string ("registry-room-1"));
-    const auto registry_route = registry_lookup.resolve_spot (registry_owned_spot.spot_rid);
-    if (!registry_route || registry_route->node_rid.value () != "registry-owner"
-        || registry_route->spot_name != "stage") {
-        return 90;
+    const auto location_resolved_rid =
+      zlink::framework::spot_rid_t::from_string ("location-stage");
+    recording_spot_location_resolver_t location_resolver;
+    location_resolver.address = zlink::framework::spot_address_t{
+      "manual-stage", zlink::routing_id_t::from ("location-node"),
+      zlink::routing_id_t::from ("location-stage")};
+    auto builder_runtime = zlink::framework::detail::spot_node_runtime_t::from (builder);
+    builder_runtime.bind_spot_location_resolver (location_resolver);
+    const auto location_resolved_route = builder_runtime.resolve_spot (location_resolved_rid);
+    if (!location_resolved_route
+        || location_resolved_route->node_rid.value () != "location-node"
+        || location_resolved_route->spot_rid.value () != "location-stage"
+        || location_resolver.calls != 1 || location_resolver.last_mesh_name != "manual-stage"
+        || location_resolver.last_spot_rid != "location-stage") {
+        return 114;
     }
 
     auto close_create = builder.create_spot ("stage");
@@ -1061,6 +1180,56 @@ int main ()
     if (!null_factory_failed) {
         return 58;
     }
+
+    zlink::framework::runtime::in_memory_location_store_t spot_location_store;
+    zlink::framework::runtime::location_runtime_t spot_location_runtime (
+      spot_location_store, {}, "spot-runtime-owner");
+    spot_location_runtime.start (zlink::routing_id_t::from ("spot-runtime-node"));
+    zlink::framework::runtime::location_lifecycle_t spot_location_lifecycle (
+      spot_location_runtime);
+    zlink::framework::zlink_builder_t location_bound_host;
+    auto location_bound_builder = location_bound_host.add_spot_node ("location-bound-node");
+    location_bound_builder.set_routing_id (zlink::routing_id_t::from ("location-bound-rid"))
+      .add_spot<stage_spot_t> ("stage");
+    auto location_bound_runtime =
+      zlink::framework::detail::spot_node_runtime_t::from (location_bound_builder);
+    location_bound_runtime.bind_location_lifecycle (spot_location_lifecycle);
+    auto location_bound_stage = location_bound_runtime.create_spot ("stage");
+    if (location_bound_stage.state != zlink::framework::spot_create_state_t::created) {
+        spot_location_runtime.stop ();
+        return 108;
+    }
+    auto stored_spot =
+      spot_location_store
+        .resolve_spot (zlink::framework::spot_location_key_t{
+          .mesh_name = "location-bound-node",
+          .spot_rid = zlink::routing_id_t::from (
+            std::string (location_bound_stage.spot_rid.value ()))})
+        .result ()
+        .value ();
+    if (!stored_spot || stored_spot->owner_id != "spot-runtime-owner"
+        || stored_spot->spot_type != "stage"
+        || stored_spot->node_rid.to_string () != "location-bound-rid") {
+        spot_location_runtime.stop ();
+        return 109;
+    }
+    if (!location_bound_runtime.close_spot (location_bound_stage.spot_rid).result ().value ()) {
+        spot_location_runtime.stop ();
+        return 110;
+    }
+    stored_spot =
+      spot_location_store
+        .resolve_spot (zlink::framework::spot_location_key_t{
+          .mesh_name = "location-bound-node",
+          .spot_rid = zlink::routing_id_t::from (
+            std::string (location_bound_stage.spot_rid.value ()))})
+        .result ()
+        .value ();
+    if (stored_spot.has_value ()) {
+        spot_location_runtime.stop ();
+        return 111;
+    }
+    spot_location_runtime.stop ();
 
     auto lifecycle_entry_spot = std::make_shared<entry_spot_t> ();
     auto lifecycle_stage_spot = std::make_shared<stage_spot_t> ();
@@ -1156,6 +1325,54 @@ int main ()
     if (!erased_disconnect || erased_disconnect_spot->disconnected_count != 1) {
         return 105;
     }
+    const auto erased_empty_disconnect =
+      erased_disconnect_runtime.notify_actor_disconnected_erased (zlink::framework::actor_ref_t (
+        zlink::framework::node_rid_t{}, "", "", 0));
+    if (erased_empty_disconnect
+        || erased_empty_disconnect.error_kind () != framework_error_kind_t::actor_route_not_found) {
+        return 130;
+    }
+    const auto erased_stale_disconnect =
+      erased_disconnect_runtime.notify_actor_disconnected_erased (zlink::framework::actor_ref_t (
+        zlink::framework::node_rid_t::from_string ("remote-session"), "player", "erased-player", 2));
+    if (erased_stale_disconnect
+        || erased_stale_disconnect.error_kind () != framework_error_kind_t::actor_stale_generation) {
+        return 131;
+    }
+    const auto erased_missing_disconnect =
+      erased_disconnect_runtime.notify_actor_disconnected_erased (zlink::framework::actor_ref_t (
+        zlink::framework::node_rid_t::from_string ("remote-session"), "player", "missing-player", 1));
+    if (!erased_missing_disconnect) {
+        return 132;
+    }
+    erased_disconnect_runtime.record_actor_spot (
+      zlink::framework::actor_ref_t (zlink::framework::node_rid_t::from_string ("remote-session"),
+                                     "player", "missing-context-player", 1),
+      zlink::framework::spot_rid_t::from_string ("missing-spot"));
+    const auto erased_missing_context_disconnect =
+      erased_disconnect_runtime.notify_actor_disconnected_erased (zlink::framework::actor_ref_t (
+        zlink::framework::node_rid_t::from_string ("remote-session"), "player",
+        "missing-context-player", 1));
+    if (!erased_missing_context_disconnect) {
+        return 133;
+    }
+    zlink::framework::zlink_builder_t missing_factory_host;
+    auto missing_factory_builder = missing_factory_host.add_spot_node ("missing-factory-stage");
+    missing_factory_builder.add_spot<erased_disconnect_spot_t> ("stage");
+    auto missing_factory_stage = missing_factory_builder.create_spot ("stage");
+    auto missing_factory_runtime =
+      zlink::framework::detail::spot_node_runtime_t::from (missing_factory_builder);
+    const auto missing_factory_ref = zlink::framework::actor_ref_t (
+      zlink::framework::node_rid_t::from_string ("remote-session"), "unknown", "missing-factory",
+      1);
+    missing_factory_runtime.record_actor_spot (missing_factory_ref, missing_factory_stage.spot_rid);
+    const auto erased_missing_factory_disconnect =
+      missing_factory_runtime.notify_actor_disconnected_erased (missing_factory_ref);
+    if (erased_missing_factory_disconnect
+        || erased_missing_factory_disconnect.error_kind ()
+             != framework_error_kind_t::actor_route_not_found) {
+        return 134;
+    }
     if (!lifecycle_gateway.manager ().find ("joined-player")) {
         return 85;
     }
@@ -1245,6 +1462,24 @@ int main ()
         || direct_destroy.error_kind () != framework_error_kind_t::actor_route_not_found) {
         return 71;
     }
+    auto empty_destroy =
+      lifecycle_entry_context.destroyActor (zlink::framework::actor_ref_t{}, destroyActor_state)
+        .result ();
+    if (empty_destroy
+        || empty_destroy.error_kind () != framework_error_kind_t::actor_route_not_found) {
+        return 107;
+    }
+    auto wrong_owner_destroy = lifecycle_entry_context
+                                 .destroyActor (
+                                   zlink::framework::actor_ref_t (
+                                     zlink::framework::node_rid_t::from_string ("other-node"),
+                                     "player", "destroy-player", 1),
+                                   destroyActor_state)
+                                 .result ();
+    if (wrong_owner_destroy
+        || wrong_owner_destroy.error_kind () != framework_error_kind_t::actor_route_not_found) {
+        return 108;
+    }
     auto destroy_entry_join =
       destroy_context
         .join_entry_spot (zlink::framework::node_rid_t::from_string ("lifecycle-stage"),
@@ -1254,6 +1489,18 @@ int main ()
     if (!destroy_entry_join || lifecycle_stage_spot->left_count != 2
         || lifecycle_entry_spot->joined_count != 3) {
         return 72;
+    }
+    auto stale_destroy = lifecycle_entry_context
+                           .destroyActor (
+                             zlink::framework::actor_ref_t (
+                               destroy_context.actor_ref ().node_rid (),
+                               std::string (destroy_context.actor_ref ().actor_type ()),
+                               std::string (destroy_context.actor_ref ().actor_id ()),
+                               destroy_context.actor_ref ().generation () + 1),
+                             destroyActor_state)
+                           .result ();
+    if (!stale_destroy || !lifecycle_gateway.manager ().find ("destroy-player")) {
+        return 109;
     }
     const auto entry_left_before_destroy = lifecycle_entry_spot->left_count;
     auto destroy_result =
@@ -1300,6 +1547,40 @@ int main ()
         .result ();
     if (!leave_stage_join || lifecycle_stage_spot->joined_count != 3) {
         return 76;
+    }
+    auto empty_leave =
+      lifecycle_stage.context.leaveActor (zlink::framework::actor_ref_t{}, leaveActor_state).result ();
+    if (empty_leave
+        || empty_leave.error_kind () != framework_error_kind_t::actor_route_not_found) {
+        return 110;
+    }
+    auto wrong_spot_leave =
+      lifecycle_stage.context.leaveActor (lifecycle_actor_context.actor_ref (), leaveActor_state)
+        .result ();
+    if (wrong_spot_leave
+        || wrong_spot_leave.error_kind () != framework_error_kind_t::actor_route_not_found) {
+        return 111;
+    }
+    auto stale_leave = lifecycle_stage.context
+                         .leaveActor (
+                           zlink::framework::actor_ref_t (
+                             leave_context.actor_ref ().node_rid (),
+                             std::string (leave_context.actor_ref ().actor_type ()),
+                             std::string (leave_context.actor_ref ().actor_id ()),
+                             leave_context.actor_ref ().generation () + 1),
+                           leaveActor_state)
+                         .result ();
+    if (stale_leave
+        || stale_leave.error_kind () != framework_error_kind_t::actor_stale_generation) {
+        return 112;
+    }
+    auto unjoined_actor =
+      lifecycle_gateway.manager ().create ("player", "context-unjoined-player").value ();
+    auto unjoined_leave =
+      lifecycle_stage.context.leaveActor (unjoined_actor.context ().actor_ref (), leaveActor_state)
+        .result ();
+    if (!unjoined_leave) {
+        return 113;
     }
     const auto stage_left_before_context_leave = lifecycle_stage_spot->left_count;
     const auto entry_joined_before_context_leave = lifecycle_entry_spot->joined_count;
@@ -1545,6 +1826,7 @@ int main ()
     const auto routed_actor_ref = zlink::framework::actor_ref_t (
       zlink::framework::node_rid_t::from_string ("play-a"), "relay-player", "routed-actor", 9);
     relay_spot_t::left_count = 0;
+    relay_spot_t::disconnected_count = 0;
     auto routed_join = relay_runtime.join_remote_actor_to_spot_erased (
       routed_actor_ref, relay_spot.spot_rid, zlink::message_t{});
     if (!routed_join || routed_join.value ().result_code != 0
@@ -1565,6 +1847,20 @@ int main ()
     }
     zlink::framework::serializer_registry_t route_join_serializers;
     zlink::framework::detail::register_spot_route_packet_serializers (route_join_serializers);
+    route_join_serializers.add<relay_request_t> (
+      [] (const relay_request_t &value) {
+          return zlink::framework::encoded_payload_t::from_string (std::to_string (value.value));
+      },
+      [] (const zlink::framework::encoded_payload_t &payload) {
+          return relay_request_t{std::stoi (payload.to_string ())};
+      });
+    route_join_serializers.add<relay_reply_t> (
+      [] (const relay_reply_t &value) {
+          return zlink::framework::encoded_payload_t::from_string (value.value);
+      },
+      [] (const zlink::framework::encoded_payload_t &payload) {
+          return relay_reply_t{payload.to_string ()};
+      });
     zlink::framework::service_collection_t route_join_services;
     auto route_join_provider = route_join_services.build_provider ();
     zlink::framework::detail::route_handler_registry_t route_join_handlers;
@@ -1622,6 +1918,89 @@ int main ()
     }
     if (!route_join_actor_gateway.actor_bound ("routed-through-channel")) {
         return 95;
+    }
+    zlink::framework::spot_actor_message_metadata_t route_packet_metadata;
+    route_packet_metadata.content_type = "application/x-msgpack";
+    route_packet_metadata.values.emplace ("trace", "route-packet");
+    const auto route_packet_request =
+      zlink::framework::detail::make_spot_actor_packet_route_request (
+        zlink::framework::actor_ref_t (zlink::framework::node_rid_t::from_string ("play-b"),
+                                       "relay-player", "routed-through-channel", 3),
+        relay_spot.spot_rid, "relay.request", zlink::message_t::from (std::string ("71")),
+        route_packet_metadata);
+    zlink::framework::runtime::messaging::envelope_header_t route_packet_header;
+    route_packet_header.kind = zlink::framework::runtime::messaging::message_kind_t::request;
+    route_packet_header.channel_name = "relay.route";
+    route_packet_header.message_name =
+      zlink::framework::detail::spot_actor_packet_route_request_t::packet_name;
+    auto route_packet_parts = route_join_envelope.encode_parts (
+      route_packet_header,
+      std::type_index (typeid (zlink::framework::detail::spot_actor_packet_route_request_t)),
+      &route_packet_request, route_join_serializers);
+    auto route_packet_dispatch =
+      route_join_dispatcher.dispatch (zlink::framework::detail::route_received_packet_t{
+        zlink::routing_id_t::from (std::string ("play-b")), 96, route_packet_parts});
+    if (!route_packet_dispatch || !route_packet_dispatch.value ()
+        || route_packet_dispatch.value ()->request_seq.value_or (0) != 96) {
+        return 96;
+    }
+    auto route_packet_reply_body =
+      route_join_envelope.decode_body (route_packet_dispatch.value ()->parts);
+    if (!route_packet_reply_body) {
+        return 97;
+    }
+    const auto route_packet_reply =
+      route_join_serializers.get<zlink::framework::detail::spot_actor_packet_route_reply_t> ()
+        .deserialize (
+          zlink::framework::detail::encoded_payload_from_raw (route_packet_reply_body.value ()));
+    if (!route_packet_reply.actor_ref_present) {
+        return 98;
+    }
+    if (!route_packet_reply.has_reply) {
+        return 100;
+    }
+    if (route_packet_reply.actor_node_rid != "relay-stage") {
+        return 101;
+    }
+    if (route_packet_reply.actor_id != "routed-through-channel") {
+        return 102;
+    }
+    if (zlink::message_t::from (route_packet_reply.payload).to_string ()
+        != "routed-through-channel:71") {
+        return 103;
+    }
+    const auto route_disconnect_request =
+      zlink::framework::detail::make_spot_actor_disconnect_route_request (
+        zlink::framework::actor_ref_t (zlink::framework::node_rid_t::from_string ("play-b"),
+                                       "relay-player", "routed-through-channel", 3));
+    zlink::framework::runtime::messaging::envelope_header_t route_disconnect_header;
+    route_disconnect_header.kind = zlink::framework::runtime::messaging::message_kind_t::request;
+    route_disconnect_header.channel_name = "relay.route";
+    route_disconnect_header.message_name =
+      zlink::framework::detail::spot_actor_disconnect_route_request_t::packet_name;
+    auto route_disconnect_parts = route_join_envelope.encode_parts (
+      route_disconnect_header,
+      std::type_index (typeid (zlink::framework::detail::spot_actor_disconnect_route_request_t)),
+      &route_disconnect_request, route_join_serializers);
+    auto route_disconnect_dispatch =
+      route_join_dispatcher.dispatch (zlink::framework::detail::route_received_packet_t{
+        zlink::routing_id_t::from (std::string ("play-b")), 99, route_disconnect_parts});
+    if (!route_disconnect_dispatch || !route_disconnect_dispatch.value ()
+        || route_disconnect_dispatch.value ()->request_seq.value_or (0) != 99
+        || relay_spot_t::disconnected_count != 1) {
+        return 99;
+    }
+    auto route_disconnect_reply_body =
+      route_join_envelope.decode_body (route_disconnect_dispatch.value ()->parts);
+    if (!route_disconnect_reply_body) {
+        return 104;
+    }
+    const auto route_disconnect_reply =
+      route_join_serializers.get<zlink::framework::detail::spot_actor_disconnect_route_reply_t> ()
+        .deserialize (zlink::framework::detail::encoded_payload_from_raw (
+          route_disconnect_reply_body.value ()));
+    if (!route_disconnect_reply.accepted) {
+        return 105;
     }
     relay_actor_t relay_actor{"relay-actor"};
     zlink::framework::actor_ref_t relay_actor_ref (
@@ -1830,6 +2209,43 @@ int main ()
         return 6;
     }
 
+    bool duplicate_actor_factory_failed = false;
+    try {
+        builder.add_actor_factory<player_actor_factory_t> ("player");
+    }
+    catch (const zlink::framework::framework_exception_t &error) {
+        duplicate_actor_factory_failed =
+          error.kind () == framework_error_kind_t::actor_already_exists;
+    }
+    if (!duplicate_actor_factory_failed) {
+        return 128;
+    }
+
+    bool duplicate_entry_spot_failed = false;
+    try {
+        builder.add_entry_spot<entry_spot_t> ();
+    }
+    catch (const zlink::framework::framework_exception_t &error) {
+        duplicate_entry_spot_failed =
+          error.kind () == framework_error_kind_t::request_protocol_error;
+    }
+    if (!duplicate_entry_spot_failed) {
+        return 129;
+    }
+
+    bool empty_entry_factory_failed = false;
+    try {
+        zlink::framework::spot_node_builder_t invalid;
+        invalid.add_entry_spot<entry_spot_t> ({});
+    }
+    catch (const zlink::framework::framework_exception_t &error) {
+        empty_entry_factory_failed =
+          error.kind () == framework_error_kind_t::request_protocol_error;
+    }
+    if (!empty_entry_factory_failed) {
+        return 130;
+    }
+
     bool duplicate_resolver_failed = false;
     try {
         builder.add_spot_resolver ("remote", [] (zlink::framework::spot_rid_t) {
@@ -1843,56 +2259,30 @@ int main ()
         return 7;
     }
 
-    bool empty_discovery_failed = false;
+    bool empty_resolver_name_failed = false;
     try {
-        zlink::framework::spot_node_builder_t invalid;
-        invalid.use_discovery ("");
-    }
-    catch (const zlink::framework::framework_exception_t &error) {
-        empty_discovery_failed = error.kind () == framework_error_kind_t::request_protocol_error;
-    }
-    if (!empty_discovery_failed) {
-        return 8;
-    }
-
-    zlink::framework::spot_node_builder_t registry;
-    registry.use_registry_spot_remote_addresses ("game.route");
-    if (!registry.snapshot ().registry_spot_route_channel
-        || *registry.snapshot ().registry_spot_route_channel != "game.route") {
-        return 9;
-    }
-
-    zlink::framework::spot_node_builder_t registry_alias;
-    registry_alias.use_registry_spot_resolver ("alias.route");
-    if (!registry_alias.snapshot ().registry_spot_route_channel
-        || *registry_alias.snapshot ().registry_spot_route_channel != "alias.route") {
-        return 90;
-    }
-
-    bool registry_conflict_failed = false;
-    try {
-        registry.add_spot_resolver ("custom", [] (zlink::framework::spot_rid_t) {
+        builder.add_spot_resolver ("", [] (zlink::framework::spot_rid_t) {
             return std::optional<zlink::framework::spot_route_t>{};
         });
     }
     catch (const zlink::framework::framework_exception_t &error) {
-        registry_conflict_failed = error.kind () == framework_error_kind_t::request_protocol_error;
-    }
-    if (!registry_conflict_failed) {
-        return 10;
-    }
-
-    bool empty_registry_route_failed = false;
-    try {
-        zlink::framework::spot_node_builder_t invalid;
-        invalid.use_registry_spot_remote_addresses ("");
-    }
-    catch (const zlink::framework::framework_exception_t &error) {
-        empty_registry_route_failed =
+        empty_resolver_name_failed =
           error.kind () == framework_error_kind_t::request_protocol_error;
     }
-    if (!empty_registry_route_failed) {
-        return 11;
+    if (!empty_resolver_name_failed) {
+        return 131;
+    }
+
+    bool empty_resolver_callback_failed = false;
+    try {
+        builder.add_spot_resolver ("empty-callback", {});
+    }
+    catch (const zlink::framework::framework_exception_t &error) {
+        empty_resolver_callback_failed =
+          error.kind () == framework_error_kind_t::request_protocol_error;
+    }
+    if (!empty_resolver_callback_failed) {
+        return 132;
     }
 
     bool empty_router_manual_endpoint_failed = false;
@@ -1932,6 +2322,33 @@ int main ()
     if (context.packet_registry ().size () != 1
         || context.packet_registry ()[0].packet_name != "state.update") {
         return 12;
+    }
+
+    zlink::framework::spot_context_t empty_context;
+    if (empty_context.close ().result ().value ()) {
+        return 127;
+    }
+    bool empty_context_outbound_failed = false;
+    try {
+        (void) empty_context.outbound ();
+    }
+    catch (const zlink::framework::framework_exception_t &error) {
+        empty_context_outbound_failed =
+          error.kind () == zlink::framework::framework_error_kind_t::request_failed;
+    }
+    if (!empty_context_outbound_failed) {
+        return 128;
+    }
+    auto empty_context_request =
+      empty_context
+        .request_to<move_reply_t> (zlink::framework::node_rid_t::from_string ("remote-node"),
+                                   zlink::framework::spot_rid_t::from_string ("remote-spot"),
+                                   move_request_t{1})
+        .async ()
+        .result ();
+    if (empty_context_request
+        || empty_context_request.error_kind () != framework_error_kind_t::request_protocol_error) {
+        return 129;
     }
 
     context.handlers ()

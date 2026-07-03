@@ -34,9 +34,8 @@ int main ()
     zlink::framework::app_t app = zlink::framework::app_t::create ();
 
     int socket_events = 0;
-    int discovery_events = 0;
-    int registry_events = 0;
-    int registry_summary_events = 0;
+    int location_events = 0;
+    int location_summary_events = 0;
     int spot_events = 0;
     int stream_events = 0;
     int actor_events = 0;
@@ -53,8 +52,7 @@ int main ()
       .add_socket_events ("profile.server")
       .add_socket_events ("filtered.server",
                           {zlink::framework::socket_event_kind_t::connection_ready})
-      .add_discovery_events ("profile.discovery")
-      .add_registry_events ("registry", 1s)
+      .add_location_events ("location", 1s)
       .add_spot_events ("stage-node", 1s)
       .add_spot_timer_events ("spot-timer")
       .add_stream_events ("game.stream")
@@ -77,29 +75,19 @@ int main ()
                 ++ignored_events;
             }
         })
-      .on<zlink::framework::discovery_event_payload_t> (
-        [&] (const zlink::framework::discovery_event_payload_t &event) {
-            if (event.source_name == "profile.discovery"
-                && event.endpoint == "tcp://registry:5551") {
-                ++discovery_events;
-            }
-            if (event.source_name == "ignored.discovery") {
-                ++ignored_events;
-            }
-        })
-      .on<zlink::framework::registry_event_payload_t> (
-        [&] (const zlink::framework::registry_event_payload_t &event) {
-            if (event.source_name == "registry"
-                && event.event == zlink::framework::registry_event_kind_t::topology_changed
+      .on<zlink::framework::location_event_payload_t> (
+        [&] (const zlink::framework::location_event_payload_t &event) {
+            if (event.source_name == "location"
+                && event.event == zlink::framework::location_event_kind_t::topology_changed
                 && !event.topology.empty ()) {
-                ++registry_events;
+                ++location_events;
             }
-            if (event.source_name == "registry"
-                && event.event == zlink::framework::registry_event_kind_t::service_summary_changed
+            if (event.source_name == "location"
+                && event.event == zlink::framework::location_event_kind_t::service_summary_changed
                 && !event.service_summary.empty ()) {
-                ++registry_summary_events;
+                ++location_summary_events;
             }
-            if (event.source_name == "ignored.registry") {
+            if (event.source_name == "ignored.location") {
                 ++ignored_events;
             }
         })
@@ -174,31 +162,40 @@ int main ()
       zlink::framework::runtime_event_base_t{"unregistered.server"},
       zlink::framework::socket_event_kind_t::connected, "tcp://127.0.0.1:7001",
       "tcp://127.0.0.1:7002", 1, 0});
-    runtime.publish_discovery (zlink::framework::discovery_event_payload_t{
-      zlink::framework::runtime_event_base_t{"profile.discovery"},
-      zlink::framework::discovery_event_kind_t::connected, "tcp://registry:5551", "connected"});
-    runtime.publish_discovery (zlink::framework::discovery_event_payload_t{
-      zlink::framework::runtime_event_base_t{"ignored.discovery"},
-      zlink::framework::discovery_event_kind_t::connected, "tcp://registry:5551", "connected"});
-    runtime.publish_registry_snapshot (
-      "registry",
-      zlink::framework::registry_status_t{zlink::framework::registry_state_t::running, "registry",
-                                          "tcp://0.0.0.0:5550", "tcp://0.0.0.0:5551", 0, 0},
-      {zlink::framework::topology_entry_t{"node", zlink::framework::service_kind_t::spot,
-                                          zlink::framework::service_role_t::spot_node, "stage-node",
-                                          zlink::framework::topology_source_t::embedded,
-                                          zlink::framework::topology_state_t::active}},
-      {zlink::framework::service_summary_entry_t{"stage-node",
-                                                 zlink::framework::service_kind_t::spot,
-                                                 zlink::framework::service_role_t::spot_node, 1}});
-    runtime.publish_registry_snapshot (
-      "ignored.registry",
-      zlink::framework::registry_status_t{zlink::framework::registry_state_t::running, "registry",
-                                          "tcp://0.0.0.0:5550", "tcp://0.0.0.0:5551", 0, 0},
-      {zlink::framework::topology_entry_t{"node", zlink::framework::service_kind_t::spot,
-                                          zlink::framework::service_role_t::spot_node, "stage-node",
-                                          zlink::framework::topology_source_t::embedded,
-                                          zlink::framework::topology_state_t::active}},
+    runtime.publish_location_snapshot (
+      "location",
+      zlink::framework::location_runtime_status_t{.store_healthy = true,
+                                                  .watch_enabled = false,
+                                                  .polling_interval = 1s,
+                                                  .owner_lease_healthy = true},
+      {zlink::framework::location_topology_entry_t{
+        .kind = zlink::framework::location_kind_t::spot,
+        .mesh_name = std::string ("stage-node"),
+        .role = zlink::framework::location_role_t::spot,
+        .node_rid = zlink::routing_id_t::from ("node"),
+        .state = zlink::framework::location_topology_state_t::ready,
+        .desired_count = 1,
+        .ready_count = 1}},
+      {zlink::framework::location_service_summary_t{
+        .mesh_name = "stage-node",
+        .auto_connect_type = zlink::framework::location_auto_connect_type_t::spot_mesh,
+        .role = zlink::framework::location_role_t::spot,
+        .total_count = 1,
+        .ready_count = 1}});
+    runtime.publish_location_snapshot (
+      "ignored.location",
+      zlink::framework::location_runtime_status_t{.store_healthy = true,
+                                                  .watch_enabled = false,
+                                                  .polling_interval = 1s,
+                                                  .owner_lease_healthy = true},
+      {zlink::framework::location_topology_entry_t{
+        .kind = zlink::framework::location_kind_t::spot,
+        .mesh_name = std::string ("stage-node"),
+        .role = zlink::framework::location_role_t::spot,
+        .node_rid = zlink::routing_id_t::from ("node"),
+        .state = zlink::framework::location_topology_state_t::ready,
+        .desired_count = 1,
+        .ready_count = 1}},
       {});
     runtime.publish_spot_snapshot (
       zlink::framework::spot_event_payload_t{zlink::framework::runtime_event_base_t{"stage-node"},
@@ -256,8 +253,8 @@ int main ()
     app.metrics ().add_runtime_metrics ().record_runtime_metric ("active_http_requests", 3,
                                                                  {{"surface", "http"}});
 
-    if (socket_events != 1 || filtered_socket_events != 1 || discovery_events != 1
-        || registry_events != 1 || registry_summary_events != 1 || spot_events != 1
+    if (socket_events != 1 || filtered_socket_events != 1 || location_events != 1
+        || location_summary_events != 1 || spot_events != 1
         || stream_events != 2 || actor_events != 1 || metric_events != 1) {
         return 1;
     }
@@ -301,15 +298,15 @@ int main ()
         return 11;
     }
 
-    bool invalid_registry_interval_failed = false;
+    bool invalid_location_interval_failed = false;
     try {
-        zlink::framework::app_t::create ().monitoring ().add_registry_events ("registry", 0ms);
+        zlink::framework::app_t::create ().monitoring ().add_location_events ("location", 0ms);
     }
     catch (const zlink::framework::framework_exception_t &error) {
-        invalid_registry_interval_failed =
+        invalid_location_interval_failed =
           error.kind () == zlink::framework::framework_error_kind_t::request_protocol_error;
     }
-    if (!invalid_registry_interval_failed) {
+    if (!invalid_location_interval_failed) {
         return 12;
     }
 
@@ -382,7 +379,7 @@ int main ()
     app.health ()
       .add_zlink_runtime_check ()
       .add_channel_check ("profile.server")
-      .add_registry_check ("registry")
+      .add_location_check ("location")
       .add_stream_endpoint_check ("game.stream")
       .add_hosted_service_check ("worker");
     auto healthy = app.health ().report ();
@@ -412,23 +409,14 @@ int main ()
     zlink::framework::zlink_builder_t auto_zlink;
     zlink::framework::serializer_registry_t auto_serializers;
     int auto_channel_events = 0;
-    int auto_discovery_events = 0;
     int auto_spot_events = 0;
     auto_monitoring.add_socket_events ("auto.channel")
-      .add_discovery_events ("channel.discovery")
       .add_spot_events ("auto.spot.node", 1s)
       .on<zlink::framework::socket_event_payload_t> (
         [&] (const zlink::framework::socket_event_payload_t &event) {
             if (event.source_name == "auto.channel"
                 && event.event == zlink::framework::socket_event_kind_t::peer_admission_changed) {
                 ++auto_channel_events;
-            }
-        })
-      .on<zlink::framework::discovery_event_payload_t> (
-        [&] (const zlink::framework::discovery_event_payload_t &event) {
-            if (event.source_name == "channel.discovery"
-                && event.endpoint == "tcp://registry.auto:5551") {
-                ++auto_discovery_events;
             }
         })
       .on<zlink::framework::spot_event_payload_t> (
@@ -447,8 +435,6 @@ int main ()
       .bind_serializers (auto_serializers);
     zlink::framework::detail::bind_zlink_monitoring (auto_zlink, auto_monitoring);
     zlink::framework::detail::channel_runtime_t::from (auto_zlink.message_bus ())
-      .bind_discovery (zlink::framework::discovery_snapshot_t{{"tcp://registry.auto:5551"}});
-    zlink::framework::detail::channel_runtime_t::from (auto_zlink.message_bus ())
       .set_server_peer_weight ("auto.channel", zlink::peer_weight_t::value (7));
     auto spot_runtime =
       zlink::framework::detail::spot_node_runtime_t::from (auto_zlink, "auto.spot.node");
@@ -459,7 +445,7 @@ int main ()
     if (created_spot.state != zlink::framework::spot_create_state_t::created) {
         return 14;
     }
-    if (auto_channel_events != 1 || auto_discovery_events != 1 || auto_spot_events != 1) {
+    if (auto_channel_events != 1 || auto_spot_events != 1) {
         return 15;
     }
 

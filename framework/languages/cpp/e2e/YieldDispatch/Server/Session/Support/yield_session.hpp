@@ -59,41 +59,8 @@ class yield_session_t final : public zlink::framework::packet_stream_session_t
         const auto packet = std::string (dispatch.packet_name ());
         if (packet == yd::bind_yield_actors_req_t::packet_name) {
             auto request = payload.parse_json<yd::bind_yield_actors_req_t> ();
-            (void) co_await request_control<yd::ensure_spot_res_t> (
-              yd::ensure_spot_req_t{.spot_rid = request.spot_rid},
-              yd::ensure_spot_req_t::packet_name, target_or_default (dispatch));
-            yd::bind_yield_actors_res_t reply{.spot_rid = request.spot_rid};
-            for (const auto &actor_id : request.actor_ids) {
-                auto created =
-                  _actors.get_or_create (yd::actor_type, actor_id,
-                                         yd::delay_req_t{.request_id = "bind-" + actor_id,
-                                                         .delay_ms = 0,
-                                                         .marker = "bind"});
-                if (!created) {
-                    throw zlink::framework::framework_exception_t (
-                      created.error_kind (),
-                      created.error () ? created.error ()->what ()
-                                       : "failed to create yield actor");
-                }
-                auto joined =
-                  co_await created.value ()
-                    .context ()
-                    .join_spot (zlink::framework::spot_rid_t::from_string (request.spot_rid),
-                                yd::delay_req_t{.request_id = "bind-" + actor_id,
-                                                .delay_ms = 0,
-                                                .marker = "bind"})
-                    .timeout (std::chrono::milliseconds (3000))
-                    .template async<yd::delay_res_t> ();
-                if (joined.result_code != 0) {
-                    throw zlink::framework::framework_exception_t (
-                      zlink::framework::framework_error_kind_t::request_failed,
-                      "yield actor join was rejected: " + actor_id);
-                }
-                reply.actors.push_back (
-                  {.actor_id = actor_id,
-                   .node_rid = std::string (joined.actor.node_rid ().value ()),
-                   .generation = joined.actor.generation ()});
-            }
+            auto reply = co_await request_control<yd::bind_yield_actors_res_t> (
+              request, packet, target_or_default (dispatch));
             for (const auto &actor : reply.actors) {
                 (void) co_await _actors.bind (to_actor_ref (actor)).async ();
                 _gateway.bind_session_stream (actor.actor_id, stream,
@@ -355,7 +322,7 @@ class yield_session_t final : public zlink::framework::packet_stream_session_t
                const std::string &packet)
     {
         _routes
-          .send (yd::control_channel, target,
+          .send (yd::spot_route_channel, target,
                  zlink::framework::spot_rid_t::from_string (spot_rid), request)
           .packet_name (packet)
           .submit ();
@@ -372,7 +339,7 @@ class yield_session_t final : public zlink::framework::packet_stream_session_t
     {
         auto reply =
           co_await _routes
-            .request (yd::control_channel, target,
+            .request (yd::spot_route_channel, target,
                       zlink::framework::spot_rid_t::from_string (spot_rid), request)
             .packet_name (packet)
             .timeout (timeout)

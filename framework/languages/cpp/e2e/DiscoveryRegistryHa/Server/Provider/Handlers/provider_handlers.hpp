@@ -6,9 +6,11 @@
 #include <zlink/framework.hpp>
 
 #include <chrono>
+#include <csignal>
+#include <nlohmann/json.hpp>
 #include <thread>
 
-namespace zlink::framework::e2e::discovery_registry_ha::provider
+namespace zlink::framework::e2e::store_failure::provider
 {
 
 class profile_request_handler_t
@@ -84,4 +86,64 @@ class evidence_wait_handler_t
     provider_evidence_store_t &_evidence;
 };
 
-} // namespace zlink::framework::e2e::discovery_registry_ha::provider
+class query_status_handler_t
+{
+  public:
+    using dependency_types = zlink::framework::dependency_list_t<zlink::framework::location_runtime_query_t>;
+
+    explicit query_status_handler_t (zlink::framework::location_runtime_query_t &query) :
+        _query (query)
+    {
+    }
+
+    zlink::framework::http_response_t handle (const zlink::framework::http_request_t &)
+    {
+        const auto status = _query.status ().result ().value ();
+        zlink::framework::http_response_t response;
+        response.body = nlohmann::json (runtime_status_res_t{
+          .store_healthy = status.store_healthy,
+          .watch_enabled = status.watch_enabled,
+          .owner_lease_healthy = status.owner_lease_healthy,
+          .has_last_refresh_at = status.last_refresh_at.has_value (),
+          .last_error = status.last_error.value_or (std::string{})})
+                          .dump ();
+        return response;
+    }
+
+  private:
+    zlink::framework::location_runtime_query_t &_query;
+};
+
+class shutdown_handler_t
+{
+  public:
+    zlink::framework::http_response_t handle (const zlink::framework::http_request_t &)
+    {
+        std::thread ([] {
+            std::this_thread::sleep_for (std::chrono::milliseconds (50));
+            std::raise (SIGTERM);
+        }).detach ();
+
+        zlink::framework::http_response_t response;
+        response.body = R"({"status":"stopping"})";
+        return response;
+    }
+};
+
+class crash_handler_t
+{
+  public:
+    zlink::framework::http_response_t handle (const zlink::framework::http_request_t &)
+    {
+        std::thread ([] {
+            std::this_thread::sleep_for (std::chrono::milliseconds (50));
+            std::raise (SIGABRT);
+        }).detach ();
+
+        zlink::framework::http_response_t response;
+        response.body = R"({"status":"crashing"})";
+        return response;
+    }
+};
+
+} // namespace zlink::framework::e2e::store_failure::provider

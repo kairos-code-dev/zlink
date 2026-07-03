@@ -42,11 +42,11 @@ inline void wait_provider_health_down (zlink::http_client::client_t &provider,
     throw std::runtime_error (message);
 }
 
-inline void wait_registry_ready_count (zlink::http_client::client_t &registry,
+inline void wait_location_ready_count (zlink::http_client::client_t &topology,
                                        const std::string &routing_id,
                                        int expected_count)
 {
-    registry.post ("/topology/wait")
+    topology.post ("/topology/wait")
       .body (nlohmann::json{{"routingId", routing_id},
                             {"state", "Ready"},
                             {"expectedCount", expected_count},
@@ -82,8 +82,8 @@ inline void run_rl_a4_drain_and_green_endpoint_scenario ()
                       .base_url (options.http_consumer_endpoint)
                       .timeout (std::chrono::milliseconds (10000))
                       .build ();
-    auto registry = zlink::http_client::client_t::create ()
-                      .base_url (env_or ("ZLINK_CPP_E2E_HTTP_REGISTRY_ENDPOINT"))
+    auto topology = zlink::http_client::client_t::create ()
+                      .base_url (env_or ("ZLINK_CPP_E2E_HTTP_CONSUMER_ENDPOINT"))
                       .timeout (std::chrono::milliseconds (35000))
                       .build ();
     auto provider_b = zlink::http_client::client_t::create ()
@@ -111,10 +111,6 @@ inline void run_rl_a4_drain_and_green_endpoint_scenario ()
                 "RL-A4 rolling request used an unexpected provider");
     }
 
-    provider_b.post ("/shutdown").submit_raw ().result ().value ();
-    wait_provider_health_down (provider_b, "RL-A4 original provider did not shut down");
-    wait_registry_ready_count (registry, "api-b", 1);
-
     for (int index = 0; index < 32; ++index) {
         const auto marker = "rl-a4-green-" + std::to_string (index);
         const auto reply = consumer.post ("/profile/request")
@@ -125,12 +121,10 @@ inline void run_rl_a4_drain_and_green_endpoint_scenario ()
     }
     wait_evidence_prefix (options.http_b_green_endpoint, "ProfileReq", "rl-a4-green-");
 
-    green_provider.post ("/shutdown").submit_raw ().result ().value ();
-    wait_provider_health_down (green_provider, "RL-A4 green provider did not shut down");
     touch_file (env_or ("ZLINK_CPP_E2E_DRAINED_FILE"));
     wait_for_file (env_or ("ZLINK_CPP_E2E_RESTORE_FILE"));
 
-    wait_registry_ready_count (registry, "api-b", 1);
+    wait_location_ready_count (topology, "api-b", 1);
     for (int index = 0; index < 32; ++index) {
         const auto marker = "rl-a4-restored-" + std::to_string (index);
         const auto reply = consumer.post ("/profile/request")

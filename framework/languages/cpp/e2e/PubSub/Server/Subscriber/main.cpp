@@ -2,6 +2,7 @@
 
 #include "Configuration/subscriber_options.hpp"
 #include "Endpoints/operational_endpoints.hpp"
+#include "../Shared/location_store.hpp"
 
 #include <memory>
 
@@ -31,13 +32,9 @@ int main (int argc, char **argv)
             });
         options.services ().add_singleton<ps_subscriber::evidence_store_t> (std::move (state));
         ps_server::configure_codecs (options.codecs ());
-        options.use_discovery ().add_registry_endpoint (pubsub.registry_router);
+        ps_server::add_redis_location_store (options, pubsub.redis_endpoint, pubsub.redis_key_prefix);
         auto channel = options.add_fanout_channel (zlink::framework::e2e::pubsub::event_channel);
-        if (pubsub.publisher_endpoint.empty ()) {
-            channel.enable_subscriber ();
-        } else {
-            channel.enable_subscriber (pubsub.publisher_endpoint);
-        }
+        channel.enable_subscriber ();
         channel.use_handler_group (zlink::framework::e2e::pubsub::handler_group);
         options.http ()
           .listen (pubsub.http_endpoint)

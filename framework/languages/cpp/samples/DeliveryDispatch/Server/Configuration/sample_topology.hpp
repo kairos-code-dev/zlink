@@ -24,8 +24,8 @@ inline std::string deliverydispatch_log_dir ()
 
 struct sample_topology_t
 {
-    std::string registry_router_endpoint = env_or ("DELIVERYDISPATCH_REGISTRY", "tcp://127.0.0.1:7391");
-    std::string registry_pub_endpoint = env_or ("DELIVERYDISPATCH_REGISTRY_PUB", "tcp://127.0.0.1:7390");
+    std::string redis_endpoint = env_or ("DELIVERYDISPATCH_REDIS_ENDPOINT", "");
+    std::string redis_key_prefix = env_or ("DELIVERYDISPATCH_REDIS_KEY_PREFIX", "");
     std::string dispatch_api_http_url = env_or ("DELIVERYDISPATCH_API_HTTP", "http://127.0.0.1:7392");
     std::string dispatch_center_route_endpoint =
       env_or ("DELIVERYDISPATCH_CENTER_ROUTE", "tcp://127.0.0.1:7394");

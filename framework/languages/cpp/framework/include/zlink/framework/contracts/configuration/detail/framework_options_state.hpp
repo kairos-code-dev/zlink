@@ -10,7 +10,7 @@
 #include <zlink/framework/contracts/eventing/events.hpp>
 #include <zlink/framework/contracts/handlers/handler_registry.hpp>
 #include <zlink/framework/contracts/http/http.hpp>
-#include <zlink/framework/contracts/registry/registry.hpp>
+#include <zlink/framework/contracts/locations/location.hpp>
 #include <zlink/framework/contracts/streams/stream.hpp>
 
 #include <algorithm>
@@ -23,6 +23,7 @@
 #include <set>
 #include <string>
 #include <typeindex>
+#include <typeinfo>
 #include <tuple>
 #include <utility>
 #include <vector>
@@ -315,10 +316,6 @@ struct framework_options_state_t
     std::vector<std::function<void (zlink_builder_t &)>> deferred_zlink_actions;
     std::map<std::string, std::function<void (zlink_builder_t &)>> keyed_zlink_actions;
     zlink_builder_t *active_zlink = nullptr;
-    bool registry_spot_remote_addresses_enabled = false;
-    std::optional<std::string> registry_spot_route_channel;
-    std::vector<std::string> registry_discovery_endpoints;
-    std::set<std::string> discovery_backed_capabilities;
     std::set<std::string> client_server_channels;
     std::set<std::string> fanout_channels;
     std::set<std::string> client_server_channels_with_client;
@@ -332,6 +329,14 @@ struct framework_options_state_t
     std::set<std::string> route_mesh_channels_with_bind;
     std::set<std::string> route_mesh_channels_with_client;
     std::map<std::string, stream_session_factory_t> stream_session_factories;
+    std::optional<std::type_index> peer_location_store_type;
+    std::optional<std::type_index> spot_location_store_type;
+    std::optional<std::type_index> actor_location_store_type;
+    std::optional<std::type_index> route_location_store_type;
+    std::optional<std::type_index> owner_lease_store_type;
+    bool use_in_memory_location_stores = false;
+    bool has_location_store_instance = false;
+    location_options_t locations;
     http_options_builder_t http;
     message_metadata_policy_t metadata_policy;
     dispatch_options_t dispatch;
@@ -345,6 +350,18 @@ struct framework_options_state_t
     void set_zlink_action (std::string key, std::function<void (zlink_builder_t &)> action)
     {
         keyed_zlink_actions[std::move (key)] = std::move (action);
+    }
+
+    bool has_any_location_store_type () const noexcept
+    {
+        return peer_location_store_type || spot_location_store_type || actor_location_store_type
+               || route_location_store_type || owner_lease_store_type;
+    }
+
+    bool has_all_location_store_types () const noexcept
+    {
+        return peer_location_store_type && spot_location_store_type && actor_location_store_type
+               && route_location_store_type && owner_lease_store_type;
     }
 };
 

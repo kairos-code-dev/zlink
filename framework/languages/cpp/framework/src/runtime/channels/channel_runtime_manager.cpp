@@ -74,6 +74,19 @@ channel_runtime_manager_t::get_or_create_publisher_bundle (const std::string &ch
     return *stored;
 }
 
+channel_runtime_bundle_t &
+channel_runtime_manager_t::get_or_create_subscriber_bundle (const std::string &channel_name)
+{
+    if (auto found = _state->subscriber_bundles.find (channel_name);
+        found != _state->subscriber_bundles.end ()) {
+        return *found->second;
+    }
+    const auto &channel = require_channel (channel_name, capability_t::subscriber);
+    auto bundle = _bundle_factory.create_subscriber_bundle (channel_name, channel);
+    auto &stored = _state->subscriber_bundles[channel_name] = std::move (bundle);
+    return *stored;
+}
+
 route_channel_runtime_t &
 channel_runtime_manager_t::get_route_channel (const std::string &router_channel_id)
 {

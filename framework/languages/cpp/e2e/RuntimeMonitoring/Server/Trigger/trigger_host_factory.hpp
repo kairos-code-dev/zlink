@@ -5,6 +5,7 @@
 #include "trigger_handlers.hpp"
 
 #include "../Shared/evidence_store.hpp"
+#include "../Shared/location_store.hpp"
 
 #include <zlink/framework.hpp>
 
@@ -21,7 +22,8 @@ inline void configure_trigger_host (zlink::framework::zlink_framework_options_t 
     framework.services ().add_singleton<server::evidence_store_t> (std::move (evidence));
     framework.services ().add_singleton<trigger_options_t> (
       std::make_unique<trigger_options_t> (options));
-    framework.use_discovery ().add_registry_endpoint (options.registry_router);
+    server::add_redis_location_store (framework, options.redis_endpoint,
+                                      options.redis_key_prefix);
     framework.add_client_server_channel (profile_channel).enable_client ();
     if (!options.http_endpoint.empty ()) {
         framework.http ()

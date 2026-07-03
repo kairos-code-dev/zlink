@@ -12,12 +12,12 @@ set(required_labels
   framework-regression
   framework-host
   framework-integration
+  framework-location
   framework-zlink
   framework-zlink-channel
   framework-zlink-spot
   framework-zlink-stream
   framework-zlink-actor-gateway
-  framework-zlink-registry
   framework-observability
   timer
   framework-http
@@ -26,21 +26,7 @@ set(required_labels
   framework-package
   framework-tooling
   framework-extension
-  framework-sample-smoke
   framework-sample-parity
-  framework-sample-api
-  framework-sample-bingo
-  framework-sample-client
-  framework-sample-deliverydispatch
-  framework-sample-gamequest
-  framework-sample-play
-  framework-sample-registry
-  framework-sample-server
-  framework-sample-session
-  framework-sample-shoppingmall
-  framework-sample-support
-  framework-sample-supportchat
-  framework-sample-tictactoe
   http-client-contract
   http-client-unit
   http-client-e2e
@@ -90,6 +76,7 @@ set(known_labels
   monitoring
   registry
   reliability
+  redis
   runtime
   scope
   serializer

@@ -19,7 +19,6 @@ struct client_options_t
 {
     std::string log_dir;
     std::string scenario;
-    std::string registry_router;
     std::string api_a_endpoint;
     std::string api_b_endpoint;
     std::string route_a_endpoint;
@@ -33,7 +32,6 @@ inline client_options_t read_client_options ()
 {
     return {.log_dir = env_or ("ZLINK_CPP_E2E_LOG_DIR", "logs"),
             .scenario = env_or ("ZLINK_CPP_E2E_SCENARIO", "common"),
-            .registry_router = env_or ("ZLINK_CPP_E2E_REGISTRY_ROUTER"),
             .api_a_endpoint = env_or ("ZLINK_CPP_E2E_API_A_ENDPOINT"),
             .api_b_endpoint = env_or ("ZLINK_CPP_E2E_API_B_ENDPOINT"),
             .route_a_endpoint = env_or ("ZLINK_CPP_E2E_ROUTE_A_ENDPOINT"),

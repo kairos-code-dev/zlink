@@ -6,8 +6,6 @@
 #include "runtime/channels/channel_runtime_manager.hpp"
 #include "runtime/channels/route_internal_packet_dispatcher.hpp"
 #include "runtime/channels/route_packet_dispatcher.hpp"
-#include "runtime/registry/discovery_registry_connection.hpp"
-#include "runtime/registry/registry_runtime.hpp"
 
 #include <zlink.hpp>
 
@@ -16,88 +14,12 @@
 #include <deque>
 #include <iostream>
 #include <mutex>
-#include <span>
+#include <set>
 #include <thread>
 #include <utility>
 
 namespace zlink::framework::runtime
 {
-
-namespace
-{
-
-class native_spot_route_discovery_bridge_t final : public detail::spot_route_discovery_bridge_t
-{
-  public:
-    native_spot_route_discovery_bridge_t (zlink::context_t &context,
-                                          const std::string &route_channel_id,
-                                          const discovery_snapshot_t &snapshot) :
-        _discovery (std::make_unique<zlink::service::discovery_t> (
-          context, zlink::auto_connect_type::route_mesh, route_channel_id)),
-        _registry_endpoints (snapshot.registry_endpoints)
-    {
-    }
-
-    zlink::service::discovery_t &discovery () noexcept { return *_discovery; }
-
-    void connect_registries () { ensure_connected (); }
-
-    result_t<void> bind_spot_route (const spot_route_t &route) override
-    {
-        try {
-            ensure_connected ();
-            const auto key = std::string (route.spot_rid.value ());
-            const auto value = route.spot_name;
-            _discovery->bind_route (
-              zlink::route_kind_t::spot_name,
-              std::as_bytes (std::span<const char> (key.data (), key.size ())),
-              std::as_bytes (std::span<const char> (value.data (), value.size ())));
-            return result_t<void>::success ();
-        }
-        catch (const std::exception &error) {
-            return result_t<void>::failure (framework_error_kind_t::request_failed,
-                                            std::string ("registry SPOT route bind failed: ")
-                                              + error.what ());
-        }
-    }
-
-    result_t<spot_route_t> resolve_spot_route (spot_rid_t spot_rid) override
-    {
-        try {
-            ensure_connected ();
-            const auto key = std::string (spot_rid.value ());
-            auto route = _discovery->resolve_route (
-              zlink::route_kind_t::spot_name,
-              std::as_bytes (std::span<const char> (key.data (), key.size ())));
-            return result_t<spot_route_t>::success (
-              spot_route_t{node_rid_t::from_string (route.owner_routing_id.to_string ()),
-                           std::move (spot_rid), route.value.to_string ()});
-        }
-        catch (const std::exception &error) {
-            return result_t<spot_route_t>::failure (
-              framework_error_kind_t::spot_route_not_found,
-              std::string ("registry SPOT route resolve failed: ") + error.what ());
-        }
-    }
-
-  private:
-    void ensure_connected ()
-    {
-        if (_connected) {
-            return;
-        }
-        for (const auto &endpoint : _registry_endpoints) {
-            detail::connect_registry_with_retry (*_discovery, endpoint);
-        }
-        _connected = true;
-    }
-
-    std::unique_ptr<zlink::service::discovery_t> _discovery;
-    std::vector<std::string> _registry_endpoints;
-    bool _connected = false;
-};
-
-} // namespace
 
 class route_channel_host_service_t::route_loop_t
 {
@@ -106,8 +28,6 @@ class route_channel_host_service_t::route_loop_t
                   std::string route_channel_id,
                   service_provider_t &services,
                   serializer_registry_t &serializers,
-                  detail::registry_runtime_t registry,
-                  discovery_snapshot_t discovery,
                   std::vector<route_channel_host_service_t::spot_node_runtime_t> spot_nodes,
                   std::shared_ptr<detail::route_internal_packet_dispatcher_t> internal_packets,
                   std::atomic_bool &stop) :
@@ -147,24 +67,6 @@ class route_channel_host_service_t::route_loop_t
                                                + ": " + error.what ());
             }
         }
-        const bool accepts_spot_routes = accepts_spot_routes_from (spot_nodes);
-        const bool use_route_discovery = !discovery.registry_endpoints.empty ();
-        if (use_route_discovery) {
-            try {
-                _spot_route_discovery = std::make_shared<native_spot_route_discovery_bridge_t> (
-                  *_context, _route_channel_id, discovery);
-                _spot_route_discovery->connect_registries ();
-                _router->attach_discovery (_spot_route_discovery->discovery ());
-                if (accepts_spot_routes) {
-                    registry.attach_spot_route_discovery (_route_channel_id, _spot_route_discovery);
-                }
-            }
-            catch (const std::exception &error) {
-                throw framework_exception_t (framework_error_kind_t::request_failed,
-                                             "route channel '" + _route_channel_id
-                                               + "' discovery attach failed: " + error.what ());
-            }
-        }
         for (const auto &endpoint : _runtime->manual_connections ()) {
             try {
                 _router->connect (endpoint);
@@ -185,6 +87,7 @@ class route_channel_host_service_t::route_loop_t
     void run ()
     {
         while (!_stop->load (std::memory_order_acquire)) {
+            sync_runtime_connections ();
             flush_replies ();
             zlink::received_t received;
             const int rc = _router->recv (received, zlink::recv_flags_t::dontwait);
@@ -236,7 +139,6 @@ class route_channel_host_service_t::route_loop_t
     void term () noexcept
     {
         clear_replies ();
-        _spot_route_discovery.reset ();
         if (_backend) {
             _backend->close ();
             _backend.reset ();
@@ -259,6 +161,43 @@ class route_channel_host_service_t::route_loop_t
         std::uint64_t request_seq = 0;
         zlink::framework::runtime::messaging::message_parts_t parts;
     };
+
+    void sync_runtime_connections ()
+    {
+        if (!_router || !_runtime) {
+            return;
+        }
+        const auto bind_endpoint = _runtime->bind_endpoint ();
+        std::set<std::string> desired;
+        for (const auto &endpoint : _runtime->list_connections ()) {
+            if (!endpoint.empty () && endpoint != bind_endpoint) {
+                desired.insert (endpoint);
+            }
+        }
+        for (const auto &endpoint : desired) {
+            if (_connected_endpoints.find (endpoint) != _connected_endpoints.end ()) {
+                continue;
+            }
+            try {
+                _router->connect (endpoint);
+                _connected_endpoints.insert (endpoint);
+            }
+            catch (...) {
+            }
+        }
+        for (auto it = _connected_endpoints.begin (); it != _connected_endpoints.end ();) {
+            if (desired.find (*it) != desired.end ()) {
+                ++it;
+                continue;
+            }
+            try {
+                _router->disconnect (*it);
+            }
+            catch (...) {
+            }
+            it = _connected_endpoints.erase (it);
+        }
+    }
 
     bool accepts_spot_routes_from (
       const std::vector<route_channel_host_service_t::spot_node_runtime_t> &spot_nodes) const
@@ -422,7 +361,7 @@ class route_channel_host_service_t::route_loop_t
     std::unique_ptr<zlink::context_t> _context;
     std::unique_ptr<zlink::router_socket_t> _router;
     std::unique_ptr<detail::backend::native_route_backend_t> _backend;
-    std::shared_ptr<native_spot_route_discovery_bridge_t> _spot_route_discovery;
+    std::set<std::string> _connected_endpoints;
     std::mutex _workers_mutex;
     std::vector<std::thread> _workers;
     std::mutex _replies_mutex;
@@ -432,15 +371,11 @@ class route_channel_host_service_t::route_loop_t
 route_channel_host_service_t::route_channel_host_service_t (
   message_bus_t bus,
   serializer_registry_t &serializers,
-  registry_query_t registry,
-  discovery_snapshot_t discovery,
   std::vector<spot_node_runtime_t> spot_nodes,
   std::map<std::string, std::shared_ptr<detail::route_internal_packet_dispatcher_t>>
     internal_dispatchers) :
     _bus (std::move (bus)),
     _serializers (&serializers),
-    _registry (std::move (registry)),
-    _discovery (std::move (discovery)),
     _spot_nodes (std::move (spot_nodes)),
     _internal_dispatchers (std::move (internal_dispatchers))
 {
@@ -461,7 +396,6 @@ void route_channel_host_service_t::start (service_provider_t &services)
         }
         auto loop =
           std::make_unique<route_loop_t> (_bus, route_channel_id, services, *_serializers,
-                                          detail::registry_runtime_t::from (_registry), _discovery,
                                           _spot_nodes, internal_packets, _stop);
         auto *raw = loop.get ();
         _loops.push_back (std::move (loop));
@@ -484,11 +418,6 @@ void route_channel_host_service_t::start (service_provider_t &services)
 void route_channel_host_service_t::stop () noexcept
 {
     _stop.store (true, std::memory_order_release);
-    auto registry_runtime = detail::registry_runtime_t::from (_registry);
-    auto manager = detail::channel_runtime_manager_t::from (_bus);
-    for (const auto &route_channel_id : manager.route_channel_ids ()) {
-        registry_runtime.detach_spot_route_discovery (route_channel_id);
-    }
     for (auto &thread : _threads) {
         if (thread.joinable ()) {
             thread.join ();

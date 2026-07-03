@@ -29,8 +29,8 @@
 #include <zlink/framework/contracts/detail/message_payload.hpp>
 #include <zlink/framework/contracts/handlers/handler_registry.hpp>
 #include <zlink/framework/contracts/http/http.hpp>
+#include <zlink/framework/contracts/locations/location.hpp>
 #include <zlink/framework/contracts/messaging/message.hpp>
-#include <zlink/framework/contracts/registry/registry.hpp>
 #include <zlink/framework/contracts/spots/spot.hpp>
 #include <zlink/framework/contracts/spots/spot_identity.hpp>
 #include <zlink/framework/contracts/streams/stream.hpp>
@@ -120,6 +120,31 @@ template <typename T> concept has_yield = requires (T value)
     value.yield ();
 };
 
+template <typename T> concept has_framework_use_discovery = requires (T value)
+{
+    value.use_discovery ();
+};
+
+template <typename T> concept has_framework_add_registry_peer = requires (T value)
+{
+    value.add_registry_peer ("tcp://127.0.0.1:5501");
+};
+
+template <typename T> concept has_zlink_enable_registry = requires (T value)
+{
+    value.enable_registry ();
+};
+
+template <typename T> concept has_zlink_discovery = requires (T value)
+{
+    value.discovery ();
+};
+
+template <typename T> concept has_spot_node_use_registry_spot_resolver = requires (T value)
+{
+    value.use_registry_spot_resolver ("route");
+};
+
 template <typename T, typename TResult> concept has_callback_async = requires (T value)
 {
     value.async ([] (zlink::framework::result_t<TResult>) {});
@@ -176,6 +201,20 @@ static_assert (std::is_polymorphic_v<zlink::http_client::coroutine_execute_sched
 static_assert (std::is_polymorphic_v<zlink::http_client::coroutine_resume_scheduler_t>);
 static_assert (std::is_base_of_v<zlink::http_client::coroutine_resume_scheduler_t,
                                  zlink::http_client::framework_resume_scheduler_t>);
+static_assert (std::is_polymorphic_v<zlink::framework::location_store_t>);
+static_assert (std::is_base_of_v<zlink::framework::peer_location_store_t,
+                                 zlink::framework::location_store_t>);
+static_assert (std::is_base_of_v<zlink::framework::spot_location_store_t,
+                                 zlink::framework::location_store_t>);
+static_assert (std::is_base_of_v<zlink::framework::actor_location_store_t,
+                                 zlink::framework::location_store_t>);
+static_assert (std::is_base_of_v<zlink::framework::route_location_store_t,
+                                 zlink::framework::location_store_t>);
+static_assert (std::is_base_of_v<zlink::framework::owner_lease_store_t,
+                                 zlink::framework::location_store_t>);
+static_assert (std::is_same_v<decltype (zlink::framework::to_canonical_string (
+                                zlink::framework::location_auto_connect_type_t::route_mesh)),
+                              std::string>);
 
 template <typename T>
 concept has_http_client_coroutine_resume_builder =
@@ -697,54 +736,18 @@ static_assert (
                  zlink::framework::spot_node_options_builder_t &>);
 
 static_assert (
-  std::is_same_v<decltype (std::declval<zlink::framework::spot_node_options_builder_t &> ()
-                             .use_registry_spot_resolver ("route")),
-                 zlink::framework::spot_node_options_builder_t &>);
-
-static_assert (std::is_same_v<decltype (std::declval<zlink::framework::spot_mesh_builder_t &> ()
-                                          .use_registry_spot_resolver ("route")),
-                              zlink::framework::spot_mesh_builder_t &>);
+  !has_spot_node_use_registry_spot_resolver<zlink::framework::spot_node_options_builder_t>);
+static_assert (!has_spot_node_use_registry_spot_resolver<zlink::framework::spot_mesh_builder_t>);
 
 static_assert (
   std::is_same_v<decltype (std::declval<const zlink::framework::zlink_framework_options_t &> ()
                              .dispatch_options ()),
                  zlink::framework::dispatch_options_t>);
 
-static_assert (
-  std::is_same_v<decltype (std::declval<zlink::framework::zlink_framework_options_t &> ()
-                             .add_registry_peer ("tcp://127.0.0.1:5501")),
-                 zlink::framework::zlink_framework_options_t &>);
-
-static_assert (
-  std::is_same_v<
-    decltype (std::declval<const zlink::framework::registry_query_t &> ().service_summary (
-      std::declval<zlink::framework::service_summary_filter_t> ())),
-    std::vector<zlink::framework::service_summary_entry_t>>);
-
-static_assert (
-  std::is_same_v<decltype (std::declval<const zlink::framework::registry_query_t &> ().topology (
-                   std::declval<zlink::framework::topology_filter_t> ())),
-                 std::vector<zlink::framework::topology_entry_t>>);
-
-static_assert (
-  std::is_same_v<decltype (std::declval<zlink::framework::registry_query_client_t &> ().connect (
-                   std::declval<zlink::framework::registry_query_client_options_t> ())),
-                 zlink::framework::result_t<void>>);
-
-static_assert (
-  std::is_same_v<decltype (std::declval<const zlink::framework::registry_query_client_t &> ()
-                             .topology (std::declval<zlink::framework::topology_filter_t> ())),
-                 zlink::framework::result_t<std::vector<zlink::framework::topology_entry_t>>>);
-
-static_assert (
-  std::is_same_v<decltype (std::declval<const zlink::framework::registry_query_client_t &> ()
-                             .member_peers (std::declval<std::string> ())),
-                 zlink::framework::result_t<std::vector<zlink::framework::member_peer_t>>>);
-
-static_assert (
-  std::is_same_v<
-    decltype (std::declval<const zlink::framework::registry_query_client_t &> ().status ()),
-    zlink::framework::result_t<zlink::framework::registry_status_t>>);
+static_assert (!has_framework_use_discovery<zlink::framework::zlink_framework_options_t>);
+static_assert (!has_framework_add_registry_peer<zlink::framework::zlink_framework_options_t>);
+static_assert (!has_zlink_enable_registry<zlink::framework::zlink_builder_t>);
+static_assert (!has_zlink_discovery<zlink::framework::zlink_builder_t>);
 
 static_assert (
   std::is_same_v<decltype (std::declval<zlink::framework::message_metadata_policy_t &> ()

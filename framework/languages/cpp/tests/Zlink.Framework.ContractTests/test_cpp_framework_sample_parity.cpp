@@ -460,15 +460,13 @@ TEST (CppFrameworkSampleParity, SampleReadmesDescribePublicExecutablesAndRunnerS
     };
     const std::vector<sample_readme_case_t> cases{
       {"samples/Bingo/README.ko.md",
-       {"sample_cpp_framework_bingo_registry", "sample_cpp_framework_bingo_api",
-        "sample_cpp_framework_bingo_play", "sample_cpp_framework_bingo_session",
-        "sample_cpp_framework_bingo_client"}},
+       {"sample_cpp_framework_bingo_api", "sample_cpp_framework_bingo_play",
+        "sample_cpp_framework_bingo_session", "sample_cpp_framework_bingo_client"}},
       {"samples/TicTacToe/README.ko.md",
        {"sample_cpp_framework_tictactoe_api", "sample_cpp_framework_tictactoe_play",
         "sample_cpp_framework_tictactoe_client"}},
       {"samples/DeliveryDispatch/README.ko.md",
-       {"sample_cpp_framework_deliverydispatch_registry",
-        "sample_cpp_framework_deliverydispatch_dispatch_api",
+       {"sample_cpp_framework_deliverydispatch_dispatch_api",
         "sample_cpp_framework_deliverydispatch_dispatch_center",
         "sample_cpp_framework_deliverydispatch_courier_gateway",
         "sample_cpp_framework_deliverydispatch_courier_actor_node",
@@ -755,7 +753,7 @@ TEST (CppFrameworkSampleParity, TicTacToeHostsUseManualEndpointsWithAutomaticAct
     EXPECT_FALSE (std::filesystem::exists (tictactoe_root / "Server/Registry"));
     EXPECT_EQ (api_factory.find ("options.use_discovery ()"), std::string::npos);
     EXPECT_EQ (play_factory.find ("options.use_discovery ()"), std::string::npos);
-    EXPECT_NE (play_factory.find (".use_registry_spot_resolver"), std::string::npos);
+    EXPECT_EQ (play_factory.find (".use_registry_spot_resolver"), std::string::npos);
     EXPECT_NE (api_factory.find (".enable_client (topology.selected_play_endpoint ())"),
                std::string::npos);
     EXPECT_NE (play_factory.find ("options.add_route_mesh"), std::string::npos);

@@ -43,6 +43,16 @@ int main ()
 
     auto entry_context = builder.create_spot ("entry").context;
     auto context = builder.create_spot ("stage").context;
+
+    zlink::framework::timer_t detached_timer;
+    if (detached_timer.is_disposed ()) {
+        return 16;
+    }
+    detached_timer.cancel ();
+    if (!detached_timer.is_disposed ()) {
+        return 17;
+    }
+
     auto timer = context.add_timer<tick_handler_t> (
       "stage-tick", 16ms, {.overrun_policy = timer_overrun_policy_t::skip_late_ticks});
     if (timer.is_disposed ()) {
@@ -106,6 +116,19 @@ int main ()
         return 6;
     }
 
+    auto unknown_failure_timer = context.add_timer<failing_tick_handler_t> (
+      "unknown-failure", 10ms, {.stop_on_unhandled_exception = false});
+    auto unknown_failure = runtime.dispatch_fire_count (
+      unknown_failure_timer, 1, [] (const zlink::framework::timer_tick_t &) { throw 42; });
+    if (unknown_failure
+        || unknown_failure.error_kind () != framework_error_kind_t::request_failed
+        || runtime.failure_events (unknown_failure_timer).size () != 1
+        || runtime.failure_events (unknown_failure_timer)[0].message
+             != "unknown timer handler failure"
+        || unknown_failure_timer.is_disposed ()) {
+        return 18;
+    }
+
     auto running_timer = context.add_timer<tick_handler_t> ("running", 10ms);
     auto running_result = runtime.dispatch_fire_count (
       running_timer, 1, [&runtime, &running_timer] (const zlink::framework::timer_tick_t &) {
@@ -163,6 +186,17 @@ int main ()
         return 8;
     }
 
+    bool empty_name_failed = false;
+    try {
+        context.add_timer<tick_handler_t> ("", 1ms);
+    }
+    catch (const zlink::framework::framework_exception_t &error) {
+        empty_name_failed = error.kind () == framework_error_kind_t::request_protocol_error;
+    }
+    if (!empty_name_failed) {
+        return 19;
+    }
+
     bool invalid_catchup_failed = false;
     try {
         context.add_timer<tick_handler_t> (
@@ -190,6 +224,19 @@ int main ()
     auto closed_result = runtime.dispatch_fire_count (timer, 1);
     if (closed_result || closed_result.error_kind () != framework_error_kind_t::closed) {
         return 11;
+    }
+
+    auto move_source = context.add_timer<tick_handler_t> ("move-source", 10ms);
+    zlink::framework::timer_t move_target (std::move (move_source));
+    if (runtime.delivered_ticks (move_source).size () != 0
+        || runtime.failure_events (move_source).size () != 0) {
+        return 20;
+    }
+    move_target.cancel ();
+    zlink::framework::timer_t assigned_target;
+    assigned_target = std::move (move_target);
+    if (!assigned_target.is_disposed ()) {
+        return 21;
     }
 
     return 0;

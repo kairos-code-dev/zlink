@@ -17,10 +17,6 @@ struct sample_topology_t
     static sample_topology_t bind (const configuration_section_t &section)
     {
         sample_topology_t topology;
-        topology.registry_pub_endpoint =
-          section.get ("registryPubEndpoint").value_or (topology.registry_pub_endpoint);
-        topology.registry_router_endpoint =
-          section.get ("registryRouterEndpoint").value_or (topology.registry_router_endpoint);
         topology.api_endpoint = section.get ("apiEndpoint").value_or (topology.api_endpoint);
         topology.api_a_endpoint = section.get ("apiAEndpoint").value_or (topology.api_a_endpoint);
         topology.api_b_endpoint = section.get ("apiBEndpoint").value_or (topology.api_b_endpoint);
@@ -39,10 +35,6 @@ struct sample_topology_t
           section.get ("playARouteEndpoint").value_or (topology.play_a_route_endpoint);
         topology.play_b_route_endpoint =
           section.get ("playBRouteEndpoint").value_or (topology.play_b_route_endpoint);
-        topology.session_spot_endpoint =
-          section.get ("sessionSpotEndpoint").value_or (topology.session_spot_endpoint);
-        topology.session_router_endpoint =
-          section.get ("sessionRouterEndpoint").value_or (topology.session_router_endpoint);
         topology.play_spot_endpoint =
           section.get ("playSpotEndpoint").value_or (topology.play_spot_endpoint);
         topology.play_a_spot_endpoint =
@@ -86,8 +78,6 @@ struct sample_topology_t
         return topology;
     }
 
-    std::string registry_pub_endpoint = "tcp://127.0.0.1:48101";
-    std::string registry_router_endpoint = "tcp://127.0.0.1:48102";
     std::string api_endpoint = "tcp://127.0.0.1:48103";
     std::string api_a_endpoint = "tcp://127.0.0.1:48103";
     std::string api_b_endpoint = "tcp://127.0.0.1:48123";
@@ -99,8 +89,6 @@ struct sample_topology_t
     std::string play_b_endpoint = "tcp://127.0.0.1:48114";
     std::string play_a_route_endpoint = "tcp://127.0.0.1:48115";
     std::string play_b_route_endpoint = "tcp://127.0.0.1:48116";
-    std::string session_spot_endpoint = "tcp://127.0.0.1:48105";
-    std::string session_router_endpoint = "tcp://127.0.0.1:48106";
     std::string play_spot_endpoint = "tcp://127.0.0.1:48110";
     std::string play_a_spot_endpoint = "tcp://127.0.0.1:48110";
     std::string play_b_spot_endpoint = "tcp://127.0.0.1:48120";

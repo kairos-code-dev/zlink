@@ -15,8 +15,6 @@ class stream_socket_t;
 
 namespace zlink::service
 {
-class discovery_t;
-class registry_t;
 class spot_node_t;
 } // namespace zlink::service
 
@@ -36,8 +34,6 @@ class framework_runtime_t
     zlink::router_socket_t &channel_router ();
     zlink::dealer_socket_t &channel_dealer ();
     zlink::stream_socket_t &stream_socket ();
-    zlink::service::discovery_t &discovery ();
-    zlink::service::registry_t &registry ();
     zlink::service::spot_node_t &add_spot_node ();
     void drain ();
     offload_executor_t &offload_executor () noexcept;
@@ -47,8 +43,6 @@ class framework_runtime_t
     std::unique_ptr<zlink::router_socket_t> _router;
     std::unique_ptr<zlink::dealer_socket_t> _dealer;
     std::unique_ptr<zlink::stream_socket_t> _stream;
-    std::unique_ptr<zlink::service::discovery_t> _discovery;
-    std::unique_ptr<zlink::service::registry_t> _registry;
     std::unique_ptr<zlink::service::spot_node_t> _spot_node;
     offload_executor_t _offload;
 };

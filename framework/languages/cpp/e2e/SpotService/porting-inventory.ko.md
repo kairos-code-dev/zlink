@@ -6,7 +6,7 @@
 | .NET 기준 파일 | C++ 대응 파일 | 분류 | 상태 | 비고 |
 |----------------|---------------|------|------|------|
 | `.gitignore` | `.gitignore` | support | done | 로그 산출물 제외 |
-| `run_e2e.sh` | `run_e2e.sh` | runner | done | 실제 registry/play/session/gateway/client 프로세스를 시작하고 route-ready probe 뒤 `all` 실행을 검증한다. |
+| `run_e2e.sh` | `run_e2e.sh` | runner | done | Redis location store를 준비한 뒤 play/session/gateway/multi-node/requester/client 프로세스를 시작하고 route-ready probe 뒤 `all` 실행을 검증한다. |
 | `feature-map.ko.md` | `feature-map.ko.md` | feature-map | done | C++ public API로 구현한 항목과 남은 gap을 구분한다. |
 | `Shared/Messages.cs` | `Shared/spot_service_contracts.hpp` | shared | done | payload, evidence, stream message DTO 대응 |
 | `Shared/SpotService.Shared.csproj` | `CMakeLists.txt` | build | not-needed | C++는 상위 CMake target에 통합된다. |
@@ -63,10 +63,10 @@
 | `Client/Scenarios/SmG3Scenario.cs` | `Client/Scenarios/sm_g3_scenario.hpp` | scenario | done | `.NET`처럼 두 stream client를 먼저 순차 auth/bind한 뒤 ping/leave만 동시에 실행한다. 이전 C++ 구현은 auth/join까지 동시에 실행해 session `StreamBound` evidence가 중복될 수 있었다. |
 | `Client/Scenarios/SmG4Scenario.cs` | `Client/Scenarios/sm_g4_scenario.hpp` | scenario | done | SM-G4 |
 | `Client/Scenarios/SmQ9Scenario.cs` | `Client/Scenarios/sm_q9_scenario.hpp`, `Server/MultiNode/`, `Server/MultiNodeRequester/`, `run_e2e.sh` | scenario | done | `.NET`의 multi-node route-to-spot 흐름에 대응해 외부 client는 HTTP만 호출한다. C++ requester role은 server-side public route client와 bridge-only spot node를 소유해 multi-node spot state request를 보낸다. |
-| `Server/Registry/Program.cs` | `Server/Registry/main.cpp` | server-role | done | registry role 진입점 |
-| `Server/Registry/RegistryHostFactory.cs` | `Server/Registry/registry_host_factory.hpp` | server-role | done | registry host factory 책임을 role-local header로 분리했다. |
-| `Server/Registry/RegistrySupport.cs` | `Server/Shared/Support/env.hpp`, `Server/Registry/registry_host_factory.hpp` | support | done | registry role의 env option helper와 host 설정을 shared runtime 없이 분리했다. |
-| `Server/Registry/SpotService.Registry.csproj` | `CMakeLists.txt` | build | not-needed | C++는 상위 CMake target에 통합된다. |
+| `Server/Registry/Program.cs` | 제거됨 | server-role | not-needed | 공통 Config 2는 location store 기준이다. C++ runner는 registry role을 띄우지 않고 Redis location store를 공유한다. |
+| `Server/Registry/RegistryHostFactory.cs` | 제거됨 | server-role | not-needed | registry host factory는 location store 전환 후 필요하지 않다. |
+| `Server/Registry/RegistrySupport.cs` | `Server/Shared/Support/location_store.hpp`, `Server/Shared/Support/env.hpp` | support | done | role별 host factory가 Redis endpoint/key prefix env를 읽어 `redis_location_store_t`를 등록한다. |
+| `Server/Registry/SpotService.Registry.csproj` | 제거됨 | build | not-needed | C++ SpotService registry target은 제거됐다. |
 | `Server/Play/Program.cs` | `Server/Play/main.cpp` | server-role | done | play role 진입점 |
 | `Server/Play/PlayHostFactory.cs` | `Server/Play/play_host_factory.hpp` | server-role | done | play host factory 책임을 role-local header로 분리했다. |
 | `Server/Play/PlaySupport.cs` | `Server/Shared/Support/env.hpp`, `Server/Shared/Support/codecs.hpp`, `Server/Shared/Endpoints/evidence_endpoint.hpp`, `Server/Shared/scenario_state.hpp` | support | done | env, codec, evidence snapshot, scenario state 책임을 shared support/endpoint 파일로 분리했다. |
@@ -106,6 +106,17 @@
 
 ## 현재 검증
 
+- 2026-07-03 location store 전환 proof:
+  - `cmake --build framework/languages/cpp/build-redis-vcpkg --target zlink_cpp_e2e_spot_service_play zlink_cpp_e2e_spot_service_session zlink_cpp_e2e_spot_service_gateway zlink_cpp_e2e_spot_service_multinode zlink_cpp_e2e_spot_service_multinode_requester zlink_cpp_e2e_spot_service_client -j2`
+    - 결과: passed
+  - `ZLINK_CPP_E2E_BUILD_DIR=/home/hep7/project/kairos/zlink/framework/languages/cpp/build-redis-vcpkg timeout 260s framework/languages/cpp/e2e/SpotService/run_e2e.sh SM-C1`
+    - 결과: passed
+    - 로그: `framework/languages/cpp/e2e/SpotService/logs/20260703-194053-28429`
+    - 비고: native route backend가 request timeout을 transport disconnect로 오인해 peer를 끊던 문제를 수정한 뒤, timeout 이후 정상 spot route request가 유지되는지 확인했다.
+  - `ZLINK_CPP_E2E_BUILD_DIR=/home/hep7/project/kairos/zlink/framework/languages/cpp/build-redis-vcpkg timeout 900s framework/languages/cpp/e2e/SpotService/run_e2e.sh all`
+    - 결과: passed
+    - 로그: `framework/languages/cpp/e2e/SpotService/logs/20260703-194121-30065`
+    - 비고: child sweep 전체가 Redis `redis_location_store_t`와 key prefix 격리 상태에서 통과했다. parent와 각 child 출력은 `spot-service e2e result=passed`로 끝났다.
 - 2026-07-02 최신 focused proof:
   - `timeout 180s framework/languages/cpp/e2e/SpotService/run_e2e.sh SM-F1`
     - 결과: passed
@@ -157,8 +168,6 @@
   - 로그: `framework/languages/cpp/e2e/SpotService/logs/20260702-092843-42150`
   - 비고: child sweep이 SM-B1~SM-Q9를 순서대로 실행했고, SM-G3 포함 모든 child가 passed marker를
     남긴 뒤 parent도 `spot-service e2e result=passed`로 끝났다.
-- `cmake --build framework/languages/cpp/build --target zlink_cpp_e2e_spot_service_registry zlink_cpp_e2e_spot_service_play zlink_cpp_e2e_spot_service_session zlink_cpp_e2e_spot_service_client`
-  - 결과: passed
 - `cmake --build framework/languages/cpp/build --target zlink_cpp_e2e_spot_service_play zlink_cpp_e2e_spot_service_client`
   - 결과: passed
 - `cmake --build framework/languages/cpp/build --target zlink_cpp_e2e_spot_service_play zlink_cpp_e2e_spot_service_session zlink_cpp_e2e_spot_service_client`
@@ -428,7 +437,8 @@
 - SpotService target은 `framework/src` 내부 include 없이 build되고, SM-Q9 child output은 scenario/evidence
   marker를 모두 남긴다.
 - `feature-map.ko.md`는 public API 또는 harness gap을 별도로 기록한다.
-- registry, play, session, gateway host factory 책임은 role-local header로 분리했다.
+- play, session, gateway, multi-node host factory 책임은 role-local header로 분리했고, Redis location
+  store 등록 helper는 `Server/Shared/Support/location_store.hpp`에 둔다.
 - play actor model 책임은 `Server/Play/Spots/play_actor_model.hpp`로 분리했다.
 - play spot route handler 책임은 `Server/Play/Handlers/play_spot_route_handlers.hpp`로 분리했고 SM-C1/SM-C3
   focused runtime 검증을 통과했다.

@@ -3,9 +3,15 @@
 #include <zlink/framework.hpp>
 
 #include "runtime/actors/actor_gateway_runtime.hpp"
+#include "runtime/actors/actor_route_internal_dispatcher.hpp"
+#include "runtime/channels/route_packet_dispatcher.hpp"
+#include "runtime/host/actor_gateway_spot_bridge.hpp"
+#include "runtime/locations/in_memory_location_store.hpp"
+#include "runtime/spots/spot_route_packets.hpp"
 
 #include <nlohmann/json.hpp>
 
+#include <memory>
 #include <optional>
 #include <string>
 
@@ -38,6 +44,68 @@ struct join_reply_t
     std::string mark;
 };
 
+struct bridge_request_t
+{
+    int value{};
+};
+
+struct bridge_reply_t
+{
+    std::string value;
+};
+
+struct bridge_actor_t
+{
+    std::string actor_id;
+    zlink::framework::actor_context_t context;
+    int joined_value{};
+
+    void set_actor_context (const zlink::framework::actor_context_t &actor_context)
+    {
+        context = actor_context;
+    }
+};
+
+struct bridge_actor_factory_t
+{
+    bridge_actor_t create (std::string actor_id) const { return {std::move (actor_id)}; }
+};
+
+struct bridge_spot_t : public zlink::framework::spot_t
+{
+    void configure (zlink::framework::spot_context_t &context)
+    {
+        context.handlers ().add_actor_packet<&bridge_spot_t::on_relay> ("bridge.relay");
+    }
+
+    zlink::framework::spot_actor_join_response_t on_actor_join (
+      bridge_actor_t &actor, const zlink::framework::message_t &request)
+    {
+        const auto decoded = request.decode<bridge_request_t> ();
+        join_value = decoded.value;
+        actor.joined_value = decoded.value;
+        return zlink::framework::spot_actor_join_response_t::accept (
+          zlink::framework::message_t::from (bridge_reply_t{"joined:" + actor.actor_id}));
+    }
+
+    void on_actor_joined (bridge_actor_t &) { ++joined_count; }
+
+    bridge_reply_t on_relay (bridge_actor_t &actor,
+                             zlink::framework::spot_actor_request_context_t &,
+                             const bridge_request_t &request)
+    {
+        relay_value = request.value;
+        return {actor.actor_id + ":" + std::to_string (request.value)};
+    }
+
+    void onDisconnectActor (bridge_actor_t &) { ++disconnect_count; }
+
+    int join_value{};
+    int joined_count{};
+    int relay_value{};
+    int disconnect_count{};
+};
+
 void to_json (nlohmann::json &json, const join_request_t &value)
 {
     json = {{"roomId", value.room_id}};
@@ -57,6 +125,26 @@ void from_json (const nlohmann::json &json, join_reply_t &value)
 {
     value.room_id = json.value ("roomId", "");
     value.mark = json.value ("mark", "");
+}
+
+void to_json (nlohmann::json &json, const bridge_request_t &value)
+{
+    json = {{"value", value.value}};
+}
+
+void from_json (const nlohmann::json &json, bridge_request_t &value)
+{
+    value.value = json.value ("value", 0);
+}
+
+void to_json (nlohmann::json &json, const bridge_reply_t &value)
+{
+    json = {{"value", value.value}};
+}
+
+void from_json (const nlohmann::json &json, bridge_reply_t &value)
+{
+    value.value = json.value ("value", "");
 }
 
 void to_json (nlohmann::json &json, const json_session_push_t &value)
@@ -95,8 +183,21 @@ int main ()
       [] (const zlink::framework::encoded_payload_t &payload) {
           return typed_session_push_t{payload.to_string ()};
       });
+    zlink::framework::detail::actor_gateway_runtime_t no_serializer_gateway;
+    const auto no_serializer_create =
+      no_serializer_gateway.manager ().create (
+        "player", "raw", zlink::framework::message_t::from (join_request_t{"raw"}));
+    if (no_serializer_create
+        || no_serializer_create.error_kind () != framework_error_kind_t::request_protocol_error) {
+        return 54;
+    }
     gateway.bind_serializers (serializers);
     auto manager = gateway.manager ();
+    const auto empty_actor_create = manager.create ("", "nobody");
+    if (empty_actor_create
+        || empty_actor_create.error_kind () != framework_error_kind_t::request_protocol_error) {
+        return 55;
+    }
     auto created = manager.create ("player", "alice");
     if (!created || created.value ().actor_id () != "alice") {
         return 2;
@@ -116,6 +217,70 @@ int main ()
     if (type_mismatch
         || type_mismatch.error_kind () != framework_error_kind_t::actor_type_mismatch) {
         return 5;
+    }
+    auto empty_bind = manager.bind (zlink::framework::actor_ref_t (
+                                     zlink::framework::node_rid_t{}, "", "", 0))
+                        .async ()
+                        .result ();
+    if (empty_bind || empty_bind.error_kind () != framework_error_kind_t::actor_route_not_found) {
+        return 56;
+    }
+    auto mismatched_bind =
+      manager.bind (zlink::framework::actor_ref_t (
+                     zlink::framework::node_rid_t::from_string ("remote-node"), "enemy", "alice", 1))
+        .async ()
+        .result ();
+    if (mismatched_bind
+        || mismatched_bind.error_kind () != framework_error_kind_t::actor_type_mismatch) {
+        return 57;
+    }
+    if (gateway.update_actor_ref (zlink::framework::actor_ref_t (
+          zlink::framework::node_rid_t{}, "", "", 0))
+          .error_kind ()
+        != framework_error_kind_t::actor_route_not_found) {
+        return 58;
+    }
+    const auto update_missing = gateway.update_actor_ref (zlink::framework::actor_ref_t (
+      zlink::framework::node_rid_t::from_string ("remote-node"), "player", "missing", 1));
+    if (!update_missing) {
+        return 59;
+    }
+    const auto update_type_mismatch = gateway.update_actor_ref (zlink::framework::actor_ref_t (
+      zlink::framework::node_rid_t::from_string ("remote-node"), "enemy", "alice", 1));
+    if (update_type_mismatch
+        || update_type_mismatch.error_kind () != framework_error_kind_t::actor_type_mismatch) {
+        return 60;
+    }
+    const auto update_stale = gateway.update_actor_ref (zlink::framework::actor_ref_t (
+      zlink::framework::node_rid_t::from_string ("remote-node"), "player", "alice", 0));
+    if (update_stale
+        || update_stale.error_kind () != framework_error_kind_t::actor_stale_generation) {
+        return 61;
+    }
+    const auto destroy_empty = gateway.destroy_actor (zlink::framework::actor_ref_t (
+      zlink::framework::node_rid_t{}, "", "", 0));
+    if (destroy_empty
+        || destroy_empty.error_kind () != framework_error_kind_t::actor_route_not_found) {
+        return 62;
+    }
+    const auto destroy_missing = gateway.destroy_actor (zlink::framework::actor_ref_t (
+      zlink::framework::node_rid_t::from_string ("remote-node"), "player", "missing", 1));
+    if (!destroy_missing) {
+        return 63;
+    }
+    const auto destroy_type_mismatch = gateway.destroy_actor (zlink::framework::actor_ref_t (
+      zlink::framework::node_rid_t::from_string ("remote-node"), "enemy", "alice", 1));
+    if (destroy_type_mismatch
+        || destroy_type_mismatch.error_kind () != framework_error_kind_t::actor_type_mismatch) {
+        return 64;
+    }
+    const auto temp_actor = manager.create ("player", "temp");
+    if (!temp_actor) {
+        return 65;
+    }
+    const auto destroy_temp = gateway.destroy_actor (temp_actor.value ().ref ());
+    if (!destroy_temp || manager.find ("temp")) {
+        return 66;
     }
 
     zlink::framework::actor_ref_t remote_ref (
@@ -152,6 +317,13 @@ int main ()
         || payload.to_string () != "payload") {
         return 7;
     }
+    auto relay_request_without_handler = relay_request_with_header (bound.value (), payload);
+    if (relay_request_without_handler
+        || relay_request_without_handler.error_kind ()
+             != framework_error_kind_t::actor_dispatch_handler_not_found) {
+        return 68;
+    }
+    const auto relayed_before_dispatch = gateway.relayed_frames ().size ();
 
     bool relay_dispatch_seen = false;
     gateway.on_relay ([&] (const zlink::framework::actor_ref_t &actor,
@@ -164,7 +336,7 @@ int main ()
           zlink::message_t::from (std::string ("relay-reply")));
     });
     relay_with_header (bound.value (), payload);
-    if (!relay_dispatch_seen || gateway.relayed_frames ().size () != 1) {
+    if (!relay_dispatch_seen || gateway.relayed_frames ().size () != relayed_before_dispatch) {
         return 22;
     }
     auto relay_request = relay_request_with_header (bound.value (), payload);
@@ -173,6 +345,11 @@ int main ()
     }
 
     zlink::framework::session_actor_t unbound;
+    auto unbound_relay_request = unbound.relay_request ("move", payload).async ().result ();
+    if (unbound_relay_request
+        || unbound_relay_request.error_kind () != framework_error_kind_t::actor_route_not_found) {
+        return 70;
+    }
     relay_with_header (unbound, payload);
 
     bound.value ().context ().bound_session ().send (framework_payload).submit ();
@@ -201,9 +378,15 @@ int main ()
         return 24;
     }
 
-    auto disconnect = bound.value ().bound_session ().disconnect ().async ().result ();
-    if (!disconnect || gateway.actor_bound ("bob") || !gateway.actor_disconnected ("bob")) {
+    bound.value ().bound_session ().disconnect ().submit ();
+    if (gateway.actor_bound ("bob") || !gateway.actor_disconnected ("bob")) {
         return 10;
+    }
+    auto disconnected_relay_request =
+      bound.value ().relay_request ("move", payload).async ().result ();
+    if (disconnected_relay_request
+        || disconnected_relay_request.error_kind () != framework_error_kind_t::disconnected) {
+        return 72;
     }
     bound.value ().bound_session ().send (framework_payload).submit ();
     relay_with_header (bound.value (), payload);
@@ -216,8 +399,8 @@ int main ()
         return 11;
     }
 
-    auto actor_disconnect = rebound.value ().notify_disconnected ().async ().result ();
-    if (!actor_disconnect || gateway.actor_bound ("bob") || !gateway.actor_disconnected ("bob")) {
+    rebound.value ().notify_disconnected ().submit ();
+    if (gateway.actor_bound ("bob") || !gateway.actor_disconnected ("bob")) {
         return 18;
     }
     rebound = manager.bind (remote_ref).async ().result ();
@@ -230,14 +413,35 @@ int main ()
         disconnect_dispatch_seen = actor.actor_id () == "bob" && actor.generation () == 7;
         return zlink::framework::result_t<void>::success ();
     });
-    auto dispatched_disconnect = rebound.value ().notify_disconnected ().async ().result ();
-    if (!dispatched_disconnect || !disconnect_dispatch_seen || gateway.actor_bound ("bob")
+    rebound.value ().notify_disconnected ().submit ();
+    if (!disconnect_dispatch_seen || gateway.actor_bound ("bob")
         || !gateway.actor_disconnected ("bob")) {
         return 33;
     }
     rebound = manager.bind (remote_ref).async ().result ();
     if (!rebound || !gateway.actor_bound ("bob")) {
         return 34;
+    }
+
+    auto actor_context = rebound.value ().context ();
+    auto empty_spot_join = actor_context
+                             .join_spot (zlink::framework::spot_rid_t{}, join_request_t{"empty"})
+                             .async ()
+                             .result ();
+    if (empty_spot_join
+        || empty_spot_join.error_kind () != framework_error_kind_t::spot_route_not_found) {
+        return 73;
+    }
+    auto no_dispatcher_join =
+      actor_context
+        .join_spot (zlink::framework::spot_rid_t::from_string ("no-dispatcher"),
+                    join_request_t{"no-dispatcher"})
+        .async ()
+        .result ();
+    if (no_dispatcher_join
+        || no_dispatcher_join.error_kind ()
+             != framework_error_kind_t::actor_dispatch_handler_not_found) {
+        return 74;
     }
 
     bool typed_join_seen = false;
@@ -254,7 +458,6 @@ int main ()
                                            "player", "bob", 8),
             zlink::message_t::from_json (join_reply_t{"typed-match", "X"})});
     });
-    auto actor_context = rebound.value ().context ();
     const auto typed_join = actor_context
                               .join_spot (zlink::framework::spot_rid_t::from_string ("typed-match"),
                                           join_request_t{"typed-match"})
@@ -327,12 +530,237 @@ int main ()
         || gateway.actor_disconnected ("bob")) {
         return 24;
     }
+    gateway.bind_session_route (entry_join.value ().actor, zlink.route_client (serializers),
+                                "actor.session.route",
+                                zlink::routing_id_t::from (std::string ("session-node")));
+    zlink::framework::detail::register_spot_route_packet_serializers (serializers);
+    zlink::framework::service_collection_t actor_route_services;
+    auto actor_route_provider = actor_route_services.build_provider ();
+    zlink::framework::detail::route_handler_registry_t actor_route_handlers;
+    zlink::framework::detail::actor_route_internal_dispatcher_t actor_route_internal (
+      gateway, serializers);
+    zlink::framework::detail::route_packet_dispatcher_t actor_route_dispatcher (
+      "actor.route", actor_route_provider, serializers, actor_route_handlers,
+      actor_route_internal);
+    zlink::framework::runtime::messaging::envelope_codec_t actor_route_envelope;
+    zlink::framework::runtime::messaging::envelope_header_t actor_route_header;
+    actor_route_header.kind = zlink::framework::runtime::messaging::message_kind_t::request;
+    actor_route_header.channel_name = "actor.route";
+    actor_route_header.message_name =
+      zlink::framework::detail::actor_bound_session_route_request_t::packet_name;
+    actor_route_header.correlation_id = "actor-route-1";
+    const auto actor_route_request =
+      zlink::framework::detail::make_actor_bound_session_route_request (
+        entry_join.value ().actor, "session.route", zlink::message_t::from (std::string ("routed")));
+    auto actor_route_parts = actor_route_envelope.encode_parts (
+      actor_route_header,
+      std::type_index (typeid (zlink::framework::detail::actor_bound_session_route_request_t)),
+      &actor_route_request, serializers);
+    auto actor_route_dispatch =
+      actor_route_dispatcher.dispatch (zlink::framework::detail::route_received_packet_t{
+        zlink::routing_id_t::from (std::string ("entry-node")), 93, actor_route_parts});
+    if (!actor_route_dispatch || !actor_route_dispatch.value ()
+        || !actor_route_dispatch.value ()->request_seq
+        || actor_route_dispatch.value ()->request_seq.value () != 93) {
+        return 50;
+    }
+    auto actor_route_reply_header =
+      actor_route_envelope.decode_header (actor_route_dispatch.value ()->parts);
+    if (!actor_route_reply_header
+        || actor_route_reply_header.value ().kind
+             != zlink::framework::runtime::messaging::message_kind_t::response) {
+        return 51;
+    }
+    auto actor_route_header_only = actor_route_envelope.encode_header (actor_route_header);
+    const auto actor_route_missing_body_send = actor_route_internal.dispatch_send (
+      zlink::framework::detail::route_received_packet_t{
+        zlink::routing_id_t::from (std::string ("entry-node")), std::nullopt,
+        zlink::framework::runtime::messaging::message_parts_t (
+          std::vector<zlink::message_t>{actor_route_header_only})},
+      actor_route_provider);
+    if (actor_route_missing_body_send
+        || actor_route_missing_body_send.error_kind ()
+             != zlink::framework::framework_error_kind_t::request_protocol_error) {
+        return 52;
+    }
+    const auto actor_route_missing_body_request = actor_route_internal.dispatch_request (
+      zlink::framework::detail::route_received_packet_t{
+        zlink::routing_id_t::from (std::string ("entry-node")), 94,
+        zlink::framework::runtime::messaging::message_parts_t (
+          std::vector<zlink::message_t>{actor_route_header_only})},
+      actor_route_header, actor_route_provider);
+    if (actor_route_missing_body_request
+        || actor_route_missing_body_request.error_kind ()
+             != zlink::framework::framework_error_kind_t::request_protocol_error) {
+        return 53;
+    }
     const auto destroy_bound = gateway.destroy_actor (entry_join.value ().actor);
     if (!destroy_bound || gateway.actor_bound ("bob") || gateway.actor_disconnected ("bob")) {
         return 25;
     }
     rebound_after_entry.value ().bound_session ().send (framework_payload).submit ();
     relay_with_header (rebound_after_entry.value (), payload);
+
+    zlink::framework::zlink_builder_t dispatcher_builder;
+    dispatcher_builder.route_channel ("dispatcher.route");
+    dispatcher_builder.add_spot_node ("dispatcher-node")
+      .set_routing_id (zlink::routing_id_t::from ("dispatcher-node"));
+    zlink::framework::spot_node_snapshot_t dispatcher_spot_node;
+    dispatcher_spot_node.name = "dispatcher-node";
+    dispatcher_spot_node.accepted_route_channels.push_back (
+      zlink::framework::accepted_spot_route_channel_t{"dispatcher.route", {}});
+    dispatcher_spot_node.accepted_route_channels.push_back (
+      zlink::framework::accepted_spot_route_channel_t{"implicit.dispatcher.route", {}});
+    auto dispatchers = zlink::framework::detail::build_route_internal_dispatchers (
+      dispatcher_builder, {dispatcher_spot_node}, dispatcher_builder.route_channels (), gateway,
+      serializers);
+    const auto dispatcher_found = dispatchers.find ("dispatcher.route");
+    const auto implicit_dispatcher_found = dispatchers.find ("implicit.dispatcher.route");
+    if (dispatcher_found == dispatchers.end ()
+        || implicit_dispatcher_found == dispatchers.end ()
+        || !dispatcher_found->second->can_handle_request (
+          zlink::framework::detail::spot_actor_join_route_request_t::packet_name)
+        || !implicit_dispatcher_found->second->can_handle_request (
+          zlink::framework::detail::spot_actor_packet_route_request_t::packet_name)) {
+        return 45;
+    }
+
+    auto bridge_spot = std::make_shared<bridge_spot_t> ();
+    auto bridge_location_store =
+      std::make_shared<zlink::framework::runtime::in_memory_location_store_t> ();
+    auto bridge_app = zlink::framework::app_t::create ();
+    auto bridge_node = bridge_app.advanced ().zlink ().add_spot_node ("bridge-node");
+    bridge_node.set_routing_id (zlink::routing_id_t::from ("bridge-node"));
+    bridge_node.add_spot_resolver (
+      "remote-bridge",
+      [] (zlink::framework::spot_rid_t spot_rid) -> std::optional<zlink::framework::spot_route_t> {
+          if (spot_rid.value () != "remote-node:bridge-room") {
+              return std::nullopt;
+          }
+          return zlink::framework::spot_route_t{
+            zlink::framework::node_rid_t::from_string ("remote-node"), std::move (spot_rid),
+            "bridge-room"};
+      });
+    bridge_node.add_actor_factory<bridge_actor_factory_t> ("bridge-player")
+      .add_spot<bridge_spot_t> ("bridge-room", [bridge_spot] { return bridge_spot; });
+    const auto bridge_room = bridge_node.create_spot ("bridge-room");
+    if (bridge_room.state == zlink::framework::spot_create_state_t::rejected
+        || bridge_room.spot_rid.empty ()) {
+        return 35;
+    }
+    bridge_app.add_zlink_framework ([bridge_location_store] (
+                                      zlink::framework::zlink_framework_options_t &options) {
+        options.add_location_store (bridge_location_store);
+    });
+    auto remote_actor_owner =
+      bridge_location_store
+        ->renew_owner_lease ("remote-actor-owner",
+                             zlink::routing_id_t::from ("remote-node"), std::chrono::seconds (30))
+        .result ();
+    if (!remote_actor_owner
+        || remote_actor_owner.value ().status
+             != zlink::framework::location_write_status_t::stored) {
+        return 46;
+    }
+    auto remote_actor_location =
+      bridge_location_store
+        ->update_actor (zlink::framework::actor_location_t{
+                          .actor_type = "bridge-player",
+                          .actor_id = "dora",
+                          .actor_ref = "remote-node:1:dora",
+                          .node_rid = zlink::routing_id_t::from ("remote-node"),
+                          .location_kind = zlink::spot_kind::entry,
+                          .spot_rid = std::nullopt,
+                          .spot_kind = zlink::spot_kind::entry,
+                          .owner_id = "remote-actor-owner"},
+                        zlink::framework::location_write_intent_t::new_claim)
+        .result ();
+    if (!remote_actor_location
+        || remote_actor_location.value ().status
+             != zlink::framework::location_write_status_t::stored) {
+        return 47;
+    }
+    auto bridge_provider = bridge_app.advanced ().services ().build_provider ();
+    auto bridge_scope = bridge_provider.create_scope ();
+    auto bridge_gateway = bridge_scope.get_required<zlink::framework::actor_gateway_t> ();
+    auto bridge_actor = bridge_gateway.manager ().create ("bridge-player", "carol");
+    if (!bridge_actor) {
+        return 36;
+    }
+    auto missing_route_join =
+      bridge_actor.value ()
+        .context ()
+        .join_spot (zlink::framework::spot_rid_t::from_string ("remote-node:bridge-room"),
+                    bridge_request_t{19})
+        .async<bridge_reply_t> ()
+        .result ();
+    if (missing_route_join
+        || missing_route_join.error_kind () != zlink::framework::framework_error_kind_t::spot_route_not_found) {
+        return 43;
+    }
+    auto missing_route_entry_join =
+      bridge_actor.value ()
+        .context ()
+        .join_entry_spot (zlink::framework::node_rid_t::from_string ("remote-node"),
+                          zlink::framework::message_t::from (bridge_request_t{29}))
+        .async ()
+        .result ();
+    if (missing_route_entry_join
+        || missing_route_entry_join.error_kind ()
+             != zlink::framework::framework_error_kind_t::spot_route_not_found) {
+        return 44;
+    }
+    auto resolved_remote_actor =
+      bridge_gateway.manager ()
+        .bind (zlink::framework::actor_ref_t (
+          zlink::framework::node_rid_t::from_string ("bridge-node"), "bridge-player", "dora", 1))
+        .async ()
+        .result ();
+    if (!resolved_remote_actor) {
+        return 48;
+    }
+    auto missing_route_relay =
+      resolved_remote_actor.value ()
+        .relay_request ("bridge.relay", zlink::message_t::from_json (bridge_request_t{31}))
+        .async ()
+        .result ();
+    if (missing_route_relay
+        || missing_route_relay.error_kind ()
+             != zlink::framework::framework_error_kind_t::spot_route_not_found) {
+        return 49;
+    }
+    auto bridge_join =
+      bridge_actor.value ()
+        .context ()
+        .join_spot (bridge_room.spot_rid, bridge_request_t{17})
+        .async<bridge_reply_t> ()
+        .result ();
+    if (!bridge_join || bridge_join.value ().reply.value != "joined:carol"
+        || bridge_spot->join_value != 17 || bridge_spot->joined_count != 1
+        || bridge_join.value ().actor.node_rid ().empty ()) {
+        return 37;
+    }
+    auto joined_bridge_actor = bridge_gateway.manager ().bind (bridge_join.value ().actor).async ().result ();
+    if (!joined_bridge_actor) {
+        return 38;
+    }
+    auto bridge_relay =
+      joined_bridge_actor.value ()
+        .relay_request ("bridge.relay", zlink::message_t::from_json (bridge_request_t{23}))
+        .async ()
+        .result ();
+    if (!bridge_relay) {
+        return 39;
+    }
+    if (bridge_relay.value ().parse_json<bridge_reply_t> ().value != "carol:23") {
+        return 41;
+    }
+    if (bridge_spot->relay_value != 23) {
+        return 42;
+    }
+    joined_bridge_actor.value ().notify_disconnected ().submit ();
+    bridge_scope.close ();
+    bridge_provider.close ();
 
     return 0;
 }

@@ -3,6 +3,7 @@
 
 #include "../Configuration/sample_names.hpp"
 #include "../Configuration/sample_topology.hpp"
+#include "../Configuration/location_store.hpp"
 #include "../common_codecs.hpp"
 #include "../sample_log_dir.hpp"
 #include "../../Shared/Contracts/messages.hpp"
@@ -22,8 +23,7 @@ inline app_t &add_bingo_api_server (app_t &app, const sample_topology_t &topolog
           .trace_log_file (flow_log_path ("api-" + topology.api_node))
           .trace_label ("api-" + topology.api_node);
         use_default_bingo_codecs (options.codecs ());
-
-        options.use_discovery ().add_registry_endpoint (topology.registry_router_endpoint);
+        add_sample_location_store (options, topology);
 
         options.add_client_server_channel (sample_names_t::api_channel)
           .enable_server (topology.selected_api_channel_endpoint ())

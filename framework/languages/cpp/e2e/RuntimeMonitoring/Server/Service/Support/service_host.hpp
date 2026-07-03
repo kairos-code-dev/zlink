@@ -7,6 +7,7 @@
 #include "../Handlers/service_event_recorders.hpp"
 #include "../Handlers/service_handlers.hpp"
 #include "../../Shared/evidence_store.hpp"
+#include "../../Shared/location_store.hpp"
 #include "../../../Shared/runtime_monitoring_contracts.hpp"
 
 #include <zlink/framework.hpp>
@@ -34,16 +35,16 @@ inline int run_service_host (int argc,
                                                                     options.evidence_file);
         auto *evidence_ptr = evidence.get ();
         framework.services ().add_singleton<server::evidence_store_t> (std::move (evidence));
-        framework.use_discovery ().add_registry_endpoint (options.registry_router);
+        server::add_redis_location_store (framework, options.redis_endpoint,
+                                          options.redis_key_prefix);
         framework.add_client_server_channel (profile_channel)
           .enable_server (options.channel_endpoint)
           .set_routing_id (zlink::routing_id_t::from (options.rid))
           .use_handler_group (handler_group);
         framework.add_spot_mesh (spot_node)
           .set_routing_id (zlink::routing_id_t::from (options.rid))
-          .enable_pub_sub (options.spot_endpoint.empty ()
-                             ? "inproc://runtime-monitoring-spot-" + options.rid
-                             : options.spot_endpoint)
+          .enable_router (options.spot_router_endpoint)
+          .enable_pub_sub (options.spot_pub_endpoint)
           .add_spot<monitoring_spot_t> (spot_channel);
         if (!options.log_dir.empty ()) {
             framework.configure_dispatch ()
@@ -63,9 +64,14 @@ inline int run_service_host (int argc,
         }
         monitoring.add_spot_events (spot_node, std::chrono::milliseconds (100));
         monitoring.add_spot_timer_events (spot_node);
+        monitoring.add_location_events ("location-runtime", std::chrono::milliseconds (100));
         monitoring.on<zlink::framework::socket_event_payload_t> (
           [evidence_ptr] (const zlink::framework::socket_event_payload_t &event) {
               record_socket_event (*evidence_ptr, event);
+          });
+        monitoring.on<zlink::framework::location_event_payload_t> (
+          [evidence_ptr] (const zlink::framework::location_event_payload_t &event) {
+              record_location_event (*evidence_ptr, event);
           });
         monitoring.on<zlink::framework::spot_event_payload_t> (
           [evidence_ptr] (const zlink::framework::spot_event_payload_t &event) {

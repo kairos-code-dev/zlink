@@ -7,14 +7,18 @@
 // std::clog, so the tests capture that buffer and assert on the emitted lines.
 
 #include "runtime/diagnostics/dispatch_error_reporter.hpp"
+#include "runtime/diagnostics/dispatch_diagnostics_names.hpp"
 #include "runtime/diagnostics/message_flow_tracer.hpp"
 
 #include <atomic>
+#include <chrono>
+#include <functional>
 #include <iostream>
 #include <memory>
 #include <optional>
 #include <sstream>
 #include <string>
+#include <thread>
 #include <utility>
 
 namespace
@@ -75,6 +79,17 @@ message_dispatch_error_event_t error_event ()
 bool contains (const std::string &haystack, const std::string &needle)
 {
     return haystack.find (needle) != std::string::npos;
+}
+
+bool wait_until (const std::function<bool ()> &predicate)
+{
+    for (int attempt = 0; attempt < 50; ++attempt) {
+        if (predicate ()) {
+            return true;
+        }
+        std::this_thread::sleep_for (std::chrono::milliseconds (10));
+    }
+    return predicate ();
 }
 
 } // namespace
@@ -220,6 +235,90 @@ int main ()
         });
         if (!out.empty ()) {
             return 17;
+        }
+    }
+
+    // sample_rate gates healthy transitions but never drops error transitions.
+    {
+        auto options = options_with_mode (message_flow_log_mode_t::key_transitions);
+        options.trace_sample_rate (0.0);
+        const auto out = capture_clog ([&] {
+            message_flow_tracer_t tracer (options);
+            tracer.trace (flow_event (message_flow_outcome_t::received));
+            tracer.trace (flow_event (message_flow_outcome_t::error));
+        });
+        if (contains (out, "outcome=received")) {
+            return 18;
+        }
+        if (!contains (out, "outcome=error")) {
+            return 19;
+        }
+    }
+
+    // observer callbacks are delivered asynchronously and see the same event fields.
+    {
+        auto options = options_with_mode (message_flow_log_mode_t::key_transitions);
+        std::atomic_int observed{0};
+        std::atomic_bool saw_packet{false};
+        options.set_message_flow_observer ([&] (const message_flow_event_t &event) {
+            if (event.packet_name && *event.packet_name == "PlaceOrder") {
+                saw_packet.store (true, std::memory_order_release);
+            }
+            observed.fetch_add (1, std::memory_order_acq_rel);
+        });
+        (void) capture_clog ([&] {
+            message_flow_tracer_t (options).trace (flow_event (message_flow_outcome_t::replied));
+        });
+        if (!wait_until ([&] { return observed.load (std::memory_order_acquire) == 1; })) {
+            return 20;
+        }
+        if (!saw_packet.load (std::memory_order_acquire)) {
+            return 21;
+        }
+    }
+
+    // enum names are stable grep tokens for logs and metric sinks.
+    {
+        using zlink::framework::detail::enum_name;
+        if (enum_name (dispatch_error_surface_t::channel) != "channel"
+            || enum_name (dispatch_error_surface_t::route_mesh_channel)
+                 != "route_mesh_channel"
+            || enum_name (dispatch_error_surface_t::spot_route) != "spot_route"
+            || enum_name (dispatch_error_surface_t::spot_subscription) != "spot_subscription"
+            || enum_name (dispatch_error_surface_t::spot_actor) != "spot_actor"
+            || enum_name (dispatch_error_surface_t::stream_session) != "stream_session") {
+            return 22;
+        }
+        if (enum_name (dispatch_message_kind_t::send) != "send"
+            || enum_name (dispatch_message_kind_t::request) != "request"
+            || enum_name (dispatch_message_kind_t::publish) != "publish"
+            || enum_name (dispatch_message_kind_t::response) != "response"
+            || enum_name (dispatch_message_kind_t::error) != "error"
+            || enum_name (dispatch_message_kind_t::actor_send) != "actor_send"
+            || enum_name (dispatch_message_kind_t::actor_request) != "actor_request") {
+            return 23;
+        }
+        if (enum_name (dispatch_error_reason_t::handler_missing) != "handler_missing"
+            || enum_name (dispatch_error_reason_t::payload_decode_failed)
+                 != "payload_decode_failed"
+            || enum_name (dispatch_error_reason_t::handler_exception) != "handler_exception"
+            || enum_name (dispatch_error_reason_t::invalid_frame) != "invalid_frame"
+            || enum_name (dispatch_error_reason_t::reply_path_missing) != "reply_path_missing"
+            || enum_name (dispatch_error_reason_t::unexpected_reply) != "unexpected_reply") {
+            return 24;
+        }
+        if (enum_name (dispatch_error_action_t::drop) != "drop"
+            || enum_name (dispatch_error_action_t::reply_error) != "reply_error") {
+            return 25;
+        }
+        if (enum_name (message_flow_outcome_t::received) != "received"
+            || enum_name (message_flow_outcome_t::dispatched) != "dispatched"
+            || enum_name (message_flow_outcome_t::replied) != "replied"
+            || enum_name (message_flow_outcome_t::dropped) != "dropped"
+            || enum_name (message_flow_outcome_t::sent) != "sent"
+            || enum_name (message_flow_outcome_t::reply_received) != "reply_received"
+            || enum_name (message_flow_outcome_t::error) != "error") {
+            return 26;
         }
     }
 

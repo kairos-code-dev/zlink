@@ -56,7 +56,7 @@ class health_builder_t
 
     health_builder_t &add_zlink_runtime_check (std::string name = "zlink.runtime");
     health_builder_t &add_channel_check (std::string name);
-    health_builder_t &add_registry_check (std::string name);
+    health_builder_t &add_location_check (std::string name);
     health_builder_t &add_stream_endpoint_check (std::string name);
     health_builder_t &add_hosted_service_check (std::string name);
 

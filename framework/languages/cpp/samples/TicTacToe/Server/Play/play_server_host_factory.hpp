@@ -57,8 +57,7 @@ class play_server_host_factory_t
               .enable_client (topology.peer_play_route_endpoint ());
             options.add_client_server_channel (sample_names_t::api_channel)
               .enable_client (topology.api_endpoint);
-            options.add_spot_mesh (sample_names_t::game_spot_discovery)
-              .use_registry_spot_resolver (sample_names_t::play_route_channel)
+            options.add_spot_mesh (sample_names_t::game_spot_node)
               .set_routing_id (zlink::routing_id_t::from (topology.selected_play_node_rid ()))
               .enable_router (topology.selected_play_spot_router_endpoint ())
               .enable_pub_sub (topology.selected_play_spot_endpoint ())

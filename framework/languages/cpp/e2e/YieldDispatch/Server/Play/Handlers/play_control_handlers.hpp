@@ -5,7 +5,6 @@
 
 #include <zlink/framework.hpp>
 
-#include <atomic>
 #include <string>
 
 namespace zlink::framework::e2e::yield_dispatch::server::play
@@ -58,13 +57,15 @@ class bind_yield_actors_handler_t
   public:
     using dependency_types =
       zlink::framework::dependency_list_t<evidence_store_t,
-                                          zlink::framework::spot_node_manager_t>;
+                                          zlink::framework::spot_node_manager_t,
+                                          zlink::framework::session_actor_manager_t>;
     using request_type = bind_yield_actors_req_t;
     using reply_type = bind_yield_actors_res_t;
 
     bind_yield_actors_handler_t (evidence_store_t &evidence,
-                                 zlink::framework::spot_node_manager_t &spots) :
-        _evidence (evidence), _spots (spots)
+                                 zlink::framework::spot_node_manager_t &spots,
+                                 zlink::framework::session_actor_manager_t &actors) :
+        _evidence (evidence), _spots (spots), _actors (actors)
     {
     }
 
@@ -74,18 +75,43 @@ class bind_yield_actors_handler_t
     {
         const auto spot_rid = zlink::framework::spot_rid_t::from_string (request.spot_rid);
         (void) _spots.get_or_create_spot (probe_spot_name, spot_rid);
+        _evidence.add ("bind-start|rid=" + _evidence.node_rid + "|spot=" + request.spot_rid
+                       + "|actors=" + std::to_string (request.actor_ids.size ()));
         bind_yield_actors_res_t reply{.spot_rid = request.spot_rid};
         for (const auto &actor_id : request.actor_ids) {
-            auto actor_ref = zlink::framework::actor_ref_t (
-              zlink::framework::node_rid_t::from_string (_evidence.node_rid), actor_type,
-              actor_id, 0);
-            if (auto current = _spots.current_actor_ref (actor_ref)) {
-                actor_ref = *current;
-            } else {
-                actor_ref = zlink::framework::actor_ref_t (
-                  zlink::framework::node_rid_t::from_string (_evidence.node_rid),
-                  actor_type, actor_id, ++_generation);
+            auto actor = _actors.get_or_create (actor_type, actor_id);
+            if (!actor) {
+                throw zlink::framework::framework_exception_t (
+                  actor.error_kind (),
+                  actor.error () ? actor.error ()->what () : "actor get or create failed");
             }
+            auto bound = _actors.bind (actor.value ().ref ()).async ().result ();
+            if (!bound) {
+                throw zlink::framework::framework_exception_t (
+                  bound.error_kind (),
+                  bound.error () ? bound.error ()->what () : "actor bind failed");
+            }
+            auto joined =
+              bound.value ()
+                .context ()
+                .join_spot (spot_rid,
+                            delay_req_t{.request_id = "bind-" + actor_id,
+                                        .delay_ms = 0,
+                                        .marker = "bind"})
+                .timeout (std::chrono::milliseconds (3000))
+                .template async<delay_res_t> ()
+                .result ();
+            if (!joined) {
+                throw zlink::framework::framework_exception_t (
+                  joined.error_kind (),
+                  joined.error () ? joined.error ()->what () : "actor join failed");
+            }
+            if (joined.value ().result_code != 0) {
+                throw zlink::framework::framework_exception_t (
+                  zlink::framework::framework_error_kind_t::request_failed,
+                  "yield actor join was rejected: " + actor_id);
+            }
+            auto actor_ref = joined.value ().actor;
             _evidence.add ("bind-actor|rid=" + _evidence.node_rid + "|spot="
                            + request.spot_rid + "|actor=" + actor_id + "|generation="
                            + std::to_string (actor_ref.generation ()));
@@ -100,7 +126,7 @@ class bind_yield_actors_handler_t
   private:
     evidence_store_t &_evidence;
     zlink::framework::spot_node_manager_t &_spots;
-    static inline std::atomic_uint64_t _generation{0};
+    zlink::framework::session_actor_manager_t &_actors;
 };
 
 class evidence_handler_t

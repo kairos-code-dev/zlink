@@ -204,7 +204,8 @@ inline std::vector<extension_descriptor_t> known_extensions ()
             {"flatbuffers", "zlink::framework_extension_flatbuffers"},
             {"yaml", "zlink::framework_extension_yaml_config"},
             {"custom-codec", "zlink::framework_extension_custom_codec"},
-            {"custom-transport", "zlink::framework_extension_custom_transport"}};
+            {"custom-transport", "zlink::framework_extension_custom_transport"},
+            {"locations-redis", "zlink::framework_locations_redis", false}};
 }
 
 } // namespace zlink::framework::extensions

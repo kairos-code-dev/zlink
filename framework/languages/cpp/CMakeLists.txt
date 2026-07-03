@@ -102,8 +102,6 @@ add_library(zlink_framework STATIC
   framework/src/runtime/messaging/pending_submit.cpp
   framework/src/runtime/messaging/request_failure_mapper.cpp
   framework/src/runtime/messaging/submit_queue.cpp
-  framework/src/runtime/registry/registry_runtime.cpp
-  framework/src/runtime/registry/discovery_registry_connection.cpp
   framework/src/runtime/spots/spot_node_host_service.cpp
   framework/src/runtime/spots/spot_route_internal_dispatcher.cpp
   framework/src/runtime/spots/spot_route_packets.cpp
@@ -485,6 +483,39 @@ add_zlink_framework_codec_extension(
   zlink::framework_codec_messagepack
   extensions/framework-codec-messagepack)
 
+find_package(redis++ CONFIG QUIET)
+find_package(libuv CONFIG QUIET)
+
+add_library(zlink_framework_locations_redis INTERFACE)
+add_library(zlink::framework_locations_redis ALIAS zlink_framework_locations_redis)
+set_target_properties(zlink_framework_locations_redis PROPERTIES
+  EXPORT_NAME framework_locations_redis)
+target_compile_features(zlink_framework_locations_redis INTERFACE cxx_std_20)
+target_include_directories(zlink_framework_locations_redis INTERFACE
+  $<BUILD_INTERFACE:${ZLINK_FRAMEWORK_CPP_DIR}/extensions/framework-locations-redis/include>
+  $<BUILD_INTERFACE:${ZLINK_FRAMEWORK_CPP_DIR}/connector/core/include>
+  $<INSTALL_INTERFACE:${CMAKE_INSTALL_INCLUDEDIR}>)
+target_link_libraries(zlink_framework_locations_redis INTERFACE
+  zlink::framework)
+if(TARGET redis++::redis++)
+  target_link_libraries(zlink_framework_locations_redis INTERFACE
+    redis++::redis++)
+  target_compile_definitions(zlink_framework_locations_redis INTERFACE
+    ZLINK_FRAMEWORK_LOCATIONS_REDIS_HAS_ASYNC_CLIENT=1)
+elseif(TARGET redis++::redis++_static)
+  target_link_libraries(zlink_framework_locations_redis INTERFACE
+    redis++::redis++_static)
+  target_compile_definitions(zlink_framework_locations_redis INTERFACE
+    ZLINK_FRAMEWORK_LOCATIONS_REDIS_HAS_ASYNC_CLIENT=1)
+endif()
+if(TARGET libuv::uv_a)
+  target_link_libraries(zlink_framework_locations_redis INTERFACE
+    libuv::uv_a)
+elseif(TARGET libuv::uv)
+  target_link_libraries(zlink_framework_locations_redis INTERFACE
+    libuv::uv)
+endif()
+
 if(ZLINK_FRAMEWORK_CPP_INSTALL_FRAMEWORK)
   install(TARGETS
     zlink_framework
@@ -502,6 +533,7 @@ if(ZLINK_FRAMEWORK_CPP_INSTALL_FRAMEWORK)
     zlink_framework_extension_custom_transport
     zlink_framework_codec_protobuf
     zlink_framework_codec_messagepack
+    zlink_framework_locations_redis
     EXPORT zlink_framework_cppTargets)
 endif()
 install(TARGETS
@@ -535,6 +567,9 @@ if(ZLINK_FRAMEWORK_CPP_INSTALL_FRAMEWORK)
     DESTINATION ${CMAKE_INSTALL_INCLUDEDIR}
     FILES_MATCHING PATTERN "*.hpp")
   install(DIRECTORY extensions/framework-codec-messagepack/include/
+    DESTINATION ${CMAKE_INSTALL_INCLUDEDIR}
+    FILES_MATCHING PATTERN "*.hpp")
+  install(DIRECTORY extensions/framework-locations-redis/include/
     DESTINATION ${CMAKE_INSTALL_INCLUDEDIR}
     FILES_MATCHING PATTERN "*.hpp")
 endif()
@@ -625,6 +660,7 @@ if(ZLINK_FRAMEWORK_CPP_BUILD_TESTS)
 
   function(target_link_zlink_test_harness target_name)
     target_link_libraries(${target_name} PRIVATE GTest::gtest GTest::gmock)
+    zlink_enable_coverage(${target_name})
   endfunction()
 
   function(add_zlink_framework_test target_name source_file labels)
@@ -813,6 +849,78 @@ if(ZLINK_FRAMEWORK_CPP_BUILD_TESTS)
     test_cpp_framework_serializer_registry
     tests/Zlink.Framework.UnitTests/test_cpp_framework_serializer_registry.cpp
     "framework-unit;serializer")
+  add_executable(test_cpp_framework_location_key_codec
+    tests/Zlink.Framework.UnitTests/test_cpp_framework_location_key_codec.cpp)
+  target_compile_features(test_cpp_framework_location_key_codec PRIVATE cxx_std_20)
+  target_link_zlink_test_harness(test_cpp_framework_location_key_codec)
+  target_link_libraries(test_cpp_framework_location_key_codec PRIVATE GTest::gtest_main)
+  target_include_directories(test_cpp_framework_location_key_codec PRIVATE
+    ${ZLINK_FRAMEWORK_CPP_DIR}/framework/include
+    ${ZLINK_FRAMEWORK_CPP_DIR}/framework/src
+    ${ZLINK_FRAMEWORK_CPP_REPO_ROOT}/bindings/cpp/include)
+  add_test(NAME test_cpp_framework_location_key_codec
+    COMMAND test_cpp_framework_location_key_codec)
+  set_tests_properties(test_cpp_framework_location_key_codec PROPERTIES
+    LABELS "framework-unit;framework-regression;framework-location"
+    TIMEOUT 30)
+  add_executable(test_cpp_framework_in_memory_location_store
+    tests/Zlink.Framework.UnitTests/test_cpp_framework_in_memory_location_store.cpp)
+  target_compile_features(test_cpp_framework_in_memory_location_store PRIVATE cxx_std_20)
+  target_link_zlink_test_harness(test_cpp_framework_in_memory_location_store)
+  target_link_libraries(test_cpp_framework_in_memory_location_store PRIVATE GTest::gtest_main)
+  target_include_directories(test_cpp_framework_in_memory_location_store PRIVATE
+    ${ZLINK_FRAMEWORK_CPP_DIR}/framework/include
+    ${ZLINK_FRAMEWORK_CPP_DIR}/framework/src
+    ${ZLINK_FRAMEWORK_CPP_REPO_ROOT}/bindings/cpp/include)
+  add_test(NAME test_cpp_framework_in_memory_location_store
+    COMMAND test_cpp_framework_in_memory_location_store)
+  set_tests_properties(test_cpp_framework_in_memory_location_store PROPERTIES
+    LABELS "framework-unit;framework-regression;framework-location"
+    TIMEOUT 30)
+  add_executable(test_cpp_framework_location_runtime
+    tests/Zlink.Framework.UnitTests/test_cpp_framework_location_runtime.cpp)
+  target_compile_features(test_cpp_framework_location_runtime PRIVATE cxx_std_20)
+  target_link_zlink_test_harness(test_cpp_framework_location_runtime)
+  target_link_libraries(test_cpp_framework_location_runtime PRIVATE GTest::gtest_main)
+  target_include_directories(test_cpp_framework_location_runtime PRIVATE
+    ${ZLINK_FRAMEWORK_CPP_DIR}/framework/include
+    ${ZLINK_FRAMEWORK_CPP_DIR}/framework/src
+    ${ZLINK_FRAMEWORK_CPP_REPO_ROOT}/bindings/cpp/include)
+  add_test(NAME test_cpp_framework_location_runtime
+    COMMAND test_cpp_framework_location_runtime)
+  set_tests_properties(test_cpp_framework_location_runtime PROPERTIES
+    LABELS "framework-unit;framework-regression;framework-location"
+    TIMEOUT 30)
+  add_executable(test_cpp_framework_location_lifecycle
+    tests/Zlink.Framework.UnitTests/test_cpp_framework_location_lifecycle.cpp)
+  target_compile_features(test_cpp_framework_location_lifecycle PRIVATE cxx_std_20)
+  target_link_zlink_test_harness(test_cpp_framework_location_lifecycle)
+  target_link_libraries(test_cpp_framework_location_lifecycle PRIVATE GTest::gtest_main)
+  target_include_directories(test_cpp_framework_location_lifecycle PRIVATE
+    ${ZLINK_FRAMEWORK_CPP_DIR}/framework/include
+    ${ZLINK_FRAMEWORK_CPP_DIR}/framework/src
+    ${ZLINK_FRAMEWORK_CPP_REPO_ROOT}/bindings/cpp/include)
+  add_test(NAME test_cpp_framework_location_lifecycle
+    COMMAND test_cpp_framework_location_lifecycle)
+  set_tests_properties(test_cpp_framework_location_lifecycle PROPERTIES
+    LABELS "framework-unit;framework-regression;framework-location"
+    TIMEOUT 30)
+  add_executable(test_cpp_framework_store_location_resolvers
+    tests/Zlink.Framework.UnitTests/test_cpp_framework_store_location_resolvers.cpp)
+  target_compile_features(test_cpp_framework_store_location_resolvers PRIVATE cxx_std_20)
+  target_link_zlink_test_harness(test_cpp_framework_store_location_resolvers)
+  target_link_libraries(test_cpp_framework_store_location_resolvers PRIVATE
+    zlink::framework
+    GTest::gtest_main)
+  target_include_directories(test_cpp_framework_store_location_resolvers PRIVATE
+    ${ZLINK_FRAMEWORK_CPP_DIR}/framework/include
+    ${ZLINK_FRAMEWORK_CPP_DIR}/framework/src
+    ${ZLINK_FRAMEWORK_CPP_REPO_ROOT}/bindings/cpp/include)
+  add_test(NAME test_cpp_framework_store_location_resolvers
+    COMMAND test_cpp_framework_store_location_resolvers)
+  set_tests_properties(test_cpp_framework_store_location_resolvers PROPERTIES
+    LABELS "framework-unit;framework-regression;framework-location"
+    TIMEOUT 30)
   add_zlink_framework_test(
     test_cpp_framework_handler_registry
     tests/Zlink.Framework.UnitTests/test_cpp_framework_handler_registry.cpp
@@ -841,10 +949,6 @@ if(ZLINK_FRAMEWORK_CPP_BUILD_TESTS)
     test_cpp_framework_ActorGateway_actor_session_relay
     tests/Zlink.Framework.UnitTests/test_cpp_framework_actor_gateway.cpp
     "framework-integration;framework-regression;framework-zlink;framework-zlink-actor-gateway;ActorGateway;actor")
-  add_zlink_framework_test(
-    test_cpp_framework_registry_topology
-    tests/Zlink.Framework.UnitTests/test_cpp_framework_registry_topology.cpp
-    "framework-integration;framework-regression;framework-zlink;framework-zlink-registry;registry")
   add_zlink_framework_test(
     test_cpp_framework_monitoring
     tests/Zlink.Framework.UnitTests/test_cpp_framework_monitoring.cpp
@@ -896,6 +1000,17 @@ if(ZLINK_FRAMEWORK_CPP_BUILD_TESTS)
     COMMAND test_cpp_framework_extensions)
   set_tests_properties(test_cpp_framework_extensions PROPERTIES
     LABELS "framework-extension"
+    TIMEOUT 30)
+  add_executable(test_cpp_framework_locations_redis
+    tests/Zlink.Framework.UnitTests/test_cpp_framework_locations_redis.cpp)
+  zlink_enable_coverage(test_cpp_framework_locations_redis)
+  target_link_libraries(test_cpp_framework_locations_redis PRIVATE
+    zlink::framework_locations_redis
+    GTest::gtest_main)
+  add_test(NAME test_cpp_framework_locations_redis
+    COMMAND test_cpp_framework_locations_redis)
+  set_tests_properties(test_cpp_framework_locations_redis PROPERTIES
+    LABELS "framework-extension;framework-location;redis"
     TIMEOUT 30)
   add_test(NAME test_cpp_framework_install_consumer
     COMMAND
@@ -992,59 +1107,33 @@ if(ZLINK_FRAMEWORK_CPP_BUILD_TESTS)
 endif()
 
 if(ZLINK_FRAMEWORK_CPP_BUILD_E2E)
-  add_executable(zlink_cpp_e2e_discovery_registry_ha_registry
-    e2e/DiscoveryRegistryHa/Server/Registry/main.cpp)
-  target_link_libraries(zlink_cpp_e2e_discovery_registry_ha_registry PRIVATE
-    zlink::framework)
-  target_include_directories(zlink_cpp_e2e_discovery_registry_ha_registry PRIVATE
-    ${ZLINK_FRAMEWORK_CPP_DIR}/framework/src)
-
-  add_executable(zlink_cpp_e2e_discovery_registry_ha_provider
+  add_executable(zlink_cpp_e2e_store_failure_provider
     e2e/DiscoveryRegistryHa/Server/Provider/main.cpp)
-  target_link_libraries(zlink_cpp_e2e_discovery_registry_ha_provider PRIVATE
-    zlink::framework)
-  target_include_directories(zlink_cpp_e2e_discovery_registry_ha_provider PRIVATE
+  target_link_libraries(zlink_cpp_e2e_store_failure_provider PRIVATE
+    zlink::framework_locations_redis
+    OpenSSL::Crypto)
+  target_include_directories(zlink_cpp_e2e_store_failure_provider PRIVATE
     ${ZLINK_FRAMEWORK_CPP_DIR}/framework/src)
 
-  add_executable(zlink_cpp_e2e_discovery_registry_ha_consumer
+  add_executable(zlink_cpp_e2e_store_failure_consumer
     e2e/DiscoveryRegistryHa/Server/Consumer/main.cpp)
-  target_link_libraries(zlink_cpp_e2e_discovery_registry_ha_consumer PRIVATE
-    zlink::framework)
-  target_include_directories(zlink_cpp_e2e_discovery_registry_ha_consumer PRIVATE
+  target_link_libraries(zlink_cpp_e2e_store_failure_consumer PRIVATE
+    zlink::framework_locations_redis
+    OpenSSL::Crypto)
+  target_include_directories(zlink_cpp_e2e_store_failure_consumer PRIVATE
     ${ZLINK_FRAMEWORK_CPP_DIR}/framework/src)
 
-  add_executable(zlink_cpp_e2e_discovery_registry_ha_embedded
-    e2e/DiscoveryRegistryHa/Server/Embedded/main.cpp)
-  target_link_libraries(zlink_cpp_e2e_discovery_registry_ha_embedded PRIVATE
-    zlink::framework)
-  target_include_directories(zlink_cpp_e2e_discovery_registry_ha_embedded PRIVATE
-    ${ZLINK_FRAMEWORK_CPP_DIR}/framework/src)
-
-  add_executable(zlink_cpp_e2e_discovery_registry_ha_probe
-    e2e/DiscoveryRegistryHa/Server/Probe/main.cpp)
-  target_link_libraries(zlink_cpp_e2e_discovery_registry_ha_probe PRIVATE
-    zlink::framework)
-  target_include_directories(zlink_cpp_e2e_discovery_registry_ha_probe PRIVATE
-    ${ZLINK_FRAMEWORK_CPP_DIR}/framework/src)
-
-  add_executable(zlink_cpp_e2e_discovery_registry_ha_client
+  add_executable(zlink_cpp_e2e_store_failure_client
     e2e/DiscoveryRegistryHa/Client/main.cpp)
-  target_link_libraries(zlink_cpp_e2e_discovery_registry_ha_client PRIVATE
+  target_link_libraries(zlink_cpp_e2e_store_failure_client PRIVATE
     zlink::http_client)
-  target_include_directories(zlink_cpp_e2e_discovery_registry_ha_client PRIVATE
-    ${ZLINK_FRAMEWORK_CPP_DIR}/framework/src)
-
-  add_executable(zlink_cpp_e2e_registry_messaging_registry
-    e2e/RegistryMessaging/Server/Registry/main.cpp)
-  target_link_libraries(zlink_cpp_e2e_registry_messaging_registry PRIVATE
-    zlink::framework)
-  target_include_directories(zlink_cpp_e2e_registry_messaging_registry PRIVATE
+  target_include_directories(zlink_cpp_e2e_store_failure_client PRIVATE
     ${ZLINK_FRAMEWORK_CPP_DIR}/framework/src)
 
   add_executable(zlink_cpp_e2e_registry_messaging_provider
     e2e/RegistryMessaging/Server/Provider/main.cpp)
   target_link_libraries(zlink_cpp_e2e_registry_messaging_provider PRIVATE
-    zlink::framework
+    zlink::framework_locations_redis
     OpenSSL::Crypto)
   target_include_directories(zlink_cpp_e2e_registry_messaging_provider PRIVATE
     ${ZLINK_FRAMEWORK_CPP_DIR}/framework/src)
@@ -1052,7 +1141,7 @@ if(ZLINK_FRAMEWORK_CPP_BUILD_E2E)
   add_executable(zlink_cpp_e2e_registry_messaging_workflow
     e2e/RegistryMessaging/Server/Workflow/main.cpp)
   target_link_libraries(zlink_cpp_e2e_registry_messaging_workflow PRIVATE
-    zlink::framework
+    zlink::framework_locations_redis
     OpenSSL::Crypto)
   target_include_directories(zlink_cpp_e2e_registry_messaging_workflow PRIVATE
     ${ZLINK_FRAMEWORK_CPP_DIR}/framework/src)
@@ -1060,7 +1149,7 @@ if(ZLINK_FRAMEWORK_CPP_BUILD_E2E)
   add_executable(zlink_cpp_e2e_registry_messaging_consumer
     e2e/RegistryMessaging/Server/Consumer/main.cpp)
   target_link_libraries(zlink_cpp_e2e_registry_messaging_consumer PRIVATE
-    zlink::framework
+    zlink::framework_locations_redis
     OpenSSL::Crypto)
   target_include_directories(zlink_cpp_e2e_registry_messaging_consumer PRIVATE
     ${ZLINK_FRAMEWORK_CPP_DIR}/framework/src)
@@ -1074,39 +1163,33 @@ if(ZLINK_FRAMEWORK_CPP_BUILD_E2E)
   target_include_directories(zlink_cpp_e2e_registry_messaging_client PRIVATE
     ${ZLINK_FRAMEWORK_CPP_DIR}/framework/src)
 
-  add_executable(zlink_cpp_e2e_spot_service_registry
-    e2e/SpotService/Server/Registry/main.cpp)
-  target_link_libraries(zlink_cpp_e2e_spot_service_registry PRIVATE
-    zlink::framework
-    zlink::http_client)
-
   add_executable(zlink_cpp_e2e_spot_service_play
     e2e/SpotService/Server/Play/main.cpp)
   target_link_libraries(zlink_cpp_e2e_spot_service_play PRIVATE
-    zlink::framework
+    zlink::framework_locations_redis
     zlink::http_client)
 
   add_executable(zlink_cpp_e2e_spot_service_session
     e2e/SpotService/Server/Session/main.cpp)
   target_link_libraries(zlink_cpp_e2e_spot_service_session PRIVATE
-    zlink::framework
+    zlink::framework_locations_redis
     zlink::http_client)
 
   add_executable(zlink_cpp_e2e_spot_service_gateway
     e2e/SpotService/Server/Gateway/main.cpp)
   target_link_libraries(zlink_cpp_e2e_spot_service_gateway PRIVATE
-    zlink::framework)
+    zlink::framework_locations_redis)
 
   add_executable(zlink_cpp_e2e_spot_service_multinode
     e2e/SpotService/Server/MultiNode/main.cpp)
   target_link_libraries(zlink_cpp_e2e_spot_service_multinode PRIVATE
-    zlink::framework
+    zlink::framework_locations_redis
     zlink::http_client)
 
   add_executable(zlink_cpp_e2e_spot_service_multinode_requester
     e2e/SpotService/Server/MultiNodeRequester/main.cpp)
   target_link_libraries(zlink_cpp_e2e_spot_service_multinode_requester PRIVATE
-    zlink::framework)
+    zlink::framework_locations_redis)
 
   add_executable(zlink_cpp_e2e_spot_service_client
     e2e/SpotService/Client/main.cpp)
@@ -1114,62 +1197,46 @@ if(ZLINK_FRAMEWORK_CPP_BUILD_E2E)
     zlink::http_client
     zlink::stream_e2e_client)
 
-  if(EXISTS "${CMAKE_CURRENT_SOURCE_DIR}/e2e/YieldDispatch/Server/Registry/main.cpp")
-    add_executable(zlink_cpp_e2e_yield_dispatch_registry
-      e2e/YieldDispatch/Server/Registry/main.cpp)
-    target_link_libraries(zlink_cpp_e2e_yield_dispatch_registry PRIVATE
-      zlink::framework)
-    target_include_directories(zlink_cpp_e2e_yield_dispatch_registry PRIVATE
-      ${ZLINK_FRAMEWORK_CPP_DIR}/framework/src)
-
-    add_executable(zlink_cpp_e2e_yield_dispatch_delay
-      e2e/YieldDispatch/Server/Delay/main.cpp)
-    target_link_libraries(zlink_cpp_e2e_yield_dispatch_delay PRIVATE
-      zlink::framework)
-    target_include_directories(zlink_cpp_e2e_yield_dispatch_delay PRIVATE
-      ${ZLINK_FRAMEWORK_CPP_DIR}/framework/src)
-
-    add_executable(zlink_cpp_e2e_yield_dispatch_play
-      e2e/YieldDispatch/Server/Play/main.cpp)
-    target_link_libraries(zlink_cpp_e2e_yield_dispatch_play PRIVATE
-      zlink::framework)
-    target_include_directories(zlink_cpp_e2e_yield_dispatch_play PRIVATE
-      ${ZLINK_FRAMEWORK_CPP_DIR}/framework/src)
-
-    add_executable(zlink_cpp_e2e_yield_dispatch_session
-      e2e/YieldDispatch/Server/Session/main.cpp)
-    target_link_libraries(zlink_cpp_e2e_yield_dispatch_session PRIVATE
-      zlink::framework)
-    target_include_directories(zlink_cpp_e2e_yield_dispatch_session PRIVATE
-      ${ZLINK_FRAMEWORK_CPP_DIR}/framework/src)
-
-    add_executable(zlink_cpp_e2e_yield_dispatch_client
-      e2e/YieldDispatch/Client/main.cpp)
-    target_link_libraries(zlink_cpp_e2e_yield_dispatch_client PRIVATE
-      zlink::framework
-      zlink::stream_e2e_client)
-    target_include_directories(zlink_cpp_e2e_yield_dispatch_client PRIVATE
-      ${ZLINK_FRAMEWORK_CPP_DIR}/framework/src)
-  endif()
-
-  add_executable(zlink_cpp_e2e_pubsub_registry
-    e2e/PubSub/Server/Registry/main.cpp)
-  target_link_libraries(zlink_cpp_e2e_pubsub_registry PRIVATE
+  add_executable(zlink_cpp_e2e_yield_dispatch_delay
+    e2e/YieldDispatch/Server/Delay/main.cpp)
+  target_link_libraries(zlink_cpp_e2e_yield_dispatch_delay PRIVATE
     zlink::framework)
-  target_include_directories(zlink_cpp_e2e_pubsub_registry PRIVATE
+  target_include_directories(zlink_cpp_e2e_yield_dispatch_delay PRIVATE
+    ${ZLINK_FRAMEWORK_CPP_DIR}/framework/src)
+
+  add_executable(zlink_cpp_e2e_yield_dispatch_play
+    e2e/YieldDispatch/Server/Play/main.cpp)
+  target_link_libraries(zlink_cpp_e2e_yield_dispatch_play PRIVATE
+    zlink::framework_locations_redis)
+  target_include_directories(zlink_cpp_e2e_yield_dispatch_play PRIVATE
+    ${ZLINK_FRAMEWORK_CPP_DIR}/framework/src)
+
+  add_executable(zlink_cpp_e2e_yield_dispatch_session
+    e2e/YieldDispatch/Server/Session/main.cpp)
+  target_link_libraries(zlink_cpp_e2e_yield_dispatch_session PRIVATE
+    zlink::framework_locations_redis)
+  target_include_directories(zlink_cpp_e2e_yield_dispatch_session PRIVATE
+    ${ZLINK_FRAMEWORK_CPP_DIR}/framework/src)
+
+  add_executable(zlink_cpp_e2e_yield_dispatch_client
+    e2e/YieldDispatch/Client/main.cpp)
+  target_link_libraries(zlink_cpp_e2e_yield_dispatch_client PRIVATE
+    zlink::framework
+    zlink::stream_e2e_client)
+  target_include_directories(zlink_cpp_e2e_yield_dispatch_client PRIVATE
     ${ZLINK_FRAMEWORK_CPP_DIR}/framework/src)
 
   add_executable(zlink_cpp_e2e_pubsub_publisher
     e2e/PubSub/Server/Publisher/main.cpp)
   target_link_libraries(zlink_cpp_e2e_pubsub_publisher PRIVATE
-    zlink::framework)
+    zlink::framework_locations_redis)
   target_include_directories(zlink_cpp_e2e_pubsub_publisher PRIVATE
     ${ZLINK_FRAMEWORK_CPP_DIR}/framework/src)
 
   add_executable(zlink_cpp_e2e_pubsub_subscriber
     e2e/PubSub/Server/Subscriber/main.cpp)
   target_link_libraries(zlink_cpp_e2e_pubsub_subscriber PRIVATE
-    zlink::framework)
+    zlink::framework_locations_redis)
   target_include_directories(zlink_cpp_e2e_pubsub_subscriber PRIVATE
     ${ZLINK_FRAMEWORK_CPP_DIR}/framework/src)
 
@@ -1223,51 +1290,54 @@ if(ZLINK_FRAMEWORK_CPP_BUILD_E2E)
   target_include_directories(zlink_cpp_e2e_registration_codec_client PRIVATE
     ${ZLINK_FRAMEWORK_CPP_DIR}/framework/src)
 
-  add_executable(zlink_cpp_e2e_delivery_dispatch_registry
-    e2e/DeliveryDispatch/Server/Registry/main.cpp)
-  target_link_libraries(zlink_cpp_e2e_delivery_dispatch_registry PRIVATE
-    zlink::framework)
-
   add_executable(zlink_cpp_e2e_delivery_dispatch_dispatch_api
     e2e/DeliveryDispatch/Server/DispatchApi/main.cpp)
   target_link_libraries(zlink_cpp_e2e_delivery_dispatch_dispatch_api PRIVATE
     zlink::framework
+    zlink::framework_locations_redis
     zlink::http_client)
 
   add_executable(zlink_cpp_e2e_delivery_dispatch_dispatch_center
     e2e/DeliveryDispatch/Server/DispatchCenter/main.cpp)
   target_link_libraries(zlink_cpp_e2e_delivery_dispatch_dispatch_center PRIVATE
-    zlink::framework)
+    zlink::framework
+    zlink::framework_locations_redis)
 
   add_executable(zlink_cpp_e2e_delivery_dispatch_courier_gateway
     e2e/DeliveryDispatch/Server/CourierGateway/main.cpp)
   target_link_libraries(zlink_cpp_e2e_delivery_dispatch_courier_gateway PRIVATE
-    zlink::framework)
+    zlink::framework
+    zlink::framework_locations_redis)
 
   add_executable(zlink_cpp_e2e_delivery_dispatch_courier_actor_node
     e2e/DeliveryDispatch/Server/CourierActorNode/main.cpp)
   target_link_libraries(zlink_cpp_e2e_delivery_dispatch_courier_actor_node PRIVATE
-    zlink::framework)
+    zlink::framework
+    zlink::framework_locations_redis)
 
   add_executable(zlink_cpp_e2e_delivery_dispatch_customer_gateway
     e2e/DeliveryDispatch/Server/CustomerGateway/main.cpp)
   target_link_libraries(zlink_cpp_e2e_delivery_dispatch_customer_gateway PRIVATE
-    zlink::framework)
+    zlink::framework
+    zlink::framework_locations_redis)
 
   add_executable(zlink_cpp_e2e_delivery_dispatch_courier_session
     e2e/DeliveryDispatch/Server/CourierSession/main.cpp)
   target_link_libraries(zlink_cpp_e2e_delivery_dispatch_courier_session PRIVATE
-    zlink::framework)
+    zlink::framework
+    zlink::framework_locations_redis)
 
   add_executable(zlink_cpp_e2e_delivery_dispatch_tracking
     e2e/DeliveryDispatch/Server/Tracking/main.cpp)
   target_link_libraries(zlink_cpp_e2e_delivery_dispatch_tracking PRIVATE
-    zlink::framework)
+    zlink::framework
+    zlink::framework_locations_redis)
 
   add_executable(zlink_cpp_e2e_delivery_dispatch_probe
     e2e/DeliveryDispatch/Probe/main.cpp)
   target_link_libraries(zlink_cpp_e2e_delivery_dispatch_probe PRIVATE
-    zlink::framework)
+    zlink::framework
+    zlink::framework_locations_redis)
 
   add_executable(zlink_cpp_e2e_delivery_dispatch_client
     e2e/DeliveryDispatch/Client/main.cpp)
@@ -1277,17 +1347,11 @@ if(ZLINK_FRAMEWORK_CPP_BUILD_E2E)
     zlink::stream_connector
     zlink::stream_e2e_client)
 
-  add_executable(zlink_cpp_e2e_resilience_lifecycle_registry
-    e2e/ResilienceLifecycle/Server/Registry/main.cpp)
-  target_link_libraries(zlink_cpp_e2e_resilience_lifecycle_registry PRIVATE
-    zlink::framework)
-  target_include_directories(zlink_cpp_e2e_resilience_lifecycle_registry PRIVATE
-    ${ZLINK_FRAMEWORK_CPP_DIR}/framework/src)
-
   add_executable(zlink_cpp_e2e_resilience_lifecycle_provider
     e2e/ResilienceLifecycle/Server/Provider/main.cpp)
   target_link_libraries(zlink_cpp_e2e_resilience_lifecycle_provider PRIVATE
     zlink::framework
+    zlink::framework_locations_redis
     OpenSSL::Crypto)
   target_include_directories(zlink_cpp_e2e_resilience_lifecycle_provider PRIVATE
     ${ZLINK_FRAMEWORK_CPP_DIR}/framework/src)
@@ -1296,6 +1360,7 @@ if(ZLINK_FRAMEWORK_CPP_BUILD_E2E)
     e2e/ResilienceLifecycle/Server/Consumer/main.cpp)
   target_link_libraries(zlink_cpp_e2e_resilience_lifecycle_consumer PRIVATE
     zlink::framework
+    zlink::framework_locations_redis
     OpenSSL::Crypto)
   target_include_directories(zlink_cpp_e2e_resilience_lifecycle_consumer PRIVATE
     ${ZLINK_FRAMEWORK_CPP_DIR}/framework/src)
@@ -1313,38 +1378,35 @@ if(ZLINK_FRAMEWORK_CPP_BUILD_E2E)
   target_link_libraries(zlink_cpp_e2e_runtime_monitoring_client PRIVATE
     zlink::http_client)
 
-  add_executable(zlink_cpp_e2e_runtime_monitoring_registry
-    e2e/RuntimeMonitoring/Server/Registry/main.cpp)
-  target_link_libraries(zlink_cpp_e2e_runtime_monitoring_registry PRIVATE
-    zlink::framework)
-  target_include_directories(zlink_cpp_e2e_runtime_monitoring_registry PRIVATE
-    ${ZLINK_FRAMEWORK_CPP_DIR}/framework/src)
-
   add_executable(zlink_cpp_e2e_runtime_monitoring_service
     e2e/RuntimeMonitoring/Server/Service/main.cpp)
   target_link_libraries(zlink_cpp_e2e_runtime_monitoring_service PRIVATE
-    zlink::framework)
+    zlink::framework_locations_redis
+    OpenSSL::Crypto)
   target_include_directories(zlink_cpp_e2e_runtime_monitoring_service PRIVATE
     ${ZLINK_FRAMEWORK_CPP_DIR}/framework/src)
 
   add_executable(zlink_cpp_e2e_runtime_monitoring_filtered_service
     e2e/RuntimeMonitoring/Server/FilteredService/main.cpp)
   target_link_libraries(zlink_cpp_e2e_runtime_monitoring_filtered_service PRIVATE
-    zlink::framework)
+    zlink::framework_locations_redis
+    OpenSSL::Crypto)
   target_include_directories(zlink_cpp_e2e_runtime_monitoring_filtered_service PRIVATE
     ${ZLINK_FRAMEWORK_CPP_DIR}/framework/src)
 
   add_executable(zlink_cpp_e2e_runtime_monitoring_throwing_service
     e2e/RuntimeMonitoring/Server/ThrowingService/main.cpp)
   target_link_libraries(zlink_cpp_e2e_runtime_monitoring_throwing_service PRIVATE
-    zlink::framework)
+    zlink::framework_locations_redis
+    OpenSSL::Crypto)
   target_include_directories(zlink_cpp_e2e_runtime_monitoring_throwing_service PRIVATE
     ${ZLINK_FRAMEWORK_CPP_DIR}/framework/src)
 
   add_executable(zlink_cpp_e2e_runtime_monitoring_trigger
     e2e/RuntimeMonitoring/Server/Trigger/main.cpp)
   target_link_libraries(zlink_cpp_e2e_runtime_monitoring_trigger PRIVATE
-    zlink::framework)
+    zlink::framework_locations_redis
+    OpenSSL::Crypto)
   target_include_directories(zlink_cpp_e2e_runtime_monitoring_trigger PRIVATE
     ${ZLINK_FRAMEWORK_CPP_DIR}/framework/src)
 
@@ -1359,26 +1421,24 @@ if(ZLINK_FRAMEWORK_CPP_BUILD_SAMPLES)
   endfunction()
 
   add_zlink_framework_sample(
-    sample_cpp_framework_bingo_registry
-    samples/Bingo/Server/Registry/main.cpp
-    "framework-sample-bingo;framework-sample-registry"
-    zlink::framework)
-  add_zlink_framework_sample(
     sample_cpp_framework_bingo_api
     samples/Bingo/Server/Api/main.cpp
     "framework-sample-bingo;framework-sample-api"
+    zlink::framework_locations_redis
     zlink::framework
     zlink::framework_codec_protobuf)
   add_zlink_framework_sample(
     sample_cpp_framework_bingo_play
     samples/Bingo/Server/Play/main.cpp
     "framework-sample-bingo;framework-sample-play"
+    zlink::framework_locations_redis
     zlink::framework
     zlink::framework_codec_protobuf)
   add_zlink_framework_sample(
     sample_cpp_framework_bingo_session
     samples/Bingo/Server/Session/main.cpp
     "framework-sample-bingo;framework-sample-session"
+    zlink::framework_locations_redis
     zlink::framework
     zlink::framework_codec_protobuf
     zlink::stream_connector)
@@ -1405,51 +1465,54 @@ if(ZLINK_FRAMEWORK_CPP_BUILD_SAMPLES)
     zlink::http_client
     zlink::stream_e2e_client)
   add_zlink_framework_sample(
-    sample_cpp_framework_deliverydispatch_registry
-    samples/DeliveryDispatch/Server/Registry/main.cpp
-    "framework-sample-deliverydispatch;framework-sample-registry"
-    zlink::framework)
-  add_zlink_framework_sample(
     sample_cpp_framework_deliverydispatch_dispatch_api
     samples/DeliveryDispatch/Server/DispatchApi/main.cpp
     "framework-sample-deliverydispatch;framework-sample-api"
     zlink::framework
+    zlink::framework_locations_redis
     zlink::http_client)
   add_zlink_framework_sample(
     sample_cpp_framework_deliverydispatch_dispatch_center
     samples/DeliveryDispatch/Server/DispatchCenter/main.cpp
     "framework-sample-deliverydispatch;framework-sample-dispatch"
-    zlink::framework)
+    zlink::framework
+    zlink::framework_locations_redis)
   add_zlink_framework_sample(
     sample_cpp_framework_deliverydispatch_courier_gateway
     samples/DeliveryDispatch/Server/CourierGateway/main.cpp
     "framework-sample-deliverydispatch;framework-sample-courier"
-    zlink::framework)
+    zlink::framework
+    zlink::framework_locations_redis)
   add_zlink_framework_sample(
     sample_cpp_framework_deliverydispatch_courier_actor_node
     samples/DeliveryDispatch/Server/CourierActorNode/main.cpp
     "framework-sample-deliverydispatch;framework-sample-courier"
-    zlink::framework)
+    zlink::framework
+    zlink::framework_locations_redis)
   add_zlink_framework_sample(
     sample_cpp_framework_deliverydispatch_customer_gateway
     samples/DeliveryDispatch/Server/CustomerGateway/main.cpp
     "framework-sample-deliverydispatch;framework-sample-session"
-    zlink::framework)
+    zlink::framework
+    zlink::framework_locations_redis)
   add_zlink_framework_sample(
     sample_cpp_framework_deliverydispatch_courier_session
     samples/DeliveryDispatch/Server/CourierSession/main.cpp
     "framework-sample-deliverydispatch;framework-sample-session"
-    zlink::framework)
+    zlink::framework
+    zlink::framework_locations_redis)
   add_zlink_framework_sample(
     sample_cpp_framework_deliverydispatch_tracking
     samples/DeliveryDispatch/Server/Tracking/main.cpp
     "framework-sample-deliverydispatch;framework-sample-tracking"
-    zlink::framework)
+    zlink::framework
+    zlink::framework_locations_redis)
   add_zlink_framework_sample(
     sample_cpp_framework_deliverydispatch_probe
     samples/DeliveryDispatch/Probe/main.cpp
     "framework-sample-deliverydispatch;framework-sample-probe"
-    zlink::framework)
+    zlink::framework
+    zlink::framework_locations_redis)
   add_executable(sample_cpp_framework_deliverydispatch_client
     samples/DeliveryDispatch/Client/main.cpp)
   target_link_libraries(sample_cpp_framework_deliverydispatch_client PRIVATE
@@ -1471,7 +1534,7 @@ if(ZLINK_FRAMEWORK_CPP_BUILD_SAMPLES)
 
   add_zlink_framework_sample_runner(
     Bingo
-    "framework-sample-bingo;framework-sample-api;framework-sample-play;framework-sample-registry;framework-sample-session"
+    "framework-sample-bingo;framework-sample-api;framework-sample-play;framework-sample-session"
     180)
   add_zlink_framework_sample_runner(
     TicTacToe

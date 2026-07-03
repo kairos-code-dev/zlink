@@ -8,6 +8,7 @@
 #include <cstdlib>
 #include <filesystem>
 #include <fstream>
+#include <iostream>
 #include <memory>
 #include <optional>
 #include <vector>
@@ -45,6 +46,19 @@ static_assert (
 namespace
 {
 
+struct failure_trace_t
+{
+    const char *phase = "startup";
+    bool success = false;
+
+    ~failure_trace_t ()
+    {
+        if (!success) {
+            std::cerr << "app host test failed during phase: " << phase << '\n';
+        }
+    }
+};
+
 std::uint32_t current_process_id () noexcept
 {
 #ifdef _WIN32
@@ -56,7 +70,7 @@ std::uint32_t current_process_id () noexcept
 
 std::uint16_t process_unique_port (std::uint16_t base_port, std::uint16_t salt)
 {
-    const auto offset = static_cast<std::uint16_t> ((current_process_id () % 1000U) * 11U);
+    const auto offset = static_cast<std::uint16_t> ((current_process_id () % 1500U) * 23U);
     const auto first = static_cast<std::uint16_t> (base_port + offset + salt);
 #ifdef _WIN32
     return first;
@@ -663,12 +677,21 @@ make_app_host_test_client (std::string base_url,
     return builder.build ();
 }
 
-bool wait_for_ready (const zlink::http_client::client_t &client)
+bool wait_for_ready (const zlink::http_client::client_t &client,
+                     std::string *last_error = nullptr)
 {
     for (int attempt = 0; attempt < 100; ++attempt) {
         auto result = client.get ("/ready").submit<health_http_reply_t> ().result ();
         if (result.has_value () && result.value ().body.readiness == "healthy") {
             return true;
+        }
+        if (last_error != nullptr) {
+            if (result.error ()) {
+                *last_error = result.error ()->what ();
+            } else if (result.has_value ()) {
+                *last_error = "readiness returned status "
+                              + std::to_string (result.value ().status);
+            }
         }
         std::this_thread::sleep_for (std::chrono::milliseconds (10));
     }
@@ -691,6 +714,7 @@ bool wait_for_raw_status (const zlink::http_client::client_t &client, std::strin
 
 int main ()
 {
+    failure_trace_t trace;
     bool duplicate_route_rejected = false;
     try {
         auto duplicate_app = zlink::framework::app_t::create ();
@@ -866,12 +890,17 @@ int main ()
     int exit_code = -1;
     std::thread app_thread ([&] { exit_code = app.run (4, argv); });
     auto http_client = make_app_host_test_client (http_endpoint);
-    if (!wait_for_ready (http_client)) {
+    std::string readiness_error;
+    trace.phase = "main app readiness";
+    if (!wait_for_ready (http_client, &readiness_error)) {
+        std::cerr << "main HTTP app did not become ready at " << http_endpoint
+                  << ": " << readiness_error << '\n';
         app.stop ();
         app_thread.join ();
         return 13;
     }
 
+    trace.phase = "main app http requests";
     const auto post_result = http_client.post ("/games")
                                .header ("X-Correlation-Id", "corr-post")
                                .body (create_game_http_handler_t::request_type{.name = "post"})
@@ -1015,9 +1044,11 @@ int main ()
     const auto health_result = http_client.get ("/health").submit<health_http_reply_t> ().result ();
     const auto liveness_result = http_client.get ("/live").submit<health_http_reply_t> ().result ();
     const bool keep_alive_ok = http_keep_alive_round_trip (http_endpoint);
+    trace.phase = "main app stop";
     app.stop ();
     app_thread.join ();
 
+    trace.phase = "main app assertions";
     if (!post_result || post_result.value ().body.name != "post"
         || post_result.value ().body.correlationId != "corr-post"
         || post_result.value ().headers.at ("X-Correlation-Id") != "corr-post"
@@ -1304,6 +1335,7 @@ int main ()
     int unhealthy_exit_code = -1;
     std::thread unhealthy_thread ([&] { unhealthy_exit_code = unhealthy_app.run (1, argv); });
     auto unhealthy_client = make_app_host_test_client (unhealthy_endpoint);
+    trace.phase = "unhealthy app readiness";
     if (!wait_for_raw_status (unhealthy_client, "/ready", 503)) {
         unhealthy_app.stop ();
         unhealthy_thread.join ();
@@ -1333,6 +1365,7 @@ int main ()
     int not_live_exit_code = -1;
     std::thread not_live_thread ([&] { not_live_exit_code = not_live_app.run (1, argv); });
     auto not_live_client = make_app_host_test_client (not_live_endpoint);
+    trace.phase = "not-live app readiness";
     if (!wait_for_raw_status (not_live_client, "/ready", 503)) {
         not_live_app.stop ();
         not_live_thread.join ();
@@ -1364,6 +1397,7 @@ int main ()
     int limited_exit_code = -1;
     std::thread limited_thread ([&] { limited_exit_code = limited_app.run (1, argv); });
     auto limited_client = make_app_host_test_client (limited_endpoint);
+    trace.phase = "limited app raw rejection";
     const bool limited_ready = wait_for_ready (limited_client);
     const bool limited_rejected =
       limited_ready
@@ -1479,6 +1513,7 @@ int main ()
     std::thread secure_thread ([&] { secure_exit_code = secure_host.run (3, argv); });
     auto secure_client = make_app_host_test_client (https_client_base_url,
                                                     std::string (ZLINK_FRAMEWORK_HTTP_TEST_CERT));
+    trace.phase = "secure app readiness";
     if (!wait_for_ready (secure_client)) {
         secure_host.stop ();
         secure_thread.join ();
@@ -1497,5 +1532,6 @@ int main ()
     }
 #endif
 
+    trace.success = true;
     return 0;
 }

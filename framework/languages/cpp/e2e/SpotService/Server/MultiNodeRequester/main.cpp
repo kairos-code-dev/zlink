@@ -3,6 +3,7 @@
 #include "../MultiNode/Handlers/multi_node_handlers.hpp"
 #include "../Shared/Support/codecs.hpp"
 #include "../Shared/Support/env.hpp"
+#include "../Shared/Support/location_store.hpp"
 
 #include <zlink/framework.hpp>
 
@@ -24,7 +25,8 @@ int main (int argc, char **argv)
     const auto route_client_endpoint = env_or ("ZLINK_CPP_E2E_ROUTE_CLIENT_ENDPOINT");
     const auto spot_router_endpoint = env_or ("ZLINK_CPP_E2E_SPOT_ROUTER_ENDPOINT");
     const auto http_endpoint = env_or ("ZLINK_CPP_E2E_HTTP_ENDPOINT");
-    const auto registry_router = env_or ("ZLINK_CPP_E2E_REGISTRY_ROUTER");
+    const auto redis_endpoint = env_or ("ZLINK_CPP_E2E_REDIS_ENDPOINT");
+    const auto redis_key_prefix = env_or ("ZLINK_CPP_E2E_REDIS_KEY_PREFIX");
 
     app.logging ()
       .use_file (log_dir + "/" + node_rid + "-requester.log")
@@ -40,13 +42,12 @@ int main (int argc, char **argv)
           .add_transient<multi_node_state_route_handler_t, scenario_state_t,
                          zlink::framework::route_client_t> ();
         configure_codecs (options.codecs ());
-        options.use_discovery ().add_registry_endpoint (registry_router);
+        add_redis_location_store (options, redis_endpoint, redis_key_prefix);
         options.add_route_mesh (multi_node_route_channel_for (node_rid))
           .enable_server (route_client_endpoint)
           .set_routing_id (zlink::routing_id_t::from ("requester-" + node_rid))
           .enable_client (route_endpoint);
         options.add_spot_mesh ("requester-" + node_rid)
-          .use_registry_spot_resolver (multi_node_route_channel_for (node_rid))
           .set_routing_id (zlink::routing_id_t::from ("requester-spot-" + node_rid))
           .enable_router (spot_router_endpoint)
           .add_spot<requester_bridge_spot_t> ("requester-bridge");

@@ -1,6 +1,7 @@
 /* SPDX-License-Identifier: MPL-2.0 */
 
 #include "../Configuration/evidence_store.hpp"
+#include "../Configuration/location_store.hpp"
 #include "../Configuration/sample_names.hpp"
 #include "../Configuration/sample_topology.hpp"
 #include "../common_codecs.hpp"
@@ -24,17 +25,16 @@ int main (int argc, char **argv)
         options.services ().add_singleton<evidence_store_t> ();
         options.services ().add_singleton<delivery_spot_directory_t> ();
         add_deliverydispatch_json_codecs (options.codecs ());
-        options.use_discovery ().add_registry_endpoint (topology.registry_router_endpoint);
+        add_deliverydispatch_location_store (options, topology);
         options.add_client_server_channel (sample_names_t::tracking_route_channel)
-          .enable_server (topology.tracking_route_endpoint);
+          .enable_server (topology.tracking_route_endpoint)
+          .use_handler_group ("tracking");
         options.add_fanout_channel (sample_names_t::status_fanout_channel)
           .enable_publisher (topology.status_fanout_endpoint);
         options.handlers ()
           .group ("tracking")
           .add<ensure_customer_actor_handler_t> ()
           .add<delivery_status_changed_handler_t> ();
-        options.add_client_server_channel (sample_names_t::tracking_route_channel)
-          .use_handler_group ("tracking");
     });
     return app.run (argc, argv);
 }

@@ -24,7 +24,7 @@ print(max(1, math.ceil(timeout / poll)))
 PY
 )"
 
-read -r REGISTRY_PUB REGISTRY_ROUTER ROUTE_A ROUTE_B ROUTE_SESSION_A ROUTE_SESSION_B ROUTE_CLIENT ROUTE_STREAM_CLIENT SPOT_A SPOT_B SPOT_SESSION_A SPOT_SESSION_B SPOT_CLIENT PUB_A PUB_B PUB_SESSION_A PUB_SESSION_B PUB_CLIENT PUBLISHER_CLIENT API_CLIENT STREAM_A STREAM_B MULTI_ROUTE_A MULTI_ROUTE_B MULTI_ROUTE_CLIENT_A MULTI_ROUTE_CLIENT_B MULTI_SPOT_A MULTI_SPOT_B MULTI_PUB_A MULTI_PUB_B STREAM_TLS_A HTTP_A HTTP_B HTTP_SESSION_A HTTP_SESSION_B HTTP_GATEWAY HTTP_MULTI_A HTTP_MULTI_B <<<"$(python3 - <<'PY'
+read -r ROUTE_A ROUTE_B ROUTE_SESSION_A ROUTE_SESSION_B ROUTE_CLIENT ROUTE_STREAM_CLIENT SPOT_A SPOT_B SPOT_SESSION_A SPOT_SESSION_B SPOT_CLIENT PUB_A PUB_B PUB_SESSION_A PUB_SESSION_B PUB_CLIENT PUBLISHER_CLIENT API_CLIENT STREAM_A STREAM_B MULTI_ROUTE_A MULTI_ROUTE_B MULTI_ROUTE_CLIENT_A MULTI_ROUTE_CLIENT_B MULTI_SPOT_A MULTI_SPOT_B MULTI_PUB_A MULTI_PUB_B STREAM_TLS_A HTTP_A HTTP_B HTTP_SESSION_A HTTP_SESSION_B HTTP_GATEWAY HTTP_MULTI_A HTTP_MULTI_B <<<"$(python3 - <<'PY'
 import random
 import socket
 import os
@@ -46,13 +46,13 @@ for port in random.sample(available, len(available)):
         continue
     sockets.append(s)
     ports.append(s.getsockname()[1])
-    if len(ports) == 38:
+    if len(ports) == 36:
         break
-if len(ports) != 38:
-    raise SystemExit(f"failed to allocate 38 local ports, allocated {len(ports)}")
-print(" ".join(f"tcp://{host}:{p}" for p in ports[:30]), end=" ")
-print(f"tls://{host}:{ports[30]}", end=" ")
-print(" ".join(f"http://{host}:{p}" for p in ports[31:]))
+if len(ports) != 36:
+    raise SystemExit(f"failed to allocate 36 local ports, allocated {len(ports)}")
+print(" ".join(f"tcp://{host}:{p}" for p in ports[:28]), end=" ")
+print(f"tls://{host}:{ports[28]}", end=" ")
+print(" ".join(f"http://{host}:{p}" for p in ports[29:]))
 for s in sockets:
     s.close()
 PY
@@ -63,8 +63,6 @@ LOG_DIR="$SCRIPT_DIR/logs/$RUN_ID"
 mkdir -p "$LOG_DIR"
 echo "log_dir=$LOG_DIR"
 cat >"$LOG_DIR/endpoints.env" <<EOF
-REGISTRY_PUB=$REGISTRY_PUB
-REGISTRY_ROUTER=$REGISTRY_ROUTER
 ROUTE_A=$ROUTE_A
 ROUTE_B=$ROUTE_B
 ROUTE_SESSION_A=$ROUTE_SESSION_A
@@ -102,6 +100,47 @@ HTTP_GATEWAY=$HTTP_GATEWAY
 HTTP_MULTI_A=$HTTP_MULTI_A
 HTTP_MULTI_B=$HTTP_MULTI_B
 EOF
+
+pick_port() {
+  python3 - <<'PY'
+import socket
+s = socket.socket()
+s.bind(("127.0.0.1", 0))
+print(s.getsockname()[1])
+s.close()
+PY
+}
+
+REDIS_CONTAINER=""
+REDIS_KEY_PREFIX="zlink:e2e:cfg2:$(date +%s)-$$"
+if [[ -n "${ZLINK_REDIS_E2E_ENDPOINT:-}" ]]; then
+  REDIS_ENDPOINT="$ZLINK_REDIS_E2E_ENDPOINT"
+  echo "redis endpoint=$REDIS_ENDPOINT (external)"
+else
+  REDIS_PORT="$(pick_port)"
+  REDIS_CONTAINER="zlink-e2e-spot-service-cpp-$$"
+  docker run -d --rm --name "$REDIS_CONTAINER" -p "127.0.0.1:$REDIS_PORT:6379" redis:7-alpine >/dev/null
+  REDIS_ENDPOINT="127.0.0.1:$REDIS_PORT"
+  echo "redis endpoint=$REDIS_ENDPOINT (container $REDIS_CONTAINER)"
+fi
+REDIS_HOST="${REDIS_ENDPOINT%:*}"
+REDIS_TCP_PORT="${REDIS_ENDPOINT##*:}"
+python3 - "$REDIS_HOST" "$REDIS_TCP_PORT" <<'PY'
+import socket
+import sys
+import time
+
+host, port = sys.argv[1], int(sys.argv[2])
+deadline = time.monotonic() + 30
+while time.monotonic() < deadline:
+    try:
+        with socket.create_connection((host, port), timeout=1):
+            raise SystemExit(0)
+    except OSError:
+        time.sleep(0.2)
+raise SystemExit(f"Timed out waiting 30s for Redis at {host}:{port}")
+PY
+echo "redis key prefix=$REDIS_KEY_PREFIX"
 
 declare -A PORT_GUARDS=()
 
@@ -147,7 +186,6 @@ PY
 guard_all_ports() {
   local endpoint
   for endpoint in \
-    "$REGISTRY_PUB" "$REGISTRY_ROUTER" \
     "$ROUTE_A" "$ROUTE_B" "$ROUTE_SESSION_A" "$ROUTE_SESSION_B" \
     "$SPOT_A" "$SPOT_B" "$SPOT_SESSION_A" "$SPOT_SESSION_B" \
     "$PUB_A" "$PUB_B" "$PUB_SESSION_A" "$PUB_SESSION_B" \
@@ -189,7 +227,6 @@ release_port_guards() {
 if [[ "${ZLINK_CPP_E2E_SKIP_BUILD:-0}" != "1" ]]; then
   cmake -S "$CPP_DIR" -B "$BUILD_DIR" >/dev/null
   cmake --build "$BUILD_DIR" --target \
-    zlink_cpp_e2e_spot_service_registry \
     zlink_cpp_e2e_spot_service_play \
     zlink_cpp_e2e_spot_service_session \
     zlink_cpp_e2e_spot_service_gateway \
@@ -198,7 +235,6 @@ if [[ "${ZLINK_CPP_E2E_SKIP_BUILD:-0}" != "1" ]]; then
     zlink_cpp_e2e_spot_service_client >/dev/null
 fi
 
-REGISTRY_SERVER="$BUILD_DIR/zlink_cpp_e2e_spot_service_registry"
 PLAY_SERVER="$BUILD_DIR/zlink_cpp_e2e_spot_service_play"
 SESSION_SERVER="$BUILD_DIR/zlink_cpp_e2e_spot_service_session"
 GATEWAY_SERVER="$BUILD_DIR/zlink_cpp_e2e_spot_service_gateway"
@@ -248,6 +284,12 @@ stop_all_processes() {
 cleanup() {
   local code=$?
   stop_all_processes
+  if [[ -n "$REDIS_CONTAINER" ]]; then
+    docker rm -f "$REDIS_CONTAINER" >/dev/null 2>&1 || true
+  elif command -v redis-cli >/dev/null 2>&1; then
+    redis-cli -h "$REDIS_HOST" -p "$REDIS_TCP_PORT" --scan --pattern "$REDIS_KEY_PREFIX*" 2>/dev/null \
+      | xargs -r redis-cli -h "$REDIS_HOST" -p "$REDIS_TCP_PORT" DEL >/dev/null 2>&1 || true
+  fi
   if [[ $code -ne 0 ]]; then
     echo "E2E failed. Logs: $LOG_DIR" >&2
   fi
@@ -368,14 +410,15 @@ wait_file() {
   return 1
 }
 
-start_registry() {
-  release_port_guards "$REGISTRY_PUB" "$REGISTRY_ROUTER"
-  ZLINK_CPP_E2E_REGISTRY_PUB="$REGISTRY_PUB" \
-  ZLINK_CPP_E2E_REGISTRY_ROUTER="$REGISTRY_ROUTER" \
-  ZLINK_CPP_E2E_LOG_DIR="$LOG_DIR" \
-    "$REGISTRY_SERVER" >"$LOG_DIR/registry.stdout.log" 2>"$LOG_DIR/registry.stderr.log" &
-  PIDS+=("$!")
-  wait_port registry-router "$REGISTRY_ROUTER"
+ensure_location_store() {
+  python3 - "$REDIS_HOST" "$REDIS_TCP_PORT" <<'PY'
+import socket
+import sys
+
+host, port = sys.argv[1], int(sys.argv[2])
+with socket.create_connection((host, port), timeout=3):
+    pass
+PY
 }
 
 start_play() {
@@ -402,7 +445,8 @@ start_play() {
   ZLINK_CPP_E2E_PUBLISHER_ENDPOINT="$PUBLISHER_CLIENT" \
   ZLINK_CPP_E2E_PLAY_HTTP_ENDPOINT="$HTTP_A" \
   ZLINK_CPP_E2E_PLAY_B_HTTP_ENDPOINT="$HTTP_B" \
-  ZLINK_CPP_E2E_REGISTRY_ROUTER="$REGISTRY_ROUTER" \
+  ZLINK_CPP_E2E_REDIS_ENDPOINT="$REDIS_ENDPOINT" \
+  ZLINK_CPP_E2E_REDIS_KEY_PREFIX="$REDIS_KEY_PREFIX" \
   ZLINK_CPP_E2E_LOG_DIR="$LOG_DIR" \
     "$PLAY_SERVER" >"$LOG_DIR/$rid.stdout.log" 2>"$LOG_DIR/$rid.stderr.log" &
   local pid="$!"
@@ -444,7 +488,8 @@ start_session() {
   ZLINK_CPP_E2E_TLS_CERT_PATH="$tls_cert" \
   ZLINK_CPP_E2E_TLS_KEY_PATH="$tls_key" \
   ZLINK_CPP_E2E_HTTP_ENDPOINT="$http" \
-  ZLINK_CPP_E2E_REGISTRY_ROUTER="$REGISTRY_ROUTER" \
+  ZLINK_CPP_E2E_REDIS_ENDPOINT="$REDIS_ENDPOINT" \
+  ZLINK_CPP_E2E_REDIS_KEY_PREFIX="$REDIS_KEY_PREFIX" \
   ZLINK_CPP_E2E_LOG_DIR="$LOG_DIR" \
     "$SESSION_SERVER" >"$LOG_DIR/$rid.stdout.log" 2>"$LOG_DIR/$rid.stderr.log" &
   local pid="$!"
@@ -493,7 +538,8 @@ start_gateway() {
   ZLINK_CPP_E2E_SPOT_ROUTER_ENDPOINT="$spot" \
   ZLINK_CPP_E2E_PUBSUB_ENDPOINT="$pubsub" \
   ZLINK_CPP_E2E_HTTP_ENDPOINT="$http" \
-  ZLINK_CPP_E2E_REGISTRY_ROUTER="$REGISTRY_ROUTER" \
+  ZLINK_CPP_E2E_REDIS_ENDPOINT="$REDIS_ENDPOINT" \
+  ZLINK_CPP_E2E_REDIS_KEY_PREFIX="$REDIS_KEY_PREFIX" \
   ZLINK_CPP_E2E_LOG_DIR="$LOG_DIR" \
     "$GATEWAY_SERVER" >"$LOG_DIR/$rid.stdout.log" 2>"$LOG_DIR/$rid.stderr.log" &
   local pid="$!"
@@ -519,7 +565,8 @@ start_multi_node() {
   ZLINK_CPP_E2E_SPOT_ROUTER_ENDPOINT="$spot" \
   ZLINK_CPP_E2E_PUBSUB_ENDPOINT="$pubsub" \
   ZLINK_CPP_E2E_HTTP_ENDPOINT="$http" \
-  ZLINK_CPP_E2E_REGISTRY_ROUTER="$REGISTRY_ROUTER" \
+  ZLINK_CPP_E2E_REDIS_ENDPOINT="$REDIS_ENDPOINT" \
+  ZLINK_CPP_E2E_REDIS_KEY_PREFIX="$REDIS_KEY_PREFIX" \
   ZLINK_CPP_E2E_LOG_DIR="$LOG_DIR" \
     "$MULTI_NODE_SERVER" >"$LOG_DIR/$rid.stdout.log" 2>"$LOG_DIR/$rid.stderr.log" &
   local pid="$!"
@@ -542,7 +589,8 @@ start_multi_node_requester() {
   ZLINK_CPP_E2E_ROUTE_CLIENT_ENDPOINT="$route_client" \
   ZLINK_CPP_E2E_SPOT_ROUTER_ENDPOINT="$spot" \
   ZLINK_CPP_E2E_HTTP_ENDPOINT="$http" \
-  ZLINK_CPP_E2E_REGISTRY_ROUTER="$REGISTRY_ROUTER" \
+  ZLINK_CPP_E2E_REDIS_ENDPOINT="$REDIS_ENDPOINT" \
+  ZLINK_CPP_E2E_REDIS_KEY_PREFIX="$REDIS_KEY_PREFIX" \
   ZLINK_CPP_E2E_LOG_DIR="$LOG_DIR" \
     "$MULTI_NODE_REQUESTER" >"$LOG_DIR/$rid-requester.stdout.log" 2>"$LOG_DIR/$rid-requester.stderr.log" &
   PIDS+=("$!")
@@ -665,7 +713,8 @@ run_base_client() {
   ZLINK_CPP_E2E_MULTI_A_REQUEST_HTTP_ENDPOINT="$HTTP_A" \
   ZLINK_CPP_E2E_MULTI_B_REQUEST_HTTP_ENDPOINT="$HTTP_B" \
   ZLINK_CPP_E2E_CLIENT_RID="client-$mode" \
-  ZLINK_CPP_E2E_REGISTRY_ROUTER="$REGISTRY_ROUTER" \
+  ZLINK_CPP_E2E_REDIS_ENDPOINT="$REDIS_ENDPOINT" \
+  ZLINK_CPP_E2E_REDIS_KEY_PREFIX="$REDIS_KEY_PREFIX" \
   ZLINK_CPP_E2E_LOG_DIR="$LOG_DIR" \
     "$CLIENT" >"$LOG_DIR/$output.stdout.log" 2>"$LOG_DIR/$output.stderr.log" || status=$?
   cat "$LOG_DIR/$output.stdout.log"
@@ -711,7 +760,7 @@ wait_play_b_route_ready_on_endpoint() {
 }
 
 if [[ "$SCENARIO" == "SM-A1-A2-A4-F1-F2" || "$SCENARIO" == "sm-a1-a2-a4-f1-f2" ]]; then
-  start_registry
+  ensure_location_store
   start_play play-a "$ROUTE_A" "$SPOT_A" "$PUB_A" "$HTTP_A"
   start_play play-b "$ROUTE_B" "$SPOT_B" "$PUB_B" "$HTTP_B"
   wait_control_ping sm-a1-a2-a4-f1-f2-play-b-play-a-ready "$HTTP_B" play-a \
@@ -750,7 +799,7 @@ PY
 fi
 
 if [[ "$SCENARIO" == "SM-Q9" || "$SCENARIO" == "sm-q9" ]]; then
-  start_registry
+  ensure_location_store
   start_multi_node multi-a "$MULTI_ROUTE_A" "$MULTI_ROUTE_B" "$MULTI_SPOT_A" "$MULTI_PUB_A" "$HTTP_MULTI_A"
   start_multi_node multi-b "$MULTI_ROUTE_B" "$MULTI_ROUTE_A" "$MULTI_SPOT_B" "$MULTI_PUB_B" "$HTTP_MULTI_B"
   start_multi_node_requester multi-a "$MULTI_ROUTE_A" "$MULTI_ROUTE_CLIENT_A" "$SPOT_SESSION_A" "$HTTP_A"
@@ -776,7 +825,8 @@ run_stream_route_ready_client() {
   ZLINK_CPP_E2E_PLAY_HTTP_ENDPOINT="$HTTP_A" \
   ZLINK_CPP_E2E_PLAY_B_HTTP_ENDPOINT="$HTTP_B" \
   ZLINK_CPP_E2E_CLIENT_RID="client-stream-route-ready" \
-  ZLINK_CPP_E2E_REGISTRY_ROUTER="$REGISTRY_ROUTER" \
+  ZLINK_CPP_E2E_REDIS_ENDPOINT="$REDIS_ENDPOINT" \
+  ZLINK_CPP_E2E_REDIS_KEY_PREFIX="$REDIS_KEY_PREFIX" \
   ZLINK_CPP_E2E_LOG_DIR="$LOG_DIR" \
     "$CLIENT" >"$LOG_DIR/$output.stdout.log" 2>"$LOG_DIR/$output.stderr.log" || status=$?
   cat "$LOG_DIR/$output.stdout.log"
@@ -809,7 +859,7 @@ run_focused_from_all() {
 }
 
 if [[ "$SCENARIO" == "SM-A1" || "$SCENARIO" == "sm-a1" ]]; then
-  start_registry
+  ensure_location_store
   start_play play-a "$ROUTE_A" "$SPOT_A" "$PUB_A" "$HTTP_A"
   start_play play-b "$ROUTE_B" "$SPOT_B" "$PUB_B" "$HTTP_B"
   sleep "$ROUTE_SETTLE_SECONDS"
@@ -835,7 +885,7 @@ PY
 fi
 
 if [[ "$SCENARIO" == "SM-A2" || "$SCENARIO" == "sm-a2" ]]; then
-  start_registry
+  ensure_location_store
   start_play play-a "$ROUTE_A" "$SPOT_A" "$PUB_A" "$HTTP_A"
   start_play play-b "$ROUTE_B" "$SPOT_B" "$PUB_B" "$HTTP_B"
   sleep "$ROUTE_SETTLE_SECONDS"
@@ -862,7 +912,7 @@ PY
 fi
 
 if [[ "$SCENARIO" == "SM-A3" || "$SCENARIO" == "sm-a3" ]]; then
-  start_registry
+  ensure_location_store
   start_play play-a "$ROUTE_A" "$SPOT_A" "$PUB_A" "$HTTP_A"
   start_play play-b "$ROUTE_B" "$SPOT_B" "$PUB_B" "$HTTP_B"
   settle_scenario
@@ -890,7 +940,7 @@ PY
 fi
 
 if [[ "$SCENARIO" == "SM-A4" || "$SCENARIO" == "sm-a4" ]]; then
-  start_registry
+  ensure_location_store
   start_play play-a "$ROUTE_A" "$SPOT_A" "$PUB_A" "$HTTP_A"
   start_play play-b "$ROUTE_B" "$SPOT_B" "$PUB_B" "$HTTP_B"
   settle_scenario
@@ -918,7 +968,7 @@ PY
 fi
 
 if [[ "$SCENARIO" == "SM-A5" || "$SCENARIO" == "sm-a5" ]]; then
-  start_registry
+  ensure_location_store
   start_play play-a "$ROUTE_A" "$SPOT_A" "$PUB_A" "$HTTP_A"
   start_play play-b "$ROUTE_B" "$SPOT_B" "$PUB_B" "$HTTP_B"
   wait_control_ping sm-a5-play-b-play-a "$HTTP_B" play-a "sm-a5-play-b-play-a-ready"
@@ -952,7 +1002,7 @@ PY
 fi
 
 if [[ "$SCENARIO" == "SM-A6" || "$SCENARIO" == "sm-a6" ]]; then
-  start_registry
+  ensure_location_store
   start_play play-a "$ROUTE_A" "$SPOT_A" "$PUB_A" "$HTTP_A"
   start_play play-b "$ROUTE_B" "$SPOT_B" "$PUB_B" "$HTTP_B"
   sleep "$ROUTE_SETTLE_SECONDS"
@@ -998,7 +1048,7 @@ PY
 fi
 
 if [[ "$SCENARIO" == "SM-A7" || "$SCENARIO" == "sm-a7" ]]; then
-  start_registry
+  ensure_location_store
   start_play play-a "$ROUTE_A" "$SPOT_A" "$PUB_A" "$HTTP_A"
   start_play play-b "$ROUTE_B" "$SPOT_B" "$PUB_B" "$HTTP_B"
   settle_scenario
@@ -1029,7 +1079,7 @@ PY
 fi
 
 if [[ "$SCENARIO" == "SM-A8" || "$SCENARIO" == "sm-a8" ]]; then
-  start_registry
+  ensure_location_store
   start_play play-a "$ROUTE_A" "$SPOT_A" "$PUB_A" "$HTTP_A"
   start_play play-b "$ROUTE_B" "$SPOT_B" "$PUB_B" "$HTTP_B"
   settle_scenario
@@ -1070,7 +1120,7 @@ PY
 fi
 
 if [[ "$SCENARIO" == "SM-B1" || "$SCENARIO" == "sm-b1" ]]; then
-  start_registry
+  ensure_location_store
   start_play play-a "$ROUTE_A" "$SPOT_A" "$PUB_A" "$HTTP_A"
   start_play play-b "$ROUTE_B" "$SPOT_B" "$PUB_B" "$HTTP_B"
   sleep "$ROUTE_SETTLE_SECONDS"
@@ -1111,7 +1161,7 @@ PY
 fi
 
 if [[ "$SCENARIO" == "SM-B2" || "$SCENARIO" == "sm-b2" ]]; then
-  start_registry
+  ensure_location_store
   start_play play-a "$ROUTE_A" "$SPOT_A" "$PUB_A" "$HTTP_A"
   start_play play-b "$ROUTE_B" "$SPOT_B" "$PUB_B" "$HTTP_B"
   settle_scenario
@@ -1157,7 +1207,7 @@ PY
 fi
 
 if [[ "$SCENARIO" == "SM-B3" || "$SCENARIO" == "sm-b3" ]]; then
-  start_registry
+  ensure_location_store
   start_play play-a "$ROUTE_A" "$SPOT_A" "$PUB_A" "$HTTP_A"
   start_play play-b "$ROUTE_B" "$SPOT_B" "$PUB_B" "$HTTP_B"
   settle_scenario
@@ -1203,7 +1253,7 @@ PY
 fi
 
 if [[ "$SCENARIO" == "SM-B4" || "$SCENARIO" == "sm-b4" ]]; then
-  start_registry
+  ensure_location_store
   start_play play-a "$ROUTE_A" "$SPOT_A" "$PUB_A" "$HTTP_A"
   start_play play-b "$ROUTE_B" "$SPOT_B" "$PUB_B" "$HTTP_B"
   settle_scenario
@@ -1255,7 +1305,7 @@ PY
 fi
 
 if [[ "$SCENARIO" == "SM-B5" || "$SCENARIO" == "sm-b5" ]]; then
-  start_registry
+  ensure_location_store
   start_play play-a "$ROUTE_A" "$SPOT_A" "$PUB_A" "$HTTP_A"
   start_play play-b "$ROUTE_B" "$SPOT_B" "$PUB_B" "$HTTP_B"
   settle_scenario
@@ -1285,7 +1335,7 @@ PY
 fi
 
 if [[ "$SCENARIO" == "SM-B6" || "$SCENARIO" == "sm-b6" ]]; then
-  start_registry
+  ensure_location_store
   start_play play-a "$ROUTE_A" "$SPOT_A" "$PUB_A" "$HTTP_A"
   start_play play-b "$ROUTE_B" "$SPOT_B" "$PUB_B" "$HTTP_B"
   start_session session-a "$ROUTE_SESSION_A" "$SPOT_SESSION_A" "$PUB_SESSION_A" "$STREAM_A" "$HTTP_SESSION_A"
@@ -1302,7 +1352,8 @@ if [[ "$SCENARIO" == "SM-B6" || "$SCENARIO" == "sm-b6" ]]; then
   ZLINK_CPP_E2E_PLAY_HTTP_ENDPOINT="$HTTP_A" \
   ZLINK_CPP_E2E_PLAY_B_HTTP_ENDPOINT="$HTTP_B" \
   ZLINK_CPP_E2E_CLIENT_RID="client-sm-b6" \
-  ZLINK_CPP_E2E_REGISTRY_ROUTER="$REGISTRY_ROUTER" \
+  ZLINK_CPP_E2E_REDIS_ENDPOINT="$REDIS_ENDPOINT" \
+  ZLINK_CPP_E2E_REDIS_KEY_PREFIX="$REDIS_KEY_PREFIX" \
   ZLINK_CPP_E2E_LOG_DIR="$LOG_DIR" \
     "$CLIENT" >"$LOG_DIR/client-sm-b6.stdout.log" 2>"$LOG_DIR/client-sm-b6.stderr.log"
   cat "$LOG_DIR/client-sm-b6.stdout.log"
@@ -1348,7 +1399,7 @@ PY
 fi
 
 if [[ "$SCENARIO" == "SM-B7" || "$SCENARIO" == "sm-b7" ]]; then
-  start_registry
+  ensure_location_store
   start_play play-a "$ROUTE_A" "$SPOT_A" "$PUB_A" "$HTTP_A"
   start_play play-b "$ROUTE_B" "$SPOT_B" "$PUB_B" "$HTTP_B"
   start_session session-a "$ROUTE_SESSION_A" "$SPOT_SESSION_A" "$PUB_SESSION_A" "$STREAM_A" "$HTTP_SESSION_A"
@@ -1365,7 +1416,8 @@ if [[ "$SCENARIO" == "SM-B7" || "$SCENARIO" == "sm-b7" ]]; then
   ZLINK_CPP_E2E_PLAY_HTTP_ENDPOINT="$HTTP_A" \
   ZLINK_CPP_E2E_PLAY_B_HTTP_ENDPOINT="$HTTP_B" \
   ZLINK_CPP_E2E_CLIENT_RID="client-sm-b7" \
-  ZLINK_CPP_E2E_REGISTRY_ROUTER="$REGISTRY_ROUTER" \
+  ZLINK_CPP_E2E_REDIS_ENDPOINT="$REDIS_ENDPOINT" \
+  ZLINK_CPP_E2E_REDIS_KEY_PREFIX="$REDIS_KEY_PREFIX" \
   ZLINK_CPP_E2E_LOG_DIR="$LOG_DIR" \
     "$CLIENT" >"$LOG_DIR/client-sm-b7.stdout.log" 2>"$LOG_DIR/client-sm-b7.stderr.log"
   cat "$LOG_DIR/client-sm-b7.stdout.log"
@@ -1408,7 +1460,7 @@ PY
 fi
 
 if [[ "$SCENARIO" == "SM-B8" || "$SCENARIO" == "sm-b8" ]]; then
-  start_registry
+  ensure_location_store
   start_play play-a "$ROUTE_A" "$SPOT_A" "$PUB_A" "$HTTP_A"
   start_play play-b "$ROUTE_B" "$SPOT_B" "$PUB_B" "$HTTP_B"
   start_session session-a "$ROUTE_SESSION_A" "$SPOT_SESSION_A" "$PUB_SESSION_A" "$STREAM_A" "$HTTP_SESSION_A"
@@ -1425,7 +1477,8 @@ if [[ "$SCENARIO" == "SM-B8" || "$SCENARIO" == "sm-b8" ]]; then
   ZLINK_CPP_E2E_PLAY_HTTP_ENDPOINT="$HTTP_A" \
   ZLINK_CPP_E2E_PLAY_B_HTTP_ENDPOINT="$HTTP_B" \
   ZLINK_CPP_E2E_CLIENT_RID="client-sm-b8" \
-  ZLINK_CPP_E2E_REGISTRY_ROUTER="$REGISTRY_ROUTER" \
+  ZLINK_CPP_E2E_REDIS_ENDPOINT="$REDIS_ENDPOINT" \
+  ZLINK_CPP_E2E_REDIS_KEY_PREFIX="$REDIS_KEY_PREFIX" \
   ZLINK_CPP_E2E_LOG_DIR="$LOG_DIR" \
     "$CLIENT" >"$LOG_DIR/client-sm-b8.stdout.log" 2>"$LOG_DIR/client-sm-b8.stderr.log"
   cat "$LOG_DIR/client-sm-b8.stdout.log"
@@ -1469,7 +1522,7 @@ PY
 fi
 
 if [[ "$SCENARIO" == "SM-C1" || "$SCENARIO" == "sm-c1" ]]; then
-  start_registry
+  ensure_location_store
   start_play play-a "$ROUTE_A" "$SPOT_A" "$PUB_A" "$HTTP_A"
   start_play play-b "$ROUTE_B" "$SPOT_B" "$PUB_B" "$HTTP_B"
   settle_scenario
@@ -1485,7 +1538,8 @@ if [[ "$SCENARIO" == "SM-C1" || "$SCENARIO" == "sm-c1" ]]; then
   ZLINK_CPP_E2E_PLAY_HTTP_ENDPOINT="$HTTP_A" \
   ZLINK_CPP_E2E_PLAY_B_HTTP_ENDPOINT="$HTTP_B" \
   ZLINK_CPP_E2E_CLIENT_RID="client-sm-c1" \
-  ZLINK_CPP_E2E_REGISTRY_ROUTER="$REGISTRY_ROUTER" \
+  ZLINK_CPP_E2E_REDIS_ENDPOINT="$REDIS_ENDPOINT" \
+  ZLINK_CPP_E2E_REDIS_KEY_PREFIX="$REDIS_KEY_PREFIX" \
   ZLINK_CPP_E2E_LOG_DIR="$LOG_DIR" \
     "$CLIENT" >"$LOG_DIR/client-sm-c1.stdout.log" 2>"$LOG_DIR/client-sm-c1.stderr.log"
   cat "$LOG_DIR/client-sm-c1.stdout.log"
@@ -1525,7 +1579,7 @@ PY
 fi
 
 if [[ "$SCENARIO" == "SM-C2" || "$SCENARIO" == "sm-c2" ]]; then
-  start_registry
+  ensure_location_store
   start_play play-a "$ROUTE_A" "$SPOT_A" "$PUB_A" "$HTTP_A" "$API_CLIENT"
   start_play play-b "$ROUTE_B" "$SPOT_B" "$PUB_B" "$HTTP_B"
   settle_scenario
@@ -1541,7 +1595,8 @@ if [[ "$SCENARIO" == "SM-C2" || "$SCENARIO" == "sm-c2" ]]; then
   ZLINK_CPP_E2E_PLAY_HTTP_ENDPOINT="$HTTP_A" \
   ZLINK_CPP_E2E_PLAY_B_HTTP_ENDPOINT="$HTTP_B" \
   ZLINK_CPP_E2E_CLIENT_RID="client-sm-c2" \
-  ZLINK_CPP_E2E_REGISTRY_ROUTER="$REGISTRY_ROUTER" \
+  ZLINK_CPP_E2E_REDIS_ENDPOINT="$REDIS_ENDPOINT" \
+  ZLINK_CPP_E2E_REDIS_KEY_PREFIX="$REDIS_KEY_PREFIX" \
   ZLINK_CPP_E2E_LOG_DIR="$LOG_DIR" \
     "$CLIENT" >"$LOG_DIR/client-sm-c2.stdout.log" 2>"$LOG_DIR/client-sm-c2.stderr.log"
   cat "$LOG_DIR/client-sm-c2.stdout.log"
@@ -1581,7 +1636,7 @@ PY
 fi
 
 if [[ "$SCENARIO" == "SM-C3" || "$SCENARIO" == "sm-c3" ]]; then
-  start_registry
+  ensure_location_store
   start_play play-a "$ROUTE_A" "$SPOT_A" "$PUB_A" "$HTTP_A"
   start_play play-b "$ROUTE_B" "$SPOT_B" "$PUB_B" "$HTTP_B"
   settle_scenario
@@ -1597,7 +1652,8 @@ if [[ "$SCENARIO" == "SM-C3" || "$SCENARIO" == "sm-c3" ]]; then
   ZLINK_CPP_E2E_PLAY_HTTP_ENDPOINT="$HTTP_A" \
   ZLINK_CPP_E2E_PLAY_B_HTTP_ENDPOINT="$HTTP_B" \
   ZLINK_CPP_E2E_CLIENT_RID="client-sm-c3" \
-  ZLINK_CPP_E2E_REGISTRY_ROUTER="$REGISTRY_ROUTER" \
+  ZLINK_CPP_E2E_REDIS_ENDPOINT="$REDIS_ENDPOINT" \
+  ZLINK_CPP_E2E_REDIS_KEY_PREFIX="$REDIS_KEY_PREFIX" \
   ZLINK_CPP_E2E_LOG_DIR="$LOG_DIR" \
     "$CLIENT" >"$LOG_DIR/client-sm-c3.stdout.log" 2>"$LOG_DIR/client-sm-c3.stderr.log"
   cat "$LOG_DIR/client-sm-c3.stdout.log"
@@ -1640,7 +1696,7 @@ PY
 fi
 
 if [[ "$SCENARIO" == "SM-C4" || "$SCENARIO" == "sm-c4" ]]; then
-  start_registry
+  ensure_location_store
   start_play play-a "$ROUTE_A" "$SPOT_A" "$PUB_A" "$HTTP_A"
   start_play play-b "$ROUTE_B" "$SPOT_B" "$PUB_B" "$HTTP_B"
   start_gateway gateway "$ROUTE_CLIENT" "$SPOT_CLIENT" "$PUB_CLIENT" "$HTTP_GATEWAY"
@@ -1657,7 +1713,8 @@ if [[ "$SCENARIO" == "SM-C4" || "$SCENARIO" == "sm-c4" ]]; then
   ZLINK_CPP_E2E_PLAY_B_HTTP_ENDPOINT="$HTTP_B" \
   ZLINK_CPP_E2E_GATEWAY_HTTP_ENDPOINT="$HTTP_GATEWAY" \
   ZLINK_CPP_E2E_CLIENT_RID="client-sm-c4" \
-  ZLINK_CPP_E2E_REGISTRY_ROUTER="$REGISTRY_ROUTER" \
+  ZLINK_CPP_E2E_REDIS_ENDPOINT="$REDIS_ENDPOINT" \
+  ZLINK_CPP_E2E_REDIS_KEY_PREFIX="$REDIS_KEY_PREFIX" \
   ZLINK_CPP_E2E_LOG_DIR="$LOG_DIR" \
     "$CLIENT" >"$LOG_DIR/client-sm-c4.stdout.log" 2>"$LOG_DIR/client-sm-c4.stderr.log"
   cat "$LOG_DIR/client-sm-c4.stdout.log"
@@ -1699,7 +1756,7 @@ if [[ "$SCENARIO" == "SM-F1" || "$SCENARIO" == "sm-f1" \
    || "$SCENARIO" == "SM-F3" || "$SCENARIO" == "sm-f3" \
    || "$SCENARIO" == "SM-F4" || "$SCENARIO" == "sm-f4" \
    || "$SCENARIO" == "SM-F5" || "$SCENARIO" == "sm-f5" ]]; then
-  start_registry
+  ensure_location_store
   start_play play-a "$ROUTE_A" "$SPOT_A" "$PUB_A" "$HTTP_A"
   start_play play-b "$ROUTE_B" "$SPOT_B" "$PUB_B" "$HTTP_B"
   settle_scenario
@@ -1743,7 +1800,7 @@ PY
 fi
 
 if [[ "$SCENARIO" == "SM-G1" || "$SCENARIO" == "sm-g1" ]]; then
-  start_registry
+  ensure_location_store
   start_play play-a "$ROUTE_A" "$SPOT_A" "$PUB_A" "$HTTP_A"
   start_play play-b "$ROUTE_B" "$SPOT_B" "$PUB_B" "$HTTP_B"
   start_session session-a "$ROUTE_SESSION_A" "$SPOT_SESSION_A" "$PUB_SESSION_A" "$STREAM_A" "$HTTP_SESSION_A"
@@ -1770,7 +1827,8 @@ if [[ "$SCENARIO" == "SM-G1" || "$SCENARIO" == "sm-g1" ]]; then
   ZLINK_CPP_E2E_CRASH_READY_FILE="$CRASH_READY" \
   ZLINK_CPP_E2E_CRASH_GO_FILE="$CRASH_GO" \
   ZLINK_CPP_E2E_CRASH_OBSERVED_FILE="$CRASH_OBSERVED" \
-  ZLINK_CPP_E2E_REGISTRY_ROUTER="$REGISTRY_ROUTER" \
+  ZLINK_CPP_E2E_REDIS_ENDPOINT="$REDIS_ENDPOINT" \
+  ZLINK_CPP_E2E_REDIS_KEY_PREFIX="$REDIS_KEY_PREFIX" \
   ZLINK_CPP_E2E_LOG_DIR="$LOG_DIR" \
     "$CLIENT" >"$LOG_DIR/client-sm-g1-setup.stdout.log" 2>"$LOG_DIR/client-sm-g1-setup.stderr.log" &
   CRASH_CLIENT_PID="$!"
@@ -1794,7 +1852,8 @@ if [[ "$SCENARIO" == "SM-G1" || "$SCENARIO" == "sm-g1" ]]; then
   ZLINK_CPP_E2E_STREAM_ENDPOINT="$STREAM_B" \
   ZLINK_CPP_E2E_SCENARIO_MODE=crash-recover \
   ZLINK_CPP_E2E_CLIENT_RID="client-sm-g1-recover" \
-  ZLINK_CPP_E2E_REGISTRY_ROUTER="$REGISTRY_ROUTER" \
+  ZLINK_CPP_E2E_REDIS_ENDPOINT="$REDIS_ENDPOINT" \
+  ZLINK_CPP_E2E_REDIS_KEY_PREFIX="$REDIS_KEY_PREFIX" \
   ZLINK_CPP_E2E_LOG_DIR="$LOG_DIR" \
     "$CLIENT" >"$LOG_DIR/client-sm-g1-recover.stdout.log" 2>"$LOG_DIR/client-sm-g1-recover.stderr.log"
   cat "$LOG_DIR/client-sm-g1-recover.stdout.log"
@@ -1830,7 +1889,7 @@ PY
 fi
 
 if [[ "$SCENARIO" == "SM-D1" || "$SCENARIO" == "sm-d1" ]]; then
-  start_registry
+  ensure_location_store
   start_play play-a "$ROUTE_A" "$SPOT_A" "$PUB_A" "$HTTP_A"
   start_play play-b "$ROUTE_B" "$SPOT_B" "$PUB_B" "$HTTP_B"
   start_session session-a "$ROUTE_SESSION_A" "$SPOT_SESSION_A" "$PUB_SESSION_A" "$STREAM_A" "$HTTP_SESSION_A"
@@ -1849,7 +1908,8 @@ if [[ "$SCENARIO" == "SM-D1" || "$SCENARIO" == "sm-d1" ]]; then
   ZLINK_CPP_E2E_PLAY_HTTP_ENDPOINT="$HTTP_A" \
   ZLINK_CPP_E2E_PLAY_B_HTTP_ENDPOINT="$HTTP_B" \
   ZLINK_CPP_E2E_CLIENT_RID="client-sm-d1" \
-  ZLINK_CPP_E2E_REGISTRY_ROUTER="$REGISTRY_ROUTER" \
+  ZLINK_CPP_E2E_REDIS_ENDPOINT="$REDIS_ENDPOINT" \
+  ZLINK_CPP_E2E_REDIS_KEY_PREFIX="$REDIS_KEY_PREFIX" \
   ZLINK_CPP_E2E_LOG_DIR="$LOG_DIR" \
     "$CLIENT" >"$LOG_DIR/client-sm-d1.stdout.log" 2>"$LOG_DIR/client-sm-d1.stderr.log"
   cat "$LOG_DIR/client-sm-d1.stdout.log"
@@ -1889,7 +1949,7 @@ PY
 fi
 
 if [[ "$SCENARIO" == "SM-D2" || "$SCENARIO" == "sm-d2" ]]; then
-  start_registry
+  ensure_location_store
   start_play play-a "$ROUTE_A" "$SPOT_A" "$PUB_A" "$HTTP_A"
   start_play play-b "$ROUTE_B" "$SPOT_B" "$PUB_B" "$HTTP_B"
   start_session session-a "$ROUTE_SESSION_A" "$SPOT_SESSION_A" "$PUB_SESSION_A" "$STREAM_A" "$HTTP_SESSION_A"
@@ -1907,7 +1967,8 @@ if [[ "$SCENARIO" == "SM-D2" || "$SCENARIO" == "sm-d2" ]]; then
   ZLINK_CPP_E2E_PLAY_HTTP_ENDPOINT="$HTTP_A" \
   ZLINK_CPP_E2E_PLAY_B_HTTP_ENDPOINT="$HTTP_B" \
   ZLINK_CPP_E2E_CLIENT_RID="client-sm-d2" \
-  ZLINK_CPP_E2E_REGISTRY_ROUTER="$REGISTRY_ROUTER" \
+  ZLINK_CPP_E2E_REDIS_ENDPOINT="$REDIS_ENDPOINT" \
+  ZLINK_CPP_E2E_REDIS_KEY_PREFIX="$REDIS_KEY_PREFIX" \
   ZLINK_CPP_E2E_LOG_DIR="$LOG_DIR" \
     "$CLIENT" >"$LOG_DIR/client-sm-d2.stdout.log" 2>"$LOG_DIR/client-sm-d2.stderr.log"
   cat "$LOG_DIR/client-sm-d2.stdout.log"
@@ -1947,7 +2008,7 @@ PY
 fi
 
 if [[ "$SCENARIO" == "SM-D3" || "$SCENARIO" == "sm-d3" ]]; then
-  start_registry
+  ensure_location_store
   start_play play-a "$ROUTE_A" "$SPOT_A" "$PUB_A" "$HTTP_A"
   start_play play-b "$ROUTE_B" "$SPOT_B" "$PUB_B" "$HTTP_B"
   start_session session-a "$ROUTE_SESSION_A" "$SPOT_SESSION_A" "$PUB_SESSION_A" "$STREAM_A" "$HTTP_SESSION_A"
@@ -1965,7 +2026,8 @@ if [[ "$SCENARIO" == "SM-D3" || "$SCENARIO" == "sm-d3" ]]; then
   ZLINK_CPP_E2E_PLAY_HTTP_ENDPOINT="$HTTP_A" \
   ZLINK_CPP_E2E_PLAY_B_HTTP_ENDPOINT="$HTTP_B" \
   ZLINK_CPP_E2E_CLIENT_RID="client-sm-d3" \
-  ZLINK_CPP_E2E_REGISTRY_ROUTER="$REGISTRY_ROUTER" \
+  ZLINK_CPP_E2E_REDIS_ENDPOINT="$REDIS_ENDPOINT" \
+  ZLINK_CPP_E2E_REDIS_KEY_PREFIX="$REDIS_KEY_PREFIX" \
   ZLINK_CPP_E2E_LOG_DIR="$LOG_DIR" \
     "$CLIENT" >"$LOG_DIR/client-sm-d3.stdout.log" 2>"$LOG_DIR/client-sm-d3.stderr.log"
   cat "$LOG_DIR/client-sm-d3.stdout.log"
@@ -2009,7 +2071,7 @@ PY
 fi
 
 if [[ "$SCENARIO" == "SM-D4" || "$SCENARIO" == "sm-d4" ]]; then
-  start_registry
+  ensure_location_store
   start_play play-a "$ROUTE_A" "$SPOT_A" "$PUB_A" "$HTTP_A"
   start_play play-b "$ROUTE_B" "$SPOT_B" "$PUB_B" "$HTTP_B"
   start_session session-a "$ROUTE_SESSION_A" "$SPOT_SESSION_A" "$PUB_SESSION_A" "$STREAM_A" "$HTTP_SESSION_A"
@@ -2028,7 +2090,8 @@ if [[ "$SCENARIO" == "SM-D4" || "$SCENARIO" == "sm-d4" ]]; then
   ZLINK_CPP_E2E_PLAY_HTTP_ENDPOINT="$HTTP_A" \
   ZLINK_CPP_E2E_PLAY_B_HTTP_ENDPOINT="$HTTP_B" \
   ZLINK_CPP_E2E_CLIENT_RID="client-sm-d4" \
-  ZLINK_CPP_E2E_REGISTRY_ROUTER="$REGISTRY_ROUTER" \
+  ZLINK_CPP_E2E_REDIS_ENDPOINT="$REDIS_ENDPOINT" \
+  ZLINK_CPP_E2E_REDIS_KEY_PREFIX="$REDIS_KEY_PREFIX" \
   ZLINK_CPP_E2E_LOG_DIR="$LOG_DIR" \
     "$CLIENT" >"$LOG_DIR/client-sm-d4.stdout.log" 2>"$LOG_DIR/client-sm-d4.stderr.log"
   cat "$LOG_DIR/client-sm-d4.stdout.log"
@@ -2067,7 +2130,7 @@ PY
 fi
 
 if [[ "$SCENARIO" == "SM-D5" || "$SCENARIO" == "sm-d5" ]]; then
-  start_registry
+  ensure_location_store
   start_play play-a "$ROUTE_A" "$SPOT_A" "$PUB_A" "$HTTP_A"
   start_play play-b "$ROUTE_B" "$SPOT_B" "$PUB_B" "$HTTP_B"
   start_session session-a "$ROUTE_SESSION_A" "$SPOT_SESSION_A" "$PUB_SESSION_A" "$STREAM_A" "$HTTP_SESSION_A"
@@ -2086,7 +2149,8 @@ if [[ "$SCENARIO" == "SM-D5" || "$SCENARIO" == "sm-d5" ]]; then
   ZLINK_CPP_E2E_PLAY_HTTP_ENDPOINT="$HTTP_A" \
   ZLINK_CPP_E2E_PLAY_B_HTTP_ENDPOINT="$HTTP_B" \
   ZLINK_CPP_E2E_CLIENT_RID="client-sm-d5" \
-  ZLINK_CPP_E2E_REGISTRY_ROUTER="$REGISTRY_ROUTER" \
+  ZLINK_CPP_E2E_REDIS_ENDPOINT="$REDIS_ENDPOINT" \
+  ZLINK_CPP_E2E_REDIS_KEY_PREFIX="$REDIS_KEY_PREFIX" \
   ZLINK_CPP_E2E_LOG_DIR="$LOG_DIR" \
     "$CLIENT" >"$LOG_DIR/client-sm-d5.stdout.log" 2>"$LOG_DIR/client-sm-d5.stderr.log"
   cat "$LOG_DIR/client-sm-d5.stdout.log"
@@ -2145,7 +2209,7 @@ PY
 fi
 
 if [[ "$SCENARIO" == "SM-D6" || "$SCENARIO" == "sm-d6" ]]; then
-  start_registry
+  ensure_location_store
   start_play play-a "$ROUTE_A" "$SPOT_A" "$PUB_A" "$HTTP_A"
   start_play play-b "$ROUTE_B" "$SPOT_B" "$PUB_B" "$HTTP_B"
   start_session session-a "$ROUTE_SESSION_A" "$SPOT_SESSION_A" "$PUB_SESSION_A" "$STREAM_A" "$HTTP_SESSION_A"
@@ -2166,7 +2230,8 @@ if [[ "$SCENARIO" == "SM-D6" || "$SCENARIO" == "sm-d6" ]]; then
   ZLINK_CPP_E2E_PLAY_HTTP_ENDPOINT="$HTTP_A" \
   ZLINK_CPP_E2E_PLAY_B_HTTP_ENDPOINT="$HTTP_B" \
   ZLINK_CPP_E2E_CLIENT_RID="client-sm-d6" \
-  ZLINK_CPP_E2E_REGISTRY_ROUTER="$REGISTRY_ROUTER" \
+  ZLINK_CPP_E2E_REDIS_ENDPOINT="$REDIS_ENDPOINT" \
+  ZLINK_CPP_E2E_REDIS_KEY_PREFIX="$REDIS_KEY_PREFIX" \
   ZLINK_CPP_E2E_LOG_DIR="$LOG_DIR" \
     "$CLIENT" >"$LOG_DIR/client-sm-d6.stdout.log" 2>"$LOG_DIR/client-sm-d6.stderr.log"
   cat "$LOG_DIR/client-sm-d6.stdout.log"
@@ -2203,7 +2268,7 @@ PY
 fi
 
 if [[ "$SCENARIO" == "SM-D7" || "$SCENARIO" == "sm-d7" ]]; then
-  start_registry
+  ensure_location_store
   start_play play-a "$ROUTE_A" "$SPOT_A" "$PUB_A" "$HTTP_A"
   start_play play-b "$ROUTE_B" "$SPOT_B" "$PUB_B" "$HTTP_B"
   start_session session-a "$ROUTE_SESSION_A" "$SPOT_SESSION_A" "$PUB_SESSION_A" "$STREAM_A" "$HTTP_SESSION_A"
@@ -2221,7 +2286,8 @@ if [[ "$SCENARIO" == "SM-D7" || "$SCENARIO" == "sm-d7" ]]; then
   ZLINK_CPP_E2E_PLAY_HTTP_ENDPOINT="$HTTP_A" \
   ZLINK_CPP_E2E_PLAY_B_HTTP_ENDPOINT="$HTTP_B" \
   ZLINK_CPP_E2E_CLIENT_RID="client-sm-d7" \
-  ZLINK_CPP_E2E_REGISTRY_ROUTER="$REGISTRY_ROUTER" \
+  ZLINK_CPP_E2E_REDIS_ENDPOINT="$REDIS_ENDPOINT" \
+  ZLINK_CPP_E2E_REDIS_KEY_PREFIX="$REDIS_KEY_PREFIX" \
   ZLINK_CPP_E2E_LOG_DIR="$LOG_DIR" \
     "$CLIENT" >"$LOG_DIR/client-sm-d7.stdout.log" 2>"$LOG_DIR/client-sm-d7.stderr.log"
   cat "$LOG_DIR/client-sm-d7.stdout.log"
@@ -2256,7 +2322,7 @@ PY
 fi
 
 if [[ "$SCENARIO" == "SM-D8" || "$SCENARIO" == "sm-d8" ]]; then
-  start_registry
+  ensure_location_store
   start_play play-a "$ROUTE_A" "$SPOT_A" "$PUB_A" "$HTTP_A"
   start_play play-b "$ROUTE_B" "$SPOT_B" "$PUB_B" "$HTTP_B"
   start_session session-a "$ROUTE_SESSION_A" "$SPOT_SESSION_A" "$PUB_SESSION_A" "$STREAM_A" "$HTTP_SESSION_A"
@@ -2273,7 +2339,8 @@ if [[ "$SCENARIO" == "SM-D8" || "$SCENARIO" == "sm-d8" ]]; then
   ZLINK_CPP_E2E_PLAY_HTTP_ENDPOINT="$HTTP_A" \
   ZLINK_CPP_E2E_PLAY_B_HTTP_ENDPOINT="$HTTP_B" \
   ZLINK_CPP_E2E_CLIENT_RID="client-sm-d8" \
-  ZLINK_CPP_E2E_REGISTRY_ROUTER="$REGISTRY_ROUTER" \
+  ZLINK_CPP_E2E_REDIS_ENDPOINT="$REDIS_ENDPOINT" \
+  ZLINK_CPP_E2E_REDIS_KEY_PREFIX="$REDIS_KEY_PREFIX" \
   ZLINK_CPP_E2E_LOG_DIR="$LOG_DIR" \
     "$CLIENT" >"$LOG_DIR/client-sm-d8.stdout.log" 2>"$LOG_DIR/client-sm-d8.stderr.log"
   cat "$LOG_DIR/client-sm-d8.stdout.log"
@@ -2313,7 +2380,7 @@ PY
 fi
 
 if [[ "$SCENARIO" == "SM-D9" || "$SCENARIO" == "sm-d9" ]]; then
-  start_registry
+  ensure_location_store
   start_play play-a "$ROUTE_A" "$SPOT_A" "$PUB_A" "$HTTP_A"
   start_play play-b "$ROUTE_B" "$SPOT_B" "$PUB_B" "$HTTP_B"
   start_session session-a "$ROUTE_SESSION_A" "$SPOT_SESSION_A" "$PUB_SESSION_A" "$STREAM_A" "$HTTP_SESSION_A"
@@ -2331,7 +2398,8 @@ if [[ "$SCENARIO" == "SM-D9" || "$SCENARIO" == "sm-d9" ]]; then
   ZLINK_CPP_E2E_PLAY_HTTP_ENDPOINT="$HTTP_A" \
   ZLINK_CPP_E2E_PLAY_B_HTTP_ENDPOINT="$HTTP_B" \
   ZLINK_CPP_E2E_CLIENT_RID="client-sm-d9" \
-  ZLINK_CPP_E2E_REGISTRY_ROUTER="$REGISTRY_ROUTER" \
+  ZLINK_CPP_E2E_REDIS_ENDPOINT="$REDIS_ENDPOINT" \
+  ZLINK_CPP_E2E_REDIS_KEY_PREFIX="$REDIS_KEY_PREFIX" \
   ZLINK_CPP_E2E_LOG_DIR="$LOG_DIR" \
     "$CLIENT" >"$LOG_DIR/client-sm-d9.stdout.log" 2>"$LOG_DIR/client-sm-d9.stderr.log"
   cat "$LOG_DIR/client-sm-d9.stdout.log"
@@ -2365,7 +2433,7 @@ PY
 fi
 
 if [[ "$SCENARIO" == "SM-D10" || "$SCENARIO" == "sm-d10" ]]; then
-  start_registry
+  ensure_location_store
   start_play play-a "$ROUTE_A" "$SPOT_A" "$PUB_A" "$HTTP_A"
   start_play play-b "$ROUTE_B" "$SPOT_B" "$PUB_B" "$HTTP_B"
   start_session session-a "$ROUTE_SESSION_A" "$SPOT_SESSION_A" "$PUB_SESSION_A" "$STREAM_A" "$HTTP_SESSION_A"
@@ -2386,7 +2454,8 @@ if [[ "$SCENARIO" == "SM-D10" || "$SCENARIO" == "sm-d10" ]]; then
   ZLINK_CPP_E2E_PLAY_HTTP_ENDPOINT="$HTTP_A" \
   ZLINK_CPP_E2E_PLAY_B_HTTP_ENDPOINT="$HTTP_B" \
   ZLINK_CPP_E2E_CLIENT_RID="client-sm-d10" \
-  ZLINK_CPP_E2E_REGISTRY_ROUTER="$REGISTRY_ROUTER" \
+  ZLINK_CPP_E2E_REDIS_ENDPOINT="$REDIS_ENDPOINT" \
+  ZLINK_CPP_E2E_REDIS_KEY_PREFIX="$REDIS_KEY_PREFIX" \
   ZLINK_CPP_E2E_LOG_DIR="$LOG_DIR" \
     "$CLIENT" >"$LOG_DIR/client-sm-d10.stdout.log" 2>"$LOG_DIR/client-sm-d10.stderr.log"
   cat "$LOG_DIR/client-sm-d10.stdout.log"
@@ -2422,7 +2491,7 @@ PY
 fi
 
 if [[ "$SCENARIO" == "SM-D11" || "$SCENARIO" == "sm-d11" ]]; then
-  start_registry
+  ensure_location_store
   start_play play-a "$ROUTE_A" "$SPOT_A" "$PUB_A" "$HTTP_A"
   start_play play-b "$ROUTE_B" "$SPOT_B" "$PUB_B" "$HTTP_B"
   start_session session-a "$ROUTE_SESSION_A" "$SPOT_SESSION_A" "$PUB_SESSION_A" "$STREAM_A" "$HTTP_SESSION_A"
@@ -2441,7 +2510,8 @@ if [[ "$SCENARIO" == "SM-D11" || "$SCENARIO" == "sm-d11" ]]; then
   ZLINK_CPP_E2E_PLAY_HTTP_ENDPOINT="$HTTP_A" \
   ZLINK_CPP_E2E_PLAY_B_HTTP_ENDPOINT="$HTTP_B" \
   ZLINK_CPP_E2E_CLIENT_RID="client-sm-d11" \
-  ZLINK_CPP_E2E_REGISTRY_ROUTER="$REGISTRY_ROUTER" \
+  ZLINK_CPP_E2E_REDIS_ENDPOINT="$REDIS_ENDPOINT" \
+  ZLINK_CPP_E2E_REDIS_KEY_PREFIX="$REDIS_KEY_PREFIX" \
   ZLINK_CPP_E2E_LOG_DIR="$LOG_DIR" \
     "$CLIENT" >"$LOG_DIR/client-sm-d11.stdout.log" 2>"$LOG_DIR/client-sm-d11.stderr.log"
   cat "$LOG_DIR/client-sm-d11.stdout.log"
@@ -2475,7 +2545,7 @@ PY
 fi
 
 if [[ "$SCENARIO" == "SM-D12" || "$SCENARIO" == "sm-d12" ]]; then
-  start_registry
+  ensure_location_store
   start_play play-a "$ROUTE_A" "$SPOT_A" "$PUB_A" "$HTTP_A"
   start_play play-b "$ROUTE_B" "$SPOT_B" "$PUB_B" "$HTTP_B"
   start_session session-a "$ROUTE_SESSION_A" "$SPOT_SESSION_A" "$PUB_SESSION_A" "$STREAM_A" "$HTTP_SESSION_A"
@@ -2496,7 +2566,8 @@ if [[ "$SCENARIO" == "SM-D12" || "$SCENARIO" == "sm-d12" ]]; then
   ZLINK_CPP_E2E_PLAY_HTTP_ENDPOINT="$HTTP_A" \
   ZLINK_CPP_E2E_PLAY_B_HTTP_ENDPOINT="$HTTP_B" \
   ZLINK_CPP_E2E_CLIENT_RID="client-sm-d12" \
-  ZLINK_CPP_E2E_REGISTRY_ROUTER="$REGISTRY_ROUTER" \
+  ZLINK_CPP_E2E_REDIS_ENDPOINT="$REDIS_ENDPOINT" \
+  ZLINK_CPP_E2E_REDIS_KEY_PREFIX="$REDIS_KEY_PREFIX" \
   ZLINK_CPP_E2E_LOG_DIR="$LOG_DIR" \
     "$CLIENT" >"$LOG_DIR/client-sm-d12.stdout.log" 2>"$LOG_DIR/client-sm-d12.stderr.log"
   cat "$LOG_DIR/client-sm-d12.stdout.log"
@@ -2533,7 +2604,7 @@ PY
 fi
 
 if [[ "$SCENARIO" == "SM-D13" || "$SCENARIO" == "sm-d13" ]]; then
-  start_registry
+  ensure_location_store
   start_play play-a "$ROUTE_A" "$SPOT_A" "$PUB_A" "$HTTP_A"
   start_play play-b "$ROUTE_B" "$SPOT_B" "$PUB_B" "$HTTP_B"
   start_session session-a "$ROUTE_SESSION_A" "$SPOT_SESSION_A" "$PUB_SESSION_A" "$STREAM_A" "$HTTP_SESSION_A"
@@ -2550,7 +2621,8 @@ if [[ "$SCENARIO" == "SM-D13" || "$SCENARIO" == "sm-d13" ]]; then
   ZLINK_CPP_E2E_PLAY_HTTP_ENDPOINT="$HTTP_A" \
   ZLINK_CPP_E2E_PLAY_B_HTTP_ENDPOINT="$HTTP_B" \
   ZLINK_CPP_E2E_CLIENT_RID="client-sm-d13" \
-  ZLINK_CPP_E2E_REGISTRY_ROUTER="$REGISTRY_ROUTER" \
+  ZLINK_CPP_E2E_REDIS_ENDPOINT="$REDIS_ENDPOINT" \
+  ZLINK_CPP_E2E_REDIS_KEY_PREFIX="$REDIS_KEY_PREFIX" \
   ZLINK_CPP_E2E_LOG_DIR="$LOG_DIR" \
     "$CLIENT" >"$LOG_DIR/client-sm-d13.stdout.log" 2>"$LOG_DIR/client-sm-d13.stderr.log"
   cat "$LOG_DIR/client-sm-d13.stdout.log"
@@ -2586,7 +2658,7 @@ if [[ "$SCENARIO" == "SM-D14" || "$SCENARIO" == "sm-d14" ]]; then
   TLS_CERT="$LOG_DIR/sm-d14-server.crt"
   TLS_KEY="$LOG_DIR/sm-d14-server.key"
   generate_tls_cert "$TLS_CERT" "$TLS_KEY"
-  start_registry
+  ensure_location_store
   start_play play-a "$ROUTE_A" "$SPOT_A" "$PUB_A" "$HTTP_A"
   start_play play-b "$ROUTE_B" "$SPOT_B" "$PUB_B" "$HTTP_B"
   start_session session-a "$ROUTE_SESSION_A" "$SPOT_SESSION_A" "$PUB_SESSION_A" "$STREAM_A" "$HTTP_SESSION_A" "$STREAM_TLS_A" "$TLS_CERT" "$TLS_KEY"
@@ -2605,7 +2677,8 @@ if [[ "$SCENARIO" == "SM-D14" || "$SCENARIO" == "sm-d14" ]]; then
   ZLINK_CPP_E2E_PLAY_HTTP_ENDPOINT="$HTTP_A" \
   ZLINK_CPP_E2E_PLAY_B_HTTP_ENDPOINT="$HTTP_B" \
   ZLINK_CPP_E2E_CLIENT_RID="client-sm-d14" \
-  ZLINK_CPP_E2E_REGISTRY_ROUTER="$REGISTRY_ROUTER" \
+  ZLINK_CPP_E2E_REDIS_ENDPOINT="$REDIS_ENDPOINT" \
+  ZLINK_CPP_E2E_REDIS_KEY_PREFIX="$REDIS_KEY_PREFIX" \
   ZLINK_CPP_E2E_LOG_DIR="$LOG_DIR" \
     "$CLIENT" >"$LOG_DIR/client-sm-d14.stdout.log" 2>"$LOG_DIR/client-sm-d14.stderr.log"
   cat "$LOG_DIR/client-sm-d14.stdout.log"
@@ -2635,7 +2708,7 @@ PY
 fi
 
 if [[ "$SCENARIO" == "SM-E1" || "$SCENARIO" == "sm-e1" ]]; then
-  start_registry
+  ensure_location_store
   start_play play-a "$ROUTE_A" "$SPOT_A" "$PUB_A" "$HTTP_A"
   start_play play-b "$ROUTE_B" "$SPOT_B" "$PUB_B" "$HTTP_B"
   settle_scenario
@@ -2650,7 +2723,8 @@ if [[ "$SCENARIO" == "SM-E1" || "$SCENARIO" == "sm-e1" ]]; then
   ZLINK_CPP_E2E_PLAY_HTTP_ENDPOINT="$HTTP_A" \
   ZLINK_CPP_E2E_PLAY_B_HTTP_ENDPOINT="$HTTP_B" \
   ZLINK_CPP_E2E_CLIENT_RID="client-sm-e1" \
-  ZLINK_CPP_E2E_REGISTRY_ROUTER="$REGISTRY_ROUTER" \
+  ZLINK_CPP_E2E_REDIS_ENDPOINT="$REDIS_ENDPOINT" \
+  ZLINK_CPP_E2E_REDIS_KEY_PREFIX="$REDIS_KEY_PREFIX" \
   ZLINK_CPP_E2E_LOG_DIR="$LOG_DIR" \
     "$CLIENT" >"$LOG_DIR/client-sm-e1.stdout.log" 2>"$LOG_DIR/client-sm-e1.stderr.log"
   cat "$LOG_DIR/client-sm-e1.stdout.log"
@@ -2677,7 +2751,7 @@ PY
 fi
 
 if [[ "$SCENARIO" == "SM-E2" || "$SCENARIO" == "sm-e2" ]]; then
-  start_registry
+  ensure_location_store
   start_play play-a "$ROUTE_A" "$SPOT_A" "$PUB_A" "$HTTP_A"
   settle_scenario
   ZLINK_CPP_E2E_ROUTE_ENDPOINT="$ROUTE_CLIENT" \
@@ -2690,7 +2764,8 @@ if [[ "$SCENARIO" == "SM-E2" || "$SCENARIO" == "sm-e2" ]]; then
   ZLINK_CPP_E2E_SCENARIO_MODE=sm-e2 \
   ZLINK_CPP_E2E_PLAY_HTTP_ENDPOINT="$HTTP_A" \
   ZLINK_CPP_E2E_CLIENT_RID="client-sm-e2" \
-  ZLINK_CPP_E2E_REGISTRY_ROUTER="$REGISTRY_ROUTER" \
+  ZLINK_CPP_E2E_REDIS_ENDPOINT="$REDIS_ENDPOINT" \
+  ZLINK_CPP_E2E_REDIS_KEY_PREFIX="$REDIS_KEY_PREFIX" \
   ZLINK_CPP_E2E_LOG_DIR="$LOG_DIR" \
     "$CLIENT" >"$LOG_DIR/client-sm-e2.stdout.log" 2>"$LOG_DIR/client-sm-e2.stderr.log"
   cat "$LOG_DIR/client-sm-e2.stdout.log"
@@ -2714,7 +2789,7 @@ PY
 fi
 
 if [[ "$SCENARIO" == "SM-E3" || "$SCENARIO" == "sm-e3" ]]; then
-  start_registry
+  ensure_location_store
   start_play play-a "$ROUTE_A" "$SPOT_A" "$PUB_A" "$HTTP_A"
   settle_scenario
   ZLINK_CPP_E2E_ROUTE_ENDPOINT="$ROUTE_CLIENT" \
@@ -2727,7 +2802,8 @@ if [[ "$SCENARIO" == "SM-E3" || "$SCENARIO" == "sm-e3" ]]; then
   ZLINK_CPP_E2E_SCENARIO_MODE=sm-e3 \
   ZLINK_CPP_E2E_PLAY_HTTP_ENDPOINT="$HTTP_A" \
   ZLINK_CPP_E2E_CLIENT_RID="client-sm-e3" \
-  ZLINK_CPP_E2E_REGISTRY_ROUTER="$REGISTRY_ROUTER" \
+  ZLINK_CPP_E2E_REDIS_ENDPOINT="$REDIS_ENDPOINT" \
+  ZLINK_CPP_E2E_REDIS_KEY_PREFIX="$REDIS_KEY_PREFIX" \
   ZLINK_CPP_E2E_LOG_DIR="$LOG_DIR" \
     "$CLIENT" >"$LOG_DIR/client-sm-e3.stdout.log" 2>"$LOG_DIR/client-sm-e3.stderr.log"
   cat "$LOG_DIR/client-sm-e3.stdout.log"
@@ -2751,7 +2827,7 @@ PY
 fi
 
 if [[ "$SCENARIO" == "SM-E4" || "$SCENARIO" == "sm-e4" ]]; then
-  start_registry
+  ensure_location_store
   start_play play-a "$ROUTE_A" "$SPOT_A" "$PUB_A" "$HTTP_A"
   settle_scenario
   ZLINK_CPP_E2E_ROUTE_ENDPOINT="$ROUTE_CLIENT" \
@@ -2764,7 +2840,8 @@ if [[ "$SCENARIO" == "SM-E4" || "$SCENARIO" == "sm-e4" ]]; then
   ZLINK_CPP_E2E_SCENARIO_MODE=sm-e4 \
   ZLINK_CPP_E2E_PLAY_HTTP_ENDPOINT="$HTTP_A" \
   ZLINK_CPP_E2E_CLIENT_RID="client-sm-e4" \
-  ZLINK_CPP_E2E_REGISTRY_ROUTER="$REGISTRY_ROUTER" \
+  ZLINK_CPP_E2E_REDIS_ENDPOINT="$REDIS_ENDPOINT" \
+  ZLINK_CPP_E2E_REDIS_KEY_PREFIX="$REDIS_KEY_PREFIX" \
   ZLINK_CPP_E2E_LOG_DIR="$LOG_DIR" \
     "$CLIENT" >"$LOG_DIR/client-sm-e4.stdout.log" 2>"$LOG_DIR/client-sm-e4.stderr.log"
   cat "$LOG_DIR/client-sm-e4.stdout.log"
@@ -2817,7 +2894,7 @@ PY
 fi
 
 if [[ "$SCENARIO" == "SM-G2" || "$SCENARIO" == "sm-g2" ]]; then
-  start_registry
+  ensure_location_store
   start_play play-a "$ROUTE_A" "$SPOT_A" "$PUB_A" "$HTTP_A"
   start_play play-b "$ROUTE_B" "$SPOT_B" "$PUB_B" "$HTTP_B"
   settle_scenario
@@ -2834,7 +2911,8 @@ if [[ "$SCENARIO" == "SM-G2" || "$SCENARIO" == "sm-g2" ]]; then
   ZLINK_CPP_E2E_PLAY_HTTP_ENDPOINT="$HTTP_A" \
   ZLINK_CPP_E2E_PLAY_B_HTTP_ENDPOINT="$HTTP_B" \
   ZLINK_CPP_E2E_CLIENT_RID="client-sm-g2" \
-  ZLINK_CPP_E2E_REGISTRY_ROUTER="$REGISTRY_ROUTER" \
+  ZLINK_CPP_E2E_REDIS_ENDPOINT="$REDIS_ENDPOINT" \
+  ZLINK_CPP_E2E_REDIS_KEY_PREFIX="$REDIS_KEY_PREFIX" \
   ZLINK_CPP_E2E_LOG_DIR="$LOG_DIR" \
     "$CLIENT" >"$LOG_DIR/client-sm-g2.stdout.log" 2>"$LOG_DIR/client-sm-g2.stderr.log"
   cat "$LOG_DIR/client-sm-g2.stdout.log"
@@ -2869,7 +2947,7 @@ PY
 fi
 
 if [[ "$SCENARIO" == "SM-G3" || "$SCENARIO" == "sm-g3" ]]; then
-  start_registry
+  ensure_location_store
   start_play play-a "$ROUTE_A" "$SPOT_A" "$PUB_A" "$HTTP_A"
   start_play play-b "$ROUTE_B" "$SPOT_B" "$PUB_B" "$HTTP_B"
   start_session session-a "$ROUTE_SESSION_A" "$SPOT_SESSION_A" "$PUB_SESSION_A" "$STREAM_A" "$HTTP_SESSION_A"
@@ -2887,7 +2965,8 @@ if [[ "$SCENARIO" == "SM-G3" || "$SCENARIO" == "sm-g3" ]]; then
   ZLINK_CPP_E2E_PLAY_HTTP_ENDPOINT="$HTTP_A" \
   ZLINK_CPP_E2E_PLAY_B_HTTP_ENDPOINT="$HTTP_B" \
   ZLINK_CPP_E2E_CLIENT_RID="client-sm-g3" \
-  ZLINK_CPP_E2E_REGISTRY_ROUTER="$REGISTRY_ROUTER" \
+  ZLINK_CPP_E2E_REDIS_ENDPOINT="$REDIS_ENDPOINT" \
+  ZLINK_CPP_E2E_REDIS_KEY_PREFIX="$REDIS_KEY_PREFIX" \
   ZLINK_CPP_E2E_LOG_DIR="$LOG_DIR" \
     "$CLIENT" >"$LOG_DIR/client-sm-g3.stdout.log" 2>"$LOG_DIR/client-sm-g3.stderr.log"
   cat "$LOG_DIR/client-sm-g3.stdout.log"
@@ -2919,7 +2998,7 @@ PY
 fi
 
 if [[ "$SCENARIO" == "SM-G4" || "$SCENARIO" == "sm-g4" ]]; then
-  start_registry
+  ensure_location_store
   start_play play-a "$ROUTE_A" "$SPOT_A" "$PUB_A" "$HTTP_A"
   start_play play-b "$ROUTE_B" "$SPOT_B" "$PUB_B" "$HTTP_B"
   start_session session-a "$ROUTE_SESSION_A" "$SPOT_SESSION_A" "$PUB_SESSION_A" "$STREAM_A" "$HTTP_SESSION_A"
@@ -2937,7 +3016,8 @@ if [[ "$SCENARIO" == "SM-G4" || "$SCENARIO" == "sm-g4" ]]; then
   ZLINK_CPP_E2E_PLAY_HTTP_ENDPOINT="$HTTP_A" \
   ZLINK_CPP_E2E_PLAY_B_HTTP_ENDPOINT="$HTTP_B" \
   ZLINK_CPP_E2E_CLIENT_RID="client-sm-g4" \
-  ZLINK_CPP_E2E_REGISTRY_ROUTER="$REGISTRY_ROUTER" \
+  ZLINK_CPP_E2E_REDIS_ENDPOINT="$REDIS_ENDPOINT" \
+  ZLINK_CPP_E2E_REDIS_KEY_PREFIX="$REDIS_KEY_PREFIX" \
   ZLINK_CPP_E2E_LOG_DIR="$LOG_DIR" \
     "$CLIENT" >"$LOG_DIR/client-sm-g4.stdout.log" 2>"$LOG_DIR/client-sm-g4.stderr.log"
   cat "$LOG_DIR/client-sm-g4.stdout.log"

@@ -10,18 +10,17 @@ rm -f "$BINGO_LOG_DIR"/*.log
 BUILD_DIR="${ZLINK_CPP_BUILD_DIR:-$CPP_ROOT/build}"
 BIN_DIR="$BUILD_DIR"
 
-if [[ ! -x "$BIN_DIR/sample_cpp_framework_bingo_registry" && -x "$BIN_DIR/linux-ninja-debug/sample_cpp_framework_bingo_registry" ]]; then
+if [[ ! -x "$BIN_DIR/sample_cpp_framework_bingo_api" && -x "$BIN_DIR/linux-ninja-debug/sample_cpp_framework_bingo_api" ]]; then
   BIN_DIR="$BIN_DIR/linux-ninja-debug"
 fi
 
-REGISTRY_BIN="$BIN_DIR/sample_cpp_framework_bingo_registry"
 API_BIN="$BIN_DIR/sample_cpp_framework_bingo_api"
 PLAY_BIN="$BIN_DIR/sample_cpp_framework_bingo_play"
 SESSION_BIN="$BIN_DIR/sample_cpp_framework_bingo_session"
 CLIENT_BIN="$BIN_DIR/sample_cpp_framework_bingo_client"
 CTEST_BIN="${CTEST_BIN:-ctest}"
 
-for binary in "$REGISTRY_BIN" "$API_BIN" "$PLAY_BIN" "$SESSION_BIN" "$CLIENT_BIN"; do
+for binary in "$API_BIN" "$PLAY_BIN" "$SESSION_BIN" "$CLIENT_BIN"; do
   if [[ ! -x "$binary" ]]; then
     echo "Missing executable: $binary" >&2
     echo "Build C++ samples first or set ZLINK_CPP_BUILD_DIR." >&2
@@ -72,8 +71,6 @@ PY
 )"
 fi
 
-REGISTRY_PUB_ENDPOINT="${BINGO_REGISTRY_PUB_ENDPOINT:-tcp://127.0.0.1:${PORTS[0]}}"
-REGISTRY_ROUTER_ENDPOINT="${BINGO_REGISTRY_ROUTER_ENDPOINT:-tcp://127.0.0.1:${PORTS[1]}}"
 API_A_CHANNEL_ENDPOINT="${BINGO_API_A_CHANNEL_ENDPOINT:-tcp://127.0.0.1:${PORTS[2]}}"
 PLAY_A_CHANNEL_ENDPOINT="${BINGO_PLAY_A_CHANNEL_ENDPOINT:-tcp://127.0.0.1:${PORTS[3]}}"
 SESSION_A_SPOT_ENDPOINT="${BINGO_SESSION_A_SPOT_ENDPOINT:-tcp://127.0.0.1:${PORTS[4]}}"
@@ -190,8 +187,6 @@ else
 fi
 
 topology_args=(
-  "--sample.topology.registryPubEndpoint=$REGISTRY_PUB_ENDPOINT"
-  "--sample.topology.registryRouterEndpoint=$REGISTRY_ROUTER_ENDPOINT"
   "--sample.topology.apiChannelEndpoint=$API_A_CHANNEL_ENDPOINT"
   "--sample.topology.apiAChannelEndpoint=$API_A_CHANNEL_ENDPOINT"
   "--sample.topology.apiBChannelEndpoint=$API_B_CHANNEL_ENDPOINT"
@@ -221,9 +216,6 @@ start_server() {
   "$binary" --sample.host.keepRunning true "${topology_args[@]}" "$@" >"$LOG_DIR/${name}.log" 2>&1 &
   PIDS+=("$!")
 }
-
-start_server registry "$REGISTRY_BIN"
-wait_port registry-router "$REGISTRY_ROUTER_ENDPOINT"
 
 start_server play-a "$PLAY_BIN" --sample.topology.playNode=a
 wait_port play-a "$PLAY_A_CHANNEL_ENDPOINT"
@@ -271,7 +263,6 @@ sleep "${BINGO_STARTUP_SETTLE_SECONDS:-4}"
   cat "$LOG_DIR/play-b.log" >&2
   cat "$LOG_DIR/api-a.log" >&2
   cat "$LOG_DIR/api-b.log" >&2
-  cat "$LOG_DIR/registry.log" >&2
   exit 1
 }
 

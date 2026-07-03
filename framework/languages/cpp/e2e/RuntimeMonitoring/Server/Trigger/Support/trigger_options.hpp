@@ -20,7 +20,8 @@ struct trigger_options_t
 {
     std::string rid = env_or ("ZLINK_CPP_E2E_RID", "trigger");
     std::string http_endpoint = env_or ("ZLINK_CPP_E2E_HTTP_ENDPOINT");
-    std::string registry_router = env_or ("ZLINK_CPP_E2E_REGISTRY_ROUTER");
+    std::string redis_endpoint = env_or ("ZLINK_CPP_E2E_REDIS_ENDPOINT");
+    std::string redis_key_prefix = env_or ("ZLINK_CPP_E2E_REDIS_KEY_PREFIX");
     std::string service_channel_endpoint = env_or ("ZLINK_CPP_E2E_SERVICE_CHANNEL_ENDPOINT");
     std::string service_b_channel_endpoint = env_or ("ZLINK_CPP_E2E_SERVICE_B_CHANNEL_ENDPOINT");
     std::string throw_channel_endpoint = env_or ("ZLINK_CPP_E2E_THROW_CHANNEL_ENDPOINT");

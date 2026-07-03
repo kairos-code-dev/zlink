@@ -15,16 +15,19 @@ set(gcov_work_dir "${ZLINK_FRAMEWORK_CPP_BUILD_DIR}/coverage-gcov")
 file(REMOVE_RECURSE "${gcov_work_dir}")
 file(MAKE_DIRECTORY "${gcov_work_dir}")
 
-set(runtime_target_dirs
+set(gcda_files)
+set(coverage_target_globs
   zlink_framework
   zlink_http_client
   zlink_stream_connector
-  zlink_unreal_stream_connector)
+  zlink_unreal_stream_connector
+  "test_cpp_framework*"
+  test_cpp_http_client
+  test_cpp_stream_connector)
 
-set(gcda_files)
-foreach(target_name IN LISTS runtime_target_dirs)
+foreach(target_glob IN LISTS coverage_target_globs)
   file(GLOB_RECURSE target_gcda
-    "${ZLINK_FRAMEWORK_CPP_BUILD_DIR}/CMakeFiles/${target_name}.dir/*.gcda")
+    "${ZLINK_FRAMEWORK_CPP_BUILD_DIR}/CMakeFiles/${target_glob}.dir/*.gcda")
   list(APPEND gcda_files ${target_gcda})
 endforeach()
 
@@ -33,11 +36,16 @@ if(NOT gcda_files)
     "No coverage data found. Configure with -DZLINK_FRAMEWORK_CPP_ENABLE_COVERAGE=ON and run tests first.")
 endif()
 
+set(gcov_report_dirs)
 foreach(gcda IN LISTS gcda_files)
   get_filename_component(gcda_dir "${gcda}" DIRECTORY)
+  string(MD5 gcda_key "${gcda}")
+  set(gcov_object_dir "${gcov_work_dir}/${gcda_key}")
+  file(MAKE_DIRECTORY "${gcov_object_dir}")
+  list(APPEND gcov_report_dirs "${gcov_object_dir}")
   execute_process(
     COMMAND "${ZLINK_GCOV_EXECUTABLE}" -o "${gcda_dir}" "${gcda}"
-    WORKING_DIRECTORY "${gcov_work_dir}"
+    WORKING_DIRECTORY "${gcov_object_dir}"
     RESULT_VARIABLE gcov_result
     OUTPUT_QUIET
     ERROR_VARIABLE gcov_error)
@@ -46,7 +54,11 @@ foreach(gcda IN LISTS gcda_files)
   endif()
 endforeach()
 
-file(GLOB gcov_reports "${gcov_work_dir}/*.gcov")
+set(gcov_reports)
+foreach(gcov_report_dir IN LISTS gcov_report_dirs)
+  file(GLOB object_reports "${gcov_report_dir}/*.gcov")
+  list(APPEND gcov_reports ${object_reports})
+endforeach()
 set(covered_lines 0)
 set(total_lines 0)
 set(source_files_seen 0)
@@ -65,22 +77,35 @@ foreach(report IN LISTS gcov_reports)
   endforeach()
 
   if(NOT source_path MATCHES
-      "^${ZLINK_FRAMEWORK_CPP_SOURCE_DIR}/(framework/src|http-client/src|connector/core/src|connector/engines/unreal/Source)/.*\\.(cpp|hpp)$")
+      "^${ZLINK_FRAMEWORK_CPP_SOURCE_DIR}/(framework/src|http-client/src|connector/core/src|connector/engines/unreal/Source|extensions/framework-locations-redis/include)/.*\\.(cpp|hpp)$")
     continue()
   endif()
 
-  math(EXPR source_files_seen "${source_files_seen} + 1")
+  string(MD5 source_key "${source_path}")
+  if(NOT DEFINED seen_source_${source_key})
+    set(seen_source_${source_key} TRUE)
+    math(EXPR source_files_seen "${source_files_seen} + 1")
+  endif()
+
   foreach(line IN LISTS report_lines)
-    if(NOT line MATCHES "^ *([^:]+): *[0-9]+:")
+    if(NOT line MATCHES "^ *([^:]+): *([0-9]+):")
       continue()
     endif()
     set(count "${CMAKE_MATCH_1}")
+    set(line_no "${CMAKE_MATCH_2}")
     string(STRIP "${count}" count)
     if(count STREQUAL "-")
       continue()
     endif()
-    math(EXPR total_lines "${total_lines} + 1")
-    if(NOT count MATCHES "^#+$" AND NOT count STREQUAL "0")
+
+    string(MD5 line_key "${source_path}:${line_no}")
+    if(NOT DEFINED seen_line_${line_key})
+      set(seen_line_${line_key} TRUE)
+      math(EXPR total_lines "${total_lines} + 1")
+    endif()
+
+    if(NOT count MATCHES "^(0|#+|=+)$" AND NOT DEFINED covered_line_${line_key})
+      set(covered_line_${line_key} TRUE)
       math(EXPR covered_lines "${covered_lines} + 1")
     endif()
   endforeach()

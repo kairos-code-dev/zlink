@@ -59,7 +59,7 @@ int main ()
                  != zlink::framework::runtime::messaging::message_kind_t::request
             || decoded_header.value ().channel_name != "profile"
             || decoded_header.value ().message_name != "EnvelopePayload"
-            || decoded_header.value ().content_type != "application/json"
+            || decoded_header.value ().content_type != "application/octet-stream"
             || decoded_header.value ().correlation_id.empty () || !decoded_header.value ().deadline
             || decoded_header.value ().topic.value_or ("") != "lookup"
             || decoded_header.value ().source.value_or ("") != "client") {

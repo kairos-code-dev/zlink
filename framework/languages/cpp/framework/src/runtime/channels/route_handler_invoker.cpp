@@ -29,9 +29,12 @@ route_handler_invoker_t::invoke_send (const route_handler_registry_t &handlers,
        owned_context =
          std::move (owned_context)] () -> boost::asio::awaitable<result_t<zlink::message_t>> {
           try {
+              auto invocation_scope =
+                services.create_scope (service_scope_kind_t::handler_invocation);
+              auto &invocation_services = invocation_scope.provider ();
               auto route_task = handlers.invoke_async (
                 owned_router_channel_id, runtime::messaging::message_kind_t::command,
-                owned_packet_name, services, serializers, owned_message, owned_context);
+                owned_packet_name, invocation_services, serializers, owned_message, owned_context);
               co_return result_t<zlink::message_t>::success (
                 (co_await runtime::await_task_result (std::move (route_task))).value ());
           }
@@ -78,9 +81,12 @@ route_handler_invoker_t::invoke_request (const route_handler_registry_t &handler
        owned_context =
          std::move (owned_context)] () -> boost::asio::awaitable<result_t<zlink::message_t>> {
           try {
+              auto invocation_scope =
+                services.create_scope (service_scope_kind_t::handler_invocation);
+              auto &invocation_services = invocation_scope.provider ();
               auto handler_task = handlers.invoke_async (
                 owned_router_channel_id, runtime::messaging::message_kind_t::request,
-                owned_packet_name, services, serializers, owned_message, owned_context);
+                owned_packet_name, invocation_services, serializers, owned_message, owned_context);
               co_return result_t<zlink::message_t>::success (
                 (co_await runtime::await_task_result (std::move (handler_task))).value ());
           }

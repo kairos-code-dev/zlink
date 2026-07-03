@@ -1,6 +1,7 @@
 /* SPDX-License-Identifier: MPL-2.0 */
 
 #include "../Configuration/sample_names.hpp"
+#include "../Configuration/location_store.hpp"
 #include "../Configuration/sample_topology.hpp"
 #include "../common_codecs.hpp"
 
@@ -124,13 +125,13 @@ int main (int argc, char **argv)
           .trace_log_file (deliverydispatch_log_dir () + "/flow-courier-session.log")
           .trace_label ("deliverydispatch-courier-session");
         add_deliverydispatch_json_codecs (options.codecs ());
-        options.use_discovery ().add_registry_endpoint (topology.registry_router_endpoint);
+        add_deliverydispatch_location_store (options, topology);
         options.add_client_server_channel (sample_names_t::courier_route_channel).enable_client ();
         options.add_route_mesh (sample_names_t::courier_actor_node_route_channel)
           .enable_client ()
           .set_routing_id (zlink::routing_id_t::from (sample_names_t::courier_session_spot_node));
         options.add_spot_mesh (sample_names_t::courier_actor_discovery)
-          .use_registry_spot_resolver (sample_names_t::courier_actor_node_route_channel)
+          .accept_route_mesh (sample_names_t::courier_actor_node_route_channel)
           .set_routing_id (zlink::routing_id_t::from (sample_names_t::courier_session_spot_node))
           .enable_router (topology.courier_session_spot_router_endpoint)
           .enable_pub_sub (topology.courier_session_spot_endpoint);

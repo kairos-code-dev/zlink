@@ -227,4 +227,40 @@ class server_weight_handler_t
     zlink::framework::channel_runtime_options_t &_options;
 };
 
+class peer_locations_handler_t
+{
+  public:
+    using dependency_types = zlink::framework::dependency_list_t<zlink::framework::location_store_t>;
+
+    explicit peer_locations_handler_t (zlink::framework::location_store_t &locations) :
+        _locations (locations)
+    {
+    }
+
+    zlink::framework::http_response_t handle (const zlink::framework::http_request_t &)
+    {
+        const auto peers =
+          _locations
+            .list_peers (zlink::framework::peer_location_filter_t{
+              .auto_connect_type = zlink::framework::location_auto_connect_type_t::client_server,
+              .mesh_name = api_channel})
+            .result ()
+            .value ();
+        nlohmann::json payload = nlohmann::json::array ();
+        for (const auto &peer : peers) {
+            payload.push_back (nlohmann::json{
+              {"mesh_name", peer.mesh_name},
+              {"role", zlink::framework::to_canonical_string (peer.role)},
+              {"node_rid", peer.node_rid ? peer.node_rid->to_string () : std::string{}},
+              {"endpoint", peer.endpoint}});
+        }
+        zlink::framework::http_response_t response;
+        response.body = payload.dump ();
+        return response;
+    }
+
+  private:
+    zlink::framework::location_store_t &_locations;
+};
+
 } // namespace zlink::framework::e2e::registry_messaging::provider

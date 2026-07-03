@@ -31,9 +31,9 @@ inline void wait_c3_provider_health_down (zlink::http_client::client_t &provider
     throw std::runtime_error ("RL-C3 provider B did not stop");
 }
 
-inline void wait_c3_registry_ready (zlink::http_client::client_t &registry)
+inline void wait_c3_location_ready (zlink::http_client::client_t &topology)
 {
-    registry.post ("/topology/wait")
+    topology.post ("/topology/wait")
       .body (nlohmann::json{{"routingId", "api-b"},
                             {"state", "Ready"},
                             {"expectedCount", 1},
@@ -76,8 +76,8 @@ inline void run_rl_c3_node_pause_recovery_probe ()
                       .base_url (env_or ("ZLINK_CPP_E2E_HTTP_CONSUMER_ENDPOINT"))
                       .timeout (std::chrono::milliseconds (10000))
                       .build ();
-    auto registry = zlink::http_client::client_t::create ()
-                      .base_url (env_or ("ZLINK_CPP_E2E_HTTP_REGISTRY_ENDPOINT"))
+    auto topology = zlink::http_client::client_t::create ()
+                      .base_url (env_or ("ZLINK_CPP_E2E_HTTP_CONSUMER_ENDPOINT"))
                       .timeout (std::chrono::milliseconds (35000))
                       .build ();
     auto provider_b = zlink::http_client::client_t::create ()
@@ -100,7 +100,7 @@ inline void run_rl_c3_node_pause_recovery_probe ()
     touch_file (env_or ("ZLINK_CPP_E2E_READY_FILE"));
     wait_for_file (env_or ("ZLINK_CPP_E2E_CONTINUE_FILE"));
 
-    wait_c3_registry_ready (registry);
+    wait_c3_location_ready (topology);
     for (int index = 0; index < 40; ++index) {
         const auto marker = "rl-c3-recovered-" + std::to_string (index);
         const auto reply = consumer.post ("/profile/request")

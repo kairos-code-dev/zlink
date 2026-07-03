@@ -13,7 +13,7 @@
 namespace zlink::framework::e2e::runtime_monitoring::client
 {
 
-inline bool mon_a4_contains_nonzero_registry_event (const std::vector<std::string> &entries,
+inline bool mon_a4_contains_nonzero_location_event (const std::vector<std::string> &entries,
                                                     const std::string &kind,
                                                     const std::string &zero_marker)
 {
@@ -49,12 +49,12 @@ inline void run_mon_a4_availability_transition_scenario (const client_options_t 
                               std::chrono::milliseconds (10000));
     ensure (count_contains (restore_entries, "kind=PeerAdmissionChanged") >= 2,
             "MON-A4 restore socket admission evidence missing");
-    const auto registry_entries = wait_evidence_count_at_least (
-      options.registry_url, "kind=TopologyChanged", 2,
+    const auto location_entries = wait_evidence_count_at_least (
+      options.service_url, "monitor-location|source=location-runtime|kind=TopologyChanged", 2,
       std::chrono::milliseconds (10000));
-    ensure (mon_a4_contains_nonzero_registry_event (registry_entries, "kind=TopologyChanged",
+    ensure (mon_a4_contains_nonzero_location_event (location_entries, "kind=TopologyChanged",
                                                    "topology=0"),
-            "MON-A4 registry topology transition evidence missing");
+            "MON-A4 location topology transition evidence missing");
     std::cout << "scenario MON-A4 passed\n";
 }
 

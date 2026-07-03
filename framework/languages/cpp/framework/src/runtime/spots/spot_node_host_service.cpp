@@ -4,9 +4,11 @@
 
 #include <zlink.hpp>
 
-#include "runtime/registry/discovery_registry_connection.hpp"
 #include "runtime/spots/spot_runtime.hpp"
 
+#include <algorithm>
+#include <map>
+#include <set>
 #include <string_view>
 #include <utility>
 #include <vector>
@@ -34,9 +36,12 @@ zlink::routing_id_t derive_routing_id (const zlink::routing_id_t &base, std::str
 struct spot_node_host_service_t::native_node_t
 {
     zlink::context_t context;
-    std::unique_ptr<zlink::service::discovery_t> discovery;
     std::shared_ptr<zlink::service::spot_node_t> node;
     detail::spot_node_runtime_t runtime;
+    std::optional<peer_location_t> local_peer;
+    std::int64_t local_generation = 0;
+    bool local_published = false;
+    std::map<std::string, peer_location_t> active_peers;
 
     explicit native_node_t (detail::spot_node_runtime_t runtime_) :
         context (),
@@ -46,9 +51,133 @@ struct spot_node_host_service_t::native_node_t
     }
 };
 
-spot_node_host_service_t::spot_node_host_service_t (std::vector<node_runtime_t> spot_nodes,
-                                                    discovery_snapshot_t discovery) :
-    _spot_nodes (std::move (spot_nodes)), _discovery (std::move (discovery))
+peer_location_key_t key_of (const peer_location_t &peer)
+{
+    return peer_location_key_t{peer.auto_connect_type, peer.mesh_name, peer.role, peer.node_rid,
+                               peer.endpoint};
+}
+
+std::string spot_target_key (const peer_location_t &peer)
+{
+    const auto identity = peer.node_rid ? peer.node_rid->to_hex () : peer.endpoint;
+    return to_canonical_string (peer.role) + "|" + identity;
+}
+
+bool is_local_spot_peer (const peer_location_t &local, const peer_location_t &peer)
+{
+    if (local.node_rid && peer.node_rid && local.node_rid->to_hex () == peer.node_rid->to_hex ()) {
+        return true;
+    }
+    return !local.endpoint.empty () && peer.endpoint == local.endpoint;
+}
+
+bool is_manual_spot_endpoint (const spot_node_snapshot_t &snapshot, const std::string &endpoint)
+{
+    return std::find (snapshot.router_manual_connections.begin (),
+                      snapshot.router_manual_connections.end (),
+                      endpoint) != snapshot.router_manual_connections.end ()
+           || std::find (snapshot.pub_sub_manual_connections.begin (),
+                         snapshot.pub_sub_manual_connections.end (),
+                         endpoint) != snapshot.pub_sub_manual_connections.end ();
+}
+
+void connect_spot_peer (const spot_node_snapshot_t &snapshot,
+                        zlink::service::spot_node_t &node,
+                        const peer_location_t &peer)
+{
+    if (peer.endpoint.empty () || is_manual_spot_endpoint (snapshot, peer.endpoint)) {
+        return;
+    }
+    node.connect_peer (peer.endpoint);
+    if (const auto found = peer.metadata.find ("pub-endpoint");
+        found != peer.metadata.end () && !found->second.empty ()
+        && !is_manual_spot_endpoint (snapshot, found->second)) {
+        node.connect_peer (found->second);
+    }
+}
+
+void disconnect_spot_peer (const spot_node_snapshot_t &snapshot,
+                           zlink::service::spot_node_t &node,
+                           const peer_location_t &peer)
+{
+    if (!peer.endpoint.empty () && !is_manual_spot_endpoint (snapshot, peer.endpoint)) {
+        node.disconnect_peer (peer.endpoint);
+    }
+    if (const auto found = peer.metadata.find ("pub-endpoint");
+        found != peer.metadata.end () && !found->second.empty ()
+        && !is_manual_spot_endpoint (snapshot, found->second)) {
+        node.disconnect_peer (found->second);
+    }
+}
+
+void publish_local_spot_peer (spot_node_host_service_t::native_node_t &native,
+                              location_runtime_t &runtime)
+{
+    if (!native.local_peer || native.local_published) {
+        return;
+    }
+    auto row = *native.local_peer;
+    const auto claim = runtime.write_peer (row, location_write_intent_t::new_claim);
+    if (claim.status == location_write_status_t::stored) {
+        native.local_generation = claim.generation;
+        native.local_published = true;
+        return;
+    }
+    if (claim.status == location_write_status_t::rejected_conflict
+        && native.local_generation > 0) {
+        row.generation = native.local_generation;
+        const auto renewed = runtime.write_peer (row, location_write_intent_t::renew);
+        native.local_published = renewed.status == location_write_status_t::stored;
+    }
+}
+
+void reconcile_spot_mesh (spot_node_host_service_t::native_node_t &native,
+                          const spot_node_snapshot_t &snapshot,
+                          location_store_t &store)
+{
+    if (!native.local_peer || !snapshot.discovery_channel_name || !native.node) {
+        return;
+    }
+    auto rows =
+      store
+        .list_peers (peer_location_filter_t{
+          .auto_connect_type = location_auto_connect_type_t::spot_mesh,
+          .mesh_name = *snapshot.discovery_channel_name,
+          .role = location_role_t::spot})
+        .result ()
+        .value ();
+    std::map<std::string, peer_location_t> desired;
+    for (auto &row : rows) {
+        if (row.endpoint.empty () || is_local_spot_peer (*native.local_peer, row)) {
+            continue;
+        }
+        desired[spot_target_key (row)] = std::move (row);
+    }
+    for (const auto &[key, peer] : desired) {
+        const auto found = native.active_peers.find (key);
+        if (found == native.active_peers.end ()) {
+            connect_spot_peer (snapshot, *native.node, peer);
+            native.active_peers[key] = peer;
+            continue;
+        }
+        if (found->second.endpoint != peer.endpoint || found->second.owner_id != peer.owner_id) {
+            disconnect_spot_peer (snapshot, *native.node, found->second);
+            connect_spot_peer (snapshot, *native.node, peer);
+            native.active_peers[key] = peer;
+        }
+    }
+    for (auto it = native.active_peers.begin (); it != native.active_peers.end ();) {
+        if (desired.find (it->first) == desired.end ()) {
+            disconnect_spot_peer (snapshot, *native.node, it->second);
+            it = native.active_peers.erase (it);
+        } else {
+            ++it;
+        }
+    }
+}
+
+spot_node_host_service_t::spot_node_host_service_t (std::vector<node_runtime_t> spot_nodes) :
+    _spot_nodes (std::move (spot_nodes))
 {
 }
 
@@ -57,6 +186,8 @@ spot_node_host_service_t::~spot_node_host_service_t () = default;
 void spot_node_host_service_t::start (service_provider_t &services)
 {
     auto &serializers = services.get_required<serializer_registry_t> ();
+    _location_runtime = &services.get_required<location_runtime_t> ();
+    _location_store = &services.get_required<location_store_t> ();
     for (const auto &configured : _spot_nodes) {
         const auto &snapshot = configured.snapshot;
         if (!snapshot.router_bind_endpoint && !snapshot.pub_bind_endpoint) {
@@ -84,14 +215,19 @@ void spot_node_host_service_t::start (service_provider_t &services)
         for (const auto &endpoint : snapshot.pub_sub_manual_connections) {
             native->node->connect_peer (endpoint);
         }
-        if (snapshot.discovery_channel_name && snapshot.pub_sub_manual_connections.empty ()) {
-            native->discovery = std::make_unique<zlink::service::discovery_t> (
-              native->context, zlink::auto_connect_type::spot_mesh,
-              *snapshot.discovery_channel_name);
-            for (const auto &endpoint : _discovery.registry_endpoints) {
-                detail::connect_registry_with_retry (*native->discovery, endpoint);
+        if (snapshot.discovery_channel_name && snapshot.router_bind_endpoint) {
+            native->local_peer =
+              peer_location_t{.auto_connect_type = location_auto_connect_type_t::spot_mesh,
+                              .mesh_name = *snapshot.discovery_channel_name,
+                              .node_rid = snapshot.routing_id,
+                              .role = location_role_t::spot,
+                              .endpoint = *snapshot.router_bind_endpoint,
+                              .weight = 100,
+                              .value = 0};
+            if (snapshot.pub_bind_endpoint) {
+                native->local_peer->metadata["pub-endpoint"] = *snapshot.pub_bind_endpoint;
             }
-            native->node->attach_discovery (*native->discovery);
+            publish_local_spot_peer (*native, *_location_runtime);
         }
         native->runtime.attach_native_node (native->node);
         _nodes.push_back (std::move (native));
@@ -103,6 +239,17 @@ void spot_node_host_service_t::start (service_provider_t &services)
             for (const auto &native : _nodes) {
                 if (!native) {
                     continue;
+                }
+                if (_location_runtime != nullptr && _location_store != nullptr) {
+                    publish_local_spot_peer (*native, *_location_runtime);
+                    const auto configured = std::find_if (
+                      _spot_nodes.begin (), _spot_nodes.end (), [&] (const auto &candidate) {
+                          return candidate.runtime.node_rid ().value ()
+                                 == native->runtime.node_rid ().value ();
+                      });
+                    if (configured != _spot_nodes.end ()) {
+                        reconcile_spot_mesh (*native, configured->snapshot, *_location_store);
+                    }
                 }
                 native->runtime.publish_peer_snapshot_if_changed ();
                 dispatched += native->runtime.drain_routed_packets (services, serializers);
@@ -130,6 +277,26 @@ void spot_node_host_service_t::stop () noexcept
             continue;
         }
         try {
+            if (_location_runtime != nullptr && native->local_peer && native->local_published) {
+                (void) _location_runtime->remove_peer (key_of (*native->local_peer),
+                                                       native->local_generation);
+                native->local_published = false;
+            }
+            for (const auto &[_, peer] : native->active_peers) {
+                const auto configured = std::find_if (
+                  _spot_nodes.begin (), _spot_nodes.end (), [&] (const auto &candidate) {
+                      return candidate.runtime.node_rid ().value ()
+                             == native->runtime.node_rid ().value ();
+                  });
+                if (configured != _spot_nodes.end ()) {
+                    disconnect_spot_peer (configured->snapshot, *native->node, peer);
+                }
+            }
+            native->active_peers.clear ();
+        }
+        catch (...) {
+        }
+        try {
             native->runtime.detach_native_node ();
         }
         catch (...) {
@@ -137,11 +304,6 @@ void spot_node_host_service_t::stop () noexcept
         try {
             native->node->close ();
             native->node.reset ();
-        }
-        catch (...) {
-        }
-        try {
-            native->discovery.reset ();
         }
         catch (...) {
         }
@@ -157,6 +319,8 @@ void spot_node_host_service_t::stop () noexcept
         }
     }
     _nodes.clear ();
+    _location_runtime = nullptr;
+    _location_store = nullptr;
 }
 
 } // namespace zlink::framework::runtime

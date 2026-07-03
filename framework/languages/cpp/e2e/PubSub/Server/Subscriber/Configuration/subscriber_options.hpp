@@ -12,8 +12,8 @@ struct subscriber_options_t
     std::string subscriber_id = env_or ("ZLINK_CPP_E2E_SUBSCRIBER_ID", "sub-1");
     std::string topics = env_or ("ZLINK_CPP_E2E_TOPICS", "fanout");
     std::string accepted_topics = env_or ("ZLINK_CPP_E2E_ACCEPTED_TOPICS", topics);
-    std::string registry_router = env_or ("ZLINK_CPP_E2E_REGISTRY_ROUTER");
-    std::string publisher_endpoint = env_or ("ZLINK_CPP_E2E_PUBLISHER_ENDPOINT");
+    std::string redis_endpoint = env_or ("ZLINK_CPP_E2E_REDIS_ENDPOINT");
+    std::string redis_key_prefix = env_or ("ZLINK_CPP_E2E_REDIS_KEY_PREFIX");
     std::string http_endpoint = env_or ("ZLINK_CPP_E2E_HTTP_ENDPOINT");
     int handler_delay_ms = std::stoi (env_or ("ZLINK_CPP_E2E_HANDLER_DELAY_MS", "0"));
 };

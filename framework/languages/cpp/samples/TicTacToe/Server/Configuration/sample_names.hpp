@@ -14,7 +14,7 @@ struct sample_names_t
     static constexpr const char *actor_type = "player";
     static constexpr const char *match_spot = "tictactoe.game";
     static constexpr const char *spot_node = "tictactoe.game.node";
-    static constexpr const char *game_spot_discovery = "tictactoe.game.rooms";
+    static constexpr const char *game_spot_node = "tictactoe.game.rooms";
     static constexpr const char *player_milestone_topic = "tictactoe.player.milestone";
     static constexpr int required_level = 3;
     static constexpr const char *entry_spot_routing_id = "3301";

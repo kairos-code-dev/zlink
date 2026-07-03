@@ -49,6 +49,19 @@ inline std::string spot_kind_name (zlink::framework::spot_event_kind_t kind)
     return "Unknown";
 }
 
+inline std::string location_kind_name (zlink::framework::location_event_kind_t kind)
+{
+    switch (kind) {
+        case zlink::framework::location_event_kind_t::status_changed:
+            return "StatusChanged";
+        case zlink::framework::location_event_kind_t::topology_changed:
+            return "TopologyChanged";
+        case zlink::framework::location_event_kind_t::service_summary_changed:
+            return "ServiceSummaryChanged";
+    }
+    return "Unknown";
+}
+
 inline void record_socket_event (server::evidence_store_t &evidence,
                                  const zlink::framework::socket_event_payload_t &event)
 {
@@ -68,6 +81,18 @@ inline void record_spot_event (server::evidence_store_t &evidence,
                   + "|timer="
                   + (event.timer_diagnostic ? event.timer_diagnostic->timer_name
                                             : std::string ("<null>")));
+}
+
+inline void record_location_event (server::evidence_store_t &evidence,
+                                   const zlink::framework::location_event_payload_t &event)
+{
+    evidence.add ("monitor-location|source=" + event.source_name
+                  + "|kind=" + location_kind_name (event.event)
+                  + "|topology=" + std::to_string (event.topology.size ())
+                  + "|summary=" + std::to_string (event.service_summary.size ())
+                  + "|healthy="
+                  + (event.status && event.status->store_healthy ? std::string ("true")
+                                                                  : std::string ("false")));
 }
 
 inline void record_throwing_socket_event (

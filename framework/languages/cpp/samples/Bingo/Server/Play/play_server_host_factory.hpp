@@ -2,6 +2,7 @@
 #pragma once
 
 #include "../Configuration/sample_configuration.hpp"
+#include "../Configuration/location_store.hpp"
 #include "../Configuration/sample_names.hpp"
 #include "../Configuration/sample_topology.hpp"
 #include "../common_codecs.hpp"
@@ -50,15 +51,14 @@ class play_server_host_factory_t
                 std::make_unique<redis_bingo_match_queue_t> (topology))
               .add_singleton<bingo_room_allocator_t, bingo_match_queue_t> ();
             use_default_bingo_codecs (options.codecs ());
-            options.use_discovery ().add_registry_endpoint (topology.registry_router_endpoint);
+            add_sample_location_store (options, topology);
             options.add_route_mesh (sample_names_t::play_channel)
               .enable_server (topology.selected_play_channel_endpoint ())
               .set_routing_id (zlink::routing_id_t::from (topology.selected_play_node_rid ()))
               .enable_client ()
               .use_handler_group ("play");
             options.add_client_server_channel (sample_names_t::api_channel).enable_client ();
-            options.add_spot_mesh (sample_names_t::room_spot_discovery)
-              .use_registry_spot_resolver (sample_names_t::play_channel)
+            options.add_spot_mesh (sample_names_t::room_spot_mesh)
               .set_routing_id (routing_id_t::from (topology.selected_play_node_rid ()))
               .enable_router (topology.selected_play_spot_router_endpoint ())
               .enable_pub_sub (topology.selected_play_spot_endpoint ())

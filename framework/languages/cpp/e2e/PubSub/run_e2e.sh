@@ -10,6 +10,7 @@ ROUTE_SETTLE_SECONDS=5
 SCENARIO_SETTLE_SECONDS=3
 HTTP_PROBE_TIMEOUT_SECONDS=3
 BOUNDED_EVIDENCE_WAIT_HTTP_TIMEOUT_SECONDS=35
+REDIS_READINESS_TIMEOUT_SECONDS=30
 LOCAL_READINESS_ATTEMPTS="$(
   python3 - "$LOCAL_READINESS_TIMEOUT_SECONDS" "$LOCAL_READINESS_POLL_SECONDS" <<'PY'
 import math
@@ -21,18 +22,18 @@ print(max(1, math.ceil(timeout / poll)))
 PY
 )"
 
-read -r REGISTRY_PUB REGISTRY_ROUTER PUBLISHER REGISTRY_HTTP PUBLISHER_HTTP HTTP_1 HTTP_2 HTTP_3 <<<"$(python3 - <<'PY'
+read -r PUBLISHER PUBLISHER_HTTP HTTP_1 HTTP_2 HTTP_3 <<<"$(python3 - <<'PY'
 import socket
 
 sockets = []
 ports = []
-for _ in range(8):
+for _ in range(5):
     s = socket.socket()
     s.bind(("127.0.0.1", 0))
     sockets.append(s)
     ports.append(s.getsockname()[1])
-print(" ".join(f"tcp://127.0.0.1:{p}" for p in ports[:3]), end=" ")
-print(" ".join(f"http://127.0.0.1:{p}" for p in ports[3:8]))
+print(f"tcp://127.0.0.1:{ports[0]}", end=" ")
+print(" ".join(f"http://127.0.0.1:{p}" for p in ports[1:5]))
 for s in sockets:
     s.close()
 PY
@@ -46,18 +47,69 @@ SCENARIO="${1:-all}"
 
 cmake -S "$CPP_DIR" -B "$BUILD_DIR" >/dev/null
 cmake --build "$BUILD_DIR" --target \
-  zlink_cpp_e2e_pubsub_registry \
   zlink_cpp_e2e_pubsub_publisher \
   zlink_cpp_e2e_pubsub_subscriber \
   zlink_cpp_e2e_pubsub_client >/dev/null
 
-REGISTRY="$BUILD_DIR/zlink_cpp_e2e_pubsub_registry"
 PUBLISHER_SERVER="$BUILD_DIR/zlink_cpp_e2e_pubsub_publisher"
 SUBSCRIBER="$BUILD_DIR/zlink_cpp_e2e_pubsub_subscriber"
 CLIENT="$BUILD_DIR/zlink_cpp_e2e_pubsub_client"
 PIDS=()
 LAST_PID=""
 PUBLISHER_PID=""
+REDIS_CONTAINER=""
+
+pick_port() {
+  python3 - <<'PY'
+import socket
+s = socket.socket()
+s.bind(("127.0.0.1", 0))
+print(s.getsockname()[1])
+s.close()
+PY
+}
+
+wait_tcp() {
+  local host="$1"
+  local port="$2"
+  local name="$3"
+  if python3 - "$host" "$port" "$REDIS_READINESS_TIMEOUT_SECONDS" <<'PY'
+import socket
+import sys
+import time
+
+host, port, timeout = sys.argv[1], int(sys.argv[2]), float(sys.argv[3])
+deadline = time.monotonic() + timeout
+while time.monotonic() < deadline:
+    try:
+        with socket.create_connection((host, port), timeout=1):
+            sys.exit(0)
+    except OSError:
+        time.sleep(0.2)
+sys.exit(1)
+PY
+  then
+    return 0
+  fi
+  echo "Timed out waiting ${REDIS_READINESS_TIMEOUT_SECONDS}s for $name at $host:$port" >&2
+  return 1
+}
+
+REDIS_KEY_PREFIX="zlink:e2e:cfg3:$(date +%s)-$$"
+if [[ -n "${ZLINK_REDIS_E2E_ENDPOINT:-}" ]]; then
+  REDIS_ENDPOINT="$ZLINK_REDIS_E2E_ENDPOINT"
+  echo "redis endpoint=$REDIS_ENDPOINT (external)"
+else
+  REDIS_PORT="$(pick_port)"
+  REDIS_CONTAINER="zlink-e2e-pubsub-cpp-$$"
+  docker run -d --rm --name "$REDIS_CONTAINER" -p "127.0.0.1:$REDIS_PORT:6379" redis:7-alpine >/dev/null
+  REDIS_ENDPOINT="127.0.0.1:$REDIS_PORT"
+  echo "redis endpoint=$REDIS_ENDPOINT (container $REDIS_CONTAINER)"
+fi
+REDIS_HOST="${REDIS_ENDPOINT%:*}"
+REDIS_TCP_PORT="${REDIS_ENDPOINT##*:}"
+wait_tcp "$REDIS_HOST" "$REDIS_TCP_PORT" redis
+echo "redis key prefix=$REDIS_KEY_PREFIX"
 
 cleanup() {
   local code=$?
@@ -67,6 +119,12 @@ cleanup() {
     fi
   done
   wait >/dev/null 2>&1 || true
+  if [[ -n "$REDIS_CONTAINER" ]]; then
+    docker rm -f "$REDIS_CONTAINER" >/dev/null 2>&1 || true
+  elif command -v redis-cli >/dev/null 2>&1; then
+    redis-cli -h "$REDIS_HOST" -p "$REDIS_TCP_PORT" --scan --pattern "$REDIS_KEY_PREFIX*" 2>/dev/null \
+      | xargs -r redis-cli -h "$REDIS_HOST" -p "$REDIS_TCP_PORT" DEL >/dev/null 2>&1 || true
+  fi
   if [[ $code -ne 0 ]]; then
     echo "E2E failed. Logs: $LOG_DIR" >&2
   fi
@@ -177,21 +235,10 @@ print(f"snapshot {name} evidence written")
 PY
 }
 
-start_registry() {
-  ZLINK_CPP_E2E_REGISTRY_PUB="$REGISTRY_PUB" \
-  ZLINK_CPP_E2E_REGISTRY_ROUTER="$REGISTRY_ROUTER" \
-  ZLINK_CPP_E2E_REGISTRY_HTTP_ENDPOINT="$REGISTRY_HTTP" \
-  ZLINK_CPP_E2E_LOG_DIR="$LOG_DIR" \
-    "$REGISTRY" >"$LOG_DIR/registry.stdout.log" 2>"$LOG_DIR/registry.stderr.log" &
-  PIDS+=("$!")
-  wait_port registry-router "$REGISTRY_ROUTER"
-  wait_port registry-http "$REGISTRY_HTTP"
-  check_operational_endpoints registry "$REGISTRY_HTTP"
-}
-
 start_publisher() {
   local suffix="${1:-publisher}"
-  ZLINK_CPP_E2E_REGISTRY_ROUTER="$REGISTRY_ROUTER" \
+  ZLINK_CPP_E2E_REDIS_ENDPOINT="$REDIS_ENDPOINT" \
+  ZLINK_CPP_E2E_REDIS_KEY_PREFIX="$REDIS_KEY_PREFIX" \
   ZLINK_CPP_E2E_PUBLISHER_ENDPOINT="$PUBLISHER" \
   ZLINK_CPP_E2E_PUBLISHER_HTTP_ENDPOINT="$PUBLISHER_HTTP" \
   ZLINK_CPP_E2E_LOG_DIR="$LOG_DIR" \
@@ -214,8 +261,8 @@ start_subscriber() {
   ZLINK_CPP_E2E_ACCEPTED_TOPICS="$accepted_topics" \
   ZLINK_CPP_E2E_HANDLER_DELAY_MS="$delay" \
   ZLINK_CPP_E2E_HTTP_ENDPOINT="$http" \
-  ZLINK_CPP_E2E_REGISTRY_ROUTER="$REGISTRY_ROUTER" \
-  ZLINK_CPP_E2E_PUBLISHER_ENDPOINT="$PUBLISHER" \
+  ZLINK_CPP_E2E_REDIS_ENDPOINT="$REDIS_ENDPOINT" \
+  ZLINK_CPP_E2E_REDIS_KEY_PREFIX="$REDIS_KEY_PREFIX" \
   ZLINK_CPP_E2E_LOG_DIR="$LOG_DIR" \
     "$SUBSCRIBER" >"$LOG_DIR/$id.stdout.log" 2>"$LOG_DIR/$id.stderr.log" &
   LAST_PID="$!"
@@ -264,7 +311,8 @@ run_client() {
   shift 2
   ZLINK_CPP_E2E_SCENARIO="$scenario" \
   ZLINK_CPP_E2E_PUBLISHER_URL="$PUBLISHER_HTTP" \
-  ZLINK_CPP_E2E_REGISTRY_ROUTER="$REGISTRY_ROUTER" \
+  ZLINK_CPP_E2E_REDIS_ENDPOINT="$REDIS_ENDPOINT" \
+  ZLINK_CPP_E2E_REDIS_KEY_PREFIX="$REDIS_KEY_PREFIX" \
   ZLINK_CPP_E2E_PUBLISHER_ENDPOINT="$PUBLISHER" \
   ZLINK_CPP_E2E_LOG_DIR="$LOG_DIR" \
   "$@" \
@@ -397,7 +445,6 @@ case "$SCENARIO" in
     ;;
 esac
 
-start_registry
 start_publisher publisher
 
 SUB_PIDS=()
@@ -535,6 +582,5 @@ if should_run PS-C1 ps-c1; then
   stop_all_subscribers
 fi
 
-snapshot_operational_evidence registry "$REGISTRY_HTTP" "$LOG_DIR/registry-evidence-final.json"
 snapshot_operational_evidence publisher "$PUBLISHER_HTTP" "$LOG_DIR/publisher-evidence-final.json"
 echo "pubsub e2e result=passed"

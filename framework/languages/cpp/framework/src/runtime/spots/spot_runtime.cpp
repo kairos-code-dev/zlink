@@ -221,6 +221,158 @@ void erase_actor_route_unlocked (detail::spot_node_builder_state_t &state, const
     state.actor_generations.erase (key);
 }
 
+std::string serialize_actor_ref_for_location (const actor_ref_t &actor)
+{
+    return std::string (actor.node_rid ().value ()) + ":"
+           + std::to_string (actor.generation ()) + ":" + std::string (actor.actor_id ());
+}
+
+std::uint64_t actor_generation_from_location (const actor_location_t &location)
+{
+    const auto first = location.actor_ref.find (':');
+    if (first == std::string::npos) {
+        return 0;
+    }
+    const auto second = location.actor_ref.find (':', first + 1);
+    if (second == std::string::npos) {
+        return 0;
+    }
+    try {
+        return static_cast<std::uint64_t> (
+          std::stoull (location.actor_ref.substr (first + 1, second - first - 1)));
+    }
+    catch (...) {
+        return 0;
+    }
+}
+
+actor_location_t make_actor_location (const actor_ref_t &actor,
+                                      const detail::spot_context_state_t &context)
+{
+    return actor_location_t{
+      .actor_type = std::string (actor.actor_type ()),
+      .actor_id = std::string (actor.actor_id ()),
+      .actor_ref = serialize_actor_ref_for_location (actor),
+      .node_rid = zlink::routing_id_t::from (std::string (actor.node_rid ().value ())),
+      .generation = 0,
+      .location_kind = zlink::spot_kind::user,
+      .spot_rid = zlink::routing_id_t::from (std::string (context.spot_rid.value ())),
+      .spot_kind = zlink::spot_kind::user};
+}
+
+actor_location_t make_entry_actor_location (const actor_ref_t &actor,
+                                            const detail::spot_context_state_t &context)
+{
+    return actor_location_t{
+      .actor_type = std::string (actor.actor_type ()),
+      .actor_id = std::string (actor.actor_id ()),
+      .actor_ref = serialize_actor_ref_for_location (actor),
+      .node_rid = zlink::routing_id_t::from (std::string (context.node_rid.value ())),
+      .generation = 0,
+      .location_kind = zlink::spot_kind::entry,
+      .spot_rid = std::nullopt,
+      .spot_kind = zlink::spot_kind::entry};
+}
+
+spot_location_t make_spot_location (const detail::spot_node_builder_state_t &state,
+                                    const std::string &spot_name,
+                                    const spot_rid_t &spot_rid)
+{
+    const auto kind = state.snapshot.entry_spot_name && *state.snapshot.entry_spot_name == spot_name
+                        ? zlink::spot_kind::entry
+                        : zlink::spot_kind::user;
+    return spot_location_t{
+      .mesh_name = state.snapshot.name,
+      .spot_rid = zlink::routing_id_t::from (std::string (spot_rid.value ())),
+      .spot_type = spot_name,
+      .node_rid = zlink::routing_id_t::from (detail::effective_spot_node_rid (state.snapshot)),
+      .spot_kind = kind,
+      .route_endpoint = std::nullopt};
+}
+
+void deactivate_actor_location (std::weak_ptr<detail::spot_node_builder_state_t> weak_state,
+                                const actor_location_t &location)
+{
+    auto state = weak_state.lock ();
+    if (!state) {
+        return;
+    }
+
+    std::function<result_t<void> (const actor_ref_t &)> destroy_actor_registry;
+    const auto key = location.actor_type + ":" + location.actor_id;
+    const auto actor = actor_ref_t (node_rid_t::from_string (location.node_rid.to_string ()),
+                                    location.actor_type, location.actor_id,
+                                    actor_generation_from_location (location));
+    {
+        std::lock_guard<std::recursive_mutex> node_lock (state->mutex);
+        erase_actor_route_unlocked (*state, key);
+        state->actor_created_keys.erase (key);
+        state->destroyed_actor_keys.insert (key);
+        state->actor_instances.erase (key);
+        state->actor_mailboxes.erase (key);
+        destroy_actor_registry = state->destroy_actor_registry;
+    }
+    if (destroy_actor_registry) {
+        (void) destroy_actor_registry (actor);
+    }
+}
+
+result_t<void> claim_actor_location_before_activation (
+  const std::shared_ptr<detail::spot_node_builder_state_t> &state,
+  const actor_ref_t &committed,
+  const detail::spot_context_state_t &context,
+  bool &claimed)
+{
+    claimed = false;
+    if (!state->location_lifecycle) {
+        return result_t<void>::success ();
+    }
+
+    if (state->location_lifecycle->owns_actor (
+          actor_location_key_t{std::string (committed.actor_type ()),
+                               std::string (committed.actor_id ())})) {
+        return result_t<void>::success ();
+    }
+
+    auto location = make_actor_location (committed, context);
+    const auto claim_result = state->location_lifecycle->claim_actor (
+      location, [weak_state = std::weak_ptr<detail::spot_node_builder_state_t> (state)] (
+                  const actor_location_t &lost) {
+          deactivate_actor_location (weak_state, lost);
+      });
+    if (claim_result.status != location_write_status_t::stored) {
+        return result_t<void>::failure (
+          claim_result.status == location_write_status_t::rejected_conflict
+            ? framework_error_kind_t::actor_already_exists
+            : framework_error_kind_t::request_failed,
+          "actor location claim failed");
+    }
+    claimed = true;
+    return result_t<void>::success ();
+}
+
+void release_actor_location (detail::spot_node_builder_state_t &state, const actor_ref_t &actor)
+{
+    if (!state.location_lifecycle || actor.empty ()) {
+        return;
+    }
+    (void) state.location_lifecycle->release_actor (
+      actor_location_key_t{std::string (actor.actor_type ()), std::string (actor.actor_id ())});
+}
+
+void update_actor_location_after_move (detail::spot_node_builder_state_t &state,
+                                       const actor_ref_t &actor,
+                                       const detail::spot_context_state_t &context,
+                                       bool entry)
+{
+    if (!state.location_lifecycle || actor.empty ()) {
+        return;
+    }
+    auto location = entry ? make_entry_actor_location (actor, context)
+                          : make_actor_location (actor, context);
+    (void) state.location_lifecycle->update_actor_location (std::move (location));
+}
+
 result_t<std::string>
 spot_route_channel_name (const std::shared_ptr<detail::spot_context_state_t> &state)
 {
@@ -228,17 +380,20 @@ spot_route_channel_name (const std::shared_ptr<detail::spot_context_state_t> &st
         return result_t<std::string>::failure (framework_error_kind_t::request_protocol_error,
                                                "SPOT route runtime is not configured");
     }
-    if (!state->node->snapshot.registry_spot_route_channel
-        || state->node->snapshot.registry_spot_route_channel->empty ()) {
-        std::lock_guard lock (state->channel_runtime->mutex);
-        if (state->channel_runtime->route_channels.size () == 1) {
-            return result_t<std::string>::success (
-              state->channel_runtime->route_channels.begin ()->first);
-        }
-        return result_t<std::string>::failure (framework_error_kind_t::spot_route_not_found,
-                                               "remote SPOT route channel is not configured");
+    std::lock_guard lock (state->channel_runtime->mutex);
+    if (state->channel_runtime->route_channels.size () == 1) {
+        return result_t<std::string>::success (state->channel_runtime->route_channels.begin ()->first);
     }
-    return result_t<std::string>::success (*state->node->snapshot.registry_spot_route_channel);
+    if (state->node && state->node->snapshot.accepted_route_channels.size () == 1) {
+        const auto &route_channel_name =
+          state->node->snapshot.accepted_route_channels.front ().channel_name;
+        if (state->channel_runtime->route_channels.find (route_channel_name)
+            != state->channel_runtime->route_channels.end ()) {
+            return result_t<std::string>::success (route_channel_name);
+        }
+    }
+    return result_t<std::string>::failure (framework_error_kind_t::spot_route_not_found,
+                                           "remote SPOT route channel is not configured");
 }
 
 runtime::messaging::message_parts_t
@@ -618,6 +773,7 @@ task_t<actor_ref_t> spot_context_t::leaveActor_erased (
           actor_ref_t (node_rid_t::from_string (std::string (_state->node_rid.value ())),
                        std::string (actor_ref.actor_type ()), std::string (actor_ref.actor_id ()),
                        actor_ref.generation () + 1);
+        update_actor_location_after_move (*_state->node, committed, entry_state, true);
         detail::record_actor_context_route_unlocked (*_state->node, key,
                                                      std::string (_state->node_rid.value ()),
                                                      entry_state, committed.generation ());
@@ -694,6 +850,7 @@ task_t<void> entry_spot_context_t::destroyActor_erased (const actor_ref_t &actor
 
     if (found_location != _state->node->actor_spot_rids.end ()) {
         _state->node->destroying_actors.insert (key);
+        release_actor_location (*_state->node, actor);
         erase_actor_route_unlocked (*_state->node, key);
         _state->node->actor_created_keys.erase (key);
         _state->node->destroyed_actor_keys.insert (key);
@@ -1200,56 +1357,6 @@ spot_node_builder_t &spot_node_builder_t::connect_peer_pub (std::string endpoint
     return connect_pub_sub (std::move (endpoint));
 }
 
-spot_node_builder_t &spot_node_builder_t::use_discovery (std::string channel_name)
-{
-    if (channel_name.empty ()) {
-        throw framework_exception_t (framework_error_kind_t::request_protocol_error,
-                                     "spot discovery channel name is required");
-    }
-    _state->snapshot.discovery_channel_name = std::move (channel_name);
-    return *this;
-}
-
-spot_node_builder_t &spot_node_builder_t::use_registry_spot_remote_addresses ()
-{
-    if (!_state->resolvers.empty ()) {
-        throw framework_exception_t (
-          framework_error_kind_t::request_protocol_error,
-          "registry spot remote address resolver cannot be combined with custom spot resolvers");
-    }
-    _state->snapshot.registry_spot_remote_addresses_enabled = true;
-    _state->snapshot.registry_spot_route_channel.reset ();
-    return *this;
-}
-
-spot_node_builder_t &
-spot_node_builder_t::use_registry_spot_remote_addresses (std::string route_channel_name)
-{
-    if (route_channel_name.empty ()) {
-        throw framework_exception_t (framework_error_kind_t::request_protocol_error,
-                                     "registry spot remote address route channel is required");
-    }
-    if (!_state->resolvers.empty ()) {
-        throw framework_exception_t (
-          framework_error_kind_t::request_protocol_error,
-          "registry spot remote address resolver cannot be combined with custom spot resolvers");
-    }
-    _state->snapshot.registry_spot_remote_addresses_enabled = true;
-    _state->snapshot.registry_spot_route_channel = std::move (route_channel_name);
-    return *this;
-}
-
-spot_node_builder_t &spot_node_builder_t::use_registry_spot_resolver ()
-{
-    return use_registry_spot_remote_addresses ();
-}
-
-spot_node_builder_t &
-spot_node_builder_t::use_registry_spot_resolver (std::string route_channel_name)
-{
-    return use_registry_spot_remote_addresses (std::move (route_channel_name));
-}
-
 spot_node_builder_t &
 spot_node_builder_t::accept_implicit_route_mesh (std::string route_channel_name,
                                                  std::vector<std::string> manual_connections)
@@ -1332,11 +1439,6 @@ spot_node_builder_t &spot_node_builder_t::add_spot_resolver (
     if (name.empty () || !resolver) {
         throw framework_exception_t (framework_error_kind_t::request_protocol_error,
                                      "spot resolver requires a name and callback");
-    }
-    if (_state->snapshot.registry_spot_remote_addresses_enabled) {
-        throw framework_exception_t (
-          framework_error_kind_t::request_protocol_error,
-          "custom spot resolvers cannot be combined with registry spot remote address resolver");
     }
     const auto [_, inserted] = _state->resolvers.emplace (std::move (name), std::move (resolver));
     if (!inserted) {
@@ -1432,7 +1534,7 @@ spot_node_builder_t zlink_builder_t::add_spot_node (std::string spot_node_name)
 {
     auto state = std::make_shared<detail::spot_node_builder_state_t> (std::move (spot_node_name));
     state->channel_runtime = _state->runtime;
-    state->registry_runtime = _state->registry_runtime;
+    state->snapshot.discovery_channel_name = state->snapshot.name;
     _state->spot_nodes[state->snapshot.name] = state;
     return spot_node_builder_t (state);
 }
@@ -1754,6 +1856,7 @@ void spot_node_runtime_t::commit_accepted_actor_join_unlocked (
     detail::record_actor_context_route_unlocked (*_state, key,
                                                  detail::effective_spot_node_rid (_state->snapshot),
                                                  target_state, committed.generation ());
+    update_actor_location_after_move (*_state, committed, target_state, false);
     if (_state->update_actor_registry_ref) {
         (void) _state->update_actor_registry_ref (committed);
     }
@@ -1809,6 +1912,15 @@ result_t<actor_join_reply_t> spot_node_runtime_t::join_actor_to_spot_erased (
       actor_ref_t (node_rid_t::from_string (detail::effective_spot_node_rid (_state->snapshot)),
                    std::string (actor_ref.actor_type ()), std::string (actor_ref.actor_id ()),
                    actor_ref.generation () + 1);
+    bool claimed_location = false;
+    const auto location_claim = claim_actor_location_before_activation (
+      _state, committed, *context.value ()._state, claimed_location);
+    if (!location_claim) {
+        return result_t<actor_join_reply_t>::failure (
+          location_claim.error_kind (),
+          location_claim.error () ? location_claim.error ()->what ()
+                                  : "actor location claim failed");
+    }
     actor_factory.value ().get ().configure_instance (actor_instance.get (), committed, nullptr);
     if (_state->update_actor_registry_ref) {
         (void) _state->update_actor_registry_ref (committed);
@@ -1818,6 +1930,9 @@ result_t<actor_join_reply_t> spot_node_runtime_t::join_actor_to_spot_erased (
     const auto response = admission.value ().get ().join (
       context.value ()._state->spot_instance.get (), actor_instance.get (), request, serializers);
     if (!response.accepted) {
+        if (claimed_location) {
+            release_actor_location (*_state, committed);
+        }
         actor_factory.value ().get ().configure_instance (actor_instance.get (), actor_ref,
                                                           nullptr);
         if (_state->update_actor_registry_ref) {
@@ -2220,17 +2335,21 @@ spot_create_result_t spot_node_runtime_t::create_spot_context_unlocked (std::str
         }
     }
 
+    if (_state->location_lifecycle) {
+        const auto claimed =
+          _state->location_lifecycle->claim_spot (make_spot_location (*_state, spot_name,
+                                                                      spot_rid));
+        if (claimed.status != location_write_status_t::stored) {
+            return spot_create_result_t{spot_rid, spot_create_state_t::rejected, std::nullopt,
+                                        context};
+        }
+    }
+
     attach_native_spot_locked (context_state);
     const auto rid_value = std::string (spot_rid.value ());
     _state->spot_rids_by_name[spot_name] = spot_rid;
     _state->spot_names_by_rid[rid_value] = spot_name;
     _state->spot_contexts_by_rid[rid_value] = context;
-    if (_state->registry_runtime) {
-        registry_runtime_t (_state->registry_runtime)
-          .add_spot_route (spot_route_t{
-            node_rid_t::from_string (detail::effective_spot_node_rid (_state->snapshot)), spot_rid,
-            spot_name});
-    }
     if (_state->monitoring) {
         monitoring_runtime_t (_state->monitoring)
           .publish_spot_snapshot (spot_event_payload_t{runtime_event_base_t{_state->snapshot.name},
@@ -2359,11 +2478,18 @@ std::optional<spot_route_t> spot_node_runtime_t::resolve_spot (spot_rid_t spot_r
             return route;
         }
     }
-    if (_state->snapshot.registry_spot_remote_addresses_enabled && _state->registry_runtime) {
-        auto route =
-          registry_runtime_t (_state->registry_runtime).resolve_spot_remote_address (spot_rid);
-        if (route) {
-            return route.value ();
+    if (_state->spot_location_resolver) {
+        const auto address =
+          _state->spot_location_resolver
+            ->resolve_spot_address (_state->snapshot.name,
+                                    zlink::routing_id_t::from (
+                                      std::string (spot_rid.value ())))
+            .result ()
+            .value ();
+        if (address) {
+            return spot_route_t{node_rid_t::from_string (address->node_rid.to_string ()),
+                                spot_rid_t::from_string (address->spot_rid.to_string ()),
+                                {}};
         }
     }
     return std::nullopt;
@@ -2469,6 +2595,18 @@ void spot_node_runtime_t::detach_native_node ()
                                  {},
                                  std::nullopt});
     }
+}
+
+void spot_node_runtime_t::bind_location_lifecycle (runtime::location_lifecycle_t &lifecycle)
+{
+    std::lock_guard<std::recursive_mutex> node_lock (_state->mutex);
+    _state->location_lifecycle = &lifecycle;
+}
+
+void spot_node_runtime_t::bind_spot_location_resolver (spot_location_resolver_t &resolver)
+{
+    std::lock_guard<std::recursive_mutex> node_lock (_state->mutex);
+    _state->spot_location_resolver = &resolver;
 }
 
 std::shared_ptr<zlink::service::spot_node_t> spot_node_runtime_t::native_node () const

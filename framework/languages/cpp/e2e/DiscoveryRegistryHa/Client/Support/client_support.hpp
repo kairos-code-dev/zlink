@@ -1,22 +1,33 @@
 /* SPDX-License-Identifier: MPL-2.0 */
 #pragma once
 
-#include "../../Shared/discovery_registry_ha_contracts.hpp"
+#include "../../Shared/store_failure_contracts.hpp"
 
 #include <zlink/http_client.hpp>
 
 #include <chrono>
 #include <cstdlib>
+#include <set>
 #include <stdexcept>
 #include <string>
+#include <thread>
+#include <vector>
 
-namespace zlink::framework::e2e::discovery_registry_ha::client
+namespace zlink::framework::e2e::store_failure::client
 {
 
 inline std::string env_or (const char *name, std::string fallback = {})
 {
     if (const char *value = std::getenv (name); value != nullptr && *value != '\0') {
         return value;
+    }
+    return fallback;
+}
+
+inline int env_int (const char *name, int fallback)
+{
+    if (const char *value = std::getenv (name); value != nullptr && *value != '\0') {
+        return std::stoi (value);
     }
     return fallback;
 }
@@ -49,13 +60,110 @@ inline TReply get_json (const std::string &base_url,
     return client.get (path).template fetch<TReply> ();
 }
 
-inline bool evidence_contains (const evidence_snapshot_t &snapshot,
-                               const std::string &marker,
-                               const std::string &provider_rid)
+inline void post_empty (const std::string &base_url, const std::string &path)
 {
-    for (const auto &entry : snapshot.entries) {
-        if (entry.marker == marker && entry.provider_rid == provider_rid
-            && entry.value.find ("rid=" + provider_rid) != std::string::npos) {
+    auto client = zlink::http_client::client_t::create ()
+                    .base_url (base_url)
+                    .timeout (std::chrono::seconds (3))
+                    .build ();
+    auto response = client.post (path).submit_raw ().result ();
+    ensure (response && response.value ().status < 400, "HTTP POST failed: " + base_url + path);
+}
+
+inline bool try_get_health (const std::string &base_url)
+{
+    auto client = zlink::http_client::client_t::create ()
+                    .base_url (base_url)
+                    .timeout (std::chrono::milliseconds (500))
+                    .build ();
+    try {
+        auto response = client.get ("/health").submit_raw ().result ();
+        return response && response.value ().status == 200;
+    }
+    catch (...) {
+        return false;
+    }
+}
+
+inline void wait_down (const std::string &base_url)
+{
+    for (int i = 0; i < 80; ++i) {
+        if (!try_get_health (base_url)) {
+            return;
+        }
+        std::this_thread::sleep_for (std::chrono::milliseconds (100));
+    }
+    throw std::runtime_error ("node did not go down: " + base_url);
+}
+
+inline void docker (const std::string &verb)
+{
+    const auto container = env_or ("ZLINK_CPP_E2E_REDIS_CONTAINER");
+    ensure (!container.empty (), "ZLINK_CPP_E2E_REDIS_CONTAINER is required");
+    const auto command = "docker " + verb + " " + container + " >/dev/null";
+    const auto code = std::system (command.c_str ());
+    ensure (code == 0, "docker " + verb + " failed for " + container);
+}
+
+inline runtime_status_res_t get_status (const std::string &base_url)
+{
+    return get_json<runtime_status_res_t> (base_url, "/query/status");
+}
+
+inline std::vector<peer_row_res_t> try_get_peers (const std::string &base_url)
+{
+    try {
+        return get_json<std::vector<peer_row_res_t>> (base_url, "/query/peers",
+                                                      std::chrono::seconds (3));
+    }
+    catch (...) {
+        return {};
+    }
+}
+
+template <typename Accept>
+inline runtime_status_res_t wait_status (const std::string &base_url,
+                                         Accept accept,
+                                         std::chrono::milliseconds timeout,
+                                         const std::string &failure)
+{
+    const auto deadline = std::chrono::steady_clock::now () + timeout;
+    runtime_status_res_t last;
+    while (std::chrono::steady_clock::now () < deadline) {
+        last = get_status (base_url);
+        if (accept (last)) {
+            return last;
+        }
+        std::this_thread::sleep_for (std::chrono::milliseconds (150));
+    }
+    throw std::runtime_error (failure + " last healthy=" + (last.store_healthy ? "true" : "false")
+                              + " lease="
+                              + (last.owner_lease_healthy ? "true" : "false")
+                              + " error=" + last.last_error);
+}
+
+template <typename Accept>
+inline std::vector<peer_row_res_t> wait_peers (const std::string &base_url,
+                                               Accept accept,
+                                               std::chrono::milliseconds timeout,
+                                               const std::string &failure)
+{
+    const auto deadline = std::chrono::steady_clock::now () + timeout;
+    std::vector<peer_row_res_t> last;
+    while (std::chrono::steady_clock::now () < deadline) {
+        last = try_get_peers (base_url);
+        if (accept (last)) {
+            return last;
+        }
+        std::this_thread::sleep_for (std::chrono::milliseconds (150));
+    }
+    throw std::runtime_error (failure);
+}
+
+inline bool has_rid (const std::vector<peer_row_res_t> &peers, const std::string &rid)
+{
+    for (const auto &peer : peers) {
+        if (peer.rid == rid) {
             return true;
         }
     }
@@ -68,93 +176,31 @@ inline std::string unique_marker (const std::string &prefix)
            + std::to_string (std::chrono::steady_clock::now ().time_since_epoch ().count ());
 }
 
-inline void wait_member_endpoint (const std::string &registry_url, const std::string &endpoint)
+inline profile_res_t request_profile (const std::string &consumer_url,
+                                      const std::string &marker,
+                                      std::chrono::milliseconds timeout = std::chrono::seconds (10))
 {
-    post_json<member_endpoint_wait_req_t, operation_status_t> (
-      registry_url, "/registry/members/wait", {.endpoint = endpoint});
+    return post_json<profile_req_t, profile_res_t> (
+      consumer_url, "/profile/request", {.value = "fast", .marker = marker}, timeout);
 }
 
-inline void verify_profile_request (const std::string &scenario,
-                                    const std::string &name,
-                                    const std::string &consumer_url,
-                                    const std::string &provider_a_url,
-                                    const std::string &provider_b_url,
-                                    const std::string &marker_prefix)
+inline std::vector<profile_res_t> drive_requests (const std::string &consumer_url,
+                                                  const std::string &marker_prefix,
+                                                  std::chrono::milliseconds window,
+                                                  const std::string &scenario)
 {
-    const auto marker = unique_marker (marker_prefix + "-" + name);
-    const auto reply = post_json<profile_req_t, profile_res_t> (
-      consumer_url, "/profile/request", {.value = scenario, .marker = marker});
-    ensure (reply.value == "profile:" + scenario, scenario + " " + name + " request failed");
-    ensure (reply.provider_rid == "api-a" || reply.provider_rid == "api-b",
-            scenario + " " + name + " routed to an unexpected provider");
-    ensure (reply.marker == marker, scenario + " " + name + " marker mismatch");
-
-    const auto evidence_url = reply.provider_rid == "api-a" ? provider_a_url : provider_b_url;
-    const auto evidence = post_json<evidence_wait_req_t, evidence_snapshot_t> (
-      evidence_url, "/evidence/wait", {.contains = marker});
-    ensure (evidence_contains (evidence, marker, reply.provider_rid),
-            scenario + " " + name + " provider evidence was not recorded");
-}
-
-inline void verify_profile_request_from_provider (const std::string &scenario,
-                                                  const std::string &name,
-                                                  const std::string &consumer_url,
-                                                  const std::string &provider_url,
-                                                  const std::string &expected_provider_rid,
-                                                  const std::string &marker_prefix)
-{
-    const auto marker = unique_marker (marker_prefix + "-" + name);
-    const auto reply = post_json<profile_req_t, profile_res_t> (
-      consumer_url, "/profile/request", {.value = scenario, .marker = marker});
-    ensure (reply.value == "profile:" + scenario, scenario + " " + name + " request failed");
-    ensure (reply.provider_rid == expected_provider_rid,
-            scenario + " " + name + " routed to " + reply.provider_rid + " instead of "
-              + expected_provider_rid);
-    ensure (reply.marker == marker, scenario + " " + name + " marker mismatch");
-
-    const auto evidence = post_json<evidence_wait_req_t, evidence_snapshot_t> (
-      provider_url, "/evidence/wait", {.contains = marker});
-    ensure (evidence_contains (evidence, marker, expected_provider_rid),
-            scenario + " " + name + " provider evidence was not recorded");
-}
-
-inline void verify_profile_request_allowing_embedded (const std::string &scenario,
-                                                      const std::string &name,
-                                                      const std::string &consumer_url,
-                                                      const std::string &provider_a_url,
-                                                      const std::string &provider_b_url,
-                                                      const std::string &embedded_url,
-                                                      const std::string &embedded_rid,
-                                                      const std::string &marker_prefix)
-{
-    const auto marker = unique_marker (marker_prefix + "-" + name);
-    const auto reply = post_json<profile_req_t, profile_res_t> (
-      consumer_url, "/profile/request", {.value = scenario, .marker = marker});
-    ensure (reply.value == "profile:" + scenario, scenario + " " + name + " request failed");
-    ensure (reply.provider_rid == "api-a" || reply.provider_rid == "api-b"
-              || reply.provider_rid == embedded_rid,
-            scenario + " " + name + " routed to an unexpected provider");
-    ensure (reply.marker == marker, scenario + " " + name + " marker mismatch");
-
-    const auto evidence_url = reply.provider_rid == "api-a"      ? provider_a_url
-                              : reply.provider_rid == "api-b"    ? provider_b_url
-                                                                  : embedded_url;
-    const auto evidence = post_json<evidence_wait_req_t, evidence_snapshot_t> (
-      evidence_url, "/evidence/wait", {.contains = marker});
-    ensure (evidence_contains (evidence, marker, reply.provider_rid),
-            scenario + " " + name + " provider evidence was not recorded");
-}
-
-inline bool health_probe_fails (const std::string &base_url,
-                                std::chrono::milliseconds timeout = std::chrono::milliseconds (500))
-{
-    auto client = zlink::http_client::client_t::create ().base_url (base_url).timeout (timeout).build ();
-    try {
-        const auto result = client.get ("/health").submit_raw ().result ();
-        return !static_cast<bool> (result);
-    } catch (...) {
-        return true;
+    std::vector<profile_res_t> replies;
+    const auto deadline = std::chrono::steady_clock::now () + window;
+    int index = 0;
+    while (std::chrono::steady_clock::now () < deadline) {
+        const auto marker = unique_marker (marker_prefix + "-" + std::to_string (index++));
+        auto reply = request_profile (consumer_url, marker);
+        ensure (reply.value == "profile:fast", scenario + " request returned unexpected value");
+        replies.push_back (std::move (reply));
+        std::this_thread::sleep_for (std::chrono::milliseconds (150));
     }
+    ensure (!replies.empty (), scenario + " request window produced no traffic");
+    return replies;
 }
 
-} // namespace zlink::framework::e2e::discovery_registry_ha::client
+} // namespace zlink::framework::e2e::store_failure::client

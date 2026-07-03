@@ -1,7 +1,7 @@
 /* SPDX-License-Identifier: MPL-2.0 */
 #pragma once
 
-#include <zlink/framework/contracts/registry/registry.hpp>
+#include <zlink/framework/contracts/locations/location.hpp>
 #include <zlink/framework/contracts/spots/spot.hpp>
 #include <zlink/framework/contracts/streams/stream.hpp>
 #include <zlink/framework/contracts/timers/timer.hpp>
@@ -53,15 +53,7 @@ enum class socket_event_kind_t
     internal
 };
 
-enum class discovery_event_kind_t
-{
-    connected,
-    disconnected,
-    topology_changed,
-    error
-};
-
-enum class registry_event_kind_t
+enum class location_event_kind_t
 {
     status_changed,
     topology_changed,
@@ -149,19 +141,12 @@ struct socket_event_payload_t : runtime_event_base_t
     std::uint32_t native_value = 0;
 };
 
-struct discovery_event_payload_t : runtime_event_base_t
+struct location_event_payload_t : runtime_event_base_t
 {
-    discovery_event_kind_t event = discovery_event_kind_t::connected;
-    std::string endpoint;
-    std::string message;
-};
-
-struct registry_event_payload_t : runtime_event_base_t
-{
-    registry_event_kind_t event = registry_event_kind_t::status_changed;
-    std::optional<registry_status_t> status;
-    std::vector<topology_entry_t> topology;
-    std::vector<service_summary_entry_t> service_summary;
+    location_event_kind_t event = location_event_kind_t::status_changed;
+    std::optional<location_runtime_status_t> status;
+    std::vector<location_topology_entry_t> topology;
+    std::vector<location_service_summary_t> service_summary;
 };
 
 struct spot_timer_diagnostic_t
@@ -216,8 +201,7 @@ class monitoring_builder_t
     monitoring_builder_t &add_socket_events (std::string source_name);
     monitoring_builder_t &add_socket_events (std::string source_name,
                                              std::initializer_list<socket_event_kind_t> events);
-    monitoring_builder_t &add_discovery_events (std::string source_name);
-    monitoring_builder_t &add_registry_events (std::string source_name,
+    monitoring_builder_t &add_location_events (std::string source_name,
                                                std::chrono::milliseconds interval);
     monitoring_builder_t &add_spot_events (std::string source_name,
                                            std::chrono::milliseconds interval);

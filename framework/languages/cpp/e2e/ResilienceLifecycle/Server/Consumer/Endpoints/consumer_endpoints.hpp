@@ -2,16 +2,21 @@
 #pragma once
 
 #include "../../../Shared/resilience_lifecycle_contracts.hpp"
+#include "../../Shared/location_store.hpp"
 #include "../Configuration/consumer_options.hpp"
 
 #include <zlink/framework.hpp>
 
+#include <algorithm>
 #include <chrono>
 #include <memory>
 #include <optional>
+#include <set>
 #include <stdexcept>
 #include <string>
+#include <thread>
 #include <utility>
+#include <vector>
 
 namespace zlink::framework::e2e::resilience_lifecycle::consumer
 {
@@ -22,6 +27,153 @@ using resilience_lifecycle::profile_msg_t;
 using resilience_lifecycle::profile_req_t;
 using resilience_lifecycle::profile_res_t;
 using resilience_lifecycle::request_failure_res_t;
+
+struct topology_entry_result_t
+{
+    std::string name;
+    std::string kind;
+    std::string role;
+    std::string routing_id;
+    std::string endpoint;
+    std::string state;
+};
+
+inline void to_json (nlohmann::json &json, const topology_entry_result_t &value)
+{
+    json = nlohmann::json{{"name", value.name},
+                          {"kind", value.kind},
+                          {"role", value.role},
+                          {"routing_id", value.routing_id},
+                          {"endpoint", value.endpoint},
+                          {"state", value.state}};
+}
+
+inline std::vector<topology_entry_result_t> peer_topology (
+  zlink::framework::location_store_t &locations,
+  const std::optional<zlink::routing_id_t> &routing_id = std::nullopt)
+{
+    auto leases = locations.list_owner_leases ().result ();
+    if (!leases) {
+        throw std::runtime_error (leases.error () ? leases.error ()->what ()
+                                                 : "location lease query failed");
+    }
+    std::set<std::string> live_owners;
+    for (const auto &lease : leases.value ().leases) {
+        live_owners.insert (lease.owner_id);
+    }
+
+    zlink::framework::peer_location_filter_t filter;
+    filter.mesh_name = api_channel;
+    filter.role = zlink::framework::location_role_t::router;
+    if (routing_id) {
+        filter.node_rid = routing_id;
+    }
+    auto result = locations.list_peers (std::move (filter)).result ();
+    if (!result) {
+        throw std::runtime_error (result.error () ? result.error ()->what ()
+                                                 : "location peer query failed");
+    }
+    std::vector<topology_entry_result_t> entries;
+    for (const auto &peer : result.value ()) {
+        if (!live_owners.contains (peer.owner_id)) {
+            continue;
+        }
+        entries.push_back (topology_entry_result_t{.name = peer.mesh_name,
+                                                   .kind = "channel",
+                                                   .role = "server",
+                                                   .routing_id = peer.node_rid
+                                                                   ? peer.node_rid->to_string ()
+                                                                   : std::string{},
+                                                   .endpoint = peer.endpoint,
+                                                   .state = "Ready"});
+    }
+    return entries;
+}
+
+class topology_handler_t
+{
+  public:
+    using dependency_types =
+      zlink::framework::dependency_list_t<zlink::framework::location_store_t>;
+
+    explicit topology_handler_t (zlink::framework::location_store_t &locations) :
+        _locations (locations)
+    {
+    }
+
+    zlink::framework::http_response_t handle (const zlink::framework::http_request_t &)
+    {
+        zlink::framework::http_response_t response;
+        response.body = nlohmann::json (peer_topology (_locations)).dump ();
+        return response;
+    }
+
+  private:
+    zlink::framework::location_store_t &_locations;
+};
+
+class topology_wait_handler_t
+{
+  public:
+    using dependency_types =
+      zlink::framework::dependency_list_t<zlink::framework::location_store_t>;
+
+    explicit topology_wait_handler_t (zlink::framework::location_store_t &locations) :
+        _locations (locations)
+    {
+    }
+
+    zlink::framework::http_response_t handle (const zlink::framework::http_request_t &request)
+    {
+        const auto body = nlohmann::json::parse (request.body.empty () ? "{}" : request.body);
+        const auto routing_id =
+          body.value ("routingId", body.value ("routing_id", std::string{}));
+        auto state = body.value ("state", std::string{"Ready"});
+        if (state == "active") {
+            state = "Ready";
+        }
+        const auto expected_count =
+          body.value ("expectedCount", body.value ("expected_count", 1));
+        const auto timeout_ms =
+          std::clamp (body.value ("timeoutMilliseconds",
+                                  body.value ("timeout_milliseconds", 30000)),
+                      1,
+                      30000);
+        const auto rid = routing_id.empty ()
+                           ? std::optional<zlink::routing_id_t>{}
+                           : zlink::routing_id_t::from (routing_id);
+        const auto deadline =
+          std::chrono::steady_clock::now () + std::chrono::milliseconds (timeout_ms);
+        while (std::chrono::steady_clock::now () < deadline) {
+            auto entries = peer_topology (_locations, rid);
+            const auto count =
+              std::count_if (entries.begin (), entries.end (), [&] (const auto &entry) {
+                  return (routing_id.empty () || entry.routing_id == routing_id)
+                         && entry.state == state;
+              });
+            const auto satisfied =
+              expected_count == 0 ? count == 0 : count >= expected_count;
+            if (satisfied) {
+                zlink::framework::http_response_t response;
+                response.body = nlohmann::json (entries).dump ();
+                return response;
+            }
+            std::this_thread::sleep_for (std::chrono::milliseconds (250));
+        }
+
+        zlink::framework::http_response_t response;
+        response.status = 504;
+        response.body = nlohmann::json{{"error", "topology did not reach expected state"},
+                                       {"routing_id", routing_id},
+                                       {"state", state},
+                                       {"expected_count", expected_count}}
+                          .dump ();
+        return response;
+    }
+
+  private:
+    zlink::framework::location_store_t &_locations;
+};
 
 inline profile_res_t request_profile_once (zlink::framework::channel_client_t &channels,
                                            const profile_req_t &request,
@@ -36,6 +188,24 @@ inline profile_res_t request_profile_once (zlink::framework::channel_client_t &c
     }
     throw std::runtime_error (reply.error () ? reply.error ()->what ()
                                              : "profile request failed");
+}
+
+inline profile_res_t request_profile_with_retry (zlink::framework::channel_client_t &channels,
+                                                 const profile_req_t &request)
+{
+    std::optional<std::string> last_error;
+    const auto deadline = std::chrono::steady_clock::now () + std::chrono::seconds (30);
+    while (std::chrono::steady_clock::now () < deadline) {
+        try {
+            return request_profile_once (channels, request, std::chrono::milliseconds (3000));
+        }
+        catch (const std::exception &error) {
+            last_error = error.what ();
+            std::this_thread::sleep_for (std::chrono::milliseconds (100));
+        }
+    }
+    throw std::runtime_error (last_error ? "profile request retry timed out: " + *last_error
+                                         : "profile request retry timed out");
 }
 
 class profile_request_handler_t
@@ -82,6 +252,35 @@ class manual_profile_request_handler_t
         }
         throw std::runtime_error (reply.error () ? reply.error ()->what ()
                                                  : "manual profile request failed");
+    }
+
+  private:
+    zlink::framework::channel_client_t &_channels;
+};
+
+class manual_b_profile_request_handler_t
+{
+  public:
+    using dependency_types = zlink::framework::dependency_list_t<zlink::framework::channel_client_t>;
+    using request_type = profile_req_t;
+    using reply_type = profile_res_t;
+
+    explicit manual_b_profile_request_handler_t (zlink::framework::channel_client_t &channels) :
+        _channels (channels)
+    {
+    }
+
+    profile_res_t handle (const profile_req_t &request)
+    {
+        auto call = _channels.request ("resilience.lifecycle.api.manual.b", request)
+                      .timeout (std::chrono::milliseconds (3000))
+                      .async<profile_res_t> ();
+        const auto &reply = call.result ();
+        if (reply) {
+            return reply.value ();
+        }
+        throw std::runtime_error (reply.error () ? reply.error ()->what ()
+                                                 : "manual provider B profile request failed");
     }
 
   private:
@@ -222,8 +421,7 @@ class transient_profile_request_service_t final : public zlink::framework::hoste
     {
         try {
             auto &channels = services.get_required<zlink::framework::channel_client_t> ();
-            _result->reply =
-              request_profile_once (channels, _request, std::chrono::milliseconds (3000));
+            _result->reply = request_profile_with_retry (channels, _request);
         }
         catch (const std::exception &error) {
             _result->error = error.what ();
@@ -247,7 +445,8 @@ inline profile_res_t request_profile_with_new_client_host (const consumer_option
     auto result = std::make_shared<transient_profile_request_service_t::result_state_t> ();
     auto service = std::make_unique<transient_profile_request_service_t> (app, request, result);
     app.add_zlink_framework ([&] (zlink::framework::zlink_framework_options_t &framework) {
-        framework.use_discovery ().add_registry_endpoint (options.registry_router);
+        server::add_redis_location_store (framework, options.redis_endpoint,
+                                          options.redis_key_prefix);
         framework.configure_dispatch ()
           .message_flow (zlink::framework::message_flow_log_mode_t::key_transitions)
           .trace_log_file (options.log_dir + "/storm-" + trace_id + "-flow.log")

@@ -29,8 +29,7 @@ class monitoring_runtime_state_t
 {
   public:
     std::vector<socket_monitoring_source_registration_t> socket_sources;
-    std::vector<std::string> discovery_sources;
-    std::vector<monitoring_source_registration_t> registry_sources;
+    std::vector<monitoring_source_registration_t> location_sources;
     std::vector<monitoring_source_registration_t> spot_sources;
     std::vector<std::string> spot_timer_sources;
     std::vector<std::string> stream_sources;
@@ -49,11 +48,10 @@ class monitoring_runtime_t
     const std::shared_ptr<monitoring_runtime_state_t> &state () const noexcept { return _state; }
 
     void publish_socket (socket_event_payload_t event) const;
-    void publish_discovery (discovery_event_payload_t event) const;
-    void publish_registry_snapshot (std::string source_name,
-                                    registry_status_t status,
-                                    std::vector<topology_entry_t> topology,
-                                    std::vector<service_summary_entry_t> summary) const;
+    void publish_location_snapshot (std::string source_name,
+                                    location_runtime_status_t status,
+                                    std::vector<location_topology_entry_t> topology,
+                                    std::vector<location_service_summary_t> summary) const;
     void publish_spot_snapshot (spot_event_payload_t event) const;
     void publish_stream (stream_event_payload_t event) const;
     void publish_actor (actor_event_payload_t event) const;

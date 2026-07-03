@@ -13,6 +13,7 @@
 #include "../Shared/Handlers/channel_control_ping_handler.hpp"
 #include "../Shared/Support/codecs.hpp"
 #include "../Shared/Support/env.hpp"
+#include "../Shared/Support/location_store.hpp"
 
 #include <zlink/framework.hpp>
 
@@ -37,7 +38,8 @@ inline int run_play_server (int argc, char **argv)
     const auto api_endpoint = env_or ("ZLINK_CPP_E2E_API_ENDPOINT");
     const auto publisher_endpoint = env_or ("ZLINK_CPP_E2E_PUBLISHER_ENDPOINT");
     const auto http_endpoint = env_or ("ZLINK_CPP_E2E_HTTP_ENDPOINT");
-    const auto registry_router = env_or ("ZLINK_CPP_E2E_REGISTRY_ROUTER");
+    const auto redis_endpoint = env_or ("ZLINK_CPP_E2E_REDIS_ENDPOINT");
+    const auto redis_key_prefix = env_or ("ZLINK_CPP_E2E_REDIS_KEY_PREFIX");
 
     app.logging ()
       .use_file (log_dir + "/" + node_rid + ".log")
@@ -116,7 +118,7 @@ inline int run_play_server (int argc, char **argv)
                          zlink::framework::spot_node_manager_t,
                          zlink::framework::session_actor_manager_t> ();
         configure_codecs (options.codecs ());
-        options.use_discovery ().add_registry_endpoint (registry_router);
+        add_redis_location_store (options, redis_endpoint, redis_key_prefix);
 
         auto play_route = options.add_route_mesh (e2e::route_channel)
                             .enable_server (route_endpoint)
@@ -154,7 +156,6 @@ inline int run_play_server (int argc, char **argv)
               .enable_publisher (publisher_endpoint);
         }
         options.add_spot_mesh (e2e::spot_mesh)
-          .use_registry_spot_resolver (e2e::route_channel)
           .set_routing_id (zlink::routing_id_t::from (node_rid))
           .enable_router (spot_router_endpoint)
           .enable_pub_sub (pubsub_endpoint)

@@ -35,7 +35,6 @@ struct client_options_t
     std::string multi_b_request_http_endpoint;
     std::string session_http_endpoint;
     std::string gateway_http_endpoint;
-    std::string registry_router;
     std::string client_rid;
     std::string crash_ready_file;
     std::string crash_go_file;
@@ -71,7 +70,6 @@ struct client_options_t
                   env_or ("ZLINK_CPP_E2E_MULTI_B_REQUEST_HTTP_ENDPOINT"),
                 .session_http_endpoint = env_or ("ZLINK_CPP_E2E_SESSION_HTTP_ENDPOINT"),
                 .gateway_http_endpoint = env_or ("ZLINK_CPP_E2E_GATEWAY_HTTP_ENDPOINT"),
-                .registry_router = env_or ("ZLINK_CPP_E2E_REGISTRY_ROUTER"),
                 .client_rid = env_or ("ZLINK_CPP_E2E_CLIENT_RID", "client-session"),
                 .crash_ready_file = env_or ("ZLINK_CPP_E2E_CRASH_READY_FILE"),
                 .crash_go_file = env_or ("ZLINK_CPP_E2E_CRASH_GO_FILE"),

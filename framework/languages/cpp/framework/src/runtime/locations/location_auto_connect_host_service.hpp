@@ -1,0 +1,464 @@
+/* SPDX-License-Identifier: MPL-2.0 */
+#pragma once
+
+#include "runtime/channels/channel_runtime.hpp"
+#include "runtime/channels/channel_runtime_bundle.hpp"
+#include "runtime/channels/channel_runtime_manager.hpp"
+#include "runtime/locations/location_runtime.hpp"
+
+#include <zlink/framework/contracts/configuration/module.hpp>
+
+#include <algorithm>
+#include <atomic>
+#include <chrono>
+#include <functional>
+#include <map>
+#include <mutex>
+#include <optional>
+#include <string>
+#include <string_view>
+#include <thread>
+#include <utility>
+#include <vector>
+
+namespace zlink::framework::runtime
+{
+
+class location_auto_connect_host_service_t final : public hosted_service_t
+{
+  public:
+    location_auto_connect_host_service_t (message_bus_t bus,
+                                          std::vector<channel_snapshot_t> channels) :
+        _bus (std::move (bus)), _channels (std::move (channels))
+    {
+    }
+
+    ~location_auto_connect_host_service_t () override { stop (); }
+
+    void start (service_provider_t &services) override
+    {
+        _runtime = &services.get_required<location_runtime_t> ();
+        _store = &services.get_required<location_store_t> ();
+        detail::channel_runtime_manager_t manager =
+          detail::channel_runtime_manager_t::from (_bus);
+        manager.initialize_publisher_channels ();
+        manager.initialize_client_channels ();
+        manager.initialize_inbound_channels ();
+
+        for (const auto &channel : _channels) {
+            if (channel.server.enabled && channel.server.discovery) {
+                for (const auto &endpoint : channel.server.bind_endpoints) {
+                    add_loop (make_local (location_auto_connect_type_t::client_server,
+                                          channel.name, location_role_t::router, channel.server,
+                                          endpoint),
+                              nullptr);
+                }
+            }
+            if (channel.client.enabled && channel.client.discovery) {
+                auto &bundle = manager.get_or_create_client_bundle (channel.name);
+                auto local = make_local (location_auto_connect_type_t::client_server, channel.name,
+                                         location_role_t::dealer, channel.client, {});
+                if (!local.node_rid && channel.server.routing_id) {
+                    local.node_rid = derive_role_rid (*channel.server.routing_id, "dealer");
+                }
+                if (local.node_rid && channel.server.routing_id
+                    && local.node_rid->to_hex () == channel.server.routing_id->to_hex ()) {
+                    local.node_rid = derive_role_rid (*channel.server.routing_id, "dealer");
+                }
+                add_loop (std::move (local),
+                          &bundle);
+            }
+            if (channel.publisher.enabled && channel.publisher.discovery) {
+                for (const auto &endpoint : channel.publisher.bind_endpoints) {
+                    add_loop (make_local (location_auto_connect_type_t::fanout, channel.name,
+                                          location_role_t::pub, channel.publisher, endpoint),
+                              nullptr);
+                }
+            }
+            if (channel.subscriber.enabled && channel.subscriber.discovery) {
+                auto &bundle = manager.get_or_create_subscriber_bundle (channel.name);
+                auto local = make_local (location_auto_connect_type_t::fanout, channel.name,
+                                         location_role_t::sub, channel.subscriber, {});
+                if (!local.node_rid && channel.publisher.routing_id) {
+                    local.node_rid = derive_role_rid (*channel.publisher.routing_id, "sub");
+                }
+                if (local.node_rid && channel.publisher.routing_id
+                    && local.node_rid->to_hex () == channel.publisher.routing_id->to_hex ()) {
+                    local.node_rid = derive_role_rid (*channel.publisher.routing_id, "sub");
+                }
+                add_loop (std::move (local), &bundle);
+            }
+        }
+        for (const auto &route_channel_id : manager.route_channel_ids ()) {
+            auto &route = manager.get_route_channel (route_channel_id);
+            auto manual = route.manual_connections ();
+            auto connect_route = [&route, manual] (const auto &target) {
+                if (std::find (manual.begin (), manual.end (), target.endpoint)
+                    == manual.end ()) {
+                    (void) route.connect (target.endpoint);
+                }
+            };
+            auto disconnect_route = [&route, manual] (const auto &target) {
+                if (std::find (manual.begin (), manual.end (), target.endpoint)
+                    == manual.end ()) {
+                    (void) route.disconnect (target.endpoint);
+                }
+            };
+            if (!route.bind_endpoint ().empty ()) {
+                add_loop (local_t{location_auto_connect_type_t::route_mesh,
+                                  route.router_channel_id (),
+                                  location_role_t::router,
+                                  route.routing_id (),
+                                  route.bind_endpoint (),
+                                  100},
+                          nullptr, connect_route, disconnect_route);
+                continue;
+            }
+            add_loop (local_t{location_auto_connect_type_t::route_mesh,
+                              route.router_channel_id (),
+                              location_role_t::dealer,
+                              route.routing_id (),
+                              {},
+                              100},
+                      nullptr, connect_route, disconnect_route);
+        }
+
+        _stop.store (false, std::memory_order_release);
+        for (auto &loop : _loops) {
+            loop.thread = std::thread ([this, &loop] { run_loop (loop); });
+        }
+    }
+
+    void stop () noexcept override
+    {
+        _stop.store (true, std::memory_order_release);
+        for (auto &loop : _loops) {
+            if (loop.thread.joinable ()) {
+                loop.thread.join ();
+            }
+            cleanup_loop (loop);
+        }
+        _loops.clear ();
+    }
+
+  private:
+    struct local_t
+    {
+        location_auto_connect_type_t type = location_auto_connect_type_t::invalid;
+        std::string mesh_name;
+        location_role_t role = location_role_t::invalid;
+        std::optional<zlink::routing_id_t> node_rid;
+        std::string endpoint;
+        std::uint32_t weight = 100;
+    };
+
+    struct target_t
+    {
+        std::string key;
+        std::optional<zlink::routing_id_t> node_rid;
+        location_role_t role = location_role_t::invalid;
+        std::string endpoint;
+        std::string owner_id;
+        std::uint32_t weight = 100;
+    };
+
+    struct loop_t
+    {
+        local_t local;
+        detail::channel_runtime_bundle_t *bundle = nullptr;
+        std::optional<peer_location_t> local_row;
+        std::int64_t local_generation = 0;
+        bool local_published = false;
+        std::map<std::string, target_t> active;
+        std::function<void (const target_t &)> connect_target;
+        std::function<void (const target_t &)> disconnect_target;
+        std::thread thread;
+    };
+
+    static local_t make_local (location_auto_connect_type_t type,
+                               std::string mesh_name,
+                               location_role_t role,
+                               const channel_capability_snapshot_t &capability,
+                               std::string endpoint)
+    {
+        return local_t{type, std::move (mesh_name), role, capability.routing_id,
+                       std::move (endpoint),
+                       capability.peer_weight ? capability.peer_weight->value () : 100u};
+    }
+
+    static zlink::routing_id_t derive_role_rid (const zlink::routing_id_t &base,
+                                                std::string_view role)
+    {
+        return zlink::routing_id_t::from (base.to_string () + ":" + std::string (role));
+    }
+
+    void add_loop (local_t local,
+                   detail::channel_runtime_bundle_t *bundle,
+                   std::function<void (const target_t &)> connect_target = {},
+                   std::function<void (const target_t &)> disconnect_target = {})
+    {
+        loop_t loop;
+        loop.local = std::move (local);
+        loop.bundle = bundle;
+        loop.connect_target = std::move (connect_target);
+        loop.disconnect_target = std::move (disconnect_target);
+        if (loop.local.node_rid || !loop.local.endpoint.empty ()) {
+            loop.local_row = peer_location_t{.auto_connect_type = loop.local.type,
+                                             .mesh_name = loop.local.mesh_name,
+                                             .node_rid = loop.local.node_rid,
+                                             .role = loop.local.role,
+                                             .endpoint = loop.local.endpoint,
+                                             .weight = loop.local.weight,
+                                             .value = 0};
+        }
+        if (!loop.local_row && loop.bundle == nullptr) {
+            return;
+        }
+        _loops.push_back (std::move (loop));
+    }
+
+    void run_loop (loop_t &loop)
+    {
+        while (!_stop.load (std::memory_order_acquire)) {
+            try {
+                tick (loop);
+            }
+            catch (...) {
+            }
+            std::this_thread::sleep_for (std::chrono::milliseconds (100));
+        }
+    }
+
+    void tick (loop_t &loop)
+    {
+        publish_local (loop);
+        const auto rows =
+          _store
+            ->list_peers (peer_location_filter_t{.auto_connect_type = loop.local.type,
+                                                 .mesh_name = loop.local.mesh_name})
+            .result ()
+            .value ();
+        auto desired = compute_desired (loop.local, rows);
+        for (const auto &[key, target] : desired) {
+            const auto found = loop.active.find (key);
+            if (found == loop.active.end ()) {
+                connect (loop, target);
+                loop.active[key] = target;
+                continue;
+            }
+            if (found->second.endpoint != target.endpoint
+                || found->second.owner_id != target.owner_id
+                || found->second.weight != target.weight) {
+                disconnect (loop, found->second);
+                connect (loop, target);
+                loop.active[key] = target;
+            }
+        }
+        for (auto it = loop.active.begin (); it != loop.active.end ();) {
+            if (desired.find (it->first) == desired.end ()) {
+                disconnect (loop, it->second);
+                it = loop.active.erase (it);
+            } else {
+                ++it;
+            }
+        }
+    }
+
+    void publish_local (loop_t &loop)
+    {
+        if (!loop.local_row) {
+            return;
+        }
+        auto row = *loop.local_row;
+        row.weight = current_local_weight (loop.local);
+        if (loop.local_published) {
+            if (row.weight == loop.local_row->weight) {
+                return;
+            }
+            row.generation = loop.local_generation;
+            const auto renewed = _runtime->write_peer (row, location_write_intent_t::renew);
+            if (renewed.status == location_write_status_t::stored) {
+                loop.local_row = row;
+                return;
+            }
+            loop.local_published = false;
+            return;
+        }
+        const auto claim = _runtime->write_peer (row, location_write_intent_t::new_claim);
+        if (claim.status == location_write_status_t::stored) {
+            loop.local_generation = claim.generation;
+            row.generation = claim.generation;
+            loop.local_row = row;
+            loop.local_published = true;
+            return;
+        }
+        if (claim.status == location_write_status_t::rejected_conflict
+            && loop.local_generation > 0) {
+            row.generation = loop.local_generation;
+            const auto renewed = _runtime->write_peer (row, location_write_intent_t::renew);
+            if (renewed.status == location_write_status_t::stored) {
+                loop.local_row = row;
+                loop.local_published = true;
+            }
+        }
+    }
+
+    std::uint32_t current_local_weight (const local_t &local) const
+    {
+        if (local.type == location_auto_connect_type_t::client_server
+            && local.role == location_role_t::router) {
+            const auto override =
+              detail::channel_runtime_t::from (_bus).server_peer_weight_override (
+                local.mesh_name);
+            if (override) {
+                return override->value ();
+            }
+        }
+        return local.weight;
+    }
+
+    static std::map<std::string, target_t>
+    compute_desired (const local_t &local, const std::vector<peer_location_t> &peers)
+    {
+        std::map<std::string, target_t> desired;
+        for (const auto &peer : peers) {
+            if (peer.auto_connect_type != local.type || peer.mesh_name != local.mesh_name
+                || !role_allowed (local.type, peer.role) || peer.endpoint.empty ()
+                || is_self (local, peer) || !should_dial (local, peer)) {
+                continue;
+            }
+            auto target = target_t{target_key (peer), peer.node_rid, peer.role, peer.endpoint,
+                                   peer.owner_id, peer.weight};
+            desired[target.key] = std::move (target);
+        }
+        return desired;
+    }
+
+    static bool role_allowed (location_auto_connect_type_t type, location_role_t role)
+    {
+        switch (type) {
+            case location_auto_connect_type_t::route_mesh:
+                return role == location_role_t::router || role == location_role_t::dealer;
+            case location_auto_connect_type_t::client_server:
+                return role == location_role_t::router || role == location_role_t::dealer;
+            case location_auto_connect_type_t::dealer_mesh:
+                return role == location_role_t::dealer;
+            case location_auto_connect_type_t::fanout:
+                return role == location_role_t::pub || role == location_role_t::sub;
+            case location_auto_connect_type_t::spot_mesh:
+                return role == location_role_t::spot || role == location_role_t::router;
+            case location_auto_connect_type_t::invalid:
+                return false;
+        }
+        return false;
+    }
+
+    static bool is_self (const local_t &local, const peer_location_t &peer)
+    {
+        if (local.node_rid && peer.node_rid && local.node_rid->to_hex () == peer.node_rid->to_hex ()) {
+            return true;
+        }
+        return !local.endpoint.empty () && peer.endpoint == local.endpoint;
+    }
+
+    static bool should_dial (const local_t &local, const peer_location_t &peer)
+    {
+        switch (local.type) {
+            case location_auto_connect_type_t::client_server:
+                return local.role == location_role_t::dealer && peer.role == location_role_t::router;
+            case location_auto_connect_type_t::fanout:
+                return local.role == location_role_t::sub && peer.role == location_role_t::pub;
+            case location_auto_connect_type_t::route_mesh:
+                if (local.role == location_role_t::dealer) {
+                    return peer.role == location_role_t::router;
+                }
+                return local.role == location_role_t::router
+                       && peer.role == location_role_t::router
+                       && local_is_initiator (local, peer);
+            case location_auto_connect_type_t::dealer_mesh:
+                return local.role == peer.role && local_is_initiator (local, peer);
+            case location_auto_connect_type_t::spot_mesh:
+                return local.role == location_role_t::spot && peer.role == location_role_t::spot;
+            case location_auto_connect_type_t::invalid:
+                return false;
+        }
+        return false;
+    }
+
+    static bool local_is_initiator (const local_t &local, const peer_location_t &peer)
+    {
+        if (local.endpoint.empty ()) {
+            return true;
+        }
+        if (local.node_rid && peer.node_rid) {
+            const auto by_rid = local.node_rid->to_hex ().compare (peer.node_rid->to_hex ());
+            if (by_rid != 0) {
+                return by_rid < 0;
+            }
+        }
+        return local.endpoint < peer.endpoint;
+    }
+
+    static std::string target_key (const peer_location_t &peer)
+    {
+        const auto identity = peer.node_rid ? peer.node_rid->to_hex () : peer.endpoint;
+        return to_canonical_string (peer.role) + "|" + identity;
+    }
+
+    static peer_location_key_t key_of (const peer_location_t &row)
+    {
+        return peer_location_key_t{row.auto_connect_type, row.mesh_name, row.role, row.node_rid,
+                                   row.endpoint};
+    }
+
+    static void connect (loop_t &loop, const target_t &target)
+    {
+        if (loop.connect_target) {
+            loop.connect_target (target);
+            return;
+        }
+        if (loop.bundle == nullptr || target.endpoint.empty ()
+            || loop.bundle->contains_manual_connection (target.endpoint)) {
+            return;
+        }
+        (void) loop.bundle->try_add_auto_connection (target.endpoint, target.weight);
+    }
+
+    static void disconnect (loop_t &loop, const target_t &target)
+    {
+        if (loop.disconnect_target) {
+            loop.disconnect_target (target);
+            return;
+        }
+        if (loop.bundle == nullptr || target.endpoint.empty ()
+            || loop.bundle->contains_manual_connection (target.endpoint)) {
+            return;
+        }
+        loop.bundle->remove_auto_connection (target.endpoint);
+    }
+
+    void cleanup_loop (loop_t &loop) noexcept
+    {
+        try {
+            for (const auto &[_, target] : loop.active) {
+                disconnect (loop, target);
+            }
+            loop.active.clear ();
+            if (loop.local_row && loop.local_published) {
+                (void) _runtime->remove_peer (key_of (*loop.local_row), loop.local_generation);
+                loop.local_published = false;
+            }
+        }
+        catch (...) {
+        }
+    }
+
+    message_bus_t _bus;
+    std::vector<channel_snapshot_t> _channels;
+    location_runtime_t *_runtime = nullptr;
+    location_store_t *_store = nullptr;
+    std::atomic_bool _stop{false};
+    std::vector<loop_t> _loops;
+};
+
+} // namespace zlink::framework::runtime

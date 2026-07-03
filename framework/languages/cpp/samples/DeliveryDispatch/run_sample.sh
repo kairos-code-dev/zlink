@@ -15,6 +15,7 @@ fi
 PIDS=()
 RUN_DIR="$(mktemp -d)"
 LOG_DIR="$RUN_DIR/logs"
+REDIS_CONTAINER_NAME=""
 mkdir -p "$LOG_DIR"
 cleanup() {
   for pid in "${PIDS[@]}"; do
@@ -32,21 +33,24 @@ cleanup() {
     fi
     wait "${pid}" 2>/dev/null || true
   done
+  if [[ -n "$REDIS_CONTAINER_NAME" ]]; then
+    docker rm -f "$REDIS_CONTAINER_NAME" >/dev/null 2>&1 || true
+  fi
 }
 trap cleanup EXIT
 
-read -r DELIVERYDISPATCH_REGISTRY_PUB DELIVERYDISPATCH_REGISTRY DELIVERYDISPATCH_API_HTTP_PORT DELIVERYDISPATCH_CENTER_ROUTE DELIVERYDISPATCH_COURIER_ROUTE DELIVERYDISPATCH_TRACKING_ROUTE DELIVERYDISPATCH_STATUS_FANOUT DELIVERYDISPATCH_CUSTOMER_STREAM DELIVERYDISPATCH_CUSTOMER_SPOT_ROUTER DELIVERYDISPATCH_CUSTOMER_SPOT DELIVERYDISPATCH_COURIER_STREAM DELIVERYDISPATCH_COURIER_SESSION_SPOT_ROUTER DELIVERYDISPATCH_COURIER_SESSION_SPOT DELIVERYDISPATCH_COURIER_ACTOR_NODE1_ROUTE DELIVERYDISPATCH_COURIER_ACTOR_NODE1_ROUTER DELIVERYDISPATCH_COURIER_ACTOR_NODE1 DELIVERYDISPATCH_COURIER_ACTOR_NODE2_ROUTE DELIVERYDISPATCH_COURIER_ACTOR_NODE2_ROUTER DELIVERYDISPATCH_COURIER_ACTOR_NODE2 <<<"$(python3 - <<'PY'
+read -r DELIVERYDISPATCH_REDIS_PORT DELIVERYDISPATCH_API_HTTP_PORT DELIVERYDISPATCH_CENTER_ROUTE DELIVERYDISPATCH_COURIER_ROUTE DELIVERYDISPATCH_TRACKING_ROUTE DELIVERYDISPATCH_STATUS_FANOUT DELIVERYDISPATCH_CUSTOMER_STREAM DELIVERYDISPATCH_CUSTOMER_SPOT_ROUTER DELIVERYDISPATCH_CUSTOMER_SPOT DELIVERYDISPATCH_COURIER_STREAM DELIVERYDISPATCH_COURIER_SESSION_SPOT_ROUTER DELIVERYDISPATCH_COURIER_SESSION_SPOT DELIVERYDISPATCH_COURIER_ACTOR_NODE1_ROUTE DELIVERYDISPATCH_COURIER_ACTOR_NODE1_ROUTER DELIVERYDISPATCH_COURIER_ACTOR_NODE1 DELIVERYDISPATCH_COURIER_ACTOR_NODE2_ROUTE DELIVERYDISPATCH_COURIER_ACTOR_NODE2_ROUTER DELIVERYDISPATCH_COURIER_ACTOR_NODE2 <<<"$(python3 - <<'PY'
 import socket
 sockets = []
-for _ in range(19):
+for _ in range(18):
     sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
     sock.bind(("127.0.0.1", 0))
     sockets.append(sock)
 ports = [sock.getsockname()[1] for sock in sockets]
 print(
-    f"tcp://127.0.0.1:{ports[0]} "
-    f"tcp://127.0.0.1:{ports[1]} "
-    f"{ports[2]} "
+    f"{ports[0]} "
+    f"{ports[1]} "
+    f"tcp://127.0.0.1:{ports[2]} "
     f"tcp://127.0.0.1:{ports[3]} "
     f"tcp://127.0.0.1:{ports[4]} "
     f"tcp://127.0.0.1:{ports[5]} "
@@ -61,15 +65,18 @@ print(
     f"tcp://127.0.0.1:{ports[14]} "
     f"tcp://127.0.0.1:{ports[15]} "
     f"tcp://127.0.0.1:{ports[16]} "
-    f"tcp://127.0.0.1:{ports[17]} "
-    f"tcp://127.0.0.1:{ports[18]}"
+    f"tcp://127.0.0.1:{ports[17]}"
 )
 for sock in sockets:
     sock.close()
 PY
 )"
-export DELIVERYDISPATCH_REGISTRY_PUB
-export DELIVERYDISPATCH_REGISTRY
+if [[ -z "${DELIVERYDISPATCH_REDIS_ENDPOINT:-}" ]]; then
+  REDIS_CONTAINER_NAME="zlink-cpp-deliverydispatch-sample-redis-$$"
+  docker run -d --rm --name "$REDIS_CONTAINER_NAME" -p "127.0.0.1:${DELIVERYDISPATCH_REDIS_PORT}:6379" redis:7-alpine >/dev/null
+  export DELIVERYDISPATCH_REDIS_ENDPOINT="tcp://127.0.0.1:${DELIVERYDISPATCH_REDIS_PORT}"
+fi
+export DELIVERYDISPATCH_REDIS_KEY_PREFIX="${DELIVERYDISPATCH_REDIS_KEY_PREFIX:-deliverydispatch:$$:}"
 export DELIVERYDISPATCH_API_HTTP="http://127.0.0.1:${DELIVERYDISPATCH_API_HTTP_PORT}"
 export DELIVERYDISPATCH_CENTER_ROUTE
 export DELIVERYDISPATCH_COURIER_ROUTE
@@ -104,8 +111,16 @@ wait_port() {
     sleep 0.1
   done
   echo "timed out waiting for ${label} on ${port}" >&2
+  for log in "$LOG_DIR"/*.log; do
+    if [[ -f "$log" ]]; then
+      echo "===== ${log}" >&2
+      cat "$log" >&2
+    fi
+  done
   return 1
 }
+
+wait_port redis "$(port_of "$DELIVERYDISPATCH_REDIS_ENDPOINT")"
 
 start_role() {
   local name="$1"
@@ -114,8 +129,22 @@ start_role() {
   PIDS+=("$!")
 }
 
+dump_logs() {
+  for log in "$LOG_DIR"/*.log; do
+    if [[ -f "$log" ]]; then
+      echo "===== ${log}" >&2
+      cat "$log" >&2
+    fi
+  done
+  for log in "$DELIVERYDISPATCH_LOG_DIR"/flow-*.log; do
+    if [[ -f "$log" ]]; then
+      echo "===== ${log}" >&2
+      cat "$log" >&2
+    fi
+  done
+}
+
 cmake --build "$BUILD_DIR" --target \
-  sample_cpp_framework_deliverydispatch_registry \
   sample_cpp_framework_deliverydispatch_dispatch_api \
   sample_cpp_framework_deliverydispatch_dispatch_center \
   sample_cpp_framework_deliverydispatch_courier_gateway \
@@ -125,9 +154,6 @@ cmake --build "$BUILD_DIR" --target \
   sample_cpp_framework_deliverydispatch_tracking \
   sample_cpp_framework_deliverydispatch_probe \
   sample_cpp_framework_deliverydispatch_client >/dev/null
-
-start_role registry "$BIN_DIR/sample_cpp_framework_deliverydispatch_registry"
-wait_port registry "$(port_of "$DELIVERYDISPATCH_REGISTRY")"
 
 start_role tracking "$BIN_DIR/sample_cpp_framework_deliverydispatch_tracking"
 wait_port tracking "$(port_of "$DELIVERYDISPATCH_TRACKING_ROUTE")"
@@ -157,8 +183,10 @@ wait_port dispatch-center "$(port_of "$DELIVERYDISPATCH_CENTER_ROUTE")"
 start_role dispatch-api "$BIN_DIR/sample_cpp_framework_deliverydispatch_dispatch_api"
 wait_port dispatch-api "$DELIVERYDISPATCH_API_HTTP_PORT"
 
+sleep 5
+
 "$BIN_DIR/sample_cpp_framework_deliverydispatch_probe" >"$LOG_DIR/probe.log" 2>&1 || {
-  cat "$LOG_DIR/probe.log" >&2
+  dump_logs
   exit 1
 }
 grep -q "topology=ready" "$LOG_DIR/probe.log"

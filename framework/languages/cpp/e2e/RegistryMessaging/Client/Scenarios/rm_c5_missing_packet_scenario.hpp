@@ -11,7 +11,7 @@ namespace zlink::framework::e2e::registry_messaging::client
 
 inline void run_rm_c5_missing_packet_scenario ()
 {
-    const auto consumer = env_or ("ZLINK_CPP_E2E_DISCOVERY_CONSUMER_URL");
+    const auto consumer = env_or ("ZLINK_CPP_E2E_STORE_CONSUMER_URL");
     auto missing = post_json<profile_req_t, request_failure_res_t> (
       consumer, "/profile/missing-request", profile_req_t{.value = "missing"});
     ensure (missing.failed, "RM-C5 missing request unexpectedly succeeded");

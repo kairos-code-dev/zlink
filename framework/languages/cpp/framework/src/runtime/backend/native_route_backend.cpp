@@ -54,8 +54,8 @@ framework_exception_t map_native_route_exception (const std::exception &error)
     if (const auto *request_error = dynamic_cast<const zlink::request_error_t *> (&error);
         request_error != nullptr) {
         if (request_error->result () == zlink::request_result_t::timed_out) {
-            return framework_exception_t (framework_error_kind_t::route_not_connected,
-                                          "native route request disconnected before reply", true);
+            return framework_exception_t (framework_error_kind_t::timeout,
+                                          "native route request timed out", true);
         }
         if (request_error->result () == zlink::request_result_t::not_connected
             || is_route_unreachable_errno (request_error->internal_errno ())) {
@@ -74,6 +74,11 @@ framework_exception_t map_native_route_exception (const std::exception &error)
         }
     }
     return framework_exception_t (framework_error_kind_t::request_failed, error.what ());
+}
+
+bool should_forget_peer (zlink::request_result_t result)
+{
+    return result == zlink::request_result_t::not_connected;
 }
 
 struct route_request_callback_state_t
@@ -251,13 +256,14 @@ native_route_backend_t::submit_request (const zlink::routing_id_t &target_node_r
                 if (auto waited = wait_for_route_request_callback (callback_state, timeout,
                                                                    [this] { return stopping (); });
                     !waited) {
-                    forget_peer (target_node_rid);
                     return result_t<runtime::messaging::message_parts_t>::failure (
                       waited.error_kind (),
                       waited.error () ? waited.error ()->what () : "native route request failed");
                 }
                 if (callback_state->result != zlink::request_result_t::ok) {
-                    forget_peer (target_node_rid);
+                    if (should_forget_peer (callback_state->result)) {
+                        forget_peer (target_node_rid);
+                    }
                     throw zlink::request_error_t (callback_state->result);
                 }
                 auto reply = std::move (callback_state->reply);
@@ -295,13 +301,14 @@ native_route_backend_t::submit_request (const zlink::routing_id_t &target_node_r
         if (auto waited = wait_for_route_request_callback (callback_state, timeout,
                                                            [this] { return stopping (); });
             !waited) {
-            forget_peer (target_node_rid);
             return result_t<runtime::messaging::message_parts_t>::failure (
               waited.error_kind (),
               waited.error () ? waited.error ()->what () : "native route request failed");
         }
         if (callback_state->result != zlink::request_result_t::ok) {
-            forget_peer (target_node_rid);
+            if (should_forget_peer (callback_state->result)) {
+                forget_peer (target_node_rid);
+            }
             throw zlink::request_error_t (callback_state->result);
         }
         auto reply = std::move (callback_state->reply);

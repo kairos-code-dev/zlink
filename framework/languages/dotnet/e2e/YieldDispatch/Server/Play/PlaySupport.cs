@@ -91,7 +91,8 @@ internal sealed class EvidenceStore
 internal sealed record PlayOptions(
     string Rid,
     string HttpUrl,
-    string RegistryRouterEndpoint,
+    string RedisEndpoint,
+    string RedisKeyPrefix,
     string ControlEndpoint,
     string DelayEndpoint,
     string SpotRouterEndpoint,
@@ -107,7 +108,8 @@ internal sealed record PlayOptions(
         return new PlayOptions(
             Cli.Required(values, "rid"),
             Cli.Required(values, "http-url"),
-            Cli.Required(values, "registry-router-endpoint"),
+            Cli.Required(values, "redis-endpoint"),
+            Cli.Required(values, "redis-key-prefix"),
             Cli.Required(values, "control-endpoint"),
             Cli.Required(values, "delay-endpoint"),
             Cli.Required(values, "spot-router-endpoint"),

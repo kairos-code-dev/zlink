@@ -3,6 +3,7 @@ using YieldDispatch.Server.Play.Handlers;
 using YieldDispatch.Server.Play.Spots;
 using YieldDispatch.Shared;
 using Zlink.Framework.AspNetCore;
+using Zlink.Framework.Locations.Redis;
 using Zlink.Framework.Contracts.Dispatch;
 
 namespace YieldDispatch.Server.Play;
@@ -26,6 +27,11 @@ internal static class PlayHostFactory
         builder.Services.AddSingleton(new NodeOptions(options.Rid));
         builder.Services.AddZLinkFramework(framework =>
         {
+            framework.AddRedisLocationStore(redis =>
+            {
+                redis.ConnectionString = options.RedisEndpoint;
+                redis.KeyPrefix = options.RedisKeyPrefix;
+            });
             framework.AddHandlersFromAssemblyOf(typeof(Program));
             framework.ConfigureDispatch()
                 .MessageFlow(ZLinkMessageFlowLogMode.KeyTransitions)

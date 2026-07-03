@@ -2,12 +2,10 @@
 set -euo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-REGISTRY_PROJECT="$SCRIPT_DIR/Server/Registry/YieldDispatch.Registry.csproj"
 DELAY_PROJECT="$SCRIPT_DIR/Server/Delay/YieldDispatch.Delay.csproj"
 PLAY_PROJECT="$SCRIPT_DIR/Server/Play/YieldDispatch.Play.csproj"
 SESSION_PROJECT="$SCRIPT_DIR/Server/Session/YieldDispatch.Session.csproj"
 CLIENT_PROJECT="$SCRIPT_DIR/Client/YieldDispatch.Client.csproj"
-REGISTRY_DLL="$SCRIPT_DIR/Server/Registry/bin/Debug/net8.0/YieldDispatch.Registry.dll"
 DELAY_DLL="$SCRIPT_DIR/Server/Delay/bin/Debug/net8.0/YieldDispatch.Delay.dll"
 PLAY_DLL="$SCRIPT_DIR/Server/Play/bin/Debug/net8.0/YieldDispatch.Play.dll"
 SESSION_DLL="$SCRIPT_DIR/Server/Session/bin/Debug/net8.0/YieldDispatch.Session.dll"
@@ -76,11 +74,32 @@ PY
 )"
 
 build_projects() {
-  dotnet build "$REGISTRY_PROJECT" --maxcpucount:1 >/dev/null
   dotnet build "$DELAY_PROJECT" --maxcpucount:1 >/dev/null
   dotnet build "$PLAY_PROJECT" --maxcpucount:1 >/dev/null
   dotnet build "$SESSION_PROJECT" --maxcpucount:1 >/dev/null
   dotnet build "$CLIENT_PROJECT" --maxcpucount:1 >/dev/null
+}
+
+# Portable ripgrep shim: this environment may not have rg installed.
+rg() {
+  local args=() pattern="" path_args=() quiet=0 invert=0
+  while [[ $# -gt 0 ]]; do
+    case "$1" in
+      -n) shift ;;
+      -q) quiet=1; shift ;;
+      -v) invert=1; pattern="$2"; shift 2 ;;
+      -g) shift 2 ;;
+      *) if [[ -z "$pattern" && $invert -eq 0 ]]; then pattern="$1"; else path_args+=("$1"); fi; shift ;;
+    esac
+  done
+  local grep_args=(-rEn --include='*.cs')
+  [[ $quiet -eq 1 ]] && grep_args=(-rEq --include='*.cs')
+  [[ $invert -eq 1 ]] && { command grep -Ev "$pattern"; return $?; }
+  if [[ ${#path_args[@]} -eq 0 ]]; then
+    command grep -E "$pattern"
+  else
+    command grep "${grep_args[@]}" -- "$pattern" "${path_args[@]}"
+  fi
 }
 
 static_checks() {
@@ -131,6 +150,9 @@ static_checks() {
 PIDS=()
 cleanup() {
   set +e
+  if [[ -n "${REDIS_CONTAINER:-}" ]]; then
+    docker rm -f "$REDIS_CONTAINER" >/dev/null 2>&1 || true
+  fi
   for pid in "${PIDS[@]}"; do
     if kill -0 "$pid" 2>/dev/null; then
       kill -INT "-$pid" 2>/dev/null || kill -INT "$pid" 2>/dev/null || true
@@ -373,16 +395,16 @@ if [[ "${ZLINK_YIELD_DISPATCH_SKIP_BUILD:-0}" != "1" ]]; then
 fi
 static_checks
 
-read -r REGISTRY_HTTP_PORT REGISTRY_PUB_PORT REGISTRY_ROUTER_PORT <<<"$(allocate_ports 3)"
-REGISTRY_HTTP="http://127.0.0.1:${REGISTRY_HTTP_PORT}"
-REGISTRY_PUB="tcp://127.0.0.1:${REGISTRY_PUB_PORT}"
-REGISTRY_ROUTER="tcp://127.0.0.1:${REGISTRY_ROUTER_PORT}"
-start_server registry "$REGISTRY_DLL" \
-  --http-url "$REGISTRY_HTTP" \
-  --registry-pub-endpoint "$REGISTRY_PUB" \
-  --registry-router-endpoint "$REGISTRY_ROUTER"
-wait_health registry "$REGISTRY_HTTP"
-wait_port registry-router "$REGISTRY_ROUTER"
+# The run owns its Redis: a dedicated, throwaway container is the shared
+# location store every server registers into (no registry process exists).
+if ! command -v docker >/dev/null 2>&1; then
+  echo "Docker is required to run the YieldDispatch E2E (it provisions a dedicated Redis container)." >&2
+  exit 1
+fi
+REDIS_CONTAINER="yielddispatch-e2e-redis-$$"
+docker run -d --rm --name "$REDIS_CONTAINER" -p "127.0.0.1::6379" redis:7.2-alpine >/dev/null
+REDIS_ENDPOINT="$(docker port "$REDIS_CONTAINER" 6379/tcp | sed -E 's/.*:([0-9]+)$/127.0.0.1:\1/')"
+REDIS_KEY_PREFIX="yielddispatch-e2e:$$:"
 
 read -r DELAY_A_HTTP_PORT DELAY_A_ENDPOINT_PORT <<<"$(allocate_ports 2)"
 DELAY_A_HTTP="http://127.0.0.1:${DELAY_A_HTTP_PORT}"
@@ -415,7 +437,8 @@ PLAY_A_CONTROL="tcp://127.0.0.1:${PLAY_A_CONTROL_PORT}"
 start_server play-a "$PLAY_DLL" \
   --rid play-a \
   --http-url "$PLAY_A_HTTP" \
-  --registry-router-endpoint "$REGISTRY_ROUTER" \
+  --redis-endpoint "$REDIS_ENDPOINT" \
+  --redis-key-prefix "$REDIS_KEY_PREFIX" \
   --control-endpoint "$PLAY_A_CONTROL" \
   --delay-endpoint "$DELAY_A_ENDPOINT" \
   --spot-router-endpoint "$PLAY_A_SPOT_ROUTER" \
@@ -437,7 +460,8 @@ PLAY_B_CONTROL="tcp://127.0.0.1:${PLAY_B_CONTROL_PORT}"
 start_server play-b "$PLAY_DLL" \
   --rid play-b \
   --http-url "$PLAY_B_HTTP" \
-  --registry-router-endpoint "$REGISTRY_ROUTER" \
+  --redis-endpoint "$REDIS_ENDPOINT" \
+  --redis-key-prefix "$REDIS_KEY_PREFIX" \
   --control-endpoint "$PLAY_B_CONTROL" \
   --delay-endpoint "$DELAY_B_ENDPOINT" \
   --spot-router-endpoint "$PLAY_B_SPOT_ROUTER" \
@@ -457,7 +481,8 @@ SESSION_A_CONTROL="tcp://127.0.0.1:${SESSION_A_CONTROL_PORT}"
 start_server session-a "$SESSION_DLL" \
   --rid session-a \
   --http-url "$SESSION_A_HTTP" \
-  --registry-router-endpoint "$REGISTRY_ROUTER" \
+  --redis-endpoint "$REDIS_ENDPOINT" \
+  --redis-key-prefix "$REDIS_KEY_PREFIX" \
   --control-endpoint "$SESSION_A_CONTROL" \
   --play-control-endpoint "$PLAY_A_CONTROL" \
   --spot-router-endpoint "$SESSION_A_SPOT_ROUTER" \
@@ -476,7 +501,8 @@ SESSION_B_CONTROL="tcp://127.0.0.1:${SESSION_B_CONTROL_PORT}"
 start_server session-b "$SESSION_DLL" \
   --rid session-b \
   --http-url "$SESSION_B_HTTP" \
-  --registry-router-endpoint "$REGISTRY_ROUTER" \
+  --redis-endpoint "$REDIS_ENDPOINT" \
+  --redis-key-prefix "$REDIS_KEY_PREFIX" \
   --control-endpoint "$SESSION_B_CONTROL" \
   --play-control-endpoint "$PLAY_A_CONTROL" \
   --spot-router-endpoint "$SESSION_B_SPOT_ROUTER" \
@@ -524,7 +550,8 @@ cat "$LOG_DIR/client-shutdown-wait.stdout.log"
 start_server play-a "$PLAY_DLL" \
   --rid play-a \
   --http-url "$PLAY_A_HTTP" \
-  --registry-router-endpoint "$REGISTRY_ROUTER" \
+  --redis-endpoint "$REDIS_ENDPOINT" \
+  --redis-key-prefix "$REDIS_KEY_PREFIX" \
   --control-endpoint "$PLAY_A_CONTROL" \
   --delay-endpoint "$DELAY_A_ENDPOINT" \
   --spot-router-endpoint "$PLAY_A_SPOT_ROUTER" \

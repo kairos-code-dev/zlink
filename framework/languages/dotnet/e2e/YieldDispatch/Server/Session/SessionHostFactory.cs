@@ -2,6 +2,7 @@ using Systems.Zlink;
 using YieldDispatch.Server.Session.Support;
 using YieldDispatch.Shared;
 using Zlink.Framework.AspNetCore;
+using Zlink.Framework.Locations.Redis;
 using Zlink.Framework.Contracts.Dispatch;
 using SessionServerOptions = YieldDispatch.Server.Session.Support.SessionOptions;
 using YieldStreamSession = YieldDispatch.Server.Session.Support.YieldSession;
@@ -27,6 +28,11 @@ internal static class SessionHostFactory
         builder.Services.AddSingleton(new NodeOptions(options.Rid));
         builder.Services.AddZLinkFramework(framework =>
         {
+            framework.AddRedisLocationStore(redis =>
+            {
+                redis.ConnectionString = options.RedisEndpoint;
+                redis.KeyPrefix = options.RedisKeyPrefix;
+            });
             framework.AddHandlersFromAssemblyOf(typeof(Program));
             framework.ConfigureDispatch()
                 .MessageFlow(ZLinkMessageFlowLogMode.KeyTransitions)

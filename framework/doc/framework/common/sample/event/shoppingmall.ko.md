@@ -37,6 +37,12 @@ ShoppingMall은 GameQuest와 달리 **유실이 허용되지 않는 도메인**�
 전송까지 잇는(유실 허용)** 축이라면, ShoppingMall은 **요청 하나가 여러 단계의 상태 전이와
 보상을 거치는(무손실) 이벤트 소싱 주문 처리** 축을 담당한다.
 
+이 샘플을 읽는 렌즈 하나를 미리 준다. **여기서 owner spot의 이득은 처리량이 아니라, 재시도·중단에
+안전한 다단계 트랜잭션(재고→결제→확정→보상)을 saga 오케스트레이터·조율 상태·스케줄러·outbox 없이
+그냥 순차 코드로 쓴다는 것**이다. 웹 방식이 바깥 인프라로 조립하던 "진행 지점 저장·다음 단계 조율·
+멈춘 작업 재개"가 여기서는 이벤트 스트림·이벤트 접기·스트림 재생 하나로 접힌다. 이 접힘을 §9.2에서
+웹 saga와 코드로 나란히 대비한다.
+
 ## 2. 요구사항
 
 ### 2.1 기능 요구사항
@@ -142,7 +148,7 @@ Functions 등)** 을 쓰는 것이다. 유실 없는 실행·타이머·재시�
 
 이 샘플의 가장 강한 논거는 saga 스택 자체가 아니라 **바깥 효과를 재시도해도 안전하다는 점**이다.
 트랜잭션으로 못 감싸는 결제 승인은, 죽었다 재시도해도 같은 결제가 두 번 일어나면 안 된다. 그래서
-`OrderId`와 단계에서 **결정적으로 만든 `PaymentId`로 승인을 요청**하고(§9.3), PSP는 같은 id로 다시
+`OrderId`와 단계에서 **결정적으로 만든 `PaymentId`로 승인을 요청**하고(§9.4), PSP는 같은 id로 다시
 요청하면 최초 결과를 그대로 돌려준다. 이것이 실무에서 PSP 멱등 키로 하는 바로 그 방식이며,
 "결제 호출은 트랜잭션에 못 넣는다"는 사실이야말로 트랜잭션 하나로는 닿지 못하는 지점이다. owner
 spot은 이 결정적 id 발급과 재개를 한 주문 흐름 안에서 소유한다.
@@ -183,7 +189,7 @@ graph TD
 그 spot이 주문 처리를 진행하고 결과 `OrderState`를 돌려주며(③), `CommerceApi`는 그 결과를 그대로
 응답한다(④). 웹 방식은 상태를 들고 있지 않아 "접수됨"만 돌려주고 폴링을 강제했지만, ZLink는 owner
 spot이 주문 상태를 소유하므로 요청을 처리한 그 흐름에서 결과를 바로 돌려줄 수 있다. (응답을 결제
-지연과 떼어내고 싶으면 `Created`까지만 돌려주고 이후를 재개로 잇는 변형을 쓴다 — §9.2.) 이후 상태
+지연과 떼어내고 싶으면 `Created`까지만 돌려주고 이후를 재개로 잇는 변형을 쓴다 — §9.3.) 이후 상태
 조회는 `CommerceApi`가 조회 모델을 직접 읽어 응답한다.
 
 `CommerceApi`는 HTTP 요청을 상태 없이 받아, `IdempotencyKey`로 기존 `OrderId`가 있는지 확인하고
@@ -199,7 +205,7 @@ spot이 주문 상태를 소유하므로 요청을 처리한 그 흐름에서 �
 |------|------|------|
 | 주문 상태 DB + 주문별 락 | 여러 서버가 같은 주문을 동시에 수정 | 같은 `OrderId`는 owner spot 하나가 순서대로 처리 |
 | saga 오케스트레이터 / 단계 소비자 | 여러 단계 전이·보상을 순서대로 조율 | owner spot이 이벤트 접기로 다음 단계를 판정해 직접 진행(§9) |
-| 이벤트 로그 + outbox | 상태와 이벤트 발행의 이중 쓰기 방지 | 상태 = `OrderEventStore` 이벤트의 접기라, 상태 변경과 이벤트가 한 번의 기록으로 끝난다. 조회 모델·바깥 효과(재고·결제)와의 이중 쓰기는 남지만, 다시 재생·결정적 id·재개로 그 틈을 닫는다(§9.3) |
+| 이벤트 로그 + outbox | 상태와 이벤트 발행의 이중 쓰기 방지 | 상태 = `OrderEventStore` 이벤트의 접기라, 상태 변경과 이벤트가 한 번의 기록으로 끝난다. 조회 모델·바깥 효과(재고·결제)와의 이중 쓰기는 남지만, 다시 재생·결정적 id·재개로 그 틈을 닫는다(§9.4) |
 | 버전 검사 / 분산 락 | 동시·재진입 수정 방지 | owner 하나 + 기록 시 기대 `Version` 검사로 이전 owner 차단(re-home 순간 방어) |
 | 멱등 저장소 | 결제 재클릭·재시도 걸러내기 | `CommerceStateStore` 매핑 + 스트림 안 `SourceCommandId` 중복 제거 |
 | 조회 모델 | 상태 조회 | `OrderReadModelStore` 조회 모델(그대로 유지 — 다시 재생으로 재생성 가능) |
@@ -357,6 +363,32 @@ owner로 이어 준다.
 `OrderStartedEvent` 기록과 `Created` 조회 모델 갱신이 끝난 뒤에만 매핑을 확정(started)한다.
 `OrderStartedEvent.SourceCommandId`에는 `IdempotencyKey` 값을 쓴다.
 
+### 왜 UserId가 아니라 OrderId를 owner 키로 쓰나
+
+owner spot을 무엇에 매칭할지는 "가장 자연스러운 엔티티"가 아니라 **어떤 불변식이 단일 소유자를
+필요로 하는가**, 즉 도메인의 일관성 경계로 정한다. checkout이 지키려는 불변식(재고 예약 → 결제 →
+확정 → 실패 시 보상, 중복 결제 금지, 버전 차단)은 전부 **주문 하나 안에서** 성립한다. DDD로 말하면
+애그리거트 루트가 Order이지 User가 아니다. 그래서 `OrderId`가 owner 키다. 구체적으로:
+
+- **스트림 경계와 일치**: `OrderEventStore` 스트림 키가 `OrderId`라, spot = 애그리거트 = 스트림이
+  깔끔하게 정렬된다. UserId로 묶으면 한 사용자의 여러 주문이 한 스트림에 섞이거나 한 spot이 여러
+  주문 스트림을 들어야 해서 재생·스냅샷이 복잡해진다.
+- **독립 주문의 병렬성**: 한 사용자의 서로 다른 주문은 순서를 지킬 이유가 없다. UserId owner면
+  그 독립 주문들이 owner 하나에 줄 서서 불필요하게 직렬화되고, 헤비 유저나 한 유저를 두드리는
+  부하에서 그 사용자 spot이 병목이 된다. `OrderId`는 부하를 흩뿌린다.
+- **수명**: 주문은 확정/실패로 자연스럽게 종료되는 transient owner다. 사용자 owner는 사실상
+  영생이라 계속 쌓여 별도 정리 정책이 필요하다.
+
+**진짜 per-user 불변식이 있을 때만** 사용자 소유자가 정당해진다 — 여러 주문이 함께 까먹는 적립금·
+크레딧·지출 한도, 사용자당 순차 사기 판정 등. 이때도 `OrderId`를 `UserId`로 바꾸는 게 아니라
+**소유자 계층을 둘로 나눈다**: 사용자 불변식을 소유하는 per-user 계정 spot과, 각 checkout을
+소유하는 per-order spot을 두고, per-order spot이 크레딧이 필요하면 계정 spot을 재고·결제 모듈처럼
+한 단계로 호출한다. 이러면 주문 병렬성은 유지하면서 사용자 단위 경합만 계정 spot에서 직렬화된다.
+
+참고로 옆 [GameQuest](gamequest.ko.md)는 `PlayerId`를 owner 키로 쓴다. 모순이 아니라 같은 원칙의
+다른 답이다 — 거기서는 한 플레이어의 모든 gameplay 이벤트가 per-player 진행으로 접히므로 일관성
+경계가 플레이어다. **owner 키 = 도메인의 일관성 경계**라는 원칙이 두 샘플에서 다른 키를 낳는다.
+
 ### 반드시 지킬 경계
 
 아래 경계를 어기면 `CommerceApi`와 `OrderWorkflowSpot`의 책임이 섞여 수평 확장 라우팅과 owner
@@ -408,7 +440,7 @@ owner spot이 주문 명령(`StartOrderWorkflowReq`, 또는 재개용 `ContinueO
 step 3에서 종료 상태여도 조회 모델을 fold와 맞추는 이유가 있다. 종료 이벤트를 기록한 직후, 조회
 모델 갱신 전에 죽으면 aggregate는 종료인데 조회 모델은 옛 상태(예: PaymentAuthorized)로 남는다.
 이때 재개가 그냥 "종료니까 현재 조회 모델 반환"으로 끝나면 그 옛 상태가 영영 고쳐지지 않는다.
-그래서 재진입도 fold 결과로 조회 모델을 먼저 맞춘다 — 이것이 §9.4의 "몇 번을 재개해도 결과가 같다"가
+그래서 재진입도 fold 결과로 조회 모델을 먼저 맞춘다 — 이것이 §9.5의 "몇 번을 재개해도 결과가 같다"가
 성립하는 조건이다. step 4 판정표가 보상 구간(`PaymentFailed`·`InventoryReleased`·
 `InventoryReservationFailed`)까지 다음 단계를 갖는 이유도 같다. 결제 실패 분기는 기록이 세
 번(`PaymentFailed → InventoryReleased → OrderFailed`)이라 그 사이에 죽는 일이 실제로 가능하므로,
@@ -419,17 +451,76 @@ step 3에서 종료 상태여도 조회 모델을 fold와 맞추는 이유가 �
 "이미 끝난 단계는 건너뛰고 다음부터"가 저절로 된다. `OrderWorkflowSpot`이 owner라 기록은 한 줄로
 순서가 잡히고, 웹 방식의 오케스트레이터 조율 상태나 outbox가 필요 없다.
 
-### 9.2 시작·진행·응답
+### 9.2 무엇이 사라졌나 — saga 인프라가 순차 코드로 접힌다
+
+이 샘플의 진짜 이득은 처리량이 아니라 **위 루프가 saga 인프라 없이 그냥 순차 코드라는 것**이다.
+같은 checkout을 웹 방식으로 지으면, 다단계 + 재시도 + crash 재개를 감당하려고 아래 조각들이
+붙는다. 각 조각이 여기서 어디로 사라지는지 보자.
+
+| 웹 saga에서 필요한 것 | 왜 필요했나 | ShoppingMall에서 어디로 갔나 |
+|------|------|------|
+| 오케스트레이터 / 단계 소비자 | 어느 단계까지 갔고 다음이 뭔지 몰아가는 주체 | **다음 단계 = 이벤트 접기 결과.** 별도 조율 주체 없이 aggregate가 다음 단계를 안다 |
+| durable 조율 상태(saga instance) | crash 뒤에도 "이 주문이 결제 대기였다"를 알아야 함 | **상태 = 이벤트 스트림.** 조율 상태를 따로 저장하지 않는다. 스트림 자체가 진행 지점이다 |
+| 스케줄러 / 타이머 | 멈춘 saga를 깨워 다음 단계로 | **재개 = 스트림 재생.** 재개 명령(또는 재활성)이 같은 루프를 태우면 fold가 멈춘 지점부터 잇는다(§9.5) |
+| outbox | 상태 DB 쓰기와 이벤트 발행의 이중 쓰기 방지 | **기록 = 상태 전이라 이중 쓰기가 없다.** 외부 발행이 필요한 경우만 §14 확장 |
+| 주문별 락 / 낙관적 버전 재시도 | 여러 소비자가 같은 주문을 물지 못하게 | **owner 하나가 소유** → 정상 경로엔 경쟁 writer가 없다. re-home 순간만 기대 버전으로 차단(§9.4) |
+
+정리하면 웹 saga는 "진행 지점을 어디에 저장하고, 누가 다음 단계로 몰고, 멈추면 누가 깨우나"를 전부
+바깥 인프라로 조립해야 한다. ShoppingMall은 그 셋을 각각 **이벤트 스트림·이벤트 접기·스트림 재생**
+하나로 흡수한다. 그래서 checkout이 상태 머신 인프라가 아니라 위 §9.1 같은 **한 덩어리 순차 코드**로
+읽힌다. 이것이 이 샘플이 보여 주려는 큰 이득이다.
+
+같은 로직을 두 방식으로 나란히 놓으면 대비가 분명하다.
+
+```text
+# 웹 saga — 진행 지점·조율·재개가 바깥 인프라에 흩어진다
+on StartOrder(req):
+  order = db.insert(state=CREATED, version=0)          # 상태 DB
+  idem.reserve(req.key -> order.id)                     # 멱등 저장소
+  log.append(OrderStarted)                              # 이벤트 로그
+  outbox.enqueue(OrderStarted)                          # outbox(이중 쓰기 방지)
+  return Accepted(order.id)                             # 결과는 아직 모름 → 클라이언트는 폴링
+
+consumer on OrderStarted:                               # 오케스트레이터/소비자
+  order = db.load(id); check(order.version)             # 락/버전 재시도
+  if reserve(deterministicResId): db.update(RESERVED)   # 단계마다 상태 저장
+  else: db.update(FAILED); return
+  outbox.enqueue(InventoryReserved)
+
+consumer on InventoryReserved:                          # 다음 단계도 별도 consumer
+  ... 결제 승인 → db.update(AUTHORIZED) → outbox ...
+  ... 확정 → db.update(CONFIRMED) → outbox ...
+
+scheduler every N초:                                    # 멈춘 saga 재개
+  for order in db.where(state not terminal, stuck):
+    reissue(order)                                      # 어느 단계였는지 상태로 되짚어 재시도
+```
+
+```text
+# ShoppingMall — 진행 지점·조율·재개가 owner 안 한 덩어리로 접힌다
+on WorkflowCommand(orderId):                            # §9.1 그 루프
+  agg = replay(OrderEventStore[orderId])                # 진행 지점 = 스트림
+  step = nextStep(agg)                                  # 조율 = 이벤트 접기
+  while step:                                           # 시작이든 재개든 같은 코드
+    ev = runStep(step, deterministicId(orderId, step))  # 재고/결제 모듈 호출
+    append(OrderEventStore, ev, expectedVersion)        # 기록 = 상태 전이(이중 쓰기 없음)
+    updateProjection(ev); agg.fold(ev)
+    step = nextStep(agg)
+  return agg.state                                      # 결과를 그 자리에서 반환
+# 재개: 같은 함수를 다시 호출하면 replay가 멈춘 지점을 복원 → nextStep이 이어 준다
+```
+
+### 9.3 시작·진행·응답
 
 `StartOrderWorkflowReq` handler는 위 루프를 돌려 주문 처리를 **owner 안에서 진행하고 결과
 `OrderState`를 돌려준다**. 샘플 기본은 handler가 종료(Confirmed/Failed)까지 진행한 상태를
 돌려준다 — 주문마다 owner가 다르므로, 한 주문의 결제 지연이 다른 주문을 막지 않는다.
 
 응답을 주문 처리 완료까지 기다리지 않게 하려면(결제 지연과 HTTP 응답을 떼어내려면) `Created`까지만
-돌려주고 이후 단계를 재개로 잇는 변형을 쓴다. 이때 진행을 잇는 방아쇠를 반드시 명시해야 한다(9.4).
+돌려주고 이후 단계를 재개로 잇는 변형을 쓴다. 이때 진행을 잇는 방아쇠를 반드시 명시해야 한다(9.5).
 이 변형은 production 확장으로 두고, 기본 샘플은 동기 진행으로 흐름을 단순하게 유지한다.
 
-### 9.3 무손실을 떠받치는 규칙
+### 9.4 무손실을 떠받치는 규칙
 
 - **기대 버전으로 이전 owner 차단**: 기록할 때 기대 `Version`을 함께 넣는다. 노드 장애로 owner가
   다른 노드로 넘어가는(re-home) 순간 이전 owner가 잠깐 살아 있어도, 두 owner의 기록 중 하나만
@@ -449,10 +540,30 @@ step 3에서 종료 상태여도 조회 모델을 fold와 맞추는 이유가 �
 - **조회 모델 재생성**: `OrderReadModelStore`를 지워도 `OrderEventStore`를 다시 재생해 같은 상태를
   복원한다. 조회 모델은 기준이 아니라 파생물이다.
 
-### 9.4 죽었을 때의 복구와 재개
+### 9.5 죽었을 때의 복구와 재개
 
-owner spot이 `InventoryReserved`까지 가고 결제 전에 죽으면, 그 주문은 스트림상 아직 종료가 아닌
-채로 남는다. 재개 경로는 두 가지다.
+owner spot이 checkout 도중에 멈추면 그 주문은 스트림상 아직 종료(Confirmed/Failed)가 아닌 채로
+남는다. 결제 단계 주변에서 이런 중단이 실제로 생기는 경우는 다음과 같다.
+
+- **owner 노드가 죽거나 재시작**: `InventoryReserved` 기록 직후~결제 호출 사이, 또는 결제 호출
+  뒤 `PaymentAuthorized` 기록 전에 노드가 죽으면 주문이 `InventoryReserved`에 멈춘다.
+- **spot re-home**(배포·리밸런스·노드 드레인): 배포로 노드를 내리거나 spot-mesh가 재배치되는
+  순간 owner가 다른 노드로 넘어가면, 새 owner가 스트림을 재생해 이어야 한다.
+- **PSP 호출이 도중에 끊김**: 결제 승인을 PSP에 호출했는데 응답을 받기 전에 죽거나 타임아웃이
+  나면, **결제가 실제로 됐는지 안 됐는지 owner가 모르는** 상태로 멈춘다.
+
+결제 단계의 "다시 시작"은 두 하위 경우로 갈린다. **PSP를 부르기 전에 멈췄으면** 쉽다 — 재개가
+fold로 "아직 결제 안 함"을 보고 결제부터 부른다. **PSP를 불렀는데 결과를 모르면**(위 세 번째)
+어렵고, 이것이 §9.4의 결정적 `PaymentId`가 존재하는 이유다. 재개한 owner가 같은 `PaymentId`로
+PSP를 다시 호출하면 PSP가 최초 결과(승인/거절)를 그대로 돌려주므로, owner가 진짜 결과를 알아내
+그에 맞는 이벤트만 기록한다 — **이중 청구가 나지 않는다.**
+
+이 중단들은 모두 "장애로 인한" 것이다. 장애가 없어도 본질적으로 재개가 필요한 결제(계좌이체, 3DS
+인증, "pending"으로 응답하는 비동기 승인 등)는 PSP가 즉시 성패를 주지 않고 나중에 확정하므로 그
+시점에 재개해 이어야 한다. 현재 샘플은 결제를 동기 성공/실패로 단순화해 이 비동기 경우를 다루지
+않고 production 확장으로 둔다.
+
+재개 경로는 두 가지다.
 
 - **명시적 재개 명령**: `ContinueOrderWorkflowReq(OrderId)`가 9.1 루프를 다시 태운다. fold가 다음
   단계를 "결제 승인 시도"로 판정하므로 예약 단계는 건너뛰고 결제부터 잇는다.
@@ -461,7 +572,7 @@ owner spot이 `InventoryReserved`까지 가고 결제 전에 죽으면, 그 주�
   주기적으로 훑어 `ContinueOrderWorkflowReq`를 보내는 **복구 훑기**를 둔다(재고가 묶이므로 방치할
   수 없다). 샘플은 클라이언트가 부르는 재개만 검증하고, 훑기는 확장으로 둔다.
 
-재개가 무손실인 근거는 9.3의 결정적 id와 명령 중복 제거다. 재개는 이미 기록된 이벤트를 다시 쓰지
+재개가 무손실인 근거는 9.4의 결정적 id와 명령 중복 제거다. 재개는 이미 기록된 이벤트를 다시 쓰지
 않고(fold가 건너뛴다), 바깥 효과는 같은 id로 최초 결과를 돌려받으므로, 몇 번을 재개해도 결과가
 같다.
 
@@ -595,7 +706,7 @@ AuthorizePaymentCommand  { OrderId, PaymentId, PaymentMethodId, Amount: decimal,
 AuthorizePaymentResult   { Accepted: bool, Reason: string? }
 ```
 
-`ReservationId`·`PaymentId`는 owner spot이 `OrderId`와 단계에서 결정적으로 만들어 넘긴다(§9.3).
+`ReservationId`·`PaymentId`는 owner spot이 `OrderId`와 단계에서 결정적으로 만들어 넘긴다(§9.4).
 모듈은 같은 id로 다시 요청하면 최초 시도의 결과(성공/실패)를 그대로 돌려준다 — 재개가 그 결과로
 다음 이벤트를 정한다. 샘플은 실제 결제 연동을 붙이지 않고 `CommerceStateStore`의 시드 데이터로
 성공·재고 실패·결제 실패를 정한다.
@@ -681,7 +792,7 @@ sequenceDiagram
     API-->>C: GetOrderStateRes(State)
 ```
 
-재고/결제 실패 분기는 §13의 이벤트 순서를 따른다. 죽은 뒤 재개는 §9.4의
+재고/결제 실패 분기는 §13의 이벤트 순서를 따른다. 죽은 뒤 재개는 §9.5의
 `ContinueOrderWorkflowReq`로 같은 루프를 다시 태운다.
 
 ## 13. 보정과 중복 처리

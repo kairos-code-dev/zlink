@@ -348,17 +348,67 @@ event stream이고, `QuestReadModelStore`는 언제든 replay로 다시 만들 �
 
 ### production 확장 — reliability tier를 데이터별로 나눈다
 
-production 구성에서는 데이터 성격에 따라 reliability tier를 나눈다. spot 기반 직렬화는 유지하고,
-무손실이 필요한 경로에만 durable ingest와 outbox를 추가한다.
+production 구성에서는 데이터 성격에 따라 reliability tier를 나눈다. spot 기반 event sourcing은
+그대로 두고, 무손실이 필요한 경로에만 durable ingest와 outbox를 추가한다.
 
-- **quest/mission 진행** (고빈도·tolerant): 샘플 기본대로 **lossy 전달 + event sourcing + reset
-  보정**으로 충분하다. 유실돼도 reconcile로 복구되므로 durable log가 없어도 된다.
-- **reward·경제·거래** (저빈도·치명적): owner로의 **ingest 경로에 durable log(Redis Streams/Kafka)
-  나 outbox를 끼워 무손실**로 하고, 지급 결정과 외부 지급 요청은 **durable·트랜잭셔널 store**에
-  기록한다.
+#### 헷갈리지 말 것 — DB가 관여하는 두 지점은 서로 다르다
 
-샘플 기본 구현은 진행 tier와 중복 결정 방지를 검증한다. 실제 재화 지급용 durable tier는
-production 확장으로 두며, 이때 추가되는 핵심 조각은 durable ingest log와 지급 결정 store다.
+"entry-spot이 log DB에 쓰고 spot이 읽어서 event sourcing 하면 되지 않나"라는 질문이 자주 나온다.
+이 문장에는 성격이 다른 두 store가 섞여 있어 먼저 분리해야 한다.
+
+| 지점 | 무엇인가 | 지금 상태 | 성격 |
+|------|----------|-----------|------|
+| `QuestEventStore` (spot ↔ store) | quest **domain event stream(SoR)**. spot이 replay로 읽고 append로 쓴다. | **이미 DB 기반 event sourcing이다.** in-memory aggregate는 매번 replay를 피하는 캐시일 뿐, 기준은 stream이다. | 항상 durable. 진행/reward tier 무관하게 동일 |
+| gameplay event 전달 (entry-spot → spot) | source event를 owner로 나르는 **전달 경로**. | 지금은 **owner routing(직접 메시징, best-effort, 유실 가능)**. | tier에 따라 lossy(진행) 또는 durable(reward)로 나뉨 |
+
+즉 "spot이 DB를 읽어 event sourcing 한다"는 첫 행에서 **이미 사실**이다. 질문이 실제로 바꾸는 것은
+둘째 행 — entry-spot과 spot 사이의 **전달을 durable log로 바꿀지**다. 그것이 아래 두 tier의 차이다.
+
+#### 진행 tier — owner routing (전달이 transient)
+
+```mermaid
+graph LR
+    SS["Session Server<br/>(gameplay event 생성)"]
+    SP["PlayerQuestSpot<br/>owner · hot state"]
+    EVS[("QuestEventStore<br/>domain event SoR")]
+    GDB[("GameplayStateStore<br/>누적 fact")]
+
+    SS -->|owner routing<br/>best-effort| SP
+    SP <-->|replay · append| EVS
+    SS -.누적 fact.-> GDB
+    GDB -.reconcile 보정.-> SP
+```
+
+- **고빈도·유실 tolerant** 경로에 쓴다. 전달이 유실돼도 `GameplayStateStore` 누적 fact로 진행을
+  재계산해 `QuestReconciled`로 보정한다. 그래서 durable log가 없어도 된다.
+- 즉시 dispatch라 진행 push가 실시간에 가깝다. §2.1의 "3/10 실시간 표시" 요구에 맞는다.
+
+#### reward 경로 — durable ingest (전달이 무손실)
+
+```mermaid
+graph LR
+    SS["Session Server<br/>(reward-bearing event)"]
+    LOG[("durable ingest log<br/>Redis Streams/Kafka<br/>PlayerId partition")]
+    SP["PlayerQuestSpot<br/>owner · hot state"]
+    EVS[("QuestEventStore<br/>domain event SoR")]
+    PAY[("지급 결정 store<br/>durable · 트랜잭셔널")]
+
+    SS -->|append| LOG
+    LOG -->|consume<br/>at-least-once| SP
+    SP <-->|replay · append| EVS
+    SP -->|지급 결정·외부 요청| PAY
+```
+
+- **저빈도·치명적**(재화·경제·거래) 경로에만 쓴다. entry-spot이 event를 durable log에 append하고
+  spot이 소비하므로 전달 유실이 사라지고, ingest가 replay 가능해진다.
+- 대가: §3에서 없앴던 **log·partition·consumer·offset** 인프라가 이 경로에 한해 되돌아오고,
+  action 경로에 durable write 지연과 consume lag이 붙는다. PlayerId 파티션이면 순서 보장의 주체가
+  파티션으로 옮겨간다. 그래서 진행 tier 전체에 이걸 쓰면 손해이고, reward 경로에만 국소 적용한다.
+
+정리하면 질문의 답은 "된다. 그리고 그것이 reward tier의 durable ingest다. 단 진행 tier까지
+확장하면 owner routing으로 없앤 복잡도를 되사는 것이라, log는 유실이 치명적인 경로에만 얹는다".
+샘플 기본 구현은 진행 tier와 중복 **결정** 방지를 검증하고, durable ingest log와 지급 결정 store가
+필요한 reward tier는 production 확장으로 둔다.
 
 ## 10. DDD·Hexagonal 구조
 

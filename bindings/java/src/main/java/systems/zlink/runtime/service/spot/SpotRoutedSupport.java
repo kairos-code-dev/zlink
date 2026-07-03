@@ -569,6 +569,7 @@ final class SpotRoutedSupport implements AutoCloseable {
 
     @Override
     public void close() {
+        requestPlane.close();
         dispatchSupport.close();
     }
 

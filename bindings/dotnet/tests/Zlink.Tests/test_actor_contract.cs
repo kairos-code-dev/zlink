@@ -209,6 +209,96 @@ public sealed class test_actor_contract
     }
 
     [Fact]
+    public async Task actor_dispatch_preserves_multipart_message_across_no_data_turn()
+    {
+        if (!CoreTestSupport.IsNativeAvailable())
+            return;
+
+        using var ctx = Zlink.CreateContext();
+        using var node = ctx.CreateSpotNode();
+        using var spot = node.CreateSpot();
+        using var actor = node.CreateActor($"actor-{Guid.NewGuid():N}");
+        using var stream = ctx.CreateStreamSocket();
+        var sessionRid = CoreTestSupport.RoutingIdUtf8("actor-multipart-session");
+        var received = new TaskCompletionSource<string[]>(
+            TaskCreationOptions.RunContinuationsAsynchronously);
+        List<Exception> callbackErrors = new();
+
+        void OnCallbackError(Exception ex)
+        {
+            lock (callbackErrors)
+            {
+                callbackErrors.Add(ex);
+            }
+        }
+
+        Zlink.UnhandledCallbackException += OnCallbackError;
+        try
+        {
+            spot.SetDispatchHandler(info =>
+            {
+                if (info.Event != SpotDispatchEvent.ActorReadable)
+                    return;
+
+                ActorReceived? message;
+                while ((message = info.RecvActor()) != null)
+                {
+                    using (message)
+                    {
+                        received.TrySetResult(message.Parts
+                            .Select(part => part.GetString())
+                            .ToArray());
+                    }
+                }
+            });
+
+            Zlink.MultipartClose(await stream.BindActor(sessionRid, actor.Ref)
+                .Timeout(TimeSpan.FromSeconds(2))
+                .Async()
+                .WaitAsync(TimeSpan.FromSeconds(5)));
+
+            using Message joinMessage = Message.From("join");
+            Task<(ActorJoinResult Result, IReadOnlyList<Message> Parts)> joinTask =
+                actor.Join(spot).Message(joinMessage)
+                    .Timeout(TimeSpan.FromSeconds(2)).Async();
+
+            ActorJoinRequest? request = null;
+            Assert.True(CoreTestSupport.WaitUntil(() =>
+            {
+                request = spot.RecvActorJoin(RecvFlags.DontWait);
+                return request != null;
+            }, 2000));
+
+            request!.Message.Dispose();
+            using Message joinReply = Message.From("ok");
+            spot.ReplyActorJoin(request, joinResultCode: 0)
+                .Message(joinReply)
+                .Submit();
+            Zlink.MultipartClose((await joinTask.WaitAsync(TimeSpan.FromSeconds(5))).Parts);
+
+            using Message first = Message.From("first");
+            using Message second = Message.From("second");
+            Assert.True(stream.SendBoundActor(sessionRid, actor.Ref.ActorId)
+                .Messages(new[] { first, second })
+                .Submit());
+
+            string[] parts = await received.Task.WaitAsync(TimeSpan.FromSeconds(5));
+            Assert.Equal(new[] { "first", "second" }, parts);
+            Assert.Empty(callbackErrors);
+
+            actor.CloseBoundSession(TimeSpan.FromSeconds(2));
+            Zlink.MultipartClose(await actor.Leave(spot)
+                .Timeout(TimeSpan.FromSeconds(2))
+                .Async()
+                .WaitAsync(TimeSpan.FromSeconds(5)));
+        }
+        finally
+        {
+            Zlink.UnhandledCallbackException -= OnCallbackError;
+        }
+    }
+
+    [Fact]
     public async Task spot_node_join_actor_entry_spot_returns_final_actor_ref()
     {
         if (!CoreTestSupport.IsNativeAvailable())

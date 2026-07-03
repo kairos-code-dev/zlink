@@ -48,13 +48,14 @@ internal static partial class ActorInterop
         return Message.From(copy);
     }
 
-    internal static ActorReceived? RecvActor(IntPtr node, ActorRef actor,
+    internal static ActorReceived? RecvActor(SpotNode node, ActorRef actor,
         RecvFlags flags = RecvFlags.None)
     {
+        var pending = node.TakePendingActorMessage(actor);
         var nativeActor = ToNative(actor);
-        List<Message> parts = new();
-        ActorRecvInfo? managedInfo = null;
-        var firstPart = true;
+        List<Message> parts = pending?.Parts ?? new List<Message>();
+        ActorRecvInfo? managedInfo = pending?.Info;
+        var firstPart = parts.Count == 0;
         var transferred = false;
 
         try
@@ -62,7 +63,7 @@ internal static partial class ActorInterop
             while (true)
             {
                 ZlinkMsg nativePart = default;
-                var rc = NativeMethods.zlink_spot_node_actor_recv_part(node,
+                var rc = NativeMethods.zlink_spot_node_actor_recv_part(node.Handle,
                     ref nativeActor,
                     out var info, ref nativePart,
                     out var hasMore,
@@ -70,10 +71,20 @@ internal static partial class ActorInterop
                 if (rc != 0)
                 {
                     var errno = NativeMethods.zlink_errno();
-                    if (firstPart && (flags & RecvFlags.DontWait) != 0
-                                  && ZlinkException.MapErrorCode(errno) == ErrorCode.EAgain)
+                    var error = ZlinkException.CreateRecvException(errno);
+                    if ((flags & RecvFlags.DontWait) != 0
+                        && error.Result == ZlinkRecvException.ErrorCode.NoData)
+                    {
+                        if (!firstPart && managedInfo != null)
+                        {
+                            node.StorePendingActorMessage(actor, managedInfo, parts);
+                            transferred = true;
+                        }
+
                         return null;
-                    throw ZlinkException.CreateRecvException(errno);
+                    }
+
+                    throw error;
                 }
 
                 managedInfo ??= FromNative(ref info);
@@ -95,7 +106,7 @@ internal static partial class ActorInterop
         }
     }
 
-    internal static ActorReceived[] DrainActors(IntPtr node,
+    internal static ActorReceived[] DrainActors(SpotNode node,
         IntPtr actor)
     {
         if (actor == IntPtr.Zero)

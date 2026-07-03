@@ -56,22 +56,26 @@ public final class RequestProgressPump {
         stopProgress(socketHandle, Kind.SPOT);
     }
 
+    public static void stopSpotRouteBridgeProgress(MemorySegment bridgeHandle) {
+        stopProgress(bridgeHandle, Kind.SPOT_ROUTE_BRIDGE);
+    }
+
     private static void track(CompletableFuture<?> future,
-                              MemorySegment socketHandle,
+                              MemorySegment handle,
                               String threadName,
                               Kind kind) {
         Objects.requireNonNull(future, "future");
-        Objects.requireNonNull(socketHandle, "socketHandle");
-        if (future.isDone() || socketHandle.address() == 0) {
+        Objects.requireNonNull(handle, "handle");
+        if (future.isDone() || handle.address() == 0) {
             return;
         }
-        Key key = new Key(kind, socketHandle.address());
+        Key key = new Key(kind, handle.address());
         AtomicInteger external = EXTERNAL_PROGRESS.get(key);
         if (external != null && external.get() > 0) {
             return;
         }
         Pump pump = PUMPS.computeIfAbsent(key,
-            ignored -> new Pump(key, socketHandle, threadName));
+            ignored -> new Pump(key, handle, threadName));
         pump.track(future);
     }
 

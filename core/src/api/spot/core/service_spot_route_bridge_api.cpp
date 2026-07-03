@@ -19,7 +19,9 @@
 #include "utils/routing_id.hpp"
 
 #include <map>
+#include <functional>
 #include <new>
+#include <stdio.h>
 #include <string>
 #include <vector>
 
@@ -119,24 +121,43 @@ int drain_endpoint_reply_progress (spot_route_bridge_t *bridge_, bridge_endpoint
     return drained;
 }
 
+std::string short_endpoint_source_key (const std::string &channel_name_,
+                                       const std::string &router_rid_)
+{
+    const std::string seed = channel_name_ + ":" + router_rid_;
+    char hash_suffix[17];
+    snprintf (hash_suffix, sizeof (hash_suffix), "%016llx",
+              static_cast<unsigned long long> (std::hash<std::string> () (seed)));
+
+    const std::string prefix = "bridge:";
+    const size_t max_size = sizeof (zlink_routing_id_t::data);
+    const size_t fixed_size = prefix.size () + 1 + 16;
+    const size_t channel_size =
+      channel_name_.size () > max_size - fixed_size ? max_size - fixed_size : channel_name_.size ();
+    return prefix + channel_name_.substr (0, channel_size) + ":" + hash_suffix;
+}
+
 bool build_endpoint_source_rid (void *socket_, const char *channel_name_, zlink_routing_id_t *out_)
 {
-    (void) socket_;
-    if (!out_ || !valid_channel_name (channel_name_)) {
+    if (!out_ || !socket_ || !valid_channel_name (channel_name_)) {
         errno = EFAULT;
+        return false;
+    }
+    zlink_routing_id_t router_rid;
+    memset (&router_rid, 0, sizeof (router_rid));
+    if (zlink_get_routing_id (socket_, &router_rid) != 0 || router_rid.size == 0) {
         return false;
     }
     memset (out_, 0, sizeof (*out_));
 
-    const size_t channel_name_len = strlen (channel_name_);
-    const char prefix[] = "bridge:";
-    const size_t prefix_len = sizeof (prefix) - 1;
-    const size_t max_payload = sizeof (out_->data);
-    const size_t copied_channel_len =
-      channel_name_len > max_payload - prefix_len ? max_payload - prefix_len : channel_name_len;
-    out_->size = static_cast<uint8_t> (prefix_len + copied_channel_len);
-    memcpy (out_->data, prefix, prefix_len);
-    memcpy (out_->data + prefix_len, channel_name_, copied_channel_len);
+    const std::string channel_name (channel_name_);
+    const std::string router_rid_key = zlink::routing_id_key (router_rid);
+    std::string source_key = "bridge:" + channel_name + ":" + router_rid_key;
+    if (source_key.size () > sizeof (out_->data))
+        source_key = short_endpoint_source_key (channel_name, router_rid_key);
+
+    out_->size = static_cast<uint8_t> (source_key.size ());
+    memcpy (out_->data, source_key.data (), source_key.size ());
     return true;
 }
 

@@ -237,6 +237,48 @@ void recv_router_multipart (void *socket_,
     }
 }
 
+uint64_t recv_router_request_multipart (void *socket_,
+                                        zlink_routing_id_t *source_node_rid_out_,
+                                        zlink_msg_t *parts_,
+                                        size_t part_count_)
+{
+    TEST_ASSERT_NOT_NULL (source_node_rid_out_);
+    TEST_ASSERT_NOT_NULL (parts_);
+    memset (source_node_rid_out_, 0, sizeof (*source_node_rid_out_));
+    uint64_t request_seq = 0;
+    for (size_t index = 0; index < part_count_; ++index) {
+        const zlink_routing_id_t *source_node_rid = NULL;
+        const zlink_routing_id_t *source_spot_rid = NULL;
+        uint64_t current_request_seq = 0;
+        zlink_part_flag_t has_more = ZLINK_PART_FINAL;
+        zlink_recv_result_t rc = ZLINK_RECV_NO_DATA;
+        for (int attempt = 0; attempt < 100; ++attempt) {
+            zlink_msg_init (&parts_[index]);
+            rc = zlink_router_recv_part (socket_, &source_node_rid, &source_spot_rid,
+                                         &current_request_seq, &parts_[index], &has_more,
+                                         ZLINK_RECV_FLAGS_DONTWAIT);
+            if (rc == ZLINK_RECV_OK)
+                break;
+            zlink_msg_close (&parts_[index]);
+            std::this_thread::sleep_for (std::chrono::milliseconds (1));
+        }
+        TEST_ASSERT_EQUAL_INT (ZLINK_RECV_OK, rc);
+        TEST_ASSERT_NOT_NULL (source_node_rid);
+        TEST_ASSERT_NOT_EQUAL (0, current_request_seq);
+        if (index == 0) {
+            *source_node_rid_out_ = *source_node_rid;
+            request_seq = current_request_seq;
+        } else {
+            TEST_ASSERT_EQUAL_MEMORY (source_node_rid_out_->data, source_node_rid->data,
+                                      source_node_rid_out_->size);
+            TEST_ASSERT_EQUAL_UINT64 (request_seq, current_request_seq);
+        }
+        TEST_ASSERT_EQUAL_INT (index + 1 < part_count_ ? ZLINK_PART_MORE : ZLINK_PART_FINAL,
+                               has_more);
+    }
+    return request_seq;
+}
+
 void test_spot_node_publisher_publish_uses_local_topic_plane ()
 {
     void *ctx = zlink_ctx_new ();
@@ -757,8 +799,9 @@ void test_handle_router_received_request_replies_to_channel_peer ()
                                                  &has_more, ZLINK_RECV_FLAGS_DONTWAIT));
     TEST_ASSERT_NOT_NULL (source_node_rid);
     TEST_ASSERT_NOT_EQUAL (0, local_request_seq);
-    TEST_ASSERT_EQUAL_INT (strlen ("bridge:mesh"), source_node_rid->size);
-    TEST_ASSERT_EQUAL_MEMORY ("bridge:mesh", source_node_rid->data, strlen ("bridge:mesh"));
+    TEST_ASSERT_EQUAL_INT (strlen ("bridge:mesh:bridge-router-local"), source_node_rid->size);
+    TEST_ASSERT_EQUAL_MEMORY ("bridge:mesh:bridge-router-local", source_node_rid->data,
+                              strlen ("bridge:mesh:bridge-router-local"));
     TEST_ASSERT_EQUAL_INT (ZLINK_PART_FINAL, has_more);
     TEST_ASSERT_EQUAL_INT (strlen ("question"), zlink_msg_size (&received));
     TEST_ASSERT_EQUAL_MEMORY ("question", zlink_msg_data (&received), strlen ("question"));
@@ -801,6 +844,295 @@ received_reply:
     TEST_ASSERT_SUCCESS_ERRNO (zlink_close (peer_router));
     TEST_ASSERT_SUCCESS_ERRNO (zlink_spot_destroy (&target_spot));
     TEST_ASSERT_SUCCESS_ERRNO (zlink_spot_node_destroy (&node));
+    TEST_ASSERT_SUCCESS_ERRNO (zlink_ctx_term (ctx));
+}
+
+void test_bridge_request_roundtrips_through_target_bridge_spot ()
+{
+    void *ctx = zlink_ctx_new ();
+    TEST_ASSERT_NOT_NULL (ctx);
+    TEST_ASSERT_SUCCESS_ERRNO (zlink_ctx_set (ctx, ZLINK_MAX_SOCKETS, 128));
+
+    void *source_node = zlink_spot_node_new (ctx, NULL);
+    void *target_node = zlink_spot_node_new (ctx, NULL);
+    TEST_ASSERT_NOT_NULL (source_node);
+    TEST_ASSERT_NOT_NULL (target_node);
+
+    void *target_spot = zlink_spot_new (target_node);
+    TEST_ASSERT_NOT_NULL (target_spot);
+    TEST_ASSERT_SUCCESS_ERRNO (
+      zlink_set_routing_id (target_spot, "bridge-roundtrip-spot",
+                            strlen ("bridge-roundtrip-spot")));
+
+    void *source_router = zlink_socket (ctx, ZLINK_SOCKET_ROUTER);
+    void *target_router = zlink_socket (ctx, ZLINK_SOCKET_ROUTER);
+    TEST_ASSERT_NOT_NULL (source_router);
+    TEST_ASSERT_NOT_NULL (target_router);
+    TEST_ASSERT_SUCCESS_ERRNO (
+      zlink_set_routing_id (source_router, "bridge-roundtrip-source",
+                            strlen ("bridge-roundtrip-source")));
+    TEST_ASSERT_SUCCESS_ERRNO (
+      zlink_set_routing_id (target_router, "bridge-roundtrip-target",
+                            strlen ("bridge-roundtrip-target")));
+    TEST_ASSERT_SUCCESS_ERRNO (
+      zlink_bind (target_router, "inproc://spot-route-bridge-roundtrip"));
+    TEST_ASSERT_SUCCESS_ERRNO (
+      zlink_connect (source_router, "inproc://spot-route-bridge-roundtrip"));
+    std::this_thread::sleep_for (std::chrono::milliseconds (50));
+
+    void *source_bridge = zlink_spot_route_bridge_new (ctx, source_node, NULL);
+    void *target_bridge = zlink_spot_route_bridge_new (ctx, target_node, NULL);
+    TEST_ASSERT_NOT_NULL (source_bridge);
+    TEST_ASSERT_NOT_NULL (target_bridge);
+    TEST_ASSERT_SUCCESS_ERRNO (
+      zlink_spot_route_bridge_attach_router_channel (source_bridge, "mesh", source_router, NULL));
+    TEST_ASSERT_SUCCESS_ERRNO (
+      zlink_spot_route_bridge_attach_router_channel (target_bridge, "mesh", target_router, NULL));
+
+    zlink_routing_id_t target_node_rid;
+    memset (&target_node_rid, 0, sizeof (target_node_rid));
+    TEST_ASSERT_SUCCESS_ERRNO (zlink_get_routing_id (target_router, &target_node_rid));
+    zlink_routing_id_t target_spot_rid;
+    memset (&target_spot_rid, 0, sizeof (target_spot_rid));
+    TEST_ASSERT_SUCCESS_ERRNO (zlink_get_routing_id (target_spot, &target_spot_rid));
+
+    reply_probe_t reply_probe;
+    zlink_msg_t payload;
+    init_text_part (&payload, "roundtrip-question");
+    TEST_ASSERT_SUCCESS_ERRNO (zlink_spot_route_bridge_request (
+      source_bridge, "mesh", &target_node_rid, &target_spot_rid, &payload, 1, &capture_reply,
+      &reply_probe, ZLINK_SEND_FLAGS_NONE, 1000));
+
+    bool handled = false;
+    for (int attempt = 0; attempt < 100 && !handled; ++attempt) {
+        const zlink_routing_id_t *source_node_rid = NULL;
+        const zlink_routing_id_t *source_spot_rid = NULL;
+        uint64_t request_seq = 0;
+        zlink_msg_t parts[3];
+        zlink_recv_result_t rc = ZLINK_RECV_NO_DATA;
+        for (size_t index = 0; index < 3; ++index) {
+            zlink_msg_init (&parts[index]);
+            zlink_part_flag_t has_more = ZLINK_PART_FINAL;
+            rc = zlink_router_recv_part (target_router, &source_node_rid, &source_spot_rid,
+                                         &request_seq, &parts[index], &has_more,
+                                         ZLINK_RECV_FLAGS_DONTWAIT);
+            if (rc != ZLINK_RECV_OK) {
+                for (size_t close_index = 0; close_index <= index; ++close_index)
+                    zlink_msg_close (&parts[close_index]);
+                break;
+            }
+        }
+        if (rc == ZLINK_RECV_OK) {
+            TEST_ASSERT_SUCCESS_ERRNO (zlink_spot_route_bridge_handle_router_received (
+              target_bridge, "mesh", source_node_rid, request_seq, parts, 3, &handled));
+        } else {
+            std::this_thread::sleep_for (std::chrono::milliseconds (1));
+        }
+    }
+    TEST_ASSERT_TRUE (handled);
+
+    const zlink_routing_id_t *routed_source_node_rid = NULL;
+    const zlink_routing_id_t *routed_source_spot_rid = NULL;
+    uint64_t routed_request_seq = 0;
+    zlink_msg_t routed;
+    zlink_msg_init (&routed);
+    zlink_part_flag_t routed_more = ZLINK_PART_FINAL;
+    TEST_ASSERT_EQUAL_INT (ZLINK_RECV_OK,
+                           zlink_spot_recv_part (target_spot, &routed_source_node_rid,
+                                                 &routed_source_spot_rid, &routed_request_seq,
+                                                 &routed, &routed_more,
+                                                 ZLINK_RECV_FLAGS_DONTWAIT));
+    TEST_ASSERT_EQUAL_INT (strlen ("roundtrip-question"), zlink_msg_size (&routed));
+    TEST_ASSERT_EQUAL_MEMORY ("roundtrip-question", zlink_msg_data (&routed),
+                              strlen ("roundtrip-question"));
+    zlink_msg_close (&routed);
+
+    zlink_msg_t reply;
+    init_text_part (&reply, "roundtrip-answer");
+    TEST_ASSERT_EQUAL_INT (
+      ZLINK_SUBMIT_OK,
+      zlink_spot_reply_router_part (target_spot, routed_source_node_rid, routed_request_seq,
+                                    &reply, ZLINK_PART_FINAL));
+
+    const std::chrono::steady_clock::time_point deadline =
+      std::chrono::steady_clock::now () + std::chrono::seconds (3);
+    while (std::chrono::steady_clock::now () < deadline) {
+        {
+            std::unique_lock<std::mutex> lock (reply_probe.mutex);
+            if (reply_probe.cv.wait_for (lock, std::chrono::milliseconds (10),
+                                         [&reply_probe] () { return reply_probe.done; }))
+                break;
+        }
+        (void) zlink_spot_route_bridge_drain (target_bridge);
+        (void) zlink_spot_route_bridge_drain (source_bridge);
+    }
+    TEST_ASSERT_TRUE (reply_probe.done);
+    TEST_ASSERT_EQUAL_INT (ZLINK_REQUEST_OK, reply_probe.result);
+    TEST_ASSERT_EQUAL_INT (1, reply_probe.part_count);
+    TEST_ASSERT_EQUAL_STRING ("roundtrip-answer", reply_probe.payload.c_str ());
+
+    TEST_ASSERT_SUCCESS_ERRNO (zlink_spot_route_bridge_close (source_bridge));
+    TEST_ASSERT_SUCCESS_ERRNO (zlink_spot_route_bridge_close (target_bridge));
+    TEST_ASSERT_SUCCESS_ERRNO (zlink_close (source_router));
+    TEST_ASSERT_SUCCESS_ERRNO (zlink_close (target_router));
+    TEST_ASSERT_SUCCESS_ERRNO (zlink_spot_destroy (&target_spot));
+    TEST_ASSERT_SUCCESS_ERRNO (zlink_spot_node_destroy (&source_node));
+    TEST_ASSERT_SUCCESS_ERRNO (zlink_spot_node_destroy (&target_node));
+    TEST_ASSERT_SUCCESS_ERRNO (zlink_ctx_term (ctx));
+}
+
+void test_bridge_request_timeout_ignores_late_spot_reply_and_allows_next_request ()
+{
+    void *ctx = zlink_ctx_new ();
+    TEST_ASSERT_NOT_NULL (ctx);
+    TEST_ASSERT_SUCCESS_ERRNO (zlink_ctx_set (ctx, ZLINK_MAX_SOCKETS, 128));
+
+    void *source_node = zlink_spot_node_new (ctx, NULL);
+    void *target_node = zlink_spot_node_new (ctx, NULL);
+    TEST_ASSERT_NOT_NULL (source_node);
+    TEST_ASSERT_NOT_NULL (target_node);
+
+    void *target_spot = zlink_spot_new (target_node);
+    TEST_ASSERT_NOT_NULL (target_spot);
+    TEST_ASSERT_SUCCESS_ERRNO (
+      zlink_set_routing_id (target_spot, "bridge-timeout-spot", strlen ("bridge-timeout-spot")));
+
+    void *source_router = zlink_socket (ctx, ZLINK_SOCKET_ROUTER);
+    void *target_router = zlink_socket (ctx, ZLINK_SOCKET_ROUTER);
+    TEST_ASSERT_NOT_NULL (source_router);
+    TEST_ASSERT_NOT_NULL (target_router);
+    TEST_ASSERT_SUCCESS_ERRNO (
+      zlink_set_routing_id (source_router, "bridge-timeout-source",
+                            strlen ("bridge-timeout-source")));
+    TEST_ASSERT_SUCCESS_ERRNO (
+      zlink_set_routing_id (target_router, "bridge-timeout-target",
+                            strlen ("bridge-timeout-target")));
+    TEST_ASSERT_SUCCESS_ERRNO (zlink_bind (target_router, "inproc://spot-route-bridge-timeout"));
+    TEST_ASSERT_SUCCESS_ERRNO (zlink_connect (source_router, "inproc://spot-route-bridge-timeout"));
+    std::this_thread::sleep_for (std::chrono::milliseconds (50));
+
+    void *source_bridge = zlink_spot_route_bridge_new (ctx, source_node, NULL);
+    void *target_bridge = zlink_spot_route_bridge_new (ctx, target_node, NULL);
+    TEST_ASSERT_NOT_NULL (source_bridge);
+    TEST_ASSERT_NOT_NULL (target_bridge);
+    TEST_ASSERT_SUCCESS_ERRNO (
+      zlink_spot_route_bridge_attach_router_channel (source_bridge, "mesh", source_router, NULL));
+    TEST_ASSERT_SUCCESS_ERRNO (
+      zlink_spot_route_bridge_attach_router_channel (target_bridge, "mesh", target_router, NULL));
+
+    zlink_routing_id_t target_node_rid;
+    memset (&target_node_rid, 0, sizeof (target_node_rid));
+    TEST_ASSERT_SUCCESS_ERRNO (zlink_get_routing_id (target_router, &target_node_rid));
+    zlink_routing_id_t target_spot_rid;
+    memset (&target_spot_rid, 0, sizeof (target_spot_rid));
+    TEST_ASSERT_SUCCESS_ERRNO (zlink_get_routing_id (target_spot, &target_spot_rid));
+
+    reply_probe_t timed_out_probe;
+    zlink_msg_t timeout_payload;
+    init_text_part (&timeout_payload, "timeout-question");
+    TEST_ASSERT_SUCCESS_ERRNO (zlink_spot_route_bridge_request (
+      source_bridge, "mesh", &target_node_rid, &target_spot_rid, &timeout_payload, 1,
+      &capture_reply, &timed_out_probe, ZLINK_SEND_FLAGS_NONE, 20));
+
+    bool handled = false;
+    zlink_routing_id_t source_node_rid;
+    zlink_msg_t routed_parts[3];
+    const uint64_t channel_request_seq =
+      recv_router_request_multipart (target_router, &source_node_rid, routed_parts, 3);
+    TEST_ASSERT_SUCCESS_ERRNO (zlink_spot_route_bridge_handle_router_received (
+      target_bridge, "mesh", &source_node_rid, channel_request_seq, routed_parts, 3, &handled));
+    TEST_ASSERT_TRUE (handled);
+
+    const zlink_routing_id_t *routed_source_node_rid = NULL;
+    const zlink_routing_id_t *routed_source_spot_rid = NULL;
+    uint64_t routed_request_seq = 0;
+    zlink_msg_t routed;
+    zlink_msg_init (&routed);
+    zlink_part_flag_t routed_more = ZLINK_PART_FINAL;
+    TEST_ASSERT_EQUAL_INT (ZLINK_RECV_OK,
+                           zlink_spot_recv_part (target_spot, &routed_source_node_rid,
+                                                 &routed_source_spot_rid, &routed_request_seq,
+                                                 &routed, &routed_more,
+                                                 ZLINK_RECV_FLAGS_DONTWAIT));
+    TEST_ASSERT_NOT_EQUAL (0, routed_request_seq);
+    zlink_msg_close (&routed);
+
+    TEST_ASSERT_TRUE (wait_for_reply_with_bridge_drain (&timed_out_probe, source_bridge));
+    TEST_ASSERT_EQUAL_INT (ZLINK_REQUEST_TIMED_OUT, timed_out_probe.result);
+
+    zlink_msg_t late_reply;
+    init_text_part (&late_reply, "late-answer");
+    TEST_ASSERT_EQUAL_INT (
+      ZLINK_SUBMIT_OK,
+      zlink_spot_reply_router_part (target_spot, routed_source_node_rid, routed_request_seq,
+                                    &late_reply, ZLINK_PART_FINAL));
+    for (int attempt = 0; attempt < 20; ++attempt) {
+        (void) zlink_spot_route_bridge_drain (target_bridge);
+        (void) zlink_spot_route_bridge_drain (source_bridge);
+        std::this_thread::sleep_for (std::chrono::milliseconds (1));
+    }
+
+    reply_probe_t fresh_probe;
+    zlink_msg_t fresh_payload;
+    init_text_part (&fresh_payload, "fresh-question");
+    TEST_ASSERT_SUCCESS_ERRNO (zlink_spot_route_bridge_request (
+      source_bridge, "mesh", &target_node_rid, &target_spot_rid, &fresh_payload, 1,
+      &capture_reply, &fresh_probe, ZLINK_SEND_FLAGS_NONE, 1000));
+
+    zlink_routing_id_t fresh_source_node_rid;
+    zlink_msg_t fresh_routed_parts[3];
+    const uint64_t fresh_channel_request_seq =
+      recv_router_request_multipart (target_router, &fresh_source_node_rid, fresh_routed_parts, 3);
+    handled = false;
+    TEST_ASSERT_SUCCESS_ERRNO (zlink_spot_route_bridge_handle_router_received (
+      target_bridge, "mesh", &fresh_source_node_rid, fresh_channel_request_seq,
+      fresh_routed_parts, 3, &handled));
+    TEST_ASSERT_TRUE (handled);
+
+    routed_source_node_rid = NULL;
+    routed_source_spot_rid = NULL;
+    routed_request_seq = 0;
+    zlink_msg_init (&routed);
+    routed_more = ZLINK_PART_FINAL;
+    TEST_ASSERT_EQUAL_INT (ZLINK_RECV_OK,
+                           zlink_spot_recv_part (target_spot, &routed_source_node_rid,
+                                                 &routed_source_spot_rid, &routed_request_seq,
+                                                 &routed, &routed_more,
+                                                 ZLINK_RECV_FLAGS_DONTWAIT));
+    TEST_ASSERT_NOT_EQUAL (0, routed_request_seq);
+    zlink_msg_close (&routed);
+
+    zlink_msg_t fresh_reply;
+    init_text_part (&fresh_reply, "fresh-answer");
+    TEST_ASSERT_EQUAL_INT (
+      ZLINK_SUBMIT_OK,
+      zlink_spot_reply_router_part (target_spot, routed_source_node_rid, routed_request_seq,
+                                    &fresh_reply, ZLINK_PART_FINAL));
+    {
+        const std::chrono::steady_clock::time_point deadline =
+          std::chrono::steady_clock::now () + std::chrono::seconds (3);
+        while (std::chrono::steady_clock::now () < deadline) {
+            {
+                std::unique_lock<std::mutex> lock (fresh_probe.mutex);
+                if (fresh_probe.cv.wait_for (lock, std::chrono::milliseconds (10),
+                                             [&fresh_probe] () { return fresh_probe.done; }))
+                    break;
+            }
+            (void) zlink_spot_route_bridge_drain (target_bridge);
+            (void) zlink_spot_route_bridge_drain (source_bridge);
+        }
+    }
+    TEST_ASSERT_TRUE (fresh_probe.done);
+    TEST_ASSERT_EQUAL_INT (ZLINK_REQUEST_OK, fresh_probe.result);
+    TEST_ASSERT_EQUAL_STRING ("fresh-answer", fresh_probe.payload.c_str ());
+
+    TEST_ASSERT_SUCCESS_ERRNO (zlink_spot_route_bridge_close (source_bridge));
+    TEST_ASSERT_SUCCESS_ERRNO (zlink_spot_route_bridge_close (target_bridge));
+    TEST_ASSERT_SUCCESS_ERRNO (zlink_close (source_router));
+    TEST_ASSERT_SUCCESS_ERRNO (zlink_close (target_router));
+    TEST_ASSERT_SUCCESS_ERRNO (zlink_spot_destroy (&target_spot));
+    TEST_ASSERT_SUCCESS_ERRNO (zlink_spot_node_destroy (&source_node));
+    TEST_ASSERT_SUCCESS_ERRNO (zlink_spot_node_destroy (&target_node));
     TEST_ASSERT_SUCCESS_ERRNO (zlink_ctx_term (ctx));
 }
 
@@ -917,6 +1249,8 @@ int main ()
     RUN_TEST (test_bridge_request_to_missing_spot_replies_not_found);
     RUN_TEST (test_handle_received_rejects_malformed_and_request_relay);
     RUN_TEST (test_handle_router_received_request_replies_to_channel_peer);
+    RUN_TEST (test_bridge_request_roundtrips_through_target_bridge_spot);
+    RUN_TEST (test_bridge_request_timeout_ignores_late_spot_reply_and_allows_next_request);
     RUN_TEST (test_bridge_close_cancels_pending_router_reply);
     return UNITY_END ();
 }

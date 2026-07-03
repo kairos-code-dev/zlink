@@ -150,6 +150,7 @@ final class NativeSpotRouteBridge implements SpotRouteBridge {
             return;
         }
         handle = MemorySegment.NULL;
+        RequestProgressPump.stopSpotRouteBridgeProgress(current);
         endpointHandles.clear();
         int rc = Native.spotRouteBridgeClose(current);
         if (rc != 0) {

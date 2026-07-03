@@ -58,7 +58,7 @@ internal sealed class Actor : IActor
     public ActorReceived? Recv(RecvFlags flags = RecvFlags.None)
     {
         EnsureNotDisposed();
-        return ActorInterop.RecvActor(_node.Handle, _ref, flags);
+        return ActorInterop.RecvActor(_node, _ref, flags);
     }
 
     /// <summary>

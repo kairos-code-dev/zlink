@@ -12,6 +12,7 @@ import java.lang.invoke.MethodType;
 import java.time.Duration;
 import java.util.List;
 import java.util.Objects;
+import java.util.Set;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.ConcurrentMap;
@@ -56,6 +57,7 @@ final class SpotRequestPlane {
     }
 
     private final NativeSpot spot;
+    private final Set<Long> ownedRequests = ConcurrentHashMap.newKeySet();
 
     SpotRequestPlane(NativeSpot spot) {
         this.spot = spot;
@@ -68,6 +70,8 @@ final class SpotRequestPlane {
         long requestId = NEXT_REQUEST_ID.getAndIncrement();
         CompletableFuture<Received> future = registerPending(requestId,
             timeoutMs);
+        ownedRequests.add(requestId);
+        future.whenComplete((ignored, error) -> ownedRequests.remove(requestId));
         RequestProgressPump.trackSpotRequest(future, spot.handle(),
             "zlink-spot-request-progress");
         try {
@@ -163,6 +167,17 @@ final class SpotRequestPlane {
             }
         } finally {
             NativeMessage.multipartClose(parts, partCount);
+        }
+    }
+
+    void close() {
+        for (Long requestId : List.copyOf(ownedRequests)) {
+            CompletableFuture<Received> future = PENDING.remove(requestId);
+            ownedRequests.remove(requestId);
+            if (future != null) {
+                future.completeExceptionally(
+                    new ZlinkRequestException(RequestResult.TERMINATED));
+            }
         }
     }
 }

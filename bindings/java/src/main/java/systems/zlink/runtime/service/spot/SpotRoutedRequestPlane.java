@@ -13,6 +13,7 @@ import java.lang.invoke.MethodType;
 import java.time.Duration;
 import java.util.List;
 import java.util.Objects;
+import java.util.Set;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.ConcurrentMap;
@@ -45,6 +46,8 @@ final class SpotRoutedRequestPlane {
       new ConcurrentHashMap<>();
 
     private final Spot spot;
+    private final Set<Long> ownedRequests = ConcurrentHashMap.newKeySet();
+    private final Set<Long> ownedCallbacks = ConcurrentHashMap.newKeySet();
 
     SpotRoutedRequestPlane(Spot spot) {
         this.spot = Objects.requireNonNull(spot, "spot");
@@ -56,6 +59,8 @@ final class SpotRoutedRequestPlane {
         long timeoutMs = RequestReplySupport.timeoutMillis(timeout);
         long requestId = NEXT_REQUEST_ID.getAndIncrement();
         CompletableFuture<Received> future = registerPending(requestId, timeoutMs);
+        ownedRequests.add(requestId);
+        future.whenComplete((ignored, error) -> ownedRequests.remove(requestId));
         RequestProgressPump.trackSpotRequest(future, handle(),
             "zlink-spot-routed-request-progress");
         try (Arena arena = Arena.ofConfined()) {
@@ -81,6 +86,8 @@ final class SpotRoutedRequestPlane {
         long timeoutMs = RequestReplySupport.timeoutMillis(timeout);
         long requestId = NEXT_REQUEST_ID.getAndIncrement();
         PendingCallback pending = registerPendingCallback(requestId, callback);
+        ownedCallbacks.add(requestId);
+        pending.progress.whenComplete((ignored, error) -> ownedCallbacks.remove(requestId));
         RequestProgressPump.trackSpotRequest(pending.progress, handle(),
             "zlink-spot-routed-request-progress");
         try (Arena arena = Arena.ofConfined()) {
@@ -167,6 +174,24 @@ final class SpotRoutedRequestPlane {
                 int.class, MemorySegment.class, long.class, MemorySegment.class));
         } catch (ReflectiveOperationException ex) {
             throw new ExceptionInInitializerError(ex);
+        }
+    }
+
+    void close() {
+        for (Long requestId : List.copyOf(ownedRequests)) {
+            CompletableFuture<Received> future = PENDING.remove(requestId);
+            ownedRequests.remove(requestId);
+            if (future != null) {
+                future.completeExceptionally(
+                    new ZlinkRequestException(RequestResult.TERMINATED));
+            }
+        }
+        for (Long requestId : List.copyOf(ownedCallbacks)) {
+            PendingCallback pending = PENDING_CALLBACKS.remove(requestId);
+            ownedCallbacks.remove(requestId);
+            if (pending != null) {
+                pending.complete(RequestResult.TERMINATED, List.of(), null);
+            }
         }
     }
 

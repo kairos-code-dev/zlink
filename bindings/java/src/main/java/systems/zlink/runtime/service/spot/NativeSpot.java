@@ -34,6 +34,7 @@ import systems.zlink.runtime.nativeapi.InternalAccess;
 import systems.zlink.runtime.nativeapi.NativeLayouts;
 import systems.zlink.runtime.nativeapi.NativeListSnapshots;
 import systems.zlink.runtime.nativeapi.NativeMessage;
+import systems.zlink.runtime.nativeapi.RequestProgressPump;
 import systems.zlink.runtime.nativeapi.RequestReplySupport;
 import java.lang.foreign.Arena;
 import java.lang.foreign.MemorySegment;
@@ -700,15 +701,17 @@ public final class NativeSpot implements Spot {
         if (currentHandle == null || currentHandle.address() == 0) {
             return;
         }
+        routedSupport.close();
+        requestPlane.close();
+        subscriptionSupport.close();
+        sendReadySupport.close();
+        sendPlane.close();
+        RequestProgressPump.stopSpotProgress(currentHandle);
         int rc = Native.spotDestroy(currentHandle);
         if (rc != 0) {
             throw ZlinkException.fromLastError("zlink_spot_destroy");
         }
         handle = MemorySegment.NULL;
-        sendPlane.close();
-        routedSupport.close();
-        subscriptionSupport.close();
-        sendReadySupport.close();
         if (ownerNode != null) {
             InternalAccess.spotNodeReleaseSpot(ownerNode, this);
         }

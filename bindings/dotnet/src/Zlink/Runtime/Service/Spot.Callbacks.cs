@@ -84,7 +84,7 @@ internal sealed partial class Spot
         var actorMessages = eventKind == SpotDispatchEvent.ActorReadable
                             && subjectKind == SpotDispatchSubjectKind.Actor
                             && info->Subject != IntPtr.Zero
-            ? ActorInterop.DrainActors(_node.Handle, info->Subject)
+            ? ActorInterop.DrainActors(_node, info->Subject)
             : null;
         var timer = eventKind == SpotDispatchEvent.TimerReadable
                     && subjectKind == SpotDispatchSubjectKind.Timer

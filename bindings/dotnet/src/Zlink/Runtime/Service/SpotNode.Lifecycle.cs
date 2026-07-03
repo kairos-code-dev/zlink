@@ -97,6 +97,8 @@ internal sealed partial class SpotNode : ISpotNode
             _channelDealers.Clear();
         }
 
+        ClearPendingActorMessages();
+
         _sendReadyHandler = null;
         _sendReadyHandlerContext = null;
         _sendReadyHandlerNative = null;

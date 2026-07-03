@@ -80,8 +80,11 @@ internal sealed class ZLinkMonitoringHostedService(
             {
                 await _pollingTask.WaitAsync(cancellationToken);
             }
-            catch (OperationCanceledException)
+            catch (Exception)
             {
+                // Whatever ended the polling task, the monitors must be
+                // disposed below: a socket monitor left open keeps the
+                // native context from terminating.
             }
 
         await DisposeMonitorsAsync();

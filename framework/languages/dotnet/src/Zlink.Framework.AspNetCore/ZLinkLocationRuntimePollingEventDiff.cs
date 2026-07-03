@@ -8,6 +8,29 @@ namespace Zlink.Framework.AspNetCore;
 internal sealed class ZLinkLocationRuntimePollingEventDiff(string sourceName)
 {
     private ZLinkLocationRuntimePollingSnapshot? _previous;
+    private bool _captureFailed;
+
+    /// <summary>
+    /// A store outage keeps the last projection (fail-static) and surfaces
+    /// as a single StoreUnavailable event; the next successful capture
+    /// reports StoreRecovered through the regular health transition.
+    /// </summary>
+    public void DispatchCaptureFailure(
+        DateTimeOffset timestamp,
+        Action<ZLinkLocationRuntimeEvent> dispatch)
+    {
+        var wasHealthy = !_captureFailed && (_previous?.Status.StoreHealthy ?? true);
+        _captureFailed = true;
+        if (!wasHealthy) return;
+
+        dispatch(new ZLinkLocationRuntimeEvent(
+            sourceName,
+            timestamp,
+            ZLinkLocationRuntimeEventKind.StoreUnavailable,
+            _previous?.Status,
+            null,
+            null));
+    }
 
     public void DispatchChanges(
         ZLinkLocationRuntimePollingSnapshot current,
@@ -25,7 +48,8 @@ internal sealed class ZLinkLocationRuntimePollingEventDiff(string sourceName)
 
         // A healthy store is the baseline: the first snapshot only reports
         // an outage, and later snapshots report health transitions.
-        var previousHealthy = _previous?.Status.StoreHealthy ?? true;
+        var previousHealthy = !_captureFailed && (_previous?.Status.StoreHealthy ?? true);
+        _captureFailed = false;
         if (previousHealthy && !current.Status.StoreHealthy)
             dispatch(new ZLinkLocationRuntimeEvent(
                 sourceName,

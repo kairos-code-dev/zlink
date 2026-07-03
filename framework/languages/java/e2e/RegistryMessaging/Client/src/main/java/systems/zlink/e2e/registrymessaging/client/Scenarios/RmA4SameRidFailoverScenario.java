@@ -13,22 +13,25 @@ public final class RmA4SameRidFailoverScenario {
         try (DynamicClusterLauncher cluster = DynamicClusterLauncher.start("rm-a4")) {
             DynamicClusterLauncher.DynamicProvider providerV1 =
                 cluster.startProvider("api-a-v1", "api-a", "api-a-v1", "");
-            try (ZLinkHttpClient requester = ZLinkHttpClient.create(providerV1.httpUrl()).build()) {
-                Contracts.ProfileRes first = requester.post("/profile/request")
-                    .body(new Contracts.ProfileReq("failover-before"))
-                    .fetch(Contracts.ProfileRes.class);
+            DynamicClusterLauncher.DynamicConsumer consumer = cluster.startConsumer("consumer");
+            try (ZLinkHttpClient requester = ZLinkHttpClient.create(consumer.httpUrl()).build()) {
+                cluster.waitPeerEndpoint(requester, providerV1.channelEndpoint());
+                Contracts.ProfileRes first = ScenarioAssert.requestProfileEventually(requester, "failover-before");
                 ScenarioAssert.that("api-a".equals(first.providerRid()) && "api-a-v1".equals(first.instanceId()),
                     "RM-A4 initial provider mismatch");
             }
 
             cluster.stop(providerV1);
+            try (ZLinkHttpClient requester = ZLinkHttpClient.create(consumer.httpUrl()).build()) {
+                cluster.waitPeerEndpointAbsent(requester, providerV1.channelEndpoint());
+            }
             DynamicClusterLauncher.DynamicProvider providerV2 =
                 cluster.startProvider("api-a-v2", "api-a", "api-a-v2", "");
-            try (ZLinkHttpClient requester = ZLinkHttpClient.create(providerV2.httpUrl()).build()) {
+            try (ZLinkHttpClient requester = ZLinkHttpClient.create(consumer.httpUrl()).build()) {
+                cluster.waitPeerEndpoint(requester, providerV2.channelEndpoint());
                 for (int index = 0; index < 20; index++) {
-                    Contracts.ProfileRes reply = requester.post("/profile/request")
-                        .body(new Contracts.ProfileReq("failover-after-" + index))
-                        .fetch(Contracts.ProfileRes.class);
+                    Contracts.ProfileRes reply =
+                        ScenarioAssert.requestProfileEventually(requester, "failover-after-" + index);
                     ScenarioAssert.that("api-a".equals(reply.providerRid()) && "api-a-v2".equals(reply.instanceId()),
                         "RM-A4 did not switch to replacement provider");
                 }

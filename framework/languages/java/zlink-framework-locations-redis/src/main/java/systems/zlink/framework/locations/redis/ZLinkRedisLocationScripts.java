@@ -1,0 +1,131 @@
+package systems.zlink.framework.locations.redis;
+
+final class ZLinkRedisLocationScripts {
+    private ZLinkRedisLocationScripts() {
+    }
+
+    private static final String PROLOGUE = """
+        if redis.replicate_commands then redis.replicate_commands() end
+        local time = redis.call('TIME')
+        local nowMs = tonumber(time[1]) * 1000 + math.floor(tonumber(time[2]) / 1000)
+        """;
+
+    static final String WRITE = PROLOGUE + """
+
+        local intent = ARGV[1]
+        local owner = ARGV[2]
+        local currentOwner = redis.call('HGET', KEYS[1], 'owner')
+
+        local function bumpStamps()
+            redis.call('INCR', ARGV[8])
+            if ARGV[9] ~= '' then redis.call('INCR', ARGV[9]) end
+        end
+
+        local function storeRow(gen)
+            redis.call('HSET', KEYS[1],
+                'owner', owner, 'gen', gen, 'json', ARGV[4], 'updatedAtMs', nowMs)
+            if ARGV[10] == '1' then
+                redis.call('HSET', KEYS[1], 'mesh', ARGV[11])
+            end
+            redis.call('SADD', KEYS[3], ARGV[5])
+            redis.call('SADD', ARGV[7] .. owner, ARGV[5])
+            if currentOwner and currentOwner ~= owner then
+                redis.call('SREM', ARGV[7] .. currentOwner, ARGV[5])
+            end
+            bumpStamps()
+        end
+
+        if intent == 'new' then
+            if currentOwner and redis.call('EXISTS', ARGV[6] .. currentOwner) == 1 then
+                return {'conflict', 0, nowMs}
+            end
+            local gen = redis.call('INCR', KEYS[2])
+            storeRow(gen)
+            return {'stored', gen, nowMs}
+        end
+
+        if intent == 'takeover' then
+            local gen = redis.call('INCR', KEYS[2])
+            storeRow(gen)
+            return {'stored', gen, nowMs}
+        end
+
+        if currentOwner and currentOwner == owner
+            and tonumber(redis.call('HGET', KEYS[1], 'gen')) == tonumber(ARGV[3]) then
+            local gen = tonumber(ARGV[3])
+            redis.call('HSET', KEYS[1], 'json', ARGV[4], 'updatedAtMs', nowMs)
+            bumpStamps()
+            return {'stored', gen, nowMs}
+        end
+        return {'stale', 0, nowMs}
+        """;
+
+    static final String REMOVE = PROLOGUE + """
+
+        local currentOwner = redis.call('HGET', KEYS[1], 'owner')
+        if not currentOwner
+            or currentOwner ~= ARGV[1]
+            or tonumber(redis.call('HGET', KEYS[1], 'gen')) ~= tonumber(ARGV[2]) then
+            return {'stale', 0, nowMs}
+        end
+
+        redis.call('DEL', KEYS[1])
+        redis.call('SREM', KEYS[2], ARGV[3])
+        redis.call('SREM', ARGV[4] .. currentOwner, ARGV[3])
+        redis.call('INCR', ARGV[5])
+        if ARGV[6] ~= '' then redis.call('INCR', ARGV[6]) end
+        return {'stored', tonumber(ARGV[2]), nowMs}
+        """;
+
+    static final String REMOVE_BY_OWNER = """
+        if redis.replicate_commands then redis.replicate_commands() end
+        local rowKeys = redis.call('SMEMBERS', KEYS[1])
+        local removed = 0
+        for _, rowKey in ipairs(rowKeys) do
+            local rowHash = ARGV[1] .. rowKey
+            local mesh = redis.call('HGET', rowHash, 'mesh')
+            if redis.call('DEL', rowHash) == 1 then
+                removed = removed + 1
+                redis.call('SREM', KEYS[2], rowKey)
+                if mesh then
+                    redis.call('INCR', ARGV[2] .. ':' .. mesh)
+                end
+                redis.call('INCR', ARGV[2])
+            end
+        end
+        redis.call('DEL', KEYS[1])
+        return removed
+        """;
+
+    static final String RENEW_LEASE = PROLOGUE + """
+
+        redis.call('SET', KEYS[1], ARGV[2] .. '|' .. nowMs, 'PX', ARGV[3])
+        redis.call('SADD', KEYS[2], ARGV[1])
+        return nowMs
+        """;
+
+    static final String REMOVE_LEASE = PROLOGUE + """
+
+        redis.call('DEL', KEYS[1])
+        redis.call('SREM', KEYS[2], ARGV[1])
+        return nowMs
+        """;
+
+    static final String LIST_LEASES = PROLOGUE + """
+
+        local owners = redis.call('SMEMBERS', KEYS[1])
+        local out = {}
+        for _, ownerId in ipairs(owners) do
+            local leaseKey = ARGV[1] .. ownerId
+            local pttl = redis.call('PTTL', leaseKey)
+            if pttl < 0 then
+                redis.call('SREM', KEYS[1], ownerId)
+            else
+                out[#out + 1] = ownerId
+                out[#out + 1] = redis.call('GET', leaseKey)
+                out[#out + 1] = pttl
+            end
+        end
+        return {nowMs, out}
+        """;
+}

@@ -200,7 +200,7 @@ class BingoRoomSpot(
             return StopObservingBingoEventsRes(false, context.nodeRid().toString())
         }
         observers.remove(actor.actorId())
-        context.leaveActor(actor).await()
+        context.leaveActor(actor).exceptionally { null }
         return StopObservingBingoEventsRes(true, context.nodeRid().toString())
     }
 

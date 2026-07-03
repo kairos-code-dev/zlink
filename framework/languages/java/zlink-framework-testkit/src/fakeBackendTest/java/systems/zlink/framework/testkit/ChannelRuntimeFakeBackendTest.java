@@ -105,40 +105,6 @@ final class ChannelRuntimeFakeBackendTest {
             backendFactory.calls());
     }
 
-    @Test
-    void discoveryClientServerAttachesDealerAndRouterToRegistryDiscovery() {
-        DefaultZLinkFrameworkOptions options = new DefaultZLinkFrameworkOptions();
-        { var discovery = options.useDiscovery(); discovery.addRegistryEndpoint("tcp://127.0.0.1:5552"); };
-        { var channel = options.addClientServerChannel("profile").enableServer("tcp://127.0.0.1:7100");
-            channel.enableClient();
-            channel.addRequestHandler(
-                ChannelMessagingFakeHandler.class,
-                String.class,
-                String.class,
-                "Question"); };
-        FakeZLinkBackendAdapterFactory backendFactory = new FakeZLinkBackendAdapterFactory();
-
-        try (ZLinkFrameworkRuntime ignored = RuntimeTestSupport.startFramework(options, backendFactory)) {
-        }
-
-        assertEquals(
-            List.of(
-                "factory.channel",
-                "create.context",
-                "create.discovery.profile",
-                "discovery.profile.connectRegistry.tcp://127.0.0.1:5552",
-                "create.dealer",
-                "dealer.setChannelName.profile",
-                "dealer.attachDiscovery.discovery.profile",
-                "create.router",
-                "router.setChannelName.profile",
-                "router.attachDiscovery.discovery.profile",
-                "router.bind.tcp://127.0.0.1:7100",
-                "close.discovery.profile",
-                "close.context"),
-            backendFactory.calls());
-    }
-
     public static final class ChannelMessagingFakeHandler
         implements ZLinkRequestHandler<String, String> {
         @Override

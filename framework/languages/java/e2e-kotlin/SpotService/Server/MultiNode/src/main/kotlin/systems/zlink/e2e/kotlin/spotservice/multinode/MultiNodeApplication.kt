@@ -25,6 +25,8 @@ import systems.zlink.e2e.kotlin.spotservice.Contracts
 import systems.zlink.e2e.kotlin.spotservice.Env
 import systems.zlink.framework.channels.ZLinkRouteClient
 import systems.zlink.framework.configuration.ZLinkMessageFlowLogMode
+import systems.zlink.framework.locations.redis.ZLinkRedisLocationOptions
+import systems.zlink.framework.locations.redis.ZLinkRedisLocationStore
 import systems.zlink.framework.spots.ZLinkSpotManager
 import systems.zlink.framework.spots.ZLinkSpot
 import systems.zlink.framework.spring.EnableZLinkFramework
@@ -67,7 +69,6 @@ class MultiNodeApplication {
                 .messageFlow(ZLinkMessageFlowLogMode.KEY_TRANSITIONS)
                 .traceLogFile("${options.logDir}/${options.rid}-flow.log")
                 .traceLabel(options.rid)
-            framework.useDiscovery().addRegistryEndpoint(requireOption(options.registryRouterEndpoint, "--registry-router-endpoint"))
             framework.addRouteMesh(node.routeChannel)
                 .enableServer(requireOption(node.routeEndpoint(options), node.routeEndpointOption))
                 .enableClient(requireOption(node.routeEndpoint(options), node.routeEndpointOption))
@@ -77,6 +78,14 @@ class MultiNodeApplication {
                 .setRoutingId(RoutingId.from(node.rid))
                 .addSpotFactory(node.spotClass)
         }
+
+    @Bean
+    fun locationStore(): ZLinkRedisLocationStore =
+        ZLinkRedisLocationStore(
+            ZLinkRedisLocationOptions()
+                .setConnectionString(Env.get("ZLINK_KOTLIN_E2E_REDIS_LOCATION_ENDPOINT"))
+                .setKeyPrefix(Env.get("ZLINK_KOTLIN_E2E_LOCATION_KEY_PREFIX"))
+        )
 
     companion object {
         @JvmStatic
@@ -265,7 +274,6 @@ data class MultiNodeOptions(
     val httpUrl: String,
     val logDir: String,
     val evidenceFile: String,
-    val registryRouterEndpoint: String,
     val multiRouteAEndpoint: String,
     val multiRouteBEndpoint: String,
     val multiSpotRouterAEndpoint: String,
@@ -277,7 +285,6 @@ data class MultiNodeOptions(
             "zlink.e2e.multinode.http-url" to httpUrl,
             "zlink.e2e.multinode.log-dir" to logDir,
             "zlink.e2e.multinode.evidence-file" to evidenceFile,
-            "zlink.e2e.multinode.registry-router-endpoint" to registryRouterEndpoint,
             "zlink.e2e.multinode.multi-route-a-endpoint" to multiRouteAEndpoint,
             "zlink.e2e.multinode.multi-route-b-endpoint" to multiRouteBEndpoint,
             "zlink.e2e.multinode.multi-spot-router-a-endpoint" to multiSpotRouterAEndpoint,
@@ -303,7 +310,6 @@ data class MultiNodeOptions(
                 httpUrl = required(values, "http-url"),
                 logDir = values["log-dir"] ?: Env.get("ZLINK_KOTLIN_E2E_LOG_DIR", "logs"),
                 evidenceFile = values["evidence-file"].orEmpty(),
-                registryRouterEndpoint = values["registry-router-endpoint"] ?: Env.get("ZLINK_KOTLIN_E2E_REGISTRY_ROUTER"),
                 multiRouteAEndpoint = values["multi-route-a-endpoint"].orEmpty(),
                 multiRouteBEndpoint = values["multi-route-b-endpoint"].orEmpty(),
                 multiSpotRouterAEndpoint = values["multi-spot-router-a-endpoint"].orEmpty(),
@@ -317,7 +323,6 @@ data class MultiNodeOptions(
                 httpUrl = environment.getProperty("zlink.e2e.multinode.http-url", ""),
                 logDir = environment.getProperty("zlink.e2e.multinode.log-dir", ""),
                 evidenceFile = environment.getProperty("zlink.e2e.multinode.evidence-file", ""),
-                registryRouterEndpoint = environment.getProperty("zlink.e2e.multinode.registry-router-endpoint", ""),
                 multiRouteAEndpoint = environment.getProperty("zlink.e2e.multinode.multi-route-a-endpoint", ""),
                 multiRouteBEndpoint = environment.getProperty("zlink.e2e.multinode.multi-route-b-endpoint", ""),
                 multiSpotRouterAEndpoint = environment.getProperty("zlink.e2e.multinode.multi-spot-router-a-endpoint", ""),

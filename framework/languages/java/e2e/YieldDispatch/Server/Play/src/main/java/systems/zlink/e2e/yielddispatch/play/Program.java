@@ -20,6 +20,8 @@ import systems.zlink.e2e.yielddispatch.shared.YieldProbeSpot;
 import systems.zlink.framework.configuration.ZLinkMessageFlowLogMode;
 import systems.zlink.framework.configuration.RouteMeshChannelBuilder;
 import systems.zlink.framework.configuration.ZLinkSpotMeshBuilder;
+import systems.zlink.framework.locations.redis.ZLinkRedisLocationOptions;
+import systems.zlink.framework.locations.redis.ZLinkRedisLocationStore;
 import systems.zlink.framework.spring.EnableZLinkFramework;
 import systems.zlink.framework.spring.ZLinkFrameworkConfigurer;
 import systems.zlink.framework.spots.ZLinkSpotManager;
@@ -59,7 +61,6 @@ public final class Program {
         return options -> {
             String logDir = Env.get("ZLINK_JAVA_E2E_LOG_DIR", "logs");
             String nodeRid = nodeRid();
-            options.useDiscovery().addRegistryEndpoint(Env.get("ZLINK_JAVA_E2E_REGISTRY_ROUTER"));
             options.configureDispatch()
                 .messageFlow(ZLinkMessageFlowLogMode.KEY_TRANSITIONS)
                 .traceLogFile(logDir + "/" + nodeRid + "-flow.log")
@@ -81,8 +82,6 @@ public final class Program {
                 Contracts.EnsureSpotRes.class);
             options.addClientServerChannel(Contracts.DELAY_CHANNEL)
                 .enableClient(Env.get("ZLINK_JAVA_E2E_DELAY_ENDPOINT"));
-            options.useRegistrySpotRemoteAddresses(Contracts.SPOT_MESH)
-                .setRouterChannelId(Contracts.ROUTE_CHANNEL);
             ZLinkSpotMeshBuilder spot = options.addSpotMesh(Contracts.SPOT_MESH);
             spot.enableRouter(Env.get("ZLINK_JAVA_E2E_SPOT_ENDPOINT"))
                 .setRoutingId(RoutingId.from(nodeRid));
@@ -93,13 +92,25 @@ public final class Program {
     }
 
     @Bean
+    ZLinkRedisLocationStore locationStore() {
+        return new ZLinkRedisLocationStore(new ZLinkRedisLocationOptions()
+            .setConnectionString(Env.get("ZLINK_JAVA_E2E_REDIS_LOCATION_ENDPOINT"))
+            .setKeyPrefix(Env.get("ZLINK_JAVA_E2E_LOCATION_KEY_PREFIX")));
+    }
+
+    @Bean
     ApplicationRunner createProbeSpot(ZLinkSpotManager spots) {
-        return ignored -> spots.getOrCreate(
-                YieldProbeSpot.class,
-                RoutingId.from(Contracts.TARGET_SPOT),
-                "bootstrap")
-            .toCompletableFuture()
-            .join();
+        return ignored -> {
+            if (!Contracts.PLAY_NODE_A.equals(nodeRid())) {
+                return;
+            }
+            spots.getOrCreate(
+                    YieldProbeSpot.class,
+                    RoutingId.from(Contracts.TARGET_SPOT),
+                    "bootstrap")
+                .toCompletableFuture()
+                .join();
+        };
     }
 
     @Bean

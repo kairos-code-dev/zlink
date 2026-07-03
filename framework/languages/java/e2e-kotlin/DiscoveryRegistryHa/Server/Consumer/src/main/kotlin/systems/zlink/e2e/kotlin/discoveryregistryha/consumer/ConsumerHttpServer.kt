@@ -11,9 +11,14 @@ import org.springframework.context.SmartLifecycle
 import systems.zlink.e2e.kotlin.discoveryregistryha.Contracts
 import systems.zlink.e2e.kotlin.discoveryregistryha.consumer.Configuration.ConsumerOptions
 import systems.zlink.framework.channels.ZLinkClient
+import systems.zlink.framework.locations.ZLinkLocationAutoConnectType
+import systems.zlink.framework.locations.ZLinkLocationRole
+import systems.zlink.framework.locations.ZLinkPeerLocationFilter
+import systems.zlink.framework.runtime.host.ZLinkFrameworkLifecycle
 
 class ConsumerHttpServer(
     private val client: ZLinkClient,
+    private val lifecycle: ZLinkFrameworkLifecycle,
     private val json: ObjectMapper,
     private val options: ConsumerOptions,
 ) : SmartLifecycle {
@@ -31,6 +36,16 @@ class ConsumerHttpServer(
         }
         httpServer.createContext("/profile/request/wait") { exchange ->
             handleRequest(exchange, waitForRoute = true)
+        }
+        httpServer.createContext("/locations/status") { exchange ->
+            write(exchange, json.writeValueAsString(status()))
+        }
+        httpServer.createContext("/locations/peers") { exchange ->
+            write(exchange, json.writeValueAsString(peers()))
+        }
+        httpServer.createContext("/shutdown") { exchange ->
+            write(exchange, """{"status":"stopping"}""")
+            Thread { stop() }.start()
         }
         httpServer.start()
         server = httpServer
@@ -74,6 +89,45 @@ class ConsumerHttpServer(
         client.requestToChannel(Contracts.CHANNEL, request)
             .timeout(Duration.ofSeconds(3))
             .await(Contracts.WorkRes::class.java)
+
+    private fun peers(): List<Map<String, Any>> =
+        lifecycle.monitoringLocationRuntimeQuery()
+            .listPeersAsync(
+                ZLinkPeerLocationFilter(
+                    ZLinkLocationAutoConnectType.CLIENT_SERVER,
+                    Contracts.CHANNEL,
+                    ZLinkLocationRole.ROUTER,
+                    null,
+                    null,
+                ),
+            )
+            .toCompletableFuture()
+            .join()
+            .map { peer ->
+                mapOf(
+                    "nodeRid" to peer.nodeRid().toString(),
+                    "endpoint" to peer.endpoint(),
+                    "ownerId" to peer.ownerId(),
+                    "role" to peer.role().name,
+                    "meshName" to peer.meshName(),
+                )
+            }
+
+    private fun status(): Map<String, Any> {
+        val status = lifecycle.monitoringLocationRuntimeQuery()
+            .getStatusAsync()
+            .toCompletableFuture()
+            .join()
+        return mapOf(
+            "storeHealthy" to status.storeHealthy(),
+            "watchEnabled" to status.watchEnabled(),
+            "pollingIntervalMillis" to status.pollingInterval().toMillis(),
+            "lastRefreshAt" to (status.lastRefreshAt()?.toString() ?: ""),
+            "lastError" to (status.lastError() ?: ""),
+            "ownerLeaseHealthy" to status.ownerLeaseHealthy(),
+            "ownerLeaseRenewedAt" to (status.ownerLeaseRenewedAt()?.toString() ?: ""),
+        )
+    }
 
     private fun write(exchange: HttpExchange, value: String, status: Int = 200) {
         val body = value.toByteArray(StandardCharsets.UTF_8)

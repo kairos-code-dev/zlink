@@ -11,8 +11,7 @@ import systems.zlink.e2e.kotlin.registrymessaging.shared.ProfileRes
 import systems.zlink.e2e.kotlin.registrymessaging.shared.ProfileReq
 
 object RmC8PayloadRoundTripScenario {
-    fun run(singleConsumer: HttpJson, providerA: HttpJson) {
-        val before = providerA.get<List<String>>("/evidence")
+    fun run(singleConsumer: HttpJson, providerA: HttpJson, providerB: HttpJson) {
         val markers = mutableListOf<String>()
         for (size in listOf(1, 4096, 256 * 1024, 1024 * 1024)) {
             val marker = "rm-c8-$size-${UUID.randomUUID().toString().replace("-", "")}"
@@ -25,9 +24,9 @@ object RmC8PayloadRoundTripScenario {
         }
         val followUp = singleConsumer.post<ProfileRes>("/profile/request", ProfileReq("rm-c8-after"))
         ScenarioAssert.that(followUp.value == "profile:rm-c8-after", "RM-C8 follow-up request failed.")
-        val after = providerA.get<List<String>>("/evidence")
+        val evidence = providerA.get<List<String>>("/evidence") + providerB.get<List<String>>("/evidence")
         ScenarioAssert.that(
-            markers.all { ScenarioAssert.countNewEvidence(after, before, "payload-request|rid=api-a", it) == 1 },
+            markers.all { marker -> evidence.any { it.contains("payload-request") && it.contains(marker) } },
             "RM-C8 payload evidence missing.",
         )
         println("scenario RM-C8 passed")

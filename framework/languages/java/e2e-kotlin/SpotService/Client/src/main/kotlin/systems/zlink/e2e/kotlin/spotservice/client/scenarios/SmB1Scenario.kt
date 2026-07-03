@@ -16,10 +16,10 @@ internal object SmB1Scenario {
         )
 
         context.joinRoom()
-        ensure(context.joined.spotRid == "room-a", "SM-B1 joined spot mismatch")
+        ensure(context.joined.spotRid == "actor-room-a", "SM-B1 joined spot mismatch")
 
         context.requestFirstUserEchoAndCheckUnboundIsolation()
-        ensure(context.userReply1.spotRid == "room-a", "SM-B1 user actor spot mismatch")
+        ensure(context.userReply1.spotRid == "actor-room-a", "SM-B1 user actor spot mismatch")
         ensure(
             context.userReply1.value == "user:user-echo-1",
             "SM-B1 user actor request mismatch: ${context.userReply1.value}"

@@ -4,16 +4,15 @@ import com.fasterxml.jackson.databind.ObjectMapper;
 import org.springframework.boot.WebApplicationType;
 import org.springframework.boot.autoconfigure.SpringBootApplication;
 import org.springframework.boot.builder.SpringApplicationBuilder;
-import org.springframework.beans.factory.ObjectProvider;
 import org.springframework.context.annotation.Bean;
 import systems.zlink.e2e.resiliencelifecycle.consumer.endpoints.ConsumerEndpoints;
 import systems.zlink.e2e.resiliencelifecycle.consumer.scenarios.ConsumerScenario;
 import systems.zlink.e2e.resiliencelifecycle.shared.Contracts;
 import systems.zlink.e2e.resiliencelifecycle.shared.Env;
 import systems.zlink.framework.configuration.ZLinkMessageFlowLogMode;
-import systems.zlink.framework.registry.ZLinkRegistryQueryClient;
-import systems.zlink.framework.runtime.backend.ZLinkBackendAdapterFactory;
-import systems.zlink.framework.runtime.registry.ZLinkRemoteRegistryQueryClient;
+import systems.zlink.framework.locations.redis.ZLinkRedisLocationOptions;
+import systems.zlink.framework.locations.redis.ZLinkRedisLocationStore;
+import systems.zlink.framework.runtime.host.ZLinkFrameworkLifecycle;
 import systems.zlink.framework.spring.EnableZLinkFramework;
 import systems.zlink.framework.spring.ZLinkFrameworkConfigurer;
 
@@ -50,23 +49,22 @@ public final class Program {
                 .messageFlow(ZLinkMessageFlowLogMode.KEY_TRANSITIONS)
                 .traceLogFile(logDir + "/consumer-flow.log")
                 .traceLabel("java-rl-consumer");
-            options.useDiscovery().addRegistryEndpoint(Env.get("ZLINK_JAVA_E2E_REGISTRY_ROUTER"));
             options.addClientServerChannel(Contracts.CHANNEL).enableClient();
         };
     }
 
     @Bean
-    ZLinkRegistryQueryClient registryQueryClient(ZLinkBackendAdapterFactory backendAdapterFactory) {
-        return ZLinkRemoteRegistryQueryClient.connect(
-            Env.get("ZLINK_JAVA_E2E_REGISTRY_ROUTER"),
-            backendAdapterFactory);
+    ZLinkRedisLocationStore locationStore() {
+        return new ZLinkRedisLocationStore(new ZLinkRedisLocationOptions()
+            .setConnectionString(Env.get("ZLINK_JAVA_E2E_REDIS_LOCATION_ENDPOINT"))
+            .setKeyPrefix(Env.get("ZLINK_JAVA_E2E_LOCATION_KEY_PREFIX")));
     }
 
     @Bean
     ConsumerScenario consumerScenario(
         systems.zlink.framework.channels.ZLinkClient client,
-        ObjectProvider<ZLinkRegistryQueryClient> registry,
+        ZLinkFrameworkLifecycle lifecycle,
         ObjectMapper json) {
-        return new ConsumerScenario(client, registry.getIfAvailable(), json);
+        return new ConsumerScenario(client, lifecycle, json);
     }
 }

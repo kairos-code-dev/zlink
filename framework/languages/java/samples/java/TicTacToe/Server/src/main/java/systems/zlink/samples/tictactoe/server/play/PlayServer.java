@@ -8,7 +8,6 @@ import systems.zlink.framework.spring.ZLinkFrameworkConfigurer;
 import systems.zlink.framework.codecs.msgpack.ZLinkMessagePackCodec;
 import systems.zlink.samples.tictactoe.server.configuration.SampleLogging;
 import systems.zlink.samples.tictactoe.server.configuration.SampleNames;
-import systems.zlink.samples.tictactoe.server.configuration.RedisSpotRemoteAddressResolver;
 import systems.zlink.samples.tictactoe.server.configuration.SampleSettings;
 import systems.zlink.samples.tictactoe.server.play.infrastructure.zlink.actors.PlayActorFactory;
 import systems.zlink.samples.tictactoe.server.play.infrastructure.zlink.spots.entryspot.PlayEntrySpot;
@@ -28,6 +27,8 @@ public final class PlayServer {
                 .traceLogFile(SampleLogging.flowLogPath(settings.playSpotNodeRid()))
                 .traceLabel(settings.playSpotNodeRid());
             options.codecs().use(ZLinkMessagePackCodec.defaultCodec());
+            options.configureLocations()
+                .setSpotRouterChannel(SampleNames.SpotMesh, SampleNames.RouteChannel);
             options.addHandlersFromPackageOf(PlayServer.class);
             options.addClientServerChannel(SampleNames.ApiChannel)
                 .enableClient(settings.apiChannelEndpoint());
@@ -38,7 +39,6 @@ public final class PlayServer {
             route.enableServer(settings.routeEndpoint())
                 .enableClient(settings.peerRouteEndpoint())
                 .setRoutingId(RoutingId.from(settings.playSpotNodeRid()));
-            options.addSpotRemoteAddressResolver(RedisSpotRemoteAddressResolver.class);
             ZLinkSpotNodeBuilder node = options.addSpotMesh(SampleNames.SpotMesh);
             node.enableRouter(settings.spotEndpoint())
                 .setRoutingId(RoutingId.from(settings.playSpotNodeRid()));

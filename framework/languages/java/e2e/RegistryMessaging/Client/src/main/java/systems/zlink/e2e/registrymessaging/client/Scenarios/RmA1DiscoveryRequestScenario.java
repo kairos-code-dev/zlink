@@ -11,22 +11,21 @@ public final class RmA1DiscoveryRequestScenario {
     public static void run(
         ZLinkHttpClient providerA,
         ZLinkHttpClient providerB,
-        ZLinkHttpClient registry) {
-        Contracts.ProfileRes reply = providerA.post("/profile/request")
+        ZLinkHttpClient discoveryConsumer) {
+        Contracts.ProfileRes reply = discoveryConsumer.post("/profile/request")
             .body(new Contracts.ProfileReq("rm-a1"))
             .fetch(Contracts.ProfileRes.class);
         ScenarioAssert.that("profile:rm-a1".equals(reply.value()), "RM-A1 reply payload mismatch");
         ScenarioAssert.that(reply.providerRid().equals("api-a") || reply.providerRid().equals("api-b"),
             "RM-A1 provider rid mismatch");
 
-        java.util.Map[] topology = registry.get("/registry/topology")
+        java.util.Map[] peers = discoveryConsumer.get("/locations/peers")
             .fetch(java.util.Map[].class);
-        long readyProviders = java.util.Arrays.stream(topology)
-            .filter(entry -> Contracts.API_CHANNEL.equals(entry.get("channelName")))
-            .filter(entry -> "ROUTER".equals(entry.get("serviceRole")))
-            .filter(entry -> "READY".equals(entry.get("state")))
+        long readyProviders = java.util.Arrays.stream(peers)
+            .filter(entry -> Contracts.API_CHANNEL.equals(entry.get("meshName")))
+            .filter(entry -> "ROUTER".equals(entry.get("role")))
             .count();
-        ScenarioAssert.that(readyProviders >= 2, "RM-A1 expected at least two profile providers in topology");
+        ScenarioAssert.that(readyProviders >= 2, "RM-A1 expected at least two live provider peer rows");
         String[] evidence = ScenarioAssert.concat(
             ScenarioAssert.evidence(providerA),
             ScenarioAssert.evidence(providerB));

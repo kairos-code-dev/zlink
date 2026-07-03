@@ -18,7 +18,13 @@ import systems.zlink.e2e.kotlin.registrymessaging.shared.ProfileMsg
 import systems.zlink.e2e.kotlin.registrymessaging.shared.ProfileRes
 import systems.zlink.e2e.kotlin.registrymessaging.shared.ProfileReq
 import systems.zlink.e2e.kotlin.registrymessaging.shared.RequestFailureRes
+import systems.zlink.e2e.kotlin.registrymessaging.shared.WorkflowReq
+import systems.zlink.e2e.kotlin.registrymessaging.shared.WorkflowRes
 import systems.zlink.framework.channels.ZLinkClient
+import systems.zlink.framework.locations.ZLinkLocationAutoConnectType
+import systems.zlink.framework.locations.ZLinkLocationRole
+import systems.zlink.framework.locations.ZLinkPeerLocationFilter
+import systems.zlink.framework.runtime.host.ZLinkFrameworkLifecycle
 
 class ConsumerEndpoints(
     private val options: ConsumerOptions,
@@ -26,6 +32,7 @@ class ConsumerEndpoints(
 ) {
     private val mapper = jacksonObjectMapper()
     private val channels = context.getBean(ZLinkClient::class.java)
+    private val lifecycle = context.getBean(ZLinkFrameworkLifecycle::class.java)
 
     fun start(): HttpServer {
         val uri = URI.create(options.httpUrl)
@@ -40,6 +47,38 @@ class ConsumerEndpoints(
         }
         server.createContext("/profile/request") { exchange ->
             exchange.writeJson(requestProfile(exchange.readJson(), Duration.ofSeconds(5)))
+        }
+        server.createContext("/workflow/request") { exchange ->
+            val request = exchange.readJson<WorkflowReq>()
+            val reply = channels.requestToChannel(Contracts.WORKFLOW_CHANNEL, request)
+                .packetName(Contracts.WORKFLOW_REQUEST_PACKET)
+                .timeout(Duration.ofSeconds(5))
+                .await(WorkflowRes::class.java)
+            exchange.writeJson(reply)
+        }
+        server.createContext("/locations/peers") { exchange ->
+            val peers = lifecycle.monitoringLocationRuntimeQuery()
+                .listPeersAsync(
+                    ZLinkPeerLocationFilter(
+                        ZLinkLocationAutoConnectType.CLIENT_SERVER,
+                        Contracts.PROFILE_CHANNEL,
+                        ZLinkLocationRole.ROUTER,
+                        null,
+                        null,
+                    ),
+                )
+                .toCompletableFuture()
+                .join()
+                .map {
+                    mapOf(
+                        "meshName" to it.meshName(),
+                        "role" to it.role().name,
+                        "nodeRid" to it.nodeRid().toString(),
+                        "endpoint" to it.endpoint(),
+                        "ownerId" to it.ownerId(),
+                    )
+                }
+            exchange.writeJson(peers)
         }
         server.createContext("/profile/slow-request") { exchange ->
             val request = exchange.readJson<ProfileReq>()

@@ -7,7 +7,8 @@ public record SubscriberOptions(
     String rid,
     Set<String> topics,
     String httpEndpoint,
-    String registryRouterEndpoint,
+    String redisLocationEndpoint,
+    String locationKeyPrefix,
     String logDir,
     HandlerDelayOptions delay) {
     public static SubscriberOptions fromEnv() {
@@ -15,7 +16,8 @@ public record SubscriberOptions(
             Env.get("ZLINK_JAVA_E2E_SUBSCRIBER_RID", "sub-1"),
             topicsFromEnv(),
             Env.get("ZLINK_JAVA_E2E_HTTP_ENDPOINT"),
-            Env.get("ZLINK_JAVA_E2E_REGISTRY_ROUTER"),
+            Env.get("ZLINK_JAVA_E2E_REDIS_LOCATION_ENDPOINT"),
+            Env.get("ZLINK_JAVA_E2E_LOCATION_KEY_PREFIX"),
             Env.get("ZLINK_JAVA_E2E_LOG_DIR", "logs"),
             HandlerDelayOptions.fromEnv());
     }

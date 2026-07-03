@@ -10,9 +10,9 @@ internal object SmD3Scenario {
         ensure(context.entryReply.actorId == context.auth.actorId, "SM-D3 entry bind actor mismatch")
         ensure(context.entryPush.actorId == context.auth.actorId, "SM-D3 entry push actor mismatch")
 
-        ensure(context.joined.spotRid == "room-a", "SM-D3 user bind spot mismatch")
-        ensure(context.userReply1.spotRid == "room-a", "SM-D3 user relay spot mismatch")
-        ensure(context.userPush1.spotRid == "room-a", "SM-D3 user push spot mismatch")
+        ensure(context.joined.spotRid == "actor-room-a", "SM-D3 user bind spot mismatch")
+        ensure(context.userReply1.spotRid == "actor-room-a", "SM-D3 user relay spot mismatch")
+        ensure(context.userPush1.spotRid == "actor-room-a", "SM-D3 user push spot mismatch")
         ensure(context.userReply1.actorId == context.auth.actorId, "SM-D3 user relay actor mismatch")
         ensure(context.userPush1.actorId == context.auth.actorId, "SM-D3 user push actor mismatch")
 

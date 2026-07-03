@@ -6,10 +6,15 @@ import org.springframework.boot.WebApplicationType
 import org.springframework.boot.autoconfigure.SpringBootApplication
 import org.springframework.boot.builder.SpringApplicationBuilder
 import org.springframework.context.annotation.Bean
+import java.time.Duration
 import systems.zlink.e2e.kotlin.discoveryregistryha.Contracts
 import systems.zlink.e2e.kotlin.discoveryregistryha.consumer.Configuration.ConsumerOptions
 import systems.zlink.framework.channels.ZLinkClient
 import systems.zlink.framework.configuration.ZLinkMessageFlowLogMode
+import systems.zlink.framework.locations.ZLinkLocationStore
+import systems.zlink.framework.locations.redis.ZLinkRedisLocationOptions
+import systems.zlink.framework.locations.redis.ZLinkRedisLocationStore
+import systems.zlink.framework.runtime.host.ZLinkFrameworkLifecycle
 import systems.zlink.framework.spring.EnableZLinkFramework
 import systems.zlink.framework.spring.ZLinkFrameworkConfigurer
 
@@ -44,17 +49,30 @@ class ConsumerApplication {
                 .messageFlow(ZLinkMessageFlowLogMode.KEY_TRANSITIONS)
                 .traceLogFile("${consumerOptions.logDir}/${consumerOptions.rid}-flow.log")
                 .traceLabel(consumerOptions.rid)
-            for (registry in consumerOptions.registryRouters) {
-                options.useDiscovery().addRegistryEndpoint(registry)
-            }
+            options.configureLocations().setHeartbeatInterval(Duration.ofMillis(consumerOptions.heartbeatMillis))
+            options.configureLocations().setOwnerLeaseTtl(Duration.ofMillis(consumerOptions.leaseTtlMillis))
+            options.configureLocations().setPollingInterval(Duration.ofMillis(consumerOptions.pollingMillis))
+            options.configureLocations().setStoreFailureGrace(Duration.ofMillis(consumerOptions.storeFailureGraceMillis))
             options.addClientServerChannel(Contracts.CHANNEL).enableClient()
         }
 
     @Bean
+    fun locationStore(consumerOptions: ConsumerOptions): ZLinkLocationStore {
+        val redisStore = ZLinkRedisLocationStore(
+            ZLinkRedisLocationOptions()
+                .setConnectionString(consumerOptions.redisLocationEndpoint)
+                .setKeyPrefix(consumerOptions.locationKeyPrefix)
+                .setCommandTimeout(Duration.ofMillis(consumerOptions.redisCommandTimeoutMillis)),
+        )
+        return if (consumerOptions.storeMode == "polling") PollingOnlyLocationStore(redisStore) else redisStore
+    }
+
+    @Bean
     fun consumerHttpServer(
         client: ZLinkClient,
+        lifecycle: ZLinkFrameworkLifecycle,
         json: ObjectMapper,
         consumerOptions: ConsumerOptions,
     ): ConsumerHttpServer =
-        ConsumerHttpServer(client, json, consumerOptions)
+        ConsumerHttpServer(client, lifecycle, json, consumerOptions)
 }

@@ -31,8 +31,8 @@ final class EntrySpotActorDispatchTest {
         throws Exception {
         EntryActorDispatchHandlers.reset();
         FakeZLinkBackendAdapterFactory backendFactory = new FakeZLinkBackendAdapterFactory();
-        try (ZLinkFrameworkRuntime runtime =
-                 RuntimeTestSupport.startFramework(options(), backendFactory)) {
+        ZLinkFrameworkRuntime runtime = RuntimeTestSupport.startFramework(options(), backendFactory);
+        try {
             managedActor(runtime, "actor-a", "player");
             managedActor(runtime, "actor-b", "player");
 
@@ -71,6 +71,9 @@ final class EntrySpotActorDispatchTest {
             assertTrue(actorASecond >= 0, "missing actor-a second event: " + events);
             assertTrue(actorBStart < actorAEnd, "other actor waited for actor-a completion: " + events);
             assertTrue(actorAEnd < actorASecond, "same actor order was not preserved: " + events);
+        } finally {
+            EntryActorDispatchHandlers.releaseActorA.countDown();
+            runtime.close();
         }
     }
 

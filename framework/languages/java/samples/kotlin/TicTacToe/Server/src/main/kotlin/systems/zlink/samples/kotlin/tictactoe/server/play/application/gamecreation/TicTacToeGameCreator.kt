@@ -7,7 +7,6 @@ import systems.zlink.samples.kotlin.tictactoe.shared.contracts.PlayNodeInfo
 
 class TicTacToeGameCreator(
     private val settings: SampleSettings,
-    private val routes: GameRoomRouteWriter,
 ) {
     private val sequence = AtomicInteger()
 
@@ -16,16 +15,6 @@ class TicTacToeGameCreator(
         val index = Math.floorMod(sequence.getAndIncrement(), settings.playEndpoints.size)
         val roomId = "ttt-room-%03d".format(sequence.get())
         val ownerPlayEndpoint = settings.playEndpoints[index]
-        val ownerSpotEndpoint = settings.spotEndpoints[index]
-        val ownerSpotNodeRid = "play-node-${index + 1}"
-        routes.save(
-            GameRoomRoute(
-                roomId = roomId,
-                ownerPlayEndpoint = ownerPlayEndpoint,
-                ownerSpotEndpoint = ownerSpotEndpoint,
-                ownerSpotNodeRid = ownerSpotNodeRid,
-            ),
-        )
         return GameRoom(
             roomId = roomId,
             gameName = normalized,
@@ -47,14 +36,4 @@ class TicTacToeGameCreator(
         val requiredLevel: Int,
     )
 
-    data class GameRoomRoute(
-        val roomId: String,
-        val ownerPlayEndpoint: String,
-        val ownerSpotEndpoint: String,
-        val ownerSpotNodeRid: String,
-    )
-
-    interface GameRoomRouteWriter {
-        fun save(route: GameRoomRoute)
-    }
 }

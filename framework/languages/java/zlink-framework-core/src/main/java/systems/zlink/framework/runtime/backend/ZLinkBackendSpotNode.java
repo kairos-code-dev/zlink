@@ -23,11 +23,13 @@ public interface ZLinkBackendSpotNode extends ZLinkBackendObject {
 
     void setPubBind(String endpoint);
 
-    void attachDiscovery(ZLinkBackendDiscovery discovery);
-
     void connectPeer(String endpoint);
 
     void connectPeer(RoutingId peerRid, String endpoint);
+
+    void disconnectPeer(String endpoint);
+
+    void disconnectPeer(RoutingId peerRid);
 
     ZLinkBackendSpotRouteBridge createRouteBridge();
 

@@ -10,8 +10,8 @@ import systems.zlink.framework.monitoring.ZLinkSocketEventKind;
 
 public final class DefaultZLinkMonitoringOptions implements ZLinkMonitoringOptions {
     private final Map<String, ZLinkSocketEventKind[]> socketSources = new LinkedHashMap<>();
-    private final Map<String, Duration> registrySources = new LinkedHashMap<>();
     private final Map<String, Duration> spotSources = new LinkedHashMap<>();
+    private final Map<String, Duration> locationRuntimeSources = new LinkedHashMap<>();
 
     @Override
     public void addSocketEvents(String sourceName, ZLinkSocketEventKind... events) {
@@ -23,15 +23,6 @@ public final class DefaultZLinkMonitoringOptions implements ZLinkMonitoringOptio
     }
 
     @Override
-    public void addRegistryEvents(String sourceName, Duration interval) {
-        putUnique(
-            registrySources,
-            requireName(sourceName, "registry source"),
-            requirePositive(interval, "registry interval"),
-            "registry");
-    }
-
-    @Override
     public void addSpotEvents(String sourceName, Duration interval) {
         putUnique(
             spotSources,
@@ -40,34 +31,39 @@ public final class DefaultZLinkMonitoringOptions implements ZLinkMonitoringOptio
             "spot");
     }
 
-    Map<String, ZLinkSocketEventKind[]> socketSources() {
-        return Map.copyOf(socketSources);
+    @Override
+    public void addLocationRuntimeEvents(String sourceName, Duration interval) {
+        putUnique(
+            locationRuntimeSources,
+            requireName(sourceName, "location runtime source"),
+            requirePositive(interval, "location runtime interval"),
+            "location runtime");
     }
 
-    Map<String, Duration> registrySources() {
-        return Map.copyOf(registrySources);
+    Map<String, ZLinkSocketEventKind[]> socketSources() {
+        return Map.copyOf(socketSources);
     }
 
     Map<String, Duration> spotSources() {
         return Map.copyOf(spotSources);
     }
 
+    Map<String, Duration> locationRuntimeSources() {
+        return Map.copyOf(locationRuntimeSources);
+    }
+
     public boolean hasSources() {
         return !socketSources.isEmpty()
-            || !registrySources.isEmpty()
-            || !spotSources.isEmpty();
+            || !spotSources.isEmpty()
+            || !locationRuntimeSources.isEmpty();
     }
 
     public Duration pollInterval() {
         return java.util.stream.Stream.concat(
-                registrySources.values().stream(),
-                spotSources.values().stream())
+                spotSources.values().stream(),
+                locationRuntimeSources.values().stream())
             .min(Duration::compareTo)
             .orElse(Duration.ofSeconds(1));
-    }
-
-    public Set<String> registrySourceNames() {
-        return Set.copyOf(registrySources.keySet());
     }
 
     public Set<String> socketSourceNames() {
@@ -76,6 +72,10 @@ public final class DefaultZLinkMonitoringOptions implements ZLinkMonitoringOptio
 
     public Set<String> spotSourceNames() {
         return Set.copyOf(spotSources.keySet());
+    }
+
+    public Set<String> locationRuntimeSourceNames() {
+        return Set.copyOf(locationRuntimeSources.keySet());
     }
 
     private static String requireName(String value, String label) {

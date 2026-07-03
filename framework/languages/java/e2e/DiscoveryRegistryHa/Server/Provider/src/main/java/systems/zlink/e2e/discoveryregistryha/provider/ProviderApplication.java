@@ -1,12 +1,15 @@
 package systems.zlink.e2e.discoveryregistryha.provider;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
+import java.time.Duration;
 import org.springframework.boot.autoconfigure.SpringBootApplication;
 import org.springframework.context.annotation.Bean;
 import systems.zlink.contracts.core.RoutingId;
 import systems.zlink.e2e.discoveryregistryha.shared.Contracts;
 import systems.zlink.e2e.discoveryregistryha.shared.Env;
 import systems.zlink.framework.configuration.ZLinkMessageFlowLogMode;
+import systems.zlink.framework.locations.redis.ZLinkRedisLocationOptions;
+import systems.zlink.framework.locations.redis.ZLinkRedisLocationStore;
 import systems.zlink.framework.spring.EnableZLinkFramework;
 import systems.zlink.framework.spring.ZLinkFrameworkConfigurer;
 
@@ -38,14 +41,23 @@ public final class ProviderApplication {
                 .traceLogFile(options.logDir() + "/" + options.rid() + "-flow.log")
                 .traceLabel(options.rid());
             framework.addHandlersFromPackageOf(ProfileReqHandler.class);
-            for (String registry : options.discoveryEndpoints()) {
-                framework.useDiscovery().addRegistryEndpoint(registry);
-            }
+            framework.configureLocations().setHeartbeatInterval(Duration.ofMillis(options.heartbeatMillis()));
+            framework.configureLocations().setOwnerLeaseTtl(Duration.ofMillis(options.leaseTtlMillis()));
+            framework.configureLocations().setPollingInterval(Duration.ofMillis(options.pollingMillis()));
+            framework.configureLocations().setStoreFailureGrace(Duration.ofMillis(options.storeFailureGraceMillis()));
             framework.addClientServerChannel(Contracts.CHANNEL)
                 .enableServer(options.channelEndpoint())
                 .setRoutingId(RoutingId.from(options.rid()))
                 .addHandlerGroup(Contracts.HANDLER_GROUP);
         };
+    }
+
+    @Bean
+    ZLinkRedisLocationStore locationStore(ProviderOptions options) {
+        return new ZLinkRedisLocationStore(new ZLinkRedisLocationOptions()
+            .setConnectionString(options.redisLocationEndpoint())
+            .setKeyPrefix(options.locationKeyPrefix())
+            .setCommandTimeout(Duration.ofMillis(options.redisCommandTimeoutMillis())));
     }
 
     @Bean

@@ -17,6 +17,8 @@ import systems.zlink.e2e.resiliencelifecycle.shared.Env;
 import systems.zlink.framework.channels.ZLinkChannelRuntimeOptions;
 import systems.zlink.framework.configuration.ZLinkMessageFlowLogMode;
 import systems.zlink.framework.configuration.ZLinkMessageFlowOutcome;
+import systems.zlink.framework.locations.redis.ZLinkRedisLocationOptions;
+import systems.zlink.framework.locations.redis.ZLinkRedisLocationStore;
 import systems.zlink.framework.spring.EnableZLinkFramework;
 import systems.zlink.framework.spring.ZLinkFrameworkConfigurer;
 
@@ -77,12 +79,18 @@ public final class Program {
                     return CompletableFuture.completedFuture(null);
                 });
             options.addHandlersFromPackageOf(WorkReqHandler.class);
-            options.useDiscovery().addRegistryEndpoint(Env.get("ZLINK_JAVA_E2E_REGISTRY_ROUTER"));
             options.addClientServerChannel(Contracts.CHANNEL)
                 .enableServer(Env.get("ZLINK_JAVA_E2E_API_ENDPOINT"))
                 .setRoutingId(RoutingId.from(state.providerRid()))
                 .addHandlerGroup(Contracts.HANDLER_GROUP);
         };
+    }
+
+    @Bean
+    ZLinkRedisLocationStore locationStore() {
+        return new ZLinkRedisLocationStore(new ZLinkRedisLocationOptions()
+            .setConnectionString(Env.get("ZLINK_JAVA_E2E_REDIS_LOCATION_ENDPOINT"))
+            .setKeyPrefix(Env.get("ZLINK_JAVA_E2E_LOCATION_KEY_PREFIX")));
     }
 
     @Bean

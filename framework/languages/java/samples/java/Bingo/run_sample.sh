@@ -5,7 +5,7 @@ cd "$(dirname "${BASH_SOURCE[0]}")"
 
 pids=()
 redis_container_id=""
-role_pattern='systems\.zlink\.samples\.bingo\.(server\.(registry|api|play|session)\.Program|client\.Program)'
+role_pattern='systems\.zlink\.samples\.bingo\.(server\.(api|play|session)\.Program|client\.Program)'
 log_dir="build/sample-logs"
 export BINGO_LOG_DIR="${BINGO_LOG_DIR:-$(pwd)/logs}"
 mkdir -p "${log_dir}" "${BINGO_LOG_DIR}"
@@ -115,7 +115,7 @@ import socket
 reserved = []
 try:
     chosen = set()
-    while len(reserved) < 21:
+    while len(reserved) < 19:
         host = "127.0.0.1"
         port = random.randint(20000, 29999)
         key = (host, port)
@@ -156,17 +156,14 @@ build_framework_jars() {
     ./gradlew --no-daemon \
       :zlink-framework-core:jar \
       :zlink-framework-spring-boot-starter:jar \
+      :zlink-framework-locations-redis:jar \
       :zlink-framework-codec-protobuf:jar \
       :zlink-stream-connector:jar \
       --quiet
   )
 }
 
-read -r registry_pub registry_router api_a_channel play_a_channel session_a_spot session_a_router play_a_spot play_a_router session_a_route play_a_route session_a_stream api_b_channel play_b_channel session_b_spot session_b_router play_b_spot play_b_router session_b_route play_b_route session_b_stream unused_endpoint < <(reserve_ports)
-registry_pub_host="${registry_pub%:*}"
-registry_pub_port="${registry_pub##*:}"
-registry_router_host="${registry_router%:*}"
-registry_router_port="${registry_router##*:}"
+read -r api_a_channel play_a_channel session_a_spot session_a_router play_a_spot play_a_router session_a_route play_a_route session_a_stream api_b_channel play_b_channel session_b_spot session_b_router play_b_spot play_b_router session_b_route play_b_route session_b_stream unused_endpoint < <(reserve_ports)
 api_a_host="${api_a_channel%:*}"
 api_a_port="${api_a_channel##*:}"
 api_b_host="${api_b_channel%:*}"
@@ -215,20 +212,14 @@ fi
 redis_host="${BINGO_REDIS_ENDPOINT%:*}"
 redis_port="${BINGO_REDIS_ENDPOINT##*:}"
 wait_port "${redis_host}" "${redis_port}"
-common_java_options="${JAVA_TOOL_OPTIONS:-} -Dzlink.samples.bingo.registryPubEndpoint=tcp://${registry_pub_host}:${registry_pub_port} -Dzlink.samples.bingo.registryRouterEndpoint=tcp://${registry_router_host}:${registry_router_port} -Dzlink.samples.bingo.apiAChannelEndpoint=tcp://${api_a_host}:${api_a_port} -Dzlink.samples.bingo.apiBChannelEndpoint=tcp://${api_b_host}:${api_b_port} -Dzlink.samples.bingo.playAChannelEndpoint=tcp://${play_a_host}:${play_a_port} -Dzlink.samples.bingo.playBChannelEndpoint=tcp://${play_b_host}:${play_b_port} -Dzlink.samples.bingo.sessionASpotEndpoint=tcp://${session_a_spot_host}:${session_a_spot_port} -Dzlink.samples.bingo.sessionBSpotEndpoint=tcp://${session_b_spot_host}:${session_b_spot_port} -Dzlink.samples.bingo.sessionARouterEndpoint=tcp://${session_a_router_host}:${session_a_router_port} -Dzlink.samples.bingo.sessionBRouterEndpoint=tcp://${session_b_router_host}:${session_b_router_port} -Dzlink.samples.bingo.playASpotEndpoint=tcp://${play_a_spot_host}:${play_a_spot_port} -Dzlink.samples.bingo.playBSpotEndpoint=tcp://${play_b_spot_host}:${play_b_spot_port} -Dzlink.samples.bingo.playASpotRouterEndpoint=tcp://${play_a_router_host}:${play_a_router_port} -Dzlink.samples.bingo.playBSpotRouterEndpoint=tcp://${play_b_router_host}:${play_b_router_port} -Dzlink.samples.bingo.sessionAPlayRouteEndpoint=tcp://${session_a_route_host}:${session_a_route_port} -Dzlink.samples.bingo.sessionBPlayRouteEndpoint=tcp://${session_b_route_host}:${session_b_route_port} -Dzlink.samples.bingo.playARouteEndpoint=tcp://${play_a_route_host}:${play_a_route_port} -Dzlink.samples.bingo.playBRouteEndpoint=tcp://${play_b_route_host}:${play_b_route_port} -Dzlink.samples.bingo.sessionAStreamEndpoint=tcp://${stream_a_host}:${stream_a_port} -Dzlink.samples.bingo.sessionBStreamEndpoint=tcp://${stream_b_host}:${stream_b_port} -Dzlink.samples.bingo.redisEndpoint=${BINGO_REDIS_ENDPOINT} -Dzlink.samples.bingo.redisKeyPrefix=${bingo_redis_key_prefix}"
+common_java_options="${JAVA_TOOL_OPTIONS:-} -Dzlink.samples.bingo.apiAChannelEndpoint=tcp://${api_a_host}:${api_a_port} -Dzlink.samples.bingo.apiBChannelEndpoint=tcp://${api_b_host}:${api_b_port} -Dzlink.samples.bingo.playAChannelEndpoint=tcp://${play_a_host}:${play_a_port} -Dzlink.samples.bingo.playBChannelEndpoint=tcp://${play_b_host}:${play_b_port} -Dzlink.samples.bingo.sessionASpotEndpoint=tcp://${session_a_spot_host}:${session_a_spot_port} -Dzlink.samples.bingo.sessionBSpotEndpoint=tcp://${session_b_spot_host}:${session_b_spot_port} -Dzlink.samples.bingo.sessionARouterEndpoint=tcp://${session_a_router_host}:${session_a_router_port} -Dzlink.samples.bingo.sessionBRouterEndpoint=tcp://${session_b_router_host}:${session_b_router_port} -Dzlink.samples.bingo.playASpotEndpoint=tcp://${play_a_spot_host}:${play_a_spot_port} -Dzlink.samples.bingo.playBSpotEndpoint=tcp://${play_b_spot_host}:${play_b_spot_port} -Dzlink.samples.bingo.playASpotRouterEndpoint=tcp://${play_a_router_host}:${play_a_router_port} -Dzlink.samples.bingo.playBSpotRouterEndpoint=tcp://${play_b_router_host}:${play_b_router_port} -Dzlink.samples.bingo.sessionAPlayRouteEndpoint=tcp://${session_a_route_host}:${session_a_route_port} -Dzlink.samples.bingo.sessionBPlayRouteEndpoint=tcp://${session_b_route_host}:${session_b_route_port} -Dzlink.samples.bingo.playARouteEndpoint=tcp://${play_a_route_host}:${play_a_route_port} -Dzlink.samples.bingo.playBRouteEndpoint=tcp://${play_b_route_host}:${play_b_route_port} -Dzlink.samples.bingo.sessionAStreamEndpoint=tcp://${stream_a_host}:${stream_a_port} -Dzlink.samples.bingo.sessionBStreamEndpoint=tcp://${stream_b_host}:${stream_b_port} -Dzlink.samples.bingo.redisEndpoint=${BINGO_REDIS_ENDPOINT} -Dzlink.samples.bingo.redisKeyPrefix=${bingo_redis_key_prefix}"
 
 build_framework_jars
 gradle_run \
-  :Server:Registry:installDist \
   :Server:Session:installDist \
   :Server:Api:installDist \
   :Server:Play:installDist \
   :Client:installDist
-
-JAVA_TOOL_OPTIONS="${common_java_options}" "$(app_bin Server/Registry Registry)" >"${log_dir}/registry.log" 2>&1 &
-pids+=("$!")
-wait_port "${registry_pub_host}" "${registry_pub_port}"
-wait_port "${registry_router_host}" "${registry_router_port}"
 JAVA_TOOL_OPTIONS="${common_java_options} -Dzlink.samples.bingo.sessionNode=a" "$(app_bin Server/Session Session)" >"${log_dir}/session-a.log" 2>&1 &
 pids+=("$!")
 JAVA_TOOL_OPTIONS="${common_java_options} -Dzlink.samples.bingo.sessionNode=b" "$(app_bin Server/Session Session)" >"${log_dir}/session-b.log" 2>&1 &

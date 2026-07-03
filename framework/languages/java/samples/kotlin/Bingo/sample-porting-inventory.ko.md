@@ -10,7 +10,7 @@
 | `.NET: Bingo.csproj` | `build.gradle.kts` | build | done | Kotlin 루트는 하위 role project를 묶는다. |
 | `.NET: Bingo.sln` | `standalone.settings.gradle.kts` | build | done | standalone 실행 시 framework build를 composite build로 참조한다. |
 | `.NET: README.md` | `README.md` | docs | done | Kotlin 실행 방식과 Redis 준비 책임을 설명한다. |
-| `.NET: run_sample.sh` | `run_sample.sh` | runner | done | Registry, Api 2개, Session 2개, Play 2개, Client를 실제 process로 실행한다. |
+| `.NET: run_sample.sh` | `run_sample.sh` | runner | done | Api 2개, Session 2개, Play 2개, Client를 실제 process로 실행하고 위치 정보는 Redis store에 둔다. |
 | `.NET: run_sample.ps1` | `run_sample.ps1` | runner | done | Windows runner도 같은 role 구성과 Redis endpoint 계약을 사용한다. |
 | `.NET: Client/Bingo.Client.csproj` | `Client/build.gradle.kts` | build | done | Client role project. |
 | `.NET: Client/Program.cs` | `Client/src/main/kotlin/.../client/Program.kt` | client-entry | done | 세 stream connector를 만들고 scenario에 넘긴다. |
@@ -20,14 +20,12 @@
 | `.NET: Server/Configuration/SampleFlowLog.cs` | `Server/*` role logs + `BINGO_LOG_DIR` | server-evidence | done | Kotlin은 role별 application에서 flow log를 남기고 runner가 `message flow` marker를 확인한다. |
 | `.NET: Server/Configuration/SampleNames.cs` | `Server/Configuration/src/main/kotlin/.../configuration/SampleNames.kt` | server-config | done | role, service, packet 이름을 공유한다. |
 | `.NET: Server/Configuration/SampleTopology.cs` | `Server/Configuration/src/main/kotlin/.../configuration/SampleTopology.kt` | server-config | done | endpoint와 Redis 설정을 system property에서 읽는다. |
+| location store 설정 | `Server/Configuration/src/main/kotlin/.../configuration/SampleLocationStore.kt` | server-config | done | 공식 Redis location store extension을 생성하고 sample Redis prefix 아래에서 위치 정보를 분리한다. |
 | `.NET: Server/Api/Bingo.Server.Api.csproj` | `Server/Api/build.gradle.kts` | build | done | Api role project. |
 | `.NET: Server/Api/Program.cs` | `Server/Api/src/main/kotlin/.../api/Program.kt` | server-entry | done | Api role 단독 entry point. |
 | `.NET: Server/Api/ApiServerHostFactory.cs` | `Server/Api/src/main/kotlin/.../api/ApiServerApplication.kt` | server-role | done | Api channel server와 Play channel client를 구성한다. |
 | `.NET: Server/Api/Handlers/AuthenticatePlayerHandler.cs` | `Server/Api/src/main/kotlin/.../api/handlers/AuthenticatePlayerHandler.kt` | handler | done | access token을 player identity로 검증한다. |
 | `.NET: Server/Api/Handlers/MatchBingoHandler.cs` | `Server/Api/src/main/kotlin/.../api/handlers/MatchBingoHandler.kt` | handler | done | matching API 요청을 Play room allocation으로 연결한다. |
-| `.NET: Server/Registry/Bingo.Server.Registry.csproj` | `Server/Registry/build.gradle.kts` | build | done | Registry role project. |
-| `.NET: Server/Registry/Program.cs` | `Server/Registry/src/main/kotlin/.../registry/Program.kt` | server-entry | done | Registry role 단독 entry point. |
-| `.NET: Server/Registry/RegistryHostFactory.cs` | `Server/Registry/src/main/kotlin/.../registry/RegistryApplication.kt` | server-role | done | endpoint discovery registry를 실행한다. |
 | `.NET: Server/Session/Bingo.Server.Session.csproj` | `Server/Session/build.gradle.kts` | build | done | Session role project. |
 | `.NET: Server/Session/Program.cs` | `Server/Session/src/main/kotlin/.../session/Program.kt` | server-entry | done | Session role 단독 entry point. |
 | `.NET: Server/Session/SessionServerHostFactory.cs` | `Server/Session/src/main/kotlin/.../session/SessionServerApplication.kt` | server-role | done | stream server, session Spot node, Api channel client를 구성한다. |
@@ -68,12 +66,13 @@
 | 기준 | Kotlin 대응 | 분류 | 상태 | 비고 |
 |------|-------------|------|------|------|
 | common: client는 Session stream endpoint 하나만 알고 연결 | `Client/Program.kt` | validation | done | player-1은 Session A, player-2와 observer는 Session B stream만 직접 연결한다. |
-| common: Registry, Api 2개, Session 2개, Play 2개 실행 | `run_sample.sh`, `run_sample.ps1` | runner | done | 실제 process 경계로 role을 실행한다. |
+| common: Api 2개, Session 2개, Play 2개 실행 | `run_sample.sh`, `run_sample.ps1` | runner | done | 실제 process 경계로 role을 실행하고 공통 위치 store로 서로를 찾는다. |
 | common: actor/session binding | `Session/.../BingoSession.kt`, `AuthenticateSessionHandler.kt`, `PlayerActor.kt` | runtime-flow | done | 인증 후 actor를 만들고 bound session push 경로를 사용한다. |
 | common: Entry Spot에서 room Spot join | `BingoEntrySpot.kt`, `MatchBingoActorHandler.kt` | spot-flow | done | actor matching 후 room Spot으로 join한다. |
 | common: remote room Spot join 검증 | `BingoClientScenario.kt` | validation | done | `player-2.ActorNodeRid != RoomOwnerNodeRid` 의미를 검증한다. |
 | common: Spot pub/sub reward fan-out | `BingoRoomSpot.kt`, `BingoWinnerMsgHandler.kt` | pubsub | done | owner room event를 observer용 local room에서 받아 push한다. |
 | common: Redis-backed match queue | `RedisBingoMatchQueue.kt` | external-adapter | done | Redis를 application port 뒤에 둔다. |
+| common: Redis-backed location store | `SampleLocationStore.kt`, role application classes | runtime-config | done | Api, Session, Play role은 `ZLinkRedisLocationStore` bean을 등록하고 framework가 public Spring configurer 경로로 사용한다. |
 | common: 외부 Redis endpoint가 있으면 runner가 사용 | `run_sample.sh`, `run_sample.ps1` | runner | done | `BINGO_REDIS_ENDPOINT`가 있으면 Docker container를 만들지 않고 해당 endpoint를 사용한다. |
 | common: Redis endpoint가 없으면 runner가 Docker Redis 준비 | `run_sample.sh`, `run_sample.ps1` | runner | done | endpoint가 없을 때만 pinned Redis image를 띄우고 cleanup한다. |
 | common: 실행별 Redis key prefix 사용 | `run_sample.sh`, `run_sample.ps1` | runner | done | `BINGO_REDIS_KEY_PREFIX`가 없으면 실행별 prefix를 만든다. |

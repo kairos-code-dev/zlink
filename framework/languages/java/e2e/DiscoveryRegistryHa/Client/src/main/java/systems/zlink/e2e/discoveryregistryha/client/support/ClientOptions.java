@@ -6,28 +6,25 @@ import systems.zlink.e2e.discoveryregistryha.shared.Env;
 public record ClientOptions(
     String scenario,
     List<String> expectedRids,
-    List<String> expectedMemberRids,
-    List<String> probeHttpEndpoints,
-    String topologyHttpEndpoint,
-    String remoteTopologyHttpEndpoint,
     String consumerHttpEndpoint,
-    String deadHttpEndpoint) {
+    String deadRid,
+    List<String> expectedAbsentRids,
+    long locationHeartbeatMillis,
+    long locationLeaseTtlMillis,
+    long locationPollingMillis,
+    long locationStoreFailureGraceMillis) {
 
     public static ClientOptions fromEnv() {
         List<String> expected = Env.csv("ZLINK_JAVA_E2E_EXPECTED_RIDS");
-        List<String> expectedMembers = Env.csv("ZLINK_JAVA_E2E_EXPECTED_MEMBER_RIDS");
-        if (expectedMembers.isEmpty()) {
-            expectedMembers = expected;
-        }
-        String topologyEndpoint = Env.get("ZLINK_JAVA_E2E_TOPOLOGY_HTTP_ENDPOINT");
         return new ClientOptions(
             Env.get("ZLINK_JAVA_E2E_SCENARIO"),
             expected,
-            expectedMembers,
-            Env.csv("ZLINK_JAVA_E2E_PROBE_HTTP_ENDPOINTS"),
-            topologyEndpoint,
-            Env.get("ZLINK_JAVA_E2E_REMOTE_TOPOLOGY_HTTP_ENDPOINT", topologyEndpoint),
             Env.get("ZLINK_JAVA_E2E_CONSUMER_HTTP_ENDPOINT"),
-            Env.get("ZLINK_JAVA_E2E_DEAD_HTTP_ENDPOINT"));
+            Env.get("ZLINK_JAVA_E2E_DEAD_RID", "api-b"),
+            Env.csv("ZLINK_JAVA_E2E_EXPECTED_ABSENT_RIDS"),
+            Env.longValue("ZLINK_JAVA_E2E_LOCATION_HEARTBEAT_MS", 1000),
+            Env.longValue("ZLINK_JAVA_E2E_LOCATION_LEASE_TTL_MS", 3000),
+            Env.longValue("ZLINK_JAVA_E2E_LOCATION_POLLING_MS", 500),
+            Env.longValue("ZLINK_JAVA_E2E_LOCATION_STORE_FAILURE_GRACE_MS", 6000));
     }
 }

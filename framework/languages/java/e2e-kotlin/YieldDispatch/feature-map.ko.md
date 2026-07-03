@@ -2,9 +2,10 @@
 
 이 문서는 `framework/doc/framework/common/e2e/config-8-yield-dispatch.ko.md`를
 Kotlin framework E2E에서 어떤 공개 API 경로로 검증하는지 정리한다.
-현재 module runner는 `logs/20260702-064611-27912`에서 `Client`, `Server/Registry`,
-`Server/Delay`, `Server/Play`, `Server/Session` binary를 실행하고, D2 전용 mode에서 `play-b`도 추가로
-실행한다. 이 로그에서 `YD-A1`, `YD-A2`, `YD-A3`, `YD-A4`, `YD-B1`, `YD-C1`,
+현재 module runner는 `logs/20260704-041428-16476`에서 `Client`, `Server/Delay`,
+`Server/Play`, `Server/Session` binary를 실행하고, D2 전용 mode에서 `play-b`도 추가로
+실행한다. registry role은 실행하지 않고 Delay/Play/Session role이 Redis location store를 공유한다.
+이 로그에서 `YD-A1`, `YD-A2`, `YD-A3`, `YD-A4`, `YD-B1`, `YD-B2`, `YD-B3`, `YD-C1`,
 `YD-C2`, `YD-E1`, `YD-E2`, `YD-D1`, `YD-D2`, `YD-D3` marker와 `yield-dispatch kotlin e2e result=passed`를 확인했다.
 
 ## 현재 runner 통과 항목
@@ -26,6 +27,10 @@ surface, message contract가 아직 1:1로 맞지 않는 항목은 `porting-inve
 - `YD-B1`: stream session에 bind된 actor A가 public `requestToChannel(...).yield(...)`로 delay
   service를 기다리는 동안 다른 stream session에 bind된 actor B의 fast request가 actor A continuation보다
   먼저 완료되는지 evidence 순서로 확인한다.
+- `YD-B2`: 같은 actor의 slow request가 public yield로 대기하는 동안 같은 actor의 fast request가
+  끼어들지 못하고, 첫 요청이 완료된 뒤 다음 요청이 처리되는지 evidence 순서로 확인한다.
+- `YD-B3`: actor handler가 public `joinSpot(...).yield(...)`로 다른 Spot join을 기다리는 동안
+  다른 actor request가 먼저 진행되는지 evidence 순서로 확인한다.
 - `YD-C1`: timer handler가 delay channel yield를 기다리는 동안 같은 spot의 다른 timer tick이
   진행되는지 node-level evidence store로 확인한다.
 - `YD-C2`: 같은 timer의 다음 tick이 첫 yield 완료 뒤 처리되는지 확인한다.
@@ -62,25 +67,10 @@ surface, message contract가 아직 1:1로 맞지 않는 항목은 `porting-inve
   runner는 `play-a`를 한 번 시작한 뒤 종료/재시작하지 않으며, shell에서 기다릴 수 있는 Play evidence
   log나 shutdown-wait/recovery client mode도 없다. 따라서 정상 완료 경로와 serial dispatch 의미만
   고정한다.
-- `.NET` 기준의 `Client`, `Shared`, `Server/Registry`, `Server/Delay`, `Server/Play`,
-  `Server/Session` role project는 추가했다. 현재 구현된 client marker 중 `YD-A1`, `YD-A2`,
-  `YD-A3`, `YD-A4`, `YD-B1`, `YD-C1`, `YD-C2`, `YD-E1`, `YD-E2`, `YD-D1`은
-  scenario file로 분리했다.
-- `YD-B2`는 같은 actor의 slow/fast request 순서와 대기 시간을 검증하려는 scenario file은 남아 있지만
-  현재 runner 완료 범위에는 넣지 않는다. `.NET`의
-  `ActorYieldReq`/`ActorFastReq` evidence contract와 아직 같지 않다. 같은 connector에서
-  `ActorYieldReq`/`ActorFastReq`를 pending으로 둔 시도는 `logs/20260630-104321-3583163`,
-  `logs/20260630-104727-3598586`, `logs/20260630-104910-3604933`에서 timeout되어 완료로 올리지
-  않는다. 현재 `ProbeReq` 기반 부분 시나리오도 full runner 안에서는 `logs/20260630-113806-3810792`,
-  `logs/20260630-114012-3819684`에서 route mesh timeout이 재현되어 runner 완료 marker에서 제외한다.
-- `YD-B3`는 actor handler의 public `joinSpot(...).yield(...)` 대기 중 다른 actor progress를
-  검증하려는 scenario file은 남아 있지만 현재 runner 완료 범위에는 넣지 않는다. `.NET`의
-  `ActorJoinYieldReq`/`ActorFastReq` evidence contract와 아직 같지 않다.
-  `ActorJoinYieldReq` 기반 정렬 시도는 `logs/20260630-105615-3628535`,
-  `logs/20260630-110000-3641656`, `logs/20260630-110248-3653255`에서 timeout 또는 marker 순서
-  불일치로 실패해 완료로 올리지 않는다. 현재 `ActorJoinReq`/`ProbeReq` 기반 부분 시나리오도
-  `logs/20260630-112723-3766598`, `logs/20260630-113906-3813484`에서 timeout되어 runner 완료
-  marker에서 제외한다.
+- `.NET` 기준의 `Client`, `Shared`, `Server/Delay`, `Server/Play`, `Server/Session`
+  role project는 추가했다. registry role은 Redis location store 전환 뒤 제거했다. 현재 구현된
+  client marker 중 `YD-A1`, `YD-A2`, `YD-A3`, `YD-A4`, `YD-B1`, `YD-B2`, `YD-B3`,
+  `YD-C1`, `YD-C2`, `YD-E1`, `YD-E2`, `YD-D1`은 scenario file로 분리했다.
 - `.NET` feature-map에서 구현으로 표시한 `YD-C3`,
   `YD-D4`, `YD-E3`은 아직 Kotlin에서 같은 수준으로
   검증하지 않는다. `YD-E4`는 정적 검사 일부만 추가했으며, scenario file이 connector 생성과 lifecycle을

@@ -16,22 +16,25 @@ import java.util.concurrent.CompletionStage;
 import java.util.concurrent.TimeUnit;
 import systems.zlink.e2e.resiliencelifecycle.shared.Contracts;
 import systems.zlink.e2e.resiliencelifecycle.shared.Env;
-import systems.zlink.contracts.service.registry.ServiceRole;
 import systems.zlink.framework.channels.ZLinkClient;
-import systems.zlink.framework.registry.ZLinkRegistryQueryClient;
+import systems.zlink.framework.locations.ZLinkLocationAutoConnectType;
+import systems.zlink.framework.locations.ZLinkLocationRole;
+import systems.zlink.framework.locations.ZLinkPeerLocation;
+import systems.zlink.framework.locations.ZLinkPeerLocationFilter;
+import systems.zlink.framework.runtime.host.ZLinkFrameworkLifecycle;
 
 public final class ConsumerScenario {
     private final ZLinkClient client;
-    private final ZLinkRegistryQueryClient registry;
+    private final ZLinkFrameworkLifecycle lifecycle;
     private final ObjectMapper json;
     private final HttpClient http = HttpClient.newHttpClient();
 
     public ConsumerScenario(
         ZLinkClient client,
-        ZLinkRegistryQueryClient registry,
+        ZLinkFrameworkLifecycle lifecycle,
         ObjectMapper json) {
         this.client = client;
-        this.registry = registry;
+        this.lifecycle = lifecycle;
         this.json = json;
     }
 
@@ -459,17 +462,12 @@ public final class ConsumerScenario {
     }
 
     private void waitForTopology(int expectedRouters) {
-        if (registry == null) {
-            return;
-        }
         long deadline = System.nanoTime() + TimeUnit.SECONDS.toNanos(10);
         while (System.nanoTime() < deadline) {
             try {
-                long count = registry.topology().toCompletableFuture()
+                long count = peers().toCompletableFuture()
                     .get(3, TimeUnit.SECONDS)
                     .stream()
-                    .filter(entry -> Contracts.CHANNEL.equals(entry.channelName()))
-                    .filter(entry -> entry.serviceRole() == ServiceRole.ROUTER)
                     .count();
                 if (count >= expectedRouters) {
                     return;
@@ -483,18 +481,13 @@ public final class ConsumerScenario {
     }
 
     private void waitForTopologyEndpoint(String routingId, String endpoint) {
-        if (registry == null) {
-            throw new IllegalStateException("registry query client is not configured");
-        }
         long deadline = System.nanoTime() + TimeUnit.SECONDS.toNanos(15);
         while (System.nanoTime() < deadline) {
             try {
-                boolean found = registry.topology().toCompletableFuture()
+                boolean found = peers().toCompletableFuture()
                     .get(3, TimeUnit.SECONDS)
                     .stream()
-                    .filter(entry -> Contracts.CHANNEL.equals(entry.channelName()))
-                    .filter(entry -> entry.serviceRole() == ServiceRole.ROUTER)
-                    .anyMatch(entry -> routingId.equals(entry.routingId().toString())
+                    .anyMatch(entry -> routingId.equals(entry.nodeRid().toString())
                         && endpoint.equals(entry.endpoint()));
                 if (found) {
                     return;
@@ -505,6 +498,15 @@ public final class ConsumerScenario {
         }
         throw new IllegalStateException(
             "registry topology did not report " + routingId + " at " + endpoint);
+    }
+
+    private CompletionStage<java.util.List<ZLinkPeerLocation>> peers() {
+        return lifecycle.monitoringLocationRuntimeQuery().listPeersAsync(new ZLinkPeerLocationFilter(
+            ZLinkLocationAutoConnectType.CLIENT_SERVER,
+            Contracts.CHANNEL,
+            ZLinkLocationRole.ROUTER,
+            null,
+            null));
     }
 
     private void waitForWeight(String baseUrl, int expected) {

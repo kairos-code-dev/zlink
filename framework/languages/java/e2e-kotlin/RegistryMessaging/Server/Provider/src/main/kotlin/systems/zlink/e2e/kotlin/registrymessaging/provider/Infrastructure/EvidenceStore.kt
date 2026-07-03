@@ -10,6 +10,7 @@ import java.util.concurrent.Semaphore
 
 class EvidenceStore(
     val rid: String,
+    val instanceId: String,
     private val filePath: String?,
 ) {
     private val entries = ConcurrentLinkedQueue<String>()

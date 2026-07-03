@@ -9,32 +9,36 @@ import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
 import java.util.Optional;
+import java.util.concurrent.CompletableFuture;
+import java.util.concurrent.TimeUnit;
 import org.junit.jupiter.api.Test;
 import systems.zlink.contracts.core.RoutingId;
 import systems.zlink.contracts.messaging.Message;
-import systems.zlink.contracts.service.registry.AutoConnectType;
-import systems.zlink.contracts.service.registry.RegistryState;
-import systems.zlink.contracts.service.registry.ServiceKind;
-import systems.zlink.contracts.service.registry.ServiceRole;
-import systems.zlink.contracts.service.registry.SubjectKind;
-import systems.zlink.contracts.service.registry.TopologySource;
-import systems.zlink.contracts.service.registry.TopologyState;
+import systems.zlink.contracts.service.spot.SubjectKind;
 import systems.zlink.contracts.service.spot.SpotNodePeerEntry;
 import systems.zlink.contracts.service.spot.SpotNodeState;
 import systems.zlink.contracts.service.spot.SpotNodeStatus;
 import systems.zlink.contracts.service.spot.SpotNodeSubjectEntry;
 import systems.zlink.contracts.service.spot.SpotRole;
 import systems.zlink.contracts.sockets.SendFlags;
+import systems.zlink.framework.locations.ZLinkLocationAutoConnectType;
+import systems.zlink.framework.locations.ZLinkLocationOptions;
+import systems.zlink.framework.locations.ZLinkLocationRole;
+import systems.zlink.framework.locations.ZLinkLocationWriteIntent;
+import systems.zlink.framework.locations.ZLinkPeerLocation;
+import systems.zlink.framework.monitoring.ZLinkLocationRuntimeEvent;
+import systems.zlink.framework.monitoring.ZLinkLocationRuntimeEventKind;
 import systems.zlink.framework.monitoring.ZLinkRuntimeEventDispatcher;
-import systems.zlink.framework.monitoring.ZLinkRegistryEvent;
-import systems.zlink.framework.monitoring.ZLinkRegistryEventKind;
 import systems.zlink.framework.monitoring.ZLinkSocketEvent;
 import systems.zlink.framework.monitoring.ZLinkSocketEventKind;
 import systems.zlink.framework.monitoring.ZLinkSpotEvent;
 import systems.zlink.framework.monitoring.ZLinkSpotEventKind;
-import systems.zlink.framework.spots.ZLinkSpotKind;
 import systems.zlink.framework.runtime.monitoring.DefaultZLinkMonitoringOptions;
 import systems.zlink.framework.runtime.monitoring.ZLinkMonitoringRuntime;
+import systems.zlink.framework.runtime.locations.ZLinkInMemoryLocationStore;
+import systems.zlink.framework.runtime.locations.ZLinkLocationRuntime;
+import systems.zlink.framework.runtime.locations.ZLinkLocationRuntimeQueryService;
+import systems.zlink.framework.runtime.locations.ZLinkRegisteredLocationStores;
 
 final class MonitoringEventsTest {
     @Test
@@ -103,40 +107,6 @@ final class MonitoringEventsTest {
     }
 
     @Test
-    void registryMonitoring_emitsStatusChanged_forEmbeddedRegistry() {
-        DefaultZLinkMonitoringOptions options = new DefaultZLinkMonitoringOptions();
-        options.addRegistryEvents("registry", java.time.Duration.ofSeconds(1));
-        FakeRegistry registry = new FakeRegistry();
-        ZLinkRuntimeEventDispatcher dispatcher = new ZLinkRuntimeEventDispatcher();
-        List<ZLinkRegistryEvent> events = new ArrayList<>();
-        dispatcher.register(ZLinkRegistryEvent.class, event -> {
-            events.add(event);
-        });
-
-        try (ZLinkMonitoringRuntime runtime = new ZLinkMonitoringRuntime(
-                 options,
-                 socket -> null,
-                 Map.of(),
-                 Map.of("registry", registry),
-                 Map.of(),
-                 dispatcher)) {
-            runtime.pollSnapshots();
-            runtime.pollSnapshots();
-            registry.entryCount = 2;
-            runtime.pollSnapshots();
-        }
-
-        assertEquals(List.of(
-                ZLinkRegistryEventKind.STATUS_CHANGED,
-                ZLinkRegistryEventKind.TOPOLOGY_CHANGED,
-                ZLinkRegistryEventKind.SERVICE_SUMMARY_CHANGED,
-                ZLinkRegistryEventKind.STATUS_CHANGED,
-                ZLinkRegistryEventKind.TOPOLOGY_CHANGED,
-                ZLinkRegistryEventKind.SERVICE_SUMMARY_CHANGED),
-            events.stream().map(ZLinkRegistryEvent::event).toList());
-    }
-
-    @Test
     void spotMonitoring_emitsSubjectsChanged_whenSpotIsCreated() {
         DefaultZLinkMonitoringOptions options = new DefaultZLinkMonitoringOptions();
         options.addSpotEvents("play", java.time.Duration.ofSeconds(1));
@@ -151,8 +121,8 @@ final class MonitoringEventsTest {
                  options,
                  socket -> null,
                  Map.of(),
-                 Map.of(),
                  Map.of("play", spotNode),
+                 null,
                  dispatcher)) {
             runtime.pollSnapshots();
             runtime.pollSnapshots();
@@ -175,6 +145,48 @@ final class MonitoringEventsTest {
             events.stream().map(ZLinkSpotEvent::event).toList());
     }
 
+    @Test
+    void locationRuntimeMonitoring_emitsTopologyChangedFromRuntimeQuery() throws Exception {
+        DefaultZLinkMonitoringOptions options = new DefaultZLinkMonitoringOptions();
+        options.addLocationRuntimeEvents("locations", Duration.ofMillis(1));
+        ZLinkInMemoryLocationStore store = new ZLinkInMemoryLocationStore();
+        ZLinkLocationOptions locationOptions = new ZLinkLocationOptions();
+        locationOptions.setPollingInterval(Duration.ofMillis(1));
+        ZLinkRegisteredLocationStores stores = ZLinkRegisteredLocationStores.fromUnified(store);
+        ZLinkLocationRuntime locationRuntime = new ZLinkLocationRuntime(
+            stores,
+            locationOptions.ownerLeaseTtl(),
+            locationOptions.heartbeatInterval());
+        locationRuntime.startAsync(RoutingId.from("node-a")).toCompletableFuture().get();
+        store.updatePeerAsync(peer(locationRuntime.ownerId()), ZLinkLocationWriteIntent.NEW_CLAIM)
+            .toCompletableFuture()
+            .get();
+        ZLinkRuntimeEventDispatcher dispatcher = new ZLinkRuntimeEventDispatcher();
+        CompletableFuture<ZLinkLocationRuntimeEvent> topologyChanged = new CompletableFuture<>();
+        dispatcher.register(ZLinkLocationRuntimeEvent.class, event -> {
+            if (event.event() == ZLinkLocationRuntimeEventKind.TOPOLOGY_CHANGED) {
+                topologyChanged.complete(event);
+            }
+        });
+
+        try (ZLinkMonitoringRuntime runtime = new ZLinkMonitoringRuntime(
+                 options,
+                 socket -> null,
+                 Map.of(),
+                 Map.of(),
+                 new ZLinkLocationRuntimeQueryService(stores, locationRuntime, locationOptions),
+                 dispatcher)) {
+            runtime.pollSnapshots();
+            ZLinkLocationRuntimeEvent event = topologyChanged.get(2, TimeUnit.SECONDS);
+
+            assertEquals("locations", event.sourceName());
+            assertEquals(1, event.topology().size());
+            assertEquals("mesh", event.topology().get(0).meshName());
+        } finally {
+            locationRuntime.close();
+        }
+    }
+
     private static final class FakeMonitoringBackend implements ZLinkMonitoringBackendAdapter {
         private FakeSocketMonitor monitor;
 
@@ -191,6 +203,22 @@ final class MonitoringEventsTest {
             Optional.empty(),
             "tcp://127.0.0.1:7000",
             "tcp://127.0.0.1:7100");
+    }
+
+    private static ZLinkPeerLocation peer(String ownerId) {
+        return new ZLinkPeerLocation(
+            ZLinkLocationAutoConnectType.ROUTE_MESH,
+            "mesh",
+            RoutingId.from("node-a"),
+            ZLinkLocationRole.ROUTER,
+            "tcp://127.0.0.1:6000",
+            1,
+            0,
+            Map.of(),
+            List.of(),
+            ownerId,
+            0,
+            java.time.Instant.EPOCH);
     }
 
     private static final class FakeSocket implements ZLinkBackendSocket {
@@ -241,90 +269,6 @@ final class MonitoringEventsTest {
         }
     }
 
-    private static final class FakeRegistry implements ZLinkBackendRegistry {
-        int entryCount = 1;
-
-        @Override
-        public void setId(int registryId) {
-        }
-
-        @Override
-        public void setHeartbeat(Duration interval, Duration timeout) {
-        }
-
-        @Override
-        public void setBroadcastInterval(Duration interval) {
-        }
-
-        @Override
-        public void bind(String pubEndpoint, String routerEndpoint) {
-        }
-
-        @Override
-        public void connectPeer(String pubEndpoint, String routerEndpoint) {
-        }
-
-        @Override
-        public ZLinkBackendRegistryStatus status() {
-            return new ZLinkBackendRegistryStatus(RegistryState.ACTIVE, entryCount);
-        }
-
-        @Override
-        public List<ZLinkBackendRegistryServiceSummaryEntry> serviceSummary(
-            ZLinkBackendRegistryQueryFilter filter) {
-            return List.of(new ZLinkBackendRegistryServiceSummaryEntry(
-                AutoConnectType.CLIENT_SERVER,
-                ServiceRole.DEALER,
-                "profile",
-                entryCount,
-                0,
-                entryCount,
-                0,
-                0,
-                11));
-        }
-
-        @Override
-        public List<ZLinkBackendRegistryTopologyEntry> topology(
-            ZLinkBackendRegistryQueryFilter filter) {
-            return List.of(new ZLinkBackendRegistryTopologyEntry(
-                AutoConnectType.CLIENT_SERVER,
-                RoutingId.from("profile-" + entryCount),
-                ServiceKind.SOCKET,
-                ServiceRole.ROUTER,
-                "profile",
-                "inproc://profile-" + entryCount,
-                TopologySource.MANUAL,
-                TopologyState.READY,
-                1,
-                1,
-                0,
-                12,
-                ZLinkSpotKind.INVALID));
-        }
-
-        @Override
-        public List<ZLinkBackendRegistryMemberPeerEntry> memberPeers(String channelName) {
-            return List.of(new ZLinkBackendRegistryMemberPeerEntry(
-                AutoConnectType.CLIENT_SERVER,
-                ServiceRole.ROUTER,
-                channelName,
-                "inproc://" + channelName,
-                RoutingId.from(channelName + "-peer"),
-                1,
-                1));
-        }
-
-        @Override
-        public String name() {
-            return "registry";
-        }
-
-        @Override
-        public void close() {
-        }
-    }
-
     private static final class FakeSpotNode implements ZLinkBackendSpotNode {
         List<SpotNodeSubjectEntry> subjects = List.of();
 
@@ -354,15 +298,19 @@ final class MonitoringEventsTest {
         }
 
         @Override
-        public void attachDiscovery(ZLinkBackendDiscovery discovery) {
-        }
-
-        @Override
         public void connectPeer(String endpoint) {
         }
 
         @Override
         public void connectPeer(RoutingId peerRid, String endpoint) {
+        }
+
+        @Override
+        public void disconnectPeer(String endpoint) {
+        }
+
+        @Override
+        public void disconnectPeer(RoutingId peerRid) {
         }
 
         @Override

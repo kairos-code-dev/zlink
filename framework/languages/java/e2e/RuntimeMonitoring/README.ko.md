@@ -6,8 +6,7 @@
 ## 역할
 
 - `Shared`: 공통 request, reply, evidence 타입과 환경 변수 helper.
-- `Server/Registry`: embedded registry와 registry monitoring source.
-- `Server/Service`: channel, spot, socket/spot monitoring source, evidence endpoint.
+- `Server/Service`: channel, spot, socket/spot/location runtime monitoring source, evidence endpoint.
 - `Server/FilteredService`: socket kind filter를 가진 별도 service role.
 - `Server/ThrowingService`: monitoring handler failure를 격리하는 별도 service role.
 - `Server/Trigger`: framework client와 HTTP scenario endpoint를 가진 trigger/validation process.

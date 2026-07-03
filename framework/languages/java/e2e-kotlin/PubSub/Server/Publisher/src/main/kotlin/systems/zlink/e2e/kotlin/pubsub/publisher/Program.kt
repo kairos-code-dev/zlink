@@ -9,6 +9,8 @@ import org.springframework.context.ConfigurableApplicationContext
 import systems.zlink.e2e.kotlin.pubsub.shared.Contracts
 import systems.zlink.framework.channels.ZLinkFanoutClient
 import systems.zlink.framework.configuration.ZLinkMessageFlowLogMode
+import systems.zlink.framework.locations.redis.ZLinkRedisLocationOptions
+import systems.zlink.framework.locations.redis.ZLinkRedisLocationStore
 import systems.zlink.framework.spring.EnableZLinkFramework
 import systems.zlink.framework.spring.ZLinkFrameworkConfigurer
 
@@ -47,8 +49,15 @@ class PublisherApplication {
                 .messageFlow(ZLinkMessageFlowLogMode.KEY_TRANSITIONS)
                 .traceLogFile("${parsedOptions.logDir}/publisher-flow.log")
                 .traceLabel("kotlin-ps-publisher")
-            options.useDiscovery().addRegistryEndpoint(parsedOptions.registryRouterEndpoint)
             options.addFanoutChannel(Contracts.EVENT_CHANNEL)
                 .enablePublisher(parsedOptions.publisherEndpoint)
         }
+
+    @Bean
+    fun locationStore(options: PublisherOptions): ZLinkRedisLocationStore =
+        ZLinkRedisLocationStore(
+            ZLinkRedisLocationOptions()
+                .setConnectionString(options.redisLocationEndpoint)
+                .setKeyPrefix(options.locationKeyPrefix),
+        )
 }

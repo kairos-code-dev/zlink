@@ -19,6 +19,7 @@ data class ProfileReq(
 data class ProfileRes(
     var value: String = "",
     var providerRid: String = "",
+    var instanceId: String = "",
 )
 
 data class ProfileMsg(

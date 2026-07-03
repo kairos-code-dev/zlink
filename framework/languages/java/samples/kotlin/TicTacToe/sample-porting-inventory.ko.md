@@ -20,11 +20,11 @@
 | `.NET: Server/Api/ApiServer.cs` | `Server/src/main/kotlin/.../server/api/ApiServer.kt` | server-role | done | API HTTP/channel role을 실행한다. |
 | `.NET: Server/Api/Handlers/AuthenticatePlayerHandler.cs` | `Server/src/main/kotlin/.../api/handlers/AuthenticatePlayerHandler.kt` | handler | done | access token을 player identity로 검증한다. |
 | `.NET: Server/Api/Handlers/CreateGameHttpHandler.cs` | `Server/src/main/kotlin/.../api/handlers/CreateGameHttpHandler.kt` | handler | done | HTTP room 생성 요청을 Play channel request로 연결한다. |
-| `.NET: Server/Configuration/RedisRoomRouteStore.cs` | `Server/src/main/kotlin/.../configuration/RedisRoomRouteStore.kt` | external-adapter | done | Redis-backed room route store. |
+| `.NET: Server/Configuration/RedisRoomRouteStore.cs` | `Server/src/main/kotlin/.../configuration/SampleLocationStore.kt` | runtime-config | done | framework Redis location store를 Play role에 등록한다. |
 | `.NET: Server/Configuration/SampleFlowLog.cs` | `Server/src/main/kotlin/.../configuration/SampleLogging.kt` | server-evidence | done | role별 flow log를 남기고 runner가 `message flow` marker를 확인한다. |
 | `.NET: Server/Configuration/SampleNames.cs` | `Server/src/main/kotlin/.../configuration/SampleNames.kt` | server-config | done | role, service, packet 이름을 공유한다. |
 | `.NET: Server/Configuration/SampleSettings.cs` | `Server/src/main/kotlin/.../configuration/SampleSettings.kt` | server-config | done | endpoint, Redis, log 설정을 properties와 args에서 읽는다. |
-| `.NET: Server/Play/Application/GameCreation/TicTacToeGameCreator.cs` | `Server/src/main/kotlin/.../play/application/gamecreation/TicTacToeGameCreator.kt` | application-usecase | done | room route 저장과 game Spot 생성 요청을 조율한다. |
+| `.NET: Server/Play/Application/GameCreation/TicTacToeGameCreator.cs` | `Server/src/main/kotlin/.../play/application/gamecreation/TicTacToeGameCreator.kt` | application-usecase | done | room 응답을 조립하고 game Spot 생성 요청과 분리한다. |
 | `.NET: Server/Play/Domain/TicTacToe/TicTacToeBoard.cs` | `Server/src/main/kotlin/.../spots/tictactoegamespot/TicTacToeGame.kt` | domain | done | board, turn, win/draw 판정을 game Spot이 보유한 state로 표현한다. |
 | `.NET: Server/Play/Domain/TicTacToe/TicTacToeMatch.cs` | `Server/src/main/kotlin/.../spots/tictactoegamespot/TicTacToeGame.kt` | domain | done | match state와 move 검증을 Spot state operation으로 표현한다. |
 | `.NET: Server/Play/Infrastructure/ZLink/Actors/PlayActor.cs` | `Server/src/main/kotlin/.../play/infrastructure/zlink/actors/PlayActor.kt` | actor-adapter | done | bound stream session push를 감싼다. |
@@ -41,7 +41,7 @@
 | `.NET: Server/Play/Infrastructure/ZLink/Spots/TicTacToeGameSpot/Handlers/PlayActorPlaceMarkHandler.cs` | `Server/src/main/kotlin/.../tictactoegamespot/handlers/PlayActorPlaceMarkHandler.kt` | spot-handler | done | mark placement request를 game state operation으로 연결한다. |
 | `.NET: Server/Play/Infrastructure/ZLink/Spots/TicTacToeGameSpot/Handlers/TicTacToeGameTimerHandler.cs` | `Server/src/main/kotlin/.../tictactoegamespot/handlers/TicTacToeGameTimerHandler.kt` | timer-handler | done | game Spot timer tick을 처리한다. |
 | `.NET: Server/Play/Infrastructure/ZLink/TicTacToeGameRoomProvisioner.cs` | `Server/src/main/kotlin/.../tictactoegamespot/handlers/TicTacToeGameCreatedHandler.kt` | spot-provision | done | created hook에서 room 준비를 완료한다. |
-| `.NET: Server/Play/PlayServer.cs` | `Server/src/main/kotlin/.../play/PlayServer.kt` | server-role | done | Play channel, stream, actor, Spot, pub/sub, route resolver를 구성한다. |
+| `.NET: Server/Play/PlayServer.cs` | `Server/src/main/kotlin/.../play/PlayServer.kt` | server-role | done | Play channel, stream, actor, Spot, pub/sub, location-store resolver를 구성한다. |
 | `.NET: Shared/TicTacToe.Shared.csproj` | `Shared/build.gradle.kts` | build | done | Shared project. |
 | `.NET: Shared/Contracts/Messages.cs` | `Shared/src/main/kotlin/.../shared/contracts/Contracts.kt` | shared-contract | done | request, response, notify, milestone message data class를 둔다. |
 
@@ -51,11 +51,11 @@
 |------|-------------|------|------|------|
 | common: 자동 discovery 없이 수동 endpoint 연결 | `run_sample.sh`, `run_sample.ps1`, `SampleSettings.kt` | topology | done | runner가 API/Play endpoint 목록을 properties로 전달한다. |
 | common: Api 2개, Play 2개 실행 | `run_sample.sh`, `run_sample.ps1` | runner | done | 실제 process 경계로 role을 실행한다. |
-| common: Redis-backed room route store | `RedisRoomRouteStore.kt` | external-adapter | done | Redis를 route store adapter 뒤에 둔다. |
+| common: Redis-backed location store | `SampleLocationStore.kt`, `PlayServerApplication.kt` | runtime-config | done | Play role은 `ZLinkRedisLocationStore` bean을 등록하고 framework 기본 resolver가 spot 위치를 조회한다. |
 | common: 외부 Redis endpoint가 있으면 runner가 사용 | `run_sample.sh`, `run_sample.ps1` | runner | done | `TICTACTOE_REDIS_ENDPOINT`가 있으면 Docker container를 만들지 않고 해당 endpoint를 사용한다. |
 | common: Redis endpoint가 없으면 runner가 Docker Redis 준비 | `run_sample.sh`, `run_sample.ps1` | runner | done | endpoint가 없을 때만 pinned Redis image를 띄우고 cleanup한다. |
-| common: 실행별 Redis key prefix 사용 | `run_sample.sh`, `run_sample.ps1` | runner | done | `TICTACTOE_REDIS_KEY_PREFIX`가 없으면 실행별 prefix를 만든다. |
-| common: Redis client dependency는 route store adapter 안에 둠 | `RedisRoomRouteStore.kt` | design | done | handler, actor, Spot, Domain에 Redis client 타입을 노출하지 않는다. |
+| common: 실행별 Redis key prefix 사용 | `run_sample.sh`, `run_sample.ps1` | runner | done | `TICTACTOE_REDIS_KEY_PREFIX`가 없으면 실행별 prefix를 만들고 location store key에 적용한다. |
+| common: Redis client dependency는 framework extension 안에 둠 | `zlink-framework-locations-redis`, `SampleLocationStore.kt` | design | done | handler, actor, Spot, Domain에 Redis client 타입을 노출하지 않는다. |
 | common: actor가 public Spot API로 room에 join | `PlayEntrySpot.kt`, `PlayActorJoinGameHandler.kt` | spot-flow | done | internal runtime 우회 없이 Spot handler 경로를 사용한다. |
 | common: Spot pub/sub milestone fan-out | `PlayEntrySpot.kt`, `PlayerWinMilestoneMsgHandler.kt`, `TicTacToeGame.kt` | pubsub | done | winner milestone event를 pub/sub로 전달하고 observer에게 push한다. |
 | common: push 대기는 connector public wait API 사용 | `TicTacToeClientScenario.kt` | validation | done | game start, move, win, milestone notify를 typed wait로 검증한다. |
@@ -63,7 +63,7 @@
 | common: inbound observer 로그 확인 | `run_sample.sh`, `run_sample.ps1` | runner | done | observer connection, subscription, milestone marker와 flow log를 확인한다. |
 | common: sample-local polling으로 push 대기를 숨기지 않음 | `TicTacToeClientScenario.kt` | validation | done | push 대기는 scenario 코드에 직접 드러난다. |
 | common: Domain에는 board, turn, win/draw 판정만 둠 | `TicTacToeGame.kt` | design | partial | 현재 Kotlin은 작은 샘플 구조라 game Spot 내부 state로 표현한다. 별도 domain package 분리는 없다. |
-| common: Application은 room 생성 use case를 조율 | `TicTacToeGameCreator.kt` | design | done | room route 저장과 Spot 생성만 조율한다. |
+| common: Application은 room 생성 use case를 조율 | `TicTacToeGameCreator.kt`, `CreateGameHandler.kt` | design | done | room 응답 조립과 Spot 생성 요청을 조율한다. |
 | common: Infrastructure는 HTTP, channel, stream session, actor, Spot, timer, codec 연결을 맡음 | `Server/src/main/kotlin/.../api`, `.../play/infrastructure` | design | done | framework 연결 책임을 infrastructure package가 맡는다. |
 
 ## 남은 gap

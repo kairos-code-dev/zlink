@@ -22,7 +22,6 @@ import systems.zlink.framework.runtime.streams.StreamNodeRegistration;
 import systems.zlink.framework.spots.ZLinkSpotManager;
 import systems.zlink.framework.spots.ZLinkSpotOutbound;
 import systems.zlink.framework.spots.ZLinkSpotPublisherClient;
-import systems.zlink.framework.spots.ZLinkSpotRemoteAddressResolver;
 import systems.zlink.framework.streams.ZLinkSessionPacketDispatcher;
 import systems.zlink.framework.streams.ZLinkSessionPacketHandler;
 
@@ -31,8 +30,6 @@ final class ZLinkFrameworkCapabilityBeanRegistrar implements BeanFactoryPostProc
     private static final String SPOT_OUTBOUND_BEAN_NAME = "zlinkSpotOutbound";
     private static final String SPOT_PUBLISHER_CLIENT_BEAN_NAME =
         "zlinkSpotPublisherClient";
-    private static final String SPOT_REMOTE_ADDRESS_RESOLVER_BEAN_NAME =
-        "zlinkSpotRemoteAddressResolver";
     private static final String ACTOR_MANAGER_BEAN_NAME = "zlinkActorManager";
 
     @Override
@@ -53,8 +50,6 @@ final class ZLinkFrameworkCapabilityBeanRegistrar implements BeanFactoryPostProc
             .anyMatch(node -> !node.actorFactories().isEmpty());
         boolean hasSpotPublisherClient = options.registration().spotNodes().stream()
             .anyMatch(node -> node.pubSubEnabled());
-        boolean hasRegistrySpotRemoteAddresses =
-            options.registration().registrySpotRemoteAddresses() != null;
 
         if (hasSpotNode && !hasBean(beanFactory, ZLinkSpotManager.class)) {
             registerDelegate(registry, SPOT_MANAGER_BEAN_NAME, ZLinkFrameworkSpotManagerBean.class);
@@ -67,19 +62,6 @@ final class ZLinkFrameworkCapabilityBeanRegistrar implements BeanFactoryPostProc
                 registry,
                 SPOT_PUBLISHER_CLIENT_BEAN_NAME,
                 ZLinkFrameworkSpotPublisherClientBean.class);
-        }
-        if (!hasBean(beanFactory, ZLinkSpotRemoteAddressResolver.class)) {
-            if (options.registration().spotRemoteAddressResolverType() != null) {
-                registerDelegate(
-                    registry,
-                    SPOT_REMOTE_ADDRESS_RESOLVER_BEAN_NAME,
-                    options.registration().spotRemoteAddressResolverType());
-            } else if (hasRegistrySpotRemoteAddresses) {
-                registerDelegate(
-                    registry,
-                    SPOT_REMOTE_ADDRESS_RESOLVER_BEAN_NAME,
-                    ZLinkFrameworkRegistrySpotRemoteAddressResolverBean.class);
-            }
         }
         if (hasSpotNode && hasActorFactory && !hasBean(beanFactory, ZLinkActorManager.class)) {
             registerDelegate(registry, ACTOR_MANAGER_BEAN_NAME, ZLinkFrameworkActorManagerBean.class);

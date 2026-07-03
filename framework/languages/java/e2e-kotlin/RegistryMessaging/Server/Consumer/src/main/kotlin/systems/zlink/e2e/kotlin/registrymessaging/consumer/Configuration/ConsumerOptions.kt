@@ -5,7 +5,8 @@ data class ConsumerOptions(
     val logDir: String,
     val traceLabel: String,
     val providerEndpoints: List<String>,
-    val registryRouterEndpoint: String?,
+    val redisLocationEndpoint: String,
+    val locationKeyPrefix: String,
 ) {
     companion object {
         fun parse(args: Array<String>): ConsumerOptions {
@@ -22,16 +23,15 @@ data class ConsumerOptions(
                 index += 2
             }
             val endpoints = values["provider-endpoint"]?.filter { it.isNotBlank() }.orEmpty()
-            val registry = values["registry-router-endpoint"]?.lastOrNull()?.takeIf { it.isNotBlank() }
-            require(endpoints.isNotEmpty() || !registry.isNullOrBlank()) {
-                "--provider-endpoint or --registry-router-endpoint is required."
-            }
+            val redisLocationEndpoint = values.lastRequired("redis-location-endpoint")
+            val locationKeyPrefix = values.lastRequired("location-key-prefix")
             return ConsumerOptions(
                 httpUrl = values.last("http-url", "http://127.0.0.1:0"),
                 logDir = values.last("log-dir", System.getProperty("java.io.tmpdir") + "/zlink-kotlin-e2e-log"),
                 traceLabel = values.last("trace-label", "consumer"),
                 providerEndpoints = endpoints,
-                registryRouterEndpoint = registry,
+                redisLocationEndpoint = redisLocationEndpoint,
+                locationKeyPrefix = locationKeyPrefix,
             )
         }
     }
@@ -39,3 +39,7 @@ data class ConsumerOptions(
 
 private fun Map<String, List<String>>.last(key: String, defaultValue: String): String =
     this[key]?.lastOrNull()?.takeIf { it.isNotBlank() } ?: defaultValue
+
+private fun Map<String, List<String>>.lastRequired(key: String): String =
+    this[key]?.lastOrNull()?.takeIf { it.isNotBlank() }
+        ?: throw IllegalArgumentException("--$key is required.")

@@ -6,6 +6,9 @@ import org.springframework.boot.builder.SpringApplicationBuilder;
 import org.springframework.context.annotation.Bean;
 import systems.zlink.contracts.core.RoutingId;
 import systems.zlink.framework.configuration.ClientServerChannelBuilder;
+import systems.zlink.framework.configuration.ZLinkMessageFlowLogMode;
+import systems.zlink.framework.locations.redis.ZLinkRedisLocationOptions;
+import systems.zlink.framework.locations.redis.ZLinkRedisLocationStore;
 import systems.zlink.framework.spring.EnableZLinkFramework;
 import systems.zlink.framework.spring.ZLinkFrameworkConfigurer;
 
@@ -28,7 +31,11 @@ public final class DelayApplication {
     ZLinkFrameworkConfigurer framework() {
         return options -> {
             String nodeRid = Env.get("ZLINK_KOTLIN_E2E_NODE_RID", "delay-a");
-            options.useDiscovery().addRegistryEndpoint(Env.get("ZLINK_KOTLIN_E2E_REGISTRY_ROUTER"));
+            String logDir = Env.get("ZLINK_KOTLIN_E2E_LOG_DIR", "logs");
+            options.configureDispatch()
+                .messageFlow(ZLinkMessageFlowLogMode.KEY_TRANSITIONS)
+                .traceLogFile(logDir + "/delay-flow.log")
+                .traceLabel("kotlin-yd-delay");
             ClientServerChannelBuilder delay = options.addClientServerChannel(Contracts.DELAY_CHANNEL)
                 .enableServer(Env.get("ZLINK_KOTLIN_E2E_DELAY_ENDPOINT"))
                 .setRoutingId(RoutingId.from(nodeRid));
@@ -38,5 +45,12 @@ public final class DelayApplication {
                 Contracts.DelayRes.class,
                 "DelayReq");
         };
+    }
+
+    @Bean
+    ZLinkRedisLocationStore locationStore() {
+        return new ZLinkRedisLocationStore(new ZLinkRedisLocationOptions()
+            .setConnectionString(Env.get("ZLINK_KOTLIN_E2E_REDIS_LOCATION_ENDPOINT"))
+            .setKeyPrefix(Env.get("ZLINK_KOTLIN_E2E_LOCATION_KEY_PREFIX")));
     }
 }

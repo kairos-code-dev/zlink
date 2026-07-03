@@ -1,7 +1,6 @@
 package systems.zlink.e2e.kotlin.registrymessaging.client.Support
 
 data class ClientOptions(
-    val registryUrl: String,
     val providerAUrl: String,
     val providerBUrl: String,
     val workflowUrl: String,
@@ -9,8 +8,10 @@ data class ClientOptions(
     val singleConsumerUrl: String,
     val discoveryConsumerUrl: String,
     val backpressureConsumerUrl: String,
-    val registryBin: String,
     val providerBin: String,
+    val consumerBin: String,
+    val redisLocationEndpoint: String,
+    val locationKeyPrefix: String,
     val logDir: String,
     val scenario: String,
 ) {
@@ -31,7 +32,6 @@ data class ClientOptions(
             fun required(key: String): String =
                 values[key]?.takeIf { it.isNotBlank() } ?: throw IllegalArgumentException("--$key is required.")
             return ClientOptions(
-                registryUrl = required("registry-url"),
                 providerAUrl = required("provider-a-url"),
                 providerBUrl = required("provider-b-url"),
                 workflowUrl = required("workflow-url"),
@@ -39,8 +39,10 @@ data class ClientOptions(
                 singleConsumerUrl = required("single-consumer-url"),
                 discoveryConsumerUrl = required("discovery-consumer-url"),
                 backpressureConsumerUrl = required("backpressure-consumer-url"),
-                registryBin = required("registry-bin"),
                 providerBin = required("provider-bin"),
+                consumerBin = required("consumer-bin"),
+                redisLocationEndpoint = required("redis-location-endpoint"),
+                locationKeyPrefix = required("location-key-prefix"),
                 logDir = required("log-dir"),
                 scenario = values["scenario"]?.takeIf { it.isNotBlank() } ?: "all",
             )

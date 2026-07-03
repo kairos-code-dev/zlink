@@ -9,6 +9,8 @@ import systems.zlink.e2e.kotlin.registrymessaging.consumer.Configuration.Consume
 import systems.zlink.e2e.kotlin.registrymessaging.consumer.Endpoints.ConsumerEndpoints
 import systems.zlink.e2e.kotlin.registrymessaging.shared.Contracts
 import systems.zlink.framework.configuration.ZLinkMessageFlowLogMode
+import systems.zlink.framework.locations.redis.ZLinkRedisLocationOptions
+import systems.zlink.framework.locations.redis.ZLinkRedisLocationStore
 import systems.zlink.framework.spring.EnableZLinkFramework
 import systems.zlink.framework.spring.ZLinkFrameworkConfigurer
 
@@ -38,9 +40,9 @@ class ConsumerApplication {
                 .traceLabel(options.traceLabel)
 
             val profile = framework.addClientServerChannel(Contracts.PROFILE_CHANNEL)
-            if (!options.registryRouterEndpoint.isNullOrBlank()) {
-                framework.useDiscovery().addRegistryEndpoint(options.registryRouterEndpoint)
+            if (options.providerEndpoints.isEmpty()) {
                 profile.enableClient()
+                framework.addClientServerChannel(Contracts.WORKFLOW_CHANNEL).enableClient()
             } else {
                 for (endpoint in options.providerEndpoints) {
                     profile.enableClient(endpoint)
@@ -48,4 +50,12 @@ class ConsumerApplication {
             }
 
         }
+
+    @Bean
+    fun locationStore(options: ConsumerOptions): ZLinkRedisLocationStore =
+        ZLinkRedisLocationStore(
+            ZLinkRedisLocationOptions()
+                .setConnectionString(options.redisLocationEndpoint)
+                .setKeyPrefix(options.locationKeyPrefix),
+        )
 }

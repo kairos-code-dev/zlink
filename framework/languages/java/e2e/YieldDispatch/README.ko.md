@@ -27,7 +27,7 @@ handler에 들어간 request가 `yield` 중일 때 bound session push를 원래 
 post-timeout probe를 처리하는지 검증한다. `YD-E2`는 cancellation-aware `yield(...)`가 취소를
 관찰한 뒤 같은 Spot mailbox의 다음 probe를 처리하는지 검증한다.
 
-최근 full runner는 `logs/20260702-070504-3148`에서 YD-A/B/C/D/E, E4 정적 검증,
+최근 full runner는 `logs/20260704-001935-37995`에서 YD-A/B/C/D/E, E4 정적 검증,
 E5 marker report 생성을 통과했다.
 shutdown recovery diagnostic은 `ZLINK_JAVA_E2E_RUN_E3_SHUTDOWN=1`로 실행하며,
 `logs/20260702-070504-3148`에서 pending yield 중 play-a SIGTERM shutdown, `.NET`과 같은 stream error
@@ -37,11 +37,14 @@ shutdown recovery diagnostic은 `ZLINK_JAVA_E2E_RUN_E3_SHUTDOWN=1`로 실행하�
 ## 목표 역할
 
 - `Shared`: scenario request/reply, evidence, stream packet 타입.
-- `Server/Registry`: embedded registry process.
 - `Server/Delay`: yield로 기다릴 client-server channel delay service.
 - `Server/Play`: route mesh와 spot mesh를 열고 yield probe spot을 만든다.
 - `Server/Session`: stream connector session gateway와 route/spot bridge를 구성한다.
 - `Client`: stream connector로 session gateway에 접속해 scenario packet을 보내는 consumer.
+
+Delay, Play, Session role은 같은 Redis location store endpoint와 실행별 key prefix를 등록한다. 이 store가
+peer, spot, actor, route row와 owner lease를 한 물리 저장소에서 관리하므로 별도 registry process는
+시작하지 않는다.
 
 HTTP endpoint는 health와 evidence 조회에만 사용한다. yield 시나리오 시작은 공통 문서와 같이 stream
 connector request 경로로 들어가야 한다.
@@ -59,7 +62,7 @@ play/session evidence JSON을 남긴다. 성공 기준은 `scenario YD-A1 passed
 `scenario YD-C2 passed`, `scenario YD-C3 passed`, `scenario YD-D2 passed`,
 `scenario YD-D3 passed`, `scenario YD-D4 passed`,
 `scenario YD-E1 passed`, `scenario YD-E2 passed`, `yield-dispatch e2e result=passed` 출력, message flow 로그,
-`yield-dispatch-marker-report.json` 생성이다. 최근 재실행 로그는 `logs/20260702-070504-3148`이며,
+`yield-dispatch-marker-report.json` 생성이다. 최근 재실행 로그는 `logs/20260704-001935-37995`이며,
 현재 기본 runner 범위는 통과한다.
 `ZLINK_JAVA_E2E_RUN_E3_SHUTDOWN=1` 전체 gate는 `logs/20260702-070504-3148`에서
 `yield-dispatch shutdown wait result=passed`, `yield-dispatch shutdown recovery result=passed`,

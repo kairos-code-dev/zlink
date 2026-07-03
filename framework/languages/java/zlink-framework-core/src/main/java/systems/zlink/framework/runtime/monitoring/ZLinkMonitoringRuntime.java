@@ -7,26 +7,27 @@ import java.util.List;
 import java.util.Map;
 import java.util.Objects;
 import java.util.Optional;
+import java.util.concurrent.CompletableFuture;
+import java.util.concurrent.CompletionStage;
 import systems.zlink.contracts.service.spot.SpotNodePeerEntry;
 import systems.zlink.contracts.service.spot.SpotNodeStatus;
 import systems.zlink.contracts.service.spot.SpotNodeSubjectEntry;
 import systems.zlink.framework.errors.ZLinkConfigurationException;
-import systems.zlink.framework.monitoring.ZLinkRegistryEvent;
-import systems.zlink.framework.monitoring.ZLinkRegistryEventKind;
+import systems.zlink.framework.locations.ZLinkLocationRuntimeQuery;
+import systems.zlink.framework.locations.ZLinkLocationRuntimeStatus;
+import systems.zlink.framework.locations.ZLinkLocationServiceSummary;
+import systems.zlink.framework.locations.ZLinkLocationServiceSummaryFilter;
+import systems.zlink.framework.locations.ZLinkLocationTopologyEntry;
+import systems.zlink.framework.locations.ZLinkLocationTopologyFilter;
+import systems.zlink.framework.locations.ZLinkPageRequest;
+import systems.zlink.framework.monitoring.ZLinkLocationRuntimeEvent;
+import systems.zlink.framework.monitoring.ZLinkLocationRuntimeEventKind;
 import systems.zlink.framework.monitoring.ZLinkRuntimeEventDispatcher;
 import systems.zlink.framework.monitoring.ZLinkSocketDiagnostic;
 import systems.zlink.framework.monitoring.ZLinkSocketEvent;
 import systems.zlink.framework.monitoring.ZLinkSocketEventKind;
 import systems.zlink.framework.monitoring.ZLinkSpotEvent;
 import systems.zlink.framework.monitoring.ZLinkSpotEventKind;
-import systems.zlink.framework.registry.ZLinkRegistryServiceSummaryEntry;
-import systems.zlink.framework.registry.ZLinkRegistryStatus;
-import systems.zlink.framework.registry.ZLinkRegistryTopologyEntry;
-import systems.zlink.framework.runtime.backend.ZLinkBackendRegistry;
-import systems.zlink.framework.runtime.backend.ZLinkBackendRegistryQueryFilter;
-import systems.zlink.framework.runtime.backend.ZLinkBackendRegistryServiceSummaryEntry;
-import systems.zlink.framework.runtime.backend.ZLinkBackendRegistryStatus;
-import systems.zlink.framework.runtime.backend.ZLinkBackendRegistryTopologyEntry;
 import systems.zlink.framework.runtime.backend.ZLinkBackendSocket;
 import systems.zlink.framework.runtime.backend.ZLinkBackendSocketMonitor;
 import systems.zlink.framework.runtime.backend.ZLinkBackendSocketMonitorEvent;
@@ -35,10 +36,10 @@ import systems.zlink.framework.runtime.backend.ZLinkMonitoringBackendAdapter;
 
 public final class ZLinkMonitoringRuntime implements AutoCloseable {
     private final List<ZLinkBackendSocketMonitor> socketMonitors = new ArrayList<>();
-    private final Map<String, ZLinkBackendRegistry> registrySources = new HashMap<>();
     private final Map<String, ZLinkBackendSpotNode> spotSources = new HashMap<>();
-    private final Map<String, RegistrySnapshot> previousRegistrySnapshots = new HashMap<>();
     private final Map<String, SpotSnapshot> previousSpotSnapshots = new HashMap<>();
+    private final Map<String, LocationSnapshot> previousLocationSnapshots = new HashMap<>();
+    private final Map<String, ZLinkLocationRuntimeQuery> locationRuntimeSources = new HashMap<>();
     private final ZLinkRuntimeEventDispatcher dispatcher;
 
     public ZLinkMonitoringRuntime(
@@ -46,20 +47,19 @@ public final class ZLinkMonitoringRuntime implements AutoCloseable {
         ZLinkMonitoringBackendAdapter backend,
         Map<String, ZLinkBackendSocket> socketSources,
         ZLinkRuntimeEventDispatcher dispatcher) {
-        this(options, backend, socketSources, Map.of(), Map.of(), dispatcher);
+        this(options, backend, socketSources, Map.of(), null, dispatcher);
     }
 
     public ZLinkMonitoringRuntime(
         DefaultZLinkMonitoringOptions options,
         ZLinkMonitoringBackendAdapter backend,
         Map<String, ZLinkBackendSocket> socketSources,
-        Map<String, ZLinkBackendRegistry> registrySources,
         Map<String, ZLinkBackendSpotNode> spotSources,
+        ZLinkLocationRuntimeQuery locationRuntimeQuery,
         ZLinkRuntimeEventDispatcher dispatcher) {
         Objects.requireNonNull(options, "options");
         Objects.requireNonNull(backend, "backend");
         Objects.requireNonNull(socketSources, "socketSources");
-        Objects.requireNonNull(registrySources, "registrySources");
         Objects.requireNonNull(spotSources, "spotSources");
         this.dispatcher = Objects.requireNonNull(dispatcher, "dispatcher");
         for (Map.Entry<String, ZLinkSocketEventKind[]> entry : options.socketSources().entrySet()) {
@@ -78,14 +78,6 @@ public final class ZLinkMonitoringRuntime implements AutoCloseable {
             });
             socketMonitors.add(monitor);
         }
-        for (String sourceName : options.registrySources().keySet()) {
-            ZLinkBackendRegistry registry = registrySources.get(sourceName);
-            if (registry == null) {
-                throw new ZLinkConfigurationException(
-                    "monitoring registry source is not configured: " + sourceName);
-            }
-            this.registrySources.put(sourceName, registry);
-        }
         for (String sourceName : options.spotSources().keySet()) {
             ZLinkBackendSpotNode spotNode = spotSources.get(sourceName);
             if (spotNode == null) {
@@ -94,14 +86,30 @@ public final class ZLinkMonitoringRuntime implements AutoCloseable {
             }
             this.spotSources.put(sourceName, spotNode);
         }
+        for (String sourceName : options.locationRuntimeSourceNames()) {
+            if (locationRuntimeQuery == null) {
+                throw new ZLinkConfigurationException(
+                    "monitoring location runtime source requires configured location stores: " + sourceName);
+            }
+            this.locationRuntimeSources.put(sourceName, locationRuntimeQuery);
+        }
+    }
+
+    public ZLinkMonitoringRuntime(
+        DefaultZLinkMonitoringOptions options,
+        ZLinkMonitoringBackendAdapter backend,
+        Map<String, ZLinkBackendSocket> socketSources,
+        Map<String, ZLinkBackendSpotNode> spotSources,
+        ZLinkRuntimeEventDispatcher dispatcher) {
+        this(options, backend, socketSources, spotSources, null, dispatcher);
     }
 
     public void pollSnapshots() {
-        for (Map.Entry<String, ZLinkBackendRegistry> entry : registrySources.entrySet()) {
-            pollRegistry(entry.getKey(), entry.getValue());
-        }
         for (Map.Entry<String, ZLinkBackendSpotNode> entry : spotSources.entrySet()) {
             pollSpot(entry.getKey(), entry.getValue());
+        }
+        for (Map.Entry<String, ZLinkLocationRuntimeQuery> entry : locationRuntimeSources.entrySet()) {
+            pollLocationRuntime(entry.getKey(), entry.getValue());
         }
     }
 
@@ -156,38 +164,6 @@ public final class ZLinkMonitoringRuntime implements AutoCloseable {
         return false;
     }
 
-    private void pollRegistry(String sourceName, ZLinkBackendRegistry registry) {
-        RegistrySnapshot current = RegistrySnapshot.from(registry);
-        RegistrySnapshot previous = previousRegistrySnapshots.put(sourceName, current);
-        if (previous == null || !previous.status().equals(current.status())) {
-            dispatcher.publish(new ZLinkRegistryEvent(
-                sourceName,
-                Instant.now(),
-                ZLinkRegistryEventKind.STATUS_CHANGED,
-                Optional.of(current.status()),
-                current.topology(),
-                current.serviceSummary()));
-        }
-        if (previous == null || !previous.topology().equals(current.topology())) {
-            dispatcher.publish(new ZLinkRegistryEvent(
-                sourceName,
-                Instant.now(),
-                ZLinkRegistryEventKind.TOPOLOGY_CHANGED,
-                Optional.empty(),
-                current.topology(),
-                current.serviceSummary()));
-        }
-        if (previous == null || !previous.serviceSummary().equals(current.serviceSummary())) {
-            dispatcher.publish(new ZLinkRegistryEvent(
-                sourceName,
-                Instant.now(),
-                ZLinkRegistryEventKind.SERVICE_SUMMARY_CHANGED,
-                Optional.empty(),
-                current.topology(),
-                current.serviceSummary()));
-        }
-    }
-
     private void pollSpot(String sourceName, ZLinkBackendSpotNode spotNode) {
         SpotSnapshot current = SpotSnapshot.from(spotNode);
         SpotSnapshot previous = previousSpotSnapshots.put(sourceName, current);
@@ -223,20 +199,93 @@ public final class ZLinkMonitoringRuntime implements AutoCloseable {
         }
     }
 
-    private record RegistrySnapshot(
-        ZLinkRegistryStatus status,
-        List<ZLinkRegistryTopologyEntry> topology,
-        List<ZLinkRegistryServiceSummaryEntry> serviceSummary) {
-        static RegistrySnapshot from(ZLinkBackendRegistry registry) {
-            ZLinkBackendRegistryQueryFilter all = ZLinkBackendRegistryQueryFilter.all();
-            return new RegistrySnapshot(
-                toStatus(registry.status()),
-                registry.topology(all).stream()
-                    .map(ZLinkMonitoringRuntime::toTopologyEntry)
-                    .toList(),
-                registry.serviceSummary(all).stream()
-                    .map(ZLinkMonitoringRuntime::toServiceSummaryEntry)
-                    .toList());
+    private void pollLocationRuntime(String sourceName, ZLinkLocationRuntimeQuery query) {
+        query.getStatusAsync()
+            .thenCompose(status -> listAllTopology(query)
+                .thenCompose(topology -> query.listServiceSummariesAsync(ZLinkLocationServiceSummaryFilter.all())
+                    .thenApply(summary -> new LocationSnapshot(status, topology, List.copyOf(summary)))))
+            .whenComplete((current, failure) -> {
+                if (failure != null) {
+                    dispatcher.publish(new ZLinkLocationRuntimeEvent(
+                        sourceName,
+                        Instant.now(),
+                        ZLinkLocationRuntimeEventKind.STORE_UNAVAILABLE,
+                        null,
+                        null,
+                        null));
+                    return;
+                }
+                publishLocationDiff(sourceName, current);
+            });
+    }
+
+    private CompletionStage<List<ZLinkLocationTopologyEntry>> listAllTopology(
+        ZLinkLocationRuntimeQuery query) {
+        List<ZLinkLocationTopologyEntry> entries = new ArrayList<>();
+        CompletableFuture<List<ZLinkLocationTopologyEntry>> result = new CompletableFuture<>();
+        fetchTopologyPage(query, null, entries, result);
+        return result;
+    }
+
+    private void fetchTopologyPage(
+        ZLinkLocationRuntimeQuery query,
+        String continuation,
+        List<ZLinkLocationTopologyEntry> entries,
+        CompletableFuture<List<ZLinkLocationTopologyEntry>> result) {
+        query.listTopologyAsync(
+                ZLinkLocationTopologyFilter.all(),
+                new ZLinkPageRequest(128, continuation))
+            .whenComplete((page, failure) -> {
+                if (failure != null) {
+                    result.completeExceptionally(failure);
+                    return;
+                }
+                entries.addAll(page.items());
+                if (page.continuationToken() == null) {
+                    result.complete(List.copyOf(entries));
+                    return;
+                }
+                fetchTopologyPage(query, page.continuationToken(), entries, result);
+            });
+    }
+
+    private void publishLocationDiff(String sourceName, LocationSnapshot current) {
+        LocationSnapshot previous = previousLocationSnapshots.put(sourceName, current);
+        if (previous != null && !previous.status().storeHealthy() && current.status().storeHealthy()) {
+            dispatcher.publish(new ZLinkLocationRuntimeEvent(
+                sourceName,
+                Instant.now(),
+                ZLinkLocationRuntimeEventKind.STORE_RECOVERED,
+                current.status(),
+                null,
+                null));
+        }
+        if (previous == null || !Objects.equals(previous.status(), current.status())) {
+            dispatcher.publish(new ZLinkLocationRuntimeEvent(
+                sourceName,
+                Instant.now(),
+                ZLinkLocationRuntimeEventKind.STATUS_CHANGED,
+                current.status(),
+                null,
+                null));
+        }
+        if (previous == null || !Objects.equals(previous.topology(), current.topology())) {
+            dispatcher.publish(new ZLinkLocationRuntimeEvent(
+                sourceName,
+                Instant.now(),
+                ZLinkLocationRuntimeEventKind.TOPOLOGY_CHANGED,
+                null,
+                current.topology(),
+                null));
+        }
+        if (previous == null || !Objects.equals(previous.serviceSummary(), current.serviceSummary())) {
+            dispatcher.publish(new ZLinkLocationRuntimeEvent(
+                sourceName,
+                Instant.now(),
+                ZLinkLocationRuntimeEventKind.SERVICE_SUMMARY_CHANGED,
+                null,
+                null,
+                current.serviceSummary()));
         }
     }
 
@@ -252,48 +301,10 @@ public final class ZLinkMonitoringRuntime implements AutoCloseable {
         }
     }
 
-    private static ZLinkRegistryStatus toStatus(ZLinkBackendRegistryStatus status) {
-        return new ZLinkRegistryStatus(
-            status.registryId(),
-            status.bindEndpoint(),
-            status.state(),
-            status.topologyEntryCount(),
-            status.peerRegistryCount(),
-            status.connectedPeerRegistryCount(),
-            status.listSeq(),
-            status.lastError(),
-            status.lastChangedMs());
+    private record LocationSnapshot(
+        ZLinkLocationRuntimeStatus status,
+        List<ZLinkLocationTopologyEntry> topology,
+        List<ZLinkLocationServiceSummary> serviceSummary) {
     }
 
-    private static ZLinkRegistryTopologyEntry toTopologyEntry(
-        ZLinkBackendRegistryTopologyEntry entry) {
-        return new ZLinkRegistryTopologyEntry(
-            entry.autoConnectType(),
-            entry.routingId(),
-            entry.serviceKind(),
-            entry.serviceRole(),
-            entry.channelName(),
-            entry.endpoint(),
-            entry.source(),
-            entry.state(),
-            entry.desiredCount(),
-            entry.readyCount(),
-            entry.errorCode(),
-            entry.lastReportedMs(),
-            entry.spotKind());
-    }
-
-    private static ZLinkRegistryServiceSummaryEntry toServiceSummaryEntry(
-        ZLinkBackendRegistryServiceSummaryEntry entry) {
-        return new ZLinkRegistryServiceSummaryEntry(
-            entry.autoConnectType(),
-            entry.serviceRole(),
-            entry.channelName(),
-            entry.totalCount(),
-            entry.connectingCount(),
-            entry.readyCount(),
-            entry.errorCount(),
-            entry.stoppedCount(),
-            entry.lastReportedMs());
-    }
 }

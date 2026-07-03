@@ -1,8 +1,6 @@
 package systems.zlink.samples.kotlin.bingo.server.configuration
 
 object SampleTopology {
-    val RegistryPubEndpoint: String = property("registryPubEndpoint", "tcp://127.0.0.1:47101")
-    val RegistryRouterEndpoint: String = property("registryRouterEndpoint", "tcp://127.0.0.1:47102")
     val ApiChannelEndpoint: String = property("apiChannelEndpoint", "tcp://127.0.0.1:47103")
     val ApiAChannelEndpoint: String = property("apiAChannelEndpoint", ApiChannelEndpoint)
     val ApiBChannelEndpoint: String = property("apiBChannelEndpoint", "tcp://127.0.0.1:47117")

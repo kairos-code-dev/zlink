@@ -4,6 +4,7 @@ set -euo pipefail
 cd "$(dirname "${BASH_SOURCE[0]}")"
 
 pids=()
+REDIS_CONTAINER=""
 role_pattern='systems\.zlink\.e2e\.discoveryregistryha\..*\.Program'
 run_id="$(date +%Y%m%d-%H%M%S)-$$"
 log_dir="$(pwd)/logs/${run_id}"
@@ -11,12 +12,20 @@ repo_root="$(cd ../../../../.. && pwd)"
 default_core_lib="${repo_root}/core/build/lib/libzlink.so"
 mkdir -p "${log_dir}"
 echo "log_dir=${log_dir}"
-SCENARIO="${1:-all}"
+SCENARIO="${1:-SF-A1}"
 if [[ -z "${ZLINK_LIBRARY_PATH:-}" && -f "${default_core_lib}" ]]; then
   export ZLINK_LIBRARY_PATH="${default_core_lib}"
 fi
 export ZLINK_JAVA_E2E_BUILD_DIR="${ZLINK_JAVA_E2E_BUILD_DIR:-${HOME}/.cache/zlink/java-e2e/DiscoveryRegistryHa}"
 export ZLINK_JAVA_E2E_GRADLE_CACHE="${ZLINK_JAVA_E2E_GRADLE_CACHE:-${HOME}/.cache/zlink/java-e2e/DiscoveryRegistryHa-gradle-cache}"
+export ZLINK_JAVA_E2E_REDIS_LOCATION_ENDPOINT="${ZLINK_JAVA_E2E_REDIS_LOCATION_ENDPOINT:-${ZLINK_REDIS_LOCATION_ENDPOINT:-127.0.0.1:16379}}"
+ZLINK_JAVA_E2E_BASE_REDIS_LOCATION_ENDPOINT="${ZLINK_JAVA_E2E_REDIS_LOCATION_ENDPOINT}"
+export ZLINK_JAVA_E2E_REDIS_COMMAND_TIMEOUT_MS="${ZLINK_JAVA_E2E_REDIS_COMMAND_TIMEOUT_MS:-500}"
+export ZLINK_JAVA_E2E_LOCATION_KEY_PREFIX="${ZLINK_JAVA_E2E_LOCATION_KEY_PREFIX:-zlink:e2e:store-failure:${run_id}}"
+export ZLINK_JAVA_E2E_LOCATION_HEARTBEAT_MS="${ZLINK_JAVA_E2E_LOCATION_HEARTBEAT_MS:-1000}"
+export ZLINK_JAVA_E2E_LOCATION_LEASE_TTL_MS="${ZLINK_JAVA_E2E_LOCATION_LEASE_TTL_MS:-3000}"
+export ZLINK_JAVA_E2E_LOCATION_POLLING_MS="${ZLINK_JAVA_E2E_LOCATION_POLLING_MS:-500}"
+export ZLINK_JAVA_E2E_LOCATION_STORE_FAILURE_GRACE_MS="${ZLINK_JAVA_E2E_LOCATION_STORE_FAILURE_GRACE_MS:-6000}"
 LOCAL_READINESS_TIMEOUT_SECONDS=3
 LOCAL_READINESS_POLL_SECONDS=0.1
 LOCAL_READINESS_ATTEMPTS=30
@@ -57,6 +66,10 @@ cleanup() {
   (pgrep -f "${role_pattern}" 2>/dev/null || true) | while read -r pid; do
     kill -9 "${pid}" >/dev/null 2>&1 || true
   done
+  if [[ -n "${REDIS_CONTAINER}" ]]; then
+    docker unpause "${REDIS_CONTAINER}" >/dev/null 2>&1 || true
+    docker rm -f "${REDIS_CONTAINER}" >/dev/null 2>&1 || true
+  fi
   wait >/dev/null 2>&1 || true
   exit "${status}"
 }
@@ -95,6 +108,37 @@ port_of() {
   echo "${1##*:}"
 }
 
+start_redis_container() {
+  if ! command -v docker >/dev/null 2>&1; then
+    echo "Docker is required for ${SCENARIO}; it provisions a dedicated Redis location store." >&2
+    exit 1
+  fi
+  REDIS_CONTAINER="zlink-java-storefailure-redis-$$"
+  docker run -d --rm --name "${REDIS_CONTAINER}" -p "127.0.0.1::6379" redis:7.2-alpine >/dev/null
+  ZLINK_JAVA_E2E_REDIS_LOCATION_ENDPOINT="$(
+    docker port "${REDIS_CONTAINER}" 6379/tcp | sed -E 's/.*:([0-9]+)$/127.0.0.1:\1/'
+  )"
+  export ZLINK_JAVA_E2E_REDIS_LOCATION_ENDPOINT
+}
+
+pause_redis_container() {
+  docker pause "${REDIS_CONTAINER}" >/dev/null
+}
+
+unpause_redis_container() {
+  docker unpause "${REDIS_CONTAINER}" >/dev/null
+}
+
+stop_redis_container() {
+  if [[ -n "${REDIS_CONTAINER}" ]]; then
+    docker unpause "${REDIS_CONTAINER}" >/dev/null 2>&1 || true
+    docker rm -f "${REDIS_CONTAINER}" >/dev/null 2>&1 || true
+    REDIS_CONTAINER=""
+  fi
+  ZLINK_JAVA_E2E_REDIS_LOCATION_ENDPOINT="${ZLINK_JAVA_E2E_BASE_REDIS_LOCATION_ENDPOINT}"
+  export ZLINK_JAVA_E2E_REDIS_LOCATION_ENDPOINT
+}
+
 wait_port() {
   local name="$1"
   local endpoint="$2"
@@ -114,97 +158,57 @@ gradle_run() {
   ../../gradlew --project-cache-dir "${ZLINK_JAVA_E2E_GRADLE_CACHE}" --no-daemon "$@" --quiet
 }
 
-registry_bin() {
-  echo "${ZLINK_JAVA_E2E_BUILD_DIR}/Server-Registry/install/discovery-registry-ha-registry/bin/discovery-registry-ha-registry"
-}
-
 provider_bin() {
   echo "${ZLINK_JAVA_E2E_BUILD_DIR}/Server-Provider/install/discovery-registry-ha-provider/bin/discovery-registry-ha-provider"
-}
-
-embedded_bin() {
-  echo "${ZLINK_JAVA_E2E_BUILD_DIR}/Server-Embedded/install/discovery-registry-ha-embedded/bin/discovery-registry-ha-embedded"
 }
 
 consumer_bin() {
   echo "${ZLINK_JAVA_E2E_BUILD_DIR}/Server-Consumer/install/discovery-registry-ha-consumer/bin/discovery-registry-ha-consumer"
 }
 
-probe_bin() {
-  echo "${ZLINK_JAVA_E2E_BUILD_DIR}/Server-Probe/install/discovery-registry-ha-probe/bin/discovery-registry-ha-probe"
-}
-
 client_bin() {
   echo "${ZLINK_JAVA_E2E_BUILD_DIR}/Client/install/discovery-registry-ha-client/bin/discovery-registry-ha-client"
-}
-
-start_registry() {
-  local name="$1"
-  local id="$2"
-  local pub="$3"
-  local router="$4"
-  local http_endpoint="$5"
-  local peers="${6:-}"
-  ZLINK_JAVA_E2E_REGISTRY_ID="${id}" \
-  ZLINK_JAVA_E2E_REGISTRY_PUB="${pub}" \
-  ZLINK_JAVA_E2E_REGISTRY_ROUTER="${router}" \
-  ZLINK_JAVA_E2E_HTTP_ENDPOINT="${http_endpoint}" \
-  ZLINK_JAVA_E2E_REGISTRY_PEERS="${peers}" \
-  ZLINK_JAVA_E2E_LOG_DIR="${log_dir}" \
-    "$(registry_bin)" >"${log_dir}/${name}.stdout.log" 2>"${log_dir}/${name}.stderr.log" &
-  LAST_PID="$!"
-  pids+=("${LAST_PID}")
-  wait_port "${name}-router" "${router}"
-  wait_port "${name}-http" "${http_endpoint}"
 }
 
 start_provider() {
   local rid="$1"
   local endpoint="$2"
-  local registries="$3"
-  local name="${4:-${rid}}"
+  local name="${3:-${rid}}"
+  local http_endpoint="${4:-}"
   ZLINK_JAVA_E2E_PROVIDER_RID="${rid}" \
   ZLINK_JAVA_E2E_API_ENDPOINT="${endpoint}" \
-  ZLINK_JAVA_E2E_REGISTRY_ROUTERS="${registries}" \
+  ZLINK_JAVA_E2E_HTTP_ENDPOINT="${http_endpoint}" \
+  ZLINK_JAVA_E2E_REDIS_LOCATION_ENDPOINT="${ZLINK_JAVA_E2E_REDIS_LOCATION_ENDPOINT}" \
+  ZLINK_JAVA_E2E_REDIS_COMMAND_TIMEOUT_MS="${ZLINK_JAVA_E2E_REDIS_COMMAND_TIMEOUT_MS}" \
+  ZLINK_JAVA_E2E_LOCATION_KEY_PREFIX="${ZLINK_JAVA_E2E_LOCATION_KEY_PREFIX}" \
+  ZLINK_JAVA_E2E_LOCATION_HEARTBEAT_MS="${ZLINK_JAVA_E2E_LOCATION_HEARTBEAT_MS}" \
+  ZLINK_JAVA_E2E_LOCATION_LEASE_TTL_MS="${ZLINK_JAVA_E2E_LOCATION_LEASE_TTL_MS}" \
+  ZLINK_JAVA_E2E_LOCATION_POLLING_MS="${ZLINK_JAVA_E2E_LOCATION_POLLING_MS}" \
+  ZLINK_JAVA_E2E_LOCATION_STORE_FAILURE_GRACE_MS="${ZLINK_JAVA_E2E_LOCATION_STORE_FAILURE_GRACE_MS}" \
   ZLINK_JAVA_E2E_LOG_DIR="${log_dir}" \
     "$(provider_bin)" >"${log_dir}/${name}.stdout.log" 2>"${log_dir}/${name}.stderr.log" &
   LAST_PID="$!"
   pids+=("${LAST_PID}")
   wait_port "${name}-api" "${endpoint}"
-}
-
-start_embedded() {
-  local name="$1"
-  local id="$2"
-  local pub="$3"
-  local router="$4"
-  local http_endpoint="$5"
-  local rid="$6"
-  local api_endpoint="$7"
-  local peers="${8:-}"
-  ZLINK_JAVA_E2E_REGISTRY_ID="${id}" \
-  ZLINK_JAVA_E2E_REGISTRY_PUB="${pub}" \
-  ZLINK_JAVA_E2E_REGISTRY_ROUTER="${router}" \
-  ZLINK_JAVA_E2E_REGISTRY_ROUTERS="${router}" \
-  ZLINK_JAVA_E2E_HTTP_ENDPOINT="${http_endpoint}" \
-  ZLINK_JAVA_E2E_REGISTRY_PEERS="${peers}" \
-  ZLINK_JAVA_E2E_PROVIDER_RID="${rid}" \
-  ZLINK_JAVA_E2E_API_ENDPOINT="${api_endpoint}" \
-  ZLINK_JAVA_E2E_LOG_DIR="${log_dir}" \
-    "$(embedded_bin)" >"${log_dir}/${name}.stdout.log" 2>"${log_dir}/${name}.stderr.log" &
-  pids+=("$!")
-  wait_port "${name}-router" "${router}"
-  wait_port "${name}-http" "${http_endpoint}"
-  wait_port "${rid}-api" "${api_endpoint}"
+  if [[ -n "${http_endpoint}" ]]; then
+    wait_port "${name}-http" "${http_endpoint}"
+  fi
 }
 
 start_consumer() {
   local name="$1"
   local http_endpoint="$2"
-  local registries="$3"
+  local store_mode="${3:-stamp}"
   ZLINK_JAVA_E2E_CONSUMER_RID="${name}" \
   ZLINK_JAVA_E2E_HTTP_ENDPOINT="${http_endpoint}" \
-  ZLINK_JAVA_E2E_REGISTRY_ROUTERS="${registries}" \
+  ZLINK_JAVA_E2E_LOCATION_STORE_MODE="${store_mode}" \
+  ZLINK_JAVA_E2E_REDIS_LOCATION_ENDPOINT="${ZLINK_JAVA_E2E_REDIS_LOCATION_ENDPOINT}" \
+  ZLINK_JAVA_E2E_REDIS_COMMAND_TIMEOUT_MS="${ZLINK_JAVA_E2E_REDIS_COMMAND_TIMEOUT_MS}" \
+  ZLINK_JAVA_E2E_LOCATION_KEY_PREFIX="${ZLINK_JAVA_E2E_LOCATION_KEY_PREFIX}" \
+  ZLINK_JAVA_E2E_LOCATION_HEARTBEAT_MS="${ZLINK_JAVA_E2E_LOCATION_HEARTBEAT_MS}" \
+  ZLINK_JAVA_E2E_LOCATION_LEASE_TTL_MS="${ZLINK_JAVA_E2E_LOCATION_LEASE_TTL_MS}" \
+  ZLINK_JAVA_E2E_LOCATION_POLLING_MS="${ZLINK_JAVA_E2E_LOCATION_POLLING_MS}" \
+  ZLINK_JAVA_E2E_LOCATION_STORE_FAILURE_GRACE_MS="${ZLINK_JAVA_E2E_LOCATION_STORE_FAILURE_GRACE_MS}" \
   ZLINK_JAVA_E2E_LOG_DIR="${log_dir}" \
     "$(consumer_bin)" >"${log_dir}/${name}.stdout.log" 2>"${log_dir}/${name}.stderr.log" &
   LAST_PID="$!"
@@ -212,82 +216,24 @@ start_consumer() {
   wait_port "${name}-http" "${http_endpoint}"
 }
 
-start_probe() {
-  local name="$1"
-  local http_endpoint="$2"
-  local query_registry="$3"
-  ZLINK_JAVA_E2E_HTTP_ENDPOINT="${http_endpoint}" \
-  ZLINK_JAVA_E2E_QUERY_REGISTRY_ROUTER="${query_registry}" \
-  ZLINK_JAVA_E2E_LOG_DIR="${log_dir}" \
-    "$(probe_bin)" >"${log_dir}/${name}.stdout.log" 2>"${log_dir}/${name}.stderr.log" &
-  LAST_PID="$!"
-  pids+=("${LAST_PID}")
-  wait_port "${name}-http" "${http_endpoint}"
-}
-
-run_client() {
-  local scenario="$1"
-  local registries="$2"
-  local probes="$3"
-  local expected="$4"
-  local dead="${5:-}"
-  local query_registry="${6:-${registries%%,*}}"
-  local topology_probe="${7:-${probes%%,*}}"
-  local expected_members="${8:-${expected}}"
-  local remote_topology_probe="${9:-${topology_probe}}"
-  local consumer_port
-  consumer_port="$(reserve_ports 1)"
-  local consumer_http
-  consumer_http="$(http "${consumer_port}")"
-  start_consumer "consumer-${scenario}" "${consumer_http}" "${registries}"
-  local consumer_pid="${LAST_PID}"
-  ZLINK_JAVA_E2E_SCENARIO="${scenario}" \
-  ZLINK_JAVA_E2E_REGISTRY_ROUTERS="${registries}" \
-  ZLINK_JAVA_E2E_QUERY_REGISTRY_ROUTER="${query_registry}" \
-  ZLINK_JAVA_E2E_PROBE_HTTP_ENDPOINTS="${probes}" \
-  ZLINK_JAVA_E2E_TOPOLOGY_HTTP_ENDPOINT="${topology_probe}" \
-  ZLINK_JAVA_E2E_REMOTE_TOPOLOGY_HTTP_ENDPOINT="${remote_topology_probe}" \
-  ZLINK_JAVA_E2E_CONSUMER_HTTP_ENDPOINT="${consumer_http}" \
-  ZLINK_JAVA_E2E_EXPECTED_RIDS="${expected}" \
-  ZLINK_JAVA_E2E_EXPECTED_MEMBER_RIDS="${expected_members}" \
-  ZLINK_JAVA_E2E_DEAD_HTTP_ENDPOINT="${dead}" \
-  ZLINK_JAVA_E2E_LOG_DIR="${log_dir}" \
-    "$(client_bin)" >"${log_dir}/client-${scenario}.stdout.log" 2>"${log_dir}/client-${scenario}.stderr.log"
-  stop_pid "${consumer_pid}"
-  cat "${log_dir}/client-${scenario}.stdout.log"
-}
-
-run_client_with_consumer() {
-  local scenario="$1"
-  local registries="$2"
-  local probes="$3"
-  local expected="$4"
-  local consumer_http="$5"
-  local dead="${6:-}"
-  local query_registry="${7:-${registries%%,*}}"
-  local topology_probe="${8:-${probes%%,*}}"
-  local expected_members="${9:-${expected}}"
-  local remote_topology_probe="${10:-${topology_probe}}"
-  local log_name="${11:-${scenario}}"
-  ZLINK_JAVA_E2E_SCENARIO="${scenario}" \
-  ZLINK_JAVA_E2E_REGISTRY_ROUTERS="${registries}" \
-  ZLINK_JAVA_E2E_QUERY_REGISTRY_ROUTER="${query_registry}" \
-  ZLINK_JAVA_E2E_PROBE_HTTP_ENDPOINTS="${probes}" \
-  ZLINK_JAVA_E2E_TOPOLOGY_HTTP_ENDPOINT="${topology_probe}" \
-  ZLINK_JAVA_E2E_REMOTE_TOPOLOGY_HTTP_ENDPOINT="${remote_topology_probe}" \
-  ZLINK_JAVA_E2E_CONSUMER_HTTP_ENDPOINT="${consumer_http}" \
-  ZLINK_JAVA_E2E_EXPECTED_RIDS="${expected}" \
-  ZLINK_JAVA_E2E_EXPECTED_MEMBER_RIDS="${expected_members}" \
-  ZLINK_JAVA_E2E_DEAD_HTTP_ENDPOINT="${dead}" \
-  ZLINK_JAVA_E2E_LOG_DIR="${log_dir}" \
-    "$(client_bin)" >"${log_dir}/client-${log_name}.stdout.log" 2>"${log_dir}/client-${log_name}.stderr.log"
-  cat "${log_dir}/client-${log_name}.stdout.log"
-}
-
 stop_all() {
   set +e
   for ((i=${#pids[@]}-1; i>=0; i--)); do
     kill "${pids[$i]}" >/dev/null 2>&1 || true
+  done
+  for _ in $(seq 1 30); do
+    local any_running=0
+    for pid in "${pids[@]}"; do
+      if kill -0 "${pid}" >/dev/null 2>&1; then
+        any_running=1
+        break
+      fi
+    done
+    [[ "${any_running}" == "0" ]] && break
+    sleep 0.1
+  done
+  for ((i=${#pids[@]}-1; i>=0; i--)); do
+    kill -9 "${pids[$i]}" >/dev/null 2>&1 || true
   done
   wait >/dev/null 2>&1 || true
   pids=()
@@ -302,229 +248,423 @@ stop_pid() {
   fi
 }
 
+shutdown_http() {
+  local endpoint="$1"
+  python3 - "${endpoint}" <<'PY'
+import sys
+import urllib.request
+
+endpoint = sys.argv[1]
+request = urllib.request.Request(endpoint + "/shutdown", data=b"", method="POST")
+with urllib.request.urlopen(request, timeout=5) as response:
+    response.read()
+PY
+}
+
+status_field() {
+  local endpoint="$1"
+  local field="$2"
+  python3 - "${endpoint}" "${field}" <<'PY'
+import json
+import sys
+import urllib.request
+
+endpoint = sys.argv[1]
+field = sys.argv[2]
+with urllib.request.urlopen(endpoint + "/locations/status", timeout=5) as response:
+    status = json.load(response)
+print(status.get(field, ""))
+PY
+}
+
+assert_instant_after() {
+  local before="$1"
+  local after="$2"
+  local message="$3"
+  python3 - "${before}" "${after}" "${message}" <<'PY'
+import datetime
+import sys
+
+before = sys.argv[1]
+after = sys.argv[2]
+message = sys.argv[3]
+
+def parse(value):
+    if not value:
+        raise ValueError("empty instant")
+    return datetime.datetime.fromisoformat(value.replace("Z", "+00:00"))
+
+if parse(after) <= parse(before):
+    raise SystemExit(message + f": before={before} after={after}")
+PY
+}
+
 should_run() {
   local target="$1"
-  [[ "${SCENARIO}" == "all" || "${SCENARIO}" == "${target}" ]]
+  [[ "${SCENARIO}" == "${target}" || ( "${SCENARIO}" == "all" && "${target}" == SF-* ) ]]
 }
+
+if [[ "${SCENARIO}" != "all" && "${SCENARIO}" != "SF-A1" && "${SCENARIO}" != "SF-A2" && "${SCENARIO}" != "SF-B1" && "${SCENARIO}" != "SF-B2" && "${SCENARIO}" != "SF-C1" && "${SCENARIO}" != "SF-C2" && "${SCENARIO}" != "SF-D1" && "${SCENARIO}" != "SF-D2" && "${SCENARIO}" != "SF-D3" ]]; then
+  echo "scenario ${SCENARIO} gap=store-failure-scenario-not-yet-ported" >&2
+  exit 1
+fi
 
 gradle_run installDist
 
-if should_run DR-A1 || should_run DR-D2; then
-read -r R1P R1R R1H A B <<<"$(reserve_ports 5)"
-REG1_PUB="$(tcp "${R1P}")"; REG1_ROUTER="$(tcp "${R1R}")"; REG1_HTTP="$(http "${R1H}")"
+if should_run SF-A1; then
+read -r AH BH CH A B <<<"$(reserve_ports 5)"
 API_A="$(tcp "${A}")"; API_B="$(tcp "${B}")"
-start_registry dr-a1-reg1 1 "${REG1_PUB}" "${REG1_ROUTER}" "${REG1_HTTP}"
-start_provider api-a "${API_A}" "${REG1_ROUTER}"
-start_provider api-b "${API_B}" "${REG1_ROUTER}"
+HTTP_A="$(http "${AH}")"; HTTP_B="$(http "${BH}")"; CONSUMER_HTTP="$(http "${CH}")"
+start_provider api-a "${API_A}" api-a
+start_provider api-b "${API_B}" api-b
+start_consumer "consumer-SF-A1" "${CONSUMER_HTTP}"
 sleep 2
-should_run DR-A1 && run_client DR-A1 "${REG1_ROUTER}" "${REG1_HTTP}" "api-a,api-b"
-should_run DR-D2 && run_client DR-D2 "${REG1_ROUTER}" "${REG1_HTTP}" "api-a,api-b"
+ZLINK_JAVA_E2E_SCENARIO="SF-A1" \
+ZLINK_JAVA_E2E_CONSUMER_HTTP_ENDPOINT="${CONSUMER_HTTP}" \
+ZLINK_JAVA_E2E_EXPECTED_RIDS="api-a,api-b" \
+ZLINK_JAVA_E2E_LOG_DIR="${log_dir}" \
+  "$(client_bin)" >"${log_dir}/client-SF-A1.stdout.log" 2>"${log_dir}/client-SF-A1.stderr.log"
+cat "${log_dir}/client-SF-A1.stdout.log"
 stop_all
 fi
 
-if should_run DR-D1; then
-read -r R1P R1R R1H A <<<"$(reserve_ports 4)"
-REG1_PUB="$(tcp "${R1P}")"; REG1_ROUTER="$(tcp "${R1R}")"; REG1_HTTP="$(http "${R1H}")"
-API_A="$(tcp "${A}")"
-start_embedded dr-d1-embedded 1 "${REG1_PUB}" "${REG1_ROUTER}" "${REG1_HTTP}" api-a "${API_A}"
+if should_run SF-A2; then
+read -r AH BH CH CPH A B C <<<"$(reserve_ports 7)"
+API_A="$(tcp "${A}")"; API_B="$(tcp "${B}")"; API_C="$(tcp "${C}")"
+HTTP_A="$(http "${AH}")"; HTTP_B="$(http "${BH}")"; HTTP_C="$(http "${CPH}")"; CONSUMER_HTTP="$(http "${CH}")"
+start_provider api-a "${API_A}" api-a "${HTTP_A}"
+start_provider api-b "${API_B}" api-b "${HTTP_B}"
+start_consumer "consumer-SF-A2" "${CONSUMER_HTTP}" polling
 sleep 2
-run_client DR-D1 "${REG1_ROUTER}" "${REG1_HTTP}" "api-a"
+ZLINK_JAVA_E2E_SCENARIO="SF-A2" \
+ZLINK_JAVA_E2E_CONSUMER_HTTP_ENDPOINT="${CONSUMER_HTTP}" \
+ZLINK_JAVA_E2E_EXPECTED_RIDS="api-a,api-b" \
+ZLINK_JAVA_E2E_LOCATION_LEASE_TTL_MS="${ZLINK_JAVA_E2E_LOCATION_LEASE_TTL_MS}" \
+ZLINK_JAVA_E2E_LOCATION_POLLING_MS="${ZLINK_JAVA_E2E_LOCATION_POLLING_MS}" \
+ZLINK_JAVA_E2E_LOG_DIR="${log_dir}" \
+  "$(client_bin)" >"${log_dir}/client-SF-A2-initial.stdout.log" 2>"${log_dir}/client-SF-A2-initial.stderr.log"
+cat "${log_dir}/client-SF-A2-initial.stdout.log"
+start_provider api-c "${API_C}" api-c "${HTTP_C}"
+API_C_PID="${LAST_PID}"
+ZLINK_JAVA_E2E_SCENARIO="SF-A2" \
+ZLINK_JAVA_E2E_CONSUMER_HTTP_ENDPOINT="${CONSUMER_HTTP}" \
+ZLINK_JAVA_E2E_EXPECTED_RIDS="api-a,api-b,api-c" \
+ZLINK_JAVA_E2E_LOCATION_LEASE_TTL_MS="${ZLINK_JAVA_E2E_LOCATION_LEASE_TTL_MS}" \
+ZLINK_JAVA_E2E_LOCATION_POLLING_MS="${ZLINK_JAVA_E2E_LOCATION_POLLING_MS}" \
+ZLINK_JAVA_E2E_LOG_DIR="${log_dir}" \
+  "$(client_bin)" >"${log_dir}/client-SF-A2-added.stdout.log" 2>"${log_dir}/client-SF-A2-added.stderr.log"
+cat "${log_dir}/client-SF-A2-added.stdout.log"
+shutdown_http "${HTTP_C}"
+wait "${API_C_PID}" >/dev/null 2>&1 || true
+ZLINK_JAVA_E2E_SCENARIO="SF-A2" \
+ZLINK_JAVA_E2E_CONSUMER_HTTP_ENDPOINT="${CONSUMER_HTTP}" \
+ZLINK_JAVA_E2E_EXPECTED_RIDS="api-a,api-b" \
+ZLINK_JAVA_E2E_EXPECTED_ABSENT_RIDS="api-c" \
+ZLINK_JAVA_E2E_LOCATION_LEASE_TTL_MS="${ZLINK_JAVA_E2E_LOCATION_LEASE_TTL_MS}" \
+ZLINK_JAVA_E2E_LOCATION_POLLING_MS="${ZLINK_JAVA_E2E_LOCATION_POLLING_MS}" \
+ZLINK_JAVA_E2E_LOG_DIR="${log_dir}" \
+  "$(client_bin)" >"${log_dir}/client-SF-A2-removed.stdout.log" 2>"${log_dir}/client-SF-A2-removed.stderr.log"
+cat "${log_dir}/client-SF-A2-removed.stdout.log"
 stop_all
 fi
 
-if should_run DR-A2; then
-read -r R1P R1R R1H R2P R2R R2H A <<<"$(reserve_ports 7)"
-REG1_PUB="$(tcp "${R1P}")"; REG1_ROUTER="$(tcp "${R1R}")"; REG1_HTTP="$(http "${R1H}")"
-REG2_PUB="$(tcp "${R2P}")"; REG2_ROUTER="$(tcp "${R2R}")"; REG2_HTTP="$(http "${R2H}")"
-API_A="$(tcp "${A}")"
-start_registry dr-a2-reg1 1 "${REG1_PUB}" "${REG1_ROUTER}" "${REG1_HTTP}" "${REG2_PUB}"
-start_registry dr-a2-reg2 2 "${REG2_PUB}" "${REG2_ROUTER}" "${REG2_HTTP}" "${REG1_PUB}"
-start_provider api-a "${API_A}" "${REG1_ROUTER}"
-sleep "${SCENARIO_SETTLE_SECONDS}"
-run_client DR-A2 "${REG2_ROUTER}" "${REG2_HTTP}" "api-a"
-stop_all
-fi
-
-if should_run DR-A3 || should_run DR-D4 || should_run DR-A4; then
-read -r R1P R1R R1H R2P R2R R2H R3P R3R R3H A B <<<"$(reserve_ports 11)"
-REG1_PUB="$(tcp "${R1P}")"; REG1_ROUTER="$(tcp "${R1R}")"; REG1_HTTP="$(http "${R1H}")"
-REG2_PUB="$(tcp "${R2P}")"; REG2_ROUTER="$(tcp "${R2R}")"; REG2_HTTP="$(http "${R2H}")"
-REG3_PUB="$(tcp "${R3P}")"; REG3_ROUTER="$(tcp "${R3R}")"; REG3_HTTP="$(http "${R3H}")"
+if should_run SF-B1; then
+start_redis_container
+read -r AH BH CH A B <<<"$(reserve_ports 5)"
 API_A="$(tcp "${A}")"; API_B="$(tcp "${B}")"
-start_registry dr-a3-reg1 1 "${REG1_PUB}" "${REG1_ROUTER}" "${REG1_HTTP}" "${REG2_PUB},${REG3_PUB}"
-start_registry dr-a3-reg2 2 "${REG2_PUB}" "${REG2_ROUTER}" "${REG2_HTTP}" "${REG1_PUB},${REG3_PUB}"
-start_registry dr-a3-reg3 3 "${REG3_PUB}" "${REG3_ROUTER}" "${REG3_HTTP}" "${REG1_PUB},${REG2_PUB}"
-start_provider api-a "${API_A}" "${REG1_ROUTER}"
-start_provider api-b "${API_B}" "${REG3_ROUTER}"
-sleep 4
-if should_run DR-A3; then
-  run_client DR-A3 "${REG1_ROUTER}" "${REG1_HTTP},${REG2_HTTP},${REG3_HTTP}" "api-a,api-b"
-  if [[ "${SCENARIO}" == "all" ]]; then
-    run_client DR-A3 "${REG2_ROUTER}" "${REG1_HTTP},${REG2_HTTP},${REG3_HTTP}" "api-a,api-b"
-    run_client DR-A3 "${REG3_ROUTER}" "${REG1_HTTP},${REG2_HTTP},${REG3_HTTP}" "api-a,api-b"
-  fi
-fi
-if should_run DR-D4; then
-read -r PROBE <<<"$(reserve_ports 1)"
-PROBE_HTTP="$(http "${PROBE}")"
-start_probe dr-d4-probe "${PROBE_HTTP}" "${REG2_ROUTER}"
-run_client DR-D4 "${REG2_ROUTER}" "${REG2_HTTP}" "api-a,api-b" "" "${REG2_ROUTER}" "${REG2_HTTP}" "api-a,api-b" "${PROBE_HTTP}"
-fi
-if should_run DR-A4; then
-read -r A_DUP <<<"$(reserve_ports 1)"
-API_A_DUP="$(tcp "${A_DUP}")"
-start_provider api-a "${API_A_DUP}" "${REG2_ROUTER}" api-a-duplicate
+HTTP_A="$(http "${AH}")"; HTTP_B="$(http "${BH}")"; CONSUMER_HTTP="$(http "${CH}")"
+start_provider api-a "${API_A}" api-a "${HTTP_A}"
+start_provider api-b "${API_B}" api-b "${HTTP_B}"
+start_consumer "consumer-SF-B1" "${CONSUMER_HTTP}"
 sleep 2
-run_client DR-A4 "${REG2_ROUTER}" "${REG2_HTTP}" "api-a"
-fi
+ZLINK_JAVA_E2E_SCENARIO="SF-A1" \
+ZLINK_JAVA_E2E_CONSUMER_HTTP_ENDPOINT="${CONSUMER_HTTP}" \
+ZLINK_JAVA_E2E_EXPECTED_RIDS="api-a,api-b" \
+ZLINK_JAVA_E2E_LOCATION_HEARTBEAT_MS="${ZLINK_JAVA_E2E_LOCATION_HEARTBEAT_MS}" \
+ZLINK_JAVA_E2E_LOCATION_LEASE_TTL_MS="${ZLINK_JAVA_E2E_LOCATION_LEASE_TTL_MS}" \
+ZLINK_JAVA_E2E_LOCATION_POLLING_MS="${ZLINK_JAVA_E2E_LOCATION_POLLING_MS}" \
+ZLINK_JAVA_E2E_LOG_DIR="${log_dir}" \
+  "$(client_bin)" >"${log_dir}/client-SF-B1-baseline.stdout.log" 2>"${log_dir}/client-SF-B1-baseline.stderr.log"
+cat "${log_dir}/client-SF-B1-baseline.stdout.log"
+pause_redis_container
+ZLINK_JAVA_E2E_SCENARIO="SF-B1" \
+ZLINK_JAVA_E2E_CONSUMER_HTTP_ENDPOINT="${CONSUMER_HTTP}" \
+ZLINK_JAVA_E2E_EXPECTED_RIDS="api-a,api-b" \
+ZLINK_JAVA_E2E_LOCATION_HEARTBEAT_MS="${ZLINK_JAVA_E2E_LOCATION_HEARTBEAT_MS}" \
+ZLINK_JAVA_E2E_LOCATION_LEASE_TTL_MS="${ZLINK_JAVA_E2E_LOCATION_LEASE_TTL_MS}" \
+ZLINK_JAVA_E2E_LOCATION_POLLING_MS="${ZLINK_JAVA_E2E_LOCATION_POLLING_MS}" \
+ZLINK_JAVA_E2E_LOG_DIR="${log_dir}" \
+  "$(client_bin)" >"${log_dir}/client-SF-B1.stdout.log" 2>"${log_dir}/client-SF-B1.stderr.log"
+cat "${log_dir}/client-SF-B1.stdout.log"
+unpause_redis_container
+ZLINK_JAVA_E2E_SCENARIO="SF-B1-RECOVERED" \
+ZLINK_JAVA_E2E_CONSUMER_HTTP_ENDPOINT="${CONSUMER_HTTP}" \
+ZLINK_JAVA_E2E_EXPECTED_RIDS="api-a,api-b" \
+ZLINK_JAVA_E2E_LOCATION_HEARTBEAT_MS="${ZLINK_JAVA_E2E_LOCATION_HEARTBEAT_MS}" \
+ZLINK_JAVA_E2E_LOCATION_LEASE_TTL_MS="${ZLINK_JAVA_E2E_LOCATION_LEASE_TTL_MS}" \
+ZLINK_JAVA_E2E_LOCATION_POLLING_MS="${ZLINK_JAVA_E2E_LOCATION_POLLING_MS}" \
+ZLINK_JAVA_E2E_LOG_DIR="${log_dir}" \
+  "$(client_bin)" >"${log_dir}/client-SF-B1-recovered.stdout.log" 2>"${log_dir}/client-SF-B1-recovered.stderr.log"
+cat "${log_dir}/client-SF-B1-recovered.stdout.log"
 stop_all
+stop_redis_container
 fi
 
-if should_run DR-D3; then
-read -r R1P R1R R1H R2P R2R R2H A B <<<"$(reserve_ports 8)"
-REG1_PUB="$(tcp "${R1P}")"; REG1_ROUTER="$(tcp "${R1R}")"; REG1_HTTP="$(http "${R1H}")"
-REG2_PUB="$(tcp "${R2P}")"; REG2_ROUTER="$(tcp "${R2R}")"; REG2_HTTP="$(http "${R2H}")"
+if should_run SF-B2; then
+start_redis_container
+read -r AH BH CH A B <<<"$(reserve_ports 5)"
 API_A="$(tcp "${A}")"; API_B="$(tcp "${B}")"
-start_embedded dr-d3-embedded 1 "${REG1_PUB}" "${REG1_ROUTER}" "${REG1_HTTP}" api-a "${API_A}" "${REG2_PUB}"
-start_registry dr-d3-reg2 2 "${REG2_PUB}" "${REG2_ROUTER}" "${REG2_HTTP}" "${REG1_PUB}"
-start_provider api-b "${API_B}" "${REG2_ROUTER}"
-sleep 4
-run_client DR-D3 "${REG1_ROUTER},${REG2_ROUTER}" "${REG1_HTTP},${REG2_HTTP}" "api-a,api-b"
-stop_all
-fi
-
-if should_run DR-B1; then
-read -r R1P R1R R1H R2P R2R R2H A <<<"$(reserve_ports 7)"
-REG1_PUB="$(tcp "${R1P}")"; REG1_ROUTER="$(tcp "${R1R}")"; REG1_HTTP="$(http "${R1H}")"
-REG2_PUB="$(tcp "${R2P}")"; REG2_ROUTER="$(tcp "${R2R}")"; REG2_HTTP="$(http "${R2H}")"
-API_A="$(tcp "${A}")"
-start_registry dr-b1-reg1 1 "${REG1_PUB}" "${REG1_ROUTER}" "${REG1_HTTP}" "${REG2_PUB}"
-start_provider api-a "${API_A}" "${REG1_ROUTER}"
+HTTP_A="$(http "${AH}")"; HTTP_B="$(http "${BH}")"; CONSUMER_HTTP="$(http "${CH}")"
+start_provider api-a "${API_A}" api-a "${HTTP_A}"
+start_provider api-b "${API_B}" api-b "${HTTP_B}"
+start_consumer "consumer-SF-B2" "${CONSUMER_HTTP}"
 sleep 2
-start_registry dr-b1-reg2 2 "${REG2_PUB}" "${REG2_ROUTER}" "${REG2_HTTP}" "${REG1_PUB}"
-sleep 4
-run_client DR-B1 "${REG2_ROUTER}" "${REG2_HTTP}" "api-a"
+ZLINK_JAVA_E2E_SCENARIO="SF-A1" \
+ZLINK_JAVA_E2E_CONSUMER_HTTP_ENDPOINT="${CONSUMER_HTTP}" \
+ZLINK_JAVA_E2E_EXPECTED_RIDS="api-a,api-b" \
+ZLINK_JAVA_E2E_LOCATION_HEARTBEAT_MS="${ZLINK_JAVA_E2E_LOCATION_HEARTBEAT_MS}" \
+ZLINK_JAVA_E2E_LOCATION_LEASE_TTL_MS="${ZLINK_JAVA_E2E_LOCATION_LEASE_TTL_MS}" \
+ZLINK_JAVA_E2E_LOCATION_POLLING_MS="${ZLINK_JAVA_E2E_LOCATION_POLLING_MS}" \
+ZLINK_JAVA_E2E_LOCATION_STORE_FAILURE_GRACE_MS="${ZLINK_JAVA_E2E_LOCATION_STORE_FAILURE_GRACE_MS}" \
+ZLINK_JAVA_E2E_LOG_DIR="${log_dir}" \
+  "$(client_bin)" >"${log_dir}/client-SF-B2-baseline.stdout.log" 2>"${log_dir}/client-SF-B2-baseline.stderr.log"
+cat "${log_dir}/client-SF-B2-baseline.stdout.log"
+pause_redis_container
+ZLINK_JAVA_E2E_SCENARIO="SF-B2" \
+ZLINK_JAVA_E2E_CONSUMER_HTTP_ENDPOINT="${CONSUMER_HTTP}" \
+ZLINK_JAVA_E2E_EXPECTED_RIDS="api-a,api-b" \
+ZLINK_JAVA_E2E_LOCATION_HEARTBEAT_MS="${ZLINK_JAVA_E2E_LOCATION_HEARTBEAT_MS}" \
+ZLINK_JAVA_E2E_LOCATION_LEASE_TTL_MS="${ZLINK_JAVA_E2E_LOCATION_LEASE_TTL_MS}" \
+ZLINK_JAVA_E2E_LOCATION_POLLING_MS="${ZLINK_JAVA_E2E_LOCATION_POLLING_MS}" \
+ZLINK_JAVA_E2E_LOCATION_STORE_FAILURE_GRACE_MS="${ZLINK_JAVA_E2E_LOCATION_STORE_FAILURE_GRACE_MS}" \
+ZLINK_JAVA_E2E_LOG_DIR="${log_dir}" \
+  "$(client_bin)" >"${log_dir}/client-SF-B2.stdout.log" 2>"${log_dir}/client-SF-B2.stderr.log"
+cat "${log_dir}/client-SF-B2.stdout.log"
+unpause_redis_container
+ZLINK_JAVA_E2E_SCENARIO="SF-B2-RECOVERED" \
+ZLINK_JAVA_E2E_CONSUMER_HTTP_ENDPOINT="${CONSUMER_HTTP}" \
+ZLINK_JAVA_E2E_EXPECTED_RIDS="api-a,api-b" \
+ZLINK_JAVA_E2E_LOCATION_HEARTBEAT_MS="${ZLINK_JAVA_E2E_LOCATION_HEARTBEAT_MS}" \
+ZLINK_JAVA_E2E_LOCATION_LEASE_TTL_MS="${ZLINK_JAVA_E2E_LOCATION_LEASE_TTL_MS}" \
+ZLINK_JAVA_E2E_LOCATION_POLLING_MS="${ZLINK_JAVA_E2E_LOCATION_POLLING_MS}" \
+ZLINK_JAVA_E2E_LOCATION_STORE_FAILURE_GRACE_MS="${ZLINK_JAVA_E2E_LOCATION_STORE_FAILURE_GRACE_MS}" \
+ZLINK_JAVA_E2E_LOG_DIR="${log_dir}" \
+  "$(client_bin)" >"${log_dir}/client-SF-B2-recovered.stdout.log" 2>"${log_dir}/client-SF-B2-recovered.stderr.log"
+cat "${log_dir}/client-SF-B2-recovered.stdout.log"
 stop_all
+stop_redis_container
 fi
 
-if should_run DR-B2; then
-read -r R1P R1R R1H R2P R2R R2H A <<<"$(reserve_ports 7)"
-REG1_PUB="$(tcp "${R1P}")"; REG1_ROUTER="$(tcp "${R1R}")"; REG1_HTTP="$(http "${R1H}")"
-REG2_PUB="$(tcp "${R2P}")"; REG2_ROUTER="$(tcp "${R2R}")"; REG2_HTTP="$(http "${R2H}")"
-API_A="$(tcp "${A}")"
-start_registry dr-b2-reg1 1 "${REG1_PUB}" "${REG1_ROUTER}" "${REG1_HTTP}" "${REG2_PUB}"
-start_registry dr-b2-reg2 2 "${REG2_PUB}" "${REG2_ROUTER}" "${REG2_HTTP}" "${REG1_PUB}"
-REG2_PID="${LAST_PID}"
-start_provider api-a "${API_A}" "${REG1_ROUTER},${REG2_ROUTER}"
-sleep "${SCENARIO_SETTLE_SECONDS}"
-read -r C <<<"$(reserve_ports 1)"
-CONSUMER_HTTP="$(http "${C}")"
-start_consumer "consumer-DR-B2" "${CONSUMER_HTTP}" "${REG1_ROUTER}"
-stop_pid "${REG2_PID}"
-sleep 1
-echo "scenario DR-B2 gap=java-discovery-dead-registry-timeout" \
-  | tee "${log_dir}/client-DR-B2.stdout.log"
-stop_all
-fi
-
-if should_run DR-B3; then
-read -r R1P R1R R1H R2P R2R R2H A <<<"$(reserve_ports 7)"
-REG1_PUB="$(tcp "${R1P}")"; REG1_ROUTER="$(tcp "${R1R}")"; REG1_HTTP="$(http "${R1H}")"
-REG2_PUB="$(tcp "${R2P}")"; REG2_ROUTER="$(tcp "${R2R}")"; REG2_HTTP="$(http "${R2H}")"
-API_A="$(tcp "${A}")"
-start_registry dr-b3-reg1 1 "${REG1_PUB}" "${REG1_ROUTER}" "${REG1_HTTP}" "${REG2_PUB}"
-start_registry dr-b3-reg2 2 "${REG2_PUB}" "${REG2_ROUTER}" "${REG2_HTTP}" "${REG1_PUB}"
-REG2_PID="${LAST_PID}"
-start_provider api-a "${API_A}" "${REG1_ROUTER},${REG2_ROUTER}"
-sleep 2
-for flap in 1 2; do
-  stop_pid "${REG2_PID}"
-  sleep 1
-  start_registry "dr-b3-reg2-flap-${flap}" 2 "${REG2_PUB}" "${REG2_ROUTER}" "${REG2_HTTP}" "${REG1_PUB}"
-  REG2_PID="${LAST_PID}"
-  sleep 2
-done
-echo "scenario DR-B3 gap=java-discovery-peer-flap-member-timeout" \
-  | tee "${log_dir}/client-DR-B3.stdout.log"
-stop_all
-fi
-
-if should_run DR-C1 || should_run DR-C2; then
-read -r R1P R1R R1H R2P R2R R2H A B <<<"$(reserve_ports 8)"
-REG1_PUB="$(tcp "${R1P}")"; REG1_ROUTER="$(tcp "${R1R}")"; REG1_HTTP="$(http "${R1H}")"
-REG2_PUB="$(tcp "${R2P}")"; REG2_ROUTER="$(tcp "${R2R}")"; REG2_HTTP="$(http "${R2H}")"
+if should_run SF-C1; then
+read -r AH BH CH A B <<<"$(reserve_ports 5)"
 API_A="$(tcp "${A}")"; API_B="$(tcp "${B}")"
-start_registry dr-c1-reg1 1 "${REG1_PUB}" "${REG1_ROUTER}" "${REG1_HTTP}" "${REG2_PUB}"
-start_registry dr-c1-reg2 2 "${REG2_PUB}" "${REG2_ROUTER}" "${REG2_HTTP}" "${REG1_PUB}"
-REG2_PID="${LAST_PID}"
-start_provider api-a "${API_A}" "${REG1_ROUTER},${REG2_ROUTER}"
-start_provider api-b "${API_B}" "${REG1_ROUTER},${REG2_ROUTER}"
-sleep "${SCENARIO_SETTLE_SECONDS}"
-kill -9 "${REG2_PID}" >/dev/null 2>&1 || true
-wait "${REG2_PID}" >/dev/null 2>&1 || true
-sleep 1
-echo "scenario DR-C1 gap=java-discovery-survivor-member-timeout" \
-  | tee "${log_dir}/client-DR-C1.stdout.log"
-if should_run DR-C2; then
-start_registry dr-c2-reg2-recovered 2 "${REG2_PUB}" "${REG2_ROUTER}" "${REG2_HTTP}" "${REG1_PUB}"
-sleep 4
-echo "scenario DR-C2 gap=java-discovery-recovered-registry-member-timeout" \
-  | tee "${log_dir}/client-DR-C2.stdout.log"
-fi
-stop_all
-fi
-
-if should_run DR-C3; then
-read -r R1P R1R R1H R2P R2R R2H A B <<<"$(reserve_ports 8)"
-REG1_PUB="$(tcp "${R1P}")"; REG1_ROUTER="$(tcp "${R1R}")"; REG1_HTTP="$(http "${R1H}")"
-REG2_PUB="$(tcp "${R2P}")"; REG2_ROUTER="$(tcp "${R2R}")"; REG2_HTTP="$(http "${R2H}")"
-API_A="$(tcp "${A}")"; API_B="$(tcp "${B}")"
-start_registry dr-c3-reg1 1 "${REG1_PUB}" "${REG1_ROUTER}" "${REG1_HTTP}" "${REG2_PUB}"
-REG1_PID="${LAST_PID}"
-start_registry dr-c3-reg2 2 "${REG2_PUB}" "${REG2_ROUTER}" "${REG2_HTTP}" "${REG1_PUB}"
-REG2_PID="${LAST_PID}"
-start_provider api-a "${API_A}" "${REG1_ROUTER},${REG2_ROUTER}"
-API_A_PID="${LAST_PID}"
-start_provider api-b "${API_B}" "${REG1_ROUTER},${REG2_ROUTER}"
+HTTP_A="$(http "${AH}")"; HTTP_B="$(http "${BH}")"; CONSUMER_HTTP="$(http "${CH}")"
+start_provider api-a "${API_A}" api-a
+start_provider api-b "${API_B}" api-b
 API_B_PID="${LAST_PID}"
-sleep "${SCENARIO_SETTLE_SECONDS}"
-read -r C3C <<<"$(reserve_ports 1)"
-C3_CONSUMER_HTTP="$(http "${C3C}")"
-start_consumer "consumer-DR-C3-survivor" "${C3_CONSUMER_HTTP}" "${REG1_ROUTER}"
-C3_CONSUMER_PID="${LAST_PID}"
-run_client_with_consumer DR-C3 "${REG1_ROUTER},${REG2_ROUTER}" "${REG1_HTTP},${REG2_HTTP}" "api-a,api-b" "${C3_CONSUMER_HTTP}" "" "${REG1_ROUTER}" "${REG1_HTTP}" "api-a,api-b" "${REG1_HTTP}" DR-C3-before
-stop_pid "${REG2_PID}"
-stop_pid "${REG1_PID}"
-sleep 1
-run_client_with_consumer DR-C3 "${REG1_ROUTER},${REG2_ROUTER}" "" "api-a,api-b" "${C3_CONSUMER_HTTP}" "" "${REG1_ROUTER}" "" "" "" DR-C3-during
-stop_pid "${C3_CONSUMER_PID}"
-stop_pid "${API_B_PID}"
-stop_pid "${API_A_PID}"
+start_consumer "consumer-SF-C1" "${CONSUMER_HTTP}"
 sleep 2
-start_registry dr-c3-reg1-recovered 1 "${REG1_PUB}" "${REG1_ROUTER}" "${REG1_HTTP}" "${REG2_PUB}"
-start_registry dr-c3-reg2-recovered 2 "${REG2_PUB}" "${REG2_ROUTER}" "${REG2_HTTP}" "${REG1_PUB}"
-start_provider api-a "${API_A}" "${REG1_ROUTER},${REG2_ROUTER}" api-a-recovered
-start_provider api-b "${API_B}" "${REG1_ROUTER},${REG2_ROUTER}" api-b-recovered
-sleep 6
-run_client DR-C3 "${REG1_ROUTER},${REG2_ROUTER}" "${REG1_HTTP},${REG2_HTTP}" "api-a,api-b"
+ZLINK_JAVA_E2E_SCENARIO="SF-A1" \
+ZLINK_JAVA_E2E_CONSUMER_HTTP_ENDPOINT="${CONSUMER_HTTP}" \
+ZLINK_JAVA_E2E_EXPECTED_RIDS="api-a,api-b" \
+ZLINK_JAVA_E2E_LOCATION_LEASE_TTL_MS="${ZLINK_JAVA_E2E_LOCATION_LEASE_TTL_MS}" \
+ZLINK_JAVA_E2E_LOCATION_POLLING_MS="${ZLINK_JAVA_E2E_LOCATION_POLLING_MS}" \
+ZLINK_JAVA_E2E_LOG_DIR="${log_dir}" \
+  "$(client_bin)" >"${log_dir}/client-SF-C1-baseline.stdout.log" 2>"${log_dir}/client-SF-C1-baseline.stderr.log"
+cat "${log_dir}/client-SF-C1-baseline.stdout.log"
+kill -9 "${API_B_PID}" >/dev/null 2>&1 || true
+wait "${API_B_PID}" >/dev/null 2>&1 || true
+ZLINK_JAVA_E2E_SCENARIO="SF-C1" \
+ZLINK_JAVA_E2E_CONSUMER_HTTP_ENDPOINT="${CONSUMER_HTTP}" \
+ZLINK_JAVA_E2E_EXPECTED_RIDS="api-a" \
+ZLINK_JAVA_E2E_DEAD_RID="api-b" \
+ZLINK_JAVA_E2E_LOCATION_LEASE_TTL_MS="${ZLINK_JAVA_E2E_LOCATION_LEASE_TTL_MS}" \
+ZLINK_JAVA_E2E_LOCATION_POLLING_MS="${ZLINK_JAVA_E2E_LOCATION_POLLING_MS}" \
+ZLINK_JAVA_E2E_LOG_DIR="${log_dir}" \
+  "$(client_bin)" >"${log_dir}/client-SF-C1.stdout.log" 2>"${log_dir}/client-SF-C1.stderr.log"
+cat "${log_dir}/client-SF-C1.stdout.log"
 stop_all
+fi
+
+if should_run SF-C2; then
+read -r AH BH CH A B <<<"$(reserve_ports 5)"
+API_A="$(tcp "${A}")"; API_B="$(tcp "${B}")"
+HTTP_A="$(http "${AH}")"; HTTP_B="$(http "${BH}")"; CONSUMER_HTTP="$(http "${CH}")"
+start_provider api-a "${API_A}" api-a "${HTTP_A}"
+start_provider api-b "${API_B}" api-b "${HTTP_B}"
+API_B_PID="${LAST_PID}"
+start_consumer "consumer-SF-C2" "${CONSUMER_HTTP}"
+sleep 2
+ZLINK_JAVA_E2E_SCENARIO="SF-A1" \
+ZLINK_JAVA_E2E_CONSUMER_HTTP_ENDPOINT="${CONSUMER_HTTP}" \
+ZLINK_JAVA_E2E_EXPECTED_RIDS="api-a,api-b" \
+ZLINK_JAVA_E2E_LOCATION_LEASE_TTL_MS="${ZLINK_JAVA_E2E_LOCATION_LEASE_TTL_MS}" \
+ZLINK_JAVA_E2E_LOCATION_POLLING_MS="${ZLINK_JAVA_E2E_LOCATION_POLLING_MS}" \
+ZLINK_JAVA_E2E_LOG_DIR="${log_dir}" \
+  "$(client_bin)" >"${log_dir}/client-SF-C2-baseline.stdout.log" 2>"${log_dir}/client-SF-C2-baseline.stderr.log"
+cat "${log_dir}/client-SF-C2-baseline.stdout.log"
+shutdown_http "${HTTP_B}"
+wait "${API_B_PID}" >/dev/null 2>&1 || true
+ZLINK_JAVA_E2E_SCENARIO="SF-C2" \
+ZLINK_JAVA_E2E_CONSUMER_HTTP_ENDPOINT="${CONSUMER_HTTP}" \
+ZLINK_JAVA_E2E_EXPECTED_RIDS="api-a" \
+ZLINK_JAVA_E2E_DEAD_RID="api-b" \
+ZLINK_JAVA_E2E_LOCATION_LEASE_TTL_MS="${ZLINK_JAVA_E2E_LOCATION_LEASE_TTL_MS}" \
+ZLINK_JAVA_E2E_LOCATION_POLLING_MS="${ZLINK_JAVA_E2E_LOCATION_POLLING_MS}" \
+ZLINK_JAVA_E2E_LOG_DIR="${log_dir}" \
+  "$(client_bin)" >"${log_dir}/client-SF-C2.stdout.log" 2>"${log_dir}/client-SF-C2.stderr.log"
+cat "${log_dir}/client-SF-C2.stdout.log"
+stop_all
+fi
+
+if should_run SF-D1; then
+start_redis_container
+read -r AH BH CH A B <<<"$(reserve_ports 5)"
+API_A="$(tcp "${A}")"; API_B="$(tcp "${B}")"
+HTTP_A="$(http "${AH}")"; HTTP_B="$(http "${BH}")"; CONSUMER_HTTP="$(http "${CH}")"
+start_provider api-a "${API_A}" api-a "${HTTP_A}"
+start_provider api-b "${API_B}" api-b "${HTTP_B}"
+start_consumer "consumer-SF-D1" "${CONSUMER_HTTP}"
+sleep 2
+ZLINK_JAVA_E2E_SCENARIO="SF-A1" \
+ZLINK_JAVA_E2E_CONSUMER_HTTP_ENDPOINT="${CONSUMER_HTTP}" \
+ZLINK_JAVA_E2E_EXPECTED_RIDS="api-a,api-b" \
+ZLINK_JAVA_E2E_LOCATION_HEARTBEAT_MS="${ZLINK_JAVA_E2E_LOCATION_HEARTBEAT_MS}" \
+ZLINK_JAVA_E2E_LOCATION_LEASE_TTL_MS="${ZLINK_JAVA_E2E_LOCATION_LEASE_TTL_MS}" \
+ZLINK_JAVA_E2E_LOCATION_POLLING_MS="${ZLINK_JAVA_E2E_LOCATION_POLLING_MS}" \
+ZLINK_JAVA_E2E_LOG_DIR="${log_dir}" \
+  "$(client_bin)" >"${log_dir}/client-SF-D1-baseline.stdout.log" 2>"${log_dir}/client-SF-D1-baseline.stderr.log"
+cat "${log_dir}/client-SF-D1-baseline.stdout.log"
+ZLINK_JAVA_E2E_SCENARIO="SF-D1" \
+ZLINK_JAVA_E2E_CONSUMER_HTTP_ENDPOINT="${CONSUMER_HTTP}" \
+ZLINK_JAVA_E2E_EXPECTED_RIDS="api-a,api-b" \
+ZLINK_JAVA_E2E_LOCATION_HEARTBEAT_MS="${ZLINK_JAVA_E2E_LOCATION_HEARTBEAT_MS}" \
+ZLINK_JAVA_E2E_LOCATION_LEASE_TTL_MS="${ZLINK_JAVA_E2E_LOCATION_LEASE_TTL_MS}" \
+ZLINK_JAVA_E2E_LOCATION_POLLING_MS="${ZLINK_JAVA_E2E_LOCATION_POLLING_MS}" \
+ZLINK_JAVA_E2E_LOG_DIR="${log_dir}" \
+  "$(client_bin)" >"${log_dir}/client-SF-D1.stdout.log" 2>"${log_dir}/client-SF-D1.stderr.log" &
+SF_D1_CLIENT_PID="$!"
+sleep 0.5
+pause_redis_container
+python3 - "${ZLINK_JAVA_E2E_LOCATION_LEASE_TTL_MS}" <<'PY'
+import sys
+import time
+
+time.sleep(int(sys.argv[1]) / 2000.0)
+PY
+unpause_redis_container
+wait "${SF_D1_CLIENT_PID}"
+cat "${log_dir}/client-SF-D1.stdout.log"
+ZLINK_JAVA_E2E_SCENARIO="SF-D1-RECOVERED" \
+ZLINK_JAVA_E2E_CONSUMER_HTTP_ENDPOINT="${CONSUMER_HTTP}" \
+ZLINK_JAVA_E2E_EXPECTED_RIDS="api-a,api-b" \
+ZLINK_JAVA_E2E_LOCATION_HEARTBEAT_MS="${ZLINK_JAVA_E2E_LOCATION_HEARTBEAT_MS}" \
+ZLINK_JAVA_E2E_LOCATION_LEASE_TTL_MS="${ZLINK_JAVA_E2E_LOCATION_LEASE_TTL_MS}" \
+ZLINK_JAVA_E2E_LOCATION_POLLING_MS="${ZLINK_JAVA_E2E_LOCATION_POLLING_MS}" \
+ZLINK_JAVA_E2E_LOG_DIR="${log_dir}" \
+  "$(client_bin)" >"${log_dir}/client-SF-D1-recovered.stdout.log" 2>"${log_dir}/client-SF-D1-recovered.stderr.log"
+cat "${log_dir}/client-SF-D1-recovered.stdout.log"
+stop_all
+stop_redis_container
+fi
+
+if should_run SF-D2; then
+start_redis_container
+read -r AH BH CH A B <<<"$(reserve_ports 5)"
+API_A="$(tcp "${A}")"; API_B="$(tcp "${B}")"
+HTTP_A="$(http "${AH}")"; HTTP_B="$(http "${BH}")"; CONSUMER_HTTP="$(http "${CH}")"
+start_provider api-a "${API_A}" api-a "${HTTP_A}"
+start_provider api-b "${API_B}" api-b "${HTTP_B}"
+API_B_PID="${LAST_PID}"
+start_consumer "consumer-SF-D2" "${CONSUMER_HTTP}"
+sleep 2
+ZLINK_JAVA_E2E_SCENARIO="SF-A1" \
+ZLINK_JAVA_E2E_CONSUMER_HTTP_ENDPOINT="${CONSUMER_HTTP}" \
+ZLINK_JAVA_E2E_EXPECTED_RIDS="api-a,api-b" \
+ZLINK_JAVA_E2E_LOCATION_HEARTBEAT_MS="${ZLINK_JAVA_E2E_LOCATION_HEARTBEAT_MS}" \
+ZLINK_JAVA_E2E_LOCATION_LEASE_TTL_MS="${ZLINK_JAVA_E2E_LOCATION_LEASE_TTL_MS}" \
+ZLINK_JAVA_E2E_LOCATION_POLLING_MS="${ZLINK_JAVA_E2E_LOCATION_POLLING_MS}" \
+ZLINK_JAVA_E2E_LOG_DIR="${log_dir}" \
+  "$(client_bin)" >"${log_dir}/client-SF-D2-baseline.stdout.log" 2>"${log_dir}/client-SF-D2-baseline.stderr.log"
+cat "${log_dir}/client-SF-D2-baseline.stdout.log"
+ZLINK_JAVA_E2E_SCENARIO="SF-D2" \
+ZLINK_JAVA_E2E_CONSUMER_HTTP_ENDPOINT="${CONSUMER_HTTP}" \
+ZLINK_JAVA_E2E_EXPECTED_RIDS="api-a" \
+ZLINK_JAVA_E2E_DEAD_RID="api-b" \
+ZLINK_JAVA_E2E_LOCATION_HEARTBEAT_MS="${ZLINK_JAVA_E2E_LOCATION_HEARTBEAT_MS}" \
+ZLINK_JAVA_E2E_LOCATION_LEASE_TTL_MS="${ZLINK_JAVA_E2E_LOCATION_LEASE_TTL_MS}" \
+ZLINK_JAVA_E2E_LOCATION_POLLING_MS="${ZLINK_JAVA_E2E_LOCATION_POLLING_MS}" \
+ZLINK_JAVA_E2E_LOG_DIR="${log_dir}" \
+  "$(client_bin)" >"${log_dir}/client-SF-D2.stdout.log" 2>"${log_dir}/client-SF-D2.stderr.log" &
+SF_D2_CLIENT_PID="$!"
+sleep 0.5
+pause_redis_container
+kill -9 "${API_B_PID}" >/dev/null 2>&1 || true
+wait "${API_B_PID}" >/dev/null 2>&1 || true
+python3 - "${ZLINK_JAVA_E2E_LOCATION_LEASE_TTL_MS}" "${ZLINK_JAVA_E2E_LOCATION_HEARTBEAT_MS}" <<'PY'
+import sys
+import time
+
+time.sleep((int(sys.argv[1]) + int(sys.argv[2])) / 1000.0)
+PY
+unpause_redis_container
+wait "${SF_D2_CLIENT_PID}"
+cat "${log_dir}/client-SF-D2.stdout.log"
+stop_all
+stop_redis_container
+fi
+
+if should_run SF-D3; then
+start_redis_container
+read -r AH BH CH A B <<<"$(reserve_ports 5)"
+API_A="$(tcp "${A}")"; API_B="$(tcp "${B}")"
+HTTP_A="$(http "${AH}")"; HTTP_B="$(http "${BH}")"; CONSUMER_HTTP="$(http "${CH}")"
+start_provider api-a "${API_A}" api-a "${HTTP_A}"
+start_provider api-b "${API_B}" api-b "${HTTP_B}"
+start_consumer "consumer-SF-D3" "${CONSUMER_HTTP}"
+sleep 2
+ZLINK_JAVA_E2E_SCENARIO="SF-D3-HEALTHY" \
+ZLINK_JAVA_E2E_CONSUMER_HTTP_ENDPOINT="${CONSUMER_HTTP}" \
+ZLINK_JAVA_E2E_EXPECTED_RIDS="api-a,api-b" \
+ZLINK_JAVA_E2E_LOCATION_HEARTBEAT_MS="${ZLINK_JAVA_E2E_LOCATION_HEARTBEAT_MS}" \
+ZLINK_JAVA_E2E_LOCATION_LEASE_TTL_MS="${ZLINK_JAVA_E2E_LOCATION_LEASE_TTL_MS}" \
+ZLINK_JAVA_E2E_LOCATION_POLLING_MS="${ZLINK_JAVA_E2E_LOCATION_POLLING_MS}" \
+ZLINK_JAVA_E2E_LOG_DIR="${log_dir}" \
+  "$(client_bin)" >"${log_dir}/client-SF-D3-healthy.stdout.log" 2>"${log_dir}/client-SF-D3-healthy.stderr.log"
+cat "${log_dir}/client-SF-D3-healthy.stdout.log"
+SF_D3_BEFORE_REFRESH="$(status_field "${CONSUMER_HTTP}" lastRefreshAt)"
+pause_redis_container
+ZLINK_JAVA_E2E_SCENARIO="SF-D3-OUTAGE" \
+ZLINK_JAVA_E2E_CONSUMER_HTTP_ENDPOINT="${CONSUMER_HTTP}" \
+ZLINK_JAVA_E2E_EXPECTED_RIDS="api-a,api-b" \
+ZLINK_JAVA_E2E_LOCATION_HEARTBEAT_MS="${ZLINK_JAVA_E2E_LOCATION_HEARTBEAT_MS}" \
+ZLINK_JAVA_E2E_LOCATION_LEASE_TTL_MS="${ZLINK_JAVA_E2E_LOCATION_LEASE_TTL_MS}" \
+ZLINK_JAVA_E2E_LOCATION_POLLING_MS="${ZLINK_JAVA_E2E_LOCATION_POLLING_MS}" \
+ZLINK_JAVA_E2E_LOG_DIR="${log_dir}" \
+  "$(client_bin)" >"${log_dir}/client-SF-D3-outage.stdout.log" 2>"${log_dir}/client-SF-D3-outage.stderr.log"
+cat "${log_dir}/client-SF-D3-outage.stdout.log"
+unpause_redis_container
+ZLINK_JAVA_E2E_SCENARIO="SF-D3-RECOVERED" \
+ZLINK_JAVA_E2E_CONSUMER_HTTP_ENDPOINT="${CONSUMER_HTTP}" \
+ZLINK_JAVA_E2E_EXPECTED_RIDS="api-a,api-b" \
+ZLINK_JAVA_E2E_LOCATION_HEARTBEAT_MS="${ZLINK_JAVA_E2E_LOCATION_HEARTBEAT_MS}" \
+ZLINK_JAVA_E2E_LOCATION_LEASE_TTL_MS="${ZLINK_JAVA_E2E_LOCATION_LEASE_TTL_MS}" \
+ZLINK_JAVA_E2E_LOCATION_POLLING_MS="${ZLINK_JAVA_E2E_LOCATION_POLLING_MS}" \
+ZLINK_JAVA_E2E_LOG_DIR="${log_dir}" \
+  "$(client_bin)" >"${log_dir}/client-SF-D3-recovered.stdout.log" 2>"${log_dir}/client-SF-D3-recovered.stderr.log"
+cat "${log_dir}/client-SF-D3-recovered.stdout.log"
+SF_D3_AFTER_REFRESH="$(status_field "${CONSUMER_HTTP}" lastRefreshAt)"
+assert_instant_after "${SF_D3_BEFORE_REFRESH}" "${SF_D3_AFTER_REFRESH}" \
+  "SF-D3 recovered status did not advance lastRefreshAt"
+echo "scenario SF-D3 passed" | tee "${log_dir}/client-SF-D3.stdout.log"
+stop_all
+stop_redis_container
 fi
 
 if [[ "${SCENARIO}" == "all" ]]; then
-  grep -q "scenario DR-A1 passed" "${log_dir}/client-DR-A1.stdout.log"
-  grep -q "scenario DR-A2 passed" "${log_dir}/client-DR-A2.stdout.log"
-  grep -q "scenario DR-A3 passed" "${log_dir}/client-DR-A3.stdout.log"
-  grep -q "scenario DR-A4 passed" "${log_dir}/client-DR-A4.stdout.log"
-  grep -q "scenario DR-B1 passed" "${log_dir}/client-DR-B1.stdout.log"
-  grep -q "scenario DR-B2 gap=java-discovery-dead-registry-timeout" "${log_dir}/client-DR-B2.stdout.log"
-  grep -q "scenario DR-B3 gap=java-discovery-peer-flap-member-timeout" "${log_dir}/client-DR-B3.stdout.log"
-  grep -q "scenario DR-C1 gap=java-discovery-survivor-member-timeout" "${log_dir}/client-DR-C1.stdout.log"
-  grep -q "scenario DR-C2 gap=java-discovery-recovered-registry-member-timeout" "${log_dir}/client-DR-C2.stdout.log"
-  grep -q "scenario DR-C3 passed" "${log_dir}/client-DR-C3.stdout.log"
-  grep -q "scenario DR-D1 passed" "${log_dir}/client-DR-D1.stdout.log"
-  grep -q "scenario DR-D2 passed" "${log_dir}/client-DR-D2.stdout.log"
-  grep -q "scenario DR-D3 passed" "${log_dir}/client-DR-D3.stdout.log"
-  grep -q "scenario DR-D4 passed" "${log_dir}/client-DR-D4.stdout.log"
+  for scenario in SF-A1 SF-A2 SF-B1 SF-B2 SF-C1 SF-C2 SF-D1 SF-D2 SF-D3; do
+    grep -Rq "scenario ${scenario} " "${log_dir}"/client-*.stdout.log
+  done
 else
   grep -Rq "scenario ${SCENARIO} " "${log_dir}"/client-*.stdout.log
 fi

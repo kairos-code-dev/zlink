@@ -21,6 +21,8 @@ import systems.zlink.contracts.core.RoutingId
 import systems.zlink.e2e.kotlin.spotservice.Contracts
 import systems.zlink.e2e.kotlin.spotservice.Env
 import systems.zlink.framework.configuration.ZLinkMessageFlowLogMode
+import systems.zlink.framework.locations.redis.ZLinkRedisLocationOptions
+import systems.zlink.framework.locations.redis.ZLinkRedisLocationStore
 import systems.zlink.framework.spots.ZLinkSpotPublisherClient
 import systems.zlink.framework.spring.EnableZLinkFramework
 import systems.zlink.framework.spring.ZLinkFrameworkConfigurer
@@ -60,11 +62,18 @@ class GatewayApplication {
                 .messageFlow(ZLinkMessageFlowLogMode.KEY_TRANSITIONS)
                 .traceLogFile("${options.logDir}/${options.rid}-flow.log")
                 .traceLabel(options.rid)
-            framework.useDiscovery().addRegistryEndpoint(requireOption(options.registryRouterEndpoint, "--registry-router-endpoint"))
             framework.addSpotMesh(Contracts.SPOT_MESH)
                 .setRoutingId(RoutingId.from(options.rid))
                 .enablePubSub(requireOption(options.spotPubEndpoint, "--spot-pub-endpoint"))
         }
+
+    @Bean
+    fun locationStore(): ZLinkRedisLocationStore =
+        ZLinkRedisLocationStore(
+            ZLinkRedisLocationOptions()
+                .setConnectionString(Env.get("ZLINK_KOTLIN_E2E_REDIS_LOCATION_ENDPOINT"))
+                .setKeyPrefix(Env.get("ZLINK_KOTLIN_E2E_LOCATION_KEY_PREFIX"))
+        )
 
     companion object {
         @JvmStatic
@@ -214,7 +223,6 @@ data class GatewayOptions(
     val httpUrl: String,
     val logDir: String,
     val evidenceFile: String,
-    val registryRouterEndpoint: String,
     val spotPubEndpoint: String
 ) {
     fun toProperties(): Map<String, Any> =
@@ -223,7 +231,6 @@ data class GatewayOptions(
             "zlink.e2e.gateway.http-url" to httpUrl,
             "zlink.e2e.gateway.log-dir" to logDir,
             "zlink.e2e.gateway.evidence-file" to evidenceFile,
-            "zlink.e2e.gateway.registry-router-endpoint" to registryRouterEndpoint,
             "zlink.e2e.gateway.spot-pub-endpoint" to spotPubEndpoint
         )
 
@@ -246,7 +253,6 @@ data class GatewayOptions(
                 httpUrl = values["http-url"] ?: Env.get("ZLINK_KOTLIN_E2E_GATEWAY_HTTP_URL"),
                 logDir = values["log-dir"] ?: Env.get("ZLINK_KOTLIN_E2E_LOG_DIR", "logs"),
                 evidenceFile = values["evidence-file"] ?: Env.get("ZLINK_KOTLIN_E2E_GATEWAY_EVIDENCE_FILE"),
-                registryRouterEndpoint = values["registry-router-endpoint"] ?: Env.get("ZLINK_KOTLIN_E2E_REGISTRY_ROUTER"),
                 spotPubEndpoint = values["spot-pub-endpoint"] ?: Env.get("ZLINK_KOTLIN_E2E_GATEWAY_SPOT_PUB_ENDPOINT")
             )
         }
@@ -257,7 +263,6 @@ data class GatewayOptions(
                 httpUrl = environment.getProperty("zlink.e2e.gateway.http-url", ""),
                 logDir = environment.getProperty("zlink.e2e.gateway.log-dir", ""),
                 evidenceFile = environment.getProperty("zlink.e2e.gateway.evidence-file", ""),
-                registryRouterEndpoint = environment.getProperty("zlink.e2e.gateway.registry-router-endpoint", ""),
                 spotPubEndpoint = environment.getProperty("zlink.e2e.gateway.spot-pub-endpoint", "")
             )
     }

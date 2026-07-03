@@ -4,7 +4,7 @@ set -euo pipefail
 cd "$(dirname "${BASH_SOURCE[0]}")"
 
 pids=()
-role_pattern='systems\.zlink\.e2e\.pubsub\.(client|publisher|registry|subscriber)\.Program'
+role_pattern='systems\.zlink\.e2e\.pubsub\.(client|publisher|subscriber)\.Program'
 run_id="$(date +%Y%m%d-%H%M%S)-$$"
 log_dir="$(pwd)/logs/${run_id}"
 SCENARIO="${1:-all}"
@@ -17,6 +17,8 @@ if [[ -z "${ZLINK_LIBRARY_PATH:-}" && -f "${default_core_lib}" ]]; then
 fi
 export ZLINK_JAVA_E2E_BUILD_DIR="${ZLINK_JAVA_E2E_BUILD_DIR:-${HOME}/.cache/zlink/java-e2e/PubSub}"
 export ZLINK_JAVA_E2E_GRADLE_CACHE="${ZLINK_JAVA_E2E_GRADLE_CACHE:-${HOME}/.cache/zlink/java-e2e/PubSub-gradle-cache}"
+export ZLINK_JAVA_E2E_REDIS_LOCATION_ENDPOINT="${ZLINK_JAVA_E2E_REDIS_LOCATION_ENDPOINT:-${ZLINK_REDIS_LOCATION_ENDPOINT:-127.0.0.1:16379}}"
+export ZLINK_JAVA_E2E_LOCATION_KEY_PREFIX="${ZLINK_JAVA_E2E_LOCATION_KEY_PREFIX:-zlink:e2e:pubsub:${run_id}}"
 LOCAL_READINESS_TIMEOUT_SECONDS=3
 LOCAL_READINESS_POLL_SECONDS=0.1
 LOCAL_READINESS_ATTEMPTS=30
@@ -158,30 +160,16 @@ publisher_bin() {
   echo "${ZLINK_JAVA_E2E_BUILD_DIR}/Server-Publisher/install/pub-sub-publisher/bin/pub-sub-publisher"
 }
 
-registry_bin() {
-  echo "${ZLINK_JAVA_E2E_BUILD_DIR}/Server-Registry/install/pub-sub-registry/bin/pub-sub-registry"
-}
-
 subscriber_bin() {
   echo "${ZLINK_JAVA_E2E_BUILD_DIR}/Server-Subscriber/install/pub-sub-subscriber/bin/pub-sub-subscriber"
-}
-
-start_registry() {
-  ZLINK_JAVA_E2E_REGISTRY_PUB="${REGISTRY_PUB}" \
-  ZLINK_JAVA_E2E_REGISTRY_ROUTER="${REGISTRY_ROUTER}" \
-  ZLINK_JAVA_E2E_HTTP_PORT="$(port_of "${REGISTRY_HTTP}")" \
-  ZLINK_JAVA_E2E_LOG_DIR="${log_dir}" \
-    "$(registry_bin)" >"${log_dir}/registry.stdout.log" 2>"${log_dir}/registry.stderr.log" &
-  pids+=("$!")
-  wait_port registry-router "${REGISTRY_ROUTER}"
-  wait_health registry "${REGISTRY_HTTP}"
 }
 
 start_publisher() {
   local suffix="${1:-publisher}"
   ZLINK_JAVA_E2E_PUBLISHER_HTTP="${PUBLISHER_HTTP}" \
   ZLINK_JAVA_E2E_PUBLISHER_ENDPOINT="${PUBLISHER_ENDPOINT}" \
-  ZLINK_JAVA_E2E_REGISTRY_ROUTER="${REGISTRY_ROUTER}" \
+  ZLINK_JAVA_E2E_REDIS_LOCATION_ENDPOINT="${ZLINK_JAVA_E2E_REDIS_LOCATION_ENDPOINT}" \
+  ZLINK_JAVA_E2E_LOCATION_KEY_PREFIX="${ZLINK_JAVA_E2E_LOCATION_KEY_PREFIX}" \
   ZLINK_JAVA_E2E_LOG_DIR="${log_dir}" \
     "$(publisher_bin)" >"${log_dir}/${suffix}.stdout.log" 2>"${log_dir}/${suffix}.stderr.log" &
   LAST_PID="$!"
@@ -199,7 +187,8 @@ start_subscriber() {
   ZLINK_JAVA_E2E_TOPICS="${topics}" \
   ZLINK_JAVA_E2E_HTTP_ENDPOINT="${http}" \
   ZLINK_JAVA_E2E_HANDLER_DELAY_MS="${delay}" \
-  ZLINK_JAVA_E2E_REGISTRY_ROUTER="${REGISTRY_ROUTER}" \
+  ZLINK_JAVA_E2E_REDIS_LOCATION_ENDPOINT="${ZLINK_JAVA_E2E_REDIS_LOCATION_ENDPOINT}" \
+  ZLINK_JAVA_E2E_LOCATION_KEY_PREFIX="${ZLINK_JAVA_E2E_LOCATION_KEY_PREFIX}" \
   ZLINK_JAVA_E2E_LOG_DIR="${log_dir}" \
     "$(subscriber_bin)" >"${log_dir}/${rid}.stdout.log" 2>"${log_dir}/${rid}.stderr.log" &
   LAST_PID="$!"
@@ -221,7 +210,8 @@ run_client_mode() {
   ZLINK_JAVA_E2E_CLIENT_MODE="${mode}" \
   ZLINK_JAVA_E2E_PUBLISHER_HTTP="${PUBLISHER_HTTP}" \
   ZLINK_JAVA_E2E_PUBLISHER_ENDPOINT="${PUBLISHER_ENDPOINT}" \
-  ZLINK_JAVA_E2E_REGISTRY_ROUTER="${REGISTRY_ROUTER}" \
+  ZLINK_JAVA_E2E_REDIS_LOCATION_ENDPOINT="${ZLINK_JAVA_E2E_REDIS_LOCATION_ENDPOINT}" \
+  ZLINK_JAVA_E2E_LOCATION_KEY_PREFIX="${ZLINK_JAVA_E2E_LOCATION_KEY_PREFIX}" \
   ZLINK_JAVA_E2E_SUB1_HTTP="${SUB1_HTTP}" \
   ZLINK_JAVA_E2E_SUB2_HTTP="${SUB2_HTTP}" \
   ZLINK_JAVA_E2E_SUB3_HTTP="${SUB3_HTTP}" \
@@ -231,7 +221,7 @@ run_client_mode() {
   cat "${log_dir}/client-${suffix}.stdout.log"
 }
 
-read -r REGISTRY_PUB REGISTRY_ROUTER PUBLISHER_ENDPOINT REGISTRY_HTTP PUBLISHER_HTTP SUB1_HTTP SUB2_HTTP SUB3_HTTP <<<"$(reserve_ports)"
+read -r _UNUSED_PUB _UNUSED_ROUTER PUBLISHER_ENDPOINT _UNUSED_HTTP PUBLISHER_HTTP SUB1_HTTP SUB2_HTTP SUB3_HTTP <<<"$(reserve_ports)"
 
 gradle_run installDist
 
@@ -240,7 +230,6 @@ PRELATE_CONTINUE="${log_dir}/prelate-continue"
 LATE_READY="${log_dir}/late-ready"
 LATE_CONTINUE="${log_dir}/late-continue"
 
-start_registry
 start_publisher publisher
 PUBLISHER_PID="${LAST_PID}"
 
@@ -259,7 +248,8 @@ case "${SCENARIO}" in
     ZLINK_JAVA_E2E_CLIENT_MODE="${SCENARIO}" \
     ZLINK_JAVA_E2E_PUBLISHER_HTTP="${PUBLISHER_HTTP}" \
     ZLINK_JAVA_E2E_PUBLISHER_ENDPOINT="${PUBLISHER_ENDPOINT}" \
-    ZLINK_JAVA_E2E_REGISTRY_ROUTER="${REGISTRY_ROUTER}" \
+    ZLINK_JAVA_E2E_REDIS_LOCATION_ENDPOINT="${ZLINK_JAVA_E2E_REDIS_LOCATION_ENDPOINT}" \
+    ZLINK_JAVA_E2E_LOCATION_KEY_PREFIX="${ZLINK_JAVA_E2E_LOCATION_KEY_PREFIX}" \
     ZLINK_JAVA_E2E_SUB1_HTTP="${SUB1_HTTP}" \
     ZLINK_JAVA_E2E_SUB2_HTTP="${SUB2_HTTP}" \
     ZLINK_JAVA_E2E_SUB3_HTTP="${SUB3_HTTP}" \
@@ -325,7 +315,8 @@ esac
 ZLINK_JAVA_E2E_CLIENT_MODE=default \
 ZLINK_JAVA_E2E_PUBLISHER_HTTP="${PUBLISHER_HTTP}" \
 ZLINK_JAVA_E2E_PUBLISHER_ENDPOINT="${PUBLISHER_ENDPOINT}" \
-ZLINK_JAVA_E2E_REGISTRY_ROUTER="${REGISTRY_ROUTER}" \
+ZLINK_JAVA_E2E_REDIS_LOCATION_ENDPOINT="${ZLINK_JAVA_E2E_REDIS_LOCATION_ENDPOINT}" \
+ZLINK_JAVA_E2E_LOCATION_KEY_PREFIX="${ZLINK_JAVA_E2E_LOCATION_KEY_PREFIX}" \
 ZLINK_JAVA_E2E_SUB1_HTTP="${SUB1_HTTP}" \
 ZLINK_JAVA_E2E_SUB2_HTTP="${SUB2_HTTP}" \
 ZLINK_JAVA_E2E_SUB3_HTTP="${SUB3_HTTP}" \

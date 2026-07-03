@@ -3,7 +3,8 @@ package systems.zlink.e2e.kotlin.pubsub.publisher
 data class PublisherOptions(
     val publisherEndpoint: String,
     val httpEndpoint: String,
-    val registryRouterEndpoint: String,
+    val redisLocationEndpoint: String,
+    val locationKeyPrefix: String,
     val logDir: String,
 ) {
     companion object {
@@ -14,7 +15,8 @@ data class PublisherOptions(
             return PublisherOptions(
                 publisherEndpoint = required("publisher-endpoint"),
                 httpEndpoint = required("http-endpoint"),
-                registryRouterEndpoint = required("registry-router-endpoint"),
+                redisLocationEndpoint = required("redis-location-endpoint"),
+                locationKeyPrefix = required("location-key-prefix"),
                 logDir = values["log-dir"]?.takeIf { it.isNotBlank() } ?: "logs",
             )
         }

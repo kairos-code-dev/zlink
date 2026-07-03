@@ -78,7 +78,17 @@ public final class ScenarioReqHandler
                 .await(Contracts.ProbeRes.class);
         }
 
-        Contracts.ScenarioRes reply = scenarioFuture.join();
+        Contracts.ScenarioRes reply;
+        try {
+            reply = scenarioFuture.join();
+        } catch (RuntimeException error) {
+            evidence.record(
+                "scenario-failed",
+                request.scenarioId(),
+                error.getClass().getName() + ":" + error.getMessage());
+            error.printStackTrace(System.err);
+            throw error;
+        }
         context.client().reply(reply).await();
     }
 

@@ -33,6 +33,8 @@ option은 CLI argument로 받는다. 파일별 재분류 상태는 `porting-inve
 - `logs/20260702-071748-33038`: `timeout 420s ./run_e2e.sh`
   실행 결과 role별 Gradle project runner, plain HTTP client driver, `Server/Main` HTTP scenario endpoint,
   `Server/JsonOnlyPeer` package 분리와 CLI option parser, `Server/CodecRequester` role이 통과했다.
+- `logs/20260704-030854-98943`: `timeout 420s ./run_e2e.sh`
+  실행 결과 registry/discovery 의존이 없는 현재 구조에서 전체 scenario가 다시 통과했다.
 - 통과 scenario: `RC-A1`, `RC-A2`, `RC-A3`, `RC-A4`, `RC-A5`, `RC-A6`, `RC-B1`, `RC-B2`,
   `RC-B3`, `RC-B4`, `RC-B5`.
 - `RC-A6`은 `invalid-server.stdout.log`의 duplicate packet registration startup failure로 확인하고,

@@ -4,7 +4,7 @@ set -euo pipefail
 cd "$(dirname "${BASH_SOURCE[0]}")"
 
 pids=()
-role_pattern='systems\.zlink\.e2e\.kotlin\.yielddispatch\.ProgramKt|yield-dispatch-kotlin-(client|registry|delay|play|session)'
+role_pattern='systems\.zlink\.e2e\.kotlin\.yielddispatch\.ProgramKt|yield-dispatch-kotlin-(client|delay|play|session)'
 run_id="$(date +%Y%m%d-%H%M%S)-$$"
 log_dir="$(pwd)/logs/${run_id}"
 repo_root="$(cd ../../../../.. && pwd)"
@@ -17,6 +17,8 @@ if [[ -z "${ZLINK_LIBRARY_PATH:-}" && -f "${default_core_lib}" ]]; then
 fi
 export ZLINK_KOTLIN_E2E_BUILD_DIR="${ZLINK_KOTLIN_E2E_BUILD_DIR:-${HOME}/.cache/zlink/kotlin-e2e/YieldDispatch}"
 export ZLINK_KOTLIN_E2E_GRADLE_CACHE="${ZLINK_KOTLIN_E2E_GRADLE_CACHE:-${HOME}/.cache/zlink/kotlin-e2e/YieldDispatch-gradle-cache}"
+export ZLINK_KOTLIN_E2E_REDIS_LOCATION_ENDPOINT="${ZLINK_KOTLIN_E2E_REDIS_LOCATION_ENDPOINT:-${ZLINK_REDIS_LOCATION_ENDPOINT:-127.0.0.1:16379}}"
+export ZLINK_KOTLIN_E2E_LOCATION_KEY_PREFIX="${ZLINK_KOTLIN_E2E_LOCATION_KEY_PREFIX:-zlink:e2e:kotlin-yield-dispatch:${run_id}}"
 LOCAL_READINESS_TIMEOUT_SECONDS=3
 LOCAL_READINESS_POLL_SECONDS=0.1
 LOCAL_READINESS_ATTEMPTS=30
@@ -68,7 +70,7 @@ import socket
 sockets = []
 ports = []
 try:
-    for _ in range(10):
+    for _ in range(8):
         sock = socket.socket()
         sock.bind(("127.0.0.1", 0))
         sockets.append(sock)
@@ -152,10 +154,6 @@ client_bin() {
   echo "${ZLINK_KOTLIN_E2E_BUILD_DIR}/Client/install/yield-dispatch-kotlin-client/bin/yield-dispatch-kotlin-client"
 }
 
-registry_bin() {
-  echo "${ZLINK_KOTLIN_E2E_BUILD_DIR}/Server-Registry/install/yield-dispatch-kotlin-registry/bin/yield-dispatch-kotlin-registry"
-}
-
 delay_bin() {
   echo "${ZLINK_KOTLIN_E2E_BUILD_DIR}/Server-Delay/install/yield-dispatch-kotlin-delay/bin/yield-dispatch-kotlin-delay"
 }
@@ -168,18 +166,12 @@ session_bin() {
   echo "${ZLINK_KOTLIN_E2E_BUILD_DIR}/Server-Session/install/yield-dispatch-kotlin-session/bin/yield-dispatch-kotlin-session"
 }
 
-start_registry() {
-  ZLINK_KOTLIN_E2E_REGISTRY_PUB="${REGISTRY_PUB}" \
-  ZLINK_KOTLIN_E2E_REGISTRY_ROUTER="${REGISTRY_ROUTER}" \
-    "$(registry_bin)" >"${log_dir}/registry.stdout.log" 2>"${log_dir}/registry.stderr.log" &
-  pids+=("$!")
-  wait_port registry-router "${REGISTRY_ROUTER}"
-}
-
 start_delay() {
   ZLINK_KOTLIN_E2E_NODE_RID=delay-a \
   ZLINK_KOTLIN_E2E_DELAY_ENDPOINT="${DELAY}" \
-  ZLINK_KOTLIN_E2E_REGISTRY_ROUTER="${REGISTRY_ROUTER}" \
+  ZLINK_KOTLIN_E2E_REDIS_LOCATION_ENDPOINT="${ZLINK_KOTLIN_E2E_REDIS_LOCATION_ENDPOINT}" \
+  ZLINK_KOTLIN_E2E_LOCATION_KEY_PREFIX="${ZLINK_KOTLIN_E2E_LOCATION_KEY_PREFIX}" \
+  ZLINK_KOTLIN_E2E_LOG_DIR="${log_dir}" \
     "$(delay_bin)" >"${log_dir}/delay.stdout.log" 2>"${log_dir}/delay.stderr.log" &
   pids+=("$!")
   wait_port delay "${DELAY}"
@@ -195,7 +187,9 @@ start_play() {
   ZLINK_KOTLIN_E2E_SPOT_ENDPOINT="${spot_endpoint}" \
   ZLINK_KOTLIN_E2E_PLAY_ROUTE_ENDPOINT="${play_route_endpoint}" \
   ZLINK_KOTLIN_E2E_SESSION_ROUTE_ENDPOINT="${SESSION_ROUTE}" \
-  ZLINK_KOTLIN_E2E_REGISTRY_ROUTER="${REGISTRY_ROUTER}" \
+  ZLINK_KOTLIN_E2E_REDIS_LOCATION_ENDPOINT="${ZLINK_KOTLIN_E2E_REDIS_LOCATION_ENDPOINT}" \
+  ZLINK_KOTLIN_E2E_LOCATION_KEY_PREFIX="${ZLINK_KOTLIN_E2E_LOCATION_KEY_PREFIX}" \
+  ZLINK_KOTLIN_E2E_LOG_DIR="${log_dir}" \
     "$(play_bin)" >"${log_dir}/${log_name}.stdout.log" 2>"${log_dir}/${log_name}.stderr.log" &
   pids+=("$!")
   wait_port "${log_name}-spot" "${spot_endpoint}"
@@ -209,7 +203,9 @@ start_session() {
   ZLINK_KOTLIN_E2E_PLAY_B_ROUTE_ENDPOINT="${PLAY_B_ROUTE}" \
   ZLINK_KOTLIN_E2E_SESSION_ROUTE_ENDPOINT="${SESSION_ROUTE}" \
   ZLINK_KOTLIN_E2E_STREAM_ENDPOINT="${STREAM}" \
-  ZLINK_KOTLIN_E2E_REGISTRY_ROUTER="${REGISTRY_ROUTER}" \
+  ZLINK_KOTLIN_E2E_REDIS_LOCATION_ENDPOINT="${ZLINK_KOTLIN_E2E_REDIS_LOCATION_ENDPOINT}" \
+  ZLINK_KOTLIN_E2E_LOCATION_KEY_PREFIX="${ZLINK_KOTLIN_E2E_LOCATION_KEY_PREFIX}" \
+  ZLINK_KOTLIN_E2E_LOG_DIR="${log_dir}" \
     "$(session_bin)" >"${log_dir}/session.stdout.log" 2>"${log_dir}/session.stderr.log" &
   pids+=("$!")
   wait_port session-spot "${SESSION_SPOT}"
@@ -223,15 +219,19 @@ run_client() {
 }
 
 run_d2_client() {
+  local client_scenario="${SCENARIO}"
+  if [[ "${client_scenario}" == "all" ]]; then
+    client_scenario="d2"
+  fi
   ZLINK_KOTLIN_E2E_CLIENT_MODE=d2 \
   ZLINK_KOTLIN_E2E_STREAM_ENDPOINT="${STREAM}" \
-    timeout -k 5s 45s "$(client_bin)" "${SCENARIO}" >"${log_dir}/client-d2.stdout.log" 2>"${log_dir}/client-d2.stderr.log"
+    timeout -k 5s 45s "$(client_bin)" "${client_scenario}" >"${log_dir}/client-d2.stdout.log" 2>"${log_dir}/client-d2.stderr.log"
 }
 
-read -r REGISTRY_PUB REGISTRY_ROUTER DELAY SPOT SESSION_SPOT PLAY_ROUTE SESSION_ROUTE STREAM SPOT_B PLAY_B_ROUTE <<<"$(reserve_ports)"
+read -r DELAY SPOT SESSION_SPOT PLAY_ROUTE SESSION_ROUTE STREAM SPOT_B PLAY_B_ROUTE <<<"$(reserve_ports)"
 
 static_checks
-gradle_run :Client:installDist :Server:Registry:installDist :Server:Delay:installDist :Server:Play:installDist :Server:Session:installDist
+gradle_run :Client:installDist :Server:Delay:installDist :Server:Play:installDist :Server:Session:installDist
 bindings_jar="${repo_root}/bindings/java/build/libs/zlink-java-8.4.3.jar"
 python3 - "${bindings_jar}" <<'PY' || "${repo_root}/framework/languages/java/gradlew" \
   --project-cache-dir "${ZLINK_KOTLIN_E2E_GRADLE_CACHE}" \
@@ -245,11 +245,9 @@ with zipfile.ZipFile(path) as jar:
     if bad is not None:
         raise SystemExit(f"bad jar entry: {bad}")
 PY
-cp "${bindings_jar}" "${ZLINK_KOTLIN_E2E_BUILD_DIR}/Server-Registry/install/yield-dispatch-kotlin-registry/lib/zlink-java-8.4.3.jar"
 cp "${bindings_jar}" "${ZLINK_KOTLIN_E2E_BUILD_DIR}/Server-Delay/install/yield-dispatch-kotlin-delay/lib/zlink-java-8.4.3.jar"
 cp "${bindings_jar}" "${ZLINK_KOTLIN_E2E_BUILD_DIR}/Server-Play/install/yield-dispatch-kotlin-play/lib/zlink-java-8.4.3.jar"
 cp "${bindings_jar}" "${ZLINK_KOTLIN_E2E_BUILD_DIR}/Server-Session/install/yield-dispatch-kotlin-session/lib/zlink-java-8.4.3.jar"
-start_registry
 start_delay
 start_play play-a "${SPOT}" "${PLAY_ROUTE}" play
 start_session

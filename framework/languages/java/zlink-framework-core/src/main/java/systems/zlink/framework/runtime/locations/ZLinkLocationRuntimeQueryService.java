@@ -1,0 +1,351 @@
+package systems.zlink.framework.runtime.locations;
+
+import java.time.Instant;
+import java.util.ArrayList;
+import java.util.Comparator;
+import java.util.LinkedHashMap;
+import java.util.List;
+import java.util.Map;
+import java.util.Objects;
+import java.util.concurrent.CompletableFuture;
+import java.util.concurrent.CompletionStage;
+import systems.zlink.framework.locations.ZLinkActorLocation;
+import systems.zlink.framework.locations.ZLinkActorLocationFilter;
+import systems.zlink.framework.locations.ZLinkLocationKind;
+import systems.zlink.framework.locations.ZLinkLocationOptions;
+import systems.zlink.framework.locations.ZLinkLocationPage;
+import systems.zlink.framework.locations.ZLinkLocationRole;
+import systems.zlink.framework.locations.ZLinkLocationRuntimeQuery;
+import systems.zlink.framework.locations.ZLinkLocationRuntimeStatus;
+import systems.zlink.framework.locations.ZLinkLocationServiceSummary;
+import systems.zlink.framework.locations.ZLinkLocationServiceSummaryFilter;
+import systems.zlink.framework.locations.ZLinkLocationTopologyEntry;
+import systems.zlink.framework.locations.ZLinkLocationTopologyFilter;
+import systems.zlink.framework.locations.ZLinkLocationTopologyState;
+import systems.zlink.framework.locations.ZLinkPageRequest;
+import systems.zlink.framework.locations.ZLinkPeerLocation;
+import systems.zlink.framework.locations.ZLinkPeerLocationFilter;
+import systems.zlink.framework.locations.ZLinkRouteLocation;
+import systems.zlink.framework.locations.ZLinkRouteLocationFilter;
+import systems.zlink.framework.locations.ZLinkSpotLocation;
+import systems.zlink.framework.locations.ZLinkSpotLocationFilter;
+
+public final class ZLinkLocationRuntimeQueryService implements ZLinkLocationRuntimeQuery {
+    private final ZLinkRegisteredLocationStores stores;
+    private final ZLinkLocationRuntime runtime;
+    private final ZLinkLocationOptions options;
+    private final ZLinkOwnerLeaseTracker leases;
+    private final ZLinkObservedLocationGenerations observed = new ZLinkObservedLocationGenerations();
+
+    public ZLinkLocationRuntimeQueryService(
+        ZLinkRegisteredLocationStores stores,
+        ZLinkLocationRuntime runtime,
+        ZLinkLocationOptions options) {
+        this.stores = Objects.requireNonNull(stores, "stores");
+        this.runtime = Objects.requireNonNull(runtime, "runtime");
+        this.options = Objects.requireNonNull(options, "options");
+        this.leases = new ZLinkOwnerLeaseTracker(
+            stores.ownerLeaseStore(),
+            options.pollingInterval());
+    }
+
+    @Override
+    public CompletionStage<ZLinkLocationRuntimeStatus> getStatusAsync() {
+        return CompletableFuture.completedFuture(new ZLinkLocationRuntimeStatus(
+            runtime.lastError() == null,
+            stores.watchStore() != null,
+            options.pollingInterval(),
+            runtime.ownerLeaseRenewedAt(),
+            runtime.lastError(),
+            runtime.ownerLeaseHealthy(),
+            runtime.ownerLeaseRenewedAt()));
+    }
+
+    @Override
+    public CompletionStage<List<ZLinkPeerLocation>> listPeersAsync(ZLinkPeerLocationFilter filter) {
+        return stores.peerStore().listPeersAsync(filter)
+            .thenCompose(rows -> filterLive(rows, ZLinkPeerLocation::ownerId, observed::acceptPeer));
+    }
+
+    @Override
+    public CompletionStage<ZLinkLocationPage<ZLinkSpotLocation>> listSpotsAsync(
+        ZLinkSpotLocationFilter filter,
+        ZLinkPageRequest page) {
+        return stores.spotStore().listSpotsAsync(filter, normalize(page))
+            .thenCompose(raw -> filterLive(raw.items(), ZLinkSpotLocation::ownerId, observed::acceptSpot)
+                .thenApply(items -> new ZLinkLocationPage<>(items, raw.continuationToken())));
+    }
+
+    @Override
+    public CompletionStage<ZLinkLocationPage<ZLinkActorLocation>> listActorsAsync(
+        ZLinkActorLocationFilter filter,
+        ZLinkPageRequest page) {
+        return stores.actorStore().listActorsAsync(filter, normalize(page))
+            .thenCompose(raw -> filterLive(raw.items(), ZLinkActorLocation::ownerId, observed::acceptActor)
+                .thenApply(items -> new ZLinkLocationPage<>(items, raw.continuationToken())));
+    }
+
+    @Override
+    public CompletionStage<ZLinkLocationPage<ZLinkRouteLocation>> listRoutesAsync(
+        ZLinkRouteLocationFilter filter,
+        ZLinkPageRequest page) {
+        return stores.routeStore().listRoutesAsync(filter, normalize(page))
+            .thenCompose(raw -> filterLive(raw.items(), ZLinkRouteLocation::ownerId, observed::acceptRoute)
+                .thenApply(items -> new ZLinkLocationPage<>(items, raw.continuationToken())));
+    }
+
+    @Override
+    public CompletionStage<ZLinkLocationPage<ZLinkLocationTopologyEntry>> listTopologyAsync(
+        ZLinkLocationTopologyFilter filter,
+        ZLinkPageRequest page) {
+        ZLinkLocationTopologyFilter safeFilter =
+            filter == null ? ZLinkLocationTopologyFilter.all() : filter;
+        if (safeFilter.kind() == null) {
+            return listAllTopologyKindsAsync(safeFilter, page);
+        }
+        return switch (safeFilter.kind()) {
+            case PEER -> listPeerTopologyAsync(safeFilter, page);
+            case SPOT -> listSpotsAsync(
+                    new ZLinkSpotLocationFilter(safeFilter.meshName(), null, safeFilter.nodeRid(), null),
+                    page)
+                .thenApply(spots -> new ZLinkLocationPage<>(
+                    spots.items().stream()
+                        .map(row -> new ZLinkLocationTopologyEntry(
+                            ZLinkLocationKind.SPOT,
+                            row.meshName(),
+                            null,
+                            row.nodeRid(),
+                            row.spotRid(),
+                            null,
+                            row.routeEndpoint(),
+                            ZLinkLocationTopologyState.READY,
+                            1,
+                            1,
+                            0,
+                            row.updatedAt()))
+                        .filter(entry -> matches(entry, safeFilter))
+                        .toList(),
+                    spots.continuationToken()));
+            case ACTOR -> listActorsAsync(
+                    new ZLinkActorLocationFilter(null, safeFilter.nodeRid(), null, null),
+                    page)
+                .thenApply(actors -> new ZLinkLocationPage<>(
+                    actors.items().stream()
+                        .map(row -> new ZLinkLocationTopologyEntry(
+                            ZLinkLocationKind.ACTOR,
+                            row.spotMeshName(),
+                            null,
+                            row.nodeRid(),
+                            row.spotRid(),
+                            row.actorId(),
+                            null,
+                            ZLinkLocationTopologyState.READY,
+                            1,
+                            1,
+                            0,
+                            row.updatedAt()))
+                        .filter(entry -> matches(entry, safeFilter))
+                        .toList(),
+                    actors.continuationToken()));
+            case ROUTE -> listRoutesAsync(new ZLinkRouteLocationFilter(null, safeFilter.nodeRid(), null), page)
+                .thenApply(routes -> new ZLinkLocationPage<>(
+                    routes.items().stream()
+                        .map(row -> new ZLinkLocationTopologyEntry(
+                            ZLinkLocationKind.ROUTE,
+                            null,
+                            null,
+                            row.ownerNodeRid(),
+                            null,
+                            null,
+                            row.routeKey(),
+                            ZLinkLocationTopologyState.READY,
+                            1,
+                            1,
+                            0,
+                            row.updatedAt()))
+                        .filter(entry -> matches(entry, safeFilter))
+                        .toList(),
+                    routes.continuationToken()));
+        };
+    }
+
+    private CompletionStage<ZLinkLocationPage<ZLinkLocationTopologyEntry>> listAllTopologyKindsAsync(
+        ZLinkLocationTopologyFilter filter,
+        ZLinkPageRequest page) {
+        List<ZLinkLocationTopologyEntry> entries = new ArrayList<>();
+        return listPeerTopologyAsync(filter, ZLinkPageRequest.firstPage())
+            .thenCompose(peerPage -> {
+                entries.addAll(peerPage.items());
+                return listTopologyAsync(new ZLinkLocationTopologyFilter(
+                    ZLinkLocationKind.SPOT,
+                    filter.meshName(),
+                    filter.role(),
+                    filter.nodeRid(),
+                    filter.state()), ZLinkPageRequest.firstPage());
+            })
+            .thenCompose(spotPage -> {
+                entries.addAll(spotPage.items());
+                return listTopologyAsync(new ZLinkLocationTopologyFilter(
+                    ZLinkLocationKind.ACTOR,
+                    filter.meshName(),
+                    filter.role(),
+                    filter.nodeRid(),
+                    filter.state()), ZLinkPageRequest.firstPage());
+            })
+            .thenCompose(actorPage -> {
+                entries.addAll(actorPage.items());
+                return listTopologyAsync(new ZLinkLocationTopologyFilter(
+                    ZLinkLocationKind.ROUTE,
+                    filter.meshName(),
+                    filter.role(),
+                    filter.nodeRid(),
+                    filter.state()), ZLinkPageRequest.firstPage());
+            })
+            .thenApply(routePage -> {
+                entries.addAll(routePage.items());
+                return pageInMemory(entries, page);
+            });
+    }
+
+    @Override
+    public CompletionStage<List<ZLinkLocationServiceSummary>> listServiceSummariesAsync(
+        ZLinkLocationServiceSummaryFilter filter) {
+        ZLinkLocationServiceSummaryFilter safeFilter =
+            filter == null ? ZLinkLocationServiceSummaryFilter.all() : filter;
+        return listPeersAsync(new ZLinkPeerLocationFilter(
+                safeFilter.autoConnectType(),
+                safeFilter.meshName(),
+                safeFilter.role(),
+                null,
+                null))
+            .thenApply(rows -> summarize(rows, safeFilter));
+    }
+
+    private CompletionStage<ZLinkLocationPage<ZLinkLocationTopologyEntry>> listPeerTopologyAsync(
+        ZLinkLocationTopologyFilter filter,
+        ZLinkPageRequest page) {
+        return listPeersAsync(new ZLinkPeerLocationFilter(null, filter.meshName(), filter.role(), filter.nodeRid(), null))
+            .thenApply(rows -> pageInMemory(rows.stream()
+                .map(row -> new ZLinkLocationTopologyEntry(
+                    ZLinkLocationKind.PEER,
+                    row.meshName(),
+                    row.role(),
+                    row.nodeRid(),
+                    null,
+                    null,
+                    row.endpoint(),
+                    ZLinkLocationTopologyState.READY,
+                    1,
+                    1,
+                    0,
+                    row.updatedAt()))
+                .filter(entry -> matches(entry, filter))
+                .toList(), page));
+    }
+
+    private <T> CompletionStage<List<T>> filterLive(
+        List<T> rows,
+        java.util.function.Function<T, String> ownerId,
+        java.util.function.Predicate<T> acceptObserved) {
+        CompletionStage<List<T>> result = CompletableFuture.completedFuture(new ArrayList<>());
+        for (T row : rows) {
+            result = result.thenCompose(live -> {
+                if (!acceptObserved.test(row)) {
+                    return CompletableFuture.completedFuture(live);
+                }
+                return leases.isOwnerLiveAsync(ownerId.apply(row)).thenApply(ownerLive -> {
+                    if (ownerLive) {
+                        live.add(row);
+                    }
+                    return live;
+                });
+            });
+        }
+        return result.thenApply(List::copyOf);
+    }
+
+    private static List<ZLinkLocationServiceSummary> summarize(
+        List<ZLinkPeerLocation> rows,
+        ZLinkLocationServiceSummaryFilter filter) {
+        Map<Group, MutableSummary> summaries = new LinkedHashMap<>();
+        for (ZLinkPeerLocation row : rows) {
+            Group group = new Group(row.meshName(), row.autoConnectType(), row.role());
+            summaries.computeIfAbsent(group, ignored -> new MutableSummary()).add(row.updatedAt());
+        }
+        return summaries.entrySet().stream()
+            .map(entry -> entry.getValue().toSummary(entry.getKey()))
+            .filter(summary -> filter.meshName() == null || Objects.equals(summary.meshName(), filter.meshName()))
+            .filter(summary -> filter.autoConnectType() == null || summary.autoConnectType() == filter.autoConnectType())
+            .filter(summary -> filter.role() == null || summary.role() == filter.role())
+            .sorted(Comparator.comparing(ZLinkLocationServiceSummary::meshName)
+                .thenComparing(summary -> summary.autoConnectType().name())
+                .thenComparing(summary -> summary.role().name()))
+            .toList();
+    }
+
+    private static boolean matches(
+        ZLinkLocationTopologyEntry entry,
+        ZLinkLocationTopologyFilter filter) {
+        return (filter.kind() == null || entry.kind() == filter.kind())
+            && (filter.meshName() == null || Objects.equals(entry.meshName(), filter.meshName()))
+            && (filter.role() == null || entry.role() == filter.role())
+            && (filter.nodeRid() == null || Objects.equals(entry.nodeRid(), filter.nodeRid()))
+            && (filter.state() == null || entry.state() == filter.state());
+    }
+
+    private static <T> ZLinkLocationPage<T> pageInMemory(List<T> rows, ZLinkPageRequest page) {
+        ZLinkPageRequest safePage = normalize(page);
+        int offset = parseOffset(safePage.continuationToken());
+        int limit = safePage.pageSize() <= 0 ? rows.size() : safePage.pageSize();
+        List<T> items = rows.stream().skip(offset).limit(limit).toList();
+        int nextOffset = offset + items.size();
+        return new ZLinkLocationPage<>(
+            items,
+            nextOffset < rows.size() ? Integer.toString(nextOffset) : null);
+    }
+
+    private static ZLinkPageRequest normalize(ZLinkPageRequest page) {
+        return page == null ? ZLinkPageRequest.firstPage() : page;
+    }
+
+    private static int parseOffset(String token) {
+        if (token == null || token.isBlank()) {
+            return 0;
+        }
+        try {
+            return Math.max(0, Integer.parseInt(token));
+        } catch (NumberFormatException ignored) {
+            return 0;
+        }
+    }
+
+    private record Group(
+        String meshName,
+        systems.zlink.framework.locations.ZLinkLocationAutoConnectType autoConnectType,
+        ZLinkLocationRole role) {
+    }
+
+    private static final class MutableSummary {
+        private long totalCount;
+        private Instant lastUpdatedAt = Instant.EPOCH;
+
+        void add(Instant updatedAt) {
+            totalCount++;
+            if (updatedAt != null && updatedAt.isAfter(lastUpdatedAt)) {
+                lastUpdatedAt = updatedAt;
+            }
+        }
+
+        ZLinkLocationServiceSummary toSummary(Group group) {
+            return new ZLinkLocationServiceSummary(
+                group.meshName(),
+                group.autoConnectType(),
+                group.role(),
+                totalCount,
+                totalCount,
+                0,
+                0,
+                lastUpdatedAt);
+        }
+    }
+}

@@ -1,62 +1,99 @@
 # Java DiscoveryRegistryHa E2E feature map
 
-이 문서는 Config 6 Discovery/Registry HA 공통 시나리오 중 Java framework E2E가 현재 검증하는
-항목과, public API 또는 harness 제어가 더 필요한 항목을 구분한다. registry probe는 registry
-프로세스 또는 별도 probe 프로세스에서 public registry query API를 호출하고, consumer는 public
-`ZLinkClient` discovery 경로만 사용한다.
+이 디렉터리는 공통 E2E Config 6 `Store Failure Recovery`를 Java framework location store
+계약으로 다시 맞추는 중이다. 기존 Java 이름은 `DiscoveryRegistryHa`이지만, 새 검증 기준은
+`framework/doc/framework/common/e2e/config-6-store-failure-recovery.ko.md`다.
 
-마지막 검증:
+## 실행 구조 상태
 
-- `../../gradlew --project-cache-dir "$HOME/.cache/zlink/java-e2e/DiscoveryRegistryHa-gradle-cache" --no-daemon installDist --stacktrace`
-  - 결과: 성공
-- `./run_e2e.sh`
-  - 로그: `logs/20260702-062518-33303`
-  - 결과: `DR-A1`, `DR-A2`, `DR-A3`, `DR-A4`, `DR-B1`, `DR-D1`, `DR-D2`, `DR-D3`, `DR-D4` 통과 후
-    `DR-B2`, `DR-B3`를 gap marker로 기록했다. `DR-C1`은 살아 있는 registry의 member query가
-    `api-a`를 bounded timeout 안에 보지 못해 `java-discovery-survivor-member-timeout` gap으로
-    남겼다. `DR-C2`는 recovered reg-2 member view가 provider를 다시 보지 못해
-    `java-discovery-recovered-registry-member-timeout` gap으로 남겼다. `DR-C3`는 registry 전체
-    outage 전/중 같은 consumer process로 messaging이 유지되는지 확인하고, 복구 후 재광고와
-    messaging 수렴 검증까지 통과했다. runner 끝에는 `discovery-registry-ha e2e result=passed`
-    marker를 출력한다.
+- `implemented`: 현재 Gradle 실행 그래프는 `Shared`, `Client`, `Server/Provider`,
+  `Server/Consumer`만 포함한다. 제거된 public registry 계약을 쓰던 registry, embedded, probe
+  role과 오래된 DR 시나리오 dispatch는 소스에서 제거했다.
+- `implemented`: provider와 consumer는 Redis location store extension을 같은 endpoint와 key
+  prefix로 등록한다.
+- `implemented`: consumer는 public `ZLinkLocationRuntimeQuery`를 HTTP endpoint로 노출한다.
+- `implemented`: config-6 전체 중 `SF-A1` baseline, `SF-A2` polling fallback,
+  `SF-B1` store outage fail-static, `SF-B2` grace exceeded, `SF-C1` provider crash lease
+  expiry, `SF-C2` graceful shutdown removal, `SF-D1` short outage recovery, `SF-D2` long outage
+  recovery, `SF-D3` status transition이 Java location store 경로로 검증됐다.
 
 ## 구현됨
 
-- `DR-A1`: 단일 registry baseline에서 provider 2개가 보이고 messaging이 성공하는지 검증한다.
-- `DR-A2`: 2 registry peer 합산에서 reg-2만 보는 consumer가 reg-1 provider로 messaging하는지
-  검증한다.
-- `DR-A3`: 3 registry peer 합산에서 서로 다른 registry에 붙은 provider 둘을 각 registry probe와
-  consumer messaging으로 확인한다.
-- `DR-A4`: 기존 provider와 같은 rid를 다른 registry와 endpoint에 추가 광고한 뒤, 그 registry만
-  보는 consumer messaging이 bounded time 안에 성공하는지 확인한다.
-- `DR-B1`: reg-1과 provider가 먼저 뜬 뒤 reg-2를 늦게 붙이고, reg-2를 보는 consumer가 기존
-  provider로 messaging하는지 확인한다.
-- `DR-C3`: 모든 registry process를 잠시 내린 동안 기존 consumer process의 messaging이 유지되는지
-  확인하고, 같은 endpoint로 registry와 provider를 복구한 뒤 재광고 view와 messaging이 다시
-  수렴하는지 확인한다.
-- `DR-D1`: registry와 provider를 한 process에 함께 띄운 embedded 배포 모델에서 discovery와
-  messaging을 확인한다.
-- `DR-D2`: registry를 별도 process로 띄운 standalone 배포 모델에서 discovery와 messaging을 확인한다.
-- `DR-D3`: embedded registry+provider process와 standalone registry/provider process를 peer로 묶은
-  혼합 cluster에서 peer 합산 view와 messaging을 확인한다.
-- `DR-D4`: 같은 registry router를 registry process의 in-process query와 별도 probe process의 remote
-  query client로 조회해 topology view가 같은 provider 집합을 반환하는지 확인한다.
+- `SF-A1`: Redis location store + provider 2개 + consumer 자동 연결 baseline을 검증한다.
+  consumer의 public runtime query에서 provider peer row 2개가 보이고, store status가 healthy이며,
+  consumer request가 provider 중 하나에서 처리되는지 확인한다.
+- `SF-A2`: change-stamp surface를 숨긴 polling-only consumer가 `watchEnabled=false` 상태에서
+  provider 추가(`api-c`)와 제거를 polling interval 안에 peer list와 request path로 반영하는지 확인한다.
+- `SF-B1`: runner가 전용 Redis 컨테이너를 pause한 동안 기존 consumer 연결의 request가 계속
+  성공하고, public runtime status가 store unhealthy와 owner lease heartbeat failure를 보여준 뒤
+  unpause 후 healthy로 복구되는지 확인한다.
+- `SF-B2`: Redis outage를 store failure grace보다 길게 유지하면서 기존 연결 request가 계속
+  성공하는지 확인하고, outage status와 recovery 후 provider row 복구를 public endpoint로 검증한다.
+- `SF-C1`: `api-b`를 SIGKILL해 row 제거 없이 종료시킨 뒤, owner lease 만료 후 public peer list에서
+  `api-b`가 제외되고 consumer request가 survivor인 `api-a`로만 빠르게 처리되는지 확인한다.
+- `SF-C2`: provider HTTP `/shutdown`으로 `api-b`를 정상 종료시킨 뒤, owner lease TTL을 기다리지
+  않고 public peer list에서 `api-b`가 사라지고 request가 `api-a`로만 가는지 확인한다.
+- `SF-D1`: 전용 Redis 컨테이너를 owner lease TTL보다 짧게 pause/unpause하면서 background client가
+  계속 request를 보내고, 모든 request 성공과 복구 후 healthy status 및 provider row 2개를 확인한다.
+- `SF-D2`: 전용 Redis 컨테이너를 owner lease TTL보다 길게 pause하고 그 동안 `api-b`를 SIGKILL한다.
+  복구 뒤 살아 있는 `api-a`가 재등록되어 request를 계속 처리하고, 재등록하지 못한 `api-b`만 peer
+  list에서 빠지는지 확인한다.
+- `SF-D3`: 전용 Redis 컨테이너를 pause/unpause하면서 public runtime status가 healthy 상태에서
+  last refresh와 owner lease 갱신 시간을 노출하고, outage 중에는 store/owner lease unhealthy와
+  last error를 보이며, 복구 뒤 last refresh 시간이 전진하는지 확인한다.
 
-## public API/harness 대기
+## 남은 항목
 
-- `DR-B2`: provider가 reg-1/reg-2에 광고된 뒤 reg-2가 내려가면, consumer가 살아 있는 reg-1만
-  configured한 상태에서도 request가 provider에 도달하지 못하고 timeout난다. `logs/repro-b2-20260629-164320-530103`
-  재현에서 consumer flow는 send만 반복되고 provider flow는 남지 않았다. 살아 있는 endpoint 기준
-  지속은 Java discovery runtime 쪽 동작 정리가 필요하므로 현재 runner는
-  `java-discovery-dead-registry-timeout` gap marker를 남긴다.
-- `DR-B3`: reg-2 stop/start flapping 후 recovered registry의 member view가 provider를 다시 보지
-  못해 `java-discovery-peer-flap-member-timeout` gap marker를 남긴다. peer flap 후 수렴 보장은
-  Java registry/discovery runtime 쪽 동작 확인이 필요하다.
-- `DR-C1`: reg-2를 강제 종료한 뒤 살아 있는 reg-1의 `memberPeers`가 reg-1에 직접 광고된
-  `api-a`도 bounded timeout 안에 보지 못해 `java-discovery-survivor-member-timeout` gap marker를
-  남긴다. 공통 시나리오가 살아 있는 registry의 `MemberPeersAsync` 지속을 요구하므로, messaging만
-  통과시키는 완화 검증으로 처리하지 않는다.
-- `DR-C2`: 죽였던 reg-2를 같은 endpoint로 다시 띄운 뒤 recovered registry의 member view가
-  provider를 다시 보지 못해 `java-discovery-recovered-registry-member-timeout` gap marker를
-  남긴다. 복구 후 peer broadcast 재구독과 합산 view 재구성은 Java registry/discovery runtime 쪽
-  동작 확인이 필요하다.
+- 없음: Config 6의 Java Redis location store scenario는 `all` runner로 검증됐다.
+
+## 검증
+
+- `../../gradlew --project-cache-dir /tmp/zlink-dr-gradle-cache --no-daemon compileJava --console=plain`
+  - 결과: `BUILD SUCCESSFUL`
+- `timeout 240s ./run_e2e.sh SF-A1`
+  - 결과: `scenario SF-A1 passed providers=[api-a]`, `discovery-registry-ha e2e result=passed`
+  - 로그: `logs/20260703-205335-11858/`
+- `timeout 300s ./run_e2e.sh SF-A2`
+  - 결과: `scenario SF-A2 passed providers=[api-a]`, `scenario SF-A2 passed providers=[api-b]`,
+    `scenario SF-A2 passed providers=[api-a]`, `discovery-registry-ha e2e result=passed`
+  - 로그: `logs/20260703-211659-69614/`
+- `timeout 360s ./run_e2e.sh SF-B1`
+  - 결과: `scenario SF-A1 passed providers=[api-a]`, `scenario SF-B1 passed providers=[api-a, api-b]`,
+    `scenario SF-B1-RECOVERED passed providers=[api-b]`, `discovery-registry-ha e2e result=passed`
+  - 로그: `logs/20260703-212347-99803/`
+- `timeout 420s ./run_e2e.sh SF-B2`
+  - 결과: `scenario SF-A1 passed providers=[api-a]`, `scenario SF-B2 passed providers=[api-b, api-a]`,
+    `scenario SF-B2-RECOVERED passed providers=[api-b]`, `discovery-registry-ha e2e result=passed`
+  - 로그: `logs/20260703-213206-24636/`
+- `timeout 360s ./run_e2e.sh SF-D1`
+  - 결과: `scenario SF-A1 passed providers=[api-a]`, `scenario SF-D1 passed providers=[api-b, api-a]`,
+    `scenario SF-D1-RECOVERED passed providers=[api-a]`, `discovery-registry-ha e2e result=passed`
+  - 로그: `logs/20260703-212806-15766/`
+- `timeout 300s ./run_e2e.sh SF-C1`
+  - 결과: `scenario SF-A1 passed providers=[api-a]`, `scenario SF-C1 passed providers=[api-a]`,
+    `discovery-registry-ha e2e result=passed`
+  - 로그: `logs/20260703-210726-45574/`
+- `timeout 300s ./run_e2e.sh SF-C2`
+  - 결과: `scenario SF-A1 passed providers=[api-a]`, `scenario SF-C2 passed providers=[api-a]`,
+    `discovery-registry-ha e2e result=passed`
+  - 로그: `logs/20260703-211120-55351/`
+- `timeout 360s ./run_e2e.sh SF-D3`
+  - 결과: `scenario SF-D3-HEALTHY passed providers=[api-a]`,
+    `scenario SF-D3-OUTAGE passed providers=[]`, `scenario SF-D3-RECOVERED passed providers=[api-b]`,
+    `scenario SF-D3 passed`, `discovery-registry-ha e2e result=passed`
+  - 로그: `logs/20260703-213847-41499/`
+- `timeout 420s ./run_e2e.sh SF-D2`
+  - 결과: `scenario SF-A1 passed providers=[api-a]`, `scenario SF-D2 passed providers=[api-a]`,
+    `discovery-registry-ha e2e result=passed`
+  - 로그: `logs/20260703-214417-56996/`
+- `timeout 900s ./run_e2e.sh all`
+  - 결과: `SF-A1`/`SF-A2`/`SF-B1`/`SF-B2`/`SF-C1`/`SF-C2`/`SF-D1`/`SF-D2`/`SF-D3` 통과,
+    `discovery-registry-ha e2e result=passed`
+  - 로그: `logs/20260703-214733-67106/`
+- cleanup 후 재검증
+  - `../../gradlew --project-cache-dir /tmp/zlink-dr-cleanup-gradle-cache --no-daemon :Client:compileJava :Server:Provider:compileJava :Server:Consumer:compileJava --console=plain`
+    - 결과: `BUILD SUCCESSFUL`
+  - `timeout 900s ./run_e2e.sh all`
+    - 결과: `SF-A1`/`SF-A2`/`SF-B1`/`SF-B2`/`SF-C1`/`SF-C2`/`SF-D1`/`SF-D2`/`SF-D3` 통과,
+      `discovery-registry-ha e2e result=passed`
+    - 로그: `logs/20260704-033113-35152/`

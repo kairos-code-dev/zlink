@@ -17,6 +17,10 @@ public final class YieldProbeHandlers {
     private YieldProbeHandlers() {
     }
 
+    private static Duration delayRequestTimeout(long delayMillis) {
+        return Duration.ofMillis(delayMillis).plusSeconds(5);
+    }
+
     public static final class HoldHandler {
         private final EvidenceStore evidence;
 
@@ -321,7 +325,7 @@ public final class YieldProbeHandlers {
                     .requestToChannel(
                         Contracts.DELAY_CHANNEL,
                         new Contracts.DelayReq(scenario.requestId(), scenario.delayMillis()))
-                    .timeout(Duration.ofSeconds(5))
+                    .timeout(delayRequestTimeout(scenario.delayMillis()))
                     .yield(Contracts.DelayRes.class);
                 evidence.record("timer-yield-resumed", scenario.requestId(), value);
                 evidence.record("timer-yield-completed", scenario.requestId(), value);
@@ -371,8 +375,8 @@ public final class YieldProbeHandlers {
                 .requestToChannel(
                     Contracts.DELAY_CHANNEL,
                     new Contracts.DelayReq(request.requestId(), request.delayMillis()))
-                .timeout(Duration.ofSeconds(5))
-                .await(Contracts.DelayRes.class);
+                .timeout(delayRequestTimeout(request.delayMillis()))
+                .yield(Contracts.DelayRes.class);
             evidence.record("actor-yield-resumed", request.requestId(), value);
             evidence.record("actor-yield-completed", request.requestId(), value);
             return new Contracts.ActorYieldRes("YD-B", request.requestId(), actor.actorId(), "actor-yield-completed");
@@ -436,7 +440,7 @@ public final class YieldProbeHandlers {
                     systems.zlink.contracts.core.RoutingId.from(request.targetSpotRid()),
                     new Contracts.DelayReq(request.requestId(), 350))
                 .timeout(Duration.ofSeconds(5))
-                .await();
+                .yield();
             evidence.record("actor-join-yield-resumed", request.requestId(),
                 value + ";joined=" + joined.actor().actorId());
             evidence.record("actor-join-yield-completed", request.requestId(),
@@ -551,7 +555,7 @@ public final class YieldProbeHandlers {
                 .requestToChannel(
                     Contracts.DELAY_CHANNEL,
                     new Contracts.DelayReq(request.requestId(), request.delayMillis()))
-                .timeout(Duration.ofSeconds(5))
+                .timeout(delayRequestTimeout(request.delayMillis()))
                 .yield(Contracts.DelayRes.class);
             evidence.record("actor-yield-resumed", request.requestId(), value);
             evidence.record("actor-yield-completed", request.requestId(), value);

@@ -1,6 +1,5 @@
 package systems.zlink.e2e.registrymessaging.client.Scenarios;
 
-import java.util.HashSet;
 import java.util.Set;
 import systems.zlink.e2e.registrymessaging.client.Support.DynamicClusterLauncher;
 import systems.zlink.e2e.registrymessaging.client.Support.ScenarioAssert;
@@ -15,23 +14,24 @@ public final class RmB2ScaleInScenario {
         try (DynamicClusterLauncher cluster = DynamicClusterLauncher.start("rm-b2")) {
             DynamicClusterLauncher.DynamicProvider providerA = cluster.startProvider("api-a", "api-a");
             DynamicClusterLauncher.DynamicProvider providerB = cluster.startProvider("api-b", "api-b");
-            try (ZLinkHttpClient requester = ZLinkHttpClient.create(providerA.httpUrl()).build()) {
-                Set<String> before = new HashSet<>();
-                for (int index = 0; index < 100 && before.size() < 2; index++) {
-                    Contracts.ProfileRes reply = requester.post("/profile/request")
-                        .body(new Contracts.ProfileReq("scale-in-before-" + index))
-                        .fetch(Contracts.ProfileRes.class);
-                    before.add(reply.providerRid());
-                }
+            DynamicClusterLauncher.DynamicConsumer consumer = cluster.startConsumer("consumer");
+            try (ZLinkHttpClient requester = ZLinkHttpClient.create(consumer.httpUrl()).build()) {
+                cluster.waitPeerEndpoint(requester, providerA.channelEndpoint());
+                cluster.waitPeerEndpoint(requester, providerB.channelEndpoint());
+                cluster.waitPeerCount(requester, 2);
+                Set<String> before = ScenarioAssert.requestUntilProvidersSeen(
+                    requester,
+                    "scale-in-before",
+                    Set.of("api-a", "api-b"));
                 ScenarioAssert.that(before.contains("api-a") && before.contains("api-b"),
                     "RM-B2 did not start with both providers");
 
                 cluster.stop(providerB);
+                cluster.waitPeerEndpointAbsent(requester, providerB.channelEndpoint());
 
                 for (int index = 0; index < 20; index++) {
-                    Contracts.ProfileRes reply = requester.post("/profile/request")
-                        .body(new Contracts.ProfileReq("scale-in-after-" + index))
-                        .fetch(Contracts.ProfileRes.class);
+                    Contracts.ProfileRes reply =
+                        ScenarioAssert.requestProfileEventually(requester, "scale-in-after-" + index);
                     ScenarioAssert.that("api-a".equals(reply.providerRid()), "RM-B2 routed to removed provider");
                 }
             }

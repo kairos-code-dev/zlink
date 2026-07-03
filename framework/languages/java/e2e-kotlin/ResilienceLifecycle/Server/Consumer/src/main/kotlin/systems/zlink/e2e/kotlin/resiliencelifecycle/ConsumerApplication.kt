@@ -1,16 +1,15 @@
 package systems.zlink.e2e.kotlin.resiliencelifecycle
 
 import com.fasterxml.jackson.databind.ObjectMapper
-import org.springframework.beans.factory.ObjectProvider
 import org.springframework.boot.WebApplicationType
 import org.springframework.boot.autoconfigure.SpringBootApplication
 import org.springframework.boot.builder.SpringApplicationBuilder
 import org.springframework.context.annotation.Bean
 import systems.zlink.framework.channels.ZLinkClient
 import systems.zlink.framework.configuration.ZLinkMessageFlowLogMode
-import systems.zlink.framework.registry.ZLinkRegistryQueryClient
-import systems.zlink.framework.runtime.backend.ZLinkBackendAdapterFactory
-import systems.zlink.framework.runtime.registry.ZLinkRemoteRegistryQueryClient
+import systems.zlink.framework.locations.redis.ZLinkRedisLocationOptions
+import systems.zlink.framework.locations.redis.ZLinkRedisLocationStore
+import systems.zlink.framework.runtime.host.ZLinkFrameworkLifecycle
 import systems.zlink.framework.spring.EnableZLinkFramework
 import systems.zlink.framework.spring.ZLinkFrameworkConfigurer
 
@@ -28,28 +27,26 @@ open class ConsumerApplication {
                 .messageFlow(ZLinkMessageFlowLogMode.KEY_TRANSITIONS)
                 .traceLogFile("$logDir/consumer-flow.log")
                 .traceLabel("kotlin-rl-consumer")
-            options.useDiscovery().addRegistryEndpoint(Env.get("ZLINK_KOTLIN_E2E_REGISTRY_ROUTER"))
             options.addClientServerChannel(Contracts.CHANNEL).enableClient()
         }
 
     @Bean
-    open fun registryQueryClient(
-        backendAdapterFactory: ZLinkBackendAdapterFactory,
-    ): ZLinkRegistryQueryClient =
-        ZLinkRemoteRegistryQueryClient.connect(
-            Env.get("ZLINK_KOTLIN_E2E_REGISTRY_ROUTER"),
-            backendAdapterFactory,
+    open fun locationStore(): ZLinkRedisLocationStore =
+        ZLinkRedisLocationStore(
+            ZLinkRedisLocationOptions()
+                .setConnectionString(Env.get("ZLINK_KOTLIN_E2E_REDIS_LOCATION_ENDPOINT"))
+                .setKeyPrefix(Env.get("ZLINK_KOTLIN_E2E_LOCATION_KEY_PREFIX")),
         )
 
     @Bean
     open fun consumerHttpServer(
         client: ZLinkClient,
-        registry: ObjectProvider<ZLinkRegistryQueryClient>,
+        lifecycle: ZLinkFrameworkLifecycle,
         json: ObjectMapper,
     ): ConsumerHttpServer =
         ConsumerHttpServer(
             client,
-            registry.ifAvailable,
+            lifecycle,
             json,
             Env.get("ZLINK_KOTLIN_E2E_CONSUMER_HTTP_ENDPOINT"),
         )

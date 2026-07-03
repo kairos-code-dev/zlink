@@ -11,6 +11,8 @@ import systems.zlink.framework.configuration.ZLinkSpotNodeBuilder;
 import systems.zlink.framework.spring.EnableZLinkFramework;
 import systems.zlink.framework.spring.ZLinkFrameworkConfigurer;
 import systems.zlink.framework.codecs.protobuf.ZLinkProtobufCodec;
+import systems.zlink.framework.locations.redis.ZLinkRedisLocationStore;
+import systems.zlink.samples.bingo.server.configuration.SampleLocationStore;
 import systems.zlink.samples.bingo.server.session.sessions.BingoSession;
 import systems.zlink.samples.bingo.server.session.sessions.handlers.AuthenticateSessionHandler;
 import systems.zlink.samples.bingo.server.configuration.SampleNames;
@@ -37,12 +39,13 @@ public final class SessionServerApplication {
     ZLinkFrameworkConfigurer sessionFramework() {
         return options -> {
             options.addHandlersFromPackageOf(SessionServerApplication.class);
-            options.useDiscovery().addRegistryEndpoint(SampleTopology.RegistryRouterEndpoint);
             options.configureDispatch()
                 .messageFlow(ZLinkMessageFlowLogMode.KEY_TRANSITIONS)
                 .traceLogFile(System.getenv().getOrDefault("BINGO_LOG_DIR", "logs") + "/flow-session.log")
                 .traceLabel("session");
             options.codecs().use(ZLinkProtobufCodec.defaultCodec());
+            options.configureLocations()
+                .setSpotRouterChannel(SampleNames.RoomSpotDiscovery, SampleNames.PlayChannel);
             options.addClientServerChannel(SampleNames.ApiChannel)
                 .enableClient();
             RouteMeshChannelBuilder route = options.addRouteMesh(SampleNames.PlayChannel);
@@ -57,5 +60,10 @@ public final class SessionServerApplication {
                 .registerSession(BingoSession.class)
                 .addSessionPacketHandler(AuthenticateSessionHandler.class);
         };
+    }
+
+    @Bean
+    ZLinkRedisLocationStore locationStore() {
+        return SampleLocationStore.create();
     }
 }

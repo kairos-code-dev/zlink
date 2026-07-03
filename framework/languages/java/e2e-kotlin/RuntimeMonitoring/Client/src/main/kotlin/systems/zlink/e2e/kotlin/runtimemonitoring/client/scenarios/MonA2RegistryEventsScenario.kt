@@ -9,8 +9,8 @@ class MonA2RegistryEventsScenario(
 ) {
     fun run() {
         evidence.waitForEvent(
-            options.registryHttp,
-            "registry",
+            options.serviceHttp,
+            "location",
             setOf("STATUS_CHANGED", "TOPOLOGY_CHANGED", "SERVICE_SUMMARY_CHANGED"),
         )
         println("scenario MON-A2 passed")

@@ -10,8 +10,9 @@
 
 기존 Java SpotService E2E는 단일 Gradle application에서 `ZLINK_JAVA_E2E_ROLE`로 `registry`, `play`,
 `publisher`, `client` 역할을 전환했다. 현재 구조는 기존 구현을 보존하면서 `Shared`, `Client`,
-`Server/Registry`, `Server/Gateway`, `Server/Play`, `Server/MultiNode`, `Server/Session`,
-`Server/Publisher` Gradle subproject로 분리했다.
+`Server/Gateway`, `Server/Play`, `Server/MultiNode`, `Server/Session`, `Server/Publisher` Gradle
+subproject로 분리했다. embedded registry role은 제거했고, 실행 role은 공식 Redis location store
+extension을 같은 endpoint와 실행별 key prefix로 공유한다.
 
 `.NET` 기준의 `Gateway`, `MultiNode`, `Session` source role은 Java role project로 존재한다. Client는
 HTTP driver이고, 기존 spot/route/stream scenario 실행 책임은 `Server/Gateway`로 옮겼다. Java
@@ -28,7 +29,7 @@ scenario executor)를 함께 의미한다.
 | .NET 기준 파일 | Java 대응 파일 | 분류 | 상태 | 비고 |
 |----------------|----------------|------|------|------|
 | `.gitignore` | `.gitignore` | config | done | multi-project build, `.gradle`, logs 산출물 제외 |
-| `run_e2e.sh` | `run_e2e.sh` | runner | partial | role별 installDist binary를 실행한다. Java feature-map의 완료 marker를 검증한다. |
+| `run_e2e.sh` | `run_e2e.sh` | runner | done | registry role 없이 role별 installDist binary를 실행하고 Java feature-map의 완료 marker를 검증한다. |
 | `feature-map.ko.md` | `feature-map.ko.md` | docs | done | Java 완료/gap scenario 구분 |
 | `Shared/SpotService.Shared.csproj` | `Shared/build.gradle.kts` | build | done | shared Java library project |
 | `Shared/Messages.cs` | `Shared/src/main/java/systems/zlink/e2e/spotservice/shared/Contracts.java` | shared | done | request, reply, evidence, stream payload record |
@@ -83,12 +84,18 @@ scenario executor)를 함께 의미한다.
 | `Client/Support/ClientOptions.cs` | `Shared/src/main/java/systems/zlink/e2e/spotservice/shared/Env.java` | support | done | 환경 변수 option helper |
 | `Client/Support/ScenarioAssert.cs` | `Shared/src/main/java/systems/zlink/e2e/spotservice/shared/ClientScenario.java` | support | done | Gateway scenario executor의 assertion helper |
 | `Client/Support/SpotLifecycleOrderContext.cs` | `Shared/src/main/java/systems/zlink/e2e/spotservice/shared/ScenarioState.java` | support | done | evidence order 검증 입력 |
-| `Server/Registry/*` | `Server/Registry/src/main/java/systems/zlink/e2e/spotservice/registry/Program.java`, `Server/Registry/build.gradle.kts` | server-role | done | embedded registry role |
-| `Server/Play/*` | `Server/Play/src/main/java/systems/zlink/e2e/spotservice/play/Program.java`, `Shared/src/main/java/systems/zlink/e2e/spotservice/shared/*.java`, `Server/Play/build.gradle.kts` | server-role | done | play role 구현과 support/handler/spot 타입 |
-| `Server/Gateway/*` | `Server/Gateway/build.gradle.kts`, `Server/Gateway/src/main/java/systems/zlink/e2e/spotservice/gateway/Program.java`, `Shared/src/main/java/systems/zlink/e2e/spotservice/shared/GatewayScenarioHttpServer.java` | server-role | done | HTTP scenario endpoint와 framework gateway process |
+| `Server/Registry/*` | 제거됨 | server-role | not-needed | embedded registry role은 Redis location store 전환으로 삭제 |
+| `Server/Play/*` | `Server/Play/src/main/java/systems/zlink/e2e/spotservice/play/Program.java`, `Shared/src/main/java/systems/zlink/e2e/spotservice/shared/*.java`, `Server/Play/build.gradle.kts` | server-role | done | play role 구현과 support/handler/spot 타입. Redis location store 등록 |
+| `Server/Gateway/*` | `Server/Gateway/build.gradle.kts`, `Server/Gateway/src/main/java/systems/zlink/e2e/spotservice/gateway/Program.java`, `Shared/src/main/java/systems/zlink/e2e/spotservice/shared/GatewayScenarioHttpServer.java` | server-role | done | HTTP scenario endpoint와 framework gateway process. Redis location store 등록 |
 | `Server/MultiNode/*` | `Server/MultiNode/build.gradle.kts`, `Server/MultiNode/src/main/java/systems/zlink/e2e/spotservice/multinode/Program.java` | server-role | partial | `.NET` source role project exists. 고급 multi-node actor/session scenario는 feature-map gap |
 | `Server/Session/*` | `Server/Session/build.gradle.kts`, `Server/Session/src/main/java/systems/zlink/e2e/spotservice/session/Program.java` | server-role | partial | `.NET` source role project exists. remote session scenario는 feature-map gap |
-| `Server/Publisher/*` | `Server/Publisher/src/main/java/systems/zlink/e2e/spotservice/publisher/Program.java`, `Server/Publisher/build.gradle.kts` | server-role | done | Java publisher role |
+| `Server/Publisher/*` | `Server/Publisher/src/main/java/systems/zlink/e2e/spotservice/publisher/Program.java`, `Server/Publisher/build.gradle.kts` | server-role | done | Java publisher role. Redis location store 등록 |
+
+## 검증
+
+- `../../gradlew --project-cache-dir /tmp/zlink-spotservice-gradle-cache --no-daemon --no-parallel --max-workers=1 :Client:installDist :Server:Play:installDist :Server:Gateway:installDist :Server:Publisher:installDist --console=plain`
+- `timeout 420s ./run_e2e.sh SM-A1` 통과: `logs/20260704-034626-63193`
+- `timeout 900s ./run_e2e.sh` 통과: `logs/20260704-034655-64390`, `spot-service e2e result=passed`
 
 ## 남은 gap
 

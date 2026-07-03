@@ -12,6 +12,9 @@ import systems.zlink.e2e.kotlin.runtimemonitoring.Contracts
 import systems.zlink.e2e.kotlin.runtimemonitoring.Env
 import systems.zlink.framework.channels.ZLinkChannelRuntimeOptions
 import systems.zlink.framework.configuration.ZLinkMessageFlowLogMode
+import systems.zlink.framework.locations.redis.ZLinkRedisLocationOptions
+import systems.zlink.framework.locations.redis.ZLinkRedisLocationStore
+import systems.zlink.framework.monitoring.ZLinkLocationRuntimeEventKind
 import systems.zlink.framework.monitoring.ZLinkSocketEventKind
 import systems.zlink.framework.spring.EnableZLinkFramework
 import systems.zlink.framework.spring.ZLinkFrameworkConfigurer
@@ -47,7 +50,9 @@ class ServiceApplication {
     fun frameworkConfigurer(): ZLinkFrameworkConfigurer {
         return ZLinkFrameworkConfigurer { options ->
             val logDir = Env.get("ZLINK_KOTLIN_E2E_LOG_DIR", "logs")
-            options.useDiscovery().addRegistryEndpoint(Env.get("ZLINK_KOTLIN_E2E_REGISTRY_ROUTER"))
+            options.configureLocations().setHeartbeatInterval(Duration.ofMillis(500))
+            options.configureLocations().setOwnerLeaseTtl(Duration.ofSeconds(3))
+            options.configureLocations().setPollingInterval(Duration.ofMillis(250))
             options.configureDispatch()
                 .messageFlow(ZLinkMessageFlowLogMode.KEY_TRANSITIONS)
                 .traceLogFile("$logDir/service-flow.log")
@@ -82,9 +87,20 @@ class ServiceApplication {
     fun monitoringOptions(): ZLinkMonitoringOptionsCustomizer {
         return ZLinkMonitoringOptionsCustomizer { options ->
             options.addSocketEvents(Contracts.CHANNEL, ZLinkSocketEventKind.CONNECTION_READY)
+            options.addLocationRuntimeEvents(Contracts.LOCATION_SOURCE, Duration.ofMillis(100))
             options.addSocketEvents(Contracts.HANDSHAKE_CHANNEL)
             options.addSpotEvents(Contracts.SPOT_MESH, Duration.ofMillis(100))
         }
+    }
+
+    @Bean
+    fun locationStore(): ZLinkRedisLocationStore {
+        return ZLinkRedisLocationStore(
+            ZLinkRedisLocationOptions()
+                .setConnectionString(Env.get("ZLINK_KOTLIN_E2E_REDIS_LOCATION_ENDPOINT"))
+                .setKeyPrefix(Env.get("ZLINK_KOTLIN_E2E_LOCATION_KEY_PREFIX"))
+                .setCommandTimeout(Duration.ofMillis(500)),
+        )
     }
 
     @Bean
@@ -124,6 +140,11 @@ class ServiceApplication {
     @Bean
     fun spotRecorder(state: EvidenceState): MonitoringEventHandlers.SpotRecorder {
         return MonitoringEventHandlers.SpotRecorder(state)
+    }
+
+    @Bean
+    fun locationRuntimeRecorder(state: EvidenceState): MonitoringEventHandlers.LocationRuntimeRecorder {
+        return MonitoringEventHandlers.LocationRuntimeRecorder(state)
     }
 
     companion object {

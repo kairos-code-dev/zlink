@@ -10,8 +10,10 @@ import systems.zlink.framework.codecs.protobuf.ZLinkProtobufCodec
 import systems.zlink.framework.configuration.ZLinkMessageFlowLogMode
 import systems.zlink.framework.kotlin.configureDispatch
 import systems.zlink.framework.kotlin.useCoroutineHandlers
+import systems.zlink.framework.locations.redis.ZLinkRedisLocationStore
 import systems.zlink.framework.spring.EnableZLinkFramework
 import systems.zlink.framework.spring.ZLinkFrameworkConfigurer
+import systems.zlink.samples.kotlin.bingo.server.configuration.SampleLocationStore
 import systems.zlink.samples.kotlin.bingo.server.configuration.SampleNames
 import systems.zlink.samples.kotlin.bingo.server.configuration.SampleTopology
 
@@ -27,7 +29,6 @@ class ApiServerApplication {
     fun apiFramework(): ZLinkFrameworkConfigurer =
         ZLinkFrameworkConfigurer { options ->
             options.addHandlersFromPackageOf(ApiServerApplication::class.java)
-            options.useDiscovery().addRegistryEndpoint(SampleTopology.RegistryRouterEndpoint)
             options.useCoroutineHandlers(Dispatchers.Default)
             options.configureDispatch {
                 messageFlow(ZLinkMessageFlowLogMode.KEY_TRANSITIONS)
@@ -43,6 +44,9 @@ class ApiServerApplication {
             route.enableClient()
             route.setRoutingId(RoutingId.from(SampleTopology.selectedApiRouteRid()))
         }
+
+    @Bean
+    fun locationStore(): ZLinkRedisLocationStore = SampleLocationStore.create()
 
     companion object {
         fun run(args: Array<String> = emptyArray()): AutoCloseable {

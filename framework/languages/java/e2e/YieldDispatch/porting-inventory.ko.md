@@ -21,7 +21,7 @@ session gateway가 route mesh로 보낸 packet이 `play-b` target spot handler�
 먼저 처리되는지 검증한다. `YD-D4`는 stream session relay로 bound actor handler에 들어간 request가
 yield 중일 때 bound session push를 원래 stream connector로 보내고, 다른 actor의 push wait는 진행되지
 않는지 검증한다. `YD-E1`은 timeout 뒤 같은 Spot mailbox가 probe를 처리하는 cleanup을 검증한다.
-현재 기본 runner proof log는 `logs/20260702-070504-3148`다. `YD-E2`는 request, actor join,
+현재 기본 runner proof log는 `logs/20260704-001935-37995`다. `YD-E2`는 request, actor join,
 worker yield public surface에 `CancellationToken` overload를 추가한 뒤 같은 runner에서 통과했다.
 `YD-E3` diagnostic runner는
 `logs/20260702-070504-3148`에서 pending yield 중 play-a SIGTERM shutdown, `.NET`과 같은 stream
@@ -42,7 +42,7 @@ internal helper나 raw-frame 우회로 완료 처리하지 않기 위해 유지�
 | .NET 기준 파일 | Java 대응 파일 | 분류 | 상태 | 비고 |
 |----------------|----------------|------|------|------|
 | `.gitignore` | `.gitignore` | config | done | 목표 build/log 산출물 제외 |
-| `run_e2e.sh` | `run_e2e.sh` | runner | done | 기본 실행은 registry, delay, play-a, play-b, session, client process를 띄우고 YD-A1/YD-A2/YD-A3/YD-A4, YD-B1, YD-B2, YD-B3, YD-C1, YD-C2, YD-C3, YD-D2, YD-D3, YD-D4, YD-E1, YD-E2 marker, E4 정적 검증, E5 marker report 검증을 수행한다. `logs/20260702-070504-3148`에서 통과했다. `ZLINK_JAVA_E2E_RUN_E3_SHUTDOWN=1` diagnostic gate도 같은 로그에서 YD-E3 shutdown/restart recovery를 통과했다 |
+| `run_e2e.sh` | `run_e2e.sh` | runner | done | 기본 실행은 Redis location store를 공유하는 delay, play-a, play-b, session, client process를 띄우고 YD-A1/YD-A2/YD-A3/YD-A4, YD-B1, YD-B2, YD-B3, YD-C1, YD-C2, YD-C3, YD-D2, YD-D3, YD-D4, YD-E1, YD-E2 marker, E4 정적 검증, E5 marker report 검증을 수행한다. `logs/20260704-001935-37995`에서 통과했다. `ZLINK_JAVA_E2E_RUN_E3_SHUTDOWN=1` diagnostic gate는 `logs/20260702-070504-3148`에서 YD-E3 shutdown/restart recovery를 통과했다 |
 | `feature-map.ko.md` | `feature-map.ko.md` | docs | done | 구현된 YD-A1/YD-A2와 남은 gap을 구분 |
 | `Shared/YieldDispatch.Shared.csproj` | `Shared/build.gradle.kts` | build | done | shared project 구성 |
 | `Shared/Messages.cs` | `Shared/src/main/java/systems/zlink/e2e/yielddispatch/shared/Contracts.java` | shared | done | YD-A1/YD-A2/YD-A3/YD-A4, YD-B1, YD-B2, YD-B3, YD-C1, YD-C2, YD-D2, YD-D3, YD-D4, YD-E1, YD-E2 scenario packet/evidence 타입과 YD-E3 diagnostic packet을 구현했다 |
@@ -66,10 +66,10 @@ internal helper나 raw-frame 우회로 완료 처리하지 않기 위해 유지�
 | `Client/Scenarios/YdD3RouteBridgeYieldScenario.cs` | `Client/src/main/java/systems/zlink/e2e/yielddispatch/client/Scenarios/YdD3RouteBridgeYieldScenario.java`, `Client/src/main/java/systems/zlink/e2e/yielddispatch/client/Support/YieldDispatchScenarioSupport.java` | scenario | done | Java scenario wrapper가 route bridge target spot yield 중 probe 진행 검증을 support method로 실행한다. |
 | `Client/Scenarios/YdD4SessionRelayActorYieldScenario.cs` | `Client/src/main/java/systems/zlink/e2e/yielddispatch/client/Scenarios/YdD4SessionRelayActorYieldScenario.java`, `Client/src/main/java/systems/zlink/e2e/yielddispatch/client/Support/YieldDispatchScenarioSupport.java` | scenario | done | Java scenario wrapper가 stream session relay actor yield와 bound session push 검증을 support method로 실행한다. |
 | `Client/Scenarios/YdE1TimeoutScenario.cs` | `Client/src/main/java/systems/zlink/e2e/yielddispatch/client/Scenarios/YdE1TimeoutScenario.java`, `Client/src/main/java/systems/zlink/e2e/yielddispatch/client/Support/YieldDispatchScenarioSupport.java` | scenario | done | Java scenario wrapper가 timeout cleanup과 post-timeout probe 검증을 support method로 실행한다. |
-| `Client/Scenarios/YdE5MarkerReportScenario.cs` | `run_e2e.sh` | runner | done | Java runner가 `yield-dispatch-marker-report.json`을 생성하고 scenario id별 공통 marker 이름을 검증한다. `logs/20260702-070504-3148/yield-dispatch-marker-report.json`에서 확인했다 |
+| `Client/Scenarios/YdE5MarkerReportScenario.cs` | `run_e2e.sh` | runner | done | Java runner가 `yield-dispatch-marker-report.json`을 생성하고 scenario id별 공통 marker 이름을 검증한다. `logs/20260704-001935-37995/yield-dispatch-marker-report.json`에서 확인했다 |
 | `Client/Scenarios/YdE2CancellationScenario.cs` | `Client/src/main/java/systems/zlink/e2e/yielddispatch/client/Scenarios/YdE2CancellationScenario.java`, `Client/src/main/java/systems/zlink/e2e/yielddispatch/client/Support/YieldDispatchScenarioSupport.java` | scenario | done | Java scenario wrapper가 cancellation-aware yield cleanup과 post-cancel probe 검증을 support method로 실행한다. |
 | `Client/Scenarios/ShutdownYieldScenario.cs` | `Client/src/main/java/systems/zlink/e2e/yielddispatch/client/Scenarios/ShutdownYieldScenario.java`, `Client/src/main/java/systems/zlink/e2e/yielddispatch/client/Support/YieldDispatchScenarioSupport.java` | scenario | done | YD-E3 diagnostic client mode가 pending yield 중 shutdown wait와 restart recovery를 검증한다. |
-| `Server/Registry/*` | `Server/Registry/src/main/java/systems/zlink/e2e/yielddispatch/registry/` | server-role | done | embedded registry role 구현 |
+| `Server/Registry/*` | `not-used` | server-role | removed | location store 전환으로 embedded registry role을 삭제했다. Delay/Play/Session role이 `zlink-framework-locations-redis`를 등록하고 같은 Redis endpoint와 실행별 key prefix를 공유한다. |
 | `Server/Delay/*` | `Server/Delay/src/main/java/systems/zlink/e2e/yielddispatch/delay/` | server-role | done | delay service role 구현 |
 | `Server/Play/*` | `Server/Play/src/main/java/systems/zlink/e2e/yielddispatch/play/` | server-role | done | route mesh, spot mesh, YD-A1/A2/A3/A4 probe spot, B1/B2 target actor handler, YD-B3 handler bean, C1/C2/C3 timer start/stop/tick handler, D2 remote spot owner/target handler, D3 route bridge target spot handler, D4 actor push yield handler, E1 timeout handler bean, E2 cancellation handler bean, E3 shutdown target role을 구현했다 |
 | `Server/Session/*` | `Server/Session/src/main/java/systems/zlink/e2e/yielddispatch/session/` | server-role | done | stream session gateway, routed spot egress bridge, actor bind/relay entry path, timer command relay, D2 ensure-spot/remote spot request relay, D3 YieldMsg relay, D4 bound actor relay, E1 YieldTimeoutMsg relay, E2 YieldCancelMsg relay, E3 diagnostic relay를 구현했다 |
@@ -95,7 +95,7 @@ Java Config 8 안에서 남은 scenario 누락은 없다.
 - `../../gradlew --project-cache-dir "$HOME/.cache/zlink/java-e2e/YieldDispatch-gradle-cache" --no-daemon --no-parallel --max-workers=1 :zlink-framework-java-build:zlink-framework-core:test --tests systems.zlink.framework.execution.ZLinkAsyncSerialQueueTest`
 - `./run_e2e.sh`
 
-최근 재실행 로그: `logs/20260702-070504-3148`
+최근 재실행 로그: `logs/20260704-001935-37995`
 
 현재 runner는 YD-A1/A2/A3/A4, YD-B1/B2/B3, YD-C1/C2/C3, YD-D2/D3/D4, YD-E1/E2와 E4 정적 검증을
 통과했고 `yield-dispatch-marker-report.json`을 생성한다. `ZLINK_JAVA_E2E_RUN_E3_SHUTDOWN=1 ./run_e2e.sh`는

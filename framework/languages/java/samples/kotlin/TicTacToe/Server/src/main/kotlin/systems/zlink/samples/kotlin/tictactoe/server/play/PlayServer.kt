@@ -8,7 +8,6 @@ import systems.zlink.framework.codecs.msgpack.ZLinkMessagePackCodec
 import systems.zlink.framework.configuration.ZLinkMessageFlowLogMode
 import systems.zlink.framework.kotlin.configureDispatch
 import systems.zlink.framework.kotlin.useCoroutineHandlers
-import systems.zlink.samples.kotlin.tictactoe.server.configuration.RedisSpotRemoteAddressResolver
 import systems.zlink.samples.kotlin.tictactoe.server.configuration.SampleLogging
 import systems.zlink.samples.kotlin.tictactoe.server.configuration.SampleNames
 import systems.zlink.samples.kotlin.tictactoe.server.configuration.SampleSettings
@@ -29,6 +28,8 @@ object PlayServer {
                 traceLabel(settings.playSpotNodeRid)
             }
             options.codecs().use(ZLinkMessagePackCodec.defaultCodec())
+            options.configureLocations()
+                .setSpotRouterChannel(SampleNames.SpotMesh, SampleNames.RouteChannel)
             options.addHandlersFromPackageOf(PlayServer::class.java)
             options.addClientServerChannel(SampleNames.ApiChannel)
                 .enableClient(settings.apiChannelEndpoint)
@@ -39,7 +40,6 @@ object PlayServer {
             route.enableServer(settings.routeEndpoint)
                 .enableClient(settings.peerRouteEndpoint)
                 .setRoutingId(RoutingId.from(settings.playSpotNodeRid))
-            options.addSpotRemoteAddressResolver(RedisSpotRemoteAddressResolver::class.java)
             val node = options.addSpotMesh(SampleNames.SpotMesh)
 
             node.enableRouter(settings.spotEndpoint)

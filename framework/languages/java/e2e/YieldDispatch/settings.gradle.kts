@@ -51,7 +51,6 @@ includeBuild("../../../../../bindings/java") {
 
 include(":Shared")
 include(":Client")
-include(":Server:Registry")
 include(":Server:Delay")
 include(":Server:Play")
 include(":Server:Session")

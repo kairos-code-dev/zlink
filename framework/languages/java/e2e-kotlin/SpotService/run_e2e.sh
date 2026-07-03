@@ -9,7 +9,7 @@ SESSION_B_PID=""
 GATEWAY_PID=""
 MULTI_NODE_A_PID=""
 MULTI_NODE_B_PID=""
-role_pattern='systems\.zlink\.e2e\.kotlin\.spotservice\..*(RegistryProgram|PlayProgram|GatewayProgram|MultiNodeProgram|SessionProgram|ClientProgram)Kt'
+role_pattern='systems\.zlink\.e2e\.kotlin\.spotservice\..*(PlayProgram|GatewayProgram|MultiNodeProgram|SessionProgram|ClientProgram)Kt'
 client_role_pattern='systems\.zlink\.e2e\.kotlin\.spotservice\..*ClientProgramKt'
 run_id="$(date +%Y%m%d-%H%M%S)-$$"
 log_dir="$(pwd)/logs/${run_id}"
@@ -23,6 +23,8 @@ if [[ -z "${ZLINK_LIBRARY_PATH:-}" && -f "${default_core_lib}" ]]; then
 fi
 export ZLINK_KOTLIN_E2E_BUILD_DIR="${ZLINK_KOTLIN_E2E_BUILD_DIR:-${HOME}/.cache/zlink/kotlin-e2e/SpotService}"
 export ZLINK_KOTLIN_E2E_GRADLE_CACHE="${ZLINK_KOTLIN_E2E_GRADLE_CACHE:-${HOME}/.cache/zlink/kotlin-e2e/SpotService-gradle-cache}"
+export ZLINK_KOTLIN_E2E_REDIS_LOCATION_ENDPOINT="${ZLINK_KOTLIN_E2E_REDIS_LOCATION_ENDPOINT:-${ZLINK_REDIS_LOCATION_ENDPOINT:-127.0.0.1:16379}}"
+export ZLINK_KOTLIN_E2E_LOCATION_KEY_PREFIX="${ZLINK_KOTLIN_E2E_LOCATION_KEY_PREFIX:-zlink:e2e:kotlin-spot-service:${run_id}}"
 LOCAL_READINESS_TIMEOUT_SECONDS=3
 LOCAL_READINESS_POLL_SECONDS=0.1
 LOCAL_READINESS_ATTEMPTS=30
@@ -77,13 +79,13 @@ import socket
 sockets = []
 ports = []
 try:
-    for _ in range(17):
+    for _ in range(15):
         sock = socket.socket()
         sock.bind(("127.0.0.1", 0))
         sockets.append(sock)
         ports.append(sock.getsockname()[1])
-    print(" ".join(f"tcp://127.0.0.1:{port}" for port in ports[:15]), end=" ")
-    print(" ".join(f"http://127.0.0.1:{port}" for port in ports[15:]))
+    print(" ".join(f"tcp://127.0.0.1:{port}" for port in ports[:13]), end=" ")
+    print(" ".join(f"http://127.0.0.1:{port}" for port in ports[13:]))
 finally:
     for sock in sockets:
         sock.close()
@@ -203,23 +205,11 @@ role_bin() {
     session)
       echo "${ZLINK_KOTLIN_E2E_BUILD_DIR}/Server-Session/install/spot-service-kotlin-session/bin/spot-service-kotlin-session"
       ;;
-    registry)
-      echo "${ZLINK_KOTLIN_E2E_BUILD_DIR}/Server-Registry/install/spot-service-kotlin-registry/bin/spot-service-kotlin-registry"
-      ;;
     *)
       echo "unknown role $1" >&2
       return 1
       ;;
   esac
-}
-
-start_registry() {
-  ZLINK_KOTLIN_E2E_REGISTRY_PUB="${REGISTRY_PUB}" \
-  ZLINK_KOTLIN_E2E_REGISTRY_ROUTER="${REGISTRY_ROUTER}" \
-  ZLINK_KOTLIN_E2E_LOG_DIR="${log_dir}" \
-    "$(role_bin registry)" >"${log_dir}/registry.stdout.log" 2>"${log_dir}/registry.stderr.log" &
-  pids+=("$!")
-  wait_port registry-router "${REGISTRY_ROUTER}"
 }
 
 start_play() {
@@ -243,7 +233,8 @@ start_play() {
   ZLINK_KOTLIN_E2E_SPOT_A_ENDPOINT="${SPOT_A}" \
   ZLINK_KOTLIN_E2E_SPOT_B_ENDPOINT="${SPOT_B}" \
   ZLINK_KOTLIN_E2E_HTTP_ENDPOINT="${http}" \
-  ZLINK_KOTLIN_E2E_REGISTRY_ROUTER="${REGISTRY_ROUTER}" \
+  ZLINK_KOTLIN_E2E_REDIS_LOCATION_ENDPOINT="${ZLINK_KOTLIN_E2E_REDIS_LOCATION_ENDPOINT}" \
+  ZLINK_KOTLIN_E2E_LOCATION_KEY_PREFIX="${ZLINK_KOTLIN_E2E_LOCATION_KEY_PREFIX}" \
   ZLINK_KOTLIN_E2E_LOG_DIR="${log_dir}" \
     "$(role_bin play)" >"${log_dir}/${rid}.stdout.log" 2>"${log_dir}/${rid}.stderr.log" &
   pids+=("$!")
@@ -263,7 +254,8 @@ start_session() {
   ZLINK_KOTLIN_E2E_SPOT_ENDPOINT="${SPOT_SESSION_A}" \
   ZLINK_KOTLIN_E2E_STREAM_ENDPOINT="${STREAM_SESSION_A}" \
   ZLINK_KOTLIN_E2E_HTTP_ENDPOINT="${HTTP_SESSION_A}" \
-  ZLINK_KOTLIN_E2E_REGISTRY_ROUTER="${REGISTRY_ROUTER}" \
+  ZLINK_KOTLIN_E2E_REDIS_LOCATION_ENDPOINT="${ZLINK_KOTLIN_E2E_REDIS_LOCATION_ENDPOINT}" \
+  ZLINK_KOTLIN_E2E_LOCATION_KEY_PREFIX="${ZLINK_KOTLIN_E2E_LOCATION_KEY_PREFIX}" \
   ZLINK_KOTLIN_E2E_LOG_DIR="${log_dir}" \
     "$(role_bin session)" >"${log_dir}/session-a.stdout.log" 2>"${log_dir}/session-a.stderr.log" &
   SESSION_A_PID="$!"
@@ -272,7 +264,8 @@ start_session() {
   ZLINK_KOTLIN_E2E_SPOT_ENDPOINT="${SPOT_SESSION_B}" \
   ZLINK_KOTLIN_E2E_STREAM_ENDPOINT="${STREAM_SESSION_B}" \
   ZLINK_KOTLIN_E2E_HTTP_ENDPOINT="${HTTP_SESSION_B}" \
-  ZLINK_KOTLIN_E2E_REGISTRY_ROUTER="${REGISTRY_ROUTER}" \
+  ZLINK_KOTLIN_E2E_REDIS_LOCATION_ENDPOINT="${ZLINK_KOTLIN_E2E_REDIS_LOCATION_ENDPOINT}" \
+  ZLINK_KOTLIN_E2E_LOCATION_KEY_PREFIX="${ZLINK_KOTLIN_E2E_LOCATION_KEY_PREFIX}" \
   ZLINK_KOTLIN_E2E_LOG_DIR="${log_dir}" \
     "$(role_bin session)" >"${log_dir}/session-b.stdout.log" 2>"${log_dir}/session-b.stderr.log" &
   SESSION_B_PID="$!"
@@ -310,12 +303,13 @@ stop_session() {
 
 start_gateway() {
   read -r GATEWAY_SPOT_PUB GATEWAY_HTTP <<<"$(reserve_gateway_endpoints)"
-  "$(role_bin gateway)" \
+  ZLINK_KOTLIN_E2E_REDIS_LOCATION_ENDPOINT="${ZLINK_KOTLIN_E2E_REDIS_LOCATION_ENDPOINT}" \
+  ZLINK_KOTLIN_E2E_LOCATION_KEY_PREFIX="${ZLINK_KOTLIN_E2E_LOCATION_KEY_PREFIX}" \
+    "$(role_bin gateway)" \
     --rid gateway \
     --http-url "${GATEWAY_HTTP}" \
     --log-dir "${log_dir}" \
     --evidence-file "${log_dir}/gateway.evidence.log" \
-    --registry-router-endpoint "${REGISTRY_ROUTER}" \
     --spot-pub-endpoint "${GATEWAY_SPOT_PUB}" \
       >"${log_dir}/gateway.stdout.log" 2>"${log_dir}/gateway.stderr.log" &
   GATEWAY_PID="$!"
@@ -338,12 +332,13 @@ stop_gateway() {
 
 start_multi_nodes() {
   read -r MULTI_ROUTE_A MULTI_ROUTE_B MULTI_SPOT_A MULTI_SPOT_B MULTI_HTTP_A MULTI_HTTP_B <<<"$(reserve_multinode_endpoints)"
-  "$(role_bin multi-node)" \
+  ZLINK_KOTLIN_E2E_REDIS_LOCATION_ENDPOINT="${ZLINK_KOTLIN_E2E_REDIS_LOCATION_ENDPOINT}" \
+  ZLINK_KOTLIN_E2E_LOCATION_KEY_PREFIX="${ZLINK_KOTLIN_E2E_LOCATION_KEY_PREFIX}" \
+    "$(role_bin multi-node)" \
     --rid multi-node-a \
     --http-url "${MULTI_HTTP_A}" \
     --log-dir "${log_dir}" \
     --evidence-file "${log_dir}/multi-node-a.evidence.log" \
-    --registry-router-endpoint "${REGISTRY_ROUTER}" \
     --multi-route-a-endpoint "${MULTI_ROUTE_A}" \
     --multi-spot-router-a-endpoint "${MULTI_SPOT_A}" \
       >"${log_dir}/multi-node-a.stdout.log" 2>"${log_dir}/multi-node-a.stderr.log" &
@@ -353,12 +348,13 @@ start_multi_nodes() {
   wait_port multi-node-a-spot "${MULTI_SPOT_A}"
   wait_port multi-node-a-http "${MULTI_HTTP_A}"
 
-  "$(role_bin multi-node)" \
+  ZLINK_KOTLIN_E2E_REDIS_LOCATION_ENDPOINT="${ZLINK_KOTLIN_E2E_REDIS_LOCATION_ENDPOINT}" \
+  ZLINK_KOTLIN_E2E_LOCATION_KEY_PREFIX="${ZLINK_KOTLIN_E2E_LOCATION_KEY_PREFIX}" \
+    "$(role_bin multi-node)" \
     --rid multi-node-b \
     --http-url "${MULTI_HTTP_B}" \
     --log-dir "${log_dir}" \
     --evidence-file "${log_dir}/multi-node-b.evidence.log" \
-    --registry-router-endpoint "${REGISTRY_ROUTER}" \
     --multi-route-b-endpoint "${MULTI_ROUTE_B}" \
     --multi-spot-router-b-endpoint "${MULTI_SPOT_B}" \
       >"${log_dir}/multi-node-b.stdout.log" 2>"${log_dir}/multi-node-b.stderr.log" &
@@ -445,17 +441,15 @@ with urllib.request.urlopen(request, timeout=5) as response:
 PY
 }
 
-read -r REGISTRY_PUB REGISTRY_ROUTER ROUTE_A ROUTE_B ROUTE_CLIENT SPOT_A SPOT_B SPOT_CLIENT INGRESS_A INGRESS_B SPOT_PUB_A SPOT_PUB_B _ STREAM_A STREAM_B HTTP_A HTTP_B <<<"$(reserve_ports)"
+read -r ROUTE_A ROUTE_B ROUTE_CLIENT SPOT_A SPOT_B SPOT_CLIENT INGRESS_A INGRESS_B SPOT_PUB_A SPOT_PUB_B _ STREAM_A STREAM_B HTTP_A HTTP_B <<<"$(reserve_ports)"
 
 gradle_run clean \
   :Client:installDist \
   :Server:Play:installDist \
   :Server:Gateway:installDist \
   :Server:MultiNode:installDist \
-  :Server:Registry:installDist \
   :Server:Session:installDist
 
-start_registry
 start_play play-a "${ROUTE_A}" "${SPOT_A}" "${INGRESS_A}" "${HTTP_A}" "${SPOT_PUB_A}" ""
 start_play play-b "${ROUTE_B}" "${SPOT_B}" "${INGRESS_B}" "${HTTP_B}" "${SPOT_PUB_B}" ""
 sleep "${ROUTE_SETTLE_SECONDS}"
@@ -493,7 +487,6 @@ run_client_mode() {
       ZLINK_KOTLIN_E2E_GATEWAY_HTTP_ENDPOINT="${GATEWAY_HTTP:-}" \
       ZLINK_KOTLIN_E2E_MULTI_HTTP_A_ENDPOINT="${MULTI_HTTP_A:-}" \
       ZLINK_KOTLIN_E2E_MULTI_HTTP_B_ENDPOINT="${MULTI_HTTP_B:-}" \
-      ZLINK_KOTLIN_E2E_REGISTRY_ROUTER="${REGISTRY_ROUTER}" \
       ZLINK_KOTLIN_E2E_LOG_DIR="${log_dir}" \
         timeout -k 5s 75s "$(role_bin client)" >"${log_dir}/client-${mode}.stdout.log" 2>"${log_dir}/client-${mode}.stderr.log"
     status="$?"
@@ -526,6 +519,7 @@ scenario_modes() {
     SM-C1) echo "normal" ;;
     SM-C2) echo "spot-outbound" ;;
     SM-C3) echo "spot-to-spot" ;;
+    SM-C4) echo "gateway-publish" ;;
     SM-E1) echo "missing" ;;
     SM-E2) echo "timer-basic" ;;
     SM-E3) echo "idle-timer" ;;
@@ -557,7 +551,15 @@ for mode in ${client_modes}; do
     start_session
     sleep "${MODE_RETRY_SETTLE_SECONDS}"
   fi
+  if [[ "${mode}" == "gateway-publish" ]]; then
+    start_gateway
+    sleep "${MODE_RETRY_SETTLE_SECONDS}"
+  fi
   run_client_mode "${mode}"
+  if [[ "${mode}" == "gateway-publish" ]]; then
+    fetch_evidence gateway "${GATEWAY_HTTP}"
+    stop_gateway
+  fi
   if [[ "${mode}" == "actor-session" ]]; then
     fetch_evidence session-a "${HTTP_SESSION_A}"
     fetch_evidence session-b "${HTTP_SESSION_B}"

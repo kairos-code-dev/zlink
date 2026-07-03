@@ -6,8 +6,6 @@ import systems.zlink.contracts.messaging.Message;
 import systems.zlink.contracts.sockets.SendFlags;
 
 public interface ZLinkBackendPublisherSocket extends ZLinkBackendSocket {
-    void attachDiscovery(ZLinkBackendDiscovery discovery);
-
     void setChannelName(String channelName);
 
     void setRoutingId(RoutingId routingId);

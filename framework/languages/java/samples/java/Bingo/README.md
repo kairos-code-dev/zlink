@@ -1,6 +1,6 @@
 # Bingo
 
-Two-client Session/API/Play/Registry sample check.
+Two-client Session/API/Play sample check with Redis-backed location store.
 
 The client opens only the Session stream endpoint. Each player authenticates,
 requests matching, receives game-start push after the second join, submits a

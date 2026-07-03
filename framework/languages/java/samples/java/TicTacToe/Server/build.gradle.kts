@@ -17,11 +17,11 @@ dependencies {
     implementation(sampleProject("Shared"))
     implementation("systems.zlink:zlink-framework-core:0.1.0-SNAPSHOT")
     implementation("systems.zlink:zlink-framework-codec-msgpack:0.1.0-SNAPSHOT")
+    implementation("systems.zlink:zlink-framework-locations-redis:0.1.0-SNAPSHOT")
     implementation("systems.zlink:zlink-framework-spring-boot-starter:0.1.0-SNAPSHOT")
     implementation("systems.zlink:zlink-stream-connector:0.1.0-SNAPSHOT")
     implementation("systems.zlink:zlink:6.0.4")
     implementation("com.fasterxml.jackson.core:jackson-databind:2.17.2")
-    implementation("io.lettuce:lettuce-core:6.3.2.RELEASE")
     implementation("org.springframework.boot:spring-boot-starter-web:3.5.14")
     implementation("io.netty:netty-buffer:4.1.100.Final")
 }

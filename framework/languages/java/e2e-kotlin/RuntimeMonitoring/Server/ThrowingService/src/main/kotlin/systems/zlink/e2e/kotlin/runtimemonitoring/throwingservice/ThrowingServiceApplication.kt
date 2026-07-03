@@ -13,9 +13,12 @@ import systems.zlink.e2e.kotlin.runtimemonitoring.service.EvidenceState
 import systems.zlink.e2e.kotlin.runtimemonitoring.service.MonitoringEventHandlers
 import systems.zlink.e2e.kotlin.runtimemonitoring.service.WorkRequestHandler
 import systems.zlink.framework.configuration.ZLinkMessageFlowLogMode
+import systems.zlink.framework.locations.redis.ZLinkRedisLocationOptions
+import systems.zlink.framework.locations.redis.ZLinkRedisLocationStore
 import systems.zlink.framework.spring.EnableZLinkFramework
 import systems.zlink.framework.spring.ZLinkFrameworkConfigurer
 import systems.zlink.framework.spring.ZLinkMonitoringOptionsCustomizer
+import java.time.Duration
 
 @EnableZLinkFramework
 @SpringBootApplication(
@@ -38,7 +41,6 @@ class ThrowingServiceApplication {
     fun frameworkConfigurer(): ZLinkFrameworkConfigurer {
         return ZLinkFrameworkConfigurer { options ->
             val logDir = Env.get("ZLINK_KOTLIN_E2E_LOG_DIR", "logs")
-            options.useDiscovery().addRegistryEndpoint(Env.get("ZLINK_KOTLIN_E2E_REGISTRY_ROUTER"))
             options.configureDispatch()
                 .messageFlow(ZLinkMessageFlowLogMode.KEY_TRANSITIONS)
                 .traceLogFile("$logDir/throwing-service-flow.log")
@@ -64,6 +66,16 @@ class ThrowingServiceApplication {
 
     @Bean
     fun workRequestHandler(): WorkRequestHandler = WorkRequestHandler()
+
+    @Bean
+    fun locationStore(): ZLinkRedisLocationStore {
+        return ZLinkRedisLocationStore(
+            ZLinkRedisLocationOptions()
+                .setConnectionString(Env.get("ZLINK_KOTLIN_E2E_REDIS_LOCATION_ENDPOINT"))
+                .setKeyPrefix(Env.get("ZLINK_KOTLIN_E2E_LOCATION_KEY_PREFIX"))
+                .setCommandTimeout(Duration.ofMillis(500)),
+        )
+    }
 
     @Bean
     fun socketRecorder(state: EvidenceState): MonitoringEventHandlers.SocketRecorder {

@@ -15,7 +15,8 @@ The sample is split into standalone Spring role projects:
 - `Server`: starts one Spring Boot role per process. Use `play` or `api` to run
   a role. The API role exposes the `/games` HTTP endpoint plus
   `AuthenticatePlayer` channel handler. The Play role owns the STREAM endpoint,
-  actor runtime, entry Spot, and game Spot.
+  actor runtime, entry Spot, game Spot, and Redis-backed framework location
+  store used for remote Spot routing.
 - `Shared`: holds the message contracts used by the client, API role, Play
   role, and STREAM messages.
 
@@ -35,7 +36,7 @@ The runner uses `TICTACTOE_REDIS_ENDPOINT` when it is set. If it is not set, the
 runner provisions a dedicated Redis Docker container on a Docker-assigned
 loopback port and removes that container on success or failure. The runner also
 supplies a unique `TICTACTOE_REDIS_KEY_PREFIX` for each execution so parallel
-sample runs do not share room route keys.
+sample runs do not share location-store keys.
 
 Run the roles manually:
 

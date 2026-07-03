@@ -3,14 +3,15 @@
 이 문서는 Config 5 Resilience/Lifecycle 공통 시나리오 중 Java framework E2E가 현재 검증하는
 항목과, public API 또는 harness 제어가 더 필요한 항목을 구분한다. Client는 HTTP driver이고, 실행
 시나리오의 framework 참여는 `Server/Consumer` role이 맡는다. provider/consumer process lifecycle은
-Client support가 제어한다. Consumer role은 public Spring starter, `ZLinkClient`,
-`ZLinkChannelRuntimeOptions`, registry discovery, registry query client만 사용한다.
+Client support가 제어한다. Provider와 Consumer role은 같은 Redis location store endpoint와 실행별
+key prefix를 공유한다. Consumer role은 public Spring starter, `ZLinkClient`,
+`ZLinkChannelRuntimeOptions`, public location runtime query만 사용한다.
 
 마지막 검증:
 
-- 명령: `timeout 420s ./run_e2e.sh`
+- 명령: `timeout 720s ./run_e2e.sh`
 - 결과: passed
-- 로그: `framework/languages/java/e2e/ResilienceLifecycle/logs/20260702-064738-35134/`
+- 로그: `framework/languages/java/e2e/ResilienceLifecycle/logs/20260704-031956-18420/`
 
 ## 구현됨
 
@@ -18,14 +19,14 @@ Client support가 제어한다. Consumer role은 public Spring starter, `ZLinkCl
   실패를 관찰하고, provider-a를 같은 endpoint로 재시작한 뒤 follow-up request가 다시 성공하는지
   확인한다.
 - `RL-A2`: provider-a를 같은 routing id의 다른 endpoint로 재기동하고, 같은 client 프로세스가
-  registry topology의 endpoint 갱신과 follow-up request 성공을 확인한다.
+  location peer row의 endpoint 갱신과 follow-up request 성공을 확인한다.
 - `RL-A3`: 동시에 여러 client 프로세스를 두 차례 띄워 server에 재접속 폭주를 만들고, 각 client의
   public request가 정상 reply를 받는지 확인한다.
 - `RL-A5`: provider-a가 짧은 간격으로 down/up을 반복하는 동안 같은 client 프로세스가 지속 request를
   보내고, 살아 있는 provider-b로 수렴해 timeout 없이 follow-up까지 성공하는지 확인한다.
 - `RL-B1`: 처리 중인 request를 client timeout으로 끝낸 뒤 같은 client의 후속 request가 정상 reply를
   받아 late reply가 pending을 오염시키지 않는지 확인한다.
-- `RL-B3`: provider 정상 종료 뒤 registry topology에서 빠지고 같은 client의 후속 request가 남은
+- `RL-B3`: provider 정상 종료 뒤 location peer row에서 빠지고 같은 client의 후속 request가 남은
   provider로만 가는지 확인한다.
 - `RL-B4`: provider admin 경로가 `clientServerChannel(name).configureServerSocket().weight(0/100)`을
   호출해 runtime drain/restore를 검증한다.
@@ -49,10 +50,10 @@ Client support가 제어한다. Consumer role은 public Spring starter, `ZLinkCl
 - `RL-A4`: rolling restart를 provider 그룹 단위로 수행하는 orchestration이 아직 없다.
 - `RL-B2`: provider 강제 종료 중 in-flight request를 관측하는 runner는 시도됐지만, Java client가
   종료 시 native context close에서 멈추는 경로가 있어 완료 처리하지 않는다.
-- `RL-C2`: public embedded-registry heartbeat interval/timeout 옵션은 추가됐다. provider 강제 종료 뒤
-  TTL stale entry 제거를 빠르고 결정적으로 고정하는 runner 연결은 아직 없다.
-- `RL-C4`: registry 중단 중 이미 연결된 channel request는 확인됐지만, registry 재기동 뒤 새 client의
-  follow-up request가 `NOT_ADMITTED`로 남는 경로가 있어 완료 처리하지 않는다.
+- `RL-C2`: provider 강제 종료 뒤 owner lease TTL stale entry 제거를 빠르고 결정적으로 고정하는
+  runner 연결은 아직 없다.
+- `RL-C4`: registry outage 시나리오는 location store 전환 뒤 의미가 맞지 않는다. 같은 위험은 Config 6
+  store failure recovery에서 Redis outage로 검증한다.
 - `RL-D2`: observer 실패 격리를 runtime error sink와 함께 단언하는 scenario가 아직 없다.
 - `RL-D4`: error reply wire header의 code/message roundtrip을 raw envelope로 확인하는 harness가
   아직 없다.

@@ -12,6 +12,6 @@ import systems.zlink.framework.spring.ZLinkMonitoringOptionsCustomizer;
 public class BadIntervalConfig {
     @Bean
     ZLinkMonitoringOptionsCustomizer badIntervalMonitoring() {
-        return options -> options.addRegistryEvents(Contracts.REGISTRY_SOURCE, Duration.ZERO);
+        return options -> options.addLocationRuntimeEvents(Contracts.LOCATION_SOURCE, Duration.ZERO);
     }
 }

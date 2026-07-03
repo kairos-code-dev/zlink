@@ -23,10 +23,12 @@ Pub/Sub fanout의 수신자는 client stream session이 아니라 subscriber 역
 ## 포팅 구조 상태
 
 현재 Kotlin PubSub E2E는 `.NET` 기준에 맞춰 `Shared`, `Client`, `Server/Publisher`,
-`Server/Registry`, `Server/Subscriber` Gradle project로 나뉜다. Client는 framework fanout client를
-직접 들지 않고 publisher role의 HTTP endpoint를 호출한다. role 실행 설정은 각 role의 CLI option
-parser가 맡고, PS-A4/PS-B2 lifecycle 제어는 Client support의 process launcher가 맡는다. runner는
-초기 role 시작, client 실행, cleanup을 담당한다. 파일별 대응 상태는 `porting-inventory.ko.md`에 기록한다.
+`Server/Subscriber` Gradle project로 나뉜다. registry role은 더 이상 띄우지 않고, publisher와
+subscriber가 같은 Redis location store endpoint와 실행별 key prefix를 받아 peer row를 공유한다.
+Client는 framework fanout client를 직접 들지 않고 publisher role의 HTTP endpoint를 호출한다. role
+실행 설정은 각 role의 CLI option parser가 맡고, PS-A4/PS-B2 lifecycle 제어는 Client support의
+process launcher가 맡는다. runner는 초기 role 시작, client 실행, cleanup을 담당한다. 파일별 대응
+상태는 `porting-inventory.ko.md`에 기록한다.
 
 ## 검증 결과
 
@@ -34,6 +36,10 @@ parser가 맡고, PS-A4/PS-B2 lifecycle 제어는 Client support의 process laun
   실행 결과 role별 Gradle project와 CLI option 기반 runner가 통과했다.
 - `logs/20260702-063516-76921`: `timeout 420s ./run_e2e.sh` 실행 결과 PS-A4 reconnect subscriber와
   PS-B2 restarted publisher를 Client support가 시작/종료하는 구조로 통과했다.
+- `logs/20260704-030433-92742`: `timeout 420s ./run_e2e.sh` 실행 결과 registry role 없이 Redis
+  location store 기반 publisher/subscriber 수렴, reconnect subscriber, restarted publisher 경로가
+  모두 통과했다.
 - 통과 scenario: `PS-A1`, `PS-A2`, `PS-A3`, `PS-A4`, `PS-B1`, `PS-B2`, `PS-C1`.
 - 각 client mode에서 `pub-sub kotlin e2e result=passed` marker를 확인했다.
-- 최신 결과는 role/project 분리와 Client-owned lifecycle 검증을 함께 확인한다.
+- 최신 결과는 Redis location store 기반 role/project 분리와 Client-owned lifecycle 검증을 함께
+  확인한다.

@@ -17,6 +17,8 @@ import systems.zlink.e2e.kotlin.registrymessaging.workflow.Handlers.WorkflowRequ
 import systems.zlink.e2e.kotlin.registrymessaging.workflow.Infrastructure.EvidenceStore
 import systems.zlink.framework.channels.ZLinkChannelRuntimeOptions
 import systems.zlink.framework.configuration.ZLinkMessageFlowLogMode
+import systems.zlink.framework.locations.redis.ZLinkRedisLocationOptions
+import systems.zlink.framework.locations.redis.ZLinkRedisLocationStore
 import systems.zlink.framework.spring.EnableZLinkFramework
 import systems.zlink.framework.spring.ZLinkFrameworkConfigurer
 
@@ -44,7 +46,6 @@ class WorkflowApplication {
     @Bean
     fun framework(options: ServerOptions, evidence: EvidenceStore): ZLinkFrameworkConfigurer =
         ZLinkFrameworkConfigurer { framework ->
-            framework.useDiscovery().addRegistryEndpoint(options.registryRouterEndpoint)
             framework.configureDispatch()
                 .setMessageFlowObserver(EvidenceDispatchErrorObserver(evidence))
                 .messageFlow(ZLinkMessageFlowLogMode.KEY_TRANSITIONS)
@@ -62,6 +63,14 @@ class WorkflowApplication {
                 Contracts.WORKFLOW_REQUEST_PACKET,
             )
         }
+
+    @Bean
+    fun locationStore(options: ServerOptions): ZLinkRedisLocationStore =
+        ZLinkRedisLocationStore(
+            ZLinkRedisLocationOptions()
+                .setConnectionString(options.redisLocationEndpoint)
+                .setKeyPrefix(options.locationKeyPrefix),
+        )
 
     @Bean
     fun applyInitialSocketWeight(

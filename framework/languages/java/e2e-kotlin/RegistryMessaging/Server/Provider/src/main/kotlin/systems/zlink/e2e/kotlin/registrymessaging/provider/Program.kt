@@ -25,6 +25,8 @@ import systems.zlink.e2e.kotlin.registrymessaging.shared.ScenarioRoutePingReq
 import systems.zlink.e2e.kotlin.registrymessaging.shared.ScenarioRoutePingRes
 import systems.zlink.framework.configuration.ZLinkMessageFlowLogMode
 import systems.zlink.framework.channels.ZLinkChannelRuntimeOptions
+import systems.zlink.framework.locations.redis.ZLinkRedisLocationOptions
+import systems.zlink.framework.locations.redis.ZLinkRedisLocationStore
 import systems.zlink.framework.spring.EnableZLinkFramework
 import systems.zlink.framework.spring.ZLinkFrameworkConfigurer
 
@@ -47,12 +49,11 @@ class ProviderApplication {
 
     @Bean
     fun evidenceStore(options: ServerOptions): EvidenceStore =
-        EvidenceStore(options.rid, options.evidenceFile)
+        EvidenceStore(options.rid, options.instanceId, options.evidenceFile)
 
     @Bean
     fun framework(options: ServerOptions, evidence: EvidenceStore): ZLinkFrameworkConfigurer =
         ZLinkFrameworkConfigurer { framework ->
-            framework.useDiscovery().addRegistryEndpoint(options.registryRouterEndpoint)
             framework.configureDispatch()
                 .setMessageFlowObserver(EvidenceDispatchErrorObserver(evidence))
                 .messageFlow(ZLinkMessageFlowLogMode.KEY_TRANSITIONS)
@@ -103,6 +104,14 @@ class ProviderApplication {
                 )
             }
         }
+
+    @Bean
+    fun locationStore(options: ServerOptions): ZLinkRedisLocationStore =
+        ZLinkRedisLocationStore(
+            ZLinkRedisLocationOptions()
+                .setConnectionString(options.redisLocationEndpoint)
+                .setKeyPrefix(options.locationKeyPrefix),
+        )
 
     @Bean
     fun applyInitialSocketWeight(

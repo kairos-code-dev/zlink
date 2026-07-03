@@ -9,9 +9,9 @@ Client는 HTTP driver이고, framework spot/route/stream 참여는 `Server/Gatew
 
 마지막 검증:
 
-- 명령: `timeout 420s ./run_e2e.sh`
+- 명령: `timeout 900s ./run_e2e.sh`
 - 결과: passed
-- 로그: `framework/languages/java/e2e/SpotService/logs/20260702-055229-7389/`
+- 로그: `framework/languages/java/e2e/SpotService/logs/20260704-034655-64390/`
 
 공통 E2E 문서와 다른 언어의 구현에 존재하는 public 기능이 Java에 없으면 단순 미구현으로 완료
 처리하지 않는다. 다만 다른 언어 구현만으로 Java public contract를 새로 추가하지 않는다. spec 또는

@@ -80,7 +80,7 @@ final class StreamSessionTest {
             assertTrue(header.length > 0);
             assertEquals(3, Byte.toUnsignedInt(header[0]));
             assertEquals(7L, ByteBuffer.wrap(header, 3, Long.BYTES).getLong());
-            assertEquals("pong", new String(body, StandardCharsets.UTF_8));
+            assertEquals("\"pong\"", new String(body, StandardCharsets.UTF_8));
             assertTrue(EchoSession.dispatchedOnVirtualThread.get());
         }
     }

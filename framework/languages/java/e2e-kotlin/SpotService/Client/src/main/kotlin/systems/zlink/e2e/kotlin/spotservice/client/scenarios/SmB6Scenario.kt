@@ -23,7 +23,7 @@ internal object SmB6Scenario {
             ensure(auth.actorId == leaveActorId, "SM-B6 leave auth actor mismatch")
 
             val joined = leaveClient
-                .request(Contracts.ActorJoinReq("room-a", profile, profile.tags))
+                .request(Contracts.ActorJoinReq("actor-room-a", profile, profile.tags))
                 .metadata("actor-id", leaveActorId)
                 .await(Contracts.ActorJoinRes::class.java)
             ensure(joined.actorId == leaveActorId, "SM-B6 leave join actor mismatch")
@@ -44,7 +44,7 @@ internal object SmB6Scenario {
             Env.get("ZLINK_KOTLIN_E2E_HTTP_SESSION_ENDPOINT"),
             "/evidence/wait",
             Contracts.EvidenceWaitReq(
-                listOf("ActorUserLeft|session-a|room-a|$leaveActorId"),
+                listOf("ActorUserLeft|session-a|actor-room-a|$leaveActorId"),
                 10_000,
             ),
             Contracts.EvidenceSnapshot::class.java,
@@ -52,7 +52,7 @@ internal object SmB6Scenario {
         ensure(
             leaveEvidence.entries.none {
                 it.marker == "ActorUserDisconnected" &&
-                    it.spotRid == "room-a" &&
+                    it.spotRid == "actor-room-a" &&
                     it.value == leaveActorId
             },
             "SM-B6 explicit leave emitted disconnect evidence",
@@ -67,7 +67,7 @@ internal object SmB6Scenario {
                 .await(Contracts.ActorAuthRes::class.java)
             ensure(auth.actorId == disconnectActorId, "SM-B6 disconnect auth actor mismatch")
             val joined = disconnectClient
-                .request(Contracts.ActorJoinReq("room-a", disconnectProfile, disconnectProfile.tags))
+                .request(Contracts.ActorJoinReq("actor-room-a", disconnectProfile, disconnectProfile.tags))
                 .metadata("actor-id", disconnectActorId)
                 .await(Contracts.ActorJoinRes::class.java)
             ensure(joined.actorId == disconnectActorId, "SM-B6 disconnect join actor mismatch")
@@ -83,7 +83,7 @@ internal object SmB6Scenario {
             Env.get("ZLINK_KOTLIN_E2E_HTTP_SESSION_ENDPOINT"),
             "/evidence/wait",
             Contracts.EvidenceWaitReq(
-                listOf("ActorUserDisconnected|session-a|room-a|$disconnectActorId"),
+                listOf("ActorUserDisconnected|session-a|actor-room-a|$disconnectActorId"),
                 10_000,
             ),
             Contracts.EvidenceSnapshot::class.java,

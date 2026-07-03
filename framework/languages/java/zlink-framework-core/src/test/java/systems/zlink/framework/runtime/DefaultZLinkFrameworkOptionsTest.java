@@ -45,7 +45,14 @@ import systems.zlink.framework.configuration.ZLinkMessageFlowEvent;
 import systems.zlink.framework.configuration.ZLinkMessageFlowObserver;
 import systems.zlink.framework.configuration.ZLinkUnhandledDispatchAction;
 import systems.zlink.framework.errors.ZLinkConfigurationException;
+import systems.zlink.framework.locations.ZLinkActorLocationStore;
+import systems.zlink.framework.locations.ZLinkLocationStore;
+import systems.zlink.framework.locations.ZLinkOwnerLeaseStore;
+import systems.zlink.framework.locations.ZLinkPeerLocationStore;
+import systems.zlink.framework.locations.ZLinkRouteLocationStore;
+import systems.zlink.framework.locations.ZLinkSpotLocationStore;
 import systems.zlink.framework.actors.ZLinkActor;
+import systems.zlink.framework.runtime.locations.ZLinkInMemoryLocationStore;
 import systems.zlink.framework.spots.ZLinkSpot;
 import systems.zlink.framework.spots.ZLinkSpotContext;
 import systems.zlink.framework.spots.ZLinkSpotKind;
@@ -89,7 +96,6 @@ final class DefaultZLinkFrameworkOptionsTest {
         { var dispatch = options.configureDispatch(); dispatch.setSpotDispatchMode(ZLinkDispatchMode.DYNAMIC);
             dispatch.traceSampleRate(0.25d); };
         options.addSpotRemoteAddressResolver(TestSpotRemoteAddressResolver.class);
-        { var registry = options.useRegistrySpotRemoteAddresses("game"); registry.setRouterChannelId("spot-router"); };
 
         assertTrue(options.registration().codecs().serializers().containsKey("application/x-test"));
         assertTrue(options.registration().handlerPackageMarkers()
@@ -103,10 +109,73 @@ final class DefaultZLinkFrameworkOptionsTest {
             options.registration().dispatchOptions().diagnostics().sampleRate());
         assertEquals(TestSpotRemoteAddressResolver.class,
             options.registration().spotRemoteAddressResolverType());
-        assertEquals("game",
-            options.registration().registrySpotRemoteAddresses().namespaceName());
-        assertEquals("spot-router",
-            options.registration().registrySpotRemoteAddresses().routerChannelId());
+    }
+
+    @Test
+    void locationStoreConfigurationMutatesRegistrationModel() {
+        DefaultZLinkFrameworkOptions typed = new DefaultZLinkFrameworkOptions();
+
+        typed.addPeerLocationStore(TestLocationStore.class);
+        typed.addSpotLocationStore(TestLocationStore.class);
+        typed.addActorLocationStore(TestLocationStore.class);
+        typed.addRouteLocationStore(TestLocationStore.class);
+        typed.addOwnerLeaseStore(TestLocationStore.class);
+        typed.configureLocations().setListPageSize(64);
+
+        assertEquals(TestLocationStore.class, typed.registration().locations().peerStoreType());
+        assertEquals(TestLocationStore.class, typed.registration().locations().spotStoreType());
+        assertEquals(TestLocationStore.class, typed.registration().locations().actorStoreType());
+        assertEquals(TestLocationStore.class, typed.registration().locations().routeStoreType());
+        assertEquals(TestLocationStore.class, typed.registration().locations().ownerLeaseStoreType());
+        assertEquals(64, typed.registration().locations().options().listPageSize());
+        assertTrue(typed.registration().applicationTypes().contains(TestLocationStore.class));
+
+        DefaultZLinkFrameworkOptions inMemory = new DefaultZLinkFrameworkOptions();
+        inMemory.useInMemoryLocationStores();
+        assertTrue(inMemory.registration().locations().useInMemoryStores());
+
+        DefaultZLinkFrameworkOptions instance = new DefaultZLinkFrameworkOptions();
+        ZLinkLocationStore store = new ZLinkInMemoryLocationStore();
+        instance.addLocationStore(store);
+        assertEquals(store, instance.registration().locations().storeInstance());
+    }
+
+    @Test
+    void locationStoreValidationRejectsPartialPerRoleRegistration() {
+        DefaultZLinkFrameworkOptions options = new DefaultZLinkFrameworkOptions();
+
+        options.addPeerLocationStore(TestLocationStore.class);
+
+        assertThrows(ZLinkConfigurationException.class, options::validate);
+    }
+
+    @Test
+    void locationStoreValidationRejectsMixedRegistrationModes() {
+        DefaultZLinkFrameworkOptions inMemoryAndTyped = new DefaultZLinkFrameworkOptions();
+        inMemoryAndTyped.useInMemoryLocationStores();
+        inMemoryAndTyped.addPeerLocationStore(TestLocationStore.class);
+        inMemoryAndTyped.addSpotLocationStore(TestLocationStore.class);
+        inMemoryAndTyped.addActorLocationStore(TestLocationStore.class);
+        inMemoryAndTyped.addRouteLocationStore(TestLocationStore.class);
+        inMemoryAndTyped.addOwnerLeaseStore(TestLocationStore.class);
+
+        assertThrows(ZLinkConfigurationException.class, inMemoryAndTyped::validate);
+
+        DefaultZLinkFrameworkOptions instanceAndTyped = new DefaultZLinkFrameworkOptions();
+        instanceAndTyped.addLocationStore(new ZLinkInMemoryLocationStore());
+        instanceAndTyped.addPeerLocationStore(TestLocationStore.class);
+        instanceAndTyped.addSpotLocationStore(TestLocationStore.class);
+        instanceAndTyped.addActorLocationStore(TestLocationStore.class);
+        instanceAndTyped.addRouteLocationStore(TestLocationStore.class);
+        instanceAndTyped.addOwnerLeaseStore(TestLocationStore.class);
+
+        assertThrows(ZLinkConfigurationException.class, instanceAndTyped::validate);
+
+        DefaultZLinkFrameworkOptions instanceAndInMemory = new DefaultZLinkFrameworkOptions();
+        instanceAndInMemory.addLocationStore(new ZLinkInMemoryLocationStore());
+        instanceAndInMemory.useInMemoryLocationStores();
+
+        assertThrows(ZLinkConfigurationException.class, instanceAndInMemory::validate);
     }
 
     @Test
@@ -275,67 +344,22 @@ final class DefaultZLinkFrameworkOptionsTest {
     }
 
     @Test
+    void clientServerChannelClientWithoutManualConnectionUsesLocationAutoConnect() {
+        DefaultZLinkFrameworkOptions options = new DefaultZLinkFrameworkOptions();
+
+        options.useInMemoryLocationStores();
+        { var channel = options.addClientServerChannel("profile"); channel.enableClient(); };
+
+        assertDoesNotThrow(options::validate);
+    }
+
+    @Test
     void routeMeshClientWithManualConnectionDoesNotRequireBindEndpoint() {
         DefaultZLinkFrameworkOptions options = new DefaultZLinkFrameworkOptions();
 
         { var channel = options.addRouteMesh("play"); channel.enableClient("inproc://play-a"); };
 
         options.validate();
-    }
-
-    @Test
-    void registrySpotRemoteAddressesRejectsCustomResolverDuplicate() {
-        DefaultZLinkFrameworkOptions options = new DefaultZLinkFrameworkOptions();
-
-        { var discovery = options.useDiscovery(); discovery.addRegistryEndpoint("inproc://registry"); };
-        { var channel = options.addRouteMesh("play"); channel.enableClient(); };
-        options.addSpotRemoteAddressResolver(TestSpotRemoteAddressResolver.class);
-        options.useRegistrySpotRemoteAddresses("game");
-
-        assertThrows(ZLinkConfigurationException.class, options::validate);
-    }
-
-    @Test
-    void spotMeshUseRegistrySpotResolverUsesMeshNamespace() {
-        DefaultZLinkFrameworkOptions options = new DefaultZLinkFrameworkOptions();
-
-        options.addSpotMesh("rooms")
-            .useRegistrySpotResolver()
-            ;
-
-        assertEquals("rooms", options.registration().registrySpotRemoteAddresses().namespaceName());
-    }
-
-    @Test
-    void registrySpotRemoteAddressesRequiresDiscoveryEndpoint() {
-        DefaultZLinkFrameworkOptions options = new DefaultZLinkFrameworkOptions();
-
-        { var channel = options.addRouteMesh("play"); channel.enableClient("inproc://play"); };
-        options.useRegistrySpotRemoteAddresses("game");
-
-        assertThrows(ZLinkConfigurationException.class, options::validate);
-    }
-
-    @Test
-    void registrySpotRemoteAddressesRequiresRouteMeshChannel() {
-        DefaultZLinkFrameworkOptions options = new DefaultZLinkFrameworkOptions();
-
-        { var discovery = options.useDiscovery(); discovery.addRegistryEndpoint("inproc://registry"); };
-        options.useRegistrySpotRemoteAddresses("game");
-
-        assertThrows(ZLinkConfigurationException.class, options::validate);
-    }
-
-    @Test
-    void registrySpotRemoteAddressesRequiresRouterChannelWhenAmbiguous() {
-        DefaultZLinkFrameworkOptions options = new DefaultZLinkFrameworkOptions();
-
-        { var discovery = options.useDiscovery(); discovery.addRegistryEndpoint("inproc://registry"); };
-        { var channel = options.addRouteMesh("play-a"); channel.enableClient(); };
-        { var channel = options.addRouteMesh("play-b"); channel.enableClient(); };
-        options.useRegistrySpotRemoteAddresses("game");
-
-        assertThrows(ZLinkConfigurationException.class, options::validate);
     }
 
     @Test
@@ -410,10 +434,9 @@ final class DefaultZLinkFrameworkOptionsTest {
     }
 
     @Test
-    void clientServerChannelClientManualConnectionsOverrideGlobalDiscovery() {
+    void clientServerChannelClientManualConnectionsAreAcceptedWithoutLocationAutoConnect() {
         DefaultZLinkFrameworkOptions options = new DefaultZLinkFrameworkOptions();
 
-        { var discovery = options.useDiscovery(); discovery.addRegistryEndpoint("tcp://127.0.0.1:17001"); };
         { var channel = options.addClientServerChannel("profile"); channel.enableClient("inproc://profile-server"); };
 
         assertDoesNotThrow(options::validate);
@@ -520,10 +543,20 @@ final class DefaultZLinkFrameworkOptionsTest {
     }
 
     @Test
-    void fanoutChannelSubscriberManualConnectionsOverrideGlobalDiscovery() {
+    void fanoutChannelSubscriberWithoutManualConnectionUsesLocationAutoConnect() {
         DefaultZLinkFrameworkOptions options = new DefaultZLinkFrameworkOptions();
 
-        { var discovery = options.useDiscovery(); discovery.addRegistryEndpoint("tcp://127.0.0.1:17001"); };
+        options.useInMemoryLocationStores();
+        { var channel = options.addFanoutChannel("events"); channel.enableSubscriber();
+            channel.addPublishHandler(EventHandler.class, String.class, "Event"); };
+
+        assertDoesNotThrow(options::validate);
+    }
+
+    @Test
+    void fanoutChannelSubscriberManualConnectionsAreAcceptedWithoutLocationAutoConnect() {
+        DefaultZLinkFrameworkOptions options = new DefaultZLinkFrameworkOptions();
+
         { var channel = options.addFanoutChannel("events"); channel.enableSubscriber("inproc://events");
             channel.addPublishHandler(EventHandler.class, String.class, "Event"); };
 
@@ -587,20 +620,19 @@ final class DefaultZLinkFrameworkOptionsTest {
     }
 
     @Test
-    void routeMeshClientWithDiscoveryDoesNotRequireBindEndpoint() {
+    void routeMeshChannelClientWithoutManualConnectionUsesLocationAutoConnect() {
         DefaultZLinkFrameworkOptions options = new DefaultZLinkFrameworkOptions();
 
-        { var discovery = options.useDiscovery(); discovery.addRegistryEndpoint("tcp://127.0.0.1:17001"); };
+        options.useInMemoryLocationStores();
         { var channel = options.addRouteMesh("route"); channel.enableClient(); };
 
         assertDoesNotThrow(options::validate);
     }
 
     @Test
-    void routeMeshChannelManualConnectionsOverrideGlobalDiscovery() {
+    void routeMeshChannelManualConnectionsAreAcceptedWithoutLocationAutoConnect() {
         DefaultZLinkFrameworkOptions options = new DefaultZLinkFrameworkOptions();
 
-        { var discovery = options.useDiscovery(); discovery.addRegistryEndpoint("tcp://127.0.0.1:17001"); };
         { var channel = options.addRouteMesh("route"); channel.enableServer("inproc://route");
             channel.enableClient("inproc://route-peer"); };
 
@@ -845,6 +877,15 @@ final class DefaultZLinkFrameworkOptionsTest {
             ZLinkNext<T> next) {
             return next.invokeAsync();
         }
+    }
+
+    abstract static class TestLocationStore implements
+        ZLinkLocationStore,
+        ZLinkPeerLocationStore,
+        ZLinkSpotLocationStore,
+        ZLinkActorLocationStore,
+        ZLinkRouteLocationStore,
+        ZLinkOwnerLeaseStore {
     }
 
     public static final class TestSpotRemoteAddressResolver

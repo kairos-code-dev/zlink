@@ -8,6 +8,8 @@ import org.springframework.context.annotation.Bean;
 import systems.zlink.e2e.registrymessaging.consumer.Configuration.ConsumerOptions;
 import systems.zlink.e2e.registrymessaging.shared.Contracts;
 import systems.zlink.framework.configuration.ZLinkMessageFlowLogMode;
+import systems.zlink.framework.locations.redis.ZLinkRedisLocationOptions;
+import systems.zlink.framework.locations.redis.ZLinkRedisLocationStore;
 import systems.zlink.framework.spring.EnableZLinkFramework;
 import systems.zlink.framework.spring.ZLinkFrameworkConfigurer;
 
@@ -38,8 +40,8 @@ public final class Program {
             String mode = ConsumerOptions.get("ZLINK_JAVA_E2E_CONSUMER_MODE", "discovery");
             var channel = options.addClientServerChannel(Contracts.API_CHANNEL);
             if ("discovery".equals(mode)) {
-                options.useDiscovery().addRegistryEndpoint(ConsumerOptions.get("ZLINK_JAVA_E2E_REGISTRY_ROUTER"));
                 channel.enableClient();
+                options.addClientServerChannel(Contracts.WORKFLOW_CHANNEL).enableClient();
             } else {
                 for (String endpoint : ConsumerOptions.get("ZLINK_JAVA_E2E_PROVIDER_ENDPOINTS").split(",")) {
                     if (!endpoint.isBlank()) {
@@ -48,5 +50,12 @@ public final class Program {
                 }
             }
         };
+    }
+
+    @Bean
+    ZLinkRedisLocationStore locationStore() {
+        return new ZLinkRedisLocationStore(new ZLinkRedisLocationOptions()
+            .setConnectionString(ConsumerOptions.get("ZLINK_JAVA_E2E_REDIS_LOCATION_ENDPOINT"))
+            .setKeyPrefix(ConsumerOptions.get("ZLINK_JAVA_E2E_LOCATION_KEY_PREFIX")));
     }
 }

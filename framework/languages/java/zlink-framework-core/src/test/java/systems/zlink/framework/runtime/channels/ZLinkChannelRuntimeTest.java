@@ -728,14 +728,6 @@ final class ZLinkChannelRuntimeTest {
         }
 
         @Override
-        public ZLinkBackendDiscovery createDiscovery(
-            ZLinkBackendContext context,
-            ZLinkBackendAutoConnectType autoConnectType,
-            String channelName) {
-            throw new UnsupportedOperationException();
-        }
-
-        @Override
         public ZLinkBackendDealerSocket createDealerSocket(ZLinkBackendContext context) {
             return dealer;
         }
@@ -759,7 +751,6 @@ final class ZLinkChannelRuntimeTest {
     private static final class FakeDealerSocket implements ZLinkBackendDealerSocket {
         ZLinkBackendRequestResult requestResult = ZLinkBackendRequestResult.OK;
 
-        @Override public void attachDiscovery(ZLinkBackendDiscovery discovery) { }
         @Override public void setChannelName(String channelName) { }
         @Override public void bind(String endpoint) { }
         @Override public void connect(String endpoint) { }
@@ -798,10 +789,11 @@ final class ZLinkChannelRuntimeTest {
         final ArrayDeque<ZLinkBackendReceived> inbound = new ArrayDeque<>();
         int peerWeight = 100;
         int replyCount;
+        RoutingId connectRoutingId;
 
-        @Override public void attachDiscovery(ZLinkBackendDiscovery discovery) { }
         @Override public void setChannelName(String channelName) { }
         @Override public void setRoutingId(RoutingId routingId) { }
+        @Override public void setConnectRoutingId(RoutingId routingId) { connectRoutingId = routingId; }
         @Override public int peerWeight() { return peerWeight; }
         @Override public void setPeerWeight(int weight) { peerWeight = weight; }
         @Override public void bind(String endpoint) { }
@@ -914,9 +906,10 @@ final class ZLinkChannelRuntimeTest {
         @Override public void setSubscriberRoutingId(RoutingId routingId) { }
         @Override public void setRouterBind(String endpoint) { }
         @Override public void setPubBind(String endpoint) { }
-        @Override public void attachDiscovery(ZLinkBackendDiscovery discovery) { }
         @Override public void connectPeer(String endpoint) { }
         @Override public void connectPeer(RoutingId peerRid, String endpoint) { }
+        @Override public void disconnectPeer(String endpoint) { }
+        @Override public void disconnectPeer(RoutingId peerRid) { }
         @Override public ZLinkBackendSpotRouteBridge createRouteBridge() { return bridge; }
         @Override public ZLinkBackendSpot createSpot() { throw new UnsupportedOperationException(); }
         @Override public ZLinkBackendSpot entrySpot() { throw new UnsupportedOperationException(); }

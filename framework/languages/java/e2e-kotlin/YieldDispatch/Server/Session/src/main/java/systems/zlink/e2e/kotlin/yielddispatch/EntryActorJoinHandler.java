@@ -13,9 +13,12 @@ public final class EntryActorJoinHandler {
         ZLinkSpotActorRequestContext context,
         Contracts.ActorJoinReq request,
         CancellationToken cancellationToken) {
-        return actor.context()
+        actor.context()
             .joinSpot(RoutingId.from(request.spotRid()), request)
-            .await(Contracts.ActorJoinRes.class)
-            .reply();
+            .yield(Contracts.ActorJoinRes.class);
+        return new Contracts.ActorJoinRes(
+            actor.actorId(),
+            request.spotRid(),
+            "joined:" + request.value());
     }
 }

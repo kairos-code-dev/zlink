@@ -15,8 +15,9 @@ The sample is split into standalone Spring role projects:
 - `Server`: starts one Spring Boot role per process. Use `play` or `api` to run
   a role. The API role exposes the `/games` HTTP endpoint plus
   `AuthenticatePlayer` channel handler. The Play role owns the STREAM endpoint,
-  actor runtime, entry Spot, and game Spot. This sample keeps only the common
-  spec flow.
+  actor runtime, entry Spot, game Spot, and Redis-backed framework location
+  store used for remote Spot routing. This sample keeps only the common spec
+  flow.
 - `Shared`: holds the message contracts used by the client, API role, Play
   role, and STREAM messages.
 

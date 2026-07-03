@@ -43,7 +43,6 @@ final class SampleReleaseGateContractTest {
         "Client",
         "Server/Api",
         "Server/Play",
-        "Server/Registry",
         "Server/Session",
         "Shared");
 
@@ -144,11 +143,6 @@ final class SampleReleaseGateContractTest {
                         || powerShellScript.contains("/Client/"),
                     language + "/" + sample + " PowerShell runner must execute a distinct Client role");
                 if (!sample.equals("TicTacToe")) {
-                    assertTrue(script.contains(":Server:Registry:run")
-                            || script.contains(":Server:Registry:installDist")
-                            || script.contains("Server/Registry/build/install")
-                            || script.contains("/Server/Registry/"),
-                        language + "/" + sample + " runner must execute a distinct Registry role");
                     assertTrue(script.contains(":Server:Api:run")
                             || script.contains(":Server:Api:installDist")
                             || script.contains("Server/Api/build/install")
@@ -164,11 +158,6 @@ final class SampleReleaseGateContractTest {
                             || script.contains("Server/Session/build/install")
                             || script.contains("/Server/Session/"),
                         language + "/" + sample + " runner must execute a distinct Session role");
-                    assertTrue(powerShellScript.contains(":Server:Registry:run")
-                            || powerShellScript.contains(":Server:Registry:installDist")
-                            || powerShellScript.contains("Server/Registry/build/install")
-                            || powerShellScript.contains("/Server/Registry/"),
-                        language + "/" + sample + " PowerShell runner must execute a distinct Registry role");
                     assertTrue(powerShellScript.contains(":Server:Api:run")
                             || powerShellScript.contains(":Server:Api:installDist")
                             || powerShellScript.contains("Server/Api/build/install")
@@ -1095,15 +1084,13 @@ final class SampleReleaseGateContractTest {
             paths.playSpotHandler("entryspot", "MatchBingoActorHandler"),
             "systems/zlink/samples/bingo/server/play/infrastructure/zlink/handlers/AllocateBingoRoomHandler.java",
             "systems/zlink/samples/bingo/server/play/infrastructure/zlink/handlers/EnsurePlayerActorHandler.java"));
-        assertSampleFilesExist("java", "Bingo", "Server/Registry/src/main/java", List.of(
-            "systems/zlink/samples/bingo/server/registry/Program.java",
-            "systems/zlink/samples/bingo/server/registry/RegistryApplication.java"));
         assertSampleFilesExist("java", "Bingo", "Server/Session/src/main/java", List.of(
             "systems/zlink/samples/bingo/server/session/Program.java",
             "systems/zlink/samples/bingo/server/session/SessionServerApplication.java",
             "systems/zlink/samples/bingo/server/session/sessions/BingoSession.java",
             "systems/zlink/samples/bingo/server/session/sessions/handlers/AuthenticateSessionHandler.java"));
         assertSampleFilesExist("java", "Bingo", "Server/Configuration/src/main/java", List.of(
+            "systems/zlink/samples/bingo/server/configuration/SampleLocationStore.java",
             "systems/zlink/samples/bingo/server/configuration/SampleNames.java",
             "systems/zlink/samples/bingo/server/configuration/SampleTopology.java",
             "systems/zlink/samples/bingo/server/configuration/SampleTimings.java"));
@@ -1139,14 +1126,14 @@ final class SampleReleaseGateContractTest {
             "Bingo",
             "Server/Play/src/main/java",
             "systems/zlink/samples/bingo/server/play/PlayServerApplication.java");
-        String registryHostSource = sampleJavaSource(
-            "Bingo",
-            "Server/Registry/src/main/java",
-            "systems/zlink/samples/bingo/server/registry/RegistryApplication.java");
         String sessionHostSource = sampleJavaSource(
             "Bingo",
             "Server/Session/src/main/java",
             "systems/zlink/samples/bingo/server/session/SessionServerApplication.java");
+        String locationStoreSource = sampleJavaSource(
+            "Bingo",
+            "Server/Configuration/src/main/java",
+            "systems/zlink/samples/bingo/server/configuration/SampleLocationStore.java");
         String apiProgramSource = sampleJavaSource(
             "Bingo",
             "Server/Api/src/main/java",
@@ -1155,10 +1142,6 @@ final class SampleReleaseGateContractTest {
             "Bingo",
             "Server/Play/src/main/java",
             "systems/zlink/samples/bingo/server/play/Program.java");
-        String registryProgramSource = sampleJavaSource(
-            "Bingo",
-            "Server/Registry/src/main/java",
-            "systems/zlink/samples/bingo/server/registry/Program.java");
         String sessionProgramSource = sampleJavaSource(
             "Bingo",
             "Server/Session/src/main/java",
@@ -1228,17 +1211,23 @@ final class SampleReleaseGateContractTest {
                 && sessionHostSource.contains("@SpringBootApplication")
                 && sessionHostSource.contains("SpringApplicationBuilder")
                 && sessionHostSource.contains("ZLinkFrameworkConfigurer")
-                && !sessionHostSource.contains("ZLinkFramework.start")
-                && registryHostSource.contains("@SpringBootApplication")
-                && registryHostSource.contains("SpringApplicationBuilder")
-                && registryHostSource.contains("ZLinkEmbeddedRegistryOptions")
-                && !registryHostSource.contains("ZLinkRegistry.start"),
+                && !sessionHostSource.contains("ZLinkFramework.start"),
             "Bingo server roles must run ZLink through Spring Boot lifecycle beans");
         assertFalse(apiProgramSource.contains("CountDownLatch")
                 || playProgramSource.contains("CountDownLatch")
-                || registryProgramSource.contains("CountDownLatch")
                 || sessionProgramSource.contains("CountDownLatch"),
             "Bingo role entry points must not keep direct ZLink starts alive with CountDownLatch");
+        assertTrue(locationStoreSource.contains("ZLinkRedisLocationStore")
+                && locationStoreSource.contains("ZLinkRedisLocationOptions")
+                && apiHostSource.contains("ZLinkRedisLocationStore locationStore()")
+                && playHostSource.contains("ZLinkRedisLocationStore locationStore()")
+                && sessionHostSource.contains("ZLinkRedisLocationStore locationStore()")
+                && playHostSource.contains("configureLocations()")
+                && sessionHostSource.contains("configureLocations()")
+                && !apiHostSource.contains("ZLinkEmbeddedRegistryOptions")
+                && !playHostSource.contains("ZLinkEmbeddedRegistryOptions")
+                && !sessionHostSource.contains("ZLinkEmbeddedRegistryOptions"),
+            "Java Bingo roles must use the Redis location store extension instead of a Registry role");
         assertTrue(apiHandlerSource.contains("@ZLinkHandlerGroup(\"api\")")
                 && apiHandlerSource.contains("implements ZLinkRequestHandler<")
                 && apiHandlerSource.contains("Messages.AuthenticatePlayerReq")
@@ -1255,9 +1244,6 @@ final class SampleReleaseGateContractTest {
         assertTrue(sampleFileContains("java", "Bingo", "Server/Session/src/main/java",
                 "systems/zlink/samples/bingo/server/session/Program.java", "SessionServerApplication.run"),
             "Java Bingo Session role must have its own executable Program");
-        assertTrue(sampleFileContains("java", "Bingo", "Server/Registry/src/main/java",
-                "systems/zlink/samples/bingo/server/registry/Program.java", "RegistryApplication.run"),
-            "Java Bingo Registry role must have its own executable Program");
         assertFalse(roomSource.contains("BingoPlayerClient"),
             "Bingo server push must go through framework bound sessions, not direct client objects");
     }
@@ -1289,15 +1275,13 @@ final class SampleReleaseGateContractTest {
             paths.playSpotHandler("entryspot", "MatchBingoActorHandler"),
             "systems/zlink/samples/kotlin/bingo/server/play/infrastructure/zlink/handlers/AllocateBingoRoomHandler.kt",
             "systems/zlink/samples/kotlin/bingo/server/play/infrastructure/zlink/handlers/EnsurePlayerActorHandler.kt"));
-        assertSampleFilesExist("kotlin", "Bingo", "Server/Registry/src/main/kotlin", List.of(
-            "systems/zlink/samples/kotlin/bingo/server/registry/Program.kt",
-            "systems/zlink/samples/kotlin/bingo/server/registry/RegistryApplication.kt"));
         assertSampleFilesExist("kotlin", "Bingo", "Server/Session/src/main/kotlin", List.of(
             "systems/zlink/samples/kotlin/bingo/server/session/Program.kt",
             "systems/zlink/samples/kotlin/bingo/server/session/SessionServerApplication.kt",
             "systems/zlink/samples/kotlin/bingo/server/session/sessions/BingoSession.kt",
             "systems/zlink/samples/kotlin/bingo/server/session/sessions/handlers/AuthenticateSessionHandler.kt"));
         assertSampleFilesExist("kotlin", "Bingo", "Server/Configuration/src/main/kotlin", List.of(
+            "systems/zlink/samples/kotlin/bingo/server/configuration/SampleLocationStore.kt",
             "systems/zlink/samples/kotlin/bingo/server/configuration/SampleNames.kt",
             "systems/zlink/samples/kotlin/bingo/server/configuration/SampleTopology.kt",
             "systems/zlink/samples/kotlin/bingo/server/configuration/SampleTimings.kt"));
@@ -1333,14 +1317,14 @@ final class SampleReleaseGateContractTest {
             "Bingo",
             "Server/Play/src/main/kotlin",
             "systems/zlink/samples/kotlin/bingo/server/play/PlayServerApplication.kt");
-        String registryHostSource = sampleKotlinSource(
-            "Bingo",
-            "Server/Registry/src/main/kotlin",
-            "systems/zlink/samples/kotlin/bingo/server/registry/RegistryApplication.kt");
         String sessionHostSource = sampleKotlinSource(
             "Bingo",
             "Server/Session/src/main/kotlin",
             "systems/zlink/samples/kotlin/bingo/server/session/SessionServerApplication.kt");
+        String locationStoreSource = sampleKotlinSource(
+            "Bingo",
+            "Server/Configuration/src/main/kotlin",
+            "systems/zlink/samples/kotlin/bingo/server/configuration/SampleLocationStore.kt");
         String apiProgramSource = sampleKotlinSource(
             "Bingo",
             "Server/Api/src/main/kotlin",
@@ -1349,10 +1333,6 @@ final class SampleReleaseGateContractTest {
             "Bingo",
             "Server/Play/src/main/kotlin",
             "systems/zlink/samples/kotlin/bingo/server/play/Program.kt");
-        String registryProgramSource = sampleKotlinSource(
-            "Bingo",
-            "Server/Registry/src/main/kotlin",
-            "systems/zlink/samples/kotlin/bingo/server/registry/Program.kt");
         String sessionProgramSource = sampleKotlinSource(
             "Bingo",
             "Server/Session/src/main/kotlin",
@@ -1425,17 +1405,23 @@ final class SampleReleaseGateContractTest {
                 && sessionHostSource.contains("@SpringBootApplication")
                 && sessionHostSource.contains("SpringApplicationBuilder")
                 && sessionHostSource.contains("ZLinkFrameworkConfigurer")
-                && !sessionHostSource.contains("ZLinkFramework.start")
-                && registryHostSource.contains("@SpringBootApplication")
-                && registryHostSource.contains("SpringApplicationBuilder")
-                && registryHostSource.contains("ZLinkEmbeddedRegistryOptions")
-                && !registryHostSource.contains("ZLinkRegistry.start"),
+                && !sessionHostSource.contains("ZLinkFramework.start"),
             "Kotlin Bingo server roles must run ZLink through Spring Boot lifecycle beans");
         assertFalse(apiProgramSource.contains("CountDownLatch")
                 || playProgramSource.contains("CountDownLatch")
-                || registryProgramSource.contains("CountDownLatch")
                 || sessionProgramSource.contains("CountDownLatch"),
             "Kotlin Bingo role entry points must not keep direct ZLink starts alive with CountDownLatch");
+        assertTrue(locationStoreSource.contains("ZLinkRedisLocationStore")
+                && locationStoreSource.contains("ZLinkRedisLocationOptions")
+                && apiHostSource.contains("fun locationStore(): ZLinkRedisLocationStore")
+                && playHostSource.contains("fun locationStore(): ZLinkRedisLocationStore")
+                && sessionHostSource.contains("fun locationStore(): ZLinkRedisLocationStore")
+                && playHostSource.contains("configureLocations()")
+                && sessionHostSource.contains("configureLocations()")
+                && !apiHostSource.contains("ZLinkEmbeddedRegistryOptions")
+                && !playHostSource.contains("ZLinkEmbeddedRegistryOptions")
+                && !sessionHostSource.contains("ZLinkEmbeddedRegistryOptions"),
+            "Kotlin Bingo roles must use the Redis location store extension instead of a Registry role");
         assertTrue(apiHandlerSource.contains("@ZLinkHandlerGroup(\"api\")")
                 && apiHandlerSource.contains(": ZLinkSuspendingRequestHandler<AuthenticatePlayerReq, AuthenticatePlayerRes>")
                 && playHandlerSource.contains("@ZLinkHandlerGroup(\"play-route\")")
@@ -1450,9 +1436,6 @@ final class SampleReleaseGateContractTest {
         assertTrue(sampleFileContains("kotlin", "Bingo", "Server/Session/src/main/kotlin",
                 "systems/zlink/samples/kotlin/bingo/server/session/Program.kt", "SessionServerApplication.run"),
             "Kotlin Bingo Session role must have its own executable Program");
-        assertTrue(sampleFileContains("kotlin", "Bingo", "Server/Registry/src/main/kotlin",
-                "systems/zlink/samples/kotlin/bingo/server/registry/Program.kt", "RegistryApplication.run"),
-            "Kotlin Bingo Registry role must have its own executable Program");
         assertFalse(roomSource.contains("BingoPlayerClient"),
             "Kotlin Bingo server push must go through framework bound sessions, not direct client objects");
     }

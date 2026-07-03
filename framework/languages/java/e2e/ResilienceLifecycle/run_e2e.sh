@@ -4,7 +4,7 @@ set -euo pipefail
 cd "$(dirname "${BASH_SOURCE[0]}")"
 
 pids=()
-role_pattern='systems\.zlink\.e2e\.resiliencelifecycle\.(client|consumer|provider|registry)\.Program'
+role_pattern='systems\.zlink\.e2e\.resiliencelifecycle\.(client|consumer|provider)\.Program'
 run_id="$(date +%Y%m%d-%H%M%S)-$$"
 log_dir="$(pwd)/logs/${run_id}"
 repo_root="$(cd ../../../../.. && pwd)"
@@ -17,6 +17,8 @@ if [[ -z "${ZLINK_LIBRARY_PATH:-}" && -f "${default_core_lib}" ]]; then
 fi
 export ZLINK_JAVA_E2E_BUILD_DIR="${ZLINK_JAVA_E2E_BUILD_DIR:-${HOME}/.cache/zlink/java-e2e/ResilienceLifecycle}"
 export ZLINK_JAVA_E2E_GRADLE_CACHE="${ZLINK_JAVA_E2E_GRADLE_CACHE:-${HOME}/.cache/zlink/java-e2e/ResilienceLifecycle-gradle-cache}"
+export ZLINK_JAVA_E2E_REDIS_LOCATION_ENDPOINT="${ZLINK_JAVA_E2E_REDIS_LOCATION_ENDPOINT:-${ZLINK_REDIS_LOCATION_ENDPOINT:-127.0.0.1:16379}}"
+export ZLINK_JAVA_E2E_LOCATION_KEY_PREFIX="${ZLINK_JAVA_E2E_LOCATION_KEY_PREFIX:-zlink:e2e:resilience-lifecycle:${run_id}}"
 LOCAL_READINESS_TIMEOUT_SECONDS=3
 LOCAL_READINESS_POLL_SECONDS=0.1
 LOCAL_READINESS_ATTEMPTS=30
@@ -67,13 +69,13 @@ import socket
 sockets = []
 ports = []
 try:
-    for _ in range(9):
+    for _ in range(7):
         sock = socket.socket()
         sock.bind(("127.0.0.1", 0))
         sockets.append(sock)
         ports.append(sock.getsockname()[1])
-    print(" ".join(f"tcp://127.0.0.1:{port}" for port in ports[:5]), end=" ")
-    print(" ".join(f"http://127.0.0.1:{port}" for port in ports[5:]))
+    print(" ".join(f"tcp://127.0.0.1:{port}" for port in ports[:3]), end=" ")
+    print(" ".join(f"http://127.0.0.1:{port}" for port in ports[3:]))
 finally:
     for sock in sockets:
         sock.close()
@@ -107,28 +109,14 @@ client_bin() {
   echo "${ZLINK_JAVA_E2E_BUILD_DIR}/Client/install/resilience-lifecycle-client/bin/resilience-lifecycle-client"
 }
 
-registry_bin() {
-  echo "${ZLINK_JAVA_E2E_BUILD_DIR}/Server-Registry/install/resilience-lifecycle-registry/bin/resilience-lifecycle-registry"
-}
-
-start_registry() {
-  ZLINK_JAVA_E2E_REGISTRY_PUB="${REGISTRY_PUB}" \
-  ZLINK_JAVA_E2E_REGISTRY_ROUTER="${REGISTRY_ROUTER}" \
-  ZLINK_JAVA_E2E_LOG_DIR="${log_dir}" \
-    "$(registry_bin)" >"${log_dir}/registry.stdout.log" 2>"${log_dir}/registry.stderr.log" &
-  pids+=("$!")
-  wait_port registry-router "${REGISTRY_ROUTER}"
-}
-
-read -r REGISTRY_PUB REGISTRY_ROUTER API_A API_B API_A_REPLACEMENT HTTP_A HTTP_B HTTP_A_REPLACEMENT _ <<<"$(reserve_ports)"
+read -r API_A API_B API_A_REPLACEMENT HTTP_A HTTP_B HTTP_A_REPLACEMENT _ <<<"$(reserve_ports)"
 
 gradle_run installDist
 
-start_registry
-
 ZLINK_JAVA_E2E_CLIENT_MODE="suite" \
 ZLINK_JAVA_E2E_SCENARIO="${SCENARIO}" \
-ZLINK_JAVA_E2E_REGISTRY_ROUTER="${REGISTRY_ROUTER}" \
+ZLINK_JAVA_E2E_REDIS_LOCATION_ENDPOINT="${ZLINK_JAVA_E2E_REDIS_LOCATION_ENDPOINT}" \
+ZLINK_JAVA_E2E_LOCATION_KEY_PREFIX="${ZLINK_JAVA_E2E_LOCATION_KEY_PREFIX}" \
 ZLINK_JAVA_E2E_API_A_ENDPOINT="${API_A}" \
 ZLINK_JAVA_E2E_API_B_ENDPOINT="${API_B}" \
 ZLINK_JAVA_E2E_API_A_REPLACEMENT_ENDPOINT="${API_A_REPLACEMENT}" \

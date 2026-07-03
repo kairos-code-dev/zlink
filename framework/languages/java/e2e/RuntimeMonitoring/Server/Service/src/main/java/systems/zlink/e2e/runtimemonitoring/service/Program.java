@@ -18,6 +18,9 @@ import systems.zlink.e2e.runtimemonitoring.shared.Contracts;
 import systems.zlink.e2e.runtimemonitoring.shared.Env;
 import systems.zlink.framework.configuration.ZLinkMessageFlowLogMode;
 import systems.zlink.framework.configuration.ZLinkSpotNodeBuilder;
+import systems.zlink.framework.locations.redis.ZLinkRedisLocationOptions;
+import systems.zlink.framework.locations.redis.ZLinkRedisLocationStore;
+import systems.zlink.framework.monitoring.ZLinkLocationRuntimeEventKind;
 import systems.zlink.framework.monitoring.ZLinkSocketEventKind;
 import systems.zlink.framework.spring.EnableZLinkFramework;
 import systems.zlink.framework.spring.ZLinkFrameworkConfigurer;
@@ -59,7 +62,9 @@ public final class Program {
     ZLinkFrameworkConfigurer frameworkConfigurer() {
         return options -> {
             String logDir = Env.get("ZLINK_JAVA_E2E_LOG_DIR", "logs");
-            options.useDiscovery().addRegistryEndpoint(Env.get("ZLINK_JAVA_E2E_REGISTRY_ROUTER"));
+            options.configureLocations().setHeartbeatInterval(Duration.ofMillis(500));
+            options.configureLocations().setOwnerLeaseTtl(Duration.ofSeconds(3));
+            options.configureLocations().setPollingInterval(Duration.ofMillis(250));
             options.configureDispatch()
                 .messageFlow(ZLinkMessageFlowLogMode.KEY_TRANSITIONS)
                 .traceLogFile(logDir + "/service-flow.log")
@@ -96,6 +101,7 @@ public final class Program {
     ZLinkMonitoringOptionsCustomizer monitoringOptions() {
         return options -> {
             options.addSocketEvents(Contracts.CHANNEL, ZLinkSocketEventKind.CONNECTION_READY);
+            options.addLocationRuntimeEvents(Contracts.LOCATION_SOURCE, Duration.ofMillis(100));
             if (enabled("ZLINK_JAVA_E2E_ENABLE_HANDSHAKE", true)) {
                 options.addSocketEvents(Contracts.HANDSHAKE_CHANNEL);
             }
@@ -108,6 +114,14 @@ public final class Program {
     @Bean
     WorkReqHandler workRequestHandler() {
         return new WorkReqHandler();
+    }
+
+    @Bean
+    ZLinkRedisLocationStore locationStore() {
+        return new ZLinkRedisLocationStore(new ZLinkRedisLocationOptions()
+            .setConnectionString(Env.get("ZLINK_JAVA_E2E_REDIS_LOCATION_ENDPOINT"))
+            .setKeyPrefix(Env.get("ZLINK_JAVA_E2E_LOCATION_KEY_PREFIX"))
+            .setCommandTimeout(Duration.ofMillis(500)));
     }
 
     @Bean
@@ -153,6 +167,11 @@ public final class Program {
     @Bean
     MonitoringEventHandlers.SpotRecorder spotRecorder(EvidenceState state) {
         return new MonitoringEventHandlers.SpotRecorder(state);
+    }
+
+    @Bean
+    MonitoringEventHandlers.LocationRuntimeRecorder locationRuntimeRecorder(EvidenceState state) {
+        return new MonitoringEventHandlers.LocationRuntimeRecorder(state);
     }
 
     private static boolean enabled(String name, boolean fallback) {

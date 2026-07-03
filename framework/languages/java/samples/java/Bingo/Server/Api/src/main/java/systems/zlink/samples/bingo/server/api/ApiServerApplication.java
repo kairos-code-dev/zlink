@@ -10,6 +10,8 @@ import systems.zlink.framework.configuration.ZLinkMessageFlowLogMode;
 import systems.zlink.framework.spring.EnableZLinkFramework;
 import systems.zlink.framework.spring.ZLinkFrameworkConfigurer;
 import systems.zlink.framework.codecs.protobuf.ZLinkProtobufCodec;
+import systems.zlink.framework.locations.redis.ZLinkRedisLocationStore;
+import systems.zlink.samples.bingo.server.configuration.SampleLocationStore;
 import systems.zlink.samples.bingo.server.configuration.SampleNames;
 import systems.zlink.samples.bingo.server.configuration.SampleTopology;
 
@@ -33,7 +35,6 @@ public final class ApiServerApplication {
     @Bean
     ZLinkFrameworkConfigurer apiFramework() {
         return options -> {
-            options.useDiscovery().addRegistryEndpoint(SampleTopology.RegistryRouterEndpoint);
             options.configureDispatch()
                 .messageFlow(ZLinkMessageFlowLogMode.KEY_TRANSITIONS)
                 .traceLogFile(System.getenv().getOrDefault("BINGO_LOG_DIR", "logs") + "/flow-api.log")
@@ -47,5 +48,10 @@ public final class ApiServerApplication {
             route.enableClient();
             route.setRoutingId(RoutingId.from(SampleTopology.selectedApiRouteRid()));
         };
+    }
+
+    @Bean
+    ZLinkRedisLocationStore locationStore() {
+        return SampleLocationStore.create();
     }
 }

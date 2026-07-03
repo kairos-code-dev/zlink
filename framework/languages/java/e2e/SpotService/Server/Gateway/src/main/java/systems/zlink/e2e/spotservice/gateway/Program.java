@@ -13,6 +13,8 @@ import systems.zlink.e2e.spotservice.shared.ScenarioState;
 import systems.zlink.e2e.spotservice.shared.SpotRouteResolver;
 import systems.zlink.framework.configuration.ZLinkMessageFlowLogMode;
 import systems.zlink.framework.configuration.ZLinkSpotNodeBuilder;
+import systems.zlink.framework.locations.redis.ZLinkRedisLocationOptions;
+import systems.zlink.framework.locations.redis.ZLinkRedisLocationStore;
 import systems.zlink.framework.spring.EnableZLinkFramework;
 import systems.zlink.framework.spots.ZLinkSpotManager;
 
@@ -47,7 +49,6 @@ public final class Program {
             String logDir = Env.get("ZLINK_JAVA_E2E_LOG_DIR", "logs");
             String gatewayRid = Env.get("ZLINK_JAVA_E2E_GATEWAY_RID", "client-route-mesh");
             options.addSpotRemoteAddressResolver(SpotRouteResolver.class);
-            options.useDiscovery().addRegistryEndpoint(Env.get("ZLINK_JAVA_E2E_REGISTRY_ROUTER"));
             options.configureDispatch()
                 .messageFlow(ZLinkMessageFlowLogMode.KEY_TRANSITIONS)
                 .traceLogFile(logDir + "/gateway-flow.log")
@@ -64,5 +65,12 @@ public final class Program {
                 .setRoutingId(RoutingId.from(gatewayRid));
             node.addSpotFactory(ClientDriverSpot.class);
         };
+    }
+
+    @Bean
+    ZLinkRedisLocationStore locationStore() {
+        return new ZLinkRedisLocationStore(new ZLinkRedisLocationOptions()
+            .setConnectionString(Env.get("ZLINK_JAVA_E2E_REDIS_LOCATION_ENDPOINT"))
+            .setKeyPrefix(Env.get("ZLINK_JAVA_E2E_LOCATION_KEY_PREFIX")));
     }
 }

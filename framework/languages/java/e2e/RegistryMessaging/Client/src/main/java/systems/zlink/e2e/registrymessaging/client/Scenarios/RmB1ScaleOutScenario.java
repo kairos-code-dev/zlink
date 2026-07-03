@@ -1,6 +1,5 @@
 package systems.zlink.e2e.registrymessaging.client.Scenarios;
 
-import java.util.HashSet;
 import java.util.Set;
 import systems.zlink.e2e.registrymessaging.client.Support.DynamicClusterLauncher;
 import systems.zlink.e2e.registrymessaging.client.Support.ScenarioAssert;
@@ -14,24 +13,24 @@ public final class RmB1ScaleOutScenario {
     public static void run() {
         try (DynamicClusterLauncher cluster = DynamicClusterLauncher.start("rm-b1")) {
             DynamicClusterLauncher.DynamicProvider providerA = cluster.startProvider("api-a", "api-a");
-            try (ZLinkHttpClient requester = ZLinkHttpClient.create(providerA.httpUrl()).build()) {
+            DynamicClusterLauncher.DynamicConsumer consumer = cluster.startConsumer("consumer");
+            try (ZLinkHttpClient requester = ZLinkHttpClient.create(consumer.httpUrl()).build()) {
+                cluster.waitPeerEndpoint(requester, providerA.channelEndpoint());
                 for (int index = 0; index < 5; index++) {
-                    Contracts.ProfileRes reply = requester.post("/profile/request")
-                        .body(new Contracts.ProfileReq("scale-out-before-" + index))
-                        .fetch(Contracts.ProfileRes.class);
+                    Contracts.ProfileRes reply =
+                        ScenarioAssert.requestProfileEventually(requester, "scale-out-before-" + index);
                     ScenarioAssert.that("api-a".equals(reply.providerRid()),
                         "RM-B1 initial traffic should only use api-a");
                 }
 
-                cluster.startProvider("api-b", "api-b");
+                DynamicClusterLauncher.DynamicProvider providerB = cluster.startProvider("api-b", "api-b");
+                cluster.waitPeerEndpoint(requester, providerB.channelEndpoint());
+                cluster.waitPeerCount(requester, 2);
 
-                Set<String> providers = new HashSet<>();
-                for (int index = 0; index < 100 && providers.size() < 2; index++) {
-                    Contracts.ProfileRes reply = requester.post("/profile/request")
-                        .body(new Contracts.ProfileReq("scale-out-after-" + index))
-                        .fetch(Contracts.ProfileRes.class);
-                    providers.add(reply.providerRid());
-                }
+                Set<String> providers = ScenarioAssert.requestUntilProvidersSeen(
+                    requester,
+                    "scale-out-after",
+                    Set.of("api-a", "api-b"));
                 ScenarioAssert.that(providers.contains("api-a") && providers.contains("api-b"),
                     "RM-B1 did not route to both providers after scale-out");
             }

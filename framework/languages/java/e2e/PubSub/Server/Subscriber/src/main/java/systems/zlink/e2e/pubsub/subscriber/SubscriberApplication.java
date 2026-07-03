@@ -12,6 +12,8 @@ import systems.zlink.e2e.pubsub.subscriber.Handlers.EventMsgHandler;
 import systems.zlink.e2e.pubsub.subscriber.Handlers.EvidenceDispatchErrorObserver;
 import systems.zlink.e2e.pubsub.subscriber.Infrastructure.EvidenceStore;
 import systems.zlink.framework.configuration.ZLinkMessageFlowLogMode;
+import systems.zlink.framework.locations.redis.ZLinkRedisLocationOptions;
+import systems.zlink.framework.locations.redis.ZLinkRedisLocationStore;
 import systems.zlink.framework.spring.EnableZLinkFramework;
 import systems.zlink.framework.spring.ZLinkFrameworkConfigurer;
 
@@ -67,7 +69,6 @@ public final class SubscriberApplication {
                 .traceLabel("java-ps-" + evidence.subscriberRid())
                 .setMessageFlowObserver(observer::observe);
             framework.addHandlersFromPackageOf(EventMsgHandler.class);
-            framework.useDiscovery().addRegistryEndpoint(options.registryRouterEndpoint());
             framework.addFanoutChannel(Contracts.EVENT_CHANNEL)
                 .enableSubscriber()
                 .addHandlerGroup(Contracts.HANDLER_GROUP);
@@ -77,5 +78,12 @@ public final class SubscriberApplication {
     @Bean
     EventMsgHandler eventMsgHandler(EvidenceStore evidence) {
         return new EventMsgHandler(evidence);
+    }
+
+    @Bean
+    ZLinkRedisLocationStore locationStore(SubscriberOptions options) {
+        return new ZLinkRedisLocationStore(new ZLinkRedisLocationOptions()
+            .setConnectionString(options.redisLocationEndpoint())
+            .setKeyPrefix(options.locationKeyPrefix()));
     }
 }

@@ -11,15 +11,20 @@ import systems.zlink.framework.configuration.FanoutChannelBuilder;
 import systems.zlink.framework.configuration.RouteMeshChannelBuilder;
 import systems.zlink.framework.configuration.ZLinkCodecRegistryBuilder;
 import systems.zlink.framework.configuration.ZLinkDispatchOptions;
-import systems.zlink.framework.configuration.ZLinkDiscoveryBuilder;
 import systems.zlink.framework.configuration.ZLinkFrameworkOptions;
 import systems.zlink.framework.configuration.ZLinkMetadataPolicyBuilder;
-import systems.zlink.framework.configuration.ZLinkRegistrySpotRemoteAddressesOptions;
 import systems.zlink.framework.configuration.ZLinkSpotMeshBuilder;
 import systems.zlink.framework.configuration.ZLinkStreamCompressionBuilder;
 import systems.zlink.framework.configuration.ZLinkStreamNodeBuilder;
 import systems.zlink.framework.configuration.ZLinkWorkerOptions;
 import systems.zlink.framework.errors.ZLinkConfigurationException;
+import systems.zlink.framework.locations.ZLinkActorLocationStore;
+import systems.zlink.framework.locations.ZLinkLocationOptions;
+import systems.zlink.framework.locations.ZLinkLocationStore;
+import systems.zlink.framework.locations.ZLinkOwnerLeaseStore;
+import systems.zlink.framework.locations.ZLinkPeerLocationStore;
+import systems.zlink.framework.locations.ZLinkRouteLocationStore;
+import systems.zlink.framework.locations.ZLinkSpotLocationStore;
 import systems.zlink.framework.runtime.channels.ChannelBuilders;
 import systems.zlink.framework.runtime.channels.ChannelKind;
 import systems.zlink.framework.runtime.channels.ChannelRegistration;
@@ -61,11 +66,6 @@ public final class DefaultZLinkFrameworkOptions implements ZLinkFrameworkOptions
     @Override
     public ZLinkMetadataPolicyBuilder configureMetadata() {
         return registration.metadataPolicy();
-    }
-
-    @Override
-    public ZLinkDiscoveryBuilder useDiscovery() {
-        return endpoint -> registration.registryEndpoints().add(requireName(endpoint, "registry endpoint"));
     }
 
     public ClientServerChannelBuilder addClientServerChannel(String channelName)
@@ -122,11 +122,43 @@ public final class DefaultZLinkFrameworkOptions implements ZLinkFrameworkOptions
     }
 
     @Override
-    public ZLinkRegistrySpotRemoteAddressesOptions useRegistrySpotRemoteAddresses(String namespaceName) {
-        registration.setRegistrySpotRemoteAddresses(
-            new ZLinkRegistrySpotRemoteAddressesRegistration(
-                requireName(namespaceName, "namespaceName")));
-        return registration.registrySpotRemoteAddresses();
+    public void addPeerLocationStore(Class<? extends ZLinkPeerLocationStore> storeType) {
+        registration.setPeerLocationStoreType(Objects.requireNonNull(storeType, "storeType"));
+    }
+
+    @Override
+    public void addSpotLocationStore(Class<? extends ZLinkSpotLocationStore> storeType) {
+        registration.setSpotLocationStoreType(Objects.requireNonNull(storeType, "storeType"));
+    }
+
+    @Override
+    public void addActorLocationStore(Class<? extends ZLinkActorLocationStore> storeType) {
+        registration.setActorLocationStoreType(Objects.requireNonNull(storeType, "storeType"));
+    }
+
+    @Override
+    public void addRouteLocationStore(Class<? extends ZLinkRouteLocationStore> storeType) {
+        registration.setRouteLocationStoreType(Objects.requireNonNull(storeType, "storeType"));
+    }
+
+    @Override
+    public void addOwnerLeaseStore(Class<? extends ZLinkOwnerLeaseStore> storeType) {
+        registration.setOwnerLeaseStoreType(Objects.requireNonNull(storeType, "storeType"));
+    }
+
+    @Override
+    public void useInMemoryLocationStores() {
+        registration.useInMemoryLocationStores();
+    }
+
+    @Override
+    public void addLocationStore(ZLinkLocationStore store) {
+        registration.setLocationStore(Objects.requireNonNull(store, "store"));
+    }
+
+    @Override
+    public ZLinkLocationOptions configureLocations() {
+        return registration.locations().options();
     }
 
     @Override

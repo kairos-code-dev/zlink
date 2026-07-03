@@ -4,7 +4,7 @@ set -euo pipefail
 cd "$(dirname "${BASH_SOURCE[0]}")"
 
 pids=()
-role_pattern='systems\.zlink\.e2e\.registrymessaging\.(client|provider|registry|workflow|consumer)\.Program'
+role_pattern='systems\.zlink\.e2e\.registrymessaging\.(client|provider|workflow|consumer)\.Program'
 run_id="$(date +%Y%m%d-%H%M%S)-$$"
 log_dir="$(pwd)/logs/${run_id}"
 repo_root="$(cd ../../../../.. && pwd)"
@@ -17,6 +17,8 @@ if [[ -z "${ZLINK_LIBRARY_PATH:-}" && -f "${default_core_lib}" ]]; then
 fi
 export ZLINK_JAVA_E2E_BUILD_DIR="${ZLINK_JAVA_E2E_BUILD_DIR:-${HOME}/.cache/zlink/java-e2e/RegistryMessaging}"
 export ZLINK_JAVA_E2E_GRADLE_CACHE="${ZLINK_JAVA_E2E_GRADLE_CACHE:-${HOME}/.cache/zlink/java-e2e/RegistryMessaging-gradle-cache}"
+export ZLINK_JAVA_E2E_REDIS_LOCATION_ENDPOINT="${ZLINK_JAVA_E2E_REDIS_LOCATION_ENDPOINT:-${ZLINK_REDIS_LOCATION_ENDPOINT:-127.0.0.1:16379}}"
+export ZLINK_JAVA_E2E_LOCATION_KEY_PREFIX="${ZLINK_JAVA_E2E_LOCATION_KEY_PREFIX:-zlink:e2e:registry-messaging:${run_id}}"
 LOCAL_READINESS_TIMEOUT_SECONDS=3
 LOCAL_READINESS_POLL_SECONDS=0.1
 LOCAL_READINESS_ATTEMPTS=30
@@ -79,7 +81,7 @@ import socket
 sockets = []
 ports = []
 try:
-    for _ in range(15):
+    for _ in range(12):
         sock = socket.socket()
         sock.bind(("127.0.0.1", 0))
         sockets.append(sock)
@@ -140,6 +142,21 @@ gradle_run() {
   ../../gradlew --project-cache-dir "${ZLINK_JAVA_E2E_GRADLE_CACHE}" --no-daemon "$@" --quiet
 }
 
+install_dist() {
+  if [[ "${SCENARIO}" == "all" || "${SCENARIO}" == "RM-A6" ]]; then
+    gradle_run \
+      :Client:installDist \
+      :Server:Provider:installDist \
+      :Server:Workflow:installDist \
+      :Server:Consumer:installDist
+  else
+    gradle_run \
+      :Client:installDist \
+      :Server:Provider:installDist \
+      :Server:Consumer:installDist
+  fi
+}
+
 
 client_bin() {
   echo "${ZLINK_JAVA_E2E_BUILD_DIR}/Client/install/registry-messaging-client/bin/registry-messaging-client"
@@ -149,27 +166,12 @@ provider_bin() {
   echo "${ZLINK_JAVA_E2E_BUILD_DIR}/Server-Provider/install/registry-messaging-provider/bin/registry-messaging-provider"
 }
 
-registry_bin() {
-  echo "${ZLINK_JAVA_E2E_BUILD_DIR}/Server-Registry/install/registry-messaging-registry/bin/registry-messaging-registry"
-}
-
 workflow_bin() {
   echo "${ZLINK_JAVA_E2E_BUILD_DIR}/Server-Workflow/install/registry-messaging-workflow/bin/registry-messaging-workflow"
 }
 
 consumer_bin() {
   echo "${ZLINK_JAVA_E2E_BUILD_DIR}/Server-Consumer/install/registry-messaging-consumer/bin/registry-messaging-consumer"
-}
-
-start_registry() {
-  ZLINK_JAVA_E2E_REGISTRY_PUB="${REGISTRY_PUB}" \
-  ZLINK_JAVA_E2E_REGISTRY_ROUTER="${REGISTRY_ROUTER}" \
-  ZLINK_JAVA_E2E_HTTP_PORT="$(port_of "${REGISTRY_HTTP}")" \
-  ZLINK_JAVA_E2E_LOG_DIR="${log_dir}" \
-    "$(registry_bin)" >"${log_dir}/registry.stdout.log" 2>"${log_dir}/registry.stderr.log" &
-  pids+=("$!")
-  wait_port registry-router "${REGISTRY_ROUTER}"
-  wait_health registry "${REGISTRY_HTTP}"
 }
 
 start_provider() {
@@ -195,7 +197,8 @@ start_provider() {
   ZLINK_JAVA_E2E_ROUTE_PEERS="${ROUTE_B}" \
   ZLINK_JAVA_E2E_WORKFLOW_ENDPOINT="${workflow}" \
   ZLINK_JAVA_E2E_HTTP_PORT="$(port_of "${http_port}")" \
-  ZLINK_JAVA_E2E_REGISTRY_ROUTER="${REGISTRY_ROUTER}" \
+  ZLINK_JAVA_E2E_REDIS_LOCATION_ENDPOINT="${ZLINK_JAVA_E2E_REDIS_LOCATION_ENDPOINT}" \
+  ZLINK_JAVA_E2E_LOCATION_KEY_PREFIX="${ZLINK_JAVA_E2E_LOCATION_KEY_PREFIX}" \
   ZLINK_JAVA_E2E_LOG_DIR="${log_dir}" \
     "${binary}" >"${log_dir}/${rid}.stdout.log" 2>"${log_dir}/${rid}.stderr.log" &
   LAST_PID="$!"
@@ -214,7 +217,8 @@ start_consumer() {
   ZLINK_JAVA_E2E_CONSUMER_NAME="${name}" \
   ZLINK_JAVA_E2E_CONSUMER_MODE="${mode}" \
   ZLINK_JAVA_E2E_PROVIDER_ENDPOINTS="${endpoints}" \
-  ZLINK_JAVA_E2E_REGISTRY_ROUTER="${REGISTRY_ROUTER}" \
+  ZLINK_JAVA_E2E_REDIS_LOCATION_ENDPOINT="${ZLINK_JAVA_E2E_REDIS_LOCATION_ENDPOINT}" \
+  ZLINK_JAVA_E2E_LOCATION_KEY_PREFIX="${ZLINK_JAVA_E2E_LOCATION_KEY_PREFIX}" \
   ZLINK_JAVA_E2E_HTTP_PORT="$(port_of "${http_port}")" \
   ZLINK_JAVA_E2E_LOG_DIR="${log_dir}" \
     "$(consumer_bin)" >"${log_dir}/${name}.stdout.log" 2>"${log_dir}/${name}.stderr.log" &
@@ -226,6 +230,17 @@ stop_pid() {
   local pid="$1"
   if kill -0 "${pid}" >/dev/null 2>&1; then
     kill "${pid}" >/dev/null 2>&1 || true
+    for _ in $(seq 1 50); do
+      if ! kill -0 "${pid}" >/dev/null 2>&1; then
+        wait "${pid}" >/dev/null 2>&1 || true
+        return
+      fi
+      sleep 0.1
+    done
+    for child in $(descendants "${pid}"); do
+      kill -9 "${child}" >/dev/null 2>&1 || true
+    done
+    kill -9 "${pid}" >/dev/null 2>&1 || true
     wait "${pid}" >/dev/null 2>&1 || true
   fi
 }
@@ -235,7 +250,6 @@ run_client() {
   local suffix="$2"
   shift 2
   ZLINK_JAVA_E2E_SCENARIO="${scenario}" \
-  ZLINK_JAVA_E2E_REGISTRY_HTTP_URL="http://127.0.0.1:$(port_of "${REGISTRY_HTTP}")" \
   ZLINK_JAVA_E2E_PROVIDER_A_HTTP_URL="http://127.0.0.1:$(port_of "${HTTP_API_A}")" \
   ZLINK_JAVA_E2E_PROVIDER_B_HTTP_URL="http://127.0.0.1:$(port_of "${HTTP_API_B}")" \
   ZLINK_JAVA_E2E_WORKFLOW_HTTP_URL="http://127.0.0.1:$(port_of "${HTTP_WORKFLOW}")" \
@@ -259,35 +273,49 @@ is_common_scenario() {
   esac
 }
 
-read -r REGISTRY_PUB REGISTRY_ROUTER API_A API_B ROUTE_A ROUTE_B WORKFLOW_A REGISTRY_HTTP HTTP_API_A HTTP_API_B HTTP_WORKFLOW HTTP_DISCOVERY_CONSUMER HTTP_DIRECT_CONSUMER HTTP_SINGLE_CONSUMER HTTP_BACKPRESSURE_CONSUMER <<<"$(reserve_ports)"
+needs_workflow_role() {
+  case "$1" in
+    all|RM-A6)
+      return 0
+      ;;
+    *)
+      return 1
+      ;;
+  esac
+}
 
-gradle_run installDist
+read -r API_A API_B ROUTE_A ROUTE_B WORKFLOW_A HTTP_API_A HTTP_API_B HTTP_WORKFLOW HTTP_DISCOVERY_CONSUMER HTTP_DIRECT_CONSUMER HTTP_SINGLE_CONSUMER HTTP_BACKPRESSURE_CONSUMER <<<"$(reserve_ports)"
 
-start_registry
+install_dist
 
-start_provider api-a "${API_A}" "${ROUTE_A}" "" api-a "" "${HTTP_API_A}"
-API_A_PID="${LAST_PID}"
-start_provider api-b "${API_B}" "${ROUTE_B}" "" api-b "" "${HTTP_API_B}"
-API_B_PID="${LAST_PID}"
-start_provider workflow-a "" "" "${WORKFLOW_A}" workflow-a "" "${HTTP_WORKFLOW}"
-WORKFLOW_A_PID="${LAST_PID}"
-start_consumer discovery-consumer discovery "${HTTP_DISCOVERY_CONSUMER}"
-start_consumer direct-consumer direct "${HTTP_DIRECT_CONSUMER}" "${API_A},${API_B}"
-start_consumer single-consumer direct "${HTTP_SINGLE_CONSUMER}" "${API_A}"
-start_consumer backpressure-consumer direct "${HTTP_BACKPRESSURE_CONSUMER}" "${API_A}"
-sleep 2
 if is_common_scenario "${SCENARIO}"; then
+  start_provider api-a "${API_A}" "${ROUTE_A}" "" api-a "" "${HTTP_API_A}"
+  API_A_PID="${LAST_PID}"
+  start_provider api-b "${API_B}" "${ROUTE_B}" "" api-b "" "${HTTP_API_B}"
+  API_B_PID="${LAST_PID}"
+  if needs_workflow_role "${SCENARIO}"; then
+    start_provider workflow-a "" "" "${WORKFLOW_A}" workflow-a "" "${HTTP_WORKFLOW}"
+    WORKFLOW_A_PID="${LAST_PID}"
+  fi
+  start_consumer discovery-consumer discovery "${HTTP_DISCOVERY_CONSUMER}"
+  start_consumer direct-consumer direct "${HTTP_DIRECT_CONSUMER}" "${API_A},${API_B}"
+  start_consumer single-consumer direct "${HTTP_SINGLE_CONSUMER}" "${API_A}"
+  start_consumer backpressure-consumer direct "${HTTP_BACKPRESSURE_CONSUMER}" "${API_A}"
+  sleep 2
+
   common_client_scenario="${SCENARIO}"
   if [[ "${SCENARIO}" == "all" ]]; then
     common_client_scenario="common"
   fi
   run_client "${common_client_scenario}" "${common_client_scenario}" env
   cat "${log_dir}/client-${common_client_scenario}.stdout.log"
-fi
 
-stop_pid "${API_A_PID}"
-stop_pid "${API_B_PID}"
-stop_pid "${WORKFLOW_A_PID}"
+  stop_pid "${API_A_PID}"
+  stop_pid "${API_B_PID}"
+  if needs_workflow_role "${SCENARIO}"; then
+    stop_pid "${WORKFLOW_A_PID}"
+  fi
+fi
 
 if [[ "${SCENARIO}" == "all" || "${SCENARIO}" == "RM-C7" ]]; then
   start_provider api-a "${API_A}" "${ROUTE_A}" "" api-a 75 "${HTTP_API_A}"
@@ -306,42 +334,30 @@ if [[ "${SCENARIO}" == "all" || "${SCENARIO}" == "RM-C7" ]]; then
 fi
 
 if [[ "${SCENARIO}" == "all" || "${SCENARIO}" == "RM-B1" ]]; then
-  start_provider api-a "${API_A}" "${ROUTE_A}" "" api-a "" "${HTTP_API_A}"
-  API_A_PID="${LAST_PID}"
   scale_out_client_scenario="${SCENARIO}"
   if [[ "${SCENARIO}" == "all" ]]; then
     scale_out_client_scenario="scale-out"
   fi
   run_client "${scale_out_client_scenario}" rm-b1 env
   cat "${log_dir}/client-rm-b1.stdout.log"
-  stop_pid "${API_A_PID}"
 fi
 
 if [[ "${SCENARIO}" == "all" || "${SCENARIO}" == "RM-B2" ]]; then
-  start_provider api-a "${API_A}" "${ROUTE_A}" "" api-a "" "${HTTP_API_A}"
-  API_A_PID="${LAST_PID}"
-  start_provider api-b "${API_B}" "${ROUTE_B}" "" api-b "" "${HTTP_API_B}"
-  API_B_PID="${LAST_PID}"
   scale_in_client_scenario="${SCENARIO}"
   if [[ "${SCENARIO}" == "all" ]]; then
     scale_in_client_scenario="scale-in"
   fi
   run_client "${scale_in_client_scenario}" rm-b2 env
   cat "${log_dir}/client-rm-b2.stdout.log"
-  stop_pid "${API_A_PID}"
-  stop_pid "${API_B_PID}"
 fi
 
 if [[ "${SCENARIO}" == "all" || "${SCENARIO}" == "RM-A4" ]]; then
-  start_provider api-a "${API_A}" "${ROUTE_A}" "" api-a-v1 "" "${HTTP_API_A}"
-  API_A_PID="${LAST_PID}"
   failover_client_scenario="${SCENARIO}"
   if [[ "${SCENARIO}" == "all" ]]; then
     failover_client_scenario="failover"
   fi
   run_client "${failover_client_scenario}" rm-a4 env
   cat "${log_dir}/client-rm-a4.stdout.log"
-  stop_pid "${API_A_PID}"
 fi
 
 grep -Rq "message flow" "${log_dir}"/*-flow.log

@@ -4,7 +4,7 @@ set -euo pipefail
 cd "$(dirname "${BASH_SOURCE[0]}")"
 
 pids=()
-role_pattern='systems\.zlink\.e2e\.spotservice\.(client|gateway|play|publisher|registry)\.Program'
+role_pattern='systems\.zlink\.e2e\.spotservice\.(client|gateway|play|publisher)\.Program'
 run_id="$(date +%Y%m%d-%H%M%S)-$$"
 log_dir="$(pwd)/logs/${run_id}"
 repo_root="$(cd ../../../../.. && pwd)"
@@ -17,6 +17,8 @@ if [[ -z "${ZLINK_LIBRARY_PATH:-}" && -f "${default_core_lib}" ]]; then
 fi
 export ZLINK_JAVA_E2E_BUILD_DIR="${ZLINK_JAVA_E2E_BUILD_DIR:-${HOME}/.cache/zlink/java-e2e/SpotService}"
 export ZLINK_JAVA_E2E_GRADLE_CACHE="${ZLINK_JAVA_E2E_GRADLE_CACHE:-${HOME}/.cache/zlink/java-e2e/SpotService-gradle-cache}"
+export ZLINK_JAVA_E2E_REDIS_LOCATION_ENDPOINT="${ZLINK_JAVA_E2E_REDIS_LOCATION_ENDPOINT:-${ZLINK_REDIS_LOCATION_ENDPOINT:-127.0.0.1:16379}}"
+export ZLINK_JAVA_E2E_LOCATION_KEY_PREFIX="${ZLINK_JAVA_E2E_LOCATION_KEY_PREFIX:-zlink:e2e:spot-service:${run_id}}"
 LOCAL_READINESS_TIMEOUT_SECONDS=3
 LOCAL_READINESS_POLL_SECONDS=0.1
 LOCAL_READINESS_ATTEMPTS=30
@@ -67,13 +69,13 @@ import socket
 sockets = []
 ports = []
 try:
-    for _ in range(18):
+    for _ in range(16):
         sock = socket.socket()
         sock.bind(("127.0.0.1", 0))
         sockets.append(sock)
         ports.append(sock.getsockname()[1])
-    print(" ".join(f"tcp://127.0.0.1:{port}" for port in ports[:15]), end=" ")
-    print(" ".join(f"http://127.0.0.1:{port}" for port in ports[15:]))
+    print(" ".join(f"tcp://127.0.0.1:{port}" for port in ports[:13]), end=" ")
+    print(" ".join(f"http://127.0.0.1:{port}" for port in ports[13:]))
 finally:
     for sock in sockets:
         sock.close()
@@ -125,10 +127,6 @@ client_bin() {
   echo "${ZLINK_JAVA_E2E_BUILD_DIR}/Client/install/spot-service-client/bin/spot-service-client"
 }
 
-registry_bin() {
-  echo "${ZLINK_JAVA_E2E_BUILD_DIR}/Server-Registry/install/spot-service-registry/bin/spot-service-registry"
-}
-
 play_bin() {
   echo "${ZLINK_JAVA_E2E_BUILD_DIR}/Server-Play/install/spot-service-play/bin/spot-service-play"
 }
@@ -139,15 +137,6 @@ publisher_bin() {
 
 gateway_bin() {
   echo "${ZLINK_JAVA_E2E_BUILD_DIR}/Server-Gateway/install/spot-service-gateway/bin/spot-service-gateway"
-}
-
-start_registry() {
-  ZLINK_JAVA_E2E_REGISTRY_PUB="${REGISTRY_PUB}" \
-  ZLINK_JAVA_E2E_REGISTRY_ROUTER="${REGISTRY_ROUTER}" \
-  ZLINK_JAVA_E2E_LOG_DIR="${log_dir}" \
-    "$(registry_bin)" >"${log_dir}/registry.stdout.log" 2>"${log_dir}/registry.stderr.log" &
-  pids+=("$!")
-  wait_port registry-router "${REGISTRY_ROUTER}"
 }
 
 start_play() {
@@ -171,7 +160,8 @@ start_play() {
   ZLINK_JAVA_E2E_SPOT_A_ENDPOINT="${SPOT_A}" \
   ZLINK_JAVA_E2E_SPOT_B_ENDPOINT="${SPOT_B}" \
   ZLINK_JAVA_E2E_HTTP_ENDPOINT="${http}" \
-  ZLINK_JAVA_E2E_REGISTRY_ROUTER="${REGISTRY_ROUTER}" \
+  ZLINK_JAVA_E2E_REDIS_LOCATION_ENDPOINT="${ZLINK_JAVA_E2E_REDIS_LOCATION_ENDPOINT}" \
+  ZLINK_JAVA_E2E_LOCATION_KEY_PREFIX="${ZLINK_JAVA_E2E_LOCATION_KEY_PREFIX}" \
   ZLINK_JAVA_E2E_LOG_DIR="${log_dir}" \
     "$(play_bin)" >"${log_dir}/${rid}.stdout.log" 2>"${log_dir}/${rid}.stderr.log" &
   pids+=("$!")
@@ -195,7 +185,8 @@ start_gateway() {
   ZLINK_JAVA_E2E_STREAM_A_ENDPOINT="${STREAM_A}" \
   ZLINK_JAVA_E2E_STREAM_B_ENDPOINT="${STREAM_B}" \
   ZLINK_JAVA_E2E_HTTP_A_ENDPOINT="${HTTP_A}" \
-  ZLINK_JAVA_E2E_REGISTRY_ROUTER="${REGISTRY_ROUTER}" \
+  ZLINK_JAVA_E2E_REDIS_LOCATION_ENDPOINT="${ZLINK_JAVA_E2E_REDIS_LOCATION_ENDPOINT}" \
+  ZLINK_JAVA_E2E_LOCATION_KEY_PREFIX="${ZLINK_JAVA_E2E_LOCATION_KEY_PREFIX}" \
   ZLINK_JAVA_E2E_LOG_DIR="${log_dir}" \
     "$(gateway_bin)" >"${log_dir}/gateway.stdout.log" 2>"${log_dir}/gateway.stderr.log" &
   pids+=("$!")
@@ -206,7 +197,8 @@ start_gateway() {
 
 run_publisher() {
   ZLINK_JAVA_E2E_SPOT_PUBLISHER_ENDPOINT="${SPOT_PUBLISHER}" \
-  ZLINK_JAVA_E2E_REGISTRY_ROUTER="${REGISTRY_ROUTER}" \
+  ZLINK_JAVA_E2E_REDIS_LOCATION_ENDPOINT="${ZLINK_JAVA_E2E_REDIS_LOCATION_ENDPOINT}" \
+  ZLINK_JAVA_E2E_LOCATION_KEY_PREFIX="${ZLINK_JAVA_E2E_LOCATION_KEY_PREFIX}" \
   ZLINK_JAVA_E2E_LOG_DIR="${log_dir}" \
     timeout -k 5s 30s "$(publisher_bin)" >"${log_dir}/publisher.stdout.log" 2>"${log_dir}/publisher.stderr.log"
 }
@@ -264,11 +256,10 @@ with urllib.request.urlopen(request, timeout=5) as response:
 PY
 }
 
-read -r REGISTRY_PUB REGISTRY_ROUTER ROUTE_A ROUTE_B ROUTE_CLIENT SPOT_A SPOT_B SPOT_CLIENT INGRESS_A INGRESS_B SPOT_PUB_A SPOT_PUB_B SPOT_PUBLISHER STREAM_A STREAM_B HTTP_A HTTP_B HTTP_GATEWAY <<<"$(reserve_ports)"
+read -r ROUTE_A ROUTE_B ROUTE_CLIENT SPOT_A SPOT_B SPOT_CLIENT INGRESS_A INGRESS_B SPOT_PUB_A SPOT_PUB_B SPOT_PUBLISHER STREAM_A STREAM_B HTTP_A HTTP_B HTTP_GATEWAY <<<"$(reserve_ports)"
 
 gradle_run installDist
 
-start_registry
 start_play play-a "${ROUTE_A}" "${SPOT_A}" "${INGRESS_A}" "${HTTP_A}" "${SPOT_PUB_A}" "${STREAM_A}"
 start_play play-b "${ROUTE_B}" "${SPOT_B}" "${INGRESS_B}" "${HTTP_B}" "${SPOT_PUB_B}" "${STREAM_B}"
 start_gateway

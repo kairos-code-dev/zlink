@@ -1,16 +1,20 @@
 package systems.zlink.e2e.kotlin.discoveryregistryha.provider
 
+import java.time.Duration
 import org.springframework.boot.ApplicationArguments
 import org.springframework.boot.WebApplicationType
 import org.springframework.boot.autoconfigure.SpringBootApplication
 import org.springframework.boot.builder.SpringApplicationBuilder
 import org.springframework.context.annotation.Bean
+import com.fasterxml.jackson.databind.ObjectMapper
 import systems.zlink.contracts.core.RoutingId
 import systems.zlink.e2e.kotlin.discoveryregistryha.Contracts
 import systems.zlink.e2e.kotlin.discoveryregistryha.ProviderOptions
 import systems.zlink.e2e.kotlin.discoveryregistryha.provider.Handlers.WorkRequestHandler
 import systems.zlink.e2e.kotlin.discoveryregistryha.provider.Support.ProviderEvidenceStore
 import systems.zlink.framework.configuration.ZLinkMessageFlowLogMode
+import systems.zlink.framework.locations.redis.ZLinkRedisLocationOptions
+import systems.zlink.framework.locations.redis.ZLinkRedisLocationStore
 import systems.zlink.framework.spring.EnableZLinkFramework
 import systems.zlink.framework.spring.ZLinkFrameworkConfigurer
 
@@ -32,6 +36,9 @@ class ProviderApplication {
     }
 
     @Bean
+    fun objectMapper(): ObjectMapper = ObjectMapper()
+
+    @Bean
     fun providerOptions(args: ApplicationArguments): ProviderOptions =
         ProviderOptions.parse(args.sourceArgs)
 
@@ -50,9 +57,10 @@ class ProviderApplication {
                 .traceLogFile("${providerOptions.logDir()}/${state.providerRid}-flow.log")
                 .traceLabel("kotlin-dr-${state.providerRid}")
             options.addHandlersFromPackageOf(WorkRequestHandler::class.java)
-            for (registry in providerOptions.registryRouters()) {
-                options.useDiscovery().addRegistryEndpoint(registry)
-            }
+            options.configureLocations().setHeartbeatInterval(Duration.ofMillis(providerOptions.heartbeatMillis()))
+            options.configureLocations().setOwnerLeaseTtl(Duration.ofMillis(providerOptions.leaseTtlMillis()))
+            options.configureLocations().setPollingInterval(Duration.ofMillis(providerOptions.pollingMillis()))
+            options.configureLocations().setStoreFailureGrace(Duration.ofMillis(providerOptions.storeFailureGraceMillis()))
             options.addClientServerChannel(Contracts.CHANNEL)
                 .enableServer(providerOptions.apiEndpoint())
                 .setRoutingId(RoutingId.from(state.providerRid))
@@ -60,6 +68,23 @@ class ProviderApplication {
         }
 
     @Bean
+    fun locationStore(providerOptions: ProviderOptions): ZLinkRedisLocationStore =
+        ZLinkRedisLocationStore(
+            ZLinkRedisLocationOptions()
+                .setConnectionString(providerOptions.redisLocationEndpoint())
+                .setKeyPrefix(providerOptions.locationKeyPrefix())
+                .setCommandTimeout(Duration.ofMillis(providerOptions.redisCommandTimeoutMillis()))
+        )
+
+    @Bean
     fun workRequestHandler(state: ProviderEvidenceStore): WorkRequestHandler =
         WorkRequestHandler(state)
+
+    @Bean
+    fun providerHttpServer(
+        providerOptions: ProviderOptions,
+        state: ProviderEvidenceStore,
+        json: ObjectMapper,
+    ): ProviderHttpServer =
+        ProviderHttpServer(providerOptions, state, json)
 }

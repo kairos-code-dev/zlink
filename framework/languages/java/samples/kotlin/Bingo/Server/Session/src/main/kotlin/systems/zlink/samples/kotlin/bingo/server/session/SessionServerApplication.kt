@@ -10,8 +10,10 @@ import systems.zlink.framework.codecs.protobuf.ZLinkProtobufCodec
 import systems.zlink.framework.configuration.ZLinkMessageFlowLogMode
 import systems.zlink.framework.kotlin.configureDispatch
 import systems.zlink.framework.kotlin.useCoroutineHandlers
+import systems.zlink.framework.locations.redis.ZLinkRedisLocationStore
 import systems.zlink.framework.spring.EnableZLinkFramework
 import systems.zlink.framework.spring.ZLinkFrameworkConfigurer
+import systems.zlink.samples.kotlin.bingo.server.configuration.SampleLocationStore
 import systems.zlink.samples.kotlin.bingo.server.session.sessions.BingoSession
 import systems.zlink.samples.kotlin.bingo.server.session.sessions.handlers.AuthenticateSessionHandler
 import systems.zlink.samples.kotlin.bingo.server.configuration.SampleNames
@@ -29,7 +31,6 @@ class SessionServerApplication {
     fun sessionFramework(): ZLinkFrameworkConfigurer =
         ZLinkFrameworkConfigurer { options ->
             options.addHandlersFromPackageOf(SessionServerApplication::class.java)
-            options.useDiscovery().addRegistryEndpoint(SampleTopology.RegistryRouterEndpoint)
             options.useCoroutineHandlers(Dispatchers.Default)
             options.configureDispatch {
                 messageFlow(ZLinkMessageFlowLogMode.KEY_TRANSITIONS)
@@ -37,6 +38,8 @@ class SessionServerApplication {
                 traceLabel("session")
             }
             options.codecs().use(ZLinkProtobufCodec.defaultCodec())
+            options.configureLocations()
+                .setSpotRouterChannel(SampleNames.RoomSpotDiscovery, SampleNames.PlayChannel)
             options.addClientServerChannel(SampleNames.ApiChannel)
                 .enableClient()
             val route = options.addRouteMesh(SampleNames.PlayChannel)
@@ -52,6 +55,9 @@ class SessionServerApplication {
                 .registerSession(BingoSession::class.java)
                 .addSessionPacketHandler(AuthenticateSessionHandler::class.java)
         }
+
+    @Bean
+    fun locationStore(): ZLinkRedisLocationStore = SampleLocationStore.create()
 
     companion object {
         fun run(args: Array<String> = emptyArray()): AutoCloseable {

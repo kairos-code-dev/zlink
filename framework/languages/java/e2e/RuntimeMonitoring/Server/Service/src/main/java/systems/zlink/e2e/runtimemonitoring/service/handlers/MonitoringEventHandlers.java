@@ -1,7 +1,7 @@
 package systems.zlink.e2e.runtimemonitoring.service.handlers;
 
 import systems.zlink.e2e.runtimemonitoring.service.support.EvidenceState;
-import systems.zlink.framework.monitoring.ZLinkRegistryEvent;
+import systems.zlink.framework.monitoring.ZLinkLocationRuntimeEvent;
 import systems.zlink.framework.monitoring.ZLinkRuntimeEventHandler;
 import systems.zlink.framework.monitoring.ZLinkSocketEvent;
 import systems.zlink.framework.monitoring.ZLinkSpotEvent;
@@ -47,22 +47,22 @@ public final class MonitoringEventHandlers {
         }
     }
 
-    public static final class RegistryRecorder
-        implements ZLinkRuntimeEventHandler<ZLinkRegistryEvent> {
+    public static final class LocationRuntimeRecorder
+        implements ZLinkRuntimeEventHandler<ZLinkLocationRuntimeEvent> {
         private final EvidenceState state;
 
-        public RegistryRecorder(EvidenceState state) {
+        public LocationRuntimeRecorder(EvidenceState state) {
             this.state = state;
         }
 
         @Override
-        public void handle(ZLinkRegistryEvent event) {
+        public void handle(ZLinkLocationRuntimeEvent event) {
             state.record(
-                "registry",
+                "location",
                 event.sourceName(),
                 event.event().name(),
-                "topology=" + event.topology().size()
-                    + "|summary=" + event.serviceSummary().size());
+                "topology=" + (event.topology() == null ? 0 : event.topology().size())
+                    + "|summary=" + (event.serviceSummary() == null ? 0 : event.serviceSummary().size()));
         }
     }
 

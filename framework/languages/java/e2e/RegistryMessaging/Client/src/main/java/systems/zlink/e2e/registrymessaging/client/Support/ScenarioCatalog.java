@@ -25,9 +25,16 @@ public final class ScenarioCatalog {
     public void run() {
         switch (ClientOptions.get("ZLINK_JAVA_E2E_SCENARIO", "common")) {
             case "common" -> runCommon();
-            case "RM-A1" -> RmA1DiscoveryRequestScenario.run(http.providerA(), http.providerB(), http.registry());
+            case "RM-A1" -> RmA1DiscoveryRequestScenario.run(
+                http.providerA(),
+                http.providerB(),
+                http.discoveryConsumer());
             case "RM-A2" -> RmA2ManualEndpointScenario.run(http.providerA());
-            case "RM-A6" -> RmA6MultipleChannelsScenario.run(http.providerA(), http.providerB(), http.workflow());
+            case "RM-A6" -> RmA6MultipleChannelsScenario.run(
+                http.discoveryConsumer(),
+                http.providerA(),
+                http.providerB(),
+                http.workflow());
             case "scale-out" -> RmB1ScaleOutScenario.run();
             case "scale-in" -> RmB2ScaleInScenario.run();
             case "failover" -> RmA4SameRidFailoverScenario.run();
@@ -41,23 +48,36 @@ public final class ScenarioCatalog {
             case "RM-C5" -> RmC5MissingPacketScenario.run(http.discoveryConsumer(), http.providerA(), http.providerB());
             case "weighted" -> RmC7WeightedProviderScenario.run(http.directConsumer());
             case "RM-C7" -> RmC7WeightedProviderScenario.run(http.directConsumer());
-            case "RM-C8" -> RmC8PayloadRoundTripScenario.run(http.singleConsumer(), http.providerA());
-            case "RM-C9" -> RmC9BackpressureScenario.run(http.backpressureConsumer(), http.providerA());
+            case "RM-C8" -> RmC8PayloadRoundTripScenario.run(
+                http.singleConsumer(),
+                http.providerA(),
+                http.providerB());
+            case "RM-C9" -> RmC9BackpressureScenario.run(
+                http.backpressureConsumer(),
+                http.providerA(),
+                http.providerB());
             default -> throw new IllegalArgumentException(
                 "unknown scenario " + ClientOptions.get("ZLINK_JAVA_E2E_SCENARIO"));
         }
     }
 
     private void runCommon() {
-        RmA1DiscoveryRequestScenario.run(http.providerA(), http.providerB(), http.registry());
+        RmA1DiscoveryRequestScenario.run(http.providerA(), http.providerB(), http.discoveryConsumer());
         RmC1RequestSendScenario.run(http.providerA(), http.providerB());
         RmC4TimeoutIsolationScenario.run(http.discoveryConsumer());
         RmC5MissingPacketScenario.run(http.discoveryConsumer(), http.providerA(), http.providerB());
         RmA2ManualEndpointScenario.run(http.providerA());
         RmC3MultiProviderDistributionScenario.run(http.directConsumer(), "RM-C3", "multi-", 80, false);
-        RmA6MultipleChannelsScenario.run(http.providerA(), http.providerB(), http.workflow());
-        RmC8PayloadRoundTripScenario.run(http.singleConsumer(), http.providerA());
-        RmC9BackpressureScenario.run(http.backpressureConsumer(), http.providerA());
+        RmA6MultipleChannelsScenario.run(
+            http.discoveryConsumer(),
+            http.providerA(),
+            http.providerB(),
+            http.workflow());
+        RmC8PayloadRoundTripScenario.run(http.singleConsumer(), http.providerA(), http.providerB());
+        RmC9BackpressureScenario.run(
+            http.backpressureConsumer(),
+            http.providerA(),
+            http.providerB());
         RmC2TargetedRouteScenario.run(http.providerA());
     }
 }

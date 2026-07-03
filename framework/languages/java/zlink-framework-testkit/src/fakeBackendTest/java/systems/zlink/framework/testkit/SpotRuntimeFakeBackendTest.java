@@ -49,7 +49,6 @@ import systems.zlink.framework.runtime.actors.ZLinkActorRuntime;
 import systems.zlink.framework.runtime.handlers.ZLinkHandlerFactory;
 import systems.zlink.framework.runtime.host.ZLinkFrameworkRuntime;
 import systems.zlink.framework.runtime.messaging.ZLinkJsonMessageSerializer;
-import systems.zlink.framework.runtime.registry.ZLinkRegistrySpotRemoteAddressResolver;
 import systems.zlink.framework.spots.ZLinkEntrySpotActorRequestHandler;
 import systems.zlink.framework.spots.ZLinkEntrySpot;
 import systems.zlink.framework.spots.ZLinkEntrySpotContext;
@@ -117,7 +116,6 @@ final class SpotRuntimeFakeBackendTest {
                 "create.context",
                 "factory.channel",
                 "factory.spot",
-                "create.context",
                 "create.spotNode",
                 "spotNode.setRouterBind.inproc://spot-router",
                 "spotNode.setPubBind.inproc://spot-pub",
@@ -126,7 +124,6 @@ final class SpotRuntimeFakeBackendTest {
                 "spot.1.setRoutingId",
                 "spot.1.onDispatchEvent",
                 "close.spot.1",
-                "close.context",
                 "close.spotNode",
                 "close.context"),
             backendFactory.calls().stream()
@@ -360,9 +357,9 @@ final class SpotRuntimeFakeBackendTest {
                 .toCompletableFuture()
                 .join();
 
-            backendFactory.dispatchSpotRoute("String", "hello");
-            backendFactory.dispatchSpotRequest("SpotQuery", "ping", 7);
-            backendFactory.dispatchSpotSubscription("stage.events", "String", "opened");
+            backendFactory.dispatchSpotRoute("String", "\"hello\"");
+            backendFactory.dispatchSpotRequest("SpotQuery", "\"ping\"", 7);
+            backendFactory.dispatchSpotSubscription("stage.events", "String", "\"opened\"");
             awaitCondition(() -> HandlerSpot.dispatches.size() == 3);
         }
 
@@ -372,7 +369,7 @@ final class SpotRuntimeFakeBackendTest {
                 "request:ping",
                 "subscription:opened"),
             HandlerSpot.dispatches);
-        assertEquals(List.of("reply:ping"), backendFactory.spotReplies());
+        assertEquals(List.of("\"reply:ping\""), backendFactory.spotReplies());
         assertTrue(backendFactory.calls().contains("spot.1.setSubscription.stage.events"));
     }
 
@@ -390,9 +387,9 @@ final class SpotRuntimeFakeBackendTest {
                 .toCompletableFuture()
                 .join();
 
-            backendFactory.dispatchSpotRoute("String", "first");
+            backendFactory.dispatchSpotRoute("String", "\"first\"");
             SerialSpotHandler.firstStarted.get(1, TimeUnit.SECONDS);
-            backendFactory.dispatchSpotRoute("String", "second");
+            backendFactory.dispatchSpotRoute("String", "\"second\"");
 
             assertFalse(
                 SerialSpotHandler.secondStarted.isDone(),
@@ -490,7 +487,6 @@ final class SpotRuntimeFakeBackendTest {
                 "create.context",
                 "factory.channel",
                 "factory.spot",
-                "create.context",
                 "create.spotNode",
                 "spotNode.createSpot",
                 "create.spot.1",
@@ -498,7 +494,6 @@ final class SpotRuntimeFakeBackendTest {
                 "spot.1.onDispatchEvent",
                 "spot.1.sendToSpot.spot-node.target-spot.Greeting",
                 "spot.1.requestToSpot.spot-node.target-spot.Ping",
-                "close.context",
                 "close.spot.1",
                 "close.spotNode",
                 "close.context"),
@@ -539,7 +534,6 @@ final class SpotRuntimeFakeBackendTest {
                 "create.context",
                 "factory.channel",
                 "factory.spot",
-                "create.context",
                 "create.spotNode",
                 "spotNode.createSpot",
                 "create.spot.1",
@@ -547,7 +541,6 @@ final class SpotRuntimeFakeBackendTest {
                 "spot.1.onDispatchEvent",
                 "spot.1.sendToSpot.spot-node.target-spot.SpotGreeting",
                 "spot.1.requestToSpot.spot-node.target-spot.SpotQuestion",
-                "close.context",
                 "close.spot.1",
                 "close.spotNode",
                 "close.context"),
@@ -561,9 +554,9 @@ final class SpotRuntimeFakeBackendTest {
         FakeZLinkBackendAdapterFactory backendFactory =
             new FakeZLinkBackendAdapterFactory();
         backendFactory.nextSpotRequestReplyParts(List.of(
-            Message.from("SpotRouteReply".getBytes(java.nio.charset.StandardCharsets.UTF_8)),
-            Message.from("SpotAnswer".getBytes(java.nio.charset.StandardCharsets.UTF_8)),
-            Message.from("reply".getBytes(java.nio.charset.StandardCharsets.UTF_8))));
+            Message.from("SpotRouteReply".getBytes(StandardCharsets.UTF_8)),
+            Message.from("SpotAnswer".getBytes(StandardCharsets.UTF_8)),
+            jsonStringMessage("reply")));
 
         try (ZLinkFrameworkRuntime runtime =
                  RuntimeTestSupport.startFramework(options, backendFactory)) {
@@ -609,38 +602,6 @@ final class SpotRuntimeFakeBackendTest {
             assertInstanceOf(ZLinkFrameworkException.class, error.getCause());
             assertTrue(error.getCause().getMessage().contains("missing target spot"));
         }
-    }
-
-    @Test
-    void registrySpotRemoteAddressResolverReturnsRouteModelFromSpotDiscovery() {
-        DefaultZLinkFrameworkOptions options = new DefaultZLinkFrameworkOptions();
-        { var discovery = options.useDiscovery(); discovery.addRegistryEndpoint("inproc://registry"); };
-        { var route = options.addRouteMesh("play"); route.enableServer("inproc://play"); };
-        options.useRegistrySpotRemoteAddresses("game").setRouterChannelId("play");
-        { var mesh = options.addSpotMesh("game"); { var node = mesh; node.enableRouter("inproc://play-router");
-                node.addSpotFactory(GameSpot.class); }; };
-        FakeZLinkBackendAdapterFactory backendFactory =
-            new FakeZLinkBackendAdapterFactory();
-
-        try (ZLinkFrameworkRuntime runtime =
-                 RuntimeTestSupport.startFramework(options, backendFactory)) {
-            ZLinkRegistrySpotRemoteAddressResolver resolver =
-                new ZLinkRegistrySpotRemoteAddressResolver(
-                    runtime,
-                    options.registration());
-
-            var route = resolver.resolveSpotRemoteAddressAsync(RoutingId.from("room-1"))
-                .toCompletableFuture()
-                .join();
-
-            assertEquals("play", route.routerChannelId());
-            assertEquals(RoutingId.from("node"), route.targetNodeRid());
-            assertEquals(RoutingId.from("room-1"), route.spotRid());
-            assertEquals(ZLinkSpotKind.USER, route.spotKind());
-        }
-
-        assertTrue(backendFactory.calls().stream()
-            .anyMatch(call -> call.startsWith("spotNode.attachDiscovery.")));
     }
 
     @Test
@@ -704,8 +665,10 @@ final class SpotRuntimeFakeBackendTest {
                     .join());
         }
 
-        assertTrue(backendFactory.calls().contains(
-            "spotRouteBridge.bridge.request.egress.ingress-route.target-spot.Ping"));
+        assertTrue(
+            backendFactory.calls().contains(
+                "spotRouteBridge.bridge.request.egress.ingress-route.target-spot.Ping"),
+            backendFactory.calls().toString());
     }
 
     @Test
@@ -724,77 +687,16 @@ final class SpotRuntimeFakeBackendTest {
                 .toCompletableFuture()
                 .join();
 
-            assertThrows(
-                ZLinkConfigurationException.class,
+            CompletionException error = assertThrows(
+                CompletionException.class,
                 () -> OutboundSpot.context.outbound()
                     .sendToSpot(RoutingId.from("target-spot"), message("hello", "Ping"))
                     .packetName("Ping")
                     .submit()
                     .toCompletableFuture()
                     .join());
+            assertInstanceOf(ZLinkConfigurationException.class, error.getCause());
         }
-    }
-
-    @Test
-    void routeMeshSpotEgressUsesRegistryQueryRoutingId() {
-        DefaultZLinkFrameworkOptions options = new DefaultZLinkFrameworkOptions();
-        { var discovery = options.useDiscovery(); discovery.addRegistryEndpoint("tcp://127.0.0.1:17001"); };
-        options.useRegistrySpotRemoteAddresses("game").setRouterChannelId("egress");
-        { var route = options.addRouteMesh("egress"); route.enableServer("inproc://egress-route");};
-        { var route = options.addRouteMesh("ingress"); route.enableServer("inproc://ingress-route"); };
-        { var mesh = options.addSpotMesh("game"); { var node = mesh; node.enableRouter("inproc://play-router");node.addSpotFactory(OutboundSpot.class); }; };
-        FakeZLinkBackendAdapterFactory backendFactory =
-            new FakeZLinkBackendAdapterFactory();
-
-        try (ZLinkFrameworkRuntime runtime =
-                 RuntimeTestSupport.startFramework(options, backendFactory)) {
-            runtime.spotManager()
-                .create(OutboundSpot.class, RoutingId.from("game-2"))
-                .toCompletableFuture()
-                .join();
-
-            OutboundSpot.context.outbound()
-                .sendToSpot(RoutingId.from("target-spot"), message("hello", "Ping"))
-                .packetName("Ping")
-                .submit()
-                .toCompletableFuture()
-                .join();
-        }
-
-        assertTrue(backendFactory.calls().contains(
-            "discovery.game.connectRegistry.tcp://127.0.0.1:17001"));
-        assertTrue(backendFactory.calls().contains(
-            "spotRouteBridge.bridge.send.egress.node.target-spot.Ping"));
-    }
-
-    @Test
-    void routeMeshSpotEgressUsesDiscoveryMemberPeerRoutingIdBeforeRegistryQuery() {
-        DefaultZLinkFrameworkOptions options = new DefaultZLinkFrameworkOptions();
-        { var discovery = options.useDiscovery(); discovery.addRegistryEndpoint("tcp://127.0.0.1:17001"); };
-        options.useRegistrySpotRemoteAddresses("game").setRouterChannelId("egress-discovery");
-        { var route = options.addRouteMesh("egress-discovery"); route.enableServer("inproc://egress-discovery");};
-        { var route = options.addRouteMesh("ingress-discovery"); route.enableServer("inproc://ingress-discovery"); };
-        { var mesh = options.addSpotMesh("game"); { var node = mesh; node.enableRouter("inproc://play-router");node.addSpotFactory(OutboundSpot.class); }; };
-        FakeZLinkBackendAdapterFactory backendFactory =
-            new FakeZLinkBackendAdapterFactory();
-
-        try (ZLinkFrameworkRuntime runtime =
-                 RuntimeTestSupport.startFramework(options, backendFactory)) {
-            runtime.spotManager()
-                .create(OutboundSpot.class, RoutingId.from("game-2"))
-                .toCompletableFuture()
-                .join();
-
-            OutboundSpot.context.outbound()
-                .sendToSpot(RoutingId.from("target-spot"), message("hello", "Ping"))
-                .packetName("Ping")
-                .submit()
-                .toCompletableFuture()
-                .join();
-        }
-
-        assertTrue(backendFactory.calls().contains(
-            "spotRouteBridge.bridge.send.egress-discovery.node.target-spot.Ping"));
     }
 
     @Test
@@ -811,14 +713,15 @@ final class SpotRuntimeFakeBackendTest {
                 .toCompletableFuture()
                 .join();
 
-            assertThrows(
-                ZLinkConfigurationException.class,
+            CompletionException error = assertThrows(
+                CompletionException.class,
                 () -> OutboundSpot.context.outbound()
                     .sendToSpot(RoutingId.from("target-spot"), message("hello", "Ping"))
                     .packetName("Ping")
                     .submit()
                     .toCompletableFuture()
                     .join());
+            assertInstanceOf(ZLinkConfigurationException.class, error.getCause());
         }
     }
 
@@ -867,13 +770,11 @@ final class SpotRuntimeFakeBackendTest {
                 "create.context",
                 "factory.channel",
                 "factory.spot",
-                "create.context",
                 "create.spotNode",
                 "spotNode.setPubBind.inproc://spot-pub",
                 "spotNode.createSpot",
                 "create.spot.1",
                 "spot.1.publish.stage.events.StageOpened",
-                "close.context",
                 "close.spot.1",
                 "close.spotNode",
                 "close.context"),
@@ -901,7 +802,6 @@ final class SpotRuntimeFakeBackendTest {
                 "create.context",
                 "factory.channel",
                 "factory.spot",
-                "create.context",
                 "create.spotNode",
                 "spotNode.setRoutingId",
                 "spotNode.setPublisherRoutingId",
@@ -910,7 +810,6 @@ final class SpotRuntimeFakeBackendTest {
                 "spotNode.setPubBind.inproc://spot-pub",
                 "spotNode.connectPeer.inproc://spot-router-peer",
                 "spotNode.connectPeer.inproc://spot-pub-peer",
-                "close.context",
                 "close.spotNode",
                 "close.context"),
             backendFactory.calls());
@@ -939,101 +838,16 @@ final class SpotRuntimeFakeBackendTest {
                 "router.bind.inproc://api-route",
                 "factory.channel",
                 "factory.spot",
-                "create.context",
                 "create.spotNode",
                 "spotNode.setRouterBind.inproc://spot-router",
                 "spotNode.createRouteBridge",
                 "create.spotRouteBridge",
                 "spotRouteBridge.bridge.attachRouterChannel.api",
-                "close.router",
                 "spotRouteBridge.bridge.close",
-                "close.context",
+                "close.router",
                 "close.spotNode",
                 "close.context"),
             backendFactory.calls());
-    }
-
-    @Test
-    void acceptedSpotRouteChannelDiscoveryAttachesRouteDiscovery() {
-        DefaultZLinkFrameworkOptions options = new DefaultZLinkFrameworkOptions();
-        { var discovery = options.useDiscovery(); discovery.addRegistryEndpoint("tcp://127.0.0.1:17001"); };
-        { var channel = options.addRouteMesh("api").enableServer("inproc://api-route");  };
-        { var mesh = options.addSpotMesh("game"); { var node = mesh; node.enableRouter("inproc://spot-router");}; };
-        FakeZLinkBackendAdapterFactory backendFactory =
-            new FakeZLinkBackendAdapterFactory();
-
-        try (ZLinkFrameworkRuntime ignored =
-                 RuntimeTestSupport.startFramework(options, backendFactory)) {
-        }
-
-        assertEquals(
-            List.of(
-                "factory.channel",
-                "create.context",
-                "create.discovery.api",
-                "discovery.api.connectRegistry.tcp://127.0.0.1:17001",
-                "create.router",
-                "router.setChannelName.api",
-                "router.attachDiscovery.discovery.api",
-                "router.bind.inproc://api-route",
-                "factory.channel",
-                "factory.spot",
-                "create.context",
-                "create.spotNode",
-                "spotNode.setRouterBind.inproc://spot-router",
-                "create.discovery.game",
-                "discovery.game.connectRegistry.tcp://127.0.0.1:17001",
-                "spotNode.attachDiscovery.discovery.game",
-                "spotNode.createRouteBridge",
-                "create.spotRouteBridge",
-                "spotRouteBridge.bridge.attachRouterChannel.api",
-                "spotRouteBridge.bridge.drain",
-                "close.discovery.api",
-                "spotRouteBridge.bridge.close",
-                "close.context",
-                "close.discovery.game",
-                "close.spotNode",
-                "close.context"),
-            backendFactory.calls().stream()
-                .filter(call -> !call.startsWith("discovery.game.bindRoute."))
-                .toList());
-    }
-
-    @Test
-    void discoveredSpotMeshRouterPeerRegistersOnlyRouterChannelPeer() {
-        DefaultZLinkFrameworkOptions options = new DefaultZLinkFrameworkOptions();
-        { var discovery = options.useDiscovery(); discovery.addRegistryEndpoint("tcp://127.0.0.1:17001"); };
-        { var mesh = options.addSpotMesh("rooms"); { var node = mesh; node.enableRouter("inproc://rooms-router"); }; };
-        FakeZLinkBackendAdapterFactory backendFactory =
-            new FakeZLinkBackendAdapterFactory();
-
-        try (ZLinkFrameworkRuntime ignored =
-                 RuntimeTestSupport.startFramework(options, backendFactory)) {
-            awaitCondition(() -> backendFactory.calls().contains(
-                "spotNode.connectPeer.rooms-node-2.inproc://rooms-router-peer"));
-        }
-
-        int peerIndex = backendFactory.calls().indexOf(
-            "spotNode.connectPeer.rooms-node-2.inproc://rooms-router-peer");
-        assertTrue(peerIndex >= 0);
-    }
-
-    @Test
-    void discoveredSpotMeshRouterPeerAddsRidAssociationForExistingEndpoint() {
-        DefaultZLinkFrameworkOptions options = new DefaultZLinkFrameworkOptions();
-        { var discovery = options.useDiscovery(); discovery.addRegistryEndpoint("tcp://127.0.0.1:17001"); };
-        { var mesh = options.addSpotMesh("rooms"); { var node = mesh; node.enableRouter("inproc://rooms-router"); }; };
-        FakeZLinkBackendAdapterFactory backendFactory =
-            new FakeZLinkBackendAdapterFactory();
-        backendFactory.delayRoomsDiscoveryRoutingIdUntilSecondSnapshot();
-
-        try (ZLinkFrameworkRuntime ignored =
-                 RuntimeTestSupport.startFramework(options, backendFactory)) {
-            awaitCondition(() -> backendFactory.calls().contains(
-                "spotNode.connectPeer.inproc://rooms-router-peer"));
-            awaitCondition(() -> backendFactory.calls().contains(
-                "spotNode.connectPeer.rooms-node-2.inproc://rooms-router-peer"));
-        }
     }
 
     @Test
@@ -1054,13 +868,11 @@ final class SpotRuntimeFakeBackendTest {
                 "create.context",
                 "factory.channel",
                 "factory.spot",
-                "create.context",
                 "create.spotNode",
                 "spotNode.entrySpot",
                 "create.entrySpot",
                 "entrySpot.setRoutingId",
                 "spotNode.setRouterBind.inproc://spot-router",
-                "close.context",
                 "close.spotNode",
                 "close.context"),
             backendFactory.calls());
@@ -1093,14 +905,12 @@ final class SpotRuntimeFakeBackendTest {
                 "create.context",
                 "factory.channel",
                 "factory.spot",
-                "create.context",
                 "create.spotNode",
                 "spotNode.entrySpot",
                 "create.entrySpot",
                 "entrySpot.setRoutingId",
                 "entrySpot.onDispatchEvent",
                 "spotNode.setRouterBind.inproc://spot-router",
-                "close.context",
                 "close.entrySpot",
                 "close.spotNode",
                 "close.context"),
@@ -1151,8 +961,8 @@ final class SpotRuntimeFakeBackendTest {
         assertTrue(backendFactory.calls().contains("entrySpot.recvActorJoin.DONT_WAIT"));
         assertTrue(backendFactory.calls().contains("entrySpot.replyActorJoin.player-1.0"));
         assertTrue(backendFactory.calls().contains(
-            "entrySpot.replyActorJoinPayload.player-1.0.entry:String"));
-        assertEquals("player-1:String", LifecycleEntrySpot.lastActorJoin.get());
+            "entrySpot.replyActorJoinPayload.player-1.0.\"entry:join-request\""));
+        assertEquals("player-1:join-request", LifecycleEntrySpot.lastActorJoin.get());
         assertEquals("player-1:true", LifecycleEntrySpot.lastJoin.get());
     }
 
@@ -1181,8 +991,8 @@ final class SpotRuntimeFakeBackendTest {
 
         assertTrue(backendFactory.calls().contains("entrySpot.replyActorJoin.player-1.1"));
         assertTrue(backendFactory.calls().contains(
-            "entrySpot.replyActorJoinPayload.player-1.1.entry-rejected:String"));
-        assertEquals("player-1:String", LifecycleEntrySpot.lastActorJoin.get());
+            "entrySpot.replyActorJoinPayload.player-1.1.\"entry-rejected:join-request\""));
+        assertEquals("player-1:join-request", LifecycleEntrySpot.lastActorJoin.get());
         assertNull(LifecycleEntrySpot.lastJoin.get());
     }
 
@@ -1438,6 +1248,7 @@ final class SpotRuntimeFakeBackendTest {
                 "String",
                 "join-request");
             backendFactory.dispatchEntrySpotActorLifecycleLeft("player-1");
+            awaitCondition(() -> "player-1:false".equals(LifecycleEntrySpot.lastLeave.get()));
         }
 
         assertTrue(backendFactory.calls().contains("entrySpot.recvActorLifecycle.DONT_WAIT"));
@@ -1465,6 +1276,7 @@ final class SpotRuntimeFakeBackendTest {
 
             backendFactory.dispatchEntrySpotActorLifecycleJoined("player-1", spotRid);
 
+            awaitCondition(() -> Optional.of(spotRid).equals(actor.context().spotRid()));
             assertEquals(Optional.of(spotRid), actor.context().spotRid());
             assertSame(OutboundSpot.instance, actor.context().getSpot(OutboundSpot.class));
         }
@@ -1587,6 +1399,10 @@ final class SpotRuntimeFakeBackendTest {
         return Message.from(payload.bytes());
     }
 
+    private static Message jsonStringMessage(String value) {
+        return Message.from(("\"" + value + "\"").getBytes(StandardCharsets.UTF_8));
+    }
+
     private static void awaitCall(
         FakeZLinkBackendAdapterFactory backendFactory,
         String prefix) {
@@ -1597,6 +1413,7 @@ final class SpotRuntimeFakeBackendTest {
             }
             Thread.onSpinWait();
         }
+        throw new AssertionError("missing call prefix " + prefix + " in " + backendFactory.calls());
     }
 
     private static void awaitCondition(java.util.function.BooleanSupplier condition) {
@@ -1607,6 +1424,7 @@ final class SpotRuntimeFakeBackendTest {
             }
             Thread.onSpinWait();
         }
+        throw new AssertionError("condition was not satisfied");
     }
 
     private static void awaitLatch(CountDownLatch latch) {

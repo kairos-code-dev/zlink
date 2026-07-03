@@ -11,6 +11,8 @@ import systems.zlink.e2e.kotlin.resiliencelifecycle.handlers.WorkCommandHandler
 import systems.zlink.e2e.kotlin.resiliencelifecycle.handlers.WorkRequestHandler
 import systems.zlink.framework.channels.ZLinkChannelRuntimeOptions
 import systems.zlink.framework.configuration.ZLinkMessageFlowLogMode
+import systems.zlink.framework.locations.redis.ZLinkRedisLocationOptions
+import systems.zlink.framework.locations.redis.ZLinkRedisLocationStore
 import systems.zlink.framework.spring.EnableZLinkFramework
 import systems.zlink.framework.spring.ZLinkFrameworkConfigurer
 
@@ -52,12 +54,19 @@ open class ProviderApplication {
                 .traceLabel("kotlin-rl-${state.providerRid()}")
                 .setMessageFlowObserver(EvidenceDispatchErrorObserver(state))
             options.addHandlersFromPackageOf(WorkRequestHandler::class.java)
-            options.useDiscovery().addRegistryEndpoint(Env.get("ZLINK_KOTLIN_E2E_REGISTRY_ROUTER"))
             options.addClientServerChannel(Contracts.CHANNEL)
                 .enableServer(Env.get("ZLINK_KOTLIN_E2E_API_ENDPOINT"))
                 .setRoutingId(RoutingId.from(state.providerRid()))
                 .addHandlerGroup(Contracts.HANDLER_GROUP)
         }
+
+    @Bean
+    open fun locationStore(): ZLinkRedisLocationStore =
+        ZLinkRedisLocationStore(
+            ZLinkRedisLocationOptions()
+                .setConnectionString(Env.get("ZLINK_KOTLIN_E2E_REDIS_LOCATION_ENDPOINT"))
+                .setKeyPrefix(Env.get("ZLINK_KOTLIN_E2E_LOCATION_KEY_PREFIX")),
+        )
 
     @Bean
     open fun workRequestHandler(state: ScenarioState): WorkRequestHandler =

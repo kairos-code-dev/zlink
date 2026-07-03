@@ -2,10 +2,12 @@ package systems.zlink.e2e.kotlin.registrymessaging.provider.Configuration
 
 data class ServerOptions(
     val rid: String,
+    val instanceId: String,
     val httpUrl: String,
     val logDir: String,
     val evidenceFile: String?,
-    val registryRouterEndpoint: String,
+    val redisLocationEndpoint: String,
+    val locationKeyPrefix: String,
     val channelEndpoint: String?,
     val manualClientEndpoint: String?,
     val routeEndpoint: String?,
@@ -30,10 +32,12 @@ data class ServerOptions(
             System.setProperty("zlink.e2e.rid", rid)
             return ServerOptions(
                 rid = rid,
+                instanceId = values.last("instance-id", rid),
                 httpUrl = values.last("http-url", "http://127.0.0.1:0"),
                 logDir = values.last("log-dir", System.getProperty("java.io.tmpdir") + "/zlink-kotlin-e2e-log"),
                 evidenceFile = values.lastOrNull("evidence-file"),
-                registryRouterEndpoint = values.lastRequired("registry-router-endpoint"),
+                redisLocationEndpoint = values.lastRequired("redis-location-endpoint"),
+                locationKeyPrefix = values.lastRequired("location-key-prefix"),
                 channelEndpoint = values.lastOrNull("channel-endpoint"),
                 manualClientEndpoint = values.lastOrNull("manual-client-endpoint"),
                 routeEndpoint = values.lastOrNull("route-endpoint"),

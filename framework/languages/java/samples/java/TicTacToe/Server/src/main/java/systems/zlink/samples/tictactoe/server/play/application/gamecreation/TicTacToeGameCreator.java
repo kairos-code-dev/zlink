@@ -9,13 +9,9 @@ import systems.zlink.samples.tictactoe.shared.contracts.PlayNodeInfo;
 public final class TicTacToeGameCreator {
     private final AtomicInteger sequence = new AtomicInteger();
     private final SampleSettings settings;
-    private final GameRoomRouteWriter routes;
 
-    public TicTacToeGameCreator(
-        SampleSettings settings,
-        GameRoomRouteWriter routes) {
+    public TicTacToeGameCreator(SampleSettings settings) {
         this.settings = settings;
-        this.routes = routes;
     }
 
     public GameRoom nextRoom(String gameName) {
@@ -24,11 +20,6 @@ public final class TicTacToeGameCreator {
     }
 
     public CreateGameRes created(GameRoom room) {
-        routes.save(new GameRoomRoute(
-            room.roomId(),
-            settings.playEndpoint(),
-            settings.spotEndpoint(),
-            settings.playSpotNodeRid()));
         return new CreateGameRes(
             room.roomId(),
             room.gameName(),
@@ -45,14 +36,4 @@ public final class TicTacToeGameCreator {
     public record GameRoom(String roomId, String gameName) {
     }
 
-    public record GameRoomRoute(
-        String roomId,
-        String ownerPlayEndpoint,
-        String ownerSpotEndpoint,
-        String ownerSpotNodeRid) {
-    }
-
-    public interface GameRoomRouteWriter {
-        void save(GameRoomRoute route);
-    }
 }

@@ -6,8 +6,6 @@ import systems.zlink.contracts.messaging.Message;
 import systems.zlink.contracts.sockets.SendFlags;
 
 public interface ZLinkBackendDealerSocket extends ZLinkBackendConnectableSocket {
-    void attachDiscovery(ZLinkBackendDiscovery discovery);
-
     void setChannelName(String channelName);
 
     boolean send(List<Message> parts, SendFlags flags);

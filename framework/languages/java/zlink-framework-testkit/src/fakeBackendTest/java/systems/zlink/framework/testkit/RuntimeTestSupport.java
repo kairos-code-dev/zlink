@@ -4,13 +4,10 @@ import java.lang.reflect.Constructor;
 import java.lang.reflect.InvocationTargetException;
 import java.lang.reflect.Method;
 import systems.zlink.framework.ZLinkMessageSerializer;
-import systems.zlink.framework.registry.ZLinkEmbeddedRegistryOptions;
 import systems.zlink.framework.runtime.backend.ZLinkBackendAdapterFactory;
-import systems.zlink.framework.runtime.backend.ZLinkBackendAdapterOptions;
 import systems.zlink.framework.runtime.configuration.DefaultZLinkFrameworkOptions;
 import systems.zlink.framework.runtime.handlers.ZLinkHandlerFactory;
 import systems.zlink.framework.runtime.host.ZLinkFrameworkRuntime;
-import systems.zlink.framework.runtime.registry.ZLinkRegistryRuntime;
 
 final class RuntimeTestSupport {
     private RuntimeTestSupport() {
@@ -43,21 +40,6 @@ final class RuntimeTestSupport {
                     ZLinkHandlerFactory.class);
             constructor.setAccessible(true);
             return constructor.newInstance(options, backendFactory, serializer, handlerFactory);
-        });
-    }
-
-    static ZLinkRegistryRuntime startRegistry(
-        ZLinkEmbeddedRegistryOptions options,
-        ZLinkBackendAdapterFactory backendFactory,
-        ZLinkBackendAdapterOptions adapterOptions) {
-        return invoke(() -> {
-            Constructor<ZLinkRegistryRuntime> constructor =
-                ZLinkRegistryRuntime.class.getDeclaredConstructor(
-                    ZLinkEmbeddedRegistryOptions.class,
-                    ZLinkBackendAdapterFactory.class,
-                    ZLinkBackendAdapterOptions.class);
-            constructor.setAccessible(true);
-            return constructor.newInstance(options, backendFactory, adapterOptions);
         });
     }
 

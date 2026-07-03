@@ -28,7 +28,7 @@ object MonitoringValidationApplication {
     @JvmStatic
     fun verifyPollingInterval(): String {
         return "mon-b2|interval=" +
-            expectFailure(BadIntervalConfig::class.java, "registry interval must be positive")
+            expectFailure(BadIntervalConfig::class.java, "location runtime interval must be positive")
     }
 
     @JvmStatic
@@ -106,7 +106,7 @@ object MonitoringValidationApplication {
         @Bean
         fun badIntervalMonitoring(): ZLinkMonitoringOptionsCustomizer {
             return ZLinkMonitoringOptionsCustomizer { options ->
-                options.addRegistryEvents(Contracts.REGISTRY_SOURCE, Duration.ZERO)
+                options.addLocationRuntimeEvents(Contracts.LOCATION_SOURCE, Duration.ZERO)
             }
         }
     }

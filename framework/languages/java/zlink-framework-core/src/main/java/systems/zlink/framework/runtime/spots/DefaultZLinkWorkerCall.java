@@ -34,7 +34,8 @@ final class DefaultZLinkWorkerCall<T> implements ZLinkWorkerCall<T> {
     private final ZLinkWorkerPool pool;
     private final ZLinkWorkerTask<T> work;
     private final Function<Supplier<CompletionStage<Void>>, CompletionStage<Void>> postToSpotQueue;
-    private final ZLinkYieldTurn turn = ZLinkFrameworkTurns.captureCurrent();
+    private final boolean captureCurrentTurn;
+    private final ZLinkYieldTurn turn;
     private final AtomicBoolean terminated = new AtomicBoolean();
     private Duration timeout;
 
@@ -42,9 +43,19 @@ final class DefaultZLinkWorkerCall<T> implements ZLinkWorkerCall<T> {
         ZLinkWorkerPool pool,
         ZLinkWorkerTask<T> work,
         Function<Supplier<CompletionStage<Void>>, CompletionStage<Void>> postToSpotQueue) {
+        this(pool, work, postToSpotQueue, true);
+    }
+
+    DefaultZLinkWorkerCall(
+        ZLinkWorkerPool pool,
+        ZLinkWorkerTask<T> work,
+        Function<Supplier<CompletionStage<Void>>, CompletionStage<Void>> postToSpotQueue,
+        boolean captureCurrentTurn) {
         this.pool = Objects.requireNonNull(pool, "pool");
         this.work = Objects.requireNonNull(work, "work");
         this.postToSpotQueue = Objects.requireNonNull(postToSpotQueue, "postToSpotQueue");
+        this.captureCurrentTurn = captureCurrentTurn;
+        this.turn = captureCurrentTurn ? ZLinkFrameworkTurns.captureCurrent() : null;
     }
 
     @Override
@@ -158,9 +169,11 @@ final class DefaultZLinkWorkerCall<T> implements ZLinkWorkerCall<T> {
 
     private ZLinkYieldTurn requireTurn() {
         if (turn == null) {
-            ZLinkYieldTurn current = ZLinkFrameworkTurns.captureCurrent();
-            if (current != null) {
-                return current;
+            if (captureCurrentTurn) {
+                ZLinkYieldTurn current = ZLinkFrameworkTurns.captureCurrent();
+                if (current != null) {
+                    return current;
+                }
             }
             throw new IllegalStateException(
                 "yield requires a framework Spot handler turn captured when the call object was created");

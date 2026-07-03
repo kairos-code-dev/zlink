@@ -66,7 +66,7 @@ internal class ActorSessionScenarioContext : AutoCloseable {
 
     fun joinRoom() {
         joined = connector
-            .request(Contracts.ActorJoinReq("room-a", profile, profile.tags))
+            .request(Contracts.ActorJoinReq("actor-room-a", profile, profile.tags))
             .metadata("actor-id", actorId)
             .await(Contracts.ActorJoinRes::class.java)
     }

@@ -26,7 +26,8 @@ public final class ServerProcessLauncher {
             "ZLINK_JAVA_E2E_SUBSCRIBER_RID", rid,
             "ZLINK_JAVA_E2E_TOPICS", topics,
             "ZLINK_JAVA_E2E_HTTP_ENDPOINT", httpEndpoint,
-            "ZLINK_JAVA_E2E_REGISTRY_ROUTER", options.registryRouterEndpoint(),
+            "ZLINK_JAVA_E2E_REDIS_LOCATION_ENDPOINT", options.redisLocationEndpoint(),
+            "ZLINK_JAVA_E2E_LOCATION_KEY_PREFIX", options.locationKeyPrefix(),
             "ZLINK_JAVA_E2E_LOG_DIR", options.logDir());
         ManagedProcess process = start(rid, subscriberBin(), env);
         waitHealthy(rid, httpEndpoint);
@@ -37,7 +38,8 @@ public final class ServerProcessLauncher {
         Map<String, String> env = Map.of(
             "ZLINK_JAVA_E2E_PUBLISHER_HTTP", options.publisherHttp(),
             "ZLINK_JAVA_E2E_PUBLISHER_ENDPOINT", options.publisherEndpoint(),
-            "ZLINK_JAVA_E2E_REGISTRY_ROUTER", options.registryRouterEndpoint(),
+            "ZLINK_JAVA_E2E_REDIS_LOCATION_ENDPOINT", options.redisLocationEndpoint(),
+            "ZLINK_JAVA_E2E_LOCATION_KEY_PREFIX", options.locationKeyPrefix(),
             "ZLINK_JAVA_E2E_LOG_DIR", options.logDir());
         ManagedProcess process = start(name, publisherBin(), env);
         waitHealthy(name, options.publisherHttp());

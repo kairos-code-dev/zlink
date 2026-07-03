@@ -1,7 +1,5 @@
 package systems.zlink.framework.spring;
 
-import systems.zlink.framework.runtime.registry.ZLinkRegistryLifecycle;
-
 import systems.zlink.framework.runtime.host.ZLinkFrameworkLifecycle;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
@@ -20,6 +18,7 @@ import java.util.Set;
 import java.util.UUID;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.CompletionStage;
+import java.util.concurrent.CompletionException;
 import java.util.List;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicInteger;
@@ -29,7 +28,6 @@ import org.springframework.beans.factory.NoSuchBeanDefinitionException;
 import org.springframework.context.annotation.AnnotationConfigApplicationContext;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
-import systems.zlink.contracts.service.registry.RegistryState;
 import systems.zlink.contracts.messaging.Message;
 import systems.zlink.framework.actors.ZLinkActor;
 import systems.zlink.framework.actors.ZLinkActorContext;
@@ -52,18 +50,17 @@ import systems.zlink.framework.ZLinkNext;
 import systems.zlink.framework.errors.ZLinkConfigurationException;
 import systems.zlink.framework.handlers.ZLinkHandlerGroup;
 import systems.zlink.framework.handlers.ZLinkRequest;
-import systems.zlink.framework.monitoring.ZLinkRegistryEvent;
+import systems.zlink.framework.locations.ZLinkLocationRuntimeQuery;
+import systems.zlink.framework.locations.ZLinkLocationRuntimeStatus;
 import systems.zlink.framework.monitoring.ZLinkRuntimeEventDispatcher;
 import systems.zlink.framework.monitoring.ZLinkRuntimeEventHandler;
 import systems.zlink.framework.monitoring.ZLinkSocketEvent;
 import systems.zlink.framework.monitoring.ZLinkSocketEventKind;
-import systems.zlink.framework.registry.ZLinkEmbeddedRegistryOptions;
-import systems.zlink.framework.registry.ZLinkRegistryQuery;
-import systems.zlink.framework.registry.ZLinkRegistryStatus;
 import systems.zlink.framework.runtime.backend.ZLinkBackendAdapterFactory;
 import systems.zlink.framework.runtime.binding.ZLinkJavaBackendAdapterFactory;
 import systems.zlink.framework.runtime.configuration.DefaultZLinkFrameworkOptions;
 import systems.zlink.framework.runtime.handlers.ZLinkHandlerFactory;
+import systems.zlink.framework.runtime.locations.ZLinkInMemoryLocationStore;
 import systems.zlink.framework.runtime.monitoring.DefaultZLinkMonitoringOptions;
 import systems.zlink.framework.messaging.ZLinkMessage;
 import systems.zlink.framework.spots.ZLinkSpot;
@@ -275,12 +272,14 @@ final class ZLinkFrameworkAutoConfigurationTest {
                 ZLinkFrameworkAutoConfiguration.class);
             context.refresh();
 
-            ZLinkConfigurationException error = assertThrows(ZLinkConfigurationException.class, () ->
+            CompletionException error = assertThrows(CompletionException.class, () ->
                 context.getBean(ZLinkSpotManager.class)
                     .create(PrivateConstructorSpot.class)
-                    .toCompletableFuture());
+                    .toCompletableFuture()
+                    .join());
 
-            assertTrue(error.getMessage().contains("failed to create spot"));
+            assertInstanceOf(ZLinkConfigurationException.class, error.getCause());
+            assertTrue(error.getCause().getMessage().contains("failed to create spot"));
         }
     }
 
@@ -571,54 +570,23 @@ final class ZLinkFrameworkAutoConfigurationTest {
     }
 
     @Test
-    void registryMonitoringUsesConfiguredSourceNameAsEventLabel()
-        throws Exception {
+    void locationStoreBeanConfiguresFrameworkLocationRuntime() throws Exception {
         try (AnnotationConfigApplicationContext context =
                  new AnnotationConfigApplicationContext()) {
             context.registerBean(
                 ZLinkBackendAdapterFactory.class,
                 FakeZLinkBackendAdapterFactory::new);
-            context.register(RegistryMonitoringConfig.class, ZLinkFrameworkAutoConfiguration.class);
+            context.register(LocationStoreBeanConfig.class, ZLinkFrameworkAutoConfiguration.class);
             context.refresh();
 
-            CompletableFuture<?> registryEventSource =
-                context.getBean("registryEventSource", CompletableFuture.class);
-            String sourceName = (String) registryEventSource.get(2, TimeUnit.SECONDS);
-
-            assertEquals("ops-registry", sourceName);
-            assertTrue(context.getBean(ZLinkMonitoringLifecycle.class).isRunning());
-        }
-    }
-
-    @Test
-    void embeddedRegistryStartsInsideSpringLifecycleAndExposesQueryBean() {
-        FakeZLinkBackendAdapterFactory backendFactory =
-            new FakeZLinkBackendAdapterFactory();
-        try (AnnotationConfigApplicationContext context =
-                 new AnnotationConfigApplicationContext()) {
-            context.registerBean(ZLinkBackendAdapterFactory.class, () -> backendFactory);
-            context.register(
-                EmbeddedRegistryConfig.class,
-                TestConfig.class,
-                ZLinkFrameworkAutoConfiguration.class);
-            context.refresh();
-
-            ZLinkRegistryLifecycle lifecycle =
-                context.getBean(ZLinkRegistryLifecycle.class);
-            ZLinkFrameworkLifecycle frameworkLifecycle =
-                context.getBean(ZLinkFrameworkLifecycle.class);
-            ZLinkRegistryQuery query = context.getBean(ZLinkRegistryQuery.class);
-            ZLinkRegistryStatus status = query.status()
+            ZLinkLocationRuntimeQuery query = context
+                .getBean(ZLinkFrameworkLifecycle.class)
+                .monitoringLocationRuntimeQuery();
+            ZLinkLocationRuntimeStatus status = query.getStatusAsync()
                 .toCompletableFuture()
-                .join();
+                .get(2, TimeUnit.SECONDS);
 
-            assertTrue(lifecycle.isRunning());
-            assertTrue(lifecycle.getPhase() < frameworkLifecycle.getPhase());
-            assertInstanceOf(ZLinkRegistryLifecycle.class, query);
-            assertEquals(RegistryState.ACTIVE, status.state());
-            assertTrue(backendFactory.calls().contains(
-                "registry.bind.inproc://registry-pub.inproc://registry-router"));
-            assertTrue(backendFactory.calls().contains("registry.status"));
+            assertTrue(status.ownerLeaseHealthy());
         }
     }
 
@@ -655,22 +623,20 @@ final class ZLinkFrameworkAutoConfigurationTest {
     }
 
     @Configuration
-    static class EmbeddedRegistryConfig {
-        @Bean
-        ZLinkEmbeddedRegistryOptions zlinkEmbeddedRegistryOptions() {
-            ZLinkEmbeddedRegistryOptions options = new ZLinkEmbeddedRegistryOptions();
-            options.setPubEndpoint("inproc://registry-pub");
-            options.setRouterEndpoint("inproc://registry-router");
-            return options;
-        }
-    }
-
-    @Configuration
     @EnableZLinkFramework
     static class TestConfig {
         @Bean
         ZLinkFrameworkConfigurer profileChannelConfigurer() {
             return options -> { var channel = options.addClientServerChannel("profile"); channel.enableClient("inproc://profile-server"); };
+        }
+    }
+
+    @Configuration
+    @EnableZLinkFramework
+    static class LocationStoreBeanConfig {
+        @Bean
+        ZLinkInMemoryLocationStore locationStore() {
+            return new ZLinkInMemoryLocationStore();
         }
     }
 
@@ -729,35 +695,6 @@ final class ZLinkFrameworkAutoConfigurationTest {
             return options -> options.addSocketEvents(
                 "profile",
                 ZLinkSocketEventKind.CONNECTED);
-        }
-    }
-
-    @Configuration
-    static class RegistryMonitoringConfig {
-        @Bean
-        ZLinkEmbeddedRegistryOptions zlinkEmbeddedRegistryOptions() {
-            ZLinkEmbeddedRegistryOptions options = new ZLinkEmbeddedRegistryOptions();
-            options.setPubEndpoint("inproc://registry-monitor-pub");
-            options.setRouterEndpoint("inproc://registry-monitor-router");
-            return options;
-        }
-
-        @Bean
-        CompletableFuture<String> registryEventSource() {
-            return new CompletableFuture<>();
-        }
-
-        @Bean
-        RegistryEventSourceRecorder registryEventSourceRecorder(
-            CompletableFuture<String> registryEventSource) {
-            return new RegistryEventSourceRecorder(registryEventSource);
-        }
-
-        @Bean
-        ZLinkMonitoringOptionsCustomizer registryMonitoringCustomizer() {
-            return options -> options.addRegistryEvents(
-                "ops-registry",
-                Duration.ofMillis(100));
         }
     }
 
@@ -1112,20 +1049,6 @@ final class ZLinkFrameworkAutoConfigurationTest {
         @Override
         public void handle(ZLinkSocketEvent event) {
             count.incrementAndGet();
-        }
-    }
-
-    public static final class RegistryEventSourceRecorder
-        implements ZLinkRuntimeEventHandler<ZLinkRegistryEvent> {
-        private final CompletableFuture<String> sourceName;
-
-        RegistryEventSourceRecorder(CompletableFuture<String> sourceName) {
-            this.sourceName = sourceName;
-        }
-
-        @Override
-        public void handle(ZLinkRegistryEvent event) {
-            sourceName.complete(event.sourceName());
         }
     }
 

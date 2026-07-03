@@ -5,24 +5,28 @@ import systems.zlink.e2e.kotlin.registrymessaging.client.Support.ClientOptions
 import systems.zlink.e2e.kotlin.registrymessaging.client.Support.DynamicClusterLauncher
 import systems.zlink.e2e.kotlin.registrymessaging.client.Support.HttpJson
 import systems.zlink.e2e.kotlin.registrymessaging.client.Support.ScenarioAssert
-import systems.zlink.e2e.kotlin.registrymessaging.shared.ProfileRes
-import systems.zlink.e2e.kotlin.registrymessaging.shared.ProfileReq
 
 object RmC7WeightedProviderScenario {
     fun run(options: ClientOptions) {
         DynamicClusterLauncher.start(options, "rm-c7").use { cluster ->
             val providerA = cluster.startProvider("api-a-weighted", "api-a", weight = 75)
             val providerB = cluster.startProvider("api-b-weighted", "api-b", weight = 25)
-            val requester = HttpJson(providerA.httpUrl)
+            val consumer = cluster.startConsumer("weighted-consumer")
+            val requester = HttpJson(consumer.httpUrl)
+            cluster.waitPeerEndpoint(requester, providerA.channelEndpoint)
+            cluster.waitPeerEndpoint(requester, providerB.channelEndpoint)
+            cluster.waitPeerCount(requester, 2)
+
+            val providerAHttp = HttpJson(providerA.httpUrl)
             val providerBHttp = HttpJson(providerB.httpUrl)
-            val beforeA = requester.get<List<String>>("/evidence")
+            val beforeA = providerAHttp.get<List<String>>("/evidence")
             val beforeB = providerBHttp.get<List<String>>("/evidence")
             val marker = "rm-c7-${UUID.randomUUID().toString().replace("-", "")}"
             val replies = (0 until 240).map { index ->
-                requester.post<ProfileRes>("/profile/request", ProfileReq("$marker-$index"))
+                ScenarioAssert.requestProfileEventually(requester, "$marker-$index")
             }
             ScenarioAssert.that(replies.all { it.providerRid == "api-a" || it.providerRid == "api-b" }, "RM-C7 reply provider mismatch.")
-            val afterA = requester.get<List<String>>("/evidence")
+            val afterA = providerAHttp.get<List<String>>("/evidence")
             val afterB = providerBHttp.get<List<String>>("/evidence")
             val a = ScenarioAssert.countNewEvidence(afterA, beforeA, "profile-request|rid=api-a", marker)
             val b = ScenarioAssert.countNewEvidence(afterB, beforeB, "profile-request|rid=api-b", marker)

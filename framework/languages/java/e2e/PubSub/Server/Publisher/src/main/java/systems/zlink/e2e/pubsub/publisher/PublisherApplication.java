@@ -10,6 +10,8 @@ import systems.zlink.e2e.pubsub.publisher.Endpoints.PublisherEndpoints;
 import systems.zlink.e2e.pubsub.publisher.Infrastructure.EvidenceStore;
 import systems.zlink.e2e.pubsub.shared.Contracts;
 import systems.zlink.framework.configuration.ZLinkMessageFlowLogMode;
+import systems.zlink.framework.locations.redis.ZLinkRedisLocationOptions;
+import systems.zlink.framework.locations.redis.ZLinkRedisLocationStore;
 import systems.zlink.framework.spring.EnableZLinkFramework;
 import systems.zlink.framework.spring.ZLinkFrameworkConfigurer;
 
@@ -54,9 +56,15 @@ public final class PublisherApplication {
                 .messageFlow(ZLinkMessageFlowLogMode.KEY_TRANSITIONS)
                 .traceLogFile(options.logDir() + "/publisher-flow.log")
                 .traceLabel("java-ps-publisher");
-            framework.useDiscovery().addRegistryEndpoint(options.registryRouterEndpoint());
             framework.addFanoutChannel(Contracts.EVENT_CHANNEL)
                 .enablePublisher(options.publisherEndpoint());
         };
+    }
+
+    @Bean
+    ZLinkRedisLocationStore locationStore(PublisherOptions options) {
+        return new ZLinkRedisLocationStore(new ZLinkRedisLocationOptions()
+            .setConnectionString(options.redisLocationEndpoint())
+            .setKeyPrefix(options.locationKeyPrefix()));
     }
 }

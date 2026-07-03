@@ -9,29 +9,10 @@ class DynamicClusterLauncher private constructor(
     private val scenarioName: String,
 ) : AutoCloseable {
     private val processes = mutableListOf<DynamicProcess>()
-    lateinit var registryRouterEndpoint: String
-        private set
 
     companion object {
         fun start(options: ClientOptions, scenarioName: String): DynamicClusterLauncher {
-            val launcher = DynamicClusterLauncher(options, scenarioName)
-            launcher.registryRouterEndpoint = pickEndpoint()
-            val registryHttp = pickHttpUrl()
-            val registry = launcher.startProcess(
-                "$scenarioName-registry",
-                options.registryBin,
-                listOf(
-                    "--rid", "$scenarioName-registry",
-                    "--http-url", registryHttp,
-                    "--registry-pub-endpoint", pickEndpoint(),
-                    "--registry-router-endpoint", launcher.registryRouterEndpoint,
-                    "--log-dir", options.logDir,
-                ),
-                registryHttp,
-                null,
-            )
-            registry.waitReady()
-            return launcher
+            return DynamicClusterLauncher(options, scenarioName)
         }
 
         fun pickEndpoint(): String = "tcp://127.0.0.1:${pickPort()}"
@@ -42,7 +23,7 @@ class DynamicClusterLauncher private constructor(
             ServerSocket(0).use { it.localPort }
     }
 
-    fun startProvider(name: String, rid: String, weight: Int = 100): DynamicProvider {
+    fun startProvider(name: String, rid: String, instanceId: String = rid, weight: Int = 100): DynamicProvider {
         val httpUrl = pickHttpUrl()
         val channelEndpoint = pickEndpoint()
         val process = startProcess(
@@ -50,8 +31,10 @@ class DynamicClusterLauncher private constructor(
             options.providerBin,
             listOf(
                 "--rid", rid,
+                "--instance-id", instanceId,
                 "--http-url", httpUrl,
-                "--registry-router-endpoint", registryRouterEndpoint,
+                "--redis-location-endpoint", options.redisLocationEndpoint,
+                "--location-key-prefix", options.locationKeyPrefix,
                 "--channel-endpoint", channelEndpoint,
                 "--route-endpoint", pickEndpoint(),
                 "--weight", weight.toString(),
@@ -65,9 +48,61 @@ class DynamicClusterLauncher private constructor(
         return DynamicProvider(process, httpUrl, channelEndpoint)
     }
 
+    fun startConsumer(name: String): DynamicConsumer {
+        val httpUrl = pickHttpUrl()
+        val process = startProcess(
+            name,
+            options.consumerBin,
+            listOf(
+                "--http-url", httpUrl,
+                "--redis-location-endpoint", options.redisLocationEndpoint,
+                "--location-key-prefix", options.locationKeyPrefix,
+                "--trace-label", name,
+                "--log-dir", options.logDir,
+            ),
+            httpUrl,
+            null,
+        )
+        process.waitReady()
+        return DynamicConsumer(process, httpUrl)
+    }
+
+    fun waitPeerEndpoint(consumer: HttpJson, endpoint: String) {
+        waitPeers(consumer, "peer endpoint $endpoint") { peers ->
+            peers.any { it["endpoint"] == endpoint }
+        }
+    }
+
+    fun waitPeerEndpointAbsent(consumer: HttpJson, endpoint: String) {
+        waitPeers(consumer, "peer endpoint removal $endpoint") { peers ->
+            peers.none { it["endpoint"] == endpoint }
+        }
+    }
+
+    fun waitPeerCount(consumer: HttpJson, count: Int) {
+        waitPeers(consumer, "peer count $count") { peers -> peers.size == count }
+    }
+
     fun stop(provider: DynamicProvider) {
         provider.process.stop()
         processes.remove(provider.process)
+    }
+
+    private fun waitPeers(
+        consumer: HttpJson,
+        description: String,
+        predicate: (List<Map<String, Any?>>) -> Boolean,
+    ) {
+        val deadline = System.nanoTime() + Duration.ofSeconds(45).toNanos()
+        var latest: List<Map<String, Any?>> = emptyList()
+        while (System.nanoTime() < deadline) {
+            latest = consumer.get("/locations/peers")
+            if (predicate(latest)) {
+                return
+            }
+            Thread.sleep(100)
+        }
+        throw IllegalStateException("Timed out waiting for $description: $latest")
     }
 
     private fun startProcess(
@@ -96,6 +131,11 @@ data class DynamicProvider(
     val process: DynamicProcess,
     val httpUrl: String,
     val channelEndpoint: String,
+)
+
+data class DynamicConsumer(
+    val process: DynamicProcess,
+    val httpUrl: String,
 )
 
 class DynamicProcess(

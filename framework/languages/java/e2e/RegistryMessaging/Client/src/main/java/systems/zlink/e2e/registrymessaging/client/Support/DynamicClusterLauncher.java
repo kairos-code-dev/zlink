@@ -14,6 +14,8 @@ import java.util.List;
 import java.util.Map;
 import static java.util.Map.entry;
 import java.util.concurrent.TimeUnit;
+import java.util.function.Predicate;
+import systems.zlink.httpclient.ZLinkHttpClient;
 
 public final class DynamicClusterLauncher implements AutoCloseable {
     private final List<DynamicProcess> processes = new ArrayList<>();
@@ -22,7 +24,6 @@ public final class DynamicClusterLauncher implements AutoCloseable {
     private final HttpClient healthClient = HttpClient.newBuilder()
         .connectTimeout(Duration.ofSeconds(1))
         .build();
-    private String registryRouterEndpoint = "";
 
     private DynamicClusterLauncher(Path logDir, String buildDir) {
         this.logDir = logDir;
@@ -35,18 +36,6 @@ public final class DynamicClusterLauncher implements AutoCloseable {
             ClientOptions.get("ZLINK_JAVA_E2E_BUILD_DIR",
                 System.getProperty("user.home") + "/.cache/zlink/java-e2e/RegistryMessaging"));
         try {
-            launcher.registryRouterEndpoint = pickEndpoint();
-            String registryHttp = pickHttpUrl();
-            DynamicProcess registry = launcher.startProcess(
-                scenarioName + "-registry",
-                launcher.registryBinary(),
-                Map.of(
-                    "ZLINK_JAVA_E2E_REGISTRY_PUB", pickEndpoint(),
-                    "ZLINK_JAVA_E2E_REGISTRY_ROUTER", launcher.registryRouterEndpoint,
-                    "ZLINK_JAVA_E2E_HTTP_PORT", portOf(registryHttp),
-                    "ZLINK_JAVA_E2E_LOG_DIR", launcher.logDir.toString()),
-                registryHttp);
-            registry.waitReady(launcher.healthClient);
             return launcher;
         } catch (RuntimeException error) {
             launcher.close();
@@ -74,11 +63,52 @@ public final class DynamicClusterLauncher implements AutoCloseable {
                 entry("ZLINK_JAVA_E2E_ROUTE_PEERS", ""),
                 entry("ZLINK_JAVA_E2E_WORKFLOW_ENDPOINT", ""),
                 entry("ZLINK_JAVA_E2E_HTTP_PORT", portOf(httpUrl)),
-                entry("ZLINK_JAVA_E2E_REGISTRY_ROUTER", registryRouterEndpoint),
+                entry("ZLINK_JAVA_E2E_REDIS_LOCATION_ENDPOINT",
+                    ClientOptions.get("ZLINK_JAVA_E2E_REDIS_LOCATION_ENDPOINT")),
+                entry("ZLINK_JAVA_E2E_LOCATION_KEY_PREFIX",
+                    ClientOptions.get("ZLINK_JAVA_E2E_LOCATION_KEY_PREFIX")),
                 entry("ZLINK_JAVA_E2E_LOG_DIR", logDir.toString())),
             httpUrl);
         process.waitReady(healthClient);
         return new DynamicProvider(process, httpUrl, channelEndpoint);
+    }
+
+    public DynamicConsumer startConsumer(String name) {
+        String httpUrl = pickHttpUrl();
+        DynamicProcess process = startProcess(
+            name,
+            consumerBinary(),
+            Map.ofEntries(
+                entry("ZLINK_JAVA_E2E_CONSUMER_NAME", name),
+                entry("ZLINK_JAVA_E2E_CONSUMER_MODE", "discovery"),
+                entry("ZLINK_JAVA_E2E_PROVIDER_ENDPOINTS", ""),
+                entry("ZLINK_JAVA_E2E_HTTP_PORT", portOf(httpUrl)),
+                entry("ZLINK_JAVA_E2E_REDIS_LOCATION_ENDPOINT",
+                    ClientOptions.get("ZLINK_JAVA_E2E_REDIS_LOCATION_ENDPOINT")),
+                entry("ZLINK_JAVA_E2E_LOCATION_KEY_PREFIX",
+                    ClientOptions.get("ZLINK_JAVA_E2E_LOCATION_KEY_PREFIX")),
+                entry("ZLINK_JAVA_E2E_LOG_DIR", logDir.toString())),
+            httpUrl);
+        process.waitReady(healthClient);
+        return new DynamicConsumer(process, httpUrl);
+    }
+
+    public void waitPeerEndpoint(ZLinkHttpClient consumer, String endpoint) {
+        waitPeers(
+            consumer,
+            peers -> java.util.Arrays.stream(peers).anyMatch(peer -> endpoint.equals(peer.get("endpoint"))),
+            "peer endpoint " + endpoint);
+    }
+
+    public void waitPeerEndpointAbsent(ZLinkHttpClient consumer, String endpoint) {
+        waitPeers(
+            consumer,
+            peers -> java.util.Arrays.stream(peers).noneMatch(peer -> endpoint.equals(peer.get("endpoint"))),
+            "peer endpoint removal " + endpoint);
+    }
+
+    public void waitPeerCount(ZLinkHttpClient consumer, int count) {
+        waitPeers(consumer, peers -> peers.length == count, "peer count " + count);
     }
 
     public void stop(DynamicProvider provider) {
@@ -113,12 +143,28 @@ public final class DynamicClusterLauncher implements AutoCloseable {
         }
     }
 
-    private String registryBinary() {
-        return buildDir + "/Server-Registry/install/registry-messaging-registry/bin/registry-messaging-registry";
-    }
-
     private String providerBinary() {
         return buildDir + "/Server-Provider/install/registry-messaging-provider/bin/registry-messaging-provider";
+    }
+
+    private String consumerBinary() {
+        return buildDir + "/Server-Consumer/install/registry-messaging-consumer/bin/registry-messaging-consumer";
+    }
+
+    private static void waitPeers(
+        ZLinkHttpClient consumer,
+        Predicate<Map<String, Object>[]> predicate,
+        String description) {
+        long deadline = System.nanoTime() + TimeUnit.SECONDS.toNanos(45);
+        Map<String, Object>[] latest = new Map[0];
+        while (System.nanoTime() < deadline) {
+            latest = consumer.get("/locations/peers").fetch(Map[].class);
+            if (predicate.test(latest)) {
+                return;
+            }
+            DynamicProcess.sleep(100);
+        }
+        throw new IllegalStateException("timed out waiting for " + description + ": " + java.util.Arrays.toString(latest));
     }
 
     private static String pickEndpoint() {
@@ -144,6 +190,9 @@ public final class DynamicClusterLauncher implements AutoCloseable {
     }
 
     public record DynamicProvider(DynamicProcess process, String httpUrl, String channelEndpoint) {
+    }
+
+    public record DynamicConsumer(DynamicProcess process, String httpUrl) {
     }
 
     public static final class DynamicProcess {

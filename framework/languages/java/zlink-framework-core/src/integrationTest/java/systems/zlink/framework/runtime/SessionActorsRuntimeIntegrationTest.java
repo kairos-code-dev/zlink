@@ -33,13 +33,10 @@ import systems.zlink.framework.handlers.ZLinkHandlerGroup;
 import systems.zlink.framework.handlers.ZLinkSpotActorSend;
 import systems.zlink.framework.handlers.ZLinkSpotActorRequest;
 import systems.zlink.framework.messaging.ZLinkMessage;
-import systems.zlink.framework.registry.ZLinkEmbeddedRegistryOptions;
 import systems.zlink.framework.runtime.actors.ZLinkSessionActorsRuntime;
 import systems.zlink.framework.runtime.actors.ZLinkActorRuntime;
 import systems.zlink.framework.runtime.streams.ZLinkStreamHeader;
-import systems.zlink.framework.runtime.backend.ZLinkBackendAdapterOptions;
 import systems.zlink.framework.runtime.binding.ZLinkJavaBackendAdapterFactory;
-import systems.zlink.framework.runtime.registry.ZLinkRegistryRuntime;
 import systems.zlink.framework.spots.ZLinkSpot;
 import systems.zlink.framework.spots.ZLinkSpotContext;
 import systems.zlink.framework.spots.ZLinkEntrySpot;
@@ -141,52 +138,6 @@ final class SessionActorsRuntimeIntegrationTest {
                 .join();
 
             assertEquals("player-1", actorId);
-        }
-    }
-
-    @Test
-    void sessionGateway_bindsRemoteActorRefThroughDiscoveredSpotMesh() throws Exception {
-        Zlink.version();
-        String registryPub = tcpEndpoint();
-        String registryRouter = tcpEndpoint();
-        String playRouter = tcpEndpoint();
-        String playPub = tcpEndpoint();
-        String sessionRouter = tcpEndpoint();
-        String sessionPub = tcpEndpoint();
-        String streamEndpoint = tcpEndpoint();
-        ZLinkEmbeddedRegistryOptions registryOptions = new ZLinkEmbeddedRegistryOptions();
-        registryOptions.setPubEndpoint(registryPub);
-        registryOptions.setRouterEndpoint(registryRouter);
-
-        try (ZLinkRegistryRuntime ignoredRegistry = RuntimeTestSupport.startRegistry(
-                 registryOptions,
-                 new ZLinkJavaBackendAdapterFactory(),
-                 new ZLinkBackendAdapterOptions(Duration.ofSeconds(1)));
-            ZLinkFrameworkRuntime play = startDiscoveredPlayRuntime(
-                 registryRouter,
-                 playRouter,
-                 playPub);
-             ZLinkFrameworkRuntime session = startDiscoveredSessionRuntime(
-                 registryRouter,
-                 sessionRouter,
-                 sessionPub,
-                 streamEndpoint)) {
-            ZLinkActor actor = managedActor(play, "player-1", "player");
-            var joined = actor.context()
-                .joinEntrySpot(RoutingId.from("play-node"))
-                .timeout(Duration.ofSeconds(2))
-                .submit()
-                .toCompletableFuture()
-                .join();
-
-            ZLinkSessionActor bound = session.sessionActors(
-                    "gateway",
-                    RoutingId.from("session-1"))
-                .bind(joined.actor())
-                .toCompletableFuture()
-                .join();
-
-            assertEquals("player-1", bound.actorId());
         }
     }
 
@@ -294,63 +245,6 @@ final class SessionActorsRuntimeIntegrationTest {
             channel.addHandlerGroup("play-channel"); };
         { var mesh = options.addSpotMesh("game"); { var node = mesh; node.setRoutingId(RoutingId.from("play-node"));
                 node.addEntrySpot(GameEntrySpot.class); node.addActorFactory("player", PlayerActorFactory.class); }; };
-
-        return RuntimeTestSupport.startFramework(options, new ZLinkJavaBackendAdapterFactory());
-    }
-
-    private static ZLinkFrameworkRuntime startDiscoveredPlayRuntime(
-        String registryRouter,
-        String playRouter,
-        String playPub) {
-        return startDiscoveredPlayRuntime(
-            registryRouter,
-            playRouter,
-            playPub,
-            RoutingId.from("play-node"));
-    }
-
-    static ZLinkFrameworkRuntime startDiscoveredPlayRuntime(
-        String registryRouter,
-        String playRouter,
-        String playPub,
-        RoutingId playNodeRid) {
-        DefaultZLinkFrameworkOptions options = new DefaultZLinkFrameworkOptions();
-        options.addHandlersFromPackageOf(SessionActorsRuntimeIntegrationTest.class);
-        { var discovery = options.useDiscovery(); discovery.addRegistryEndpoint(registryRouter); };
-        { var mesh = options.addSpotMesh("game"); { var node = mesh; node.enableRouter(playRouter)
-                    .setRoutingId(playNodeRid);
-                node.enablePubSub(playPub);
-                node.addEntrySpot(GameEntrySpot.class); node.addActorFactory("player", PlayerActorFactory.class); }; };
-
-        return RuntimeTestSupport.startFramework(options, new ZLinkJavaBackendAdapterFactory());
-    }
-
-    static ZLinkFrameworkRuntime startDiscoveredSessionRuntime(
-        String registryRouter,
-        String sessionRouter,
-        String sessionPub,
-        String streamEndpoint) {
-        return startDiscoveredSessionRuntime(
-            registryRouter,
-            sessionRouter,
-            sessionPub,
-            streamEndpoint,
-            RoutingId.from("session-node"));
-    }
-
-    static ZLinkFrameworkRuntime startDiscoveredSessionRuntime(
-        String registryRouter,
-        String sessionRouter,
-        String sessionPub,
-        String streamEndpoint,
-        RoutingId sessionNodeRid) {
-        DefaultZLinkFrameworkOptions options = new DefaultZLinkFrameworkOptions();
-        { var discovery = options.useDiscovery(); discovery.addRegistryEndpoint(registryRouter); };
-        { var mesh = options.addSpotMesh("game"); { var node = mesh; node.enableRouter(sessionRouter)
-                    .setRoutingId(sessionNodeRid);
-                node.enablePubSub(sessionPub); }; };
-        { var stream = options.addStreamNode("gateway"); stream.bind(streamEndpoint);
-            stream.registerSession(GameSession.class); };
 
         return RuntimeTestSupport.startFramework(options, new ZLinkJavaBackendAdapterFactory());
     }

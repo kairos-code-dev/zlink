@@ -10,12 +10,18 @@ import java.util.concurrent.Executor;
 import java.util.concurrent.Executors;
 import systems.zlink.framework.ZLinkHandlerFilter;
 import systems.zlink.framework.errors.ZLinkConfigurationException;
+import systems.zlink.framework.locations.ZLinkActorLocationStore;
+import systems.zlink.framework.locations.ZLinkLocationStore;
+import systems.zlink.framework.locations.ZLinkOwnerLeaseStore;
+import systems.zlink.framework.locations.ZLinkPeerLocationStore;
+import systems.zlink.framework.locations.ZLinkRouteLocationStore;
+import systems.zlink.framework.locations.ZLinkSpotLocationStore;
 import systems.zlink.framework.runtime.channels.ChannelRegistration;
-import systems.zlink.framework.runtime.channels.ChannelKind;
 import systems.zlink.framework.runtime.handlers.ZLinkHandlerScanner;
 import systems.zlink.framework.runtime.handlers.ZLinkScannedHandler;
 import systems.zlink.framework.runtime.handlers.ZLinkScannedHandlerCatalog;
 import systems.zlink.framework.runtime.handlers.ZLinkSuspendHandlerInvoker;
+import systems.zlink.framework.runtime.locations.ZLinkLocationRegistration;
 import systems.zlink.framework.runtime.spots.SpotNodeRegistration;
 import systems.zlink.framework.runtime.streams.StreamNodeRegistration;
 import systems.zlink.framework.spots.ZLinkSpotRemoteAddressResolver;
@@ -30,7 +36,7 @@ public final class ZLinkFrameworkRegistration {
         new ZLinkDispatchOptionsRegistration();
     private final ZLinkWorkerOptionsRegistration workers =
         new ZLinkWorkerOptionsRegistration();
-    private final List<String> registryEndpoints = new ArrayList<>();
+    private final ZLinkLocationRegistration locations = new ZLinkLocationRegistration();
     private final List<ChannelRegistration> channels = new ArrayList<>();
     private final List<SpotNodeRegistration> spotNodes = new ArrayList<>();
     private final List<StreamNodeRegistration> streamNodes = new ArrayList<>();
@@ -42,7 +48,6 @@ public final class ZLinkFrameworkRegistration {
     private boolean closeHandlerExecutor = true;
     private Duration defaultRequestTimeout = Duration.ofSeconds(30);
     private Class<? extends ZLinkSpotRemoteAddressResolver> spotRemoteAddressResolverType;
-    private ZLinkRegistrySpotRemoteAddressesRegistration registrySpotRemoteAddresses;
 
     public Duration defaultRequestTimeout() {
         return defaultRequestTimeout;
@@ -68,8 +73,8 @@ public final class ZLinkFrameworkRegistration {
         return workers;
     }
 
-    public List<String> registryEndpoints() {
-        return registryEndpoints;
+    public ZLinkLocationRegistration locations() {
+        return locations;
     }
 
     public List<ChannelRegistration> channels() {
@@ -122,6 +127,21 @@ public final class ZLinkFrameworkRegistration {
         if (spotRemoteAddressResolverType != null) {
             types.add(spotRemoteAddressResolverType);
         }
+        if (locations.peerStoreType() != null) {
+            types.add(locations.peerStoreType());
+        }
+        if (locations.spotStoreType() != null) {
+            types.add(locations.spotStoreType());
+        }
+        if (locations.actorStoreType() != null) {
+            types.add(locations.actorStoreType());
+        }
+        if (locations.routeStoreType() != null) {
+            types.add(locations.routeStoreType());
+        }
+        if (locations.ownerLeaseStoreType() != null) {
+            types.add(locations.ownerLeaseStoreType());
+        }
         for (ChannelRegistration channel : channels) {
             types.addAll(channel.handlerTypes());
         }
@@ -144,13 +164,32 @@ public final class ZLinkFrameworkRegistration {
         spotRemoteAddressResolverType = resolverType;
     }
 
-    public ZLinkRegistrySpotRemoteAddressesRegistration registrySpotRemoteAddresses() {
-        return registrySpotRemoteAddresses;
+    void setPeerLocationStoreType(Class<? extends ZLinkPeerLocationStore> storeType) {
+        locations.setPeerStoreType(storeType);
     }
 
-    public void setRegistrySpotRemoteAddresses(
-        ZLinkRegistrySpotRemoteAddressesRegistration registrySpotRemoteAddresses) {
-        this.registrySpotRemoteAddresses = registrySpotRemoteAddresses;
+    void setSpotLocationStoreType(Class<? extends ZLinkSpotLocationStore> storeType) {
+        locations.setSpotStoreType(storeType);
+    }
+
+    void setActorLocationStoreType(Class<? extends ZLinkActorLocationStore> storeType) {
+        locations.setActorStoreType(storeType);
+    }
+
+    void setRouteLocationStoreType(Class<? extends ZLinkRouteLocationStore> storeType) {
+        locations.setRouteStoreType(storeType);
+    }
+
+    void setOwnerLeaseStoreType(Class<? extends ZLinkOwnerLeaseStore> storeType) {
+        locations.setOwnerLeaseStoreType(storeType);
+    }
+
+    void useInMemoryLocationStores() {
+        locations.enableInMemoryStores();
+    }
+
+    void setLocationStore(ZLinkLocationStore store) {
+        locations.setStoreInstance(store);
     }
 
     void useVirtualThreadHandlers() {
@@ -176,18 +215,14 @@ public final class ZLinkFrameworkRegistration {
         suspendHandlerInvokers.add(invoker);
     }
 
-    public boolean discoveryEnabled() {
-        return !registryEndpoints.isEmpty();
-    }
-
     void validate() {
         dispatchOptions.validate();
         workers.validate();
+        validateLocations();
         ZLinkScannedHandlerCatalog handlerCatalog =
             ZLinkHandlerScanner.scan(handlerPackageMarkers);
-        validateRegistrySpotRemoteAddresses();
         for (ChannelRegistration channel : channels) {
-            channel.validate(discoveryEnabled(), handlerCatalog);
+            channel.validate(locations.enabled(), handlerCatalog);
         }
         int actorCapableNodes = 0;
         for (SpotNodeRegistration spotNode : spotNodes) {
@@ -205,68 +240,20 @@ public final class ZLinkFrameworkRegistration {
         }
     }
 
-    private ChannelRegistration findChannel(String channelName) {
-        for (ChannelRegistration channel : channels) {
-            if (channel.name().equals(channelName)) {
-                return channel;
-            }
-        }
-        return null;
-    }
-
-    private SpotNodeRegistration findRouterSpotNode(String nodeName) {
-        for (SpotNodeRegistration spotNode : spotNodes) {
-            if (spotNode.nodeName().equals(nodeName) && spotNode.routerEnabled()) {
-                return spotNode;
-            }
-        }
-        return null;
-    }
-
-    private void validateRegistrySpotRemoteAddresses() {
-        if (registrySpotRemoteAddresses == null) {
-            return;
-        }
-        if (spotRemoteAddressResolverType != null) {
+    private void validateLocations() {
+        if (locations.useInMemoryStores() && locations.hasAnyStoreType()) {
             throw new ZLinkConfigurationException(
-                "registry SPOT remote addresses cannot be combined with a custom SPOT remote address resolver");
+                "in-memory location stores cannot be combined with explicit location store registrations");
         }
-        if (!discoveryEnabled()) {
+        if (locations.storeInstance() != null
+            && (locations.useInMemoryStores() || locations.hasAnyStoreType())) {
             throw new ZLinkConfigurationException(
-                "registry SPOT remote addresses require discovery endpoints");
+                "addLocationStore registers every store role at once and cannot be combined with "
+                    + "useInMemoryLocationStores or per-role add*LocationStore registrations");
         }
-        long routeChannels = channels.stream()
-            .filter(channel -> channel.kind() == ChannelKind.ROUTE_MESH)
-            .count();
-        long routerSpotNodes = spotNodes.stream()
-            .filter(SpotNodeRegistration::routerEnabled)
-            .count();
-        if (registrySpotRemoteAddresses.routerChannelId() == null) {
-            if (routeChannels + routerSpotNodes != 1) {
-                throw new ZLinkConfigurationException(
-                    "registry SPOT remote addresses require routerChannelId when route mesh channel or router-capable SpotNode is ambiguous");
-            }
-            if (spotNodes.isEmpty()) {
-                return;
-            }
-        }
-        long spotDiscoverableNodes = spotNodes.stream()
-            .filter(node -> node.routerEnabled() || node.pubSubEnabled())
-            .count();
-        if (spotDiscoverableNodes == 0) {
+        if (locations.hasAnyStoreType() && !locations.hasAllStoreTypes()) {
             throw new ZLinkConfigurationException(
-                "registry SPOT remote addresses require at least one discoverable SpotNode");
-        }
-        if (registrySpotRemoteAddresses.routerChannelId() == null) {
-            return;
-        }
-        ChannelRegistration routerChannel =
-            findChannel(registrySpotRemoteAddresses.routerChannelId());
-        if ((routerChannel == null || routerChannel.kind() != ChannelKind.ROUTE_MESH)
-            && findRouterSpotNode(registrySpotRemoteAddresses.routerChannelId()) == null) {
-            throw new ZLinkConfigurationException(
-                "registry SPOT remote addresses routerChannelId must name a route mesh channel or router-capable SpotNode: "
-                    + registrySpotRemoteAddresses.routerChannelId());
+                "location stores are all-or-nothing: register peer, spot, actor, route, and owner lease stores together");
         }
     }
 

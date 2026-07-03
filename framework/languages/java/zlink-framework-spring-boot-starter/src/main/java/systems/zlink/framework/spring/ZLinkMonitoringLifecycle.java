@@ -1,12 +1,7 @@
 package systems.zlink.framework.spring;
 
-import systems.zlink.framework.runtime.registry.ZLinkRegistryLifecycle;
-
-import systems.zlink.framework.runtime.host.ZLinkFrameworkLifecycle;
-
 import java.time.Duration;
 import java.util.ArrayList;
-import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Objects;
@@ -22,8 +17,8 @@ import systems.zlink.framework.monitoring.ZLinkRuntimeEventDispatcher;
 import systems.zlink.framework.monitoring.ZLinkRuntimeEventHandler;
 import systems.zlink.framework.runtime.backend.ZLinkBackendAdapterFactory;
 import systems.zlink.framework.runtime.backend.ZLinkBackendAdapterOptions;
-import systems.zlink.framework.runtime.backend.ZLinkBackendRegistry;
 import systems.zlink.framework.runtime.backend.ZLinkMonitoringBackendAdapter;
+import systems.zlink.framework.runtime.host.ZLinkFrameworkLifecycle;
 import systems.zlink.framework.runtime.monitoring.DefaultZLinkMonitoringOptions;
 import systems.zlink.framework.runtime.monitoring.ZLinkMonitoringRuntime;
 
@@ -34,7 +29,6 @@ public final class ZLinkMonitoringLifecycle implements SmartLifecycle {
     private final ZLinkBackendAdapterFactory backendAdapterFactory;
     private final ZLinkRuntimeEventDispatcher dispatcher;
     private final ObjectProvider<ZLinkFrameworkLifecycle> frameworkLifecycle;
-    private final ObjectProvider<ZLinkRegistryLifecycle> registryLifecycle;
     private final List<ZLinkRuntimeEventHandler<?>> eventHandlers;
     private final List<AutoCloseable> handlerRegistrations = new ArrayList<>();
     private ScheduledExecutorService poller;
@@ -46,7 +40,6 @@ public final class ZLinkMonitoringLifecycle implements SmartLifecycle {
         ZLinkBackendAdapterFactory backendAdapterFactory,
         ZLinkRuntimeEventDispatcher dispatcher,
         ObjectProvider<ZLinkFrameworkLifecycle> frameworkLifecycle,
-        ObjectProvider<ZLinkRegistryLifecycle> registryLifecycle,
         List<ZLinkRuntimeEventHandler<?>> eventHandlers) {
         this.options = Objects.requireNonNull(options, "options");
         this.backendAdapterFactory = Objects.requireNonNull(
@@ -56,9 +49,6 @@ public final class ZLinkMonitoringLifecycle implements SmartLifecycle {
         this.frameworkLifecycle = Objects.requireNonNull(
             frameworkLifecycle,
             "frameworkLifecycle");
-        this.registryLifecycle = Objects.requireNonNull(
-            registryLifecycle,
-            "registryLifecycle");
         this.eventHandlers = List.copyOf(eventHandlers);
     }
 
@@ -74,23 +64,11 @@ public final class ZLinkMonitoringLifecycle implements SmartLifecycle {
                 return;
             }
             ZLinkFrameworkLifecycle framework = frameworkLifecycle.getIfAvailable();
-            ZLinkRegistryLifecycle registry = registryLifecycle.getIfAvailable();
             boolean needsFramework = !options.socketSourceNames().isEmpty()
-                || !options.spotSourceNames().isEmpty();
+                || !options.spotSourceNames().isEmpty()
+                || !options.locationRuntimeSourceNames().isEmpty();
             if (needsFramework && framework != null && !framework.isRunning()) {
                 framework.start();
-            }
-            if (!options.registrySourceNames().isEmpty()
-                && registry != null
-                && !registry.isRunning()) {
-                registry.start();
-            }
-            Map<String, ZLinkBackendRegistry> registrySources = new HashMap<>();
-            if (registry != null) {
-                ZLinkBackendRegistry registrySource = registry.monitoringRegistrySource();
-                for (String sourceName : options.registrySourceNames()) {
-                    registrySources.put(sourceName, registrySource);
-                }
             }
             ZLinkMonitoringBackendAdapter backend =
                 backendAdapterFactory.createMonitoringAdapter(
@@ -101,10 +79,12 @@ public final class ZLinkMonitoringLifecycle implements SmartLifecycle {
                 !needsFramework || framework == null
                     ? Map.of()
                     : framework.monitoringSocketSources(),
-                registrySources,
                 !needsFramework || framework == null
                     ? Map.of()
                     : framework.monitoringSpotSources(),
+                !needsFramework || framework == null || options.locationRuntimeSourceNames().isEmpty()
+                    ? null
+                    : framework.monitoringLocationRuntimeQuery(),
                 dispatcher);
             registerEventHandlers();
             startPolling();

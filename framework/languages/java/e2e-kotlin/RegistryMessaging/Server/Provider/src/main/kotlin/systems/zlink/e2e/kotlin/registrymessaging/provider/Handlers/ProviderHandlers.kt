@@ -29,8 +29,11 @@ class ProfileRequestHandler(
         if (request.value == "slow") {
             Thread.sleep(1000)
         }
-        evidence.add("profile-request|rid=${evidence.rid}|value=${request.value}|packet=${context.packetName()}")
-        return ProfileRes("profile:${request.value}", evidence.rid)
+        evidence.add(
+            "profile-request|rid=${evidence.rid}|instance=${evidence.instanceId}" +
+                "|value=${request.value}|packet=${context.packetName()}",
+        )
+        return ProfileRes("profile:${request.value}", evidence.rid, evidence.instanceId)
     }
 }
 
@@ -38,7 +41,7 @@ class ProfileCommandHandler(
     private val evidence: EvidenceStore,
 ) : ZLinkSendHandler<ProfileMsg> {
     override fun handle(message: ProfileMsg, context: ZLinkSendContext) {
-        if (message.commandId.startsWith("rm-c9-slow-")) {
+        if (message.commandId.startsWith("slow")) {
             Thread.sleep(1000)
         }
         evidence.add("profile-command|rid=${evidence.rid}|command=${message.commandId}|packet=${context.packetName()}")

@@ -1,36 +1,34 @@
 # Java RegistryMessaging E2E feature map
 
-이 문서는 Config 1 Registry Messaging 공통 시나리오 중 Java framework E2E가 검증하는 항목을
+이 문서는 Config 1 Location Messaging 공통 시나리오 중 Java framework E2E가 검증하는 항목을
 정리한다. 실행 코드는 public Spring starter, `ZLinkClient`, `ZLinkRouteClient`, channel builder,
 public HTTP client만 사용한다.
 
 ## 실행 구조 상태
 
-- `implemented`: registry, provider, workflow, consumer, client는 별도 Gradle application과 별도
-  process로 실행한다. 기존 단일 application의 role 환경 변수 분기는 제거했다.
+- `implemented`: provider, workflow, consumer, client는 별도 Gradle application과 별도 process로
+  실행한다. 모든 scenario는 Redis location store extension과 실행별 key prefix를 공유한다.
 - `implemented`: client scenario는 Java framework를 직접 호출하지 않고, 역할 server의 HTTP
   endpoint를 호출한다.
-- `implemented`: provider, workflow, registry, consumer role은 HTTP health endpoint를 제공한다.
-  provider와 workflow는 evidence 조회와 대기 endpoint도 제공한다.
+- `implemented`: provider, workflow, consumer role은 HTTP health endpoint를 제공한다. provider와
+  workflow는 evidence 조회와 대기 endpoint도 제공한다.
 - `implemented`: scenario ID별 client 파일과 공통 support 파일을 분리했다.
-- `implemented`: `RM-A4`, `RM-B1`, `RM-B2`의 provider start/stop/replacement는
-  `Client/Support/DynamicClusterLauncher.java`와 각 scenario 파일이 수행한다. runner는 해당
-  scenario를 실행하고 결과를 수집한다.
+- `implemented`: `RM-A4`, `RM-B1`, `RM-B2`의 provider start/stop/replacement support는 Redis
+  location store 입력을 넘기고, consumer 재시작 없이 lifecycle 변화를 검증한다.
 
 ## 구현됨
 
-- `RM-A1`: registry discovery로 provider를 resolve하고 request를 보낸다. registry topology에서
-  API channel의 ready router provider가 둘 이상 보이는지, provider evidence에 request가 남는지
-  함께 검증한다.
+- `RM-A1`: Redis location store 자동 연결로 provider를 resolve하고 request를 보낸다. consumer의
+  public runtime query에서 API channel의 live provider peer row가 둘 이상 보이는지, provider
+  evidence에 request가 남는지 함께 검증한다.
 - `RM-A2`: 수동 endpoint 연결로 provider에 직접 request를 보낸다.
-- `RM-A4`: Client support가 같은 rid의 provider process를 새 endpoint로 교체한 뒤 follow-up
-  request를 검증한다.
-- `RM-A6`: 같은 registry 안에서 서로 다른 channel의 provider가 섞이지 않는지 검증한다. profile
-  provider evidence와 workflow evidence를 각각 확인하고, workflow marker가 profile provider에
-  기록되지 않았는지도 확인한다.
-- `RM-B1`: Client support가 실행 중 provider를 추가하고 두 provider로 분산되는지 검증한다.
-- `RM-B2`: Client support가 provider 하나를 정상 종료한 뒤 남은 provider로 request가 계속
-  성공하는지 검증한다.
+- `RM-A4`: 같은 rid의 provider를 새 endpoint로 교체한 뒤, consumer 재시작 없이 replacement
+  provider로 request가 가는지 검증한다.
+- `RM-A6`: API channel과 workflow channel이 같은 location store를 공유해도 channel 이름별로
+  분리되는지 검증한다.
+- `RM-B1`: provider 추가 뒤 consumer가 location store row를 보고 새 provider를 routing 대상에
+  포함하는지 검증한다.
+- `RM-B2`: provider 정상 종료 뒤 row 제거와 남은 provider routing을 검증한다.
 - `RM-C1`: request와 send happy path를 함께 검증한다. request와 command가 provider evidence에
   기록됐는지도 확인한다.
 - `RM-C2`: route mesh에서 target rid request와 없는 rid 실패를 검증한다.
@@ -52,12 +50,26 @@ public HTTP client만 사용한다.
 
 ## 검증
 
-- `../../gradlew --project-cache-dir /tmp/zlink-rm-gradle-cache --no-daemon compileJava`
+- `../../gradlew --project-cache-dir /tmp/zlink-rm-gradle-cache --no-daemon compileJava --console=plain`
   - 결과: `BUILD SUCCESSFUL`
 - `timeout 420s ./run_e2e.sh`
   - 결과: common, weighted, scale-out, scale-in, failover 단계가 모두
     `registry-messaging e2e result=passed` 출력
-  - 로그: `logs/20260702-060659-58435/`
-- `timeout 420s framework/languages/java/e2e/RegistryMessaging/run_e2e.sh RM-C9`
-  - 결과: `scenario RM-C9 passed`, `registry-messaging e2e result=passed`
-  - 로그: `logs/20260701-035750-1917120`
+  - 로그: `logs/20260704-040035-91818/`
+  - registry fallback runner 경로와 registry HTTP client 제거 뒤 재검증했다. `RM-C9` recovery
+    evidence는 location store 연결이 선택할 수 있는 양쪽 provider를 합산해 확인한다.
+- 단일 scenario 검증:
+  - `RM-A1`: `logs/20260703-200744-25342/`
+  - `RM-A2`: `logs/20260703-201929-65452/`
+  - `RM-A4`: `logs/20260703-203441-25665/`
+  - `RM-A6`: `logs/20260703-203947-47286/`
+  - `RM-B1`: `logs/20260703-203700-34669/`
+  - `RM-B2`: `logs/20260703-203720-36761/`
+  - `RM-C1`: `logs/20260703-201837-59704/`
+  - `RM-C2`: `logs/20260703-202210-80467/`
+  - `RM-C3`: `logs/20260703-201954-68646/`
+  - `RM-C4`: `logs/20260703-201126-38889/`
+  - `RM-C5`: `logs/20260703-201906-63144/`
+  - `RM-C7`: `logs/20260703-202238-83024/`
+  - `RM-C8`: `logs/20260703-202115-75588/`
+  - `RM-C9`: `logs/20260703-202137-77586/`

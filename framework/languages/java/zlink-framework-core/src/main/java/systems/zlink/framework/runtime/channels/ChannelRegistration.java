@@ -247,28 +247,28 @@ public final class ChannelRegistration {
             resolvePacketName(handler.messageType(), handler.packetName())));
     }
 
-    public void validate(boolean discoveryEnabled) {
-        validate(discoveryEnabled, new ZLinkScannedHandlerCatalog(List.of()));
+    public void validate(boolean locationAutoConnectEnabled) {
+        validate(locationAutoConnectEnabled, new ZLinkScannedHandlerCatalog(List.of()));
     }
 
     public void validate(
-        boolean discoveryEnabled,
+        boolean locationAutoConnectEnabled,
         ZLinkScannedHandlerCatalog handlerCatalog) {
         if (kind == ChannelKind.CLIENT_SERVER) {
-            validateClientServer(discoveryEnabled, handlerCatalog);
+            validateClientServer(locationAutoConnectEnabled, handlerCatalog);
         } else if (kind == ChannelKind.FANOUT) {
-            validateFanout(discoveryEnabled, handlerCatalog);
+            validateFanout(locationAutoConnectEnabled, handlerCatalog);
         } else if (kind == ChannelKind.ROUTE_MESH) {
-            validateRouteMesh(discoveryEnabled, handlerCatalog);
+            validateRouteMesh(locationAutoConnectEnabled, handlerCatalog);
         }
     }
 
     private void validateClientServer(
-        boolean discoveryEnabled,
+        boolean locationAutoConnectEnabled,
         ZLinkScannedHandlerCatalog handlerCatalog) {
-        if (clientEnabled && !discoveryEnabled && clientManualEndpoints.isEmpty()) {
+        if (clientEnabled && !locationAutoConnectEnabled && clientManualEndpoints.isEmpty()) {
             throw new ZLinkConfigurationException(
-                "client/server channel client requires discovery or manual connections: " + name);
+                "client/server channel client requires location auto-connect or manual connections: " + name);
         }
         if (serverEnabled && serverBinds.isEmpty()) {
             throw new ZLinkConfigurationException(
@@ -310,15 +310,15 @@ public final class ChannelRegistration {
     }
 
     private void validateFanout(
-        boolean discoveryEnabled,
+        boolean locationAutoConnectEnabled,
         ZLinkScannedHandlerCatalog handlerCatalog) {
         if (publisherEnabled && publisherBinds.isEmpty()) {
             throw new ZLinkConfigurationException(
                 "fanout channel publisher requires at least one bind endpoint: " + name);
         }
-        if (subscriberEnabled && !discoveryEnabled && subscriberManualEndpoints.isEmpty()) {
+        if (subscriberEnabled && !locationAutoConnectEnabled && subscriberManualEndpoints.isEmpty()) {
             throw new ZLinkConfigurationException(
-                "fanout channel subscriber requires discovery or manual connections: " + name);
+                "fanout channel subscriber requires location auto-connect or manual connections: " + name);
         }
         validateMappedGroups(handlerCatalog, ZLinkScannedHandlerSurface.CHANNEL,
             Set.of(ZLinkScannedHandlerKind.PUBLISH));
@@ -343,15 +343,15 @@ public final class ChannelRegistration {
     }
 
     private void validateRouteMesh(
-        boolean discoveryEnabled,
+        boolean locationAutoConnectEnabled,
         ZLinkScannedHandlerCatalog handlerCatalog) {
         if (routeBinds.isEmpty() && !clientEnabled) {
             throw new ZLinkConfigurationException(
                 "route mesh channel must enable server or client capability: " + name);
         }
-        if (clientEnabled && !discoveryEnabled && routeManualEndpoints.isEmpty()) {
+        if (clientEnabled && !locationAutoConnectEnabled && routeManualEndpoints.isEmpty()) {
             throw new ZLinkConfigurationException(
-                "route mesh channel requires discovery or manual connections: " + name);
+                "route mesh channel requires location auto-connect or manual connections: " + name);
         }
         validateMappedGroups(handlerCatalog, ZLinkScannedHandlerSurface.ROUTE,
             Set.of(ZLinkScannedHandlerKind.SEND, ZLinkScannedHandlerKind.REQUEST));

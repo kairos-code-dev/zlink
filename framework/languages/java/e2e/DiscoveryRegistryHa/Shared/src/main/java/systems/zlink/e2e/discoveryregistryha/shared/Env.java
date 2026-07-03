@@ -29,4 +29,12 @@ public final class Env {
             .filter(part -> !part.isBlank())
             .toList();
     }
+
+    public static long longValue(String name, long fallback) {
+        String value = get(name);
+        if (value.isBlank()) {
+            return fallback;
+        }
+        return Long.parseLong(value);
+    }
 }

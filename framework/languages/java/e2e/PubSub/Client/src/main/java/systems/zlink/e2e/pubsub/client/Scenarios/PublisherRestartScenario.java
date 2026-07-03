@@ -1,5 +1,6 @@
 package systems.zlink.e2e.pubsub.client.Scenarios;
 
+import java.util.Set;
 import systems.zlink.e2e.pubsub.client.Support.ScenarioAssert;
 import systems.zlink.e2e.pubsub.client.Support.ScenarioContext;
 import systems.zlink.e2e.pubsub.shared.Contracts;
@@ -10,10 +11,22 @@ public final class PublisherRestartScenario {
 
     public static void run(ScenarioContext context) {
         try (var publisher = context.processes().startPublisher("publisher-baseline")) {
-            context.publisher().publish("all", new Contracts.EventMsg("ps-b2", 1, "before-publisher-restart"));
-            ScenarioAssert.waitForEvent(context.evidence(), "sub-1", "ps-b2", 1);
-            ScenarioAssert.waitForEvent(context.evidence(), "sub-2", "ps-b2", 1);
-            ScenarioAssert.waitForEvent(context.evidence(), "sub-3", "ps-b2", 1);
+            for (int sequence = 1; sequence <= 24; sequence++) {
+                context.publisher().publish(
+                    "all",
+                    new Contracts.EventMsg(
+                        "ps-b2",
+                        sequence,
+                        "before-publisher-restart-" + sequence));
+                ScenarioAssert.sleep(100);
+            }
+            var common = ScenarioAssert.commonSequences(
+                context.evidence(),
+                "ps-b2",
+                Set.of("sub-1", "sub-2", "sub-3"));
+            if (common.isEmpty()) {
+                throw new IllegalStateException("PS-B2 subscribers did not receive baseline publisher events");
+            }
         }
 
         context.processes().waitStopped("publisher", context.options().publisherHttp());

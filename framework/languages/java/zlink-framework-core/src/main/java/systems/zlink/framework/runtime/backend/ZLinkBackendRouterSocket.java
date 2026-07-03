@@ -7,11 +7,11 @@ import systems.zlink.contracts.messaging.Message;
 import systems.zlink.contracts.sockets.SendFlags;
 
 public interface ZLinkBackendRouterSocket extends ZLinkBackendConnectableSocket {
-    void attachDiscovery(ZLinkBackendDiscovery discovery);
-
     void setChannelName(String channelName);
 
     void setRoutingId(RoutingId routingId);
+
+    void setConnectRoutingId(RoutingId routingId);
 
     int peerWeight();
 

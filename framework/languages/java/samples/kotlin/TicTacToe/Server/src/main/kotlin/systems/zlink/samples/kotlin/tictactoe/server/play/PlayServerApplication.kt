@@ -9,9 +9,10 @@ import org.springframework.boot.builder.SpringApplicationBuilder
 import org.springframework.context.ApplicationContextInitializer
 import org.springframework.context.ConfigurableApplicationContext
 import org.springframework.context.annotation.Bean
+import systems.zlink.framework.locations.redis.ZLinkRedisLocationStore
 import systems.zlink.framework.spring.EnableZLinkFramework
 import systems.zlink.framework.spring.ZLinkFrameworkConfigurer
-import systems.zlink.samples.kotlin.tictactoe.server.configuration.RedisRoomRouteStore
+import systems.zlink.samples.kotlin.tictactoe.server.configuration.SampleLocationStore
 import systems.zlink.samples.kotlin.tictactoe.server.configuration.SampleSettings
 import systems.zlink.samples.kotlin.tictactoe.server.play.application.gamecreation.TicTacToeGameCreator
 import systems.zlink.samples.kotlin.tictactoe.server.play.infrastructure.zlink.spots.tictactoegamespot.handlers.TicTacToeGameCreatedHandler
@@ -33,15 +34,12 @@ class PlayServerApplication {
         TicTacToeGameCreatedHandler()
 
     @Bean
-    fun redisRoomRouteStore(settings: SampleSettings): RedisRoomRouteStore =
-        RedisRoomRouteStore(settings)
+    fun ticTacToeGameCreator(settings: SampleSettings): TicTacToeGameCreator =
+        TicTacToeGameCreator(settings)
 
-    @Bean
-    fun ticTacToeGameCreator(
-        settings: SampleSettings,
-        routes: RedisRoomRouteStore,
-    ): TicTacToeGameCreator =
-        TicTacToeGameCreator(settings, routes)
+    @Bean(destroyMethod = "close")
+    fun locationStore(settings: SampleSettings): ZLinkRedisLocationStore =
+        SampleLocationStore.create(settings)
 
     @Bean
     fun ticTacToeJsonMapper(): ObjectMapper =

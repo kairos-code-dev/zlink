@@ -5,7 +5,8 @@ data class ServerOptions(
     val httpUrl: String,
     val logDir: String,
     val evidenceFile: String?,
-    val registryRouterEndpoint: String,
+    val redisLocationEndpoint: String,
+    val locationKeyPrefix: String,
     val workflowEndpoint: String,
     val weight: Int,
 ) {
@@ -28,8 +29,10 @@ data class ServerOptions(
                 httpUrl = values["http-url"] ?: "http://127.0.0.1:0",
                 logDir = values["log-dir"] ?: System.getProperty("java.io.tmpdir") + "/zlink-kotlin-e2e-log",
                 evidenceFile = values["evidence-file"],
-                registryRouterEndpoint = values["registry-router-endpoint"]
-                    ?: throw IllegalArgumentException("--registry-router-endpoint is required."),
+                redisLocationEndpoint = values["redis-location-endpoint"]
+                    ?: throw IllegalArgumentException("--redis-location-endpoint is required."),
+                locationKeyPrefix = values["location-key-prefix"]
+                    ?: throw IllegalArgumentException("--location-key-prefix is required."),
                 workflowEndpoint = values["workflow-endpoint"]
                     ?: throw IllegalArgumentException("--workflow-endpoint is required."),
                 weight = (values["weight"] ?: "100").toInt(),

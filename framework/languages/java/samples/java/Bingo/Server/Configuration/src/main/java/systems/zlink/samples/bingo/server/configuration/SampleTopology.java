@@ -1,10 +1,6 @@
 package systems.zlink.samples.bingo.server.configuration;
 
 public final class SampleTopology {
-    public static final String RegistryPubEndpoint =
-        property("registryPubEndpoint", "tcp://127.0.0.1:47101");
-    public static final String RegistryRouterEndpoint =
-        property("registryRouterEndpoint", "tcp://127.0.0.1:47102");
     public static final String ApiChannelEndpoint =
         property("apiChannelEndpoint", "tcp://127.0.0.1:47103");
     public static final String ApiAChannelEndpoint =

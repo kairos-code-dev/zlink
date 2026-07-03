@@ -10,12 +10,14 @@
 
 - 명령: `timeout 420s ./run_e2e.sh`
 - 결과: passed
-- 로그: `framework/languages/java/e2e/PubSub/logs/20260702-063513-76704/`
+- 로그: `framework/languages/java/e2e/PubSub/logs/20260703-215913-3495/`
 
 ## 완료 상태 요약
 
 - 단일 `Program.java` role switch 구조를 제거하고 `:Client`, `:Shared`, `:Server:Publisher`,
-  `:Server:Registry`, `:Server:Subscriber` Gradle subproject로 나누었다.
+  `:Server:Subscriber` Gradle subproject로 나누었다.
+- discovery registry role은 실행 그래프에서 제외했다. publisher와 subscriber는 공식 Redis location
+  store extension을 같은 endpoint와 실행별 key prefix로 등록한다.
 - 기존 fanout, topic filter, late subscriber, subscriber reconnect, slow subscriber,
   publisher restart, missing message name scenario 구현을 보존하고 scenario별 class로 분리했다.
 - PS-A4 subscriber reconnect와 PS-B2 publisher restart의 process lifecycle control은
@@ -32,7 +34,7 @@
 |----------------|----------------|------|------|------|
 | `.gitignore` | `.gitignore` | root | done | logs와 모든 subproject build 산출물을 제외한다. |
 | `feature-map.ko.md` | `feature-map.ko.md` | docs | done | PS-A1~PS-C1 부분 구현과 push 검증 gap을 기록했다. |
-| `run_e2e.sh` | `run_e2e.sh` | runner | done | 역할별 installDist binary를 시작하고 health, evidence, message flow marker를 검증한다. PS-A4/PS-B2 process restart 제어는 Client support가 수행한다. |
+| `run_e2e.sh` | `run_e2e.sh` | runner | done | publisher/subscriber/client installDist binary를 시작하고 health, evidence, message flow marker를 검증한다. PS-A4/PS-B2 process restart 제어는 Client support가 수행한다. |
 | `README.ko.md` 없음 | `README.ko.md` | docs | done | `.NET`에는 없지만 Java 산출물로 역할, 실행법, gap을 기록했다. |
 | `Shared/PubSub.Shared.csproj` | `Shared/build.gradle.kts` | build | done | Java `Shared` library project다. |
 | `Shared/Messages.cs` | `Shared/src/main/java/systems/zlink/e2e/pubsub/shared/Contracts.java` | shared | done | channel, packet name, `EventMsg`, evidence record를 공유한다. |
@@ -45,32 +47,25 @@
 | `Client/Scenarios/SlowSubscriberScenario.cs` | `Client/src/main/java/systems/zlink/e2e/pubsub/client/Scenarios/SlowSubscriberScenario.java` | scenario | done | PS-B1. 느린 subscriber가 빠른 subscriber를 막지 않는지 검증한다. |
 | `Client/Scenarios/PublisherRestartScenario.cs` | `Client/src/main/java/systems/zlink/e2e/pubsub/client/Scenarios/PublisherRestartScenario.java` | scenario | done | PS-B2. 실제 publisher process 재시작 뒤 새 publish 도달을 검증한다. |
 | `Client/Scenarios/MissingMessageNameScenario.cs` | `Client/src/main/java/systems/zlink/e2e/pubsub/client/Scenarios/MissingMessageNameScenario.java` | scenario | done | PS-C1. subscriber dispatch error marker와 정상 publish 회복을 검증한다. |
-| `Client/Support/ClientOptions.cs` | `Client/src/main/java/systems/zlink/e2e/pubsub/client/Support/ClientOptions.java` | support | done | client mode, publisher/subscriber endpoint, registry endpoint, build/log dir, marker file env를 해석한다. |
+| `Client/Support/ClientOptions.cs` | `Client/src/main/java/systems/zlink/e2e/pubsub/client/Support/ClientOptions.java` | support | done | client mode, publisher/subscriber endpoint, Redis location endpoint/key prefix, build/log dir, marker file env를 해석한다. |
 | `Client/Support/Evidence.cs` | `Client/src/main/java/systems/zlink/e2e/pubsub/client/Support/Evidence.java` | support | done | subscriber `/evidence` snapshot을 읽는다. push 검증 gap은 feature-map에 기록했다. |
 | `Client/Support/ScenarioAssert.cs` | `Client/src/main/java/systems/zlink/e2e/pubsub/client/Support/ScenarioAssert.java` | support | done | wait, assertion, common sequence helper를 모았다. |
 | `Client/Support/ServerProcessLauncher.cs` | `Client/src/main/java/systems/zlink/e2e/pubsub/client/Support/ServerProcessLauncher.java` | support | done | PS-A4/PS-B2에서 subscriber/publisher role binary를 Client scenario가 직접 시작하고 종료한다. |
 | `Server/Publisher/PubSub.Publisher.csproj` | `Server/Publisher/build.gradle.kts` | build | done | Java publisher application project다. |
 | `Server/Publisher/Program.cs` | `Server/Publisher/src/main/java/systems/zlink/e2e/pubsub/publisher/Program.java` | server-role | done | publisher role entrypoint다. |
 | `Server/Publisher/PublisherHostFactory.cs` | `Server/Publisher/src/main/java/systems/zlink/e2e/pubsub/publisher/PublisherApplication.java` | server-role | done | Spring host와 framework 설정을 담당한다. |
-| `Server/Publisher/Configuration/PublisherOptions.cs` | `Server/Publisher/src/main/java/systems/zlink/e2e/pubsub/publisher/Configuration/PublisherOptions.java` | configuration | done | HTTP endpoint, fanout endpoint, registry endpoint, log dir env를 해석한다. |
+| `Server/Publisher/Configuration/PublisherOptions.cs` | `Server/Publisher/src/main/java/systems/zlink/e2e/pubsub/publisher/Configuration/PublisherOptions.java` | configuration | done | HTTP endpoint, fanout endpoint, Redis location endpoint/key prefix, log dir env를 해석한다. |
 | `Server/Publisher/Configuration/ServerArgs.cs` | `Server/Publisher/src/main/java/systems/zlink/e2e/pubsub/publisher/Configuration/PublisherOptions.java` | configuration | not-needed | Java runner는 env로 role option을 전달한다. 별도 args parser가 필요 없다. |
 | `Server/Publisher/Configuration/HostFactorySupport.cs` | `Server/Publisher/src/main/java/systems/zlink/e2e/pubsub/publisher/PublisherApplication.java` | configuration | not-needed | Java Spring application class가 host setup을 직접 캡슐화한다. |
 | `Server/Publisher/Endpoints/OperationalEndpoints.cs` | `Server/Publisher/src/main/java/systems/zlink/e2e/pubsub/publisher/Endpoints/PublisherEndpoints.java` | endpoint | done | `/health`와 `/evidence`를 제공한다. |
 | `Server/Publisher/Endpoints/PublisherEndpoints.cs` | `Server/Publisher/src/main/java/systems/zlink/e2e/pubsub/publisher/Endpoints/PublisherEndpoints.java` | endpoint | done | `/publish/event`와 `/publish/missing`에서 public fanout client를 호출한다. |
 | `Server/Publisher/EvidenceDispatchErrorObserver.cs` | 없음 | handler | not-needed | PS-C1 oracle은 subscriber dispatch error다. publisher dispatch marker는 공통 문서 완료 기준이 아니다. |
 | `Server/Publisher/EvidenceStore.cs` | `Server/Publisher/src/main/java/systems/zlink/e2e/pubsub/publisher/Infrastructure/EvidenceStore.java` | infrastructure | done | publisher endpoint 호출 evidence를 보관한다. |
-| `Server/Registry/PubSub.Registry.csproj` | `Server/Registry/build.gradle.kts` | build | done | Java registry application project다. |
-| `Server/Registry/Program.cs` | `Server/Registry/src/main/java/systems/zlink/e2e/pubsub/registry/Program.java` | server-role | done | registry role entrypoint다. |
-| `Server/Registry/RegistryHostFactory.cs` | `Server/Registry/src/main/java/systems/zlink/e2e/pubsub/registry/RegistryApplication.java` | server-role | done | embedded registry와 operational endpoint를 설정한다. |
-| `Server/Registry/Configuration/RegistryOptions.cs` | `Server/Registry/src/main/java/systems/zlink/e2e/pubsub/registry/Configuration/RegistryOptions.java` | configuration | done | registry pub/router endpoint와 HTTP port env를 해석한다. |
-| `Server/Registry/Configuration/ServerArgs.cs` | `Server/Registry/src/main/java/systems/zlink/e2e/pubsub/registry/Configuration/RegistryOptions.java` | configuration | not-needed | Java runner는 env로 role option을 전달한다. 별도 args parser가 필요 없다. |
-| `Server/Registry/Configuration/HostFactorySupport.cs` | `Server/Registry/src/main/java/systems/zlink/e2e/pubsub/registry/RegistryApplication.java` | configuration | not-needed | Java Spring application class가 host setup을 직접 캡슐화한다. |
-| `Server/Registry/OperationalEndpoints.cs` | `Server/Registry/src/main/java/systems/zlink/e2e/pubsub/registry/Endpoints/OperationalEndpoints.java` | endpoint | done | `/health`와 `/evidence`를 제공한다. |
-| `Server/Registry/EvidenceStore.cs` | `Server/Registry/src/main/java/systems/zlink/e2e/pubsub/registry/Infrastructure/EvidenceStore.java` | infrastructure | done | registry readiness evidence를 제공한다. |
+| `Server/Registry/*` | 없음 | server-role | not-needed | Config 3은 Redis location store 기반 fanout 연결을 검증하므로 registry role을 실행 그래프에서 제외했다. |
 | `Server/Subscriber/PubSub.Subscriber.csproj` | `Server/Subscriber/build.gradle.kts` | build | done | Java subscriber application project다. |
 | `Server/Subscriber/Program.cs` | `Server/Subscriber/src/main/java/systems/zlink/e2e/pubsub/subscriber/Program.java` | server-role | done | subscriber role entrypoint다. |
 | `Server/Subscriber/SubscriberHostFactory.cs` | `Server/Subscriber/src/main/java/systems/zlink/e2e/pubsub/subscriber/SubscriberApplication.java` | server-role | done | Spring host와 framework 설정을 담당한다. |
-| `Server/Subscriber/Configuration/SubscriberOptions.cs` | `Server/Subscriber/src/main/java/systems/zlink/e2e/pubsub/subscriber/Configuration/SubscriberOptions.java` | configuration | done | subscriber rid, topic, HTTP endpoint, registry endpoint, log dir를 해석한다. |
+| `Server/Subscriber/Configuration/SubscriberOptions.cs` | `Server/Subscriber/src/main/java/systems/zlink/e2e/pubsub/subscriber/Configuration/SubscriberOptions.java` | configuration | done | subscriber rid, topic, HTTP endpoint, Redis location endpoint/key prefix, log dir를 해석한다. |
 | `Server/Subscriber/Configuration/HandlerDelayOptions.cs` | `Server/Subscriber/src/main/java/systems/zlink/e2e/pubsub/subscriber/Configuration/HandlerDelayOptions.java` | configuration | done | PS-B1 handler delay env를 해석한다. |
 | `Server/Subscriber/Configuration/ServerArgs.cs` | `Server/Subscriber/src/main/java/systems/zlink/e2e/pubsub/subscriber/Configuration/SubscriberOptions.java` | configuration | not-needed | Java runner는 env로 role option을 전달한다. 별도 args parser가 필요 없다. |
 | `Server/Subscriber/Configuration/HostFactorySupport.cs` | `Server/Subscriber/src/main/java/systems/zlink/e2e/pubsub/subscriber/SubscriberApplication.java` | configuration | not-needed | Java Spring application class가 host setup을 직접 캡슐화한다. |

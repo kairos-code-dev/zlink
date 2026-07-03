@@ -23,9 +23,11 @@ fi
 
 export ZLINK_KOTLIN_E2E_BUILD_DIR="${ZLINK_KOTLIN_E2E_BUILD_DIR:-${HOME}/.cache/zlink/kotlin-e2e/RegistryMessaging}"
 export ZLINK_KOTLIN_E2E_GRADLE_CACHE="${ZLINK_KOTLIN_E2E_GRADLE_CACHE:-${HOME}/.cache/zlink/kotlin-e2e/RegistryMessaging-gradle-cache}"
+export ZLINK_KOTLIN_E2E_REDIS_LOCATION_ENDPOINT="${ZLINK_KOTLIN_E2E_REDIS_LOCATION_ENDPOINT:-${ZLINK_REDIS_LOCATION_ENDPOINT:-127.0.0.1:16379}}"
+export ZLINK_KOTLIN_E2E_LOCATION_KEY_PREFIX="${ZLINK_KOTLIN_E2E_LOCATION_KEY_PREFIX:-zlink:e2e:kotlin-registry-messaging:${RUN_ID}}"
 
 pids=()
-role_pattern='systems\.zlink\.e2e\.kotlin\.registrymessaging\.(client|consumer|provider|registry|workflow)\.ProgramKt'
+role_pattern='systems\.zlink\.e2e\.kotlin\.registrymessaging\.(client|consumer|provider|workflow)\.ProgramKt'
 
 print_logs() {
   local status="$1"
@@ -37,6 +39,15 @@ print_logs() {
     echo "===== ${log} =====" >&2
     tail -n 200 "${log}" >&2 || true
   done
+}
+
+run_all_scenarios() {
+  local scenario
+  for scenario in RM-A1 RM-A2 RM-A4 RM-A6 RM-B1 RM-B2 RM-C1 RM-C2 RM-C3 RM-C4 RM-C5 RM-C7 RM-C8 RM-C9; do
+    echo "===== ${scenario} ====="
+    "${ROOT_DIR}/run_e2e.sh" "${scenario}"
+  done
+  echo "registry-messaging kotlin e2e result=passed"
 }
 
 cleanup() {
@@ -57,6 +68,11 @@ cleanup() {
   exit "${status}"
 }
 trap cleanup EXIT
+
+if [[ "${SCENARIO}" == "all" ]]; then
+  run_all_scenarios
+  exit 0
+fi
 
 pick_port() {
   python3 - <<'PY'
@@ -91,10 +107,20 @@ bin_path() {
   echo "${ZLINK_KOTLIN_E2E_BUILD_DIR}/${path}/install/${app}/bin/${app}"
 }
 
+uses_common_roles() {
+  case "$1" in
+    all|RM-A1|RM-A2|RM-A6|RM-C1|RM-C2|RM-C3|RM-C4|RM-C5|RM-C8|RM-C9)
+      return 0
+      ;;
+    *)
+      return 1
+      ;;
+  esac
+}
+
 CLIENT_BIN="$(bin_path Client registry-messaging-kotlin-client)"
 CONSUMER_BIN="$(bin_path Server-Consumer registry-messaging-kotlin-consumer)"
 PROVIDER_BIN="$(bin_path Server-Provider registry-messaging-kotlin-provider)"
-REGISTRY_BIN="$(bin_path Server-Registry registry-messaging-kotlin-registry)"
 WORKFLOW_BIN="$(bin_path Server-Workflow registry-messaging-kotlin-workflow)"
 
 start_server() {
@@ -105,7 +131,6 @@ start_server() {
   pids+=("$!")
 }
 
-REG_HTTP_PORT="$(pick_port)"
 PROVIDER_A_HTTP_PORT="$(pick_port)"
 PROVIDER_B_HTTP_PORT="$(pick_port)"
 WORKFLOW_HTTP_PORT="$(pick_port)"
@@ -113,8 +138,6 @@ CONSUMER_HTTP_PORT="$(pick_port)"
 SINGLE_CONSUMER_HTTP_PORT="$(pick_port)"
 DISCOVERY_CONSUMER_HTTP_PORT="$(pick_port)"
 BACKPRESSURE_CONSUMER_HTTP_PORT="$(pick_port)"
-REG_PUB_PORT="$(pick_port)"
-REG_ROUTER_PORT="$(pick_port)"
 API_A_PORT="$(pick_port)"
 API_B_PORT="$(pick_port)"
 WORKFLOW_PORT="$(pick_port)"
@@ -122,90 +145,91 @@ ROUTE_A_PORT="$(pick_port)"
 ROUTE_B_PORT="$(pick_port)"
 CLIENT_ROUTE_PORT="$(pick_port)"
 
-REG_PUB="tcp://127.0.0.1:${REG_PUB_PORT}"
-REG_ROUTER="tcp://127.0.0.1:${REG_ROUTER_PORT}"
 API_A="tcp://127.0.0.1:${API_A_PORT}"
 API_B="tcp://127.0.0.1:${API_B_PORT}"
 WORKFLOW="tcp://127.0.0.1:${WORKFLOW_PORT}"
 ROUTE_A="tcp://127.0.0.1:${ROUTE_A_PORT}"
 ROUTE_B="tcp://127.0.0.1:${ROUTE_B_PORT}"
 
-gradle_run installDist
+gradle_run :Client:installDist :Server:Provider:installDist :Server:Consumer:installDist :Server:Workflow:installDist
 
-start_server registry "${REGISTRY_BIN}" \
-  --rid registry \
-  --http-url "http://127.0.0.1:${REG_HTTP_PORT}" \
-  --registry-pub-endpoint "${REG_PUB}" \
-  --registry-router-endpoint "${REG_ROUTER}" \
-  --log-dir "${LOG_DIR}"
-wait_health "http://127.0.0.1:${REG_HTTP_PORT}" registry
+if uses_common_roles "${SCENARIO}"; then
+  start_server api-a "${PROVIDER_BIN}" \
+    --rid api-a \
+    --http-url "http://127.0.0.1:${PROVIDER_A_HTTP_PORT}" \
+    --redis-location-endpoint "${ZLINK_KOTLIN_E2E_REDIS_LOCATION_ENDPOINT}" \
+    --location-key-prefix "${ZLINK_KOTLIN_E2E_LOCATION_KEY_PREFIX}" \
+    --channel-endpoint "${API_A}" \
+    --manual-client-endpoint "${API_A}" \
+    --route-endpoint "${ROUTE_A}" \
+    --route-peer "${ROUTE_B}" \
+    --evidence-file "${LOG_DIR}/api-a.evidence.log" \
+    --log-dir "${LOG_DIR}"
+  wait_health "http://127.0.0.1:${PROVIDER_A_HTTP_PORT}" api-a
 
-start_server api-a "${PROVIDER_BIN}" \
-  --rid api-a \
-  --http-url "http://127.0.0.1:${PROVIDER_A_HTTP_PORT}" \
-  --registry-router-endpoint "${REG_ROUTER}" \
-  --channel-endpoint "${API_A}" \
-  --manual-client-endpoint "${API_A}" \
-  --route-endpoint "${ROUTE_A}" \
-  --route-peer "${ROUTE_B}" \
-  --evidence-file "${LOG_DIR}/api-a.evidence.log" \
-  --log-dir "${LOG_DIR}"
-wait_health "http://127.0.0.1:${PROVIDER_A_HTTP_PORT}" api-a
+  start_server api-b "${PROVIDER_BIN}" \
+    --rid api-b \
+    --http-url "http://127.0.0.1:${PROVIDER_B_HTTP_PORT}" \
+    --redis-location-endpoint "${ZLINK_KOTLIN_E2E_REDIS_LOCATION_ENDPOINT}" \
+    --location-key-prefix "${ZLINK_KOTLIN_E2E_LOCATION_KEY_PREFIX}" \
+    --channel-endpoint "${API_B}" \
+    --manual-client-endpoint "${API_B}" \
+    --route-endpoint "${ROUTE_B}" \
+    --route-peer "${ROUTE_A}" \
+    --evidence-file "${LOG_DIR}/api-b.evidence.log" \
+    --log-dir "${LOG_DIR}"
+  wait_health "http://127.0.0.1:${PROVIDER_B_HTTP_PORT}" api-b
 
-start_server api-b "${PROVIDER_BIN}" \
-  --rid api-b \
-  --http-url "http://127.0.0.1:${PROVIDER_B_HTTP_PORT}" \
-  --registry-router-endpoint "${REG_ROUTER}" \
-  --channel-endpoint "${API_B}" \
-  --manual-client-endpoint "${API_B}" \
-  --route-endpoint "${ROUTE_B}" \
-  --route-peer "${ROUTE_A}" \
-  --evidence-file "${LOG_DIR}/api-b.evidence.log" \
-  --log-dir "${LOG_DIR}"
-wait_health "http://127.0.0.1:${PROVIDER_B_HTTP_PORT}" api-b
+  start_server workflow-a "${WORKFLOW_BIN}" \
+    --rid workflow-a \
+    --http-url "http://127.0.0.1:${WORKFLOW_HTTP_PORT}" \
+    --redis-location-endpoint "${ZLINK_KOTLIN_E2E_REDIS_LOCATION_ENDPOINT}" \
+    --location-key-prefix "${ZLINK_KOTLIN_E2E_LOCATION_KEY_PREFIX}" \
+    --workflow-endpoint "${WORKFLOW}" \
+    --evidence-file "${LOG_DIR}/workflow-a.evidence.log" \
+    --log-dir "${LOG_DIR}"
+  wait_health "http://127.0.0.1:${WORKFLOW_HTTP_PORT}" workflow-a
 
-start_server workflow-a "${WORKFLOW_BIN}" \
-  --rid workflow-a \
-  --http-url "http://127.0.0.1:${WORKFLOW_HTTP_PORT}" \
-  --registry-router-endpoint "${REG_ROUTER}" \
-  --workflow-endpoint "${WORKFLOW}" \
-  --evidence-file "${LOG_DIR}/workflow-a.evidence.log" \
-  --log-dir "${LOG_DIR}"
-wait_health "http://127.0.0.1:${WORKFLOW_HTTP_PORT}" workflow-a
+  start_server direct-consumer "${CONSUMER_BIN}" \
+    --http-url "http://127.0.0.1:${CONSUMER_HTTP_PORT}" \
+    --redis-location-endpoint "${ZLINK_KOTLIN_E2E_REDIS_LOCATION_ENDPOINT}" \
+    --location-key-prefix "${ZLINK_KOTLIN_E2E_LOCATION_KEY_PREFIX}" \
+    --provider-endpoint "${API_A}" \
+    --provider-endpoint "${API_B}" \
+    --trace-label direct-consumer \
+    --log-dir "${LOG_DIR}"
+  wait_health "http://127.0.0.1:${CONSUMER_HTTP_PORT}" direct-consumer
 
-start_server direct-consumer "${CONSUMER_BIN}" \
-  --http-url "http://127.0.0.1:${CONSUMER_HTTP_PORT}" \
-  --provider-endpoint "${API_A}" \
-  --provider-endpoint "${API_B}" \
-  --trace-label direct-consumer \
-  --log-dir "${LOG_DIR}"
-wait_health "http://127.0.0.1:${CONSUMER_HTTP_PORT}" direct-consumer
+  start_server single-consumer "${CONSUMER_BIN}" \
+    --http-url "http://127.0.0.1:${SINGLE_CONSUMER_HTTP_PORT}" \
+    --redis-location-endpoint "${ZLINK_KOTLIN_E2E_REDIS_LOCATION_ENDPOINT}" \
+    --location-key-prefix "${ZLINK_KOTLIN_E2E_LOCATION_KEY_PREFIX}" \
+    --provider-endpoint "${API_A}" \
+    --trace-label single-consumer \
+    --log-dir "${LOG_DIR}"
+  wait_health "http://127.0.0.1:${SINGLE_CONSUMER_HTTP_PORT}" single-consumer
 
-start_server single-consumer "${CONSUMER_BIN}" \
-  --http-url "http://127.0.0.1:${SINGLE_CONSUMER_HTTP_PORT}" \
-  --provider-endpoint "${API_A}" \
-  --trace-label single-consumer \
-  --log-dir "${LOG_DIR}"
-wait_health "http://127.0.0.1:${SINGLE_CONSUMER_HTTP_PORT}" single-consumer
+  start_server discovery-consumer "${CONSUMER_BIN}" \
+    --http-url "http://127.0.0.1:${DISCOVERY_CONSUMER_HTTP_PORT}" \
+    --redis-location-endpoint "${ZLINK_KOTLIN_E2E_REDIS_LOCATION_ENDPOINT}" \
+    --location-key-prefix "${ZLINK_KOTLIN_E2E_LOCATION_KEY_PREFIX}" \
+    --trace-label discovery-consumer \
+    --log-dir "${LOG_DIR}"
+  wait_health "http://127.0.0.1:${DISCOVERY_CONSUMER_HTTP_PORT}" discovery-consumer
 
-start_server discovery-consumer "${CONSUMER_BIN}" \
-  --http-url "http://127.0.0.1:${DISCOVERY_CONSUMER_HTTP_PORT}" \
-  --registry-router-endpoint "${REG_ROUTER}" \
-  --trace-label discovery-consumer \
-  --log-dir "${LOG_DIR}"
-wait_health "http://127.0.0.1:${DISCOVERY_CONSUMER_HTTP_PORT}" discovery-consumer
+  start_server backpressure-consumer "${CONSUMER_BIN}" \
+    --http-url "http://127.0.0.1:${BACKPRESSURE_CONSUMER_HTTP_PORT}" \
+    --redis-location-endpoint "${ZLINK_KOTLIN_E2E_REDIS_LOCATION_ENDPOINT}" \
+    --location-key-prefix "${ZLINK_KOTLIN_E2E_LOCATION_KEY_PREFIX}" \
+    --provider-endpoint "${API_A}" \
+    --trace-label backpressure-consumer \
+    --log-dir "${LOG_DIR}"
+  wait_health "http://127.0.0.1:${BACKPRESSURE_CONSUMER_HTTP_PORT}" backpressure-consumer
 
-start_server backpressure-consumer "${CONSUMER_BIN}" \
-  --http-url "http://127.0.0.1:${BACKPRESSURE_CONSUMER_HTTP_PORT}" \
-  --provider-endpoint "${API_A}" \
-  --trace-label backpressure-consumer \
-  --log-dir "${LOG_DIR}"
-wait_health "http://127.0.0.1:${BACKPRESSURE_CONSUMER_HTTP_PORT}" backpressure-consumer
-
-sleep "${ROUTE_SETTLE_SECONDS}"
+  sleep "${ROUTE_SETTLE_SECONDS}"
+fi
 
 "${CLIENT_BIN}" \
-  --registry-url "http://127.0.0.1:${REG_HTTP_PORT}" \
   --provider-a-url "http://127.0.0.1:${PROVIDER_A_HTTP_PORT}" \
   --provider-b-url "http://127.0.0.1:${PROVIDER_B_HTTP_PORT}" \
   --workflow-url "http://127.0.0.1:${WORKFLOW_HTTP_PORT}" \
@@ -213,8 +237,10 @@ sleep "${ROUTE_SETTLE_SECONDS}"
   --single-consumer-url "http://127.0.0.1:${SINGLE_CONSUMER_HTTP_PORT}" \
   --discovery-consumer-url "http://127.0.0.1:${DISCOVERY_CONSUMER_HTTP_PORT}" \
   --backpressure-consumer-url "http://127.0.0.1:${BACKPRESSURE_CONSUMER_HTTP_PORT}" \
-  --registry-bin "${REGISTRY_BIN}" \
   --provider-bin "${PROVIDER_BIN}" \
+  --consumer-bin "${CONSUMER_BIN}" \
+  --redis-location-endpoint "${ZLINK_KOTLIN_E2E_REDIS_LOCATION_ENDPOINT}" \
+  --location-key-prefix "${ZLINK_KOTLIN_E2E_LOCATION_KEY_PREFIX}" \
   --log-dir "${LOG_DIR}" \
   --scenario "${SCENARIO}" \
   >"${LOG_DIR}/client.stdout.log" 2>"${LOG_DIR}/client.stderr.log"

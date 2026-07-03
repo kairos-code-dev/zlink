@@ -6,7 +6,6 @@
 ## 역할
 
 - `Shared`: 기존 Java SpotService 구현의 공통 contract, spot, actor, handler, evidence, timer, stream support 타입.
-- `Server/Registry`: embedded registry process.
 - `Server/Gateway`: HTTP scenario endpoint와 framework gateway process. Client가 요청한 scenario mode를
   public framework 경로로 실행한다.
 - `Server/Play`: play node process. spot mesh, route mesh, ingress channel, stream endpoint를 호스팅한다.
@@ -23,7 +22,8 @@
 ./run_e2e.sh
 ```
 
-runner는 registry, gateway, play, publisher, client role별 installDist binary를 직접 실행한다. 실행 로그와
+runner는 gateway, play, publisher, client role별 installDist binary를 직접 실행한다. gateway, play,
+publisher role은 같은 Redis location store endpoint와 실행별 key prefix를 공유한다. 실행 로그와
 evidence는 `logs/<run-id>/` 아래에 남는다.
 
 완료/gap 분류는 `feature-map.ko.md`를 기준으로 본다. 공통 E2E나 다른 언어 구현만 근거로 Java public

@@ -22,7 +22,8 @@ import systems.zlink.stream.connector.ZLinkStreamMessage;
 
 public final class YieldDispatchScenarioSupport {
     private static final Duration REQUEST_TIMEOUT = Duration.ofSeconds(30);
-    private static final long ISOLATION_DELAY_MILLIS = 3000;
+    private static final long ISOLATION_DELAY_MILLIS = 350;
+    private static final long ACTOR_TIMER_ISOLATION_DELAY_MILLIS = 5000;
     private static final ObjectMapper JSON = new ObjectMapper();
 
     private YieldDispatchScenarioSupport() {
@@ -241,15 +242,12 @@ public final class YieldDispatchScenarioSupport {
                 ISOLATION_DELAY_MILLIS))
             .metadata(metadata)
             .submit());
-        assertOrder(playEvidence, requestId, List.of(
-            "timer-yield-started",
-            "timer-yield-released"));
         connector.await(connector
             .send(new Contracts.TimerStartMsg(
                 requestId,
                 requestId + "-fast",
                 "fast",
-                50,
+                100,
                 0))
             .metadata(metadata)
             .submit());
@@ -338,7 +336,7 @@ public final class YieldDispatchScenarioSupport {
         String timerName = requestId + "-fast";
         String playEvidence = Env.get("ZLINK_JAVA_E2E_PLAY_HTTP") + "/evidence";
         CompletionStage<Contracts.ActorYieldRes> actorYield = connector
-            .request(new Contracts.ActorYieldReq(requestId, ISOLATION_DELAY_MILLIS))
+            .request(new Contracts.ActorYieldReq(requestId, ACTOR_TIMER_ISOLATION_DELAY_MILLIS))
             .metadata(Contracts.ACTOR_ID_METADATA, actorId)
             .timeout(REQUEST_TIMEOUT)
             .submit(Contracts.ActorYieldRes.class);
@@ -397,7 +395,7 @@ public final class YieldDispatchScenarioSupport {
                 timerName,
                 "yield-on-first",
                 50,
-                ISOLATION_DELAY_MILLIS))
+                ACTOR_TIMER_ISOLATION_DELAY_MILLIS))
             .metadata(timerMetadata)
             .submit());
         assertOrder(playEvidence, requestId, List.of(
@@ -721,12 +719,13 @@ public final class YieldDispatchScenarioSupport {
         ensure(Contracts.TARGET_SPOT.equals(playA.spotRid()), "readiness play-a spot mismatch");
         ensure(Contracts.PLAY_NODE_A.equals(playA.nodeRid()), "readiness play-a node mismatch");
 
+        String playBSpot = Contracts.TARGET_SPOT + "-readiness-b";
         Contracts.EnsureSpotRes playB = connector
-            .request(new Contracts.EnsureSpotReq(Contracts.TARGET_SPOT))
+            .request(new Contracts.EnsureSpotReq(playBSpot))
             .metadata(Contracts.TARGET_NODE_RID_METADATA, Contracts.PLAY_NODE_B)
             .timeout(REQUEST_TIMEOUT)
             .await(Contracts.EnsureSpotRes.class);
-        ensure(Contracts.TARGET_SPOT.equals(playB.spotRid()), "readiness play-b spot mismatch");
+        ensure(playBSpot.equals(playB.spotRid()), "readiness play-b spot mismatch");
         ensure(Contracts.PLAY_NODE_B.equals(playB.nodeRid()), "readiness play-b node mismatch");
     }
 

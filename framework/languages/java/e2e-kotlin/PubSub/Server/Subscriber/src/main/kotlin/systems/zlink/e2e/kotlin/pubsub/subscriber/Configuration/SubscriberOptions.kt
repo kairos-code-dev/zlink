@@ -5,7 +5,8 @@ data class SubscriberOptions(
     val topics: Set<String>,
     val httpEndpoint: String,
     val handlerDelayMillis: Long?,
-    val registryRouterEndpoint: String,
+    val redisLocationEndpoint: String,
+    val locationKeyPrefix: String,
     val logDir: String,
 ) {
     companion object {
@@ -18,7 +19,8 @@ data class SubscriberOptions(
                 topics = parseTopics(values["topics"] ?: "all"),
                 httpEndpoint = required("http-endpoint"),
                 handlerDelayMillis = values["handler-delay-ms"]?.takeIf { it.isNotBlank() }?.toLong(),
-                registryRouterEndpoint = required("registry-router-endpoint"),
+                redisLocationEndpoint = required("redis-location-endpoint"),
+                locationKeyPrefix = required("location-key-prefix"),
                 logDir = values["log-dir"]?.takeIf { it.isNotBlank() } ?: "logs",
             )
         }

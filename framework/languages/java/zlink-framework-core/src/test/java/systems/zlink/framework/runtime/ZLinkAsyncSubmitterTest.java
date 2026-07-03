@@ -127,11 +127,6 @@ final class ZLinkAsyncSubmitterTest {
         }
 
         @Override
-        public ZLinkRegistryBackendAdapter createRegistryAdapter(ZLinkBackendAdapterOptions options) {
-            throw new UnsupportedOperationException();
-        }
-
-        @Override
         public ZLinkSpotBackendAdapter createSpotAdapter(ZLinkBackendAdapterOptions options) {
             throw new UnsupportedOperationException();
         }
@@ -153,14 +148,6 @@ final class ZLinkAsyncSubmitterTest {
                 @Override public void shutdown() { }
                 @Override public void close() { }
             };
-        }
-
-        @Override
-        public ZLinkBackendDiscovery createDiscovery(
-            ZLinkBackendContext context,
-            ZLinkBackendAutoConnectType autoConnectType,
-            String channelName) {
-            throw new UnsupportedOperationException();
         }
 
         @Override
@@ -224,7 +211,6 @@ final class ZLinkAsyncSubmitterTest {
         @Override public void bind(String endpoint) { }
         @Override public void connect(String endpoint) { }
         @Override public void disconnect(String endpoint) { }
-        @Override public void attachDiscovery(ZLinkBackendDiscovery discovery) { }
         @Override public void setChannelName(String channelName) { }
         @Override public boolean send(List<Message> parts, SendFlags flags) { return true; }
         @Override public boolean request(
@@ -255,7 +241,6 @@ final class ZLinkAsyncSubmitterTest {
 
         @Override public String name() { return "publisher"; }
         @Override public void bind(String endpoint) { }
-        @Override public void attachDiscovery(ZLinkBackendDiscovery discovery) { }
         @Override public void setChannelName(String channelName) { }
         @Override public void setRoutingId(RoutingId routingId) { }
         @Override public boolean publish(String topic, List<Message> parts, SendFlags flags) {

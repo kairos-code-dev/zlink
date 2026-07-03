@@ -10,13 +10,15 @@ import java.time.Duration
 import java.util.concurrent.Executors
 import java.util.concurrent.TimeUnit
 import org.springframework.context.SmartLifecycle
-import systems.zlink.contracts.service.registry.ServiceRole
 import systems.zlink.framework.channels.ZLinkClient
-import systems.zlink.framework.registry.ZLinkRegistryQueryClient
+import systems.zlink.framework.locations.ZLinkLocationAutoConnectType
+import systems.zlink.framework.locations.ZLinkLocationRole
+import systems.zlink.framework.locations.ZLinkPeerLocationFilter
+import systems.zlink.framework.runtime.host.ZLinkFrameworkLifecycle
 
 class ConsumerHttpServer(
     private val client: ZLinkClient,
-    private val registry: ZLinkRegistryQueryClient?,
+    private val lifecycle: ZLinkFrameworkLifecycle,
     private val json: ObjectMapper,
     private val endpoint: String,
 ) : SmartLifecycle {
@@ -64,16 +66,23 @@ class ConsumerHttpServer(
     }
 
     private fun waitForTopology(request: Contracts.TopologyWaitReq): Int {
-        val queryClient = registry ?: throw IllegalStateException("registry query client is not configured")
         val deadline = System.nanoTime() + TimeUnit.SECONDS.toNanos(20)
         while (System.nanoTime() < deadline) {
             val matches = try {
-                queryClient.topology().toCompletableFuture()
+                lifecycle.monitoringLocationRuntimeQuery()
+                    .listPeersAsync(
+                        ZLinkPeerLocationFilter(
+                            ZLinkLocationAutoConnectType.CLIENT_SERVER,
+                            Contracts.CHANNEL,
+                            ZLinkLocationRole.ROUTER,
+                            null,
+                            null,
+                        ),
+                    )
+                    .toCompletableFuture()
                     .get(3, TimeUnit.SECONDS)
                     .asSequence()
-                    .filter { it.channelName() == Contracts.CHANNEL }
-                    .filter { it.serviceRole() == ServiceRole.ROUTER }
-                    .filter { request.routingId == null || it.routingId().toString() == request.routingId }
+                    .filter { request.routingId == null || it.nodeRid().toString() == request.routingId }
                     .filter { request.endpoint == null || it.endpoint() == request.endpoint }
                     .count()
             } catch (_: Exception) {
@@ -84,7 +93,7 @@ class ConsumerHttpServer(
             }
             Thread.sleep(200)
         }
-        throw IllegalStateException("registry topology did not match $request")
+        throw IllegalStateException("location peer topology did not match $request")
     }
 
     override fun stop() {

@@ -92,7 +92,11 @@ public final class Program {
                 server.createContext("/health", exchange -> write(exchange, "ok\n"));
                 server.createContext("/scenario/", exchange -> {
                     String name = exchange.getRequestURI().getPath().substring("/scenario/".length());
-                    write(exchange, scenario.run(name));
+                    try {
+                        write(exchange, 200, scenario.run(name));
+                    } catch (Throwable error) {
+                        write(exchange, 500, error.getMessage() + "\n");
+                    }
                 });
                 server.start();
                 running = true;
@@ -104,9 +108,16 @@ public final class Program {
         private static void write(
             com.sun.net.httpserver.HttpExchange exchange,
             String value) throws java.io.IOException {
+            write(exchange, 200, value);
+        }
+
+        private static void write(
+            com.sun.net.httpserver.HttpExchange exchange,
+            int status,
+            String value) throws java.io.IOException {
             byte[] body = value.getBytes(StandardCharsets.UTF_8);
             exchange.getResponseHeaders().add("Content-Type", "text/plain");
-            exchange.sendResponseHeaders(200, body.length);
+            exchange.sendResponseHeaders(status, body.length);
             exchange.getResponseBody().write(body);
             exchange.close();
         }
@@ -160,7 +171,7 @@ public final class Program {
         }
 
         private String monA2() {
-            waitForEvent(Env.get("ZLINK_JAVA_E2E_REGISTRY_HTTP"), "registry", Set.of(
+            waitForEvent(Env.get("ZLINK_JAVA_E2E_SERVICE_HTTP"), "location", Set.of(
                 "STATUS_CHANGED",
                 "TOPOLOGY_CHANGED",
                 "SERVICE_SUMMARY_CHANGED"));
@@ -178,7 +189,7 @@ public final class Program {
 
         private String monA5() {
             triggerHandshakeFailure();
-            waitForEvent(Env.get("ZLINK_JAVA_E2E_REGISTRY_HTTP"), "registry", Set.of("STATUS_CHANGED"));
+            waitForEvent(Env.get("ZLINK_JAVA_E2E_SERVICE_HTTP"), "location", Set.of("STATUS_CHANGED"));
             waitForEvent(Env.get("ZLINK_JAVA_E2E_SERVICE_HTTP"), "spot", Set.of(
                 "STATUS_CHANGED",
                 "TIMER_STOPPED_AFTER_UNHANDLED_EXCEPTION"));
@@ -203,7 +214,7 @@ public final class Program {
         }
 
         private String monB2() {
-            expectFailure(BadIntervalConfig.class, "registry interval must be positive");
+            expectFailure(BadIntervalConfig.class, "location runtime interval must be positive");
             expectFailure(MissingSocketSourceConfig.class, "monitoring socket source is not configured");
             expectFailure(MissingSpotSourceConfig.class, "monitoring spot source is not configured");
             return "scenario MON-B2 passed\n";

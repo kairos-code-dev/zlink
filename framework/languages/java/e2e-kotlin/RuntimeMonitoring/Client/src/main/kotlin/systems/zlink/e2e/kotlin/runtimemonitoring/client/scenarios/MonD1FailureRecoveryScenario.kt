@@ -5,6 +5,7 @@ import java.net.URI
 import java.nio.file.Path
 import java.util.concurrent.TimeUnit
 import systems.zlink.e2e.kotlin.runtimemonitoring.Contracts
+import systems.zlink.e2e.kotlin.runtimemonitoring.Env
 import systems.zlink.e2e.kotlin.runtimemonitoring.client.ClientOptions
 import systems.zlink.e2e.kotlin.runtimemonitoring.client.MonitoringEvidenceClient
 import systems.zlink.e2e.kotlin.runtimemonitoring.client.ScenarioAssert
@@ -34,9 +35,9 @@ class MonD1FailureRecoveryScenario(
                 setOf("CONNECTION_READY"),
             )
             evidence.waitForEvent(
-                options.registryHttp,
-                "registry",
-                Contracts.REGISTRY_SOURCE,
+                options.serviceHttp,
+                "location",
+                Contracts.LOCATION_SOURCE,
                 setOf("TOPOLOGY_CHANGED"),
             )
         } finally {
@@ -58,7 +59,10 @@ class MonD1FailureRecoveryScenario(
             .redirectOutput(stdout)
             .redirectError(stderr)
         process.environment()["ZLINK_KOTLIN_E2E_RID"] = "svc-b"
-        process.environment()["ZLINK_KOTLIN_E2E_REGISTRY_ROUTER"] = options.registryRouter
+        process.environment()["ZLINK_KOTLIN_E2E_REDIS_LOCATION_ENDPOINT"] =
+            Env.get("ZLINK_KOTLIN_E2E_REDIS_LOCATION_ENDPOINT")
+        process.environment()["ZLINK_KOTLIN_E2E_LOCATION_KEY_PREFIX"] =
+            Env.get("ZLINK_KOTLIN_E2E_LOCATION_KEY_PREFIX")
         process.environment()["ZLINK_KOTLIN_E2E_API_ENDPOINT"] = options.filteredApiEndpoint
         process.environment()["ZLINK_KOTLIN_E2E_HTTP_ENDPOINT"] = options.filteredServiceHttp
         process.environment()["ZLINK_KOTLIN_E2E_LOG_DIR"] = options.logDir

@@ -9,6 +9,8 @@ import org.springframework.context.annotation.Bean
 import systems.zlink.e2e.kotlin.pubsub.shared.Contracts
 import systems.zlink.framework.configuration.ZLinkMessageFlowLogMode
 import systems.zlink.framework.configuration.ZLinkMessageFlowOutcome
+import systems.zlink.framework.locations.redis.ZLinkRedisLocationOptions
+import systems.zlink.framework.locations.redis.ZLinkRedisLocationStore
 import systems.zlink.framework.spring.EnableZLinkFramework
 import systems.zlink.framework.spring.ZLinkFrameworkConfigurer
 
@@ -71,7 +73,6 @@ class SubscriberApplication {
                     CompletableFuture.completedFuture(null)
                 }
             options.addHandlersFromPackageOf(EventMsgHandler::class.java)
-            options.useDiscovery().addRegistryEndpoint(parsedOptions.registryRouterEndpoint)
             options.addFanoutChannel(Contracts.EVENT_CHANNEL)
                 .enableSubscriber()
                 .addHandlerGroup(Contracts.HANDLER_GROUP)
@@ -80,4 +81,12 @@ class SubscriberApplication {
     @Bean
     fun eventMsgHandler(state: EvidenceStore): EventMsgHandler =
         EventMsgHandler(state)
+
+    @Bean
+    fun locationStore(options: SubscriberOptions): ZLinkRedisLocationStore =
+        ZLinkRedisLocationStore(
+            ZLinkRedisLocationOptions()
+                .setConnectionString(options.redisLocationEndpoint)
+                .setKeyPrefix(options.locationKeyPrefix),
+        )
 }

@@ -4,23 +4,29 @@ set -euo pipefail
 cd "$(dirname "${BASH_SOURCE[0]}")"
 
 pids=()
-role_pattern='systems\.zlink\.e2e\.kotlin\.discoveryregistryha\.ProgramKt'
+REDIS_CONTAINER=""
+role_pattern='systems\.zlink\.e2e\.kotlin\.discoveryregistryha\..*ProgramKt'
 run_id="$(date +%Y%m%d-%H%M%S)-$$"
 log_dir="$(pwd)/logs/${run_id}"
 repo_root="$(cd ../../../../.. && pwd)"
 default_core_lib="${repo_root}/core/build/lib/libzlink.so"
 mkdir -p "${log_dir}"
 echo "log_dir=${log_dir}"
-SCENARIO="${1:-all}"
+SCENARIO="${1:-SF-A1}"
 if [[ -z "${ZLINK_LIBRARY_PATH:-}" && -f "${default_core_lib}" ]]; then
   export ZLINK_LIBRARY_PATH="${default_core_lib}"
 fi
 export ZLINK_KOTLIN_E2E_BUILD_DIR="${ZLINK_KOTLIN_E2E_BUILD_DIR:-${HOME}/.cache/zlink/kotlin-e2e/DiscoveryRegistryHa}"
 export ZLINK_KOTLIN_E2E_GRADLE_CACHE="${ZLINK_KOTLIN_E2E_GRADLE_CACHE:-${HOME}/.cache/zlink/kotlin-e2e/DiscoveryRegistryHa-gradle-cache}"
-LOCAL_READINESS_TIMEOUT_SECONDS=3
-LOCAL_READINESS_POLL_SECONDS=0.1
+export ZLINK_KOTLIN_E2E_REDIS_LOCATION_ENDPOINT="${ZLINK_KOTLIN_E2E_REDIS_LOCATION_ENDPOINT:-${ZLINK_REDIS_LOCATION_ENDPOINT:-127.0.0.1:16379}}"
+ZLINK_KOTLIN_E2E_BASE_REDIS_LOCATION_ENDPOINT="${ZLINK_KOTLIN_E2E_REDIS_LOCATION_ENDPOINT}"
+export ZLINK_KOTLIN_E2E_REDIS_COMMAND_TIMEOUT_MS="${ZLINK_KOTLIN_E2E_REDIS_COMMAND_TIMEOUT_MS:-500}"
+export ZLINK_KOTLIN_E2E_LOCATION_HEARTBEAT_MS="${ZLINK_KOTLIN_E2E_LOCATION_HEARTBEAT_MS:-1000}"
+export ZLINK_KOTLIN_E2E_LOCATION_LEASE_TTL_MS="${ZLINK_KOTLIN_E2E_LOCATION_LEASE_TTL_MS:-3000}"
+export ZLINK_KOTLIN_E2E_LOCATION_POLLING_MS="${ZLINK_KOTLIN_E2E_LOCATION_POLLING_MS:-500}"
+export ZLINK_KOTLIN_E2E_LOCATION_STORE_FAILURE_GRACE_MS="${ZLINK_KOTLIN_E2E_LOCATION_STORE_FAILURE_GRACE_MS:-6000}"
 LOCAL_READINESS_ATTEMPTS=30
-SCENARIO_SETTLE_SECONDS=3
+LOCAL_READINESS_POLL_SECONDS=0.1
 
 print_logs() {
   local status="$1"
@@ -57,6 +63,10 @@ cleanup() {
   (pgrep -f "${role_pattern}" 2>/dev/null || true) | while read -r pid; do
     kill -9 "${pid}" >/dev/null 2>&1 || true
   done
+  if [[ -n "${REDIS_CONTAINER}" ]]; then
+    docker unpause "${REDIS_CONTAINER}" >/dev/null 2>&1 || true
+    docker rm -f "${REDIS_CONTAINER}" >/dev/null 2>&1 || true
+  fi
   wait >/dev/null 2>&1 || true
   exit "${status}"
 }
@@ -95,6 +105,37 @@ port_of() {
   echo "${1##*:}"
 }
 
+start_redis_container() {
+  if ! command -v docker >/dev/null 2>&1; then
+    echo "Docker is required for ${SCENARIO}; it provisions a dedicated Redis location store." >&2
+    exit 1
+  fi
+  REDIS_CONTAINER="zlink-kotlin-storefailure-redis-$$"
+  docker run -d --rm --name "${REDIS_CONTAINER}" -p "127.0.0.1::6379" redis:7.2-alpine >/dev/null
+  ZLINK_KOTLIN_E2E_REDIS_LOCATION_ENDPOINT="$(
+    docker port "${REDIS_CONTAINER}" 6379/tcp | sed -E 's/.*:([0-9]+)$/127.0.0.1:\1/'
+  )"
+  export ZLINK_KOTLIN_E2E_REDIS_LOCATION_ENDPOINT
+}
+
+pause_redis_container() {
+  docker pause "${REDIS_CONTAINER}" >/dev/null
+}
+
+unpause_redis_container() {
+  docker unpause "${REDIS_CONTAINER}" >/dev/null
+}
+
+stop_redis_container() {
+  if [[ -n "${REDIS_CONTAINER}" ]]; then
+    docker unpause "${REDIS_CONTAINER}" >/dev/null 2>&1 || true
+    docker rm -f "${REDIS_CONTAINER}" >/dev/null 2>&1 || true
+    REDIS_CONTAINER=""
+  fi
+  ZLINK_KOTLIN_E2E_REDIS_LOCATION_ENDPOINT="${ZLINK_KOTLIN_E2E_BASE_REDIS_LOCATION_ENDPOINT}"
+  export ZLINK_KOTLIN_E2E_REDIS_LOCATION_ENDPOINT
+}
+
 wait_port() {
   local name="$1"
   local endpoint="$2"
@@ -121,190 +162,55 @@ bin_path() {
 }
 
 CLIENT_BIN="$(bin_path Client discovery-registry-ha-kotlin-client)"
-REGISTRY_BIN="$(bin_path Server-Registry discovery-registry-ha-kotlin-registry)"
 PROVIDER_BIN="$(bin_path Server-Provider discovery-registry-ha-kotlin-provider)"
 CONSUMER_BIN="$(bin_path Server-Consumer discovery-registry-ha-kotlin-consumer)"
-PROBE_BIN="$(bin_path Server-Probe discovery-registry-ha-kotlin-probe)"
-EMBEDDED_BIN="$(bin_path Server-Embedded discovery-registry-ha-kotlin-embedded)"
-
-start_registry() {
-  local name="$1"
-  local id="$2"
-  local pub="$3"
-  local router="$4"
-  local http_endpoint="$5"
-  local peers="${6:-}"
-  "${REGISTRY_BIN}" \
-    --registry-id "${id}" \
-    --registry-pub "${pub}" \
-    --registry-router "${router}" \
-    --http-endpoint "${http_endpoint}" \
-    --registry-peers "${peers}" \
-    >"${log_dir}/${name}.stdout.log" 2>"${log_dir}/${name}.stderr.log" &
-  LAST_PID="$!"
-  pids+=("${LAST_PID}")
-  wait_port "${name}-router" "${router}"
-  wait_port "${name}-http" "${http_endpoint}"
-}
 
 start_provider() {
   local rid="$1"
   local endpoint="$2"
-  local registries="$3"
-  local name="${4:-${rid}}"
+  local name="${3:-${rid}}"
+  local http_endpoint="${4:-}"
   "${PROVIDER_BIN}" \
     --provider-rid "${rid}" \
+    --http-endpoint "${http_endpoint}" \
     --api-endpoint "${endpoint}" \
-    --registry-routers "${registries}" \
+    --redis-location-endpoint "${ZLINK_KOTLIN_E2E_REDIS_LOCATION_ENDPOINT}" \
+    --redis-command-timeout-ms "${ZLINK_KOTLIN_E2E_REDIS_COMMAND_TIMEOUT_MS}" \
+    --location-key-prefix "${ZLINK_KOTLIN_E2E_LOCATION_KEY_PREFIX}" \
+    --location-heartbeat-ms "${ZLINK_KOTLIN_E2E_LOCATION_HEARTBEAT_MS}" \
+    --location-lease-ttl-ms "${ZLINK_KOTLIN_E2E_LOCATION_LEASE_TTL_MS}" \
+    --location-polling-ms "${ZLINK_KOTLIN_E2E_LOCATION_POLLING_MS}" \
+    --location-store-failure-grace-ms "${ZLINK_KOTLIN_E2E_LOCATION_STORE_FAILURE_GRACE_MS}" \
     --log-dir "${log_dir}" \
     >"${log_dir}/${name}.stdout.log" 2>"${log_dir}/${name}.stderr.log" &
   LAST_PID="$!"
   pids+=("${LAST_PID}")
   wait_port "${name}-api" "${endpoint}"
+  if [[ -n "${http_endpoint}" ]]; then
+    wait_port "${name}-http" "${http_endpoint}"
+  fi
 }
 
 start_consumer() {
   local name="$1"
-  local rid="$2"
-  local http_endpoint="$3"
-  local registries="$4"
-  "${CONSUMER_BIN}" \
-    --consumer-rid "${rid}" \
-    --http-endpoint "${http_endpoint}" \
-    --registry-routers "${registries}" \
-    --log-dir "${log_dir}" \
-    >"${log_dir}/${name}.stdout.log" 2>"${log_dir}/${name}.stderr.log" &
-  LAST_PID="$!"
-  pids+=("${LAST_PID}")
-  wait_port "${name}-http" "${http_endpoint}"
-}
-
-start_probe() {
-  local name="$1"
   local http_endpoint="$2"
-  local registry="$3"
-  "${PROBE_BIN}" \
+  local store_mode="${3:-watch}"
+  "${CONSUMER_BIN}" \
+    --consumer-rid "${name}" \
     --http-endpoint "${http_endpoint}" \
-    --registry-router "${registry}" \
+    --location-store-mode "${store_mode}" \
+    --redis-location-endpoint "${ZLINK_KOTLIN_E2E_REDIS_LOCATION_ENDPOINT}" \
+    --redis-command-timeout-ms "${ZLINK_KOTLIN_E2E_REDIS_COMMAND_TIMEOUT_MS}" \
+    --location-key-prefix "${ZLINK_KOTLIN_E2E_LOCATION_KEY_PREFIX}" \
+    --location-heartbeat-ms "${ZLINK_KOTLIN_E2E_LOCATION_HEARTBEAT_MS}" \
+    --location-lease-ttl-ms "${ZLINK_KOTLIN_E2E_LOCATION_LEASE_TTL_MS}" \
+    --location-polling-ms "${ZLINK_KOTLIN_E2E_LOCATION_POLLING_MS}" \
+    --location-store-failure-grace-ms "${ZLINK_KOTLIN_E2E_LOCATION_STORE_FAILURE_GRACE_MS}" \
     --log-dir "${log_dir}" \
     >"${log_dir}/${name}.stdout.log" 2>"${log_dir}/${name}.stderr.log" &
   LAST_PID="$!"
   pids+=("${LAST_PID}")
   wait_port "${name}-http" "${http_endpoint}"
-}
-
-start_embedded() {
-  local name="$1"
-  local id="$2"
-  local pub="$3"
-  local router="$4"
-  local http_endpoint="$5"
-  local rid="$6"
-  local api_endpoint="$7"
-  local peers="${8:-}"
-  "${EMBEDDED_BIN}" \
-    --registry-id "${id}" \
-    --registry-pub "${pub}" \
-    --registry-router "${router}" \
-    --registry-routers "${router}" \
-    --http-endpoint "${http_endpoint}" \
-    --registry-peers "${peers}" \
-    --provider-rid "${rid}" \
-    --api-endpoint "${api_endpoint}" \
-    --log-dir "${log_dir}" \
-    >"${log_dir}/${name}.stdout.log" 2>"${log_dir}/${name}.stderr.log" &
-  pids+=("$!")
-  wait_port "${name}-router" "${router}"
-  wait_port "${name}-http" "${http_endpoint}"
-  wait_port "${rid}-api" "${api_endpoint}"
-}
-
-run_client() {
-  local scenario="$1"
-  local registries="$2"
-  local probes="$3"
-  local expected="$4"
-  local dead="${5:-}"
-  local query_registry="${6:-${registries%%,*}}"
-  local topology_probe="${7:-${probes%%,*}}"
-  local use_remote_probe="${8:-false}"
-  local wait_for_members="${9:-true}"
-  local consumer_port
-  local consumer_http
-  local consumer_pid
-  consumer_port="$(reserve_ports 1)"
-  consumer_http="$(http "${consumer_port}")"
-  start_consumer "consumer-${scenario}" "consumer-${scenario}" "${consumer_http}" "${registries}"
-  consumer_pid="${LAST_PID}"
-  set +e
-  run_client_with_consumer \
-    "${scenario}" \
-    "${registries}" \
-    "${probes}" \
-    "${expected}" \
-    "${dead}" \
-    "${query_registry}" \
-    "${topology_probe}" \
-    "${use_remote_probe}" \
-    "${wait_for_members}" \
-    "${consumer_http}" \
-    "${scenario}"
-  local status="$?"
-  set -e
-  stop_pid "${consumer_pid}"
-  return "${status}"
-}
-
-run_client_with_consumer() {
-  local scenario="$1"
-  local registries="$2"
-  local probes="$3"
-  local expected="$4"
-  local dead="${5:-}"
-  local query_registry="${6:-${registries%%,*}}"
-  local topology_probe="${7:-${probes%%,*}}"
-  local use_remote_probe="${8:-false}"
-  local wait_for_members="${9:-true}"
-  local consumer_http="${10}"
-  local log_suffix="${11:-${scenario}}"
-  local remote_probe_http=""
-  local remote_probe_pid=""
-  if [[ "${use_remote_probe}" == "true" ]]; then
-    local probe_port
-    probe_port="$(reserve_ports 1)"
-    remote_probe_http="$(http "${probe_port}")"
-    start_probe "probe-${scenario}" "${remote_probe_http}" "${query_registry}"
-    remote_probe_pid="${LAST_PID}"
-  fi
-  local status=0
-  set +e
-  "${CLIENT_BIN}" \
-    --scenario "${scenario}" \
-    --registry-routers "${registries}" \
-    --query-registry-router "${query_registry}" \
-    --probe-http-endpoints "${probes}" \
-    --topology-http-endpoint "${topology_probe}" \
-    --consumer-http-endpoint "${consumer_http}" \
-    --remote-probe-http-endpoint "${remote_probe_http}" \
-    --wait-for-members "${wait_for_members}" \
-    --expected-rids "${expected}" \
-    --dead-http-endpoint "${dead}" \
-    --log-dir "${log_dir}" \
-    >"${log_dir}/client-${log_suffix}.stdout.log" 2>"${log_dir}/client-${log_suffix}.stderr.log"
-  status="$?"
-  set -e
-  if [[ -n "${remote_probe_pid}" ]]; then
-    stop_pid "${remote_probe_pid}"
-  fi
-  cat "${log_dir}/client-${log_suffix}.stdout.log"
-  if [[ "${status}" != "0" ]]; then
-    if [[ "${scenario}" == "DR-A4" ]] &&
-       grep -q "scenario DR-A4 passed" "${log_dir}/client-${log_suffix}.stdout.log"; then
-      echo "scenario DR-A4 client exited ${status} after pass marker; accepting known native teardown abort" >&2
-      return 0
-    fi
-    return "${status}"
-  fi
 }
 
 stop_all() {
@@ -312,234 +218,295 @@ stop_all() {
   for ((i=${#pids[@]}-1; i>=0; i--)); do
     kill "${pids[$i]}" >/dev/null 2>&1 || true
   done
+  for _ in $(seq 1 30); do
+    local any_running=0
+    for pid in "${pids[@]}"; do
+      if kill -0 "${pid}" >/dev/null 2>&1; then
+        any_running=1
+        break
+      fi
+    done
+    [[ "${any_running}" == "0" ]] && break
+    sleep 0.1
+  done
+  for ((i=${#pids[@]}-1; i>=0; i--)); do
+    kill -9 "${pids[$i]}" >/dev/null 2>&1 || true
+  done
   wait >/dev/null 2>&1 || true
   pids=()
   set -e
 }
 
-stop_pid() {
-  local pid="$1"
-  if kill -0 "${pid}" >/dev/null 2>&1; then
-    kill "${pid}" >/dev/null 2>&1 || true
-    wait "${pid}" >/dev/null 2>&1 || true
-  fi
+shutdown_http() {
+  local endpoint="$1"
+  python3 - "${endpoint}" <<'PY'
+import sys
+import urllib.request
+endpoint = sys.argv[1]
+request = urllib.request.Request(endpoint + "/shutdown", data=b"", method="POST")
+with urllib.request.urlopen(request, timeout=5) as response:
+    response.read()
+PY
+}
+
+status_field() {
+  local endpoint="$1"
+  local field="$2"
+  python3 - "${endpoint}" "${field}" <<'PY'
+import json
+import sys
+import urllib.request
+endpoint = sys.argv[1]
+field = sys.argv[2]
+with urllib.request.urlopen(endpoint + "/locations/status", timeout=5) as response:
+    status = json.load(response)
+print(status.get(field, ""))
+PY
+}
+
+assert_instant_after() {
+  local before="$1"
+  local after="$2"
+  local message="$3"
+  python3 - "${before}" "${after}" "${message}" <<'PY'
+import datetime
+import sys
+before = sys.argv[1]
+after = sys.argv[2]
+message = sys.argv[3]
+def parse(value):
+    if not value:
+        raise ValueError("empty instant")
+    return datetime.datetime.fromisoformat(value.replace("Z", "+00:00"))
+if parse(after) <= parse(before):
+    raise SystemExit(message + f": before={before} after={after}")
+PY
+}
+
+run_client() {
+  local scenario="$1"
+  local consumer_http="$2"
+  local expected="$3"
+  local suffix="${4:-${scenario}}"
+  local dead_rid="${5:-api-b}"
+  local absent="${6:-}"
+  "${CLIENT_BIN}" \
+    --scenario "${scenario}" \
+    --consumer-http-endpoint "${consumer_http}" \
+    --expected-rids "${expected}" \
+    --dead-rid "${dead_rid}" \
+    --expected-absent-rids "${absent}" \
+    --location-heartbeat-ms "${ZLINK_KOTLIN_E2E_LOCATION_HEARTBEAT_MS}" \
+    --location-lease-ttl-ms "${ZLINK_KOTLIN_E2E_LOCATION_LEASE_TTL_MS}" \
+    --location-polling-ms "${ZLINK_KOTLIN_E2E_LOCATION_POLLING_MS}" \
+    --location-store-failure-grace-ms "${ZLINK_KOTLIN_E2E_LOCATION_STORE_FAILURE_GRACE_MS}" \
+    --log-dir "${log_dir}" \
+    >"${log_dir}/client-${suffix}.stdout.log" 2>"${log_dir}/client-${suffix}.stderr.log"
+  cat "${log_dir}/client-${suffix}.stdout.log"
 }
 
 should_run() {
   local target="$1"
-  [[ "${SCENARIO}" == "all" || "${SCENARIO}" == "${target}" ]]
+  [[ "${SCENARIO}" == "${target}" || "${SCENARIO}" == "all" ]]
 }
 
-gradle_run installDist
+if [[ "${SCENARIO}" != "all" && "${SCENARIO}" != "SF-A1" && "${SCENARIO}" != "SF-A2" && "${SCENARIO}" != "SF-B1" && "${SCENARIO}" != "SF-B2" && "${SCENARIO}" != "SF-C1" && "${SCENARIO}" != "SF-C2" && "${SCENARIO}" != "SF-D1" && "${SCENARIO}" != "SF-D2" && "${SCENARIO}" != "SF-D3" ]]; then
+  echo "unknown scenario ${SCENARIO}" >&2
+  exit 1
+fi
 
-if should_run DR-A1 || should_run DR-D2; then
-read -r R1P R1R R1H A B <<<"$(reserve_ports 5)"
-REG1_PUB="$(tcp "${R1P}")"; REG1_ROUTER="$(tcp "${R1R}")"; REG1_HTTP="$(http "${R1H}")"
-API_A="$(tcp "${A}")"; API_B="$(tcp "${B}")"
-start_registry dr-a1-reg1 1 "${REG1_PUB}" "${REG1_ROUTER}" "${REG1_HTTP}"
-start_provider api-a "${API_A}" "${REG1_ROUTER}"
-start_provider api-b "${API_B}" "${REG1_ROUTER}"
+gradle_run :Client:installDist :Server:Provider:installDist :Server:Consumer:installDist
+
+if should_run SF-A1; then
+ZLINK_KOTLIN_E2E_LOCATION_KEY_PREFIX="zlink:e2e:kotlin-store-failure:${run_id}:sf-a1"
+start_redis_container
+read -r AH BH CH A B <<<"$(reserve_ports 5)"
+API_A="$(tcp "${A}")"; API_B="$(tcp "${B}")"; CONSUMER_HTTP="$(http "${CH}")"
+start_provider api-a "${API_A}" api-a "$(http "${AH}")"
+start_provider api-b "${API_B}" api-b "$(http "${BH}")"
+start_consumer "consumer-SF-A1" "${CONSUMER_HTTP}"
 sleep 2
-should_run DR-A1 && run_client DR-A1 "${REG1_ROUTER}" "${REG1_HTTP}" "api-a,api-b"
-should_run DR-D2 && run_client DR-D2 "${REG1_ROUTER}" "${REG1_HTTP}" "api-a,api-b"
+run_client SF-A1 "${CONSUMER_HTTP}" "api-a,api-b"
 stop_all
+stop_redis_container
 fi
 
-if should_run DR-D1; then
-read -r R1P R1R R1H A <<<"$(reserve_ports 4)"
-REG1_PUB="$(tcp "${R1P}")"; REG1_ROUTER="$(tcp "${R1R}")"; REG1_HTTP="$(http "${R1H}")"
-API_A="$(tcp "${A}")"
-start_embedded dr-d1-embedded 1 "${REG1_PUB}" "${REG1_ROUTER}" "${REG1_HTTP}" api-a "${API_A}"
+if should_run SF-A2; then
+ZLINK_KOTLIN_E2E_LOCATION_KEY_PREFIX="zlink:e2e:kotlin-store-failure:${run_id}:sf-a2"
+start_redis_container
+read -r AH BH CH CPH A B C <<<"$(reserve_ports 7)"
+API_A="$(tcp "${A}")"; API_B="$(tcp "${B}")"; API_C="$(tcp "${C}")"
+HTTP_C="$(http "${CPH}")"; CONSUMER_HTTP="$(http "${CH}")"
+start_provider api-a "${API_A}" api-a "$(http "${AH}")"
+start_provider api-b "${API_B}" api-b "$(http "${BH}")"
+start_consumer "consumer-SF-A2" "${CONSUMER_HTTP}" polling
 sleep 2
-run_client DR-D1 "${REG1_ROUTER}" "${REG1_HTTP}" "api-a"
+run_client SF-A2 "${CONSUMER_HTTP}" "api-a,api-b" SF-A2-initial
+start_provider api-c "${API_C}" api-c "${HTTP_C}"
+API_C_PID="${LAST_PID}"
+run_client SF-A2 "${CONSUMER_HTTP}" "api-a,api-b,api-c" SF-A2-added
+shutdown_http "${HTTP_C}"
+wait "${API_C_PID}" >/dev/null 2>&1 || true
+run_client SF-A2 "${CONSUMER_HTTP}" "api-a,api-b" SF-A2-removed api-b api-c
 stop_all
+stop_redis_container
 fi
 
-if should_run DR-A2; then
-read -r R1P R1R R1H R2P R2R R2H A <<<"$(reserve_ports 7)"
-REG1_PUB="$(tcp "${R1P}")"; REG1_ROUTER="$(tcp "${R1R}")"; REG1_HTTP="$(http "${R1H}")"
-REG2_PUB="$(tcp "${R2P}")"; REG2_ROUTER="$(tcp "${R2R}")"; REG2_HTTP="$(http "${R2H}")"
-API_A="$(tcp "${A}")"
-start_registry dr-a2-reg1 1 "${REG1_PUB}" "${REG1_ROUTER}" "${REG1_HTTP}" "${REG2_PUB}"
-start_registry dr-a2-reg2 2 "${REG2_PUB}" "${REG2_ROUTER}" "${REG2_HTTP}" "${REG1_PUB}"
-start_provider api-a "${API_A}" "${REG1_ROUTER}"
-sleep "${SCENARIO_SETTLE_SECONDS}"
-run_client DR-A2 "${REG2_ROUTER}" "${REG2_HTTP}" "api-a"
-stop_all
-fi
-
-if should_run DR-A3 || should_run DR-D4 || should_run DR-A4; then
-read -r R1P R1R R1H R2P R2R R2H R3P R3R R3H A B <<<"$(reserve_ports 11)"
-REG1_PUB="$(tcp "${R1P}")"; REG1_ROUTER="$(tcp "${R1R}")"; REG1_HTTP="$(http "${R1H}")"
-REG2_PUB="$(tcp "${R2P}")"; REG2_ROUTER="$(tcp "${R2R}")"; REG2_HTTP="$(http "${R2H}")"
-REG3_PUB="$(tcp "${R3P}")"; REG3_ROUTER="$(tcp "${R3R}")"; REG3_HTTP="$(http "${R3H}")"
-API_A="$(tcp "${A}")"; API_B="$(tcp "${B}")"
-start_registry dr-a3-reg1 1 "${REG1_PUB}" "${REG1_ROUTER}" "${REG1_HTTP}" "${REG2_PUB},${REG3_PUB}"
-start_registry dr-a3-reg2 2 "${REG2_PUB}" "${REG2_ROUTER}" "${REG2_HTTP}" "${REG1_PUB},${REG3_PUB}"
-start_registry dr-a3-reg3 3 "${REG3_PUB}" "${REG3_ROUTER}" "${REG3_HTTP}" "${REG1_PUB},${REG2_PUB}"
-start_provider api-a "${API_A}" "${REG1_ROUTER}"
-start_provider api-b "${API_B}" "${REG3_ROUTER}"
-sleep 4
-if should_run DR-A3; then
-  run_client DR-A3 "${REG1_ROUTER}" "${REG1_HTTP},${REG2_HTTP},${REG3_HTTP}" "api-a,api-b"
-  if [[ "${SCENARIO}" == "all" ]]; then
-    run_client DR-A3 "${REG2_ROUTER}" "${REG1_HTTP},${REG2_HTTP},${REG3_HTTP}" "api-a,api-b"
-    run_client DR-A3 "${REG3_ROUTER}" "${REG1_HTTP},${REG2_HTTP},${REG3_HTTP}" "api-a,api-b"
-  fi
-fi
-should_run DR-D4 && run_client DR-D4 "${REG2_ROUTER}" "${REG2_HTTP}" "api-a,api-b" "" "${REG2_ROUTER}" "${REG2_HTTP}" true
-if should_run DR-A4; then
-read -r A_DUP <<<"$(reserve_ports 1)"
-API_A_DUP="$(tcp "${A_DUP}")"
-start_provider api-a "${API_A_DUP}" "${REG2_ROUTER}" api-a-duplicate
+if should_run SF-B1; then
+ZLINK_KOTLIN_E2E_LOCATION_KEY_PREFIX="zlink:e2e:kotlin-store-failure:${run_id}:sf-b1"
+start_redis_container
+read -r AH BH CH A B <<<"$(reserve_ports 5)"
+API_A="$(tcp "${A}")"; API_B="$(tcp "${B}")"; CONSUMER_HTTP="$(http "${CH}")"
+start_provider api-a "${API_A}" api-a "$(http "${AH}")"
+start_provider api-b "${API_B}" api-b "$(http "${BH}")"
+start_consumer "consumer-SF-B1" "${CONSUMER_HTTP}"
 sleep 2
-run_client DR-A4 "${REG2_ROUTER}" "${REG2_HTTP}" "api-a"
-fi
+run_client SF-A1 "${CONSUMER_HTTP}" "api-a,api-b" SF-B1-baseline
+pause_redis_container
+run_client SF-B1 "${CONSUMER_HTTP}" "api-a,api-b"
+unpause_redis_container
+run_client SF-B1-RECOVERED "${CONSUMER_HTTP}" "api-a,api-b" SF-B1-recovered
 stop_all
+stop_redis_container
 fi
 
-if should_run DR-D3; then
-read -r R1P R1R R1H R2P R2R R2H A B <<<"$(reserve_ports 8)"
-REG1_PUB="$(tcp "${R1P}")"; REG1_ROUTER="$(tcp "${R1R}")"; REG1_HTTP="$(http "${R1H}")"
-REG2_PUB="$(tcp "${R2P}")"; REG2_ROUTER="$(tcp "${R2R}")"; REG2_HTTP="$(http "${R2H}")"
-API_A="$(tcp "${A}")"; API_B="$(tcp "${B}")"
-start_embedded dr-d3-embedded 1 "${REG1_PUB}" "${REG1_ROUTER}" "${REG1_HTTP}" api-a "${API_A}" "${REG2_PUB}"
-start_registry dr-d3-reg2 2 "${REG2_PUB}" "${REG2_ROUTER}" "${REG2_HTTP}" "${REG1_PUB}"
-start_provider api-b "${API_B}" "${REG2_ROUTER}"
-sleep 4
-run_client DR-D3 "${REG1_ROUTER},${REG2_ROUTER}" "${REG1_HTTP},${REG2_HTTP}" "api-a,api-b"
-stop_all
-fi
-
-if should_run DR-B1; then
-read -r R1P R1R R1H R2P R2R R2H A <<<"$(reserve_ports 7)"
-REG1_PUB="$(tcp "${R1P}")"; REG1_ROUTER="$(tcp "${R1R}")"; REG1_HTTP="$(http "${R1H}")"
-REG2_PUB="$(tcp "${R2P}")"; REG2_ROUTER="$(tcp "${R2R}")"; REG2_HTTP="$(http "${R2H}")"
-API_A="$(tcp "${A}")"
-start_registry dr-b1-reg1 1 "${REG1_PUB}" "${REG1_ROUTER}" "${REG1_HTTP}" "${REG2_PUB}"
-start_provider api-a "${API_A}" "${REG1_ROUTER}"
+if should_run SF-B2; then
+ZLINK_KOTLIN_E2E_LOCATION_KEY_PREFIX="zlink:e2e:kotlin-store-failure:${run_id}:sf-b2"
+start_redis_container
+read -r AH BH CH A B <<<"$(reserve_ports 5)"
+API_A="$(tcp "${A}")"; API_B="$(tcp "${B}")"; CONSUMER_HTTP="$(http "${CH}")"
+start_provider api-a "${API_A}" api-a "$(http "${AH}")"
+start_provider api-b "${API_B}" api-b "$(http "${BH}")"
+start_consumer "consumer-SF-B2" "${CONSUMER_HTTP}"
 sleep 2
-start_registry dr-b1-reg2 2 "${REG2_PUB}" "${REG2_ROUTER}" "${REG2_HTTP}" "${REG1_PUB}"
-sleep 4
-run_client DR-B1 "${REG2_ROUTER}" "${REG2_HTTP}" "api-a"
+run_client SF-A1 "${CONSUMER_HTTP}" "api-a,api-b" SF-B2-baseline
+pause_redis_container
+run_client SF-B2 "${CONSUMER_HTTP}" "api-a,api-b"
+unpause_redis_container
+run_client SF-B2-RECOVERED "${CONSUMER_HTTP}" "api-a,api-b" SF-B2-recovered
 stop_all
+stop_redis_container
 fi
 
-if should_run DR-B2; then
-read -r R1P R1R R1H R2P R2R R2H A <<<"$(reserve_ports 7)"
-REG1_PUB="$(tcp "${R1P}")"; REG1_ROUTER="$(tcp "${R1R}")"; REG1_HTTP="$(http "${R1H}")"
-REG2_PUB="$(tcp "${R2P}")"; REG2_ROUTER="$(tcp "${R2R}")"; REG2_HTTP="$(http "${R2H}")"
-API_A="$(tcp "${A}")"
-start_registry dr-b2-reg1 1 "${REG1_PUB}" "${REG1_ROUTER}" "${REG1_HTTP}" "${REG2_PUB}"
-start_registry dr-b2-reg2 2 "${REG2_PUB}" "${REG2_ROUTER}" "${REG2_HTTP}" "${REG1_PUB}"
-REG2_PID="${LAST_PID}"
-start_provider api-a "${API_A}" "${REG1_ROUTER},${REG2_ROUTER}"
-sleep "${SCENARIO_SETTLE_SECONDS}"
-stop_pid "${REG2_PID}"
-sleep 1
-start_registry dr-b2-reg2-recovered 2 "${REG2_PUB}" "${REG2_ROUTER}" "${REG2_HTTP}" "${REG1_PUB}"
-sleep 4
-run_client DR-B2 "${REG2_ROUTER}" "${REG2_HTTP}" "api-a"
-stop_all
-fi
-
-if should_run DR-B3; then
-read -r R1P R1R R1H R2P R2R R2H A <<<"$(reserve_ports 7)"
-REG1_PUB="$(tcp "${R1P}")"; REG1_ROUTER="$(tcp "${R1R}")"; REG1_HTTP="$(http "${R1H}")"
-REG2_PUB="$(tcp "${R2P}")"; REG2_ROUTER="$(tcp "${R2R}")"; REG2_HTTP="$(http "${R2H}")"
-API_A="$(tcp "${A}")"
-start_registry dr-b3-reg1 1 "${REG1_PUB}" "${REG1_ROUTER}" "${REG1_HTTP}" "${REG2_PUB}"
-start_registry dr-b3-reg2 2 "${REG2_PUB}" "${REG2_ROUTER}" "${REG2_HTTP}" "${REG1_PUB}"
-REG2_PID="${LAST_PID}"
-start_provider api-a "${API_A}" "${REG1_ROUTER},${REG2_ROUTER}"
-sleep 2
-for flap in 1 2; do
-  stop_pid "${REG2_PID}"
-  sleep 1
-  start_registry "dr-b3-reg2-flap-${flap}" 2 "${REG2_PUB}" "${REG2_ROUTER}" "${REG2_HTTP}" "${REG1_PUB}"
-  REG2_PID="${LAST_PID}"
-  sleep 2
-done
-run_client DR-B3 "${REG2_ROUTER}" "${REG2_HTTP}" "api-a"
-stop_all
-fi
-
-if should_run DR-C1 || should_run DR-C2; then
-read -r R1P R1R R1H R2P R2R R2H A B <<<"$(reserve_ports 8)"
-REG1_PUB="$(tcp "${R1P}")"; REG1_ROUTER="$(tcp "${R1R}")"; REG1_HTTP="$(http "${R1H}")"
-REG2_PUB="$(tcp "${R2P}")"; REG2_ROUTER="$(tcp "${R2R}")"; REG2_HTTP="$(http "${R2H}")"
-API_A="$(tcp "${A}")"; API_B="$(tcp "${B}")"
-start_registry dr-c1-reg1 1 "${REG1_PUB}" "${REG1_ROUTER}" "${REG1_HTTP}" "${REG2_PUB}"
-start_registry dr-c1-reg2 2 "${REG2_PUB}" "${REG2_ROUTER}" "${REG2_HTTP}" "${REG1_PUB}"
-REG2_PID="${LAST_PID}"
-start_provider api-a "${API_A}" "${REG1_ROUTER},${REG2_ROUTER}"
-start_provider api-b "${API_B}" "${REG1_ROUTER},${REG2_ROUTER}"
-sleep "${SCENARIO_SETTLE_SECONDS}"
-kill -9 "${REG2_PID}" >/dev/null 2>&1 || true
-wait "${REG2_PID}" >/dev/null 2>&1 || true
-sleep 1
-should_run DR-C1 && run_client DR-C1 "${REG1_ROUTER}" "${REG1_HTTP}" "api-a,api-b" "${REG2_HTTP}"
-if should_run DR-C2; then
-start_registry dr-c2-reg2-recovered 2 "${REG2_PUB}" "${REG2_ROUTER}" "${REG2_HTTP}" "${REG1_PUB}"
-sleep 4
-run_client DR-C2 "${REG2_ROUTER}" "${REG2_HTTP}" "api-a,api-b"
-fi
-stop_all
-fi
-
-if should_run DR-C3; then
-read -r R1P R1R R1H R2P R2R R2H A B <<<"$(reserve_ports 8)"
-REG1_PUB="$(tcp "${R1P}")"; REG1_ROUTER="$(tcp "${R1R}")"; REG1_HTTP="$(http "${R1H}")"
-REG2_PUB="$(tcp "${R2P}")"; REG2_ROUTER="$(tcp "${R2R}")"; REG2_HTTP="$(http "${R2H}")"
-API_A="$(tcp "${A}")"; API_B="$(tcp "${B}")"
-start_registry dr-c3-reg1 1 "${REG1_PUB}" "${REG1_ROUTER}" "${REG1_HTTP}" "${REG2_PUB}"
-REG1_PID="${LAST_PID}"
-start_registry dr-c3-reg2 2 "${REG2_PUB}" "${REG2_ROUTER}" "${REG2_HTTP}" "${REG1_PUB}"
-REG2_PID="${LAST_PID}"
-start_provider api-a "${API_A}" "${REG1_ROUTER},${REG2_ROUTER}"
-API_A_PID="${LAST_PID}"
-start_provider api-b "${API_B}" "${REG1_ROUTER},${REG2_ROUTER}"
+if should_run SF-C1; then
+ZLINK_KOTLIN_E2E_LOCATION_KEY_PREFIX="zlink:e2e:kotlin-store-failure:${run_id}:sf-c1"
+start_redis_container
+read -r AH BH CH A B <<<"$(reserve_ports 5)"
+API_A="$(tcp "${A}")"; API_B="$(tcp "${B}")"; CONSUMER_HTTP="$(http "${CH}")"
+start_provider api-a "${API_A}" api-a "$(http "${AH}")"
+start_provider api-b "${API_B}" api-b "$(http "${BH}")"
 API_B_PID="${LAST_PID}"
-sleep "${SCENARIO_SETTLE_SECONDS}"
-read -r CONSUMER_PORT <<<"$(reserve_ports 1)"
-CONSUMER_HTTP="$(http "${CONSUMER_PORT}")"
-start_consumer dr-c3-consumer consumer-DR-C3 "${CONSUMER_HTTP}" "${REG1_ROUTER},${REG2_ROUTER}"
-CONSUMER_PID="${LAST_PID}"
-run_client_with_consumer DR-C3 "${REG1_ROUTER},${REG2_ROUTER}" "${REG1_HTTP},${REG2_HTTP}" "api-a,api-b" "" "${REG1_ROUTER}" "${REG1_HTTP}" false true "${CONSUMER_HTTP}" DR-C3-before
-stop_pid "${REG2_PID}"
-stop_pid "${REG1_PID}"
+start_consumer "consumer-SF-C1" "${CONSUMER_HTTP}"
 sleep 2
-run_client_with_consumer DR-C3 "${REG1_ROUTER},${REG2_ROUTER}" "" "api-a,api-b" "" "${REG1_ROUTER}" "" false false "${CONSUMER_HTTP}" DR-C3-during
-stop_pid "${API_B_PID}"
-stop_pid "${API_A_PID}"
-start_registry dr-c3-reg1-recovered 1 "${REG1_PUB}" "${REG1_ROUTER}" "${REG1_HTTP}" "${REG2_PUB}"
-start_registry dr-c3-reg2-recovered 2 "${REG2_PUB}" "${REG2_ROUTER}" "${REG2_HTTP}" "${REG1_PUB}"
-start_provider api-a "${API_A}" "${REG1_ROUTER},${REG2_ROUTER}" api-a-recovered
-start_provider api-b "${API_B}" "${REG1_ROUTER},${REG2_ROUTER}" api-b-recovered
-sleep 6
-run_client_with_consumer DR-C3 "${REG1_ROUTER},${REG2_ROUTER}" "${REG1_HTTP},${REG2_HTTP}" "api-a,api-b" "" "${REG1_ROUTER}" "${REG1_HTTP}" false true "${CONSUMER_HTTP}" DR-C3
-stop_pid "${CONSUMER_PID}"
+run_client SF-A1 "${CONSUMER_HTTP}" "api-a,api-b" SF-C1-baseline
+kill -9 "${API_B_PID}" >/dev/null 2>&1 || true
+wait "${API_B_PID}" >/dev/null 2>&1 || true
+run_client SF-C1 "${CONSUMER_HTTP}" "api-a" SF-C1 api-b
 stop_all
+stop_redis_container
+fi
+
+if should_run SF-C2; then
+ZLINK_KOTLIN_E2E_LOCATION_KEY_PREFIX="zlink:e2e:kotlin-store-failure:${run_id}:sf-c2"
+start_redis_container
+read -r AH BH CH A B <<<"$(reserve_ports 5)"
+API_A="$(tcp "${A}")"; API_B="$(tcp "${B}")"; HTTP_B="$(http "${BH}")"; CONSUMER_HTTP="$(http "${CH}")"
+start_provider api-a "${API_A}" api-a "$(http "${AH}")"
+start_provider api-b "${API_B}" api-b "${HTTP_B}"
+API_B_PID="${LAST_PID}"
+start_consumer "consumer-SF-C2" "${CONSUMER_HTTP}"
+sleep 2
+run_client SF-A1 "${CONSUMER_HTTP}" "api-a,api-b" SF-C2-baseline
+shutdown_http "${HTTP_B}"
+wait "${API_B_PID}" >/dev/null 2>&1 || true
+run_client SF-C2 "${CONSUMER_HTTP}" "api-a" SF-C2 api-b
+stop_all
+stop_redis_container
+fi
+
+if should_run SF-D1; then
+ZLINK_KOTLIN_E2E_LOCATION_KEY_PREFIX="zlink:e2e:kotlin-store-failure:${run_id}:sf-d1"
+start_redis_container
+read -r AH BH CH A B <<<"$(reserve_ports 5)"
+API_A="$(tcp "${A}")"; API_B="$(tcp "${B}")"; CONSUMER_HTTP="$(http "${CH}")"
+start_provider api-a "${API_A}" api-a "$(http "${AH}")"
+start_provider api-b "${API_B}" api-b "$(http "${BH}")"
+start_consumer "consumer-SF-D1" "${CONSUMER_HTTP}"
+sleep 2
+run_client SF-A1 "${CONSUMER_HTTP}" "api-a,api-b" SF-D1-baseline
+run_client SF-D1 "${CONSUMER_HTTP}" "api-a,api-b" SF-D1 &
+SF_D1_CLIENT_PID="$!"
+sleep 0.5
+pause_redis_container
+python3 - "${ZLINK_KOTLIN_E2E_LOCATION_LEASE_TTL_MS}" <<'PY'
+import sys
+import time
+time.sleep(int(sys.argv[1]) / 2000.0)
+PY
+unpause_redis_container
+wait "${SF_D1_CLIENT_PID}"
+run_client SF-D1-RECOVERED "${CONSUMER_HTTP}" "api-a,api-b" SF-D1-recovered
+stop_all
+stop_redis_container
+fi
+
+if should_run SF-D2; then
+ZLINK_KOTLIN_E2E_LOCATION_KEY_PREFIX="zlink:e2e:kotlin-store-failure:${run_id}:sf-d2"
+start_redis_container
+read -r AH BH CH A B <<<"$(reserve_ports 5)"
+API_A="$(tcp "${A}")"; API_B="$(tcp "${B}")"; CONSUMER_HTTP="$(http "${CH}")"
+start_provider api-a "${API_A}" api-a "$(http "${AH}")"
+start_provider api-b "${API_B}" api-b "$(http "${BH}")"
+API_B_PID="${LAST_PID}"
+start_consumer "consumer-SF-D2" "${CONSUMER_HTTP}"
+sleep 2
+run_client SF-A1 "${CONSUMER_HTTP}" "api-a,api-b" SF-D2-baseline
+run_client SF-D2 "${CONSUMER_HTTP}" "api-a" SF-D2 api-b &
+SF_D2_CLIENT_PID="$!"
+sleep 0.5
+pause_redis_container
+kill -9 "${API_B_PID}" >/dev/null 2>&1 || true
+wait "${API_B_PID}" >/dev/null 2>&1 || true
+python3 - "${ZLINK_KOTLIN_E2E_LOCATION_LEASE_TTL_MS}" "${ZLINK_KOTLIN_E2E_LOCATION_HEARTBEAT_MS}" <<'PY'
+import sys
+import time
+time.sleep((int(sys.argv[1]) + int(sys.argv[2])) / 1000.0)
+PY
+unpause_redis_container
+wait "${SF_D2_CLIENT_PID}"
+stop_all
+stop_redis_container
+fi
+
+if should_run SF-D3; then
+ZLINK_KOTLIN_E2E_LOCATION_KEY_PREFIX="zlink:e2e:kotlin-store-failure:${run_id}:sf-d3"
+start_redis_container
+read -r AH BH CH A B <<<"$(reserve_ports 5)"
+API_A="$(tcp "${A}")"; API_B="$(tcp "${B}")"; CONSUMER_HTTP="$(http "${CH}")"
+start_provider api-a "${API_A}" api-a "$(http "${AH}")"
+start_provider api-b "${API_B}" api-b "$(http "${BH}")"
+start_consumer "consumer-SF-D3" "${CONSUMER_HTTP}"
+sleep 2
+run_client SF-D3-HEALTHY "${CONSUMER_HTTP}" "api-a,api-b" SF-D3-healthy
+SF_D3_BEFORE_REFRESH="$(status_field "${CONSUMER_HTTP}" lastRefreshAt)"
+pause_redis_container
+run_client SF-D3-OUTAGE "${CONSUMER_HTTP}" "api-a,api-b" SF-D3-outage
+unpause_redis_container
+run_client SF-D3-RECOVERED "${CONSUMER_HTTP}" "api-a,api-b" SF-D3-recovered
+SF_D3_AFTER_REFRESH="$(status_field "${CONSUMER_HTTP}" lastRefreshAt)"
+assert_instant_after "${SF_D3_BEFORE_REFRESH}" "${SF_D3_AFTER_REFRESH}" \
+  "SF-D3 recovered status did not advance lastRefreshAt"
+echo "scenario SF-D3 passed" | tee "${log_dir}/client-SF-D3.stdout.log"
+stop_all
+stop_redis_container
 fi
 
 if [[ "${SCENARIO}" == "all" ]]; then
-  grep -q "scenario DR-A1 passed" "${log_dir}/client-DR-A1.stdout.log"
-  grep -q "scenario DR-A2 passed" "${log_dir}/client-DR-A2.stdout.log"
-  grep -q "scenario DR-A3 passed" "${log_dir}/client-DR-A3.stdout.log"
-  grep -q "scenario DR-A4 passed" "${log_dir}/client-DR-A4.stdout.log"
-  grep -q "scenario DR-B1 passed" "${log_dir}/client-DR-B1.stdout.log"
-  grep -q "scenario DR-B2 passed" "${log_dir}/client-DR-B2.stdout.log"
-  grep -q "scenario DR-B3 passed" "${log_dir}/client-DR-B3.stdout.log"
-  grep -q "scenario DR-C1 passed" "${log_dir}/client-DR-C1.stdout.log"
-  grep -q "scenario DR-C2 passed" "${log_dir}/client-DR-C2.stdout.log"
-  grep -q "scenario DR-C3 passed" "${log_dir}/client-DR-C3-before.stdout.log"
-  grep -q "scenario DR-C3 passed" "${log_dir}/client-DR-C3-during.stdout.log"
-  grep -q "scenario DR-C3 passed" "${log_dir}/client-DR-C3.stdout.log"
-  grep -q "scenario DR-D1 passed" "${log_dir}/client-DR-D1.stdout.log"
-  grep -q "scenario DR-D2 passed" "${log_dir}/client-DR-D2.stdout.log"
-  grep -q "scenario DR-D3 passed" "${log_dir}/client-DR-D3.stdout.log"
-  grep -q "scenario DR-D4 passed" "${log_dir}/client-DR-D4.stdout.log"
+  for scenario in SF-A1 SF-A2 SF-B1 SF-B2 SF-C1 SF-C2 SF-D1 SF-D2 SF-D3; do
+    grep -Rq "scenario ${scenario} " "${log_dir}"/client-*.stdout.log
+  done
 else
   grep -Rq "scenario ${SCENARIO} " "${log_dir}"/client-*.stdout.log
 fi
 grep -Rq "message flow" "${log_dir}"/*-flow.log
+echo "discovery-registry-ha kotlin e2e result=passed"

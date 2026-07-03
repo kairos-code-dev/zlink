@@ -1,101 +1,65 @@
-# Kotlin DiscoveryRegistryHa .NET 기준 포팅 인벤토리
+# Kotlin DiscoveryRegistryHa StoreFailure 포팅 인벤토리
 
-기준 구현: `framework/languages/dotnet/e2e/DiscoveryRegistryHa`
+기준 구현: `framework/languages/java/e2e/DiscoveryRegistryHa`
 
-공통 문서: `framework/doc/framework/common/e2e/config-6-discovery-registry-ha.ko.md`
+공통 문서: `framework/doc/framework/common/e2e/config-6-store-failure.ko.md`
 
-현재 Kotlin DiscoveryRegistryHa E2E는 `Shared`, `Client`, `Server/Registry`, `Server/Provider`,
-`Server/Consumer`, `Server/Probe`, `Server/Embedded` Gradle project로 process 역할을 나눠 실행한다.
-client scenario dispatcher, scenario ID별 실행 파일, shared message 타입, registry/provider/consumer/probe/embedded
-role support는 Kotlin source에 있고, 일부 CLI option parser만 Java source로 유지한다.
+현재 Kotlin DiscoveryRegistryHa E2E는 Config 6 StoreFailure 기준으로 전환했다. 실행 그래프는
+`Shared`, `Client`, `Server/Provider`, `Server/Consumer`만 남고, legacy Discovery/Registry role과
+`DR-*` scenario source는 제거했다.
 
 상태 값:
 
 - `done`: 현재 파일이 목표 위치와 의미를 만족한다.
 - `not-needed`: Kotlin 구조에서 같은 파일 단위가 필요 없으며 비고에 근거를 적었다.
-- `gap`: public contract 또는 runtime 지원이 없어 완료로 주장할 수 없다.
 
-| .NET 기준 파일 | Kotlin 대응 파일 | 분류 | 상태 | 비고 |
-|----------------|------------------|------|------|------|
+| 기준 파일 | Kotlin 대응 파일 | 분류 | 상태 | 비고 |
+|-----------|------------------|------|------|------|
 | `.gitignore` | `.gitignore` | config-root | done | Gradle 산출물과 logs 제외는 유지한다. |
-| `feature-map.ko.md` | `feature-map.ko.md` | docs | done | role별 Gradle project runner 검증 결과와 Kotlin scenario/support 분리 완료 상태를 반영했다. |
-| `run_e2e.sh` | `run_e2e.sh` | runner | done | role별 installDist binary를 시작하고 readiness, cleanup, 실패 로그 출력을 수행한다. |
-| `Shared/DiscoveryRegistryHa.Shared.csproj` | `Shared/build.gradle.kts` | build | done | Shared Gradle project를 만들고 client/server role project가 의존한다. |
-| `Shared/Messages.cs` | `Shared/src/main/kotlin/systems/zlink/e2e/kotlin/discoveryregistryha/Messages.kt` | shared | done | request/reply/channel 타입을 Kotlin shared source로 옮겼고 Java role code가 쓰는 `Contracts` JVM surface는 유지했다. |
-| `Client/DiscoveryRegistryHa.Client.csproj` | `Client/build.gradle.kts` | build | done | Client application project를 만들었다. |
-| `Client/Program.cs` | `Client/src/main/kotlin/systems/zlink/e2e/kotlin/discoveryregistryha/Program.kt` | client-entry | done | Client binary entry point가 client application만 실행한다. |
-| `Client/Support/ClientOptions.cs` | `Client/src/main/java/systems/zlink/e2e/kotlin/discoveryregistryha/ClientOptions.java` | support | done | client scenario, registry, consumer, probe, expected rid, log dir 입력을 role CLI option으로 파싱한다. |
-| `Client/Support/DiscoveryApiRes.cs` | `Client/src/main/kotlin/systems/zlink/e2e/kotlin/discoveryregistryha/client/Support/DiscoveryApiRes.kt` | support | done | `.NET` 대응 support record를 Kotlin data class로 추가했다. probe HTTP 응답을 typed result로 읽을 때 사용한다. |
-| `Client/Support/ScenarioAssert.cs` | `Client/src/main/kotlin/systems/zlink/e2e/kotlin/discoveryregistryha/client/Support/ScenarioAssert.kt` | support | done | scenario assertion helper를 Kotlin support로 분리했다. HTTP/probe/messaging wait helper는 `ClientScenarioContext.kt`가 맡는다. |
-| `Client/Scenarios/BasicDiscoveryScenario.cs` | `Client/src/main/kotlin/systems/zlink/e2e/kotlin/discoveryregistryha/client/Scenarios/BasicDiscoveryScenario.kt` | scenario | done | DR-A1. Kotlin scenario file이 shared context를 통해 member wait와 messaging 검증을 실행한다. |
-| `Client/Scenarios/DrA2ClusterBridgeScenario.cs` | `Client/src/main/kotlin/systems/zlink/e2e/kotlin/discoveryregistryha/client/Scenarios/DrA2ClusterBridgeScenario.kt` | scenario | done | DR-A2. Kotlin scenario file이 shared context를 통해 peer 합산 view와 messaging 검증을 실행한다. |
-| `Client/Scenarios/DrA3ClusterBridgeScenario.cs` | `Client/src/main/kotlin/systems/zlink/e2e/kotlin/discoveryregistryha/client/Scenarios/DrA3ClusterBridgeScenario.kt` | scenario | done | DR-A3. Kotlin scenario file이 shared context를 통해 3 registry peer 합산 검증을 실행한다. |
-| `Client/Scenarios/DrA4ThirdRegistryScenario.cs` | `Client/src/main/kotlin/systems/zlink/e2e/kotlin/discoveryregistryha/client/Scenarios/DrA4ThirdRegistryScenario.kt` | scenario | done | DR-A4. Kotlin scenario file이 same-rid/different-endpoint case를 bounded messaging 검증으로 실행한다. |
-| `Client/Scenarios/DrB1FailoverScenario.cs` | `Client/src/main/kotlin/systems/zlink/e2e/kotlin/discoveryregistryha/client/Scenarios/DrB1FailoverScenario.kt` | scenario | done | DR-B1. Kotlin scenario file이 late-start registry 합류 검증을 실행한다. |
-| `Client/Scenarios/DrB2FailoverScenario.cs` | `Client/src/main/kotlin/systems/zlink/e2e/kotlin/discoveryregistryha/client/Scenarios/DrB2FailoverScenario.kt` | scenario | done | DR-B2. Kotlin scenario file이 registry stop/recover 검증을 실행한다. |
-| `Client/Scenarios/DrB3RecoveryScenario.cs` | `Client/src/main/kotlin/systems/zlink/e2e/kotlin/discoveryregistryha/client/Scenarios/DrB3RecoveryScenario.kt` | scenario | done | DR-B3. Kotlin scenario file이 peer flapping 후 수렴 검증을 실행한다. |
-| `Client/Scenarios/DrC1EmbeddedRegistryScenario.cs` | `Client/src/main/kotlin/systems/zlink/e2e/kotlin/discoveryregistryha/client/Scenarios/DrC1EmbeddedRegistryScenario.kt` | scenario | done | DR-C1. Kotlin scenario file이 살아 있는 registry endpoint와 죽은 probe bounded failure를 검증한다. |
-| `Client/Scenarios/DrC2EmbeddedRegistryScenario.cs` | `Client/src/main/kotlin/systems/zlink/e2e/kotlin/discoveryregistryha/client/Scenarios/DrC2EmbeddedRegistryScenario.kt` | scenario | done | DR-C2. Kotlin scenario file이 복구 registry 재합류 검증을 실행한다. |
-| `Client/Scenarios/DrC3EmbeddedRegistryScenario.cs` | `Client/src/main/kotlin/systems/zlink/e2e/kotlin/discoveryregistryha/client/Scenarios/DrC3EmbeddedRegistryScenario.kt` | scenario | done | DR-C3. Kotlin scenario file이 전체 registry 복구 후 재광고 수렴 검증을 실행한다. |
-| `Client/Scenarios/DrD1DirectEndpointScenario.cs` | `Client/src/main/kotlin/systems/zlink/e2e/kotlin/discoveryregistryha/client/Scenarios/DrD1DirectEndpointScenario.kt` | scenario | done | DR-D1. Kotlin scenario file이 embedded deployment messaging 검증을 실행한다. |
-| `Client/Scenarios/DrD2DirectEndpointScenario.cs` | `Client/src/main/kotlin/systems/zlink/e2e/kotlin/discoveryregistryha/client/Scenarios/DrD2DirectEndpointScenario.kt` | scenario | done | DR-D2. Kotlin scenario file이 standalone deployment 대조 검증을 실행한다. |
-| `Client/Scenarios/DrD3DirectEndpointScenario.cs` | `Client/src/main/kotlin/systems/zlink/e2e/kotlin/discoveryregistryha/client/Scenarios/DrD3DirectEndpointScenario.kt` | scenario | done | DR-D3. Kotlin scenario file이 embedded+standalone mixed cluster 검증을 실행한다. |
-| `Client/Scenarios/DrD4DirectEndpointScenario.cs` | `Client/src/main/kotlin/systems/zlink/e2e/kotlin/discoveryregistryha/client/Scenarios/DrD4DirectEndpointScenario.kt` | scenario | done | DR-D4. Kotlin scenario file이 in-process probe와 remote query topology snapshot 동등성 검증을 실행한다. |
-| `Server/Registry/DiscoveryRegistryHa.Registry.csproj` | `Server/Registry/build.gradle.kts` | build | done | Registry role project를 만들었다. |
-| `Server/Registry/Program.cs` | `Server/Registry/src/main/kotlin/systems/zlink/e2e/kotlin/discoveryregistryha/Program.kt` | server-entry | done | Registry binary entry point가 registry application만 실행한다. |
-| `Server/Registry/RegistryHostFactory.cs` | `Server/Registry/src/main/kotlin/systems/zlink/e2e/kotlin/discoveryregistryha/registry/RegistryApplication.kt` | server-role | done | registry server, peer endpoints, probe HTTP endpoint 구성을 Registry role Kotlin package로 옮겼다. |
-| `Server/Registry/RegistryOptions.cs` | `Server/Registry/src/main/java/systems/zlink/e2e/kotlin/discoveryregistryha/RegistryOptions.java` | configuration | done | registry id/pub/router/http/peer endpoints를 role CLI option으로 파싱한다. |
-| `Server/Provider/DiscoveryRegistryHa.Provider.csproj` | `Server/Provider/build.gradle.kts` | build | done | Provider role project를 만들었다. |
-| `Server/Provider/Program.cs` | `Server/Provider/src/main/kotlin/systems/zlink/e2e/kotlin/discoveryregistryha/Program.kt` | server-entry | done | Provider binary entry point가 provider application만 실행한다. |
-| `Server/Provider/ProviderHostFactory.cs` | `Server/Provider/src/main/kotlin/systems/zlink/e2e/kotlin/discoveryregistryha/provider/ProviderApplication.kt` | server-role | done | provider API channel, discovery advertisement, flow logging 구성을 Provider role Kotlin package로 옮겼다. |
-| `Server/Provider/ProviderHandlers.cs` | `Server/Provider/src/main/kotlin/systems/zlink/e2e/kotlin/discoveryregistryha/provider/Handlers/WorkRequestHandler.kt` | handlers | done | provider request handler를 Kotlin Provider handler package로 옮겼다. |
-| `Server/Provider/Support/ProviderEvidenceStore.cs` | `Server/Provider/src/main/kotlin/systems/zlink/e2e/kotlin/discoveryregistryha/provider/Support/ProviderEvidenceStore.kt` | support | done | provider rid state를 Kotlin Provider support로 옮겼다. |
-| `Server/Provider/Support/ProviderOptions.cs` | `Server/Provider/src/main/java/systems/zlink/e2e/kotlin/discoveryregistryha/ProviderOptions.java` | configuration | done | provider rid/api endpoint/registry endpoints/log dir를 role CLI option으로 파싱한다. |
-| `Server/Consumer/DiscoveryRegistryHa.Consumer.csproj` | `Server/Consumer/build.gradle.kts` | build | done | Consumer role Gradle project를 추가했다. |
-| `Server/Consumer/Program.cs` | `Server/Consumer/src/main/kotlin/systems/zlink/e2e/kotlin/discoveryregistryha/consumer/Program.kt` | server-entry | done | Consumer binary entry point가 consumer application만 실행한다. |
-| `Server/Consumer/ConsumerHostFactory.cs` | `Server/Consumer/src/main/kotlin/systems/zlink/e2e/kotlin/discoveryregistryha/consumer/ConsumerApplication.kt` | server-role | done | consumer channel client role을 별도 process로 분리했고 HTTP request endpoint가 public `ZLinkClient` discovery 경로를 사용한다. |
-| `Server/Consumer/ConsumerOptions.cs` | `Server/Consumer/src/main/kotlin/systems/zlink/e2e/kotlin/discoveryregistryha/consumer/Configuration/ConsumerOptions.kt` | configuration | done | consumer registry endpoint/log option을 CLI로 파싱한다. |
-| `Server/Probe/DiscoveryRegistryHa.Probe.csproj` | `Server/Probe/build.gradle.kts` | build | done | Probe role Gradle project를 추가했다. |
-| `Server/Probe/Program.cs` | `Server/Probe/src/main/kotlin/systems/zlink/e2e/kotlin/discoveryregistryha/probe/Program.kt` | server-entry | done | Probe binary entry point가 remote query probe application만 실행한다. |
-| `Server/Probe/ProbeHostFactory.cs` | `Server/Probe/src/main/kotlin/systems/zlink/e2e/kotlin/discoveryregistryha/probe/ProbeApplication.kt` | server-role | done | remote registry query probe를 별도 process로 분리했고 public `ZLinkRegistryQueryClient`로 topology를 조회한다. |
-| `Server/Probe/ProbeOptions.cs` | `Server/Probe/src/main/kotlin/systems/zlink/e2e/kotlin/discoveryregistryha/probe/Configuration/ProbeOptions.kt` | configuration | done | probe target endpoint/http/log option을 CLI로 파싱한다. |
-| `Server/Embedded/DiscoveryRegistryHa.Embedded.csproj` | `Server/Embedded/build.gradle.kts` | build | done | Embedded role project를 만들었다. |
-| `Server/Embedded/Program.cs` | `Server/Embedded/src/main/kotlin/systems/zlink/e2e/kotlin/discoveryregistryha/Program.kt` | server-entry | done | Embedded binary entry point가 registry와 provider application을 같은 process에서 실행한다. |
-| `Server/Embedded/EmbeddedHostFactory.cs` | `Server/Embedded/src/main/kotlin/systems/zlink/e2e/kotlin/discoveryregistryha/embedded/EmbeddedApplication.kt` | server-role | done | embedded process가 registry application과 provider application을 같은 JVM에서 실행하는 구성을 Embedded role Kotlin package로 옮겼다. |
-| `Server/Embedded/EmbeddedHandlers.cs` | `Server/Provider/src/main/kotlin/systems/zlink/e2e/kotlin/discoveryregistryha/provider/Handlers/WorkRequestHandler.kt` | handlers | not-needed | Embedded process는 Provider role application을 그대로 함께 실행하므로 별도 embedded handler class를 만들지 않는다. |
-| `Server/Embedded/Support/EmbeddedEvidenceStore.cs` | `Server/Provider/src/main/kotlin/systems/zlink/e2e/kotlin/discoveryregistryha/provider/Support/ProviderEvidenceStore.kt` | support | not-needed | Embedded provider state도 Provider role support를 재사용하므로 별도 embedded evidence store를 만들지 않는다. |
-| `Server/Embedded/Support/EmbeddedOptions.cs` | `Server/Embedded/src/main/java/.../RegistryOptions.java`, `Server/Embedded/src/main/java/.../ProviderOptions.java` | configuration | not-needed | Embedded process는 registry와 provider application을 같은 JVM에서 실행하며 같은 CLI args를 `RegistryOptions`와 `ProviderOptions`가 각각 파싱한다. 별도 option object를 만들지 않는다. |
-
-## 기존 Kotlin/Java 파일 처리
-
-| 기존 파일 | 판단 | 목표 |
-|-----------|------|------|
-| `src/main/kotlin/.../Program.kt` | role env 분기를 제거하고 role별 project entry point로 나눴다. | 완료했다. |
-| `src/main/java/.../ClientApplication.java` | client scenario 실행 application을 Kotlin client package로 옮겼다. | 완료했다. |
-| `src/main/java/.../ClientScenario.java` | Java monolith를 제거하고 root Kotlin dispatcher, scenario ID별 Kotlin file, `Client/Support/ClientScenarioContext.kt`로 나눴다. | 완료했다. |
-| `src/main/java/.../Contracts.java` | shared message/channel 타입을 `Shared/src/main/kotlin/.../Messages.kt`로 옮겼다. | 완료했다. |
-| `src/main/java/.../Env.java` | role 입력용 환경 변수 helper였고, 현재 production source에서 더 이상 쓰지 않는다. | 삭제했다. build/cache 환경 변수는 runner와 Gradle build control로만 남긴다. |
-| `src/main/java/.../RegistryApplication.java` | Registry role을 Kotlin Registry package로 옮겼다. | 완료했다. |
-| `src/main/java/.../RegistryProbeServer.java` | registry in-process probe endpoint를 Kotlin Registry package로 옮겼다. | 완료했다. |
-| `src/main/java/.../ProviderApplication.java` | Provider role을 Kotlin Provider package로 옮겼다. | 완료했다. |
-| `src/main/java/.../ProviderState.java` | Provider state를 Kotlin Provider support로 옮겼다. | 완료했다. |
-| `src/main/java/.../handlers/WorkRequestHandler.java` | provider request handler를 Kotlin Provider handler package로 옮겼다. | Embedded는 Provider role application을 재사용한다. |
+| `feature-map.ko.md` | `feature-map.ko.md` | docs | done | `SF-A1`~`SF-D3` 검증 결과와 legacy 제거 상태를 반영했다. |
+| `run_e2e.sh` | `run_e2e.sh` | runner | done | 전용 Redis container, 실행별 key prefix, Provider/Consumer/Client role만 사용해 `SF-A1`~`SF-D3`와 `all`을 실행한다. |
+| `Shared/build.gradle.kts` | `Shared/build.gradle.kts` | build | done | Shared Gradle project를 유지한다. |
+| `Shared/Messages.*` | `Shared/src/main/kotlin/.../Messages.kt` | shared | done | channel request/reply 타입을 Kotlin shared source로 유지한다. |
+| `Client/build.gradle.kts` | `Client/build.gradle.kts` | build | done | Client application project를 유지한다. |
+| `Client/Program.*` | `Client/src/main/kotlin/.../Program.kt` | client-entry | done | Client binary entry point가 client application만 실행한다. |
+| `Client/Support/ClientOptions.*` | `Client/src/main/java/.../ClientOptions.java` | support | done | scenario, consumer endpoint, expected/dead rid, location timing 입력만 CLI option으로 파싱한다. |
+| `Client/Support/ClientContext.*` | `Client/src/main/kotlin/.../ClientScenarioContext.kt` | support | done | `SF-A1`~`SF-D3` StoreFailure oracle을 Kotlin으로 구현했다. |
+| `Client/Support/ScenarioAssert.*` | `Client/src/main/kotlin/.../ScenarioAssert.kt` | support | done | scenario assertion helper를 유지한다. |
+| `Client/Scenarios/Sf*.java` | `ClientScenario.kt`, `ClientScenarioContext.kt` | scenario | done | Kotlin은 scenario별 파일 대신 dispatcher와 context method로 `SF-*`를 매핑한다. |
+| `Server/Provider/build.gradle.kts` | `Server/Provider/build.gradle.kts` | build | done | Provider role이 Redis location extension에 의존한다. |
+| `Server/Provider/Program.*` | `Server/Provider/src/main/kotlin/.../Program.kt` | server-entry | done | Provider binary entry point가 provider application만 실행한다. |
+| `Server/Provider/ProviderApplication.*` | `Server/Provider/src/main/kotlin/.../ProviderApplication.kt` | server-role | done | provider API channel, flow logging, location timing, `ZLinkRedisLocationStore` bean을 구성한다. |
+| `Server/Provider/ProviderEndpoints.*` | `Server/Provider/src/main/kotlin/.../ProviderHttpServer.kt` | server-role | done | health/evidence/shutdown HTTP endpoint를 제공한다. |
+| `Server/Provider/ProviderOptions.*` | `Server/Provider/src/main/java/.../ProviderOptions.java` | configuration | done | provider rid/http/api endpoint, Redis location endpoint/key prefix, timing, log dir를 CLI option으로 파싱한다. |
+| `Server/Provider/ProviderHandlers.*` | `Server/Provider/src/main/kotlin/.../WorkRequestHandler.kt` | handlers | done | provider request handler를 Kotlin으로 유지한다. |
+| `Server/Provider/ProviderEvidenceStore.*` | `Server/Provider/src/main/kotlin/.../ProviderEvidenceStore.kt` | support | done | provider rid state를 Kotlin support로 유지한다. |
+| `Server/Consumer/build.gradle.kts` | `Server/Consumer/build.gradle.kts` | build | done | Consumer role이 Redis location extension에 의존한다. |
+| `Server/Consumer/Program.*` | `Server/Consumer/src/main/kotlin/.../Program.kt` | server-entry | done | Consumer binary entry point가 consumer application만 실행한다. |
+| `Server/Consumer/ConsumerApplication.*` | `Server/Consumer/src/main/kotlin/.../ConsumerApplication.kt` | server-role | done | consumer client channel, flow logging, location timing, Redis store bean을 구성한다. |
+| `Server/Consumer/ConsumerEndpoints.*` | `Server/Consumer/src/main/kotlin/.../ConsumerHttpServer.kt` | server-role | done | request endpoint와 public location status/peer query endpoint를 제공한다. |
+| `Server/Consumer/ConsumerOptions.*` | `Server/Consumer/src/main/kotlin/.../ConsumerOptions.kt` | configuration | done | consumer rid/http endpoint, Redis location endpoint/key prefix, timing, store mode, log dir를 CLI option으로 파싱한다. |
+| `Server/Consumer/PollingOnlyLocationStore.*` | `Server/Consumer/src/main/java/.../PollingOnlyLocationStore.java` | support | done | `SF-A2` polling-only 검증을 위해 watch interface를 노출하지 않는 wrapper를 둔다. |
+| `Server/Registry/*` | 없음 | legacy | not-needed | Config 6 StoreFailure에서는 Registry role을 실행하지 않으므로 제거했다. |
+| `Server/Probe/*` | 없음 | legacy | not-needed | Registry query probe는 location store 전환 후 필요 없으므로 제거했다. |
+| `Server/Embedded/*` | 없음 | legacy | not-needed | Embedded registry/provider 배포 scenario는 StoreFailure 기준에서 제외되므로 제거했다. |
 
 ## Scenario ID 매핑
 
-| Scenario ID | 공통 우선순위 | .NET 기준 scenario 파일 | Kotlin 목표 파일 | 상태 |
-|-------------|---------------|-------------------------|------------------|------|
-| `DR-A1` | P0 | `Client/Scenarios/BasicDiscoveryScenario.cs` | `Client/.../Scenarios/BasicDiscoveryScenario.kt` | done |
-| `DR-A2` | P0 | `Client/Scenarios/DrA2ClusterBridgeScenario.cs` | `Client/.../Scenarios/DrA2ClusterBridgeScenario.kt` | done |
-| `DR-A3` | P0 | `Client/Scenarios/DrA3ClusterBridgeScenario.cs` | `Client/.../Scenarios/DrA3ClusterBridgeScenario.kt` | done |
-| `DR-A4` | P2 | `Client/Scenarios/DrA4ThirdRegistryScenario.cs` | `Client/.../Scenarios/DrA4ThirdRegistryScenario.kt` | done |
-| `DR-B1` | P1 | `Client/Scenarios/DrB1FailoverScenario.cs` | `Client/.../Scenarios/DrB1FailoverScenario.kt` | done |
-| `DR-B2` | P1 | `Client/Scenarios/DrB2FailoverScenario.cs` | `Client/.../Scenarios/DrB2FailoverScenario.kt` | done |
-| `DR-B3` | P2 | `Client/Scenarios/DrB3RecoveryScenario.cs` | `Client/.../Scenarios/DrB3RecoveryScenario.kt` | done |
-| `DR-C1` | P0 | `Client/Scenarios/DrC1EmbeddedRegistryScenario.cs` | `Client/.../Scenarios/DrC1EmbeddedRegistryScenario.kt` | done |
-| `DR-C2` | P1 | `Client/Scenarios/DrC2EmbeddedRegistryScenario.cs` | `Client/.../Scenarios/DrC2EmbeddedRegistryScenario.kt` | done |
-| `DR-C3` | P2 | `Client/Scenarios/DrC3EmbeddedRegistryScenario.cs` | `Client/.../Scenarios/DrC3EmbeddedRegistryScenario.kt` | done |
-| `DR-D1` | P1 | `Client/Scenarios/DrD1DirectEndpointScenario.cs` | `Client/.../Scenarios/DrD1DirectEndpointScenario.kt` | done |
-| `DR-D2` | P1 | `Client/Scenarios/DrD2DirectEndpointScenario.cs` | `Client/.../Scenarios/DrD2DirectEndpointScenario.kt` | done |
-| `DR-D3` | P2 | `Client/Scenarios/DrD3DirectEndpointScenario.cs` | `Client/.../Scenarios/DrD3DirectEndpointScenario.kt` | done |
-| `DR-D4` | P1 | `Client/Scenarios/DrD4DirectEndpointScenario.cs` | `Client/.../Scenarios/DrD4DirectEndpointScenario.kt` | done |
+| Scenario ID | Kotlin 구현 | 상태 |
+|-------------|-------------|------|
+| `SF-A1` | `ClientScenarioContext.runStoreFailureBaseline()` | done |
+| `SF-A2` | `ClientScenarioContext.runStoreFailurePollingFallback()` | done |
+| `SF-B1` | `ClientScenarioContext.runStoreFailureFailStaticOutage()` + recovered check | done |
+| `SF-B2` | `ClientScenarioContext.runStoreFailureGraceExceeded()` + recovered-with-peers check | done |
+| `SF-C1` | `ClientScenarioContext.runStoreFailureCrashLeaseExpiry()` | done |
+| `SF-C2` | `ClientScenarioContext.runStoreFailureGracefulRemoval()` | done |
+| `SF-D1` | `ClientScenarioContext.runStoreFailureShortOutageTraffic()` + recovered-with-peers check | done |
+| `SF-D2` | `ClientScenarioContext.runStoreFailureLongOutageRecovery()` | done |
+| `SF-D3` | healthy/outage/recovered status methods | done |
+
+## 검증
+
+- `../../gradlew --project-cache-dir /tmp/zlink-kotlin-dr-gradle-cache --no-daemon --no-parallel --max-workers=1 :Client:installDist :Server:Provider:installDist :Server:Consumer:installDist --console=plain`
+  통과.
+- `timeout 420s ./run_e2e.sh SF-A1` 통과: `logs/20260704-051543-91770`.
+- `timeout 1200s ./run_e2e.sh all` 통과: `logs/20260704-051605-92888`.

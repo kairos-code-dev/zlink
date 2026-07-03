@@ -5,7 +5,10 @@ import org.springframework.boot.autoconfigure.SpringBootApplication;
 import org.springframework.boot.builder.SpringApplicationBuilder;
 import org.springframework.context.annotation.Bean;
 import systems.zlink.contracts.core.RoutingId;
+import systems.zlink.framework.configuration.ZLinkMessageFlowLogMode;
 import systems.zlink.framework.configuration.ZLinkSpotNodeBuilder;
+import systems.zlink.framework.locations.redis.ZLinkRedisLocationOptions;
+import systems.zlink.framework.locations.redis.ZLinkRedisLocationStore;
 import systems.zlink.framework.spring.EnableZLinkFramework;
 import systems.zlink.framework.spring.ZLinkFrameworkConfigurer;
 
@@ -26,9 +29,11 @@ public final class SessionApplication {
     ZLinkFrameworkConfigurer framework() {
         return options -> {
             String nodeRid = Env.get("ZLINK_KOTLIN_E2E_NODE_RID", "session-a");
-            options.useDiscovery().addRegistryEndpoint(Env.get("ZLINK_KOTLIN_E2E_REGISTRY_ROUTER"));
-            options.useRegistrySpotRemoteAddresses(Contracts.SPOT_MESH)
-                .setRouterChannelId(Contracts.SPOT_MESH);
+            String logDir = Env.get("ZLINK_KOTLIN_E2E_LOG_DIR", "logs");
+            options.configureDispatch()
+                .messageFlow(ZLinkMessageFlowLogMode.KEY_TRANSITIONS)
+                .traceLogFile(logDir + "/session-flow.log")
+                .traceLabel("kotlin-yd-session");
             var route = options.addRouteMesh(Contracts.SPOT_MESH)
                 .enableServer(Env.get("ZLINK_KOTLIN_E2E_SESSION_ROUTE_ENDPOINT"))
                 .enableClient(Env.get("ZLINK_KOTLIN_E2E_PLAY_ROUTE_ENDPOINT"))
@@ -60,5 +65,12 @@ public final class SessionApplication {
                 .addSessionPacketHandler(SpotProbeMsgRouteHandler.class)
                 .addSessionPacketHandler(EvidenceReqRouteHandler.class);
         };
+    }
+
+    @Bean
+    ZLinkRedisLocationStore locationStore() {
+        return new ZLinkRedisLocationStore(new ZLinkRedisLocationOptions()
+            .setConnectionString(Env.get("ZLINK_KOTLIN_E2E_REDIS_LOCATION_ENDPOINT"))
+            .setKeyPrefix(Env.get("ZLINK_KOTLIN_E2E_LOCATION_KEY_PREFIX")));
     }
 }

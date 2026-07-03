@@ -194,7 +194,7 @@ public final class BingoRoomSpot implements ZLinkSpot<PlayerActor> {
             return new Messages.StopObservingBingoEventsRes(false, context.nodeRid().toString());
         }
         observers.remove(actor.actorId());
-        await(context.leaveActor(actor));
+        context.leaveActor(actor).exceptionally(error -> null);
         return new Messages.StopObservingBingoEventsRes(true, context.nodeRid().toString());
     }
 

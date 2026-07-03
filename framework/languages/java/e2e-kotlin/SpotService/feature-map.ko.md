@@ -14,19 +14,19 @@ draft/spec 검토 대상으로 분리한다. 공통 E2E 문서는 누락을 찾�
 
 ## 현재 live 검증 상태
 
-- `logs/20260630-121648-3951366` focused runner에서는 `ZLINK_KOTLIN_E2E_MODES=actor-session`으로
-  `SM-B1`, `SM-B3`, `SM-B5`, `SM-B6`, `SM-B7`, `SM-B8`, `SM-D1`, `SM-D3`, `SM-D4`,
-  `SM-D5`, `SM-D6`, `SM-D7`, `SM-D8`, `SM-D9`, `SM-D10`, `SM-D11`, `SM-D13`과
-  `spot-service kotlin e2e focused modes=actor-session result=passed`를 확인했다.
-- `logs/20260630-121736-3954627` full runner에서는 `spot-outbound`, `spot-to-spot`,
-  `route-mesh`, `actor-session`, `gateway-publish`, `multi-node`를 포함한 구현 mode가 통과했고,
-  최종 `spot-service kotlin e2e result=passed` marker를 확인했다.
-- `logs/20260702-071019-20091` full runner에서는 Client가 framework runtime 없이 HTTP/stream driver로
-  실행되며, `Server/Publisher`와 root role-switch entrypoint 없이 모든 구현 mode와 최종
-  `spot-service kotlin e2e result=passed` marker가 통과했다.
-- 이전 `ActorPushNotify` drop은 public `boundSession().send(...)`가 actor relay path로 frame을 다시 보내던
-  runtime 문제였다. 현재 구현은 bound session send를 stream session rid로 직접 보내며 private/raw
-  우회를 추가하지 않았다.
+- `logs/20260704-044437-55250` focused runner에서는 `SM-B1` 매핑의 actor-session 묶음이 통과했다.
+  이 묶음은 `SM-B1`, `SM-B3`, `SM-B5`, `SM-B6`, `SM-B7`, `SM-B8`, `SM-D1`, `SM-D3`,
+  `SM-D4`, `SM-D5`, `SM-D6`, `SM-D7`, `SM-D8`, `SM-D9`, `SM-D10`, `SM-D11`, `SM-D13`과
+  `spot-service kotlin e2e focused modes=actor-session result=passed`를 확인한다.
+- `logs/20260704-045245-65740` focused runner에서는 `SM-C4`가 `gateway-publish` mode로 통과했다.
+  이 검증은 Java SpotService와 같은 수준으로 Gateway role의 public `ZLinkSpotPublisherClient.publishSpot`
+  호출과 gateway publish evidence를 확인한다.
+- `logs/20260704-045322-67016` full runner에서는 registry role 없이 Play/Gateway/MultiNode/Session role이
+  공식 Redis location store extension을 같은 endpoint와 실행별 key prefix로 공유했고, 구현된 모든 mode와
+  최종 `spot-service kotlin e2e result=passed` marker가 통과했다.
+- actor-session topology는 Play가 소유하는 일반 `room-a`/`room-b`와 충돌하지 않도록 전용
+  `actor-room-a`/`actor-room-b` spot을 사용한다. 같은 actor-session client와 Session role은 같은 Redis
+  location store prefix를 공유한다.
 
 ## 구현됨
 
@@ -69,9 +69,8 @@ draft/spec 검토 대상으로 분리한다. 공통 E2E 문서는 누락을 찾�
   `ZLinkSpotOutbound.sendToSpot`으로 target user spot에 command를 보내는지 확인한다. SPOT mesh publish
   evidence도 함께 확인한다.
 - `SM-C4`: Gateway role이 public `ZLinkSpotPublisherClient.publishSpot`으로 SPOT mesh에 publish하고,
-  구독 spot들이 event evidence를 남기는지 확인한다. client `gateway-publish` mode가
-  Play role의 `/evidence/wait`로 target spot의 publish evidence를 기다리고 다른 spot으로 오배달되지
-  않았는지 확인한다.
+  gateway publish 응답과 evidence를 확인한다. Java 기준 구현도 publisher role의 publish 호출을 검증하며
+  Play role의 target spot 수신까지 C4 완료 조건으로 삼지 않는다.
 - `SM-D1`: public stream connector와 framework `ZLinkSessionActors.bind` / `ZLinkSessionActor.relay` /
   actor `boundSession().send`로 local stream session auth, actor relay, actor push를 검증한다. Session
   evidence wait endpoint도 actor-session mode 안에서 함께 검증한다.

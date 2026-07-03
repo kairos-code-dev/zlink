@@ -20,6 +20,8 @@ import systems.zlink.framework.configuration.ZLinkMessageFlowLogMode
 import systems.zlink.framework.configuration.ZLinkMessageFlowOutcome
 import systems.zlink.framework.configuration.ZLinkSpotNodeBuilder
 import systems.zlink.framework.channels.ZLinkRouteClient
+import systems.zlink.framework.locations.redis.ZLinkRedisLocationOptions
+import systems.zlink.framework.locations.redis.ZLinkRedisLocationStore
 import systems.zlink.framework.spots.ZLinkSpotManager
 import systems.zlink.framework.spring.EnableZLinkFramework
 import systems.zlink.framework.spring.ZLinkFrameworkConfigurer
@@ -57,7 +59,6 @@ class PlayApplication {
             val nodeRid = state.nodeRid()
             val logDir = Env.get("ZLINK_KOTLIN_E2E_LOG_DIR", "logs")
             options.addSpotRemoteAddressResolver(SpotRouteResolver::class.java)
-            options.useDiscovery().addRegistryEndpoint(Env.get("ZLINK_KOTLIN_E2E_REGISTRY_ROUTER"))
             options.configureDispatch()
                 .messageFlow(ZLinkMessageFlowLogMode.KEY_TRANSITIONS)
                 .traceLogFile("$logDir/$nodeRid-flow.log")
@@ -119,6 +120,14 @@ class PlayApplication {
                     .addSessionPacketHandler(ActorAuthHandler::class.java)
             }
         }
+
+    @Bean
+    fun locationStore(): ZLinkRedisLocationStore =
+        ZLinkRedisLocationStore(
+            ZLinkRedisLocationOptions()
+                .setConnectionString(Env.get("ZLINK_KOTLIN_E2E_REDIS_LOCATION_ENDPOINT"))
+                .setKeyPrefix(Env.get("ZLINK_KOTLIN_E2E_LOCATION_KEY_PREFIX"))
+        )
 
     @Bean
     fun createOwnedSpot(

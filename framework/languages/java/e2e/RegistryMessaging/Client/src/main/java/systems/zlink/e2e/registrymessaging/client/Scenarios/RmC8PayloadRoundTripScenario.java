@@ -12,7 +12,10 @@ public final class RmC8PayloadRoundTripScenario {
     private RmC8PayloadRoundTripScenario() {
     }
 
-    public static void run(ZLinkHttpClient singleConsumer, ZLinkHttpClient providerA) {
+    public static void run(
+        ZLinkHttpClient singleConsumer,
+        ZLinkHttpClient providerA,
+        ZLinkHttpClient providerB) {
         java.util.List<String> markers = new java.util.ArrayList<>();
         int[] sizes = {1, 4096, 256 * 1024, 1024 * 1024};
         for (int size : sizes) {
@@ -30,7 +33,9 @@ public final class RmC8PayloadRoundTripScenario {
             .body(new Contracts.ProfileReq("rm-c8-after"))
             .fetch(Contracts.ProfileRes.class);
         ScenarioAssert.that("profile:rm-c8-after".equals(followUp.value()), "RM-C8 follow-up request failed");
-        String[] evidence = ScenarioAssert.evidence(providerA);
+        String[] evidence = ScenarioAssert.concat(
+            ScenarioAssert.evidence(providerA),
+            ScenarioAssert.evidence(providerB));
         ScenarioAssert.that(markers.stream().allMatch(marker -> java.util.Arrays.stream(evidence)
                 .anyMatch(line -> line.contains("payload-request") && line.contains(marker))),
             "RM-C8 payload evidence missing");

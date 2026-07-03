@@ -5,7 +5,7 @@ ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 cd "${ROOT_DIR}"
 
 pids=()
-role_pattern='systems\.zlink\.e2e\.kotlin\.pubsub\.(client|publisher|registry|subscriber)\.ProgramKt'
+role_pattern='systems\.zlink\.e2e\.kotlin\.pubsub\.(client|publisher|subscriber)\.ProgramKt'
 run_id="$(date +%Y%m%d-%H%M%S)-$$"
 log_dir="${ROOT_DIR}/logs/${run_id}"
 SCENARIO="${1:-all}"
@@ -18,6 +18,8 @@ if [[ -z "${ZLINK_LIBRARY_PATH:-}" && -f "${default_core_lib}" ]]; then
 fi
 export ZLINK_KOTLIN_E2E_BUILD_DIR="${ZLINK_KOTLIN_E2E_BUILD_DIR:-${HOME}/.cache/zlink/kotlin-e2e/PubSub}"
 export ZLINK_KOTLIN_E2E_GRADLE_CACHE="${ZLINK_KOTLIN_E2E_GRADLE_CACHE:-${HOME}/.cache/zlink/kotlin-e2e/PubSub-gradle-cache}"
+export ZLINK_KOTLIN_E2E_REDIS_LOCATION_ENDPOINT="${ZLINK_KOTLIN_E2E_REDIS_LOCATION_ENDPOINT:-${ZLINK_REDIS_LOCATION_ENDPOINT:-127.0.0.1:16379}}"
+export ZLINK_KOTLIN_E2E_LOCATION_KEY_PREFIX="${ZLINK_KOTLIN_E2E_LOCATION_KEY_PREFIX:-zlink:e2e:kotlin:pubsub:${run_id}}"
 LOCAL_READINESS_TIMEOUT_SECONDS=3
 LOCAL_READINESS_POLL_SECONDS=0.1
 LOCAL_READINESS_ATTEMPTS=30
@@ -123,26 +125,15 @@ bin_path() {
 
 CLIENT_BIN="$(bin_path Client pub-sub-kotlin-client)"
 PUBLISHER_BIN="$(bin_path Server-Publisher pub-sub-kotlin-publisher)"
-REGISTRY_BIN="$(bin_path Server-Registry pub-sub-kotlin-registry)"
 SUBSCRIBER_BIN="$(bin_path Server-Subscriber pub-sub-kotlin-subscriber)"
-
-start_registry() {
-  "${REGISTRY_BIN}" \
-    --registry-pub-endpoint "${REGISTRY_PUB}" \
-    --registry-router-endpoint "${REGISTRY_ROUTER}" \
-    --http-endpoint "${REGISTRY_HTTP}" \
-    >"${log_dir}/registry.stdout.log" 2>"${log_dir}/registry.stderr.log" &
-  pids+=("$!")
-  wait_port registry-router "${REGISTRY_ROUTER}"
-  wait_health "${REGISTRY_HTTP}" registry
-}
 
 start_publisher() {
   local suffix="${1:-publisher}"
   "${PUBLISHER_BIN}" \
     --publisher-endpoint "${PUBLISHER_ENDPOINT}" \
     --http-endpoint "${PUBLISHER_HTTP}" \
-    --registry-router-endpoint "${REGISTRY_ROUTER}" \
+    --redis-location-endpoint "${ZLINK_KOTLIN_E2E_REDIS_LOCATION_ENDPOINT}" \
+    --location-key-prefix "${ZLINK_KOTLIN_E2E_LOCATION_KEY_PREFIX}" \
     --log-dir "${log_dir}" \
     >"${log_dir}/${suffix}.stdout.log" 2>"${log_dir}/${suffix}.stderr.log" &
   LAST_PID="$!"
@@ -161,7 +152,8 @@ start_subscriber() {
     --topics "${topics}" \
     --http-endpoint "${http}" \
     --handler-delay-ms "${delay}" \
-    --registry-router-endpoint "${REGISTRY_ROUTER}" \
+    --redis-location-endpoint "${ZLINK_KOTLIN_E2E_REDIS_LOCATION_ENDPOINT}" \
+    --location-key-prefix "${ZLINK_KOTLIN_E2E_LOCATION_KEY_PREFIX}" \
     --log-dir "${log_dir}" \
     >"${log_dir}/${rid}.stdout.log" 2>"${log_dir}/${rid}.stderr.log" &
   LAST_PID="$!"
@@ -189,17 +181,15 @@ run_client_mode() {
     --reconnect-http "${RECONNECT_HTTP}" \
     --publisher-bin "${PUBLISHER_BIN}" \
     --subscriber-bin "${SUBSCRIBER_BIN}" \
-    --registry-router-endpoint "${REGISTRY_ROUTER}" \
     --publisher-endpoint "${PUBLISHER_ENDPOINT}" \
+    --redis-location-endpoint "${ZLINK_KOTLIN_E2E_REDIS_LOCATION_ENDPOINT}" \
+    --location-key-prefix "${ZLINK_KOTLIN_E2E_LOCATION_KEY_PREFIX}" \
     --log-dir "${log_dir}" \
     --late-continue-file "${LATE_CONTINUE}" \
     >"${log_dir}/client-${suffix}.stdout.log" 2>"${log_dir}/client-${suffix}.stderr.log"
   cat "${log_dir}/client-${suffix}.stdout.log"
 }
 
-REGISTRY_PUB="tcp://127.0.0.1:$(pick_port)"
-REGISTRY_ROUTER="tcp://127.0.0.1:$(pick_port)"
-REGISTRY_HTTP="http://127.0.0.1:$(pick_port)"
 PUBLISHER_ENDPOINT="tcp://127.0.0.1:$(pick_port)"
 PUBLISHER_HTTP="http://127.0.0.1:$(pick_port)"
 SUB1_HTTP="http://127.0.0.1:$(pick_port)"
@@ -214,7 +204,6 @@ PRELATE_CONTINUE="${log_dir}/prelate-continue"
 LATE_READY="${log_dir}/late-ready"
 LATE_CONTINUE="${log_dir}/late-continue"
 
-start_registry
 start_publisher publisher
 PUBLISHER_PID="${LAST_PID}"
 
@@ -239,8 +228,9 @@ case "${SCENARIO}" in
       --reconnect-http "${RECONNECT_HTTP}" \
       --publisher-bin "${PUBLISHER_BIN}" \
       --subscriber-bin "${SUBSCRIBER_BIN}" \
-      --registry-router-endpoint "${REGISTRY_ROUTER}" \
       --publisher-endpoint "${PUBLISHER_ENDPOINT}" \
+      --redis-location-endpoint "${ZLINK_KOTLIN_E2E_REDIS_LOCATION_ENDPOINT}" \
+      --location-key-prefix "${ZLINK_KOTLIN_E2E_LOCATION_KEY_PREFIX}" \
       --log-dir "${log_dir}" \
       --publisher-ready-file "${PUBLISHER_READY}" \
       --prelate-continue-file "${PRELATE_CONTINUE}" \
@@ -308,8 +298,9 @@ esac
   --reconnect-http "${RECONNECT_HTTP}" \
   --publisher-bin "${PUBLISHER_BIN}" \
   --subscriber-bin "${SUBSCRIBER_BIN}" \
-  --registry-router-endpoint "${REGISTRY_ROUTER}" \
   --publisher-endpoint "${PUBLISHER_ENDPOINT}" \
+  --redis-location-endpoint "${ZLINK_KOTLIN_E2E_REDIS_LOCATION_ENDPOINT}" \
+  --location-key-prefix "${ZLINK_KOTLIN_E2E_LOCATION_KEY_PREFIX}" \
   --log-dir "${log_dir}" \
   --publisher-ready-file "${PUBLISHER_READY}" \
   --prelate-continue-file "${PRELATE_CONTINUE}" \

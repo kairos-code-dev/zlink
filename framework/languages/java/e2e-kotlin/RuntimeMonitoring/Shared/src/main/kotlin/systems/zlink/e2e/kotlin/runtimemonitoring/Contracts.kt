@@ -6,7 +6,7 @@ class Contracts private constructor() {
         const val HANDSHAKE_CHANNEL: String = "monitoring.handshake"
         const val SPOT_MESH: String = "monitoring.spot.mesh"
         const val HANDLER_GROUP: String = "monitoring"
-        const val REGISTRY_SOURCE: String = "ops-registry"
+        const val LOCATION_SOURCE: String = "ops-locations"
     }
 
     @JvmRecord

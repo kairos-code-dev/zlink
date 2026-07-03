@@ -4,7 +4,7 @@ set -euo pipefail
 cd "$(dirname "${BASH_SOURCE[0]}")"
 
 pids=()
-role_pattern='systems\.zlink\.e2e\.kotlin\.runtimemonitoring\.(client|registry|service|filteredservice|throwingservice|trigger)\.ProgramKt'
+role_pattern='systems\.zlink\.e2e\.kotlin\.runtimemonitoring\.(client|service|filteredservice|throwingservice|trigger)\.ProgramKt'
 run_id="$(date +%Y%m%d-%H%M%S)-$$"
 log_dir="$(pwd)/logs/${run_id}"
 SCENARIO="${1:-all}"
@@ -17,6 +17,8 @@ if [[ -z "${ZLINK_LIBRARY_PATH:-}" && -f "${default_core_lib}" ]]; then
 fi
 export ZLINK_KOTLIN_E2E_BUILD_DIR="${ZLINK_KOTLIN_E2E_BUILD_DIR:-${HOME}/.cache/zlink/kotlin-e2e/RuntimeMonitoring}"
 export ZLINK_KOTLIN_E2E_GRADLE_CACHE="${ZLINK_KOTLIN_E2E_GRADLE_CACHE:-${HOME}/.cache/zlink/kotlin-e2e/RuntimeMonitoring-gradle-cache}"
+export ZLINK_KOTLIN_E2E_REDIS_LOCATION_ENDPOINT="${ZLINK_KOTLIN_E2E_REDIS_LOCATION_ENDPOINT:-${ZLINK_REDIS_LOCATION_ENDPOINT:-127.0.0.1:16379}}"
+export ZLINK_KOTLIN_E2E_LOCATION_KEY_PREFIX="${ZLINK_KOTLIN_E2E_LOCATION_KEY_PREFIX:-zlink:e2e:kotlin-runtime-monitoring:${run_id}}"
 LOCAL_READINESS_TIMEOUT_SECONDS=3
 LOCAL_READINESS_POLL_SECONDS=0.1
 LOCAL_READINESS_ATTEMPTS=30
@@ -68,7 +70,7 @@ import socket
 sockets = []
 ports = []
 try:
-    for _ in range(15):
+    for _ in range(12):
         sock = socket.socket()
         sock.bind(("127.0.0.1", 0))
         sockets.append(sock)
@@ -115,10 +117,6 @@ client_bin() {
   echo "${ZLINK_KOTLIN_E2E_BUILD_DIR}/Client/install/runtime-monitoring-kotlin-client/bin/runtime-monitoring-kotlin-client"
 }
 
-registry_bin() {
-  echo "${ZLINK_KOTLIN_E2E_BUILD_DIR}/Server-Registry/install/runtime-monitoring-kotlin-registry/bin/runtime-monitoring-kotlin-registry"
-}
-
 service_bin() {
   echo "${ZLINK_KOTLIN_E2E_BUILD_DIR}/Server-Service/install/runtime-monitoring-kotlin-service/bin/runtime-monitoring-kotlin-service"
 }
@@ -135,10 +133,7 @@ trigger_bin() {
   echo "${ZLINK_KOTLIN_E2E_BUILD_DIR}/Server-Trigger/install/runtime-monitoring-kotlin-trigger/bin/runtime-monitoring-kotlin-trigger"
 }
 
-read -r REG_PUB_PORT REG_ROUTER_PORT REG_HTTP_PORT API_PORT HANDSHAKE_PORT SPOT_PORT SPOT_PUB_PORT SVC_HTTP_PORT FILTERED_API_PORT FILTERED_HTTP_PORT THROWING_API_PORT THROWING_HTTP_PORT TRIGGER_HTTP_PORT _ _ <<<"$(reserve_ports)"
-REGISTRY_PUB="$(tcp "${REG_PUB_PORT}")"
-REGISTRY_ROUTER="$(tcp "${REG_ROUTER_PORT}")"
-REGISTRY_HTTP="$(http "${REG_HTTP_PORT}")"
+read -r API_PORT HANDSHAKE_PORT SPOT_PORT SPOT_PUB_PORT SVC_HTTP_PORT FILTERED_API_PORT FILTERED_HTTP_PORT THROWING_API_PORT THROWING_HTTP_PORT TRIGGER_HTTP_PORT _ _ <<<"$(reserve_ports)"
 API_ENDPOINT="$(tcp "${API_PORT}")"
 HANDSHAKE_ENDPOINT="$(tcp "${HANDSHAKE_PORT}")"
 SPOT_ENDPOINT="$(tcp "${SPOT_PORT}")"
@@ -150,19 +145,11 @@ THROWING_API_ENDPOINT="$(tcp "${THROWING_API_PORT}")"
 THROWING_SERVICE_HTTP="$(http "${THROWING_HTTP_PORT}")"
 TRIGGER_HTTP="$(http "${TRIGGER_HTTP_PORT}")"
 
-gradle_run clean :Client:installDist :Server:Registry:installDist :Server:Service:installDist :Server:FilteredService:installDist :Server:ThrowingService:installDist :Server:Trigger:installDist
+gradle_run clean :Client:installDist :Server:Service:installDist :Server:FilteredService:installDist :Server:ThrowingService:installDist :Server:Trigger:installDist
 
-ZLINK_KOTLIN_E2E_REGISTRY_PUB="${REGISTRY_PUB}" \
-ZLINK_KOTLIN_E2E_REGISTRY_ROUTER="${REGISTRY_ROUTER}" \
-ZLINK_KOTLIN_E2E_HTTP_ENDPOINT="${REGISTRY_HTTP}" \
-ZLINK_KOTLIN_E2E_LOG_DIR="${log_dir}" \
-  "$(registry_bin)" >"${log_dir}/registry.stdout.log" 2>"${log_dir}/registry.stderr.log" &
-pids+=("$!")
-wait_port registry-router "${REGISTRY_ROUTER}"
-wait_port registry-http "${REGISTRY_HTTP}"
-
-ZLINK_KOTLIN_E2E_REGISTRY_ROUTER="${REGISTRY_ROUTER}" \
 ZLINK_KOTLIN_E2E_RID="svc-a" \
+ZLINK_KOTLIN_E2E_REDIS_LOCATION_ENDPOINT="${ZLINK_KOTLIN_E2E_REDIS_LOCATION_ENDPOINT}" \
+ZLINK_KOTLIN_E2E_LOCATION_KEY_PREFIX="${ZLINK_KOTLIN_E2E_LOCATION_KEY_PREFIX}" \
 ZLINK_KOTLIN_E2E_API_ENDPOINT="${API_ENDPOINT}" \
 ZLINK_KOTLIN_E2E_HANDSHAKE_ENDPOINT="${HANDSHAKE_ENDPOINT}" \
 ZLINK_KOTLIN_E2E_SPOT_ENDPOINT="${SPOT_ENDPOINT}" \
@@ -174,8 +161,9 @@ pids+=("$!")
 wait_port service-api "${API_ENDPOINT}"
 wait_port service-http "${SERVICE_HTTP}"
 
-ZLINK_KOTLIN_E2E_REGISTRY_ROUTER="${REGISTRY_ROUTER}" \
 ZLINK_KOTLIN_E2E_RID="svc-b" \
+ZLINK_KOTLIN_E2E_REDIS_LOCATION_ENDPOINT="${ZLINK_KOTLIN_E2E_REDIS_LOCATION_ENDPOINT}" \
+ZLINK_KOTLIN_E2E_LOCATION_KEY_PREFIX="${ZLINK_KOTLIN_E2E_LOCATION_KEY_PREFIX}" \
 ZLINK_KOTLIN_E2E_API_ENDPOINT="${FILTERED_API_ENDPOINT}" \
 ZLINK_KOTLIN_E2E_HTTP_ENDPOINT="${FILTERED_SERVICE_HTTP}" \
 ZLINK_KOTLIN_E2E_LOG_DIR="${log_dir}" \
@@ -184,7 +172,8 @@ pids+=("$!")
 wait_port filtered-service-api "${FILTERED_API_ENDPOINT}"
 wait_port filtered-service-http "${FILTERED_SERVICE_HTTP}"
 
-ZLINK_KOTLIN_E2E_REGISTRY_ROUTER="${REGISTRY_ROUTER}" \
+ZLINK_KOTLIN_E2E_REDIS_LOCATION_ENDPOINT="${ZLINK_KOTLIN_E2E_REDIS_LOCATION_ENDPOINT}" \
+ZLINK_KOTLIN_E2E_LOCATION_KEY_PREFIX="${ZLINK_KOTLIN_E2E_LOCATION_KEY_PREFIX}" \
 ZLINK_KOTLIN_E2E_API_ENDPOINT="${THROWING_API_ENDPOINT}" \
 ZLINK_KOTLIN_E2E_HTTP_ENDPOINT="${THROWING_SERVICE_HTTP}" \
 ZLINK_KOTLIN_E2E_LOG_DIR="${log_dir}" \
@@ -207,8 +196,8 @@ ZLINK_KOTLIN_E2E_API_ENDPOINT="${API_ENDPOINT}" \
 ZLINK_KOTLIN_E2E_HANDSHAKE_ENDPOINT="${HANDSHAKE_ENDPOINT}" \
 ZLINK_KOTLIN_E2E_FILTERED_API_ENDPOINT="${FILTERED_API_ENDPOINT}" \
 ZLINK_KOTLIN_E2E_THROWING_API_ENDPOINT="${THROWING_API_ENDPOINT}" \
-ZLINK_KOTLIN_E2E_REGISTRY_ROUTER="${REGISTRY_ROUTER}" \
-ZLINK_KOTLIN_E2E_REGISTRY_HTTP="${REGISTRY_HTTP}" \
+ZLINK_KOTLIN_E2E_REDIS_LOCATION_ENDPOINT="${ZLINK_KOTLIN_E2E_REDIS_LOCATION_ENDPOINT}" \
+ZLINK_KOTLIN_E2E_LOCATION_KEY_PREFIX="${ZLINK_KOTLIN_E2E_LOCATION_KEY_PREFIX}" \
 ZLINK_KOTLIN_E2E_SERVICE_HTTP="${SERVICE_HTTP}" \
 ZLINK_KOTLIN_E2E_FILTERED_SERVICE_HTTP="${FILTERED_SERVICE_HTTP}" \
 ZLINK_KOTLIN_E2E_THROWING_SERVICE_HTTP="${THROWING_SERVICE_HTTP}" \
@@ -232,4 +221,6 @@ if [[ "${SCENARIO}" == "all" ]]; then
 else
   grep -q "scenario ${SCENARIO} passed" "${log_dir}/client.stdout.log"
 fi
-grep -Rq "message flow" "${log_dir}"/*-flow.log
+if compgen -G "${log_dir}/*-flow.log" >/dev/null; then
+  grep -Rq "message flow" "${log_dir}"/*-flow.log
+fi

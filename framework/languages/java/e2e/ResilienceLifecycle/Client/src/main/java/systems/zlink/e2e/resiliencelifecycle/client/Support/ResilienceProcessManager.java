@@ -32,7 +32,8 @@ public final class ResilienceProcessManager implements AutoCloseable {
             "ZLINK_JAVA_E2E_PROVIDER_RID", rid,
             "ZLINK_JAVA_E2E_API_ENDPOINT", apiEndpoint,
             "ZLINK_JAVA_E2E_HTTP_ENDPOINT", httpEndpoint,
-            "ZLINK_JAVA_E2E_REGISTRY_ROUTER", options.registryRouterEndpoint(),
+            "ZLINK_JAVA_E2E_REDIS_LOCATION_ENDPOINT", options.redisLocationEndpoint(),
+            "ZLINK_JAVA_E2E_LOCATION_KEY_PREFIX", options.locationKeyPrefix(),
             "ZLINK_JAVA_E2E_LOG_DIR", options.logDir());
         ManagedProcess process = start(name, providerBin(), env);
         waitTcp(name + "-api", apiEndpoint, true);
@@ -49,7 +50,8 @@ public final class ResilienceProcessManager implements AutoCloseable {
         Map<String, String> env = Map.of(
             "ZLINK_JAVA_E2E_CONSUMER_HTTP_ENDPOINT", httpEndpoint,
             "ZLINK_JAVA_E2E_CONTROL_DIR", controlDir().toString(),
-            "ZLINK_JAVA_E2E_REGISTRY_ROUTER", options.registryRouterEndpoint(),
+            "ZLINK_JAVA_E2E_REDIS_LOCATION_ENDPOINT", options.redisLocationEndpoint(),
+            "ZLINK_JAVA_E2E_LOCATION_KEY_PREFIX", options.locationKeyPrefix(),
             "ZLINK_JAVA_E2E_API_A_REPLACEMENT_ENDPOINT", options.apiAReplacementEndpoint(),
             "ZLINK_JAVA_E2E_HTTP_A_ENDPOINT", currentHttpA,
             "ZLINK_JAVA_E2E_HTTP_B_ENDPOINT", options.httpBEndpoint(),

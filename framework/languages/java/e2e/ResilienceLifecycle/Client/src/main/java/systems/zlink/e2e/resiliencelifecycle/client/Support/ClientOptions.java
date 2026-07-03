@@ -3,7 +3,8 @@ package systems.zlink.e2e.resiliencelifecycle.client.Support;
 import systems.zlink.e2e.resiliencelifecycle.shared.Env;
 
 public record ClientOptions(
-    String registryRouterEndpoint,
+    String redisLocationEndpoint,
+    String locationKeyPrefix,
     String apiAEndpoint,
     String apiBEndpoint,
     String apiAReplacementEndpoint,
@@ -14,7 +15,8 @@ public record ClientOptions(
     String logDir) {
     public static ClientOptions fromEnv() {
         return new ClientOptions(
-            Env.get("ZLINK_JAVA_E2E_REGISTRY_ROUTER"),
+            Env.get("ZLINK_JAVA_E2E_REDIS_LOCATION_ENDPOINT"),
+            Env.get("ZLINK_JAVA_E2E_LOCATION_KEY_PREFIX"),
             Env.get("ZLINK_JAVA_E2E_API_A_ENDPOINT"),
             Env.get("ZLINK_JAVA_E2E_API_B_ENDPOINT"),
             Env.get("ZLINK_JAVA_E2E_API_A_REPLACEMENT_ENDPOINT"),

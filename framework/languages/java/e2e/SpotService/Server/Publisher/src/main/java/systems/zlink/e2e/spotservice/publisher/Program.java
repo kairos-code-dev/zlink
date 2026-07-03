@@ -9,6 +9,8 @@ import systems.zlink.contracts.core.RoutingId;
 import systems.zlink.e2e.spotservice.shared.Contracts;
 import systems.zlink.e2e.spotservice.shared.Env;
 import systems.zlink.framework.configuration.ZLinkMessageFlowLogMode;
+import systems.zlink.framework.locations.redis.ZLinkRedisLocationOptions;
+import systems.zlink.framework.locations.redis.ZLinkRedisLocationStore;
 import systems.zlink.framework.spring.EnableZLinkFramework;
 import systems.zlink.framework.spots.ZLinkSpotPublisherClient;
 
@@ -43,7 +45,6 @@ public final class Program {
     systems.zlink.framework.spring.ZLinkFrameworkConfigurer publisherFramework() {
         return options -> {
             String logDir = Env.get("ZLINK_JAVA_E2E_LOG_DIR", "logs");
-            options.useDiscovery().addRegistryEndpoint(Env.get("ZLINK_JAVA_E2E_REGISTRY_ROUTER"));
             options.configureDispatch()
                 .messageFlow(ZLinkMessageFlowLogMode.KEY_TRANSITIONS)
                 .traceLogFile(logDir + "/publisher-flow.log")
@@ -52,5 +53,12 @@ public final class Program {
                 .enablePubSub(Env.get("ZLINK_JAVA_E2E_SPOT_PUBLISHER_ENDPOINT"))
                 .setRoutingId(RoutingId.from("publisher"));
         };
+    }
+
+    @Bean
+    ZLinkRedisLocationStore locationStore() {
+        return new ZLinkRedisLocationStore(new ZLinkRedisLocationOptions()
+            .setConnectionString(Env.get("ZLINK_JAVA_E2E_REDIS_LOCATION_ENDPOINT"))
+            .setKeyPrefix(Env.get("ZLINK_JAVA_E2E_LOCATION_KEY_PREFIX")));
     }
 }

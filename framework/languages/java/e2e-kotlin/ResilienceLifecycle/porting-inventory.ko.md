@@ -4,12 +4,12 @@
 
 공통 문서: `framework/doc/framework/common/e2e/config-5-resilience-lifecycle.ko.md`
 
-현재 Kotlin ResilienceLifecycle E2E는 `Shared`, plain HTTP `Client`, `Server/Registry`,
-`Server/Provider`, `Server/Consumer` Gradle project로 process 역할을 나눠 실행한다. Client는 framework
+현재 Kotlin ResilienceLifecycle E2E는 `Shared`, plain HTTP `Client`, `Server/Provider`,
+`Server/Consumer` Gradle project로 process 역할을 나눠 실행한다. Client는 framework
 runtime에 참여하지 않고 Consumer, Provider admin/evidence endpoint, control file만 호출한다. Consumer
-role이 public `ZLinkClient`와 registry query client를 소유한다. client scenario/support,
-provider/registry/consumer role application, provider handler, shared message type은 Kotlin code path로
-옮겼다.
+role이 public `ZLinkClient`와 public location runtime query를 소유한다. client scenario/support,
+provider/consumer role application, provider handler, shared message type은 Kotlin code path로
+옮겼다. registry role은 Redis location store 전환 뒤 제거했다.
 
 상태 값:
 
@@ -31,7 +31,7 @@ provider/registry/consumer role application, provider handler, shared message ty
 | `Client/Support/LifecycleApiResult.cs` | `Client/src/main/kotlin/.../Support/ClientScenarioContext.kt` | support | not-needed | Kotlin client는 provider admin/evidence 응답을 typed DTO로 공개하지 않고 HTTP body와 marker wait helper만 사용한다. |
 | `Client/Support/ResilienceProcessManager.cs` | `run_e2e.sh` | support | not-needed | process orchestration은 role별 binary를 시작하는 shell runner가 담당한다. Kotlin client process 안에 별도 process manager를 두지 않는다. |
 | `Client/Support/ScenarioAssert.cs` | `Client/src/main/kotlin/systems/zlink/e2e/kotlin/resiliencelifecycle/Support/ClientScenarioContext.kt` | support | done | assertion, wait, HTTP helper를 Kotlin client support context로 분리했다. |
-| `Client/Support/TopologyEntryResult.cs` | `Shared/src/main/kotlin/.../Contracts.kt`, `Server/Consumer/src/main/kotlin/.../ConsumerHttpServer.kt` | support | done | topology wait DTO와 registry query 책임은 Consumer role endpoint로 분리했다. |
+| `Client/Support/TopologyEntryResult.cs` | `Shared/src/main/kotlin/.../Contracts.kt`, `Server/Consumer/src/main/kotlin/.../ConsumerHttpServer.kt` | support | done | topology wait DTO와 public location peer query 책임은 Consumer role endpoint로 분리했다. |
 | `Client/Scenarios/RlA1ProviderRestartScenario.cs` | `Client/src/main/kotlin/.../Scenarios/RlA1ProviderRestartScenario.kt` | scenario | done | RL-A1 restart scenario를 Kotlin scenario 파일로 분리했다. 같은 restart orchestration에서 관측하는 RL-C3 marker는 기존 runner 의미를 유지한다. |
 | `Client/Scenarios/RlA2ProviderEndpointRemapScenario.cs` | `Client/src/main/kotlin/.../Scenarios/RlA2ProviderEndpointRemapScenario.kt` | scenario | done | RL-A2 endpoint remap scenario를 Kotlin scenario 파일로 분리했다. |
 | `Client/Scenarios/RlA3ReconnectStormScenario.cs` | `Client/src/main/kotlin/.../Scenarios/RlA3ReconnectStormScenario.kt` | scenario | done | RL-A3 reconnect storm scenario를 Kotlin scenario 파일로 분리했다. 같은 storm workload에서 RL-D1 marker도 유지한다. |
@@ -46,31 +46,31 @@ provider/registry/consumer role application, provider handler, shared message ty
 | `Client/Scenarios/RlC1ClientHostLifecycleScenario.cs` | `Client/src/main/kotlin/.../Scenarios/RlC1ClientHostLifecycleScenario.kt` | scenario | done | RL-C1 client host lifecycle marker를 Kotlin scenario file로 분리했다. 현재 cleanup workload는 RL-D5 mixed burst body와 함께 실행된다. |
 | `Client/Scenarios/RlC2TopologyRecoveryScenario.cs` | `Client/src/main/kotlin/.../Scenarios/RlC2TopologyRecoveryScenario.kt` | scenario | gap | provider 강제 종료 뒤 TTL stale entry 제거를 빠르고 결정적으로 고정하는 runner 연결이 아직 없다. |
 | `Client/Scenarios/RlC3NodePauseRecoveryScenario.cs` | `Client/src/main/kotlin/.../Scenarios/RlA1ProviderRestartScenario.kt` | scenario | not-needed | Kotlin runner는 provider restart orchestration에서 RL-C3 node pause/recovery marker를 함께 관측한다. 별도 file을 두면 같은 orchestration을 중복 실행하게 되어 만들지 않는다. |
-| `Client/Scenarios/RlC4RegistryOutageScenario.cs` | `Client/src/main/kotlin/.../Scenarios/RlC4RegistryOutageScenario.kt` | scenario | gap | registry 재기동 뒤 새 client follow-up request가 `NOT_ADMITTED`로 남는 경로가 있어 완료 처리하지 않는다. |
+| `Client/Scenarios/RlC4RegistryOutageScenario.cs` | `Client/src/main/kotlin/.../Scenarios/RlC4RegistryOutageScenario.kt` | scenario | gap | location store 장애와 복구 뒤 새 client follow-up까지 고정하는 Kotlin runner가 아직 없어 완료 처리하지 않는다. |
 | `Client/Scenarios/RlD1HighFanoutScenario.cs` | `Client/src/main/kotlin/.../Scenarios/RlD1HighFanoutScenario.kt` | scenario | done | RL-D1 marker emission을 Kotlin scenario 파일로 분리했고 RL-A3 storm workload가 호출한다. |
 | `Client/Scenarios/RlD2ObserverFaultScenario.cs` | `Client/src/main/kotlin/.../Scenarios/RlD2ObserverFaultScenario.kt` | scenario | gap | observer 실패 격리를 runtime error sink와 함께 단언하는 public scenario가 아직 없다. |
 | `Client/Scenarios/RlD3DispatchErrorEvidenceScenario.cs` | `Client/src/main/kotlin/.../Scenarios/RlD3DispatchErrorEvidenceScenario.kt` | scenario | done | RL-D3 dispatch error evidence scenario를 Kotlin scenario 파일로 분리했다. |
 | `Client/Scenarios/RlD4MissingRequestHandlerScenario.cs` | `Client/src/main/kotlin/.../Scenarios/RlD4MissingRequestHandlerScenario.kt` | scenario | gap | error reply wire header code/message roundtrip을 raw envelope로 확인하는 public harness가 아직 없다. |
 | `Client/Scenarios/RlD5MixedBurstScenario.cs` | `Client/src/main/kotlin/.../Scenarios/RlD5MixedBurstScenario.kt` | scenario | done | RL-D5 mixed request/send burst body를 Kotlin scenario 파일로 분리했고 cleanup mode에서 RL-C1 marker와 함께 실행한다. |
-| `Server/Registry/ResilienceLifecycle.Registry.csproj` | `Server/Registry/build.gradle.kts` | build | done | Registry role project를 만들었다. |
-| `Server/Registry/Program.cs` | `Server/Registry/src/main/kotlin/systems/zlink/e2e/kotlin/resiliencelifecycle/Program.kt` | server-entry | done | Registry binary entry point가 registry application만 실행한다. |
-| `Server/Registry/Configuration/ServerOptions.cs` | `Server/Registry/src/main/kotlin/.../Configuration/ServerOptions.kt` | configuration | done | registry pub/router endpoint 입력을 Kotlin role option object로 분리했다. 현재 값은 runner 환경 변수에서 읽는다. |
-| `Server/Registry/Endpoints/RegistryEndpoints.cs` | `Server/Consumer/src/main/kotlin/.../ConsumerHttpServer.kt` | endpoints | merged | Kotlin은 Registry role에 HTTP facade를 두지 않고 Consumer role endpoint가 public registry query client로 topology wait를 수행한다. |
-| `Server/Registry/Endpoints/TopologyEntryResult.cs` | `Shared/src/main/kotlin/.../Contracts.kt`, `Server/Consumer/src/main/kotlin/.../ConsumerHttpServer.kt` | endpoints | merged | topology wait request/response DTO와 query result 필터링을 Consumer role HTTP endpoint로 옮겼다. |
+| `Server/Registry/ResilienceLifecycle.Registry.csproj` | 없음 | build | not-needed | Redis location store 전환 뒤 registry role project를 제거했다. |
+| `Server/Registry/Program.cs` | 없음 | server-entry | not-needed | embedded registry binary를 실행하지 않는다. |
+| `Server/Registry/Configuration/ServerOptions.cs` | 없음 | configuration | not-needed | registry endpoint option은 Redis location endpoint/key prefix로 대체했다. |
+| `Server/Registry/Endpoints/RegistryEndpoints.cs` | `Server/Consumer/src/main/kotlin/.../ConsumerHttpServer.kt` | endpoints | merged | Consumer role endpoint가 public location runtime query로 topology wait를 수행한다. |
+| `Server/Registry/Endpoints/TopologyEntryResult.cs` | `Shared/src/main/kotlin/.../Contracts.kt`, `Server/Consumer/src/main/kotlin/.../ConsumerHttpServer.kt` | endpoints | merged | topology wait request/response DTO와 location peer 필터링을 Consumer role HTTP endpoint로 옮겼다. |
 | `Server/Registry/Handlers/RegistryHandlers.cs` | `Server/Provider/src/main/kotlin/.../Handlers/EvidenceDispatchErrorObserver.kt`, `Server/Provider/src/main/java/.../handlers/*` | handlers | not-needed | Kotlin runner의 channel provider 책임은 Provider role이 맡는다. Registry role에는 handler channel을 열지 않는다. |
 | `Server/Registry/Infrastructure/EvidenceStore.cs` | `Server/Provider/src/main/kotlin/.../Support/ScenarioState.kt` | infrastructure | not-needed | 현재 Kotlin evidence는 Provider role state에 모인다. Registry role evidence endpoint는 쓰지 않는다. |
 | `Server/Registry/Infrastructure/FaultState.cs` | `Server/Provider/src/main/kotlin/.../Support/ScenarioState.kt` | infrastructure | not-needed | 현재 fault 주입은 Provider role admin endpoint와 state가 맡는다. Registry role fault state는 쓰지 않는다. |
-| `Server/Registry/RegistryHostFactory.cs` | `Server/Registry/src/main/kotlin/systems/zlink/e2e/kotlin/resiliencelifecycle/RegistryApplication.kt` | server-role | done | embedded registry configuration을 Registry role Kotlin application으로 옮겼다. |
+| `Server/Registry/RegistryHostFactory.cs` | 없음 | server-role | not-needed | embedded registry configuration은 더 이상 필요 없다. |
 | `Server/Provider/ResilienceLifecycle.Provider.csproj` | `Server/Provider/build.gradle.kts` | build | done | Provider role project를 만들었다. |
 | `Server/Provider/Program.cs` | `Server/Provider/src/main/kotlin/systems/zlink/e2e/kotlin/resiliencelifecycle/Program.kt` | server-entry | done | Provider binary entry point가 provider application만 실행한다. |
-| `Server/Provider/ProviderHostFactory.cs` | `Server/Provider/src/main/kotlin/systems/zlink/e2e/kotlin/resiliencelifecycle/ProviderApplication.kt` | server-role | done | provider channel/discovery/flow observer 구성을 Provider role Kotlin application으로 옮겼다. |
+| `Server/Provider/ProviderHostFactory.cs` | `Server/Provider/src/main/kotlin/systems/zlink/e2e/kotlin/resiliencelifecycle/ProviderApplication.kt` | server-role | done | provider channel, Redis location store, flow observer 구성을 Provider role Kotlin application으로 옮겼다. |
 | `Server/Provider/ProviderEndpoints.cs` | `Server/Provider/src/main/kotlin/systems/zlink/e2e/kotlin/resiliencelifecycle/Endpoints/EvidenceHttpServer.kt` | endpoints | done | health/evidence/admin endpoint를 Provider role Kotlin endpoint로 옮겼다. |
 | `Server/Provider/ProviderSupport.cs` | `Server/Provider/src/main/kotlin/systems/zlink/e2e/kotlin/resiliencelifecycle/Support/ScenarioState.kt` | support | done | provider state, weight, gray fault, slow request latch를 Kotlin support로 옮겼다. |
 | `Server/Provider/Handlers/EvidenceDispatchErrorObserver.cs` | `Server/Provider/src/main/kotlin/systems/zlink/e2e/kotlin/resiliencelifecycle/Handlers/EvidenceDispatchErrorObserver.kt` | handlers | done | dispatch error observer를 Provider role Kotlin handler/support class로 분리했다. |
 | `Server/Provider/Handlers/ProviderHandlers.cs` | `Server/Provider/src/main/kotlin/systems/zlink/e2e/kotlin/resiliencelifecycle/handlers/WorkRequestHandler.kt`, `Server/Provider/src/main/kotlin/systems/zlink/e2e/kotlin/resiliencelifecycle/handlers/WorkCommandHandler.kt` | handlers | done | provider request/send handlers를 Provider role Kotlin handler package로 옮겼다. |
 | `Server/Consumer/ResilienceLifecycle.Consumer.csproj` | `Server/Consumer/build.gradle.kts` | build | done | Consumer role Gradle project와 installDist binary를 추가했다. |
 | `Server/Consumer/Program.cs` | `Server/Consumer/src/main/kotlin/.../Program.kt` | server-entry | done | Consumer role entry point가 long-running Consumer application을 실행한다. |
-| `Server/Consumer/ConsumerHostFactory.cs` | `Server/Consumer/src/main/kotlin/.../ConsumerApplication.kt`, `Server/Consumer/src/main/kotlin/.../ConsumerHttpServer.kt` | server-role | done | Consumer role이 public `ZLinkClient`, registry query client, `/profile/*`, `/topology/wait`, `/health` endpoint를 소유한다. HTTP endpoint는 long-running request가 다른 scenario request를 막지 않도록 concurrent executor를 사용한다. |
+| `Server/Consumer/ConsumerHostFactory.cs` | `Server/Consumer/src/main/kotlin/.../ConsumerApplication.kt`, `Server/Consumer/src/main/kotlin/.../ConsumerHttpServer.kt` | server-role | done | Consumer role이 public `ZLinkClient`, public location runtime query, `/profile/*`, `/topology/wait`, `/health` endpoint를 소유한다. HTTP endpoint는 long-running request가 다른 scenario request를 막지 않도록 concurrent executor를 사용한다. |
 
 ## 기존 Kotlin/Java 파일 처리
 
@@ -83,7 +83,7 @@ provider/registry/consumer role application, provider handler, shared message ty
 | `src/main/java/.../Env.java` | 모든 role이 공유하던 환경 변수 helper다. | `Shared/src/main/kotlin/.../Env.kt`로 옮겼고 role별 CLI option parser 전환은 이어서 진행한다. |
 | `src/main/java/.../EvidenceHttpServer.java` | provider health/evidence/admin endpoint를 담당하던 Java class다. | `Server/Provider/src/main/kotlin/.../Endpoints/EvidenceHttpServer.kt`로 옮겼다. |
 | `src/main/java/.../ProviderApplication.java` | provider host, discovery, channel, dispatch observer, handler registration을 담당하던 Java class다. | `Server/Provider/src/main/kotlin/.../ProviderApplication.kt`로 옮겼다. |
-| `src/main/java/.../RegistryApplication.java` | embedded registry endpoint 설정을 담당하던 Java class다. | `Server/Registry/src/main/kotlin/.../RegistryApplication.kt`로 옮겼다. |
+| `src/main/java/.../RegistryApplication.java` | embedded registry endpoint 설정을 담당하던 Java class다. | Redis location store 전환 뒤 registry role source를 삭제했다. |
 | `src/main/java/.../ScenarioState.java` | provider evidence, drain weight, gray fault, slow handler latch를 담당하던 Java class다. | `Server/Provider/src/main/kotlin/.../Support/ScenarioState.kt`로 옮겼다. |
 | `src/main/java/.../handlers/WorkCommandHandler.java` | provider send handler이던 Java class다. | `Server/Provider/src/main/kotlin/.../handlers/WorkCommandHandler.kt`로 옮겼다. |
 | `src/main/java/.../handlers/WorkRequestHandler.java` | provider request handler이던 Java class다. | `Server/Provider/src/main/kotlin/.../handlers/WorkRequestHandler.kt`로 옮겼다. |

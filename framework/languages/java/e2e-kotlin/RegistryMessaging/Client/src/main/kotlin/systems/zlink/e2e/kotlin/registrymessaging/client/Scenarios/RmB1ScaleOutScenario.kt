@@ -11,13 +11,16 @@ object RmB1ScaleOutScenario {
     fun run(options: ClientOptions) {
         DynamicClusterLauncher.start(options, "rm-b1").use { cluster ->
             val providerA = cluster.startProvider("api-a-scale-out", "api-a")
-            val requester = HttpJson(providerA.httpUrl)
+            val consumer = cluster.startConsumer("consumer-scale-out")
+            val requester = HttpJson(consumer.httpUrl)
+            cluster.waitPeerEndpoint(requester, providerA.channelEndpoint)
             repeat(5) { index ->
                 val reply = requester.post<ProfileRes>("/profile/request", ProfileReq("scale-out-before-$index"))
                 ScenarioAssert.that(reply.providerRid == "api-a", "RM-B1 initial traffic should only use api-a.")
             }
-            cluster.startProvider("api-b-scale-out", "api-b")
-            Thread.sleep(3000)
+            val providerB = cluster.startProvider("api-b-scale-out", "api-b")
+            cluster.waitPeerEndpoint(requester, providerB.channelEndpoint)
+            cluster.waitPeerCount(requester, 2)
             val providers = mutableSetOf<String>()
             var index = 0
             while (index < 100 && providers.size < 2) {

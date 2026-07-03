@@ -26,7 +26,7 @@ class MonB2RegistrationValidationScenario(
         ScenarioAssert.ensure(
             scenarioEvidence.any { line ->
                 line.contains("mon-b2|interval=") &&
-                    line.contains("registry interval must be positive")
+                    line.contains("location runtime interval must be positive")
             },
             "MON-B2 interval validation evidence missing",
         )

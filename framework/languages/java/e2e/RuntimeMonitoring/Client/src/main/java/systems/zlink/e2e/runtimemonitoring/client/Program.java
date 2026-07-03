@@ -1,7 +1,7 @@
 package systems.zlink.e2e.runtimemonitoring.client;
 
 import systems.zlink.e2e.runtimemonitoring.client.Scenarios.MonA1SocketEventsScenario;
-import systems.zlink.e2e.runtimemonitoring.client.Scenarios.MonA2RegistryEventsScenario;
+import systems.zlink.e2e.runtimemonitoring.client.Scenarios.MonA2LocationEventsScenario;
 import systems.zlink.e2e.runtimemonitoring.client.Scenarios.MonA3SpotEventsScenario;
 import systems.zlink.e2e.runtimemonitoring.client.Scenarios.MonA5FixedKindsScenario;
 import systems.zlink.e2e.runtimemonitoring.client.Scenarios.MonB1KindFilterScenario;
@@ -23,7 +23,7 @@ public final class Program {
             return;
         }
         MonA1SocketEventsScenario.run(trigger);
-        MonA2RegistryEventsScenario.run(trigger);
+        MonA2LocationEventsScenario.run(trigger);
         MonA3SpotEventsScenario.run(trigger);
         MonA5FixedKindsScenario.run(trigger);
         MonB1KindFilterScenario.run(trigger);
@@ -35,7 +35,7 @@ public final class Program {
     private static void runOne(String scenario, TriggerScenarioClient trigger) {
         switch (scenario) {
             case "MON-A1" -> MonA1SocketEventsScenario.run(trigger);
-            case "MON-A2" -> MonA2RegistryEventsScenario.run(trigger);
+            case "MON-A2" -> MonA2LocationEventsScenario.run(trigger);
             case "MON-A3" -> MonA3SpotEventsScenario.run(trigger);
             case "MON-A5" -> MonA5FixedKindsScenario.run(trigger);
             case "MON-B1" -> MonB1KindFilterScenario.run(trigger);

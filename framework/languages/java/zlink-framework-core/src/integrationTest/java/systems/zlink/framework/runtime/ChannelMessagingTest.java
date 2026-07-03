@@ -44,8 +44,6 @@ import systems.zlink.framework.configuration.ZLinkDispatchErrorReason;
 import systems.zlink.framework.configuration.ZLinkDispatchErrorSurface;
 import systems.zlink.framework.configuration.ZLinkDispatchMessageKind;
 import systems.zlink.framework.configuration.ZLinkMessageFlowEvent;
-import systems.zlink.framework.registry.ZLinkEmbeddedRegistryOptions;
-import systems.zlink.framework.runtime.registry.ZLinkRegistryRuntime;
 import systems.zlink.framework.actors.ZLinkActor;
 import systems.zlink.framework.channels.ZLinkPublishContext;
 import systems.zlink.framework.channels.ZLinkPublishHandler;
@@ -950,157 +948,6 @@ final class ChannelMessagingTest {
     }
 
     @Test
-    void discoveryClientServer_requestReplySucceeds() {
-        String registryPub = tcpEndpoint();
-        String registryRouter = tcpEndpoint();
-        String serverEndpoint = tcpEndpoint();
-        ZLinkEmbeddedRegistryOptions registryOptions = new ZLinkEmbeddedRegistryOptions();
-        registryOptions.setPubEndpoint(registryPub);
-        registryOptions.setRouterEndpoint(registryRouter);
-
-        DefaultZLinkFrameworkOptions serverOptions = new DefaultZLinkFrameworkOptions();
-        { var discovery = serverOptions.useDiscovery(); discovery.addRegistryEndpoint(registryRouter); };
-        { var channel = serverOptions.addClientServerChannel("profile").enableServer(serverEndpoint);
-            channel.addRequestHandler(EchoHandler.class, String.class, String.class, "Echo"); };
-
-        DefaultZLinkFrameworkOptions clientOptions = new DefaultZLinkFrameworkOptions();
-        clientOptions.setDefaultRequestTimeout(Duration.ofMillis(100));
-        { var discovery = clientOptions.useDiscovery(); discovery.addRegistryEndpoint(registryRouter); };
-        { var channel = clientOptions.addClientServerChannel("profile"); channel.enableClient(); };
-
-        try (ZLinkRegistryRuntime ignoredRegistry = RuntimeTestSupport.startRegistry(
-                 registryOptions,
-                 new ZLinkJavaBackendAdapterFactory(),
-                 new ZLinkBackendAdapterOptions(Duration.ofSeconds(1)));
-             ZLinkFrameworkRuntime ignoredServer =
-                 RuntimeTestSupport.startFramework(serverOptions, new ZLinkJavaBackendAdapterFactory());
-             ZLinkFrameworkRuntime client =
-                 RuntimeTestSupport.startFramework(clientOptions, new ZLinkJavaBackendAdapterFactory())) {
-            assertEquals("hello", awaitDiscoveryReply(client));
-        }
-    }
-
-    @Test
-    void discoveryClientServer_clientStartedBeforeServerFindsLaterProvider() {
-        String registryPub = tcpEndpoint();
-        String registryRouter = tcpEndpoint();
-        String serverEndpoint = tcpEndpoint();
-        ZLinkEmbeddedRegistryOptions registryOptions = new ZLinkEmbeddedRegistryOptions();
-        registryOptions.setPubEndpoint(registryPub);
-        registryOptions.setRouterEndpoint(registryRouter);
-
-        DefaultZLinkFrameworkOptions clientOptions = new DefaultZLinkFrameworkOptions();
-        clientOptions.setDefaultRequestTimeout(Duration.ofMillis(100));
-        { var discovery = clientOptions.useDiscovery(); discovery.addRegistryEndpoint(registryRouter); };
-        { var channel = clientOptions.addClientServerChannel("profile"); channel.enableClient(); };
-
-        DefaultZLinkFrameworkOptions serverOptions = new DefaultZLinkFrameworkOptions();
-        { var discovery = serverOptions.useDiscovery(); discovery.addRegistryEndpoint(registryRouter); };
-        { var channel = serverOptions.addClientServerChannel("profile").enableServer(serverEndpoint);
-            channel.addRequestHandler(EchoHandler.class, String.class, String.class, "Echo"); };
-
-        try (ZLinkRegistryRuntime ignoredRegistry = RuntimeTestSupport.startRegistry(
-                 registryOptions,
-                 new ZLinkJavaBackendAdapterFactory(),
-                 new ZLinkBackendAdapterOptions(Duration.ofSeconds(1)));
-             ZLinkFrameworkRuntime client =
-                 RuntimeTestSupport.startFramework(clientOptions, new ZLinkJavaBackendAdapterFactory());
-             ZLinkFrameworkRuntime ignoredServer =
-                 RuntimeTestSupport.startFramework(serverOptions, new ZLinkJavaBackendAdapterFactory())) {
-            assertEquals("hello", awaitDiscoveryReply(client));
-        }
-    }
-
-    @Test
-    void discoveryClientServerHandlerCanCallRouteMeshClient() {
-        String registryPub = tcpEndpoint();
-        String registryRouter = tcpEndpoint();
-        String apiEndpoint = tcpEndpoint();
-        String apiRouteEndpoint = tcpEndpoint();
-        String playRouteEndpoint = tcpEndpoint();
-        RoutingId apiRouteRid = RoutingId.from("nested-api-route");
-        RoutingId playRouteRid = RoutingId.from("nested-play-route");
-        ZLinkEmbeddedRegistryOptions registryOptions = new ZLinkEmbeddedRegistryOptions();
-        registryOptions.setPubEndpoint(registryPub);
-        registryOptions.setRouterEndpoint(registryRouter);
-
-        DefaultZLinkFrameworkOptions apiOptions = new DefaultZLinkFrameworkOptions();
-        apiOptions.setDefaultRequestTimeout(Duration.ofMillis(200));
-        { var discovery = apiOptions.useDiscovery(); discovery.addRegistryEndpoint(registryRouter); };
-        { var channel = apiOptions.addClientServerChannel("api").enableServer(apiEndpoint);
-            channel.addRequestHandler(NestedRouteApiHandler.class, String.class, String.class, "NestedApi"); };
-        { var route = apiOptions.addRouteMesh("route");
-            route.enableServer(apiRouteEndpoint);
-            route.enableClient();
-            route.setRoutingId(apiRouteRid); };
-
-        DefaultZLinkFrameworkOptions playOptions = new DefaultZLinkFrameworkOptions();
-        playOptions.setDefaultRequestTimeout(Duration.ofMillis(200));
-        { var discovery = playOptions.useDiscovery(); discovery.addRegistryEndpoint(registryRouter); };
-        { var route = playOptions.addRouteMesh("route");
-            route.enableServer(playRouteEndpoint);
-            route.enableClient();
-            route.setRoutingId(playRouteRid);
-            route.addRequestHandler(RouteEchoHandler.class, String.class, String.class, "NestedRoute"); };
-
-        DefaultZLinkFrameworkOptions clientOptions = new DefaultZLinkFrameworkOptions();
-        clientOptions.setDefaultRequestTimeout(Duration.ofMillis(200));
-        { var discovery = clientOptions.useDiscovery(); discovery.addRegistryEndpoint(registryRouter); };
-        { var channel = clientOptions.addClientServerChannel("api"); channel.enableClient(); };
-
-        try (ZLinkRegistryRuntime ignoredRegistry = RuntimeTestSupport.startRegistry(
-                 registryOptions,
-                 new ZLinkJavaBackendAdapterFactory(),
-                 new ZLinkBackendAdapterOptions(Duration.ofSeconds(1)));
-             ZLinkFrameworkRuntime ignoredApi =
-                 RuntimeTestSupport.startFramework(apiOptions, new ZLinkJavaBackendAdapterFactory());
-             ZLinkFrameworkRuntime ignoredPlay =
-                 RuntimeTestSupport.startFramework(playOptions, new ZLinkJavaBackendAdapterFactory());
-             ZLinkFrameworkRuntime client =
-                 RuntimeTestSupport.startFramework(clientOptions, new ZLinkJavaBackendAdapterFactory())) {
-            assertEquals("route:hello", awaitNestedApiReply(client));
-        }
-    }
-
-    @Test
-    void discoverySpotAttachedChannelClientRequestReplySucceeds() {
-        String registryPub = tcpEndpoint();
-        String registryRouter = tcpEndpoint();
-        String apiEndpoint = tcpEndpoint();
-        ZLinkEmbeddedRegistryOptions registryOptions = new ZLinkEmbeddedRegistryOptions();
-        registryOptions.setPubEndpoint(registryPub);
-        registryOptions.setRouterEndpoint(registryRouter);
-        OutboundChannelSpot.CONTEXT.set(null);
-
-        DefaultZLinkFrameworkOptions apiOptions = new DefaultZLinkFrameworkOptions();
-        apiOptions.setDefaultRequestTimeout(Duration.ofMillis(200));
-        { var discovery = apiOptions.useDiscovery(); discovery.addRegistryEndpoint(registryRouter); };
-        { var channel = apiOptions.addClientServerChannel("api").enableServer(apiEndpoint);
-            channel.addRequestHandler(EchoHandler.class, String.class, String.class, "SpotApi"); };
-
-        DefaultZLinkFrameworkOptions playOptions = new DefaultZLinkFrameworkOptions();
-        playOptions.setDefaultRequestTimeout(Duration.ofMillis(200));
-        { var discovery = playOptions.useDiscovery(); discovery.addRegistryEndpoint(registryRouter); };
-        { var channel = playOptions.addClientServerChannel("api"); channel.enableClient(); };
-        { var mesh = playOptions.addSpotMesh("game");
-            { var node = mesh;
-                node.addSpotFactory(OutboundChannelSpot.class); }; };
-
-        try (ZLinkRegistryRuntime ignoredRegistry = RuntimeTestSupport.startRegistry(
-                 registryOptions,
-                 new ZLinkJavaBackendAdapterFactory(),
-                 new ZLinkBackendAdapterOptions(Duration.ofSeconds(1)));
-             ZLinkFrameworkRuntime ignoredApi =
-                 RuntimeTestSupport.startFramework(apiOptions, new ZLinkJavaBackendAdapterFactory());
-             ZLinkFrameworkRuntime play =
-                 RuntimeTestSupport.startFramework(playOptions, new ZLinkJavaBackendAdapterFactory())) {
-            assertEquals("hello", awaitSpotAttachedChannelReply(play));
-        } finally {
-            OutboundChannelSpot.CONTEXT.set(null);
-        }
-    }
-
-    @Test
     void clientServerSpotRouteEgress_requestReplySucceeds() throws Exception {
         String ingressEndpoint = tcpEndpoint();
         String routeSourceEndpoint = tcpEndpoint();
@@ -1419,26 +1266,6 @@ final class ChannelMessagingTest {
             ROUTE_SEND_CHANNEL.set(null);
             ROUTE_SEND_SOURCE.set(null);
         }
-    }
-
-    private static String awaitDiscoveryReply(ZLinkFrameworkRuntime client) {
-        long deadline = System.nanoTime() + Duration.ofSeconds(3).toNanos();
-        RuntimeException lastFailure = null;
-        while (System.nanoTime() < deadline) {
-            try {
-                return client.client()
-                    .requestToChannel("profile", message("hello"))
-                    .packetName("Echo")
-                    .timeout(Duration.ofMillis(100))
-                    .submit(String.class)
-                    .toCompletableFuture()
-                    .join();
-            } catch (RuntimeException ex) {
-                lastFailure = ex;
-                Thread.onSpinWait();
-            }
-        }
-        throw new AssertionError("discovery request did not succeed", lastFailure);
     }
 
     private static String awaitNestedApiReply(ZLinkFrameworkRuntime client) {

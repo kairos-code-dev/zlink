@@ -19,7 +19,7 @@ internal object SmD5Scenario {
                 .await(Contracts.ActorAuthRes::class.java)
             ensure(auth.actorId == actorId, "SM-D5 auth actor mismatch")
             val joined = connector
-                .request(Contracts.ActorJoinReq("room-a", profile, profile.tags))
+                .request(Contracts.ActorJoinReq("actor-room-a", profile, profile.tags))
                 .metadata("actor-id", actorId)
                 .await(Contracts.ActorJoinRes::class.java)
             ensure(joined.actorId == actorId, "SM-D5 join actor mismatch")
@@ -36,7 +36,7 @@ internal object SmD5Scenario {
             "/evidence/wait",
             Contracts.EvidenceWaitReq(
                 listOf(
-                    "ActorUserDisconnected|session-a|room-a|$actorId",
+                    "ActorUserDisconnected|session-a|actor-room-a|$actorId",
                 ),
                 10_000,
             ),

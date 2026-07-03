@@ -51,8 +51,5 @@ includeBuild("../../../../../bindings/java") {
 
 include(":Shared")
 include(":Client")
-include(":Server:Registry")
 include(":Server:Provider")
-include(":Server:Embedded")
 include(":Server:Consumer")
-include(":Server:Probe")

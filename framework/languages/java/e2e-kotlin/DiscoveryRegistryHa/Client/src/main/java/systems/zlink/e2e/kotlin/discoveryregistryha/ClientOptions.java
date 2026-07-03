@@ -4,34 +4,25 @@ import java.util.List;
 
 public record ClientOptions(
     String scenario,
-    List<String> registryRouters,
-    String queryRegistryRouter,
-    List<String> probeHttpEndpoints,
-    String topologyHttpEndpoint,
     String consumerHttpEndpoint,
-    String remoteProbeHttpEndpoint,
-    boolean waitForMembers,
     List<String> expectedRids,
-    String deadHttpEndpoint,
-    String logDir) {
+    String deadRid,
+    List<String> expectedAbsentRids,
+    long locationHeartbeatMillis,
+    long locationLeaseTtlMillis,
+    long locationPollingMillis,
+    long locationStoreFailureGraceMillis) {
     public static ClientOptions parse(String[] args) {
         CliOptions options = CliOptions.parse(args);
-        List<String> registryRouters = options.csv("--registry-routers");
-        String queryRegistryRouter = options.get("--query-registry-router");
-        if (queryRegistryRouter.isBlank() && !registryRouters.isEmpty()) {
-            queryRegistryRouter = registryRouters.get(0);
-        }
         return new ClientOptions(
             options.get("--scenario"),
-            registryRouters,
-            queryRegistryRouter,
-            options.csv("--probe-http-endpoints"),
-            options.get("--topology-http-endpoint"),
             options.get("--consumer-http-endpoint"),
-            options.get("--remote-probe-http-endpoint"),
-            Boolean.parseBoolean(options.get("--wait-for-members", "true")),
             options.csv("--expected-rids"),
-            options.get("--dead-http-endpoint"),
-            options.get("--log-dir", "logs"));
+            options.get("--dead-rid", "api-b"),
+            options.csv("--expected-absent-rids"),
+            Long.parseLong(options.get("--location-heartbeat-ms", "1000")),
+            Long.parseLong(options.get("--location-lease-ttl-ms", "3000")),
+            Long.parseLong(options.get("--location-polling-ms", "500")),
+            Long.parseLong(options.get("--location-store-failure-grace-ms", "6000")));
     }
 }

@@ -10,8 +10,9 @@ import org.springframework.context.ConfigurableApplicationContext;
 import org.springframework.context.annotation.Bean;
 import systems.zlink.framework.spring.EnableZLinkFramework;
 import systems.zlink.framework.spring.ZLinkFrameworkConfigurer;
+import systems.zlink.framework.locations.redis.ZLinkRedisLocationStore;
+import systems.zlink.samples.tictactoe.server.configuration.SampleLocationStore;
 import systems.zlink.samples.tictactoe.server.configuration.SampleSettings;
-import systems.zlink.samples.tictactoe.server.configuration.RedisRoomRouteStore;
 import systems.zlink.samples.tictactoe.server.play.application.gamecreation.TicTacToeGameCreator;
 import systems.zlink.samples.tictactoe.server.play.infrastructure.zlink.spots.tictactoegamespot.handlers.TicTacToeGameCreatedHandler;
 
@@ -46,14 +47,13 @@ public final class PlayServerApplication {
 
     @Bean
     TicTacToeGameCreator ticTacToeGameCreator(
-        SampleSettings settings,
-        RedisRoomRouteStore routes) {
-        return new TicTacToeGameCreator(settings, routes);
+        SampleSettings settings) {
+        return new TicTacToeGameCreator(settings);
     }
 
     @Bean(destroyMethod = "close")
-    RedisRoomRouteStore redisRoomRouteStore(SampleSettings settings) {
-        return new RedisRoomRouteStore(settings);
+    ZLinkRedisLocationStore locationStore(SampleSettings settings) {
+        return SampleLocationStore.create(settings);
     }
 
     @Bean

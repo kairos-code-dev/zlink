@@ -5,6 +5,7 @@ import java.nio.ByteBuffer;
 import java.nio.charset.StandardCharsets;
 import java.util.ArrayDeque;
 import java.util.ArrayList;
+import java.util.Collections;
 import java.util.Deque;
 import java.util.EnumSet;
 import java.util.List;
@@ -14,12 +15,6 @@ import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.CompletionStage;
 import systems.zlink.contracts.core.RoutingId;
 import systems.zlink.contracts.messaging.Message;
-import systems.zlink.contracts.service.registry.AutoConnectType;
-import systems.zlink.contracts.service.registry.RegistryState;
-import systems.zlink.contracts.service.registry.ServiceKind;
-import systems.zlink.contracts.service.registry.ServiceRole;
-import systems.zlink.contracts.service.registry.TopologySource;
-import systems.zlink.contracts.service.registry.TopologyState;
 import systems.zlink.contracts.service.spot.SpotNodePeerEntry;
 import systems.zlink.contracts.service.spot.SpotNodeState;
 import systems.zlink.contracts.service.spot.SpotNodeStatus;
@@ -38,22 +33,12 @@ import systems.zlink.framework.runtime.backend.ZLinkBackendActorRoute;
 import systems.zlink.framework.runtime.backend.ZLinkBackendActorUnbindOperation;
 import systems.zlink.framework.runtime.backend.ZLinkBackendAdapterFactory;
 import systems.zlink.framework.runtime.backend.ZLinkBackendAdapterOptions;
-import systems.zlink.framework.runtime.backend.ZLinkBackendAutoConnectType;
 import systems.zlink.framework.runtime.backend.ZLinkBackendContext;
 import systems.zlink.framework.runtime.backend.ZLinkBackendDealerSocket;
-import systems.zlink.framework.runtime.backend.ZLinkBackendDiscovery;
-import systems.zlink.framework.runtime.backend.ZLinkBackendDiscoveryRoute;
 import systems.zlink.framework.runtime.backend.ZLinkBackendObject;
 import systems.zlink.framework.runtime.backend.ZLinkBackendPublisherSocket;
 import systems.zlink.framework.runtime.backend.ZLinkBackendReceived;
 import systems.zlink.framework.runtime.backend.ZLinkBackendRecvMode;
-import systems.zlink.framework.runtime.backend.ZLinkBackendRegistry;
-import systems.zlink.framework.runtime.backend.ZLinkBackendRegistryMemberPeerEntry;
-import systems.zlink.framework.runtime.backend.ZLinkBackendRegistryQueryClient;
-import systems.zlink.framework.runtime.backend.ZLinkBackendRegistryQueryFilter;
-import systems.zlink.framework.runtime.backend.ZLinkBackendRegistryServiceSummaryEntry;
-import systems.zlink.framework.runtime.backend.ZLinkBackendRegistryStatus;
-import systems.zlink.framework.runtime.backend.ZLinkBackendRegistryTopologyEntry;
 import systems.zlink.framework.runtime.backend.ZLinkBackendRequestCallback;
 import systems.zlink.framework.runtime.backend.ZLinkBackendRequestResult;
 import systems.zlink.framework.runtime.backend.ZLinkBackendRouterSocket;
@@ -76,7 +61,6 @@ import systems.zlink.framework.runtime.backend.ZLinkBackendSubscriberSocket;
 import systems.zlink.framework.runtime.backend.ZLinkBackendTopicMessage;
 import systems.zlink.framework.runtime.backend.ZLinkChannelBackendAdapter;
 import systems.zlink.framework.runtime.backend.ZLinkMonitoringBackendAdapter;
-import systems.zlink.framework.runtime.backend.ZLinkRegistryBackendAdapter;
 import systems.zlink.framework.runtime.backend.ZLinkSpotBackendAdapter;
 import systems.zlink.framework.runtime.backend.ZLinkStreamBackendAdapter;
 import systems.zlink.framework.runtime.actors.ZLinkActorSpotRoutePackets;
@@ -88,16 +72,17 @@ import systems.zlink.framework.streams.ZLinkStreamMessageKind;
 import systems.zlink.framework.spots.ZLinkSpotKind;
 
 public final class FakeZLinkBackendAdapterFactory implements ZLinkBackendAdapterFactory {
-    private final List<String> calls = new ArrayList<>();
+    private final List<String> calls = Collections.synchronizedList(new ArrayList<>());
     private final List<FakeStreamSocket> streams = new ArrayList<>();
     private final List<FakeSpot> spots = new ArrayList<>();
     private final List<FakeRouterSocket> routers = new ArrayList<>();
     private Message nextActorJoinReply;
     private List<Message> nextSpotRequestReplyParts;
-    private boolean roomsDiscoveryDelaysRoutingId;
 
     public List<String> calls() {
-        return List.copyOf(calls);
+        synchronized (calls) {
+            return List.copyOf(calls);
+        }
     }
 
     public void nextActorJoinReply(Message reply) {
@@ -114,10 +99,6 @@ public final class FakeZLinkBackendAdapterFactory implements ZLinkBackendAdapter
         nextSpotRequestReplyParts = parts.stream()
             .map(Message::from)
             .toList();
-    }
-
-    public void delayRoomsDiscoveryRoutingIdUntilSecondSnapshot() {
-        roomsDiscoveryDelaysRoutingId = true;
     }
 
     private static Message jsonStringMessage(String value) {
@@ -324,12 +305,6 @@ public final class FakeZLinkBackendAdapterFactory implements ZLinkBackendAdapter
     }
 
     @Override
-    public ZLinkRegistryBackendAdapter createRegistryAdapter(ZLinkBackendAdapterOptions options) {
-        calls.add("factory.registry");
-        return new FakeRegistryBackendAdapter(calls);
-    }
-
-    @Override
     public ZLinkSpotBackendAdapter createSpotAdapter(ZLinkBackendAdapterOptions options) {
         calls.add("factory.spot");
         return new FakeSpotBackendAdapter(calls, spots, this);
@@ -423,7 +398,6 @@ public final class FakeZLinkBackendAdapterFactory implements ZLinkBackendAdapter
     private static final class FakeChannelBackendAdapter implements ZLinkChannelBackendAdapter {
         private final List<String> calls;
         private final List<FakeRouterSocket> routers;
-        private final FakeZLinkBackendAdapterFactory owner;
 
         FakeChannelBackendAdapter(
             List<String> calls,
@@ -431,20 +405,11 @@ public final class FakeZLinkBackendAdapterFactory implements ZLinkBackendAdapter
             FakeZLinkBackendAdapterFactory owner) {
             this.calls = calls;
             this.routers = routers;
-            this.owner = owner;
         }
 
         @Override
         public ZLinkBackendContext createContext() {
             return new FakeContext(calls);
-        }
-
-        @Override
-        public ZLinkBackendDiscovery createDiscovery(
-            ZLinkBackendContext context,
-            ZLinkBackendAutoConnectType autoConnectType,
-            String channelName) {
-            return new FakeDiscovery(calls, "discovery." + channelName, owner);
         }
 
         @Override
@@ -467,24 +432,6 @@ public final class FakeZLinkBackendAdapterFactory implements ZLinkBackendAdapter
         @Override
         public ZLinkBackendSubscriberSocket createSubscriberSocket(ZLinkBackendContext context) {
             return new FakeSubscriberSocket(calls, "subscriber");
-        }
-    }
-
-    private static final class FakeRegistryBackendAdapter implements ZLinkRegistryBackendAdapter {
-        private final List<String> calls;
-
-        FakeRegistryBackendAdapter(List<String> calls) {
-            this.calls = calls;
-        }
-
-        @Override
-        public ZLinkBackendRegistry createRegistry(ZLinkBackendContext context) {
-            return new FakeRegistry(calls);
-        }
-
-        @Override
-        public ZLinkBackendRegistryQueryClient createRegistryQueryClient(ZLinkBackendContext context) {
-            return new FakeRegistryQueryClient(calls);
         }
     }
 
@@ -550,77 +497,6 @@ public final class FakeZLinkBackendAdapterFactory implements ZLinkBackendAdapter
         }
     }
 
-    private static final class FakeDiscovery extends FakeBackendObject implements ZLinkBackendDiscovery {
-        private final FakeZLinkBackendAdapterFactory owner;
-        private int memberPeerSnapshots;
-
-        FakeDiscovery(List<String> calls, String name, FakeZLinkBackendAdapterFactory owner) {
-            super(calls, name);
-            this.owner = owner;
-        }
-
-        @Override
-        public void connectRegistry(String endpoint) {
-            record("connectRegistry." + endpoint);
-        }
-
-        @Override
-        public void bindRoute(long kind, byte[] key, byte[] value) {
-            record("bindRoute." + kind);
-        }
-
-        @Override
-        public ZLinkBackendDiscoveryRoute resolveRoute(long kind, byte[] key) {
-            return new ZLinkBackendDiscoveryRoute(Optional.empty(), Optional.empty());
-        }
-
-        @Override
-        public ZLinkBackendSpotRoute resolveSpot(RoutingId spotRid) {
-            return new ZLinkBackendSpotRoute(
-                RoutingId.from("node"),
-                spotRid,
-                ZLinkSpotKind.USER);
-        }
-
-        @Override
-        public void setSpotOwnerSyncEnabled(boolean enabled) {
-            record("setSpotOwnerSyncEnabled." + enabled);
-        }
-
-        @Override
-        public ZLinkBackendActorRoute resolveActor(String actorId) {
-            return new ZLinkBackendActorRoute(RoutingId.from("node"), actorId);
-        }
-
-        @Override
-        public List<ZLinkBackendRegistryMemberPeerEntry> memberPeers() {
-            if ("discovery.egress-discovery".equals(name())) {
-                return List.of(new ZLinkBackendRegistryMemberPeerEntry(
-                    AutoConnectType.ROUTE_MESH,
-                    ServiceRole.ROUTER,
-                    "ingress-discovery",
-                    "inproc://ingress-discovery",
-                    RoutingId.from("discovery-route-peer"),
-                    1,
-                    1));
-            }
-            if ("discovery.rooms".equals(name())) {
-                memberPeerSnapshots++;
-                return List.of(new ZLinkBackendRegistryMemberPeerEntry(
-                    AutoConnectType.SPOT_MESH,
-                    ServiceRole.ROUTER,
-                    "rooms",
-                    "inproc://rooms-router-peer",
-                    owner.roomsDiscoveryDelaysRoutingId && memberPeerSnapshots == 1
-                        ? RoutingId.from(new byte[0])
-                        : RoutingId.from("rooms-node-2"),
-                    1,
-                    1));
-            }
-            return List.of();
-        }
-    }
-
     private abstract static class FakeSocket extends FakeBackendObject implements ZLinkBackendSocket {
         FakeSocket(List<String> calls, String name) {
             super(calls, name);
@@ -651,16 +527,20 @@ public final class FakeZLinkBackendAdapterFactory implements ZLinkBackendAdapter
             super(calls, name);
         }
 
-        @Override public void attachDiscovery(ZLinkBackendDiscovery discovery) { record("attachDiscovery." + discovery.name()); }
         @Override public void setChannelName(String channelName) { record("setChannelName." + channelName); }
         @Override public boolean send(List<Message> parts, SendFlags flags) { record("send." + firstPart(parts)); return true; }
         @Override public boolean request(List<Message> parts, ZLinkBackendRequestCallback callback, SendFlags flags, Duration timeout) {
             record("request." + firstPart(parts));
-            callback.handle(new ZLinkBackendReceived(
-                Optional.empty(),
-                Optional.empty(),
-                Optional.empty(),
-                List.of(Message.from("reply".getBytes(StandardCharsets.UTF_8)))));
+            Message reply = jsonStringMessage("reply");
+            try {
+                callback.handle(new ZLinkBackendReceived(
+                    Optional.empty(),
+                    Optional.empty(),
+                    Optional.empty(),
+                    List.of(Message.from(reply))));
+            } finally {
+                reply.close();
+            }
             return true;
         }
         @Override public ZLinkBackendReceived recv(ZLinkBackendRecvMode mode) { return null; }
@@ -688,9 +568,9 @@ public final class FakeZLinkBackendAdapterFactory implements ZLinkBackendAdapter
                     : firstPart(replyParts)))));
         }
 
-        @Override public void attachDiscovery(ZLinkBackendDiscovery discovery) { record("attachDiscovery." + discovery.name()); }
         @Override public void setChannelName(String channelName) { record("setChannelName." + channelName); }
         @Override public void setRoutingId(RoutingId routingId) { record("setRoutingId"); }
+        @Override public void setConnectRoutingId(RoutingId routingId) { record("setConnectRoutingId"); }
         @Override public int peerWeight() { return peerWeight; }
         @Override public void setPeerWeight(int weight) { peerWeight = weight; record("setPeerWeight." + weight); }
         @Override public ZLinkBackendReceived recv(ZLinkBackendRecvMode mode) { return received.pollFirst(); }
@@ -736,7 +616,7 @@ public final class FakeZLinkBackendAdapterFactory implements ZLinkBackendAdapter
                     List.of()));
                 return true;
             }
-            Message reply = Message.from("reply".getBytes(StandardCharsets.UTF_8));
+            Message reply = jsonStringMessage("reply");
             try {
                 callback.handle(new ZLinkBackendReceived(
                     Optional.empty(),
@@ -756,7 +636,6 @@ public final class FakeZLinkBackendAdapterFactory implements ZLinkBackendAdapter
             super(calls, name);
         }
 
-        @Override public void attachDiscovery(ZLinkBackendDiscovery discovery) { record("attachDiscovery." + discovery.name()); }
         @Override public void setChannelName(String channelName) { record("setChannelName." + channelName); }
         @Override public void setRoutingId(RoutingId routingId) { record("setRoutingId"); }
         @Override public boolean publish(String topic, List<Message> parts, SendFlags flags) { record("publish." + topic + "." + firstPart(parts)); return true; }
@@ -767,94 +646,9 @@ public final class FakeZLinkBackendAdapterFactory implements ZLinkBackendAdapter
             super(calls, name);
         }
 
-        @Override public void attachDiscovery(ZLinkBackendDiscovery discovery) { record("attachDiscovery." + discovery.name()); }
         @Override public void setChannelName(String channelName) { record("setChannelName." + channelName); }
         @Override public void setSubscription(String topic) { record("setSubscription." + topic); }
         @Override public ZLinkBackendTopicMessage subscribe(ZLinkBackendRecvMode mode) { return null; }
-    }
-
-    private static final class FakeRegistry extends FakeBackendObject implements ZLinkBackendRegistry {
-        FakeRegistry(List<String> calls) {
-            super(calls, "registry");
-        }
-
-        @Override public void setId(int registryId) { record("setId." + registryId); }
-        @Override public void setHeartbeat(Duration interval, Duration timeout) {
-            record("setHeartbeat." + interval.toMillis() + "." + timeout.toMillis());
-        }
-        @Override public void setBroadcastInterval(Duration interval) {
-            record("setBroadcastInterval." + interval.toMillis());
-        }
-        @Override public void bind(String pubEndpoint, String routerEndpoint) { record("bind." + pubEndpoint + "." + routerEndpoint); }
-        @Override public void connectPeer(String pubEndpoint, String routerEndpoint) { record("connectPeer." + pubEndpoint); }
-        @Override public ZLinkBackendRegistryStatus status() { record("status"); return new ZLinkBackendRegistryStatus(RegistryState.ACTIVE, 1); }
-        @Override public List<ZLinkBackendRegistryServiceSummaryEntry> serviceSummary(ZLinkBackendRegistryQueryFilter filter) {
-            record("serviceSummary." + filter.channelName().orElse("*"));
-            return List.of(new ZLinkBackendRegistryServiceSummaryEntry(
-                AutoConnectType.CLIENT_SERVER,
-                ServiceRole.DEALER,
-                "profile",
-                2,
-                0,
-                2,
-                0,
-                0,
-                11));
-        }
-        @Override public List<ZLinkBackendRegistryTopologyEntry> topology(ZLinkBackendRegistryQueryFilter filter) {
-            record("topology." + filter.channelName().orElse("*"));
-            return List.of(new ZLinkBackendRegistryTopologyEntry(
-                AutoConnectType.CLIENT_SERVER,
-                RoutingId.from("profile-server"),
-                ServiceKind.SOCKET,
-                ServiceRole.ROUTER,
-                "profile",
-                "inproc://profile-server",
-                TopologySource.MANUAL,
-                TopologyState.READY,
-                1,
-                1,
-                0,
-                12,
-                ZLinkSpotKind.INVALID));
-        }
-        @Override public List<ZLinkBackendRegistryMemberPeerEntry> memberPeers(String channelName) {
-            record("memberPeers." + channelName);
-            return List.of(new ZLinkBackendRegistryMemberPeerEntry(
-                AutoConnectType.CLIENT_SERVER,
-                ServiceRole.ROUTER,
-                channelName,
-                "inproc://" + channelName + "-member",
-                RoutingId.from(channelName + "-member"),
-                4,
-                5));
-        }
-    }
-
-    private static final class FakeRegistryQueryClient extends FakeBackendObject implements ZLinkBackendRegistryQueryClient {
-        FakeRegistryQueryClient(List<String> calls) {
-            super(calls, "registryQueryClient");
-        }
-
-        @Override public void connect(String endpoint) { record("connect." + endpoint); }
-        @Override public List<ZLinkBackendRegistryServiceSummaryEntry> serviceSummary(ZLinkBackendRegistryQueryFilter filter) { return List.of(); }
-        @Override public List<ZLinkBackendRegistryTopologyEntry> topology(ZLinkBackendRegistryQueryFilter filter) {
-            record("topology." + filter.channelName().orElse("*"));
-            return List.of(new ZLinkBackendRegistryTopologyEntry(
-                AutoConnectType.CLIENT_SERVER,
-                RoutingId.from("registry-route-peer"),
-                ServiceKind.SOCKET,
-                ServiceRole.ROUTER,
-                filter.channelName().orElse("profile"),
-                "tcp://127.0.0.1:7100",
-                TopologySource.REGISTRY,
-                TopologyState.READY,
-                1,
-                1,
-                0,
-                13,
-                ZLinkSpotKind.INVALID));
-        }
     }
 
     private static final class FakeSpotNode extends FakeBackendObject implements ZLinkBackendSpotNode {
@@ -878,9 +672,10 @@ public final class FakeZLinkBackendAdapterFactory implements ZLinkBackendAdapter
         @Override public void setSubscriberRoutingId(RoutingId routingId) { record("setSubscriberRoutingId"); }
         @Override public void setRouterBind(String endpoint) { record("setRouterBind." + endpoint); }
         @Override public void setPubBind(String endpoint) { record("setPubBind." + endpoint); }
-        @Override public void attachDiscovery(ZLinkBackendDiscovery discovery) { record("attachDiscovery." + discovery.name()); }
         @Override public void connectPeer(String endpoint) { record("connectPeer." + endpoint); }
         @Override public void connectPeer(RoutingId peerRid, String endpoint) { record("connectPeer." + peerRid + "." + endpoint); }
+        @Override public void disconnectPeer(String endpoint) { record("disconnectPeer." + endpoint); }
+        @Override public void disconnectPeer(RoutingId peerRid) { record("disconnectPeer." + peerRid); }
         @Override public ZLinkBackendSpotRouteBridge createRouteBridge() {
             record("createRouteBridge");
             return new FakeSpotRouteBridge(calls());
@@ -1061,17 +856,22 @@ public final class FakeZLinkBackendAdapterFactory implements ZLinkBackendAdapter
                     List.of()));
                 return true;
             }
-            callback.handle(new ZLinkBackendReceived(
-                Optional.empty(),
-                Optional.empty(),
-                Optional.empty(),
-                List.of(Message.from("reply".getBytes(StandardCharsets.UTF_8)))));
+            Message reply = jsonStringMessage("reply");
+            try {
+                callback.handle(new ZLinkBackendReceived(
+                    Optional.empty(),
+                    Optional.empty(),
+                    Optional.empty(),
+                    List.of(Message.from(reply))));
+            } finally {
+                reply.close();
+            }
             return true;
         }
 
         @Override public boolean handleRouterReceived(String channelName, RoutingId sourceNodeRid, long requestSeq, List<Message> parts) {
             record("bridge.handleRouterReceived." + channelName + "." + firstPart(parts));
-            return false;
+            return true;
         }
 
         @Override public int drain() {
@@ -1104,9 +904,7 @@ public final class FakeZLinkBackendAdapterFactory implements ZLinkBackendAdapter
         void enqueueActorJoin(String actorId, String packetName, String payload) {
             List<Message> parts = packetName == null
                 ? List.of(Message.from(payload.getBytes(StandardCharsets.UTF_8)))
-                : List.of(
-                    Message.from(packetName.getBytes(StandardCharsets.UTF_8)),
-                    Message.from(payload.getBytes(StandardCharsets.UTF_8)));
+                : List.of(jsonStringMessage(payload));
             actorJoins.add(new ZLinkBackendActorJoinRequest(
                 new ZLinkBackendActorRef(RoutingId.from("source-node"), actorId, 1),
                 new ZLinkBackendActorRef(RoutingId.from("spot-node"), actorId, 1),
@@ -1253,7 +1051,7 @@ public final class FakeZLinkBackendAdapterFactory implements ZLinkBackendAdapter
         @Override public boolean requestToSpot(RoutingId targetNodeRid, RoutingId spotRid, List<Message> parts, ZLinkBackendRequestCallback callback, SendFlags flags, Duration timeout) {
             record("requestToSpot." + targetNodeRid + "." + spotRid + "." + firstPart(parts));
             List<Message> replyParts = owner.nextSpotRequestReplyParts == null
-                ? List.of(Message.from("reply".getBytes(StandardCharsets.UTF_8)))
+                ? List.of(jsonStringMessage("reply"))
                 : owner.nextSpotRequestReplyParts.stream().map(Message::from).toList();
             callback.handle(new ZLinkBackendReceived(
                 Optional.empty(),

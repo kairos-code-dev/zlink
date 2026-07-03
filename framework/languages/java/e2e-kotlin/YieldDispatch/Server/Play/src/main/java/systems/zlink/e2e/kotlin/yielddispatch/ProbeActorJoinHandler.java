@@ -20,9 +20,12 @@ public final class ProbeActorJoinHandler {
                 .timeout(Duration.ofSeconds(5))
                 .yield(Contracts.DelayRes.class);
         }
-        return actor.context()
+        actor.context()
             .joinSpot(RoutingId.from(request.spotRid()), request)
-            .yield(Contracts.ActorJoinRes.class)
-            .reply();
+            .await(Contracts.ActorJoinRes.class);
+        return new Contracts.ActorJoinRes(
+            actor.actorId(),
+            request.spotRid(),
+            "joined:" + request.value());
     }
 }

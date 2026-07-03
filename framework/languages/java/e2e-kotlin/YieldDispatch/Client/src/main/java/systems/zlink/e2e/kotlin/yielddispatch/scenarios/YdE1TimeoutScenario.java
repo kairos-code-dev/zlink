@@ -22,14 +22,15 @@ public final class YdE1TimeoutScenario {
             "timeout-yield-released",
             "timeout-yield-completed"));
         ClientStreamSupport.send(
-            connector.send(new Contracts.SpotProbeMsg(requestId, "timeout-probe"))
-                .packetName("SpotProbeMsg")
+            connector.send(new Contracts.ProbeMsg(requestId, "timeout-probe"))
+                .packetName("ProbeMsg")
                 .metadata(Contracts.TARGET_NODE_RID_METADATA, "play-a")
                 .metadata(Contracts.SPOT_RID_METADATA, "room-a"));
         waitForMarkers(connector, requestId, List.of(
             "timeout-yield-started",
             "timeout-yield-released",
             "timeout-yield-completed",
+            "probe-started",
             "probe-completed"));
         System.out.println("scenario YD-E1 passed");
     }

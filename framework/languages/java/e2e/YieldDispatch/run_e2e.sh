@@ -4,7 +4,7 @@ set -euo pipefail
 cd "$(dirname "${BASH_SOURCE[0]}")"
 
 pids=()
-role_pattern='systems\.zlink\.e2e\.yielddispatch\.(client|delay|play|registry|session)\.Program'
+role_pattern='systems\.zlink\.e2e\.yielddispatch\.(client|delay|play|session)\.Program'
 run_id="$(date +%Y%m%d-%H%M%S)-$$"
 log_dir="$(pwd)/logs/${run_id}"
 repo_root="$(cd ../../../../.. && pwd)"
@@ -17,6 +17,8 @@ if [[ -z "${ZLINK_LIBRARY_PATH:-}" && -f "${default_core_lib}" ]]; then
 fi
 export ZLINK_JAVA_E2E_BUILD_DIR="${ZLINK_JAVA_E2E_BUILD_DIR:-${HOME}/.cache/zlink/java-e2e/YieldDispatch}"
 export ZLINK_JAVA_E2E_GRADLE_CACHE="${ZLINK_JAVA_E2E_GRADLE_CACHE:-${HOME}/.cache/zlink/java-e2e/YieldDispatch-gradle-cache}"
+export ZLINK_JAVA_E2E_REDIS_LOCATION_ENDPOINT="${ZLINK_JAVA_E2E_REDIS_LOCATION_ENDPOINT:-${ZLINK_REDIS_LOCATION_ENDPOINT:-127.0.0.1:16379}}"
+export ZLINK_JAVA_E2E_LOCATION_KEY_PREFIX="${ZLINK_JAVA_E2E_LOCATION_KEY_PREFIX:-zlink:e2e:yielddispatch:${run_id}}"
 LOCAL_READINESS_TIMEOUT_SECONDS=3
 LOCAL_READINESS_POLL_SECONDS=0.1
 LOCAL_READINESS_ATTEMPTS=30
@@ -347,10 +349,6 @@ client_bin() {
   echo "${ZLINK_JAVA_E2E_BUILD_DIR}/Client/install/yield-dispatch-client/bin/yield-dispatch-client"
 }
 
-registry_bin() {
-  echo "${ZLINK_JAVA_E2E_BUILD_DIR}/Server-Registry/install/yield-dispatch-registry/bin/yield-dispatch-registry"
-}
-
 delay_bin() {
   echo "${ZLINK_JAVA_E2E_BUILD_DIR}/Server-Delay/install/yield-dispatch-delay/bin/yield-dispatch-delay"
 }
@@ -363,9 +361,7 @@ session_bin() {
   echo "${ZLINK_JAVA_E2E_BUILD_DIR}/Server-Session/install/yield-dispatch-session/bin/yield-dispatch-session"
 }
 
-read -r REG_PUB_PORT REG_ROUTER_PORT DELAY_PORT ROUTE_A_PORT SPOT_A_PORT ROUTE_B_PORT SPOT_B_PORT STREAM_PORT PLAY_A_HTTP_PORT PLAY_B_HTTP_PORT SESSION_HTTP_PORT SESSION_ROUTE_PORT SESSION_SPOT_PORT <<<"$(reserve_ports)"
-REGISTRY_PUB="$(tcp "${REG_PUB_PORT}")"
-REGISTRY_ROUTER="$(tcp "${REG_ROUTER_PORT}")"
+read -r DELAY_PORT ROUTE_A_PORT SPOT_A_PORT ROUTE_B_PORT SPOT_B_PORT STREAM_PORT PLAY_A_HTTP_PORT PLAY_B_HTTP_PORT SESSION_HTTP_PORT SESSION_ROUTE_PORT SESSION_SPOT_PORT _ _ <<<"$(reserve_ports)"
 DELAY_ENDPOINT="$(tcp "${DELAY_PORT}")"
 ROUTE_A_ENDPOINT="$(tcp "${ROUTE_A_PORT}")"
 SPOT_A_ENDPOINT="$(tcp "${SPOT_A_PORT}")"
@@ -381,26 +377,21 @@ SESSION_SPOT_ENDPOINT="$(tcp "${SESSION_SPOT_PORT}")"
 static_checks
 gradle_run installDist
 
-ZLINK_JAVA_E2E_REGISTRY_PUB="${REGISTRY_PUB}" \
-ZLINK_JAVA_E2E_REGISTRY_ROUTER="${REGISTRY_ROUTER}" \
-ZLINK_JAVA_E2E_LOG_DIR="${log_dir}" \
-  "$(registry_bin)" >"${log_dir}/registry.stdout.log" 2>"${log_dir}/registry.stderr.log" &
-pids+=("$!")
-wait_port registry-router "${REGISTRY_ROUTER}"
-
-ZLINK_JAVA_E2E_REGISTRY_ROUTER="${REGISTRY_ROUTER}" \
 ZLINK_JAVA_E2E_DELAY_ENDPOINT="${DELAY_ENDPOINT}" \
+ZLINK_JAVA_E2E_REDIS_LOCATION_ENDPOINT="${ZLINK_JAVA_E2E_REDIS_LOCATION_ENDPOINT}" \
+ZLINK_JAVA_E2E_LOCATION_KEY_PREFIX="${ZLINK_JAVA_E2E_LOCATION_KEY_PREFIX}" \
 ZLINK_JAVA_E2E_LOG_DIR="${log_dir}" \
   "$(delay_bin)" >"${log_dir}/delay.stdout.log" 2>"${log_dir}/delay.stderr.log" &
 pids+=("$!")
 wait_port delay "${DELAY_ENDPOINT}"
 
 ZLINK_JAVA_E2E_NODE_RID="play-a" \
-ZLINK_JAVA_E2E_REGISTRY_ROUTER="${REGISTRY_ROUTER}" \
 ZLINK_JAVA_E2E_ROUTE_ENDPOINT="${ROUTE_A_ENDPOINT}" \
 ZLINK_JAVA_E2E_ROUTE_PEER_ENDPOINT="${ROUTE_B_ENDPOINT}" \
 ZLINK_JAVA_E2E_SPOT_ENDPOINT="${SPOT_A_ENDPOINT}" \
 ZLINK_JAVA_E2E_DELAY_ENDPOINT="${DELAY_ENDPOINT}" \
+ZLINK_JAVA_E2E_REDIS_LOCATION_ENDPOINT="${ZLINK_JAVA_E2E_REDIS_LOCATION_ENDPOINT}" \
+ZLINK_JAVA_E2E_LOCATION_KEY_PREFIX="${ZLINK_JAVA_E2E_LOCATION_KEY_PREFIX}" \
 ZLINK_JAVA_E2E_HTTP_ENDPOINT="${PLAY_A_HTTP}" \
 ZLINK_JAVA_E2E_LOG_DIR="${log_dir}" \
   "$(play_bin)" >"${log_dir}/play-a.stdout.log" 2>"${log_dir}/play-a.stderr.log" &
@@ -410,11 +401,12 @@ wait_port play-a-spot "${SPOT_A_ENDPOINT}"
 wait_http play-a-http "${PLAY_A_HTTP}"
 
 ZLINK_JAVA_E2E_NODE_RID="play-b" \
-ZLINK_JAVA_E2E_REGISTRY_ROUTER="${REGISTRY_ROUTER}" \
 ZLINK_JAVA_E2E_ROUTE_ENDPOINT="${ROUTE_B_ENDPOINT}" \
 ZLINK_JAVA_E2E_ROUTE_PEER_ENDPOINT="${ROUTE_A_ENDPOINT}" \
 ZLINK_JAVA_E2E_SPOT_ENDPOINT="${SPOT_B_ENDPOINT}" \
 ZLINK_JAVA_E2E_DELAY_ENDPOINT="${DELAY_ENDPOINT}" \
+ZLINK_JAVA_E2E_REDIS_LOCATION_ENDPOINT="${ZLINK_JAVA_E2E_REDIS_LOCATION_ENDPOINT}" \
+ZLINK_JAVA_E2E_LOCATION_KEY_PREFIX="${ZLINK_JAVA_E2E_LOCATION_KEY_PREFIX}" \
 ZLINK_JAVA_E2E_HTTP_ENDPOINT="${PLAY_B_HTTP}" \
 ZLINK_JAVA_E2E_LOG_DIR="${log_dir}" \
   "$(play_bin)" >"${log_dir}/play-b.stdout.log" 2>"${log_dir}/play-b.stderr.log" &
@@ -423,13 +415,14 @@ wait_port play-b-route "${ROUTE_B_ENDPOINT}"
 wait_port play-b-spot "${SPOT_B_ENDPOINT}"
 wait_http play-b-http "${PLAY_B_HTTP}"
 
-ZLINK_JAVA_E2E_REGISTRY_ROUTER="${REGISTRY_ROUTER}" \
 ZLINK_JAVA_E2E_ROUTE_ENDPOINT="${ROUTE_A_ENDPOINT}" \
 ZLINK_JAVA_E2E_ROUTE_B_ENDPOINT="${ROUTE_B_ENDPOINT}" \
 ZLINK_JAVA_E2E_SESSION_ROUTE_ENDPOINT="${SESSION_ROUTE_ENDPOINT}" \
 ZLINK_JAVA_E2E_SESSION_SPOT_ENDPOINT="${SESSION_SPOT_ENDPOINT}" \
 ZLINK_JAVA_E2E_DELAY_ENDPOINT="${DELAY_ENDPOINT}" \
 ZLINK_JAVA_E2E_STREAM_ENDPOINT="${STREAM_ENDPOINT}" \
+ZLINK_JAVA_E2E_REDIS_LOCATION_ENDPOINT="${ZLINK_JAVA_E2E_REDIS_LOCATION_ENDPOINT}" \
+ZLINK_JAVA_E2E_LOCATION_KEY_PREFIX="${ZLINK_JAVA_E2E_LOCATION_KEY_PREFIX}" \
 ZLINK_JAVA_E2E_HTTP_ENDPOINT="${SESSION_HTTP}" \
 ZLINK_JAVA_E2E_LOG_DIR="${log_dir}" \
   "$(session_bin)" >"${log_dir}/session.stdout.log" 2>"${log_dir}/session.stderr.log" &
@@ -498,17 +491,18 @@ if [[ "${SCENARIO}" == "all" && "${ZLINK_JAVA_E2E_RUN_E3_SHUTDOWN:-0}" == "1" ]]
     "${SHUTDOWN_ID}" \
     "YD-E3 pending yield marker was not observed before shutdown."
   fetch_evidence "${PLAY_A_HTTP}" "${log_dir}/play-a-shutdown-before-stop-evidence.json"
-  terminate_gracefully play-a "${pids[2]}"
+  terminate_gracefully play-a "${pids[1]}"
   wait "${SHUTDOWN_CLIENT_PID}"
   cat "${log_dir}/client-shutdown-wait.stdout.log"
   grep -q "yield-dispatch shutdown wait result=passed" "${log_dir}/client-shutdown-wait.stdout.log"
 
   ZLINK_JAVA_E2E_NODE_RID="play-a" \
-  ZLINK_JAVA_E2E_REGISTRY_ROUTER="${REGISTRY_ROUTER}" \
   ZLINK_JAVA_E2E_ROUTE_ENDPOINT="${ROUTE_A_ENDPOINT}" \
   ZLINK_JAVA_E2E_ROUTE_PEER_ENDPOINT="${ROUTE_B_ENDPOINT}" \
   ZLINK_JAVA_E2E_SPOT_ENDPOINT="${SPOT_A_ENDPOINT}" \
   ZLINK_JAVA_E2E_DELAY_ENDPOINT="${DELAY_ENDPOINT}" \
+  ZLINK_JAVA_E2E_REDIS_LOCATION_ENDPOINT="${ZLINK_JAVA_E2E_REDIS_LOCATION_ENDPOINT}" \
+  ZLINK_JAVA_E2E_LOCATION_KEY_PREFIX="${ZLINK_JAVA_E2E_LOCATION_KEY_PREFIX}" \
   ZLINK_JAVA_E2E_HTTP_ENDPOINT="${PLAY_A_HTTP}" \
   ZLINK_JAVA_E2E_LOG_DIR="${log_dir}" \
     "$(play_bin)" >"${log_dir}/play-a-restart.stdout.log" 2>"${log_dir}/play-a-restart.stderr.log" &

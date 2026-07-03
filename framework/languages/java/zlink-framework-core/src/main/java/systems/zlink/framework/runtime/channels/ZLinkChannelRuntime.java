@@ -30,7 +30,6 @@ import systems.zlink.contracts.core.RoutingId;
 import systems.zlink.contracts.errors.ZlinkCloseException;
 import systems.zlink.contracts.errors.ZlinkRecvException;
 import systems.zlink.contracts.messaging.Message;
-import systems.zlink.contracts.service.registry.ServiceRole;
 import systems.zlink.contracts.sockets.SendFlags;
 import systems.zlink.framework.CancellationToken;
 import systems.zlink.framework.ZLinkAwait;
@@ -64,6 +63,8 @@ import systems.zlink.framework.errors.ZLinkFrameworkException;
 import systems.zlink.framework.execution.ZLinkAsyncSerialQueue;
 import systems.zlink.framework.execution.ZLinkFrameworkTurns;
 import systems.zlink.framework.execution.ZLinkYieldTurn;
+import systems.zlink.framework.locations.ZLinkLocationAutoConnectType;
+import systems.zlink.framework.locations.ZLinkLocationRole;
 import systems.zlink.framework.runtime.configuration.ZLinkFrameworkRegistration;
 import systems.zlink.framework.runtime.diagnostics.ZLinkDispatchErrorReporter;
 import systems.zlink.framework.runtime.handlers.ZLinkFilterPipeline;
@@ -105,8 +106,6 @@ public final class ZLinkChannelRuntime
     private final List<ZLinkBackendPublisherSocket> manualPublishers = new ArrayList<>();
     private final List<ZLinkBackendSubscriberSocket> manualSubscribers = new ArrayList<>();
     private final List<ZLinkBackendRouterSocket> manualRouteRouters = new ArrayList<>();
-    private final List<ZLinkBackendDiscovery> discoveries = new ArrayList<>();
-    private final Map<String, ZLinkBackendDiscovery> discoveriesByName = new HashMap<>();
     private final Map<String, Map<String, ChannelRequestHandlerRegistration>> requestHandlers =
         new HashMap<>();
     private final Map<String, Map<String, ChannelSendHandlerRegistration>> sendHandlers =
@@ -141,7 +140,6 @@ public final class ZLinkChannelRuntime
     private final Duration defaultRequestTimeout;
     private final ZLinkBackendAdapterFactory backendFactory;
     private final ZLinkBackendAdapterOptions adapterOptions;
-    private final List<String> registryEndpoints;
     private final ZLinkDispatchErrorReporter dispatchErrors;
     private Supplier<ZLinkBackendSpotNode> spotRouteBridgeOwner;
     private Runnable spotRouteBridgeDispatchDrainer;
@@ -162,6 +160,17 @@ public final class ZLinkChannelRuntime
     });
     private final java.util.Set<CompletableFuture<?>> pendingRequests = ConcurrentHashMap.newKeySet();
     private volatile boolean running = true;
+
+    public record AutoConnectSurface(
+        ZLinkLocationAutoConnectType type,
+        String meshName,
+        ZLinkLocationRole role,
+        RoutingId nodeRid,
+        String endpoint,
+        int weight,
+        ZLinkBackendConnectableSocket socket,
+        List<String> manualEndpoints) {
+    }
 
     @Override
     public ZLinkClientServerChannelRuntimeOptions clientServerChannel(String channelName) {
@@ -301,7 +310,6 @@ public final class ZLinkChannelRuntime
         this.defaultRequestTimeout = registration.defaultRequestTimeout();
         this.backendFactory = backendFactory;
         this.adapterOptions = adapterOptions;
-        this.registryEndpoints = registration.registryEndpoints();
         this.dispatchErrors = new ZLinkDispatchErrorReporter(
             registration.dispatchOptions(),
             handlerFactory,
@@ -312,17 +320,15 @@ public final class ZLinkChannelRuntime
             ZLinkHandlerScanner.scan(registration.handlerPackageMarkers());
         for (ChannelRegistration channel : registration.channels()) {
             registrationsByName.put(channel.name(), channel);
-            ZLinkBackendDiscovery discovery = discoveryFor(backend, registration, channel);
-            configureClientServerChannel(backend, channel, discovery, handlerCatalog);
-            configureFanoutChannel(backend, channel, discovery, handlerCatalog);
-            configureRouteMeshChannel(backend, channel, discovery, handlerCatalog);
+            configureClientServerChannel(backend, channel, handlerCatalog);
+            configureFanoutChannel(backend, channel, handlerCatalog);
+            configureRouteMeshChannel(backend, channel, handlerCatalog);
         }
     }
 
     private void configureClientServerChannel(
         ZLinkChannelBackendAdapter backend,
         ChannelRegistration channel,
-        ZLinkBackendDiscovery discovery,
         ZLinkScannedHandlerCatalog handlerCatalog) {
         if (channel.kind() != ChannelKind.CLIENT_SERVER) {
             return;
@@ -330,14 +336,10 @@ public final class ZLinkChannelRuntime
         if (channel.clientEnabled()) {
             ZLinkBackendDealerSocket dealer = backend.createDealerSocket(context);
             dealer.setChannelName(channel.name());
-            if (discovery == null) {
-                for (String endpoint : channel.clientManualEndpoints()) {
-                    dealer.connect(endpoint);
-                }
-                manualClients.add(dealer);
-            } else {
-                dealer.attachDiscovery(discovery);
+            for (String endpoint : channel.clientManualEndpoints()) {
+                dealer.connect(endpoint);
             }
+            manualClients.add(dealer);
             clients.put(channel.name(), dealer);
         }
         if (channel.serverBinds().isEmpty()) {
@@ -348,11 +350,7 @@ public final class ZLinkChannelRuntime
         if (channel.routingId() != null) {
             router.setRoutingId(channel.routingId());
         }
-        if (discovery != null) {
-            router.attachDiscovery(discovery);
-        } else {
-            manualServers.add(router);
-        }
+        manualServers.add(router);
         for (String endpoint : channel.serverBinds()) {
             router.bind(endpoint);
         }
@@ -367,7 +365,6 @@ public final class ZLinkChannelRuntime
     private void configureFanoutChannel(
         ZLinkChannelBackendAdapter backend,
         ChannelRegistration channel,
-        ZLinkBackendDiscovery discovery,
         ZLinkScannedHandlerCatalog handlerCatalog) {
         if (channel.kind() != ChannelKind.FANOUT) {
             return;
@@ -378,11 +375,7 @@ public final class ZLinkChannelRuntime
             if (channel.routingId() != null) {
                 publisher.setRoutingId(channel.routingId());
             }
-            if (discovery != null) {
-                publisher.attachDiscovery(discovery);
-            } else {
-                manualPublishers.add(publisher);
-            }
+            manualPublishers.add(publisher);
             for (String endpoint : channel.publisherBinds()) {
                 publisher.bind(endpoint);
             }
@@ -393,14 +386,10 @@ public final class ZLinkChannelRuntime
         }
         ZLinkBackendSubscriberSocket subscriber = backend.createSubscriberSocket(context);
         subscriber.setChannelName(channel.name());
-        if (discovery != null) {
-            subscriber.attachDiscovery(discovery);
-        } else {
-            for (String endpoint : channel.subscriberManualEndpoints()) {
-                subscriber.connect(endpoint);
-            }
-            manualSubscribers.add(subscriber);
+        for (String endpoint : channel.subscriberManualEndpoints()) {
+            subscriber.connect(endpoint);
         }
+        manualSubscribers.add(subscriber);
         subscriber.setSubscription("");
         subscribers.put(channel.name(), subscriber);
         publishHandlers.put(channel.name(), publishHandlersByPacket(channel, handlerCatalog));
@@ -411,7 +400,6 @@ public final class ZLinkChannelRuntime
     private void configureRouteMeshChannel(
         ZLinkChannelBackendAdapter backend,
         ChannelRegistration channel,
-        ZLinkBackendDiscovery discovery,
         ZLinkScannedHandlerCatalog handlerCatalog) {
         if (channel.kind() != ChannelKind.ROUTE_MESH) {
             return;
@@ -421,14 +409,10 @@ public final class ZLinkChannelRuntime
         if (channel.routeRoutingId() != null) {
             router.setRoutingId(channel.routeRoutingId());
         }
-        if (discovery != null) {
-            router.attachDiscovery(discovery);
-        } else {
-            for (String endpoint : channel.routeManualEndpoints()) {
-                router.connect(endpoint);
-            }
-            manualRouteRouters.add(router);
+        for (String endpoint : channel.routeManualEndpoints()) {
+            router.connect(endpoint);
         }
+        manualRouteRouters.add(router);
         for (String endpoint : channel.routeBinds()) {
             router.bind(endpoint);
         }
@@ -441,40 +425,98 @@ public final class ZLinkChannelRuntime
         startRouteLoop(channel.name(), router);
     }
 
-    private ZLinkBackendDiscovery discoveryFor(
-        ZLinkChannelBackendAdapter backend,
-        ZLinkFrameworkRegistration registration,
-        ChannelRegistration channel) {
-        if (!registration.discoveryEnabled()
-            || (channel.kind() != ChannelKind.CLIENT_SERVER
-                && channel.kind() != ChannelKind.FANOUT
-                && channel.kind() != ChannelKind.ROUTE_MESH)) {
-            return null;
+    public List<AutoConnectSurface> autoConnectSurfaces() {
+        List<AutoConnectSurface> surfaces = new ArrayList<>();
+        for (ChannelRegistration channel : registrationsByName.values()) {
+            if (channel.kind() == ChannelKind.CLIENT_SERVER) {
+                ZLinkBackendRouterSocket server = servers.get(channel.name());
+                if (server != null) {
+                    for (String endpoint : channel.serverBinds()) {
+                        surfaces.add(new AutoConnectSurface(
+                            ZLinkLocationAutoConnectType.CLIENT_SERVER,
+                            channel.name(),
+                            ZLinkLocationRole.ROUTER,
+                            channel.routingId(),
+                            endpoint,
+                            server.peerWeight(),
+                            null,
+                            List.of()));
+                    }
+                }
+                ZLinkBackendDealerSocket client = clients.get(channel.name());
+                if (client != null) {
+                    surfaces.add(new AutoConnectSurface(
+                        ZLinkLocationAutoConnectType.CLIENT_SERVER,
+                        channel.name(),
+                        ZLinkLocationRole.DEALER,
+                        channel.routingId(),
+                        "",
+                        100,
+                        client,
+                        channel.clientManualEndpoints()));
+                }
+                continue;
+            }
+
+            if (channel.kind() == ChannelKind.FANOUT) {
+                if (publishers.containsKey(channel.name())) {
+                    for (String endpoint : channel.publisherBinds()) {
+                        surfaces.add(new AutoConnectSurface(
+                            ZLinkLocationAutoConnectType.FANOUT,
+                            channel.name(),
+                            ZLinkLocationRole.PUB,
+                            channel.routingId(),
+                            endpoint,
+                            100,
+                            null,
+                            List.of()));
+                    }
+                }
+                ZLinkBackendSubscriberSocket subscriber = subscribers.get(channel.name());
+                if (subscriber != null) {
+                    surfaces.add(new AutoConnectSurface(
+                        ZLinkLocationAutoConnectType.FANOUT,
+                        channel.name(),
+                        ZLinkLocationRole.SUB,
+                        channel.routingId(),
+                        "",
+                        100,
+                        subscriber,
+                        channel.subscriberManualEndpoints()));
+                }
+                continue;
+            }
+
+            if (channel.kind() == ChannelKind.ROUTE_MESH) {
+                ZLinkBackendRouterSocket router = routeRouters.get(channel.name());
+                if (router == null) {
+                    continue;
+                }
+                for (String endpoint : channel.routeBinds()) {
+                    surfaces.add(new AutoConnectSurface(
+                        ZLinkLocationAutoConnectType.ROUTE_MESH,
+                        channel.name(),
+                        ZLinkLocationRole.ROUTER,
+                        channel.routeRoutingId(),
+                        endpoint,
+                        router.peerWeight(),
+                        router,
+                        channel.routeManualEndpoints()));
+                }
+                if (channel.routeBinds().isEmpty()) {
+                    surfaces.add(new AutoConnectSurface(
+                        ZLinkLocationAutoConnectType.ROUTE_MESH,
+                        channel.name(),
+                        ZLinkLocationRole.ROUTER,
+                        channel.routeRoutingId(),
+                        "",
+                        router.peerWeight(),
+                        router,
+                        channel.routeManualEndpoints()));
+                }
+            }
         }
-        if (channel.kind() == ChannelKind.CLIENT_SERVER
-            && channel.clientEnabled()
-            && !channel.clientManualEndpoints().isEmpty()) {
-            return null;
-        }
-        if (channel.kind() == ChannelKind.FANOUT
-            && channel.subscriberEnabled()
-            && !channel.subscriberManualEndpoints().isEmpty()) {
-            return null;
-        }
-        if (channel.kind() == ChannelKind.ROUTE_MESH
-            && !channel.routeManualEndpoints().isEmpty()) {
-            return null;
-        }
-        ZLinkBackendDiscovery discovery = backend.createDiscovery(
-            context,
-            autoConnectType(channel),
-            channel.name());
-        for (String endpoint : registration.registryEndpoints()) {
-            discovery.connectRegistry(endpoint);
-        }
-        discoveries.add(discovery);
-        discoveriesByName.put(channel.name(), discovery);
-        return discovery;
+        return List.copyOf(surfaces);
     }
 
     @Override
@@ -636,19 +678,72 @@ public final class ZLinkChannelRuntime
         }
         try {
             ZLinkBackendSpotRouteBridge bridge = requireSpotRouteBridge(routerChannelId);
-            List<Message> bridgeParts = copyMessages(spotParts);
-            return CompletableFuture.runAsync(() -> {
-                try {
-                    bridge.send(routerChannelId, targetNodeRid, targetSpotRid, bridgeParts, SendFlags.NONE);
-                } finally {
-                    bridgeParts.forEach(Message::close);
-                }
-            });
+            List<byte[]> bridgePayloads = spotParts.stream()
+                .map(Message::toByteArray)
+                .toList();
+            CompletableFuture<Void> result = new CompletableFuture<>();
+            submitSpotRouteBridgeSendWithRetry(
+                bridge,
+                routerChannelId,
+                targetNodeRid,
+                targetSpotRid,
+                bridgePayloads,
+                defaultRequestTimeout(routerChannelId),
+                result);
+            return result;
         } catch (RuntimeException ex) {
             CompletableFuture<Void> result = new CompletableFuture<>();
             result.completeExceptionally(ex);
             return result;
         }
+    }
+
+    private void submitSpotRouteBridgeSendWithRetry(
+        ZLinkBackendSpotRouteBridge bridge,
+        String routerChannelId,
+        RoutingId targetNodeRid,
+        RoutingId targetSpotRid,
+        List<byte[]> bridgePayloads,
+        Duration timeout,
+        CompletableFuture<Void> result) {
+        long timeoutNanos = timeout == null || timeout.isZero()
+            ? defaultRequestTimeout.toNanos()
+            : timeout.toNanos();
+        long deadline = System.nanoTime() + timeoutNanos;
+        class Attempt implements Runnable {
+            @Override
+            public void run() {
+                if (result.isDone()) {
+                    return;
+                }
+                List<Message> attemptParts = bridgePayloads.stream()
+                    .map(Message::from)
+                    .toList();
+                try {
+                    boolean submitted = bridge.send(
+                        routerChannelId,
+                        targetNodeRid,
+                        targetSpotRid,
+                        attemptParts,
+                        SendFlags.DONT_WAIT);
+                    if (submitted) {
+                        result.complete(null);
+                        return;
+                    }
+                    if (System.nanoTime() >= deadline) {
+                        result.completeExceptionally(new TimeoutException(
+                            "routed SPOT route mesh send was not ready before timeout"));
+                        return;
+                    }
+                    timeoutExecutor.schedule(this, 10, TimeUnit.MILLISECONDS);
+                } catch (RuntimeException ex) {
+                    result.completeExceptionally(ex);
+                } finally {
+                    attemptParts.forEach(Message::close);
+                }
+            }
+        }
+        new Attempt().run();
     }
 
     public CompletionStage<List<Message>> requestToSpotViaRouterChannel(
@@ -667,53 +762,47 @@ public final class ZLinkChannelRuntime
         try {
             ZLinkBackendSpotRouteBridge bridge = requireSpotRouteBridge(routerChannelId);
             List<Message> bridgeParts = copyMessages(spotParts);
-            List<byte[]> requestPayloads = copyMessageBytes(spotParts);
-            PendingRawSpotRouteBridgeReply pendingRawReply =
-                new PendingRawSpotRouteBridgeReply(
-                    targetNodeRid,
-                    requestPayloads,
-                    result);
-            Object routeSocketLock = routeSocketLocks.getOrDefault(routerChannelId, this);
+            PendingRawSpotRouteBridgeReply rawReply = new PendingRawSpotRouteBridgeReply(
+                targetNodeRid,
+                bridgeParts.stream().map(Message::toByteArray).toList(),
+                result);
+            enqueueRawSpotRouteBridgeReply(routerChannelId, rawReply);
             try {
-                boolean submitted;
-                synchronized (routeSocketLock) {
-                    enqueueRawSpotRouteBridgeReply(routerChannelId, pendingRawReply);
-                    submitted = bridge.request(
+                bridge.requestAsync(
                         routerChannelId,
                         targetNodeRid,
                         targetSpotRid,
                         bridgeParts,
-                            reply -> {
-                                try {
-                                    if (reply.result() != ZLinkBackendRequestResult.OK) {
-                                        result.completeExceptionally(new ZLinkConfigurationException(
-                                            "route mesh SPOT request failed: " + reply.result()));
-                                        return;
-                                    }
-                                    if (sameMessageParts(requestPayloads, reply.parts())
-                                        || sameFirstMessagePart(requestPayloads, reply.parts())) {
-                                        return;
-                                    }
-                                    List<Message> copiedReply =
-                                        copySpotRouteBridgeReplyMessages(reply.parts());
-                                    if (sameFirstMessagePart(requestPayloads, copiedReply)) {
-                                        copiedReply.forEach(Message::close);
-                                        return;
-                                    }
-                                    result.complete(copiedReply);
-                                } catch (RuntimeException ex) {
-                                    result.completeExceptionally(ex);
-                                } finally {
-                                reply.parts().forEach(Message::close);
-                            }
-                        },
                         SendFlags.NONE,
-                        timeout);
-                }
-                if (!submitted) {
-                    result.completeExceptionally(new ZLinkConfigurationException(
-                        "route mesh channel is not ready for SPOT request: " + routerChannelId));
-                }
+                        timeout)
+                    .whenComplete((reply, error) -> {
+                        if (error != null) {
+                            result.completeExceptionally(error);
+                            return;
+                        }
+                        try {
+                            if (sameMessageParts(rawReply.requestParts(), reply)
+                                || sameFirstMessagePart(rawReply.requestParts(), reply)) {
+                                return;
+                            }
+                            if (isFrameworkErrorReply(reply)) {
+                                result.completeExceptionally(new ZLinkFrameworkException(
+                                    frameworkErrorReplyMessage(reply)));
+                                return;
+                            }
+                            List<Message> normalizedReply =
+                                copySpotRouteBridgeReplyMessages(reply);
+                            if (sameFirstMessagePart(rawReply.requestParts(), normalizedReply)) {
+                                normalizedReply.forEach(Message::close);
+                                return;
+                            }
+                            if (!result.complete(normalizedReply)) {
+                                normalizedReply.forEach(Message::close);
+                            }
+                        } finally {
+                            reply.forEach(Message::close);
+                        }
+                    });
             } finally {
                 bridgeParts.forEach(Message::close);
             }
@@ -786,24 +875,25 @@ public final class ZLinkChannelRuntime
     @Override
     public void close() {
         beginClose();
-        closeSpotRouteBridges();
-        closeAll(discoveries);
-        closeAll(clients.values());
-        closeAll(servers.values());
-        closeAll(publishers.values());
-        closeAll(subscribers.values());
-        closeAll(routeRouters.values());
-        closeAll(manualClients);
-        closeAll(manualServers);
-        closeAll(manualPublishers);
-        closeAll(manualSubscribers);
-        closeAll(manualRouteRouters);
-        receiveExecutor.shutdownNow();
-        spotRouteBridgeExecutor.shutdownNow();
+        receiveExecutor.shutdown();
+        spotRouteBridgeExecutor.shutdown();
         timeoutExecutor.shutdownNow();
         awaitTerminated(receiveExecutor);
         awaitTerminated(spotRouteBridgeExecutor);
         awaitTerminated(timeoutExecutor);
+        closeSpotRouteBridges();
+        java.util.Set<ZLinkBackendObject> closed =
+            java.util.Collections.newSetFromMap(new java.util.IdentityHashMap<>());
+        closeAll(clients.values(), closed);
+        closeAll(servers.values(), closed);
+        closeAll(publishers.values(), closed);
+        closeAll(subscribers.values(), closed);
+        closeAll(routeRouters.values(), closed);
+        closeAll(manualClients, closed);
+        closeAll(manualServers, closed);
+        closeAll(manualPublishers, closed);
+        closeAll(manualSubscribers, closed);
+        closeAll(manualRouteRouters, closed);
         if (ownsContext) {
             context.close();
         }
@@ -822,7 +912,16 @@ public final class ZLinkChannelRuntime
     }
 
     private static void closeAll(Iterable<? extends ZLinkBackendObject> closeables) {
+        closeAll(closeables, java.util.Collections.newSetFromMap(new java.util.IdentityHashMap<>()));
+    }
+
+    private static void closeAll(
+        Iterable<? extends ZLinkBackendObject> closeables,
+        java.util.Set<ZLinkBackendObject> closed) {
         for (ZLinkBackendObject closeable : closeables) {
+            if (!closed.add(closeable)) {
+                continue;
+            }
             try {
                 closeable.close();
             } catch (ZlinkCloseException ignored) {
@@ -836,14 +935,6 @@ public final class ZLinkChannelRuntime
         } catch (InterruptedException ex) {
             Thread.currentThread().interrupt();
         }
-    }
-
-    private static ZLinkBackendAutoConnectType autoConnectType(ChannelRegistration channel) {
-        return switch (channel.kind()) {
-            case CLIENT_SERVER -> ZLinkBackendAutoConnectType.CLIENT_SERVER;
-            case FANOUT -> ZLinkBackendAutoConnectType.FANOUT;
-            case ROUTE_MESH -> ZLinkBackendAutoConnectType.ROUTE_MESH;
-        };
     }
 
     private ZLinkBackendDealerSocket requireClient(String channelName) {
@@ -2812,12 +2903,12 @@ public final class ZLinkChannelRuntime
         public systems.zlink.framework.ZLinkSubmitStage submit() {
             List<Message> sendParts = parts(packetName, payload);
             try {
-                sendToSpotViaRouterChannel(
+                return systems.zlink.framework.ZLinkSubmitStage.from(
+                    sendToSpotViaRouterChannel(
                     channelName,
                     targetNode,
                     targetSpot,
-                    sendParts);
-                return systems.zlink.framework.ZLinkSubmitStage.completed();
+                    sendParts));
             } finally {
                 sendParts.forEach(Message::close);
             }

@@ -59,7 +59,7 @@ class HttpClientCoroutineTest {
             received = readBody(exchange)
             respond(exchange, 200, """{"id":"game-7","ranked":true}""")
         }.use { server ->
-            zlinkHttpClient(server.baseUrl) { json() }.use { client ->
+            zlinkHttpClient(server.baseUrl).use { client ->
                 val response = client.post("/games").body(CreateGameReq("ranked-0611")).await<CreateGameRes>()
                 assertTrue(received!!.contains("ranked-0611"))
                 assertEquals("game-7", response.body().id)
@@ -71,7 +71,7 @@ class HttpClientCoroutineTest {
     @Test
     fun `suspend await with explicit type`() = runBlocking {
         TestServer { exchange -> respond(exchange, 200, """{"id":7,"name":"Aria"}""") }.use { server ->
-            zlinkHttpClient(server.baseUrl) { json() }.use { client ->
+            zlinkHttpClient(server.baseUrl).use { client ->
                 val response = client.get("/players/7").await(Player::class.java)
                 assertEquals(7, response.body().id)
                 assertEquals("Aria", response.body().name)

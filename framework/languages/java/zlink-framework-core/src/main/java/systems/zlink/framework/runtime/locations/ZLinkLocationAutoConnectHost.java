@@ -1,0 +1,267 @@
+package systems.zlink.framework.runtime.locations;
+
+import java.time.Instant;
+import java.util.ArrayList;
+import java.util.List;
+import java.util.Map;
+import java.util.Objects;
+import java.util.Set;
+import java.util.concurrent.CompletableFuture;
+import java.util.concurrent.CompletionStage;
+import systems.zlink.contracts.core.RoutingId;
+import systems.zlink.framework.locations.ZLinkLocationAutoConnectType;
+import systems.zlink.framework.locations.ZLinkLocationOptions;
+import systems.zlink.framework.locations.ZLinkLocationRole;
+import systems.zlink.framework.locations.ZLinkPeerLocation;
+import systems.zlink.framework.locations.ZLinkPeerLocationResolver;
+import systems.zlink.framework.runtime.backend.ZLinkBackendConnectableSocket;
+import systems.zlink.framework.runtime.backend.ZLinkBackendRouterSocket;
+import systems.zlink.framework.runtime.backend.ZLinkBackendSpotNode;
+import systems.zlink.framework.runtime.channels.ZLinkChannelRuntime;
+import systems.zlink.framework.runtime.configuration.ZLinkFrameworkRegistration;
+import systems.zlink.framework.runtime.spots.ZLinkSpotRuntime;
+import systems.zlink.framework.runtime.spots.SpotNodeRegistration;
+
+public final class ZLinkLocationAutoConnectHost implements AutoCloseable {
+    public static final String SPOT_PUB_ENDPOINT_METADATA_KEY = "pub-endpoint";
+
+    private final ZLinkLocationRuntime runtime;
+    private final ZLinkPeerLocationResolver peers;
+    private final ZLinkLocationOptions options;
+    private final List<ZLinkAutoConnectLoop> loops = new ArrayList<>();
+
+    public ZLinkLocationAutoConnectHost(
+        ZLinkLocationRuntime runtime,
+        ZLinkPeerLocationResolver peers,
+        ZLinkLocationOptions options) {
+        this.runtime = Objects.requireNonNull(runtime, "runtime");
+        this.peers = Objects.requireNonNull(peers, "peers");
+        this.options = Objects.requireNonNull(options, "options");
+    }
+
+    public CompletionStage<Void> startAsync(
+        ZLinkFrameworkRegistration registration,
+        ZLinkChannelRuntime channels,
+        Map<String, ZLinkBackendSpotNode> spotNodesByName,
+        ZLinkSpotRuntime spots) {
+        Objects.requireNonNull(registration, "registration");
+        Objects.requireNonNull(channels, "channels");
+        Objects.requireNonNull(spotNodesByName, "spotNodesByName");
+
+        for (ZLinkChannelRuntime.AutoConnectSurface surface : channels.autoConnectSurfaces()) {
+            addChannelLoop(surface);
+        }
+        for (SpotNodeRegistration spot : registration.spotNodes()) {
+            ZLinkBackendSpotNode node = spotNodesByName.get(spot.nodeName());
+            if (node == null || !spot.routerEnabled()) {
+                continue;
+            }
+            Map<String, String> metadata = spot.pubBind() == null
+                ? null
+                : Map.of(SPOT_PUB_ENDPOINT_METADATA_KEY, spot.pubBind());
+            Set<String> manual = spot.routerManualConnections().stream()
+                .map(SpotNodeRegistration.RouterManualConnection::endpoint)
+                .collect(java.util.stream.Collectors.toUnmodifiableSet());
+            addLoop(
+                ZLinkLocationAutoConnectType.SPOT_MESH,
+                spot.meshName(),
+                ZLinkLocationRole.SPOT,
+                spot.nodeRoutingId(),
+                spot.routerBind() == null ? "" : spot.routerBind(),
+                100,
+                new SpotNodeExecutor(node, manual, spots),
+                metadata);
+        }
+
+        CompletionStage<Void> chain = CompletableFuture.completedFuture(null);
+        for (ZLinkAutoConnectLoop loop : loops) {
+            chain = chain.thenCompose(ignored -> loop.startAsync());
+        }
+        return chain;
+    }
+
+    public CompletionStage<Void> stopAsync() {
+        CompletionStage<Void> chain = CompletableFuture.completedFuture(null);
+        for (ZLinkAutoConnectLoop loop : loops) {
+            chain = chain.thenCompose(ignored -> loop.stopAsync());
+        }
+        return chain.whenComplete((ignored, failure) -> loops.clear());
+    }
+
+    private void addChannelLoop(ZLinkChannelRuntime.AutoConnectSurface surface) {
+        ZLinkAutoConnectExecutor executor = surface.socket() == null
+            ? ZLinkAutoConnectExecutor.NONE
+            : new ConnectableSocketExecutor(surface.socket(), Set.copyOf(surface.manualEndpoints()));
+        if (surface.socket() instanceof ZLinkBackendRouterSocket router
+            && surface.type() == ZLinkLocationAutoConnectType.ROUTE_MESH) {
+            executor = new RouteSocketExecutor(router, Set.copyOf(surface.manualEndpoints()));
+        }
+        addLoop(
+            surface.type(),
+            surface.meshName(),
+            surface.role(),
+            surface.nodeRid(),
+            surface.endpoint(),
+            surface.weight(),
+            executor,
+            null);
+    }
+
+    private void addLoop(
+        ZLinkLocationAutoConnectType type,
+        String meshName,
+        ZLinkLocationRole role,
+        RoutingId nodeRid,
+        String endpoint,
+        long weight,
+        ZLinkAutoConnectExecutor executor,
+        Map<String, String> metadata) {
+        boolean advertisable = ZLinkAutoConnectPlanner.hasRid(nodeRid)
+            || (endpoint != null && !endpoint.isBlank());
+        if (!advertisable && executor == ZLinkAutoConnectExecutor.NONE) {
+            return;
+        }
+        ZLinkAutoConnectPlanner.Local local =
+            new ZLinkAutoConnectPlanner.Local(type, meshName, role, nodeRid, endpoint);
+        ZLinkPeerLocation row = advertisable
+            ? new ZLinkPeerLocation(
+                type, meshName, nodeRid, role, endpoint, weight, 0,
+                metadata, null, "", 0, Instant.EPOCH)
+            : null;
+        ZLinkAutoConnectReconciler reconciler = new ZLinkAutoConnectReconciler(
+            local,
+            row,
+            runtime,
+            peers,
+            executor,
+            options);
+        loops.add(new ZLinkAutoConnectLoop(reconciler, options));
+    }
+
+    @Override
+    public void close() {
+        stopAsync().toCompletableFuture().join();
+    }
+
+    private static final class ConnectableSocketExecutor implements ZLinkAutoConnectExecutor {
+        private final ZLinkBackendConnectableSocket socket;
+        private final Set<String> manualEndpoints;
+
+        ConnectableSocketExecutor(
+            ZLinkBackendConnectableSocket socket,
+            Set<String> manualEndpoints) {
+            this.socket = socket;
+            this.manualEndpoints = manualEndpoints;
+        }
+
+        @Override
+        public void connect(ZLinkAutoConnectPlanner.Target target) {
+            if (!manualEndpoints.contains(target.endpoint())) {
+                socket.connect(target.endpoint());
+            }
+        }
+
+        @Override
+        public void disconnect(ZLinkAutoConnectPlanner.Target target) {
+            if (!manualEndpoints.contains(target.endpoint())) {
+                socket.disconnect(target.endpoint());
+            }
+        }
+    }
+
+    private static final class RouteSocketExecutor implements ZLinkAutoConnectExecutor {
+        private final ZLinkBackendRouterSocket socket;
+        private final Set<String> manualEndpoints;
+        private final Object connectGate = new Object();
+
+        RouteSocketExecutor(
+            ZLinkBackendRouterSocket socket,
+            Set<String> manualEndpoints) {
+            this.socket = socket;
+            this.manualEndpoints = manualEndpoints;
+        }
+
+        @Override
+        public void connect(ZLinkAutoConnectPlanner.Target target) {
+            if (manualEndpoints.contains(target.endpoint())) {
+                return;
+            }
+            if (ZLinkAutoConnectPlanner.hasRid(target.nodeRid())) {
+                synchronized (connectGate) {
+                    socket.setConnectRoutingId(target.nodeRid());
+                    socket.connect(target.endpoint());
+                }
+                return;
+            }
+            socket.connect(target.endpoint());
+        }
+
+        @Override
+        public void disconnect(ZLinkAutoConnectPlanner.Target target) {
+            if (!manualEndpoints.contains(target.endpoint())) {
+                socket.disconnect(target.endpoint());
+            }
+        }
+    }
+
+    private static final class SpotNodeExecutor implements ZLinkAutoConnectExecutor {
+        private final ZLinkBackendSpotNode node;
+        private final Set<String> manualEndpoints;
+        private final ZLinkSpotRuntime spots;
+
+        SpotNodeExecutor(
+            ZLinkBackendSpotNode node,
+            Set<String> manualEndpoints,
+            ZLinkSpotRuntime spots) {
+            this.node = node;
+            this.manualEndpoints = manualEndpoints;
+            this.spots = spots;
+        }
+
+        @Override
+        public void connect(ZLinkAutoConnectPlanner.Target target) {
+            if (manualEndpoints.contains(target.endpoint())) {
+                return;
+            }
+            if (ZLinkAutoConnectPlanner.hasRid(target.nodeRid())) {
+                node.connectPeer(target.nodeRid(), target.endpoint());
+                if (spots != null) {
+                    spots.markAutoConnectedRouterPeer(target.nodeRid());
+                }
+            } else {
+                node.connectPeer(target.endpoint());
+            }
+            String pubEndpoint = pubEndpointOf(target);
+            if (pubEndpoint != null) {
+                node.connectPeer(pubEndpoint);
+            }
+        }
+
+        @Override
+        public void disconnect(ZLinkAutoConnectPlanner.Target target) {
+            if (manualEndpoints.contains(target.endpoint())) {
+                return;
+            }
+            if (ZLinkAutoConnectPlanner.hasRid(target.nodeRid())) {
+                node.disconnectPeer(target.nodeRid());
+                if (spots != null) {
+                    spots.unmarkAutoConnectedRouterPeer(target.nodeRid());
+                }
+            } else {
+                node.disconnectPeer(target.endpoint());
+            }
+            String pubEndpoint = pubEndpointOf(target);
+            if (pubEndpoint != null) {
+                node.disconnectPeer(pubEndpoint);
+            }
+        }
+
+        private static String pubEndpointOf(ZLinkAutoConnectPlanner.Target target) {
+            if (target.metadata() == null) {
+                return null;
+            }
+            String endpoint = target.metadata().get(SPOT_PUB_ENDPOINT_METADATA_KEY);
+            return endpoint == null || endpoint.isBlank() ? null : endpoint;
+        }
+    }
+}

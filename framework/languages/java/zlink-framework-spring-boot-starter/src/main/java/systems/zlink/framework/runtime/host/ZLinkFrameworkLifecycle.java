@@ -20,10 +20,10 @@ import systems.zlink.framework.runtime.backend.ZLinkBackendSocket;
 import systems.zlink.framework.runtime.backend.ZLinkBackendSpotNode;
 import systems.zlink.framework.runtime.handlers.ZLinkHandlerFactory;
 import systems.zlink.framework.monitoring.ZLinkRuntimeEventDispatcher;
+import systems.zlink.framework.locations.ZLinkLocationRuntimeQuery;
 import systems.zlink.framework.spots.ZLinkSpotManager;
 import systems.zlink.framework.spots.ZLinkSpotOutbound;
 import systems.zlink.framework.spots.ZLinkSpotPublisherClient;
-import systems.zlink.framework.spots.ZLinkSpotRemoteAddress;
 
 public final class ZLinkFrameworkLifecycle
     implements SmartLifecycle, ZLinkClient, ZLinkFanoutClient, ZLinkRouteClient,
@@ -192,16 +192,6 @@ public final class ZLinkFrameworkLifecycle
         return requireRuntime().spotPublisherClient();
     }
 
-    public ZLinkSpotRemoteAddress resolveRegistrySpotRemoteAddress(
-        String namespaceName,
-        String configuredRouterChannelId,
-        RoutingId spotRid) {
-        return requireRuntime().resolveRegistrySpotRemoteAddress(
-            namespaceName,
-            configuredRouterChannelId,
-            spotRid);
-    }
-
     public ZLinkActorManager actorManager() {
         return requireRuntime().actorManager();
     }
@@ -218,6 +208,10 @@ public final class ZLinkFrameworkLifecycle
 
     public Map<String, ZLinkBackendSpotNode> monitoringSpotSources() {
         return requireRuntime().monitoringSpotSources();
+    }
+
+    public ZLinkLocationRuntimeQuery monitoringLocationRuntimeQuery() {
+        return requireRuntime().monitoringLocationRuntimeQuery();
     }
 
     public boolean stopSpotRuntime() {

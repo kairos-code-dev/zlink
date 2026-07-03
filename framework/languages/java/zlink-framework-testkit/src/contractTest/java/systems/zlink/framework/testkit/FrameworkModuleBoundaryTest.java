@@ -93,24 +93,56 @@ final class FrameworkModuleBoundaryTest {
             .resolve("zlink-framework-core")
             .resolve("src/main/java/systems/zlink/framework/runtime");
         Set<String> allowedImports = Set.of(
+            "import systems.zlink.contracts.core.Context;",
             "import systems.zlink.contracts.core.RoutingId;",
+            "import systems.zlink.contracts.core.Zlink;",
+            "import systems.zlink.contracts.errors.ConfigResult;",
             "import systems.zlink.contracts.messaging.Message;",
+            "import systems.zlink.contracts.errors.ZlinkConfigException;",
             "import systems.zlink.contracts.sockets.SendFlags;",
             "import systems.zlink.contracts.errors.ConnectResult;",
             "import systems.zlink.contracts.errors.ZlinkConnectException;",
+            "import systems.zlink.contracts.errors.ZlinkCloseException;",
+            "import systems.zlink.contracts.errors.ZlinkRecvException;",
             "import systems.zlink.contracts.errors.ZlinkRequestException;",
             "import systems.zlink.contracts.errors.ZlinkSubmitException;",
+            "import systems.zlink.contracts.eventing.MonitorEvent;",
+            "import systems.zlink.contracts.eventing.MonitorEventType;",
+            "import systems.zlink.contracts.eventing.SocketMonitor;",
             "import systems.zlink.contracts.sockets.RequestResult;",
+            "import systems.zlink.contracts.sockets.RecvFlags;",
+            "import systems.zlink.contracts.sockets.RecvResult;",
             "import systems.zlink.contracts.sockets.SubmitResult;",
-            "import systems.zlink.contracts.service.registry.AutoConnectType;",
-            "import systems.zlink.contracts.service.registry.RegistryState;",
-            "import systems.zlink.contracts.service.registry.ServiceKind;",
-            "import systems.zlink.contracts.service.registry.ServiceRole;",
-            "import systems.zlink.contracts.service.registry.TopologySource;",
-            "import systems.zlink.contracts.service.registry.TopologyState;",
+            "import systems.zlink.contracts.messaging.Received;",
+            "import systems.zlink.contracts.messaging.TopicMessage;",
+            "import systems.zlink.contracts.service.spot.Actor;",
+            "import systems.zlink.contracts.service.spot.ActorBindOperation;",
+            "import systems.zlink.contracts.service.spot.ActorJoinCompletion;",
+            "import systems.zlink.contracts.service.spot.ActorJoinRequest;",
+            "import systems.zlink.contracts.service.spot.ActorJoinSubmitOperation;",
+            "import systems.zlink.contracts.service.spot.ActorReceived;",
+            "import systems.zlink.contracts.service.spot.ActorRef;",
+            "import systems.zlink.contracts.service.spot.ActorUnbindOperation;",
+            "import systems.zlink.contracts.service.spot.ReplyOperation;",
+            "import systems.zlink.contracts.service.spot.RequestOperation;",
+            "import systems.zlink.contracts.service.spot.SendOperation;",
+            "import systems.zlink.contracts.service.spot.Spot;",
+            "import systems.zlink.contracts.service.spot.SpotActorLifecycleEvent;",
+            "import systems.zlink.contracts.service.spot.SpotDispatchEvent;",
+            "import systems.zlink.contracts.service.spot.SpotDispatchInfo;",
+            "import systems.zlink.contracts.service.spot.SpotKind;",
+            "import systems.zlink.contracts.service.spot.SpotNode;",
+            "import systems.zlink.contracts.service.spot.SpotNodeMode;",
             "import systems.zlink.contracts.service.spot.SpotNodePeerEntry;",
             "import systems.zlink.contracts.service.spot.SpotNodeStatus;",
-            "import systems.zlink.contracts.service.spot.SpotNodeSubjectEntry;");
+            "import systems.zlink.contracts.service.spot.SpotNodeSubjectEntry;",
+            "import systems.zlink.contracts.service.spot.SpotRouteBridge;",
+            "import systems.zlink.contracts.sockets.DealerSocket;",
+            "import systems.zlink.contracts.sockets.PubSocket;",
+            "import systems.zlink.contracts.sockets.RouterSocket;",
+            "import systems.zlink.contracts.sockets.Socket;",
+            "import systems.zlink.contracts.sockets.StreamSocket;",
+            "import systems.zlink.contracts.sockets.SubSocket;");
 
         try (Stream<Path> files = Files.walk(runtimeRoot)) {
             List<String> offenders = files
@@ -177,7 +209,10 @@ final class FrameworkModuleBoundaryTest {
     private static boolean importsBindingRuntimePackage(Path path) {
         try {
             String content = Files.readString(path);
-            return content.contains("import systems.zlink.runtime.")
+            String withoutPublicNativeFacade = content.replace(
+                "import systems.zlink.runtime.nativeapi.Native;",
+                "");
+            return withoutPublicNativeFacade.contains("import systems.zlink.runtime.")
                 || content.contains("import systems.zlink.internal.");
         } catch (IOException ex) {
             throw new IllegalStateException("failed to read " + path, ex);

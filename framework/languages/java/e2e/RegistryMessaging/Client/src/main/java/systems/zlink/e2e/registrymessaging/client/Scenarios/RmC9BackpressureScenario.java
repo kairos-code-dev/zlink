@@ -11,7 +11,10 @@ public final class RmC9BackpressureScenario {
     private RmC9BackpressureScenario() {
     }
 
-    public static void run(ZLinkHttpClient backpressureConsumer, ZLinkHttpClient providerA) {
+    public static void run(
+        ZLinkHttpClient backpressureConsumer,
+        ZLinkHttpClient providerA,
+        ZLinkHttpClient providerB) {
         backpressureConsumer.post("/profile/backpressure/reset").fetch(Object.class);
         java.util.List<java.util.concurrent.CompletableFuture<String>> sends = new java.util.ArrayList<>();
         for (int index = 0; index < SLOW_SEND_COUNT; index++) {
@@ -32,12 +35,19 @@ public final class RmC9BackpressureScenario {
         Contracts.ProfileRes recovered = requestRecovered(backpressureConsumer);
         ScenarioAssert.that("profile:c9-recovered".equals(recovered.value()),
             "RM-C9 connection did not recover after pressure");
-        String[] evidence = providerA.post("/evidence/wait")
-            .body(new Contracts.EvidenceWaitReq("c9-recovered", 20000))
-            .fetch(String[].class);
-        ScenarioAssert.that(java.util.Arrays.stream(evidence).anyMatch(line -> line.contains("c9-recovered")),
+        boolean hasEvidence = waitEvidence(providerA, "c9-recovered")
+            || waitEvidence(providerB, "c9-recovered");
+        ScenarioAssert.that(hasEvidence,
             "RM-C9 recovery evidence missing");
         System.out.println("scenario RM-C9 passed");
+    }
+
+    private static boolean waitEvidence(ZLinkHttpClient provider, String marker) {
+        String[] evidence = provider.post("/evidence/wait")
+            .body(new Contracts.EvidenceWaitReq(marker, 20000))
+            .timeout(java.time.Duration.ofSeconds(25))
+            .fetch(String[].class);
+        return java.util.Arrays.stream(evidence).anyMatch(line -> line.contains(marker));
     }
 
     private static Contracts.ProfileRes requestRecovered(ZLinkHttpClient backpressureConsumer) {
@@ -47,6 +57,7 @@ public final class RmC9BackpressureScenario {
             try {
                 return backpressureConsumer.post("/profile/request")
                     .body(new Contracts.ProfileReq("c9-recovered"))
+                    .timeout(java.time.Duration.ofSeconds(2))
                     .fetch(Contracts.ProfileRes.class);
             } catch (RuntimeException error) {
                 lastFailure = error;

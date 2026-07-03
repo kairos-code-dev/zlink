@@ -23,6 +23,8 @@ import systems.zlink.e2e.yielddispatch.shared.YieldSession;
 import systems.zlink.framework.configuration.ZLinkMessageFlowLogMode;
 import systems.zlink.framework.configuration.RouteMeshChannelBuilder;
 import systems.zlink.framework.configuration.ZLinkSpotMeshBuilder;
+import systems.zlink.framework.locations.redis.ZLinkRedisLocationOptions;
+import systems.zlink.framework.locations.redis.ZLinkRedisLocationStore;
 import systems.zlink.framework.spring.EnableZLinkFramework;
 import systems.zlink.framework.spring.ZLinkFrameworkConfigurer;
 
@@ -60,7 +62,6 @@ public final class Program {
     ZLinkFrameworkConfigurer framework() {
         return options -> {
             String logDir = Env.get("ZLINK_JAVA_E2E_LOG_DIR", "logs");
-            options.useDiscovery().addRegistryEndpoint(Env.get("ZLINK_JAVA_E2E_REGISTRY_ROUTER"));
             options.configureDispatch()
                 .messageFlow(ZLinkMessageFlowLogMode.KEY_TRANSITIONS)
                 .traceLogFile(logDir + "/session-flow.log")
@@ -75,8 +76,6 @@ public final class Program {
             }
             options.addClientServerChannel(Contracts.DELAY_CHANNEL)
                 .enableClient(Env.get("ZLINK_JAVA_E2E_DELAY_ENDPOINT"));
-            options.useRegistrySpotRemoteAddresses(Contracts.SPOT_MESH)
-                .setRouterChannelId(Contracts.ROUTE_CHANNEL);
             ZLinkSpotMeshBuilder spot = options.addSpotMesh(Contracts.SPOT_MESH);
             spot.enableRouter(Env.get("ZLINK_JAVA_E2E_SESSION_SPOT_ENDPOINT"))
                 .setRoutingId(RoutingId.from("session-a"));
@@ -99,6 +98,13 @@ public final class Program {
                 .addSessionPacketHandler(RemoteSpotYieldSessionHandler.class)
                 .addSessionPacketHandler(BindActorsHandler.class);
         };
+    }
+
+    @Bean
+    ZLinkRedisLocationStore locationStore() {
+        return new ZLinkRedisLocationStore(new ZLinkRedisLocationOptions()
+            .setConnectionString(Env.get("ZLINK_JAVA_E2E_REDIS_LOCATION_ENDPOINT"))
+            .setKeyPrefix(Env.get("ZLINK_JAVA_E2E_LOCATION_KEY_PREFIX")));
     }
 
     @Bean

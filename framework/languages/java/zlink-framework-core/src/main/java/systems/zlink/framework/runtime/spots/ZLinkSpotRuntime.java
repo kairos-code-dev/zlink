@@ -77,7 +77,6 @@ import systems.zlink.framework.configuration.ZLinkDispatchFailure;
 import systems.zlink.framework.runtime.actors.ZLinkActorSpotRoutePackets;
 import systems.zlink.framework.runtime.actors.ZLinkActorRuntime;
 import systems.zlink.framework.runtime.configuration.ZLinkFrameworkRegistration;
-import systems.zlink.framework.runtime.configuration.ZLinkRegistrySpotRemoteAddressesRegistration;
 import systems.zlink.framework.runtime.channels.ChannelRegistration;
 import systems.zlink.framework.runtime.channels.ChannelKind;
 import systems.zlink.framework.runtime.channels.ZLinkChannelRuntime;
@@ -92,9 +91,11 @@ import systems.zlink.framework.runtime.handlers.ZLinkScannedHandlerCatalog;
 import systems.zlink.framework.runtime.handlers.ZLinkScannedHandlerKind;
 import systems.zlink.framework.runtime.handlers.ZLinkScannedHandlerSurface;
 import systems.zlink.framework.runtime.handlers.ZLinkSuspendHandlerInvoker;
+import systems.zlink.framework.runtime.locations.ZLinkLocationLifecycle;
 import systems.zlink.framework.runtime.messaging.ZLinkPayloadEncoding;
 import systems.zlink.framework.runtime.messaging.ZLinkMessagePayloads;
 import systems.zlink.framework.runtime.messaging.ZLinkPacketNames;
+import systems.zlink.framework.locations.ZLinkLocationWriteStatus;
 import systems.zlink.framework.runtime.messaging.ZLinkStringMessageSerializer;
 import systems.zlink.framework.spots.ZLinkEntrySpot;
 import systems.zlink.framework.spots.ZLinkEntrySpotContext;
@@ -157,10 +158,8 @@ public final class ZLinkSpotRuntime implements ZLinkSpotManager, AutoCloseable {
     private final boolean ownsContext;
     private final ZLinkFrameworkRegistration frameworkRegistration;
     private final List<ZLinkBackendSpotNode> nodes = new ArrayList<>();
-    private final List<ZLinkBackendDiscovery> attachedChannelDiscoveries = new ArrayList<>();
     private final Map<String, ZLinkBackendSpotNode> nodesByName = new HashMap<>();
-    private final Map<String, ZLinkBackendDiscovery> spotDiscoveriesByMesh = new HashMap<>();
-    private final SpotDiscoveryReconciler spotDiscoveryReconciler = new SpotDiscoveryReconciler();
+    private final Map<RoutingId, SpotNodeLocationMetadata> locationMetadataByNodeRid = new HashMap<>();
     private final Map<String, ZLinkBackendSpotNode> publisherNodesByChannel = new HashMap<>();
     private final Map<String, ZLinkBackendSpot> publisherSpotsByChannel = new HashMap<>();
     private final Set<Class<? extends ZLinkSpot<?>>> registeredSpotTypes = new HashSet<>();
@@ -181,8 +180,11 @@ public final class ZLinkSpotRuntime implements ZLinkSpotManager, AutoCloseable {
     private ZLinkActorRuntime actorRuntime;
     private final List<ChannelRegistration> routeMeshChannels = new ArrayList<>();
     private final List<String> routerSpotNodeNames = new ArrayList<>();
+    private final Set<RoutingId> manualRouterPeerNodeRids = ConcurrentHashMap.newKeySet();
+    private final Set<RoutingId> autoConnectedRouterPeerNodeRids = ConcurrentHashMap.newKeySet();
     private final ThreadLocal<DefaultSpotOutbound> currentOutbound = new ThreadLocal<>();
     private ZLinkSpotRemoteAddressResolver remoteAddressResolver;
+    private ZLinkLocationLifecycle locationLifecycle;
     private final Map<RoutingId, CompletionStage<ZLinkSpotCreateResult>> pendingSpotCreates =
         new ConcurrentHashMap<>();
     private volatile boolean closing;
@@ -356,15 +358,14 @@ public final class ZLinkSpotRuntime implements ZLinkSpotManager, AutoCloseable {
             if (nodeRegistration.pubBind() != null) {
                 node.setPubBind(nodeRegistration.pubBind());
             }
-            attachSpotMeshDiscovery(
-                channelAdapter,
-                registration,
-                nodeRegistration,
-                node);
             for (SpotNodeRegistration.RouterManualConnection connection
                     : nodeRegistration.routerManualConnections()) {
-                node.connectPeer(connection.endpoint());
-                spotDiscoveryReconciler.markRouterPeerReady(connection.peerRoutingId());
+                if (connection.peerRoutingId() != null) {
+                    node.connectPeer(connection.peerRoutingId(), connection.endpoint());
+                    manualRouterPeerNodeRids.add(connection.peerRoutingId());
+                } else {
+                    node.connectPeer(connection.endpoint());
+                }
             }
             for (String endpoint : nodeRegistration.pubSubManualConnections()) {
                 node.connectPeer(endpoint);
@@ -379,6 +380,12 @@ public final class ZLinkSpotRuntime implements ZLinkSpotManager, AutoCloseable {
                 routeBridgeNodesByName.put(nodeRegistration.nodeName(), node);
                 routerSpotNodeNames.add(nodeRegistration.nodeName());
             }
+            locationMetadataByNodeRid.put(
+                node.routingId(),
+                new SpotNodeLocationMetadata(
+                    nodeRegistration.meshName(),
+                    node.routingId(),
+                    nodeRegistration.routerBind()));
         }
         for (var channel : registration.channels()) {
             if (channel.kind() == ChannelKind.ROUTE_MESH) {
@@ -388,7 +395,6 @@ public final class ZLinkSpotRuntime implements ZLinkSpotManager, AutoCloseable {
         attachRouteMeshSpotBridges(routeBridgeNodesByName);
         this.primaryNode = nodes.get(0);
         this.primaryNodeSourceName = registration.spotNodes().get(0).nodeName();
-        spotDiscoveryReconciler.start(timerExecutor);
     }
 
     private static ZLinkBackendSpotNodeMode resolveSpotNodeMode(
@@ -561,25 +567,37 @@ public final class ZLinkSpotRuntime implements ZLinkSpotManager, AutoCloseable {
                     throw new ZLinkConfigurationException("duplicate spot rid: " + spotRid);
                 }
                 return activateAsync(spotType, spot, request)
-                    .thenApply(result -> createResult(spotRid, result));
+                    .thenCompose(result -> createResultAsync(spotRid, spotType, result));
             });
         }
 
-    private ZLinkSpotCreateResult createResult(
+    private CompletionStage<ZLinkSpotCreateResult> createResultAsync(
         RoutingId spotRid,
+        Class<? extends ZLinkSpot<?>> spotType,
         SpotActivationCreateResult result) {
-                if (!result.response().accepted()) {
-            return new ZLinkSpotCreateResult(
-                        spotRid,
-                        ZLinkSpotCreateState.REJECTED,
-                result.response().reply());
+        if (!result.response().accepted()) {
+            return CompletableFuture.completedFuture(new ZLinkSpotCreateResult(
+                spotRid,
+                ZLinkSpotCreateState.REJECTED,
+                result.response().reply()));
+        }
+        SpotActivation activation = result.activation();
+        return claimUserSpotLocationAsync(spotRid, spotType)
+            .thenApply(status -> {
+                if (status != ZLinkLocationWriteStatus.STORED) {
+                    throw spotCreateLocationFailure(spotRid, status);
                 }
-                SpotActivation activation = result.activation();
                 spots.put(spotRid, activation);
-        return new ZLinkSpotCreateResult(
+                return new ZLinkSpotCreateResult(
                     spotRid,
                     ZLinkSpotCreateState.CREATED,
-            result.response().reply());
+                    result.response().reply());
+            })
+            .whenComplete((ignored, error) -> {
+                if (error != null) {
+                    activation.close();
+                }
+            });
         }
 
     @Override
@@ -600,7 +618,7 @@ public final class ZLinkSpotRuntime implements ZLinkSpotManager, AutoCloseable {
         }
         CompletionStage<ZLinkSpotCreateResult> create = createBackendSpotAsync(spotRid)
             .thenCompose(spot -> activateAsync(spotType, spot, request))
-            .thenApply(result -> createResult(spotRid, result))
+            .thenCompose(result -> createResultAsync(spotRid, spotType, result))
             .whenComplete((ignored, error) -> pendingSpotCreates.remove(spotRid));
         pendingSpotCreates.put(spotRid, create);
         return create;
@@ -640,7 +658,7 @@ public final class ZLinkSpotRuntime implements ZLinkSpotManager, AutoCloseable {
         }
         CompletionStage<ZLinkSpotCreateResult> create = createBackendSpotAsync(spotRid)
             .thenCompose(spot -> activateAsync(spotType, spot, request))
-            .thenApply(result -> createResult(spotRid, result))
+            .thenCompose(result -> createResultAsync(spotRid, spotType, result))
             .whenComplete((ignored, error) -> pendingSpotCreates.remove(spotRid));
         pendingSpotCreates.put(spotRid, create);
         return create;
@@ -656,6 +674,68 @@ public final class ZLinkSpotRuntime implements ZLinkSpotManager, AutoCloseable {
             spot.setRoutingId(spotRid);
             return spot;
         }, handlerExecutor);
+    }
+
+    private CompletionStage<ZLinkLocationWriteStatus> claimUserSpotLocationAsync(
+        RoutingId spotRid,
+        Class<? extends ZLinkSpot<?>> spotType) {
+        if (locationLifecycle == null) {
+            return CompletableFuture.completedFuture(ZLinkLocationWriteStatus.STORED);
+        }
+        SpotNodeLocationMetadata metadata = locationMetadataByNodeRid.get(primaryNode.routingId());
+        if (metadata == null) {
+            return CompletableFuture.completedFuture(ZLinkLocationWriteStatus.STORE_UNAVAILABLE);
+        }
+        return locationLifecycle.claimSpotAsync(
+            metadata.meshName(),
+            spotRid,
+            spotType.getName(),
+            metadata.nodeRid(),
+            ZLinkSpotKind.USER,
+            metadata.routeEndpoint(),
+            () -> close(spotRid));
+    }
+
+    private void claimEntrySpotLocation(SpotNodeLocationMetadata metadata) {
+        if (metadata.routeEndpoint() == null || metadata.routeEndpoint().isBlank()) {
+            return;
+        }
+        locationLifecycle.claimSpotAsync(
+                metadata.meshName(),
+                metadata.nodeRid(),
+                null,
+                metadata.nodeRid(),
+                ZLinkSpotKind.ENTRY,
+                metadata.routeEndpoint(),
+                null)
+            .exceptionally(error -> ZLinkLocationWriteStatus.STORE_UNAVAILABLE);
+    }
+
+    private CompletionStage<Void> releaseSpotLocationAsync(RoutingId spotRid) {
+        if (locationLifecycle == null) {
+            return CompletableFuture.completedFuture(null);
+        }
+        SpotNodeLocationMetadata metadata = locationMetadataByNodeRid.get(primaryNode.routingId());
+        if (metadata == null) {
+            return CompletableFuture.completedFuture(null);
+        }
+        return locationLifecycle.releaseSpotAsync(metadata.meshName(), spotRid);
+    }
+
+    private CompletionStage<Void> releaseEntrySpotLocation(SpotNodeLocationMetadata metadata) {
+        if (locationLifecycle == null || metadata.routeEndpoint() == null || metadata.routeEndpoint().isBlank()) {
+            return CompletableFuture.completedFuture(null);
+        }
+        return locationLifecycle.releaseSpotAsync(metadata.meshName(), metadata.nodeRid());
+    }
+
+    private ZLinkFrameworkException spotCreateLocationFailure(
+        RoutingId spotRid,
+        ZLinkLocationWriteStatus status) {
+        String message = status == ZLinkLocationWriteStatus.REJECTED_CONFLICT
+            ? "SPOT '" + spotRid + "' location is owned by another runtime."
+            : "SPOT '" + spotRid + "' location claim failed because the location store is unavailable.";
+        return new ZLinkFrameworkException(message);
     }
 
     @Override
@@ -683,8 +763,9 @@ public final class ZLinkSpotRuntime implements ZLinkSpotManager, AutoCloseable {
         if (removed == null) {
             return CompletableFuture.completedFuture(false);
         }
-        removed.close();
-        return CompletableFuture.completedFuture(true);
+        return releaseSpotLocationAsync(spotRid)
+            .whenComplete((ignored, error) -> removed.close())
+            .thenApply(ignored -> true);
     }
 
     @Override
@@ -692,10 +773,19 @@ public final class ZLinkSpotRuntime implements ZLinkSpotManager, AutoCloseable {
         beginClose();
         RuntimeException firstFailure = null;
         for (EntrySpotActivation entrySpot : entrySpots) {
+            SpotNodeLocationMetadata metadata = locationMetadataByNodeRid.get(entrySpot.context.nodeRid());
+            if (metadata != null) {
+                firstFailure = closeRuntimeComponent(
+                    () -> releaseEntrySpotLocation(metadata).toCompletableFuture().join(),
+                    firstFailure);
+            }
             firstFailure = closeRuntimeComponent(entrySpot::close, firstFailure);
         }
         entrySpots.clear();
         for (SpotActivation spot : spots.values()) {
+            firstFailure = closeRuntimeComponent(
+                () -> releaseSpotLocationAsync(spot.backendSpot.routingId()).toCompletableFuture().join(),
+                firstFailure);
             firstFailure = closeRuntimeComponent(spot::close, firstFailure);
         }
         spots.clear();
@@ -706,10 +796,6 @@ public final class ZLinkSpotRuntime implements ZLinkSpotManager, AutoCloseable {
         for (ZLinkBackendSpotNode node : nodes) {
             firstFailure = closeRuntimeComponent(node::close, firstFailure);
         }
-        for (ZLinkBackendDiscovery discovery : attachedChannelDiscoveries) {
-            firstFailure = closeRuntimeComponent(discovery::close, firstFailure);
-        }
-        attachedChannelDiscoveries.clear();
         timerExecutor.shutdownNow();
         workerPool.close();
         if (ownsContext) {
@@ -765,6 +851,7 @@ public final class ZLinkSpotRuntime implements ZLinkSpotManager, AutoCloseable {
         this.actorRuntime.setCreatedNotifier(this::notifyEntrySpotActorCreated);
         this.actorRuntime.setDisconnectedNotifier(this::notifySpotActorDisconnected);
         this.actorRuntime.setSpotResolver(this::spotFor);
+        this.actorRuntime.setSpotMeshResolver(this::meshNameForSpot);
     }
 
     public Map<String, ZLinkBackendSpotNode> nodesByName() {
@@ -772,7 +859,7 @@ public final class ZLinkSpotRuntime implements ZLinkSpotManager, AutoCloseable {
     }
 
     public boolean isSessionRelayRouteReady(RoutingId nodeRid) {
-        if (!SpotDiscoveryReconciler.hasRoutingId(nodeRid)) {
+        if (!hasRoutingId(nodeRid)) {
             return true;
         }
         for (ZLinkBackendSpotNode node : nodes) {
@@ -780,7 +867,24 @@ public final class ZLinkSpotRuntime implements ZLinkSpotManager, AutoCloseable {
                 return true;
             }
         }
-        return spotDiscoveryReconciler.isRouterPeerReady(nodeRid);
+        return manualRouterPeerNodeRids.contains(nodeRid)
+            || autoConnectedRouterPeerNodeRids.contains(nodeRid);
+    }
+
+    public void markAutoConnectedRouterPeer(RoutingId nodeRid) {
+        if (hasRoutingId(nodeRid)) {
+            autoConnectedRouterPeerNodeRids.add(nodeRid);
+        }
+    }
+
+    public void unmarkAutoConnectedRouterPeer(RoutingId nodeRid) {
+        if (hasRoutingId(nodeRid)) {
+            autoConnectedRouterPeerNodeRids.remove(nodeRid);
+        }
+    }
+
+    private static boolean hasRoutingId(RoutingId routingId) {
+        return routingId != null && routingId.size() > 0;
     }
 
     public ZLinkSpotOutbound outbound() {
@@ -791,31 +895,19 @@ public final class ZLinkSpotRuntime implements ZLinkSpotManager, AutoCloseable {
         return new DefaultSpotPublisherClient();
     }
 
-    public ZLinkSpotRemoteAddress resolveRegistrySpotRemoteAddress(
-        String namespaceName,
-        String configuredRouterChannelId,
-        RoutingId spotRid) {
-        requireRoutingId(spotRid);
-        String routerChannelId = resolveRouterChannelId(configuredRouterChannelId);
-        ZLinkBackendDiscovery discovery = resolveSpotDiscovery(namespaceName);
-        try {
-            ZLinkBackendSpotRoute route = discovery.resolveSpot(spotRid);
-            return new ZLinkSpotRemoteAddress(
-                routerChannelId,
-                route.nodeRid(),
-                route.spotRid(),
-                route.spotKind() == null ? ZLinkSpotKind.INVALID : route.spotKind());
-        } catch (RuntimeException ex) {
-            throw new ZLinkFrameworkException(
-                "SPOT route was not found for '" + spotRid + "'.",
-                ex);
-        }
-    }
-
     public void setRemoteAddressResolver(ZLinkSpotRemoteAddressResolver remoteAddressResolver) {
         this.remoteAddressResolver = java.util.Objects.requireNonNull(
             remoteAddressResolver,
             "remoteAddressResolver");
+    }
+
+    public void setLocationLifecycle(ZLinkLocationLifecycle lifecycle) {
+        this.locationLifecycle = lifecycle;
+        if (lifecycle != null) {
+            for (SpotNodeLocationMetadata metadata : locationMetadataByNodeRid.values()) {
+                claimEntrySpotLocation(metadata);
+            }
+        }
     }
 
     private CompletionStage<ZLinkSpotRemoteAddress> resolveSpotRemoteAddressAsync(
@@ -824,14 +916,8 @@ public final class ZLinkSpotRuntime implements ZLinkSpotManager, AutoCloseable {
         if (remoteAddressResolver != null) {
             return remoteAddressResolver.resolveSpotRemoteAddressAsync(spotRid);
         }
-        ZLinkRegistrySpotRemoteAddressesRegistration registry =
-            frameworkRegistration.registrySpotRemoteAddresses();
-        String namespaceName = registry == null ? null : registry.namespaceName();
-        String routerChannelId = configuredRouterChannelId != null
-            ? configuredRouterChannelId
-            : registry == null ? null : registry.routerChannelId();
-        return CompletableFuture.completedFuture(
-            resolveRegistrySpotRemoteAddress(namespaceName, routerChannelId, spotRid));
+        return CompletableFuture.failedFuture(new ZLinkConfigurationException(
+            "SPOT remote address resolution requires a location resolver/store backed resolver"));
     }
 
     public CompletionStage<Optional<Message>> dispatchLocalSessionActor(
@@ -1122,10 +1208,12 @@ public final class ZLinkSpotRuntime implements ZLinkSpotManager, AutoCloseable {
         CompletionStage<Optional<Message>> stage = withCurrentOutbound(
             outbound,
             preserveYieldTurn,
-            () -> actorIsRequest
-                ? invokeActorRequestHandler(handler, spotSurface, actor, payload)
-                : invokeActorSendHandler(handler, spotSurface, actor, payload)
-                    .thenApply(ignored -> Optional.empty()));
+            () -> actorRuntime.runActorDispatchTurn(
+                actor.actorId(),
+                () -> actorIsRequest
+                    ? invokeActorRequestHandler(handler, spotSurface, actor, payload)
+                    : invokeActorSendHandler(handler, spotSurface, actor, payload)
+                        .thenApply(ignored -> Optional.empty())));
         return stage.handle((reply, error) -> {
                 if (error != null) {
                     return Optional.of(new ActorDispatchReply(
@@ -1304,6 +1392,18 @@ public final class ZLinkSpotRuntime implements ZLinkSpotManager, AutoCloseable {
         return activation == null ? null : activation.spot;
     }
 
+    private String meshNameForSpot(RoutingId spotRid) {
+        if (spotRid == null) {
+            return null;
+        }
+        SpotNodeLocationMetadata primaryMetadata = locationMetadataByNodeRid.get(primaryNode.routingId());
+        if (primaryMetadata != null && spots.containsKey(spotRid)) {
+            return primaryMetadata.meshName();
+        }
+        SpotNodeLocationMetadata nodeMetadata = locationMetadataByNodeRid.get(spotRid);
+        return nodeMetadata == null ? null : nodeMetadata.meshName();
+    }
+
     private Object spotSurfaceFor(RoutingId spotRid) {
         SpotActivation activation = spots.get(spotRid);
         if (activation != null) {
@@ -1460,38 +1560,6 @@ public final class ZLinkSpotRuntime implements ZLinkSpotManager, AutoCloseable {
         return publisherSpotsByChannel.computeIfAbsent(
             channelName,
             ignored -> node.createSpot());
-    }
-
-    private void attachSpotMeshDiscovery(
-        ZLinkChannelBackendAdapter channelAdapter,
-        ZLinkFrameworkRegistration frameworkRegistration,
-        SpotNodeRegistration nodeRegistration,
-        ZLinkBackendSpotNode node) {
-        if (!frameworkRegistration.discoveryEnabled()
-            || (!nodeRegistration.routerEnabled() && !nodeRegistration.pubSubEnabled())) {
-            return;
-        }
-        ZLinkBackendDiscovery discovery = channelAdapter.createDiscovery(
-            context,
-            ZLinkBackendAutoConnectType.SPOT_MESH,
-            nodeRegistration.meshName());
-        for (String endpoint : frameworkRegistration.registryEndpoints()) {
-            discovery.connectRegistry(endpoint);
-        }
-        if (frameworkRegistration.registrySpotRemoteAddresses() != null) {
-            discovery.setSpotOwnerSyncEnabled(true);
-        }
-        node.attachDiscovery(discovery);
-        attachedChannelDiscoveries.add(discovery);
-        spotDiscoveriesByMesh.putIfAbsent(nodeRegistration.meshName(), discovery);
-        spotDiscoveryReconciler.addBinding(
-            nodeRegistration.meshName(),
-            node,
-            discovery,
-            nodeRegistration.routerEnabled(),
-            nodeRegistration.pubSubEnabled(),
-            nodeRegistration.routerBind(),
-            nodeRegistration.pubBind());
     }
 
     private void attachRouteMeshSpotBridges(Map<String, ZLinkBackendSpotNode> routeBridgeNodesByName) {
@@ -1652,8 +1720,11 @@ public final class ZLinkSpotRuntime implements ZLinkSpotManager, AutoCloseable {
             // Completion callbacks enter the Entry Spot serial line through
             // the handler executor: never on the worker thread, with the
             // entry spot outbound context available.
-            return new DefaultZLinkWorkerCall<>(workerPool, work, operation ->
-                enqueueDispatch(() -> withCurrentOutbound(outbound, operation)));
+            return new DefaultZLinkWorkerCall<>(
+                workerPool,
+                work,
+                operation -> enqueueDispatch(() -> withCurrentOutbound(outbound, operation)),
+                false);
         }
 
         void closeRegistration() {
@@ -1763,6 +1834,9 @@ public final class ZLinkSpotRuntime implements ZLinkSpotManager, AutoCloseable {
         private final ZLinkEntrySpot<?> entrySpot;
         private final ZLinkBackendSpot backendSpot;
         private final DefaultEntrySpotContext context;
+        private final Set<ZLinkBackendReceived> activeRouteReceives =
+            java.util.Collections.synchronizedSet(
+                java.util.Collections.newSetFromMap(new java.util.IdentityHashMap<>()));
         private ZLinkBackendActorReceived pendingActorHeader;
 
         EntrySpotActivation(
@@ -1815,8 +1889,9 @@ public final class ZLinkSpotRuntime implements ZLinkSpotManager, AutoCloseable {
         }
 
         private void dispatchRoute(ZLinkBackendReceived received) {
+            activeRouteReceives.add(received);
             if (received.parts().isEmpty()) {
-                received.close();
+                closeRouteReceived(received);
                 return;
             }
             ParsedPacket packet = parsePacket(received.parts());
@@ -1835,17 +1910,17 @@ public final class ZLinkSpotRuntime implements ZLinkSpotManager, AutoCloseable {
                 if (received.requestSeq().isPresent()) {
                     handleRoutedBoundSessionSendRequestParts(received.parts())
                         .thenAccept(received::reply)
-                        .whenComplete((ignored, error) -> received.close());
+                        .whenComplete((ignored, error) -> closeRouteReceived(received));
                 } else {
                     handleRoutedBoundSessionSendParts(received.parts());
-                    received.close();
+                    closeRouteReceived(received);
                 }
                 return;
             }
             if (ZLinkActorSpotRoutePackets.ACTOR_PACKET_NAME.equals(packet.packetName())) {
                 handleRoutedActorPacketParts(received.parts())
                     .thenAccept(reply -> reply.ifPresent(message -> received.reply(List.of(message))))
-                    .whenComplete((ignored, error) -> received.close());
+                    .whenComplete((ignored, error) -> closeRouteReceived(received));
                 return;
             }
             SpotPacketHandlerRegistration handler =
@@ -1883,7 +1958,7 @@ public final class ZLinkSpotRuntime implements ZLinkSpotManager, AutoCloseable {
                         null,
                         null);
                 }
-                received.close();
+                closeRouteReceived(received);
                 return;
             }
             if (received.requestSeq().isPresent()) {
@@ -1904,7 +1979,7 @@ public final class ZLinkSpotRuntime implements ZLinkSpotManager, AutoCloseable {
                         received.routingId().orElse(null),
                         received.requestSeq().map(Object::toString).orElse(null),
                         null);
-                    received.close();
+                    closeRouteReceived(received);
                     return;
                 }
                 Message payloadCopy = Message.from(packet.payload());
@@ -1914,15 +1989,17 @@ public final class ZLinkSpotRuntime implements ZLinkSpotManager, AutoCloseable {
                         .thenAccept(reply -> received.reply(List.of(reply)))
                         .whenComplete((ignored, error) -> {
                             if (error != null) {
-                                replySpotRouteDispatchError(
-                                    received,
-                                    packet.packetName(),
-                                    backendSpot.routingId(),
-                                    ZLinkDispatchErrorReason.HANDLER_EXCEPTION,
-                                    error);
+                                if (!closing) {
+                                    replySpotRouteDispatchError(
+                                        received,
+                                        packet.packetName(),
+                                        backendSpot.routingId(),
+                                        ZLinkDispatchErrorReason.HANDLER_EXCEPTION,
+                                        error);
+                                }
                             }
                             payloadCopy.close();
-                            received.close();
+                            closeRouteReceived(received);
                             if (error == null
                                 && dispatchErrors.flow().enabled(ZLinkMessageFlowOutcome.REPLIED)) {
                                 dispatchErrors.flow().trace(new ZLinkMessageFlowEvent(
@@ -1936,41 +2013,41 @@ public final class ZLinkSpotRuntime implements ZLinkSpotManager, AutoCloseable {
                         }));
                 return;
             }
-            try (received) {
-                if (handler.request()) {
-                    reportDispatchError(
-                        ZLinkDispatchErrorSurface.SPOT_ROUTE,
-                        ZLinkDispatchMessageKind.SEND,
-                        ZLinkDispatchErrorReason.HANDLER_MISSING,
-                        ZLinkDispatchErrorAction.DROP,
-                        packet.packetName(),
-                        null,
-                        null,
-                        backendSpot.routingId(),
-                        null,
-                        received.routingId().orElse(null),
-                        null,
-                        null);
-                    return;
-                }
-                Message payloadCopy = Message.from(packet.payload());
-                String sendPacketName = packet.packetName();
-                context.enqueueDispatch(() ->
-                    withCurrentOutbound(context.outbound, () ->
-                        invokeSpotPacketHandler(handler, entrySpot, payloadCopy))
-                        .whenComplete((ignored, error) -> {
-                            payloadCopy.close();
-                            if (error == null
-                                && dispatchErrors.flow().enabled(ZLinkMessageFlowOutcome.DISPATCHED)) {
-                                dispatchErrors.flow().trace(new ZLinkMessageFlowEvent(
-                                    ZLinkMessageFlowOutcome.DISPATCHED,
-                                    ZLinkDispatchErrorSurface.SPOT_ROUTE,
-                                    ZLinkDispatchMessageKind.SEND,
-                                    sendPacketName, null, null, null,
-                                    null, backendSpot.routingId().toString(), null, null));
-                            }
-                        }));
+            if (handler.request()) {
+                reportDispatchError(
+                    ZLinkDispatchErrorSurface.SPOT_ROUTE,
+                    ZLinkDispatchMessageKind.SEND,
+                    ZLinkDispatchErrorReason.HANDLER_MISSING,
+                    ZLinkDispatchErrorAction.DROP,
+                    packet.packetName(),
+                    null,
+                    null,
+                    backendSpot.routingId(),
+                    null,
+                    received.routingId().orElse(null),
+                    null,
+                    null);
+                closeRouteReceived(received);
+                return;
             }
+            Message payloadCopy = Message.from(packet.payload());
+            String sendPacketName = packet.packetName();
+            closeRouteReceived(received);
+            context.enqueueDispatch(() ->
+                withCurrentOutbound(context.outbound, () ->
+                    invokeSpotPacketHandler(handler, entrySpot, payloadCopy))
+                    .whenComplete((ignored, error) -> {
+                        payloadCopy.close();
+                        if (error == null
+                            && dispatchErrors.flow().enabled(ZLinkMessageFlowOutcome.DISPATCHED)) {
+                            dispatchErrors.flow().trace(new ZLinkMessageFlowEvent(
+                                ZLinkMessageFlowOutcome.DISPATCHED,
+                                ZLinkDispatchErrorSurface.SPOT_ROUTE,
+                                ZLinkDispatchMessageKind.SEND,
+                                sendPacketName, null, null, null,
+                                null, backendSpot.routingId().toString(), null, null));
+                        }
+                    }));
         }
 
         private void handleRoutedBoundSessionSendParts(List<Message> parts) {
@@ -2139,9 +2216,9 @@ public final class ZLinkSpotRuntime implements ZLinkSpotManager, AutoCloseable {
                 return;
             }
             if (event.kind() == ZLinkBackendActorLifecycleEventKind.LEFT) {
-                actorRuntime.markLeft(actor);
                 context.enqueueDispatch(
-                    () -> notifySpotActorLifecycle(entrySpot, actor, false));
+                    () -> actorRuntime.markLeftAsync(actor)
+                        .thenCompose(ignored -> notifySpotActorLifecycle(entrySpot, actor, false)));
                 return;
             }
             if (event.kind() == ZLinkBackendActorLifecycleEventKind.DISCONNECTED) {
@@ -2151,13 +2228,13 @@ public final class ZLinkSpotRuntime implements ZLinkSpotManager, AutoCloseable {
             RoutingId spotRid = event.info()
                 .currentSpotRid()
                 .orElse(backendSpot.routingId());
-            actorRuntime.markJoined(
-                actor,
-                actorRef,
-                spotRid,
-                spotSurfaceFor(spotRid) instanceof ZLinkSpot<?> spot ? spot : null);
             context.enqueueDispatch(
-                () -> notifySpotActorLifecycle(entrySpot, actor, true));
+                () -> actorRuntime.markJoinedAsync(
+                        actor,
+                        actorRef,
+                        spotRid,
+                        spotSurfaceFor(spotRid) instanceof ZLinkSpot<?> spot ? spot : null)
+                    .thenCompose(ignored -> notifySpotActorLifecycle(entrySpot, actor, true)));
         }
 
         private void dispatchActorMessages(List<ZLinkBackendActorReceived> actorMessages) {
@@ -2389,7 +2466,7 @@ public final class ZLinkSpotRuntime implements ZLinkSpotManager, AutoCloseable {
             Message payload) {
             return dispatchActorPacketToHandler(
                 context.outbound,
-                false,
+                true,
                 handler,
                 spotSurface,
                 actor,
@@ -2499,17 +2576,17 @@ public final class ZLinkSpotRuntime implements ZLinkSpotManager, AutoCloseable {
                             if (!effective.accepted()) {
                                 return CompletableFuture.completedFuture(effective);
                             }
-                            actorRuntime.markJoined(
-                                actor.get(),
-                                request.targetActor(),
-                                backendSpot.routingId(),
-                                null);
-                            return context.enqueueDispatch(() ->
-                                    notifySpotActorLifecycle(entrySpot, actor.get(), true))
+                            return actorRuntime.markJoinedAsync(
+                                    actor.get(),
+                                    request.targetActor(),
+                                    backendSpot.routingId(),
+                                    null)
+                                .thenCompose(ignored -> context.enqueueDispatch(() ->
+                                    notifySpotActorLifecycle(entrySpot, actor.get(), true)))
                                 .thenApply(ignored -> effective)
                                 .whenComplete((reply, error) -> {
                                     if (error != null) {
-                                        actorRuntime.markLeft(actor.get());
+                                        actorRuntime.markLeftAsync(actor.get());
                                     }
                                 });
                         });
@@ -2527,8 +2604,21 @@ public final class ZLinkSpotRuntime implements ZLinkSpotManager, AutoCloseable {
                     pendingActorHeader.close();
                     pendingActorHeader = null;
                 }
+                closeActiveRouteReceives();
                 context.closeTimers();
                 backendSpot.close();
+            }
+        }
+
+        private void closeActiveRouteReceives() {
+            for (ZLinkBackendReceived received : List.copyOf(activeRouteReceives)) {
+                closeRouteReceived(received);
+            }
+        }
+
+        private void closeRouteReceived(ZLinkBackendReceived received) {
+            if (activeRouteReceives.remove(received)) {
+                received.close();
             }
         }
     }
@@ -2536,6 +2626,12 @@ public final class ZLinkSpotRuntime implements ZLinkSpotManager, AutoCloseable {
     private record SpotActivationCreateResult(
         SpotActivation activation,
         ZLinkSpotCreateResponse response) {
+    }
+
+    private record SpotNodeLocationMetadata(
+        String meshName,
+        RoutingId nodeRid,
+        String routeEndpoint) {
     }
 
     private final class DefaultSpotContext implements ZLinkSpotContext {
@@ -2633,11 +2729,10 @@ public final class ZLinkSpotRuntime implements ZLinkSpotManager, AutoCloseable {
                             replyParts.forEach(Message::close);
                         }
                     });
-                actorRuntime.markLeft(actor);
-                actorRuntime.submitActorDispatch(
+                return actorRuntime.submitActorDispatch(
                     actor.actorId(),
-                    () -> notifySpotActorLifecycle(this.spot, actor, false));
-                return systems.zlink.framework.ZLinkSubmitStage.completed();
+                    () -> actorRuntime.markLeftAsync(actor)
+                        .thenCompose(ignored -> notifySpotActorLifecycle(this.spot, actor, false)));
             } catch (RuntimeException ex) {
                 return CompletableFuture.failedFuture(ex);
             }
@@ -2690,8 +2785,11 @@ public final class ZLinkSpotRuntime implements ZLinkSpotManager, AutoCloseable {
             // Completion callbacks enter the Spot serial line through the
             // handler executor, exactly like packet handlers: they never run
             // on the worker thread and they see the spot outbound context.
-            return new DefaultZLinkWorkerCall<>(workerPool, work, operation ->
-                enqueueDispatch(() -> withCurrentOutbound(outbound, operation)));
+            return new DefaultZLinkWorkerCall<>(
+                workerPool,
+                work,
+                operation -> enqueueDispatch(() -> withCurrentOutbound(outbound, operation)),
+                true);
         }
 
         void closeRegistration() {
@@ -3266,7 +3364,7 @@ public final class ZLinkSpotRuntime implements ZLinkSpotManager, AutoCloseable {
                 }
                 List<Message> spotParts = parts(packetName, payload);
                 try {
-                    channels.sendToSpotViaRouterChannel(
+                    return channels.sendToSpotViaRouterChannel(
                         address.routerChannelId(),
                         address.targetNodeRid(),
                         address.spotRid(),
@@ -3274,7 +3372,6 @@ public final class ZLinkSpotRuntime implements ZLinkSpotManager, AutoCloseable {
                 } finally {
                     spotParts.forEach(Message::close);
                 }
-                return systems.zlink.framework.ZLinkSubmitStage.completed();
             }));
         }
 
@@ -3552,34 +3649,6 @@ public final class ZLinkSpotRuntime implements ZLinkSpotManager, AutoCloseable {
                 }
             }));
         }
-    }
-
-    private String resolveRouterChannelId(String configuredRouterChannelId) {
-        if (configuredRouterChannelId != null && !configuredRouterChannelId.isBlank()) {
-            return configuredRouterChannelId;
-        }
-        if (routeMeshChannels.size() == 1) {
-            return routeMeshChannels.get(0).name();
-        }
-        if (routeMeshChannels.isEmpty() && routerSpotNodeNames.size() == 1) {
-            return routerSpotNodeNames.get(0);
-        }
-        throw new ZLinkConfigurationException(
-            "registry SPOT remote addresses require a single route mesh egress channel or router-capable SpotNode, or an explicit routerChannelId");
-    }
-
-    private ZLinkBackendDiscovery resolveSpotDiscovery(String namespaceName) {
-        if (namespaceName != null) {
-            ZLinkBackendDiscovery discovery = spotDiscoveriesByMesh.get(namespaceName);
-            if (discovery != null) {
-                return discovery;
-            }
-        }
-        if (spotDiscoveriesByMesh.size() == 1) {
-            return spotDiscoveriesByMesh.values().iterator().next();
-        }
-        throw new ZLinkConfigurationException(
-            "registry SPOT remote addresses require a unique Spot mesh discovery");
     }
 
     private final class SpotToSpotSendCall implements ZLinkSendCall {
@@ -4575,6 +4644,9 @@ public final class ZLinkSpotRuntime implements ZLinkSpotManager, AutoCloseable {
         private final ZLinkSpot<?> spot;
         private final ZLinkBackendSpot backendSpot;
         private final DefaultSpotContext context;
+        private final Set<ZLinkBackendReceived> activeRouteReceives =
+            java.util.Collections.synchronizedSet(
+                java.util.Collections.newSetFromMap(new java.util.IdentityHashMap<>()));
         private ZLinkBackendActorReceived pendingActorHeader;
 
         SpotActivation(
@@ -4674,8 +4746,9 @@ public final class ZLinkSpotRuntime implements ZLinkSpotManager, AutoCloseable {
         }
 
         private CompletionStage<Void> dispatchRouteAsync(ZLinkBackendReceived received) {
+            activeRouteReceives.add(received);
             if (received.parts().isEmpty()) {
-                received.close();
+                closeRouteReceived(received);
                 return systems.zlink.framework.ZLinkSubmitStage.completed();
             }
             ParsedPacket packet = parsePacket(received.parts());
@@ -4700,13 +4773,13 @@ public final class ZLinkSpotRuntime implements ZLinkSpotManager, AutoCloseable {
                     : handleRoutedBoundSessionSendParts(received.parts());
                 return stage
                     .thenApply(ignored -> (Void) null)
-                    .whenComplete((ignored, error) -> received.close());
+                    .whenComplete((ignored, error) -> closeRouteReceived(received));
             }
             if (ZLinkActorSpotRoutePackets.ACTOR_PACKET_NAME.equals(packet.packetName())) {
                 return handleRoutedActorPacketParts(received.parts())
                     .thenAccept(reply -> reply.ifPresent(message -> received.reply(List.of(message))))
                     .thenApply(ignored -> (Void) null)
-                    .whenComplete((ignored, error) -> received.close());
+                    .whenComplete((ignored, error) -> closeRouteReceived(received));
             }
             SpotPacketHandlerRegistration handler =
                 context.packetHandler(packet.packetName());
@@ -4743,7 +4816,7 @@ public final class ZLinkSpotRuntime implements ZLinkSpotManager, AutoCloseable {
                         null,
                         null);
                 }
-                received.close();
+                closeRouteReceived(received);
                 return systems.zlink.framework.ZLinkSubmitStage.completed();
             }
             if (received.requestSeq().isPresent()) {
@@ -4764,7 +4837,7 @@ public final class ZLinkSpotRuntime implements ZLinkSpotManager, AutoCloseable {
                         received.routingId().orElse(null),
                         received.requestSeq().map(Object::toString).orElse(null),
                         null);
-                    received.close();
+                    closeRouteReceived(received);
                     return systems.zlink.framework.ZLinkSubmitStage.completed();
                 }
                 Message payloadCopy = Message.from(packet.payload());
@@ -4773,15 +4846,17 @@ public final class ZLinkSpotRuntime implements ZLinkSpotManager, AutoCloseable {
                     .thenAccept(reply -> received.reply(List.of(reply)))
                     .whenComplete((ignored, error) -> {
                         if (error != null) {
-                            replySpotRouteDispatchError(
-                                received,
-                                packet.packetName(),
-                                backendSpot.routingId(),
-                                ZLinkDispatchErrorReason.HANDLER_EXCEPTION,
-                                error);
+                            if (!closing) {
+                                replySpotRouteDispatchError(
+                                    received,
+                                    packet.packetName(),
+                                    backendSpot.routingId(),
+                                    ZLinkDispatchErrorReason.HANDLER_EXCEPTION,
+                                    error);
+                            }
                         }
                         payloadCopy.close();
-                        received.close();
+                        closeRouteReceived(received);
                         if (error == null
                             && dispatchErrors.flow().enabled(ZLinkMessageFlowOutcome.REPLIED)) {
                             dispatchErrors.flow().trace(new ZLinkMessageFlowEvent(
@@ -4808,12 +4883,12 @@ public final class ZLinkSpotRuntime implements ZLinkSpotManager, AutoCloseable {
                     received.routingId().orElse(null),
                     null,
                     null);
-                received.close();
+                closeRouteReceived(received);
                 return systems.zlink.framework.ZLinkSubmitStage.completed();
             }
             Message payloadCopy = Message.from(packet.payload());
             String routeAsyncSendPacket = packet.packetName();
-            received.close();
+            closeRouteReceived(received);
             return withCurrentOutbound(context.outbound, () ->
                 invokeSpotPacketHandler(handler, spot, payloadCopy))
                 .whenComplete((ignored, error) -> {
@@ -4944,10 +5019,10 @@ public final class ZLinkSpotRuntime implements ZLinkSpotManager, AutoCloseable {
                 return systems.zlink.framework.ZLinkSubmitStage.completed();
             }
             if (event.kind() == ZLinkBackendActorLifecycleEventKind.LEFT) {
-                actorRuntime.markLeft(actor);
                 return actorRuntime.submitActorDispatch(
                     actor.actorId(),
-                    () -> notifySpotActorLifecycle(spot, actor, false));
+                    () -> actorRuntime.markLeftAsync(actor)
+                        .thenCompose(ignored -> notifySpotActorLifecycle(spot, actor, false)));
             }
             if (event.kind() == ZLinkBackendActorLifecycleEventKind.DISCONNECTED) {
                 return actorRuntime.submitActorDispatch(
@@ -4957,14 +5032,14 @@ public final class ZLinkSpotRuntime implements ZLinkSpotManager, AutoCloseable {
             RoutingId spotRid = event.info()
                 .currentSpotRid()
                 .orElse(backendSpot.routingId());
-            actorRuntime.markJoined(
-                actor,
-                actorRef,
-                spotRid,
-                spotSurfaceFor(spotRid) instanceof ZLinkSpot<?> spot ? spot : null);
             return actorRuntime.submitActorDispatch(
                 actor.actorId(),
-                () -> notifySpotActorLifecycle(spot, actor, true));
+                () -> actorRuntime.markJoinedAsync(
+                        actor,
+                        actorRef,
+                        spotRid,
+                        spotSurfaceFor(spotRid) instanceof ZLinkSpot<?> spot ? spot : null)
+                    .thenCompose(ignored -> notifySpotActorLifecycle(spot, actor, true)));
         }
 
         private CompletionStage<Void> dispatchActorMessagesAsync(List<ZLinkBackendActorReceived> actorMessages) {
@@ -5235,7 +5310,7 @@ public final class ZLinkSpotRuntime implements ZLinkSpotManager, AutoCloseable {
                         replyParts.forEach(Message::close);
                     }
                 })
-                .whenComplete((ignored, error) -> received.close());
+                .whenComplete((ignored, error) -> closeRouteReceived(received));
         }
 
         private CompletionStage<Void> handleRoutedBoundSessionSendParts(List<Message> parts) {
@@ -5311,7 +5386,7 @@ public final class ZLinkSpotRuntime implements ZLinkSpotManager, AutoCloseable {
                 ? Message.from(parts.get(2).toByteArray())
                 : Message.from(new byte[0]);
             return actorRuntime
-                .getOrCreateManagedActorWithoutCreateNotification(
+                .getOrCreateManagedActorWithoutLocationClaim(
                     joinRequest.actorId(),
                     joinRequest.actorType())
                 .thenCompose(actor -> {
@@ -5354,16 +5429,16 @@ public final class ZLinkSpotRuntime implements ZLinkSpotManager, AutoCloseable {
                                 }
                                 return CompletableFuture.completedFuture(effective);
                             }
-                            actorRuntime.markJoined(
-                                actor,
-                                localActorRef,
-                                backendSpot.routingId(),
-                                spotFor(backendSpot.routingId()));
-                            return notifySpotActorLifecycle(spot, actor, true)
+                            return actorRuntime.markJoinedAsync(
+                                    actor,
+                                    localActorRef,
+                                    backendSpot.routingId(),
+                                    spotFor(backendSpot.routingId()))
+                                .thenCompose(ignored -> notifySpotActorLifecycle(spot, actor, true))
                                 .thenApply(ignored -> effective)
                                 .whenComplete((reply, error) -> {
                                     if (error != null) {
-                                        actorRuntime.markLeft(actor);
+                                        actorRuntime.markLeftAsync(actor);
                                         if (routedBindingToken[0] >= 0) {
                                             actorRuntime.clearSessionBinding(actor, routedBindingToken[0]);
                                         }
@@ -5435,16 +5510,16 @@ public final class ZLinkSpotRuntime implements ZLinkSpotManager, AutoCloseable {
                             if (!effective.accepted()) {
                                 return CompletableFuture.completedFuture(effective);
                             }
-                            actorRuntime.markJoined(
-                                actor.get(),
-                                request.targetActor(),
-                                backendSpot.routingId(),
-                                spotFor(backendSpot.routingId()));
-                            return notifySpotActorLifecycle(spot, actor.get(), true)
+                            return actorRuntime.markJoinedAsync(
+                                    actor.get(),
+                                    request.targetActor(),
+                                    backendSpot.routingId(),
+                                    spotFor(backendSpot.routingId()))
+                                .thenCompose(ignored -> notifySpotActorLifecycle(spot, actor.get(), true))
                                 .thenApply(ignored -> effective)
                                 .whenComplete((reply, error) -> {
                                     if (error != null) {
-                                        actorRuntime.markLeft(actor.get());
+                                        actorRuntime.markLeftAsync(actor.get());
                                     }
                                 });
                         });
@@ -5470,8 +5545,21 @@ public final class ZLinkSpotRuntime implements ZLinkSpotManager, AutoCloseable {
                 pendingActorHeader.close();
                 pendingActorHeader = null;
             }
+            closeActiveRouteReceives();
             context.closeTimers();
             backendSpot.close();
+        }
+
+        private void closeActiveRouteReceives() {
+            for (ZLinkBackendReceived received : List.copyOf(activeRouteReceives)) {
+                closeRouteReceived(received);
+            }
+        }
+
+        private void closeRouteReceived(ZLinkBackendReceived received) {
+            if (activeRouteReceives.remove(received)) {
+                received.close();
+            }
         }
     }
 

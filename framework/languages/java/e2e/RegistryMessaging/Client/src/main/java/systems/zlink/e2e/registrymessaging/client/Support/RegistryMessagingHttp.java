@@ -4,7 +4,6 @@ import java.time.Duration;
 import systems.zlink.httpclient.ZLinkHttpClient;
 
 public final class RegistryMessagingHttp implements AutoCloseable {
-    private final ZLinkHttpClient registry;
     private final ZLinkHttpClient providerA;
     private final ZLinkHttpClient providerB;
     private final ZLinkHttpClient workflow;
@@ -14,7 +13,6 @@ public final class RegistryMessagingHttp implements AutoCloseable {
     private final ZLinkHttpClient backpressureConsumer;
 
     public RegistryMessagingHttp() {
-        registry = client("ZLINK_JAVA_E2E_REGISTRY_HTTP_URL");
         providerA = client("ZLINK_JAVA_E2E_PROVIDER_A_HTTP_URL");
         providerB = client("ZLINK_JAVA_E2E_PROVIDER_B_HTTP_URL");
         workflow = client("ZLINK_JAVA_E2E_WORKFLOW_HTTP_URL");
@@ -22,10 +20,6 @@ public final class RegistryMessagingHttp implements AutoCloseable {
         directConsumer = client("ZLINK_JAVA_E2E_DIRECT_CONSUMER_HTTP_URL");
         singleConsumer = client("ZLINK_JAVA_E2E_SINGLE_CONSUMER_HTTP_URL");
         backpressureConsumer = client("ZLINK_JAVA_E2E_BACKPRESSURE_CONSUMER_HTTP_URL");
-    }
-
-    public ZLinkHttpClient registry() {
-        return registry;
     }
 
     public ZLinkHttpClient providerA() {
@@ -58,7 +52,6 @@ public final class RegistryMessagingHttp implements AutoCloseable {
 
     @Override
     public void close() {
-        registry.close();
         providerA.close();
         providerB.close();
         workflow.close();

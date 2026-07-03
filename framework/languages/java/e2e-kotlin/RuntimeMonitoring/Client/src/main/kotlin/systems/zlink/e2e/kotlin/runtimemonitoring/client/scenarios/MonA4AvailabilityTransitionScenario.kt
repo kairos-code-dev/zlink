@@ -31,9 +31,9 @@ class MonA4AvailabilityTransitionScenario(
                 setOf("WeightChanged"),
             )
             evidence.waitForEvent(
-                options.registryHttp,
-                "registry",
-                Contracts.REGISTRY_SOURCE,
+                options.serviceHttp,
+                "location",
+                Contracts.LOCATION_SOURCE,
                 setOf("TOPOLOGY_CHANGED"),
             )
         } finally {

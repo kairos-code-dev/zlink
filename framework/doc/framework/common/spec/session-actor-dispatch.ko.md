@@ -12,13 +12,13 @@
 
 현재 session actor dispatch 기능은 session server와 play server를 분리하는 구조를 실제로
 표현할 수 있다. 별도 `TicTacToe(session-gateway)` sample도 실제 TCP stream
-connector, routed channel, discovery, session actor dispatch, actor relay를 함께 사용해서
+connector, routed channel, location store 자동 연결, session actor dispatch, actor relay를 함께 사용해서
 동작한다.
 
 다만 sample을 작성하면서 framework 사용자가 알아야 하는 개념이 많다는 문제가
 드러났다. 사용자는 틱택토 같은 domain 흐름을 설명하고 싶지만, 실제 코드는
 `RoutingId`, raw actor dispatch handler, stream header, packet name, actor/session 위치 저장소,
-discovery 설정을 함께 다뤄야 한다.
+자동 연결 설정을 함께 다뤄야 한다.
 
 이 문서의 목적은 정식 application public API를 session에서 actor를 생성하고 dispatch하는
 표면과 actor에서 client session으로 보내는 `SessionProxy` 표면으로 다시 나누는 것이다.
@@ -48,7 +48,7 @@ session actor dispatch sample의 핵심 흐름은 아래 네 가지다.
 | stream header | client request sequence를 보존하려면 raw dispatch 경로를 이해해야 한다. |
 | raw actor dispatch handler | session server에서 넘어온 actor relay envelope를 play server에서 풀어야 한다. |
 | 위치 저장소 | actor가 있는 play node와 session node를 application이 직접 찾아야 한다. |
-| discovery | routed channel 연결을 자동으로 붙이려면 registry와 discovery 설정을 알아야 한다. |
+| 자동 연결 | routed channel 연결을 자동으로 붙이려면 location store 등록과 mesh 참여 설정을 알아야 한다. |
 
 이 목록은 기능 자체가 잘못되었다는 뜻이 아니다. 낮은 수준 표면으로는 필요한
 정보다. 문제는 간단한 sample도 이 정보 대부분을 직접 노출한다는 점이다.
@@ -90,15 +90,16 @@ reply matching은 framework helper 안에 있을 때 더 자연스럽다. applic
 생성 위치와 dispatch 결정은 직접 내리되, transport 세부 작업을 반복해서 작성하지
 않아야 한다.
 
-### 2.5 discovery 설정은 기능보다 배선이 더 많이 보인다
+### 2.5 자동 연결 설정은 기능보다 배선이 더 많이 보인다
 
-기존 `TicTacToe(session-gateway)` sample은 자동 연결을 보여 주기 위해 embedded registry와
-discovery를 사용한다. 이 결정은 맞다. 이 sample이 수동 연결을 쓰면 실제 서비스에서
+`TicTacToe(session-gateway)` sample은 자동 연결을 보여 주기 위해 공유 location store를
+등록한다. 이 결정은 맞다. 이 sample이 수동 연결을 쓰면 실제 서비스에서
 기대하는 topology와 달라지기 때문이다.
 
-하지만 application code가 registry endpoint, discovery attach 시점, routed channel
-discovery 사용 여부를 너무 넓게 알아야 하면 sample의 초점이 흐려진다. discovery는
-"이 host가 같은 mesh에 참여한다"는 선언에 가까워야 한다.
+하지만 application code가 store 연결 정보, 연결 시점, routed channel의
+자동 연결 사용 여부를 너무 넓게 알아야 하면 sample의 초점이 흐려진다. store 등록은
+"이 host가 같은 mesh에 참여한다"는 선언에 가까워야 한다
+([location runtime](location-runtime.ko.md) §8).
 
 ## 3. 설계 목표
 
@@ -110,7 +111,7 @@ discovery 사용 여부를 너무 넓게 알아야 하면 sample의 초점이 �
   sequence 보존은 framework helper가 맡는다.
 - typed handler 등록을 제공해서 `packetName` switch를 줄인다.
 - codec은 framework의 codec registry를 사용한다.
-- discovery는 수동 연결과 섞이지 않으며, 자동 연결 실패를 retry로 숨기지 않는다.
+- store 기반 자동 연결은 수동 연결과 섞이지 않으며, 자동 연결 실패를 retry로 숨기지 않는다.
 - 일반 send/request public API와 session actor helper는 `RoutingId`, `SpotNodeId` 같은
   transport 위치값을 직접 요구하지 않는다.
 - actor와 현재 stream session의 묶음은 사용자가 `CreateAndBindActorAsync(...)` 또는
@@ -127,12 +128,10 @@ discovery 사용 여부를 너무 넓게 알아야 하면 sample의 초점이 �
 
 - actor migration 정책
 - game room placement 알고리즘
-- 전역 location registry 제품화
-- registry host의 배포 형태
+- location store 제품 자체의 HA/배포 형태
 - client protocol 자체의 정식 packet set
 - retry policy 또는 connection warmup helper
 - in-memory fake transport
-- registry 기반 route resolver 기본 구현
 
 session actor dispatch는 전달 경로를 제공한다. actor가 어느 play node에 있어야 하는지,
 actor가 이미 존재할 때 create 요청을 어떻게 처리할지, 재연결 시 어느 정책으로 위치를
@@ -395,14 +394,17 @@ metadata나 raw message를 받으면 transport 위치 조회가 작은 dispatche
 
 ### 9.2 제안 interface
 
-route resolver는 application이 구현하고 framework가 호출하는 위치 조회 interface다.
-framework는 resolver가 어떤 저장소를 쓰는지 알지 않는다. 공개 resolver 축은 두 개로
-제한한다.
+위치 resolver는 framework가 기본 구현을 제공하는 조회 interface다. 기본 구현은
+location store를 읽고 owner lease join으로 유효성을 판정하며, **주소**
+(`ZLinkSpotAddress` = mesh + node rid + spot rid)를 반환한다
+([location runtime](location-runtime.ko.md) §5). 캐시는 없다 — 호출자가 resolve 결과를
+보관하고 실패 시 재resolve한다. 공개 resolver 축은 두 개로 제한한다.
 
-- **actor route resolver** -- `actorId` → "이 actor가 사는 actor/play node와 routed channel".
-  routing result에는 `RouterChannelId`와 target node 식별값이 들어간다.
-- **spot route resolver** -- `spotRid` 또는 `spotRid` → "이 user Spot이 있는 node와
-  spot rid". actor의 `JoinSpot(...)` 같은 표면에서 transport 위치값을 숨긴다.
+- **actor location resolver** -- `actor type + actorId` → "이 actor가 위치한 spot의
+  full 주소".
+- **spot location resolver** -- `spotRid` → "이 spot의 full 주소". actor의
+  `JoinSpot(...)` 같은 표면에서 transport 위치값을 숨긴다. 사용자 교체 지점은 SPOT
+  원격 주소 resolver 등록(`AddSpotRemoteAddressResolver<T>` 류)이다.
 
 actor resolver 입력은 `actorId` 하나로 유지한다. spot resolver 입력은 spot domain key
 하나로 유지한다. metadata, packet name, raw message, application payload는 resolver에
@@ -455,10 +457,11 @@ resolver가 route를 찾지 못하면 framework는 transport request를 보내�
 | spot route 없음 | spot id에 대응하는 user Spot을 찾지 못했다. |
 | actor-session binding 없음 | actor가 현재 어떤 stream session에도 binding되어 있지 않다. |
 | resolver timeout | route 결정 자체가 제한 시간 안에 끝나지 않았다. |
-| resolver exception | application route store 조회가 실패했다. |
+| resolver exception | location store 조회가 실패했다(infrastructure error). |
 
-이 실패들은 retry로 숨기지 않는다. 특히 discovery 기반 자동 연결이 아직 되지 않은
-상황과 route store에 값이 없는 상황은 원인이 다르다. sample과 framework helper는
+이 실패들은 retry로 숨기지 않는다. 특히 store 기반 자동 연결이 아직 되지 않은
+상황(연결 미수립)과 location row가 없는 상황(위치 없음)은 원인이 다르며, 전송 실패의
+fail-fast 분류가 이 둘을 구분한다. sample과 framework helper는
 임의 sleep이나 retry loop로 이를 덮지 않아야 한다.
 
 ### 9.5 위치 소유와 갱신 책임
@@ -468,41 +471,35 @@ actor 위치 정보는 두 층으로 나눈다.
 | 계층 | 소유자 | 내용 |
 |------|--------|------|
 | actor-session binding | framework/core runtime | 현재 actor가 어느 stream/session에 붙어 있는지 관리한다. |
-| actor/spot route resolution | application resolver | `actorId`, `spotRid`, `gameId` 같은 domain key가 어느 node/spot으로 가야 하는지 결정한다. |
+| actor/spot location resolution | framework location runtime | `actorId`, `spotRid` 같은 domain key가 어느 node/spot에 있는지 location store의 row로 결정한다. row는 actor/spot lifecycle이 자동 갱신한다. |
 
 framework는 actor-session binding을 내부 상태로 가진다. 인증이 끝나면 현재 stream에
 actor를 binding하고, 같은 actor가 다시 붙으면 이전 binding을 교체할 수 있어야 한다.
 disconnect나 session close는 현재 binding token이 맞을 때만 해제되어야 한다. 이 규칙은
 runtime 내부 상태 갱신 규칙이지 application이 구현하는 resolver 계약이 아니다.
 
-전역 actor/spot 위치 정책은 resolver 구현체가 가진다. 여기에는 아래 결정이 포함된다.
+위치의 권위 있는 저장소는 사용자가 등록한 location store다. store 구현체 선택
+(공식 Redis extension, 사용자 구현체)은 application 배포 결정이고, row의 갱신은
+framework lifecycle이 수행한다. placement 정책(game room을 어느 node에 만들지)은
+여전히 application의 것이지만, 그 결과는 location row로 기록된다.
 
-- 위치 저장소가 memory, registry, DB, Redis 중 무엇인지
-- actor route와 spot route의 TTL
-- cache invalidation 조건
-- game room이나 actor placement 정책
+위치 cache는 framework와 resolver 어디에도 없다. 모든 resolve가 store에 도달하고,
+위치를 반복 사용하는 호출자가 resolve 결과(주소)를 보관한다. 보관한 주소로의 전송이
+실패하면 framework는 명확한 error로 돌려주고, 자동으로 다른 위치를 다시 찾거나
+retry하지 않는다 — 재resolve는 호출자의 명시적 행동이다
+([location runtime](location-runtime.ko.md) §1, §5).
 
-성능을 위해 위치 정보 cache가 필요하면 그 cache도 resolver 구현체가 가진다.
-framework는 resolver 결과를 다시 cache하지 않는다. framework가 cache를 가지면 stale
-route를 언제 버려야 하는지 알기 위해 application placement 정책을 알아야 하고, 이는
-정보 은닉을 깨뜨린다.
+### 9.6 location store 구현 예
 
-stale route가 반환되면 framework는 반환된 route로 send/request를 시도하고, 실패를
-명확한 error로 돌려준다. 자동으로 다른 route를 다시 찾거나 retry하지 않는다.
-cache invalidation 후 재조회가 필요하면 resolver 또는 application service가 명시적으로
-수행한다.
+framework의 기본 resolver는 등록된 location store를 읽는다. sample은 공식 Redis
+extension을 등록하는 방식(`AddLocationStore(new ZLinkRedisLocationStore(...))`)을
+보여 주고, 사용자 저장소가 필요한 경우 store 계약(`IZLinkLocationStore`)을 구현해
+같은 지점에 등록하는 방식을 보여 준다([Redis extension](location-store-redis.ko.md)).
 
-### 9.6 registry discovery metadata sample
-
-framework는 registry 기반 actor/spot resolver를 기본 구현으로 제공하지 않는다.
-registry를 기본 구현으로 넣으면 registry가 모든 application의 권위 있는 위치 저장소처럼
-보이고, cache와 TTL 정책까지 framework 의미로 굳어진다. 대신 sample에서는 registry
-discovery metadata를 이용해 actor/spot resolver를 구현하는 방식을 보여 줄 수 있다.
-
-registry metadata는 resolver 입력 metadata가 아니다. resolver 입력은 여전히 `actorId`
-또는 spot domain key 하나다. registry metadata는 resolver 구현체 내부에서 읽는
-infrastructure state다. framework가 registry metadata store를 자동으로 선택하지 않는다는
-정책은 binding에 관계 없이 동일하다.
+store 선택은 resolver 입력 metadata가 아니다. resolver 입력은 여전히 `actorId`
+또는 spot domain key 하나다. store 연결 정보는 등록 시점의 infrastructure 설정이며,
+framework가 특정 store 제품을 자동으로 선택하지 않는다는 정책은 binding에 관계 없이
+동일하다.
 
 ## 10. Session Actor Helpers
 
@@ -752,31 +749,31 @@ internal metadata part가 JSON을 쓰는지, binary codec을 쓰는지는 framew
 계약은 application handler가 framework codec registry와 typed message만 보고, 내부
 server-to-server wire는 multipart 경계를 유지한다는 점이다.
 
-## 13. Discovery 정책
+## 13. 자동 연결 정책
 
-session actor dispatch sample의 기본 연결 방식은 discovery여야 한다. session server와 play
-server가 늘고 줄 수 있는 구조이므로, 수동 peer endpoint를 sample 중심에 두면 실제
-사용 모델과 어긋난다.
+session actor dispatch sample의 기본 연결 방식은 location store 기반 자동 연결이어야
+한다. session server와 play server가 늘고 줄 수 있는 구조이므로, 수동 peer endpoint를
+sample 중심에 두면 실제 사용 모델과 어긋난다.
 
 상위 표면은 아래 정책을 유지한다.
 
-- routed channel은 global discovery 설정이 있으면 discovery-attached router로
+- routed channel은 location store가 등록되어 있으면 store 기반 mesh 구성원으로
   참여한다.
-- service channel client와 routed channel은 global discovery 설정이 있으면
-  discovery 기반으로 peer를 찾는다.
-- 같은 역할에서 discovery와 수동 연결을 섞으면 startup에서 실패한다.
-- sample은 discovery 연결 실패를 retry loop나 sleep으로 숨기지 않는다.
-- 바로 연결되지 않으면 registry/discovery/topology 상태를 먼저 확인할 수 있어야
-  한다.
+- service channel client와 routed channel은 location store가 등록되어 있으면
+  store의 peer row로 peer를 찾는다.
+- 같은 역할에서 자동 연결과 수동 연결을 섞으면 startup에서 실패한다.
+- sample은 자동 연결 실패를 retry loop나 sleep으로 숨기지 않는다.
+- 바로 연결되지 않으면 location runtime query(status/peer list/topology projection)를
+  먼저 확인할 수 있어야 한다.
 
-diagnostic helper는 retry helper와 다르다. diagnostic helper는 현재 registry view,
-discovery member, local routed channel state를 보여 주는 역할만 한다. 구체 .NET
+diagnostic helper는 retry helper와 다르다. diagnostic helper는 location runtime query
+결과와 local routed channel state를 보여 주는 역할만 한다. 구체 .NET
 시그니처(`IZLinkTopologyDiagnostics`)는
 [bindings/dotnet/session-actor-dispatch.ko.md](../../dotnet/spec/session-actor-dispatch.ko.md)
 §10을 참고한다.
 
 이 표면은 session actor dispatch의 필수 API가 아니라 운영 점검 표면에 가깝다. 다만 sample
-문제 분석에서 discovery 상태 확인이 중요했으므로, 향후 monitoring/registry 초안과
+문제 분석에서 자동 연결 상태 확인이 중요했으므로, 향후 monitoring 초안과
 함께 검토할 필요가 있다.
 
 ## 14. SPOT direct target API 정책
@@ -791,7 +788,7 @@ spot route resolver를 사용한다. session-gateway sample에서 game room이 �
 spot resolver를 포함해야 한다. 멀티게임 sample의 game room은 도메인 핵심 실행 문맥이므로
 Play 서버 안에서는 `IZLinkSpotManager`로 room SPOT을 만든다. client는 match id나 room
 name을 지정하지 않는다. `MatchId`는 생성된 room의 `SpotRid` hex이며, actor가 join한
-room 안에서 `PlaceMarkReq`가 처리된다. registry metadata는 actor play route sample,
+room 안에서 `PlaceMarkReq`가 처리된다. location row는 actor play route sample,
 spot route sample, actor-session binding 보조 상태를 각각 분리해서 관리해야 한다.
 
 `SpotRid` 기반 public 호출에서 resolver 입력은 request 객체가 아니라
@@ -831,12 +828,12 @@ session actor dispatch에서 실패 원인은 서로 다르다.
 | 실패 | 원인 | framework 기본 동작 |
 |------|------|--------------------|
 | route 없음 | actor/game/spot 위치가 없다. | 즉시 실패 |
-| discovery peer 없음 | routed mesh가 아직 연결되지 않았다. | send/request 실패 또는 timeout |
+| mesh peer 미연결 | routed mesh가 아직 연결되지 않았다. | `RouteNotConnected` 계열 fail-fast error |
 | send backpressure | socket이 지금 보낼 수 없다. | bounded pending queue와 `SendTimeout` 적용 |
 | request reply 없음 | peer가 reply하지 않았다. | `RequestTimeout` 적용 |
 | client session 없음 | actor의 현재 actor-session binding이 없다. | session proxy request 실패 |
 
-retry를 넣으면 위 원인이 섞인다. sample에서는 특히 discovery 버그와 topology 설정
+retry를 넣으면 위 원인이 섞인다. sample에서는 특히 자동 연결 버그와 topology 설정
 문제를 숨기므로 넣지 않는다.
 
 `SendTimeout`은 core blocking send timeout이 아니라 framework async pending deadline
@@ -1108,7 +1105,7 @@ sample 검증도 필요하다.
 | 얕은 raw actor dispatch handler | raw relay handler 대신 actor/node/spot 실행 문맥의 typed handler를 기본 표면으로 둔다. |
 | packet name switch | 실행 문맥별 handler registry와 message type metadata로 분리한다. |
 | raw relay envelope 누출 | request sequence와 session-local metadata는 dispatch/relay helper 안에 둔다. |
-| registry 기본 구현 과잉 | registry resolver는 sample로만 제공하고 framework 기본 구현으로 내장하지 않는다. |
+| store 결합 과잉 | framework 본체는 특정 store 제품에 의존하지 않는다. 공식 Redis extension도 별도 package로 등록해서 쓴다. |
 | direct target API 혼란 | 정식 sample과 guide에서는 send/request와 session actor helper 모두 resolver 또는 local actor id/type 기반 API로 보여 준다. |
 | gateway/proxy naming 혼란 | actor/play 코드가 쓰는 public 이름은 `SessionProxy`로 통일한다. |
 | remote node direct handle sample | session-gateway sample은 local `SpotNode` actor runtime handle만 보여 주고 remote node direct handle을 보여 주지 않는다. |
@@ -1122,7 +1119,7 @@ sample 검증도 필요하다.
 - actor/node/spot handler code가 `RoutingId`, raw envelope, packet switch를 보지 않는다.
 - actor가 client로 send할 때 session route 정보를 직접 들고 있지 않다.
 - actor가 client로 send할 때 `SessionProxy`만 사용한다.
-- registry 기반 resolver sample은 resolver 구현 예일 뿐 framework 기본값처럼 보이지
+- 사용자 store 구현 sample은 store 계약 구현 예일 뿐 framework 기본값처럼 보이지
   않는다.
 
 ---

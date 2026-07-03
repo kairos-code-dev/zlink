@@ -12,7 +12,7 @@
 
 `ZLink Framework`는 zlink 바인딩 위에 올라가서, 기존 애플리케이션 프레임워크에서
 **gateway나 전용 로드밸런서 없이도** `channel name` 기준의 직접 channel 호출,
-pub/sub, `SPOT`, `STREAM`, channel discovery를 사용할 수 있게 하는 상위
+pub/sub, `SPOT`, `STREAM`, location store 기반 자동 연결을 사용할 수 있게 하는 상위
 계층이다.
 
 ## 2. 무엇을 제공하는가
@@ -24,12 +24,12 @@ pub/sub, `SPOT`, `STREAM`, channel discovery를 사용할 수 있게 하는 상�
 - pub/sub integration
 - spot integration
 - stream integration
-- channel별 Discovery
+- channel별 location store 기반 자동 연결([location runtime](location-runtime.ko.md))
 - runtime monitoring
-- registry topology inspection
+- location runtime query (raw row/topology projection/status 운영 조회)
 - framework-friendly handler / client / event API
 
-raw socket과 low-level discovery를 프레임워크 사용자가 직접 다루지 않고도
+raw socket과 low-level 연결 배선을 프레임워크 사용자가 직접 다루지 않고도
 기존 HTTP나 gRPC를 쓰던 감각에 가까운 개발 모델을 제공하는 것이 목표다.
 다만 내부에서 무엇을 쓰는지는 숨기더라도 framework가 실제로 통합할 transport
 축 자체는 명확해야 한다.
@@ -51,7 +51,7 @@ raw socket과 low-level discovery를 프레임워크 사용자가 직접 다루�
 - route bridge channel socket을 통한 cross-channel send/request
 - local spot 인스턴스가 없는 외부 노드용 SPOT channel publish client
 - stream session
-- socket/discovery/registry/spot runtime event
+- socket/location runtime/spot runtime event
 
 transport 축은 사용자에게 그대로 노출하지 않더라도, 내부 wire 경계는 언어별
 adapter가 공통으로 지켜야 한다.
@@ -79,7 +79,7 @@ header만 읽는 장점도 잃는다.
 
 - 호출자는 gateway 주소 대신 `channel name`을 기준으로 요청한다.
 - framework runtime이 channel마다 별도 outbound socket을 만든다.
-- Discovery가 그 channel view 안의 provider 위치를 숨긴다.
+- location store 기반 자동 연결이 그 channel view 안의 provider 위치를 숨긴다.
 - framework는 그 channel 안의 `rid` 집합과 연결 상태를 기준으로 요청을 보낸다.
 - 요청은 중간 gateway 없이 provider로 직접 간다.
 

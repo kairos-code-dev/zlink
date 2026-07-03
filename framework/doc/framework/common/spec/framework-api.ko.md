@@ -111,9 +111,10 @@
   수 있어야 한다.
 - 단순 unary request 외에 event publish와 필요하면 aggregate helper를 분리할 수
   있어야 한다.
-- 운영 점검이나 관리 API에서는 Registry topology snapshot/query 결과를 읽는
-  별도 surface를 둘 수 있어야 한다.
-- socket/discovery/registry/spot runtime 변화를 typed event handler로 받을 수
+- 운영 점검이나 관리 API에서는 location runtime query
+  (`IZLinkLocationRuntimeQuery` — [location runtime](location-runtime.ko.md) §7)의
+  raw row/topology projection/status를 읽는 별도 surface를 둘 수 있어야 한다.
+- socket/location runtime/spot 변화를 typed event handler로 받을 수
   있는 별도 monitoring surface도 둘 수 있어야 한다.
 - 이 outbound client는 framework 전용 메시지 handler 안뿐 아니라, 기존 HTTP
   handler나 controller 안에서도 그대로 쓸 수 있어야 한다.
@@ -161,9 +162,9 @@ framework는 monitoring 표면을 별도 축으로 설명하는 편이 맞다.
 - event kind는 enum으로 둔다.
 - 실제 callback payload는 source 이름과 상세 정보를 함께 가진 구조화된 값으로
   둔다.
-- socket/discovery는 하부 monitor를 감싸는 편이 자연스럽다.
-- registry/spot는 raw monitor를 가장한 표면보다 snapshot diff 기반 event로
-  설명하는 편이 맞다.
+- socket source는 하부 monitor를 감싸는 편이 자연스럽다.
+- location runtime/spot source는 raw monitor를 가장한 표면보다 snapshot diff 기반
+  event로 설명하는 편이 맞다([location runtime](location-runtime.ko.md) §9).
 - application은 typed runtime event handler를 구현해서 이 이벤트를 받는 모델을
   기본으로 본다.
 
@@ -244,7 +245,7 @@ public 계약 영역에 둘 타입은 아래 범위로 제한한다.
 
 - framework 내부 구현 class
 - public interface를 구현하는 기본 구현체
-- socket, codec, dispatch, routing, registry 같은 내부 정책 class
+- socket, codec, dispatch, routing, location runtime 같은 내부 정책 class
 - runtime을 직접 만들거나 시작하는 host class와 start 함수
 - runtime 상태를 담는 record
 - 특정 binding 내부 테스트나 샘플만 편하게 하기 위한 helper
@@ -308,7 +309,7 @@ concrete 값 객체가 맞는 경우는 아래와 같다.
 - interface로 바꾸면 factory, builder, cast 같은 보조 API가 늘어나고, 호출자가 알아야
   할 것이 오히려 많아진다.
 
-예를 들어 metadata, route snapshot, registry entry, monitoring event payload, error
+예를 들어 metadata, route snapshot, location row, monitoring event payload, error
 payload, option 값처럼 작은 구조화 데이터는 concrete record, class, struct로 두는 편이
 낫다. 내부 저장소가 dictionary에서 배열이나 immutable collection으로 바뀌더라도,
 사용자에게 중요한 것은 "어떤 값을 표현하는가"이지 "어떤 구현체인가"가 아니다.
@@ -609,7 +610,7 @@ application lifetime과 dispatch loop를 직접 소유하는 쪽이 더 자연�
 - outbound channel 등록
 - request/send handler registry
 - poll loop와 lifecycle 통합
-- registry/discovery/manual connection 설정
+- location store 등록/manual connection 설정
 
 ### 7.2 예시
 

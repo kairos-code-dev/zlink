@@ -1,5 +1,5 @@
 <!-- framework-adapter-nav:start -->
-[문서 목록](../../../README.ko.md) | [이전: Session Actor Dispatch Usability (Policy)](session-actor-dispatch.ko.md) | [다음: ZLink Framework Use Case Validation](usecase-validation.ko.md)
+[문서 목록](../../../README.ko.md) | [이전: Session Actor Dispatch Usability (Policy)](session-actor-dispatch.ko.md) | [다음: Location Runtime](location-runtime.ko.md)
 <!-- framework-adapter-nav:end -->
 
 [스펙 목차](../README.ko.md)
@@ -288,7 +288,7 @@ fan-out은 error reporter와 동일한 전용 offload executor로 핫패스에�
 
 ---
 <!-- framework-adapter-nav:bottom:start -->
-[문서 목록](../../../README.ko.md) | [이전: Session Actor Dispatch Usability (Policy)](session-actor-dispatch.ko.md) | [다음: ZLink Framework Use Case Validation](usecase-validation.ko.md)
+[문서 목록](../../../README.ko.md) | [이전: Session Actor Dispatch Usability (Policy)](session-actor-dispatch.ko.md) | [다음: Location Runtime](location-runtime.ko.md)
 <!-- framework-adapter-nav:bottom:end -->
 </content>
 </invoke>

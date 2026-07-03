@@ -1,5 +1,5 @@
 <!-- framework-adapter-nav:start -->
-[문서 목록](../../../README.ko.md) | [이전: 메시지 흐름 추적과 dispatch 관측](message-flow-tracing.ko.md) | [다음: ZLink Framework Use Cases](../use-cases/README.ko.md)
+[문서 목록](../../../README.ko.md) | [이전: Location Store — Redis](location-store-redis.ko.md) | [다음: ZLink Framework Use Cases](../use-cases/README.ko.md)
 <!-- framework-adapter-nav:end -->
 
 [스펙 목차](../README.ko.md)
@@ -28,7 +28,7 @@ use case를 설명할 틀을 갖추었는지를 본다.
 | use case | 필요한 모델 | 현재 스펙 상태 | 판정 | 메모 |
 |----------|-------------|----------------|------|------|
 | [Service To Service RPC](../use-cases/01-service-to-service-rpc.ko.md) | request-response | `interaction-model`, `message-model`, `framework-api`, `channel-topology`에 설명 있음 | 만족 | 1차 핵심 범위 |
-| [Playhouse Play To API](../use-cases/02-playhouse-play-to-api.ko.md) | request-response | channel별 client, Discovery, channel grouping 설명 있음 | 만족 | 대표 기준 use case |
+| [Playhouse Play To API](../use-cases/02-playhouse-play-to-api.ko.md) | request-response | channel별 client, store 기반 자동 연결, channel grouping 설명 있음 | 만족 | 대표 기준 use case |
 | [Worker Dispatch](../use-cases/03-worker-dispatch.ko.md) | worker-dispatch, command | 모델은 있으나 retry, in-flight failure, 처리 보장 논의가 부족함 | 부분 만족 | 후속 설계 필요 |
 | [Domain Event Fanout](../use-cases/04-domain-event-fanout.ko.md) | publish-subscribe | event 모델과 framework handler 방향이 설명됨 | 만족 | 일반 메시징 시스템 핵심 use case |
 | [Cache Invalidation And Config Refresh](../use-cases/05-cache-invalidation-and-config-refresh.ko.md) | publish-subscribe | 운영성 이벤트 용도까지 무리 없이 설명 가능 | 만족 | 일반 메시징 시스템 핵심 use case |
@@ -47,6 +47,11 @@ use case를 설명할 틀을 갖추었는지를 본다.
 - `playhouse`의 play -> api 요청
 - stage/state sync
 - 실시간 알림 fan-out의 기본 방향
+- location store 기반 자동 연결과 rid resolve([location runtime](location-runtime.ko.md),
+  E2E Config 1)
+- actor 재연결(재resolve)과 spot 주소 조회(E2E Config 2)
+- store extension 등록과 store 장애/복구(fail-static, owner lease 만료 —
+  [Redis extension](location-store-redis.ko.md), E2E Config 6)
 
 반면 아래는 아직 부족하다.
 
@@ -65,5 +70,5 @@ use case를 설명할 틀을 갖추었는지를 본다.
 
 ---
 <!-- framework-adapter-nav:bottom:start -->
-[문서 목록](../../../README.ko.md) | [이전: 메시지 흐름 추적과 dispatch 관측](message-flow-tracing.ko.md) | [다음: ZLink Framework Use Cases](../use-cases/README.ko.md)
+[문서 목록](../../../README.ko.md) | [이전: Location Store — Redis](location-store-redis.ko.md) | [다음: ZLink Framework Use Cases](../use-cases/README.ko.md)
 <!-- framework-adapter-nav:bottom:end -->

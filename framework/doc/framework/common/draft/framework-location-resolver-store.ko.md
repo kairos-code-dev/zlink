@@ -142,7 +142,7 @@ cache 설명은 어떤 문제가 있었는지 파악하기 위한 참고 자료�
 | status | registry id, state, entry count, peer registry count, last error 등을 제공한다. | registry process가 없어지므로 같은 필드를 보존하지 않는다. 대신 location runtime status로 store health, watch/poll 상태, last error, last refresh 시각을 제공한다. |
 | registry clustering | Registry끼리 service list와 route snapshot을 flooding하고 `registry_id + list_seq`로 중복을 제거한다. | framework는 저장소 클러스터링을 직접 구현하지 않는다. HA와 복제는 사용자가 선택한 store 구현체의 책임이다. framework는 store-issued generation, lease, store 기준 updated time으로 중복과 stale row를 걸러낸다. |
 | spot owner resolve | `spot_rid -> owner_node_rid + spot_kind`를 cache 후 필요하면 Registry topology query로 refresh한다. | 15절의 spot resolve/list로 옮긴다. 기준 저장소는 spot store이고, 조회 결과(spot 주소)는 호출자가 보관한다. |
-| actor active route | `actor_id -> actor ref + current spot` route를 owner-bound row로 조회한다. | 16절의 actor resolve/list로 옮긴다. actor lifecycle이 row를 자동 갱신하고, 재연결 경로는 `Refresh`를 사용한다. |
+| actor active route | `actor_id -> actor ref + current spot` route를 owner-bound row로 조회한다. | 16절의 actor resolve/list로 옮긴다. actor lifecycle이 row를 자동 갱신하고, 재연결 경로는 resolve를 다시 호출한다(모든 resolve는 store에 도달한다). |
 | generic route bind/resolve | framework 계층이 `kind + key -> owner rid + value` owner-bound route를 직접 관리할 수 있다. | 공통 location 계약에 route store를 포함한다. actor session binding, spot name 같은 framework route도 같은 owner/generation/lease 정책을 사용한다. |
 | attach ownership | Discovery에 attach된 socket/SpotNode는 Discovery destroy 때 함께 정리된다. | framework runtime이 자신이 만든 channel participant와 location row의 lifecycle을 소유한다. core socket handle 자체의 소유권은 각 언어 framework의 channel runtime 규칙에 맞춘다. |
 
@@ -238,7 +238,7 @@ sequenceDiagram
     S-->>B: RejectedConflict
     A->>A: 응답의 generation을 owner token으로 보관
     A->>A: claim 성공 후에만 actor instance 활성화
-    B->>S: ResolveActor(X, Refresh)
+    B->>S: ResolveActor(X)
     S-->>B: row (Node A, 최신 generation)
     B->>A: 이미 만들어진 actor로 session route 연결
     Note over A,B: claim-then-activate. 패자는 instance를 만들지 않는다
@@ -811,7 +811,7 @@ compare-and-set token을 제공해야 한다.
   intent와 store가 발급한 새 generation으로만 일어난다.
 - remove는 `key + ownerId + generation`이 일치할 때만 성공한다.
 - 서로 다른 owner가 같은 key를 동시에 claim하면 store의 atomic claim이 하나만 성공해야 한다. 실패한 쪽은
-  `RejectedConflict`를 받고 resolver `Refresh` 또는 placement retry로 다시 판단한다.
+  `RejectedConflict`를 받고 resolve 재호출 또는 placement retry로 다시 판단한다.
 
 generation 전달 규칙: generation은 store가 발급하고 write 응답으로만 전달된다. 성공한 owner는
 `ZLinkLocationWriteResult`의 generation을 owner token으로 보관해 이후 write에 제시한다. framework는
@@ -1189,7 +1189,7 @@ actor 재연결 또는 "없으면 생성" 흐름은 store를 직접 읽는다.
 3. 없으면 placement policy로 target node 또는 spot을 정한다.
 4. target node의 framework가 actor location을 NewClaim으로 먼저 claim한다.
 5. claim이 Stored이면 actor instance를 활성화한다.
-6. claim이 RejectedConflict이면 instance를 만들지 않고 Refresh로 재조회해
+6. claim이 RejectedConflict이면 instance를 만들지 않고 재조회해
    이미 만들어진 actor를 사용한다.
 ```
 
@@ -1332,7 +1332,7 @@ E2E 수정의 기준이 된다. Java, Kotlin, Node.js, C++ framework는 .NET 구
 4. 자동 연결 reconcile loop를 location runtime에 연결한다.
    기존 core discovery 호출을 제거하고 peer location resolver를 통해 desired target set을 계산한다.
 5. actor/spot/route resolver를 channel, session, actor runtime에 연결한다.
-   재연결과 “없으면 생성” 경로는 `Refresh`를 사용한다.
+   재연결과 “없으면 생성” 경로는 resolve를 다시 호출한다.
 6. 공식 Redis extension을 추가한다.
    Redis extension은 peer/spot/actor/route store를 모두 제공하고, Lua script 또는 transaction으로
    owner/generation guard를 보장한다.
@@ -1378,7 +1378,7 @@ E2E 수정의 기준이 된다. Java, Kotlin, Node.js, C++ framework는 .NET 구
 - spot create/start 시 spot location 자동 update
 - spot stop/destroy 시 spot location 자동 remove
 - peer node start/stop 시 자동 연결 정보 update/remove
-- actor reconnect는 `Refresh`로 기존 actor를 찾고 session만 다시 연결
+- actor reconnect는 resolve로 기존 actor를 찾고 session만 다시 연결
 - actor not-found 결과는 cache되지 않고, 직후 생성된 actor를 다음 resolve가 찾음
 - store 장애와 not-found를 구분
 - 캐시 부재: 같은 key 연속 조회가 매번 store에 도달한다(호출 수 계측)
@@ -1429,11 +1429,11 @@ E2E와 언어별 E2E는 수정된 문서를 따라간다.
   연결 혼합”이 아니라 “location-store 자동 연결과 manual 연결 혼합”으로 바뀐다.
 - 기존 registry 장애/HA 테스트는 store 장애/복구 테스트로 바꾼다. Redis extension E2E에서는 Redis
   연결 끊김, 재연결, owner lease 만료, stale row 제거, polling fallback을 검증한다.
-  나눈다. member peer 사용자 기능 검증은 `IZLinkPeerLocationResolver.ListPeersAsync(..., Refresh)`로,
+  나눈다. member peer 사용자 기능 검증은 `IZLinkPeerLocationResolver.ListPeersAsync(filter)`로,
   E2E의 raw peer row 상태 확인은 `IZLinkLocationRuntimeQuery.ListPeersAsync(filter)`로
   바꾼다.
 - actor/spot resolve E2E는 “cache hit만으로 통과”하면 안 된다. 재연결, 생성 race, handover,
-  stale owner 제거 시나리오는 `Refresh` 경로를 반드시 포함한다.
+  stale owner 제거 시나리오는 재resolve 경로를 반드시 포함한다.
 - E2E runner는 공식 Redis extension을 기본 공유 저장소로 띄울 수 있어야 한다. Redis를 쓰는 테스트는
   sample처럼 전용 key prefix를 사용하고, 실행 후 key cleanup 또는 disposable Redis instance를 사용한다.
 - in-memory store E2E는 단일 process 또는 단일 host smoke test로만 둔다. multi-process 자동 연결,
@@ -1451,7 +1451,7 @@ E2E와 언어별 E2E는 수정된 문서를 따라간다.
   또는 `Add...LocationStore<T>()` 등록으로 교체한다.
 - multi-process 분산 sample은 공식 Redis extension을 기본 공유 저장소로 사용하고 sample별 전용
   key prefix를 쓴다. 단일 process sample과 smoke test는 in-memory store를 사용한다.
-- DeliveryDispatch, SupportChat의 actor 재연결 흐름은 `ResolveActor(..., Refresh)` 기반으로 바꾸고,
+- DeliveryDispatch, SupportChat의 actor 재연결 흐름은 `ResolveActor(...)` 기반으로 바꾸고,
   session rebind 전에 위치를 재조회하는 17절 흐름을 따른다.
 - `run_samples` 스크립트와 sample runner에서 registry process 기동/대기 단계를 제거하고, Redis가
   필요한 sample은 Redis 기동 또는 연결 확인 단계로 교체한다.
@@ -1473,7 +1473,7 @@ draft가 기준이며, 정식 spec 문서에는 아직 구현되지 않은 계�
 | `overview.ko.md` | 수정 | framework의 distributed location 기능이 core discovery/registry가 아니라 location runtime/store/resolver 기반이라는 전체 그림을 반영한다. |
 | `channel-topology.ko.md` | 수정 | 자동 연결 source를 discovery에서 peer location store로 바꾼다. auto-connect type, role matching, pairwise initiator, manual connection과의 관계를 정식 계약으로 옮긴다. |
 | `actor-model.ko.md` | 수정 | actor location row, `ActorRef`, actor generation, Entry Spot/user Spot 위치 갱신, actor 재연결 규칙을 반영한다. |
-| `session-actor-dispatch.ko.md` | 수정 | session rebind 전에 actor location을 `Refresh`로 조회하고, 없으면 placement 후 생성하는 흐름을 반영한다. registry metadata resolver 예시는 제거하거나 location store 구현 예로 바꾼다. |
+| `session-actor-dispatch.ko.md` | 수정 | session rebind 전에 actor location을 resolve로 조회하고, 없으면 placement 후 생성하는 흐름을 반영한다. registry metadata resolver 예시는 제거하거나 location store 구현 예로 바꾼다. |
 | `framework-api.ko.md` | 수정 | store/resolver interface(주소 반환), runtime query API, 수동 update/remove API의 공개 표면을 반영한다. |
 | `usecase-validation.ko.md` | 수정 | location store 기반 자동 연결, actor 재연결, spot 주소 조회, store extension E2E를 validation 항목에 추가한다. |
 | `location-runtime.ko.md` | 신규 | peer/spot/actor/route location model, owner/generation, owner lease, lifecycle update/remove, watch/polling, change stamp, pagination, topology/status/summary projection을 정식 spec으로 분리한다. |
@@ -1567,7 +1567,7 @@ draft가 기준이며, 정식 spec 문서에는 아직 구현되지 않은 계�
 - [x] actor lifecycle update/remove 이벤트 표 — 16.1
 - [x] `ResolveActor` 알고리즘 — 16.2
 - [x] `ListActors` (runtime query 전용, cache 없음) — 16.3
-- [x] actor 재연결/생성 흐름 (`Refresh` 사용) — 17절
+- [x] actor 재연결/생성 흐름 (재resolve 사용) — 17절
 - [x] 수동 update/remove API 사용 범위 — 18절
 
 ### 24.6 공개 표면과 등록

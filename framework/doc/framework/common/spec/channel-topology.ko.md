@@ -47,7 +47,11 @@
   publish 경로를 연다.
 - `profile` channel에 `EnableSubscriber()`를 두면 framework가 그 channel용
   subscribe 경로를 연다.
-- 같은 `channel name`에 속한 provider 집합은 discovery가 자동으로 갱신한다.
+- 같은 `channel name`에 속한 provider 집합은 location store 기반 자동 연결이
+  갱신한다. provider는 자기 peer location row를 framework lifecycle로 store에
+  등록하고, consumer는 그 row를 조회/reconcile해 연결한다. row 모델과 reconcile
+  규칙(role matching, pairwise initiator, fail-static)은
+  [location runtime](location-runtime.ko.md) §2, §6을 따른다.
 
 수동 연결을 쓰면 그 channel의 provider 집합을 직접 설정한다. 운영 점검이나 제어
 전체 provider 집합을 읽을 수도 있다.
@@ -59,8 +63,9 @@
 - `profile.client`는 request/send용 outbound `DEALER(client)` 연결을 뜻한다.
 - `profile.subscriber`는 event subscribe용 `SUB` 연결을 뜻한다.
 
-같은 역할은 자동 연결과 수동 연결을 동시에 가질 수는 없다. zlink core에서
-`Discovery`가 붙은 `DEALER`는 수동 `connect`를 허용하지 않기 때문이다.
+같은 역할은 자동 연결과 수동 연결을 동시에 가질 수는 없다. 자동 연결이 관리하는
+`DEALER`의 연결 집합은 reconcile이 소유하므로 수동 `connect`와 섞이면 진실
+공급원이 둘이 되기 때문이다.
 따라서 framework는 `channel + capability`마다 연결 방식을 하나씩 고르고, 앱
 전체에서는 역할별로 다른 방식을 나눠 쓰는 모델로 설명하는 편이 맞다.
 
@@ -155,14 +160,15 @@ channel name은 배포와 topology를 나타내는 값이므로 handler method a
 기본으로 넣지 않는다. 각 언어 binding은 framework 등록 단계에서 발견된 handler를
 어떤 inbound channel에 노출할지 명시하는 API를 제공해야 한다.
 
-## 5. Discovery와 수동 연결
+## 5. 자동 연결과 수동 연결
 
 두 방식 모두 필요하다.
 
-### 5.1 Discovery
+### 5.1 location store 기반 자동 연결
 
 - 운영 환경 기본값으로 적합하다.
-- channel name 기준 provider grouping과 자동 갱신에 유리하다.
+- channel name 기준 provider grouping과 자동 갱신에 유리하다. 연결 대상은
+  location store의 peer row에서 resolve된다([location runtime](location-runtime.ko.md) §6).
 - 각 channel이 자기 channel view를 독립적으로 유지하기에 적합하다.
 - 일반 요청 경로에서는 다른 channel topology를 매번 조회하지 않고, 현재 channel
   view와 `rid` 집합만 보면 된다.
@@ -170,17 +176,18 @@ channel name은 배포와 topology를 나타내는 값이므로 handler method a
 ### 5.2 수동 연결
 
 - 개발, 테스트, 단순 배포에서 유용하다.
-- Discovery 없이도 같은 공용 API를 유지할 수 있다.
+- location store 없이도 같은 공용 API를 유지할 수 있다.
 - 수동 연결은 `channel` 전체가 아니라 `channel + capability` 단위로 둔다.
 - 같은 channel이라도 `client`, `subscriber`는 서로 다른 endpoint 집합을 가질 수
   있다.
 - 수동 연결 역할은 startup 등록뿐 아니라 런타임 `connect`,
   `disconnect`, `list` 제어도 지원해야 한다.
-- 다만 같은 역할 안에서는 `Discovery`와 수동 연결을 섞지 않는다.
-- actor 모델은 discovery 기반 자동 연결을 권장한다. session-bound actor와 actor
-  route resolver는 reconnect, scale-in/out, 위치 갱신을 dynamic하게 다루므로
-  manual peer set과 잘 맞지 않는다. manual 연결은 single-peer 테스트나 sample
-  topology 검증에서만 actor 경로에 함께 쓴다.
+- 다만 같은 역할 안에서는 store 기반 자동 연결과 수동 연결을 섞지 않는다.
+  (수동 endpoint 연결은 auto reconcile이 끊지 않는다.)
+- actor 모델은 location store 기반 자동 연결을 권장한다. session-bound actor와
+  actor location resolve는 reconnect, scale-in/out, 위치 갱신을 dynamic하게
+  다루므로 manual peer set과 잘 맞지 않는다. manual 연결은 single-peer 테스트나
+  sample topology 검증에서만 actor 경로에 함께 쓴다.
 
 `SPOT`도 같은 원칙으로 역할별 manual 연결을 나눠서 봐야 한다.
 
@@ -205,11 +212,13 @@ channel name은 배포와 topology를 나타내는 값이므로 handler method a
 수동 연결에서 framework가 관리하는 단위는 "channel 이름" 하나가 아니라
 "channel 안의 특정 역할 runtime"이다.
 
-### 5.3 Registry topology query
+### 5.3 location runtime query
 
 - 운영 점검, warm-up, 관리 화면, 디버깅에 유용하다.
-- Discovery가 지금 보고 있는 개별 channel view 밖의 전체 상태를 읽을 수 있다.
-- 일반 요청 경로에서는 topology query보다 Discovery channel view를 기준으로
+- 자동 연결이 지금 보고 있는 개별 channel view 밖의 전체 상태(raw location row,
+  topology projection, status)를 읽을 수 있다
+  ([location runtime](location-runtime.ko.md) §7).
+- 일반 요청 경로에서는 runtime query보다 channel view를 기준으로
   동작하는 편을 기본 방향으로 본다.
 
 ### 5.4 runtime monitoring source 이름
@@ -220,10 +229,8 @@ runtime monitoring은 raw socket 이름보다 logical source 이름을 먼저 �
 - socket event source는 `channel + capability` 또는 `spot node + capability`
   기준이 자연스럽다.
   예: `profile.server`, `profile.client`, `stage-node.router`
-- discovery event source는 logical discovery registration 이름을 쓰는 편이 맞다.
-  예: `profile.client.discovery`, `game.stage.discovery`
-- registry event source는 infrastructure 단위를 드러내는 이름을 쓴다.
-  예: `registry`
+- location 계열 event source는 고정 이름을 쓴다([location runtime](location-runtime.ko.md) §9).
+  예: `location-runtime`, `location-peer`
 - spot event source는 `spot node` 등록 이름을 쓴다.
   예: `stage-node`
 

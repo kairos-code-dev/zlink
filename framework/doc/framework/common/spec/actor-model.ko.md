@@ -44,7 +44,7 @@ actor의 라이프 상태는 두 축으로 본다.
 | 축 | 값 | 의미 |
 | --- | --- | --- |
 | **위치** | Entry Spot ↔ user Spot | 생성 직후 `Entry Spot` 에 있고, application이 `JoinSpot(...)`을 호출하면 user Spot으로 옮겨 간다. user Spot에서 다시 Entry Spot으로 돌아가려면 `leaveActor`를 호출하고, 완전히 제거하려면 Entry Spot에서 `destroyActor`를 호출한다. |
-| **session binding** | unbound ↔ bound | 생성 직후 STREAM session에 묶이지 않은 상태다. 인증 등을 거쳐 framework가 actor를 STREAM session에 bind하면 그 session으로 들어오는 packet이 이 actor로 dispatch된다. session binding은 actor 위치나 discovery active route를 결정하지 않는다. |
+| **session binding** | unbound ↔ bound | 생성 직후 STREAM session에 묶이지 않은 상태다. 인증 등을 거쳐 framework가 actor를 STREAM session에 bind하면 그 session으로 들어오는 packet이 이 actor로 dispatch된다. session binding은 actor 위치(actor location row)를 결정하지 않는다. |
 
 application 입장에서 자주 보는 두 조합:
 
@@ -62,8 +62,9 @@ zlink core의 actor 모델에서 다음 제약은 모든 binding이 그대로 �
   session binding은 서로 독립된 상태 전이다.
 - **destroy는 actor가 Entry Spot에 있을 때만 가능.** user Spot에 있으면 `leaveActor`가
   먼저 끝나야 `destroyActor`가 허용된다.
-- **discovery actor route publish는 user Spot join 성공 뒤에 갱신된다.** session
-  bind / unbind는 active route를 만들거나 제거하지 않는다.
+- **actor location row는 user Spot join 성공 뒤에 갱신된다.** session
+  bind / unbind는 location row를 만들거나 제거하지 않는다
+  ([location runtime](location-runtime.ko.md) §2.3).
 - **1 session ↔ N actor / 1 actor ↔ ≤1 session.** 한 session은 여러 actor를 묶을
   수 있지만, 한 actor는 동시에 두 session에 묶이지 않는다.
 
@@ -79,7 +80,7 @@ message handler와 lifecycle callback handler는 별도 표면으로 설정한�
 - `Entry Spot` 자체의 생성과 소멸 (binding이 raw API를 직접 호출하지 않는다)
 - user Spot → Entry Spot leave를 수행하는 public context API 연결
 - Entry Spot actor destroy를 수행하는 public context API 연결
-- discovery actor route 갱신 (user Spot join / leave 성공 시 core active route 기준)
+- actor location row 갱신 (user Spot join / leave 성공 시 framework lifecycle이 store에 upsert)
 
 framework는 위 API가 호출될 때 적절한 core API를 호출한다. 그러나 stream disconnect가
 room leave나 actor destroy를 자동으로 실행하지는 않는다. application은 actor를 끝내야
@@ -153,7 +154,7 @@ None
 | 단계 | framework가 하는 일 |
 | --- | --- |
 | 생성 | application factory 호출, actor의 context 주입, `Configure()` 호출 |
-| session bind | session ↔ actor 묶음을 framework/core 내부 binding으로 등록한다. discovery active route는 session bind가 아니라 user Spot join / leave 결과를 따른다 |
+| session bind | session ↔ actor 묶음을 framework/core 내부 binding으로 등록한다. actor location row는 session bind가 아니라 user Spot join / leave 결과를 따른다 |
 | JoinSpot | target spot에 join 요청 전송, accept/reject 결과를 application에 반환 |
 | leaveActor | user Spot → Entry Spot 이동, source Spot `onLeaveActor`와 target Entry Spot `onJoinedActor` 호출 |
 | destroyActor | Entry Spot actor 정리, 내부 actor-session binding 해제, native actor ref 제거. `onLeaveActor`를 호출하지 않는다 |
@@ -343,7 +344,7 @@ binding마다 이름은 케이싱 규칙에 따라 다르지만, 의미는 다�
   표면을 둔다. 일반 user Spot의 handler와 섞지 않는다.
 - Entry Spot과 user Spot 모두 `on_join` / `on_leave` lifecycle callback handler를
   별도로 등록할 수 있어야 한다.
-- `Entry Spot` 자체, leave, destroy, discovery active route 갱신은 framework가
+- `Entry Spot` 자체, leave, destroy, actor location row 갱신은 framework가
   자동으로 관리한다. application은 raw API를 직접 호출하지 않는다.
 - user Spot join은 bound session을 요구하지 않는다. application state machine은
   join completion이 반환한 최종 actor ref를 기준으로 후속 attach나 dispatch를 결정한다.

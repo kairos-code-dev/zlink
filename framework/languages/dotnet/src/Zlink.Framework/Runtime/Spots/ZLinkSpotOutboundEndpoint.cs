@@ -7,22 +7,14 @@ internal sealed class ZLinkSpotOutboundEndpoint(
     ZLinkFrameworkRuntime runtime,
     string resolverErrorMessage)
 {
-    public IZLinkSendCall SendToSpot<TMessage>(RoutingId spotRid, TMessage message)
+    public IZLinkSendCall SendToSpot<TMessage>(ZLinkSpotAddress address, TMessage message)
     {
-        return new ZLinkRoutedSpotSendCall<TMessage>(
-            activation,
-            RequireRemoteAddressResolver(),
-            ZLinkSpotRemoteAddressTarget.ByRoutingId(spotRid),
-            message);
+        return new ZLinkRoutedSpotSendCall<TMessage>(activation, address, message);
     }
 
-    public IZLinkRequestCall RequestToSpot<TRequest>(RoutingId spotRid, TRequest request)
+    public IZLinkRequestCall RequestToSpot<TRequest>(ZLinkSpotAddress address, TRequest request)
     {
-        return new ZLinkRoutedSpotRequestCall<TRequest>(
-            activation,
-            RequireRemoteAddressResolver(),
-            ZLinkSpotRemoteAddressTarget.ByRoutingId(spotRid),
-            request);
+        return new ZLinkRoutedSpotRequestCall<TRequest>(activation, address, request);
     }
 
     public IZLinkPublishCall Publish<TEvent>(string topic, TEvent message)
@@ -201,10 +193,4 @@ internal sealed class ZLinkSpotOutboundEndpoint(
             cancellationToken);
     }
 
-    private IZLinkSpotRemoteAddressResolver RequireRemoteAddressResolver()
-    {
-        return services.GetService(typeof(IZLinkSpotRemoteAddressResolver)) is IZLinkSpotRemoteAddressResolver resolver
-            ? resolver
-            : throw new ZLinkConfigurationException(resolverErrorMessage);
-    }
 }

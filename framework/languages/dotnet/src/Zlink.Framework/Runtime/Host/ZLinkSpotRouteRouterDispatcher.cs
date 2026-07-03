@@ -222,17 +222,24 @@ internal sealed class ZLinkSpotRouteRouterDispatcher(
     private sealed class RouteChannelTarget(ZLinkRouteChannelRuntime routeChannel)
         : IRouterTarget
     {
+        // Remote spot delivery over a route channel uses the bridge relay
+        // framing exclusively: it is the only spot inbound the receiving
+        // pump dispatches (spot-address messaging draft §6).
         public ValueTask SendAsync(
             RoutingId targetNodeRid,
             RoutingId targetSpotRid,
             IReadOnlyList<Message> parts,
             CancellationToken cancellationToken)
         {
-            return routeChannel.SubmitSpotRouteSendPartsAsync(
-                targetNodeRid,
-                targetSpotRid,
-                parts,
-                cancellationToken);
+            if (!routeChannel.TrySendViaSpotRouteBridge(
+                    targetNodeRid,
+                    targetSpotRid,
+                    parts))
+                throw new ZLinkConfigurationException(
+                    $"Route channel '{routeChannel.RouterChannelId}' has no SPOT route bridge for remote spot delivery.");
+
+            ZLinkMessageParts.DisposeAll(parts);
+            return ValueTask.CompletedTask;
         }
 
         public async ValueTask<IReadOnlyList<Message>> RequestAsync(
@@ -242,13 +249,51 @@ internal sealed class ZLinkSpotRouteRouterDispatcher(
             TimeSpan timeout,
             CancellationToken cancellationToken)
         {
-            return await routeChannel.RequestToSpotPartsAsync(
+            var completion = new TaskCompletionSource<IReadOnlyList<Message>>(
+                TaskCreationOptions.RunContinuationsAsynchronously);
+            if (!routeChannel.TryRequestViaSpotRouteBridge(
                     targetNodeRid,
                     targetSpotRid,
                     parts,
-                    timeout,
-                    cancellationToken)
-                .ConfigureAwait(false);
+                    (result, reply) =>
+                    {
+                        // NotFound from a spot-addressed request means the
+                        // target node answered "no such spot here": a stale
+                        // spot address, not an unknown node.
+                        if (result == RequestResult.NotFound)
+                        {
+                            ZLinkMessageParts.DisposeAll(reply);
+                            completion.TrySetException(new ZLinkFrameworkException(
+                                ZLinkFrameworkErrorKind.SpotRouteNotFound,
+                                $"SPOT '{targetSpotRid}' does not live on node '{targetNodeRid}'."));
+                            return;
+                        }
+
+                        ZLinkRawReplyCompletion.Complete(
+                            result,
+                            reply,
+                            completion,
+                            $"SPOT route bridge request failed with result '{result}'.");
+                    },
+                    timeout))
+                throw new ZLinkConfigurationException(
+                    $"Route channel '{routeChannel.RouterChannelId}' has no SPOT route bridge for remote spot requests.");
+
+            ZLinkMessageParts.DisposeAll(parts);
+            using var timeoutSource = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
+            timeoutSource.CancelAfter(timeout);
+            using var _ = timeoutSource.Token.Register(
+                static state => ((TaskCompletionSource<IReadOnlyList<Message>>)state!).TrySetCanceled(),
+                completion);
+            try
+            {
+                return await completion.Task.ConfigureAwait(false);
+            }
+            catch (OperationCanceledException) when (!cancellationToken.IsCancellationRequested)
+            {
+                throw new TimeoutException(
+                    $"SPOT route bridge request to '{targetSpotRid}' timed out.");
+            }
         }
     }
 

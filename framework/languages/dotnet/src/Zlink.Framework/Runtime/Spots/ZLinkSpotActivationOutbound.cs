@@ -80,14 +80,14 @@ internal sealed partial class ZLinkSpotActivation
 
     public IZLinkSpotOutbound Outbound { get; }
 
-    public IZLinkSendCall SendToSpot<TMessage>(RoutingId spotRid, TMessage message)
+    public IZLinkSendCall SendToSpot<TMessage>(ZLinkSpotAddress address, TMessage message)
     {
-        return _outboundEndpoint.SendToSpot(spotRid, message);
+        return _outboundEndpoint.SendToSpot(address, message);
     }
 
-    public IZLinkRequestCall RequestToSpot<TRequest>(RoutingId spotRid, TRequest request)
+    public IZLinkRequestCall RequestToSpot<TRequest>(ZLinkSpotAddress address, TRequest request)
     {
-        return _outboundEndpoint.RequestToSpot(spotRid, request);
+        return _outboundEndpoint.RequestToSpot(address, request);
     }
 
     public async ValueTask<IReadOnlyList<Message>> RequestToChannelAsync(

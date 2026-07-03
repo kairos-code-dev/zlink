@@ -13,7 +13,6 @@ internal sealed class ZLinkRouteChannelRuntime : IAsyncDisposable
     private readonly ZLinkRouteReceivePump _receivePump;
     private readonly ZLinkRouteChannelRegistration _registration;
     private readonly IZLinkBackendRouterSocket _router;
-    private readonly ZLinkRouteSpotChannelCalls _spotRouteCalls;
     private volatile bool _autoConnectManaged;
     private readonly CancellationTokenSource _stopSource;
     private readonly ZLinkAsyncSubmitter _submitter;
@@ -44,12 +43,6 @@ internal sealed class ZLinkRouteChannelRuntime : IAsyncDisposable
             _stopSource.Token,
             failFastNotConnected: () => _autoConnectManaged);
         _calls = new ZLinkRouteChannelCalls(
-            services,
-            frameworkRegistration,
-            registration.RouterChannelId,
-            router,
-            _submitter);
-        _spotRouteCalls = new ZLinkRouteSpotChannelCalls(
             services,
             frameworkRegistration,
             registration.RouterChannelId,
@@ -269,32 +262,4 @@ internal sealed class ZLinkRouteChannelRuntime : IAsyncDisposable
             .ConfigureAwait(false);
     }
 
-    public ValueTask SubmitSpotRouteSendPartsAsync(
-        RoutingId targetNodeRid,
-        RoutingId targetSpotRid,
-        IReadOnlyList<Message> parts,
-        CancellationToken cancellationToken)
-    {
-        return _spotRouteCalls.SubmitSendPartsAsync(
-            targetNodeRid,
-            targetSpotRid,
-            parts,
-            cancellationToken);
-    }
-
-    public async ValueTask<IReadOnlyList<Message>> RequestToSpotPartsAsync(
-        RoutingId targetNodeRid,
-        RoutingId targetSpotRid,
-        IReadOnlyList<Message> parts,
-        TimeSpan timeout,
-        CancellationToken cancellationToken)
-    {
-        return await _spotRouteCalls.RequestPartsAsync(
-                targetNodeRid,
-                targetSpotRid,
-                parts,
-                timeout,
-                cancellationToken)
-            .ConfigureAwait(false);
-    }
 }

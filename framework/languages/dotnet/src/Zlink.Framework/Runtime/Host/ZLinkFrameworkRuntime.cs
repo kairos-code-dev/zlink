@@ -18,7 +18,6 @@ internal sealed partial class ZLinkFrameworkRuntime
     private readonly SemaphoreSlim _gate = new(1, 1);
     private readonly ZLinkFrameworkSessionBindings _sessionBindings = new();
     private readonly ZLinkFrameworkSpotFacade _spotFacade;
-    private readonly ZLinkSpotRouteEgressDispatcher _spotRouteEgress;
     private readonly ZLinkSpotRouteRouterDispatcher _spotRouteRouter;
     private readonly ZLinkSpotRuntimeManager _spots;
     private readonly ZLinkFrameworkRuntimeStateFactory _stateFactory;
@@ -56,11 +55,6 @@ internal sealed partial class ZLinkFrameworkRuntime
         _channelFacade = components.ChannelFacade;
         _spotFacade = components.SpotFacade;
         _spotRouteRouter = new ZLinkSpotRouteRouterDispatcher(GetOrStartState);
-        _spotRouteEgress = new ZLinkSpotRouteEgressDispatcher(
-            Registration,
-            _channelFacade.GetRouteChannel,
-            GetSpotRouteBridgeOwner,
-            () => Services.GetService(typeof(ZLinkSpotLocationRidResolver)) as ZLinkSpotLocationRidResolver);
     }
 
     public IZLinkBackendContext? Context => _state?.Context;

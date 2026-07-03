@@ -40,45 +40,11 @@ internal sealed partial class ZLinkFrameworkRuntime
         TMessage message,
         CancellationToken cancellationToken)
     {
-        // A known route mesh peer is always the first choice; the spot
-        // route egress (relay over the spot plane) serves targets the route
-        // socket cannot reach, e.g. spot rids or nodes this runtime never
-        // dials directly.
+        // Route channel sends target node rids only; spot-addressed
+        // traffic goes through the address-based spot outbound instead
+        // (spot-address messaging draft §6).
         var routeChannel = GetRouteChannel(routerChannelId);
         var known = IsKnownRouteMeshPeer(routerChannelId, targetNodeRid);
-        if (known == true)
-        {
-            await routeChannel.SubmitSendAsync(
-                    targetNodeRid,
-                    packetName,
-                    message,
-                    cancellationToken)
-                .ConfigureAwait(false);
-            return;
-        }
-
-        if (!routeChannel.CanDispatchRoutePacket(ZLinkMessageKind.Command, packetName)
-            && _spotRouteEgress.CanHandle(routerChannelId))
-        {
-            var header = ZLinkClientCallCodec.CreateEnvelope(
-                ZLinkMessageKind.Command,
-                routerChannelId,
-                packetName);
-            var parts = ZLinkClientCallCodec.EncodeEnvelopeParts(
-                header,
-                message,
-                Registration.Codecs);
-            if (await _spotRouteEgress.TrySendAsync(
-                        routerChannelId,
-                        targetNodeRid,
-                        parts,
-                        cancellationToken)
-                    .ConfigureAwait(false))
-                return;
-
-            ZLinkMessageParts.DisposeAll(parts);
-        }
-
         try
         {
             await routeChannel.SubmitSendAsync(
@@ -111,46 +77,6 @@ internal sealed partial class ZLinkFrameworkRuntime
     {
         var routeChannel = GetRouteChannel(routerChannelId);
         var known = IsKnownRouteMeshPeer(routerChannelId, targetNodeRid);
-        if (known == true)
-        {
-            return await routeChannel.RequestAsync<TRequest, TReply>(
-                    targetNodeRid,
-                    packetName,
-                    request,
-                    timeout,
-                    cancellationToken)
-                .ConfigureAwait(false);
-        }
-
-        if (!routeChannel.CanDispatchRoutePacket(ZLinkMessageKind.Request, packetName)
-            && _spotRouteEgress.CanHandle(routerChannelId))
-        {
-            var header = ZLinkClientCallCodec.CreateEnvelope(
-                ZLinkMessageKind.Request,
-                routerChannelId,
-                packetName,
-                timeout);
-            var parts = ZLinkClientCallCodec.EncodeEnvelopeParts(
-                header,
-                request,
-                Registration.Codecs);
-            var result = await _spotRouteEgress.TryRequestAsync(
-                    routerChannelId,
-                    targetNodeRid,
-                    parts,
-                    timeout,
-                    cancellationToken)
-                .ConfigureAwait(false);
-            if (result.WasHandled)
-                return ZLinkClientCallCodec.DecodeEnvelopeReplyAndDispose<TReply>(
-                    result.Reply,
-                    "Route SPOT reply was empty.",
-                    $"Route SPOT request failed for '{packetName}'.",
-                    Registration.Codecs);
-
-            ZLinkMessageParts.DisposeAll(parts);
-        }
-
         try
         {
             return await routeChannel.RequestAsync<TRequest, TReply>(

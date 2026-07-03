@@ -2,6 +2,7 @@ using Systems.Zlink;
 using YieldDispatch.Shared;
 using Zlink.Framework.Contracts.Channels;
 using Zlink.Framework.Contracts.Errors;
+using Zlink.Framework.Contracts.Locations;
 using Zlink.Framework.Contracts.Streams;
 
 namespace YieldDispatch.Server.Session.Support;
@@ -55,19 +56,27 @@ internal sealed partial class YieldSession
 
     private static async Task SendSpotWithRetryAsync(
         IZLinkRouteClient routes,
+        IZLinkSpotLocationResolver spots,
         string spotRid,
         object message,
         string packetName,
         CancellationToken cancellationToken)
     {
+        // Resolve once per attempt and message with the address; a failed
+        // attempt re-resolves (spot-address messaging draft §7).
         var deadline = DateTimeOffset.UtcNow + TimeSpan.FromSeconds(20);
         Exception? last = null;
         while (DateTimeOffset.UtcNow < deadline)
             try
             {
-                routes.Send(
+                var address = await spots.ResolveSpotAddressAsync(
+                                  RoutingId.From(spotRid), cancellationToken)
+                              ?? throw new ZLinkFrameworkException(
+                                  ZLinkFrameworkErrorKind.SpotRouteNotFound,
+                                  $"Spot '{spotRid}' has no live address.");
+                routes.SendToSpot(
                         YieldDispatchNames.SpotRouteChannel,
-                        RoutingId.From(spotRid),
+                        address,
                         message)
                     .PacketName(packetName).Submit(cancellationToken);
                 return;
@@ -85,19 +94,27 @@ internal sealed partial class YieldSession
 
     private static async ValueTask<TRes> RequestSpotWithRetryAsync<TRes>(
         IZLinkRouteClient routes,
+        IZLinkSpotLocationResolver spots,
         string spotRid,
         object request,
         string packetName,
         CancellationToken cancellationToken)
     {
+        // Resolve once per attempt and message with the address; a stale
+        // address fails typed and the next attempt re-resolves (draft §7).
         var deadline = DateTimeOffset.UtcNow + TimeSpan.FromSeconds(20);
         Exception? last = null;
         while (DateTimeOffset.UtcNow < deadline)
             try
             {
-                return await routes.Request(
+                var address = await spots.ResolveSpotAddressAsync(
+                                  RoutingId.From(spotRid), cancellationToken)
+                              ?? throw new ZLinkFrameworkException(
+                                  ZLinkFrameworkErrorKind.SpotRouteNotFound,
+                                  $"Spot '{spotRid}' has no live address.");
+                return await routes.RequestToSpot(
                         YieldDispatchNames.SpotRouteChannel,
-                        RoutingId.From(spotRid),
+                        address,
                         request)
                     .PacketName(packetName)
                     .Timeout(TimeSpan.FromSeconds(5))

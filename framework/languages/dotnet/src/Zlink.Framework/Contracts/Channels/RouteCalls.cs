@@ -11,6 +11,26 @@ public interface IZLinkRouteClient
         string routerChannelId,
         RoutingId targetNodeRid,
         TRequest request);
+
+    /// <summary>
+    /// Sends to a spot full address over the channel's spot route plane.
+    /// The caller resolved the address once and holds it; best-effort like
+    /// every spot send (spot-address messaging draft §6, §7).
+    /// </summary>
+    IZLinkSendCall SendToSpot<TMessage>(
+        string routerChannelId,
+        ZLinkSpotAddress address,
+        TMessage message);
+
+    /// <summary>
+    /// Requests against a spot full address over the channel's spot route
+    /// plane. A stale address fails with SpotRouteNotFound; re-resolve and
+    /// retry per the caller's policy.
+    /// </summary>
+    IZLinkRouteRequestCall RequestToSpot<TRequest>(
+        string routerChannelId,
+        ZLinkSpotAddress address,
+        TRequest request);
 }
 
 public interface IZLinkRouteSendHandler<in TMessage>

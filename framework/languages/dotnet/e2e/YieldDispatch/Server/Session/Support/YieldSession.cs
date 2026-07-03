@@ -4,11 +4,14 @@ using Zlink.Framework.Contracts.Channels;
 using Zlink.Framework.Contracts.Messaging;
 using Zlink.Framework.Contracts.Streams;
 
+using Zlink.Framework.Contracts.Locations;
+
 namespace YieldDispatch.Server.Session.Support;
 
 internal sealed partial class YieldSession(
     IZLinkSessionContext context,
     IZLinkRouteClient routes,
+    IZLinkSpotLocationResolver spots,
     EvidenceStore evidence) : IZLinkSession
 {
     public IZLinkSessionContext Context { get; } = context;
@@ -74,6 +77,7 @@ internal sealed partial class YieldSession(
                     $"session-shutdown|rid={evidence.Rid}|session={Context.SessionId}|request={request.RequestId}|spot={request.SpotRid}");
                 var result = await RunShutdownThroughSpotRouteAsync(
                     routes,
+                    spots,
                     request,
                     cancellationToken);
                 Context.Client.Reply(result).Submit();
@@ -86,6 +90,7 @@ internal sealed partial class YieldSession(
                     $"session-shutdown-recovery|rid={evidence.Rid}|session={Context.SessionId}|request={request.RequestId}|spot={request.SpotRid}");
                 var result = await RunShutdownRecoveryThroughSpotRouteAsync(
                     routes,
+                    spots,
                     request,
                     cancellationToken);
                 Context.Client.Reply(result).Submit();
@@ -234,6 +239,7 @@ internal sealed partial class YieldSession(
                       ?? throw new InvalidOperationException($"Failed to decode packet '{dispatch.PacketName}'.");
         var result = await RequestSpotWithRetryAsync<TRes>(
             routes,
+            spots,
             spotRid,
             request,
             dispatch.PacketName,
@@ -254,6 +260,7 @@ internal sealed partial class YieldSession(
                       ?? throw new InvalidOperationException($"Failed to decode packet '{dispatch.PacketName}'.");
         await SendSpotWithRetryAsync(
             routes,
+            spots,
             spotRid,
             command,
             dispatch.PacketName,

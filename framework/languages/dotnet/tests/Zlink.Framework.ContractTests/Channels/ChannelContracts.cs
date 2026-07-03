@@ -177,6 +177,26 @@ public sealed class ChannelContracts
             return new ExampleRouteSendCall();
         }
 
+        public IZLinkSendCall SendToSpot<TMessage>(
+            string routerChannelId,
+            ZLinkSpotAddress address,
+            TMessage message)
+        {
+            RouterChannelId = routerChannelId;
+            TargetNodeRid = address.NodeRid;
+            return new ExampleRouteSendCall();
+        }
+
+        public IZLinkRouteRequestCall RequestToSpot<TRequest>(
+            string routerChannelId,
+            ZLinkSpotAddress address,
+            TRequest request)
+        {
+            RouterChannelId = routerChannelId;
+            TargetNodeRid = address.NodeRid;
+            return new ExampleRouteRequestCall(new object());
+        }
+
         public IZLinkRouteRequestCall Request<TRequest>(
             string routerChannelId,
             RoutingId targetNodeRid,

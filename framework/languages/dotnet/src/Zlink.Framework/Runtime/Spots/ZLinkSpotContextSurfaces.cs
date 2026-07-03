@@ -29,9 +29,9 @@ internal interface IZLinkSpotHandlerRegistrySink
 
 internal interface IZLinkSpotOutboundSink
 {
-    IZLinkSendCall SendToSpot<TMessage>(RoutingId spotRid, TMessage message);
+    IZLinkSendCall SendToSpot<TMessage>(ZLinkSpotAddress address, TMessage message);
 
-    IZLinkRequestCall RequestToSpot<TRequest>(RoutingId spotRid, TRequest request);
+    IZLinkRequestCall RequestToSpot<TRequest>(ZLinkSpotAddress address, TRequest request);
 
     IZLinkPublishCall Publish<TEvent>(string topic, TEvent message);
 
@@ -95,14 +95,14 @@ internal sealed class ZLinkSpotHandlerRegistrySurface(IZLinkSpotHandlerRegistryS
 internal sealed class ZLinkSpotOutboundSurface(IZLinkSpotOutboundSink activation)
     : IZLinkSpotOutbound
 {
-    public IZLinkSendCall SendToSpot<TMessage>(RoutingId spotRid, TMessage message)
+    public IZLinkSendCall SendToSpot<TMessage>(ZLinkSpotAddress address, TMessage message)
     {
-        return activation.SendToSpot(spotRid, message);
+        return activation.SendToSpot(address, message);
     }
 
-    public IZLinkRequestCall RequestToSpot<TRequest>(RoutingId spotRid, TRequest request)
+    public IZLinkRequestCall RequestToSpot<TRequest>(ZLinkSpotAddress address, TRequest request)
     {
-        return activation.RequestToSpot(spotRid, request);
+        return activation.RequestToSpot(address, request);
     }
 
     public IZLinkPublishCall Publish<TEvent>(string topic, TEvent message)

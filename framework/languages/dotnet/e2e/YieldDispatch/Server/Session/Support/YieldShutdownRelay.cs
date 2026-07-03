@@ -2,12 +2,15 @@ using Systems.Zlink;
 using YieldDispatch.Shared;
 using Zlink.Framework.Contracts.Channels;
 
+using Zlink.Framework.Contracts.Locations;
+
 namespace YieldDispatch.Server.Session.Support;
 
 internal sealed partial class YieldSession
 {
     private static async Task<YieldShutdownScenarioRes> RunShutdownThroughSpotRouteAsync(
         IZLinkRouteClient routes,
+        IZLinkSpotLocationResolver spots,
         YieldShutdownScenarioReq request,
         CancellationToken cancellationToken)
     {
@@ -16,9 +19,13 @@ internal sealed partial class YieldSession
             new EnsureSpotReq(request.SpotRid),
             "EnsureSpotReq",
             cancellationToken);
-        await routes.Request(
+        var address = await spots.ResolveSpotAddressAsync(
+                          RoutingId.From(request.SpotRid), cancellationToken)
+                      ?? throw new InvalidOperationException(
+                          $"Spot '{request.SpotRid}' has no live address.");
+        await routes.RequestToSpot(
                 YieldDispatchNames.SpotRouteChannel,
-                RoutingId.From(request.SpotRid),
+                address,
                 new YieldReq(request.RequestId, request.DelayMs, "shutdown"))
             .PacketName("YieldReq")
             .Timeout(TimeSpan.FromSeconds(90))
@@ -34,6 +41,7 @@ internal sealed partial class YieldSession
 
     private static async Task<YieldShutdownRecoveryRes> RunShutdownRecoveryThroughSpotRouteAsync(
         IZLinkRouteClient routes,
+        IZLinkSpotLocationResolver spots,
         YieldShutdownRecoveryReq request,
         CancellationToken cancellationToken)
     {
@@ -44,6 +52,7 @@ internal sealed partial class YieldSession
             cancellationToken);
         await RequestSpotWithRetryAsync<YieldDispatchRes>(
             routes,
+            spots,
             request.SpotRid,
             new ProbeReq(request.RequestId, "shutdown-recovery-probe"),
             "ProbeReq",

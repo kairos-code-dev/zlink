@@ -36,6 +36,22 @@ internal sealed class ZLinkRouteClient(ZLinkFrameworkRuntime runtime) : IZLinkMu
         return new ZLinkRouteRequestCall<TRequest>(runtime, routerChannelId, targetNodeRid, request);
     }
 
+    public IZLinkSendCall SendToSpot<TMessage>(
+        string routerChannelId,
+        ZLinkSpotAddress address,
+        TMessage message)
+    {
+        return new ZLinkRouteSpotSendCall<TMessage>(runtime, routerChannelId, address, message);
+    }
+
+    public IZLinkRouteRequestCall RequestToSpot<TRequest>(
+        string routerChannelId,
+        ZLinkSpotAddress address,
+        TRequest request)
+    {
+        return new ZLinkRouteSpotRequestCall<TRequest>(runtime, routerChannelId, address, request);
+    }
+
     public ValueTask SendPartsTo(
         string routerChannelId,
         RoutingId targetNodeRid,
@@ -133,5 +149,86 @@ internal sealed class ZLinkRouteRequestCall<TRequest>(
             request,
             timeout,
             cancellationToken);
+    }
+}
+
+internal sealed class ZLinkRouteSpotSendCall<TMessage>(
+    ZLinkFrameworkRuntime runtime,
+    string routerChannelId,
+    ZLinkSpotAddress address,
+    TMessage message) : IZLinkSendCall
+{
+    private string? _packetName = ZLinkMessageNameResolver.ResolveFromMessage(message);
+
+    public IZLinkSendCall PacketName(string packetName)
+    {
+        _packetName = packetName;
+        return this;
+    }
+
+    public void Submit(CancellationToken cancellationToken = default)
+    {
+        ZLinkUnawaitedSubmit.Observe(SubmitAsync(cancellationToken), "route spot send submit");
+    }
+
+    private ValueTask SubmitAsync(CancellationToken cancellationToken)
+    {
+        var header = ZLinkClientCallCodec.CreateEnvelope(
+            ZLinkMessageKind.Command,
+            routerChannelId,
+            _packetName ?? throw new InvalidOperationException("Packet name is required."));
+        var parts = ZLinkClientCallCodec.EncodeEnvelopeParts(header, message, runtime.Registration.Codecs);
+        return runtime.SendToSpotViaRouterChannelAsync(
+            routerChannelId,
+            address.NodeRid,
+            address.SpotRid,
+            parts,
+            cancellationToken);
+    }
+}
+
+internal sealed class ZLinkRouteSpotRequestCall<TRequest>(
+    ZLinkFrameworkRuntime runtime,
+    string routerChannelId,
+    ZLinkSpotAddress address,
+    TRequest request) : IZLinkRouteRequestCall
+{
+    private string? _packetName = ZLinkMessageNameResolver.ResolveFromMessage(request);
+    private TimeSpan? _timeout;
+
+    public IZLinkRouteRequestCall PacketName(string packetName)
+    {
+        _packetName = packetName;
+        return this;
+    }
+
+    public IZLinkRouteRequestCall Timeout(TimeSpan timeout)
+    {
+        _timeout = timeout;
+        return this;
+    }
+
+    public async ValueTask<TReply> Async<TReply>(CancellationToken cancellationToken = default)
+    {
+        var timeout = _timeout ?? runtime.Registration.ResolveRouteRequestTimeout(routerChannelId);
+        var header = ZLinkClientCallCodec.CreateEnvelope(
+            ZLinkMessageKind.Request,
+            routerChannelId,
+            _packetName ?? throw new InvalidOperationException("Packet name is required."),
+            timeout);
+        var parts = ZLinkClientCallCodec.EncodeEnvelopeParts(header, request, runtime.Registration.Codecs);
+        var reply = await runtime.RequestToSpotViaRouterChannelAsync(
+                routerChannelId,
+                address.NodeRid,
+                address.SpotRid,
+                parts,
+                timeout,
+                cancellationToken)
+            .ConfigureAwait(false);
+        return ZLinkClientCallCodec.DecodeEnvelopeReplyAndDispose<TReply>(
+            reply,
+            "SPOT route request reply is empty.",
+            $"SPOT route request failed for '{_packetName}'.",
+            runtime.Registration.Codecs);
     }
 }

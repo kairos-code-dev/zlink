@@ -2,12 +2,15 @@ using SpotService.Server.Play.Spots;
 using SpotService.Shared;
 using Systems.Zlink;
 using Zlink.Framework.Contracts.Handlers;
+using Zlink.Framework.Contracts.Locations;
 using Zlink.Framework.Contracts.Spots;
 
 namespace SpotService.Server.Play.Handlers;
 
 [ZLinkSpotRequestHandler("SpotToSpotReq")]
-internal sealed class SpotToSpotHandler(EvidenceStore evidence)
+internal sealed class SpotToSpotHandler(
+    EvidenceStore evidence,
+    IZLinkSpotLocationResolver spots)
     : IZLinkSpotRequestHandler<ScenarioUserSpot, SpotToSpotReq, SpotToSpotRes>
 {
     public async ValueTask<SpotToSpotRes> HandleAsync(
@@ -15,12 +18,17 @@ internal sealed class SpotToSpotHandler(EvidenceStore evidence)
         SpotToSpotReq request,
         CancellationToken cancellationToken)
     {
-        var targetRid = RoutingId.From(request.TargetSpotRid);
+        // Resolve once, hold the address for the interaction (spot-address
+        // messaging draft §6).
+        var target = await spots.ResolveSpotAddressAsync(
+                         RoutingId.From(request.TargetSpotRid), cancellationToken)
+                     ?? throw new InvalidOperationException(
+                         $"Target spot '{request.TargetSpotRid}' has no live address.");
         var reply = await spot.Context.Outbound
-            .RequestToSpot(targetRid, new StateReq("add", 3))
+            .RequestToSpot(target, new StateReq("add", 3))
             .PacketName("StateReq")
             .Async<StateRes>(cancellationToken);
-        spot.Context.Outbound.SendToSpot(targetRid, new StateMsg($"sm-c3-send-{request.Marker}"))
+        spot.Context.Outbound.SendToSpot(target, new StateMsg($"sm-c3-send-{request.Marker}"))
             .PacketName("StateMsg")
             .Submit(cancellationToken);
         spot.Context.Outbound.Publish(SpotServiceNames.SpotMsgTopic, new SpotMsg($"sm-c3-publish-{request.Marker}"))
@@ -37,7 +45,9 @@ internal sealed class SpotToSpotHandler(EvidenceStore evidence)
 }
 
 [ZLinkSpotRequestHandler("SpotToSpotTimeoutReq")]
-internal sealed class SpotToSpotTimeoutHandler(EvidenceStore evidence)
+internal sealed class SpotToSpotTimeoutHandler(
+    EvidenceStore evidence,
+    IZLinkSpotLocationResolver spots)
     : IZLinkSpotRequestHandler<ScenarioUserSpot, SpotToSpotTimeoutReq, SpotToSpotTimeoutRes>
 {
     public async ValueTask<SpotToSpotTimeoutRes> HandleAsync(
@@ -45,12 +55,15 @@ internal sealed class SpotToSpotTimeoutHandler(EvidenceStore evidence)
         SpotToSpotTimeoutReq request,
         CancellationToken cancellationToken)
     {
-        var targetRid = RoutingId.From(request.TargetSpotRid);
         var failed = false;
         try
         {
+            var target = await spots.ResolveSpotAddressAsync(
+                             RoutingId.From(request.TargetSpotRid), cancellationToken)
+                         ?? throw new InvalidOperationException(
+                             $"Target spot '{request.TargetSpotRid}' has no live address.");
             await spot.Context.Outbound
-                .RequestToSpot(targetRid, new SlowSpotReq(request.Marker, 1500))
+                .RequestToSpot(target, new SlowSpotReq(request.Marker, 1500))
                 .PacketName("SlowSpotReq")
                 .Timeout(TimeSpan.FromMilliseconds(100))
                 .Async<SlowSpotRes>(cancellationToken);
@@ -71,7 +84,9 @@ internal sealed class SpotToSpotTimeoutHandler(EvidenceStore evidence)
 }
 
 [ZLinkSpotRequestHandler("SpotToSpotNegativeReq")]
-internal sealed class SpotToSpotNegativeHandler(EvidenceStore evidence)
+internal sealed class SpotToSpotNegativeHandler(
+    EvidenceStore evidence,
+    IZLinkSpotLocationResolver spots)
     : IZLinkSpotRequestHandler<ScenarioUserSpot, SpotToSpotNegativeReq, SpotToSpotNegativeRes>
 {
     public async ValueTask<SpotToSpotNegativeRes> HandleAsync(
@@ -79,12 +94,17 @@ internal sealed class SpotToSpotNegativeHandler(EvidenceStore evidence)
         SpotToSpotNegativeReq request,
         CancellationToken cancellationToken)
     {
-        var targetRid = RoutingId.From(request.TargetSpotRid);
         var requestFailed = false;
         try
         {
+            // A missing spot has no live address; the resolve itself is the
+            // fast negative signal (spot-address messaging draft §7).
+            var target = await spots.ResolveSpotAddressAsync(
+                             RoutingId.From(request.TargetSpotRid), cancellationToken)
+                         ?? throw new InvalidOperationException(
+                             $"Target spot '{request.TargetSpotRid}' has no live address.");
             await spot.Context.Outbound
-                .RequestToSpot(targetRid, new StateReq("noop", 0))
+                .RequestToSpot(target, new StateReq("noop", 0))
                 .PacketName("MissingSpotReq")
                 .Timeout(TimeSpan.FromSeconds(2))
                 .Async<StateRes>(cancellationToken);
@@ -94,9 +114,6 @@ internal sealed class SpotToSpotNegativeHandler(EvidenceStore evidence)
             requestFailed = true;
         }
 
-        spot.Context.Outbound.SendToSpot(targetRid, new StateMsg($"missing-{request.Marker}"))
-            .PacketName("MissingSpotMsg")
-            .Submit(cancellationToken);
         evidence.Add(
             $"spot-to-spot-negative|rid={evidence.Rid}|source={spot.Context.SpotRid}"
             + $"|target={request.TargetSpotRid}|requestFailed={requestFailed}");

@@ -189,12 +189,23 @@ public interface IZLinkSpotHandlerRegistry : IZLinkActorHandlerRegistry
 
 public interface IZLinkSpotOutbound
 {
+    /// <summary>
+    /// Sends to a spot full address the caller resolved once and holds.
+    /// Best-effort: a stale address drops the packet at the target node
+    /// without notice (spot-address messaging draft §7).
+    /// </summary>
     IZLinkSendCall SendToSpot<TMessage>(
-        RoutingId spotRid,
+        ZLinkSpotAddress address,
         TMessage message);
 
+    /// <summary>
+    /// Requests against a spot full address. A stale address fails with
+    /// SpotRouteNotFound (spot moved or destroyed) or RouteNotConnected /
+    /// RequestTargetNotFound (node unreachable or unknown); re-resolve and
+    /// retry per the caller's policy.
+    /// </summary>
     IZLinkRequestCall RequestToSpot<TRequest>(
-        RoutingId spotRid,
+        ZLinkSpotAddress address,
         TRequest request);
 
     IZLinkPublishCall Publish<TEvent>(

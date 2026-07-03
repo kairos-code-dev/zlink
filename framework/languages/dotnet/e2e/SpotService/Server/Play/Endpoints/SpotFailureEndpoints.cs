@@ -2,6 +2,9 @@ using SpotService.Shared;
 using Systems.Zlink;
 using Zlink.Framework.Contracts.Channels;
 
+using SpotService.Shared;
+using Zlink.Framework.Contracts.Locations;
+
 namespace SpotService.Server.Play.Endpoints;
 
 using static PlayHostFactory;
@@ -12,14 +15,15 @@ internal static class SpotFailureEndpoints
     {
         app.MapPost("/spot/missing-handler/request", async (
             IZLinkRouteClient routes,
+            IZLinkSpotLocationResolver locator,
             EvidenceStore evidence,
             SpotMissingHandlerReq request) =>
         {
             var before = evidence.Snapshot();
             var failed = await FailsAsync(
-                routes.Request(
+                routes.RequestToSpot(
                         SpotServiceNames.ExternalSpotChannel,
-                        RoutingId.From(request.SpotRid),
+                        await locator.ResolveRequiredAsync(request.SpotRid),
                         new StateReq("noop", 0))
                     .PacketName("MissingSpotReq")
                     .Timeout(TimeSpan.FromSeconds(2))
@@ -33,6 +37,7 @@ internal static class SpotFailureEndpoints
         });
         app.MapPost("/spot/missing-handler/command", async (
             IZLinkRouteClient routes,
+            IZLinkSpotLocationResolver locator,
             EvidenceStore evidence,
             SpotMissingCommandReq request) =>
         {
@@ -41,9 +46,9 @@ internal static class SpotFailureEndpoints
             {
                 try
                 {
-                    routes.Send(
+                    routes.SendToSpot(
                             SpotServiceNames.ExternalSpotChannel,
-                            RoutingId.From(request.SpotRid),
+                            await locator.ResolveRequiredAsync(request.SpotRid),
                             new StateMsg(request.Marker))
                         .PacketName("MissingSpotMsg").Submit(missingSendCts.Token);
                 }
@@ -61,26 +66,34 @@ internal static class SpotFailureEndpoints
         });
         app.MapPost("/spot/missing-target/request", async (
             IZLinkRouteClient routes,
+            IZLinkSpotLocationResolver locator,
             SpotMissingTargetReq request) =>
         {
-            var failed = await FailsAsync(
-                routes.Request(
+            // The missing spot has no live address, so the resolve itself
+            // is the expected failure — it must fail inside the awaited task.
+            var failed = await FailsAsync(RequestMissingTargetAsync());
+            return Results.Ok(new SpotMissingTargetRes(request.SpotRid, failed));
+
+            async Task<StateRes> RequestMissingTargetAsync()
+            {
+                return await routes.RequestToSpot(
                         SpotServiceNames.ExternalSpotChannel,
-                        RoutingId.From(request.SpotRid),
+                        await locator.ResolveRequiredAsync(request.SpotRid),
                         new StateReq("noop", 0))
                     .PacketName("StateReq")
                     .Timeout(TimeSpan.FromSeconds(2))
-                    .Async<StateRes>().AsTask());
-            return Results.Ok(new SpotMissingTargetRes(request.SpotRid, failed));
+                    .Async<StateRes>();
+            }
         });
         app.MapPost("/spot/slow/request", async (
             IZLinkRouteClient routes,
+            IZLinkSpotLocationResolver locator,
             SpotSlowRouteReq request) =>
         {
             var timedOut = await FailsAsync(
-                routes.Request(
+                routes.RequestToSpot(
                         SpotServiceNames.ExternalSpotChannel,
-                        RoutingId.From(request.SpotRid),
+                        await locator.ResolveRequiredAsync(request.SpotRid),
                         new SlowSpotReq(request.Marker, request.DelayMs))
                     .PacketName("SlowSpotReq")
                     .Timeout(TimeSpan.FromMilliseconds(request.TimeoutMs))
@@ -89,11 +102,12 @@ internal static class SpotFailureEndpoints
         });
         app.MapPost("/spot/to-spot/timeout", async (
             IZLinkRouteClient routes,
+            IZLinkSpotLocationResolver locator,
             SpotToSpotTimeoutRouteReq request) =>
         {
-            var result = await routes.Request(
+            var result = await routes.RequestToSpot(
                     SpotServiceNames.ExternalSpotChannel,
-                    RoutingId.From(request.SourceSpotRid),
+                    await locator.ResolveRequiredAsync(request.SourceSpotRid),
                     new SpotToSpotTimeoutReq(request.TargetSpotRid, request.Marker))
                 .PacketName("SpotToSpotTimeoutReq")
                 .Timeout(TimeSpan.FromSeconds(5))
@@ -102,13 +116,14 @@ internal static class SpotFailureEndpoints
         });
         app.MapPost("/spot/to-spot/negative", async (
             IZLinkRouteClient routes,
+            IZLinkSpotLocationResolver locator,
             EvidenceStore evidence,
             NodeOptions node,
             SpotToSpotNegativeRouteReq request) =>
         {
-            var result = await routes.Request(
+            var result = await routes.RequestToSpot(
                     SpotServiceNames.ExternalSpotChannel,
-                    RoutingId.From(request.SourceSpotRid),
+                    await locator.ResolveRequiredAsync(request.SourceSpotRid),
                     new SpotToSpotNegativeReq(request.TargetSpotRid, request.Marker))
                 .PacketName("SpotToSpotNegativeReq")
                 .Timeout(TimeSpan.FromSeconds(5))

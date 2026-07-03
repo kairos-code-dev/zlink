@@ -4,4 +4,7 @@
         <AssemblyName>SpotService.Shared</AssemblyName>
         <RootNamespace>SpotService.Shared</RootNamespace>
     </PropertyGroup>
+    <ItemGroup>
+        <ProjectReference Include="../../../src/Zlink.Framework/Zlink.Framework.csproj"/>
+    </ItemGroup>
 </Project>

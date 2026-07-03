@@ -11,6 +11,8 @@ using Zlink.Framework.AspNetCore;
 using Zlink.Framework.Contracts.Dispatch;
 using Zlink.Framework.Contracts.Spots;
 
+using Zlink.Framework.Locations.Redis;
+
 namespace SpotService.Server.Gateway;
 
 internal static class GatewayHostFactory
@@ -31,6 +33,20 @@ internal static class GatewayHostFactory
         builder.Services.AddSingleton(new EvidenceStore(options.Rid, options.EvidenceFile));
         builder.Services.AddZLinkFramework(framework =>
         {
+            if (!string.IsNullOrWhiteSpace(options.RedisEndpoint))
+            {
+                framework.AddLocationStore(new ZLinkRedisLocationStore(redis => redis
+                    .SetConnectionString(options.RedisEndpoint)
+                    .SetKeyPrefix(options.RedisKeyPrefix
+                                  ?? throw new InvalidOperationException("--redis-key-prefix is required."))));
+                // Crash-recovery scenarios re-claim actors from a killed
+                // node; a short owner lease keeps that takeover window
+                // within the scenario's patience.
+                var locations = framework.ConfigureLocations();
+                locations.HeartbeatInterval = TimeSpan.FromSeconds(1);
+                locations.OwnerLeaseTtl = TimeSpan.FromSeconds(3);
+                locations.PollingInterval = TimeSpan.FromMilliseconds(500);
+            }
             framework.ConfigureDispatch()
                 .MessageFlow(ZLinkMessageFlowLogMode.KeyTransitions)
                 .TraceLogFile(Path.Combine(options.LogDir, $"{options.Rid}-flow.log"))
@@ -103,7 +119,8 @@ internal sealed record GatewayOptions(
     string HttpUrl,
     string LogDir,
     string? EvidenceFile,
-    string? RegistryRouterEndpoint,
+    string? RedisEndpoint,
+    string? RedisKeyPrefix,
     string? SpotPubEndpoint)
 {
     public static GatewayOptions Parse(string[] args)
@@ -134,7 +151,8 @@ internal sealed record GatewayOptions(
             Required("http-url"),
             values.GetValueOrDefault("log-dir", Path.Combine(Path.GetTempPath(), "zlink-dotnet-spot-e2e")),
             values.GetValueOrDefault("evidence-file"),
-            values.GetValueOrDefault("registry-router-endpoint"),
+            values.GetValueOrDefault("redis-endpoint"),
+            values.GetValueOrDefault("redis-key-prefix"),
             values.GetValueOrDefault("spot-pub-endpoint"));
     }
 }

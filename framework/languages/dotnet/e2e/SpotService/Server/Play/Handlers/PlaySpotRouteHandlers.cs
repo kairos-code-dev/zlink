@@ -94,15 +94,16 @@ internal sealed class SpotToSpotNegativeHandler(
         SpotToSpotNegativeReq request,
         CancellationToken cancellationToken)
     {
+        // The negative here is the missing HANDLER on a live target spot:
+        // the address resolves, the request reply-errors, and the
+        // best-effort send is dropped at the target with evidence.
+        var target = await spots.ResolveSpotAddressAsync(
+                         RoutingId.From(request.TargetSpotRid), cancellationToken)
+                     ?? throw new InvalidOperationException(
+                         $"Target spot '{request.TargetSpotRid}' has no live address.");
         var requestFailed = false;
         try
         {
-            // A missing spot has no live address; the resolve itself is the
-            // fast negative signal (spot-address messaging draft §7).
-            var target = await spots.ResolveSpotAddressAsync(
-                             RoutingId.From(request.TargetSpotRid), cancellationToken)
-                         ?? throw new InvalidOperationException(
-                             $"Target spot '{request.TargetSpotRid}' has no live address.");
             await spot.Context.Outbound
                 .RequestToSpot(target, new StateReq("noop", 0))
                 .PacketName("MissingSpotReq")
@@ -113,6 +114,10 @@ internal sealed class SpotToSpotNegativeHandler(
         {
             requestFailed = true;
         }
+
+        spot.Context.Outbound.SendToSpot(target, new StateMsg($"missing-{request.Marker}"))
+            .PacketName("MissingSpotMsg")
+            .Submit(cancellationToken);
 
         evidence.Add(
             $"spot-to-spot-negative|rid={evidence.Rid}|source={spot.Context.SpotRid}"

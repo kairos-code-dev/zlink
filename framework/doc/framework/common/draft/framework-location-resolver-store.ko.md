@@ -7,9 +7,7 @@
 > 이 문서는 core registry/discovery에 의존하지 않고 framework가 자동 연결, spot 위치 조회,
 > actor 위치 조회를 제공하기 위한 공통 계약 후보를 정의한다.
 >
-> **대체 예정 범위**: 이 문서의 캐시/freshness 관련 서술 전체 — §8의 `ZLinkResolveFreshness`,
-> §10 캐시 정책, §15.2/§15.3·§16.2/§16.3의 cache 단계, §20.4의 cache option, §20.5의
-> `CacheInvalidated`, §24.3의 cache 확인 항목 — 는
+> **반영됨**: 이 문서의 캐시/freshness 서술은 전부 제거·재서술됐다. 결정과 근거는
 > [framework-spot-address-messaging.ko.md](framework-spot-address-messaging.ko.md)에서 제거하기로
 > 결정했다(spot 메시징이 spot full 주소를 받는 모델로 바뀌면서 캐시의 존재 이유가 사라짐).
 > 어느 절에서든 두 문서가 충돌하면 그 문서가 우선한다.
@@ -43,7 +41,7 @@ framework는 분산 환경에서 아래 세 가지 위치 문제를 해결해야
 이 목표가 계약에 강제하는 원칙은 다음과 같다.
 
 - 위치 resolve는 메시징마다 수행하지 않는다. store 조회는 session 수립, 재연결, 실패 복구, reconcile
-  tick에서만 일어나고, 일반 packet 경로는 이미 연결된 route와 local cache를 사용한다.
+  tick에서만 일어나고, 일반 packet 경로는 호출자가 보관한 spot 주소와 이미 연결된 route를 사용한다.
 - heartbeat는 row 단위가 아니라 owner 단위다. actor/spot row 수백만 개의 lease를 개별 write로 연장하는
   구조는 금지한다. 6.6의 owner lease 모델을 따른다. lease write 부하는 actor 수가 아니라 node 수에
   비례해야 한다.
@@ -63,7 +61,7 @@ framework는 분산 환경에서 아래 세 가지 위치 문제를 해결해야
 
 location store는 위치 정보의 authoritative source다. 하지만 위치 정책은 store가 아니라 framework가
 소유한다. 사용자는 위치 row를 어디에 저장하고 어떻게 조회할지만 선택한다. 자동연결, spot resolve,
-actor resolve의 key 모델, lifecycle update/remove, freshness, cache, owner/generation 처리 정책은
+actor resolve의 key 모델, lifecycle update/remove, owner/generation 처리 정책은
 framework가 공통으로 제공한다.
 
 사용자는 storage 구현체를 등록한다. framework의 자동연결과 resolver는 store interface만 사용하므로,
@@ -124,11 +122,9 @@ core에서 registry/discovery 구현을 제거하더라도 위 사용자 기능�
 core의 PUB/SUB 브로드캐스트, ROUTER/DEALER control plane, registry flooding이 아니라 framework의
 location runtime과 사용자가 등록한 store interface로 옮긴다.
 
-캐싱은 기존 core discovery의 cache 구현을 옮기는 대상이 아니다. 기존 문서의 cache 설명은 어떤 문제가
-있었는지 파악하기 위한 참고 자료로만 사용한다. framework는 10절에서 새로 정의하는 공통 cache 정책으로
-peer, spot, actor, route 조회를 처리한다. 이 정책은 actor와 spot을 1:1로 많이 만드는 topology까지 고려해,
-각 resolver별 cache enable, TTL, max entry, `Normal`/`Refresh` freshness를 같은 의미로
-제공해야 한다.
+캐싱은 옮기지 않는다. resolver에는 캐시가 없고 모든 조회가 store에 도달한다
+([framework-spot-address-messaging.ko.md](framework-spot-address-messaging.ko.md)). 기존 문서의
+cache 설명은 어떤 문제가 있었는지 파악하기 위한 참고 자료로만 사용한다.
 
 | 기존 기능 | core 문서 기준 동작 | framework 구현 방향 |
 |-----------|--------------------|---------------------|
@@ -136,16 +132,16 @@ peer, spot, actor, route 조회를 처리한다. 이 정책은 actor와 spot을 
 | service registration | socket, SpotNode가 endpoint, role, weight, value, metadata를 Registry에 등록한다. | framework lifecycle이 peer location row를 자동 upsert한다. row에는 auto-connect type, mesh name, role, endpoint, node rid, weight, value, metadata, owner/generation을 담는다. 생존 판정은 row가 아니라 owner lease가 담당한다. |
 | unregister | owner가 종료되면 등록 row를 제거한다. owner가 사라지면 timeout으로 정리한다. | 정상 종료에서는 owner/generation guard로 remove한다. 비정상 종료는 owner lease 만료와 cleanup으로 제거한다. |
 | heartbeat | Discovery가 등록된 service participant의 heartbeat를 주기적으로 보낸다. | framework location runtime이 runtime instance당 하나의 owner lease를 주기적으로 갱신한다. peer/spot/actor row를 heartbeat마다 개별 write하지 않는다. |
-| service list broadcast | Registry가 service list를 Discovery에 broadcast하고 Discovery가 local provider snapshot을 갱신한다. | store watch가 있으면 변경 event로 reconcile을 깨운다. watch가 없으면 polling으로 같은 결과를 얻는다. cache 동작은 기존 broadcast cache가 아니라 10절의 새 framework cache 정책을 따른다. |
+| service list broadcast | Registry가 service list를 Discovery에 broadcast하고 Discovery가 local provider snapshot을 갱신한다. | store watch가 있으면 변경 event로 reconcile을 깨운다. watch가 없으면 polling으로 같은 결과를 얻는다. resolver에는 캐시가 없고 매 조회가 store를 읽는다. |
 | auto-connect role matching | auto-connect type별 허용 role과 outbound 방향을 정한다. | 14절의 role 허용 정책과 target 매칭 정책으로 그대로 옮긴다. |
 | pairwise initiator | route mesh, dealer mesh, spot mesh에서 routing id와 endpoint total order로 한쪽만 dial한다. | framework reconcile loop가 같은 비교 규칙으로 desired target set을 만든다. |
 | peer weight/value | member peer entry가 weight와 `int64` value를 노출한다. | peer location row에 `Weight`, `Value`를 포함하고, member peer 조회와 admission 정책이 이 값을 사용한다. |
-| member peers | Discovery cache 또는 Registry에서 현재 peer 목록을 조회한다. | resolver의 `ListPeersAsync(filter, freshness)`와 framework query API로 제공한다. |
+| member peers | Discovery cache 또는 Registry에서 현재 peer 목록을 조회한다. | resolver의 `ListPeersAsync(filter)`와 framework query API로 제공한다. |
 | topology query | service kind, role, state, channel, routing id 등으로 topology snapshot을 조회한다. | peer/spot/actor list query와 별도 `LocationTopology` 조회 모델로 제공한다. store 구현체는 filter 조회를 제공하고, framework가 state와 stale 판정을 해석한다. |
 | service summary | channel별 total/ready/error/stopped 집계를 제공한다. | framework runtime이 location row와 connection state를 집계해 운영 조회 API로 제공한다. store가 집계를 결정하지 않는다. |
-| status | registry id, state, entry count, peer registry count, last error 등을 제공한다. | registry process가 없어지므로 같은 필드를 보존하지 않는다. 대신 location runtime status로 store health, watch/poll 상태, cache entry 수, last error, last refresh 시각을 제공한다. |
+| status | registry id, state, entry count, peer registry count, last error 등을 제공한다. | registry process가 없어지므로 같은 필드를 보존하지 않는다. 대신 location runtime status로 store health, watch/poll 상태, last error, last refresh 시각을 제공한다. |
 | registry clustering | Registry끼리 service list와 route snapshot을 flooding하고 `registry_id + list_seq`로 중복을 제거한다. | framework는 저장소 클러스터링을 직접 구현하지 않는다. HA와 복제는 사용자가 선택한 store 구현체의 책임이다. framework는 store-issued generation, lease, store 기준 updated time으로 중복과 stale row를 걸러낸다. |
-| spot owner resolve | `spot_rid -> owner_node_rid + spot_kind`를 cache 후 필요하면 Registry topology query로 refresh한다. | 15절의 spot resolve/list로 옮긴다. 기준 저장소는 spot store이고, cache는 기존 core 동작이 아니라 10절의 새 framework cache 정책을 사용한다. |
+| spot owner resolve | `spot_rid -> owner_node_rid + spot_kind`를 cache 후 필요하면 Registry topology query로 refresh한다. | 15절의 spot resolve/list로 옮긴다. 기준 저장소는 spot store이고, 조회 결과(spot 주소)는 호출자가 보관한다. |
 | actor active route | `actor_id -> actor ref + current spot` route를 owner-bound row로 조회한다. | 16절의 actor resolve/list로 옮긴다. actor lifecycle이 row를 자동 갱신하고, 재연결 경로는 `Refresh`를 사용한다. |
 | generic route bind/resolve | framework 계층이 `kind + key -> owner rid + value` owner-bound route를 직접 관리할 수 있다. | 공통 location 계약에 route store를 포함한다. actor session binding, spot name 같은 framework route도 같은 owner/generation/lease 정책을 사용한다. |
 | attach ownership | Discovery에 attach된 socket/SpotNode는 Discovery destroy 때 함께 정리된다. | framework runtime이 자신이 만든 channel participant와 location row의 lifecycle을 소유한다. core socket handle 자체의 소유권은 각 언어 framework의 channel runtime 규칙에 맞춘다. |
@@ -173,8 +169,6 @@ store 구현체가 바뀌어도 아래 정책은 바뀌면 안 된다.
 |------|----------------|
 | key 생성 | peer, spot, actor, route location key를 같은 규칙으로 만든다. |
 | 자동 update/remove | node, spot, actor lifecycle event를 받아 row를 갱신한다. |
-| resolve freshness | `Normal`, `Refresh` 의미를 동일하게 적용한다. |
-| cache | peer/spot/actor/route cache enable, TTL, max entries를 동일한 방식으로 적용한다. not-found 결과는 cache하지 않는다. |
 | owner/generation guard | 오래된 owner가 최신 row를 덮거나 지우지 못하게 한다. |
 | owner lease 만료 | owner lease가 만료된 owner의 row는 resolve 성공으로 반환하지 않는다. |
 | 오류 의미 | not found, stale, conflict, store 장애를 구분한다. |
@@ -649,7 +643,7 @@ public interface IZLinkLocationWatchStore
 }
 ```
 
-store 구현체가 이 interface도 구현하면 framework runtime은 watch event로 reconcile과 cache invalidation을
+store 구현체가 이 interface도 구현하면 framework runtime은 watch event로 reconcile을
 깨운다. 구현하지 않으면 polling이 correctness 경로다. watch event는 latency 최적화일 뿐이고, event 유실이
 있어도 다음 polling 결과로 같은 상태에 도달해야 한다.
 
@@ -661,38 +655,33 @@ store 구현체가 이 interface도 구현하면 framework runtime은 watch even
 ## 8. Resolver 계약
 
 resolver는 framework runtime과 application-facing client가 위치를 찾을 때 사용하는 읽기 표면이다.
-기본 구현은 store를 읽지만, 사용자가 별도 resolver를 꽂을 수도 있다.
-
-```csharp
-public enum ZLinkResolveFreshness
-{
-    Normal,
-    Refresh
-}
-```
+기본 구현은 store를 읽지만, 사용자가 별도 resolver를 꽂을 수도 있다. resolver에는 캐시가 없다 —
+모든 조회가 store에 도달하고 owner lease join으로 유효성을 판정한다
+([framework-spot-address-messaging.ko.md](framework-spot-address-messaging.ko.md) §5, §8).
 
 ```csharp
 public interface IZLinkPeerLocationResolver
 {
     ValueTask<IReadOnlyList<ZLinkPeerLocation>> ListPeersAsync(
         ZLinkPeerLocationFilter filter,
-        ZLinkResolveFreshness freshness = ZLinkResolveFreshness.Normal,
         CancellationToken ct = default);
 }
 
+// 메시징 조회: spot rid → spot full 주소. 호출자가 주소를 보관하고
+// 실패 시 재조회한다. 전송 경로는 조회하지 않는다.
 public interface IZLinkSpotLocationResolver
 {
-    ValueTask<ZLinkSpotLocation?> ResolveSpotAsync(
-        ZLinkSpotLocationKey key,
-        ZLinkResolveFreshness freshness = ZLinkResolveFreshness.Normal,
+    ValueTask<ZLinkSpotAddress?> ResolveSpotAddressAsync(
+        RoutingId spotRid,
         CancellationToken ct = default);
 }
 
+// 메시징 조회: actor id → 그 actor가 위치한 spot의 full 주소.
 public interface IZLinkActorLocationResolver
 {
-    ValueTask<ZLinkActorLocation?> ResolveActorAsync(
-        ZLinkActorLocationKey key,
-        ZLinkResolveFreshness freshness = ZLinkResolveFreshness.Normal,
+    ValueTask<ZLinkSpotAddress?> ResolveActorSpotAddressAsync(
+        string actorType,
+        string actorId,
         CancellationToken ct = default);
 }
 
@@ -700,21 +689,13 @@ public interface IZLinkRouteLocationResolver
 {
     ValueTask<ZLinkRouteLocation?> ResolveRouteAsync(
         ZLinkRouteLocationKey key,
-        ZLinkResolveFreshness freshness = ZLinkResolveFreshness.Normal,
         CancellationToken ct = default);
 }
 ```
 
-`ZLinkResolveFreshness`는 resolver 계약이다. store 구현체는 freshness를 받지 않는다. cache read/write,
-TTL 판단, stale row 제거는 framework resolver가 처리한다.
-
-| mode | 의미 |
-|------|------|
-| `Normal` | cache hit를 허용한다. cache miss 또는 TTL 만료 시 store를 조회하고 cache를 갱신한다. |
-| `Refresh` | cache가 있어도 store를 조회한다. 조회 결과로 cache를 갱신한다. |
-
-재연결과 “없으면 생성” 판단은 `Refresh`를 사용한다. cache 영향을 완전히 배제해야 하는 운영 진단은
-resolver가 아니라 `IZLinkLocationRuntimeQuery`를 사용한다. 이 표면은 cache 없이 store를 직접 읽는다.
+재연결과 "없으면 생성" 판단, takeover 같은 lifecycle 흐름은 generation을 포함한 location row가
+필요하므로 resolver가 아니라 store/runtime 경로를 사용한다. 운영 진단은
+`IZLinkLocationRuntimeQuery`를 사용한다 — 이 표면도 store를 직접 읽는다.
 
 ### 8.1 목록 조회 filter
 
@@ -795,13 +776,13 @@ public interface IZLinkLocationRuntimeQuery
 
 | 모델 | 필수 필드 |
 |------|-----------|
-| `ZLinkLocationRuntimeStatus` | store health, watch enabled, polling interval, last refresh time, last error, owner lease 갱신 상태, peer/spot/actor/route cache entry count |
+| `ZLinkLocationRuntimeStatus` | store health, watch enabled, polling interval, last refresh time, last error, owner lease 갱신 상태 |
 | `ZLinkLocationTopologyEntry` | kind, mesh name, role, node rid, spot rid, actor id, endpoint, state, desired count, ready count, error code, updated time |
 | `ZLinkLocationServiceSummary` | mesh name, auto-connect type, role, total count, ready count, error count, stopped count, last updated time |
 
 runtime query의 raw list API는 운영 도구와 E2E가 peer, spot, actor, route location row를 직접 확인하기
-위한 표면이다. runtime query의 모든 조회는 cache 없이 store를 직접 읽으므로 freshness를 받지 않는다.
-freshness는 cache를 가진 resolver 표면(`IZLinkPeerLocationResolver`의 peer list와 spot/actor/route 단건
+위한 표면이다. runtime query의 모든 조회는 store를 직접 읽는다. resolver 표면도 캐시가 없으므로
+freshness 개념 자체가 없다(`IZLinkPeerLocationResolver`의 peer list와 spot/actor/route 단건
 resolve)에만 있다. `LocationTopology`는 운영과 E2E 검증을 위한 projection이다. store가 topology 의미를
 결정하지 않는다. framework runtime이 location row, connection state, lease, generation을 합쳐
 projection을 만든다.
@@ -857,49 +838,20 @@ winner를 정하지 않는다. Redis extension은 Redis server time 또는 Redis
 다른 구현체도 저장소 기준 시간이나 단일 writer transaction 기준 시간을 사용해야 한다.
 
 `UpdatedAt`의 용도는 운영 표시와 목록의 stable ordering 보조로 한정한다. 충돌 해소, row 유효성,
-freshness 판단에는 사용하지 않는다. 그 판단은 각각 generation, owner lease, cache TTL이 담당한다.
+신선도 판단에는 사용하지 않는다. 그 판단은 각각 generation과 owner lease가 담당한다.
 
 Redis extension은 generation claim, owner lease refresh, owner-guarded remove를 Lua script 또는 transaction으로
 원자적으로 처리해야 한다. 다른 store 구현도 같은 관찰 가능한 결과를 보장해야 한다.
 
-## 10. 캐시 정책
+## 10. 캐시 정책 (삭제됨)
 
-> **대체 예정**: 이 절의 캐시 정책은
-> [framework-spot-address-messaging.ko.md](framework-spot-address-messaging.ko.md) 초안에서
-> 제거하기로 결정했다. spot 메시징 표면이 spot full 주소(node rid + spot rid)를 받는 모델로
-> 바뀌면 per-send resolve가 사라져 캐시의 존재 이유가 없어진다. 두 문서가 충돌하면 그 문서가
-> 우선한다. 아래 내용은 구현 반영 전까지의 기존 계약 기록이다.
+resolver 캐시는 계약과 구현에서 제거됐다. spot 메시징 표면이 spot full 주소(node rid + spot rid)를
+받는 모델로 바뀌면서 per-send resolve가 사라졌고, 캐시의 존재 이유도 함께 사라졌다. 모든 resolve는
+store에 도달하며, 위치 정보의 보관과 갱신 시점은 호출자가 소유한다. 결정 배경과 stale 주소 실패
+계약은 [framework-spot-address-messaging.ko.md](framework-spot-address-messaging.ko.md)를 본다.
 
-이 절의 cache 정책은 새 framework location resolver 기능이다. 기존 core discovery의 spot owner cache,
-service list snapshot cache, membership sequence 기반 무효화 방식을 그대로 가져오지 않는다. 새 정책은
-peer, spot, actor, route resolver가 같은 freshness 의미를 사용하도록 정의한다.
-
-framework resolver는 peer, actor, spot, route cache를 각각 켜고 끌 수 있어야 한다. peer 자동 연결도 peer
-list cache 또는 watch buffer를 가질 수 있지만, stale peer로 계속 연결을 시도하지 않도록 owner lease를
-확인해야 한다.
-
-기본 후보:
-
-| 항목 | 기본값 후보 | 설명 |
-|------|-------------|------|
-| actor cache enabled | true | actor location cache 사용 여부 |
-| spot cache enabled | true | spot location cache 사용 여부 |
-| route cache enabled | true | framework route location cache 사용 여부 |
-| peer cache enabled | true | 자동 연결 peer list cache 사용 여부 |
-| max entries | 4096 | actor/spot/route 단건 cache entry 상한 |
-| positive TTL | 1000 ms | actor/spot/route 단건 성공 조회 TTL |
-
-not-found 결과는 cache하지 않는다. actor 재연결과 “없으면 생성” 흐름에서 not-found 결과를 잠깐이라도
-믿으면 방금 생성된 actor를 놓칠 수 있기 때문이다. negative cache option은 계약에 두지 않는다. 존재하지
-않는 key에 대한 반복 조회가 store 부하로 실측되면, 그때 이 draft에 별도 정책으로 추가한 뒤 구현한다.
-
-cache는 이 node의 working set만 담는다. actor가 수백만 개여도 이 node가 실제로 통신하는 상대만
-cache에 남으면 되므로, max entries는 전체 actor 수가 아니라 working set 크기 기준으로 정한다.
-cache miss는 실패가 아니라 store 단건 조회로 이어질 뿐이다.
-
-cache는 actor/spot/route 단건 resolve와 peer list에만 둔다. spot/actor/route 목록 조회는 운영 조회
-표면 전용이므로 cache하지 않고 항상 store를 읽는다. peer list cache는 자동연결 reconcile이 사용하는
-mesh 단위 snapshot이며, watch event 또는 change stamp 변화로 무효화된다.
+자동연결 reconciler의 peer snapshot + change stamp, owner lease 목록은 캐시가 아니라 알고리즘
+내부 상태이며 유지된다(같은 문서 §8).
 
 ## 11. Store 구현체 요구
 
@@ -1151,17 +1103,15 @@ framework spot runtime은 아래 event에서 store를 자동 갱신한다.
 ### 15.2 resolve 알고리즘
 
 ```text
-ResolveSpot(mesh, spotRid, freshness)
-  1. freshness가 Normal이고 cache hit가 있으면 owner lease 만료 여부를 확인 후 반환
-  2. freshness가 Refresh이거나 cache miss이면 store에서 spot key 조회
-  3. store row가 없거나 owner lease가 만료되었으면 not found
-  4. row가 있으면 framework location model로 검증
-  5. 조회 결과로 cache 갱신
-  6. NodeRid와 route endpoint metadata를 반환
+ResolveSpotAddress(spotRid)
+  1. 등록된 spot mesh마다 store에서 spot key 조회
+  2. row의 owner lease 만료 여부 확인 (lease 목록 join)
+  3. framework location model로 row 검증
+  4. ZLinkSpotAddress(NodeRid, SpotRid) 반환 (불일치·만료면 null)
 ```
 
-store 구현체는 spot key lookup만 제공한다. stale row 판단, cache update, 오류 의미는 framework가
-처리한다.
+store 구현체는 spot key lookup만 제공한다. stale row 판단과 오류 의미는 framework가 처리한다.
+캐시 단계는 없다 — 조회 결과는 호출자가 보관한다.
 
 ### 15.3 list 알고리즘
 
@@ -1173,14 +1123,16 @@ ListSpots(filter, page)
   4. filter 조건에 맞는 spot location page 반환
 ```
 
-spot 목록 조회는 `IZLinkLocationRuntimeQuery` 전용이며 cache를 사용하지 않고 항상 store를 읽는다.
-결과는 placement, 운영 화면, 복구 작업에 사용할 수 있다. 일반 spot packet send/request는 단건
-`ResolveSpot`을 사용한다.
+spot 목록 조회는 `IZLinkLocationRuntimeQuery` 전용이며 항상 store를 읽는다. 결과는 placement,
+운영 화면, 복구 작업에 사용할 수 있다. 일반 spot packet send/request는 호출자가 보관한 spot 주소를
+사용한다 — 전송 경로는 resolve하지 않는다
+([framework-spot-address-messaging.ko.md](framework-spot-address-messaging.ko.md) §6).
 
 ## 16. actor 위치 조회 구현
 
-actor 위치 조회도 같은 location runtime을 사용한다. actor resolve는 actor 재연결과 “없으면 생성”
-판단에 직접 쓰이므로 freshness 정책이 중요하다.
+actor 위치 조회도 같은 location runtime을 사용한다. actor 재연결과 "없으면 생성" 판단은 generation을
+포함한 row가 필요하므로 store/runtime 경로를 직접 읽는다. 메시징용 조회는
+`ResolveActorSpotAddressAsync`가 actor가 위치한 spot의 full 주소를 반환한다.
 
 ### 16.1 lifecycle update/remove
 
@@ -1199,14 +1151,16 @@ framework actor runtime은 아래 event에서 store를 자동 갱신한다.
 ### 16.2 resolve 알고리즘
 
 ```text
-ResolveActor(actorType, actorId, freshness)
-  1. freshness가 Normal이고 cache hit가 있으면 owner lease 만료 여부를 확인 후 반환
-  2. freshness가 Refresh이거나 cache miss이면 store에서 actor key 조회
-  3. store row가 없거나 owner lease가 만료되었으면 not found
-  4. row가 있으면 location kind와 spot rid 필수 조건을 검증
-  5. 조회 결과로 cache 갱신
-  6. actor ref, node rid, optional spot rid, generation을 반환
+ResolveActorSpotAddress(actorType, actorId)
+  1. store에서 actor key 조회
+  2. row의 owner lease 만료 여부 확인 (lease 목록 join)
+  3. location kind와 spot rid 필수 조건을 검증
+  4. ENTRY_SPOT이면 ZLinkSpotAddress(NodeRid, NodeRid),
+     USER_SPOT이면 ZLinkSpotAddress(NodeRid, SpotRid) 반환 (불일치·만료면 null)
 ```
+
+lifecycle 흐름(재연결, 없으면 생성, takeover)은 generation을 포함한 row가 필요하므로 이 표면이
+아니라 store/runtime의 row 조회를 사용한다.
 
 store 구현체는 actor key lookup만 제공한다. actor가 entry spot에 있는지 user spot에 있는지, spot rid가
 필수인지, stale generation인지 판단하는 정책은 framework가 처리한다.
@@ -1221,16 +1175,16 @@ ListActors(filter, page)
   4. filter 조건에 맞는 actor location page 반환
 ```
 
-actor 목록 조회는 `IZLinkLocationRuntimeQuery` 전용이며 cache를 사용하지 않고 항상 store를 읽는다.
-결과는 placement, 운영 화면, 복구 작업에 사용할 수 있다. actor 재연결과 “없으면 생성” 판단은 단건
-`ResolveActor(..., Refresh)`를 사용한다.
+actor 목록 조회는 `IZLinkLocationRuntimeQuery` 전용이며 항상 store를 읽는다. 결과는 placement,
+운영 화면, 복구 작업에 사용할 수 있다. actor 재연결과 "없으면 생성" 판단은 store/runtime의 단건
+row 조회를 사용한다.
 
 ## 17. actor 재연결과 생성
 
-actor 재연결 또는 “없으면 생성” 흐름은 cache만 믿지 않는다.
+actor 재연결 또는 "없으면 생성" 흐름은 store를 직접 읽는다.
 
 ```text
-1. ResolveActor(actorType, actorId, Refresh)
+1. store에서 actor row 조회 (generation 포함)
 2. 있으면 해당 actor에 session route를 다시 연결한다.
 3. 없으면 placement policy로 target node 또는 spot을 정한다.
 4. target node의 framework가 actor location을 NewClaim으로 먼저 claim한다.
@@ -1269,7 +1223,6 @@ id를 동시에 만드는 race에서 진 쪽은 instance를 만들기 전에 `Re
 | stale row만 있음 | not found |
 | owner/generation 충돌 | conflict 또는 rejected |
 | 잘못된 actor id/spot rid | validation error |
-| cache disabled | store 직접 조회. 결과 의미는 동일 |
 
 ## 20. Framework API 변경 목록
 
@@ -1302,8 +1255,8 @@ options.AddRouteLocationStore<TStore>();
 options.AddOwnerLeaseStore<TStore>();
 ```
 
-이 API는 store 구현체를 등록한다. store는 cache/freshness 정책을 알지 않는다. framework runtime과
-resolver가 store 위에서 policy를 적용한다.
+이 API는 store 구현체를 등록한다. store는 정책을 알지 않는다. framework runtime과 resolver가
+store 위에서 owner lease join과 generation guard를 적용한다.
 
 extension package를 위한 통합 등록 지점은 `AddLocationStore(instance)`다. 통합 계약
 `IZLinkLocationStore`(store 5종)를 구현한 인스턴스 하나를 등록하며, 같은 인스턴스가 optional
@@ -1321,9 +1274,9 @@ options.AddLocationStore(new ZLinkRedisLocationStore(redis => redis
 
 | API | 용도 |
 |-----|------|
-| `IZLinkPeerLocationResolver` | 자동 연결이 peer list를 조회한다. cache와 freshness를 받는 유일한 목록 표면이다. |
-| `IZLinkSpotLocationResolver` | `spot rid`로 owner node와 route endpoint를 찾는다. 단건 resolve 전용이다. |
-| `IZLinkActorLocationResolver` | `actor type + actor id`로 actor 위치와 `ActorRef`를 찾는다. 단건 resolve 전용이다. |
+| `IZLinkPeerLocationResolver` | 자동 연결이 peer list를 조회한다. 매 조회가 store를 읽고 owner liveness를 join한다. |
+| `IZLinkSpotLocationResolver` | `spot rid`로 spot full 주소(`ZLinkSpotAddress`)를 찾는다. 호출자가 주소를 보관한다. |
+| `IZLinkActorLocationResolver` | `actor type + actor id`로 그 actor가 위치한 spot의 full 주소를 찾는다. |
 | `IZLinkRouteLocationResolver` | actor session, spot name, framework route 같은 owner-bound route를 단건 resolve한다. |
 | `IZLinkLocationRuntimeQuery` | 운영 도구와 E2E가 raw location row, topology projection, runtime status를 조회한다. spot/actor/route 목록 조회는 이 표면에만 있다. |
 
@@ -1353,7 +1306,7 @@ registry/discovery event source는 location runtime event source로 바꾼다.
 
 | event source | event |
 |--------------|-------|
-| `location-runtime` | `StatusChanged`, `TopologyChanged`, `ServiceSummaryChanged`, `StoreUnavailable`, `StoreRecovered`, `CacheInvalidated` |
+| `location-runtime` | `StatusChanged`, `TopologyChanged`, `ServiceSummaryChanged`, `StoreUnavailable`, `StoreRecovered` |
 | `location-peer` | peer row update/remove, auto-connect desired set 변경 |
 | `location-spot` | spot row update/remove, spot resolve miss |
 | `location-actor` | actor row update/remove, actor reconnect resolve miss |
@@ -1428,10 +1381,10 @@ E2E 수정의 기준이 된다. Java, Kotlin, Node.js, C++ framework는 .NET 구
 - actor reconnect는 `Refresh`로 기존 actor를 찾고 session만 다시 연결
 - actor not-found 결과는 cache되지 않고, 직후 생성된 actor를 다음 resolve가 찾음
 - store 장애와 not-found를 구분
-- cache disabled 조합: peer off / actor off, spot on / actor on, spot off / route off / 모두 off
+- 캐시 부재: 같은 key 연속 조회가 매번 store에 도달한다(호출 수 계측)
 - actor/spot/route 목록 조회가 owner lease 만료 row와 stale row를 성공 결과에서 제외
 - spot/actor/route 목록 조회는 runtime query 표면에서만 제공되고 cache 없이 store를 직접 읽음
-- runtime query의 peer list도 cache 없이 store를 직접 읽고 freshness를 받지 않음
+- runtime query의 peer list도 store를 직접 읽음
 - `AutoConnectType`/`Role`의 key 직렬화가 언어와 무관하게 canonical 소문자 문자열로 저장됨
 - 닫힌 값 집합 밖의 값을 가진 row는 reconcile/resolve가 무시하고 진단에 보고함
 - store 장애 중 자동 연결은 fail-static으로 동작하고 store 복구 뒤 fresh list로 reconcile
@@ -1477,7 +1430,7 @@ E2E와 언어별 E2E는 수정된 문서를 따라간다.
 - 기존 registry 장애/HA 테스트는 store 장애/복구 테스트로 바꾼다. Redis extension E2E에서는 Redis
   연결 끊김, 재연결, owner lease 만료, stale row 제거, polling fallback을 검증한다.
   나눈다. member peer 사용자 기능 검증은 `IZLinkPeerLocationResolver.ListPeersAsync(..., Refresh)`로,
-  E2E의 raw peer row 상태 확인은 freshness 없는 `IZLinkLocationRuntimeQuery.ListPeersAsync(filter)`로
+  E2E의 raw peer row 상태 확인은 `IZLinkLocationRuntimeQuery.ListPeersAsync(filter)`로
   바꾼다.
 - actor/spot resolve E2E는 “cache hit만으로 통과”하면 안 된다. 재연결, 생성 race, handover,
   stale owner 제거 시나리오는 `Refresh` 경로를 반드시 포함한다.
@@ -1521,8 +1474,8 @@ draft가 기준이며, 정식 spec 문서에는 아직 구현되지 않은 계�
 | `channel-topology.ko.md` | 수정 | 자동 연결 source를 discovery에서 peer location store로 바꾼다. auto-connect type, role matching, pairwise initiator, manual connection과의 관계를 정식 계약으로 옮긴다. |
 | `actor-model.ko.md` | 수정 | actor location row, `ActorRef`, actor generation, Entry Spot/user Spot 위치 갱신, actor 재연결 규칙을 반영한다. |
 | `session-actor-dispatch.ko.md` | 수정 | session rebind 전에 actor location을 `Refresh`로 조회하고, 없으면 placement 후 생성하는 흐름을 반영한다. registry metadata resolver 예시는 제거하거나 location store 구현 예로 바꾼다. |
-| `framework-api.ko.md` | 수정 | store/resolver interface, `ZLinkResolveFreshness`, cache option, runtime query API, 수동 update/remove API의 공개 표면을 반영한다. |
-| `usecase-validation.ko.md` | 수정 | location store 기반 자동 연결, actor 재연결, spot owner 조회, cache freshness, Redis extension E2E를 validation 항목에 추가한다. |
+| `framework-api.ko.md` | 수정 | store/resolver interface(주소 반환), runtime query API, 수동 update/remove API의 공개 표면을 반영한다. |
+| `usecase-validation.ko.md` | 수정 | location store 기반 자동 연결, actor 재연결, spot 주소 조회, store extension E2E를 validation 항목에 추가한다. |
 | `location-runtime.ko.md` | 신규 | peer/spot/actor/route location model, owner/generation, owner lease, lifecycle update/remove, watch/polling, change stamp, pagination, topology/status/summary projection을 정식 spec으로 분리한다. |
 | `location-store-redis.ko.md` | 신규 | 공식 Redis extension의 key prefix, key schema, lease, owner/generation Lua 또는 transaction, watch/polling, 오류 변환, connection lifecycle을 정의한다. |
 
@@ -1561,7 +1514,7 @@ draft가 기준이며, 정식 spec 문서에는 아직 구현되지 않은 계�
 - [x] `ZLinkOwnerLease`, `ZLinkOwnerLeaseSnapshot`(`StoreNow` 포함) — 6.6, 7.5
 - [x] `ZLinkLocationWriteResult` 4종, `ZLinkLocationWriteIntent` 3종, `ZLinkLocationOwnerToken` — 7.6
 - [x] `ZLinkLocationWatchFilter`, `ZLinkLocationChanged` — 7.7
-- [x] `ZLinkResolveFreshness`(`Normal`/`Refresh` 2종) — 8절
+- [x] ~~`ZLinkResolveFreshness`~~ 제거됨(캐시 제거와 함께) — 8절
 - [x] filter 모델 4종 — 8.1
 - [x] `ZLinkPageRequest`, `ZLinkLocationPage<T>` — 8.1
 - [x] status/topology/summary 모델 — 8.2

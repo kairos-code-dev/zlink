@@ -5,6 +5,9 @@ using Zlink.Framework.Contracts.Channels;
 using Zlink.Framework.Contracts.Errors;
 using Zlink.Framework.Contracts.Spots;
 
+using SpotService.Shared;
+using Zlink.Framework.Contracts.Locations;
+
 namespace SpotService.Server.Play.Endpoints;
 
 using static PlayHostFactory;
@@ -80,6 +83,7 @@ internal static class SpotLifecycleEndpoints
         });
         app.MapPost("/spot/state/request", async (
             IZLinkRouteClient routes,
+            IZLinkSpotLocationResolver locator,
             NodeOptions node,
             SpotStateRouteReq request) =>
         {
@@ -88,6 +92,7 @@ internal static class SpotLifecycleEndpoints
                 : SpotServiceNames.ExternalSpotChannel;
             var result = await RequestSpotStateWithRetryAsync(
                 routes,
+                locator,
                 request.SpotRid,
                 new StateReq(request.Operation, request.Delta),
                 "Spot state route request timed out.",
@@ -96,6 +101,7 @@ internal static class SpotLifecycleEndpoints
         });
         app.MapPost("/spot/state/command", async (
             IZLinkRouteClient routes,
+            IZLinkSpotLocationResolver locator,
             EvidenceStore evidence,
             NodeOptions node,
             SpotStateCommandReq request) =>
@@ -103,6 +109,7 @@ internal static class SpotLifecycleEndpoints
             var before = evidence.Snapshot();
             await SendSpotCommandWithRetryAsync(
                 routes,
+                locator,
                 SpotServiceNames.ExternalSpotChannel,
                 request.SpotRid,
                 new StateMsg(request.Marker),

@@ -414,5 +414,5 @@ sequenceDiagram
 - [x] runtime: egress 주소 기반 전환 + per-send resolve 제거 + `bffb264e2` 경로 제거 (§6, §8)
 - [x] runtime: framework 내부 호출자(bound session notify, actor session relay) 주소 보관·재resolve 전환 (§6) — actor session relay는 native BindActor가 bind 시점 주소 캡처와 동형이라 변경 불요 확인. bound session notify의 세션 route 조회는 route row 계약(비캐시)으로 유지
 - [ ] 샘플: GameQuest·SupportChat·DeliveryDispatch 조회 1회 + 보관 패턴 정리 (§10.4)
-- [ ] E2E: config-2 spot service 갱신 + DD courier 결정 릴레이·YD shutdown-recovery 잔여 실패 소화 (§10.4)
-- [ ] 문서: §9 수정 목록 반영 (location resolver/store 초안 갱신)
+- [x] E2E: config-2 spot service 갱신(전 시나리오 그린) + YD shutdown-recovery 해소. DD courier 결정 릴레이는 native actor gateway 전달 조사로 분리 진행 (§10.4)
+- [x] 문서: §9 수정 목록 반영 (location resolver/store 초안 갱신)

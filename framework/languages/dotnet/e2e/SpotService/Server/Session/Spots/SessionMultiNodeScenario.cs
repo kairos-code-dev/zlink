@@ -5,11 +5,15 @@ using Zlink.Framework.Contracts.Channels;
 using Zlink.Framework.Contracts.Errors;
 using Zlink.Framework.Contracts.Spots;
 
+using SpotService.Shared;
+using Zlink.Framework.Contracts.Locations;
+
 namespace SpotService.Server.Session.Spots;
 
 internal sealed class MultiNodeCreateSpotAHandler(
     IZLinkSpotManager spots,
     IZLinkRouteClient routes,
+    IZLinkSpotLocationResolver locator,
     EvidenceStore evidence)
     : IZLinkRouteRequestHandler<MultiNodeCreateSpotReq, MultiNodeCreateSpotRes>
 {
@@ -24,6 +28,7 @@ internal sealed class MultiNodeCreateSpotAHandler(
             cancellationToken);
         var state = await MultiNodeScenario.RequestStateWithRetryAsync(
             routes,
+            locator,
             SpotServiceNames.MultiRouteChannelA,
             request.SpotRid,
             request.Delta,
@@ -41,6 +46,7 @@ internal sealed class MultiNodeCreateSpotAHandler(
 internal sealed class MultiNodeCreateSpotBHandler(
     IZLinkSpotManager spots,
     IZLinkRouteClient routes,
+    IZLinkSpotLocationResolver locator,
     EvidenceStore evidence)
     : IZLinkRouteRequestHandler<MultiNodeCreateSpotReq, MultiNodeCreateSpotRes>
 {
@@ -55,6 +61,7 @@ internal sealed class MultiNodeCreateSpotBHandler(
             cancellationToken);
         var state = await MultiNodeScenario.RequestStateWithRetryAsync(
             routes,
+            locator,
             SpotServiceNames.MultiRouteChannelB,
             request.SpotRid,
             request.Delta,
@@ -73,6 +80,7 @@ internal static class MultiNodeScenario
 {
     public static async Task<StateRes> RequestStateWithRetryAsync(
         IZLinkRouteClient routes,
+        IZLinkSpotLocationResolver locator,
         string channelName,
         string spotRid,
         int delta,
@@ -84,9 +92,9 @@ internal static class MultiNodeScenario
         {
             try
             {
-                return await routes.Request(
+                return await routes.RequestToSpot(
                         channelName,
-                        RoutingId.From(spotRid),
+                        await locator.ResolveRequiredAsync(spotRid, cancellationToken),
                         new StateReq("add", delta))
                     .PacketName("StateReq")
                     .Timeout(TimeSpan.FromSeconds(2))

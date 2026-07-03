@@ -6,6 +6,10 @@ using Zlink.Framework.AspNetCore;
 using Zlink.Framework.Contracts.Channels;
 using Zlink.Framework.Contracts.Spots;
 
+using Zlink.Framework.Locations.Redis;
+
+using Zlink.Framework.Contracts.Locations;
+
 namespace SpotService.Server.MultiNode;
 
 internal static class MultiNodeHostFactory
@@ -28,6 +32,20 @@ internal static class MultiNodeHostFactory
 
         builder.Services.AddZLinkFramework(framework =>
         {
+            if (!string.IsNullOrWhiteSpace(options.RedisEndpoint))
+            {
+                framework.AddLocationStore(new ZLinkRedisLocationStore(redis => redis
+                    .SetConnectionString(options.RedisEndpoint)
+                    .SetKeyPrefix(options.RedisKeyPrefix
+                                  ?? throw new InvalidOperationException("--redis-key-prefix is required."))));
+                // Crash-recovery scenarios re-claim actors from a killed
+                // node; a short owner lease keeps that takeover window
+                // within the scenario's patience.
+                var locations = framework.ConfigureLocations();
+                locations.HeartbeatInterval = TimeSpan.FromSeconds(1);
+                locations.OwnerLeaseTtl = TimeSpan.FromSeconds(3);
+                locations.PollingInterval = TimeSpan.FromMilliseconds(500);
+            }
             var isNodeA = string.Equals(options.Rid, SpotServiceNames.MultiSpotNodeA, StringComparison.Ordinal);
             var isNodeB = string.Equals(options.Rid, SpotServiceNames.MultiSpotNodeB, StringComparison.Ordinal);
             if (!isNodeA && !isNodeB)
@@ -99,6 +117,7 @@ internal static class MultiNodeHostFactory
         });
         app.MapPost("/spot/state/request", async (
             IZLinkRouteClient routes,
+            IZLinkSpotLocationResolver locator,
             NodeOptions node,
             MultiNodeStateRouteReq request,
             CancellationToken cancellationToken) =>
@@ -109,6 +128,7 @@ internal static class MultiNodeHostFactory
                 : SpotServiceNames.MultiRouteChannelB;
             var result = await MultiNodeScenario.RequestStateWithRetryAsync(
                 routes,
+                locator,
                 channelName,
                 request.SpotRid,
                 request.Delta,

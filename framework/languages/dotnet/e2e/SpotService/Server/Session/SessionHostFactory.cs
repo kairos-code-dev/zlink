@@ -7,6 +7,8 @@ using Zlink.Framework.AspNetCore;
 using Zlink.Framework.Contracts.Channels;
 using Zlink.Framework.Contracts.Dispatch;
 
+using Zlink.Framework.Locations.Redis;
+
 namespace SpotService.Server.Session;
 
 internal static class SessionHostFactory
@@ -29,6 +31,20 @@ internal static class SessionHostFactory
 
         builder.Services.AddZLinkFramework(framework =>
         {
+            if (!string.IsNullOrWhiteSpace(options.RedisEndpoint))
+            {
+                framework.AddLocationStore(new ZLinkRedisLocationStore(redis => redis
+                    .SetConnectionString(options.RedisEndpoint)
+                    .SetKeyPrefix(options.RedisKeyPrefix
+                                  ?? throw new InvalidOperationException("--redis-key-prefix is required."))));
+                // Crash-recovery scenarios re-claim actors from a killed
+                // node; a short owner lease keeps that takeover window
+                // within the scenario's patience.
+                var locations = framework.ConfigureLocations();
+                locations.HeartbeatInterval = TimeSpan.FromSeconds(1);
+                locations.OwnerLeaseTtl = TimeSpan.FromSeconds(3);
+                locations.PollingInterval = TimeSpan.FromMilliseconds(500);
+            }
             framework.AddHandlersFromAssemblyOf(typeof(Program));
             framework.ConfigureDispatch()
                 .SetMessageFlowObserver<EvidenceDispatchErrorObserver>()

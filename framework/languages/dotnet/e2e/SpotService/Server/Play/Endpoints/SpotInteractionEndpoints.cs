@@ -2,6 +2,9 @@ using SpotService.Shared;
 using Systems.Zlink;
 using Zlink.Framework.Contracts.Channels;
 
+using SpotService.Shared;
+using Zlink.Framework.Contracts.Locations;
+
 namespace SpotService.Server.Play.Endpoints;
 
 using static PlayHostFactory;
@@ -12,6 +15,7 @@ internal static class SpotInteractionEndpoints
     {
         app.MapPost("/spot/outbound", async (
             IZLinkRouteClient routes,
+            IZLinkSpotLocationResolver locator,
             EvidenceStore evidence,
             NodeOptions node,
             SpotOutboundRouteReq request) =>
@@ -19,6 +23,7 @@ internal static class SpotInteractionEndpoints
             var before = evidence.Snapshot();
             await SendSpotCommandWithRetryAsync(
                 routes,
+                locator,
                 SpotServiceNames.ExternalSpotChannel,
                 request.SpotRid,
                 new SpotOutboundMsg(request.Marker),
@@ -45,6 +50,7 @@ internal static class SpotInteractionEndpoints
         });
         app.MapPost("/spot/outbound-negative", async (
             IZLinkRouteClient routes,
+            IZLinkSpotLocationResolver locator,
             EvidenceStore evidence,
             NodeOptions node,
             SpotOutboundRouteReq request) =>
@@ -52,6 +58,7 @@ internal static class SpotInteractionEndpoints
             var before = evidence.Snapshot();
             await SendSpotCommandWithRetryAsync(
                 routes,
+                locator,
                 SpotServiceNames.ExternalSpotChannel,
                 request.SpotRid,
                 new SpotOutboundNegativeMsg(request.Marker),
@@ -79,11 +86,12 @@ internal static class SpotInteractionEndpoints
         });
         app.MapPost("/spot/stage/request", async (
             IZLinkRouteClient routes,
+            IZLinkSpotLocationResolver locator,
             SpotStageProbeReq request) =>
         {
-            var result = await routes.Request(
+            var result = await routes.RequestToSpot(
                     SpotServiceNames.ExternalSpotChannel,
-                    RoutingId.From(request.SpotRid),
+                    await locator.ResolveRequiredAsync(request.SpotRid),
                     new StageProbeReq(request.Marker, request.Delta))
                 .PacketName("StageProbeReq")
                 .Timeout(TimeSpan.FromSeconds(5))
@@ -92,6 +100,7 @@ internal static class SpotInteractionEndpoints
         });
         app.MapPost("/spot/stage/timer", async (
             IZLinkRouteClient routes,
+            IZLinkSpotLocationResolver locator,
             EvidenceStore evidence,
             NodeOptions node,
             SpotStageTimerReq request) =>
@@ -99,6 +108,7 @@ internal static class SpotInteractionEndpoints
             var before = evidence.Snapshot();
             await SendSpotCommandWithRetryAsync(
                 routes,
+                locator,
                 SpotServiceNames.ExternalSpotChannel,
                 request.SpotRid,
                 new StageTimerStartMsg(request.Name, request.PeriodMs),
@@ -116,6 +126,7 @@ internal static class SpotInteractionEndpoints
         });
         app.MapPost("/spot/timer/start", async (
             IZLinkRouteClient routes,
+            IZLinkSpotLocationResolver locator,
             EvidenceStore evidence,
             NodeOptions node,
             SpotTimerStartReq request) =>
@@ -123,6 +134,7 @@ internal static class SpotInteractionEndpoints
             var before = evidence.Snapshot();
             await SendSpotCommandWithRetryAsync(
                 routes,
+                locator,
                 SpotServiceNames.ExternalSpotChannel,
                 request.SpotRid,
                 new TimerStartMsg(request.Name, request.PeriodMs),
@@ -140,6 +152,7 @@ internal static class SpotInteractionEndpoints
         });
         app.MapPost("/spot/idle-close/start", async (
             IZLinkRouteClient routes,
+            IZLinkSpotLocationResolver locator,
             EvidenceStore evidence,
             NodeOptions node,
             SpotIdleCloseReq request) =>
@@ -147,6 +160,7 @@ internal static class SpotInteractionEndpoints
             var before = evidence.Snapshot();
             await SendSpotCommandWithRetryAsync(
                 routes,
+                locator,
                 SpotServiceNames.ExternalSpotChannel,
                 request.SpotRid,
                 new IdleCloseMsg(request.Name, request.PeriodMs),
@@ -170,6 +184,7 @@ internal static class SpotInteractionEndpoints
         });
         app.MapPost("/spot/overrun/start", async (
             IZLinkRouteClient routes,
+            IZLinkSpotLocationResolver locator,
             EvidenceStore evidence,
             NodeOptions node,
             SpotOverrunStartReq request) =>
@@ -177,6 +192,7 @@ internal static class SpotInteractionEndpoints
             var before = evidence.Snapshot();
             await SendSpotCommandWithRetryAsync(
                 routes,
+                locator,
                 SpotServiceNames.ExternalSpotChannel,
                 request.SpotRid,
                 new OverrunStartMsg(request.Name, request.Policy, request.PeriodMs),
@@ -195,11 +211,12 @@ internal static class SpotInteractionEndpoints
         });
         app.MapPost("/spot/worker/start", async (
             IZLinkRouteClient routes,
+            IZLinkSpotLocationResolver locator,
             SpotWorkerStartReq request) =>
         {
-            var result = await routes.Request(
+            var result = await routes.RequestToSpot(
                     SpotServiceNames.ExternalSpotChannel,
-                    RoutingId.From(request.SpotRid),
+                    await locator.ResolveRequiredAsync(request.SpotRid),
                     new WorkerStartReq(request.Marker, request.DelayMs))
                 .PacketName("WorkerStartReq")
                 .Timeout(TimeSpan.FromSeconds(30))
@@ -224,12 +241,14 @@ internal static class SpotInteractionEndpoints
         });
         app.MapPost("/spot/to-spot/request", async (
             IZLinkRouteClient routes,
+            IZLinkSpotLocationResolver locator,
             EvidenceStore evidence,
             NodeOptions node,
             SpotToSpotRouteReq request) =>
         {
             var result = await RequestSpotToSpotWithRetryAsync(
                 routes,
+                locator,
                 request.SourceSpotRid,
                 new SpotToSpotReq(request.TargetSpotRid, request.Marker),
                 "Spot-to-spot request timed out.");

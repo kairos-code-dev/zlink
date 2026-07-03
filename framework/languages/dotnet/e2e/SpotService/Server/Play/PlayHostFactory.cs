@@ -6,6 +6,9 @@ using Zlink.Framework.AspNetCore;
 using Zlink.Framework.Contracts.Channels;
 using Zlink.Framework.Contracts.Dispatch;
 using Zlink.Framework.Contracts.Errors;
+using Zlink.Framework.Contracts.Locations;
+
+using Zlink.Framework.Locations.Redis;
 
 namespace SpotService.Server.Play;
 
@@ -29,6 +32,20 @@ internal static class PlayHostFactory
 
         builder.Services.AddZLinkFramework(framework =>
         {
+            if (!string.IsNullOrWhiteSpace(options.RedisEndpoint))
+            {
+                framework.AddLocationStore(new ZLinkRedisLocationStore(redis => redis
+                    .SetConnectionString(options.RedisEndpoint)
+                    .SetKeyPrefix(options.RedisKeyPrefix
+                                  ?? throw new InvalidOperationException("--redis-key-prefix is required."))));
+                // Crash-recovery scenarios re-claim actors from a killed
+                // node; a short owner lease keeps that takeover window
+                // within the scenario's patience.
+                var locations = framework.ConfigureLocations();
+                locations.HeartbeatInterval = TimeSpan.FromSeconds(1);
+                locations.OwnerLeaseTtl = TimeSpan.FromSeconds(3);
+                locations.PollingInterval = TimeSpan.FromMilliseconds(500);
+            }
             framework.AddHandlersFromAssemblyOf(typeof(Program));
             framework.ConfigureDispatch()
                 .SetMessageFlowObserver<EvidenceDispatchErrorObserver>()
@@ -96,6 +113,7 @@ internal static class PlayHostFactory
 
     internal static async Task<StateRes> RequestSpotStateWithRetryAsync(
         IZLinkRouteClient routes,
+        IZLinkSpotLocationResolver locator,
         string spotRid,
         StateReq request,
         string failureMessage,
@@ -106,9 +124,9 @@ internal static class PlayHostFactory
         while (DateTimeOffset.UtcNow < deadline)
             try
             {
-                return await routes.Request(
+                return await routes.RequestToSpot(
                         channelName,
-                        RoutingId.From(spotRid),
+                        await locator.ResolveRequiredAsync(spotRid),
                         request)
                     .PacketName("StateReq")
                     .Timeout(TimeSpan.FromSeconds(1))
@@ -126,6 +144,7 @@ internal static class PlayHostFactory
 
     internal static async Task SendSpotCommandWithRetryAsync(
         IZLinkRouteClient routes,
+        IZLinkSpotLocationResolver locator,
         string channelName,
         string spotRid,
         object command,
@@ -137,7 +156,7 @@ internal static class PlayHostFactory
         while (DateTimeOffset.UtcNow < deadline)
             try
             {
-                routes.Send(channelName, RoutingId.From(spotRid), command)
+                routes.SendToSpot(channelName, await locator.ResolveRequiredAsync(spotRid), command)
                     .PacketName(packetName).Submit();
                 return;
             }
@@ -153,6 +172,7 @@ internal static class PlayHostFactory
 
     internal static async Task<SpotToSpotRes> RequestSpotToSpotWithRetryAsync(
         IZLinkRouteClient routes,
+        IZLinkSpotLocationResolver locator,
         string sourceSpotRid,
         SpotToSpotReq request,
         string failureMessage)
@@ -163,9 +183,9 @@ internal static class PlayHostFactory
         {
             try
             {
-                return await routes.Request(
+                return await routes.RequestToSpot(
                         SpotServiceNames.ExternalSpotChannel,
-                        RoutingId.From(sourceSpotRid),
+                        await locator.ResolveRequiredAsync(sourceSpotRid),
                         request)
                     .PacketName("SpotToSpotReq")
                     .Timeout(TimeSpan.FromSeconds(2))

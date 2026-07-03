@@ -80,9 +80,23 @@ internal static class SmG1Scenario
             Heartbeat = new ZlinkStreamHeartbeatOptions { Enabled = false }
         });
         await recovered.Connect.Async();
-        await recovered.Request(new AuthReq("actor-sm-g1-crash", "recovered-on-play-b", "play-b"))
-            .PacketName("AuthReq")
-            .Async<AuthRes>();
+        // The crashed node's owner lease must expire before the claim can
+        // be taken over; retry within the configured lease window.
+        var reclaimDeadline = DateTimeOffset.UtcNow + TimeSpan.FromSeconds(15);
+        while (true)
+        {
+            try
+            {
+                await recovered.Request(new AuthReq("actor-sm-g1-crash", "recovered-on-play-b", "play-b"))
+                    .PacketName("AuthReq")
+                    .Async<AuthRes>();
+                break;
+            }
+            catch (ZlinkStreamException) when (DateTimeOffset.UtcNow < reclaimDeadline)
+            {
+                await Task.Delay(500);
+            }
+        }
         var rebound = await recovered.Request(new ActorPingReq("rebound"))
             .PacketName("ActorPingReq")
             .Async<ActorPingRes>();

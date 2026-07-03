@@ -2,13 +2,11 @@
 set -euo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-REGISTRY_PROJECT="$SCRIPT_DIR/Server/Registry/SpotService.Registry.csproj"
 PLAY_PROJECT="$SCRIPT_DIR/Server/Play/SpotService.Play.csproj"
 SESSION_PROJECT="$SCRIPT_DIR/Server/Session/SpotService.Session.csproj"
 MULTI_NODE_PROJECT="$SCRIPT_DIR/Server/MultiNode/SpotService.MultiNode.csproj"
 GATEWAY_PROJECT="$SCRIPT_DIR/Server/Gateway/SpotService.Gateway.csproj"
 CLIENT_PROJECT="$SCRIPT_DIR/Client/SpotService.Client.csproj"
-REGISTRY_DLL="$SCRIPT_DIR/Server/Registry/bin/Debug/net8.0/SpotService.Registry.dll"
 PLAY_DLL="$SCRIPT_DIR/Server/Play/bin/Debug/net8.0/SpotService.Play.dll"
 SESSION_DLL="$SCRIPT_DIR/Server/Session/bin/Debug/net8.0/SpotService.Session.dll"
 MULTI_NODE_DLL="$SCRIPT_DIR/Server/MultiNode/bin/Debug/net8.0/SpotService.MultiNode.dll"
@@ -76,7 +74,6 @@ PY
 )"
 
 build_projects() {
-  dotnet build "$REGISTRY_PROJECT" --maxcpucount:1 >/dev/null
   dotnet build "$PLAY_PROJECT" --maxcpucount:1 >/dev/null
   dotnet build "$SESSION_PROJECT" --maxcpucount:1 >/dev/null
   dotnet build "$MULTI_NODE_PROJECT" --maxcpucount:1 >/dev/null
@@ -89,8 +86,19 @@ if [[ "$SCENARIO_SET" == "all" && "${ZLINK_SPOT_SERVICE_ALL_CHILD:-0}" != "1" ]]
   build_projects
   for child_group in default-batch sm-g2 sm-g3 sm-g4 sm-g1 sm-q9; do
     echo "child operation_group=${child_group}"
-    if ! timeout "${CHILD_PROCESS_TIMEOUT_SECONDS}s" \
-      env SCENARIO_SET="$child_group" ZLINK_SPOT_SERVICE_ALL_CHILD=1 ZLINK_SPOT_SERVICE_SKIP_BUILD=1 "$0"; then
+    child_ok=0
+    for child_attempt in 1 2; do
+      if timeout "${CHILD_PROCESS_TIMEOUT_SECONDS}s" \
+        env SCENARIO_SET="$child_group" ZLINK_SPOT_SERVICE_ALL_CHILD=1 ZLINK_SPOT_SERVICE_SKIP_BUILD=1 "$0"; then
+        child_ok=1
+        break
+      fi
+      # A fresh child batch can race the previous batch's dying listeners
+      # (EADDRINUSE on a TIME_WAIT port); one cooled-down retry absorbs it.
+      echo "child operation_group=${child_group} attempt ${child_attempt} failed" >&2
+      sleep "$CHILD_COOLDOWN_SECONDS"
+    done
+    if [[ "$child_ok" != "1" ]]; then
       echo "child operation_group=${child_group} failed" >&2
       exit 1
     fi
@@ -104,6 +112,9 @@ PIDS=()
 
 cleanup() {
   set +e
+  if [[ -n "${REDIS_CONTAINER:-}" ]]; then
+    docker rm -f "$REDIS_CONTAINER" >/dev/null 2>&1 || true
+  fi
   for pid in "${PIDS[@]}"; do
     if kill -0 "$pid" 2>/dev/null; then
       kill -INT "-$pid" 2>/dev/null || kill -INT "$pid" 2>/dev/null || true
@@ -156,9 +167,6 @@ finally:
 PY
 )"
 
-REGISTRY_HTTP="http://127.0.0.1:${PORTS[0]}"
-REGISTRY_PUB="tcp://127.0.0.1:${PORTS[1]}"
-REGISTRY_ROUTER="tcp://127.0.0.1:${PORTS[2]}"
 PLAY_A_HTTP="http://127.0.0.1:${PORTS[3]}"
 PLAY_A_CONTROL="tcp://127.0.0.1:${PORTS[4]}"
 PLAY_A_SPOT_ROUTER="tcp://127.0.0.1:${PORTS[5]}"
@@ -355,20 +363,23 @@ openssl req -x509 -newkey rsa:2048 -nodes \
   -days 1 \
   -subj "/CN=localhost" >/dev/null 2>&1
 
-start_server registry "$REGISTRY_DLL" \
-  --rid registry \
-  --http-url "$REGISTRY_HTTP" \
-  --registry-pub-endpoint "$REGISTRY_PUB" \
-  --registry-router-endpoint "$REGISTRY_ROUTER" \
-  --log-dir "$LOG_DIR"
-wait_health registry "$REGISTRY_HTTP"
-wait_port registry-router "$REGISTRY_ROUTER"
+# The run owns its Redis: a dedicated, throwaway container is the shared
+# location store every server registers into (no registry process exists).
+if ! command -v docker >/dev/null 2>&1; then
+  echo "Docker is required to run the SpotService E2E (it provisions a dedicated Redis container)." >&2
+  exit 1
+fi
+REDIS_CONTAINER="spotservice-e2e-redis-$$"
+docker run -d --rm --name "$REDIS_CONTAINER" -p "127.0.0.1::6379" redis:7.2-alpine >/dev/null
+REDIS_ENDPOINT="$(docker port "$REDIS_CONTAINER" 6379/tcp | sed -E 's/.*:([0-9]+)$/127.0.0.1:\1/')"
+REDIS_KEY_PREFIX="spotservice-e2e:$$:"
 
 if [[ "$SCENARIO_SET" != "sm-q9" && "$NEED_SESSION_NODES" == "1" ]]; then
 SESSION_A_ARGS=(
   --rid session-a
   --http-url "$SESSION_A_HTTP"
-  --registry-router-endpoint "$REGISTRY_ROUTER"
+  --redis-endpoint "$REDIS_ENDPOINT"
+  --redis-key-prefix "$REDIS_KEY_PREFIX"
   --control-endpoint "$SESSION_A_CONTROL"
   --spot-router-endpoint "$SESSION_A_SPOT_ROUTER"
   --stream-endpoint "$SESSION_A_STREAM"
@@ -395,7 +406,8 @@ if [[ "$NEED_SESSION_B" == "1" ]]; then
   start_server session-b "$SESSION_DLL" \
     --rid session-b \
     --http-url "$SESSION_B_HTTP" \
-    --registry-router-endpoint "$REGISTRY_ROUTER" \
+    --redis-endpoint "$REDIS_ENDPOINT" \
+  --redis-key-prefix "$REDIS_KEY_PREFIX" \
     --control-endpoint "$SESSION_B_CONTROL" \
     --spot-router-endpoint "$SESSION_B_SPOT_ROUTER" \
     --stream-endpoint "$SESSION_B_STREAM" \
@@ -412,7 +424,8 @@ if [[ "$SCENARIO_SET" != "sm-q9" ]]; then
 start_server play-a "$PLAY_DLL" \
   --rid play-a \
   --http-url "$PLAY_A_HTTP" \
-  --registry-router-endpoint "$REGISTRY_ROUTER" \
+  --redis-endpoint "$REDIS_ENDPOINT" \
+  --redis-key-prefix "$REDIS_KEY_PREFIX" \
   --control-endpoint "$PLAY_A_CONTROL" \
   --spot-router-endpoint "$PLAY_A_SPOT_ROUTER" \
   --spot-pub-endpoint "$PLAY_A_SPOT_PUB" \
@@ -430,7 +443,8 @@ if [[ "$NEED_PLAY_B" == "1" ]]; then
 start_server play-b "$PLAY_DLL" \
   --rid play-b \
   --http-url "$PLAY_B_HTTP" \
-  --registry-router-endpoint "$REGISTRY_ROUTER" \
+  --redis-endpoint "$REDIS_ENDPOINT" \
+  --redis-key-prefix "$REDIS_KEY_PREFIX" \
   --control-endpoint "$PLAY_B_CONTROL" \
   --spot-router-endpoint "$PLAY_B_SPOT_ROUTER" \
   --spot-pub-endpoint "$PLAY_B_SPOT_PUB" \
@@ -449,7 +463,8 @@ if [[ "$SCENARIO_SET" == "sm-q9" ]]; then
 start_server multi-node-a "$MULTI_NODE_DLL" \
   --rid multi-node-a \
   --http-url "$MULTI_A_HTTP" \
-  --registry-router-endpoint "$REGISTRY_ROUTER" \
+  --redis-endpoint "$REDIS_ENDPOINT" \
+  --redis-key-prefix "$REDIS_KEY_PREFIX" \
   --multi-route-a-endpoint "$MULTI_ROUTE_A" \
   --multi-spot-router-a-endpoint "$MULTI_SPOT_ROUTER_A" \
   --evidence-file "$LOG_DIR/multi-node-a.evidence.log" \
@@ -461,7 +476,8 @@ wait_port multi-spot-router-a "$MULTI_SPOT_ROUTER_A"
 start_server multi-node-b "$MULTI_NODE_DLL" \
   --rid multi-node-b \
   --http-url "$MULTI_B_HTTP" \
-  --registry-router-endpoint "$REGISTRY_ROUTER" \
+  --redis-endpoint "$REDIS_ENDPOINT" \
+  --redis-key-prefix "$REDIS_KEY_PREFIX" \
   --multi-route-b-endpoint "$MULTI_ROUTE_B" \
   --multi-spot-router-b-endpoint "$MULTI_SPOT_ROUTER_B" \
   --evidence-file "$LOG_DIR/multi-node-b.evidence.log" \
@@ -475,7 +491,8 @@ if [[ "$SCENARIO_SET" != "sm-q9" ]]; then
 start_server gateway "$GATEWAY_DLL" \
   --rid gateway \
   --http-url "$GATEWAY_HTTP" \
-  --registry-router-endpoint "$REGISTRY_ROUTER" \
+  --redis-endpoint "$REDIS_ENDPOINT" \
+  --redis-key-prefix "$REDIS_KEY_PREFIX" \
   --spot-pub-endpoint "$CLIENT_SPOT_PUB" \
   --evidence-file "$LOG_DIR/gateway.evidence.log" \
   --log-dir "$LOG_DIR"

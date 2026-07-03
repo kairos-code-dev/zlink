@@ -2,13 +2,13 @@
 
 기준 문서: `framework/doc/framework/common/e2e/config-8-yield-dispatch.ko.md`
 
-현재 상태: Node.js `YieldDispatch` config는 YD-A1~YD-E5 범위를 구현했다. Registry, Delay,
+현재 상태: Node.js `YieldDispatch` config는 YD-A1~YD-E5 범위를 구현했다. Delay,
 Play, Session, Client role과 `run_e2e.sh`가 있으며, Client는 stream connector로 Session gateway에
 접속한다. HTTP는 readiness와 evidence 조회에만 사용한다.
 
 Session은 stream packet을 받아 `EnsureSpotReq`와 evidence wait request는 Play control route로 전달한다.
-Spot command는 public `ZLinkSpotOutbound.sendToSpot(...)`으로 전달한다. 이 경로가 registry 기반 Spot
-address discovery를 쓰기 때문에 Session도 `yield.spot` Spot mesh router를 가진다. 이 router는
+Spot command는 public `ZLinkSpotOutbound.sendToSpot(...)`으로 전달한다. 이 경로가 location store 기반 Spot
+address resolution을 쓰기 때문에 Session도 `yield.spot` Spot mesh router를 가진다. 이 router는
 application helper가 아니라 public framework topology 설정이다.
 
 | Scenario | 상태 | 근거 |

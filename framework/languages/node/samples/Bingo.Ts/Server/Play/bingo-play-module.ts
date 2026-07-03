@@ -17,9 +17,9 @@ import { BingoRoomAllocator } from './Application/RoomAllocation/bingo-room-allo
 import { BINGO_MATCH_QUEUE } from './Application/RoomAllocation/bingo-match-queue';
 import { SampleNames } from '../Configuration/sample-names';
 import { BINGO_SAMPLE_CONFIG } from '../Configuration/sample-config';
+import { bingoLocationOptions, createBingoLocationStore } from '../Configuration/location-store';
 import { PacketNames } from '../../Shared/Contracts/messages';
 function createBingoPlayModule(config: {
-	  registryRouterEndpoint: string;
 	  playEndpoint: string;
 	  playRouteEndpoint: string;
 	  routePeerEndpoints: string[];
@@ -40,17 +40,11 @@ function createBingoPlayModule(config: {
             .messageFlow(ZLinkMessageFlowLogMode.KeyTransitions)
             .traceLogFile(`${process.env.BINGO_LOG_DIR ?? 'logs'}/flow-play.log`)
             .traceLabel('play');
+          builder.addLocationStore(createBingoLocationStore(config));
+          Object.assign(builder.configureLocations(), bingoLocationOptions());
           return builder
-          .options({
-            registrySpotRemoteAddresses: {
-              namespace: SampleNames.roomSpotNode,
-              routerChannelId: SampleNames.playChannel
-            }
-          })
           .codecs()
             .use(zlinkProtobufCodec())
-          .useDiscovery()
-            .addRegistryEndpoint(config.registryRouterEndpoint)
           .addRouteMesh(SampleNames.playChannel)
             .enableRouter(config.playRouteEndpoint)
             .routingId(config.playSpotNodeRid)

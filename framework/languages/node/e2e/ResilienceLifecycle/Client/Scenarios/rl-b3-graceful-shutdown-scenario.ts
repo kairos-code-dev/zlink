@@ -20,13 +20,14 @@ export async function runRlB3(options: ClientOptions, state: ScenarioState): Pro
   );
   ensure(before.providerRid === 'api-a' || before.providerRid === 'api-b', 'RL-B3 pre-shutdown request failed.');
 
-  await postJson(options.providerBUrl, '/shutdown');
   if (state.providerBProcess !== undefined) {
-    await state.providerBProcess.waitExited();
+    await state.providerBProcess.stop();
     state.providerBProcess = undefined;
+  } else {
+    await postJson(options.providerBUrl, '/shutdown');
   }
   await waitUntilDown(options.providerBUrl);
-  await waitTopologyAbsent(options.registryUrl, 'api-b');
+  await waitTopologyAbsent(options.topologyUrl, 'api-b');
 
   for (let i = 0; i < 12; i += 1) {
     const after = await postJson<ProfileRes>(
@@ -41,7 +42,8 @@ export async function runRlB3(options: ClientOptions, state: ScenarioState): Pro
   const restarted = startProvider({
     providerMain: options.providerMain,
     logDir: options.logDir,
-    registryRouterEndpoint: options.registryRouterEndpoint,
+    redisEndpoint: options.redisEndpoint,
+    redisKeyPrefix: options.redisKeyPrefix,
     name: 'api-b-b3-restored',
     rid: 'api-b',
     httpUrl: options.providerBUrl,
@@ -51,7 +53,7 @@ export async function runRlB3(options: ClientOptions, state: ScenarioState): Pro
   await restarted.waitReady();
   state.providerBProcess = restarted;
   await waitUntilAvailable(options.providerBUrl);
-  await waitTopologyReady(options.registryUrl, 'api-b');
+  await waitTopologyReady(options.topologyUrl, 'api-b');
 
   console.log('scenario RL-B3 passed');
 }

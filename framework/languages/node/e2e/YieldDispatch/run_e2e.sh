@@ -155,6 +155,7 @@ terminate_gracefully() {
 }
 
 pids=()
+REDIS_CONTAINER_ID=""
 cleanup() {
   local code=$?
   for pid in "${pids[@]:-}"; do
@@ -163,6 +164,9 @@ cleanup() {
     fi
   done
   wait "${pids[@]:-}" 2>/dev/null || true
+  if [[ -n "$REDIS_CONTAINER_ID" ]]; then
+    docker rm -f "$REDIS_CONTAINER_ID" >/dev/null 2>&1 || true
+  fi
   if [[ "$code" -ne 0 ]]; then
     echo "E2E failed. log_dir=$LOG_DIR" >&2
     for file in "$LOG_DIR"/*.stderr.log "$LOG_DIR"/client.stderr.log; do
@@ -184,10 +188,25 @@ start_server() {
   pids+=("$!")
 }
 
+wait_tcp() {
+  local name="$1"
+  local endpoint="$2"
+  local host_port="${endpoint#tcp://}"
+  local host="${host_port%:*}"
+  local port="${host_port##*:}"
+  for _ in $(seq 1 100); do
+    if node -e "const net=require('node:net'); const s=net.createConnection({host: process.argv[1], port: Number(process.argv[2])}); s.once('connect', () => { s.end(); process.exit(0); }); s.once('error', () => process.exit(1)); setTimeout(() => process.exit(1), 500);" "$host" "$port"; then
+      return 0
+    fi
+    sleep 0.1
+  done
+  echo "Timed out waiting for $name at $endpoint" >&2
+  return 1
+}
+
 echo "log_dir=$LOG_DIR"
 
 (cd "$NODE_ROOT" && npm run build >/dev/null)
-build_package "$ROOT_DIR/Server/Registry"
 build_package "$ROOT_DIR/Server/Delay"
 build_package "$ROOT_DIR/Server/Play"
 build_package "$ROOT_DIR/Server/Session"
@@ -195,15 +214,21 @@ build_package "$ROOT_DIR/Client"
 static_checks
 echo "scenario YD-E4 passed" | tee "$LOG_DIR/static-checks.stdout.log"
 
-REG_HTTP_PORT="$(pick_port)"
+if ! command -v docker >/dev/null 2>&1; then
+  echo "Docker is required to run YieldDispatch because it provisions a dedicated Redis location store." >&2
+  exit 1
+fi
+REDIS_CONTAINER_ID="$(docker run -d --rm --name "yield-dispatch-node-redis-${RANDOM}-$$" -p "127.0.0.1::6379" redis:7.2-alpine)"
+REDIS_ENDPOINT="$(docker port "$REDIS_CONTAINER_ID" 6379/tcp | sed -E 's/.*:([0-9]+)$/127.0.0.1:\1/')"
+REDIS_KEY_PREFIX="yield-dispatch:node:${RUN_ID}:location"
+wait_tcp redis "tcp://$REDIS_ENDPOINT"
+
 DELAY_HTTP_PORT="$(pick_port)"
 DELAY_B_HTTP_PORT="$(pick_port)"
 PLAY_HTTP_PORT="$(pick_port)"
 PLAY_B_HTTP_PORT="$(pick_port)"
 SESSION_HTTP_PORT="$(pick_port)"
 SESSION_B_HTTP_PORT="$(pick_port)"
-REG_PUB_PORT="$(pick_port)"
-REG_ROUTER_PORT="$(pick_port)"
 DELAY_PORT="$(pick_port)"
 DELAY_B_PORT="$(pick_port)"
 PLAY_CONTROL_PORT="$(pick_port)"
@@ -223,15 +248,12 @@ PLAY_B_SPOT_PUB_PORT="$(pick_port)"
 SESSION_STREAM_PORT="$(pick_port)"
 SESSION_B_STREAM_PORT="$(pick_port)"
 
-REG_URL="http://127.0.0.1:$REG_HTTP_PORT"
 DELAY_URL="http://127.0.0.1:$DELAY_HTTP_PORT"
 DELAY_B_URL="http://127.0.0.1:$DELAY_B_HTTP_PORT"
 PLAY_URL="http://127.0.0.1:$PLAY_HTTP_PORT"
 PLAY_B_URL="http://127.0.0.1:$PLAY_B_HTTP_PORT"
 SESSION_URL="http://127.0.0.1:$SESSION_HTTP_PORT"
 SESSION_B_URL="http://127.0.0.1:$SESSION_B_HTTP_PORT"
-REG_PUB="tcp://127.0.0.1:$REG_PUB_PORT"
-REG_ROUTER="tcp://127.0.0.1:$REG_ROUTER_PORT"
 DELAY_ENDPOINT="tcp://127.0.0.1:$DELAY_PORT"
 DELAY_B_ENDPOINT="tcp://127.0.0.1:$DELAY_B_PORT"
 PLAY_CONTROL="tcp://127.0.0.1:$PLAY_CONTROL_PORT"
@@ -251,18 +273,10 @@ PLAY_B_SPOT_PUB="tcp://127.0.0.1:$PLAY_B_SPOT_PUB_PORT"
 SESSION_STREAM="tcp://127.0.0.1:$SESSION_STREAM_PORT"
 SESSION_B_STREAM="tcp://127.0.0.1:$SESSION_B_STREAM_PORT"
 
-REGISTRY_MAIN="$ROOT_DIR/Server/Registry/dist/Server/Registry/main.js"
 DELAY_MAIN="$ROOT_DIR/Server/Delay/dist/Server/Delay/main.js"
 PLAY_MAIN="$ROOT_DIR/Server/Play/dist/Server/Play/main.js"
 SESSION_MAIN="$ROOT_DIR/Server/Session/dist/Server/Session/main.js"
 CLIENT_MAIN="$ROOT_DIR/Client/dist/Client/main.js"
-
-start_server registry "$REGISTRY_MAIN" \
-  --rid registry \
-  --http-url "$REG_URL" \
-  --registry-pub-endpoint "$REG_PUB" \
-  --registry-router-endpoint "$REG_ROUTER"
-wait_health "$REG_URL" registry "${pids[-1]}"
 
 start_server delay-a "$DELAY_MAIN" \
   --rid delay-a \
@@ -281,12 +295,13 @@ wait_health "$DELAY_B_URL" delay-b "${pids[-1]}"
 start_server play-a "$PLAY_MAIN" \
   --rid play-a \
   --http-url "$PLAY_URL" \
-  --registry-router-endpoint "$REG_ROUTER" \
   --control-endpoint "$PLAY_CONTROL" \
   --spot-route-endpoint "$PLAY_SPOT_ROUTE" \
   --spot-router-endpoint "$PLAY_SPOT_ROUTER" \
   --spot-pub-endpoint "$PLAY_SPOT_PUB" \
   --delay-endpoint "$DELAY_ENDPOINT" \
+  --redis-endpoint "$REDIS_ENDPOINT" \
+  --redis-key-prefix "$REDIS_KEY_PREFIX" \
   --evidence-file "$LOG_DIR/play-a.evidence.log" \
   --log-dir "$LOG_DIR"
 PLAY_A_PID="${pids[-1]}"
@@ -295,12 +310,13 @@ wait_health "$PLAY_URL" play-a "$PLAY_A_PID"
 start_server play-b "$PLAY_MAIN" \
   --rid play-b \
   --http-url "$PLAY_B_URL" \
-  --registry-router-endpoint "$REG_ROUTER" \
   --control-endpoint "$PLAY_B_CONTROL" \
   --spot-route-endpoint "$PLAY_B_SPOT_ROUTE" \
   --spot-router-endpoint "$PLAY_B_SPOT_ROUTER" \
   --spot-pub-endpoint "$PLAY_B_SPOT_PUB" \
   --delay-endpoint "$DELAY_B_ENDPOINT" \
+  --redis-endpoint "$REDIS_ENDPOINT" \
+  --redis-key-prefix "$REDIS_KEY_PREFIX" \
   --evidence-file "$LOG_DIR/play-b.evidence.log" \
   --log-dir "$LOG_DIR"
 wait_health "$PLAY_B_URL" play-b "${pids[-1]}"
@@ -308,13 +324,14 @@ wait_health "$PLAY_B_URL" play-b "${pids[-1]}"
 start_server session-a "$SESSION_MAIN" \
   --rid session-a \
   --http-url "$SESSION_URL" \
-  --registry-router-endpoint "$REG_ROUTER" \
   --control-router-endpoint "$SESSION_CONTROL" \
   --play-control-endpoint "$PLAY_CONTROL,$PLAY_B_CONTROL" \
   --spot-route-endpoint "$SESSION_SPOT_ROUTE" \
   --spot-router-endpoint "$SESSION_SPOT_ROUTER" \
   --play-spot-route-endpoint "$PLAY_SPOT_ROUTE,$PLAY_B_SPOT_ROUTE" \
   --stream-endpoint "$SESSION_STREAM" \
+  --redis-endpoint "$REDIS_ENDPOINT" \
+  --redis-key-prefix "$REDIS_KEY_PREFIX" \
   --evidence-file "$LOG_DIR/session-a.evidence.log" \
   --log-dir "$LOG_DIR"
 wait_health "$SESSION_URL" session-a "${pids[-1]}"
@@ -322,13 +339,14 @@ wait_health "$SESSION_URL" session-a "${pids[-1]}"
 start_server session-b "$SESSION_MAIN" \
   --rid session-b \
   --http-url "$SESSION_B_URL" \
-  --registry-router-endpoint "$REG_ROUTER" \
   --control-router-endpoint "$SESSION_B_CONTROL" \
   --play-control-endpoint "$PLAY_CONTROL,$PLAY_B_CONTROL" \
   --spot-route-endpoint "$SESSION_B_SPOT_ROUTE" \
   --spot-router-endpoint "$SESSION_B_SPOT_ROUTER" \
   --play-spot-route-endpoint "$PLAY_SPOT_ROUTE,$PLAY_B_SPOT_ROUTE" \
   --stream-endpoint "$SESSION_B_STREAM" \
+  --redis-endpoint "$REDIS_ENDPOINT" \
+  --redis-key-prefix "$REDIS_KEY_PREFIX" \
   --evidence-file "$LOG_DIR/session-b.evidence.log" \
   --log-dir "$LOG_DIR"
 wait_health "$SESSION_B_URL" session-b "${pids[-1]}"
@@ -372,12 +390,13 @@ if [[ "$CLIENT_SCENARIO" == "full" || "$CLIENT_SCENARIO" == "YD-E3" ]]; then
   start_server play-a "$PLAY_MAIN" \
     --rid play-a \
     --http-url "$PLAY_URL" \
-    --registry-router-endpoint "$REG_ROUTER" \
     --control-endpoint "$PLAY_CONTROL" \
     --spot-route-endpoint "$PLAY_SPOT_ROUTE" \
     --spot-router-endpoint "$PLAY_SPOT_ROUTER" \
     --spot-pub-endpoint "$PLAY_SPOT_PUB" \
     --delay-endpoint "$DELAY_ENDPOINT" \
+    --redis-endpoint "$REDIS_ENDPOINT" \
+    --redis-key-prefix "$REDIS_KEY_PREFIX" \
     --evidence-file "$LOG_DIR/play-a.evidence.log" \
     --log-dir "$LOG_DIR"
   PLAY_A_PID="${pids[-1]}"

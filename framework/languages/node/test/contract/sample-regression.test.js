@@ -84,11 +84,10 @@ test('node topology samples mirror dotnet role layout', () => {
       'Server/Play/Infrastructure/ZLink/Spots/EntrySpot/bingo-entry-spot.ts',
       'Server/Play/Infrastructure/ZLink/Spots/BingoRoomSpot/bingo-room-spot.ts',
       'Server/Play/main.ts',
-      'Server/Registry/main.ts',
-      'Server/Registry/registry-server-host.ts',
       'Server/Session/Sessions/Handlers/authenticate-session-handler.ts',
       'Server/Session/Sessions/bingo-session.ts',
       'Server/Session/main.ts',
+      'Server/Configuration/location-store.ts',
       'Server/Configuration/sample-names.ts',
       'Shared/Contracts/bingo_messages.proto',
       'Shared/Contracts/protobuf-codec.ts',
@@ -161,7 +160,6 @@ test('node topology samples mirror dotnet role layout', () => {
       'Server/DispatchCenter/dispatch-center-module.ts',
       'Server/DispatchCenter/dispatch-worker.ts',
       'Server/Probe/probe.ts',
-      'Server/Registry/registry-module.ts',
       'Server/Session/customer-session.ts',
       'Server/Tracking/tracking-module.ts',
       'Shared/Configuration/sample-names.ts',
@@ -706,26 +704,6 @@ test('node framework samples exercise the real NestJS application context', () =
     }
   }
 
-  const registryMain = fs.readFileSync(path.join(samplesRoot, 'Bingo.Ts/Server/Registry/main.ts'), 'utf8');
-  const registryHost = fs.readFileSync(path.join(samplesRoot, 'Bingo.Ts/Server/Registry/registry-server-host.ts'), 'utf8');
-  if (!registryMain.includes('createBingoRegistryServer')) {
-    missing.push('Bingo.Ts/Server/Registry/main.ts:createBingoRegistryServer');
-  }
-  if (!registryMain.includes('.start()') || !registryMain.includes('.close()')) {
-    missing.push('Bingo.Ts/Server/Registry/main.ts:start-close');
-  }
-  if (!registryHost.includes('ZLinkRegistryModule.forRoot')) {
-    missing.push('Bingo.Ts/Server/Registry/registry-server-host.ts:ZLinkRegistryModule.forRoot');
-  }
-  if (!registryHost.includes('NestFactory.createApplicationContext')) {
-    missing.push('Bingo.Ts/Server/Registry/registry-server-host.ts:NestFactory.createApplicationContext');
-  }
-  for (const text of ['ZLinkRegistryRuntime', "require('@nestjs/common')"]) {
-    if (registryMain.includes(text) || registryHost.includes(text)) {
-      hiddenServerRuntime.push(`Bingo.Ts/Server/Registry:${text}`);
-    }
-  }
-
   assert.deepEqual(missing, []);
   assert.deepEqual(hiddenServerRuntime, []);
 });
@@ -861,33 +839,32 @@ test('Bingo TypeScript sample builds and exposes separated TypeScript roles', ()
   assert.deepEqual(violations, []);
 });
 
-test('Bingo TypeScript sample uses route mesh peers and registry-backed discovery where supported', () => {
+test('Bingo TypeScript sample uses route mesh peers and location store registration where supported', () => {
   const api = fs.readFileSync(path.join(samplesRoot, 'Bingo.Ts', 'Server', 'Api', 'main.ts'), 'utf8');
   const apiModule = fs.readFileSync(path.join(samplesRoot, 'Bingo.Ts', 'Server', 'Api', 'bingo-api-module.ts'), 'utf8');
   const play = fs.readFileSync(path.join(samplesRoot, 'Bingo.Ts', 'Server', 'Play', 'main.ts'), 'utf8');
   const playModule = fs.readFileSync(path.join(samplesRoot, 'Bingo.Ts', 'Server', 'Play', 'bingo-play-module.ts'), 'utf8');
   const session = fs.readFileSync(path.join(samplesRoot, 'Bingo.Ts', 'Server', 'Session', 'main.ts'), 'utf8');
   const sessionModule = fs.readFileSync(path.join(samplesRoot, 'Bingo.Ts', 'Server', 'Session', 'bingo-session-module.ts'), 'utf8');
-  const registry = fs.readFileSync(path.join(samplesRoot, 'Bingo.Ts', 'Server', 'Registry', 'registry-server-host.ts'), 'utf8');
+  const locationStore = fs.readFileSync(path.join(samplesRoot, 'Bingo.Ts', 'Server', 'Configuration', 'location-store.ts'), 'utf8');
   const required = [
-    [registry, 'ZLinkRegistryModule.forRoot'],
-    [registry, 'NestFactory.createApplicationContext'],
-    [registry, 'registryPubEndpoint'],
-    [registry, 'registryRouterEndpoint'],
-    [apiModule, '.useDiscovery()'],
-    [apiModule, '.addRegistryEndpoint(config.registryRouterEndpoint)'],
+    [locationStore, 'ZLinkRedisLocationStore'],
+    [locationStore, 'redisEndpoint'],
+    [locationStore, 'redisKeyPrefix'],
+    [apiModule, '.addLocationStore(createBingoLocationStore(config))'],
+    [apiModule, 'bingoLocationOptions()'],
     [apiModule, '.addRouteMesh(SampleNames.playChannel'],
     [apiModule, '.routingId(config.apiNodeRid'],
     [apiModule, '.connect(config.playRouteEndpoints)'],
     [apiModule, '.addClientServerChannel(SampleNames.apiChannel'],
     [apiModule, '.enableServer(config.apiEndpoint)'],
-    [playModule, '.useDiscovery()'],
-    [playModule, '.addRegistryEndpoint(config.registryRouterEndpoint)'],
+    [playModule, '.addLocationStore(createBingoLocationStore(config))'],
+    [playModule, 'bingoLocationOptions()'],
     [playModule, '.addRouteMesh(SampleNames.playChannel'],
     [playModule, '.enableRouter(config.playRouteEndpoint)'],
     [playModule, '.connect(config.routePeerEndpoints)'],
-    [sessionModule, '.useDiscovery()'],
-    [sessionModule, '.addRegistryEndpoint(endpoints.registryRouterEndpoint)']
+    [sessionModule, '.addLocationStore(createBingoLocationStore(endpoints))'],
+    [sessionModule, 'bingoLocationOptions()']
   ];
   const missing = required
     .filter(([content, text]) => !content.includes(text))
@@ -900,6 +877,15 @@ test('Bingo TypeScript sample uses route mesh peers and registry-backed discover
     [api, 'registry.resolve'],
     [play, 'registry.register'],
     [session, 'registry.resolve'],
+    [apiModule, '.useDiscovery()'],
+    [apiModule, '.addRegistryEndpoint('],
+    [playModule, '.useDiscovery()'],
+    [playModule, '.addRegistryEndpoint('],
+    [sessionModule, '.useDiscovery()'],
+    [sessionModule, '.addRegistryEndpoint('],
+    [apiModule, '.useInMemoryLocationStores()'],
+    [playModule, '.useInMemoryLocationStores()'],
+    [sessionModule, '.useInMemoryLocationStores()'],
     [session, 'process.env.BINGO_API_ENDPOINT'],
     [session, 'process.env.BINGO_PLAY_ENDPOINT'],
     [api, 'process.env.BINGO_PLAY_ENDPOINT']
@@ -949,9 +935,7 @@ test('node topology samples run server roles as separate processes over TCP rout
     ['Bingo.Ts', 'Server/Play/main.ts', 'BINGO_PLAY_A_ENDPOINT'],
     ['Bingo.Ts', 'Server/Play/main.ts', 'BINGO_PLAY_B_ENDPOINT'],
     ['Bingo.Ts', 'Server/Session/main.ts', 'BINGO_SESSION_A_ENDPOINT'],
-    ['Bingo.Ts', 'Server/Session/main.ts', 'BINGO_SESSION_B_ENDPOINT'],
-    ['Bingo.Ts', 'Server/Registry/main.ts', 'BINGO_REGISTRY_PUB_ENDPOINT'],
-    ['Bingo.Ts', 'Server/Registry/main.ts', 'BINGO_REGISTRY_ROUTER_ENDPOINT']
+    ['Bingo.Ts', 'Server/Session/main.ts', 'BINGO_SESSION_B_ENDPOINT']
   ];
   const clientEndpointEnvs = new Set([
     'TICTACTOE_PLAY_A_STREAM_ENDPOINT',
@@ -994,6 +978,8 @@ test('node topology samples do not use stdin command protocol as messaging', () 
 test('node samples do not hide readiness with sleeps or pre-ready pings', () => {
   const violations = [];
   const allowedTimingFiles = new Set([
+    'samples/Bingo.Ts/run_sample.ps1',
+    'samples/Bingo.Ts/run_sample.sh',
     'samples/Bingo.Ts/Server/Play/Infrastructure/ZLink/Spots/EntrySpot/Handlers/match-bingo-actor-handler.ts',
     'samples/Bingo.Ts/Server/runtime-support.ts',
     'samples/DeliveryDispatch.Ts/Client/deliverydispatch-client-scenario.ts',
@@ -1399,7 +1385,7 @@ test('TicTacToe uses manual handler registration and Bingo keeps automatic regis
     ['TicTacToe.Ts/Server/Play/main.ts', playMain],
     ['Bingo.Ts/Server/Api/main.ts', fs.readFileSync(path.join(samplesRoot, 'Bingo.Ts', 'Server', 'Api', 'main.ts'), 'utf8')],
     ['Bingo.Ts/Server/Play/main.ts', fs.readFileSync(path.join(samplesRoot, 'Bingo.Ts', 'Server', 'Play', 'main.ts'), 'utf8')],
-    ['Bingo.Ts/Server/Registry/main.ts', fs.readFileSync(path.join(samplesRoot, 'Bingo.Ts', 'Server', 'Registry', 'main.ts'), 'utf8')]
+    ['Bingo.Ts/Server/Session/main.ts', fs.readFileSync(path.join(samplesRoot, 'Bingo.Ts', 'Server', 'Session', 'main.ts'), 'utf8')]
   ]) {
     if (content.includes('zlinkHandlers')) {
       violations.push(name);

@@ -2,6 +2,7 @@ import fs from 'node:fs';
 import { Module } from '@nestjs/common';
 import { NestFactory } from '@nestjs/core';
 import { ZLinkMessageFlowLogMode } from '@zlink-systems/framework';
+import { ZLinkRedisLocationStore } from '@zlink-systems/framework-locations-redis';
 import { ZLinkModule, zlinkFramework } from '@zlink-systems/nestjs';
 import { YieldDispatchNames } from '../../Shared/messages';
 import { EvidenceStore } from './Support/evidence-store';
@@ -13,6 +14,10 @@ export async function startSessionHost(args: readonly string[]): Promise<void> {
   const options = parseSessionOptions(args);
   fs.mkdirSync(options.logDir, { recursive: true });
   const evidence = new EvidenceStore(options.rid, options.evidenceFile);
+  const locationStore = new ZLinkRedisLocationStore({
+    url: `redis://${options.redisEndpoint}`,
+    keyPrefix: options.redisKeyPrefix
+  });
   let stopping = false;
 
   class SessionModule {}
@@ -22,14 +27,7 @@ export async function startSessionHost(args: readonly string[]): Promise<void> {
         useFactory: () => {
           const builder = zlinkFramework();
           builder
-            .options({
-              registrySpotRemoteAddresses: {
-                namespace: YieldDispatchNames.spotChannel,
-                routerChannelId: YieldDispatchNames.spotRouteChannel
-              }
-            })
-            .useDiscovery()
-              .addRegistryEndpoint(options.registryRouterEndpoint)
+            .addLocationStore(locationStore)
             .configureDispatch()
               .messageFlow(ZLinkMessageFlowLogMode.KeyTransitions)
               .traceLogFile(`${options.logDir}/${options.rid}-flow.log`)
@@ -37,12 +35,10 @@ export async function startSessionHost(args: readonly string[]): Promise<void> {
 
           builder.addRouteMesh(YieldDispatchNames.controlChannel)
             .enableRouter(options.controlRouterEndpoint)
-            .routingId(options.rid)
-            .connect(options.playControlEndpoints);
+            .routingId(options.rid);
           builder.addRouteMesh(YieldDispatchNames.spotRouteChannel)
             .enableRouter(options.spotRouteEndpoint)
-            .routingId(options.rid)
-            .connect(options.playSpotRouteEndpoints);
+            .routingId(options.rid);
           builder.addSpotMesh(YieldDispatchNames.spotChannel)
             .routingId(options.rid)
             .enableRouter(options.spotRouterEndpoint);
@@ -78,4 +74,5 @@ export async function startSessionHost(args: readonly string[]): Promise<void> {
   }
   await closeHttpServer(server);
   await app.close();
+  await locationStore.dispose();
 }

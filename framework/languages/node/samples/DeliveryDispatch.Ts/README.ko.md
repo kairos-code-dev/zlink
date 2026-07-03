@@ -1,8 +1,8 @@
 # DeliveryDispatch TypeScript Sample
 
 DeliveryDispatch 샘플은 배달 요청이 접수되고, dispatch center가 courier에게 작업을 배정하며,
-상태 변경이 고객 세션으로 전달되는 흐름을 보여준다. TypeScript 구현은 Registry discovery,
-dispatch channel, courier gateway, courier stream bind, courier actor-node route mesh,
+상태 변경이 고객 세션으로 전달되는 흐름을 보여준다. TypeScript 구현은 dispatch channel,
+courier gateway, courier stream bind, courier actor-node route mesh,
 tracking fanout, customer stream push를 별도 role로 실행해 client self-check로 검증한다.
 
 ## 실행
@@ -14,7 +14,6 @@ tracking fanout, customer stream push를 별도 role로 실행해 client self-ch
 ## Topology
 
 - `Client`는 배달 생성, 배정, 픽업, 완료까지의 흐름을 시나리오처럼 검증한다.
-- `Server/Registry`는 discovery registry를 실행한다.
 - `Server/DispatchApi`는 HTTP 요청을 dispatch channel request로 바꾼다.
 - `Server/DispatchCenter`는 dispatch queue, timeout, 재배정, tracking publish를 맡는다.
 - `Server/Courier`는 CourierGateway와 courier actor-node route handler를 둔다.

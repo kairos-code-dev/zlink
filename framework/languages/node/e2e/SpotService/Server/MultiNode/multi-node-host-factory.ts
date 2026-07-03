@@ -35,17 +35,11 @@ export async function startMultiNodeHost(args: readonly string[]): Promise<void>
         useFactory: () => {
           const builder = zlinkFramework();
           builder
-            .options({
-              registrySpotRemoteAddresses: {
-                namespace: options.rid,
-                routerChannelId: routeChannel
-              }
-            })
             .configureDispatch()
               .messageFlow(ZLinkMessageFlowLogMode.KeyTransitions)
               .traceLogFile(`${options.logDir}/${options.rid}-flow.log`)
               .traceLabel(options.rid);
-          builder.useDiscovery().addRegistryEndpoint(options.registryRouterEndpoint);
+          builder.useInMemoryLocationStores();
           const route = builder.addRouteMesh(routeChannel)
             .enableRouter(options.routeEndpoint)
             .routingId(options.rid)

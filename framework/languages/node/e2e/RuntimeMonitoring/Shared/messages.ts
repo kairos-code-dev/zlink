@@ -2,6 +2,7 @@ export const RuntimeMonitoringNames = {
   channel: 'monitor.profile',
   channelServerSource: 'monitor.profile.server',
   channelClientSource: 'monitor.profile.client',
+  locationRuntimeSource: 'monitor.location-runtime',
   spotChannel: 'monitor.spot',
   spotNode: 'monitor.spot'
 } as const;

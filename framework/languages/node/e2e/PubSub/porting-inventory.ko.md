@@ -37,24 +37,18 @@
 | `Client/Support/Evidence.cs` | `Client/Support/evidence.ts` | assertion-support | done | evidence line 판정 |
 | `Client/Support/ScenarioAssert.cs` | `Client/Support/scenario-assert.ts` | assertion-support | done | eventually, connection failure 판정 |
 | `Client/Support/ServerProcessLauncher.cs` | `Client/Support/server-process-launcher.ts` | harness-support | done | late/reconnect/restart process 실행 |
-| `Server/Registry/PubSub.Registry.csproj` | `Server/Registry/package.json`, `Server/Registry/tsconfig.json` | project | done | registry role build 설정 |
-| `Server/Registry/Program.cs` | `Server/Registry/main.ts` | server-entry | done | registry role 실행 |
-| `Server/Registry/RegistryHostFactory.cs` | `Server/Registry/registry-host-factory.ts` | server-role | done | registry module 설정 |
-| `Server/Registry/Configuration/HostFactorySupport.cs` | `Server/Registry/registry-host-factory.ts` | server-role | done | Node NestJS host factory 안에서 구성 |
-| `Server/Registry/Configuration/RegistryOptions.cs` | `Server/Registry/Configuration/server-options.ts` | configuration | done | registry endpoint 옵션 |
-| `Server/Registry/Configuration/ServerArgs.cs` | `Server/Registry/Configuration/server-options.ts` | configuration | done | CLI argument parsing |
-| `Server/Registry/EvidenceStore.cs` | `Server/Registry/Infrastructure/evidence-store.ts` | infrastructure | done | registry evidence snapshot과 clear endpoint를 위한 저장소 |
-| `Server/Registry/OperationalEndpoints.cs` | `Server/Registry/Endpoints/operational-endpoints.ts` | endpoints | done | health, evidence, clear, shutdown endpoint |
+| `Server/Registry/*` | 없음 | server-role | not-needed | PubSub runner는 registry role 없이 publisher/subscriber endpoint를 직접 연결한다. |
+| `Server/Registry/Configuration/ServerArgs.cs` | `Server/Shared/Configuration/server-options.ts` | configuration | done | publisher/subscriber가 공유하는 CLI argument parsing |
 | `Server/Publisher/PubSub.Publisher.csproj` | `Server/Publisher/package.json`, `Server/Publisher/tsconfig.json` | project | done | publisher role build 설정 |
 | `Server/Publisher/Program.cs` | `Server/Publisher/main.ts` | server-entry | done | publisher role 실행 |
 | `Server/Publisher/PublisherHostFactory.cs` | `Server/Publisher/publisher-host-factory.ts` | server-role | done | fanout publisher, dispatch observer, HTTP server 구성 |
 | `Server/Publisher/Configuration/HostFactorySupport.cs` | `Server/Publisher/publisher-host-factory.ts` | server-role | done | Node NestJS host factory 안에서 구성 |
-| `Server/Publisher/Configuration/PublisherOptions.cs` | `Server/Publisher/Configuration/publisher-options.ts` | configuration | done | publisher endpoint, evidence file, registry option |
+| `Server/Publisher/Configuration/PublisherOptions.cs` | `Server/Publisher/Configuration/publisher-options.ts` | configuration | done | publisher endpoint와 evidence file option |
 | `Server/Publisher/Configuration/ServerArgs.cs` | `Server/Publisher/Configuration/publisher-options.ts` | configuration | done | CLI argument parsing |
 | `Server/Publisher/Endpoints/OperationalEndpoints.cs` | `Server/Publisher/Endpoints/publisher-endpoints.ts` | endpoints | done | health, evidence, clear, shutdown endpoint |
 | `Server/Publisher/Endpoints/PublisherEndpoints.cs` | `Server/Publisher/Endpoints/publisher-endpoints.ts` | endpoints | done | publish event/missing endpoint |
 | `Server/Publisher/EvidenceDispatchErrorObserver.cs` | `Server/Publisher/Handlers/evidence-dispatch-error-observer.ts` | observer | done | dispatch error evidence 기록 |
-| `Server/Publisher/EvidenceStore.cs` | `Server/Publisher/Infrastructure/evidence-store.ts` | infrastructure | done | publisher evidence 저장과 evidence file 기록 |
+| `Server/Publisher/EvidenceStore.cs` | `Server/Publish../Infrastructure/evidence-store.ts` | infrastructure | done | publisher evidence 저장과 evidence file 기록 |
 | `Server/Subscriber/PubSub.Subscriber.csproj` | `Server/Subscriber/package.json`, `Server/Subscriber/tsconfig.json` | project | done | subscriber role build 설정 |
 | `Server/Subscriber/Program.cs` | `Server/Subscriber/main.ts` | server-entry | done | subscriber role 실행 |
 | `Server/Subscriber/SubscriberHostFactory.cs` | `Server/Subscriber/subscriber-host-factory.ts` | server-role | done | fanout subscriber, handler, observer 구성 |
@@ -63,7 +57,7 @@
 | `Server/Subscriber/Configuration/ServerArgs.cs` | `Server/Subscriber/Configuration/subscriber-options.ts` | configuration | done | CLI argument parsing |
 | `Server/Subscriber/Configuration/SubscriberOptions.cs` | `Server/Subscriber/Configuration/subscriber-options.ts` | configuration | done | subscriber endpoint, evidence file, handler delay 옵션 |
 | `Server/Subscriber/OperationalEndpoints.cs` | `Server/Subscriber/Endpoints/operational-endpoints.ts` | endpoints | done | health, evidence, wait, clear, shutdown endpoint |
-| `Server/Subscriber/EvidenceStore.cs` | `Server/Subscriber/Infrastructure/evidence-store.ts` | infrastructure | done | subscriber evidence 저장과 bounded wait |
+| `Server/Subscriber/EvidenceStore.cs` | `Server/Subscrib../Infrastructure/evidence-store.ts` | infrastructure | done | subscriber evidence 저장과 bounded wait |
 | `Server/Subscriber/Handlers/EventMsgHandler.cs` | `Server/Subscriber/Handlers/event-msg-handler.ts` | handler | done | topic filter, slow handler evidence |
 | `Server/Subscriber/Handlers/EvidenceDispatchErrorObserver.cs` | `Server/Subscriber/Handlers/event-msg-handler.ts` | observer | done | missing packet dispatch error evidence |
 

@@ -2,6 +2,7 @@ import fs from 'node:fs';
 import { Module } from '@nestjs/common';
 import { NestFactory } from '@nestjs/core';
 import { ZLinkMessageFlowLogMode } from '@zlink-systems/framework';
+import { ZLinkRedisLocationStore } from '@zlink-systems/framework-locations-redis';
 import { ZLinkModule, zlinkFramework } from '@zlink-systems/nestjs';
 import { YieldDispatchNames } from '../../Shared/messages';
 import { EvidenceStore } from './Support/evidence-store';
@@ -36,6 +37,10 @@ export async function startPlayHost(args: readonly string[]): Promise<void> {
   const options = parsePlayOptions(args);
   fs.mkdirSync(options.logDir, { recursive: true });
   const evidence = new EvidenceStore(options.rid, options.evidenceFile);
+  const locationStore = new ZLinkRedisLocationStore({
+    url: `redis://${options.redisEndpoint}`,
+    keyPrefix: options.redisKeyPrefix
+  });
   let stopping = false;
 
   class PlayModule {}
@@ -45,17 +50,11 @@ export async function startPlayHost(args: readonly string[]): Promise<void> {
         useFactory: () => {
           const builder = zlinkFramework();
           builder
-            .options({
-              registrySpotRemoteAddresses: {
-                namespace: YieldDispatchNames.spotChannel,
-                routerChannelId: YieldDispatchNames.spotRouteChannel
-              }
-            })
             .configureDispatch()
               .messageFlow(ZLinkMessageFlowLogMode.KeyTransitions)
               .traceLogFile(`${options.logDir}/${options.rid}-flow.log`)
               .traceLabel(options.rid);
-          builder.useDiscovery().addRegistryEndpoint(options.registryRouterEndpoint);
+          builder.addLocationStore(locationStore);
           builder.addRouteMesh(YieldDispatchNames.controlChannel)
             .enableRouter(options.controlEndpoint)
             .routingId(options.rid)
@@ -130,4 +129,5 @@ export async function startPlayHost(args: readonly string[]): Promise<void> {
   }
   await closeHttpServer(server);
   await app.close();
+  await locationStore.dispose();
 }

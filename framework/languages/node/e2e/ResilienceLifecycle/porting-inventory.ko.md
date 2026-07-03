@@ -12,26 +12,26 @@
 
 | Scenario | .NET 기준 파일 | Node.js 대상 파일 | 상태 | 비고 |
 |----------|----------------|-------------------|------|------|
-| RL-A1 | `Client/Scenarios/RlA1ProviderRestartScenario.cs` | `Client/Scenarios/rl-a1-provider-restart-scenario.ts` | done | provider same-endpoint restart. PASS: `logs/20260630-061338-2889689` |
-| RL-A2 | `Client/Scenarios/RlA2ProviderEndpointRemapScenario.cs` | `Client/Scenarios/rl-a2-provider-endpoint-remap-scenario.ts` | done | provider endpoint remap. PASS: `logs/20260630-061338-2889689` |
-| RL-A3 | `Client/Scenarios/RlA3ReconnectStormScenario.cs` | `Client/Scenarios/rl-a3-reconnect-storm-scenario.ts` | done | client reconnect storm. PASS: `logs/20260630-061338-2889689` |
-| RL-A4 | `Client/Scenarios/RlA4DrainAndGreenEndpointScenario.cs` | `Client/Scenarios/rl-a4-drain-and-green-endpoint-scenario.ts` | done | runtime drain, green provider 전환, same-endpoint original restore. PASS: `logs/20260630-061338-2889689` |
-| RL-A5 | `Client/Scenarios/RlA5ProviderFlappingScenario.cs` | `Client/Scenarios/rl-a5-provider-flapping-scenario.ts` | done | provider flapping. PASS: `logs/20260630-061338-2889689` |
-| RL-B1 | `Client/Scenarios/RlB1CancellationCleanupScenario.cs` | `Client/Scenarios/rl-b1-cancellation-cleanup-scenario.ts` | done | cancellation cleanup. PASS: `logs/20260630-061338-2889689` |
-| RL-B2 | `Client/Scenarios/RlB2CrashDuringInflightScenario.cs` | `Client/Scenarios/rl-b2-crash-during-inflight-scenario.ts` | done | crash during in-flight request. PASS: `logs/20260630-061338-2889689` |
-| RL-B3 | `Client/Scenarios/RlB3GracefulShutdownScenario.cs` | `Client/Scenarios/rl-b3-graceful-shutdown-scenario.ts` | done | graceful shutdown stale endpoint avoidance. PASS: `logs/20260630-061338-2889689` |
-| RL-B4 | `Client/Scenarios/RlB4RuntimeDrainScenario.cs` | `Client/Scenarios/rl-b4-runtime-drain-scenario.ts` | done | runtime drain/restore public path. PASS: `logs/20260630-061338-2889689` |
-| RL-B5 | `Client/Scenarios/RlB5DrainInflightScenario.cs` | `Client/Scenarios/rl-b5-drain-inflight-scenario.ts` | done | runtime drain 중 in-flight slow reply 보존. PASS: `logs/20260630-061338-2889689` |
-| RL-B6 | `Client/Scenarios/RlB6GrayFaultScenario.cs` | `Client/Scenarios/rl-b6-gray-fault-scenario.ts` | done | gray failure and recovery. PASS: `logs/20260630-061338-2889689` |
-| RL-C1 | `Client/Scenarios/RlC1ClientHostLifecycleScenario.cs` | `Client/Scenarios/rl-c1-client-host-lifecycle-scenario.ts` | done | short-lived client host lifecycle. PASS: `logs/20260630-061338-2889689` |
-| RL-C2 | `Client/Scenarios/RlC2TopologyRecoveryScenario.cs` | `Client/Scenarios/rl-c2-topology-recovery-scenario.ts` | done | crash stale topology cleanup and recovery. PASS: `logs/20260630-061338-2889689` |
-| RL-C3 | `Client/Scenarios/RlC3NodePauseRecoveryScenario.cs` | `Client/Scenarios/rl-c3-node-pause-recovery-scenario.ts` | done | node down/recovery simulation. PASS: `logs/20260630-061338-2889689` |
-| RL-C4 | `Client/Scenarios/RlC4RegistryOutageScenario.cs` | `Client/Scenarios/rl-c4-registry-outage-scenario.ts` | done | registry outage and recovery. PASS: `logs/20260630-061338-2889689` |
-| RL-D1 | `Client/Scenarios/RlD1HighFanoutScenario.cs` | `Client/Scenarios/rl-d1-high-fanout-scenario.ts` | done | high fanout request burst. PASS: `logs/20260630-061338-2889689` |
-| RL-D2 | `Client/Scenarios/RlD2ObserverFaultScenario.cs` | `Client/Scenarios/rl-d2-observer-fault-scenario.ts` | done | observer failure isolation. PASS: `logs/20260630-061338-2889689` |
-| RL-D3 | `Client/Scenarios/RlD3DispatchErrorEvidenceScenario.cs` | `Client/Scenarios/rl-d3-dispatch-error-evidence-scenario.ts` | done | dispatch-error evidence. PASS: `logs/20260630-061338-2889689` |
-| RL-D4 | `Client/Scenarios/RlD4MissingRequestHandlerScenario.cs` | `Client/Scenarios/rl-d4-missing-request-handler-scenario.ts` | done | missing request handler error reply. PASS: `logs/20260630-061338-2889689` |
-| RL-D5 | `Client/Scenarios/RlD5MixedBurstScenario.cs` | `Client/Scenarios/rl-d5-mixed-burst-scenario.ts` | done | mixed request/send burst. PASS: `logs/20260630-061338-2889689` |
+| RL-A1 | `Client/Scenarios/RlA1ProviderRestartScenario.cs` | `Client/Scenarios/rl-a1-provider-restart-scenario.ts` | done | provider same-endpoint restart. PASS: `logs/20260703-211853-78546` |
+| RL-A2 | `Client/Scenarios/RlA2ProviderEndpointRemapScenario.cs` | `Client/Scenarios/rl-a2-provider-endpoint-remap-scenario.ts` | done | provider endpoint remap. PASS: `logs/20260703-211853-78546` |
+| RL-A3 | `Client/Scenarios/RlA3ReconnectStormScenario.cs` | `Client/Scenarios/rl-a3-reconnect-storm-scenario.ts` | done | client reconnect storm. PASS: `logs/20260703-211853-78546` |
+| RL-A4 | `Client/Scenarios/RlA4DrainAndGreenEndpointScenario.cs` | `Client/Scenarios/rl-a4-drain-and-green-endpoint-scenario.ts` | done | runtime drain, green provider 전환, same-endpoint original restore. PASS: `logs/20260703-211853-78546` |
+| RL-A5 | `Client/Scenarios/RlA5ProviderFlappingScenario.cs` | `Client/Scenarios/rl-a5-provider-flapping-scenario.ts` | done | provider flapping. PASS: `logs/20260703-211853-78546` |
+| RL-B1 | `Client/Scenarios/RlB1CancellationCleanupScenario.cs` | `Client/Scenarios/rl-b1-cancellation-cleanup-scenario.ts` | done | cancellation cleanup. PASS: `logs/20260703-211853-78546` |
+| RL-B2 | `Client/Scenarios/RlB2CrashDuringInflightScenario.cs` | `Client/Scenarios/rl-b2-crash-during-inflight-scenario.ts` | done | crash during in-flight request. PASS: `logs/20260703-211853-78546` |
+| RL-B3 | `Client/Scenarios/RlB3GracefulShutdownScenario.cs` | `Client/Scenarios/rl-b3-graceful-shutdown-scenario.ts` | done | graceful shutdown stale endpoint avoidance. PASS: `logs/20260703-211853-78546` |
+| RL-B4 | `Client/Scenarios/RlB4RuntimeDrainScenario.cs` | `Client/Scenarios/rl-b4-runtime-drain-scenario.ts` | done | runtime drain/restore public path. PASS: `logs/20260703-211853-78546` |
+| RL-B5 | `Client/Scenarios/RlB5DrainInflightScenario.cs` | `Client/Scenarios/rl-b5-drain-inflight-scenario.ts` | done | runtime drain 중 in-flight slow reply 보존. PASS: `logs/20260703-211853-78546` |
+| RL-B6 | `Client/Scenarios/RlB6GrayFaultScenario.cs` | `Client/Scenarios/rl-b6-gray-fault-scenario.ts` | done | gray failure and recovery. PASS: `logs/20260703-211853-78546` |
+| RL-C1 | `Client/Scenarios/RlC1ClientHostLifecycleScenario.cs` | `Client/Scenarios/rl-c1-client-host-lifecycle-scenario.ts` | done | short-lived client host lifecycle. PASS: `logs/20260703-211853-78546` |
+| RL-C2 | `Client/Scenarios/RlC2TopologyRecoveryScenario.cs` | `Client/Scenarios/rl-c2-topology-recovery-scenario.ts` | done | crash stale topology cleanup and recovery. PASS: `logs/20260703-211853-78546` |
+| RL-C3 | `Client/Scenarios/RlC3NodePauseRecoveryScenario.cs` | `Client/Scenarios/rl-c3-node-pause-recovery-scenario.ts` | done | node down/recovery simulation. PASS: `logs/20260703-211853-78546` |
+| RL-C4 | `Client/Scenarios/RlC4RegistryOutageScenario.cs` | `Client/Scenarios/rl-c4-store-outage-scenario.ts` | done | Redis location store outage and recovery. PASS: `logs/20260703-211853-78546` |
+| RL-D1 | `Client/Scenarios/RlD1HighFanoutScenario.cs` | `Client/Scenarios/rl-d1-high-fanout-scenario.ts` | done | high fanout request burst. PASS: `logs/20260703-211853-78546` |
+| RL-D2 | `Client/Scenarios/RlD2ObserverFaultScenario.cs` | `Client/Scenarios/rl-d2-observer-fault-scenario.ts` | done | observer failure isolation. PASS: `logs/20260703-211853-78546` |
+| RL-D3 | `Client/Scenarios/RlD3DispatchErrorEvidenceScenario.cs` | `Client/Scenarios/rl-d3-dispatch-error-evidence-scenario.ts` | done | dispatch-error evidence. PASS: `logs/20260703-211853-78546` |
+| RL-D4 | `Client/Scenarios/RlD4MissingRequestHandlerScenario.cs` | `Client/Scenarios/rl-d4-missing-request-handler-scenario.ts` | done | missing request handler error reply. PASS: `logs/20260703-211853-78546` |
+| RL-D5 | `Client/Scenarios/RlD5MixedBurstScenario.cs` | `Client/Scenarios/rl-d5-mixed-burst-scenario.ts` | done | mixed request/send burst. PASS: `logs/20260703-211853-78546` |
 
 ## File Mapping
 
@@ -44,9 +44,9 @@
 | `Client/Program.cs`, `Client/ResilienceLifecycle.Client.csproj` | `Client/main.ts`, `Client/package.json`, `Client/tsconfig.json` | client-entry/project | done | scenario 선택과 실행 앱 구현. default `all`에 RL-B5 포함 |
 | `Client/Support/*` | `Client/Support/` | support | done | options, assertion, HTTP/process helper 포팅 |
 | `Client/Scenarios/*.cs` | `Client/Scenarios/` | scenario | done | RL-A1~RL-A5/RL-B1~RL-B6/RL-C1~RL-C4/RL-D1~RL-D5 구현 |
-| `Server/Registry/*` | `Server/Registry/` | registry-role | done | topology query와 lifecycle control endpoint 구현 |
+| `Server/TopologyProbe/*` | `Server/TopologyProbe/` | topology-probe | done | location runtime query 기반 topology probe와 lifecycle control endpoint 구현 |
 | `Server/Provider/*` | `Server/Provider/` | provider-role | done | provider handler, evidence, fault injection, shutdown, crash, runtime drain/restore/weight endpoint 구현 |
-| `Server/Consumer/*` | `Server/Consumer/` | consumer-role | done | discovery consumer request/send host, timeout/no-retry endpoint, short-lived client endpoint 구현 |
+| `Server/Consumer/*` | `Server/Consumer/` | consumer-role | done | location store consumer request/send host, timeout/no-retry endpoint, short-lived client endpoint 구현 |
 
 ## Public Contract 확인 필요
 

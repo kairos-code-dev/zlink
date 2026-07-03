@@ -17,7 +17,7 @@ import { runRmC9 } from './Scenarios/rm-c9-backpressure-scenario';
 async function main(): Promise<void> {
   const options = parseClientOptions(process.argv.slice(2));
   const scenarios: Record<string, () => Promise<void>> = {
-    'RM-A1': () => runRmA1(options.providerAUrl, options.providerBUrl, options.registryUrl),
+    'RM-A1': () => runRmA1(options.providerAUrl, options.providerBUrl, options.topologyUrl),
     'RM-A2': () => runRmA2(options.providerAUrl),
     'RM-A4': () => runRmA4(options),
     'RM-A6': () => runRmA6(options.providerAUrl, options.providerBUrl, options.workflowUrl),
@@ -26,8 +26,8 @@ async function main(): Promise<void> {
     'RM-C1': () => runRmC1(options.providerAUrl, options.providerBUrl),
     'RM-C2': () => runRmC2(options.providerAUrl, options.providerBUrl),
     'RM-C3': () => runRmC3(options.directConsumerUrl, options.providerAUrl, options.providerBUrl),
-    'RM-C4': () => runRmC4(options.discoveryConsumerUrl, options.providerAUrl, options.providerBUrl),
-    'RM-C5': () => runRmC5(options.discoveryConsumerUrl, options.providerAUrl, options.providerBUrl),
+    'RM-C4': () => runRmC4(options.locationConsumerUrl, options.providerAUrl, options.providerBUrl),
+    'RM-C5': () => runRmC5(options.locationConsumerUrl, options.providerAUrl, options.providerBUrl),
     'RM-C7': () => runRmC7(options),
     'RM-C8': () => runRmC8(options.singleConsumerUrl, options.providerAUrl),
     'RM-C9': () => runRmC9(options.backpressureConsumerUrl, options.providerAUrl)

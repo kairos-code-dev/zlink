@@ -1,11 +1,11 @@
 export interface ClientOptions {
-  readonly registryUrl: string;
+  readonly topologyUrl: string;
   readonly providerAUrl: string;
   readonly providerBUrl: string;
   readonly consumerUrl: string;
-  readonly registryMain: string;
-  readonly registryPubEndpoint: string;
-  readonly registryRouterEndpoint: string;
+  readonly redisEndpoint: string;
+  readonly redisKeyPrefix: string;
+  readonly redisContainer: string;
   readonly providerAChannelEndpoint: string;
   readonly providerBChannelEndpoint: string;
   readonly providerBRemapUrl: string;
@@ -30,13 +30,13 @@ export function parseClientOptions(args: readonly string[]): ClientOptions {
     values.set(key.slice(2), args[++i]);
   }
   return {
-    registryUrl: required(values, 'registry-url'),
+    topologyUrl: required(values, 'topology-url'),
     providerAUrl: required(values, 'provider-a-url'),
     providerBUrl: required(values, 'provider-b-url'),
     consumerUrl: required(values, 'consumer-url'),
-    registryMain: required(values, 'registry-main'),
-    registryPubEndpoint: required(values, 'registry-pub-endpoint'),
-    registryRouterEndpoint: required(values, 'registry-router-endpoint'),
+    redisEndpoint: required(values, 'redis-endpoint'),
+    redisKeyPrefix: required(values, 'redis-key-prefix'),
+    redisContainer: required(values, 'redis-container'),
     providerAChannelEndpoint: required(values, 'provider-a-channel-endpoint'),
     providerBChannelEndpoint: required(values, 'provider-b-channel-endpoint'),
     providerBRemapUrl: required(values, 'provider-b-remap-url'),

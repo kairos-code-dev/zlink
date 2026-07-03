@@ -12,7 +12,6 @@ import { closeHttpServer, startHttpServer, type HttpRoute } from '../Play/Suppor
 interface GatewayOptions {
   readonly rid: string;
   readonly httpUrl: string;
-  readonly registryRouterEndpoint: string;
   readonly spotRouterEndpoint: string;
   readonly spotPubEndpoint: string;
   readonly spotPubPeers: readonly string[];
@@ -110,7 +109,6 @@ function parseGatewayOptions(args: readonly string[]): GatewayOptions {
   return {
     rid,
     httpUrl: required(values, 'http-url'),
-    registryRouterEndpoint: required(values, 'registry-router-endpoint'),
     spotRouterEndpoint: required(values, 'spot-router-endpoint'),
     spotPubEndpoint: required(values, 'spot-pub-endpoint'),
     spotPubPeers: splitList(values.get('spot-pub-peer')),

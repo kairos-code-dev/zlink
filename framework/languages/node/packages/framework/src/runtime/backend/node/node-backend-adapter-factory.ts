@@ -521,9 +521,9 @@ function resolveSocketLifecycleProperty(
   }
   if (property === 'dispose') {
     return async () => {
+      disableSocketLinger(target);
       closeSocketRoutes(target, state.peerRoutingIds);
       closeSocketEndpoints(target, state.boundEndpoints, state.connectedEndpoints);
-      disableSocketLinger(target);
       await closeWithBusyRetry(target as { close(): void });
     };
   }

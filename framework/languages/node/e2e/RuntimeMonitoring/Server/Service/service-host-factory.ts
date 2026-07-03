@@ -18,10 +18,12 @@ import {
   ProfileRequestHandler,
   SocketEventRecorder,
   SpotEventRecorder,
+  LocationRuntimeEventRecorder,
   ThrowingSocketEventRecorder
 } from './Handlers/service-handlers';
 import { EvidenceStore } from './Infrastructure/evidence-store';
 import { closeHttpServer, startHttpServer } from './Support/http-server';
+import { createRedisLocationStore, monitoringLocationOptions } from '../../Shared/location-store';
 
 export async function startServiceHost(args: readonly string[]): Promise<void> {
   const options = parseServiceOptions(args);
@@ -58,7 +60,11 @@ function createServiceModule(options: ServiceOptions, evidence: EvidenceStore): 
               .traceLogFile(`${options.logDir}/${options.rid}-flow.log`)
               .traceLabel(options.rid);
 
-          builder.useDiscovery().addRegistryEndpoint(options.registryRouterEndpoint);
+          builder.addLocationStore(createRedisLocationStore({
+            redisEndpoint: options.redisEndpoint,
+            redisKeyPrefix: options.redisKeyPrefix
+          }));
+          Object.assign(builder.configureLocations(), monitoringLocationOptions());
           builder.addClientServerChannel(RuntimeMonitoringNames.channel)
             .enableServer(options.channelEndpoint)
             .routingId(options.rid)
@@ -76,7 +82,8 @@ function createServiceModule(options: ServiceOptions, evidence: EvidenceStore): 
                 sourceName: RuntimeMonitoringNames.channelServerSource,
                 ...(options.socketFilter ? { events: [ZLinkSocketEventKind.ConnectionReady] } : {})
               }],
-              spot: [{ sourceName: RuntimeMonitoringNames.spotNode, intervalMs: 100 }]
+              spot: [{ sourceName: RuntimeMonitoringNames.spotNode, intervalMs: 100 }],
+              locationRuntime: [{ sourceName: RuntimeMonitoringNames.locationRuntimeSource, intervalMs: 100 }]
             }
           };
         }
@@ -89,6 +96,7 @@ function createServiceModule(options: ServiceOptions, evidence: EvidenceStore): 
       ProfileRequestHandler,
       SocketEventRecorder,
       SpotEventRecorder,
+      LocationRuntimeEventRecorder,
       ...(options.throwMonitor ? [ThrowingSocketEventRecorder] : [])
     ]
   })(ServiceModule);

@@ -1,5 +1,5 @@
 import { runMonA1 } from './Scenarios/mon-a1-socket-events-scenario';
-import { runMonA2 } from './Scenarios/mon-a2-registry-events-scenario';
+import { runMonA2 } from './Scenarios/mon-a2-location-runtime-events-scenario';
 import { runMonA3 } from './Scenarios/mon-a3-spot-events-scenario';
 import { runMonA4 } from './Scenarios/mon-a4-availability-transition-scenario';
 import { runMonA5 } from './Scenarios/mon-a5-fixed-kinds-scenario';

@@ -76,12 +76,12 @@ SM-F4는 missing target request 실패와 send drop evidence를 선택 scenario�
 |----------------|-------------------|------|------|------|
 | `.gitignore` | `.gitignore`, `logs/.gitignore` | ignore | done | dist, node_modules, 실행 로그 제외 |
 | `feature-map.ko.md` | `feature-map.ko.md` | feature-map | done | scenario 범위, 구현 상태, gap 근거, runner proof 기록 |
-| `run_e2e.sh` | `run_e2e.sh` | runner | done | Registry/Play-A/Play-B/Session-A/Session-B/Gateway/MultiNode build/start/readiness/cleanup/client 실행 구현. `all`은 `.NET`처럼 `default-batch`, `SM-G2`, `SM-G3`, `SM-G4`, `SM-G1`, `SM-Q9` child scenario를 실행한다. `default-batch`는 `.NET` operation group 순서대로 client process를 나누어 실행하고 SM-F4를 포함한다. PASS: `logs/20260702-064908-43296`; `default-batch` PASS: `logs/20260702-064908-43303`. Node fetch가 차단하는 unsafe port와 같은 run 안의 중복 port를 피하도록 port picker를 필터링함 |
+| `run_e2e.sh` | `run_e2e.sh` | runner | done | Play-A/Play-B/Session-A/Session-B/Gateway/MultiNode build/start/readiness/cleanup/client 실행 구현. `all`은 `.NET`처럼 `default-batch`, `SM-G2`, `SM-G3`, `SM-G4`, `SM-G1`, `SM-Q9` child scenario를 실행한다. `default-batch`는 `.NET` operation group 순서대로 client process를 나누어 실행하고 SM-F4를 포함한다. PASS: `logs/20260702-064908-43296`; `default-batch` PASS: `logs/20260702-064908-43303`. Node fetch가 차단하는 unsafe port와 같은 run 안의 중복 port를 피하도록 port picker를 필터링함 |
 | `Shared/Messages.cs`, `Shared/SpotService.Shared.csproj` | `Shared/messages.ts` | shared | done | 구현 scenario와 gap 재현 scenario가 쓰는 create, state, stage, actor, stream, timer, route, MultiNode message 계약을 포함한다. 추가 공개 동작이 필요한 범위는 scenario 행과 public contract gap 목록에서 추적한다. |
 | `Client/Program.cs`, `Client/SpotService.Client.csproj` | `Client/main.ts`, `Client/package.json`, `Client/tsconfig.json` | client-entry/project | done | 구현 scenario 선택과 실행 앱을 제공한다. public contract gap scenario는 재현용 선택 scenario로 남기고 default `all` gate에는 포함하지 않는다. |
 | `Client/Support/*` | `Client/Support/` | support | done | option parsing, assertion, HTTP helper, stream connector helper, process helper를 구현했다. lifecycle marker가 부족한 범위는 scenario별 gap으로 추적한다. |
 | `Client/Scenarios/*.cs` | `Client/Scenarios/` | scenario | done | 구현 scenario와 gap 재현 scenario를 작성했다. full parity에 도달하지 못한 scenario는 각 scenario 행에서 `gap`으로 표시한다. |
-| `Server/Registry/*` | `Server/Registry/` | registry-role | done | discovery registry role, health/shutdown/evidence endpoint 구현 |
+| `Server/Registry/*` | 없음 | server-role | not-needed | SpotService runner는 registry role 없이 Redis location store와 explicit endpoint wiring을 사용한다. |
 | `Server/Play/*` | `Server/Play/` | play-role | done | implemented scenario와 gap 재현에 필요한 spot, actor, channel, timer, message-flow observer, crash endpoint를 구현했다. 같은 node spot request처럼 완료하지 못한 동작은 scenario별 gap으로 남긴다. |
 | `Server/Session/*` | `Server/Session/` | session-role | done | stream session gateway, auth dispatch, local/remote actor bind, actor relay, multi-bind와 metadata actor selection relay, stream close disconnect callback을 구현했다. TLS server 구성 부족은 scenario별 gap으로 남긴다. |
 | `Server/Gateway/*` | `Server/Gateway/` | gateway-role | done | publish-only Gateway role, HTTP `/spot/publish`, public `ZLinkSpotPublisherClient.publishSpot(...)` 호출 구현. Play-A가 Gateway pub endpoint에 `connectPeerPub(...)`로 붙는 `.NET` 기준 topology에서 subscribed spot event delivery를 검증. PASS: `logs/20260630-083734-3303700` |
@@ -103,7 +103,7 @@ SM-F4는 missing target request 실패와 send drop evidence를 선택 scenario�
 - SM-D14는 public stream node builder `setTlsServer(...)`로 server certificate/key를 stream socket bind
   전에 적용하고, connector client의 strict validation 실패와 skip-validation 성공 경로를 검증했다.
   PASS: `logs/20260630-085904-3356699`; `all` PASS: `logs/20260630-101424-3467655`.
-- sm-q9는 MultiNode role과 registry 기반 spot resolver 설정을 public `ZLinkSpotOutbound.requestToSpot(...)`
+- sm-q9는 MultiNode role과 location store 기반 spot resolver 설정을 public `ZLinkSpotOutbound.requestToSpot(...)`
   경로로 검증했다. PASS: `logs/20260630-082118-3256244`.
 - SM-B7은 같은 actor의 연속 packet dispatch 순서가 `entry-created` -> `entry-joined` -> packet,
   `seen=1`, `seen=2`로 보존됨을 검증해 완료로 올렸다.

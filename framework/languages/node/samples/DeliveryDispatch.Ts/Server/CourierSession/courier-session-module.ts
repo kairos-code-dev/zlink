@@ -3,6 +3,7 @@ import { ZLinkMessageFlowLogMode } from '@zlink-systems/framework';
 import { ZLinkModule, zlinkFramework } from '@zlink-systems/nestjs';
 import { SampleNames } from '../../Shared/Configuration/sample-names';
 import { CourierSessionFactory } from './courier-session';
+import { createDeliveryDispatchLocationStore, deliveryDispatchLocationOptions } from '../Configuration/location-store';
 import type { DeliveryDispatchServerConfig } from '../Configuration/sample-config';
 
 function createCourierSessionModule(config: DeliveryDispatchServerConfig) {
@@ -17,9 +18,9 @@ function createCourierSessionModule(config: DeliveryDispatchServerConfig) {
             .messageFlow(ZLinkMessageFlowLogMode.KeyTransitions)
             .traceLogFile(`${process.env.DELIVERYDISPATCH_LOG_DIR ?? 'logs'}/flow-courier-session.log`)
             .traceLabel('courier-session');
+          builder.addLocationStore(createDeliveryDispatchLocationStore(config));
+          Object.assign(builder.configureLocations(), deliveryDispatchLocationOptions());
           return builder
-            .useDiscovery()
-              .addRegistryEndpoint(config.registryRouterEndpoint)
             .addClientServerChannel(SampleNames.courierRouteChannel)
               .enableClient()
             .addStreamNode(SampleNames.courierStreamNode)

@@ -1,8 +1,18 @@
 import type {
+  IZLinkLocationRuntimeQuery,
+  ZLinkActorLocation,
+  ZLinkActorLocationKey,
+  ZLinkAutoConnectDesiredSetChange,
+  ZLinkLocationActorEvent,
+  ZLinkLocationMonitoringRegistration,
+  ZLinkLocationPeerEvent,
+  ZLinkLocationRouteEvent,
+  ZLinkLocationRuntimeEvent,
+  ZLinkLocationRuntimeEventKind,
+  ZLinkLocationSpotEvent,
   ZLinkPollingMonitoringRegistration,
-  ZLinkRegistryEvent,
-  ZLinkRegistryEventKind,
-  ZLinkRegistryQuery,
+  ZLinkRouteLocation,
+  ZLinkRouteLocationKey,
   ZLinkRuntimeEvent,
   ZLinkRuntimeEventHandler,
   ZLinkRuntimeEventPublisher as ZLinkRuntimeEventPublisherContract,
@@ -10,11 +20,17 @@ import type {
   ZLinkSocketEventKind,
   ZLinkSocketMonitoringRegistration,
   ZLinkSocketNativeEventType,
+  ZLinkSpotLocation,
+  ZLinkSpotLocationKey,
   ZLinkSpotEvent,
   ZLinkSpotEventKind
 } from '../../contracts';
 import {
-  ZLinkRegistryEventKind as RegistryEventKind,
+  ZLinkLocationActorEventKind as ActorLocationEventKind,
+  ZLinkLocationPeerEventKind as PeerLocationEventKind,
+  ZLinkLocationRouteEventKind as RouteLocationEventKind,
+  ZLinkLocationRuntimeEventKind as LocationRuntimeEventKind,
+  ZLinkLocationSpotEventKind as SpotLocationEventKind,
   ZLinkSocketEventKind as SocketEventKind,
   ZLinkSocketNativeEventType as SocketNativeEventType,
   ZLinkSpotEventKind as SpotEventKind
@@ -75,48 +91,183 @@ export class ZLinkSocketMonitoringSource {
   }
 }
 
-export class ZLinkRegistryMonitoringSource {
+export class ZLinkLocationRuntimeMonitoringSource {
   private previousStatus?: string;
   private previousTopology?: string;
   private previousServiceSummary?: string;
+  private storeUnavailable = false;
 
   constructor(
     private readonly registration: ZLinkPollingMonitoringRegistration,
-    private readonly query: ZLinkRegistryQuery,
+    private readonly query: IZLinkLocationRuntimeQuery,
     private readonly publisher: ZLinkRuntimeEventPublisherContract
   ) {
     validateSourceName(registration.sourceName);
-    validatePollingInterval('Registry', registration.intervalMs);
+    validatePollingInterval('Location runtime', registration.intervalMs);
   }
 
   async pollOnce(signal?: AbortSignal): Promise<void> {
-    const [status, topology, serviceSummary] = await Promise.all([
-      this.query.status(signal),
-      this.query.topology(undefined, signal),
-      this.query.serviceSummary(undefined, signal)
-    ]);
+    let status;
+    let topology;
+    let serviceSummary;
+    try {
+      [status, topology, serviceSummary] = await Promise.all([
+        this.query.getStatus(signal),
+        this.query.listTopology({}, undefined, signal),
+        this.query.listServiceSummaries({}, signal)
+      ]);
+    } catch (error) {
+      if (!this.storeUnavailable) {
+        this.storeUnavailable = true;
+        await this.publisher.publish({
+          sourceName: this.registration.sourceName,
+          timestamp: new Date(),
+          event: LocationRuntimeEventKind.StoreUnavailable,
+          status: { storeHealthy: false, watchEnabled: false, pollingIntervalMs: this.registration.intervalMs, lastError: errorMessage(error), ownerLeaseHealthy: false }
+        } satisfies ZLinkLocationRuntimeEvent);
+      }
+      return;
+    }
 
-    this.previousStatus = await publishIfChanged(
+    if (this.storeUnavailable) {
+      this.storeUnavailable = false;
+      await this.publisher.publish({
+        sourceName: this.registration.sourceName,
+        timestamp: new Date(),
+        event: LocationRuntimeEventKind.StoreRecovered
+      } satisfies ZLinkLocationRuntimeEvent);
+    }
+
+    this.previousStatus = await publishLocationRuntimeIfChanged(
       this.publisher,
       this.registration.sourceName,
-      RegistryEventKind.StatusChanged,
+      LocationRuntimeEventKind.StatusChanged,
       this.previousStatus,
       status
     );
-    this.previousTopology = await publishIfChanged(
+    this.previousTopology = await publishLocationRuntimeIfChanged(
       this.publisher,
       this.registration.sourceName,
-      RegistryEventKind.TopologyChanged,
+      LocationRuntimeEventKind.TopologyChanged,
       this.previousTopology,
-      topology
+      topology.items
     );
-    this.previousServiceSummary = await publishIfChanged(
+    this.previousServiceSummary = await publishLocationRuntimeIfChanged(
       this.publisher,
       this.registration.sourceName,
-      RegistryEventKind.ServiceSummaryChanged,
+      LocationRuntimeEventKind.ServiceSummaryChanged,
       this.previousServiceSummary,
       serviceSummary
     );
+  }
+}
+
+export class ZLinkLocationMonitoringEventEmitter {
+  static readonly disabled = new ZLinkLocationMonitoringEventEmitter({}, undefined);
+
+  constructor(
+    private readonly registration: {
+      readonly peer?: ZLinkLocationMonitoringRegistration;
+      readonly spot?: ZLinkLocationMonitoringRegistration;
+      readonly actor?: ZLinkLocationMonitoringRegistration;
+      readonly route?: ZLinkLocationMonitoringRegistration;
+    },
+    private readonly publisher?: ZLinkRuntimeEventPublisherContract
+  ) {
+    for (const source of [registration.peer, registration.spot, registration.actor, registration.route]) {
+      if (source !== undefined) {
+        validateSourceName(source.sourceName);
+      }
+    }
+  }
+
+  peerRowUpdated(key: string, peer: ZLinkLocationPeerEvent['peer']): void {
+    this.publishPeer(PeerLocationEventKind.RowUpdated, { key, peer });
+  }
+
+  peerRowRemoved(key: string): void {
+    this.publishPeer(PeerLocationEventKind.RowRemoved, { key });
+  }
+
+  desiredSetChanged(change: ZLinkAutoConnectDesiredSetChange): void {
+    this.publishPeer(PeerLocationEventKind.DesiredSetChanged, { desiredSetChange: change });
+  }
+
+  spotRowUpdated(key: ZLinkSpotLocationKey, spot: ZLinkSpotLocation): void {
+    this.publishSpot(SpotLocationEventKind.RowUpdated, { key, spot });
+  }
+
+  spotRowRemoved(key: ZLinkSpotLocationKey): void {
+    this.publishSpot(SpotLocationEventKind.RowRemoved, { key });
+  }
+
+  spotResolveMiss(key: ZLinkSpotLocationKey): void {
+    this.publishSpot(SpotLocationEventKind.ResolveMiss, { key });
+  }
+
+  actorRowUpdated(key: ZLinkActorLocationKey, actor: ZLinkActorLocation): void {
+    this.publishActor(ActorLocationEventKind.RowUpdated, { key, actor });
+  }
+
+  actorRowRemoved(key: ZLinkActorLocationKey): void {
+    this.publishActor(ActorLocationEventKind.RowRemoved, { key });
+  }
+
+  actorResolveMiss(key: ZLinkActorLocationKey): void {
+    this.publishActor(ActorLocationEventKind.ResolveMiss, { key });
+  }
+
+  routeRowUpdated(key: ZLinkRouteLocationKey, route: ZLinkRouteLocation): void {
+    this.publishRoute(RouteLocationEventKind.RowUpdated, { key, route });
+  }
+
+  routeRowRemoved(key: ZLinkRouteLocationKey): void {
+    this.publishRoute(RouteLocationEventKind.RowRemoved, { key });
+  }
+
+  routeResolveMiss(key: ZLinkRouteLocationKey): void {
+    this.publishRoute(RouteLocationEventKind.ResolveMiss, { key });
+  }
+
+  private publishPeer(event: ZLinkLocationPeerEvent['event'], payload: Omit<ZLinkLocationPeerEvent, 'sourceName' | 'timestamp' | 'event'>): void {
+    const registration = this.registration.peer;
+    if (registration === undefined) {
+      return;
+    }
+    this.publish({ sourceName: registration.sourceName, timestamp: new Date(), event, ...payload });
+  }
+
+  private publishSpot(event: ZLinkLocationSpotEvent['event'], payload: Omit<ZLinkLocationSpotEvent, 'sourceName' | 'timestamp' | 'event'>): void {
+    const registration = this.registration.spot;
+    if (registration === undefined) {
+      return;
+    }
+    this.publish({ sourceName: registration.sourceName, timestamp: new Date(), event, ...payload });
+  }
+
+  private publishActor(event: ZLinkLocationActorEvent['event'], payload: Omit<ZLinkLocationActorEvent, 'sourceName' | 'timestamp' | 'event'>): void {
+    const registration = this.registration.actor;
+    if (registration === undefined) {
+      return;
+    }
+    this.publish({ sourceName: registration.sourceName, timestamp: new Date(), event, ...payload });
+  }
+
+  private publishRoute(event: ZLinkLocationRouteEvent['event'], payload: Omit<ZLinkLocationRouteEvent, 'sourceName' | 'timestamp' | 'event'>): void {
+    const registration = this.registration.route;
+    if (registration === undefined) {
+      return;
+    }
+    this.publish({ sourceName: registration.sourceName, timestamp: new Date(), event, ...payload });
+  }
+
+  private publish<TEvent extends ZLinkRuntimeEvent>(event: TEvent): void {
+    if (this.publisher === undefined) {
+      return;
+    }
+    void this.publisher.publish(event).catch((error) => {
+      console.error('[location-monitoring-event-dispatch]', error);
+    });
   }
 }
 
@@ -227,10 +378,10 @@ async function publishSpotIfChanged<T>(
   return current;
 }
 
-async function publishIfChanged<T>(
+async function publishLocationRuntimeIfChanged<T>(
   publisher: ZLinkRuntimeEventPublisherContract,
   sourceName: string,
-  event: ZLinkRegistryEventKind,
+  event: ZLinkLocationRuntimeEventKind,
   previous: string | undefined,
   snapshot: T
 ): Promise<string> {
@@ -238,14 +389,14 @@ async function publishIfChanged<T>(
   if (current === previous) {
     return previous;
   }
-  const runtimeEvent: ZLinkRegistryEvent = {
+  const runtimeEvent: ZLinkLocationRuntimeEvent = {
     sourceName,
     timestamp: new Date(),
     event,
-    ...(event === RegistryEventKind.StatusChanged ? { status: snapshot as ZLinkRegistryEvent['status'] } : {}),
-    ...(event === RegistryEventKind.TopologyChanged ? { topology: snapshot as ZLinkRegistryEvent['topology'] } : {}),
-    ...(event === RegistryEventKind.ServiceSummaryChanged
-      ? { serviceSummary: snapshot as ZLinkRegistryEvent['serviceSummary'] }
+    ...(event === LocationRuntimeEventKind.StatusChanged ? { status: snapshot as ZLinkLocationRuntimeEvent['status'] } : {}),
+    ...(event === LocationRuntimeEventKind.TopologyChanged ? { topology: snapshot as ZLinkLocationRuntimeEvent['topology'] } : {}),
+    ...(event === LocationRuntimeEventKind.ServiceSummaryChanged
+      ? { serviceSummary: snapshot as ZLinkLocationRuntimeEvent['serviceSummary'] }
       : {})
   };
   await publisher.publish(runtimeEvent);
@@ -266,5 +417,9 @@ function validatePollingInterval(sourceKind: string, intervalMs: number): void {
   if (!Number.isFinite(intervalMs) || intervalMs <= 0) {
     throw new Error(`${sourceKind} monitoring intervalMs must be greater than zero.`);
   }
+}
+
+function errorMessage(error: unknown): string {
+  return error instanceof Error ? error.message : String(error);
 }
 export * from './message-flow';

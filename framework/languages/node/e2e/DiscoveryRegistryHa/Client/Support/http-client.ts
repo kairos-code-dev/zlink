@@ -31,3 +31,22 @@ export async function postJson<T>(baseUrl: string, path: string, body: unknown):
   }
   return await response.json() as T;
 }
+
+export async function postJsonWithin<T>(baseUrl: string, path: string, body: unknown, timeoutMs: number): Promise<T> {
+  const controller = new AbortController();
+  const timeout = setTimeout(() => controller.abort(), timeoutMs);
+  try {
+    const response = await fetch(new URL(path, baseUrl), {
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify(body),
+      signal: controller.signal
+    });
+    if (!response.ok) {
+      throw new Error(`POST ${path} failed: ${response.status} ${await response.text()}`);
+    }
+    return await response.json() as T;
+  } finally {
+    clearTimeout(timeout);
+  }
+}

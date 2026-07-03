@@ -1,7 +1,6 @@
 export interface SessionOptions {
   readonly rid: string;
   readonly httpUrl: string;
-  readonly registryRouterEndpoint: string;
   readonly controlRouterEndpoint: string;
   readonly playControlEndpoints: readonly string[];
   readonly spotRouterEndpoint: string;
@@ -31,7 +30,6 @@ export function parseSessionOptions(args: readonly string[]): SessionOptions {
   return {
     rid,
     httpUrl: required(values, 'http-url'),
-    registryRouterEndpoint: required(values, 'registry-router-endpoint'),
     controlRouterEndpoint: required(values, 'control-router-endpoint'),
     playControlEndpoints: requiredList(values, 'play-control-endpoint'),
     spotRouterEndpoint: required(values, 'spot-router-endpoint'),

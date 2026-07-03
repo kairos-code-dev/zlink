@@ -616,7 +616,10 @@ export class ZLinkStreamSessionNodeRuntime {
             session.enqueueDisconnected(error);
             return;
           }
-          if (event.routingId === undefined) {
+          if (
+            event.routingId === undefined
+            && !streamMonitorHasEndpoint(event)
+          ) {
             this.enqueueEndpointlessDisconnect(error);
           }
         }
@@ -662,10 +665,12 @@ export class ZLinkStreamSessionNodeRuntime {
       }
     }
     const sessions = [...this.sessions.values()];
-    const session = sessions.find((session) =>
-      session.stream.localAddr === event.localAddr
-      && session.stream.remoteAddr === event.remoteAddr
-    );
+    const session = streamMonitorHasEndpoint(event)
+      ? sessions.find((session) =>
+        session.stream.localAddr === event.localAddr
+        && session.stream.remoteAddr === event.remoteAddr
+      )
+      : undefined;
     if (session !== undefined) {
       return session;
     }
@@ -2088,6 +2093,11 @@ function streamSessionIdFromRoutingId(routingId: unknown): string {
 
 function streamMonitorEndpointKey(localAddr: string | undefined, remoteAddr: string | undefined): string {
   return `${localAddr ?? ''}\n${remoteAddr ?? ''}`;
+}
+
+function streamMonitorHasEndpoint(event: ZLinkBackendSocketMonitorEvent): boolean {
+  const endpoint = event as { readonly localAddr?: string; readonly remoteAddr?: string };
+  return endpoint.localAddr !== undefined || endpoint.remoteAddr !== undefined;
 }
 
 function isPromiseLike<T>(value: T | Promise<T>): value is Promise<T> {

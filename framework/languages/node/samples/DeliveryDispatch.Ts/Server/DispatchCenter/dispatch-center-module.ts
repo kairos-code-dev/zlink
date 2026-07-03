@@ -5,6 +5,7 @@ import { SampleNames } from '../../Shared/Configuration/sample-names';
 import { AssignDeliveryHandler } from './Handlers/assign-delivery-handler';
 import { DispatchWorkQueue } from './dispatch-work-queue';
 import { DispatchWorker } from './dispatch-worker';
+import { createDeliveryDispatchLocationStore, deliveryDispatchLocationOptions } from '../Configuration/location-store';
 import type { DeliveryDispatchServerConfig } from '../Configuration/sample-config';
 
 function createDispatchCenterModule(config: DeliveryDispatchServerConfig) {
@@ -19,9 +20,9 @@ function createDispatchCenterModule(config: DeliveryDispatchServerConfig) {
             .messageFlow(ZLinkMessageFlowLogMode.KeyTransitions)
             .traceLogFile(`${process.env.DELIVERYDISPATCH_LOG_DIR ?? 'logs'}/flow-dispatch-center.log`)
             .traceLabel('dispatch-center');
+          builder.addLocationStore(createDeliveryDispatchLocationStore(config));
+          Object.assign(builder.configureLocations(), deliveryDispatchLocationOptions());
           return builder
-            .useDiscovery()
-              .addRegistryEndpoint(config.registryRouterEndpoint)
             .addClientServerChannel(SampleNames.dispatchChannel)
               .enableServer(config.dispatchEndpoint)
               .addHandlerGroup('dispatch')

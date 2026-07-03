@@ -220,8 +220,7 @@ test('ZLinkModule.forRoot creates Spot manager before runtime bootstrap', async 
 
 test('ZLinkModule.forRoot public DI clients expose callable framework contracts', async () => {
   const module = nestjs.ZLinkModule.forRoot(nestjs.zlinkFramework()
-    .useDiscovery()
-      .addRegistryEndpoint('tcp://127.0.0.1:5551')
+    .useInMemoryLocationStores()
     .options({ spotPublisherClients: ['spot-events'] })
     .addRouteMesh('mesh')
       .connect(undefined)
@@ -1118,14 +1117,14 @@ test('ZLinkModule.forRoot validates channel capability endpoints and peer acquis
       .addClientServerChannel('api')
         .enableClient()
       .build()),
-    /client requires discovery or manual connections/
+    /client requires location stores or manual connections/
   );
   assert.throws(
     () => nestjs.ZLinkModule.forRoot(nestjs.zlinkFramework()
       .addFanoutChannel('events')
         .enableSubscriber()
       .build()),
-    /subscriber requires discovery or manual connections/
+    /subscriber requires location stores or manual connections/
   );
   assert.throws(
     () => nestjs.ZLinkModule.forRoot(nestjs.zlinkFramework()
@@ -1136,8 +1135,7 @@ test('ZLinkModule.forRoot validates channel capability endpoints and peer acquis
   );
 
   assert.doesNotThrow(() => nestjs.ZLinkModule.forRoot(nestjs.zlinkFramework()
-    .useDiscovery()
-      .addRegistryEndpoint('tcp://127.0.0.1:5551')
+    .useInMemoryLocationStores()
     .addClientServerChannel('api')
       .enableClient()
     .addFanoutChannel('events')
@@ -1160,11 +1158,10 @@ test('ZLinkModule.forRoot validates channel capability endpoints and peer acquis
       .addRouteMesh('route')
         .connect(undefined)
       .build()),
-    /requires discovery or manual connections/
+    /requires location stores or manual connections/
   );
   assert.doesNotThrow(() => nestjs.ZLinkModule.forRoot(nestjs.zlinkFramework()
-    .useDiscovery()
-      .addRegistryEndpoint('tcp://127.0.0.1:5551')
+    .useInMemoryLocationStores()
     .addRouteMesh('route')
       .connect(undefined)
     .build()));
@@ -1203,7 +1200,7 @@ test('framework options builder maps dotnet-shaped registration flow into option
   };
 
   const options = framework.createFrameworkOptions((builder) => {
-    builder.useDiscovery().addRegistryEndpoint('tcp://127.0.0.1:9400');
+    builder.useInMemoryLocationStores();
     builder.configureStreamCompression().use(streamCompressionCodec);
     builder.addClientServerChannel('api').enableServer('tcp://0.0.0.0:9401');
     builder.addClientServerChannel('api').enableClient('tcp://127.0.0.1:9401');
@@ -1228,7 +1225,7 @@ test('framework options builder maps dotnet-shaped registration flow into option
   const streamNode = registration.streamNodes.get('gateway');
   const route = registration.routeChannelOptions.get('route');
 
-  assert.deepEqual(registration.discovery.registries, ['tcp://127.0.0.1:9400']);
+  assert.equal(registration.locations.useInMemoryStores, true);
   assert.equal(registration.channels.get('api').server.bind, 'tcp://0.0.0.0:9401');
   assert.deepEqual(registration.channels.get('api').client.manualConnections, ['tcp://127.0.0.1:9401']);
   assert.equal(registration.channels.get('events').publisher.bind, 'tcp://0.0.0.0:9402');
@@ -1428,61 +1425,28 @@ test('ZLinkModule.forRoot derives Spot publisher clients from SpotMesh pubSub ca
   assert.equal(registration.spotPublisherClients.has('game'), true);
 });
 
-test('ZLinkModule.forRoot registers registry spot remote address resolver by default', async () => {
-  const module = nestjs.ZLinkModule.forRoot(nestjs.zlinkFramework()
-    .useDiscovery()
-      .addRegistryEndpoint('tcp://127.0.0.1:5551')
-    .addRouteMesh('play')
-      .connect(undefined)
-    .options({ registrySpotRemoteAddresses: { namespace: 'bingo' } })
-    .build());
-  const resolverProvider = module.providers.find((provider) => provider.provide === nestjs.ZLINK_SPOT_REMOTE_ADDRESS_RESOLVER);
+test('ZLinkModule.forRoot maps per-role location stores into runtime registration', async () => {
+  const store = {
+    async get() { return undefined; },
+    async list() { return []; },
+    async put() {},
+    async remove() {},
+    async removeByOwner() {},
+    async renew() { return true; }
+  };
+  const registration = await resolveFrameworkRegistration(nestjs.ZLinkModule.forRoot(nestjs.zlinkFramework()
+    .addPeerLocationStore(store)
+    .addSpotLocationStore(store)
+    .addActorLocationStore(store)
+    .addRouteLocationStore(store)
+    .addOwnerLeaseStore(store)
+    .build()));
 
-  assert.notEqual(resolverProvider, undefined);
-  assert.equal(typeof resolverProvider.useFactory, 'function');
-});
-
-test('ZLinkModule.forRoot validates registry spot remote address resolver requirements', () => {
-  class CustomSpotRemoteAddressResolver {
-    async resolve() {
-      return {
-        routerChannelId: 'play',
-        targetNodeRid: 'node-a',
-        spotRid: 'spot-a',
-        spotKind: framework.ZLinkSpotKind.User
-      };
-    }
-  }
-
-  assert.throws(
-    () => nestjs.ZLinkModule.forRoot(nestjs.zlinkFramework()
-      .addRouteMesh('play')
-      .options({ registrySpotRemoteAddresses: { namespace: 'bingo' } })
-      .build()),
-    /requires discovery endpoints/
-  );
-  assert.throws(
-    () => nestjs.ZLinkModule.forRoot(nestjs.zlinkFramework()
-      .useDiscovery()
-        .addRegistryEndpoint('tcp://127.0.0.1:5551')
-      .addRouteMesh('play-a')
-      .addRouteMesh('play-b')
-      .options({ registrySpotRemoteAddresses: { namespace: 'bingo' } })
-      .build()),
-    /requires RouterChannelId/
-  );
-  assert.throws(
-    () => nestjs.ZLinkModule.forRoot(nestjs.zlinkFramework()
-      .useDiscovery()
-        .addRegistryEndpoint('tcp://127.0.0.1:5551')
-      .addRouteMesh('play')
-      .options({
-        spotRemoteAddressResolver: CustomSpotRemoteAddressResolver,
-        registrySpotRemoteAddresses: { namespace: 'bingo' }
-      })
-      .build()),
-    /SPOT remote address resolver/
-  );
+  assert.equal(registration.locations.stores.peerStore, store);
+  assert.equal(registration.locations.stores.spotStore, store);
+  assert.equal(registration.locations.stores.actorStore, store);
+  assert.equal(registration.locations.stores.routeStore, store);
+  assert.equal(registration.locations.stores.ownerLeaseStore, store);
 });
 
 test('ZLinkModule.forRoot registers custom spot remote address resolver as concrete provider', async () => {

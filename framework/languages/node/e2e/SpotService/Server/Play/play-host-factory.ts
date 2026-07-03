@@ -66,7 +66,7 @@ export async function startPlayHost(args: readonly string[]): Promise<void> {
               .traceLogFile(`${options.logDir}/${options.rid}-flow.log`)
               .traceLabel(options.rid);
 
-          builder.useDiscovery().addRegistryEndpoint(options.registryRouterEndpoint);
+          builder.useInMemoryLocationStores();
           builder.addRouteMesh(SpotServiceNames.controlChannel)
             .enableRouter(options.controlRouterEndpoint)
             .routingId(options.rid)

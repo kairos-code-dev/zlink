@@ -1,10 +1,10 @@
 export interface ClientOptions {
   readonly triggerUrl: string;
-  readonly registryUrl: string;
   readonly serviceUrl: string;
   readonly serviceBUrl: string;
   readonly throwServiceUrl: string;
-  readonly registryRouterEndpoint: string;
+  readonly redisEndpoint: string;
+  readonly redisKeyPrefix: string;
   readonly serviceBChannelEndpoint: string;
   readonly serviceBSpotRouterEndpoint: string;
   readonly serviceBSpotPubEndpoint: string;
@@ -27,11 +27,11 @@ export function parseClientOptions(args: readonly string[]): ClientOptions {
   }
   return {
     triggerUrl: required(values, 'trigger-url'),
-    registryUrl: required(values, 'registry-url'),
     serviceUrl: required(values, 'service-url'),
     serviceBUrl: required(values, 'service-b-url'),
     throwServiceUrl: required(values, 'throw-service-url'),
-    registryRouterEndpoint: required(values, 'registry-router-endpoint'),
+    redisEndpoint: required(values, 'redis-endpoint'),
+    redisKeyPrefix: required(values, 'redis-key-prefix'),
     serviceBChannelEndpoint: required(values, 'service-b-channel-endpoint'),
     serviceBSpotRouterEndpoint: required(values, 'service-b-spot-router-endpoint'),
     serviceBSpotPubEndpoint: required(values, 'service-b-spot-pub-endpoint'),

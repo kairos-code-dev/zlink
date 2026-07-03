@@ -67,23 +67,17 @@ start_server() {
 echo "log_dir=$LOG_DIR"
 
 (cd "$NODE_ROOT" && npm run build >/dev/null)
-build_package "$ROOT_DIR/Server/Registry"
 build_package "$ROOT_DIR/Server/Publisher"
 build_package "$ROOT_DIR/Server/Subscriber"
 build_package "$ROOT_DIR/Client"
 
-REG_HTTP_PORT="$(pick_port)"
 PUB_HTTP_PORT="$(pick_port)"
 SUB_1_HTTP_PORT="$(pick_port)"
 SUB_2_HTTP_PORT="$(pick_port)"
 SUB_3_HTTP_PORT="$(pick_port)"
 SUB_LATE_HTTP_PORT="$(pick_port)"
-REG_PUB_PORT="$(pick_port)"
-REG_ROUTER_PORT="$(pick_port)"
 PUB_PORT="$(pick_port)"
 
-REG_PUB="tcp://127.0.0.1:$REG_PUB_PORT"
-REG_ROUTER="tcp://127.0.0.1:$REG_ROUTER_PORT"
 PUB_ENDPOINT="tcp://127.0.0.1:$PUB_PORT"
 PUB_URL="http://127.0.0.1:$PUB_HTTP_PORT"
 SUB_1_URL="http://127.0.0.1:$SUB_1_HTTP_PORT"
@@ -91,23 +85,13 @@ SUB_2_URL="http://127.0.0.1:$SUB_2_HTTP_PORT"
 SUB_3_URL="http://127.0.0.1:$SUB_3_HTTP_PORT"
 SUB_LATE_URL="http://127.0.0.1:$SUB_LATE_HTTP_PORT"
 
-REGISTRY_MAIN="$ROOT_DIR/Server/Registry/dist/Server/Registry/main.js"
 PUBLISHER_MAIN="$ROOT_DIR/Server/Publisher/dist/Server/Publisher/main.js"
 SUBSCRIBER_MAIN="$ROOT_DIR/Server/Subscriber/dist/Server/Subscriber/main.js"
 CLIENT_MAIN="$ROOT_DIR/Client/dist/Client/main.js"
 
-start_server registry "$REGISTRY_MAIN" \
-  --rid registry \
-  --http-url "http://127.0.0.1:$REG_HTTP_PORT" \
-  --registry-pub-endpoint "$REG_PUB" \
-  --registry-router-endpoint "$REG_ROUTER" \
-  --log-dir "$LOG_DIR"
-wait_health "http://127.0.0.1:$REG_HTTP_PORT" registry
-
 start_server pub-a "$PUBLISHER_MAIN" \
   --rid pub-a \
   --http-url "$PUB_URL" \
-  --registry-router-endpoint "$REG_ROUTER" \
   --publisher-endpoint "$PUB_ENDPOINT" \
   --evidence-file "$LOG_DIR/pub-a.evidence.log" \
   --log-dir "$LOG_DIR"
@@ -122,7 +106,6 @@ for sub in 1 2 3; do
   start_server "sub-$sub" "$SUBSCRIBER_MAIN" \
     --rid "sub-$sub" \
     --http-url "${!url_var}" \
-    --registry-router-endpoint "$REG_ROUTER" \
     --publisher-endpoint "$PUB_ENDPOINT" \
     --evidence-file "$LOG_DIR/sub-$sub.evidence.log" \
     --log-dir "$LOG_DIR" \
@@ -136,7 +119,6 @@ node "$CLIENT_MAIN" \
   --subscriber-url "$SUB_2_URL" \
   --subscriber-url "$SUB_3_URL" \
   --late-subscriber-url "$SUB_LATE_URL" \
-  --registry-router-endpoint "$REG_ROUTER" \
   --publisher-endpoint "$PUB_ENDPOINT" \
   --publisher-main "$PUBLISHER_MAIN" \
   --subscriber-main "$SUBSCRIBER_MAIN" \

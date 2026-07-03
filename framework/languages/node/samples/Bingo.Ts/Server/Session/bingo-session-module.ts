@@ -7,12 +7,14 @@ import { BingoSessionFactory } from './Sessions/bingo-session';
 import { SampleNames } from '../Configuration/sample-names';
 import { BINGO_SAMPLE_CONFIG } from '../Configuration/sample-config';
 import type { BingoSampleConfig } from '../Configuration/sample-config';
+import { bingoLocationOptions, createBingoLocationStore } from '../Configuration/location-store';
 function createBingoSessionModule(endpoints: {
-  registryRouterEndpoint: string;
   sessionEndpoint: string;
   sessionRouteEndpoint: string;
   sessionSpotEndpoint: string;
   sessionSpotNodeRid: string;
+  redisEndpoint: string;
+  redisKeyPrefix: string;
   preferredPlayNodeRid?: string;
   preferredPlayRouteEndpoint?: string;
 } & Partial<BingoSampleConfig>) {
@@ -27,17 +29,11 @@ function createBingoSessionModule(endpoints: {
             .messageFlow(ZLinkMessageFlowLogMode.KeyTransitions)
             .traceLogFile(`${process.env.BINGO_LOG_DIR ?? 'logs'}/flow-session.log`)
             .traceLabel('session');
+          builder.addLocationStore(createBingoLocationStore(endpoints));
+          Object.assign(builder.configureLocations(), bingoLocationOptions());
           return builder
-          .options({
-            registrySpotRemoteAddresses: {
-              namespace: SampleNames.roomSpotNode,
-              routerChannelId: SampleNames.playChannel
-            }
-          })
           .codecs()
             .use(zlinkProtobufCodec())
-          .useDiscovery()
-            .addRegistryEndpoint(endpoints.registryRouterEndpoint)
           .addClientServerChannel(SampleNames.apiChannel)
             .enableClient()
           .addRouteMesh(SampleNames.playChannel)

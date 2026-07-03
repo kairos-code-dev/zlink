@@ -7,7 +7,7 @@ export * from './Dispatch';
 export * from './Errors';
 export * from './Eventing';
 export * from './Handlers';
-export * from './Registry';
+export * from './Locations';
 export * from './Spots';
 export * from './Streams';
 export * from './Timers';

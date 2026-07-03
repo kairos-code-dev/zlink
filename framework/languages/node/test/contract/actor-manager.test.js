@@ -95,6 +95,93 @@ test('ZLinkActorManager create notifies Entry Spot after native actor creation',
   ]);
 });
 
+test('ZLinkActorManager claims location before activation and releases on destroy', async () => {
+  const store = new framework.ZLinkInMemoryLocationStore(() => new Date(Date.UTC(2026, 6, 3, 0, 0, 0)));
+  const nodeA = await locationLifecycleNode(store, 'owner-a', 'node-a');
+  const nodeB = await locationLifecycleNode(store, 'owner-b', 'node-b');
+  let activatedA = 0;
+  let activatedB = 0;
+
+  class PlayerFactory {
+    async create(actorId, context) {
+      activatedA++;
+      const row = await store.resolveActor({ actorType: 'player', actorId });
+      assert.equal(row.ownerId, 'owner-a');
+      return { actorId, context };
+    }
+  }
+  class LosingFactory {
+    create(actorId, context) {
+      activatedB++;
+      return { actorId, context };
+    }
+  }
+
+  const nativeNodeA = createMockSpotNode({
+    routingId: rid('node-a'),
+    createActor(actorId) {
+      return { nodeRid: rid('node-a'), actorId, generation: 7n };
+    },
+    async destroyActor() {}
+  });
+  const nativeNodeB = createMockSpotNode({
+    routingId: rid('node-b'),
+    createActor(actorId) {
+      return { nodeRid: rid('node-b'), actorId, generation: 1n };
+    }
+  });
+  const managerA = new framework.DefaultZLinkActorManager({
+    actorFactories: new Map([['player', PlayerFactory]]),
+    nativeActorNode: nativeNodeA,
+    locationLifecycle: nodeA.lifecycle
+  });
+  const managerB = new framework.DefaultZLinkActorManager({
+    actorFactories: new Map([['player', LosingFactory]]),
+    nativeActorNode: nativeNodeB,
+    locationLifecycle: nodeB.lifecycle
+  });
+
+  await managerA.create('alice', 'player');
+  const row = await store.resolveActor({ actorType: 'player', actorId: 'alice' });
+  assert.equal(row.ownerId, 'owner-a');
+  assert.equal(row.nodeRid.toHex(), rid('node-a').toHex());
+  assert.match(row.actorRef, /alice$/);
+
+  await assert.rejects(
+    () => managerB.create('alice', 'player'),
+    /location claim conflict/
+  );
+  assert.equal(activatedA, 1);
+  assert.equal(activatedB, 0);
+
+  await managerA.destroyActor(nativeNodeA, rid('node-a'), managerA.getState('alice').actor);
+  assert.equal(await store.resolveActor({ actorType: 'player', actorId: 'alice' }), undefined);
+});
+
+test('ZLinkActorManager rolls location claim back when activation fails', async () => {
+  const store = new framework.ZLinkInMemoryLocationStore(() => new Date(Date.UTC(2026, 6, 3, 0, 0, 0)));
+  const node = await locationLifecycleNode(store, 'owner-a', 'node-a');
+
+  class FailingFactory {
+    create() {
+      throw new Error('actor factory failed');
+    }
+  }
+
+  const manager = new framework.DefaultZLinkActorManager({
+    actorFactories: new Map([['player', FailingFactory]]),
+    nativeActorNode: createMockSpotNode({ routingId: rid('node-a') }),
+    locationLifecycle: node.lifecycle
+  });
+
+  await assert.rejects(
+    () => manager.create('alice', 'player'),
+    /actor factory failed/
+  );
+  assert.equal(await store.resolveActor({ actorType: 'player', actorId: 'alice' }), undefined);
+  assert.equal(await manager.find('alice'), undefined);
+});
+
 test('ZLinkActorManager resolves native actor node lazily at actor creation', async () => {
   class PlayerActor {
     constructor(actorId, context) {
@@ -971,6 +1058,50 @@ test('DefaultZLinkActorManager adopts native actor ref before creating routed ac
   assert.deepEqual(events, ['createApp:alice']);
 });
 
+test('DefaultZLinkActorManager adopts remote native actor ref without claiming actor location', async () => {
+  const store = new framework.ZLinkInMemoryLocationStore(() => new Date(Date.UTC(2026, 6, 3, 0, 0, 0)));
+  const owner = await locationLifecycleNode(store, 'owner-a', 'node-a');
+  const remote = await locationLifecycleNode(store, 'owner-b', 'node-b');
+
+  class PlayerFactory {
+    create(actorId, context) {
+      return { actorId, context };
+    }
+  }
+
+  const ownerNode = createMockSpotNode({
+    routingId: rid('node-a'),
+    createActor(actorId) {
+      return { nodeRid: rid('node-a'), actorId, generation: 1n };
+    }
+  });
+  const ownerManager = new framework.DefaultZLinkActorManager({
+    actorFactories: new Map([['player', PlayerFactory]]),
+    nativeActorNode: ownerNode,
+    locationLifecycle: owner.lifecycle
+  });
+
+  await ownerManager.create('alice', 'player');
+  const ownedRow = await store.resolveActor({ actorType: 'player', actorId: 'alice' });
+  assert.equal(ownedRow.ownerId, 'owner-a');
+
+  const remoteManager = new framework.DefaultZLinkActorManager({
+    actorFactories: new Map([['player', PlayerFactory]]),
+    nativeActorNodeProvider: () => createMockSpotNode({ routingId: rid('node-b') }),
+    locationLifecycle: remote.lifecycle
+  });
+  const actor = await remoteManager.getOrCreateWithNativeRef(
+    'alice',
+    'player',
+    { nodeRid: rid('node-a'), actorId: 'alice', generation: 1n }
+  );
+
+  assert.equal(actor.actorId, 'alice');
+  const rowAfterRemoteAdoption = await store.resolveActor({ actorType: 'player', actorId: 'alice' });
+  assert.equal(rowAfterRemoteAdoption.ownerId, 'owner-a');
+  assert.equal(remoteManager.getState('alice').ownsLocation, false);
+});
+
 test('DefaultZLinkActorManager runs destroy cleanup for local actors without native refs', async () => {
   const events = [];
   class PlayerActor {
@@ -1526,6 +1657,33 @@ test('ZLinkSpotActorDispatcher serializes user spot actor handlers on provided s
 
   assert.deepEqual(events, ['spot:start', 'spot:end', 'handler:left']);
 });
+
+async function locationLifecycleNode(store, ownerId, nodeRid) {
+  const runtime = new framework.ZLinkLocationRuntime({
+    stores: {
+      peerStore: store,
+      spotStore: store,
+      actorStore: store,
+      routeStore: store,
+      ownerLeaseStore: store
+    },
+    ownerId,
+    now: () => new Date(Date.UTC(2026, 6, 3, 0, 0, 0)),
+    setTimer() {
+      return 0;
+    },
+    clearTimer() {}
+  });
+  await runtime.start(rid(nodeRid));
+  return {
+    runtime,
+    lifecycle: new framework.ZLinkLocationLifecycle(runtime, store)
+  };
+}
+
+function rid(value) {
+  return zlink.RoutingId.from(value);
+}
 
 function createMockSpotNode(overrides) {
   return {

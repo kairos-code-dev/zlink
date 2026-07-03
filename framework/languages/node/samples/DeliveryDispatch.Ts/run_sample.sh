@@ -13,6 +13,7 @@ export DELIVERYDISPATCH_WORK_DIR="${WORK_DIR}"
 mkdir -p "${LOG_DIR}" "${WORK_DIR}" "${DELIVERYDISPATCH_LOG_DIR}"
 rm -f "${DELIVERYDISPATCH_LOG_DIR}"/*.log
 PIDS=()
+REDIS_CONTAINER_ID=""
 
 cleanup() {
   for ((i=${#PIDS[@]}-1; i>=0; i--)); do
@@ -32,15 +33,18 @@ cleanup() {
     fi
     sleep 0.1
   done
-  for pid in "${PIDS[@]}"; do
-    if kill -0 "${pid}" >/dev/null 2>&1; then
-      kill -9 "${pid}" >/dev/null 2>&1 || true
-    fi
-    wait "${pid}" 2>/dev/null || true
-  done
-  if [[ "${DELIVERYDISPATCH_KEEP_RUN_DIR:-}" == "1" ]]; then
-    echo "runDir=${RUN_DIR}"
-  else
+	  for pid in "${PIDS[@]}"; do
+	    if kill -0 "${pid}" >/dev/null 2>&1; then
+	      kill -9 "${pid}" >/dev/null 2>&1 || true
+	    fi
+	    wait "${pid}" 2>/dev/null || true
+	  done
+  if [[ -n "${REDIS_CONTAINER_ID}" ]]; then
+    docker rm -f "${REDIS_CONTAINER_ID}" >/dev/null 2>&1 || true
+  fi
+	  if [[ "${DELIVERYDISPATCH_KEEP_RUN_DIR:-}" == "1" ]]; then
+	    echo "runDir=${RUN_DIR}"
+	  else
     rm -rf "${RUN_DIR}"
   fi
 }
@@ -72,8 +76,6 @@ finally:
 PY
 )"
 
-export DELIVERYDISPATCH_REGISTRY_PUB="tcp://127.0.0.1:${PORTS[0]}"
-export DELIVERYDISPATCH_REGISTRY="tcp://127.0.0.1:${PORTS[1]}"
 export DELIVERYDISPATCH_API_HTTP="http://127.0.0.1:${PORTS[2]}"
 export DELIVERYDISPATCH_CENTER_ROUTE="tcp://127.0.0.1:${PORTS[3]}"
 export DELIVERYDISPATCH_COURIER_ROUTE="tcp://127.0.0.1:${PORTS[4]}"
@@ -89,6 +91,7 @@ export DELIVERYDISPATCH_TRACKING_SPOT="tcp://127.0.0.1:${PORTS[13]}"
 export DELIVERYDISPATCH_SESSION_STREAM="tcp://127.0.0.1:${PORTS[14]}"
 export DELIVERYDISPATCH_SESSION_SPOT_ROUTER="tcp://127.0.0.1:${PORTS[15]}"
 export DELIVERYDISPATCH_SESSION_SPOT="tcp://127.0.0.1:${PORTS[16]}"
+export DELIVERYDISPATCH_REDIS_KEY_PREFIX="${DELIVERYDISPATCH_REDIS_KEY_PREFIX:-deliverydispatch:node:${RANDOM}:$$:}"
 
 endpoint_host() {
   local endpoint="$1"
@@ -141,8 +144,9 @@ start_role() {
   PIDS+=("$!")
 }
 
-start_role registry
-wait_port registry-router "${DELIVERYDISPATCH_REGISTRY}"
+REDIS_CONTAINER_ID="$(docker run -d --rm --name "deliverydispatch-node-redis-${RANDOM}-$$" -p "127.0.0.1::6379" redis:7.2-alpine)"
+export DELIVERYDISPATCH_REDIS_ENDPOINT="$(docker port "${REDIS_CONTAINER_ID}" 6379/tcp | sed -E 's/.*:([0-9]+)$/127.0.0.1:\1/')"
+wait_port redis "tcp://${DELIVERYDISPATCH_REDIS_ENDPOINT}"
 
 start_role tracking
 wait_port tracking-route "${DELIVERYDISPATCH_TRACKING_ROUTE}"

@@ -4,7 +4,7 @@ import { postJson } from '../Support/http-client';
 import { startProvider } from '../Support/managed-provider';
 import {
   profileReq,
-  sendRequestBatch,
+  waitForProviderTraffic,
   waitTopologyAbsent,
   waitTopologyReady,
   waitUntilAvailable,
@@ -31,7 +31,7 @@ export async function runRlB2(options: ClientOptions, state: ScenarioState): Pro
   await postJson(options.providerAUrl, '/admin/restore');
   await waitForWeight(options.providerAUrl, 100);
 
-  await waitTopologyAbsent(options.registryUrl, 'api-b');
+  await waitTopologyAbsent(options.topologyUrl, 'api-b');
   const followUp = await postJson<ProfileRes>(
     options.consumerUrl,
     '/profile/request/new-client',
@@ -42,7 +42,8 @@ export async function runRlB2(options: ClientOptions, state: ScenarioState): Pro
   const restarted = startProvider({
     providerMain: options.providerMain,
     logDir: options.logDir,
-    registryRouterEndpoint: options.registryRouterEndpoint,
+    redisEndpoint: options.redisEndpoint,
+    redisKeyPrefix: options.redisKeyPrefix,
     name: 'api-b-b2-restored',
     rid: 'api-b',
     httpUrl: options.providerBUrl,
@@ -52,10 +53,9 @@ export async function runRlB2(options: ClientOptions, state: ScenarioState): Pro
   await restarted.waitReady();
   state.providerBProcess = restarted;
   await waitUntilAvailable(options.providerBUrl);
-  await waitTopologyReady(options.registryUrl, 'api-b');
+  await waitTopologyReady(options.topologyUrl, 'api-b');
 
-  const sawApiB = await sendRequestBatch(options.consumerUrl, 'rl-b2-restored', 'api-b');
-  ensure(sawApiB, 'RL-B2 restored traffic did not reach api-b.');
+  await waitForProviderTraffic(options.consumerUrl, 'rl-b2-restored', 'api-b');
   await postJson<string[]>(options.providerBUrl, '/evidence/wait', { contains: 'marker=rl-b2-restored-' });
 
   console.log('scenario RL-B2 passed');

@@ -10,12 +10,12 @@
 |------|-----------|------|------|------|
 | `.NET: Client/DeliveryDispatchClientScenario.cs` | `Client/deliverydispatch-client-scenario.ts` | client-scenario | done | stream 연결, subscription, 성공 배차, 재배차, server evidence 검증을 수행한다. |
 | `.NET: Client/Program.cs` | `Client/main.ts` | client-entry | done | HTTP client와 stream connector를 만들고 scenario를 실행한다. |
-| `.NET: Probe/Program.cs` | `Server/Probe/probe.ts`, `Server/main.ts --role probe` | probe | done | registry topology readiness를 확인하고 `topology=ready`를 출력한다. |
+| `.NET: Probe/Program.cs` | `Server/Probe/probe.ts`, `Server/main.ts --role probe` | probe | done | runner가 public endpoint readiness를 확인한 뒤 `topology=ready`를 출력한다. |
 | `.NET: Server/Configuration/EvidenceStore.cs` | `Server/Configuration/evidence-store.ts` | shared-server-state | done | 상태 event 순서와 evidence 로그를 보관한다. |
 | `.NET: Server/Configuration/SampleFlowLog.cs` | `@zlink-systems/nestjs` message-flow trace 설정 | logging | not-needed | Node는 role module의 trace 설정으로 flow 로그를 남긴다. |
 | `.NET: Server/Configuration/SampleNames.cs` | `Shared/Configuration/sample-names.ts` | configuration | done | channel, fanout, Spot mesh 이름을 공유한다. |
 | `.NET: Server/Configuration/SampleTopology.cs` | `Server/Configuration/sample-config.ts`, `Client/Configuration/sample-config.ts` | configuration | done | runner가 넘긴 endpoint 환경 변수를 읽는다. |
-| `.NET: Server/Registry/Program.cs` | `Server/Registry/registry-module.ts`, `Server/main.ts --role registry` | server-role | done | registry host를 독립 role로 실행한다. |
+| `.NET: Server/Registry/Program.cs` | 없음 | server-role | not-needed | Node registry runtime은 제거됐고, 이 sample은 Redis location store로 process 간 위치 정보를 공유한다. |
 | `.NET: Server/Dispatch/Program.cs` | `Server/DispatchApi/*`, `Server/DispatchCenter/*`, `Server/main.ts --role dispatch-api/dispatch-center` | server-role | done | Node는 HTTP API와 worker를 두 role로 나누지만 dispatch channel, timeout, 재배정, tracking publish 책임은 같은 의미로 둔다. |
 | `.NET: Server/Dispatch/DispatchWorkQueue.cs` | `Server/DispatchCenter/dispatch-work-queue.ts` | server-role | done | Dispatch Center worker가 처리할 요청을 보관한다. |
 | `.NET: Server/Dispatch/DispatchWorker.cs` | `Server/DispatchCenter/dispatch-worker.ts` | server-role | done | 단일 courier gateway channel로 offer를 보내고 timeout 시 courier-b로 재배정한다. |
@@ -35,14 +35,14 @@
 | `.NET: Server/CustomerGateway/CustomerActorDirectory.cs` | `Server/Session/customer-session-directory.ts` | session-store | done | customer별 stream session을 찾는다. |
 | `.NET: Server/CustomerGateway/CustomerGatewayHandlers.cs` | `Server/Tracking/Handlers/tracking-handlers.ts`, `Server/Session/delivery-status-fanout-handler.ts` | handler | done | Node는 customer actor 보장과 fanout push를 tracking/session role에 나눠 둔다. |
 | `.NET: Shared/Contracts/Messages.cs` | `Shared/Contracts/messages.ts` | shared-contract | done | Node는 공통 문서의 `accepted`와 .NET 기준 구현의 `courierId`를 함께 둔다. |
-| `.NET: run_sample.sh` | `run_sample.sh` | runner | done | registry, tracking, customer session, courier session, courier actor node1/2, courier gateway, dispatch center, dispatch API, probe, client 순서로 실행한다. |
+| `.NET: run_sample.sh` | `run_sample.sh` | runner | done | tracking, customer session, courier session, courier actor node1/2, courier gateway, dispatch center, dispatch API, probe, client 순서로 실행한다. |
 | `.NET: run_sample.ps1` | `run_sample.ps1` | runner | done | Unix PowerShell에서는 검증된 Linux runner를 호출해 같은 process 경계와 self-check marker를 사용한다. |
 
 ## 공통 요구 매핑
 
 | 기준 | Node 대응 | 분류 | 상태 | 비고 |
 |------|-----------|------|------|------|
-| `common: 역할 Registry` | `Server/Registry/registry-module.ts` | server-role | done | registry host를 독립 process로 시작한다. |
+| `common: 역할 Registry` | 없음 | server-role | not-needed | registry/discovery role은 제거됐다. |
 | `common: 역할 DispatchApi` | `Server/DispatchApi/*` | server-role | done | HTTP `/deliveries`와 `/self-check/assert`를 제공한다. |
 | `common: 역할 DispatchCenter` | `Server/DispatchCenter/*` | server-role | done | 배차 queue, timeout, 재배정, tracking publish를 맡는다. |
 | `common: 역할 CourierGateway` | `Server/Courier/*`, `Server/main.ts --role courier-gateway` | server-role | done | 단일 courier channel을 열고 courier id를 actor node rid로 해석한다. |
@@ -50,7 +50,7 @@
 | `common: 역할 CourierSpotNode1/2` | `Server/Courier/*`, `Server/main.ts --role courier-actor-node1/2` | server-role | done | route mesh target node로 offer를 받고 Spot actor factory로 courier actor를 보장한 뒤 node별 courier decision을 만든다. |
 | `common: 역할 Tracking` | `Server/Tracking/*` | server-role | done | status 기록, Spot join, fanout publish를 맡는다. |
 | `common: 역할 CustomerGateway` | `Server/Session/*` | server-role | done | 고객 stream session과 delivery subscription을 유지한다. |
-| `common: 역할 Probe` | `Server/Probe/probe.ts` | validation | done | registry topology readiness를 확인한다. |
+| `common: 역할 Probe` | `Server/Probe/probe.ts` | validation | done | runner의 endpoint readiness 확인 뒤 success marker를 출력한다. |
 | `common: message CreateDeliveryReq/CreateDeliveryRes` | `Shared/Contracts/messages.ts` | shared-contract | done | HTTP 생성 요청과 응답 타입을 둔다. |
 | `common: message SubscribeDeliveryReq/SubscribeDeliveryRes` | `Shared/Contracts/messages.ts` | shared-contract | done | stream subscription 요청과 응답 타입을 둔다. |
 | `common: message BindCourierReq/BindCourierRes` | `Shared/Contracts/messages.ts` | shared-contract | done | CourierSession이 CourierGateway에 session route를 등록한다. |

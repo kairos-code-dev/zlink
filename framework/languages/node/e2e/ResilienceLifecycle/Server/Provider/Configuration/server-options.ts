@@ -4,7 +4,8 @@ export interface ServerOptions {
   readonly logDir: string;
   readonly evidenceFile?: string;
   readonly rid: string;
-  readonly registryRouterEndpoint?: string;
+  readonly redisEndpoint?: string;
+  readonly redisKeyPrefix?: string;
   readonly channelEndpoint?: string;
 }
 
@@ -29,7 +30,8 @@ export function parseServerOptions(args: readonly string[], defaultRole = 'provi
     logDir: values.get('log-dir') ?? '/tmp/zlink-node-e2e-log',
     evidenceFile: values.get('evidence-file'),
     rid,
-    registryRouterEndpoint: values.get('registry-router-endpoint'),
+    redisEndpoint: values.get('redis-endpoint'),
+    redisKeyPrefix: values.get('redis-key-prefix'),
     channelEndpoint: values.get('channel-endpoint')
   };
 }

@@ -3,7 +3,8 @@ export interface ConsumerOptions {
   readonly logDir: string;
   readonly traceLabel: string;
   readonly providerEndpoints: readonly string[];
-  readonly registryRouterEndpoint?: string;
+  readonly redisEndpoint?: string;
+  readonly redisKeyPrefix?: string;
 }
 
 export function parseConsumerOptions(args: readonly string[]): ConsumerOptions {
@@ -22,16 +23,18 @@ export function parseConsumerOptions(args: readonly string[]): ConsumerOptions {
     values.set(name, list);
   }
   const providerEndpoints = values.get('provider-endpoint') ?? [];
-  const registryRouterEndpoint = last(values, 'registry-router-endpoint');
-  if (providerEndpoints.length === 0 && registryRouterEndpoint === undefined) {
-    throw new Error('--provider-endpoint or --registry-router-endpoint is required.');
+  const redisEndpoint = last(values, 'redis-endpoint');
+  const redisKeyPrefix = last(values, 'redis-key-prefix');
+  if (providerEndpoints.length === 0 && (redisEndpoint === undefined || redisKeyPrefix === undefined)) {
+    throw new Error('--provider-endpoint or --redis-endpoint/--redis-key-prefix is required.');
   }
   return {
     httpUrl: last(values, 'http-url') ?? 'http://127.0.0.1:0',
     logDir: last(values, 'log-dir') ?? '/tmp/zlink-node-e2e-log',
     traceLabel: last(values, 'trace-label') ?? 'consumer',
     providerEndpoints,
-    registryRouterEndpoint
+    redisEndpoint,
+    redisKeyPrefix
   };
 }
 

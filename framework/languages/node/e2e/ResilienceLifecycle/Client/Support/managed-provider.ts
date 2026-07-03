@@ -6,7 +6,8 @@ import type { ChildProcess } from 'node:child_process';
 export interface ProviderStartOptions {
   readonly providerMain: string;
   readonly logDir: string;
-  readonly registryRouterEndpoint: string;
+  readonly redisEndpoint: string;
+  readonly redisKeyPrefix: string;
   readonly name: string;
   readonly rid: string;
   readonly httpUrl: string;
@@ -20,7 +21,8 @@ export function startProvider(options: ProviderStartOptions): ManagedProcess {
     options.providerMain,
     '--rid', options.rid,
     '--http-url', options.httpUrl,
-    '--registry-router-endpoint', options.registryRouterEndpoint,
+    '--redis-endpoint', options.redisEndpoint,
+    '--redis-key-prefix', options.redisKeyPrefix,
     '--channel-endpoint', options.channelEndpoint,
     '--evidence-file', path.join(options.logDir, options.evidenceFileName),
     '--log-dir', options.logDir

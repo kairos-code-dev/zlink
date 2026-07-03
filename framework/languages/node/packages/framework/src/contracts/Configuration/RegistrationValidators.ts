@@ -3,7 +3,6 @@ import {
   ZLinkConfigurationException,
   requirePositiveInteger,
   type ZLinkChannelOptions,
-  type ZLinkDiscoveryOptions,
   type ZLinkFrameworkRegistration,
   type ZLinkFrameworkRegistrationOptions,
   type ZLinkRouteChannelOptions,
@@ -27,27 +26,14 @@ export function validateFrameworkRegistration(
     );
   }
 
-  if (registration.hasRegistrySpotRemoteAddresses && registration.routeChannels.size === 0) {
-    throw new ZLinkConfigurationException('Registry remote address resolver requires a route mesh channel.');
-  }
-
-  if (registration.hasRegistrySpotRemoteAddresses && registration.hasSpotRemoteAddressResolver) {
-    throw new ZLinkConfigurationException('SPOT remote address resolver is already registered.');
-  }
-
-  if (registration.hasRegistrySpotRemoteAddresses && !hasDiscovery(options.discovery)) {
-    throw new ZLinkConfigurationException(
-      'Registry remote address resolver requires discovery endpoints from discovery.registries.'
-    );
-  }
-
-  validateRegistryRouteChannel(registration);
-  validateChannelCapabilities(options.channels, hasDiscovery(options.discovery));
+  const peerLocationConfigured = hasLocationStores(registration);
+  validateChannelCapabilities(options.channels, peerLocationConfigured);
   validateSpotNodes(registration);
-  validateRouteChannels(registration, hasDiscovery(options.discovery));
+  validateRouteChannels(registration, peerLocationConfigured);
   validateStreamNodes(registration);
   validateWorkerOptions(registration.worker);
   validateMonitoring(registration);
+  validateLocationRegistration(registration);
 }
 
 function toActorFactoryCount(value: ZLinkSpotNodeOptions['actorFactories']): number {
@@ -57,8 +43,10 @@ function toActorFactoryCount(value: ZLinkSpotNodeOptions['actorFactories']): num
   return value instanceof Map ? value.size : Object.keys(value).length;
 }
 
-export function hasDiscovery(discovery: ZLinkDiscoveryOptions | undefined): boolean {
-  return (discovery?.registries ?? []).some((endpoint) => endpoint.trim().length > 0);
+function hasLocationStores(registration: ZLinkFrameworkRegistration): boolean {
+  return registration.locations.useInMemoryStores
+    || registration.locations.storeInstance !== undefined
+    || registration.locations.stores !== undefined;
 }
 
 function validateWorkerOptions(worker: ZLinkWorkerOptions | undefined): void {
@@ -86,9 +74,22 @@ function validateMonitoring(registration: ZLinkFrameworkRegistration): void {
 
   validateDuplicateMonitoringSourceNames([
     ...(monitoring.socket ?? []).map((source) => source.sourceName),
-    ...(monitoring.registry ?? []).map((source) => source.sourceName),
-    ...(monitoring.spot ?? []).map((source) => source.sourceName)
+    ...(monitoring.spot ?? []).map((source) => source.sourceName),
+    ...(monitoring.locationRuntime ?? []).map((source) => source.sourceName),
+    ...(monitoring.locationPeer ?? []).map((source) => source.sourceName),
+    ...(monitoring.locationSpot ?? []).map((source) => source.sourceName),
+    ...(monitoring.locationActor ?? []).map((source) => source.sourceName),
+    ...(monitoring.locationRoute ?? []).map((source) => source.sourceName)
   ]);
+
+  const hasLocationMonitoring = (monitoring.locationRuntime?.length ?? 0) > 0
+    || (monitoring.locationPeer?.length ?? 0) > 0
+    || (monitoring.locationSpot?.length ?? 0) > 0
+    || (monitoring.locationActor?.length ?? 0) > 0
+    || (monitoring.locationRoute?.length ?? 0) > 0;
+  if (hasLocationMonitoring && !hasLocationStores(registration)) {
+    throw new ZLinkConfigurationException('Location monitoring requires location stores to be registered.');
+  }
 
   const socketSources = monitoringSocketSources(registration);
   for (const source of monitoring.socket ?? []) {
@@ -98,17 +99,62 @@ function validateMonitoring(registration: ZLinkFrameworkRegistration): void {
     }
   }
 
-  for (const source of monitoring.registry ?? []) {
-    requireName('Monitoring registry sourceName', source.sourceName);
-    requirePositiveInteger(`Monitoring registry source '${source.sourceName}' intervalMs`, source.intervalMs);
-  }
-
   for (const source of monitoring.spot ?? []) {
     requireName('Monitoring spot sourceName', source.sourceName);
     requirePositiveInteger(`Monitoring spot source '${source.sourceName}' intervalMs`, source.intervalMs);
     if (!registration.spotNodes.has(source.sourceName)) {
       throw new ZLinkConfigurationException(`Monitoring spot source '${source.sourceName}' is not registered.`);
     }
+  }
+
+  for (const source of monitoring.locationRuntime ?? []) {
+    requireName('Monitoring location runtime sourceName', source.sourceName);
+    requirePositiveInteger(`Monitoring location runtime source '${source.sourceName}' intervalMs`, source.intervalMs);
+  }
+
+  for (const source of [
+    ...(monitoring.locationPeer ?? []),
+    ...(monitoring.locationSpot ?? []),
+    ...(monitoring.locationActor ?? []),
+    ...(monitoring.locationRoute ?? [])
+  ]) {
+    requireName('Monitoring location sourceName', source.sourceName);
+  }
+}
+
+function validateLocationRegistration(registration: ZLinkFrameworkRegistration): void {
+  const locations = registration.locations;
+  const stores = locations.stores;
+  const hasRoleStore = stores !== undefined && (
+    stores.peerStore !== undefined ||
+    stores.spotStore !== undefined ||
+    stores.actorStore !== undefined ||
+    stores.routeStore !== undefined ||
+    stores.ownerLeaseStore !== undefined
+  );
+
+  if (locations.useInMemoryStores && (locations.storeInstance !== undefined || hasRoleStore)) {
+    throw new ZLinkConfigurationException(
+      'In-memory location stores cannot be combined with explicit location store registrations.'
+    );
+  }
+
+  if (locations.storeInstance !== undefined && hasRoleStore) {
+    throw new ZLinkConfigurationException(
+      'AddLocationStore registers every location store role and cannot be combined with per-role location stores.'
+    );
+  }
+
+  if (hasRoleStore && (
+    stores.peerStore === undefined ||
+    stores.spotStore === undefined ||
+    stores.actorStore === undefined ||
+    stores.routeStore === undefined ||
+    stores.ownerLeaseStore === undefined
+  )) {
+    throw new ZLinkConfigurationException(
+      'Location stores are all-or-nothing: configure peer, spot, actor, route, and owner lease stores together.'
+    );
   }
 }
 
@@ -161,7 +207,7 @@ function requireNonNegativeInteger(label: string, value: number | undefined): vo
 
 function validateChannelCapabilities(
   channels: ZLinkFrameworkRegistrationOptions['channels'],
-  discoveryConfigured: boolean
+  peerLocationConfigured: boolean
 ): void {
   for (const [channelName, channel] of Object.entries(channels ?? {})) {
     if (channel.server !== undefined) {
@@ -176,11 +222,11 @@ function validateChannelCapabilities(
       requireEndpoint(`channel '${channelName}' publisher`, channel.publisher.bind);
     }
     if (channel.client !== undefined) {
-      requirePeerSource(`channel '${channelName}' client`, channel.client.manualConnections, discoveryConfigured);
+      requirePeerSource(`channel '${channelName}' client`, channel.client.manualConnections, peerLocationConfigured);
       requireSocketOptions(`channel '${channelName}' client`, channel.client);
     }
     if (channel.subscriber !== undefined) {
-      requirePeerSource(`channel '${channelName}' subscriber`, channel.subscriber.manualConnections, discoveryConfigured);
+      requirePeerSource(`channel '${channelName}' subscriber`, channel.subscriber.manualConnections, peerLocationConfigured);
     }
     if ((channel.publishHandlers ?? []).length > 0 && channel.subscriber === undefined) {
       throw new ZLinkConfigurationException(
@@ -208,7 +254,7 @@ function validateChannelCapabilities(
       validateRouteMeshCapability(
         `channel '${channelName}' route mesh`,
         channel.routeMesh,
-        discoveryConfigured);
+        peerLocationConfigured);
     }
   }
 }
@@ -306,42 +352,16 @@ function requireName(label: string, value: string): void {
   }
 }
 
-function validateRegistryRouteChannel(registration: ZLinkFrameworkRegistration): void {
-  if (!registration.hasRegistrySpotRemoteAddresses) {
-    return;
-  }
-
-  const routerChannelId = registration.registrySpotRemoteAddresses?.routerChannelId;
-  if (routerChannelId !== undefined) {
-    if (!registration.routeChannels.has(routerChannelId)
-      && registration.spotNodes.get(routerChannelId)?.router === undefined) {
-      throw new ZLinkConfigurationException(
-        `Registry SPOT remote address resolver references unknown route mesh channel or router-capable SpotNode '${routerChannelId}'.`
-      );
-    }
-    return;
-  }
-
-  const routerSpotNodeCount = [...registration.spotNodes.values()]
-    .filter((spotNode) => spotNode.router !== undefined)
-    .length;
-  if (registration.routeChannels.size + routerSpotNodeCount !== 1) {
-    throw new ZLinkConfigurationException(
-      'Registry SPOT remote address resolver requires RouterChannelId when route mesh channel or router-capable SpotNode is ambiguous.'
-    );
-  }
-}
-
 function requirePeerSource(
   capabilityName: string,
   manualConnections: readonly string[] | undefined,
-  discoveryConfigured: boolean
+  peerLocationConfigured: boolean
 ): void {
   validateManualConnections(capabilityName, manualConnections);
-  if ((manualConnections ?? []).length > 0 || discoveryConfigured) {
+  if ((manualConnections ?? []).length > 0 || peerLocationConfigured) {
     return;
   }
-  throw new ZLinkConfigurationException(`${capabilityName} requires discovery or manual connections.`);
+  throw new ZLinkConfigurationException(`${capabilityName} requires location stores or manual connections.`);
 }
 
 function requireEndpoint(capabilityName: string, endpoint: string | undefined): void {
@@ -371,7 +391,7 @@ function validateStreamNodes(registration: ZLinkFrameworkRegistration): void {
   }
 }
 
-function validateRouteChannels(registration: ZLinkFrameworkRegistration, discoveryConfigured: boolean): void {
+function validateRouteChannels(registration: ZLinkFrameworkRegistration, peerLocationConfigured: boolean): void {
   for (const routeChannel of registration.routeChannelOptions.values()) {
     if (!isRouteTransportDeclared(routeChannel) && !isRouteTransportConfigured(routeChannel)) {
       continue;
@@ -382,7 +402,7 @@ function validateRouteChannels(registration: ZLinkFrameworkRegistration, discove
     ) {
       continue;
     }
-    validateRouteMeshCapability(`route channel '${routeChannel.routerChannelId}'`, routeChannel, discoveryConfigured);
+    validateRouteMeshCapability(`route channel '${routeChannel.routerChannelId}'`, routeChannel, peerLocationConfigured);
     if (routeChannelHandlerCount(routeChannel) > 0 && !hasBind(routeChannel.bind)) {
       requireEndpoint(`route channel '${routeChannel.routerChannelId}' router`, routeChannel.bind);
     }
@@ -420,7 +440,7 @@ function isAcceptedSpotRouteChannel(
 function validateRouteMeshCapability(
   capabilityName: string,
   routeChannel: ZLinkRouteChannelOptions | ZLinkRouteMeshChannelOptions,
-  discoveryConfigured = false
+  peerLocationConfigured = false
 ): void {
   const clientEnabled = isRouteClientEnabled(routeChannel)
     || (routeChannel.manualConnections ?? []).length > 0;
@@ -428,7 +448,7 @@ function validateRouteMeshCapability(
     throw new ZLinkConfigurationException(`${capabilityName} must enable server or client capability.`);
   }
   if (clientEnabled) {
-    requirePeerSource(capabilityName, routeChannel.manualConnections, discoveryConfigured);
+    requirePeerSource(capabilityName, routeChannel.manualConnections, peerLocationConfigured);
   }
   requirePeerWeight(`${capabilityName} weight`, routeChannel.weight);
   requireSocketOptions(capabilityName, routeChannel);

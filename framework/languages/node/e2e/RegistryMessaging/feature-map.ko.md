@@ -1,10 +1,10 @@
-# Node RegistryMessaging E2E feature map
+# Node Location Messaging E2E feature map
 
-기준 문서: `framework/doc/framework/common/e2e/config-1-registry-messaging.ko.md`
+기준 문서: `framework/doc/framework/common/e2e/config-1-location-messaging.ko.md`
 
 | 시나리오 | 상태 | 근거 |
 |----------|------|------|
-| RM-A1 | done | registry resolve 기반 request와 topology ready provider를 검증한다. |
+| RM-A1 | done | Redis location store 기반 자동 연결 request와 topology ready provider를 검증한다. |
 | RM-A2 | done | 수동 endpoint request를 검증한다. |
 | RM-A4 | done | 같은 rid provider 교체를 검증한다. |
 | RM-A6 | done | profile/workflow channel 독립성을 검증한다. |
@@ -23,7 +23,7 @@
 
 - `timeout 720s framework/languages/node/e2e/RegistryMessaging/run_e2e.sh all`
   - 결과: `registry-messaging e2e result=passed`
-  - 최신 확인 로그 디렉터리: `logs/20260630-080014-3192638`
+  - 최신 확인 로그 디렉터리: `logs/20260703-221206-46409`
   - 통과 scenario: `RM-A1`, `RM-A2`, `RM-A4`, `RM-A6`, `RM-B1`, `RM-B2`, `RM-C1`, `RM-C2`, `RM-C3`, `RM-C4`, `RM-C5`, `RM-C7`, `RM-C8`, `RM-C9`
 - `timeout 420s framework/languages/node/e2e/RegistryMessaging/run_e2e.sh RM-C9`
   - 결과: `scenario RM-C9 passed`, `registry-messaging e2e result=passed`

@@ -28,7 +28,7 @@ export async function startPublisherHost(args: readonly string[]): Promise<void>
               .messageFlow(ZLinkMessageFlowLogMode.KeyTransitions)
               .traceLogFile(`${options.logDir}/${options.rid}-flow.log`)
               .traceLabel(options.rid);
-          builder.useDiscovery().addRegistryEndpoint(options.registryRouterEndpoint);
+          builder.useInMemoryLocationStores();
           builder.addFanoutChannel(PubSubNames.channel)
             .enablePublisher(options.publisherEndpoint);
           return builder.build();

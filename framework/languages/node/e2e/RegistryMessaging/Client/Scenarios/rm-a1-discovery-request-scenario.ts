@@ -1,18 +1,18 @@
-import { ZLinkServiceRole, ZLinkTopologyState } from '@zlink-systems/framework';
+import { ZLinkLocationRole, ZLinkLocationTopologyState } from '@zlink-systems/framework';
 import type { ProfileRes } from '../../Shared/messages';
 import { getJson, postJson } from '../Support/http-client';
 import { ensure } from '../Support/scenario-assert';
 
-export async function runRmA1(providerAUrl: string, providerBUrl: string, registryUrl: string): Promise<void> {
+export async function runRmA1(providerAUrl: string, providerBUrl: string, topologyUrl: string): Promise<void> {
   const reply = await postJson<ProfileRes>(providerAUrl, '/profile/request', { value: 'rm-a1' });
   ensure(reply.value === 'profile:rm-a1', 'RM-A1 reply value mismatch.');
   ensure(reply.providerRid === 'api-a' || reply.providerRid === 'api-b', 'RM-A1 provider rid was not api-a/api-b.');
 
-  const topology = await getJson<Array<{ channelName: string; serviceRole: number; state: number }>>(registryUrl, '/registry/topology');
+  const topology = await getJson<Array<{ channelName: string; serviceRole: number; state: number }>>(topologyUrl, '/location/topology');
   const readyProfileProviders = topology.filter((entry) =>
     entry.channelName === 'profile'
-    && entry.serviceRole === ZLinkServiceRole.Router
-    && entry.state === ZLinkTopologyState.Ready
+    && entry.serviceRole === ZLinkLocationRole.Router
+    && entry.state === ZLinkLocationTopologyState.Ready
   ).length;
   ensure(readyProfileProviders >= 2, 'RM-A1 expected two ready profile providers in topology.');
 

@@ -9,11 +9,16 @@ const zlink = require('../../../../bindings/node/dist');
 const framework = require('../packages/framework/dist/internal');
 const backend = require('../packages/framework/dist/runtime/backend');
 const connector = require('../packages/stream-connector/dist');
+const { ZLinkRedisLocationStore } = require('../packages/framework-locations-redis/dist');
 
 const repoRoot = path.resolve(__dirname, '../../../..');
 const dotnetTestHostProject = path.join(
   repoRoot,
   'framework/languages/dotnet/testapps/Zlink.Framework.TestHost/Zlink.Framework.TestHost.csproj'
+);
+const dotnetRedisTestsProject = path.join(
+  repoRoot,
+  'framework/languages/dotnet/tests/Zlink.Framework.Locations.Redis.Tests/Zlink.Framework.Locations.Redis.Tests.csproj'
 );
 
 async function main() {
@@ -24,10 +29,133 @@ async function main() {
     results.push(await dotnetClientToNodeChannelServer(tempDir));
     results.push(await nodeConnectorToDotnetStreamServer(tempDir));
     results.push(await dotnetConnectorToNodeStreamServer(tempDir));
+    results.push(...await nodeDotnetRedisLocationRows(tempDir));
   });
 
   for (const result of results) {
     console.log(`ok - ${result}`);
+  }
+}
+
+async function nodeDotnetRedisLocationRows(tempDir) {
+  const redis = await startRedisContainer();
+  const prefix = `zlink:cross:node:${process.pid}:${Date.now()}`;
+  try {
+    await writeNodeLocationRows(redis.endpoint, `${prefix}:node`);
+    await runDotnetRedisCrossLanguageTest(
+      'FullyQualifiedName~RedisCrossLanguageTests.Dotnet_Reads_Node_Rows',
+      redis.endpoint,
+      prefix,
+      tempDir
+    );
+    await runDotnetRedisCrossLanguageTest(
+      'FullyQualifiedName~RedisCrossLanguageTests.Dotnet_Writes_Rows_For_Node_To_Read',
+      redis.endpoint,
+      prefix,
+      tempDir
+    );
+    await assertNodeReadsDotnetLocationRows(redis.endpoint, `${prefix}:dotnet`);
+    return [
+      'Node Redis location rows -> dotnet location store',
+      'dotnet Redis location rows -> Node location store'
+    ];
+  } finally {
+    await redis.stop();
+  }
+}
+
+async function writeNodeLocationRows(redisEndpoint, keyPrefix) {
+  const store = new ZLinkRedisLocationStore({
+    url: `redis://${redisEndpoint}`,
+    keyPrefix
+  });
+  try {
+    await store.renewOwnerLease('node-owner', rid('node-node'), 30000);
+    assert.equal((await store.updatePeer({
+      autoConnectType: framework.ZLinkLocationAutoConnectType.RouteMesh,
+      meshName: 'cross',
+      nodeRid: rid('node-node'),
+      role: framework.ZLinkLocationRole.Router,
+      endpoint: 'tcp://127.0.0.1:5320',
+      weight: 100,
+      value: 11n,
+      metadata: { 'route-endpoint': 'tcp://127.0.0.1:6320' },
+      capabilities: ['node', 'route'],
+      ownerId: 'node-owner',
+      generation: 0n,
+      updatedAt: new Date(0)
+    }, framework.ZLinkLocationWriteIntent.NewClaim)).status, framework.ZLinkLocationWriteStatus.Stored);
+    assert.equal((await store.updateSpot({
+      meshName: 'cross',
+      spotRid: rid('node-spot'),
+      spotType: 'node-game',
+      nodeRid: rid('node-node'),
+      spotKind: framework.ZLinkSpotKind.User,
+      routeEndpoint: 'tcp://127.0.0.1:5320',
+      ownerId: 'node-owner',
+      generation: 0n,
+      updatedAt: new Date(0)
+    }, framework.ZLinkLocationWriteIntent.NewClaim)).status, framework.ZLinkLocationWriteStatus.Stored);
+    assert.equal((await store.updateActor({
+      actorType: 'player',
+      actorId: 'node-actor',
+      actorRef: 'node-ref',
+      nodeRid: rid('node-node'),
+      generation: 0n,
+      locationKind: framework.ZLinkSpotKind.User,
+      spotMeshName: 'cross',
+      spotRid: rid('node-spot'),
+      spotKind: framework.ZLinkSpotKind.User,
+      ownerId: 'node-owner',
+      updatedAt: new Date(0)
+    }, framework.ZLinkLocationWriteIntent.NewClaim)).status, framework.ZLinkLocationWriteStatus.Stored);
+    assert.equal((await store.updateRoute({
+      routeKind: framework.ZLinkRouteKind.ActorSession,
+      routeKey: 'node-route',
+      ownerNodeRid: rid('node-node'),
+      ownerId: 'node-owner',
+      generation: 0n,
+      value: Uint8Array.from([5, 6, 7, 8]),
+      updatedAt: new Date(0)
+    }, framework.ZLinkLocationWriteIntent.NewClaim)).status, framework.ZLinkLocationWriteStatus.Stored);
+  } finally {
+    await store.dispose();
+  }
+}
+
+async function assertNodeReadsDotnetLocationRows(redisEndpoint, keyPrefix) {
+  const store = new ZLinkRedisLocationStore({
+    url: `redis://${redisEndpoint}`,
+    keyPrefix
+  });
+  try {
+    const actor = await store.resolveActor({ actorType: 'player', actorId: 'dotnet-actor' });
+    assert.equal(actor.actorRef, 'dotnet-ref');
+    assert.equal(actor.nodeRid.toHex(), rid('dotnet-node').toHex());
+    assert.equal(actor.ownerId, 'dotnet-owner');
+
+    const spot = await store.resolveSpot({ meshName: 'cross', spotRid: rid('dotnet-spot') });
+    assert.equal(spot.spotType, 'dotnet-game');
+    assert.equal(spot.nodeRid.toHex(), rid('dotnet-node').toHex());
+
+    const route = await store.resolveRoute({
+      routeKind: framework.ZLinkRouteKind.ActorSession,
+      routeKey: 'dotnet-route'
+    });
+    assert.deepEqual([...route.value], [9, 8, 7, 6]);
+
+    const peers = await store.listPeers({
+      autoConnectType: framework.ZLinkLocationAutoConnectType.RouteMesh,
+      meshName: 'cross',
+      role: framework.ZLinkLocationRole.Router,
+      nodeRid: rid('dotnet-node')
+    });
+    const peer = peers.find((row) => row.endpoint === 'tcp://127.0.0.1:5310');
+    assert.ok(peer);
+    assert.equal(peer.metadata['route-endpoint'], 'tcp://127.0.0.1:6310');
+    assert.deepEqual(peer.capabilities, ['dotnet', 'route']);
+  } finally {
+    await store.dispose();
   }
 }
 
@@ -451,6 +579,96 @@ async function runInTempDir(callback) {
   } finally {
     await fs.rm(tempDir, { recursive: true, force: true });
   }
+}
+
+async function startRedisContainer() {
+  const name = `zlink-node-dotnet-location-${process.pid}-${Date.now()}`;
+  const containerId = (await runProcess('docker', [
+    'run', '-d', '--rm',
+    '--name', name,
+    '-p', '127.0.0.1::6379',
+    'redis:7.2-alpine'
+  ], { cwd: repoRoot })).trim();
+  const portLine = (await runProcess('docker', ['port', containerId, '6379/tcp'], { cwd: repoRoot })).trim();
+  const port = portLine.split(':').at(-1);
+  const endpoint = `127.0.0.1:${port}`;
+  await waitTcp(endpoint, 10000);
+  return {
+    endpoint,
+    async stop() {
+      await runProcess('docker', ['rm', '-f', containerId], { cwd: repoRoot, allowFailure: true });
+    }
+  };
+}
+
+async function runDotnetRedisCrossLanguageTest(filter, redisEndpoint, prefix, tempDir) {
+  await runProcess('dotnet', [
+    'test',
+    dotnetRedisTestsProject,
+    '--framework', 'net8.0',
+    '--filter', filter,
+    '--logger', `trx;LogFileName=${path.basename(filter).replace(/[^A-Za-z0-9_.-]/g, '_')}.trx`,
+    '--results-directory', tempDir
+  ], {
+    cwd: repoRoot,
+    env: {
+      ...process.env,
+      ZLINK_REDIS_TEST_ENDPOINT: redisEndpoint,
+      ZLINK_REDIS_CROSS_LANGUAGE_PREFIX: prefix
+    }
+  });
+}
+
+async function runProcess(command, args, options = {}) {
+  const child = spawn(command, args, {
+    cwd: options.cwd ?? repoRoot,
+    env: options.env ?? process.env,
+    stdio: ['ignore', 'pipe', 'pipe']
+  });
+  const chunks = [];
+  child.stdout.setEncoding('utf8');
+  child.stderr.setEncoding('utf8');
+  child.stdout.on('data', (chunk) => chunks.push(chunk));
+  child.stderr.on('data', (chunk) => chunks.push(chunk));
+  const result = await new Promise((resolve) => {
+    child.on('exit', (code, signal) => resolve({ code, signal }));
+  });
+  const output = chunks.join('');
+  if (result.code !== 0 && options.allowFailure !== true) {
+    throw new Error(`${command} ${args.join(' ')} failed with ${result.code ?? result.signal}\n${output}`);
+  }
+  return output;
+}
+
+async function waitTcp(endpoint, timeoutMs) {
+  const [host, portText] = endpoint.split(':');
+  const port = Number(portText);
+  const deadline = Date.now() + timeoutMs;
+  while (Date.now() < deadline) {
+    if (await canConnectTcp(host, port)) {
+      return;
+    }
+    await new Promise((resolve) => setTimeout(resolve, 50));
+  }
+  throw new Error(`Redis did not accept TCP connections at ${endpoint}`);
+}
+
+function canConnectTcp(host, port) {
+  return new Promise((resolve) => {
+    const socket = net.createConnection({ host, port });
+    socket.once('connect', () => {
+      socket.destroy();
+      resolve(true);
+    });
+    socket.once('error', () => {
+      socket.destroy();
+      resolve(false);
+    });
+  });
+}
+
+function rid(value) {
+  return zlink.RoutingId.from(value);
 }
 
 function withTimeout(promise, timeoutMs, label) {

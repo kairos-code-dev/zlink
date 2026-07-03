@@ -8,21 +8,21 @@
 
 | Scenario | 상태 | 근거 |
 |----------|------|------|
-| MON-A1 | 구현 | trigger transient client가 service channel에 연결/해제하고 service socket monitoring evidence의 `Connected`/`ConnectionReady`와 `Disconnected`/`Closed` marker를 검증했다. 로그: `logs/20260702-051108-1129` |
-| MON-A2 | 구현 | registry monitoring source가 provider topology를 polling해 `TopologyChanged`와 `ServiceSummaryChanged` evidence marker를 기록하는지 검증했다. 로그: `logs/20260702-051108-1129` |
-| MON-A3 | 구현 | service spot monitoring source가 `StatusChanged`, `PeersChanged`, `SubjectsChanged`, `TimerHandlerFailed` evidence marker를 기록하고 failing timer 이름을 함께 남기는지 검증했다. 로그: `logs/20260702-051108-1129` |
-| MON-A4 | 구현 | service admin endpoint가 public `ZLinkChannelRuntimeOptions`로 server socket weight를 0으로 낮추고 복구하며, trigger client socket monitoring evidence의 `PeerAdmissionChanged`, service drain evidence, registry `TopologyChanged` evidence를 검증했다. 로그: `logs/20260702-051108-1129` |
-| MON-A5 | 구현 | malformed raw TCP attempt가 native `Disconnected` event의 handshake failure reason으로 들어올 때 Node monitoring mapper가 public `HandshakeFailed` kind로 노출하고, registry/spot status와 `TimerStoppedAfterUnhandledException`도 함께 검증했다. 로그: `logs/20260702-051108-1129` |
-| MON-B1 | 구현 | filtered service role이 socket source를 `ConnectionReady`로 제한하고, service-B evidence에 socket event가 해당 kind로만 남는지 검증했다. 로그: `logs/20260702-051108-1129` |
-| MON-B2 | 구현 | duplicate source, non-positive interval, missing spot source, missing socket source validation이 public registration validator에서 명확한 오류로 걸러지는지 검증했다. 로그: `logs/20260702-051108-1129` |
-| MON-C1 | 구현 | throwing service role의 monitoring handler 예외가 `monitoring-event-dispatch` stderr marker로 보고되고 이후 같은 trigger request가 성공하는지 검증했다. 로그: `logs/20260702-051108-1129` |
-| MON-D1 | 구현 | service-B shutdown/restart 뒤 같은 endpoint request와 restarted evidence marker가 성공하고 registry topology evidence count가 baseline 이후 증가하는지 검증했다. 로그: `logs/20260702-051108-1129` |
+| MON-A1 | 구현 | trigger transient client가 service channel에 연결/해제하고 service socket monitoring evidence의 `Connected`/`ConnectionReady`와 `Disconnected`/`Closed` marker를 검증했다. 로그: `logs/20260703-220339-17357` |
+| MON-A2 | 구현 | service에 등록한 location runtime monitoring source가 Redis location store를 polling해 `TopologyChanged`와 `ServiceSummaryChanged` evidence marker를 기록하는지 검증했다. 로그: `logs/20260703-220339-17357` |
+| MON-A3 | 구현 | service spot monitoring source가 `StatusChanged`, `PeersChanged`, `SubjectsChanged`, `TimerHandlerFailed` evidence marker를 기록하고 failing timer 이름을 함께 남기는지 검증했다. 로그: `logs/20260703-220339-17357` |
+| MON-A4 | 구현 | service admin endpoint가 public `ZLinkChannelRuntimeOptions`로 server socket weight를 0으로 낮추고 복구하며, trigger client socket monitoring evidence의 `PeerAdmissionChanged`, service drain evidence, location runtime `TopologyChanged` evidence를 검증했다. 로그: `logs/20260703-220339-17357` |
+| MON-A5 | 구현 | malformed raw TCP attempt가 native `Disconnected` event의 handshake failure reason으로 들어올 때 Node monitoring mapper가 public `HandshakeFailed` kind로 노출하고, location runtime/spot status와 `TimerStoppedAfterUnhandledException`도 함께 검증했다. 로그: `logs/20260703-220339-17357` |
+| MON-B1 | 구현 | filtered service role이 socket source를 `ConnectionReady`로 제한하고, service-B evidence에 socket event가 해당 kind로만 남는지 검증했다. 로그: `logs/20260703-220339-17357` |
+| MON-B2 | 구현 | duplicate source, non-positive interval, missing spot source, missing socket source validation이 public registration validator에서 명확한 오류로 걸러지는지 검증했다. 로그: `logs/20260703-220339-17357` |
+| MON-C1 | 구현 | throwing service role의 monitoring handler 예외가 `monitoring-event-dispatch` stderr marker로 보고되고 이후 같은 trigger request가 성공하는지 검증했다. 로그: `logs/20260703-220339-17357` |
+| MON-D1 | 구현 | service-B shutdown/restart 뒤 같은 endpoint request와 restarted evidence marker가 성공하고 location runtime topology continuity evidence를 확인했다. 로그: `logs/20260703-220339-17357` |
 
 검증:
 
-- `timeout 420s framework/languages/node/e2e/RuntimeMonitoring/run_e2e.sh`
-  - PASS: `logs/20260702-065554-72645`
-  - 이전 PASS: `logs/20260702-051108-1129`
+- `framework/languages/node/e2e/RuntimeMonitoring/run_e2e.sh`
+  - PASS: `logs/20260703-220339-17357`
+  - MON-D1 단독 PASS: `logs/20260703-220318-16504`
   - `svc-a.evidence.log`에는 malformed raw TCP attempt의 `HandshakeFailed` socket evidence와 spot fixed kind evidence가 함께 남는다.
 - 미착수 scenario: 없음
 

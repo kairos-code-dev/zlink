@@ -9,7 +9,13 @@
     "experimentalDecorators": true,
     "emitDecoratorMetadata": true,
     "outDir": "dist",
-    "rootDir": "../.."
+    "rootDir": "../..",
+    "baseUrl": ".",
+    "paths": {
+      "@zlink-systems/framework-locations-redis": [
+        "../../../../packages/framework-locations-redis/dist"
+      ]
+    }
   },
   "include": ["**/*.ts", "../../Shared/**/*.ts"]
 }

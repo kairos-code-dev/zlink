@@ -9,6 +9,7 @@ import { parseConsumerOptions } from './Configuration/consumer-options';
 import type { ConsumerOptions } from './Configuration/consumer-options';
 import { createConsumerEndpoints, requestProfileWithRetry } from './Endpoints/consumer-endpoints';
 import { closeHttpServer, startHttpServer } from './Support/http-server';
+import { createRedisLocationStore, resilienceLocationOptions } from '../../Shared/location-store';
 
 export async function startConsumerHost(args: readonly string[]): Promise<void> {
   const options = parseConsumerOptions(args);
@@ -58,8 +59,12 @@ function createConsumerModule(options: ConsumerOptions, traceLabel = options.tra
               .traceLabel(traceLabel);
 
           const profile = builder.addClientServerChannel('profile');
-          if (options.registryRouterEndpoint !== undefined) {
-            builder.useDiscovery().addRegistryEndpoint(options.registryRouterEndpoint);
+          if (options.redisEndpoint !== undefined && options.redisKeyPrefix !== undefined) {
+            builder.addLocationStore(createRedisLocationStore({
+              redisEndpoint: options.redisEndpoint,
+              redisKeyPrefix: options.redisKeyPrefix
+            }));
+            Object.assign(builder.configureLocations(), resilienceLocationOptions());
             profile.enableClient();
           } else {
             profile.enableClient(options.providerEndpoints);

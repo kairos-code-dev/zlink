@@ -22,6 +22,7 @@ import {
 import { EvidenceStore } from './Infrastructure/evidence-store';
 import { FaultState } from './Infrastructure/fault-state';
 import { closeHttpServer, startHttpServer } from './Support/http-server';
+import { createRedisLocationStore, resilienceLocationOptions } from '../../Shared/location-store';
 
 export async function startProviderHost(args: readonly string[]): Promise<void> {
   const options = parseServerOptions(args);
@@ -64,8 +65,12 @@ function createProviderModule(options: ServerOptions, evidence: EvidenceStore, f
               .traceLogFile(`${options.logDir}/${options.rid}-flow.log`)
               .traceLabel(options.rid);
 
-          if (options.registryRouterEndpoint !== undefined) {
-            builder.useDiscovery().addRegistryEndpoint(options.registryRouterEndpoint);
+          if (options.redisEndpoint !== undefined && options.redisKeyPrefix !== undefined) {
+            builder.addLocationStore(createRedisLocationStore({
+              redisEndpoint: options.redisEndpoint,
+              redisKeyPrefix: options.redisKeyPrefix
+            }));
+            Object.assign(builder.configureLocations(), resilienceLocationOptions());
           }
           if (options.channelEndpoint !== undefined) {
             builder.addClientServerChannel('profile')

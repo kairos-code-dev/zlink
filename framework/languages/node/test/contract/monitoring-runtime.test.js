@@ -38,45 +38,50 @@ test('socket monitoring source maps backend raw events into framework typed even
   assert.equal(events[0].diagnostic.nativeValue, 2);
 });
 
-test('registry monitoring source publishes snapshot changes and suppresses unchanged polls', async () => {
+test('location runtime monitoring source publishes snapshot changes and suppresses unchanged polls', async () => {
   const events = [];
   let readyCount = 1;
   const publisher = new framework.DefaultZLinkRuntimeEventPublisher();
   publisher.register({ async handle(event) { events.push(event); } });
-  const source = new framework.ZLinkRegistryMonitoringSource(
-    { sourceName: 'registry', intervalMs: 1000 },
+  const source = new framework.ZLinkLocationRuntimeMonitoringSource(
+    { sourceName: 'location-runtime', intervalMs: 1000 },
     {
-      async status() {
+      async getStatus() {
         return {
-          registryId: 1,
-          bindEndpoint: 'tcp://registry',
-          state: framework.ZLinkRegistryState.Active,
-          topologyEntryCount: 1,
-          peerRegistryCount: 0,
-          connectedPeerRegistryCount: 0,
-          listSeq: BigInt(readyCount),
-          lastError: 0,
-          lastChangedMs: 10n
+          storeHealthy: true,
+          watchEnabled: false,
+          pollingIntervalMs: 1000,
+          lastRefreshAt: new Date(readyCount),
+          ownerLeaseHealthy: true,
+          ownerLeaseRenewedAt: new Date(readyCount)
         };
       },
-      async topology() {
-        return [topologyEntry(readyCount)];
+      async listTopology() {
+        return { items: [locationTopologyEntry(readyCount)] };
       },
-      async serviceSummary() {
+      async listServiceSummaries() {
         return [{
-          autoConnectType: framework.ZLinkAutoConnectType.ClientServer,
-          serviceRole: framework.ZLinkServiceRole.Router,
-          channelName: 'api',
+          meshName: 'api',
+          autoConnectType: framework.ZLinkLocationAutoConnectType.ClientServer,
+          role: framework.ZLinkLocationRole.Router,
           totalCount: 1,
-          connectingCount: 0,
           readyCount,
           errorCount: 0,
           stoppedCount: 0,
-          lastReportedMs: 20n
+          updatedAt: new Date(readyCount)
         }];
       },
-      async memberPeers() {
+      async listPeers() {
         return [];
+      },
+      async listSpots() {
+        return { items: [] };
+      },
+      async listActors() {
+        return { items: [] };
+      },
+      async listRoutes() {
+        return { items: [] };
       }
     },
     publisher
@@ -88,15 +93,44 @@ test('registry monitoring source publishes snapshot changes and suppresses uncha
   await source.pollOnce();
 
   assert.deepEqual(events.map((event) => event.event), [
-    framework.ZLinkRegistryEventKind.StatusChanged,
-    framework.ZLinkRegistryEventKind.TopologyChanged,
-    framework.ZLinkRegistryEventKind.ServiceSummaryChanged,
-    framework.ZLinkRegistryEventKind.StatusChanged,
-    framework.ZLinkRegistryEventKind.TopologyChanged,
-    framework.ZLinkRegistryEventKind.ServiceSummaryChanged
+    framework.ZLinkLocationRuntimeEventKind.StatusChanged,
+    framework.ZLinkLocationRuntimeEventKind.TopologyChanged,
+    framework.ZLinkLocationRuntimeEventKind.ServiceSummaryChanged,
+    framework.ZLinkLocationRuntimeEventKind.StatusChanged,
+    framework.ZLinkLocationRuntimeEventKind.TopologyChanged,
+    framework.ZLinkLocationRuntimeEventKind.ServiceSummaryChanged
   ]);
   assert.equal(events[2].serviceSummary[0].readyCount, 1);
   assert.equal(events[5].serviceSummary[0].readyCount, 2);
+});
+
+test('location monitoring event emitter publishes registered row and resolve-miss events', async () => {
+  const events = [];
+  const publisher = new framework.DefaultZLinkRuntimeEventPublisher();
+  publisher.register({ async handle(event) { events.push(event); } });
+  const emitter = new framework.ZLinkLocationMonitoringEventEmitter({
+    peer: { sourceName: 'location-peer' },
+    spot: { sourceName: 'location-spot' },
+    actor: { sourceName: 'location-actor' },
+    route: { sourceName: 'location-route' }
+  }, publisher);
+
+  emitter.peerRowUpdated('client-server/api/router/tcp://127.0.0.1:7001', peerRow());
+  emitter.spotResolveMiss({ meshName: 'game', spotRid: 'spot-1' });
+  emitter.actorResolveMiss({ actorType: 'GameActor', actorId: 'room-1' });
+  emitter.routeRowRemoved({ routeKind: framework.ZLinkRouteKind.FrameworkRoute, routeKey: 'api' });
+  await Promise.resolve();
+
+  assert.deepEqual(events.map((event) => [event.sourceName, event.event]), [
+    ['location-peer', framework.ZLinkLocationPeerEventKind.RowUpdated],
+    ['location-spot', framework.ZLinkLocationSpotEventKind.ResolveMiss],
+    ['location-actor', framework.ZLinkLocationActorEventKind.ResolveMiss],
+    ['location-route', framework.ZLinkLocationRouteEventKind.RowRemoved]
+  ]);
+  assert.equal(events[0].peer.endpoint, 'tcp://127.0.0.1:7001');
+  assert.equal(events[1].key.meshName, 'game');
+  assert.equal(events[2].key.actorId, 'room-1');
+  assert.equal(events[3].key.routeKey, 'api');
 });
 
 test('spot monitoring source publishes status peers and subjects snapshot changes', async () => {
@@ -193,21 +227,32 @@ function fakeSocketMonitor() {
   };
 }
 
-function topologyEntry(readyCount) {
+function locationTopologyEntry(readyCount) {
   return {
-    autoConnectType: framework.ZLinkAutoConnectType.ClientServer,
-    routingId: 'peer-a',
-    serviceKind: framework.ZLinkServiceKind.Socket,
-    serviceRole: framework.ZLinkServiceRole.Router,
-    channelName: 'api',
+    kind: framework.ZLinkLocationKind.Peer,
+    meshName: 'api',
+    role: framework.ZLinkLocationRole.Router,
+    nodeRid: 'peer-a',
     endpoint: 'tcp://peer:7101',
-    source: framework.ZLinkTopologySource.Registry,
-    state: framework.ZLinkTopologyState.Ready,
+    state: framework.ZLinkLocationTopologyState.Ready,
     desiredCount: 1,
     readyCount,
     errorCode: 0,
-    lastReportedMs: 20n,
-    spotKind: framework.ZLinkSpotKind.User
+    updatedAt: new Date(readyCount)
+  };
+}
+
+function peerRow() {
+  return {
+    autoConnectType: framework.ZLinkLocationAutoConnectType.ClientServer,
+    meshName: 'api',
+    role: framework.ZLinkLocationRole.Router,
+    endpoint: 'tcp://127.0.0.1:7001',
+    weight: 1,
+    value: 0n,
+    ownerId: 'owner-a',
+    generation: 1n,
+    updatedAt: new Date(1)
   };
 }
 

@@ -1,7 +1,8 @@
 export interface ServiceOptions {
   readonly rid: string;
   readonly httpUrl: string;
-  readonly registryRouterEndpoint: string;
+  readonly redisEndpoint: string;
+  readonly redisKeyPrefix: string;
   readonly channelEndpoint: string;
   readonly spotRouterEndpoint: string;
   readonly spotPubEndpoint: string;
@@ -28,7 +29,8 @@ export function parseServiceOptions(args: readonly string[]): ServiceOptions {
   return {
     rid,
     httpUrl: required(values, 'http-url'),
-    registryRouterEndpoint: required(values, 'registry-router-endpoint'),
+    redisEndpoint: required(values, 'redis-endpoint'),
+    redisKeyPrefix: required(values, 'redis-key-prefix'),
     channelEndpoint: required(values, 'channel-endpoint'),
     spotRouterEndpoint: required(values, 'spot-router-endpoint'),
     spotPubEndpoint: required(values, 'spot-pub-endpoint'),

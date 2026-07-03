@@ -51,6 +51,7 @@ import type {
   MessageLike,
   PubSocket
 } from '@zlink-systems/zlink';
+import { RoutingId as BindingRoutingId } from '@zlink-systems/zlink';
 import {
   ZLinkConfigurationException,
   type ZLinkFrameworkRegistration,
@@ -58,6 +59,7 @@ import {
 } from '../configuration';
 import type {
   ZLinkBackendContext,
+  ZLinkBackendConnectableSocket,
   ZLinkBackendDealerSocket,
   ZLinkBackendPublisherSocket,
   ZLinkBackendRouterSocket,
@@ -75,6 +77,27 @@ import {
 } from '../backend/contracts';
 import type { ZLinkRuntimeErrorSink, ZLinkRuntimeTaskRunner } from '../execution';
 import { ZLinkAsyncSubmitter } from '../messaging';
+import {
+  ZLinkAutoConnectLoop,
+  ZLinkAutoConnectReconciler,
+  ZLinkLocationRuntime,
+  ZLinkOwnerLeaseTracker,
+  ZLinkStoreLocationResolvers,
+  type IZLinkAutoConnectExecutor,
+  type ZLinkAutoConnectLocal,
+  type ZLinkAutoConnectTarget,
+  type ZLinkLocationEventSink,
+  type ZLinkLocationRuntimeStores
+} from '../locations';
+import {
+  ZLinkLocationAutoConnectType,
+  ZLinkLocationRole,
+  ZLinkLocationWriteIntent,
+  type IZLinkLocationChangeStampStore,
+  type IZLinkLocationWatchStore,
+  type ZLinkLocationOptions,
+  type ZLinkPeerLocation
+} from '../../contracts';
 
 type ZLinkRuntimeDispatchFailure = ZLinkDispatchFailure & {
   readonly error?: unknown;
@@ -584,6 +607,8 @@ export class ZLinkChannelRuntimeManager {
   private readonly spotNodeRouterQueues = new Map<string, Promise<void>>();
   private readonly sockets: ZLinkChannelSocketRegistry;
   private readonly codecs: ZLinkChannelEnvelopeCodecRegistry;
+  private readonly autoConnectLoops: ZLinkAutoConnectLoop[] = [];
+  private locationAutoConnect?: ZLinkChannelLocationAutoConnectContext;
   private spotNodes?: ReadonlyMap<string, ZLinkBackendSpotNode>;
 
   constructor(
@@ -595,6 +620,68 @@ export class ZLinkChannelRuntimeManager {
   ) {
     this.sockets = new ZLinkChannelSocketRegistry(registration, adapter, context);
     this.codecs = { serializers: registration.messageSerializers };
+  }
+
+  configureLocationAutoConnect(
+    runtime: ZLinkLocationRuntime,
+    stores: ZLinkLocationRuntimeStores,
+    options: ZLinkLocationOptions,
+    events?: ZLinkLocationEventSink
+  ): void {
+    const leaseTracker = new ZLinkOwnerLeaseTracker({
+      store: stores.ownerLeaseStore,
+      options
+    });
+    this.locationAutoConnect = {
+      runtime,
+      stores,
+      options,
+      leaseTracker,
+      resolver: new ZLinkStoreLocationResolvers({
+        stores,
+        leaseTracker,
+        events
+      }),
+      events,
+      changeStampStore: isLocationChangeStampStore(stores.peerStore) ? stores.peerStore : undefined,
+      watchStore: isLocationWatchStore(stores.peerStore) ? stores.peerStore : undefined
+    };
+  }
+
+  async startLocationAutoConnect(signal?: AbortSignal): Promise<void> {
+    const location = this.locationAutoConnect;
+    if (location === undefined || this.autoConnectLoops.length > 0) {
+      return;
+    }
+
+    const capabilities = this.autoConnectCapabilities(location);
+    try {
+      for (const capability of capabilities) {
+        const reconciler = new ZLinkAutoConnectReconciler({
+          local: capability.local,
+          localRow: capability.localRow,
+          runtime: location.runtime,
+          peerResolver: location.resolver,
+          executor: capability.executor,
+          events: location.events,
+          options: location.options
+        });
+        const loop = new ZLinkAutoConnectLoop({
+          reconciler,
+          local: capability.local,
+          options: location.options,
+          changeStampStore: location.changeStampStore,
+          watchStore: location.watchStore,
+          leaseTracker: location.leaseTracker
+        });
+        await loop.start(signal);
+        this.autoConnectLoops.push(loop);
+      }
+    } catch (error) {
+      await Promise.allSettled(this.autoConnectLoops.map((loop) => loop.stop(signal)));
+      this.autoConnectLoops.length = 0;
+      throw error;
+    }
   }
 
   setSpotNodes(spotNodes: ReadonlyMap<string, ZLinkBackendSpotNode>): void {
@@ -631,6 +718,9 @@ export class ZLinkChannelRuntimeManager {
     const tasks: Promise<void>[] = [];
     for (const channelName of this.registration.channelClients) {
       this.sockets.clientDealer(channelName);
+    }
+    for (const channelName of this.registration.fanoutPublishers) {
+      this.sockets.publisher(channelName);
     }
     for (const [channelName, channel] of this.registration.channels) {
       if (channel.server?.bind === undefined || ((channel.requestHandlers ?? []).length === 0 && (channel.sendHandlers ?? []).length === 0)) {
@@ -921,32 +1011,51 @@ export class ZLinkChannelRuntimeManager {
     this.traceOutbound(ZLinkMessageFlowOutcome.Sent, ZLinkDispatchErrorSurface.RouteMeshChannel, ZLinkDispatchMessageKind.Request, routerChannelId, packetName, correlationId, undefined, targetNodeRid);
     return this.sockets.requireSubmitter(router).submitRequest(
       (resolve, reject) => {
-        const submitted = router.request(
-          targetNodeRid,
-          parts,
-          (result, parts) => {
-            try {
-              if (result !== 0) {
-                reject(new ZLinkConfigurationException(`Route channel '${routerChannelId}' request failed with result ${result}.`));
-                return;
+        let submitted: boolean;
+        try {
+          submitted = router.request(
+            targetNodeRid,
+            parts,
+            (result, parts) => {
+              try {
+                if (result !== 0) {
+                  reject(new ZLinkFrameworkException(
+                    ZLinkFrameworkErrorKind.RouteNotConnected,
+                    `Route channel '${routerChannelId}' request failed with result ${result}.`,
+                    true
+                  ));
+                  return;
+                }
+                const reply = decodeChannelReply<TReply>(parts as readonly Message[], this.codecs);
+                this.traceOutbound(ZLinkMessageFlowOutcome.ReplyReceived, ZLinkDispatchErrorSurface.RouteMeshChannel, ZLinkDispatchMessageKind.Request, routerChannelId, packetName, correlationId, undefined, targetNodeRid);
+                resolve(reply);
+              } catch (error) {
+                reject(error);
+              } finally {
+                closeMessages(parts as readonly Message[]);
               }
-              const reply = decodeChannelReply<TReply>(parts as readonly Message[], this.codecs);
-              this.traceOutbound(ZLinkMessageFlowOutcome.ReplyReceived, ZLinkDispatchErrorSurface.RouteMeshChannel, ZLinkDispatchMessageKind.Request, routerChannelId, packetName, correlationId, undefined, targetNodeRid);
-              resolve(reply);
-            } catch (error) {
-              reject(error);
-            } finally {
-              closeMessages(parts as readonly Message[]);
-            }
-          },
-          ZLINK_SEND_DONT_WAIT,
-          timeoutMs
-        );
+            },
+            ZLINK_SEND_DONT_WAIT,
+            timeoutMs
+          );
+        } catch (error) {
+          reject(new ZLinkFrameworkException(
+            ZLinkFrameworkErrorKind.RouteNotConnected,
+            `Route channel '${routerChannelId}' request failed before a reply was received.`,
+            true,
+            error
+          ));
+          return true;
+        }
         if (!submitted) {
           try {
             closeMessages(parts);
           } finally {
-            reject(new ZLinkConfigurationException(`Route channel '${routerChannelId}' is not ready for request.`));
+            reject(new ZLinkFrameworkException(
+              ZLinkFrameworkErrorKind.RouteNotConnected,
+              `Route channel '${routerChannelId}' is not ready for request.`,
+              true
+            ));
           }
         }
         return submitted;
@@ -1251,10 +1360,8 @@ export class ZLinkChannelRuntimeManager {
         }
       } catch (error) {
         reject(error);
-      } finally {
-        closeMessages(parts);
       }
-    });
+    }).finally(() => closeMessages(parts));
   }
 
   async routeRequestRawFromSpotToSpot(
@@ -1385,13 +1492,13 @@ export class ZLinkChannelRuntimeManager {
   }
 
   private spotRouteNode(routerChannelId: string): ZLinkBackendSpotNode | undefined {
-    const routeChannel = this.registration.routeChannelOptions.get(routerChannelId);
-    if (routeChannel === undefined) {
-      return undefined;
-    }
     const named = this.registration.spotNodes.get(routerChannelId);
     if (named?.router !== undefined) {
       return this.spotNodes?.get(routerChannelId);
+    }
+    const routeChannel = this.registration.routeChannelOptions.get(routerChannelId);
+    if (routeChannel === undefined) {
+      return undefined;
     }
     if (routeChannel.routingId !== undefined) {
       for (const [spotNodeName, spotNode] of this.registration.spotNodes.entries()) {
@@ -1410,8 +1517,10 @@ export class ZLinkChannelRuntimeManager {
   }
 
   private localSpotRouteNode(remoteAddress: ZLinkSpotRemoteAddress): ZLinkBackendSpotNode | undefined {
-    const routeNode = this.spotRouteNode(remoteAddress.routerChannelId);
-    if (routeNode !== undefined && String(routeNode.routingId) === String(remoteAddress.targetNodeRid)) {
+    const routeNode =
+      this.spotRouteNode(remoteAddress.routerChannelId) ??
+      this.spotNodes?.get(remoteAddress.routerChannelId);
+    if (routeNode !== undefined && routingIdsEqual(routeNode.routingId, remoteAddress.targetNodeRid)) {
       return routeNode;
     }
     return undefined;
@@ -1525,10 +1634,12 @@ export class ZLinkChannelRuntimeManager {
     const channelLoops = [...this.channelReceiveLoops];
     const subscriberLoops = [...this.subscriberReceiveLoops];
     const loops = [...this.routeReceiveLoops];
+    const autoConnectLoops = [...this.autoConnectLoops];
     const spotRouteBridges = [...this.spotRouteBridges.values()];
     this.channelReceiveLoops.length = 0;
     this.subscriberReceiveLoops.length = 0;
     this.routeReceiveLoops.length = 0;
+    this.autoConnectLoops.length = 0;
     this.spotRouteBridges.clear();
     for (const loop of channelLoops) {
       loop.stop();
@@ -1539,10 +1650,199 @@ export class ZLinkChannelRuntimeManager {
     for (const loop of loops) {
       loop.stop();
     }
+    await Promise.allSettled(autoConnectLoops.map((loop) => loop.stop()));
     await new Promise<void>((resolve) => setImmediate(resolve));
     await Promise.all(spotRouteBridges.map((bridge) => bridge.dispose()));
     await this.sockets.dispose();
   }
+
+  private autoConnectCapabilities(
+    location: ZLinkChannelLocationAutoConnectContext
+  ): ZLinkChannelAutoConnectCapability[] {
+    const capabilities: ZLinkChannelAutoConnectCapability[] = [];
+    for (const [channelName, channel] of this.registration.channels.entries()) {
+      if (channel.server !== undefined) {
+        const endpoint = channel.server.bind ?? '';
+        const local = autoConnectLocal(
+          ZLinkLocationAutoConnectType.ClientServer,
+          channelName,
+          ZLinkLocationRole.Router,
+          channel.server.routingId,
+          endpoint
+        );
+        capabilities.push({
+          local,
+          localRow: endpoint.length === 0 ? undefined : peerLocation(local, channel.server.weight),
+          executor: new ZLinkSocketAutoConnectExecutor(
+            this.sockets.channelRouter(channelName),
+            new Set()
+          )
+        });
+      }
+      if (channel.client !== undefined) {
+        const local = autoConnectLocal(
+          ZLinkLocationAutoConnectType.ClientServer,
+          channelName,
+          ZLinkLocationRole.Dealer,
+          undefined,
+          ''
+        );
+        capabilities.push({
+          local,
+          executor: new ZLinkSocketAutoConnectExecutor(
+            this.sockets.clientDealer(channelName),
+            new Set(channel.client.manualConnections ?? [])
+          )
+        });
+      }
+      if (channel.publisher !== undefined) {
+        const endpoint = channel.publisher.bind ?? '';
+        if (endpoint.length > 0) {
+          const local = autoConnectLocal(
+            ZLinkLocationAutoConnectType.Fanout,
+            channelName,
+            ZLinkLocationRole.Pub,
+            undefined,
+            endpoint
+          );
+          capabilities.push({
+            local,
+            localRow: peerLocation(local),
+            executor: ZLinkNoopAutoConnectExecutor.instance
+          });
+        }
+      }
+      if (channel.subscriber !== undefined) {
+        const local = autoConnectLocal(
+          ZLinkLocationAutoConnectType.Fanout,
+          channelName,
+          ZLinkLocationRole.Sub,
+          undefined,
+          ''
+        );
+        capabilities.push({
+          local,
+          executor: new ZLinkSocketAutoConnectExecutor(
+            this.sockets.subscriber(channelName),
+            new Set(channel.subscriber.manualConnections ?? [])
+          )
+        });
+      }
+    }
+
+    for (const routeChannel of this.registration.routeChannelOptions.values()) {
+      const endpoint = routeChannel.bind ?? '';
+      const local = autoConnectLocal(
+        ZLinkLocationAutoConnectType.RouteMesh,
+        routeChannel.routerChannelId,
+        ZLinkLocationRole.Router,
+        routeChannel.routingId,
+        endpoint
+      );
+      capabilities.push({
+        local,
+        localRow: routeChannel.bind === undefined ? undefined : peerLocation(local, routeChannel.weight),
+        executor: new ZLinkSocketAutoConnectExecutor(
+          this.sockets.routeRouter(routeChannel.routerChannelId),
+          new Set(routeChannel.manualConnections ?? [])
+        )
+      });
+    }
+    void location;
+    return capabilities;
+  }
+}
+
+interface ZLinkChannelLocationAutoConnectContext {
+  readonly runtime: ZLinkLocationRuntime;
+  readonly stores: ZLinkLocationRuntimeStores;
+  readonly options: ZLinkLocationOptions;
+  readonly leaseTracker: ZLinkOwnerLeaseTracker;
+  readonly resolver: ZLinkStoreLocationResolvers;
+  readonly events?: ZLinkLocationEventSink;
+  readonly changeStampStore?: IZLinkLocationChangeStampStore;
+  readonly watchStore?: IZLinkLocationWatchStore;
+}
+
+interface ZLinkChannelAutoConnectCapability {
+  readonly local: ZLinkAutoConnectLocal;
+  readonly localRow?: ZLinkPeerLocation;
+  readonly executor: IZLinkAutoConnectExecutor;
+}
+
+class ZLinkSocketAutoConnectExecutor implements IZLinkAutoConnectExecutor {
+  constructor(
+    private readonly socket: ZLinkBackendConnectableSocket,
+    private readonly manualEndpoints: ReadonlySet<string>
+  ) {}
+
+  connect(target: ZLinkAutoConnectTarget): void {
+    if (this.manualEndpoints.has(target.endpoint)) {
+      return;
+    }
+    this.socket.connect(target.endpoint);
+  }
+
+  disconnect(target: ZLinkAutoConnectTarget): void {
+    if (this.manualEndpoints.has(target.endpoint)) {
+      return;
+    }
+    this.socket.disconnect(target.endpoint);
+  }
+}
+
+class ZLinkNoopAutoConnectExecutor implements IZLinkAutoConnectExecutor {
+  static readonly instance = new ZLinkNoopAutoConnectExecutor();
+
+  connect(): void {}
+
+  disconnect(): void {}
+}
+
+function autoConnectLocal(
+  autoConnectType: ZLinkLocationAutoConnectType,
+  meshName: string,
+  role: ZLinkLocationRole,
+  nodeRid: RoutingId | undefined,
+  endpoint: string
+): ZLinkAutoConnectLocal {
+  return {
+    autoConnectType,
+    meshName,
+    role,
+    nodeRid,
+    endpoint
+  };
+}
+
+function peerLocation(
+  local: ZLinkAutoConnectLocal,
+  weight = 100
+): ZLinkPeerLocation {
+  return {
+    autoConnectType: local.autoConnectType,
+    meshName: local.meshName,
+    nodeRid: local.nodeRid,
+    role: local.role,
+    endpoint: local.endpoint,
+    weight,
+    value: 0n,
+    ownerId: '',
+    generation: 0n,
+    updatedAt: new Date(0)
+  };
+}
+
+function isLocationChangeStampStore(value: unknown): value is IZLinkLocationChangeStampStore {
+  return value !== null
+    && typeof value === 'object'
+    && typeof (value as { getChangeStamp?: unknown }).getChangeStamp === 'function';
+}
+
+function isLocationWatchStore(value: unknown): value is IZLinkLocationWatchStore {
+  return value !== null
+    && typeof value === 'object'
+    && typeof (value as { watch?: unknown }).watch === 'function';
 }
 
 class ZLinkChannelSocketRegistry {
@@ -2985,6 +3285,35 @@ function delay(milliseconds: number, signal: AbortSignal | undefined): Promise<v
     };
     signal.addEventListener('abort', abort, { once: true });
   });
+}
+
+function routingIdsEqual(left: RoutingId | undefined, right: RoutingId | undefined): boolean {
+  if (left === undefined || right === undefined) {
+    return false;
+  }
+  const rightCandidates = routingIdHexCandidates(right);
+  for (const leftCandidate of routingIdHexCandidates(left)) {
+    if (rightCandidates.has(leftCandidate)) {
+      return true;
+    }
+  }
+  return false;
+}
+
+function routingIdHexCandidates(routingId: RoutingId): Set<string> {
+  const candidates = new Set<string>();
+  const toHex = (routingId as unknown as { toHex?: () => string }).toHex;
+  if (typeof toHex === 'function') {
+    candidates.add(toHex.call(routingId).toLowerCase());
+  }
+  const text = String(routingId);
+  candidates.add(text.toLowerCase());
+  try {
+    candidates.add(BindingRoutingId.from(text).toHex().toLowerCase());
+  } catch {
+    // Some callers pass an already-encoded routing id string.
+  }
+  return candidates;
 }
 
 function throwIfAborted(signal: AbortSignal | undefined): void {

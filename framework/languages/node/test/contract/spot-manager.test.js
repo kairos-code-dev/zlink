@@ -53,6 +53,93 @@ test('ZLinkSpotManager creates lists finds and closes spots with lifecycle order
   assert.deepEqual(events, ['configure', 'onCreate:open', 'onInitialize', 'onClosing']);
 });
 
+test('ZLinkSpotManager claims location before activation and releases on close', async () => {
+  const store = new framework.ZLinkInMemoryLocationStore(() => new Date(Date.UTC(2026, 6, 3, 0, 0, 0)));
+  const nodeA = await locationLifecycleNode(store, 'owner-a', 'node-a');
+  const nodeB = await locationLifecycleNode(store, 'owner-b', 'node-b');
+  let activatedA = 0;
+  let constructedB = 0;
+  let activatedB = 0;
+
+  class StageSpot {
+    async onCreate() {
+      activatedA++;
+      const row = await store.resolveSpot({ meshName: 'play', spotRid: rid('room-1') });
+      assert.equal(row.ownerId, 'owner-a');
+      return { accepted: true };
+    }
+  }
+
+  class LosingSpot {
+    constructor() {
+      constructedB++;
+    }
+
+    onCreate() {
+      activatedB++;
+      return { accepted: true };
+    }
+  }
+
+  const managerA = new framework.DefaultZLinkSpotManager({
+    spotFactories: [StageSpot],
+    nodeRid: rid('node-a'),
+    locationLifecycle: nodeA.lifecycle,
+    locationMeshName: 'play'
+  });
+  const managerB = new framework.DefaultZLinkSpotManager({
+    spotFactories: [LosingSpot],
+    nodeRid: rid('node-b'),
+    locationLifecycle: nodeB.lifecycle,
+    locationMeshName: 'play'
+  });
+
+  const created = await managerA.getOrCreate(StageSpot, rid('room-1'));
+  assert.equal(created.state, framework.ZLinkSpotCreateState.Created);
+
+  const loser = await managerB.getOrCreate(LosingSpot, rid('room-1'));
+  assert.equal(loser.state, framework.ZLinkSpotCreateState.Existing);
+  assert.equal(activatedA, 1);
+  assert.equal(constructedB, 0);
+  assert.equal(activatedB, 0);
+
+  await managerA.close(rid('room-1'));
+  assert.equal(await store.resolveSpot({ meshName: 'play', spotRid: rid('room-1') }), undefined);
+});
+
+test('ZLinkSpotManager rolls location claim back when activation fails or rejects', async () => {
+  const store = new framework.ZLinkInMemoryLocationStore(() => new Date(Date.UTC(2026, 6, 3, 0, 0, 0)));
+  const node = await locationLifecycleNode(store, 'owner-a', 'node-a');
+
+  class FailingSpot {
+    async onCreate() {
+      throw new Error('spot activation failed');
+    }
+  }
+  class RejectingSpot {
+    async onCreate() {
+      return { accepted: false };
+    }
+  }
+
+  const manager = new framework.DefaultZLinkSpotManager({
+    spotFactories: [FailingSpot, RejectingSpot],
+    nodeRid: rid('node-a'),
+    locationLifecycle: node.lifecycle,
+    locationMeshName: 'play'
+  });
+
+  await assert.rejects(
+    () => manager.getOrCreate(FailingSpot, rid('fail-room')),
+    /spot activation failed/
+  );
+  assert.equal(await store.resolveSpot({ meshName: 'play', spotRid: rid('fail-room') }), undefined);
+
+  const rejected = await manager.getOrCreate(RejectingSpot, rid('reject-room'));
+  assert.equal(rejected.state, framework.ZLinkSpotCreateState.Rejected);
+  assert.equal(await store.resolveSpot({ meshName: 'play', spotRid: rid('reject-room') }), undefined);
+});
+
 test('ZLinkSpotManager passes dotnet-shaped context into spot constructor', async () => {
   let capturedContext;
   class StageSpot {
@@ -1251,6 +1338,33 @@ function createLengthPrefixedJsonType() {
       return value;
     }
   };
+}
+
+async function locationLifecycleNode(store, ownerId, nodeRid) {
+  const runtime = new framework.ZLinkLocationRuntime({
+    stores: {
+      peerStore: store,
+      spotStore: store,
+      actorStore: store,
+      routeStore: store,
+      ownerLeaseStore: store
+    },
+    ownerId,
+    now: () => new Date(Date.UTC(2026, 6, 3, 0, 0, 0)),
+    setTimer() {
+      return 0;
+    },
+    clearTimer() {}
+  });
+  await runtime.start(rid(nodeRid));
+  return {
+    runtime,
+    lifecycle: new framework.ZLinkLocationLifecycle(runtime, store)
+  };
+}
+
+function rid(value) {
+  return zlink.RoutingId.from(value);
 }
 
 async function waitFor(predicate, timeoutMs = 1000) {

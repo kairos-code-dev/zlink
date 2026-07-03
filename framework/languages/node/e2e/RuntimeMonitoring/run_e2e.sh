@@ -59,6 +59,7 @@ wait_health() {
 }
 
 pids=()
+REDIS_CONTAINER_ID=""
 cleanup() {
   local code=$?
   for pid in "${pids[@]:-}"; do
@@ -67,6 +68,9 @@ cleanup() {
     fi
   done
   wait "${pids[@]:-}" 2>/dev/null || true
+  if [[ -n "$REDIS_CONTAINER_ID" ]]; then
+    docker rm -f "$REDIS_CONTAINER_ID" >/dev/null 2>&1 || true
+  fi
   if [[ "$code" -ne 0 ]]; then
     echo "E2E failed. log_dir=$LOG_DIR" >&2
     for file in "$LOG_DIR"/*.stderr.log "$LOG_DIR"/client.stderr.log; do
@@ -88,23 +92,35 @@ start_server() {
   pids+=("$!")
 }
 
+wait_tcp() {
+  local name="$1"
+  local endpoint="$2"
+  local host_port="${endpoint#tcp://}"
+  local host="${host_port%:*}"
+  local port="${host_port##*:}"
+  for _ in $(seq 1 100); do
+    if node -e "const net=require('node:net'); const s=net.createConnection({host: process.argv[1], port: Number(process.argv[2])}); s.once('connect', () => { s.end(); process.exit(0); }); s.once('error', () => process.exit(1)); setTimeout(() => process.exit(1), 500);" "$host" "$port"; then
+      return 0
+    fi
+    sleep 0.1
+  done
+  echo "Timed out waiting for $name at $endpoint" >&2
+  return 1
+}
+
 echo "log_dir=$LOG_DIR"
 
 (cd "$NODE_ROOT" && npm run build >/dev/null)
-build_package "$ROOT_DIR/Server/Registry"
 build_package "$ROOT_DIR/Server/Service"
 build_package "$ROOT_DIR/Server/FilteredService"
 build_package "$ROOT_DIR/Server/ThrowingService"
 build_package "$ROOT_DIR/Server/Trigger"
 build_package "$ROOT_DIR/Client"
 
-REG_HTTP_PORT="$(pick_port)"
 SVC_HTTP_PORT="$(pick_port)"
 SVC_B_HTTP_PORT="$(pick_port)"
 THROW_HTTP_PORT="$(pick_port)"
 TRIGGER_HTTP_PORT="$(pick_port)"
-REG_PUB_PORT="$(pick_port)"
-REG_ROUTER_PORT="$(pick_port)"
 CHANNEL_PORT="$(pick_port)"
 CHANNEL_B_PORT="$(pick_port)"
 THROW_CHANNEL_PORT="$(pick_port)"
@@ -115,13 +131,10 @@ SPOT_B_PUB_PORT="$(pick_port)"
 THROW_SPOT_ROUTER_PORT="$(pick_port)"
 THROW_SPOT_PUB_PORT="$(pick_port)"
 
-REG_URL="http://127.0.0.1:$REG_HTTP_PORT"
 SVC_URL="http://127.0.0.1:$SVC_HTTP_PORT"
 SVC_B_URL="http://127.0.0.1:$SVC_B_HTTP_PORT"
 THROW_URL="http://127.0.0.1:$THROW_HTTP_PORT"
 TRIGGER_URL="http://127.0.0.1:$TRIGGER_HTTP_PORT"
-REG_PUB="tcp://127.0.0.1:$REG_PUB_PORT"
-REG_ROUTER="tcp://127.0.0.1:$REG_ROUTER_PORT"
 CHANNEL_ENDPOINT="tcp://127.0.0.1:$CHANNEL_PORT"
 CHANNEL_B_ENDPOINT="tcp://127.0.0.1:$CHANNEL_B_PORT"
 THROW_CHANNEL_ENDPOINT="tcp://127.0.0.1:$THROW_CHANNEL_PORT"
@@ -132,26 +145,28 @@ SPOT_B_PUB_ENDPOINT="tcp://127.0.0.1:$SPOT_B_PUB_PORT"
 THROW_SPOT_ROUTER_ENDPOINT="tcp://127.0.0.1:$THROW_SPOT_ROUTER_PORT"
 THROW_SPOT_PUB_ENDPOINT="tcp://127.0.0.1:$THROW_SPOT_PUB_PORT"
 
-REGISTRY_MAIN="$ROOT_DIR/Server/Registry/dist/RuntimeMonitoring/Server/Registry/main.js"
+if ! command -v docker >/dev/null 2>&1; then
+  echo "Docker is required to run RuntimeMonitoring because it provisions a dedicated Redis location store." >&2
+  exit 1
+fi
+
+REDIS_CONTAINER_ID="$(docker run -d --rm --name "runtime-monitoring-node-redis-${RANDOM}-$$" -p "127.0.0.1::6379" redis:7.2-alpine)"
+REDIS_PORT="$(docker port "$REDIS_CONTAINER_ID" 6379/tcp | sed 's/.*://')"
+REDIS_ENDPOINT="127.0.0.1:$REDIS_PORT"
+REDIS_KEY_PREFIX="runtime-monitoring:node:$RUN_ID"
+wait_tcp redis "tcp://$REDIS_ENDPOINT"
+
 SERVICE_MAIN="$ROOT_DIR/Server/Service/dist/Server/Service/main.js"
 FILTERED_SERVICE_MAIN="$ROOT_DIR/Server/FilteredService/dist/Server/FilteredService/main.js"
 THROWING_SERVICE_MAIN="$ROOT_DIR/Server/ThrowingService/dist/Server/ThrowingService/main.js"
 TRIGGER_MAIN="$ROOT_DIR/Server/Trigger/dist/Server/Trigger/main.js"
 CLIENT_MAIN="$ROOT_DIR/Client/dist/Client/main.js"
 
-start_server registry "$REGISTRY_MAIN" \
-  --rid registry \
-  --http-url "$REG_URL" \
-  --registry-pub-endpoint "$REG_PUB" \
-  --registry-router-endpoint "$REG_ROUTER" \
-  --evidence-file "$LOG_DIR/registry.evidence.log" \
-  --log-dir "$LOG_DIR"
-wait_health "$REG_URL" registry
-
 start_server svc-a "$SERVICE_MAIN" \
   --rid svc-a \
   --http-url "$SVC_URL" \
-  --registry-router-endpoint "$REG_ROUTER" \
+  --redis-endpoint "$REDIS_ENDPOINT" \
+  --redis-key-prefix "$REDIS_KEY_PREFIX" \
   --channel-endpoint "$CHANNEL_ENDPOINT" \
   --spot-router-endpoint "$SPOT_ROUTER_ENDPOINT" \
   --spot-pub-endpoint "$SPOT_PUB_ENDPOINT" \
@@ -162,7 +177,8 @@ wait_health "$SVC_URL" svc-a
 start_server svc-b "$FILTERED_SERVICE_MAIN" \
   --rid svc-b \
   --http-url "$SVC_B_URL" \
-  --registry-router-endpoint "$REG_ROUTER" \
+  --redis-endpoint "$REDIS_ENDPOINT" \
+  --redis-key-prefix "$REDIS_KEY_PREFIX" \
   --channel-endpoint "$CHANNEL_B_ENDPOINT" \
   --spot-router-endpoint "$SPOT_B_ROUTER_ENDPOINT" \
   --spot-pub-endpoint "$SPOT_B_PUB_ENDPOINT" \
@@ -173,7 +189,8 @@ wait_health "$SVC_B_URL" svc-b
 start_server svc-throw "$THROWING_SERVICE_MAIN" \
   --rid svc-throw \
   --http-url "$THROW_URL" \
-  --registry-router-endpoint "$REG_ROUTER" \
+  --redis-endpoint "$REDIS_ENDPOINT" \
+  --redis-key-prefix "$REDIS_KEY_PREFIX" \
   --channel-endpoint "$THROW_CHANNEL_ENDPOINT" \
   --spot-router-endpoint "$THROW_SPOT_ROUTER_ENDPOINT" \
   --spot-pub-endpoint "$THROW_SPOT_PUB_ENDPOINT" \
@@ -191,11 +208,11 @@ wait_health "$TRIGGER_URL" trigger
 
 node "$CLIENT_MAIN" \
   --trigger-url "$TRIGGER_URL" \
-  --registry-url "$REG_URL" \
   --service-url "$SVC_URL" \
   --service-b-url "$SVC_B_URL" \
   --throw-service-url "$THROW_URL" \
-  --registry-router-endpoint "$REG_ROUTER" \
+  --redis-endpoint "$REDIS_ENDPOINT" \
+  --redis-key-prefix "$REDIS_KEY_PREFIX" \
   --service-b-channel-endpoint "$CHANNEL_B_ENDPOINT" \
   --service-b-spot-router-endpoint "$SPOT_B_ROUTER_ENDPOINT" \
   --service-b-spot-pub-endpoint "$SPOT_B_PUB_ENDPOINT" \

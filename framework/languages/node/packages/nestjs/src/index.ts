@@ -20,6 +20,14 @@ import type {
   ZLinkDispatchOptionsBuilder,
   ZLinkFrameworkRegistration,
   ZLinkFrameworkRegistrationOptions,
+  IZLinkActorLocationStore,
+  IZLinkLocationStore,
+  IZLinkOwnerLeaseStore,
+  IZLinkPeerLocationStore,
+  IZLinkRouteLocationStore,
+  IZLinkSpotLocationStore,
+  ZLinkLocationStoreProvider,
+  ZLinkLocationOptions,
   ZLinkMessageFlowLogMode,
   ZLinkMessageFlowObserver,
   ZLinkMessageSerializer,
@@ -41,6 +49,7 @@ import type {
   ZLinkSpot,
   ZLinkSpotActorSendHandlerRegistration,
   ZLinkSpotActorRequestHandlerRegistration,
+  IZLinkLocationRuntimeQuery,
   ZLinkRuntimeEvent,
   ZLinkRuntimeEventHandler,
   ZLinkRuntimeEventPublisher,
@@ -68,6 +77,7 @@ interface FrameworkRuntimeHost {
     create(actorId: string): unknown;
   };
   readonly isStarted: boolean;
+  readonly locationRuntimeQuery?: IZLinkLocationRuntimeQuery;
   readonly eventPublisher: ZLinkRuntimeEventPublisher;
   start(): Promise<void>;
   stop(): Promise<void>;
@@ -124,6 +134,14 @@ interface ZLinkNestManualHandlerOptions {
 type Mutable<T> = {
   -readonly [K in keyof T]: T[K];
 };
+
+interface MutableLocationStoreRegistration {
+  peerStore?: ZLinkLocationStoreProvider<IZLinkPeerLocationStore>;
+  spotStore?: ZLinkLocationStoreProvider<IZLinkSpotLocationStore>;
+  actorStore?: ZLinkLocationStoreProvider<IZLinkActorLocationStore>;
+  routeStore?: ZLinkLocationStoreProvider<IZLinkRouteLocationStore>;
+  ownerLeaseStore?: ZLinkLocationStoreProvider<IZLinkOwnerLeaseStore>;
+}
 
 interface ZLinkNestClientServerChannelOptions extends ZLinkNestHandlerDiscoveryOptions {
   readonly server?: {
@@ -251,7 +269,14 @@ export interface ZLinkNestFrameworkOptionsBuilder {
   options(options: ZLinkNestFrameworkAdditionalOptions): this;
   codecs(): ZLinkNestCodecRegistryBuilder;
   configureDispatch(): ZLinkDispatchOptionsBuilder;
-  useDiscovery(): ZLinkNestDiscoveryBuilder;
+  useInMemoryLocationStores(): this;
+  addLocationStore(store: IZLinkLocationStore): this;
+  addPeerLocationStore(store: ZLinkLocationStoreProvider<IZLinkPeerLocationStore>): this;
+  addSpotLocationStore(store: ZLinkLocationStoreProvider<IZLinkSpotLocationStore>): this;
+  addActorLocationStore(store: ZLinkLocationStoreProvider<IZLinkActorLocationStore>): this;
+  addRouteLocationStore(store: ZLinkLocationStoreProvider<IZLinkRouteLocationStore>): this;
+  addOwnerLeaseStore(store: ZLinkLocationStoreProvider<IZLinkOwnerLeaseStore>): this;
+  configureLocations(): ZLinkLocationOptions;
   addClientServerChannel(name: string): ZLinkNestClientServerChannelBuilder;
   addFanoutChannel(name: string): ZLinkNestFanoutChannelBuilder;
   addRouteMesh(name: string): ZLinkNestRouterMeshBuilder;
@@ -264,10 +289,6 @@ export type ZLinkNestFrameworkAdditionalOptions = Omit<
   ZLinkFrameworkRegistrationOptions,
   'channels' | 'routeChannels' | 'streamNodes' | 'spotNodes' | 'codecs'
 >;
-
-export interface ZLinkNestDiscoveryBuilder extends ZLinkNestFrameworkOptionsBuilder {
-  addRegistryEndpoint(endpoint: string): this;
-}
 
 export interface ZLinkNestCodecRegistryBuilder extends ZLinkNestFrameworkOptionsBuilder {
   use(extension: ZLinkCodecExtension): this;
@@ -335,6 +356,7 @@ export const ZLINK_SPOT_PUBLISHER_CLIENT = Symbol.for('@zlink-systems/framework:
 export const ZLINK_ACTOR_MANAGER = Symbol.for('@zlink-systems/framework:actor-manager');
 export const ZLINK_SPOT_REMOTE_ADDRESS_RESOLVER = Symbol.for('@zlink-systems/framework:spot-remote-address-resolver');
 export const ZLINK_RUNTIME_EVENT_PUBLISHER = Symbol.for('@zlink-systems/framework:runtime-event-publisher');
+export const ZLINK_LOCATION_RUNTIME_QUERY = Symbol.for('@zlink-systems/framework:location-runtime-query');
 
 const nestHandlerMetadataByToken = new Map<unknown, readonly ZLinkNestHandlerMetadata[]>();
 const nestSpotActorHandlerMetadataByToken = new Map<unknown, readonly ZLinkNestSpotActorHandlerMetadata[]>();
@@ -539,6 +561,77 @@ class DefaultZLinkNestFrameworkOptionsBuilder implements ZLinkNestFrameworkOptio
     );
   }
 
+  useInMemoryLocationStores(): this {
+    this.additionalOptions = {
+      ...this.additionalOptions,
+      locations: {
+        ...(this.additionalOptions.locations ?? {}),
+        useInMemoryStores: true
+      }
+    };
+    return this;
+  }
+
+  addLocationStore(store: IZLinkLocationStore): this {
+    this.additionalOptions = {
+      ...this.additionalOptions,
+      locations: {
+        ...(this.additionalOptions.locations ?? {}),
+        storeInstance: store
+      }
+    };
+    return this;
+  }
+
+  addPeerLocationStore(store: ZLinkLocationStoreProvider<IZLinkPeerLocationStore>): this {
+    this.locationStores().peerStore = store;
+    return this;
+  }
+
+  addSpotLocationStore(store: ZLinkLocationStoreProvider<IZLinkSpotLocationStore>): this {
+    this.locationStores().spotStore = store;
+    return this;
+  }
+
+  addActorLocationStore(store: ZLinkLocationStoreProvider<IZLinkActorLocationStore>): this {
+    this.locationStores().actorStore = store;
+    return this;
+  }
+
+  addRouteLocationStore(store: ZLinkLocationStoreProvider<IZLinkRouteLocationStore>): this {
+    this.locationStores().routeStore = store;
+    return this;
+  }
+
+  addOwnerLeaseStore(store: ZLinkLocationStoreProvider<IZLinkOwnerLeaseStore>): this {
+    this.locationStores().ownerLeaseStore = store;
+    return this;
+  }
+
+  configureLocations(): ZLinkLocationOptions {
+    this.additionalOptions = {
+      ...this.additionalOptions,
+      locations: this.additionalOptions.locations ?? { options: {} }
+    };
+    const locations = this.additionalOptions.locations as NonNullable<ZLinkFrameworkRegistrationOptions['locations']>;
+    (locations as { options?: ZLinkLocationOptions }).options ??= {};
+    return locations.options as ZLinkLocationOptions;
+  }
+
+  private locationStores(): MutableLocationStoreRegistration {
+    const locations = {
+      ...(this.additionalOptions.locations ?? {}),
+      stores: {
+        ...(this.additionalOptions.locations?.stores ?? {})
+      }
+    };
+    this.additionalOptions = {
+      ...this.additionalOptions,
+      locations
+    };
+    return locations.stores;
+  }
+
   addSerializer(contentType: string, serializer: ZLinkMessageSerializer): void {
     const existing = this.codecOptions.serializers.findIndex((entry) => entry.contentType === contentType);
     const registration = { contentType, serializer };
@@ -557,14 +650,6 @@ class DefaultZLinkNestFrameworkOptionsBuilder implements ZLinkNestFrameworkOptio
     } else {
       this.codecOptions.streamCodecs.push(registration);
     }
-  }
-
-  useDiscovery(): ZLinkNestDiscoveryBuilder {
-    this.additionalOptions = {
-      ...this.additionalOptions,
-      discovery: this.additionalOptions.discovery ?? { registries: [] }
-    };
-    return new DefaultZLinkNestDiscoveryBuilder(this, this.additionalOptions.discovery as { registries?: readonly string[] });
   }
 
   addClientServerChannel(name: string): ZLinkNestClientServerChannelBuilder {
@@ -630,8 +715,43 @@ abstract class ZLinkNestChildBuilder implements ZLinkNestFrameworkOptionsBuilder
     return this.root.configureDispatch();
   }
 
-  useDiscovery(): ZLinkNestDiscoveryBuilder {
-    return this.root.useDiscovery();
+  useInMemoryLocationStores(): this {
+    this.root.useInMemoryLocationStores();
+    return this;
+  }
+
+  addLocationStore(store: IZLinkLocationStore): this {
+    this.root.addLocationStore(store);
+    return this;
+  }
+
+  addPeerLocationStore(store: ZLinkLocationStoreProvider<IZLinkPeerLocationStore>): this {
+    this.root.addPeerLocationStore(store);
+    return this;
+  }
+
+  addSpotLocationStore(store: ZLinkLocationStoreProvider<IZLinkSpotLocationStore>): this {
+    this.root.addSpotLocationStore(store);
+    return this;
+  }
+
+  addActorLocationStore(store: ZLinkLocationStoreProvider<IZLinkActorLocationStore>): this {
+    this.root.addActorLocationStore(store);
+    return this;
+  }
+
+  addRouteLocationStore(store: ZLinkLocationStoreProvider<IZLinkRouteLocationStore>): this {
+    this.root.addRouteLocationStore(store);
+    return this;
+  }
+
+  addOwnerLeaseStore(store: ZLinkLocationStoreProvider<IZLinkOwnerLeaseStore>): this {
+    this.root.addOwnerLeaseStore(store);
+    return this;
+  }
+
+  configureLocations(): ZLinkLocationOptions {
+    return this.root.configureLocations();
   }
 
   addClientServerChannel(name: string): ZLinkNestClientServerChannelBuilder {
@@ -656,17 +776,6 @@ abstract class ZLinkNestChildBuilder implements ZLinkNestFrameworkOptionsBuilder
 
   build(): ZLinkModuleOptions {
     return this.root.build();
-  }
-}
-
-class DefaultZLinkNestDiscoveryBuilder extends ZLinkNestChildBuilder implements ZLinkNestDiscoveryBuilder {
-  constructor(root: DefaultZLinkNestFrameworkOptionsBuilder, private readonly discovery: { registries?: readonly string[] }) {
-    super(root);
-  }
-
-  addRegistryEndpoint(endpoint: string): this {
-    this.discovery.registries = [...(this.discovery.registries ?? []), endpoint];
-    return this;
   }
 }
 
@@ -1622,10 +1731,9 @@ function createRegistrationOptions(options: ZLinkNestModuleRegistrationOptions):
     channels,
     codecs: options.codecs,
     dispatch: options.dispatch,
-    discovery: options.discovery,
     filters: options.filters,
+    locations: options.locations,
     monitoring: options.monitoring,
-    registrySpotRemoteAddresses: options.registrySpotRemoteAddresses,
     routeChannels,
     spotFactories: options.spotFactories,
     spotNodes: options.spotNodes,
@@ -2289,6 +2397,18 @@ const CONDITIONAL_CLIENT_PROVIDER_SPECS: readonly ConditionalClientProviderSpec[
       host.setActorManager?.(actorManager);
       return actorManager;
     }
+  },
+  {
+    token: ZLINK_LOCATION_RUNTIME_QUERY,
+    requiresRuntime: true,
+    isEnabled: (registration) => hasLocationStores(registration),
+    create: (_registration, runtime) => {
+      const query = requireRuntime(runtime).locationRuntimeQuery;
+      if (query === undefined) {
+        throw new framework.ZLinkConfigurationException('Location runtime query requires location stores.');
+      }
+      return query;
+    }
   }
 ];
 
@@ -2369,8 +2489,15 @@ function conditionalClientTokens(): InjectionToken[] {
     ZLINK_SPOT_OUTBOUND,
     ZLINK_SPOT_PUBLISHER_CLIENT,
     ZLINK_ACTOR_MANAGER,
-    ZLINK_SPOT_REMOTE_ADDRESS_RESOLVER
+    ZLINK_SPOT_REMOTE_ADDRESS_RESOLVER,
+    ZLINK_LOCATION_RUNTIME_QUERY
   ];
+}
+
+function hasLocationStores(registration: ZLinkFrameworkRegistration): boolean {
+  return registration.locations.useInMemoryStores
+    || registration.locations.storeInstance !== undefined
+    || registration.locations.stores !== undefined;
 }
 
 function createRuntimeHost(
@@ -2484,6 +2611,7 @@ async function createSpotManager(
   const resolver = framework.hasSpotRemoteAddressResolver(registration)
     ? createSpotRemoteAddressResolver(registration, moduleRef, discovery, runtime)
     : undefined;
+  const hostSpotOptions = runtime.createSpotManagerOptions?.() as Record<string, unknown> | undefined;
   const manager = new framework.DefaultZLinkSpotManager({
     spotFactories: [...registration.spotFactories],
     spotTimerHandlers: [...registration.spotNodes.values()]
@@ -2492,8 +2620,8 @@ async function createSpotManager(
       .flatMap((spotNode) => [...(spotNode.spotActorSendHandlers ?? [])]),
     spotActorRequestHandlers: [...registration.spotNodes.values()]
       .flatMap((spotNode) => [...(spotNode.spotActorRequestHandlers ?? [])]),
-    ...runtime.createSpotManagerOptions?.(),
-    remoteAddressResolver: await resolver,
+    ...hostSpotOptions,
+    remoteAddressResolver: await resolver ?? hostSpotOptions?.remoteAddressResolver,
     routedTransport: runtime.routeTransport,
     providerResolver: moduleRef === undefined ? undefined : createProviderResolver(moduleRef, discovery),
     workerRuntime: new framework.ZLinkSpotWorkerRuntime(registration.worker)
@@ -2511,12 +2639,13 @@ async function createSpotOutbound(
   const resolver = framework.hasSpotRemoteAddressResolver(registration)
     ? await createSpotRemoteAddressResolver(registration, moduleRef, discovery, runtime)
     : undefined;
+  const hostSpotOptions = runtime.createSpotManagerOptions?.() as Record<string, unknown> | undefined;
   return new framework.DefaultZLinkSpotOutbound(
     new framework.ZLinkSpotSerialExecutor(),
     undefined,
     undefined,
     undefined,
-    resolver,
+    resolver ?? hostSpotOptions?.remoteAddressResolver,
     runtime.routeTransport
   );
 }

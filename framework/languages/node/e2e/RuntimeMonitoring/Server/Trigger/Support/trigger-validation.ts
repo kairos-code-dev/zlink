@@ -6,7 +6,6 @@ export function verifyDuplicateSocketSource(): string {
       channels: {
         duplicate: { server: { bind: 'tcp://127.0.0.1:1' } }
       },
-      discovery: { registries: [] },
       monitoring: {
         socket: [
           { sourceName: 'duplicate.server' },
@@ -26,9 +25,8 @@ export function verifyPollingInterval(): string {
   const interval = assertThrows(() => {
     createFrameworkRegistration({
       channels: {},
-      discovery: { registries: [] },
       monitoring: {
-        registry: [{ sourceName: 'registry', intervalMs: 0 }]
+        spot: [{ sourceName: 'spot', intervalMs: 0 }]
       },
       routeChannels: [],
       spotFactories: [],
@@ -43,7 +41,6 @@ export function verifyMissingSpotSource(): string {
   const missing = assertThrows(() => {
     createFrameworkRegistration({
       channels: {},
-      discovery: { registries: [] },
       monitoring: {
         spot: [{ sourceName: 'missing.spot', intervalMs: 100 }]
       },
@@ -65,7 +62,6 @@ export function verifyMissingSocketSource(): string {
       channels: {
         'validation.profile': { server: { bind: 'tcp://127.0.0.1:1' } }
       },
-      discovery: { registries: [] },
       monitoring: {
         socket: [{ sourceName: 'missing.server', events: [ZLinkSocketEventKind.ConnectionReady] }]
       },

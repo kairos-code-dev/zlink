@@ -14,7 +14,6 @@ export class ServerProcessLauncher {
       [
         '--rid', name,
         '--http-url', httpUrl,
-        '--registry-router-endpoint', this.options.registryRouterEndpoint,
         '--publisher-endpoint', this.options.publisherEndpoint,
         '--evidence-file', path.join(this.options.logDir, evidenceFile),
         '--log-dir', this.options.logDir
@@ -30,7 +29,6 @@ export class ServerProcessLauncher {
       [
         '--rid', 'pub-a',
         '--http-url', this.options.publisherUrl,
-        '--registry-router-endpoint', this.options.registryRouterEndpoint,
         '--publisher-endpoint', this.options.publisherEndpoint,
         '--evidence-file', path.join(this.options.logDir, 'pub-restart.evidence.log'),
         '--log-dir', this.options.logDir

@@ -4,7 +4,7 @@ import { postJson } from '../Support/http-client';
 import { startProvider } from '../Support/managed-provider';
 import {
   profileReq,
-  sendRequestBatch,
+  waitForProviderTraffic,
   waitTopologyReady,
   waitUntilAvailable,
   waitUntilDown
@@ -13,10 +13,11 @@ import { ensure } from '../Support/scenario-assert';
 import type { ScenarioState } from '../Support/scenario-state';
 
 export async function runRlC3(options: ClientOptions, state: ScenarioState): Promise<void> {
-  await postJson(options.providerBUrl, '/shutdown');
   if (state.providerBProcess !== undefined) {
-    await state.providerBProcess.waitExited();
+    await state.providerBProcess.stop();
     state.providerBProcess = undefined;
+  } else {
+    await postJson(options.providerBUrl, '/shutdown');
   }
   await waitUntilDown(options.providerBUrl);
 
@@ -30,7 +31,8 @@ export async function runRlC3(options: ClientOptions, state: ScenarioState): Pro
   const restarted = startProvider({
     providerMain: options.providerMain,
     logDir: options.logDir,
-    registryRouterEndpoint: options.registryRouterEndpoint,
+    redisEndpoint: options.redisEndpoint,
+    redisKeyPrefix: options.redisKeyPrefix,
     name: 'api-b-c3-restored',
     rid: 'api-b',
     httpUrl: options.providerBUrl,
@@ -40,10 +42,9 @@ export async function runRlC3(options: ClientOptions, state: ScenarioState): Pro
   await restarted.waitReady();
   state.providerBProcess = restarted;
   await waitUntilAvailable(options.providerBUrl);
-  await waitTopologyReady(options.registryUrl, 'api-b');
+  await waitTopologyReady(options.topologyUrl, 'api-b');
 
-  const sawApiB = await sendRequestBatch(options.consumerUrl, 'rl-c3-recovered', 'api-b');
-  ensure(sawApiB, 'RL-C3 recovered traffic did not reach api-b.');
+  await waitForProviderTraffic(options.consumerUrl, 'rl-c3-recovered', 'api-b');
 
   const downEvidence = await postJson<string[]>(options.providerAUrl, '/evidence/wait', {
     contains: 'marker=rl-c3-during-down'

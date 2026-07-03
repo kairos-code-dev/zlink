@@ -69,90 +69,70 @@ function Write-SampleConfig([string]$Path, [hashtable]$Sample) {
     @{ sample = $Sample } | ConvertTo-Json -Depth 8 | Set-Content -Path $Path -Encoding UTF8
 }
 
-function Wait-DiscoveryReady(
-    [string]$RegistryEndpoint,
-    [string]$SessionARid,
-    [string]$SessionBRid,
-    [string]$PlayARid,
-    [string]$PlayBRid
+function Wait-LocationReady(
+    [string]$RedisEndpoint,
+    [string]$LocationKeyPrefix,
+    [string]$ApiAEndpoint,
+    [string]$ApiBEndpoint,
+    [string]$PlayASpotEndpoint,
+    [string]$PlayBSpotEndpoint
 ) {
     $script = @'
-const registryEndpoint = process.argv[2];
-const requiredRouteRids = new Set();
-const requiredSpotRids = new Set(process.argv.slice(3, 7));
-const zlink = require('@zlink-systems/zlink');
-const requiredChannels = new Set(['bingo.api', 'bingo.play']);
-const roomRouteChannel = 'bingo.room.route';
-const roomSpotChannel = 'bingo.room';
-const pause = new Int32Array(new SharedArrayBuffer(4));
-const context = zlink.createContext();
-const client = zlink.createRegistryQueryClient(context);
+const redisEndpoint = process.argv[2];
+const keyPrefix = process.argv[3];
+const expectedApiEndpoints = new Set(process.argv.slice(4, 6));
+const expectedSpotEndpoints = new Set(process.argv.slice(6));
+const framework = require('@zlink-systems/framework');
+const { ZLinkRedisLocationStore } = require('@zlink-systems/framework-locations-redis');
 
-function routingIdText(value) {
-  if (typeof value === 'string') {
-    return value;
-  }
-  const bytes = value?._bytes;
-  if (Buffer.isBuffer(bytes) || ArrayBuffer.isView(bytes)) {
-    return Buffer.from(bytes).toString('utf8');
-  }
-  if (Array.isArray(bytes?.data)) {
-    return Buffer.from(bytes.data).toString('utf8');
-  }
-  return String(value);
-}
+const store = new ZLinkRedisLocationStore({
+  url: `redis://${redisEndpoint}`,
+  keyPrefix
+});
 
-try {
-  client.connect(registryEndpoint);
+async function main() {
+  let lastPeers = [];
+  let lastSpotPeers = [];
+  let lastLeases = [];
   for (let attempt = 0; attempt < 100; attempt += 1) {
-    const topology = client.topology();
-    const readyChannels = new Set(topology
-      .filter((entry) =>
-        requiredChannels.has(entry.channelName) &&
-        entry.state === 3 &&
-        typeof entry.endpoint === 'string' &&
-        entry.endpoint.length > 0)
-      .map((entry) => entry.channelName));
-    const readyRouteRids = new Set(topology
-      .filter((entry) =>
-        entry.channelName === roomRouteChannel &&
-        entry.state === 3 &&
-        entry.serviceRole === 3 &&
-        typeof entry.endpoint === 'string' &&
-        entry.endpoint.length > 0)
-      .map((entry) => routingIdText(entry.routingId)));
-    const readySpotRids = new Set(topology
-      .filter((entry) =>
-        entry.channelName === roomSpotChannel &&
-        entry.state === 3 &&
-        entry.serviceRole === 2 &&
-        typeof entry.endpoint === 'string' &&
-        entry.endpoint.length > 0)
-      .map((entry) => routingIdText(entry.routingId)));
-    if (
-      [...requiredChannels].every((channelName) => readyChannels.has(channelName)) &&
-      [...requiredRouteRids].every((routingId) => readyRouteRids.has(routingId)) &&
-      [...requiredSpotRids].every((routingId) => readySpotRids.has(routingId))
-    ) {
-      process.exit(0);
+    lastPeers = await store.listPeers({
+      autoConnectType: framework.ZLinkLocationAutoConnectType.ClientServer,
+      meshName: 'bingo.api',
+      role: framework.ZLinkLocationRole.Router
+    });
+    lastSpotPeers = await store.listPeers({
+      autoConnectType: framework.ZLinkLocationAutoConnectType.SpotMesh,
+      meshName: 'bingo.room',
+      role: framework.ZLinkLocationRole.Spot
+    });
+    lastLeases = (await store.listOwnerLeases()).leases;
+    if ([...expectedApiEndpoints].every((endpoint) =>
+      lastPeers.some((peer) => peer.endpoint === endpoint && lastLeases.some((lease) => lease.ownerId === peer.ownerId))) &&
+      [...expectedSpotEndpoints].every((endpoint) =>
+        lastSpotPeers.some((peer) => peer.endpoint === endpoint && lastLeases.some((lease) => lease.ownerId === peer.ownerId)))) {
+      return;
     }
-    Atomics.wait(pause, 0, 0, 100);
+    await new Promise((resolve) => setTimeout(resolve, 100));
   }
-  console.error('Timed out waiting for registry discovery readiness.');
+  console.error('Timed out waiting for Bingo location readiness.');
   console.error(JSON.stringify(
-    client.topology(),
+    { peers: lastPeers, spotPeers: lastSpotPeers, leases: lastLeases },
     (_key, value) => typeof value === 'bigint' ? value.toString() : value,
     2
   ));
   process.exit(1);
-} finally {
-  client.close();
-  context.close();
 }
+
+main()
+  .finally(() => store.dispose())
+  .catch((error) => {
+    console.error(error);
+    process.exit(1);
+  });
 '@
-    $script | node - $RegistryEndpoint $SessionARid $SessionBRid $PlayARid $PlayBRid
+    $script | node - $RedisEndpoint $LocationKeyPrefix $ApiAEndpoint $ApiBEndpoint $PlayASpotEndpoint $PlayBSpotEndpoint
     if ($LASTEXITCODE -ne 0) {
-        throw "Timed out waiting for registry discovery readiness."
+        throw "Timed out waiting for Bingo location readiness."
     }
 }
 
@@ -185,8 +165,6 @@ function Assert-LogContains([string]$Path, [string]$Pattern, [string]$Message) {
 
 try {
     $ports = Get-FreePorts 18
-    $registryPubEndpoint = Use-Default $env:BINGO_REGISTRY_PUB_ENDPOINT "tcp://127.0.0.1:$($ports[0])"
-    $registryRouterEndpoint = Use-Default $env:BINGO_REGISTRY_ROUTER_ENDPOINT "tcp://127.0.0.1:$($ports[1])"
     $sessionAEndpoint = Use-Default $env:BINGO_SESSION_A_ENDPOINT "tcp://127.0.0.1:$($ports[2])"
     $sessionARouteEndpoint = Use-Default $env:BINGO_SESSION_A_ROUTE_ENDPOINT "tcp://127.0.0.1:$($ports[3])"
     $sessionASpotEndpoint = Use-Default $env:BINGO_SESSION_A_SPOT_ENDPOINT "tcp://127.0.0.1:$($ports[4])"
@@ -224,7 +202,6 @@ try {
     $redisEndpoint = "127.0.0.1:$redisPort"
 
     $clientConfig = Join-Path $runDir "client.config.json"
-    $registryConfig = Join-Path $runDir "registry.config.json"
     $apiAConfig = Join-Path $runDir "api-a.config.json"
     $apiBConfig = Join-Path $runDir "api-b.config.json"
     $playAConfig = Join-Path $runDir "play-a.config.json"
@@ -233,8 +210,6 @@ try {
     $sessionBConfig = Join-Path $runDir "session-b.config.json"
 
     $base = @{
-        registryPubEndpoint = $registryPubEndpoint
-        registryRouterEndpoint = $registryRouterEndpoint
         redisEndpoint = $redisEndpoint
         redisKeyPrefix = $redisKeyPrefix
     }
@@ -242,9 +217,16 @@ try {
         sessionAEndpoint = $sessionAEndpoint
         sessionBEndpoint = $sessionBEndpoint
     })
-    Write-SampleConfig $registryConfig $base
-    Write-SampleConfig $apiAConfig ($base + @{ apiEndpoint = $apiAEndpoint })
-    Write-SampleConfig $apiBConfig ($base + @{ apiEndpoint = $apiBEndpoint })
+    Write-SampleConfig $apiAConfig ($base + @{
+        apiEndpoint = $apiAEndpoint
+        apiNodeRid = "bingo-api-node-a"
+        playRouteEndpoints = @($playARouteEndpoint, $playBRouteEndpoint)
+    })
+    Write-SampleConfig $apiBConfig ($base + @{
+        apiEndpoint = $apiBEndpoint
+        apiNodeRid = "bingo-api-node-b"
+        playRouteEndpoints = @($playARouteEndpoint, $playBRouteEndpoint)
+    })
     Write-SampleConfig $playAConfig ($base + @{
         playEndpoint = $playAEndpoint
         playRouteEndpoint = $playARouteEndpoint
@@ -286,10 +268,6 @@ try {
         Pop-Location
     }
 
-    Start-ServerAndWait "registry" "dist/Server/Registry/main.js" $registryConfig @{
-        "registry-pub" = $registryPubEndpoint
-        "registry-router" = $registryRouterEndpoint
-    }
     Wait-Port "redis" "tcp://$redisEndpoint"
 
     Start-ServerAndWait "api-a" "dist/Server/Api/main.js" $apiAConfig @{
@@ -325,8 +303,7 @@ try {
         "session-b-route" = $sessionBRouteEndpoint
         "session-b-spot" = $sessionBSpotEndpoint
     }
-    Wait-DiscoveryReady $registryRouterEndpoint $sessionASpotNodeRid $sessionBSpotNodeRid $playASpotNodeRid $playBSpotNodeRid
-    Start-Sleep -Seconds 2
+    Wait-LocationReady "$redisEndpoint" "$($redisKeyPrefix)location" $apiAEndpoint $apiBEndpoint $playASpotEndpoint $playBSpotEndpoint
 
     $clientLog = Join-Path $logDir "client.log"
     $clientEnv = @{ ZLINK_SAMPLE_CONFIG = $clientConfig }
@@ -346,7 +323,11 @@ try {
     Assert-LogContains $clientLog "stream-inbound sample=Bingo .* name=.*Notify" "Bingo.Ts client did not write stream-inbound push marker."
     Assert-LogContains $clientLog "client=observer" "Bingo.Ts client did not write observer inbound marker."
     Assert-LogContains $clientLog "name=BingoRewardAnnouncedNotify" "Bingo.Ts client did not observe reward push."
+    if (-not (Get-ChildItem -Path (Join-Path $scriptDir "logs") -Filter "*.log" -ErrorAction SilentlyContinue | Select-String -Pattern "message flow" -Quiet)) {
+        throw "Bingo.Ts did not write message flow logs."
+    }
     Write-Host "bingo=completed"
+    Write-Host "PASS Bingo.Ts"
 }
 finally {
     for ($i = $processes.Count - 1; $i -ge 0; $i--) {

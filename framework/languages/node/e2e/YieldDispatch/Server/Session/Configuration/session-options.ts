@@ -1,13 +1,14 @@
 export interface SessionOptions {
   readonly rid: string;
   readonly httpUrl: string;
-  readonly registryRouterEndpoint: string;
   readonly controlRouterEndpoint: string;
   readonly playControlEndpoints: readonly string[];
   readonly spotRouteEndpoint: string;
   readonly spotRouterEndpoint: string;
   readonly playSpotRouteEndpoints: readonly string[];
   readonly streamEndpoint: string;
+  readonly redisEndpoint: string;
+  readonly redisKeyPrefix: string;
   readonly evidenceFile?: string;
   readonly logDir: string;
 }
@@ -27,13 +28,14 @@ export function parseSessionOptions(args: readonly string[]): SessionOptions {
   return {
     rid: required(values, 'rid'),
     httpUrl: required(values, 'http-url'),
-    registryRouterEndpoint: required(values, 'registry-router-endpoint'),
     controlRouterEndpoint: required(values, 'control-router-endpoint'),
     playControlEndpoints: requiredList(values, 'play-control-endpoint'),
     spotRouteEndpoint: required(values, 'spot-route-endpoint'),
     spotRouterEndpoint: required(values, 'spot-router-endpoint'),
     playSpotRouteEndpoints: requiredList(values, 'play-spot-route-endpoint'),
     streamEndpoint: required(values, 'stream-endpoint'),
+    redisEndpoint: required(values, 'redis-endpoint'),
+    redisKeyPrefix: required(values, 'redis-key-prefix'),
     evidenceFile: values.get('evidence-file'),
     logDir: required(values, 'log-dir')
   };

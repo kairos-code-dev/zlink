@@ -140,14 +140,12 @@ if [[ "$SCENARIO" == "all" && "${ZLINK_SPOT_SERVICE_ALL_CHILD:-0}" != "1" ]]; th
 fi
 
 (cd "$NODE_ROOT" && npm run build >/dev/null)
-build_package "$ROOT_DIR/Server/Registry"
 build_package "$ROOT_DIR/Server/Play"
 build_package "$ROOT_DIR/Server/Session"
 build_package "$ROOT_DIR/Server/Gateway"
 build_package "$ROOT_DIR/Server/MultiNode"
 build_package "$ROOT_DIR/Client"
 
-REG_HTTP_PORT="$(allocate_port)"
 PLAY_A_HTTP_PORT="$(allocate_port)"
 PLAY_B_HTTP_PORT="$(allocate_port)"
 SESSION_A_HTTP_PORT="$(allocate_port)"
@@ -155,8 +153,6 @@ SESSION_B_HTTP_PORT="$(allocate_port)"
 GATEWAY_HTTP_PORT="$(allocate_port)"
 MULTI_A_HTTP_PORT="$(allocate_port)"
 MULTI_B_HTTP_PORT="$(allocate_port)"
-REG_PUB_PORT="$(allocate_port)"
-REG_ROUTER_PORT="$(allocate_port)"
 PLAY_A_CONTROL_PORT="$(allocate_port)"
 PLAY_B_CONTROL_PORT="$(allocate_port)"
 PLAY_A_EXTERNAL_SPOT_PORT="$(allocate_port)"
@@ -181,7 +177,6 @@ SESSION_B_STREAM_PORT="$(allocate_port)"
 MULTI_A_SPOT_ROUTER_PORT="$(allocate_port)"
 MULTI_B_SPOT_ROUTER_PORT="$(allocate_port)"
 
-REG_URL="http://127.0.0.1:$REG_HTTP_PORT"
 PLAY_A_URL="http://127.0.0.1:$PLAY_A_HTTP_PORT"
 PLAY_B_URL="http://127.0.0.1:$PLAY_B_HTTP_PORT"
 SESSION_A_URL="http://127.0.0.1:$SESSION_A_HTTP_PORT"
@@ -189,8 +184,6 @@ SESSION_B_URL="http://127.0.0.1:$SESSION_B_HTTP_PORT"
 GATEWAY_URL="http://127.0.0.1:$GATEWAY_HTTP_PORT"
 MULTI_A_URL="http://127.0.0.1:$MULTI_A_HTTP_PORT"
 MULTI_B_URL="http://127.0.0.1:$MULTI_B_HTTP_PORT"
-REG_PUB="tcp://127.0.0.1:$REG_PUB_PORT"
-REG_ROUTER="tcp://127.0.0.1:$REG_ROUTER_PORT"
 PLAY_A_CONTROL="tcp://127.0.0.1:$PLAY_A_CONTROL_PORT"
 PLAY_B_CONTROL="tcp://127.0.0.1:$PLAY_B_CONTROL_PORT"
 PLAY_A_EXTERNAL_SPOT="tcp://127.0.0.1:$PLAY_A_EXTERNAL_SPOT_PORT"
@@ -215,7 +208,6 @@ SESSION_B_STREAM="tcp://127.0.0.1:$SESSION_B_STREAM_PORT"
 MULTI_A_SPOT_ROUTER="tcp://127.0.0.1:$MULTI_A_SPOT_ROUTER_PORT"
 MULTI_B_SPOT_ROUTER="tcp://127.0.0.1:$MULTI_B_SPOT_ROUTER_PORT"
 
-REGISTRY_MAIN="$ROOT_DIR/Server/Registry/dist/SpotService/Server/Registry/main.js"
 PLAY_MAIN="$ROOT_DIR/Server/Play/dist/Server/Play/main.js"
 SESSION_MAIN="$ROOT_DIR/Server/Session/dist/Server/Session/main.js"
 GATEWAY_MAIN="$ROOT_DIR/Server/Gateway/dist/Server/Gateway/main.js"
@@ -230,19 +222,9 @@ openssl req -x509 -newkey rsa:2048 -nodes \
   -subj "/CN=localhost" \
   -days 1 >/dev/null 2>&1
 
-start_server registry "$REGISTRY_MAIN" \
-  --rid registry \
-  --http-url "$REG_URL" \
-  --registry-pub-endpoint "$REG_PUB" \
-  --registry-router-endpoint "$REG_ROUTER" \
-  --evidence-file "$LOG_DIR/registry.evidence.log" \
-  --log-dir "$LOG_DIR"
-wait_health "$REG_URL" registry
-
 start_server play-a "$PLAY_MAIN" \
   --rid play-a \
   --http-url "$PLAY_A_URL" \
-  --registry-router-endpoint "$REG_ROUTER" \
   --control-router-endpoint "$PLAY_A_CONTROL" \
   --external-spot-endpoint "$PLAY_A_EXTERNAL_SPOT" \
   --spot-router-endpoint "$PLAY_A_ROUTER" \
@@ -256,7 +238,6 @@ wait_health "$PLAY_A_URL" play-a
 start_server play-b "$PLAY_MAIN" \
   --rid play-b \
   --http-url "$PLAY_B_URL" \
-  --registry-router-endpoint "$REG_ROUTER" \
   --control-router-endpoint "$PLAY_B_CONTROL" \
   --external-spot-endpoint "$PLAY_B_EXTERNAL_SPOT" \
   --play-a-external-spot-endpoint "$PLAY_A_EXTERNAL_SPOT" \
@@ -270,7 +251,6 @@ wait_health "$PLAY_B_URL" play-b
 start_server session-a "$SESSION_MAIN" \
   --rid session-a \
   --http-url "$SESSION_A_URL" \
-  --registry-router-endpoint "$REG_ROUTER" \
   --control-router-endpoint "$SESSION_A_CONTROL" \
   --play-control-endpoint "$PLAY_A_CONTROL,$PLAY_B_CONTROL" \
   --spot-router-endpoint "$SESSION_A_ROUTER" \
@@ -288,7 +268,6 @@ wait_port session-a-tls-stream "$SESSION_A_TLS_STREAM"
 start_server session-b "$SESSION_MAIN" \
   --rid session-b \
   --http-url "$SESSION_B_URL" \
-  --registry-router-endpoint "$REG_ROUTER" \
   --control-router-endpoint "$SESSION_B_CONTROL" \
   --play-control-endpoint "$PLAY_A_CONTROL,$PLAY_B_CONTROL" \
   --spot-router-endpoint "$SESSION_B_ROUTER" \
@@ -302,9 +281,9 @@ wait_health "$SESSION_B_URL" session-b
 start_server gateway "$GATEWAY_MAIN" \
   --rid gateway \
   --http-url "$GATEWAY_URL" \
-  --registry-router-endpoint "$REG_ROUTER" \
   --spot-router-endpoint "$GATEWAY_ROUTER" \
   --spot-pub-endpoint "$GATEWAY_SPOT_PUB" \
+  --spot-pub-peer "$PLAY_A_SPOT_PUB,$PLAY_B_SPOT_PUB" \
   --evidence-file "$LOG_DIR/gateway.evidence.log" \
   --log-dir "$LOG_DIR"
 wait_health "$GATEWAY_URL" gateway
@@ -312,7 +291,6 @@ wait_health "$GATEWAY_URL" gateway
 start_server multi-node-a "$MULTI_NODE_MAIN" \
   --rid multi-node-a \
   --http-url "$MULTI_A_URL" \
-  --registry-router-endpoint "$REG_ROUTER" \
   --route-endpoint "$MULTI_A_ROUTE" \
   --spot-router-endpoint "$MULTI_A_SPOT_ROUTER" \
   --evidence-file "$LOG_DIR/multi-node-a.evidence.log" \
@@ -322,7 +300,6 @@ wait_health "$MULTI_A_URL" multi-node-a
 start_server multi-node-b "$MULTI_NODE_MAIN" \
   --rid multi-node-b \
   --http-url "$MULTI_B_URL" \
-  --registry-router-endpoint "$REG_ROUTER" \
   --route-endpoint "$MULTI_B_ROUTE" \
   --spot-router-endpoint "$MULTI_B_SPOT_ROUTER" \
   --evidence-file "$LOG_DIR/multi-node-b.evidence.log" \

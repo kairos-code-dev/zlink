@@ -8,9 +8,10 @@ import type {
   ZLinkSocketEvent,
   ZLinkSpotEvent,
   ZLinkSpotTimerHandler,
+  ZLinkLocationRuntimeEvent,
   ZLinkTimerTick
 } from '@zlink-systems/framework';
-import { ZLinkSocketEventKind, ZLinkSpotEventKind } from '@zlink-systems/framework';
+import { ZLinkLocationRuntimeEventKind, ZLinkSocketEventKind, ZLinkSpotEventKind } from '@zlink-systems/framework';
 import { zlinkRuntimeEventHandler, zlinkSpotTimerHandler } from '@zlink-systems/nestjs';
 import { RuntimeMonitoringNames, type ProfileRes, type ProfileReq } from '../../../Shared/messages';
 import { EvidenceStore } from '../Infrastructure/evidence-store';
@@ -76,6 +77,23 @@ export class SpotEventRecorder implements ZLinkRuntimeEventHandler<ZLinkSpotEven
       `monitor-spot|source=${event.sourceName}|kind=${ZLinkSpotEventKind[event.event]}`
       + `|peers=${event.peers?.length ?? 0}|subjects=${event.subjects?.length ?? 0}`
       + `|timer=${event.timerDiagnostic?.timerName ?? '<none>'}`
+    );
+  }
+}
+
+@Injectable()
+@zlinkRuntimeEventHandler()
+export class LocationRuntimeEventRecorder implements ZLinkRuntimeEventHandler<ZLinkLocationRuntimeEvent> {
+  constructor(private readonly evidence: EvidenceStore) {}
+
+  async handle(event: ZLinkLocationRuntimeEvent): Promise<void> {
+    if (event.sourceName !== RuntimeMonitoringNames.locationRuntimeSource) {
+      return;
+    }
+    this.evidence.add(
+      `monitor-location|source=${event.sourceName}|kind=${ZLinkLocationRuntimeEventKind[event.event]}`
+      + `|topology=${event.topology?.length ?? -1}|summary=${event.serviceSummary?.length ?? -1}`
+      + `|storeHealthy=${event.status?.storeHealthy ?? '<none>'}`
     );
   }
 }

@@ -75,7 +75,7 @@ JSON payload 를 사용한다. `Bingo.Ts` 는 Protobuf payload 를 사용한다.
 |--------|---------------|
 | `TicTacToe.Ts` | 기본 NestJS channel, HTTP API, stream connector, actor game 흐름 |
 | `Bingo.Ts` | NestJS DI, channel client/server, Spot, actor, session relay, bound push |
-| `DeliveryDispatch.Ts` | Registry discovery, dispatch channel, courier gateway, courier stream bind, actor-node route mesh, status fanout, customer stream push |
+| `DeliveryDispatch.Ts` | Redis location store, dispatch channel, courier gateway, courier stream bind, actor-node route mesh, status fanout, customer stream push |
 
 ## 성공 조건
 

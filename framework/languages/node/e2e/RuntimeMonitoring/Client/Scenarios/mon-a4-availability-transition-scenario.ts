@@ -34,11 +34,11 @@ export async function runMonA4(options: ClientOptions): Promise<void> {
     'MON-A4 service drain evidence missing.'
   );
 
-  const registryEvidence = await waitForRegistryTopologyEvidence(options.registryUrl);
+  const locationEvidence = await waitForLocationTopologyEvidence(options.serviceUrl);
   ensure(
-    registryEvidence.filter((line) =>
-      line.includes('monitor-registry|source=registry|kind=TopologyChanged')).length >= 2,
-    'MON-A4 registry topology transition evidence missing.'
+    locationEvidence.filter((line) =>
+      line.includes('monitor-location|source=monitor.location-runtime|kind=TopologyChanged')).length >= 2,
+    'MON-A4 location topology transition evidence missing.'
   );
 
   console.log('scenario MON-A4 passed');
@@ -72,9 +72,9 @@ async function waitForServiceDrainEvidence(serviceUrl: string): Promise<string[]
   } satisfies EvidenceWaitReq);
 }
 
-async function waitForRegistryTopologyEvidence(registryUrl: string): Promise<string[]> {
-  return await postJson<string[]>(registryUrl, '/evidence/wait', {
-    containsAll: ['monitor-registry|source=registry'],
+async function waitForLocationTopologyEvidence(serviceUrl: string): Promise<string[]> {
+  return await postJson<string[]>(serviceUrl, '/evidence/wait', {
+    containsAll: ['monitor-location|source=monitor.location-runtime'],
     containsAnyGroups: [['kind=TopologyChanged']],
     timeoutMilliseconds: 10000
   } satisfies EvidenceWaitReq);

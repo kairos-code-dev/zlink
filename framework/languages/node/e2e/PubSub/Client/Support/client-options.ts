@@ -1,7 +1,6 @@
 export interface ClientOptions {
   readonly publisherUrl: string;
   readonly lateSubscriberUrl: string;
-  readonly registryRouterEndpoint: string;
   readonly publisherEndpoint: string;
   readonly publisherMain: string;
   readonly subscriberMain: string;
@@ -25,7 +24,6 @@ export function parseClientOptions(args: readonly string[]): ClientOptions {
   return {
     publisherUrl: required(values, 'publisher-url'),
     lateSubscriberUrl: required(values, 'late-subscriber-url'),
-    registryRouterEndpoint: required(values, 'registry-router-endpoint'),
     publisherEndpoint: required(values, 'publisher-endpoint'),
     publisherMain: required(values, 'publisher-main'),
     subscriberMain: required(values, 'subscriber-main'),

@@ -14,31 +14,37 @@ export interface DynamicProvider {
 export class DynamicClusterLauncher {
   private readonly processes: DynamicProcess[] = [];
   private constructor(
-    private readonly registryMain: string,
+    private readonly locationProbeMain: string,
     private readonly providerMain: string,
     private readonly logDir: string,
-    readonly registryRouterEndpoint: string
+    private readonly redisEndpoint: string,
+    private readonly redisKeyPrefix: string
   ) {}
 
   static async start(options: ClientOptions, scenarioName: string): Promise<DynamicClusterLauncher> {
-    const registryRouterEndpoint = await pickEndpoint();
-    const launcher = new DynamicClusterLauncher(options.registryMain, options.providerMain, options.logDir, registryRouterEndpoint);
+    const launcher = new DynamicClusterLauncher(
+      options.locationProbeMain,
+      options.providerMain,
+      options.logDir,
+      options.redisEndpoint,
+      `${options.redisKeyPrefix}:${scenarioName}`
+    );
     try {
-      const registryHttp = await pickHttpUrl();
-      const registry = launcher.startServer(
-        `${scenarioName}-registry`,
-        options.registryMain,
+      const locationProbeHttp = await pickHttpUrl();
+      const locationProbe = launcher.startServer(
+        `${scenarioName}-location-probe`,
+        options.locationProbeMain,
         [
-          '--rid', `${scenarioName}-registry`,
-          '--http-url', registryHttp,
-          '--registry-pub-endpoint', await pickEndpoint(),
-          '--registry-router-endpoint', registryRouterEndpoint,
+          '--rid', `${scenarioName}-location-probe`,
+          '--http-url', locationProbeHttp,
+          '--redis-endpoint', options.redisEndpoint,
+          '--redis-key-prefix', `${options.redisKeyPrefix}:${scenarioName}`,
           '--log-dir', options.logDir
         ],
-        registryHttp,
+        locationProbeHttp,
         undefined
       );
-      await registry.waitReady();
+      await locationProbe.waitReady();
       return launcher;
     } catch (error) {
       await launcher.close();
@@ -57,7 +63,8 @@ export class DynamicClusterLauncher {
         [
           '--rid', rid,
           '--http-url', httpUrl,
-          '--registry-router-endpoint', this.registryRouterEndpoint,
+          '--redis-endpoint', this.redisEndpoint,
+          '--redis-key-prefix', this.redisKeyPrefix,
           '--channel-endpoint', channelEndpoint,
           '--route-endpoint', await pickEndpoint(),
           '--weight', weight.toString(),

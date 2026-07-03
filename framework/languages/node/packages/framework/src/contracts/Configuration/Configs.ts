@@ -1,9 +1,5 @@
 import type { RoutingId } from '../Common';
 
-export interface ZLinkRegistrySpotRemoteAddressesOptions {
-  registryEndpoint: string;
-}
-
 export interface ZLinkSocketConfig {
   bind?: string;
   connect?: string;

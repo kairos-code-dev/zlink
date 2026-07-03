@@ -1,7 +1,6 @@
 export interface MultiNodeOptions {
   readonly rid: string;
   readonly httpUrl: string;
-  readonly registryRouterEndpoint: string;
   readonly routeEndpoint: string;
   readonly spotRouterEndpoint: string;
   readonly evidenceFile?: string;
@@ -25,7 +24,6 @@ export function parseMultiNodeOptions(args: readonly string[]): MultiNodeOptions
   return {
     rid,
     httpUrl: required(values, 'http-url'),
-    registryRouterEndpoint: required(values, 'registry-router-endpoint'),
     routeEndpoint: required(values, 'route-endpoint'),
     spotRouterEndpoint: required(values, 'spot-router-endpoint'),
     evidenceFile: values.get('evidence-file'),

@@ -1,7 +1,5 @@
 import * as fs from 'node:fs';
 type BingoSampleConfig = {
-  registryPubEndpoint: string;
-  registryRouterEndpoint: string;
   sessionEndpoint: string;
   sessionRouteEndpoint: string;
   sessionSpotEndpoint: string;
@@ -27,8 +25,6 @@ function loadSampleConfig(): BingoSampleConfig {
     return JSON.parse(fs.readFileSync(configPath, 'utf8')).sample;
   }
   return {
-    registryPubEndpoint: requireEnv('BINGO_REGISTRY_PUB_ENDPOINT'),
-    registryRouterEndpoint: requireEnv('BINGO_REGISTRY_ROUTER_ENDPOINT'),
     sessionEndpoint: requireEnv('BINGO_SESSION_ENDPOINT'),
     sessionRouteEndpoint: requireEnv('BINGO_SESSION_ROUTE_ENDPOINT'),
     sessionSpotEndpoint: requireEnv('BINGO_SESSION_SPOT_ENDPOINT'),

@@ -2,6 +2,7 @@ export * from './contracts';
 export * from './runtime/channels';
 export * from './runtime/handlers';
 export * from './runtime/host';
+export * from './runtime/locations';
 export * from './runtime/actors';
 export * from './runtime/spots';
 export * from './runtime/workers';

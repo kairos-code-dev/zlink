@@ -1,8 +1,8 @@
-# Node RegistryMessaging E2E porting inventory
+# Node Location Messaging E2E porting inventory
 
 기준 구현: `framework/languages/dotnet/e2e/RegistryMessaging`
 
-공통 기준 문서: `framework/doc/framework/common/e2e/config-1-registry-messaging.ko.md`
+공통 기준 문서: `framework/doc/framework/common/e2e/config-1-location-messaging.ko.md`
 
 이 문서는 `.NET` Config 1 파일과 공통 scenario ID를 Node 파일로 매핑한다. 구현된 범위는 `done`,
 public contract가 없어 완료하지 못한 범위는 `gap`으로 기록한다.
@@ -11,7 +11,7 @@ public contract가 없어 완료하지 못한 범위는 `gap`으로 기록한다
 
 | scenario ID | .NET scenario 파일 | Node 대응 파일 | 상태 | 비고 |
 |-------------|--------------------|----------------|------|------|
-| `RM-A1` | `Client/Scenarios/RmA1DiscoveryRequestScenario.cs` | `Client/Scenarios/rm-a1-discovery-request-scenario.ts` | done | registry 자동 연결과 topology ready provider 확인 |
+| `RM-A1` | `Client/Scenarios/RmA1DiscoveryRequestScenario.cs` | `Client/Scenarios/rm-a1-discovery-request-scenario.ts` | done | Redis location store 자동 연결과 topology ready provider 확인 |
 | `RM-A2` | `Client/Scenarios/RmA2ManualEndpointScenario.cs` | `Client/Scenarios/rm-a2-manual-endpoint-scenario.ts` | done | 수동 endpoint request |
 | `RM-A4` | `Client/Scenarios/RmA4SameRidFailoverScenario.cs` | `Client/Scenarios/rm-a4-same-rid-failover-scenario.ts` | done | dynamic provider 교체 |
 | `RM-A6` | `Client/Scenarios/RmA6MultipleChannelsScenario.cs` | `Client/Scenarios/rm-a6-multiple-channels-scenario.ts` | done | profile/workflow channel 독립성 |
@@ -53,17 +53,17 @@ public contract가 없어 완료하지 못한 범위는 `gap`으로 기록한다
 | `Client/Scenarios/RmC8PayloadRoundTripScenario.cs` | `Client/Scenarios/rm-c8-payload-round-trip-scenario.ts` | scenario | done | `RM-C8` |
 | `Client/Scenarios/RmC9BackpressureScenario.cs` | `Client/Scenarios/rm-c9-backpressure-scenario.ts` | scenario | done | `RM-C9` |
 | `Client/Support/ClientOptions.cs` | `Client/Support/client-options.ts` | support | done | CLI option parsing |
-| `Client/Support/DynamicClusterLauncher.cs` | `Client/Support/dynamic-cluster-launcher.ts` | support | done | dynamic registry/provider process lifecycle |
+| `Client/Support/DynamicClusterLauncher.cs` | `Client/Support/dynamic-cluster-launcher.ts` | support | done | dynamic location-probe/provider process lifecycle |
 | `Client/Support/ScenarioAssert.cs` | `Client/Support/scenario-assert.ts` | support | done | assertion and evidence count helper |
-| `Server/Registry/RegistryMessaging.Registry.csproj` | `Server/Registry/package.json`, `Server/Registry/tsconfig.json` | project | done | registry role build 설정 |
-| `Server/Registry/Program.cs` | `Server/Registry/main.ts` | server-entry | done | registry role 실행 진입점 |
-| `Server/Registry/RegistryHostFactory.cs` | `Server/Registry/registry-host-factory.ts` | server-role | done | NestJS registry module와 HTTP server 구성 |
-| `Server/Registry/Configuration/ServerOptions.cs` | `Server/Registry/Configuration/server-options.ts` | configuration | done | registry CLI/env parsing |
-| `Server/Registry/Endpoints/RegistryMessagingEndpoints.cs` | `Server/Registry/Endpoints/registry-messaging-endpoints.ts` | endpoints | done | health, topology, evidence, shutdown HTTP 표면 |
-| `Server/Registry/Infrastructure/EvidenceStore.cs` | `Server/Registry/Infrastructure/evidence-store.ts` | infrastructure | done | registry evidence 저장 |
+| `Server/LocationProbe/RegistryMessaging.Registry.csproj` | `Server/LocationProbe/package.json`, `Server/LocationProbe/tsconfig.json` | project | done | location probe role build 설정 |
+| `Server/LocationProbe/Program.cs` | `Server/LocationProbe/main.ts` | server-entry | done | location probe role 실행 진입점 |
+| `Server/LocationProbe/RegistryHostFactory.cs` | `Server/LocationProbe/location-probe-host-factory.ts` | server-role | done | Redis location store probe와 HTTP server 구성 |
+| `Server/LocationProbe/Configuration/ServerOptions.cs` | `Server/LocationProbe/Configuration/server-options.ts` | configuration | done | location-probe CLI/env parsing |
+| `Server/LocationProbe/Endpoints/RegistryMessagingEndpoints.cs` | `Server/LocationProbe/Endpoints/location-probe-endpoints.ts` | endpoints | done | health, topology, evidence, shutdown HTTP 표면 |
+| `Server/LocationProbe/Infrastructure/EvidenceStore.cs` | `Server/LocationProbe/Infrastructure/evidence-store.ts` | infrastructure | done | location probe evidence 저장 |
 | `Server/Provider/RegistryMessaging.Provider.csproj` | `Server/Provider/package.json`, `Server/Provider/tsconfig.json` | project | done | provider role build 설정 |
 | `Server/Provider/Program.cs` | `Server/Provider/main.ts` | server-entry | done | provider role 실행 진입점 |
-| `Server/Provider/ProviderHostFactory.cs` | `Server/Provider/provider-host-factory.ts` | server-role | done | NestJS framework, discovery, channel, route 설정 |
+| `Server/Provider/ProviderHostFactory.cs` | `Server/Provider/provider-host-factory.ts` | server-role | done | NestJS framework, location store, channel, route 설정 |
 | `Server/Provider/Configuration/ServerOptions.cs` | `Server/Provider/Configuration/server-options.ts`, `feature-map.ko.md` | configuration | done | rid/channel/route/weight option 구현 |
 | `Server/Provider/Endpoints/ProviderEndpoints.cs` | `Server/Provider/Endpoints/provider-endpoints.ts` | endpoints | done | profile, route, evidence, shutdown HTTP 표면 |
 | `Server/Provider/Handlers/ProviderHandlers.cs` | `Server/Provider/Handlers/provider-handlers.ts` | handlers | done | profile request/send, payload, route, dispatch observer |
@@ -78,7 +78,7 @@ public contract가 없어 완료하지 못한 범위는 `gap`으로 기록한다
 | `Server/Consumer/RegistryMessaging.Consumer.csproj` | `Server/Consumer/package.json`, `Server/Consumer/tsconfig.json` | project | done | consumer role build 설정 |
 | `Server/Consumer/Program.cs` | `Server/Consumer/main.ts` | server-entry | done | consumer role 실행 진입점 |
 | `Server/Consumer/ConsumerHostFactory.cs` | `Server/Consumer/consumer-host-factory.ts` | server-role | done | client-only profile channel 설정 |
-| `Server/Consumer/Configuration/ConsumerOptions.cs` | `Server/Consumer/Configuration/consumer-options.ts`, `feature-map.ko.md` | configuration | done | provider endpoint와 registry option을 구현한다. |
+| `Server/Consumer/Configuration/ConsumerOptions.cs` | `Server/Consumer/Configuration/consumer-options.ts`, `feature-map.ko.md` | configuration | done | provider endpoint와 Redis location store option을 구현한다. |
 | `Server/Consumer/Endpoints/ConsumerEndpoints.cs` | `Server/Consumer/Endpoints/consumer-endpoints.ts` | endpoints | done | batch, timeout, missing, payload, backpressure HTTP 표면 |
 | 없음 | `logs/.gitignore` | config | done | Node 실행 로그 디렉터리 추적용 |
 

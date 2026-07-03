@@ -26,9 +26,8 @@ export async function startSessionHost(args: readonly string[]): Promise<void> {
         useFactory: () => {
           const builder = zlinkFramework();
           builder
-            .useDiscovery()
-              .addRegistryEndpoint(options.registryRouterEndpoint)
-            .configureDispatch()
+            .useInMemoryLocationStores()
+.configureDispatch()
             .messageFlow(ZLinkMessageFlowLogMode.KeyTransitions)
             .traceLogFile(`${options.logDir}/${options.rid}-flow.log`)
             .traceLabel(options.rid);

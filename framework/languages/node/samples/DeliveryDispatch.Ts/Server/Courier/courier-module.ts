@@ -6,6 +6,7 @@ import { BindCourierHandler } from './bind-courier-handler';
 import { CourierActorFactory } from './courier-actor';
 import { CourierEntrySpot } from './courier-entry-spot';
 import { OfferDeliveryActorNodeHandler, OfferDeliveryHandler } from './offer-delivery-handler';
+import { createDeliveryDispatchLocationStore, deliveryDispatchLocationOptions } from '../Configuration/location-store';
 import type { DeliveryDispatchServerConfig } from '../Configuration/sample-config';
 
 type CourierOptions = {
@@ -25,9 +26,9 @@ function createCourierGatewayModule(config: DeliveryDispatchServerConfig) {
             .messageFlow(ZLinkMessageFlowLogMode.KeyTransitions)
             .traceLogFile(`${process.env.DELIVERYDISPATCH_LOG_DIR ?? 'logs'}/flow-courier-gateway.log`)
             .traceLabel('courier-gateway');
+          builder.addLocationStore(createDeliveryDispatchLocationStore(config));
+          Object.assign(builder.configureLocations(), deliveryDispatchLocationOptions());
           return builder
-            .useDiscovery()
-              .addRegistryEndpoint(config.registryRouterEndpoint)
             .addClientServerChannel(SampleNames.courierRouteChannel)
               .enableServer(config.courierRouteEndpoint)
               .addHandlerGroup('courier-gateway')
@@ -69,9 +70,9 @@ function createCourierActorNodeModule(config: DeliveryDispatchServerConfig, opti
             .messageFlow(ZLinkMessageFlowLogMode.KeyTransitions)
             .traceLogFile(`${process.env.DELIVERYDISPATCH_LOG_DIR ?? 'logs'}/flow-${nodeRid}.log`)
             .traceLabel(nodeRid);
+          builder.addLocationStore(createDeliveryDispatchLocationStore(config));
+          Object.assign(builder.configureLocations(), deliveryDispatchLocationOptions());
           return builder
-            .useDiscovery()
-              .addRegistryEndpoint(config.registryRouterEndpoint)
             .addRouteMesh(SampleNames.courierActorNodeRouteChannel)
               .enableRouter(endpoint)
               .routingId(nodeRid)

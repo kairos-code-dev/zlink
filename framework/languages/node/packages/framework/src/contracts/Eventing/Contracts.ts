@@ -1,9 +1,19 @@
 import type { RoutingId } from '../Common';
 import type {
-  ZLinkRegistryServiceSummaryEntry,
-  ZLinkRegistryStatus,
-  ZLinkRegistryTopologyEntry
-} from '../Registry';
+  ZLinkActorLocation,
+  ZLinkActorLocationKey,
+  ZLinkLocationAutoConnectType,
+  ZLinkLocationRuntimeStatus,
+  ZLinkLocationServiceSummary,
+  ZLinkLocationServiceSummaryFilter,
+  ZLinkLocationTopologyEntry,
+  ZLinkLocationTopologyFilter,
+  ZLinkPeerLocation,
+  ZLinkRouteLocation,
+  ZLinkRouteLocationKey,
+  ZLinkSpotLocation,
+  ZLinkSpotLocationKey
+} from '../Locations';
 import type {
   ZLinkSpotNodePeerEntry,
   ZLinkSpotNodeStatus,
@@ -12,8 +22,12 @@ import type {
 
 export interface ZLinkMonitoringOptions {
   socket?: ZLinkSocketMonitoringRegistration[];
-  registry?: ZLinkPollingMonitoringRegistration[];
   spot?: ZLinkPollingMonitoringRegistration[];
+  locationRuntime?: ZLinkPollingMonitoringRegistration[];
+  locationPeer?: ZLinkLocationMonitoringRegistration[];
+  locationSpot?: ZLinkLocationMonitoringRegistration[];
+  locationActor?: ZLinkLocationMonitoringRegistration[];
+  locationRoute?: ZLinkLocationMonitoringRegistration[];
 }
 
 export interface ZLinkSocketMonitoringRegistration {
@@ -24,6 +38,10 @@ export interface ZLinkSocketMonitoringRegistration {
 export interface ZLinkPollingMonitoringRegistration {
   readonly sourceName: string;
   readonly intervalMs: number;
+}
+
+export interface ZLinkLocationMonitoringRegistration {
+  readonly sourceName: string;
 }
 
 export interface ZLinkRuntimeEvent {
@@ -82,17 +100,77 @@ export interface ZLinkSocketEvent extends ZLinkRuntimeEvent {
   readonly diagnostic?: ZLinkSocketDiagnostic;
 }
 
-export enum ZLinkRegistryEventKind {
+export enum ZLinkLocationRuntimeEventKind {
   StatusChanged = 0,
   TopologyChanged = 1,
-  ServiceSummaryChanged = 2
+  ServiceSummaryChanged = 2,
+  StoreUnavailable = 3,
+  StoreRecovered = 4
 }
 
-export interface ZLinkRegistryEvent extends ZLinkRuntimeEvent {
-  readonly event: ZLinkRegistryEventKind;
-  readonly status?: ZLinkRegistryStatus;
-  readonly topology?: readonly ZLinkRegistryTopologyEntry[];
-  readonly serviceSummary?: readonly ZLinkRegistryServiceSummaryEntry[];
+export interface ZLinkLocationRuntimeEvent extends ZLinkRuntimeEvent {
+  readonly event: ZLinkLocationRuntimeEventKind;
+  readonly status?: ZLinkLocationRuntimeStatus;
+  readonly topology?: readonly ZLinkLocationTopologyEntry[];
+  readonly topologyFilter?: ZLinkLocationTopologyFilter;
+  readonly serviceSummary?: readonly ZLinkLocationServiceSummary[];
+  readonly serviceSummaryFilter?: ZLinkLocationServiceSummaryFilter;
+}
+
+export enum ZLinkLocationPeerEventKind {
+  RowUpdated = 0,
+  RowRemoved = 1,
+  DesiredSetChanged = 2
+}
+
+export interface ZLinkAutoConnectDesiredSetChange {
+  readonly autoConnectType: ZLinkLocationAutoConnectType;
+  readonly meshName: string;
+  readonly connectedEndpoints: readonly string[];
+  readonly disconnectedEndpoints: readonly string[];
+}
+
+export interface ZLinkLocationPeerEvent extends ZLinkRuntimeEvent {
+  readonly event: ZLinkLocationPeerEventKind;
+  readonly key?: string;
+  readonly peer?: ZLinkPeerLocation;
+  readonly desiredSetChange?: ZLinkAutoConnectDesiredSetChange;
+}
+
+export enum ZLinkLocationSpotEventKind {
+  RowUpdated = 0,
+  RowRemoved = 1,
+  ResolveMiss = 2
+}
+
+export interface ZLinkLocationSpotEvent extends ZLinkRuntimeEvent {
+  readonly event: ZLinkLocationSpotEventKind;
+  readonly key: ZLinkSpotLocationKey;
+  readonly spot?: ZLinkSpotLocation;
+}
+
+export enum ZLinkLocationActorEventKind {
+  RowUpdated = 0,
+  RowRemoved = 1,
+  ResolveMiss = 2
+}
+
+export interface ZLinkLocationActorEvent extends ZLinkRuntimeEvent {
+  readonly event: ZLinkLocationActorEventKind;
+  readonly key: ZLinkActorLocationKey;
+  readonly actor?: ZLinkActorLocation;
+}
+
+export enum ZLinkLocationRouteEventKind {
+  RowUpdated = 0,
+  RowRemoved = 1,
+  ResolveMiss = 2
+}
+
+export interface ZLinkLocationRouteEvent extends ZLinkRuntimeEvent {
+  readonly event: ZLinkLocationRouteEventKind;
+  readonly key: ZLinkRouteLocationKey;
+  readonly route?: ZLinkRouteLocation;
 }
 
 export enum ZLinkSpotEventKind {

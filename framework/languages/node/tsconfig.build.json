@@ -11,6 +11,9 @@
       "path": "./packages/framework-codec-protobuf"
     },
     {
+      "path": "./packages/framework-locations-redis"
+    },
+    {
       "path": "./packages/http-client"
     },
     {

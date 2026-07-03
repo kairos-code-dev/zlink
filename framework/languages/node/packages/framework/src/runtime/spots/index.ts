@@ -50,6 +50,9 @@ import {
   ZLinkEncodedPayload,
   ZLinkMessage,
   isZLinkMessage,
+  ZLinkLocationAutoConnectType,
+  ZLinkLocationRole,
+  ZLinkLocationWriteStatus,
   ZLinkSpotCreateState,
   ZLinkSpotKind,
   ZLinkSpotEventKind,
@@ -100,6 +103,24 @@ import {
   type ZLinkChannelEnvelopeCodecRegistry
 } from '../channels/channel-envelope';
 import { ZLinkAsyncSubmitter } from '../messaging';
+import {
+  ZLinkAutoConnectLoop,
+  ZLinkAutoConnectReconciler,
+  ZLinkLocationRuntime,
+  ZLinkOwnerLeaseTracker,
+  ZLinkStoreLocationResolvers,
+  type IZLinkAutoConnectExecutor,
+  type ZLinkAutoConnectLocal,
+  type ZLinkAutoConnectTarget,
+  type ZLinkLocationEventSink,
+  type ZLinkLocationRuntimeStores
+} from '../locations';
+import type {
+  IZLinkLocationChangeStampStore,
+  IZLinkLocationWatchStore,
+  ZLinkLocationOptions,
+  ZLinkPeerLocation
+} from '../../contracts';
 import type { ZLinkWorkerCall } from '../../contracts';
 import { DefaultZLinkWorkerCall, deliverOnSerial, ZLinkSpotWorkerRuntime } from '../workers';
 import {
@@ -114,10 +135,13 @@ import {
   ZLINK_REMOTE_ACTOR_PACKET_RELAY_PACKET,
   ZLINK_REMOTE_ACTOR_SESSION_DISCONNECTED_PACKET,
   ZLINK_REMOTE_BOUND_SESSION_SEND_PACKET,
+  ZLINK_REMOTE_BOUND_SESSION_RESPONSE_PACKET,
+  ZLINK_REMOTE_BOUND_SESSION_ERROR_PACKET,
   ZLinkSpotActorDispatcher,
   ZLinkSpotActorHandlerRegistryRuntime
 } from '../actors';
 import type { ZLinkRemoteActorPacketTarget, ZLinkRemoteBoundSessionTarget } from '../actors';
+import type { ZLinkLocationLifecycle } from '../locations';
 import {
   decodeStreamHeader,
   messageToBytes,
@@ -163,6 +187,8 @@ export interface ZLinkSpotManagerOptions {
   readonly runtimeEventPublisher?: ZLinkRuntimeEventPublisher;
   readonly workerRuntime?: ZLinkSpotWorkerRuntime;
   readonly messageSerializers?: ReadonlyMap<string, ZLinkMessageSerializer>;
+  readonly locationLifecycle?: ZLinkLocationLifecycle;
+  readonly locationMeshName?: string;
   // Backs each user Spot with a core-native Spot object (registered for join
   // routing by rid) so actor-join admission uses the same recv/reply round-trip
   // as the Entry Spot and .NET, for local and remote callers alike.
@@ -206,6 +232,24 @@ export interface ZLinkSpotManagerOptions {
     metadata: ReadonlyMap<string, string>,
     signal?: AbortSignal
   ) => Promise<void>;
+  readonly routedBoundSessionResponseReceiver?: (
+    actorId: string,
+    packetName: string,
+    requestSeq: bigint,
+    message: unknown,
+    metadata: ReadonlyMap<string, string>,
+    actorPacketTarget?: unknown,
+    signal?: AbortSignal
+  ) => Promise<void>;
+  readonly routedBoundSessionErrorReceiver?: (
+    actorId: string,
+    packetName: string,
+    requestSeq: bigint,
+    error: unknown,
+    metadata: ReadonlyMap<string, string>,
+    actorPacketTarget?: unknown,
+    signal?: AbortSignal
+  ) => Promise<void>;
   readonly remoteActorPacketTargetReceiver?: (
     actorId: string,
     target: ZLinkRemoteBoundSessionTarget
@@ -235,18 +279,31 @@ export interface ZLinkSpotNodeRuntimeManagerOptions {
   readonly actorResolver?: (actorId: string) => ZLinkActor | undefined;
   readonly routedActorProvider?: ZLinkSpotManagerOptions['routedActorProvider'];
   readonly routedBoundSessionReceiver?: ZLinkSpotManagerOptions['routedBoundSessionReceiver'];
+  readonly routedBoundSessionResponseReceiver?: ZLinkSpotManagerOptions['routedBoundSessionResponseReceiver'];
+  readonly routedBoundSessionErrorReceiver?: ZLinkSpotManagerOptions['routedBoundSessionErrorReceiver'];
   readonly remoteActorPacketTargetReceiver?: ZLinkSpotManagerOptions['remoteActorPacketTargetReceiver'];
   readonly actorPacketTargetProvider?: ZLinkSpotManagerOptions['actorPacketTargetProvider'];
   readonly actorResponseSender?: ZLinkSpotManagerOptions['actorResponseSender'];
   readonly actorErrorSender?: ZLinkSpotManagerOptions['actorErrorSender'];
   readonly localActorPacketRouter?: ZLinkSpotManagerOptions['localActorPacketRouter'];
-  readonly entryActorCommitter?: (actor: ZLinkActor) => void;
+  readonly entryActorCommitter?: (actor: ZLinkActor) => Promise<void> | void;
   readonly actorDestroyer?: (
     node: ZLinkBackendSpotNode,
     entryNodeRid: RoutingId,
     actor: ZLinkActor,
     signal?: AbortSignal
   ) => Promise<void>;
+}
+
+interface ZLinkSpotNodeLocationAutoConnectContext {
+  readonly runtime: ZLinkLocationRuntime;
+  readonly stores: ZLinkLocationRuntimeStores;
+  readonly options: ZLinkLocationOptions;
+  readonly leaseTracker: ZLinkOwnerLeaseTracker;
+  readonly resolver: ZLinkStoreLocationResolvers;
+  readonly events?: ZLinkLocationEventSink;
+  readonly changeStampStore?: IZLinkLocationChangeStampStore;
+  readonly watchStore?: IZLinkLocationWatchStore;
 }
 
 const REMOTE_ACTOR_JOIN_PACKET = '__zlink.actor.join_spot.request';
@@ -274,10 +331,77 @@ export class ZLinkSpotNodeRuntimeManager {
   private readonly entryRouteDispatches: ZLinkSpotActorJoinDispatch[] = [];
   private readonly ownedObjects: ZLinkOwnedBackendObject[] = [];
   private readonly publisherBundles = new Map<string, ZLinkSpotPublisherBundle>();
+  private readonly autoConnectLoops: ZLinkAutoConnectLoop[] = [];
   private readonly workerRuntime: ZLinkSpotWorkerRuntime;
+  private locationAutoConnect?: ZLinkSpotNodeLocationAutoConnectContext;
 
   constructor(private readonly options: ZLinkSpotNodeRuntimeManagerOptions) {
     this.workerRuntime = new ZLinkSpotWorkerRuntime(options.registration.worker);
+  }
+
+  configureLocationAutoConnect(
+    runtime: ZLinkLocationRuntime,
+    stores: ZLinkLocationRuntimeStores,
+    options: ZLinkLocationOptions,
+    events?: ZLinkLocationEventSink
+  ): void {
+    const leaseTracker = new ZLinkOwnerLeaseTracker({
+      store: stores.ownerLeaseStore,
+      options
+    });
+    this.locationAutoConnect = {
+      runtime,
+      stores,
+      options,
+      leaseTracker,
+      resolver: new ZLinkStoreLocationResolvers({
+        stores,
+        leaseTracker,
+        events
+      }),
+      events,
+      changeStampStore: isLocationChangeStampStore(stores.peerStore) ? stores.peerStore : undefined,
+      watchStore: isLocationWatchStore(stores.peerStore) ? stores.peerStore : undefined
+    };
+  }
+
+  async startLocationAutoConnect(signal?: AbortSignal): Promise<void> {
+    const location = this.locationAutoConnect;
+    if (location === undefined || this.autoConnectLoops.length > 0) {
+      return;
+    }
+    try {
+      for (const [spotNodeName, spotNode] of this.options.registration.spotNodes.entries()) {
+        const node = this.nodes.get(spotNodeName);
+        const capability = node === undefined ? undefined : spotNodeAutoConnectCapability(spotNodeName, spotNode, node);
+        if (capability === undefined) {
+          continue;
+        }
+        const reconciler = new ZLinkAutoConnectReconciler({
+          local: capability.local,
+          localRow: capability.localRow,
+          runtime: location.runtime,
+          peerResolver: location.resolver,
+          executor: capability.executor,
+          events: location.events,
+          options: location.options
+        });
+        const loop = new ZLinkAutoConnectLoop({
+          reconciler,
+          local: capability.local,
+          options: location.options,
+          changeStampStore: location.changeStampStore,
+          watchStore: location.watchStore,
+          leaseTracker: location.leaseTracker
+        });
+        await loop.start(signal);
+        this.autoConnectLoops.push(loop);
+      }
+    } catch (error) {
+      await Promise.allSettled(this.autoConnectLoops.map((loop) => loop.stop(signal)));
+      this.autoConnectLoops.length = 0;
+      throw error;
+    }
   }
 
   async start(): Promise<void> {
@@ -346,17 +470,20 @@ export class ZLinkSpotNodeRuntimeManager {
   }
 
   async dispose(): Promise<void> {
+    const autoConnectLoops = [...this.autoConnectLoops];
     const nodes = [...this.nodes.values()];
     const ownedObjects = [...this.ownedObjects];
     const entryActivations = [...this.entryActivations.values()];
     this.nodes.clear();
     this.entryActivations.clear();
     this.entryRouteDispatches.length = 0;
+    this.autoConnectLoops.length = 0;
     this.ownedObjects.length = 0;
     for (const bundle of this.publisherBundles.values()) {
       bundle.submitter.dispose();
     }
     this.publisherBundles.clear();
+    await Promise.allSettled(autoConnectLoops.map((loop) => loop.stop()));
     for (const object of ownedObjects.reverse()) {
       await object.dispose();
     }
@@ -398,6 +525,8 @@ export class ZLinkSpotNodeRuntimeManager {
       actorResolver: (actorId) => this.options.actorResolver?.(actorId),
       entryActorCommitter: this.options.entryActorCommitter,
       routedBoundSessionReceiver: this.options.routedBoundSessionReceiver,
+      routedBoundSessionResponseReceiver: this.options.routedBoundSessionResponseReceiver,
+      routedBoundSessionErrorReceiver: this.options.routedBoundSessionErrorReceiver,
       remoteActorPacketTargetReceiver: this.options.remoteActorPacketTargetReceiver,
       actorPacketTargetProvider: this.options.actorPacketTargetProvider,
       localActorPacketRouter: this.options.localActorPacketRouter,
@@ -438,6 +567,8 @@ export class ZLinkSpotNodeRuntimeManager {
       undefined,
       undefined,
       this.options.routedBoundSessionReceiver,
+      this.options.routedBoundSessionResponseReceiver,
+      this.options.routedBoundSessionErrorReceiver,
       this.options.actorPacketTargetProvider,
       undefined,
       this.options.messageSerializers,
@@ -488,6 +619,108 @@ export class ZLinkSpotNodeRuntimeManager {
     );
   }
 
+}
+
+interface ZLinkSpotNodeAutoConnectCapability {
+  readonly local: ZLinkAutoConnectLocal;
+  readonly localRow: ZLinkPeerLocation;
+  readonly executor: IZLinkAutoConnectExecutor;
+}
+
+const SPOT_PUB_ENDPOINT_METADATA_KEY = 'pub-endpoint';
+
+function spotNodeAutoConnectCapability(
+  spotNodeName: string,
+  spotNode: ZLinkSpotNodeOptions,
+  node: ZLinkBackendSpotNode
+): ZLinkSpotNodeAutoConnectCapability | undefined {
+  if (spotNode.router === undefined) {
+    return undefined;
+  }
+  const endpoint = spotNode.router.bind ?? '';
+  const local: ZLinkAutoConnectLocal = {
+    autoConnectType: ZLinkLocationAutoConnectType.SpotMesh,
+    meshName: spotNodeName,
+    role: ZLinkLocationRole.Spot,
+    nodeRid: node.routingId,
+    endpoint
+  };
+  const metadata = spotNode.pubSub?.bind === undefined
+    ? undefined
+    : { [SPOT_PUB_ENDPOINT_METADATA_KEY]: spotNode.pubSub.bind };
+  return {
+    local,
+    localRow: {
+      autoConnectType: local.autoConnectType,
+      meshName: local.meshName,
+      nodeRid: local.nodeRid,
+      role: local.role,
+      endpoint,
+      weight: 100,
+      value: 0n,
+      metadata,
+      ownerId: '',
+      generation: 0n,
+      updatedAt: new Date(0)
+    },
+    executor: new ZLinkSpotNodeAutoConnectExecutor(node, spotNodeManualEndpoints(spotNode))
+  };
+}
+
+function spotNodeManualEndpoints(spotNode: ZLinkSpotNodeOptions): ReadonlySet<string> {
+  return new Set([
+    ...(spotNode.router?.manualConnections ?? []),
+    ...(spotNode.router?.manualPeerConnections ?? []).map((connection) => connection.endpoint),
+    ...(spotNode.pubSub?.manualConnections ?? [])
+  ]);
+}
+
+class ZLinkSpotNodeAutoConnectExecutor implements IZLinkAutoConnectExecutor {
+  constructor(
+    private readonly node: ZLinkBackendSpotNode,
+    private readonly manualEndpoints: ReadonlySet<string>
+  ) {}
+
+  connect(target: ZLinkAutoConnectTarget): void {
+    if (!this.manualEndpoints.has(target.endpoint)) {
+      if (target.nodeRid !== undefined) {
+        this.node.connectPeerRid(target.nodeRid, target.endpoint);
+      } else {
+        this.node.connectPeer(target.endpoint);
+      }
+    }
+    const pubEndpoint = spotPubEndpointOf(target);
+    if (pubEndpoint !== undefined && !this.manualEndpoints.has(pubEndpoint)) {
+      this.node.connectPeer(pubEndpoint);
+    }
+  }
+
+  disconnect(target: ZLinkAutoConnectTarget): void {
+    if (!this.manualEndpoints.has(target.endpoint)) {
+      this.node.disconnectPeer(target.endpoint);
+    }
+    const pubEndpoint = spotPubEndpointOf(target);
+    if (pubEndpoint !== undefined && !this.manualEndpoints.has(pubEndpoint)) {
+      this.node.disconnectPeer(pubEndpoint);
+    }
+  }
+}
+
+function spotPubEndpointOf(target: ZLinkAutoConnectTarget): string | undefined {
+  const endpoint = target.metadata?.[SPOT_PUB_ENDPOINT_METADATA_KEY];
+  return endpoint === undefined || endpoint.length === 0 ? undefined : endpoint;
+}
+
+function isLocationChangeStampStore(value: unknown): value is IZLinkLocationChangeStampStore {
+  return value !== null
+    && typeof value === 'object'
+    && typeof (value as { getChangeStamp?: unknown }).getChangeStamp === 'function';
+}
+
+function isLocationWatchStore(value: unknown): value is IZLinkLocationWatchStore {
+  return value !== null
+    && typeof value === 'object'
+    && typeof (value as { watch?: unknown }).watch === 'function';
 }
 
 interface ZLinkSpotNodeConnectorOptions {
@@ -600,13 +833,15 @@ interface ZLinkEntrySpotActivationOptions {
   readonly workerRuntime?: ZLinkSpotWorkerRuntime;
   readonly messageSerializers?: ReadonlyMap<string, ZLinkMessageSerializer>;
   readonly actorResolver?: (actorId: string) => ZLinkActor | undefined;
-  readonly entryActorCommitter?: (actor: ZLinkActor) => void;
+  readonly entryActorCommitter?: (actor: ZLinkActor) => Promise<void> | void;
   readonly destroyActor?: (
     nodeRid: RoutingId,
     actor: ZLinkActor,
     signal?: AbortSignal
   ) => Promise<void>;
   readonly routedBoundSessionReceiver?: ZLinkSpotManagerOptions['routedBoundSessionReceiver'];
+  readonly routedBoundSessionResponseReceiver?: ZLinkSpotManagerOptions['routedBoundSessionResponseReceiver'];
+  readonly routedBoundSessionErrorReceiver?: ZLinkSpotManagerOptions['routedBoundSessionErrorReceiver'];
   readonly actorResponseSender?: ZLinkSpotManagerOptions['actorResponseSender'];
   readonly actorErrorSender?: ZLinkSpotManagerOptions['actorErrorSender'];
   readonly remoteActorPacketTargetReceiver?: ZLinkSpotManagerOptions['remoteActorPacketTargetReceiver'];
@@ -812,6 +1047,8 @@ class ZLinkSpotActorJoinDispatch {
       fallbackActorRef?: ActorRef
     ) => Promise<unknown>,
     private readonly routedBoundSessionReceiver?: ZLinkSpotManagerOptions['routedBoundSessionReceiver'],
+    private readonly routedBoundSessionResponseReceiver?: ZLinkSpotManagerOptions['routedBoundSessionResponseReceiver'],
+    private readonly routedBoundSessionErrorReceiver?: ZLinkSpotManagerOptions['routedBoundSessionErrorReceiver'],
     private readonly actorPacketTargetProvider?: ZLinkSpotManagerOptions['actorPacketTargetProvider'],
     private readonly bindRemoteActorSession?: (
       actor: ZLinkBackendActorRef,
@@ -1056,7 +1293,15 @@ class ZLinkSpotActorJoinDispatch {
           joinedActor = actor;
         }
       }
-    } catch {
+    } catch (error) {
+      this.dispatchErrors?.report({
+        surface: ZLinkDispatchErrorSurface.SpotActor,
+        messageKind: ZLinkDispatchMessageKind.ActorSend,
+        reason: ZLinkDispatchErrorReason.HandlerException,
+        action: ZLinkDispatchErrorAction.Drop,
+        actorId,
+        error
+      });
       accepted = false;
       reply = undefined;
     }
@@ -1199,6 +1444,40 @@ class ZLinkSpotActorJoinDispatch {
       }
       return;
     }
+    const boundSessionResponse = this.decodeRemoteBoundSessionResponse(received.parts);
+    if (boundSessionResponse !== undefined) {
+      await this.routedBoundSessionResponseReceiver?.(
+        boundSessionResponse.actorId,
+        boundSessionResponse.packetName,
+        boundSessionResponse.requestSeq,
+        boundSessionResponse.message,
+        boundSessionResponse.metadata,
+        boundSessionResponse.actorPacketTarget
+      );
+      if (isReplyableRequestSeq(received.requestSeq)) {
+        received.reply()
+          .message(Buffer.from(JSON.stringify({ ok: true })))
+          .submit();
+      }
+      return;
+    }
+    const boundSessionError = this.decodeRemoteBoundSessionError(received.parts);
+    if (boundSessionError !== undefined) {
+      await this.routedBoundSessionErrorReceiver?.(
+        boundSessionError.actorId,
+        boundSessionError.packetName,
+        boundSessionError.requestSeq,
+        boundSessionError.error,
+        boundSessionError.metadata,
+        boundSessionError.actorPacketTarget
+      );
+      if (isReplyableRequestSeq(received.requestSeq)) {
+        received.reply()
+          .message(Buffer.from(JSON.stringify({ ok: true })))
+          .submit();
+      }
+      return;
+    }
     const actorPacketRelay = this.decodeRemoteActorPacketRelay(received.parts);
     if (actorPacketRelay !== undefined && this.actorPacketHandler !== undefined) {
       let remoteBoundSessionTarget: ZLinkRemoteBoundSessionTarget | undefined;
@@ -1220,7 +1499,43 @@ class ZLinkSpotActorJoinDispatch {
       }
       const header = BindingMessage.from(Buffer.from(actorPacketRelay.header, 'base64'));
       const payload = BindingMessage.from(Buffer.from(actorPacketRelay.payload, 'base64'));
+      let closeFrameMessages = true;
       try {
+        const frameHeader = decodeStreamHeader(messageToBytes(header));
+        const canDeferResponse = this.resolveActor(actorPacketRelay.actorId) !== undefined;
+        if (
+          canDeferResponse &&
+          frameHeader.kind === ZLinkStreamMessageKind.Request &&
+          frameHeader.requestSeq !== undefined
+        ) {
+          const dispatch = this.actorPacketHandler(
+            actorPacketRelay.actorId,
+            [header, payload],
+            false,
+            remoteBoundSessionTarget
+          );
+          closeFrameMessages = false;
+          void dispatch.catch(() => undefined).finally(() => {
+            header.close();
+            payload.close();
+          });
+          const actorPacketTarget = encodeRemoteActorPacketTarget(
+            this.actorPacketTargetProvider?.(actorPacketRelay.actorId)
+          );
+          if (isReplyableRequestSeq(received.requestSeq)) {
+            if (actorPacketRelay.envelope === undefined) {
+              received.reply()
+                .message(Buffer.from(JSON.stringify({ ok: true, deferredResponse: true, actorPacketTarget })))
+                .submit();
+            } else {
+              appendRouteReplyParts(
+                received.reply(),
+                encodeChannelReplyParts(actorPacketRelay.envelope.header, { ok: true, deferredResponse: true, actorPacketTarget })
+              ).submit();
+            }
+          }
+          return;
+        }
         const response = await this.actorPacketHandler(
           actorPacketRelay.actorId,
           [header, payload],
@@ -1264,8 +1579,10 @@ class ZLinkSpotActorJoinDispatch {
         }
         throw error;
       } finally {
-        header.close();
-        payload.close();
+        if (closeFrameMessages) {
+          header.close();
+          payload.close();
+        }
       }
       return;
     }
@@ -1468,6 +1785,105 @@ class ZLinkSpotActorJoinDispatch {
             : {}
         )),
         envelope
+      };
+    } catch {
+      return undefined;
+    }
+  }
+
+  private decodeRemoteBoundSessionResponse(parts: readonly BindingMessage[]): {
+    readonly actorId: string;
+    readonly message: unknown;
+    readonly packetName: string;
+    readonly requestSeq: bigint;
+    readonly metadata: ReadonlyMap<string, string>;
+    readonly actorPacketTarget?: unknown;
+  } | undefined {
+    const decoded = this.decodeRemoteBoundSessionControl(parts, ZLINK_REMOTE_BOUND_SESSION_RESPONSE_PACKET);
+    if (decoded === undefined) {
+      return undefined;
+    }
+    return {
+      actorId: decoded.actorId,
+      message: decoded.payload.message,
+      packetName: decoded.packetName,
+      requestSeq: decoded.requestSeq,
+      metadata: decoded.metadata,
+      actorPacketTarget: decoded.actorPacketTarget
+    };
+  }
+
+  private decodeRemoteBoundSessionError(parts: readonly BindingMessage[]): {
+    readonly actorId: string;
+    readonly error: unknown;
+    readonly packetName: string;
+    readonly requestSeq: bigint;
+    readonly metadata: ReadonlyMap<string, string>;
+    readonly actorPacketTarget?: unknown;
+  } | undefined {
+    const decoded = this.decodeRemoteBoundSessionControl(parts, ZLINK_REMOTE_BOUND_SESSION_ERROR_PACKET);
+    if (decoded === undefined) {
+      return undefined;
+    }
+    return {
+      actorId: decoded.actorId,
+      error: decoded.payload.error,
+      packetName: decoded.packetName,
+      requestSeq: decoded.requestSeq,
+      metadata: decoded.metadata,
+      actorPacketTarget: decoded.actorPacketTarget
+    };
+  }
+
+  private decodeRemoteBoundSessionControl(parts: readonly BindingMessage[], packetName: string): {
+    readonly actorId: string;
+    readonly packetName: string;
+    readonly requestSeq: bigint;
+    readonly metadata: ReadonlyMap<string, string>;
+    readonly payload: { readonly message?: unknown; readonly error?: unknown };
+    readonly actorPacketTarget?: unknown;
+  } | undefined {
+    try {
+      const payload = parts.length === 1
+        ? JSON.parse(parts[0].data().toString()) as {
+            readonly packetName?: unknown;
+            readonly boundPacketName?: unknown;
+            readonly actorId?: unknown;
+            readonly requestSeq?: unknown;
+            readonly message?: unknown;
+            readonly error?: unknown;
+            readonly metadata?: unknown;
+            readonly actorPacketTarget?: unknown;
+          }
+        : decodeChannelPayload(decodeChannelEnvelope(parts), this.channelCodecs()) as {
+            readonly packetName?: unknown;
+            readonly boundPacketName?: unknown;
+            readonly actorId?: unknown;
+            readonly requestSeq?: unknown;
+            readonly message?: unknown;
+            readonly error?: unknown;
+            readonly metadata?: unknown;
+            readonly actorPacketTarget?: unknown;
+          };
+      if (
+        payload.packetName !== packetName ||
+        typeof payload.actorId !== 'string' ||
+        typeof payload.boundPacketName !== 'string' ||
+        typeof payload.requestSeq !== 'string'
+      ) {
+        return undefined;
+      }
+      return {
+        actorId: payload.actorId,
+        packetName: payload.boundPacketName,
+        requestSeq: BigInt(payload.requestSeq),
+        metadata: new Map(Object.entries(
+          typeof payload.metadata === 'object' && payload.metadata !== null
+            ? payload.metadata as Record<string, string>
+            : {}
+        )),
+        payload,
+        actorPacketTarget: payload.actorPacketTarget
       };
     } catch {
       return undefined;
@@ -1730,7 +2146,9 @@ class ZLinkSpotActorJoinDispatch {
     if (
       envelope.packetName === REMOTE_ACTOR_JOIN_PACKET ||
       envelope.packetName === ZLINK_REMOTE_ACTOR_PACKET_RELAY_PACKET ||
-      envelope.packetName === ZLINK_REMOTE_BOUND_SESSION_SEND_PACKET
+      envelope.packetName === ZLINK_REMOTE_BOUND_SESSION_SEND_PACKET ||
+      envelope.packetName === ZLINK_REMOTE_BOUND_SESSION_RESPONSE_PACKET ||
+      envelope.packetName === ZLINK_REMOTE_BOUND_SESSION_ERROR_PACKET
     ) {
       return false;
     }
@@ -2094,6 +2512,8 @@ export class ZLinkEntrySpotActivation {
       (actorId, parts, returnResponse, remoteBoundSessionTarget) =>
         this.dispatchActorPacket(actorId, parts, returnResponse, remoteBoundSessionTarget),
       this.options.routedBoundSessionReceiver,
+      this.options.routedBoundSessionResponseReceiver,
+      this.options.routedBoundSessionErrorReceiver,
       this.options.actorPacketTargetProvider,
       (actor, sourceNodeRid, sourceSessionRid) =>
         String(sourceNodeRid) === String(this.options.nativeNode.routingId)
@@ -2433,6 +2853,7 @@ interface SpotActivation {
   readonly serial: ZLinkSpotSerialExecutor;
   readonly timers: ZLinkSpotTimerRegistry;
   readonly actors: Map<string, ZLinkActor>;
+  readonly leftActors: Set<string>;
   readonly actorHandlers: ZLinkSpotActorHandlerRegistryRuntime;
   readonly handlers: DefaultZLinkSpotHandlerRegistry;
   readonly actorCount: () => number;
@@ -2625,6 +3046,7 @@ export class DefaultZLinkSpotManager implements ZLinkSpotManager {
       throw new ZLinkConfigurationException(`Spot '${spotRid}' is not active.`);
     }
     await activation.serial.execute(async () => {
+      activation.leftActors.add(actor.actorId);
       await activation.spot.onLeaveActor?.(actor, signal);
       activation.actors.delete(actor.actorId);
       this.options.routedActorLeaveCommitter?.(actor);
@@ -2668,7 +3090,10 @@ export class DefaultZLinkSpotManager implements ZLinkSpotManager {
     if (activation === undefined) {
       return false;
     }
-    const joinedActor = activation.actors.get(actor.actorId) ?? actor;
+    const joinedActor = activation.actors.get(actor.actorId);
+    if (joinedActor === undefined) {
+      return false;
+    }
     await activation.serial.execute(() => activation.spot.onDisconnectActor?.(joinedActor, signal));
     return true;
   }
@@ -2787,6 +3212,7 @@ export class DefaultZLinkSpotManager implements ZLinkSpotManager {
     signal?: AbortSignal
   ): Promise<ZLinkSpotCreateResult> {
     this.requireRegisteredFactory(spotType);
+    const locationMeshName = this.resolveLocationMeshName();
     const serial = new ZLinkSpotSerialExecutor();
     const actorHandlers = new ZLinkSpotActorHandlerRegistryRuntime();
     const handlers = new DefaultZLinkSpotHandlerRegistry(actorHandlers);
@@ -2819,9 +3245,33 @@ export class DefaultZLinkSpotManager implements ZLinkSpotManager {
       this.options.remoteAddressResolver,
       this.options.routedTransport
     );
+    if (this.options.locationLifecycle !== undefined) {
+      const status = await this.options.locationLifecycle.claimSpot(
+        locationMeshName,
+        spotRid,
+        spotType.name,
+        this.resolveLocationNodeRid(),
+        ZLinkSpotKind.User
+      );
+      if (status === ZLinkLocationWriteStatus.RejectedConflict) {
+        return { spotRid, state: ZLinkSpotCreateState.Existing };
+      }
+      if (status !== ZLinkLocationWriteStatus.Stored) {
+        throw new ZLinkFrameworkException(
+          ZLinkFrameworkErrorKind.SpotCreateFailed,
+          `Spot '${spotRid}' location claim failed with '${ZLinkLocationWriteStatus[status]}'.`
+        );
+      }
+    }
+
     let spot: ZLinkSpot | undefined;
     const context = this.createSpotContext(spotRid, handlers, outbound, timers, serial, () => spot);
-    spot = await createFreshProviderInstance(spotType, this.options.providerResolver, context);
+    try {
+      spot = await createFreshProviderInstance(spotType, this.options.providerResolver, context);
+    } catch (error) {
+      await this.releaseLocationSpot(locationMeshName, spotRid);
+      throw error;
+    }
     Object.defineProperty(spot, 'context', {
       configurable: true,
       enumerable: false,
@@ -2829,6 +3279,7 @@ export class DefaultZLinkSpotManager implements ZLinkSpotManager {
     });
 
     const actors = new Map<string, ZLinkActor>();
+    const leftActors = new Set<string>();
     // getOrCreateSpot registers the native Spot under this rid so core routes
     // actor-join admission requests to it (createSpot alone does not register).
     const nativeSpot = this.options.createNativeSpot?.(spotRid);
@@ -2839,6 +3290,7 @@ export class DefaultZLinkSpotManager implements ZLinkSpotManager {
       serial,
       timers,
       actors,
+      leftActors,
       actorHandlers,
       handlers,
       actorCount: () => actors.size + (this.options.actorCountProvider?.(spotRid) ?? 0),
@@ -2851,18 +3303,23 @@ export class DefaultZLinkSpotManager implements ZLinkSpotManager {
       nativeDispatch = new ZLinkSpotActorJoinDispatch(
         nativeSpot,
         serial,
-        (actorId) => this.options.actorResolver?.(actorId),
+        (actorId) => activation.leftActors.has(actorId)
+          ? undefined
+          : activation.actors.get(actorId) ?? this.options.actorResolver?.(actorId),
         () => activation.spot,
         false,
         this.options.routedActorProvider,
         this.options.nativeJoinBoundSessionTargetResolver,
         (actor) => {
           this.options.routedActorCommitter?.(actor, spotRid, activation.spot);
+          activation.leftActors.delete(actor.actorId);
           activation.actors.set(actor.actorId, actor);
         },
         (actorId, parts, returnResponse, remoteBoundSessionTarget) =>
           this.dispatchActorPacket(activation, actorId, parts, returnResponse, remoteBoundSessionTarget),
         this.options.routedBoundSessionReceiver,
+        this.options.routedBoundSessionResponseReceiver,
+        this.options.routedBoundSessionErrorReceiver,
         this.options.actorPacketTargetProvider,
         (actor, sourceNodeRid, sourceSessionRid) => {
           const node = this.options.nativeSpotNodeProvider?.();
@@ -2916,6 +3373,7 @@ export class DefaultZLinkSpotManager implements ZLinkSpotManager {
       });
       if (createResponse?.accepted === false) {
         await activation.timers.dispose();
+        await this.releaseLocationSpot(locationMeshName, spotRid);
         return {
           spotRid,
           state: ZLinkSpotCreateState.Rejected,
@@ -2930,6 +3388,7 @@ export class DefaultZLinkSpotManager implements ZLinkSpotManager {
       };
     } catch (error) {
       await this.closeActivation(activation, signal);
+      await this.releaseLocationSpot(locationMeshName, spotRid);
       throw error;
     }
   }
@@ -3007,7 +3466,34 @@ export class DefaultZLinkSpotManager implements ZLinkSpotManager {
       if (activation.nativeSpot !== undefined && typeof activation.nativeSpot.dispose === 'function') {
         await activation.nativeSpot.dispose();
       }
+      await this.releaseLocationSpot(this.resolveLocationMeshName(), activation.spotRid);
     }
+  }
+
+  private resolveLocationMeshName(): string {
+    if (this.options.locationLifecycle === undefined) {
+      return '';
+    }
+    const meshName = this.options.locationMeshName;
+    if (meshName === undefined || meshName.length === 0) {
+      throw new ZLinkConfigurationException('Location spot claim requires a mesh name.');
+    }
+    return meshName;
+  }
+
+  private resolveLocationNodeRid(): RoutingId {
+    const nodeRid = this.options.nodeRidProvider?.() ?? this.options.nodeRid;
+    if (nodeRid === undefined) {
+      throw new ZLinkConfigurationException('Location spot claim requires a node routing id.');
+    }
+    return nodeRid;
+  }
+
+  private async releaseLocationSpot(meshName: string, spotRid: RoutingId): Promise<void> {
+    if (this.options.locationLifecycle === undefined) {
+      return;
+    }
+    await this.options.locationLifecycle.releaseSpot(meshName, spotRid);
   }
 
   private requireRegisteredFactory(spotType: Type<ZLinkSpot>): void {
@@ -3075,6 +3561,9 @@ export class DefaultZLinkSpotManager implements ZLinkSpotManager {
       actorId,
       correlationId: header.correlationId ?? header.requestSeq?.toString()
     });
+    if (activation.leftActors.has(actorId) && header.name === ZLINK_REMOTE_ACTOR_SESSION_DISCONNECTED_PACKET) {
+      return undefined;
+    }
     const actor = activation.actors.get(actorId) ?? this.options.actorResolver?.(actorId);
     if (actor === undefined) {
       this.options.dispatchErrors?.report({

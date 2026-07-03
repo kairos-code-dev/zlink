@@ -311,12 +311,8 @@ test('Entry Spot routed bound session command decodes registered channel seriali
 test('runtime host reports joined Spot route before stale remote actor packet target', () => {
   const runtime = new framework.ZLinkFrameworkRuntimeHost({
     registration: framework.createFrameworkRegistration({
-      discovery: { registries: ['tcp://127.0.0.1:19000'] },
-      routeChannels: ['bingo.room.route'],
-      registrySpotRemoteAddresses: {
-        namespace: 'bingo',
-        routerChannelId: 'bingo.room.route'
-      }
+      locations: { useInMemoryStores: true },
+      routeChannels: ['bingo.room.route']
     })
   });
   runtime.actorManager = {
@@ -403,12 +399,8 @@ test('runtime host remembers routed packet target for stream-bound actors withou
   const routedTargets = [];
   const runtime = new framework.ZLinkFrameworkRuntimeHost({
     registration: framework.createFrameworkRegistration({
-      discovery: { registries: ['tcp://127.0.0.1:19000'] },
-      routeChannels: ['bingo.room.route'],
-      registrySpotRemoteAddresses: {
-        namespace: 'bingo',
-        routerChannelId: 'bingo.room.route'
-      }
+      locations: { useInMemoryStores: true },
+      routeChannels: ['bingo.room.route']
     })
   });
   runtime.routeTransport.requestRawToSpot = async (remoteAddress) => {
@@ -454,12 +446,8 @@ test('runtime host keeps routed packet target across stream actor wrappers', asy
   const routedTargets = [];
   const runtime = new framework.ZLinkFrameworkRuntimeHost({
     registration: framework.createFrameworkRegistration({
-      discovery: { registries: ['tcp://127.0.0.1:19000'] },
-      routeChannels: ['bingo.room.route'],
-      registrySpotRemoteAddresses: {
-        namespace: 'bingo',
-        routerChannelId: 'bingo.room.route'
-      }
+      locations: { useInMemoryStores: true },
+      routeChannels: ['bingo.room.route']
     })
   });
   runtime.routeTransport.requestRawToSpot = async (remoteAddress) => {
@@ -510,12 +498,8 @@ test('runtime host raw actor relay reply updates actor packet target for the nex
   const routedTargets = [];
   const runtime = new framework.ZLinkFrameworkRuntimeHost({
     registration: framework.createFrameworkRegistration({
-      discovery: { registries: ['tcp://127.0.0.1:19000'] },
-      routeChannels: ['bingo.room.route'],
-      registrySpotRemoteAddresses: {
-        namespace: 'bingo',
-        routerChannelId: 'bingo.room.route'
-      }
+      locations: { useInMemoryStores: true },
+      routeChannels: ['bingo.room.route']
     })
   });
   runtime.spotNodeRuntime = {

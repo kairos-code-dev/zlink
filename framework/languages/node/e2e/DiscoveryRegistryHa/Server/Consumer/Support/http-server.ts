@@ -1,1 +1,1 @@
-export { closeHttpServer, startHttpServer, type HttpRoute } from '../../Registry/Support/http-server';
+export { closeHttpServer, startHttpServer, type HttpRoute } from '../../LocationProbe/Support/http-server';

@@ -44,6 +44,7 @@ import {
   encodeFrameworkPayloadMessage,
   wrapFrameworkPayloadMessage
 } from '../messaging/payload-codec';
+import type { ZLinkLocationLifecycle } from '../locations';
 
 export interface ZLinkActorManagerOptions {
   readonly actorFactories: ReadonlyMap<string, Type | ZLinkActorFactory>;
@@ -59,6 +60,7 @@ export interface ZLinkActorManagerOptions {
     signal?: AbortSignal
   ) => Promise<void>;
   readonly actorDestroyedCleanup?: (actorId: string) => void;
+  readonly locationLifecycle?: ZLinkLocationLifecycle;
   readonly boundSessionFactory?: ZLinkActorBoundSessionFactory;
   readonly providerResolver?: ZLinkProviderResolver;
 }
@@ -88,6 +90,7 @@ export interface ZLinkActorNativeJoinCoordinatorOptions {
   readonly node: ZLinkBackendSpotNode;
   readonly remoteAddressResolver?: ZLinkSpotRemoteAddressResolver;
   readonly routedTransport?: ZLinkActorRoutedJoinTransport;
+  readonly locationLifecycle?: ZLinkLocationLifecycle;
   readonly remoteActorBinder?: (actorRef: ActorRef, signal?: AbortSignal, force?: boolean) => Promise<void>;
 }
 
@@ -154,6 +157,8 @@ export interface ZLinkActorRoutedJoinTransport {
 export const ZLINK_REMOTE_ACTOR_JOIN_PACKET = '__zlink.actor.join_spot.request';
 const REMOTE_ACTOR_JOIN_PACKET = ZLINK_REMOTE_ACTOR_JOIN_PACKET;
 export const ZLINK_REMOTE_BOUND_SESSION_SEND_PACKET = '__zlink.actor.bound_session.send';
+export const ZLINK_REMOTE_BOUND_SESSION_RESPONSE_PACKET = '__zlink.actor.bound_session.response';
+export const ZLINK_REMOTE_BOUND_SESSION_ERROR_PACKET = '__zlink.actor.bound_session.error';
 export const ZLINK_REMOTE_ACTOR_SESSION_DISCONNECTED_PACKET = 'zlink.framework.actor.session_disconnected';
 export const ZLINK_REMOTE_ACTOR_PACKET_RELAY_PACKET = '__zlink.actor.packet.relay';
 
@@ -220,6 +225,43 @@ class ZLinkActorCreationCoordinator {
     actorType: string,
     state: ZLinkActorRuntimeState,
     createRequest: ZLinkActorCreateRequest,
+    claimLocation: boolean,
+    signal?: AbortSignal
+  ): Promise<ZLinkActor> {
+    const lifecycle = this.options.locationLifecycle;
+    if (lifecycle !== undefined && claimLocation) {
+      const nodeRid = this.resolveLocationNodeRid();
+      const activation = await lifecycle.executeActorClaimThenActivate(
+        actorType,
+        actorId,
+        nodeRid,
+        async () => {
+          this.options.actorDestroyedCleanup?.(actorId);
+          state.clearAfterDestroy();
+        },
+        () => this.createActorAfterClaim(actorId, actorType, state, createRequest, true, signal)
+      );
+      if (activation.activated !== undefined) {
+        state.markLocationOwned();
+        return activation.activated;
+      }
+      throw new ZLinkFrameworkException(
+        ZLinkFrameworkErrorKind.ActorCreateFailed,
+        activation.existingLocation === undefined
+          ? `Actor '${actorId}' location claim was rejected and no live location row was found.`
+          : `Actor '${actorId}' is already active on node '${activation.existingLocation.nodeRid}' (location claim conflict).`
+      );
+    }
+
+    return await this.createActorAfterClaim(actorId, actorType, state, createRequest, claimLocation, signal);
+  }
+
+  private async createActorAfterClaim(
+    actorId: string,
+    actorType: string,
+    state: ZLinkActorRuntimeState,
+    createRequest: ZLinkActorCreateRequest,
+    updateLocation: boolean,
     signal?: AbortSignal
   ): Promise<ZLinkActor> {
     const factory = await this.createFactory(actorType);
@@ -240,10 +282,24 @@ class ZLinkActorCreationCoordinator {
           createRequest.callbackRequest,
           signal
         );
+        if (updateLocation) {
+          await this.options.locationLifecycle?.setActorRef(
+            actorType,
+            actorId,
+            serializeActorRef(toFrameworkRoutingId(actorRef.nodeRid), actorId, actorRef.generation)
+          );
+        }
       } else {
         const nodeRid = this.options.actorCreatedNodeRidProvider?.();
         if (nodeRid !== undefined) {
           await this.options.actorCreatedNotifier?.(nodeRid, actor, createRequest.callbackRequest, signal);
+          if (updateLocation) {
+            await this.options.locationLifecycle?.setActorRef(
+              actorType,
+              actorId,
+              serializeActorRef(nodeRid, actorId, 0n)
+            );
+          }
         }
       }
     } catch (error) {
@@ -251,6 +307,17 @@ class ZLinkActorCreationCoordinator {
       throw error;
     }
     return actor;
+  }
+
+  private resolveLocationNodeRid(): RoutingId {
+    const nativeActorNode = this.options.nativeActorNode ?? this.options.nativeActorNodeProvider?.();
+    const nodeRid = nativeActorNode === undefined
+      ? this.options.actorCreatedNodeRidProvider?.()
+      : toFrameworkRoutingId(nativeActorNode.routingId);
+    if (nodeRid === undefined) {
+      throw new ZLinkConfigurationException('Location actor claim requires a node routing id.');
+    }
+    return nodeRid;
   }
 
   private async createFactory(actorType: string): Promise<ZLinkActorFactory> {
@@ -314,7 +381,7 @@ export class DefaultZLinkActorManager implements ZLinkActorManager {
   ): Promise<ZLinkActor> {
     const state = this.getOrCreateState(actorId);
     state.setNativeActorRef(actorRef);
-    const result = await this.createOrGet(actorId, actorType, false, createRequest, signal);
+    const result = await this.createOrGet(actorId, actorType, false, createRequest, signal, false);
     return result.actor;
   }
 
@@ -341,6 +408,9 @@ export class DefaultZLinkActorManager implements ZLinkActorManager {
       );
     }
     if (state.nativeActorRef === undefined) {
+      if (state.actorType !== undefined && state.ownsLocation) {
+        await this.options.locationLifecycle?.releaseActor(state.actorType, actor.actorId);
+      }
       this.options.actorDestroyedCleanup?.(actor.actorId);
       state.clearAfterDestroy();
       this.states.delete(actor.actorId);
@@ -353,6 +423,9 @@ export class DefaultZLinkActorManager implements ZLinkActorManager {
 
     try {
       await node.destroyActor(actorRef, 0, destroySignal);
+      if (state.actorType !== undefined && state.ownsLocation) {
+        await this.options.locationLifecycle?.releaseActor(state.actorType, actor.actorId);
+      }
       this.options.actorDestroyedCleanup?.(actor.actorId);
       state.clearAfterDestroy();
       this.states.delete(actor.actorId);
@@ -367,7 +440,8 @@ export class DefaultZLinkActorManager implements ZLinkActorManager {
     actorType: string,
     failIfExists: boolean,
     request: unknown,
-    signal?: AbortSignal
+    signal?: AbortSignal,
+    claimLocation = true
   ): Promise<{ actor: ZLinkActor; actorRef: ActorRef; created: boolean }> {
     throwIfAborted(signal);
     const state = this.getOrCreateState(actorId);
@@ -378,7 +452,7 @@ export class DefaultZLinkActorManager implements ZLinkActorManager {
     const operation = state.getOrStartCreation(
       actorType,
       failIfExists,
-      () => this.creation.createActor(actorId, actorType, state, createRequest, signal)
+      () => this.creation.createActor(actorId, actorType, state, createRequest, claimLocation, signal)
     );
 
     try {
@@ -459,6 +533,7 @@ export class ZLinkActorRuntimeState {
   private remoteBoundSessionTargetValue: ZLinkRemoteBoundSessionTarget | undefined;
   private remoteActorPacketTargetValue: ZLinkRemoteActorPacketTarget | undefined;
   private createRequestPayloadValue: Buffer | undefined;
+  private ownsLocationValue = false;
   private destroying = false;
 
   constructor(readonly actorId: string) {}
@@ -497,6 +572,14 @@ export class ZLinkActorRuntimeState {
 
   get isJoined(): boolean {
     return this.spotRidValue !== undefined;
+  }
+
+  get ownsLocation(): boolean {
+    return this.ownsLocationValue;
+  }
+
+  markLocationOwned(): void {
+    this.ownsLocationValue = true;
   }
 
   beginDestroy(entryNodeRid: RoutingId): ZLinkBackendActorRef | undefined {
@@ -650,6 +733,7 @@ export class ZLinkActorRuntimeState {
     this.remoteBoundSessionTargetValue = undefined;
     this.remoteActorPacketTargetValue = undefined;
     this.createRequestPayloadValue = undefined;
+    this.ownsLocationValue = false;
     this.destroying = false;
   }
 }
@@ -714,6 +798,14 @@ export class ZLinkActorNativeJoinCoordinator implements ZLinkActorJoinCoordinato
     state.setNativeActorRef(result.actor);
     state.setJoinedSpot(toFrameworkRoutingId(result.joinedSpotRid));
     state.setRemoteActorPacketTarget(undefined);
+    if (state.actorType !== undefined) {
+      await this.options.locationLifecycle?.notifyActorJoinedSpot(
+        state.actorType,
+        actor.actorId,
+        remoteAddress?.routerChannelId ?? '',
+        toFrameworkRoutingId(result.joinedSpotRid)
+      );
+    }
     if (result.joinResultCode === 0) {
       await this.options.remoteActorBinder?.(toFrameworkActorRef(result.actor), signal, !isRemoteJoin);
     }
@@ -951,6 +1043,14 @@ export class ZLinkActorNativeJoinCoordinator implements ZLinkActorJoinCoordinato
         spotRid: remoteAddress.spotRid,
         spotKind: remoteAddress.spotKind
       });
+      if (state.actorType !== undefined) {
+        await this.options.locationLifecycle?.notifyActorJoinedSpot(
+          state.actorType,
+          reply.actorId,
+          remoteAddress.routerChannelId,
+          remoteAddress.spotRid
+        );
+      }
       await this.options.remoteActorBinder?.(resultActor, signal, true);
     }
     return {
@@ -1003,6 +1103,9 @@ export class ZLinkActorNativeJoinCoordinator implements ZLinkActorJoinCoordinato
       if (result.resultCode === 0) {
         state.clearJoinedSpot();
         state.setRemoteActorPacketTarget(undefined);
+        if (state.actorType !== undefined) {
+          await this.options.locationLifecycle?.notifyActorLeftSpot(state.actorType, actor.actorId);
+        }
       }
       return result;
     }
@@ -1038,6 +1141,9 @@ export class ZLinkActorNativeJoinCoordinator implements ZLinkActorJoinCoordinato
     if (result.joinResultCode === 0) {
       state.setNativeActorRef(result.actor);
       state.clearJoinedSpot();
+      if (state.actorType !== undefined) {
+        await this.options.locationLifecycle?.notifyActorLeftSpot(state.actorType, actor.actorId);
+      }
     }
     try {
       return {
@@ -1595,6 +1701,10 @@ function toFrameworkRoutingId(routingId: ZLinkBackendActorRef['nodeRid']): Routi
 function encodeRoutingIdHex(routingId: RoutingId): string | undefined {
   const toHex = (routingId as unknown as { toHex?: () => string }).toHex;
   return typeof toHex === 'function' ? toHex.call(routingId) : undefined;
+}
+
+function serializeActorRef(nodeRid: RoutingId, actorId: string, generation: bigint): string {
+  return `${encodeRoutingIdHex(nodeRid) ?? String(nodeRid)}:${generation}:${actorId}`;
 }
 
 function routingIdsEqual(left: RoutingId, right: RoutingId): boolean {

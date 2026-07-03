@@ -29,10 +29,26 @@ export async function sendRequestBatch(
   return sawExpectedProvider;
 }
 
-export async function waitTopologyReady(registryUrl: string, rid: string): Promise<void> {
+export async function waitForProviderTraffic(
+  consumerUrl: string,
+  markerPrefix: string,
+  expectedProviderRid: string
+): Promise<void> {
+  const deadline = Date.now() + 30000;
+  let batch = 0;
+  while (Date.now() < deadline) {
+    if (await sendRequestBatch(consumerUrl, `${markerPrefix}-${batch++}`, expectedProviderRid)) {
+      return;
+    }
+    await delay(250);
+  }
+  throw new Error(`${markerPrefix} traffic did not reach ${expectedProviderRid}.`);
+}
+
+export async function waitTopologyReady(topologyUrl: string, rid: string): Promise<void> {
   const deadline = Date.now() + 30000;
   while (Date.now() < deadline) {
-    const entries = await getJson<TopologyEntryResult[]>(registryUrl, '/registry/topology');
+    const entries = await getJson<TopologyEntryResult[]>(topologyUrl, '/topology-probe/topology');
     if (entries.some((entry) => entry.routingId === rid || entry.rid === rid)) {
       return;
     }
@@ -41,10 +57,10 @@ export async function waitTopologyReady(registryUrl: string, rid: string): Promi
   throw new Error(`Timed out waiting for topology rid=${rid} Ready.`);
 }
 
-export async function waitTopologyEndpointReady(registryUrl: string, rid: string, endpoint: string): Promise<void> {
+export async function waitTopologyEndpointReady(topologyUrl: string, rid: string, endpoint: string): Promise<void> {
   const deadline = Date.now() + 30000;
   while (Date.now() < deadline) {
-    const entries = await getJson<TopologyEntryResult[]>(registryUrl, '/registry/topology');
+    const entries = await getJson<TopologyEntryResult[]>(topologyUrl, '/topology-probe/topology');
     if (entries.some((entry) => (entry.routingId === rid || entry.rid === rid) && entry.endpoint === endpoint)) {
       return;
     }
@@ -53,10 +69,10 @@ export async function waitTopologyEndpointReady(registryUrl: string, rid: string
   throw new Error(`Timed out waiting for topology rid=${rid} endpoint=${endpoint} Ready.`);
 }
 
-export async function waitTopologyAbsent(registryUrl: string, rid: string): Promise<void> {
+export async function waitTopologyAbsent(topologyUrl: string, rid: string): Promise<void> {
   const deadline = Date.now() + 30000;
   while (Date.now() < deadline) {
-    const entries = await getJson<TopologyEntryResult[]>(registryUrl, '/registry/topology');
+    const entries = await getJson<TopologyEntryResult[]>(topologyUrl, '/topology-probe/topology');
     if (!entries.some((entry) => entry.routingId === rid || entry.rid === rid)) {
       return;
     }
@@ -65,10 +81,10 @@ export async function waitTopologyAbsent(registryUrl: string, rid: string): Prom
   throw new Error(`Timed out waiting for topology rid=${rid} to leave Ready.`);
 }
 
-export async function waitTopologyEndpointAbsent(registryUrl: string, endpoint: string): Promise<void> {
+export async function waitTopologyEndpointAbsent(topologyUrl: string, endpoint: string): Promise<void> {
   const deadline = Date.now() + 30000;
   while (Date.now() < deadline) {
-    const entries = await getJson<TopologyEntryResult[]>(registryUrl, '/registry/topology');
+    const entries = await getJson<TopologyEntryResult[]>(topologyUrl, '/topology-probe/topology');
     if (!entries.some((entry) => entry.endpoint === endpoint)) {
       return;
     }

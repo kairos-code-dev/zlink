@@ -6,6 +6,7 @@ import { PacketNames } from '../../Shared/Contracts/messages';
 import { CustomerSessionDirectory } from './customer-session-directory';
 import { CustomerSessionFactory } from './customer-session';
 import { DeliveryStatusFanoutHandler } from './delivery-status-fanout-handler';
+import { createDeliveryDispatchLocationStore, deliveryDispatchLocationOptions } from '../Configuration/location-store';
 import type { DeliveryDispatchServerConfig } from '../Configuration/sample-config';
 
 function createSessionModule(config: DeliveryDispatchServerConfig) {
@@ -20,9 +21,9 @@ function createSessionModule(config: DeliveryDispatchServerConfig) {
             .messageFlow(ZLinkMessageFlowLogMode.KeyTransitions)
             .traceLogFile(`${process.env.DELIVERYDISPATCH_LOG_DIR ?? 'logs'}/flow-session.log`)
             .traceLabel('session');
+          builder.addLocationStore(createDeliveryDispatchLocationStore(config));
+          Object.assign(builder.configureLocations(), deliveryDispatchLocationOptions());
           return builder
-            .useDiscovery()
-              .addRegistryEndpoint(config.registryRouterEndpoint)
             .addClientServerChannel(SampleNames.trackingChannel)
               .enableClient()
             .addFanoutChannel(SampleNames.statusFanoutChannel)

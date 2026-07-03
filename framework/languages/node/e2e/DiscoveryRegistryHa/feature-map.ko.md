@@ -1,34 +1,30 @@
-# Node.js DiscoveryRegistryHa E2E feature map
+# Node.js StoreFailure E2E feature map
 
-기준 문서: `framework/doc/framework/common/e2e/config-6-discovery-registry-ha.ko.md`
+기준 문서: `framework/doc/framework/common/e2e/config-6-store-failure-recovery.ko.md`
 
-| Scenario | 상태 | 근거 |
-|----------|------|------|
-| DR-A1 | 구현 | 단일 registry에서 provider 2개 topology와 consumer discovery request, provider evidence를 검증한다. |
-| DR-A2 | 구현 | 2 registry peer 합산에서 reg-2 `MemberPeers`가 reg-1 provider를 보고, reg-2만 보는 consumer request가 성공하는지 검증한다. |
-| DR-A3 | 구현 | 3 registry peer 합산에서 모든 registry가 connected peer 2개와 reg-1/reg-3 provider `MemberPeers`를 보고, 각 registry만 보는 consumer request가 성공하는지 검증한다. |
-| DR-A4 | 구현 | 같은 rid `api-a`를 다른 endpoint로 reg-1/reg-2에 광고한 뒤, reg-2 consumer request와 어느 provider든 marker evidence가 남는지 검증한다. |
-| DR-B1 | 구현 | reg-1 provider를 유지한 채 reg-2/reg-3를 늦게 기동하고, 늦게 뜬 registry의 connected peer 상태, peer 합산 view, consumer request/provider evidence를 검증한다. |
-| DR-B2 | 구현 | live+stopped registry endpoint를 함께 둔 consumer 실행 경로를 `run_e2e.sh DR-B2`로 추가했다. Node runtime은 등록된 channel client를 시작 시점에 준비하므로, consumer가 살아 있는 registry endpoint로 provider를 발견한 뒤 stopped endpoint가 있어도 request/evidence marker를 검증한다. |
-| DR-B3 | 구현 | reg-2를 짧게 정지/재기동하는 flapping harness 뒤에 reg-2와 survivor reg-1의 connected peer 상태, peer 합산 view, consumer request/provider evidence를 검증한다. |
-| DR-C1 | 구현 | reg-2를 강제 종료한 뒤 live reg-1의 member view, consumer request/provider evidence, dead reg-2 HTTP query bounded failure를 검증한다. |
-| DR-C2 | 구현 | reg-2 강제 종료 후 같은 endpoint로 재기동하고, recovered reg-2의 connected peer 상태, peer 합산 view, consumer request/provider evidence를 검증한다. |
-| DR-C3 | 구현 | 전체 registry를 중지한 동안 기존 consumer request가 유지되는지 확인하고, registry 재기동과 api-c 재광고 뒤 모든 registry topology와 recovered reg-2 consumer request/provider evidence를 검증한다. |
-| DR-D1 | 구현 | embedded registry+provider 단일 프로세스와 embedded registry consumer request/provider evidence를 검증한다. |
-| DR-D2 | 구현 | standalone registry + provider + consumer 배포에서 member view, consumer request, provider evidence를 검증한다. |
-| DR-D3 | 구현 | embedded registry+provider와 standalone registry/provider를 peer cluster로 묶고, embedded registry의 peer 합산 view와 consumer request/provider evidence를 검증한다. |
-| DR-D4 | 구현 | standalone registry의 in-process topology query와 remote query client probe의 topology snapshot이 같은지 검증한다. |
+| Scenario | 상태 | Node 구현 메모 |
+|----------|------|----------------|
+| SF-A1 | 구현 | Redis location store + provider 2개 + consumer baseline. public runtime query topology와 request/evidence를 검증한다. |
+| SF-B1 | 구현 | Redis container를 정지한 동안 fail-static으로 기존 연결 request가 유지되고 runtime status가 unhealthy/lastError를 노출하는지 검증한다. |
+| SF-C1 | 구현 | `api-b` SIGKILL 뒤 owner lease 만료만으로 stale peer row가 `/location/peers` 성공 결과에서 제외되고 후속 request가 `api-a`로만 가는지 검증한다. |
+| SF-D1 | 구현 | Redis container를 짧게 `pause/unpause`하고 request window, runtime status recovery, peer list recovery를 검증한다. |
+| SF-D2 | 구현 | Redis 장기 pause 중 `api-b`를 SIGKILL하고, 복구 뒤 `api-a` 재등록, `api-b` 제외, 후속 request의 `api-a` 단독 routing을 검증한다. |
+| SF-A2 | 미구현 | P1 polling fallback 시나리오. P0 완료 뒤 필요 여부를 별도 판단한다. |
+| SF-B2 | 미구현 | P1 store failure grace 초과 시나리오. P0 완료 뒤 필요 여부를 별도 판단한다. |
+| SF-C2 | 미구현 | P1 graceful shutdown 대조 시나리오. P0 완료 뒤 필요 여부를 별도 판단한다. |
+| SF-D3 | 미구현 | P1 runtime status 전이 관측 시나리오. P0 완료 뒤 필요 여부를 별도 판단한다. |
 
-검증:
+## 검증
 
-- `timeout 420s framework/languages/node/e2e/DiscoveryRegistryHa/run_e2e.sh`
-  - 결과: full sweep aggregate `discovery-registry-ha e2e result=passed`
-  - 최신 aggregate 로그 디렉터리: `logs/20260702-065342-62284`
-  - 이전 aggregate 로그 디렉터리: `logs/20260702-050632-82209`
-  - child 로그 디렉터리: `logs/20260702-050632-82215`(`DR-A1`), `logs/20260702-050637-82730`(`DR-A2`),
-    `logs/20260702-050643-83236`(`DR-A3`), `logs/20260702-050650-83983`(`DR-A4`),
-    `logs/20260702-050705-84912`(`DR-B1`), `logs/20260702-050712-85448`(`DR-B2`),
-    `logs/20260702-050720-86021`(`DR-B3`), `logs/20260702-050727-86602`(`DR-C1`),
-    `logs/20260702-050732-87169`(`DR-C2`), `logs/20260702-050738-87556`(`DR-C3`),
-    `logs/20260702-050746-88176`(`DR-D1`), `logs/20260702-050751-88535`(`DR-D2`),
-    `logs/20260702-050757-89039`(`DR-D3`), `logs/20260702-050803-90124`(`DR-D4`)
+- `./e2e/DiscoveryRegistryHa/run_e2e.sh SF-C1`
+  - 로그: `logs/20260703-204014-50300`
+  - 결과: `scenario SF-C1 passed`, `store-failure-recovery scenario result=passed`
+- `./e2e/DiscoveryRegistryHa/run_e2e.sh SF-D1`
+  - 로그: `logs/20260703-204208-60437`
+  - 결과: `scenario SF-D1 passed`, `store-failure-recovery scenario result=passed`
+- `./e2e/DiscoveryRegistryHa/run_e2e.sh SF-D2`
+  - 로그: `logs/20260703-204434-71368`
+  - 결과: `scenario SF-D2 passed`, `store-failure-recovery scenario result=passed`
+- `./e2e/DiscoveryRegistryHa/run_e2e.sh`
+  - 로그: `logs/20260703-205114-96377`
+  - 결과: 현재 P0 sweep `SF-A1`·`SF-B1`·`SF-C1`·`SF-D1`·`SF-D2` 통과

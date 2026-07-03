@@ -6,23 +6,17 @@ import { ensure } from '../Support/scenario-assert';
 export async function runMonA5(options: ClientOptions): Promise<void> {
   await postJson(options.triggerUrl, '/socket/handshake-failure');
 
-  const [serviceEvidence, registryEvidence] = await Promise.all([
-    postJson<string[]>(options.serviceUrl, '/evidence/wait', {
-      containsAll: [],
-      containsAnyGroups: [
-        ['kind=HandshakeFailed', 'kind=Internal'],
-        ['monitor-spot|source=monitor.spot|kind=StatusChanged'],
-        ['monitor-spot|source=monitor.spot|kind=TimerStoppedAfterUnhandledException'],
-        ['timer=stopping']
-      ],
-      timeoutMilliseconds: 10000
-    } satisfies EvidenceWaitReq),
-    postJson<string[]>(options.registryUrl, '/evidence/wait', {
-      containsAll: ['monitor-registry|source=registry'],
-      containsAnyGroups: [['kind=StatusChanged']],
-      timeoutMilliseconds: 10000
-    } satisfies EvidenceWaitReq)
-  ]);
+  const serviceEvidence = await postJson<string[]>(options.serviceUrl, '/evidence/wait', {
+    containsAll: [],
+    containsAnyGroups: [
+      ['kind=HandshakeFailed', 'kind=Internal'],
+      ['monitor-location|source=monitor.location-runtime|kind=StatusChanged'],
+      ['monitor-spot|source=monitor.spot|kind=StatusChanged'],
+      ['monitor-spot|source=monitor.spot|kind=TimerStoppedAfterUnhandledException'],
+      ['timer=stopping']
+    ],
+    timeoutMilliseconds: 10000
+  } satisfies EvidenceWaitReq);
 
   ensure(
     serviceEvidence.some((line) =>
@@ -31,9 +25,9 @@ export async function runMonA5(options: ClientOptions): Promise<void> {
     'MON-A5 handshake failure evidence missing.'
   );
   ensure(
-    registryEvidence.some((line) =>
-      line.includes('monitor-registry|source=registry|kind=StatusChanged')),
-    'MON-A5 registry status evidence missing.'
+    serviceEvidence.some((line) =>
+      line.includes('monitor-location|source=monitor.location-runtime|kind=StatusChanged')),
+    'MON-A5 location runtime status evidence missing.'
   );
   ensure(
     serviceEvidence.some((line) =>

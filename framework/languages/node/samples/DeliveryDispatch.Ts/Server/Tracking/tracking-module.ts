@@ -12,6 +12,7 @@ import {
   EnsureCustomerActorHandler,
   SubscribeCustomerToDeliveryHandler
 } from './Handlers/tracking-handlers';
+import { createDeliveryDispatchLocationStore, deliveryDispatchLocationOptions } from '../Configuration/location-store';
 import type { DeliveryDispatchServerConfig } from '../Configuration/sample-config';
 
 function createTrackingModule(config: DeliveryDispatchServerConfig, evidence: EvidenceStore) {
@@ -28,9 +29,9 @@ function createTrackingModule(config: DeliveryDispatchServerConfig, evidence: Ev
             .messageFlow(ZLinkMessageFlowLogMode.KeyTransitions)
             .traceLogFile(`${process.env.DELIVERYDISPATCH_LOG_DIR ?? 'logs'}/flow-tracking.log`)
             .traceLabel('tracking');
+          builder.addLocationStore(createDeliveryDispatchLocationStore(config));
+          Object.assign(builder.configureLocations(), deliveryDispatchLocationOptions());
           return builder
-            .useDiscovery()
-              .addRegistryEndpoint(config.registryRouterEndpoint)
             .addClientServerChannel(SampleNames.trackingChannel)
               .enableServer(config.trackingEndpoint)
               .addHandlerGroup('tracking')

@@ -9,6 +9,7 @@ import {
   zlinkFramework
 } from '@zlink-systems/nestjs';
 import type { ZLinkChannelClient, ZLinkRouteClient } from '@zlink-systems/framework';
+import { createRedisLocationStore, locationMessagingOptions } from '../../Shared/location-store';
 import { PacketNames } from '../../Shared/messages';
 import { parseServerOptions } from './Configuration/server-options';
 import type { ServerOptions } from './Configuration/server-options';
@@ -57,8 +58,12 @@ function createProviderModule(options: ServerOptions, evidence: EvidenceStore): 
               .traceLogFile(`${options.logDir}/${options.rid}-flow.log`)
               .traceLabel(options.rid);
 
-          if (options.registryRouterEndpoint !== undefined) {
-            builder.useDiscovery().addRegistryEndpoint(options.registryRouterEndpoint);
+          if (options.redisEndpoint !== undefined && options.redisKeyPrefix !== undefined) {
+            builder.addLocationStore(createRedisLocationStore({
+              redisEndpoint: options.redisEndpoint,
+              redisKeyPrefix: options.redisKeyPrefix
+            }));
+            Object.assign(builder.configureLocations(), locationMessagingOptions());
           }
           if (options.channelEndpoint !== undefined) {
             const profile = builder.addClientServerChannel('profile')

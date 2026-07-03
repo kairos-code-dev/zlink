@@ -35,6 +35,7 @@ wait_health() {
 }
 
 pids=()
+REDIS_CONTAINER_ID=""
 cleanup() {
   local code=$?
   for pid in "${pids[@]:-}"; do
@@ -43,6 +44,9 @@ cleanup() {
     fi
   done
   wait "${pids[@]:-}" 2>/dev/null || true
+  if [[ -n "$REDIS_CONTAINER_ID" ]]; then
+    docker rm -f "$REDIS_CONTAINER_ID" >/dev/null 2>&1 || true
+  fi
   if [[ "$code" -ne 0 ]]; then
     echo "E2E failed. log_dir=$LOG_DIR" >&2
     for file in "$LOG_DIR"/*.stderr.log "$LOG_DIR"/client.stderr.log; do
@@ -64,51 +68,75 @@ start_server() {
   pids+=("$!")
 }
 
+wait_tcp() {
+  local name="$1"
+  local endpoint="$2"
+  local host_port="${endpoint#tcp://}"
+  local host="${host_port%:*}"
+  local port="${host_port##*:}"
+  for _ in $(seq 1 100); do
+    if node -e "const net=require('node:net'); const s=net.createConnection({host: process.argv[1], port: Number(process.argv[2])}); s.once('connect', () => { s.end(); process.exit(0); }); s.once('error', () => process.exit(1)); setTimeout(() => process.exit(1), 500);" "$host" "$port"; then
+      return 0
+    fi
+    sleep 0.1
+  done
+  echo "Timed out waiting for $name at $endpoint" >&2
+  return 1
+}
+
 echo "log_dir=$LOG_DIR"
 
 (cd "$NODE_ROOT" && npm run build >/dev/null)
-build_package "$ROOT_DIR/Server/Registry"
+build_package "$ROOT_DIR/Server/TopologyProbe"
 build_package "$ROOT_DIR/Server/Provider"
 build_package "$ROOT_DIR/Server/Consumer"
 build_package "$ROOT_DIR/Client"
 
-REG_HTTP_PORT="$(pick_port)"
+if ! command -v docker >/dev/null 2>&1; then
+  echo "Docker is required to run ResilienceLifecycle because it provisions a dedicated Redis location store." >&2
+  exit 1
+fi
+
+TOPOLOGY_PROBE_HTTP_PORT="$(pick_port)"
 PROVIDER_A_HTTP_PORT="$(pick_port)"
 PROVIDER_B_HTTP_PORT="$(pick_port)"
 PROVIDER_B_REMAP_HTTP_PORT="$(pick_port)"
 PROVIDER_B_GREEN_HTTP_PORT="$(pick_port)"
 CONSUMER_HTTP_PORT="$(pick_port)"
-REG_PUB_PORT="$(pick_port)"
-REG_ROUTER_PORT="$(pick_port)"
 API_A_PORT="$(pick_port)"
 API_B_PORT="$(pick_port)"
 API_B_REMAP_PORT="$(pick_port)"
 API_B_GREEN_PORT="$(pick_port)"
 
-REG_PUB="tcp://127.0.0.1:$REG_PUB_PORT"
-REG_ROUTER="tcp://127.0.0.1:$REG_ROUTER_PORT"
 API_A="tcp://127.0.0.1:$API_A_PORT"
 API_B="tcp://127.0.0.1:$API_B_PORT"
 API_B_REMAP="tcp://127.0.0.1:$API_B_REMAP_PORT"
 API_B_GREEN="tcp://127.0.0.1:$API_B_GREEN_PORT"
 
-REGISTRY_MAIN="$ROOT_DIR/Server/Registry/dist/Server/Registry/main.js"
+REDIS_CONTAINER_ID="$(docker run -d --rm --name "resilience-lifecycle-node-redis-${RANDOM}-$$" -p "127.0.0.1::6379" redis:7.2-alpine)"
+REDIS_PORT="$(docker port "$REDIS_CONTAINER_ID" 6379/tcp | sed 's/.*://')"
+REDIS_ENDPOINT="127.0.0.1:$REDIS_PORT"
+REDIS_KEY_PREFIX="resilience-lifecycle:node:$RUN_ID"
+wait_tcp redis "tcp://$REDIS_ENDPOINT"
+
+TOPOLOGY_PROBE_MAIN="$ROOT_DIR/Server/TopologyProbe/dist/Server/TopologyProbe/main.js"
 PROVIDER_MAIN="$ROOT_DIR/Server/Provider/dist/Server/Provider/main.js"
 CONSUMER_MAIN="$ROOT_DIR/Server/Consumer/dist/Server/Consumer/main.js"
 CLIENT_MAIN="$ROOT_DIR/Client/dist/Client/main.js"
 
-start_server registry "$REGISTRY_MAIN" \
-  --rid registry \
-  --http-url "http://127.0.0.1:$REG_HTTP_PORT" \
-  --registry-pub-endpoint "$REG_PUB" \
-  --registry-router-endpoint "$REG_ROUTER" \
+start_server topology-probe "$TOPOLOGY_PROBE_MAIN" \
+  --rid topology-probe \
+  --http-url "http://127.0.0.1:$TOPOLOGY_PROBE_HTTP_PORT" \
+  --redis-endpoint "$REDIS_ENDPOINT" \
+  --redis-key-prefix "$REDIS_KEY_PREFIX" \
   --log-dir "$LOG_DIR"
-wait_health "http://127.0.0.1:$REG_HTTP_PORT" registry
+wait_health "http://127.0.0.1:$TOPOLOGY_PROBE_HTTP_PORT" topology-probe
 
 start_server api-a "$PROVIDER_MAIN" \
   --rid api-a \
   --http-url "http://127.0.0.1:$PROVIDER_A_HTTP_PORT" \
-  --registry-router-endpoint "$REG_ROUTER" \
+  --redis-endpoint "$REDIS_ENDPOINT" \
+  --redis-key-prefix "$REDIS_KEY_PREFIX" \
   --channel-endpoint "$API_A" \
   --evidence-file "$LOG_DIR/api-a.evidence.log" \
   --log-dir "$LOG_DIR"
@@ -117,7 +145,8 @@ wait_health "http://127.0.0.1:$PROVIDER_A_HTTP_PORT" api-a
 start_server api-b "$PROVIDER_MAIN" \
   --rid api-b \
   --http-url "http://127.0.0.1:$PROVIDER_B_HTTP_PORT" \
-  --registry-router-endpoint "$REG_ROUTER" \
+  --redis-endpoint "$REDIS_ENDPOINT" \
+  --redis-key-prefix "$REDIS_KEY_PREFIX" \
   --channel-endpoint "$API_B" \
   --evidence-file "$LOG_DIR/api-b.evidence.log" \
   --log-dir "$LOG_DIR"
@@ -125,21 +154,22 @@ wait_health "http://127.0.0.1:$PROVIDER_B_HTTP_PORT" api-b
 
 start_server consumer "$CONSUMER_MAIN" \
   --http-url "http://127.0.0.1:$CONSUMER_HTTP_PORT" \
-  --registry-router-endpoint "$REG_ROUTER" \
+  --redis-endpoint "$REDIS_ENDPOINT" \
+  --redis-key-prefix "$REDIS_KEY_PREFIX" \
   --trace-label consumer \
   --log-dir "$LOG_DIR"
 wait_health "http://127.0.0.1:$CONSUMER_HTTP_PORT" consumer
 
 node "$CLIENT_MAIN" \
-  --registry-url "http://127.0.0.1:$REG_HTTP_PORT" \
+  --topology-url "http://127.0.0.1:$TOPOLOGY_PROBE_HTTP_PORT" \
   --provider-a-url "http://127.0.0.1:$PROVIDER_A_HTTP_PORT" \
   --provider-b-url "http://127.0.0.1:$PROVIDER_B_HTTP_PORT" \
   --provider-b-remap-url "http://127.0.0.1:$PROVIDER_B_REMAP_HTTP_PORT" \
   --provider-b-green-url "http://127.0.0.1:$PROVIDER_B_GREEN_HTTP_PORT" \
   --consumer-url "http://127.0.0.1:$CONSUMER_HTTP_PORT" \
-  --registry-main "$REGISTRY_MAIN" \
-  --registry-pub-endpoint "$REG_PUB" \
-  --registry-router-endpoint "$REG_ROUTER" \
+  --redis-endpoint "$REDIS_ENDPOINT" \
+  --redis-key-prefix "$REDIS_KEY_PREFIX" \
+  --redis-container "$REDIS_CONTAINER_ID" \
   --provider-a-channel-endpoint "$API_A" \
   --provider-b-channel-endpoint "$API_B" \
   --provider-b-remap-channel-endpoint "$API_B_REMAP" \

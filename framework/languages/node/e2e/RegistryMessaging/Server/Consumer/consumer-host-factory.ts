@@ -4,6 +4,7 @@ import { NestFactory } from '@nestjs/core';
 import { ZLinkMessageFlowLogMode } from '@zlink-systems/framework';
 import { ZLINK_CHANNEL_CLIENT, ZLinkModule, zlinkFramework } from '@zlink-systems/nestjs';
 import type { ZLinkChannelClient } from '@zlink-systems/framework';
+import { createRedisLocationStore, locationMessagingOptions } from '../../Shared/location-store';
 import { parseConsumerOptions } from './Configuration/consumer-options';
 import type { ConsumerOptions } from './Configuration/consumer-options';
 import { createConsumerEndpoints } from './Endpoints/consumer-endpoints';
@@ -39,8 +40,12 @@ function createConsumerModule(options: ConsumerOptions): Function {
               .traceLabel(options.traceLabel);
 
           const profile = builder.addClientServerChannel('profile');
-          if (options.registryRouterEndpoint !== undefined) {
-            builder.useDiscovery().addRegistryEndpoint(options.registryRouterEndpoint);
+          if (options.redisEndpoint !== undefined && options.redisKeyPrefix !== undefined) {
+            builder.addLocationStore(createRedisLocationStore({
+              redisEndpoint: options.redisEndpoint,
+              redisKeyPrefix: options.redisKeyPrefix
+            }));
+            Object.assign(builder.configureLocations(), locationMessagingOptions());
             profile.enableClient();
           } else {
             profile.enableClient(options.providerEndpoints);

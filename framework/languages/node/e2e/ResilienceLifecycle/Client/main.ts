@@ -12,7 +12,7 @@ import { runRlB6 } from './Scenarios/rl-b6-gray-fault-scenario';
 import { runRlC1 } from './Scenarios/rl-c1-client-host-lifecycle-scenario';
 import { runRlC2 } from './Scenarios/rl-c2-topology-recovery-scenario';
 import { runRlC3 } from './Scenarios/rl-c3-node-pause-recovery-scenario';
-import { runRlC4 } from './Scenarios/rl-c4-registry-outage-scenario';
+import { runRlC4 } from './Scenarios/rl-c4-store-outage-scenario';
 import { runRlD1 } from './Scenarios/rl-d1-high-fanout-scenario';
 import { runRlD2 } from './Scenarios/rl-d2-observer-fault-scenario';
 import { runRlD3 } from './Scenarios/rl-d3-dispatch-error-evidence-scenario';
@@ -71,8 +71,6 @@ async function main(): Promise<void> {
     state.providerAProcess = undefined;
     await state.providerBProcess?.stop();
     state.providerBProcess = undefined;
-    await state.registryProcess?.stop();
-    state.registryProcess = undefined;
   }
 
   console.log('resilience-lifecycle e2e result=passed');

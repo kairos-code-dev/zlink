@@ -3,7 +3,7 @@ import { postJson } from '../Support/http-client';
 import { startProvider } from '../Support/managed-provider';
 import {
   profileReq,
-  sendRequestBatch,
+  waitForProviderTraffic,
   waitTopologyReady,
   waitUntilDown
 } from '../Support/resilience-helpers';
@@ -12,7 +12,11 @@ import type { ScenarioState } from '../Support/scenario-state';
 import type { ProfileRes } from '../../Shared/messages';
 
 export async function runRlA1(options: ClientOptions, state: ScenarioState): Promise<void> {
-  await postJson(options.providerBUrl, '/shutdown');
+  if (state.providerBProcess !== undefined) {
+    await state.providerBProcess.stop();
+  } else {
+    await postJson(options.providerBUrl, '/shutdown');
+  }
   await waitUntilDown(options.providerBUrl);
   state.providerBProcess = undefined;
 
@@ -26,7 +30,8 @@ export async function runRlA1(options: ClientOptions, state: ScenarioState): Pro
   const restarted = startProvider({
     providerMain: options.providerMain,
     logDir: options.logDir,
-    registryRouterEndpoint: options.registryRouterEndpoint,
+    redisEndpoint: options.redisEndpoint,
+    redisKeyPrefix: options.redisKeyPrefix,
     name: 'api-b-restart',
     rid: 'api-b',
     httpUrl: options.providerBUrl,
@@ -35,10 +40,9 @@ export async function runRlA1(options: ClientOptions, state: ScenarioState): Pro
   });
   await restarted.waitReady();
   state.providerBProcess = restarted;
-  await waitTopologyReady(options.registryUrl, 'api-b');
+  await waitTopologyReady(options.topologyUrl, 'api-b');
 
-  const sawApiB = await sendRequestBatch(options.consumerUrl, 'rl-a1-restored', 'api-b');
-  ensure(sawApiB, 'RL-A1 restored traffic did not reach restarted api-b.');
+  await waitForProviderTraffic(options.consumerUrl, 'rl-a1-restored', 'api-b');
   await postJson<string[]>(options.providerBUrl, '/evidence/wait', { contains: 'marker=rl-a1-restored-' });
 
   console.log('scenario RL-A1 passed');

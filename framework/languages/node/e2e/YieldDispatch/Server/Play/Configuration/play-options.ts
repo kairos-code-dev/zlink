@@ -1,12 +1,13 @@
 export interface PlayOptions {
   readonly rid: string;
   readonly httpUrl: string;
-  readonly registryRouterEndpoint: string;
   readonly controlEndpoint: string;
   readonly spotRouteEndpoint: string;
   readonly spotRouterEndpoint: string;
   readonly spotPubEndpoint: string;
   readonly delayEndpoint: string;
+  readonly redisEndpoint: string;
+  readonly redisKeyPrefix: string;
   readonly evidenceFile?: string;
   readonly logDir: string;
 }
@@ -26,12 +27,13 @@ export function parsePlayOptions(args: readonly string[]): PlayOptions {
   return {
     rid: required(values, 'rid'),
     httpUrl: required(values, 'http-url'),
-    registryRouterEndpoint: required(values, 'registry-router-endpoint'),
     controlEndpoint: required(values, 'control-endpoint'),
     spotRouteEndpoint: required(values, 'spot-route-endpoint'),
     spotRouterEndpoint: required(values, 'spot-router-endpoint'),
     spotPubEndpoint: required(values, 'spot-pub-endpoint'),
     delayEndpoint: required(values, 'delay-endpoint'),
+    redisEndpoint: required(values, 'redis-endpoint'),
+    redisKeyPrefix: required(values, 'redis-key-prefix'),
     evidenceFile: values.get('evidence-file'),
     logDir: required(values, 'log-dir')
   };

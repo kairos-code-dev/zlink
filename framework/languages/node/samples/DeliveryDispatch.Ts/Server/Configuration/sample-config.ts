@@ -1,6 +1,4 @@
 type DeliveryDispatchServerConfig = {
-  registryPubEndpoint: string;
-  registryRouterEndpoint: string;
   dispatchApiHttpUrl: string;
   dispatchEndpoint: string;
   courierRouteEndpoint: string;
@@ -18,14 +16,14 @@ type DeliveryDispatchServerConfig = {
   sessionSpotRouterEndpoint: string;
   sessionSpotEndpoint: string;
   sessionSpotNodeRid: string;
+  redisEndpoint: string;
+  redisKeyPrefix: string;
 };
 
 function loadSampleConfig(): DeliveryDispatchServerConfig {
   return {
-    registryPubEndpoint: read('DELIVERYDISPATCH_REGISTRY_PUB', 'DELIVERYDISPATCH_REGISTRY_PUB_ENDPOINT', 'tcp://127.0.0.1:31081'),
-    registryRouterEndpoint: read('DELIVERYDISPATCH_REGISTRY', 'DELIVERYDISPATCH_REGISTRY_ROUTER_ENDPOINT', 'tcp://127.0.0.1:31082'),
     dispatchApiHttpUrl: process.env.DELIVERYDISPATCH_API_HTTP ?? 'http://127.0.0.1:31083',
-    dispatchEndpoint: read('DELIVERYDISPATCH_CENTER_ROUTE', 'DELIVERYDISPATCH_DISPATCH_ENDPOINT', 'tcp://127.0.0.1:31084'),
+    dispatchEndpoint: process.env.DELIVERYDISPATCH_CENTER_ROUTE ?? 'tcp://127.0.0.1:31084',
     courierRouteEndpoint: process.env.DELIVERYDISPATCH_COURIER_ROUTE ?? 'tcp://127.0.0.1:31085',
     courierStreamEndpoint: process.env.DELIVERYDISPATCH_COURIER_STREAM ?? 'tcp://127.0.0.1:31086',
     courierActorNode1RouteEndpoint: process.env.DELIVERYDISPATCH_COURIER_ACTOR_NODE1_ROUTE ?? 'tcp://127.0.0.1:31087',
@@ -40,12 +38,18 @@ function loadSampleConfig(): DeliveryDispatchServerConfig {
     sessionStreamEndpoint: process.env.DELIVERYDISPATCH_SESSION_STREAM ?? 'tcp://127.0.0.1:31095',
     sessionSpotRouterEndpoint: process.env.DELIVERYDISPATCH_SESSION_SPOT_ROUTER ?? 'tcp://127.0.0.1:31096',
     sessionSpotEndpoint: process.env.DELIVERYDISPATCH_SESSION_SPOT ?? 'tcp://127.0.0.1:31097',
-    sessionSpotNodeRid: process.env.DELIVERYDISPATCH_SESSION_SPOT_NODE_RID ?? 'delivery-session-node'
+    sessionSpotNodeRid: process.env.DELIVERYDISPATCH_SESSION_SPOT_NODE_RID ?? 'delivery-session-node',
+    redisEndpoint: requireEnv('DELIVERYDISPATCH_REDIS_ENDPOINT'),
+    redisKeyPrefix: process.env.DELIVERYDISPATCH_REDIS_KEY_PREFIX ?? 'deliverydispatch:node:'
   };
 }
 
-function read(primary: string, legacy: string, fallback: string): string {
-  return process.env[primary] ?? process.env[legacy] ?? fallback;
+function requireEnv(name: string): string {
+  const value = process.env[name];
+  if (value === undefined || value.length === 0) {
+    throw new Error(`${name} is required.`);
+  }
+  return value;
 }
 
 export {

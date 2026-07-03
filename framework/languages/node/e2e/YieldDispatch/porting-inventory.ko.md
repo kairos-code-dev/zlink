@@ -68,9 +68,7 @@ YD-E5의 cross-language aggregation은 Node config 완료 조건이 아니라 �
 | `Client/Scenarios/YdE1TimeoutScenario.cs` | `Client/Scenarios/yd-e1-timeout-scenario.ts` | scenario | done | timeout 뒤 같은 Spot의 probe가 처리되고, 늦은 reply가 continuation marker를 남기지 않는지 검증한다. |
 | `Client/Scenarios/YdE2CancellationScenario.cs` | `Client/Scenarios/yd-e2-cancellation-scenario.ts` | scenario | done | cancellation 뒤 같은 Spot의 probe가 처리되고, 늦은 reply가 continuation marker를 남기지 않는지 검증한다. |
 | `Client/Scenarios/ShutdownYieldScenario.cs` | `Client/Scenarios/shutdown-yield-scenario.ts` | scenario | done | stream connector를 직접 만들어 shutdown wait와 recovery probe를 실행한다. shutdown wait는 `play-a` 종료 뒤 public closed/cancelled error를 통과 조건으로 보고, recovery는 재시작한 `play-a`의 Spot probe marker를 검증한다. |
-| `Server/Registry/Program.cs` | `Server/Registry/main.ts` | registry-role | done | registry role entrypoint 추가 |
-| `Server/Registry/RegistryHostFactory.cs` | `Server/Registry/registry-host-factory.ts`, `Server/Registry/Configuration/registry-options.ts` | registry-role | done | host 구성과 option parsing을 분리했다. |
-| `Server/Registry/YieldDispatch.Registry.csproj` | `Server/Registry/package.json`, `Server/Registry/tsconfig.json` | registry-project | done | Registry build 설정 추가 |
+| `Server/Registry/*` | 없음 | server-role | not-needed | YieldDispatch runner는 registry role 없이 Redis location store와 explicit endpoint wiring을 사용한다. |
 | `Server/Delay/Program.cs` | `Server/Delay/main.ts` | delay-role | done | delay role entrypoint 추가 |
 | `Server/Delay/DelayHostFactory.cs` | `Server/Delay/delay-host-factory.ts`, `Server/Delay/Configuration/delay-options.ts` | delay-role | done | host 구성과 option parsing을 분리했다. |
 | `Server/Delay/DelayHandler.cs` | `Server/Delay/Handlers/delay-handler.ts` | delay-role | done | YD-A1/YD-E4 범위의 delay reply handler 추가 |
@@ -102,7 +100,7 @@ YD-E5의 cross-language aggregation은 Node config 완료 조건이 아니라 �
 - Node framework는 Spot handler 안에서 public `ZLinkRequestCall.yield<TReply>()`를 제공한다. YD-A2 handler는 이
   public API를 사용한다.
 - Session에서 created Spot으로 command를 전달할 때는 public `ZLinkSpotOutbound.sendToSpot(...)`을 사용한다.
-  이 API는 registry 기반 Spot address discovery를 요구하므로 Session role도 `yield.spot` Spot mesh router를
+  이 API는 location store 기반 Spot address resolution을 요구하므로 Session role도 `yield.spot` Spot mesh router를
   가진다.
 - 내부 bridge 호출, raw frame, 테스트 전용 adapter는 추가하지 않았다.
 - B1 client driver는 actor A request와 actor B request를 서로 다른 stream connector로 보낸다. Node stream connector는 한

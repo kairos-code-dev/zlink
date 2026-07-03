@@ -96,7 +96,7 @@ class BingoRoomSpot implements ZLinkSpot<PlayerActorType> {
         accepted: true,
         reply: joined
       };
-    } catch (error) {
+    } catch {
       return {
         accepted: false
       };

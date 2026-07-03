@@ -2,7 +2,6 @@ import type {
   RoutingId,
   Type,
   ZLinkClientServerChannelBuilder,
-  ZLinkDiscoveryBuilder,
   ZLinkActor,
   ZLinkEntrySpot,
   ZLinkEntrySpotOptions,
@@ -41,6 +40,15 @@ import type {
   ZLinkMessageFlowLogMode,
   ZLinkMessageFlowObserver
 } from '../Dispatch';
+import type {
+  IZLinkActorLocationStore,
+  IZLinkLocationStore,
+  IZLinkOwnerLeaseStore,
+  IZLinkPeerLocationStore,
+  IZLinkRouteLocationStore,
+  IZLinkSpotLocationStore,
+  ZLinkLocationOptions
+} from '../Locations';
 import { validateFrameworkRegistration } from './RegistrationValidators';
 export { validateFrameworkRegistration };
 
@@ -58,16 +66,31 @@ export interface ZLinkFrameworkRegistration {
   readonly streamNodes: ReadonlyMap<string, ZLinkStreamNodeOptions>;
   readonly streamCompression?: ZLinkStreamCompressionOptions;
   readonly spotNodes: ReadonlyMap<string, ZLinkSpotNodeOptions>;
-  readonly discovery?: ZLinkDiscoveryOptions;
   readonly spotPublisherClients: ReadonlySet<string>;
   readonly hasSpotRemoteAddressResolver: boolean;
-  readonly hasRegistrySpotRemoteAddresses: boolean;
   readonly spotRemoteAddressResolverType?: Type;
-  readonly registrySpotRemoteAddresses?: ZLinkRegistrySpotRemoteAddressesRegistration;
   readonly filterTypes: readonly Type<ZLinkHandlerFilter>[];
   readonly worker?: ZLinkWorkerOptions;
   readonly dispatch?: ZLinkDispatchOptions;
   readonly monitoring?: ZLinkMonitoringOptions;
+  readonly locations: ZLinkLocationRegistration;
+}
+
+export type ZLinkLocationStoreProvider<TStore> = TStore | Type<TStore>;
+
+export interface ZLinkLocationStoreRegistration {
+  readonly peerStore?: ZLinkLocationStoreProvider<IZLinkPeerLocationStore>;
+  readonly spotStore?: ZLinkLocationStoreProvider<IZLinkSpotLocationStore>;
+  readonly actorStore?: ZLinkLocationStoreProvider<IZLinkActorLocationStore>;
+  readonly routeStore?: ZLinkLocationStoreProvider<IZLinkRouteLocationStore>;
+  readonly ownerLeaseStore?: ZLinkLocationStoreProvider<IZLinkOwnerLeaseStore>;
+}
+
+export interface ZLinkLocationRegistration {
+  readonly useInMemoryStores: boolean;
+  readonly storeInstance?: IZLinkLocationStore;
+  readonly stores?: ZLinkLocationStoreRegistration;
+  readonly options: ZLinkLocationOptions;
 }
 
 /**
@@ -84,12 +107,6 @@ export interface ZLinkWorkerOptions {
   readonly maxThreads?: number;
   readonly idleTimeoutMs?: number;
   readonly maxQueueLength?: number;
-}
-
-export interface ZLinkRegistrySpotRemoteAddressesRegistration {
-  readonly namespace: string;
-  readonly routerChannelId?: string;
-  readonly registryEndpoint: string;
 }
 
 export interface ZLinkCodecSerializerRegistration {
@@ -117,7 +134,6 @@ export interface ZLinkFrameworkRegistrationOptions {
   readonly requestTimeoutMs?: number;
   readonly spotFactories?: readonly Type<ZLinkSpot>[];
   readonly channels?: Readonly<Record<string, ZLinkChannelOptions>>;
-  readonly discovery?: ZLinkDiscoveryOptions;
   readonly routeChannels?: readonly (string | ZLinkRouteChannelOptions)[];
   readonly streamNodes?: Readonly<Record<string, ZLinkStreamNodeOptions>>;
   readonly streamCompression?: ZLinkStreamCompressionOptions;
@@ -125,18 +141,16 @@ export interface ZLinkFrameworkRegistrationOptions {
     Readonly<Record<string, ZLinkSpotNodeOptions>>;
   readonly spotPublisherClients?: readonly string[];
   readonly spotRemoteAddressResolver?: Type;
-  readonly registrySpotRemoteAddresses?: {
-    readonly namespace: string;
-    readonly routerChannelId?: string;
-  };
   readonly filters?: readonly Type<ZLinkHandlerFilter>[];
   readonly worker?: ZLinkWorkerOptions;
   readonly dispatch?: ZLinkDispatchOptions;
   readonly monitoring?: ZLinkMonitoringOptions;
-}
-
-export interface ZLinkDiscoveryOptions {
-  readonly registries?: readonly string[];
+  readonly locations?: {
+    readonly useInMemoryStores?: boolean;
+    readonly storeInstance?: IZLinkLocationStore;
+    readonly stores?: ZLinkLocationStoreRegistration;
+    readonly options?: ZLinkLocationOptions;
+  };
 }
 
 export interface ZLinkChannelOptions {
@@ -366,16 +380,14 @@ export function createFrameworkRegistration(
     streamNodes: toStreamNodeMap(options.streamNodes),
     streamCompression: normalizeStreamCompression(options.streamCompression),
     spotNodes,
-    discovery: options.discovery,
     spotPublisherClients: toSpotPublisherClientSet(options.spotPublisherClients, spotNodes),
     hasSpotRemoteAddressResolver: options.spotRemoteAddressResolver !== undefined,
-    hasRegistrySpotRemoteAddresses: options.registrySpotRemoteAddresses !== undefined,
     spotRemoteAddressResolverType: options.spotRemoteAddressResolver,
-    registrySpotRemoteAddresses: normalizeRegistrySpotRemoteAddresses(options.registrySpotRemoteAddresses, options.discovery),
     filterTypes: [...(options.filters ?? [])],
     worker: options.worker === undefined ? undefined : { ...options.worker },
     dispatch: options.dispatch === undefined ? undefined : { ...options.dispatch },
-    monitoring: options.monitoring === undefined ? undefined : { ...options.monitoring }
+    monitoring: options.monitoring === undefined ? undefined : { ...options.monitoring },
+    locations: normalizeLocationRegistration(options.locations)
   };
   validateFrameworkRegistration(registration, options);
   return registration;
@@ -399,16 +411,11 @@ class ZLinkFrameworkOptionsBuilder implements ZLinkFrameworkOptions {
   private readonly spotMeshes = new Set<string>();
   private readonly options: MutableFrameworkRegistrationOptions = {
     channels: {},
-    discovery: { registries: [] },
     routeChannels: [],
     streamNodes: {},
     spotNodes: {},
     spotFactories: []
   };
-
-  useDiscovery(): ZLinkDiscoveryBuilder {
-    return new DefaultDiscoveryBuilder(this.options.discovery);
-  }
 
   codecs(): ZLinkCodecRegistryBuilder {
     this.options.codecs ??= { serializers: [], streamCodecs: [] };
@@ -423,6 +430,55 @@ class ZLinkFrameworkOptionsBuilder implements ZLinkFrameworkOptions {
   configureDispatch(): ZLinkDispatchOptionsBuilder {
     this.options.dispatch ??= {};
     return new DefaultDispatchOptionsBuilder(this.options.dispatch);
+  }
+
+  useInMemoryLocationStores(): this {
+    this.options.locations ??= { options: {} };
+    this.options.locations.useInMemoryStores = true;
+    return this;
+  }
+
+  addLocationStore(store: IZLinkLocationStore): this {
+    this.options.locations ??= { options: {} };
+    this.options.locations.storeInstance = store;
+    return this;
+  }
+
+  addPeerLocationStore(store: ZLinkLocationStoreProvider<IZLinkPeerLocationStore>): this {
+    this.locationStores().peerStore = store;
+    return this;
+  }
+
+  addSpotLocationStore(store: ZLinkLocationStoreProvider<IZLinkSpotLocationStore>): this {
+    this.locationStores().spotStore = store;
+    return this;
+  }
+
+  addActorLocationStore(store: ZLinkLocationStoreProvider<IZLinkActorLocationStore>): this {
+    this.locationStores().actorStore = store;
+    return this;
+  }
+
+  addRouteLocationStore(store: ZLinkLocationStoreProvider<IZLinkRouteLocationStore>): this {
+    this.locationStores().routeStore = store;
+    return this;
+  }
+
+  addOwnerLeaseStore(store: ZLinkLocationStoreProvider<IZLinkOwnerLeaseStore>): this {
+    this.locationStores().ownerLeaseStore = store;
+    return this;
+  }
+
+  configureLocations(): ZLinkLocationOptions {
+    this.options.locations ??= { options: {} };
+    this.options.locations.options ??= {};
+    return this.options.locations.options;
+  }
+
+  private locationStores(): MutableLocationStoreRegistration {
+    this.options.locations ??= { options: {} };
+    this.options.locations.stores ??= {};
+    return this.options.locations.stores;
   }
 
   configureStreamCompression(): ZLinkStreamCompressionBuilder {
@@ -474,13 +530,9 @@ class ZLinkFrameworkOptionsBuilder implements ZLinkFrameworkOptions {
   }
 
   build(): ZLinkFrameworkRegistrationOptions {
-    const discovery = this.options.discovery.registries.length === 0
-      ? undefined
-      : { registries: [...this.options.discovery.registries] };
     return {
       codecs: this.options.codecs,
       channels: this.options.channels,
-      discovery,
       requestTimeoutMs: this.options.requestTimeoutMs,
       routeChannels: this.options.routeChannels,
       streamNodes: this.options.streamNodes,
@@ -488,7 +540,8 @@ class ZLinkFrameworkOptionsBuilder implements ZLinkFrameworkOptions {
       spotNodes: this.options.spotNodes,
       spotFactories: this.options.spotFactories,
       dispatch: this.options.dispatch,
-      worker: this.options.worker
+      worker: this.options.worker,
+      locations: this.options.locations
     };
   }
 
@@ -771,15 +824,6 @@ class DefaultSpotMeshBuilder implements ZLinkSpotMeshBuilder {
   }
 }
 
-class DefaultDiscoveryBuilder implements ZLinkDiscoveryBuilder {
-  constructor(private readonly discovery: MutableDiscoveryOptions) {}
-
-  addRegistryEndpoint(endpoint: string): this {
-    this.discovery.registries.push(endpoint);
-    return this;
-  }
-}
-
 class DefaultSpotNodeBuilder implements ZLinkSpotNodeBuilder {
   constructor(private readonly spotNode: MutableSpotNodeOptions) {}
 
@@ -883,7 +927,6 @@ function endpointList(endpoint: string | readonly string[]): string[] {
 interface MutableFrameworkRegistrationOptions {
   codecs?: MutableCodecRegistryOptions;
   channels: Record<string, MutableChannelOptions>;
-  discovery: MutableDiscoveryOptions;
   routeChannels: MutableRouteChannelOptions[];
   streamNodes: Record<string, MutableStreamNodeOptions>;
   streamCompression?: MutableStreamCompressionOptions;
@@ -893,6 +936,22 @@ interface MutableFrameworkRegistrationOptions {
   worker?: ZLinkWorkerOptions;
   dispatch?: ZLinkDispatchOptions;
   requestTimeoutMs?: number;
+  locations?: MutableLocationRegistrationOptions;
+}
+
+interface MutableLocationRegistrationOptions {
+  useInMemoryStores?: boolean;
+  storeInstance?: IZLinkLocationStore;
+  stores?: MutableLocationStoreRegistration;
+  options?: ZLinkLocationOptions;
+}
+
+interface MutableLocationStoreRegistration {
+  peerStore?: ZLinkLocationStoreProvider<IZLinkPeerLocationStore>;
+  spotStore?: ZLinkLocationStoreProvider<IZLinkSpotLocationStore>;
+  actorStore?: ZLinkLocationStoreProvider<IZLinkActorLocationStore>;
+  routeStore?: ZLinkLocationStoreProvider<IZLinkRouteLocationStore>;
+  ownerLeaseStore?: ZLinkLocationStoreProvider<IZLinkOwnerLeaseStore>;
 }
 
 interface MutableCodecRegistryOptions {
@@ -966,10 +1025,6 @@ function normalizeCodecContentType(contentType: string): string {
     throw new ZLinkConfigurationException('Codec content type must not be empty.');
   }
   return normalized;
-}
-
-interface MutableDiscoveryOptions {
-  registries: string[];
 }
 
 interface MutableChannelOptions {
@@ -1170,7 +1225,7 @@ export function hasSpotPublisherClient(registration: ZLinkFrameworkRegistration)
 }
 
 export function hasSpotRemoteAddressResolver(registration: ZLinkFrameworkRegistration): boolean {
-  return registration.hasSpotRemoteAddressResolver || registration.hasRegistrySpotRemoteAddresses;
+  return registration.hasSpotRemoteAddressResolver;
 }
 
 function toTypeMap(value: ZLinkSpotNodeOptions['actorFactories']): Map<string, Type> {
@@ -1300,23 +1355,13 @@ function isStreamCompressionCodec(value: unknown): value is ZLinkStreamCompressi
     && typeof (value as { decompress?: unknown }).decompress === 'function';
 }
 
-function normalizeRegistrySpotRemoteAddresses(
-  value: ZLinkFrameworkRegistrationOptions['registrySpotRemoteAddresses'],
-  discovery: ZLinkDiscoveryOptions | undefined
-): ZLinkRegistrySpotRemoteAddressesRegistration | undefined {
-  if (value === undefined) {
-    return undefined;
-  }
-  if (value.namespace.trim().length === 0 || value.namespace.trim() !== value.namespace) {
-    throw new ZLinkConfigurationException('Registry route namespace must not be empty or padded.');
-  }
-  if (value.routerChannelId !== undefined && (value.routerChannelId.trim().length === 0 || value.routerChannelId.trim() !== value.routerChannelId)) {
-    throw new ZLinkConfigurationException('Registry route RouterChannelId must not be empty or padded.');
-  }
-  const registryEndpoint = (discovery?.registries ?? []).find((endpoint) => endpoint.trim().length > 0);
+function normalizeLocationRegistration(
+  value: ZLinkFrameworkRegistrationOptions['locations']
+): ZLinkLocationRegistration {
   return {
-    namespace: value.namespace,
-    routerChannelId: value.routerChannelId,
-    registryEndpoint: registryEndpoint ?? ''
+    useInMemoryStores: value?.useInMemoryStores === true,
+    storeInstance: value?.storeInstance,
+    stores: value?.stores,
+    options: value?.options === undefined ? {} : { ...value.options }
   };
 }

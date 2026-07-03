@@ -81,8 +81,6 @@ finally:
 PY
 )"
 
-export BINGO_REGISTRY_PUB_ENDPOINT="${BINGO_REGISTRY_PUB_ENDPOINT:-tcp://127.0.0.1:${PORTS[0]}}"
-export BINGO_REGISTRY_ROUTER_ENDPOINT="${BINGO_REGISTRY_ROUTER_ENDPOINT:-tcp://127.0.0.1:${PORTS[1]}}"
 export BINGO_SESSION_A_ENDPOINT="${BINGO_SESSION_A_ENDPOINT:-tcp://127.0.0.1:${PORTS[2]}}"
 export BINGO_SESSION_A_ROUTE_ENDPOINT="${BINGO_SESSION_A_ROUTE_ENDPOINT:-tcp://127.0.0.1:${PORTS[3]}}"
 export BINGO_SESSION_A_SPOT_ENDPOINT="${BINGO_SESSION_A_SPOT_ENDPOINT:-tcp://127.0.0.1:${PORTS[4]}}"
@@ -105,7 +103,6 @@ export BINGO_API_A_ENDPOINT="${BINGO_API_A_ENDPOINT:-tcp://127.0.0.1:${PORTS[16]
 export BINGO_API_B_ENDPOINT="${BINGO_API_B_ENDPOINT:-tcp://127.0.0.1:${PORTS[17]}}"
 export BINGO_REDIS_KEY_PREFIX="${BINGO_REDIS_KEY_PREFIX:-bingo:node:${RANDOM}:$$:}"
 CLIENT_CONFIG="${RUN_DIR}/client.config.json"
-REGISTRY_CONFIG="${RUN_DIR}/registry.config.json"
 API_A_CONFIG="${RUN_DIR}/api-a.config.json"
 API_B_CONFIG="${RUN_DIR}/api-b.config.json"
 PLAY_A_CONFIG="${RUN_DIR}/play-a.config.json"
@@ -125,7 +122,6 @@ export BINGO_REDIS_ENDPOINT="$(docker port "${REDIS_CONTAINER_ID}" 6379/tcp | se
 
 python3 - \
   "${CLIENT_CONFIG}" \
-  "${REGISTRY_CONFIG}" \
   "${API_A_CONFIG}" \
   "${API_B_CONFIG}" \
   "${PLAY_A_CONFIG}" \
@@ -140,8 +136,6 @@ def write(path, sample):
         json.dump({"sample": sample}, output, indent=2)
 
 base = {
-    "registryPubEndpoint": "${BINGO_REGISTRY_PUB_ENDPOINT}",
-    "registryRouterEndpoint": "${BINGO_REGISTRY_ROUTER_ENDPOINT}",
     "redisEndpoint": "${BINGO_REDIS_ENDPOINT}",
     "redisKeyPrefix": "${BINGO_REDIS_KEY_PREFIX}"
 }
@@ -151,8 +145,7 @@ write(sys.argv[1], {
     "sessionAEndpoint": "${BINGO_SESSION_A_ENDPOINT}",
     "sessionBEndpoint": "${BINGO_SESSION_B_ENDPOINT}"
 })
-write(sys.argv[2], base)
-write(sys.argv[3], {
+write(sys.argv[2], {
     **base,
     "apiEndpoint": "${BINGO_API_A_ENDPOINT}",
     "apiNodeRid": "bingo-api-node-a",
@@ -161,7 +154,7 @@ write(sys.argv[3], {
         "${BINGO_PLAY_B_ROUTE_ENDPOINT}"
     ]
 })
-write(sys.argv[4], {
+write(sys.argv[3], {
     **base,
     "apiEndpoint": "${BINGO_API_B_ENDPOINT}",
     "apiNodeRid": "bingo-api-node-b",
@@ -170,7 +163,7 @@ write(sys.argv[4], {
         "${BINGO_PLAY_B_ROUTE_ENDPOINT}"
     ]
 })
-write(sys.argv[5], {
+write(sys.argv[4], {
     **base,
     "playEndpoint": "${BINGO_PLAY_A_ENDPOINT}",
     "playRouteEndpoint": "${BINGO_PLAY_A_ROUTE_ENDPOINT}",
@@ -183,7 +176,7 @@ write(sys.argv[5], {
     "playSpotPubSubEndpoint": "${BINGO_PLAY_A_SPOT_PUBSUB_ENDPOINT}",
     "playSpotNodeRid": "${BINGO_PLAY_A_SPOT_NODE_RID}"
 })
-write(sys.argv[6], {
+write(sys.argv[5], {
     **base,
     "playEndpoint": "${BINGO_PLAY_B_ENDPOINT}",
     "playRouteEndpoint": "${BINGO_PLAY_B_ROUTE_ENDPOINT}",
@@ -196,7 +189,7 @@ write(sys.argv[6], {
     "playSpotPubSubEndpoint": "${BINGO_PLAY_B_SPOT_PUBSUB_ENDPOINT}",
     "playSpotNodeRid": "${BINGO_PLAY_B_SPOT_NODE_RID}"
 })
-write(sys.argv[7], {
+write(sys.argv[6], {
     **base,
     "sessionEndpoint": "${BINGO_SESSION_A_ENDPOINT}",
     "sessionRouteEndpoint": "${BINGO_SESSION_A_ROUTE_ENDPOINT}",
@@ -205,7 +198,7 @@ write(sys.argv[7], {
     "preferredPlayNodeRid": "${BINGO_PLAY_A_SPOT_NODE_RID}",
     "preferredPlayRouteEndpoint": "${BINGO_PLAY_A_ROUTE_ENDPOINT}"
 })
-write(sys.argv[8], {
+write(sys.argv[7], {
     **base,
     "sessionEndpoint": "${BINGO_SESSION_B_ENDPOINT}",
     "sessionRouteEndpoint": "${BINGO_SESSION_B_ROUTE_ENDPOINT}",
@@ -245,85 +238,62 @@ wait_port() {
   return 1
 }
 
-wait_discovery_ready() {
+wait_location_ready() {
   node - \
-    "${BINGO_REGISTRY_ROUTER_ENDPOINT}" \
-    "${BINGO_SESSION_A_SPOT_NODE_RID}" \
-    "${BINGO_SESSION_B_SPOT_NODE_RID}" \
-    "${BINGO_PLAY_A_SPOT_NODE_RID}" \
-    "${BINGO_PLAY_B_SPOT_NODE_RID}" <<'NODE'
-const registryEndpoint = process.argv[2];
-const requiredRouteRids = new Set();
-const requiredSpotRids = new Set(process.argv.slice(3));
-const zlink = require('@zlink-systems/zlink');
-const requiredChannels = new Set(['bingo.api']);
-const roomRouteChannel = 'bingo.play';
-const roomSpotChannel = 'bingo.room';
-const pause = new Int32Array(new SharedArrayBuffer(4));
-const context = zlink.createContext();
-const client = zlink.createRegistryQueryClient(context);
+    "${BINGO_REDIS_ENDPOINT}" \
+    "${BINGO_REDIS_KEY_PREFIX}location" \
+    "${BINGO_API_A_ENDPOINT}" \
+    "${BINGO_API_B_ENDPOINT}" \
+    "${BINGO_PLAY_A_SPOT_ENDPOINT}" \
+    "${BINGO_PLAY_B_SPOT_ENDPOINT}" <<'NODE'
+const redisEndpoint = process.argv[2];
+const keyPrefix = process.argv[3];
+const expectedApiEndpoints = new Set(process.argv.slice(4, 6));
+const expectedSpotEndpoints = new Set(process.argv.slice(6));
+const framework = require('@zlink-systems/framework');
+const { ZLinkRedisLocationStore } = require('@zlink-systems/framework-locations-redis');
 
-function routingIdText(value) {
-  if (typeof value === 'string') {
-    return value;
-  }
-  const bytes = value?._bytes;
-  if (Buffer.isBuffer(bytes) || ArrayBuffer.isView(bytes)) {
-    return Buffer.from(bytes).toString('utf8');
-  }
-  if (Array.isArray(bytes?.data)) {
-    return Buffer.from(bytes.data).toString('utf8');
-  }
-  return String(value);
-}
+const store = new ZLinkRedisLocationStore({
+  url: `redis://${redisEndpoint}`,
+  keyPrefix
+});
 
-try {
-  client.connect(registryEndpoint);
+async function main() {
+  let lastPeers = [];
+  let lastSpotPeers = [];
+  let lastLeases = [];
   for (let attempt = 0; attempt < 100; attempt += 1) {
-    const topology = client.topology();
-    const readyChannels = new Set(topology
-      .filter((entry) =>
-        requiredChannels.has(entry.channelName) &&
-        entry.state === 3 &&
-        typeof entry.endpoint === 'string' &&
-        entry.endpoint.length > 0)
-      .map((entry) => entry.channelName));
-    const readyRouteRids = new Set(topology
-      .filter((entry) =>
-        entry.channelName === roomRouteChannel &&
-        entry.state === 3 &&
-        entry.serviceRole === 3 &&
-        typeof entry.endpoint === 'string' &&
-        entry.endpoint.length > 0)
-      .map((entry) => routingIdText(entry.routingId)));
-    const readySpotRids = new Set(topology
-      .filter((entry) =>
-        entry.channelName === roomSpotChannel &&
-        entry.state === 3 &&
-        entry.serviceRole === 2 &&
-        typeof entry.endpoint === 'string' &&
-        entry.endpoint.length > 0)
-      .map((entry) => routingIdText(entry.routingId)));
-    if (
-      [...requiredChannels].every((channelName) => readyChannels.has(channelName)) &&
-      [...requiredRouteRids].every((routingId) => readyRouteRids.has(routingId)) &&
-      [...requiredSpotRids].every((routingId) => readySpotRids.has(routingId))
-    ) {
-      process.exit(0);
+    lastPeers = await store.listPeers({
+      autoConnectType: framework.ZLinkLocationAutoConnectType.ClientServer,
+      meshName: 'bingo.api',
+      role: framework.ZLinkLocationRole.Router
+    });
+    lastSpotPeers = await store.listPeers({
+      autoConnectType: framework.ZLinkLocationAutoConnectType.SpotMesh,
+      meshName: 'bingo.room',
+      role: framework.ZLinkLocationRole.Spot
+    });
+    lastLeases = (await store.listOwnerLeases()).leases;
+    if ([...expectedApiEndpoints].every((endpoint) =>
+      lastPeers.some((peer) => peer.endpoint === endpoint && lastLeases.some((lease) => lease.ownerId === peer.ownerId))) &&
+      [...expectedSpotEndpoints].every((endpoint) =>
+        lastSpotPeers.some((peer) => peer.endpoint === endpoint && lastLeases.some((lease) => lease.ownerId === peer.ownerId)))) {
+      return;
     }
-    Atomics.wait(pause, 0, 0, 100);
+    await new Promise((resolve) => setTimeout(resolve, 100));
   }
-  console.error('Timed out waiting for registry discovery readiness.');
-  console.error(JSON.stringify(
-    client.topology(),
-    (_key, value) => typeof value === 'bigint' ? value.toString() : value,
-    2
-  ));
-  process.exit(1);
-} finally {
-  client.close();
-  context.close();
+  console.error('Timed out waiting for Bingo location readiness.');
+  console.error(JSON.stringify({ peers: lastPeers, spotPeers: lastSpotPeers, leases: lastLeases }, (_key, value) =>
+    typeof value === 'bigint' ? value.toString() : value, 2));
+  process.exitCode = 1;
 }
+
+main()
+  .finally(() => store.dispose())
+  .catch((error) => {
+    console.error(error);
+    process.exitCode = 1;
+  });
 NODE
 }
 
@@ -337,9 +307,6 @@ start_server() {
 
 (cd "${SCRIPT_DIR}" && npm run build >/dev/null)
 
-start_server registry dist/Server/Registry/main.js "${REGISTRY_CONFIG}"
-wait_port registry-pub "${BINGO_REGISTRY_PUB_ENDPOINT}"
-wait_port registry-router "${BINGO_REGISTRY_ROUTER_ENDPOINT}"
 wait_port redis "tcp://${BINGO_REDIS_ENDPOINT}"
 
 start_server api-a dist/Server/Api/main.js "${API_A_CONFIG}"
@@ -367,8 +334,7 @@ start_server session-b dist/Server/Session/main.js "${SESSION_B_CONFIG}"
 wait_port session-b "${BINGO_SESSION_B_ENDPOINT}"
 wait_port session-b-route "${BINGO_SESSION_B_ROUTE_ENDPOINT}"
 wait_port session-b-spot "${BINGO_SESSION_B_SPOT_ENDPOINT}"
-wait_discovery_ready
-sleep 2
+wait_location_ready
 
 ZLINK_SAMPLE_CONFIG="${CLIENT_CONFIG}" node "${SCRIPT_DIR}/dist/Client/main.js" >"${LOG_DIR}/client.log" 2>&1
 grep -q "stream-inbound sample=Bingo" "${LOG_DIR}/client.log"

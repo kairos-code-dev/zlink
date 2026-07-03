@@ -1,7 +1,6 @@
 export interface PlayOptions {
   readonly rid: string;
   readonly httpUrl: string;
-  readonly registryRouterEndpoint: string;
   readonly controlRouterEndpoint: string;
   readonly externalSpotEndpoint: string;
   readonly spotRouterEndpoint: string;
@@ -30,7 +29,6 @@ export function parsePlayOptions(args: readonly string[]): PlayOptions {
   return {
     rid,
     httpUrl: required(values, 'http-url'),
-    registryRouterEndpoint: required(values, 'registry-router-endpoint'),
     controlRouterEndpoint: required(values, 'control-router-endpoint'),
     externalSpotEndpoint: required(values, 'external-spot-endpoint'),
     spotRouterEndpoint: required(values, 'spot-router-endpoint'),

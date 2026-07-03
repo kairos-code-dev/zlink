@@ -39,7 +39,7 @@ function createSubscriberModule(options: SubscriberOptions, evidence: EvidenceSt
               .messageFlow(ZLinkMessageFlowLogMode.KeyTransitions)
               .traceLogFile(`${options.logDir}/${options.rid}-flow.log`)
               .traceLabel(options.rid);
-          builder.useDiscovery().addRegistryEndpoint(options.registryRouterEndpoint);
+          builder.useInMemoryLocationStores();
           builder.addFanoutChannel(PubSubNames.channel)
             .enableSubscriber(options.publisherEndpoint)
             .addPublishHandler(PacketNames.eventMsg, EventMsgHandler);

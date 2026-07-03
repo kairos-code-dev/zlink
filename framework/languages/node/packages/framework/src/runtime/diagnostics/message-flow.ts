@@ -209,6 +209,10 @@ export function flowLine(flow: ZLinkMessageFlowEvent, label: string | undefined,
     field('src', flow.sourceRid),
     field('spot', flow.spotRid),
     field('actor', flow.actorId),
+    field('errorReason', flow.errorReason),
+    field('errorAction', flow.errorAction),
+    field('errorType', flow.errorType),
+    field('errorMessage', flow.errorMessage),
     size === undefined ? undefined : `size=${size}`
   ]
     .filter((value): value is string => value !== undefined)

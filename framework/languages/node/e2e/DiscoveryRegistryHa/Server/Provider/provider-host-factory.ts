@@ -4,6 +4,7 @@ import { NestFactory } from '@nestjs/core';
 import { ZLinkMessageFlowLogMode } from '@zlink-systems/framework';
 import { ZLinkModule, zlinkFramework } from '@zlink-systems/nestjs';
 import { ChannelNames, PacketNames } from '../../Shared/messages';
+import { createRedisLocationStore, storeFailureLocationOptions } from '../../Shared/location-store';
 import { parseProviderOptions } from './Configuration/provider-options';
 import type { ProviderOptions } from './Configuration/provider-options';
 import { createProviderEndpoints } from './Endpoints/provider-endpoints';
@@ -39,9 +40,8 @@ function createProviderModule(options: ProviderOptions, evidence: EvidenceStore)
               .messageFlow(ZLinkMessageFlowLogMode.KeyTransitions)
               .traceLogFile(`${options.logDir}/${options.rid}-flow.log`)
               .traceLabel(options.rid);
-          for (const endpoint of options.registryRouterEndpoints) {
-            builder.useDiscovery().addRegistryEndpoint(endpoint);
-          }
+          builder.addLocationStore(createRedisLocationStore(options));
+          Object.assign(builder.configureLocations(), storeFailureLocationOptions());
           builder.addClientServerChannel(ChannelNames.profile)
             .enableServer(options.channelEndpoint)
             .routingId(options.rid)

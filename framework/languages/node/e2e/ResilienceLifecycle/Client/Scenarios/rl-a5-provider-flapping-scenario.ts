@@ -3,7 +3,7 @@ import { postJson } from '../Support/http-client';
 import { startProvider } from '../Support/managed-provider';
 import {
   profileReq,
-  sendRequestBatch,
+  waitForProviderTraffic,
   waitTopologyReady,
   waitUntilAvailable,
   waitUntilDown
@@ -28,7 +28,8 @@ export async function runRlA5(options: ClientOptions, state: ScenarioState): Pro
     const restarted = startProvider({
       providerMain: options.providerMain,
       logDir: options.logDir,
-      registryRouterEndpoint: options.registryRouterEndpoint,
+      redisEndpoint: options.redisEndpoint,
+      redisKeyPrefix: options.redisKeyPrefix,
       name: `api-b-flap-${cycle}`,
       rid: 'api-b',
       httpUrl: options.providerBUrl,
@@ -38,10 +39,9 @@ export async function runRlA5(options: ClientOptions, state: ScenarioState): Pro
     await restarted.waitReady();
     state.providerBProcess = restarted;
     await waitUntilAvailable(options.providerBUrl);
-    await waitTopologyReady(options.registryUrl, 'api-b');
+    await waitTopologyReady(options.topologyUrl, 'api-b');
 
-    const sawApiB = await sendRequestBatch(options.consumerUrl, `rl-a5-up-${cycle}`, 'api-b');
-    ensure(sawApiB, 'RL-A5 up window did not reach api-b after restart.');
+    await waitForProviderTraffic(options.consumerUrl, `rl-a5-up-${cycle}`, 'api-b');
     await postJson<string[]>(options.providerBUrl, '/evidence/wait', {
       contains: `profile-request|rid=api-b|value=fast|marker=rl-a5-up-${cycle}-`
     });

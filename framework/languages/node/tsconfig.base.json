@@ -28,6 +28,9 @@
       "@zlink-systems/framework-codec-protobuf": [
         "packages/framework-codec-protobuf/src"
       ],
+      "@zlink-systems/framework-locations-redis": [
+        "packages/framework-locations-redis/src"
+      ],
       "@zlink-systems/http-client": [
         "packages/http-client/src"
       ],

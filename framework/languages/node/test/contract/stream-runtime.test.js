@@ -1079,6 +1079,77 @@ test('runtime host relays bound remote actor request through route channel and c
   assert.deepEqual(JSON.parse(new TextDecoder().decode(frame.payload)), { matched: true });
 });
 
+test('runtime host completes local bound actor request without native SessionRelay response dependency', async () => {
+  const actorRef = { nodeRid: 'play-node', actorId: 'actor-local', generation: 3n };
+  const stream = recordingStream('session-local-actor', 'session-node');
+  const state = new framework.ZLinkActorRuntimeState(actorRef.actorId);
+  const dispatches = [];
+  state.setNativeActorRef(actorRef);
+  state.setJoinedSpot('play-node');
+  const host = new framework.ZLinkFrameworkRuntimeHost({
+    registration: framework.createFrameworkRegistration()
+  });
+  host.spotNodeRuntime = {
+    primaryNode: {
+      routingId: 'play-node'
+    }
+  };
+  host.setActorManager({
+    getState(actorId) {
+      assert.equal(actorId, actorRef.actorId);
+      return state;
+    }
+  });
+  host.setSpotManager({
+    hasActiveSpot(spotRid) {
+      return spotRid === 'play-node';
+    },
+    async dispatchRoutedActorPacket(spotRid, actorId, parts, returnResponse) {
+      dispatches.push({
+        spotRid,
+        actorId,
+        returnResponse,
+        header: connector.ZlinkStreamHeaderCodec.decode(bytesOf(parts[0])),
+        payload: JSON.parse(new TextDecoder().decode(bytesOf(parts[1])))
+      });
+      return { joined: true };
+    }
+  });
+
+  const context = host.streamBindingRuntime.createSessionContext(stream);
+  const actor = await context.actors.bind(actorRef);
+  context.enterDispatch({
+    kind: connector.ZlinkStreamMessageKind.Request,
+    codec: connector.ZlinkStreamCodec.Json,
+    flags: connector.ZlinkStreamHeaderFlags.HasRequestSeq,
+    requestSeq: 5n,
+    name: 'JoinGameReq',
+    metadata: connector.ZlinkStreamMetadataMap.empty
+  });
+  try {
+    await actor.relay(framework.ZLinkMessage.fromEncoded(
+      framework.ZLinkEncodedPayload.from(Buffer.from(JSON.stringify({ roomId: 'room-a' })))
+    ));
+  } finally {
+    context.exitDispatch();
+  }
+
+  assert.equal(dispatches.length, 1);
+  assert.equal(dispatches[0].spotRid, 'play-node');
+  assert.equal(dispatches[0].actorId, 'actor-local');
+  assert.equal(dispatches[0].returnResponse, true);
+  assert.equal(dispatches[0].header.kind, connector.ZlinkStreamMessageKind.Request);
+  assert.equal(dispatches[0].header.name, 'JoinGameReq');
+  assert.equal(dispatches[0].header.requestSeq, 5n);
+  assert.deepEqual(dispatches[0].payload, { roomId: 'room-a' });
+  assert.equal(stream.writes.length, 1);
+  const frame = decodeFrame(bytesOf(stream.writes[0]));
+  assert.equal(frame.header.kind, connector.ZlinkStreamMessageKind.Response);
+  assert.equal(frame.header.name, 'JoinGameReq');
+  assert.equal(frame.header.requestSeq, 5n);
+  assert.deepEqual(JSON.parse(new TextDecoder().decode(frame.payload)), { joined: true });
+});
+
 test('bound session send and disconnect use current binding token and stale tokens cannot remove newer binding', async () => {
   const sent = [];
   const disconnected = [];

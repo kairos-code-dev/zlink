@@ -20,7 +20,8 @@ export async function runRlA4(options: ClientOptions, state: ScenarioState): Pro
   const green = startProvider({
     providerMain: options.providerMain,
     logDir: options.logDir,
-    registryRouterEndpoint: options.registryRouterEndpoint,
+    redisEndpoint: options.redisEndpoint,
+    redisKeyPrefix: options.redisKeyPrefix,
     name: 'api-b-green',
     rid: 'api-b',
     httpUrl: options.providerBGreenUrl,
@@ -30,8 +31,6 @@ export async function runRlA4(options: ClientOptions, state: ScenarioState): Pro
 
   try {
     await green.waitReady();
-    await waitTopologyEndpointReady(options.registryUrl, 'api-b', options.providerBGreenChannelEndpoint);
-    await waitTopologyReady(options.registryUrl, 'api-b');
 
     for (let i = 0; i < 12; i += 1) {
       const reply = await postJson<ProfileRes>(
@@ -43,12 +42,17 @@ export async function runRlA4(options: ClientOptions, state: ScenarioState): Pro
       ensure(reply.providerRid === 'api-a' || reply.providerRid === 'api-b', 'RL-A4 rolling request used an unexpected provider.');
     }
 
-    await postJson(options.providerBUrl, '/shutdown');
+    if (state.providerBProcess !== undefined) {
+      await state.providerBProcess.stop();
+    } else {
+      await postJson(options.providerBUrl, '/shutdown');
+    }
     await waitUntilDown(options.providerBUrl);
     state.providerBProcess = undefined;
-    await waitTopologyEndpointAbsent(options.registryUrl, options.providerBChannelEndpoint);
+    await waitTopologyEndpointAbsent(options.topologyUrl, options.providerBChannelEndpoint);
 
-    await waitTopologyReady(options.registryUrl, 'api-b');
+    await waitTopologyEndpointReady(options.topologyUrl, 'api-b', options.providerBGreenChannelEndpoint);
+    await waitTopologyReady(options.topologyUrl, 'api-b');
     for (let i = 0; i < 32; i += 1) {
       const reply = await postJson<ProfileRes>(
         options.consumerUrl,
@@ -66,12 +70,13 @@ export async function runRlA4(options: ClientOptions, state: ScenarioState): Pro
     await green.stop();
   }
   await waitUntilDown(options.providerBGreenUrl);
-  await waitTopologyEndpointAbsent(options.registryUrl, options.providerBGreenChannelEndpoint);
+  await waitTopologyEndpointAbsent(options.topologyUrl, options.providerBGreenChannelEndpoint);
 
   const restored = startProvider({
     providerMain: options.providerMain,
     logDir: options.logDir,
-    registryRouterEndpoint: options.registryRouterEndpoint,
+    redisEndpoint: options.redisEndpoint,
+    redisKeyPrefix: options.redisKeyPrefix,
     name: 'api-b-original-restored',
     rid: 'api-b',
     httpUrl: options.providerBUrl,
@@ -81,8 +86,8 @@ export async function runRlA4(options: ClientOptions, state: ScenarioState): Pro
   await restored.waitReady();
   state.providerBProcess = restored;
   await waitUntilAvailable(options.providerBUrl);
-  await waitTopologyEndpointReady(options.registryUrl, 'api-b', options.providerBChannelEndpoint);
-  await waitTopologyReady(options.registryUrl, 'api-b');
+  await waitTopologyEndpointReady(options.topologyUrl, 'api-b', options.providerBChannelEndpoint);
+  await waitTopologyReady(options.topologyUrl, 'api-b');
 
   await sendUntilProvider(options.consumerUrl, 'rl-a4-restored', 'api-b', 120);
 

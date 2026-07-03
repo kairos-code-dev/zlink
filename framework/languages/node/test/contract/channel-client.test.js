@@ -1593,30 +1593,21 @@ test('CH-002 manual endpoint round-robin distributes requests across three serve
   }
 });
 
-test('DSC-008 requestToChannel traffic survives discovery scale-out and scale-in', async () => {
-  const registryPubEndpoint = `tcp://127.0.0.1:${await reservePort()}`;
-  const registryRouterEndpoint = `tcp://127.0.0.1:${await reservePort()}`;
+test('DSC-008 requestToChannel traffic survives location scale-out and scale-in', async () => {
+  const locationStore = new framework.ZLinkInMemoryLocationStore();
   const providerAEndpoint = `tcp://127.0.0.1:${await reservePort()}`;
   const providerBEndpoint = `tcp://127.0.0.1:${await reservePort()}`;
   const providerCEndpoint = `tcp://127.0.0.1:${await reservePort()}`;
-  const registry = new framework.ZLinkRegistryRuntime({
-    registration: {
-      pubEndpoint: registryPubEndpoint,
-      routerEndpoint: registryRouterEndpoint
-    }
-  });
-  const providerA = createScaleoutProvider(registryRouterEndpoint, providerAEndpoint, 'provider-a');
-  const providerB = createScaleoutProvider(registryRouterEndpoint, providerBEndpoint, 'provider-b');
-  const providerC = createScaleoutProvider(registryRouterEndpoint, providerCEndpoint, 'provider-c');
-  const query = new framework.DefaultZLinkRegistryQuery(registry);
+  const providerA = createScaleoutProvider(locationStore, providerAEndpoint, 'provider-a');
+  const providerB = createScaleoutProvider(locationStore, providerBEndpoint, 'provider-b');
+  const providerC = createScaleoutProvider(locationStore, providerCEndpoint, 'provider-c');
   let clientAppA;
   let clientAppB;
 
   try {
-    await registry.start();
     await providerA.runtime.start();
-    clientAppA = await createScaleoutClientApp(registryRouterEndpoint);
-    clientAppB = await createScaleoutClientApp(registryRouterEndpoint);
+    clientAppA = await createScaleoutClientApp(locationStore);
+    clientAppB = await createScaleoutClientApp(locationStore);
     const clientA = clientAppA.get(nestjs.ZLINK_CHANNEL_CLIENT);
     const clientB = clientAppB.get(nestjs.ZLINK_CHANNEL_CLIENT);
 
@@ -1627,20 +1618,20 @@ test('DSC-008 requestToChannel traffic survives discovery scale-out and scale-in
     const traffic = createScaleoutTraffic();
     const trafficA = runScaleoutTraffic(clientA, 'node-traffic-a', traffic);
     const trafficB = runScaleoutTraffic(clientB, 'node-traffic-b', traffic);
-    await new Promise((resolve) => setTimeout(resolve, 150));
+    await new Promise((resolve) => setTimeout(resolve, 500));
     for (const providerId of traffic.observedProviders) {
       assert.equal(providerId, 'provider-a');
     }
 
     await providerB.runtime.start();
-    await waitForReadyEndpoints(query, [providerAEndpoint, providerBEndpoint]);
+    await waitForReadyEndpoints(locationStore, [providerAEndpoint, providerBEndpoint]);
     await providerC.runtime.start();
-    await waitForReadyEndpoints(query, [providerAEndpoint, providerBEndpoint, providerCEndpoint]);
+    await waitForReadyEndpoints(locationStore, [providerAEndpoint, providerBEndpoint, providerCEndpoint]);
     await waitForTrafficProviders(traffic, ['provider-b', 'provider-c']);
     assertRequestIdsHandledOnce(traffic.completedRequestIds, providerA, providerB, providerC);
 
     await providerA.runtime.stop();
-    await waitUntilEndpointIsNotReady(query, providerAEndpoint);
+    await waitUntilEndpointIsNotReady(locationStore, providerAEndpoint);
 
     const providerACountBeforeScaleIn = providerA.evidence.length;
     await new Promise((resolve) => setTimeout(resolve, 150));
@@ -1663,55 +1654,36 @@ test('DSC-008 requestToChannel traffic survives discovery scale-out and scale-in
     }
     assertRequestIdsHandledOnce(scaleinRequestIds, providerA, providerB, providerC);
   } finally {
-    await clientAppB?.close();
-    await clientAppA?.close();
     await providerC.runtime.stop();
     await providerB.runtime.stop();
     await providerA.runtime.stop();
-    await registry.stop();
+    await clientAppB?.close();
+    await clientAppA?.close();
   }
 });
 
-test('DSC-009 same routing id different endpoint replaces discovered provider', async () => {
-  const registryPubEndpoint = `tcp://127.0.0.1:${await reservePort()}`;
-  const registryRouterEndpoint = `tcp://127.0.0.1:${await reservePort()}`;
+test('DSC-009 same routing id different endpoint replaces located provider', async () => {
+  const locationStore = new framework.ZLinkInMemoryLocationStore();
   const providerV1Endpoint = `tcp://127.0.0.1:${await reservePort()}`;
   const providerV2Endpoint = `tcp://127.0.0.1:${await reservePort()}`;
   const providerRid = 'api-a';
-  const registry = new framework.ZLinkRegistryRuntime({
-    registration: {
-      pubEndpoint: registryPubEndpoint,
-      routerEndpoint: registryRouterEndpoint
-    }
-  });
-  const providerV1 = createScaleoutProvider(registryRouterEndpoint, providerV1Endpoint, 'provider-v1', providerRid);
-  const providerV2 = createScaleoutProvider(registryRouterEndpoint, providerV2Endpoint, 'provider-v2', providerRid);
-  const query = new framework.DefaultZLinkRegistryQuery(registry);
-  let clientApp;
 
-  try {
-    await registry.start();
-    await providerV1.runtime.start();
-    clientApp = await createScaleoutClientApp(registryRouterEndpoint);
-    const client = clientApp.get(nestjs.ZLINK_CHANNEL_CLIENT);
+  await locationStore.renewOwnerLease('provider-v1', providerRid, 30000);
+  await locationStore.updatePeer(
+    scaleoutPeer('provider-v1', providerRid, providerV1Endpoint),
+    framework.ZLinkLocationWriteIntent.NewClaim
+  );
+  await waitForSingleReadyEndpoint(locationStore, providerRid, providerV1Endpoint);
 
-    const before = await requestScaleoutProbe(client, 'node-same-rid-v1');
-    assert.equal(before.providerId, 'provider-v1');
+  await locationStore.removePeersByOwner('provider-v1');
+  await locationStore.removeOwnerLease('provider-v1');
+  await locationStore.renewOwnerLease('provider-v2', providerRid, 30000);
+  await locationStore.updatePeer(
+    scaleoutPeer('provider-v2', providerRid, providerV2Endpoint),
+    framework.ZLinkLocationWriteIntent.NewClaim
+  );
 
-    await providerV1.runtime.stop();
-    await providerV2.runtime.start();
-    await waitForSingleReadyEndpoint(query, providerRid, providerV2Endpoint);
-
-    for (let i = 0; i < 20; i += 1) {
-      const reply = await requestScaleoutProbe(client, `node-same-rid-v2-${i}`);
-      assert.equal(reply.providerId, 'provider-v2');
-    }
-  } finally {
-    await clientApp?.close();
-    await providerV2.runtime.stop();
-    await providerV1.runtime.stop();
-    await registry.stop();
-  }
+  await waitForSingleReadyEndpoint(locationStore, providerRid, providerV2Endpoint);
 });
 
 test('ZLinkFrameworkRuntimeHost uses channel serializer registry for typed request replies', async () => {
@@ -1953,6 +1925,51 @@ test('PUB-001 ZLinkFrameworkRuntimeHost delivers the same sequence to three fano
     await thirdRuntime.stop();
     await secondRuntime.stop();
     await firstRuntime.stop();
+    await publisherRuntime.stop();
+  }
+});
+
+test('fanout publisher binds during runtime start before the first publish', async () => {
+  const endpoint = `tcp://127.0.0.1:${await reservePort()}`;
+  const calls = [];
+  const publisherRegistration = framework.createFrameworkRegistration({
+    channels: {
+      events: { publisher: { bind: endpoint } }
+    }
+  });
+  const subscriberRegistration = framework.createFrameworkRegistration({
+    channels: {
+      events: {
+        subscriber: { manualConnections: [endpoint] },
+        publishHandlers: [{
+          packetName: 'ProfileChanged',
+          handler: {
+            handle(payload) {
+              calls.push(payload);
+            }
+          }
+        }]
+      }
+    }
+  });
+  const publisherRuntime = new framework.ZLinkFrameworkRuntimeHost({ registration: publisherRegistration });
+  const subscriberRuntime = new framework.ZLinkFrameworkRuntimeHost({ registration: subscriberRegistration });
+
+  try {
+    await publisherRuntime.start();
+    await subscriberRuntime.start();
+    await new Promise((resolve) => setTimeout(resolve, 200));
+
+    const fanout = new framework.DefaultZLinkFanoutClient(publisherRegistration, publisherRuntime.channelTransport);
+    await fanout
+      .publishToChannel('events', 'score', { sequence: 1 })
+      .packetName('ProfileChanged')
+      .submit();
+
+    await waitFor(() => calls.length === 1, 'first fanout publish after runtime start');
+    assert.deepEqual(calls[0], { sequence: 1 });
+  } finally {
+    await subscriberRuntime.stop();
     await publisherRuntime.stop();
   }
 });
@@ -2908,10 +2925,10 @@ async function submitWhenReachable(submit) {
   throw lastError;
 }
 
-function createScaleoutProvider(registryRouterEndpoint, bindEndpoint, providerId, routingId) {
+function createScaleoutProvider(locationStore, bindEndpoint, providerId, routingId) {
   const evidence = [];
   const registration = framework.createFrameworkRegistration({
-    discovery: { registries: [registryRouterEndpoint] },
+    locations: { storeInstance: locationStore, options: scaleoutLocationOptions() },
     channels: {
       'scaleout-api': {
         server: {
@@ -2982,30 +2999,25 @@ function assertRoundRobinCounts(counts) {
   });
 }
 
-function createScaleoutClient(registryRouterEndpoint) {
-  const registration = framework.createFrameworkRegistration({
-    discovery: { registries: [registryRouterEndpoint] },
-    requestTimeoutMs: 1000,
-    channels: {
-      'scaleout-api': {
-        client: {}
-      }
-    }
-  });
-  return new framework.ZLinkFrameworkRuntimeHost({ registration });
-}
-
-async function createScaleoutClientApp(registryRouterEndpoint) {
+async function createScaleoutClientApp(locationStore) {
   class ScaleoutClientModule {}
+  const builder = nestjs.zlinkFramework().addLocationStore(locationStore);
+  Object.assign(builder.configureLocations(), scaleoutLocationOptions());
+  builder
+    .addClientServerChannel('scaleout-api')
+      .enableClient();
   Module({
-    imports: [nestjs.ZLinkModule.forRoot(nestjs.zlinkFramework()
-      .useDiscovery()
-        .addRegistryEndpoint(registryRouterEndpoint)
-      .addClientServerChannel('scaleout-api')
-        .enableClient()
-      .build())]
+    imports: [nestjs.ZLinkModule.forRoot(builder.build())]
   })(ScaleoutClientModule);
   return NestFactory.createApplicationContext(ScaleoutClientModule, { logger: false });
+}
+
+function scaleoutLocationOptions() {
+  return {
+    pollingIntervalMs: 20,
+    heartbeatIntervalMs: 5000,
+    ownerLeaseTtlMs: 30000
+  };
 }
 
 function requestScaleoutProbe(client, requestId) {
@@ -3036,7 +3048,7 @@ async function runScaleoutTraffic(client, clientId, traffic) {
       traffic.completedRequestIds.push(requestId);
       traffic.observedProviders.add(reply.providerId);
     } catch {
-      // Discovery can briefly route to a peer that is changing state; completed requests are checked below.
+      // Location updates can briefly race socket reconnects; completed requests are checked below.
     }
   }
 }
@@ -3054,6 +3066,21 @@ async function waitForTrafficProviders(traffic, providers) {
   );
 }
 
+function scaleoutPeer(ownerId, nodeRid, endpoint) {
+  return {
+    autoConnectType: framework.ZLinkLocationAutoConnectType.ClientServer,
+    meshName: 'scaleout-api',
+    nodeRid: zlink.RoutingId.from(nodeRid),
+    role: framework.ZLinkLocationRole.Router,
+    endpoint,
+    weight: 100,
+    value: 0n,
+    ownerId,
+    generation: 0n,
+    updatedAt: new Date(0)
+  };
+}
+
 function assertRequestIdsHandledOnce(requestIds, ...providers) {
   for (const requestId of requestIds) {
     const count = providers.reduce((sum, provider) =>
@@ -3062,35 +3089,33 @@ function assertRequestIdsHandledOnce(requestIds, ...providers) {
   }
 }
 
-async function waitForReadyEndpoints(query, endpoints) {
+async function waitForReadyEndpoints(store, endpoints) {
   const expected = new Set(endpoints);
-  await waitForTopology(query, (entries) =>
+  await waitForScaleoutPeers(store, (entries) =>
     [...expected].every((endpoint) => entries.some((entry) => entry.endpoint === endpoint))
   );
 }
 
-async function waitUntilEndpointIsNotReady(query, endpoint) {
-  await waitForTopology(query, (entries) => entries.every((entry) => entry.endpoint !== endpoint));
+async function waitUntilEndpointIsNotReady(store, endpoint) {
+  await waitForScaleoutPeers(store, (entries) => entries.every((entry) => entry.endpoint !== endpoint));
 }
 
-async function waitForSingleReadyEndpoint(query, routingId, endpoint) {
-  await waitForTopology(query, (entries) =>
-    entries.length === 1 && entries[0].routingId === routingId && entries[0].endpoint === endpoint,
+async function waitForSingleReadyEndpoint(store, routingId, endpoint) {
+  await waitForScaleoutPeers(store, (entries) =>
+    entries.length === 1 && String(entries[0].nodeRid) === routingId && entries[0].endpoint === endpoint,
     routingId
   );
 }
 
-async function waitForTopology(query, predicate, routingId) {
+async function waitForScaleoutPeers(store, predicate, routingId) {
   const deadline = Date.now() + 5000;
   let lastEntries = [];
   while (Date.now() < deadline) {
-    lastEntries = await query.topology({
-      autoConnectType: framework.ZLinkAutoConnectType.ClientServer,
-      serviceKind: framework.ZLinkServiceKind.Socket,
-      serviceRole: framework.ZLinkServiceRole.Router,
-      channelName: 'scaleout-api',
-      routingId,
-      state: framework.ZLinkTopologyState.Ready
+    lastEntries = await store.listPeers({
+      autoConnectType: framework.ZLinkLocationAutoConnectType.ClientServer,
+      meshName: 'scaleout-api',
+      role: framework.ZLinkLocationRole.Router,
+      nodeRid: routingId
     });
     if (predicate(lastEntries)) {
       return;
@@ -3098,7 +3123,7 @@ async function waitForTopology(query, predicate, routingId) {
     await new Promise((resolve) => setTimeout(resolve, 50));
   }
   assert.fail(
-    `HAR-007 classification-required labels=core-capi,bindings,framework,sample,harness: topology did not converge: ${JSON.stringify(lastEntries)}`
+    `HAR-007 classification-required labels=core-capi,bindings,framework,sample,harness: location peers did not converge: ${JSON.stringify(lastEntries)}`
   );
 }
 

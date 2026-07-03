@@ -2,7 +2,6 @@ import 'reflect-metadata';
 import { NestFactory } from '@nestjs/core';
 import { EvidenceStore } from './Configuration/evidence-store';
 import { loadSampleConfig } from './Configuration/sample-config';
-import { createRegistryModule } from './Registry/registry-module';
 import { createTrackingModule } from './Tracking/tracking-module';
 import { createSessionModule } from './Session/session-module';
 import { createCourierActorNodeModule, createCourierGatewayModule } from './Courier/courier-module';
@@ -18,14 +17,11 @@ async function main(): Promise<void> {
   const evidence = new EvidenceStore();
 
   if (role === 'probe') {
-    await waitForTopology(config.registryRouterEndpoint, Number(readOption('--timeout-ms') ?? 10000));
+    await waitForTopology(Number(readOption('--timeout-ms') ?? 10000));
     return;
   }
 
   const modules = [];
-  if (role === 'all' || role === 'registry') {
-    modules.push(createRegistryModule(config));
-  }
   if (role === 'all' || role === 'tracking') {
     modules.push(createTrackingModule(config, evidence));
   }

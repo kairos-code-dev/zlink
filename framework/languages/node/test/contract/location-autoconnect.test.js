@@ -1,0 +1,247 @@
+const assert = require('node:assert/strict');
+const test = require('node:test');
+const zlink = require('@zlink-systems/zlink');
+const framework = require('../../packages/framework/dist');
+const internal = require('../../packages/framework/dist/internal');
+
+test('auto-connect planner applies role policy pairwise initiator and dial-only exception', () => {
+  const routeLocal = local(framework.ZLinkLocationAutoConnectType.RouteMesh, framework.ZLinkLocationRole.Router, 'node-a', 'tcp://a');
+  const routeDesired = internal.ZLinkAutoConnectPlanner.computeDesired(routeLocal, [
+    peer('owner-b', framework.ZLinkLocationAutoConnectType.RouteMesh, framework.ZLinkLocationRole.Router, 'node-b', 'tcp://b'),
+    peer('owner-0', framework.ZLinkLocationAutoConnectType.RouteMesh, framework.ZLinkLocationRole.Router, 'node-0', 'tcp://0'),
+    peer('owner-dealer', framework.ZLinkLocationAutoConnectType.RouteMesh, framework.ZLinkLocationRole.Dealer, 'node-c', 'tcp://c'),
+    peer('owner-self', framework.ZLinkLocationAutoConnectType.RouteMesh, framework.ZLinkLocationRole.Router, 'node-a', 'tcp://a')
+  ]);
+
+  assert.deepEqual([...routeDesired.values()].map((target) => target.endpoint), ['tcp://b']);
+
+  const dialOnly = local(framework.ZLinkLocationAutoConnectType.RouteMesh, framework.ZLinkLocationRole.Router, 'node-z', '');
+  const dialOnlyDesired = internal.ZLinkAutoConnectPlanner.computeDesired(dialOnly, [
+    peer('owner-a', framework.ZLinkLocationAutoConnectType.RouteMesh, framework.ZLinkLocationRole.Router, 'node-a', 'tcp://a')
+  ]);
+  assert.deepEqual([...dialOnlyDesired.values()].map((target) => target.endpoint), ['tcp://a']);
+
+  const dealer = local(framework.ZLinkLocationAutoConnectType.ClientServer, framework.ZLinkLocationRole.Dealer, 'node-d', 'tcp://dealer');
+  const clientServerDesired = internal.ZLinkAutoConnectPlanner.computeDesired(dealer, [
+    peer('owner-router', framework.ZLinkLocationAutoConnectType.ClientServer, framework.ZLinkLocationRole.Router, 'node-r', 'tcp://router'),
+    peer('owner-dealer', framework.ZLinkLocationAutoConnectType.ClientServer, framework.ZLinkLocationRole.Dealer, 'node-x', 'tcp://peer-dealer')
+  ]);
+  assert.deepEqual([...clientServerDesired.values()].map((target) => target.endpoint), ['tcp://router']);
+
+  const spot = local(framework.ZLinkLocationAutoConnectType.SpotMesh, framework.ZLinkLocationRole.Spot, 'node-a', 'tcp://spot-a');
+  const spotDesired = internal.ZLinkAutoConnectPlanner.computeDesired(spot, [
+    peer('owner-b', framework.ZLinkLocationAutoConnectType.SpotMesh, framework.ZLinkLocationRole.Spot, 'node-b', 'tcp://spot-b'),
+    peer('owner-router', framework.ZLinkLocationAutoConnectType.SpotMesh, framework.ZLinkLocationRole.Router, 'node-r', 'tcp://router')
+  ]);
+  assert.deepEqual([...spotDesired.values()].map((target) => target.endpoint), ['tcp://spot-b']);
+});
+
+test('store peer resolver reads store each time and joins owner liveness', async () => {
+  let nowMs = Date.UTC(2026, 6, 3, 0, 0, 0);
+  const store = new internal.ZLinkInMemoryLocationStore(() => new Date(nowMs));
+  await store.renewOwnerLease('owner-live', rid('node-live'), 1000);
+  await store.updatePeer(
+    peer('owner-live', framework.ZLinkLocationAutoConnectType.RouteMesh, framework.ZLinkLocationRole.Router, 'node-live', 'tcp://live'),
+    framework.ZLinkLocationWriteIntent.NewClaim
+  );
+  await store.updatePeer(
+    peer('owner-missing', framework.ZLinkLocationAutoConnectType.RouteMesh, framework.ZLinkLocationRole.Router, 'node-missing', 'tcp://missing'),
+    framework.ZLinkLocationWriteIntent.NewClaim
+  );
+  const tracker = new internal.ZLinkOwnerLeaseTracker({
+    store,
+    options: { pollingIntervalMs: 0 },
+    monotonicNowMs: () => 0
+  });
+  const resolver = new internal.ZLinkStoreLocationResolvers({
+    stores: stores(store),
+    leaseTracker: tracker
+  });
+
+  assert.deepEqual(
+    (await resolver.listPeers({ meshName: 'play' })).map((row) => row.endpoint),
+    ['tcp://live']
+  );
+
+  nowMs += 1001;
+  assert.deepEqual(await resolver.listPeers({ meshName: 'play' }), []);
+});
+
+test('auto-connect reconciler publishes local row diffs handover and stays fail-static on store failure', async () => {
+  const store = new internal.ZLinkInMemoryLocationStore(() => new Date(Date.UTC(2026, 6, 3, 0, 0, 0)));
+  const runtime = runtimeFor(store, 'owner-local');
+  await runtime.start(rid('node-local'));
+
+  await store.renewOwnerLease('owner-remote', rid('node-remote'), 30000);
+  const remote = await store.updatePeer(
+    peer('owner-remote', framework.ZLinkLocationAutoConnectType.ClientServer, framework.ZLinkLocationRole.Router, 'node-remote', 'tcp://remote'),
+    framework.ZLinkLocationWriteIntent.NewClaim
+  );
+  assert.equal(remote.status, framework.ZLinkLocationWriteStatus.Stored);
+
+  const resolver = new SwitchablePeerResolver(new internal.ZLinkStoreLocationResolvers({
+    stores: stores(store),
+    leaseTracker: new internal.ZLinkOwnerLeaseTracker({
+      store,
+      options: { pollingIntervalMs: 0 },
+      monotonicNowMs: () => 0
+    })
+  }));
+  const calls = [];
+  const reconciler = new internal.ZLinkAutoConnectReconciler({
+    local: local(framework.ZLinkLocationAutoConnectType.ClientServer, framework.ZLinkLocationRole.Dealer, 'node-local', 'tcp://dealer'),
+    localRow: peer('ignored', framework.ZLinkLocationAutoConnectType.ClientServer, framework.ZLinkLocationRole.Dealer, 'node-local', 'tcp://dealer'),
+    runtime,
+    peerResolver: resolver,
+    executor: executor(calls),
+    options: { heartbeatIntervalMs: 1000 },
+    monotonicNowMs: () => 0
+  });
+
+  await reconciler.tick();
+  assert.deepEqual(calls, ['connect:tcp://remote:owner-remote']);
+  assert.equal((await store.listPeers({ endpoint: 'tcp://dealer' })).length, 1);
+  assert.equal(reconciler.knowsPeer(rid('node-remote')), true);
+
+  await store.renewOwnerLease('owner-restarted', rid('node-remote'), 30000);
+  await store.updatePeer(
+    peer('owner-restarted', framework.ZLinkLocationAutoConnectType.ClientServer, framework.ZLinkLocationRole.Router, 'node-remote', 'tcp://remote'),
+    framework.ZLinkLocationWriteIntent.Takeover
+  );
+  await reconciler.tick();
+  assert.deepEqual(calls, [
+    'connect:tcp://remote:owner-remote',
+    'disconnect:tcp://remote:owner-remote',
+    'connect:tcp://remote:owner-restarted'
+  ]);
+
+  resolver.fail = true;
+  await reconciler.tick();
+  assert.equal(reconciler.storeFailed, true);
+  assert.equal(reconciler.activeTargets.length, 1);
+  assert.deepEqual(calls.slice(-1), ['connect:tcp://remote:owner-restarted']);
+
+  await reconciler.shutdown();
+  assert.deepEqual(calls.slice(-1), ['disconnect:tcp://remote:owner-restarted']);
+  assert.equal((await store.listPeers({ endpoint: 'tcp://dealer' })).length, 1);
+  await runtime.stop();
+  assert.equal((await store.listPeers({ endpoint: 'tcp://dealer' })).length, 0);
+});
+
+test('auto-connect loop skips unchanged change stamp until live owner set changes', async () => {
+  const reconciler = {
+    storeFailed: false,
+    ticks: 0,
+    async tick() {
+      this.ticks++;
+    },
+    async shutdown() {}
+  };
+  const stampStore = {
+    stamp: 1n,
+    async getChangeStamp() {
+      return this.stamp;
+    }
+  };
+  const leaseTracker = {
+    version: 1,
+    async getLiveOwnerSetVersion() {
+      return this.version;
+    }
+  };
+  const loop = new internal.ZLinkAutoConnectLoop({
+    reconciler,
+    local: local(framework.ZLinkLocationAutoConnectType.RouteMesh, framework.ZLinkLocationRole.Router, 'node-a', 'tcp://a'),
+    changeStampStore: stampStore,
+    leaseTracker
+  });
+
+  await loop.tick();
+  await loop.tick();
+  assert.equal(reconciler.ticks, 1);
+
+  leaseTracker.version = 2;
+  await loop.tick();
+  assert.equal(reconciler.ticks, 2);
+
+  stampStore.stamp = 2n;
+  await loop.tick();
+  assert.equal(reconciler.ticks, 3);
+});
+
+class SwitchablePeerResolver {
+  constructor(inner) {
+    this.inner = inner;
+    this.fail = false;
+  }
+
+  async listPeers(filter, signal) {
+    if (this.fail) {
+      throw new Error('store unavailable');
+    }
+    return this.inner.listPeers(filter, signal);
+  }
+}
+
+function runtimeFor(store, ownerId) {
+  return new internal.ZLinkLocationRuntime({
+    stores: stores(store),
+    ownerId,
+    now: () => new Date(Date.UTC(2026, 6, 3, 0, 0, 0)),
+    setTimer() {
+      return 0;
+    },
+    clearTimer() {}
+  });
+}
+
+function stores(store) {
+  return {
+    peerStore: store,
+    spotStore: store,
+    actorStore: store,
+    routeStore: store,
+    ownerLeaseStore: store
+  };
+}
+
+function executor(calls) {
+  return {
+    connect(target) {
+      calls.push(`connect:${target.endpoint}:${target.ownerId}`);
+    },
+    disconnect(target) {
+      calls.push(`disconnect:${target.endpoint}:${target.ownerId}`);
+    }
+  };
+}
+
+function local(autoConnectType, role, nodeRid, endpoint) {
+  return {
+    autoConnectType,
+    meshName: 'play',
+    role,
+    nodeRid: rid(nodeRid),
+    endpoint
+  };
+}
+
+function peer(ownerId, autoConnectType, role, nodeRid, endpoint) {
+  return {
+    autoConnectType,
+    meshName: 'play',
+    nodeRid: rid(nodeRid),
+    role,
+    endpoint,
+    weight: 100,
+    value: 0n,
+    metadata: { endpoint },
+    ownerId,
+    generation: 0n,
+    updatedAt: new Date(0)
+  };
+}
+
+function rid(value) {
+  return zlink.RoutingId.from(value);
+}

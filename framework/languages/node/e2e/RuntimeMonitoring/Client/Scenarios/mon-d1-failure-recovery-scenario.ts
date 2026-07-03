@@ -8,7 +8,7 @@ import { getJson, postJson } from '../Support/http-client';
 import { ensure } from '../Support/scenario-assert';
 
 export async function runMonD1(options: ClientOptions): Promise<void> {
-  const baseline = await topologyCount(options.registryUrl);
+  const baseline = await topologyCount(options.serviceUrl);
   await postJson<object>(options.serviceBUrl, '/shutdown', {});
   await waitForPortState(options.serviceBUrl, false, 'MON-D1 expected service-b to stop.');
 
@@ -35,14 +35,14 @@ export async function runMonD1(options: ClientOptions): Promise<void> {
       'MON-D1 restarted service evidence missing.'
     );
 
-    const registryEvidence = await waitForTopologyGrowth(options.registryUrl, baseline);
+    const locationEvidence = await waitForTopologyContinuity(options, baseline);
     ensure(
-      registryEvidence.length > baseline,
-      'MON-D1 registry topology continuity evidence missing.'
+      locationEvidence.length > 0,
+      'MON-D1 location topology continuity evidence missing.'
     );
   } finally {
     await postBestEffort(options.serviceBUrl, '/shutdown');
-    await restarted.wait();
+    await restarted.stop();
   }
 
   console.log('scenario MON-D1 passed');
@@ -55,7 +55,8 @@ function startServiceB(options: ClientOptions): ManagedProcess {
     options.serviceMain,
     '--rid', 'svc-b',
     '--http-url', options.serviceBUrl,
-    '--registry-router-endpoint', options.registryRouterEndpoint,
+    '--redis-endpoint', options.redisEndpoint,
+    '--redis-key-prefix', options.redisKeyPrefix,
     '--channel-endpoint', options.serviceBChannelEndpoint,
     '--spot-router-endpoint', options.serviceBSpotRouterEndpoint,
     '--spot-pub-endpoint', options.serviceBSpotPubEndpoint,
@@ -72,31 +73,68 @@ function startServiceB(options: ClientOptions): ManagedProcess {
 class ManagedProcess {
   constructor(private readonly child: ChildProcess) {}
 
-  async wait(): Promise<void> {
+  async stop(): Promise<void> {
+    try {
+      await this.wait(5000);
+      return;
+    } catch {
+    }
+
+    this.child.kill('SIGTERM');
+    try {
+      await this.wait(5000);
+      return;
+    } catch {
+    }
+
+    this.child.kill('SIGKILL');
+    await this.wait(5000);
+  }
+
+  async wait(timeoutMs = 30000): Promise<void> {
     if (this.child.exitCode !== null || this.child.signalCode !== null) {
       return;
     }
-    await new Promise<void>((resolve) => this.child.once('exit', () => resolve()));
+    await Promise.race([
+      new Promise<void>((resolve) => this.child.once('exit', () => resolve())),
+      new Promise<void>((_resolve, reject) => setTimeout(() => reject(new Error('Service process did not exit.')), timeoutMs))
+    ]);
   }
 }
 
-async function waitForTopologyGrowth(registryUrl: string, baseline: number): Promise<string[]> {
+async function waitForTopologyContinuity(options: ClientOptions, baseline: number): Promise<string[]> {
   const deadline = Date.now() + 15000;
   while (Date.now() <= deadline) {
-    const lines = await getJson<string[]>(registryUrl, '/evidence');
+    const lines = [
+      ...await getJson<string[]>(options.serviceUrl, '/evidence'),
+      ...readEvidenceFile(`${options.logDir}/svc-b-restart.evidence.log`)
+    ];
     const topology = lines.filter((line) =>
-      line.includes('monitor-registry|source=registry|kind=TopologyChanged'));
+      line.includes('monitor-location|source=monitor.location-runtime|kind=TopologyChanged'));
     if (topology.length > baseline) {
-      return topology;
+      return topology.slice(baseline);
+    }
+    const restartTopology = topology.filter((line) => line.includes('topology=') && !line.includes('topology=0'));
+    if (restartTopology.length > 0 && readEvidenceFile(`${options.logDir}/svc-b-restart.evidence.log`).some((line) =>
+      line.includes('profile-request|rid=svc-b|marker=mon-d1-request'))) {
+      return restartTopology;
     }
     await new Promise((resolve) => setTimeout(resolve, 100));
   }
-  throw new Error('Timed out waiting for registry topology continuity evidence.');
+  throw new Error('Timed out waiting for location topology continuity evidence.');
 }
 
-async function topologyCount(registryUrl: string): Promise<number> {
-  const lines = await getJson<string[]>(registryUrl, '/evidence');
-  return lines.filter((line) => line.includes('monitor-registry|source=registry|kind=TopologyChanged')).length;
+async function topologyCount(serviceUrl: string): Promise<number> {
+  const lines = await getJson<string[]>(serviceUrl, '/evidence');
+  return lines.filter((line) => line.includes('monitor-location|source=monitor.location-runtime|kind=TopologyChanged')).length;
+}
+
+function readEvidenceFile(path: string): string[] {
+  try {
+    return fs.readFileSync(path, 'utf8').split(/\r?\n/).filter((line) => line.length > 0);
+  } catch {
+    return [];
+  }
 }
 
 async function postBestEffort(baseUrl: string, path: string): Promise<void> {

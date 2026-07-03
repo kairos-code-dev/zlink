@@ -1,0 +1,112 @@
+using LocationMessaging.Client.Support;
+using LocationMessaging.Shared;
+using Zlink.HttpClient;
+
+namespace LocationMessaging.Client.Scenarios;
+
+// RM-A4 verifies that the location store keeps the same logical provider rid
+// after the backing provider process is replaced with a new endpoint: the
+// runtime query peer list must show a single live api-a row at the new
+// endpoint before traffic is resumed (peer handover, stale endpoint avoided).
+internal static class RmA4SameRidFailoverScenario
+{
+    public static async Task RunAsync(ClientOptions options)
+    {
+        await using var cluster = await DynamicClusterLauncher.StartAsync(options, "rm-a4");
+        var providerV1 = await cluster.StartProviderAsync("api-a-v1", "api-a");
+        using var providerV1Client = ZLinkHttpClient.Create(providerV1.HttpUrl)
+            .Timeout(TimeSpan.FromMinutes(5))
+            .Build();
+
+        var first = (await providerV1Client.Post("/profile/request")
+            .Body(new ProfileReq("rm-a4-v1"))
+            .SubmitAsync<ProfileRes>()).Body;
+        ScenarioAssert.That(
+            first.ProviderRid == "api-a",
+            "RM-A4 initial request should reach api-a.");
+
+        await WaitForEvidenceAsync(providerV1Client, "value=rm-a4-v1");
+
+        await cluster.StopAsync(providerV1);
+
+        var providerV2 = await cluster.StartProviderAsync("api-a-v2", "api-a");
+        using var providerV2Client = ZLinkHttpClient.Create(providerV2.HttpUrl)
+            .Timeout(TimeSpan.FromMinutes(5))
+            .Build();
+
+        // Wait until the runtime query's peer list shows the api-a rid served
+        // by exactly one live row whose endpoint is v2's (doc RM-A4).
+        await WaitForSingleLiveRowAsync(providerV2Client, providerV2.ChannelEndpoint);
+
+        var beforeV1 = await ReadEvidenceIgnoringStoppedAsync(providerV1Client);
+        var beforeV2 = await ReadEvidenceAsync(providerV2Client);
+        var marker = $"rm-a4-{Guid.NewGuid():N}";
+        for (var i = 0; i < 20; i++)
+        {
+            var reply = (await providerV2Client.Post("/profile/request")
+                .Body(new ProfileReq($"{marker}-{i}"))
+                .SubmitAsync<ProfileRes>()).Body;
+            ScenarioAssert.That(
+                reply.ProviderRid == "api-a",
+                "RM-A4 replacement request should reach api-a.");
+        }
+
+        var afterV2 = await WaitForEvidenceAsync(providerV2Client, $"{marker}-19");
+        var afterV1 = await ReadEvidenceIgnoringStoppedAsync(providerV1Client);
+        var v1Count = ScenarioAssert.CountNewEvidence(
+            afterV1,
+            beforeV1,
+            "profile-request|rid=api-a",
+            marker);
+        var v2Count = ScenarioAssert.CountNewEvidence(
+            afterV2,
+            beforeV2,
+            "profile-request|rid=api-a",
+            marker);
+        ScenarioAssert.That(v1Count == 0 && v2Count == 20, "RM-A4 replacement provider evidence did not match.");
+
+        Console.WriteLine("scenario RM-A4 passed");
+    }
+
+    private static async Task WaitForSingleLiveRowAsync(ZLinkHttpClient client, string expectedEndpoint)
+    {
+        var deadline = DateTimeOffset.UtcNow + TimeSpan.FromSeconds(30);
+        while (DateTimeOffset.UtcNow < deadline)
+        {
+            var rows = (await client.Get("/locations/peers?mesh=profile")
+                .SubmitAsync<PeerLocationRow[]>()).Body
+                .Where(row => row.Role == "router" && row.NodeRid == "api-a")
+                .ToArray();
+            if (rows.Length == 1 && rows[0].Endpoint == expectedEndpoint) return;
+
+            await Task.Delay(TimeSpan.FromMilliseconds(200));
+        }
+
+        throw new InvalidOperationException(
+            "RM-A4 timed out waiting for the api-a peer row to hand over to the replacement endpoint.");
+    }
+
+    private static async Task<string[]> ReadEvidenceAsync(ZLinkHttpClient client)
+    {
+        return (await client.Get("/evidence").SubmitAsync<string[]>()).Body;
+    }
+
+    private static async Task<string[]> ReadEvidenceIgnoringStoppedAsync(ZLinkHttpClient client)
+    {
+        try
+        {
+            return await ReadEvidenceAsync(client);
+        }
+        catch
+        {
+            return [];
+        }
+    }
+
+    private static async Task<string[]> WaitForEvidenceAsync(ZLinkHttpClient client, string contains)
+    {
+        return (await client.Post("/evidence/wait")
+            .Body(new EvidenceWaitReq(contains))
+            .SubmitAsync<string[]>()).Body;
+    }
+}

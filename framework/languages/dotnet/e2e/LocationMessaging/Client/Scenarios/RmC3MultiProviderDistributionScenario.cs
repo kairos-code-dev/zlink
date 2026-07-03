@@ -1,0 +1,42 @@
+using LocationMessaging.Client.Support;
+using LocationMessaging.Shared;
+using Zlink.HttpClient;
+
+namespace LocationMessaging.Client.Scenarios;
+
+// RM-C3 verifies that direct multi-endpoint channel configuration distributes
+// profile requests across both configured providers.
+internal static class RmC3MultiProviderDistributionScenario
+{
+    public static async Task RunAsync(
+        ZLinkHttpClient directConsumer,
+        ZLinkHttpClient providerA,
+        ZLinkHttpClient providerB)
+    {
+        var beforeA = providerA.Get("/evidence").Fetch<string[]>();
+        var beforeB = providerB.Get("/evidence").Fetch<string[]>();
+        var marker = $"rm-c3-{Guid.NewGuid():N}";
+        var requests = Enumerable.Range(0, 60)
+            .Select(index => new ProfileReq($"{marker}-{index}"))
+            .ToArray();
+
+        var replies = (await directConsumer.Post("/profile/batch-request")
+            .Body(requests)
+            .SubmitAsync<ProfileRes[]>()).Body;
+        ScenarioAssert.That(replies.Length == requests.Length, "RM-C3 reply count mismatch.");
+        for (var i = 0; i < requests.Length; i++)
+        {
+            ScenarioAssert.That(replies[i].Value == $"profile:{marker}-{i}", "RM-C3 reply value mismatch.");
+            ScenarioAssert.That(replies[i].ProviderRid is "api-a" or "api-b", "RM-C3 reply provider mismatch.");
+        }
+
+        var afterA = providerA.Get("/evidence").Fetch<string[]>();
+        var afterB = providerB.Get("/evidence").Fetch<string[]>();
+        var a = ScenarioAssert.CountNewEvidence(afterA, beforeA, "profile-request|rid=api-a", marker);
+        var b = ScenarioAssert.CountNewEvidence(afterB, beforeB, "profile-request|rid=api-b", marker);
+        ScenarioAssert.That(
+            a > 0 && b > 0 && a + b == requests.Length,
+            "RM-C3 expected both providers to handle the direct multi-endpoint request set.");
+        Console.WriteLine("scenario RM-C3 passed");
+    }
+}

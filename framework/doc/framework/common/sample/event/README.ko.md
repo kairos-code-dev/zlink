@@ -17,14 +17,14 @@ durable event가 필요한 업무 흐름은 도메인 event store, state owner, 
 
 | 샘플 | 목적 | event 기준 경로 | ZLink 역할 |
 |------|------|----------------|------------|
-| [ShoppingMall](shoppingmall.ko.md) | 단일 Commerce API 서버 타입에서 견고한 event-sourced 주문 workflow를 구성한다. | ZLink owner routing + OrderEventStore | event sourcing, workflow Spot, projection 조회 |
+| [ShoppingMall](shoppingmall.ko.md) | `CommerceApi`(HTTP edge)와 `OrderWorkflow`(주문 owner)를 분리해 견고한 event-sourced 주문 workflow를 구성한다. | ZLink owner routing + OrderEventStore | event sourcing, workflow owner spot, projection 조회 |
 | [GameQuest](gamequest.ko.md) | gameplay event를 player별 owner spot에 모아 event sourced quest aggregate를 갱신한다. | ZLink owner routing + QuestEventStore | owner spot 직렬화, event sourcing, WebSocket notify |
 
 ShoppingMall은 Kafka를 그대로 복제하지 않는다. 작은 규모에서 시작하는 커머스 서비스도
-주문, 재고, 결제 workflow는 실패와 중복 요청을 견고하게 처리해야 한다. 이 샘플은
-`CommerceApi` 안의 module과 `OrderWorkflowSpot`, `OrderEventStore`, projection으로 주문 상태
-전이를 event sourced workflow로 구성한다. Redis Stream 또는 Kafka는 다수 consumer, 큰 backlog,
-외부 downstream replay가 필요할 때 붙이는 확장 선택지다.
+주문, 재고, 결제 workflow는 실패와 중복 요청을 견고하게 처리해야 한다. 이 샘플은 HTTP를 종단하는
+`CommerceApi`와 주문 owner인 `OrderWorkflow` 서버를 분리하고, `OrderWorkflowSpot`·`OrderEventStore`·
+projection으로 주문 상태 전이를 event sourced workflow로 구성한다. Redis Stream 또는 Kafka는 다수
+consumer, 큰 backlog, 외부 downstream replay가 필요할 때 붙이는 확장 선택지다.
 
 GameQuest는 owner-routed gameplay event와 event sourcing을 함께 보여 주는 샘플이다. `Session
 Server`가 combat, inventory, mission, world action을 처리하고 gameplay event를 `PlayerId` 기준

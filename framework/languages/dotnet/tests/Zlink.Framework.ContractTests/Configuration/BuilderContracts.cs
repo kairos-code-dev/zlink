@@ -260,8 +260,7 @@ public sealed class BuilderContracts
         {
         }
 
-        public void AddLocationStores(
-            Action<Microsoft.Extensions.DependencyInjection.IServiceCollection> registerStores)
+        public void AddLocationStore(IZLinkLocationStore store)
         {
         }
 

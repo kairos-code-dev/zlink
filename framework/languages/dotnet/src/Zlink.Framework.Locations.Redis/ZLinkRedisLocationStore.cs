@@ -17,11 +17,7 @@ namespace Zlink.Framework.Locations.Redis;
 /// <see cref="ZLinkLocationWriteStatus.StoreUnavailable"/> instead.
 /// </summary>
 public sealed class ZLinkRedisLocationStore :
-    IZLinkPeerLocationStore,
-    IZLinkSpotLocationStore,
-    IZLinkActorLocationStore,
-    IZLinkRouteLocationStore,
-    IZLinkOwnerLeaseStore,
+    IZLinkLocationStore,
     IZLinkLocationChangeStampStore,
     IAsyncDisposable
 {

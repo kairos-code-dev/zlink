@@ -28,11 +28,11 @@ internal static class SessionHostFactory
         builder.Services.AddSingleton(new NodeOptions(options.Rid));
         builder.Services.AddZLinkFramework(framework =>
         {
-            framework.AddRedisLocationStore(redis =>
+            framework.AddLocationStore(new ZLinkRedisLocationStore(new ZLinkRedisLocationOptions
             {
-                redis.ConnectionString = options.RedisEndpoint;
-                redis.KeyPrefix = options.RedisKeyPrefix;
-            });
+                ConnectionString = options.RedisEndpoint,
+                KeyPrefix = options.RedisKeyPrefix,
+            }));
             framework.AddHandlersFromAssemblyOf(typeof(Program));
             framework.ConfigureDispatch()
                 .MessageFlow(ZLinkMessageFlowLogMode.KeyTransitions)

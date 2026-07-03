@@ -6,6 +6,20 @@ namespace Zlink.Framework.Contracts.Locations;
 /// failures as exceptions; write APIs return
 /// <see cref="ZLinkLocationWriteStatus.StoreUnavailable"/> instead.
 /// </summary>
+/// <summary>
+/// One physical location store providing every required store role. The
+/// five roles are all-or-nothing on one backend; optional contracts (change
+/// stamp, watch) are recognized when the same instance implements them.
+/// Register an instance with AddLocationStore — the framework never names a
+/// concrete backend on its own surface.
+/// </summary>
+public interface IZLinkLocationStore :
+    IZLinkPeerLocationStore,
+    IZLinkSpotLocationStore,
+    IZLinkActorLocationStore,
+    IZLinkRouteLocationStore,
+    IZLinkOwnerLeaseStore;
+
 public interface IZLinkPeerLocationStore
 {
     ValueTask<ZLinkLocationWriteResult> UpdatePeerAsync(

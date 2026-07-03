@@ -11,11 +11,11 @@ internal static partial class ZLinkFrameworkRegistrationValidator
                 "In-memory location stores cannot be combined with explicit location store registrations.");
         }
 
-        if (locations.StoreServices is not null
+        if (locations.StoreInstance is not null
             && (locations.UseInMemoryStores || locations.HasAnyStoreType))
         {
             throw new ZLinkConfigurationException(
-                "AddLocationStores registers every store role at once and cannot be combined with "
+                "AddLocationStore registers every store role at once and cannot be combined with "
                 + "UseInMemoryLocationStores or per-role Add*LocationStore registrations.");
         }
 

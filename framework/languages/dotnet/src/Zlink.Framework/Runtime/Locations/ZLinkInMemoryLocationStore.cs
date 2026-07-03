@@ -10,11 +10,7 @@ namespace Zlink.Framework.Runtime.Locations;
 /// production topologies where processes must share location data.
 /// </summary>
 internal sealed class ZLinkInMemoryLocationStore :
-    IZLinkPeerLocationStore,
-    IZLinkSpotLocationStore,
-    IZLinkActorLocationStore,
-    IZLinkRouteLocationStore,
-    IZLinkOwnerLeaseStore,
+    IZLinkLocationStore,
     IZLinkLocationChangeStampStore
 {
     private readonly object _gate = new();

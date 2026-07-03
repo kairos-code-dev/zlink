@@ -18,11 +18,11 @@ internal static class PublisherHostFactory
 
         builder.Services.AddZLinkFramework(framework =>
         {
-            framework.AddRedisLocationStore(redis =>
+            framework.AddLocationStore(new ZLinkRedisLocationStore(new ZLinkRedisLocationOptions
             {
-                redis.ConnectionString = options.RedisEndpoint;
-                redis.KeyPrefix = options.RedisKeyPrefix;
-            });
+                ConnectionString = options.RedisEndpoint,
+                KeyPrefix = options.RedisKeyPrefix,
+            }));
             ConfigureFlow(framework.ConfigureDispatch(), options.LogDir, options.Rid);
             framework.AddFanoutChannel(PubSubNames.Channel)
                 .EnablePublisher(options.PublisherEndpoint);

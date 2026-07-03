@@ -1305,23 +1305,19 @@ options.AddOwnerLeaseStore<TStore>();
 이 API는 store 구현체를 등록한다. store는 cache/freshness 정책을 알지 않는다. framework runtime과
 resolver가 store 위에서 policy를 적용한다.
 
-extension package를 위한 일괄 등록 지점도 함께 정의한다. `AddLocationStores(registerStores)`는 하나의
-구현체가 여섯 interface(store 5종 + change stamp)를 한 번에 등록하는 hook이며, Redis 같은 공식
-extension의 편의 builder는 이 hook 위에 구현한다. 개별 `Add...LocationStore<T>()` 등록이나 in-memory
-등록과 섞어 쓰는 것은 검증 오류다.
-
-공식 Redis extension은 아래 편의 API를 제공한다.
+extension package를 위한 통합 등록 지점은 `AddLocationStore(instance)`다. 통합 계약
+`IZLinkLocationStore`(store 5종)를 구현한 인스턴스 하나를 등록하며, 같은 인스턴스가 optional
+계약(change stamp, watch)도 구현하면 자동으로 인식된다. extension package는 계약 구현 클래스만
+제공하고 전용 등록 함수를 만들지 않는다 — codec의 serializer 인스턴스 등록과 같은 형태다.
+개별 `Add...LocationStore<T>()` 등록이나 in-memory 등록과 섞어 쓰는 것은 검증 오류다.
 
 ```csharp
-options.AddRedisLocationStore(redis =>
+options.AddLocationStore(new ZLinkRedisLocationStore(new ZLinkRedisLocationOptions
 {
-    redis.ConnectionString = "...";
-    redis.KeyPrefix = "zlink:sample";
-});
+    ConnectionString = "...",
+    KeyPrefix = "zlink:sample",
+}));
 ```
-
-`AddRedisLocationStore(...)`는 peer, spot, actor, route store와 owner lease store, 기본 resolver를
-함께 등록한다.
 
 ### 20.3 새로 추가할 resolver/query API
 
@@ -1500,7 +1496,7 @@ E2E와 언어별 E2E는 수정된 문서를 따라간다.
 - Bingo, DeliveryDispatch, GameQuest, ShoppingMall, SupportChat sample의 전용 registry host
   프로젝트(`Server/Registry`)를 제거한다. sample은 registry process 없이 location store 등록만으로
   구동되어야 한다.
-- sample 코드의 `UseRegistry...` 계열 호출과 registry endpoint 설정을 `AddRedisLocationStore(...)`
+- sample 코드의 `UseRegistry...` 계열 호출과 registry endpoint 설정을 `AddLocationStore(...)`
   또는 `Add...LocationStore<T>()` 등록으로 교체한다.
 - multi-process 분산 sample은 공식 Redis extension을 기본 공유 저장소로 사용하고 sample별 전용
   key prefix를 쓴다. 단일 process sample과 smoke test는 in-memory store를 사용한다.
@@ -1635,7 +1631,7 @@ draft가 기준이며, 정식 spec 문서에는 아직 구현되지 않은 계�
 ### 24.7 구현체
 
 - [x] 공식 Redis extension — Lua/transaction 원자성, key schema 내부화, owner lease 동일 저장소,
-      change stamp INCR, `AddRedisLocationStore` builder — 9절, 12절, 14.5
+      change stamp INCR, `AddLocationStore` 인스턴스 등록 — 9절, 12절, 14.5
 - [x] 구현체 필수 조건 전부 (unique index, 동일 물리 저장소, pagination, 장애/not-found 구분,
       polling 가능) — 11절, 12절
 - [x] in-memory store — 같은 interface/규칙 parity, production 사용 금지 명시 — 13절

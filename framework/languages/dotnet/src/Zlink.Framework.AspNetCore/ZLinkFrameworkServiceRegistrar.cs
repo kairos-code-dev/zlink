@@ -224,11 +224,19 @@ internal static class ZLinkFrameworkServiceRegistrar
         if (!locations.Enabled) return services;
 
         services.AddSingleton(locations.Options);
-        if (locations.StoreServices is { } storeServices)
+        if (locations.StoreInstance is { } store)
         {
-            // Extension-package bulk registration: the callback registers
-            // every store contract onto one physical store (draft 20.2).
-            storeServices(services);
+            // One physical store instance serves every store role (draft
+            // 20.2); optional contracts on the same instance come along.
+            services.AddSingleton<IZLinkPeerLocationStore>(store);
+            services.AddSingleton<IZLinkSpotLocationStore>(store);
+            services.AddSingleton<IZLinkActorLocationStore>(store);
+            services.AddSingleton<IZLinkRouteLocationStore>(store);
+            services.AddSingleton<IZLinkOwnerLeaseStore>(store);
+            if (store is IZLinkLocationChangeStampStore changeStamps)
+                services.AddSingleton(changeStamps);
+            if (store is IZLinkLocationWatchStore watch)
+                services.AddSingleton(watch);
         }
         else if (locations.UseInMemoryStores)
         {

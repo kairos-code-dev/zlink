@@ -24,11 +24,11 @@ public static class DispatchServerHostFactory
         builder.Services.AddHostedService<DispatchWorker>();
         builder.Services.AddZLinkFramework(options =>
         {
-            options.AddRedisLocationStore(redis =>
+            options.AddLocationStore(new ZLinkRedisLocationStore(new ZLinkRedisLocationOptions
             {
-                redis.ConnectionString = topology.RedisEndpoint;
-                redis.KeyPrefix = topology.RedisKeyPrefix;
-            });
+                ConnectionString = topology.RedisEndpoint,
+                KeyPrefix = topology.RedisKeyPrefix,
+            }));
             options.ConfigureDispatch()
                 .MessageFlow(ZLinkMessageFlowLogMode.KeyTransitions)
                 .TraceLogFile(SampleFlowLog.Path("dispatch"))

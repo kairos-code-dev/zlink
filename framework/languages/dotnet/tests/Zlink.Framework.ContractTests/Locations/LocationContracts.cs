@@ -69,11 +69,17 @@ public sealed class LocationContracts
 
     [Fact]
     [ContractExample(
+        typeof(IZLinkLocationStore),
         typeof(IZLinkPeerLocationStore),
         typeof(IZLinkSpotLocationStore),
         typeof(IZLinkRouteLocationStore))]
     public async Task Peer_spot_route_stores_expose_snapshot_and_paged_lists()
     {
+        // One physical store registers for every role at once:
+        // AddLocationStore takes a single IZLinkLocationStore instance the
+        // way codecs take serializer instances — the framework surface
+        // never names a concrete backend.
+
         var peers = new ExamplePeerLocationStore();
         await peers.UpdatePeerAsync(MakePeer("owner-a"), ZLinkLocationWriteIntent.NewClaim);
 

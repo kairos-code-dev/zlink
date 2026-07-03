@@ -19,11 +19,11 @@ internal static class SubscriberHostFactory
 
         builder.Services.AddZLinkFramework(framework =>
         {
-            framework.AddRedisLocationStore(redis =>
+            framework.AddLocationStore(new ZLinkRedisLocationStore(new ZLinkRedisLocationOptions
             {
-                redis.ConnectionString = options.RedisEndpoint;
-                redis.KeyPrefix = options.RedisKeyPrefix;
-            });
+                ConnectionString = options.RedisEndpoint,
+                KeyPrefix = options.RedisKeyPrefix,
+            }));
             ConfigureFlow(framework.ConfigureDispatch(), options.LogDir, options.Rid);
             // The subscriber dials the publisher rows it discovers in the
             // location store; no endpoint is configured here.

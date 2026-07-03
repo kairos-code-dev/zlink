@@ -464,31 +464,17 @@ public sealed class NodesAndServicesTests : RegistrationValidationSupport
     public void AddZLinkFramework_AddLocationStores_ResolvesEveryStoreRoleToOneInstance()
     {
         var services = new ServiceCollection();
+        var backing = new ZLinkInMemoryLocationStore();
 
         services.AddZLinkFramework(options =>
         {
-            // Extension-package style bulk registration: one physical
-            // store instance backs every location store contract.
-            options.AddLocationStores(static stores =>
-            {
-                stores.AddSingleton<ZLinkInMemoryLocationStore>();
-                stores.AddSingleton<IZLinkPeerLocationStore>(
-                    static provider => provider.GetRequiredService<ZLinkInMemoryLocationStore>());
-                stores.AddSingleton<IZLinkSpotLocationStore>(
-                    static provider => provider.GetRequiredService<ZLinkInMemoryLocationStore>());
-                stores.AddSingleton<IZLinkActorLocationStore>(
-                    static provider => provider.GetRequiredService<ZLinkInMemoryLocationStore>());
-                stores.AddSingleton<IZLinkRouteLocationStore>(
-                    static provider => provider.GetRequiredService<ZLinkInMemoryLocationStore>());
-                stores.AddSingleton<IZLinkOwnerLeaseStore>(
-                    static provider => provider.GetRequiredService<ZLinkInMemoryLocationStore>());
-                stores.AddSingleton<IZLinkLocationChangeStampStore>(
-                    static provider => provider.GetRequiredService<ZLinkInMemoryLocationStore>());
-            });
+            // Extension-package style registration: one physical store
+            // instance backs every location store contract, the way codecs
+            // register serializer instances.
+            options.AddLocationStore(backing);
         });
 
         using var provider = services.BuildServiceProvider();
-        var backing = provider.GetRequiredService<ZLinkInMemoryLocationStore>();
 
         Assert.Same(backing, provider.GetRequiredService<IZLinkPeerLocationStore>());
         Assert.Same(backing, provider.GetRequiredService<IZLinkSpotLocationStore>());
@@ -504,24 +490,24 @@ public sealed class NodesAndServicesTests : RegistrationValidationSupport
     }
 
     [Fact]
-    public void AddZLinkFramework_Throws_WhenAddLocationStoresIsCombinedWithOtherStoreRegistrations()
+    public void AddZLinkFramework_Throws_WhenAddLocationStoreIsCombinedWithOtherStoreRegistrations()
     {
         var inMemory = new ServiceCollection();
         var inMemoryConflict = Assert.Throws<ZLinkConfigurationException>(() =>
             inMemory.AddZLinkFramework(options =>
             {
                 options.UseInMemoryLocationStores();
-                options.AddLocationStores(static _ => { });
+                options.AddLocationStore(new ZLinkInMemoryLocationStore());
             }));
-        Assert.Contains("AddLocationStores", inMemoryConflict.Message, StringComparison.Ordinal);
+        Assert.Contains("AddLocationStore", inMemoryConflict.Message, StringComparison.Ordinal);
 
         var perRole = new ServiceCollection();
         var perRoleConflict = Assert.Throws<ZLinkConfigurationException>(() =>
             perRole.AddZLinkFramework(options =>
             {
                 options.AddPeerLocationStore<ZLinkInMemoryLocationStore>();
-                options.AddLocationStores(static _ => { });
+                options.AddLocationStore(new ZLinkInMemoryLocationStore());
             }));
-        Assert.Contains("AddLocationStores", perRoleConflict.Message, StringComparison.Ordinal);
+        Assert.Contains("AddLocationStore", perRoleConflict.Message, StringComparison.Ordinal);
     }
 }

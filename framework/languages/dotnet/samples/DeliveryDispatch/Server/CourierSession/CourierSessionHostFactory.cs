@@ -21,11 +21,11 @@ public static class CourierSessionHostFactory
         builder.Services.AddSingleton(topology);
         builder.Services.AddZLinkFramework(options =>
         {
-            options.AddRedisLocationStore(redis =>
+            options.AddLocationStore(new ZLinkRedisLocationStore(new ZLinkRedisLocationOptions
             {
-                redis.ConnectionString = topology.RedisEndpoint;
-                redis.KeyPrefix = topology.RedisKeyPrefix;
-            });
+                ConnectionString = topology.RedisEndpoint,
+                KeyPrefix = topology.RedisKeyPrefix,
+            }));
             options.ConfigureDispatch()
                 .MessageFlow(ZLinkMessageFlowLogMode.KeyTransitions)
                 .TraceLogFile(SampleFlowLog.Path("courier-session"))

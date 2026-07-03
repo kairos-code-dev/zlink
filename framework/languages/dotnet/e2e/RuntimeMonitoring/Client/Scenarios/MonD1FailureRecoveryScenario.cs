@@ -11,7 +11,7 @@ internal static class MonD1FailureRecoveryScenario
     public static async Task RunAsync(ClientOptions options)
     {
         using var trigger = ZLinkHttpClient.Create(options.TriggerUrl).Build();
-        using var registry = ZLinkHttpClient.Create(options.RegistryUrl).Build();
+        using var observer = ZLinkHttpClient.Create(options.ServiceUrl).Build();
         using var serviceB = ZLinkHttpClient.Create(options.ServiceBUrl).Build();
 
         await serviceB.Post("/shutdown").SubmitAsync<object>();
@@ -52,15 +52,25 @@ internal static class MonD1FailureRecoveryScenario
                     StringComparison.Ordinal)),
                 "MON-D1 restarted service evidence missing.");
 
-            var registryEvidence = (await registry.Post("/evidence/wait")
-                .Body(new EvidenceWaitReq(
-                    ["monitor-registry|source=registry"],
-                    [["kind=TopologyChanged|topology=5"]]))
-                .SubmitAsync<string[]>()).Body;
-            ScenarioAssert.That(
-                registryEvidence.Count(line => line.Contains("monitor-registry|source=registry|kind=TopologyChanged",
-                    StringComparison.Ordinal)) >= 3,
-                "MON-D1 registry topology continuity evidence missing.");
+            // The observer's own projection must have seen the full
+            // remove/re-add cycle: initial convergence, svc-b leaving,
+            // and svc-b returning are at least three TopologyChanged
+            // emissions.
+            var continuitySeen = false;
+            for (var attempt = 0; attempt < 60 && !continuitySeen; attempt++)
+            {
+                var observerEvidence = (await observer.Post("/evidence/wait")
+                    .Body(new EvidenceWaitReq(
+                        ["monitor-location-runtime|source=location-runtime"],
+                        [["kind=TopologyChanged"]]))
+                    .SubmitAsync<string[]>()).Body;
+                continuitySeen = observerEvidence.Count(line => line.Contains(
+                    "monitor-location-runtime|source=location-runtime|kind=TopologyChanged",
+                    StringComparison.Ordinal)) >= 3;
+                if (!continuitySeen) await Task.Delay(250);
+            }
+
+            ScenarioAssert.That(continuitySeen, "MON-D1 location runtime topology continuity evidence missing.");
         }
         finally
         {
@@ -91,8 +101,10 @@ internal static class MonD1FailureRecoveryScenario
         startInfo.ArgumentList.Add("svc-b");
         startInfo.ArgumentList.Add("--http-url");
         startInfo.ArgumentList.Add(options.ServiceBUrl);
-        startInfo.ArgumentList.Add("--registry-router-endpoint");
-        startInfo.ArgumentList.Add(options.RegistryRouterEndpoint);
+        startInfo.ArgumentList.Add("--redis-endpoint");
+        startInfo.ArgumentList.Add(options.RedisEndpoint);
+        startInfo.ArgumentList.Add("--redis-key-prefix");
+        startInfo.ArgumentList.Add(options.RedisKeyPrefix);
         startInfo.ArgumentList.Add("--channel-endpoint");
         startInfo.ArgumentList.Add(options.ServiceBChannelEndpoint);
         startInfo.ArgumentList.Add("--evidence-file");

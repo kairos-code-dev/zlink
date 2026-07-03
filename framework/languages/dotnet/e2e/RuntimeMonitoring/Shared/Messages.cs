@@ -3,6 +3,7 @@ namespace RuntimeMonitoring.Shared;
 public static class RuntimeMonitoringNames
 {
     public const string Channel = "monitor.profile";
+    public const string LocationRuntimeSource = "location-runtime";
     public const string ChannelServerSource = "monitor.profile.server";
     public const string ChannelClientSource = "monitor.profile.client";
     public const string SpotChannel = "monitor.spot";

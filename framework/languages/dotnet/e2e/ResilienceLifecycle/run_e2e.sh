@@ -57,10 +57,6 @@ API_B_GREEN="tcp://127.0.0.1:$API_B_GREEN_PORT"
 
 pids=()
 cleanup() {
-  if [[ -n "${REDIS_CONTAINER:-}" ]]; then
-    docker unpause "$REDIS_CONTAINER" >/dev/null 2>&1 || true
-    docker rm -f "$REDIS_CONTAINER" >/dev/null 2>&1 || true
-  fi
   local code=$?
   for pid in "${pids[@]:-}"; do
     if kill -0 "$pid" 2>/dev/null; then
@@ -68,6 +64,10 @@ cleanup() {
     fi
   done
   wait "${pids[@]:-}" 2>/dev/null || true
+  if [[ -n "${REDIS_CONTAINER:-}" ]]; then
+    docker unpause "$REDIS_CONTAINER" >/dev/null 2>&1 || true
+    docker rm -f "$REDIS_CONTAINER" >/dev/null 2>&1 || true
+  fi
   if [[ "$code" -ne 0 ]]; then
     echo "E2E failed. Logs: $LOG_DIR" >&2
   fi

@@ -104,8 +104,6 @@ internal sealed class EvidenceStore
 
 internal sealed record TriggerOptions(
     string HttpUrl,
-    string RegistryUrl,
-    string RegistryRouterEndpoint,
     string ServiceChannelEndpoint,
     string ServiceBUrl,
     string ServiceBChannelEndpoint,
@@ -133,8 +131,6 @@ internal sealed record TriggerOptions(
 
         return new TriggerOptions(
             Require(values, "--http-url"),
-            Require(values, "--registry-url"),
-            Require(values, "--registry-router-endpoint"),
             Require(values, "--service-channel-endpoint"),
             Require(values, "--service-b-url"),
             Require(values, "--service-b-channel-endpoint"),

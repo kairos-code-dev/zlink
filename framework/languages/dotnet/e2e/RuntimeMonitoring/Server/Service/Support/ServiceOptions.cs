@@ -13,8 +13,8 @@ internal sealed record ServerOptions(
     string LogDir,
     string? EvidenceFile,
     string Rid,
-    string? RegistryPubEndpoint,
-    string? RegistryRouterEndpoint,
+    string? RedisEndpoint,
+    string? RedisKeyPrefix,
     string? ChannelEndpoint,
     string? SpotRouterEndpoint,
     string? SpotPubEndpoint)
@@ -46,8 +46,8 @@ internal sealed record ServerOptions(
             Get("--log-dir", "logs"),
             Get("--evidence-file"),
             Get("--rid", Environment.GetEnvironmentVariable("ZLINK_E2E_RID") ?? "node"),
-            Get("--registry-pub-endpoint"),
-            Get("--registry-router-endpoint"),
+            Get("--redis-endpoint"),
+            Get("--redis-key-prefix"),
             Get("--channel-endpoint"),
             Get("--spot-router-endpoint"),
             Get("--spot-pub-endpoint"));

@@ -25,6 +25,19 @@ internal sealed class ThrowingSocketEventRecorder(EvidenceStore evidence) : IZLi
     }
 }
 
+internal sealed class LocationRuntimeEventRecorder(EvidenceStore evidence)
+    : IZLinkRuntimeEventHandler<ZLinkLocationRuntimeEvent>
+{
+    public ValueTask HandleAsync(ZLinkLocationRuntimeEvent @event, CancellationToken cancellationToken)
+    {
+        cancellationToken.ThrowIfCancellationRequested();
+        evidence.Add(
+            $"monitor-location-runtime|source={@event.SourceName}|kind={@event.Event}"
+            + $"|topology={@event.Topology?.Count ?? -1}|summary={@event.ServiceSummary?.Count ?? -1}");
+        return ValueTask.CompletedTask;
+    }
+}
+
 internal sealed class SpotEventRecorder(EvidenceStore evidence) : IZLinkRuntimeEventHandler<ZLinkSpotEvent>
 {
     public ValueTask HandleAsync(ZLinkSpotEvent @event, CancellationToken cancellationToken)

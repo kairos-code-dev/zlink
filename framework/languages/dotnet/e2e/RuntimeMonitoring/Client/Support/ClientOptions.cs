@@ -2,8 +2,8 @@ namespace RuntimeMonitoring.Client.Support;
 
 internal sealed record ClientOptions(
     string TriggerUrl,
-    string RegistryRouterEndpoint,
-    string RegistryUrl,
+    string RedisEndpoint,
+    string RedisKeyPrefix,
     string ServiceUrl,
     string ServiceChannelEndpoint,
     string ServiceBUrl,
@@ -36,8 +36,8 @@ internal sealed record ClientOptions(
 
         return new ClientOptions(
             Get("--trigger-url"),
-            Get("--registry-router-endpoint"),
-            Get("--registry-url"),
+            Get("--redis-endpoint"),
+            Get("--redis-key-prefix"),
             Get("--service-url"),
             Get("--service-channel-endpoint"),
             Get("--service-b-url"),

@@ -4,40 +4,31 @@ using Zlink.HttpClient;
 
 namespace RuntimeMonitoring.Client.Scenarios;
 
+// MON-A2 verifies the location-runtime source: the observer node's own
+// projection (peer rows + connection state) emits TopologyChanged /
+// ServiceSummaryChanged with real content as the deployment converges.
 internal static class MonA2RegistryEventsScenario
 {
     public static async Task RunAsync(ClientOptions options)
     {
-        using var registry = ZLinkHttpClient.Create(options.RegistryUrl).Build();
-        var evidence = await WaitForRegistryEvidenceAsync(registry);
+        using var service = ZLinkHttpClient.Create(options.ServiceUrl).Build();
+        var evidence = (await service.Post("/evidence/wait")
+            .Body(new EvidenceWaitReq(
+                ["monitor-location-runtime|source=location-runtime"],
+                [["kind=TopologyChanged"], ["kind=ServiceSummaryChanged"]]))
+            .SubmitAsync<string[]>()).Body;
         ScenarioAssert.That(
             evidence.Any(line =>
-                line.Contains("monitor-registry|source=registry|kind=TopologyChanged", StringComparison.Ordinal)
-                && !line.Contains("topology=0", StringComparison.Ordinal)),
+                line.Contains("monitor-location-runtime|source=location-runtime|kind=TopologyChanged", StringComparison.Ordinal)
+                && !line.Contains("topology=0", StringComparison.Ordinal)
+                && !line.Contains("topology=-1", StringComparison.Ordinal)),
             "MON-A2 topology evidence missing.");
         ScenarioAssert.That(
             evidence.Any(line =>
-                line.Contains("monitor-registry|source=registry|kind=ServiceSummaryChanged", StringComparison.Ordinal)
-                && !line.Contains("summary=0", StringComparison.Ordinal)),
+                line.Contains("monitor-location-runtime|source=location-runtime|kind=ServiceSummaryChanged", StringComparison.Ordinal)
+                && !line.Contains("summary=0", StringComparison.Ordinal)
+                && !line.Contains("summary=-1", StringComparison.Ordinal)),
             "MON-A2 service summary evidence missing.");
         Console.WriteLine("scenario MON-A2 passed");
-    }
-
-    private static async Task<string[]> WaitForRegistryEvidenceAsync(ZLinkHttpClient registry)
-    {
-        var evidence = (await registry.Post("/evidence/wait")
-            .Body(new EvidenceWaitReq(
-                ["monitor-registry|source=registry"],
-                [["kind=TopologyChanged|topology=3"], ["kind=ServiceSummaryChanged|topology=-1|summary=3"]]))
-            .SubmitAsync<string[]>()).Body;
-        if (evidence.Any(line =>
-                line.Contains("monitor-registry|source=registry|kind=TopologyChanged", StringComparison.Ordinal)
-                && !line.Contains("topology=0", StringComparison.Ordinal))
-            && evidence.Any(line =>
-                line.Contains("monitor-registry|source=registry|kind=ServiceSummaryChanged", StringComparison.Ordinal)
-                && !line.Contains("summary=0", StringComparison.Ordinal)))
-            return evidence;
-
-        throw new InvalidOperationException("MON-A2 registry topology/summary evidence was incomplete.");
     }
 }

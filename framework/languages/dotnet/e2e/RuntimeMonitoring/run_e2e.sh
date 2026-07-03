@@ -21,7 +21,6 @@ print(max(1, math.ceil(timeout / poll)))
 PY
 )"
 
-REGISTRY_PROJECT="$ROOT_DIR/Server/Registry/RuntimeMonitoring.Registry.csproj"
 SERVICE_PROJECT="$ROOT_DIR/Server/Service/RuntimeMonitoring.Service.csproj"
 FILTERED_SERVICE_PROJECT="$ROOT_DIR/Server/FilteredService/RuntimeMonitoring.FilteredService.csproj"
 THROWING_SERVICE_PROJECT="$ROOT_DIR/Server/ThrowingService/RuntimeMonitoring.ThrowingService.csproj"
@@ -38,25 +37,19 @@ s.close()
 PY
 }
 
-REG_HTTP_PORT="$(pick_port)"
 SVC_HTTP_PORT="$(pick_port)"
 SVC_B_HTTP_PORT="$(pick_port)"
 THROW_HTTP_PORT="$(pick_port)"
 TRIGGER_HTTP_PORT="$(pick_port)"
-REG_PUB_PORT="$(pick_port)"
-REG_ROUTER_PORT="$(pick_port)"
 CHANNEL_PORT="$(pick_port)"
 CHANNEL_B_PORT="$(pick_port)"
 THROW_CHANNEL_PORT="$(pick_port)"
 SPOT_ROUTER_PORT="$(pick_port)"
 SPOT_PUB_PORT="$(pick_port)"
 
-REG_URL="http://127.0.0.1:$REG_HTTP_PORT"
 SVC_URL="http://127.0.0.1:$SVC_HTTP_PORT"
 SVC_B_URL="http://127.0.0.1:$SVC_B_HTTP_PORT"
 THROW_URL="http://127.0.0.1:$THROW_HTTP_PORT"
-REG_PUB="tcp://127.0.0.1:$REG_PUB_PORT"
-REG_ROUTER="tcp://127.0.0.1:$REG_ROUTER_PORT"
 CHANNEL_ENDPOINT="tcp://127.0.0.1:$CHANNEL_PORT"
 CHANNEL_B_ENDPOINT="tcp://127.0.0.1:$CHANNEL_B_PORT"
 THROW_CHANNEL_ENDPOINT="tcp://127.0.0.1:$THROW_CHANNEL_PORT"
@@ -72,6 +65,9 @@ cleanup() {
     fi
   done
   wait "${pids[@]:-}" 2>/dev/null || true
+  if [[ -n "${REDIS_CONTAINER:-}" ]]; then
+    docker rm -f "$REDIS_CONTAINER" >/dev/null 2>&1 || true
+  fi
   if [[ "$code" -ne 0 ]]; then
     echo "E2E failed. Logs: $LOG_DIR" >&2
   fi
@@ -131,28 +127,26 @@ PY
 }
 
 echo "log_dir=$LOG_DIR"
-dotnet build "$REGISTRY_PROJECT" --maxcpucount:1 >/dev/null
 dotnet build "$SERVICE_PROJECT" --maxcpucount:1 >/dev/null
 dotnet build "$FILTERED_SERVICE_PROJECT" --maxcpucount:1 >/dev/null
 dotnet build "$THROWING_SERVICE_PROJECT" --maxcpucount:1 >/dev/null
 dotnet build "$TRIGGER_PROJECT" --maxcpucount:1 >/dev/null
 dotnet build "$CLIENT_PROJECT" --maxcpucount:1 >/dev/null
 
-ZLINK_E2E_RID="registry" dotnet run --no-build --project "$REGISTRY_PROJECT" -- \
-  --rid registry \
-  --http-url "$REG_URL" \
-  --registry-pub-endpoint "$REG_PUB" \
-  --registry-router-endpoint "$REG_ROUTER" \
-  --evidence-file "$LOG_DIR/registry.evidence.log" \
-  --log-dir "$LOG_DIR" \
-  >"$LOG_DIR/registry.stdout.log" 2>"$LOG_DIR/registry.stderr.log" &
-pids+=("$!")
-wait_health "$REG_URL" registry
+if ! command -v docker >/dev/null 2>&1; then
+  echo "Docker is required to run the RuntimeMonitoring E2E (it provisions a dedicated Redis container)." >&2
+  exit 1
+fi
+REDIS_CONTAINER="monitoring-e2e-redis-$$"
+docker run -d --rm --name "$REDIS_CONTAINER" -p "127.0.0.1::6379" redis:7.2-alpine >/dev/null
+REDIS_ENDPOINT="$(docker port "$REDIS_CONTAINER" 6379/tcp | sed -E 's/.*:([0-9]+)$/127.0.0.1:\1/')"
+REDIS_KEY_PREFIX="monitoring-e2e:$$:"
 
 ZLINK_E2E_RID="svc-a" dotnet run --no-build --project "$SERVICE_PROJECT" -- \
   --rid svc-a \
   --http-url "$SVC_URL" \
-  --registry-router-endpoint "$REG_ROUTER" \
+  --redis-endpoint "$REDIS_ENDPOINT" \
+  --redis-key-prefix "$REDIS_KEY_PREFIX" \
   --channel-endpoint "$CHANNEL_ENDPOINT" \
   --spot-router-endpoint "$SPOT_ROUTER_ENDPOINT" \
   --spot-pub-endpoint "$SPOT_PUB_ENDPOINT" \
@@ -165,7 +159,8 @@ wait_health "$SVC_URL" svc-a
 ZLINK_E2E_RID="svc-b" dotnet run --no-build --project "$FILTERED_SERVICE_PROJECT" -- \
   --rid svc-b \
   --http-url "$SVC_B_URL" \
-  --registry-router-endpoint "$REG_ROUTER" \
+  --redis-endpoint "$REDIS_ENDPOINT" \
+  --redis-key-prefix "$REDIS_KEY_PREFIX" \
   --channel-endpoint "$CHANNEL_B_ENDPOINT" \
   --evidence-file "$LOG_DIR/svc-b.evidence.log" \
   --log-dir "$LOG_DIR" \
@@ -176,7 +171,8 @@ wait_health "$SVC_B_URL" svc-b
 ZLINK_E2E_RID="svc-throw" ZLINK_DEBUG_FRAMEWORK_TASKS=1 dotnet run --no-build --project "$THROWING_SERVICE_PROJECT" -- \
   --rid svc-throw \
   --http-url "$THROW_URL" \
-  --registry-router-endpoint "$REG_ROUTER" \
+  --redis-endpoint "$REDIS_ENDPOINT" \
+  --redis-key-prefix "$REDIS_KEY_PREFIX" \
   --channel-endpoint "$THROW_CHANNEL_ENDPOINT" \
   --evidence-file "$LOG_DIR/svc-throw.evidence.log" \
   --log-dir "$LOG_DIR" \
@@ -186,8 +182,8 @@ wait_health "$THROW_URL" svc-throw
 
 ZLINK_E2E_RID="trigger" dotnet run --no-build --project "$TRIGGER_PROJECT" -- \
   --http-url "http://127.0.0.1:$TRIGGER_HTTP_PORT" \
-  --registry-url "$REG_URL" \
-  --registry-router-endpoint "$REG_ROUTER" \
+  --redis-endpoint "$REDIS_ENDPOINT" \
+  --redis-key-prefix "$REDIS_KEY_PREFIX" \
   --service-channel-endpoint "$CHANNEL_ENDPOINT" \
   --service-b-url "$SVC_B_URL" \
   --service-b-channel-endpoint "$CHANNEL_B_ENDPOINT" \
@@ -201,8 +197,8 @@ sleep "$ROUTE_SETTLE_SECONDS"
 
 dotnet run --no-build --project "$CLIENT_PROJECT" -- \
   --trigger-url "http://127.0.0.1:$TRIGGER_HTTP_PORT" \
-  --registry-router-endpoint "$REG_ROUTER" \
-  --registry-url "$REG_URL" \
+  --redis-endpoint "$REDIS_ENDPOINT" \
+  --redis-key-prefix "$REDIS_KEY_PREFIX" \
   --service-url "$SVC_URL" \
   --service-channel-endpoint "$CHANNEL_ENDPOINT" \
   --service-b-url "$SVC_B_URL" \

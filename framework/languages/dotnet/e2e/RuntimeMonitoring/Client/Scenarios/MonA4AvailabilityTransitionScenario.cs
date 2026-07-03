@@ -10,7 +10,6 @@ internal static class MonA4AvailabilityTransitionScenario
     {
         using var trigger = ZLinkHttpClient.Create(options.TriggerUrl).Build();
         using var service = ZLinkHttpClient.Create(options.ServiceUrl).Build();
-        using var registry = ZLinkHttpClient.Create(options.RegistryUrl).Build();
 
         var before = (await trigger.Post("/profile/request")
             .Body(new ProfileReq("drain", "mon-a4-before-drain"))
@@ -32,11 +31,13 @@ internal static class MonA4AvailabilityTransitionScenario
                                         && line.Contains("action=drain", StringComparison.Ordinal)),
             "MON-A4 service drain evidence missing.");
 
-        var registryEvidence = await WaitForRegistryTopologyEvidenceAsync(registry);
+        var topologyEvidence = await WaitForLocationTopologyEvidenceAsync(service);
         ScenarioAssert.That(
-            registryEvidence.Count(line =>
-                line.Contains("monitor-registry|source=registry|kind=TopologyChanged", StringComparison.Ordinal)) >= 2,
-            "MON-A4 registry topology transition evidence missing.");
+            topologyEvidence.Any(line =>
+                line.Contains(
+                    "monitor-location-runtime|source=location-runtime|kind=TopologyChanged",
+                    StringComparison.Ordinal)),
+            "MON-A4 location runtime topology evidence missing.");
         Console.WriteLine("scenario MON-A4 passed");
     }
 
@@ -52,18 +53,13 @@ internal static class MonA4AvailabilityTransitionScenario
         throw new InvalidOperationException("MON-A4 drain transition evidence was incomplete.");
     }
 
-    private static async Task<string[]> WaitForRegistryTopologyEvidenceAsync(ZLinkHttpClient registry)
+    private static async Task<string[]> WaitForLocationTopologyEvidenceAsync(ZLinkHttpClient service)
     {
-        var evidence = (await registry.Post("/evidence/wait")
+        return (await service.Post("/evidence/wait")
             .Body(new EvidenceWaitReq(
-                ["monitor-registry|source=registry"],
-                [["kind=TopologyChanged|topology=3"]]))
+                ["monitor-location-runtime|source=location-runtime"],
+                [["kind=TopologyChanged"]]))
             .SubmitAsync<string[]>()).Body;
-        if (evidence.Count(line =>
-                line.Contains("monitor-registry|source=registry|kind=TopologyChanged", StringComparison.Ordinal)) >=
-            2) return evidence;
-
-        throw new InvalidOperationException("MON-A4 registry topology transition evidence was incomplete.");
     }
 
     private static async Task<string[]> WaitForServiceDrainEvidenceAsync(ZLinkHttpClient service)

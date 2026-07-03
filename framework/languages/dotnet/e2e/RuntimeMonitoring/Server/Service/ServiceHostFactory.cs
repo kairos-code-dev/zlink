@@ -8,6 +8,8 @@ using Zlink.Framework.Contracts.Channels;
 using Zlink.Framework.Contracts.Dispatch;
 using Zlink.Framework.Contracts.Eventing;
 
+using Zlink.Framework.Locations.Redis;
+
 namespace RuntimeMonitoring.Server.Service;
 
 internal static class ServiceHostFactory
@@ -43,11 +45,17 @@ internal static class ServiceHostFactory
         builder.Services.AddSingleton(new EvidenceStore(options.EvidenceFile));
         builder.Services.AddScoped<IZLinkRuntimeEventHandler<ZLinkSocketEvent>, SocketEventRecorder>();
         builder.Services.AddScoped<IZLinkRuntimeEventHandler<ZLinkSpotEvent>, SpotEventRecorder>();
+        builder.Services.AddScoped<IZLinkRuntimeEventHandler<ZLinkLocationRuntimeEvent>, LocationRuntimeEventRecorder>();
         if (profile == ServiceMonitorProfile.Throwing)
             builder.Services.AddScoped<IZLinkRuntimeEventHandler<ZLinkSocketEvent>, ThrowingSocketEventRecorder>();
 
         builder.Services.AddZLinkFramework(framework =>
         {
+            if (!string.IsNullOrWhiteSpace(options.RedisEndpoint))
+                framework.AddLocationStore(new ZLinkRedisLocationStore(redis => redis
+                    .SetConnectionString(options.RedisEndpoint)
+                    .SetKeyPrefix(options.RedisKeyPrefix
+                                  ?? throw new InvalidOperationException("--redis-key-prefix is required."))));
             framework.ConfigureDispatch()
                 .MessageFlow(ZLinkMessageFlowLogMode.KeyTransitions)
                 .TraceLogFile(Path.Combine(options.LogDir, $"{options.Rid}-flow.log"))
@@ -78,6 +86,11 @@ internal static class ServiceHostFactory
 
             if (profile == ServiceMonitorProfile.All)
                 monitor.AddSpotEvents(RuntimeMonitoringNames.SpotNode, TimeSpan.FromMilliseconds(100));
+
+            if (!string.IsNullOrWhiteSpace(options.RedisEndpoint))
+                monitor.AddLocationRuntimeEvents(
+                    RuntimeMonitoringNames.LocationRuntimeSource,
+                    TimeSpan.FromMilliseconds(100));
         });
 
         var app = builder.Build();

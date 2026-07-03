@@ -1,5 +1,5 @@
 <!-- framework-adapter-nav:start -->
-[문서 목록](../../../../README.ko.md) | [이전: ZLink Framework ASP.NET Core Registry Integration](../../spec/aspnet-core-registry.ko.md) | [다음: ZLink Framework .NET SPOT Samples](spot-samples.ko.md)
+[문서 목록](../../../../README.ko.md) | [이전: ASP.NET Core Location Integration](../../spec/aspnet-core-location.ko.md) | [다음: ZLink Framework .NET SPOT Samples](spot-samples.ko.md)
 <!-- framework-adapter-nav:end -->
 
 [스펙 목차](../../../common/README.ko.md)
@@ -824,5 +824,5 @@ app.MapPost("/profiles/get", async (
 
 ---
 <!-- framework-adapter-nav:bottom:start -->
-[문서 목록](../../../../README.ko.md) | [이전: ZLink Framework ASP.NET Core Registry Integration](../../spec/aspnet-core-registry.ko.md) | [다음: ZLink Framework .NET SPOT Samples](spot-samples.ko.md)
+[문서 목록](../../../../README.ko.md) | [이전: ASP.NET Core Location Integration](../../spec/aspnet-core-location.ko.md) | [다음: ZLink Framework .NET SPOT Samples](spot-samples.ko.md)
 <!-- framework-adapter-nav:bottom:end -->

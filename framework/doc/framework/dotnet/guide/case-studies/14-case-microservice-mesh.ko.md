@@ -280,7 +280,7 @@ sidecar hop 이 빠질 뿐, fan-out 의 부분 실패·retry 정책은 양쪽 �
 ## 7. 더 보기
 
 - 케이스 허브: [13-grpc-alternative](../13-grpc-alternative.ko.md)
-- 사용법: [04-channel-messaging](../04-channel-messaging.ko.md), [09-registry](../09-registry.ko.md), [10-monitoring](../10-monitoring.ko.md)
+- 사용법: [04-channel-messaging](../04-channel-messaging.ko.md), [09-location](../09-location.ko.md), [10-monitoring](../10-monitoring.ko.md)
 - 다음 케이스: [15-case-realtime-game](15-case-realtime-game.ko.md)
 
 ---

@@ -273,7 +273,7 @@ backend gate 와 별도로 유지한다.
 - `spot-node.ko.md`
 - `streaming-client.ko.md`
 - `aspnet-core-monitoring.ko.md`
-- `aspnet-core-registry.ko.md`
+- `aspnet-core-location.ko.md`
 - `behavior-matrix.ko.md`
 - `di-capability-exposure-policy.ko.md`
 - `regression-test-matrix.ko.md`

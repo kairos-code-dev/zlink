@@ -1,10 +1,10 @@
 <!-- framework-adapter-nav:start -->
-[문서 목록](../../../README.ko.md) | [이전: ZLink Framework .NET Session Actor Dispatch](session-actor-dispatch.ko.md) | [다음: ZLink Framework ASP.NET Core Registry Integration](aspnet-core-registry.ko.md)
+[문서 목록](../../../README.ko.md) | [이전: ZLink Framework .NET Session Actor Dispatch](session-actor-dispatch.ko.md) | [다음: ASP.NET Core Location Integration](aspnet-core-location.ko.md)
 <!-- framework-adapter-nav:end -->
 
 [스펙 목차](../../common/README.ko.md)
 
-[.NET 묶음](../README.ko.md) | [인터페이스](handler-interfaces.ko.md) | [channel](aspnet-core-channel-messaging.ko.md) | [SPOT](aspnet-core-spot.ko.md) | [STREAM](aspnet-core-stream.ko.md) | [Registry](aspnet-core-registry.ko.md)
+[.NET 묶음](../README.ko.md) | [인터페이스](handler-interfaces.ko.md) | [channel](aspnet-core-channel-messaging.ko.md) | [SPOT](aspnet-core-spot.ko.md) | [STREAM](aspnet-core-stream.ko.md) | [Location](aspnet-core-location.ko.md)
 
 # ZLink Framework ASP.NET Core Monitoring
 
@@ -445,5 +445,5 @@ Bingo 3노드(Api/Play/Session)는 각자 `MessageFlow(KeyTransitions)` +
 
 ---
 <!-- framework-adapter-nav:bottom:start -->
-[문서 목록](../../../README.ko.md) | [이전: ZLink Framework .NET Session Actor Dispatch](session-actor-dispatch.ko.md) | [다음: ZLink Framework ASP.NET Core Registry Integration](aspnet-core-registry.ko.md)
+[문서 목록](../../../README.ko.md) | [이전: ZLink Framework .NET Session Actor Dispatch](session-actor-dispatch.ko.md) | [다음: ASP.NET Core Location Integration](aspnet-core-location.ko.md)
 <!-- framework-adapter-nav:bottom:end -->

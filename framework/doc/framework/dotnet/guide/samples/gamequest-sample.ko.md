@@ -4,7 +4,7 @@
 
 # GameQuest Sample
 
-[.NET 묶음](../../README.ko.md) | [channel](../../spec/aspnet-core-channel-messaging.ko.md) | [SPOT](../../spec/aspnet-core-spot.ko.md) | [Registry](../../spec/aspnet-core-registry.ko.md)
+[.NET 묶음](../../README.ko.md) | [channel](../../spec/aspnet-core-channel-messaging.ko.md) | [SPOT](../../spec/aspnet-core-spot.ko.md) | [Location](../../spec/aspnet-core-location.ko.md)
 
 > 이 문서는 실행 가능한 GameQuest 샘플 설명이다. 게임 백엔드에 ZLink 를 도입할지
 > 판단하려면 [15-case-realtime-game](../case-studies/15-case-realtime-game.ko.md)을 먼저

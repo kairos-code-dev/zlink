@@ -224,7 +224,7 @@ Stream Connector가 담당한다.
 Registry 서버가 등록된 서버 목록을 관리하고, client 역할의 서버가 Discovery로 현재
 살아 있는 서버를 동적으로 찾는다.
 
-[9장 →](09-registry.ko.md)
+[9장 →](09-location.ko.md)
 
 ### 통합 4축 한눈에
 
@@ -245,7 +245,7 @@ flowchart LR
 | SPOT | typed spot factory, Spot context outbound, timer | [05-spot](05-spot.ko.md) |
 | actor / session | actor factory, Entry Spot, `IZLinkBoundSession`, session actor dispatch | [06-actor-spot](06-actor-spot.ko.md) · [07-actor-session](07-actor-session.ko.md) |
 | STREAM | framework session packet, Stream Connector | [08-stream](08-stream.ko.md) |
-| 인프라 | Registry topology, runtime monitoring | [09-registry](09-registry.ko.md), [10-monitoring](10-monitoring.ko.md) |
+| 인프라 | Location 자동 연결·운영 조회, runtime monitoring | [09-location](09-location.ko.md), [10-monitoring](10-monitoring.ko.md) |
 
 ## 3. 전체 토폴로지
 
@@ -349,7 +349,7 @@ handler registration 이 정한다. 자세한 규칙은
 5. [06-actor-spot](06-actor-spot.ko.md) — actor lifecycle, Spot 호스팅·콜백
 6. [07-actor-session](07-actor-session.ko.md) — session↔actor binding·dispatch, client push
 7. [08-stream](08-stream.ko.md) — 외부 client(STREAM) 서버 + Stream Connector
-8. [09-registry](09-registry.ko.md) — Registry 구동과 topology 조회
+8. [09-location](09-location.ko.md) — location store 기반 자동 연결과 운영 조회
 9. [10-monitoring](10-monitoring.ko.md) — runtime 이벤트 관찰
 10. [11-feature-map](11-feature-map.ko.md) — 무엇을·얼마나 쉽게·언제 쓰나
 11. [12-interface-catalog](12-interface-catalog.ko.md) — 모든 계약 인터페이스를 코드로(ContractTests 검증)

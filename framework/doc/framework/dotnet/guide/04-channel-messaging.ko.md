@@ -47,7 +47,7 @@ gRPC 의 네 가지 호출 형태를 얻는다.
 | Unary `Empty` / fire-and-forget | one-way send | §2·§4 |
 | Server streaming / 이벤트 피드 | pub/sub fan-out | §4 |
 | Client/Bidi streaming | STREAM session | [08-stream](08-stream.ko.md) |
-| Service discovery(DNS/xDS) | Registry + Discovery | [09-registry](09-registry.ko.md) |
+| Service discovery(DNS/xDS) | location store 자동 연결 | [09-location](09-location.ko.md) |
 | Interceptor | handler filter | §5 |
 | Deadline | request timeout | §4 |
 

@@ -31,7 +31,7 @@
 | session actor dispatch | 높음 | 연결 서버와 로직 서버를 분리(재접속 이전성) | [6](06-actor-spot.ko.md) | [session-actor-dispatch](../spec/session-actor-dispatch.ko.md) |
 | STREAM session(서버) | 중간 | 외부 client(TCP/WS)를 framework 로 받기 | [7](08-stream.ko.md) | [stream](../spec/aspnet-core-stream.ko.md) |
 | Stream Connector(client) | 중간 | client 측에서 STREAM 서버에 접속 | [7](08-stream.ko.md) | [streaming-client](samples/streaming-client.ko.md) |
-| Registry topology 조회 | 중간 | 클러스터 topology snapshot/query | [8](09-registry.ko.md) | [registry](../spec/aspnet-core-registry.ko.md) |
+| Location 자동 연결·운영 조회 | 중간 | store 기반 자동 연결과 runtime query | [9](09-location.ko.md) | [location runtime](../../common/spec/location-runtime.ko.md) |
 | runtime monitoring | 낮음 | socket/registry/spot 이벤트 관찰 | [9](10-monitoring.ko.md) | [monitoring](../spec/aspnet-core-monitoring.ko.md) |
 
 ## 3. 빠른 선택 가이드

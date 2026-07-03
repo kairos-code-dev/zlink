@@ -1,5 +1,5 @@
 <!-- framework-adapter-nav:start -->
-[문서 목록](../../../README.ko.md) | [이전: Session Actor Dispatch](07-actor-session.ko.md) | [다음: Registry — topology 조회](09-registry.ko.md)
+[문서 목록](../../../README.ko.md) | [이전: Session Actor Dispatch](07-actor-session.ko.md) | [다음: Location — store 기반 자동 연결](09-location.ko.md)
 <!-- framework-adapter-nav:end -->
 
 # 8. STREAM — 외부 client 받기
@@ -352,5 +352,5 @@ Unity에서도 connector 호출은 일반 `.NET`과 같은 `Task` / `ValueTask` 
 
 ---
 <!-- framework-adapter-nav:bottom:start -->
-[문서 목록](../../../README.ko.md) | [이전: Session Actor Dispatch](07-actor-session.ko.md) | [다음: Registry — topology 조회](09-registry.ko.md)
+[문서 목록](../../../README.ko.md) | [이전: Session Actor Dispatch](07-actor-session.ko.md) | [다음: Location — store 기반 자동 연결](09-location.ko.md)
 <!-- framework-adapter-nav:bottom:end -->

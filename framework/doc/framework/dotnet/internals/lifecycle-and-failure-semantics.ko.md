@@ -4,7 +4,7 @@
 
 [스펙 목차](../../common/README.ko.md)
 
-[.NET 묶음](../README.ko.md) | [Behavior Matrix](behavior-matrix.ko.md) | [Monitoring](../spec/aspnet-core-monitoring.ko.md) | [Registry](../spec/aspnet-core-registry.ko.md)
+[.NET 묶음](../README.ko.md) | [Behavior Matrix](behavior-matrix.ko.md) | [Monitoring](../spec/aspnet-core-monitoring.ko.md) | [Location](../spec/aspnet-core-location.ko.md)
 
 # ZLink Framework .NET Lifecycle And Failure Semantics
 

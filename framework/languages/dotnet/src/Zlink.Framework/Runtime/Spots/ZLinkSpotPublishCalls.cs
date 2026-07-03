@@ -1,3 +1,5 @@
+using Zlink.Framework.Runtime.Messaging;
+
 namespace Zlink.Framework.Runtime.Spots;
 
 internal sealed class ZLinkCurrentSpotPublishCall<TEvent>(
@@ -22,7 +24,7 @@ internal sealed class ZLinkCurrentSpotPublishCall<TEvent>(
             topic,
             message,
             activation.Codecs);
-        _ = activation.PublishCurrentAsync(topic, parts, cancellationToken).AsTask();
+        ZLinkUnawaitedSubmit.Observe(activation.PublishCurrentAsync(topic, parts, cancellationToken), "spot publish submit");
     }
 }
 
@@ -51,7 +53,7 @@ internal sealed class ZLinkExternalSpotPublishCall<TEvent>(
 
     public void Submit(CancellationToken cancellationToken = default)
     {
-        _ = SubmitAsync(cancellationToken).AsTask();
+        ZLinkUnawaitedSubmit.Observe(SubmitAsync(cancellationToken), "spot publish submit");
     }
 
     private ValueTask SubmitAsync(CancellationToken cancellationToken)

@@ -18,39 +18,19 @@ internal sealed partial class ZLinkFrameworkRuntime
     }
 
     /// <summary>
-    /// True when the target is advertised as a live route mesh peer of this
-    /// channel: auto connect dials such peers directly, so the route socket
-    /// is the delivery path. Spot rids and unknown nodes return false and
-    /// go through the spot route egress instead. Without a location store
-    /// the legacy egress-first ordering applies.
+    /// Classifies the target from the auto-connect reconciler's desired-set
+    /// snapshot — never from the store, so the send path stays free of
+    /// hidden store I/O. True: a known route mesh peer, the route socket is
+    /// the delivery path. False: the mesh does not know this rid (a spot
+    /// rid or a stale node) — the egress owns it. Null: no loop manages
+    /// this mesh yet, keep the legacy ordering.
     /// </summary>
-    private async ValueTask<bool> IsDirectRouteMeshPeerAsync(
-        string routerChannelId,
-        RoutingId targetNodeRid,
-        CancellationToken cancellationToken)
+    private bool? IsKnownRouteMeshPeer(string routerChannelId, RoutingId targetNodeRid)
     {
-        if (Services.GetService(typeof(IZLinkPeerLocationResolver)) is not IZLinkPeerLocationResolver peers)
-        {
-            return false;
-        }
-
-        try
-        {
-            var rows = await peers.ListPeersAsync(
-                    new ZLinkPeerLocationFilter(
-                        AutoConnectType: ZLinkLocationAutoConnectType.RouteMesh,
-                        MeshName: routerChannelId,
-                        NodeRid: targetNodeRid),
-                    cancellationToken: cancellationToken)
-                .ConfigureAwait(false);
-            return rows.Count > 0;
-        }
-        catch (Exception)
-        {
-            // A store outage never breaks delivery; the egress path still
-            // carries the message.
-            return false;
-        }
+        return Services.GetService(typeof(IZLinkAutoConnectTopologyQuery))
+            is IZLinkAutoConnectTopologyQuery topology
+            ? topology.IsKnownRouteMeshPeer(routerChannelId, targetNodeRid)
+            : null;
     }
 
     internal async ValueTask SubmitRouteSendAsync<TMessage>(
@@ -60,13 +40,13 @@ internal sealed partial class ZLinkFrameworkRuntime
         TMessage message,
         CancellationToken cancellationToken)
     {
-        // A directly connected route mesh peer is always the first choice;
-        // the spot route egress (relay over the spot plane) serves targets
-        // the route socket cannot reach, e.g. spot rids or nodes this
-        // runtime never dials directly.
+        // A known route mesh peer is always the first choice; the spot
+        // route egress (relay over the spot plane) serves targets the route
+        // socket cannot reach, e.g. spot rids or nodes this runtime never
+        // dials directly.
         var routeChannel = GetRouteChannel(routerChannelId);
-        if (await IsDirectRouteMeshPeerAsync(routerChannelId, targetNodeRid, cancellationToken)
-                .ConfigureAwait(false))
+        var known = IsKnownRouteMeshPeer(routerChannelId, targetNodeRid);
+        if (known == true)
         {
             await routeChannel.SubmitSendAsync(
                     targetNodeRid,
@@ -99,12 +79,26 @@ internal sealed partial class ZLinkFrameworkRuntime
             ZLinkMessageParts.DisposeAll(parts);
         }
 
-        await routeChannel.SubmitSendAsync(
-                targetNodeRid,
-                packetName,
-                message,
-                cancellationToken)
-            .ConfigureAwait(false);
+        try
+        {
+            await routeChannel.SubmitSendAsync(
+                    targetNodeRid,
+                    packetName,
+                    message,
+                    cancellationToken)
+                .ConfigureAwait(false);
+        }
+        catch (ZLinkFrameworkException exception) when (
+            exception.Kind == ZLinkFrameworkErrorKind.RouteNotConnected && known == false)
+        {
+            // The mesh does not know this rid at all: the address is stale
+            // or wrong, not merely unconverged. Retrying the send cannot
+            // help; the caller must re-resolve.
+            throw new ZLinkFrameworkException(
+                ZLinkFrameworkErrorKind.RequestTargetNotFound,
+                $"Route channel '{routerChannelId}' does not know node '{targetNodeRid}' for '{packetName}'.",
+                innerException: exception);
+        }
     }
 
     internal async ValueTask<TReply> SubmitRouteRequestAsync<TRequest, TReply>(
@@ -116,8 +110,8 @@ internal sealed partial class ZLinkFrameworkRuntime
         CancellationToken cancellationToken)
     {
         var routeChannel = GetRouteChannel(routerChannelId);
-        if (await IsDirectRouteMeshPeerAsync(routerChannelId, targetNodeRid, cancellationToken)
-                .ConfigureAwait(false))
+        var known = IsKnownRouteMeshPeer(routerChannelId, targetNodeRid);
+        if (known == true)
         {
             return await routeChannel.RequestAsync<TRequest, TReply>(
                     targetNodeRid,
@@ -157,13 +151,27 @@ internal sealed partial class ZLinkFrameworkRuntime
             ZLinkMessageParts.DisposeAll(parts);
         }
 
-        return await routeChannel.RequestAsync<TRequest, TReply>(
-                targetNodeRid,
-                packetName,
-                request,
-                timeout,
-                cancellationToken)
-            .ConfigureAwait(false);
+        try
+        {
+            return await routeChannel.RequestAsync<TRequest, TReply>(
+                    targetNodeRid,
+                    packetName,
+                    request,
+                    timeout,
+                    cancellationToken)
+                .ConfigureAwait(false);
+        }
+        catch (ZLinkFrameworkException exception) when (
+            exception.Kind == ZLinkFrameworkErrorKind.RouteNotConnected && known == false)
+        {
+            // The mesh does not know this rid at all: the address is stale
+            // or wrong, not merely unconverged. Retrying the request cannot
+            // help; the caller must re-resolve.
+            throw new ZLinkFrameworkException(
+                ZLinkFrameworkErrorKind.RequestTargetNotFound,
+                $"Route channel '{routerChannelId}' does not know node '{targetNodeRid}' for '{packetName}'.",
+                innerException: exception);
+        }
     }
 
     internal async ValueTask SendToSpotViaRouterChannelAsync(

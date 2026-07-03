@@ -32,6 +32,7 @@ internal sealed class ZLinkAutoConnectReconciler
     private readonly ZLinkLocationEventEmitter _events;
     private readonly TimeProvider _time;
     private readonly Dictionary<string, ZLinkAutoConnectTarget> _active = new(StringComparer.Ordinal);
+    private volatile HashSet<string>? _meshMemberRids;
     private long _localGeneration;
     private bool _localPublished;
     private bool _storeFailed;
@@ -64,6 +65,18 @@ internal sealed class ZLinkAutoConnectReconciler
     }
 
     internal IReadOnlyCollection<ZLinkAutoConnectTarget> ActiveTargets => _active.Values;
+
+    /// <summary>
+    /// True when the last reconcile saw this node rid as a mesh member
+    /// (any live row of the mesh, whichever side dials). Null before the
+    /// first successful tick — no judgment possible yet.
+    /// </summary>
+    internal bool? KnowsPeer(RoutingId nodeRid)
+    {
+        if (_meshMemberRids is not { } members) return null;
+
+        return members.Contains(nodeRid.ToHex());
+    }
 
     /// <summary>True while the last tick could not read the store. The loop
     /// must not let a change stamp skip ticks in this state.</summary>
@@ -105,6 +118,19 @@ internal sealed class ZLinkAutoConnectReconciler
         }
 
         var desired = ZLinkAutoConnectPlanner.ComputeDesired(_local, rows);
+        // Membership snapshot for fail-fast target classification on the
+        // send path (known peer vs unknown node). This is the full mesh
+        // view, NOT the desired dial set: the pairwise initiator keeps
+        // peers that dial us out of `desired`, yet they are reachable
+        // rid-addressed targets. Fail-static: a store outage keeps the
+        // last snapshot because the tick returns before this point.
+        var members = new HashSet<string>(StringComparer.Ordinal);
+        foreach (var row in rows)
+        {
+            if (row.NodeRid is { Size: > 0 } rowRid) members.Add(rowRid.ToHex());
+        }
+
+        _meshMemberRids = members;
 
         var connected = new List<string>();
         var disconnected = new List<string>();

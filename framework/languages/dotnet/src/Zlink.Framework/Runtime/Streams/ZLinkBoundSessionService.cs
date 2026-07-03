@@ -1,3 +1,5 @@
+using Zlink.Framework.Runtime.Messaging;
+
 namespace Zlink.Framework.Runtime.Streams;
 
 internal sealed class ZLinkBoundSessionService(
@@ -175,7 +177,7 @@ internal sealed class ZLinkBoundSessionSendCall<TMessage>(
 
     public void Submit(CancellationToken cancellationToken = default)
     {
-        _ = SubmitAsync(cancellationToken).AsTask();
+        ZLinkUnawaitedSubmit.Observe(SubmitAsync(cancellationToken), "bound session submit");
     }
 
     private async ValueTask SubmitAsync(CancellationToken cancellationToken)

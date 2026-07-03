@@ -1,3 +1,5 @@
+using Zlink.Framework.Runtime.Messaging;
+
 namespace Zlink.Framework.Runtime.Spots;
 
 internal sealed class ZLinkSpotOutboundService(IServiceProvider services) : IZLinkSpotOutbound
@@ -60,7 +62,7 @@ internal sealed class ZLinkRoutedSpotSendCall<TMessage>(
 
     public void Submit(CancellationToken cancellationToken = default)
     {
-        _ = SubmitAsync(cancellationToken).AsTask();
+        ZLinkUnawaitedSubmit.Observe(SubmitAsync(cancellationToken), "spot client submit");
     }
 
     private async ValueTask SubmitAsync(CancellationToken cancellationToken)
@@ -187,7 +189,7 @@ internal sealed class ZLinkCurrentSpotSendCall<TMessage>(
             channelName,
             _messageName ?? throw new InvalidOperationException("Message name is required."));
         var parts = ZLinkClientCallCodec.EncodeEnvelopeParts(header, message, activation.Codecs);
-        _ = activation.SendToChannelAsync(channelName, parts, cancellationToken).AsTask();
+        ZLinkUnawaitedSubmit.Observe(activation.SendToChannelAsync(channelName, parts, cancellationToken), "spot channel submit");
     }
 }
 

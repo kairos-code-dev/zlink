@@ -12,14 +12,25 @@ internal sealed class ZLinkAsyncSubmitter : IAsyncDisposable
     private readonly TimeSpan? _sendTimeout;
     private readonly CancellationToken _stopToken;
     private readonly object _submitGate = new();
+    private readonly Func<bool>? _failFastNotConnected;
     private bool _draining;
 
+    /// <summary>
+    /// <paramref name="failFastNotConnected"/>: when it returns true,
+    /// NotConnected submit failures fail immediately instead of retrying
+    /// until the writability timeout. Rid-addressed router paths managed by
+    /// auto-connect opt in so a stale or unconverged target surfaces as a
+    /// typed error the caller can act on (spot-address messaging draft §7);
+    /// dealer and pub sockets keep the connect-window buffering.
+    /// </summary>
     public ZLinkAsyncSubmitter(
         Action<Action> registerReadyHandler,
         TimeSpan? sendTimeout,
         CancellationToken stopToken,
-        int capacity = DefaultCapacity)
+        int capacity = DefaultCapacity,
+        Func<bool>? failFastNotConnected = null)
     {
+        _failFastNotConnected = failFastNotConnected;
         _pending = new ZLinkSubmitQueue(capacity);
         _sendTimeout = ValidateTimeout(sendTimeout);
         _stopToken = stopToken;
@@ -149,20 +160,8 @@ internal sealed class ZLinkAsyncSubmitter : IAsyncDisposable
             return AwaitResultAsync<T>(completion.Task);
         }
 
-        if (retryableFailure is ZlinkSubmitException
-            {
-                Result: ZlinkSubmitException.ErrorCode.NotFound
-                or ZlinkSubmitException.ErrorCode.NotAdmitted
-                or ZlinkSubmitException.ErrorCode.InvalidState
-                or ZlinkSubmitException.ErrorCode.InvalidArgument
-                or ZlinkSubmitException.ErrorCode.InvalidHandle
-                or ZlinkSubmitException.ErrorCode.NotSupported
-                or ZlinkSubmitException.ErrorCode.ThreadViolation
-                or ZlinkSubmitException.ErrorCode.OutOfMemory
-                or ZlinkSubmitException.ErrorCode.SeqExhausted
-                or ZlinkSubmitException.ErrorCode.Terminated
-                or ZlinkSubmitException.ErrorCode.InternalError
-            } submitError)
+        if (retryableFailure is ZlinkSubmitException submitError
+            && !IsRetryableSubmitFailure(submitError))
         {
             ZLinkMessageParts.DisposeAll(parts);
             completion.TrySetException(ZLinkRequestFailureMapper.CreateSubmitException(
@@ -237,11 +236,8 @@ internal sealed class ZLinkAsyncSubmitter : IAsyncDisposable
                 {
                     if (retryableFailure is not null)
                     {
-                        if (retryableFailure is ZlinkSubmitException
-                            {
-                                Result: not ZlinkSubmitException.ErrorCode.Backpressured
-                                and not ZlinkSubmitException.ErrorCode.NotConnected
-                            } submitError)
+                        if (retryableFailure is ZlinkSubmitException submitError
+                            && !IsRetryableSubmitFailure(submitError))
                         {
                             item.TryFail(ZLinkRequestFailureMapper.CreateSubmitException(
                                 submitError,
@@ -295,16 +291,14 @@ internal sealed class ZLinkAsyncSubmitter : IAsyncDisposable
         }
     }
 
-    private static bool IsRetryableSubmitFailure(ZlinkException error)
+    private bool IsRetryableSubmitFailure(ZlinkException error)
     {
-        if (error is ZlinkSubmitException
-            {
-                Result: ZlinkSubmitException.ErrorCode.Backpressured
-                or ZlinkSubmitException.ErrorCode.NotConnected
-            })
-            return true;
+        if (error is not ZlinkSubmitException submitError) return false;
 
-        return false;
+        if (submitError.Result == ZlinkSubmitException.ErrorCode.Backpressured) return true;
+
+        return submitError.Result == ZlinkSubmitException.ErrorCode.NotConnected
+               && _failFastNotConnected?.Invoke() != true;
     }
 
     private void Dequeue(PendingSubmit expected)

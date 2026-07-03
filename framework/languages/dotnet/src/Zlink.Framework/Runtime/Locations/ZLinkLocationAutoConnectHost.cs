@@ -10,7 +10,7 @@ namespace Zlink.Framework.Runtime.Locations;
 /// never-called executor so their peer row is published and removed by the
 /// same lifecycle. Core discovery is never involved.
 /// </summary>
-internal sealed class ZLinkLocationAutoConnectHost : IAsyncDisposable
+internal sealed class ZLinkLocationAutoConnectHost : IAsyncDisposable, IZLinkAutoConnectTopologyQuery
 {
     private readonly ZLinkLocationRuntime _runtime;
     private readonly IZLinkPeerLocationResolver _peers;
@@ -21,6 +21,8 @@ internal sealed class ZLinkLocationAutoConnectHost : IAsyncDisposable
     private readonly ZLinkLocationEventEmitter _events;
     private readonly TimeProvider _time;
     private readonly List<ZLinkAutoConnectLoop> _loops = [];
+    private readonly System.Collections.Concurrent.ConcurrentDictionary<string, ZLinkAutoConnectReconciler>
+        _routeMeshReconcilers = new(StringComparer.Ordinal);
 
     internal ZLinkLocationAutoConnectHost(
         ZLinkLocationRuntime runtime,
@@ -52,6 +54,7 @@ internal sealed class ZLinkLocationAutoConnectHost : IAsyncDisposable
         {
             if (!state.RouteChannels.TryGetValue(name, out var runtime)) continue;
 
+            runtime.MarkAutoConnectManaged();
             var manual = new HashSet<string>(route.ManualConnections, StringComparer.Ordinal);
             AddLoop(
                 ZLinkLocationAutoConnectType.RouteMesh,
@@ -207,8 +210,17 @@ internal sealed class ZLinkLocationAutoConnectHost : IAsyncDisposable
             : null;
         var reconciler = new ZLinkAutoConnectReconciler(
             local, row, _runtime, _peers, executor, _options, _time, _events);
+        if (type == ZLinkLocationAutoConnectType.RouteMesh)
+            _routeMeshReconcilers[meshName] = reconciler;
         _loops.Add(new ZLinkAutoConnectLoop(
             reconciler, local, _options, _stampStore, _watchStore, _time, _leaseTracker));
+    }
+
+    public bool? IsKnownRouteMeshPeer(string meshName, RoutingId nodeRid)
+    {
+        return _routeMeshReconcilers.TryGetValue(meshName, out var reconciler)
+            ? reconciler.KnowsPeer(nodeRid)
+            : null;
     }
 
     private static RoutingId? RidOrNull(RoutingId routingId) =>

@@ -232,9 +232,11 @@ owner 이동, node 장애, 그리고 정상 lifecycle의 spot destroy(actor 1:1 
 | node 도달, spot 부재 | 수신측, 오류 reply 1왕복 | `SpotRouteNotFound` | 재resolve 후 재시도 |
 | 전송 후 무응답 | timeout | timeout | 도메인 정책 (요청 중복 위험을 고려) |
 
-"모르는 node"와 "미연결"의 로컬 판정은 **자동연결 reconciler의 peer snapshot(§8이 캐시가
-아닌 알고리즘 상태로 유지하는 것)과 소켓 연결 상태에서만** 나온다: desired set에 있는데 연결이
-아직 수렴하지 않았으면 미연결, desired set에도 없으면 모르는 node다. 이 판정을 위해 전송
+"모르는 node"와 "미연결"의 로컬 판정은 **자동연결 reconciler의 mesh 구성원 snapshot(§8이
+캐시가 아닌 알고리즘 상태로 유지하는 것)과 소켓 연결 상태에서만** 나온다. 판정 기준은 desired
+dial set이 아니라 **mesh 구성원 전체**다 — pairwise initiator 때문에 상대가 나를 dial하는
+peer는 desired set에 없지만 rid 지정 가능한 도달 대상이다. 구성원 row가 있는데 연결이 아직
+수렴하지 않았으면 미연결, 구성원 row 자체가 없으면 모르는 node다. 이 판정을 위해 전송
 경로에서 store를 읽지 않는다 — 읽는 순간 이 문서의 제1원칙(숨은 store I/O 금지)이 §7에서
 깨진다. 자동연결 없이 수동 connect만 쓰는 구성은 snapshot이 없으므로 이 구분 없이 기존
 동작(연결 수렴 대기)을 유지한다.
@@ -404,9 +406,9 @@ sequenceDiagram
 
 ## 12. 진행 확인표
 
-- [ ] 전송 스택 정비: request 실패 fail-fast 분류 — rid 지정 router 경로 한정, 판정 소스 = reconciler snapshot + 소켓 상태 (§7)
-- [ ] 전송 스택 정비: send submit 실패 관측 event (§7)
-- [ ] 전송 스택 정비: 수신측 bridge spot 부재 오류 reply 구현·검증 (§7)
+- [x] 전송 스택 정비: request 실패 fail-fast 분류 — rid 지정 router 경로 한정, 판정 소스 = reconciler snapshot + 소켓 상태 (§7)
+- [x] 전송 스택 정비: send submit 실패 관측 event (§7)
+- [x] 전송 스택 정비: 수신측 bridge spot 부재 오류 reply 구현·검증 (§7)
 - [ ] contracts: `ZLinkSpotAddress` + resolver 시그니처 교체 + freshness 제거 (§4, §5)
 - [ ] runtime: resolver 캐시 제거 (§8)
 - [ ] runtime: egress 주소 기반 전환 + per-send resolve 제거 + `bffb264e2` 경로 제거 (§6, §8)

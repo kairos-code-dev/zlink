@@ -1,3 +1,5 @@
+using Zlink.Framework.Runtime.Messaging;
+
 namespace Zlink.Framework.Runtime.Channels;
 
 internal sealed class ZLinkSendCall : IZLinkSendCall
@@ -29,7 +31,7 @@ internal sealed class ZLinkSendCall : IZLinkSendCall
 
     public void Submit(CancellationToken cancellationToken = default)
     {
-        _ = SubmitAsync(cancellationToken).AsTask();
+        ZLinkUnawaitedSubmit.Observe(SubmitAsync(cancellationToken), "channel submit");
     }
 
     private ValueTask SubmitAsync(CancellationToken cancellationToken)
@@ -173,7 +175,7 @@ internal sealed class ZLinkPublishCall(
 
     public void Submit(CancellationToken cancellationToken = default)
     {
-        _ = SubmitAsync(cancellationToken).AsTask();
+        ZLinkUnawaitedSubmit.Observe(SubmitAsync(cancellationToken), "channel submit");
     }
 
     private ValueTask SubmitAsync(CancellationToken cancellationToken)

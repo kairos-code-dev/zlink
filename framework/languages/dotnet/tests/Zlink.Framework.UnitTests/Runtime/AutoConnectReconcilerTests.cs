@@ -121,6 +121,40 @@ public sealed class AutoConnectReconcilerTests
     }
 
     [Fact]
+    public async Task Membership_Snapshot_Classifies_Known_And_Unknown_Peers()
+    {
+        var fixture = await FixtureAsync();
+
+        // No judgment before the first successful reconcile.
+        Assert.Null(fixture.Reconciler.KnowsPeer(RoutingId.From("r1")));
+
+        await fixture.PublishPeerAsync("r1", "tcp://r:1");
+        await fixture.Reconciler.TickAsync();
+
+        Assert.True(fixture.Reconciler.KnowsPeer(RoutingId.From("r1")));
+        Assert.False(fixture.Reconciler.KnowsPeer(RoutingId.From("ghost")));
+
+        // Fail-static: a store outage keeps the last snapshot.
+        fixture.PeerResolver.Fail = true;
+        await fixture.Reconciler.TickAsync();
+        Assert.True(fixture.Reconciler.KnowsPeer(RoutingId.From("r1")));
+    }
+
+    [Fact]
+    public void Membership_Includes_Peers_The_Initiator_Rule_Excludes_From_Dialing()
+    {
+        // "aa" dials "zz" never (zz initiates), yet zz is a reachable
+        // rid-addressed target once it dials us: membership, not the
+        // desired dial set, is the fail-fast knowledge source.
+        var local = Local(ZLinkLocationAutoConnectType.RouteMesh, ZLinkLocationRole.Router, "zz", "tcp://z:1");
+        var peer = Peer(ZLinkLocationAutoConnectType.RouteMesh, ZLinkLocationRole.Router, "aa", "tcp://a:1");
+
+        var desired = ZLinkAutoConnectPlanner.ComputeDesired(local, [peer]);
+
+        Assert.Empty(desired);
+    }
+
+    [Fact]
     public async Task Owner_Change_For_The_Same_Peer_Key_Is_A_Handover()
     {
         var fixture = await FixtureAsync();

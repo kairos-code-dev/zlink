@@ -317,6 +317,8 @@ internal static class ZLinkFrameworkServiceRegistrar
             provider.GetService<IZLinkLocationWatchStore>(),
             events: provider.GetRequiredService<ZLinkLocationEventEmitter>(),
             leaseTracker: provider.GetRequiredService<ZLinkOwnerLeaseTracker>()));
+        services.AddSingleton<IZLinkAutoConnectTopologyQuery>(static provider =>
+            provider.GetRequiredService<ZLinkLocationAutoConnectHost>());
         services.AddSingleton<IHostedService, ZLinkLocationHostedService>();
         return services;
     }

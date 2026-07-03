@@ -91,12 +91,14 @@ internal sealed class ZLinkRouteSendCall<TMessage>(
     public void Submit(CancellationToken cancellationToken = default)
     {
         runtime.GetRouteChannel(routerChannelId);
-        _ = runtime.SubmitRouteSendAsync(
-            routerChannelId,
-            targetNodeRid,
-            _packetName ?? throw new InvalidOperationException("Packet name is required."),
-            message,
-            cancellationToken).AsTask();
+        ZLinkUnawaitedSubmit.Observe(
+            runtime.SubmitRouteSendAsync(
+                routerChannelId,
+                targetNodeRid,
+                _packetName ?? throw new InvalidOperationException("Packet name is required."),
+                message,
+                cancellationToken),
+            "route send submit");
     }
 }
 

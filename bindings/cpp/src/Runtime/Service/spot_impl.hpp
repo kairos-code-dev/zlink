@@ -4,10 +4,23 @@
 
 #include <zlink/Contracts/Service/spot.hpp>
 
+#include <condition_variable>
+#include <mutex>
+
 namespace zlink
 {
 namespace service
 {
+
+struct spot_dispatch_handler_state_t
+{
+    std::mutex mutex;
+    std::condition_variable cv;
+    spot_t *owner = nullptr;
+    std::function<void (spot_t &, const spot_dispatch_info_t &)> handler;
+    bool closed = false;
+    std::size_t in_flight = 0;
+};
 
 struct spot_t::impl
 {
@@ -16,7 +29,7 @@ struct spot_t::impl
     std::chrono::milliseconds default_request_timeout;
     std::function<void ()> send_ready_handler;
     std::function<void (received_t)> routed_receive_handler;
-    std::function<void (spot_t &, const spot_dispatch_info_t &)> dispatch_event_handler;
+    std::shared_ptr<spot_dispatch_handler_state_t> dispatch_state;
 };
 
 struct spot_t::native_handle_ctor_tag_t

@@ -8,6 +8,10 @@
 #include <Runtime/Service/spot_operation_submit.hpp>
 #include <Runtime/Service/spot_access.hpp>
 
+#include <condition_variable>
+#include <map>
+#include <mutex>
+
 namespace zlink
 {
 
@@ -55,6 +59,83 @@ namespace service
 
 namespace
 {
+
+std::mutex &dispatch_handler_states_mutex ()
+{
+    static std::mutex mutex;
+    return mutex;
+}
+
+std::map<void *, std::weak_ptr<spot_dispatch_handler_state_t>> &dispatch_handler_states ()
+{
+    static std::map<void *, std::weak_ptr<spot_dispatch_handler_state_t>> states;
+    return states;
+}
+
+void register_dispatch_handler_state (
+  const std::shared_ptr<spot_dispatch_handler_state_t> &state)
+{
+    if (!state)
+        return;
+    std::lock_guard<std::mutex> lock (dispatch_handler_states_mutex ());
+    dispatch_handler_states ()[state.get ()] = state;
+}
+
+std::shared_ptr<spot_dispatch_handler_state_t>
+lock_dispatch_handler_state (void *state_)
+{
+    std::lock_guard<std::mutex> lock (dispatch_handler_states_mutex ());
+    const auto found = dispatch_handler_states ().find (state_);
+    if (found == dispatch_handler_states ().end ())
+        return {};
+    return found->second.lock ();
+}
+
+void unregister_dispatch_handler_state (void *state_)
+{
+    std::lock_guard<std::mutex> lock (dispatch_handler_states_mutex ());
+    dispatch_handler_states ().erase (state_);
+}
+
+struct dispatch_callback_scope_t
+{
+    explicit dispatch_callback_scope_t (
+      std::shared_ptr<spot_dispatch_handler_state_t> state_) :
+        state (std::move (state_))
+    {
+        if (!state)
+            return;
+
+        std::lock_guard<std::mutex> lock (state->mutex);
+        if (state->closed || !state->owner || !state->handler) {
+            state.reset ();
+            return;
+        }
+        owner = state->owner;
+        handler = state->handler;
+        ++state->in_flight;
+    }
+
+    ~dispatch_callback_scope_t ()
+    {
+        if (!state)
+            return;
+        std::lock_guard<std::mutex> lock (state->mutex);
+        if (state->in_flight > 0)
+            --state->in_flight;
+        if (state->closed && state->in_flight == 0)
+            state->cv.notify_all ();
+    }
+
+    explicit operator bool () const noexcept
+    {
+        return state && owner && handler;
+    }
+
+    std::shared_ptr<spot_dispatch_handler_state_t> state;
+    spot_t *owner = nullptr;
+    std::function<void (spot_t &, const spot_dispatch_info_t &)> handler;
+};
 
 template <typename SubmitPart>
 void submit_single_reply_message (message_t &message_, SubmitPart submit_part_)
@@ -107,6 +188,10 @@ spot_t::~spot_t ()
 
 spot_t::spot_t (spot_t &&other) noexcept : _impl (std::move (other._impl))
 {
+    if (_impl && _impl->dispatch_state) {
+        std::lock_guard<std::mutex> lock (_impl->dispatch_state->mutex);
+        _impl->dispatch_state->owner = this;
+    }
 }
 
 spot_t &spot_t::operator= (spot_t &&other) noexcept
@@ -120,6 +205,10 @@ spot_t &spot_t::operator= (spot_t &&other) noexcept
     catch (...) {
     }
     _impl = std::move (other._impl);
+    if (_impl && _impl->dispatch_state) {
+        std::lock_guard<std::mutex> lock (_impl->dispatch_state->mutex);
+        _impl->dispatch_state->owner = this;
+    }
     return *this;
 }
 
@@ -380,21 +469,29 @@ int spot_t::recv_routed (received_t &out_, recv_flags_t flags_)
 void spot_t::set_dispatch_handler (
   std::function<void (spot_t &, const spot_dispatch_info_t &)> handler_)
 {
-    _impl->dispatch_event_handler = std::move (handler_);
+    _impl->dispatch_state = std::make_shared<spot_dispatch_handler_state_t> ();
+    _impl->dispatch_state->owner = this;
+    _impl->dispatch_state->handler = std::move (handler_);
+    register_dispatch_handler_state (_impl->dispatch_state);
+
     const handler_result_t rc = static_cast<handler_result_t> (zlink_spot_dispatch_event_handler (
       _impl->handle,
       [] (void *spot_, const zlink_spot_dispatch_info_t *info_, void *userdata_) {
           (void) spot_;
-          spot_t *self = static_cast<spot_t *> (userdata_);
-          if (!self || !self->_impl->dispatch_event_handler || !info_)
+          auto state = lock_dispatch_handler_state (userdata_);
+          dispatch_callback_scope_t scope (std::move (state));
+          if (!scope || !info_)
               return;
           const spot_dispatch_info_t info =
             zlink::detail::actor_model_access_t::from_native (*info_);
-          self->_impl->dispatch_event_handler (*self, info);
+          scope.handler (*scope.owner, info);
       },
-      this));
-    if (rc != handler_result_t::ok)
+      _impl->dispatch_state.get ()));
+    if (rc != handler_result_t::ok) {
+        unregister_dispatch_handler_state (_impl->dispatch_state.get ());
+        _impl->dispatch_state.reset ();
         throw handler_error_t (rc, zlink_errno ());
+    }
 }
 
 void spot_t::set_dispatch_handler (std::function<void (const spot_dispatch_info_t &)> handler_)
@@ -493,10 +590,36 @@ void spot_t::close ()
     if (!_impl || !_impl->handle)
         return;
 
+    std::shared_ptr<spot_dispatch_handler_state_t> dispatch_state = _impl->dispatch_state;
+    std::function<void (spot_t &, const spot_dispatch_info_t &)> previous_handler;
+    if (dispatch_state) {
+        std::lock_guard<std::mutex> lock (dispatch_state->mutex);
+        previous_handler = dispatch_state->handler;
+        dispatch_state->closed = true;
+        dispatch_state->owner = nullptr;
+        dispatch_state->handler = {};
+    }
+
     void *tmp = _impl->handle;
-    detail::throw_if_failed<close_error_t> (
-      static_cast<close_result_t> (zlink_spot_destroy (&tmp)));
+    const auto close_result = static_cast<close_result_t> (zlink_spot_destroy (&tmp));
+    if (close_result != close_result_t::ok) {
+        if (dispatch_state) {
+            std::lock_guard<std::mutex> lock (dispatch_state->mutex);
+            dispatch_state->closed = false;
+            dispatch_state->owner = this;
+            dispatch_state->handler = std::move (previous_handler);
+        }
+        detail::throw_if_failed<close_error_t> (close_result);
+    }
     _impl->handle = nullptr;
+
+    if (dispatch_state) {
+        std::unique_lock<std::mutex> lock (dispatch_state->mutex);
+        dispatch_state->cv.wait (lock, [&] { return dispatch_state->in_flight == 0; });
+        lock.unlock ();
+        unregister_dispatch_handler_state (dispatch_state.get ());
+        _impl->dispatch_state.reset ();
+    }
 }
 
 } // namespace service

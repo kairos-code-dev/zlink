@@ -26,6 +26,7 @@
 #include <sstream>
 #include <thread>
 #include <utility>
+#include <vector>
 
 namespace zlink::framework
 {
@@ -2712,6 +2713,16 @@ void spot_node_runtime_t::attach_native_node (std::shared_ptr<zlink::service::sp
 void spot_node_runtime_t::detach_native_node ()
 {
     std::lock_guard<std::recursive_mutex> node_lock (_state->mutex);
+    std::vector<std::shared_ptr<zlink::service::spot_t>> native_spots;
+    native_spots.reserve (_state->native_spots_by_rid.size ());
+    for (const auto &[_, native] : _state->native_spots_by_rid) {
+        if (native) {
+            native_spots.push_back (native);
+        }
+    }
+    for (const auto &native : native_spots) {
+        native->close ();
+    }
     _state->native_node.reset ();
     _state->native_spots_by_rid.clear ();
     _state->last_monitoring_peers.clear ();

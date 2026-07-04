@@ -63,6 +63,7 @@ import type {
   ZLinkActorRoutedJoinTransport
 } from '../actors';
 import {
+  DefaultZLinkActorClient,
   ZLinkActorNativeJoinCoordinator,
   ZLINK_REMOTE_ACTOR_JOIN_PACKET,
   ZLINK_REMOTE_ACTOR_SESSION_DISCONNECTED_PACKET,
@@ -528,6 +529,16 @@ export class ZLinkFrameworkRuntimeHost implements ZLinkFrameworkRuntime, ZLinkMe
     };
   }
 
+  createActorClientOptions(): ConstructorParameters<typeof DefaultZLinkActorClient>[0] {
+    this.ensureLocationRuntime();
+    return {
+      nodeProvider: () => this.spotNodeRuntime?.primaryNode,
+      locationResolver: () => this.createActorLocationResolver(),
+      messageSerializers: this.options.registration.messageSerializers,
+      defaultRequestTimeoutMs: this.options.registration.requestTimeoutMs
+    };
+  }
+
   createSpotManagerOptions(): object {
     this.ensureLocationRuntime();
     return {
@@ -766,6 +777,21 @@ export class ZLinkFrameworkRuntimeHost implements ZLinkFrameworkRuntime, ZLinkMe
       meshNames,
       this.spotRouterChannelIdByMesh()
     );
+  }
+
+  private createActorLocationResolver(): ZLinkStoreLocationResolvers | undefined {
+    const stores = this.locationStores;
+    if (stores === undefined) {
+      return undefined;
+    }
+    return new ZLinkStoreLocationResolvers({
+      stores,
+      leaseTracker: new ZLinkOwnerLeaseTracker({
+        store: stores.ownerLeaseStore,
+        options: this.options.registration.locations.options
+      }),
+      events: this.locationEvents
+    });
   }
 
   private ensureLocationEvents(): ZLinkLocationEventSink | undefined {

@@ -1,4 +1,5 @@
 export * from './contracts';
+export * from './runtime/streams/protocol';
 export * from './runtime/channels';
 export * from './runtime/handlers';
 export * from './runtime/host';

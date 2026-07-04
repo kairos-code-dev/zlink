@@ -304,6 +304,26 @@ function resolveBackendMessagingProperty(target: unknown, property: string | sym
       return submitSendOperation(operation, payload, flags);
     };
   }
+  if (property === 'sendToActor') {
+    return (actor: unknown, payload: unknown, flags: number) => {
+      const actorRef = toNativeActorRef(actor);
+      if (hasOperationMethod(target, 'sendToActorCallback')) {
+        return submitActorSendOperation(target, actorRef, payload, flags);
+      }
+      const operation = (target as unknown as {
+        sendToActor(actor: unknown): unknown;
+      }).sendToActor(actorRef);
+      return submitSendOperation(operation, payload, flags);
+    };
+  }
+  if (property === 'requestToActor') {
+    return (actor: unknown, payload: unknown, callback: unknown, flags: number, timeoutMs?: number) => {
+      const operation = (target as unknown as {
+        requestToActor(actor: unknown): unknown;
+      }).requestToActor(toNativeActorRef(actor));
+      return submitRequestOperation(operation, payload, callback, flags, timeoutMs);
+    };
+  }
   if (property === 'bindRemoteActorSession') {
     return (actor: unknown, sourceNodeRid: unknown, sourceSessionRid: unknown) =>
       (target as unknown as {
@@ -313,6 +333,12 @@ function resolveBackendMessagingProperty(target: unknown, property: string | sym
         toNativeRoutingId(sourceNodeRid),
         toNativeRoutingId(sourceSessionRid)
       );
+  }
+  if (property === 'replyActorNoBind') {
+    return (info: unknown, parts: unknown, result: unknown) =>
+      (target as unknown as {
+        replyActorNoBind(info: unknown, parts: unknown, result: unknown): void;
+      }).replyActorNoBind(info, parts, result);
   }
   if (property === 'recvRoute') {
     return (received: unknown, flags: number) => {
@@ -365,6 +391,43 @@ function submitSendOperation(operation: unknown, payload: unknown, flags: number
     throw new TypeError('Binding send operation does not expose submit().');
   }
   return Boolean(current.submit());
+}
+
+function submitActorSendOperation(target: unknown, actor: unknown, payload: unknown, flags: number): Promise<boolean> {
+  const parts = Array.isArray(payload) ? payload : [payload];
+  if (parts.length === 0) {
+    throw new TypeError('Binding operation payload must contain at least one part.');
+  }
+  return new Promise<boolean>((resolve, reject) => {
+    try {
+      const accepted = (target as unknown as {
+        sendToActorCallback(
+          actor: unknown,
+          parts: readonly unknown[],
+          callback: (result: number, replyParts: readonly unknown[]) => void,
+          flags: number,
+          timeoutMs: number
+        ): boolean;
+      }).sendToActorCallback(
+        actor,
+        parts,
+        (result) => {
+          if (result === zlink.RequestResult.Ok) {
+            resolve(true);
+          } else {
+            reject(new zlink.RequestError(result as typeof zlink.RequestResult[keyof typeof zlink.RequestResult], 0));
+          }
+        },
+        flags,
+        0
+      );
+      if (!accepted) {
+        resolve(false);
+      }
+    } catch (error) {
+      reject(error);
+    }
+  });
 }
 
 function submitRequestOperation(

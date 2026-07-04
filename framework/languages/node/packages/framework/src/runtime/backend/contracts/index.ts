@@ -75,8 +75,18 @@ export interface ZLinkBackendActorPart {
   readonly actor: ZLinkBackendActorRef;
   readonly sourceNodeRid: RoutingId;
   readonly sourceSessionRid: RoutingId;
+  readonly requestId: bigint;
+  readonly flags: number;
   readonly message: Message;
   readonly more: boolean;
+}
+
+export interface ZLinkBackendActorRecvInfo {
+  readonly actor: ZLinkBackendActorRef;
+  readonly sourceNodeRid: RoutingId;
+  readonly sourceSessionRid: RoutingId;
+  readonly requestId: bigint;
+  readonly flags: number;
 }
 
 export interface ZLinkBackendActorJoinInfo {
@@ -311,6 +321,23 @@ export interface ZLinkBackendSpotNode extends ZLinkBackendObject {
     parts: readonly Message[],
     flags: ZLinkBackendSendFlags
   ): boolean;
+  sendToActor(
+    actor: ZLinkBackendActorRef,
+    parts: readonly Message[],
+    flags: ZLinkBackendSendFlags
+  ): boolean | Promise<boolean>;
+  requestToActor(
+    actor: ZLinkBackendActorRef,
+    parts: readonly Message[],
+    callback: RequestCallback,
+    flags: ZLinkBackendSendFlags,
+    timeoutMs?: number
+  ): boolean;
+  replyActorNoBind(
+    info: ZLinkBackendActorRecvInfo,
+    parts: readonly Message[],
+    result: RequestResult
+  ): void;
   bindRemoteActorSession(
     actor: ZLinkBackendActorRef,
     sourceNodeRid: RoutingId,

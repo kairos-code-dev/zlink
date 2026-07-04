@@ -72,6 +72,7 @@ test('ZLinkModule.forRoot registers always-available providers for empty options
   assert.equal(tokens.has(nestjs.ZLINK_CHANNEL_CLIENT), true);
   assert.equal(tokens.has(nestjs.ZLINK_ROUTE_CLIENT), true);
   assert.equal(tokens.has(nestjs.ZLINK_FANOUT_CLIENT), true);
+  assert.equal(tokens.has(nestjs.ZLINK_ACTOR_CLIENT), false);
   assert.equal(tokens.has(nestjs.ZLINK_BOUND_SESSION_FACTORY), true);
   assert.equal(tokens.has(nestjs.ZLINK_RUNTIME_EVENT_PUBLISHER), true);
   assert.equal(tokens.has(nestjs.ZLINK_MESSAGE_METADATA_POLICY), true);
@@ -224,21 +225,28 @@ test('ZLinkModule.forRoot public DI clients expose callable framework contracts'
     .options({ spotPublisherClients: ['spot-events'] })
     .addRouteMeshChannel('mesh')
       .connect(undefined)
+    .addSpotMesh('actors')
+      .enableRouter('tcp://127.0.0.1:0', 'actor-node')
+      .enablePubSub('tcp://127.0.0.1:0', 'actor-node')
     .build());
   const container = await resolveModuleProviders(module, [
     nestjs.ZLINK_FRAMEWORK_RUNTIME,
     nestjs.ZLINK_ROUTE_CLIENT,
+    nestjs.ZLINK_ACTOR_CLIENT,
     nestjs.ZLINK_BOUND_SESSION_FACTORY,
     nestjs.ZLINK_SPOT_PUBLISHER_CLIENT
   ]);
 
   const runtime = container.get(nestjs.ZLINK_FRAMEWORK_RUNTIME);
   const routeClient = container.get(nestjs.ZLINK_ROUTE_CLIENT);
+  const actorClient = container.get(nestjs.ZLINK_ACTOR_CLIENT);
   const boundSessionFactory = container.get(nestjs.ZLINK_BOUND_SESSION_FACTORY);
   const spotPublisher = container.get(nestjs.ZLINK_SPOT_PUBLISHER_CLIENT);
 
   assert.equal(typeof routeClient.sendToNode, 'function');
   assert.equal(typeof routeClient.requestToNode, 'function');
+  assert.equal(typeof actorClient.sendToActor, 'function');
+  assert.equal(typeof actorClient.requestToActor, 'function');
   assert.equal(typeof boundSessionFactory.create, 'function');
   assert.equal(typeof spotPublisher.publish, 'function');
   assert.equal(boundSessionFactory, runtime.boundSessionFactory);

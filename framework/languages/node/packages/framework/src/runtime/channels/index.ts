@@ -2377,7 +2377,7 @@ export class ZLinkChannelReceiveLoop {
   async run(signal?: AbortSignal): Promise<void> {
     while (!this.stopped && signal?.aborted !== true) {
       const received = this.router.recv(1);
-      if (received === undefined) {
+      if (received == null) {
         await new Promise<void>((resolve) => setImmediate(resolve));
         continue;
       }
@@ -2866,7 +2866,7 @@ export class ZLinkRouteReceiveLoop {
   async run(signal?: AbortSignal): Promise<void> {
     while (!this.stopped && signal?.aborted !== true) {
       const received = this.router.recv(1);
-      if (received === undefined) {
+      if (received == null) {
         await new Promise<void>((resolve) => setImmediate(resolve));
         continue;
       }

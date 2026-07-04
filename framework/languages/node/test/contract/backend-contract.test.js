@@ -160,6 +160,88 @@ test('backend adapter submits SpotNode actor bound-session send operation', asyn
   }
 });
 
+test('backend adapter submits SpotNode actor send through async completion callback', async () => {
+  const factory = new backend.ZLinkNodeBackendAdapterFactory();
+  const channel = factory.createChannelAdapter();
+  const spotAdapter = factory.createSpotAdapter();
+  const context = channel.createContext();
+  const spotNode = spotAdapter.createSpotNode(context, 3);
+  const frame = zlink.Message.from(Buffer.from('actor-send'));
+  const actorRef = { nodeRid: 'backend-actor-node', actorId: 'backend-actor', generation: 1n };
+  const calls = [];
+
+  try {
+    spotNode.nativeInstance.sendToActorCallback = (actor, parts, callback, flags, timeoutMs) => {
+      calls.push({ actor, parts, flags, timeoutMs });
+      queueMicrotask(() => callback(zlink.RequestResult.Ok, []));
+      return true;
+    };
+
+    assert.equal(await spotNode.sendToActor(actorRef, [frame], zlink.SendFlags.None), true);
+    assert.equal(calls.length, 1);
+    assert.equal(calls[0].actor.actorId, 'backend-actor');
+    assert.equal(calls[0].parts.length, 1);
+  } finally {
+    frame.close();
+    await spotNode.dispose();
+    await context.dispose();
+  }
+});
+
+test('backend adapter submits SpotNode actor request builder and wires callback', async () => {
+  const factory = new backend.ZLinkNodeBackendAdapterFactory();
+  const channel = factory.createChannelAdapter();
+  const spotAdapter = factory.createSpotAdapter();
+  const context = channel.createContext();
+  const spotNode = spotAdapter.createSpotNode(context, 3);
+  const frame = zlink.Message.from(Buffer.from('actor-request'));
+  const actorRef = { nodeRid: 'backend-actor-node', actorId: 'backend-actor', generation: 1n };
+  const calls = [];
+
+  try {
+    spotNode.nativeInstance.requestToActor = (actor) => ({
+      message(part) {
+        calls.push({ kind: 'message', actor, part });
+        return this;
+      },
+      flags(flags) {
+        calls.push({ kind: 'flags', flags });
+        return this;
+      },
+      timeout(timeoutMs) {
+        calls.push({ kind: 'timeout', timeoutMs });
+        return this;
+      },
+      submit(callback) {
+        calls.push({ kind: 'submit' });
+        callback(zlink.RequestResult.Ok, []);
+        return true;
+      }
+    });
+
+    let completed = false;
+    const accepted = spotNode.requestToActor(
+      actorRef,
+      [frame],
+      (result, parts) => {
+        completed = true;
+        assert.equal(result, zlink.RequestResult.Ok);
+        assert.deepEqual(parts, []);
+      },
+      zlink.SendFlags.None,
+      123
+    );
+
+    assert.equal(accepted, true);
+    assert.equal(completed, true);
+    assert.deepEqual(calls.map((call) => call.kind), ['message', 'timeout', 'submit']);
+  } finally {
+    frame.close();
+    await spotNode.dispose();
+    await context.dispose();
+  }
+});
+
 test('backend router recv normalizes transient route recv invalid handle to no message', async () => {
   const factory = new backend.ZLinkNodeBackendAdapterFactory();
   const channel = factory.createChannelAdapter();

@@ -62,6 +62,7 @@ import {
 } from '../../contracts';
 import {
   Message as BindingMessage,
+  RequestResult,
   Received as BindingReceived,
   TopicMessage as BindingTopicMessage,
   type MessageLike
@@ -80,6 +81,7 @@ import type {
   ZLinkBackendSpotNode,
   ZLinkBackendSpotNodeMode,
   ZLinkBackendActorJoinInfo,
+  ZLinkBackendActorRecvInfo,
   ZLinkBackendActorJoinRequest,
   ZLinkBackendRecvFlags
 } from '../backend/contracts';
@@ -150,8 +152,11 @@ import type { ZLinkRemoteActorPacketTarget, ZLinkRemoteBoundSessionTarget } from
 import type { ZLinkLocationLifecycle } from '../locations';
 import {
   decodeStreamHeader,
+  encodeStreamFrame,
   messageToBytes,
   tryGetStreamFrameHeader,
+  ZLinkStreamCodec,
+  ZLinkStreamHeaderFlags,
   ZLinkStreamMessageKind
 } from '../streams/protocol';
 import {
@@ -167,6 +172,7 @@ const ZLINK_SPOT_DISPATCH_SUBJECT_CHANNEL_DEALER = 3;
 const ZLINK_SPOT_ACTOR_LIFECYCLE_JOINED = 1;
 const ZLINK_SPOT_ACTOR_LIFECYCLE_LEFT = 2;
 const ZLINK_SPOT_ACTOR_LIFECYCLE_DISCONNECTED = 3;
+const ZLINK_SPOT_ACTOR_RECV_INFO_NO_BIND = 1;
 
 export interface ZLinkSpotManagerOptions {
   readonly spotFactories: readonly Type<ZLinkSpot>[];
@@ -577,6 +583,7 @@ export class ZLinkSpotNodeRuntimeManager {
       this.options.routedBoundSessionErrorReceiver,
       this.options.actorPacketTargetProvider,
       undefined,
+      undefined,
       this.options.messageSerializers,
       this.options.providerResolver,
       this.options.dispatchErrors
@@ -874,6 +881,8 @@ interface ZLinkActorDispatchPart {
     readonly actor: ZLinkBackendActorRef;
     readonly sourceNodeRid?: RoutingId;
     readonly sourceSessionRid?: RoutingId;
+    readonly requestId?: bigint;
+    readonly flags?: number;
   };
   readonly message: Message;
   readonly more: boolean;
@@ -1061,6 +1070,11 @@ class ZLinkSpotActorJoinDispatch {
       sourceNodeRid: RoutingId,
       sourceSessionRid: RoutingId
     ) => void,
+    private readonly replyActorNoBind?: (
+      info: ZLinkBackendActorRecvInfo,
+      parts: readonly Message[],
+      result: RequestResult
+    ) => void,
     private readonly messageSerializers?: ReadonlyMap<string, ZLinkMessageSerializer>,
     private readonly providerResolver?: ZLinkProviderResolver,
     private readonly dispatchErrors?: ZLinkDispatchErrorReporter
@@ -1183,6 +1197,8 @@ class ZLinkSpotActorJoinDispatch {
     let actorRef: ZLinkBackendActorRef | undefined;
     let sourceNodeRid: RoutingId | undefined;
     let sourceSessionRid: RoutingId | undefined;
+    let requestId: bigint | undefined;
+    let flags: number | undefined;
     try {
       for (;;) {
         const part = info.recvActorPart(ZLINK_RECV_DONT_WAIT);
@@ -1193,12 +1209,15 @@ class ZLinkSpotActorJoinDispatch {
         actorRef ??= part.info.actor;
         sourceNodeRid ??= part.info.sourceNodeRid;
         sourceSessionRid ??= part.info.sourceSessionRid;
+        requestId ??= part.info.requestId;
+        flags ??= part.info.flags;
         parts.push(part.message);
         if (!part.more) {
           break;
         }
       }
-      if (sourceNodeRid !== undefined && sourceSessionRid !== undefined) {
+      const noBindInfo = this.createNoBindReplyInfo(actorRef, sourceNodeRid, sourceSessionRid, requestId, flags, parts);
+      if (noBindInfo === undefined && sourceNodeRid !== undefined && sourceSessionRid !== undefined) {
         this.bindRemoteActorSession?.(actorRef, sourceNodeRid, sourceSessionRid);
       }
       if (this.consumeRemoteBoundSessionBind(actorRef, sourceNodeRid, sourceSessionRid, parts)) {
@@ -1207,17 +1226,107 @@ class ZLinkSpotActorJoinDispatch {
       if (this.actorPacketHandler === undefined) {
         return;
       }
-      await this.actorPacketHandler(
-        actorId,
-        parts,
-        false,
-        undefined,
-        actorRef as unknown as ActorRef | undefined
-      );
+      if (noBindInfo !== undefined) {
+        await this.dispatchNoBindActorRequest(noBindInfo, actorId, parts, actorRef);
+      } else {
+        await this.actorPacketHandler(
+          actorId,
+          parts,
+          false,
+          undefined,
+          actorRef as unknown as ActorRef | undefined
+        );
+      }
     } finally {
       for (const part of parts) {
         part.close();
       }
+    }
+  }
+
+  private createNoBindReplyInfo(
+    actor: ZLinkBackendActorRef | undefined,
+    sourceNodeRid: RoutingId | undefined,
+    sourceSessionRid: RoutingId | undefined,
+    requestId: bigint | undefined,
+    flags: number | undefined,
+    parts: readonly Message[]
+  ): ZLinkBackendActorRecvInfo | undefined {
+    if (
+      actor === undefined
+      || sourceNodeRid === undefined
+      || sourceSessionRid === undefined
+      || requestId === undefined
+      || requestId === 0n
+      || flags === undefined
+      || (flags & ZLINK_SPOT_ACTOR_RECV_INFO_NO_BIND) === 0
+      || this.replyActorNoBind === undefined
+      || !this.isActorRequest(parts)
+    ) {
+      return undefined;
+    }
+    return { actor, sourceNodeRid, sourceSessionRid, requestId, flags };
+  }
+
+  private isActorRequest(parts: readonly Message[]): boolean {
+    if (parts.length < 1) {
+      return false;
+    }
+    try {
+      const header = decodeStreamHeader(messageToBytes(parts[0]));
+      return header.kind === ZLinkStreamMessageKind.Request && header.requestSeq !== undefined;
+    } catch {
+      return false;
+    }
+  }
+
+  private async dispatchNoBindActorRequest(
+    info: ZLinkBackendActorRecvInfo,
+    actorId: string,
+    parts: readonly Message[],
+    actorRef: ZLinkBackendActorRef | undefined
+  ): Promise<void> {
+    try {
+      const response = await this.actorPacketHandler?.(
+        actorId,
+        parts,
+        true,
+        undefined,
+        actorRef as unknown as ActorRef | undefined
+      );
+      this.replyActorNoBind?.(
+        info,
+        [this.encodeActorReplyFrame(parts[0], ZLinkStreamMessageKind.Response, response)],
+        RequestResult.Ok
+      );
+    } catch (error) {
+      this.replyActorNoBind?.(
+        info,
+        [this.encodeActorReplyFrame(parts[0], ZLinkStreamMessageKind.Error, frameworkErrorPayload(error))],
+        RequestResult.Ok
+      );
+    }
+  }
+
+  private encodeActorReplyFrame(
+    requestHeaderPart: Message,
+    kind: ZLinkStreamMessageKind.Response | ZLinkStreamMessageKind.Error,
+    payload: unknown
+  ): Message {
+    const requestHeader = decodeStreamHeader(messageToBytes(requestHeaderPart));
+    const payloadMessage = encodeFrameworkPayloadMessage(payload, this.messageSerializers);
+    try {
+      return BindingMessage.from(Buffer.from(encodeStreamFrame({
+        kind,
+        codec: ZLinkStreamCodec.Json,
+        flags: ZLinkStreamHeaderFlags.None,
+        requestSeq: requestHeader.requestSeq,
+        name: requestHeader.name,
+        metadata: new Map(),
+        correlationId: requestHeader.correlationId
+      }, payloadMessage.data()))) as Message;
+    } finally {
+      payloadMessage.close();
     }
   }
 
@@ -2493,6 +2602,7 @@ export class ZLinkEntrySpotActivation {
         String(sourceNodeRid) === String(this.options.nativeNode.routingId)
           ? undefined
           : this.options.nativeNode.bindRemoteActorSession(actor, sourceNodeRid, sourceSessionRid),
+      (info, parts, result) => this.options.nativeNode.replyActorNoBind(info, parts, result),
       this.options.messageSerializers,
       this.options.providerResolver,
       this.options.dispatchErrors
@@ -3335,6 +3445,7 @@ export class DefaultZLinkSpotManager implements ZLinkSpotManager {
           }
           node.bindRemoteActorSession(actor, sourceNodeRid, sourceSessionRid);
         },
+        (info, parts, result) => this.options.nativeSpotNodeProvider?.()?.replyActorNoBind(info, parts, result),
         this.options.messageSerializers,
         this.options.providerResolver,
         this.options.dispatchErrors
@@ -4418,6 +4529,12 @@ function exceptionType(cause: unknown): string {
 
 function exceptionMessage(cause: unknown): string {
   return cause instanceof Error ? cause.message : String(cause);
+}
+
+function frameworkErrorPayload(error: unknown): { readonly code: string; readonly message: string } {
+  return error instanceof Error
+    ? { code: error.constructor.name, message: error.message }
+    : { code: typeof error, message: String(error) };
 }
 
 function normalizeTimerOptions(options: ZLinkTimerOptions | undefined): Required<ZLinkTimerOptions> {

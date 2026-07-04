@@ -16,7 +16,7 @@ class BindCourierHandler implements ZLinkRequestHandler<BindCourierReq, BindCour
       actor: zlinkActorRefSnapshotFrom({
         nodeRid,
         actorId: request.courierId,
-        generation: 1
+        generation: 1n
       }),
       sessionRoute: request.sessionRoute
     };

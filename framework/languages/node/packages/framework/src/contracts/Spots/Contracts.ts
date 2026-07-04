@@ -89,6 +89,17 @@ export interface ZLinkSpotContext<
   TActor extends ZLinkActor = ZLinkActor,
   TSpot extends ZLinkSpot<TActor> = ZLinkSpot<TActor>
 > extends ZLinkSpotCommonContext<TActor, TSpot> {
+  /**
+   * Schedules `work` off the Spot serial line as an asynchronous deferral.
+   *
+   * The closure-based `runWorker(...)` releases the Spot dispatch queue while
+   * `work` runs, but it does not provide CPU thread offload: `work` still
+   * executes on the main event loop. Long synchronous CPU work must be split
+   * into a separate service or process instead. `work` must not touch Spot
+   * state; mutate Spot state only in the completion callback/continuation,
+   * which runs back on this Spot's serial executor.
+   */
+  runWorker<T>(work: (signal: AbortSignal) => T | Promise<T>): ZLinkWorkerCall<T>;
   leaveActor(actor: TActor, signal?: AbortSignal): Promise<void>;
   close(signal?: AbortSignal): Promise<boolean>;
 }
@@ -97,6 +108,18 @@ export interface ZLinkEntrySpotContext<
   TActor extends ZLinkActor = ZLinkActor,
   TEntrySpot extends ZLinkEntrySpot<TActor> = ZLinkEntrySpot<TActor>
 > extends ZLinkSpotCommonContext<TActor, TEntrySpot> {
+  /**
+   * Schedules `work` off the Entry Spot serial line as an asynchronous deferral.
+   *
+   * The closure-based `runWorker(...)` releases the Entry Spot dispatch queue
+   * while `work` runs, but it does not provide CPU thread offload: `work`
+   * still executes on the main event loop. Long synchronous CPU work must be
+   * split into a separate service or process instead. `work` must not touch
+   * Spot state; mutate Spot state only in the completion
+   * callback/continuation, which runs back on this Entry Spot's serial
+   * executor.
+   */
+  runWorker<T>(work: (signal: AbortSignal) => T | Promise<T>): ZLinkWorkerCall<T>;
   destroyActor(actor: TActor, signal?: AbortSignal): Promise<void>;
 }
 

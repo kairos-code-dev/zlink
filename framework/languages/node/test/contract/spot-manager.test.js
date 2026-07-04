@@ -22,6 +22,39 @@ function customTextSerializer(prefix = 'custom:') {
   };
 }
 
+function createActorRequestParts(packetName, payload, requestSeq = 1n) {
+  return [
+    zlink.Message.from(Buffer.from(streamProtocol.encodeStreamHeader({
+      kind: streamProtocol.ZLinkStreamMessageKind.Request,
+      codec: streamProtocol.ZLinkStreamCodec.Json,
+      flags: streamProtocol.ZLinkStreamHeaderFlags.None,
+      requestSeq,
+      name: packetName,
+      metadata: new Map()
+    }))),
+    zlink.Message.from(Buffer.from(JSON.stringify(payload)))
+  ];
+}
+
+function noBindInfo(requestId = 42n, flags = 1) {
+  return {
+    actor: { nodeRid: zlink.RoutingId.from('node-a'), actorId: 'actor-1', generation: 1n },
+    sourceNodeRid: zlink.RoutingId.from('source-node'),
+    sourceSessionRid: zlink.RoutingId.from('source-session'),
+    requestId,
+    flags
+  };
+}
+
+function decodeActorReplyFrame(message) {
+  const frame = message.data();
+  const headerSize = frame.readUInt16BE(0);
+  const payloadSize = frame.readUInt32BE(2);
+  const header = streamProtocol.decodeStreamHeader(frame.subarray(6, 6 + headerSize));
+  const payload = JSON.parse(frame.subarray(6 + headerSize, 6 + headerSize + payloadSize).toString('utf8'));
+  return { header, payload };
+}
+
 test('ZLinkSpotManager creates lists finds and closes spots with lifecycle order', async () => {
   const events = [];
   class StageSpot {
@@ -493,6 +526,199 @@ test('ZLinkSpotManager replies routed actor request dispatch errors', async () =
     assert.equal(dispatchEvents[0].errorAction, framework.ZLinkDispatchErrorAction.ReplyError);
   } finally {
     relay.close();
+  }
+});
+
+test('ZLinkSpotManager replies no-bind actor requests without binding remote session', async () => {
+  let dispatchHandler;
+  const noBindReplies = [];
+  const boundSessions = [];
+  const parts = createActorRequestParts('ActorAsk', { value: 'ping' }, 42n, 1);
+  let nextPart = 0;
+  const nativeSpot = {
+    routingId: 'stage-no-bind',
+    setDispatchHandler(handler) {
+      dispatchHandler = handler;
+    },
+    setSubscription() {},
+    subscribe() { return false; },
+    recvActorLifecycle() { return null; },
+    drainReply() { return 0; },
+    drainChannelReply() { return 0; },
+    recvRoute() { return false; },
+    onSendReady() {},
+    async dispose() {}
+  };
+  const nativeNode = {
+    routingId: zlink.RoutingId.from('node-a'),
+    bindRemoteActorSession(actor, sourceNodeRid, sourceSessionRid) {
+      boundSessions.push({ actor, sourceNodeRid, sourceSessionRid });
+    },
+    replyActorNoBind(info, replyParts, result) {
+      noBindReplies.push({ info, replyParts, result });
+    }
+  };
+  class ProbeActor {
+    constructor() {
+      this.actorId = 'actor-1';
+    }
+  }
+  class StageSpot {}
+  class ProbeRequestHandler {
+    async handle(_spot, actor, _context, request) {
+      return { value: `${request.value}:${actor.actorId}` };
+    }
+  }
+  const manager = new framework.DefaultZLinkSpotManager({
+    spotFactories: [StageSpot],
+    createNativeSpot: () => nativeSpot,
+    nativeSpotNodeProvider: () => nativeNode,
+    actorResolver: () => new ProbeActor(),
+    spotActorRequestHandlers: [{
+      spotType: StageSpot,
+      actorType: ProbeActor,
+      handlerType: ProbeRequestHandler,
+      packetName: 'ActorAsk'
+    }]
+  });
+
+  try {
+    await manager.getOrCreate(StageSpot, 'stage-no-bind');
+    dispatchHandler({
+      event: 5,
+      recvActorPart() {
+        if (nextPart >= parts.length) {
+          return null;
+        }
+        const message = parts[nextPart];
+        nextPart += 1;
+        return {
+          info: noBindInfo(),
+          message,
+          more: nextPart < parts.length
+        };
+      }
+    });
+    await new Promise((resolve) => setImmediate(resolve));
+
+    assert.equal(boundSessions.length, 0);
+    assert.equal(noBindReplies.length, 1);
+    assert.equal(noBindReplies[0].result, zlink.RequestResult.Ok);
+    assert.equal(noBindReplies[0].info.requestId, 42n);
+    const decoded = decodeActorReplyFrame(noBindReplies[0].replyParts[0]);
+    assert.equal(decoded.header.kind, streamProtocol.ZLinkStreamMessageKind.Response);
+    assert.deepEqual(decoded.payload, { value: 'ping:actor-1' });
+  } finally {
+    for (const part of parts) {
+      part.close();
+    }
+    for (const reply of noBindReplies) {
+      for (const part of reply.replyParts) {
+        part.close();
+      }
+    }
+  }
+});
+
+test('ZLinkSpotManager replies no-bind actor handler exceptions as HandlerException errors', async () => {
+  let dispatchHandler;
+  const dispatchEvents = [];
+  const noBindReplies = [];
+  const boundSessions = [];
+  const parts = createActorRequestParts('ThrowAsk', { value: 'boom' }, 43n, 1);
+  let nextPart = 0;
+  class DispatchObserver {
+    onMessageFlow(event) {
+      dispatchEvents.push(event);
+    }
+  }
+  const nativeSpot = {
+    routingId: 'stage-no-bind-error',
+    setDispatchHandler(handler) {
+      dispatchHandler = handler;
+    },
+    setSubscription() {},
+    subscribe() { return false; },
+    recvActorLifecycle() { return null; },
+    drainReply() { return 0; },
+    drainChannelReply() { return 0; },
+    recvRoute() { return false; },
+    onSendReady() {},
+    async dispose() {}
+  };
+  const nativeNode = {
+    routingId: zlink.RoutingId.from('node-a'),
+    bindRemoteActorSession(actor, sourceNodeRid, sourceSessionRid) {
+      boundSessions.push({ actor, sourceNodeRid, sourceSessionRid });
+    },
+    replyActorNoBind(info, replyParts, result) {
+      noBindReplies.push({ info, replyParts, result });
+    }
+  };
+  class ProbeActor {
+    constructor() {
+      this.actorId = 'actor-1';
+    }
+  }
+  class StageSpot {}
+  class ThrowRequestHandler {
+    async handle() {
+      throw new Error('handler boom');
+    }
+  }
+  const manager = new framework.DefaultZLinkSpotManager({
+    spotFactories: [StageSpot],
+    createNativeSpot: () => nativeSpot,
+    nativeSpotNodeProvider: () => nativeNode,
+    actorResolver: () => new ProbeActor(),
+    spotActorRequestHandlers: [{
+      spotType: StageSpot,
+      actorType: ProbeActor,
+      handlerType: ThrowRequestHandler,
+      packetName: 'ThrowAsk'
+    }],
+    dispatchErrors: dispatchErrorReporter(
+      DispatchObserver,
+      { reportRuntimeTaskException() {} }
+    )
+  });
+
+  try {
+    await manager.getOrCreate(StageSpot, 'stage-no-bind-error');
+    dispatchHandler({
+      event: 5,
+      recvActorPart() {
+        if (nextPart >= parts.length) {
+          return null;
+        }
+        const message = parts[nextPart];
+        nextPart += 1;
+        return {
+          info: noBindInfo(43n),
+          message,
+          more: nextPart < parts.length
+        };
+      }
+    });
+    await new Promise((resolve) => setImmediate(resolve));
+
+    assert.equal(boundSessions.length, 0);
+    assert.equal(noBindReplies.length, 1);
+    const decoded = decodeActorReplyFrame(noBindReplies[0].replyParts[0]);
+    assert.equal(decoded.header.kind, streamProtocol.ZLinkStreamMessageKind.Error);
+    assert.deepEqual(decoded.payload, { code: 'Error', message: 'handler boom' });
+    assert.equal(dispatchEvents.length, 1);
+    assert.equal(dispatchEvents[0].errorReason, framework.ZLinkDispatchErrorReason.HandlerException);
+    assert.equal(dispatchEvents[0].errorAction, framework.ZLinkDispatchErrorAction.ReplyError);
+  } finally {
+    for (const part of parts) {
+      part.close();
+    }
+    for (const reply of noBindReplies) {
+      for (const part of reply.replyParts) {
+        part.close();
+      }
+    }
   }
 });
 

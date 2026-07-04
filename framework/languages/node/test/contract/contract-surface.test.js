@@ -354,11 +354,22 @@ test('location contract declarations fix store resolver runtime query watch and 
 
 test('actor convenience declarations expose directory snapshot and bind-or-get shapes', () => {
   const declarations = readTree(declarationsRoot);
+  const actorClient = declarationBody(declarations, 'ZLinkActorClient');
+  const actorSendCall = declarationBody(declarations, 'ZLinkActorSendCall');
+  const actorRequestCall = declarationBody(declarations, 'ZLinkActorRequestCall');
   const directory = declarationBody(declarations, 'ZLinkActorDirectory');
   const placement = declarationBody(declarations, 'ZLinkActorPlacement');
   const sessionActors = declarationBody(declarations, 'ZLinkSessionActors');
   const snapshot = declarationBody(declarations, 'ZLinkActorRefSnapshot');
 
+  assert.match(actorClient, /sendToActor\(actorId: string, message: unknown\): ZLinkActorSendCall/);
+  assert.match(actorClient, /requestToActor\(actorId: string, request: unknown\): ZLinkActorRequestCall/);
+  assert.match(actorSendCall, /packetName\(packetName: string\): this/);
+  assert.match(actorSendCall, /submit\(signal\?: AbortSignal\): Promise<void>/);
+  assert.equal(actorSendCall.includes('submit(signal?: AbortSignal): void'), false);
+  assert.match(actorRequestCall, /packetName\(packetName: string\): this/);
+  assert.match(actorRequestCall, /timeout\(timeoutMs: number\): this/);
+  assert.match(actorRequestCall, /submit<TReply>\(signal\?: AbortSignal\): Promise<TReply>/);
   assert.match(directory, /find\(actorId: string, signal\?: AbortSignal\): Promise<ActorRef \| undefined>/);
   assert.match(directory, /ensure\(\s*actorId: string,\s*createRequest: unknown,\s*placement\?: ZLinkActorPlacement,\s*signal\?: AbortSignal\s*\): Promise<ActorRef>/);
   assert.match(placement, /readonly preferredNodeRid\?: RoutingId/);

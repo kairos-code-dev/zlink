@@ -80,6 +80,7 @@ interface FrameworkRuntimeHost {
   setActorManager?(actorManager: unknown): void;
   setSpotManager?(spotManager: unknown): void;
   createActorManagerOptions?(remoteAddressResolver?: ZLinkSpotRemoteAddressResolver): object;
+  createActorClientOptions?(): Record<string, unknown>;
   createSpotManagerOptions?(): object;
 }
 
@@ -92,6 +93,7 @@ interface FrameworkModule {
   readonly DefaultZLinkChannelClient: new (registration: ZLinkFrameworkRegistration, transport: unknown) => unknown;
   readonly DefaultZLinkFanoutClient: new (registration: ZLinkFrameworkRegistration, transport: unknown) => unknown;
   readonly DefaultZLinkRouteClient: new (registration: ZLinkFrameworkRegistration, transport: unknown) => unknown;
+  readonly DefaultZLinkActorClient: new (options: Record<string, unknown>) => unknown;
   readonly DefaultZLinkSpotPublisherClient: new (registration: ZLinkFrameworkRegistration, transport: unknown) => unknown;
   readonly DefaultZLinkActorManager: new (options: Record<string, unknown>) => unknown;
   readonly DefaultZLinkSpotManager: new (options: Record<string, unknown>) => unknown;
@@ -329,6 +331,7 @@ export const ZLINK_CHANNEL_CLIENT = Symbol.for('@zlink-systems/framework:channel
 export const ZLINK_CHANNEL_RUNTIME_OPTIONS = Symbol.for('@zlink-systems/framework:channel-runtime-options');
 export const ZLINK_ROUTE_CLIENT = Symbol.for('@zlink-systems/framework:route-client');
 export const ZLINK_FANOUT_CLIENT = Symbol.for('@zlink-systems/framework:fanout-client');
+export const ZLINK_ACTOR_CLIENT = Symbol.for('@zlink-systems/framework:actor-client');
 export const ZLINK_BOUND_SESSION_FACTORY = Symbol.for('@zlink-systems/framework:bound-session-factory');
 export const ZLINK_MESSAGE_METADATA_POLICY = Symbol.for('@zlink-systems/framework:message-metadata-policy');
 export const ZLINK_SPOT_MANAGER = Symbol.for('@zlink-systems/framework:spot-manager');
@@ -2296,6 +2299,13 @@ const CONDITIONAL_CLIENT_PROVIDER_SPECS: readonly ConditionalClientProviderSpec[
       new framework.DefaultZLinkSpotPublisherClient(registration, requireRuntime(runtime).spotPublisherTransport)
   },
   {
+    token: ZLINK_ACTOR_CLIENT,
+    requiresRuntime: true,
+    isEnabled: (registration) => framework.hasSpotNode(registration) && hasLocationStores(registration),
+    create: (_registration, runtime) =>
+      new framework.DefaultZLinkActorClient(requireRuntime(runtime).createActorClientOptions?.() ?? {})
+  },
+  {
     token: ZLINK_ACTOR_MANAGER,
     requiresRuntime: true,
     isEnabled: (registration) => framework.hasActorManager(registration),
@@ -2405,6 +2415,7 @@ function conditionalClientTokens(): InjectionToken[] {
     ZLINK_SPOT_MANAGER,
     ZLINK_SPOT_OUTBOUND,
     ZLINK_SPOT_PUBLISHER_CLIENT,
+    ZLINK_ACTOR_CLIENT,
     ZLINK_ACTOR_MANAGER,
     ZLINK_SPOT_REMOTE_ADDRESS_RESOLVER,
     ZLINK_LOCATION_RUNTIME_QUERY

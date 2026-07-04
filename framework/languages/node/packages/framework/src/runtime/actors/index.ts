@@ -40,6 +40,12 @@ import type {
   ZLinkBackendSpot,
   ZLinkBackendSpotNode
 } from '../backend/contracts';
+
+export {
+  DefaultZLinkActorClient,
+  type ZLinkActorClientOptions
+} from './actor-client';
+
 import {
   decodeFrameworkPayloadMessage,
   encodeFrameworkPayloadMessage,

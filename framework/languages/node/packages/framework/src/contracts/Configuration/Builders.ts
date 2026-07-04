@@ -10,9 +10,9 @@ import type { ZLinkSocketConfig } from './Configs';
 export interface ZLinkFrameworkOptions {
   codecs(): ZLinkCodecRegistryBuilder;
   /**
-   * Configures the single worker offload pool used by `runWorker(...)`.
+   * Configures the single worker deferral pool used by `runWorker(...)`.
    * On Node these settings bound the asynchronous deferral (in-flight and
-   * pending-queue limits); they do not enable CPU thread offload.
+   * pending-queue limits); it does not provide CPU thread offload.
    */
   configureWorker(options: ZLinkWorkerOptions): this;
   configureDispatch(): ZLinkDispatchOptionsBuilder;

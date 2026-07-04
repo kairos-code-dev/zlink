@@ -346,6 +346,7 @@ snapshot 요청은 3초 HTTP 기준을 쓰지만, event가 나올 때까지 기�
 | [Config 6 — Store 장애·복구](config-6-store-failure-recovery.ko.md) | location store(Redis) + provider 2 + consumer | store 장애 중 fail-static(기존 연결 유지), store failure grace, owner lease 만료 stale row 제외, 복구 순서(재등록 → heartbeat 유예 → diff), polling fallback, runtime status 관측 |
 | [Config 7 — Monitoring](config-7-monitoring.ko.md) | location store + service 2 | socket/location-runtime/spot 이벤트 runtime 관찰, 가용성 전이(failover/drain)·장애 중 관측, 다중 source 격리 |
 | [Config 8 — Spot yield dispatch](config-8-yield-dispatch.ko.md) | location store + play 노드 2 + delay service 2 + session gateway 2 | yield terminator가 현재 Spot turn을 반납하고 completion 뒤 원래 mailbox에서 재개하는지, actor·timer mailbox 격리, local/remote topology, timeout·cancellation·shutdown 경로, 언어별 동일 의미 |
+| [Config 9 — To-actor messaging](config-9-to-actor-messaging.ko.md) | location store + actor 노드 2 + session gateway 2 + 외부 caller 서버 | bind 상태별 to-actor send/request, bound-session 비오염, mailbox 인계와 handler reply, actor 부재·stale location·route 미연결 실패 분류, 언어별 동일 의미 |
 
 ## 4. 우선순위
 
@@ -441,6 +442,7 @@ Config 1의 접두사 `RM`은 시나리오 ID 연속성을 위해 유지한다(�
 | `SF` | Store 장애·복구 |
 | `MON` | Monitoring |
 | `YD` | Spot yield dispatch |
+| `TA` | To-actor messaging |
 
 테스트 이름은 언어 관례에 맞게 바꿔도 되지만, 리포트에는 config id와 시나리오 id가 드러나야 한다.
 

@@ -53,7 +53,7 @@
 | SAMP-V | dotnet | 6종 샘플 ↔ 공통 샘플 문서 갭 검증·수정 | ✅ | 2026-07-04 갭 0 — 코드·문서 일치 |
 | SAMP-GN | node | 기존 ✅ 샘플(TicTacToe·Bingo) dotnet 대비 갭 수정 | ✅ | 2026-07-04 갭 1건(Bingo reward id drift) 수정 |
 | SAMP-GJ | java+kotlin | 기존 ✅ 샘플(TTT·Bingo·SupportChat·ShoppingMall) dotnet 대비 갭 수정 | ✅ | 2026-07-04 갭 0 — P-J1은 포팅으로 재분류 |
-| SAMP-GC | cpp | 기존 ✅ 샘플(TicTacToe·Bingo) dotnet 대비 갭 수정 | 🟨 | DD 제외 |
+| SAMP-GC | cpp | 기존 ✅ 샘플(TicTacToe·Bingo) dotnet 대비 갭 수정 | 🟨 | TicTacToe ✅(2026-07-05 3연속 PASS — remote join·notify·send/request kind 보존·재접속 재바인딩·destroy 노드 경계 전달·route rid 결부 등 framework 결함 6종 수정). Bingo ⬜(errno=113 두 원천(route rid·채널 수렴) 해소 후에도 auth/match 간헐 flake — coroutine 예외, 원인 미확정). DD ⬜(courier offer wait failed — 미착수) |
 | P-G | 전체 | 최종 게이트 | ⬜ | 매트릭스 전 칸 ✅ + 5언어 러너 일괄 PASS + codex 리뷰 `이슈 없음` |
 
 착수 조건: 각 언어의 L13(actor client) 작업이 해당 언어 트리에서 완료된 후(빌드 등록 파일 충돌

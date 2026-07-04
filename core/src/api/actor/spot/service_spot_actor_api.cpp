@@ -38,6 +38,7 @@
 #include "protocol/wire.hpp"
 
 #include <algorithm>
+#include <atomic>
 #include <deque>
 #include <map>
 #include <memory>
@@ -61,6 +62,56 @@ actor_runtime_t &actor_runtime ()
 }
 
 const bool actor_gateway_debug_on = zlink::debug_env_enabled ("ZLINK_DEBUG_SPOT_DIRECT_ROUTE");
+
+struct no_bind_pending_key_t
+{
+    std::string target_node_rid;
+    std::string actor_id;
+    uint64_t generation;
+    std::string caller_endpoint_rid;
+    uint64_t request_id;
+
+    bool operator< (const no_bind_pending_key_t &other_) const
+    {
+        if (request_id != other_.request_id)
+            return request_id < other_.request_id;
+        if (generation != other_.generation)
+            return generation < other_.generation;
+        if (target_node_rid != other_.target_node_rid)
+            return target_node_rid < other_.target_node_rid;
+        if (actor_id != other_.actor_id)
+            return actor_id < other_.actor_id;
+        return caller_endpoint_rid < other_.caller_endpoint_rid;
+    }
+};
+
+struct no_bind_pending_reply_t
+{
+    zlink_reply_handler_fn handler;
+    void *userdata;
+    std::shared_ptr<zlink::request_timeout::task_t> timeout_task;
+};
+
+std::mutex &no_bind_pending_mutex ()
+{
+    static std::mutex mutex;
+    return mutex;
+}
+
+std::map<no_bind_pending_key_t, no_bind_pending_reply_t> &no_bind_pending_replies ()
+{
+    static std::map<no_bind_pending_key_t, no_bind_pending_reply_t> pending;
+    return pending;
+}
+
+uint64_t next_no_bind_request_id ()
+{
+    static std::atomic<uint64_t> next_id (1);
+    uint64_t id = next_id.fetch_add (1);
+    if (id == 0)
+        id = next_id.fetch_add (1);
+    return id;
+}
 
 uint64_t now_ms ();
 uint64_t next_generation_for_node_locked (zlink::spot_node_t *node_);
@@ -646,6 +697,175 @@ send_actor_gateway_multipart_from_source (zlink::spot_node_t *origin_node_,
     zlink::request_reply::close_built_parts (combined, combined_count);
     errno = saved_errno;
     return rc == 0 ? ZLINK_SUBMIT_OK : zlink::submit_result_internal::from_errno (errno);
+}
+
+no_bind_pending_key_t make_no_bind_pending_key (const zlink_routing_id_t &target_node_rid_,
+                                                const char *actor_id_,
+                                                uint64_t generation_,
+                                                const zlink_routing_id_t &caller_endpoint_rid_,
+                                                uint64_t request_id_)
+{
+    no_bind_pending_key_t key;
+    key.target_node_rid = routing_id_key (target_node_rid_);
+    key.actor_id = actor_id_ ? actor_id_ : "";
+    key.generation = generation_;
+    key.caller_endpoint_rid = routing_id_key (caller_endpoint_rid_);
+    key.request_id = request_id_;
+    return key;
+}
+
+void cleanup_no_bind_timeout_key (void *userdata_)
+{
+    delete static_cast<no_bind_pending_key_t *> (userdata_);
+}
+
+int errno_from_request_result (zlink_request_result_t result_);
+
+void complete_no_bind_callback (zlink_reply_handler_fn handler_,
+                                void *userdata_,
+                                zlink_request_result_t result_,
+                                zlink_msg_t *parts_,
+                                size_t part_count_)
+{
+    if (!handler_)
+        return;
+
+    std::vector<zlink_msg_t> moved_parts;
+    moved_parts.reserve (part_count_);
+    for (size_t i = 0; i < part_count_; ++i) {
+        zlink_msg_t moved;
+        zlink_msg_init (&moved);
+        if (zlink_msg_move (&moved, &parts_[i]) != 0) {
+            zlink_msg_close (&moved);
+            zlink::request_reply::close_built_parts (&moved_parts);
+            zlink::request_reply::complete_reply_callback (handler_, EIO, NULL, 0, userdata_);
+            return;
+        }
+        moved_parts.push_back (moved);
+    }
+
+    zlink_msg_t *callback_parts = moved_parts.empty () ? NULL : &moved_parts[0];
+    zlink::request_reply::complete_reply_callback (
+      handler_, errno_from_request_result (result_), callback_parts, moved_parts.size (),
+      userdata_);
+    zlink::request_reply::close_built_parts (&moved_parts);
+}
+
+void on_no_bind_request_timeout (void *userdata_)
+{
+    const no_bind_pending_key_t *key = static_cast<const no_bind_pending_key_t *> (userdata_);
+    if (!key)
+        return;
+
+    no_bind_pending_reply_t pending;
+    bool found = false;
+    {
+        std::lock_guard<std::mutex> lock (no_bind_pending_mutex ());
+        std::map<no_bind_pending_key_t, no_bind_pending_reply_t>::iterator it =
+          no_bind_pending_replies ().find (*key);
+        if (it != no_bind_pending_replies ().end ()) {
+            pending = it->second;
+            no_bind_pending_replies ().erase (it);
+            found = true;
+        }
+    }
+
+    if (found) {
+        zlink::request_reply::complete_reply_callback (pending.handler, ETIMEDOUT, NULL, 0,
+                                                       pending.userdata);
+    }
+}
+
+int register_no_bind_pending (const no_bind_pending_key_t &key_,
+                              zlink_reply_handler_fn handler_,
+                              void *userdata_,
+                              uint32_t timeout_ms_)
+{
+    if (!handler_ || key_.request_id == 0) {
+        errno = EINVAL;
+        return -1;
+    }
+
+    no_bind_pending_reply_t pending;
+    pending.handler = handler_;
+    pending.userdata = userdata_;
+    if (timeout_ms_ != 0) {
+        no_bind_pending_key_t *timeout_key = new (std::nothrow) no_bind_pending_key_t (key_);
+        if (!timeout_key) {
+            errno = ENOMEM;
+            return -1;
+        }
+        pending.timeout_task = zlink::request_timeout::schedule (
+          timeout_ms_, on_no_bind_request_timeout, timeout_key, cleanup_no_bind_timeout_key);
+    }
+
+    {
+        std::lock_guard<std::mutex> lock (no_bind_pending_mutex ());
+        no_bind_pending_replies ()[key_] = pending;
+    }
+    return 0;
+}
+
+void erase_no_bind_pending (const no_bind_pending_key_t &key_)
+{
+    no_bind_pending_reply_t pending;
+    {
+        std::lock_guard<std::mutex> lock (no_bind_pending_mutex ());
+        std::map<no_bind_pending_key_t, no_bind_pending_reply_t>::iterator it =
+          no_bind_pending_replies ().find (key_);
+        if (it == no_bind_pending_replies ().end ())
+            return;
+        pending = it->second;
+        no_bind_pending_replies ().erase (it);
+    }
+    zlink::request_timeout::cancel (pending.timeout_task);
+}
+
+bool take_no_bind_pending (const no_bind_pending_key_t &key_, no_bind_pending_reply_t *out_)
+{
+    if (!out_)
+        return false;
+    std::lock_guard<std::mutex> lock (no_bind_pending_mutex ());
+    std::map<no_bind_pending_key_t, no_bind_pending_reply_t>::iterator it =
+      no_bind_pending_replies ().find (key_);
+    if (it == no_bind_pending_replies ().end ())
+        return false;
+    *out_ = it->second;
+    no_bind_pending_replies ().erase (it);
+    return true;
+}
+
+int errno_from_request_result (zlink_request_result_t result_)
+{
+    switch (result_) {
+        case ZLINK_REQUEST_OK:
+            return 0;
+        case ZLINK_REQUEST_TIMED_OUT:
+            return ETIMEDOUT;
+        case ZLINK_REQUEST_NOT_FOUND:
+            return ENOENT;
+        case ZLINK_REQUEST_TERMINATED:
+            return ETERM;
+        case ZLINK_REQUEST_PROTOCOL_ERROR:
+            return EPROTO;
+        case ZLINK_REQUEST_REJECTED:
+            return EACCES;
+        case ZLINK_REQUEST_CONFLICT:
+            return ESTALE;
+        case ZLINK_REQUEST_BUSY:
+            return EBUSY;
+        case ZLINK_REQUEST_NOT_CONNECTED:
+            return ENOTCONN;
+        case ZLINK_REQUEST_INVALID_ARGUMENT:
+            return EINVAL;
+        case ZLINK_REQUEST_INVALID_STATE:
+            return EFSM;
+        case ZLINK_REQUEST_NOT_SUPPORTED:
+            return ENOTSUP;
+        case ZLINK_REQUEST_INTERNAL_ERROR:
+        default:
+            return EIO;
+    }
 }
 
 }
@@ -1629,6 +1849,139 @@ int enqueue_actor_gateway_session_to_actor_locked (zlink::spot_node_t *node_,
     return 0;
 }
 
+int enqueue_actor_gateway_no_bind_locked (zlink::spot_node_t *node_,
+                                          const zlink_routing_id_t *source_node_rid_,
+                                          const zlink::spot_actor_gateway::frame_t &frame_,
+                                          zlink_msg_t *payload_parts_,
+                                          size_t payload_part_count_,
+                                          actor_handle_t **readable_actor_out_)
+{
+    if (readable_actor_out_)
+        *readable_actor_out_ = NULL;
+    if (!node_ || !source_node_rid_ || !valid_routing_id (source_node_rid_)
+        || !valid_multipart_payload (payload_parts_, payload_part_count_)
+        || payload_part_count_ == 0) {
+        errno = EINVAL;
+        return -1;
+    }
+
+    zlink_actor_ref_t probe;
+    memset (&probe, 0, sizeof (probe));
+    if (node_->node_routing_id (&probe.node_rid) != 0)
+        return -1;
+    strncpy (probe.actor_id, frame_.actor_id, ZLINK_ACTOR_ID_MAX - 1);
+    probe.generation = frame_.generation;
+
+    actor_handle_t *actor = resolve_actor_ref_locked (&probe, true);
+    if (!actor)
+        return -1;
+
+    for (size_t i = 0; i < payload_part_count_; ++i) {
+        queued_actor_part_t queued;
+        fill_ref (actor, &queued.info.actor);
+        queued.info.source_node_rid = *source_node_rid_;
+        queued.info.source_session_rid = frame_.session_rid;
+        queued.part_flag = i + 1 < payload_part_count_ ? ZLINK_PART_MORE : ZLINK_PART_FINAL;
+        if (zlink_msg_adopt (&queued.part, &payload_parts_[i]) != ZLINK_CONFIG_OK)
+            return -1;
+        queued.owns = true;
+        actor->queue.push_back (std::move (queued));
+    }
+    actor->last_changed_ms = now_ms ();
+    if (actor_gateway_debug_on) {
+        std::fprintf (stderr,
+                      "[actor-gateway] no-bind actor=%s parts=%zu queue=%zu notify=1\n",
+                      actor->actor_id.c_str (), payload_part_count_, actor->queue.size ());
+    }
+    if (readable_actor_out_)
+        *readable_actor_out_ = actor;
+    return 0;
+}
+
+zlink_request_result_t request_result_from_actor_lookup_errno (int err_)
+{
+    return err_ == ESTALE ? ZLINK_REQUEST_CONFLICT : ZLINK_REQUEST_NOT_FOUND;
+}
+
+zlink_submit_result_t send_no_bind_reply_from_owner (zlink::spot_node_t *owner_node_,
+                                                     const zlink_routing_id_t &owner_node_rid_,
+                                                     const zlink_routing_id_t &caller_node_rid_,
+                                                     const zlink_routing_id_t &caller_endpoint_rid_,
+                                                     const char *actor_id_,
+                                                     uint64_t generation_,
+                                                     uint64_t request_id_,
+                                                     zlink_request_result_t result_,
+                                                     zlink_msg_t *parts_,
+                                                     size_t part_count_)
+{
+    const int32_t result_code = static_cast<int32_t> (result_);
+    if (same_routing_id (owner_node_rid_, caller_node_rid_)) {
+        zlink_msg_t control;
+        if (!zlink::spot_actor_gateway::init_control_msg (
+              zlink::spot_actor_gateway::packet_actor_to_server_no_bind_reply,
+              caller_endpoint_rid_, actor_id_, generation_, ZLINK_PART_FINAL, &control,
+              request_id_, result_code)) {
+            return errno_to_submit_result (errno);
+        }
+        std::vector<zlink_msg_t> gateway_parts;
+        gateway_parts.resize (part_count_ + 1);
+        for (size_t i = 0; i < gateway_parts.size (); ++i)
+            zlink_msg_init (&gateway_parts[i]);
+        if (zlink_msg_move (&gateway_parts[0], &control) != 0) {
+            const int saved_errno = errno;
+            (void) zlink_msg_close (&control);
+            zlink::request_reply::close_built_parts (&gateway_parts);
+            errno = saved_errno;
+            return errno_to_submit_result (errno);
+        }
+        for (size_t i = 0; i < part_count_; ++i) {
+            if (zlink_msg_move (&gateway_parts[i + 1], &parts_[i]) != 0) {
+                const int saved_errno = errno;
+                zlink::request_reply::close_built_parts (&gateway_parts);
+                errno = saved_errno;
+                return errno_to_submit_result (errno);
+            }
+        }
+        const int rc = zlink::spot_actor_internal::process_gateway_delivery (
+          owner_node_, &owner_node_rid_, gateway_parts.data (), gateway_parts.size ());
+        const int saved_errno = errno;
+        zlink::request_reply::close_built_parts (&gateway_parts);
+        errno = saved_errno;
+        return rc == 0 ? ZLINK_SUBMIT_OK : errno_to_submit_result (errno);
+    }
+    return send_actor_gateway_multipart_from_source (
+      owner_node_, owner_node_rid_, caller_node_rid_,
+      zlink::spot_actor_gateway::packet_actor_to_server_no_bind_reply, caller_endpoint_rid_,
+      actor_id_, generation_, request_id_, result_code, parts_, part_count_, ZLINK_DONTWAIT);
+}
+
+int process_actor_gateway_no_bind_reply (const zlink_routing_id_t *reply_source_node_rid_,
+                                         const zlink::spot_actor_gateway::frame_t &frame_,
+                                         zlink_msg_t *payload_parts_,
+                                         size_t payload_part_count_)
+{
+    if (!reply_source_node_rid_ || !valid_multipart_payload (payload_parts_, payload_part_count_)) {
+        errno = EINVAL;
+        return -1;
+    }
+
+    const no_bind_pending_key_t key =
+      make_no_bind_pending_key (*reply_source_node_rid_, frame_.actor_id, frame_.generation,
+                                frame_.session_rid, frame_.request_id);
+    no_bind_pending_reply_t pending;
+    if (!take_no_bind_pending (key, &pending))
+        return 0;
+
+    zlink::request_timeout::cancel (pending.timeout_task);
+    const zlink_request_result_t result =
+      frame_.join_result_code == 0
+        ? ZLINK_REQUEST_OK
+        : static_cast<zlink_request_result_t> (frame_.join_result_code);
+    complete_no_bind_callback (pending.handler, pending.userdata, result, payload_parts_,
+                               payload_part_count_);
+    return 0;
+}
+
 actor_session_state_t::binding_map_t::iterator
 find_remote_session_binding_locked (const zlink::spot_actor_gateway::frame_t &frame_)
 {
@@ -1864,10 +2217,28 @@ int zlink::spot_actor_internal::process_gateway_delivery (
     if (!zlink::spot_actor_gateway::parse_control_msg (&parts_[0], &frame))
         return -1;
 
+    if (frame.kind == zlink::spot_actor_gateway::packet_actor_to_server_no_bind_reply) {
+        return process_actor_gateway_no_bind_reply (
+          source_node_rid_, frame, part_count_ > 1 ? &parts_[1] : NULL,
+          part_count_ > 1 ? part_count_ - 1 : 0);
+    }
+
     actor_handle_t *readable_actor = NULL;
     actor_handle_t *source_actor_to_remove = NULL;
     queued_join_request_t *completed_join = NULL;
     spot_handle_t *join_notify_spot = NULL;
+    bool send_no_bind_reply = false;
+    zlink_request_result_t no_bind_reply_result = ZLINK_REQUEST_OK;
+    zlink_routing_id_t no_bind_reply_source_node_rid;
+    zlink_routing_id_t no_bind_reply_target_node_rid;
+    zlink_routing_id_t no_bind_reply_caller_endpoint_rid;
+    char no_bind_reply_actor_id[ZLINK_ACTOR_ID_MAX];
+    uint64_t no_bind_reply_generation = 0;
+    uint64_t no_bind_reply_request_id = 0;
+    memset (&no_bind_reply_source_node_rid, 0, sizeof (no_bind_reply_source_node_rid));
+    memset (&no_bind_reply_target_node_rid, 0, sizeof (no_bind_reply_target_node_rid));
+    memset (&no_bind_reply_caller_endpoint_rid, 0, sizeof (no_bind_reply_caller_endpoint_rid));
+    memset (no_bind_reply_actor_id, 0, sizeof (no_bind_reply_actor_id));
     int rc = -1;
     {
         std::lock_guard<std::timed_mutex> lock (actor_runtime ().mutex);
@@ -1885,6 +2256,25 @@ int zlink::spot_actor_internal::process_gateway_delivery (
                 rc = -1;
             } else {
                 rc = deliver_actor_gateway_actor_to_session_locked (node, frame, &parts_[1]);
+            }
+        } else if (frame.kind == zlink::spot_actor_gateway::packet_server_to_actor_no_bind) {
+            if (part_count_ < 2) {
+                errno = EPROTO;
+                rc = -1;
+            } else {
+                rc = enqueue_actor_gateway_no_bind_locked (
+                  node, source_node_rid_, frame, &parts_[1], part_count_ - 1, &readable_actor);
+            }
+            if (frame.request_id != 0 && (rc != 0 || frame.join_result_code != 0)) {
+                send_no_bind_reply = true;
+                no_bind_reply_result =
+                  rc == 0 ? ZLINK_REQUEST_OK : request_result_from_actor_lookup_errno (errno);
+                (void) node->node_routing_id (&no_bind_reply_source_node_rid);
+                no_bind_reply_target_node_rid = *source_node_rid_;
+                no_bind_reply_caller_endpoint_rid = frame.session_rid;
+                strncpy (no_bind_reply_actor_id, frame.actor_id, ZLINK_ACTOR_ID_MAX - 1);
+                no_bind_reply_generation = frame.generation;
+                no_bind_reply_request_id = frame.request_id;
             }
         } else if (frame.kind == zlink::spot_actor_gateway::packet_entry_join_request) {
             rc = enqueue_actor_gateway_entry_join_request_locked (
@@ -1926,6 +2316,16 @@ int zlink::spot_actor_internal::process_gateway_delivery (
         std::unique_ptr<actor_handle_t> retired =
           remove_actor_locked (source_actor_to_remove, false);
         LIBZLINK_UNUSED (retired);
+    }
+    if (send_no_bind_reply && valid_routing_id (&no_bind_reply_source_node_rid)) {
+        zlink_submit_result_t send_rc = send_no_bind_reply_from_owner (
+          node, no_bind_reply_source_node_rid, no_bind_reply_target_node_rid,
+          no_bind_reply_caller_endpoint_rid, no_bind_reply_actor_id, no_bind_reply_generation,
+          no_bind_reply_request_id, no_bind_reply_result, NULL, 0);
+        if (send_rc == ZLINK_SUBMIT_OK)
+            rc = 0;
+        else
+            rc = -1;
     }
     if (rc == 0 && completed_join) {
         complete_join_request (completed_join, ZLINK_REQUEST_OK);
@@ -3131,6 +3531,125 @@ zlink_spot_node_actor_forward_bound_session_part (void *node_,
       static_cast<zlink::spot_node_t *> (node_), *source_node_rid_, actor_ref_->node_rid,
       zlink::spot_actor_gateway::packet_session_to_actor, *source_session_rid_,
       actor_ref_->actor_id, actor_ref_->generation, message_, flags_, part_flag_);
+}
+
+zlink_submit_result_t submit_actor_no_bind (void *node_,
+                                            const zlink_actor_ref_t *actor_ref_,
+                                            zlink_msg_t *parts_,
+                                            size_t part_count_,
+                                            zlink_reply_handler_fn handler_,
+                                            void *userdata_,
+                                            zlink_send_flags_t flags_,
+                                            uint32_t timeout_ms_,
+                                            bool delivery_ack_)
+{
+    if (!node_) {
+        errno = EFAULT;
+        return ZLINK_SUBMIT_INVALID_HANDLE;
+    }
+    if (!actor_ref_ || !parts_ || part_count_ == 0 || !handler_
+        || !valid_actor_id (actor_ref_->actor_id) || !valid_routing_id (&actor_ref_->node_rid)
+        || actor_ref_->generation == 0 || !valid_multipart_payload (parts_, part_count_)) {
+        errno = EINVAL;
+        return ZLINK_SUBMIT_INVALID_ARGUMENT;
+    }
+    if (!is_registered_spot_node_handle (node_)) {
+        errno = EFAULT;
+        return ZLINK_SUBMIT_INVALID_HANDLE;
+    }
+
+    zlink::spot_node_t *request_node = static_cast<zlink::spot_node_t *> (node_);
+    zlink_routing_id_t source_node_rid;
+    memset (&source_node_rid, 0, sizeof (source_node_rid));
+    if (request_node->node_routing_id (&source_node_rid) != 0)
+        return errno_to_submit_result (errno);
+
+    const uint64_t request_id = next_no_bind_request_id ();
+    const zlink_routing_id_t caller_endpoint_rid = source_node_rid;
+    const no_bind_pending_key_t key =
+      make_no_bind_pending_key (actor_ref_->node_rid, actor_ref_->actor_id,
+                                actor_ref_->generation, caller_endpoint_rid, request_id);
+    if (register_no_bind_pending (key, handler_, userdata_, timeout_ms_) != 0)
+        return errno_to_submit_result (errno);
+
+    const int32_t no_bind_flags = delivery_ack_ ? 1 : 0;
+    zlink_submit_result_t send_rc = ZLINK_SUBMIT_OK;
+    if (same_routing_id (actor_ref_->node_rid, source_node_rid)) {
+        zlink_msg_t control;
+        if (!zlink::spot_actor_gateway::init_control_msg (
+              zlink::spot_actor_gateway::packet_server_to_actor_no_bind, caller_endpoint_rid,
+              actor_ref_->actor_id, actor_ref_->generation, ZLINK_PART_FINAL, &control,
+              request_id, no_bind_flags)) {
+            erase_no_bind_pending (key);
+            return errno_to_submit_result (errno);
+        }
+
+        std::vector<zlink_msg_t> gateway_parts;
+        gateway_parts.resize (part_count_ + 1);
+        for (size_t i = 0; i < gateway_parts.size (); ++i)
+            zlink_msg_init (&gateway_parts[i]);
+        if (zlink_msg_move (&gateway_parts[0], &control) != 0) {
+            const int saved_errno = errno;
+            (void) zlink_msg_close (&control);
+            zlink::request_reply::close_built_parts (&gateway_parts);
+            erase_no_bind_pending (key);
+            errno = saved_errno;
+            return errno_to_submit_result (errno);
+        }
+        for (size_t i = 0; i < part_count_; ++i) {
+            if (zlink_msg_move (&gateway_parts[i + 1], &parts_[i]) != 0) {
+                const int saved_errno = errno;
+                zlink::request_reply::close_built_parts (&gateway_parts);
+                erase_no_bind_pending (key);
+                errno = saved_errno;
+                return errno_to_submit_result (errno);
+            }
+        }
+        if (zlink::spot_actor_internal::process_gateway_delivery (
+              request_node, &source_node_rid, gateway_parts.data (), gateway_parts.size ())
+            != 0) {
+            send_rc = zlink::submit_result_internal::from_errno (errno);
+        }
+        zlink::request_reply::close_built_parts (&gateway_parts);
+    } else {
+        send_rc = send_actor_gateway_multipart_from_source (
+          request_node, source_node_rid, actor_ref_->node_rid,
+          zlink::spot_actor_gateway::packet_server_to_actor_no_bind, caller_endpoint_rid,
+          actor_ref_->actor_id, actor_ref_->generation, request_id, no_bind_flags, parts_,
+          part_count_, flags_);
+    }
+    if (send_rc != ZLINK_SUBMIT_OK) {
+        erase_no_bind_pending (key);
+        return send_rc;
+    }
+    return ZLINK_SUBMIT_OK;
+}
+
+extern "C" zlink_submit_result_t
+zlink_spot_node_send_to_actor (void *node_,
+                               const zlink_actor_ref_t *actor_ref_,
+                               zlink_msg_t *message_,
+                               zlink_reply_handler_fn completion_,
+                               void *userdata_,
+                               zlink_send_flags_t flags_,
+                               uint32_t timeout_ms_)
+{
+    return submit_actor_no_bind (node_, actor_ref_, message_, 1, completion_, userdata_, flags_,
+                                 timeout_ms_, true);
+}
+
+extern "C" zlink_submit_result_t
+zlink_spot_node_request_to_actor (void *node_,
+                                  const zlink_actor_ref_t *actor_ref_,
+                                  zlink_msg_t *parts_,
+                                  size_t part_count_,
+                                  zlink_reply_handler_fn callback_,
+                                  void *userdata_,
+                                  zlink_send_flags_t flags_,
+                                  uint32_t timeout_ms_)
+{
+    return submit_actor_no_bind (node_, actor_ref_, parts_, part_count_, callback_, userdata_,
+                                 flags_, timeout_ms_, false);
 }
 
 extern "C" zlink_config_result_t

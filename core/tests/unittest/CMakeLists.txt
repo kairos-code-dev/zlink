@@ -20,6 +20,7 @@ set(unittests
     unittest_spot_dispatch_seriality
     unittest_socket_runtime
     unittest_spot_subject_access
+    unittest_spot_actor_gateway_no_bind_protocol
     unittest_typed_option
     unittest_public_contract_headers
     unittest_request_timeout_scheduler

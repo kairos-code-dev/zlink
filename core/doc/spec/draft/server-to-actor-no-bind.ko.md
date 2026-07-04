@@ -171,11 +171,12 @@ row 없음이 `ActorRouteNotFound`이고, stale location은 `ActorLocationStale`
 session -> actor ingress relay로 설명한다(`core/doc/spec/core/service/spot.ko.md:1397`,
 `core/doc/spec/core/service/spot.ko.md:1400`, `core/doc/spec/core/service/spot.ko.md:1402`).
 
-따라서 새 public C API가 필요하다. 초안 이름은 후속 CORE-2에서 header 스타일에 맞춰 확정하되, 의미는 아래
-둘로 분리한다.
+따라서 새 public C API가 필요하다. `actor_*` 계열 이름은 actor가 주어처럼 읽히므로, 공개 함수는
+node에서 actor로 보내는 방향이 드러나는 이름을 사용한다. wire kind의 `no_bind` 이름은 protocol 구분을
+위해 유지한다.
 
 ```c
-zlink_submit_result_t zlink_spot_node_actor_send_no_bind(
+zlink_submit_result_t zlink_spot_node_send_to_actor(
   void *node,
   const zlink_actor_ref_t *actor,
   zlink_msg_t *message,
@@ -184,7 +185,7 @@ zlink_submit_result_t zlink_spot_node_actor_send_no_bind(
   zlink_send_flags_t flags,
   uint32_t timeout_ms);
 
-zlink_submit_result_t zlink_spot_node_actor_request_no_bind(
+zlink_submit_result_t zlink_spot_node_request_to_actor(
   void *node,
   const zlink_actor_ref_t *actor,
   zlink_msg_t *parts,

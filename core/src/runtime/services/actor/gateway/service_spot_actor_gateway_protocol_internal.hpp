@@ -19,7 +19,9 @@ enum packet_kind_t
     packet_entry_join_request = 3,
     packet_entry_join_reply = 4,
     packet_spot_join_request = 5,
-    packet_spot_join_reply = 6
+    packet_spot_join_reply = 6,
+    packet_server_to_actor_no_bind = 7,
+    packet_actor_to_server_no_bind_reply = 8
 };
 
 extern const char endpoint_name[];

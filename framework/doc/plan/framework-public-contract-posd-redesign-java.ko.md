@@ -27,7 +27,7 @@ spots/streams). Kotlin 표면: `zlink-framework-kotlin`. Redis extension:
 | S2. store·runtime 계약 | L1, L2, L3, A4 | ✅ | 2026-07-04 |
 | S3. resolver·운영 조회·watch | L6, L7, L8, L9 | ✅ | 2026-07-04 |
 | S4. 사용자 편의 표면 | L12~L17, C1~C4, C7, C8, B1~B6 | ✅ | 2026-07-04 (C7 awaitable stage=java idiom 유지) |
-| S4k. Kotlin 표면 동기화 (suspend 확장) | S4와 동일 항목 | ⬜ | |
+| S4k. Kotlin 표면 동기화 (suspend 확장) | S4와 동일 항목 | ✅ | 2026-07-04 |
 | S5. 샘플·E2E 전수 전환 (`e2e`·`e2e-kotlin`·양쪽 샘플) — 소비자 이행, 구 표면 grep 0 | L18 + L/A~D 소비자 반영 | ✅ | 2026-07-04 |
 | S6. contract 형태 고정 테스트 + grep 가드 | 공통 문서 6절 | ✅ | 2026-07-04 |
 | G. 완료 게이트 — codex 리뷰(누락 0건) | 전체 | ✅ | 2026-07-04 (POSD 리뷰 2차 "이슈 없음" · contract 리뷰 2차 잔여 1건(backend SPI epoch)은 감독자 직권 개명·전체 그린 확인 후 마감. 1차 이슈 7건(Redis JSON 필드·epoch 표면·resolver 개명·SpotAddress 표면·ensure 의미론·directory DI 2건) 수정 완료. 단 S4k(kotlin suspend 동기화)는 별도 잔여 — 완료 후 최종 마감) |

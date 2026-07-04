@@ -19,7 +19,7 @@ import systems.zlink.contracts.core.RoutingId
 import systems.zlink.framework.locations.ZLinkActorLocation
 import systems.zlink.framework.locations.ZLinkActorLocationFilter
 import systems.zlink.framework.locations.ZLinkActorLocationKey
-import systems.zlink.framework.locations.ZLinkActorLocationResolver
+import systems.zlink.framework.locations.ZLinkActorAddressResolver
 import systems.zlink.framework.locations.ZLinkActorLocationStore
 import systems.zlink.framework.locations.ZLinkLocationChanged
 import systems.zlink.framework.locations.ZLinkLocationOwnerToken
@@ -35,6 +35,7 @@ import systems.zlink.framework.locations.ZLinkLocationWatchFilter
 import systems.zlink.framework.locations.ZLinkLocationWatchStore
 import systems.zlink.framework.locations.ZLinkLocationWriteIntent
 import systems.zlink.framework.locations.ZLinkLocationWriteResult
+import systems.zlink.framework.locations.ZLinkOwnerLeaseRenewal
 import systems.zlink.framework.locations.ZLinkOwnerLeaseSnapshot
 import systems.zlink.framework.locations.ZLinkPageRequest
 import systems.zlink.framework.locations.ZLinkPeerLocation
@@ -45,13 +46,12 @@ import systems.zlink.framework.locations.ZLinkPeerLocationStore
 import systems.zlink.framework.locations.ZLinkRouteLocation
 import systems.zlink.framework.locations.ZLinkRouteLocationFilter
 import systems.zlink.framework.locations.ZLinkRouteLocationKey
-import systems.zlink.framework.locations.ZLinkRouteLocationResolver
 import systems.zlink.framework.locations.ZLinkRouteLocationStore
 import systems.zlink.framework.locations.ZLinkSpotAddress
 import systems.zlink.framework.locations.ZLinkSpotLocation
 import systems.zlink.framework.locations.ZLinkSpotLocationFilter
 import systems.zlink.framework.locations.ZLinkSpotLocationKey
-import systems.zlink.framework.locations.ZLinkSpotLocationResolver
+import systems.zlink.framework.locations.ZLinkSpotAddressResolver
 import systems.zlink.framework.locations.ZLinkSpotLocationStore
 
 suspend fun ZLinkPeerLocationStore.updatePeer(
@@ -66,11 +66,8 @@ suspend fun ZLinkPeerLocationStore.removePeer(
 ): ZLinkLocationWriteResult =
     removePeerAsync(key, owner).await()
 
-suspend fun ZLinkPeerLocationStore.removePeersByOwner(ownerId: String): Long =
-    removePeersByOwnerAsync(ownerId).await()
-
-suspend fun ZLinkPeerLocationStore.listPeers(filter: ZLinkPeerLocationFilter): List<ZLinkPeerLocation> =
-    listPeersAsync(filter).await()
+suspend fun ZLinkPeerLocationStore.listPeerLocations(filter: ZLinkPeerLocationFilter): List<ZLinkPeerLocation> =
+    listPeerLocationsAsync(filter).await()
 
 suspend fun ZLinkSpotLocationStore.updateSpot(
     spot: ZLinkSpotLocation,
@@ -84,17 +81,14 @@ suspend fun ZLinkSpotLocationStore.removeSpot(
 ): ZLinkLocationWriteResult =
     removeSpotAsync(key, owner).await()
 
-suspend fun ZLinkSpotLocationStore.removeSpotsByOwner(ownerId: String): Long =
-    removeSpotsByOwnerAsync(ownerId).await()
-
 suspend fun ZLinkSpotLocationStore.resolveSpot(key: ZLinkSpotLocationKey): ZLinkSpotLocation? =
     resolveSpotAsync(key).await()
 
-suspend fun ZLinkSpotLocationStore.listSpots(
+suspend fun ZLinkSpotLocationStore.listSpotLocations(
     filter: ZLinkSpotLocationFilter,
     page: ZLinkPageRequest = ZLinkPageRequest.firstPage(),
 ): ZLinkLocationPage<ZLinkSpotLocation> =
-    listSpotsAsync(filter, page).await()
+    listSpotLocationsAsync(filter, page).await()
 
 suspend fun ZLinkActorLocationStore.updateActor(
     actor: ZLinkActorLocation,
@@ -108,17 +102,14 @@ suspend fun ZLinkActorLocationStore.removeActor(
 ): ZLinkLocationWriteResult =
     removeActorAsync(key, owner).await()
 
-suspend fun ZLinkActorLocationStore.removeActorsByOwner(ownerId: String): Long =
-    removeActorsByOwnerAsync(ownerId).await()
-
 suspend fun ZLinkActorLocationStore.resolveActor(key: ZLinkActorLocationKey): ZLinkActorLocation? =
     resolveActorAsync(key).await()
 
-suspend fun ZLinkActorLocationStore.listActors(
+suspend fun ZLinkActorLocationStore.listActorLocations(
     filter: ZLinkActorLocationFilter,
     page: ZLinkPageRequest = ZLinkPageRequest.firstPage(),
 ): ZLinkLocationPage<ZLinkActorLocation> =
-    listActorsAsync(filter, page).await()
+    listActorLocationsAsync(filter, page).await()
 
 suspend fun ZLinkRouteLocationStore.updateRoute(
     route: ZLinkRouteLocation,
@@ -132,72 +123,68 @@ suspend fun ZLinkRouteLocationStore.removeRoute(
 ): ZLinkLocationWriteResult =
     removeRouteAsync(key, owner).await()
 
-suspend fun ZLinkRouteLocationStore.removeRoutesByOwner(ownerId: String): Long =
-    removeRoutesByOwnerAsync(ownerId).await()
-
 suspend fun ZLinkRouteLocationStore.resolveRoute(key: ZLinkRouteLocationKey): ZLinkRouteLocation? =
     resolveRouteAsync(key).await()
 
-suspend fun ZLinkRouteLocationStore.listRoutes(
+suspend fun ZLinkRouteLocationStore.listRouteLocations(
     filter: ZLinkRouteLocationFilter,
     page: ZLinkPageRequest = ZLinkPageRequest.firstPage(),
 ): ZLinkLocationPage<ZLinkRouteLocation> =
-    listRoutesAsync(filter, page).await()
+    listRouteLocationsAsync(filter, page).await()
 
 suspend fun ZLinkLocationStore.renewOwnerLease(
     ownerId: String,
     nodeRid: RoutingId,
     leaseTtl: Duration,
-): ZLinkLocationWriteResult =
+): ZLinkOwnerLeaseRenewal =
     renewOwnerLeaseAsync(ownerId, nodeRid, leaseTtl).await()
 
-suspend fun ZLinkLocationStore.removeOwnerLease(ownerId: String): ZLinkLocationWriteResult =
+suspend fun ZLinkLocationStore.removeOwnerLease(ownerId: String): Boolean =
     removeOwnerLeaseAsync(ownerId).await()
+
+suspend fun ZLinkLocationStore.removeAllByOwner(ownerId: String): Long =
+    removeAllByOwnerAsync(ownerId).await()
 
 suspend fun ZLinkLocationStore.listOwnerLeases(): ZLinkOwnerLeaseSnapshot =
     listOwnerLeasesAsync().await()
 
-suspend fun ZLinkPeerLocationResolver.listPeers(filter: ZLinkPeerLocationFilter): List<ZLinkPeerLocation> =
-    listPeersAsync(filter).await()
+suspend fun ZLinkPeerLocationResolver.listLivePeers(filter: ZLinkPeerLocationFilter): List<ZLinkPeerLocation> =
+    listLivePeersAsync(filter).await()
 
-suspend fun ZLinkSpotLocationResolver.resolveSpotAddress(
+suspend fun ZLinkSpotAddressResolver.resolveSpotAddress(
     meshName: String,
     spotRid: RoutingId,
 ): ZLinkSpotAddress? =
     resolveSpotAddressAsync(meshName, spotRid).await()
 
-suspend fun ZLinkActorLocationResolver.resolveActorSpotAddress(
-    actorType: String,
+suspend fun ZLinkActorAddressResolver.resolveActorSpotAddress(
     actorId: String,
 ): ZLinkSpotAddress? =
-    resolveActorSpotAddressAsync(actorType, actorId).await()
-
-suspend fun ZLinkRouteLocationResolver.resolveRoute(key: ZLinkRouteLocationKey): ZLinkRouteLocation? =
-    resolveRouteAsync(key).await()
+    resolveActorSpotAddressAsync(actorId).await()
 
 suspend fun ZLinkLocationRuntimeQuery.status(): ZLinkLocationRuntimeStatus =
     getStatusAsync().await()
 
-suspend fun ZLinkLocationRuntimeQuery.listPeers(filter: ZLinkPeerLocationFilter): List<ZLinkPeerLocation> =
-    listPeersAsync(filter).await()
+suspend fun ZLinkLocationRuntimeQuery.listPeerLocations(filter: ZLinkPeerLocationFilter): List<ZLinkPeerLocation> =
+    listPeerLocationsAsync(filter).await()
 
-suspend fun ZLinkLocationRuntimeQuery.listSpots(
+suspend fun ZLinkLocationRuntimeQuery.listSpotLocations(
     filter: ZLinkSpotLocationFilter,
     page: ZLinkPageRequest = ZLinkPageRequest.firstPage(),
 ): ZLinkLocationPage<ZLinkSpotLocation> =
-    listSpotsAsync(filter, page).await()
+    listSpotLocationsAsync(filter, page).await()
 
-suspend fun ZLinkLocationRuntimeQuery.listActors(
+suspend fun ZLinkLocationRuntimeQuery.listActorLocations(
     filter: ZLinkActorLocationFilter,
     page: ZLinkPageRequest = ZLinkPageRequest.firstPage(),
 ): ZLinkLocationPage<ZLinkActorLocation> =
-    listActorsAsync(filter, page).await()
+    listActorLocationsAsync(filter, page).await()
 
-suspend fun ZLinkLocationRuntimeQuery.listRoutes(
+suspend fun ZLinkLocationRuntimeQuery.listRouteLocations(
     filter: ZLinkRouteLocationFilter,
     page: ZLinkPageRequest = ZLinkPageRequest.firstPage(),
 ): ZLinkLocationPage<ZLinkRouteLocation> =
-    listRoutesAsync(filter, page).await()
+    listRouteLocationsAsync(filter, page).await()
 
 suspend fun ZLinkLocationRuntimeQuery.listTopology(
     filter: ZLinkLocationTopologyFilter,
@@ -232,19 +219,19 @@ fun ZLinkLocationRuntimeQuery.spots(
     filter: ZLinkSpotLocationFilter,
     pageSize: Int,
 ): Flow<ZLinkSpotLocation> =
-    locationPages(ZLinkPageRequest(pageSize, null)) { page -> listSpotsAsync(filter, page) }
+    locationPages(ZLinkPageRequest(pageSize, null)) { page -> listSpotLocationsAsync(filter, page) }
 
 fun ZLinkLocationRuntimeQuery.actors(
     filter: ZLinkActorLocationFilter,
     pageSize: Int,
 ): Flow<ZLinkActorLocation> =
-    locationPages(ZLinkPageRequest(pageSize, null)) { page -> listActorsAsync(filter, page) }
+    locationPages(ZLinkPageRequest(pageSize, null)) { page -> listActorLocationsAsync(filter, page) }
 
 fun ZLinkLocationRuntimeQuery.routes(
     filter: ZLinkRouteLocationFilter,
     pageSize: Int,
 ): Flow<ZLinkRouteLocation> =
-    locationPages(ZLinkPageRequest(pageSize, null)) { page -> listRoutesAsync(filter, page) }
+    locationPages(ZLinkPageRequest(pageSize, null)) { page -> listRouteLocationsAsync(filter, page) }
 
 fun ZLinkLocationRuntimeQuery.topology(
     filter: ZLinkLocationTopologyFilter,
@@ -285,8 +272,8 @@ fun <T> Publisher<T>.asFlow(): Flow<T> = callbackFlow {
 }
 
 abstract class ZLinkSuspendingLocationStore(
-    private val scope: CoroutineScope = CoroutineScope(SupervisorJob() + Dispatchers.Default),
-    private val dispatcher: CoroutineDispatcher = Dispatchers.Default,
+    private val scope: CoroutineScope = CoroutineScope(SupervisorJob() + Dispatchers.IO),
+    private val dispatcher: CoroutineDispatcher = Dispatchers.IO,
 ) : ZLinkLocationStore {
     protected fun <T> async(block: suspend () -> T): CompletionStage<T> =
         scope.future(dispatcher) { block() }
@@ -303,11 +290,8 @@ abstract class ZLinkSuspendingLocationStore(
     ): CompletionStage<ZLinkLocationWriteResult> =
         async { removePeer(key, owner) }
 
-    final override fun removePeersByOwnerAsync(ownerId: String): CompletionStage<Long> =
-        async { removePeersByOwner(ownerId) }
-
-    final override fun listPeersAsync(filter: ZLinkPeerLocationFilter): CompletionStage<List<ZLinkPeerLocation>> =
-        async { listPeers(filter) }
+    final override fun listPeerLocationsAsync(filter: ZLinkPeerLocationFilter): CompletionStage<List<ZLinkPeerLocation>> =
+        async { listPeerLocations(filter) }
 
     final override fun updateSpotAsync(
         spot: ZLinkSpotLocation,
@@ -321,17 +305,14 @@ abstract class ZLinkSuspendingLocationStore(
     ): CompletionStage<ZLinkLocationWriteResult> =
         async { removeSpot(key, owner) }
 
-    final override fun removeSpotsByOwnerAsync(ownerId: String): CompletionStage<Long> =
-        async { removeSpotsByOwner(ownerId) }
-
     final override fun resolveSpotAsync(key: ZLinkSpotLocationKey): CompletionStage<ZLinkSpotLocation?> =
         async { resolveSpot(key) }
 
-    final override fun listSpotsAsync(
+    final override fun listSpotLocationsAsync(
         filter: ZLinkSpotLocationFilter,
         page: ZLinkPageRequest,
     ): CompletionStage<ZLinkLocationPage<ZLinkSpotLocation>> =
-        async { listSpots(filter, page) }
+        async { listSpotLocations(filter, page) }
 
     final override fun updateActorAsync(
         actor: ZLinkActorLocation,
@@ -345,17 +326,14 @@ abstract class ZLinkSuspendingLocationStore(
     ): CompletionStage<ZLinkLocationWriteResult> =
         async { removeActor(key, owner) }
 
-    final override fun removeActorsByOwnerAsync(ownerId: String): CompletionStage<Long> =
-        async { removeActorsByOwner(ownerId) }
-
     final override fun resolveActorAsync(key: ZLinkActorLocationKey): CompletionStage<ZLinkActorLocation?> =
         async { resolveActor(key) }
 
-    final override fun listActorsAsync(
+    final override fun listActorLocationsAsync(
         filter: ZLinkActorLocationFilter,
         page: ZLinkPageRequest,
     ): CompletionStage<ZLinkLocationPage<ZLinkActorLocation>> =
-        async { listActors(filter, page) }
+        async { listActorLocations(filter, page) }
 
     final override fun updateRouteAsync(
         route: ZLinkRouteLocation,
@@ -369,27 +347,27 @@ abstract class ZLinkSuspendingLocationStore(
     ): CompletionStage<ZLinkLocationWriteResult> =
         async { removeRoute(key, owner) }
 
-    final override fun removeRoutesByOwnerAsync(ownerId: String): CompletionStage<Long> =
-        async { removeRoutesByOwner(ownerId) }
-
     final override fun resolveRouteAsync(key: ZLinkRouteLocationKey): CompletionStage<ZLinkRouteLocation?> =
         async { resolveRoute(key) }
 
-    final override fun listRoutesAsync(
+    final override fun listRouteLocationsAsync(
         filter: ZLinkRouteLocationFilter,
         page: ZLinkPageRequest,
     ): CompletionStage<ZLinkLocationPage<ZLinkRouteLocation>> =
-        async { listRoutes(filter, page) }
+        async { listRouteLocations(filter, page) }
 
     final override fun renewOwnerLeaseAsync(
         ownerId: String,
         nodeRid: RoutingId,
         leaseTtl: Duration,
-    ): CompletionStage<ZLinkLocationWriteResult> =
+    ): CompletionStage<ZLinkOwnerLeaseRenewal> =
         async { renewOwnerLease(ownerId, nodeRid, leaseTtl) }
 
-    final override fun removeOwnerLeaseAsync(ownerId: String): CompletionStage<ZLinkLocationWriteResult> =
+    final override fun removeOwnerLeaseAsync(ownerId: String): CompletionStage<Boolean> =
         async { removeOwnerLease(ownerId) }
+
+    final override fun removeAllByOwnerAsync(ownerId: String): CompletionStage<Long> =
+        async { removeAllByOwner(ownerId) }
 
     final override fun listOwnerLeasesAsync(): CompletionStage<ZLinkOwnerLeaseSnapshot> =
         async { listOwnerLeases() }
@@ -404,9 +382,7 @@ abstract class ZLinkSuspendingLocationStore(
         owner: ZLinkLocationOwnerToken,
     ): ZLinkLocationWriteResult
 
-    protected abstract suspend fun removePeersByOwner(ownerId: String): Long
-
-    protected abstract suspend fun listPeers(filter: ZLinkPeerLocationFilter): List<ZLinkPeerLocation>
+    protected abstract suspend fun listPeerLocations(filter: ZLinkPeerLocationFilter): List<ZLinkPeerLocation>
 
     protected abstract suspend fun updateSpot(
         spot: ZLinkSpotLocation,
@@ -418,11 +394,9 @@ abstract class ZLinkSuspendingLocationStore(
         owner: ZLinkLocationOwnerToken,
     ): ZLinkLocationWriteResult
 
-    protected abstract suspend fun removeSpotsByOwner(ownerId: String): Long
-
     protected abstract suspend fun resolveSpot(key: ZLinkSpotLocationKey): ZLinkSpotLocation?
 
-    protected abstract suspend fun listSpots(
+    protected abstract suspend fun listSpotLocations(
         filter: ZLinkSpotLocationFilter,
         page: ZLinkPageRequest,
     ): ZLinkLocationPage<ZLinkSpotLocation>
@@ -437,11 +411,9 @@ abstract class ZLinkSuspendingLocationStore(
         owner: ZLinkLocationOwnerToken,
     ): ZLinkLocationWriteResult
 
-    protected abstract suspend fun removeActorsByOwner(ownerId: String): Long
-
     protected abstract suspend fun resolveActor(key: ZLinkActorLocationKey): ZLinkActorLocation?
 
-    protected abstract suspend fun listActors(
+    protected abstract suspend fun listActorLocations(
         filter: ZLinkActorLocationFilter,
         page: ZLinkPageRequest,
     ): ZLinkLocationPage<ZLinkActorLocation>
@@ -456,11 +428,9 @@ abstract class ZLinkSuspendingLocationStore(
         owner: ZLinkLocationOwnerToken,
     ): ZLinkLocationWriteResult
 
-    protected abstract suspend fun removeRoutesByOwner(ownerId: String): Long
-
     protected abstract suspend fun resolveRoute(key: ZLinkRouteLocationKey): ZLinkRouteLocation?
 
-    protected abstract suspend fun listRoutes(
+    protected abstract suspend fun listRouteLocations(
         filter: ZLinkRouteLocationFilter,
         page: ZLinkPageRequest,
     ): ZLinkLocationPage<ZLinkRouteLocation>
@@ -469,9 +439,11 @@ abstract class ZLinkSuspendingLocationStore(
         ownerId: String,
         nodeRid: RoutingId,
         leaseTtl: Duration,
-    ): ZLinkLocationWriteResult
+    ): ZLinkOwnerLeaseRenewal
 
-    protected abstract suspend fun removeOwnerLease(ownerId: String): ZLinkLocationWriteResult
+    protected abstract suspend fun removeOwnerLease(ownerId: String): Boolean
+
+    protected abstract suspend fun removeAllByOwner(ownerId: String): Long
 
     protected abstract suspend fun listOwnerLeases(): ZLinkOwnerLeaseSnapshot
 }

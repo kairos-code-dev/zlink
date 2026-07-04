@@ -17,6 +17,7 @@ import systems.zlink.framework.locations.ZLinkActorLocationKey
 import systems.zlink.framework.locations.ZLinkLocationAutoConnectType
 import systems.zlink.framework.locations.ZLinkLocationChanged
 import systems.zlink.framework.locations.ZLinkLocationChangeType
+import systems.zlink.framework.locations.ZLinkLocationKey
 import systems.zlink.framework.locations.ZLinkLocationKind
 import systems.zlink.framework.locations.ZLinkLocationOwnerToken
 import systems.zlink.framework.locations.ZLinkLocationPage
@@ -25,6 +26,7 @@ import systems.zlink.framework.locations.ZLinkLocationWatchFilter
 import systems.zlink.framework.locations.ZLinkLocationWatchStore
 import systems.zlink.framework.locations.ZLinkLocationWriteIntent
 import systems.zlink.framework.locations.ZLinkLocationWriteResult
+import systems.zlink.framework.locations.ZLinkOwnerLeaseRenewal
 import systems.zlink.framework.locations.ZLinkOwnerLeaseSnapshot
 import systems.zlink.framework.locations.ZLinkPageRequest
 import systems.zlink.framework.locations.ZLinkPeerLocation
@@ -45,7 +47,7 @@ class KotlinLocationExtensionsTest {
     fun `suspend store extensions await CompletionStage without blocking caller code`() = runBlocking {
         val store = ZLinkInMemoryLocationStore()
         val stored = store.updatePeer(peer("owner-a"), ZLinkLocationWriteIntent.NEW_CLAIM)
-        val rows = store.listPeers(ZLinkPeerLocationFilter.all())
+        val rows = store.listPeerLocations(ZLinkPeerLocationFilter.all())
 
         assertEquals(1, stored.generation())
         assertEquals(listOf("owner-a"), rows.map { it.ownerId() })
@@ -69,7 +71,15 @@ class KotlinLocationExtensionsTest {
     fun `watch publisher is exposed as Flow`() = runBlocking {
         val event = ZLinkLocationChanged(
             ZLinkLocationKind.PEER,
-            "peer-key",
+            ZLinkLocationKey.Peer(
+                ZLinkPeerLocationKey(
+                    ZLinkLocationAutoConnectType.ROUTE_MESH,
+                    "mesh",
+                    ZLinkLocationRole.ROUTER,
+                    NODE_RID,
+                    "tcp://127.0.0.1:6000",
+                ),
+            ),
             ZLinkLocationChangeType.UPSERTED,
             3,
             NOW,
@@ -85,7 +95,7 @@ class KotlinLocationExtensionsTest {
     fun `suspending location store bridge returns CompletionStage to Java callers`() = runBlocking {
         val store = SuspendingStore()
         val result = store.updatePeerAsync(peer("owner-a"), ZLinkLocationWriteIntent.NEW_CLAIM).toCompletableFuture().get()
-        val rows = store.listPeersAsync(ZLinkPeerLocationFilter.all()).toCompletableFuture().get()
+        val rows = store.listPeerLocationsAsync(ZLinkPeerLocationFilter.all()).toCompletableFuture().get()
 
         assertEquals(42, result.generation())
         assertEquals(listOf("owner-a"), rows.map { it.ownerId() })
@@ -125,9 +135,7 @@ class KotlinLocationExtensionsTest {
             owner: ZLinkLocationOwnerToken,
         ): ZLinkLocationWriteResult = ZLinkLocationWriteResult.stored(owner.generation(), NOW)
 
-        override suspend fun removePeersByOwner(ownerId: String): Long = 0
-
-        override suspend fun listPeers(filter: ZLinkPeerLocationFilter): List<ZLinkPeerLocation> = peers.toList()
+        override suspend fun listPeerLocations(filter: ZLinkPeerLocationFilter): List<ZLinkPeerLocation> = peers.toList()
 
         override suspend fun updateSpot(
             spot: ZLinkSpotLocation,
@@ -139,11 +147,9 @@ class KotlinLocationExtensionsTest {
             owner: ZLinkLocationOwnerToken,
         ): ZLinkLocationWriteResult = ZLinkLocationWriteResult.stored(owner.generation(), NOW)
 
-        override suspend fun removeSpotsByOwner(ownerId: String): Long = 0
-
         override suspend fun resolveSpot(key: ZLinkSpotLocationKey): ZLinkSpotLocation? = null
 
-        override suspend fun listSpots(
+        override suspend fun listSpotLocations(
             filter: ZLinkSpotLocationFilter,
             page: ZLinkPageRequest,
         ): ZLinkLocationPage<ZLinkSpotLocation> = ZLinkLocationPage(listOf(), null)
@@ -158,11 +164,9 @@ class KotlinLocationExtensionsTest {
             owner: ZLinkLocationOwnerToken,
         ): ZLinkLocationWriteResult = ZLinkLocationWriteResult.stored(owner.generation(), NOW)
 
-        override suspend fun removeActorsByOwner(ownerId: String): Long = 0
-
         override suspend fun resolveActor(key: ZLinkActorLocationKey): ZLinkActorLocation? = null
 
-        override suspend fun listActors(
+        override suspend fun listActorLocations(
             filter: ZLinkActorLocationFilter,
             page: ZLinkPageRequest,
         ): ZLinkLocationPage<ZLinkActorLocation> = ZLinkLocationPage(listOf(), null)
@@ -177,11 +181,9 @@ class KotlinLocationExtensionsTest {
             owner: ZLinkLocationOwnerToken,
         ): ZLinkLocationWriteResult = ZLinkLocationWriteResult.stored(owner.generation(), NOW)
 
-        override suspend fun removeRoutesByOwner(ownerId: String): Long = 0
-
         override suspend fun resolveRoute(key: ZLinkRouteLocationKey): ZLinkRouteLocation? = null
 
-        override suspend fun listRoutes(
+        override suspend fun listRouteLocations(
             filter: ZLinkRouteLocationFilter,
             page: ZLinkPageRequest,
         ): ZLinkLocationPage<ZLinkRouteLocation> = ZLinkLocationPage(listOf(), null)
@@ -190,10 +192,11 @@ class KotlinLocationExtensionsTest {
             ownerId: String,
             nodeRid: RoutingId,
             leaseTtl: Duration,
-        ): ZLinkLocationWriteResult = ZLinkLocationWriteResult.stored(0, NOW)
+        ): ZLinkOwnerLeaseRenewal = ZLinkOwnerLeaseRenewal(NOW.plus(leaseTtl), NOW)
 
-        override suspend fun removeOwnerLease(ownerId: String): ZLinkLocationWriteResult =
-            ZLinkLocationWriteResult.stored(0, NOW)
+        override suspend fun removeOwnerLease(ownerId: String): Boolean = true
+
+        override suspend fun removeAllByOwner(ownerId: String): Long = 0
 
         override suspend fun listOwnerLeases(): ZLinkOwnerLeaseSnapshot =
             ZLinkOwnerLeaseSnapshot(listOf(), NOW)

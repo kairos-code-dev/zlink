@@ -432,6 +432,7 @@ void channel_runtime_t::close () noexcept
         std::lock_guard lock (_state->mutex);
         _state->closed = true;
     }
+    close_native_channel_transports (_state);
     drain ();
 }
 
@@ -450,6 +451,7 @@ void channel_runtime_t::shutdown () noexcept
     for (auto &route_channel : route_channels) {
         route_channel->stop ();
     }
+    close_native_channel_transports (_state);
     drain ();
 }
 
@@ -479,6 +481,12 @@ void channel_runtime_t::bind_serializers (serializer_registry_t &serializers) no
 dispatch_options_t channel_runtime_t::dispatch_options () const
 {
     return _state->dispatch;
+}
+
+void channel_runtime_t::mark_auto_connect_active ()
+{
+    std::lock_guard lock (_state->mutex);
+    _state->auto_connect_active = true;
 }
 
 void channel_runtime_t::drain () noexcept

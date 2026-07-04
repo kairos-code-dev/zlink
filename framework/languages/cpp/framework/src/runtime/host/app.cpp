@@ -391,7 +391,8 @@ app_t &app_t::add_zlink_framework (std::function<void (zlink_framework_options_t
           },
           service_lifetime_t::singleton);
     }
-    if (!_state->services.contains (std::type_index (typeid (runtime::store_location_resolvers_t)))) {
+    if (!_state->services.contains (
+          std::type_index (typeid (runtime::store_location_resolvers_t)))) {
         _state->services.add_factory<runtime::store_location_resolvers_t> (
           [] (service_provider_t &provider) {
               return std::make_unique<runtime::store_location_resolvers_t> (
@@ -468,7 +469,7 @@ app_t &app_t::add_zlink_framework (std::function<void (zlink_framework_options_t
           std::make_unique<runtime::location_monitoring_host_service_t> (monitoring_state));
     }
     add_hosted_service (std::make_unique<runtime::location_auto_connect_host_service_t> (
-      _state->zlink.message_bus (), channel_snapshot));
+      _state->zlink.message_bus (), channel_snapshot, options.route_mesh_client_channels ()));
     if (detail::has_inbound_channel (channel_snapshot)) {
         add_hosted_service (std::make_unique<runtime::channel_host_service_t> (
           _state->zlink.message_bus (), channel_snapshot, _state->handlers, _state->serializers));
@@ -486,8 +487,8 @@ app_t &app_t::add_zlink_framework (std::function<void (zlink_framework_options_t
                   runtime::spot_node_host_service_t::node_runtime_t{spot_node, *runtime});
             }
         }
-        add_hosted_service (std::make_unique<runtime::spot_node_host_service_t> (
-          spot_node_runtimes));
+        add_hosted_service (
+          std::make_unique<runtime::spot_node_host_service_t> (spot_node_runtimes));
     }
     if (!_state->services.contains (std::type_index (typeid (actor_client_t)))) {
         std::vector<detail::spot_node_runtime_t> actor_client_spot_nodes;
@@ -497,9 +498,9 @@ app_t &app_t::add_zlink_framework (std::function<void (zlink_framework_options_t
         }
         _state->services.add_factory<actor_client_t> (
           [spot_nodes = std::move (actor_client_spot_nodes)] (service_provider_t &provider) {
-              return runtime::make_actor_client (
-                provider.get_required<location_store_t> (),
-                provider.get_required<serializer_registry_t> (), spot_nodes);
+              return runtime::make_actor_client (provider.get_required<location_store_t> (),
+                                                 provider.get_required<serializer_registry_t> (),
+                                                 spot_nodes);
           },
           service_lifetime_t::singleton);
     }

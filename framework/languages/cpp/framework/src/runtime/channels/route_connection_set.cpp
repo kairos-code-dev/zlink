@@ -9,7 +9,12 @@ namespace zlink::framework::detail
 
 bool route_connection_set_t::connect (std::string endpoint)
 {
-    return _manual_connections.insert (std::move (endpoint)).second;
+    return _manual_connections.emplace (std::move (endpoint), std::nullopt).second;
+}
+
+bool route_connection_set_t::connect (zlink::routing_id_t peer_rid, std::string endpoint)
+{
+    return _manual_connections.emplace (std::move (endpoint), std::move (peer_rid)).second;
 }
 
 bool route_connection_set_t::disconnect (const std::string &endpoint)
@@ -19,12 +24,27 @@ bool route_connection_set_t::disconnect (const std::string &endpoint)
 
 bool route_connection_set_t::contains (const std::string &endpoint) const
 {
-    return _manual_connections.find (endpoint) != _manual_connections.end ();
+    return _manual_connections.contains (endpoint);
 }
 
 std::vector<std::string> route_connection_set_t::list () const
 {
-    return std::vector<std::string> (_manual_connections.begin (), _manual_connections.end ());
+    std::vector<std::string> endpoints;
+    endpoints.reserve (_manual_connections.size ());
+    for (const auto &[endpoint, _] : _manual_connections) {
+        endpoints.push_back (endpoint);
+    }
+    return endpoints;
+}
+
+std::vector<route_connection_set_t::target_t> route_connection_set_t::targets () const
+{
+    std::vector<target_t> targets;
+    targets.reserve (_manual_connections.size ());
+    for (const auto &[endpoint, peer_rid] : _manual_connections) {
+        targets.push_back (target_t{endpoint, peer_rid});
+    }
+    return targets;
 }
 
 } // namespace zlink::framework::detail

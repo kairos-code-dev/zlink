@@ -1,6 +1,5 @@
 /* SPDX-License-Identifier: MPL-2.0 */
 #pragma once
-
 #include "runtime/channels/channel_runtime.hpp"
 #include "runtime/channels/channel_runtime_bundle.hpp"
 #include "runtime/channels/channel_runtime_manager.hpp"
@@ -16,6 +15,7 @@
 #include <map>
 #include <mutex>
 #include <optional>
+#include <set>
 #include <string>
 #include <string_view>
 #include <thread>
@@ -29,8 +29,11 @@ class location_auto_connect_host_service_t final : public hosted_service_t
 {
   public:
     location_auto_connect_host_service_t (message_bus_t bus,
-                                          std::vector<channel_snapshot_t> channels) :
-        _bus (std::move (bus)), _channels (std::move (channels))
+                                          std::vector<channel_snapshot_t> channels,
+                                          std::set<std::string> route_mesh_client_channels = {}) :
+        _bus (std::move (bus)),
+        _channels (std::move (channels)),
+        _route_mesh_client_channels (std::move (route_mesh_client_channels))
     {
     }
 
@@ -40,8 +43,7 @@ class location_auto_connect_host_service_t final : public hosted_service_t
     {
         _runtime = &services.get_required<location_runtime_t> ();
         _store = &services.get_required<location_store_t> ();
-        detail::channel_runtime_manager_t manager =
-          detail::channel_runtime_manager_t::from (_bus);
+        detail::channel_runtime_manager_t manager = detail::channel_runtime_manager_t::from (_bus);
         manager.initialize_publisher_channels ();
         manager.initialize_client_channels ();
         manager.initialize_inbound_channels ();
@@ -49,9 +51,8 @@ class location_auto_connect_host_service_t final : public hosted_service_t
         for (const auto &channel : _channels) {
             if (channel.server.enabled && channel.server.discovery) {
                 for (const auto &endpoint : channel.server.bind_endpoints) {
-                    add_loop (make_local (location_auto_connect_type_t::client_server,
-                                          channel.name, location_role_t::router, channel.server,
-                                          endpoint),
+                    add_loop (make_local (location_auto_connect_type_t::client_server, channel.name,
+                                          location_role_t::router, channel.server, endpoint),
                               nullptr);
                 }
             }
@@ -66,8 +67,7 @@ class location_auto_connect_host_service_t final : public hosted_service_t
                     && local.node_rid->to_hex () == channel.server.routing_id->to_hex ()) {
                     local.node_rid = derive_role_rid (*channel.server.routing_id, "dealer");
                 }
-                add_loop (std::move (local),
-                          &bundle);
+                add_loop (std::move (local), &bundle);
             }
             if (channel.publisher.enabled && channel.publisher.discovery) {
                 for (const auto &endpoint : channel.publisher.bind_endpoints) {
@@ -94,37 +94,44 @@ class location_auto_connect_host_service_t final : public hosted_service_t
             auto &route = manager.get_route_channel (route_channel_id);
             auto manual = route.manual_connections ();
             auto connect_route = [&route, manual] (const auto &target) {
-                if (std::find (manual.begin (), manual.end (), target.endpoint)
-                    == manual.end ()) {
-                    (void) route.connect (target.endpoint);
+                if (std::find (manual.begin (), manual.end (), target.endpoint) == manual.end ()) {
+                    if (target.node_rid) {
+                        (void) route.connect (*target.node_rid, target.endpoint);
+                    } else {
+                        (void) route.connect (target.endpoint);
+                    }
                 }
             };
             auto disconnect_route = [&route, manual] (const auto &target) {
-                if (std::find (manual.begin (), manual.end (), target.endpoint)
-                    == manual.end ()) {
+                if (std::find (manual.begin (), manual.end (), target.endpoint) == manual.end ()) {
                     (void) route.disconnect (target.endpoint);
                 }
             };
+            const auto route_rid = route.routing_id ();
             if (!route.bind_endpoint ().empty ()) {
                 add_loop (local_t{location_auto_connect_type_t::route_mesh,
+                                  route.router_channel_id (), location_role_t::router, route_rid,
+                                  route.bind_endpoint (), 100},
+                          nullptr, connect_route, disconnect_route);
+            }
+            const bool client_enabled = route.bind_endpoint ().empty ()
+                                        || _route_mesh_client_channels.find (route_channel_id)
+                                             != _route_mesh_client_channels.end ();
+            if (client_enabled) {
+                add_loop (local_t{location_auto_connect_type_t::route_mesh,
                                   route.router_channel_id (),
-                                  location_role_t::router,
-                                  route.routing_id (),
-                                  route.bind_endpoint (),
+                                  location_role_t::dealer,
+                                  route_rid,
+                                  {},
                                   100},
                           nullptr, connect_route, disconnect_route);
-                continue;
             }
-            add_loop (local_t{location_auto_connect_type_t::route_mesh,
-                              route.router_channel_id (),
-                              location_role_t::dealer,
-                              route.routing_id (),
-                              {},
-                              100},
-                      nullptr, connect_route, disconnect_route);
         }
 
         _stop.store (false, std::memory_order_release);
+        if (!_loops.empty ()) {
+            detail::channel_runtime_t::from (_bus).mark_auto_connect_active ();
+        }
         for (auto &loop : _loops) {
             loop.thread = std::thread ([this, &loop] { run_loop (loop); });
         }
@@ -182,7 +189,10 @@ class location_auto_connect_host_service_t final : public hosted_service_t
                                const channel_capability_snapshot_t &capability,
                                std::string endpoint)
     {
-        return local_t{type, std::move (mesh_name), role, capability.routing_id,
+        return local_t{type,
+                       std::move (mesh_name),
+                       role,
+                       capability.routing_id,
                        std::move (endpoint),
                        capability.peer_weight ? capability.peer_weight->value () : 100u};
     }
@@ -309,8 +319,7 @@ class location_auto_connect_host_service_t final : public hosted_service_t
         if (local.type == location_auto_connect_type_t::client_server
             && local.role == location_role_t::router) {
             const auto override =
-              detail::channel_runtime_t::from (_bus).server_peer_weight_override (
-                local.mesh_name);
+              detail::channel_runtime_t::from (_bus).server_peer_weight_override (local.mesh_name);
             if (override) {
                 return override->value ();
             }
@@ -328,8 +337,8 @@ class location_auto_connect_host_service_t final : public hosted_service_t
                 || is_self (local, peer) || !should_dial (local, peer)) {
                 continue;
             }
-            auto target = target_t{target_key (peer), peer.node_rid, peer.role, peer.endpoint,
-                                   peer.owner_id, peer.weight};
+            auto target = target_t{target_key (peer), peer.node_rid, peer.role,
+                                   peer.endpoint,     peer.owner_id, peer.weight};
             desired[target.key] = std::move (target);
         }
         return desired;
@@ -356,7 +365,8 @@ class location_auto_connect_host_service_t final : public hosted_service_t
 
     static bool is_self (const local_t &local, const peer_location_t &peer)
     {
-        if (local.node_rid && peer.node_rid && local.node_rid->to_hex () == peer.node_rid->to_hex ()) {
+        if (local.node_rid && peer.node_rid
+            && local.node_rid->to_hex () == peer.node_rid->to_hex ()) {
             return true;
         }
         return !local.endpoint.empty () && peer.endpoint == local.endpoint;
@@ -366,15 +376,15 @@ class location_auto_connect_host_service_t final : public hosted_service_t
     {
         switch (local.type) {
             case location_auto_connect_type_t::client_server:
-                return local.role == location_role_t::dealer && peer.role == location_role_t::router;
+                return local.role == location_role_t::dealer
+                       && peer.role == location_role_t::router;
             case location_auto_connect_type_t::fanout:
                 return local.role == location_role_t::sub && peer.role == location_role_t::pub;
             case location_auto_connect_type_t::route_mesh:
                 if (local.role == location_role_t::dealer) {
                     return peer.role == location_role_t::router;
                 }
-                return local.role == location_role_t::router
-                       && peer.role == location_role_t::router
+                return local.role == location_role_t::router && peer.role == location_role_t::router
                        && local_is_initiator (local, peer);
             case location_auto_connect_type_t::dealer_mesh:
                 return local.role == peer.role && local_is_initiator (local, peer);
@@ -456,6 +466,7 @@ class location_auto_connect_host_service_t final : public hosted_service_t
 
     message_bus_t _bus;
     std::vector<channel_snapshot_t> _channels;
+    std::set<std::string> _route_mesh_client_channels;
     location_runtime_t *_runtime = nullptr;
     location_store_t *_store = nullptr;
     std::atomic_bool _stop{false};

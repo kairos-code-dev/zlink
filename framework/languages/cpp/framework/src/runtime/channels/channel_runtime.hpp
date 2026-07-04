@@ -111,6 +111,7 @@ class channel_runtime_state_t
     dispatch_options_t dispatch;
     serializer_registry_t *serializers = nullptr;
     std::shared_ptr<monitoring_runtime_state_t> monitoring;
+    bool auto_connect_active = false;
     bool shutdown = false;
     bool closed = false;
     retry_hook_t retry_hook;
@@ -169,6 +170,7 @@ class channel_runtime_t
     void bind_serializers (serializer_registry_t &serializers) noexcept;
     dispatch_options_t dispatch_options () const;
     const dispatch_options_t &dispatch_options_ref () const noexcept { return _state->dispatch; }
+    void mark_auto_connect_active ();
     void drain () noexcept;
     void publish_socket_event (const std::string &channel_name,
                                socket_event_kind_t event,

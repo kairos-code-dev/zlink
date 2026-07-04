@@ -27,6 +27,7 @@ inline app_t &add_bingo_api_server (app_t &app, const sample_topology_t &topolog
 
         options.add_client_server_channel (sample_names_t::api_channel)
           .enable_server (topology.selected_api_channel_endpoint ())
+          .set_routing_id (zlink::routing_id_t::from (topology.selected_api_route_rid ()))
           .use_handler_group ("api");
 
         options.add_route_mesh_channel (sample_names_t::play_channel)

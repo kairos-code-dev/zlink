@@ -33,7 +33,7 @@ class match_bingo_api_handler_t
         auto allocated =
           co_await _routes
             .request_to_node (sample_names_t::play_channel,
-                      zlink::routing_id_t::from (request.actor_node_rid), allocate_request)
+                              zlink::routing_id_t::from (request.actor_node_rid), allocate_request)
             .async<allocate_bingo_room_res_t> ();
         _logger.info (
           "match bingo room",

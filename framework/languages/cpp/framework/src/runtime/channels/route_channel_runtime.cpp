@@ -68,6 +68,12 @@ bool route_channel_runtime_t::connect (std::string endpoint)
     return _connections.connect (std::move (endpoint));
 }
 
+bool route_channel_runtime_t::connect (zlink::routing_id_t peer_rid, std::string endpoint)
+{
+    std::lock_guard lock (_mutex);
+    return _connections.connect (std::move (peer_rid), std::move (endpoint));
+}
+
 bool route_channel_runtime_t::disconnect (const std::string &endpoint)
 {
     std::lock_guard lock (_mutex);
@@ -78,6 +84,13 @@ std::vector<std::string> route_channel_runtime_t::list_connections () const
 {
     std::lock_guard lock (_mutex);
     return _connections.list ();
+}
+
+std::vector<route_connection_set_t::target_t>
+route_channel_runtime_t::list_connection_targets () const
+{
+    std::lock_guard lock (_mutex);
+    return _connections.targets ();
 }
 
 void route_channel_runtime_t::bind_endpoint (std::string endpoint)

@@ -1251,6 +1251,11 @@ class zlink_framework_options_t
 
     location_options_t location_options () const { return _options->locations; }
 
+    const std::set<std::string> &route_mesh_client_channels () const noexcept
+    {
+        return _options->route_mesh_channels_with_client;
+    }
+
     zlink_framework_options_t &set_default_request_timeout (std::chrono::milliseconds timeout)
     {
         if (timeout <= std::chrono::milliseconds::zero ()) {

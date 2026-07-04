@@ -55,8 +55,10 @@ class route_channel_runtime_t
     bool running () const noexcept;
 
     bool connect (std::string endpoint);
+    bool connect (zlink::routing_id_t peer_rid, std::string endpoint);
     bool disconnect (const std::string &endpoint);
     std::vector<std::string> list_connections () const;
+    std::vector<route_connection_set_t::target_t> list_connection_targets () const;
     void bind_endpoint (std::string endpoint);
     const std::string &bind_endpoint () const noexcept;
     void manual_connections (std::vector<std::string> endpoints);

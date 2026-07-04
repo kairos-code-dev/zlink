@@ -13,6 +13,7 @@
 #include <chrono>
 #include <deque>
 #include <iostream>
+#include <map>
 #include <mutex>
 #include <set>
 #include <thread>
@@ -168,17 +169,20 @@ class route_channel_host_service_t::route_loop_t
             return;
         }
         const auto bind_endpoint = _runtime->bind_endpoint ();
-        std::set<std::string> desired;
-        for (const auto &endpoint : _runtime->list_connections ()) {
-            if (!endpoint.empty () && endpoint != bind_endpoint) {
-                desired.insert (endpoint);
+        std::map<std::string, std::optional<zlink::routing_id_t>> desired;
+        for (const auto &target : _runtime->list_connection_targets ()) {
+            if (!target.endpoint.empty () && target.endpoint != bind_endpoint) {
+                desired[target.endpoint] = target.peer_rid;
             }
         }
-        for (const auto &endpoint : desired) {
+        for (const auto &[endpoint, peer_rid] : desired) {
             if (_connected_endpoints.find (endpoint) != _connected_endpoints.end ()) {
                 continue;
             }
             try {
+                if (peer_rid) {
+                    _router->options ().connect_routing_id (*peer_rid);
+                }
                 _router->connect (endpoint);
                 _connected_endpoints.insert (endpoint);
             }
@@ -394,9 +398,8 @@ void route_channel_host_service_t::start (service_provider_t &services)
             found != _internal_dispatchers.end ()) {
             internal_packets = found->second;
         }
-        auto loop =
-          std::make_unique<route_loop_t> (_bus, route_channel_id, services, *_serializers,
-                                          _spot_nodes, internal_packets, _stop);
+        auto loop = std::make_unique<route_loop_t> (_bus, route_channel_id, services, *_serializers,
+                                                    _spot_nodes, internal_packets, _stop);
         auto *raw = loop.get ();
         _loops.push_back (std::move (loop));
         _threads.emplace_back ([this, raw] {

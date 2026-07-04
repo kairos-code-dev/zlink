@@ -1623,11 +1623,11 @@ Redis store는 언어 간 상호 운용의 실제 경계다. 따라서 .NET 구�
 - [x] ✅2026-07-04(LOC-1) resolver의 `ListPeersAsync`를 `ListLivePeersAsync`로, runtime query의 list를
       `List*LocationsAsync`로 개명한다.
 - [x] ✅2026-07-04(P3a) `IZLinkActorDirectory`(actor id 단독 find/ensure + placement)를 추가한다.
-- [ ] ⏸보류(2026-07-04, P3b 설계 보고 — core 협력 필요, 통합 문서 9절 Q1) `IZLinkActorClient.SendToActor/RequestToActor`를 actor id 단독 호출로 추가하고, 내부에서 resolve → liveness →
+- [x] ✅2026-07-05 완료(Q1=(a) 결정 → core 8.5.0~8.5.2 no-bind protocol+C API → bindings 7언어 → framework 구현, TA e2e 그린) `IZLinkActorClient.SendToActor/RequestToActor`를 actor id 단독 호출로 추가하고, 내부에서 resolve → liveness →
       SendToSpot 순서와 실패 시 1회 re-resolve 정책을 흡수한다. actor 전용 call은
       `IZLinkActorSendCall`/`IZLinkActorRequestCall`로 분리하고 터미널은 `.Async(ct)` 단독으로
       한다(void `Submit()` 금지).
-- [ ] 부분 완료(2026-07-04: kind 신설·retriable 매핑·directory·readiness는 P3a로 구현, actor client 분류는 Q1 보류) 실패 계약을 구현한다: `ActorRouteNotFound`/`ActorLocationStale`/`RouteNotConnected`(retriable)
+- [x] ✅2026-07-05 완료(actor client 실패 분류까지 구현 — TA-B1~B3 e2e 검증) 실패 계약을 구현한다: `ActorRouteNotFound`/`ActorLocationStale`/`RouteNotConnected`(retriable)
       구분, directory의 `ActorIdConflict`/`ActorCreateRejected`, readiness의 "확인 불가 = false",
       store 장애는 원인 보존 예외, silent drop·auto-create·메시지 파킹 금지.
 - [x] ✅2026-07-04(P3a) 기존 `IZLinkSessionActors`에 `BindOrGetAsync`를 추가한다(신설 인터페이스 아님).
@@ -1636,7 +1636,7 @@ Redis store는 언어 간 상호 운용의 실제 경계다. 따라서 .NET 구�
 - [x] ✅2026-07-04(P3a) `ZLinkActorRefSnapshot`을 framework contract로 추가한다.
 - [x] ✅2026-07-04(P3a) 샘플이 직접 정의한 `ActorRefSnapshot`을 제거하거나 protobuf 경계의 generated message 변환으로만
       제한한다.
-- [ ] 부분 완료(2026-07-04: 확보·바인딩·health check는 P3a로 이식, Tracking 전송 이식은 Q1 보류) DeliveryDispatch Tracking, Bingo, SupportChat의 actor 확보/전송/바인딩/health check 흐름을 새
+- [x] ✅2026-07-05 완료(Tracking 전송을 SendToActor/RequestToActor로 이식 — SampleRegression 그린) DeliveryDispatch Tracking, Bingo, SupportChat의 actor 확보/전송/바인딩/health check 흐름을 새
       표면으로 이식한다.
 
 완료 조건:
@@ -1681,7 +1681,7 @@ Redis store는 언어 간 상호 운용의 실제 경계다. 따라서 .NET 구�
 - [x] sample regression test에 샘플이 업무 흐름에서 `ZLinkActorLocation`,
       `IZLinkActorLocationStore`, `IZLinkActorAddressResolver`, actor ref 문자열 파싱을 직접 쓰지
       않는다는 검증을 추가한다.
-- [ ] ⏸보류(Q1 — actor client 자체가 보류) DeliveryDispatch Tracking처럼 actor에게 메시지를 보내는 흐름이 `IZLinkActorClient`를 쓰는지
+- [x] ✅2026-07-05 완료(L18 조항 포함 — actor client 경유 확인) DeliveryDispatch Tracking처럼 actor에게 메시지를 보내는 흐름이 `IZLinkActorClient`를 쓰는지
       검증한다.
 - [x] session bind 흐름이 `BindOrGetAsync`로 표현되는지 검증한다.
 - [x] health/readiness 흐름이 `IZLinkLocationReadiness`를 쓰고, `IZLinkLocationRuntimeQuery`는

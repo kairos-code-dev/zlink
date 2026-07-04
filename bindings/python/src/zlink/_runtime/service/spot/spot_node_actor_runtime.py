@@ -2,7 +2,7 @@
 
 import ctypes
 
-from ...._native.ffi import ZlinkActorJoinEntrySpotResult, ZlinkActorJoinResult, ZlinkActorLookupResult, ZlinkActorRef, lib
+from ...._native.ffi import ZlinkActorJoinEntrySpotResult, ZlinkActorJoinResult, ZlinkActorLookupResult, ZlinkActorRecvInfo, ZlinkActorRef, lib
 from ....contracts.core.routing_id import RoutingId
 from ...handles.native_support import (
     ConfigError,
@@ -92,6 +92,26 @@ class SpotNodeActorMixin:
                 actor_ref, parts, callback, flags, timeout
             ),
         )
+
+    def reply_actor_no_bind(self, info, parts, result=RequestResult.OK):
+        native_info = ZlinkActorRecvInfo()
+        native_info.actor = _actor_ref_to_native(info.actor)
+        _copy_routing_id(native_info.source_node_rid, info.source_node_rid)
+        _copy_routing_id(native_info.source_session_rid, info.source_session_rid)
+        native_info.request_id = int(info.request_id)
+        native_info.flags = int(info.flags)
+        native_parts = _clone_payload(parts)
+        native_array = _prepare_native_parts(native_parts)
+        rc = lib().zlink_spot_node_actor_reply_no_bind(
+            self._handle,
+            ctypes.byref(native_info),
+            native_array if native_parts else None,
+            len(native_parts),
+            int(result),
+        )
+        if rc != 0:
+            _close_native_parts(native_parts)
+            _raise_result_error(SubmitError, SubmitResult, rc, lib().zlink_errno())
 
     def _actor_send_bound_session_submit(self, actor_ref, parts, flags=0):
         native_parts = _clone_payload(parts)

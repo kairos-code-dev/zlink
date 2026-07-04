@@ -2254,6 +2254,20 @@ public final class Native {
         }
     }
 
+    public static int spotNodeActorReplyNoBind(MemorySegment node,
+                                               MemorySegment info,
+                                               MemorySegment parts,
+                                               long partCount,
+                                               int result) {
+        try {
+            return (int) NativeSpotSymbols.MH_SPOT_NODE_ACTOR_REPLY_NO_BIND.invokeExact(
+              node, info, parts, partCount, result);
+        } catch (Throwable t) {
+            throw new RuntimeException(
+              "zlink_spot_node_actor_reply_no_bind failed", t);
+        }
+    }
+
     public static int spotNodeActorForwardBoundSessionPart(
                                                        MemorySegment node,
                                                        MemorySegment actor,

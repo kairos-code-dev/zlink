@@ -519,6 +519,48 @@ pub(crate) fn request_result_from_raw(
     }
 }
 
+pub(crate) fn request_result_to_raw(
+    result: crate::error::RequestResult,
+) -> ffi::zlink_request_result_t {
+    match result {
+        crate::error::RequestResult::Ok => ffi::zlink_request_result_t::ZLINK_REQUEST_RESULT_OK,
+        crate::error::RequestResult::TimedOut => {
+            ffi::zlink_request_result_t::ZLINK_REQUEST_RESULT_TIMED_OUT
+        }
+        crate::error::RequestResult::NotFound => {
+            ffi::zlink_request_result_t::ZLINK_REQUEST_RESULT_NOT_FOUND
+        }
+        crate::error::RequestResult::Terminated => {
+            ffi::zlink_request_result_t::ZLINK_REQUEST_RESULT_TERMINATED
+        }
+        crate::error::RequestResult::ProtocolError => {
+            ffi::zlink_request_result_t::ZLINK_REQUEST_RESULT_PROTOCOL_ERROR
+        }
+        crate::error::RequestResult::InternalError => {
+            ffi::zlink_request_result_t::ZLINK_REQUEST_RESULT_INTERNAL_ERROR
+        }
+        crate::error::RequestResult::Rejected => {
+            ffi::zlink_request_result_t::ZLINK_REQUEST_RESULT_REJECTED
+        }
+        crate::error::RequestResult::Conflict => {
+            ffi::zlink_request_result_t::ZLINK_REQUEST_RESULT_CONFLICT
+        }
+        crate::error::RequestResult::Busy => ffi::zlink_request_result_t::ZLINK_REQUEST_RESULT_BUSY,
+        crate::error::RequestResult::NotConnected => {
+            ffi::zlink_request_result_t::ZLINK_REQUEST_RESULT_NOT_CONNECTED
+        }
+        crate::error::RequestResult::InvalidArgument => {
+            ffi::zlink_request_result_t::ZLINK_REQUEST_RESULT_INVALID_ARGUMENT
+        }
+        crate::error::RequestResult::InvalidState => {
+            ffi::zlink_request_result_t::ZLINK_REQUEST_RESULT_INVALID_STATE
+        }
+        crate::error::RequestResult::NotSupported => {
+            ffi::zlink_request_result_t::ZLINK_REQUEST_RESULT_NOT_SUPPORTED
+        }
+    }
+}
+
 pub(crate) fn check_request_result(raw: ffi::zlink_request_result_t) -> Result<(), RequestError> {
     let code = request_result_from_raw(raw);
     if code == crate::error::RequestResult::Ok {

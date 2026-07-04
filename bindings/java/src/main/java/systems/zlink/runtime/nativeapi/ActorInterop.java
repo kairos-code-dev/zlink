@@ -91,8 +91,28 @@ public final class ActorInterop {
           readRoutingId(view.asSlice(
             NativeLayouts.ACTOR_RECV_INFO_SOURCE_SESSION_RID_OFFSET,
             NativeLayouts.ROUTING_ID_LAYOUT.byteSize())),
+          view.get(ValueLayout.JAVA_LONG_UNALIGNED,
+            NativeLayouts.ACTOR_RECV_INFO_REQUEST_ID_OFFSET),
           view.get(ValueLayout.JAVA_INT,
             NativeLayouts.ACTOR_RECV_INFO_FLAGS_OFFSET));
+    }
+
+    public static MemorySegment actorRecvInfoToNative(Arena arena,
+                                                      ActorRecvInfo info) {
+        MemorySegment out = arena.allocate(NativeLayouts.ACTOR_RECV_INFO_LAYOUT);
+        writeActorRef(out.asSlice(NativeLayouts.ACTOR_RECV_INFO_ACTOR_OFFSET,
+          NativeLayouts.ACTOR_REF_LAYOUT.byteSize()), info.actor());
+        writeRoutingId(out.asSlice(
+          NativeLayouts.ACTOR_RECV_INFO_SOURCE_NODE_RID_OFFSET,
+          NativeLayouts.ROUTING_ID_LAYOUT.byteSize()), info.sourceNodeRid());
+        writeRoutingId(out.asSlice(
+          NativeLayouts.ACTOR_RECV_INFO_SOURCE_SESSION_RID_OFFSET,
+          NativeLayouts.ROUTING_ID_LAYOUT.byteSize()), info.sourceSessionRid());
+        out.set(ValueLayout.JAVA_LONG_UNALIGNED,
+          NativeLayouts.ACTOR_RECV_INFO_REQUEST_ID_OFFSET, info.requestId());
+        out.set(ValueLayout.JAVA_INT,
+          NativeLayouts.ACTOR_RECV_INFO_FLAGS_OFFSET, info.flags());
+        return out;
     }
 
     public static ActorRoute actorRouteFromNative(MemorySegment segment) {

@@ -82,8 +82,19 @@ impl ActorRecvInfo {
             actor: ActorRef::from_raw(&raw.actor),
             source_node_rid: RoutingId::from_raw(raw.source_node_rid),
             source_session_rid: RoutingId::from_raw(raw.source_session_rid),
+            request_id: raw.request_id,
             flags: raw.flags,
         }
+    }
+
+    pub(super) fn to_raw(&self) -> Result<ffi::zlink_actor_recv_info_t, ConfigError> {
+        Ok(ffi::zlink_actor_recv_info_t {
+            actor: self.actor.to_raw()?,
+            source_node_rid: *self.source_node_rid.as_raw(),
+            source_session_rid: *self.source_session_rid.as_raw(),
+            request_id: self.request_id,
+            flags: self.flags,
+        })
     }
 }
 

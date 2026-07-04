@@ -50,6 +50,10 @@ int main (void)
     CHECK (zlink_spot_node_set_pub_bind != NULL);
     CHECK (zlink_spot_node_spot_get_or_new != NULL);
     CHECK (zlink_spot_node_actor_join_entry_spot != NULL);
+    CHECK (zlink_spot_node_actor_reply_no_bind != NULL);
+    CHECK (ZLINK_ACTOR_RECV_INFO_NO_BIND == 1u);
+    CHECK (offsetof (zlink_actor_recv_info_t, request_id)
+           > offsetof (zlink_actor_recv_info_t, source_session_rid));
     CHECK (offsetof (zlink_actor_join_entry_spot_result_t, join_result_code)
            > offsetof (zlink_actor_join_entry_spot_result_t, result));
     CHECK (offsetof (zlink_actor_join_entry_spot_result_t, joined_spot_rid)

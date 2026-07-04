@@ -5,13 +5,14 @@ use std::os::fd::RawFd;
 use std::time::Duration;
 
 use crate::actor_models::{
-    ActorJoinEntrySpotResult, ActorJoinRequest, ActorJoinResult, ActorLookupResult, ActorRef,
-    SpotActorLifecycleEvent,
+    ActorJoinEntrySpotResult, ActorJoinRequest, ActorJoinResult, ActorLookupResult, ActorRecvInfo,
+    ActorRef, SpotActorLifecycleEvent,
 };
 use crate::actor_received::ActorReceived;
 use crate::core_context::AutoHwmProfile;
 use crate::error::{
-    CloseError, ConfigError, ConnectError, HandlerError, RecvError, RequestError, SubmitError,
+    CloseError, ConfigError, ConnectError, HandlerError, RecvError, RequestError, RequestResult,
+    SubmitError,
 };
 use crate::flags::{RecvFlags, RidDuplicatePolicy, SendFlags, SubmitRetryMode};
 use crate::message::{Message, RoutingId};
@@ -529,6 +530,12 @@ pub(crate) trait SpotNodePublicRuntime {
     fn send_bound_session_msg(&self, actor: &ActorRef) -> SendOp<Empty>;
     fn send_to_actor(&self, actor: &ActorRef) -> SendOp<Empty>;
     fn request_to_actor(&self, actor: &ActorRef) -> RequestOp<Empty>;
+    fn reply_actor_no_bind(
+        &self,
+        info: &ActorRecvInfo,
+        parts: Vec<Message>,
+        result: RequestResult,
+    ) -> Result<(), SubmitError>;
     fn status(&self) -> Result<SpotNodeStatus, ConfigError>;
     fn set_routing_id(&self, rid: &RoutingId) -> Result<(), ConfigError>;
     fn routing_id(&self) -> Result<RoutingId, ConfigError>;

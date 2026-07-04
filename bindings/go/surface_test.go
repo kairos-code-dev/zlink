@@ -66,6 +66,9 @@ func TestSurfaceCanonicalBuilderSignatures(t *testing.T) {
 	assertReturn((*zlink.StreamSocket)(nil), "BindActor", actorBindOp)
 	assertReturn((*zlink.SpotNode)(nil), "SendToActor", sendOp)
 	assertReturn((*zlink.SpotNode)(nil), "RequestToActor", requestOp)
+	if !hasMethod((*zlink.SpotNode)(nil), "ReplyActorNoBind") {
+		t.Fatalf("SpotNode should expose ReplyActorNoBind")
+	}
 }
 
 func TestSurfaceActorSendAcceptsMultipartBuilder(t *testing.T) {

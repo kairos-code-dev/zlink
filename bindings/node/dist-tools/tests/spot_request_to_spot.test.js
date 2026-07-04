@@ -58,7 +58,7 @@ function textRoutingId(text) {
     return zlink.RoutingId.from(Buffer.from(text, 'ascii'));
 }
 test('spot route bridge request resolves through channel router reply', async () => {
-    const endpoint = `tcp://127.0.0.1:${await reservePort()}`;
+    const endpoint = `inproc://spot-route-bridge-channel-${process.pid}-${Date.now()}`;
     const ctx = zlink.createContext();
     const node = zlink.createSpotNode(ctx);
     const spot = node.createSpot();

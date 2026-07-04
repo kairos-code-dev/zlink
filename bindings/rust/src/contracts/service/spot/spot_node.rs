@@ -3,11 +3,11 @@ use crate::spot_operations::{
     ActorDestroyOp, ActorJoinEntrySpotOp, ActorJoinOp, ActorLeaveOp, ActorLookupOp, RequestOp,
 };
 use crate::{
-    Actor, ActorRef, AutoHwmProfile, CloseError, ConfigError, ConnectError, Empty, Message, Ready,
-    RoutingId, SendOp, Spot, SpotNodeActorEntry, SpotNodeOptions, SpotNodePeerEntry,
-    SpotNodePeerFilter, SpotNodePublisher, SpotNodeSocketEntry, SpotNodeSocketFilter,
-    SpotNodeSpotEntry, SpotNodeStatus, SpotNodeSubjectEntry, SpotNodeSubjectFilter,
-    SpotRouteBridge,
+    Actor, ActorRecvInfo, ActorRef, AutoHwmProfile, CloseError, ConfigError, ConnectError, Empty,
+    Message, Ready, RequestResult, RoutingId, SendOp, Spot, SpotNodeActorEntry, SpotNodeOptions,
+    SpotNodePeerEntry, SpotNodePeerFilter, SpotNodePublisher, SpotNodeSocketEntry,
+    SpotNodeSocketFilter, SpotNodeSpotEntry, SpotNodeStatus, SpotNodeSubjectEntry,
+    SpotNodeSubjectFilter, SpotRouteBridge, SubmitError,
 };
 
 /// A spot node: hosts spots and actors, tunes their sockets, and exposes the
@@ -226,6 +226,16 @@ impl SpotNode {
     /// Begins a request to a resolved Actor ref; completion returns the Actor handler reply.
     pub fn request_to_actor(&self, actor: &ActorRef) -> RequestOp<Empty> {
         <Self as SpotNodeContract>::request_to_actor(self, actor)
+    }
+
+    /// Replies to a no-bind actor request described by `info`.
+    pub fn reply_actor_no_bind(
+        &self,
+        info: &ActorRecvInfo,
+        parts: Vec<Message>,
+        result: RequestResult,
+    ) -> Result<(), SubmitError> {
+        <Self as SpotNodeContract>::reply_actor_no_bind(self, info, parts, result)
     }
 
     /// Returns a snapshot of the node's status.

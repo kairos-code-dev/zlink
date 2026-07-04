@@ -38,6 +38,7 @@ class ZlinkActorRecvInfo(ctypes.Structure):
         ("actor", ZlinkActorRef),
         ("source_node_rid", ZlinkRoutingId),
         ("source_session_rid", ZlinkRoutingId),
+        ("request_id", ctypes.c_uint64),
         ("flags", ctypes.c_uint32),
     ]
 
@@ -1003,6 +1004,17 @@ class _Lib:
                 ctypes.c_void_p,
                 ctypes.c_uint32,
                 ctypes.c_uint32,
+            ],
+            ctypes.c_int,
+        )
+        self._require(
+            "zlink_spot_node_actor_reply_no_bind",
+            [
+                ctypes.c_void_p,
+                ctypes.POINTER(ZlinkActorRecvInfo),
+                ctypes.POINTER(ZlinkMsg),
+                ctypes.c_size_t,
+                ctypes.c_int,
             ],
             ctypes.c_int,
         )

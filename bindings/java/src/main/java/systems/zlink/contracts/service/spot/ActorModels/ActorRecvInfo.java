@@ -10,11 +10,13 @@ import java.util.Objects;
  * @param actor the actor that received the message
  * @param sourceNodeRid the routing id of the sending node
  * @param sourceSessionRid the routing id of the source session, if any
+ * @param requestId request id used when replying to a no-bind actor request
  * @param flags message flags
  */
 public record ActorRecvInfo(ActorRef actor,
                             RoutingId sourceNodeRid,
                             RoutingId sourceSessionRid,
+                            long requestId,
                             int flags) {
     public ActorRecvInfo {
         Objects.requireNonNull(actor, "actor");

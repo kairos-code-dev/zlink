@@ -12,6 +12,7 @@ import systems.zlink.contracts.sockets.PubSocket;
 import systems.zlink.contracts.core.RoutingId;
 import systems.zlink.contracts.messaging.Message;
 import systems.zlink.contracts.service.spot.Actor;
+import systems.zlink.contracts.service.spot.ActorRecvInfo;
 import systems.zlink.contracts.service.spot.ActorDestroyOperation;
 import systems.zlink.contracts.service.spot.ActorJoinEntrySpotOperation;
 import systems.zlink.contracts.service.spot.ActorJoinOperation;
@@ -35,6 +36,7 @@ import systems.zlink.contracts.service.spot.SpotNodeStatus;
 import systems.zlink.contracts.service.spot.SpotNodeSubjectEntry;
 import systems.zlink.contracts.service.spot.SpotNodeSubjectFilter;
 import systems.zlink.contracts.service.spot.SpotRouteBridge;
+import systems.zlink.contracts.sockets.RequestResult;
 import systems.zlink.runtime.nativeapi.DurationConversions;
 import systems.zlink.runtime.nativeapi.ActorInterop;
 import systems.zlink.runtime.nativeapi.EnumCodecs;
@@ -459,6 +461,13 @@ public final class NativeSpotNode implements SpotNode {
 
     public RequestOperation requestToActor(ActorRef actor) {
         return actorOperations.requestToActor(actor);
+    }
+
+    @Override
+    public void replyActorNoBind(ActorRecvInfo info,
+                                 List<Message> parts,
+                                 RequestResult result) {
+        actorOperations.replyActorNoBind(info, parts, result);
     }
 
     /**

@@ -48,7 +48,20 @@ struct actor_model_access_t
         out.actor = from_native (native_.actor);
         out.source_node_rid = native_routing_id (native_.source_node_rid);
         out.source_session_rid = native_routing_id (native_.source_session_rid);
+        out.request_id = native_.request_id;
         out.flags = native_.flags;
+        return out;
+    }
+
+    static zlink_actor_recv_info_t to_native (const actor_recv_info_t &info_) noexcept
+    {
+        zlink_actor_recv_info_t out;
+        std::memset (&out, 0, sizeof (out));
+        out.actor = to_native (info_.actor);
+        out.source_node_rid = routing_id_native_value (info_.source_node_rid);
+        out.source_session_rid = routing_id_native_value (info_.source_session_rid);
+        out.request_id = info_.request_id;
+        out.flags = info_.flags;
         return out;
     }
 

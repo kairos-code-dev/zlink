@@ -94,6 +94,7 @@ class ActorRecvInfo:
     actor: ActorRef
     source_node_rid: RoutingId
     source_session_rid: RoutingId
+    request_id: int
     flags: int
 
 
@@ -280,6 +281,7 @@ def _recv_actor_part(node_handle, actor_ref, flags=0):
             actor=_actor_ref_from_native(info.actor),
             source_node_rid=_routing_id_bytes(info.source_node_rid),
             source_session_rid=_routing_id_bytes(info.source_session_rid),
+            request_id=int(info.request_id),
             flags=int(info.flags),
         ),
         message=_message_from_native(part),

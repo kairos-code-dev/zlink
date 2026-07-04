@@ -3,6 +3,7 @@
 from typing import Protocol, runtime_checkable
 
 from ...core.options import AutoHwmProfile
+from ...sockets.codes import RequestResult
 from ..codes import SpotNodeMode
 from . import spot as _spot_contract
 
@@ -126,6 +127,9 @@ class SpotNode(Protocol):
         ...
     def request_to_actor(self, actor_ref):
         """Begin a request to a resolved Actor ref; completion returns the Actor handler reply."""
+        ...
+    def reply_actor_no_bind(self, info, parts, result: int | RequestResult = RequestResult.OK):
+        """Reply to a no-bind actor request described by ``info``."""
         ...
     def spots(self):
         """Return the spots hosted on the node."""

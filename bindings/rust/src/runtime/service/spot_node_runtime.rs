@@ -469,6 +469,37 @@ impl SpotNodePublicRuntime for SpotNode {
         })
     }
 
+    fn reply_actor_no_bind(
+        &self,
+        info: &ActorRecvInfo,
+        mut parts: Vec<Message>,
+        result: crate::error::RequestResult,
+    ) -> Result<(), SubmitError> {
+        let raw_info = info.to_raw().map_err(|err| {
+            SubmitError::new(crate::error::SubmitResult::InvalidArgument, err.native_errno())
+        })?;
+        let mut native = prepare_send_parts(&mut parts)?;
+        let rc = unsafe {
+            ffi::zlink_spot_node_actor_reply_no_bind(
+                spot_node_handle(self),
+                &raw_info,
+                native.as_mut_ptr(),
+                native.len(),
+                request_result_to_raw(result),
+            )
+        };
+        if rc == 0 {
+            drop(parts);
+        } else {
+            for part in &mut native {
+                unsafe {
+                    ffi::zlink_msg_close(part);
+                }
+            }
+        }
+        check_submit_rc(rc)
+    }
+
     fn status(&self) -> Result<SpotNodeStatus, ConfigError> {
         let mut raw = MaybeUninit::<ffi::zlink_spot_node_status_t>::uninit();
         check_config_rc(unsafe {

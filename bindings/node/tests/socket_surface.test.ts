@@ -152,6 +152,7 @@ test('canonical socket classes expose only directionally valid methods', () => {
   assert.equal(typeof actor.recvPart, 'function');
   assert.equal(typeof actor.sendBoundSession, 'function');
   assert.equal(typeof actor.closeBoundSession, 'function');
+  assert.equal(typeof spotNode.replyActorNoBind, 'function');
   const spot = spotNode.createSpot();
   const bridge = spotNode.createRouteBridge();
   const publisher = spotNode.createPublisher();

@@ -111,6 +111,12 @@ export interface ServiceNativeBinding {
     flags: number,
     timeoutMs: number
   ) => void;
+  spotNodeActorReplyNoBind: (
+    node: NativeHandle,
+    info: unknown,
+    parts: unknown,
+    result: number
+  ) => void;
   spotNodeActors: (node: NativeHandle) => SpotNodeActorEntryRaw[];
   spotRouteBridgeNew: (ctx: NativeHandle, node: NativeHandle) => NativeHandle;
   spotRouteBridgeClose: (bridge: NativeHandle) => void;

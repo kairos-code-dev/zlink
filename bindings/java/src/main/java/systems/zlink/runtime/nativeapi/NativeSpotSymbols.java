@@ -211,6 +211,11 @@ final class NativeSpotSymbols {
                     ValueLayout.JAVA_LONG, ValueLayout.ADDRESS,
                     ValueLayout.ADDRESS, ValueLayout.JAVA_INT,
                     ValueLayout.JAVA_INT));
+    static final MethodHandle MH_SPOT_NODE_ACTOR_REPLY_NO_BIND = downcall(
+            "zlink_spot_node_actor_reply_no_bind",
+            FunctionDescriptor.of(ValueLayout.JAVA_INT, ValueLayout.ADDRESS,
+                    ValueLayout.ADDRESS, ValueLayout.ADDRESS,
+                    ValueLayout.JAVA_LONG, ValueLayout.JAVA_INT));
     static final MethodHandle MH_SPOT_NODE_ACTOR_FORWARD_BOUND_SESSION_PART = downcall(
             "zlink_spot_node_actor_forward_bound_session_part",
             FunctionDescriptor.of(ValueLayout.JAVA_INT, ValueLayout.ADDRESS,

@@ -54,6 +54,7 @@ struct actor_recv_info_t
         actor (),
         source_node_rid (detail::unchecked_empty_routing_id ()),
         source_session_rid (detail::unchecked_empty_routing_id ()),
+        request_id (0),
         flags (0)
     {
     }
@@ -61,6 +62,7 @@ struct actor_recv_info_t
     actor_ref_t actor;
     routing_id_t source_node_rid;
     routing_id_t source_session_rid;
+    uint64_t request_id;
     uint32_t flags;
 
   private:

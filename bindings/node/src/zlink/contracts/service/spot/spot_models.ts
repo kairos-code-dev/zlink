@@ -79,6 +79,7 @@ export interface ActorRecvInfo {
   readonly actor: ActorRef;
   readonly sourceNodeRid: RoutingId;
   readonly sourceSessionRid: RoutingId;
+  readonly requestId: bigint;
   readonly flags: number;
 }
 /** Details of an actor-join request: the actors and spots on each side. */

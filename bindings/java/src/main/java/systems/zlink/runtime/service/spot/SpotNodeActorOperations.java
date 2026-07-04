@@ -15,6 +15,7 @@ import systems.zlink.contracts.errors.ZlinkRequestException;
 import systems.zlink.contracts.errors.ZlinkSubmitException;
 import systems.zlink.contracts.messaging.Message;
 import systems.zlink.contracts.service.spot.Actor;
+import systems.zlink.contracts.service.spot.ActorRecvInfo;
 import systems.zlink.contracts.service.spot.ActorDestroyOperation;
 import systems.zlink.contracts.service.spot.ActorJoinEntrySpotOperation;
 import systems.zlink.contracts.service.spot.ActorJoinOperation;
@@ -213,6 +214,34 @@ final class SpotNodeActorOperations {
         Objects.requireNonNull(actor, "actor");
         node.ensureOpen();
         return new RequestToActorBuilder(actor);
+    }
+
+    void replyActorNoBind(ActorRecvInfo info,
+                          List<Message> parts,
+                          RequestResult result) {
+        Objects.requireNonNull(info, "info");
+        Objects.requireNonNull(parts, "parts");
+        Objects.requireNonNull(result, "result");
+        if (parts.isEmpty())
+            throw new IllegalArgumentException("at least one message required");
+        node.ensureOpen();
+        MessagePartsBuffer buffer = new MessagePartsBuffer();
+        for (Message part : parts) {
+            buffer.add(Objects.requireNonNull(part, "part"));
+        }
+        try (Arena arena = Arena.ofConfined()) {
+            MemorySegment nativeParts = buffer.copyToNativeArray(arena);
+            int rc = Native.spotNodeActorReplyNoBind(
+              node.handle(),
+              ActorInterop.actorRecvInfoToNative(arena, info),
+              nativeParts,
+              buffer.size(),
+              result.value());
+            if (rc != 0) {
+                MessagePartsBuffer.closeNativeArray(nativeParts, buffer.size());
+                throw new ZlinkSubmitException(SubmitResult.fromValue(rc));
+            }
+        }
     }
 
     SendOperation forwardActorBoundSession(

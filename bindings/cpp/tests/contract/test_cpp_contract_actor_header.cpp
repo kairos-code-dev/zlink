@@ -62,6 +62,15 @@ static_assert (
                  std::declval<const zlink::actor_ref_t &> ())),
                zlink::service::request_operation_t>::value,
   "spot_node_t must expose resolved Actor request builder");
+static_assert (
+  std::is_same<decltype (std::declval<zlink::service::spot_node_t &> ().reply_actor_no_bind (
+                 std::declval<const zlink::actor_recv_info_t &> (),
+                 std::declval<std::vector<zlink::message_t> &> (),
+                 zlink::request_result_t::ok)),
+               void>::value,
+  "spot_node_t must expose no-bind Actor reply submit");
+static_assert (std::is_same<decltype (zlink::actor_recv_info_t::request_id), uint64_t>::value,
+               "actor_recv_info_t must expose request_id");
 static_assert (std::is_same<decltype (std::declval<zlink::service::actor_t &> ().join (
                               std::declval<zlink::service::spot_t &> ())),
                             zlink::service::actor_join_operation_t>::value,

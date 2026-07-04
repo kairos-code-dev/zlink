@@ -51,6 +51,7 @@ napi_value spot_node_actor_recv_part (napi_env env, napi_callback_info info);
 napi_value spot_node_actor_send_bound_session_msg (napi_env env, napi_callback_info info);
 napi_value spot_node_send_to_actor (napi_env env, napi_callback_info info);
 napi_value spot_node_request_to_actor (napi_env env, napi_callback_info info);
+napi_value spot_node_actor_reply_no_bind (napi_env env, napi_callback_info info);
 napi_value spot_node_actor_bind_remote_session (napi_env env, napi_callback_info info);
 napi_value spot_node_actor_close_bound_session (napi_env env, napi_callback_info info);
 napi_value stream_bind_actor (napi_env env, napi_callback_info info);

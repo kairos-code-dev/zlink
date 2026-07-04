@@ -31,6 +31,7 @@ export interface ActorRecvInfoRaw {
   actor: ActorRefRaw;
   sourceNodeRid: Buffer;
   sourceSessionRid: Buffer;
+  requestId: bigint;
   flags: number;
 }
 
@@ -150,7 +151,18 @@ export function actorRecvInfoFromRaw(raw: ActorRecvInfoRaw): ActorRecvInfo {
     actor: actorRefFromRaw(raw.actor),
     sourceNodeRid: RoutingId.from(raw.sourceNodeRid),
     sourceSessionRid: RoutingId.from(raw.sourceSessionRid),
+    requestId: BigInt(raw.requestId ?? 0),
     flags: raw.flags
+  };
+}
+
+export function actorRecvInfoToRaw(info: ActorRecvInfo): ActorRecvInfoRaw {
+  return {
+    actor: actorRefToRaw(info.actor),
+    sourceNodeRid: normalizeRoutingId(info.sourceNodeRid, 'info.sourceNodeRid'),
+    sourceSessionRid: normalizeRoutingId(info.sourceSessionRid, 'info.sourceSessionRid'),
+    requestId: BigInt(info.requestId),
+    flags: info.flags | 0
   };
 }
 

@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: MPL-2.0
 
 import type { RoutingId } from '../../core';
+import type { RequestResult } from '../../errors';
 import type { MessageLike } from '../../messaging';
 import type {
   ActorDestroyOperation,
@@ -9,6 +10,7 @@ import type {
   ActorLeaveOperation,
   ActorLookupOperation,
   RequestOperation,
+  ActorRecvInfo,
   ActorRef,
   SendOperation,
   SpotNodeActorEntry,
@@ -97,6 +99,8 @@ export interface SpotNode {
   sendToActor(actor: ActorRef): SendOperation;
   /** Begin a request to a resolved Actor ref; completion returns the Actor handler reply. */
   requestToActor(actor: ActorRef): RequestOperation;
+  /** Reply to a no-bind actor request described by `info`. */
+  replyActorNoBind(info: ActorRecvInfo, parts: MessageLike | readonly MessageLike[], result?: RequestResult): void;
   /** Bind a remote actor to a session owned by another node. */
   bindRemoteActorSession(actor: ActorRef, sourceNodeRid: RoutingId, sourceSessionRid: RoutingId): void;
   /** Return a snapshot of the node's status. */

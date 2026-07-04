@@ -194,6 +194,10 @@ class spot_node_t
 
     request_operation_t request_to_actor (const actor_ref_t &actor_);
 
+    void reply_actor_no_bind (const actor_recv_info_t &info_,
+                              std::vector<message_t> &parts_,
+                              request_result_t result_ = request_result_t::ok);
+
     std::vector<spot_node_spot_entry_t> spots () const;
 
     std::vector<spot_node_actor_entry_t> actors () const;

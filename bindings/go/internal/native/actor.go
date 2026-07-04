@@ -261,6 +261,36 @@ func (n *SpotNode) RequestToActor(actor ActorRef) RequestOp {
 	})
 }
 
+// ReplyActorNoBind replies to a no-bind actor request described by info. The
+// reply parts are consumed on a successful submit.
+func (n *SpotNode) ReplyActorNoBind(info ActorRecvInfo, parts []*Message, result RequestResult) error {
+	handle, err := n.handleOrError()
+	if err != nil {
+		return err
+	}
+	rawInfo, err := info.toC()
+	if err != nil {
+		return err
+	}
+	return submitAggregateFromSendParts(messagesToSendBuilderParts(parts), func(nativeParts *C.zlink_msg_t, partCount C.size_t) error {
+		return submitErrorFromResult(C.zlink_spot_node_actor_reply_no_bind(
+			handle,
+			&rawInfo,
+			nativeParts,
+			partCount,
+			C.zlink_request_result_t(result),
+		))
+	})
+}
+
+func messagesToSendBuilderParts(parts []*Message) []sendBuilderPart {
+	builderParts := make([]sendBuilderPart, len(parts))
+	for i, part := range parts {
+		builderParts[i] = sendBuilderPart{message: part}
+	}
+	return builderParts
+}
+
 // --- Actor methods ---
 
 func (a *Actor) Ref() ActorRef {

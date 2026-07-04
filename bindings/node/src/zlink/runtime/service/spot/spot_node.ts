@@ -14,12 +14,13 @@ import { normalizeRoutingId } from '../../core/routing_id';
 import { requireNative } from '../../native/native';
 import { normalizeOperationPayload } from '../../buffers/message_conversion';
 import { RoutingId, type MessageLike } from '../../../contracts';
+import { RequestResult, type RequestResult as RequestResultValue } from '../../../contracts/errors/errors';
 import { SendFlags } from '../../../contracts/sockets';
 import type { AutoHwmProfileValue } from '../../../contracts/core';
-import { SpotNodeMode, type ActorDestroyOperation, type ActorJoinEntrySpotOperation, type ActorJoinOperation, type ActorLeaveOperation, type ActorLookupOperation, type ActorRef, type RequestOperation, type SendOperation, type SpotNodeActorEntry, type SpotNodeModeValue, type SpotNodePeerEntry, type SpotNodePeerFilter, type SpotNodeSocketEntry, type SpotNodeSocketFilter, type SpotNodeSpotEntry, type SpotNodeStatus, type SpotNodeSubjectEntry, type SpotNodeSubjectFilter } from '../../../contracts/service';
+import { SpotNodeMode, type ActorDestroyOperation, type ActorJoinEntrySpotOperation, type ActorJoinOperation, type ActorLeaveOperation, type ActorLookupOperation, type ActorRecvInfo, type ActorRef, type RequestOperation, type SendOperation, type SpotNodeActorEntry, type SpotNodeModeValue, type SpotNodePeerEntry, type SpotNodePeerFilter, type SpotNodeSocketEntry, type SpotNodeSocketFilter, type SpotNodeSpotEntry, type SpotNodeStatus, type SpotNodeSubjectEntry, type SpotNodeSubjectFilter } from '../../../contracts/service';
 import { SpotNodeOption } from './spot_options';
 import { actorRefFromRaw, actorRefToRaw, spotNodeActorEntryFromRaw, spotNodeSpotEntryFromRaw } from './actor_models';
-import { invokeActorBindRemoteSession, invokeActorDestroy, invokeActorJoin, invokeActorJoinEntrySpot, invokeActorLeave, invokeActorSendBoundSession, invokeRemoteActorGetRef, invokeRequestToActor, invokeSendToActor } from './actor_invokers';
+import { invokeActorBindRemoteSession, invokeActorDestroy, invokeActorJoin, invokeActorJoinEntrySpot, invokeActorLeave, invokeActorReplyNoBind, invokeActorSendBoundSession, invokeRemoteActorGetRef, invokeRequestToActor, invokeSendToActor } from './actor_invokers';
 import { RuntimeActorDestroyOperation, RuntimeActorJoinEntrySpotOperation, RuntimeActorJoinOperation, RuntimeActorLeaveOperation, RuntimeActorLookupOperation } from './actor_operations';
 import { mapSpotNodePeerEntry, mapSpotNodeSocketEntry, mapSpotNodeStatus, mapSpotNodeSubjectEntry, type ActorRefRaw, type SpotNodePeerEntryRaw, type SpotNodeSocketEntryRaw, type SpotNodeSpotGetOrNewRaw, type SpotNodeStatusRaw, type SpotNodeSubjectEntryRaw } from './spot_raw_models';
 
@@ -280,6 +281,13 @@ export class SpotNode extends NativeHandle {
         );
       });
     });
+  }
+  replyActorNoBind(
+    info: ActorRecvInfo,
+    parts: MessageLike | readonly MessageLike[],
+    result: RequestResultValue = RequestResult.Ok,
+  ): void {
+    invokeActorReplyNoBind(this._native, info, parts, result);
   }
   bindRemoteActorSession(actor: ActorRef, sourceNodeRid: RoutingId, sourceSessionRid: RoutingId): void {
     invokeActorBindRemoteSession(this._native, actor, sourceNodeRid, sourceSessionRid);

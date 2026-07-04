@@ -40,6 +40,7 @@ type ActorRecvInfo struct {
 	Actor            ActorRef
 	SourceNodeRID    RoutingID
 	SourceSessionRID RoutingID
+	RequestID        uint64
 	Flags            uint32
 }
 

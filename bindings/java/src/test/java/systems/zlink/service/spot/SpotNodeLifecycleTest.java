@@ -26,6 +26,9 @@ class SpotNodeLifecycleTest {
             SpotNode.class.getMethod("sendToActor", ActorRef.class).getReturnType());
         assertEquals(RequestOperation.class,
             SpotNode.class.getMethod("requestToActor", ActorRef.class).getReturnType());
+        assertEquals(void.class,
+            SpotNode.class.getMethod("replyActorNoBind", ActorRecvInfo.class,
+                java.util.List.class, RequestResult.class).getReturnType());
     }
 
     @Test

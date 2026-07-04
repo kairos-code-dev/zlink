@@ -42,6 +42,8 @@ pub struct ActorRecvInfo {
     pub source_node_rid: RoutingId,
     /// The routing id of the source session.
     pub source_session_rid: RoutingId,
+    /// The request id used when replying to a no-bind actor request.
+    pub request_id: u64,
     /// Implementation-defined receive flags.
     pub flags: u32,
 }

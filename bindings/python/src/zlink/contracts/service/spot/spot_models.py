@@ -66,6 +66,7 @@ class ActorRecvInfo:
     actor: ActorRef
     source_node_rid: RoutingId
     source_session_rid: RoutingId
+    request_id: int
     flags: int
 
 

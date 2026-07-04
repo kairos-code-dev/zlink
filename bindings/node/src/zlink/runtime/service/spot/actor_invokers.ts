@@ -12,10 +12,12 @@ import type {
   ActorJoinEntrySpotHandler,
   ActorJoinHandler,
   ActorLookupHandler,
+  ActorRecvInfo,
   ActorRef,
   ReplyHandler
 } from '../../../contracts/service';
 import {
+  actorRecvInfoToRaw,
   actorJoinEntrySpotResultFromRaw,
   actorJoinResultFromRaw,
   actorLookupResultFromRaw,
@@ -221,6 +223,24 @@ export function invokeRequestToActor(
     return true;
   } catch (error) {
     throw submitNativeError(error, flags, 'requestToActor failed');
+  }
+}
+
+export function invokeActorReplyNoBind(
+  nodeHandle: unknown,
+  info: ActorRecvInfo,
+  parts: MessageLike | readonly MessageLike[],
+  result: RequestResult,
+): void {
+  try {
+    requireNative().spotNodeActorReplyNoBind(
+      nodeHandle,
+      actorRecvInfoToRaw(info),
+      normalizeOperationPayload(parts),
+      result | 0,
+    );
+  } catch (error) {
+    throw submitNativeError(error, SendFlags.None, 'actor no-bind reply failed');
   }
 }
 

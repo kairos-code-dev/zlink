@@ -5,6 +5,7 @@ package systems.zlink.contracts.service.spot;
 import systems.zlink.contracts.core.RoutingId;
 import systems.zlink.contracts.messaging.Message;
 import systems.zlink.contracts.sockets.AutoHwmProfile;
+import systems.zlink.contracts.sockets.RequestResult;
 import systems.zlink.contracts.sockets.DealerSocket;
 import systems.zlink.contracts.sockets.PubSocket;
 import java.time.Duration;
@@ -117,6 +118,11 @@ public interface SpotNode extends AutoCloseable {
 
     /** Builds a request to a resolved Actor ref; completion returns Actor handler reply parts. */
     RequestOperation requestToActor(ActorRef actor);
+
+    /** Replies to a no-bind actor request described by {@code info}. */
+    void replyActorNoBind(ActorRecvInfo info,
+                          List<Message> parts,
+                          RequestResult result);
 
     /**
      * Session-to-actor forward builder for a STREAM session route owned by

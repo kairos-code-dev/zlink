@@ -53,6 +53,7 @@ pub struct zlink_actor_recv_info_t {
     pub actor: zlink_actor_ref_t,
     pub source_node_rid: zlink_routing_id_t,
     pub source_session_rid: zlink_routing_id_t,
+    pub request_id: u64,
     pub flags: u32,
 }
 
@@ -1297,6 +1298,13 @@ unsafe extern "C" {
         userdata: *mut c_void,
         flags: zlink_send_flags_t,
         timeout_ms: u32,
+    ) -> zlink_submit_result_t;
+    pub fn zlink_spot_node_actor_reply_no_bind(
+        node: *mut c_void,
+        info: *const zlink_actor_recv_info_t,
+        parts: *mut zlink_msg_t,
+        part_count: usize,
+        result: zlink_request_result_t,
     ) -> zlink_submit_result_t;
     pub fn zlink_spot_node_actor_close_bound_session(
         node: *mut c_void,

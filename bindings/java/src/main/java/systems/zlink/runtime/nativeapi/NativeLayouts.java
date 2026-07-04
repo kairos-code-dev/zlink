@@ -253,6 +253,7 @@ public final class NativeLayouts {
                     ACTOR_REF_LAYOUT.withName("actor"),
                     ROUTING_ID_LAYOUT.withName("source_node_rid"),
                     ROUTING_ID_LAYOUT.withName("source_session_rid"),
+                    ValueLayout.JAVA_LONG_UNALIGNED.withName("request_id"),
                     ValueLayout.JAVA_INT.withName("flags"),
                     MemoryLayout.paddingLayout(4));
     public static final long ACTOR_RECV_INFO_ACTOR_OFFSET =
@@ -263,6 +264,9 @@ public final class NativeLayouts {
     public static final long ACTOR_RECV_INFO_SOURCE_SESSION_RID_OFFSET =
             ACTOR_RECV_INFO_LAYOUT.byteOffset(
                     PathElement.groupElement("source_session_rid"));
+    public static final long ACTOR_RECV_INFO_REQUEST_ID_OFFSET =
+            ACTOR_RECV_INFO_LAYOUT.byteOffset(
+                    PathElement.groupElement("request_id"));
     public static final long ACTOR_RECV_INFO_FLAGS_OFFSET =
             ACTOR_RECV_INFO_LAYOUT.byteOffset(PathElement.groupElement("flags"));
 

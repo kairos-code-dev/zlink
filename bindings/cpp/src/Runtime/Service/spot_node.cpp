@@ -3,6 +3,7 @@
 
 #include <Runtime/Core/context_access.hpp>
 #include <Runtime/Native/message_access.hpp>
+#include <Runtime/Native/native_message_parts.hpp>
 #include <Runtime/Service/actor_model_access.hpp>
 #include <Runtime/Service/service_model_access.hpp>
 #include <Runtime/Service/spot_access.hpp>
@@ -235,6 +236,21 @@ std::optional<actor_part_t> spot_node_t::recv_actor_part (const actor_ref_t &act
         throw last_error ();
     return actor_part_t (zlink::detail::actor_model_access_t::from_native (native_info),
                          std::move (part), has_more != 0);
+}
+
+void spot_node_t::reply_actor_no_bind (const actor_recv_info_t &info_,
+                                       std::vector<message_t> &parts_,
+                                       request_result_t result_)
+{
+    zlink_actor_recv_info_t native_info = zlink::detail::actor_model_access_t::to_native (info_);
+    const int rc = zlink::detail::submit_message_array (
+      parts_, [&] (zlink_msg_t *native_, size_t part_count_) {
+          return zlink_spot_node_actor_reply_no_bind (
+            zlink::detail::native_handle (*this), &native_info, native_, part_count_,
+            static_cast<zlink_request_result_t> (result_));
+      });
+    if (rc != ZLINK_SUBMIT_OK)
+        throw submit_error_t (static_cast<submit_result_t> (rc), zlink_errno ());
 }
 
 void spot_node_t::set_tls_server (const std::string &cert_,

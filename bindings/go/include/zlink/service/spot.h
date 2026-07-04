@@ -176,6 +176,13 @@ zlink_spot_node_request_to_actor (void *node_,
                                   zlink_send_flags_t flags_,
                                   uint32_t timeout_ms_);
 
+ZLINK_EXPORT zlink_submit_result_t zlink_spot_node_actor_reply_no_bind (
+  void *node_,
+  const zlink_actor_recv_info_t *info_,
+  zlink_msg_t *parts_,
+  size_t part_count_,
+  zlink_request_result_t result_);
+
 ZLINK_EXPORT zlink_config_result_t zlink_spot_node_actor_bind_remote_session (
   void *node_,
   const zlink_actor_ref_t *actor_,

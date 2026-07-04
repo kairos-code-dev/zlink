@@ -13,6 +13,7 @@ extern "C" {
 
 #define ZLINK_ACTOR_ID_MAX 256
 #define ZLINK_ACTOR_JOIN_INFO_REMOTE 1u
+#define ZLINK_ACTOR_RECV_INFO_NO_BIND 1u
 
 typedef struct zlink_actor_ref_t
 {
@@ -26,6 +27,7 @@ typedef struct zlink_actor_recv_info_t
     zlink_actor_ref_t actor;
     zlink_routing_id_t source_node_rid;
     zlink_routing_id_t source_session_rid;
+    uint64_t request_id;
     uint32_t flags;
 } zlink_actor_recv_info_t;
 

@@ -1,9 +1,9 @@
 //! Service surface tests - verify channel/query/introspection APIs exist.
 
 use zlink::{
-    ActorReceived, Context, Message, POLLIN, POLLOUT, PairSocket, PollEvent, PollSourceKind,
-    Poller, Received, RecvFlags, RoutingId, SendFlags, SocketMonitor, Spot, SpotDispatchInfo,
-    SpotNode, SubscriptionEvent, Timer,
+    ActorReceived, ActorRecvInfo, Context, Message, POLLIN, POLLOUT, PairSocket, PollEvent,
+    PollSourceKind, Poller, Received, RecvFlags, RequestResult, RoutingId, SendFlags,
+    SocketMonitor, Spot, SpotDispatchInfo, SpotNode, SubmitError, SubscriptionEvent, Timer,
 };
 
 fn reserve_tcp_port() -> u16 {
@@ -31,6 +31,12 @@ fn spot_node_snapshot_surfaces_exist() {
     node.set_pubsub_high_water_mark(1).unwrap();
     let _ = node.router_high_water_mark().unwrap();
     let _ = node.pubsub_high_water_mark().unwrap();
+}
+
+#[test]
+fn spot_node_actor_no_bind_reply_surface_exists() {
+    let _: fn(&SpotNode, &ActorRecvInfo, Vec<Message>, RequestResult) -> Result<(), SubmitError> =
+        SpotNode::reply_actor_no_bind;
 }
 
 #[test]

@@ -2282,11 +2282,12 @@ raw direct callback `onReceive` 는 canonical public binding API 가 아니다.
   - Node/TypeScript: `camelCase` 메서드, `PascalCase` 클래스.
 
 ### C API 전수 커버리지
-- 각 언어별 스펙 파일은 `core/include/zlink.h`의 모든 ZLINK_EXPORT 함수에
+- 각 언어별 스펙 파일은 `core/include/zlink.h`와 `core/include/zlink/**`
+  하위 public header의 모든 ZLINK_EXPORT 함수에
   대응하는 바인딩 인터페이스를 빠짐없이 기술해야 한다.
 - 대응은 1:1이 아닐 수 있다 (옵션 함수 그룹이 하나의 typed facade로 통합되는 등).
 - 그러나 C API의 어떤 기능도 바인딩 스펙에서 누락되면 안 된다.
-- 새로운 C API가 `zlink.h`에 추가되면 모든 언어 스펙 파일도 함께 갱신해야 한다.
+- 새로운 C API가 public header에 추가되면 모든 언어 스펙 파일도 함께 갱신해야 한다.
 
 ## Service Layer Policy
 - 이 섹션은 소켓 레이어 위에 올라가는 서비스 계층(Spot, Actor)의 public API
@@ -2422,6 +2423,7 @@ handle, Actor recv/join helper처럼 Actor 계약을 구성하는 public type과
   `zlink_spot_node_actor_leave_spot` (async submit),
   `zlink_spot_node_actor_recv_part`,
   `zlink_spot_node_actor_send_bound_session_msg`,
+  `zlink_spot_node_actor_reply_no_bind`,
   `zlink_spot_node_actor_close_bound_session`
 - `Spot` 축: `zlink_spot_actor_join_recv`,
   `zlink_spot_actor_join_reply`, `zlink_spot_recv_actor_lifecycle`,
@@ -2570,6 +2572,7 @@ public surface로 노출해야 한다.
 | Actor leave by ref | `SpotNode` | `zlink_spot_node_actor_leave_spot` |
 | owned Actor leave | `Actor` | `zlink_spot_node_actor_leave_spot` |
 | Actor recv | `Actor` | `zlink_spot_node_actor_recv_part` |
+| no-bind request reply | `SpotNode` | `zlink_spot_node_actor_reply_no_bind` |
 | bound session send | `Actor` | `zlink_spot_node_actor_send_bound_session_msg` |
 | bound session close | `Actor` | `zlink_spot_node_actor_close_bound_session` |
 | join request recv | `Spot` | `zlink_spot_actor_join_recv` |

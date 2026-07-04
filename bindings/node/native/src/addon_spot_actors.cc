@@ -406,6 +406,34 @@ napi_value spot_node_request_to_actor (napi_env env, napi_callback_info info)
     return ok;
 }
 
+napi_value spot_node_actor_reply_no_bind (napi_env env, napi_callback_info info)
+{
+    napi_value argv[4];
+    size_t argc = 4;
+    napi_get_cb_info (env, info, &argc, argv, NULL, NULL);
+    void *node = NULL;
+    napi_get_value_external (env, argv[0], &node);
+    zlink_actor_recv_info_t recv_info;
+    if (!parse_actor_recv_info_value (env, argv[1], &recv_info))
+        return NULL;
+    std::vector<zlink_msg_t> parts;
+    if (!build_msg_vector_or_single (env, argv[2], &parts))
+        return NULL;
+    int32_t result = ZLINK_REQUEST_OK;
+    if (argc >= 4)
+        napi_get_value_int32 (env, argv[3], &result);
+    int rc = zlink_spot_node_actor_reply_no_bind (
+      node, &recv_info, parts.empty () ? NULL : parts.data (), parts.size (),
+      static_cast<zlink_request_result_t> (result));
+    if (rc != ZLINK_SUBMIT_OK) {
+        close_msg_vector (parts);
+        return throw_last_error (env, "spotNodeActorReplyNoBind failed");
+    }
+    napi_value ok;
+    napi_get_undefined (env, &ok);
+    return ok;
+}
+
 napi_value spot_node_actor_bind_remote_session (napi_env env, napi_callback_info info)
 {
     napi_value argv[4];

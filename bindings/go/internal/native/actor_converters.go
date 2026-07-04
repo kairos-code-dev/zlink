@@ -206,8 +206,23 @@ func actorRecvInfoFromC(raw C.zlink_actor_recv_info_t) ActorRecvInfo {
 		Actor:            actorRefFromC(raw.actor),
 		SourceNodeRID:    routingIDFromC(raw.source_node_rid),
 		SourceSessionRID: routingIDFromC(raw.source_session_rid),
+		RequestID:        uint64(raw.request_id),
 		Flags:            uint32(raw.flags),
 	}
+}
+
+func (i ActorRecvInfo) toC() (C.zlink_actor_recv_info_t, error) {
+	actor, err := i.Actor.toC()
+	if err != nil {
+		return C.zlink_actor_recv_info_t{}, err
+	}
+	return C.zlink_actor_recv_info_t{
+		actor:              actor,
+		source_node_rid:    i.SourceNodeRID.toC(),
+		source_session_rid: i.SourceSessionRID.toC(),
+		request_id:         C.uint64_t(i.RequestID),
+		flags:              C.uint32_t(i.Flags),
+	}, nil
 }
 
 func actorJoinInfoFromC(raw C.zlink_actor_join_info_t) *ActorJoinInfo {

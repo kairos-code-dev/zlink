@@ -80,6 +80,11 @@ set(smoke_run_dir
   "${ZLINK_FRAMEWORK_CPP_BUILD_DIR}/tooling-smoke-runs/${tooling_run_id}")
 set(smoke_build_dir
   "${smoke_run_dir}/linux-ninja-debug")
+set(tooling_configure_args)
+if(DEFINED ZLINK_FRAMEWORK_CPP_TOOLING_CMAKE_TOOLCHAIN_FILE)
+  list(APPEND tooling_configure_args
+    -D CMAKE_TOOLCHAIN_FILE=${ZLINK_FRAMEWORK_CPP_TOOLING_CMAKE_TOOLCHAIN_FILE})
+endif()
 file(MAKE_DIRECTORY "${smoke_run_dir}")
 execute_process(
   COMMAND "${CMAKE_COMMAND}"
@@ -92,6 +97,7 @@ execute_process(
     -D CMAKE_EXPORT_COMPILE_COMMANDS=ON
     -D ZLINK_FRAMEWORK_CPP_BUILD_TESTS=ON
     -D ZLINK_FRAMEWORK_CPP_BUILD_SAMPLES=ON
+    ${tooling_configure_args}
   RESULT_VARIABLE configure_result
   OUTPUT_VARIABLE configure_output
   ERROR_VARIABLE configure_error)

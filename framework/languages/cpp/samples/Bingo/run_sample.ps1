@@ -279,6 +279,16 @@ try {
     if (-not (Select-String -Path $clientLog -Pattern "stream-inbound sample=Bingo .* name=.*Notify" -Quiet)) {
         throw "Bingo C++ client did not write stream-inbound push marker."
     }
+    $playLogs = Join-Path $LogDir "play-*.log"
+    if (-not (Select-String -Path $playLogs -Pattern "entry spot: actor destroy completed\. actor=player-1" -Quiet)) {
+        throw "Bingo C++ sample did not record player-1 actor destroy completion."
+    }
+    if (-not (Select-String -Path $playLogs -Pattern "entry spot: actor destroy completed\. actor=player-2" -Quiet)) {
+        throw "Bingo C++ sample did not record player-2 actor destroy completion."
+    }
+    if (Select-String -Path $playLogs -Pattern "entry spot: actor destroy completed\. actor=observer" -Quiet) {
+        throw "Bingo C++ sample destroyed observer actor during player cleanup."
+    }
 
     $Status = 0
 } finally {

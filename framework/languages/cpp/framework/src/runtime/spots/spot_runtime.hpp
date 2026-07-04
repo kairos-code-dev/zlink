@@ -9,6 +9,7 @@
 #include <zlink/framework/contracts/actors/actor.hpp>
 #include <zlink/framework/contracts/dispatch/execution.hpp>
 #include <zlink/framework/contracts/locations/resolvers.hpp>
+#include <zlink/Contracts/Service/actor_models.hpp>
 
 #include <cstdint>
 #include <exception>
@@ -58,22 +59,38 @@ class spot_node_builder_state_t
         std::type_index actor_type{typeid (void)};
         std::function<std::shared_ptr<void> (std::string)> create_instance;
         std::function<void (void *, const actor_ref_t &, void *)> configure_instance;
+        std::function<std::optional<zlink::message_t> (void *, serializer_registry_t &)>
+          serialize_instance;
+        std::function<void (void *, const zlink::message_t &, serializer_registry_t &)>
+          deserialize_instance;
     };
     std::function<result_t<void> (const actor_ref_t &)> destroy_actor_registry;
     std::function<result_t<void> (const actor_ref_t &)> update_actor_registry_ref;
     std::function<result_t<std::optional<zlink::message_t>> (const actor_ref_t &,
                                                              actor_context_t,
+                                                             stream_message_kind_t,
                                                              std::string_view,
                                                              const zlink::message_t &,
                                                              service_provider_t &,
                                                              serializer_registry_t &,
                                                              spot_actor_message_metadata_t)>
       actor_packet_relay;
+    std::function<result_t<actor_join_reply_t> (const actor_ref_t &,
+                                                node_rid_t,
+                                                const zlink::message_t &,
+                                                const std::optional<zlink::message_t> &)>
+      actor_entry_spot_join;
     std::map<std::string, actor_factory_registration_t> actor_factories;
     std::map<std::string, std::shared_ptr<void>> actor_instances;
     std::map<std::string, std::shared_ptr<std::mutex>> actor_mailboxes;
     std::map<std::string, spot_route_t> actor_routes;
     std::map<std::string, std::shared_ptr<service::spot_t>> native_spots_by_rid;
+    struct queued_actor_packet_t
+    {
+        zlink::actor_recv_info_t info;
+        std::vector<zlink::message_t> parts;
+    };
+    std::vector<queued_actor_packet_t> queued_actor_packets;
     std::map<std::string, std::function<std::optional<spot_route_t> (spot_rid_t)>> resolvers;
     std::vector<std::string> last_monitoring_peers;
     std::shared_ptr<runtime::offload_executor_t> worker_executor;
@@ -240,13 +257,21 @@ class spot_node_runtime_t
                                           serializer_registry_t &serializers) const;
     std::size_t drain_routed_packets (service_provider_t &services,
                                       serializer_registry_t &serializers) const;
+    std::size_t drain_actor_packets (service_provider_t &services,
+                                     serializer_registry_t &serializers);
     std::size_t drain_subscriptions (service_provider_t &services,
                                      serializer_registry_t &serializers) const;
     void on_destroy_actor (std::function<result_t<void> (const actor_ref_t &)> destroy_actor);
     void on_actor_ref_updated (std::function<result_t<void> (const actor_ref_t &)> update_actor);
+    void on_actor_entry_spot_join (
+      std::function<result_t<actor_join_reply_t> (const actor_ref_t &,
+                                                  node_rid_t,
+                                                  const zlink::message_t &,
+                                                  const std::optional<zlink::message_t> &)> join);
     void on_actor_packet_relay (
       std::function<result_t<std::optional<zlink::message_t>> (const actor_ref_t &,
                                                                actor_context_t,
+                                                               stream_message_kind_t,
                                                                std::string_view,
                                                                const zlink::message_t &,
                                                                service_provider_t &,
@@ -254,20 +279,33 @@ class spot_node_runtime_t
                                                                spot_actor_message_metadata_t)>
         relay);
     spot_node_manager_t manager () const;
-    result_t<actor_join_reply_t> join_actor_to_spot_erased (const actor_ref_t &actor_ref,
-                                                            spot_rid_t spot_rid,
-                                                            const zlink::message_t &request);
+    result_t<actor_join_reply_t> join_actor_to_spot_erased (
+      const actor_ref_t &actor_ref,
+      spot_rid_t spot_rid,
+      const zlink::message_t &request,
+      const std::optional<zlink::message_t> &actor_snapshot = std::nullopt);
     result_t<actor_join_reply_t>
     join_remote_actor_to_spot_erased (const actor_ref_t &actor_ref,
                                       spot_rid_t spot_rid,
                                       const zlink::message_t &request,
                                       actor_context_t actor_context = {});
-    result_t<actor_join_reply_t> join_actor_to_entry_spot_erased (const actor_ref_t &actor_ref,
-                                                                  node_rid_t spot_node_rid,
-                                                                  const zlink::message_t &request);
+    result_t<actor_join_reply_t> join_actor_to_entry_spot_erased (
+      const actor_ref_t &actor_ref,
+      node_rid_t spot_node_rid,
+      const zlink::message_t &request,
+      const std::optional<zlink::message_t> &actor_snapshot = std::nullopt);
     result_t<std::optional<zlink::message_t>>
     relay_actor_packet (const actor_ref_t &actor_ref,
                         actor_context_t actor_context,
+                        std::string_view packet_name,
+                        const zlink::message_t &message,
+                        service_provider_t &services,
+                        serializer_registry_t &serializers,
+                        spot_actor_message_metadata_t metadata = {});
+    result_t<std::optional<zlink::message_t>>
+    relay_actor_packet (const actor_ref_t &actor_ref,
+                        actor_context_t actor_context,
+                        stream_message_kind_t message_kind,
                         std::string_view packet_name,
                         const zlink::message_t &message,
                         service_provider_t &services,

@@ -68,7 +68,13 @@ finally:
     for sock in sockets:
         sock.close()
 PY
-)"
+  )"
+fi
+
+if [[ ${#PORTS[@]} -lt 22 ]]; then
+  echo "Failed to allocate 22 local TCP ports for the Bingo sample." >&2
+  echo "This environment may block local socket creation; set BINGO_BASE_PORT to use fixed ports." >&2
+  exit 1
 fi
 
 API_A_CHANNEL_ENDPOINT="${BINGO_API_A_CHANNEL_ENDPOINT:-tcp://127.0.0.1:${PORTS[2]}}"
@@ -122,7 +128,7 @@ wait_port() {
   return 1
 }
 
-RUN_DIR="$(mktemp -d)"
+RUN_DIR="${BINGO_RUN_DIR:-$(mktemp -d)}"
 LOG_DIR="$RUN_DIR/logs"
 mkdir -p "$LOG_DIR"
 PIDS=()
@@ -168,7 +174,7 @@ cleanup() {
   if [[ "${BINGO_KEEP_RUN_DIR:-}" == "1" ]]; then
     echo "runDir=$RUN_DIR"
   else
-    rm -rf "$RUN_DIR"
+    [[ -z "${BINGO_RUN_DIR:-}" ]] && rm -rf "$RUN_DIR"
   fi
 }
 trap cleanup EXIT
@@ -181,7 +187,7 @@ else
     exit 1
   fi
   REDIS_CONTAINER="bingo-cpp-redis-${RANDOM}-$$"
-  docker run -d --rm --name "$REDIS_CONTAINER" -p "127.0.0.1::6379" redis:7.2-alpine >/dev/null
+  docker run -d --rm --name "$REDIS_CONTAINER" -p "127.0.0.1:${REDIS_PORT}:6379" redis:7.2-alpine >/dev/null
   BINGO_REDIS_ENDPOINT="$(docker port "$REDIS_CONTAINER" 6379/tcp | sed -E 's/.*:([0-9]+)$/127.0.0.1:\1/')"
   wait_port redis "tcp://${BINGO_REDIS_ENDPOINT}"
 fi
@@ -270,6 +276,12 @@ grep -q "bingo=completed" "$LOG_DIR/client.log"
 grep -q "stream-inbound sample=Bingo" "$LOG_DIR/client.log"
 grep -Eq "stream-inbound sample=Bingo .* seq=[0-9]" "$LOG_DIR/client.log"
 grep -Eq "stream-inbound sample=Bingo .* name=.*Notify" "$LOG_DIR/client.log"
+grep -Rq "entry spot: actor destroy completed. actor=player-1" "$LOG_DIR"/play-*.log
+grep -Rq "entry spot: actor destroy completed. actor=player-2" "$LOG_DIR"/play-*.log
+if grep -Rq "entry spot: actor destroy completed. actor=observer" "$LOG_DIR"/play-*.log; then
+  echo "Observer actor must not be destroyed during Bingo player cleanup." >&2
+  exit 1
+fi
 grep -Rq "message flow" "$BINGO_LOG_DIR"
 
 cleanup

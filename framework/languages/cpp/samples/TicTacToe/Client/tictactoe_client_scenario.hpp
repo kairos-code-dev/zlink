@@ -46,15 +46,21 @@ class tictactoe_client_scenario_t
             if (room.owner_play_endpoint.empty ()) {
                 throw std::runtime_error ("API returned an empty play endpoint.");
             }
-            std::string observer_endpoint;
+            if (room.play_endpoints.size () < 2) {
+                throw std::runtime_error ("API must return at least two Play endpoints.");
+            }
+            std::string guest_endpoint;
             for (const auto &endpoint : room.play_endpoints) {
                 if (endpoint != room.owner_play_endpoint) {
-                    observer_endpoint = endpoint;
+                    guest_endpoint = endpoint;
                     break;
                 }
             }
-            if (observer_endpoint.empty ()) {
+            if (guest_endpoint.empty ()) {
                 throw std::runtime_error ("API did not return a non-owner Play endpoint.");
+            }
+            if (non_owner_node_rid (room).empty ()) {
+                throw std::runtime_error ("API did not return the non-owner Play node rid.");
             }
 
             zlink::stream_connector::connector_options_t connector_options;
@@ -62,15 +68,15 @@ class tictactoe_client_scenario_t
             connector_options.connect_timeout = options.stream_timeout;
             connector_options.request_timeout = options.stream_timeout;
             connector_options.dispatch_mode = zlink::stream_connector::dispatch_mode_t::immediate;
-            auto observer_connector_options = connector_options;
-            observer_connector_options.endpoint = observer_endpoint;
+            auto guest_connector_options = connector_options;
+            guest_connector_options.endpoint = guest_endpoint;
 
             auto core_client1 =
               zlink::stream_connector::connector_factory_t::create (connector_options);
             auto core_client2 =
-              zlink::stream_connector::connector_factory_t::create (connector_options);
+              zlink::stream_connector::connector_factory_t::create (guest_connector_options);
             auto core_observer =
-              zlink::stream_connector::connector_factory_t::create (observer_connector_options);
+              zlink::stream_connector::connector_factory_t::create (guest_connector_options);
             [[maybe_unused]] auto inbound_log1 = core_client1.observe_inbound (
               [] (const zlink::stream_connector::inbound_observation_t &observation) {
                   std::cout << "stream-inbound sample=TicTacToe client=player kind="
@@ -207,13 +213,20 @@ class tictactoe_client_scenario_t
               client1.wait_for<player_joined_notify_t> ()
                 .where (&player_joined_notify_t::actor_id, client2_auth.player.actor_id)
                 .to_future ("client1 player joined notify wait failed");
+            auto client1_wait_game_start =
+              client1.wait_for<game_state_notify_t> ()
+                .where ([&options] (const game_state_notify_t &message) {
+                    return message.state.status == tictactoe_status_t::in_progress
+                           && message.state.o_actor_id == options.o_actor_id;
+                })
+                .to_future ("client1 game start notify wait failed");
             trace ("join client2");
             const auto client2_join_request = join_game_req_t{room.room_id, client2_auth.player};
             auto client2_join =
               co_await client2.request (client2_join_request)
                 .async<join_game_res_t> ();
             ensure (client2_join.state.room_id == room.room_id);
-            ensure (client2_join.state.x_actor_id == options.x_actor_id);
+            trace ((std::string ("client2_join state: x=") + client2_join.state.x_actor_id + " o=" + client2_join.state.o_actor_id + " status=" + client2_join.state.status).c_str ());
             ensure (client2_join.state.o_actor_id == options.o_actor_id);
             ensure (client2_join.state.status == tictactoe_status_t::in_progress);
             auto client2_self_join =
@@ -227,6 +240,11 @@ class tictactoe_client_scenario_t
             auto client1_saw_client2_join = client1_wait_client2_join.get ();
             ensure (client1_saw_client2_join.room_id == room.room_id);
             ensure (client1_saw_client2_join.mark == tictactoe_marks_t::o);
+            auto client1_saw_game_start = client1_wait_game_start.get ();
+            ensure (client1_saw_game_start.room_id == room.room_id);
+            ensure (client1_saw_game_start.state.status == tictactoe_status_t::in_progress);
+            ensure (client1_saw_game_start.state.o_actor_id == options.o_actor_id);
+            ensure (client1_saw_game_start.state.next_turn == options.x_actor_id);
 
             auto client2_wait_first_move =
               client2.wait_for<game_state_notify_t> ()
@@ -346,11 +364,9 @@ class tictactoe_client_scenario_t
                       << " receivingSpotNodeRid=" << milestone.receiving_spot_node_rid << '\n';
 
             const auto client1_leave_request = leave_game_req_t{room.room_id};
-            co_await client1.request (client1_leave_request)
-              .async<place_mark_res_t> ();
+            client1.send (client1_leave_request).submit ();
             const auto client2_leave_request = leave_game_req_t{room.room_id};
-            co_await client2.request (client2_leave_request)
-              .async<place_mark_res_t> ();
+            client2.send (client2_leave_request).submit ();
 
             co_await client1.close ().async ();
             co_await client2.close ().async ();

@@ -7,6 +7,7 @@
 #include <zlink/framework.hpp>
 
 #include <algorithm>
+#include <iostream>
 #include <stdexcept>
 #include <string>
 #include <vector>
@@ -89,7 +90,11 @@ class bingo_entry_spot_t : public entry_spot_t
         if (!actor.destroy_after_entry_spot_join) {
             return;
         }
-        (void) _context.destroyActor (actor_ref_for (actor), const_cast<player_actor_t &> (actor));
+        const auto actor_id = actor.actor.actor_id;
+        const auto actor_ref = actor_ref_for (actor);
+        std::cout << "entry spot: actor destroy requested. actor=" << actor_id << std::endl;
+        (void) _context.destroyActor (actor_ref, const_cast<player_actor_t &> (actor));
+        std::cout << "entry spot: actor destroy completed. actor=" << actor_id << std::endl;
     }
 
     void onLeaveActor (const player_actor_t &actor)

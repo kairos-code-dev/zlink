@@ -12,6 +12,7 @@
 #include <zlink/framework/contracts/dispatch/task.hpp>
 #include <zlink/framework/contracts/errors/result.hpp>
 #include <zlink/framework/contracts/spots/spot_identity.hpp>
+#include <zlink/framework/contracts/streams/stream.hpp>
 #include <zlink/framework/contracts/timers/timer.hpp>
 #include <zlink/framework/contracts/workers/worker.hpp>
 
@@ -467,6 +468,7 @@ struct spot_node_snapshot_t
     std::vector<std::string> spot_names;
     std::optional<std::string> entry_spot_name;
     std::vector<accepted_spot_route_channel_t> accepted_route_channels;
+    std::optional<std::string> spot_route_channel_name;
     std::vector<std::string> actor_types;
 };
 
@@ -756,9 +758,9 @@ class spot_context_t
     spot_context_t &register_packet_erased (std::string packet_name, std::type_index payload_type);
     task_t<actor_ref_t>
     leave_actor_erased (const actor_ref_t &actor_ref,
-                       std::type_index actor_type,
-                       void *actor,
-                       std::function<void (void *, const actor_ref_t &)> update_actor_ref);
+                        std::type_index actor_type,
+                        void *actor,
+                        std::function<void (void *, const actor_ref_t &)> update_actor_ref);
     timer_t
     add_timer_erased (std::string name,
                       std::chrono::milliseconds period,
@@ -899,17 +901,16 @@ class spot_handler_registry_t
     add_actor_send (std::string packet_name = detail::message_name<detail::unqualified_spot_arg_t<
                       typename detail::spot_member_traits_t<Method>::template arg_t<2>>> ())
     {
-        return add_actor_handler<Method, spot_handler_kind_t::actor_send, spot_actor_send_context_t> (
-          std::move (packet_name));
+        return add_actor_handler<Method, spot_handler_kind_t::actor_send,
+                                 spot_actor_send_context_t> (std::move (packet_name));
     }
 
     template <auto Method>
-    spot_handler_registry_t &
-    add_actor_request (std::string packet_name = detail::message_name<detail::unqualified_spot_arg_t<
-                         typename detail::spot_member_traits_t<Method>::template arg_t<2>>> ())
+    spot_handler_registry_t &add_actor_request (
+      std::string packet_name = detail::message_name<detail::unqualified_spot_arg_t<
+        typename detail::spot_member_traits_t<Method>::template arg_t<2>>> ())
     {
-        return add_actor_handler<Method,
-                                 spot_handler_kind_t::actor_request,
+        return add_actor_handler<Method, spot_handler_kind_t::actor_request,
                                  spot_actor_request_context_t> (std::move (packet_name));
     }
 
@@ -936,10 +937,10 @@ class spot_handler_registry_t
                                                     serializer_registry_t &serializers,
                                                     const zlink::message_t &message) const
     {
-        const auto kind = resolve_actor_packet_kind (packet_name, std::type_index (typeid (TActor)));
-        return invoke_erased (kind, packet_name, {},
-                              std::type_index (typeid (TActor)), &spot, &actor, services,
-                              serializers, message)
+        const auto kind =
+          resolve_actor_packet_kind (packet_name, std::type_index (typeid (TActor)));
+        return invoke_erased (kind, packet_name, {}, std::type_index (typeid (TActor)), &spot,
+                              &actor, services, serializers, message)
           .result ();
     }
 
@@ -952,10 +953,10 @@ class spot_handler_registry_t
                                                     const zlink::message_t &message,
                                                     spot_actor_message_metadata_t metadata) const
     {
-        const auto kind = resolve_actor_packet_kind (packet_name, std::type_index (typeid (TActor)));
-        return invoke_erased (kind, packet_name, {},
-                              std::type_index (typeid (TActor)), &spot, &actor, services,
-                              serializers, message, std::move (metadata))
+        const auto kind =
+          resolve_actor_packet_kind (packet_name, std::type_index (typeid (TActor)));
+        return invoke_erased (kind, packet_name, {}, std::type_index (typeid (TActor)), &spot,
+                              &actor, services, serializers, message, std::move (metadata))
           .result ();
     }
 
@@ -1086,13 +1087,13 @@ class spot_handler_registry_t
                   detail::encoded_payload_from_raw (message)));
               auto context = [&] {
                   if constexpr (std::is_same_v<ExpectedContext, spot_actor_request_context_t>) {
-                      return std::make_shared<ExpectedContext> (
-                        ExpectedContext{registered_packet_name, metadata.content_type, metadata, {}});
+                      return std::make_shared<ExpectedContext> (ExpectedContext{
+                        registered_packet_name, metadata.content_type, metadata, {}});
                   } else {
                       return std::make_shared<ExpectedContext> (
                         ExpectedContext{registered_packet_name, metadata.content_type, metadata});
                   }
-              } ();
+              }();
               return detail::invoke_spot_member_keepalive (
                 [&typed_spot, &typed_actor, context, payload] {
                     return (typed_spot.*Method) (typed_actor, *context, *payload);
@@ -1148,6 +1149,15 @@ class spot_node_manager_t
     result_t<std::optional<zlink::message_t>>
     relay_actor_packet (const actor_ref_t &actor_ref,
                         actor_context_t actor_context,
+                        std::string_view packet_name,
+                        const zlink::message_t &message,
+                        service_provider_t &services,
+                        serializer_registry_t &serializers,
+                        spot_actor_message_metadata_t metadata = {});
+    result_t<std::optional<zlink::message_t>>
+    relay_actor_packet (const actor_ref_t &actor_ref,
+                        actor_context_t actor_context,
+                        detail::stream_message_kind_t message_kind,
                         std::string_view packet_name,
                         const zlink::message_t &message,
                         service_provider_t &services,
@@ -1262,6 +1272,7 @@ class spot_node_builder_t
     spot_node_builder_t &enable_pub_sub (std::string endpoint);
     spot_node_builder_t &connect_pub_sub (std::string endpoint);
     spot_node_builder_t &connect_peer_pub (std::string endpoint);
+    spot_node_builder_t &set_spot_route_channel (std::string route_channel_name);
     template <typename TSpot> spot_node_builder_t &add_spot (std::string spot_name)
     {
         static_assert (std::is_base_of_v<spot_t, TSpot>,
@@ -1351,6 +1362,34 @@ class spot_node_builder_t
                             *static_cast<actor_context_t *> (actor_context));
                       }
                   }
+              },
+              [] (void *actor,
+                  serializer_registry_t &serializers) -> std::optional<zlink::message_t> {
+                  if constexpr (!std::is_default_constructible_v<actor_type_t>
+                                || !std::is_assignable_v<actor_type_t &, actor_type_t>) {
+                      return std::nullopt;
+                  } else {
+                      try {
+                          return detail::encoded_payload_to_raw (
+                            serializers.get<actor_type_t> ().serialize (
+                              *static_cast<actor_type_t *> (actor)));
+                      }
+                      catch (const framework_exception_t &error) {
+                          if (error.kind () == framework_error_kind_t::payload_decode_failed) {
+                              return std::nullopt;
+                          }
+                          throw;
+                      }
+                  }
+              },
+              [] (void *actor, const zlink::message_t &snapshot,
+                  serializer_registry_t &serializers) {
+                  if constexpr (std::is_default_constructible_v<actor_type_t>
+                                && std::is_assignable_v<actor_type_t &, actor_type_t>) {
+                      *static_cast<actor_type_t *> (actor) =
+                        serializers.get<actor_type_t> ().deserialize (
+                          detail::encoded_payload_from_raw (snapshot));
+                  }
               });
         } else {
             return add_actor_factory_erased (
@@ -1371,6 +1410,34 @@ class spot_node_builder_t
                           typed_actor.set_actor_context (
                             *static_cast<actor_context_t *> (actor_context));
                       }
+                  }
+              },
+              [] (void *actor,
+                  serializer_registry_t &serializers) -> std::optional<zlink::message_t> {
+                  if constexpr (!std::is_default_constructible_v<TActorFactory>
+                                || !std::is_assignable_v<TActorFactory &, TActorFactory>) {
+                      return std::nullopt;
+                  } else {
+                      try {
+                          return detail::encoded_payload_to_raw (
+                            serializers.get<TActorFactory> ().serialize (
+                              *static_cast<TActorFactory *> (actor)));
+                      }
+                      catch (const framework_exception_t &error) {
+                          if (error.kind () == framework_error_kind_t::payload_decode_failed) {
+                              return std::nullopt;
+                          }
+                          throw;
+                      }
+                  }
+              },
+              [] (void *actor, const zlink::message_t &snapshot,
+                  serializer_registry_t &serializers) {
+                  if constexpr (std::is_default_constructible_v<TActorFactory>
+                                && std::is_assignable_v<TActorFactory &, TActorFactory>) {
+                      *static_cast<TActorFactory *> (actor) =
+                        serializers.get<TActorFactory> ().deserialize (
+                          detail::encoded_payload_from_raw (snapshot));
                   }
               });
         }
@@ -1410,7 +1477,11 @@ class spot_node_builder_t
       std::string actor_type,
       std::type_index actor_instance_type,
       std::function<std::shared_ptr<void> (std::string)> create_instance,
-      std::function<void (void *, const actor_ref_t &, void *)> configure_instance);
+      std::function<void (void *, const actor_ref_t &, void *)> configure_instance,
+      std::function<std::optional<zlink::message_t> (void *, serializer_registry_t &)>
+        serialize_instance,
+      std::function<void (void *, const zlink::message_t &, serializer_registry_t &)>
+        deserialize_instance);
 
     template <typename TSpot>
     void register_lifecycle (std::string spot_name,

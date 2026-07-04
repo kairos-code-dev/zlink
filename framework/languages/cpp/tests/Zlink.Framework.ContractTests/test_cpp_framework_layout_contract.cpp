@@ -2620,6 +2620,16 @@ int main ()
       root / "framework/src/runtime/http/http_listener.cpp",
       "asio::ssl::context context (asio::ssl::context::tls_server)",
       "HTTP hosting must reuse listener TLS context instead of creating it per connection");
+    ok &= file_contains (root / "framework/include/zlink/framework/contracts/actors/actor.hpp",
+                         "class actor_client_t");
+    ok &= file_contains (root / "framework/include/zlink/framework/contracts/actors/actor.hpp",
+                         "send_to_actor (std::string actor_id");
+    ok &= file_contains (root / "framework/include/zlink/framework/contracts/actors/actor.hpp",
+                         "request_to_actor (std::string actor_id");
+    ok &= file_contains (root / "framework/src/runtime/actors/actor_client.cpp",
+                         "resolve_actor (actor_location_key_t{actor_id})");
+    ok &= file_contains (root / "CMakeLists.txt",
+                         "framework/src/runtime/actors/actor_client.cpp");
 
     ok &= public_headers_do_not_include_runtime (root / "framework/include");
     ok &= public_headers_do_not_include_runtime (root / "connector/core/include");

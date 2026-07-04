@@ -476,7 +476,10 @@ TEST (ZLinkFrameworkLocationsRedis, CrossLanguageReadsDotnetRows)
                    .result ();
     ASSERT_TRUE (actor.has_value ());
     ASSERT_TRUE (actor.value ().has_value ());
-    EXPECT_EQ ("dotnet-ref", actor.value ()->actor_ref);
+    ASSERT_TRUE (actor.value ()->actor_ref.has_value ());
+    EXPECT_EQ ("dotnet-actor", actor.value ()->actor_ref->actor_id ());
+    EXPECT_EQ ("dotnet-node", actor.value ()->actor_ref->node_rid ().value ());
+    EXPECT_EQ (1u, actor.value ()->actor_ref->generation ());
     EXPECT_EQ ("dotnet-node", actor.value ()->node_rid.to_string ());
     EXPECT_EQ ("dotnet-owner", actor.value ()->owner_id);
 

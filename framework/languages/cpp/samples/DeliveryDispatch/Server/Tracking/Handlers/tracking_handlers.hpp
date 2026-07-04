@@ -37,14 +37,16 @@ class delivery_status_changed_handler_t
     using request_type = delivery_status_changed_req_t;
     using reply_type = delivery_status_changed_res_t;
     using dependency_types = zlink::framework::dependency_list_t<evidence_store_t,
+                                                                zlink::framework::actor_client_t,
                                                                 zlink::framework::publisher_t,
                                                                 delivery_spot_directory_t>;
     static constexpr const char *topic_name = "DeliveryStatusChangedReq";
 
     delivery_status_changed_handler_t (evidence_store_t &evidence,
+                                       zlink::framework::actor_client_t &actors,
                                        zlink::framework::publisher_t &fanout,
                                        delivery_spot_directory_t &directory) :
-        _evidence (evidence), _fanout (fanout), _directory (directory)
+        _evidence (evidence), _actors (actors), _fanout (fanout), _directory (directory)
     {
     }
 
@@ -53,6 +55,12 @@ class delivery_status_changed_handler_t
     {
         _evidence.append (request);
         _directory.get_or_create (request.delivery_id).record (request);
+        delivery_status_updated_msg_t updated{request.delivery_id, request.customer_id,
+                                              request.status, request.courier_id,
+                                              request.occurred_at};
+        co_await _actors.send_to_actor (request.customer_id, updated)
+          .packet_name (delivery_status_updated_msg_t::packet_name)
+          .async ();
         delivery_status_notify_t notify{
           request.delivery_id, request.status, request.courier_id, request.occurred_at};
         _fanout.publish (sample_names_t::status_fanout_channel, sample_names_t::status_topic, notify)
@@ -64,6 +72,7 @@ class delivery_status_changed_handler_t
 
   private:
     evidence_store_t &_evidence;
+    zlink::framework::actor_client_t &_actors;
     zlink::framework::publisher_t &_fanout;
     delivery_spot_directory_t &_directory;
 };

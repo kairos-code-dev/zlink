@@ -52,7 +52,7 @@ inventory다. C++ 샘플은 public framework API와 Stream Connector public wait
 | `.NET: Server/Play/Infrastructure/ZLink/Spots/BingoRoomSpot/Notifications/BingoNotificationPublisher.cs` | `Server/Play/Infrastructure/ZLink/Spots/BingoRoomSpot/bingo_room_spot.hpp` | notification | done | C++는 별도 publisher class 없이 room Spot에서 public publish API를 호출한다. |
 | `.NET: Server/Play/Infrastructure/ZLink/Spots/BingoRoomSpot/Notifications/BingoRoomEvent.cs` | `Shared/Contracts/messages.hpp` | notification | done | reward event payload를 shared message 타입으로 대응한다. |
 | `.NET: Server/Play/Infrastructure/ZLink/Spots/BingoRoomSpot/Notifications/BingoRoomEventMapper.cs` | `Server/Play/Infrastructure/ZLink/Spots/BingoRoomSpot/bingo_room_spot.hpp` | notification | done | domain event를 reward notify payload로 변환한다. |
-| `.NET: run_sample.sh`, `run_sample.ps1` | `run_sample.sh`, `run_sample.ps1` | runner | done | build 산출물, process readiness, Redis 준비, client marker, message-flow log를 검증한다. |
+| `.NET: run_sample.sh`, `run_sample.ps1` | `run_sample.sh`, `run_sample.ps1` | runner | done | build 산출물, process readiness, Redis 준비, client marker, message-flow log, player actor destroy evidence를 검증한다. |
 | `.NET: README.md` | `README.ko.md` | sample-doc | done | C++ 역할 구조, 실행 방법, Redis 실행 책임을 설명한다. |
 
 ## 공통 요구 매핑
@@ -71,7 +71,7 @@ inventory다. C++ 샘플은 public framework API와 Stream Connector public wait
 | `common: public connector wait interface로 push 대기` | `Client/bingo_client_scenario.hpp` | validation | done | wait filter와 future를 직접 사용하고 sample-local inbox로 숨기지 않는다. |
 | `common: `bingo=completed` marker` | `Client/main.cpp`, `run_sample.sh` | validation | done | runner가 client log marker를 검사한다. |
 | `common: stream-inbound marker와 Notify marker` | `Client/main.cpp`, `run_sample.sh` | validation | done | inbound observer log와 notify 수신 marker를 검사한다. |
-| `common: message-flow server evidence` | `Server/sample_log_dir.hpp`, `run_sample.sh` | validation | done | runner가 sample log directory에서 message-flow log를 검사한다. |
+| `common: message-flow server evidence` | `Server/sample_log_dir.hpp`, `run_sample.sh`, `run_sample.ps1` | validation | done | runner가 sample log directory에서 message-flow log를 검사하고 player actor destroy 완료와 observer 미-destroy 조건을 확인한다. |
 | `common: 외부 Redis endpoint가 있으면 사용` | `run_sample.sh` | runner | done | `BINGO_REDIS_ENDPOINT`가 있으면 Docker를 띄우지 않고 해당 endpoint를 readiness 확인 후 사용한다. |
 | `common: Redis endpoint가 없으면 runner가 Docker Redis 준비` | `run_sample.sh` | runner | done | 전용 Redis container를 만들고 cleanup에서 제거한다. |
 | `common: Redis key prefix 격리` | `run_sample.sh`, `Server/Configuration/sample_topology.hpp` | runner | done | 실행마다 고유한 `BINGO_REDIS_KEY_PREFIX`를 전달한다. |

@@ -748,11 +748,7 @@ request_call_t<session_actor_t> session_actor_manager_t::bind_or_get (actor_ref_
           result_t<session_actor_t>::failure (framework_error_kind_t::actor_type_mismatch,
                                               "actor id is already bound to another type"));
     }
-    if (found->second.ref.node_rid ().value () != actor_ref.node_rid ().value ()
-        || found->second.ref.generation () != actor_ref.generation ()) {
-        return request_call_t<session_actor_t> (result_t<session_actor_t>::failure (
-          framework_error_kind_t::actor_stale_generation, "actor ref does not match binding"));
-    }
+    found->second.ref = actor_ref;
     found->second.bound = true;
     found->second.disconnected = false;
     return request_call_t<session_actor_t> (

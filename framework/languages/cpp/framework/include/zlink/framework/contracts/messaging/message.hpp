@@ -14,6 +14,11 @@
 namespace zlink::framework
 {
 
+namespace runtime
+{
+class actor_client_impl_t;
+} // namespace runtime
+
 class actor_context_t;
 class bound_session_t;
 class message_t;
@@ -87,6 +92,7 @@ class message_t
     friend class detail::channel_runtime_t;
     friend class detail::spot_node_runtime_t;
     friend class detail::stream_runtime_t;
+    friend class runtime::actor_client_impl_t;
     friend zlink::message_t detail::message_to_raw (const message_t &message,
                                                     const serializer_registry_t &serializers);
     friend class actor_context_t;

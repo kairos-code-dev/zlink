@@ -8,6 +8,27 @@
 namespace zlink::framework::detail
 {
 
+namespace
+{
+
+constexpr std::string_view actor_relay_kind_metadata_key = "__zlink.actorRelayKind";
+constexpr std::string_view actor_relay_kind_send = "send";
+
+stream_message_kind_t actor_relay_kind_from_metadata (spot_actor_message_metadata_t &metadata)
+{
+    auto kind = stream_message_kind_t::request;
+    const auto found = metadata.values.find (std::string (actor_relay_kind_metadata_key));
+    if (found != metadata.values.end ()) {
+        if (found->second == actor_relay_kind_send) {
+            kind = stream_message_kind_t::send;
+        }
+        metadata.values.erase (found);
+    }
+    return kind;
+}
+
+} // namespace
+
 spot_route_internal_dispatcher_t::spot_route_internal_dispatcher_t (
   spot_node_runtime_t runtime,
   actor_gateway_runtime_t actor_gateway,
@@ -77,10 +98,11 @@ result_t<zlink::message_t> spot_route_internal_dispatcher_t::dispatch_request (
             spot_actor_message_metadata_t metadata;
             metadata.content_type = request.content_type;
             metadata.values = request.metadata;
+            const auto message_kind = actor_relay_kind_from_metadata (metadata);
             auto relayed = runtime.manager ().relay_actor_packet (
-              actor_ref, _actor_gateway.actor_context (actor_ref), request.packet_name_value,
-              zlink::message_t::from (request.payload), services, *_serializers,
-              std::move (metadata));
+              actor_ref, _actor_gateway.actor_context (actor_ref), message_kind,
+              request.packet_name_value, zlink::message_t::from (request.payload), services,
+              *_serializers, std::move (metadata));
             if (!relayed) {
                 return result_t<zlink::message_t>::failure (
                   relayed.error_kind (),
@@ -122,8 +144,11 @@ result_t<zlink::message_t> spot_route_internal_dispatcher_t::dispatch_request (
         bind_actor_route (actor_ref, header, received);
         auto joined =
           request.spot_rid.empty ()
-            ? runtime.join_actor_to_entry_spot_erased (actor_ref, actor_ref.node_rid (),
-                                                       zlink::message_t::from (request.payload))
+            ? runtime.join_actor_to_entry_spot_erased (
+                actor_ref, actor_ref.node_rid (), zlink::message_t::from (request.payload),
+                request.actor_snapshot_present
+                  ? std::make_optional (zlink::message_t::from (request.actor_snapshot))
+                  : std::nullopt)
             : runtime.join_remote_actor_to_spot_erased (
                 actor_ref, spot_rid_t::from_string (request.spot_rid),
                 zlink::message_t::from (request.payload), _actor_gateway.actor_context (actor_ref));

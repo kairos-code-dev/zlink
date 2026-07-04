@@ -891,6 +891,11 @@ class spot_node_options_builder_t
     {
         detail::require_non_blank (route_channel_name, "accepted SPOT route channel is required");
         _accepted_route_channels.push_back (std::move (route_channel_name));
+        if (_accepted_route_channels.size () == 1) {
+            _spot_route_channel_name = _accepted_route_channels.front ();
+        } else {
+            _spot_route_channel_name.reset ();
+        }
         apply ();
         return *this;
     }
@@ -951,6 +956,23 @@ class spot_node_options_builder_t
         return *this;
     }
 
+    spot_node_options_builder_t &
+    add_spot_resolver (std::string name,
+                       std::function<std::optional<spot_route_t> (spot_rid_t)> resolver)
+    {
+        detail::require_non_blank (name, "SPOT resolver name is required");
+        if (!resolver) {
+            throw framework_exception_t (framework_error_kind_t::request_protocol_error,
+                                         "SPOT resolver must not be empty");
+        }
+        _actions.push_back ([name = std::move (name), resolver = std::move (resolver)] (
+                              spot_node_builder_t &spot_node) mutable {
+            spot_node.add_spot_resolver (std::move (name), std::move (resolver));
+        });
+        apply ();
+        return *this;
+    }
+
   private:
     void apply ()
     {
@@ -962,8 +984,13 @@ class spot_node_options_builder_t
         const auto router_manual_connections = _router_manual_connections;
         const auto pub_sub_manual_connections = _pub_sub_manual_connections;
         const auto accepted_route_channels = _accepted_route_channels;
-        const auto actions = _actions;
         const auto options = _options;
+        auto spot_route_channel_name = _spot_route_channel_name;
+        if (!spot_route_channel_name && accepted_route_channels.empty ()
+            && options->route_mesh_channels.size () == 1) {
+            spot_route_channel_name = *options->route_mesh_channels.begin ();
+        }
+        const auto actions = _actions;
         auto configure = [=] (spot_node_builder_t &spot_node) {
             if (!endpoint.empty ()) {
                 spot_node.bind (endpoint);
@@ -992,6 +1019,9 @@ class spot_node_options_builder_t
                     spot_node.accept_implicit_route_mesh (route_channel_name);
                 }
             }
+            if (spot_route_channel_name) {
+                spot_node.set_spot_route_channel (*spot_route_channel_name);
+            }
             for (const auto &action : actions) {
                 action (spot_node);
             }
@@ -1015,6 +1045,7 @@ class spot_node_options_builder_t
     std::vector<std::string> _router_manual_connections;
     std::vector<std::string> _pub_sub_manual_connections;
     std::vector<std::string> _accepted_route_channels;
+    std::optional<std::string> _spot_route_channel_name;
     std::vector<std::function<void (spot_node_builder_t &)>> _actions;
 };
 

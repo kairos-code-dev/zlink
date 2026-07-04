@@ -79,6 +79,7 @@ add_library(zlink_framework STATIC
   framework/src/runtime/channels/route_packet_dispatcher.cpp
   framework/src/runtime/actors/actor_route_internal_dispatcher.cpp
   framework/src/runtime/actors/actor_gateway_runtime.cpp
+  framework/src/runtime/actors/actor_client.cpp
   framework/src/runtime/backend/native_route_backend.cpp
   framework/src/runtime/host/actor_gateway_spot_bridge.cpp
   framework/src/runtime/configuration/builders/configuration_builder.cpp
@@ -755,15 +756,21 @@ if(ZLINK_FRAMEWORK_CPP_BUILD_TESTS)
   set_tests_properties(test_cpp_framework_layout_contract PROPERTIES
     LABELS "framework-contract"
     TIMEOUT 30)
+  set(ZLINK_FRAMEWORK_CPP_TOOLING_CONTRACT_ARGS
+    -D ZLINK_FRAMEWORK_CPP_SOURCE_DIR=${CMAKE_CURRENT_LIST_DIR}
+    -D ZLINK_FRAMEWORK_CPP_BUILD_DIR=${CMAKE_CURRENT_BINARY_DIR})
+  if(CMAKE_TOOLCHAIN_FILE)
+    list(APPEND ZLINK_FRAMEWORK_CPP_TOOLING_CONTRACT_ARGS
+      -D ZLINK_FRAMEWORK_CPP_TOOLING_CMAKE_TOOLCHAIN_FILE=${CMAKE_TOOLCHAIN_FILE})
+  endif()
   add_test(
     NAME test_cpp_framework_tooling_contract
     COMMAND ${CMAKE_COMMAND}
-      -D ZLINK_FRAMEWORK_CPP_SOURCE_DIR=${CMAKE_CURRENT_LIST_DIR}
-      -D ZLINK_FRAMEWORK_CPP_BUILD_DIR=${CMAKE_CURRENT_BINARY_DIR}
+      ${ZLINK_FRAMEWORK_CPP_TOOLING_CONTRACT_ARGS}
       -P ${CMAKE_CURRENT_LIST_DIR}/tests/Zlink.Framework.ContractTests/verify_tooling_contract.cmake)
   set_tests_properties(test_cpp_framework_tooling_contract PROPERTIES
     LABELS "framework-contract;framework-package;framework-tooling"
-    TIMEOUT 30)
+    TIMEOUT 120)
   add_test(
     NAME test_cpp_framework_label_contract
     COMMAND ${CMAKE_COMMAND}
@@ -1288,6 +1295,27 @@ if(ZLINK_FRAMEWORK_CPP_BUILD_E2E)
   target_link_libraries(zlink_cpp_e2e_registration_codec_client PRIVATE
     zlink::http_client)
   target_include_directories(zlink_cpp_e2e_registration_codec_client PRIVATE
+    ${ZLINK_FRAMEWORK_CPP_DIR}/framework/src)
+
+  add_executable(zlink_cpp_e2e_to_actor_messaging_actor
+    e2e/ToActorMessaging/Server/Actor/main.cpp)
+  target_link_libraries(zlink_cpp_e2e_to_actor_messaging_actor PRIVATE
+    zlink::framework)
+  target_include_directories(zlink_cpp_e2e_to_actor_messaging_actor PRIVATE
+    ${ZLINK_FRAMEWORK_CPP_DIR}/framework/src)
+
+  add_executable(zlink_cpp_e2e_to_actor_messaging_caller
+    e2e/ToActorMessaging/Server/Caller/main.cpp)
+  target_link_libraries(zlink_cpp_e2e_to_actor_messaging_caller PRIVATE
+    zlink::framework)
+  target_include_directories(zlink_cpp_e2e_to_actor_messaging_caller PRIVATE
+    ${ZLINK_FRAMEWORK_CPP_DIR}/framework/src)
+
+  add_executable(zlink_cpp_e2e_to_actor_messaging_client
+    e2e/ToActorMessaging/Client/main.cpp)
+  target_link_libraries(zlink_cpp_e2e_to_actor_messaging_client PRIVATE
+    zlink::framework)
+  target_include_directories(zlink_cpp_e2e_to_actor_messaging_client PRIVATE
     ${ZLINK_FRAMEWORK_CPP_DIR}/framework/src)
 
   add_executable(zlink_cpp_e2e_delivery_dispatch_dispatch_api

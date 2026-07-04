@@ -59,6 +59,26 @@ struct player_actor_t
     int increment_wins () const { return ++player.wins; }
 };
 
+inline void to_json (nlohmann::json &json, const player_actor_t &value)
+{
+    json = nlohmann::json{{"actorId", value.actor_id},
+                          {"nodeRid", value.node_rid},
+                          {"generation", value.generation},
+                          {"destroyAfterEntrySpotJoin", value.destroy_after_entry_spot_join},
+                          {"disconnected", value.disconnected},
+                          {"player", value.player}};
+}
+
+inline void from_json (const nlohmann::json &json, player_actor_t &value)
+{
+    value.actor_id = json.value ("actorId", std::string{});
+    value.node_rid = json.value ("nodeRid", std::string{});
+    value.generation = json.value ("generation", 1ull);
+    value.destroy_after_entry_spot_join = json.value ("destroyAfterEntrySpotJoin", false);
+    value.disconnected = json.value ("disconnected", false);
+    value.player = json.value ("player", player_info_t{});
+}
+
 struct player_actor_factory_t
 {
     player_actor_t create (std::string actor_id) const { return {std::move (actor_id)}; }

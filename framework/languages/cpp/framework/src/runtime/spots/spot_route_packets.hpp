@@ -7,6 +7,7 @@
 
 #include <cstdint>
 #include <map>
+#include <optional>
 #include <string>
 #include <vector>
 
@@ -23,6 +24,8 @@ struct spot_actor_join_route_request_t
     std::uint64_t actor_generation = 0;
     std::string spot_rid;
     std::vector<std::uint8_t> payload;
+    bool actor_snapshot_present = false;
+    std::vector<std::uint8_t> actor_snapshot;
 };
 
 struct spot_actor_join_route_reply_t
@@ -94,7 +97,10 @@ struct actor_bound_session_route_reply_t
 };
 
 spot_actor_join_route_request_t make_spot_actor_join_route_request (
-  const actor_ref_t &actor_ref, spot_rid_t spot_rid, const zlink::message_t &payload);
+  const actor_ref_t &actor_ref,
+  spot_rid_t spot_rid,
+  const zlink::message_t &payload,
+  const std::optional<zlink::message_t> &actor_snapshot = std::nullopt);
 
 actor_ref_t actor_ref_from_spot_route (const spot_actor_join_route_request_t &request);
 

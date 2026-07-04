@@ -71,6 +71,11 @@ for sock in sockets:
     sock.close()
 PY
 )"
+if [[ -z "$DELIVERYDISPATCH_REDIS_PORT" || -z "$DELIVERYDISPATCH_COURIER_ACTOR_NODE2" ]]; then
+  echo "Failed to allocate local TCP ports for the DeliveryDispatch sample." >&2
+  echo "This environment may block local socket creation." >&2
+  exit 1
+fi
 if [[ -z "${DELIVERYDISPATCH_REDIS_ENDPOINT:-}" ]]; then
   REDIS_CONTAINER_NAME="zlink-cpp-deliverydispatch-sample-redis-$$"
   docker run -d --rm --name "$REDIS_CONTAINER_NAME" -p "127.0.0.1:${DELIVERYDISPATCH_REDIS_PORT}:6379" redis:7-alpine >/dev/null

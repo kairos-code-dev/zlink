@@ -8,6 +8,7 @@
 
 #include <zlink/framework.hpp>
 
+#include <iostream>
 #include <map>
 #include <stdexcept>
 #include <vector>
@@ -28,7 +29,7 @@ class tictactoe_game_spot_t : public spot_t, public tictactoe_match_t
     {
         _context = context;
         context.handlers ().add_actor_request<&tictactoe_game_spot_t::place_mark> ();
-        context.handlers ().add_actor_request<&tictactoe_game_spot_t::leave_game> ();
+        context.handlers ().add_actor_send<&tictactoe_game_spot_t::leave_game> ();
     }
 
     spot_create_response_t on_create (const message_t &)
@@ -76,16 +77,19 @@ class tictactoe_game_spot_t : public spot_t, public tictactoe_match_t
         return {state};
     }
 
-    place_mark_res_t leave_game (const player_actor_t &actor,
-                                 const spot_actor_request_context_t &,
-                                 const leave_game_req_t &request)
+    void leave_game (const player_actor_t &actor,
+                     const spot_actor_send_context_t &,
+                     const leave_game_req_t &request)
     {
         if (request.room_id != snapshot ().room_id) {
             throw std::runtime_error ("LeaveGameReq room id does not match the joined room.");
         }
+        std::cout << "actor: LeaveGameReq received. actor=" << actor.actor_id
+                  << ", roomId=" << request.room_id << std::endl;
         actor.mark_for_destroy_after_room_leave ();
         (void) _context.leave_actor (actor_ref_for (actor), const_cast<player_actor_t &> (actor));
-        return {snapshot ()};
+        std::cout << "actor: LeaveGameReq completed. actor=" << actor.actor_id
+                  << ", roomId=" << request.room_id << std::endl;
     }
 
     void on_actor_joined (const player_actor_t &actor)
@@ -102,6 +106,10 @@ class tictactoe_game_spot_t : public spot_t, public tictactoe_match_t
         };
         publisher.publish_player_joined (notify);
         send_to_other_actors (actor.actor_id, notify);
+
+        game_state_notify_t state_notify{state.room_id, state.next_turn, state};
+        publisher.publish_game_state (state_notify);
+        send_to_other_actors (actor.actor_id, state_notify);
     }
 
     void onLeaveActor (const player_actor_t &actor)

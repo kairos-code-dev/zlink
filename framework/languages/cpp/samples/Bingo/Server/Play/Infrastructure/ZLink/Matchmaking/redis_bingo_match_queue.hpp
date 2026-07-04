@@ -19,10 +19,7 @@ namespace zlink::samples::bingo
 class redis_bingo_match_queue_t final : public bingo_match_queue_t
 {
   public:
-    explicit redis_bingo_match_queue_t (const sample_topology_t &topology) :
-        _topology (topology)
-    {
-    }
+    explicit redis_bingo_match_queue_t (const sample_topology_t &topology) : _topology (topology) {}
 
     bingo_match_reservation_t reserve (const std::string &mode,
                                        const std::string &actor_id,
@@ -30,13 +27,12 @@ class redis_bingo_match_queue_t final : public bingo_match_queue_t
                                        const std::string &new_room_id,
                                        int required_players) override
     {
-        const auto now = std::to_string (
-          std::chrono::duration_cast<std::chrono::milliseconds> (
-            std::chrono::system_clock::now ().time_since_epoch ())
-            .count ());
-        auto reply = execute (
-          {"EVAL", script (), "1", match_key (mode), actor_id, preferred_owner_node_rid,
-           new_room_id, std::to_string (required_players), now});
+        const auto now = std::to_string (std::chrono::duration_cast<std::chrono::milliseconds> (
+                                           std::chrono::system_clock::now ().time_since_epoch ())
+                                           .count ());
+        auto reply =
+          execute ({"EVAL", script (), "1", match_key (mode), actor_id, preferred_owner_node_rid,
+                    new_room_id, std::to_string (required_players), now});
         if (reply.size () != 2) {
             throw std::runtime_error ("Redis match queue returned an invalid reservation.");
         }
@@ -103,8 +99,13 @@ end
 return { roomId, existingOwnerRid })";
     }
 
-    static std::pair<std::string, std::string> split_endpoint (const std::string &endpoint)
+    static std::pair<std::string, std::string> split_endpoint (std::string endpoint)
     {
+        if (endpoint.rfind ("tcp://", 0) == 0) {
+            endpoint = endpoint.substr (6);
+        } else if (endpoint.rfind ("redis://", 0) == 0) {
+            endpoint = endpoint.substr (8);
+        }
         const auto separator = endpoint.rfind (':');
         if (separator == std::string::npos || separator == 0 || separator + 1 == endpoint.size ()) {
             throw std::runtime_error ("Redis endpoint must use host:port");

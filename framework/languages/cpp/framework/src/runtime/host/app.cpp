@@ -3,6 +3,7 @@
 #include <zlink/framework/contracts/configuration/app.hpp>
 
 #include "runtime/actors/actor_gateway_runtime.hpp"
+#include "runtime/actors/actor_client.hpp"
 #include "runtime/channels/channel_host_service.hpp"
 #include "runtime/channels/channel_runtime.hpp"
 #include "runtime/channels/channel_runtime_manager.hpp"
@@ -487,6 +488,20 @@ app_t &app_t::add_zlink_framework (std::function<void (zlink_framework_options_t
         }
         add_hosted_service (std::make_unique<runtime::spot_node_host_service_t> (
           spot_node_runtimes));
+    }
+    if (!_state->services.contains (std::type_index (typeid (actor_client_t)))) {
+        std::vector<detail::spot_node_runtime_t> actor_client_spot_nodes;
+        actor_client_spot_nodes.reserve (spot_node_runtimes.size ());
+        for (const auto &spot_node : spot_node_runtimes) {
+            actor_client_spot_nodes.push_back (spot_node.runtime);
+        }
+        _state->services.add_factory<actor_client_t> (
+          [spot_nodes = std::move (actor_client_spot_nodes)] (service_provider_t &provider) {
+              return runtime::make_actor_client (
+                provider.get_required<location_store_t> (),
+                provider.get_required<serializer_registry_t> (), spot_nodes);
+          },
+          service_lifetime_t::singleton);
     }
     if (!_state->zlink.route_channels ().empty ()) {
         std::vector<runtime::route_channel_host_service_t::spot_node_runtime_t>

@@ -202,6 +202,28 @@ static_assert (!has_callback_async<zlink::framework::route_send_call_t, void>);
 static_assert (!has_blocking_submit<zlink::framework::channel_request_call_t>);
 static_assert (!has_callback_async<zlink::framework::channel_request_call_t, std::uint64_t>);
 static_assert (!has_yield<zlink::framework::channel_request_call_t>);
+static_assert (!has_blocking_submit<zlink::framework::actor_send_call_t>);
+static_assert (!has_callback_async<zlink::framework::actor_send_call_t, void>);
+static_assert (!has_blocking_submit<zlink::framework::actor_request_call_t>);
+static_assert (!has_callback_async<zlink::framework::actor_request_call_t,
+                                   zlink::framework::message_t>);
+static_assert (std::is_same_v<decltype (std::declval<zlink::framework::actor_send_call_t &> ()
+                                          .async ()),
+                              zlink::framework::task_t<void>>);
+static_assert (
+  std::is_same_v<decltype (std::declval<zlink::framework::actor_request_call_t &> ()
+                             .async<zlink::framework::message_t> ()),
+                 zlink::framework::task_t<zlink::framework::message_t>>);
+static_assert (
+  std::is_same_v<decltype (std::declval<zlink::framework::actor_client_t &> ()
+                             .send_to_actor (std::declval<std::string> (),
+                                             std::declval<zlink::framework::message_t> ())),
+                 zlink::framework::actor_send_call_t>);
+static_assert (
+  std::is_same_v<decltype (std::declval<zlink::framework::actor_client_t &> ()
+                             .request_to_actor (std::declval<std::string> (),
+                                                std::declval<zlink::framework::message_t> ())),
+                 zlink::framework::actor_request_call_t>);
 static_assert (std::is_same_v<
                decltype (std::declval<zlink::framework::channel_request_call_t &> ().async<int> ()),
                zlink::framework::task_t<int>>);

@@ -9,6 +9,7 @@
 #include <stdexcept>
 #include <string>
 #include <string_view>
+#include <utility>
 #include <vector>
 
 namespace zlink::samples::tictactoe
@@ -24,7 +25,7 @@ struct room_route_t
 class redis_room_route_store_t
 {
   public:
-    explicit redis_room_route_store_t (sample_topology_t &topology) : _topology (topology) {}
+    explicit redis_room_route_store_t (sample_topology_t topology) : _topology (std::move (topology)) {}
 
     void save (const room_route_t &route)
     {
@@ -150,7 +151,7 @@ class redis_room_route_store_t
         throw std::runtime_error ("Unsupported Redis response: " + header);
     }
 
-    sample_topology_t &_topology;
+    sample_topology_t _topology;
 };
 
 } // namespace zlink::samples::tictactoe

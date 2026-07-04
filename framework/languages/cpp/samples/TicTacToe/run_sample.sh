@@ -60,7 +60,13 @@ finally:
     for sock in sockets:
         sock.close()
 PY
-)"
+  )"
+fi
+
+if [[ ${#PORTS[@]} -lt 15 ]]; then
+  echo "Failed to allocate 15 local TCP ports for the TicTacToe sample." >&2
+  echo "This environment may block local socket creation; set TICTACTOE_CPP_BASE_PORT to use fixed ports." >&2
+  exit 1
 fi
 
 API_A_ENDPOINT="tcp://127.0.0.1:${PORTS[0]}"
@@ -124,7 +130,7 @@ wait_grep() {
   grep -q "$pattern" "$file"
 }
 
-RUN_DIR="$(mktemp -d)"
+RUN_DIR="${TICTACTOE_RUN_DIR:-$(mktemp -d)}"
 LOG_DIR="$RUN_DIR/logs"
 mkdir -p "$LOG_DIR"
 PIDS=()
@@ -149,7 +155,7 @@ cleanup() {
   if [[ "${TICTACTOE_CPP_KEEP_RUN_DIR:-}" == "1" ]]; then
     echo "runDir=$RUN_DIR"
   else
-    rm -rf "$RUN_DIR"
+    [[ -z "${TICTACTOE_RUN_DIR:-}" ]] && rm -rf "$RUN_DIR"
   fi
 }
 trap cleanup EXIT
@@ -233,6 +239,10 @@ wait_grep "observer-subscription=verified subscribed=true" "$LOG_DIR/client.log"
 wait_grep "observer-win-milestone=verified actor=player-x wins=100 receivingSpotNodeRid=play-node-2" "$LOG_DIR/client.log"
 wait_grep "tictactoe completed" "$LOG_DIR/client.log"
 wait_grep "tictactoe=completed" "$LOG_DIR/client.log"
+grep -q "actor: LeaveGameReq completed. actor=player-x" "$LOG_DIR"/play-*.log
+grep -q "actor: LeaveGameReq completed. actor=player-o" "$LOG_DIR"/play-*.log
+grep -q "entry spot: actor destroy completed. actor=player-x" "$LOG_DIR"/play-*.log
+grep -q "entry spot: actor destroy completed. actor=player-o" "$LOG_DIR"/play-*.log
 grep -Rq "packet=LeaveGameReq" "$TICTACTOE_LOG_DIR"
 grep -Rq "message flow" "$TICTACTOE_LOG_DIR"
 

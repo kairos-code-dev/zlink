@@ -78,7 +78,94 @@ struct actor_placement_t
 };
 
 class actor_gateway_t;
+class actor_client_t;
 class route_client_t;
+
+class actor_send_call_t
+{
+  public:
+    actor_send_call_t (actor_client_t &client,
+                       std::string actor_id,
+                       std::string packet_name,
+                       message_t message);
+
+    actor_send_call_t &packet_name (std::string packet_name);
+    task_t<void> async ();
+
+  private:
+    actor_client_t *_client;
+    std::string _actor_id;
+    std::string _packet_name;
+    message_t _message;
+};
+
+class actor_request_call_t
+{
+  public:
+    actor_request_call_t (actor_client_t &client,
+                          std::string actor_id,
+                          std::string packet_name,
+                          message_t request);
+
+    actor_request_call_t &packet_name (std::string packet_name);
+    actor_request_call_t &timeout (std::chrono::milliseconds timeout);
+
+    template <typename TReply> task_t<TReply> async ()
+    {
+        auto reply = co_await async_message ();
+        co_return reply.template decode<TReply> (serializers ());
+    }
+
+    task_t<message_t> async_message ();
+
+  private:
+    serializer_registry_t &serializers () const;
+
+    actor_client_t *_client;
+    std::string _actor_id;
+    std::string _packet_name;
+    message_t _request;
+    std::optional<std::chrono::milliseconds> _timeout;
+};
+
+class actor_client_t
+{
+  public:
+    virtual ~actor_client_t () = default;
+
+    template <typename TMessage>
+    actor_send_call_t send_to_actor (std::string actor_id, TMessage message)
+    {
+        using message_type = std::remove_cvref_t<TMessage>;
+        return actor_send_call_t (*this, std::move (actor_id),
+                                  detail::message_name<message_type> (),
+                                  message_t::from (std::move (message)));
+    }
+
+    template <typename TRequest>
+    actor_request_call_t request_to_actor (std::string actor_id, TRequest request)
+    {
+        using request_type = std::remove_cvref_t<TRequest>;
+        return actor_request_call_t (*this, std::move (actor_id),
+                                     detail::message_name<request_type> (),
+                                     message_t::from (std::move (request)));
+    }
+
+  protected:
+    virtual task_t<void> send_to_actor_erased (std::string actor_id,
+                                               std::string packet_name,
+                                               message_t message) = 0;
+    virtual task_t<message_t> request_to_actor_erased (
+      std::string actor_id,
+      std::string packet_name,
+      message_t request,
+      std::optional<std::chrono::milliseconds> timeout) = 0;
+    virtual serializer_registry_t &actor_client_serializers () = 0;
+
+  private:
+    friend class actor_send_call_t;
+    friend class actor_request_call_t;
+};
 
 class actor_directory_t
 {

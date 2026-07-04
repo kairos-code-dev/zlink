@@ -32,8 +32,8 @@ class create_game_handler_t
     create_game_res_t handle (const create_game_req_t &request)
     {
         auto response = _creator.create (request.game_name);
-        const auto spot_rid = spot_rid_t::from_string (std::string (sample_names_t::spot_node) + ":"
-                                                       + response.room_id);
+        // dotnet 정본과 동일: room spot rid는 room id 단독 — 위치는 location store가 해결한다.
+        const auto spot_rid = spot_rid_t::from_string (response.room_id);
         _spots.get_or_create_spot (sample_names_t::match_spot, spot_rid);
         return response;
     }

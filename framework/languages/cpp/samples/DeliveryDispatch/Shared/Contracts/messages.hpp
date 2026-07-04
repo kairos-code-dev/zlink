@@ -179,6 +179,17 @@ struct delivery_status_changed_req_t
 {
     static constexpr const char *packet_name = "DeliveryStatusChangedReq";
     std::string delivery_id;
+    std::string customer_id;
+    std::string status;
+    std::string courier_id;
+    std::string occurred_at;
+};
+
+struct delivery_status_updated_msg_t
+{
+    static constexpr const char *packet_name = "DeliveryStatusUpdatedMsg";
+    std::string delivery_id;
+    std::string customer_id;
     std::string status;
     std::string courier_id;
     std::string occurred_at;
@@ -449,6 +460,7 @@ inline void from_json (const nlohmann::json &json, courier_decision_msg_t &value
 inline void to_json (nlohmann::json &json, const delivery_status_changed_req_t &value)
 {
     json = {{"deliveryId", value.delivery_id},
+            {"customerId", value.customer_id},
             {"status", value.status},
             {"courierId", value.courier_id},
             {"occurredAt", value.occurred_at}};
@@ -457,6 +469,25 @@ inline void to_json (nlohmann::json &json, const delivery_status_changed_req_t &
 inline void from_json (const nlohmann::json &json, delivery_status_changed_req_t &value)
 {
     value.delivery_id = json_string (json, "deliveryId", "delivery_id");
+    value.customer_id = json_string (json, "customerId", "customer_id");
+    value.status = json.value ("status", "");
+    value.courier_id = json_string (json, "courierId", "courier_id");
+    value.occurred_at = json_string (json, "occurredAt", "occurred_at");
+}
+
+inline void to_json (nlohmann::json &json, const delivery_status_updated_msg_t &value)
+{
+    json = {{"deliveryId", value.delivery_id},
+            {"customerId", value.customer_id},
+            {"status", value.status},
+            {"courierId", value.courier_id},
+            {"occurredAt", value.occurred_at}};
+}
+
+inline void from_json (const nlohmann::json &json, delivery_status_updated_msg_t &value)
+{
+    value.delivery_id = json_string (json, "deliveryId", "delivery_id");
+    value.customer_id = json_string (json, "customerId", "customer_id");
     value.status = json.value ("status", "");
     value.courier_id = json_string (json, "courierId", "courier_id");
     value.occurred_at = json_string (json, "occurredAt", "occurred_at");

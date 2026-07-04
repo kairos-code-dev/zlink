@@ -37,21 +37,25 @@ class assign_delivery_handler_t
     {
         std::cerr << "deliverydispatch dispatch: assign delivery=" << request.delivery_id
                   << " customer=" << request.customer_id << "\n";
-        co_await publish_status (request.delivery_id, delivery_status_t::assigned, "courier-a");
+        co_await publish_status (request.delivery_id, request.customer_id,
+                                 delivery_status_t::assigned, "courier-a");
         auto first = co_await offer (request, "courier-a");
         if (first.accepted) {
-            co_await continue_delivery (request.delivery_id, first.courier_id);
+            co_await continue_delivery (request.delivery_id, request.customer_id,
+                                        first.courier_id);
             co_return assign_delivery_res_t{request.delivery_id, first.courier_id};
         }
 
-        co_await publish_status (request.delivery_id, delivery_status_t::reassigned, "courier-b");
+        co_await publish_status (request.delivery_id, request.customer_id,
+                                 delivery_status_t::reassigned, "courier-b");
         auto second = co_await offer (request, "courier-b");
         if (!second.accepted) {
-            co_await publish_status (request.delivery_id, delivery_status_t::failed,
+            co_await publish_status (request.delivery_id, request.customer_id,
+                                     delivery_status_t::failed,
                                      second.courier_id);
             throw std::runtime_error ("delivery was rejected by all couriers");
         }
-        co_await continue_delivery (request.delivery_id, second.courier_id);
+        co_await continue_delivery (request.delivery_id, request.customer_id, second.courier_id);
         co_return assign_delivery_res_t{request.delivery_id, second.courier_id};
     }
 
@@ -70,18 +74,24 @@ class assign_delivery_handler_t
         co_return result;
     }
 
-    task_t<void> continue_delivery (const std::string &delivery_id, const std::string &courier_id)
+    task_t<void> continue_delivery (const std::string &delivery_id,
+                                    const std::string &customer_id,
+                                    const std::string &courier_id)
     {
-        co_await publish_status (delivery_id, delivery_status_t::accepted, courier_id);
-        co_await publish_status (delivery_id, delivery_status_t::picked_up, courier_id);
-        co_await publish_status (delivery_id, delivery_status_t::delivered, courier_id);
+        co_await publish_status (delivery_id, customer_id, delivery_status_t::accepted,
+                                 courier_id);
+        co_await publish_status (delivery_id, customer_id, delivery_status_t::picked_up,
+                                 courier_id);
+        co_await publish_status (delivery_id, customer_id, delivery_status_t::delivered,
+                                 courier_id);
     }
 
     task_t<void> publish_status (const std::string &delivery_id,
+                                 const std::string &customer_id,
                                  const std::string &status,
                                  const std::string &courier_id)
     {
-        delivery_status_req_t changed{delivery_id, status, courier_id, now_text ()};
+        delivery_status_req_t changed{delivery_id, customer_id, status, courier_id, now_text ()};
         (void) co_await _channels.request (sample_names_t::tracking_route_channel, changed)
           .async<delivery_status_res_t> ();
     }

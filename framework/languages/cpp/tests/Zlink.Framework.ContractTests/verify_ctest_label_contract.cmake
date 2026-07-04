@@ -27,6 +27,18 @@ set(required_labels
   framework-tooling
   framework-extension
   framework-sample-parity
+  framework-sample-api
+  framework-sample-bingo
+  framework-sample-courier
+  framework-sample-deliverydispatch
+  framework-sample-dispatch
+  framework-sample-play
+  framework-sample-probe
+  framework-sample-registry
+  framework-sample-session
+  framework-sample-smoke
+  framework-sample-tictactoe
+  framework-sample-tracking
   http-client-contract
   http-client-unit
   http-client-e2e

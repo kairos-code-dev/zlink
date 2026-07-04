@@ -29,8 +29,7 @@ class tictactoe_game_creator_t
     create_game_res_t create (std::string game_name)
     {
         auto room_id = create_room_id ();
-        const auto spot_rid = _topology.selected_play_node_rid () + ":" + room_id;
-        _routes.save (room_route_t{spot_rid, _topology.selected_stream_endpoint (),
+        _routes.save (room_route_t{room_id, _topology.selected_stream_endpoint (),
                                    _topology.selected_play_node_rid ()});
         return {room_id,
                 std::move (game_name),

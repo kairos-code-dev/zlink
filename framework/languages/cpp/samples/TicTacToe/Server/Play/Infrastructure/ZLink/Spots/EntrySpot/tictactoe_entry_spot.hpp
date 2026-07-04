@@ -8,6 +8,7 @@
 #include <zlink/framework.hpp>
 
 #include <algorithm>
+#include <iostream>
 #include <map>
 #include <string>
 #include <vector>
@@ -41,8 +42,7 @@ class tictactoe_entry_spot_t : public entry_spot_t
                                        spot_actor_request_context_t &,
                                        const join_game_req_t &request)
     {
-        const auto spot_rid =
-          spot_rid_t::from_string (std::string (sample_names_t::spot_node) + ":" + request.room_id);
+        const auto spot_rid = spot_rid_t::from_string (request.room_id);
         auto payload = tictactoe_game_join_req_t{request.room_id, request.player};
         if (payload.player.actor_id.empty ()) {
             payload.player = {actor.actor_id, actor.actor_id, sample_names_t::required_level, 0};
@@ -74,7 +74,9 @@ class tictactoe_entry_spot_t : public entry_spot_t
         if (!actor.destroy_after_entry_spot_join) {
             return;
         }
+        std::cout << "entry spot: actor destroy requested. actor=" << actor.actor_id << std::endl;
         (void) _context.destroyActor (actor_ref_for (actor), const_cast<player_actor_t &> (actor));
+        std::cout << "entry spot: actor destroy completed. actor=" << actor.actor_id << std::endl;
     }
 
     void onLeaveActor (const player_actor_t &actor)

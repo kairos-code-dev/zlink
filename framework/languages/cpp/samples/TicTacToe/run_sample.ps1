@@ -207,6 +207,10 @@ try {
     Wait-Grep "observer-win-milestone=verified actor=player-x wins=100 receivingSpotNodeRid=play-node-2" $clientLog
     Wait-Grep "tictactoe completed" $clientLog
     Wait-Grep "tictactoe=completed" $clientLog
+    Wait-Grep "actor: LeaveGameReq completed. actor=player-x" (Join-Path $LogDir "play-*.log")
+    Wait-Grep "actor: LeaveGameReq completed. actor=player-o" (Join-Path $LogDir "play-*.log")
+    Wait-Grep "entry spot: actor destroy completed. actor=player-x" (Join-Path $LogDir "play-*.log")
+    Wait-Grep "entry spot: actor destroy completed. actor=player-o" (Join-Path $LogDir "play-*.log")
     if (-not (Select-String -Path (Join-Path $env:TICTACTOE_LOG_DIR "*.log") -Pattern "packet=LeaveGameReq" -Quiet)) {
         throw "TicTacToe C++ sample logs did not contain LeaveGameReq evidence."
     }

@@ -10,6 +10,7 @@ struct bingo_match_reservation_t
 {
     std::string room_id;
     std::string owner_play_node_rid;
+    bool created_local_room = false;
 };
 
 class bingo_match_queue_t

@@ -36,7 +36,7 @@ class redis_bingo_match_queue_t final : public bingo_match_queue_t
         if (reply.size () != 2) {
             throw std::runtime_error ("Redis match queue returned an invalid reservation.");
         }
-        return {reply[0], reply[1]};
+        return {reply[0], reply[1], false};
     }
 
   private:

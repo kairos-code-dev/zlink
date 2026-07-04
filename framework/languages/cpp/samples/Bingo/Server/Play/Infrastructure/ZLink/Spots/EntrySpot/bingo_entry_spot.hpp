@@ -62,7 +62,7 @@ class bingo_entry_spot_t : public entry_spot_t
         const auto display_name = actor.display_name.empty () ? actor.actor.actor_id : actor.display_name;
         const auto match_request = match_bingo_api_req_t{
             actor.actor.actor_id, display_name, request.mode,
-            std::string (actor.actor.node_rid.value ())
+            std::string (_context.node_rid ().value ())
         };
 
         auto matched = co_await _context.outbound ()

@@ -1881,6 +1881,8 @@ int enqueue_actor_gateway_no_bind_locked (zlink::spot_node_t *node_,
         fill_ref (actor, &queued.info.actor);
         queued.info.source_node_rid = *source_node_rid_;
         queued.info.source_session_rid = frame_.session_rid;
+        queued.info.request_id = frame_.request_id;
+        queued.info.flags = ZLINK_ACTOR_RECV_INFO_NO_BIND;
         queued.part_flag = i + 1 < payload_part_count_ ? ZLINK_PART_MORE : ZLINK_PART_FINAL;
         if (zlink_msg_adopt (&queued.part, &payload_parts_[i]) != ZLINK_CONFIG_OK)
             return -1;
@@ -3651,6 +3653,46 @@ zlink_spot_node_request_to_actor (void *node_,
 {
     return submit_actor_no_bind (node_, actor_ref_, parts_, part_count_, callback_, userdata_,
                                  flags_, timeout_ms_, false);
+}
+
+extern "C" zlink_submit_result_t zlink_spot_node_actor_reply_no_bind (
+  void *node_,
+  const zlink_actor_recv_info_t *info_,
+  zlink_msg_t *parts_,
+  size_t part_count_,
+  zlink_request_result_t result_)
+{
+    if (!node_) {
+        errno = EFAULT;
+        return ZLINK_SUBMIT_INVALID_HANDLE;
+    }
+    if (!info_ || (part_count_ > 0 && !parts_) || !valid_multipart_payload (parts_, part_count_)
+        || !(info_->flags & ZLINK_ACTOR_RECV_INFO_NO_BIND) || info_->request_id == 0
+        || !valid_actor_id (info_->actor.actor_id) || !valid_routing_id (&info_->actor.node_rid)
+        || info_->actor.generation == 0 || !valid_routing_id (&info_->source_node_rid)
+        || !valid_routing_id (&info_->source_session_rid)) {
+        errno = EINVAL;
+        return ZLINK_SUBMIT_INVALID_ARGUMENT;
+    }
+    if (!is_registered_spot_node_handle (node_)) {
+        errno = EFAULT;
+        return ZLINK_SUBMIT_INVALID_HANDLE;
+    }
+
+    zlink::spot_node_t *owner_node = static_cast<zlink::spot_node_t *> (node_);
+    zlink_routing_id_t owner_node_rid;
+    memset (&owner_node_rid, 0, sizeof (owner_node_rid));
+    if (owner_node->node_routing_id (&owner_node_rid) != 0)
+        return errno_to_submit_result (errno);
+    if (!same_routing_id (owner_node_rid, info_->actor.node_rid)) {
+        errno = EINVAL;
+        return ZLINK_SUBMIT_INVALID_ARGUMENT;
+    }
+
+    return send_no_bind_reply_from_owner (owner_node, owner_node_rid, info_->source_node_rid,
+                                          info_->source_session_rid, info_->actor.actor_id,
+                                          info_->actor.generation, info_->request_id, result_,
+                                          parts_, part_count_);
 }
 
 extern "C" zlink_config_result_t

@@ -92,8 +92,11 @@ struct actor_recv_probe_t
 
 struct actor_dispatch_context_t
 {
+    actor_dispatch_context_t () : node (NULL), probe (NULL), reply_payload (NULL) {}
+
     void *node;
     actor_recv_probe_t *probe;
+    const char *reply_payload;
 };
 
 void on_actor_dispatch_with_node (void *spot_,
@@ -125,6 +128,13 @@ void on_actor_dispatch_with_node (void *spot_,
             ctx->probe->payload = part_to_string (&part);
             ctx->probe->payloads.push_back (ctx->probe->payload);
             ctx->probe->cv.notify_all ();
+        }
+        if (ctx->reply_payload && recv_info.request_id != 0) {
+            zlink_msg_t reply;
+            init_part (&reply, ctx->reply_payload);
+            TEST_ASSERT_EQUAL_INT (ZLINK_SUBMIT_OK,
+                                   zlink_spot_node_actor_reply_no_bind (
+                                     ctx->node, &recv_info, &reply, 1, ZLINK_REQUEST_OK));
         }
         zlink_msg_close (&part);
         if (more == ZLINK_PART_FINAL)
@@ -278,6 +288,8 @@ void test_no_bind_delivery_ack_and_mailbox_source_do_not_bind_session ()
     TEST_ASSERT_SUCCESS_ERRNO (zlink_get_routing_id (node, &node_rid));
     TEST_ASSERT_TRUE (same_rid (node_rid, recv_probe.info.source_node_rid));
     TEST_ASSERT_TRUE (same_rid (node_rid, recv_probe.info.source_session_rid));
+    TEST_ASSERT_TRUE ((recv_probe.info.flags & ZLINK_ACTOR_RECV_INFO_NO_BIND) != 0);
+    TEST_ASSERT_NOT_EQUAL (0, recv_probe.info.request_id);
 
     callback_probe_t multipart_ack;
     zlink_msg_t multipart[2];
@@ -296,6 +308,46 @@ void test_no_bind_delivery_ack_and_mailbox_source_do_not_bind_session ()
     TEST_ASSERT_EQUAL_STRING ("payload", recv_probe.payloads[2].c_str ());
     TEST_ASSERT_TRUE (same_rid (node_rid, recv_probe.info.source_node_rid));
     TEST_ASSERT_TRUE (same_rid (node_rid, recv_probe.info.source_session_rid));
+    TEST_ASSERT_TRUE ((recv_probe.info.flags & ZLINK_ACTOR_RECV_INFO_NO_BIND) != 0);
+    TEST_ASSERT_NOT_EQUAL (0, recv_probe.info.request_id);
+
+    destroy_node (&ctx, &node);
+}
+
+void test_no_bind_request_can_reply_from_actor_recv_info ()
+{
+    void *ctx = NULL;
+    void *node = NULL;
+    void *entry = NULL;
+    zlink_actor_ref_t actor;
+    make_node_with_actor (&ctx, &node, &entry, &actor);
+
+    actor_recv_probe_t recv_probe;
+    recv_probe.actor = actor;
+    actor_dispatch_context_t dispatch_ctx;
+    dispatch_ctx.node = node;
+    dispatch_ctx.probe = &recv_probe;
+    dispatch_ctx.reply_payload = "handler-reply";
+    TEST_ASSERT_SUCCESS_ERRNO (
+      zlink_spot_dispatch_event_handler (entry, &on_actor_dispatch_with_node, &dispatch_ctx));
+
+    callback_probe_t callback;
+    zlink_msg_t request;
+    init_part (&request, "handler-request");
+    TEST_ASSERT_EQUAL_INT (ZLINK_SUBMIT_OK,
+                           zlink_spot_node_request_to_actor (
+                             node, &actor, &request, 1, &on_reply, &callback, ZLINK_DONTWAIT,
+                             1000));
+
+    TEST_ASSERT_TRUE (wait_actor_recv_count (&recv_probe, 1));
+    TEST_ASSERT_EQUAL_STRING ("handler-request", recv_probe.payload.c_str ());
+    TEST_ASSERT_TRUE ((recv_probe.info.flags & ZLINK_ACTOR_RECV_INFO_NO_BIND) != 0);
+    TEST_ASSERT_NOT_EQUAL (0, recv_probe.info.request_id);
+
+    TEST_ASSERT_TRUE (wait_callback_count (&callback, 1));
+    TEST_ASSERT_EQUAL_INT (ZLINK_REQUEST_OK, callback.result);
+    TEST_ASSERT_EQUAL_UINT (1, callback.part_count);
+    TEST_ASSERT_EQUAL_STRING ("handler-reply", callback.payload.c_str ());
 
     destroy_node (&ctx, &node);
 }
@@ -392,6 +444,8 @@ void test_existing_session_gateway_still_delivers_and_sets_session_source ()
     TEST_ASSERT_EQUAL_STRING ("session-path", recv_probe.payload.c_str ());
     TEST_ASSERT_TRUE (same_rid (source_node, recv_probe.info.source_node_rid));
     TEST_ASSERT_TRUE (same_rid (session, recv_probe.info.source_session_rid));
+    TEST_ASSERT_EQUAL_UINT (0, recv_probe.info.flags & ZLINK_ACTOR_RECV_INFO_NO_BIND);
+    TEST_ASSERT_EQUAL_UINT64 (0, recv_probe.info.request_id);
     zlink_msg_close (&parts[0]);
     zlink_msg_close (&parts[1]);
 
@@ -404,6 +458,7 @@ int main ()
     UNITY_BEGIN ();
     RUN_TEST (test_request_reply_correlation_ignores_wrong_id_and_matches_mixed_replies);
     RUN_TEST (test_no_bind_delivery_ack_and_mailbox_source_do_not_bind_session);
+    RUN_TEST (test_no_bind_request_can_reply_from_actor_recv_info);
     RUN_TEST (test_actor_missing_and_stale_return_distinct_native_results);
     RUN_TEST (test_route_not_connected_fails_at_submit);
     RUN_TEST (test_existing_session_gateway_still_delivers_and_sets_session_source);

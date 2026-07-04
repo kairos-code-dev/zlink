@@ -1,0 +1,28 @@
+namespace Zlink.Framework.Contracts.Actors;
+
+public interface IZLinkActorClient
+{
+    IZLinkActorSendCall SendToActor<TMessage>(
+        string actorId,
+        TMessage message);
+
+    IZLinkActorRequestCall RequestToActor<TRequest>(
+        string actorId,
+        TRequest request);
+}
+
+public interface IZLinkActorSendCall
+{
+    IZLinkActorSendCall PacketName(string packetName);
+
+    ValueTask Async(CancellationToken cancellationToken = default);
+}
+
+public interface IZLinkActorRequestCall
+{
+    IZLinkActorRequestCall PacketName(string packetName);
+
+    IZLinkActorRequestCall Timeout(TimeSpan timeout);
+
+    ValueTask<TReply> Async<TReply>(CancellationToken cancellationToken = default);
+}

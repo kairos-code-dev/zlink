@@ -157,6 +157,13 @@ internal static class ZLinkFrameworkServiceRegistrar
                     provider.GetService<ZLinkStoreLocationResolvers>()));
         }
 
+        if (HasSpotNode(registration) && registration.Locations.Enabled)
+        {
+            services.AddSingleton<ZLinkActorClient>();
+            services.AddSingleton<IZLinkActorClient>(static provider =>
+                provider.GetRequiredService<ZLinkActorClient>());
+        }
+
         if (registration.SpotRemoteAddressResolverType is not null)
         {
             services.TryAddSingleton(registration.SpotRemoteAddressResolverType);

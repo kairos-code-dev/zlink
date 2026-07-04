@@ -13,6 +13,9 @@ public sealed class ActorContracts
         typeof(IZLinkActorYieldJoinCall),
         typeof(IZLinkActorJoinSpotCall),
         typeof(IZLinkActorJoinEntrySpotCall),
+        typeof(IZLinkActorClient),
+        typeof(IZLinkActorSendCall),
+        typeof(IZLinkActorRequestCall),
         typeof(IZLinkActorFactory),
         typeof(IZLinkActorManager),
         typeof(IZLinkActorDirectory))]
@@ -23,6 +26,7 @@ public sealed class ActorContracts
         var factory = new ActorFactory();
         var manager = new ActorManager(factory, context);
         var directory = new ActorDirectory(manager);
+        var actorClient = new ActorClient();
 
         var actor = new PlayerActor("player-1", context);
         var actorRef = await manager.GetOrCreateAsync("player-1", "player");
@@ -42,6 +46,15 @@ public sealed class ActorContracts
             .JoinEntrySpot(RoutingId.From("play-node"), ZLinkMessage.Empty)
             .Timeout(TimeSpan.FromSeconds(1))
             .Yield();
+        await actorClient
+            .SendToActor("player-1", new JoinRoom("room-1"))
+            .PacketName(nameof(JoinRoom))
+            .Async();
+        var actorReply = await actorClient
+            .RequestToActor("player-1", new JoinRoom("room-1"))
+            .PacketName(nameof(JoinRoom))
+            .Timeout(TimeSpan.FromSeconds(1))
+            .Async<JoinedRoom>();
 
         Assert.Equal("player-1", actorRef.ActorId);
         Assert.Equal(actorRef, foundActorRef);
@@ -56,6 +69,59 @@ public sealed class ActorContracts
         var entryActor = Assert.IsType<ActorRef>(entryJoin.Actor);
         Assert.Equal("player-1", entryActor.ActorId);
         Assert.Equal(RoutingId.From("play-node"), entryActor.NodeRid);
+        Assert.Equal("room-1", actorReply.RoomId);
+    }
+
+    private sealed class ActorClient : IZLinkActorClient
+    {
+        public IZLinkActorSendCall SendToActor<TMessage>(string actorId, TMessage message)
+        {
+            _ = actorId;
+            _ = message;
+            return new ActorSendCall();
+        }
+
+        public IZLinkActorRequestCall RequestToActor<TRequest>(string actorId, TRequest request)
+        {
+            _ = actorId;
+            _ = request;
+            return new ActorRequestCall();
+        }
+    }
+
+    private sealed class ActorSendCall : IZLinkActorSendCall
+    {
+        public IZLinkActorSendCall PacketName(string packetName)
+        {
+            _ = packetName;
+            return this;
+        }
+
+        public ValueTask Async(CancellationToken cancellationToken = default)
+        {
+            return ValueTask.CompletedTask;
+        }
+    }
+
+    private sealed class ActorRequestCall : IZLinkActorRequestCall
+    {
+        public IZLinkActorRequestCall PacketName(string packetName)
+        {
+            _ = packetName;
+            return this;
+        }
+
+        public IZLinkActorRequestCall Timeout(TimeSpan timeout)
+        {
+            _ = timeout;
+            return this;
+        }
+
+        public ValueTask<TReply> Async<TReply>(CancellationToken cancellationToken = default)
+        {
+            object reply = new JoinedRoom("room-1");
+            return ValueTask.FromResult((TReply)reply);
+        }
     }
 
     private sealed class ActorDirectory(IZLinkActorManager manager) : IZLinkActorDirectory

@@ -197,6 +197,30 @@ internal sealed class ZLinkBackendSpotNodeWrapper(ISpotNode nativeSpotNode) : IZ
             .Submit();
     }
 
+    public bool SendToActor(
+        ZLinkBackendActorRef actor,
+        IReadOnlyList<Message> parts,
+        SendFlags flags)
+    {
+        return nativeSpotNode.SendToActor(actor.ToNative())
+            .Messages(parts)
+            .Flags(flags)
+            .Submit();
+    }
+
+    public async ValueTask<IReadOnlyList<Message>> RequestToActorAsync(
+        ZLinkBackendActorRef actor,
+        IReadOnlyList<Message> parts,
+        TimeSpan? timeout,
+        CancellationToken cancellationToken)
+    {
+        var operation = nativeSpotNode.RequestToActor(actor.ToNative())
+            .Messages(parts);
+        if (timeout is { } value) operation = operation.Timeout(value);
+
+        return await operation.Async(cancellationToken).ConfigureAwait(false);
+    }
+
     public bool ForwardActorBoundSessionPart(
         ZLinkBackendActorRef actor,
         RoutingId sourceNodeRid,

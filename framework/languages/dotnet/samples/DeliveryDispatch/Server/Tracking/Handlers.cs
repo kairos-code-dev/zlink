@@ -1,17 +1,15 @@
 using DeliveryDispatch.Server.Configuration;
 using DeliveryDispatch.Shared.Contracts;
 using Microsoft.Extensions.Logging;
-using Zlink.Framework.Contracts.Channels;
+using Zlink.Framework.Contracts.Actors;
 using Zlink.Framework.Contracts.Handlers;
-using Zlink.Framework.Contracts.Locations;
 
 namespace DeliveryDispatch.Server.Tracking;
 
 [ZLinkHandlerGroup(SampleNames.TrackingRouteChannel)]
 internal sealed class DeliveryStatusChangedHandler(
     EvidenceStore evidence,
-    IZLinkRouteClient routes,
-    IZLinkActorAddressResolver actors,
+    IZLinkActorClient actors,
     ILogger<DeliveryStatusChangedHandler> logger)
     : IZLinkRequestHandler<DeliveryStatusChangedReq, DeliveryStatusChangedRes>
 {
@@ -27,18 +25,9 @@ internal sealed class DeliveryStatusChangedHandler(
             request.Status,
             request.CourierId,
             request.OccurredAt);
-        var customerEntry = await actors.ResolveActorSpotAddressAsync(
-                                request.CustomerId,
-                                cancellationToken)
-                            ?? throw new InvalidOperationException("Customer actor spot is not available.");
-        logger.LogInformation(
-            "deliverydispatch tracking: customer actor address customer={CustomerId} node={NodeRid} spot={SpotRid}",
-            request.CustomerId,
-            customerEntry.NodeRid,
-            customerEntry.SpotRid);
-        routes.SendToSpot(SampleNames.CustomerActorDiscovery, customerEntry, updated)
+        await actors.SendToActor(request.CustomerId, updated)
             .PacketName(nameof(DeliveryStatusUpdatedMsg))
-            .Submit(cancellationToken);
+            .Async(cancellationToken);
         logger.LogInformation(
             "deliverydispatch tracking: status delivery={DeliveryId} status={Status} courier={CourierId}",
             request.DeliveryId,

@@ -29,7 +29,7 @@ public final class Program {
                 .run(args);
         try {
             ZLinkSpotPublisherClient publisher = context.getBean(ZLinkSpotPublisherClient.class);
-            publisher.publishSpot(
+            publisher.publish(
                     Contracts.SPOT_MESH,
                     "spot.events",
                     new Contracts.MeshMsg("c4-publisher"))

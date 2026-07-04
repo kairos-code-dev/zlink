@@ -7,6 +7,7 @@ import java.net.URI;
 import java.nio.charset.StandardCharsets;
 import org.springframework.context.SmartLifecycle;
 import systems.zlink.contracts.core.RoutingId;
+import systems.zlink.framework.messaging.ZLinkMessage;
 import systems.zlink.framework.spots.ZLinkSpotManager;
 
 public final class EvidenceHttpServer implements SmartLifecycle {
@@ -89,7 +90,7 @@ public final class EvidenceHttpServer implements SmartLifecycle {
                     return;
                 }
                 try {
-                    spots.getOrCreate(TimerScenarioSpot.class, RoutingId.from(rid), "e2e")
+                    spots.getOrCreate(TimerScenarioSpot.class, RoutingId.from(rid), ZLinkMessage.of("e2e"))
                         .toCompletableFuture()
                         .get(5, java.util.concurrent.TimeUnit.SECONDS);
                 } catch (InterruptedException error) {

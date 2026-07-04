@@ -7,8 +7,10 @@ import org.springframework.context.annotation.Bean;
 import systems.zlink.contracts.core.RoutingId;
 import systems.zlink.framework.configuration.ZLinkMessageFlowLogMode;
 import systems.zlink.framework.configuration.ZLinkSpotNodeBuilder;
+import systems.zlink.framework.locations.redis.ZLinkRedisLocationStore;
 import systems.zlink.framework.spring.EnableZLinkFramework;
 import systems.zlink.framework.spring.ZLinkFrameworkConfigurer;
+import systems.zlink.samples.deliverydispatch.server.configuration.SampleLocationStore;
 import systems.zlink.samples.deliverydispatch.server.configuration.SampleNames;
 import systems.zlink.samples.deliverydispatch.server.configuration.SampleTopology;
 import systems.zlink.samples.deliverydispatch.server.customergateway.sessions.CustomerSession;
@@ -34,7 +36,8 @@ public final class CustomerGatewayApplication {
     ZLinkFrameworkConfigurer customerGatewayFramework() {
         return options -> {
             options.addHandlersFromPackageOf(CustomerGatewayApplication.class);
-            options.useDiscovery().addRegistryEndpoint(SampleTopology.RegistryRouterEndpoint);
+            options.configureLocations()
+                .setSpotRouterChannel(SampleNames.CustomerSpotDiscovery, SampleNames.CustomerRouteChannel);
             options.configureDispatch()
                 .messageFlow(ZLinkMessageFlowLogMode.KEY_TRANSITIONS)
                 .traceLogFile(System.getenv().getOrDefault("DELIVERYDISPATCH_LOG_DIR", "logs")
@@ -56,6 +59,11 @@ public final class CustomerGatewayApplication {
                 .registerSession(CustomerSession.class)
                 .addSessionPacketHandler(SubscribeDeliverySessionHandler.class);
         };
+    }
+
+    @Bean(destroyMethod = "close")
+    ZLinkRedisLocationStore locationStore() {
+        return SampleLocationStore.create();
     }
 
     @Bean

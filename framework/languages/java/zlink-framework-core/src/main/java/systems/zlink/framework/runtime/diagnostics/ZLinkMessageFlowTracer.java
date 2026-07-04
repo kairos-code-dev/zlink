@@ -43,7 +43,7 @@ public final class ZLinkMessageFlowTracer {
     // Cheap mode gate (volatile read of the live mode). Build the event only after
     // this returns true.
     public boolean enabled(ZLinkMessageFlowOutcome outcome) {
-        return options.diagnostics().effectiveMessageFlow().ordinal() >= requiredMode(outcome).ordinal();
+        return options.diagnostics().effectiveMessageFlow().value() >= requiredMode(outcome).value();
     }
 
     public void trace(ZLinkMessageFlowEvent flow) {
@@ -125,7 +125,7 @@ public final class ZLinkMessageFlowTracer {
         ZLinkDiagnosticsOptions diagnostics = options.diagnostics();
         Long size = null;
         if (flow.messageSize() != null
-            && diagnostics.effectiveMessageFlow().ordinal() >= ZLinkMessageFlowLogMode.VERBOSE.ordinal()
+            && diagnostics.effectiveMessageFlow().value() >= ZLinkMessageFlowLogMode.VERBOSE.value()
             && diagnostics.includeMessageSizes()) {
             size = flow.messageSize();
         }

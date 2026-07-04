@@ -16,6 +16,7 @@ import org.springframework.beans.factory.support.BeanDefinitionRegistry;
 import org.springframework.beans.factory.support.RootBeanDefinition;
 import org.springframework.context.annotation.ClassPathScanningCandidateComponentProvider;
 import org.springframework.core.type.filter.AssignableTypeFilter;
+import systems.zlink.framework.actors.ZLinkActorDirectory;
 import systems.zlink.framework.actors.ZLinkActorManager;
 import systems.zlink.framework.runtime.configuration.DefaultZLinkFrameworkOptions;
 import systems.zlink.framework.runtime.streams.StreamNodeRegistration;
@@ -31,6 +32,7 @@ final class ZLinkFrameworkCapabilityBeanRegistrar implements BeanFactoryPostProc
     private static final String SPOT_PUBLISHER_CLIENT_BEAN_NAME =
         "zlinkSpotPublisherClient";
     private static final String ACTOR_MANAGER_BEAN_NAME = "zlinkActorManager";
+    private static final String ACTOR_DIRECTORY_BEAN_NAME = "zlinkActorDirectory";
 
     @Override
     public void postProcessBeanFactory(ConfigurableListableBeanFactory beanFactory)
@@ -65,6 +67,9 @@ final class ZLinkFrameworkCapabilityBeanRegistrar implements BeanFactoryPostProc
         }
         if (hasSpotNode && hasActorFactory && !hasBean(beanFactory, ZLinkActorManager.class)) {
             registerDelegate(registry, ACTOR_MANAGER_BEAN_NAME, ZLinkFrameworkActorManagerBean.class);
+        }
+        if (hasSpotNode && hasActorFactory && !hasBean(beanFactory, ZLinkActorDirectory.class)) {
+            registerDelegate(registry, ACTOR_DIRECTORY_BEAN_NAME, ZLinkFrameworkActorDirectoryBean.class);
         }
     }
 

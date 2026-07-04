@@ -1,5 +1,6 @@
 package systems.zlink.samples.deliverydispatch.shared.contracts;
 
+import systems.zlink.framework.actors.ZLinkActorRefSnapshot;
 import systems.zlink.framework.handlers.ZLinkPacket;
 
 public final class Messages {
@@ -14,9 +15,6 @@ public final class Messages {
         PickedUp,
         Delivered,
         Failed
-    }
-
-    public record ActorRefSnapshot(String nodeRid, String actorId, long generation) {
     }
 
     @ZLinkPacket("CreateDeliveryRequest")
@@ -53,27 +51,27 @@ public final class Messages {
     }
 
     @ZLinkPacket("BindCourierSession")
-    public record BindCourierSession(String courierId, ActorRefSnapshot actor, String sessionRoute) {
+    public record BindCourierSession(String courierId, ZLinkActorRefSnapshot actor, String sessionRoute) {
         public BindCourierSession(String courierId) {
             this(courierId, null, null);
         }
     }
 
-    public record BindCourierSessionAccepted(String courierId, ActorRefSnapshot actor, String sessionRoute) {
+    public record BindCourierSessionAccepted(String courierId, ZLinkActorRefSnapshot actor, String sessionRoute) {
     }
 
     @ZLinkPacket("BindCourier")
     public record BindCourier(String courierId, String sessionRoute) {
     }
 
-    public record CourierBound(String courierId, ActorRefSnapshot actor, String sessionRoute) {
+    public record CourierBound(String courierId, ZLinkActorRefSnapshot actor, String sessionRoute) {
     }
 
     @ZLinkPacket("EnsureCourierActor")
     public record EnsureCourierActor(String courierId) {
     }
 
-    public record CourierActorEnsured(String courierId, ActorRefSnapshot actor) {
+    public record CourierActorEnsured(String courierId, ZLinkActorRefSnapshot actor) {
     }
 
     @ZLinkPacket("OfferDelivery")
@@ -121,7 +119,7 @@ public final class Messages {
     public record EnsureCustomerActor(String customerId) {
     }
 
-    public record CustomerActorEnsured(String customerId, ActorRefSnapshot actorRef) {
+    public record CustomerActorEnsured(String customerId, ZLinkActorRefSnapshot actorRef) {
     }
 
     @ZLinkPacket("ServerAssertionRequest")

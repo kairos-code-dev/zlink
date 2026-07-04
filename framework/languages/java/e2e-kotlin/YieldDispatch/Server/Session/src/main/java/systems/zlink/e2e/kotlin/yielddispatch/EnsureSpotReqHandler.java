@@ -30,7 +30,7 @@ public final class EnsureSpotReqHandler
         ZLinkSessionDispatchContext dispatch,
         Contracts.EnsureSpotReq request) {
         Contracts.EnsureSpotRes reply = routes
-            .requestTo(
+            .requestToNode(
                 Contracts.SPOT_MESH,
                 SpotMsgRouteHandler.targetNode(dispatch),
                 request)

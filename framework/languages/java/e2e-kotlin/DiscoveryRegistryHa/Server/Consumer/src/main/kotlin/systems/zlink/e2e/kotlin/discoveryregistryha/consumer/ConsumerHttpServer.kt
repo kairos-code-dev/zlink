@@ -92,7 +92,7 @@ class ConsumerHttpServer(
 
     private fun peers(): List<Map<String, Any>> =
         lifecycle.monitoringLocationRuntimeQuery()
-            .listPeersAsync(
+            .listPeerLocationsAsync(
                 ZLinkPeerLocationFilter(
                     ZLinkLocationAutoConnectType.CLIENT_SERVER,
                     Contracts.CHANNEL,

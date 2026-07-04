@@ -1,27 +1,26 @@
 package systems.zlink.framework.channels;
 
 import systems.zlink.contracts.core.RoutingId;
+import systems.zlink.framework.locations.ZLinkSpotAddress;
 
 public interface ZLinkRouteClient {
-    ZLinkSendCall sendTo(
+    ZLinkSendCall sendToNode(
         String channelName,
         RoutingId target,
         Object message);
 
     ZLinkSendCall sendToSpot(
         String channelName,
-        RoutingId targetNode,
-        RoutingId targetSpot,
+        ZLinkSpotAddress address,
         Object message);
 
-    ZLinkRouteRequestCall requestTo(
+    ZLinkRequestCall requestToNode(
         String channelName,
         RoutingId target,
         Object message);
 
-    ZLinkRouteRequestCall requestToSpot(
+    ZLinkRequestCall requestToSpot(
         String channelName,
-        RoutingId targetNode,
-        RoutingId targetSpot,
+        ZLinkSpotAddress address,
         Object message);
 }

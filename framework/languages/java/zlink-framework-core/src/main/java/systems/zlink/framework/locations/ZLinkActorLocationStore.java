@@ -11,11 +11,9 @@ public interface ZLinkActorLocationStore {
         ZLinkActorLocationKey key,
         ZLinkLocationOwnerToken owner);
 
-    CompletionStage<Long> removeActorsByOwnerAsync(String ownerId);
-
     CompletionStage<ZLinkActorLocation> resolveActorAsync(ZLinkActorLocationKey key);
 
-    CompletionStage<ZLinkLocationPage<ZLinkActorLocation>> listActorsAsync(
+    CompletionStage<ZLinkLocationPage<ZLinkActorLocation>> listActorLocationsAsync(
         ZLinkActorLocationFilter filter,
         ZLinkPageRequest page);
 }

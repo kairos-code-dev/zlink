@@ -36,7 +36,7 @@ object PlayServer {
             options.addClientServerChannel(SampleNames.PlayChannel)
                 .enableServer(settings.playChannelEndpoint)
                 .addHandlerGroup(SampleNames.PlayChannel)
-            val route: RouteMeshChannelBuilder = options.addRouteMesh(SampleNames.RouteChannel)
+            val route: RouteMeshChannelBuilder = options.addRouteMeshChannel(SampleNames.RouteChannel)
             route.enableServer(settings.routeEndpoint)
                 .enableClient(settings.peerRouteEndpoint)
                 .setRoutingId(RoutingId.from(settings.playSpotNodeRid))

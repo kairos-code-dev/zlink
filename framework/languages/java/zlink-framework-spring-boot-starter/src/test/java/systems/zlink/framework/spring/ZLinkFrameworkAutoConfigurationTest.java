@@ -31,6 +31,7 @@ import org.springframework.context.annotation.Configuration;
 import systems.zlink.contracts.messaging.Message;
 import systems.zlink.framework.actors.ZLinkActor;
 import systems.zlink.framework.actors.ZLinkActorContext;
+import systems.zlink.framework.actors.ZLinkActorDirectory;
 import systems.zlink.framework.actors.ZLinkActorFactory;
 import systems.zlink.framework.actors.ZLinkActorManager;
 import systems.zlink.framework.actors.ZLinkActorRef;
@@ -160,7 +161,7 @@ final class ZLinkFrameworkAutoConfigurationTest {
             assertThrows(ZLinkConfigurationException.class, () ->
                 fanout.publish("missing", "topic", "payload").submit());
             assertThrows(ZLinkConfigurationException.class, () ->
-                route.requestTo("missing", RoutingId.from("target"), "payload"));
+                route.requestToNode("missing", RoutingId.from("target"), "payload"));
         }
     }
 
@@ -182,6 +183,8 @@ final class ZLinkFrameworkAutoConfigurationTest {
                 context.getBean(ZLinkSpotPublisherClient.class));
             assertThrows(NoSuchBeanDefinitionException.class, () ->
                 context.getBean(ZLinkActorManager.class));
+            assertThrows(NoSuchBeanDefinitionException.class, () ->
+                context.getBean(ZLinkActorDirectory.class));
         }
     }
 
@@ -207,6 +210,8 @@ final class ZLinkFrameworkAutoConfigurationTest {
                 context.getBean(ZLinkSpotPublisherClient.class));
             assertThrows(NoSuchBeanDefinitionException.class, () ->
                 context.getBean(ZLinkActorManager.class));
+            assertThrows(NoSuchBeanDefinitionException.class, () ->
+                context.getBean(ZLinkActorDirectory.class));
             ZLinkSpotOutbound outbound = context.getBean(ZLinkSpotOutbound.class);
             assertThrows(ZLinkConfigurationException.class, () ->
                 outbound.sendToChannel("events", "hello"));
@@ -231,6 +236,9 @@ final class ZLinkFrameworkAutoConfigurationTest {
             assertInstanceOf(
                 ZLinkActorManager.class,
                 context.getBean(ZLinkActorManager.class));
+            assertInstanceOf(
+                ZLinkActorDirectory.class,
+                context.getBean(ZLinkActorDirectory.class));
         }
     }
 
@@ -297,7 +305,7 @@ final class ZLinkFrameworkAutoConfigurationTest {
 
             ZLinkSpotPublisherClient publisher =
                 context.getBean(ZLinkSpotPublisherClient.class);
-            publisher.publishSpot("game", "stage.events", "opened")
+            publisher.publish("game", "stage.events", "opened")
                 .packetName("StageOpened")
                 .submit()
                 .toCompletableFuture()
@@ -466,7 +474,7 @@ final class ZLinkFrameworkAutoConfigurationTest {
                     ZLinkJavaBackendAdapterFactory::new);
                 sourceContext.registerBean(
                     ZLinkFrameworkConfigurer.class,
-                    () -> options -> { var channel = options.addRouteMesh("route"); channel.enableServer(sourceEndpoint);
+                    () -> options -> { var channel = options.addRouteMeshChannel("route"); channel.enableServer(sourceEndpoint);
                         channel.setRoutingId(sourceRid);
                         channel.enableClient(targetEndpoint); });
                 sourceContext.register(
@@ -475,7 +483,7 @@ final class ZLinkFrameworkAutoConfigurationTest {
                 sourceContext.refresh();
 
                 String reply = sourceContext.getBean(ZLinkRouteClient.class)
-                    .requestTo("route", targetRid, "hello")
+                    .requestToNode("route", targetRid, "hello")
                     .packetName("SpringRoute")
                     .timeout(Duration.ofSeconds(3))
                     .submit(String.class)
@@ -686,7 +694,7 @@ final class ZLinkFrameworkAutoConfigurationTest {
 
         @Bean
         ZLinkFrameworkConfigurer monitoredServerChannelConfigurer() {
-            return options -> { var channel = options.addRouteMesh("profile"); channel.enableServer("inproc://profile-monitor");
+            return options -> { var channel = options.addRouteMeshChannel("profile"); channel.enableServer("inproc://profile-monitor");
                 channel.enableClient("inproc://profile-monitor"); };
         }
 
@@ -900,7 +908,7 @@ final class ZLinkFrameworkAutoConfigurationTest {
         @Bean
         ZLinkFrameworkConfigurer routeMeshHandlerConfigurer(
             RouteMeshEndpoints endpoints) {
-            return options -> { var channel = options.addRouteMesh("route"); channel.enableServer(endpoints.targetEndpoint());
+            return options -> { var channel = options.addRouteMeshChannel("route"); channel.enableServer(endpoints.targetEndpoint());
                 channel.setRoutingId(endpoints.targetRid());
                 channel.enableClient(endpoints.sourceEndpoint());
                 channel.addRequestHandler(

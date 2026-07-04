@@ -2,11 +2,11 @@ package systems.zlink.samples.kotlin.deliverydispatch.server.courierspotnode.han
 
 import systems.zlink.framework.ZLinkAwait
 import systems.zlink.framework.actors.ZLinkActorManager
+import systems.zlink.framework.actors.ZLinkActorRefSnapshot
 import systems.zlink.framework.channels.ZLinkRouteRequestContext
 import systems.zlink.framework.channels.ZLinkRouteRequestHandler
 import systems.zlink.framework.handlers.ZLinkHandlerGroup
 import systems.zlink.samples.kotlin.deliverydispatch.server.configuration.SampleNames
-import systems.zlink.samples.kotlin.deliverydispatch.shared.contracts.ActorRefSnapshot
 import systems.zlink.samples.kotlin.deliverydispatch.shared.contracts.EnsureCourierActorRes
 import systems.zlink.samples.kotlin.deliverydispatch.shared.contracts.EnsureCourierActorReq
 
@@ -21,11 +21,7 @@ class EnsureCourierActorRouteHandler(
         val actor = ZLinkAwait.await(actors.getOrCreate(request.courierId, SampleNames.CourierActorType, request))
         return EnsureCourierActorRes(
             courierId = request.courierId,
-            actor = ActorRefSnapshot(
-                nodeRid = actor.nodeRid().toString(),
-                actorId = actor.actorId(),
-                generation = actor.epoch(),
-            ),
+            actor = ZLinkActorRefSnapshot.from(actor),
         )
     }
 }

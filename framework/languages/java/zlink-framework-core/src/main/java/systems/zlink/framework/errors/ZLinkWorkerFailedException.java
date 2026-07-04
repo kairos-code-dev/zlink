@@ -6,6 +6,6 @@ package systems.zlink.framework.errors;
  */
 public class ZLinkWorkerFailedException extends ZLinkFrameworkException {
     public ZLinkWorkerFailedException(String message, Throwable cause) {
-        super(message, cause);
+        super(ZLinkFrameworkErrorKind.WORKER_FAILED, message, cause);
     }
 }

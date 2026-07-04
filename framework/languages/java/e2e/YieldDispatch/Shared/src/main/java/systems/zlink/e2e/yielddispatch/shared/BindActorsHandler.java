@@ -36,7 +36,7 @@ public final class BindActorsHandler
         ZLinkSessionDispatchContext dispatch,
         Contracts.BindActorsReq request) {
         Contracts.BindActorsRes reply = routes
-            .requestTo(
+            .requestToNode(
                 Contracts.ROUTE_CHANNEL,
                 RoutingId.from(Contracts.PLAY_NODE),
                 request)
@@ -46,7 +46,7 @@ public final class BindActorsHandler
             context.actors().bind(new ZLinkActorRef(
                     RoutingId.from(actor.nodeRid()),
                     actor.actorId(),
-                    actor.epoch()))
+                    actor.generation()))
                 .toCompletableFuture()
                 .join();
         }

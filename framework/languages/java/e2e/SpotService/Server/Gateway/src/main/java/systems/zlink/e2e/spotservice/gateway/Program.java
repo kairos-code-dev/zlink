@@ -53,7 +53,7 @@ public final class Program {
                 .messageFlow(ZLinkMessageFlowLogMode.KEY_TRANSITIONS)
                 .traceLogFile(logDir + "/gateway-flow.log")
                 .traceLabel("java-sm-gateway");
-            options.addRouteMesh(Contracts.ROUTE_CHANNEL)
+            options.addRouteMeshChannel(Contracts.ROUTE_CHANNEL)
                 .enableServer(Env.get("ZLINK_JAVA_E2E_ROUTE_ENDPOINT"))
                 .enableClient(Env.get("ZLINK_JAVA_E2E_ROUTE_A_ENDPOINT"))
                 .enableClient(Env.get("ZLINK_JAVA_E2E_ROUTE_B_ENDPOINT"))

@@ -7,10 +7,11 @@ import org.springframework.boot.autoconfigure.SpringBootApplication;
 import org.springframework.boot.builder.SpringApplicationBuilder;
 import org.springframework.context.annotation.Bean;
 import systems.zlink.framework.configuration.ZLinkMessageFlowLogMode;
+import systems.zlink.framework.locations.redis.ZLinkRedisLocationStore;
 import systems.zlink.framework.spring.EnableZLinkFramework;
 import systems.zlink.framework.spring.ZLinkFrameworkConfigurer;
+import systems.zlink.samples.deliverydispatch.server.configuration.SampleLocationStore;
 import systems.zlink.samples.deliverydispatch.server.configuration.SampleNames;
-import systems.zlink.samples.deliverydispatch.server.configuration.SampleTopology;
 
 @EnableZLinkFramework
 @SpringBootApplication(
@@ -30,7 +31,6 @@ public final class DispatchServerApplication {
     @Bean
     ZLinkFrameworkConfigurer dispatchFramework() {
         return options -> {
-            options.useDiscovery().addRegistryEndpoint(SampleTopology.RegistryRouterEndpoint);
             options.configureDispatch()
                 .messageFlow(ZLinkMessageFlowLogMode.KEY_TRANSITIONS)
                 .traceLogFile(System.getenv().getOrDefault("DELIVERYDISPATCH_LOG_DIR", "logs")
@@ -41,6 +41,11 @@ public final class DispatchServerApplication {
             options.addClientServerChannel(SampleNames.TrackingChannel)
                 .enableClient();
         };
+    }
+
+    @Bean(destroyMethod = "close")
+    ZLinkRedisLocationStore locationStore() {
+        return SampleLocationStore.create();
     }
 
     @Bean

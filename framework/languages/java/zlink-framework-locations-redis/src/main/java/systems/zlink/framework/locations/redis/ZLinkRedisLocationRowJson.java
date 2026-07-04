@@ -6,6 +6,10 @@ import com.fasterxml.jackson.databind.ObjectMapper;
 import com.fasterxml.jackson.databind.node.ArrayNode;
 import com.fasterxml.jackson.databind.node.ObjectNode;
 import java.time.Instant;
+import java.time.ZoneOffset;
+import java.time.format.DateTimeFormatter;
+import java.time.format.DateTimeFormatterBuilder;
+import java.time.temporal.ChronoField;
 import java.util.ArrayList;
 import java.util.Base64;
 import java.util.HashMap;
@@ -13,6 +17,7 @@ import java.util.Iterator;
 import java.util.List;
 import java.util.Map;
 import systems.zlink.contracts.core.RoutingId;
+import systems.zlink.framework.actors.ZLinkActorRef;
 import systems.zlink.framework.locations.ZLinkActorLocation;
 import systems.zlink.framework.locations.ZLinkLocationAutoConnectType;
 import systems.zlink.framework.locations.ZLinkLocationRole;
@@ -24,6 +29,13 @@ import systems.zlink.framework.spots.ZLinkSpotKind;
 
 final class ZLinkRedisLocationRowJson {
     private static final ObjectMapper JSON = new ObjectMapper();
+    private static final DateTimeFormatter INSTANT_WIRE_FORMAT =
+        new DateTimeFormatterBuilder()
+            .appendPattern("yyyy-MM-dd'T'HH:mm:ss")
+            .appendFraction(ChronoField.NANO_OF_SECOND, 0, 9, true)
+            .appendOffset("+HH:MM", "+00:00")
+            .toFormatter()
+            .withZone(ZoneOffset.UTC);
 
     private ZLinkRedisLocationRowJson() {
     }
@@ -33,7 +45,7 @@ final class ZLinkRedisLocationRowJson {
         node.put("AutoConnectType", autoConnectTypeNumber(row.autoConnectType()));
         node.put("MeshName", row.meshName());
         putRid(node, "NodeRid", row.nodeRid());
-        node.put("Role", roleNumber(row.role()));
+        node.put("Role", row.role() == null ? 0 : row.role().value());
         node.put("Endpoint", row.endpoint());
         node.put("Weight", row.weight());
         node.put("Value", row.value());
@@ -92,16 +104,15 @@ final class ZLinkRedisLocationRowJson {
 
     static String serializeActor(ZLinkActorLocation row) {
         ObjectNode node = JSON.createObjectNode();
-        node.put("ActorType", row.actorType());
         node.put("ActorId", row.actorId());
-        node.put("ActorRef", row.actorRef());
+        putNullableText(node, "ActorType", row.actorType());
+        putActorRef(node, "ActorRef", row.actorRef());
         putRid(node, "NodeRid", row.nodeRid());
-        node.put("Generation", row.generation());
-        node.put("LocationKind", spotKindNumber(row.locationKind()));
-        putRid(node, "SpotRid", row.spotRid());
-        node.put("SpotKind", spotKindNumber(row.spotKind()));
+        node.put("LocationKind", row.locationKind().value());
         node.put("SpotMeshName", row.spotMeshName());
+        putRid(node, "SpotRid", row.spotRid());
         node.put("OwnerId", row.ownerId());
+        node.put("Generation", row.generation());
         putInstant(node, "UpdatedAt", row.updatedAt());
         return write(node);
     }
@@ -109,22 +120,21 @@ final class ZLinkRedisLocationRowJson {
     static ZLinkActorLocation deserializeActor(String json, long generation, Instant updatedAt) {
         JsonNode node = read(json);
         return new ZLinkActorLocation(
-            text(node, "ActorType"),
             text(node, "ActorId"),
-            text(node, "ActorRef"),
+            nullableText(node, "ActorType"),
+            actorRef(node.get("ActorRef")),
             rid(node, "NodeRid"),
-            generation,
             spotKind(node.path("LocationKind").asInt()),
-            nullableText(node, "SpotMeshName"),
+            text(node, "SpotMeshName"),
             rid(node, "SpotRid"),
-            spotKind(node.path("SpotKind").asInt()),
             text(node, "OwnerId"),
+            generation,
             updatedAt);
     }
 
     static String serializeRoute(ZLinkRouteLocation row) {
         ObjectNode node = JSON.createObjectNode();
-        node.put("RouteKind", row.routeKind().ordinal());
+        node.put("RouteKind", row.routeKind().value());
         node.put("RouteKey", row.routeKey());
         putRid(node, "OwnerNodeRid", row.ownerNodeRid());
         node.put("OwnerId", row.ownerId());
@@ -180,7 +190,7 @@ final class ZLinkRedisLocationRowJson {
         if (value == null) {
             node.put(field, Instant.EPOCH.toString());
         } else {
-            node.put(field, value.toString());
+            node.put(field, INSTANT_WIRE_FORMAT.format(value));
         }
     }
 
@@ -244,68 +254,53 @@ final class ZLinkRedisLocationRowJson {
         return List.copyOf(result);
     }
 
-    private static int autoConnectTypeNumber(ZLinkLocationAutoConnectType value) {
-        return switch (value) {
-            case ROUTE_MESH -> 1;
-            case CLIENT_SERVER -> 2;
-            case DEALER_MESH -> 3;
-            case FANOUT -> 4;
-            case SPOT_MESH -> 5;
-            default -> 0;
-        };
-    }
-
     private static ZLinkLocationAutoConnectType autoConnectType(int value) {
-        return switch (value) {
-            case 1 -> ZLinkLocationAutoConnectType.ROUTE_MESH;
-            case 2 -> ZLinkLocationAutoConnectType.CLIENT_SERVER;
-            case 3 -> ZLinkLocationAutoConnectType.DEALER_MESH;
-            case 4 -> ZLinkLocationAutoConnectType.FANOUT;
-            case 5 -> ZLinkLocationAutoConnectType.SPOT_MESH;
-            default -> ZLinkLocationAutoConnectType.INVALID;
-        };
-    }
-
-    private static int roleNumber(ZLinkLocationRole value) {
-        return switch (value) {
-            case SPOT -> 2;
-            case ROUTER -> 3;
-            case DEALER -> 4;
-            case PUB -> 5;
-            case SUB -> 6;
-            default -> 0;
-        };
+        return ZLinkLocationAutoConnectType.fromValue(value);
     }
 
     private static ZLinkLocationRole role(int value) {
-        return switch (value) {
-            case 2 -> ZLinkLocationRole.SPOT;
-            case 3 -> ZLinkLocationRole.ROUTER;
-            case 4 -> ZLinkLocationRole.DEALER;
-            case 5 -> ZLinkLocationRole.PUB;
-            case 6 -> ZLinkLocationRole.SUB;
-            default -> ZLinkLocationRole.INVALID;
-        };
+        return ZLinkLocationRole.fromValue(value);
     }
 
     private static int spotKindNumber(ZLinkSpotKind value) {
-        return value == null ? 0 : value.ordinal();
+        return value == null ? 0 : value.value();
     }
 
     private static ZLinkSpotKind spotKind(int value) {
-        return switch (value) {
-            case 1 -> ZLinkSpotKind.ENTRY;
-            case 2 -> ZLinkSpotKind.USER;
-            default -> ZLinkSpotKind.INVALID;
-        };
+        return ZLinkSpotKind.fromValue(value);
     }
 
     private static ZLinkRouteKind routeKind(int value) {
-        return switch (value) {
-            case 1 -> ZLinkRouteKind.ACTOR_SESSION;
-            case 2 -> ZLinkRouteKind.SPOT_NAME;
-            case 3 -> ZLinkRouteKind.FRAMEWORK_ROUTE;
-            default -> ZLinkRouteKind.INVALID;
-        };
+        return ZLinkRouteKind.fromValue(value);
+    }
+
+    private static int autoConnectTypeNumber(ZLinkLocationAutoConnectType value) {
+        return value == null ? 0 : value.value();
+    }
+
+    private static void putActorRef(ObjectNode node, String field, ZLinkActorRef value) {
+        if (value == null) {
+            node.putNull(field);
+            return;
+        }
+        ObjectNode actorRef = JSON.createObjectNode();
+        putRid(actorRef, "nodeRid", value.nodeRid());
+        actorRef.put("actorId", value.actorId());
+        actorRef.put("generation", value.generation());
+        node.set(field, actorRef);
+    }
+
+    private static ZLinkActorRef actorRef(JsonNode node) {
+        if (node == null || node.isNull()) {
+            return null;
+        }
+        if (node.isTextual()) {
+            String legacy = node.asText();
+            return legacy.isBlank() ? null : new ZLinkActorRef(null, legacy, 0);
+        }
+        return new ZLinkActorRef(
+            rid(node, "nodeRid"),
+            text(node, "actorId"),
+            node.path("generation").asLong());
     }
 }

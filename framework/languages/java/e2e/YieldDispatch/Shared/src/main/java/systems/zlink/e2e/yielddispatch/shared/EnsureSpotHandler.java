@@ -5,6 +5,7 @@ import systems.zlink.contracts.core.RoutingId;
 import systems.zlink.framework.channels.ZLinkRouteClient;
 import systems.zlink.framework.channels.ZLinkRouteRequestContext;
 import systems.zlink.framework.channels.ZLinkRouteRequestHandler;
+import systems.zlink.framework.messaging.ZLinkMessage;
 import systems.zlink.framework.spots.ZLinkSpotManager;
 import systems.zlink.framework.streams.ZLinkSessionContext;
 import systems.zlink.framework.streams.ZLinkSessionDispatchContext;
@@ -36,7 +37,7 @@ public final class EnsureSpotHandler
         RoutingId targetNodeRid = RoutingId.from(dispatch.metadata()
             .getOrDefault(Contracts.TARGET_NODE_RID_METADATA, Contracts.PLAY_NODE));
         Contracts.EnsureSpotRes reply = routes
-            .requestTo(
+            .requestToNode(
                 Contracts.ROUTE_CHANNEL,
                 targetNodeRid,
                 request)
@@ -66,7 +67,7 @@ public final class EnsureSpotHandler
             spots.getOrCreate(
                     YieldProbeSpot.class,
                     RoutingId.from(request.spotRid()),
-                    "ensure")
+                    ZLinkMessage.of("ensure"))
                 .toCompletableFuture()
                 .join();
             evidence.record("spot-ensured", request.spotRid(), "node=" + evidence.nodeRid());

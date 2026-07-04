@@ -2,7 +2,6 @@ package systems.zlink.samples.kotlin.bingo.server.session.sessions.handlers
 
 import kotlinx.coroutines.future.await
 import systems.zlink.contracts.core.RoutingId
-import systems.zlink.framework.actors.ZLinkActorRef
 import systems.zlink.framework.channels.ZLinkClient
 import systems.zlink.framework.channels.ZLinkRouteClient
 import systems.zlink.framework.kotlin.ZLinkSuspendingTypedSessionPacketHandler
@@ -49,7 +48,7 @@ class AuthenticateSessionHandler(
             )
         }
         val ensured = routes
-            .requestTo(
+            .requestToNode(
                 SampleNames.PlayChannel,
                 RoutingId.from(SampleTopology.preferredPlayNodeRid()),
                 EnsurePlayerActorReq(
@@ -62,13 +61,7 @@ class AuthenticateSessionHandler(
             .submit(EnsurePlayerActorRes::class.java)
             .await()
         context.actors()
-            .bind(
-                ZLinkActorRef(
-                    RoutingId.from(ensured.actor.nodeRid),
-                    ensured.actor.actorId,
-                    ensured.actor.generation,
-                ),
-            )
+            .bind(ensured.actor.toActorRef())
             .await()
         context.client()
             .reply(

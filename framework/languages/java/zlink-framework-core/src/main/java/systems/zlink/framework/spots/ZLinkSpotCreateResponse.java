@@ -6,26 +6,30 @@ public record ZLinkSpotCreateResponse(
     boolean accepted,
     ZLinkMessage reply) {
     public static ZLinkSpotCreateResponse accept() {
-        return new ZLinkSpotCreateResponse(true, null);
+        return from(ZLinkSpotAcceptRejectResult.accept());
     }
 
     public static ZLinkSpotCreateResponse accept(ZLinkMessage reply) {
-        return new ZLinkSpotCreateResponse(true, reply);
+        return from(ZLinkSpotAcceptRejectResult.accept(reply));
     }
 
     public static ZLinkSpotCreateResponse accept(Object reply) {
-        return new ZLinkSpotCreateResponse(true, ZLinkMessage.of(reply));
+        return from(ZLinkSpotAcceptRejectResult.accept(reply));
     }
 
     public static ZLinkSpotCreateResponse reject() {
-        return new ZLinkSpotCreateResponse(false, null);
+        return from(ZLinkSpotAcceptRejectResult.reject());
     }
 
     public static ZLinkSpotCreateResponse reject(ZLinkMessage reply) {
-        return new ZLinkSpotCreateResponse(false, reply);
+        return from(ZLinkSpotAcceptRejectResult.reject(reply));
     }
 
     public static ZLinkSpotCreateResponse reject(Object reply) {
-        return new ZLinkSpotCreateResponse(false, ZLinkMessage.of(reply));
+        return from(ZLinkSpotAcceptRejectResult.reject(reply));
+    }
+
+    private static ZLinkSpotCreateResponse from(ZLinkSpotAcceptRejectResult result) {
+        return new ZLinkSpotCreateResponse(result.accepted(), result.reply());
     }
 }

@@ -8,7 +8,7 @@
 
 | project | 책임 |
 |---------|------|
-| `Server/Registry` | registry pub/router endpoint를 제공한다. |
+| `Server/Configuration` | role들이 공유하는 이름, endpoint, Redis location store 설정을 제공한다. |
 | `Server/Tracking` | 배송 상태 event를 기록하고 고객 actor로 알림을 보낸다. |
 | `Server/CustomerGateway` | 고객 stream session, customer actor, entry spot을 제공한다. |
 | `Server/CourierSession` | 배송원 stream session을 받고 courier actor와 session을 bind한다. |
@@ -23,8 +23,8 @@
 ./run_sample.sh
 ```
 
-runner는 사용 가능한 local port를 예약한 뒤 각 role을 별도 process로 시작한다. 모든 endpoint가
-열리면 `topology=ready`를 출력하고 client self-check를 실행한다.
+runner는 사용 가능한 local port와 격리된 Redis location store를 준비한 뒤 각 role을 별도 process로
+시작한다. 모든 endpoint가 열리면 `topology=ready`를 출력하고 client self-check를 실행한다.
 
 성공하면 아래 marker가 출력된다.
 

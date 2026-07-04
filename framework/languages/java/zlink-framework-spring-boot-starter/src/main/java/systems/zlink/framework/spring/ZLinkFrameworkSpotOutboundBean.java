@@ -4,8 +4,8 @@ import systems.zlink.framework.runtime.host.ZLinkFrameworkLifecycle;
 
 import systems.zlink.contracts.core.RoutingId;
 import systems.zlink.framework.channels.ZLinkPublishCall;
-import systems.zlink.framework.channels.ZLinkRequestCall;
 import systems.zlink.framework.channels.ZLinkSendCall;
+import systems.zlink.framework.channels.ZLinkYieldRequestCall;
 import systems.zlink.framework.spots.ZLinkSpotOutbound;
 
 final class ZLinkFrameworkSpotOutboundBean implements ZLinkSpotOutbound {
@@ -21,7 +21,7 @@ final class ZLinkFrameworkSpotOutboundBean implements ZLinkSpotOutbound {
     }
 
     @Override
-    public ZLinkRequestCall requestToSpot(
+    public ZLinkYieldRequestCall requestToSpot(
         RoutingId spotRid,
         Object request) {
         return lifecycle.spotOutbound().requestToSpot(spotRid, request);
@@ -40,7 +40,7 @@ final class ZLinkFrameworkSpotOutboundBean implements ZLinkSpotOutbound {
     }
 
     @Override
-    public ZLinkRequestCall requestToChannel(
+    public ZLinkYieldRequestCall requestToChannel(
         String channelName,
         Object request) {
         return lifecycle.spotOutbound().requestToChannel(channelName, request);

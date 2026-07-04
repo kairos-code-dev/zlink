@@ -13,5 +13,7 @@ public interface ZLinkSessionActors {
 
     CompletionStage<ZLinkSessionActor> bind(ZLinkActorRef actor);
 
+    CompletionStage<ZLinkSessionActor> bindOrGet(ZLinkActorRef actor);
+
     Optional<ZLinkSessionActor> find(String actorId);
 }

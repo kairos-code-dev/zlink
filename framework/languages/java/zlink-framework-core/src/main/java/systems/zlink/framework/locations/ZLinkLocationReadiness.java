@@ -3,8 +3,9 @@ package systems.zlink.framework.locations;
 import java.util.concurrent.CompletionStage;
 import systems.zlink.contracts.core.RoutingId;
 
-public interface ZLinkSpotLocationResolver {
-    CompletionStage<ZLinkSpotAddress> resolveSpotAddressAsync(
+public interface ZLinkLocationReadiness {
+    CompletionStage<Boolean> isPeerReadyAsync(
         String meshName,
-        RoutingId spotRid);
+        ZLinkLocationRole role,
+        RoutingId nodeRid);
 }

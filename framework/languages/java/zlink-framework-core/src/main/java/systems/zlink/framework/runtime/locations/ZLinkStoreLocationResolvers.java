@@ -9,23 +9,21 @@ import java.util.concurrent.CompletionStage;
 import java.util.function.Function;
 import systems.zlink.framework.locations.ZLinkActorLocation;
 import systems.zlink.framework.locations.ZLinkActorLocationKey;
-import systems.zlink.framework.locations.ZLinkActorLocationResolver;
+import systems.zlink.framework.locations.ZLinkActorAddressResolver;
 import systems.zlink.framework.locations.ZLinkLocationOptions;
 import systems.zlink.framework.locations.ZLinkPeerLocation;
 import systems.zlink.framework.locations.ZLinkPeerLocationFilter;
 import systems.zlink.framework.locations.ZLinkPeerLocationResolver;
 import systems.zlink.framework.locations.ZLinkRouteLocation;
 import systems.zlink.framework.locations.ZLinkRouteLocationKey;
-import systems.zlink.framework.locations.ZLinkRouteLocationResolver;
 import systems.zlink.framework.locations.ZLinkSpotAddress;
 import systems.zlink.framework.locations.ZLinkSpotLocation;
 import systems.zlink.framework.locations.ZLinkSpotLocationKey;
-import systems.zlink.framework.locations.ZLinkSpotLocationResolver;
+import systems.zlink.framework.locations.ZLinkSpotAddressResolver;
 import systems.zlink.framework.spots.ZLinkSpotKind;
 
 public final class ZLinkStoreLocationResolvers
-    implements ZLinkPeerLocationResolver,
-               ZLinkRouteLocationResolver {
+    implements ZLinkPeerLocationResolver {
     private final ZLinkRegisteredLocationStores stores;
     private final ZLinkOwnerLeaseTracker leaseTracker;
     private final ZLinkObservedLocationGenerations observed = new ZLinkObservedLocationGenerations();
@@ -41,8 +39,8 @@ public final class ZLinkStoreLocationResolvers
     }
 
     @Override
-    public CompletionStage<List<ZLinkPeerLocation>> listPeersAsync(ZLinkPeerLocationFilter filter) {
-        return stores.peerStore().listPeersAsync(filter)
+    public CompletionStage<List<ZLinkPeerLocation>> listLivePeersAsync(ZLinkPeerLocationFilter filter) {
+        return stores.peerStore().listPeerLocationsAsync(filter)
             .thenCompose(rows -> filterLivePeers(rows.stream()
                 .filter(observed::acceptPeer)
                 .toList()));
@@ -55,18 +53,14 @@ public final class ZLinkStoreLocationResolvers
             observed::acceptSpot);
     }
 
-    CompletionStage<ZLinkActorLocation> resolveActorRowAsync(ZLinkActorLocationKey key) {
-        ZLinkActorLocationKey normalized = new ZLinkActorLocationKey(
-            ZLinkLocationKeyCodec.normalizeActorType(key.actorType()),
-            key.actorId());
+    public CompletionStage<ZLinkActorLocation> resolveActorRowAsync(ZLinkActorLocationKey key) {
         return resolveLiveAsync(
-            stores.actorStore().resolveActorAsync(normalized),
+            stores.actorStore().resolveActorAsync(key),
             ZLinkActorLocation::ownerId,
             observed::acceptActor);
     }
 
-    @Override
-    public CompletionStage<ZLinkRouteLocation> resolveRouteAsync(ZLinkRouteLocationKey key) {
+    CompletionStage<ZLinkRouteLocation> resolveRouteRowAsync(ZLinkRouteLocationKey key) {
         return resolveLiveAsync(
             stores.routeStore().resolveRouteAsync(key),
             ZLinkRouteLocation::ownerId,
@@ -102,8 +96,8 @@ public final class ZLinkStoreLocationResolvers
     }
 
     public static final class AddressResolvers
-        implements ZLinkSpotLocationResolver,
-                   ZLinkActorLocationResolver {
+        implements ZLinkSpotAddressResolver,
+                   ZLinkActorAddressResolver {
         private final List<String> meshNames;
         private final Map<String, String> spotRouterChannels;
         private final ZLinkStoreLocationResolvers rows;
@@ -135,9 +129,8 @@ public final class ZLinkStoreLocationResolvers
 
         @Override
         public CompletionStage<ZLinkSpotAddress> resolveActorSpotAddressAsync(
-            String actorType,
             String actorId) {
-            return rows.resolveActorRowAsync(new ZLinkActorLocationKey(actorType, actorId))
+            return rows.resolveActorRowAsync(new ZLinkActorLocationKey(actorId))
                 .thenApply(row -> {
                     if (row == null) {
                         return null;

@@ -52,7 +52,9 @@ import systems.zlink.framework.ZLinkMessageSerializer;
 import systems.zlink.framework.channels.ZLinkPublishCall;
 import systems.zlink.framework.channels.ZLinkRequestCall;
 import systems.zlink.framework.channels.ZLinkSendCall;
+import systems.zlink.framework.channels.ZLinkYieldRequestCall;
 import systems.zlink.framework.errors.ZLinkConfigurationException;
+import systems.zlink.framework.errors.ZLinkFrameworkErrorKind;
 import systems.zlink.framework.errors.ZLinkFrameworkException;
 import systems.zlink.framework.execution.ZLinkAsyncSerialQueue;
 import systems.zlink.framework.execution.ZLinkFrameworkTurns;
@@ -684,7 +686,9 @@ public final class ZLinkSpotRuntime implements ZLinkSpotManager, AutoCloseable {
         }
         SpotNodeLocationMetadata metadata = locationMetadataByNodeRid.get(primaryNode.routingId());
         if (metadata == null) {
-            return CompletableFuture.completedFuture(ZLinkLocationWriteStatus.STORE_UNAVAILABLE);
+            CompletableFuture<ZLinkLocationWriteStatus> failed = new CompletableFuture<>();
+            failed.completeExceptionally(new IllegalStateException("Location runtime is not available."));
+            return failed;
         }
         return locationLifecycle.claimSpotAsync(
             metadata.meshName(),
@@ -708,7 +712,11 @@ public final class ZLinkSpotRuntime implements ZLinkSpotManager, AutoCloseable {
                 ZLinkSpotKind.ENTRY,
                 metadata.routeEndpoint(),
                 null)
-            .exceptionally(error -> ZLinkLocationWriteStatus.STORE_UNAVAILABLE);
+            .exceptionallyCompose(error -> {
+                CompletableFuture<ZLinkLocationWriteStatus> failed = new CompletableFuture<>();
+                failed.completeExceptionally(error);
+                return failed;
+            });
     }
 
     private CompletionStage<Void> releaseSpotLocationAsync(RoutingId spotRid) {
@@ -735,7 +743,7 @@ public final class ZLinkSpotRuntime implements ZLinkSpotManager, AutoCloseable {
         String message = status == ZLinkLocationWriteStatus.REJECTED_CONFLICT
             ? "SPOT '" + spotRid + "' location is owned by another runtime."
             : "SPOT '" + spotRid + "' location claim failed because the location store is unavailable.";
-        return new ZLinkFrameworkException(message);
+        return new ZLinkFrameworkException(ZLinkFrameworkErrorKind.SPOT_CREATE_FAILED, message);
     }
 
     @Override
@@ -1237,7 +1245,7 @@ public final class ZLinkSpotRuntime implements ZLinkSpotManager, AutoCloseable {
                     new ZLinkBackendActorRef(
                         headerPart.actor().nodeRid(),
                         actor.actorId(),
-                        headerPart.actor().epoch()),
+                        headerPart.actor().generation()),
                     actor.actorId(),
                     frameBytes,
                     replyFailureMessage);
@@ -1686,6 +1694,18 @@ public final class ZLinkSpotRuntime implements ZLinkSpotManager, AutoCloseable {
                     subscriptionHandlerTypes.add(new SpotSubscriptionRegistration(
                         requireTopic(topic),
                         requireHandlerType(handlerType)));
+                }
+
+                @Override
+                public void addActorSend(Class<?> handlerType) {
+                    ensureRegistrationOpen();
+                    handlerTypes.add(requireHandlerType(handlerType));
+                }
+
+                @Override
+                public void addActorRequest(Class<?> handlerType) {
+                    ensureRegistrationOpen();
+                    handlerTypes.add(requireHandlerType(handlerType));
                 }
             };
         }
@@ -2494,7 +2514,7 @@ public final class ZLinkSpotRuntime implements ZLinkSpotManager, AutoCloseable {
                     new ZLinkBackendActorRef(
                         headerPart.actor().nodeRid(),
                         actorId,
-                        headerPart.actor().epoch()),
+                        headerPart.actor().generation()),
                     actorId,
                     frameBytes,
                     failureMessage)
@@ -2704,6 +2724,18 @@ public final class ZLinkSpotRuntime implements ZLinkSpotManager, AutoCloseable {
                     subscriptionHandlerTypes.add(new SpotSubscriptionRegistration(
                         requireTopic(topic),
                         requireHandlerType(handlerType)));
+                }
+
+                @Override
+                public void addActorSend(Class<?> handlerType) {
+                    ensureRegistrationOpen();
+                    handlerTypes.add(requireHandlerType(handlerType));
+                }
+
+                @Override
+                public void addActorRequest(Class<?> handlerType) {
+                    ensureRegistrationOpen();
+                    handlerTypes.add(requireHandlerType(handlerType));
                 }
             };
         }
@@ -3252,7 +3284,7 @@ public final class ZLinkSpotRuntime implements ZLinkSpotManager, AutoCloseable {
         }
 
         @Override
-        public ZLinkRequestCall requestToSpot(RoutingId spotRid, Object request) {
+        public ZLinkYieldRequestCall requestToSpot(RoutingId spotRid, Object request) {
             requireRoutingId(spotRid);
             ZLinkPayloadEncoding.EncodedPayload encoded =
                 ZLinkPayloadEncoding.encode(serializer, request);
@@ -3295,7 +3327,7 @@ public final class ZLinkSpotRuntime implements ZLinkSpotManager, AutoCloseable {
         }
 
         @Override
-        public ZLinkRequestCall requestToChannel(String channelName, Object request) {
+        public ZLinkYieldRequestCall requestToChannel(String channelName, Object request) {
             if (channels == null) {
                 throw new ZLinkConfigurationException(
                     "channel client is not configured: " + channelName);
@@ -3377,7 +3409,7 @@ public final class ZLinkSpotRuntime implements ZLinkSpotManager, AutoCloseable {
 
     }
 
-    private final class EgressSpotRequestCall implements ZLinkRequestCall {
+    private final class EgressSpotRequestCall implements ZLinkYieldRequestCall {
         private final ZLinkChannelRuntime channels;
         private final String egressChannelName;
         private final RoutingId spotRid;
@@ -3414,7 +3446,7 @@ public final class ZLinkSpotRuntime implements ZLinkSpotManager, AutoCloseable {
         }
 
         @Override
-        public ZLinkRequestCall packetName(String packetName) {
+        public ZLinkYieldRequestCall packetName(String packetName) {
             return new EgressSpotRequestCall(
                 channels,
                 egressChannelName,
@@ -3426,12 +3458,12 @@ public final class ZLinkSpotRuntime implements ZLinkSpotManager, AutoCloseable {
         }
 
         @Override
-        public ZLinkRequestCall metadata(String key, String value) {
+        public ZLinkYieldRequestCall metadata(String key, String value) {
             return this;
         }
 
         @Override
-        public ZLinkRequestCall timeout(Duration timeout) {
+        public ZLinkYieldRequestCall timeout(Duration timeout) {
             return new EgressSpotRequestCall(
                 channels,
                 egressChannelName,
@@ -3487,6 +3519,7 @@ public final class ZLinkSpotRuntime implements ZLinkSpotManager, AutoCloseable {
                             try {
                                 if (isFrameworkErrorReply(replyParts)) {
                                     throw new ZLinkFrameworkException(
+                                        ZLinkFrameworkErrorKind.REQUEST_FAILED,
                                         frameworkErrorReplyMessage(replyParts));
                                 }
                                 Message firstReply = replyParts.isEmpty()
@@ -3548,7 +3581,7 @@ public final class ZLinkSpotRuntime implements ZLinkSpotManager, AutoCloseable {
         }
 
         @Override
-        public ZLinkRequestCall requestToSpot(
+        public ZLinkYieldRequestCall requestToSpot(
             RoutingId spotRid,
             Object request) {
             return requireCurrentOutbound().requestToSpot(spotRid, request);
@@ -3567,7 +3600,7 @@ public final class ZLinkSpotRuntime implements ZLinkSpotManager, AutoCloseable {
         }
 
         @Override
-        public ZLinkRequestCall requestToChannel(
+        public ZLinkYieldRequestCall requestToChannel(
             String channelName,
             Object request) {
             return requireCurrentOutbound().requestToChannel(channelName, request);
@@ -3576,7 +3609,7 @@ public final class ZLinkSpotRuntime implements ZLinkSpotManager, AutoCloseable {
 
     private final class DefaultSpotPublisherClient implements ZLinkSpotPublisherClient {
         @Override
-        public ZLinkPublishCall publishSpot(
+        public ZLinkPublishCall publish(
             String channelName,
             String topic,
             Object message) {
@@ -3707,7 +3740,7 @@ public final class ZLinkSpotRuntime implements ZLinkSpotManager, AutoCloseable {
         }
     }
 
-    private final class SpotToSpotRequestCall implements ZLinkRequestCall {
+    private final class SpotToSpotRequestCall implements ZLinkYieldRequestCall {
         private final ZLinkBackendSpot spot;
         private final RoutingId targetNodeRid;
         private final RoutingId spotRid;
@@ -3744,7 +3777,7 @@ public final class ZLinkSpotRuntime implements ZLinkSpotManager, AutoCloseable {
         }
 
         @Override
-        public ZLinkRequestCall packetName(String packetName) {
+        public ZLinkYieldRequestCall packetName(String packetName) {
             return new SpotToSpotRequestCall(
                 spot,
                 targetNodeRid,
@@ -3756,12 +3789,12 @@ public final class ZLinkSpotRuntime implements ZLinkSpotManager, AutoCloseable {
         }
 
         @Override
-        public ZLinkRequestCall metadata(String key, String value) {
+        public ZLinkYieldRequestCall metadata(String key, String value) {
             return this;
         }
 
         @Override
-        public ZLinkRequestCall timeout(Duration timeout) {
+        public ZLinkYieldRequestCall timeout(Duration timeout) {
             return new SpotToSpotRequestCall(
                 spot,
                 targetNodeRid,
@@ -3798,6 +3831,7 @@ public final class ZLinkSpotRuntime implements ZLinkSpotManager, AutoCloseable {
                     try {
                         if (isFrameworkErrorReply(reply.parts())) {
                             result.completeExceptionally(new ZLinkFrameworkException(
+                                ZLinkFrameworkErrorKind.REQUEST_FAILED,
                                 frameworkErrorReplyMessage(reply.parts())));
                             return;
                         }
@@ -5237,7 +5271,7 @@ public final class ZLinkSpotRuntime implements ZLinkSpotManager, AutoCloseable {
                     new ZLinkBackendActorRef(
                         headerPart.actor().nodeRid(),
                         actorId,
-                        headerPart.actor().epoch()),
+                        headerPart.actor().generation()),
                     actorId,
                     frameBytes,
                     failureMessage)

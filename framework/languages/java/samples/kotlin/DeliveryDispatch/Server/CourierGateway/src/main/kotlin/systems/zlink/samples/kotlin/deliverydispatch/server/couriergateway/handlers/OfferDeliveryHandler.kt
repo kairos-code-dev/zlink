@@ -1,6 +1,5 @@
 package systems.zlink.samples.kotlin.deliverydispatch.server.couriergateway.handlers
 
-import systems.zlink.contracts.core.RoutingId
 import systems.zlink.framework.ZLinkAwait.await
 import systems.zlink.framework.channels.ZLinkRequestContext
 import systems.zlink.framework.channels.ZLinkRequestHandler
@@ -24,9 +23,9 @@ class OfferDeliveryHandler(
         val binding = directory.require(request.courierId)
         return await(
             routes
-                .requestTo(
+                .requestToNode(
                     SampleNames.CourierActorNodeRouteChannel,
-                    RoutingId.from(binding.actor.nodeRid),
+                    binding.actor.nodeRid(),
                     request,
                 )
                 .timeout(SampleTimings.OfferRequestTimeout)

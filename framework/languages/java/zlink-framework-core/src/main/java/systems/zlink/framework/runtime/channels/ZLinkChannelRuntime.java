@@ -43,14 +43,14 @@ import systems.zlink.framework.channels.ZLinkClientServerChannelRuntimeOptions;
 import systems.zlink.framework.channels.ZLinkPublishCall;
 import systems.zlink.framework.channels.ZLinkPublishContext;
 import systems.zlink.framework.channels.ZLinkRouteClient;
-import systems.zlink.framework.channels.ZLinkRouteRequestCall;
+import systems.zlink.framework.channels.ZLinkRequestCall;
 import systems.zlink.framework.channels.ZLinkRouteRequestContext;
 import systems.zlink.framework.channels.ZLinkRouteSendContext;
 import systems.zlink.framework.channels.ZLinkRequestContext;
-import systems.zlink.framework.channels.ZLinkRequestCall;
 import systems.zlink.framework.channels.ZLinkSendCall;
 import systems.zlink.framework.channels.ZLinkSendContext;
 import systems.zlink.framework.channels.ZLinkSocketRuntimeOptions;
+import systems.zlink.framework.channels.ZLinkYieldRequestCall;
 import systems.zlink.framework.configuration.ZLinkDispatchErrorAction;
 import systems.zlink.framework.configuration.ZLinkDispatchErrorReason;
 import systems.zlink.framework.configuration.ZLinkDispatchErrorSurface;
@@ -59,12 +59,14 @@ import systems.zlink.framework.configuration.ZLinkMessageFlowEvent;
 import systems.zlink.framework.configuration.ZLinkMessageFlowOutcome;
 import systems.zlink.framework.configuration.ZLinkDispatchFailure;
 import systems.zlink.framework.errors.ZLinkConfigurationException;
+import systems.zlink.framework.errors.ZLinkFrameworkErrorKind;
 import systems.zlink.framework.errors.ZLinkFrameworkException;
 import systems.zlink.framework.execution.ZLinkAsyncSerialQueue;
 import systems.zlink.framework.execution.ZLinkFrameworkTurns;
 import systems.zlink.framework.execution.ZLinkYieldTurn;
 import systems.zlink.framework.locations.ZLinkLocationAutoConnectType;
 import systems.zlink.framework.locations.ZLinkLocationRole;
+import systems.zlink.framework.locations.ZLinkSpotAddress;
 import systems.zlink.framework.runtime.configuration.ZLinkFrameworkRegistration;
 import systems.zlink.framework.runtime.diagnostics.ZLinkDispatchErrorReporter;
 import systems.zlink.framework.runtime.handlers.ZLinkFilterPipeline;
@@ -530,7 +532,7 @@ public final class ZLinkChannelRuntime
     }
 
     @Override
-    public ZLinkRequestCall requestToChannel(String channelName, Object message) {
+    public ZLinkYieldRequestCall requestToChannel(String channelName, Object message) {
         ZLinkPayloadEncoding.EncodedPayload encoded =
             ZLinkPayloadEncoding.encode(serializer, message);
         return new RequestCall(
@@ -552,7 +554,7 @@ public final class ZLinkChannelRuntime
     }
 
     @Override
-    public ZLinkSendCall sendTo(String channelName, RoutingId target, Object message) {
+    public ZLinkSendCall sendToNode(String channelName, RoutingId target, Object message) {
         ZLinkPayloadEncoding.EncodedPayload encoded =
             ZLinkPayloadEncoding.encode(serializer, message);
         return new RouteSendCall(
@@ -565,21 +567,21 @@ public final class ZLinkChannelRuntime
     @Override
     public ZLinkSendCall sendToSpot(
         String channelName,
-        RoutingId targetNode,
-        RoutingId targetSpot,
+        ZLinkSpotAddress address,
         Object message) {
+        Objects.requireNonNull(address, "address");
         ZLinkPayloadEncoding.EncodedPayload encoded =
             ZLinkPayloadEncoding.encode(serializer, message);
         return new RouteSpotSendCall(
             channelName,
-            targetNode,
-            targetSpot,
+            address.nodeRid(),
+            address.spotRid(),
             encoded.payload(),
             Optional.of(encoded.packetName()));
     }
 
     @Override
-    public ZLinkRouteRequestCall requestTo(String channelName, RoutingId target, Object message) {
+    public ZLinkRequestCall requestToNode(String channelName, RoutingId target, Object message) {
         ZLinkPayloadEncoding.EncodedPayload encoded =
             ZLinkPayloadEncoding.encode(serializer, message);
         return new RouteRequestCall(
@@ -592,17 +594,17 @@ public final class ZLinkChannelRuntime
     }
 
     @Override
-    public ZLinkRouteRequestCall requestToSpot(
+    public ZLinkRequestCall requestToSpot(
         String channelName,
-        RoutingId targetNode,
-        RoutingId targetSpot,
+        ZLinkSpotAddress address,
         Object message) {
+        Objects.requireNonNull(address, "address");
         ZLinkPayloadEncoding.EncodedPayload encoded =
             ZLinkPayloadEncoding.encode(serializer, message);
         return new RouteSpotRequestCall(
             channelName,
-            targetNode,
-            targetSpot,
+            address.nodeRid(),
+            address.spotRid(),
             encoded.payload(),
             Optional.of(encoded.packetName()),
             defaultRequestTimeout(channelName));
@@ -787,6 +789,7 @@ public final class ZLinkChannelRuntime
                             }
                             if (isFrameworkErrorReply(reply)) {
                                 result.completeExceptionally(new ZLinkFrameworkException(
+                                    ZLinkFrameworkErrorKind.REQUEST_FAILED,
                                     frameworkErrorReplyMessage(reply)));
                                 return;
                             }
@@ -1256,6 +1259,7 @@ public final class ZLinkChannelRuntime
         }
         if (isFrameworkErrorReply(received.parts())) {
             pending.reply().completeExceptionally(new ZLinkFrameworkException(
+                ZLinkFrameworkErrorKind.REQUEST_FAILED,
                 frameworkErrorReplyMessage(received.parts())));
             return true;
         }
@@ -2585,7 +2589,7 @@ public final class ZLinkChannelRuntime
         }
     }
 
-    private final class RequestCall implements ZLinkRequestCall {
+    private final class RequestCall implements ZLinkYieldRequestCall {
         private final ZLinkBackendDealerSocket client;
         private final Message payload;
         private final Optional<String> packetName;
@@ -2614,17 +2618,17 @@ public final class ZLinkChannelRuntime
         }
 
         @Override
-        public ZLinkRequestCall packetName(String packetName) {
+        public ZLinkYieldRequestCall packetName(String packetName) {
             return new RequestCall(client, payload, Optional.of(packetName), timeout, turn);
         }
 
         @Override
-        public ZLinkRequestCall metadata(String key, String value) {
+        public ZLinkYieldRequestCall metadata(String key, String value) {
             return this;
         }
 
         @Override
-        public ZLinkRequestCall timeout(Duration timeout) {
+        public ZLinkYieldRequestCall timeout(Duration timeout) {
             return new RequestCall(client, payload, packetName, timeout, turn);
         }
 
@@ -2698,12 +2702,14 @@ public final class ZLinkChannelRuntime
         CompletableFuture<TReply> result) {
         if (reply.result() != ZLinkBackendRequestResult.OK) {
             result.completeExceptionally(new ZLinkFrameworkException(
+                ZLinkFrameworkErrorKind.REQUEST_FAILED,
                 "channel request failed: " + reply.result()));
             return;
         }
         if (isFrameworkErrorReply(reply.parts())) {
             String message = frameworkErrorReplyMessage(reply.parts());
             result.completeExceptionally(new ZLinkFrameworkException(
+                ZLinkFrameworkErrorKind.REQUEST_FAILED,
                 message));
             return;
         }
@@ -2771,7 +2777,7 @@ public final class ZLinkChannelRuntime
         }
     }
 
-    private final class RouteRequestCall implements ZLinkRouteRequestCall {
+    private final class RouteRequestCall implements ZLinkRequestCall {
         private final String channelName;
         private final ZLinkBackendRouterSocket router;
         private final RoutingId target;
@@ -2795,7 +2801,7 @@ public final class ZLinkChannelRuntime
         }
 
         @Override
-        public ZLinkRouteRequestCall packetName(String packetName) {
+        public ZLinkRequestCall packetName(String packetName) {
             return new RouteRequestCall(
                 channelName,
                 router,
@@ -2806,12 +2812,12 @@ public final class ZLinkChannelRuntime
         }
 
         @Override
-        public ZLinkRouteRequestCall metadata(String key, String value) {
+        public ZLinkRequestCall metadata(String key, String value) {
             return this;
         }
 
         @Override
-        public ZLinkRouteRequestCall timeout(Duration timeout) {
+        public ZLinkRequestCall timeout(Duration timeout) {
             return new RouteRequestCall(channelName, router, target, payload, packetName, timeout);
         }
 
@@ -2915,7 +2921,7 @@ public final class ZLinkChannelRuntime
         }
     }
 
-    private final class RouteSpotRequestCall implements ZLinkRouteRequestCall {
+    private final class RouteSpotRequestCall implements ZLinkRequestCall {
         private final String channelName;
         private final RoutingId targetNode;
         private final RoutingId targetSpot;
@@ -2939,7 +2945,7 @@ public final class ZLinkChannelRuntime
         }
 
         @Override
-        public ZLinkRouteRequestCall packetName(String packetName) {
+        public ZLinkRequestCall packetName(String packetName) {
             return new RouteSpotRequestCall(
                 channelName,
                 targetNode,
@@ -2950,12 +2956,12 @@ public final class ZLinkChannelRuntime
         }
 
         @Override
-        public ZLinkRouteRequestCall metadata(String key, String value) {
+        public ZLinkRequestCall metadata(String key, String value) {
             return this;
         }
 
         @Override
-        public ZLinkRouteRequestCall timeout(Duration timeout) {
+        public ZLinkRequestCall timeout(Duration timeout) {
             return new RouteSpotRequestCall(
                 channelName,
                 targetNode,
@@ -3022,6 +3028,7 @@ public final class ZLinkChannelRuntime
                 }
             }
             throw new ZLinkFrameworkException(
+                ZLinkFrameworkErrorKind.PAYLOAD_DECODE_FAILED,
                 "route mesh SPOT reply decode failed; first reply frame="
                     + replies.get(0).toUtf8String(),
                 lastError);

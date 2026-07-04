@@ -1,8 +1,17 @@
 package systems.zlink.framework.locations;
 
 public enum ZLinkLocationWriteStatus {
-    STORED,
-    IGNORED_STALE,
-    REJECTED_CONFLICT,
-    STORE_UNAVAILABLE
+    STORED(1),
+    IGNORED_STALE(2),
+    REJECTED_CONFLICT(3);
+
+    private final int value;
+
+    ZLinkLocationWriteStatus(int value) {
+        this.value = value;
+    }
+
+    public int value() {
+        return value;
+    }
 }

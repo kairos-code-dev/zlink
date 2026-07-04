@@ -53,7 +53,7 @@ class PlayServerApplication {
                 .setSpotRouterChannel(SampleNames.RoomSpotDiscovery, SampleNames.PlayChannel)
             options.addClientServerChannel(SampleNames.ApiChannel)
                 .enableClient()
-            val route: RouteMeshChannelBuilder = options.addRouteMesh(SampleNames.PlayChannel)
+            val route: RouteMeshChannelBuilder = options.addRouteMeshChannel(SampleNames.PlayChannel)
             route.enableServer(SampleTopology.selectedPlayRouteEndpoint())
             route.enableClient()
             route.addHandlerGroup("play-route")

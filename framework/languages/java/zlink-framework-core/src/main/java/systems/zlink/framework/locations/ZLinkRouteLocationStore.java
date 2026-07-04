@@ -11,11 +11,9 @@ public interface ZLinkRouteLocationStore {
         ZLinkRouteLocationKey key,
         ZLinkLocationOwnerToken owner);
 
-    CompletionStage<Long> removeRoutesByOwnerAsync(String ownerId);
-
     CompletionStage<ZLinkRouteLocation> resolveRouteAsync(ZLinkRouteLocationKey key);
 
-    CompletionStage<ZLinkLocationPage<ZLinkRouteLocation>> listRoutesAsync(
+    CompletionStage<ZLinkLocationPage<ZLinkRouteLocation>> listRouteLocationsAsync(
         ZLinkRouteLocationFilter filter,
         ZLinkPageRequest page);
 }

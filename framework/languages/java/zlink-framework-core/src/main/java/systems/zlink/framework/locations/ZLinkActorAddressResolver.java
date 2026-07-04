@@ -2,8 +2,7 @@ package systems.zlink.framework.locations;
 
 import java.util.concurrent.CompletionStage;
 
-public interface ZLinkActorLocationResolver {
+public interface ZLinkActorAddressResolver {
     CompletionStage<ZLinkSpotAddress> resolveActorSpotAddressAsync(
-        String actorType,
         String actorId);
 }

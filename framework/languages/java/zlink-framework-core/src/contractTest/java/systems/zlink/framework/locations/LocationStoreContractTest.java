@@ -71,7 +71,7 @@ final class LocationStoreContractTest {
         assertEquals(2, takeover.generation());
         assertEquals(ZLinkLocationWriteStatus.IGNORED_STALE, stale.status());
 
-        assertEquals(1, store.removeActorsByOwnerAsync("owner-b").toCompletableFuture().get());
+        assertEquals(1, store.removeAllByOwnerAsync("owner-b").toCompletableFuture().get());
     }
 
     @Test
@@ -96,7 +96,7 @@ final class LocationStoreContractTest {
             .toCompletableFuture()
             .get();
 
-        assertEquals(1, store.listPeersAsync(new ZLinkPeerLocationFilter(
+        assertEquals(1, store.listPeerLocationsAsync(new ZLinkPeerLocationFilter(
                 ZLinkLocationAutoConnectType.ROUTE_MESH,
                 "play",
                 ZLinkLocationRole.ROUTER,
@@ -110,7 +110,7 @@ final class LocationStoreContractTest {
             .get()
             .spotRid());
 
-        ZLinkLocationPage<ZLinkRouteLocation> routePage = store.listRoutesAsync(
+        ZLinkLocationPage<ZLinkRouteLocation> routePage = store.listRouteLocationsAsync(
                 new ZLinkRouteLocationFilter(ZLinkRouteKind.ACTOR_SESSION, NODE_A, null),
                 new ZLinkPageRequest(1, null))
             .toCompletableFuture()
@@ -137,7 +137,7 @@ final class LocationStoreContractTest {
             .toCompletableFuture()
             .get();
 
-        assertEquals(List.of(), rows.listPeersAsync(ZLinkPeerLocationFilter.all())
+        assertEquals(List.of(), rows.listLivePeersAsync(ZLinkPeerLocationFilter.all())
             .toCompletableFuture()
             .get());
         assertNull(addresses.resolveSpotAddressAsync("play", SPOT_RID)
@@ -157,7 +157,7 @@ final class LocationStoreContractTest {
         rows = new ZLinkStoreLocationResolvers(stores, new ZLinkLocationOptions());
         addresses = new ZLinkStoreLocationResolvers.AddressResolvers(List.of("play"), rows);
 
-        assertEquals(1, rows.listPeersAsync(ZLinkPeerLocationFilter.all())
+        assertEquals(1, rows.listLivePeersAsync(ZLinkPeerLocationFilter.all())
             .toCompletableFuture()
             .get()
             .size());
@@ -190,7 +190,7 @@ final class LocationStoreContractTest {
             ZLinkLocationRuntimeStatus status = query.getStatusAsync()
                 .toCompletableFuture()
                 .get();
-            List<ZLinkPeerLocation> peers = query.listPeersAsync(ZLinkPeerLocationFilter.all())
+            List<ZLinkPeerLocation> peers = query.listPeerLocationsAsync(ZLinkPeerLocationFilter.all())
                 .toCompletableFuture()
                 .get();
             ZLinkLocationPage<ZLinkLocationTopologyEntry> topology = query.listTopologyAsync(
@@ -249,16 +249,15 @@ final class LocationStoreContractTest {
 
     private static ZLinkActorLocation actor(String ownerId, long generation) {
         return new ZLinkActorLocation(
-            "player",
             "actor-1",
-            "actor-ref-1",
+            "player",
+            null,
             NODE_A,
-            generation,
             ZLinkSpotKind.ENTRY,
+            "",
             null,
-            null,
-            ZLinkSpotKind.ENTRY,
             ownerId,
+            generation,
             STORE_NOW);
     }
 

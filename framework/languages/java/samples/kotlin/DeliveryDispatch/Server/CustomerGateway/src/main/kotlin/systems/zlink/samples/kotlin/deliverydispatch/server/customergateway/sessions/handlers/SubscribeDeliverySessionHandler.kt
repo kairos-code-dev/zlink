@@ -1,8 +1,6 @@
 package systems.zlink.samples.kotlin.deliverydispatch.server.customergateway.sessions.handlers
 
-import systems.zlink.contracts.core.RoutingId
 import systems.zlink.framework.ZLinkAwait
-import systems.zlink.framework.actors.ZLinkActorRef
 import systems.zlink.framework.channels.ZLinkClient
 import systems.zlink.framework.streams.ZLinkSessionContext
 import systems.zlink.framework.streams.ZLinkSessionDispatchContext
@@ -30,13 +28,9 @@ class SubscribeDeliverySessionHandler(
         val ensured = channels
             .requestToChannel(SampleNames.CustomerRouteChannel, EnsureCustomerActorReq(CustomerId))
             .await(EnsureCustomerActorRes::class.java)
-        if (context.actors().find(ensured.actor.actorId).isEmpty) {
+        if (context.actors().find(ensured.actor.actorId()).isEmpty) {
             context.actors().bind(
-                ZLinkActorRef(
-                    RoutingId.from(ensured.actor.nodeRid),
-                    ensured.actor.actorId,
-                    ensured.actor.generation,
-                ),
+                ensured.actor.toActorRef(),
             ).let { ZLinkAwait.await(it) }
         }
         customers.subscribe(ensured.customerId, message.deliveryId)

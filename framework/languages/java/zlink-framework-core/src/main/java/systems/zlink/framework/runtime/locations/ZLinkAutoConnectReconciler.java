@@ -50,7 +50,7 @@ final class ZLinkAutoConnectReconciler {
 
     CompletionStage<Void> tickAsync() {
         return publishLocalAsync()
-            .thenCompose(ignored -> peers.listPeersAsync(new ZLinkPeerLocationFilter(
+            .thenCompose(ignored -> peers.listLivePeersAsync(new ZLinkPeerLocationFilter(
                 local.type(), local.meshName(), null, null, null)))
             .handle((rows, failure) -> {
                 if (failure != null) {

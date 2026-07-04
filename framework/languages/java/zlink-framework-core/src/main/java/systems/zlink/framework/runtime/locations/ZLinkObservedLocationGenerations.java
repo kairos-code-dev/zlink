@@ -36,7 +36,6 @@ final class ZLinkObservedLocationGenerations {
     boolean acceptActor(ZLinkActorLocation row) {
         return accept(
             ZLinkLocationKeyCodec.encodeActorKey(new ZLinkActorLocationKey(
-                row.actorType(),
                 row.actorId())),
             row.generation());
     }

@@ -6,6 +6,7 @@ import systems.zlink.framework.actors.ZLinkActorManager;
 import systems.zlink.framework.actors.ZLinkActorRef;
 import systems.zlink.framework.channels.ZLinkRouteRequestContext;
 import systems.zlink.framework.channels.ZLinkRouteRequestHandler;
+import systems.zlink.framework.messaging.ZLinkMessage;
 import systems.zlink.framework.spots.ZLinkSpotManager;
 
 public final class PlayBindActorsHandler
@@ -30,7 +31,7 @@ public final class PlayBindActorsHandler
         spots.getOrCreate(
                 YieldProbeSpot.class,
                 RoutingId.from(request.spotRid()),
-                "bind")
+                ZLinkMessage.of("bind"))
             .toCompletableFuture()
             .join();
         ZLinkActorRef actorA = bind(request.spotRid(), request.actorA());
@@ -54,6 +55,6 @@ public final class PlayBindActorsHandler
         return new Contracts.ActorBinding(
             actor.actorId(),
             actor.nodeRid().toString(),
-            actor.epoch());
+            actor.generation());
     }
 }

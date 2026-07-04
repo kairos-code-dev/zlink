@@ -41,8 +41,8 @@ class ZLinkRedisLocationKeyCodecTest {
     void rowKeysMatchDotnetLengthPrefixContract() {
         assertEquals("4:mesh4:0a0b", ZLinkRedisLocationKeyCodec.encodeSpotKey(
             new ZLinkSpotLocationKey("mesh", RoutingId.from(new byte[] {0x0a, 0x0b}))));
-        assertEquals("0:5:actor", ZLinkRedisLocationKeyCodec.encodeActorKey(
-            new ZLinkActorLocationKey(null, "actor")));
+        assertEquals("5:actor", ZLinkRedisLocationKeyCodec.encodeActorKey(
+            new ZLinkActorLocationKey("actor")));
         assertEquals("1:19:route-key", ZLinkRedisLocationKeyCodec.encodeRouteKey(
             new ZLinkRouteLocationKey(ZLinkRouteKind.ACTOR_SESSION, "route-key")));
     }

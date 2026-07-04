@@ -33,7 +33,7 @@ public final class ConsumerEndpoints {
 
     @GetMapping("/locations/peers")
     public List<java.util.Map<String, Object>> peers() {
-        return lifecycle.monitoringLocationRuntimeQuery().listPeersAsync(new ZLinkPeerLocationFilter(
+        return lifecycle.monitoringLocationRuntimeQuery().listPeerLocationsAsync(new ZLinkPeerLocationFilter(
                 ZLinkLocationAutoConnectType.CLIENT_SERVER,
                 Contracts.API_CHANNEL,
                 ZLinkLocationRole.ROUTER,

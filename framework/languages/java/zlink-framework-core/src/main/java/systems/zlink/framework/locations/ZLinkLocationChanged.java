@@ -4,7 +4,7 @@ import java.time.Instant;
 
 public record ZLinkLocationChanged(
     ZLinkLocationKind kind,
-    String locationKey,
+    ZLinkLocationKey key,
     ZLinkLocationChangeType changeType,
     long generation,
     Instant updatedAt) {

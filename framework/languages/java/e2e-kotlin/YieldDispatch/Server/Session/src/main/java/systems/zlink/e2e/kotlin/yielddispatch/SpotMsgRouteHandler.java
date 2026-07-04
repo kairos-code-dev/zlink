@@ -2,6 +2,7 @@ package systems.zlink.e2e.kotlin.yielddispatch;
 
 import systems.zlink.contracts.core.RoutingId;
 import systems.zlink.framework.channels.ZLinkRouteClient;
+import systems.zlink.framework.locations.ZLinkSpotAddress;
 import systems.zlink.framework.streams.ZLinkSessionContext;
 import systems.zlink.framework.streams.ZLinkSessionDispatchContext;
 import systems.zlink.framework.streams.ZLinkTypedSessionPacketHandler;
@@ -30,8 +31,10 @@ abstract class SpotMsgRouteHandler<TCommand>
         TCommand command) {
         routes.sendToSpot(
                 Contracts.SPOT_MESH,
-                targetNode(dispatch),
-                targetSpot(dispatch),
+                new ZLinkSpotAddress(
+                    Contracts.SPOT_MESH,
+                    targetNode(dispatch),
+                    targetSpot(dispatch)),
                 command)
             .await();
     }

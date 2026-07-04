@@ -209,7 +209,7 @@ public final class ZLinkMonitoringRuntime implements AutoCloseable {
                     dispatcher.publish(new ZLinkLocationRuntimeEvent(
                         sourceName,
                         Instant.now(),
-                        ZLinkLocationRuntimeEventKind.STORE_UNAVAILABLE,
+                        ZLinkLocationRuntimeEventKind.STORE_FAILURE,
                         null,
                         null,
                         null));

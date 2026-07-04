@@ -93,7 +93,7 @@ public final class BingoEntrySpot implements ZLinkEntrySpot<PlayerActor> {
                 request.roomId(),
                 context.nodeRid().toString(),
                 SampleTimings.DrawPeriod.toMillis());
-        await(spots.getOrCreate(BingoRoomSpot.class, RoutingId.from(observerRid), settings));
+        await(spots.getOrCreate(BingoRoomSpot.class, RoutingId.from(observerRid), ZLinkMessage.of(settings)));
         var joined = actor.context()
             .joinSpot(
                 RoutingId.from(observerRid),

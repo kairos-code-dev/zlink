@@ -11,7 +11,6 @@ import java.util.concurrent.ScheduledExecutorService;
 import java.util.concurrent.ScheduledFuture;
 import java.util.concurrent.TimeUnit;
 import java.util.function.BiConsumer;
-import java.util.function.Supplier;
 import systems.zlink.contracts.core.RoutingId;
 import systems.zlink.framework.locations.ZLinkActorLocation;
 import systems.zlink.framework.locations.ZLinkActorLocationKey;
@@ -136,10 +135,7 @@ public final class ZLinkLocationRuntime implements AutoCloseable {
 
         return stores.ownerLeaseStore().removeOwnerLeaseAsync(ownerId)
             .handle((ignored, failure) -> null)
-            .thenCompose(ignored -> stores.peerStore().removePeersByOwnerAsync(ownerId).handle((removed, failure) -> null))
-            .thenCompose(ignored -> stores.spotStore().removeSpotsByOwnerAsync(ownerId).handle((removed, failure) -> null))
-            .thenCompose(ignored -> stores.actorStore().removeActorsByOwnerAsync(ownerId).handle((removed, failure) -> null))
-            .thenCompose(ignored -> stores.routeStore().removeRoutesByOwnerAsync(ownerId).handle((removed, failure) -> null))
+            .thenCompose(ignored -> stores.unifiedStore().removeAllByOwnerAsync(ownerId).handle((removed, failure) -> null))
             .thenApply(ignored -> null);
     }
 
@@ -157,14 +153,10 @@ public final class ZLinkLocationRuntime implements AutoCloseable {
                     recordFailure(failure.getMessage());
                     return false;
                 }
-                if (result.status() == ZLinkLocationWriteStatus.STORED) {
-                    ownerLeaseHealthy = true;
-                    ownerLeaseRenewedAt = result.updatedAt();
-                    lastError = null;
-                    return true;
-                }
-                recordFailure("Owner lease renew returned " + result.status() + ".");
-                return false;
+                ownerLeaseHealthy = true;
+                ownerLeaseRenewedAt = result.storeNow();
+                lastError = null;
+                return true;
             });
     }
 
@@ -177,7 +169,7 @@ public final class ZLinkLocationRuntime implements AutoCloseable {
             peer.generation(), peer.updatedAt());
         String key = ZLinkLocationKeyCodec.encodePeerKey(new ZLinkPeerLocationKey(
             peer.autoConnectType(), peer.meshName(), peer.role(), peer.nodeRid(), peer.endpoint()));
-        return guardStoreWrite(() -> stores.peerStore().updatePeerAsync(stamped, intent))
+        return stores.peerStore().updatePeerAsync(stamped, intent)
             .thenApply(result -> notifyIfStale(result, ZLinkLocationKind.PEER, key));
     }
 
@@ -188,20 +180,18 @@ public final class ZLinkLocationRuntime implements AutoCloseable {
             spot.meshName(), spot.spotRid(), spot.spotType(), spot.nodeRid(), spot.spotKind(),
             spot.routeEndpoint(), ownerId, spot.generation(), spot.updatedAt());
         String key = ZLinkLocationKeyCodec.encodeSpotKey(new ZLinkSpotLocationKey(spot.meshName(), spot.spotRid()));
-        return guardStoreWrite(() -> stores.spotStore().updateSpotAsync(stamped, intent))
+        return stores.spotStore().updateSpotAsync(stamped, intent)
             .thenApply(result -> notifyIfStale(result, ZLinkLocationKind.SPOT, key));
     }
 
     CompletionStage<ZLinkLocationWriteResult> writeActorAsync(
         ZLinkActorLocation actor,
         ZLinkLocationWriteIntent intent) {
-        String actorType = ZLinkLocationKeyCodec.normalizeActorType(actor.actorType());
         ZLinkActorLocation stamped = new ZLinkActorLocation(
-            actorType, actor.actorId(), actor.actorRef(), actor.nodeRid(), actor.generation(),
-            actor.locationKind(), actor.spotMeshName(), actor.spotRid(), actor.spotKind(),
-            ownerId, actor.updatedAt());
-        String key = ZLinkLocationKeyCodec.encodeActorKey(new ZLinkActorLocationKey(actorType, actor.actorId()));
-        return guardStoreWrite(() -> stores.actorStore().updateActorAsync(stamped, intent))
+            actor.actorId(), actor.actorType(), actor.actorRef(), actor.nodeRid(), actor.locationKind(),
+            actor.spotMeshName(), actor.spotRid(), ownerId, actor.generation(), actor.updatedAt());
+        String key = ZLinkLocationKeyCodec.encodeActorKey(new ZLinkActorLocationKey(actor.actorId()));
+        return stores.actorStore().updateActorAsync(stamped, intent)
             .thenApply(result -> notifyIfStale(result, ZLinkLocationKind.ACTOR, key));
     }
 
@@ -212,7 +202,7 @@ public final class ZLinkLocationRuntime implements AutoCloseable {
             route.routeKind(), route.routeKey(), route.ownerNodeRid(), ownerId,
             route.generation(), route.value(), route.updatedAt());
         String key = ZLinkLocationKeyCodec.encodeRouteKey(new ZLinkRouteLocationKey(route.routeKind(), route.routeKey()));
-        return guardStoreWrite(() -> stores.routeStore().updateRouteAsync(stamped, intent))
+        return stores.routeStore().updateRouteAsync(stamped, intent)
             .thenApply(result -> notifyIfStale(result, ZLinkLocationKind.ROUTE, key));
     }
 
@@ -220,7 +210,7 @@ public final class ZLinkLocationRuntime implements AutoCloseable {
         ZLinkSpotLocationKey key,
         long generation) {
         String canonicalKey = ZLinkLocationKeyCodec.encodeSpotKey(key);
-        return guardStoreWrite(() -> stores.spotStore().removeSpotAsync(key, new ZLinkLocationOwnerToken(ownerId, generation)))
+        return stores.spotStore().removeSpotAsync(key, new ZLinkLocationOwnerToken(ownerId, generation))
             .thenApply(result -> notifyIfStale(result, ZLinkLocationKind.SPOT, canonicalKey));
     }
 
@@ -228,17 +218,15 @@ public final class ZLinkLocationRuntime implements AutoCloseable {
         ZLinkPeerLocationKey key,
         long generation) {
         String canonicalKey = ZLinkLocationKeyCodec.encodePeerKey(key);
-        return guardStoreWrite(() -> stores.peerStore().removePeerAsync(key, new ZLinkLocationOwnerToken(ownerId, generation)))
+        return stores.peerStore().removePeerAsync(key, new ZLinkLocationOwnerToken(ownerId, generation))
             .thenApply(result -> notifyIfStale(result, ZLinkLocationKind.PEER, canonicalKey));
     }
 
     CompletionStage<ZLinkLocationWriteResult> removeActorAsync(
         ZLinkActorLocationKey key,
         long generation) {
-        ZLinkActorLocationKey normalized = new ZLinkActorLocationKey(
-            ZLinkLocationKeyCodec.normalizeActorType(key.actorType()), key.actorId());
-        String canonicalKey = ZLinkLocationKeyCodec.encodeActorKey(normalized);
-        return guardStoreWrite(() -> stores.actorStore().removeActorAsync(normalized, new ZLinkLocationOwnerToken(ownerId, generation)))
+        String canonicalKey = ZLinkLocationKeyCodec.encodeActorKey(key);
+        return stores.actorStore().removeActorAsync(key, new ZLinkLocationOwnerToken(ownerId, generation))
             .thenApply(result -> notifyIfStale(result, ZLinkLocationKind.ACTOR, canonicalKey));
     }
 
@@ -246,7 +234,7 @@ public final class ZLinkLocationRuntime implements AutoCloseable {
         ZLinkRouteLocationKey key,
         long generation) {
         String canonicalKey = ZLinkLocationKeyCodec.encodeRouteKey(key);
-        return guardStoreWrite(() -> stores.routeStore().removeRouteAsync(key, new ZLinkLocationOwnerToken(ownerId, generation)))
+        return stores.routeStore().removeRouteAsync(key, new ZLinkLocationOwnerToken(ownerId, generation))
             .thenApply(result -> notifyIfStale(result, ZLinkLocationKind.ROUTE, canonicalKey));
     }
 
@@ -271,18 +259,6 @@ public final class ZLinkLocationRuntime implements AutoCloseable {
 
     private void renewOwnerLeaseOnHeartbeat() {
         renewOwnerLeaseOnceAsync().toCompletableFuture().join();
-    }
-
-    private CompletionStage<ZLinkLocationWriteResult> guardStoreWrite(Supplier<CompletionStage<ZLinkLocationWriteResult>> write) {
-        try {
-            return write.get().exceptionally(failure -> {
-                recordFailure(failure.getMessage());
-                return ZLinkLocationWriteResult.storeUnavailable();
-            });
-        } catch (RuntimeException failure) {
-            recordFailure(failure.getMessage());
-            return CompletableFuture.completedFuture(ZLinkLocationWriteResult.storeUnavailable());
-        }
     }
 
     private ZLinkLocationWriteResult notifyIfStale(

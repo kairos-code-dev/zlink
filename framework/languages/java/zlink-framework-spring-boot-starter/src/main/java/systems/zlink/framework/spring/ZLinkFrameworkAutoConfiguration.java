@@ -12,12 +12,7 @@ import systems.zlink.framework.channels.ZLinkClient;
 import systems.zlink.framework.channels.ZLinkChannelRuntimeOptions;
 import systems.zlink.framework.channels.ZLinkFanoutClient;
 import systems.zlink.framework.channels.ZLinkRouteClient;
-import systems.zlink.framework.locations.ZLinkActorLocationStore;
 import systems.zlink.framework.locations.ZLinkLocationStore;
-import systems.zlink.framework.locations.ZLinkOwnerLeaseStore;
-import systems.zlink.framework.locations.ZLinkPeerLocationStore;
-import systems.zlink.framework.locations.ZLinkRouteLocationStore;
-import systems.zlink.framework.locations.ZLinkSpotLocationStore;
 import systems.zlink.framework.monitoring.ZLinkRuntimeEventDispatcher;
 import systems.zlink.framework.monitoring.ZLinkRuntimeEventHandler;
 import systems.zlink.framework.runtime.backend.ZLinkBackendAdapterFactory;
@@ -56,37 +51,11 @@ public class ZLinkFrameworkAutoConfiguration {
     @Bean
     @ConditionalOnBean(ZLinkFrameworkEnabled.class)
     public ZLinkFrameworkConfigurer zlinkLocationStoreConfigurer(
-        ObjectProvider<ZLinkLocationStore> locationStore,
-        ObjectProvider<ZLinkPeerLocationStore> peerStore,
-        ObjectProvider<ZLinkSpotLocationStore> spotStore,
-        ObjectProvider<ZLinkActorLocationStore> actorStore,
-        ObjectProvider<ZLinkRouteLocationStore> routeStore,
-        ObjectProvider<ZLinkOwnerLeaseStore> ownerLeaseStore) {
+        ObjectProvider<ZLinkLocationStore> locationStore) {
         return options -> {
             ZLinkLocationStore unified = locationStore.getIfUnique();
             if (unified != null) {
                 options.addLocationStore(unified);
-                return;
-            }
-            ZLinkPeerLocationStore peer = peerStore.getIfUnique();
-            ZLinkSpotLocationStore spot = spotStore.getIfUnique();
-            ZLinkActorLocationStore actor = actorStore.getIfUnique();
-            ZLinkRouteLocationStore route = routeStore.getIfUnique();
-            ZLinkOwnerLeaseStore ownerLease = ownerLeaseStore.getIfUnique();
-            if (peer != null) {
-                options.addPeerLocationStore(peer.getClass());
-            }
-            if (spot != null) {
-                options.addSpotLocationStore(spot.getClass());
-            }
-            if (actor != null) {
-                options.addActorLocationStore(actor.getClass());
-            }
-            if (route != null) {
-                options.addRouteLocationStore(route.getClass());
-            }
-            if (ownerLease != null) {
-                options.addOwnerLeaseStore(ownerLease.getClass());
             }
         };
     }

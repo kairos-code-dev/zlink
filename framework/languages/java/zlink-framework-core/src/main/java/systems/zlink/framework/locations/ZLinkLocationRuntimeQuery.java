@@ -6,17 +6,17 @@ import java.util.concurrent.CompletionStage;
 public interface ZLinkLocationRuntimeQuery {
     CompletionStage<ZLinkLocationRuntimeStatus> getStatusAsync();
 
-    CompletionStage<List<ZLinkPeerLocation>> listPeersAsync(ZLinkPeerLocationFilter filter);
+    CompletionStage<List<ZLinkPeerLocation>> listPeerLocationsAsync(ZLinkPeerLocationFilter filter);
 
-    CompletionStage<ZLinkLocationPage<ZLinkSpotLocation>> listSpotsAsync(
+    CompletionStage<ZLinkLocationPage<ZLinkSpotLocation>> listSpotLocationsAsync(
         ZLinkSpotLocationFilter filter,
         ZLinkPageRequest page);
 
-    CompletionStage<ZLinkLocationPage<ZLinkActorLocation>> listActorsAsync(
+    CompletionStage<ZLinkLocationPage<ZLinkActorLocation>> listActorLocationsAsync(
         ZLinkActorLocationFilter filter,
         ZLinkPageRequest page);
 
-    CompletionStage<ZLinkLocationPage<ZLinkRouteLocation>> listRoutesAsync(
+    CompletionStage<ZLinkLocationPage<ZLinkRouteLocation>> listRouteLocationsAsync(
         ZLinkRouteLocationFilter filter,
         ZLinkPageRequest page);
 

@@ -3,6 +3,7 @@ package systems.zlink.e2e.yielddispatch.shared;
 import java.time.Duration;
 import systems.zlink.contracts.core.RoutingId;
 import systems.zlink.framework.channels.ZLinkRouteClient;
+import systems.zlink.framework.locations.ZLinkSpotAddress;
 import systems.zlink.framework.streams.ZLinkSessionContext;
 import systems.zlink.framework.streams.ZLinkSessionDispatchContext;
 import systems.zlink.framework.streams.ZLinkTypedSessionPacketHandler;
@@ -37,8 +38,10 @@ public final class RemoteSpotYieldSessionHandler
         Contracts.ScenarioRes reply = routes
             .requestToSpot(
                 Contracts.ROUTE_CHANNEL,
-                targetNodeRid,
-                targetSpotRid,
+                new ZLinkSpotAddress(
+                    Contracts.SPOT_MESH,
+                    targetNodeRid,
+                    targetSpotRid),
                 request)
             .timeout(Duration.ofSeconds(30))
             .await(Contracts.ScenarioRes.class);

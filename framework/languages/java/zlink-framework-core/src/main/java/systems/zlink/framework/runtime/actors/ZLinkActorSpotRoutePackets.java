@@ -32,7 +32,7 @@ public final class ZLinkActorSpotRoutePackets {
             actorId,
             actorType,
             actorRef.nodeRid().toString(),
-            Long.toUnsignedString(actorRef.epoch()),
+            Long.toUnsignedString(actorRef.generation()),
             sourceEntrySpotRid.toString(),
             sourceNodeRid == null ? "" : sourceNodeRid.toString(),
             sourceSessionRid == null ? "" : sourceSessionRid.toString()).getBytes(StandardCharsets.UTF_8));
@@ -104,7 +104,7 @@ public final class ZLinkActorSpotRoutePackets {
             "\n",
             actorRef.nodeRid().toString(),
             actorRef.actorId(),
-            Long.toUnsignedString(actorRef.epoch())).getBytes(StandardCharsets.UTF_8));
+            Long.toUnsignedString(actorRef.generation())).getBytes(StandardCharsets.UTF_8));
     }
 
     private static ZLinkBackendActorRef decodeActorRef(Message metadata, String errorMessage) {
@@ -154,7 +154,7 @@ public final class ZLinkActorSpotRoutePackets {
             Boolean.toString(accepted),
             actorRef.nodeRid().toString(),
             actorRef.actorId(),
-            Long.toUnsignedString(actorRef.epoch()),
+            Long.toUnsignedString(actorRef.generation()),
             encodedReply).getBytes(StandardCharsets.UTF_8));
     }
 

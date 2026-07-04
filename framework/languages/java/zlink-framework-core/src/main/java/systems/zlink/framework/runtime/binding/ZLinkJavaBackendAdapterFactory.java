@@ -297,7 +297,7 @@ public final class ZLinkJavaBackendAdapterFactory implements ZLinkBackendAdapter
             return submitFramedStream(socket.send(routingId), header, parts, flags);
         }
         @Override public ZLinkBackendActorBindOperation bindActor(RoutingId sessionRid, ZLinkBackendActorRef actor) {
-            ActorBindOperation operation = socket.bindActor(sessionRid, new ActorRef(actor.nodeRid(), actor.actorId(), actor.epoch()));
+            ActorBindOperation operation = socket.bindActor(sessionRid, new ActorRef(actor.nodeRid(), actor.actorId(), actor.generation()));
             return timeout -> toVoid(operation.timeout(timeout).submit());
         }
         @Override public ZLinkBackendActorUnbindOperation unbindActor(RoutingId sessionRid, String actorId) {
@@ -364,7 +364,7 @@ public final class ZLinkJavaBackendAdapterFactory implements ZLinkBackendAdapter
                 throw new IllegalArgumentException("actor join request must contain at least one part");
             }
             ActorJoinSubmitOperation operation = spotNode.joinActor(
-                new ActorRef(actor.nodeRid(), actor.actorId(), actor.epoch()),
+                new ActorRef(actor.nodeRid(), actor.actorId(), actor.generation()),
                 targetNodeRid,
                 targetSpotRid)
                 .message(parts.get(0));
@@ -378,7 +378,7 @@ public final class ZLinkJavaBackendAdapterFactory implements ZLinkBackendAdapter
         }
         @Override public CompletionStage<ZLinkBackendActorJoinEntrySpotResult> joinActorEntrySpot(ZLinkBackendActorRef actor, RoutingId targetNodeRid, Message request, Duration timeout) {
             return spotNode.joinActorEntrySpot(
-                    new ActorRef(actor.nodeRid(), actor.actorId(), actor.epoch()),
+                    new ActorRef(actor.nodeRid(), actor.actorId(), actor.generation()),
                     targetNodeRid,
                     request)
                 .timeout(timeout)
@@ -398,21 +398,21 @@ public final class ZLinkJavaBackendAdapterFactory implements ZLinkBackendAdapter
         }
         @Override public CompletionStage<List<Message>> leaveActor(ZLinkBackendActorRef actor, RoutingId currentSpotRid, Duration timeout) {
             return spotNode.leaveActor(
-                    new ActorRef(actor.nodeRid(), actor.actorId(), actor.epoch()),
+                    new ActorRef(actor.nodeRid(), actor.actorId(), actor.generation()),
                     currentSpotRid)
                 .timeout(timeout)
                 .submit();
         }
         @Override public CompletionStage<Void> destroyActor(ZLinkBackendActorRef actor, Duration timeout) {
-            return spotNode.destroyActor(new ActorRef(actor.nodeRid(), actor.actorId(), actor.epoch()))
+            return spotNode.destroyActor(new ActorRef(actor.nodeRid(), actor.actorId(), actor.generation()))
                 .timeout(timeout)
                 .submit()
                 .thenApply(ignored -> null);
         }
-        @Override public boolean sendActorBoundSession(ZLinkBackendActorRef actor, List<Message> parts, SendFlags flags) { return submit(spotNode.sendActorBoundSession(new ActorRef(actor.nodeRid(), actor.actorId(), actor.epoch())), parts, flags); }
-        @Override public boolean forwardActorBoundSession(ZLinkBackendActorRef actor, RoutingId sourceNodeRid, RoutingId sourceSessionRid, List<Message> parts, SendFlags flags) { return submit(spotNode.forwardActorBoundSession(new ActorRef(actor.nodeRid(), actor.actorId(), actor.epoch()), sourceNodeRid, sourceSessionRid), parts, flags); }
-        @Override public void bindRemoteActorBoundSession(ZLinkBackendActorRef actor, RoutingId sourceNodeRid, RoutingId sourceSessionRid) { spotNode.bindRemoteActorBoundSession(new ActorRef(actor.nodeRid(), actor.actorId(), actor.epoch()), sourceNodeRid, sourceSessionRid); }
-        @Override public void closeActorBoundSession(ZLinkBackendActorRef actor, Duration timeout) { spotNode.closeActorBoundSession(new ActorRef(actor.nodeRid(), actor.actorId(), actor.epoch()), timeout); }
+        @Override public boolean sendActorBoundSession(ZLinkBackendActorRef actor, List<Message> parts, SendFlags flags) { return submit(spotNode.sendActorBoundSession(new ActorRef(actor.nodeRid(), actor.actorId(), actor.generation())), parts, flags); }
+        @Override public boolean forwardActorBoundSession(ZLinkBackendActorRef actor, RoutingId sourceNodeRid, RoutingId sourceSessionRid, List<Message> parts, SendFlags flags) { return submit(spotNode.forwardActorBoundSession(new ActorRef(actor.nodeRid(), actor.actorId(), actor.generation()), sourceNodeRid, sourceSessionRid), parts, flags); }
+        @Override public void bindRemoteActorBoundSession(ZLinkBackendActorRef actor, RoutingId sourceNodeRid, RoutingId sourceSessionRid) { spotNode.bindRemoteActorBoundSession(new ActorRef(actor.nodeRid(), actor.actorId(), actor.generation()), sourceNodeRid, sourceSessionRid); }
+        @Override public void closeActorBoundSession(ZLinkBackendActorRef actor, Duration timeout) { spotNode.closeActorBoundSession(new ActorRef(actor.nodeRid(), actor.actorId(), actor.generation()), timeout); }
         @Override public systems.zlink.contracts.service.spot.SpotNodeStatus status() { return spotNode.status(); }
         @Override public List<systems.zlink.contracts.service.spot.SpotNodePeerEntry> peers() { return spotNode.peers(); }
         @Override public List<systems.zlink.contracts.service.spot.SpotNodeSubjectEntry> subjects() { return spotNode.subjects(); }

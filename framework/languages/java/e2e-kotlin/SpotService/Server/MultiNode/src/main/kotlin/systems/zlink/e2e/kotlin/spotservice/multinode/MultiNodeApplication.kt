@@ -25,6 +25,7 @@ import systems.zlink.e2e.kotlin.spotservice.Contracts
 import systems.zlink.e2e.kotlin.spotservice.Env
 import systems.zlink.framework.channels.ZLinkRouteClient
 import systems.zlink.framework.configuration.ZLinkMessageFlowLogMode
+import systems.zlink.framework.locations.ZLinkSpotAddress
 import systems.zlink.framework.locations.redis.ZLinkRedisLocationOptions
 import systems.zlink.framework.locations.redis.ZLinkRedisLocationStore
 import systems.zlink.framework.spots.ZLinkSpotManager
@@ -69,7 +70,7 @@ class MultiNodeApplication {
                 .messageFlow(ZLinkMessageFlowLogMode.KEY_TRANSITIONS)
                 .traceLogFile("${options.logDir}/${options.rid}-flow.log")
                 .traceLabel(options.rid)
-            framework.addRouteMesh(node.routeChannel)
+            framework.addRouteMeshChannel(node.routeChannel)
                 .enableServer(requireOption(node.routeEndpoint(options), node.routeEndpointOption))
                 .enableClient(requireOption(node.routeEndpoint(options), node.routeEndpointOption))
                 .setRoutingId(RoutingId.from(node.rid))
@@ -195,8 +196,7 @@ class MultiNodeHttpServer(
         val node = MultiNodeKind.fromRid(options.rid)
         return routes.requestToSpot(
             node.routeChannel,
-            RoutingId.from(node.rid),
-            RoutingId.from(request.spotRid),
+            ZLinkSpotAddress(Contracts.SPOT_MESH, RoutingId.from(node.rid), RoutingId.from(request.spotRid)),
             Contracts.MultiNodeStateReq("add", request.delta)
         )
             .packetName("StateReq")

@@ -3,6 +3,7 @@ package systems.zlink.e2e.yielddispatch.shared;
 import java.time.Duration;
 import systems.zlink.contracts.core.RoutingId;
 import systems.zlink.framework.channels.ZLinkRouteClient;
+import systems.zlink.framework.locations.ZLinkSpotAddress;
 import systems.zlink.framework.streams.ZLinkSessionContext;
 import systems.zlink.framework.streams.ZLinkSessionDispatchContext;
 import systems.zlink.framework.streams.ZLinkTypedSessionPacketHandler;
@@ -40,7 +41,7 @@ public final class ShutdownYieldSessionHandlers {
             Contracts.YieldShutdownScenarioReq request) {
             RoutingId playNode = RoutingId.from(Contracts.PLAY_NODE_A);
             RoutingId spotRid = RoutingId.from(request.spotRid());
-            routes.requestTo(
+            routes.requestToNode(
                     Contracts.ROUTE_CHANNEL,
                     playNode,
                     new Contracts.EnsureSpotReq(request.spotRid()))
@@ -48,8 +49,10 @@ public final class ShutdownYieldSessionHandlers {
                 .await(Contracts.EnsureSpotRes.class);
             routes.requestToSpot(
                     Contracts.ROUTE_CHANNEL,
-                    playNode,
-                    spotRid,
+                    new ZLinkSpotAddress(
+                        Contracts.SPOT_MESH,
+                        playNode,
+                        spotRid),
                     new Contracts.YieldReq("YD-E3", request.requestId(), "shutdown"))
                 .metadata(Contracts.SPOT_RID_METADATA, request.spotRid())
                 .timeout(ROUTE_REQUEST_TIMEOUT)
@@ -88,7 +91,7 @@ public final class ShutdownYieldSessionHandlers {
             Contracts.YieldShutdownRecoveryReq request) {
             RoutingId playNode = RoutingId.from(Contracts.PLAY_NODE_A);
             RoutingId spotRid = RoutingId.from(request.spotRid());
-            routes.requestTo(
+            routes.requestToNode(
                     Contracts.ROUTE_CHANNEL,
                     playNode,
                     new Contracts.EnsureSpotReq(request.spotRid()))
@@ -113,8 +116,10 @@ public final class ShutdownYieldSessionHandlers {
                 try {
                     routes.requestToSpot(
                             Contracts.ROUTE_CHANNEL,
-                            playNode,
-                            spotRid,
+                            new ZLinkSpotAddress(
+                                Contracts.SPOT_MESH,
+                                playNode,
+                                spotRid),
                             new Contracts.ProbeReq(requestId))
                         .timeout(RECOVERY_PROBE_ATTEMPT_TIMEOUT)
                         .await(Contracts.ProbeRes.class);

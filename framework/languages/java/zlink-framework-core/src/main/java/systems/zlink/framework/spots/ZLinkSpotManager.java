@@ -14,12 +14,6 @@ public interface ZLinkSpotManager {
         Class<? extends ZLinkSpot<?>> spotType,
         ZLinkMessage request);
 
-    default CompletionStage<ZLinkSpotCreateResult> create(
-        Class<? extends ZLinkSpot<?>> spotType,
-        Object request) {
-        return create(spotType, ZLinkMessage.of(request));
-    }
-
     CompletionStage<ZLinkSpotCreateResult> create(
         Class<? extends ZLinkSpot<?>> spotType,
         RoutingId spotRid);
@@ -32,13 +26,6 @@ public interface ZLinkSpotManager {
         Class<? extends ZLinkSpot<?>> spotType,
         RoutingId spotRid,
         ZLinkMessage request);
-
-    default CompletionStage<ZLinkSpotCreateResult> getOrCreate(
-        Class<? extends ZLinkSpot<?>> spotType,
-        RoutingId spotRid,
-        Object request) {
-        return getOrCreate(spotType, spotRid, ZLinkMessage.of(request));
-    }
 
     CompletionStage<Optional<ZLinkSpotInfo>> find(RoutingId spotRid);
 

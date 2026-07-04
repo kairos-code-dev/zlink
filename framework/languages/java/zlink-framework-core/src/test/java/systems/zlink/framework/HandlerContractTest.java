@@ -13,7 +13,8 @@ import java.util.concurrent.CompletableFuture;
 import org.junit.jupiter.api.Test;
 import systems.zlink.contracts.core.RoutingId;
 import systems.zlink.framework.CancellationToken;
-import systems.zlink.framework.channels.ZLinkRouteRequestCall;
+import systems.zlink.framework.channels.ZLinkRequestCall;
+import systems.zlink.framework.channels.ZLinkYieldRequestCall;
 import systems.zlink.framework.handlers.ZLinkHandlerGroup;
 import systems.zlink.framework.handlers.ZLinkHandlerGroups;
 import systems.zlink.framework.handlers.ZLinkPublish;
@@ -31,7 +32,6 @@ import systems.zlink.framework.actors.ZLinkActorContext;
 import systems.zlink.framework.actors.ZLinkActorJoinEntrySpotCall;
 import systems.zlink.framework.actors.ZLinkActorJoinSpotCall;
 import systems.zlink.framework.actors.ZLinkBoundSessionSendCall;
-import systems.zlink.framework.channels.ZLinkRequestCall;
 import systems.zlink.framework.execution.ZLinkFrameworkTurns;
 import systems.zlink.framework.messaging.ZLinkMessage;
 import systems.zlink.framework.spots.ZLinkWorkerCall;
@@ -89,8 +89,10 @@ final class HandlerContractTest {
     }
 
     @Test
-    void routeRequestCallDoesNotExposeYieldTerminator() {
-        assertFalse(hasMethod(ZLinkRouteRequestCall.class, "yield"));
+    void routeRequestCallDoesNotExposeYieldTerminator() throws NoSuchMethodException {
+        assertFalse(hasMethod(ZLinkRequestCall.class, "yield"));
+        ZLinkYieldRequestCall.class.getMethod("yield", Class.class);
+        ZLinkYieldRequestCall.class.getMethod("yield", Class.class, CancellationToken.class);
     }
 
     @Test
@@ -222,7 +224,7 @@ final class HandlerContractTest {
         ZLinkActorJoinEntrySpotCall.class.getMethod("await", Class.class);
         ZLinkActorJoinEntrySpotCall.class.getMethod("yield", Class.class);
         ZLinkActorJoinEntrySpotCall.class.getMethod("yield", Class.class, CancellationToken.class);
-        ZLinkRequestCall.class.getMethod("yield", Class.class, CancellationToken.class);
+        ZLinkYieldRequestCall.class.getMethod("yield", Class.class, CancellationToken.class);
         ZLinkWorkerCall.class.getMethod("yield", CancellationToken.class);
     }
 

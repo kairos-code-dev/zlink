@@ -58,7 +58,7 @@ class ConsumerEndpoints(
         }
         server.createContext("/locations/peers") { exchange ->
             val peers = lifecycle.monitoringLocationRuntimeQuery()
-                .listPeersAsync(
+                .listPeerLocationsAsync(
                     ZLinkPeerLocationFilter(
                         ZLinkLocationAutoConnectType.CLIENT_SERVER,
                         Contracts.PROFILE_CHANNEL,

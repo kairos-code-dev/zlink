@@ -77,23 +77,29 @@ final class ZLinkRedisLocationScripts {
         return {'stored', tonumber(ARGV[2]), nowMs}
         """;
 
-    static final String REMOVE_BY_OWNER = """
+    static final String REMOVE_ALL_BY_OWNER = """
         if redis.replicate_commands then redis.replicate_commands() end
-        local rowKeys = redis.call('SMEMBERS', KEYS[1])
         local removed = 0
-        for _, rowKey in ipairs(rowKeys) do
-            local rowHash = ARGV[1] .. rowKey
-            local mesh = redis.call('HGET', rowHash, 'mesh')
-            if redis.call('DEL', rowHash) == 1 then
-                removed = removed + 1
-                redis.call('SREM', KEYS[2], rowKey)
-                if mesh then
-                    redis.call('INCR', ARGV[2] .. ':' .. mesh)
+        for i = 1, 4 do
+            local ownerIndex = KEYS[i]
+            local kindIndex = KEYS[i + 4]
+            local rowPrefix = ARGV[i]
+            local stampBase = ARGV[i + 4]
+            local rowKeys = redis.call('SMEMBERS', ownerIndex)
+            for _, rowKey in ipairs(rowKeys) do
+                local rowHash = rowPrefix .. rowKey
+                local mesh = redis.call('HGET', rowHash, 'mesh')
+                if redis.call('DEL', rowHash) == 1 then
+                    removed = removed + 1
+                    redis.call('SREM', kindIndex, rowKey)
+                    if mesh then
+                        redis.call('INCR', stampBase .. ':' .. mesh)
+                    end
+                    redis.call('INCR', stampBase)
                 end
-                redis.call('INCR', ARGV[2])
             end
+            redis.call('DEL', ownerIndex)
         end
-        redis.call('DEL', KEYS[1])
         return removed
         """;
 
@@ -106,9 +112,9 @@ final class ZLinkRedisLocationScripts {
 
     static final String REMOVE_LEASE = PROLOGUE + """
 
-        redis.call('DEL', KEYS[1])
+        local removed = redis.call('DEL', KEYS[1])
         redis.call('SREM', KEYS[2], ARGV[1])
-        return nowMs
+        return removed
         """;
 
     static final String LIST_LEASES = PROLOGUE + """

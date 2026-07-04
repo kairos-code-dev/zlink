@@ -22,7 +22,7 @@ class MatchBingoHandler(
         context: ZLinkRequestContext,
     ) = run {
         val allocated = routes
-            .requestTo(
+            .requestToNode(
                 SampleNames.PlayChannel,
                 RoutingId.from(request.actorNodeRid),
                 AllocateBingoRoomReq(

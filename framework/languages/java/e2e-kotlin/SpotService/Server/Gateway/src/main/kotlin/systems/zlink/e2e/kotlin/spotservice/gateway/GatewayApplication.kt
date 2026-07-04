@@ -123,7 +123,7 @@ class GatewayHttpServer(
                 return@createContext
             }
             val request = readPublishRequest(exchange)
-            publisher.publishSpot(
+            publisher.publish(
                 Contracts.SPOT_MESH,
                 "spot.events",
                 Contracts.MeshMsg(request.marker)

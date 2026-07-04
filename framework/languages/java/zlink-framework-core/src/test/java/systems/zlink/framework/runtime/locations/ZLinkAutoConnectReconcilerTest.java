@@ -200,7 +200,7 @@ final class ZLinkAutoConnectReconcilerTest {
     private static ZLinkPeerLocation findPeer(
         ZLinkInMemoryLocationStore store,
         ZLinkPeerLocationKey key) {
-        return store.listPeersAsync(new systems.zlink.framework.locations.ZLinkPeerLocationFilter(
+        return store.listPeerLocationsAsync(new systems.zlink.framework.locations.ZLinkPeerLocationFilter(
                 key.autoConnectType(),
                 key.meshName(),
                 key.role(),
@@ -265,12 +265,12 @@ final class ZLinkAutoConnectReconcilerTest {
         }
 
         @Override
-        public CompletionStage<List<ZLinkPeerLocation>> listPeersAsync(
+        public CompletionStage<List<ZLinkPeerLocation>> listLivePeersAsync(
             ZLinkPeerLocationFilter filter) {
             if (fail) {
                 return CompletableFuture.failedFuture(new IllegalStateException("store unavailable"));
             }
-            return delegate.listPeersAsync(filter);
+            return delegate.listLivePeersAsync(filter);
         }
     }
 }

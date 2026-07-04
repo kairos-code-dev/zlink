@@ -7,6 +7,7 @@ import systems.zlink.contracts.core.RoutingId;
 import systems.zlink.framework.channels.ZLinkRouteRequestContext;
 import systems.zlink.framework.channels.ZLinkRouteRequestHandler;
 import systems.zlink.framework.handlers.ZLinkHandlerGroup;
+import systems.zlink.framework.messaging.ZLinkMessage;
 import systems.zlink.framework.spots.ZLinkSpotManager;
 import systems.zlink.samples.bingo.server.configuration.SampleTopology;
 import systems.zlink.samples.bingo.server.play.infrastructure.zlink.spots.bingoroomspot.BingoRoomSpot;
@@ -55,6 +56,6 @@ public final class AllocateBingoRoomHandler
         await(spots.getOrCreate(
             BingoRoomSpot.class,
             RoutingId.from(allocation.roomId()),
-            allocation.settings()));
+            ZLinkMessage.of(allocation.settings())));
     }
 }

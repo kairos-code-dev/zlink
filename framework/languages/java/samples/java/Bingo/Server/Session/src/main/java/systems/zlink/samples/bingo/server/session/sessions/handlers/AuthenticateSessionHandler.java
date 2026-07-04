@@ -3,7 +3,6 @@ package systems.zlink.samples.bingo.server.session.sessions.handlers;
 import static systems.zlink.framework.ZLinkAwait.await;
 
 import systems.zlink.contracts.core.RoutingId;
-import systems.zlink.framework.actors.ZLinkActorRef;
 import systems.zlink.framework.channels.ZLinkClient;
 import systems.zlink.framework.channels.ZLinkRouteClient;
 import systems.zlink.framework.streams.ZLinkSessionContext;
@@ -59,7 +58,7 @@ public final class AuthenticateSessionHandler
                     : authenticated.reason());
         }
         var ensured = routes
-            .requestTo(
+            .requestToNode(
                 SampleNames.PlayChannel,
                 RoutingId.from(SampleTopology.preferredPlayNodeRid()),
                 new Messages.EnsurePlayerActorReq(
@@ -68,11 +67,7 @@ public final class AuthenticateSessionHandler
                     SampleTopology.preferredPlayNodeRid()))
             .timeout(SampleTimings.RequestTimeout)
             .await(Messages.EnsurePlayerActorRes.class);
-        await(context.actors()
-            .bind(new ZLinkActorRef(
-                RoutingId.from(ensured.actor().nodeRid()),
-                ensured.actor().actorId(),
-                ensured.actor().generation())));
+        await(context.actors().bind(ensured.actor().toActorRef()));
         context.client()
             .reply(new Messages.AuthenticateRes(
                 ensured.actorId(),

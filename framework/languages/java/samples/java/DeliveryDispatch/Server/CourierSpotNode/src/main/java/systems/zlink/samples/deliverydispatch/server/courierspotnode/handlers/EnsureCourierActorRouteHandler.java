@@ -4,6 +4,7 @@ import static systems.zlink.framework.ZLinkAwait.await;
 
 import systems.zlink.framework.actors.ZLinkActorManager;
 import systems.zlink.framework.actors.ZLinkActorRef;
+import systems.zlink.framework.actors.ZLinkActorRefSnapshot;
 import systems.zlink.framework.channels.ZLinkRouteRequestContext;
 import systems.zlink.framework.channels.ZLinkRouteRequestHandler;
 import systems.zlink.framework.handlers.ZLinkHandlerGroup;
@@ -29,9 +30,6 @@ public final class EnsureCourierActorRouteHandler
             request));
         return new Messages.CourierActorEnsured(
             request.courierId(),
-            new Messages.ActorRefSnapshot(
-                actor.nodeRid().toString(),
-                actor.actorId(),
-                actor.epoch()));
+            ZLinkActorRefSnapshot.from(actor));
     }
 }

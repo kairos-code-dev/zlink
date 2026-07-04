@@ -90,7 +90,7 @@ class ProviderApplication {
             }
 
             if (!options.routeEndpoint.isNullOrBlank()) {
-                val route = framework.addRouteMesh(Contracts.PROFILE_ROUTE_CHANNEL)
+                val route = framework.addRouteMeshChannel(Contracts.PROFILE_ROUTE_CHANNEL)
                     .enableServer(options.routeEndpoint)
                     .setRoutingId(RoutingId.from(options.rid))
                 for (peer in options.routePeers) {

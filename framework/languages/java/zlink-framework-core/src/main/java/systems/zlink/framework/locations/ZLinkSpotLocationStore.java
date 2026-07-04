@@ -11,11 +11,9 @@ public interface ZLinkSpotLocationStore {
         ZLinkSpotLocationKey key,
         ZLinkLocationOwnerToken owner);
 
-    CompletionStage<Long> removeSpotsByOwnerAsync(String ownerId);
-
     CompletionStage<ZLinkSpotLocation> resolveSpotAsync(ZLinkSpotLocationKey key);
 
-    CompletionStage<ZLinkLocationPage<ZLinkSpotLocation>> listSpotsAsync(
+    CompletionStage<ZLinkLocationPage<ZLinkSpotLocation>> listSpotLocationsAsync(
         ZLinkSpotLocationFilter filter,
         ZLinkPageRequest page);
 }

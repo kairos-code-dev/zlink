@@ -74,7 +74,7 @@ class ProviderEndpoints(
             val request = exchange.readJson<ScenarioRoutePingReq>()
             var failed = false
             try {
-                routes.requestTo(Contracts.PROFILE_ROUTE_CHANNEL, RoutingId.from("missing-rid"), request)
+                routes.requestToNode(Contracts.PROFILE_ROUTE_CHANNEL, RoutingId.from("missing-rid"), request)
                     .packetName(Contracts.ROUTE_PACKET)
                     .timeout(Duration.ofMillis(300))
                     .await(ScenarioRoutePingRes::class.java)
@@ -122,7 +122,7 @@ class ProviderEndpoints(
         var last: RuntimeException? = null
         while (System.nanoTime() < deadline) {
             try {
-                return routes.requestTo(Contracts.PROFILE_ROUTE_CHANNEL, target, request)
+                return routes.requestToNode(Contracts.PROFILE_ROUTE_CHANNEL, target, request)
                     .packetName(Contracts.ROUTE_PACKET)
                     .timeout(Duration.ofSeconds(5))
                     .await(ScenarioRoutePingRes::class.java)

@@ -3,6 +3,7 @@ package systems.zlink.framework.runtime.host;
 import systems.zlink.framework.runtime.backend.*;
 
 import systems.zlink.framework.ZLinkMessageSerializer;
+import systems.zlink.framework.actors.ZLinkActorDirectory;
 import systems.zlink.framework.actors.ZLinkActorManager;
 import systems.zlink.framework.channels.ZLinkClient;
 import systems.zlink.framework.channels.ZLinkChannelRuntimeOptions;
@@ -21,6 +22,7 @@ import systems.zlink.framework.runtime.locations.ZLinkLocationLifecycle;
 import systems.zlink.framework.runtime.locations.ZLinkLocationAutoConnectHost;
 import systems.zlink.framework.runtime.locations.ZLinkLocationRuntime;
 import systems.zlink.framework.runtime.locations.ZLinkLocationRuntimeQueryService;
+import systems.zlink.framework.runtime.locations.ZLinkLocationReadinessService;
 import systems.zlink.framework.runtime.locations.ZLinkLocationSpotRemoteAddressResolver;
 import systems.zlink.framework.runtime.locations.ZLinkLocationStoreResolver;
 import systems.zlink.framework.runtime.locations.ZLinkRegisteredLocationStores;
@@ -54,6 +56,7 @@ public final class ZLinkFrameworkRuntime
     private final ZLinkLocationLifecycle locationLifecycle;
     private final ZLinkLocationAutoConnectHost locationAutoConnectHost;
     private final ZLinkSpotRemoteAddressResolver locationSpotRemoteAddressResolver;
+    private final ZLinkStoreLocationResolvers storeLocationResolvers;
     private final java.util.concurrent.atomic.AtomicBoolean spotRuntimeStopped =
         new java.util.concurrent.atomic.AtomicBoolean(false);
     // Shared, runtime-mutable message-flow mode cell, installed into the diagnostics
@@ -112,26 +115,26 @@ public final class ZLinkFrameworkRuntime
                 this.locationRuntime,
                 this.registration.locations().options());
             this.locationLifecycle = new ZLinkLocationLifecycle(this.locationRuntime);
-            ZLinkStoreLocationResolvers storeLocationResolvers =
+            this.storeLocationResolvers =
                 new ZLinkStoreLocationResolvers(
                     this.locationStores,
                     this.registration.locations().options());
             this.locationAutoConnectHost = new ZLinkLocationAutoConnectHost(
                 this.locationRuntime,
-                storeLocationResolvers,
+                this.storeLocationResolvers,
                 this.registration.locations().options());
             ZLinkStoreLocationResolvers.AddressResolvers locationAddressResolvers =
                 new ZLinkStoreLocationResolvers.AddressResolvers(
                     spotMeshNames(this.registration),
                     this.registration.locations().options().spotRouterChannels(),
-                    storeLocationResolvers);
+                    this.storeLocationResolvers);
             this.locationSpotRemoteAddressResolver =
                 new ZLinkLocationSpotRemoteAddressResolver(locationAddressResolvers);
             runtimeHandlers.add(ZLinkLocationRuntime.class, this.locationRuntime);
             runtimeHandlers.add(ZLinkLocationRuntimeQuery.class, this.locationRuntimeQuery);
             runtimeHandlers.add(ZLinkLocationLifecycle.class, this.locationLifecycle);
             runtimeHandlers.add(ZLinkLocationAutoConnectHost.class, this.locationAutoConnectHost);
-            runtimeHandlers.add(ZLinkStoreLocationResolvers.class, storeLocationResolvers);
+            runtimeHandlers.add(ZLinkStoreLocationResolvers.class, this.storeLocationResolvers);
             runtimeHandlers.add(
                 ZLinkStoreLocationResolvers.AddressResolvers.class,
                 locationAddressResolvers);
@@ -144,6 +147,7 @@ public final class ZLinkFrameworkRuntime
             this.locationLifecycle = null;
             this.locationAutoConnectHost = null;
             this.locationSpotRemoteAddressResolver = null;
+            this.storeLocationResolvers = null;
         }
         ZLinkChannelBackendAdapter channelBackend =
             backendFactory.createChannelAdapter(adapterOptions);
@@ -214,7 +218,9 @@ public final class ZLinkFrameworkRuntime
             : null;
         if (this.actors != null) {
             runtimeHandlers.add(ZLinkActorManager.class, this.actors);
+            runtimeHandlers.add(ZLinkActorDirectory.class, this.actors);
             this.actors.setLocationLifecycle(this.locationLifecycle);
+            this.actors.setStoreLocationResolvers(this.storeLocationResolvers);
             this.actors.setMessageFlowTracer(
                 new systems.zlink.framework.runtime.diagnostics.ZLinkMessageFlowTracer(
                     this.registration.dispatchOptions(),
@@ -354,6 +360,13 @@ public final class ZLinkFrameworkRuntime
         return locationRuntimeQuery;
     }
 
+    public systems.zlink.framework.locations.ZLinkLocationReadiness locationReadiness() {
+        if (locationRuntimeQuery == null) {
+            throw new ZLinkConfigurationException("Location runtime is not configured");
+        }
+        return new ZLinkLocationReadinessService(locationRuntimeQuery);
+    }
+
     public boolean stopSpotRuntime() {
         if (spots == null || !spotRuntimeStopped.compareAndSet(false, true)) {
             return false;
@@ -364,6 +377,13 @@ public final class ZLinkFrameworkRuntime
     }
 
     public ZLinkActorManager actorManager() {
+        if (actors == null) {
+            throw new ZLinkConfigurationException("Actor runtime is not configured");
+        }
+        return actors;
+    }
+
+    public systems.zlink.framework.actors.ZLinkActorDirectory actorDirectory() {
         if (actors == null) {
             throw new ZLinkConfigurationException("Actor runtime is not configured");
         }

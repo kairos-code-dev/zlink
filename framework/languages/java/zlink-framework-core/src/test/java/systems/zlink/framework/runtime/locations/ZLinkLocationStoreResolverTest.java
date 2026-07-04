@@ -24,6 +24,7 @@ import systems.zlink.framework.locations.ZLinkLocationPage;
 import systems.zlink.framework.locations.ZLinkLocationStore;
 import systems.zlink.framework.locations.ZLinkLocationWriteIntent;
 import systems.zlink.framework.locations.ZLinkLocationWriteResult;
+import systems.zlink.framework.locations.ZLinkOwnerLeaseRenewal;
 import systems.zlink.framework.locations.ZLinkOwnerLeaseSnapshot;
 import systems.zlink.framework.locations.ZLinkPageRequest;
 import systems.zlink.framework.locations.ZLinkPeerLocation;
@@ -82,20 +83,18 @@ class ZLinkLocationStoreResolverTest {
     }
 
     @Test
-    void samePerRoleTypeIsConstructedOnceAndShared() {
+    void explicitUnifiedStoreTypeIsSharedThroughEveryRole() {
         CountingLocationStore.created.set(0);
+        CountingLocationStore store = new CountingLocationStore();
         ZLinkLocationRegistration registration = new ZLinkLocationRegistration();
-        registration.setPeerStoreType(CountingLocationStore.class);
-        registration.setSpotStoreType(CountingLocationStore.class);
-        registration.setActorStoreType(CountingLocationStore.class);
-        registration.setRouteStoreType(CountingLocationStore.class);
-        registration.setOwnerLeaseStoreType(CountingLocationStore.class);
+        registration.setStoreInstance(store);
 
         ZLinkRegisteredLocationStores stores = ZLinkLocationStoreResolver.resolve(
             registration,
             ZLinkHandlerFactory.reflection());
 
         assertEquals(1, CountingLocationStore.created.get());
+        assertSame(store, stores.unifiedStore());
         assertSame(stores.peerStore(), stores.spotStore());
         assertSame(stores.peerStore(), stores.actorStore());
         assertSame(stores.peerStore(), stores.routeStore());
@@ -125,12 +124,7 @@ class ZLinkLocationStoreResolverTest {
         }
 
         @Override
-        public CompletionStage<Long> removePeersByOwnerAsync(String ownerId) {
-            return CompletableFuture.completedFuture(0L);
-        }
-
-        @Override
-        public CompletionStage<List<ZLinkPeerLocation>> listPeersAsync(ZLinkPeerLocationFilter filter) {
+        public CompletionStage<List<ZLinkPeerLocation>> listPeerLocationsAsync(ZLinkPeerLocationFilter filter) {
             return CompletableFuture.completedFuture(List.of());
         }
 
@@ -149,17 +143,12 @@ class ZLinkLocationStoreResolverTest {
         }
 
         @Override
-        public CompletionStage<Long> removeSpotsByOwnerAsync(String ownerId) {
-            return CompletableFuture.completedFuture(0L);
-        }
-
-        @Override
         public CompletionStage<ZLinkSpotLocation> resolveSpotAsync(ZLinkSpotLocationKey key) {
             return CompletableFuture.completedFuture(null);
         }
 
         @Override
-        public CompletionStage<ZLinkLocationPage<ZLinkSpotLocation>> listSpotsAsync(
+        public CompletionStage<ZLinkLocationPage<ZLinkSpotLocation>> listSpotLocationsAsync(
             ZLinkSpotLocationFilter filter,
             ZLinkPageRequest page) {
             return CompletableFuture.completedFuture(new ZLinkLocationPage<>(List.of(), null));
@@ -180,17 +169,12 @@ class ZLinkLocationStoreResolverTest {
         }
 
         @Override
-        public CompletionStage<Long> removeActorsByOwnerAsync(String ownerId) {
-            return CompletableFuture.completedFuture(0L);
-        }
-
-        @Override
         public CompletionStage<ZLinkActorLocation> resolveActorAsync(ZLinkActorLocationKey key) {
             return CompletableFuture.completedFuture(null);
         }
 
         @Override
-        public CompletionStage<ZLinkLocationPage<ZLinkActorLocation>> listActorsAsync(
+        public CompletionStage<ZLinkLocationPage<ZLinkActorLocation>> listActorLocationsAsync(
             ZLinkActorLocationFilter filter,
             ZLinkPageRequest page) {
             return CompletableFuture.completedFuture(new ZLinkLocationPage<>(List.of(), null));
@@ -211,33 +195,33 @@ class ZLinkLocationStoreResolverTest {
         }
 
         @Override
-        public CompletionStage<Long> removeRoutesByOwnerAsync(String ownerId) {
-            return CompletableFuture.completedFuture(0L);
-        }
-
-        @Override
         public CompletionStage<ZLinkRouteLocation> resolveRouteAsync(ZLinkRouteLocationKey key) {
             return CompletableFuture.completedFuture(null);
         }
 
         @Override
-        public CompletionStage<ZLinkLocationPage<ZLinkRouteLocation>> listRoutesAsync(
+        public CompletionStage<ZLinkLocationPage<ZLinkRouteLocation>> listRouteLocationsAsync(
             ZLinkRouteLocationFilter filter,
             ZLinkPageRequest page) {
             return CompletableFuture.completedFuture(new ZLinkLocationPage<>(List.of(), null));
         }
 
         @Override
-        public CompletionStage<ZLinkLocationWriteResult> renewOwnerLeaseAsync(
+        public CompletionStage<ZLinkOwnerLeaseRenewal> renewOwnerLeaseAsync(
             String ownerId,
             RoutingId nodeRid,
             Duration leaseTtl) {
-            return unsupportedWrite();
+            return CompletableFuture.failedFuture(new UnsupportedOperationException("write not supported"));
         }
 
         @Override
-        public CompletionStage<ZLinkLocationWriteResult> removeOwnerLeaseAsync(String ownerId) {
-            return unsupportedWrite();
+        public CompletionStage<Boolean> removeOwnerLeaseAsync(String ownerId) {
+            return CompletableFuture.failedFuture(new UnsupportedOperationException("write not supported"));
+        }
+
+        @Override
+        public CompletionStage<Long> removeAllByOwnerAsync(String ownerId) {
+            return CompletableFuture.completedFuture(0L);
         }
 
         @Override
@@ -246,7 +230,7 @@ class ZLinkLocationStoreResolverTest {
         }
 
         private CompletionStage<ZLinkLocationWriteResult> unsupportedWrite() {
-            return CompletableFuture.completedFuture(ZLinkLocationWriteResult.storeUnavailable());
+            return CompletableFuture.failedFuture(new UnsupportedOperationException("write not supported"));
         }
     }
 }

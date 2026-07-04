@@ -12,7 +12,5 @@ public interface ZLinkPeerLocationStore {
         ZLinkPeerLocationKey key,
         ZLinkLocationOwnerToken owner);
 
-    CompletionStage<Long> removePeersByOwnerAsync(String ownerId);
-
-    CompletionStage<List<ZLinkPeerLocation>> listPeersAsync(ZLinkPeerLocationFilter filter);
+    CompletionStage<List<ZLinkPeerLocation>> listPeerLocationsAsync(ZLinkPeerLocationFilter filter);
 }

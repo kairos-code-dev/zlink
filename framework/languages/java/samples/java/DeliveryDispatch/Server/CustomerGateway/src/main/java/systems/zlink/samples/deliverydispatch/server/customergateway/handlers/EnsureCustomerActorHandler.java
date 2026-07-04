@@ -4,6 +4,7 @@ import static systems.zlink.framework.ZLinkAwait.await;
 
 import systems.zlink.framework.actors.ZLinkActorManager;
 import systems.zlink.framework.actors.ZLinkActorRef;
+import systems.zlink.framework.actors.ZLinkActorRefSnapshot;
 import systems.zlink.framework.channels.ZLinkRequestContext;
 import systems.zlink.framework.channels.ZLinkRequestHandler;
 import systems.zlink.framework.handlers.ZLinkHandlerGroup;
@@ -29,9 +30,6 @@ public final class EnsureCustomerActorHandler
             request));
         return new Messages.CustomerActorEnsured(
             request.customerId(),
-            new Messages.ActorRefSnapshot(
-                actor.nodeRid().toString(),
-                actor.actorId(),
-                actor.epoch()));
+            ZLinkActorRefSnapshot.from(actor));
     }
 }

@@ -1,10 +1,6 @@
 package systems.zlink.samples.deliverydispatch.server.configuration;
 
 public final class SampleTopology {
-    public static final String RegistryPubEndpoint =
-        property("registryPubEndpoint", "tcp://127.0.0.1:48101");
-    public static final String RegistryRouterEndpoint =
-        property("registryRouterEndpoint", "tcp://127.0.0.1:48102");
     public static final String TrackingChannelEndpoint =
         property("trackingChannelEndpoint", "tcp://127.0.0.1:48103");
     public static final String CustomerStreamEndpoint =
@@ -45,12 +41,23 @@ public final class SampleTopology {
         property("courierSessionSpotRouterEndpoint", "tcp://127.0.0.1:48117");
     public static final String CourierSessionSpotNodeRid =
         property("courierSessionSpotNodeRid", "courier-session-node");
+    public static final String RedisEndpoint = requiredProperty("redisEndpoint");
+    public static final String RedisKeyPrefix =
+        property("redisKeyPrefix", "deliverydispatch:java:");
 
     private SampleTopology() {
     }
 
     private static String property(String name, String fallback) {
         return System.getProperty("zlink.samples.deliverydispatch." + name, fallback);
+    }
+
+    private static String requiredProperty(String name) {
+        String value = System.getProperty("zlink.samples.deliverydispatch." + name);
+        if (value == null || value.isBlank()) {
+            throw new IllegalStateException("Missing zlink.samples.deliverydispatch." + name);
+        }
+        return value;
     }
 
     public static String courierPlacement(String courierId) {

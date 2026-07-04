@@ -3,11 +3,18 @@ package systems.zlink.framework.runtime.locations;
 import java.util.HexFormat;
 import systems.zlink.contracts.core.RoutingId;
 import systems.zlink.framework.locations.ZLinkActorLocationKey;
-import systems.zlink.framework.locations.ZLinkLocationCanonicalNames;
+import systems.zlink.framework.locations.ZLinkLocationAutoConnectType;
+import systems.zlink.framework.locations.ZLinkLocationRole;
 import systems.zlink.framework.locations.ZLinkPeerLocationKey;
 import systems.zlink.framework.locations.ZLinkRouteLocationKey;
 import systems.zlink.framework.locations.ZLinkSpotLocationKey;
 
+/*
+ * Framework-internal row key codec for in-memory bookkeeping and runtime
+ * generation tracking. Backend extensions own their transport key codec, so
+ * Redis keys are encoded in zlink-framework-locations-redis instead of calling
+ * through this type.
+ */
 final class ZLinkLocationKeyCodec {
     private static final HexFormat HEX = HexFormat.of();
 
@@ -17,9 +24,9 @@ final class ZLinkLocationKeyCodec {
     static String encodePeerKey(ZLinkPeerLocationKey key) {
         String identity = key.nodeRid() != null ? toHex(key.nodeRid()) : nullToEmpty(key.endpoint());
         return encode(
-            ZLinkLocationCanonicalNames.toCanonicalString(key.autoConnectType()),
+            autoConnectTypeName(key.autoConnectType()),
             key.meshName(),
-            ZLinkLocationCanonicalNames.toCanonicalString(key.role()),
+            roleName(key.role()),
             identity);
     }
 
@@ -28,15 +35,11 @@ final class ZLinkLocationKeyCodec {
     }
 
     static String encodeActorKey(ZLinkActorLocationKey key) {
-        return encode(normalizeActorType(key.actorType()), key.actorId());
+        return encode(key.actorId());
     }
 
     static String encodeRouteKey(ZLinkRouteLocationKey key) {
-        return encode(Integer.toString(key.routeKind().ordinal()), key.routeKey());
-    }
-
-    static String normalizeActorType(String actorType) {
-        return nullToEmpty(actorType);
+        return encode(Integer.toString(key.routeKind().value()), key.routeKey());
     }
 
     private static String encode(String... segments) {
@@ -54,5 +57,27 @@ final class ZLinkLocationKeyCodec {
 
     private static String toHex(RoutingId routingId) {
         return HEX.formatHex(routingId.toBytes());
+    }
+
+    private static String autoConnectTypeName(ZLinkLocationAutoConnectType type) {
+        return switch (type) {
+            case ROUTE_MESH -> "route-mesh";
+            case CLIENT_SERVER -> "client-server";
+            case DEALER_MESH -> "dealer-mesh";
+            case FANOUT -> "fanout";
+            case SPOT_MESH -> "spot-mesh";
+            default -> throw new IllegalArgumentException("invalid auto-connect type");
+        };
+    }
+
+    private static String roleName(ZLinkLocationRole role) {
+        return switch (role) {
+            case ROUTER -> "router";
+            case DEALER -> "dealer";
+            case PUB -> "pub";
+            case SUB -> "sub";
+            case SPOT -> "spot";
+            default -> throw new IllegalArgumentException("invalid location role");
+        };
     }
 }

@@ -3,15 +3,20 @@ package systems.zlink.framework.runtime.locations;
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertNull;
+import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
 import java.time.Clock;
 import java.time.Duration;
 import java.time.Instant;
 import java.time.ZoneOffset;
+import java.util.concurrent.CompletionException;
 import java.util.concurrent.atomic.AtomicInteger;
 import org.junit.jupiter.api.Test;
 import systems.zlink.contracts.core.RoutingId;
+import systems.zlink.framework.actors.ZLinkActorRef;
+import systems.zlink.framework.errors.ZLinkFrameworkErrorKind;
+import systems.zlink.framework.errors.ZLinkFrameworkException;
 import systems.zlink.framework.locations.ZLinkActorLocationKey;
 import systems.zlink.framework.locations.ZLinkLocationWriteIntent;
 import systems.zlink.framework.locations.ZLinkLocationWriteStatus;
@@ -64,16 +69,22 @@ class ZLinkLocationLifecycleTest {
 
             ownerB.writeActorAsync(
                     new systems.zlink.framework.locations.ZLinkActorLocation(
-                        "chat", "actor-1", "", NODE_B, 0, ZLinkSpotKind.ENTRY,
-                        null, null, ZLinkSpotKind.ENTRY, "", NOW),
+                        "actor-1", "chat", null, NODE_B, ZLinkSpotKind.ENTRY,
+                        "", null, "", 0, NOW),
                     ZLinkLocationWriteIntent.TAKEOVER)
                 .toCompletableFuture()
                 .get();
-            lifecycleA.setActorRefAsync("chat", "actor-1", "stale-ref").toCompletableFuture().get();
+            CompletionException error = assertThrows(
+                CompletionException.class,
+                () -> lifecycleA.setActorRefAsync("chat", "actor-1", new ZLinkActorRef(NODE_A, "actor-1", 1))
+                    .toCompletableFuture()
+                    .join());
+            ZLinkFrameworkException frameworkError = (ZLinkFrameworkException) error.getCause();
 
+            assertEquals(ZLinkFrameworkErrorKind.ACTOR_LOCATION_STALE, frameworkError.kind());
             assertFalse(lifecycleA.ownsActor("chat", "actor-1"));
             assertEquals(1, deactivations.get());
-            assertEquals("owner-b", store.resolveActorAsync(new ZLinkActorLocationKey("chat", "actor-1"))
+            assertEquals("owner-b", store.resolveActorAsync(new ZLinkActorLocationKey("actor-1"))
                 .toCompletableFuture()
                 .get()
                 .ownerId());
@@ -117,7 +128,7 @@ class ZLinkLocationLifecycleTest {
                 .toCompletableFuture()
                 .get();
             assertEquals("actor-1", new String(row.value(), java.nio.charset.StandardCharsets.UTF_8));
-            assertEquals(1, store.listRoutesAsync(
+            assertEquals(1, store.listRouteLocationsAsync(
                     new ZLinkRouteLocationFilter(ZLinkRouteKind.ACTOR_SESSION, NODE_A, "owner-a"),
                     ZLinkPageRequest.firstPage())
                 .toCompletableFuture()

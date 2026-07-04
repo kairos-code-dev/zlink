@@ -1,6 +1,7 @@
 package systems.zlink.samples.kotlin.deliverydispatch.shared.contracts
 
 import java.time.Instant
+import systems.zlink.framework.actors.ZLinkActorRefSnapshot
 
 data class CreateDeliveryReq(
     val deliveryId: String,
@@ -37,13 +38,13 @@ data class AssignDelivery(
 
 data class BindCourierSessionReq(
     val courierId: String,
-    val actor: ActorRefSnapshot? = null,
+    val actor: ZLinkActorRefSnapshot? = null,
     val sessionRoute: String? = null,
 )
 
 data class BindCourierSessionRes(
     val courierId: String,
-    val actor: ActorRefSnapshot,
+    val actor: ZLinkActorRefSnapshot,
     val sessionRoute: String,
 )
 
@@ -54,7 +55,7 @@ data class BindCourierReq(
 
 data class BindCourierRes(
     val courierId: String,
-    val actor: ActorRefSnapshot,
+    val actor: ZLinkActorRefSnapshot,
     val sessionRoute: String,
 )
 
@@ -64,7 +65,7 @@ data class EnsureCourierActorReq(
 
 data class EnsureCourierActorRes(
     val courierId: String,
-    val actor: ActorRefSnapshot,
+    val actor: ZLinkActorRefSnapshot,
 )
 
 data class OfferDeliveryReq(
@@ -123,13 +124,7 @@ data class EnsureCustomerActorReq(
 
 data class EnsureCustomerActorRes(
     val customerId: String,
-    val actor: ActorRefSnapshot,
-)
-
-data class ActorRefSnapshot(
-    val nodeRid: String,
-    val actorId: String,
-    val generation: Long,
+    val actor: ZLinkActorRefSnapshot,
 )
 
 enum class DeliveryStatus {

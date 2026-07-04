@@ -3,6 +3,7 @@ package systems.zlink.framework.runtime.locations;
 import java.util.Objects;
 import java.util.concurrent.CompletionStage;
 import systems.zlink.contracts.core.RoutingId;
+import systems.zlink.framework.errors.ZLinkFrameworkErrorKind;
 import systems.zlink.framework.errors.ZLinkFrameworkException;
 import systems.zlink.framework.spots.ZLinkSpotRemoteAddress;
 import systems.zlink.framework.spots.ZLinkSpotRemoteAddressResolver;
@@ -23,6 +24,7 @@ public final class ZLinkLocationSpotRemoteAddressResolver
             .thenApply(row -> {
                 if (row == null) {
                     throw new ZLinkFrameworkException(
+                        ZLinkFrameworkErrorKind.SPOT_ROUTE_NOT_FOUND,
                         "SPOT has no live location row in any registered spot mesh: " + spotRid);
                 }
                 return new ZLinkSpotRemoteAddress(

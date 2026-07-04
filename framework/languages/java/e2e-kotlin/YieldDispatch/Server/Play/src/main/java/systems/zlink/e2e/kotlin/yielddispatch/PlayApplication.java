@@ -39,7 +39,7 @@ public final class PlayApplication {
                 .messageFlow(ZLinkMessageFlowLogMode.KEY_TRANSITIONS)
                 .traceLogFile(logDir + "/" + nodeRid + "-flow.log")
                 .traceLabel("kotlin-yd-" + nodeRid);
-            RouteMeshChannelBuilder route = options.addRouteMesh(Contracts.SPOT_MESH)
+            RouteMeshChannelBuilder route = options.addRouteMeshChannel(Contracts.SPOT_MESH)
                 .enableServer(Env.get("ZLINK_KOTLIN_E2E_PLAY_ROUTE_ENDPOINT"))
                 .enableClient(Env.get("ZLINK_KOTLIN_E2E_SESSION_ROUTE_ENDPOINT"))
                 .setRoutingId(RoutingId.from(nodeRid));

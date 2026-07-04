@@ -33,7 +33,7 @@ class CourierGatewayApplication {
                 .enableServer(SampleTopology.CourierGatewayChannelEndpoint)
                 .setRoutingId(RoutingId.from("delivery-courier-gateway-server"))
                 .addHandlerGroup("courier-gateway")
-            options.addRouteMesh(SampleNames.CourierActorNodeRouteChannel)
+            options.addRouteMeshChannel(SampleNames.CourierActorNodeRouteChannel)
                 .enableClient()
                 .setRoutingId(RoutingId.from("delivery-courier-gateway"))
         }

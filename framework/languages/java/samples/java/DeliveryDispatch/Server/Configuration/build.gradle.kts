@@ -16,6 +16,7 @@ fun sampleRootPath(): String {
 dependencies {
     api(sampleProject("Shared"))
     api("systems.zlink:zlink-framework-core:0.1.0-SNAPSHOT")
+    api("systems.zlink:zlink-framework-locations-redis:0.1.0-SNAPSHOT")
 }
 
 java {

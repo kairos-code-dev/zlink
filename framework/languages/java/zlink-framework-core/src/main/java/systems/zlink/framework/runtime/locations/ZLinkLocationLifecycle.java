@@ -9,6 +9,7 @@ import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.CompletionStage;
 import java.util.function.Function;
 import systems.zlink.contracts.core.RoutingId;
+import systems.zlink.framework.actors.ZLinkActorRef;
 import systems.zlink.framework.locations.ZLinkActorLocation;
 import systems.zlink.framework.locations.ZLinkActorLocationKey;
 import systems.zlink.framework.locations.ZLinkLocationKind;
@@ -20,6 +21,8 @@ import systems.zlink.framework.locations.ZLinkRouteLocation;
 import systems.zlink.framework.locations.ZLinkRouteLocationKey;
 import systems.zlink.framework.locations.ZLinkSpotLocation;
 import systems.zlink.framework.locations.ZLinkSpotLocationKey;
+import systems.zlink.framework.errors.ZLinkFrameworkErrorKind;
+import systems.zlink.framework.errors.ZLinkFrameworkException;
 import systems.zlink.framework.spots.ZLinkSpotKind;
 
 public final class ZLinkLocationLifecycle implements AutoCloseable {
@@ -102,8 +105,7 @@ public final class ZLinkLocationLifecycle implements AutoCloseable {
         RoutingId nodeRid,
         Runnable deactivate,
         ZLinkLocationWriteIntent intent) {
-        String normalizedType = ZLinkLocationKeyCodec.normalizeActorType(actorType);
-        String canonical = ZLinkLocationKeyCodec.encodeActorKey(new ZLinkActorLocationKey(normalizedType, actorId));
+        String canonical = ZLinkLocationKeyCodec.encodeActorKey(new ZLinkActorLocationKey(actorId));
         synchronized (gate) {
             if (actors.containsKey(canonical)) {
                 return CompletableFuture.completedFuture(ZLinkLocationWriteStatus.STORED);
@@ -111,8 +113,7 @@ public final class ZLinkLocationLifecycle implements AutoCloseable {
         }
 
         ZLinkActorLocation row = new ZLinkActorLocation(
-            normalizedType, actorId, "", nodeRid, 0, ZLinkSpotKind.ENTRY, null, null,
-            ZLinkSpotKind.ENTRY, "", Instant.EPOCH);
+            actorId, actorType, null, nodeRid, ZLinkSpotKind.ENTRY, "", null, "", 0, Instant.EPOCH);
         return runtime.writeActorAsync(row, intent)
             .thenApply(result -> {
                 if (result.status() == ZLinkLocationWriteStatus.STORED) {
@@ -125,11 +126,10 @@ public final class ZLinkLocationLifecycle implements AutoCloseable {
             });
     }
 
-    public CompletionStage<Void> setActorRefAsync(String actorType, String actorId, String actorRef) {
+    public CompletionStage<Void> setActorRefAsync(String actorType, String actorId, ZLinkActorRef actorRef) {
         return renewActorAsync(actorType, actorId, row -> new ZLinkActorLocation(
-            row.actorType(), row.actorId(), actorRef, row.nodeRid(), row.generation(),
-            row.locationKind(), row.spotMeshName(), row.spotRid(), row.spotKind(),
-            row.ownerId(), row.updatedAt()));
+            row.actorId(), row.actorType(), actorRef, row.nodeRid(), row.locationKind(),
+            row.spotMeshName(), row.spotRid(), row.ownerId(), row.generation(), row.updatedAt()));
     }
 
     public CompletionStage<Void> notifyActorJoinedSpotAsync(
@@ -138,14 +138,14 @@ public final class ZLinkLocationLifecycle implements AutoCloseable {
         String meshName,
         RoutingId spotRid) {
         return renewActorAsync(actorType, actorId, row -> new ZLinkActorLocation(
-            row.actorType(), row.actorId(), row.actorRef(), row.nodeRid(), row.generation(),
-            ZLinkSpotKind.USER, meshName, spotRid, ZLinkSpotKind.USER, row.ownerId(), row.updatedAt()));
+            row.actorId(), row.actorType(), row.actorRef(), row.nodeRid(), ZLinkSpotKind.USER,
+            meshName, spotRid, row.ownerId(), row.generation(), row.updatedAt()));
     }
 
     public CompletionStage<Void> notifyActorLeftSpotAsync(String actorType, String actorId) {
         return renewActorAsync(actorType, actorId, row -> new ZLinkActorLocation(
-            row.actorType(), row.actorId(), row.actorRef(), row.nodeRid(), row.generation(),
-            ZLinkSpotKind.ENTRY, null, null, ZLinkSpotKind.ENTRY, row.ownerId(), row.updatedAt()));
+            row.actorId(), row.actorType(), row.actorRef(), row.nodeRid(), ZLinkSpotKind.ENTRY,
+            "", null, row.ownerId(), row.generation(), row.updatedAt()));
     }
 
     public CompletionStage<Void> notifyActorMovedToEntrySpotAsync(
@@ -153,13 +153,12 @@ public final class ZLinkLocationLifecycle implements AutoCloseable {
         String actorId,
         RoutingId nodeRid) {
         return renewActorAsync(actorType, actorId, row -> new ZLinkActorLocation(
-            row.actorType(), row.actorId(), row.actorRef(), nodeRid, row.generation(),
-            ZLinkSpotKind.ENTRY, null, null, ZLinkSpotKind.ENTRY, row.ownerId(), row.updatedAt()));
+            row.actorId(), row.actorType(), row.actorRef(), nodeRid, ZLinkSpotKind.ENTRY,
+            "", null, row.ownerId(), row.generation(), row.updatedAt()));
     }
 
     public CompletionStage<Void> releaseActorAsync(String actorType, String actorId) {
-        ZLinkActorLocationKey key = new ZLinkActorLocationKey(
-            ZLinkLocationKeyCodec.normalizeActorType(actorType), actorId);
+        ZLinkActorLocationKey key = new ZLinkActorLocationKey(actorId);
         String canonical = ZLinkLocationKeyCodec.encodeActorKey(key);
         TrackedActor tracked;
         synchronized (gate) {
@@ -217,8 +216,7 @@ public final class ZLinkLocationLifecycle implements AutoCloseable {
     }
 
     boolean ownsActor(String actorType, String actorId) {
-        String canonical = ZLinkLocationKeyCodec.encodeActorKey(new ZLinkActorLocationKey(
-            ZLinkLocationKeyCodec.normalizeActorType(actorType), actorId));
+        String canonical = ZLinkLocationKeyCodec.encodeActorKey(new ZLinkActorLocationKey(actorId));
         synchronized (gate) {
             return actors.containsKey(canonical);
         }
@@ -233,8 +231,7 @@ public final class ZLinkLocationLifecycle implements AutoCloseable {
         String actorType,
         String actorId,
         Function<ZLinkActorLocation, ZLinkActorLocation> mutate) {
-        String canonical = ZLinkLocationKeyCodec.encodeActorKey(new ZLinkActorLocationKey(
-            ZLinkLocationKeyCodec.normalizeActorType(actorType), actorId));
+        String canonical = ZLinkLocationKeyCodec.encodeActorKey(new ZLinkActorLocationKey(actorId));
         TrackedActor tracked;
         synchronized (gate) {
             tracked = actors.get(canonical);
@@ -244,7 +241,14 @@ public final class ZLinkLocationLifecycle implements AutoCloseable {
             tracked = tracked.withRow(mutate.apply(tracked.row()));
             actors.put(canonical, tracked);
         }
-        return runtime.writeActorAsync(tracked.row(), ZLinkLocationWriteIntent.RENEW).thenApply(ignored -> null);
+        return runtime.writeActorAsync(tracked.row(), ZLinkLocationWriteIntent.RENEW).thenApply(result -> {
+            if (result.status() == ZLinkLocationWriteStatus.IGNORED_STALE) {
+                throw new ZLinkFrameworkException(
+                    ZLinkFrameworkErrorKind.ACTOR_LOCATION_STALE,
+                    "Actor '" + actorId + "' location is no longer owned by this runtime.");
+            }
+            return null;
+        });
     }
 
     private void onOwnershipLost(ZLinkLocationKind kind, String canonicalKey) {
@@ -267,21 +271,12 @@ public final class ZLinkLocationLifecycle implements AutoCloseable {
 
     private static ZLinkActorLocation rowWithGeneration(ZLinkActorLocation row, long generation) {
         return new ZLinkActorLocation(
-            row.actorType(), row.actorId(), row.actorRef(), row.nodeRid(), generation,
-            row.locationKind(), row.spotMeshName(), row.spotRid(), row.spotKind(),
-            row.ownerId(), row.updatedAt());
+            row.actorId(), row.actorType(), row.actorRef(), row.nodeRid(), row.locationKind(),
+            row.spotMeshName(), row.spotRid(), row.ownerId(), generation, row.updatedAt());
     }
 
     private static String toRouteKey(RoutingId routingId) {
         return java.util.HexFormat.of().formatHex(routingId.toBytes());
-    }
-
-    public static String serializeActorRef(RoutingId nodeRid, String actorId, long generation) {
-        return java.util.HexFormat.of().formatHex(nodeRid.toBytes())
-            + ":"
-            + Long.toUnsignedString(generation)
-            + ":"
-            + actorId;
     }
 
     private record TrackedActor(ZLinkActorLocation row, Runnable deactivate) {

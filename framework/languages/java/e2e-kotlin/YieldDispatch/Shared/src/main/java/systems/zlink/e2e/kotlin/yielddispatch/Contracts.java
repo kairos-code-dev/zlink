@@ -88,7 +88,7 @@ public final class Contracts {
     public record BindActorsReq(String spotRid, String actorA, String actorB) {
     }
 
-    public record ActorBinding(String actorId, String nodeRid, long epoch) {
+    public record ActorBinding(String actorId, String nodeRid, long generation) {
     }
 
     public record BindActorsRes(

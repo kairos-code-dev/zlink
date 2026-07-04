@@ -142,14 +142,14 @@ final class SpotRuntimeFakeBackendTest {
         try (ZLinkFrameworkRuntime runtime =
                  RuntimeTestSupport.startFramework(options, new FakeZLinkBackendAdapterFactory())) {
             assertEquals(ZLinkSpotCreateState.CREATED, runtime.spotManager()
-                .getOrCreate(PayloadSpot.class, rid, "first")
+                .getOrCreate(PayloadSpot.class, rid, systems.zlink.framework.messaging.ZLinkMessage.of("first"))
                 .toCompletableFuture()
                 .join()
                 .state());
             assertEquals("first", PayloadSpot.lastCreatePayload.get());
 
             assertEquals(ZLinkSpotCreateState.EXISTING, runtime.spotManager()
-                .getOrCreate(PayloadSpot.class, rid, "second")
+                .getOrCreate(PayloadSpot.class, rid, systems.zlink.framework.messaging.ZLinkMessage.of("second"))
                 .toCompletableFuture()
                 .join()
                 .state());
@@ -639,9 +639,9 @@ final class SpotRuntimeFakeBackendTest {
     void spotOutboundUsesConfiguredRouteMeshEgressChannel() {
         DefaultZLinkFrameworkOptions options = new DefaultZLinkFrameworkOptions();
         options.addSpotRemoteAddressResolver(RouteEgressResolver.class);
-        { var route = options.addRouteMesh("egress"); route.enableServer("inproc://egress-route");
+        { var route = options.addRouteMeshChannel("egress"); route.enableServer("inproc://egress-route");
             route.enableClient("inproc://egress-peer");};
-        { var route = options.addRouteMesh("ingress"); route.setRoutingId(RoutingId.from("ingress-route"));
+        { var route = options.addRouteMeshChannel("ingress"); route.setRoutingId(RoutingId.from("ingress-route"));
             route.enableServer("inproc://ingress-route");
             route.enableClient("inproc://ingress-peer"); };
         { var mesh = options.addSpotMesh("game"); { var node = mesh; node.enableRouter("inproc://play-router");node.addSpotFactory(OutboundSpot.class); }; };
@@ -674,9 +674,9 @@ final class SpotRuntimeFakeBackendTest {
     @Test
     void routeMeshSpotEgressRequiresTargetRoutePeerRoutingId() {
         DefaultZLinkFrameworkOptions options = new DefaultZLinkFrameworkOptions();
-        { var route = options.addRouteMesh("egress"); route.enableServer("inproc://egress-route");
+        { var route = options.addRouteMeshChannel("egress"); route.enableServer("inproc://egress-route");
             route.enableClient("inproc://egress-peer");};
-        { var route = options.addRouteMesh("ingress"); route.enableServer("inproc://ingress-route");
+        { var route = options.addRouteMeshChannel("ingress"); route.enableServer("inproc://ingress-route");
             route.enableClient("inproc://ingress-peer"); };
         { var mesh = options.addSpotMesh("game"); { var node = mesh; node.enableRouter("inproc://play-router");node.addSpotFactory(OutboundSpot.class); }; };
 
@@ -702,8 +702,8 @@ final class SpotRuntimeFakeBackendTest {
     @Test
     void spotOutboundRejectsAmbiguousEgressChannels() {
         DefaultZLinkFrameworkOptions options = new DefaultZLinkFrameworkOptions();
-        { var route = options.addRouteMesh("egress-a"); route.enableServer("inproc://egress-a"); };
-        { var route = options.addRouteMesh("egress-b"); route.enableServer("inproc://egress-b"); };
+        { var route = options.addRouteMeshChannel("egress-a"); route.enableServer("inproc://egress-a"); };
+        { var route = options.addRouteMeshChannel("egress-b"); route.enableServer("inproc://egress-b"); };
         { var mesh = options.addSpotMesh("game"); { var node = mesh; node.enableRouter("inproc://play-router");node.addSpotFactory(OutboundSpot.class); }; };
 
         try (ZLinkFrameworkRuntime runtime =
@@ -757,7 +757,7 @@ final class SpotRuntimeFakeBackendTest {
         try (ZLinkFrameworkRuntime runtime =
                  RuntimeTestSupport.startFramework(options, backendFactory)) {
             runtime.spotPublisherClient()
-                .publishSpot("game", "stage.events", message("opened", "StageOpened"))
+                .publish("game", "stage.events", message("opened", "StageOpened"))
                 .packetName("StageOpened")
                 .submit()
                 .toCompletableFuture()
@@ -818,7 +818,7 @@ final class SpotRuntimeFakeBackendTest {
     @Test
     void acceptedSpotRouteChannelManualConnectionsAttachRouterChannelPeers() {
         DefaultZLinkFrameworkOptions options = new DefaultZLinkFrameworkOptions();
-        { var route = options.addRouteMesh("api"); route.enableServer("inproc://api-route");
+        { var route = options.addRouteMeshChannel("api"); route.enableServer("inproc://api-route");
             route.enableClient("inproc://api-route-peer"); };
         { var mesh = options.addSpotMesh("game"); { var node = mesh; node.enableRouter("inproc://spot-router");}; };
         FakeZLinkBackendAdapterFactory backendFactory =
@@ -1294,7 +1294,7 @@ final class SpotRuntimeFakeBackendTest {
             assertThrows(
                 ZLinkConfigurationException.class,
                 () -> runtime.spotPublisherClient()
-                    .publishSpot("missing", "stage.events", message("opened", "StageOpened")));
+                    .publish("missing", "stage.events", message("opened", "StageOpened")));
         }
     }
 

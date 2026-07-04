@@ -22,6 +22,7 @@ import systems.zlink.framework.configuration.RouteMeshChannelBuilder;
 import systems.zlink.framework.configuration.ZLinkSpotMeshBuilder;
 import systems.zlink.framework.locations.redis.ZLinkRedisLocationOptions;
 import systems.zlink.framework.locations.redis.ZLinkRedisLocationStore;
+import systems.zlink.framework.messaging.ZLinkMessage;
 import systems.zlink.framework.spring.EnableZLinkFramework;
 import systems.zlink.framework.spring.ZLinkFrameworkConfigurer;
 import systems.zlink.framework.spots.ZLinkSpotManager;
@@ -65,7 +66,7 @@ public final class Program {
                 .messageFlow(ZLinkMessageFlowLogMode.KEY_TRANSITIONS)
                 .traceLogFile(logDir + "/" + nodeRid + "-flow.log")
                 .traceLabel("java-yd-" + nodeRid);
-            RouteMeshChannelBuilder route = options.addRouteMesh(Contracts.ROUTE_CHANNEL)
+            RouteMeshChannelBuilder route = options.addRouteMeshChannel(Contracts.ROUTE_CHANNEL)
                 .enableServer(Env.get("ZLINK_JAVA_E2E_ROUTE_ENDPOINT"))
                 .setRoutingId(RoutingId.from(nodeRid));
             String routePeerEndpoint = Env.get("ZLINK_JAVA_E2E_ROUTE_PEER_ENDPOINT");
@@ -107,7 +108,7 @@ public final class Program {
             spots.getOrCreate(
                     YieldProbeSpot.class,
                     RoutingId.from(Contracts.TARGET_SPOT),
-                    "bootstrap")
+                    ZLinkMessage.of("bootstrap"))
                 .toCompletableFuture()
                 .join();
         };

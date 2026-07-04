@@ -35,7 +35,7 @@ public final class PlayServer {
             options.addClientServerChannel(SampleNames.PlayChannel)
                 .enableServer(settings.playChannelEndpoint())
                 .addHandlerGroup(SampleNames.PlayChannel);
-            RouteMeshChannelBuilder route = options.addRouteMesh(SampleNames.RouteChannel);
+            RouteMeshChannelBuilder route = options.addRouteMeshChannel(SampleNames.RouteChannel);
             route.enableServer(settings.routeEndpoint())
                 .enableClient(settings.peerRouteEndpoint())
                 .setRoutingId(RoutingId.from(settings.playSpotNodeRid()));

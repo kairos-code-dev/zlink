@@ -961,7 +961,7 @@ final class ChannelMessagingTest {
         sourceOptions.addSpotRemoteAddressResolver(SpotEgressAddressResolver.class);
         { var channel = sourceOptions.addClientServerChannel("egress");
             channel.enableClient(ingressEndpoint);};
-        { var channel = sourceOptions.addRouteMesh("route");
+        { var channel = sourceOptions.addRouteMeshChannel("route");
             channel.enableServer(routeSourceEndpoint);
             channel.enableClient(routeTargetEndpoint);
             channel.setRoutingId(RoutingId.from("spot-egress-source-route")); };
@@ -974,7 +974,7 @@ final class ChannelMessagingTest {
         { var channel = targetOptions.addClientServerChannel("ingress").enableServer(ingressEndpoint);
             channel.setRoutingId(RoutingId.from("spot-egress-target-node"));
             channel.addRequestHandler(EchoHandler.class, String.class, String.class, "Noop"); };
-        { var channel = targetOptions.addRouteMesh("route");
+        { var channel = targetOptions.addRouteMeshChannel("route");
             channel.enableServer(routeTargetEndpoint);
             channel.enableClient(routeSourceEndpoint);
             channel.setRoutingId(SPOT_EGRESS_TARGET_ROUTE_RID); };
@@ -1102,12 +1102,12 @@ final class ChannelMessagingTest {
         ROUTE_REQUEST_CHANNEL.set(null);
 
         DefaultZLinkFrameworkOptions sourceOptions = new DefaultZLinkFrameworkOptions();
-        { var channel = sourceOptions.addRouteMesh("route"); channel.enableServer(sourceEndpoint);
+        { var channel = sourceOptions.addRouteMeshChannel("route"); channel.enableServer(sourceEndpoint);
             channel.setRoutingId(sourceRid);
             channel.enableClient(targetEndpoint); };
 
         DefaultZLinkFrameworkOptions targetOptions = new DefaultZLinkFrameworkOptions();
-        { var channel = targetOptions.addRouteMesh("route"); channel.enableServer(targetEndpoint);
+        { var channel = targetOptions.addRouteMeshChannel("route"); channel.enableServer(targetEndpoint);
             channel.setRoutingId(targetRid);
             channel.enableClient(sourceEndpoint);
             channel.addRequestHandler(RouteEchoHandler.class, String.class, String.class, "Echo"); };
@@ -1131,13 +1131,13 @@ final class ChannelMessagingTest {
         RoutingId targetRid = RoutingId.from("route-scanned-target");
 
         DefaultZLinkFrameworkOptions sourceOptions = new DefaultZLinkFrameworkOptions();
-        { var channel = sourceOptions.addRouteMesh("route"); channel.enableServer(sourceEndpoint);
+        { var channel = sourceOptions.addRouteMeshChannel("route"); channel.enableServer(sourceEndpoint);
             channel.setRoutingId(sourceRid);
             channel.enableClient(targetEndpoint); };
 
         DefaultZLinkFrameworkOptions targetOptions = new DefaultZLinkFrameworkOptions();
         targetOptions.addHandlersFromPackageOf(ChannelMessagingTest.class);
-        { var channel = targetOptions.addRouteMesh("route"); channel.enableServer(targetEndpoint);
+        { var channel = targetOptions.addRouteMeshChannel("route"); channel.enableServer(targetEndpoint);
             channel.setRoutingId(targetRid);
             channel.enableClient(sourceEndpoint);
             channel.addHandlerGroup("route-shared"); };
@@ -1160,13 +1160,13 @@ final class ChannelMessagingTest {
         FILTER_PACKET.set(null);
 
         DefaultZLinkFrameworkOptions sourceOptions = new DefaultZLinkFrameworkOptions();
-        { var channel = sourceOptions.addRouteMesh("route"); channel.enableServer(sourceEndpoint);
+        { var channel = sourceOptions.addRouteMeshChannel("route"); channel.enableServer(sourceEndpoint);
             channel.setRoutingId(sourceRid);
             channel.enableClient(targetEndpoint); };
 
         DefaultZLinkFrameworkOptions targetOptions = new DefaultZLinkFrameworkOptions();
         targetOptions.useFilter(ReplyDecoratingFilter.class);
-        { var channel = targetOptions.addRouteMesh("route"); channel.enableServer(targetEndpoint);
+        { var channel = targetOptions.addRouteMeshChannel("route"); channel.enableServer(targetEndpoint);
             channel.setRoutingId(targetRid);
             channel.enableClient(sourceEndpoint);
             channel.addRequestHandler(RouteEchoHandler.class, String.class, String.class, "Echo"); };
@@ -1192,12 +1192,12 @@ final class ChannelMessagingTest {
         RoutingId targetRid = RoutingId.from("route-seq-target");
 
         DefaultZLinkFrameworkOptions sourceOptions = new DefaultZLinkFrameworkOptions();
-        { var channel = sourceOptions.addRouteMesh("route"); channel.enableServer(sourceEndpoint);
+        { var channel = sourceOptions.addRouteMeshChannel("route"); channel.enableServer(sourceEndpoint);
             channel.setRoutingId(sourceRid);
             channel.enableClient(targetEndpoint); };
 
         DefaultZLinkFrameworkOptions targetOptions = new DefaultZLinkFrameworkOptions();
-        { var channel = targetOptions.addRouteMesh("route"); channel.enableServer(targetEndpoint);
+        { var channel = targetOptions.addRouteMeshChannel("route"); channel.enableServer(targetEndpoint);
             channel.setRoutingId(targetRid);
             channel.enableClient(sourceEndpoint);
             channel.addRequestHandler(DelayedRouteEchoHandler.class, String.class, String.class, "SharedPacket"); };
@@ -1209,12 +1209,12 @@ final class ChannelMessagingTest {
             assertEquals("warmup", awaitSharedRouteReply(source, targetRid, "warmup:1"));
 
             CompletionStage<String> slow = source.route()
-                .requestTo("route", targetRid, message("slow:40"))
+                .requestToNode("route", targetRid, message("slow:40"))
                 .packetName("SharedPacket")
                 .timeout(Duration.ofSeconds(3))
                 .submit(String.class);
             CompletionStage<String> fast = source.route()
-                .requestTo("route", targetRid, message("fast:1"))
+                .requestToNode("route", targetRid, message("fast:1"))
                 .packetName("SharedPacket")
                 .timeout(Duration.ofSeconds(3))
                 .submit(String.class);
@@ -1238,12 +1238,12 @@ final class ChannelMessagingTest {
         ROUTE_SEND_SOURCE.set(null);
 
         DefaultZLinkFrameworkOptions sourceOptions = new DefaultZLinkFrameworkOptions();
-        { var channel = sourceOptions.addRouteMesh("route"); channel.enableServer(sourceEndpoint);
+        { var channel = sourceOptions.addRouteMeshChannel("route"); channel.enableServer(sourceEndpoint);
             channel.setRoutingId(sourceRid);
             channel.enableClient(targetEndpoint); };
 
         DefaultZLinkFrameworkOptions targetOptions = new DefaultZLinkFrameworkOptions();
-        { var channel = targetOptions.addRouteMesh("route"); channel.enableServer(targetEndpoint);
+        { var channel = targetOptions.addRouteMeshChannel("route"); channel.enableServer(targetEndpoint);
             channel.setRoutingId(targetRid);
             channel.enableClient(sourceEndpoint);
             channel.addSendHandler(RouteNoticeHandler.class, String.class, "Notice"); };
@@ -1436,7 +1436,7 @@ final class ChannelMessagingTest {
         while (System.nanoTime() < deadline) {
             try {
                 return source.route()
-                    .requestTo("route", targetRid, message("hello"))
+                    .requestToNode("route", targetRid, message("hello"))
                     .packetName("Echo")
                     .timeout(Duration.ofMillis(100))
                     .submit(String.class)
@@ -1456,7 +1456,7 @@ final class ChannelMessagingTest {
         while (System.nanoTime() < deadline) {
             try {
                 return source.route()
-                    .requestTo("route", targetRid, message("hello"))
+                    .requestToNode("route", targetRid, message("hello"))
                     .packetName("String")
                     .timeout(Duration.ofMillis(100))
                     .submit(String.class)
@@ -1479,7 +1479,7 @@ final class ChannelMessagingTest {
         while (System.nanoTime() < deadline) {
             try {
                 return source.route()
-                    .requestTo("route", targetRid, message(message))
+                    .requestToNode("route", targetRid, message(message))
                     .packetName("SharedPacket")
                     .timeout(Duration.ofMillis(100))
                     .submit(String.class)
@@ -1497,7 +1497,7 @@ final class ChannelMessagingTest {
         long deadline = System.nanoTime() + Duration.ofSeconds(3).toNanos();
         while (System.nanoTime() < deadline && ROUTE_SEND_LATCH.get().getCount() > 0) {
             source.route()
-                .sendTo("route", targetRid, message("ping"))
+                .sendToNode("route", targetRid, message("ping"))
                 .packetName("Notice")
                 .submit()
                 .toCompletableFuture()
@@ -1867,7 +1867,7 @@ final class ChannelMessagingTest {
 
         @Override
         public String handle(String request, ZLinkRequestContext context) {
-            return routes.requestTo("route", RoutingId.from("nested-play-route"), message(request))
+            return routes.requestToNode("route", RoutingId.from("nested-play-route"), message(request))
                 .packetName("NestedRoute")
                 .timeout(Duration.ofMillis(200))
                 .submit(String.class)

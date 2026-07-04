@@ -203,7 +203,7 @@ final class NodesAndServicesTest {
         options.configureDispatch()
             .messageFlow(ZLinkMessageFlowLogMode.KEY_TRANSITIONS)
             .setMessageFlowObserver(new FlowObserver());
-        options.addRouteMesh("route")
+        options.addRouteMeshChannel("route")
             .enableServer(routeBind)
             .enableClient(routePeer)
             .setRoutingId(nodeRid);

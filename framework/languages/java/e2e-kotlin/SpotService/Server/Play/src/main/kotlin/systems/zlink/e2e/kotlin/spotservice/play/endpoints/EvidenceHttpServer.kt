@@ -20,6 +20,8 @@ import java.util.concurrent.TimeoutException
 import org.springframework.context.SmartLifecycle
 import systems.zlink.contracts.core.RoutingId
 import systems.zlink.framework.channels.ZLinkRouteClient
+import systems.zlink.framework.locations.ZLinkSpotAddress
+import systems.zlink.framework.messaging.ZLinkMessage
 import systems.zlink.framework.spots.ZLinkSpotManager
 
 class EvidenceHttpServer(
@@ -71,8 +73,7 @@ class EvidenceHttpServer(
                     val request = readJson(exchange, Contracts.SpotStateRouteReq::class.java)
                     val call = routes.requestToSpot(
                         Contracts.ROUTE_CHANNEL,
-                        targetNode(request.spotRid),
-                        RoutingId.from(request.spotRid),
+                        ZLinkSpotAddress(Contracts.SPOT_MESH, targetNode(request.spotRid), RoutingId.from(request.spotRid)),
                         Contracts.StateReq(request.op)
                     )
                         .packetName(request.packetName)
@@ -86,8 +87,7 @@ class EvidenceHttpServer(
                     val request = readJson(exchange, Contracts.SpotStateCommandReq::class.java)
                     routes.sendToSpot(
                         Contracts.ROUTE_CHANNEL,
-                        targetNode(request.spotRid),
-                        RoutingId.from(request.spotRid),
+                        ZLinkSpotAddress(Contracts.SPOT_MESH, targetNode(request.spotRid), RoutingId.from(request.spotRid)),
                         Contracts.StateMsg(request.value)
                     )
                         .packetName(request.packetName)
@@ -101,8 +101,7 @@ class EvidenceHttpServer(
                     val request = readJson(exchange, Contracts.SpotSlowRouteReq::class.java)
                     val call = routes.requestToSpot(
                         Contracts.ROUTE_CHANNEL,
-                        targetNode(request.spotRid),
-                        RoutingId.from(request.spotRid),
+                        ZLinkSpotAddress(Contracts.SPOT_MESH, targetNode(request.spotRid), RoutingId.from(request.spotRid)),
                         Contracts.SlowReq(request.value)
                     )
                         .timeout(Duration.ofMillis(request.timeoutMilliseconds.coerceIn(1, 30_000).toLong()))
@@ -115,8 +114,7 @@ class EvidenceHttpServer(
                     val request = readJson(exchange, Contracts.SpotOutboundRouteReq::class.java)
                     val reply = routes.requestToSpot(
                         Contracts.ROUTE_CHANNEL,
-                        targetNode(request.spotRid),
-                        RoutingId.from(request.spotRid),
+                        ZLinkSpotAddress(Contracts.SPOT_MESH, targetNode(request.spotRid), RoutingId.from(request.spotRid)),
                         Contracts.OutboundReq(request.value)
                     )
                         .timeout(Duration.ofSeconds(5))
@@ -130,8 +128,7 @@ class EvidenceHttpServer(
                     val request = readJson(exchange, Contracts.SpotOutboundCommandReq::class.java)
                     routes.sendToSpot(
                         Contracts.ROUTE_CHANNEL,
-                        targetNode("room-a"),
-                        RoutingId.from("room-a"),
+                        ZLinkSpotAddress(Contracts.SPOT_MESH, targetNode("room-a"), RoutingId.from("room-a")),
                         Contracts.SpotToSpotCommandReq(request.spotRid, request.value)
                     )
                         .packetName("SpotToSpotCommandReq")
@@ -147,7 +144,7 @@ class EvidenceHttpServer(
                 handle(exchange) {
                     requirePost(exchange)
                     val request = readJson(exchange, Contracts.RoutePingHttpReq::class.java)
-                    val reply = routes.requestTo(
+                    val reply = routes.requestToNode(
                         Contracts.ROUTE_CHANNEL,
                         RoutingId.from(request.targetRid),
                         Contracts.RoutePingReq(request.value)
@@ -185,7 +182,7 @@ class EvidenceHttpServer(
                     return@createContext
                 }
                 try {
-                    spots.getOrCreate(TimerScenarioSpot::class.java, RoutingId.from(rid), "e2e")
+                    spots.getOrCreate(TimerScenarioSpot::class.java, RoutingId.from(rid), ZLinkMessage.of("e2e"))
                         .toCompletableFuture()
                         .get(5, TimeUnit.SECONDS)
                 } catch (error: InterruptedException) {
@@ -205,7 +202,7 @@ class EvidenceHttpServer(
                     return@createContext
                 }
                 try {
-                    spots.getOrCreate(UserSpot::class.java, RoutingId.from(rid), "admin")
+                    spots.getOrCreate(UserSpot::class.java, RoutingId.from(rid), ZLinkMessage.of("admin"))
                         .toCompletableFuture()
                         .get(5, TimeUnit.SECONDS)
                 } catch (error: InterruptedException) {
@@ -225,7 +222,7 @@ class EvidenceHttpServer(
                     return@createContext
                 }
                 try {
-                    spots.getOrCreate(MismatchedSpot::class.java, RoutingId.from(rid), "admin")
+                    spots.getOrCreate(MismatchedSpot::class.java, RoutingId.from(rid), ZLinkMessage.of("admin"))
                         .toCompletableFuture()
                         .get(5, TimeUnit.SECONDS)
                 } catch (error: InterruptedException) {

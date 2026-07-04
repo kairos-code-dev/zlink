@@ -5,12 +5,12 @@ import java.util.concurrent.CompletionStage;
 import systems.zlink.contracts.core.RoutingId;
 
 public interface ZLinkOwnerLeaseStore {
-    CompletionStage<ZLinkLocationWriteResult> renewOwnerLeaseAsync(
+    CompletionStage<ZLinkOwnerLeaseRenewal> renewOwnerLeaseAsync(
         String ownerId,
         RoutingId nodeRid,
         Duration leaseTtl);
 
-    CompletionStage<ZLinkLocationWriteResult> removeOwnerLeaseAsync(String ownerId);
+    CompletionStage<Boolean> removeOwnerLeaseAsync(String ownerId);
 
     CompletionStage<ZLinkOwnerLeaseSnapshot> listOwnerLeasesAsync();
 }

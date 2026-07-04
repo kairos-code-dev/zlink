@@ -18,8 +18,4 @@ public record ZLinkLocationWriteResult(
     public static ZLinkLocationWriteResult rejectedConflict() {
         return new ZLinkLocationWriteResult(ZLinkLocationWriteStatus.REJECTED_CONFLICT, 0, null);
     }
-
-    public static ZLinkLocationWriteResult storeUnavailable() {
-        return new ZLinkLocationWriteResult(ZLinkLocationWriteStatus.STORE_UNAVAILABLE, 0, null);
-    }
 }

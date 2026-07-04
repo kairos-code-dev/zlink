@@ -82,7 +82,7 @@ public final class Program {
 
             String routeEndpoint = ServerOptions.get("ZLINK_JAVA_E2E_ROUTE_ENDPOINT");
             if (!routeEndpoint.isBlank()) {
-                options.addRouteMesh(Contracts.ROUTE_CHANNEL)
+                options.addRouteMeshChannel(Contracts.ROUTE_CHANNEL)
                     .enableServer(routeEndpoint)
                     .setRoutingId(RoutingId.from(state.providerRid()))
                     .addRequestHandler(

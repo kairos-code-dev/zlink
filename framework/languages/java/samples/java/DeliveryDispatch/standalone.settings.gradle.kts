@@ -49,7 +49,6 @@ if (gradle.parent == null) {
 include("Client")
 include("Shared")
 include("Server:Configuration")
-include("Server:Registry")
 include("Server:Tracking")
 include("Server:CustomerGateway")
 include("Server:CourierSession")

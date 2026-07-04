@@ -3,7 +3,7 @@ package systems.zlink.samples.bingo.server.play.infrastructure.zlink.handlers;
 import static systems.zlink.framework.ZLinkAwait.await;
 
 import systems.zlink.framework.actors.ZLinkActorManager;
-import systems.zlink.framework.actors.ZLinkActorRef;
+import systems.zlink.framework.actors.ZLinkActorRefSnapshot;
 import systems.zlink.framework.channels.ZLinkRouteRequestContext;
 import systems.zlink.framework.channels.ZLinkRouteRequestHandler;
 import systems.zlink.framework.handlers.ZLinkHandlerGroup;
@@ -38,13 +38,6 @@ public final class EnsurePlayerActorHandler
         return new Messages.EnsurePlayerActorRes(
             request.actorId(),
             SampleNames.PlayerActorType,
-            toSnapshot(actor));
-    }
-
-    private static Messages.ActorRefSnapshot toSnapshot(ZLinkActorRef actor) {
-        return new Messages.ActorRefSnapshot(
-            actor.nodeRid().toBytes(),
-            actor.actorId(),
-            actor.epoch());
+            ZLinkActorRefSnapshot.from(actor));
     }
 }

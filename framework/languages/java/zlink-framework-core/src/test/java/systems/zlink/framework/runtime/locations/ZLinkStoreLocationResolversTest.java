@@ -69,10 +69,10 @@ class ZLinkStoreLocationResolversTest {
             .toCompletableFuture()
             .get();
 
-        ZLinkSpotAddress entry = addresses.resolveActorSpotAddressAsync("player", "entry-actor")
+        ZLinkSpotAddress entry = addresses.resolveActorSpotAddressAsync("entry-actor")
             .toCompletableFuture()
             .get();
-        ZLinkSpotAddress user = addresses.resolveActorSpotAddressAsync("player", "user-actor")
+        ZLinkSpotAddress user = addresses.resolveActorSpotAddressAsync("user-actor")
             .toCompletableFuture()
             .get();
 
@@ -107,7 +107,7 @@ class ZLinkStoreLocationResolversTest {
     }
 
     @Test
-    void listPeersAndRouteResolverDropExpiredOwners() throws Exception {
+    void livePeerResolverDropsExpiredOwners() throws Exception {
         ZLinkInMemoryLocationStore store = new ZLinkInMemoryLocationStore(Clock.fixed(NOW, ZoneOffset.UTC));
         ZLinkStoreLocationResolvers rows = resolvers(store);
         store.updatePeerAsync(peer("owner-a"), ZLinkLocationWriteIntent.NEW_CLAIM)
@@ -117,10 +117,7 @@ class ZLinkStoreLocationResolversTest {
             .toCompletableFuture()
             .get();
 
-        assertEquals(List.of(), rows.listPeersAsync(ZLinkPeerLocationFilter.all()).toCompletableFuture().get());
-        assertNull(rows.resolveRouteAsync(new ZLinkRouteLocationKey(ZLinkRouteKind.ACTOR_SESSION, "session"))
-            .toCompletableFuture()
-            .get());
+        assertEquals(List.of(), rows.listLivePeersAsync(ZLinkPeerLocationFilter.all()).toCompletableFuture().get());
     }
 
     private static ZLinkStoreLocationResolvers resolvers(ZLinkInMemoryLocationStore store) {
@@ -150,16 +147,15 @@ class ZLinkStoreLocationResolversTest {
         ZLinkSpotKind locationKind,
         RoutingId spotRid) {
         return new ZLinkActorLocation(
-            "player",
             actorId,
-            "ref",
+            "player",
+            null,
             NODE,
-            0,
             locationKind,
             "game",
             spotRid,
-            locationKind,
             ownerId,
+            0,
             NOW);
     }
 

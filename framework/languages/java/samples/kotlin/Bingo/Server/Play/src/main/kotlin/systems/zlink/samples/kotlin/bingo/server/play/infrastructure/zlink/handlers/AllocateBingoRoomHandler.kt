@@ -3,6 +3,7 @@ package systems.zlink.samples.kotlin.bingo.server.play.infrastructure.zlink.hand
 import com.fasterxml.jackson.databind.ObjectMapper
 import kotlinx.coroutines.future.await
 import systems.zlink.contracts.core.RoutingId
+import systems.zlink.framework.messaging.ZLinkMessage
 import systems.zlink.framework.channels.ZLinkRouteRequestContext
 import systems.zlink.framework.handlers.ZLinkHandlerGroup
 import systems.zlink.framework.kotlin.ZLinkSuspendingRouteRequestHandler
@@ -39,7 +40,7 @@ class AllocateBingoRoomHandler(
             return
         }
 
-        spots.getOrCreate(BingoRoomSpot::class.java, RoutingId.from(allocation.roomId), allocation.settings)
+        spots.getOrCreate(BingoRoomSpot::class.java, RoutingId.from(allocation.roomId), ZLinkMessage.of(allocation.settings))
             .await()
     }
 }

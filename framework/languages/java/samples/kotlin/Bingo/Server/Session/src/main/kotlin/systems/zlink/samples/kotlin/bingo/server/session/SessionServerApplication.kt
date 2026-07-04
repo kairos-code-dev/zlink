@@ -42,7 +42,7 @@ class SessionServerApplication {
                 .setSpotRouterChannel(SampleNames.RoomSpotDiscovery, SampleNames.PlayChannel)
             options.addClientServerChannel(SampleNames.ApiChannel)
                 .enableClient()
-            val route = options.addRouteMesh(SampleNames.PlayChannel)
+            val route = options.addRouteMeshChannel(SampleNames.PlayChannel)
             route.enableServer(SampleTopology.selectedSessionRouteEndpoint())
             route.enableClient()
             route.setRoutingId(RoutingId.from(SampleTopology.selectedSessionRouteRid()))

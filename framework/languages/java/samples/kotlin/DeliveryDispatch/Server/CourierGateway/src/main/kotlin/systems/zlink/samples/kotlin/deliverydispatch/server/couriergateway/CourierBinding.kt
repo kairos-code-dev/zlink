@@ -1,9 +1,9 @@
 package systems.zlink.samples.kotlin.deliverydispatch.server.couriergateway
 
-import systems.zlink.samples.kotlin.deliverydispatch.shared.contracts.ActorRefSnapshot
+import systems.zlink.framework.actors.ZLinkActorRefSnapshot
 
 data class CourierBinding(
     val courierId: String,
-    val actor: ActorRefSnapshot,
+    val actor: ZLinkActorRefSnapshot,
     val sessionRoute: String,
 )

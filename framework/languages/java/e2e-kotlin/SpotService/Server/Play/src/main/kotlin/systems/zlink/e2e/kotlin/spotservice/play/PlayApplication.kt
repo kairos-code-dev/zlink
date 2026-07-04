@@ -77,7 +77,7 @@ class PlayApplication {
                     )
                     CompletableFuture.completedFuture(null)
                 }
-            options.addRouteMesh(Contracts.ROUTE_CHANNEL)
+            options.addRouteMeshChannel(Contracts.ROUTE_CHANNEL)
                 .enableServer(Env.get("ZLINK_KOTLIN_E2E_ROUTE_ENDPOINT"))
                 .enableClient(Env.get("ZLINK_KOTLIN_E2E_ROUTE_A_ENDPOINT"))
                 .enableClient(Env.get("ZLINK_KOTLIN_E2E_ROUTE_B_ENDPOINT"))

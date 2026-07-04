@@ -158,8 +158,22 @@ public final class ZLinkSessionActorsRuntime implements ZLinkSessionActors {
         ZLinkBackendActorRef ref = new ZLinkBackendActorRef(
             actor.nodeRid(),
             actor.actorId(),
-            actor.epoch());
+            actor.generation());
         return bindBackendRef(ref);
+    }
+
+    @Override
+    public CompletionStage<ZLinkSessionActor> bindOrGet(ZLinkActorRef actor) {
+        ZLinkBackendActorRef ref = new ZLinkBackendActorRef(
+            actor.nodeRid(),
+            actor.actorId(),
+            actor.generation());
+        Optional<ZLinkSessionActor> existing = bound.stream()
+            .filter(boundActor -> sameRef(boundActor.ref(), actor))
+            .findFirst();
+        return existing
+            .<CompletionStage<ZLinkSessionActor>>map(CompletableFuture::completedFuture)
+            .orElseGet(() -> bindBackendRef(ref));
     }
 
     @Override
@@ -185,7 +199,7 @@ public final class ZLinkSessionActorsRuntime implements ZLinkSessionActors {
                 ZLinkBackendActorRef localRef = actors.refFor(localActor.get());
                 if (localRef.nodeRid().equals(ref.nodeRid())
                     && localRef.actorId().equals(ref.actorId())
-                    && localRef.epoch() == ref.epoch()) {
+                    && localRef.generation() == ref.generation()) {
                     return bindManagedAsync(localActor.get());
                 }
             }
@@ -209,6 +223,14 @@ public final class ZLinkSessionActorsRuntime implements ZLinkSessionActors {
                 bound.add(actor);
                 return actor;
             });
+    }
+
+    private static boolean sameRef(ZLinkActorRef left, ZLinkActorRef right) {
+        return left != null
+            && right != null
+            && left.actorId().equals(right.actorId())
+            && left.nodeRid().equals(right.nodeRid())
+            && left.generation() == right.generation();
     }
 
     CompletionStage<ZLinkSessionActor> bindManagedAsync(ZLinkActor actor) {
@@ -333,7 +355,7 @@ public final class ZLinkSessionActorsRuntime implements ZLinkSessionActors {
 
         @Override
         public ZLinkActorRef ref() {
-            return new ZLinkActorRef(ref.nodeRid(), ref.actorId(), ref.epoch());
+            return new ZLinkActorRef(ref.nodeRid(), ref.actorId(), ref.generation());
         }
 
         @Override

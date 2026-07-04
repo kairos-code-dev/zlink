@@ -2,8 +2,6 @@ package systems.zlink.samples.deliverydispatch.server.couriersession.sessions;
 
 import static systems.zlink.framework.ZLinkAwait.await;
 
-import systems.zlink.contracts.core.RoutingId;
-import systems.zlink.framework.actors.ZLinkActorRef;
 import systems.zlink.framework.channels.ZLinkClient;
 import systems.zlink.framework.messaging.ZLinkMessage;
 import systems.zlink.framework.streams.ZLinkSession;
@@ -73,10 +71,7 @@ public final class CourierSession implements ZLinkSession {
                 new Messages.BindCourier(request.courierId(), context.sessionId()))
             .await(Messages.CourierBound.class);
         ZLinkSessionActor actor = context.actors().find(bound.actor().actorId())
-            .orElseGet(() -> await(context.actors().bind(new ZLinkActorRef(
-                RoutingId.from(bound.actor().nodeRid()),
-                bound.actor().actorId(),
-                bound.actor().generation()))));
+            .orElseGet(() -> await(context.actors().bind(bound.actor().toActorRef())));
         await(actor.relay(ZLinkMessage.of(new Messages.BindCourierSession(
             bound.courierId(),
             bound.actor(),

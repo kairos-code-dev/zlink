@@ -26,6 +26,7 @@ import systems.zlink.framework.locations.ZLinkLocationStore;
 import systems.zlink.framework.locations.ZLinkLocationWriteIntent;
 import systems.zlink.framework.locations.ZLinkLocationWriteResult;
 import systems.zlink.framework.locations.ZLinkOwnerLease;
+import systems.zlink.framework.locations.ZLinkOwnerLeaseRenewal;
 import systems.zlink.framework.locations.ZLinkOwnerLeaseSnapshot;
 import systems.zlink.framework.locations.ZLinkPageRequest;
 import systems.zlink.framework.locations.ZLinkPeerLocation;
@@ -96,12 +97,7 @@ public final class ZLinkInMemoryLocationStore implements
     }
 
     @Override
-    public CompletionStage<Long> removePeersByOwnerAsync(String ownerId) {
-        return completed(removeByOwner(peers, ownerId, ZLinkPeerLocation::ownerId, ZLinkLocationKind.PEER, ZLinkPeerLocation::meshName));
-    }
-
-    @Override
-    public CompletionStage<List<ZLinkPeerLocation>> listPeersAsync(ZLinkPeerLocationFilter filter) {
+    public CompletionStage<List<ZLinkPeerLocation>> listPeerLocationsAsync(ZLinkPeerLocationFilter filter) {
         synchronized (gate) {
             return completed(peers.rows.values().stream().filter(row -> matches(row, filter)).toList());
         }
@@ -142,11 +138,6 @@ public final class ZLinkInMemoryLocationStore implements
     }
 
     @Override
-    public CompletionStage<Long> removeSpotsByOwnerAsync(String ownerId) {
-        return completed(removeByOwner(spots, ownerId, ZLinkSpotLocation::ownerId, ZLinkLocationKind.SPOT, ZLinkSpotLocation::meshName));
-    }
-
-    @Override
     public CompletionStage<ZLinkSpotLocation> resolveSpotAsync(ZLinkSpotLocationKey key) {
         synchronized (gate) {
             return completed(spots.rows.get(ZLinkLocationKeyCodec.encodeSpotKey(key)));
@@ -154,7 +145,7 @@ public final class ZLinkInMemoryLocationStore implements
     }
 
     @Override
-    public CompletionStage<ZLinkLocationPage<ZLinkSpotLocation>> listSpotsAsync(
+    public CompletionStage<ZLinkLocationPage<ZLinkSpotLocation>> listSpotLocationsAsync(
         ZLinkSpotLocationFilter filter,
         ZLinkPageRequest page) {
         synchronized (gate) {
@@ -168,7 +159,7 @@ public final class ZLinkInMemoryLocationStore implements
         ZLinkLocationWriteIntent intent) {
         return completed(write(
             actors,
-            ZLinkLocationKeyCodec.encodeActorKey(new ZLinkActorLocationKey(actor.actorType(), actor.actorId())),
+            ZLinkLocationKeyCodec.encodeActorKey(new ZLinkActorLocationKey(actor.actorId())),
             actor,
             intent,
             actor.ownerId(),
@@ -176,9 +167,8 @@ public final class ZLinkInMemoryLocationStore implements
             ZLinkActorLocation::ownerId,
             ZLinkActorLocation::generation,
             (row, generation, now) -> new ZLinkActorLocation(
-                row.actorType(), row.actorId(), row.actorRef(), row.nodeRid(), generation,
-                row.locationKind(), row.spotMeshName(), row.spotRid(), row.spotKind(),
-                row.ownerId(), now),
+                row.actorId(), row.actorType(), row.actorRef(), row.nodeRid(), row.locationKind(),
+                row.spotMeshName(), row.spotRid(), row.ownerId(), generation, now),
             ZLinkLocationKind.ACTOR,
             null));
     }
@@ -198,11 +188,6 @@ public final class ZLinkInMemoryLocationStore implements
     }
 
     @Override
-    public CompletionStage<Long> removeActorsByOwnerAsync(String ownerId) {
-        return completed(removeByOwner(actors, ownerId, ZLinkActorLocation::ownerId, ZLinkLocationKind.ACTOR, row -> null));
-    }
-
-    @Override
     public CompletionStage<ZLinkActorLocation> resolveActorAsync(ZLinkActorLocationKey key) {
         synchronized (gate) {
             return completed(actors.rows.get(ZLinkLocationKeyCodec.encodeActorKey(key)));
@@ -210,7 +195,7 @@ public final class ZLinkInMemoryLocationStore implements
     }
 
     @Override
-    public CompletionStage<ZLinkLocationPage<ZLinkActorLocation>> listActorsAsync(
+    public CompletionStage<ZLinkLocationPage<ZLinkActorLocation>> listActorLocationsAsync(
         ZLinkActorLocationFilter filter,
         ZLinkPageRequest page) {
         synchronized (gate) {
@@ -253,11 +238,6 @@ public final class ZLinkInMemoryLocationStore implements
     }
 
     @Override
-    public CompletionStage<Long> removeRoutesByOwnerAsync(String ownerId) {
-        return completed(removeByOwner(routes, ownerId, ZLinkRouteLocation::ownerId, ZLinkLocationKind.ROUTE, row -> null));
-    }
-
-    @Override
     public CompletionStage<ZLinkRouteLocation> resolveRouteAsync(ZLinkRouteLocationKey key) {
         synchronized (gate) {
             return completed(routes.rows.get(ZLinkLocationKeyCodec.encodeRouteKey(key)));
@@ -265,7 +245,7 @@ public final class ZLinkInMemoryLocationStore implements
     }
 
     @Override
-    public CompletionStage<ZLinkLocationPage<ZLinkRouteLocation>> listRoutesAsync(
+    public CompletionStage<ZLinkLocationPage<ZLinkRouteLocation>> listRouteLocationsAsync(
         ZLinkRouteLocationFilter filter,
         ZLinkPageRequest page) {
         synchronized (gate) {
@@ -274,22 +254,34 @@ public final class ZLinkInMemoryLocationStore implements
     }
 
     @Override
-    public CompletionStage<ZLinkLocationWriteResult> renewOwnerLeaseAsync(
+    public CompletionStage<ZLinkOwnerLeaseRenewal> renewOwnerLeaseAsync(
         String ownerId,
         RoutingId nodeRid,
         Duration leaseTtl) {
         synchronized (gate) {
             Instant now = clock.instant();
-            leases.put(ownerId, new ZLinkOwnerLease(ownerId, nodeRid, now.plus(leaseTtl), now));
-            return completed(ZLinkLocationWriteResult.stored(0, now));
+            Instant expiresAt = now.plus(leaseTtl);
+            leases.put(ownerId, new ZLinkOwnerLease(ownerId, nodeRid, expiresAt, now));
+            return completed(new ZLinkOwnerLeaseRenewal(expiresAt, now));
         }
     }
 
     @Override
-    public CompletionStage<ZLinkLocationWriteResult> removeOwnerLeaseAsync(String ownerId) {
+    public CompletionStage<Boolean> removeOwnerLeaseAsync(String ownerId) {
         synchronized (gate) {
-            leases.remove(ownerId);
-            return completed(ZLinkLocationWriteResult.stored(0, clock.instant()));
+            return completed(leases.remove(ownerId) != null);
+        }
+    }
+
+    @Override
+    public CompletionStage<Long> removeAllByOwnerAsync(String ownerId) {
+        synchronized (gate) {
+            long removed = 0;
+            removed += removeByOwner(peers, ownerId, ZLinkPeerLocation::ownerId, ZLinkLocationKind.PEER, ZLinkPeerLocation::meshName);
+            removed += removeByOwner(spots, ownerId, ZLinkSpotLocation::ownerId, ZLinkLocationKind.SPOT, ZLinkSpotLocation::meshName);
+            removed += removeByOwner(actors, ownerId, ZLinkActorLocation::ownerId, ZLinkLocationKind.ACTOR, row -> null);
+            removed += removeByOwner(routes, ownerId, ZLinkRouteLocation::ownerId, ZLinkLocationKind.ROUTE, row -> null);
+            return completed(removed);
         }
     }
 

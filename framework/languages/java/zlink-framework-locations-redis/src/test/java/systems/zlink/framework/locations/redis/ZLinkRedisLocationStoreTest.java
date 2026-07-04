@@ -57,7 +57,7 @@ class ZLinkRedisLocationStoreTest {
         assertEquals(ZLinkLocationWriteStatus.REJECTED_CONFLICT, conflict.status());
         assertEquals(ZLinkLocationWriteStatus.IGNORED_STALE, staleRemove.status());
         assertEquals(ZLinkLocationWriteStatus.STORED, remove.status());
-        assertEquals(List.of(), store.listPeersAsync(ZLinkPeerLocationFilter.all()).toCompletableFuture().get());
+        assertEquals(List.of(), store.listPeerLocationsAsync(ZLinkPeerLocationFilter.all()).toCompletableFuture().get());
         assertEquals(2, store.getChangeStampAsync(new ZLinkLocationChangeStampScope(ZLinkLocationKind.PEER, "mesh"))
             .toCompletableFuture()
             .get());
@@ -81,7 +81,7 @@ class ZLinkRedisLocationStoreTest {
         List<String> spotTypes = new java.util.ArrayList<>();
         String token = null;
         for (int attempt = 0; attempt < 8; attempt++) {
-            var page = store.listSpotsAsync(
+            var page = store.listSpotLocationsAsync(
                     ZLinkSpotLocationFilter.all(),
                     new ZLinkPageRequest(1, token))
                 .toCompletableFuture()

@@ -7,6 +7,6 @@ package systems.zlink.framework.errors;
  */
 public class ZLinkWorkerQueueFullException extends ZLinkFrameworkException {
     public ZLinkWorkerQueueFullException(String message) {
-        super(message);
+        super(ZLinkFrameworkErrorKind.WORKER_QUEUE_FULL, message);
     }
 }

@@ -7,8 +7,10 @@ import org.springframework.context.annotation.Bean;
 import systems.zlink.contracts.core.RoutingId;
 import systems.zlink.framework.configuration.ZLinkMessageFlowLogMode;
 import systems.zlink.framework.configuration.ZLinkSpotNodeBuilder;
+import systems.zlink.framework.locations.redis.ZLinkRedisLocationStore;
 import systems.zlink.framework.spring.EnableZLinkFramework;
 import systems.zlink.framework.spring.ZLinkFrameworkConfigurer;
+import systems.zlink.samples.deliverydispatch.server.configuration.SampleLocationStore;
 import systems.zlink.samples.deliverydispatch.server.configuration.SampleNames;
 import systems.zlink.samples.deliverydispatch.server.configuration.SampleTopology;
 import systems.zlink.samples.deliverydispatch.server.couriersession.sessions.CourierSession;
@@ -32,7 +34,8 @@ public final class CourierSessionApplication {
     ZLinkFrameworkConfigurer courierSessionFramework() {
         return options -> {
             options.addHandlersFromPackageOf(CourierSessionApplication.class);
-            options.useDiscovery().addRegistryEndpoint(SampleTopology.RegistryRouterEndpoint);
+            options.configureLocations()
+                .setSpotRouterChannel(SampleNames.CourierSpotDiscovery, SampleNames.CourierChannel);
             options.configureDispatch()
                 .messageFlow(ZLinkMessageFlowLogMode.KEY_TRANSITIONS)
                 .traceLogFile(System.getenv().getOrDefault("DELIVERYDISPATCH_LOG_DIR", "logs")
@@ -47,5 +50,10 @@ public final class CourierSessionApplication {
                 .bind(SampleTopology.CourierStreamEndpoint)
                 .registerSession(CourierSession.class);
         };
+    }
+
+    @Bean(destroyMethod = "close")
+    ZLinkRedisLocationStore locationStore() {
+        return SampleLocationStore.create();
     }
 }

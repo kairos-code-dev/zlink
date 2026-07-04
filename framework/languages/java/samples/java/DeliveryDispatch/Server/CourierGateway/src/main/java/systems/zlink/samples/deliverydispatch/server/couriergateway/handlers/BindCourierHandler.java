@@ -28,7 +28,7 @@ public final class BindCourierHandler
         Messages.BindCourier request,
         ZLinkRequestContext context) {
         Messages.CourierActorEnsured ensured = routes
-            .requestTo(
+            .requestToNode(
                 SampleNames.CourierActorNodeRouteChannel,
                 RoutingId.from(directory.choosePlacement(request.courierId())),
                 new Messages.EnsureCourierActor(request.courierId()))

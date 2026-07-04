@@ -2,6 +2,7 @@ package systems.zlink.e2e.kotlin.yielddispatch;
 
 import java.time.Duration;
 import systems.zlink.framework.channels.ZLinkRouteClient;
+import systems.zlink.framework.locations.ZLinkSpotAddress;
 import systems.zlink.framework.streams.ZLinkSessionContext;
 import systems.zlink.framework.streams.ZLinkSessionDispatchContext;
 import systems.zlink.framework.streams.ZLinkTypedSessionPacketHandler;
@@ -32,8 +33,10 @@ public final class RemoteSpotYieldReqRouteHandler
         Contracts.ScenarioRes reply = routes
             .requestToSpot(
                 Contracts.SPOT_MESH,
-                SpotMsgRouteHandler.targetNode(dispatch),
-                SpotMsgRouteHandler.targetSpot(dispatch),
+                new ZLinkSpotAddress(
+                    Contracts.SPOT_MESH,
+                    SpotMsgRouteHandler.targetNode(dispatch),
+                    SpotMsgRouteHandler.targetSpot(dispatch)),
                 request)
             .timeout(Duration.ofSeconds(10))
             .await(Contracts.ScenarioRes.class);

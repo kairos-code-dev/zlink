@@ -2,13 +2,12 @@ package systems.zlink.samples.kotlin.bingo.server.play.infrastructure.zlink.hand
 
 import kotlinx.coroutines.future.await
 import systems.zlink.framework.actors.ZLinkActorManager
-import systems.zlink.framework.actors.ZLinkActorRef
+import systems.zlink.framework.actors.ZLinkActorRefSnapshot
 import systems.zlink.framework.channels.ZLinkRouteRequestContext
 import systems.zlink.framework.kotlin.ZLinkSuspendingRouteRequestHandler
 import systems.zlink.framework.handlers.ZLinkHandlerGroup
 import systems.zlink.samples.kotlin.bingo.server.configuration.SampleNames
 import systems.zlink.samples.kotlin.bingo.server.configuration.SampleTopology
-import systems.zlink.samples.kotlin.bingo.shared.contracts.ActorRefSnapshot
 import systems.zlink.samples.kotlin.bingo.shared.contracts.EnsurePlayerActorReq
 import systems.zlink.samples.kotlin.bingo.shared.contracts.EnsurePlayerActorRes
 
@@ -29,14 +28,7 @@ class EnsurePlayerActorHandler(
         EnsurePlayerActorRes(
             request.actorId,
             SampleNames.PlayerActorType,
-            toSnapshot(actor),
+            ZLinkActorRefSnapshot.from(actor),
         )
     }
-
-    private fun toSnapshot(actor: ZLinkActorRef): ActorRefSnapshot =
-        ActorRefSnapshot(
-            actor.nodeRid().toBytes(),
-            actor.actorId(),
-            actor.epoch(),
-        )
 }

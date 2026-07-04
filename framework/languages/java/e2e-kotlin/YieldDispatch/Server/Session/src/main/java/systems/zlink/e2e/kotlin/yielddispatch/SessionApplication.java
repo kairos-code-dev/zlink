@@ -34,7 +34,7 @@ public final class SessionApplication {
                 .messageFlow(ZLinkMessageFlowLogMode.KEY_TRANSITIONS)
                 .traceLogFile(logDir + "/session-flow.log")
                 .traceLabel("kotlin-yd-session");
-            var route = options.addRouteMesh(Contracts.SPOT_MESH)
+            var route = options.addRouteMeshChannel(Contracts.SPOT_MESH)
                 .enableServer(Env.get("ZLINK_KOTLIN_E2E_SESSION_ROUTE_ENDPOINT"))
                 .enableClient(Env.get("ZLINK_KOTLIN_E2E_PLAY_ROUTE_ENDPOINT"))
                 .setRoutingId(RoutingId.from(nodeRid));

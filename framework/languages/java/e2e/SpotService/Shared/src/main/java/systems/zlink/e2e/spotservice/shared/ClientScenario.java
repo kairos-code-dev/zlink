@@ -136,7 +136,7 @@ public final class ClientScenario {
     }
 
     private void runRouteMesh() {
-        Contracts.RouteRes routeReply = routes.requestTo(
+        Contracts.RouteRes routeReply = routes.requestToNode(
                 Contracts.ROUTE_CHANNEL,
                 RoutingId.from("play-a"),
                 new Contracts.RouteReq("route-mesh-normal"))

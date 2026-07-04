@@ -9,14 +9,14 @@
 |------|-----------|------|------|------|
 | `.NET: DeliveryDispatch.sln` | `standalone.settings.gradle.kts` | build | done | Shared, Client, Server/<Role> project를 포함한다. |
 | `.NET: README.ko.md` | `README.ko.md` | doc | done | Java role 구조, runner, marker를 설명한다. |
-| `.NET: run_sample.sh` | `run_sample.sh` | runner | done | Registry부터 Client까지 실제 process를 띄우고 marker를 검증한다. |
+| `.NET: run_sample.sh` | `run_sample.sh` | runner | done | Redis location store를 준비하고 server role부터 Client까지 실제 process를 띄워 marker를 검증한다. |
 | `.NET: Shared/DeliveryDispatch.Shared.csproj` | `Shared/build.gradle.kts` | build | done | Shared contract project다. |
 | `.NET: Shared/Contracts/Messages.cs` | `Shared/src/main/java/.../shared/contracts/Messages.java` | shared-contract | done | 공통 메시지를 Java record와 enum으로 대응했다. |
 | `.NET: Client/DeliveryDispatch.Client.csproj` | `Client/build.gradle.kts` | build | done | Client application project다. |
 | `.NET: Client/Program.cs` | `Client/src/main/java/.../client/Program.java` | client-entry | done | HTTP client와 stream connector를 만들고 scenario를 실행한다. |
 | `.NET: Client/DeliveryDispatchClientScenario.cs` | `Client/src/main/java/.../client/DeliveryDispatchClientScenario.java` | client-scenario | done | 성공 배차, timeout 재배정, server evidence marker를 검증한다. |
 | `.NET: Server/Configuration/*.cs` | `Server/Configuration/src/main/java/.../server/configuration/*.java` | server-support | done | `EvidenceStore`, `SampleFlowLog`, `SampleNames`, `SampleTopology`, `SampleTimings`로 공통 설정과 evidence를 둔다. |
-| `.NET: Server/Registry/*` | `Server/Registry/src/main/java/.../server/registry/*` | server-role | done | embedded registry pub/router endpoint를 제공한다. |
+| `.NET: location store bootstrap` | `Server/Configuration/src/main/java/.../server/configuration/SampleLocationStore.java` | server-config | done | role들이 공유하는 Redis location store extension을 생성한다. |
 | `.NET: Server/Tracking/*` | `Server/Tracking/src/main/java/.../server/tracking/*` | server-role | done | tracking channel, evidence 기록, customer push, server assertion을 처리한다. |
 | `.NET: Server/CustomerGateway/*` | `Server/CustomerGateway/src/main/java/.../server/customergateway/*` | server-role | done | customer stream session, customer actor, entry spot, status push를 처리한다. |
 | `.NET: Server/CourierSession/*` | `Server/CourierSession/src/main/java/.../server/couriersession/*` | server-role | done | courier stream session과 courier actor/session bind를 처리한다. |
@@ -44,14 +44,14 @@
 | `DeliveryStatusChanged` / `DeliveryStatusAck` | `Messages.DeliveryStatusChanged`, `Messages.DeliveryStatusAck` | shared-contract | done | Tracking server 기록 요청과 응답이다. |
 | `EnsureCustomerActor` / `CustomerActorEnsured` | `Messages.EnsureCustomerActor`, `Messages.CustomerActorEnsured` | shared-contract | done | CustomerGateway actor 생성과 조회를 처리한다. |
 | `ServerAssertionRequest` / `ServerAssertionResponse` | `Messages.ServerAssertionRequest`, `Messages.ServerAssertionResponse` | shared-contract | done | server-side evidence self-check 계약이다. |
-| `ActorRefSnapshot` | `Messages.ActorRefSnapshot` | shared-contract | done | actor node rid, actor id, generation을 전달한다. |
+| actor ref snapshot | `ZLinkActorRefSnapshot` | shared-contract | done | framework가 제공하는 actor snapshot으로 node rid, actor id, generation을 전달한다. |
 | `DeliveryStatus` | `Messages.DeliveryStatus` | shared-contract | done | `Created`, `Assigned`, `Accepted`, `Reassigned`, `PickedUp`, `Delivered`, `Failed` 값을 가진다. |
 
 ## 공통 검증 흐름 매핑
 
 | 기준 | Java 대응 | 분류 | 상태 | 비고 |
 |------|-----------|------|------|------|
-| Registry starts first | `run_sample.sh` | validation | done | registry pub/router endpoint readiness를 확인한다. |
+| Redis location store is ready first | `run_sample.sh` | validation | done | role 시작 전에 Redis endpoint readiness를 확인하고 실행별 key prefix를 전달한다. |
 | Tracking starts before gateway/dispatch | `run_sample.sh` | validation | done | tracking channel endpoint readiness를 확인한다. |
 | CustomerGateway stream session | `CustomerSession`, `DeliveryDispatchClientScenario` | validation | done | `SubscribeDeliveryAccepted`와 status notify를 검증한다. |
 | CourierSession stream session | `CourierSession`, `DeliveryDispatchClientScenario` | validation | done | courier-a/b가 독립 stream session으로 bind된다. |

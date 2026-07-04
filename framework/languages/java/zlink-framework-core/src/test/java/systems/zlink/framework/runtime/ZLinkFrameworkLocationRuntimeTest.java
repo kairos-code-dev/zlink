@@ -1,17 +1,22 @@
 package systems.zlink.framework.runtime.host;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
+import java.time.Duration;
 import java.time.Instant;
 import java.util.List;
 import java.util.Map;
+import java.util.concurrent.CompletionException;
 import java.util.concurrent.atomic.AtomicReference;
 import org.junit.jupiter.api.Test;
 import systems.zlink.contracts.core.RoutingId;
 import systems.zlink.framework.actors.ZLinkActor;
 import systems.zlink.framework.actors.ZLinkActorContext;
 import systems.zlink.framework.actors.ZLinkActorFactory;
+import systems.zlink.framework.errors.ZLinkFrameworkErrorKind;
+import systems.zlink.framework.errors.ZLinkFrameworkException;
 import systems.zlink.framework.locations.ZLinkActorLocation;
 import systems.zlink.framework.locations.ZLinkActorLocationFilter;
 import systems.zlink.framework.locations.ZLinkLocationAutoConnectType;
@@ -77,7 +82,7 @@ class ZLinkFrameworkLocationRuntimeTest {
         runtime.close();
 
         assertEquals(List.of(), store.listOwnerLeasesAsync().toCompletableFuture().get().leases());
-        assertEquals(List.of(), store.listPeersAsync(ZLinkPeerLocationFilter.all()).toCompletableFuture().get());
+        assertEquals(List.of(), store.listPeerLocationsAsync(ZLinkPeerLocationFilter.all()).toCompletableFuture().get());
     }
 
     @Test
@@ -98,7 +103,7 @@ class ZLinkFrameworkLocationRuntimeTest {
                 .toCompletableFuture()
                 .get();
 
-            ZLinkLocationPage<ZLinkSpotLocation> rows = store.listSpotsAsync(
+            ZLinkLocationPage<ZLinkSpotLocation> rows = store.listSpotLocationsAsync(
                     new ZLinkSpotLocationFilter(
                         "game",
                         LocationSpot.class.getName(),
@@ -114,7 +119,7 @@ class ZLinkFrameworkLocationRuntimeTest {
             assertTrue(runtime.spotManager().close(spotRid).toCompletableFuture().get());
             assertEquals(
                 List.of(),
-                store.listSpotsAsync(ZLinkSpotLocationFilter.all(), ZLinkPageRequest.firstPage())
+                store.listSpotLocationsAsync(ZLinkSpotLocationFilter.all(), ZLinkPageRequest.firstPage())
                     .toCompletableFuture()
                     .get()
                     .items());
@@ -138,24 +143,66 @@ class ZLinkFrameworkLocationRuntimeTest {
             .toCompletableFuture()
             .get();
 
-        ZLinkLocationPage<ZLinkActorLocation> rows = store.listActorsAsync(
+        ZLinkLocationPage<ZLinkActorLocation> rows = store.listActorLocationsAsync(
                 new ZLinkActorLocationFilter("player", nodeRid, null, ZLinkSpotKind.ENTRY),
                 ZLinkPageRequest.firstPage())
             .toCompletableFuture()
             .get();
         assertEquals(1, rows.items().size());
         assertEquals("player-1", rows.items().get(0).actorId());
-        assertTrue(!rows.items().get(0).actorRef().isBlank());
+        assertTrue(rows.items().get(0).actorRef() != null);
 
         runtime.close();
 
         assertEquals(
             List.of(),
-            store.listActorsAsync(ZLinkActorLocationFilter.all(), ZLinkPageRequest.firstPage())
+            store.listActorLocationsAsync(ZLinkActorLocationFilter.all(), ZLinkPageRequest.firstPage())
                 .toCompletableFuture()
                 .get()
                 .items());
         assertEquals(List.of(), store.listOwnerLeasesAsync().toCompletableFuture().get().leases());
+    }
+
+    @Test
+    void actorCreationConflictThrowsCreateRejectedKind() throws Exception {
+        ZLinkInMemoryLocationStore store = new ZLinkInMemoryLocationStore();
+        store.renewOwnerLeaseAsync("owner-b", RoutingId.from("other-node"), Duration.ofSeconds(30))
+            .toCompletableFuture()
+            .get();
+        store.updateActorAsync(
+                new ZLinkActorLocation(
+                    "player-conflict",
+                    "player",
+                    null,
+                    RoutingId.from("other-node"),
+                    ZLinkSpotKind.ENTRY,
+                    "",
+                    null,
+                    "owner-b",
+                    0,
+                    Instant.EPOCH),
+                ZLinkLocationWriteIntent.NEW_CLAIM)
+            .toCompletableFuture()
+            .get();
+
+        DefaultZLinkFrameworkOptions options = new DefaultZLinkFrameworkOptions();
+        options.addLocationStore(store);
+        options.addSpotMesh("actors")
+            .setRoutingId(RoutingId.from("actor-node"))
+            .addActorFactory("player", LocationActorFactory.class);
+
+        try (ZLinkFrameworkRuntime runtime =
+                 ZLinkFrameworkRuntime.start(options, new ZLinkJavaBackendAdapterFactory())) {
+            CompletionException error = assertThrows(
+                CompletionException.class,
+                () -> runtime.actorManager()
+                    .create("player-conflict", "player")
+                    .toCompletableFuture()
+                    .join());
+            ZLinkFrameworkException frameworkError = (ZLinkFrameworkException) error.getCause();
+
+            assertEquals(ZLinkFrameworkErrorKind.ACTOR_CREATE_REJECTED, frameworkError.kind());
+        }
     }
 
     @Test
@@ -190,7 +237,7 @@ class ZLinkFrameworkLocationRuntimeTest {
                 .toCompletableFuture()
                 .get();
 
-            ZLinkActorLocation joined = store.listActorsAsync(
+            ZLinkActorLocation joined = store.listActorLocationsAsync(
                     new ZLinkActorLocationFilter("player", nodeRid, spotRid, ZLinkSpotKind.USER),
                     ZLinkPageRequest.firstPage())
                 .toCompletableFuture()
@@ -205,7 +252,7 @@ class ZLinkFrameworkLocationRuntimeTest {
                 .toCompletableFuture()
                 .get();
 
-            ZLinkActorLocation left = store.listActorsAsync(
+            ZLinkActorLocation left = store.listActorLocationsAsync(
                     new ZLinkActorLocationFilter("player", nodeRid, null, ZLinkSpotKind.ENTRY),
                     ZLinkPageRequest.firstPage())
                 .toCompletableFuture()

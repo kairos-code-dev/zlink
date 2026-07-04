@@ -120,7 +120,7 @@ class DeliveryDispatchClientScenario {
                 .request(BindCourierSessionReq("courier-b"))
                 .await(BindCourierSessionRes::class.java)
             check(courierBBound.courierId == "courier-b")
-            check(courierABound.actor.nodeRid != courierBBound.actor.nodeRid)
+            check(courierABound.actor.nodeRid() != courierBBound.actor.nodeRid())
             println("deliverydispatch-bind=courier-b")
 
             runSuccessfulDelivery(customer, courierA)

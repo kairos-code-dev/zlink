@@ -501,7 +501,7 @@ public final class ConsumerScenario {
     }
 
     private CompletionStage<java.util.List<ZLinkPeerLocation>> peers() {
-        return lifecycle.monitoringLocationRuntimeQuery().listPeersAsync(new ZLinkPeerLocationFilter(
+        return lifecycle.monitoringLocationRuntimeQuery().listPeerLocationsAsync(new ZLinkPeerLocationFilter(
             ZLinkLocationAutoConnectType.CLIENT_SERVER,
             Contracts.CHANNEL,
             ZLinkLocationRole.ROUTER,

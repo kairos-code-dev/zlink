@@ -1,6 +1,5 @@
 package systems.zlink.samples.deliverydispatch.server.couriergateway.handlers;
 
-import systems.zlink.contracts.core.RoutingId;
 import systems.zlink.framework.channels.ZLinkRequestContext;
 import systems.zlink.framework.channels.ZLinkRequestHandler;
 import systems.zlink.framework.channels.ZLinkRouteClient;
@@ -30,9 +29,9 @@ public final class OfferDeliveryHandler
         ZLinkRequestContext context) {
         CourierBinding binding = directory.require(request.courierId());
         return routes
-            .requestTo(
+            .requestToNode(
                 SampleNames.CourierActorNodeRouteChannel,
-                RoutingId.from(binding.actor().nodeRid()),
+                binding.actor().nodeRid(),
                 request)
             .timeout(SampleTimings.OfferRequestTimeout)
             .await(Messages.OfferDeliveryResult.class);

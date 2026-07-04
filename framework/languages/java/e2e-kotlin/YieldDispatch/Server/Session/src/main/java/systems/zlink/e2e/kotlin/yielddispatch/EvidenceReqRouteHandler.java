@@ -30,7 +30,7 @@ public final class EvidenceReqRouteHandler
         ZLinkSessionDispatchContext dispatch,
         Contracts.EvidenceReq request) {
         Contracts.EvidenceRes reply = routes
-            .requestTo(
+            .requestToNode(
                 Contracts.SPOT_MESH,
                 SpotMsgRouteHandler.targetNode(dispatch),
                 request)

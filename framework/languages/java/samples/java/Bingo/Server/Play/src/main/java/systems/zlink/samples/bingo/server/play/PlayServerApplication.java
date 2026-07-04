@@ -57,7 +57,7 @@ public final class PlayServerApplication {
             options.addHandlersFromPackageOf(PlayServerApplication.class);
             options.addClientServerChannel(SampleNames.ApiChannel)
                 .enableClient();
-            RouteMeshChannelBuilder route = options.addRouteMesh(SampleNames.PlayChannel);
+            RouteMeshChannelBuilder route = options.addRouteMeshChannel(SampleNames.PlayChannel);
             route.enableServer(SampleTopology.selectedPlayRouteEndpoint());
             route.enableClient();
             route.addHandlerGroup("play-route");

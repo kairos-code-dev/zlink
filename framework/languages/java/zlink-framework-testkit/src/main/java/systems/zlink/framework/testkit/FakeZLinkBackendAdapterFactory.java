@@ -723,7 +723,7 @@ public final class FakeZLinkBackendAdapterFactory implements ZLinkBackendAdapter
             return CompletableFuture.completedFuture(new ZLinkBackendActorJoinResult(
                 ZLinkBackendRequestResult.OK,
                 0,
-                new ZLinkBackendActorRef(joinedNodeRid, actor.actorId(), actor.epoch() + 1),
+                new ZLinkBackendActorRef(joinedNodeRid, actor.actorId(), actor.generation() + 1),
                 targetSpotRid,
                 1,
                 0,
@@ -734,7 +734,7 @@ public final class FakeZLinkBackendAdapterFactory implements ZLinkBackendAdapter
             return CompletableFuture.completedFuture(new ZLinkBackendActorJoinEntrySpotResult(
                 ZLinkBackendRequestResult.OK,
                 0,
-                new ZLinkBackendActorRef(targetNodeRid, actor.actorId(), actor.epoch() + 1),
+                new ZLinkBackendActorRef(targetNodeRid, actor.actorId(), actor.generation() + 1),
                 targetNodeRid,
                 targetNodeRid,
                 1,

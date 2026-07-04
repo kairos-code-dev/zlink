@@ -2,22 +2,25 @@ package systems.zlink.framework.locations.redis;
 
 import static org.junit.jupiter.api.Assertions.assertArrayEquals;
 import static org.junit.jupiter.api.Assertions.assertEquals;
-import static org.junit.jupiter.api.Assertions.assertNull;
 
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
+import java.nio.file.Files;
+import java.nio.file.Path;
 import java.time.Instant;
 import java.util.Base64;
 import java.util.List;
 import java.util.Map;
 import org.junit.jupiter.api.Test;
 import systems.zlink.contracts.core.RoutingId;
+import systems.zlink.framework.actors.ZLinkActorRef;
 import systems.zlink.framework.locations.ZLinkActorLocation;
 import systems.zlink.framework.locations.ZLinkLocationAutoConnectType;
 import systems.zlink.framework.locations.ZLinkLocationRole;
 import systems.zlink.framework.locations.ZLinkPeerLocation;
 import systems.zlink.framework.locations.ZLinkRouteKind;
 import systems.zlink.framework.locations.ZLinkRouteLocation;
+import systems.zlink.framework.locations.ZLinkSpotLocation;
 import systems.zlink.framework.spots.ZLinkSpotKind;
 
 class ZLinkRedisLocationRowJsonTest {
@@ -69,17 +72,21 @@ class ZLinkRedisLocationRowJsonTest {
     }
 
     @Test
-    void actorDeserializerAcceptsDotnetJsonWithoutSpotMeshName() {
+    void actorDeserializerAcceptsTypedRefAndRequiredSpotMeshName() {
         String json = """
             {
               "ActorType": "game",
               "ActorId": "actor-1",
-              "ActorRef": "ref",
+              "ActorRef": {
+                "nodeRid": "01",
+                "actorId": "actor-1",
+                "generation": 7
+              },
               "NodeRid": "01",
               "Generation": 1,
               "LocationKind": 2,
+              "SpotMeshName": "game",
               "SpotRid": "02",
-              "SpotKind": 2,
               "OwnerId": "owner-a",
               "UpdatedAt": "2026-07-03T00:00:00Z"
             }
@@ -88,9 +95,123 @@ class ZLinkRedisLocationRowJsonTest {
         ZLinkActorLocation row = ZLinkRedisLocationRowJson.deserializeActor(json, 5, UPDATED_AT.plusSeconds(2));
 
         assertEquals("game", row.actorType());
+        assertEquals(new ZLinkActorRef(RoutingId.fromHex("01"), "actor-1", 7), row.actorRef());
         assertEquals(ZLinkSpotKind.USER, row.locationKind());
-        assertNull(row.spotMeshName());
+        assertEquals("game", row.spotMeshName());
         assertEquals(5, row.generation());
         assertEquals(UPDATED_AT.plusSeconds(2), row.updatedAt());
+    }
+
+    @Test
+    void actorLocationV2FixtureMatchesCurrentCodecOutput() throws Exception {
+        JsonNode root = JSON.readTree(Files.readString(fixturePath()));
+        Map<String, JsonNode> rows = rowsByKind(root);
+
+        assertEquals(
+            List.of("owner", "gen", "json", "updatedAtMs"),
+            JSON.convertValue(
+                root.path("hashFields"),
+                JSON.getTypeFactory().constructCollectionType(List.class, String.class)));
+        assertFixtureRow(
+            rows.get("actor"),
+            "7:actor-1",
+            ZLinkRedisLocationRowJson.serializeActor(fixtureActor()));
+        assertFixtureRow(
+            rows.get("peer"),
+            "10:route-mesh4:play6:router12:6e6f64652d31",
+            ZLinkRedisLocationRowJson.serializePeer(fixturePeer()));
+        assertFixtureRow(
+            rows.get("spot"),
+            "4:play12:73706f742d31",
+            ZLinkRedisLocationRowJson.serializeSpot(fixtureSpot()));
+        assertFixtureRow(
+            rows.get("route"),
+            "1:17:route-1",
+            ZLinkRedisLocationRowJson.serializeRoute(fixtureRoute()));
+    }
+
+    private static void assertFixtureRow(JsonNode row, String expectedKey, String expectedJson) {
+        assertEquals(expectedKey, row.path("key").asText());
+        JsonNode hash = row.path("hash");
+        assertEquals("owner-a", hash.path("owner").asText());
+        assertEquals("0", hash.path("gen").asText());
+        assertEquals(expectedJson, hash.path("json").asText());
+        assertEquals("0", hash.path("updatedAtMs").asText());
+    }
+
+    private static Map<String, JsonNode> rowsByKind(JsonNode root) {
+        Map<String, JsonNode> rows = new java.util.HashMap<>();
+        root.path("rows").forEach(row -> rows.put(row.path("kind").asText(), row));
+        return Map.copyOf(rows);
+    }
+
+    private static Path fixturePath() {
+        Path current = Path.of("").toAbsolutePath();
+        while (current != null) {
+            Path candidate = current.resolve("framework/testdata/location/redis/actor-location-v2.json");
+            if (Files.exists(candidate)) {
+                return candidate;
+            }
+            candidate = current.resolve("testdata/location/redis/actor-location-v2.json");
+            if (Files.exists(candidate)) {
+                return candidate;
+            }
+            current = current.getParent();
+        }
+        throw new IllegalStateException("Could not find framework/testdata/location/redis/actor-location-v2.json");
+    }
+
+    private static ZLinkActorLocation fixtureActor() {
+        return new ZLinkActorLocation(
+            "actor-1",
+            "player",
+            new ZLinkActorRef(RoutingId.from("node-1"), "actor-1", 1),
+            RoutingId.from("node-1"),
+            ZLinkSpotKind.ENTRY,
+            "play",
+            null,
+            "owner-a",
+            0,
+            Instant.parse("0001-01-01T00:00:00Z"));
+    }
+
+    private static ZLinkPeerLocation fixturePeer() {
+        return new ZLinkPeerLocation(
+            ZLinkLocationAutoConnectType.ROUTE_MESH,
+            "play",
+            RoutingId.from("node-1"),
+            ZLinkLocationRole.ROUTER,
+            "tcp://127.0.0.1:5001",
+            100,
+            7,
+            Map.of("route-endpoint", "tcp://127.0.0.1:6001"),
+            List.of("router", "route-bridge"),
+            "owner-a",
+            0,
+            Instant.parse("0001-01-01T00:00:00Z"));
+    }
+
+    private static ZLinkSpotLocation fixtureSpot() {
+        return new ZLinkSpotLocation(
+            "play",
+            RoutingId.from("spot-1"),
+            "game",
+            RoutingId.from("node-1"),
+            ZLinkSpotKind.USER,
+            null,
+            "owner-a",
+            0,
+            Instant.parse("0001-01-01T00:00:00Z"));
+    }
+
+    private static ZLinkRouteLocation fixtureRoute() {
+        return new ZLinkRouteLocation(
+            ZLinkRouteKind.ACTOR_SESSION,
+            "route-1",
+            RoutingId.from("node-1"),
+            "owner-a",
+            0,
+            new byte[] {0x01, 0x02, 0x03, 0x04},
+            Instant.parse("0001-01-01T00:00:00Z"));
     }
 }

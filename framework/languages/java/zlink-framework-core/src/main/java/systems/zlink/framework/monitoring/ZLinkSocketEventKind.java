@@ -1,11 +1,17 @@
 package systems.zlink.framework.monitoring;
 
 public enum ZLinkSocketEventKind {
-    CONNECTED,
-    CONNECTION_READY,
-    DISCONNECTED,
-    HANDSHAKE_FAILED,
-    PEER_ADMISSION_CHANGED,
-    CLOSED,
-    INTERNAL
+    CONNECTED(0),
+    CONNECTION_READY(1),
+    DISCONNECTED(2),
+    HANDSHAKE_FAILED(3),
+    PEER_ADMISSION_CHANGED(4),
+    CLOSED(5),
+    INTERNAL(6);
+
+    private final int value;
+
+    ZLinkSocketEventKind(int value) { this.value = value; }
+
+    public int value() { return value; }
 }

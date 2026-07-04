@@ -48,7 +48,7 @@ public final class SessionServerApplication {
                 .setSpotRouterChannel(SampleNames.RoomSpotDiscovery, SampleNames.PlayChannel);
             options.addClientServerChannel(SampleNames.ApiChannel)
                 .enableClient();
-            RouteMeshChannelBuilder route = options.addRouteMesh(SampleNames.PlayChannel);
+            RouteMeshChannelBuilder route = options.addRouteMeshChannel(SampleNames.PlayChannel);
             route.enableServer(SampleTopology.selectedSessionRouteEndpoint());
             route.enableClient();
             route.setRoutingId(RoutingId.from(SampleTopology.selectedSessionRouteRid()));

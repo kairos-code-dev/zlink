@@ -10,12 +10,7 @@ import java.util.concurrent.Executor;
 import java.util.concurrent.Executors;
 import systems.zlink.framework.ZLinkHandlerFilter;
 import systems.zlink.framework.errors.ZLinkConfigurationException;
-import systems.zlink.framework.locations.ZLinkActorLocationStore;
 import systems.zlink.framework.locations.ZLinkLocationStore;
-import systems.zlink.framework.locations.ZLinkOwnerLeaseStore;
-import systems.zlink.framework.locations.ZLinkPeerLocationStore;
-import systems.zlink.framework.locations.ZLinkRouteLocationStore;
-import systems.zlink.framework.locations.ZLinkSpotLocationStore;
 import systems.zlink.framework.runtime.channels.ChannelRegistration;
 import systems.zlink.framework.runtime.handlers.ZLinkHandlerScanner;
 import systems.zlink.framework.runtime.handlers.ZLinkScannedHandler;
@@ -127,21 +122,6 @@ public final class ZLinkFrameworkRegistration {
         if (spotRemoteAddressResolverType != null) {
             types.add(spotRemoteAddressResolverType);
         }
-        if (locations.peerStoreType() != null) {
-            types.add(locations.peerStoreType());
-        }
-        if (locations.spotStoreType() != null) {
-            types.add(locations.spotStoreType());
-        }
-        if (locations.actorStoreType() != null) {
-            types.add(locations.actorStoreType());
-        }
-        if (locations.routeStoreType() != null) {
-            types.add(locations.routeStoreType());
-        }
-        if (locations.ownerLeaseStoreType() != null) {
-            types.add(locations.ownerLeaseStoreType());
-        }
         for (ChannelRegistration channel : channels) {
             types.addAll(channel.handlerTypes());
         }
@@ -162,26 +142,6 @@ public final class ZLinkFrameworkRegistration {
     void setSpotRemoteAddressResolverType(
         Class<? extends ZLinkSpotRemoteAddressResolver> resolverType) {
         spotRemoteAddressResolverType = resolverType;
-    }
-
-    void setPeerLocationStoreType(Class<? extends ZLinkPeerLocationStore> storeType) {
-        locations.setPeerStoreType(storeType);
-    }
-
-    void setSpotLocationStoreType(Class<? extends ZLinkSpotLocationStore> storeType) {
-        locations.setSpotStoreType(storeType);
-    }
-
-    void setActorLocationStoreType(Class<? extends ZLinkActorLocationStore> storeType) {
-        locations.setActorStoreType(storeType);
-    }
-
-    void setRouteLocationStoreType(Class<? extends ZLinkRouteLocationStore> storeType) {
-        locations.setRouteStoreType(storeType);
-    }
-
-    void setOwnerLeaseStoreType(Class<? extends ZLinkOwnerLeaseStore> storeType) {
-        locations.setOwnerLeaseStoreType(storeType);
     }
 
     void useInMemoryLocationStores() {
@@ -241,19 +201,10 @@ public final class ZLinkFrameworkRegistration {
     }
 
     private void validateLocations() {
-        if (locations.useInMemoryStores() && locations.hasAnyStoreType()) {
-            throw new ZLinkConfigurationException(
-                "in-memory location stores cannot be combined with explicit location store registrations");
-        }
-        if (locations.storeInstance() != null
-            && (locations.useInMemoryStores() || locations.hasAnyStoreType())) {
+        if (locations.storeInstance() != null && locations.useInMemoryStores()) {
             throw new ZLinkConfigurationException(
                 "addLocationStore registers every store role at once and cannot be combined with "
-                    + "useInMemoryLocationStores or per-role add*LocationStore registrations");
-        }
-        if (locations.hasAnyStoreType() && !locations.hasAllStoreTypes()) {
-            throw new ZLinkConfigurationException(
-                "location stores are all-or-nothing: register peer, spot, actor, route, and owner lease stores together");
+                    + "useInMemoryLocationStores.");
         }
     }
 

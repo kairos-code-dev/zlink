@@ -3,6 +3,7 @@ package systems.zlink.framework.runtime.host;
 import java.util.Map;
 import java.util.Objects;
 import org.springframework.context.SmartLifecycle;
+import systems.zlink.framework.actors.ZLinkActorDirectory;
 import systems.zlink.framework.actors.ZLinkActorManager;
 import systems.zlink.framework.channels.ZLinkClient;
 import systems.zlink.framework.channels.ZLinkChannelRuntimeOptions;
@@ -10,8 +11,8 @@ import systems.zlink.framework.channels.ZLinkFanoutClient;
 import systems.zlink.framework.channels.ZLinkPublishCall;
 import systems.zlink.framework.channels.ZLinkRequestCall;
 import systems.zlink.framework.channels.ZLinkRouteClient;
-import systems.zlink.framework.channels.ZLinkRouteRequestCall;
 import systems.zlink.framework.channels.ZLinkSendCall;
+import systems.zlink.framework.channels.ZLinkYieldRequestCall;
 import systems.zlink.contracts.core.RoutingId;
 import systems.zlink.framework.errors.ZLinkConfigurationException;
 import systems.zlink.framework.runtime.configuration.DefaultZLinkFrameworkOptions;
@@ -21,6 +22,7 @@ import systems.zlink.framework.runtime.backend.ZLinkBackendSpotNode;
 import systems.zlink.framework.runtime.handlers.ZLinkHandlerFactory;
 import systems.zlink.framework.monitoring.ZLinkRuntimeEventDispatcher;
 import systems.zlink.framework.locations.ZLinkLocationRuntimeQuery;
+import systems.zlink.framework.locations.ZLinkSpotAddress;
 import systems.zlink.framework.spots.ZLinkSpotManager;
 import systems.zlink.framework.spots.ZLinkSpotOutbound;
 import systems.zlink.framework.spots.ZLinkSpotPublisherClient;
@@ -126,7 +128,7 @@ public final class ZLinkFrameworkLifecycle
     }
 
     @Override
-    public ZLinkRequestCall requestToChannel(String channelName, Object message) {
+    public ZLinkYieldRequestCall requestToChannel(String channelName, Object message) {
         return requireRuntime().client().requestToChannel(channelName, message);
     }
 
@@ -139,44 +141,40 @@ public final class ZLinkFrameworkLifecycle
     }
 
     @Override
-    public ZLinkSendCall sendTo(
+    public ZLinkSendCall sendToNode(
         String channelName,
         RoutingId target,
         Object message) {
-        return requireRuntime().route().sendTo(channelName, target, message);
+        return requireRuntime().route().sendToNode(channelName, target, message);
     }
 
     @Override
     public ZLinkSendCall sendToSpot(
         String channelName,
-        RoutingId targetNode,
-        RoutingId targetSpot,
+        ZLinkSpotAddress address,
         Object message) {
         return requireRuntime().route().sendToSpot(
             channelName,
-            targetNode,
-            targetSpot,
+            address,
             message);
     }
 
     @Override
-    public ZLinkRouteRequestCall requestTo(
+    public ZLinkRequestCall requestToNode(
         String channelName,
         RoutingId target,
         Object message) {
-        return requireRuntime().route().requestTo(channelName, target, message);
+        return requireRuntime().route().requestToNode(channelName, target, message);
     }
 
     @Override
-    public ZLinkRouteRequestCall requestToSpot(
+    public ZLinkRequestCall requestToSpot(
         String channelName,
-        RoutingId targetNode,
-        RoutingId targetSpot,
+        ZLinkSpotAddress address,
         Object message) {
         return requireRuntime().route().requestToSpot(
             channelName,
-            targetNode,
-            targetSpot,
+            address,
             message);
     }
 
@@ -194,6 +192,10 @@ public final class ZLinkFrameworkLifecycle
 
     public ZLinkActorManager actorManager() {
         return requireRuntime().actorManager();
+    }
+
+    public ZLinkActorDirectory actorDirectory() {
+        return requireRuntime().actorDirectory();
     }
 
     @Override

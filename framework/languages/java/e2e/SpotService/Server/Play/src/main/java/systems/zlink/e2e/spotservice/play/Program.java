@@ -27,6 +27,7 @@ import systems.zlink.framework.configuration.ZLinkMessageFlowOutcome;
 import systems.zlink.framework.configuration.ZLinkSpotNodeBuilder;
 import systems.zlink.framework.locations.redis.ZLinkRedisLocationOptions;
 import systems.zlink.framework.locations.redis.ZLinkRedisLocationStore;
+import systems.zlink.framework.messaging.ZLinkMessage;
 import systems.zlink.framework.spring.EnableZLinkFramework;
 import systems.zlink.framework.spring.ZLinkFrameworkConfigurer;
 import systems.zlink.framework.spots.ZLinkSpotManager;
@@ -88,7 +89,7 @@ public final class Program {
                         error.errorReason() + "/" + error.errorAction() + "/" + error.packetName());
                     return java.util.concurrent.CompletableFuture.completedFuture(null);
                 });
-            options.addRouteMesh(Contracts.ROUTE_CHANNEL)
+            options.addRouteMeshChannel(Contracts.ROUTE_CHANNEL)
                 .enableServer(Env.get("ZLINK_JAVA_E2E_ROUTE_ENDPOINT"))
                 .enableClient(Env.get("ZLINK_JAVA_E2E_ROUTE_A_ENDPOINT"))
                 .enableClient(Env.get("ZLINK_JAVA_E2E_ROUTE_B_ENDPOINT"))
@@ -142,7 +143,7 @@ public final class Program {
         ScenarioState state) {
         return ignored -> {
             String spotRid = "play-a".equals(state.nodeRid()) ? "room-a" : "room-b";
-            spots.getOrCreate(UserSpot.class, RoutingId.from(spotRid), "bootstrap")
+            spots.getOrCreate(UserSpot.class, RoutingId.from(spotRid), ZLinkMessage.of("bootstrap"))
                 .toCompletableFuture()
                 .join();
         };

@@ -41,6 +41,7 @@ import systems.zlink.framework.locations.ZLinkLocationStore;
 import systems.zlink.framework.locations.ZLinkLocationWriteIntent;
 import systems.zlink.framework.locations.ZLinkLocationWriteResult;
 import systems.zlink.framework.locations.ZLinkOwnerLease;
+import systems.zlink.framework.locations.ZLinkOwnerLeaseRenewal;
 import systems.zlink.framework.locations.ZLinkOwnerLeaseSnapshot;
 import systems.zlink.framework.locations.ZLinkPageRequest;
 import systems.zlink.framework.locations.ZLinkPeerLocation;
@@ -96,12 +97,7 @@ public final class ZLinkRedisLocationStore implements
     }
 
     @Override
-    public CompletionStage<Long> removePeersByOwnerAsync(String ownerId) {
-        return removeByOwner("peer", ownerId);
-    }
-
-    @Override
-    public CompletionStage<List<ZLinkPeerLocation>> listPeersAsync(ZLinkPeerLocationFilter filter) {
+    public CompletionStage<List<ZLinkPeerLocation>> listPeerLocationsAsync(ZLinkPeerLocationFilter filter) {
         return listRows("peer", ZLinkRedisLocationRowJson::deserializePeer)
             .thenApply(rows -> rows.stream().filter(row -> matches(row, filter)).toList());
     }
@@ -128,17 +124,12 @@ public final class ZLinkRedisLocationStore implements
     }
 
     @Override
-    public CompletionStage<Long> removeSpotsByOwnerAsync(String ownerId) {
-        return removeByOwner("spot", ownerId);
-    }
-
-    @Override
     public CompletionStage<ZLinkSpotLocation> resolveSpotAsync(ZLinkSpotLocationKey key) {
         return resolve("spot", ZLinkRedisLocationKeyCodec.encodeSpotKey(key), ZLinkRedisLocationRowJson::deserializeSpot);
     }
 
     @Override
-    public CompletionStage<ZLinkLocationPage<ZLinkSpotLocation>> listSpotsAsync(
+    public CompletionStage<ZLinkLocationPage<ZLinkSpotLocation>> listSpotLocationsAsync(
         ZLinkSpotLocationFilter filter,
         ZLinkPageRequest page) {
         return listPage("spot", ZLinkRedisLocationRowJson::deserializeSpot, row -> matches(row, filter), page);
@@ -150,7 +141,7 @@ public final class ZLinkRedisLocationStore implements
         ZLinkLocationWriteIntent intent) {
         return write(
             "actor",
-            ZLinkRedisLocationKeyCodec.encodeActorKey(new ZLinkActorLocationKey(actor.actorType(), actor.actorId())),
+            ZLinkRedisLocationKeyCodec.encodeActorKey(new ZLinkActorLocationKey(actor.actorId())),
             null,
             actor.ownerId(),
             actor.generation(),
@@ -166,17 +157,12 @@ public final class ZLinkRedisLocationStore implements
     }
 
     @Override
-    public CompletionStage<Long> removeActorsByOwnerAsync(String ownerId) {
-        return removeByOwner("actor", ownerId);
-    }
-
-    @Override
     public CompletionStage<ZLinkActorLocation> resolveActorAsync(ZLinkActorLocationKey key) {
         return resolve("actor", ZLinkRedisLocationKeyCodec.encodeActorKey(key), ZLinkRedisLocationRowJson::deserializeActor);
     }
 
     @Override
-    public CompletionStage<ZLinkLocationPage<ZLinkActorLocation>> listActorsAsync(
+    public CompletionStage<ZLinkLocationPage<ZLinkActorLocation>> listActorLocationsAsync(
         ZLinkActorLocationFilter filter,
         ZLinkPageRequest page) {
         return listPage("actor", ZLinkRedisLocationRowJson::deserializeActor, row -> matches(row, filter), page);
@@ -204,24 +190,19 @@ public final class ZLinkRedisLocationStore implements
     }
 
     @Override
-    public CompletionStage<Long> removeRoutesByOwnerAsync(String ownerId) {
-        return removeByOwner("route", ownerId);
-    }
-
-    @Override
     public CompletionStage<ZLinkRouteLocation> resolveRouteAsync(ZLinkRouteLocationKey key) {
         return resolve("route", ZLinkRedisLocationKeyCodec.encodeRouteKey(key), ZLinkRedisLocationRowJson::deserializeRoute);
     }
 
     @Override
-    public CompletionStage<ZLinkLocationPage<ZLinkRouteLocation>> listRoutesAsync(
+    public CompletionStage<ZLinkLocationPage<ZLinkRouteLocation>> listRouteLocationsAsync(
         ZLinkRouteLocationFilter filter,
         ZLinkPageRequest page) {
         return listPage("route", ZLinkRedisLocationRowJson::deserializeRoute, row -> matches(row, filter), page);
     }
 
     @Override
-    public CompletionStage<ZLinkLocationWriteResult> renewOwnerLeaseAsync(
+    public CompletionStage<ZLinkOwnerLeaseRenewal> renewOwnerLeaseAsync(
         String ownerId,
         RoutingId nodeRid,
         Duration leaseTtl) {
@@ -234,20 +215,49 @@ public final class ZLinkRedisLocationStore implements
                 ownerId,
                 nodeRid.toHex(),
                 Long.toString(ttlMs)))
-            .thenApply(nowMs -> ZLinkLocationWriteResult.stored(0, fromUnixMs(nowMs)))
-            .exceptionally(ZLinkRedisLocationStore::storeUnavailable);
+            .thenApply(nowMs -> {
+                Instant storeNow = fromUnixMs(nowMs);
+                return new ZLinkOwnerLeaseRenewal(storeNow.plusMillis(ttlMs), storeNow);
+            })
+            .exceptionally(ZLinkRedisLocationStore::propagateWriteFailure);
     }
 
     @Override
-    public CompletionStage<ZLinkLocationWriteResult> removeOwnerLeaseAsync(String ownerId) {
+    public CompletionStage<Boolean> removeOwnerLeaseAsync(String ownerId) {
         return commands()
             .thenCompose(redis -> redis.<Long>eval(
                 ZLinkRedisLocationScripts.REMOVE_LEASE,
                 ScriptOutputType.INTEGER,
                 new String[] {leaseKey(ownerId), leaseIndexKey()},
                 ownerId))
-            .thenApply(nowMs -> ZLinkLocationWriteResult.stored(0, fromUnixMs(nowMs)))
-            .exceptionally(ZLinkRedisLocationStore::storeUnavailable);
+            .thenApply(removed -> removed != null && removed > 0)
+            .exceptionally(ZLinkRedisLocationStore::propagateWriteFailure);
+    }
+
+    @Override
+    public CompletionStage<Long> removeAllByOwnerAsync(String ownerId) {
+        return commands()
+            .thenCompose(redis -> redis.<Long>eval(
+                ZLinkRedisLocationScripts.REMOVE_ALL_BY_OWNER,
+                ScriptOutputType.INTEGER,
+                new String[] {
+                    ownerIndexKeyPrefix("peer") + ownerId,
+                    ownerIndexKeyPrefix("spot") + ownerId,
+                    ownerIndexKeyPrefix("actor") + ownerId,
+                    ownerIndexKeyPrefix("route") + ownerId,
+                    kindIndexKey("peer"),
+                    kindIndexKey("spot"),
+                    kindIndexKey("actor"),
+                    kindIndexKey("route")
+                },
+                rowHashKeyPrefix("peer"),
+                rowHashKeyPrefix("spot"),
+                rowHashKeyPrefix("actor"),
+                rowHashKeyPrefix("route"),
+                stampKey("peer", null),
+                stampKey("spot", null),
+                stampKey("actor", null),
+                stampKey("route", null)));
     }
 
     @Override
@@ -306,7 +316,7 @@ public final class ZLinkRedisLocationStore implements
                 meshName == null ? "0" : "1",
                 meshName == null ? "" : meshName))
             .thenApply(ZLinkRedisLocationStore::toWriteResult)
-            .exceptionally(ZLinkRedisLocationStore::storeUnavailable);
+            .exceptionally(ZLinkRedisLocationStore::propagateWriteFailure);
     }
 
     private CompletionStage<ZLinkLocationWriteResult> remove(
@@ -326,17 +336,7 @@ public final class ZLinkRedisLocationStore implements
                 stampKey(tag, meshName),
                 meshName == null ? "" : stampKey(tag, null)))
             .thenApply(ZLinkRedisLocationStore::toWriteResult)
-            .exceptionally(ZLinkRedisLocationStore::storeUnavailable);
-    }
-
-    private CompletionStage<Long> removeByOwner(String tag, String ownerId) {
-        return commands()
-            .thenCompose(redis -> redis.<Long>eval(
-                ZLinkRedisLocationScripts.REMOVE_BY_OWNER,
-                ScriptOutputType.INTEGER,
-                new String[] {ownerIndexKeyPrefix(tag) + ownerId, kindIndexKey(tag)},
-                rowHashKeyPrefix(tag),
-                stampKey(tag, null)));
+            .exceptionally(ZLinkRedisLocationStore::propagateWriteFailure);
     }
 
     private <T> CompletionStage<T> resolve(String tag, String rowKey, RowDeserializer<T> deserializer) {
@@ -467,13 +467,13 @@ public final class ZLinkRedisLocationStore implements
         };
     }
 
-    private static ZLinkLocationWriteResult storeUnavailable(Throwable failure) {
+    private static <T> T propagateWriteFailure(Throwable failure) {
         Throwable unwrapped = unwrap(failure);
         if (unwrapped instanceof RedisException
             || unwrapped instanceof RedisConnectionException
             || unwrapped instanceof RedisCommandTimeoutException
             || unwrapped instanceof RedisCommandExecutionException) {
-            return ZLinkLocationWriteResult.storeUnavailable();
+            throw new CompletionException(unwrapped);
         }
         throw new CompletionException(unwrapped);
     }
@@ -593,6 +593,7 @@ public final class ZLinkRedisLocationStore implements
             case SPOT -> "spot";
             case ACTOR -> "actor";
             case ROUTE -> "route";
+            case INVALID -> throw new IllegalArgumentException("invalid location kind");
         };
     }
 

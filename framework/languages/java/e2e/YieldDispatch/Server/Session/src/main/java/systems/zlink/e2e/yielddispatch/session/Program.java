@@ -66,7 +66,7 @@ public final class Program {
                 .messageFlow(ZLinkMessageFlowLogMode.KEY_TRANSITIONS)
                 .traceLogFile(logDir + "/session-flow.log")
                 .traceLabel("java-yd-session");
-            RouteMeshChannelBuilder route = options.addRouteMesh(Contracts.ROUTE_CHANNEL)
+            RouteMeshChannelBuilder route = options.addRouteMeshChannel(Contracts.ROUTE_CHANNEL)
                 .enableServer(Env.get("ZLINK_JAVA_E2E_SESSION_ROUTE_ENDPOINT"))
                 .enableClient(Env.get("ZLINK_JAVA_E2E_ROUTE_ENDPOINT"))
                 .setRoutingId(RoutingId.from("session-a"));

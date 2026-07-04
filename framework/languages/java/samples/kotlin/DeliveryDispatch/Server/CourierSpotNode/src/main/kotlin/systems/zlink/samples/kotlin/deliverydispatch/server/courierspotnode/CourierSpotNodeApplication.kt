@@ -32,7 +32,7 @@ class CourierSpotNodeApplication {
                         "/flow-courier-$node.log",
                 )
                 .traceLabel("courier-$node")
-            options.addRouteMesh(SampleNames.CourierActorNodeRouteChannel)
+            options.addRouteMeshChannel(SampleNames.CourierActorNodeRouteChannel)
                 .setRoutingId(RoutingId.from(selected.nodeRid))
                 .enableServer(selected.routeEndpoint)
                 .enableClient()

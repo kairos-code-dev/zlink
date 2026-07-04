@@ -2,8 +2,6 @@ package systems.zlink.samples.deliverydispatch.server.customergateway.sessions.h
 
 import static systems.zlink.framework.ZLinkAwait.await;
 
-import systems.zlink.contracts.core.RoutingId;
-import systems.zlink.framework.actors.ZLinkActorRef;
 import systems.zlink.framework.channels.ZLinkClient;
 import systems.zlink.framework.streams.ZLinkSessionContext;
 import systems.zlink.framework.streams.ZLinkSessionDispatchContext;
@@ -47,10 +45,7 @@ public final class SubscribeDeliverySessionHandler
                 new Messages.EnsureCustomerActor(CustomerId))
             .await(Messages.CustomerActorEnsured.class);
         if (context.actors().find(ensured.actorRef().actorId()).isEmpty()) {
-            await(context.actors().bind(new ZLinkActorRef(
-                RoutingId.from(ensured.actorRef().nodeRid()),
-                ensured.actorRef().actorId(),
-                ensured.actorRef().generation())));
+            await(context.actors().bind(ensured.actorRef().toActorRef()));
         }
         customers.subscribe(ensured.customerId(), request.deliveryId());
         context.client()

@@ -69,7 +69,7 @@ public final class ProviderEndpoints {
 
     @PostMapping("/profile/route/request")
     public Contracts.RouteRes routeRequest(@RequestBody Contracts.RouteReq request) {
-        return routes.requestTo(Contracts.ROUTE_CHANNEL, RoutingId.from("api-b"), request)
+        return routes.requestToNode(Contracts.ROUTE_CHANNEL, RoutingId.from("api-b"), request)
             .packetName(Contracts.ROUTE_PACKET)
             .timeout(Duration.ofSeconds(5))
             .await(Contracts.RouteRes.class);
@@ -78,7 +78,7 @@ public final class ProviderEndpoints {
     @PostMapping("/profile/route/missing")
     public Contracts.RouteMissingRes routeMissing(@RequestBody Contracts.RouteReq request) {
         try {
-            routes.requestTo(Contracts.ROUTE_CHANNEL, RoutingId.from("missing-rid"), request)
+            routes.requestToNode(Contracts.ROUTE_CHANNEL, RoutingId.from("missing-rid"), request)
                 .packetName(Contracts.ROUTE_PACKET)
                 .timeout(Duration.ofMillis(300))
                 .await(Contracts.RouteRes.class);

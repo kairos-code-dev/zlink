@@ -1,7 +1,6 @@
 package systems.zlink.samples.kotlin.deliverydispatch.server.couriersession.sessions
 
 import systems.zlink.framework.ZLinkAwait
-import systems.zlink.framework.actors.ZLinkActorRef
 import systems.zlink.framework.channels.ZLinkClient
 import systems.zlink.framework.messaging.ZLinkMessage
 import systems.zlink.framework.streams.ZLinkSession
@@ -9,7 +8,6 @@ import systems.zlink.framework.streams.ZLinkSessionContext
 import systems.zlink.framework.streams.ZLinkSessionDispatchContext
 import systems.zlink.framework.streams.ZLinkSessionPacketDispatcher
 import systems.zlink.framework.streams.ZLinkStreamError
-import systems.zlink.contracts.core.RoutingId
 import systems.zlink.samples.kotlin.deliverydispatch.server.configuration.SampleNames
 import systems.zlink.samples.kotlin.deliverydispatch.shared.contracts.BindCourierReq
 import systems.zlink.samples.kotlin.deliverydispatch.shared.contracts.BindCourierSessionReq
@@ -55,16 +53,10 @@ class CourierSession(
         val bound = channels
             .requestToChannel(SampleNames.CourierChannel, BindCourierReq(request.courierId, sessionContext.sessionId()))
             .await(BindCourierRes::class.java)
-        val actor = sessionContext.actors().find(bound.actor.actorId)
+        val actor = sessionContext.actors().find(bound.actor.actorId())
             .orElseGet {
                 ZLinkAwait.await(
-                    sessionContext.actors().bind(
-                        ZLinkActorRef(
-                            RoutingId.from(bound.actor.nodeRid),
-                            bound.actor.actorId,
-                            bound.actor.generation,
-                        ),
-                    ),
+                    sessionContext.actors().bind(bound.actor.toActorRef()),
                 )
             }
         ZLinkAwait.await(

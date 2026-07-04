@@ -103,11 +103,11 @@ final class SpotManagerTest {
         try (ZLinkFrameworkRuntime runtime =
                  RuntimeTestSupport.startFramework(options, new ZLinkJavaBackendAdapterFactory())) {
             CompletionStage<ZLinkSpotCreateResult> first = runtime.spotManager()
-                .getOrCreate(SlowCreateSpot.class, spotRid, "first");
+                .getOrCreate(SlowCreateSpot.class, spotRid, ZLinkMessage.of("first"));
             assertTrue(SlowCreateSpot.createStarted.await(3, TimeUnit.SECONDS));
 
             CompletionStage<ZLinkSpotCreateResult> second = runtime.spotManager()
-                .getOrCreate(SlowCreateSpot.class, spotRid, "second");
+                .getOrCreate(SlowCreateSpot.class, spotRid, ZLinkMessage.of("second"));
             SlowCreateSpot.release.complete(null);
 
             ZLinkSpotCreateState firstState =
@@ -168,7 +168,7 @@ final class SpotManagerTest {
         try (ZLinkFrameworkRuntime runtime =
                  RuntimeTestSupport.startFramework(options, new ZLinkJavaBackendAdapterFactory())) {
             var rejected = runtime.spotManager()
-                .create(RejectingSpot.class, "closed")
+                .create(RejectingSpot.class, ZLinkMessage.of("closed"))
                 .toCompletableFuture()
                 .join();
 

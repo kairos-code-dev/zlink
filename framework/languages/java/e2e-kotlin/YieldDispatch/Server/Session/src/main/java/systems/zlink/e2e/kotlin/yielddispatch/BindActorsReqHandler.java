@@ -32,7 +32,7 @@ public final class BindActorsReqHandler
         ZLinkSessionDispatchContext dispatch,
         Contracts.BindActorsReq request) {
         Contracts.BindActorsRes reply = routes
-            .requestTo(
+            .requestToNode(
                 Contracts.SPOT_MESH,
                 RoutingId.from("play-a"),
                 request)
@@ -42,7 +42,7 @@ public final class BindActorsReqHandler
             context.actors().bind(new ZLinkActorRef(
                     RoutingId.from(actor.nodeRid()),
                     actor.actorId(),
-                    actor.epoch()))
+                    actor.generation()))
                 .toCompletableFuture()
                 .join();
         }

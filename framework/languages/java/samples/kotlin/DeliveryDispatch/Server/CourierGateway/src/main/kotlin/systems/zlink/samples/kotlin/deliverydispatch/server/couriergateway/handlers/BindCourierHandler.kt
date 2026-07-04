@@ -24,7 +24,7 @@ class BindCourierHandler(
     ): BindCourierRes {
         val ensured = await(
             routes
-                .requestTo(
+                .requestToNode(
                     SampleNames.CourierActorNodeRouteChannel,
                     RoutingId.from(directory.choosePlacement(request.courierId)),
                     EnsureCourierActorReq(request.courierId),

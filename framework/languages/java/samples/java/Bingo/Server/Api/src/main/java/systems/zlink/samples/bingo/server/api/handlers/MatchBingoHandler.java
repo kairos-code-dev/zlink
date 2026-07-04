@@ -24,7 +24,7 @@ public final class MatchBingoHandler
     public Messages.MatchBingoApiRes handle(
         Messages.MatchBingoApiReq request,
         ZLinkRequestContext context) {
-        Messages.AllocateBingoRoomRes allocated = routes.requestTo(
+        Messages.AllocateBingoRoomRes allocated = routes.requestToNode(
                 SampleNames.PlayChannel,
                 RoutingId.from(request.actorNodeRid()),
                 new Messages.AllocateBingoRoomReq(

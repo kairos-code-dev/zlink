@@ -81,7 +81,7 @@ class BingoEntrySpot(
             context.nodeRid().toString(),
             SampleTimings.DrawPeriod.toMillis(),
         )
-        spots.getOrCreate(BingoRoomSpot::class.java, RoutingId.from(observerRid), settings).await()
+        spots.getOrCreate(BingoRoomSpot::class.java, RoutingId.from(observerRid), ZLinkMessage.of(settings)).await()
         val joined = actor.context().joinSpot(
             RoutingId.from(observerRid),
             BingoRoomJoinReq(

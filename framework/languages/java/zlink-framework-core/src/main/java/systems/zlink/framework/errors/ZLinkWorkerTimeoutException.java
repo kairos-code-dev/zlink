@@ -7,6 +7,6 @@ package systems.zlink.framework.errors;
  */
 public class ZLinkWorkerTimeoutException extends ZLinkFrameworkException {
     public ZLinkWorkerTimeoutException(String message) {
-        super(message);
+        super(ZLinkFrameworkErrorKind.WORKER_TIMED_OUT, message);
     }
 }

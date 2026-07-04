@@ -85,7 +85,7 @@ class ZLinkInMemoryLocationStoreTest {
         assertEquals(ZLinkLocationWriteStatus.STORED, renew.status());
         assertEquals(ZLinkLocationWriteStatus.IGNORED_STALE, staleRemove.status());
         assertEquals(ZLinkLocationWriteStatus.STORED, remove.status());
-        assertEquals(List.of(), store.listPeersAsync(ZLinkPeerLocationFilter.all()).toCompletableFuture().get());
+        assertEquals(List.of(), store.listPeerLocationsAsync(ZLinkPeerLocationFilter.all()).toCompletableFuture().get());
     }
 
     @Test

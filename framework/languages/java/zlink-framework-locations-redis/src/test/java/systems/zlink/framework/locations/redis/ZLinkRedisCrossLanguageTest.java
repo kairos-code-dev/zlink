@@ -11,6 +11,7 @@ import java.util.List;
 import java.util.Map;
 import org.junit.jupiter.api.Test;
 import systems.zlink.contracts.core.RoutingId;
+import systems.zlink.framework.actors.ZLinkActorRef;
 import systems.zlink.framework.locations.ZLinkActorLocation;
 import systems.zlink.framework.locations.ZLinkActorLocationKey;
 import systems.zlink.framework.locations.ZLinkLocationAutoConnectType;
@@ -64,7 +65,7 @@ final class ZLinkRedisCrossLanguageTest {
     void javaReadsRowsWrittenByDotnet() throws Exception {
         try (ZLinkRedisLocationStore store = crossLanguageStore("dotnet")) {
             ZLinkActorLocation actor = store.resolveActorAsync(
-                    new ZLinkActorLocationKey("player", "dotnet-actor"))
+                    new ZLinkActorLocationKey("dotnet-actor"))
                 .toCompletableFuture()
                 .get();
             ZLinkSpotLocation spot = store.resolveSpotAsync(
@@ -75,7 +76,7 @@ final class ZLinkRedisCrossLanguageTest {
                     new ZLinkRouteLocationKey(ZLinkRouteKind.ACTOR_SESSION, "dotnet-route"))
                 .toCompletableFuture()
                 .get();
-            List<ZLinkPeerLocation> peers = store.listPeersAsync(new ZLinkPeerLocationFilter(
+            List<ZLinkPeerLocation> peers = store.listPeerLocationsAsync(new ZLinkPeerLocationFilter(
                     ZLinkLocationAutoConnectType.ROUTE_MESH,
                     "cross",
                     ZLinkLocationRole.ROUTER,
@@ -85,7 +86,7 @@ final class ZLinkRedisCrossLanguageTest {
                 .get();
 
             assertNotNull(actor);
-            assertEquals("dotnet-ref", actor.actorRef());
+            assertEquals(new ZLinkActorRef(RoutingId.from("dotnet-node"), "dotnet-actor", 0), actor.actorRef());
             assertEquals(RoutingId.from("dotnet-node"), actor.nodeRid());
             assertEquals("dotnet-owner", actor.ownerId());
 
@@ -147,16 +148,15 @@ final class ZLinkRedisCrossLanguageTest {
 
     private static ZLinkActorLocation javaActor() {
         return new ZLinkActorLocation(
-            "player",
             "java-actor",
-            "java-ref",
+            "player",
+            new ZLinkActorRef(RoutingId.from("java-node"), "java-actor", 0),
             RoutingId.from("java-node"),
-            0,
             ZLinkSpotKind.USER,
             "cross",
             RoutingId.from("java-spot"),
-            ZLinkSpotKind.USER,
             "java-owner",
+            0,
             UPDATED_AT);
     }
 

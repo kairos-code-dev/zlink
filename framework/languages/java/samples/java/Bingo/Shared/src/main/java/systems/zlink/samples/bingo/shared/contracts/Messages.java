@@ -1,6 +1,7 @@
 package systems.zlink.samples.bingo.shared.contracts;
 
 import java.util.List;
+import systems.zlink.framework.actors.ZLinkActorRefSnapshot;
 import systems.zlink.framework.handlers.ZLinkPacket;
 
 public final class Messages {
@@ -25,10 +26,7 @@ public final class Messages {
     public record EnsurePlayerActorReq(String actorId, String displayName, String preferredActorNodeRid) {
     }
 
-    public record ActorRefSnapshot(byte[] nodeRid, String actorId, long generation) {
-    }
-
-    public record EnsurePlayerActorRes(String actorId, String actorType, ActorRefSnapshot actor) {
+    public record EnsurePlayerActorRes(String actorId, String actorType, ZLinkActorRefSnapshot actor) {
     }
 
     @ZLinkPacket("MatchBingoReq")

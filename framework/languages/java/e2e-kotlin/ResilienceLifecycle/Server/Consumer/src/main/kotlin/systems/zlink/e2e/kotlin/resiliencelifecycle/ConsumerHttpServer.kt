@@ -70,7 +70,7 @@ class ConsumerHttpServer(
         while (System.nanoTime() < deadline) {
             val matches = try {
                 lifecycle.monitoringLocationRuntimeQuery()
-                    .listPeersAsync(
+                    .listPeerLocationsAsync(
                         ZLinkPeerLocationFilter(
                             ZLinkLocationAutoConnectType.CLIENT_SERVER,
                             Contracts.CHANNEL,

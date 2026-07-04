@@ -19,18 +19,22 @@ import systems.zlink.framework.ZLinkAwait;
 import systems.zlink.framework.ZLinkMessageSerializer;
 import systems.zlink.framework.actors.ZLinkActor;
 import systems.zlink.framework.actors.ZLinkActorContext;
+import systems.zlink.framework.actors.ZLinkActorDirectory;
 import systems.zlink.framework.actors.ZLinkActorFactory;
+import systems.zlink.framework.actors.ZLinkActorRef;
 import systems.zlink.framework.actors.ZLinkActorJoinEntrySpotCall;
 import systems.zlink.framework.actors.ZLinkActorJoinResult;
 import systems.zlink.framework.actors.ZLinkActorJoinSpotCall;
+import systems.zlink.framework.actors.ZLinkActorPlacement;
 import systems.zlink.framework.configuration.ZLinkDispatchErrorSurface;
 import systems.zlink.framework.configuration.ZLinkDispatchMessageKind;
 import systems.zlink.framework.configuration.ZLinkMessageFlowEvent;
 import systems.zlink.framework.configuration.ZLinkMessageFlowOutcome;
 import systems.zlink.framework.actors.ZLinkActorManager;
-import systems.zlink.framework.actors.ZLinkActorRef;
 import systems.zlink.framework.actors.ZLinkBoundSession;
 import systems.zlink.framework.errors.ZLinkConfigurationException;
+import systems.zlink.framework.errors.ZLinkFrameworkErrorKind;
+import systems.zlink.framework.errors.ZLinkFrameworkException;
 import systems.zlink.framework.execution.ZLinkAsyncSerialQueue;
 import systems.zlink.framework.execution.ZLinkFrameworkTurns;
 import systems.zlink.framework.execution.ZLinkYieldTurn;
@@ -42,13 +46,15 @@ import systems.zlink.framework.runtime.messaging.ZLinkMessagePayloads;
 import systems.zlink.framework.runtime.messaging.ZLinkPayloadEncoding;
 import systems.zlink.framework.locations.ZLinkLocationWriteStatus;
 import systems.zlink.framework.locations.ZLinkLocationWriteIntent;
+import systems.zlink.framework.locations.ZLinkActorLocationKey;
 import systems.zlink.framework.runtime.channels.ZLinkChannelRuntime;
+import systems.zlink.framework.runtime.locations.ZLinkStoreLocationResolvers;
 import systems.zlink.framework.spots.ZLinkSpot;
 import systems.zlink.framework.spots.ZLinkSpotRemoteAddress;
 import systems.zlink.framework.spots.ZLinkSpotRemoteAddressResolver;
 import systems.zlink.framework.streams.ZLinkStreamCodec;
 
-public final class ZLinkActorRuntime implements ZLinkActorManager {
+public final class ZLinkActorRuntime implements ZLinkActorManager, ZLinkActorDirectory {
     @FunctionalInterface
     public interface CreatedNotifier {
         CompletionStage<Void> notify(
@@ -76,6 +82,7 @@ public final class ZLinkActorRuntime implements ZLinkActorManager {
     private Function<RoutingId, String> spotMeshResolver = ignored -> null;
     private ZLinkSpotRemoteAddressResolver remoteAddressResolver;
     private ZLinkLocationLifecycle locationLifecycle;
+    private ZLinkStoreLocationResolvers storeLocationResolvers;
     private ZLinkChannelRuntime routedTransport;
     private Supplier<RoutingId> sourceEntrySpotRid = () -> RoutingId.from(new byte[0]);
     // Shared flow tracer (installed by the host); null = no tracing wired.
@@ -217,7 +224,7 @@ public final class ZLinkActorRuntime implements ZLinkActorManager {
                         .thenCompose(actor -> locationLifecycle.setActorRefAsync(
                                 actorType,
                                 actorId,
-                                serializeActorRef(refFor(actor)))
+                                toPublicActorRef(refFor(actor)))
                             .thenApply(ignored -> actor))
                         .whenComplete((actor, error) -> {
                             if (error != null) {
@@ -270,17 +277,18 @@ public final class ZLinkActorRuntime implements ZLinkActorManager {
     }
 
     private RuntimeException actorCreateLocationFailure(String actorId, ZLinkLocationWriteStatus status) {
-        String message = status == ZLinkLocationWriteStatus.REJECTED_CONFLICT
-            ? "Actor '" + actorId + "' location is owned by another runtime."
-            : "Actor '" + actorId + "' location claim failed because the location store is unavailable.";
-        return new ZLinkConfigurationException(message);
+        if (status == ZLinkLocationWriteStatus.REJECTED_CONFLICT) {
+            return new ZLinkFrameworkException(
+                ZLinkFrameworkErrorKind.ACTOR_CREATE_REJECTED,
+                "Actor '" + actorId + "' location is owned by another runtime.");
+        }
+        return new ZLinkFrameworkException(
+            ZLinkFrameworkErrorKind.ACTOR_CREATE_FAILED,
+            "Actor '" + actorId + "' location claim failed because the location store is unavailable.");
     }
 
-    private static String serializeActorRef(ZLinkBackendActorRef actorRef) {
-        return ZLinkLocationLifecycle.serializeActorRef(
-            actorRef.nodeRid(),
-            actorRef.actorId(),
-            actorRef.epoch());
+    private static ZLinkActorRef toPublicActorRef(ZLinkBackendActorRef actorRef) {
+        return new ZLinkActorRef(actorRef.nodeRid(), actorRef.actorId(), actorRef.generation());
     }
 
     private CompletionStage<Void> renewActorJoinedLocation(
@@ -371,8 +379,78 @@ public final class ZLinkActorRuntime implements ZLinkActorManager {
         if (!actors.containsKey(actorId)) {
             spotNode.actorLookup(actorId);
         }
-        return CompletableFuture.completedFuture(
-            Optional.ofNullable(actors.get(actorId)).map(this::publicRefFor));
+        ZLinkActor local = actors.get(actorId);
+        if (local != null) {
+            return CompletableFuture.completedFuture(Optional.of(publicRefFor(local)));
+        }
+        if (storeLocationResolvers == null) {
+            return CompletableFuture.completedFuture(Optional.empty());
+        }
+        return storeLocationResolvers.resolveActorRowAsync(new ZLinkActorLocationKey(actorId))
+            .thenApply(row -> row == null || row.actorRef() == null
+                ? Optional.empty()
+                : Optional.of(row.actorRef()));
+    }
+
+    @Override
+    public CompletionStage<ZLinkActorRef> ensure(
+        String actorId,
+        ZLinkMessage createRequest,
+        ZLinkActorPlacement placement) {
+        requireActorId(actorId);
+        if (createRequest == null) {
+            return CompletableFuture.failedFuture(new ZLinkConfigurationException(
+                "createRequest is required"));
+        }
+        CompletionStage<Optional<ZLinkActorRef>> existing = find(actorId);
+        ZLinkActorPlacement safePlacement =
+            placement == null ? ZLinkActorPlacement.any() : placement;
+        return existing.thenCompose(found -> {
+            if (found.isPresent()) {
+                return CompletableFuture.completedFuture(found.get());
+            }
+            if (safePlacement.preferredNodeRid() != null
+                && !safePlacement.preferredNodeRid().equals(spotNode.routingId())) {
+                return CompletableFuture.failedFuture(new ZLinkFrameworkException(
+                    ZLinkFrameworkErrorKind.ROUTE_NOT_CONNECTED,
+                    "preferred actor node is not connected to this actor directory"));
+            }
+            return createLocalActor(actorId, resolveSingleActorType(), createRequest, false)
+                .thenApply(this::publicRefFor)
+                .exceptionallyCompose(error -> {
+                    Throwable cause = unwrap(error);
+                    if (cause instanceof ZLinkFrameworkException frameworkError
+                        && frameworkError.kind() == ZLinkFrameworkErrorKind.ACTOR_CREATE_FAILED) {
+                        return find(actorId).thenCompose(raced -> raced
+                            .<CompletionStage<ZLinkActorRef>>map(CompletableFuture::completedFuture)
+                            .orElseGet(() -> CompletableFuture.failedFuture(
+                                new ZLinkFrameworkException(
+                                    ZLinkFrameworkErrorKind.ACTOR_CREATE_REJECTED,
+                                    frameworkError.getMessage(),
+                                    frameworkError))));
+                    }
+                    return CompletableFuture.failedFuture(cause);
+                });
+        });
+    }
+
+    private static Throwable unwrap(Throwable error) {
+        if (error instanceof CompletionException && error.getCause() != null) {
+            return error.getCause();
+        }
+        return error;
+    }
+
+    private String resolveSingleActorType() {
+        if (factories.size() == 1) {
+            return factories.keySet().iterator().next();
+        }
+        String message = factories.isEmpty()
+            ? "actor directory requires one registered actor factory"
+            : "actor directory cannot choose an actor type when multiple actor factories are registered";
+        throw new ZLinkFrameworkException(
+            ZLinkFrameworkErrorKind.ACTOR_CREATE_FAILED,
+            message);
     }
 
     @Override
@@ -447,7 +525,7 @@ public final class ZLinkActorRuntime implements ZLinkActorManager {
         return new ZLinkActorRef(
             actorRef.nodeRid(),
             actorRef.actorId(),
-            actorRef.epoch());
+            actorRef.generation());
     }
 
     private DefaultActorContext contextFor(ZLinkActorRef actor) {
@@ -467,7 +545,7 @@ public final class ZLinkActorRuntime implements ZLinkActorManager {
         ZLinkBackendActorRef currentRef = context.actorRef;
         if (!currentRef.actorId().equals(actor.actorId())
             || !currentRef.nodeRid().equals(actor.nodeRid())
-            || currentRef.epoch() != actor.epoch()) {
+            || currentRef.generation() != actor.generation()) {
             throw new ZLinkConfigurationException(
                 "actor ref is not current for this runtime: " + actor.actorId());
         }
@@ -541,7 +619,7 @@ public final class ZLinkActorRuntime implements ZLinkActorManager {
                     actor.actorId(),
                     actorTypes.getOrDefault(actor.actorId(), request.actorType()),
                     actorRef.nodeRid(),
-                    actorRef.epoch());
+                    actorRef.generation());
             });
     }
 
@@ -785,6 +863,10 @@ public final class ZLinkActorRuntime implements ZLinkActorManager {
 
     public void setLocationLifecycle(ZLinkLocationLifecycle lifecycle) {
         this.locationLifecycle = lifecycle;
+    }
+
+    public void setStoreLocationResolvers(ZLinkStoreLocationResolvers resolvers) {
+        this.storeLocationResolvers = resolvers;
     }
 
     public void setRoutedTransport(
@@ -1306,7 +1388,7 @@ public final class ZLinkActorRuntime implements ZLinkActorManager {
                                 new ZLinkActorRef(
                                     result.actor().nodeRid(),
                                     result.actor().actorId(),
-                                    result.actor().epoch()),
+                                    result.actor().generation()),
                                 null);
                         } finally {
                             result.replyParts().forEach(Message::close);
@@ -1360,7 +1442,7 @@ public final class ZLinkActorRuntime implements ZLinkActorManager {
                                 new ZLinkActorRef(
                                     result.actor().nodeRid(),
                                     result.actor().actorId(),
-                                    result.actor().epoch()),
+                                    result.actor().generation()),
                                 reply);
                         } finally {
                             if (emptyReply != null) {
@@ -1587,7 +1669,7 @@ public final class ZLinkActorRuntime implements ZLinkActorManager {
                     new ZLinkActorRef(
                         result.actor().nodeRid(),
                         result.actor().actorId(),
-                        result.actor().epoch()),
+                        result.actor().generation()),
                     reply);
             } finally {
                 if (emptyReply != null) {
@@ -1626,7 +1708,7 @@ public final class ZLinkActorRuntime implements ZLinkActorManager {
                     new ZLinkActorRef(
                         result.actor().nodeRid(),
                         result.actor().actorId(),
-                        result.actor().epoch()),
+                        result.actor().generation()),
                     null);
             } finally {
                 result.replyParts().forEach(Message::close);
@@ -1703,7 +1785,7 @@ public final class ZLinkActorRuntime implements ZLinkActorManager {
                             reply.accepted() ? 0 : 1,
                             reply.actorRef(),
                             spotRid,
-                            reply.actorRef().epoch(),
+                            reply.actorRef().generation(),
                             0,
                             List.of(Message.from(reply.reply())));
                     } finally {

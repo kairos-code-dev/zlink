@@ -88,7 +88,7 @@ public final class ConsumerEndpoints implements SmartLifecycle {
     }
 
     private List<java.util.Map<String, Object>> peers() {
-        return lifecycle.monitoringLocationRuntimeQuery().listPeersAsync(new ZLinkPeerLocationFilter(
+        return lifecycle.monitoringLocationRuntimeQuery().listPeerLocationsAsync(new ZLinkPeerLocationFilter(
                 ZLinkLocationAutoConnectType.CLIENT_SERVER,
                 Contracts.CHANNEL,
                 ZLinkLocationRole.ROUTER,

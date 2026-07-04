@@ -7,8 +7,10 @@ import org.springframework.context.annotation.Bean;
 import systems.zlink.contracts.core.RoutingId;
 import systems.zlink.framework.configuration.ZLinkMessageFlowLogMode;
 import systems.zlink.framework.configuration.ZLinkSpotNodeBuilder;
+import systems.zlink.framework.locations.redis.ZLinkRedisLocationStore;
 import systems.zlink.framework.spring.EnableZLinkFramework;
 import systems.zlink.framework.spring.ZLinkFrameworkConfigurer;
+import systems.zlink.samples.deliverydispatch.server.configuration.SampleLocationStore;
 import systems.zlink.samples.deliverydispatch.server.configuration.SampleNames;
 import systems.zlink.samples.deliverydispatch.server.configuration.SampleTopology;
 import systems.zlink.samples.deliverydispatch.server.courierspotnode.spots.CourierEntrySpot;
@@ -34,13 +36,16 @@ public final class CourierSpotNodeApplication {
             String node = System.getProperty("zlink.samples.deliverydispatch.courierNode", "node1");
             NodeOptions selected = NodeOptions.resolve(node);
             options.addHandlersFromPackageOf(CourierSpotNodeApplication.class);
-            options.useDiscovery().addRegistryEndpoint(SampleTopology.RegistryRouterEndpoint);
+            options.configureLocations()
+                .setSpotRouterChannel(
+                    SampleNames.CourierSpotDiscovery,
+                    SampleNames.CourierActorNodeRouteChannel);
             options.configureDispatch()
                 .messageFlow(ZLinkMessageFlowLogMode.KEY_TRANSITIONS)
                 .traceLogFile(System.getenv().getOrDefault("DELIVERYDISPATCH_LOG_DIR", "logs")
                     + "/flow-courier-" + node + ".log")
                 .traceLabel("courier-" + node);
-            options.addRouteMesh(SampleNames.CourierActorNodeRouteChannel)
+            options.addRouteMeshChannel(SampleNames.CourierActorNodeRouteChannel)
                 .setRoutingId(RoutingId.from(selected.nodeRid()))
                 .enableServer(selected.routeEndpoint())
                 .enableClient()
@@ -57,6 +62,11 @@ public final class CourierSpotNodeApplication {
     @Bean
     ActorDirectory actorDirectory() {
         return new ActorDirectory();
+    }
+
+    @Bean(destroyMethod = "close")
+    ZLinkRedisLocationStore locationStore() {
+        return SampleLocationStore.create();
     }
 
     private record NodeOptions(String nodeRid, String routeEndpoint, String spotEndpoint, String routerEndpoint) {

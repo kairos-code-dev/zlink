@@ -24,6 +24,10 @@ public interface ZLinkSpotNodeBuilder {
 
     ZLinkSpotNodeBuilder addEntrySpot(Class<? extends ZLinkEntrySpot<?>> entrySpotType);
 
+    /**
+     * Registers the factory that defines an actor type string. Actor creation
+     * APIs pass this string, while actor lookup APIs use actor id only.
+     */
     ZLinkSpotNodeBuilder addActorFactory(
         String actorType,
         Class<? extends ZLinkActorFactory> factoryType);

@@ -20,6 +20,7 @@ import systems.zlink.framework.configuration.ZLinkMessageFlowLogMode;
 import systems.zlink.framework.configuration.ZLinkSpotNodeBuilder;
 import systems.zlink.framework.locations.redis.ZLinkRedisLocationOptions;
 import systems.zlink.framework.locations.redis.ZLinkRedisLocationStore;
+import systems.zlink.framework.messaging.ZLinkMessage;
 import systems.zlink.framework.monitoring.ZLinkLocationRuntimeEventKind;
 import systems.zlink.framework.monitoring.ZLinkSocketEventKind;
 import systems.zlink.framework.spring.EnableZLinkFramework;
@@ -137,7 +138,7 @@ public final class Program {
             manager.getOrCreate(
                 MonitoringSpot.class,
                 RoutingId.from("monitoring-room"),
-                "bootstrap")
+                ZLinkMessage.of("bootstrap"))
             .toCompletableFuture()
             .join();
         };

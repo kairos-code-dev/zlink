@@ -3,6 +3,7 @@ package systems.zlink.framework.runtime.host;
 import systems.zlink.framework.runtime.backend.*;
 
 import systems.zlink.framework.ZLinkMessageSerializer;
+import systems.zlink.framework.actors.ZLinkActorClient;
 import systems.zlink.framework.actors.ZLinkActorDirectory;
 import systems.zlink.framework.actors.ZLinkActorManager;
 import systems.zlink.framework.channels.ZLinkClient;
@@ -14,6 +15,7 @@ import systems.zlink.framework.monitoring.ZLinkRuntimeEventDispatcher;
 import systems.zlink.framework.runtime.configuration.DefaultZLinkFrameworkOptions;
 import systems.zlink.framework.runtime.configuration.ZLinkFrameworkRegistration;
 import systems.zlink.framework.runtime.actors.ZLinkActorEntrySpotRoutePackets;
+import systems.zlink.framework.runtime.actors.ZLinkActorClientRuntime;
 import systems.zlink.framework.runtime.actors.ZLinkActorRuntime;
 import systems.zlink.framework.runtime.actors.ZLinkSessionActorsRuntime;
 import systems.zlink.framework.runtime.channels.ZLinkChannelRuntime;
@@ -47,6 +49,7 @@ public final class ZLinkFrameworkRuntime
     private final ZLinkChannelRuntime channels;
     private final ZLinkSpotRuntime spots;
     private final ZLinkActorRuntime actors;
+    private final ZLinkActorClient actorClient;
     private final ZLinkStreamRuntime streams;
     private final ZLinkBackendContext backendContext;
     private final ZLinkFrameworkRegistration registration;
@@ -216,6 +219,16 @@ public final class ZLinkFrameworkRuntime
                 runtimeHandlers,
                 defaultStreamCodec)
             : null;
+        this.actorClient = spots != null && this.storeLocationResolvers != null
+            ? new ZLinkActorClientRuntime(
+                this.spots::primaryNode,
+                this.storeLocationResolvers,
+                serializer,
+                options.registration().defaultRequestTimeout())
+            : null;
+        if (this.actorClient != null) {
+            runtimeHandlers.add(ZLinkActorClient.class, this.actorClient);
+        }
         if (this.actors != null) {
             runtimeHandlers.add(ZLinkActorManager.class, this.actors);
             runtimeHandlers.add(ZLinkActorDirectory.class, this.actors);
@@ -388,6 +401,13 @@ public final class ZLinkFrameworkRuntime
             throw new ZLinkConfigurationException("Actor runtime is not configured");
         }
         return actors;
+    }
+
+    public ZLinkActorClient actorClient() {
+        if (actorClient == null) {
+            throw new ZLinkConfigurationException("Actor client requires a SPOT node and location store");
+        }
+        return actorClient;
     }
 
     public ZLinkSessionActorsRuntime sessionActors(String streamNodeName, RoutingId sessionRid) {

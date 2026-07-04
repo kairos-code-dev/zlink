@@ -30,6 +30,7 @@ import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
 import systems.zlink.contracts.messaging.Message;
 import systems.zlink.framework.actors.ZLinkActor;
+import systems.zlink.framework.actors.ZLinkActorClient;
 import systems.zlink.framework.actors.ZLinkActorContext;
 import systems.zlink.framework.actors.ZLinkActorDirectory;
 import systems.zlink.framework.actors.ZLinkActorFactory;
@@ -215,6 +216,24 @@ final class ZLinkFrameworkAutoConfigurationTest {
             ZLinkSpotOutbound outbound = context.getBean(ZLinkSpotOutbound.class);
             assertThrows(ZLinkConfigurationException.class, () ->
                 outbound.sendToChannel("events", "hello"));
+        }
+    }
+
+    @Test
+    void actorClientIsBeanWhenSpotNodeAndLocationStoreExist() {
+        try (AnnotationConfigApplicationContext context =
+                 new AnnotationConfigApplicationContext()) {
+            context.registerBean(
+                ZLinkBackendAdapterFactory.class,
+                FakeZLinkBackendAdapterFactory::new);
+            context.register(
+                SpotNodeWithLocationStoreConfig.class,
+                ZLinkFrameworkAutoConfiguration.class);
+            context.refresh();
+
+            assertInstanceOf(
+                ZLinkFrameworkActorClientBean.class,
+                context.getBean(ZLinkActorClient.class));
         }
     }
 
@@ -745,6 +764,23 @@ final class ZLinkFrameworkAutoConfigurationTest {
                 { var mesh = options.addSpotMesh("game"); { var node = mesh; node.enableRouter("inproc://play-router");
                         node.addSpotFactory(GameSpot.class);
                         node.addActorFactory("player", PlayerActorFactory.class); }; };
+            };
+        }
+    }
+
+    @Configuration
+    @EnableZLinkFramework
+    static class SpotNodeWithLocationStoreConfig {
+        @Bean
+        ZLinkInMemoryLocationStore locationStore() {
+            return new ZLinkInMemoryLocationStore();
+        }
+
+        @Bean
+        ZLinkFrameworkConfigurer spotNodeWithLocationStoreConfigurer() {
+            return options -> {
+                var mesh = options.addSpotMesh("game");
+                mesh.enableRouter("inproc://play-router");
             };
         }
     }

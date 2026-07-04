@@ -753,6 +753,38 @@ public final class FakeZLinkBackendAdapterFactory implements ZLinkBackendAdapter
             record("sendActorBoundSession." + actor.actorId() + "." + firstPart(parts));
             return true;
         }
+        @Override public void replyActorNoBind(
+            ZLinkBackendActorRef actor,
+            RoutingId sourceNodeRid,
+            RoutingId sourceSessionRid,
+            long requestId,
+            int flags,
+            List<Message> parts) {
+            record("replyActorNoBind."
+                + actor.actorId()
+                + "."
+                + sourceNodeRid
+                + "."
+                + sourceSessionRid
+                + "."
+                + requestId
+                + "."
+                + flags
+                + "."
+                + firstPart(parts));
+        }
+        @Override public boolean sendToActor(ZLinkBackendActorRef actor, List<Message> parts, SendFlags flags) {
+            record("sendToActor." + actor.actorId() + "." + firstPart(parts));
+            return true;
+        }
+        @Override public CompletionStage<List<Message>> requestToActor(
+            ZLinkBackendActorRef actor,
+            List<Message> parts,
+            SendFlags flags,
+            Duration timeout) {
+            record("requestToActor." + actor.actorId() + "." + firstPart(parts));
+            return CompletableFuture.completedFuture(List.of(jsonStringMessage("actor-reply")));
+        }
         @Override public boolean forwardActorBoundSession(
             ZLinkBackendActorRef actor,
             RoutingId sourceNodeRid,
@@ -1029,6 +1061,7 @@ public final class FakeZLinkBackendAdapterFactory implements ZLinkBackendAdapter
                         RoutingId.from("source-session"),
                         requestSeq,
                         0,
+                        0,
                         Message.from(header),
                         true),
                     new ZLinkBackendActorReceived(
@@ -1036,6 +1069,7 @@ public final class FakeZLinkBackendAdapterFactory implements ZLinkBackendAdapter
                         RoutingId.from("source-node"),
                         RoutingId.from("source-session"),
                         requestSeq,
+                        0,
                         0,
                         Message.from(payload.getBytes(StandardCharsets.UTF_8)),
                         false))));

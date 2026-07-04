@@ -3,6 +3,7 @@ package systems.zlink.framework.runtime.host;
 import java.util.Map;
 import java.util.Objects;
 import org.springframework.context.SmartLifecycle;
+import systems.zlink.framework.actors.ZLinkActorClient;
 import systems.zlink.framework.actors.ZLinkActorDirectory;
 import systems.zlink.framework.actors.ZLinkActorManager;
 import systems.zlink.framework.channels.ZLinkClient;
@@ -196,6 +197,10 @@ public final class ZLinkFrameworkLifecycle
 
     public ZLinkActorDirectory actorDirectory() {
         return requireRuntime().actorDirectory();
+    }
+
+    public ZLinkActorClient actorClient() {
+        return requireRuntime().actorClient();
     }
 
     @Override

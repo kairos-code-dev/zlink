@@ -138,6 +138,7 @@ import systems.zlink.framework.runtime.streams.ZLinkStreamHeaderFlag;
 import systems.zlink.framework.streams.ZLinkStreamMessageKind;
 
 public final class ZLinkSpotRuntime implements ZLinkSpotManager, AutoCloseable {
+    private static final int ACTOR_RECV_INFO_NO_BIND = 1;
     private static final String FRAMEWORK_ERROR_REPLY_MARKER = "ZLinkFrameworkError";
 
     private static final String REMOTE_BOUND_SESSION_BIND_PACKET_NAME =
@@ -1190,7 +1191,8 @@ public final class ZLinkSpotRuntime implements ZLinkSpotManager, AutoCloseable {
         ZLinkBackendActorReceived headerPart,
         Message payload,
         String replyFailureMessage) {
-        if (!actorRuntime.hasBoundSession(actor)) {
+        boolean noBindRequest = isNoBindActorRequest(packetHeader, headerPart);
+        if (!noBindRequest && !actorRuntime.hasBoundSession(actor)) {
             actorRuntime.bindNativeSession(
                 actor,
                 primaryNode,
@@ -1224,6 +1226,21 @@ public final class ZLinkSpotRuntime implements ZLinkSpotManager, AutoCloseable {
                         .thenApply(ignored -> Optional.empty())));
         return stage.handle((reply, error) -> {
                 if (error != null) {
+                    reportDispatchError(
+                        ZLinkDispatchErrorSurface.SPOT_ACTOR,
+                        actorKind,
+                        ZLinkDispatchErrorReason.HANDLER_EXCEPTION,
+                        actorIsRequest
+                            ? ZLinkDispatchErrorAction.REPLY_ERROR
+                            : ZLinkDispatchErrorAction.DROP,
+                        actorPacketName,
+                        null,
+                        null,
+                        null,
+                        actorId,
+                        headerPart.sourceNodeRid(),
+                        packetHeader.requestSeq().map(String::valueOf).orElse(null),
+                        error);
                     return Optional.of(new ActorDispatchReply(
                         ActorPacketFrames.encodeError(packetHeader, error),
                         true));
@@ -1239,6 +1256,21 @@ public final class ZLinkSpotRuntime implements ZLinkSpotManager, AutoCloseable {
                     ? reply.get().message()
                     : ActorPacketFrames.encodeReply(packetHeader, reply.get().message())) {
                     frameBytes = frame.toByteArray();
+                }
+                if (noBindRequest) {
+                    try (Message frame = Message.from(frameBytes)) {
+                        primaryNode.replyActorNoBind(
+                            new ZLinkBackendActorRef(
+                                headerPart.actor().nodeRid(),
+                                actor.actorId(),
+                                headerPart.actor().generation()),
+                            headerPart.sourceNodeRid(),
+                            headerPart.sourceSessionRid(),
+                            headerPart.requestId(),
+                            headerPart.flags(),
+                            List.of(frame));
+                    }
+                    return systems.zlink.framework.ZLinkSubmitStage.completed();
                 }
                 return sendActorBoundSessionWithRetry(
                     primaryNode,
@@ -2507,6 +2539,26 @@ public final class ZLinkSpotRuntime implements ZLinkSpotManager, AutoCloseable {
                 frameBytes = frame.toByteArray();
             } catch (RuntimeException ex) {
                 headerPart.close();
+                return;
+            }
+            if (isNoBindActorRequest(packetHeader, headerPart)) {
+                context.enqueueDispatch(() -> {
+                    try (Message frame = Message.from(frameBytes)) {
+                        primaryNode.replyActorNoBind(
+                            new ZLinkBackendActorRef(
+                                headerPart.actor().nodeRid(),
+                                actorId,
+                                headerPart.actor().generation()),
+                            headerPart.sourceNodeRid(),
+                            headerPart.sourceSessionRid(),
+                            headerPart.requestId(),
+                            headerPart.flags(),
+                            List.of(frame));
+                        return systems.zlink.framework.ZLinkSubmitStage.completed();
+                    } finally {
+                        headerPart.close();
+                    }
+                });
                 return;
             }
             context.enqueueDispatch(() -> sendActorBoundSessionWithRetry(
@@ -3950,9 +4002,18 @@ public final class ZLinkSpotRuntime implements ZLinkSpotManager, AutoCloseable {
             received.sourceNodeRid(),
             received.sourceSessionRid(),
             received.requestSeq(),
+            received.requestId(),
             received.flags(),
             Message.from(received.message()),
             received.hasMore());
+    }
+
+    private static boolean isNoBindActorRequest(
+        ActorPacketFrames.Header packetHeader,
+        ZLinkBackendActorReceived headerPart) {
+        return packetHeader.requestSeq().isPresent()
+            && headerPart.requestId() != 0
+            && (headerPart.flags() & ACTOR_RECV_INFO_NO_BIND) != 0;
     }
 
     private void reportDispatchError(
@@ -5264,6 +5325,26 @@ public final class ZLinkSpotRuntime implements ZLinkSpotManager, AutoCloseable {
                 frameBytes = frame.toByteArray();
             } catch (RuntimeException ex) {
                 headerPart.close();
+                return;
+            }
+            if (isNoBindActorRequest(packetHeader, headerPart)) {
+                context.enqueueDispatch(() -> {
+                    try (Message frame = Message.from(frameBytes)) {
+                        primaryNode.replyActorNoBind(
+                            new ZLinkBackendActorRef(
+                                headerPart.actor().nodeRid(),
+                                actorId,
+                                headerPart.actor().generation()),
+                            headerPart.sourceNodeRid(),
+                            headerPart.sourceSessionRid(),
+                            headerPart.requestId(),
+                            headerPart.flags(),
+                            List.of(frame));
+                        return systems.zlink.framework.ZLinkSubmitStage.completed();
+                    } finally {
+                        headerPart.close();
+                    }
+                });
                 return;
             }
             context.enqueueDispatch(() -> sendActorBoundSessionWithRetry(

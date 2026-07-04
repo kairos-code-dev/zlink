@@ -2,6 +2,7 @@ package systems.zlink.samples.tictactoe.client;
 
 import java.net.URI;
 import java.time.Duration;
+import systems.zlink.framework.codecs.msgpack.ZLinkMessagePackCodec;
 import systems.zlink.httpclient.ZLinkHttpClient;
 import systems.zlink.samples.tictactoe.shared.contracts.AuthenticateReq;
 import systems.zlink.samples.tictactoe.shared.contracts.AuthenticateRes;
@@ -21,7 +22,6 @@ import systems.zlink.stream.connector.ZLinkStreamConnector;
 import systems.zlink.stream.connector.ZLinkStreamConnectorFactory;
 import systems.zlink.stream.connector.ZLinkStreamConnectorOptions;
 import systems.zlink.stream.connector.ZLinkStreamDispatchMode;
-import systems.zlink.framework.codecs.msgpack.ZLinkMessagePackCodec;
 
 public final class TicTacToeClientScenario {
     public void run(TicTacToeClientOptions options) throws Exception {

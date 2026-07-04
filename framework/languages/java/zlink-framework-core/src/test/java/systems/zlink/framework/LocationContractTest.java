@@ -22,12 +22,15 @@ import java.util.stream.Stream;
 import org.junit.jupiter.api.Test;
 import systems.zlink.contracts.core.RoutingId;
 import systems.zlink.framework.actors.ZLinkActorDirectory;
+import systems.zlink.framework.actors.ZLinkActorClient;
 import systems.zlink.framework.actors.ZLinkActorJoinCall;
 import systems.zlink.framework.actors.ZLinkActorJoinResult;
 import systems.zlink.framework.actors.ZLinkActorManager;
 import systems.zlink.framework.actors.ZLinkActorPlacement;
+import systems.zlink.framework.actors.ZLinkActorRequestCall;
 import systems.zlink.framework.actors.ZLinkActorRef;
 import systems.zlink.framework.actors.ZLinkActorRefSnapshot;
+import systems.zlink.framework.actors.ZLinkActorSendCall;
 import systems.zlink.framework.actors.ZLinkActorYieldJoinCall;
 import systems.zlink.framework.channels.ZLinkRequestCall;
 import systems.zlink.framework.channels.ZLinkRouteClient;
@@ -309,6 +312,39 @@ final class LocationContractTest {
             .getMethod("bindOrGet", ZLinkActorRef.class)
             .getReturnType());
         assertMissing("systems.zlink.framework.channels.ZLinkRoute" + "RequestCall");
+    }
+
+    @Test
+    void actorClientPinsL13CompletionStageSurface() throws Exception {
+        assertEquals(ZLinkActorSendCall.class, ZLinkActorClient.class
+            .getMethod("sendToActor", String.class, Object.class)
+            .getReturnType());
+        assertEquals(ZLinkActorRequestCall.class, ZLinkActorClient.class
+            .getMethod("requestToActor", String.class, Object.class)
+            .getReturnType());
+        assertEquals(ZLinkActorSendCall.class, ZLinkActorSendCall.class
+            .getMethod("packetName", String.class)
+            .getReturnType());
+        assertEquals(CompletionStage.class, ZLinkActorSendCall.class
+            .getMethod("submit")
+            .getReturnType());
+        assertEquals(void.class, ZLinkActorSendCall.class
+            .getMethod("await")
+            .getReturnType());
+        assertEquals(ZLinkActorRequestCall.class, ZLinkActorRequestCall.class
+            .getMethod("packetName", String.class)
+            .getReturnType());
+        assertEquals(ZLinkActorRequestCall.class, ZLinkActorRequestCall.class
+            .getMethod("timeout", java.time.Duration.class)
+            .getReturnType());
+        assertEquals(CompletionStage.class, ZLinkActorRequestCall.class
+            .getMethod("submit", Class.class)
+            .getReturnType());
+        assertEquals(Object.class, ZLinkActorRequestCall.class
+            .getMethod("await", Class.class)
+            .getReturnType());
+        assertNoPublicMethod(ZLinkActorSendCall.class, "submit", Class.class);
+        assertNoPublicMethod(ZLinkActorRequestCall.class, "submit");
     }
 
     @Test

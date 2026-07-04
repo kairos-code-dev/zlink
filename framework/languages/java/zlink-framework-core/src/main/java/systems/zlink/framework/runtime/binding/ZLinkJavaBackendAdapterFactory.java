@@ -23,6 +23,7 @@ import systems.zlink.contracts.service.spot.Actor;
 import systems.zlink.contracts.service.spot.ActorJoinCompletion;
 import systems.zlink.contracts.service.spot.ActorJoinRequest;
 import systems.zlink.contracts.service.spot.ActorJoinSubmitOperation;
+import systems.zlink.contracts.service.spot.ActorRecvInfo;
 import systems.zlink.contracts.service.spot.ActorReceived;
 import systems.zlink.contracts.service.spot.ActorRef;
 import systems.zlink.contracts.service.spot.ActorUnbindOperation;
@@ -41,6 +42,7 @@ import systems.zlink.contracts.sockets.DealerSocket;
 import systems.zlink.contracts.sockets.PubSocket;
 import systems.zlink.contracts.sockets.RecvFlags;
 import systems.zlink.contracts.sockets.RecvResult;
+import systems.zlink.contracts.sockets.RequestResult;
 import systems.zlink.contracts.sockets.RouterSocket;
 import systems.zlink.contracts.sockets.SendFlags;
 import systems.zlink.contracts.sockets.Socket;
@@ -410,6 +412,37 @@ public final class ZLinkJavaBackendAdapterFactory implements ZLinkBackendAdapter
                 .thenApply(ignored -> null);
         }
         @Override public boolean sendActorBoundSession(ZLinkBackendActorRef actor, List<Message> parts, SendFlags flags) { return submit(spotNode.sendActorBoundSession(new ActorRef(actor.nodeRid(), actor.actorId(), actor.generation())), parts, flags); }
+        @Override public void replyActorNoBind(
+            ZLinkBackendActorRef actor,
+            RoutingId sourceNodeRid,
+            RoutingId sourceSessionRid,
+            long requestId,
+            int flags,
+            List<Message> parts) {
+            spotNode.replyActorNoBind(
+                new ActorRecvInfo(
+                    new ActorRef(actor.nodeRid(), actor.actorId(), actor.generation()),
+                    sourceNodeRid,
+                    sourceSessionRid,
+                    requestId,
+                    flags),
+                parts,
+                RequestResult.OK);
+        }
+        @Override public boolean sendToActor(ZLinkBackendActorRef actor, List<Message> parts, SendFlags flags) { return submit(spotNode.sendToActor(new ActorRef(actor.nodeRid(), actor.actorId(), actor.generation())), parts, flags); }
+        @Override public CompletionStage<List<Message>> requestToActor(ZLinkBackendActorRef actor, List<Message> parts, SendFlags flags, Duration timeout) {
+            if (parts.isEmpty()) {
+                throw new IllegalArgumentException("actor request must contain at least one part");
+            }
+            var submit = spotNode.requestToActor(new ActorRef(actor.nodeRid(), actor.actorId(), actor.generation()))
+                .message(parts.get(0))
+                .timeout(timeout);
+            for (int i = 1; i < parts.size(); i++) {
+                submit = submit.message(parts.get(i));
+            }
+            return submit.submit()
+                .thenApply(reply -> reply.stream().map(Message::from).toList());
+        }
         @Override public boolean forwardActorBoundSession(ZLinkBackendActorRef actor, RoutingId sourceNodeRid, RoutingId sourceSessionRid, List<Message> parts, SendFlags flags) { return submit(spotNode.forwardActorBoundSession(new ActorRef(actor.nodeRid(), actor.actorId(), actor.generation()), sourceNodeRid, sourceSessionRid), parts, flags); }
         @Override public void bindRemoteActorBoundSession(ZLinkBackendActorRef actor, RoutingId sourceNodeRid, RoutingId sourceSessionRid) { spotNode.bindRemoteActorBoundSession(new ActorRef(actor.nodeRid(), actor.actorId(), actor.generation()), sourceNodeRid, sourceSessionRid); }
         @Override public void closeActorBoundSession(ZLinkBackendActorRef actor, Duration timeout) { spotNode.closeActorBoundSession(new ActorRef(actor.nodeRid(), actor.actorId(), actor.generation()), timeout); }
@@ -560,6 +593,7 @@ public final class ZLinkJavaBackendAdapterFactory implements ZLinkBackendAdapter
             info.sourceNodeRid(),
             info.sourceSessionRid(),
             Optional.empty(),
+            info.requestId(),
             info.flags(),
             Message.from(received.message()),
             received.hasMore());

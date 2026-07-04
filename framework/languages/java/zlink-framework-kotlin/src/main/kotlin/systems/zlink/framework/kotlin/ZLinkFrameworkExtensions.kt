@@ -4,6 +4,9 @@ import kotlinx.coroutines.future.await
 import systems.zlink.contracts.core.RoutingId
 import systems.zlink.contracts.messaging.Message
 import systems.zlink.framework.actors.ZLinkActorDirectory
+import systems.zlink.framework.actors.ZLinkActorClient
+import systems.zlink.framework.actors.ZLinkActorRequestCall
+import systems.zlink.framework.actors.ZLinkActorSendCall
 import systems.zlink.framework.actors.ZLinkActorJoinCall
 import systems.zlink.framework.actors.ZLinkActorJoinEntrySpotCall
 import systems.zlink.framework.actors.ZLinkActorJoinResult
@@ -35,6 +38,36 @@ suspend fun <TReply> ZLinkRequestCall.awaitReply(replyType: Class<TReply>): TRep
 
 inline suspend fun <reified TReply> ZLinkRequestCall.awaitReply(): TReply =
     awaitReply(TReply::class.java)
+
+suspend fun ZLinkActorSendCall.awaitSend() {
+    submit().await()
+}
+
+suspend fun <TReply> ZLinkActorRequestCall.awaitReply(replyType: Class<TReply>): TReply =
+    submit(replyType).await()
+
+inline suspend fun <reified TReply> ZLinkActorRequestCall.awaitReply(): TReply =
+    awaitReply(TReply::class.java)
+
+suspend fun ZLinkActorClient.sendToActorAwait(
+    actorId: String,
+    message: Any,
+) {
+    sendToActor(actorId, message).awaitSend()
+}
+
+suspend fun <TReply> ZLinkActorClient.requestToActorAwait(
+    actorId: String,
+    request: Any,
+    replyType: Class<TReply>,
+): TReply =
+    requestToActor(actorId, request).awaitReply(replyType)
+
+inline suspend fun <reified TReply> ZLinkActorClient.requestToActorAwait(
+    actorId: String,
+    request: Any,
+): TReply =
+    requestToActorAwait(actorId, request, TReply::class.java)
 
 suspend fun ZLinkActorDirectory.findActor(actorId: String): ZLinkActorRef? =
     find(actorId).await().orElse(null)

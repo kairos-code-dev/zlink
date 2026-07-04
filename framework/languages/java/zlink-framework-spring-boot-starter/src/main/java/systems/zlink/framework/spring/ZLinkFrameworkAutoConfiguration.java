@@ -144,4 +144,5 @@ public class ZLinkFrameworkAutoConfiguration {
     public ZLinkRouteClient zlinkRouteClient(ZLinkFrameworkLifecycle lifecycle) {
         return lifecycle;
     }
+
 }

@@ -2,23 +2,22 @@ package systems.zlink.samples.deliverydispatch.server.tracking.handlers;
 
 import systems.zlink.framework.channels.ZLinkRequestContext;
 import systems.zlink.framework.channels.ZLinkRequestHandler;
-import systems.zlink.framework.channels.ZLinkClient;
+import systems.zlink.framework.actors.ZLinkActorClient;
 import systems.zlink.framework.handlers.ZLinkHandlerGroup;
 import systems.zlink.samples.deliverydispatch.server.configuration.EvidenceStore;
-import systems.zlink.samples.deliverydispatch.server.configuration.SampleNames;
 import systems.zlink.samples.deliverydispatch.shared.contracts.Messages;
 
 @ZLinkHandlerGroup("tracking")
 public final class DeliveryStatusChangedHandler
     implements ZLinkRequestHandler<Messages.DeliveryStatusChanged, Messages.DeliveryStatusAck> {
     private final EvidenceStore evidenceStore;
-    private final ZLinkClient channels;
+    private final ZLinkActorClient actors;
 
     public DeliveryStatusChangedHandler(
         EvidenceStore evidenceStore,
-        ZLinkClient channels) {
+        ZLinkActorClient actors) {
         this.evidenceStore = evidenceStore;
-        this.channels = channels;
+        this.actors = actors;
     }
 
     @Override
@@ -26,8 +25,16 @@ public final class DeliveryStatusChangedHandler
         Messages.DeliveryStatusChanged request,
         ZLinkRequestContext context) {
         evidenceStore.append(request);
-        channels.requestToChannel(SampleNames.CustomerRouteChannel, request)
-            .await(Messages.DeliveryStatusAck.class);
+        actors.sendToActor(
+                request.customerId(),
+                new Messages.DeliveryStatusUpdatedMsg(
+                    request.deliveryId(),
+                    request.customerId(),
+                    request.status(),
+                    request.courierId(),
+                    request.occurredAt()))
+            .packetName("DeliveryStatusUpdatedMsg")
+            .await();
         return new Messages.DeliveryStatusAck(request.deliveryId(), request.status());
     }
 }

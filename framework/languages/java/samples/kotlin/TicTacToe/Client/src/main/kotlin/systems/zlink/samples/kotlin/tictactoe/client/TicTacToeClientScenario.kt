@@ -5,6 +5,7 @@ import java.net.URI
 import kotlinx.coroutines.async
 import kotlinx.coroutines.coroutineScope
 import kotlinx.coroutines.delay
+import systems.zlink.framework.codecs.msgpack.ZLinkMessagePackCodec
 import systems.zlink.framework.kotlin.await
 import systems.zlink.framework.kotlin.ZLinkKotlinStreamConnector
 import systems.zlink.framework.kotlin.kotlin
@@ -27,7 +28,6 @@ import systems.zlink.samples.kotlin.tictactoe.shared.contracts.WinMilestoneNotif
 import systems.zlink.stream.connector.ZLinkStreamConnectorFactory
 import systems.zlink.stream.connector.ZLinkStreamConnectorOptions
 import systems.zlink.stream.connector.ZLinkStreamDispatchMode
-import systems.zlink.framework.codecs.msgpack.ZLinkMessagePackCodec
 
 class TicTacToeClientScenario {
     suspend fun run(options: TicTacToeClientOptions) = coroutineScope {

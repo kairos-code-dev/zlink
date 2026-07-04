@@ -27,33 +27,33 @@ public final class DispatchWorker {
     }
 
     private void dispatchSuccessful(Messages.AssignDelivery request) {
-        publishStatus(request.deliveryId(), Messages.DeliveryStatus.Assigned, "courier-a");
+        publishStatus(request.deliveryId(), request.customerId(), Messages.DeliveryStatus.Assigned, "courier-a");
         Messages.OfferDeliveryResult offered = offer(request, "courier-a");
         if (!offered.accepted()) {
-            publishStatus(request.deliveryId(), Messages.DeliveryStatus.Failed, "courier-a");
+            publishStatus(request.deliveryId(), request.customerId(), Messages.DeliveryStatus.Failed, "courier-a");
             return;
         }
-        publishStatus(request.deliveryId(), Messages.DeliveryStatus.Accepted, "courier-a");
-        publishStatus(request.deliveryId(), Messages.DeliveryStatus.PickedUp, "courier-a");
-        publishStatus(request.deliveryId(), Messages.DeliveryStatus.Delivered, "courier-a");
+        publishStatus(request.deliveryId(), request.customerId(), Messages.DeliveryStatus.Accepted, "courier-a");
+        publishStatus(request.deliveryId(), request.customerId(), Messages.DeliveryStatus.PickedUp, "courier-a");
+        publishStatus(request.deliveryId(), request.customerId(), Messages.DeliveryStatus.Delivered, "courier-a");
     }
 
     private void dispatchReassigned(Messages.AssignDelivery request) {
-        publishStatus(request.deliveryId(), Messages.DeliveryStatus.Assigned, "courier-a");
+        publishStatus(request.deliveryId(), request.customerId(), Messages.DeliveryStatus.Assigned, "courier-a");
         Messages.OfferDeliveryResult first = offer(request, "courier-a");
         if (first.accepted()) {
-            publishStatus(request.deliveryId(), Messages.DeliveryStatus.Accepted, "courier-a");
-            publishStatus(request.deliveryId(), Messages.DeliveryStatus.Delivered, "courier-a");
+            publishStatus(request.deliveryId(), request.customerId(), Messages.DeliveryStatus.Accepted, "courier-a");
+            publishStatus(request.deliveryId(), request.customerId(), Messages.DeliveryStatus.Delivered, "courier-a");
             return;
         }
-        publishStatus(request.deliveryId(), Messages.DeliveryStatus.Reassigned, "courier-b");
+        publishStatus(request.deliveryId(), request.customerId(), Messages.DeliveryStatus.Reassigned, "courier-b");
         Messages.OfferDeliveryResult second = offer(request, "courier-b");
         if (!second.accepted()) {
-            publishStatus(request.deliveryId(), Messages.DeliveryStatus.Failed, "courier-b");
+            publishStatus(request.deliveryId(), request.customerId(), Messages.DeliveryStatus.Failed, "courier-b");
             return;
         }
-        publishStatus(request.deliveryId(), Messages.DeliveryStatus.Accepted, "courier-b");
-        publishStatus(request.deliveryId(), Messages.DeliveryStatus.Delivered, "courier-b");
+        publishStatus(request.deliveryId(), request.customerId(), Messages.DeliveryStatus.Accepted, "courier-b");
+        publishStatus(request.deliveryId(), request.customerId(), Messages.DeliveryStatus.Delivered, "courier-b");
     }
 
     private Messages.OfferDeliveryResult offer(Messages.AssignDelivery request, String courierId) {
@@ -70,12 +70,14 @@ public final class DispatchWorker {
 
     private void publishStatus(
         String deliveryId,
+        String customerId,
         Messages.DeliveryStatus status,
         String courierId) {
         channels.requestToChannel(
                 SampleNames.TrackingChannel,
                 new Messages.DeliveryStatusChanged(
                     deliveryId,
+                    customerId,
                     status,
                     courierId,
                     Instant.now().toString()))

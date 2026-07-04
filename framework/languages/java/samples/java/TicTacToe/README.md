@@ -2,8 +2,8 @@
 
 Direct STREAM, Spot, and channel-flow sample check.
 
-The Java TicTacToe client and server roles use MessagePack payloads for STREAM
-messages.
+The Java TicTacToe client and server roles use JSON payloads for STREAM,
+channel, actor, and room Spot messages.
 The client verification flow lives in `TicTacToeClientScenario`.
 
 The sample is split into standalone Spring role projects:

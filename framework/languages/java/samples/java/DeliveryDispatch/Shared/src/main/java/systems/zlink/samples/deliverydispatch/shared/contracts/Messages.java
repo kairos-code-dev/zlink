@@ -107,6 +107,16 @@ public final class Messages {
     @ZLinkPacket("DeliveryStatusChanged")
     public record DeliveryStatusChanged(
         String deliveryId,
+        String customerId,
+        DeliveryStatus status,
+        String courierId,
+        String occurredAt) {
+    }
+
+    @ZLinkPacket("DeliveryStatusUpdatedMsg")
+    public record DeliveryStatusUpdatedMsg(
+        String deliveryId,
+        String customerId,
         DeliveryStatus status,
         String courierId,
         String occurredAt) {

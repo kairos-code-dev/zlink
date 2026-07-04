@@ -15,6 +15,7 @@ import systems.zlink.contracts.messaging.Message
 import systems.zlink.framework.CancellationToken
 import systems.zlink.framework.ZLinkSubmitStage
 import systems.zlink.framework.actors.ZLinkActor
+import systems.zlink.framework.actors.ZLinkActorClient
 import systems.zlink.framework.actors.ZLinkActorContext
 import systems.zlink.framework.actors.ZLinkActorDirectory
 import systems.zlink.framework.actors.ZLinkActorJoinCall
@@ -22,6 +23,8 @@ import systems.zlink.framework.actors.ZLinkActorJoinResult
 import systems.zlink.framework.actors.ZLinkActorJoinSpotCall
 import systems.zlink.framework.actors.ZLinkActorPlacement
 import systems.zlink.framework.actors.ZLinkActorRef
+import systems.zlink.framework.actors.ZLinkActorRequestCall
+import systems.zlink.framework.actors.ZLinkActorSendCall
 import systems.zlink.framework.channels.ZLinkRequestCall
 import systems.zlink.framework.channels.ZLinkRouteClient
 import systems.zlink.framework.channels.ZLinkSendCall
@@ -96,6 +99,20 @@ class KotlinFrameworkExtensionsContractTest {
     }
 
     @Test
+    fun `actor client suspend extensions delegate to Java actor client calls`() = runBlocking {
+        val actorClient = RecordingActorClient(ActorReply("reply"))
+
+        actorClient.sendToActorAwait("actor-a", ActorMessage("send"))
+        val reply = actorClient.requestToActorAwait<ActorReply>("actor-a", ActorMessage("request"))
+
+        assertEquals(ActorReply("reply"), reply)
+        assertEquals("actor-a", actorClient.sentActorId)
+        assertEquals(ActorMessage("send"), actorClient.sentMessage)
+        assertEquals("actor-a", actorClient.requestedActorId)
+        assertEquals(ActorMessage("request"), actorClient.requestedMessage)
+    }
+
+    @Test
     fun `typed spot manager extensions delegate to Java class based surface`() = runBlocking {
         val manager = RecordingSpotManager()
 
@@ -144,6 +161,10 @@ class KotlinFrameworkExtensionsContractTest {
     }
 
     private data class CreateActor(val value: String)
+
+    private data class ActorMessage(val value: String)
+
+    private data class ActorReply(val value: String)
 
     private class RecordingActorDirectory(
         private val actorRef: ZLinkActorRef,
@@ -262,6 +283,45 @@ class KotlinFrameworkExtensionsContractTest {
         override fun metadata(key: String, value: String): ZLinkRequestCall = this
 
         override fun timeout(timeout: Duration): ZLinkRequestCall = this
+
+        override fun <T : Any?> submit(replyType: Class<T>): CompletionStage<T> =
+            CompletableFuture.completedFuture(replyType.cast(reply))
+    }
+
+    private class RecordingActorClient<TReply>(
+        private val reply: TReply,
+    ) : ZLinkActorClient {
+        var sentActorId: String? = null
+        var sentMessage: Any? = null
+        var requestedActorId: String? = null
+        var requestedMessage: Any? = null
+
+        override fun sendToActor(actorId: String, message: Any): ZLinkActorSendCall {
+            sentActorId = actorId
+            sentMessage = message
+            return RecordingActorSendCall()
+        }
+
+        override fun requestToActor(actorId: String, request: Any): ZLinkActorRequestCall {
+            requestedActorId = actorId
+            requestedMessage = request
+            return RecordingActorRequestCall(reply)
+        }
+    }
+
+    private class RecordingActorSendCall : ZLinkActorSendCall {
+        override fun packetName(packetName: String): ZLinkActorSendCall = this
+
+        override fun submit(): CompletionStage<Void> =
+            CompletableFuture.completedFuture(null)
+    }
+
+    private class RecordingActorRequestCall<TReply>(
+        private val reply: TReply,
+    ) : ZLinkActorRequestCall {
+        override fun packetName(packetName: String): ZLinkActorRequestCall = this
+
+        override fun timeout(timeout: Duration): ZLinkActorRequestCall = this
 
         override fun <T : Any?> submit(replyType: Class<T>): CompletionStage<T> =
             CompletableFuture.completedFuture(replyType.cast(reply))

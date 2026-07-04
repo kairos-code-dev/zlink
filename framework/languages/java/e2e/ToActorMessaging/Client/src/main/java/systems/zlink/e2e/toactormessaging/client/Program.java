@@ -1,0 +1,85 @@
+package systems.zlink.e2e.toactormessaging.client;
+
+import systems.zlink.e2e.toactormessaging.shared.Contracts;
+import systems.zlink.e2e.toactormessaging.shared.Env;
+import systems.zlink.e2e.toactormessaging.shared.JsonHttp;
+
+public final class Program {
+    private Program() {
+    }
+
+    public static void main(String... args) {
+        String actorUrl = Env.get("ZLINK_JAVA_E2E_ACTOR_HTTP");
+        String callerUrl = Env.get("ZLINK_JAVA_E2E_CALLER_HTTP");
+
+        ensure(actorUrl, "TA-A1", "ta-a1");
+        assertCall(callerUrl, "TA-A1-send", "ta-a1", "a1-send", "sent", true);
+        assertCall(callerUrl, "TA-A1-request", "ta-a1", "a1-request", "reply:a1-request", false);
+
+        ensure(actorUrl, "TA-A2", "ta-a2");
+        assertCall(callerUrl, "TA-A2-send", "ta-a2", "a2-send", "sent", true);
+        assertCall(callerUrl, "TA-A2-request", "ta-a2", "a2-request", "reply:a2-request", false);
+
+        assertFailure(callerUrl, "TA-A3-before-bind", "ta-a3-missing", "ACTOR_ROUTE_NOT_FOUND", false);
+        ensure(actorUrl, "TA-A3", "ta-a3");
+        assertCall(callerUrl, "TA-A3-after-bind-send", "ta-a3", "a3-send", "sent", true);
+        assertCall(callerUrl, "TA-A3-after-bind-request", "ta-a3", "a3-request", "reply:a3-request", false);
+
+        ensure(actorUrl, "TA-A4", "ta-a4");
+        assertCall(callerUrl, "TA-A4-disconnected-send", "ta-a4", "a4-send", "sent", true);
+        assertCall(callerUrl, "TA-A4-disconnected-request", "ta-a4", "a4-request", "reply:a4-request", false);
+        assertFailure(callerUrl, "TA-A4-destroyed", "ta-a4-destroyed", "ACTOR_ROUTE_NOT_FOUND", false);
+
+        assertFailure(callerUrl, "TA-B1-missing-send", "missing-actor", "ACTOR_ROUTE_NOT_FOUND", true);
+        assertFailure(callerUrl, "TA-B1-missing-request", "missing-actor", "ACTOR_ROUTE_NOT_FOUND", false);
+
+        assertCall(callerUrl, "TA-B2-live-after-reresolve", "ta-b2", "b2-request", "reply:b2-request", false);
+        assertCall(callerUrl, "TA-B3-route-restored", "ta-b3", "b3-request", "reply:b3-request", false);
+
+        System.out.println("to-actor-messaging e2e result=passed");
+    }
+
+    private static void ensure(String actorUrl, String scenario, String actorId) {
+        JsonHttp.postJson(
+            actorUrl + "/ensure",
+            new Contracts.ActorCallRequest(scenario, actorId, "ensure"),
+            Contracts.ActorCallResponse.class);
+    }
+
+    private static void assertCall(
+        String callerUrl,
+        String scenario,
+        String actorId,
+        String value,
+        String expected,
+        boolean send) {
+        String endpoint = send ? "/send" : "/request";
+        Contracts.ActorCallResponse response = JsonHttp.postJson(
+            callerUrl + endpoint,
+            new Contracts.ActorCallRequest(scenario, actorId, value),
+            Contracts.ActorCallResponse.class);
+        require(response.errorKind() == null, scenario + " unexpected error " + response.errorKind());
+        require(expected.equals(response.result()), scenario + " expected " + expected + " got " + response.result());
+    }
+
+    private static void assertFailure(
+        String callerUrl,
+        String scenario,
+        String actorId,
+        String expectedKind,
+        boolean send) {
+        String endpoint = send ? "/send" : "/request";
+        Contracts.ActorCallResponse response = JsonHttp.postJson(
+            callerUrl + endpoint,
+            new Contracts.ActorCallRequest(scenario, actorId, "missing"),
+            Contracts.ActorCallResponse.class);
+        require(expectedKind.equals(response.errorKind()),
+            scenario + " expected " + expectedKind + " got " + response.errorKind());
+    }
+
+    private static void require(boolean condition, String message) {
+        if (!condition) {
+            throw new IllegalStateException(message);
+        }
+    }
+}

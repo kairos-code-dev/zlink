@@ -9,6 +9,7 @@ public record ZLinkBackendActorReceived(
     RoutingId sourceNodeRid,
     RoutingId sourceSessionRid,
     Optional<Long> requestSeq,
+    long requestId,
     int flags,
     Message message,
     boolean hasMore) implements AutoCloseable {

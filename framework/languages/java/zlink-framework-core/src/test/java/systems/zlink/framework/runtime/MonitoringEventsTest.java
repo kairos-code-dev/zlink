@@ -388,6 +388,35 @@ final class MonitoringEventsTest {
         }
 
         @Override
+        public void replyActorNoBind(
+            ZLinkBackendActorRef actor,
+            RoutingId sourceNodeRid,
+            RoutingId sourceSessionRid,
+            long requestId,
+            int flags,
+            List<Message> parts) {
+            throw new UnsupportedOperationException("reply actor no-bind is not used by this test");
+        }
+
+        @Override
+        public boolean sendToActor(
+            ZLinkBackendActorRef actor,
+            List<Message> parts,
+            SendFlags flags) {
+            return false;
+        }
+
+        @Override
+        public java.util.concurrent.CompletionStage<List<Message>> requestToActor(
+            ZLinkBackendActorRef actor,
+            List<Message> parts,
+            SendFlags flags,
+            java.time.Duration timeout) {
+            return java.util.concurrent.CompletableFuture.failedFuture(
+                new UnsupportedOperationException("request to actor is not used by this test"));
+        }
+
+        @Override
         public boolean forwardActorBoundSession(
             ZLinkBackendActorRef actor,
             RoutingId sourceNodeRid,

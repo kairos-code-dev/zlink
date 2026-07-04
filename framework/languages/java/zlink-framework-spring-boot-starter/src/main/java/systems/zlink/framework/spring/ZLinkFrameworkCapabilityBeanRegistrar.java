@@ -16,6 +16,7 @@ import org.springframework.beans.factory.support.BeanDefinitionRegistry;
 import org.springframework.beans.factory.support.RootBeanDefinition;
 import org.springframework.context.annotation.ClassPathScanningCandidateComponentProvider;
 import org.springframework.core.type.filter.AssignableTypeFilter;
+import systems.zlink.framework.actors.ZLinkActorClient;
 import systems.zlink.framework.actors.ZLinkActorDirectory;
 import systems.zlink.framework.actors.ZLinkActorManager;
 import systems.zlink.framework.runtime.configuration.DefaultZLinkFrameworkOptions;
@@ -33,6 +34,7 @@ final class ZLinkFrameworkCapabilityBeanRegistrar implements BeanFactoryPostProc
         "zlinkSpotPublisherClient";
     private static final String ACTOR_MANAGER_BEAN_NAME = "zlinkActorManager";
     private static final String ACTOR_DIRECTORY_BEAN_NAME = "zlinkActorDirectory";
+    private static final String ACTOR_CLIENT_BEAN_NAME = "zlinkActorClient";
 
     @Override
     public void postProcessBeanFactory(ConfigurableListableBeanFactory beanFactory)
@@ -52,6 +54,7 @@ final class ZLinkFrameworkCapabilityBeanRegistrar implements BeanFactoryPostProc
             .anyMatch(node -> !node.actorFactories().isEmpty());
         boolean hasSpotPublisherClient = options.registration().spotNodes().stream()
             .anyMatch(node -> node.pubSubEnabled());
+        boolean hasLocationStore = options.registration().locations().enabled();
 
         if (hasSpotNode && !hasBean(beanFactory, ZLinkSpotManager.class)) {
             registerDelegate(registry, SPOT_MANAGER_BEAN_NAME, ZLinkFrameworkSpotManagerBean.class);
@@ -70,6 +73,9 @@ final class ZLinkFrameworkCapabilityBeanRegistrar implements BeanFactoryPostProc
         }
         if (hasSpotNode && hasActorFactory && !hasBean(beanFactory, ZLinkActorDirectory.class)) {
             registerDelegate(registry, ACTOR_DIRECTORY_BEAN_NAME, ZLinkFrameworkActorDirectoryBean.class);
+        }
+        if (hasSpotNode && hasLocationStore && !hasBean(beanFactory, ZLinkActorClient.class)) {
+            registerDelegate(registry, ACTOR_CLIENT_BEAN_NAME, ZLinkFrameworkActorClientBean.class);
         }
     }
 

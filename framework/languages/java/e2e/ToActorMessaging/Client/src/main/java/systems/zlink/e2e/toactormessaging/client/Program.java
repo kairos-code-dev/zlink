@@ -12,20 +12,20 @@ public final class Program {
         String actorUrl = Env.get("ZLINK_JAVA_E2E_ACTOR_HTTP");
         String callerUrl = Env.get("ZLINK_JAVA_E2E_CALLER_HTTP");
 
-        ensure(actorUrl, "TA-A1", "ta-a1");
+        ensureReady(actorUrl, callerUrl, "TA-A1", "ta-a1");
         assertCall(callerUrl, "TA-A1-send", "ta-a1", "a1-send", "sent", true);
         assertCall(callerUrl, "TA-A1-request", "ta-a1", "a1-request", "reply:a1-request", false);
 
-        ensure(actorUrl, "TA-A2", "ta-a2");
+        ensureReady(actorUrl, callerUrl, "TA-A2", "ta-a2");
         assertCall(callerUrl, "TA-A2-send", "ta-a2", "a2-send", "sent", true);
         assertCall(callerUrl, "TA-A2-request", "ta-a2", "a2-request", "reply:a2-request", false);
 
         assertFailure(callerUrl, "TA-A3-before-bind", "ta-a3-missing", "ACTOR_ROUTE_NOT_FOUND", false);
-        ensure(actorUrl, "TA-A3", "ta-a3");
+        ensureReady(actorUrl, callerUrl, "TA-A3", "ta-a3");
         assertCall(callerUrl, "TA-A3-after-bind-send", "ta-a3", "a3-send", "sent", true);
         assertCall(callerUrl, "TA-A3-after-bind-request", "ta-a3", "a3-request", "reply:a3-request", false);
 
-        ensure(actorUrl, "TA-A4", "ta-a4");
+        ensureReady(actorUrl, callerUrl, "TA-A4", "ta-a4");
         assertCall(callerUrl, "TA-A4-disconnected-send", "ta-a4", "a4-send", "sent", true);
         assertCall(callerUrl, "TA-A4-disconnected-request", "ta-a4", "a4-request", "reply:a4-request", false);
         assertFailure(callerUrl, "TA-A4-destroyed", "ta-a4-destroyed", "ACTOR_ROUTE_NOT_FOUND", false);
@@ -46,6 +46,41 @@ public final class Program {
             Contracts.ActorCallResponse.class);
     }
 
+    private static void ensureReady(String actorUrl, String callerUrl, String scenario, String actorId) {
+        ensure(actorUrl, scenario, actorId);
+        waitUntilReady(callerUrl, scenario + "-ready", actorId);
+    }
+
+    private static void waitUntilReady(String callerUrl, String scenario, String actorId) {
+        long deadline = System.nanoTime() + 5_000_000_000L;
+        Contracts.ActorCallResponse response = null;
+        while (System.nanoTime() < deadline) {
+            response = call(callerUrl, scenario, actorId, "ready", false);
+            if (response.errorKind() == null && "reply:ready".equals(response.result())) {
+                return;
+            }
+            if (!isConvergenceError(response.errorKind())) {
+                break;
+            }
+            sleepBriefly();
+        }
+        String error = response == null ? "no response" : response.errorKind();
+        throw new IllegalStateException(scenario + " readiness failed " + error);
+    }
+
+    private static boolean isConvergenceError(String errorKind) {
+        return "REQUEST_FAILED".equals(errorKind) || "ACTOR_ROUTE_NOT_FOUND".equals(errorKind);
+    }
+
+    private static void sleepBriefly() {
+        try {
+            Thread.sleep(100);
+        } catch (InterruptedException ex) {
+            Thread.currentThread().interrupt();
+            throw new IllegalStateException("readiness wait interrupted", ex);
+        }
+    }
+
     private static void assertCall(
         String callerUrl,
         String scenario,
@@ -53,11 +88,7 @@ public final class Program {
         String value,
         String expected,
         boolean send) {
-        String endpoint = send ? "/send" : "/request";
-        Contracts.ActorCallResponse response = JsonHttp.postJson(
-            callerUrl + endpoint,
-            new Contracts.ActorCallRequest(scenario, actorId, value),
-            Contracts.ActorCallResponse.class);
+        Contracts.ActorCallResponse response = call(callerUrl, scenario, actorId, value, send);
         require(response.errorKind() == null, scenario + " unexpected error " + response.errorKind());
         require(expected.equals(response.result()), scenario + " expected " + expected + " got " + response.result());
     }
@@ -75,6 +106,19 @@ public final class Program {
             Contracts.ActorCallResponse.class);
         require(expectedKind.equals(response.errorKind()),
             scenario + " expected " + expectedKind + " got " + response.errorKind());
+    }
+
+    private static Contracts.ActorCallResponse call(
+        String callerUrl,
+        String scenario,
+        String actorId,
+        String value,
+        boolean send) {
+        String endpoint = send ? "/send" : "/request";
+        return JsonHttp.postJson(
+            callerUrl + endpoint,
+            new Contracts.ActorCallRequest(scenario, actorId, value),
+            Contracts.ActorCallResponse.class);
     }
 
     private static void require(boolean condition, String message) {

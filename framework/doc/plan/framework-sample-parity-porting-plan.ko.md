@@ -14,7 +14,7 @@
 | Bingo | ✅ | ✅ | ✅ | ✅ | ✅ |
 | DeliveryDispatch | ✅ | ✅ | ✅ | ✅ | ✅ |
 | SupportChat | ✅ | **⬜ P-N1** | ✅ | ✅ | **⬜ P-C1** |
-| GameQuest | ✅ | **⬜ P-N2** | ✅(완성도 확인 P-J1) | **⬜ P-K1** | **⬜ P-C2** |
+| GameQuest | ✅ | **⬜ P-N2** | **⬜ P-J1(미구현 실측)** | **⬜ P-K1** | **⬜ P-C2** |
 | ShoppingMall | ✅ | **⬜ P-N3** | ✅ | **⬜ P-K2** | **⬜ P-C3** |
 
 갭 합계: **8건 포팅 + 1건 완성도 확인**(P-J1: java GameQuest는 디렉터리·빌드는 있으나

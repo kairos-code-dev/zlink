@@ -6,9 +6,9 @@ import {
   ZLINK_SPOT_MANAGER,
   zlinkRequestHandler
 } from '@zlink-systems/nestjs';
-import { ZLinkMessage, zlinkActorRefSnapshotFrom } from '@zlink-systems/framework';
+import { ZLinkMessage } from '@zlink-systems/framework';
 import { SampleNames } from '../../../Shared/Configuration/sample-names';
-import { PacketNames } from '../../../Shared/Contracts/messages';
+import { actorRefForMessage, PacketNames } from '../../../Shared/Contracts/messages';
 import { EvidenceStore } from '../../Configuration/evidence-store';
 import { DeliverySpotDirectory } from '../Spots/DeliveryTrackingSpot/delivery-spot-directory';
 import { DeliveryTrackingSpot } from '../Spots/DeliveryTrackingSpot/delivery-tracking-spot';
@@ -44,7 +44,7 @@ class EnsureCustomerActorHandler implements ZLinkRequestHandler<EnsureCustomerAc
     const actor = await this.actors.getOrCreate(request.customerId, SampleNames.customerActorType, request);
     return {
       customerId: request.customerId,
-      actor: zlinkActorRefSnapshotFrom(actor)
+      actor: actorRefForMessage(actor)
     };
   }
 }

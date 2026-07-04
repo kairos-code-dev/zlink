@@ -9,6 +9,7 @@ import { DeliverySpotDirectory } from './Spots/DeliveryTrackingSpot/delivery-spo
 import { DeliveryTrackingSpot } from './Spots/DeliveryTrackingSpot/delivery-tracking-spot';
 import {
   DeliveryStatusChangedHandler,
+  DeliveryStatusUpdatedHandler,
   EnsureCustomerActorHandler,
   SubscribeCustomerToDeliveryHandler
 } from './Handlers/tracking-handlers';
@@ -55,6 +56,7 @@ function createTrackingModule(config: DeliveryDispatchServerConfig, evidence: Ev
       DeliveryTrackingSpot,
       EnsureCustomerActorHandler,
       SubscribeCustomerToDeliveryHandler,
+      DeliveryStatusUpdatedHandler,
       DeliveryStatusChangedHandler
     ]
   })(TrackingModule);

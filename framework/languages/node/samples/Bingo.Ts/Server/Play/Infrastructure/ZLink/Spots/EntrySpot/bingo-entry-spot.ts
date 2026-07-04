@@ -13,6 +13,7 @@ import { PacketNames } from '../../../../../../Shared/Contracts/messages';
 import type {
   ZLinkEntrySpot,
   ZLinkEntrySpotContext,
+  ZLinkMessage,
   ZLinkSpotManager
 } from '@zlink-systems/framework';
 import type {

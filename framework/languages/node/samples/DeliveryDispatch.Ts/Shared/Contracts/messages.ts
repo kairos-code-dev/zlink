@@ -1,4 +1,4 @@
-import type { ZLinkActorRefSnapshot } from '@zlink-systems/framework';
+import type { ActorRef, RoutingId } from '@zlink-systems/framework';
 
 type DeliveryStatus = 'Created' | 'Assigned' | 'Accepted' | 'Reassigned' | 'PickedUp' | 'Delivered' | 'Failed';
 
@@ -20,7 +20,7 @@ type EnsureCustomerActorReq = {
 
 type EnsureCustomerActorRes = {
   customerId: string;
-  actor: ZLinkActorRefSnapshot;
+  actor: DeliveryDispatchActorRef;
 };
 
 type SubscribeDeliveryReq = {
@@ -40,7 +40,7 @@ type BindCourierReq = {
 
 type BindCourierRes = {
   courierId: string;
-  actor: ZLinkActorRefSnapshot;
+  actor: DeliveryDispatchActorRef;
   sessionRoute: string;
 };
 
@@ -51,7 +51,7 @@ type BindCourierSessionReq = {
 
 type BindCourierSessionRes = {
   courierId: string;
-  actor: ZLinkActorRefSnapshot;
+  actor: DeliveryDispatchActorRef;
   sessionRoute: string;
 };
 
@@ -62,7 +62,13 @@ type EnsureCourierActorReq = {
 
 type EnsureCourierActorRes = {
   courierId: string;
-  actor: ZLinkActorRefSnapshot;
+  actor: DeliveryDispatchActorRef;
+};
+
+type DeliveryDispatchActorRef = {
+  nodeRid: string;
+  actorId: string;
+  generation: number;
 };
 
 type SubscribeCustomerToDeliveryReq = {
@@ -230,6 +236,22 @@ function bindCourierSession(courierId: string): BindCourierSessionReq {
   return { courierId, packetName: () => PacketNames.bindCourierSession };
 }
 
+function actorRefForMessage(actor: ActorRef): DeliveryDispatchActorRef {
+  return {
+    nodeRid: String(actor.nodeRid),
+    actorId: actor.actorId,
+    generation: Number(actor.generation)
+  };
+}
+
+function actorRefFromMessage(actor: DeliveryDispatchActorRef): ActorRef {
+  return {
+    nodeRid: actor.nodeRid as unknown as RoutingId,
+    actorId: actor.actorId,
+    generation: BigInt(actor.generation)
+  };
+}
+
 function deliveryStatusChanged(
   deliveryId: string,
   customerId: string,
@@ -268,6 +290,8 @@ function subscribeDelivery(deliveryId: string): SubscribeDeliveryReq {
 
 export {
   PacketNames,
+  actorRefForMessage,
+  actorRefFromMessage,
   assignDelivery,
   bindCourier,
   bindCourierSession,
@@ -288,6 +312,7 @@ export type {
   BindCourierSessionRes,
   CourierDecisionMsg,
   CreateDeliveryReq,
+  DeliveryDispatchActorRef,
   EnsureCustomerActorRes,
   SubscribeCustomerToDeliveryRes,
   CreateDeliveryRes,

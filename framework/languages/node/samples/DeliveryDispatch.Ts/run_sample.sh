@@ -5,7 +5,7 @@ SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 cd "${SCRIPT_DIR}"
 npm run build >/dev/null
 
-RUN_DIR="$(mktemp -d)"
+RUN_DIR="${DELIVERYDISPATCH_RUN_DIR:-$(mktemp -d)}"
 LOG_DIR="${RUN_DIR}/logs"
 WORK_DIR="${RUN_DIR}/work"
 export DELIVERYDISPATCH_LOG_DIR="${DELIVERYDISPATCH_LOG_DIR:-${SCRIPT_DIR}/logs}"
@@ -45,7 +45,7 @@ cleanup() {
 	  if [[ "${DELIVERYDISPATCH_KEEP_RUN_DIR:-}" == "1" ]]; then
 	    echo "runDir=${RUN_DIR}"
 	  else
-    rm -rf "${RUN_DIR}"
+    [[ -n "${DELIVERYDISPATCH_RUN_DIR:-}" ]] || rm -rf "${RUN_DIR}"
   fi
 }
 trap cleanup EXIT

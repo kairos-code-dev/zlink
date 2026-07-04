@@ -29,7 +29,7 @@ const BingoSamplePlayers = Object.freeze({
 });
 
 const BingoRewardItems = Object.freeze({
-  goldenDauberId: 'rare-golden-dauber',
+  goldenDauberId: 'golden-dauber',
   goldenDauberName: 'Golden Dauber',
   legendaryRarity: 'Legendary'
 });

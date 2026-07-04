@@ -128,6 +128,7 @@ type ReassignDelivery = {
 
 type DeliveryStatusReq = {
   deliveryId: string;
+  customerId: string;
   status: Exclude<DeliveryStatus, 'Created'>;
   courierId?: string;
   occurredAt: string;
@@ -142,6 +143,14 @@ type DeliveryStatusRes = {
 type DeliveryStatusNotify = {
   deliveryId: string;
   status: DeliveryStatus;
+  courierId?: string;
+  occurredAt: string;
+};
+
+type DeliveryStatusUpdatedMsg = {
+  deliveryId: string;
+  customerId: string;
+  status: Exclude<DeliveryStatus, 'Created'>;
   courierId?: string;
   occurredAt: string;
 };
@@ -186,6 +195,7 @@ const PacketNames = {
   deliveryStatusAck: 'DeliveryStatusRes',
   deliveryStatusChanged: 'DeliveryStatusReq',
   deliveryStatusNotify: 'DeliveryStatusNotify',
+  deliveryStatusUpdated: 'DeliveryStatusUpdatedMsg',
   ensureCourierActor: 'EnsureCourierActorReq',
   courierActorEnsured: 'EnsureCourierActorRes',
   ensureCustomerActor: 'EnsureCustomerActorReq',
@@ -222,11 +232,13 @@ function bindCourierSession(courierId: string): BindCourierSessionReq {
 
 function deliveryStatusChanged(
   deliveryId: string,
+  customerId: string,
   status: DeliveryStatusReq['status'],
   courierId?: string
 ): DeliveryStatusReq {
   return {
     deliveryId,
+    customerId,
     status,
     courierId,
     occurredAt: new Date().toISOString(),
@@ -287,6 +299,7 @@ export type {
   DeliveryStatusRes,
   DeliveryStatusReq,
   DeliveryStatusNotify,
+  DeliveryStatusUpdatedMsg,
   EnsureCourierActorReq,
   EnsureCourierActorRes,
   EnsureCustomerActorReq,

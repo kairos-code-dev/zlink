@@ -41,7 +41,7 @@
 
 | ID | 언어 | 샘플 | 상태 | 비고 |
 |----|------|------|:---:|------|
-| P-J1 | java | GameQuest 완성도 확인 | ⬜ | 잔여 모듈 확인 → 미완이면 완성 |
+| P-J1 | java | GameQuest **포팅(재분류)** | ⬜ | SAMP-GJ 실측: 디렉터리만 있고 소스·gradle 등록 없음 — 사실상 미구현. 우선순위: gradle wiring+Shared → GameApi → QuestMission → Client → runner |
 | P-N1 | node | SupportChat | ⬜ | |
 | P-N2 | node | GameQuest | ⬜ | 키스톤: NestJS 모듈+ZLink 채널(HTTP 아님) — dotnet Spring 대응 구조 미러 |
 | P-N3 | node | ShoppingMall | ⬜ | |
@@ -50,6 +50,10 @@
 | P-C1 | cpp | SupportChat | ⬜ | |
 | P-C2 | cpp | GameQuest | ⬜ | |
 | P-C3 | cpp | ShoppingMall | ⬜ | |
+| SAMP-V | dotnet | 6종 샘플 ↔ 공통 샘플 문서 갭 검증·수정 | ✅ | 2026-07-04 갭 0 — 코드·문서 일치 |
+| SAMP-GN | node | 기존 ✅ 샘플(TicTacToe·Bingo) dotnet 대비 갭 수정 | ✅ | 2026-07-04 갭 1건(Bingo reward id drift) 수정 |
+| SAMP-GJ | java+kotlin | 기존 ✅ 샘플(TTT·Bingo·SupportChat·ShoppingMall) dotnet 대비 갭 수정 | ✅ | 2026-07-04 갭 0 — P-J1은 포팅으로 재분류 |
+| SAMP-GC | cpp | 기존 ✅ 샘플(TicTacToe·Bingo) dotnet 대비 갭 수정 | 🟨 | DD 제외 |
 | P-G | 전체 | 최종 게이트 | ⬜ | 매트릭스 전 칸 ✅ + 5언어 러너 일괄 PASS + codex 리뷰 `이슈 없음` |
 
 착수 조건: 각 언어의 L13(actor client) 작업이 해당 언어 트리에서 완료된 후(빌드 등록 파일 충돌

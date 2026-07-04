@@ -32,25 +32,25 @@ class DispatchWorker implements OnModuleInit {
   private async dispatch(request: AssignDeliveryReq): Promise<void> {
     console.error(`deliverydispatch dispatch: assign delivery=${request.deliveryId} customer=${request.customerId}`);
     await new Promise((resolve) => setTimeout(resolve, 100));
-    await this.publishStatus(deliveryStatusChanged(request.deliveryId, 'Assigned', 'courier-a'));
+    await this.publishStatus(deliveryStatusChanged(request.deliveryId, request.customerId, 'Assigned', 'courier-a'));
 
     const first = await this.tryOffer(request, 'courier-a');
     if (first.accepted) {
-      await this.continueAcceptedDelivery(request.deliveryId, first.courierId);
+      await this.continueAcceptedDelivery(request.deliveryId, request.customerId, first.courierId);
       return;
     }
 
-    await this.publishStatus(deliveryStatusChanged(request.deliveryId, 'Reassigned', 'courier-b'));
+    await this.publishStatus(deliveryStatusChanged(request.deliveryId, request.customerId, 'Reassigned', 'courier-b'));
     const second = await this.requestChannel<OfferDeliveryRes>(
       SampleNames.courierRouteChannel,
       offerDelivery('courier-b', request.deliveryId, request.pickupAddress, request.dropoffAddress)
     );
     if (!second.accepted) {
-      await this.publishStatus(deliveryStatusChanged(request.deliveryId, 'Failed', second.courierId));
+      await this.publishStatus(deliveryStatusChanged(request.deliveryId, request.customerId, 'Failed', second.courierId));
       throw new Error(`Delivery '${request.deliveryId}' was rejected by all couriers.`);
     }
 
-    await this.continueAcceptedDelivery(request.deliveryId, second.courierId);
+    await this.continueAcceptedDelivery(request.deliveryId, request.customerId, second.courierId);
   }
 
   private async tryOffer(request: AssignDeliveryReq, courierId: string): Promise<OfferDeliveryRes> {
@@ -77,10 +77,10 @@ class DispatchWorker implements OnModuleInit {
     }
   }
 
-  private async continueAcceptedDelivery(deliveryId: string, courierId: string): Promise<void> {
-    await this.publishStatus(deliveryStatusChanged(deliveryId, 'Accepted', courierId));
-    await this.publishStatus(deliveryStatusChanged(deliveryId, 'PickedUp', courierId));
-    await this.publishStatus(deliveryStatusChanged(deliveryId, 'Delivered', courierId));
+  private async continueAcceptedDelivery(deliveryId: string, customerId: string, courierId: string): Promise<void> {
+    await this.publishStatus(deliveryStatusChanged(deliveryId, customerId, 'Accepted', courierId));
+    await this.publishStatus(deliveryStatusChanged(deliveryId, customerId, 'PickedUp', courierId));
+    await this.publishStatus(deliveryStatusChanged(deliveryId, customerId, 'Delivered', courierId));
   }
 
   private async publishStatus(status: DeliveryStatusReq): Promise<void> {

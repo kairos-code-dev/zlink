@@ -61,17 +61,22 @@ class TicTacToeClientScenario {
       await client1.connect(signal);
       const client1Auth = await client1.request(authenticateReq('player-x')).submit<AuthenticateRes>(signal);
       ensure(() => client1Auth.player.actorId === 'player-x');
+      ensure(() => client1Auth.player.displayName.length > 0);
       ensure(() => client1Auth.player.level >= game.requiredLevel);
       ensure(() => client1Auth.player.wins === 99);
 
       await client2.connect(signal);
       const client2Auth = await client2.request(authenticateReq('player-o')).submit<AuthenticateRes>(signal);
       ensure(() => client2Auth.player.actorId === 'player-o');
+      ensure(() => client2Auth.player.actorId !== client1Auth.player.actorId);
+      ensure(() => client2Auth.player.displayName.length > 0);
       ensure(() => client2Auth.player.level >= game.requiredLevel);
+      ensure(() => client2Auth.player.wins >= 0);
 
       await observer.connect(signal);
       const observerAuth = await observer.request(authenticateReq('observer')).submit<AuthenticateRes>(signal);
       ensure(() => observerAuth.player.actorId === 'observer');
+      ensure(() => observerAuth.player.displayName.length > 0);
       const observerSubscription = await observer
         .request(new ObserveMilestoneReq())
         .submit<ObserveMilestoneRes>(signal);
@@ -83,6 +88,12 @@ class TicTacToeClientScenario {
       ensure(() => stateOf(client1Join).roomId === game.roomId);
       ensure(() => stateOf(client1Join).status === GameStatus.WaitingForPlayers);
       ensure(() => stateOf(client1Join).xActorId === client1Auth.player.actorId);
+      await expectNoMessage(
+        client1,
+        PacketNames.playerJoinedNotify,
+        (message: ZlinkStreamMessage<PlayerJoinedNotify>) => message.payload.actorId === client1Auth.player.actorId,
+        signal
+      );
 
       const client1SawClient2Join = client1
         .waitFor<PlayerJoinedNotify>(PacketNames.playerJoinedNotify)
@@ -95,16 +106,26 @@ class TicTacToeClientScenario {
 
       // 4-6. Guest joins by the same RoomId.
       const client2Join = await client2.request(joinGameReq(game.roomId)).submit<JoinGameRes>(signal);
+      ensure(() => stateOf(client2Join).roomId === game.roomId);
       ensure(() => stateOf(client2Join).status === GameStatus.InProgress);
       ensure(() => stateOf(client2Join).oActorId === client2Auth.player.actorId);
+      await expectNoMessage(
+        client2,
+        PacketNames.playerJoinedNotify,
+        (message: ZlinkStreamMessage<PlayerJoinedNotify>) => message.payload.actorId === client2Auth.player.actorId,
+        signal
+      );
 
       const [client1Joined, client1Running] = await Promise.all([
         client1SawClient2Join,
         client1RunningState
       ]);
+      ensure(() => client1Joined.payload.roomId === game.roomId);
+      ensure(() => client1Joined.payload.actorId === client2Auth.player.actorId);
       ensure(() => client1Joined.payload.displayName === client2Auth.player.displayName);
       ensure(() => client1Joined.payload.level === client2Auth.player.level);
       ensure(() => client1Joined.payload.mark === GameMarks.o);
+      ensure(() => stateOf(client1Joined.payload).status === GameStatus.InProgress);
       ensure(() => client1Running.payload.state.nextTurn === GameMarks.x);
 
       // 7. Each move response is matched with the opponent notify.
@@ -134,11 +155,16 @@ class TicTacToeClientScenario {
 
       const client2SawFinalMove = client2
         .waitFor<GameStateNotify>(PacketNames.gameStateNotify)
-        .where((message) => message.payload.state.winner === client1Auth.player.actorId)
+        .where((message) =>
+          message.payload.state.roomId === game.roomId &&
+          message.payload.state.status === GameStatus.Won &&
+          message.payload.state.winner === client1Auth.player.actorId)
         .submit(signal);
       const observerSawMilestone = observer
         .waitFor<WinMilestoneNotify>(PacketNames.winMilestoneNotify)
-        .where((message) => message.payload.actorId === client1Auth.player.actorId)
+        .where((message) =>
+          message.payload.roomId === game.roomId &&
+          message.payload.actorId === client1Auth.player.actorId)
         .submit(signal);
       // 8. The final host move wins and publishes the observer milestone.
       const client1FinalMove = await client1.request(placeMarkStreamReq(2)).submit<PlaceMarkRes>(signal);
@@ -148,6 +174,8 @@ class TicTacToeClientScenario {
       ensure(() => stateOf(client1FinalMove).winner === client1Auth.player.actorId);
 
       const milestone = await observerSawMilestone;
+      ensure(() => milestone.payload.roomId === game.roomId);
+      ensure(() => milestone.payload.actorId === client1Auth.player.actorId);
       ensure(() => milestone.payload.displayName === client1Auth.player.displayName);
       ensure(() => milestone.payload.wins === 100);
       ensure(() => milestone.payload.receivingSpotNodeRid === observerPlayNode?.spotNodeRid);
@@ -173,6 +201,34 @@ function waitState(
     .waitFor<GameStateNotify>(PacketNames.gameStateNotify)
     .where((message) => message.payload.state.lastMoveCell === lastMoveCell)
     .submit(signal);
+}
+
+async function expectNoMessage<TPayload>(
+  client: ZlinkStreamConnector,
+  packetName: string,
+  predicate: (message: ZlinkStreamMessage<TPayload>) => boolean,
+  signal?: AbortSignal
+): Promise<void> {
+  try {
+    await client
+      .waitFor<TPayload>(packetName)
+      .where(predicate)
+      .timeout(25)
+      .submit(signal);
+  } catch (error) {
+    if (isRequestTimeout(error)) {
+      return;
+    }
+    throw error;
+  }
+  throw new Error(`Unexpected stream message '${packetName}'.`);
+}
+
+function isRequestTimeout(error: unknown): boolean {
+  return typeof error === 'object'
+    && error !== null
+    && 'error' in error
+    && (error as { error?: { code?: unknown } }).error?.code === 'requestTimeout';
 }
 
 function createPlayerClient(endpoint: string, name: string): ZlinkStreamConnector {

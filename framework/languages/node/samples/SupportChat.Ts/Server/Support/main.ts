@@ -1,0 +1,23 @@
+import 'reflect-metadata';
+import { NestFactory } from '@nestjs/core';
+import { createSupportChatSupportModule } from './supportchat-support-module';
+import { loadSampleConfig } from '../Configuration/sample-config';
+import { waitForShutdown } from '../runtime-support';
+import { AgentAssignmentService } from './supportchat-sample-files';
+
+void AgentAssignmentService;
+
+async function main(): Promise<void> {
+  const app = await NestFactory.createApplicationContext(createSupportChatSupportModule(loadSampleConfig()), {
+    logger: false,
+    abortOnError: false
+  });
+  process.stdout.write(`${JSON.stringify({ event: 'ready', role: 'support' })}\n`);
+  await waitForShutdown();
+  await app.close();
+}
+
+main().catch((error: unknown) => {
+  console.error(error);
+  process.exitCode = 1;
+});

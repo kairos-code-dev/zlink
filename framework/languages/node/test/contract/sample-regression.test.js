@@ -9,12 +9,14 @@ const samplesRoot = path.join(workspaceRoot, 'samples');
 const requiredSamples = [
   'TicTacToe.Ts',
   'Bingo.Ts',
-  'DeliveryDispatch.Ts'
+  'DeliveryDispatch.Ts',
+  'SupportChat.Ts'
 ];
 const topologySamples = [
   'TicTacToe.Ts',
   'Bingo.Ts',
-  'DeliveryDispatch.Ts'
+  'DeliveryDispatch.Ts',
+  'SupportChat.Ts'
 ];
 
 test('node samples define the required sample directories and README files', () => {

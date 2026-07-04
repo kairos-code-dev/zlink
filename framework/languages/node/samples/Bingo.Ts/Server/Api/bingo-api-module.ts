@@ -29,7 +29,7 @@ function createBingoApiModule(config: {
             .addClientServerChannel(SampleNames.apiChannel)
               .enableServer(config.apiEndpoint)
               .addHandlerGroup('api')
-            .addRouteMesh(SampleNames.playChannel)
+            .addRouteMeshChannel(SampleNames.playChannel)
               .routingId(config.apiNodeRid ?? 'bingo-api-node')
               .connect(config.playRouteEndpoints)
             .build();

@@ -803,6 +803,32 @@ export class ZLinkStreamBindingRuntime {
     return sessionActor;
   }
 
+  async bindOrGet(
+    context: DefaultZLinkSessionContext,
+    actorRef: ActorRef,
+    signal?: AbortSignal
+  ): Promise<DefaultZLinkSessionActor> {
+    throwIfAborted(signal);
+    const existing = this.routes.find(actorRef.actorId);
+    if (existing !== undefined && sameActorRef(existing.ref, actorRef)) {
+      return existing;
+    }
+    if (existing !== undefined) {
+      try {
+        await this.rebindActor(actorRef, signal);
+      } catch (error) {
+        throw new ZLinkFrameworkException(
+          ZLinkFrameworkErrorKind.ActorLocationStale,
+          `Actor '${actorRef.actorId}' bound session ref is stale and could not be rebound.`,
+          true,
+          error
+        );
+      }
+      this.routes.unbindActor(actorRef.actorId);
+    }
+    return await this.bind(context, actorRef, signal);
+  }
+
   find(actorId: string): DefaultZLinkSessionActor | undefined {
     return this.routes.find(actorId);
   }
@@ -1686,6 +1712,11 @@ class DefaultZLinkSessionActors implements ZLinkSessionActors {
   async bind(actor: ZLinkActor | ActorRef, signal?: AbortSignal): Promise<ZLinkSessionActor> {
     throwIfAborted(signal);
     return await this.runtime.bind(this.context, actor, signal);
+  }
+
+  async bindOrGet(actor: ActorRef, signal?: AbortSignal): Promise<ZLinkSessionActor> {
+    throwIfAborted(signal);
+    return await this.runtime.bindOrGet(this.context, actor, signal);
   }
 
   find(actorId: string): ZLinkSessionActor | undefined {

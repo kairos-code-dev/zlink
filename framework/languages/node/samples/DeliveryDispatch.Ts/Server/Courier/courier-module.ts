@@ -32,7 +32,7 @@ function createCourierGatewayModule(config: DeliveryDispatchServerConfig) {
             .addClientServerChannel(SampleNames.courierRouteChannel)
               .enableServer(config.courierRouteEndpoint)
               .addHandlerGroup('courier-gateway')
-            .addRouteMesh(SampleNames.courierActorNodeRouteChannel)
+            .addRouteMeshChannel(SampleNames.courierActorNodeRouteChannel)
               .routingId('courier-gateway')
               .connect([
                 config.courierActorNode1RouteEndpoint,
@@ -73,7 +73,7 @@ function createCourierActorNodeModule(config: DeliveryDispatchServerConfig, opti
           builder.addLocationStore(createDeliveryDispatchLocationStore(config));
           Object.assign(builder.configureLocations(), deliveryDispatchLocationOptions());
           return builder
-            .addRouteMesh(SampleNames.courierActorNodeRouteChannel)
+            .addRouteMeshChannel(SampleNames.courierActorNodeRouteChannel)
               .enableRouter(endpoint)
               .routingId(nodeRid)
               .addHandlerGroup('courier-actor-node')

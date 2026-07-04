@@ -112,7 +112,7 @@ class PlaySession implements ZLinkSession {
           .submit();
       }
     };
-    this.sessionActor = await this.context.actors.bind(actorRef);
+    this.sessionActor = await this.context.actors.bindOrGet(actorRef);
     this.context.client.reply(authenticateRes(authenticated.player)).submit();
   }
 

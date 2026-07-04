@@ -9,7 +9,6 @@ import type {
   ZLinkPublishContext,
   ZLinkRouteRequestContext,
   ZLinkRouteSendContext,
-  ZLinkRouteRequestCall,
   ZLinkRequestCall,
   ZLinkSendContext,
   ZLinkRouteClient,
@@ -77,6 +76,7 @@ import {
 } from '../backend/contracts';
 import type { ZLinkRuntimeErrorSink, ZLinkRuntimeTaskRunner } from '../execution';
 import { ZLinkAsyncSubmitter } from '../messaging';
+import { isSpotRouteBridgeReplyPayload } from '../spots/route-wire-codec';
 import {
   ZLinkAutoConnectLoop,
   ZLinkAutoConnectReconciler,
@@ -132,7 +132,7 @@ export interface ZLinkChannelClientTransport {
 }
 
 export interface ZLinkSpotPublisherClientTransport {
-  publishSpot(channelName: string, topic: string, packetName: string | undefined, event: unknown, signal?: AbortSignal): Promise<void>;
+  publish(channelName: string, topic: string, packetName: string | undefined, event: unknown, signal?: AbortSignal): Promise<void>;
 }
 
 export interface ZLinkRouteClientTransport {
@@ -601,7 +601,7 @@ class ZLinkSpotRouteBridgeRawReplyRegistry {
 export class ZLinkChannelRuntimeManager {
   private readonly channelReceiveLoops: ZLinkChannelReceiveLoop[] = [];
   private readonly subscriberReceiveLoops: ZLinkSubscriberReceiveLoop[] = [];
-  private readonly routeReceiveLoops: Array<{ stop(): void }> = [];
+  private readonly routeReceiveLoops: Array<{ stop(): Promise<void> }> = [];
   private readonly spotRouteBridges = new Map<string, ZLinkBackendSpotRouteBridge>();
   private readonly spotRouteBridgeRawReplies = new ZLinkSpotRouteBridgeRawReplyRegistry();
   private readonly spotNodeRouterQueues = new Map<string, Promise<void>>();
@@ -1633,7 +1633,7 @@ export class ZLinkChannelRuntimeManager {
   async dispose(): Promise<void> {
     const channelLoops = [...this.channelReceiveLoops];
     const subscriberLoops = [...this.subscriberReceiveLoops];
-    const loops = [...this.routeReceiveLoops];
+    const routeLoops = [...this.routeReceiveLoops];
     const autoConnectLoops = [...this.autoConnectLoops];
     const spotRouteBridges = [...this.spotRouteBridges.values()];
     this.channelReceiveLoops.length = 0;
@@ -1641,15 +1641,12 @@ export class ZLinkChannelRuntimeManager {
     this.routeReceiveLoops.length = 0;
     this.autoConnectLoops.length = 0;
     this.spotRouteBridges.clear();
-    for (const loop of channelLoops) {
-      loop.stop();
-    }
-    for (const loop of subscriberLoops) {
-      loop.stop();
-    }
-    for (const loop of loops) {
-      loop.stop();
-    }
+    const loopStops = [
+      ...channelLoops.map((loop) => loop.stop()),
+      ...subscriberLoops.map((loop) => loop.stop()),
+      ...routeLoops.map((loop) => loop.stop())
+    ];
+    await Promise.allSettled(loopStops);
     await Promise.allSettled(autoConnectLoops.map((loop) => loop.stop()));
     await new Promise<void>((resolve) => setImmediate(resolve));
     await Promise.all(spotRouteBridges.map((bridge) => bridge.dispose()));
@@ -2244,7 +2241,7 @@ export class ZLinkChannelRequestDispatcher {
         const payload = decodeChannelPayload(envelope, this.options.codecs);
         await invokeZLinkHandlerFilters(
           this.filters,
-          { message: payload, context, channelName: this.options.channelName, packetName },
+          { message: payload, context },
           () => Promise.resolve(handler.handle(payload, context))
         );
         this.traceChannelFlow(ZLinkMessageFlowOutcome.Dispatched, ZLinkDispatchMessageKind.Send, packetName, correlationId);
@@ -2308,7 +2305,7 @@ export class ZLinkChannelRequestDispatcher {
       const payload = decodeChannelPayload(envelope, this.options.codecs);
       const reply = await invokeZLinkHandlerFilters(
         this.filters,
-        { message: payload, context, channelName: this.options.channelName, packetName },
+        { message: payload, context },
         () => Promise.resolve(handler.handle(payload, context))
       );
       try {
@@ -2366,6 +2363,7 @@ export class ZLinkChannelRequestDispatcher {
 
 export class ZLinkChannelReceiveLoop {
   private stopped = false;
+  private readonly inFlight = new Set<Promise<void>>();
 
   constructor(
     private readonly channelName: string,
@@ -2383,12 +2381,15 @@ export class ZLinkChannelReceiveLoop {
         await new Promise<void>((resolve) => setImmediate(resolve));
         continue;
       }
-      void this.dispatchAndClose(received);
+      const task = this.dispatchAndClose(received);
+      this.inFlight.add(task);
+      void task.finally(() => this.inFlight.delete(task));
     }
   }
 
-  stop(): void {
+  async stop(): Promise<void> {
     this.stopped = true;
+    await Promise.allSettled([...this.inFlight]);
   }
 
   private async dispatchAndClose(received: {
@@ -2511,7 +2512,7 @@ export class ZLinkChannelPublishDispatcher {
       const payload = decodeChannelPayload(envelope, this.options.codecs);
       await invokeZLinkHandlerFilters(
         this.filters,
-        { message: payload, context, channelName: this.options.channelName, packetName },
+        { message: payload, context },
         () => Promise.resolve(handler.handle(payload, context))
       );
       if (flow.enabled(ZLinkMessageFlowOutcome.Dispatched)) {
@@ -2545,6 +2546,7 @@ export class ZLinkChannelPublishDispatcher {
 
 export class ZLinkSubscriberReceiveLoop {
   private stopped = false;
+  private readonly inFlight = new Set<Promise<void>>();
 
   constructor(
     private readonly adapter: ZLinkChannelBackendAdapter,
@@ -2564,17 +2566,25 @@ export class ZLinkSubscriberReceiveLoop {
       }
       const topicMessage = this.adapter.createTopicMessage();
       this.subscriber.subscribe(topicMessage);
-      try {
-        await this.dispatcher.dispatch(topicMessage);
-      } finally {
-        closeMessages(topicMessage.parts as readonly Message[]);
-      }
+      const task = this.dispatchAndClose(topicMessage);
+      this.inFlight.add(task);
+      void task.finally(() => this.inFlight.delete(task));
+      await task;
     }
   }
 
-  stop(): void {
+  async stop(): Promise<void> {
     this.stopped = true;
     this.poller.dispose();
+    await Promise.allSettled([...this.inFlight]);
+  }
+
+  private async dispatchAndClose(topicMessage: ReturnType<ZLinkChannelBackendAdapter['createTopicMessage']>): Promise<void> {
+    try {
+      await this.dispatcher.dispatch(topicMessage);
+    } finally {
+      closeMessages(topicMessage.parts as readonly Message[]);
+    }
   }
 }
 
@@ -2723,7 +2733,7 @@ export class ZLinkRoutePacketDispatcher {
         const context = this.createRouteContext(packetName, received.routingId);
         await invokeZLinkHandlerFilters(
           this.filters,
-          { message: payload, context, channelName: this.routerChannelId, packetName },
+          { message: payload, context },
           () => Promise.resolve(handler.handle(payload, context))
         );
         this.traceRouteFlow(ZLinkMessageFlowOutcome.Dispatched, ZLinkDispatchMessageKind.Send, packetName, routeCorr, routeSource);
@@ -2787,7 +2797,7 @@ export class ZLinkRoutePacketDispatcher {
       const context = this.createRouteContext(packetName, received.routingId, received.requestSeq);
       const reply = await invokeZLinkHandlerFilters(
         this.filters,
-        { message: payload, context, channelName: this.routerChannelId, packetName },
+        { message: payload, context },
         () => Promise.resolve(handler.handle(payload, context))
       );
       appendParts(
@@ -2844,6 +2854,7 @@ export class ZLinkRoutePacketDispatcher {
 
 export class ZLinkRouteReceiveLoop {
   private stopped = false;
+  private readonly inFlight = new Set<Promise<void>>();
 
   constructor(
     private readonly router: ZLinkBackendRouterSocket & {
@@ -2859,22 +2870,36 @@ export class ZLinkRouteReceiveLoop {
         await new Promise<void>((resolve) => setImmediate(resolve));
         continue;
       }
-      let closeReceived = true;
-      try {
-        const consumed = await this.dispatcher.dispatch(received, this.router);
-        if (consumed === true) {
-          closeReceived = false;
-        }
-      } finally {
-        if (closeReceived) {
-          received.close();
-        }
-      }
+      const task = this.dispatchAndClose(received);
+      this.inFlight.add(task);
+      void task.finally(() => this.inFlight.delete(task));
+      await task;
     }
   }
 
-  stop(): void {
+  async stop(): Promise<void> {
     this.stopped = true;
+    await Promise.allSettled([...this.inFlight]);
+  }
+
+  private async dispatchAndClose(received: {
+    parts: readonly Message[];
+    routingId: unknown;
+    spotRid?: unknown;
+    requestSeq: bigint | null;
+    close(): void;
+  }): Promise<void> {
+    let closeReceived = true;
+    try {
+      const consumed = await this.dispatcher.dispatch(received, this.router);
+      if (consumed === true) {
+        closeReceived = false;
+      }
+    } finally {
+      if (closeReceived) {
+        received.close();
+      }
+    }
   }
 }
 
@@ -2951,14 +2976,7 @@ function looksLikeRawSpotRouteBridgeReply(parts: readonly Message[]): boolean {
   }
   try {
     const decoded = JSON.parse(parts[0].data().toString('utf8')) as unknown;
-    return typeof decoded === 'object' &&
-      decoded !== null &&
-      (
-        'ok' in decoded ||
-        'response' in decoded ||
-        'error' in decoded ||
-        'actorPacketTarget' in decoded
-      );
+    return isSpotRouteBridgeReplyPayload(decoded);
   } catch {
     return false;
   }
@@ -3063,15 +3081,15 @@ export class DefaultZLinkRouteClient implements ZLinkRouteClient {
     private readonly transport?: ZLinkRouteClientTransport
   ) {}
 
-  send(routerChannelId: string, targetNodeRid: string, message: unknown): ZLinkSendCall {
+  sendToNode(routerChannelId: string, targetNodeRid: string, message: unknown): ZLinkSendCall {
     return new DefaultZLinkSendCall(
       () => this.requireRouteChannel(routerChannelId),
       (packetName, signal) => this.requireTransport().send(routerChannelId, targetNodeRid, packetName, message, signal)
     );
   }
 
-  request(routerChannelId: string, targetNodeRid: string, request: unknown): ZLinkRouteRequestCall {
-    return new DefaultZLinkRouteRequestCall(
+  requestToNode(routerChannelId: string, targetNodeRid: string, request: unknown): ZLinkRequestCall {
+    return new DefaultZLinkRequestCall(
       () => this.requireRouteChannel(routerChannelId),
       (packetName, timeoutMs, signal) => this.requireTransport().request(routerChannelId, targetNodeRid, packetName, request, timeoutMs, signal),
       this.defaultRequestTimeout(routerChannelId)
@@ -3104,11 +3122,11 @@ export class DefaultZLinkSpotPublisherClient implements ZLinkSpotPublisherClient
     private readonly transport?: ZLinkSpotPublisherClientTransport
   ) {}
 
-  publishSpot(channelName: string, topic: string, event: unknown): ZLinkPublishCall {
+  publish(channelName: string, topic: string, event: unknown): ZLinkPublishCall {
     const resolvedChannelName = channelName.length === 0 ? this.defaultSpotPublisherChannel() : channelName;
     return new DefaultZLinkPublishCall(
       () => this.requireSpotPublisherChannel(resolvedChannelName),
-      (packetName, signal) => this.requireTransport().publishSpot(resolvedChannelName, topic, packetName, event, signal)
+      (packetName, signal) => this.requireTransport().publish(resolvedChannelName, topic, packetName, event, signal)
     );
   }
 
@@ -3190,42 +3208,6 @@ class DefaultZLinkRequestCall implements ZLinkRequestCall {
     return this.submitter<TReply>(this.packet, this.timeoutMs ?? this.defaultRequestTimeoutMs, signal);
   }
 
-  yield<TReply>(_signal?: AbortSignal): Promise<TReply> {
-    return Promise.reject(new ZLinkConfigurationException(
-      'yield requires a framework Spot handler turn captured when the call object was created.'
-    ));
-  }
-}
-
-class DefaultZLinkRouteRequestCall implements ZLinkRouteRequestCall {
-  private packet?: string;
-  private timeoutMs?: number;
-
-  constructor(
-    private readonly validate: () => void,
-    private readonly submitter: <TReply>(
-      packetName: string | undefined,
-      timeoutMs: number | undefined,
-      signal?: AbortSignal
-    ) => Promise<TReply>,
-    private readonly defaultRequestTimeoutMs?: number
-  ) {}
-
-  packetName(packetName: string): this {
-    this.packet = packetName;
-    return this;
-  }
-
-  timeout(timeoutMs: number): this {
-    this.timeoutMs = timeoutMs;
-    return this;
-  }
-
-  async submit<TReply>(signal?: AbortSignal): Promise<TReply> {
-    throwIfAborted(signal);
-    this.validate();
-    return this.submitter<TReply>(this.packet, this.timeoutMs ?? this.defaultRequestTimeoutMs, signal);
-  }
 }
 
 class DefaultZLinkPublishCall implements ZLinkPublishCall {

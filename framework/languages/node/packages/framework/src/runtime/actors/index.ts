@@ -5,6 +5,7 @@ import type {
   ZLinkProviderResolver,
   ZLinkActor,
   ZLinkActorContext,
+  ZLinkActorDirectory,
   ZLinkActorFactory,
   ZLinkActorJoinEntrySpotCall,
   ZLinkActorJoinResult,
@@ -286,7 +287,7 @@ class ZLinkActorCreationCoordinator {
           await this.options.locationLifecycle?.setActorRef(
             actorType,
             actorId,
-            serializeActorRef(toFrameworkRoutingId(actorRef.nodeRid), actorId, actorRef.generation)
+            toFrameworkActorRef(actorRef)
           );
         }
       } else {
@@ -297,7 +298,7 @@ class ZLinkActorCreationCoordinator {
             await this.options.locationLifecycle?.setActorRef(
               actorType,
               actorId,
-              serializeActorRef(nodeRid, actorId, 0n)
+              { nodeRid, actorId, generation: 0n }
             );
           }
         }
@@ -333,7 +334,7 @@ class ZLinkActorCreationCoordinator {
   }
 }
 
-export class DefaultZLinkActorManager implements ZLinkActorManager {
+export class DefaultZLinkActorManager implements ZLinkActorManager, ZLinkActorDirectory {
   private readonly states = new Map<string, ZLinkActorRuntimeState>();
   private readonly creation: ZLinkActorCreationCoordinator;
 
@@ -360,6 +361,32 @@ export class DefaultZLinkActorManager implements ZLinkActorManager {
     const args = normalizeCreateRequestArgs(signalOrRequest, signal);
     const result = await this.createOrGet(actorId, actorType, false, args.request, args.signal);
     return result.actorRef;
+  }
+
+  async ensure(
+    actorId: string,
+    createRequest: unknown,
+    _placement?: unknown,
+    signal?: AbortSignal
+  ): Promise<ActorRef> {
+    const actorType = actorTypeFromCreateRequest(createRequest);
+    try {
+      const result = await this.createOrGet(actorId, actorType, false, createRequest, signal);
+      return result.actorRef;
+    } catch (error) {
+      if (
+        error instanceof ZLinkFrameworkException &&
+        error.kind === ZLinkFrameworkErrorKind.ActorCreateFailed
+      ) {
+        throw new ZLinkFrameworkException(
+          ZLinkFrameworkErrorKind.ActorCreateRejected,
+          `Actor '${actorId}' create request was rejected.`,
+          false,
+          error
+        );
+      }
+      throw error;
+    }
   }
 
   async findActor(actorId: string, signal?: AbortSignal): Promise<ZLinkActor | undefined> {
@@ -806,12 +833,10 @@ export class ZLinkActorNativeJoinCoordinator implements ZLinkActorJoinCoordinato
         toFrameworkRoutingId(result.joinedSpotRid)
       );
     }
-    if (result.joinResultCode === 0) {
-      await this.options.remoteActorBinder?.(toFrameworkActorRef(result.actor), signal, !isRemoteJoin);
-    }
+    await this.options.remoteActorBinder?.(toFrameworkActorRef(result.actor), signal, !isRemoteJoin);
     try {
       return {
-        resultCode: result.joinResultCode,
+        accepted: true,
         actor: toFrameworkActorRef(result.actor),
         reply: parts[0]
       };
@@ -1054,8 +1079,8 @@ export class ZLinkActorNativeJoinCoordinator implements ZLinkActorJoinCoordinato
       await this.options.remoteActorBinder?.(resultActor, signal, true);
     }
     return {
-      resultCode: reply.accepted ? 0 : 1,
-      actor: resultActor,
+      accepted: reply.accepted,
+      actor: reply.accepted ? resultActor : undefined,
       reply: replyMessage
     };
   }
@@ -1100,7 +1125,7 @@ export class ZLinkActorNativeJoinCoordinator implements ZLinkActorJoinCoordinato
         timeoutMs,
         signal
       );
-      if (result.resultCode === 0) {
+      if (result.accepted) {
         state.clearJoinedSpot();
         state.setRemoteActorPacketTarget(undefined);
         if (state.actorType !== undefined) {
@@ -1147,7 +1172,7 @@ export class ZLinkActorNativeJoinCoordinator implements ZLinkActorJoinCoordinato
     }
     try {
       return {
-        resultCode: result.joinResultCode,
+        accepted: true,
         actor: toFrameworkActorRef(result.actor),
         reply: parts[0]
       };
@@ -1687,6 +1712,18 @@ function isAbortSignal(value: unknown): value is AbortSignal {
     && typeof (value as { addEventListener?: unknown }).addEventListener === 'function';
 }
 
+function actorTypeFromCreateRequest(createRequest: unknown): string {
+  if (typeof createRequest === 'object' && createRequest !== null) {
+    const actorType = (createRequest as { actorType?: unknown }).actorType;
+    if (typeof actorType === 'string' && actorType.length > 0) {
+      return actorType;
+    }
+  }
+  throw new ZLinkConfigurationException(
+    'Actor directory ensure requires createRequest.actorType so actor type is supplied only for creation.'
+  );
+}
+
 function toBackendRoutingId(routingId: RoutingId): ZLinkBackendActorRef['nodeRid'] {
   return routingId as unknown as ZLinkBackendActorRef['nodeRid'];
 }
@@ -1701,10 +1738,6 @@ function toFrameworkRoutingId(routingId: ZLinkBackendActorRef['nodeRid']): Routi
 function encodeRoutingIdHex(routingId: RoutingId): string | undefined {
   const toHex = (routingId as unknown as { toHex?: () => string }).toHex;
   return typeof toHex === 'function' ? toHex.call(routingId) : undefined;
-}
-
-function serializeActorRef(nodeRid: RoutingId, actorId: string, generation: bigint): string {
-  return `${encodeRoutingIdHex(nodeRid) ?? String(nodeRid)}:${generation}:${actorId}`;
 }
 
 function routingIdsEqual(left: RoutingId, right: RoutingId): boolean {

@@ -9,9 +9,10 @@ test('in-memory location store issues generations and fences owner writes', asyn
   const store = new internal.ZLinkInMemoryLocationStore(() => new Date(nowMs));
 
   let result = await store.renewOwnerLease('owner-a', rid('node-1'), 30000);
-  assert.equal(result.status, framework.ZLinkLocationWriteStatus.Stored);
+  assert.equal(result.storeNow.toISOString(), new Date(nowMs).toISOString());
+  assert.equal(result.leaseExpiresAt.toISOString(), new Date(nowMs + 30000).toISOString());
   result = await store.renewOwnerLease('owner-b', rid('node-2'), 30000);
-  assert.equal(result.status, framework.ZLinkLocationWriteStatus.Stored);
+  assert.equal(result.storeNow.toISOString(), new Date(nowMs).toISOString());
 
   const claim = await store.updateActor(actor('owner-a', 0n), framework.ZLinkLocationWriteIntent.NewClaim);
   assert.equal(claim.status, framework.ZLinkLocationWriteStatus.Stored);
@@ -91,8 +92,7 @@ test('in-memory location store lists filters pages and bumps change stamps', asy
   });
   assert.deepEqual([...resolvedRoute.value], [1, 2, 3, 4]);
 
-  assert.equal(await store.removeSpotsByOwner('owner-a'), 2);
-  assert.equal(await store.removeRoutesByOwner('owner-a'), 1);
+  assert.equal(await store.removeAllByOwner('owner-a'), 5);
   assert.equal((await store.listSpots({ meshName: 'play' })).items.length, 0);
 });
 
@@ -100,9 +100,10 @@ test('in-memory location store matches the dotnet operation trace for core write
   const store = new internal.ZLinkInMemoryLocationStore(() => new Date(Date.UTC(2026, 6, 3, 0, 0, 0)));
   const trace = [];
   const record = (step, result) => trace.push(`${step}=${statusName(result.status)}:${result.generation}`);
+  const recordLease = (step, result) => trace.push(`${step}=expires:${result.leaseExpiresAt.toISOString()}`);
 
-  record('lease-a', await store.renewOwnerLease('owner-a', rid('node-1'), 30000));
-  record('lease-b', await store.renewOwnerLease('owner-b', rid('node-2'), 30000));
+  recordLease('lease-a', await store.renewOwnerLease('owner-a', rid('node-1'), 30000));
+  recordLease('lease-b', await store.renewOwnerLease('owner-b', rid('node-2'), 30000));
 
   const claim = await store.updateActor(actor('owner-a', 0n), framework.ZLinkLocationWriteIntent.NewClaim);
   record('actor-claim', claim);
@@ -135,9 +136,6 @@ test('in-memory location store matches the dotnet operation trace for core write
     { meshName: 'play', spotRid: rid('spot-1') },
     { ownerId: 'owner-b', generation: 1n }
   ));
-  trace.push(`spot-remove-by-owner=${await store.removeSpotsByOwner('owner-a')}`);
-  trace.push(`actor-remove-by-owner=${await store.removeActorsByOwner('owner-a')}`);
-
   const routeClaim = await store.updateRoute(route('owner-a'), framework.ZLinkLocationWriteIntent.NewClaim);
   record('route-claim', routeClaim);
   record('route-remove', await store.removeRoute(
@@ -149,13 +147,14 @@ test('in-memory location store matches the dotnet operation trace for core write
 
   const peerClaim = await store.updatePeer(peer('owner-a'), framework.ZLinkLocationWriteIntent.NewClaim);
   record('peer-claim', peerClaim);
-  record('lease-a-remove', await store.removeOwnerLease('owner-a'));
+  trace.push(`remove-all-by-owner=${await store.removeAllByOwner('owner-a')}`);
+  trace.push(`lease-a-remove=${await store.removeOwnerLease('owner-a')}`);
   record('peer-claim-after-lease-removed',
     await store.updatePeer(peer('owner-b'), framework.ZLinkLocationWriteIntent.NewClaim));
 
   assert.deepEqual(trace, [
-    'lease-a=Stored:0',
-    'lease-b=Stored:0',
+    'lease-a=expires:2026-07-03T00:00:30.000Z',
+    'lease-b=expires:2026-07-03T00:00:30.000Z',
     'actor-claim=Stored:1',
     'actor-claim-conflict=RejectedConflict:0',
     'actor-renew=Stored:1',
@@ -168,13 +167,12 @@ test('in-memory location store matches the dotnet operation trace for core write
     'spot-claim-1=Stored:1',
     'spot-claim-2=Stored:1',
     'spot-remove-wrong-owner=IgnoredStale:0',
-    'spot-remove-by-owner=2',
-    'actor-remove-by-owner=1',
     'route-claim=Stored:1',
     'route-remove=Stored:1',
     'route-reclaim=Stored:2',
     'peer-claim=Stored:1',
-    'lease-a-remove=Stored:0',
+    'remove-all-by-owner=4',
+    'lease-a-remove=true',
     'peer-claim-after-lease-removed=Stored:2'
   ]);
 });

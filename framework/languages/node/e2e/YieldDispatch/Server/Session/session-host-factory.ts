@@ -33,10 +33,10 @@ export async function startSessionHost(args: readonly string[]): Promise<void> {
               .traceLogFile(`${options.logDir}/${options.rid}-flow.log`)
               .traceLabel(options.rid);
 
-          builder.addRouteMesh(YieldDispatchNames.controlChannel)
+          builder.addRouteMeshChannel(YieldDispatchNames.controlChannel)
             .enableRouter(options.controlRouterEndpoint)
             .routingId(options.rid);
-          builder.addRouteMesh(YieldDispatchNames.spotRouteChannel)
+          builder.addRouteMeshChannel(YieldDispatchNames.spotRouteChannel)
             .enableRouter(options.spotRouteEndpoint)
             .routingId(options.rid);
           builder.addSpotMesh(YieldDispatchNames.spotChannel)

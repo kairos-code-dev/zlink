@@ -33,51 +33,16 @@ test('framework and NestJS builders register in-memory and integrated location s
     }),
     /In-memory location stores cannot be combined/
   );
-  assert.throws(
-    () => framework.createFrameworkRegistration({
-      locations: {
-        stores: {
-          peerStore: store
-        }
-      }
-    }),
-    /Location stores are all-or-nothing/
-  );
 });
 
-test('framework runtime host resolves per-role location store classes through provider resolver', () => {
-  class PeerStore extends framework.ZLinkInMemoryLocationStore {}
-  class SpotStore extends framework.ZLinkInMemoryLocationStore {}
-  class ActorStore extends framework.ZLinkInMemoryLocationStore {}
-  class RouteStore extends framework.ZLinkInMemoryLocationStore {}
-  class OwnerLeaseStore extends framework.ZLinkInMemoryLocationStore {}
-
-  const instances = new Map([
-    [PeerStore, new PeerStore()],
-    [SpotStore, new SpotStore()],
-    [ActorStore, new ActorStore()],
-    [RouteStore, new RouteStore()],
-    [OwnerLeaseStore, new OwnerLeaseStore()]
-  ]);
-  const requested = [];
+test('framework runtime host uses one explicit location store for every runtime role', () => {
+  const store = new framework.ZLinkInMemoryLocationStore();
   const runtime = new framework.ZLinkFrameworkRuntimeHost({
     registration: framework.createFrameworkRegistration({
       locations: {
-        stores: {
-          peerStore: PeerStore,
-          spotStore: SpotStore,
-          actorStore: ActorStore,
-          routeStore: RouteStore,
-          ownerLeaseStore: OwnerLeaseStore
-        }
+        storeInstance: store
       }
-    }),
-    providerResolver: {
-      get(type) {
-        requested.push(type);
-        return instances.get(type);
-      }
-    }
+    })
   });
 
   const actorOptions = runtime.createActorManagerOptions();
@@ -85,7 +50,6 @@ test('framework runtime host resolves per-role location store classes through pr
 
   assert.equal(typeof actorOptions.locationLifecycle, 'object');
   assert.equal(spotOptions.locationLifecycle, actorOptions.locationLifecycle);
-  assert.deepEqual(requested, [PeerStore, SpotStore, ActorStore, RouteStore, OwnerLeaseStore]);
 });
 
 test('framework runtime host starts location runtime and injects lifecycle into managers', async () => {

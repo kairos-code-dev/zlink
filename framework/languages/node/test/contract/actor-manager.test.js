@@ -145,7 +145,7 @@ test('ZLinkActorManager claims location before activation and releases on destro
   const row = await store.resolveActor({ actorType: 'player', actorId: 'alice' });
   assert.equal(row.ownerId, 'owner-a');
   assert.equal(row.nodeRid.toHex(), rid('node-a').toHex());
-  assert.match(row.actorRef, /alice$/);
+  assert.deepEqual(row.actorRef, { nodeRid: rid('node-a'), actorId: 'alice', generation: 7n });
 
   await assert.rejects(
     () => managerB.create('alice', 'player'),
@@ -561,11 +561,11 @@ test('ZLinkActorContext delegates join calls to coordinator with timeout', async
   const joinCoordinator = {
     async joinSpot(actor, state, spotRid, request, timeoutMs) {
       calls.push(`joinSpot:${actor.actorId}:${state.actorId}:${spotRid}:${request.data().toString()}:${timeoutMs}`);
-      return { resultCode: 0, actor: actorRef, reply: replyMessage };
+      return { accepted: true, actor: actorRef, reply: replyMessage };
     },
     async joinEntrySpot(actor, state, nodeRid, request, timeoutMs) {
       calls.push(`joinEntry:${actor.actorId}:${state.actorId}:${nodeRid}:${request.data().toString()}:${timeoutMs}`);
-      return { resultCode: 0, actor: actorRef, reply: replyMessage };
+      return { accepted: true, actor: actorRef, reply: replyMessage };
     }
   };
   const manager = new framework.DefaultZLinkActorManager({
@@ -579,7 +579,7 @@ test('ZLinkActorContext delegates join calls to coordinator with timeout', async
   const entryRequest = encodedMessage('entry');
   const entryResult = await actor.context.joinEntrySpot('node-a', entryRequest).timeout(10).submit();
 
-  assert.equal(joinResult.resultCode, 0);
+  assert.equal(joinResult.accepted, true);
   assert.deepEqual(joinResult.actor, actorRef);
   assert.equal(joinResult.reply, 'joined');
   assert.deepEqual(entryResult.actor, actorRef);
@@ -588,6 +588,44 @@ test('ZLinkActorContext delegates join calls to coordinator with timeout', async
     'joinEntry:alice:alice:node-a:entry:10'
   ]);
   replyMessage.close();
+});
+
+test('actor directory find/ensure uses id lookup and exposes actor ref snapshots', async () => {
+  class PlayerFactory {
+    create(actorId, context) {
+      return { actorId, context };
+    }
+  }
+  const manager = new framework.DefaultZLinkActorManager({
+    actorFactories: new Map([['player', PlayerFactory]]),
+    actorCreatedNodeRidProvider: () => rid('node-a')
+  });
+
+  assert.equal(await manager.find('alice'), undefined);
+  const ensured = await manager.ensure('alice', { actorType: 'player', displayName: 'Alice' });
+  const found = await manager.find('alice');
+  const existing = await manager.ensure('alice', { actorType: 'player', displayName: 'Ignored' });
+  const snapshot = framework.zlinkActorRefSnapshotFrom(ensured);
+
+  assert.deepEqual(found, ensured);
+  assert.deepEqual(existing, ensured);
+  assert.deepEqual(framework.zlinkActorRefSnapshotToActorRef(snapshot), ensured);
+});
+
+test('actor directory ensure rejects create failures with ActorCreateRejected', async () => {
+  class FailingFactory {
+    create() {
+      throw new Error('admission denied');
+    }
+  }
+  const manager = new framework.DefaultZLinkActorManager({
+    actorFactories: new Map([['player', FailingFactory]])
+  });
+
+  await assert.rejects(
+    () => manager.ensure('alice', { actorType: 'player' }),
+    (error) => error.kind === framework.ZLinkFrameworkErrorKind.ActorCreateRejected
+  );
 });
 
 test('ZLinkActorContext joinSpot uses configured custom serializer without raw request code', async () => {
@@ -608,7 +646,7 @@ test('ZLinkActorContext joinSpot uses configured custom serializer without raw r
   const joinCoordinator = {
     async joinSpot(actor, state, spotRid, request) {
       calls.push(`joinSpot:${actor.actorId}:${state.actorId}:${spotRid}:${request.getString('utf8')}`);
-      return { resultCode: 0, actor: actorRef, reply: replyMessage };
+      return { accepted: true, actor: actorRef, reply: replyMessage };
     },
     async joinEntrySpot() {
       throw new Error('joinEntrySpot must not be called');
@@ -623,7 +661,7 @@ test('ZLinkActorContext joinSpot uses configured custom serializer without raw r
 
   const joinResult = await actor.context.joinSpot('stage-1', 'hello').submit();
 
-  assert.equal(joinResult.resultCode, 0);
+  assert.equal(joinResult.accepted, true);
   assert.equal(joinResult.reply, 'joined');
   assert.deepEqual(calls, ['joinSpot:alice:alice:stage-1:custom:hello']);
   replyMessage.close();
@@ -654,7 +692,7 @@ test('ZLinkActorContext joinSpot uses binary codec extensions without raw reques
       async joinSpot(actor, state, spotRid, request) {
         const decoded = serializer.deserialize(request);
         calls.push(`joinSpot:${actor.actorId}:${state.actorId}:${spotRid}:${decoded.text}`);
-        return { resultCode: 0, actor: actorRef, reply: replyMessage };
+        return { accepted: true, actor: actorRef, reply: replyMessage };
       },
       async joinEntrySpot() {
         throw new Error('joinEntrySpot must not be called');
@@ -669,7 +707,7 @@ test('ZLinkActorContext joinSpot uses binary codec extensions without raw reques
 
     const joinResult = await actor.context.joinSpot('stage-1', { text: `${name}:hello` }).submit();
 
-    assert.equal(joinResult.resultCode, 0);
+    assert.equal(joinResult.accepted, true);
     assert.deepEqual(joinResult.reply, { text: `${name}:joined` });
     assert.deepEqual(calls, [`joinSpot:alice:alice:stage-1:${name}:hello`]);
   }
@@ -722,7 +760,7 @@ test('ZLinkActorNativeJoinCoordinator creates native actor and updates joined sp
   const request = encodedMessage('payload:hello');
   const result = await actor.context.joinSpot('stage-1', request).timeout(25).submit();
 
-  assert.equal(result.resultCode, 7);
+  assert.equal(result.accepted, true);
   assert.deepEqual(result.actor, { ...joinedRef, nodeRid: zlink.RoutingId.from('node-a') });
   assert.equal(result.reply, 'native-reply');
   assert.equal(actor.context.isJoined, true);
@@ -810,7 +848,7 @@ test('ZLinkActorNativeJoinCoordinator uses native spot-node join when remote add
   const request = encodedMessage('payload');
   const result = await actor.context.joinSpot('room-1', request).submit();
 
-  assert.equal(result.resultCode, 0);
+  assert.equal(result.accepted, true);
   assert.equal(result.reply, 'remote-reply');
   assert.deepEqual(events, [
     'resolve:room-1',
@@ -893,7 +931,7 @@ test('ZLinkActorNativeJoinCoordinator routes remote spot-node join when transpor
   const request = encodedMessage('payload');
   const result = await actor.context.joinSpot('room-1', request).submit();
 
-  assert.equal(result.resultCode, 0);
+  assert.equal(result.accepted, true);
   assert.equal(result.reply, 'routed-reply');
   assert.deepEqual(events, [
     'resolve:room-1',
@@ -1661,6 +1699,7 @@ test('ZLinkSpotActorDispatcher serializes user spot actor handlers on provided s
 async function locationLifecycleNode(store, ownerId, nodeRid) {
   const runtime = new framework.ZLinkLocationRuntime({
     stores: {
+      locationStore: store,
       peerStore: store,
       spotStore: store,
       actorStore: store,

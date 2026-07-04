@@ -5,8 +5,7 @@ import { loadSampleConfig } from './sample-config';
 import { SampleNames } from './sample-settings';
 import type {
   RoutingId,
-  ZLinkSpotRemoteAddress,
-  ZLinkSpotRemoteAddressResolver
+  ZLinkSpotRemoteAddress
 } from '@zlink-systems/framework';
 import type { TicTacToeSampleConfig } from './sample-config';
 
@@ -41,7 +40,7 @@ class RedisRoomRouteStore {
 }
 
 @Injectable()
-class RedisSpotRemoteAddressResolver implements ZLinkSpotRemoteAddressResolver {
+class RedisSpotRemoteAddressResolver {
   private readonly config = loadSampleConfig();
 
   async resolve(spotRid: RoutingId): Promise<ZLinkSpotRemoteAddress> {

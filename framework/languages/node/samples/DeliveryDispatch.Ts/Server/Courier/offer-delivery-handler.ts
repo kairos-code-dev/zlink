@@ -14,7 +14,7 @@ class OfferDeliveryHandler implements ZLinkRequestHandler<OfferDeliveryReq, Offe
   async handle(request: OfferDeliveryReq, context: ZLinkRequestContext): Promise<OfferDeliveryRes> {
     void context;
     return await this.routes
-      .request(SampleNames.courierActorNodeRouteChannel, courierActorNodeRid(request.courierId), request)
+      .requestToNode(SampleNames.courierActorNodeRouteChannel, courierActorNodeRid(request.courierId), request)
       .packetName(PacketNames.offerDelivery)
       .timeout(3000)
       .submit<OfferDeliveryRes>();

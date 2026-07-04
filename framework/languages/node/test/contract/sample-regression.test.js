@@ -444,7 +444,7 @@ test.skip('GameQuest TypeScript sample uses framework channel topology', () => {
   assert.match(clientScenario, /apiAStream\.request\(subscribeQuestReq/);
   assert.match(clientScenario, /waitFor<QuestCompletedNotify>/);
   assert.doesNotMatch(clientScenario, /requestToChannel|SampleNames\.questMissionRouteChannel|SAMPLE_ENDPOINT|support::request_line/);
-  assert.match(apiModule, /\.addRouteMesh\(SampleNames\.questMissionRouteChannel\)/);
+  assert.match(apiModule, /\.addRouteMeshChannel\(SampleNames\.questMissionRouteChannel\)/);
   assert.match(apiModule, /\.connect\(\[config\.missionAEndpoint, config\.missionBEndpoint\]\)/);
   assert.match(apiModule, /\.addStreamNode\(SampleNames\.playerStreamNode\)/);
   assert.match(apiServer, /http\.createServer/);
@@ -547,7 +547,7 @@ test.skip('ShoppingMall TypeScript sample uses framework channel topology', () =
   assert.doesNotMatch(clientScenario, /requestToChannel|SampleNames\.orderWorkflowRouteChannel|SAMPLE_ENDPOINT|support::request_line/);
   assert.match(commerceApiModule, /zlinkFramework\(\)/);
   assert.match(commerceApiModule, /\.addRegistryEndpoint\(config\.registryRouterEndpoint\)/);
-  assert.match(commerceApiModule, /\.addRouteMesh\(SampleNames\.orderWorkflowRouteChannel\)/);
+  assert.match(commerceApiModule, /\.addRouteMeshChannel\(SampleNames\.orderWorkflowRouteChannel\)/);
   assert.match(commerceApiModule, /\.connect\(\[config\.workflowAEndpoint, config\.workflowBEndpoint\]\)/);
   for (const file of sampleSourceFiles(path.join(samplesRoot, 'ShoppingMall.Ts', 'Server', 'CommerceApi'))) {
     assert.doesNotMatch(fs.readFileSync(file, 'utf8'), /OrderWorkflow\//);
@@ -560,7 +560,7 @@ test.skip('ShoppingMall TypeScript sample uses framework channel topology', () =
   assert.match(workflowRouter, /requestWorkflow<TResponse>/);
   assert.match(workflowRouter, /workflowRouteRid\(payload\)/);
   assert.match(workflowModule, /zlinkFramework\(\)/);
-  assert.match(workflowModule, /\.addRouteMesh\(SampleNames\.orderWorkflowRouteChannel\)/);
+  assert.match(workflowModule, /\.addRouteMeshChannel\(SampleNames\.orderWorkflowRouteChannel\)/);
   assert.match(workflowModule, /\.enableRouter\(workflowEndpoint\)/);
   assert.match(workflowModule, /\.addSpotMesh\(SampleNames\.orderWorkflowRouteChannel\)/);
   assert.match(workflowModule, /\.addSpotFactory\(OrderWorkflowSpot\)/);
@@ -853,14 +853,14 @@ test('Bingo TypeScript sample uses route mesh peers and location store registrat
     [locationStore, 'redisKeyPrefix'],
     [apiModule, '.addLocationStore(createBingoLocationStore(config))'],
     [apiModule, 'bingoLocationOptions()'],
-    [apiModule, '.addRouteMesh(SampleNames.playChannel'],
+    [apiModule, '.addRouteMeshChannel(SampleNames.playChannel'],
     [apiModule, '.routingId(config.apiNodeRid'],
     [apiModule, '.connect(config.playRouteEndpoints)'],
     [apiModule, '.addClientServerChannel(SampleNames.apiChannel'],
     [apiModule, '.enableServer(config.apiEndpoint)'],
     [playModule, '.addLocationStore(createBingoLocationStore(config))'],
     [playModule, 'bingoLocationOptions()'],
-    [playModule, '.addRouteMesh(SampleNames.playChannel'],
+    [playModule, '.addRouteMeshChannel(SampleNames.playChannel'],
     [playModule, '.enableRouter(config.playRouteEndpoint)'],
     [playModule, '.connect(config.routePeerEndpoints)'],
     [sessionModule, '.addLocationStore(createBingoLocationStore(endpoints))'],

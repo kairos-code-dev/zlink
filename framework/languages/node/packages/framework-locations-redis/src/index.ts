@@ -7,8 +7,6 @@ import {
   ZLinkLocationWriteIntent,
   ZLinkLocationWriteStatus,
   ZLinkSpotKind,
-  zlinkLocationAutoConnectTypeName,
-  zlinkLocationRoleName,
   type IZLinkLocationChangeStampStore,
   type IZLinkLocationStore,
   type RoutingId,
@@ -20,6 +18,7 @@ import {
   type ZLinkLocationPage,
   type ZLinkLocationWriteResult,
   type ZLinkOwnerLease,
+  type ZLinkOwnerLeaseRenewal,
   type ZLinkOwnerLeaseSnapshot,
   type ZLinkPageRequest,
   type ZLinkPeerLocation,
@@ -96,10 +95,6 @@ export class ZLinkRedisLocationStore implements IZLinkLocationStore, IZLinkLocat
     return await this.remove(kindPeer, encodePeerKey(key), key.meshName, owner, signal);
   }
 
-  async removePeersByOwner(ownerId: string, signal?: AbortSignal): Promise<number> {
-    return await this.removeByOwner(kindPeer, ownerId, signal);
-  }
-
   async listPeers(filter: ZLinkPeerLocationFilter, signal?: AbortSignal): Promise<readonly ZLinkPeerLocation[]> {
     const rows = await this.loadAll(kindPeer, signal);
     return rows.filter((row) => matchesPeer(row, filter));
@@ -119,10 +114,6 @@ export class ZLinkRedisLocationStore implements IZLinkLocationStore, IZLinkLocat
     signal?: AbortSignal
   ): Promise<ZLinkLocationWriteResult> {
     return await this.remove(kindSpot, encodeSpotKey(key), key.meshName, owner, signal);
-  }
-
-  async removeSpotsByOwner(ownerId: string, signal?: AbortSignal): Promise<number> {
-    return await this.removeByOwner(kindSpot, ownerId, signal);
   }
 
   async resolveSpot(key: ZLinkSpotLocationKey, signal?: AbortSignal): Promise<ZLinkSpotLocation | undefined> {
@@ -153,10 +144,6 @@ export class ZLinkRedisLocationStore implements IZLinkLocationStore, IZLinkLocat
     return await this.remove(kindActor, encodeActorKey(key), undefined, owner, signal);
   }
 
-  async removeActorsByOwner(ownerId: string, signal?: AbortSignal): Promise<number> {
-    return await this.removeByOwner(kindActor, ownerId, signal);
-  }
-
   async resolveActor(key: ZLinkActorLocationKey, signal?: AbortSignal): Promise<ZLinkActorLocation | undefined> {
     return await this.resolve(kindActor, encodeActorKey(key), signal);
   }
@@ -185,10 +172,6 @@ export class ZLinkRedisLocationStore implements IZLinkLocationStore, IZLinkLocat
     return await this.remove(kindRoute, encodeRouteKey(key), undefined, owner, signal);
   }
 
-  async removeRoutesByOwner(ownerId: string, signal?: AbortSignal): Promise<number> {
-    return await this.removeByOwner(kindRoute, ownerId, signal);
-  }
-
   async resolveRoute(key: ZLinkRouteLocationKey, signal?: AbortSignal): Promise<ZLinkRouteLocation | undefined> {
     return await this.resolve(kindRoute, encodeRouteKey(key), signal);
   }
@@ -206,29 +189,52 @@ export class ZLinkRedisLocationStore implements IZLinkLocationStore, IZLinkLocat
     nodeRid: RoutingId,
     leaseTtlMs: number,
     signal?: AbortSignal
-  ): Promise<ZLinkLocationWriteResult> {
+  ): Promise<ZLinkOwnerLeaseRenewal> {
     try {
       const ttlMs = Math.max(1, Math.trunc(leaseTtlMs));
       const nowMs = toNumber(await this.eval(RENEW_LEASE_SCRIPT, [
         this.leaseKey(ownerId),
         this.leaseIndexKey()
       ], [ownerId, routingIdHex(nodeRid), String(ttlMs)], signal));
-      return stored(0n, fromUnixMs(nowMs));
-    } catch {
-      return storeUnavailable();
+      const storeNow = fromUnixMs(nowMs);
+      return { leaseExpiresAt: new Date(storeNow.getTime() + ttlMs), storeNow };
+    } catch (error) {
+      throw error;
     }
   }
 
-  async removeOwnerLease(ownerId: string, signal?: AbortSignal): Promise<ZLinkLocationWriteResult> {
+  async removeOwnerLease(ownerId: string, signal?: AbortSignal): Promise<boolean> {
     try {
-      const nowMs = toNumber(await this.eval(REMOVE_LEASE_SCRIPT, [
+      const removed = toNumber(await this.eval(REMOVE_LEASE_SCRIPT, [
         this.leaseKey(ownerId),
         this.leaseIndexKey()
       ], [ownerId], signal));
-      return stored(0n, fromUnixMs(nowMs));
-    } catch {
-      return storeUnavailable();
+      return removed !== 0;
+    } catch (error) {
+      throw error;
     }
+  }
+
+  async removeAllByOwner(ownerId: string, signal?: AbortSignal): Promise<number> {
+    return toNumber(await this.eval(REMOVE_ALL_BY_OWNER_SCRIPT, [
+      this.ownerIndexKeyPrefix(kindPeer.tag) + ownerId,
+      this.ownerIndexKeyPrefix(kindSpot.tag) + ownerId,
+      this.ownerIndexKeyPrefix(kindActor.tag) + ownerId,
+      this.ownerIndexKeyPrefix(kindRoute.tag) + ownerId,
+      this.kindIndexKey(kindPeer.tag),
+      this.kindIndexKey(kindSpot.tag),
+      this.kindIndexKey(kindActor.tag),
+      this.kindIndexKey(kindRoute.tag)
+    ], [
+      this.rowHashKeyPrefix(kindPeer.tag),
+      this.rowHashKeyPrefix(kindSpot.tag),
+      this.rowHashKeyPrefix(kindActor.tag),
+      this.rowHashKeyPrefix(kindRoute.tag),
+      this.stampKey(kindPeer.tag, undefined),
+      this.stampKey(kindSpot.tag, undefined),
+      this.stampKey(kindActor.tag, undefined),
+      this.stampKey(kindRoute.tag, undefined)
+    ], signal));
   }
 
   async listOwnerLeases(signal?: AbortSignal): Promise<ZLinkOwnerLeaseSnapshot> {
@@ -297,8 +303,8 @@ export class ZLinkRedisLocationStore implements IZLinkLocationStore, IZLinkLocat
         meshName ?? ''
       ], signal));
       return toWriteResult(raw);
-    } catch {
-      return storeUnavailable();
+    } catch (error) {
+      throw error;
     }
   }
 
@@ -322,23 +328,9 @@ export class ZLinkRedisLocationStore implements IZLinkLocationStore, IZLinkLocat
         meshName === undefined ? '' : this.stampKey(kind.tag, undefined)
       ], signal));
       return toWriteResult(raw);
-    } catch {
-      return storeUnavailable();
+    } catch (error) {
+      throw error;
     }
-  }
-
-  private async removeByOwner<TRow>(
-    kind: LocationKind<TRow>,
-    ownerId: string,
-    signal?: AbortSignal
-  ): Promise<number> {
-    return toNumber(await this.eval(REMOVE_BY_OWNER_SCRIPT, [
-      this.ownerIndexKeyPrefix(kind.tag) + ownerId,
-      this.kindIndexKey(kind.tag)
-    ], [
-      this.rowHashKeyPrefix(kind.tag),
-      this.stampKey(kind.tag, undefined)
-    ], signal));
   }
 
   private async resolve<TRow>(
@@ -512,7 +504,6 @@ interface SpotKey {
 }
 
 interface ActorKey {
-  readonly actorType?: string;
   readonly actorId: string;
 }
 
@@ -521,6 +512,8 @@ interface RouteKey {
   readonly routeKey: string;
 }
 
+// Redis storage codec. This intentionally duplicates the framework runtime
+// bookkeeping codec so Redis key layout stays a backend concern.
 function encodePeerKey(key: PeerKey): string {
   return encodeKeySegments(
     zlinkLocationAutoConnectTypeName(key.autoConnectType),
@@ -535,7 +528,7 @@ function encodeSpotKey(key: SpotKey): string {
 }
 
 function encodeActorKey(key: ActorKey): string {
-  return encodeKeySegments(key.actorType ?? '', key.actorId);
+  return encodeKeySegments(key.actorId);
 }
 
 function encodeRouteKey(key: RouteKey): string {
@@ -544,6 +537,40 @@ function encodeRouteKey(key: RouteKey): string {
 
 function encodeKeySegments(...segments: readonly string[]): string {
   return segments.map((segment) => `${segment.length}:${segment}`).join('');
+}
+
+function zlinkLocationAutoConnectTypeName(type: ZLinkLocationAutoConnectType): string {
+  switch (type) {
+    case ZLinkLocationAutoConnectType.RouteMesh:
+      return 'route-mesh';
+    case ZLinkLocationAutoConnectType.ClientServer:
+      return 'client-server';
+    case ZLinkLocationAutoConnectType.DealerMesh:
+      return 'dealer-mesh';
+    case ZLinkLocationAutoConnectType.Fanout:
+      return 'fanout';
+    case ZLinkLocationAutoConnectType.SpotMesh:
+      return 'spot-mesh';
+    default:
+      throw new RangeError(`Unknown location auto-connect type: ${type}`);
+  }
+}
+
+function zlinkLocationRoleName(role: ZLinkLocationRole): string {
+  switch (role) {
+    case ZLinkLocationRole.Router:
+      return 'router';
+    case ZLinkLocationRole.Dealer:
+      return 'dealer';
+    case ZLinkLocationRole.Pub:
+      return 'pub';
+    case ZLinkLocationRole.Sub:
+      return 'sub';
+    case ZLinkLocationRole.Spot:
+      return 'spot';
+    default:
+      throw new RangeError(`Unknown location role: ${role}`);
+  }
 }
 
 interface LocationKind<TRow> {
@@ -584,7 +611,7 @@ const kindSpot: LocationKind<ZLinkSpotLocation> = {
 
 const kindActor: LocationKind<ZLinkActorLocation> = {
   tag: 'actor',
-  encodeKey: (row) => encodeActorKey({ actorType: row.actorType, actorId: row.actorId }),
+  encodeKey: (row) => encodeActorKey({ actorId: row.actorId }),
   meshOf: () => undefined,
   ownerOf: (row) => row.ownerId,
   generationOf: (row) => row.generation,
@@ -615,7 +642,7 @@ function peerToJson(row: ZLinkPeerLocation): unknown {
     Capabilities: row.capabilities ?? null,
     OwnerId: row.ownerId,
     Generation: Number(row.generation),
-    UpdatedAt: row.updatedAt.toISOString()
+    UpdatedAt: formatDotNetDateTimeOffset(row.updatedAt)
   };
 }
 
@@ -647,7 +674,7 @@ function spotToJson(row: ZLinkSpotLocation): unknown {
     RouteEndpoint: row.routeEndpoint ?? null,
     OwnerId: row.ownerId,
     Generation: Number(row.generation),
-    UpdatedAt: row.updatedAt.toISOString()
+    UpdatedAt: formatDotNetDateTimeOffset(row.updatedAt)
   };
 }
 
@@ -668,32 +695,36 @@ function spotFromJson(json: unknown, generation: bigint, updatedAt: Date): ZLink
 
 function actorToJson(row: ZLinkActorLocation): unknown {
   return {
-    ActorType: row.actorType,
     ActorId: row.actorId,
-    ActorRef: row.actorRef,
+    ActorType: row.actorType ?? null,
+    ActorRef: row.actorRef == null
+      ? null
+      : {
+          nodeRid: routingIdHex(row.actorRef.nodeRid),
+          actorId: row.actorRef.actorId,
+          generation: Number(row.actorRef.generation)
+        },
     NodeRid: routingIdHex(row.nodeRid),
-    Generation: Number(row.generation),
     LocationKind: row.locationKind,
     SpotMeshName: row.spotMeshName,
-    SpotRid: row.spotRid === undefined ? null : routingIdHex(row.spotRid),
-    SpotKind: row.spotKind,
+    SpotRid: row.spotRid == null ? null : routingIdHex(row.spotRid),
     OwnerId: row.ownerId,
-    UpdatedAt: row.updatedAt.toISOString()
+    Generation: Number(row.generation),
+    UpdatedAt: formatDotNetDateTimeOffset(row.updatedAt)
   };
 }
 
 function actorFromJson(json: unknown, generation: bigint, updatedAt: Date): ZLinkActorLocation {
   const row = objectOf(json);
   return {
-    actorType: stringOf(row.ActorType),
+    actorType: optionalString(row.ActorType),
     actorId: stringOf(row.ActorId),
-    actorRef: stringOf(row.ActorRef),
+    actorRef: actorRefOf(row.ActorRef),
     nodeRid: ridOf(row.NodeRid),
     generation,
     locationKind: numberOf(row.LocationKind) as ZLinkSpotKind,
     spotMeshName: stringOf(row.SpotMeshName),
     spotRid: optionalRid(row.SpotRid),
-    spotKind: numberOf(row.SpotKind) as ZLinkSpotKind,
     ownerId: stringOf(row.OwnerId),
     updatedAt
   };
@@ -707,7 +738,7 @@ function routeToJson(row: ZLinkRouteLocation): unknown {
     OwnerId: row.ownerId,
     Generation: Number(row.generation),
     Value: Buffer.from(row.value).toString('base64'),
-    UpdatedAt: row.updatedAt.toISOString()
+    UpdatedAt: formatDotNetDateTimeOffset(row.updatedAt)
   };
 }
 
@@ -722,6 +753,17 @@ function routeFromJson(json: unknown, generation: bigint, updatedAt: Date): ZLin
     value: Buffer.from(stringOf(row.Value), 'base64'),
     updatedAt
   };
+}
+
+function formatDotNetDateTimeOffset(value: Date): string {
+  if (value.getTime() === 0) {
+    return '0001-01-01T00:00:00+00:00';
+  }
+  const iso = value.toISOString();
+  const normalized = iso.endsWith('.000Z')
+    ? iso.slice(0, -5)
+    : iso.slice(0, -1);
+  return `${normalized}+00:00`;
 }
 
 function materialize<TRow>(
@@ -774,10 +816,6 @@ function rejectedConflict(): ZLinkLocationWriteResult {
   return { status: ZLinkLocationWriteStatus.RejectedConflict, generation: 0n, updatedAt: new Date(0) };
 }
 
-function storeUnavailable(): ZLinkLocationWriteResult {
-  return { status: ZLinkLocationWriteStatus.StoreUnavailable, generation: 0n, updatedAt: new Date(0) };
-}
-
 function fromUnixMs(value: number): Date {
   return new Date(value);
 }
@@ -796,6 +834,18 @@ function ridOf(value: unknown): RoutingId {
 function optionalRid(value: unknown): RoutingId | undefined {
   const text = optionalString(value);
   return text === undefined || text.length === 0 ? undefined : BindingRoutingId.fromHex(text) as unknown as RoutingId;
+}
+
+function actorRefOf(value: unknown): ZLinkActorLocation['actorRef'] {
+  if (value === null || value === undefined) {
+    return undefined;
+  }
+  const row = objectOf(value);
+  return {
+    nodeRid: ridOf(row.nodeRid),
+    actorId: stringOf(row.actorId),
+    generation: BigInt(numberOf(row.generation))
+  };
 }
 
 function matchesPeer(row: ZLinkPeerLocation, filter: ZLinkPeerLocationFilter): boolean {
@@ -990,23 +1040,29 @@ if ARGV[6] ~= '' then redis.call('INCR', ARGV[6]) end
 return {'stored', tonumber(ARGV[2]), nowMs}
 `;
 
-const REMOVE_BY_OWNER_SCRIPT = `
+const REMOVE_ALL_BY_OWNER_SCRIPT = `
 if redis.replicate_commands then redis.replicate_commands() end
-local rowKeys = redis.call('SMEMBERS', KEYS[1])
 local removed = 0
-for _, rowKey in ipairs(rowKeys) do
-    local rowHash = ARGV[1] .. rowKey
-    local mesh = redis.call('HGET', rowHash, 'mesh')
-    if redis.call('DEL', rowHash) == 1 then
-        removed = removed + 1
-        redis.call('SREM', KEYS[2], rowKey)
-        if mesh then
-            redis.call('INCR', ARGV[2] .. ':' .. mesh)
+for i = 1, 4 do
+    local ownerIndex = KEYS[i]
+    local kindIndex = KEYS[i + 4]
+    local rowPrefix = ARGV[i]
+    local stampBase = ARGV[i + 4]
+    local rowKeys = redis.call('SMEMBERS', ownerIndex)
+    for _, rowKey in ipairs(rowKeys) do
+        local rowHash = rowPrefix .. rowKey
+        local mesh = redis.call('HGET', rowHash, 'mesh')
+        if redis.call('DEL', rowHash) == 1 then
+            removed = removed + 1
+            redis.call('SREM', kindIndex, rowKey)
+            if mesh then
+                redis.call('INCR', stampBase .. ':' .. mesh)
+            end
+            redis.call('INCR', stampBase)
         end
-        redis.call('INCR', ARGV[2])
     end
+    redis.call('DEL', ownerIndex)
 end
-redis.call('DEL', KEYS[1])
 return removed
 `;
 
@@ -1017,9 +1073,9 @@ return nowMs
 `;
 
 const REMOVE_LEASE_SCRIPT = PROLOGUE + `
-redis.call('DEL', KEYS[1])
+local removed = redis.call('DEL', KEYS[1])
 redis.call('SREM', KEYS[2], ARGV[1])
-return nowMs
+return removed
 `;
 
 const LIST_LEASES_SCRIPT = PROLOGUE + `

@@ -59,12 +59,12 @@ test('store peer resolver reads store each time and joins owner liveness', async
   });
 
   assert.deepEqual(
-    (await resolver.listPeers({ meshName: 'play' })).map((row) => row.endpoint),
+    (await resolver.listLivePeers({ meshName: 'play' })).map((row) => row.endpoint),
     ['tcp://live']
   );
 
   nowMs += 1001;
-  assert.deepEqual(await resolver.listPeers({ meshName: 'play' }), []);
+  assert.deepEqual(await resolver.listLivePeers({ meshName: 'play' }), []);
 });
 
 test('auto-connect reconciler publishes local row diffs handover and stays fail-static on store failure', async () => {
@@ -175,11 +175,11 @@ class SwitchablePeerResolver {
     this.fail = false;
   }
 
-  async listPeers(filter, signal) {
+  async listLivePeers(filter, signal) {
     if (this.fail) {
       throw new Error('store unavailable');
     }
-    return this.inner.listPeers(filter, signal);
+    return this.inner.listLivePeers(filter, signal);
   }
 }
 
@@ -197,6 +197,7 @@ function runtimeFor(store, ownerId) {
 
 function stores(store) {
   return {
+    locationStore: store,
     peerStore: store,
     spotStore: store,
     actorStore: store,

@@ -1,0 +1,74 @@
+import type { RoutingId } from '../Common';
+import type { ZLinkSpotKind } from '../Spots';
+import type { ZLinkLocationAutoConnectType, ZLinkLocationKind, ZLinkLocationRole, ZLinkRouteKind } from './Values';
+
+/**
+ * Peer identity is the full five-component tuple. Missing optional components
+ * are still part of the identity as "no value".
+ */
+export interface ZLinkPeerLocationKey {
+  readonly autoConnectType: ZLinkLocationAutoConnectType;
+  readonly meshName: string;
+  readonly role: ZLinkLocationRole;
+  readonly nodeRid?: RoutingId;
+  readonly endpoint?: string;
+}
+
+export interface ZLinkSpotLocationKey {
+  readonly meshName: string;
+  readonly spotRid: RoutingId;
+}
+
+export interface ZLinkActorLocationKey {
+  /** Actor id is framework-wide unique; actor type is not part of identity. */
+  readonly actorId: string;
+}
+
+export interface ZLinkRouteLocationKey {
+  readonly routeKind: ZLinkRouteKind;
+  readonly routeKey: string;
+}
+
+export type ZLinkLocationKey =
+  | { readonly kind: ZLinkLocationKind.Peer; readonly key: ZLinkPeerLocationKey }
+  | { readonly kind: ZLinkLocationKind.Spot; readonly key: ZLinkSpotLocationKey }
+  | { readonly kind: ZLinkLocationKind.Actor; readonly key: ZLinkActorLocationKey }
+  | { readonly kind: ZLinkLocationKind.Route; readonly key: ZLinkRouteLocationKey };
+
+export interface ZLinkPeerLocationFilter {
+  readonly autoConnectType?: ZLinkLocationAutoConnectType;
+  readonly meshName?: string;
+  readonly role?: ZLinkLocationRole;
+  readonly nodeRid?: RoutingId;
+  readonly endpoint?: string;
+}
+
+export interface ZLinkSpotLocationFilter {
+  readonly meshName?: string;
+  readonly spotType?: string;
+  readonly nodeRid?: RoutingId;
+  readonly spotKind?: ZLinkSpotKind;
+}
+
+export interface ZLinkActorLocationFilter {
+  readonly actorType?: string;
+  readonly nodeRid?: RoutingId;
+  readonly spotRid?: RoutingId;
+  readonly locationKind?: ZLinkSpotKind;
+}
+
+export interface ZLinkRouteLocationFilter {
+  readonly routeKind?: ZLinkRouteKind;
+  readonly ownerNodeRid?: RoutingId;
+  readonly ownerId?: string;
+}
+
+export interface ZLinkPageRequest {
+  readonly pageSize?: number;
+  readonly continuationToken?: string;
+}
+
+export interface ZLinkLocationPage<T> {
+  readonly items: readonly T[];
+  readonly continuationToken?: string;
+}

@@ -3,6 +3,7 @@ import type {
   ZLinkActorLocation,
   ZLinkActorLocationKey,
   ZLinkLocationAutoConnectType,
+  ZLinkLocationKey,
   ZLinkLocationRuntimeStatus,
   ZLinkLocationServiceSummary,
   ZLinkLocationServiceSummaryFilter,
@@ -104,7 +105,7 @@ export enum ZLinkLocationRuntimeEventKind {
   StatusChanged = 0,
   TopologyChanged = 1,
   ServiceSummaryChanged = 2,
-  StoreUnavailable = 3,
+  StoreFailure = 3,
   StoreRecovered = 4
 }
 
@@ -132,7 +133,7 @@ export interface ZLinkAutoConnectDesiredSetChange {
 
 export interface ZLinkLocationPeerEvent extends ZLinkRuntimeEvent {
   readonly event: ZLinkLocationPeerEventKind;
-  readonly key?: string;
+  readonly key?: ZLinkLocationKey;
   readonly peer?: ZLinkPeerLocation;
   readonly desiredSetChange?: ZLinkAutoConnectDesiredSetChange;
 }

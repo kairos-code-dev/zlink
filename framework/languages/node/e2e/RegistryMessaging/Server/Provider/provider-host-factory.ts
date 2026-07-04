@@ -81,7 +81,7 @@ function createProviderModule(options: ServerOptions, evidence: EvidenceStore): 
               .enableClient(options.manualClientEndpoint);
           }
           if (options.routeEndpoint !== undefined) {
-            builder.addRouteMesh('profile.route')
+            builder.addRouteMeshChannel('profile.route')
               .enableRouter(options.routeEndpoint)
               .routingId(options.rid)
               .connect(options.routePeers)

@@ -67,7 +67,7 @@ export async function startPlayHost(args: readonly string[]): Promise<void> {
               .traceLabel(options.rid);
 
           builder.useInMemoryLocationStores();
-          builder.addRouteMesh(SpotServiceNames.controlChannel)
+          builder.addRouteMeshChannel(SpotServiceNames.controlChannel)
             .enableRouter(options.controlRouterEndpoint)
             .routingId(options.rid)
             .addRequestHandler('ControlPingReq', ControlPingHandler)
@@ -76,12 +76,12 @@ export async function startPlayHost(args: readonly string[]): Promise<void> {
           const externalSpotChannel = options.rid === 'play-b'
             ? SpotServiceNames.externalSpotChannelB
             : SpotServiceNames.externalSpotChannel;
-          builder.addRouteMesh(externalSpotChannel)
+          builder.addRouteMeshChannel(externalSpotChannel)
             .enableRouter(options.externalSpotEndpoint)
             .routingId(options.rid)
             .addRequestHandler('ChannelEchoReq', ChannelEchoHandler);
           if (options.rid === 'play-b' && options.playAExternalSpotEndpoint !== undefined) {
-            builder.addRouteMesh(SpotServiceNames.externalSpotChannel)
+            builder.addRouteMeshChannel(SpotServiceNames.externalSpotChannel)
               .connect(options.playAExternalSpotEndpoint);
           }
           const spot = builder.addSpotMesh(SpotServiceNames.spotChannel)

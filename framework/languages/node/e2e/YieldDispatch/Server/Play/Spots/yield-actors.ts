@@ -221,11 +221,11 @@ export class EntryActorJoinYieldHandler
     const joined = await call.submit<DelayRes>();
     this.evidence.add(
       `actor-join-yield-resumed|rid=${this.evidence.rid}|spot=${entrySpot.context.spotRid}`
-      + `|actor=${actor.actorId}|mailbox=${mailboxId}|request=${request.requestId}|accepted=${joined.resultCode === 0}`
+      + `|actor=${actor.actorId}|mailbox=${mailboxId}|request=${request.requestId}|accepted=${joined.accepted}`
     );
     this.evidence.add(
       `actor-join-yield-completed|rid=${this.evidence.rid}|spot=${entrySpot.context.spotRid}`
-      + `|actor=${actor.actorId}|mailbox=${mailboxId}|request=${request.requestId}|accepted=${joined.resultCode === 0}`
+      + `|actor=${actor.actorId}|mailbox=${mailboxId}|request=${request.requestId}|accepted=${joined.accepted}`
     );
     return actorReply('YD-B3', request.requestId, actor, entrySpot, 'actor-join-yield-completed');
   }

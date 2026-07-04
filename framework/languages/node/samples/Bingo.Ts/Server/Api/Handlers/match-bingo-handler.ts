@@ -18,7 +18,7 @@ class MatchBingoHandler implements ZLinkRequestHandler<MatchBingoApiReq, MatchBi
 
   async handle(request: MatchBingoApiReq): Promise<MatchBingoApiRes> {
     const allocated = await this.routes
-      .request(
+      .requestToNode(
         SampleNames.playChannel,
         request.actorNodeRid,
         withPlayerIdentity(allocateBingoRoomReq(request.mode), request.actorId, request.displayName)

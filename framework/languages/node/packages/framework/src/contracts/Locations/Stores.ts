@@ -10,6 +10,7 @@ import type {
   ZLinkLocationWatchFilter,
   ZLinkLocationWriteIntent,
   ZLinkLocationWriteResult,
+  ZLinkOwnerLeaseRenewal,
   ZLinkOwnerLeaseSnapshot,
   ZLinkPageRequest,
   ZLinkPeerLocation,
@@ -28,7 +29,9 @@ export interface IZLinkLocationStore extends
   IZLinkSpotLocationStore,
   IZLinkActorLocationStore,
   IZLinkRouteLocationStore,
-  IZLinkOwnerLeaseStore {}
+  IZLinkOwnerLeaseStore {
+  removeAllByOwner(ownerId: string, signal?: AbortSignal): Promise<number>;
+}
 
 export interface IZLinkPeerLocationStore {
   updatePeer(
@@ -41,7 +44,6 @@ export interface IZLinkPeerLocationStore {
     owner: ZLinkLocationOwnerToken,
     signal?: AbortSignal
   ): Promise<ZLinkLocationWriteResult>;
-  removePeersByOwner(ownerId: string, signal?: AbortSignal): Promise<number>;
   listPeers(filter: ZLinkPeerLocationFilter, signal?: AbortSignal): Promise<readonly ZLinkPeerLocation[]>;
 }
 
@@ -56,7 +58,6 @@ export interface IZLinkSpotLocationStore {
     owner: ZLinkLocationOwnerToken,
     signal?: AbortSignal
   ): Promise<ZLinkLocationWriteResult>;
-  removeSpotsByOwner(ownerId: string, signal?: AbortSignal): Promise<number>;
   resolveSpot(key: ZLinkSpotLocationKey, signal?: AbortSignal): Promise<ZLinkSpotLocation | undefined>;
   listSpots(
     filter: ZLinkSpotLocationFilter,
@@ -76,7 +77,6 @@ export interface IZLinkActorLocationStore {
     owner: ZLinkLocationOwnerToken,
     signal?: AbortSignal
   ): Promise<ZLinkLocationWriteResult>;
-  removeActorsByOwner(ownerId: string, signal?: AbortSignal): Promise<number>;
   resolveActor(key: ZLinkActorLocationKey, signal?: AbortSignal): Promise<ZLinkActorLocation | undefined>;
   listActors(
     filter: ZLinkActorLocationFilter,
@@ -96,7 +96,6 @@ export interface IZLinkRouteLocationStore {
     owner: ZLinkLocationOwnerToken,
     signal?: AbortSignal
   ): Promise<ZLinkLocationWriteResult>;
-  removeRoutesByOwner(ownerId: string, signal?: AbortSignal): Promise<number>;
   resolveRoute(key: ZLinkRouteLocationKey, signal?: AbortSignal): Promise<ZLinkRouteLocation | undefined>;
   listRoutes(
     filter: ZLinkRouteLocationFilter,
@@ -111,8 +110,8 @@ export interface IZLinkOwnerLeaseStore {
     nodeRid: RoutingId,
     leaseTtlMs: number,
     signal?: AbortSignal
-  ): Promise<ZLinkLocationWriteResult>;
-  removeOwnerLease(ownerId: string, signal?: AbortSignal): Promise<ZLinkLocationWriteResult>;
+  ): Promise<ZLinkOwnerLeaseRenewal>;
+  removeOwnerLease(ownerId: string, signal?: AbortSignal): Promise<boolean>;
   listOwnerLeases(signal?: AbortSignal): Promise<ZLinkOwnerLeaseSnapshot>;
 }
 

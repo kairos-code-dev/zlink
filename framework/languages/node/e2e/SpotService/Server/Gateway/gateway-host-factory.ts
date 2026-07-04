@@ -75,7 +75,7 @@ function createGatewayEndpoints(
       handle: async (body) => {
         const request = body as SpotPublishReq;
         await publisher
-          .publishSpot(SpotServiceNames.spotChannel, SpotServiceNames.spotEventTopic, { marker: request.marker })
+          .publish(SpotServiceNames.spotChannel, SpotServiceNames.spotEventTopic, { marker: request.marker })
           .packetName('SpotMsg')
           .submit();
         evidence.add(`spot-publish|rid=${options.rid}|spot=${request.spotRid}|marker=${request.marker}`);

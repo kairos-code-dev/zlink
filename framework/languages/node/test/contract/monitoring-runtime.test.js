@@ -71,16 +71,16 @@ test('location runtime monitoring source publishes snapshot changes and suppress
           updatedAt: new Date(readyCount)
         }];
       },
-      async listPeers() {
+      async listPeerLocations() {
         return [];
       },
-      async listSpots() {
+      async listSpotLocations() {
         return { items: [] };
       },
-      async listActors() {
+      async listActorLocations() {
         return { items: [] };
       },
-      async listRoutes() {
+      async listRouteLocations() {
         return { items: [] };
       }
     },
@@ -115,7 +115,15 @@ test('location monitoring event emitter publishes registered row and resolve-mis
     route: { sourceName: 'location-route' }
   }, publisher);
 
-  emitter.peerRowUpdated('client-server/api/router/tcp://127.0.0.1:7001', peerRow());
+  emitter.peerRowUpdated({
+    kind: framework.ZLinkLocationKind.Peer,
+    key: {
+      autoConnectType: framework.ZLinkLocationAutoConnectType.ClientServer,
+      meshName: 'api',
+      role: framework.ZLinkLocationRole.Router,
+      endpoint: 'tcp://127.0.0.1:7001'
+    }
+  }, peerRow());
   emitter.spotResolveMiss({ meshName: 'game', spotRid: 'spot-1' });
   emitter.actorResolveMiss({ actorType: 'GameActor', actorId: 'room-1' });
   emitter.routeRowRemoved({ routeKind: framework.ZLinkRouteKind.FrameworkRoute, routeKey: 'api' });

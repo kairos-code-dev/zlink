@@ -33,11 +33,7 @@ test('location key codec matches the dotnet canonical segment format', () => {
   );
   assert.equal(
     internal.ZLinkLocationKeyCodec.encodeActorKey({ actorId: 'alice' }),
-    '0:5:alice'
-  );
-  assert.equal(
-    internal.ZLinkLocationKeyCodec.encodeActorKey({ actorType: 'PlayerActor', actorId: 'alice' }),
-    '11:PlayerActor5:alice'
+    '5:alice'
   );
   assert.equal(
     internal.ZLinkLocationKeyCodec.encodeRouteKey({
@@ -50,15 +46,17 @@ test('location key codec matches the dotnet canonical segment format', () => {
 
 test('location canonical names reject values outside the shared contract', () => {
   assert.equal(
-    framework.zlinkLocationAutoConnectTypeName(framework.ZLinkLocationAutoConnectType.ClientServer),
+    internal.zlinkLocationAutoConnectTypeName(framework.ZLinkLocationAutoConnectType.ClientServer),
     'client-server'
   );
-  assert.equal(framework.zlinkLocationRoleName(framework.ZLinkLocationRole.Dealer), 'dealer');
+  assert.equal(internal.zlinkLocationRoleName(framework.ZLinkLocationRole.Dealer), 'dealer');
   assert.equal(
-    framework.tryParseZLinkLocationAutoConnectType('spot-mesh'),
+    internal.tryParseZLinkLocationAutoConnectType('spot-mesh'),
     framework.ZLinkLocationAutoConnectType.SpotMesh
   );
-  assert.equal(framework.tryParseZLinkLocationRole('pub'), framework.ZLinkLocationRole.Pub);
-  assert.throws(() => framework.zlinkLocationAutoConnectTypeName(999), /Unknown location auto-connect type/);
-  assert.throws(() => framework.zlinkLocationRoleName(999), /Unknown location role/);
+  assert.equal(internal.tryParseZLinkLocationRole('pub'), framework.ZLinkLocationRole.Pub);
+  assert.throws(() => internal.zlinkLocationAutoConnectTypeName(999), /Unknown location auto-connect type/);
+  assert.throws(() => internal.zlinkLocationRoleName(999), /Unknown location role/);
+  assert.equal(framework.zlinkLocationAutoConnectTypeName, undefined);
+  assert.equal(framework.zlinkLocationRoleName, undefined);
 });

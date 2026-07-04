@@ -2,18 +2,9 @@ import type { ZLinkSpot, ZLinkSpotMeshBuilder } from '../Spots';
 import type { ZLinkSession, ZLinkSessionFactory, ZLinkStreamCompressionCodec } from '../Streams';
 import type { ZLinkCodecRegistryBuilder } from '../Codecs';
 import type { ZLinkDispatchOptionsBuilder } from '../Dispatch';
-import type {
-  IZLinkActorLocationStore,
-  IZLinkLocationStore,
-  IZLinkOwnerLeaseStore,
-  IZLinkPeerLocationStore,
-  IZLinkRouteLocationStore,
-  IZLinkSpotLocationStore,
-  ZLinkLocationOptions
-} from '../Locations';
+import type { IZLinkLocationStore, ZLinkLocationOptions } from '../Locations';
 import type { Type } from '../Common';
 import type { ZLinkWorkerOptions } from './Registration';
-import type { ZLinkLocationStoreProvider } from './Registration';
 import type { ZLinkSocketConfig } from './Configs';
 
 export interface ZLinkFrameworkOptions {
@@ -27,11 +18,6 @@ export interface ZLinkFrameworkOptions {
   configureDispatch(): ZLinkDispatchOptionsBuilder;
   useInMemoryLocationStores(): this;
   addLocationStore(store: IZLinkLocationStore): this;
-  addPeerLocationStore(store: ZLinkLocationStoreProvider<IZLinkPeerLocationStore>): this;
-  addSpotLocationStore(store: ZLinkLocationStoreProvider<IZLinkSpotLocationStore>): this;
-  addActorLocationStore(store: ZLinkLocationStoreProvider<IZLinkActorLocationStore>): this;
-  addRouteLocationStore(store: ZLinkLocationStoreProvider<IZLinkRouteLocationStore>): this;
-  addOwnerLeaseStore(store: ZLinkLocationStoreProvider<IZLinkOwnerLeaseStore>): this;
   configureLocations(): ZLinkLocationOptions;
   configureStreamCompression(): ZLinkStreamCompressionBuilder;
   addSpotFactory<TSpot extends ZLinkSpot>(spotType: Type<TSpot>): this;
@@ -39,7 +25,7 @@ export interface ZLinkFrameworkOptions {
   addClientServerChannel(name: string): ZLinkClientServerChannelBuilder;
   addFanoutChannel(name: string): ZLinkFanoutChannelBuilder;
   addRouteChannel(name: string): ZLinkRouteChannelBuilder;
-  addRouteMesh(name: string): ZLinkRouteMeshChannelBuilder;
+  addRouteMeshChannel(name: string): ZLinkRouteMeshChannelBuilder;
   addStreamNode(name: string): ZLinkStreamNodeBuilder;
 }
 

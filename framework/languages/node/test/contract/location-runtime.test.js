@@ -88,9 +88,35 @@ test('location runtime emits row events and resolvers emit resolve misses', asyn
   assert.equal(events[1][0], 'actor-removed');
 
   const resolvers = resolversFor(store, sink);
-  assert.equal(await resolvers.resolveActorSpotAddress('player', 'missing'), undefined);
+  assert.equal(await resolvers.resolveActorSpotAddress('missing'), undefined);
   assert.equal(events[2][0], 'actor-miss');
   assert.equal(events[2][1].actorId, 'missing');
+});
+
+test('location readiness returns false when ready state is missing or query fails', async () => {
+  const ready = new internal.ZLinkLocationReadiness({
+    async listTopology(filter) {
+      assert.equal(filter.meshName, 'play');
+      assert.equal(filter.role, framework.ZLinkLocationRole.Router);
+      assert.equal(filter.state, framework.ZLinkLocationTopologyState.Ready);
+      return { items: [{ nodeRid: rid('node-a') }] };
+    }
+  });
+  assert.equal(await ready.isPeerReady('play', framework.ZLinkLocationRole.Router, rid('node-a')), true);
+
+  const notReady = new internal.ZLinkLocationReadiness({
+    async listTopology() {
+      return { items: [] };
+    }
+  });
+  assert.equal(await notReady.isPeerReady('play', framework.ZLinkLocationRole.Router), false);
+
+  const unknown = new internal.ZLinkLocationReadiness({
+    async listTopology() {
+      throw new Error('store unavailable');
+    }
+  });
+  assert.equal(await unknown.isPeerReady('play', framework.ZLinkLocationRole.Router), false);
 });
 
 test('location lifecycle claims before activation and loser never activates', async () => {
@@ -242,32 +268,25 @@ test('store location resolvers return live spot actor and route rows without cac
     framework.ZLinkLocationWriteStatus.Stored
   );
   await node.lifecycle.claimActor('player', 'actor-1', rid('node-a'));
-  let actorAddress = await resolvers.resolveActorSpotAddress('player', 'actor-1');
-  assert.equal(actorAddress.meshName, 'play');
-  assert.equal(actorAddress.nodeRid.toHex(), rid('node-a').toHex());
-  assert.equal(actorAddress.spotRid.toHex(), rid('node-a').toHex());
+  let actorAddress = await resolvers.resolveActorSpotAddress('actor-1');
+  assert.equal(actorAddress, undefined);
 
+  await node.lifecycle.setActorRef('player', 'actor-1', 'ref-1');
   await node.lifecycle.notifyActorJoinedSpot('player', 'actor-1', 'play', rid('spot-1'));
-  actorAddress = await resolvers.resolveActorSpotAddress('player', 'actor-1');
+  actorAddress = await resolvers.resolveActorSpotAddress('actor-1');
   assert.equal(actorAddress.meshName, 'play');
   assert.equal(actorAddress.spotRid.toHex(), rid('spot-1').toHex());
 
-  const firstSpotAddress = await resolvers.resolveSpotAddress('play', rid('spot-1'));
-  const secondSpotAddress = await resolvers.resolveSpotAddress('play', rid('spot-1'));
+  const firstSpotAddress = await resolvers.resolveSpotAddress(rid('spot-1'));
+  const secondSpotAddress = await resolvers.resolveSpotAddress(rid('spot-1'));
   assert.equal(firstSpotAddress.meshName, 'play');
   assert.equal(firstSpotAddress.nodeRid.toHex(), rid('node-a').toHex());
   assert.equal(secondSpotAddress.spotRid.toHex(), rid('spot-1').toHex());
   assert.equal(spotResolveCount, 2);
 
-  const routeKey = rid('session-1').toHex();
-  await node.lifecycle.bindActorSessionRoute(rid('session-1'), 'actor-1', rid('node-a'));
-  const route = await resolvers.resolveRoute({ routeKind: framework.ZLinkRouteKind.ActorSession, routeKey });
-  assert.equal(route.ownerNodeRid.toHex(), rid('node-a').toHex());
-
   await node.runtime.stop();
-  assert.equal(await resolvers.resolveSpotAddress('play', rid('spot-1')), undefined);
-  assert.equal(await resolvers.resolveActorSpotAddress('player', 'actor-1'), undefined);
-  assert.equal(await resolvers.resolveRoute({ routeKind: framework.ZLinkRouteKind.ActorSession, routeKey }), undefined);
+  assert.equal(await resolvers.resolveSpotAddress(rid('spot-1')), undefined);
+  assert.equal(await resolvers.resolveActorSpotAddress('actor-1'), undefined);
 });
 
 test('location spot remote address resolver bridges current spot-rid outbound API', async () => {
@@ -301,6 +320,7 @@ async function lifecycleNode(store, ownerId, nodeRid, entryMeshName = '') {
 function resolversFor(store, events) {
   return new internal.ZLinkStoreLocationResolvers({
     stores: {
+      locationStore: store,
       peerStore: store,
       spotStore: store,
       actorStore: store,
@@ -308,7 +328,8 @@ function resolversFor(store, events) {
       ownerLeaseStore: store
     },
     leaseTracker: new internal.ZLinkOwnerLeaseTracker({ store }),
-    events
+    events,
+    spotMeshNames: ['play']
   });
 }
 
@@ -316,6 +337,7 @@ function runtimeFor(store, options = {}) {
   const timers = [];
   return new internal.ZLinkLocationRuntime({
     stores: {
+      locationStore: store,
       peerStore: store,
       spotStore: store,
       actorStore: store,

@@ -20,13 +20,7 @@ import type {
   ZLinkDispatchOptionsBuilder,
   ZLinkFrameworkRegistration,
   ZLinkFrameworkRegistrationOptions,
-  IZLinkActorLocationStore,
   IZLinkLocationStore,
-  IZLinkOwnerLeaseStore,
-  IZLinkPeerLocationStore,
-  IZLinkRouteLocationStore,
-  IZLinkSpotLocationStore,
-  ZLinkLocationStoreProvider,
   ZLinkLocationOptions,
   ZLinkMessageFlowLogMode,
   ZLinkMessageFlowObserver,
@@ -134,14 +128,6 @@ interface ZLinkNestManualHandlerOptions {
 type Mutable<T> = {
   -readonly [K in keyof T]: T[K];
 };
-
-interface MutableLocationStoreRegistration {
-  peerStore?: ZLinkLocationStoreProvider<IZLinkPeerLocationStore>;
-  spotStore?: ZLinkLocationStoreProvider<IZLinkSpotLocationStore>;
-  actorStore?: ZLinkLocationStoreProvider<IZLinkActorLocationStore>;
-  routeStore?: ZLinkLocationStoreProvider<IZLinkRouteLocationStore>;
-  ownerLeaseStore?: ZLinkLocationStoreProvider<IZLinkOwnerLeaseStore>;
-}
 
 interface ZLinkNestClientServerChannelOptions extends ZLinkNestHandlerDiscoveryOptions {
   readonly server?: {
@@ -271,15 +257,10 @@ export interface ZLinkNestFrameworkOptionsBuilder {
   configureDispatch(): ZLinkDispatchOptionsBuilder;
   useInMemoryLocationStores(): this;
   addLocationStore(store: IZLinkLocationStore): this;
-  addPeerLocationStore(store: ZLinkLocationStoreProvider<IZLinkPeerLocationStore>): this;
-  addSpotLocationStore(store: ZLinkLocationStoreProvider<IZLinkSpotLocationStore>): this;
-  addActorLocationStore(store: ZLinkLocationStoreProvider<IZLinkActorLocationStore>): this;
-  addRouteLocationStore(store: ZLinkLocationStoreProvider<IZLinkRouteLocationStore>): this;
-  addOwnerLeaseStore(store: ZLinkLocationStoreProvider<IZLinkOwnerLeaseStore>): this;
   configureLocations(): ZLinkLocationOptions;
   addClientServerChannel(name: string): ZLinkNestClientServerChannelBuilder;
   addFanoutChannel(name: string): ZLinkNestFanoutChannelBuilder;
-  addRouteMesh(name: string): ZLinkNestRouterMeshBuilder;
+  addRouteMeshChannel(name: string): ZLinkNestRouterMeshBuilder;
   addSpotMesh(name: string): ZLinkNestSpotNodeBuilder;
   addStreamNode(name: string): ZLinkNestStreamNodeBuilder;
   build(): ZLinkModuleOptions;
@@ -583,31 +564,6 @@ class DefaultZLinkNestFrameworkOptionsBuilder implements ZLinkNestFrameworkOptio
     return this;
   }
 
-  addPeerLocationStore(store: ZLinkLocationStoreProvider<IZLinkPeerLocationStore>): this {
-    this.locationStores().peerStore = store;
-    return this;
-  }
-
-  addSpotLocationStore(store: ZLinkLocationStoreProvider<IZLinkSpotLocationStore>): this {
-    this.locationStores().spotStore = store;
-    return this;
-  }
-
-  addActorLocationStore(store: ZLinkLocationStoreProvider<IZLinkActorLocationStore>): this {
-    this.locationStores().actorStore = store;
-    return this;
-  }
-
-  addRouteLocationStore(store: ZLinkLocationStoreProvider<IZLinkRouteLocationStore>): this {
-    this.locationStores().routeStore = store;
-    return this;
-  }
-
-  addOwnerLeaseStore(store: ZLinkLocationStoreProvider<IZLinkOwnerLeaseStore>): this {
-    this.locationStores().ownerLeaseStore = store;
-    return this;
-  }
-
   configureLocations(): ZLinkLocationOptions {
     this.additionalOptions = {
       ...this.additionalOptions,
@@ -616,20 +572,6 @@ class DefaultZLinkNestFrameworkOptionsBuilder implements ZLinkNestFrameworkOptio
     const locations = this.additionalOptions.locations as NonNullable<ZLinkFrameworkRegistrationOptions['locations']>;
     (locations as { options?: ZLinkLocationOptions }).options ??= {};
     return locations.options as ZLinkLocationOptions;
-  }
-
-  private locationStores(): MutableLocationStoreRegistration {
-    const locations = {
-      ...(this.additionalOptions.locations ?? {}),
-      stores: {
-        ...(this.additionalOptions.locations?.stores ?? {})
-      }
-    };
-    this.additionalOptions = {
-      ...this.additionalOptions,
-      locations
-    };
-    return locations.stores;
   }
 
   addSerializer(contentType: string, serializer: ZLinkMessageSerializer): void {
@@ -662,7 +604,7 @@ class DefaultZLinkNestFrameworkOptionsBuilder implements ZLinkNestFrameworkOptio
     return new DefaultZLinkNestFanoutChannelBuilder(this, this.fanoutChannels[name]);
   }
 
-  addRouteMesh(name: string): ZLinkNestRouterMeshBuilder {
+  addRouteMeshChannel(name: string): ZLinkNestRouterMeshBuilder {
     this.routerMeshes[name] ??= {};
     markRouteTransportDeclared(this.routerMeshes[name]);
     return new DefaultZLinkNestRouterMeshBuilder(this, this.routerMeshes[name]);
@@ -725,31 +667,6 @@ abstract class ZLinkNestChildBuilder implements ZLinkNestFrameworkOptionsBuilder
     return this;
   }
 
-  addPeerLocationStore(store: ZLinkLocationStoreProvider<IZLinkPeerLocationStore>): this {
-    this.root.addPeerLocationStore(store);
-    return this;
-  }
-
-  addSpotLocationStore(store: ZLinkLocationStoreProvider<IZLinkSpotLocationStore>): this {
-    this.root.addSpotLocationStore(store);
-    return this;
-  }
-
-  addActorLocationStore(store: ZLinkLocationStoreProvider<IZLinkActorLocationStore>): this {
-    this.root.addActorLocationStore(store);
-    return this;
-  }
-
-  addRouteLocationStore(store: ZLinkLocationStoreProvider<IZLinkRouteLocationStore>): this {
-    this.root.addRouteLocationStore(store);
-    return this;
-  }
-
-  addOwnerLeaseStore(store: ZLinkLocationStoreProvider<IZLinkOwnerLeaseStore>): this {
-    this.root.addOwnerLeaseStore(store);
-    return this;
-  }
-
   configureLocations(): ZLinkLocationOptions {
     return this.root.configureLocations();
   }
@@ -762,8 +679,8 @@ abstract class ZLinkNestChildBuilder implements ZLinkNestFrameworkOptionsBuilder
     return this.root.addFanoutChannel(name);
   }
 
-  addRouteMesh(name: string): ZLinkNestRouterMeshBuilder {
-    return this.root.addRouteMesh(name);
+  addRouteMeshChannel(name: string): ZLinkNestRouterMeshBuilder {
+    return this.root.addRouteMeshChannel(name);
   }
 
   addSpotMesh(name: string): ZLinkNestSpotNodeBuilder {
@@ -2496,8 +2413,7 @@ function conditionalClientTokens(): InjectionToken[] {
 
 function hasLocationStores(registration: ZLinkFrameworkRegistration): boolean {
   return registration.locations.useInMemoryStores
-    || registration.locations.storeInstance !== undefined
-    || registration.locations.stores !== undefined;
+    || registration.locations.storeInstance !== undefined;
 }
 
 function createRuntimeHost(

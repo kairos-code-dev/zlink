@@ -1,5 +1,5 @@
 import { randomUUID } from 'node:crypto';
-import type { RoutingId } from '../../contracts/Common';
+import type { ActorRef, RoutingId } from '../../contracts/Common';
 import {
   ZLinkRouteKind,
   ZLinkLocationKind,
@@ -8,13 +8,11 @@ import {
   ZLinkLocationWriteIntent,
   ZLinkLocationWriteStatus,
   zlinkDefaultLocationOptions,
-  zlinkLocationAutoConnectTypeName,
-  zlinkLocationRoleName,
   type IZLinkLocationRuntimeQuery,
-  type IZLinkActorLocationResolver,
+  type IZLinkLocationReadiness,
+  type IZLinkActorAddressResolver,
   type IZLinkPeerLocationResolver,
-  type IZLinkRouteLocationResolver,
-  type IZLinkSpotLocationResolver,
+  type IZLinkSpotAddressResolver,
   type IZLinkActorLocationStore,
   type IZLinkLocationChangeStampStore,
   type IZLinkLocationWatchStore,
@@ -31,12 +29,14 @@ import {
   type ZLinkLocationServiceSummary,
   type ZLinkLocationServiceSummaryFilter,
   ZLinkLocationTopologyState,
+  type ZLinkLocationKey,
   type ZLinkLocationTopologyEntry,
   type ZLinkLocationTopologyFilter,
   type ZLinkLocationOwnerToken,
   type ZLinkLocationPage,
   type ZLinkLocationWriteResult,
   type ZLinkOwnerLease,
+  type ZLinkOwnerLeaseRenewal,
   type ZLinkOwnerLeaseSnapshot,
   type ZLinkPageRequest,
   type ZLinkPeerLocation,
@@ -57,44 +57,8 @@ import {
   type ZLinkSpotRemoteAddressResolver
 } from '../../contracts/Spots';
 import { ZLinkFrameworkErrorKind, ZLinkFrameworkException } from '../../contracts/Errors';
-
-export const ZLinkLocationKeyCodec = Object.freeze({
-  encodePeerKey(key: ZLinkPeerLocationKey): string {
-    const identity = key.nodeRid === undefined ? key.endpoint ?? '' : encodeRoutingIdHex(key.nodeRid);
-    return encodeSegments(
-      zlinkLocationAutoConnectTypeName(key.autoConnectType),
-      key.meshName,
-      zlinkLocationRoleName(key.role),
-      identity
-    );
-  },
-
-  encodeSpotKey(key: ZLinkSpotLocationKey): string {
-    return encodeSegments(key.meshName, encodeRoutingIdHex(key.spotRid));
-  },
-
-  encodeActorKey(key: ZLinkActorLocationKey): string {
-    return encodeSegments(normalizeActorType(key.actorType), key.actorId);
-  },
-
-  encodeRouteKey(key: ZLinkRouteLocationKey): string {
-    return encodeSegments(String(key.routeKind), key.routeKey);
-  },
-
-  normalizeActorType
-});
-
-export function encodeZLinkLocationKeySegments(...segments: readonly string[]): string {
-  return encodeSegments(...segments);
-}
-
-function normalizeActorType(actorType: string | undefined): string {
-  return actorType ?? '';
-}
-
-function encodeSegments(...segments: readonly string[]): string {
-  return segments.map((segment) => `${segment.length}:${segment}`).join('');
-}
+import { zlinkLocationAutoConnectTypeName, zlinkLocationRoleName } from './canonical-codec';
+import { ZLinkLocationKeyCodec } from './key-codec';
 
 function encodeRoutingIdHex(routingId: RoutingId): string {
   const value = routingId as unknown as { toHex?: () => string };
@@ -156,10 +120,6 @@ export class ZLinkInMemoryLocationStore implements IZLinkLocationStore, IZLinkLo
     );
   }
 
-  async removePeersByOwner(ownerId: string): Promise<number> {
-    return this.removeByOwner(this.peers, ownerId, (row) => row.ownerId, ZLinkLocationKind.Peer, (row) => row.meshName);
-  }
-
   async listPeers(filter: ZLinkPeerLocationFilter): Promise<readonly ZLinkPeerLocation[]> {
     return [...this.peers.rows.values()].filter((row) => matchesPeer(row, filter));
   }
@@ -195,10 +155,6 @@ export class ZLinkInMemoryLocationStore implements IZLinkLocationStore, IZLinkLo
     );
   }
 
-  async removeSpotsByOwner(ownerId: string): Promise<number> {
-    return this.removeByOwner(this.spots, ownerId, (row) => row.ownerId, ZLinkLocationKind.Spot, (row) => row.meshName);
-  }
-
   async resolveSpot(key: ZLinkSpotLocationKey): Promise<ZLinkSpotLocation | undefined> {
     return this.spots.rows.get(ZLinkLocationKeyCodec.encodeSpotKey(key));
   }
@@ -216,7 +172,7 @@ export class ZLinkInMemoryLocationStore implements IZLinkLocationStore, IZLinkLo
   ): Promise<ZLinkLocationWriteResult> {
     return this.write(
       this.actors,
-      ZLinkLocationKeyCodec.encodeActorKey({ actorType: actor.actorType, actorId: actor.actorId }),
+      ZLinkLocationKeyCodec.encodeActorKey({ actorId: actor.actorId }),
       actor,
       intent,
       actor.ownerId,
@@ -239,10 +195,6 @@ export class ZLinkInMemoryLocationStore implements IZLinkLocationStore, IZLinkLo
       ZLinkLocationKind.Actor,
       undefined
     );
-  }
-
-  async removeActorsByOwner(ownerId: string): Promise<number> {
-    return this.removeByOwner(this.actors, ownerId, (row) => row.ownerId, ZLinkLocationKind.Actor, () => undefined);
   }
 
   async resolveActor(key: ZLinkActorLocationKey): Promise<ZLinkActorLocation | undefined> {
@@ -287,10 +239,6 @@ export class ZLinkInMemoryLocationStore implements IZLinkLocationStore, IZLinkLo
     );
   }
 
-  async removeRoutesByOwner(ownerId: string): Promise<number> {
-    return this.removeByOwner(this.routes, ownerId, (row) => row.ownerId, ZLinkLocationKind.Route, () => undefined);
-  }
-
   async resolveRoute(key: ZLinkRouteLocationKey): Promise<ZLinkRouteLocation | undefined> {
     return this.routes.rows.get(ZLinkLocationKeyCodec.encodeRouteKey(key));
   }
@@ -306,21 +254,29 @@ export class ZLinkInMemoryLocationStore implements IZLinkLocationStore, IZLinkLo
     ownerId: string,
     nodeRid: RoutingId,
     leaseTtlMs: number
-  ): Promise<ZLinkLocationWriteResult> {
+  ): Promise<ZLinkOwnerLeaseRenewal> {
     const updatedAt = this.now();
+    const leaseExpiresAt = new Date(updatedAt.getTime() + leaseTtlMs);
     this.leases.set(ownerId, {
       ownerId,
       nodeRid,
-      leaseExpiresAt: new Date(updatedAt.getTime() + leaseTtlMs),
+      leaseExpiresAt,
       updatedAt
     });
-    return stored(0n, updatedAt);
+    return { leaseExpiresAt, storeNow: updatedAt };
   }
 
-  async removeOwnerLease(ownerId: string): Promise<ZLinkLocationWriteResult> {
-    const updatedAt = this.now();
-    this.leases.delete(ownerId);
-    return stored(0n, updatedAt);
+  async removeOwnerLease(ownerId: string): Promise<boolean> {
+    return this.leases.delete(ownerId);
+  }
+
+  async removeAllByOwner(ownerId: string): Promise<number> {
+    let removed = 0;
+    removed += this.removeByOwner(this.peers, ownerId, (row) => row.ownerId, ZLinkLocationKind.Peer, (row) => row.meshName);
+    removed += this.removeByOwner(this.spots, ownerId, (row) => row.ownerId, ZLinkLocationKind.Spot, (row) => row.meshName);
+    removed += this.removeByOwner(this.actors, ownerId, (row) => row.ownerId, ZLinkLocationKind.Actor, () => undefined);
+    removed += this.removeByOwner(this.routes, ownerId, (row) => row.ownerId, ZLinkLocationKind.Route, () => undefined);
+    return removed;
   }
 
   async listOwnerLeases(): Promise<ZLinkOwnerLeaseSnapshot> {
@@ -431,6 +387,7 @@ export class ZLinkInMemoryLocationStore implements IZLinkLocationStore, IZLinkLo
 }
 
 export interface ZLinkLocationRuntimeStores {
+  readonly locationStore: IZLinkLocationStore;
   readonly peerStore: IZLinkPeerLocationStore;
   readonly spotStore: IZLinkSpotLocationStore;
   readonly actorStore: IZLinkActorLocationStore;
@@ -449,8 +406,8 @@ export interface ZLinkLocationRuntimeOptions {
 }
 
 export interface ZLinkLocationEventSink {
-  peerRowUpdated(key: string, peer: ZLinkPeerLocation): void;
-  peerRowRemoved(key: string): void;
+  peerRowUpdated(key: ZLinkLocationKey, peer: ZLinkPeerLocation): void;
+  peerRowRemoved(key: ZLinkLocationKey): void;
   desiredSetChanged(change: {
     readonly autoConnectType: ZLinkLocationAutoConnectType;
     readonly meshName: string;
@@ -545,10 +502,7 @@ export class ZLinkLocationRuntime implements IZLinkLocationRuntimeQuery {
 
     try {
       await this.stores.ownerLeaseStore.removeOwnerLease(this.ownerId, signal);
-      await this.stores.peerStore.removePeersByOwner(this.ownerId, signal);
-      await this.stores.spotStore.removeSpotsByOwner(this.ownerId, signal);
-      await this.stores.actorStore.removeActorsByOwner(this.ownerId, signal);
-      await this.stores.routeStore.removeRoutesByOwner(this.ownerId, signal);
+      await this.stores.locationStore.removeAllByOwner(this.ownerId, signal);
     } catch (error) {
       this.recordFailure(errorMessage(error));
     }
@@ -567,15 +521,10 @@ export class ZLinkLocationRuntime implements IZLinkLocationRuntimeQuery {
         this.options.ownerLeaseTtlMs,
         signal
       );
-      if (result.status === ZLinkLocationWriteStatus.Stored) {
-        this.ownerLeaseHealthy = true;
-        this.ownerLeaseRenewedAt = this.now();
-        this.lastError = undefined;
-        return true;
-      }
-
-      this.recordFailure(`Owner lease renew returned ${ZLinkLocationWriteStatus[result.status]}.`);
-      return false;
+      this.ownerLeaseHealthy = true;
+      this.ownerLeaseRenewedAt = result.storeNow;
+      this.lastError = undefined;
+      return true;
     } catch (error) {
       this.recordFailure(errorMessage(error));
       return false;
@@ -591,17 +540,18 @@ export class ZLinkLocationRuntime implements IZLinkLocationRuntimeQuery {
     zlinkLocationRoleName(peer.role);
     const stamped = { ...peer, ownerId: this.ownerId };
     const result = await this.guardWrite(() => this.stores.peerStore.updatePeer(stamped, intent, signal));
-    const key = ZLinkLocationKeyCodec.encodePeerKey({
+    const key: ZLinkPeerLocationKey = {
       autoConnectType: peer.autoConnectType,
       meshName: peer.meshName,
       role: peer.role,
       nodeRid: peer.nodeRid,
       endpoint: peer.endpoint
-    });
+    };
+    const rowKey = ZLinkLocationKeyCodec.encodePeerKey(key);
     if (result.status === ZLinkLocationWriteStatus.Stored) {
-      this.events?.peerRowUpdated(key, { ...stamped, generation: result.generation, updatedAt: result.updatedAt });
+      this.events?.peerRowUpdated({ kind: ZLinkLocationKind.Peer, key }, { ...stamped, generation: result.generation, updatedAt: result.updatedAt });
     }
-    this.notifyIfStale(result, ZLinkLocationKind.Peer, key);
+    this.notifyIfStale(result, ZLinkLocationKind.Peer, rowKey);
     return result;
   }
 
@@ -627,11 +577,11 @@ export class ZLinkLocationRuntime implements IZLinkLocationRuntimeQuery {
   ): Promise<ZLinkLocationWriteResult> {
     const stamped = {
       ...actor,
-      actorType: normalizeActorType(actor.actorType),
+      actorType: actor.actorType,
       ownerId: this.ownerId
     };
     const result = await this.guardWrite(() => this.stores.actorStore.updateActor(stamped, intent, signal));
-    const key = { actorType: stamped.actorType, actorId: stamped.actorId };
+    const key = { actorId: stamped.actorId };
     if (result.status === ZLinkLocationWriteStatus.Stored) {
       this.events?.actorRowUpdated(key, { ...stamped, generation: result.generation, updatedAt: result.updatedAt });
     }
@@ -658,7 +608,7 @@ export class ZLinkLocationRuntime implements IZLinkLocationRuntimeQuery {
     const result = await this.guardWrite(() =>
       this.stores.peerStore.removePeer(key, { ownerId: this.ownerId, generation }, signal));
     if (result.status === ZLinkLocationWriteStatus.Stored) {
-      this.events?.peerRowRemoved(ZLinkLocationKeyCodec.encodePeerKey(key));
+      this.events?.peerRowRemoved({ kind: ZLinkLocationKind.Peer, key });
     }
     this.notifyIfStale(result, ZLinkLocationKind.Peer, ZLinkLocationKeyCodec.encodePeerKey(key));
     return result;
@@ -675,13 +625,12 @@ export class ZLinkLocationRuntime implements IZLinkLocationRuntimeQuery {
   }
 
   async removeActor(key: ZLinkActorLocationKey, generation: bigint, signal?: AbortSignal): Promise<ZLinkLocationWriteResult> {
-    const normalized = { ...key, actorType: normalizeActorType(key.actorType) };
     const result = await this.guardWrite(() =>
-      this.stores.actorStore.removeActor(normalized, { ownerId: this.ownerId, generation }, signal));
+      this.stores.actorStore.removeActor(key, { ownerId: this.ownerId, generation }, signal));
     if (result.status === ZLinkLocationWriteStatus.Stored) {
-      this.events?.actorRowRemoved(normalized);
+      this.events?.actorRowRemoved(key);
     }
-    this.notifyIfStale(result, ZLinkLocationKind.Actor, ZLinkLocationKeyCodec.encodeActorKey(normalized));
+    this.notifyIfStale(result, ZLinkLocationKind.Actor, ZLinkLocationKeyCodec.encodeActorKey(key));
     return result;
   }
 
@@ -707,12 +656,12 @@ export class ZLinkLocationRuntime implements IZLinkLocationRuntimeQuery {
     };
   }
 
-  async listPeers(filter: ZLinkPeerLocationFilter, signal?: AbortSignal): Promise<readonly ZLinkPeerLocation[]> {
+  async listPeerLocations(filter: ZLinkPeerLocationFilter, signal?: AbortSignal): Promise<readonly ZLinkPeerLocation[]> {
     const rows = await this.stores.peerStore.listPeers(filter, signal);
     return await this.filterLive(rows, (row) => row.ownerId, signal);
   }
 
-  async listSpots(
+  async listSpotLocations(
     filter: ZLinkSpotLocationFilter,
     page?: ZLinkPageRequest,
     signal?: AbortSignal
@@ -724,7 +673,7 @@ export class ZLinkLocationRuntime implements IZLinkLocationRuntimeQuery {
     };
   }
 
-  async listActors(
+  async listActorLocations(
     filter: ZLinkActorLocationFilter,
     page?: ZLinkPageRequest,
     signal?: AbortSignal
@@ -736,7 +685,7 @@ export class ZLinkLocationRuntime implements IZLinkLocationRuntimeQuery {
     };
   }
 
-  async listRoutes(
+  async listRouteLocations(
     filter: ZLinkRouteLocationFilter,
     page?: ZLinkPageRequest,
     signal?: AbortSignal
@@ -754,19 +703,19 @@ export class ZLinkLocationRuntime implements IZLinkLocationRuntimeQuery {
     signal?: AbortSignal
   ): Promise<ZLinkLocationPage<ZLinkLocationTopologyEntry>> {
     const [peers, spots, actors, routes] = await Promise.all([
-      this.listPeers({
+      this.listPeerLocations({
         meshName: filter.meshName,
         role: filter.role,
         nodeRid: filter.nodeRid
       }, signal),
-      this.listSpots({
+      this.listSpotLocations({
         meshName: filter.meshName,
         nodeRid: filter.nodeRid
       }, page, signal),
-      this.listActors({
+      this.listActorLocations({
         nodeRid: filter.nodeRid
       }, page, signal),
-      this.listRoutes({
+      this.listRouteLocations({
         ownerNodeRid: filter.nodeRid
       }, page, signal)
     ]);
@@ -833,7 +782,7 @@ export class ZLinkLocationRuntime implements IZLinkLocationRuntimeQuery {
     filter: ZLinkLocationServiceSummaryFilter,
     signal?: AbortSignal
   ): Promise<readonly ZLinkLocationServiceSummary[]> {
-    const peers = await this.listPeers({
+    const peers = await this.listPeerLocations({
       autoConnectType: filter.autoConnectType,
       meshName: filter.meshName,
       role: filter.role
@@ -885,7 +834,7 @@ export class ZLinkLocationRuntime implements IZLinkLocationRuntimeQuery {
       return await write();
     } catch (error) {
       this.recordFailure(errorMessage(error));
-      return storeUnavailable();
+      throw error;
     }
   }
 
@@ -1060,16 +1009,16 @@ export interface ZLinkStoreLocationResolversOptions {
   readonly stores: ZLinkLocationRuntimeStores;
   readonly leaseTracker: ZLinkOwnerLeaseTracker;
   readonly events?: ZLinkLocationEventSink;
+  readonly spotMeshNames?: readonly string[];
 }
 
 export class ZLinkStoreLocationResolvers implements
   IZLinkPeerLocationResolver,
-  IZLinkSpotLocationResolver,
-  IZLinkActorLocationResolver,
-  IZLinkRouteLocationResolver {
+  IZLinkSpotAddressResolver,
+  IZLinkActorAddressResolver {
   constructor(private readonly options: ZLinkStoreLocationResolversOptions) {}
 
-  async listPeers(filter: ZLinkPeerLocationFilter, signal?: AbortSignal): Promise<readonly ZLinkPeerLocation[]> {
+  async listLivePeers(filter: ZLinkPeerLocationFilter, signal?: AbortSignal): Promise<readonly ZLinkPeerLocation[]> {
     const rows = await this.options.stores.peerStore.listPeers(filter, signal);
     const live: ZLinkPeerLocation[] = [];
     for (const row of rows) {
@@ -1092,23 +1041,21 @@ export class ZLinkStoreLocationResolvers implements
     return row;
   }
 
-  async resolveSpotAddress(
-    meshName: string,
-    spotRid: RoutingId,
-    signal?: AbortSignal
-  ): Promise<ZLinkSpotAddress | undefined> {
-    const row = await this.resolveSpotRow({ meshName, spotRid }, signal);
-    return row === undefined
-      ? undefined
-      : { meshName: row.meshName, nodeRid: row.nodeRid, spotRid: row.spotRid };
+  async resolveSpotAddress(spotRid: RoutingId, signal?: AbortSignal): Promise<ZLinkSpotAddress | undefined> {
+    for (const meshName of this.options.spotMeshNames ?? []) {
+      const row = await this.resolveSpotRow({ meshName, spotRid }, signal);
+      if (row !== undefined) {
+        return { meshName: row.meshName, nodeRid: row.nodeRid, spotRid: row.spotRid };
+      }
+    }
+    return undefined;
   }
 
   async resolveActorSpotAddress(
-    actorType: string,
     actorId: string,
     signal?: AbortSignal
   ): Promise<ZLinkSpotAddress | undefined> {
-    const row = await this.resolveActorRow({ actorType, actorId }, signal);
+    const row = await this.resolveActorRow({ actorId }, signal);
     if (row === undefined) {
       return undefined;
     }
@@ -1138,15 +1085,38 @@ export class ZLinkStoreLocationResolvers implements
     key: ZLinkActorLocationKey,
     signal?: AbortSignal
   ): Promise<ZLinkActorLocation | undefined> {
-    const row = await this.options.stores.actorStore.resolveActor({
-      actorType: normalizeActorType(key.actorType),
-      actorId: key.actorId
-    }, signal);
-    if (row === undefined || !(await this.options.leaseTracker.isOwnerLive(row.ownerId, signal))) {
-      this.options.events?.actorResolveMiss({ actorType: normalizeActorType(key.actorType), actorId: key.actorId });
+    const row = await this.options.stores.actorStore.resolveActor({ actorId: key.actorId }, signal);
+    if (row === undefined
+      || row.actorRef === undefined
+      || !(await this.options.leaseTracker.isOwnerLive(row.ownerId, signal))) {
+      this.options.events?.actorResolveMiss({ actorId: key.actorId });
       return undefined;
     }
     return row;
+  }
+}
+
+export class ZLinkLocationReadiness implements IZLinkLocationReadiness {
+  constructor(private readonly query: IZLinkLocationRuntimeQuery) {}
+
+  async isPeerReady(
+    meshName: string,
+    role: ZLinkLocationRole,
+    nodeRid?: RoutingId,
+    signal?: AbortSignal
+  ): Promise<boolean> {
+    try {
+      const page = await this.query.listTopology({
+        meshName,
+        role,
+        nodeRid,
+        kind: ZLinkLocationKind.Peer,
+        state: ZLinkLocationTopologyState.Ready
+      }, undefined, signal);
+      return page.items.length > 0;
+    } catch {
+      return false;
+    }
   }
 }
 
@@ -1234,7 +1204,7 @@ export class ZLinkAutoConnectReconciler {
 
     let rows: readonly ZLinkPeerLocation[];
     try {
-      rows = await this.peerResolver.listPeers({
+      rows = await this.peerResolver.listLivePeers({
         autoConnectType: this.local.autoConnectType,
         meshName: this.local.meshName
       }, signal);
@@ -1473,8 +1443,7 @@ export class ZLinkAutoConnectLoop {
 export enum ZLinkActorClaimStatus {
   Claimed = 'claimed',
   AlreadyOwned = 'alreadyOwned',
-  Conflict = 'conflict',
-  StoreUnavailable = 'storeUnavailable'
+  Conflict = 'conflict'
 }
 
 export interface ZLinkActorClaimResult {
@@ -1516,10 +1485,6 @@ export class ZLinkLocationLifecycle {
     if (claim.status === ZLinkActorClaimStatus.Conflict) {
       return { existingLocation: claim.existing };
     }
-    if (claim.status === ZLinkActorClaimStatus.StoreUnavailable) {
-      throw new Error(`Actor '${actorId}' cannot be created because the location store is unavailable.`);
-    }
-
     try {
       return { activated: await activate() };
     } catch (error) {
@@ -1536,8 +1501,8 @@ export class ZLinkLocationLifecycle {
     nodeRid: RoutingId,
     deactivate?: () => Promise<void>
   ): Promise<ZLinkActorClaimResult> {
-    const normalizedType = normalizeActorType(actorType);
-    const key = { actorType: normalizedType, actorId };
+    const normalizedType = ZLinkLocationKeyCodec.normalizeActorType(actorType);
+    const key = { actorId };
     const canonical = ZLinkLocationKeyCodec.encodeActorKey(key);
     if (this.actors.has(canonical)) {
       return { status: ZLinkActorClaimStatus.AlreadyOwned };
@@ -1546,13 +1511,12 @@ export class ZLinkLocationLifecycle {
     const row: ZLinkActorLocation = {
       actorType: normalizedType,
       actorId,
-      actorRef: '',
+      actorRef: undefined,
       nodeRid,
       generation: 0n,
       locationKind: ZLinkSpotKind.Entry,
       spotMeshName: this.entrySpotMeshName,
       spotRid: undefined,
-      spotKind: ZLinkSpotKind.Entry,
       ownerId: '',
       updatedAt: new Date(0)
     };
@@ -1572,10 +1536,10 @@ export class ZLinkLocationLifecycle {
       };
     }
 
-    return { status: ZLinkActorClaimStatus.StoreUnavailable };
+    return { status: ZLinkActorClaimStatus.Conflict };
   }
 
-  async setActorRef(actorType: string, actorId: string, actorRef: string): Promise<void> {
+  async setActorRef(actorType: string, actorId: string, actorRef: ActorRef): Promise<void> {
     await this.renewActor(actorType, actorId, (row) => ({ ...row, actorRef }));
   }
 
@@ -1584,8 +1548,7 @@ export class ZLinkLocationLifecycle {
       ...row,
       locationKind: ZLinkSpotKind.User,
       spotMeshName,
-      spotRid,
-      spotKind: ZLinkSpotKind.User
+      spotRid
     }));
   }
 
@@ -1594,13 +1557,12 @@ export class ZLinkLocationLifecycle {
       ...row,
       locationKind: ZLinkSpotKind.Entry,
       spotMeshName: this.entrySpotMeshName,
-      spotRid: undefined,
-      spotKind: ZLinkSpotKind.Entry
+      spotRid: undefined
     }));
   }
 
   async releaseActor(actorType: string, actorId: string): Promise<void> {
-    const key = { actorType: normalizeActorType(actorType), actorId };
+    const key = { actorId };
     const canonical = ZLinkLocationKeyCodec.encodeActorKey(key);
     const tracked = this.actors.get(canonical);
     if (tracked === undefined) {
@@ -1612,7 +1574,6 @@ export class ZLinkLocationLifecycle {
 
   ownsActor(actorType: string, actorId: string): boolean {
     return this.actors.has(ZLinkLocationKeyCodec.encodeActorKey({
-      actorType: normalizeActorType(actorType),
       actorId
     }));
   }
@@ -1701,7 +1662,6 @@ export class ZLinkLocationLifecycle {
     mutate: (row: ZLinkActorLocation) => ZLinkActorLocation
   ): Promise<void> {
     const canonical = ZLinkLocationKeyCodec.encodeActorKey({
-      actorType: normalizeActorType(actorType),
       actorId
     });
     const tracked = this.actors.get(canonical);
@@ -1914,10 +1874,6 @@ function ignoredStale(): ZLinkLocationWriteResult {
 
 function rejectedConflict(): ZLinkLocationWriteResult {
   return { status: ZLinkLocationWriteStatus.RejectedConflict, generation: 0n, updatedAt: new Date(0) };
-}
-
-function storeUnavailable(): ZLinkLocationWriteResult {
-  return { status: ZLinkLocationWriteStatus.StoreUnavailable, generation: 0n, updatedAt: new Date(0) };
 }
 
 function errorMessage(error: unknown): string {

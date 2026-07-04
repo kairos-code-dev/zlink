@@ -1,5 +1,6 @@
 import { Inject } from '@nestjs/common';
 import { ZLINK_SPOT_MANAGER, zlinkRequestHandler } from '@zlink-systems/nestjs';
+import { ZLinkMessage } from '@zlink-systems/framework';
 import { BingoRoomAllocator } from '../../../Application/RoomAllocation/bingo-room-allocator';
 import { BINGO_SAMPLE_CONFIG } from '../../../../Configuration/sample-config';
 import { PacketNames, allocateBingoRoomRes, bingoRoomSettingsPayload } from '../../../../../Shared/Contracts/messages';
@@ -27,7 +28,7 @@ class AllocateBingoRoomHandler implements ZLinkRequestHandler<AllocateBingoRoomR
       await this.spots.getOrCreate(
         BingoRoomSpot,
         allocated.roomId,
-        bingoRoomSettingsPayload(allocated.settings)
+        ZLinkMessage.from(bingoRoomSettingsPayload(allocated.settings))
       );
     }
     return allocateBingoRoomRes(allocated.roomId, allocated.ownerPlayNodeRid);

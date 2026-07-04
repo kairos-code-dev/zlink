@@ -1,6 +1,7 @@
 import { zlinkRequestHandler } from '@zlink-systems/nestjs';
 import { courierActorNodeRid } from '../../Shared/Configuration/sample-names';
 import { PacketNames } from '../../Shared/Contracts/messages';
+import { zlinkActorRefSnapshotFrom } from '@zlink-systems/framework';
 import type { ZLinkRequestContext, ZLinkRequestHandler } from '@zlink-systems/framework';
 import type { BindCourierReq, BindCourierRes } from '../../Shared/Contracts/messages';
 
@@ -12,11 +13,11 @@ class BindCourierHandler implements ZLinkRequestHandler<BindCourierReq, BindCour
     console.error(`deliverydispatch courier-gateway: bound courier=${request.courierId} node=${nodeRid} session=${request.sessionRoute}`);
     return {
       courierId: request.courierId,
-      actor: {
+      actor: zlinkActorRefSnapshotFrom({
         nodeRid,
         actorId: request.courierId,
         generation: 1
-      },
+      }),
       sessionRoute: request.sessionRoute
     };
   }

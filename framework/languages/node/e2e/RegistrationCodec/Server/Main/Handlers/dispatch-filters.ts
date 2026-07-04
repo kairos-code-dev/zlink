@@ -7,9 +7,9 @@ export class FirstFilter implements ZLinkHandlerFilter {
   constructor(private readonly evidence: EvidenceStore) {}
 
   async invoke(invocation: ZLinkHandlerInvocation, next: ZLinkHandlerDelegate): Promise<unknown> {
-    this.evidence.add(`filter|name=first|phase=before|packet=${invocation.packetName ?? '<null>'}`);
+    this.evidence.add(`filter|name=first|phase=before|packet=${invocation.context.packetName ?? '<null>'}`);
     const result = await next();
-    this.evidence.add(`filter|name=first|phase=after|packet=${invocation.packetName ?? '<null>'}`);
+    this.evidence.add(`filter|name=first|phase=after|packet=${invocation.context.packetName ?? '<null>'}`);
     return result;
   }
 }
@@ -19,9 +19,9 @@ export class SecondFilter implements ZLinkHandlerFilter {
   constructor(private readonly evidence: EvidenceStore) {}
 
   async invoke(invocation: ZLinkHandlerInvocation, next: ZLinkHandlerDelegate): Promise<unknown> {
-    this.evidence.add(`filter|name=second|phase=before|packet=${invocation.packetName ?? '<null>'}`);
+    this.evidence.add(`filter|name=second|phase=before|packet=${invocation.context.packetName ?? '<null>'}`);
     const result = await next();
-    this.evidence.add(`filter|name=second|phase=after|packet=${invocation.packetName ?? '<null>'}`);
+    this.evidence.add(`filter|name=second|phase=after|packet=${invocation.context.packetName ?? '<null>'}`);
     return result;
   }
 }

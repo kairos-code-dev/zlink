@@ -51,7 +51,7 @@ export function createProviderEndpoints(
         let failed = false;
         try {
           await route
-            .request('profile.route', 'missing-rid', body as ScenarioRouteReq)
+            .requestToNode('profile.route', 'missing-rid', body as ScenarioRouteReq)
             .packetName(PacketNames.scenarioRouteReq)
             .timeout(300)
             .submit<ScenarioRouteRes>();
@@ -104,7 +104,7 @@ async function requestRouteWithRetry(
   request: ScenarioRouteReq
 ): Promise<ScenarioRouteRes> {
   return retryUntil(async () => route
-    .request('profile.route', targetRid, request)
+    .requestToNode('profile.route', targetRid, request)
     .packetName(PacketNames.scenarioRouteReq)
     .timeout(5000)
     .submit<ScenarioRouteRes>(), 'route mesh target');

@@ -20,7 +20,7 @@ export function createTopologyProbeEndpoints(
       method: 'GET',
       path: '/topology-probe/topology',
       handle: async () => {
-        const rows = await locationQuery.listPeers({
+        const rows = await locationQuery.listPeerLocations({
           autoConnectType: ZLinkLocationAutoConnectType.ClientServer,
           meshName: 'profile',
           role: ZLinkLocationRole.Router

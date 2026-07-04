@@ -40,7 +40,7 @@ export async function startMultiNodeHost(args: readonly string[]): Promise<void>
               .traceLogFile(`${options.logDir}/${options.rid}-flow.log`)
               .traceLabel(options.rid);
           builder.useInMemoryLocationStores();
-          const route = builder.addRouteMesh(routeChannel)
+          const route = builder.addRouteMeshChannel(routeChannel)
             .enableRouter(options.routeEndpoint)
             .routingId(options.rid)
             .connect(options.routeEndpoint);

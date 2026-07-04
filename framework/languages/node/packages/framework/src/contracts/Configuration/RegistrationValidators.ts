@@ -45,8 +45,7 @@ function toActorFactoryCount(value: ZLinkSpotNodeOptions['actorFactories']): num
 
 function hasLocationStores(registration: ZLinkFrameworkRegistration): boolean {
   return registration.locations.useInMemoryStores
-    || registration.locations.storeInstance !== undefined
-    || registration.locations.stores !== undefined;
+    || registration.locations.storeInstance !== undefined;
 }
 
 function validateWorkerOptions(worker: ZLinkWorkerOptions | undefined): void {
@@ -124,36 +123,9 @@ function validateMonitoring(registration: ZLinkFrameworkRegistration): void {
 
 function validateLocationRegistration(registration: ZLinkFrameworkRegistration): void {
   const locations = registration.locations;
-  const stores = locations.stores;
-  const hasRoleStore = stores !== undefined && (
-    stores.peerStore !== undefined ||
-    stores.spotStore !== undefined ||
-    stores.actorStore !== undefined ||
-    stores.routeStore !== undefined ||
-    stores.ownerLeaseStore !== undefined
-  );
-
-  if (locations.useInMemoryStores && (locations.storeInstance !== undefined || hasRoleStore)) {
+  if (locations.useInMemoryStores && locations.storeInstance !== undefined) {
     throw new ZLinkConfigurationException(
       'In-memory location stores cannot be combined with explicit location store registrations.'
-    );
-  }
-
-  if (locations.storeInstance !== undefined && hasRoleStore) {
-    throw new ZLinkConfigurationException(
-      'AddLocationStore registers every location store role and cannot be combined with per-role location stores.'
-    );
-  }
-
-  if (hasRoleStore && (
-    stores.peerStore === undefined ||
-    stores.spotStore === undefined ||
-    stores.actorStore === undefined ||
-    stores.routeStore === undefined ||
-    stores.ownerLeaseStore === undefined
-  )) {
-    throw new ZLinkConfigurationException(
-      'Location stores are all-or-nothing: configure peer, spot, actor, route, and owner lease stores together.'
     );
   }
 }

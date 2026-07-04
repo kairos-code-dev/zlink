@@ -47,7 +47,7 @@ class ScenarioSession implements ZLinkSession {
         const ensured = request.nodeRid === this.evidence.rid
           ? await this.ensureLocalActor(request, signal)
           : await this.route
-            .request(SpotServiceNames.controlChannel, request.nodeRid, {
+            .requestToNode(SpotServiceNames.controlChannel, request.nodeRid, {
               actorId: request.actorId,
               displayName: request.displayName,
               nodeRid: request.nodeRid
@@ -56,7 +56,7 @@ class ScenarioSession implements ZLinkSession {
             .timeout(5000)
             .submit<EnsureActorRes>(signal);
         this.evidence.add(`session-auth|rid=${this.evidence.rid}|actor=${request.actorId}|step=ensured`);
-        await this.context.actors.bind({
+        await this.context.actors.bindOrGet({
           actorId: ensured.actorId,
           nodeRid: ensured.nodeRid,
           generation: BigInt(ensured.generation)
@@ -84,7 +84,7 @@ class ScenarioSession implements ZLinkSession {
         displayName: request.displayName,
         nodeRid: request.nodeRid
       }, signal);
-      await this.context.actors.bind({
+      await this.context.actors.bindOrGet({
         actorId: ensured.actorId,
         nodeRid: ensured.nodeRid,
         generation: BigInt(ensured.generation)
@@ -104,7 +104,7 @@ class ScenarioSession implements ZLinkSession {
           displayName: actorId,
           nodeRid: request.nodeRid
         }, signal);
-        await this.context.actors.bind({
+        await this.context.actors.bindOrGet({
           actorId: ensured.actorId,
           nodeRid: ensured.nodeRid,
           generation: BigInt(ensured.generation)
@@ -144,7 +144,7 @@ class ScenarioSession implements ZLinkSession {
 
   private async ensureRemoteUserSpot(request: UserSpotAuthReq, signal?: AbortSignal): Promise<void> {
     await this.route
-      .request(SpotServiceNames.controlChannel, request.nodeRid, { spotRid: request.spotRid })
+      .requestToNode(SpotServiceNames.controlChannel, request.nodeRid, { spotRid: request.spotRid })
       .packetName('CreateSpotReq')
       .timeout(5000)
       .submit(signal);
@@ -152,7 +152,7 @@ class ScenarioSession implements ZLinkSession {
 
   private async ensureRemoteActor(request: AuthReq, signal?: AbortSignal): Promise<EnsureActorRes> {
     return await this.route
-      .request(SpotServiceNames.controlChannel, request.nodeRid, {
+      .requestToNode(SpotServiceNames.controlChannel, request.nodeRid, {
         actorId: request.actorId,
         displayName: request.displayName,
         nodeRid: request.nodeRid

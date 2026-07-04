@@ -1,4 +1,5 @@
 import { Inject, Injectable } from '@nestjs/common';
+import { ZLinkMessage } from '@zlink-systems/framework';
 import type { ZLinkActorManager, ZLinkHandlerContext, ZLinkRequestHandler, ZLinkSpotManager } from '@zlink-systems/framework';
 import { ZLINK_ACTOR_MANAGER, ZLINK_SPOT_MANAGER } from '@zlink-systems/nestjs';
 import type {
@@ -35,7 +36,11 @@ export class BindYieldActorsControlHandler implements ZLinkRequestHandler<BindYi
   async handle(request: BindYieldActorsReq, context: ZLinkHandlerContext): Promise<BindYieldActorsRes> {
     void context;
     const actors = await Promise.all(request.actorIds.map(async (actorId) => {
-      const actor = await this.actors.getOrCreate(actorId, YieldDispatchNames.actorType, { spotRid: request.spotRid });
+      const actor = await this.actors.getOrCreate(
+        actorId,
+        YieldDispatchNames.actorType,
+        ZLinkMessage.from({ spotRid: request.spotRid })
+      );
       return {
         actorId: actor.actorId,
         nodeRid: String(actor.nodeRid),

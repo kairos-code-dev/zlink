@@ -7,13 +7,19 @@ const workspaceRoot = path.resolve(__dirname, '..', '..');
 const nodeDocRoot = path.resolve(workspaceRoot, '..', '..', 'doc', 'framework', 'node');
 const specPath = path.join(nodeDocRoot, 'spec', 'handler-interfaces.ko.md');
 const declarationsRoot = path.join(workspaceRoot, 'packages', 'framework', 'dist', 'contracts');
+const internalLocationCodecHelpers = new Set([
+  'tryParseZLinkLocationAutoConnectType',
+  'tryParseZLinkLocationRole',
+  'zlinkLocationAutoConnectTypeName',
+  'zlinkLocationRoleName'
+]);
 
 test('framework contract declarations cover handler interface catalog exports', () => {
   const spec = fs.readFileSync(specPath, 'utf8');
   const declarations = readTree(declarationsRoot);
   const missing = [];
 
-  for (const name of exportedCatalogNames(spec)) {
+  for (const name of exportedCatalogNames(spec).filter((name) => !internalLocationCodecHelpers.has(name))) {
     const declarationPattern = new RegExp(`\\b(?:interface|type|enum|function)\\s+${name}\\b`);
     if (!declarationPattern.test(declarations)) {
       missing.push(name);
@@ -28,7 +34,7 @@ test('framework runtime exports decorator factories and enums from the catalog',
   const spec = fs.readFileSync(specPath, 'utf8');
   const missing = [];
 
-  for (const name of runtimeCatalogNames(spec)) {
+  for (const name of runtimeCatalogNames(spec).filter((name) => !internalLocationCodecHelpers.has(name))) {
     if (!(name in framework)) {
       missing.push(name);
     }
@@ -143,14 +149,16 @@ test('spot actor lifecycle handler registration API is not public', () => {
 test('entry spot public surface exposes create lifecycle and actor join admission but no spot create callback', () => {
   const declarations = readTree(declarationsRoot);
   const entrySpot = declarationBody(declarations, 'ZLinkEntrySpot');
+  const spotActorLifecycle = declarationBody(declarations, 'ZLinkSpotActorLifecycle');
   const entryContext = declarationBody(declarations, 'ZLinkEntrySpotContext');
 
-  assert.equal(entrySpot.includes('extends ZLinkSpot'), false);
+  assert.equal(interfaceExtends(entrySpot, 'ZLinkSpot'), false);
+  assert.equal(interfaceExtends(entrySpot, 'ZLinkSpotActorLifecycle'), true);
   assert.equal(entrySpot.includes('onCreate?'), false);
-  assert.equal(entrySpot.includes('onActorJoin'), true);
+  assert.equal(spotActorLifecycle.includes('onActorJoin'), true);
   assert.equal(entrySpot.includes('onCreateActor'), true);
-  assert.equal(entrySpot.includes('onJoinedActor'), true);
-  assert.equal(entrySpot.includes('onLeaveActor'), true);
+  assert.equal(spotActorLifecycle.includes('onJoinedActor'), true);
+  assert.equal(spotActorLifecycle.includes('onLeaveActor'), true);
   assert.equal(entryContext.includes('leaveActor'), false);
   assert.equal(entryContext.includes('destroyActor'), true);
   assert.equal(declarationBody(declarations, 'ZLinkSpotContext').includes('destroyActor'), false);
@@ -165,12 +173,261 @@ test('actor join call objects expose yield terminators, bound session send does 
     path.join(workspaceRoot, 'packages', 'framework', 'src', 'contracts', 'Streams', 'BoundSessionContracts.ts'),
     'utf8');
 
-  assert.match(actorContracts, /interface ZLinkActorJoinSpotCall[\s\S]*yield<TReply/);
-  assert.match(actorContracts, /interface ZLinkActorJoinEntrySpotCall[\s\S]*yield<TReply/);
+  const actorJoinCall = declarationBody(actorContracts, 'ZLinkActorJoinCall');
+  const actorYieldJoinCall = declarationBody(actorContracts, 'ZLinkActorYieldJoinCall');
+  const actorJoinSpotCall = declarationBody(actorContracts, 'ZLinkActorJoinSpotCall');
+  const actorJoinEntrySpotCall = declarationBody(actorContracts, 'ZLinkActorJoinEntrySpotCall');
+
+  assert.equal(actorJoinCall.includes('submit<TReply'), true);
+  assert.equal(actorJoinCall.includes('yield<TReply'), false);
+  assert.equal(interfaceExtends(actorYieldJoinCall, 'ZLinkActorJoinCall'), true);
+  assert.match(actorYieldJoinCall, /yield<TReply = unknown>\(signal\?: AbortSignal\): Promise<ZLinkActorJoinResult<TReply>>/);
+  assert.equal(interfaceExtends(actorJoinSpotCall, 'ZLinkActorYieldJoinCall'), true);
+  assert.equal(interfaceExtends(actorJoinEntrySpotCall, 'ZLinkActorYieldJoinCall'), true);
   const boundSessionSendCall = declarationBody(boundSessionContracts, 'ZLinkBoundSessionSendCall');
   assert.match(boundSessionSendCall, /submit\(signal\?: AbortSignal\): void/);
   assert.equal(boundSessionSendCall.includes('Promise<void>'), false);
   assert.equal(boundSessionSendCall.includes('yield('), false);
+});
+
+test('spot manager create surface exposes ZLinkMessage and typed request overloads only', () => {
+  const declarations = readTree(declarationsRoot);
+  const spotManager = declarationBody(declarations, 'ZLinkSpotManager');
+
+  assert.match(spotManager, /create<TSpot extends ZLinkSpot>\(\s*spotType: Type<TSpot>,\s*signal\?: AbortSignal\s*\): Promise<ZLinkSpotCreateResult>/);
+  assert.match(spotManager, /create<TSpot extends ZLinkSpot>\(\s*spotType: Type<TSpot>,\s*request: ZLinkMessage,\s*signal\?: AbortSignal\s*\): Promise<ZLinkSpotCreateResult>/);
+  assert.match(spotManager, /create<TSpot extends ZLinkSpot, TRequest>\(\s*spotType: Type<TSpot>,\s*request: TRequest,\s*signal\?: AbortSignal\s*\): Promise<ZLinkSpotCreateResult>/);
+  assert.match(spotManager, /getOrCreate<TSpot extends ZLinkSpot>\(\s*spotType: Type<TSpot>,\s*spotRid: RoutingId,\s*signal\?: AbortSignal\s*\): Promise<ZLinkSpotCreateResult>/);
+  assert.match(spotManager, /getOrCreate<TSpot extends ZLinkSpot>\(\s*spotType: Type<TSpot>,\s*spotRid: RoutingId,\s*request: ZLinkMessage,\s*signal\?: AbortSignal\s*\): Promise<ZLinkSpotCreateResult>/);
+  assert.match(spotManager, /getOrCreate<TSpot extends ZLinkSpot, TRequest>\(\s*spotType: Type<TSpot>,\s*spotRid: RoutingId,\s*request: TRequest,\s*signal\?: AbortSignal\s*\): Promise<ZLinkSpotCreateResult>/);
+  const oldOptionalAnyRequest = ['request?:', 'unknown'].join(' ');
+  assert.equal(spotManager.includes(oldOptionalAnyRequest), false);
+  assert.equal(spotManager.includes(`${oldOptionalAnyRequest} | ZLinkMessage`), false);
+});
+
+test('location contract enums match the shared dotnet numeric table', () => {
+  const framework = require('../../packages/framework/dist');
+  const expectedLocationEnums = {
+    ZLinkLocationAutoConnectType: {
+      Invalid: 0,
+      RouteMesh: 1,
+      ClientServer: 2,
+      DealerMesh: 3,
+      Fanout: 4,
+      SpotMesh: 5
+    },
+    ZLinkLocationRole: {
+      Invalid: 0,
+      Spot: 2,
+      Router: 3,
+      Dealer: 4,
+      Pub: 5,
+      Sub: 6
+    },
+    ZLinkRouteKind: {
+      Invalid: 0,
+      ActorSession: 1,
+      SpotName: 2,
+      FrameworkRoute: 3
+    },
+    ZLinkLocationKind: {
+      Invalid: 0,
+      Peer: 1,
+      Spot: 2,
+      Actor: 3,
+      Route: 4
+    },
+    ZLinkLocationWriteIntent: {
+      NewClaim: 1,
+      Renew: 2,
+      Takeover: 3
+    },
+    ZLinkLocationWriteStatus: {
+      Stored: 1,
+      IgnoredStale: 2,
+      RejectedConflict: 3
+    },
+    ZLinkLocationChangeType: {
+      Upserted: 1,
+      Removed: 2,
+      Expired: 3
+    },
+    ZLinkLocationTopologyState: {
+      Discovered: 1,
+      Connecting: 2,
+      Ready: 3,
+      Lost: 4,
+      Error: 5,
+      Stopped: 6
+    },
+    ZLinkSpotKind: {
+      Invalid: 0,
+      Entry: 1,
+      User: 2
+    }
+  };
+
+  for (const [enumName, expected] of Object.entries(expectedLocationEnums)) {
+    assert.deepEqual(pickEnumValues(framework[enumName], Object.keys(expected)), expected, enumName);
+  }
+
+  assert.equal(framework.zlinkLocationAutoConnectTypeName, undefined);
+  assert.equal(framework.zlinkLocationRoleName, undefined);
+});
+
+test('framework error kind values and retriable defaults match the shared table', () => {
+  const framework = require('../../packages/framework/dist');
+  const expected = [
+    ['ActorRouteNotFound', 'actorRouteNotFound', 0, false],
+    ['ActorCreateFailed', 'actorCreateFailed', 1, false],
+    ['ActorAlreadyExists', 'actorAlreadyExists', 2, false],
+    ['ActorTypeMismatch', 'actorTypeMismatch', 3, false],
+    ['SpotCreateFailed', 'spotCreateFailed', 4, false],
+    ['SpotRouteNotFound', 'spotRouteNotFound', 5, false],
+    ['SpotTypeMismatch', 'spotTypeMismatch', 6, false],
+    ['ActorSessionNotBound', 'actorSessionNotBound', 7, false],
+    ['HandlerNotFound', 'handlerNotFound', 8, false],
+    ['RouteHandlerNotFound', 'routeHandlerNotFound', 9, false],
+    ['ActorDispatchHandlerNotFound', 'actorDispatchHandlerNotFound', 10, false],
+    ['PayloadDecodeFailed', 'payloadDecodeFailed', 11, false],
+    ['RouteNotConnected', 'routeNotConnected', 12, true],
+    ['RequestTargetNotFound', 'requestTargetNotFound', 13, false],
+    ['RequestRejected', 'requestRejected', 14, false],
+    ['RequestProtocolError', 'requestProtocolError', 15, false],
+    ['RequestFailed', 'requestFailed', 16, false],
+    ['WorkerQueueFull', 'workerQueueFull', 17, false],
+    ['WorkerTimedOut', 'workerTimedOut', 18, false],
+    ['WorkerFailed', 'workerFailed', 19, false],
+    ['ActorLocationStale', 'actorLocationStale', 20, true],
+    ['ActorCreateRejected', 'actorCreateRejected', 21, false]
+  ];
+
+  assert.equal(Object.keys(framework.ZLinkFrameworkErrorKind).length, expected.length);
+  for (const [name, stringValue, numericValue, retriable] of expected) {
+    const kind = framework.ZLinkFrameworkErrorKind[name];
+    assert.equal(kind, stringValue, name);
+    assert.equal(framework.ZLINK_FRAMEWORK_ERROR_KIND_VALUES[kind], numericValue, name);
+    assert.equal(framework.isZLinkFrameworkErrorRetriableByDefault(kind), retriable, name);
+  }
+});
+
+test('location contract declarations fix store resolver runtime query watch and row shapes', () => {
+  const declarations = readTree(declarationsRoot);
+  const locationStore = declarationBody(declarations, 'IZLinkLocationStore');
+  const actorLocation = declarationBody(declarations, 'ZLinkActorLocation');
+  const actorKey = declarationBody(declarations, 'ZLinkActorLocationKey');
+  const actorFilter = declarationBody(declarations, 'ZLinkActorLocationFilter');
+  const changed = declarationBody(declarations, 'ZLinkLocationChanged');
+  const runtimeQuery = declarationBody(declarations, 'IZLinkLocationRuntimeQuery');
+
+  assert.match(interfaceHeader(declarations, 'IZLinkLocationStore'), /extends\s+IZLinkPeerLocationStore,\s*IZLinkSpotLocationStore,\s*IZLinkActorLocationStore,\s*IZLinkRouteLocationStore,\s*IZLinkOwnerLeaseStore/);
+  assert.match(locationStore, /removeAllByOwner\(ownerId: string, signal\?: AbortSignal\): Promise<number>/);
+  assert.equal(/\bremove(?:Peer|Spot|Actor|Route)?ByOwner\b/.test(locationStore), false);
+
+  assert.match(declarationBody(declarations, 'IZLinkPeerLocationResolver'), /listLivePeers\(filter: ZLinkPeerLocationFilter, signal\?: AbortSignal\): Promise<readonly ZLinkPeerLocation\[]>/);
+  assert.match(declarationBody(declarations, 'IZLinkSpotAddressResolver'), /resolveSpotAddress\(\s*spotRid: RoutingId,\s*signal\?: AbortSignal\s*\): Promise<ZLinkSpotAddress \| undefined>/);
+  assert.match(declarationBody(declarations, 'IZLinkActorAddressResolver'), /resolveActorSpotAddress\(\s*actorId: string,\s*signal\?: AbortSignal\s*\): Promise<ZLinkSpotAddress \| undefined>/);
+  assert.equal(declarations.includes('IZLinkRouteLocationResolver'), false);
+  assert.equal(declarations.includes('IZLinkActorRefResolver'), false);
+
+  assert.match(runtimeQuery, /listPeerLocations\(filter: ZLinkPeerLocationFilter, signal\?: AbortSignal\): Promise<readonly ZLinkPeerLocation\[]>/);
+  assert.match(runtimeQuery, /listSpotLocations\(\s*filter: ZLinkSpotLocationFilter,\s*page\?: ZLinkPageRequest,\s*signal\?: AbortSignal\s*\): Promise<ZLinkLocationPage<ZLinkSpotLocation>>/);
+  assert.match(runtimeQuery, /listActorLocations\(\s*filter: ZLinkActorLocationFilter,\s*page\?: ZLinkPageRequest,\s*signal\?: AbortSignal\s*\): Promise<ZLinkLocationPage<ZLinkActorLocation>>/);
+  assert.match(runtimeQuery, /listRouteLocations\(\s*filter: ZLinkRouteLocationFilter,\s*page\?: ZLinkPageRequest,\s*signal\?: AbortSignal\s*\): Promise<ZLinkLocationPage<ZLinkRouteLocation>>/);
+  assert.equal(/\blist(?:Peers|Spots|Actors|Routes)\(/.test(runtimeQuery), false);
+
+  assert.match(changed, /readonly key: ZLinkLocationKey/);
+  assert.equal(changed.includes('locationKey'), false);
+  assert.equal(changed.includes('string'), false);
+  assert.match(declarations, /export type ZLinkLocationKey = \{\s*readonly kind: ZLinkLocationKind\.Peer;\s*readonly key: ZLinkPeerLocationKey;\s*\} \| \{\s*readonly kind: ZLinkLocationKind\.Spot;\s*readonly key: ZLinkSpotLocationKey;\s*\} \| \{\s*readonly kind: ZLinkLocationKind\.Actor;\s*readonly key: ZLinkActorLocationKey;\s*\} \| \{\s*readonly kind: ZLinkLocationKind\.Route;\s*readonly key: ZLinkRouteLocationKey;\s*\};/);
+
+  assert.match(actorLocation, /readonly actorId: string/);
+  assert.match(actorLocation, /readonly actorType\?: string/);
+  assert.match(actorLocation, /readonly actorRef\?: ActorRef/);
+  assert.match(actorLocation, /readonly locationKind: ZLinkSpotKind/);
+  assert.match(actorLocation, /readonly spotMeshName: string/);
+  assert.equal(actorLocation.includes('readonly spotKind'), false);
+  assert.match(actorKey, /readonly actorId: string/);
+  assert.equal(actorKey.includes('actorType'), false);
+  assert.match(actorFilter, /readonly locationKind\?: ZLinkSpotKind/);
+});
+
+test('actor convenience declarations expose directory snapshot and bind-or-get shapes', () => {
+  const declarations = readTree(declarationsRoot);
+  const directory = declarationBody(declarations, 'ZLinkActorDirectory');
+  const placement = declarationBody(declarations, 'ZLinkActorPlacement');
+  const sessionActors = declarationBody(declarations, 'ZLinkSessionActors');
+  const snapshot = declarationBody(declarations, 'ZLinkActorRefSnapshot');
+
+  assert.match(directory, /find\(actorId: string, signal\?: AbortSignal\): Promise<ActorRef \| undefined>/);
+  assert.match(directory, /ensure\(\s*actorId: string,\s*createRequest: unknown,\s*placement\?: ZLinkActorPlacement,\s*signal\?: AbortSignal\s*\): Promise<ActorRef>/);
+  assert.match(placement, /readonly preferredNodeRid\?: RoutingId/);
+  assert.match(placement, /readonly routeMesh\?: string/);
+  assert.match(snapshot, /readonly nodeRid: RoutingId/);
+  assert.match(snapshot, /readonly actorId: string/);
+  assert.match(snapshot, /readonly generation: bigint/);
+  assert.match(declarations, /export declare function zlinkActorRefSnapshotFrom\(actorRef: ActorRef\): ZLinkActorRefSnapshot/);
+  assert.match(declarations, /export declare function zlinkActorRefSnapshotToActorRef\(snapshot: ZLinkActorRefSnapshot\): ActorRef/);
+  assert.match(sessionActors, /bindOrGet\(actor: ActorRef, signal\?: AbortSignal\): Promise<ZLinkSessionActor>/);
+});
+
+test('route client surface exposes node routing only', () => {
+  const declarations = readTree(declarationsRoot);
+  const routeClient = declarationBody(declarations, 'ZLinkRouteClient');
+
+  assert.match(routeClient, /sendToNode\(routerChannelId: string, targetNodeRid: RoutingId, message: unknown\): ZLinkSendCall/);
+  assert.match(routeClient, /requestToNode\(routerChannelId: string, targetNodeRid: RoutingId, request: unknown\): ZLinkRequestCall/);
+  assert.equal(routeClient.includes('sendToSpot'), false);
+  assert.equal(routeClient.includes('requestToSpot'), false);
+});
+
+test('old public contract names from the redesign rename table do not re-enter node surfaces', () => {
+  const forbidden = [
+    'StoreUnavailable',
+    'storeUnavailable',
+    'IZLinkSpotLocationResolver',
+    'ZLinkSpotLocationResolver',
+    'IZLinkActorLocationResolver',
+    'ZLinkActorLocationResolver',
+    'IZLinkRouteLocationResolver',
+    'ZLinkRouteLocationResolver',
+    'IZLinkActorRefResolver',
+    'ZLinkActorRefResolver',
+    'ZLinkResolveFreshness',
+    'resolveFreshness',
+    'ZLinkLocationCanonicalNames',
+    'ZLinkSpotLocationRidResolver',
+    'SpotLocationRidResolver',
+    'PositiveCache',
+    'positiveCache',
+    'ActorIdConflict',
+    'actorIdConflict',
+    'locationKey'
+  ];
+  const allowlist = new Set([
+    'test/contract/contract-surface.test.js'
+  ]);
+  const matches = [];
+
+  for (const file of readTextFiles([
+    path.join(workspaceRoot, 'packages', 'framework'),
+    path.join(workspaceRoot, 'test'),
+    path.join(workspaceRoot, 'e2e'),
+    path.join(workspaceRoot, 'samples')
+  ])) {
+    const relativePath = path.relative(workspaceRoot, file);
+    if (allowlist.has(relativePath)) {
+      continue;
+    }
+    const text = fs.readFileSync(file, 'utf8');
+    for (const name of forbidden) {
+      if (text.includes(name)) {
+        matches.push(`${relativePath}: ${name}`);
+      }
+    }
+  }
+
+  assert.deepEqual(matches.sort(), []);
 });
 
 function exportedCatalogNames(spec) {
@@ -191,6 +448,22 @@ function declarationBody(text, name) {
   return match[0];
 }
 
+function interfaceHeader(text, name) {
+  const match = text.match(new RegExp(`export interface ${name}(?:<[^>{]+>)?(?: [^{]+)? \\{`));
+  assert.ok(match, `missing declaration header for ${name}`);
+  return match[0];
+}
+
+function interfaceExtends(declaration, baseName) {
+  const header = declaration.slice(0, declaration.indexOf('{'));
+  return new RegExp(`\\bextends\\b[^{]*\\b${baseName}\\b`).test(header);
+}
+
+function pickEnumValues(enumObject, names) {
+  assert.ok(enumObject, 'missing enum object');
+  return Object.fromEntries(names.map((name) => [name, enumObject[name]]));
+}
+
 function readTree(root) {
   let text = '';
   for (const entry of fs.readdirSync(root, { withFileTypes: true })) {
@@ -204,4 +477,28 @@ function readTree(root) {
     }
   }
   return text;
+}
+
+function readTextFiles(roots) {
+  const files = [];
+  for (const root of roots) {
+    collectTextFiles(root, files);
+  }
+  return files;
+}
+
+function collectTextFiles(root, files) {
+  for (const entry of fs.readdirSync(root, { withFileTypes: true })) {
+    const fullPath = path.join(root, entry.name);
+    if (entry.name === 'node_modules' || entry.name === 'dist' || entry.name === '.git') {
+      continue;
+    }
+    if (entry.isDirectory()) {
+      collectTextFiles(fullPath, files);
+      continue;
+    }
+    if (/\.(?:ts|tsx|js|mjs|cjs|md|json|sh|ps1)$/.test(entry.name)) {
+      files.push(fullPath);
+    }
+  }
 }

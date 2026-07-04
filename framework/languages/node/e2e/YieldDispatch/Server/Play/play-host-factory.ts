@@ -55,7 +55,7 @@ export async function startPlayHost(args: readonly string[]): Promise<void> {
               .traceLogFile(`${options.logDir}/${options.rid}-flow.log`)
               .traceLabel(options.rid);
           builder.addLocationStore(locationStore);
-          builder.addRouteMesh(YieldDispatchNames.controlChannel)
+          builder.addRouteMeshChannel(YieldDispatchNames.controlChannel)
             .enableRouter(options.controlEndpoint)
             .routingId(options.rid)
             .addRequestHandler('EnsureSpotReq', EnsureSpotControlHandler)
@@ -64,7 +64,7 @@ export async function startPlayHost(args: readonly string[]): Promise<void> {
             .addRequestHandler('YieldEvidenceWaitReq', YieldEvidenceWaitControlHandler);
           builder.addClientServerChannel(YieldDispatchNames.delayChannel)
             .enableClient(options.delayEndpoint);
-          builder.addRouteMesh(YieldDispatchNames.spotRouteChannel)
+          builder.addRouteMeshChannel(YieldDispatchNames.spotRouteChannel)
             .enableRouter(options.spotRouteEndpoint)
             .routingId(options.rid);
           builder.addSpotMesh(YieldDispatchNames.spotChannel)

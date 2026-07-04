@@ -40,15 +40,7 @@ import type {
   ZLinkMessageFlowLogMode,
   ZLinkMessageFlowObserver
 } from '../Dispatch';
-import type {
-  IZLinkActorLocationStore,
-  IZLinkLocationStore,
-  IZLinkOwnerLeaseStore,
-  IZLinkPeerLocationStore,
-  IZLinkRouteLocationStore,
-  IZLinkSpotLocationStore,
-  ZLinkLocationOptions
-} from '../Locations';
+import type { IZLinkLocationStore, ZLinkLocationOptions } from '../Locations';
 import { validateFrameworkRegistration } from './RegistrationValidators';
 export { validateFrameworkRegistration };
 
@@ -76,20 +68,9 @@ export interface ZLinkFrameworkRegistration {
   readonly locations: ZLinkLocationRegistration;
 }
 
-export type ZLinkLocationStoreProvider<TStore> = TStore | Type<TStore>;
-
-export interface ZLinkLocationStoreRegistration {
-  readonly peerStore?: ZLinkLocationStoreProvider<IZLinkPeerLocationStore>;
-  readonly spotStore?: ZLinkLocationStoreProvider<IZLinkSpotLocationStore>;
-  readonly actorStore?: ZLinkLocationStoreProvider<IZLinkActorLocationStore>;
-  readonly routeStore?: ZLinkLocationStoreProvider<IZLinkRouteLocationStore>;
-  readonly ownerLeaseStore?: ZLinkLocationStoreProvider<IZLinkOwnerLeaseStore>;
-}
-
 export interface ZLinkLocationRegistration {
   readonly useInMemoryStores: boolean;
   readonly storeInstance?: IZLinkLocationStore;
-  readonly stores?: ZLinkLocationStoreRegistration;
   readonly options: ZLinkLocationOptions;
 }
 
@@ -148,7 +129,6 @@ export interface ZLinkFrameworkRegistrationOptions {
   readonly locations?: {
     readonly useInMemoryStores?: boolean;
     readonly storeInstance?: IZLinkLocationStore;
-    readonly stores?: ZLinkLocationStoreRegistration;
     readonly options?: ZLinkLocationOptions;
   };
 }
@@ -444,41 +424,10 @@ class ZLinkFrameworkOptionsBuilder implements ZLinkFrameworkOptions {
     return this;
   }
 
-  addPeerLocationStore(store: ZLinkLocationStoreProvider<IZLinkPeerLocationStore>): this {
-    this.locationStores().peerStore = store;
-    return this;
-  }
-
-  addSpotLocationStore(store: ZLinkLocationStoreProvider<IZLinkSpotLocationStore>): this {
-    this.locationStores().spotStore = store;
-    return this;
-  }
-
-  addActorLocationStore(store: ZLinkLocationStoreProvider<IZLinkActorLocationStore>): this {
-    this.locationStores().actorStore = store;
-    return this;
-  }
-
-  addRouteLocationStore(store: ZLinkLocationStoreProvider<IZLinkRouteLocationStore>): this {
-    this.locationStores().routeStore = store;
-    return this;
-  }
-
-  addOwnerLeaseStore(store: ZLinkLocationStoreProvider<IZLinkOwnerLeaseStore>): this {
-    this.locationStores().ownerLeaseStore = store;
-    return this;
-  }
-
   configureLocations(): ZLinkLocationOptions {
     this.options.locations ??= { options: {} };
     this.options.locations.options ??= {};
     return this.options.locations.options;
-  }
-
-  private locationStores(): MutableLocationStoreRegistration {
-    this.options.locations ??= { options: {} };
-    this.options.locations.stores ??= {};
-    return this.options.locations.stores;
   }
 
   configureStreamCompression(): ZLinkStreamCompressionBuilder {
@@ -517,7 +466,7 @@ class ZLinkFrameworkOptionsBuilder implements ZLinkFrameworkOptions {
     return new DefaultRouteChannelBuilder(routeChannel);
   }
 
-  addRouteMesh(name: string): ZLinkRouteMeshChannelBuilder {
+  addRouteMeshChannel(name: string): ZLinkRouteMeshChannelBuilder {
     const channel = this.channel(name);
     channel.routeMesh ??= {};
     markRouteTransportDeclared(channel.routeMesh);
@@ -942,16 +891,7 @@ interface MutableFrameworkRegistrationOptions {
 interface MutableLocationRegistrationOptions {
   useInMemoryStores?: boolean;
   storeInstance?: IZLinkLocationStore;
-  stores?: MutableLocationStoreRegistration;
   options?: ZLinkLocationOptions;
-}
-
-interface MutableLocationStoreRegistration {
-  peerStore?: ZLinkLocationStoreProvider<IZLinkPeerLocationStore>;
-  spotStore?: ZLinkLocationStoreProvider<IZLinkSpotLocationStore>;
-  actorStore?: ZLinkLocationStoreProvider<IZLinkActorLocationStore>;
-  routeStore?: ZLinkLocationStoreProvider<IZLinkRouteLocationStore>;
-  ownerLeaseStore?: ZLinkLocationStoreProvider<IZLinkOwnerLeaseStore>;
 }
 
 interface MutableCodecRegistryOptions {
@@ -1361,7 +1301,6 @@ function normalizeLocationRegistration(
   return {
     useInMemoryStores: value?.useInMemoryStores === true,
     storeInstance: value?.storeInstance,
-    stores: value?.stores,
     options: value?.options === undefined ? {} : { ...value.options }
   };
 }

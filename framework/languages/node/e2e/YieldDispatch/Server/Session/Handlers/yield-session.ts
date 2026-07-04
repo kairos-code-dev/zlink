@@ -62,7 +62,7 @@ class YieldSession implements ZLinkSession {
       const request = payload.decode<EnsureSpotReq>(Object as never);
       const targetRid = dispatch.metadata.get(YieldDispatchNames.targetNodeRidMetadata) ?? 'play-a';
       const reply = await this.route
-        .request(YieldDispatchNames.controlChannel, targetRid, request)
+        .requestToNode(YieldDispatchNames.controlChannel, targetRid, request)
         .packetName('EnsureSpotReq')
         .timeout(5000)
         .submit<EnsureSpotRes>(signal);
@@ -73,12 +73,12 @@ class YieldSession implements ZLinkSession {
     if (dispatch.packetName === 'BindYieldActorsReq') {
       const request = payload.decode<BindYieldActorsReq>(Object as never);
       const reply = await this.route
-        .request(YieldDispatchNames.controlChannel, 'play-a', request)
+        .requestToNode(YieldDispatchNames.controlChannel, 'play-a', request)
         .packetName('BindYieldActorsReq')
         .timeout(5000)
         .submit<BindYieldActorsRes>(signal);
       for (const actor of reply.actors) {
-        await this.context.actors.bind({
+        await this.context.actors.bindOrGet({
           actorId: actor.actorId,
           nodeRid: actor.nodeRid,
           generation: BigInt(actor.generation)
@@ -92,7 +92,7 @@ class YieldSession implements ZLinkSession {
       const request = payload.decode<YieldEvidenceReq>(Object as never);
       const targetRid = dispatch.metadata.get(YieldDispatchNames.targetNodeRidMetadata) ?? 'play-a';
       const reply = await this.route
-        .request(YieldDispatchNames.controlChannel, targetRid, request)
+        .requestToNode(YieldDispatchNames.controlChannel, targetRid, request)
         .packetName('YieldEvidenceReq')
         .timeout(5000)
         .submit<YieldEvidenceRes>(signal);
@@ -104,7 +104,7 @@ class YieldSession implements ZLinkSession {
       const request = payload.decode<YieldEvidenceWaitReq>(Object as never);
       const targetRid = dispatch.metadata.get(YieldDispatchNames.targetNodeRidMetadata) ?? 'play-a';
       const reply = await this.route
-        .request(YieldDispatchNames.controlChannel, targetRid, request)
+        .requestToNode(YieldDispatchNames.controlChannel, targetRid, request)
         .packetName('YieldEvidenceWaitReq')
         .timeout(request.timeoutMilliseconds ?? 30000)
         .submit<YieldEvidenceRes>(signal);
@@ -295,7 +295,7 @@ class YieldSession implements ZLinkSession {
 
   private async ensurePlaySpot(spotRid: string, signal?: AbortSignal): Promise<void> {
     await this.route
-      .request(YieldDispatchNames.controlChannel, 'play-a', { spotRid } satisfies EnsureSpotReq)
+      .requestToNode(YieldDispatchNames.controlChannel, 'play-a', { spotRid } satisfies EnsureSpotReq)
       .packetName('EnsureSpotReq')
       .timeout(5000)
       .submit<EnsureSpotRes>(signal);
@@ -303,7 +303,7 @@ class YieldSession implements ZLinkSession {
 
   private async requestPlayEvidence(requestId: string, signal?: AbortSignal): Promise<YieldEvidenceRes> {
     return await this.route
-      .request(YieldDispatchNames.controlChannel, 'play-a', { requestId } satisfies YieldEvidenceReq)
+      .requestToNode(YieldDispatchNames.controlChannel, 'play-a', { requestId } satisfies YieldEvidenceReq)
       .packetName('YieldEvidenceReq')
       .timeout(5000)
       .submit<YieldEvidenceRes>(signal);
@@ -315,7 +315,7 @@ class YieldSession implements ZLinkSession {
     signal?: AbortSignal
   ): Promise<YieldEvidenceRes> {
     return await this.route
-      .request(YieldDispatchNames.controlChannel, 'play-a', { requestId, marker, timeoutMilliseconds: 20000 } satisfies YieldEvidenceWaitReq)
+      .requestToNode(YieldDispatchNames.controlChannel, 'play-a', { requestId, marker, timeoutMilliseconds: 20000 } satisfies YieldEvidenceWaitReq)
       .packetName('YieldEvidenceWaitReq')
       .timeout(20000)
       .submit<YieldEvidenceRes>(signal);

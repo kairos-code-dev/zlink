@@ -2,8 +2,7 @@ import { Injectable } from '@nestjs/common';
 import { ZLinkSpotKind } from '@zlink-systems/framework';
 import type {
   RoutingId,
-  ZLinkSpotRemoteAddress,
-  ZLinkSpotRemoteAddressResolver
+  ZLinkSpotRemoteAddress
 } from '@zlink-systems/framework';
 import { SpotServiceNames } from '../../../Shared/messages';
 
@@ -13,7 +12,7 @@ interface SpotRoute {
 }
 
 @Injectable()
-export class InMemorySpotRouteStore implements ZLinkSpotRemoteAddressResolver {
+export class InMemorySpotRouteStore {
   private static readonly routes = new Map<string, SpotRoute>();
 
   static recordUserSpot(spotRid: string, ownerNodeRid: string): void {

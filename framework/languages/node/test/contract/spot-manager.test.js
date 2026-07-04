@@ -1343,6 +1343,7 @@ function createLengthPrefixedJsonType() {
 async function locationLifecycleNode(store, ownerId, nodeRid) {
   const runtime = new framework.ZLinkLocationRuntime({
     stores: {
+      locationStore: store,
       peerStore: store,
       spotStore: store,
       actorStore: store,

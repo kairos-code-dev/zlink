@@ -386,13 +386,16 @@ export class EntryUserSpotActorJoinHandler
       .joinSpot(request.spotRid, request)
       .timeout(5000)
       .submit(context.connectionAborted);
-    if (result.resultCode !== 0) {
+    if (!result.accepted) {
       return {
         spotRid: request.spotRid,
         actorId: actor.actorId,
         accepted: false,
-        generation: result.actor.generation.toString()
+        generation: result.actor?.generation.toString() ?? '0'
       };
+    }
+    if (result.actor === undefined) {
+      throw new Error('Accepted join result did not include an actor ref.');
     }
     InMemoryActorSpotStore.record(actor.actorId, request.spotRid);
     return {

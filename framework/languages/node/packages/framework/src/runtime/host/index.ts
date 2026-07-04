@@ -9,7 +9,7 @@ import type {
   ZLinkBackendSpotNode
 } from '../backend';
 import { ZLinkConfigurationException } from '../configuration';
-import type { ZLinkFrameworkRegistration, ZLinkLocationStoreProvider } from '../configuration';
+import type { ZLinkFrameworkRegistration } from '../configuration';
 import type {
   ActorRef,
   RoutingId,
@@ -88,7 +88,7 @@ import {
   type ZLinkLocationEventSink,
   type ZLinkLocationRuntimeStores
 } from '../locations';
-import { Message as BindingMessage, RoutingId as BindingRoutingId } from '@zlink-systems/zlink';
+import { Message as BindingMessage } from '@zlink-systems/zlink';
 import {
   decodeStreamHeader,
   encodeStreamHeader,
@@ -99,6 +99,11 @@ import {
   ZLinkStreamMessageKind
 } from '../streams/protocol';
 import { wrapFrameworkPayloadMessage } from '../messaging/payload-codec';
+import {
+  decodeRemoteActorPacketTarget,
+  encodeRemoteActorPacketTarget,
+  normalizeRuntimeRoutingId
+} from '../spots/route-wire-codec';
 import type { IZLinkLocationRuntimeQuery } from '../../contracts/Locations';
 
 export interface ZLinkFrameworkRuntime {
@@ -698,6 +703,7 @@ export class ZLinkFrameworkRuntimeHost implements ZLinkFrameworkRuntime, ZLinkMe
     if (locations.useInMemoryStores) {
       const store = new ZLinkInMemoryLocationStore();
       return {
+        locationStore: store,
         peerStore: store,
         spotStore: store,
         actorStore: store,
@@ -708,6 +714,7 @@ export class ZLinkFrameworkRuntimeHost implements ZLinkFrameworkRuntime, ZLinkMe
     const store = locations.storeInstance;
     if (store !== undefined) {
       return {
+        locationStore: store,
         peerStore: store,
         spotStore: store,
         actorStore: store,
@@ -715,43 +722,7 @@ export class ZLinkFrameworkRuntimeHost implements ZLinkFrameworkRuntime, ZLinkMe
         ownerLeaseStore: store
       };
     }
-    const stores = locations.stores;
-    if (
-      stores?.peerStore !== undefined &&
-      stores.spotStore !== undefined &&
-      stores.actorStore !== undefined &&
-      stores.routeStore !== undefined &&
-      stores.ownerLeaseStore !== undefined
-    ) {
-      return {
-        peerStore: this.resolveLocationStore(stores.peerStore, 'peer'),
-        spotStore: this.resolveLocationStore(stores.spotStore, 'spot'),
-        actorStore: this.resolveLocationStore(stores.actorStore, 'actor'),
-        routeStore: this.resolveLocationStore(stores.routeStore, 'route'),
-        ownerLeaseStore: this.resolveLocationStore(stores.ownerLeaseStore, 'owner lease')
-      };
-    }
     return undefined;
-  }
-
-  private resolveLocationStore<TStore>(
-    provider: ZLinkLocationStoreProvider<TStore>,
-    roleName: string
-  ): TStore {
-    if (!isLocationStoreType(provider)) {
-      return provider;
-    }
-    const resolved = this.options.providerResolver?.get?.(provider);
-    if (resolved !== undefined) {
-      return resolved;
-    }
-    try {
-      return new provider();
-    } catch (error) {
-      throw new ZLinkConfigurationException(
-        `Location ${roleName} store provider '${provider.name}' is not registered and cannot be constructed: ${formatErrorMessage(error)}`
-      );
-    }
   }
 
   private ensureLocationRuntime(): ZLinkLocationRuntime | undefined {
@@ -1785,71 +1756,6 @@ export class ZLinkFrameworkRuntimeHost implements ZLinkFrameworkRuntime, ZLinkMe
   }
 }
 
-function decodeRemoteActorPacketTarget(value: unknown): ZLinkRemoteActorPacketTarget | undefined {
-  if (
-    typeof value !== 'object' ||
-    value === null ||
-    typeof (value as { routerChannelId?: unknown }).routerChannelId !== 'string' ||
-    typeof (value as { targetNodeRid?: unknown }).targetNodeRid !== 'string' ||
-    typeof (value as { spotRid?: unknown }).spotRid !== 'string'
-  ) {
-    return undefined;
-  }
-  return {
-    routerChannelId: (value as { routerChannelId: string }).routerChannelId,
-    targetNodeRid: decodeWireRoutingId(
-      (value as { targetNodeRid: string }).targetNodeRid,
-      (value as { targetNodeRidHex?: unknown }).targetNodeRidHex
-    ),
-    spotRid: decodeWireRoutingId(
-      (value as { spotRid: string }).spotRid,
-      (value as { spotRidHex?: unknown }).spotRidHex
-    ),
-    spotKind: (value as { spotKind?: unknown }).spotKind === ZLinkSpotKind.Entry
-      ? ZLinkSpotKind.Entry
-      : ZLinkSpotKind.User
-  };
-}
-
-function normalizeRuntimeRoutingId(value: RoutingId | string): RoutingId {
-  const raw = value as unknown;
-  return raw instanceof BindingRoutingId
-    ? raw as unknown as RoutingId
-    : BindingRoutingId.from(String(value)) as unknown as RoutingId;
-}
-
-function encodeRoutingIdHex(routingId: RoutingId): string | undefined {
-  const toHex = (routingId as unknown as { toHex?: () => string }).toHex;
-  return typeof toHex === 'function' ? toHex.call(routingId) : undefined;
-}
-
-function decodeWireRoutingId(text: string, hex: unknown): RoutingId {
-  return typeof hex === 'string'
-    ? BindingRoutingId.fromHex(hex) as unknown as RoutingId
-    : normalizeRuntimeRoutingId(text);
-}
-
-function encodeRemoteActorPacketTarget(target: ZLinkRemoteActorPacketTarget | undefined): {
-  readonly routerChannelId: string;
-  readonly targetNodeRid: string;
-  readonly targetNodeRidHex?: string;
-  readonly spotRid: string;
-  readonly spotRidHex?: string;
-  readonly spotKind: ZLinkSpotKind;
-} | undefined {
-  if (target === undefined) {
-    return undefined;
-  }
-  return {
-    routerChannelId: target.routerChannelId,
-    targetNodeRid: String(target.targetNodeRid),
-    targetNodeRidHex: encodeRoutingIdHex(target.targetNodeRid),
-    spotRid: String(target.spotRid),
-    spotRidHex: encodeRoutingIdHex(target.spotRid),
-    spotKind: target.spotKind ?? ZLinkSpotKind.User
-  };
-}
-
 function sessionActorPacketTargetKey(actor: ZLinkSessionActor): string {
   return `${String(actor.ref.nodeRid)}:${actor.actorId}:${String(actor.ref.generation)}`;
 }
@@ -2309,8 +2215,8 @@ class ZLinkLocalFirstActorJoinCoordinator implements ZLinkActorJoinCoordinator {
       await this.options.actorBinder?.(actorRef, signal, true);
     }
     return {
-      resultCode: result.accepted ? 0 : 1,
-      actor: actorRef,
+      accepted: result.accepted,
+      actor: result.accepted ? actorRef : undefined,
       reply: result.reply as Message | undefined
     };
   }
@@ -2491,10 +2397,6 @@ function resolveStreamPayloadCodec(registration: ZLinkFrameworkRegistration): ZL
     return codec;
   }
   return undefined;
-}
-
-function isLocationStoreType<TStore>(provider: ZLinkLocationStoreProvider<TStore>): provider is Type<TStore> {
-  return typeof provider === 'function';
 }
 
 function formatErrorMessage(error: unknown): string {

@@ -1,10 +1,6 @@
-type DeliveryStatus = 'Created' | 'Assigned' | 'Accepted' | 'Reassigned' | 'PickedUp' | 'Delivered' | 'Failed';
+import type { ZLinkActorRefSnapshot } from '@zlink-systems/framework';
 
-type ActorRefSnapshot = {
-  nodeRid: string;
-  actorId: string;
-  generation: number;
-};
+type DeliveryStatus = 'Created' | 'Assigned' | 'Accepted' | 'Reassigned' | 'PickedUp' | 'Delivered' | 'Failed';
 
 type CreateDeliveryReq = {
   deliveryId: string;
@@ -24,7 +20,7 @@ type EnsureCustomerActorReq = {
 
 type EnsureCustomerActorRes = {
   customerId: string;
-  actor: ActorRefSnapshot;
+  actor: ZLinkActorRefSnapshot;
 };
 
 type SubscribeDeliveryReq = {
@@ -44,7 +40,7 @@ type BindCourierReq = {
 
 type BindCourierRes = {
   courierId: string;
-  actor: ActorRefSnapshot;
+  actor: ZLinkActorRefSnapshot;
   sessionRoute: string;
 };
 
@@ -55,7 +51,7 @@ type BindCourierSessionReq = {
 
 type BindCourierSessionRes = {
   courierId: string;
-  actor: ActorRefSnapshot;
+  actor: ZLinkActorRefSnapshot;
   sessionRoute: string;
 };
 
@@ -66,7 +62,7 @@ type EnsureCourierActorReq = {
 
 type EnsureCourierActorRes = {
   courierId: string;
-  actor: ActorRefSnapshot;
+  actor: ZLinkActorRefSnapshot;
 };
 
 type SubscribeCustomerToDeliveryReq = {
@@ -272,7 +268,6 @@ export {
 };
 
 export type {
-  ActorRefSnapshot,
   AssignDeliveryReq,
   AssignDeliveryRes,
   BindCourierReq,

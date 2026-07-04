@@ -45,7 +45,7 @@ function createBingoPlayModule(config: {
           return builder
           .codecs()
             .use(zlinkProtobufCodec())
-          .addRouteMesh(SampleNames.playChannel)
+          .addRouteMeshChannel(SampleNames.playChannel)
             .enableRouter(config.playRouteEndpoint)
             .routingId(config.playSpotNodeRid)
             .connect(config.routePeerEndpoints)

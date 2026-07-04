@@ -141,7 +141,7 @@ test('ZLinkRouteClient applies route channel request timeout before registration
   });
 
   const reply = await client
-    .request('route', 'target', { id: 7 })
+    .requestToNode('route', 'target', { id: 7 })
     .packetName('GetProfile')
     .submit();
 
@@ -155,7 +155,7 @@ test('ZLinkRouteClient applies route channel request timeout before registration
       timeoutMs: 3000
     }
   ]);
-  assert.equal('yield' in client.request('route', 'target', { id: 8 }), false);
+  assert.equal('yield' in client.requestToNode('route', 'target', { id: 8 }), false);
 });
 
 test('route packet dispatcher sends channel envelopes to route handlers before Spot bridge fallback', async () => {
@@ -1090,6 +1090,73 @@ test('CH-001 ZLinkFrameworkRuntimeHost dispatches client-server channel request 
   }
 });
 
+test('ZLinkFrameworkRuntimeHost waits for in-flight channel dispatch before closing router', async () => {
+  const calls = [];
+  let releaseHandler;
+  const handlerStarted = new Promise((resolve) => {
+    releaseHandler = resolve;
+  });
+  let handlerCanFinish;
+  const handlerRelease = new Promise((resolve) => {
+    handlerCanFinish = resolve;
+  });
+  const router = fakeRuntimeRouter(calls, {
+    parts: encodeDotnetEnvelope({
+      kind: 1,
+      channelName: 'api',
+      messageName: 'SlowReq',
+      contentType: 'application/json',
+      correlationId: 'slow-1',
+      deadline: null,
+      topic: null,
+      errorCode: null,
+      errorMessage: null
+    }, { value: 'wait' }).map(fakeMessagePart),
+    routingId: 'client-node',
+    requestSeq: 1n,
+    close() {
+      calls.push('received:close');
+      this.parts.forEach((part) => part.close());
+    }
+  });
+  const runtime = new framework.ZLinkFrameworkRuntimeHost({
+    registration: framework.createFrameworkRegistration({
+      channels: {
+        api: {
+          server: { bind: 'inproc://slow-api' },
+          requestHandlers: [{
+            packetName: 'SlowReq',
+            handler: {
+              async handle(payload) {
+                calls.push(`handler:start:${payload.value}`);
+                releaseHandler();
+                await handlerRelease;
+                calls.push('handler:finish');
+                return { ok: true };
+              }
+            }
+          }]
+        }
+      }
+    })
+  }, {
+    backendAdapterFactory: fakeRuntimeBackendAdapterFactory(calls, router)
+  });
+
+  await runtime.start();
+  await handlerStarted;
+  const stop = runtime.stop();
+  await new Promise((resolve) => setImmediate(resolve));
+
+  assert.equal(calls.includes('router:dispose'), false);
+  handlerCanFinish();
+  await stop;
+  assert.deepEqual(calls.filter((call) => call === 'router:reply' || call === 'router:dispose'), [
+    'router:reply',
+    'router:dispose'
+  ]);
+});
+
 test('CH-006 ZLinkFrameworkRuntimeHost dispatches client-server send handlers', async () => {
   const endpoint = `tcp://127.0.0.1:${await reservePort()}`;
   const calls = [];
@@ -1675,7 +1742,7 @@ test('DSC-009 same routing id different endpoint replaces located provider', asy
   );
   await waitForSingleReadyEndpoint(locationStore, providerRid, providerV1Endpoint);
 
-  await locationStore.removePeersByOwner('provider-v1');
+  await locationStore.removeAllByOwner('provider-v1');
   await locationStore.removeOwnerLease('provider-v1');
   await locationStore.renewOwnerLease('provider-v2', providerRid, 30000);
   await locationStore.updatePeer(
@@ -1979,7 +2046,7 @@ test('ZLinkModule route client uses runtime host route transport after bootstrap
   const remoteRouter = zlink.createRouterSocket(ctx);
   const endpoint = `tcp://127.0.0.1:${await reservePort()}`;
   const module = nestjs.ZLinkModule.forRoot(nestjs.zlinkFramework()
-    .addRouteMesh('mesh')
+    .addRouteMeshChannel('mesh')
       .enableRouter(endpoint)
       .routingId('node-a')
     .build());
@@ -1996,7 +2063,7 @@ test('ZLinkModule route client uses runtime host route transport after bootstrap
     remoteRouter.connect(endpoint);
 
     const replyPromise = submitWhenReachable(() =>
-      routeClient.request('mesh', 'node-b', { value: 'ping' }).packetName('RoutePing').timeout(1000).submit()
+      routeClient.requestToNode('mesh', 'node-b', { value: 'ping' }).packetName('RoutePing').timeout(1000).submit()
     );
     const request = await recvRoutedEnvelopeMessage(remoteRouter);
     const envelope = decodeDotnetEnvelope(request.parts);
@@ -2021,7 +2088,7 @@ test('ZLinkModule route client uses runtime host route transport after bootstrap
     assert.deepEqual(reply, { value: 'pong' });
     request.close();
 
-    routeClient.send('mesh', 'node-b', { value: 'one-way' }).packetName('RouteNotice').submit();
+    routeClient.sendToNode('mesh', 'node-b', { value: 'one-way' }).packetName('RouteNotice').submit();
     const sent = await recvRoutedEnvelopeMessage(remoteRouter);
     const sentEnvelope = decodeDotnetEnvelope(sent.parts);
     assert.equal(sentEnvelope.header.kind, 3);
@@ -2225,7 +2292,7 @@ test('ZLinkModule route channel dispatches inbound routed handlers after bootstr
   class HandlerModule {}
   Module({
     imports: [nestjs.ZLinkModule.forRoot(nestjs.zlinkFramework()
-      .addRouteMesh('mesh')
+      .addRouteMeshChannel('mesh')
         .enableRouter(endpoint)
         .routingId('node-a')
         .addSendHandler('RouteNotice', RouteNoticeHandler)
@@ -2322,7 +2389,7 @@ test('ZLinkModule routeMesh channel option dispatches inbound routed handlers af
   class HandlerModule {}
   Module({
     imports: [nestjs.ZLinkModule.forRoot(nestjs.zlinkFramework()
-      .addRouteMesh('mesh')
+      .addRouteMeshChannel('mesh')
         .enableRouter(endpoint)
         .routingId('node-a')
         .addRequestHandler('RoutePing', RoutePingHandler)
@@ -3372,6 +3439,92 @@ function createMultipartRequestOperation(overrides = {}) {
       return true;
     },
     ...overrides
+  };
+}
+
+function fakeRuntimeBackendAdapterFactory(calls, router) {
+  return {
+    createChannelAdapter() {
+      return {
+        createContext() {
+          calls.push('context:create');
+          return {
+            nativeInstance: {},
+            shutdown() {
+              calls.push('context:shutdown');
+            },
+            async dispose() {
+              calls.push('context:dispose');
+            }
+          };
+        },
+        createRouterSocket() {
+          return router;
+        }
+      };
+    }
+  };
+}
+
+function fakeRuntimeRouter(calls, received) {
+  let readyHandler = () => undefined;
+  let nextReceived = received;
+  return {
+    nativeInstance: {},
+    peerWeight: 0,
+    sendHighWaterMark: 0,
+    receiveHighWaterMark: 0,
+    sendTimeoutMs: 0,
+    disposed: false,
+    setChannelName(channelName) {
+      calls.push(`router:setChannelName:${channelName}`);
+    },
+    setRoutingId(routingId) {
+      calls.push(`router:setRoutingId:${routingId}`);
+    },
+    bind(endpoint) {
+      calls.push(`router:bind:${endpoint}`);
+    },
+    connect(endpoint) {
+      calls.push(`router:connect:${endpoint}`);
+    },
+    disconnect(endpoint) {
+      calls.push(`router:disconnect:${endpoint}`);
+    },
+    onSendReady(handler) {
+      readyHandler = handler;
+    },
+    ready() {
+      readyHandler();
+    },
+    recv() {
+      const current = nextReceived;
+      nextReceived = undefined;
+      return current;
+    },
+    send() {
+      return true;
+    },
+    request() {
+      return true;
+    },
+    sendToSpot() {
+      return true;
+    },
+    requestToSpot() {
+      return true;
+    },
+    reply() {
+      if (this.disposed) {
+        throw new Error('router replied after dispose');
+      }
+      calls.push('router:reply');
+      return captureMultipart([]);
+    },
+    async dispose() {
+      this.disposed = true;
+      calls.push('router:dispose');
+    }
   };
 }
 

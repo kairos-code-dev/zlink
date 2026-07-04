@@ -15,7 +15,7 @@ import type {
 
 type AuthenticateSessionContext = {
   actors: {
-    bind(actor: {
+    bindOrGet(actor: {
       nodeRid: RoutingId;
       actorId: string;
       generation: bigint;
@@ -57,7 +57,7 @@ class SessionAuthenticator {
     const ensured = await retry(async () => {
       if (this.config.preferredPlayNodeRid.length > 0) {
         return await this.routeClient
-          .request(SampleNames.playChannel, this.config.preferredPlayNodeRid, ensureRequest)
+          .requestToNode(SampleNames.playChannel, this.config.preferredPlayNodeRid, ensureRequest)
           .packetName(PacketNames.ensurePlayerActorReq)
           .timeout(500)
           .submit<EnsurePlayerActorRes>(AbortSignal.timeout(500));
@@ -70,7 +70,7 @@ class SessionAuthenticator {
     }, { delayMs: 25, maxAttempts: 200 });
     console.log(`session-auth ensured actor=${ensured.actorId} node=${ensured.actor.nodeRid}`);
 
-    await context.actors.bind({
+    await context.actors.bindOrGet({
       ...ensured.actor,
       nodeRid: ensured.actor.nodeRid as unknown as RoutingId,
       generation: BigInt(ensured.actor.generation)

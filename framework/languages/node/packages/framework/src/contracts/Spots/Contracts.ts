@@ -1,6 +1,6 @@
 import type { ZLinkActor } from '../Actors';
-import type { ZLinkPublishCall, ZLinkRequestCall, ZLinkSendCall } from '../Channels';
-import type { RoutingId, Type } from '../Common';
+import type { ZLinkPublishCall, ZLinkRequestCall, ZLinkSendCall, ZLinkYieldRequestCall } from '../Channels';
+import type { RoutingId, Type, ZLinkMessage } from '../Common';
 import type { ZLinkSpotTimerHandler } from '../Handlers';
 import type { ZLinkTimer, ZLinkTimerOptions } from '../Timers';
 import type { ZLinkEntrySpot, ZLinkSpot } from './ZLinkSpot';
@@ -56,17 +56,15 @@ export interface ZLinkWorkerCall<T> {
   ): void;
 }
 
-export interface ZLinkSpotContext<
+export interface ZLinkSpotCommonContext<
   TActor extends ZLinkActor = ZLinkActor,
-  TSpot extends ZLinkSpot<TActor> = ZLinkSpot<TActor>
+  TSpot = ZLinkSpot<TActor>
 > {
   readonly spotRid: RoutingId;
   readonly nodeRid: RoutingId;
   readonly routingId: RoutingId;
   readonly handlers: ZLinkSpotHandlerRegistry<TActor>;
   readonly outbound: ZLinkSpotOutbound;
-  leaveActor(actor: TActor, signal?: AbortSignal): Promise<void>;
-  close(signal?: AbortSignal): Promise<boolean>;
   addTimer<THandler extends ZLinkSpotTimerHandler<TSpot>>(
     name: string,
     periodMs: number,
@@ -87,36 +85,19 @@ export interface ZLinkSpotContext<
   runWorker<T>(work: (signal: AbortSignal) => T | Promise<T>): ZLinkWorkerCall<T>;
 }
 
+export interface ZLinkSpotContext<
+  TActor extends ZLinkActor = ZLinkActor,
+  TSpot extends ZLinkSpot<TActor> = ZLinkSpot<TActor>
+> extends ZLinkSpotCommonContext<TActor, TSpot> {
+  leaveActor(actor: TActor, signal?: AbortSignal): Promise<void>;
+  close(signal?: AbortSignal): Promise<boolean>;
+}
+
 export interface ZLinkEntrySpotContext<
   TActor extends ZLinkActor = ZLinkActor,
   TEntrySpot extends ZLinkEntrySpot<TActor> = ZLinkEntrySpot<TActor>
-> {
-  readonly spotRid: RoutingId;
-  readonly nodeRid: RoutingId;
-  readonly routingId: RoutingId;
-  readonly handlers: ZLinkSpotHandlerRegistry<TActor>;
-  readonly outbound: ZLinkSpotOutbound;
+> extends ZLinkSpotCommonContext<TActor, TEntrySpot> {
   destroyActor(actor: TActor, signal?: AbortSignal): Promise<void>;
-  addTimer<THandler extends ZLinkSpotTimerHandler<TEntrySpot>>(
-    name: string,
-    periodMs: number,
-    handlerType: Type<THandler>,
-    options?: ZLinkTimerOptions,
-    signal?: AbortSignal
-  ): Promise<ZLinkTimer>;
-  /**
-   * Schedules `work` off the Entry Spot serial line as an asynchronous
-   * deferral.
-   *
-   * The closure-based `runWorker(...)` releases the Entry Spot dispatch queue
-   * while `work` runs, but it does not provide CPU thread offload: `work`
-   * still executes on the main event loop. Long synchronous CPU work must be
-   * split into a separate service or process instead. `work` must not touch
-   * Entry Spot state; mutate state only in the completion
-   * callback/continuation, which runs back on this Entry Spot's serial
-   * executor.
-   */
-  runWorker<T>(work: (signal: AbortSignal) => T | Promise<T>): ZLinkWorkerCall<T>;
 }
 
 export interface ZLinkSpotActorReplyOptions {
@@ -126,10 +107,10 @@ export interface ZLinkSpotActorReplyOptions {
 
 export interface ZLinkSpotOutbound {
   sendToSpot(spotRid: RoutingId, message: unknown): ZLinkSendCall;
-  requestToSpot(spotRid: RoutingId, request: unknown): ZLinkRequestCall;
+  requestToSpot(spotRid: RoutingId, request: unknown): ZLinkYieldRequestCall;
   publish(topic: string, event: unknown): ZLinkPublishCall;
   sendToChannel(channelName: string, message: unknown): ZLinkSendCall;
-  requestToChannel(channelName: string, request: unknown): ZLinkRequestCall;
+  requestToChannel(channelName: string, request: unknown): ZLinkYieldRequestCall;
 }
 
 export enum ZLinkSpotCreateState {
@@ -151,13 +132,33 @@ export interface ZLinkSpotInfo {
 export interface ZLinkSpotManager {
   create<TSpot extends ZLinkSpot>(
     spotType: Type<TSpot>,
-    request?: unknown,
+    signal?: AbortSignal
+  ): Promise<ZLinkSpotCreateResult>;
+  create<TSpot extends ZLinkSpot>(
+    spotType: Type<TSpot>,
+    request: ZLinkMessage,
+    signal?: AbortSignal
+  ): Promise<ZLinkSpotCreateResult>;
+  create<TSpot extends ZLinkSpot, TRequest>(
+    spotType: Type<TSpot>,
+    request: TRequest,
     signal?: AbortSignal
   ): Promise<ZLinkSpotCreateResult>;
   getOrCreate<TSpot extends ZLinkSpot>(
     spotType: Type<TSpot>,
     spotRid: RoutingId,
-    request?: unknown,
+    signal?: AbortSignal
+  ): Promise<ZLinkSpotCreateResult>;
+  getOrCreate<TSpot extends ZLinkSpot>(
+    spotType: Type<TSpot>,
+    spotRid: RoutingId,
+    request: ZLinkMessage,
+    signal?: AbortSignal
+  ): Promise<ZLinkSpotCreateResult>;
+  getOrCreate<TSpot extends ZLinkSpot, TRequest>(
+    spotType: Type<TSpot>,
+    spotRid: RoutingId,
+    request: TRequest,
     signal?: AbortSignal
   ): Promise<ZLinkSpotCreateResult>;
   executeOnSpot<TSpot extends ZLinkSpot, TResult>(

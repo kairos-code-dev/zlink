@@ -5,6 +5,7 @@ import {
   ZLINK_SPOT_MANAGER,
   zlinkRequestHandler
 } from '@zlink-systems/nestjs';
+import { ZLinkMessage, zlinkActorRefSnapshotFrom } from '@zlink-systems/framework';
 import { SampleNames } from '../../../Shared/Configuration/sample-names';
 import { PacketNames } from '../../../Shared/Contracts/messages';
 import { EvidenceStore } from '../../Configuration/evidence-store';
@@ -37,11 +38,7 @@ class EnsureCustomerActorHandler implements ZLinkRequestHandler<EnsureCustomerAc
     const actor = await this.actors.getOrCreate(request.customerId, SampleNames.customerActorType, request);
     return {
       customerId: request.customerId,
-      actor: {
-        nodeRid: String(actor.nodeRid),
-        actorId: actor.actorId,
-        generation: Number(actor.generation)
-      }
+      actor: zlinkActorRefSnapshotFrom(actor)
     };
   }
 }
@@ -56,7 +53,7 @@ class SubscribeCustomerToDeliveryHandler implements ZLinkRequestHandler<Subscrib
   async handle(request: SubscribeCustomerToDeliveryReq, context: ZLinkRequestContext): Promise<SubscribeCustomerToDeliveryRes> {
     void context;
     console.error(`deliverydispatch tracking: subscribe delivery=${request.deliveryId} customer=${request.customerId}`);
-    await this.spots.getOrCreate(DeliveryTrackingSpot, request.deliveryId, { deliveryId: request.deliveryId });
+    await this.spots.getOrCreate(DeliveryTrackingSpot, request.deliveryId, ZLinkMessage.from({ deliveryId: request.deliveryId }));
     await this.actors.getOrCreate(request.customerId, SampleNames.customerActorType);
     return { customerId: request.customerId, deliveryId: request.deliveryId };
   }
@@ -73,7 +70,7 @@ class DeliveryStatusChangedHandler implements ZLinkRequestHandler<DeliveryStatus
 
   async handle(request: DeliveryStatusReq, context: ZLinkRequestContext): Promise<DeliveryStatusRes> {
     void context;
-    await this.spots.getOrCreate(DeliveryTrackingSpot, request.deliveryId, { deliveryId: request.deliveryId });
+    await this.spots.getOrCreate(DeliveryTrackingSpot, request.deliveryId, ZLinkMessage.from({ deliveryId: request.deliveryId }));
     this.evidence.append(request);
     this.directory.require(request.deliveryId).record(request);
     const notify: DeliveryStatusNotify = {

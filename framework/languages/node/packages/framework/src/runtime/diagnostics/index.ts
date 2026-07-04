@@ -2,6 +2,7 @@ import type {
   IZLinkLocationRuntimeQuery,
   ZLinkActorLocation,
   ZLinkActorLocationKey,
+  ZLinkLocationKey,
   ZLinkAutoConnectDesiredSetChange,
   ZLinkLocationActorEvent,
   ZLinkLocationMonitoringRegistration,
@@ -95,7 +96,7 @@ export class ZLinkLocationRuntimeMonitoringSource {
   private previousStatus?: string;
   private previousTopology?: string;
   private previousServiceSummary?: string;
-  private storeUnavailable = false;
+  private storeFailure = false;
 
   constructor(
     private readonly registration: ZLinkPollingMonitoringRegistration,
@@ -117,20 +118,20 @@ export class ZLinkLocationRuntimeMonitoringSource {
         this.query.listServiceSummaries({}, signal)
       ]);
     } catch (error) {
-      if (!this.storeUnavailable) {
-        this.storeUnavailable = true;
+      if (!this.storeFailure) {
+        this.storeFailure = true;
         await this.publisher.publish({
           sourceName: this.registration.sourceName,
           timestamp: new Date(),
-          event: LocationRuntimeEventKind.StoreUnavailable,
+          event: LocationRuntimeEventKind.StoreFailure,
           status: { storeHealthy: false, watchEnabled: false, pollingIntervalMs: this.registration.intervalMs, lastError: errorMessage(error), ownerLeaseHealthy: false }
         } satisfies ZLinkLocationRuntimeEvent);
       }
       return;
     }
 
-    if (this.storeUnavailable) {
-      this.storeUnavailable = false;
+    if (this.storeFailure) {
+      this.storeFailure = false;
       await this.publisher.publish({
         sourceName: this.registration.sourceName,
         timestamp: new Date(),
@@ -181,11 +182,11 @@ export class ZLinkLocationMonitoringEventEmitter {
     }
   }
 
-  peerRowUpdated(key: string, peer: ZLinkLocationPeerEvent['peer']): void {
+  peerRowUpdated(key: ZLinkLocationKey, peer: ZLinkLocationPeerEvent['peer']): void {
     this.publishPeer(PeerLocationEventKind.RowUpdated, { key, peer });
   }
 
-  peerRowRemoved(key: string): void {
+  peerRowRemoved(key: ZLinkLocationKey): void {
     this.publishPeer(PeerLocationEventKind.RowRemoved, { key });
   }
 
@@ -194,15 +195,15 @@ export class ZLinkLocationMonitoringEventEmitter {
   }
 
   spotRowUpdated(key: ZLinkSpotLocationKey, spot: ZLinkSpotLocation): void {
-    this.publishSpot(SpotLocationEventKind.RowUpdated, { key, spot });
+    this.publishSpotLocation(SpotLocationEventKind.RowUpdated, { key, spot });
   }
 
   spotRowRemoved(key: ZLinkSpotLocationKey): void {
-    this.publishSpot(SpotLocationEventKind.RowRemoved, { key });
+    this.publishSpotLocation(SpotLocationEventKind.RowRemoved, { key });
   }
 
   spotResolveMiss(key: ZLinkSpotLocationKey): void {
-    this.publishSpot(SpotLocationEventKind.ResolveMiss, { key });
+    this.publishSpotLocation(SpotLocationEventKind.ResolveMiss, { key });
   }
 
   actorRowUpdated(key: ZLinkActorLocationKey, actor: ZLinkActorLocation): void {
@@ -237,7 +238,7 @@ export class ZLinkLocationMonitoringEventEmitter {
     this.publish({ sourceName: registration.sourceName, timestamp: new Date(), event, ...payload });
   }
 
-  private publishSpot(event: ZLinkLocationSpotEvent['event'], payload: Omit<ZLinkLocationSpotEvent, 'sourceName' | 'timestamp' | 'event'>): void {
+  private publishSpotLocation(event: ZLinkLocationSpotEvent['event'], payload: Omit<ZLinkLocationSpotEvent, 'sourceName' | 'timestamp' | 'event'>): void {
     const registration = this.registration.spot;
     if (registration === undefined) {
       return;

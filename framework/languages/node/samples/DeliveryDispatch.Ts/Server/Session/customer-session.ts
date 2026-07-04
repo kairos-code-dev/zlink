@@ -1,5 +1,6 @@
 import { Inject } from '@nestjs/common';
 import { ZLINK_CHANNEL_CLIENT } from '@zlink-systems/nestjs';
+import { zlinkActorRefSnapshotToActorRef } from '@zlink-systems/framework';
 import { SampleNames } from '../../Shared/Configuration/sample-names';
 import {
   ensureCustomerActor,
@@ -57,11 +58,7 @@ class CustomerSession implements ZLinkSession {
       .requestToChannel(SampleNames.trackingChannel, ensureCustomerActor(CustomerId))
       .timeout(500)
       .submit<EnsureCustomerActorRes>(), { delayMs: 100, maxAttempts: 40 });
-    await this.context.actors.bind({
-      nodeRid: ensured.actor.nodeRid,
-      actorId: ensured.actor.actorId,
-      generation: BigInt(ensured.actor.generation)
-    });
+    await this.context.actors.bindOrGet(zlinkActorRefSnapshotToActorRef(ensured.actor));
     console.error(`deliverydispatch session: bound customer actor=${ensured.actor.actorId}`);
 
     console.error(`deliverydispatch session: subscribe delivery=${request.deliveryId}`);

@@ -1387,6 +1387,24 @@ test('stream session and bound session require packetName for structural payload
   assert.equal(sent[0].frame.header.name, 'ActorReady');
 });
 
+test('stream session actors bindOrGet returns same ref and rebinds changed generation', async () => {
+  const runtime = new framework.ZLinkStreamBindingRuntime({
+    transport: {
+      async send() {},
+      async disconnect() {}
+    }
+  });
+  const context = runtime.createSessionContext(fakeStream('session-bind-or-get', 'session-rid'));
+  const firstRef = { nodeRid: 'node-a', actorId: 'actor-1', generation: 1n };
+  const same = await context.actors.bindOrGet(firstRef);
+  const again = await context.actors.bindOrGet({ nodeRid: 'node-a', actorId: 'actor-1', generation: 1n });
+  const moved = await context.actors.bindOrGet({ nodeRid: 'node-b', actorId: 'actor-1', generation: 2n });
+
+  assert.equal(again, same);
+  assert.notEqual(moved, same);
+  assert.deepEqual(moved.ref, { nodeRid: 'node-b', actorId: 'actor-1', generation: 2n });
+});
+
 test('bound session without binding is a retriable framework error', async () => {
   const runtime = new framework.ZLinkStreamBindingRuntime({
     transport: {

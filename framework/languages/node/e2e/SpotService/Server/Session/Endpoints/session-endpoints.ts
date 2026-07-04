@@ -9,7 +9,7 @@ export function createSessionEndpoints(evidence: EvidenceStore, route: ZLinkRout
     method: 'POST',
     path: `/channel/control-pingMsg/${targetRid}`,
     handle: async (body) => await route
-      .request(SpotServiceNames.controlChannel, targetRid, body as ControlPingReq)
+      .requestToNode(SpotServiceNames.controlChannel, targetRid, body as ControlPingReq)
       .packetName('ControlPingReq')
       .timeout(5000)
       .submit<ControlPingRes>()

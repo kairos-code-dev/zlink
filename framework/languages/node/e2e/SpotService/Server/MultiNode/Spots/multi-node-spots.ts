@@ -188,7 +188,7 @@ export async function requestStateWithRetry(
   while (Date.now() < deadline) {
     try {
       return await routes
-        .request(channelName, spotRid, { operation: 'add', delta } satisfies StateReq)
+        .requestToNode(channelName, spotRid, { operation: 'add', delta } satisfies StateReq)
         .packetName('StateReq')
         .timeout(2000)
         .submit<StateRes>();

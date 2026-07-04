@@ -36,7 +36,7 @@ function createBingoSessionModule(endpoints: {
             .use(zlinkProtobufCodec())
           .addClientServerChannel(SampleNames.apiChannel)
             .enableClient()
-          .addRouteMesh(SampleNames.playChannel)
+          .addRouteMeshChannel(SampleNames.playChannel)
             .enableRouter(endpoints.sessionRouteEndpoint)
             .routingId(endpoints.sessionSpotNodeRid)
             .connect(endpoints.preferredPlayRouteEndpoint)

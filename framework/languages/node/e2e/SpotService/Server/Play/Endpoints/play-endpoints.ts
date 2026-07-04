@@ -268,7 +268,7 @@ export function createPlayEndpoints(
       handle: async (body) => {
         const request = body as ChannelRouteReq;
         const channel = await routeClient
-          .request(SpotServiceNames.externalSpotChannel, request.targetNodeRid, { value: request.value })
+          .requestToNode(SpotServiceNames.externalSpotChannel, request.targetNodeRid, { value: request.value })
           .packetName('ChannelEchoReq')
           .timeout(5000)
           .submit<ChannelEchoRes>();
@@ -282,7 +282,7 @@ export function createPlayEndpoints(
         const request = body as SpotMixedRouteReq;
         InMemorySpotRouteStore.recordUserSpot(request.spotRid, request.targetNodeRid);
         const channel = await routeClient
-          .request(SpotServiceNames.externalSpotChannel, request.targetNodeRid, { value: request.channelValue })
+          .requestToNode(SpotServiceNames.externalSpotChannel, request.targetNodeRid, { value: request.channelValue })
           .packetName('ChannelEchoReq')
           .timeout(5000)
           .submit<ChannelEchoRes>();

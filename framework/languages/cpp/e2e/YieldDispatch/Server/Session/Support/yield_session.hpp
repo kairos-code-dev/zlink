@@ -62,7 +62,7 @@ class yield_session_t final : public zlink::framework::packet_stream_session_t
             auto reply = co_await request_control<yd::bind_yield_actors_res_t> (
               request, packet, target_or_default (dispatch));
             for (const auto &actor : reply.actors) {
-                (void) co_await _actors.bind (to_actor_ref (actor)).async ();
+                (void) co_await _actors.bind_or_get (to_actor_ref (actor)).async ();
                 _gateway.bind_session_stream (actor.actor_id, stream,
                                               zlink::framework::stream_codec_t::json);
                 _bound_actors[actor.actor_id] = actor.node_rid;
@@ -261,7 +261,7 @@ class yield_session_t final : public zlink::framework::packet_stream_session_t
     request_control (const TRequest &request, const std::string &packet, zlink::routing_id_t target)
     {
         const auto reply =
-            co_await _routes.request (yd::control_channel, target, request)
+            co_await _routes.request_to_node (yd::control_channel, target, request)
             .packet_name (packet)
             .timeout (std::chrono::milliseconds (3000))
             .template async<TReply> ();
@@ -322,7 +322,7 @@ class yield_session_t final : public zlink::framework::packet_stream_session_t
                const std::string &packet)
     {
         _routes
-          .send (yd::spot_route_channel, target,
+          .send_to_node (yd::spot_route_channel, target,
                  zlink::framework::spot_rid_t::from_string (spot_rid), request)
           .packet_name (packet)
           .submit ();
@@ -339,7 +339,7 @@ class yield_session_t final : public zlink::framework::packet_stream_session_t
     {
         auto reply =
           co_await _routes
-            .request (yd::spot_route_channel, target,
+            .request_to_node (yd::spot_route_channel, target,
                       zlink::framework::spot_rid_t::from_string (spot_rid), request)
             .packet_name (packet)
             .timeout (timeout)

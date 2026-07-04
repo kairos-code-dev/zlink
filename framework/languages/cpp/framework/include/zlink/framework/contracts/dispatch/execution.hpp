@@ -17,8 +17,8 @@ namespace zlink::framework
 
 enum class handler_execution_t
 {
-    inline_on_runtime,
-    offload
+    inline_on_runtime = 0,
+    offload = 1
 };
 
 enum class dispatch_mode_t
@@ -29,32 +29,32 @@ enum class dispatch_mode_t
 
 enum class unhandled_dispatch_action_t
 {
-    reply_error,
-    log_and_drop,
-    drop,
-    throw_exception
+    reply_error = 0,
+    log_and_drop = 1,
+    drop = 2,
+    throw_exception = 3
 };
 
 enum class message_flow_log_mode_t
 {
-    off,
-    errors_only,
-    key_transitions,
-    verbose,
-    diagnostic
+    off = 0,
+    errors_only = 1,
+    key_transitions = 2,
+    verbose = 3,
+    diagnostic = 4
 };
 
 // A transition or error result in a message's lifecycle. It lets healthy traffic
 // and dispatch failures share one observer stream keyed by correlation id.
 enum class message_flow_outcome_t
 {
-    received,       // a well-formed envelope arrived at a dispatch surface (inbound)
-    dispatched,     // a fire-and-forget message was handed to its handler (inbound)
-    replied,        // a request completed and a reply was produced (inbound)
-    dropped,        // a message was intentionally discarded (no handler, decode failed, ...)
-    sent,           // a message left this node toward another channel/spot/node (outbound)
-    reply_received, // a reply came back for an outbound request (outbound)
-    error           // dispatch failed before the normal lifecycle transition completed
+    received = 0,       // a well-formed envelope arrived at a dispatch surface (inbound)
+    dispatched = 1,     // a fire-and-forget message was handed to its handler (inbound)
+    replied = 2,        // a request completed and a reply was produced (inbound)
+    dropped = 3,        // a message was intentionally discarded (no handler, decode failed, ...)
+    sent = 4,           // a message left this node toward another channel/spot/node (outbound)
+    reply_received = 5, // a reply came back for an outbound request (outbound)
+    error = 6           // dispatch failed before the normal lifecycle transition completed
 };
 
 struct unhandled_dispatch_options_t
@@ -112,39 +112,39 @@ class dispatch_diagnostics_options_t
 
 enum class dispatch_error_surface_t
 {
-    channel,
-    route_mesh_channel,
-    spot_route,
-    spot_subscription,
-    spot_actor,
-    stream_session
+    channel = 0,
+    route_mesh_channel = 1,
+    spot_route = 2,
+    spot_subscription = 3,
+    spot_actor = 4,
+    stream_session = 5
 };
 
 enum class dispatch_message_kind_t
 {
-    request,
-    send,
-    publish,
-    response,
-    error,
-    actor_request,
-    actor_send
+    request = 0,
+    send = 1,
+    publish = 2,
+    response = 3,
+    error = 4,
+    actor_request = 5,
+    actor_send = 6
 };
 
 enum class dispatch_error_reason_t
 {
-    handler_missing,
-    payload_decode_failed,
-    handler_exception,
-    invalid_frame,
-    reply_path_missing,
-    unexpected_reply
+    handler_missing = 0,
+    payload_decode_failed = 1,
+    handler_exception = 2,
+    invalid_frame = 3,
+    reply_path_missing = 4,
+    unexpected_reply = 5
 };
 
 enum class dispatch_error_action_t
 {
-    reply_error,
-    drop
+    reply_error = 0,
+    drop = 1
 };
 
 struct message_dispatch_error_event_t

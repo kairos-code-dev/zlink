@@ -78,7 +78,7 @@ class stream_session_t final : public zlink::framework::packet_stream_session_t
                   zlink::framework::framework_error_kind_t::request_protocol_error,
                   "stream auth target or actor ref is invalid");
             }
-            auto bound = co_await _actors.bind (to_actor_ref (request.actor)).async ();
+            auto bound = co_await _actors.bind_or_get (to_actor_ref (request.actor)).async ();
             const auto actor_id = std::string (bound.actor_id ());
             _bound_actors[actor_id] = request.target_node_rid;
             _bound_session_actors[actor_id] = bound;
@@ -107,11 +107,11 @@ class stream_session_t final : public zlink::framework::packet_stream_session_t
             }
             auto ensured =
               co_await _routes
-                .request (e2e::route_channel, zlink::routing_id_t::from (request.target_node_rid),
+                .request_to_node (e2e::route_channel, zlink::routing_id_t::from (request.target_node_rid),
                           e2e::ensure_actor_req_t{request.actor_id, request.display_name})
                 .packet_name ("EnsureActor")
                 .async<e2e::ensure_actor_res_t> ();
-            auto bound = co_await _actors.bind (to_actor_ref (ensured.actor)).async ();
+            auto bound = co_await _actors.bind_or_get (to_actor_ref (ensured.actor)).async ();
             const auto actor_id = std::string (bound.actor_id ());
             _bound_actors[actor_id] = request.target_node_rid;
             _bound_session_actors[actor_id] = bound;

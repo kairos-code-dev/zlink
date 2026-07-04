@@ -24,7 +24,7 @@ class yield_entry_spot_t : public zlink::framework::entry_spot_t
     void configure (zlink::framework::entry_spot_context_t &context)
     {
         _context = context;
-        context.handlers ().add_actor_packet<&yield_entry_spot_t::actor_fast_req> (
+        context.handlers ().add_actor_request<&yield_entry_spot_t::actor_fast_req> (
           yd::actor_fast_req_t::packet_name);
     }
 

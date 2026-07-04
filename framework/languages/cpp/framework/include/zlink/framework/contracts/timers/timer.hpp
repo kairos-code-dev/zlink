@@ -18,9 +18,9 @@ class timer_runtime_t;
 
 enum class timer_overrun_policy_t
 {
-    skip_late_ticks,
-    catch_up_bounded,
-    delay_next_tick
+    skip_late_ticks = 0,
+    catch_up_bounded = 1,
+    delay_next_tick = 2
 };
 
 struct timer_options_t

@@ -2,14 +2,39 @@
 #pragma once
 
 #include <zlink/framework/codecs/json.hpp>
+#include <zlink/framework/contracts/actors/actor.hpp>
 #include <nlohmann/json.hpp>
 #include <map>
 #include <string>
 #include <vector>
 #include <array>
 
+#ifndef ZLINK_CPP_FRAMEWORK_ACTOR_REF_SNAPSHOT_JSON_HPP
+#define ZLINK_CPP_FRAMEWORK_ACTOR_REF_SNAPSHOT_JSON_HPP
+namespace zlink::framework
+{
+inline void to_json (nlohmann::json &json, const actor_ref_snapshot_t &value)
+{
+    json = {{"nodeRid", std::string (value.node_rid.value ())},
+            {"actorId", value.actor_id},
+            {"generation", value.generation}};
+}
+inline void from_json (const nlohmann::json &json, actor_ref_snapshot_t &value)
+{
+    const auto node_rid = json.contains ("nodeRid") ? json.value ("nodeRid", std::string{})
+                                                    : json.value ("node_rid", std::string{});
+    value.node_rid = node_rid_t::from_string (node_rid);
+    value.actor_id = json.contains ("actorId") ? json.value ("actorId", std::string{})
+                                               : json.value ("actor_id", std::string{});
+    value.generation = json.value ("generation", std::uint64_t{0});
+}
+} // namespace zlink::framework
+#endif
+
 namespace zlink::samples::bingo
 {
+
+using actor_ref_snapshot_t = zlink::framework::actor_ref_snapshot_t;
 
 inline std::string json_string (const nlohmann::json &json,
                                 const char *camel,
@@ -92,13 +117,6 @@ struct ensure_player_actor_req_t
     std::string actor_id;
     std::string display_name;
     std::string preferred_actor_node_rid;
-};
-
-struct actor_ref_snapshot_t
-{
-    std::string node_rid;
-    std::string actor_id;
-    unsigned long long generation = 0;
 };
 
 struct ensure_player_actor_res_t
@@ -353,19 +371,6 @@ inline void from_json (const nlohmann::json &json, ensure_player_actor_req_t &va
     value.display_name = json_string (json, "displayName", "display_name");
     value.preferred_actor_node_rid =
       json_string (json, "preferredActorNodeRid", "preferred_actor_node_rid");
-}
-
-inline void to_json (nlohmann::json &json, const actor_ref_snapshot_t &value)
-{
-    json = {
-      {"nodeRid", value.node_rid}, {"actorId", value.actor_id}, {"generation", value.generation}};
-}
-
-inline void from_json (const nlohmann::json &json, actor_ref_snapshot_t &value)
-{
-    value.node_rid = json_string (json, "nodeRid", "node_rid");
-    value.actor_id = json_string (json, "actorId", "actor_id");
-    value.generation = json.value ("generation", 0ULL);
 }
 
 inline void to_json (nlohmann::json &json, const ensure_player_actor_res_t &value)

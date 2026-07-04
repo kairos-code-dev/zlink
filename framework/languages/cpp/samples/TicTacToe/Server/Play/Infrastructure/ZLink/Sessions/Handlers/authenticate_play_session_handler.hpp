@@ -48,7 +48,7 @@ class authenticate_play_session_handler_t
 
         const auto create_request = ensure_player_actor_req_t{authenticated.player.actor_id};
         const auto ensured = _ensure_actor.handle (create_request);
-        auto bound = co_await actors.bind (to_actor_ref (ensured)).async ();
+        auto bound = co_await actors.bind_or_get (ensured.actor.to_actor_ref (ensured.actor_type)).async ();
         auto joined =
           co_await bound.context ()
             .join_entry_spot (node_rid_t::from_string (_topology.selected_play_node_rid ()),
@@ -68,12 +68,6 @@ class authenticate_play_session_handler_t
     }
 
   private:
-    actor_ref_t to_actor_ref (const ensure_player_actor_res_t &ensured) const
-    {
-        return actor_ref_t (node_rid_t::from_string (_topology.selected_play_node_rid ()),
-                            ensured.actor_type, ensured.actor.actor_id, ensured.actor.generation);
-    }
-
     channel_client_t &_client;
     ensure_player_actor_handler_t &_ensure_actor;
     sample_topology_t &_topology;

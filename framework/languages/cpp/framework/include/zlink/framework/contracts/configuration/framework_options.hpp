@@ -11,7 +11,7 @@
 #include <zlink/framework/contracts/eventing/events.hpp>
 #include <zlink/framework/contracts/handlers/handler_registry.hpp>
 #include <zlink/framework/contracts/http/http.hpp>
-#include <zlink/framework/contracts/locations/location.hpp>
+#include <zlink/framework/contracts/locations/stores.hpp>
 
 #include <algorithm>
 #include <cctype>
@@ -1234,61 +1234,6 @@ class zlink_framework_options_t
 
     service_collection_t &services () noexcept { return *_services; }
 
-    template <typename TStore> zlink_framework_options_t &add_peer_location_store ()
-    {
-        static_assert (std::is_base_of_v<peer_location_store_t, TStore>,
-                       "TStore must implement peer_location_store_t");
-        static_assert (std::is_base_of_v<location_store_t, TStore>,
-                       "C++ per-role location store registration requires a location_store_t");
-        _options->peer_location_store_type = std::type_index (typeid (TStore));
-        register_location_store_type<TStore> ();
-        return *this;
-    }
-
-    template <typename TStore> zlink_framework_options_t &add_spot_location_store ()
-    {
-        static_assert (std::is_base_of_v<spot_location_store_t, TStore>,
-                       "TStore must implement spot_location_store_t");
-        static_assert (std::is_base_of_v<location_store_t, TStore>,
-                       "C++ per-role location store registration requires a location_store_t");
-        _options->spot_location_store_type = std::type_index (typeid (TStore));
-        register_location_store_type<TStore> ();
-        return *this;
-    }
-
-    template <typename TStore> zlink_framework_options_t &add_actor_location_store ()
-    {
-        static_assert (std::is_base_of_v<actor_location_store_t, TStore>,
-                       "TStore must implement actor_location_store_t");
-        static_assert (std::is_base_of_v<location_store_t, TStore>,
-                       "C++ per-role location store registration requires a location_store_t");
-        _options->actor_location_store_type = std::type_index (typeid (TStore));
-        register_location_store_type<TStore> ();
-        return *this;
-    }
-
-    template <typename TStore> zlink_framework_options_t &add_route_location_store ()
-    {
-        static_assert (std::is_base_of_v<route_location_store_t, TStore>,
-                       "TStore must implement route_location_store_t");
-        static_assert (std::is_base_of_v<location_store_t, TStore>,
-                       "C++ per-role location store registration requires a location_store_t");
-        _options->route_location_store_type = std::type_index (typeid (TStore));
-        register_location_store_type<TStore> ();
-        return *this;
-    }
-
-    template <typename TStore> zlink_framework_options_t &add_owner_lease_store ()
-    {
-        static_assert (std::is_base_of_v<owner_lease_store_t, TStore>,
-                       "TStore must implement owner_lease_store_t");
-        static_assert (std::is_base_of_v<location_store_t, TStore>,
-                       "C++ per-role location store registration requires a location_store_t");
-        _options->owner_lease_store_type = std::type_index (typeid (TStore));
-        register_location_store_type<TStore> ();
-        return *this;
-    }
-
     zlink_framework_options_t &use_in_memory_location_stores ()
     {
         _options->use_in_memory_location_stores = true;
@@ -1317,7 +1262,7 @@ class zlink_framework_options_t
         return fanout_channel_builder_t (std::move (channel_name), _options, _handler_groups);
     }
 
-    route_mesh_channel_builder_t add_route_mesh (std::string channel_name)
+    route_mesh_channel_builder_t add_route_mesh_channel (std::string channel_name)
     {
         return route_mesh_channel_builder_t (std::move (channel_name), _options, _handler_groups);
     }
@@ -1393,17 +1338,6 @@ class zlink_framework_options_t
     }
 
   private:
-    template <typename TStore> void register_location_store_type ()
-    {
-        if (_services->contains (std::type_index (typeid (location_store_t)))) {
-            return;
-        }
-        static_assert (std::is_default_constructible_v<TStore>,
-                       "location store type registration requires a default constructor");
-        auto store = std::make_shared<TStore> ();
-        register_location_store_instance (std::static_pointer_cast<location_store_t> (store));
-    }
-
     void register_location_store_instance (std::shared_ptr<location_store_t> store)
     {
         _services->add_factory<location_store_t> (

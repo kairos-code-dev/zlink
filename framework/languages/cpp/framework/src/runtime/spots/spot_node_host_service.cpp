@@ -4,6 +4,7 @@
 
 #include <zlink.hpp>
 
+#include "runtime/locations/location_value_codec.hpp"
 #include "runtime/spots/spot_runtime.hpp"
 
 #include <algorithm>
@@ -60,7 +61,7 @@ peer_location_key_t key_of (const peer_location_t &peer)
 std::string spot_target_key (const peer_location_t &peer)
 {
     const auto identity = peer.node_rid ? peer.node_rid->to_hex () : peer.endpoint;
-    return to_canonical_string (peer.role) + "|" + identity;
+    return location_value_codec_t::to_canonical_string (peer.role) + "|" + identity;
 }
 
 bool is_local_spot_peer (const peer_location_t &local, const peer_location_t &peer)

@@ -135,7 +135,7 @@ TEST (CppFrameworkSampleParity, BingoUsesDotNetSamplePacketSurface)
     room_spot.configure (room_context);
     const auto room_handlers = room_context.handlers ().descriptors ();
     ASSERT_EQ (room_handlers.size (), 4U);
-    EXPECT_EQ (room_handlers[0].kind, zlink::framework::spot_handler_kind_t::actor_packet);
+    EXPECT_EQ (room_handlers[0].kind, zlink::framework::spot_handler_kind_t::actor_request);
     EXPECT_EQ (room_handlers[0].packet_name, submit_bingo_card_req_t::packet_name);
 
     bingo_entry_spot_t entry_spot;
@@ -227,7 +227,7 @@ TEST (CppFrameworkSampleParity, TicTacToeUsesDotNetSamplePacketSurface)
     game_spot.configure (game_context);
     const auto game_handlers = game_context.handlers ().descriptors ();
     ASSERT_EQ (game_handlers.size (), 2U);
-    EXPECT_EQ (game_handlers[0].kind, zlink::framework::spot_handler_kind_t::actor_packet);
+    EXPECT_EQ (game_handlers[0].kind, zlink::framework::spot_handler_kind_t::actor_request);
     EXPECT_EQ (game_handlers[0].packet_name, place_mark_req_t::packet_name);
     EXPECT_EQ (game_handlers[1].packet_name, leave_game_req_t::packet_name);
 
@@ -690,12 +690,12 @@ TEST (CppFrameworkSampleParity, SampleActorDestroyFlowStaysInEntrySpot)
           << sample.entry_spot_path << " must guard destroy after Entry Spot re-entry";
         EXPECT_NE (entry.find ("mark_disconnected"), std::string::npos)
           << sample.entry_spot_path << " must mark actor disconnect state";
-        EXPECT_NE (user.find (".leaveActor ("), std::string::npos)
-          << sample.user_spot_path << " must return actors to Entry Spot with leaveActor";
+        EXPECT_NE (user.find (".leave_actor ("), std::string::npos)
+          << sample.user_spot_path << " must return actors to Entry Spot with leave_actor";
         EXPECT_NE (user.find ("onDisconnectActor"), std::string::npos)
           << sample.user_spot_path << " must show user Spot disconnect callback";
         EXPECT_NE (user.find ("mark_for_destroy_after_room_leave"), std::string::npos)
-          << sample.user_spot_path << " must mark destroy intent before leaveActor";
+          << sample.user_spot_path << " must mark destroy intent before leave_actor";
         EXPECT_NE (user.find ("mark_disconnected"), std::string::npos)
           << sample.user_spot_path << " must mark actor disconnect state";
         EXPECT_EQ (user.find ("destroyActor"), std::string::npos)
@@ -710,14 +710,14 @@ TEST (CppFrameworkSampleParity, SampleActorDestroyFlowStaysInEntrySpot)
           << sample.session_path << " must implement session disconnect cleanup";
         EXPECT_NE (session.find ("unbind_session"), std::string::npos)
           << sample.session_path << " must detach actor binding on disconnect";
-        EXPECT_EQ (session.find ("leaveActor"), std::string::npos)
+        EXPECT_EQ (session.find ("leave_actor"), std::string::npos)
           << sample.session_path << " must not leave rooms on disconnect";
         EXPECT_EQ (session.find ("destroyActor"), std::string::npos)
           << sample.session_path << " must not destroy actors on disconnect";
 
         EXPECT_NE (readme.find ("`onCreateActor`"), std::string::npos)
           << sample.readme_path << " must document actor creation callback";
-        EXPECT_NE (readme.find ("`leaveActor`"), std::string::npos)
+        EXPECT_NE (readme.find ("`leave_actor`"), std::string::npos)
           << sample.readme_path << " must document room leave responsibility";
         EXPECT_NE (readme.find ("`destroyActor`"), std::string::npos)
           << sample.readme_path << " must document Entry Spot destroy responsibility";
@@ -756,7 +756,7 @@ TEST (CppFrameworkSampleParity, TicTacToeHostsUseManualEndpointsWithAutomaticAct
     EXPECT_EQ (play_factory.find (".use_registry_spot_resolver"), std::string::npos);
     EXPECT_NE (api_factory.find (".enable_client (topology.selected_play_endpoint ())"),
                std::string::npos);
-    EXPECT_NE (play_factory.find ("options.add_route_mesh"), std::string::npos);
+    EXPECT_NE (play_factory.find ("options.add_route_mesh_channel"), std::string::npos);
     EXPECT_NE (play_factory.find ("options.add_spot_mesh"), std::string::npos);
     EXPECT_NE (play_factory.find (".add_entry_spot<tictactoe_entry_spot_t> ()"), std::string::npos);
     EXPECT_NE (play_factory.find (".add_spot<tictactoe_game_spot_t> (sample_names_t::match_spot)"),

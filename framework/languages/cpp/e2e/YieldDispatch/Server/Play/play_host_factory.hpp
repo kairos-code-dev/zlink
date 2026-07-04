@@ -51,7 +51,7 @@ inline zlink::framework::app_t create_play_host ()
         options.add_client_server_channel (yd::delay_channel)
           .enable_client (play_options.delay_endpoint)
           .set_routing_id (zlink::routing_id_t::from (play_options.node_rid));
-        options.add_route_mesh (yd::control_channel)
+        options.add_route_mesh_channel (yd::control_channel)
           .enable_server (play_options.control_endpoint)
           .enable_client ()
           .set_routing_id (zlink::routing_id_t::from (play_options.node_rid))
@@ -67,7 +67,7 @@ inline zlink::framework::app_t create_play_host ()
           .add_request_handler<evidence_wait_handler_t, yd::yield_evidence_wait_req_t,
                                yd::yield_evidence_res_t> (
             yd::yield_evidence_wait_req_t::packet_name, &evidence_wait_handler_t::handle);
-        options.add_route_mesh (yd::spot_route_channel)
+        options.add_route_mesh_channel (yd::spot_route_channel)
           .enable_server (play_options.spot_route_endpoint)
           .enable_client ()
           .set_routing_id (zlink::routing_id_t::from (play_options.node_rid));

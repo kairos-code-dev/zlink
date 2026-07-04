@@ -5,6 +5,7 @@
 #include <iostream>
 #include <sstream>
 #include <string>
+#include <vector>
 
 #ifndef ZLINK_FRAMEWORK_CPP_SOURCE_DIR
 #error "ZLINK_FRAMEWORK_CPP_SOURCE_DIR must be defined"
@@ -157,7 +158,10 @@ bool public_headers_do_not_expose_runtime_dependencies (const std::filesystem::p
                 if ((relative_text
                        == "framework/include/zlink/framework/contracts/locations/location.hpp"
                      || relative_text
-                          == "zlink/framework/contracts/locations/location.hpp")
+                          == "framework/include/zlink/framework/contracts/locations/rows.hpp"
+                     || relative_text
+                          == "zlink/framework/contracts/locations/location.hpp"
+                     || relative_text == "zlink/framework/contracts/locations/rows.hpp")
                     && needle == "#include <zlink/Contracts/Service") {
                     continue;
                 }
@@ -187,6 +191,74 @@ bool file_contains (const std::filesystem::path &path, const std::string &needle
     }
     std::cerr << "file lacks required text: " << path << " :: " << needle << '\n';
     return false;
+}
+
+bool is_code_guard_file (const std::filesystem::path &path)
+{
+    const auto ext = path.extension ().generic_string ();
+    if (ext == ".cpp" || ext == ".cc" || ext == ".cxx" || ext == ".c"
+        || ext == ".hpp" || ext == ".hh" || ext == ".hxx" || ext == ".h"
+        || ext == ".cmake") {
+        return true;
+    }
+    return path.filename () == "CMakeLists.txt";
+}
+
+bool path_contains_segment (const std::filesystem::path &path, const std::string &segment)
+{
+    for (const auto &part : path) {
+        if (part == segment) {
+            return true;
+        }
+    }
+    return false;
+}
+
+bool redesigned_cpp_contract_symbols_do_not_regress (const std::filesystem::path &root)
+{
+    bool ok = true;
+    const std::filesystem::path scan_roots[] = {
+      root / "framework", root / "tests", root / "e2e", root / "samples"};
+    const std::vector<std::string> forbidden = {
+      std::string ("add_actor_") + "packet",
+      std::string ("route_request_") + "call_t",
+      std::string ("join_spot_") + "raw",
+      std::string ("join_entry_spot_") + "raw",
+      std::string ("leave") + "Actor",
+      std::string ("route_location_") + "resolver_t",
+      std::string ("use_registry_") + "spot_resolver",
+      std::string ("registry_spot_") + "resolver",
+      std::string ("store_") + "unavailable"};
+
+    for (const auto &scan_root : scan_roots) {
+        if (!std::filesystem::exists (scan_root)) {
+            continue;
+        }
+        for (const auto &entry : std::filesystem::recursive_directory_iterator (scan_root)) {
+            if (!entry.is_regular_file () || !is_code_guard_file (entry.path ())) {
+                continue;
+            }
+            const auto relative = std::filesystem::relative (entry.path (), root);
+            if (path_contains_segment (relative, "Zlink.Framework.ContractTests")) {
+                continue;
+            }
+
+            std::ifstream input (entry.path ());
+            std::string line;
+            std::size_t line_no = 0;
+            while (std::getline (input, line)) {
+                ++line_no;
+                for (const auto &needle : forbidden) {
+                    if (line.find (needle) != std::string::npos) {
+                        std::cerr << "redesigned C++ contract symbol regressed: " << entry.path ()
+                                  << ':' << line_no << " contains " << needle << '\n';
+                        ok = false;
+                    }
+                }
+            }
+        }
+    }
+    return ok;
 }
 
 std::size_t count_occurrences (const std::string &text, const std::string &needle)
@@ -725,7 +797,7 @@ bool implementation_plan_goal11_covers_spot_runtime (const std::filesystem::path
       "`spot_handler_registry_t`",
       "`add_handler<&TSpot::method>()`",
       "`add_subscribe<&TSpot::method>(topic)`",
-      "`add_actor_packet<&TSpot::method>()`",
+      "`add_actor_request<&TSpot::method>()`",
       "`onDisconnectActor(actor)`",
       "`on_actor_join(actor, message_t)`",
       "`on_actor_joined(actor)`",
@@ -1613,7 +1685,7 @@ bool sample_application_code_uses_message_codec (const std::filesystem::path &ro
                           << entry.path () << ':' << line_no << '\n';
                 ok = false;
             }
-            if (line.find ("join_spot_raw") != std::string::npos
+            if (line.find ("join_spot_payload") != std::string::npos
                 || line.find ("write_packet_raw") != std::string::npos
                 || line.find ("reply_packet_raw") != std::string::npos
                 || line.find ("on_create_raw") != std::string::npos
@@ -1913,6 +1985,18 @@ int main ()
     ok &= require_exists (root / "framework/include/zlink/framework/contracts");
     ok &=
       require_exists (root / "framework/include/zlink/framework/contracts/detail/message_name.hpp");
+    const auto location_values_header =
+      root / "framework/include/zlink/framework/contracts/locations/values.hpp";
+    ok &= file_does_not_contain (
+      location_values_header, std::string ("to_") + "canonical_string",
+      "location canonical strings are an internal codec, not public API");
+    ok &= file_does_not_contain (
+      location_values_header, std::string ("try_parse_") + "location",
+      "location canonical string parsing is an internal codec, not public API");
+    ok &= file_does_not_contain (
+      root / "framework/include/zlink/framework/contracts/locations/resolvers.hpp",
+      std::string ("route_") + "location_resolver_t",
+      "route resolver is internal-only and must not return to the public location surface");
     const std::string removed_framework_facades[] = {
       "actors.hpp", "app.hpp",           "assembly.hpp",  "call.hpp",       "channels.hpp",
       "config.hpp", "error.hpp",         "execution.hpp", "handlers.hpp",   "health.hpp",
@@ -2557,6 +2641,7 @@ int main ()
       public_headers_do_not_expose_runtime_dependencies (root / "connector/engines/axmol/include");
     ok &= sample_application_code_uses_message_codec (root);
     ok &= sample_server_code_does_not_block_on_task_result (root);
+    ok &= redesigned_cpp_contract_symbols_do_not_regress (root);
     ok &= contract_headers_have_compile_coverage (root, "framework/include", "");
     ok &= contract_headers_have_compile_coverage (root, "connector/core/include", "");
     ok &= contract_headers_have_compile_coverage (root, "http-client/include", "");

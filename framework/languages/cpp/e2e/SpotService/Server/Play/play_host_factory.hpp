@@ -120,7 +120,7 @@ inline int run_play_server (int argc, char **argv)
         configure_codecs (options.codecs ());
         add_redis_location_store (options, redis_endpoint, redis_key_prefix);
 
-        auto play_route = options.add_route_mesh (e2e::route_channel)
+        auto play_route = options.add_route_mesh_channel (e2e::route_channel)
                             .enable_server (route_endpoint)
                             .set_routing_id (zlink::routing_id_t::from (node_rid))
                             .add_request_handler<ensure_actor_handler_t, e2e::ensure_actor_req_t,

@@ -425,12 +425,12 @@ app_t &app_t::add_zlink_framework (std::function<void (zlink_framework_options_t
           },
           service_lifetime_t::singleton);
     }
-    if (!_state->services.contains (std::type_index (typeid (route_location_resolver_t)))) {
-        _state->services.add_factory<route_location_resolver_t> (
+    if (!_state->services.contains (std::type_index (typeid (location_readiness_t)))) {
+        _state->services.add_factory<location_readiness_t> (
           [] (service_provider_t &provider) {
-              return std::shared_ptr<route_location_resolver_t> (
+              return std::shared_ptr<location_readiness_t> (
                 &provider.get_required<runtime::store_location_resolvers_t> (),
-                [] (route_location_resolver_t *) noexcept {});
+                [] (location_readiness_t *) noexcept {});
           },
           service_lifetime_t::singleton);
     }

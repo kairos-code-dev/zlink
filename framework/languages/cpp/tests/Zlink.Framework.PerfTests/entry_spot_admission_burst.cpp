@@ -53,7 +53,7 @@ struct admission_entry_spot_t : public zlink::framework::entry_spot_t
 {
     void configure (zlink::framework::spot_context_t &context)
     {
-        context.handlers ().add_actor_packet<&admission_entry_spot_t::on_admission> (
+        context.handlers ().add_actor_send<&admission_entry_spot_t::on_admission> (
           "admission.move");
     }
 

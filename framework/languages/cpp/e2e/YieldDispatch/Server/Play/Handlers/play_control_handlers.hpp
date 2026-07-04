@@ -85,7 +85,7 @@ class bind_yield_actors_handler_t
                   actor.error_kind (),
                   actor.error () ? actor.error ()->what () : "actor get or create failed");
             }
-            auto bound = _actors.bind (actor.value ().ref ()).async ().result ();
+            auto bound = _actors.bind_or_get (actor.value ().ref ()).async ().result ();
             if (!bound) {
                 throw zlink::framework::framework_exception_t (
                   bound.error_kind (),
@@ -111,7 +111,7 @@ class bind_yield_actors_handler_t
                   zlink::framework::framework_error_kind_t::request_failed,
                   "yield actor join was rejected: " + actor_id);
             }
-            auto actor_ref = joined.value ().actor;
+            auto actor_ref = joined.value ().actor.value ();
             _evidence.add ("bind-actor|rid=" + _evidence.node_rid + "|spot="
                            + request.spot_rid + "|actor=" + actor_id + "|generation="
                            + std::to_string (actor_ref.generation ()));

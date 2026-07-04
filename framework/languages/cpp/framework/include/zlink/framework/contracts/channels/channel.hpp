@@ -42,10 +42,10 @@ class client_server_channel_runtime_options_t;
 class channel_server_socket_runtime_options_t;
 enum class channel_capability_t
 {
-    server,
-    client,
-    publisher,
-    subscriber
+    server = 0,
+    client = 1,
+    publisher = 2,
+    subscriber = 3
 };
 
 struct channel_capability_snapshot_t
@@ -89,8 +89,8 @@ struct route_handler_context_t
 
 enum class route_handler_kind_t
 {
-    send,
-    request
+    send = 0,
+    request = 1
 };
 
 struct route_handler_registration_t
@@ -396,11 +396,11 @@ class message_bus_t
     message_bus_t &operator= (const message_bus_t &) = default;
 
     template <typename TRequest>
-    channel_request_call_t request (std::string channel_name, TRequest request)
+    channel_yield_request_call_t request (std::string channel_name, TRequest request)
     {
         auto state = _state;
         auto request_value = std::make_shared<TRequest> (std::move (request));
-        return channel_request_call_t (
+        return channel_yield_request_call_t (
           detail::message_name<TRequest> (), serializers (),
           [state, channel_name = std::move (channel_name),
            request_value] (const std::string &packet_name, std::chrono::milliseconds timeout,
@@ -631,62 +631,6 @@ class route_send_call_t
     submit_fn_t _submit;
 };
 
-class route_request_call_t
-{
-  public:
-    using metadata_map_t = std::map<std::string, std::string>;
-    using submit_fn_t = std::function<task_t<std::uint64_t> (
-      const std::string &, std::chrono::milliseconds, const metadata_map_t &)>;
-    using typed_submit_fn_t = std::function<task_t<zlink::message_t> (
-      const std::string &, std::chrono::milliseconds, const metadata_map_t &)>;
-
-    route_request_call_t (std::string packet_name, submit_fn_t submit);
-    route_request_call_t (std::string packet_name,
-                          submit_fn_t submit,
-                          serializer_registry_t *serializers,
-                          typed_submit_fn_t typed_submit) :
-        _packet_name (std::move (packet_name)),
-        _submit (std::move (submit)),
-        _serializers (serializers),
-        _typed_submit (std::move (typed_submit))
-    {
-    }
-
-    route_request_call_t &packet_name (std::string packet_name);
-    route_request_call_t &timeout (std::chrono::milliseconds timeout);
-    route_request_call_t &metadata (std::string key, std::string value);
-    task_t<std::uint64_t> async ();
-    template <typename TReply> task_t<TReply> async ()
-    {
-        if (!_typed_submit) {
-            co_return result_t<TReply>::failure (
-              framework_error_kind_t::request_protocol_error,
-              "typed route request call is not bound to a route client");
-        }
-        auto reply = co_await _typed_submit (_packet_name, _timeout, _metadata);
-        if (_serializers == nullptr) {
-            co_return result_t<TReply>::failure (framework_error_kind_t::request_protocol_error,
-                                                 "route client has no serializer registry");
-        }
-        try {
-            co_return _serializers->get<TReply> ().deserialize (
-              detail::encoded_payload_from_raw (reply));
-        }
-        catch (const framework_exception_t &error) {
-            co_return result_t<TReply>::failure (error.kind (), error.what (),
-                                                 error.is_retriable ());
-        }
-    }
-
-  private:
-    std::string _packet_name;
-    std::chrono::milliseconds _timeout{0};
-    metadata_map_t _metadata;
-    submit_fn_t _submit;
-    serializer_registry_t *_serializers = nullptr;
-    typed_submit_fn_t _typed_submit;
-};
-
 class route_client_t
 {
   public:
@@ -702,7 +646,7 @@ class route_client_t
 
     template <typename TMessage>
     route_send_call_t
-    send (std::string router_channel_id, zlink::routing_id_t target_node_rid, TMessage message)
+    send_to_node (std::string router_channel_id, zlink::routing_id_t target_node_rid, TMessage message)
     {
         auto state = _state;
         auto message_value = std::make_shared<TMessage> (std::move (message));
@@ -723,7 +667,7 @@ class route_client_t
     }
 
     template <typename TMessage>
-    route_send_call_t send (std::string router_channel_id,
+    route_send_call_t send_to_node (std::string router_channel_id,
                             zlink::routing_id_t target_node_rid,
                             spot_rid_t target_spot_rid,
                             TMessage message)
@@ -748,30 +692,17 @@ class route_client_t
     }
 
     template <typename TRequest>
-    route_request_call_t
-    request (std::string router_channel_id, zlink::routing_id_t target_node_rid, TRequest request)
+    channel_request_call_t
+    request_to_node (std::string router_channel_id, zlink::routing_id_t target_node_rid, TRequest request)
     {
         auto state = _state;
         auto request_value = std::make_shared<TRequest> (std::move (request));
-        return route_request_call_t (
-          detail::message_name<TRequest> (),
+        return channel_request_call_t (
+          detail::message_name<TRequest> (), _serializers,
           [state, router_channel_id = std::move (router_channel_id),
            target_node_rid = std::move (target_node_rid), request_value] (
             const std::string &packet_name, std::chrono::milliseconds timeout,
-            const route_request_call_t::metadata_map_t &metadata) -> task_t<std::uint64_t> {
-              return submit_request_erased (
-                state, router_channel_id, target_node_rid, packet_name,
-                std::type_index (typeid (TRequest)),
-                [request_value] (serializer_registry_t &serializers) {
-                    return serializers.template get<TRequest> ().serialize (*request_value);
-                },
-                timeout, metadata);
-          },
-          _serializers,
-          [state, router_channel_id, target_node_rid,
-           request_value] (const std::string &packet_name, std::chrono::milliseconds timeout,
-                           const route_request_call_t::metadata_map_t &metadata) mutable
-          -> task_t<zlink::message_t> {
+            const channel_request_call_t::metadata_map_t &metadata) -> task_t<zlink::message_t> {
               return submit_request_reply_message_erased (
                 state, router_channel_id, target_node_rid, packet_name,
                 std::type_index (typeid (TRequest)),
@@ -783,32 +714,19 @@ class route_client_t
     }
 
     template <typename TRequest>
-    route_request_call_t request (std::string router_channel_id,
+    channel_request_call_t request_to_node (std::string router_channel_id,
                                   zlink::routing_id_t target_node_rid,
                                   spot_rid_t target_spot_rid,
                                   TRequest request)
     {
         auto state = _state;
         auto request_value = std::make_shared<TRequest> (std::move (request));
-        return route_request_call_t (
-          detail::message_name<TRequest> (),
-          [state, router_channel_id = std::move (router_channel_id),
-           target_node_rid = std::move (target_node_rid),
-           target_spot_rid = std::move (target_spot_rid), request_value] (
-            const std::string &packet_name, std::chrono::milliseconds timeout,
-            const route_request_call_t::metadata_map_t &metadata) -> task_t<std::uint64_t> {
-              return submit_spot_request_erased (
-                state, router_channel_id, target_node_rid, target_spot_rid, packet_name,
-                std::type_index (typeid (TRequest)),
-                [request_value] (serializer_registry_t &serializers) {
-                    return serializers.template get<TRequest> ().serialize (*request_value);
-                },
-                timeout, metadata);
-          },
-          _serializers,
-          [state, router_channel_id, target_node_rid, target_spot_rid,
+        return channel_request_call_t (
+          detail::message_name<TRequest> (), _serializers,
+          [state, router_channel_id, target_node_rid,
+           target_spot_rid = std::move (target_spot_rid),
            request_value] (const std::string &packet_name, std::chrono::milliseconds timeout,
-                           const route_request_call_t::metadata_map_t &metadata) mutable
+                           const channel_request_call_t::metadata_map_t &metadata) mutable
           -> task_t<zlink::message_t> {
               return submit_spot_request_reply_message_erased (
                 state, router_channel_id, target_node_rid, target_spot_rid, packet_name,
@@ -842,7 +760,7 @@ class route_client_t
                            std::type_index request_type,
                            payload_encoder_t encode_payload,
                            std::chrono::milliseconds timeout,
-                           const route_request_call_t::metadata_map_t &metadata);
+                           const channel_request_call_t::metadata_map_t &metadata);
 
     static result_t<void>
     submit_spot_send_erased (const std::shared_ptr<detail::route_client_state_t> &state,
@@ -863,7 +781,7 @@ class route_client_t
                                 std::type_index request_type,
                                 payload_encoder_t encode_payload,
                                 std::chrono::milliseconds timeout,
-                                const route_request_call_t::metadata_map_t &metadata);
+                                const channel_request_call_t::metadata_map_t &metadata);
 
     template <typename TReply>
     static task_t<TReply>
@@ -935,7 +853,7 @@ class request_client_t
   public:
     request_client_t (message_bus_t bus, std::string channel_name);
 
-    template <typename TRequest> channel_request_call_t request (TRequest request)
+    template <typename TRequest> channel_yield_request_call_t request (TRequest request)
     {
         return _bus.request (_channel_name, std::move (request));
     }
@@ -951,13 +869,13 @@ class channel_client_t
     explicit channel_client_t (message_bus_t bus) : _bus (std::move (bus)) {}
 
     template <typename TRequest>
-    channel_request_call_t request_to_channel (std::string channel_name, TRequest request)
+    channel_yield_request_call_t request_to_channel (std::string channel_name, TRequest request)
     {
         return _bus.request (std::move (channel_name), std::move (request));
     }
 
     template <typename TRequest>
-    channel_request_call_t request (std::string channel_name, TRequest request)
+    channel_yield_request_call_t request (std::string channel_name, TRequest request)
     {
         return request_to_channel (std::move (channel_name), std::move (request));
     }

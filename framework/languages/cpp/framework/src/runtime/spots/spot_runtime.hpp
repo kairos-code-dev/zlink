@@ -8,6 +8,7 @@
 
 #include <zlink/framework/contracts/actors/actor.hpp>
 #include <zlink/framework/contracts/dispatch/execution.hpp>
+#include <zlink/framework/contracts/locations/resolvers.hpp>
 
 #include <cstdint>
 #include <exception>
@@ -371,7 +372,7 @@ class spot_node_runtime_t
     }
 
     template <typename TActor>
-    result_t<void> leaveActor (const actor_ref_t &actor_ref, TActor &actor)
+    result_t<void> leave_actor (const actor_ref_t &actor_ref, TActor &actor)
     {
         if (actor_ref.empty ()) {
             return result_t<void>::failure (framework_error_kind_t::actor_route_not_found,

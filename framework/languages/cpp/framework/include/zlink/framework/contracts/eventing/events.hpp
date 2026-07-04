@@ -1,7 +1,7 @@
 /* SPDX-License-Identifier: MPL-2.0 */
 #pragma once
 
-#include <zlink/framework/contracts/locations/location.hpp>
+#include <zlink/framework/contracts/locations/diagnostics.hpp>
 #include <zlink/framework/contracts/spots/spot.hpp>
 #include <zlink/framework/contracts/streams/stream.hpp>
 #include <zlink/framework/contracts/timers/timer.hpp>
@@ -29,60 +29,60 @@ class monitoring_runtime_t;
 
 enum class runtime_event_severity_t
 {
-    trace,
-    info,
-    warning,
-    error
+    trace = 0,
+    info = 1,
+    warning = 2,
+    error = 3
 };
 
 enum class health_status_t
 {
-    healthy,
-    degraded,
-    unhealthy
+    healthy = 0,
+    degraded = 1,
+    unhealthy = 2
 };
 
 enum class socket_event_kind_t
 {
-    connected,
-    connection_ready,
-    disconnected,
-    handshake_failed,
-    peer_admission_changed,
-    closed,
-    internal
+    connected = 0,
+    connection_ready = 1,
+    disconnected = 2,
+    handshake_failed = 3,
+    peer_admission_changed = 4,
+    closed = 5,
+    internal = 6
 };
 
 enum class location_event_kind_t
 {
-    status_changed,
-    topology_changed,
-    service_summary_changed
+    status_changed = 0,
+    topology_changed = 1,
+    service_summary_changed = 2
 };
 
 enum class spot_event_kind_t
 {
-    status_changed,
-    peers_changed,
-    subjects_changed,
-    timer_handler_failed,
-    timer_stopped_after_unhandled_exception
+    status_changed = 0,
+    peers_changed = 1,
+    subjects_changed = 2,
+    timer_handler_failed = 3,
+    timer_stopped_after_unhandled_exception = 4
 };
 
 enum class stream_event_kind_t
 {
-    connected,
-    disconnected,
-    transport_error,
-    handler_exception
+    connected = 0,
+    disconnected = 1,
+    transport_error = 2,
+    handler_exception = 3
 };
 
 enum class actor_event_kind_t
 {
-    bound,
-    unbound,
-    relay_failed,
-    session_disconnected
+    bound = 0,
+    unbound = 1,
+    relay_failed = 2,
+    session_disconnected = 3
 };
 
 struct runtime_event_base_t

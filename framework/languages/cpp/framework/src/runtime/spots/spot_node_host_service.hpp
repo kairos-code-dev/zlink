@@ -2,7 +2,7 @@
 #pragma once
 
 #include <zlink/framework/contracts/configuration/module.hpp>
-#include <zlink/framework/contracts/locations/location.hpp>
+#include <zlink/framework/contracts/locations/runtime_query.hpp>
 #include <zlink/framework/contracts/spots/spot.hpp>
 
 #include "runtime/locations/location_runtime.hpp"

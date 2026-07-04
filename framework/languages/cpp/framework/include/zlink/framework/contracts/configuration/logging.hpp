@@ -32,15 +32,15 @@ enum class log_level_t
 
 enum class logging_backend_t
 {
-    builtin,
-    structured
+    builtin = 0,
+    structured = 1
 };
 
 enum class logging_overflow_policy_t
 {
-    drop_debug,
-    drop_oldest,
-    block
+    drop_debug = 0,
+    drop_oldest = 1,
+    block = 2
 };
 
 struct log_field_t

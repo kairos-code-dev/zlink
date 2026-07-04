@@ -167,7 +167,7 @@ canonical 문자열의 정본은 공통 store codec 문서이며 이 표는 그 
       **e2e·샘플 전환 포함** — 계약 파일만 바꾸고 소비자를 남기면 완료가 아니다.
 - [x] **P2. node 적용** ✅ 2026-07-04 (S0~S6+G 완료, 전체 테스트 그린, 리뷰 2축 "이슈 없음") — [진행 문서](framework-public-contract-posd-redesign-node.ko.md). e2e·샘플 포함.
 - [x] **P3. java(+kotlin) 적용** ✅ 2026-07-04 (S0~S6+G 완료, 4모듈+e2e 8+샘플 그린, 리뷰 2축 통과) — [진행 문서](framework-public-contract-posd-redesign-java.ko.md). e2e·샘플 포함.
-- [ ] **P4. cpp 적용** — [진행 문서](framework-public-contract-posd-redesign-cpp.ko.md). e2e·샘플 포함.
+- [x] **P4. cpp 적용** ✅ 2026-07-04 (S0~S6+G 완료, 빌드+ctest 42/42 그린, 리뷰 2축 통과) — [진행 문서](framework-public-contract-posd-redesign-cpp.ko.md). e2e·샘플 포함.
 - [ ] **P5. parity 강제 장치** — 6절 두 항목 설계·도입.
 - [ ] **P6. 문서 승격** — 구현된 계약만 공통 spec/guide로 승격, draft 상태 해제. 언어별 문서의
       상태 보드 완료 확인.

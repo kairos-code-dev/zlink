@@ -3,6 +3,8 @@
 
 #include "runtime/locations/location_key_codec.hpp"
 
+#include <zlink/framework/contracts/locations/stores.hpp>
+
 #include <algorithm>
 #include <map>
 #include <mutex>
@@ -29,13 +31,6 @@ class in_memory_location_store_t final : public location_store_t,
     {
         return completed (remove (_peers, location_key_codec_t::encode_peer_key (key),
                                   std::move (owner), location_kind_t::peer, key.mesh_name));
-    }
-
-    task_t<std::int64_t> remove_peers_by_owner (std::string owner_id) override
-    {
-        return completed (remove_by_owner (
-          _peers, owner_id, location_kind_t::peer,
-          [] (const peer_location_t &row) { return std::optional<std::string> (row.mesh_name); }));
     }
 
     task_t<std::vector<peer_location_t>> list_peers (peer_location_filter_t filter) override
@@ -67,13 +62,6 @@ class in_memory_location_store_t final : public location_store_t,
                                   std::move (owner), location_kind_t::spot, key.mesh_name));
     }
 
-    task_t<std::int64_t> remove_spots_by_owner (std::string owner_id) override
-    {
-        return completed (remove_by_owner (
-          _spots, owner_id, location_kind_t::spot,
-          [] (const spot_location_t &row) { return std::optional<std::string> (row.mesh_name); }));
-    }
-
     task_t<std::optional<spot_location_t>> resolve_spot (spot_location_key_t key) override
     {
         std::lock_guard lock (_gate);
@@ -99,7 +87,7 @@ class in_memory_location_store_t final : public location_store_t,
                                                   location_write_intent_t intent) override
     {
         const auto key = location_key_codec_t::encode_actor_key (
-          actor_location_key_t{actor.actor_type, actor.actor_id});
+          actor_location_key_t{actor.actor_id});
         return completed (
           write (_actors, key, std::move (actor), intent, location_kind_t::actor, std::nullopt));
     }
@@ -109,13 +97,6 @@ class in_memory_location_store_t final : public location_store_t,
     {
         return completed (remove (_actors, location_key_codec_t::encode_actor_key (key),
                                   std::move (owner), location_kind_t::actor, std::nullopt));
-    }
-
-    task_t<std::int64_t> remove_actors_by_owner (std::string owner_id) override
-    {
-        return completed (
-          remove_by_owner (_actors, owner_id, location_kind_t::actor,
-                           [] (const actor_location_t &) { return std::optional<std::string>{}; }));
     }
 
     task_t<std::optional<actor_location_t>> resolve_actor (actor_location_key_t key) override
@@ -155,13 +136,6 @@ class in_memory_location_store_t final : public location_store_t,
                                   std::move (owner), location_kind_t::route, std::nullopt));
     }
 
-    task_t<std::int64_t> remove_routes_by_owner (std::string owner_id) override
-    {
-        return completed (
-          remove_by_owner (_routes, owner_id, location_kind_t::route,
-                           [] (const route_location_t &) { return std::optional<std::string>{}; }));
-    }
-
     task_t<std::optional<route_location_t>> resolve_route (route_location_key_t key) override
     {
         std::lock_guard lock (_gate);
@@ -183,21 +157,21 @@ class in_memory_location_store_t final : public location_store_t,
           page));
     }
 
-    task_t<location_write_result_t> renew_owner_lease (std::string owner_id,
-                                                       zlink::routing_id_t node_rid,
-                                                       std::chrono::milliseconds lease_ttl) override
+    task_t<owner_lease_renewal_t> renew_owner_lease (std::string owner_id,
+                                                     zlink::routing_id_t node_rid,
+                                                     std::chrono::milliseconds lease_ttl) override
     {
         std::lock_guard lock (_gate);
         const auto now = clock_t::now ();
-        _leases[owner_id] = owner_lease_t{owner_id, std::move (node_rid), now + lease_ttl, now};
-        return completed (location_write_result_t::stored (0, now));
+        const auto expires_at = now + lease_ttl;
+        _leases[owner_id] = owner_lease_t{owner_id, std::move (node_rid), expires_at, now};
+        return completed (owner_lease_renewal_t{expires_at, now});
     }
 
-    task_t<location_write_result_t> remove_owner_lease (std::string owner_id) override
+    task_t<bool> remove_owner_lease (std::string owner_id) override
     {
         std::lock_guard lock (_gate);
-        _leases.erase (owner_id);
-        return completed (location_write_result_t::stored (0, clock_t::now ()));
+        return completed (_leases.erase (owner_id) > 0);
     }
 
     task_t<owner_lease_snapshot_t> list_owner_leases () override
@@ -216,6 +190,25 @@ class in_memory_location_store_t final : public location_store_t,
         std::lock_guard lock (_gate);
         const auto found = _stamps.find (stamp_key (scope));
         return completed (found == _stamps.end () ? 0 : found->second);
+    }
+
+    task_t<std::int64_t> remove_all_by_owner (std::string owner_id) override
+    {
+        std::lock_guard lock (_gate);
+        std::int64_t removed = 0;
+        removed += remove_by_owner_locked (
+          _peers, owner_id, location_kind_t::peer,
+          [] (const peer_location_t &row) { return std::optional<std::string> (row.mesh_name); });
+        removed += remove_by_owner_locked (
+          _spots, owner_id, location_kind_t::spot,
+          [] (const spot_location_t &row) { return std::optional<std::string> (row.mesh_name); });
+        removed += remove_by_owner_locked (
+          _actors, owner_id, location_kind_t::actor,
+          [] (const actor_location_t &) { return std::optional<std::string>{}; });
+        removed += remove_by_owner_locked (
+          _routes, owner_id, location_kind_t::route,
+          [] (const route_location_t &) { return std::optional<std::string>{}; });
+        return completed (removed);
     }
 
   private:
@@ -287,12 +280,11 @@ class in_memory_location_store_t final : public location_store_t,
     }
 
     template <typename T, typename MeshOf>
-    std::int64_t remove_by_owner (row_table_t<T> &table,
-                                  const std::string &owner_id,
-                                  location_kind_t kind,
-                                  MeshOf mesh_of)
+    std::int64_t remove_by_owner_locked (row_table_t<T> &table,
+                                         const std::string &owner_id,
+                                         location_kind_t kind,
+                                         MeshOf mesh_of)
     {
-        std::lock_guard lock (_gate);
         std::vector<std::string> removed_keys;
         for (const auto &[key, row] : table.rows) {
             if (row.owner_id == owner_id) {
@@ -382,7 +374,7 @@ class in_memory_location_store_t final : public location_store_t,
 
     static bool matches (const actor_location_t &row, const actor_location_filter_t &filter)
     {
-        return (!filter.actor_type || row.actor_type == *filter.actor_type)
+        return (!filter.actor_type || (row.actor_type && *row.actor_type == *filter.actor_type))
                && (!filter.node_rid || row.node_rid == *filter.node_rid)
                && (!filter.spot_rid || (row.spot_rid && *row.spot_rid == *filter.spot_rid))
                && (!filter.location_kind || row.location_kind == *filter.location_kind);

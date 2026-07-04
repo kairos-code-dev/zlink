@@ -15,7 +15,10 @@ class customer_actor_t
 
     const std::string &actor_id () const { return _actor_id; }
 
-    actor_ref_snapshot_t snapshot () const { return {"tracking-spot", _actor_id, 1}; }
+    actor_ref_snapshot_t snapshot () const
+    {
+        return {zlink::framework::node_rid_t::from_string ("tracking-spot"), _actor_id, 1};
+    }
 
   private:
     std::string _actor_id;

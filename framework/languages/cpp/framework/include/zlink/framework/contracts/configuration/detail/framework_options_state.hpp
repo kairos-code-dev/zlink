@@ -10,7 +10,7 @@
 #include <zlink/framework/contracts/eventing/events.hpp>
 #include <zlink/framework/contracts/handlers/handler_registry.hpp>
 #include <zlink/framework/contracts/http/http.hpp>
-#include <zlink/framework/contracts/locations/location.hpp>
+#include <zlink/framework/contracts/locations/options.hpp>
 #include <zlink/framework/contracts/streams/stream.hpp>
 
 #include <algorithm>
@@ -49,9 +49,9 @@ inline void require_non_blank (const std::string &value, const char *message)
 
 enum class handler_group_kind_t
 {
-    request,
-    send,
-    publish
+    request = 0,
+    send = 1,
+    publish = 2
 };
 
 template <typename T> concept static_topic_name = requires
@@ -329,11 +329,6 @@ struct framework_options_state_t
     std::set<std::string> route_mesh_channels_with_bind;
     std::set<std::string> route_mesh_channels_with_client;
     std::map<std::string, stream_session_factory_t> stream_session_factories;
-    std::optional<std::type_index> peer_location_store_type;
-    std::optional<std::type_index> spot_location_store_type;
-    std::optional<std::type_index> actor_location_store_type;
-    std::optional<std::type_index> route_location_store_type;
-    std::optional<std::type_index> owner_lease_store_type;
     bool use_in_memory_location_stores = false;
     bool has_location_store_instance = false;
     location_options_t locations;
@@ -352,17 +347,6 @@ struct framework_options_state_t
         keyed_zlink_actions[std::move (key)] = std::move (action);
     }
 
-    bool has_any_location_store_type () const noexcept
-    {
-        return peer_location_store_type || spot_location_store_type || actor_location_store_type
-               || route_location_store_type || owner_lease_store_type;
-    }
-
-    bool has_all_location_store_types () const noexcept
-    {
-        return peer_location_store_type && spot_location_store_type && actor_location_store_type
-               && route_location_store_type && owner_lease_store_type;
-    }
 };
 
 } // namespace detail

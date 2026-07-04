@@ -24,8 +24,8 @@ class bingo_entry_spot_t : public entry_spot_t
     void configure (entry_spot_context_t &context)
     {
         _context = context;
-        context.handlers ().add_actor_packet<&bingo_entry_spot_t::match_bingo> ();
-        context.handlers ().add_actor_packet<&bingo_entry_spot_t::observe_bingo_events> ();
+        context.handlers ().add_actor_request<&bingo_entry_spot_t::match_bingo> ();
+        context.handlers ().add_actor_request<&bingo_entry_spot_t::observe_bingo_events> ();
     }
 
     task_t<observe_bingo_events_res_t>
@@ -45,7 +45,7 @@ class bingo_entry_spot_t : public entry_spot_t
 
         const auto join_request = bingo_room_join_req_t{request.room_id, actor.actor.actor_id, display_name, true};
         auto joined = co_await actor.context.join_spot (observer_rid, join_request).async<bingo_room_join_res_t> ();
-        co_return observe_bingo_events_res_t{true, std::string (joined.actor.node_rid ().value ())};
+        co_return observe_bingo_events_res_t{true, std::string (joined.actor->node_rid ().value ())};
     }
 
     void configure (spot_context_t &context)
@@ -60,7 +60,8 @@ class bingo_entry_spot_t : public entry_spot_t
     {
         const auto display_name = actor.display_name.empty () ? actor.actor.actor_id : actor.display_name;
         const auto match_request = match_bingo_api_req_t{
-            actor.actor.actor_id, display_name, request.mode, actor.actor.node_rid
+            actor.actor.actor_id, display_name, request.mode,
+            std::string (actor.actor.node_rid.value ())
         };
 
         auto matched = co_await _context.outbound ()

@@ -112,11 +112,11 @@ class courier_entry_spot_t : public entry_spot_t
     {
         _context = context;
         context.handlers ()
-          .add_actor_packet<&courier_entry_spot_t::bind_courier_session> (
+          .add_actor_request<&courier_entry_spot_t::bind_courier_session> (
             bind_courier_session_req_t::packet_name)
-          .add_actor_packet<&courier_entry_spot_t::offer_delivery> (
+          .add_actor_request<&courier_entry_spot_t::offer_delivery> (
             offer_delivery_req_t::packet_name)
-          .add_actor_packet<&courier_entry_spot_t::courier_decision> (
+          .add_actor_send<&courier_entry_spot_t::courier_decision> (
             courier_decision_msg_t::packet_name);
     }
 
@@ -206,16 +206,14 @@ class ensure_courier_actor_handler_t
               actor.error_kind (),
               actor.error () ? actor.error ()->what () : "courier actor create failed");
         }
-        auto bound = co_await actors.bind (actor.value ().ref ()).async ();
+        auto bound = co_await actors.bind_or_get (actor.value ().ref ()).async ();
         auto joined =
           co_await bound.context ()
             .join_entry_spot (node_rid_t::from_string (g_node_rid), request)
             .async ();
         co_return ensure_courier_actor_res_t{
           request.courier_id,
-          actor_ref_snapshot_t{std::string (joined.actor.node_rid ().value ()),
-                               std::string (joined.actor.actor_id ()),
-                               joined.actor.generation ()}};
+          actor_ref_snapshot_t::from (*joined.actor)};
     }
 
   private:
@@ -303,7 +301,7 @@ int main (int argc, char **argv)
           .add_transient<ensure_courier_actor_handler_t, courier_actor_runtime_t> ()
           .add_transient<actor_node_offer_delivery_handler_t, courier_actor_runtime_t,
                          courier_decision_directory_t> ();
-        options.add_route_mesh (sample_names_t::courier_actor_node_route_channel)
+        options.add_route_mesh_channel (sample_names_t::courier_actor_node_route_channel)
           .enable_server (route_endpoint)
           .enable_client ()
           .set_routing_id (zlink::routing_id_t::from (node_rid))

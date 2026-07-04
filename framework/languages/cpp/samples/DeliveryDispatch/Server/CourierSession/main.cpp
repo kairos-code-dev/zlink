@@ -17,13 +17,6 @@ namespace zlink::samples::deliverydispatch
 
 using namespace framework;
 
-static zlink::framework::actor_ref_t to_actor_ref (const actor_ref_snapshot_t &actor)
-{
-    return zlink::framework::actor_ref_t (
-      node_rid_t::from_string (actor.node_rid),
-      sample_names_t::courier_actor_type, actor.actor_id, actor.generation);
-}
-
 class courier_session_t final : public packet_stream_session_t
 {
   public:
@@ -61,10 +54,11 @@ class courier_session_t final : public packet_stream_session_t
             const auto request = payload.parse_json<bind_courier_session_req_t> ();
             auto bound = co_await request_courier_gateway<bind_courier_req_t, bind_courier_res_t> (
               bind_courier_req_t{request.courier_id, "courier-session:" + request.courier_id});
-            auto actor = co_await _actors.bind (to_actor_ref (bound.actor)).async ();
+            auto actor =
+              co_await _actors.bind_or_get (bound.actor.to_actor_ref (sample_names_t::courier_actor_type)).async ();
             const auto actor_id = std::string (actor.actor_id ());
             _gateway.bind_session_stream (actor_id, stream, stream_codec_t::json);
-            _bound_actors[actor_id] = bound.actor.node_rid;
+            _bound_actors[actor_id] = std::string (bound.actor.node_rid.value ());
             auto reply =
               co_await actor
                 .relay_request (zlink::message_t::from_json (bind_courier_session_req_t{
@@ -127,7 +121,7 @@ int main (int argc, char **argv)
         add_deliverydispatch_json_codecs (options.codecs ());
         add_deliverydispatch_location_store (options, topology);
         options.add_client_server_channel (sample_names_t::courier_route_channel).enable_client ();
-        options.add_route_mesh (sample_names_t::courier_actor_node_route_channel)
+        options.add_route_mesh_channel (sample_names_t::courier_actor_node_route_channel)
           .enable_client ()
           .set_routing_id (zlink::routing_id_t::from (sample_names_t::courier_session_spot_node));
         options.add_spot_mesh (sample_names_t::courier_actor_discovery)

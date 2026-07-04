@@ -1,7 +1,9 @@
 /* SPDX-License-Identifier: MPL-2.0 */
 #pragma once
 
-#include <zlink/framework/contracts/locations/location.hpp>
+#include <zlink/framework/contracts/locations/keys.hpp>
+
+#include "runtime/locations/location_value_codec.hpp"
 
 #include <string>
 
@@ -15,8 +17,9 @@ class location_key_codec_t
     {
         const auto identity = key.node_rid.has_value () ? key.node_rid->to_hex ()
                                                         : key.endpoint.value_or (std::string{});
-        return encode (to_canonical_string (key.auto_connect_type), key.mesh_name,
-                       to_canonical_string (key.role), identity);
+        return encode (location_value_codec_t::to_canonical_string (key.auto_connect_type),
+                       key.mesh_name, location_value_codec_t::to_canonical_string (key.role),
+                       identity);
     }
 
     static std::string encode_spot_key (const spot_location_key_t &key)
@@ -26,7 +29,7 @@ class location_key_codec_t
 
     static std::string encode_actor_key (const actor_location_key_t &key)
     {
-        return encode (normalize_actor_type (key.actor_type), key.actor_id);
+        return encode (key.actor_id);
     }
 
     static std::string encode_route_key (const route_location_key_t &key)
@@ -34,7 +37,11 @@ class location_key_codec_t
         return encode (std::to_string (static_cast<int> (key.route_kind)), key.route_key);
     }
 
-    static std::string normalize_actor_type (const std::string &actor_type) { return actor_type; }
+    static std::optional<std::string> normalize_actor_type (
+      std::optional<std::string> actor_type)
+    {
+        return actor_type;
+    }
 
   private:
     template <typename... TSegments> static std::string encode (const TSegments &...segments)

@@ -998,39 +998,6 @@ void route_send_call_t::submit ()
     (void) submit_now ();
 }
 
-route_request_call_t::route_request_call_t (std::string packet_name, submit_fn_t submit) :
-    _packet_name (std::move (packet_name)), _submit (std::move (submit))
-{
-}
-
-route_request_call_t &route_request_call_t::packet_name (std::string packet_name)
-{
-    _packet_name = std::move (packet_name);
-    return *this;
-}
-
-route_request_call_t &route_request_call_t::timeout (std::chrono::milliseconds timeout)
-{
-    _timeout = timeout;
-    return *this;
-}
-
-route_request_call_t &route_request_call_t::metadata (std::string key, std::string value)
-{
-    _metadata[std::move (key)] = std::move (value);
-    return *this;
-}
-
-task_t<std::uint64_t> route_request_call_t::async ()
-{
-    if (!_submit) {
-        return task_t<std::uint64_t> (
-          result_t<std::uint64_t>::failure (framework_error_kind_t::request_protocol_error,
-                                            "route request call is not bound to a route client"));
-    }
-    return _submit (_packet_name, _timeout, _metadata);
-}
-
 route_client_t::route_client_t () = default;
 
 route_client_t::route_client_t (std::shared_ptr<detail::route_client_state_t> state,
@@ -1115,7 +1082,7 @@ route_client_t::submit_request_erased (const std::shared_ptr<detail::route_clien
                                        std::type_index request_type,
                                        payload_encoder_t encode_payload,
                                        std::chrono::milliseconds timeout,
-                                       const route_request_call_t::metadata_map_t &metadata)
+                                       const channel_request_call_t::metadata_map_t &metadata)
 {
     if (!state || !state->runtime || state->serializers == nullptr) {
         return task_t<std::uint64_t> (result_t<std::uint64_t>::failure (
@@ -1246,7 +1213,7 @@ task_t<std::uint64_t> route_client_t::submit_spot_request_erased (
   std::type_index request_type,
   payload_encoder_t encode_payload,
   std::chrono::milliseconds timeout,
-  const route_request_call_t::metadata_map_t &metadata)
+  const channel_request_call_t::metadata_map_t &metadata)
 {
     if (!state || !state->runtime || state->serializers == nullptr) {
         return task_t<std::uint64_t> (result_t<std::uint64_t>::failure (

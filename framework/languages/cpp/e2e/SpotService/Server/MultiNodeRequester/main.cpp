@@ -43,7 +43,7 @@ int main (int argc, char **argv)
                          zlink::framework::route_client_t> ();
         configure_codecs (options.codecs ());
         add_redis_location_store (options, redis_endpoint, redis_key_prefix);
-        options.add_route_mesh (multi_node_route_channel_for (node_rid))
+        options.add_route_mesh_channel (multi_node_route_channel_for (node_rid))
           .enable_server (route_client_endpoint)
           .set_routing_id (zlink::routing_id_t::from ("requester-" + node_rid))
           .enable_client (route_endpoint);

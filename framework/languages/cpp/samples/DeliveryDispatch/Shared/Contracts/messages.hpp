@@ -2,14 +2,38 @@
 #pragma once
 
 #include <zlink/Contracts/Messaging/message.hpp>
+#include <zlink/framework/contracts/actors/actor.hpp>
 
 #include <nlohmann/json.hpp>
-#include <cstdint>
 #include <string>
 #include <vector>
 
+#ifndef ZLINK_CPP_FRAMEWORK_ACTOR_REF_SNAPSHOT_JSON_HPP
+#define ZLINK_CPP_FRAMEWORK_ACTOR_REF_SNAPSHOT_JSON_HPP
+namespace zlink::framework
+{
+inline void to_json (nlohmann::json &json, const actor_ref_snapshot_t &value)
+{
+    json = {{"nodeRid", std::string (value.node_rid.value ())},
+            {"actorId", value.actor_id},
+            {"generation", value.generation}};
+}
+inline void from_json (const nlohmann::json &json, actor_ref_snapshot_t &value)
+{
+    const auto node_rid = json.contains ("nodeRid") ? json.value ("nodeRid", std::string{})
+                                                    : json.value ("node_rid", std::string{});
+    value.node_rid = node_rid_t::from_string (node_rid);
+    value.actor_id = json.contains ("actorId") ? json.value ("actorId", std::string{})
+                                               : json.value ("actor_id", std::string{});
+    value.generation = json.value ("generation", std::uint64_t{0});
+}
+} // namespace zlink::framework
+#endif
+
 namespace zlink::samples::deliverydispatch
 {
+
+using actor_ref_snapshot_t = zlink::framework::actor_ref_snapshot_t;
 
 struct delivery_status_t
 {
@@ -35,14 +59,6 @@ struct create_delivery_res_t
 {
     static constexpr const char *packet_name = "CreateDeliveryRes";
     std::string delivery_id;
-};
-
-struct actor_ref_snapshot_t
-{
-    static constexpr const char *packet_name = "ActorRefSnapshot";
-    std::string node_rid;
-    std::string actor_id;
-    std::uint64_t generation{0};
 };
 
 struct ensure_customer_actor_req_t
@@ -233,18 +249,6 @@ inline void to_json (nlohmann::json &json, const create_delivery_res_t &value)
 inline void from_json (const nlohmann::json &json, create_delivery_res_t &value)
 {
     value.delivery_id = json_string (json, "deliveryId", "delivery_id");
-}
-
-inline void to_json (nlohmann::json &json, const actor_ref_snapshot_t &value)
-{
-    json = {{"nodeRid", value.node_rid}, {"actorId", value.actor_id}, {"generation", value.generation}};
-}
-
-inline void from_json (const nlohmann::json &json, actor_ref_snapshot_t &value)
-{
-    value.node_rid = json_string (json, "nodeRid", "node_rid");
-    value.actor_id = json_string (json, "actorId", "actor_id");
-    value.generation = json.value ("generation", std::uint64_t{0});
 }
 
 inline void to_json (nlohmann::json &json, const ensure_customer_actor_req_t &value)

@@ -28,10 +28,10 @@ class handler_registry_state_t;
 
 enum class handler_kind_t
 {
-    request,
-    send,
-    event,
-    raw
+    request = 0,
+    send = 1,
+    event = 2,
+    raw = 3
 };
 
 struct handler_options_t

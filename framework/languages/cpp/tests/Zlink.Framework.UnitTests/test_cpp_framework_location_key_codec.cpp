@@ -1,6 +1,7 @@
 /* SPDX-License-Identifier: MPL-2.0 */
 
 #include "runtime/locations/location_key_codec.hpp"
+#include "runtime/locations/location_value_codec.hpp"
 
 #include <gtest/gtest.h>
 
@@ -41,8 +42,9 @@ TEST (ZLinkFrameworkLocationKeyCodec, MatchesDotNetCanonicalKeyBytes)
                location_key_codec_t::encode_spot_key (
                  spot_location_key_t{.mesh_name = "mesh-main", .spot_rid = spot_rid}));
 
-    EXPECT_EQ ("0:7:actor-1", location_key_codec_t::encode_actor_key (
-                                actor_location_key_t{.actor_type = "", .actor_id = "actor-1"}));
+    EXPECT_EQ ("7:actor-1",
+               location_key_codec_t::encode_actor_key (
+                 actor_location_key_t{.actor_id = "actor-1"}));
 
     EXPECT_EQ ("1:113:session:alpha",
                location_key_codec_t::encode_route_key (route_location_key_t{
@@ -51,20 +53,22 @@ TEST (ZLinkFrameworkLocationKeyCodec, MatchesDotNetCanonicalKeyBytes)
 
 TEST (ZLinkFrameworkLocationKeyCodec, ParsesCanonicalClosedSets)
 {
+    using zlink::framework::runtime::location_value_codec_t;
+
     zlink::framework::location_auto_connect_type_t type =
       zlink::framework::location_auto_connect_type_t::invalid;
     zlink::framework::location_role_t role = zlink::framework::location_role_t::invalid;
 
-    EXPECT_TRUE (zlink::framework::try_parse_location_auto_connect_type ("spot-mesh", type));
+    EXPECT_TRUE (location_value_codec_t::try_parse_auto_connect_type ("spot-mesh", type));
     EXPECT_EQ (zlink::framework::location_auto_connect_type_t::spot_mesh, type);
 
-    EXPECT_TRUE (zlink::framework::try_parse_location_role ("sub", role));
+    EXPECT_TRUE (location_value_codec_t::try_parse_role ("sub", role));
     EXPECT_EQ (zlink::framework::location_role_t::sub, role);
 
-    EXPECT_FALSE (zlink::framework::try_parse_location_auto_connect_type ("unknown", type));
+    EXPECT_FALSE (location_value_codec_t::try_parse_auto_connect_type ("unknown", type));
     EXPECT_EQ (zlink::framework::location_auto_connect_type_t::invalid, type);
 
-    EXPECT_FALSE (zlink::framework::try_parse_location_role ("unknown", role));
+    EXPECT_FALSE (location_value_codec_t::try_parse_role ("unknown", role));
     EXPECT_EQ (zlink::framework::location_role_t::invalid, role);
 }
 

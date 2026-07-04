@@ -98,7 +98,7 @@ class query_status_handler_t
 
     zlink::framework::http_response_t handle (const zlink::framework::http_request_t &)
     {
-        const auto status = _query.status ().result ().value ();
+        const auto status = _query.get_status ().result ().value ();
         zlink::framework::http_response_t response;
         response.body = nlohmann::json (runtime_status_res_t{
           .store_healthy = status.store_healthy,

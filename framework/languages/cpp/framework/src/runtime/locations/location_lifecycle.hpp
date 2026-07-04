@@ -20,14 +20,14 @@ class location_lifecycle_t
 
     struct actor_claim_result_t
     {
-        location_write_status_t status = location_write_status_t::store_unavailable;
+        location_write_status_t status = location_write_status_t::ignored_stale;
         actor_location_t actor;
         std::chrono::system_clock::time_point updated_at{};
     };
 
     struct spot_claim_result_t
     {
-        location_write_status_t status = location_write_status_t::store_unavailable;
+        location_write_status_t status = location_write_status_t::ignored_stale;
         spot_location_t spot;
         std::chrono::system_clock::time_point updated_at{};
     };
@@ -57,7 +57,6 @@ class location_lifecycle_t
     actor_claim_result_t claim_actor (actor_location_t actor,
                                       actor_deactivate_callback_t deactivate = {})
     {
-        actor.actor_type = location_key_codec_t::normalize_actor_type (actor.actor_type);
         const auto result =
           _runtime->write_actor (actor, location_write_intent_t::new_claim);
         if (result.status != location_write_status_t::stored) {
@@ -77,7 +76,6 @@ class location_lifecycle_t
 
     location_write_result_t update_actor_location (actor_location_t actor)
     {
-        actor.actor_type = location_key_codec_t::normalize_actor_type (actor.actor_type);
         actor_claim_t tracked;
         const auto key = actor_key (actor);
         {
@@ -110,7 +108,6 @@ class location_lifecycle_t
 
     bool owns_actor (actor_location_key_t key) const
     {
-        key.actor_type = location_key_codec_t::normalize_actor_type (key.actor_type);
         std::lock_guard lock (_state->gate);
         return _state->actors.contains (actor_key (key));
     }
@@ -157,7 +154,6 @@ class location_lifecycle_t
 
     location_write_result_t renew_actor (actor_location_key_t key)
     {
-        key.actor_type = location_key_codec_t::normalize_actor_type (key.actor_type);
         actor_location_t actor;
         {
             std::lock_guard lock (_state->gate);
@@ -186,7 +182,6 @@ class location_lifecycle_t
 
     location_write_result_t release_actor (actor_location_key_t key)
     {
-        key.actor_type = location_key_codec_t::normalize_actor_type (key.actor_type);
         actor_location_t actor;
         {
             std::lock_guard lock (_state->gate);
@@ -198,7 +193,7 @@ class location_lifecycle_t
         }
 
         const auto result = _runtime->remove_actor (
-          actor_location_key_t{actor.actor_type, actor.actor_id}, actor.generation);
+          actor_location_key_t{actor.actor_id}, actor.generation);
         if (result.status == location_write_status_t::stored
             || result.status == location_write_status_t::ignored_stale) {
             std::lock_guard lock (_state->gate);
@@ -231,8 +226,7 @@ class location_lifecycle_t
     static std::string actor_key (const actor_location_t &actor)
     {
         return actor_key (
-          actor_location_key_t{location_key_codec_t::normalize_actor_type (actor.actor_type),
-                               actor.actor_id});
+          actor_location_key_t{actor.actor_id});
     }
 
     static std::string actor_key (const actor_location_key_t &key)

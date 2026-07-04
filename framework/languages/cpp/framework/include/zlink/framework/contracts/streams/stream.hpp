@@ -71,9 +71,9 @@ enum class stream_codec_t : std::uint8_t
 
 enum class stream_session_error_t
 {
-    internal,
-    transport_error,
-    handshake_failed
+    internal = 0,
+    transport_error = 1,
+    handshake_failed = 2
 };
 
 class stream_compression_codec_t

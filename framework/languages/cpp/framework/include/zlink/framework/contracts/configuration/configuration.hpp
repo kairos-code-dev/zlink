@@ -15,8 +15,8 @@ namespace zlink::framework
 
 enum class optional_t
 {
-    no,
-    yes
+    no = 0,
+    yes = 1
 };
 
 class configuration_model_t

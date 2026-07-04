@@ -5,6 +5,7 @@
 #include "runtime/channels/channel_runtime_bundle.hpp"
 #include "runtime/channels/channel_runtime_manager.hpp"
 #include "runtime/locations/location_runtime.hpp"
+#include "runtime/locations/location_value_codec.hpp"
 
 #include <zlink/framework/contracts/configuration/module.hpp>
 
@@ -402,7 +403,7 @@ class location_auto_connect_host_service_t final : public hosted_service_t
     static std::string target_key (const peer_location_t &peer)
     {
         const auto identity = peer.node_rid ? peer.node_rid->to_hex () : peer.endpoint;
-        return to_canonical_string (peer.role) + "|" + identity;
+        return location_value_codec_t::to_canonical_string (peer.role) + "|" + identity;
     }
 
     static peer_location_key_t key_of (const peer_location_t &row)

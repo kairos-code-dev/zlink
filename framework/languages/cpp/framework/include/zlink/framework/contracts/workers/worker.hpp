@@ -29,8 +29,8 @@ class worker_scheduler_t
 
 enum class worker_completion_mode_t
 {
-    owner_queue,
-    current_turn
+    owner_queue = 0,
+    current_turn = 1
 };
 
 template <typename TResult, typename TWork> result_t<TResult> run_worker_body (TWork &work)

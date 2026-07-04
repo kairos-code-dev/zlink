@@ -50,12 +50,12 @@ class authenticate_session_handler_t
             authenticated.actor_id, authenticated.display_name, _topology.preferred_play_node_rid ()
         };
         auto ensured = co_await _routes
-            .request (sample_names_t::play_channel,
+            .request_to_node (sample_names_t::play_channel,
                       zlink::routing_id_t::from (_topology.preferred_play_node_rid ()),
                       create_request).async<ensure_player_actor_res_t> ();
-        auto bound = co_await actors.bind (to_actor_ref (ensured)).async ();
+        auto bound = co_await actors.bind_or_get (ensured.actor.to_actor_ref (ensured.actor_type)).async ();
         auto joined = co_await bound.context ()
-            .join_entry_spot (node_rid_t::from_string (ensured.actor.node_rid), create_request)
+            .join_entry_spot (ensured.actor.node_rid, create_request)
             .async ();
         if (joined.result_code != 0) {
             co_return result_t<session_actor_t>::failure (framework_error_kind_t::request_failed,
@@ -64,7 +64,8 @@ class authenticate_session_handler_t
         auto actor = actors.find (ensured.actor.actor_id).value_or (bound);
 
         const auto reply_payload = authenticate_res_t{
-            ensured.actor_id, authenticated.display_name, ensured.actor.node_rid
+            ensured.actor_id, authenticated.display_name,
+            std::string (ensured.actor.node_rid.value ())
         };
         const auto reply_message = zlink::message_t::from_json (reply_payload);
         stream.reply_packet (reply_message).submit ();
@@ -73,12 +74,6 @@ class authenticate_session_handler_t
     }
 
   private:
-    actor_ref_t to_actor_ref (const ensure_player_actor_res_t &ensured) const
-    {
-        return actor_ref_t (node_rid_t::from_string (ensured.actor.node_rid), ensured.actor_type,
-                            ensured.actor.actor_id, ensured.actor.generation);
-    }
-
     channel_client_t &_client;
     route_client_t &_routes;
     sample_topology_t &_topology;

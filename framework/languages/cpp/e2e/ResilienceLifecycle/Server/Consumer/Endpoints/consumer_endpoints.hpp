@@ -49,35 +49,22 @@ inline void to_json (nlohmann::json &json, const topology_entry_result_t &value)
 }
 
 inline std::vector<topology_entry_result_t> peer_topology (
-  zlink::framework::location_store_t &locations,
+  zlink::framework::location_runtime_query_t &locations,
   const std::optional<zlink::routing_id_t> &routing_id = std::nullopt)
 {
-    auto leases = locations.list_owner_leases ().result ();
-    if (!leases) {
-        throw std::runtime_error (leases.error () ? leases.error ()->what ()
-                                                 : "location lease query failed");
-    }
-    std::set<std::string> live_owners;
-    for (const auto &lease : leases.value ().leases) {
-        live_owners.insert (lease.owner_id);
-    }
-
     zlink::framework::peer_location_filter_t filter;
     filter.mesh_name = api_channel;
     filter.role = zlink::framework::location_role_t::router;
     if (routing_id) {
         filter.node_rid = routing_id;
     }
-    auto result = locations.list_peers (std::move (filter)).result ();
+    auto result = locations.list_peer_locations (std::move (filter)).result ();
     if (!result) {
         throw std::runtime_error (result.error () ? result.error ()->what ()
                                                  : "location peer query failed");
     }
     std::vector<topology_entry_result_t> entries;
     for (const auto &peer : result.value ()) {
-        if (!live_owners.contains (peer.owner_id)) {
-            continue;
-        }
         entries.push_back (topology_entry_result_t{.name = peer.mesh_name,
                                                    .kind = "channel",
                                                    .role = "server",
@@ -94,9 +81,9 @@ class topology_handler_t
 {
   public:
     using dependency_types =
-      zlink::framework::dependency_list_t<zlink::framework::location_store_t>;
+      zlink::framework::dependency_list_t<zlink::framework::location_runtime_query_t>;
 
-    explicit topology_handler_t (zlink::framework::location_store_t &locations) :
+    explicit topology_handler_t (zlink::framework::location_runtime_query_t &locations) :
         _locations (locations)
     {
     }
@@ -109,16 +96,16 @@ class topology_handler_t
     }
 
   private:
-    zlink::framework::location_store_t &_locations;
+    zlink::framework::location_runtime_query_t &_locations;
 };
 
 class topology_wait_handler_t
 {
   public:
     using dependency_types =
-      zlink::framework::dependency_list_t<zlink::framework::location_store_t>;
+      zlink::framework::dependency_list_t<zlink::framework::location_runtime_query_t>;
 
-    explicit topology_wait_handler_t (zlink::framework::location_store_t &locations) :
+    explicit topology_wait_handler_t (zlink::framework::location_runtime_query_t &locations) :
         _locations (locations)
     {
     }
@@ -172,7 +159,7 @@ class topology_wait_handler_t
     }
 
   private:
-    zlink::framework::location_store_t &_locations;
+    zlink::framework::location_runtime_query_t &_locations;
 };
 
 inline profile_res_t request_profile_once (zlink::framework::channel_client_t &channels,

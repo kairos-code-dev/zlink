@@ -157,7 +157,7 @@ inline void configure_channels (zlink::framework::zlink_framework_options_t &opt
       .enable_client (server.api_endpoint)
       .use_handler_group (handler_group);
     if (server.server_mode != "json-only-peer") {
-        options.add_route_mesh (route_channel)
+        options.add_route_mesh_channel (route_channel)
           .enable_server (server.route_endpoint)
           .set_routing_id (zlink::routing_id_t::from ("rc-server"))
           .enable_client (server.route_endpoint)

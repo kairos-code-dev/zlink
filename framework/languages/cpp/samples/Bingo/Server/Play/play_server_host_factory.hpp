@@ -52,7 +52,7 @@ class play_server_host_factory_t
               .add_singleton<bingo_room_allocator_t, bingo_match_queue_t> ();
             use_default_bingo_codecs (options.codecs ());
             add_sample_location_store (options, topology);
-            options.add_route_mesh (sample_names_t::play_channel)
+            options.add_route_mesh_channel (sample_names_t::play_channel)
               .enable_server (topology.selected_play_channel_endpoint ())
               .set_routing_id (zlink::routing_id_t::from (topology.selected_play_node_rid ()))
               .enable_client ()

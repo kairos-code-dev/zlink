@@ -82,7 +82,7 @@ class customer_entry_spot_t : public entry_spot_t
     {
         _context = context;
         context.handlers ()
-          .add_actor_packet<&customer_entry_spot_t::subscribe_delivery> (
+          .add_actor_request<&customer_entry_spot_t::subscribe_delivery> (
             subscribe_delivery_req_t::packet_name);
     }
 
@@ -160,7 +160,7 @@ class customer_gateway_session_t final : public packet_stream_session_t
               actor.error_kind (),
               actor.error () ? actor.error ()->what () : "customer actor create failed");
         }
-        auto bound = co_await _actors.bind (actor.value ().ref ()).async ();
+        auto bound = co_await _actors.bind_or_get (actor.value ().ref ()).async ();
         const auto actor_id = std::string (bound.actor_id ());
         _gateway.bind_session_stream (actor_id, stream, stream_codec_t::json);
         _bound_actors[actor_id] = sample_names_t::customer_spot_node;
@@ -178,7 +178,7 @@ class customer_gateway_session_t final : public packet_stream_session_t
           co_await current->relay_request (zlink::message_t::from_json (request)).async ();
         stream.reply_packet (reply).submit ();
         std::cerr << "deliverydispatch customer-session: bound customer actor="
-                  << std::string (joined.actor.actor_id ()) << "\n";
+                  << std::string (joined.actor->actor_id ()) << "\n";
         std::cerr << "deliverydispatch customer-session: subscribed customer="
                   << sample_names_t::customer_id << " delivery=" << request.delivery_id << "\n";
     }

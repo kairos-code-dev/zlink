@@ -81,18 +81,18 @@ class user_spot_t : public zlink::framework::spot_t
     void configure (zlink::framework::spot_context_t &context)
     {
         _context = context;
-        context.handlers ().add_actor_packet<&user_spot_t::mutate> ("StateReq");
-        context.handlers ().add_actor_packet<&user_spot_t::ping> ("ActorPingReq");
-        context.handlers ().add_actor_packet<&user_spot_t::slow_ping> ("SlowActorPingReq");
-        context.handlers ().add_actor_packet<&user_spot_t::complex> ("ComplexActorReq");
-        context.handlers ().add_actor_packet<&user_spot_t::leave> ("LeaveReq");
-        context.handlers ().add_actor_packet<&user_spot_t::disconnect> ("DisconnectReq");
-        context.handlers ().add_actor_packet<&user_spot_t::outbound> ("OutboundReq");
-        context.handlers ().add_actor_packet<&user_spot_t::run_worker> ("WorkerReq");
-        context.handlers ().add_actor_packet<&user_spot_t::spot_to_spot> ("SpotToSpotReq");
-        context.handlers ().add_actor_packet<&user_spot_t::type_mismatch> ("TypeMismatchReq");
-        context.handlers ().add_actor_packet<&user_spot_t::push_to_session> ("PushReq");
-        context.handlers ().add_actor_packet<&user_spot_t::snapshot> ("SnapshotReq");
+        context.handlers ().add_actor_request<&user_spot_t::mutate> ("StateReq");
+        context.handlers ().add_actor_request<&user_spot_t::ping> ("ActorPingReq");
+        context.handlers ().add_actor_request<&user_spot_t::slow_ping> ("SlowActorPingReq");
+        context.handlers ().add_actor_request<&user_spot_t::complex> ("ComplexActorReq");
+        context.handlers ().add_actor_request<&user_spot_t::leave> ("LeaveReq");
+        context.handlers ().add_actor_request<&user_spot_t::disconnect> ("DisconnectReq");
+        context.handlers ().add_actor_request<&user_spot_t::outbound> ("OutboundReq");
+        context.handlers ().add_actor_request<&user_spot_t::run_worker> ("WorkerReq");
+        context.handlers ().add_actor_request<&user_spot_t::spot_to_spot> ("SpotToSpotReq");
+        context.handlers ().add_actor_request<&user_spot_t::type_mismatch> ("TypeMismatchReq");
+        context.handlers ().add_actor_request<&user_spot_t::push_to_session> ("PushReq");
+        context.handlers ().add_actor_request<&user_spot_t::snapshot> ("SnapshotReq");
         context.handlers ().add_handler<&user_spot_t::direct_state> ("StateReq");
         context.handlers ().add_handler<&user_spot_t::direct_request> ("DirectSpotReq");
         context.handlers ().add_handler<&user_spot_t::direct_command> ("DirectSpotMsg");
@@ -355,7 +355,7 @@ class user_spot_t : public zlink::framework::spot_t
               zlink::framework::framework_error_kind_t::request_protocol_error,
               "Leave request actor does not match dispatched actor");
         }
-        auto left = co_await _context.leaveActor (actor.actor_ref, actor);
+        auto left = co_await _context.leave_actor (actor.actor_ref, actor);
         (void) left;
         _state.record ("ActorLeaveRequested", actor_id,
                        std::string (_context.spot_rid ().value ()));
@@ -780,12 +780,12 @@ class entry_spot_t : public zlink::framework::entry_spot_t
     void configure (zlink::framework::entry_spot_context_t &context)
     {
         _context = context;
-        context.handlers ().add_actor_packet<&entry_spot_t::join> ("JoinReq");
-        context.handlers ().add_actor_packet<&entry_spot_t::ping> ("ActorPingReq");
-        context.handlers ().add_actor_packet<&entry_spot_t::slow_ping> ("SlowActorPingReq");
-        context.handlers ().add_actor_packet<&entry_spot_t::push_to_session> ("PushReq");
-        context.handlers ().add_actor_packet<&entry_spot_t::snapshot> ("SnapshotReq");
-        context.handlers ().add_actor_packet<&entry_spot_t::destroy_actor> ("DestroyActorReq");
+        context.handlers ().add_actor_request<&entry_spot_t::join> ("JoinReq");
+        context.handlers ().add_actor_request<&entry_spot_t::ping> ("ActorPingReq");
+        context.handlers ().add_actor_request<&entry_spot_t::slow_ping> ("SlowActorPingReq");
+        context.handlers ().add_actor_request<&entry_spot_t::push_to_session> ("PushReq");
+        context.handlers ().add_actor_request<&entry_spot_t::snapshot> ("SnapshotReq");
+        context.handlers ().add_actor_request<&entry_spot_t::destroy_actor> ("DestroyActorReq");
     }
 
     void configure (zlink::framework::spot_context_t &context)

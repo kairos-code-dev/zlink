@@ -24,18 +24,18 @@ class service_scope_state_t;
 
 enum class service_lifetime_t
 {
-    singleton,
-    scoped,
-    transient
+    singleton = 0,
+    scoped = 1,
+    transient = 2
 };
 
 enum class service_scope_kind_t
 {
-    handler_invocation,
-    stream_session,
-    spot_activation,
-    entry_spot,
-    actor_creation
+    handler_invocation = 0,
+    stream_session = 1,
+    spot_activation = 2,
+    entry_spot = 3,
+    actor_creation = 4
 };
 
 class service_scope_t;

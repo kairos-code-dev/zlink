@@ -31,7 +31,7 @@ class ensure_player_actor_handler_t
         }
         return {request.actor_id,
                 sample_names_t::player_actor_type,
-                {node_rid, request.actor_id, ++_generation}};
+                {node_rid_t::from_string (node_rid), request.actor_id, ++_generation}};
     }
 
   private:

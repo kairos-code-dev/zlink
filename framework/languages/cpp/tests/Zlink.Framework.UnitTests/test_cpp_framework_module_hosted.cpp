@@ -583,7 +583,7 @@ int main ()
     options.add_client_server_channel ("profile-channel")
       .enable_client ("tcp://127.0.0.1:9109")
       .enable_client ("tcp://127.0.0.1:9110");
-    options.add_route_mesh ("route-channel")
+    options.add_route_mesh_channel ("route-channel")
       .enable_server ("tcp://127.0.0.1:9112")
       .set_routing_id (zlink::routing_id_t::from ("route-node"))
       .enable_client ()
@@ -961,7 +961,7 @@ int main ()
         zlink::framework::monitoring_builder_t valid_monitoring;
         zlink::framework::zlink_framework_options_t valid_options (
           valid_services, valid_handlers, valid_serializers, valid_zlink, valid_monitoring);
-        valid_options.add_route_mesh ("spot-route").enable_server ("tcp://127.0.0.1:9301");
+        valid_options.add_route_mesh_channel ("spot-route").enable_server ("tcp://127.0.0.1:9301");
         valid_options.add_spot_mesh ("spot-routes")
           .enable_router ("tcp://127.0.0.1:9302");
         valid_options.apply ();
@@ -986,7 +986,7 @@ int main ()
         zlink::framework::monitoring_builder_t valid_monitoring;
         zlink::framework::zlink_framework_options_t valid_options (
           valid_services, valid_handlers, valid_serializers, valid_zlink, valid_monitoring);
-        valid_options.add_route_mesh ("manual-spot-route").enable_server ("tcp://127.0.0.1:9343");
+        valid_options.add_route_mesh_channel ("manual-spot-route").enable_server ("tcp://127.0.0.1:9343");
         valid_options.add_spot_mesh ("manual-spots")
           .enable_router ("tcp://127.0.0.1:9344");
         valid_options.apply ();
@@ -1036,7 +1036,7 @@ int main ()
         zlink::framework::zlink_framework_options_t invalid_options (
           invalid_services, invalid_handlers, invalid_serializers, invalid_zlink,
           invalid_monitoring);
-        invalid_options.add_route_mesh ("missing-route")
+        invalid_options.add_route_mesh_channel ("missing-route")
           .set_routing_id (zlink::routing_id_t::from ("missing"));
         invalid_options.apply ();
     }
@@ -1059,7 +1059,7 @@ int main ()
         zlink::framework::monitoring_builder_t valid_monitoring;
         zlink::framework::zlink_framework_options_t valid_options (
           valid_services, valid_handlers, valid_serializers, valid_zlink, valid_monitoring);
-        valid_options.add_route_mesh ("route-no-discovery")
+        valid_options.add_route_mesh_channel ("route-no-discovery")
           .enable_server ("tcp://127.0.0.1:9322")
           .enable_client ();
         valid_options.apply ();
@@ -1081,7 +1081,7 @@ int main ()
         zlink::framework::monitoring_builder_t valid_monitoring;
         zlink::framework::zlink_framework_options_t valid_options (
           valid_services, valid_handlers, valid_serializers, valid_zlink, valid_monitoring);
-        valid_options.add_route_mesh ("route-manual-client")
+        valid_options.add_route_mesh_channel ("route-manual-client")
           .enable_client ("tcp://127.0.0.1:9323");
         valid_options.apply ();
         const auto routes = valid_zlink.route_channels ();

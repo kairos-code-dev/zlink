@@ -30,10 +30,10 @@ class http_route_invoker_access_t;
 
 enum class http_method_t
 {
-    get,
-    post,
-    put,
-    delete_
+    get = 0,
+    post = 1,
+    put = 2,
+    delete_ = 3
 };
 
 struct http_context_t

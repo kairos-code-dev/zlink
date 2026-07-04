@@ -107,7 +107,7 @@ class query_status_handler_t
 
     zlink::framework::http_response_t handle (const zlink::framework::http_request_t &)
     {
-        const auto status = _query.status ().result ().value ();
+        const auto status = _query.get_status ().result ().value ();
         zlink::framework::http_response_t response;
         response.body = nlohmann::json (runtime_status_res_t{
           .store_healthy = status.store_healthy,
@@ -138,11 +138,13 @@ class query_peers_handler_t
     {
         zlink::framework::http_response_t response;
         try {
-            auto peers = _query.list_peers (zlink::framework::peer_location_filter_t{
-                                      .auto_connect_type =
-                                        zlink::framework::location_auto_connect_type_t::client_server})
-                           .result ()
-                           .value ();
+            auto peers =
+              _query
+                .list_peer_locations (zlink::framework::peer_location_filter_t{
+                  .auto_connect_type =
+                    zlink::framework::location_auto_connect_type_t::client_server})
+                .result ()
+                .value ();
             std::vector<peer_row_res_t> rows;
             rows.reserve (peers.size ());
             for (const auto &peer : peers) {

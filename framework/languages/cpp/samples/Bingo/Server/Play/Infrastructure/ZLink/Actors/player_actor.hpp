@@ -22,7 +22,7 @@ struct player_actor_t
 
     void set_actor_ref (const actor_ref_t &actor_ref) const
     {
-        actor.node_rid = std::string (actor_ref.node_rid ().value ());
+        actor.node_rid = actor_ref.node_rid ();
         actor.actor_id = std::string (actor_ref.actor_id ());
         actor.generation = actor_ref.generation ();
     }

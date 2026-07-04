@@ -514,8 +514,8 @@ const char *error_kind_name (framework_error_kind_t kind) noexcept
             return "timeout";
         case framework_error_kind_t::worker_queue_full:
             return "worker_queue_full";
-        case framework_error_kind_t::worker_timeout:
-            return "worker_timeout";
+        case framework_error_kind_t::worker_timed_out:
+            return "worker_timed_out";
         case framework_error_kind_t::worker_failed:
             return "worker_failed";
         case framework_error_kind_t::shutdown:
@@ -536,7 +536,7 @@ http::status status_for_error (framework_error_kind_t kind) noexcept
         case framework_error_kind_t::request_target_not_found:
             return http::status::not_found;
         case framework_error_kind_t::timeout:
-        case framework_error_kind_t::worker_timeout:
+        case framework_error_kind_t::worker_timed_out:
             return http::status::gateway_timeout;
         case framework_error_kind_t::worker_queue_full:
             return http::status::too_many_requests;

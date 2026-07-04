@@ -29,7 +29,17 @@
 #include <zlink/framework/contracts/detail/message_payload.hpp>
 #include <zlink/framework/contracts/handlers/handler_registry.hpp>
 #include <zlink/framework/contracts/http/http.hpp>
+#include <zlink/framework/contracts/locations/diagnostics.hpp>
+#include <zlink/framework/contracts/locations/keys.hpp>
 #include <zlink/framework/contracts/locations/location.hpp>
+#include <zlink/framework/contracts/locations/options.hpp>
+#include <zlink/framework/contracts/locations/resolvers.hpp>
+#include <zlink/framework/contracts/locations/rows.hpp>
+#include <zlink/framework/contracts/locations/runtime_query.hpp>
+#include <zlink/framework/contracts/locations/stores.hpp>
+#include <zlink/framework/contracts/locations/values.hpp>
+#include <zlink/framework/contracts/locations/watch.hpp>
+#include <zlink/framework/contracts/locations/writes.hpp>
 #include <zlink/framework/contracts/messaging/message.hpp>
 #include <zlink/framework/contracts/spots/spot.hpp>
 #include <zlink/framework/contracts/spots/spot_identity.hpp>
@@ -73,6 +83,7 @@
 #include <optional>
 #include <string_view>
 #include <type_traits>
+#include <variant>
 #include <vector>
 
 struct contract_actor_t;
@@ -85,15 +96,39 @@ concept has_destroyActor = requires (
 };
 
 template <typename TContext>
-concept has_leaveActor = requires (
+concept has_leave_actor = requires (
   TContext & context, const zlink::framework::actor_ref_t &actor_ref, contract_actor_t &actor)
 {
-    context.leaveActor (actor_ref, actor);
+    context.leave_actor (actor_ref, actor);
 };
 
 template <typename TContext> concept has_run_worker = requires (TContext & context)
 {
     context.run_worker ([] { return 1; });
+};
+
+template <typename T> concept has_actor_location_spot_kind_member = requires (T value)
+{
+    value.spot_kind;
+};
+
+template <typename T> concept has_actor_directory_find = requires (T value)
+{
+    value.find (std::declval<std::string> ());
+};
+
+template <typename T> concept has_actor_directory_ensure = requires (T value)
+{
+    value.ensure (std::declval<std::string> (),
+                  std::declval<zlink::framework::message_t> (),
+                  std::declval<zlink::framework::actor_placement_t> ());
+};
+
+template <typename T> concept has_location_readiness = requires (T value)
+{
+    value.is_peer_ready (std::declval<std::string> (),
+                         zlink::framework::location_role_t::router,
+                         std::declval<std::optional<zlink::routing_id_t>> ());
 };
 
 static_assert (zlink::framework::version_major == 0);
@@ -164,18 +199,16 @@ static_assert (has_blocking_submit<zlink::framework::stream_write_call_t>);
 static_assert (!has_callback_async<zlink::framework::stream_write_call_t, void>);
 static_assert (has_blocking_submit<zlink::framework::route_send_call_t>);
 static_assert (!has_callback_async<zlink::framework::route_send_call_t, void>);
-static_assert (!has_blocking_submit<zlink::framework::route_request_call_t>);
-static_assert (!has_callback_async<zlink::framework::route_request_call_t, std::uint64_t>);
-static_assert (!has_yield<zlink::framework::route_request_call_t>);
+static_assert (!has_blocking_submit<zlink::framework::channel_request_call_t>);
+static_assert (!has_callback_async<zlink::framework::channel_request_call_t, std::uint64_t>);
+static_assert (!has_yield<zlink::framework::channel_request_call_t>);
 static_assert (std::is_same_v<
                decltype (std::declval<zlink::framework::channel_request_call_t &> ().async<int> ()),
                zlink::framework::task_t<int>>);
 static_assert (std::is_same_v<
-               decltype (std::declval<zlink::framework::channel_request_call_t &> ().yield<int> ()),
+               decltype (std::declval<zlink::framework::channel_yield_request_call_t &> ()
+                           .yield<int> ()),
                zlink::framework::task_t<int>>);
-static_assert (
-  std::is_same_v<decltype (std::declval<zlink::framework::route_request_call_t &> ().async<int> ()),
-                 zlink::framework::task_t<int>>);
 
 template <typename T> concept has_blocking_wait = requires (T value)
 {
@@ -212,9 +245,180 @@ static_assert (std::is_base_of_v<zlink::framework::route_location_store_t,
                                  zlink::framework::location_store_t>);
 static_assert (std::is_base_of_v<zlink::framework::owner_lease_store_t,
                                  zlink::framework::location_store_t>);
-static_assert (std::is_same_v<decltype (zlink::framework::to_canonical_string (
-                                zlink::framework::location_auto_connect_type_t::route_mesh)),
-                              std::string>);
+static_assert (
+  std::is_same_v<decltype (std::declval<zlink::framework::location_store_t &> ()
+                             .remove_all_by_owner ("owner")),
+                 zlink::framework::task_t<std::int64_t>>);
+static_assert (
+  std::is_same_v<decltype (std::declval<zlink::framework::location_store_t &> ()
+                             .renew_owner_lease ("owner", zlink::routing_id_t::from ("node"),
+                                                 std::chrono::milliseconds (10))),
+                 zlink::framework::task_t<zlink::framework::owner_lease_renewal_t>>);
+static_assert (
+  std::is_same_v<decltype (std::declval<zlink::framework::location_store_t &> ()
+                             .remove_owner_lease ("owner")),
+                 zlink::framework::task_t<bool>>);
+static_assert (
+  std::is_same_v<decltype (std::declval<zlink::framework::zlink_framework_options_t &> ()
+                             .add_location_store (
+                               std::declval<std::shared_ptr<zlink::framework::location_store_t>> ())),
+                 zlink::framework::zlink_framework_options_t &>);
+
+static_assert (
+  std::is_same_v<decltype (std::declval<zlink::framework::peer_location_resolver_t &> ()
+                             .list_live_peers (
+                               std::declval<zlink::framework::peer_location_filter_t> ())),
+                 zlink::framework::task_t<std::vector<zlink::framework::peer_location_t>>>);
+static_assert (
+  std::is_same_v<decltype (std::declval<zlink::framework::spot_location_resolver_t &> ()
+                             .resolve_spot_address (
+                               std::declval<std::string> (),
+                               std::declval<zlink::routing_id_t> ())),
+                 zlink::framework::task_t<std::optional<zlink::framework::spot_address_t>>>);
+static_assert (
+  std::is_same_v<decltype (std::declval<zlink::framework::actor_location_resolver_t &> ()
+                             .resolve_actor_spot_address (std::declval<std::string> ())),
+                 zlink::framework::task_t<std::optional<zlink::framework::spot_address_t>>>);
+static_assert (
+  std::is_same_v<decltype (std::declval<zlink::framework::location_runtime_query_t &> ()
+                             .get_status ()),
+                 zlink::framework::task_t<zlink::framework::location_runtime_status_t>>);
+static_assert (
+  std::is_same_v<decltype (std::declval<zlink::framework::location_runtime_query_t &> ()
+                             .list_peer_locations (
+                               std::declval<zlink::framework::peer_location_filter_t> ())),
+                 zlink::framework::task_t<std::vector<zlink::framework::peer_location_t>>>);
+static_assert (
+  std::is_same_v<decltype (std::declval<zlink::framework::location_runtime_query_t &> ()
+                             .list_spot_locations (
+                               std::declval<zlink::framework::spot_location_filter_t> (),
+                               std::declval<zlink::framework::location_page_request_t> ())),
+                 zlink::framework::task_t<
+                   zlink::framework::location_page_t<zlink::framework::spot_location_t>>>);
+static_assert (
+  std::is_same_v<decltype (std::declval<zlink::framework::location_runtime_query_t &> ()
+                             .list_actor_locations (
+                               std::declval<zlink::framework::actor_location_filter_t> (),
+                               std::declval<zlink::framework::location_page_request_t> ())),
+                 zlink::framework::task_t<
+                   zlink::framework::location_page_t<zlink::framework::actor_location_t>>>);
+static_assert (
+  std::is_same_v<decltype (std::declval<zlink::framework::location_runtime_query_t &> ()
+                             .list_route_locations (
+                               std::declval<zlink::framework::route_location_filter_t> (),
+                               std::declval<zlink::framework::location_page_request_t> ())),
+                 zlink::framework::task_t<
+                   zlink::framework::location_page_t<zlink::framework::route_location_t>>>);
+static_assert (
+  std::is_same_v<decltype (std::declval<zlink::framework::location_runtime_query_t &> ()
+                             .list_topology (
+                               std::declval<zlink::framework::location_topology_filter_t> (),
+                               std::declval<zlink::framework::location_page_request_t> ())),
+                 zlink::framework::task_t<
+                   zlink::framework::location_page_t<zlink::framework::location_topology_entry_t>>>);
+static_assert (
+  std::is_same_v<decltype (std::declval<zlink::framework::location_runtime_query_t &> ()
+                             .list_service_summaries (
+                               std::declval<zlink::framework::location_service_summary_filter_t> ())),
+                 zlink::framework::task_t<
+                   std::vector<zlink::framework::location_service_summary_t>>>);
+static_assert (has_location_readiness<zlink::framework::location_readiness_t>);
+static_assert (
+  std::is_same_v<decltype (std::declval<zlink::framework::location_readiness_t &> ()
+                             .is_peer_ready (
+                               std::declval<std::string> (),
+                               zlink::framework::location_role_t::router,
+                               std::declval<std::optional<zlink::routing_id_t>> ())),
+                 zlink::framework::task_t<bool>>);
+
+static_assert (static_cast<int> (zlink::framework::location_auto_connect_type_t::invalid) == 0);
+static_assert (static_cast<int> (zlink::framework::location_auto_connect_type_t::route_mesh) == 1);
+static_assert (static_cast<int> (zlink::framework::location_auto_connect_type_t::client_server) == 2);
+static_assert (static_cast<int> (zlink::framework::location_auto_connect_type_t::dealer_mesh) == 3);
+static_assert (static_cast<int> (zlink::framework::location_auto_connect_type_t::fanout) == 4);
+static_assert (static_cast<int> (zlink::framework::location_auto_connect_type_t::spot_mesh) == 5);
+static_assert (static_cast<int> (zlink::framework::location_role_t::invalid) == 0);
+static_assert (static_cast<int> (zlink::framework::location_role_t::spot) == 2);
+static_assert (static_cast<int> (zlink::framework::location_role_t::router) == 3);
+static_assert (static_cast<int> (zlink::framework::location_role_t::dealer) == 4);
+static_assert (static_cast<int> (zlink::framework::location_role_t::pub) == 5);
+static_assert (static_cast<int> (zlink::framework::location_role_t::sub) == 6);
+static_assert (static_cast<int> (zlink::framework::route_kind_t::invalid) == 0);
+static_assert (static_cast<int> (zlink::framework::route_kind_t::actor_session) == 1);
+static_assert (static_cast<int> (zlink::framework::route_kind_t::spot_name) == 2);
+static_assert (static_cast<int> (zlink::framework::route_kind_t::framework_route) == 3);
+static_assert (static_cast<int> (zlink::framework::location_kind_t::invalid) == 0);
+static_assert (static_cast<int> (zlink::framework::location_kind_t::peer) == 1);
+static_assert (static_cast<int> (zlink::framework::location_kind_t::spot) == 2);
+static_assert (static_cast<int> (zlink::framework::location_kind_t::actor) == 3);
+static_assert (static_cast<int> (zlink::framework::location_kind_t::route) == 4);
+static_assert (static_cast<int> (zlink::framework::location_write_intent_t::new_claim) == 1);
+static_assert (static_cast<int> (zlink::framework::location_write_intent_t::renew) == 2);
+static_assert (static_cast<int> (zlink::framework::location_write_intent_t::takeover) == 3);
+static_assert (static_cast<int> (zlink::framework::location_write_status_t::stored) == 1);
+static_assert (static_cast<int> (zlink::framework::location_write_status_t::ignored_stale) == 2);
+static_assert (static_cast<int> (zlink::framework::location_write_status_t::rejected_conflict) == 3);
+static_assert (static_cast<int> (zlink::framework::location_change_type_t::upserted) == 1);
+static_assert (static_cast<int> (zlink::framework::location_change_type_t::removed) == 2);
+static_assert (static_cast<int> (zlink::framework::location_change_type_t::expired) == 3);
+static_assert (static_cast<int> (zlink::framework::framework_error_kind_t::actor_route_not_found) == 0);
+static_assert (static_cast<int> (zlink::framework::framework_error_kind_t::actor_create_failed) == 1);
+static_assert (static_cast<int> (zlink::framework::framework_error_kind_t::actor_already_exists) == 2);
+static_assert (static_cast<int> (zlink::framework::framework_error_kind_t::actor_type_mismatch) == 3);
+static_assert (static_cast<int> (zlink::framework::framework_error_kind_t::spot_create_failed) == 4);
+static_assert (static_cast<int> (zlink::framework::framework_error_kind_t::spot_route_not_found) == 5);
+static_assert (static_cast<int> (zlink::framework::framework_error_kind_t::spot_type_mismatch) == 6);
+static_assert (static_cast<int> (zlink::framework::framework_error_kind_t::actor_session_not_bound) == 7);
+static_assert (static_cast<int> (zlink::framework::framework_error_kind_t::handler_not_found) == 8);
+static_assert (static_cast<int> (zlink::framework::framework_error_kind_t::route_handler_not_found) == 9);
+static_assert (static_cast<int> (zlink::framework::framework_error_kind_t::actor_dispatch_handler_not_found) == 10);
+static_assert (static_cast<int> (zlink::framework::framework_error_kind_t::payload_decode_failed) == 11);
+static_assert (static_cast<int> (zlink::framework::framework_error_kind_t::route_not_connected) == 12);
+static_assert (static_cast<int> (zlink::framework::framework_error_kind_t::request_target_not_found) == 13);
+static_assert (static_cast<int> (zlink::framework::framework_error_kind_t::request_rejected) == 14);
+static_assert (static_cast<int> (zlink::framework::framework_error_kind_t::request_protocol_error) == 15);
+static_assert (static_cast<int> (zlink::framework::framework_error_kind_t::request_failed) == 16);
+static_assert (static_cast<int> (zlink::framework::framework_error_kind_t::worker_queue_full) == 17);
+static_assert (static_cast<int> (zlink::framework::framework_error_kind_t::worker_timed_out) == 18);
+static_assert (static_cast<int> (zlink::framework::framework_error_kind_t::worker_failed) == 19);
+static_assert (static_cast<int> (zlink::framework::framework_error_kind_t::actor_location_stale) == 20);
+static_assert (static_cast<int> (zlink::framework::framework_error_kind_t::actor_create_rejected) == 21);
+static_assert (static_cast<int> (zlink::framework::framework_error_kind_t::actor_stale_generation) == 22);
+static_assert (static_cast<int> (zlink::framework::framework_error_kind_t::timeout) == 23);
+static_assert (static_cast<int> (zlink::framework::framework_error_kind_t::shutdown) == 24);
+static_assert (static_cast<int> (zlink::framework::framework_error_kind_t::disconnected) == 25);
+static_assert (static_cast<int> (zlink::framework::framework_error_kind_t::closed) == 26);
+
+static_assert (std::is_same_v<decltype (std::declval<zlink::framework::location_changed_t> ().key),
+                              zlink::framework::location_key_t>);
+static_assert (
+  std::is_same_v<zlink::framework::location_key_t,
+                 std::variant<zlink::framework::peer_location_key_t,
+                              zlink::framework::spot_location_key_t,
+                              zlink::framework::actor_location_key_t,
+                              zlink::framework::route_location_key_t>>);
+static_assert (
+  std::is_same_v<decltype (std::declval<zlink::framework::actor_location_t> ().actor_ref),
+                 std::optional<zlink::framework::actor_ref_t>>);
+static_assert (
+  std::is_same_v<decltype (std::declval<zlink::framework::actor_location_t> ().location_kind),
+                 zlink::spot_kind>);
+static_assert (!has_actor_location_spot_kind_member<zlink::framework::actor_location_t>);
+static_assert (
+  std::is_same_v<decltype (std::declval<zlink::framework::actor_location_key_t> ().actor_id),
+                 std::string>);
+static_assert (has_actor_directory_find<zlink::framework::actor_directory_t>);
+static_assert (has_actor_directory_ensure<zlink::framework::actor_directory_t>);
+static_assert (
+  std::is_same_v<decltype (std::declval<zlink::framework::actor_directory_t &> ()
+                             .find (std::declval<std::string> ())),
+                 zlink::framework::task_t<std::optional<zlink::framework::actor_ref_t>>>);
+static_assert (
+  std::is_same_v<decltype (std::declval<zlink::framework::actor_directory_t &> ()
+                             .ensure (std::declval<std::string> (),
+                                      std::declval<zlink::framework::message_t> (),
+                                      std::declval<zlink::framework::actor_placement_t> ())),
+                 zlink::framework::task_t<zlink::framework::actor_ref_t>>);
 
 template <typename T>
 concept has_http_client_coroutine_resume_builder =
@@ -305,6 +509,17 @@ struct contract_spot_t : public zlink::framework::spot_t
     void onCreateActor (contract_actor_t &, const zlink::framework::message_t &) {}
     void on_actor_joined (contract_actor_t &) {}
     void onLeaveActor (contract_actor_t &) {}
+    void on_actor_send (contract_actor_t &,
+                        zlink::framework::spot_actor_send_context_t &,
+                        const named_request_t &)
+    {
+    }
+    named_reply_t on_actor_request (contract_actor_t &,
+                                    zlink::framework::spot_actor_request_context_t &,
+                                    const named_request_t &)
+    {
+        return {};
+    }
 };
 
 void to_json (nlohmann::json &json, const named_request_t &value)
@@ -429,7 +644,7 @@ struct typed_config_t
 
 static_assert (std::is_same_v<decltype (std::declval<zlink::framework::channel_client_t &> ()
                                           .request ("sample", named_request_t{})),
-                              zlink::framework::channel_request_call_t>);
+                              zlink::framework::channel_yield_request_call_t>);
 
 static_assert (std::is_same_v<decltype (std::declval<zlink::framework::route_send_call_t &> ()
                                           .metadata ("trace-id", "abc")),
@@ -451,9 +666,9 @@ static_assert (std::is_same_v<decltype (std::declval<zlink::framework::channel_r
                                           .metadata ("trace-id", "abc")),
                               zlink::framework::channel_request_call_t &>);
 
-static_assert (std::is_same_v<decltype (std::declval<zlink::framework::route_request_call_t &> ()
+static_assert (std::is_same_v<decltype (std::declval<zlink::framework::channel_request_call_t &> ()
                                           .metadata ("trace-id", "abc")),
-                              zlink::framework::route_request_call_t &>);
+                              zlink::framework::channel_request_call_t &>);
 
 static_assert (std::is_same_v<decltype (std::declval<zlink::framework::stream_write_call_t &> ()
                                           .metadata ("trace-id", "abc")),
@@ -649,12 +864,55 @@ static_assert (
                    std::declval<std::function<
                      zlink::framework::task_t<void> (zlink::framework::result_t<int>)>> ())),
                  void>);
-static_assert (has_leaveActor<zlink::framework::spot_context_t>);
+static_assert (has_leave_actor<zlink::framework::spot_context_t>);
 static_assert (
-  std::is_same_v<decltype (std::declval<zlink::framework::spot_context_t &> ().leaveActor (
+  std::is_same_v<decltype (std::declval<zlink::framework::spot_context_t &> ().leave_actor (
                    std::declval<const zlink::framework::actor_ref_t &> (),
                    std::declval<contract_actor_t &> ())),
                  zlink::framework::task_t<zlink::framework::actor_ref_t>>);
+static_assert (
+  std::is_same_v<decltype (std::declval<zlink::framework::session_actor_manager_t &> ()
+                             .bind_or_get (std::declval<zlink::framework::actor_ref_t> ())),
+                 zlink::framework::request_call_t<zlink::framework::session_actor_t>>);
+static_assert (
+  std::is_same_v<decltype (zlink::framework::actor_ref_snapshot_t::from (
+                              std::declval<const zlink::framework::actor_ref_t &> ())),
+                 zlink::framework::actor_ref_snapshot_t>);
+static_assert (
+  std::is_same_v<decltype (std::declval<zlink::framework::spot_node_builder_t &> ().snapshot ()),
+                 zlink::framework::spot_node_snapshot_t>);
+static_assert (
+  std::is_same_v<decltype (std::declval<zlink::framework::spot_handler_registry_t &> ()
+                             .add_actor_send<&contract_spot_t::on_actor_send> ()),
+                 zlink::framework::spot_handler_registry_t &>);
+static_assert (
+  std::is_same_v<decltype (std::declval<zlink::framework::spot_handler_registry_t &> ()
+                             .add_actor_request<&contract_spot_t::on_actor_request> ()),
+                 zlink::framework::spot_handler_registry_t &>);
+static_assert (static_cast<int> (zlink::framework::spot_handler_kind_t::actor_send) == 2);
+static_assert (static_cast<int> (zlink::framework::spot_handler_kind_t::actor_request) == 3);
+static_assert (
+  std::is_same_v<decltype (std::declval<zlink::framework::spot_node_manager_t &> ()
+                             .create_spot (std::declval<std::string> ())),
+                 zlink::framework::spot_create_result_t>);
+static_assert (
+  std::is_same_v<decltype (std::declval<zlink::framework::spot_node_manager_t &> ()
+                             .create_spot (std::declval<std::string> (),
+                                           std::declval<zlink::framework::message_t> ())),
+                 zlink::framework::spot_create_result_t>);
+static_assert (
+  std::is_same_v<decltype (std::declval<zlink::framework::spot_node_manager_t &> ()
+                             .get_or_create_spot (
+                               std::declval<std::string> (),
+                               std::declval<zlink::framework::spot_rid_t> ())),
+                 zlink::framework::spot_create_result_t>);
+static_assert (
+  std::is_same_v<decltype (std::declval<zlink::framework::spot_node_manager_t &> ()
+                             .get_or_create_spot (
+                               std::declval<std::string> (),
+                               std::declval<zlink::framework::spot_rid_t> (),
+                               std::declval<zlink::framework::message_t> ())),
+                 zlink::framework::spot_create_result_t>);
 static_assert (!has_destroyActor<zlink::framework::spot_context_t>);
 static_assert (has_destroyActor<zlink::framework::entry_spot_context_t>);
 static_assert (has_run_worker<zlink::framework::entry_spot_context_t>);
@@ -688,25 +946,28 @@ static_assert (
   std::is_same_v<decltype (std::declval<zlink::framework::actor_context_t &> ().join_spot (
                    std::declval<zlink::framework::spot_rid_t> (),
                    std::declval<const zlink::framework::message_t &> ())),
-                 zlink::framework::actor_join_spot_call_t>);
+                 zlink::framework::actor_yield_join_call_t>);
 static_assert (
-  std::is_same_v<decltype (std::declval<zlink::framework::actor_join_spot_call_t &> ().yield ()),
+  std::is_same_v<decltype (std::declval<zlink::framework::actor_yield_join_call_t &> ().yield ()),
                  zlink::framework::task_t<zlink::framework::actor_join_result_t>>);
 static_assert (
   std::is_same_v<
-    decltype (std::declval<zlink::framework::actor_join_spot_call_t &> ().yield<std::string> ()),
+    decltype (std::declval<zlink::framework::actor_yield_join_call_t &> ().yield<std::string> ()),
     zlink::framework::task_t<zlink::framework::typed_actor_join_result_t<std::string>>>);
 static_assert (
   std::is_same_v<
-    decltype (std::declval<zlink::framework::actor_join_entry_spot_call_t &> ().yield ()),
+    decltype (std::declval<zlink::framework::actor_yield_join_call_t &> ().yield ()),
     zlink::framework::task_t<zlink::framework::actor_join_result_t>>);
 static_assert (std::is_same_v<
-               decltype (std::declval<zlink::framework::actor_join_entry_spot_call_t &> ()
+               decltype (std::declval<zlink::framework::actor_yield_join_call_t &> ()
                            .yield<std::string> ()),
                zlink::framework::task_t<zlink::framework::typed_actor_join_result_t<std::string>>>);
 static_assert (
   std::is_same_v<decltype (std::declval<zlink::framework::actor_join_result_t> ().reply),
                  zlink::framework::message_t>);
+static_assert (
+  std::is_same_v<decltype (std::declval<zlink::framework::actor_join_result_t> ().actor),
+                 std::optional<zlink::framework::actor_ref_t>>);
 static_assert (std::is_same_v<decltype (std::declval<zlink::framework::session_actor_t &> ().relay (
                                 std::declval<const zlink::message_t &> ())),
                               zlink::framework::relay_call_t>);
@@ -841,7 +1102,7 @@ static_assert (
   std::is_same_v<decltype (std::declval<zlink::framework::handler_invocation_context_t> ().message),
                  std::shared_ptr<const zlink::message_t>>);
 
-static_assert (std::is_same_v<decltype (std::declval<zlink::framework::route_client_t &> ().send (
+static_assert (std::is_same_v<decltype (std::declval<zlink::framework::route_client_t &> ().send_to_node (
                                 "sample.route",
                                 std::declval<zlink::routing_id_t> (),
                                 std::declval<zlink::framework::spot_rid_t> (),
@@ -849,11 +1110,11 @@ static_assert (std::is_same_v<decltype (std::declval<zlink::framework::route_cli
                               zlink::framework::route_send_call_t>);
 
 static_assert (std::is_same_v<decltype (std::declval<zlink::framework::route_client_t &> ()
-                                          .request ("sample.route",
+                                          .request_to_node ("sample.route",
                                                     std::declval<zlink::routing_id_t> (),
                                                     std::declval<zlink::framework::spot_rid_t> (),
                                                     std::declval<named_request_t> ())),
-                              zlink::framework::route_request_call_t>);
+                              zlink::framework::channel_request_call_t>);
 
 } // namespace
 
@@ -876,6 +1137,47 @@ int main ()
         return 2;
     }
 
+    const zlink::framework::framework_error_kind_t retriable_kinds[] = {
+      zlink::framework::framework_error_kind_t::route_not_connected,
+      zlink::framework::framework_error_kind_t::actor_location_stale};
+    for (const auto kind : retriable_kinds) {
+        if (!zlink::framework::framework_exception_t (kind, "retriable").is_retriable ()) {
+            return 3;
+        }
+    }
+
+    const zlink::framework::framework_error_kind_t non_retriable_kinds[] = {
+      zlink::framework::framework_error_kind_t::actor_route_not_found,
+      zlink::framework::framework_error_kind_t::actor_create_failed,
+      zlink::framework::framework_error_kind_t::actor_already_exists,
+      zlink::framework::framework_error_kind_t::actor_type_mismatch,
+      zlink::framework::framework_error_kind_t::spot_create_failed,
+      zlink::framework::framework_error_kind_t::spot_route_not_found,
+      zlink::framework::framework_error_kind_t::spot_type_mismatch,
+      zlink::framework::framework_error_kind_t::actor_session_not_bound,
+      zlink::framework::framework_error_kind_t::handler_not_found,
+      zlink::framework::framework_error_kind_t::route_handler_not_found,
+      zlink::framework::framework_error_kind_t::actor_dispatch_handler_not_found,
+      zlink::framework::framework_error_kind_t::payload_decode_failed,
+      zlink::framework::framework_error_kind_t::request_target_not_found,
+      zlink::framework::framework_error_kind_t::request_rejected,
+      zlink::framework::framework_error_kind_t::request_protocol_error,
+      zlink::framework::framework_error_kind_t::request_failed,
+      zlink::framework::framework_error_kind_t::worker_queue_full,
+      zlink::framework::framework_error_kind_t::worker_timed_out,
+      zlink::framework::framework_error_kind_t::worker_failed,
+      zlink::framework::framework_error_kind_t::actor_create_rejected,
+      zlink::framework::framework_error_kind_t::actor_stale_generation,
+      zlink::framework::framework_error_kind_t::timeout,
+      zlink::framework::framework_error_kind_t::shutdown,
+      zlink::framework::framework_error_kind_t::disconnected,
+      zlink::framework::framework_error_kind_t::closed};
+    for (const auto kind : non_retriable_kinds) {
+        if (zlink::framework::framework_exception_t (kind, "non-retriable").is_retriable ()) {
+            return 4;
+        }
+    }
+
     zlink::framework::handler_registry_t handlers;
     handlers.on_request<named_handler_t, named_request_t, named_reply_t> ("sample", "topic",
                                                                           &named_handler_t::handle);
@@ -887,7 +1189,7 @@ int main ()
                                                          &named_handler_t::publish_context);
     const auto *descriptor = handlers.find ("sample", "topic", named_request_t::packet_name);
     if (descriptor == nullptr || descriptor->packet_name != named_request_t::packet_name) {
-        return 3;
+        return 5;
     }
 
     zlink::framework::service_collection_t services;

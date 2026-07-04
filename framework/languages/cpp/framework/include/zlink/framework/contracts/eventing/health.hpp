@@ -17,9 +17,9 @@ class health_state_t;
 
 enum class health_check_scope_t
 {
-    readiness,
-    liveness,
-    readiness_and_liveness
+    readiness = 0,
+    liveness = 1,
+    readiness_and_liveness = 2
 };
 
 struct health_check_result_t

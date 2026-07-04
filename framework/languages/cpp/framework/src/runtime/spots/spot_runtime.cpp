@@ -221,57 +221,37 @@ void erase_actor_route_unlocked (detail::spot_node_builder_state_t &state, const
     state.actor_generations.erase (key);
 }
 
-std::string serialize_actor_ref_for_location (const actor_ref_t &actor)
-{
-    return std::string (actor.node_rid ().value ()) + ":"
-           + std::to_string (actor.generation ()) + ":" + std::string (actor.actor_id ());
-}
-
 std::uint64_t actor_generation_from_location (const actor_location_t &location)
 {
-    const auto first = location.actor_ref.find (':');
-    if (first == std::string::npos) {
-        return 0;
-    }
-    const auto second = location.actor_ref.find (':', first + 1);
-    if (second == std::string::npos) {
-        return 0;
-    }
-    try {
-        return static_cast<std::uint64_t> (
-          std::stoull (location.actor_ref.substr (first + 1, second - first - 1)));
-    }
-    catch (...) {
-        return 0;
-    }
+    return location.actor_ref ? location.actor_ref->generation () : 0;
 }
 
 actor_location_t make_actor_location (const actor_ref_t &actor,
                                       const detail::spot_context_state_t &context)
 {
     return actor_location_t{
-      .actor_type = std::string (actor.actor_type ()),
       .actor_id = std::string (actor.actor_id ()),
-      .actor_ref = serialize_actor_ref_for_location (actor),
+      .actor_type = std::string (actor.actor_type ()),
+      .actor_ref = actor,
       .node_rid = zlink::routing_id_t::from (std::string (actor.node_rid ().value ())),
-      .generation = 0,
       .location_kind = zlink::spot_kind::user,
+      .spot_mesh_name = context.node->snapshot.name,
       .spot_rid = zlink::routing_id_t::from (std::string (context.spot_rid.value ())),
-      .spot_kind = zlink::spot_kind::user};
+      .generation = 0};
 }
 
 actor_location_t make_entry_actor_location (const actor_ref_t &actor,
                                             const detail::spot_context_state_t &context)
 {
     return actor_location_t{
-      .actor_type = std::string (actor.actor_type ()),
       .actor_id = std::string (actor.actor_id ()),
-      .actor_ref = serialize_actor_ref_for_location (actor),
+      .actor_type = std::string (actor.actor_type ()),
+      .actor_ref = actor,
       .node_rid = zlink::routing_id_t::from (std::string (context.node_rid.value ())),
-      .generation = 0,
       .location_kind = zlink::spot_kind::entry,
+      .spot_mesh_name = context.node->snapshot.name,
       .spot_rid = std::nullopt,
-      .spot_kind = zlink::spot_kind::entry};
+      .generation = 0};
 }
 
 spot_location_t make_spot_location (const detail::spot_node_builder_state_t &state,
@@ -299,10 +279,11 @@ void deactivate_actor_location (std::weak_ptr<detail::spot_node_builder_state_t>
     }
 
     std::function<result_t<void> (const actor_ref_t &)> destroy_actor_registry;
-    const auto key = location.actor_type + ":" + location.actor_id;
-    const auto actor = actor_ref_t (node_rid_t::from_string (location.node_rid.to_string ()),
-                                    location.actor_type, location.actor_id,
-                                    actor_generation_from_location (location));
+    const auto actor = location.actor_ref.value_or (
+      actor_ref_t (node_rid_t::from_string (location.node_rid.to_string ()),
+                   location.actor_type.value_or (std::string{}), location.actor_id,
+                   actor_generation_from_location (location)));
+    const auto key = std::string (actor.actor_type ()) + ":" + std::string (actor.actor_id ());
     {
         std::lock_guard<std::recursive_mutex> node_lock (state->mutex);
         erase_actor_route_unlocked (*state, key);
@@ -329,8 +310,7 @@ result_t<void> claim_actor_location_before_activation (
     }
 
     if (state->location_lifecycle->owns_actor (
-          actor_location_key_t{std::string (committed.actor_type ()),
-                               std::string (committed.actor_id ())})) {
+          actor_location_key_t{std::string (committed.actor_id ())})) {
         return result_t<void>::success ();
     }
 
@@ -357,7 +337,7 @@ void release_actor_location (detail::spot_node_builder_state_t &state, const act
         return;
     }
     (void) state.location_lifecycle->release_actor (
-      actor_location_key_t{std::string (actor.actor_type ()), std::string (actor.actor_id ())});
+      actor_location_key_t{std::string (actor.actor_id ())});
 }
 
 void update_actor_location_after_move (detail::spot_node_builder_state_t &state,
@@ -655,7 +635,7 @@ task_t<bool> spot_context_t::close_erased ()
     }
 }
 
-task_t<actor_ref_t> spot_context_t::leaveActor_erased (
+task_t<actor_ref_t> spot_context_t::leave_actor_erased (
   const actor_ref_t &actor_ref,
   std::type_index actor_type,
   void *actor,
@@ -1144,6 +1124,25 @@ void spot_handler_registry_t::register_actor_admission_erased (
 std::vector<spot_handler_descriptor_t> spot_handler_registry_t::descriptors () const
 {
     return _state->handlers;
+}
+
+spot_handler_kind_t
+spot_handler_registry_t::resolve_actor_packet_kind (std::string_view packet_name,
+                                                    std::type_index actor_type) const
+{
+    for (const auto &descriptor : _state->handlers) {
+        if (descriptor.kind == spot_handler_kind_t::actor_request
+            && descriptor.packet_name == packet_name && descriptor.actor_type == actor_type) {
+            return spot_handler_kind_t::actor_request;
+        }
+    }
+    for (const auto &descriptor : _state->handlers) {
+        if (descriptor.kind == spot_handler_kind_t::actor_send
+            && descriptor.packet_name == packet_name && descriptor.actor_type == actor_type) {
+            return spot_handler_kind_t::actor_send;
+        }
+    }
+    return spot_handler_kind_t::actor_request;
 }
 
 task_t<zlink::message_t>
@@ -2174,7 +2173,7 @@ spot_node_runtime_t::relay_actor_packet (const actor_ref_t &actor_ref,
     std::unique_lock actor_mailbox_lock (*actor_mailbox);
     auto reply =
       spot_handler_registry_t (context->_state)
-        .invoke_erased (spot_handler_kind_t::actor_packet, packet_name, {},
+        .invoke_erased (spot_handler_kind_t::actor_request, packet_name, {},
                         found_factory->second.actor_type, context->_state->spot_instance.get (),
                         actor_instance.get (), services, serializers, message, std::move (metadata),
                         dispatch_on_spot_serial)

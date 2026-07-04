@@ -51,7 +51,7 @@ class play_server_host_factory_t
             options.add_client_server_channel (sample_names_t::play_channel)
               .enable_server (topology.selected_play_endpoint ())
               .use_handler_group ("play");
-            options.add_route_mesh (sample_names_t::play_route_channel)
+            options.add_route_mesh_channel (sample_names_t::play_route_channel)
               .enable_server (topology.selected_play_route_endpoint ())
               .set_routing_id (zlink::routing_id_t::from (topology.selected_play_node_rid ()))
               .enable_client (topology.peer_play_route_endpoint ());

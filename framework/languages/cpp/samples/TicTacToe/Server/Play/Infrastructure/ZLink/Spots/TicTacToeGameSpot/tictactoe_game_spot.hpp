@@ -27,8 +27,8 @@ class tictactoe_game_spot_t : public spot_t, public tictactoe_match_t
     void configure (spot_context_t &context)
     {
         _context = context;
-        context.handlers ().add_actor_packet<&tictactoe_game_spot_t::place_mark> ();
-        context.handlers ().add_actor_packet<&tictactoe_game_spot_t::leave_game> ();
+        context.handlers ().add_actor_request<&tictactoe_game_spot_t::place_mark> ();
+        context.handlers ().add_actor_request<&tictactoe_game_spot_t::leave_game> ();
     }
 
     spot_create_response_t on_create (const message_t &)
@@ -84,7 +84,7 @@ class tictactoe_game_spot_t : public spot_t, public tictactoe_match_t
             throw std::runtime_error ("LeaveGameReq room id does not match the joined room.");
         }
         actor.mark_for_destroy_after_room_leave ();
-        (void) _context.leaveActor (actor_ref_for (actor), const_cast<player_actor_t &> (actor));
+        (void) _context.leave_actor (actor_ref_for (actor), const_cast<player_actor_t &> (actor));
         return {snapshot ()};
     }
 

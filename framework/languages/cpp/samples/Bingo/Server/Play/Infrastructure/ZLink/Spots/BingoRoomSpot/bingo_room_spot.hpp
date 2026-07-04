@@ -28,9 +28,9 @@ class bingo_room_spot_t : public spot_t
     void configure (spot_context_t &context)
     {
         _context = context;
-        context.handlers ().add_actor_packet<&bingo_room_spot_t::submit_card> ();
-        context.handlers ().add_actor_packet<&bingo_room_spot_t::observe_events> ();
-        context.handlers ().add_actor_packet<&bingo_room_spot_t::stop_observing_events> ();
+        context.handlers ().add_actor_request<&bingo_room_spot_t::submit_card> ();
+        context.handlers ().add_actor_request<&bingo_room_spot_t::observe_events> ();
+        context.handlers ().add_actor_request<&bingo_room_spot_t::stop_observing_events> ();
         context.handlers ().add_subscribe<&bingo_room_spot_t::on_reward_acquired> (
           sample_names_t::reward_topic);
     }
@@ -75,7 +75,7 @@ class bingo_room_spot_t : public spot_t
     {
         _game.set_room_id_if_empty (request.room_id);
         observers[actor.actor.actor_id] = const_cast<player_actor_t *> (&actor);
-        return {true, actor.actor.node_rid};
+        return {true, std::string (actor.actor.node_rid.value ())};
     }
 
     stop_observing_bingo_events_res_t
@@ -85,8 +85,8 @@ class bingo_room_spot_t : public spot_t
     {
         (void) request;
         observers.erase (actor.actor.actor_id);
-        (void) _context.leaveActor (actor_ref_for (actor), const_cast<player_actor_t &> (actor));
-        return {true, actor.actor.node_rid};
+        (void) _context.leave_actor (actor_ref_for (actor), const_cast<player_actor_t &> (actor));
+        return {true, std::string (actor.actor.node_rid.value ())};
     }
 
     submit_bingo_card_res_t submit_card (const player_actor_t &actor,
@@ -205,13 +205,13 @@ class bingo_room_spot_t : public spot_t
         }
         for (auto *actor : leaving) {
             actor->mark_for_destroy_after_room_leave ();
-            (void) _context.leaveActor (actor_ref_for (*actor), *actor);
+            (void) _context.leave_actor (actor_ref_for (*actor), *actor);
         }
     }
 
     static actor_ref_t actor_ref_for (const player_actor_t &actor)
     {
-        return actor_ref_t (node_rid_t::from_string (actor.actor.node_rid),
+        return actor_ref_t (actor.actor.node_rid,
                             sample_names_t::player_actor_type, actor.actor.actor_id,
                             actor.actor.generation);
     }

@@ -53,7 +53,7 @@ class route_spot_state_handler_t
                                 : request.spot_rid;
         auto reply =
           _routes
-            .request (e2e::route_channel, zlink::routing_id_t::from (owner),
+            .request_to_node (e2e::route_channel, zlink::routing_id_t::from (owner),
                       zlink::framework::spot_rid_t::from_string (spot_rid), request.state)
             .packet_name ("StateReq")
             .async<e2e::state_res_t> ()
@@ -90,7 +90,7 @@ class direct_spot_route_handler_t
           nlohmann::json::parse (http.body).get<e2e::direct_spot_route_req_t> ();
         auto reply =
           _routes
-            .request (e2e::route_channel,
+            .request_to_node (e2e::route_channel,
                       zlink::routing_id_t::from (request.target_node_rid),
                       zlink::framework::spot_rid_t::from_string (request.spot_rid),
                       e2e::direct_spot_req_t{request.source_actor_id, request.value})
@@ -128,7 +128,7 @@ class direct_spot_command_route_handler_t
         const auto request =
           nlohmann::json::parse (http.body).get<e2e::direct_spot_route_req_t> ();
         _routes
-          .send (e2e::route_channel,
+          .send_to_node (e2e::route_channel,
                  zlink::routing_id_t::from (request.target_node_rid),
                  zlink::framework::spot_rid_t::from_string (request.spot_rid),
                  e2e::direct_spot_msg_t{request.source_actor_id, request.value})
@@ -162,7 +162,7 @@ class spot_stage_probe_route_handler_t
           nlohmann::json::parse (http.body).get<e2e::spot_stage_probe_req_t> ();
         auto reply =
           _routes
-            .request (e2e::route_channel,
+            .request_to_node (e2e::route_channel,
                       zlink::routing_id_t::from (owner_node_rid_from_spot_rid (
                         request.spot_rid)),
                       zlink::framework::spot_rid_t::from_string (request.spot_rid),
@@ -205,7 +205,7 @@ class spot_stage_timer_route_handler_t
         const auto request =
           nlohmann::json::parse (http.body).get<e2e::spot_stage_timer_req_t> ();
         _routes
-          .send (e2e::route_channel,
+          .send_to_node (e2e::route_channel,
                  zlink::routing_id_t::from (owner_node_rid_from_spot_rid (request.spot_rid)),
                  zlink::framework::spot_rid_t::from_string (request.spot_rid),
                  e2e::stage_timer_start_msg_t{.name = request.name, .period_ms = request.period_ms})
@@ -243,7 +243,7 @@ class spot_state_command_route_handler_t
         const auto request =
           nlohmann::json::parse (http.body).get<e2e::spot_state_command_route_req_t> ();
         _routes
-          .send (e2e::route_channel, zlink::routing_id_t::from (request.target_node_rid),
+          .send_to_node (e2e::route_channel, zlink::routing_id_t::from (request.target_node_rid),
                  zlink::framework::spot_rid_t::from_string (request.spot_rid),
                  e2e::direct_spot_msg_t{"sm-c1-client", request.marker})
           .packet_name ("DirectSpotMsg")
@@ -360,7 +360,7 @@ class spot_worker_start_route_handler_t
           nlohmann::json::parse (http.body).get<e2e::spot_worker_start_req_t> ();
         auto reply =
           _routes
-            .request (e2e::route_channel,
+            .request_to_node (e2e::route_channel,
                       zlink::routing_id_t::from (owner_node_rid_from_spot_rid (
                         request.spot_rid)),
                       zlink::framework::spot_rid_t::from_string (request.spot_rid),
@@ -556,7 +556,7 @@ class spot_slow_route_handler_t
           nlohmann::json::parse (http.body).get<e2e::spot_slow_route_req_t> ();
         auto reply =
           _routes
-            .request (e2e::route_channel, zlink::routing_id_t::from (request.target_node_rid),
+            .request_to_node (e2e::route_channel, zlink::routing_id_t::from (request.target_node_rid),
                       zlink::framework::spot_rid_t::from_string (request.spot_rid),
                       e2e::slow_spot_req_t{request.value})
             .packet_name ("SlowSpotReq")
@@ -591,7 +591,7 @@ class spot_missing_route_handler_t
           nlohmann::json::parse (http.body).get<e2e::spot_missing_route_req_t> ();
         auto missing_request =
           _routes
-            .request (e2e::route_channel, zlink::routing_id_t::from (request.target_node_rid),
+            .request_to_node (e2e::route_channel, zlink::routing_id_t::from (request.target_node_rid),
                       zlink::framework::spot_rid_t::from_string (request.spot_rid),
                       e2e::unhandled_spot_req_t{request.value})
             .packet_name ("MissingSpotReq")
@@ -599,7 +599,7 @@ class spot_missing_route_handler_t
             .async<e2e::direct_spot_res_t> ()
             .result ();
         _routes
-          .send (e2e::route_channel, zlink::routing_id_t::from (request.target_node_rid),
+          .send_to_node (e2e::route_channel, zlink::routing_id_t::from (request.target_node_rid),
                  zlink::framework::spot_rid_t::from_string (request.spot_rid),
                  e2e::unhandled_spot_req_t{request.value + ":send"})
           .packet_name ("MissingSpotMsg")
@@ -637,7 +637,7 @@ class spot_missing_handler_request_handler_t
           nlohmann::json::parse (http.body).get<e2e::spot_missing_handler_req_t> ();
         auto reply =
           _routes
-            .request (e2e::route_channel,
+            .request_to_node (e2e::route_channel,
                       zlink::routing_id_t::from (owner_node_rid_from_spot_rid (request.spot_rid)),
                       zlink::framework::spot_rid_t::from_string (request.spot_rid),
                       e2e::unhandled_spot_req_t{"missing-handler"})
@@ -677,7 +677,7 @@ class spot_missing_handler_command_handler_t
         const auto request =
           nlohmann::json::parse (http.body).get<e2e::spot_missing_command_req_t> ();
         _routes
-          .send (e2e::route_channel,
+          .send_to_node (e2e::route_channel,
                  zlink::routing_id_t::from (owner_node_rid_from_spot_rid (request.spot_rid)),
                  zlink::framework::spot_rid_t::from_string (request.spot_rid),
                  e2e::unhandled_spot_req_t{request.marker})
@@ -717,7 +717,7 @@ class spot_missing_target_request_handler_t
           nlohmann::json::parse (http.body).get<e2e::spot_missing_target_req_t> ();
         auto reply =
           _routes
-            .request (e2e::route_channel,
+            .request_to_node (e2e::route_channel,
                       zlink::routing_id_t::from (owner_node_rid_from_spot_rid (request.spot_rid)),
                       zlink::framework::spot_rid_t::from_string (request.spot_rid),
                       e2e::direct_spot_req_t{"missing-target", "noop"})
@@ -754,7 +754,7 @@ class spot_outbound_route_handler_t
           nlohmann::json::parse (http.body).get<e2e::spot_outbound_route_req_t> ();
         auto reply =
           _routes
-            .request (e2e::route_channel, zlink::routing_id_t::from (request.target_node_rid),
+            .request_to_node (e2e::route_channel, zlink::routing_id_t::from (request.target_node_rid),
                       zlink::framework::spot_rid_t::from_string (request.spot_rid),
                       e2e::outbound_req_t{request.marker})
             .packet_name ("SpotOutboundReq")
@@ -796,7 +796,7 @@ class spot_outbound_negative_route_handler_t
           nlohmann::json::parse (http.body).get<e2e::spot_outbound_route_req_t> ();
         auto reply =
           _routes
-            .request (e2e::route_channel, zlink::routing_id_t::from (request.target_node_rid),
+            .request_to_node (e2e::route_channel, zlink::routing_id_t::from (request.target_node_rid),
                       zlink::framework::spot_rid_t::from_string (request.spot_rid),
                       e2e::outbound_req_t{request.marker})
             .packet_name ("SpotOutboundNegativeReq")
@@ -838,7 +838,7 @@ class spot_to_spot_route_handler_t
           nlohmann::json::parse (http.body).get<e2e::spot_to_spot_route_req_t> ();
         auto reply =
           _routes
-            .request (e2e::route_channel,
+            .request_to_node (e2e::route_channel,
                       zlink::routing_id_t::from (request.source_node_rid),
                       zlink::framework::spot_rid_t::from_string (request.source_spot_rid),
                       request)
@@ -879,7 +879,7 @@ class spot_to_spot_timeout_route_handler_t
           nlohmann::json::parse (http.body).get<e2e::spot_to_spot_route_req_t> ();
         auto reply =
           _routes
-            .request (e2e::route_channel,
+            .request_to_node (e2e::route_channel,
                       zlink::routing_id_t::from (request.source_node_rid),
                       zlink::framework::spot_rid_t::from_string (request.source_spot_rid),
                       request)
@@ -920,7 +920,7 @@ class spot_to_spot_negative_route_handler_t
           nlohmann::json::parse (http.body).get<e2e::spot_to_spot_route_req_t> ();
         auto reply =
           _routes
-            .request (e2e::route_channel,
+            .request_to_node (e2e::route_channel,
                       zlink::routing_id_t::from (request.source_node_rid),
                       zlink::framework::spot_rid_t::from_string (request.source_spot_rid),
                       request)

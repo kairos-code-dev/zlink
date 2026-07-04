@@ -25,8 +25,8 @@ class tictactoe_entry_spot_t : public entry_spot_t
     void configure (entry_spot_context_t &context)
     {
         _context = context;
-        context.handlers ().add_actor_packet<&tictactoe_entry_spot_t::join_game> ();
-        context.handlers ().add_actor_packet<&tictactoe_entry_spot_t::observe_milestone> ();
+        context.handlers ().add_actor_request<&tictactoe_entry_spot_t::join_game> ();
+        context.handlers ().add_actor_request<&tictactoe_entry_spot_t::observe_milestone> ();
         context.handlers ().add_subscribe<&tictactoe_entry_spot_t::on_player_win_milestone> (
           sample_names_t::player_milestone_topic);
     }

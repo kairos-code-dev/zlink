@@ -4,7 +4,7 @@
 #include "runtime/diagnostics/monitoring_runtime.hpp"
 
 #include <zlink/framework/contracts/configuration/module.hpp>
-#include <zlink/framework/contracts/locations/location.hpp>
+#include <zlink/framework/contracts/locations/runtime_query.hpp>
 
 #include <atomic>
 #include <chrono>
@@ -78,7 +78,7 @@ class location_monitoring_host_service_t final : public hosted_service_t
             return;
         }
         try {
-            auto status = _query->status ().result ().value ();
+            auto status = _query->get_status ().result ().value ();
             auto topology =
               _query->list_topology (location_topology_filter_t{}).result ().value ().items;
             auto summaries =
@@ -92,7 +92,7 @@ class location_monitoring_host_service_t final : public hosted_service_t
         }
         catch (...) {
             try {
-                auto status = _query->status ().result ().value ();
+                auto status = _query->get_status ().result ().value ();
                 detail::monitoring_runtime_t runtime (_monitoring);
                 for (const auto &source : _monitoring->location_sources) {
                     runtime.publish_location_snapshot (source.source_name, status, {}, {});

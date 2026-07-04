@@ -83,7 +83,7 @@ class join_spot_handler_t
               actor.error_kind (),
               actor.error () ? actor.error ()->what () : "actor create failed");
         }
-        auto bound = _actors.bind (actor.value ().ref ()).async ().result ();
+        auto bound = _actors.bind_or_get (actor.value ().ref ()).async ().result ();
         if (!bound) {
             throw zlink::framework::framework_exception_t (
               bound.error_kind (),
@@ -221,7 +221,7 @@ class complex_actor_handler_t
               actor.error_kind (),
               actor.error () ? actor.error ()->what () : "complex actor create failed");
         }
-        auto bound = _actors.bind (actor.value ().ref ()).async ().result ();
+        auto bound = _actors.bind_or_get (actor.value ().ref ()).async ().result ();
         if (!bound) {
             throw zlink::framework::framework_exception_t (
               bound.error_kind (),
@@ -303,7 +303,7 @@ class missing_actor_handler_t
               actor.error_kind (),
               actor.error () ? actor.error ()->what () : "missing actor create failed");
         }
-        auto bound = _actors.bind (actor.value ().ref ()).async ().result ();
+        auto bound = _actors.bind_or_get (actor.value ().ref ()).async ().result ();
         if (!bound) {
             throw zlink::framework::framework_exception_t (
               bound.error_kind (),
@@ -386,7 +386,7 @@ class remote_actor_flow_handler_t
               actor.error_kind (),
               actor.error () ? actor.error ()->what () : "remote actor create failed");
         }
-        auto bound = _actors.bind (actor.value ().ref ()).async ().result ();
+        auto bound = _actors.bind_or_get (actor.value ().ref ()).async ().result ();
         if (!bound) {
             throw zlink::framework::framework_exception_t (
               bound.error_kind (),
@@ -512,7 +512,7 @@ class remote_actor_request_handler_t
               actor.error () ? actor.error ()->what () : "remote actor create failed");
         }
         _state.record ("ActorEnsured", request.join.actor_id, {}, request.join.display_name);
-        auto bound = _actors.bind (actor.value ().ref ()).async ().result ();
+        auto bound = _actors.bind_or_get (actor.value ().ref ()).async ().result ();
         if (!bound) {
             throw zlink::framework::framework_exception_t (
               bound.error_kind (),

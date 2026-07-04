@@ -51,13 +51,13 @@ class yield_probe_spot_t : public zlink::framework::spot_t
             yd::timer_stop_msg_t::packet_name)
           .add_handler<&yield_probe_spot_t::probe_req> (yd::probe_req_t::packet_name)
           .add_handler<&yield_probe_spot_t::probe_command> (yd::probe_msg_t::packet_name)
-          .add_actor_packet<&yield_probe_spot_t::actor_yield_req> (
+          .add_actor_request<&yield_probe_spot_t::actor_yield_req> (
             yd::actor_yield_req_t::packet_name)
-          .add_actor_packet<&yield_probe_spot_t::actor_fast_req> (
+          .add_actor_request<&yield_probe_spot_t::actor_fast_req> (
             yd::actor_fast_req_t::packet_name)
-          .add_actor_packet<&yield_probe_spot_t::actor_join_yield_req> (
+          .add_actor_request<&yield_probe_spot_t::actor_join_yield_req> (
             yd::actor_join_yield_req_t::packet_name)
-          .add_actor_packet<&yield_probe_spot_t::actor_push_yield_req> (
+          .add_actor_request<&yield_probe_spot_t::actor_push_yield_req> (
             yd::actor_push_yield_req_t::packet_name);
     }
 

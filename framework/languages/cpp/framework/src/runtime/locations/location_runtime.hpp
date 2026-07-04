@@ -3,6 +3,9 @@
 
 #include "runtime/locations/location_key_codec.hpp"
 
+#include <zlink/framework/contracts/locations/options.hpp>
+#include <zlink/framework/contracts/locations/stores.hpp>
+
 #include <atomic>
 #include <chrono>
 #include <condition_variable>
@@ -75,33 +78,28 @@ class location_runtime_t
         }
         try {
             _store->remove_owner_lease (_owner_id).result ().value ();
-            _store->remove_peers_by_owner (_owner_id).result ().value ();
-            _store->remove_spots_by_owner (_owner_id).result ().value ();
-            _store->remove_actors_by_owner (_owner_id).result ().value ();
-            _store->remove_routes_by_owner (_owner_id).result ().value ();
+            _store->remove_all_by_owner (_owner_id).result ().value ();
         }
         catch (const std::exception &error) {
             record_failure (error.what ());
         }
     }
 
-    location_write_result_t renew_owner_lease_once ()
+    owner_lease_renewal_t renew_owner_lease_once ()
     {
         try {
             auto result = _store->renew_owner_lease (_owner_id, _node_rid, _options.owner_lease_ttl)
                             .result ()
                             .value ();
-            if (result.status == location_write_status_t::stored) {
-                std::lock_guard lock (_state_gate);
-                _owner_lease_healthy = true;
-                _owner_lease_renewed_at = std::chrono::system_clock::now ();
-                _last_error.reset ();
-            }
+            std::lock_guard lock (_state_gate);
+            _owner_lease_healthy = true;
+            _owner_lease_renewed_at = result.store_now;
+            _last_error.reset ();
             return result;
         }
         catch (const std::exception &error) {
             record_failure (error.what ());
-            return {location_write_status_t::store_unavailable, 0, {}};
+            return {};
         }
     }
 
@@ -144,7 +142,6 @@ class location_runtime_t
     location_write_result_t write_actor (actor_location_t actor, location_write_intent_t intent)
     {
         actor.owner_id = _owner_id;
-        actor.actor_type = location_key_codec_t::normalize_actor_type (actor.actor_type);
         auto result = _store->update_actor (std::move (actor), intent).result ().value ();
         notify_if_stale (result);
         return result;

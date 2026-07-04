@@ -73,7 +73,7 @@ class bind_courier_handler_t
     {
         const auto node = _directory.choose_node (request.courier_id);
         auto ensured =
-          co_await _routes.request (sample_names_t::courier_actor_node_route_channel,
+          co_await _routes.request_to_node (sample_names_t::courier_actor_node_route_channel,
                                     zlink::routing_id_t::from (node),
                                     ensure_courier_actor_req_t{request.courier_id})
             .packet_name (ensure_courier_actor_req_t::packet_name)
@@ -104,8 +104,9 @@ class gateway_offer_delivery_handler_t
     {
         auto binding = _directory.require (request.courier_id);
         auto reply =
-          co_await _routes.request (sample_names_t::courier_actor_node_route_channel,
-                                    zlink::routing_id_t::from (binding.actor.node_rid), request)
+          co_await _routes.request_to_node (sample_names_t::courier_actor_node_route_channel,
+                                    zlink::routing_id_t::from (
+                                      std::string (binding.actor.node_rid.value ())), request)
             .packet_name (offer_delivery_req_t::packet_name)
             .template async<offer_delivery_res_t> ();
         co_return reply;
@@ -136,7 +137,7 @@ int main (int argc, char **argv)
         options.add_client_server_channel (sample_names_t::courier_route_channel)
           .enable_server (topology.courier_route_endpoint)
           .use_handler_group ("courier-gateway");
-        options.add_route_mesh (sample_names_t::courier_actor_node_route_channel)
+        options.add_route_mesh_channel (sample_names_t::courier_actor_node_route_channel)
           .enable_client ()
           .set_routing_id (zlink::routing_id_t::from ("delivery-courier-gateway"));
         options.handlers ()

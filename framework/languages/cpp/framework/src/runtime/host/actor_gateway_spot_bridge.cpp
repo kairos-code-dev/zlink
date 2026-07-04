@@ -7,7 +7,7 @@
 #include "runtime/spots/spot_route_packets.hpp"
 #include "runtime/spots/spot_runtime.hpp"
 
-#include <zlink/framework/contracts/locations/location.hpp>
+#include <zlink/framework/contracts/locations/resolvers.hpp>
 
 namespace zlink::framework::detail
 {
@@ -43,7 +43,7 @@ join_actor_to_spot_through_route (spot_node_runtime_t runtime,
 
     auto request = make_spot_actor_join_route_request (actor_ref, spot_rid, payload);
     auto reply = route_client
-                   .request (*route_channel_name,
+                   .request_to_node (*route_channel_name,
                              zlink::routing_id_t::from (std::string (route->node_rid.value ())),
                              std::move (request))
                    .packet_name (spot_actor_join_route_request_t::packet_name)
@@ -80,7 +80,7 @@ join_actor_to_entry_spot_through_route (spot_node_runtime_t runtime,
     }
 
     auto reply = route_client
-                   .request (*route_channel_name,
+                   .request_to_node (*route_channel_name,
                              zlink::routing_id_t::from (std::string (target_node_rid.value ())),
                              make_spot_actor_join_route_request (actor_ref, spot_rid_t{}, payload))
                    .packet_name (spot_actor_join_route_request_t::packet_name)
@@ -117,7 +117,7 @@ relay_actor_packet_through_route (spot_node_runtime_t runtime,
               "remote SPOT route channel is not configured");
         }
         auto reply = route_client
-                       .request (*route_channel_name,
+                       .request_to_node (*route_channel_name,
                                  zlink::routing_id_t::from (std::string (route.node_rid.value ())),
                                  make_spot_actor_packet_route_request (
                                    actor_ref, spot_rid, header.packet_name (), payload, metadata))
@@ -161,10 +161,8 @@ relay_actor_packet_through_route (spot_node_runtime_t runtime,
     if (!spot_rid) {
         try {
             auto &resolver = provider.get_required<actor_location_resolver_t> ();
-            auto resolved = resolver
-                              .resolve_actor_spot_address (std::string (actor_ref.actor_type ()),
-                                                           std::string (actor_ref.actor_id ()))
-                              .result ();
+            auto resolved =
+              resolver.resolve_actor_spot_address (std::string (actor_ref.actor_id ())).result ();
             if (!resolved) {
                 return result_t<std::optional<zlink::message_t>>::failure (
                   resolved.error_kind (),
@@ -216,7 +214,7 @@ notify_actor_disconnected_through_route (spot_node_runtime_t runtime,
         }
         auto reply =
           route_client
-            .request (*route_channel_name, zlink::routing_id_t::from (std::move (target_node_rid)),
+            .request_to_node (*route_channel_name, zlink::routing_id_t::from (std::move (target_node_rid)),
                       make_spot_actor_disconnect_route_request (actor_ref))
             .packet_name (spot_actor_disconnect_route_request_t::packet_name)
             .template async<spot_actor_disconnect_route_reply_t> ()

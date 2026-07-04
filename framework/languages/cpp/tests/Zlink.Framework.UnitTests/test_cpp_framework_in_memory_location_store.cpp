@@ -55,15 +55,16 @@ spot_location_t make_spot (std::string owner_id, std::string spot_name = "spot-1
 
 actor_location_t make_actor (std::string owner_id, std::int64_t generation)
 {
-    return actor_location_t{.actor_type = "player",
-                            .actor_id = "actor-1",
-                            .actor_ref = "actor-ref-1",
-                            .node_rid = zlink::routing_id_t::from ("node-1"),
-                            .generation = generation,
-                            .location_kind = zlink::spot_kind::entry,
-                            .spot_rid = std::nullopt,
-                            .spot_kind = zlink::spot_kind::entry,
-                            .owner_id = std::move (owner_id)};
+    return actor_location_t{
+      .actor_id = "actor-1",
+      .actor_type = "player",
+      .actor_ref = std::nullopt,
+      .node_rid = zlink::routing_id_t::from ("node-1"),
+      .location_kind = zlink::spot_kind::entry,
+      .spot_mesh_name = "play",
+      .spot_rid = std::nullopt,
+      .owner_id = std::move (owner_id),
+      .generation = generation};
 }
 
 route_location_t make_route (std::string owner_id)
@@ -83,8 +84,7 @@ location_owner_token_t owner_token (std::string owner_id, std::int64_t generatio
 TEST (ZLinkFrameworkInMemoryLocationStore, SharesOneStoreForAllLocationRoles)
 {
     in_memory_location_store_t store;
-    static_cast<owner_lease_store_t &> (store)
-      .renew_owner_lease ("owner-a", zlink::routing_id_t::from ("node-1"),
+    store.renew_owner_lease ("owner-a", zlink::routing_id_t::from ("node-1"),
                           std::chrono::seconds (15))
       .result ()
       .value ();
@@ -178,15 +178,14 @@ TEST (ZLinkFrameworkInMemoryLocationStore, IssuesGenerationsAndGuardsOwnerWrites
         .value ();
     EXPECT_EQ (location_write_status_t::ignored_stale, stale.status);
 
-    const auto removed = store.remove_actors_by_owner ("owner-b").result ().value ();
+    const auto removed = store.remove_all_by_owner ("owner-b").result ().value ();
     EXPECT_EQ (1, removed);
 }
 
 TEST (ZLinkFrameworkInMemoryLocationStore, PaginatesListsAndFiltersRows)
 {
     in_memory_location_store_t store;
-    static_cast<owner_lease_store_t &> (store)
-      .renew_owner_lease ("owner-a", zlink::routing_id_t::from ("node-1"),
+    store.renew_owner_lease ("owner-a", zlink::routing_id_t::from ("node-1"),
                           std::chrono::seconds (15))
       .result ()
       .value ();
@@ -259,7 +258,7 @@ TEST (ZLinkFrameworkInMemoryLocationStore, MaintainsOwnerLeasesAndChangeStamps)
         .value ();
     EXPECT_EQ (before + 1, after);
 
-    store.remove_owner_lease ("owner-a").result ().value ();
+    EXPECT_TRUE (store.remove_owner_lease ("owner-a").result ().value ());
     EXPECT_TRUE (store.list_owner_leases ().result ().value ().leases.empty ());
 }
 
@@ -328,15 +327,13 @@ TEST (ZLinkFrameworkInMemoryLocationStore, RemovesRowsOnlyWithMatchingOwnerToken
         .value ();
     EXPECT_EQ (location_write_status_t::stored,
                store
-                 .remove_actor (actor_location_key_t{.actor_type = "player",
-                                                     .actor_id = "actor-1"},
+                 .remove_actor (actor_location_key_t{.actor_id = "actor-1"},
                                 owner_token ("owner-a", actor_claim.generation))
                  .result ()
                  .value ()
                  .status);
     EXPECT_FALSE (store
-                    .resolve_actor (actor_location_key_t{.actor_type = "player",
-                                                        .actor_id = "actor-1"})
+                    .resolve_actor (actor_location_key_t{.actor_id = "actor-1"})
                     .result ()
                     .value ()
                     .has_value ());

@@ -63,7 +63,7 @@ inline void configure_provider_host (zlink::framework::zlink_framework_options_t
         channel.use_handler_group (handler_group);
     }
     if (!options.route_endpoint.empty ()) {
-        framework.add_route_mesh (route_channel)
+        framework.add_route_mesh_channel (route_channel)
           .enable_server (options.route_endpoint)
           .set_routing_id (zlink::routing_id_t::from (options.rid))
           .add_request_handler<route_ping_handler_t,

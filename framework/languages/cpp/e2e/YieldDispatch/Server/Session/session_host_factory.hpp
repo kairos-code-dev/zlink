@@ -29,14 +29,14 @@ inline zlink::framework::app_t create_session_host ()
         server::configure_codecs (framework_options.codecs ());
         server::add_redis_location_store (framework_options, session_options.redis_endpoint,
                                           session_options.redis_key_prefix);
-        auto control_route = framework_options.add_route_mesh (yd::control_channel)
+        auto control_route = framework_options.add_route_mesh_channel (yd::control_channel)
                                .enable_client (session_options.control_endpoint)
                                .set_routing_id (
                                  zlink::routing_id_t::from (session_options.node_rid));
         if (!session_options.control_peer_endpoint.empty ()) {
             control_route.enable_client (session_options.control_peer_endpoint);
         }
-        auto spot_route = framework_options.add_route_mesh (yd::spot_route_channel)
+        auto spot_route = framework_options.add_route_mesh_channel (yd::spot_route_channel)
                             .enable_client (session_options.spot_route_endpoint)
                             .set_routing_id (
                               zlink::routing_id_t::from (session_options.node_rid));

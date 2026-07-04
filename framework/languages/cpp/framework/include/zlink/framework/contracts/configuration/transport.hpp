@@ -8,11 +8,11 @@ namespace zlink::framework
 
 enum class transport_scheme_t
 {
-    tcp,
-    ipc,
-    tls,
-    websocket,
-    websocket_tls
+    tcp = 0,
+    ipc = 1,
+    tls = 2,
+    websocket = 3,
+    websocket_tls = 4
 };
 
 class transport_endpoint_t

@@ -169,12 +169,55 @@ class channel_request_call_t
         }
     }
 
-    template <typename TReply> task_t<TReply> yield ()
+  protected:
+    task_t<zlink::message_t> submit_raw ()
     {
         if (!_submit) {
-            co_return result_t<TReply>::failure (framework_error_kind_t::request_protocol_error,
-                                                 "request call is not bound to a channel client");
+            return task_t<zlink::message_t> (result_t<zlink::message_t>::failure (
+              framework_error_kind_t::request_protocol_error,
+              "request call is not bound to a channel client"));
         }
+        return _submit (_packet_name, _timeout, _metadata);
+    }
+
+    const std::string &packet_name_value () const noexcept { return _packet_name; }
+    std::chrono::milliseconds timeout_value () const noexcept { return _timeout; }
+    const metadata_map_t &metadata_values () const noexcept { return _metadata; }
+    serializer_registry_t *serializers () const noexcept { return _serializers; }
+
+  private:
+    std::string _packet_name;
+    std::chrono::milliseconds _timeout{0};
+    metadata_map_t _metadata;
+    serializer_registry_t *_serializers = nullptr;
+    submit_fn_t _submit;
+};
+
+class channel_yield_request_call_t : public channel_request_call_t
+{
+  public:
+    using channel_request_call_t::channel_request_call_t;
+
+    channel_yield_request_call_t &timeout (std::chrono::milliseconds timeout)
+    {
+        channel_request_call_t::timeout (timeout);
+        return *this;
+    }
+
+    channel_yield_request_call_t &packet_name (std::string packet_name)
+    {
+        channel_request_call_t::packet_name (std::move (packet_name));
+        return *this;
+    }
+
+    channel_yield_request_call_t &metadata (std::string key, std::string value)
+    {
+        channel_request_call_t::metadata (std::move (key), std::move (value));
+        return *this;
+    }
+
+    template <typename TReply> task_t<TReply> yield ()
+    {
         auto yield_turn = detail::capture_current_serial_yield_turn ();
         if (!yield_turn) {
             co_return result_t<TReply>::failure (framework_error_kind_t::request_protocol_error,
@@ -185,14 +228,14 @@ class channel_request_call_t
               framework_error_kind_t::request_protocol_error,
               "yield could not release the current Spot handler turn");
         }
-        auto reply = co_await detail::reschedule_task (_submit (_packet_name, _timeout, _metadata),
+        auto reply = co_await detail::reschedule_task (submit_raw (),
                                                        yield_turn->resume_scheduler ());
-        if (_serializers == nullptr) {
+        if (serializers () == nullptr) {
             co_return result_t<TReply>::failure (framework_error_kind_t::request_protocol_error,
                                                  "channel request has no serializer registry");
         }
         try {
-            co_return _serializers->get<TReply> ().deserialize (
+            co_return serializers ()->get<TReply> ().deserialize (
               detail::encoded_payload_from_raw (reply));
         }
         catch (const framework_exception_t &error) {
@@ -200,13 +243,6 @@ class channel_request_call_t
                                                  error.is_retriable ());
         }
     }
-
-  private:
-    std::string _packet_name;
-    std::chrono::milliseconds _timeout{0};
-    metadata_map_t _metadata;
-    serializer_registry_t *_serializers = nullptr;
-    submit_fn_t _submit;
 };
 
 class send_call_t

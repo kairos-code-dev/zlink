@@ -1,13 +1,15 @@
 /* SPDX-License-Identifier: MPL-2.0 */
 #pragma once
 
-#include <zlink/framework/contracts/locations/location.hpp>
+#include <zlink/framework/contracts/locations/stores.hpp>
 
 #include <nlohmann/json.hpp>
 
 #include <chrono>
 #include <cstdint>
+#include <ctime>
 #include <algorithm>
+#include <iomanip>
 #include <iterator>
 #include <map>
 #include <memory>
@@ -16,6 +18,7 @@
 #include <condition_variable>
 #include <deque>
 #include <functional>
+#include <sstream>
 #include <stdexcept>
 #include <string>
 #include <string_view>
@@ -117,21 +120,27 @@ return {'stored', tonumber(ARGV[2]), nowMs}
 
     static constexpr std::string_view remove_by_owner = R"(
 if redis.replicate_commands then redis.replicate_commands() end
-local rowKeys = redis.call('SMEMBERS', KEYS[1])
 local removed = 0
-for _, rowKey in ipairs(rowKeys) do
-    local rowHash = ARGV[1] .. rowKey
-    local mesh = redis.call('HGET', rowHash, 'mesh')
-    if redis.call('DEL', rowHash) == 1 then
-        removed = removed + 1
-        redis.call('SREM', KEYS[2], rowKey)
-        if mesh then
-            redis.call('INCR', ARGV[2] .. ':' .. mesh)
+for i = 1, 4 do
+    local ownerKey = KEYS[i]
+    local keySet = KEYS[i + 4]
+    local rowPrefix = ARGV[i]
+    local stampBase = ARGV[i + 4]
+    local rowKeys = redis.call('SMEMBERS', ownerKey)
+    for _, rowKey in ipairs(rowKeys) do
+        local rowHash = rowPrefix .. rowKey
+        local mesh = redis.call('HGET', rowHash, 'mesh')
+        if redis.call('DEL', rowHash) == 1 then
+            removed = removed + 1
+            redis.call('SREM', keySet, rowKey)
+            if mesh then
+                redis.call('INCR', stampBase .. ':' .. mesh)
+            end
+            redis.call('INCR', stampBase)
         end
-        redis.call('INCR', ARGV[2])
     end
+    redis.call('DEL', ownerKey)
 end
-redis.call('DEL', KEYS[1])
 return removed
 )";
 
@@ -206,8 +215,8 @@ class redis_location_key_schema_t
     {
         const auto identity = key.node_rid ? key.node_rid->to_hex ()
                                           : key.endpoint.value_or (std::string{});
-        return encode (to_canonical_string (key.auto_connect_type), key.mesh_name,
-                       to_canonical_string (key.role), identity);
+        return encode (canonical_auto_connect_type (key.auto_connect_type), key.mesh_name,
+                       canonical_role (key.role), identity);
     }
 
     static std::string encode_spot_key (const spot_location_key_t &key)
@@ -217,12 +226,28 @@ class redis_location_key_schema_t
 
     static std::string encode_actor_key (const actor_location_key_t &key)
     {
-        return encode (key.actor_type, key.actor_id);
+        return encode (key.actor_id);
     }
 
     static std::string encode_route_key (const route_location_key_t &key)
     {
         return encode (std::to_string (static_cast<int> (key.route_kind)), key.route_key);
+    }
+
+    static location_key_t decode_key (location_kind_t kind, std::string_view encoded)
+    {
+        switch (kind) {
+            case location_kind_t::peer:
+                return decode_peer_key (encoded);
+            case location_kind_t::spot:
+                return decode_spot_key (encoded);
+            case location_kind_t::actor:
+                return decode_actor_key (encoded);
+            case location_kind_t::route:
+                return decode_route_key (encoded);
+            default:
+                throw std::invalid_argument ("unknown location kind");
+        }
     }
 
     static std::string row_key (std::string_view prefix,
@@ -281,6 +306,142 @@ class redis_location_key_schema_t
         result.append (segment);
     }
 
+    static peer_location_key_t decode_peer_key (std::string_view encoded)
+    {
+        const auto segments = decode (encoded, 4);
+        const auto &identity = segments[3];
+        std::optional<zlink::routing_id_t> node_rid;
+        std::optional<std::string> endpoint;
+        if (!identity.empty ()) {
+            node_rid = zlink::routing_id_t::from_hex (identity);
+        } else {
+            endpoint = identity;
+        }
+        return peer_location_key_t{parse_auto_connect_type (segments[0]), segments[1],
+                                   parse_role (segments[2]), node_rid, endpoint};
+    }
+
+    static spot_location_key_t decode_spot_key (std::string_view encoded)
+    {
+        const auto segments = decode (encoded, 2);
+        return spot_location_key_t{segments[0], zlink::routing_id_t::from_hex (segments[1])};
+    }
+
+    static actor_location_key_t decode_actor_key (std::string_view encoded)
+    {
+        const auto segments = decode (encoded, 1);
+        return actor_location_key_t{segments[0]};
+    }
+
+    static route_location_key_t decode_route_key (std::string_view encoded)
+    {
+        const auto segments = decode (encoded, 2);
+        return route_location_key_t{static_cast<route_kind_t> (std::stoi (segments[0])),
+                                    segments[1]};
+    }
+
+    static std::vector<std::string> decode (std::string_view encoded, std::size_t expected_count)
+    {
+        std::vector<std::string> segments;
+        segments.reserve (expected_count);
+        std::size_t offset = 0;
+        while (segments.size () < expected_count) {
+            const auto colon = encoded.find (':', offset);
+            if (colon == std::string_view::npos) {
+                throw std::invalid_argument ("encoded location key segment length is missing");
+            }
+            const auto length_text = std::string (encoded.substr (offset, colon - offset));
+            const auto length = static_cast<std::size_t> (std::stoull (length_text));
+            const auto start = colon + 1;
+            const auto end = start + length;
+            if (end > encoded.size ()) {
+                throw std::invalid_argument ("encoded location key segment length is invalid");
+            }
+            segments.emplace_back (encoded.substr (start, length));
+            offset = end;
+        }
+        if (offset != encoded.size ()) {
+            throw std::invalid_argument ("encoded location key has trailing data");
+        }
+        return segments;
+    }
+
+    static std::string canonical_auto_connect_type (location_auto_connect_type_t type)
+    {
+        switch (type) {
+            case location_auto_connect_type_t::route_mesh:
+                return "route-mesh";
+            case location_auto_connect_type_t::client_server:
+                return "client-server";
+            case location_auto_connect_type_t::dealer_mesh:
+                return "dealer-mesh";
+            case location_auto_connect_type_t::fanout:
+                return "fanout";
+            case location_auto_connect_type_t::spot_mesh:
+                return "spot-mesh";
+            default:
+                throw std::invalid_argument ("unknown location auto-connect type");
+        }
+    }
+
+    static std::string canonical_role (location_role_t role)
+    {
+        switch (role) {
+            case location_role_t::spot:
+                return "spot";
+            case location_role_t::router:
+                return "router";
+            case location_role_t::dealer:
+                return "dealer";
+            case location_role_t::pub:
+                return "pub";
+            case location_role_t::sub:
+                return "sub";
+            default:
+                throw std::invalid_argument ("unknown location role");
+        }
+    }
+
+    static location_auto_connect_type_t parse_auto_connect_type (std::string_view value)
+    {
+        if (value == "route-mesh") {
+            return location_auto_connect_type_t::route_mesh;
+        }
+        if (value == "client-server") {
+            return location_auto_connect_type_t::client_server;
+        }
+        if (value == "dealer-mesh") {
+            return location_auto_connect_type_t::dealer_mesh;
+        }
+        if (value == "fanout") {
+            return location_auto_connect_type_t::fanout;
+        }
+        if (value == "spot-mesh") {
+            return location_auto_connect_type_t::spot_mesh;
+        }
+        throw std::invalid_argument ("unknown location auto-connect type");
+    }
+
+    static location_role_t parse_role (std::string_view value)
+    {
+        if (value == "spot") {
+            return location_role_t::spot;
+        }
+        if (value == "router") {
+            return location_role_t::router;
+        }
+        if (value == "dealer") {
+            return location_role_t::dealer;
+        }
+        if (value == "pub") {
+            return location_role_t::pub;
+        }
+        if (value == "sub") {
+            return location_role_t::sub;
+        }
+        throw std::invalid_argument ("unknown location role");
+    }
+
     static std::string kind_tag (location_kind_t kind)
     {
         switch (kind) {
@@ -318,7 +479,7 @@ class redis_location_row_codec_t
   public:
     static std::string encode_peer (const peer_location_t &row)
     {
-        nlohmann::json json;
+        nlohmann::ordered_json json;
         json["AutoConnectType"] = static_cast<int> (row.auto_connect_type);
         json["MeshName"] = row.mesh_name;
         json["NodeRid"] = row.node_rid ? nlohmann::json (row.node_rid->to_hex ())
@@ -333,6 +494,7 @@ class redis_location_row_codec_t
                                                          : nlohmann::json (row.capabilities);
         json["OwnerId"] = row.owner_id;
         json["Generation"] = row.generation;
+        json["UpdatedAt"] = format_updated_at (row.updated_at);
         return json.dump ();
     }
 
@@ -359,12 +521,15 @@ class redis_location_row_codec_t
         }
         row.owner_id = json.at ("OwnerId").get<std::string> ();
         row.generation = json.at ("Generation").get<std::int64_t> ();
+        if (json.contains ("UpdatedAt") && !json.at ("UpdatedAt").is_null ()) {
+            row.updated_at = parse_updated_at (json.at ("UpdatedAt").get<std::string> ());
+        }
         return row;
     }
 
     static std::string encode_spot (const spot_location_t &row)
     {
-        nlohmann::json json;
+        nlohmann::ordered_json json;
         json["MeshName"] = row.mesh_name;
         json["SpotRid"] = row.spot_rid.to_hex ();
         json["SpotType"] = row.spot_type ? nlohmann::json (*row.spot_type)
@@ -375,6 +540,7 @@ class redis_location_row_codec_t
                                                    : nlohmann::json (nullptr);
         json["OwnerId"] = row.owner_id;
         json["Generation"] = row.generation;
+        json["UpdatedAt"] = format_updated_at (row.updated_at);
         return json.dump ();
     }
 
@@ -394,22 +560,37 @@ class redis_location_row_codec_t
         }
         row.owner_id = json.at ("OwnerId").get<std::string> ();
         row.generation = json.at ("Generation").get<std::int64_t> ();
+        if (json.contains ("UpdatedAt") && !json.at ("UpdatedAt").is_null ()) {
+            row.updated_at = parse_updated_at (json.at ("UpdatedAt").get<std::string> ());
+        }
         return row;
     }
 
     static std::string encode_actor (const actor_location_t &row)
     {
-        nlohmann::json json;
-        json["ActorType"] = row.actor_type;
+        nlohmann::ordered_json json;
         json["ActorId"] = row.actor_id;
-        json["ActorRef"] = row.actor_ref;
+        json["ActorType"] = row.actor_type ? nlohmann::json (*row.actor_type)
+                                           : nlohmann::json (nullptr);
+        if (row.actor_ref) {
+            nlohmann::ordered_json actor_ref;
+            actor_ref["nodeRid"] =
+              zlink::routing_id_t::from (std::string (row.actor_ref->node_rid ().value ()))
+                .to_hex ();
+            actor_ref["actorId"] = std::string (row.actor_ref->actor_id ());
+            actor_ref["generation"] = row.actor_ref->generation ();
+            json["ActorRef"] = std::move (actor_ref);
+        } else {
+            json["ActorRef"] = nullptr;
+        }
         json["NodeRid"] = row.node_rid.to_hex ();
-        json["Generation"] = row.generation;
         json["LocationKind"] = static_cast<int> (row.location_kind);
+        json["SpotMeshName"] = row.spot_mesh_name;
         json["SpotRid"] = row.spot_rid ? nlohmann::json (row.spot_rid->to_hex ())
                                        : nlohmann::json (nullptr);
-        json["SpotKind"] = static_cast<int> (row.spot_kind);
         json["OwnerId"] = row.owner_id;
+        json["Generation"] = row.generation;
+        json["UpdatedAt"] = format_updated_at (row.updated_at);
         return json.dump ();
     }
 
@@ -417,30 +598,50 @@ class redis_location_row_codec_t
     {
         const auto json = nlohmann::json::parse (value);
         actor_location_t row;
-        row.actor_type = json.at ("ActorType").get<std::string> ();
+        if (json.contains ("ActorType") && !json.at ("ActorType").is_null ()) {
+            row.actor_type = json.at ("ActorType").get<std::string> ();
+        }
         row.actor_id = json.at ("ActorId").get<std::string> ();
-        row.actor_ref = json.at ("ActorRef").get<std::string> ();
+        if (json.contains ("ActorRef") && !json.at ("ActorRef").is_null ()) {
+            const auto &actor_ref = json.at ("ActorRef");
+            row.actor_ref = actor_ref_t{
+              node_rid_t::from_string (
+                zlink::routing_id_t::from_hex (
+                  read_actor_ref_string (actor_ref, "nodeRid", "NodeRid"))
+                  .to_string ()),
+              json.contains ("ActorType") && !json.at ("ActorType").is_null ()
+                ? json.at ("ActorType").get<std::string> ()
+                : std::string {},
+              read_actor_ref_string (actor_ref, "actorId", "ActorId"),
+              read_actor_ref_generation (actor_ref)};
+        }
         row.node_rid = zlink::routing_id_t::from_hex (json.at ("NodeRid").get<std::string> ());
         row.generation = json.at ("Generation").get<std::int64_t> ();
         row.location_kind = static_cast<zlink::spot_kind> (json.at ("LocationKind").get<int> ());
+        if (json.contains ("SpotMeshName") && !json.at ("SpotMeshName").is_null ()) {
+            row.spot_mesh_name = json.at ("SpotMeshName").get<std::string> ();
+        }
         if (!json.at ("SpotRid").is_null ()) {
             row.spot_rid =
               zlink::routing_id_t::from_hex (json.at ("SpotRid").get<std::string> ());
         }
-        row.spot_kind = static_cast<zlink::spot_kind> (json.at ("SpotKind").get<int> ());
         row.owner_id = json.at ("OwnerId").get<std::string> ();
+        if (json.contains ("UpdatedAt") && !json.at ("UpdatedAt").is_null ()) {
+            row.updated_at = parse_updated_at (json.at ("UpdatedAt").get<std::string> ());
+        }
         return row;
     }
 
     static std::string encode_route (const route_location_t &row)
     {
-        nlohmann::json json;
+        nlohmann::ordered_json json;
         json["RouteKind"] = static_cast<int> (row.route_kind);
         json["RouteKey"] = row.route_key;
         json["OwnerNodeRid"] = row.owner_node_rid.to_hex ();
         json["OwnerId"] = row.owner_id;
         json["Generation"] = row.generation;
         json["Value"] = base64_encode (row.value);
+        json["UpdatedAt"] = format_updated_at (row.updated_at);
         return json.dump ();
     }
 
@@ -455,10 +656,80 @@ class redis_location_row_codec_t
         row.owner_id = json.at ("OwnerId").get<std::string> ();
         row.generation = json.at ("Generation").get<std::int64_t> ();
         row.value = base64_decode (json.at ("Value").get<std::string> ());
+        if (json.contains ("UpdatedAt") && !json.at ("UpdatedAt").is_null ()) {
+            row.updated_at = parse_updated_at (json.at ("UpdatedAt").get<std::string> ());
+        }
         return row;
     }
 
   private:
+    static std::string format_updated_at (std::chrono::system_clock::time_point value)
+    {
+        if (value == std::chrono::system_clock::time_point{}) {
+            return "0001-01-01T00:00:00+00:00";
+        }
+
+        const auto millis =
+          std::chrono::duration_cast<std::chrono::milliseconds> (value.time_since_epoch ());
+        const auto seconds = std::chrono::duration_cast<std::chrono::seconds> (millis);
+        const auto fractional = millis - seconds;
+        const auto time = std::chrono::system_clock::to_time_t (
+          std::chrono::system_clock::time_point (seconds));
+        std::tm tm{};
+#if defined(_WIN32)
+        gmtime_s (&tm, &time);
+#else
+        gmtime_r (&time, &tm);
+#endif
+        std::ostringstream output;
+        output << std::put_time (&tm, "%Y-%m-%dT%H:%M:%S");
+        if (fractional.count () != 0) {
+            output << '.' << std::setw (3) << std::setfill ('0') << fractional.count ();
+        }
+        output << "+00:00";
+        return output.str ();
+    }
+
+    static std::chrono::system_clock::time_point parse_updated_at (const std::string &value)
+    {
+        if (value == "0001-01-01T00:00:00+00:00") {
+            return {};
+        }
+        if (value.size () < 25 || value.substr (19) != "+00:00") {
+            return {};
+        }
+        std::tm tm{};
+        std::istringstream input (value.substr (0, 19));
+        input >> std::get_time (&tm, "%Y-%m-%dT%H:%M:%S");
+        if (input.fail ()) {
+            return {};
+        }
+#if defined(_WIN32)
+        const auto time = _mkgmtime (&tm);
+#else
+        const auto time = timegm (&tm);
+#endif
+        return std::chrono::system_clock::from_time_t (time);
+    }
+
+    static std::string read_actor_ref_string (const nlohmann::json &json,
+                                              const char *preferred_name,
+                                              const char *legacy_name)
+    {
+        if (json.contains (preferred_name)) {
+            return json.at (preferred_name).get<std::string> ();
+        }
+        return json.at (legacy_name).get<std::string> ();
+    }
+
+    static std::uint64_t read_actor_ref_generation (const nlohmann::json &json)
+    {
+        if (json.contains ("generation")) {
+            return json.at ("generation").get<std::uint64_t> ();
+        }
+        return json.at ("Generation").get<std::uint64_t> ();
+    }
+
     static std::string base64_encode (const std::vector<std::uint8_t> &value)
     {
         static constexpr char alphabet[] =
@@ -635,11 +906,6 @@ class redis_location_store_t final : public location_store_t,
                            key.mesh_name, std::move (owner));
     }
 
-    task_t<std::int64_t> remove_peers_by_owner (std::string owner_id) override
-    {
-        return remove_by_owner (location_kind_t::peer, std::move (owner_id));
-    }
-
     task_t<std::vector<peer_location_t>> list_peers (peer_location_filter_t filter) override
     {
         return list_unpaged<peer_location_t> (
@@ -665,11 +931,6 @@ class redis_location_store_t final : public location_store_t,
                            key.mesh_name, std::move (owner));
     }
 
-    task_t<std::int64_t> remove_spots_by_owner (std::string owner_id) override
-    {
-        return remove_by_owner (location_kind_t::spot, std::move (owner_id));
-    }
-
     task_t<std::optional<spot_location_t>> resolve_spot (spot_location_key_t key) override
     {
         return resolve_row<spot_location_t> (
@@ -689,8 +950,8 @@ class redis_location_store_t final : public location_store_t,
                                                   location_write_intent_t intent) override
     {
         const auto row_key = detail::redis_location_key_schema_t::encode_actor_key (
-          actor_location_key_t{actor.actor_type, actor.actor_id});
-        return write_row (location_kind_t::actor, row_key, std::nullopt, actor.owner_id,
+          actor_location_key_t{actor.actor_id});
+        return write_row (location_kind_t::actor, row_key, actor.spot_mesh_name, actor.owner_id,
                           actor.generation, detail::redis_location_row_codec_t::encode_actor (actor),
                           intent);
     }
@@ -701,11 +962,6 @@ class redis_location_store_t final : public location_store_t,
         return remove_row (location_kind_t::actor,
                            detail::redis_location_key_schema_t::encode_actor_key (key),
                            std::nullopt, std::move (owner));
-    }
-
-    task_t<std::int64_t> remove_actors_by_owner (std::string owner_id) override
-    {
-        return remove_by_owner (location_kind_t::actor, std::move (owner_id));
     }
 
     task_t<std::optional<actor_location_t>> resolve_actor (actor_location_key_t key) override
@@ -741,11 +997,6 @@ class redis_location_store_t final : public location_store_t,
                            std::nullopt, std::move (owner));
     }
 
-    task_t<std::int64_t> remove_routes_by_owner (std::string owner_id) override
-    {
-        return remove_by_owner (location_kind_t::route, std::move (owner_id));
-    }
-
     task_t<std::optional<route_location_t>> resolve_route (route_location_key_t key) override
     {
         return resolve_row<route_location_t> (
@@ -761,13 +1012,13 @@ class redis_location_store_t final : public location_store_t,
           [] (std::string_view json) { return detail::redis_location_row_codec_t::decode_route (json); });
     }
 
-    task_t<location_write_result_t> renew_owner_lease (
+    task_t<owner_lease_renewal_t> renew_owner_lease (
       std::string owner_id, zlink::routing_id_t node_rid, std::chrono::milliseconds lease_ttl) override
     {
         return renew_lease (std::move (owner_id), std::move (node_rid), lease_ttl);
     }
 
-    task_t<location_write_result_t> remove_owner_lease (std::string owner_id) override
+    task_t<bool> remove_owner_lease (std::string owner_id) override
     {
         return remove_lease (std::move (owner_id));
     }
@@ -822,6 +1073,53 @@ class redis_location_store_t final : public location_store_t,
         });
 #else
         (void) scope;
+        return unavailable_read<std::int64_t> ();
+#endif
+    }
+
+    task_t<std::int64_t> remove_all_by_owner (std::string owner_id) override
+    {
+#if defined(ZLINK_FRAMEWORK_LOCATIONS_REDIS_HAS_ASYNC_CLIENT)
+        return _worker.submit<std::int64_t> ([this, owner_id = std::move (owner_id)] {
+            const auto keys = std::vector<std::string>{
+              detail::redis_location_key_schema_t::owner_key (_options.key_prefix,
+                                                              location_kind_t::peer, owner_id),
+              detail::redis_location_key_schema_t::owner_key (_options.key_prefix,
+                                                              location_kind_t::spot, owner_id),
+              detail::redis_location_key_schema_t::owner_key (_options.key_prefix,
+                                                              location_kind_t::actor, owner_id),
+              detail::redis_location_key_schema_t::owner_key (_options.key_prefix,
+                                                              location_kind_t::route, owner_id),
+              detail::redis_location_key_schema_t::keys_key (_options.key_prefix,
+                                                             location_kind_t::peer),
+              detail::redis_location_key_schema_t::keys_key (_options.key_prefix,
+                                                             location_kind_t::spot),
+              detail::redis_location_key_schema_t::keys_key (_options.key_prefix,
+                                                             location_kind_t::actor),
+              detail::redis_location_key_schema_t::keys_key (_options.key_prefix,
+                                                             location_kind_t::route)};
+            const auto args = std::vector<std::string>{
+              row_key_prefix (location_kind_t::peer),
+              row_key_prefix (location_kind_t::spot),
+              row_key_prefix (location_kind_t::actor),
+              row_key_prefix (location_kind_t::route),
+              detail::redis_location_key_schema_t::stamp_key (_options.key_prefix,
+                                                              location_kind_t::peer, std::nullopt),
+              detail::redis_location_key_schema_t::stamp_key (_options.key_prefix,
+                                                              location_kind_t::spot, std::nullopt),
+              detail::redis_location_key_schema_t::stamp_key (_options.key_prefix,
+                                                              location_kind_t::actor, std::nullopt),
+              detail::redis_location_key_schema_t::stamp_key (_options.key_prefix,
+                                                              location_kind_t::route, std::nullopt)};
+            const auto removed = client ()
+                                   .eval<long long> (
+                                     std::string (detail::redis_location_scripts_t::remove_by_owner),
+                                     keys.begin (), keys.end (), args.begin (), args.end ())
+                                   .get ();
+            return static_cast<std::int64_t> (removed);
+        });
+#else
+        (void) owner_id;
         return unavailable_read<std::int64_t> ();
 #endif
     }
@@ -882,8 +1180,9 @@ class redis_location_store_t final : public location_store_t,
               std::get<0> (result), static_cast<std::int64_t> (std::get<1> (result)),
               static_cast<std::int64_t> (std::get<2> (result)));
           }
-          catch (const sw::redis::Error &) {
-              return unavailable_write_result ();
+          catch (const sw::redis::Error &error) {
+              throw framework_exception_t (framework_error_kind_t::request_failed, error.what (),
+                                           true);
           }
         });
 #else
@@ -929,8 +1228,9 @@ class redis_location_store_t final : public location_store_t,
               std::get<0> (result), static_cast<std::int64_t> (std::get<1> (result)),
               static_cast<std::int64_t> (std::get<2> (result)));
           }
-          catch (const sw::redis::Error &) {
-              return unavailable_write_result ();
+          catch (const sw::redis::Error &error) {
+              throw framework_exception_t (framework_error_kind_t::request_failed, error.what (),
+                                           true);
           }
         });
 #else
@@ -942,92 +1242,65 @@ class redis_location_store_t final : public location_store_t,
 #endif
     }
 
-    task_t<location_write_result_t> renew_lease (std::string owner_id,
-                                                 zlink::routing_id_t node_rid,
-                                                 std::chrono::milliseconds lease_ttl)
+    task_t<owner_lease_renewal_t> renew_lease (std::string owner_id,
+                                               zlink::routing_id_t node_rid,
+                                               std::chrono::milliseconds lease_ttl)
     {
 #if defined(ZLINK_FRAMEWORK_LOCATIONS_REDIS_HAS_ASYNC_CLIENT)
-        return _worker.submit<location_write_result_t> ([this, owner_id = std::move (owner_id),
-                                                         node_rid = std::move (node_rid),
-                                                         lease_ttl] {
+        return _worker.submit<owner_lease_renewal_t> ([this, owner_id = std::move (owner_id),
+                                                       node_rid = std::move (node_rid),
+                                                       lease_ttl] {
           try {
-            const auto ttl = std::max<std::int64_t> (1, lease_ttl.count ());
+            const auto ttl_ms = std::max<std::int64_t> (1, lease_ttl.count ());
             const auto keys = std::vector<std::string>{
               detail::redis_location_key_schema_t::lease_key (_options.key_prefix, owner_id),
               detail::redis_location_key_schema_t::leases_key (_options.key_prefix)};
             const auto args =
-              std::vector<std::string>{owner_id, node_rid.to_hex (), std::to_string (ttl)};
+              std::vector<std::string>{owner_id, node_rid.to_hex (), std::to_string (ttl_ms)};
             const auto now_ms = client ()
                                   .eval<long long> (
                                     std::string (detail::redis_location_scripts_t::renew_lease),
                                     keys.begin (), keys.end (), args.begin (), args.end ())
                                   .get ();
-            return location_write_result_t::stored (
-              0, detail::redis_location_script_result_t::from_unix_ms (
-                   static_cast<std::int64_t> (now_ms)));
+            const auto store_now = detail::redis_location_script_result_t::from_unix_ms (
+              static_cast<std::int64_t> (now_ms));
+            return owner_lease_renewal_t{store_now + std::chrono::milliseconds (ttl_ms),
+                                         store_now};
           }
-          catch (const sw::redis::Error &) {
-              return unavailable_write_result ();
+          catch (const sw::redis::Error &error) {
+              throw framework_exception_t (framework_error_kind_t::request_failed, error.what (),
+                                           true);
           }
         });
 #else
         (void) owner_id;
         (void) node_rid;
         (void) lease_ttl;
-        return unavailable_write ();
+        return unavailable_read<owner_lease_renewal_t> ();
 #endif
     }
 
-    task_t<location_write_result_t> remove_lease (std::string owner_id)
+    task_t<bool> remove_lease (std::string owner_id)
     {
 #if defined(ZLINK_FRAMEWORK_LOCATIONS_REDIS_HAS_ASYNC_CLIENT)
-        return _worker.submit<location_write_result_t> ([this, owner_id = std::move (owner_id)] {
+        return _worker.submit<bool> ([this, owner_id = std::move (owner_id)] {
           try {
             const auto keys = std::vector<std::string>{
               detail::redis_location_key_schema_t::lease_key (_options.key_prefix, owner_id),
               detail::redis_location_key_schema_t::leases_key (_options.key_prefix)};
             const auto args = std::vector<std::string>{owner_id};
-            const auto now_ms = client ()
-                                  .eval<long long> (
-                                    std::string (detail::redis_location_scripts_t::remove_lease),
-                                    keys.begin (), keys.end (), args.begin (), args.end ())
-                                  .get ();
-            return location_write_result_t::stored (
-              0, detail::redis_location_script_result_t::from_unix_ms (
-                   static_cast<std::int64_t> (now_ms)));
+            const auto removed = client ().del (keys[0]).get ();
+            client ().srem (keys[1], args[0]).get ();
+            return removed > 0;
           }
-          catch (const sw::redis::Error &) {
-              return unavailable_write_result ();
+          catch (const sw::redis::Error &error) {
+              throw framework_exception_t (framework_error_kind_t::request_failed, error.what (),
+                                           true);
           }
         });
 #else
         (void) owner_id;
-        return unavailable_write ();
-#endif
-    }
-
-    task_t<std::int64_t> remove_by_owner (location_kind_t kind, std::string owner_id)
-    {
-#if defined(ZLINK_FRAMEWORK_LOCATIONS_REDIS_HAS_ASYNC_CLIENT)
-        return _worker.submit<std::int64_t> ([this, kind, owner_id = std::move (owner_id)] {
-            const auto keys = std::vector<std::string>{
-              detail::redis_location_key_schema_t::owner_key (_options.key_prefix, kind, owner_id),
-              detail::redis_location_key_schema_t::keys_key (_options.key_prefix, kind)};
-            const auto args = std::vector<std::string>{
-              row_key_prefix (kind),
-              detail::redis_location_key_schema_t::stamp_key (_options.key_prefix, kind,
-                                                              std::nullopt)};
-            const auto removed = client ()
-                                   .eval<long long> (
-                                     std::string (detail::redis_location_scripts_t::remove_by_owner),
-                                     keys.begin (), keys.end (), args.begin (), args.end ())
-                                   .get ();
-            return static_cast<std::int64_t> (removed);
-        });
-#else
-        (void) kind;
-        (void) owner_id;
-        return unavailable_read<std::int64_t> ();
+        return unavailable_read<bool> ();
 #endif
     }
 
@@ -1267,7 +1540,7 @@ class redis_location_store_t final : public location_store_t,
 
     static bool matches (const actor_location_t &row, const actor_location_filter_t &filter)
     {
-        return (!filter.actor_type || row.actor_type == *filter.actor_type)
+        return (!filter.actor_type || (row.actor_type && *row.actor_type == *filter.actor_type))
                && (!filter.node_rid || row.node_rid == *filter.node_rid)
                && (!filter.spot_rid || (row.spot_rid && *row.spot_rid == *filter.spot_rid))
                && (!filter.location_kind || row.location_kind == *filter.location_kind);
@@ -1287,13 +1560,10 @@ class redis_location_store_t final : public location_store_t,
 
     static task_t<location_write_result_t> unavailable_write ()
     {
-        return task_t<location_write_result_t> (result_t<location_write_result_t>::success (
-          unavailable_write_result ()));
-    }
-
-    static location_write_result_t unavailable_write_result ()
-    {
-        return location_write_result_t{location_write_status_t::store_unavailable, 0, {}};
+        return task_t<location_write_result_t> (result_t<location_write_result_t>::failure (
+          framework_error_kind_t::request_failed,
+          "redis-plus-plus client is not available in this build",
+          true));
     }
 
     template <typename T> static task_t<T> unavailable_read ()

@@ -59,6 +59,43 @@ class entry_spot_t : public spot_t
     ~entry_spot_t () override = default;
 };
 
+namespace detail
+{
+struct spot_accept_reject_result_t
+{
+    bool accepted = false;
+    std::optional<message_t> reply;
+
+    static spot_accept_reject_result_t accept (std::optional<message_t> reply = std::nullopt)
+    {
+        return spot_accept_reject_result_t{true, std::move (reply)};
+    }
+
+    template <typename TReply>
+    requires (!std::is_same_v<std::remove_cvref_t<TReply>, message_t>
+              && !std::is_same_v<std::remove_cvref_t<TReply>,
+                                 zlink::message_t>) static spot_accept_reject_result_t
+      accept (TReply reply)
+    {
+        return accept (message_t::from (std::move (reply)));
+    }
+
+    static spot_accept_reject_result_t reject (std::optional<message_t> reply = std::nullopt)
+    {
+        return spot_accept_reject_result_t{false, std::move (reply)};
+    }
+
+    template <typename TReply>
+    requires (!std::is_same_v<std::remove_cvref_t<TReply>, message_t>
+              && !std::is_same_v<std::remove_cvref_t<TReply>,
+                                 zlink::message_t>) static spot_accept_reject_result_t
+      reject (TReply reply)
+    {
+        return reject (message_t::from (std::move (reply)));
+    }
+};
+} // namespace detail
+
 struct spot_actor_join_response_t
 {
     bool accepted = false;
@@ -66,7 +103,8 @@ struct spot_actor_join_response_t
 
     static spot_actor_join_response_t accept (std::optional<message_t> reply = std::nullopt)
     {
-        return spot_actor_join_response_t{true, std::move (reply)};
+        auto result = detail::spot_accept_reject_result_t::accept (std::move (reply));
+        return spot_actor_join_response_t{result.accepted, std::move (result.reply)};
     }
 
     template <typename TReply>
@@ -80,7 +118,8 @@ struct spot_actor_join_response_t
 
     static spot_actor_join_response_t reject (std::optional<message_t> reply = std::nullopt)
     {
-        return spot_actor_join_response_t{false, std::move (reply)};
+        auto result = detail::spot_accept_reject_result_t::reject (std::move (reply));
+        return spot_actor_join_response_t{result.accepted, std::move (result.reply)};
     }
 
     template <typename TReply>
@@ -95,9 +134,9 @@ struct spot_actor_join_response_t
 
 enum class spot_create_state_t
 {
-    existing,
-    created,
-    rejected
+    existing = 0,
+    created = 1,
+    rejected = 2
 };
 
 struct spot_create_response_t
@@ -107,7 +146,8 @@ struct spot_create_response_t
 
     static spot_create_response_t accept (std::optional<message_t> reply = std::nullopt)
     {
-        return spot_create_response_t{true, std::move (reply)};
+        auto result = detail::spot_accept_reject_result_t::accept (std::move (reply));
+        return spot_create_response_t{result.accepted, std::move (result.reply)};
     }
 
     template <typename TReply>
@@ -121,7 +161,8 @@ struct spot_create_response_t
 
     static spot_create_response_t reject (std::optional<message_t> reply = std::nullopt)
     {
-        return spot_create_response_t{false, std::move (reply)};
+        auto result = detail::spot_accept_reject_result_t::reject (std::move (reply));
+        return spot_create_response_t{result.accepted, std::move (result.reply)};
     }
 
     template <typename TReply>
@@ -371,9 +412,10 @@ task_t<zlink::message_t> invoke_spot_member_keepalive (TCall call,
 
 enum class spot_handler_kind_t
 {
-    packet,
-    subscription,
-    actor_packet
+    packet = 0,
+    subscription = 1,
+    actor_send = 2,
+    actor_request = 3
 };
 
 struct spot_route_t
@@ -553,7 +595,7 @@ class spot_context_t
                       if (!timeout_completed->exchange (true)) {
                           auto complete_timeout = [timeout_completion] () mutable {
                               timeout_completion.complete (result_t<result_type>::failure (
-                                framework_error_kind_t::worker_timeout, "worker task timed out"));
+                                framework_error_kind_t::worker_timed_out, "worker task timed out"));
                           };
                           if (timeout_direct) {
                               complete_timeout ();
@@ -598,9 +640,9 @@ class spot_context_t
     std::vector<spot_packet_descriptor_t> packet_registry () const;
 
     template <typename TActor>
-    task_t<actor_ref_t> leaveActor (const actor_ref_t &actor_ref, TActor &actor)
+    task_t<actor_ref_t> leave_actor (const actor_ref_t &actor_ref, TActor &actor)
     {
-        return leaveActor_erased (
+        return leave_actor_erased (
           actor_ref, std::type_index (typeid (TActor)), &actor,
           [] (void *actor_instance, const actor_ref_t &committed) {
               auto &typed_actor = *static_cast<TActor *> (actor_instance);
@@ -713,7 +755,7 @@ class spot_context_t
                                              zlink::message_t payload);
     spot_context_t &register_packet_erased (std::string packet_name, std::type_index payload_type);
     task_t<actor_ref_t>
-    leaveActor_erased (const actor_ref_t &actor_ref,
+    leave_actor_erased (const actor_ref_t &actor_ref,
                        std::type_index actor_type,
                        void *actor,
                        std::function<void (void *, const actor_ref_t &)> update_actor_ref);
@@ -854,55 +896,21 @@ class spot_handler_registry_t
 
     template <auto Method>
     spot_handler_registry_t &
-    add_actor_packet (std::string packet_name = detail::message_name<detail::unqualified_spot_arg_t<
-                        typename detail::spot_member_traits_t<Method>::template arg_t<2>>> ())
+    add_actor_send (std::string packet_name = detail::message_name<detail::unqualified_spot_arg_t<
+                      typename detail::spot_member_traits_t<Method>::template arg_t<2>>> ())
     {
-        using traits = detail::spot_member_traits_t<Method>;
-        static_assert (
-          traits::arg_count == 3,
-          "SPOT actor packet member must accept actor, context, and payload arguments");
-        using spot_type = typename traits::spot_type;
-        using actor_type = detail::unqualified_spot_arg_t<typename traits::template arg_t<0>>;
-        using context_type = detail::unqualified_spot_arg_t<typename traits::template arg_t<1>>;
-        using message_type = detail::unqualified_spot_arg_t<typename traits::template arg_t<2>>;
-        static_assert (std::is_same_v<context_type, spot_actor_send_context_t>
-                         || std::is_same_v<context_type, spot_actor_request_context_t>,
-                       "SPOT actor packet context must be spot_actor_send_context_t or "
-                       "spot_actor_request_context_t");
-        auto registered_packet_name = packet_name;
-        auto &registry = add_handler_erased (
-          spot_handler_kind_t::actor_packet, std::move (packet_name), {},
-          std::type_index (typeid (spot_type)), std::type_index (typeid (message_type)),
-          std::type_index (typeid (actor_type)), std::type_index (typeid (void)),
-          [registered_packet_name = std::move (registered_packet_name)] (
-            void *spot, void *actor, service_provider_t &, serializer_registry_t &serializers,
-            const zlink::message_t &message, const spot_actor_message_metadata_t &metadata) {
-              auto &typed_spot = *static_cast<spot_type *> (spot);
-              auto &typed_actor = *static_cast<actor_type *> (actor);
-              auto payload =
-                std::make_shared<message_type> (serializers.get<message_type> ().deserialize (
-                  detail::encoded_payload_from_raw (message)));
-              auto send_context = std::make_shared<spot_actor_send_context_t> (
-                spot_actor_send_context_t{registered_packet_name, metadata.content_type, metadata});
-              auto request_context =
-                std::make_shared<spot_actor_request_context_t> (spot_actor_request_context_t{
-                  registered_packet_name, metadata.content_type, metadata, {}});
-              if constexpr (std::is_same_v<context_type, spot_actor_request_context_t>) {
-                  return detail::invoke_spot_member_keepalive (
-                    [&typed_spot, &typed_actor, request_context, payload] {
-                        return (typed_spot.*Method) (typed_actor, *request_context, *payload);
-                    },
-                    serializers, request_context, payload);
-              } else {
-                  return detail::invoke_spot_member_keepalive (
-                    [&typed_spot, &typed_actor, send_context, payload] {
-                        return (typed_spot.*Method) (typed_actor, *send_context, *payload);
-                    },
-                    serializers, send_context, payload);
-              }
-          });
-        registry.template register_actor_admission<spot_type, actor_type> ();
-        return registry;
+        return add_actor_handler<Method, spot_handler_kind_t::actor_send, spot_actor_send_context_t> (
+          std::move (packet_name));
+    }
+
+    template <auto Method>
+    spot_handler_registry_t &
+    add_actor_request (std::string packet_name = detail::message_name<detail::unqualified_spot_arg_t<
+                         typename detail::spot_member_traits_t<Method>::template arg_t<2>>> ())
+    {
+        return add_actor_handler<Method,
+                                 spot_handler_kind_t::actor_request,
+                                 spot_actor_request_context_t> (std::move (packet_name));
     }
 
     std::vector<spot_handler_descriptor_t> descriptors () const;
@@ -928,7 +936,8 @@ class spot_handler_registry_t
                                                     serializer_registry_t &serializers,
                                                     const zlink::message_t &message) const
     {
-        return invoke_erased (spot_handler_kind_t::actor_packet, packet_name, {},
+        const auto kind = resolve_actor_packet_kind (packet_name, std::type_index (typeid (TActor)));
+        return invoke_erased (kind, packet_name, {},
                               std::type_index (typeid (TActor)), &spot, &actor, services,
                               serializers, message)
           .result ();
@@ -943,7 +952,8 @@ class spot_handler_registry_t
                                                     const zlink::message_t &message,
                                                     spot_actor_message_metadata_t metadata) const
     {
-        return invoke_erased (spot_handler_kind_t::actor_packet, packet_name, {},
+        const auto kind = resolve_actor_packet_kind (packet_name, std::type_index (typeid (TActor)));
+        return invoke_erased (kind, packet_name, {},
                               std::type_index (typeid (TActor)), &spot, &actor, services,
                               serializers, message, std::move (metadata))
           .result ();
@@ -1021,6 +1031,9 @@ class spot_handler_registry_t
         register_actor_admission_erased (std::type_index (typeid (TActor)), std::move (callbacks));
     }
 
+    spot_handler_kind_t resolve_actor_packet_kind (std::string_view packet_name,
+                                                   std::type_index actor_type) const;
+
     spot_handler_registry_t &add_handler_erased (spot_handler_kind_t kind,
                                                  std::string packet_name,
                                                  std::string topic,
@@ -1044,6 +1057,51 @@ class spot_handler_registry_t
 
     void register_actor_admission_erased (std::type_index actor_type,
                                           detail::spot_actor_admission_callbacks_t callbacks);
+
+    template <auto Method, spot_handler_kind_t Kind, typename ExpectedContext>
+    spot_handler_registry_t &add_actor_handler (std::string packet_name)
+    {
+        using traits = detail::spot_member_traits_t<Method>;
+        static_assert (
+          traits::arg_count == 3,
+          "SPOT actor handler member must accept actor, context, and payload arguments");
+        using spot_type = typename traits::spot_type;
+        using actor_type = detail::unqualified_spot_arg_t<typename traits::template arg_t<0>>;
+        using context_type = detail::unqualified_spot_arg_t<typename traits::template arg_t<1>>;
+        using message_type = detail::unqualified_spot_arg_t<typename traits::template arg_t<2>>;
+        static_assert (std::is_same_v<context_type, ExpectedContext>,
+                       "SPOT actor handler context does not match registration kind");
+        auto registered_packet_name = packet_name;
+        auto &registry = add_handler_erased (
+          Kind, std::move (packet_name), {}, std::type_index (typeid (spot_type)),
+          std::type_index (typeid (message_type)), std::type_index (typeid (actor_type)),
+          std::type_index (typeid (void)),
+          [registered_packet_name = std::move (registered_packet_name)] (
+            void *spot, void *actor, service_provider_t &, serializer_registry_t &serializers,
+            const zlink::message_t &message, const spot_actor_message_metadata_t &metadata) {
+              auto &typed_spot = *static_cast<spot_type *> (spot);
+              auto &typed_actor = *static_cast<actor_type *> (actor);
+              auto payload =
+                std::make_shared<message_type> (serializers.get<message_type> ().deserialize (
+                  detail::encoded_payload_from_raw (message)));
+              auto context = [&] {
+                  if constexpr (std::is_same_v<ExpectedContext, spot_actor_request_context_t>) {
+                      return std::make_shared<ExpectedContext> (
+                        ExpectedContext{registered_packet_name, metadata.content_type, metadata, {}});
+                  } else {
+                      return std::make_shared<ExpectedContext> (
+                        ExpectedContext{registered_packet_name, metadata.content_type, metadata});
+                  }
+              } ();
+              return detail::invoke_spot_member_keepalive (
+                [&typed_spot, &typed_actor, context, payload] {
+                    return (typed_spot.*Method) (typed_actor, *context, *payload);
+                },
+                serializers, context, payload);
+          });
+        registry.template register_actor_admission<spot_type, actor_type> ();
+        return registry;
+    }
 
     std::shared_ptr<detail::spot_context_state_t> _state;
 };

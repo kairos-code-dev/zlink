@@ -70,7 +70,7 @@ CMake sample target과 runner를 둔다.
 
 | Scenario | C++ 대응 | 상태 | 비고 |
 |----------|----------|------|------|
-| registry discovery readiness | `Probe/main.cpp`; `run_sample.sh` | done | Tracking route readiness를 client 실행 전에 확인한다. |
+| location store readiness | `Probe/main.cpp`; `run_sample.sh` | done | Tracking route readiness를 client 실행 전에 확인한다. |
 | successful delivery | `Client/delivery_dispatch_client_scenario.hpp`; `Server/CustomerGateway/main.cpp`; `Server/CourierSession/main.cpp`; `Server/CourierGateway/main.cpp`; `Server/CourierActorNode/main.cpp` | done | 고객 session 상태 push와 courier-a gateway/actor-node/courier-session offer/decision 경로를 검증한다. |
 | reassigned delivery | `Client/delivery_dispatch_client_scenario.hpp`; `Server/CustomerGateway/main.cpp`; `Server/CourierSession/main.cpp`; `Server/CourierGateway/main.cpp`; `Server/CourierActorNode/main.cpp`; `Server/DispatchCenter/main.cpp` | done | courier-a stream offer timeout 뒤 gateway가 courier-b actor node로 재요청하고, courier-b stream offer/decision과 재배정 상태를 검증한다. |
 | server evidence self-check | `Server/DispatchApi/main.cpp`; `Server/Configuration/evidence_store.hpp` | done | `/self-check/assert`가 evidence log를 검증한다. |
@@ -81,7 +81,7 @@ CMake sample target과 runner를 둔다.
 - 2026-07-01: `timeout 420s framework/languages/cpp/samples/DeliveryDispatch/run_sample.sh`
   - 결과: 통과
   - 출력: `deliverydispatch sample result=passed`
-  - 의미: sample target build, registry readiness, customer stream status push, courier stream offer/decision,
+  - 의미: sample target build, location store readiness, customer stream status push, courier stream offer/decision,
     reassignment marker, server evidence self-check, role별 message-flow evidence가 샘플 runner에서 검증된다.
 - 2026-07-01: `ctest --test-dir framework/languages/cpp/build -R 'test_cpp_framework_sample_parity' --output-on-failure`
   - 결과: 통과

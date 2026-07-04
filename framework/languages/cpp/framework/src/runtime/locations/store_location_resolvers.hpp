@@ -3,7 +3,11 @@
 
 #include "runtime/locations/location_key_codec.hpp"
 #include "runtime/locations/location_runtime.hpp"
+#include "runtime/locations/location_value_codec.hpp"
 
+#include <zlink/framework/contracts/locations/runtime_query.hpp>
+
+#include <algorithm>
 #include <chrono>
 #include <map>
 
@@ -13,12 +17,12 @@ namespace zlink::framework::runtime
 class store_location_resolvers_t final : public peer_location_resolver_t,
                                          public spot_location_resolver_t,
                                          public actor_location_resolver_t,
-                                         public route_location_resolver_t
+                                         public location_readiness_t
 {
   public:
     explicit store_location_resolvers_t (location_store_t &store) : _store (&store) {}
 
-    task_t<std::vector<peer_location_t>> list_peers (peer_location_filter_t filter) override
+    task_t<std::vector<peer_location_t>> list_live_peers (peer_location_filter_t filter) override
     {
         return completed (_store->list_peers (std::move (filter)).result ().value ());
     }
@@ -38,12 +42,10 @@ class store_location_resolvers_t final : public peer_location_resolver_t,
     }
 
     task_t<std::optional<spot_address_t>>
-    resolve_actor_spot_address (std::string actor_type, std::string actor_id) override
+    resolve_actor_spot_address (std::string actor_id) override
     {
         auto row = _store
-                     ->resolve_actor (actor_location_key_t{
-                       location_key_codec_t::normalize_actor_type (std::move (actor_type)),
-                       std::move (actor_id)})
+                     ->resolve_actor (actor_location_key_t{std::move (actor_id)})
                      .result ()
                      .value ();
         if (!row) {
@@ -54,10 +56,30 @@ class store_location_resolvers_t final : public peer_location_resolver_t,
             ? row->node_rid
             : *row->spot_rid;
         return completed (std::optional<spot_address_t>{spot_address_t{
-          std::string{}, row->node_rid, target_spot}});
+          row->spot_mesh_name, row->node_rid, target_spot}});
     }
 
-    task_t<std::optional<route_location_t>> resolve_route (route_location_key_t key) override
+    task_t<bool> is_peer_ready (std::string mesh_name,
+                                location_role_t role,
+                                std::optional<zlink::routing_id_t> node_rid = std::nullopt) override
+    {
+        try {
+            auto peers = _store
+                           ->list_peers (peer_location_filter_t{
+                             .mesh_name = std::move (mesh_name), .role = role, .node_rid = node_rid})
+                           .result ()
+                           .value ();
+            return completed (std::any_of (peers.begin (), peers.end (),
+                                           [] (const peer_location_t &peer) {
+                                               return peer.weight != 0;
+                                           }));
+        }
+        catch (...) {
+            return completed (false);
+        }
+    }
+
+    task_t<std::optional<route_location_t>> resolve_route (route_location_key_t key)
     {
         return completed (_store->resolve_route (std::move (key)).result ().value ());
     }
@@ -81,7 +103,7 @@ class store_location_runtime_query_t final : public location_runtime_query_t
     {
     }
 
-    task_t<location_runtime_status_t> status () override
+    task_t<location_runtime_status_t> get_status () override
     {
         location_runtime_status_t value;
         value.watch_enabled = false;
@@ -103,25 +125,28 @@ class store_location_runtime_query_t final : public location_runtime_query_t
         return completed (std::move (value));
     }
 
-    task_t<std::vector<peer_location_t>> list_peers (peer_location_filter_t filter) override
+    task_t<std::vector<peer_location_t>>
+    list_peer_locations (peer_location_filter_t filter) override
     {
         return completed (_store->list_peers (std::move (filter)).result ().value ());
     }
 
     task_t<location_page_t<spot_location_t>>
-    list_spots (spot_location_filter_t filter, location_page_request_t page = {}) override
+    list_spot_locations (spot_location_filter_t filter, location_page_request_t page = {}) override
     {
         return completed (_store->list_spots (std::move (filter), page).result ().value ());
     }
 
     task_t<location_page_t<actor_location_t>>
-    list_actors (actor_location_filter_t filter, location_page_request_t page = {}) override
+    list_actor_locations (actor_location_filter_t filter,
+                          location_page_request_t page = {}) override
     {
         return completed (_store->list_actors (std::move (filter), page).result ().value ());
     }
 
     task_t<location_page_t<route_location_t>>
-    list_routes (route_location_filter_t filter, location_page_request_t page = {}) override
+    list_route_locations (route_location_filter_t filter,
+                          location_page_request_t page = {}) override
     {
         return completed (_store->list_routes (std::move (filter), page).result ().value ());
     }
@@ -177,8 +202,10 @@ class store_location_runtime_query_t final : public location_runtime_query_t
             if (filter.role && peer.role != *filter.role) {
                 continue;
             }
-            const auto key = peer.mesh_name + "|" + to_canonical_string (peer.auto_connect_type)
-                             + "|" + to_canonical_string (peer.role);
+            const auto key = peer.mesh_name + "|"
+                             + location_value_codec_t::to_canonical_string (
+                               peer.auto_connect_type)
+                             + "|" + location_value_codec_t::to_canonical_string (peer.role);
             auto &summary = grouped[key];
             summary.mesh_name = peer.mesh_name;
             summary.auto_connect_type = peer.auto_connect_type;

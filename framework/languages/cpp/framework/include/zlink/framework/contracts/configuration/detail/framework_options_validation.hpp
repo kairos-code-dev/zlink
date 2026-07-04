@@ -34,32 +34,11 @@ inline void validate_framework_options (const framework_options_state_t &options
                                         const handler_group_options_state_t &handler_groups)
 {
     validate_dispatch_options (options.dispatch);
-    if (options.use_in_memory_location_stores && options.has_any_location_store_type ()) {
-        throw framework_exception_t (
-          framework_error_kind_t::request_protocol_error,
-          "in-memory location stores cannot be combined with explicit location store registrations");
-    }
-    if (options.has_location_store_instance
-        && (options.use_in_memory_location_stores || options.has_any_location_store_type ())) {
+    if (options.has_location_store_instance && options.use_in_memory_location_stores) {
         throw framework_exception_t (
           framework_error_kind_t::request_protocol_error,
           "add_location_store registers every store role at once and cannot be combined with "
-          "use_in_memory_location_stores or per-role add_*_location_store registrations");
-    }
-    if (options.has_any_location_store_type () && !options.has_all_location_store_types ()) {
-        throw framework_exception_t (
-          framework_error_kind_t::request_protocol_error,
-          "location stores are all-or-nothing: register peer, spot, actor, route, and owner "
-          "lease stores together");
-    }
-    if (options.has_all_location_store_types ()
-        && (*options.peer_location_store_type != *options.spot_location_store_type
-            || *options.peer_location_store_type != *options.actor_location_store_type
-            || *options.peer_location_store_type != *options.route_location_store_type
-            || *options.peer_location_store_type != *options.owner_lease_store_type)) {
-        throw framework_exception_t (
-          framework_error_kind_t::request_protocol_error,
-          "C++ location store roles must be backed by one location_store_t implementation type");
+          "use_in_memory_location_stores.");
     }
     for (const auto &channel_name : options.client_server_channels) {
         if (!options.client_server_channels_with_server.contains (channel_name)

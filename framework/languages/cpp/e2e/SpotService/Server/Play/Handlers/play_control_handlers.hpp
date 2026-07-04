@@ -244,7 +244,7 @@ class type_mismatch_spot_handler_t
             throw zlink::framework::framework_exception_t (
               actor.error_kind (), actor.error () ? actor.error ()->what () : "actor create failed");
         }
-        auto bound = _actors.bind (actor.value ().ref ()).async ().result ();
+        auto bound = _actors.bind_or_get (actor.value ().ref ()).async ().result ();
         if (!bound) {
             throw zlink::framework::framework_exception_t (
               bound.error_kind (), bound.error () ? bound.error ()->what () : "actor bind failed");

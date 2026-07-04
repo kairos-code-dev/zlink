@@ -106,7 +106,7 @@ int main (int argc, char **argv)
               .enable_client (options.api_endpoint);
         }
         if (!options.route_endpoint.empty ()) {
-            auto route = framework.add_route_mesh (e2e::route_channel)
+            auto route = framework.add_route_mesh_channel (e2e::route_channel)
               .enable_server (options.route_endpoint)
               .set_routing_id (zlink::routing_id_t::from (options.rid))
               .add_request_handler<rm_provider::route_ping_handler_t,

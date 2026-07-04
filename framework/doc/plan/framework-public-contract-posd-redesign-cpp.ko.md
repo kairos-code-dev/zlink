@@ -30,7 +30,7 @@ streams/timers/workers) + 구현 소스, e2e, samples.
 | S4. 사용자 편의 표면 | L12~L17, C1~C4, C7, C8, B1~B6 | ✅ | 2026-07-04 (S4-b 포함) |
 | S5. 샘플·E2E 전수 전환 — 소비자 이행, 구 표면·구 헤더 경로 grep 0 (`e2e/`·샘플 포함) | L18 + L/A~D 소비자 반영 | ✅ | 2026-07-04 (S5-b·S5-c·RT-FIX·CM-FIX 포함, ctest 42/42) |
 | S6. contract 형태 고정 테스트 + grep 가드 | 공통 문서 6절 | ✅ | 2026-07-04 (ctest 42/42) |
-| G. 완료 게이트 — codex 리뷰(누락 0건) | 전체 | ⬜ | |
+| G. 완료 게이트 — codex 리뷰(누락 0건) | 전체 | ✅ | 2026-07-04 (POSD 리뷰 "이슈 없음" · contract 리뷰 1차 3건(fixture UpdatedAt·actor ref 필드·e2e README) 수정, 2차 잔여는 DeliveryDispatch 문서 registry 서술 6곳 — 감독자 직권 교정·grep 0. ctest 42/42) |
 
 ## 2. 언어 매핑
 
@@ -63,11 +63,11 @@ streams/timers/workers) + 구현 소스, e2e, samples.
 
 ## 4. 사전 조사(S0) 체크리스트
 
-- [ ] 변경 목록 L1~L20, A1~D3 각각에 대해 cpp 현재 표면의 대응 심볼·헤더를 표로 만든다
+- [x] 변경 목록 L1~L20, A1~D3 각각에 대해 cpp 현재 표면의 대응 심볼·헤더를 표로 만든다
       (없음/이미 충족/변경 필요 3분류).
-- [ ] `contracts/registry/` 잔재 목록과 처리 방침.
-- [ ] 비동기·오류 전달 관례 확인(콜백/future/expected) — C7 대조표와 L13 터미널 계약의 cpp 열.
-- [ ] 헤더 경로 변경 목록(L11) — 소비자(e2e/samples/connector) include 파급 산정.
+- [x] `contracts/registry/` 잔재 목록과 처리 방침.
+- [x] 비동기·오류 전달 관례 확인(콜백/future/expected) — C7 대조표와 L13 터미널 계약의 cpp 열.
+- [x] 헤더 경로 변경 목록(L11) — 소비자(e2e/samples/connector) include 파급 산정.
 
 ## 5. 완료 판정
 

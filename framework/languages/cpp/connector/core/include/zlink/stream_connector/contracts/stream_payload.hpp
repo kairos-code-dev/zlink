@@ -48,6 +48,13 @@ template <typename TMessage> zlink::message_t to_packet_payload (const TMessage 
 
 template <typename TMessage>
 auto apply_packet_payload (TMessage &message,
+                           const zlink::message_t &payload,
+                           int) -> decltype (from_stream_payload (payload, message), void ());
+
+template <typename TMessage> void apply_packet_payload (TMessage &, const zlink::message_t &, ...);
+
+template <typename TMessage>
+auto apply_packet_payload (TMessage &message,
                            zlink::stream_connector::codec_t codec,
                            const zlink::message_t &payload,
                            int) -> decltype (from_stream_payload (codec, payload, message), void ())

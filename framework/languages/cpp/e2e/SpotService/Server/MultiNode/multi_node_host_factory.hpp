@@ -45,7 +45,7 @@ inline int run_multi_node_server (int argc, char **argv)
         configure_codecs (options.codecs ());
         add_redis_location_store (options, redis_endpoint, redis_key_prefix);
 
-        auto route = options.add_route_mesh (multi_node_route_channel_for (node_rid))
+        auto route = options.add_route_mesh_channel (multi_node_route_channel_for (node_rid))
                        .enable_server (route_endpoint)
                        .set_routing_id (zlink::routing_id_t::from (node_rid))
                        .enable_client ()

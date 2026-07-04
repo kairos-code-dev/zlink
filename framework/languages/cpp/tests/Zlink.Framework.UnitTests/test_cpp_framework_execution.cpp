@@ -281,7 +281,8 @@ int main ()
     timeout_scheduler->run_owner_job ();
     const auto timeout_result = timeout_task.result ();
     if (timeout_result
-        || timeout_result.error_kind () != zlink::framework::framework_error_kind_t::worker_timeout) {
+        || timeout_result.error_kind ()
+             != zlink::framework::framework_error_kind_t::worker_timed_out) {
         return 19;
     }
     timeout_scheduler->run_worker_job ();

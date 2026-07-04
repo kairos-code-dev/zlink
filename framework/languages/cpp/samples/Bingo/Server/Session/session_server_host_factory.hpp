@@ -42,7 +42,7 @@ class session_server_host_factory_t
             use_default_bingo_codecs (options.codecs ());
             add_sample_location_store (options, topology);
             options.add_client_server_channel (sample_names_t::api_channel).enable_client ();
-            options.add_route_mesh (sample_names_t::play_channel)
+            options.add_route_mesh_channel (sample_names_t::play_channel)
               .set_routing_id (zlink::routing_id_t::from (topology.selected_session_route_rid ()))
               .enable_server (topology.selected_session_route_endpoint ())
               .enable_client ();

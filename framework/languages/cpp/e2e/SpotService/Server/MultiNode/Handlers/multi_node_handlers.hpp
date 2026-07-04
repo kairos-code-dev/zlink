@@ -36,7 +36,7 @@ inline e2e::state_res_t request_multi_node_state (zlink::framework::route_client
     while (std::chrono::steady_clock::now () < deadline) {
         auto reply =
           routes
-            .request (multi_node_route_channel_for (node_rid), zlink::routing_id_t::from (node_rid),
+            .request_to_node (multi_node_route_channel_for (node_rid), zlink::routing_id_t::from (node_rid),
                       zlink::framework::spot_rid_t::from_string (spot_rid),
                       e2e::state_req_t{.op = "add", .amount = delta})
             .packet_name ("StateReq")

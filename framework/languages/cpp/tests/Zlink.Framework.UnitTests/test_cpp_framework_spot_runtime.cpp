@@ -223,7 +223,7 @@ struct relay_entry_spot_t : public zlink::framework::entry_spot_t
 {
     void configure (zlink::framework::entry_spot_context_t &context)
     {
-        context.handlers ().add_actor_packet<&relay_entry_spot_t::on_relay> ("relay.request");
+        context.handlers ().add_actor_request<&relay_entry_spot_t::on_relay> ("relay.request");
     }
 
     void configure (zlink::framework::spot_context_t &context)
@@ -256,7 +256,7 @@ struct relay_spot_t : public zlink::framework::spot_t
 {
     void configure (zlink::framework::spot_context_t &context)
     {
-        context.handlers ().add_actor_packet<&relay_spot_t::on_relay> ("relay.request");
+        context.handlers ().add_actor_request<&relay_spot_t::on_relay> ("relay.request");
     }
 
     zlink::framework::spot_actor_join_response_t on_actor_join (
@@ -310,8 +310,8 @@ struct entry_dispatch_probe_spot_t : public zlink::framework::entry_spot_t
     void configure (zlink::framework::entry_spot_context_t &context)
     {
         context.handlers ()
-          .add_actor_packet<&entry_dispatch_probe_spot_t::on_block> ("entry.block")
-          .add_actor_packet<&entry_dispatch_probe_spot_t::on_yield> ("entry.yield");
+          .add_actor_request<&entry_dispatch_probe_spot_t::on_block> ("entry.block")
+          .add_actor_request<&entry_dispatch_probe_spot_t::on_yield> ("entry.yield");
     }
 
     void onCreateActor (entry_dispatch_probe_actor_t &, const zlink::framework::message_t &)
@@ -496,7 +496,7 @@ struct erased_disconnect_spot_t : public zlink::framework::spot_t
 {
     void configure (zlink::framework::spot_context_t &context)
     {
-        context.handlers ().add_actor_packet<&erased_disconnect_spot_t::on_move> ("move");
+        context.handlers ().add_actor_send<&erased_disconnect_spot_t::on_move> ("move");
     }
 
     zlink::framework::spot_actor_join_response_t on_actor_join (player_actor_factory_t &,
@@ -537,7 +537,7 @@ struct serial_probe_spot_t : public zlink::framework::spot_t
 {
     void configure (zlink::framework::spot_context_t &context)
     {
-        context.handlers ().add_actor_packet<&serial_probe_spot_t::on_move> ("serial.move");
+        context.handlers ().add_actor_send<&serial_probe_spot_t::on_move> ("serial.move");
     }
 
     void on_move (player_actor_factory_t &,
@@ -594,11 +594,11 @@ struct async_probe_spot_t : public zlink::framework::spot_t
     {
         _context = context;
         context.handlers ()
-          .add_actor_packet<&async_probe_spot_t::slow> ("async.slow")
-          .add_actor_packet<&async_probe_spot_t::slow_yield> ("async.slow-yield")
-          .add_actor_packet<&async_probe_spot_t::request_yield> ("async.request-yield")
-          .add_actor_packet<&async_probe_spot_t::join_yield> ("async.join-yield")
-          .add_actor_packet<&async_probe_spot_t::quick> ("async.quick");
+          .add_actor_request<&async_probe_spot_t::slow> ("async.slow")
+          .add_actor_request<&async_probe_spot_t::slow_yield> ("async.slow-yield")
+          .add_actor_request<&async_probe_spot_t::request_yield> ("async.request-yield")
+          .add_actor_request<&async_probe_spot_t::join_yield> ("async.join-yield")
+          .add_actor_request<&async_probe_spot_t::quick> ("async.quick");
     }
 
     void set_join_context (zlink::framework::actor_context_t context)
@@ -674,7 +674,7 @@ struct async_probe_spot_t : public zlink::framework::spot_t
             slow_completed = true;
             changed.notify_all ();
         }
-        co_return move_reply_t{static_cast<int> (joined.actor.generation ()) + request.value};
+        co_return move_reply_t{static_cast<int> (joined.actor->generation ()) + request.value};
     }
 
     zlink::framework::task_t<move_reply_t>
@@ -838,7 +838,7 @@ struct actor_packet_self_leave_spot_t : public zlink::framework::spot_t
     void configure (zlink::framework::spot_context_t &context)
     {
         spot_context = context;
-        context.handlers ().add_actor_packet<&actor_packet_self_leave_spot_t::on_leave_request> (
+        context.handlers ().add_actor_request<&actor_packet_self_leave_spot_t::on_leave_request> (
           "self.leave");
     }
 
@@ -854,7 +854,7 @@ struct actor_packet_self_leave_spot_t : public zlink::framework::spot_t
                                     zlink::framework::spot_actor_request_context_t &,
                                     const relay_request_t &request)
     {
-        auto left = spot_context.leaveActor (actor.current_ref, actor).result ();
+        auto left = spot_context.leave_actor (actor.current_ref, actor).result ();
         if (!left) {
             throw std::runtime_error ("self leave failed");
         }
@@ -1536,10 +1536,10 @@ int main ()
     if (!recreated_destroy_actor) {
         return 80;
     }
-    auto leaveActor =
+    auto leave_actor =
       lifecycle_gateway.manager ().create ("player", "context-leave-player").value ();
-    auto leave_context = leaveActor.context ();
-    player_actor_factory_t leaveActor_state;
+    auto leave_context = leave_actor.context ();
+    player_actor_factory_t leave_actor_state;
     auto leave_stage_join =
       leave_context
         .join_spot (lifecycle_stage.spot_rid, std::string ("44"))
@@ -1549,26 +1549,26 @@ int main ()
         return 76;
     }
     auto empty_leave =
-      lifecycle_stage.context.leaveActor (zlink::framework::actor_ref_t{}, leaveActor_state).result ();
+      lifecycle_stage.context.leave_actor (zlink::framework::actor_ref_t{}, leave_actor_state).result ();
     if (empty_leave
         || empty_leave.error_kind () != framework_error_kind_t::actor_route_not_found) {
         return 110;
     }
     auto wrong_spot_leave =
-      lifecycle_stage.context.leaveActor (lifecycle_actor_context.actor_ref (), leaveActor_state)
+      lifecycle_stage.context.leave_actor (lifecycle_actor_context.actor_ref (), leave_actor_state)
         .result ();
     if (wrong_spot_leave
         || wrong_spot_leave.error_kind () != framework_error_kind_t::actor_route_not_found) {
         return 111;
     }
     auto stale_leave = lifecycle_stage.context
-                         .leaveActor (
+                         .leave_actor (
                            zlink::framework::actor_ref_t (
                              leave_context.actor_ref ().node_rid (),
                              std::string (leave_context.actor_ref ().actor_type ()),
                              std::string (leave_context.actor_ref ().actor_id ()),
                              leave_context.actor_ref ().generation () + 1),
-                           leaveActor_state)
+                           leave_actor_state)
                          .result ();
     if (stale_leave
         || stale_leave.error_kind () != framework_error_kind_t::actor_stale_generation) {
@@ -1577,7 +1577,7 @@ int main ()
     auto unjoined_actor =
       lifecycle_gateway.manager ().create ("player", "context-unjoined-player").value ();
     auto unjoined_leave =
-      lifecycle_stage.context.leaveActor (unjoined_actor.context ().actor_ref (), leaveActor_state)
+      lifecycle_stage.context.leave_actor (unjoined_actor.context ().actor_ref (), leave_actor_state)
         .result ();
     if (!unjoined_leave) {
         return 113;
@@ -1585,15 +1585,15 @@ int main ()
     const auto stage_left_before_context_leave = lifecycle_stage_spot->left_count;
     const auto entry_joined_before_context_leave = lifecycle_entry_spot->joined_count;
     auto context_leave =
-      lifecycle_stage.context.leaveActor (leave_context.actor_ref (), leaveActor_state).result ();
+      lifecycle_stage.context.leave_actor (leave_context.actor_ref (), leave_actor_state).result ();
     if (!context_leave || lifecycle_stage_spot->left_count != stage_left_before_context_leave + 1
         || lifecycle_entry_spot->joined_count != entry_joined_before_context_leave + 1
-        || leaveActor_state.ref_updates != 1
-        || leaveActor_state.last_generation != context_leave.value ().generation ()) {
+        || leave_actor_state.ref_updates != 1
+        || leave_actor_state.last_generation != context_leave.value ().generation ()) {
         return 77;
     }
     auto context_leave_destroy =
-      lifecycle_entry_context.destroyActor (context_leave.value (), leaveActor_state).result ();
+      lifecycle_entry_context.destroyActor (context_leave.value (), leave_actor_state).result ();
     if (!context_leave_destroy) {
         return 78;
     }
@@ -1665,7 +1665,7 @@ int main ()
     auto_destroy_entry->destroy_on_join = true;
     auto auto_destroy_leave =
       auto_destroy_stage_created.context
-        .leaveActor (auto_destroy_stage_join.value ().actor, auto_destroy_actor_state)
+        .leave_actor (auto_destroy_stage_join.value ().actor.value (), auto_destroy_actor_state)
         .result ();
     if (!auto_destroy_leave) {
         return 97;
@@ -1723,7 +1723,7 @@ int main ()
         .result ();
     auto packet_leave_stage_join =
       packet_leave_runtime.join_actor_to_spot<actor_packet_self_leave_spot_t> (
-        packet_leave_initial_join.value ().actor, packet_leave_stage_created.spot_rid,
+        packet_leave_initial_join.value ().actor.value (), packet_leave_stage_created.spot_rid,
         packet_leave_actor_state, zlink::message_t{});
     if (!packet_leave_stage_join || packet_leave_stage_join.value ().result_code != 0) {
         return 101;
@@ -1805,7 +1805,7 @@ int main ()
     const auto context_leave_caller = std::this_thread::get_id ();
     auto context_leave_thread_result =
       thread_probe_stage_create.context
-        .leaveActor (context_leave_stage_join.value ().actor, context_leave_actor)
+        .leave_actor (context_leave_stage_join.value ().actor, context_leave_actor)
         .result ();
     if (!context_leave_thread_result || thread_probe_entry->joined_count != 2
         || thread_probe_entry->last_join_thread == context_leave_caller) {
@@ -1839,7 +1839,8 @@ int main ()
         return 87;
     }
     auto remote_leave =
-      relay_spot.context.leaveActor (routed_join.value ().actor, routed_instance->get ()).result ();
+      relay_spot.context.leave_actor (routed_join.value ().actor, routed_instance->get ())
+        .result ();
     if (!remote_leave || remote_leave.value ().node_rid ().value () != "play-a"
         || relay_spot.context.manager ().current_actor_ref (routed_actor_ref)
         || relay_runtime.actor_spot (routed_actor_ref) || relay_spot_t::left_count == 0) {
@@ -2182,7 +2183,7 @@ int main ()
     }
     const auto entry_left_before_manual_leave = lifecycle_entry_spot->left_count;
     auto entry_leave =
-      lifecycle_runtime.leaveActor (lifecycle_actor_context.actor_ref (), lifecycle_actor_state);
+      lifecycle_runtime.leave_actor (lifecycle_actor_context.actor_ref (), lifecycle_actor_state);
     if (!entry_leave) {
         return 65;
     }
@@ -2355,7 +2356,7 @@ int main ()
       .add_handler<&stage_spot_t::on_state_update> ("state.update")
       .add_handler<&stage_spot_t::on_state_update_context> ("state.context")
       .add_handler<&stage_spot_t::on_throwing_state_update> ("state.throw")
-      .add_actor_packet<&stage_spot_t::on_move> ("move");
+      .add_actor_send<&stage_spot_t::on_move> ("move");
     const auto handler_descriptors = context.handlers ().descriptors ();
     if (handler_descriptors.size () != 4
         || handler_descriptors[0].kind != zlink::framework::spot_handler_kind_t::packet
@@ -2364,7 +2365,7 @@ int main ()
         || handler_descriptors[1].packet_name != "state.context"
         || handler_descriptors[2].kind != zlink::framework::spot_handler_kind_t::packet
         || handler_descriptors[2].packet_name != "state.throw"
-        || handler_descriptors[3].kind != zlink::framework::spot_handler_kind_t::actor_packet
+        || handler_descriptors[3].kind != zlink::framework::spot_handler_kind_t::actor_send
         || handler_descriptors[3].packet_name != "move") {
         return 20;
     }

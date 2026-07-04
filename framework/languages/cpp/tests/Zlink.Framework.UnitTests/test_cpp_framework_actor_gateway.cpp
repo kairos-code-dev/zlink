@@ -75,7 +75,7 @@ struct bridge_spot_t : public zlink::framework::spot_t
 {
     void configure (zlink::framework::spot_context_t &context)
     {
-        context.handlers ().add_actor_packet<&bridge_spot_t::on_relay> ("bridge.relay");
+        context.handlers ().add_actor_request<&bridge_spot_t::on_relay> ("bridge.relay");
     }
 
     zlink::framework::spot_actor_join_response_t on_actor_join (
@@ -488,7 +488,7 @@ int main ()
                              .async ()
                              .result ();
     if (!join_spot || !join_spot_seen || join_spot.value ().result_code != 0
-        || join_spot.value ().actor.generation () != 8
+        || join_spot.value ().actor->generation () != 8
         || join_spot.value ().reply.decode<join_reply_t> (serializers).mark != "O") {
         return 14;
     }
@@ -517,7 +517,7 @@ int main ()
                               zlink::framework::message_t::from (std::string ("entry")))
         .async ()
         .result ();
-    if (!entry_join || !entry_join_seen || entry_join.value ().actor.generation () != 9
+    if (!entry_join || !entry_join_seen || entry_join.value ().actor->generation () != 9
         || entry_join.value ().reply.decode<std::string> (serializers) != "joined") {
         return 15;
     }
@@ -525,12 +525,12 @@ int main ()
     if (gateway.actor_bound ("bob") || !gateway.actor_disconnected ("bob")) {
         return 12;
     }
-    auto rebound_after_entry = manager.bind (entry_join.value ().actor).async ().result ();
+    auto rebound_after_entry = manager.bind (entry_join.value ().actor.value ()).async ().result ();
     if (!rebound_after_entry || !gateway.actor_bound ("bob")
         || gateway.actor_disconnected ("bob")) {
         return 24;
     }
-    gateway.bind_session_route (entry_join.value ().actor, zlink.route_client (serializers),
+    gateway.bind_session_route (entry_join.value ().actor.value (), zlink.route_client (serializers),
                                 "actor.session.route",
                                 zlink::routing_id_t::from (std::string ("session-node")));
     zlink::framework::detail::register_spot_route_packet_serializers (serializers);
@@ -551,7 +551,7 @@ int main ()
     actor_route_header.correlation_id = "actor-route-1";
     const auto actor_route_request =
       zlink::framework::detail::make_actor_bound_session_route_request (
-        entry_join.value ().actor, "session.route", zlink::message_t::from (std::string ("routed")));
+        entry_join.value ().actor.value (), "session.route", zlink::message_t::from (std::string ("routed")));
     auto actor_route_parts = actor_route_envelope.encode_parts (
       actor_route_header,
       std::type_index (typeid (zlink::framework::detail::actor_bound_session_route_request_t)),
@@ -594,7 +594,7 @@ int main ()
              != zlink::framework::framework_error_kind_t::request_protocol_error) {
         return 53;
     }
-    const auto destroy_bound = gateway.destroy_actor (entry_join.value ().actor);
+    const auto destroy_bound = gateway.destroy_actor (entry_join.value ().actor.value ());
     if (!destroy_bound || gateway.actor_bound ("bob") || gateway.actor_disconnected ("bob")) {
         return 25;
     }
@@ -657,21 +657,19 @@ int main ()
         ->renew_owner_lease ("remote-actor-owner",
                              zlink::routing_id_t::from ("remote-node"), std::chrono::seconds (30))
         .result ();
-    if (!remote_actor_owner
-        || remote_actor_owner.value ().status
-             != zlink::framework::location_write_status_t::stored) {
+    if (!remote_actor_owner) {
         return 46;
     }
     auto remote_actor_location =
       bridge_location_store
         ->update_actor (zlink::framework::actor_location_t{
-                          .actor_type = "bridge-player",
                           .actor_id = "dora",
-                          .actor_ref = "remote-node:1:dora",
+                          .actor_type = "bridge-player",
+                          .actor_ref = std::nullopt,
                           .node_rid = zlink::routing_id_t::from ("remote-node"),
                           .location_kind = zlink::spot_kind::entry,
+                          .spot_mesh_name = "bridge",
                           .spot_rid = std::nullopt,
-                          .spot_kind = zlink::spot_kind::entry,
                           .owner_id = "remote-actor-owner"},
                         zlink::framework::location_write_intent_t::new_claim)
         .result ();
@@ -737,10 +735,11 @@ int main ()
         .result ();
     if (!bridge_join || bridge_join.value ().reply.value != "joined:carol"
         || bridge_spot->join_value != 17 || bridge_spot->joined_count != 1
-        || bridge_join.value ().actor.node_rid ().empty ()) {
+        || bridge_join.value ().actor->node_rid ().empty ()) {
         return 37;
     }
-    auto joined_bridge_actor = bridge_gateway.manager ().bind (bridge_join.value ().actor).async ().result ();
+    auto joined_bridge_actor =
+      bridge_gateway.manager ().bind (bridge_join.value ().actor.value ()).async ().result ();
     if (!joined_bridge_actor) {
         return 38;
     }

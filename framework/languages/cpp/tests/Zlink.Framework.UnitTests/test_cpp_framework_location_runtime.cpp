@@ -18,13 +18,13 @@ using zlink::framework::runtime::location_runtime_t;
 
 actor_location_t make_actor (std::string actor_id, std::int64_t generation = 0)
 {
-    return actor_location_t{.actor_type = "player",
-                            .actor_id = std::move (actor_id),
-                            .actor_ref = "actor-ref",
+    return actor_location_t{.actor_id = std::move (actor_id),
+                            .actor_type = "player",
+                            .actor_ref = std::nullopt,
                             .node_rid = zlink::routing_id_t::from ("node-a"),
-                            .generation = generation,
                             .location_kind = zlink::spot_kind::entry,
-                            .spot_kind = zlink::spot_kind::entry};
+                            .spot_mesh_name = "play",
+                            .generation = generation};
 }
 
 TEST (ZLinkFrameworkLocationRuntime, StartsOwnerLeaseBeforeWritingRows)
@@ -45,7 +45,7 @@ TEST (ZLinkFrameworkLocationRuntime, StartsOwnerLeaseBeforeWritingRows)
     EXPECT_EQ (location_write_status_t::stored, write.status);
 
     auto row =
-      store.resolve_actor (actor_location_key_t{.actor_type = "player", .actor_id = "actor-1"})
+      store.resolve_actor (actor_location_key_t{.actor_id = "actor-1"})
         .result ()
         .value ();
     ASSERT_TRUE (row.has_value ());
@@ -55,7 +55,7 @@ TEST (ZLinkFrameworkLocationRuntime, StartsOwnerLeaseBeforeWritingRows)
     runtime.stop ();
     EXPECT_TRUE (store.list_owner_leases ().result ().value ().leases.empty ());
     EXPECT_FALSE (
-      store.resolve_actor (actor_location_key_t{.actor_type = "player", .actor_id = "actor-1"})
+      store.resolve_actor (actor_location_key_t{.actor_id = "actor-1"})
         .result ()
         .value ()
         .has_value ());

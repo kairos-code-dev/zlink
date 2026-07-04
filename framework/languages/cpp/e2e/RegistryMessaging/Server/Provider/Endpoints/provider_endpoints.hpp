@@ -44,7 +44,7 @@ inline scenario_route_res_t request_route_with_retry (zlink::framework::route_cl
     const auto deadline = std::chrono::steady_clock::now () + std::chrono::seconds (30);
     std::string last_error = "route request failed";
     while (std::chrono::steady_clock::now () < deadline) {
-        auto call = routes.request (route_channel, target, request)
+        auto call = routes.request_to_node (route_channel, target, request)
                       .packet_name ("ScenarioRouteReq")
                       .timeout (std::chrono::seconds (5))
                       .async<scenario_route_res_t> ();
@@ -178,7 +178,7 @@ class http_route_missing_handler_t
 
     request_failure_res_t handle (const scenario_route_req_t &request)
     {
-        auto call = _routes.request (route_channel,
+        auto call = _routes.request_to_node (route_channel,
                                      zlink::routing_id_t::from (std::string ("missing-rid")),
                                      request)
                       .packet_name ("ScenarioRouteReq")
@@ -230,9 +230,10 @@ class server_weight_handler_t
 class peer_locations_handler_t
 {
   public:
-    using dependency_types = zlink::framework::dependency_list_t<zlink::framework::location_store_t>;
+    using dependency_types =
+      zlink::framework::dependency_list_t<zlink::framework::location_runtime_query_t>;
 
-    explicit peer_locations_handler_t (zlink::framework::location_store_t &locations) :
+    explicit peer_locations_handler_t (zlink::framework::location_runtime_query_t &locations) :
         _locations (locations)
     {
     }
@@ -241,7 +242,7 @@ class peer_locations_handler_t
     {
         const auto peers =
           _locations
-            .list_peers (zlink::framework::peer_location_filter_t{
+            .list_peer_locations (zlink::framework::peer_location_filter_t{
               .auto_connect_type = zlink::framework::location_auto_connect_type_t::client_server,
               .mesh_name = api_channel})
             .result ()
@@ -250,7 +251,7 @@ class peer_locations_handler_t
         for (const auto &peer : peers) {
             payload.push_back (nlohmann::json{
               {"mesh_name", peer.mesh_name},
-              {"role", zlink::framework::to_canonical_string (peer.role)},
+              {"role", role_name (peer.role)},
               {"node_rid", peer.node_rid ? peer.node_rid->to_string () : std::string{}},
               {"endpoint", peer.endpoint}});
         }
@@ -260,7 +261,25 @@ class peer_locations_handler_t
     }
 
   private:
-    zlink::framework::location_store_t &_locations;
+    static std::string role_name (zlink::framework::location_role_t role)
+    {
+        switch (role) {
+            case zlink::framework::location_role_t::spot:
+                return "spot";
+            case zlink::framework::location_role_t::router:
+                return "router";
+            case zlink::framework::location_role_t::dealer:
+                return "dealer";
+            case zlink::framework::location_role_t::pub:
+                return "pub";
+            case zlink::framework::location_role_t::sub:
+                return "sub";
+            default:
+                return "invalid";
+        }
+    }
+
+    zlink::framework::location_runtime_query_t &_locations;
 };
 
 } // namespace zlink::framework::e2e::registry_messaging::provider

@@ -120,8 +120,10 @@ int main (int argc, char **argv)
         options.add_client_server_channel (sample_names_t::dispatch_route_channel)
           .enable_server (topology.dispatch_center_route_endpoint)
           .use_handler_group ("dispatch");
-        options.add_client_server_channel (sample_names_t::courier_route_channel).enable_client ();
-        options.add_client_server_channel (sample_names_t::tracking_route_channel).enable_client ();
+        options.add_client_server_channel (sample_names_t::courier_route_channel)
+          .enable_client (topology.courier_route_endpoint);
+        options.add_client_server_channel (sample_names_t::tracking_route_channel)
+          .enable_client (topology.tracking_route_endpoint);
         options.handlers ().group ("dispatch").add<assign_delivery_handler_t> ();
     });
     return app.run (argc, argv);

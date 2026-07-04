@@ -13,7 +13,7 @@ if [[ ! -x "$BIN_DIR/sample_cpp_framework_deliverydispatch_client" && -x "$BIN_D
 fi
 
 PIDS=()
-RUN_DIR="$(mktemp -d)"
+RUN_DIR="${DELIVERYDISPATCH_RUN_DIR:-$(mktemp -d)}"
 LOG_DIR="$RUN_DIR/logs"
 REDIS_CONTAINER_NAME=""
 mkdir -p "$LOG_DIR"
@@ -35,6 +35,11 @@ cleanup() {
   done
   if [[ -n "$REDIS_CONTAINER_NAME" ]]; then
     docker rm -f "$REDIS_CONTAINER_NAME" >/dev/null 2>&1 || true
+  fi
+  if [[ "${DELIVERYDISPATCH_KEEP_RUN_DIR:-}" == "1" ]]; then
+    echo "runDir=$RUN_DIR"
+  else
+    [[ -z "${DELIVERYDISPATCH_RUN_DIR:-}" ]] && rm -rf "$RUN_DIR"
   fi
 }
 trap cleanup EXIT
@@ -130,7 +135,7 @@ wait_port redis "$(port_of "$DELIVERYDISPATCH_REDIS_ENDPOINT")"
 start_role() {
   local name="$1"
   shift
-  "$@" >"$LOG_DIR/${name}.log" 2>&1 &
+  stdbuf -oL -eL "$@" >"$LOG_DIR/${name}.log" 2>&1 &
   PIDS+=("$!")
 }
 

@@ -219,7 +219,7 @@ start_server() {
   local name="$1"
   local binary="$2"
   shift 2
-  "$binary" --sample.host.keepRunning true "${topology_args[@]}" "$@" >"$LOG_DIR/${name}.log" 2>&1 &
+  stdbuf -oL -eL "$binary" --sample.host.keepRunning true "${topology_args[@]}" "$@" >"$LOG_DIR/${name}.log" 2>&1 &
   PIDS+=("$!")
 }
 

@@ -95,7 +95,8 @@ int main (int argc, char **argv)
         options.services ().add_singleton<evidence_store_t> ();
         add_deliverydispatch_json_codecs (options.codecs ());
         add_deliverydispatch_location_store (options, topology);
-        options.add_client_server_channel (sample_names_t::dispatch_route_channel).enable_client ();
+        options.add_client_server_channel (sample_names_t::dispatch_route_channel)
+          .enable_client (topology.dispatch_center_route_endpoint);
         options.http ()
           .listen (topology.dispatch_api_http_url)
           .map_health ("/health")

@@ -55,13 +55,17 @@ class play_server_host_factory_t
             options.add_route_mesh_channel (sample_names_t::play_channel)
               .enable_server (topology.selected_play_channel_endpoint ())
               .set_routing_id (zlink::routing_id_t::from (topology.selected_play_node_rid ()))
-              .enable_client ()
+              .enable_client (topology.peer_play_route_endpoint ())
               .use_handler_group ("play");
-            options.add_client_server_channel (sample_names_t::api_channel).enable_client ();
+            options.add_client_server_channel (sample_names_t::api_channel)
+              .enable_client (topology.api_a_channel_endpoint)
+              .enable_client (topology.api_b_channel_endpoint);
             options.add_spot_mesh (sample_names_t::room_spot_mesh)
               .set_routing_id (routing_id_t::from (topology.selected_play_node_rid ()))
               .enable_router (topology.selected_play_spot_router_endpoint ())
               .enable_pub_sub (topology.selected_play_spot_endpoint ())
+              .connect_peer_pub (topology.play_node == "b" ? topology.play_a_spot_endpoint
+                                                            : topology.play_b_spot_endpoint)
               .add_entry_spot<bingo_entry_spot_t> ()
               .add_spot<bingo_room_spot_t> (sample_names_t::room_spot)
               .add_actor_factory<player_actor_factory_t> (sample_names_t::player_actor_type);

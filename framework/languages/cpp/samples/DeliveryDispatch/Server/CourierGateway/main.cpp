@@ -138,7 +138,8 @@ int main (int argc, char **argv)
           .enable_server (topology.courier_route_endpoint)
           .use_handler_group ("courier-gateway");
         options.add_route_mesh_channel (sample_names_t::courier_actor_node_route_channel)
-          .enable_client ()
+          .enable_client (topology.courier_actor_node_1_route_endpoint)
+          .enable_client (topology.courier_actor_node_2_route_endpoint)
           .set_routing_id (zlink::routing_id_t::from ("delivery-courier-gateway"));
         options.handlers ()
           .group ("courier-gateway")

@@ -201,6 +201,35 @@ export function invokeSendToActor(
   return true;
 }
 
+export function invokeSendToActorCallback(
+  nodeHandle: unknown,
+  actor: ActorRef,
+  parts: MessageLike | readonly MessageLike[],
+  callback: ReplyHandler,
+  flags: SendFlags,
+  timeoutMs: number,
+): boolean {
+  try {
+    requireNative().spotNodeSendToActor(
+      nodeHandle,
+      actorRefToRaw(actor),
+      normalizeOperationPayload(parts),
+      flags | 0,
+      timeoutMs | 0,
+      (result: number, replyParts: Buffer[] | null) => {
+        callback(result as RequestResult, messagesFromNativeBuffers(replyParts));
+      },
+    );
+    return true;
+  } catch (error) {
+    const submitError = submitNativeError(error, flags, 'sendToActor failed');
+    if (((flags | 0) & (SendFlags.DontWait | 0)) && submitError.result === SubmitResult.Backpressured) {
+      return false;
+    }
+    throw submitError;
+  }
+}
+
 export function invokeRequestToActor(
   nodeHandle: unknown,
   actor: ActorRef,

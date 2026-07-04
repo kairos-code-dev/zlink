@@ -169,7 +169,8 @@ export interface SocketNativeBinding {
     actor: ActorRefRaw,
     parts: unknown,
     flags: number,
-    timeoutMs: number
+    timeoutMs: number,
+    callback?: NativeRequestCallback
   ) => void;
   spotNodeRequestToActor: (
     node: NativeHandle,

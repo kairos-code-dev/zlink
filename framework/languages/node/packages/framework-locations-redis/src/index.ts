@@ -638,8 +638,8 @@ function peerToJson(row: ZLinkPeerLocation): unknown {
     Endpoint: row.endpoint,
     Weight: row.weight,
     Value: Number(row.value),
-    Metadata: row.metadata ?? null,
-    Capabilities: row.capabilities ?? null,
+    Metadata: jsonRecordOrNull(peerMetadataOf(row)),
+    Capabilities: jsonStringArrayOrNull(peerCapabilitiesOf(row)),
     OwnerId: row.ownerId,
     Generation: Number(row.generation),
     UpdatedAt: formatDotNetDateTimeOffset(row.updatedAt)
@@ -753,6 +753,40 @@ function routeFromJson(json: unknown, generation: bigint, updatedAt: Date): ZLin
     value: Buffer.from(stringOf(row.Value), 'base64'),
     updatedAt
   };
+}
+
+function peerMetadataOf(row: ZLinkPeerLocation): unknown {
+  return row.metadata ?? (row as { readonly Metadata?: unknown }).Metadata;
+}
+
+function peerCapabilitiesOf(row: ZLinkPeerLocation): unknown {
+  return row.capabilities ?? (row as { readonly Capabilities?: unknown }).Capabilities;
+}
+
+function jsonRecordOrNull(value: unknown): Record<string, string> | null {
+  if (value === undefined || value === null) {
+    return null;
+  }
+  if (value instanceof Map) {
+    return Object.fromEntries([...value].map(([key, item]) => [String(key), String(item)]));
+  }
+  if (typeof value !== 'object') {
+    return null;
+  }
+  return Object.fromEntries(
+    Object.entries(value as Record<string, unknown>)
+      .map(([key, item]) => [key, String(item)])
+  );
+}
+
+function jsonStringArrayOrNull(value: unknown): string[] | null {
+  if (value === undefined || value === null) {
+    return null;
+  }
+  if (!Array.isArray(value)) {
+    return null;
+  }
+  return value.map(String);
 }
 
 function formatDotNetDateTimeOffset(value: Date): string {

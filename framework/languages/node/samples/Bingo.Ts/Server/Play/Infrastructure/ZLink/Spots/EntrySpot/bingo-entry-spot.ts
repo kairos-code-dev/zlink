@@ -1,6 +1,5 @@
 import { Inject } from '@nestjs/common';
 import { ZLINK_SPOT_MANAGER } from '@zlink-systems/nestjs';
-import { ZLinkMessage } from '@zlink-systems/framework';
 import {
   bingoRoomJoinReq,
   bingoRoomSettingsPayload,
@@ -42,7 +41,7 @@ class BingoEntrySpot implements ZLinkEntrySpot<PlayerActorType> {
     await this.spots.getOrCreate(
       BingoRoomSpot,
       observerRid,
-      ZLinkMessage.from(bingoRoomSettingsPayload(settings))
+      bingoRoomSettingsPayload(settings)
     );
     const joined = await actor.context
       .joinSpot(observerRid, bingoRoomJoinReq(request.roomId, actor.actorId, actor.displayName, true))

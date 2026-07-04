@@ -241,7 +241,7 @@ test('node Bingo and TicTacToe samples implement Entry Spot actor lifecycle flow
     ['TicTacToe game', files.ticTacToeGame, 'onActorJoin'],
     ['TicTacToe game', files.ticTacToeGame, 'onLeaveActor'],
     ['TicTacToe game', files.ticTacToeGame, 'this.context.leaveActor(actor)'],
-    ['TicTacToe session', files.ticTacToeSession, 'this.context.actors.bind(actorRef)'],
+    ['TicTacToe session', files.ticTacToeSession, 'this.context.actors.bindOrGet(actorRef)'],
     ['TicTacToe session', files.ticTacToeSession, 'await this.relayToActor(playHeader, payload, signal)']
   ]) {
     if (!content.includes(text)) {
@@ -770,7 +770,7 @@ test('TicTacToe TypeScript sample mirrors dotnet game state contract', () => {
     [moveHandler, 'spot.placeMark(actor, request.cell)'],
     [gameSpot, 'gameStateNotify(state)'],
     [playActor, 'this.context.boundSession'],
-    [playSession, 'this.context.actors.bind(actorRef)'],
+    [playSession, 'this.context.actors.bindOrGet(actorRef)'],
     [client, 'payload.state.status === GameStatus.InProgress'],
     [client, 'stateOf(client1FinalMove).status === GameStatus.Won'],
     [readme, '`Won`']

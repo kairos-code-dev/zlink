@@ -1814,7 +1814,11 @@ function autoConnectLocal(
 
 function peerLocation(
   local: ZLinkAutoConnectLocal,
-  weight = 100
+  weight = 100,
+  options: {
+    readonly metadata?: Readonly<Record<string, string>>;
+    readonly capabilities?: readonly string[];
+  } = {}
 ): ZLinkPeerLocation {
   return {
     autoConnectType: local.autoConnectType,
@@ -1824,6 +1828,8 @@ function peerLocation(
     endpoint: local.endpoint,
     weight,
     value: 0n,
+    metadata: options.metadata,
+    capabilities: options.capabilities,
     ownerId: '',
     generation: 0n,
     updatedAt: new Date(0)

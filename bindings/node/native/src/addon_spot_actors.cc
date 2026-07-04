@@ -330,8 +330,8 @@ napi_value spot_node_actor_send_bound_session_msg (napi_env env, napi_callback_i
 
 napi_value spot_node_send_to_actor (napi_env env, napi_callback_info info)
 {
-    napi_value argv[5];
-    size_t argc = 5;
+    napi_value argv[6];
+    size_t argc = 6;
     napi_get_cb_info (env, info, &argc, argv, NULL, NULL);
     void *node = NULL;
     napi_get_value_external (env, argv[0], &node);
@@ -347,6 +347,28 @@ napi_value spot_node_send_to_actor (napi_env env, napi_callback_info info)
     int32_t timeout_ms = 0;
     if (argc >= 5)
         napi_get_value_int32 (env, argv[4], &timeout_ms);
+    napi_valuetype handler_type = napi_undefined;
+    if (argc >= 6)
+        napi_typeof (env, argv[5], &handler_type);
+    if (handler_type == napi_function) {
+        request_js_state_t *state = create_request_js_state (env, argv[5]);
+        if (!state) {
+            close_msg_vector (parts);
+            return NULL;
+        }
+        int rc = zlink_spot_node_send_to_actor (
+          node, &ref, parts.empty () ? NULL : parts.data (), parts.size (),
+          request_reply_callback_trampoline, state, static_cast<zlink_send_flags_t> (flags),
+          static_cast<uint32_t> (timeout_ms));
+        if (rc != ZLINK_SUBMIT_OK) {
+            abort_request_js_state (state);
+            close_msg_vector (parts);
+            return throw_last_error (env, "spotNodeSendToActor failed");
+        }
+        napi_value ok;
+        napi_get_undefined (env, &ok);
+        return ok;
+    }
     sync_request_state_t state;
     int rc = zlink_spot_node_send_to_actor (
       node, &ref, parts.empty () ? NULL : parts.data (), parts.size (), sync_request_callback,

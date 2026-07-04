@@ -205,6 +205,8 @@ function peer(ownerId, nodeRid) {
     endpoint: 'tcp://127.0.0.1:5001',
     weight: 100,
     value: 7n,
+    metadata: { 'route-endpoint': 'tcp://127.0.0.1:6001' },
+    capabilities: ['router', 'route-bridge'],
     ownerId,
     generation: 0n,
     updatedAt: new Date(0)

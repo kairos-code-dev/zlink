@@ -12,7 +12,7 @@ internal sealed partial class ZLinkEntrySpotActivation
         return _outboundEndpoint.SendToChannel(channelName, message);
     }
 
-    public IZLinkRequestCall RequestToChannel<TRequest>(string channelName, TRequest request)
+    public IZLinkYieldRequestCall RequestToChannel<TRequest>(string channelName, TRequest request)
     {
         return _outboundEndpoint.RequestToChannel(channelName, request);
     }
@@ -85,7 +85,7 @@ internal sealed partial class ZLinkEntrySpotActivation
         return _outboundEndpoint.SendToSpot(address, message);
     }
 
-    public IZLinkRequestCall RequestToSpot<TRequest>(ZLinkSpotAddress address, TRequest request)
+    public IZLinkYieldRequestCall RequestToSpot<TRequest>(ZLinkSpotAddress address, TRequest request)
     {
         return _outboundEndpoint.RequestToSpot(address, request);
     }

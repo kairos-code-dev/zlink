@@ -423,7 +423,7 @@ public sealed class NodesAndServicesTests : RegistrationValidationSupport
         services.AddZLinkFramework(options =>
         {
             {
-                var routed = options.AddRouteMesh("gateway");
+                var routed = options.AddRouteMeshChannel("gateway");
                 routed.EnableServer("tcp://127.0.0.1:6202");
             }
         });
@@ -487,10 +487,13 @@ public sealed class NodesAndServicesTests : RegistrationValidationSupport
         // as it does for the per-role registrations.
         Assert.NotNull(provider.GetService<IZLinkLocationRuntimeQuery>());
         Assert.NotNull(provider.GetService<IZLinkPeerLocationResolver>());
+        Assert.Same(
+            provider.GetRequiredService<ZLinkLocationLifecycle>(),
+            provider.GetRequiredService<IZLinkActorLocationLifecycle>());
     }
 
     [Fact]
-    public void AddZLinkFramework_Throws_WhenAddLocationStoreIsCombinedWithOtherStoreRegistrations()
+    public void AddZLinkFramework_Throws_WhenAddLocationStoreIsCombinedWithInMemoryStore()
     {
         var inMemory = new ServiceCollection();
         var inMemoryConflict = Assert.Throws<ZLinkConfigurationException>(() =>
@@ -501,13 +504,5 @@ public sealed class NodesAndServicesTests : RegistrationValidationSupport
             }));
         Assert.Contains("AddLocationStore", inMemoryConflict.Message, StringComparison.Ordinal);
 
-        var perRole = new ServiceCollection();
-        var perRoleConflict = Assert.Throws<ZLinkConfigurationException>(() =>
-            perRole.AddZLinkFramework(options =>
-            {
-                options.AddPeerLocationStore<ZLinkInMemoryLocationStore>();
-                options.AddLocationStore(new ZLinkInMemoryLocationStore());
-            }));
-        Assert.Contains("AddLocationStore", perRoleConflict.Message, StringComparison.Ordinal);
     }
 }

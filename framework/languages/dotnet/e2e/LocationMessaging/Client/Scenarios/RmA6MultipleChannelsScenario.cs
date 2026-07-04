@@ -44,7 +44,7 @@ internal static class RmA6MultipleChannelsScenario
             workflowRows.Length > 0 && workflowRows.All(row => row.MeshName == "workflow"),
             "RM-A6 workflow mesh filter returned rows from another mesh.");
         ScenarioAssert.That(
-            workflowRows.Any(row => row.Role == "router" && row.NodeRid == "workflow-a")
+            workflowRows.Any(row => row.Role == "Router" && row.NodeRid == "workflow-a")
             && workflowRows.All(row => row.NodeRid is not ("api-a" or "api-b")),
             "RM-A6 workflow mesh rows should contain workflow-a only.");
 

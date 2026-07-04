@@ -58,13 +58,6 @@ internal sealed class ZLinkInMemoryLocationStore :
             ZLinkLocationKind.Peer,
             key.MeshName));
 
-    ValueTask<long> IZLinkPeerLocationStore.RemoveByOwnerAsync(
-        string ownerId,
-        CancellationToken cancellationToken) =>
-        ValueTask.FromResult(RemoveByOwner(
-            _peers, ownerId, static row => row.OwnerId, ZLinkLocationKind.Peer,
-            static row => row.MeshName));
-
     public ValueTask<IReadOnlyList<ZLinkPeerLocation>> ListPeersAsync(
         ZLinkPeerLocationFilter filter,
         CancellationToken cancellationToken = default)
@@ -108,13 +101,6 @@ internal sealed class ZLinkInMemoryLocationStore :
             ZLinkLocationKind.Spot,
             key.MeshName));
 
-    ValueTask<long> IZLinkSpotLocationStore.RemoveByOwnerAsync(
-        string ownerId,
-        CancellationToken cancellationToken) =>
-        ValueTask.FromResult(RemoveByOwner(
-            _spots, ownerId, static row => row.OwnerId, ZLinkLocationKind.Spot,
-            static row => row.MeshName));
-
     public ValueTask<ZLinkSpotLocation?> ResolveSpotAsync(
         ZLinkSpotLocationKey key,
         CancellationToken cancellationToken = default)
@@ -143,7 +129,7 @@ internal sealed class ZLinkInMemoryLocationStore :
         CancellationToken cancellationToken = default) =>
         ValueTask.FromResult(Write(
             _actors,
-            ZLinkLocationKeyCodec.EncodeActorKey(new ZLinkActorLocationKey(actor.ActorType, actor.ActorId)),
+            ZLinkLocationKeyCodec.EncodeActorKey(new ZLinkActorLocationKey(actor.ActorId)),
             actor,
             intent,
             actor.OwnerId,
@@ -166,13 +152,6 @@ internal sealed class ZLinkInMemoryLocationStore :
             static row => row.Generation,
             ZLinkLocationKind.Actor,
             meshName: null));
-
-    ValueTask<long> IZLinkActorLocationStore.RemoveByOwnerAsync(
-        string ownerId,
-        CancellationToken cancellationToken) =>
-        ValueTask.FromResult(RemoveByOwner(
-            _actors, ownerId, static row => row.OwnerId, ZLinkLocationKind.Actor,
-            static _ => null));
 
     public ValueTask<ZLinkActorLocation?> ResolveActorAsync(
         ZLinkActorLocationKey key,
@@ -226,13 +205,6 @@ internal sealed class ZLinkInMemoryLocationStore :
             ZLinkLocationKind.Route,
             meshName: null));
 
-    ValueTask<long> IZLinkRouteLocationStore.RemoveByOwnerAsync(
-        string ownerId,
-        CancellationToken cancellationToken) =>
-        ValueTask.FromResult(RemoveByOwner(
-            _routes, ownerId, static row => row.OwnerId, ZLinkLocationKind.Route,
-            static _ => null));
-
     public ValueTask<ZLinkRouteLocation?> ResolveRouteAsync(
         ZLinkRouteLocationKey key,
         CancellationToken cancellationToken = default)
@@ -255,7 +227,7 @@ internal sealed class ZLinkInMemoryLocationStore :
         }
     }
 
-    public ValueTask<ZLinkLocationWriteResult> RenewOwnerLeaseAsync(
+    public ValueTask<ZLinkOwnerLeaseRenewal> RenewOwnerLeaseAsync(
         string ownerId,
         RoutingId nodeRid,
         TimeSpan leaseTtl,
@@ -264,20 +236,42 @@ internal sealed class ZLinkInMemoryLocationStore :
         lock (_gate)
         {
             var now = _time.GetUtcNow();
-            _leases[ownerId] = new ZLinkOwnerLease(ownerId, nodeRid, now + leaseTtl, now);
-            return ValueTask.FromResult(ZLinkLocationWriteResult.Stored(0, now));
+            var expiresAt = now + leaseTtl;
+            _leases[ownerId] = new ZLinkOwnerLease(ownerId, nodeRid, expiresAt, now);
+            return ValueTask.FromResult(new ZLinkOwnerLeaseRenewal(expiresAt, now));
         }
     }
 
-    public ValueTask<ZLinkLocationWriteResult> RemoveOwnerLeaseAsync(
+    public ValueTask<bool> RemoveOwnerLeaseAsync(
         string ownerId,
         CancellationToken cancellationToken = default)
     {
         lock (_gate)
         {
-            var now = _time.GetUtcNow();
-            _leases.Remove(ownerId);
-            return ValueTask.FromResult(ZLinkLocationWriteResult.Stored(0, now));
+            return ValueTask.FromResult(_leases.Remove(ownerId));
+        }
+    }
+
+    public ValueTask<long> RemoveAllByOwnerAsync(
+        string ownerId,
+        CancellationToken cancellationToken = default)
+    {
+        lock (_gate)
+        {
+            var removed = 0L;
+            removed += RemoveByOwnerNoLock(
+                _peers, ownerId, static row => row.OwnerId, ZLinkLocationKind.Peer,
+                static row => row.MeshName);
+            removed += RemoveByOwnerNoLock(
+                _spots, ownerId, static row => row.OwnerId, ZLinkLocationKind.Spot,
+                static row => row.MeshName);
+            removed += RemoveByOwnerNoLock(
+                _actors, ownerId, static row => row.OwnerId, ZLinkLocationKind.Actor,
+                static _ => null);
+            removed += RemoveByOwnerNoLock(
+                _routes, ownerId, static row => row.OwnerId, ZLinkLocationKind.Route,
+                static _ => null);
+            return ValueTask.FromResult(removed);
         }
     }
 
@@ -377,7 +371,7 @@ internal sealed class ZLinkInMemoryLocationStore :
         }
     }
 
-    private long RemoveByOwner<TRow>(
+    private long RemoveByOwnerNoLock<TRow>(
         RowTable<TRow> table,
         string ownerId,
         Func<TRow, string> ownerOf,
@@ -385,21 +379,18 @@ internal sealed class ZLinkInMemoryLocationStore :
         Func<TRow, string?> meshOf)
         where TRow : class
     {
-        lock (_gate)
+        var removedKeys = table.Rows
+            .Where(pair => ownerOf(pair.Value) == ownerId)
+            .Select(pair => pair.Key)
+            .ToArray();
+        foreach (var key in removedKeys)
         {
-            var removedKeys = table.Rows
-                .Where(pair => ownerOf(pair.Value) == ownerId)
-                .Select(pair => pair.Key)
-                .ToArray();
-            foreach (var key in removedKeys)
-            {
-                var mesh = meshOf(table.Rows[key]);
-                table.Rows.Remove(key);
-                Bump(kind, mesh);
-            }
-
-            return removedKeys.Length;
+            var mesh = meshOf(table.Rows[key]);
+            table.Rows.Remove(key);
+            Bump(kind, mesh);
         }
+
+        return removedKeys.Length;
     }
 
     private ZLinkLocationPage<TRow> Page<TRow>(

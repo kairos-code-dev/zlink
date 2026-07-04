@@ -107,6 +107,14 @@ internal sealed partial class ZLinkFrameworkRuntime
         IReadOnlyList<Message> parts,
         CancellationToken cancellationToken)
     {
+        if (IsKnownRouteMeshPeer(routerChannelId, targetNodeRid) == false)
+        {
+            ZLinkMessageParts.DisposeAll(parts);
+            throw new ZLinkFrameworkException(
+                ZLinkFrameworkErrorKind.RequestTargetNotFound,
+                $"Route channel '{routerChannelId}' does not know node '{targetNodeRid}' for SPOT '{targetSpotRid}'.");
+        }
+
         await _spotRouteRouter.SendAsync(
             routerChannelId,
             targetNodeRid,
@@ -128,6 +136,14 @@ internal sealed partial class ZLinkFrameworkRuntime
         TimeSpan timeout,
         CancellationToken cancellationToken)
     {
+        if (IsKnownRouteMeshPeer(routerChannelId, targetNodeRid) == false)
+        {
+            ZLinkMessageParts.DisposeAll(parts);
+            throw new ZLinkFrameworkException(
+                ZLinkFrameworkErrorKind.RequestTargetNotFound,
+                $"Route channel '{routerChannelId}' does not know node '{targetNodeRid}' for SPOT '{targetSpotRid}'.");
+        }
+
         return await _spotRouteRouter.RequestAsync(
                 routerChannelId,
                 targetNodeRid,

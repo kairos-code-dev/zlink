@@ -7,7 +7,7 @@ namespace Zlink.Framework.Contracts.Locations;
 /// </summary>
 public interface IZLinkPeerLocationResolver
 {
-    ValueTask<IReadOnlyList<ZLinkPeerLocation>> ListPeersAsync(
+    ValueTask<IReadOnlyList<ZLinkPeerLocation>> ListLivePeersAsync(
         ZLinkPeerLocationFilter filter,
         CancellationToken cancellationToken = default);
 }
@@ -18,7 +18,7 @@ public interface IZLinkPeerLocationResolver
 /// Lifecycle flows that need generations read location rows through the
 /// store/runtime surfaces instead.
 /// </summary>
-public interface IZLinkSpotLocationResolver
+public interface IZLinkSpotAddressResolver
 {
     /// <summary>Null when no live row exists (unknown spot or expired owner lease).</summary>
     ValueTask<ZLinkSpotAddress?> ResolveSpotAddressAsync(
@@ -31,56 +31,9 @@ public interface IZLinkSpotLocationResolver
 /// (the entry spot address for ENTRY_SPOT actors, the user spot address for
 /// USER_SPOT actors).
 /// </summary>
-public interface IZLinkActorLocationResolver
+public interface IZLinkActorAddressResolver
 {
     ValueTask<ZLinkSpotAddress?> ResolveActorSpotAddressAsync(
-        string actorType,
         string actorId,
-        CancellationToken cancellationToken = default);
-}
-
-public interface IZLinkRouteLocationResolver
-{
-    ValueTask<ZLinkRouteLocation?> ResolveRouteAsync(
-        ZLinkRouteLocationKey key,
-        CancellationToken cancellationToken = default);
-}
-
-/// <summary>
-/// Operational read surface for tools and E2E. Every query reads the store
-/// directly without any cache, so no freshness parameter exists here.
-/// Spot/actor/route list queries live only on this surface.
-/// </summary>
-public interface IZLinkLocationRuntimeQuery
-{
-    ValueTask<ZLinkLocationRuntimeStatus> GetStatusAsync(
-        CancellationToken cancellationToken = default);
-
-    ValueTask<IReadOnlyList<ZLinkPeerLocation>> ListPeersAsync(
-        ZLinkPeerLocationFilter filter,
-        CancellationToken cancellationToken = default);
-
-    ValueTask<ZLinkLocationPage<ZLinkSpotLocation>> ListSpotsAsync(
-        ZLinkSpotLocationFilter filter,
-        ZLinkPageRequest page = default,
-        CancellationToken cancellationToken = default);
-
-    ValueTask<ZLinkLocationPage<ZLinkActorLocation>> ListActorsAsync(
-        ZLinkActorLocationFilter filter,
-        ZLinkPageRequest page = default,
-        CancellationToken cancellationToken = default);
-
-    ValueTask<ZLinkLocationPage<ZLinkRouteLocation>> ListRoutesAsync(
-        ZLinkRouteLocationFilter filter,
-        ZLinkPageRequest page = default,
-        CancellationToken cancellationToken = default);
-
-    ValueTask<ZLinkLocationPage<ZLinkLocationTopologyEntry>> ListTopologyAsync(
-        ZLinkLocationTopologyFilter filter,
-        ZLinkPageRequest page = default,
-        CancellationToken cancellationToken = default);
-
-    ValueTask<IReadOnlyList<ZLinkLocationServiceSummary>> ListServiceSummariesAsync(
-        ZLinkLocationServiceSummaryFilter filter,
         CancellationToken cancellationToken = default);
 }

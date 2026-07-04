@@ -28,7 +28,7 @@ internal sealed class CourierOfferPort(
         var response = await DispatchRouteClient.RequestAsync<OfferDeliveryReq, OfferDeliveryRes>(
             routes,
             SampleNames.CourierActorNodeRouteChannel,
-            Systems.Zlink.RoutingId.From(found.Actor.NodeRid),
+            found.Actor.NodeRid,
             new OfferDeliveryReq(courierId, delivery.DeliveryId, delivery.PickupAddress, delivery.DropoffAddress),
             cancellationToken,
             SampleTimings.OfferRequestTimeout);
@@ -86,7 +86,7 @@ internal static class DispatchRouteClient
         CancellationToken cancellationToken,
         TimeSpan? timeout = null)
     {
-        var call = routes.Request(routeChannelName, targetNodeRid, request)
+        var call = routes.RequestToNode(routeChannelName, targetNodeRid, request)
             .PacketName(typeof(TReq).Name);
         if (timeout is { } value)
         {

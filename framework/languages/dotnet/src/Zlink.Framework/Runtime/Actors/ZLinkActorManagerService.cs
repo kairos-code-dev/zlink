@@ -82,6 +82,6 @@ internal sealed class ZLinkActorManagerService(ZLinkFrameworkRuntime runtime) : 
 
     private static ActorRef ToPublicActorRef(ZLinkBackendActorRef actorRef)
     {
-        return new ActorRef(actorRef.NodeRid, actorRef.ActorId, actorRef.Generation);
+        return actorRef.ToNative();
     }
 }

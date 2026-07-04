@@ -48,7 +48,7 @@ public sealed class ConnectionAndConfigContracts
             ProbeRouterOnConnect = true
         };
 
-        var publisher = new SpotPublisherConfig
+        IZLinkSpotPublisherConfig publisher = new SpotPublisherConfig
         {
             SendHighWaterMark = 32,
             SendTimeout = TimeSpan.FromMilliseconds(20),
@@ -56,7 +56,7 @@ public sealed class ConnectionAndConfigContracts
             NoDrop = true
         };
 
-        var subscriber = new SpotSubscriberConfig
+        IZLinkSpotSubscriberConfig subscriber = new SpotSubscriberConfig
         {
             ReceiveHighWaterMark = 64,
             ReceiveTimeout = TimeSpan.FromMilliseconds(30),
@@ -77,8 +77,13 @@ public sealed class ConnectionAndConfigContracts
         Assert.True(socket.Immediate);
         Assert.True(route.RequireKnownPeer);
         Assert.True(outbound.ProbeRouterOnConnect);
+        Assert.Equal(32, publisher.SendHighWaterMark);
+        Assert.Equal(TimeSpan.FromMilliseconds(20), publisher.SendTimeout);
+        Assert.Equal(TimeSpan.Zero, publisher.Linger);
         Assert.True(publisher.NoDrop);
         Assert.Equal(64, subscriber.ReceiveHighWaterMark);
+        Assert.Equal(TimeSpan.FromMilliseconds(30), subscriber.ReceiveTimeout);
+        Assert.Equal(TimeSpan.Zero, subscriber.Linger);
         Assert.Equal(RoutingId.From("entry"), entrySpot.RoutingId);
         Assert.Equal(ZLinkDispatchMode.Compiled, dispatch.SpotDispatchMode);
     }

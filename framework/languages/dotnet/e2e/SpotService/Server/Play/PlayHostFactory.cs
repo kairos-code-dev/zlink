@@ -52,7 +52,7 @@ internal static class PlayHostFactory
                 .MessageFlow(ZLinkMessageFlowLogMode.KeyTransitions)
                 .TraceLogFile(Path.Combine(options.LogDir, $"{options.Rid}-flow.log"))
                 .TraceLabel(options.Rid);
-            framework.AddRouteMesh(SpotServiceNames.ControlChannel)
+            framework.AddRouteMeshChannel(SpotServiceNames.ControlChannel)
                 .EnableServer(Require(options.ControlEndpoint, "--control-endpoint"))
                 .EnableClient()
                 .SetRoutingId(RoutingId.From(options.Rid))
@@ -61,7 +61,7 @@ internal static class PlayHostFactory
                 ? SpotServiceNames.ExternalSpotChannelB
                 : SpotServiceNames.ExternalSpotChannel;
             if (!string.IsNullOrWhiteSpace(options.ExternalSpotEndpoint))
-                framework.AddRouteMesh(externalSpotChannel)
+                framework.AddRouteMeshChannel(externalSpotChannel)
                     .EnableServer(options.ExternalSpotEndpoint)
                     .EnableClient()
                     .SetRoutingId(RoutingId.From(options.Rid));
@@ -113,7 +113,7 @@ internal static class PlayHostFactory
 
     internal static async Task<StateRes> RequestSpotStateWithRetryAsync(
         IZLinkRouteClient routes,
-        IZLinkSpotLocationResolver locator,
+        IZLinkSpotAddressResolver locator,
         string spotRid,
         StateReq request,
         string failureMessage,
@@ -144,7 +144,7 @@ internal static class PlayHostFactory
 
     internal static async Task SendSpotCommandWithRetryAsync(
         IZLinkRouteClient routes,
-        IZLinkSpotLocationResolver locator,
+        IZLinkSpotAddressResolver locator,
         string channelName,
         string spotRid,
         object command,
@@ -172,7 +172,7 @@ internal static class PlayHostFactory
 
     internal static async Task<SpotToSpotRes> RequestSpotToSpotWithRetryAsync(
         IZLinkRouteClient routes,
-        IZLinkSpotLocationResolver locator,
+        IZLinkSpotAddressResolver locator,
         string sourceSpotRid,
         SpotToSpotReq request,
         string failureMessage)

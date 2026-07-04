@@ -15,19 +15,28 @@ public sealed class LocationLifecycleTests
         var nodeA = await fixture.NodeAsync("node-a");
         var nodeB = await fixture.NodeAsync("node-b");
         var activatedB = 0;
+        var key = new ZLinkActorLocationKey(ActorId);
 
         var winner = await nodeA.Lifecycle.ExecuteActorClaimThenActivateAsync(
             ActorType,
             ActorId,
             RoutingId.From("node-a"),
             deactivate: null,
-            activate: async _ =>
+            activate: async cancellationToken =>
             {
                 // Claim-then-activate: the row must already exist and be
-                // owned by this runtime when activation runs.
-                var row = await fixture.Store.ResolveActorAsync(new ZLinkActorLocationKey(ActorType, ActorId));
+                // owned by this runtime when activation runs. It is still
+                // unpublished, so public resolver/query surfaces must hide it.
+                var row = await fixture.Store.ResolveActorAsync(key, cancellationToken);
                 Assert.NotNull(row);
                 Assert.Equal(nodeA.Runtime.OwnerId, row.OwnerId);
+                Assert.Null(row.ActorRef);
+                Assert.Null(await nodeA.Resolvers.ResolveActorRowAsync(key, cancellationToken));
+
+                var actors = await nodeA.Query.ListActorLocationsAsync(
+                    new ZLinkActorLocationFilter(),
+                    cancellationToken: cancellationToken);
+                Assert.DoesNotContain(actors.Items, actor => actor.ActorId == ActorId);
                 return "instance-a";
             },
             CancellationToken.None);
@@ -48,12 +57,31 @@ public sealed class LocationLifecycleTests
             CancellationToken.None);
 
         // The losing claimer backs off before any instance exists and gets
-        // the winner's freshly resolved location instead.
+        // no public location for the unpublished winner. It must still never
+        // activate a local instance.
         Assert.Null(loser.Activated);
         Assert.Equal(0, activatedB);
-        Assert.NotNull(loser.ExistingLocation);
-        Assert.Equal(RoutingId.From("node-a"), loser.ExistingLocation.NodeRid);
-        Assert.Equal(nodeA.Runtime.OwnerId, loser.ExistingLocation.OwnerId);
+        Assert.Null(loser.ExistingLocation);
+
+        var claimed = await fixture.Store.ResolveActorAsync(key);
+        Assert.NotNull(claimed);
+        Assert.Equal(nodeA.Runtime.OwnerId, claimed.OwnerId);
+        Assert.Null(claimed.ActorRef);
+
+        var publish = await nodeA.Lifecycle.PublishActorRefAsync(
+            ActorType,
+            ActorId,
+            new ActorRef(RoutingId.From("node-a"), ActorId, 1));
+        Assert.Equal(ZLinkLocationWriteStatus.Stored, publish.Status);
+
+        var resolved = await nodeB.Resolvers.ResolveActorRowAsync(key);
+        Assert.NotNull(resolved);
+        Assert.Equal(RoutingId.From("node-a"), resolved.NodeRid);
+        Assert.Equal(nodeA.Runtime.OwnerId, resolved.OwnerId);
+        Assert.Equal(ActorId, resolved.ActorRef?.ActorId);
+
+        var published = await nodeB.Query.ListActorLocationsAsync(new ZLinkActorLocationFilter());
+        Assert.Equal(ActorId, Assert.Single(published.Items).ActorId);
     }
 
     [Fact]
@@ -72,7 +100,7 @@ public sealed class LocationLifecycleTests
                 CancellationToken.None));
 
         // The rolled-back key is claimable again, by anyone.
-        Assert.Null(await fixture.Store.ResolveActorAsync(new ZLinkActorLocationKey(ActorType, ActorId)));
+        Assert.Null(await fixture.Store.ResolveActorAsync(new ZLinkActorLocationKey(ActorId)));
         var reclaim = await node.Lifecycle.ClaimActorAsync(
             ActorType, ActorId, RoutingId.From("node-a"), null, CancellationToken.None);
         Assert.Equal(ZLinkActorClaimStatus.Claimed, reclaim.Status);
@@ -83,7 +111,7 @@ public sealed class LocationLifecycleTests
     {
         var fixture = await LifecycleFixture.CreateAsync();
         var node = await fixture.NodeAsync("node-a");
-        var key = new ZLinkActorLocationKey(ActorType, ActorId);
+        var key = new ZLinkActorLocationKey(ActorId);
 
         var claim = await node.Lifecycle.ClaimActorAsync(
             ActorType, ActorId, RoutingId.From("node-a"), null, CancellationToken.None);
@@ -91,13 +119,16 @@ public sealed class LocationLifecycleTests
         var claimed = await fixture.Store.ResolveActorAsync(key);
         var generation = claimed!.Generation;
 
-        await node.Lifecycle.SetActorRefAsync(ActorType, ActorId, "ref-1");
+        await node.Lifecycle.PublishActorRefAsync(
+            ActorType,
+            ActorId,
+            new ActorRef(RoutingId.From("node-1"), ActorId, 1));
         await node.Lifecycle.NotifyActorJoinedSpotAsync(ActorType, ActorId, RoutingId.From("spot-1"));
 
         var joined = await fixture.Store.ResolveActorAsync(key);
         Assert.Equal(ZLinkSpotKind.User, joined!.LocationKind);
         Assert.Equal(RoutingId.From("spot-1"), joined.SpotRid);
-        Assert.Equal("ref-1", joined.ActorRef);
+        Assert.Equal(ActorId, joined.ActorRef?.ActorId);
         Assert.Equal(generation, joined.Generation);
 
         await node.Lifecycle.NotifyActorLeftSpotAsync(ActorType, ActorId);
@@ -118,7 +149,7 @@ public sealed class LocationLifecycleTests
         await node.Lifecycle.ClaimActorAsync(
             ActorType, ActorId, RoutingId.From("node-a"), null, CancellationToken.None);
         await node.Lifecycle.ReleaseActorAsync(ActorType, ActorId);
-        Assert.Null(await fixture.Store.ResolveActorAsync(new ZLinkActorLocationKey(ActorType, ActorId)));
+        Assert.Null(await fixture.Store.ResolveActorAsync(new ZLinkActorLocationKey(ActorId)));
 
         var status = await node.Lifecycle.ClaimSpotAsync(
             "mesh",
@@ -169,7 +200,7 @@ public sealed class LocationLifecycleTests
 
         // The stale owner must not be able to damage the new row.
         await nodeA.Lifecycle.ReleaseActorAsync(ActorType, ActorId);
-        var row = await fixture.Store.ResolveActorAsync(new ZLinkActorLocationKey(ActorType, ActorId));
+        var row = await fixture.Store.ResolveActorAsync(new ZLinkActorLocationKey(ActorId));
         Assert.Equal(nodeB.Runtime.OwnerId, row!.OwnerId);
     }
 
@@ -243,22 +274,48 @@ public sealed class LocationLifecycleTests
         var nodeA = await fixture.NodeAsync("node-a");
         var nodeB = await fixture.NodeAsync("node-b");
         var nodeC = await fixture.NodeAsync("node-c");
+        var key = new ZLinkActorLocationKey(ActorId);
 
-        await nodeA.Lifecycle.ExecuteActorClaimThenActivateAsync(
+        var activation = await nodeA.Lifecycle.ExecuteActorClaimThenActivateAsync(
             ActorType, ActorId, RoutingId.From("node-a"),
             deactivate: null,
-            activate: _ => ValueTask.FromResult("instance-a"),
+            activate: async cancellationToken =>
+            {
+                var claimed = await fixture.Store.ResolveActorAsync(key, cancellationToken);
+                Assert.NotNull(claimed);
+                Assert.Equal(nodeA.Runtime.OwnerId, claimed.OwnerId);
+                Assert.Null(claimed.ActorRef);
+                Assert.Null(await nodeA.Resolvers.ResolveActorRowAsync(key, cancellationToken));
+
+                var actors = await nodeA.Query.ListActorLocationsAsync(
+                    new ZLinkActorLocationFilter(),
+                    cancellationToken: cancellationToken);
+                Assert.DoesNotContain(actors.Items, actor => actor.ActorId == ActorId);
+                return "instance-a";
+            },
             CancellationToken.None);
+        Assert.Equal("instance-a", activation.Activated);
+
+        var publish = await nodeA.Lifecycle.PublishActorRefAsync(
+            ActorType,
+            ActorId,
+            new ActorRef(RoutingId.From("node-a"), ActorId, 1));
+        Assert.Equal(ZLinkLocationWriteStatus.Stored, publish.Status);
+
+        var visible = await nodeB.Query.ListActorLocationsAsync(new ZLinkActorLocationFilter());
+        Assert.Equal(ActorId, Assert.Single(visible.Items).ActorId);
 
         // Node B has resolved the actor before and still caches node A.
-        var cached = await nodeB.Resolvers.ResolveActorRowAsync(new ZLinkActorLocationKey(ActorType, ActorId));
+        var cached = await nodeB.Resolvers.ResolveActorRowAsync(key);
         Assert.Equal(RoutingId.From("node-a"), cached!.NodeRid);
 
         // The actor moves to node C behind node B's cache.
         await nodeC.Runtime.WriteActorAsync(
             InMemoryLocationStoreTests.Actor("ignored", 0) with { NodeRid = RoutingId.From("node-c") },
             ZLinkLocationWriteIntent.Takeover);
-        var moved = await fixture.Store.ResolveActorAsync(new ZLinkActorLocationKey(ActorType, ActorId));
+        var moved = await fixture.Store.ResolveActorAsync(key);
+        var refreshed = await nodeB.Resolvers.ResolveActorRowAsync(key);
+        Assert.Equal(RoutingId.From("node-c"), refreshed!.NodeRid);
 
         // Reconnect at node B: the claim conflicts, the existing location
         // is re-read with Refresh (never from the stale cache), and no
@@ -287,7 +344,7 @@ public sealed class LocationLifecycleTests
             new ZLinkRouteLocationKey(ZLinkRouteKind.ActorSession, sessionRid.ToHex()));
         Assert.Equal(RoutingId.From("node-c"), route!.OwnerNodeRid);
 
-        var after = await fixture.Store.ResolveActorAsync(new ZLinkActorLocationKey(ActorType, ActorId));
+        var after = await fixture.Store.ResolveActorAsync(key);
         Assert.Equal(moved!.Generation, after!.Generation);
         Assert.Equal(nodeC.Runtime.OwnerId, after.OwnerId);
     }
@@ -326,21 +383,25 @@ public sealed class LocationLifecycleTests
         public async Task<LifecycleNode> NodeAsync(string nodeRid)
         {
             _ = nodeRid;
-            var runtime = new ZLinkLocationRuntime(Options, Store, Store, Store, Store, Store, Time);
+            var runtime = new ZLinkLocationRuntime(Options, Store, Store, Store, Store, Store, Store, Time);
             // A single lease renewal instead of StartAsync keeps the
             // heartbeat loop out of the test so lease expiry is driven by
             // the manual clock alone.
             Assert.True(await runtime.RenewOwnerLeaseOnceAsync());
+            var tracker = new ZLinkOwnerLeaseTracker(Store, Options, Time);
             var resolvers = new ZLinkStoreLocationResolvers(
                 Options, Store, Store, Store, Store,
-                new ZLinkOwnerLeaseTracker(Store, Options, Time),
+                tracker,
                 Time);
-            return new LifecycleNode(runtime, resolvers, new ZLinkLocationLifecycle(runtime, resolvers));
+            var query = new ZLinkLocationRuntimeQueryService(
+                Options, Store, Store, Store, Store, tracker, runtime, resolvers);
+            return new LifecycleNode(runtime, resolvers, query, new ZLinkLocationLifecycle(runtime, resolvers));
         }
     }
 
     private sealed record LifecycleNode(
         ZLinkLocationRuntime Runtime,
         ZLinkStoreLocationResolvers Resolvers,
+        IZLinkLocationRuntimeQuery Query,
         ZLinkLocationLifecycle Lifecycle);
 }

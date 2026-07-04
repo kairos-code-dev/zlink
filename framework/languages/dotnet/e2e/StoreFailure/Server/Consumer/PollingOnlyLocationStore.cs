@@ -24,11 +24,6 @@ internal sealed class PollingOnlyLocationStore(ZLinkRedisLocationStore inner) : 
         CancellationToken cancellationToken = default) =>
         inner.RemovePeerAsync(key, owner, cancellationToken);
 
-    ValueTask<long> IZLinkPeerLocationStore.RemoveByOwnerAsync(
-        string ownerId,
-        CancellationToken cancellationToken) =>
-        ((IZLinkPeerLocationStore)inner).RemoveByOwnerAsync(ownerId, cancellationToken);
-
     public ValueTask<IReadOnlyList<ZLinkPeerLocation>> ListPeersAsync(
         ZLinkPeerLocationFilter filter,
         CancellationToken cancellationToken = default) =>
@@ -45,11 +40,6 @@ internal sealed class PollingOnlyLocationStore(ZLinkRedisLocationStore inner) : 
         ZLinkLocationOwnerToken owner,
         CancellationToken cancellationToken = default) =>
         inner.RemoveSpotAsync(key, owner, cancellationToken);
-
-    ValueTask<long> IZLinkSpotLocationStore.RemoveByOwnerAsync(
-        string ownerId,
-        CancellationToken cancellationToken) =>
-        ((IZLinkSpotLocationStore)inner).RemoveByOwnerAsync(ownerId, cancellationToken);
 
     public ValueTask<ZLinkSpotLocation?> ResolveSpotAsync(
         ZLinkSpotLocationKey key,
@@ -74,11 +64,6 @@ internal sealed class PollingOnlyLocationStore(ZLinkRedisLocationStore inner) : 
         CancellationToken cancellationToken = default) =>
         inner.RemoveActorAsync(key, owner, cancellationToken);
 
-    ValueTask<long> IZLinkActorLocationStore.RemoveByOwnerAsync(
-        string ownerId,
-        CancellationToken cancellationToken) =>
-        ((IZLinkActorLocationStore)inner).RemoveByOwnerAsync(ownerId, cancellationToken);
-
     public ValueTask<ZLinkActorLocation?> ResolveActorAsync(
         ZLinkActorLocationKey key,
         CancellationToken cancellationToken = default) =>
@@ -102,11 +87,6 @@ internal sealed class PollingOnlyLocationStore(ZLinkRedisLocationStore inner) : 
         CancellationToken cancellationToken = default) =>
         inner.RemoveRouteAsync(key, owner, cancellationToken);
 
-    ValueTask<long> IZLinkRouteLocationStore.RemoveByOwnerAsync(
-        string ownerId,
-        CancellationToken cancellationToken) =>
-        ((IZLinkRouteLocationStore)inner).RemoveByOwnerAsync(ownerId, cancellationToken);
-
     public ValueTask<ZLinkRouteLocation?> ResolveRouteAsync(
         ZLinkRouteLocationKey key,
         CancellationToken cancellationToken = default) =>
@@ -118,14 +98,14 @@ internal sealed class PollingOnlyLocationStore(ZLinkRedisLocationStore inner) : 
         CancellationToken cancellationToken = default) =>
         inner.ListRoutesAsync(filter, page, cancellationToken);
 
-    public ValueTask<ZLinkLocationWriteResult> RenewOwnerLeaseAsync(
+    public ValueTask<ZLinkOwnerLeaseRenewal> RenewOwnerLeaseAsync(
         string ownerId,
         RoutingId nodeRid,
         TimeSpan leaseTtl,
         CancellationToken cancellationToken = default) =>
         inner.RenewOwnerLeaseAsync(ownerId, nodeRid, leaseTtl, cancellationToken);
 
-    public ValueTask<ZLinkLocationWriteResult> RemoveOwnerLeaseAsync(
+    public ValueTask<bool> RemoveOwnerLeaseAsync(
         string ownerId,
         CancellationToken cancellationToken = default) =>
         inner.RemoveOwnerLeaseAsync(ownerId, cancellationToken);
@@ -133,4 +113,9 @@ internal sealed class PollingOnlyLocationStore(ZLinkRedisLocationStore inner) : 
     public ValueTask<ZLinkOwnerLeaseSnapshot> ListOwnerLeasesAsync(
         CancellationToken cancellationToken = default) =>
         inner.ListOwnerLeasesAsync(cancellationToken);
+
+    public ValueTask<long> RemoveAllByOwnerAsync(
+        string ownerId,
+        CancellationToken cancellationToken = default) =>
+        inner.RemoveAllByOwnerAsync(ownerId, cancellationToken);
 }

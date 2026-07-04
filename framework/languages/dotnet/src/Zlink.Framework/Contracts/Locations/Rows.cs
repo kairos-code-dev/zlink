@@ -1,0 +1,83 @@
+namespace Zlink.Framework.Contracts.Locations;
+
+public sealed record ZLinkPeerLocation(
+    ZLinkLocationAutoConnectType AutoConnectType,
+    string MeshName,
+    RoutingId? NodeRid,
+    ZLinkLocationRole Role,
+    string Endpoint,
+    uint Weight,
+    long Value,
+    IReadOnlyDictionary<string, string>? Metadata,
+    IReadOnlyList<string>? Capabilities,
+    string OwnerId,
+    long Generation,
+    DateTimeOffset UpdatedAt);
+
+public sealed record ZLinkSpotLocation(
+    string MeshName,
+    RoutingId SpotRid,
+    string? SpotType,
+    RoutingId NodeRid,
+    ZLinkSpotKind SpotKind,
+    string? RouteEndpoint,
+    string OwnerId,
+    long Generation,
+    DateTimeOffset UpdatedAt);
+
+/// <summary>
+/// Current location of one actor. <see cref="LocationKind"/> is the spot
+/// kind where the actor lives; there is no separate SpotKind field.
+/// <see cref="ActorRef"/> is null only after claim and before publish, and
+/// runtime query does not expose rows in that state.
+/// </summary>
+public sealed record ZLinkActorLocation(
+    string ActorId,
+    string? ActorType,
+    ActorRef? ActorRef,
+    RoutingId NodeRid,
+    ZLinkSpotKind LocationKind,
+    string SpotMeshName,
+    RoutingId? SpotRid,
+    string OwnerId,
+    long Generation,
+    DateTimeOffset UpdatedAt);
+
+/// <summary>
+/// Framework internal route item. <see cref="Value"/> is a framework route
+/// payload and is not an application key-value storage surface.
+/// </summary>
+public sealed record ZLinkRouteLocation(
+    ZLinkRouteKind RouteKind,
+    string RouteKey,
+    RoutingId OwnerNodeRid,
+    string OwnerId,
+    long Generation,
+    ReadOnlyMemory<byte> Value,
+    DateTimeOffset UpdatedAt);
+
+/// <summary>
+/// One lease per framework runtime instance. Location rows are live only
+/// while their owner's lease is live.
+/// </summary>
+public sealed record ZLinkOwnerLease(
+    string OwnerId,
+    RoutingId NodeRid,
+    DateTimeOffset LeaseExpiresAt,
+    DateTimeOffset UpdatedAt);
+
+/// <summary>
+/// Owner lease list plus the store's current time. Expiry is judged from
+/// <see cref="StoreNow"/> and locally measured monotonic elapsed time.
+/// </summary>
+public sealed record ZLinkOwnerLeaseSnapshot(
+    IReadOnlyList<ZLinkOwnerLease> Leases,
+    DateTimeOffset StoreNow);
+
+/// <summary>
+/// Logical messaging address of one spot in a mesh. Callers may hold the
+/// address and re-resolve after send failure; send paths do not resolve.
+/// </summary>
+public readonly record struct ZLinkSpotAddress(
+    RoutingId NodeRid,
+    RoutingId SpotRid);

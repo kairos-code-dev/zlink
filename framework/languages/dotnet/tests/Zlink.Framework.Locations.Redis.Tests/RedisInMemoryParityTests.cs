@@ -31,9 +31,9 @@ public sealed class RedisInMemoryParityTests
         var inMemoryStore = new ZLinkInMemoryLocationStore();
 
         var redisTrace = await RunScenarioAsync(
-            redisStore, redisStore, redisStore, redisStore, redisStore);
+            redisStore, redisStore, redisStore, redisStore, redisStore, redisStore);
         var inMemoryTrace = await RunScenarioAsync(
-            inMemoryStore, inMemoryStore, inMemoryStore, inMemoryStore, inMemoryStore);
+            inMemoryStore, inMemoryStore, inMemoryStore, inMemoryStore, inMemoryStore, inMemoryStore);
 
         Assert.Equal(inMemoryTrace, redisTrace);
     }
@@ -43,15 +43,20 @@ public sealed class RedisInMemoryParityTests
         IZLinkSpotLocationStore spots,
         IZLinkActorLocationStore actors,
         IZLinkRouteLocationStore routes,
-        IZLinkOwnerLeaseStore leases)
+        IZLinkOwnerLeaseStore leases,
+        IZLinkLocationStore store)
     {
         var trace = new List<string>();
         void Record(string step, ZLinkLocationWriteResult result) =>
             trace.Add($"{step}={result.Status}:{result.Generation}");
+        void RecordLease(string step, ZLinkOwnerLeaseRenewal renewal) =>
+            trace.Add($"{step}=renewed:{renewal.LeaseExpiresAt > renewal.StoreNow}");
+        void RecordBool(string step, bool removed) =>
+            trace.Add($"{step}=removed:{removed}");
 
         var leaseTtl = TimeSpan.FromSeconds(30);
-        Record("lease-a", await leases.RenewOwnerLeaseAsync(OwnerA, RoutingId.From("node-1"), leaseTtl));
-        Record("lease-b", await leases.RenewOwnerLeaseAsync(OwnerB, RoutingId.From("node-2"), leaseTtl));
+        RecordLease("lease-a", await leases.RenewOwnerLeaseAsync(OwnerA, RoutingId.From("node-1"), leaseTtl));
+        RecordLease("lease-b", await leases.RenewOwnerLeaseAsync(OwnerB, RoutingId.From("node-2"), leaseTtl));
 
         // Actor lifecycle: claim, conflict, renew guard, takeover fencing,
         // owner-guarded remove, re-claim after removal.
@@ -68,10 +73,10 @@ public sealed class RedisInMemoryParityTests
         Record("actor-old-owner-renew",
             await actors.UpdateActorAsync(TestRows.Actor(OwnerA, claim.Generation), ZLinkLocationWriteIntent.Renew));
         Record("actor-old-owner-remove", await actors.RemoveActorAsync(
-            new ZLinkActorLocationKey("player", "actor-1"),
+            new ZLinkActorLocationKey("actor-1"),
             new ZLinkLocationOwnerToken(OwnerA, claim.Generation)));
         Record("actor-remove", await actors.RemoveActorAsync(
-            new ZLinkActorLocationKey("player", "actor-1"),
+            new ZLinkActorLocationKey("actor-1"),
             new ZLinkLocationOwnerToken(OwnerB, takeover.Generation)));
         Record("actor-reclaim",
             await actors.UpdateActorAsync(TestRows.Actor(OwnerA, 0), ZLinkLocationWriteIntent.NewClaim));
@@ -84,8 +89,7 @@ public sealed class RedisInMemoryParityTests
         Record("spot-remove-wrong-owner", await spots.RemoveSpotAsync(
             new ZLinkSpotLocationKey("play", RoutingId.From("spot-1")),
             new ZLinkLocationOwnerToken(OwnerB, 1)));
-        trace.Add($"spot-remove-by-owner={await spots.RemoveByOwnerAsync(OwnerA)}");
-        trace.Add($"actor-remove-by-owner={await actors.RemoveByOwnerAsync(OwnerA)}");
+        trace.Add($"remove-all-by-owner={await store.RemoveAllByOwnerAsync(OwnerA)}");
 
         // Route claim and generation continuity for a second claim cycle.
         var routeClaim = await routes.UpdateRouteAsync(TestRows.Route(OwnerA), ZLinkLocationWriteIntent.NewClaim);
@@ -99,7 +103,7 @@ public sealed class RedisInMemoryParityTests
         // A removed owner lease makes that owner's remaining rows claimable.
         var peerClaim = await peers.UpdatePeerAsync(TestRows.Peer(OwnerA), ZLinkLocationWriteIntent.NewClaim);
         Record("peer-claim", peerClaim);
-        Record("lease-a-remove", await leases.RemoveOwnerLeaseAsync(OwnerA));
+        RecordBool("lease-a-remove", await leases.RemoveOwnerLeaseAsync(OwnerA));
         Record("peer-claim-after-lease-removed",
             await peers.UpdatePeerAsync(TestRows.Peer(OwnerB), ZLinkLocationWriteIntent.NewClaim));
 

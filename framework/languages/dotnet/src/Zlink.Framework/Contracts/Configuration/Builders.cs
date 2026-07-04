@@ -181,22 +181,7 @@ public interface IZLinkFrameworkOptions
 
     IZLinkFanoutChannelBuilder AddFanoutChannel(string channelName);
 
-    IZLinkRouteMeshChannelBuilder AddRouteMesh(string channelName);
-
-    void AddPeerLocationStore<TStore>()
-        where TStore : class, Locations.IZLinkPeerLocationStore;
-
-    void AddSpotLocationStore<TStore>()
-        where TStore : class, Locations.IZLinkSpotLocationStore;
-
-    void AddActorLocationStore<TStore>()
-        where TStore : class, Locations.IZLinkActorLocationStore;
-
-    void AddRouteLocationStore<TStore>()
-        where TStore : class, Locations.IZLinkRouteLocationStore;
-
-    void AddOwnerLeaseStore<TStore>()
-        where TStore : class, Locations.IZLinkOwnerLeaseStore;
+    IZLinkRouteMeshChannelBuilder AddRouteMeshChannel(string channelName);
 
     /// <summary>
     /// Registers the framework's single-process in-memory store for every
@@ -210,8 +195,7 @@ public interface IZLinkFrameworkOptions
     /// (draft 20.2), the way codecs register serializer instances. The
     /// instance may additionally implement the optional change stamp and
     /// watch contracts; they are picked up automatically. Mutually
-    /// exclusive with UseInMemoryLocationStores and the per-role
-    /// Add*LocationStore registrations.
+    /// exclusive with UseInMemoryLocationStores.
     /// </summary>
     void AddLocationStore(Locations.IZLinkLocationStore store);
 

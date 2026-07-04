@@ -83,7 +83,9 @@ internal sealed class SupportChatSession(
                     authenticated.ActorId))
             .Async<EnsureSupportUserActorRes>(cancellationToken);
 
-        _identityActor = await Context.Actors.BindAsync(ToActorRef(ensured.Actor), cancellationToken);
+        _identityActor = await Context.Actors.BindOrGetAsync(
+            ensured.Actor.ToActorRef(),
+            cancellationToken);
         _identityActorId = authenticated.ActorId;
         _identityDisplayName = authenticated.DisplayName;
         _identityRole = authenticated.Role;
@@ -123,8 +125,8 @@ internal sealed class SupportChatSession(
                 new EnsureAgentConversationReq(_identityActorId, _identityDisplayName, conversationId))
             .Async<EnsureAgentConversationRes>(cancellationToken);
 
-        _conversationActors[conversationId] = await Context.Actors.BindAsync(
-            ToActorRef(ensured.Actor),
+        _conversationActors[conversationId] = await Context.Actors.BindOrGetAsync(
+            ensured.Actor.ToActorRef(),
             cancellationToken);
         logger.LogInformation(
             "session: agent joined conversation. roster={RosterActorId}, conversation={ConversationId}",
@@ -153,15 +155,13 @@ internal sealed class SupportChatSession(
 
     private static string RequireConversationId(ZLinkSessionDispatchContext dispatch)
     {
-        return dispatch.Metadata.Find(SampleNames.ConversationIdMetadataKey)
-               ?? throw new InvalidOperationException("Conversation packet is missing the ConversationId metadata.");
+        var conversationId = dispatch.Metadata.Find(SampleNames.ConversationIdMetadataKey);
+        if (conversationId is null)
+        {
+            throw new InvalidOperationException("Conversation packet is missing the ConversationId metadata.");
+        }
+
+        return conversationId;
     }
 
-    private static ActorRef ToActorRef(ActorRefSnapshot snapshot)
-    {
-        return new ActorRef(
-            RoutingId.From(snapshot.NodeRid),
-            snapshot.ActorId,
-            snapshot.Generation);
-    }
 }

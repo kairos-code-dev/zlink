@@ -54,7 +54,7 @@ internal static class Program
                 .MessageFlow(ZLinkMessageFlowLogMode.KeyTransitions)
                 .TraceLogFile(SampleFlowLog.Path(instance.InstanceId))
                 .TraceLabel(instance.InstanceId);
-            options.AddRouteMesh(SampleNames.OrderWorkflowRouteChannel)
+            options.AddRouteMeshChannel(SampleNames.OrderWorkflowRouteChannel)
                 .EnableServer(instance.RouteEndpoint)
                 .SetRoutingId(instance.RouteRid)
                 .AddRequestHandler<StartOrderWorkflowRouteHandler, StartOrderWorkflowReq, StartOrderWorkflowRes>()
@@ -78,7 +78,7 @@ internal static class Program
             WorkflowInstanceTopology instance,
             CancellationToken cancellationToken) =>
         {
-            await spots.GetOrCreateAsync<OrderWorkflowSpot>(
+            await spots.GetOrCreateAsync<OrderWorkflowSpot, OrderWorkflowSpotCreateReq>(
                 RoutingId.From(request.OrderId),
                 new OrderWorkflowSpotCreateReq(request.OrderId),
                 cancellationToken);

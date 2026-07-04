@@ -31,7 +31,7 @@ message EnsurePlayerActorReq {
   string preferred_actor_node_rid = 3;
 }
 
-message ActorRefSnapshot {
+message ActorRefWire {
   string node_rid = 1;
   string actor_id = 2;
   uint64 generation = 3;
@@ -40,7 +40,7 @@ message ActorRefSnapshot {
 message EnsurePlayerActorRes {
   string actor_id = 1;
   string actor_type = 2;
-  ActorRefSnapshot actor = 3;
+  ActorRefWire actor = 3;
 }
 
 message MatchBingoReq {

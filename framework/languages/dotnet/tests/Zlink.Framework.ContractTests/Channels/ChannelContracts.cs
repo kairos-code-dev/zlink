@@ -8,7 +8,8 @@ public sealed class ChannelContracts
     [ContractExample(
         typeof(IZLinkChannelClient),
         typeof(IZLinkSendCall),
-        typeof(IZLinkRequestCall))]
+        typeof(IZLinkRequestCall),
+        typeof(IZLinkYieldRequestCall))]
     public async Task Channel_client_sends_and_requests_by_channel_name()
     {
         var client = new ExampleClient();
@@ -32,7 +33,7 @@ public sealed class ChannelContracts
     [ContractExample(
         typeof(IZLinkRouteClient),
         typeof(IZLinkSendCall),
-        typeof(IZLinkRouteRequestCall),
+        typeof(IZLinkRequestCall),
         typeof(IZLinkRouteSendHandler<>),
         typeof(IZLinkRouteRequestHandler<,>))]
     public async Task Route_client_addresses_a_target_node_through_a_router_channel()
@@ -40,12 +41,12 @@ public sealed class ChannelContracts
         var client = new ExampleRouteClient();
         var target = RoutingId.From("play-node-1");
 
-        client.Send("play-router", target, new RoomEvent("opened"))
+        client.SendToNode("play-router", target, new RoomEvent("opened"))
             .PacketName("room.event")
             .Submit();
 
         var room = await client
-            .Request("play-router", target, new AllocateRoom("alice"))
+            .RequestToNode("play-router", target, new AllocateRoom("alice"))
             .PacketName("room.allocate")
             .Timeout(TimeSpan.FromSeconds(2))
             .Async<RoomAllocated>();
@@ -58,7 +59,7 @@ public sealed class ChannelContracts
     [Fact]
     public void Route_request_call_does_not_expose_yield_terminator()
     {
-        var methodNames = typeof(IZLinkRouteRequestCall)
+        var methodNames = typeof(IZLinkRequestCall)
             .GetMethods()
             .Select(method => method.Name);
 
@@ -148,7 +149,7 @@ public sealed class ChannelContracts
             return new ExampleSendCall(packetName => LastPacketName = packetName);
         }
 
-        public IZLinkRequestCall RequestToChannel<TMessage>(string channelName, TMessage request)
+        public IZLinkYieldRequestCall RequestToChannel<TMessage>(string channelName, TMessage request)
         {
             LastChannelName = channelName;
             object? reply = request switch
@@ -167,7 +168,7 @@ public sealed class ChannelContracts
 
         public RoutingId TargetNodeRid { get; private set; }
 
-        public IZLinkSendCall Send<TMessage>(
+        public IZLinkSendCall SendToNode<TMessage>(
             string routerChannelId,
             RoutingId targetNodeRid,
             TMessage message)
@@ -187,7 +188,7 @@ public sealed class ChannelContracts
             return new ExampleRouteSendCall();
         }
 
-        public IZLinkRouteRequestCall RequestToSpot<TRequest>(
+        public IZLinkRequestCall RequestToSpot<TRequest>(
             string routerChannelId,
             ZLinkSpotAddress address,
             TRequest request)
@@ -197,7 +198,7 @@ public sealed class ChannelContracts
             return new ExampleRouteRequestCall(new object());
         }
 
-        public IZLinkRouteRequestCall Request<TRequest>(
+        public IZLinkRequestCall RequestToNode<TRequest>(
             string routerChannelId,
             RoutingId targetNodeRid,
             TRequest request)
@@ -236,22 +237,37 @@ public sealed class ChannelContracts
         }
     }
 
-    private class ExampleRequestCall(Action<string> setPacketName, object? reply) : IZLinkRequestCall
+    private class ExampleRequestCall(Action<string> setPacketName, object? reply) : IZLinkYieldRequestCall
     {
-        public IZLinkRequestCall PacketName(string messageName)
+        public IZLinkYieldRequestCall PacketName(string messageName)
         {
             setPacketName(messageName);
             return this;
         }
 
-        public IZLinkRequestCall Timeout(TimeSpan timeout)
+        public IZLinkYieldRequestCall Timeout(TimeSpan timeout)
         {
             return this;
+        }
+
+        IZLinkRequestCall IZLinkRequestCall.PacketName(string messageName)
+        {
+            return PacketName(messageName);
+        }
+
+        IZLinkRequestCall IZLinkRequestCall.Timeout(TimeSpan timeout)
+        {
+            return Timeout(timeout);
         }
 
         public ValueTask<TReply> Async<TReply>(CancellationToken cancellationToken = default)
         {
             return ValueTask.FromResult((TReply)reply!);
+        }
+
+        public ValueTask<TReply> Yield<TReply>(CancellationToken cancellationToken = default)
+        {
+            return Async<TReply>(cancellationToken);
         }
     }
 
@@ -275,14 +291,14 @@ public sealed class ChannelContracts
         }
     }
 
-    private sealed class ExampleRouteRequestCall(object reply) : IZLinkRouteRequestCall
+    private sealed class ExampleRouteRequestCall(object reply) : IZLinkRequestCall
     {
-        public IZLinkRouteRequestCall PacketName(string messageName)
+        public IZLinkRequestCall PacketName(string messageName)
         {
             return this;
         }
 
-        public IZLinkRouteRequestCall Timeout(TimeSpan timeout)
+        public IZLinkRequestCall Timeout(TimeSpan timeout)
         {
             return this;
         }

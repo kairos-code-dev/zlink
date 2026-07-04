@@ -9,8 +9,7 @@ namespace Zlink.Framework.Runtime.Locations;
 /// live on <see cref="ZLinkLocationAddressResolvers"/>.
 /// </summary>
 internal sealed class ZLinkStoreLocationResolvers :
-    IZLinkPeerLocationResolver,
-    IZLinkRouteLocationResolver
+    IZLinkPeerLocationResolver
 {
     private readonly IZLinkPeerLocationStore _peerStore;
     private readonly IZLinkSpotLocationStore _spotStore;
@@ -42,7 +41,7 @@ internal sealed class ZLinkStoreLocationResolvers :
         _observed = observed ?? new ZLinkObservedLocationGenerations();
     }
 
-    public async ValueTask<IReadOnlyList<ZLinkPeerLocation>> ListPeersAsync(
+    public async ValueTask<IReadOnlyList<ZLinkPeerLocation>> ListLivePeersAsync(
         ZLinkPeerLocationFilter filter,
         CancellationToken cancellationToken = default)
     {
@@ -56,8 +55,8 @@ internal sealed class ZLinkStoreLocationResolvers :
         var fresh = new List<ZLinkPeerLocation>(rows.Count);
         foreach (var row in rows)
         {
-            if (!ZLinkLocationCanonicalNames.IsKnown(row.AutoConnectType)
-                || !ZLinkLocationCanonicalNames.IsKnown(row.Role))
+            if (!ZLinkLocationValueCodec.IsKnown(row.AutoConnectType)
+                || !ZLinkLocationValueCodec.IsKnown(row.Role))
             {
                 ZLinkFrameworkDebugLog.SpotDiscovery(
                     $"peer row ignored: unknown auto-connect type '{row.AutoConnectType}' "
@@ -97,13 +96,8 @@ internal sealed class ZLinkStoreLocationResolvers :
         ZLinkActorLocationKey key,
         CancellationToken cancellationToken = default)
     {
-        // An absent actor type and an empty one are the same key by contract.
-        var normalized = key with
-        {
-            ActorType = ZLinkLocationKeyCodec.NormalizeActorType(key.ActorType)
-        };
         var row = await ResolveAsync(
-            normalized,
+            key,
             static (store, key, ct) => store.ResolveActorAsync(key, ct),
             _actorStore,
             static row => row.OwnerId,
@@ -111,13 +105,20 @@ internal sealed class ZLinkStoreLocationResolvers :
             cancellationToken).ConfigureAwait(false);
         if (row is null)
         {
-            await _events.ActorResolveMissAsync(normalized, cancellationToken).ConfigureAwait(false);
+            await _events.ActorResolveMissAsync(key, cancellationToken).ConfigureAwait(false);
+            return null;
+        }
+
+        if (row.ActorRef is null)
+        {
+            await _events.ActorResolveMissAsync(key, cancellationToken).ConfigureAwait(false);
+            return null;
         }
 
         return row;
     }
 
-    public async ValueTask<ZLinkRouteLocation?> ResolveRouteAsync(
+    internal async ValueTask<ZLinkRouteLocation?> ResolveRouteAsync(
         ZLinkRouteLocationKey key,
         CancellationToken cancellationToken = default)
     {

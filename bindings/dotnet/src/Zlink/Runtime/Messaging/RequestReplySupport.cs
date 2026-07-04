@@ -131,6 +131,13 @@ internal static class RequestReplySupport
                         return;
                     }
 
+                    if (error is ZlinkSubmitException submitError)
+                    {
+                        DeliverCallback(context, () => callback(
+                            MapSubmitFailureResult(submitError), null));
+                        return;
+                    }
+
                     DeliverCallback(context, () => callback(
                         RequestResult.ProtocolError, null));
                     return;
@@ -207,6 +214,22 @@ internal static class RequestReplySupport
                    error.NativeErrno == ErrnoEWouldBlockWin =>
                 SendResult.Backpressured,
             _ => throw error
+        };
+    }
+
+    private static RequestResult MapSubmitFailureResult(ZlinkSubmitException error)
+    {
+        return error.Result switch
+        {
+            ZlinkSubmitException.ErrorCode.NotConnected => RequestResult.NotConnected,
+            ZlinkSubmitException.ErrorCode.NotFound => RequestResult.NotFound,
+            ZlinkSubmitException.ErrorCode.NotAdmitted
+                or ZlinkSubmitException.ErrorCode.InvalidState => RequestResult.Rejected,
+            ZlinkSubmitException.ErrorCode.Backpressured => RequestResult.Busy,
+            ZlinkSubmitException.ErrorCode.InvalidArgument => RequestResult.InvalidArgument,
+            ZlinkSubmitException.ErrorCode.NotSupported => RequestResult.NotSupported,
+            ZlinkSubmitException.ErrorCode.Terminated => RequestResult.Terminated,
+            _ => RequestResult.InternalError
         };
     }
 

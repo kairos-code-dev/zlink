@@ -35,16 +35,33 @@ internal sealed class ZLinkSessionActorCoordinator(
             .ConfigureAwait(false);
     }
 
+    public async ValueTask<IZLinkSessionActor> BindOrGetActorAsync(
+        ZLinkSessionContext context,
+        ActorRef actor,
+        CancellationToken cancellationToken)
+    {
+        if (_bindings.FindActor(actor.ActorId) is { } existing)
+        {
+            if (ActorRefsEqual(existing.Ref, actor)) return existing;
+
+            if (existing is not ZLinkSessionActor sessionActor)
+                throw new InvalidOperationException("Actor ref was not created by this framework runtime.");
+
+            await UnbindNativeActorAsync(existing.ActorId, cancellationToken).ConfigureAwait(false);
+            await _bindings.ReleaseAsync(context, sessionActor, cancellationToken).ConfigureAwait(false);
+        }
+
+        return await BindActorCoreAsync(context, actor, cancellationToken)
+            .ConfigureAwait(false);
+    }
+
     private async ValueTask<IZLinkSessionActor> BindActorCoreAsync(
         ZLinkSessionContext context,
         ActorRef actor,
         CancellationToken cancellationToken)
     {
         EnsureConcreteActorRef(actor);
-        var actorRef = new ZLinkBackendActorRef(
-            actor.NodeRid,
-            actor.ActorId,
-            actor.Generation);
+        var actorRef = actor.ToBackend();
         await BindNativeActorAsync(actorRef, cancellationToken).ConfigureAwait(false);
         return await _bindings.BindAsync(
             context,
@@ -166,7 +183,14 @@ internal sealed class ZLinkSessionActorCoordinator(
 
     private static ActorRef ToPublicActorRef(ZLinkBackendActorRef actorRef)
     {
-        return new ActorRef(actorRef.NodeRid, actorRef.ActorId, actorRef.Generation);
+        return actorRef.ToNative();
+    }
+
+    private static bool ActorRefsEqual(ActorRef left, ActorRef right)
+    {
+        return left.ActorId == right.ActorId
+               && left.NodeRid == right.NodeRid
+               && left.Generation == right.Generation;
     }
 
     private static void EnsureConcreteActorRef(ActorRef actor)
@@ -186,6 +210,19 @@ internal sealed class ZLinkSessionActorCoordinator(
 
         await managedStream.BindActorAsync(
                 actorRef,
+                runtime.Registration.DefaultRequestTimeout,
+                cancellationToken)
+            .ConfigureAwait(false);
+    }
+
+    private async ValueTask UnbindNativeActorAsync(
+        string actorId,
+        CancellationToken cancellationToken)
+    {
+        if (stream is not ZLinkManagedStream managedStream) return;
+
+        await managedStream.UnbindActorAsync(
+                actorId,
                 runtime.Registration.DefaultRequestTimeout,
                 cancellationToken)
             .ConfigureAwait(false);

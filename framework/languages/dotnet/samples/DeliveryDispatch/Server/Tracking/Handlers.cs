@@ -11,7 +11,7 @@ namespace DeliveryDispatch.Server.Tracking;
 internal sealed class DeliveryStatusChangedHandler(
     EvidenceStore evidence,
     IZLinkRouteClient routes,
-    IZLinkActorLocationResolver actors,
+    IZLinkActorAddressResolver actors,
     ILogger<DeliveryStatusChangedHandler> logger)
     : IZLinkRequestHandler<DeliveryStatusChangedReq, DeliveryStatusChangedRes>
 {
@@ -28,7 +28,6 @@ internal sealed class DeliveryStatusChangedHandler(
             request.CourierId,
             request.OccurredAt);
         var customerEntry = await actors.ResolveActorSpotAddressAsync(
-                                SampleNames.CustomerActorType,
                                 request.CustomerId,
                                 cancellationToken)
                             ?? throw new InvalidOperationException("Customer actor spot is not available.");

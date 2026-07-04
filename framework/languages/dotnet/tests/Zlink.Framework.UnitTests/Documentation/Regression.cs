@@ -418,7 +418,7 @@ public sealed class RegressionTests
             var text = File.ReadAllText(sourceFile);
             var classMatches = Regex.Matches(
                 text,
-                @"\bclass\s+(?<class>[A-Za-z_][A-Za-z0-9_]*)");
+                @"(?m)^\s*(?:(?:public|internal|file|private|protected)\s+)*(?:(?:sealed|static|abstract|partial|new)\s+)*class\s+(?<class>[A-Za-z_][A-Za-z0-9_]*)\b");
 
             if (classMatches.Count == 0) continue;
 

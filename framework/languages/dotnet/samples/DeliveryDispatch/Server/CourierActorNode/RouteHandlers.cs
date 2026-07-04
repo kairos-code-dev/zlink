@@ -25,7 +25,7 @@ internal sealed class FindCourierActorRouteHandler(IZLinkActorManager actorManag
         var actorRef = actor.Value;
         return new FindCourierActorRes(
             request.CourierId,
-            new ActorRefSnapshot(actorRef.NodeRid.ToString(), actorRef.ActorId, actorRef.Generation));
+            ZLinkActorRefSnapshot.From(actorRef));
     }
 }
 
@@ -51,7 +51,7 @@ internal sealed class EnsureCourierActorRouteHandler(
             actor.NodeRid);
         return new EnsureCourierActorRes(
             request.CourierId,
-            new ActorRefSnapshot(actor.NodeRid.ToString(), actor.ActorId, actor.Generation));
+            ZLinkActorRefSnapshot.From(actor));
     }
 }
 

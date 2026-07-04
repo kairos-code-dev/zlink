@@ -15,7 +15,7 @@ internal static class SpotInteractionEndpoints
     {
         app.MapPost("/spot/outbound", async (
             IZLinkRouteClient routes,
-            IZLinkSpotLocationResolver locator,
+            IZLinkSpotAddressResolver locator,
             EvidenceStore evidence,
             NodeOptions node,
             SpotOutboundRouteReq request) =>
@@ -50,7 +50,7 @@ internal static class SpotInteractionEndpoints
         });
         app.MapPost("/spot/outbound-negative", async (
             IZLinkRouteClient routes,
-            IZLinkSpotLocationResolver locator,
+            IZLinkSpotAddressResolver locator,
             EvidenceStore evidence,
             NodeOptions node,
             SpotOutboundRouteReq request) =>
@@ -86,7 +86,7 @@ internal static class SpotInteractionEndpoints
         });
         app.MapPost("/spot/stage/request", async (
             IZLinkRouteClient routes,
-            IZLinkSpotLocationResolver locator,
+            IZLinkSpotAddressResolver locator,
             SpotStageProbeReq request) =>
         {
             var result = await routes.RequestToSpot(
@@ -100,7 +100,7 @@ internal static class SpotInteractionEndpoints
         });
         app.MapPost("/spot/stage/timer", async (
             IZLinkRouteClient routes,
-            IZLinkSpotLocationResolver locator,
+            IZLinkSpotAddressResolver locator,
             EvidenceStore evidence,
             NodeOptions node,
             SpotStageTimerReq request) =>
@@ -126,7 +126,7 @@ internal static class SpotInteractionEndpoints
         });
         app.MapPost("/spot/timer/start", async (
             IZLinkRouteClient routes,
-            IZLinkSpotLocationResolver locator,
+            IZLinkSpotAddressResolver locator,
             EvidenceStore evidence,
             NodeOptions node,
             SpotTimerStartReq request) =>
@@ -152,7 +152,7 @@ internal static class SpotInteractionEndpoints
         });
         app.MapPost("/spot/idle-close/start", async (
             IZLinkRouteClient routes,
-            IZLinkSpotLocationResolver locator,
+            IZLinkSpotAddressResolver locator,
             EvidenceStore evidence,
             NodeOptions node,
             SpotIdleCloseReq request) =>
@@ -184,7 +184,7 @@ internal static class SpotInteractionEndpoints
         });
         app.MapPost("/spot/overrun/start", async (
             IZLinkRouteClient routes,
-            IZLinkSpotLocationResolver locator,
+            IZLinkSpotAddressResolver locator,
             EvidenceStore evidence,
             NodeOptions node,
             SpotOverrunStartReq request) =>
@@ -211,7 +211,7 @@ internal static class SpotInteractionEndpoints
         });
         app.MapPost("/spot/worker/start", async (
             IZLinkRouteClient routes,
-            IZLinkSpotLocationResolver locator,
+            IZLinkSpotAddressResolver locator,
             SpotWorkerStartReq request) =>
         {
             var result = await routes.RequestToSpot(
@@ -241,7 +241,7 @@ internal static class SpotInteractionEndpoints
         });
         app.MapPost("/spot/to-spot/request", async (
             IZLinkRouteClient routes,
-            IZLinkSpotLocationResolver locator,
+            IZLinkSpotAddressResolver locator,
             EvidenceStore evidence,
             NodeOptions node,
             SpotToSpotRouteReq request) =>

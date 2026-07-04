@@ -141,7 +141,11 @@ internal sealed class ZLinkRouteChannelRuntime : IAsyncDisposable
             targetNodeRid,
             targetSpotRid,
             parts,
-            SendFlags.None);
+            SendFlags.DontWait);
+        if (!accepted)
+            throw new ZLinkFrameworkException(
+                ZLinkFrameworkErrorKind.RouteNotConnected,
+                $"Route channel '{RouterChannelId}' is not ready for SPOT route bridge send.");
         if (accepted) _spotRouteBridge.Drain();
         return accepted;
     }
@@ -161,8 +165,12 @@ internal sealed class ZLinkRouteChannelRuntime : IAsyncDisposable
             targetSpotRid,
             parts,
             callback,
-            SendFlags.None,
+            SendFlags.DontWait,
             timeout);
+        if (!accepted)
+            throw new ZLinkFrameworkException(
+                ZLinkFrameworkErrorKind.RouteNotConnected,
+                $"Route channel '{RouterChannelId}' is not ready for SPOT route bridge request.");
         if (accepted) _spotRouteBridge.Drain();
         return accepted;
     }

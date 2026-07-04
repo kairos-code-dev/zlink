@@ -88,17 +88,11 @@ internal static class RlB2CrashDuringInflightScenario
             await Task.Delay(100);
         }
 
-        for (var i = 0; i < 32; i++)
-        {
-            var reply = (await consumer.Post("/profile/request")
-                .Body(new ProfileReq("fast", $"rl-b2-restored-{i}"))
-                .SubmitAsync<ProfileRes>()).Body;
-            ScenarioAssert.That(reply.Value == "profile:fast", "RL-B2 restored request returned an unexpected value.");
-        }
-
-        await providerB.Post("/evidence/wait")
-            .Body(new EvidenceWaitReq(["marker=rl-b2-restored-"], []))
-            .SubmitAsync<string[]>();
+        await ProviderTrafficProbe.DriveUntilProviderServesAsync(
+            consumer,
+            providerB,
+            "rl-b2-restored",
+            "RL-B2 restored provider traffic");
 
         Console.WriteLine("scenario RL-B2 passed");
     }

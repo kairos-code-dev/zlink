@@ -10,7 +10,7 @@ namespace YieldDispatch.Server.Play.Handlers;
 [ZLinkSpotRequestHandler("RemoteSpotYieldReq")]
 internal sealed class RemoteSpotYieldHandler(
     EvidenceStore evidence,
-    IZLinkSpotLocationResolver spots)
+    IZLinkSpotAddressResolver spots)
     : IZLinkSpotRequestHandler<YieldProbeSpot, RemoteSpotYieldReq, YieldDispatchRes>
 {
     public async ValueTask<YieldDispatchRes> HandleAsync(
@@ -49,7 +49,7 @@ internal sealed class RemoteSpotYieldHandler(
 [ZLinkSpotPacketHandler("RemoteSpotYieldMsg")]
 internal sealed class RemoteSpotYieldCommandHandler(
     EvidenceStore evidence,
-    IZLinkSpotLocationResolver spots)
+    IZLinkSpotAddressResolver spots)
     : IZLinkSpotPacketHandler<YieldProbeSpot, RemoteSpotYieldMsg>
 {
     public async ValueTask HandleAsync(

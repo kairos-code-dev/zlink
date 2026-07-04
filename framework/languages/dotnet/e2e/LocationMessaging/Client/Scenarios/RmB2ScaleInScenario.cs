@@ -137,7 +137,7 @@ internal static class RmB2ScaleInScenario
         {
             var present = (await http.Get("/locations/peers?mesh=profile")
                 .SubmitAsync<PeerLocationRow[]>()).Body
-                .Any(row => row.Role == "router" && row.NodeRid == rid);
+                .Any(row => row.Role == "Router" && row.NodeRid == rid);
             if (!present) return;
 
             await Task.Delay(TimeSpan.FromMilliseconds(200));

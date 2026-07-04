@@ -36,20 +36,13 @@ internal sealed class SubscribeDeliverySessionHandler(
             actor = ensured.Actor;
         }
 
-        var boundActor = context.Actors.Find(actor.ActorId);
-        if (boundActor is null)
-        {
-            boundActor = await context.Actors.BindAsync(
-                new ActorRef(
-                    RoutingId.From(actor.NodeRid),
-                    actor.ActorId,
-                    actor.Generation),
-                cancellationToken);
-            logger.LogInformation(
-                "deliverydispatch customer-session: bound customer actor={ActorId} session={SessionId}",
-                actor.ActorId,
-                context.SessionId);
-        }
+        var boundActor = await context.Actors.BindOrGetAsync(
+            actor.ToActorRef(),
+            cancellationToken);
+        logger.LogInformation(
+            "deliverydispatch customer-session: bound customer actor={ActorId} session={SessionId}",
+            actor.ActorId,
+            context.SessionId);
 
         directory.Subscribe(CustomerId, request.DeliveryId);
         logger.LogInformation(

@@ -42,7 +42,7 @@ public static class DispatchServerHostFactory
                 .EnableClient()
                 .SetRoutingId(Systems.Zlink.RoutingId.From("delivery-dispatch-channel"))
                 .AddHandlerGroup(SampleNames.DispatchChannel);
-            options.AddRouteMesh(SampleNames.CourierActorNodeRouteChannel)
+            options.AddRouteMeshChannel(SampleNames.CourierActorNodeRouteChannel)
                 .EnableClient()
                 .SetRoutingId(Systems.Zlink.RoutingId.From("delivery-dispatch-courier-client"));
             options.AddClientServerChannel(SampleNames.TrackingRouteChannel)
@@ -52,15 +52,17 @@ public static class DispatchServerHostFactory
 
         var app = builder.Build();
         app.MapGet("/health", async (
-            IZLinkLocationRuntimeQuery locations,
+            IZLinkLocationReadiness readiness,
             CancellationToken cancellationToken) =>
         {
-            var node1Ready = await HasReadyCourierRouteAsync(
-                locations,
+            var node1Ready = await readiness.IsPeerReadyAsync(
+                SampleNames.CourierActorNodeRouteChannel,
+                ZLinkLocationRole.Router,
                 topology.CourierActorNode1Rid,
                 cancellationToken);
-            var node2Ready = await HasReadyCourierRouteAsync(
-                locations,
+            var node2Ready = await readiness.IsPeerReadyAsync(
+                SampleNames.CourierActorNodeRouteChannel,
+                ZLinkLocationRole.Router,
                 topology.CourierActorNode2Rid,
                 cancellationToken);
             return node1Ready && node2Ready
@@ -105,28 +107,5 @@ public static class DispatchServerHostFactory
         });
 
         return app;
-    }
-
-    private static async ValueTask<bool> HasReadyCourierRouteAsync(
-        IZLinkLocationRuntimeQuery locations,
-        RoutingId nodeRid,
-        CancellationToken cancellationToken)
-    {
-        try
-        {
-            var routes = await locations.ListTopologyAsync(
-                new ZLinkLocationTopologyFilter(
-                    Kind: ZLinkLocationKind.Peer,
-                    MeshName: SampleNames.CourierActorNodeRouteChannel,
-                    Role: ZLinkLocationRole.Router,
-                    NodeRid: nodeRid,
-                    State: ZLinkLocationTopologyState.Ready),
-                cancellationToken: cancellationToken);
-            return routes.Items.Count > 0;
-        }
-        catch
-        {
-            return false;
-        }
     }
 }

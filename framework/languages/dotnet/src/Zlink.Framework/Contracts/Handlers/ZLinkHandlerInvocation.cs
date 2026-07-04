@@ -4,21 +4,17 @@ public sealed class ZLinkHandlerInvocation
 {
     internal ZLinkHandlerInvocation(
         object? message,
-        IZLinkHandlerContext context,
-        string? channelName,
-        string? packetName)
+        IZLinkHandlerContext context)
     {
         Message = message;
         Context = context;
-        ChannelName = channelName;
-        PacketName = packetName;
     }
 
     public object? Message { get; }
 
     public IZLinkHandlerContext Context { get; }
 
-    public string? ChannelName { get; }
+    public string? ChannelName => Context.ChannelName;
 
-    public string? PacketName { get; }
+    public string? PacketName => Context.PacketName;
 }

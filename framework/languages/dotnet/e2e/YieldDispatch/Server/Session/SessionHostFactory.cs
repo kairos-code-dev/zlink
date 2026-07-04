@@ -36,11 +36,11 @@ internal static class SessionHostFactory
                 .MessageFlow(ZLinkMessageFlowLogMode.KeyTransitions)
                 .TraceLogFile(Path.Combine(options.LogDir, $"{options.Rid}-flow.log"))
                 .TraceLabel(options.Rid);
-            framework.AddRouteMesh(YieldDispatchNames.ControlChannel)
+            framework.AddRouteMeshChannel(YieldDispatchNames.ControlChannel)
                 .EnableServer(options.ControlEndpoint)
                 .EnableClient()
                 .SetRoutingId(RoutingId.From(options.Rid));
-            framework.AddRouteMesh(YieldDispatchNames.SpotRouteChannel)
+            framework.AddRouteMeshChannel(YieldDispatchNames.SpotRouteChannel)
                 .EnableClient()
                 .SetRoutingId(RoutingId.From(options.Rid));
             framework.AddSpotMesh(YieldDispatchNames.SpotChannel)

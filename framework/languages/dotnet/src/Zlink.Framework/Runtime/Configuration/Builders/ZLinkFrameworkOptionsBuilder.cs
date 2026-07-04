@@ -78,7 +78,7 @@ internal sealed class ZLinkFrameworkOptionsBuilder : IZLinkFrameworkOptions
         return new ZLinkFanoutChannelBuilder(channel);
     }
 
-    public IZLinkRouteMeshChannelBuilder AddRouteMesh(string channelName)
+    public IZLinkRouteMeshChannelBuilder AddRouteMeshChannel(string channelName)
     {
         var routeChannel = ZLinkRegistrationBuilderGuard.AddUnique(
             _registration.RouteChannels,
@@ -88,36 +88,6 @@ internal sealed class ZLinkFrameworkOptionsBuilder : IZLinkFrameworkOptions
             $"Duplicate route mesh channel name '{channelName}'.");
 
         return new ZLinkRouteChannelBuilder(routeChannel);
-    }
-
-    public void AddPeerLocationStore<TStore>()
-        where TStore : class, IZLinkPeerLocationStore
-    {
-        _registration.Locations.PeerStoreType = typeof(TStore);
-    }
-
-    public void AddSpotLocationStore<TStore>()
-        where TStore : class, IZLinkSpotLocationStore
-    {
-        _registration.Locations.SpotStoreType = typeof(TStore);
-    }
-
-    public void AddActorLocationStore<TStore>()
-        where TStore : class, IZLinkActorLocationStore
-    {
-        _registration.Locations.ActorStoreType = typeof(TStore);
-    }
-
-    public void AddRouteLocationStore<TStore>()
-        where TStore : class, IZLinkRouteLocationStore
-    {
-        _registration.Locations.RouteStoreType = typeof(TStore);
-    }
-
-    public void AddOwnerLeaseStore<TStore>()
-        where TStore : class, IZLinkOwnerLeaseStore
-    {
-        _registration.Locations.OwnerLeaseStoreType = typeof(TStore);
     }
 
     public void UseInMemoryLocationStores()

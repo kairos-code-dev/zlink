@@ -3,12 +3,11 @@ using StackExchange.Redis;
 namespace Zlink.Framework.Locations.Redis.Tests;
 
 /// <summary>
-/// Failure mapping (draft 7.6): write APIs report an unreachable store as
-/// <see cref="ZLinkLocationWriteStatus.StoreUnavailable"/>, read APIs throw
-/// an infrastructure exception so the caller can distinguish "store down"
-/// from "not found". These tests point at a closed port and need no Redis.
+/// Failure mapping: read and write APIs report infrastructure failures as
+/// exceptions so callers do not have to merge status values with exceptions.
+/// These tests point at a closed port and need no Redis.
 /// </summary>
-public sealed class RedisStoreUnavailableTests
+public sealed class RedisStoreFailureTests
 {
     private static ZLinkRedisLocationStore CreateUnreachableStore() =>
         new(new ZLinkRedisLocationOptions
@@ -20,22 +19,21 @@ public sealed class RedisStoreUnavailableTests
         });
 
     [Fact]
-    public async Task Writes_Report_StoreUnavailable_Instead_Of_Throwing()
+    public async Task Writes_Throw_Infrastructure_Errors()
     {
         await using var store = CreateUnreachableStore();
 
-        var update = await store.UpdateActorAsync(
-            TestRows.Actor("owner-a", 0), ZLinkLocationWriteIntent.NewClaim);
-        Assert.Equal(ZLinkLocationWriteStatus.StoreUnavailable, update.Status);
-
-        var remove = await store.RemoveActorAsync(
-            new ZLinkActorLocationKey("player", "actor-1"),
-            new ZLinkLocationOwnerToken("owner-a", 1));
-        Assert.Equal(ZLinkLocationWriteStatus.StoreUnavailable, remove.Status);
-
-        var lease = await store.RenewOwnerLeaseAsync(
-            "owner-a", RoutingId.From("node-1"), TimeSpan.FromSeconds(15));
-        Assert.Equal(ZLinkLocationWriteStatus.StoreUnavailable, lease.Status);
+        await Assert.ThrowsAsync<RedisConnectionException>(async () =>
+            await store.UpdateActorAsync(TestRows.Actor("owner-a", 0), ZLinkLocationWriteIntent.NewClaim));
+        await Assert.ThrowsAsync<RedisConnectionException>(async () =>
+            await store.RemoveActorAsync(
+                new ZLinkActorLocationKey("actor-1"),
+                new ZLinkLocationOwnerToken("owner-a", 1)));
+        await Assert.ThrowsAsync<RedisConnectionException>(async () =>
+            await store.RemoveAllByOwnerAsync("owner-a"));
+        await Assert.ThrowsAsync<RedisConnectionException>(async () =>
+            await store.RenewOwnerLeaseAsync(
+                "owner-a", RoutingId.From("node-1"), TimeSpan.FromSeconds(15)));
     }
 
     [Fact]
@@ -44,7 +42,7 @@ public sealed class RedisStoreUnavailableTests
         await using var store = CreateUnreachableStore();
 
         await Assert.ThrowsAsync<RedisConnectionException>(async () =>
-            await store.ResolveActorAsync(new ZLinkActorLocationKey("player", "actor-1")));
+            await store.ResolveActorAsync(new ZLinkActorLocationKey("actor-1")));
         await Assert.ThrowsAsync<RedisConnectionException>(async () =>
             await store.ListPeersAsync(new ZLinkPeerLocationFilter()));
         await Assert.ThrowsAsync<RedisConnectionException>(async () =>

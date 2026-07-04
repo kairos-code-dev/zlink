@@ -57,22 +57,22 @@ public interface IZLinkOutboundRouteConfig
 
 public interface IZLinkSpotPublisherConfig
 {
-    int SendHighWaterMark { set; }
+    int SendHighWaterMark { get; set; }
 
-    TimeSpan? SendTimeout { set; }
+    TimeSpan? SendTimeout { get; set; }
 
-    TimeSpan? Linger { set; }
+    TimeSpan? Linger { get; set; }
 
-    bool NoDrop { set; }
+    bool NoDrop { get; set; }
 }
 
 public interface IZLinkSpotSubscriberConfig
 {
-    int ReceiveHighWaterMark { set; }
+    int ReceiveHighWaterMark { get; set; }
 
-    TimeSpan? ReceiveTimeout { set; }
+    TimeSpan? ReceiveTimeout { get; set; }
 
-    TimeSpan? Linger { set; }
+    TimeSpan? Linger { get; set; }
 }
 
 public interface IZLinkEntrySpotOptions

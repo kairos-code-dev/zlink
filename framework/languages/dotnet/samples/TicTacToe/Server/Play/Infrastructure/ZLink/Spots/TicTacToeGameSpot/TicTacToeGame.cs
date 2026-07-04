@@ -168,7 +168,7 @@ internal sealed class TicTacToeGame(
         if (!_actors.ContainsKey(actor.ActorId)) return;
 
         actor.MarkForDestroyAfterRoomLeave();
-        await Context.leaveActor(actor, cancellationToken);
+        await Context.LeaveActorAsync(actor, cancellationToken);
     }
 
     private ValueTask BroadcastAsync(

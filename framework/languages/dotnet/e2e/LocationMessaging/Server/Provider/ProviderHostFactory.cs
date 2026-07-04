@@ -63,7 +63,7 @@ internal static class ProviderHostFactory
 
             if (!string.IsNullOrWhiteSpace(options.RouteEndpoint))
             {
-                var route = framework.AddRouteMesh("profile.route")
+                var route = framework.AddRouteMeshChannel("profile.route")
                     .EnableServer(options.RouteEndpoint)
                     .SetRoutingId(RoutingId.From(options.Rid));
                 foreach (var peer in options.RoutePeers) route.EnableClient(peer);

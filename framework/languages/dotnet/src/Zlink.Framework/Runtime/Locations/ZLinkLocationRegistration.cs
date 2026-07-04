@@ -2,22 +2,11 @@ namespace Zlink.Framework.Runtime.Locations;
 
 /// <summary>
 /// Raw location store registration collected by the options builder. The
-/// five store roles must share one physical store, so registration is
-/// all-or-nothing: either every role has an implementation type or the
-/// in-memory store backs them all.
+/// five store roles must share one physical store. Registration is either
+/// one store instance or the in-memory store.
 /// </summary>
 internal sealed class ZLinkLocationRegistration
 {
-    public Type? PeerStoreType { get; set; }
-
-    public Type? SpotStoreType { get; set; }
-
-    public Type? ActorStoreType { get; set; }
-
-    public Type? RouteStoreType { get; set; }
-
-    public Type? OwnerLeaseStoreType { get; set; }
-
     public bool UseInMemoryStores { get; set; }
 
     /// <summary>One physical store instance providing every store role
@@ -27,19 +16,5 @@ internal sealed class ZLinkLocationRegistration
 
     public ZLinkLocationOptions Options { get; } = new();
 
-    public bool HasAnyStoreType =>
-        PeerStoreType is not null
-        || SpotStoreType is not null
-        || ActorStoreType is not null
-        || RouteStoreType is not null
-        || OwnerLeaseStoreType is not null;
-
-    public bool HasAllStoreTypes =>
-        PeerStoreType is not null
-        && SpotStoreType is not null
-        && ActorStoreType is not null
-        && RouteStoreType is not null
-        && OwnerLeaseStoreType is not null;
-
-    public bool Enabled => UseInMemoryStores || HasAnyStoreType || StoreInstance is not null;
+    public bool Enabled => UseInMemoryStores || StoreInstance is not null;
 }

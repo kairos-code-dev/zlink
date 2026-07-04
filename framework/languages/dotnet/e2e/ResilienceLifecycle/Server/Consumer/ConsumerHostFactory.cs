@@ -54,7 +54,7 @@ internal static class ConsumerHostFactory
             var deadline = DateTimeOffset.UtcNow + TimeSpan.FromMilliseconds(request.TimeoutMilliseconds);
             while (true)
             {
-                var peers = await query.ListPeersAsync(new ZLinkPeerLocationFilter());
+                var peers = await query.ListPeerLocationsAsync(new ZLinkPeerLocationFilter());
                 var matches = peers
                     .Where(peer => peer.NodeRid is { Size: > 0 } rid
                                    && rid == RoutingId.From(request.RoutingId))
@@ -193,9 +193,7 @@ internal static class ConsumerHostFactory
                     .Timeout(TimeSpan.FromSeconds(5))
                     .Async<ProfileRes>();
             }
-            catch (Exception ex) when (
-                ex is TimeoutException
-                || (ex is ZLinkFrameworkException framework && IsRetriableStartupFailure(framework)))
+            catch (Exception ex) when (IsRetriableProfileRequestFailure(ex))
             {
                 // A request that rode a dying connection times out inside
                 // the down window; the next attempt takes the surviving
@@ -207,6 +205,10 @@ internal static class ConsumerHostFactory
 
         throw new InvalidOperationException("Timed out waiting for resilience profile providers.", last);
     }
+
+    static bool IsRetriableProfileRequestFailure(Exception ex) =>
+        ex is TimeoutException
+        || (ex is ZLinkFrameworkException framework && IsRetriableStartupFailure(framework));
 
     static bool IsRetriableStartupFailure(ZLinkFrameworkException ex) =>
         ex.IsRetriable

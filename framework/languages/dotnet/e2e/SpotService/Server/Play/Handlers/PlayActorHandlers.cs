@@ -163,11 +163,14 @@ internal sealed class EntryUserSpotActorJoinHandler
                 ZLinkMessage.Empty)
             .Async(cancellationToken)
             .ConfigureAwait(false);
+        if (!joined.Accepted || joined.Actor is not { } joinedActor)
+            return new JoinUserSpotActorRes(request.SpotRid, request.ActorId, false, 0);
+
         return new JoinUserSpotActorRes(
             request.SpotRid,
-            joined.Actor.ActorId,
-            true,
-            joined.Actor.Generation);
+            joinedActor.ActorId,
+            joined.Accepted,
+            joinedActor.Generation);
     }
 }
 
@@ -208,7 +211,7 @@ internal sealed class UserActorLeaveHandler
         if (!string.Equals(request.ActorId, actor.ActorId, StringComparison.Ordinal))
             throw new InvalidOperationException("Leave request actor does not match dispatched actor.");
 
-        await spot.Context.leaveActor(actor, cancellationToken);
+        await spot.Context.LeaveActorAsync(actor, cancellationToken);
         return new LeaveRes(actor.ActorId, true);
     }
 }

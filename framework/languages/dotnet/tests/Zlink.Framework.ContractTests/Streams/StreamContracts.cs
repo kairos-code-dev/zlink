@@ -25,6 +25,8 @@ public sealed class StreamContracts
         await session.OnConnectedAsync(CancellationToken.None);
         var actorRef =
             await context.Actors.BindAsync(new Systems.Zlink.ActorRef(RoutingId.From("actor-node"), "player-1", 1));
+        var sameActorRef =
+            await context.Actors.BindOrGetAsync(new Systems.Zlink.ActorRef(RoutingId.From("actor-node"), "player-1", 1));
         var boundActor = context.Actors.Find("player-1");
         await actorRef.RelayAsync(
             ZLinkMessage.From(new PlayerJoined("player-1")));
@@ -49,6 +51,7 @@ public sealed class StreamContracts
 
         Assert.Equal("session-1", session.Context.SessionId);
         Assert.Equal("player-1", actorRef.ActorId);
+        Assert.Same(actorRef, sameActorRef);
         Assert.Same(actorRef, boundActor);
         Assert.True(context.IsClosed);
         Assert.True(context.StreamClosed);
@@ -219,6 +222,14 @@ public sealed class StreamContracts
             return ValueTask.FromResult<IZLinkSessionActor>(actor);
         }
 
+        public async ValueTask<IZLinkSessionActor> BindOrGetAsync(
+            Systems.Zlink.ActorRef actorRef,
+            CancellationToken cancellationToken = default)
+        {
+            return Find(actorRef.ActorId)
+                   ?? await BindAsync(actorRef, cancellationToken);
+        }
+
         public IZLinkSessionActor? Find(string actorId)
         {
             return _actors.GetValueOrDefault(actorId);
@@ -348,7 +359,7 @@ public sealed class StreamContracts
             return this;
         }
 
-        public void Submit()
+        public void Submit(CancellationToken cancellationToken = default)
         {
         }
     }
@@ -365,7 +376,7 @@ public sealed class StreamContracts
             return this;
         }
 
-        public void Submit()
+        public void Submit(CancellationToken cancellationToken = default)
         {
         }
     }

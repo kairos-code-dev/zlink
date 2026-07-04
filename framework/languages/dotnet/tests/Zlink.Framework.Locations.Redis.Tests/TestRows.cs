@@ -7,15 +7,15 @@ internal static class TestRows
 {
     internal static ZLinkActorLocation Actor(
         string ownerId, long generation, string actorId = "actor-1") => new(
-        "player",
         actorId,
-        "actor-ref",
+        "player",
+        new ActorRef(RoutingId.From("node-1"), actorId, 1),
         RoutingId.From("node-1"),
-        generation,
         ZLinkSpotKind.Entry,
+        "play",
         null,
-        ZLinkSpotKind.Entry,
         ownerId,
+        generation,
         default);
 
     internal static ZLinkSpotLocation Spot(

@@ -41,7 +41,7 @@ public sealed class ChannelsTests : RegistrationValidationSupport
         services.AddZLinkFramework(options =>
         {
             options.UseInMemoryLocationStores();
-            options.AddRouteMesh("play")
+            options.AddRouteMeshChannel("play")
                 .EnableServer("tcp://127.0.0.1:7101")
                 .EnableClient("tcp://127.0.0.1:7102");
         });
@@ -149,7 +149,7 @@ public sealed class ChannelsTests : RegistrationValidationSupport
         {
             options.UseInMemoryLocationStores();
             {
-                var routed = options.AddRouteMesh("backend");
+                var routed = options.AddRouteMeshChannel("backend");
                 routed.EnableServer("tcp://127.0.0.1:7201");
                 routed.EnableClient("tcp://127.0.0.1:7202");
             }
@@ -164,7 +164,7 @@ public sealed class ChannelsTests : RegistrationValidationSupport
         services.AddZLinkFramework(options =>
         {
             options.UseInMemoryLocationStores();
-            options.AddRouteMesh("backend")
+            options.AddRouteMeshChannel("backend")
                 .EnableClient();
         });
 
@@ -181,7 +181,7 @@ public sealed class ChannelsTests : RegistrationValidationSupport
 
         services.AddZLinkFramework(options =>
         {
-            options.AddRouteMesh("backend")
+            options.AddRouteMeshChannel("backend")
                 .EnableClient("tcp://127.0.0.1:7202");
         });
 
@@ -198,7 +198,7 @@ public sealed class ChannelsTests : RegistrationValidationSupport
         var services = new ServiceCollection();
 
         var exception = Assert.Throws<ZLinkConfigurationException>(() =>
-            services.AddZLinkFramework(options => { options.AddRouteMesh("backend"); }));
+            services.AddZLinkFramework(options => { options.AddRouteMeshChannel("backend"); }));
 
         Assert.Contains("must enable server or client capability", exception.Message, StringComparison.Ordinal);
     }
@@ -211,7 +211,7 @@ public sealed class ChannelsTests : RegistrationValidationSupport
         var exception = Assert.Throws<ZLinkConfigurationException>(() =>
             services.AddZLinkFramework(options =>
             {
-                options.AddRouteMesh("backend")
+                options.AddRouteMeshChannel("backend")
                     .EnableClient();
             }));
 
@@ -227,7 +227,7 @@ public sealed class ChannelsTests : RegistrationValidationSupport
         {
             options.UseInMemoryLocationStores();
             {
-                var routed = options.AddRouteMesh("backend");
+                var routed = options.AddRouteMeshChannel("backend");
                 routed.EnableServer("tcp://127.0.0.1:7203");
                 routed.EnableClient("tcp://127.0.0.1:7204");
             }

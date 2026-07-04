@@ -208,6 +208,51 @@ public sealed class AutoConnectReconcilerTests
     }
 
     [Fact]
+    public async Task StoreFailureGrace_Keeps_Ready_Connections_And_Blocks_New_Outbound_During_Outage()
+    {
+        var fixture = await FixtureAsync(options => options.StoreFailureGrace = TimeSpan.FromSeconds(3));
+        await fixture.PublishPeerAsync("r1", "tcp://r:1");
+        await fixture.Reconciler.TickAsync();
+        Assert.Equal("tcp://r:1", Assert.Single(fixture.Reconciler.ActiveTargets).Endpoint);
+
+        fixture.PeerResolver.Fail = true;
+        await fixture.RemovePeerAsync("r1", "tcp://r:1");
+        await fixture.Reconciler.TickAsync();
+
+        Assert.Empty(fixture.Executor.Disconnected);
+        Assert.Equal("tcp://r:1", Assert.Single(fixture.Reconciler.ActiveTargets).Endpoint);
+
+        // Even after the grace boundary, the old ready connection stays up.
+        // A new peer that appears in the store during the outage is not dialed
+        // because fail-static ticks do not compute an expanded desired set.
+        await fixture.PublishPeerAsync("r2", "tcp://r:2");
+        fixture.Time.Advance(TimeSpan.FromSeconds(4));
+        await fixture.Reconciler.TickAsync();
+
+        Assert.Empty(fixture.Executor.Disconnected);
+        Assert.Equal(["tcp://r:1"], fixture.Executor.Connected.Select(target => target.Endpoint));
+        Assert.Equal("tcp://r:1", Assert.Single(fixture.Reconciler.ActiveTargets).Endpoint);
+
+        // Recovery re-publishes the local row before reading the list, then
+        // connects newly visible peers immediately but still defers disconnect
+        // diffs for one heartbeat interval.
+        fixture.PeerResolver.Fail = false;
+        await fixture.Reconciler.TickAsync();
+
+        Assert.Empty(fixture.Executor.Disconnected);
+        Assert.Equal(["tcp://r:1", "tcp://r:2"], fixture.Executor.Connected.Select(target => target.Endpoint));
+        Assert.Equal(
+            ["tcp://r:1", "tcp://r:2"],
+            fixture.Reconciler.ActiveTargets.Select(target => target.Endpoint).Order());
+
+        fixture.Time.Advance(TimeSpan.FromSeconds(6));
+        await fixture.Reconciler.TickAsync();
+
+        Assert.Equal("tcp://r:1", Assert.Single(fixture.Executor.Disconnected).Endpoint);
+        Assert.Equal("tcp://r:2", Assert.Single(fixture.Reconciler.ActiveTargets).Endpoint);
+    }
+
+    [Fact]
     public async Task Recovery_Republishes_The_Local_Row_Before_Reading_The_List()
     {
         var fixture = await FixtureAsync();
@@ -238,7 +283,7 @@ public sealed class AutoConnectReconcilerTests
         var time = new ManualTimeProvider();
         var store = new ZLinkInMemoryLocationStore(time);
         var options = new ZLinkLocationOptions { PollingInterval = TimeSpan.Zero };
-        var runtime = new ZLinkLocationRuntime(options, store, store, store, store, store, time);
+        var runtime = new ZLinkLocationRuntime(options, store, store, store, store, store, store, time);
         await runtime.RenewOwnerLeaseOnceAsync();
         await store.RenewOwnerLeaseAsync("peer-owner", RoutingId.From("peer-node"), TimeSpan.FromMinutes(10));
         await store.UpdatePeerAsync(
@@ -284,12 +329,13 @@ public sealed class AutoConnectReconcilerTests
         string mesh = "play") =>
         new(type, mesh, RoutingId.From(rid), role, endpoint, 100, 0, null, null, "peer-owner", 1, default);
 
-    private static async Task<ReconcilerFixture> FixtureAsync()
+    private static async Task<ReconcilerFixture> FixtureAsync(Action<ZLinkLocationOptions>? configure = null)
     {
         var time = new ManualTimeProvider();
         var store = new ZLinkInMemoryLocationStore(time);
         var options = new ZLinkLocationOptions { PollingInterval = TimeSpan.Zero };
-        var runtime = new ZLinkLocationRuntime(options, store, store, store, store, store, time);
+        configure?.Invoke(options);
+        var runtime = new ZLinkLocationRuntime(options, store, store, store, store, store, store, time);
         await runtime.RenewOwnerLeaseOnceAsync();
         await store.RenewOwnerLeaseAsync("peer-owner", RoutingId.From("peer-node"), TimeSpan.FromMinutes(10));
 
@@ -340,12 +386,12 @@ public sealed class AutoConnectReconcilerTests
     {
         public bool Fail { get; set; }
 
-        public ValueTask<IReadOnlyList<ZLinkPeerLocation>> ListPeersAsync(
+        public ValueTask<IReadOnlyList<ZLinkPeerLocation>> ListLivePeersAsync(
             ZLinkPeerLocationFilter filter,
             CancellationToken cancellationToken = default) =>
             Fail
                 ? throw new InvalidOperationException("store unreachable")
-                : inner.ListPeersAsync(filter, cancellationToken);
+                : inner.ListLivePeersAsync(filter, cancellationToken);
     }
 
     private sealed class RecordingExecutor : IZLinkAutoConnectExecutor

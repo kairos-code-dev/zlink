@@ -73,7 +73,7 @@ internal sealed class ZLinkLocationEventEmitter
     internal ValueTask ActorRowUpdatedAsync(ZLinkActorLocation actor, CancellationToken ct) =>
         EmitAsync(_actorSources, source => new ZLinkLocationActorEvent(
             source, DateTimeOffset.UtcNow, ZLinkLocationActorEventKind.RowUpdated,
-            new ZLinkActorLocationKey(actor.ActorType, actor.ActorId), actor), ct);
+            new ZLinkActorLocationKey(actor.ActorId), actor), ct);
 
     internal ValueTask ActorRowRemovedAsync(ZLinkActorLocationKey key, CancellationToken ct) =>
         EmitAsync(_actorSources, source => new ZLinkLocationActorEvent(

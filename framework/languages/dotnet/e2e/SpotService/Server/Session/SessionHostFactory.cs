@@ -51,7 +51,7 @@ internal static class SessionHostFactory
                 .MessageFlow(ZLinkMessageFlowLogMode.KeyTransitions)
                 .TraceLogFile(Path.Combine(options.LogDir, $"{options.Rid}-flow.log"))
                 .TraceLabel(options.Rid);
-            framework.AddRouteMesh(SpotServiceNames.ControlChannel)
+            framework.AddRouteMeshChannel(SpotServiceNames.ControlChannel)
                 .EnableServer(Require(options.ControlEndpoint, "--control-endpoint"))
                 .EnableClient()
                 .SetRoutingId(RoutingId.From(options.Rid))
@@ -94,7 +94,7 @@ internal static class SessionHostFactory
             ControlPingReq request,
             IZLinkRouteClient route) =>
         {
-            var reply = await route.Request(
+            var reply = await route.RequestToNode(
                     SpotServiceNames.ControlChannel,
                     RoutingId.From(targetRid),
                     request)

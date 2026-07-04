@@ -60,7 +60,7 @@ internal sealed class ZLinkFrameworkActorFacade(
                 cancellationToken).ConfigureAwait(false);
         return new ZLinkActorJoinResult(
             joinResult.Accepted,
-            ToActorRef(actorState),
+            joinResult.Accepted ? ToActorRef(actorState) : null,
             joinResult.Reply ?? ZLinkMessage.Empty);
     }
 
@@ -260,6 +260,6 @@ internal sealed class ZLinkFrameworkActorFacade(
 
     private static ActorRef ToActorRef(ZLinkBackendActorRef actorRef)
     {
-        return new ActorRef(actorRef.NodeRid, actorRef.ActorId, actorRef.Generation);
+        return actorRef.ToNative();
     }
 }

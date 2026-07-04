@@ -31,7 +31,7 @@ public static class NodeHostFactory
                 .TraceLogFile(SampleFlowLog.Path($"courier-actor-{nodeConfig.Name}"))
                 .TraceLabel($"courier-actor-{nodeConfig.Name}");
             options.AddHandlersFromAssemblyOf(typeof(NodeHostFactory));
-            options.AddRouteMesh(SampleNames.CourierActorNodeRouteChannel)
+            options.AddRouteMeshChannel(SampleNames.CourierActorNodeRouteChannel)
                 .SetRoutingId(nodeConfig.Rid)
                 .AddHandlerGroup(SampleNames.CourierActorNodeRouteChannel)
                 .EnableServer(nodeConfig.RouteEndpoint)

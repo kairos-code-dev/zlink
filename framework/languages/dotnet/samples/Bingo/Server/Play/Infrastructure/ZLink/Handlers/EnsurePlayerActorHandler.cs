@@ -26,7 +26,7 @@ internal sealed class EnsurePlayerActorHandler(
         {
             ActorId = request.ActorId,
             ActorType = SampleNames.PlayerActorType,
-            Actor = new ActorRefSnapshot
+            Actor = new ActorRefWire
             {
                 NodeRid = actor.NodeRid.ToString(),
                 ActorId = actor.ActorId,

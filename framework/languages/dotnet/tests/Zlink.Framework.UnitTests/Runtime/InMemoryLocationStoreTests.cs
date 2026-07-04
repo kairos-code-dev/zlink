@@ -21,7 +21,7 @@ public sealed class InMemoryLocationStoreTests
         Assert.Equal(ZLinkLocationWriteStatus.RejectedConflict, conflict.Status);
 
         var removed = await store.RemoveActorAsync(
-            new ZLinkActorLocationKey("player", "actor-1"),
+            new ZLinkActorLocationKey("actor-1"),
             new ZLinkLocationOwnerToken(OwnerA, first.Generation));
         Assert.Equal(ZLinkLocationWriteStatus.Stored, removed.Status);
 
@@ -87,7 +87,7 @@ public sealed class InMemoryLocationStoreTests
         Assert.Equal(ZLinkLocationWriteStatus.IgnoredStale, staleRenew.Status);
 
         var staleRemove = await store.RemoveActorAsync(
-            new ZLinkActorLocationKey("player", "actor-1"),
+            new ZLinkActorLocationKey("actor-1"),
             new ZLinkLocationOwnerToken(OwnerA, claimed.Generation));
         Assert.Equal(ZLinkLocationWriteStatus.IgnoredStale, staleRemove.Status);
     }
@@ -101,11 +101,59 @@ public sealed class InMemoryLocationStoreTests
         await actors.UpdateActorAsync(Actor(OwnerA, 0, "actor-2"), ZLinkLocationWriteIntent.NewClaim);
         await actors.UpdateActorAsync(Actor(OwnerB, 0, "actor-3"), ZLinkLocationWriteIntent.NewClaim);
 
-        var removed = await actors.RemoveByOwnerAsync(OwnerA);
+        var removed = await store.RemoveAllByOwnerAsync(OwnerA);
 
         Assert.Equal(2, removed);
-        Assert.Null(await store.ResolveActorAsync(new ZLinkActorLocationKey("player", "actor-1")));
-        Assert.NotNull(await store.ResolveActorAsync(new ZLinkActorLocationKey("player", "actor-3")));
+        Assert.Null(await store.ResolveActorAsync(new ZLinkActorLocationKey("actor-1")));
+        Assert.NotNull(await store.ResolveActorAsync(new ZLinkActorLocationKey("actor-3")));
+    }
+
+    [Fact]
+    public async Task RemoveAllByOwner_Removes_All_Four_Kinds_For_The_Owner()
+    {
+        var (store, _) = await CreateStoreWithLiveOwnersAsync(OwnerA, OwnerB);
+        var peerA = Peer(OwnerA, endpoint: "tcp://127.0.0.1:5001", nodeRid: "node-a");
+        var peerB = Peer(OwnerB, endpoint: "tcp://127.0.0.1:5002", nodeRid: "node-b");
+
+        await store.UpdatePeerAsync(peerA, ZLinkLocationWriteIntent.NewClaim);
+        await store.UpdatePeerAsync(peerB, ZLinkLocationWriteIntent.NewClaim);
+        await store.UpdateSpotAsync(Spot(OwnerA, "spot-a"), ZLinkLocationWriteIntent.NewClaim);
+        await store.UpdateSpotAsync(Spot(OwnerB, "spot-b"), ZLinkLocationWriteIntent.NewClaim);
+        await store.UpdateActorAsync(Actor(OwnerA, 0, "actor-a"), ZLinkLocationWriteIntent.NewClaim);
+        await store.UpdateActorAsync(Actor(OwnerB, 0, "actor-b"), ZLinkLocationWriteIntent.NewClaim);
+        await store.UpdateRouteAsync(Route(OwnerA, "route-a"), ZLinkLocationWriteIntent.NewClaim);
+        await store.UpdateRouteAsync(Route(OwnerB, "route-b"), ZLinkLocationWriteIntent.NewClaim);
+
+        var removed = await store.RemoveAllByOwnerAsync(OwnerA);
+
+        Assert.Equal(4, removed);
+        Assert.DoesNotContain(await store.ListPeersAsync(new ZLinkPeerLocationFilter()), row => row.OwnerId == OwnerA);
+        Assert.Empty((await store.ListSpotsAsync(new ZLinkSpotLocationFilter())).Items.Where(row => row.OwnerId == OwnerA));
+        Assert.Empty((await store.ListActorsAsync(new ZLinkActorLocationFilter())).Items.Where(row => row.OwnerId == OwnerA));
+        Assert.Empty((await store.ListRoutesAsync(new ZLinkRouteLocationFilter())).Items.Where(row => row.OwnerId == OwnerA));
+        Assert.Contains(await store.ListPeersAsync(new ZLinkPeerLocationFilter()), row => row.OwnerId == OwnerB);
+        Assert.NotNull(await store.ResolveSpotAsync(new ZLinkSpotLocationKey("play", RoutingId.From("spot-b"))));
+        Assert.NotNull(await store.ResolveActorAsync(new ZLinkActorLocationKey("actor-b")));
+        Assert.NotNull(await store.ResolveRouteAsync(new ZLinkRouteLocationKey(ZLinkRouteKind.ActorSession, "route-b")));
+    }
+
+    [Fact]
+    public async Task RenewOwnerLease_Returns_Renewal_Using_Store_Clock()
+    {
+        var time = new ManualTimeProvider();
+        var store = new ZLinkInMemoryLocationStore(time);
+        var ttl = TimeSpan.FromSeconds(42);
+        var expectedStoreNow = time.GetUtcNow();
+
+        var renewal = await store.RenewOwnerLeaseAsync(OwnerA, RoutingId.From("node-1"), ttl);
+
+        Assert.Equal(expectedStoreNow, renewal.StoreNow);
+        Assert.Equal(expectedStoreNow + ttl, renewal.LeaseExpiresAt);
+        time.AdvanceWallClockOnly(TimeSpan.FromMinutes(10));
+        var snapshot = await store.ListOwnerLeasesAsync();
+        var lease = Assert.Single(snapshot.Leases);
+        Assert.Equal(time.GetUtcNow(), snapshot.StoreNow);
+        Assert.Equal(renewal.LeaseExpiresAt, lease.LeaseExpiresAt);
     }
 
     [Fact]
@@ -161,8 +209,7 @@ public sealed class InMemoryLocationStoreTests
             {
                 NodeRid = RoutingId.From("node-2"),
                 LocationKind = ZLinkSpotKind.User,
-                SpotRid = RoutingId.From("spot-9"),
-                SpotKind = ZLinkSpotKind.User
+                SpotRid = RoutingId.From("spot-9")
             },
             ZLinkLocationWriteIntent.NewClaim);
 
@@ -301,15 +348,15 @@ public sealed class InMemoryLocationStoreTests
     }
 
     internal static ZLinkActorLocation Actor(string ownerId, long generation, string actorId = "actor-1") => new(
-        "player",
         actorId,
-        "actor-ref",
+        "player",
+        new ActorRef(RoutingId.From("node-1"), actorId, 1),
         RoutingId.From("node-1"),
-        generation,
         ZLinkSpotKind.Entry,
+        "play",
         null,
-        ZLinkSpotKind.Entry,
         ownerId,
+        generation,
         default);
 
     internal static ZLinkSpotLocation Spot(string ownerId, string spotRid) => new(

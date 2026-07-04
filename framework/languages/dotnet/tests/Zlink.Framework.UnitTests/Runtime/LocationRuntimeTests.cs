@@ -50,7 +50,7 @@ public sealed class LocationRuntimeTests
         Assert.Equal(ZLinkLocationWriteStatus.Stored, winner.Status);
         Assert.Equal(ZLinkLocationWriteStatus.RejectedConflict, loser.Status);
 
-        var row = await store.ResolveActorAsync(new ZLinkActorLocationKey("player", "actor-1"));
+        var row = await store.ResolveActorAsync(new ZLinkActorLocationKey("actor-1"));
         Assert.Equal(runtimeA.OwnerId, row!.OwnerId);
     }
 
@@ -99,7 +99,7 @@ public sealed class LocationRuntimeTests
 
         var snapshot = await store.ListOwnerLeasesAsync();
         Assert.Empty(snapshot.Leases);
-        Assert.Null(await store.ResolveActorAsync(new ZLinkActorLocationKey("player", "actor-1")));
+        Assert.Null(await store.ResolveActorAsync(new ZLinkActorLocationKey("actor-1")));
         Assert.Null(await store.ResolveSpotAsync(new ZLinkSpotLocationKey("play", RoutingId.From("spot-1"))));
         Assert.Empty(await store.ListPeersAsync(new ZLinkPeerLocationFilter(MeshName: "play")));
     }
@@ -112,9 +112,8 @@ public sealed class LocationRuntimeTests
         using var provider = services.BuildServiceProvider();
 
         Assert.NotNull(provider.GetRequiredService<IZLinkPeerLocationResolver>());
-        Assert.NotNull(provider.GetRequiredService<IZLinkSpotLocationResolver>());
-        Assert.NotNull(provider.GetRequiredService<IZLinkActorLocationResolver>());
-        Assert.NotNull(provider.GetRequiredService<IZLinkRouteLocationResolver>());
+        Assert.NotNull(provider.GetRequiredService<IZLinkSpotAddressResolver>());
+        Assert.NotNull(provider.GetRequiredService<IZLinkActorAddressResolver>());
         Assert.NotNull(provider.GetRequiredService<IZLinkLocationRuntimeQuery>());
 
         // The five store roles must share one physical store: in-memory
@@ -122,18 +121,6 @@ public sealed class LocationRuntimeTests
         var peerStore = provider.GetRequiredService<IZLinkPeerLocationStore>();
         var leaseStore = provider.GetRequiredService<IZLinkOwnerLeaseStore>();
         Assert.Same(peerStore, leaseStore);
-    }
-
-    [Fact]
-    public void Partial_Store_Registration_Is_Rejected()
-    {
-        var services = new ServiceCollection();
-
-        var exception = Assert.Throws<ZLinkConfigurationException>(() =>
-            services.AddZLinkFramework(options =>
-                options.AddPeerLocationStore<ZLinkInMemoryLocationStore>()));
-
-        Assert.Contains("all-or-nothing", exception.Message, StringComparison.Ordinal);
     }
 
     [Fact]
@@ -163,13 +150,13 @@ public sealed class LocationRuntimeTests
         ZLinkInMemoryLocationStore store,
         IZLinkOwnerLeaseStore ownerLeaseStore,
         ManualTimeProvider time) =>
-        new(new ZLinkLocationOptions(), store, store, store, store, ownerLeaseStore, time);
+        new(new ZLinkLocationOptions(), store, store, store, store, store, ownerLeaseStore, time);
 
     private sealed class FlakyOwnerLeaseStore(IZLinkOwnerLeaseStore inner) : IZLinkOwnerLeaseStore
     {
         public bool Fail { get; set; }
 
-        public ValueTask<ZLinkLocationWriteResult> RenewOwnerLeaseAsync(
+        public ValueTask<ZLinkOwnerLeaseRenewal> RenewOwnerLeaseAsync(
             string ownerId,
             RoutingId nodeRid,
             TimeSpan leaseTtl,
@@ -178,7 +165,7 @@ public sealed class LocationRuntimeTests
                 ? throw new InvalidOperationException("store unreachable")
                 : inner.RenewOwnerLeaseAsync(ownerId, nodeRid, leaseTtl, cancellationToken);
 
-        public ValueTask<ZLinkLocationWriteResult> RemoveOwnerLeaseAsync(
+        public ValueTask<bool> RemoveOwnerLeaseAsync(
             string ownerId,
             CancellationToken cancellationToken = default) =>
             inner.RemoveOwnerLeaseAsync(ownerId, cancellationToken);

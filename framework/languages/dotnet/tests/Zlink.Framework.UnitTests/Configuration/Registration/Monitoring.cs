@@ -29,7 +29,7 @@ public sealed class MonitoringTests : RegistrationValidationSupport
         routeMeshEgress.AddZLinkFramework(options =>
         {
             {
-                var channel = options.AddRouteMesh("gateway.route");
+                var channel = options.AddRouteMeshChannel("gateway.route");
                 channel.EnableServer("tcp://127.0.0.1:7301");
                 channel.EnableClient("tcp://127.0.0.1:7201");
             }
@@ -99,7 +99,7 @@ public sealed class MonitoringTests : RegistrationValidationSupport
             }
 
             {
-                var routed = options.AddRouteMesh("gateway");
+                var routed = options.AddRouteMeshChannel("gateway");
                 routed.EnableServer("tcp://127.0.0.1:7301");
             }
 
@@ -144,7 +144,7 @@ public sealed class MonitoringTests : RegistrationValidationSupport
             options.AddClientServerChannel("api")
                 .EnableClient("tcp://127.0.0.1:7101")
                 .SetDefaultRequestTimeout(TimeSpan.FromSeconds(2));
-            options.AddRouteMesh("route")
+            options.AddRouteMeshChannel("route")
                 .EnableServer("tcp://127.0.0.1:7201")
                 .EnableClient("tcp://127.0.0.1:7202")
                 .SetDefaultRequestTimeout(TimeSpan.FromSeconds(3));

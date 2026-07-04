@@ -13,7 +13,7 @@ namespace SpotService.Shared;
 public static class SpotAddressRouting
 {
     public static async ValueTask<ZLinkSpotAddress> ResolveRequiredAsync(
-        this IZLinkSpotLocationResolver locator,
+        this IZLinkSpotAddressResolver locator,
         string spotRid,
         CancellationToken cancellationToken = default)
     {

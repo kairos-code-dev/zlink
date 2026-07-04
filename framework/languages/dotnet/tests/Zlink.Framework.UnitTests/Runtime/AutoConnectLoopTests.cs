@@ -10,7 +10,7 @@ public sealed class AutoConnectLoopTests
         var time = new ManualTimeProvider();
         var store = new ZLinkInMemoryLocationStore(time);
         var options = new ZLinkLocationOptions { PollingInterval = TimeSpan.Zero };
-        var runtime = new ZLinkLocationRuntime(options, store, store, store, store, store, time);
+        var runtime = new ZLinkLocationRuntime(options, store, store, store, store, store, store, time);
         await runtime.RenewOwnerLeaseOnceAsync();
         await store.RenewOwnerLeaseAsync("peer-owner", RoutingId.From("peer-node"), TimeSpan.FromMinutes(10));
 
@@ -56,7 +56,7 @@ public sealed class AutoConnectLoopTests
         var time = new ManualTimeProvider();
         var store = new ZLinkInMemoryLocationStore(time);
         var options = new ZLinkLocationOptions { PollingInterval = TimeSpan.Zero };
-        var runtime = new ZLinkLocationRuntime(options, store, store, store, store, store, time);
+        var runtime = new ZLinkLocationRuntime(options, store, store, store, store, store, store, time);
         await runtime.RenewOwnerLeaseOnceAsync();
 
         var tracker = new ZLinkOwnerLeaseTracker(store, options, time);
@@ -112,12 +112,12 @@ public sealed class AutoConnectLoopTests
     {
         public int ListCalls { get; private set; }
 
-        public ValueTask<IReadOnlyList<ZLinkPeerLocation>> ListPeersAsync(
+        public ValueTask<IReadOnlyList<ZLinkPeerLocation>> ListLivePeersAsync(
             ZLinkPeerLocationFilter filter,
             CancellationToken cancellationToken = default)
         {
             ListCalls++;
-            return inner.ListPeersAsync(filter, cancellationToken);
+            return inner.ListLivePeersAsync(filter, cancellationToken);
         }
     }
 

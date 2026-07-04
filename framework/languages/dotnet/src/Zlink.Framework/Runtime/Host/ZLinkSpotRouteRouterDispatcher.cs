@@ -222,11 +222,20 @@ internal sealed class ZLinkSpotRouteRouterDispatcher(
                 ZLinkMessageParts.DisposeAll(parts);
             }
 
-            using var timeoutSource = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
+            using var timeoutSource = new CancellationTokenSource();
             timeoutSource.CancelAfter(timeout);
-            using var _ = timeoutSource.Token.Register(
-                static state => ((TaskCompletionSource<IReadOnlyList<Message>>)state!).TrySetCanceled(),
+            using var timeoutRegistration = timeoutSource.Token.Register(
+                static state => ((TaskCompletionSource<IReadOnlyList<Message>>)state!).TrySetException(
+                    new TimeoutException("SPOT node router request timed out.")),
                 completion);
+            using var cancellationRegistration = cancellationToken.Register(
+                static state =>
+                {
+                    var (source, token) =
+                        ((TaskCompletionSource<IReadOnlyList<Message>>, CancellationToken))state!;
+                    source.TrySetCanceled(token);
+                },
+                (completion, cancellationToken));
             return await completion.Task.ConfigureAwait(false);
         }
     }
@@ -292,11 +301,20 @@ internal sealed class ZLinkSpotRouteRouterDispatcher(
                     $"Route channel '{routeChannel.RouterChannelId}' has no SPOT route bridge for remote spot requests.");
 
             ZLinkMessageParts.DisposeAll(parts);
-            using var timeoutSource = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
+            using var timeoutSource = new CancellationTokenSource();
             timeoutSource.CancelAfter(timeout);
-            using var _ = timeoutSource.Token.Register(
-                static state => ((TaskCompletionSource<IReadOnlyList<Message>>)state!).TrySetCanceled(),
+            using var timeoutRegistration = timeoutSource.Token.Register(
+                static state => ((TaskCompletionSource<IReadOnlyList<Message>>)state!).TrySetException(
+                    new TimeoutException("SPOT route bridge request timed out.")),
                 completion);
+            using var cancellationRegistration = cancellationToken.Register(
+                static state =>
+                {
+                    var (source, token) =
+                        ((TaskCompletionSource<IReadOnlyList<Message>>, CancellationToken))state!;
+                    source.TrySetCanceled(token);
+                },
+                (completion, cancellationToken));
             try
             {
                 return await completion.Task.ConfigureAwait(false);

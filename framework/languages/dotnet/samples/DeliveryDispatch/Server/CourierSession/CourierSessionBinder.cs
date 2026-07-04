@@ -19,16 +19,9 @@ internal sealed class CourierSessionBinder(
         CancellationToken cancellationToken)
     {
         var actor = await FindOrEnsureActorAsync(courierId, cancellationToken);
-        var boundActor = context.Actors.Find(actor.ActorId);
-        if (boundActor is null)
-        {
-            boundActor = await context.Actors.BindAsync(
-                new ActorRef(
-                    RoutingId.From(actor.NodeRid),
-                    actor.ActorId,
-                    actor.Generation),
-                cancellationToken);
-        }
+        var boundActor = await context.Actors.BindOrGetAsync(
+            actor.ToActorRef(),
+            cancellationToken);
 
         logger.LogInformation(
             "deliverydispatch courier-session: bound courier={CourierId} node={NodeRid} session={SessionId}",
@@ -43,12 +36,12 @@ internal sealed class CourierSessionBinder(
         return new BindCourierSessionRes(courierId, actor, context.SessionId);
     }
 
-    private async ValueTask<ActorRefSnapshot> FindOrEnsureActorAsync(
+    private async ValueTask<ZLinkActorRefSnapshot> FindOrEnsureActorAsync(
         string courierId,
         CancellationToken cancellationToken)
     {
         var placement = topology.CourierPlacement(courierId);
-        var found = await routes.Request(
+        var found = await routes.RequestToNode(
                 SampleNames.CourierActorNodeRouteChannel,
                 placement.NodeRid,
                 new FindCourierActorReq(courierId))
@@ -59,7 +52,7 @@ internal sealed class CourierSessionBinder(
             return existing;
         }
 
-        var ensured = await routes.Request(
+        var ensured = await routes.RequestToNode(
                 SampleNames.CourierActorNodeRouteChannel,
                 placement.NodeRid,
                 new EnsureCourierActorReq(courierId))

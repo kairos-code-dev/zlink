@@ -1,5 +1,7 @@
 namespace DeliveryDispatch.Shared.Contracts;
 
+using Zlink.Framework.Contracts.Actors;
+
 public enum DeliveryStatus
 {
     Created,
@@ -25,23 +27,23 @@ public sealed record EnsureCustomerActorReq(
 
 public sealed record EnsureCustomerActorRes(
     string CustomerId,
-    ActorRefSnapshot Actor);
+    ZLinkActorRefSnapshot Actor);
 
 public sealed record FindCustomerActorReq(
     string CustomerId);
 
 public sealed record FindCustomerActorRes(
     string CustomerId,
-    ActorRefSnapshot? Actor);
+    ZLinkActorRefSnapshot? Actor);
 
 public sealed record BindCourierSessionReq(
     string CourierId,
-    ActorRefSnapshot? Actor = null,
+    ZLinkActorRefSnapshot? Actor = null,
     string? SessionRoute = null);
 
 public sealed record BindCourierSessionRes(
     string CourierId,
-    ActorRefSnapshot Actor,
+    ZLinkActorRefSnapshot Actor,
     string SessionRoute);
 
 public sealed record EnsureCourierActorReq(
@@ -49,14 +51,14 @@ public sealed record EnsureCourierActorReq(
 
 public sealed record EnsureCourierActorRes(
     string CourierId,
-    ActorRefSnapshot Actor);
+    ZLinkActorRefSnapshot Actor);
 
 public sealed record FindCourierActorReq(
     string CourierId);
 
 public sealed record FindCourierActorRes(
     string CourierId,
-    ActorRefSnapshot? Actor);
+    ZLinkActorRefSnapshot? Actor);
 
 public sealed record SubscribeDeliveryReq(
     string DeliveryId);
@@ -125,8 +127,3 @@ public sealed record ServerAssertionReq(
 public sealed record ServerAssertionRes(
     bool Passed,
     string[] Evidence);
-
-public sealed record ActorRefSnapshot(
-    string NodeRid,
-    string ActorId,
-    ulong Generation);

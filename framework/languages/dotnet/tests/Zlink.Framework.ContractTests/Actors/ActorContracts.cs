@@ -9,19 +9,29 @@ public sealed class ActorContracts
     [ContractExample(
         typeof(IZLinkActor),
         typeof(IZLinkActorContext),
+        typeof(IZLinkActorJoinCall),
+        typeof(IZLinkActorYieldJoinCall),
         typeof(IZLinkActorJoinSpotCall),
         typeof(IZLinkActorJoinEntrySpotCall),
         typeof(IZLinkActorFactory),
-        typeof(IZLinkActorManager))]
+        typeof(IZLinkActorManager),
+        typeof(IZLinkActorDirectory))]
     public async Task Actor_context_creates_actors_and_joins_a_spot_by_routing_id()
     {
         var spot = new RoomSpot();
         var context = new ActorContext("player-1", spot);
         var factory = new ActorFactory();
         var manager = new ActorManager(factory, context);
+        var directory = new ActorDirectory(manager);
 
         var actor = new PlayerActor("player-1", context);
         var actorRef = await manager.GetOrCreateAsync("player-1", "player");
+        var foundActorRef = await directory.FindAsync("player-1");
+        var ensuredActorRef = await directory.EnsureAsync(
+            "player-1",
+            ZLinkMessage.From(new JoinRoom("room-1")),
+            new ZLinkActorPlacement(RoutingId.From("actor-node")));
+        var snapshot = ZLinkActorRefSnapshot.From(actorRef);
         var joinReply = await actor.Context
             .JoinSpot(RoutingId.From("room-1"), new JoinRoom("room-1"))
             .Async();
@@ -34,14 +44,39 @@ public sealed class ActorContracts
             .Yield();
 
         Assert.Equal("player-1", actorRef.ActorId);
+        Assert.Equal(actorRef, foundActorRef);
+        Assert.Equal(actorRef, ensuredActorRef);
+        Assert.Equal(actorRef, snapshot.ToActorRef());
         Assert.Equal("player-1", actor.ActorId);
         Assert.True(joinReply.Accepted);
         Assert.Equal("room-1", joinReply.Reply.Decode<JoinedRoom>().RoomId);
         Assert.True(typedJoinReply.Accepted);
         Assert.Equal("room-1", typedJoinReply.Reply.RoomId);
         Assert.True(entryJoin.Accepted);
-        Assert.Equal("player-1", entryJoin.Actor.ActorId);
-        Assert.Equal(RoutingId.From("play-node"), entryJoin.Actor.NodeRid);
+        var entryActor = Assert.IsType<ActorRef>(entryJoin.Actor);
+        Assert.Equal("player-1", entryActor.ActorId);
+        Assert.Equal(RoutingId.From("play-node"), entryActor.NodeRid);
+    }
+
+    private sealed class ActorDirectory(IZLinkActorManager manager) : IZLinkActorDirectory
+    {
+        public ValueTask<ActorRef?> FindAsync(
+            string actorId,
+            CancellationToken cancellationToken = default)
+        {
+            return manager.FindAsync(actorId, cancellationToken);
+        }
+
+        public async ValueTask<ActorRef> EnsureAsync(
+            string actorId,
+            ZLinkMessage createRequest,
+            ZLinkActorPlacement placement = default,
+            CancellationToken cancellationToken = default)
+        {
+            _ = placement;
+            return await manager.FindAsync(actorId, cancellationToken)
+                   ?? await manager.GetOrCreateAsync(actorId, "player", createRequest, cancellationToken);
+        }
     }
 
     private sealed record JoinRoom(string RoomId);

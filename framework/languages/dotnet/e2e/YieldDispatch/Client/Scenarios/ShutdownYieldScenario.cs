@@ -46,10 +46,7 @@ internal static class ShutdownYieldScenario
         });
         await client.Connect.Async();
 
-        var result = await client.Request(new YieldShutdownRecoveryReq(options.RequestId, options.SpotRid))
-            .PacketName("YieldShutdownRecoveryReq")
-            .Timeout(TimeSpan.FromSeconds(30))
-            .Async<YieldShutdownRecoveryRes>();
+        var result = await RequestRecoveryAfterRouteConvergesAsync(client, options);
         ScenarioAssert.That(result.Operation == "yield.e3-shutdown-recovery", "YD-E3 recovery operation mismatch.");
         ScenarioAssert.That(result.SpotRid == options.SpotRid, "YD-E3 recovery spot rid mismatch.");
         ScenarioAssert.That(
@@ -58,5 +55,30 @@ internal static class ShutdownYieldScenario
             "YD-E3 recovery probe marker missing.");
 
         Console.WriteLine("yield-dispatch shutdown recovery result=passed");
+    }
+
+    private static async Task<YieldShutdownRecoveryRes> RequestRecoveryAfterRouteConvergesAsync(
+        IZlinkStreamConnector client,
+        ClientOptions options)
+    {
+        var deadline = DateTimeOffset.UtcNow + TimeSpan.FromSeconds(90);
+        Exception? last = null;
+        while (DateTimeOffset.UtcNow < deadline)
+        {
+            try
+            {
+                return await client.Request(new YieldShutdownRecoveryReq(options.RequestId, options.SpotRid))
+                    .PacketName("YieldShutdownRecoveryReq")
+                    .Timeout(TimeSpan.FromSeconds(45))
+                    .Async<YieldShutdownRecoveryRes>();
+            }
+            catch (Exception ex) when (ex is ZlinkStreamException or OperationCanceledException)
+            {
+                last = ex;
+                await Task.Delay(500);
+            }
+        }
+
+        throw new TimeoutException("YD-E3 recovery did not route to the restarted play node.", last);
     }
 }

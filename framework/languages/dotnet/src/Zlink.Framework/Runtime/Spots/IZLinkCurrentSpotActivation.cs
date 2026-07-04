@@ -16,7 +16,7 @@ internal interface IZLinkCurrentSpotActivation
         string channelName,
         TMessage message);
 
-    IZLinkRequestCall RequestToChannel<TRequest>(
+    IZLinkYieldRequestCall RequestToChannel<TRequest>(
         string channelName,
         TRequest request);
 

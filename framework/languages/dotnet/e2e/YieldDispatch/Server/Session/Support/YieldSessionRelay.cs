@@ -35,7 +35,7 @@ internal sealed partial class YieldSession
         while (DateTimeOffset.UtcNow < deadline)
             try
             {
-                return await routes.Request(
+                return await routes.RequestToNode(
                         YieldDispatchNames.ControlChannel,
                         target,
                         request)
@@ -56,7 +56,7 @@ internal sealed partial class YieldSession
 
     private static async Task SendSpotWithRetryAsync(
         IZLinkRouteClient routes,
-        IZLinkSpotLocationResolver spots,
+        IZLinkSpotAddressResolver spots,
         string spotRid,
         object message,
         string packetName,
@@ -94,7 +94,7 @@ internal sealed partial class YieldSession
 
     private static async ValueTask<TRes> RequestSpotWithRetryAsync<TRes>(
         IZLinkRouteClient routes,
-        IZLinkSpotLocationResolver spots,
+        IZLinkSpotAddressResolver spots,
         string spotRid,
         object request,
         string packetName,

@@ -41,7 +41,7 @@ public sealed class BuilderContracts
         clientServer.ConfigureClientSocket().SendTimeout = TimeSpan.FromSeconds(1);
         Assert.Equal(TimeSpan.FromSeconds(1), clientServer.ConfigureClientSocket().SendTimeout);
 
-        var routeMesh = options.AddRouteMesh("play");
+        var routeMesh = options.AddRouteMeshChannel("play");
         Assert.Same(
             routeMesh,
             routeMesh
@@ -91,7 +91,7 @@ public sealed class BuilderContracts
         }
 
         {
-            var channel = options.AddRouteMesh("play-router")
+            var channel = options.AddRouteMeshChannel("play-router")
                 .EnableServer("tcp://127.0.0.1:5300")
                 .EnableClient("tcp://127.0.0.1:5301")
                 .SetRoutingId(RoutingId.From("play-router"));
@@ -225,35 +225,10 @@ public sealed class BuilderContracts
             return new FanoutChannelBuilder();
         }
 
-        public IZLinkRouteMeshChannelBuilder AddRouteMesh(string channelName)
+        public IZLinkRouteMeshChannelBuilder AddRouteMeshChannel(string channelName)
         {
             Channels.Add(channelName);
             return new RouteMeshChannelBuilder();
-        }
-
-        public void AddPeerLocationStore<TStore>()
-            where TStore : class, IZLinkPeerLocationStore
-        {
-        }
-
-        public void AddSpotLocationStore<TStore>()
-            where TStore : class, IZLinkSpotLocationStore
-        {
-        }
-
-        public void AddActorLocationStore<TStore>()
-            where TStore : class, IZLinkActorLocationStore
-        {
-        }
-
-        public void AddRouteLocationStore<TStore>()
-            where TStore : class, IZLinkRouteLocationStore
-        {
-        }
-
-        public void AddOwnerLeaseStore<TStore>()
-            where TStore : class, IZLinkOwnerLeaseStore
-        {
         }
 
         public void UseInMemoryLocationStores()

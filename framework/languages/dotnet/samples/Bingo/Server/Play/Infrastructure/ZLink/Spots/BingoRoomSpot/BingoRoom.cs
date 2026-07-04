@@ -174,7 +174,7 @@ internal sealed class BingoRoom(
         foreach (var actor in _actors.Values.ToArray())
         {
             actor.MarkForDestroyAfterRoomLeave();
-            await Context.leaveActor(actor, cancellationToken);
+            await Context.LeaveActorAsync(actor, cancellationToken);
         }
     }
 
@@ -241,7 +241,7 @@ internal sealed class BingoRoom(
             return false;
 
         _observerActor = null;
-        await Context.leaveActor(actor, cancellationToken);
+        await Context.LeaveActorAsync(actor, cancellationToken);
         logger.LogInformation(
             "bingo observer room: actor left. observedRoom={ObservedRoomId}, observer={ActorId}",
             roomId,

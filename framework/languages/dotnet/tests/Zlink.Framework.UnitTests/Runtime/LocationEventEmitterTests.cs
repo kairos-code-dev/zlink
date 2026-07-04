@@ -20,7 +20,7 @@ public sealed class LocationEventEmitterTests
         var actor = InMemoryLocationStoreTests.Actor("ignored", 0);
         var claimed = await fixture.Runtime.WriteActorAsync(actor, ZLinkLocationWriteIntent.NewClaim);
         await fixture.Runtime.RemoveActorAsync(
-            new ZLinkActorLocationKey("player", "actor-1"), claimed.Generation);
+            new ZLinkActorLocationKey("actor-1"), claimed.Generation);
 
         var updated = Assert.IsType<ZLinkLocationActorEvent>(fixture.Publisher.Events[0]);
         Assert.Equal("actors", updated.SourceName);
@@ -52,7 +52,7 @@ public sealed class LocationEventEmitterTests
     {
         var fixture = await FixtureAsync();
 
-        Assert.Null(await fixture.Resolvers.ResolveActorRowAsync(new ZLinkActorLocationKey("player", "ghost")));
+        Assert.Null(await fixture.Resolvers.ResolveActorRowAsync(new ZLinkActorLocationKey("ghost")));
 
         var miss = Assert.Single(fixture.Publisher.Events.OfType<ZLinkLocationActorEvent>());
         Assert.Equal(ZLinkLocationActorEventKind.ResolveMiss, miss.Event);
@@ -92,7 +92,7 @@ public sealed class LocationEventEmitterTests
 
         var actor = InMemoryLocationStoreTests.Actor("ignored", 0);
         await fixture.Runtime.WriteActorAsync(actor, ZLinkLocationWriteIntent.NewClaim);
-        Assert.Null(await fixture.Resolvers.ResolveActorRowAsync(new ZLinkActorLocationKey("player", "ghost")));
+        Assert.Null(await fixture.Resolvers.ResolveActorRowAsync(new ZLinkActorLocationKey("ghost")));
         await fixture.Reconciler.TickAsync();
 
         Assert.Empty(fixture.Publisher.Events);
@@ -123,7 +123,7 @@ public sealed class LocationEventEmitterTests
         var publisher = new RecordingPublisher();
         var emitter = new ZLinkLocationEventEmitter(registration, publisher);
 
-        var runtime = new ZLinkLocationRuntime(options, store, store, store, store, store, time, emitter);
+        var runtime = new ZLinkLocationRuntime(options, store, store, store, store, store, store, time, emitter);
         await runtime.RenewOwnerLeaseOnceAsync();
         await store.RenewOwnerLeaseAsync("row-owner", RoutingId.From("node-9"), LeaseTtl);
         await store.RenewOwnerLeaseAsync("peer-owner", RoutingId.From("r1"), TimeSpan.FromMinutes(10));

@@ -5,6 +5,93 @@ namespace Zlink.Framework.SampleRegressionTests;
 public sealed class RegressionTests
 {
     [Fact]
+    public void Samples_Do_Not_Use_Location_Stores_Or_Resolvers_As_Business_Dependencies()
+    {
+        // TODO(Q1): remove this exception when the actor client replaces the
+        // resolve-then-send flow in DeliveryDispatch Tracking.
+        var allowedActorAddressResolverFiles = new HashSet<string>(StringComparer.Ordinal)
+        {
+            NormalizeRelativePath(Path.Combine("DeliveryDispatch", "Server", "Tracking", "Handlers.cs"))
+        };
+        var forbidden = new[]
+        {
+            "ZLinkActorLocation",
+            "IZLinkActorLocationStore",
+            "IZLinkPeerLocationStore",
+            "IZLinkSpotLocationStore",
+            "IZLinkRouteLocationStore",
+            "IZLinkLocationStore",
+            "IZLinkOwnerLeaseStore",
+            "IZLinkActorAddressResolver"
+        };
+
+        var offenders = EnumerateSourceFiles(ResolveSamplesRoot())
+            .Where(static file => !IsAllowedSampleLocationStoreException(file))
+            .SelectMany(file => forbidden
+                .Where(token => File.ReadAllText(file).Contains(token, StringComparison.Ordinal))
+                .Where(token => !IsAllowedActorAddressResolverException(
+                    file,
+                    token,
+                    allowedActorAddressResolverFiles))
+                .Select(token => $"{Path.GetRelativePath(ResolveSamplesRoot(), file)}:{token}"))
+            .ToArray();
+
+        Assert.True(
+            offenders.Length == 0,
+            "Samples must not use location stores or actor address resolvers directly: "
+            + string.Join(", ", offenders));
+    }
+
+    [Fact]
+    public void Sample_Session_Binding_Uses_BindOrGetAsync()
+    {
+        var allowedExplicitRebindFiles = new HashSet<string>(StringComparer.Ordinal)
+        {
+            NormalizeRelativePath(Path.Combine("e2e", "SpotService", "Server", "MultiNode", "Handlers", "MultiNodeSessionHandlers.cs")),
+            NormalizeRelativePath(Path.Combine("e2e", "SpotService", "Server", "Play", "Handlers", "PlaySessionHandlers.cs")),
+            NormalizeRelativePath(Path.Combine("e2e", "SpotService", "Server", "Session", "Handlers", "SessionSessionHandlers.cs")),
+            NormalizeRelativePath(Path.Combine("e2e", "YieldDispatch", "Server", "Session", "Support", "YieldSession.cs"))
+        };
+        var sampleSessionFiles = new[] { "Bingo", "DeliveryDispatch", "SupportChat", "TicTacToe" }
+            .Select(ResolveSampleRoot)
+            .SelectMany(static root => EnumerateSessionRoots(root))
+            .SelectMany(static root => EnumerateSourceFiles(root))
+            .ToArray();
+        var e2eSessionFiles = EnumerateSourceFiles(ResolveE2eRoot()).ToArray();
+        var sessionFiles = sampleSessionFiles.Concat(e2eSessionFiles).ToArray();
+        Assert.NotEmpty(sampleSessionFiles);
+        Assert.NotEmpty(e2eSessionFiles);
+
+        var sessionText = string.Join(Environment.NewLine, sessionFiles.Select(File.ReadAllText));
+        var bindAsyncOffenders = sessionFiles
+            .Where(file => File.ReadAllText(file).Contains(".BindAsync(", StringComparison.Ordinal))
+            .Select(file => NormalizeRelativePath(Path.GetRelativePath(ResolveDotnetRoot(), file)))
+            .Where(file => !allowedExplicitRebindFiles.Contains(file))
+            .ToArray();
+
+        Assert.Contains("BindOrGetAsync", sessionText, StringComparison.Ordinal);
+        Assert.True(
+            bindAsyncOffenders.Length == 0,
+            "Session binding should use BindOrGetAsync unless the file intentionally exercises explicit rebinding: "
+            + string.Join(", ", bindAsyncOffenders));
+    }
+
+    [Fact]
+    public void Sample_Health_Checks_Use_Location_Readiness()
+    {
+        var hostFiles = EnumerateSourceFiles(ResolveSamplesRoot())
+            .Where(static file => file.EndsWith("HostFactory.cs", StringComparison.Ordinal)
+                                  || Path.GetFileName(file).Equals("Program.cs", StringComparison.Ordinal))
+            .ToArray();
+        Assert.NotEmpty(hostFiles);
+
+        var allText = string.Join(Environment.NewLine, hostFiles.Select(File.ReadAllText));
+
+        Assert.Contains("IZLinkLocationReadiness", allText, StringComparison.Ordinal);
+        Assert.DoesNotContain("IZLinkLocationRuntimeQuery", allText, StringComparison.Ordinal);
+    }
+
+    [Fact]
     public void Bingo_Uses_Framework_Defaults_Without_Sample_Metadata_Store()
     {
         var sampleRoot = ResolveSampleRoot("Bingo");
@@ -309,6 +396,10 @@ public sealed class RegressionTests
             "ConversationAssignment", "AgentAvailabilityDirectory.cs"));
         var availableHandler = File.ReadAllText(Path.Combine(sampleRoot, "Server", "Support", "Infrastructure",
             "ZLink", "Spots", "EntrySpot", "Handlers", "SetAgentAvailableHandler.cs"));
+        var ensureUserHandler = File.ReadAllText(Path.Combine(sampleRoot, "Server", "Support", "Infrastructure",
+            "ZLink", "Handlers", "EnsureSupportUserActorHandler.cs"));
+        var ensureConversationHandler = File.ReadAllText(Path.Combine(sampleRoot, "Server", "Support", "Infrastructure",
+            "ZLink", "Handlers", "EnsureAgentConversationHandler.cs"));
         var entrySpot = File.ReadAllText(Path.Combine(sampleRoot, "Server", "Support", "Infrastructure", "ZLink",
             "Spots", "EntrySpot", "SupportEntrySpot.cs"));
         var conversationSpot = File.ReadAllText(Path.Combine(sampleRoot, "Server", "Support", "Infrastructure",
@@ -407,9 +498,12 @@ public sealed class RegressionTests
 
         Assert.Contains("SUPPORTCHAT_REDIS_ENDPOINT", topology, StringComparison.Ordinal);
         Assert.Contains("SUPPORTCHAT_REDIS_KEY_PREFIX", topology, StringComparison.Ordinal);
-        Assert.DoesNotContain("ActorRefSnapshot", sharedMessages, StringComparison.Ordinal);
+        Assert.DoesNotContain("public sealed record ActorRefSnapshot", sharedMessages, StringComparison.Ordinal);
         Assert.DoesNotContain("EnsureSupportUserActorReq", sharedMessages, StringComparison.Ordinal);
-        Assert.Contains("public sealed record ActorRefSnapshot", serverContracts, StringComparison.Ordinal);
+        Assert.DoesNotContain("public sealed record ActorRefSnapshot", serverContracts, StringComparison.Ordinal);
+        Assert.Contains("ZLinkActorRefSnapshot Actor", serverContracts, StringComparison.Ordinal);
+        Assert.Contains("ZLinkActorRefSnapshot.From(actor)", ensureUserHandler, StringComparison.Ordinal);
+        Assert.Contains("ZLinkActorRefSnapshot.From(actorRef)", ensureConversationHandler, StringComparison.Ordinal);
         Assert.Contains("public sealed record EnsureSupportUserActorReq", serverContracts, StringComparison.Ordinal);
         AssertLocationStoreHost(apiHost);
         AssertLocationStoreHost(sessionHost);
@@ -718,8 +812,8 @@ public sealed class RegressionTests
         Assert.DoesNotContain("MapPost(\"/feature/unlock\"", gameApiProgram, StringComparison.Ordinal);
         Assert.DoesNotContain("AddFanoutChannel", gameApiProgram, StringComparison.Ordinal);
         Assert.DoesNotContain("AddFanoutChannel", missionProgram, StringComparison.Ordinal);
-        Assert.Contains("AddRouteMesh(SampleNames.QuestOwnerRouteChannel)", gameApiProgram, StringComparison.Ordinal);
-        Assert.Contains("AddRouteMesh(SampleNames.QuestOwnerRouteChannel)", missionProgram, StringComparison.Ordinal);
+        Assert.Contains("AddRouteMeshChannel(SampleNames.QuestOwnerRouteChannel)", gameApiProgram, StringComparison.Ordinal);
+        Assert.Contains("AddRouteMeshChannel(SampleNames.QuestOwnerRouteChannel)", missionProgram, StringComparison.Ordinal);
 
         Assert.DoesNotContain("StoreDirectory", topology, StringComparison.Ordinal);
         Assert.DoesNotContain("GAMEQUEST_STORE_DIR", topology, StringComparison.Ordinal);
@@ -739,7 +833,7 @@ public sealed class RegressionTests
         Assert.Contains("playerQuestOwners.ApplyGameplayEventAsync", gameplayIngress, StringComparison.Ordinal);
         Assert.Contains("ownerRouter.IsLocalOwner", gameplayIngress, StringComparison.Ordinal);
         Assert.Contains("IGameplayEventOwnerDispatcher", actionService, StringComparison.Ordinal);
-        Assert.Contains("Request(SampleNames.QuestOwnerRouteChannel", eventDispatcher, StringComparison.Ordinal);
+        Assert.Contains("RequestToNode(SampleNames.QuestOwnerRouteChannel", eventDispatcher, StringComparison.Ordinal);
         Assert.Contains("topology.OwnerRouteRid(gameplayEvent.PlayerId)", eventDispatcher, StringComparison.Ordinal);
         Assert.DoesNotContain("interface IPlayerQuestOwnerProvisioner", questProcessor, StringComparison.Ordinal);
         Assert.DoesNotContain("IPlayerQuestOwnerProvisioner", gameplayIngress, StringComparison.Ordinal);
@@ -897,7 +991,7 @@ public sealed class RegressionTests
 
         Assert.Contains("new FindCourierActorReq(courierId)", courierSessionBinder, StringComparison.Ordinal);
         Assert.Contains("new EnsureCourierActorReq(courierId)", courierSessionBinder, StringComparison.Ordinal);
-        Assert.Contains("context.Actors.BindAsync", courierSessionBinder, StringComparison.Ordinal);
+        Assert.Contains("context.Actors.BindOrGetAsync", courierSessionBinder, StringComparison.Ordinal);
         Assert.Contains("builder.Services.AddSingleton<CourierSessionBinder>()", courierSessionHost,
             StringComparison.Ordinal);
         Assert.Contains("await binder.BindAsync(request.CourierId", courierSessionHandler, StringComparison.Ordinal);
@@ -915,8 +1009,9 @@ public sealed class RegressionTests
         var dispatchWorker = File.ReadAllText(Path.Combine(sampleRoot, "Server", "Dispatch",
             "DispatchWorker.cs"));
 
-        Assert.Contains("HasReadyCourierRouteAsync", dispatchHost, StringComparison.Ordinal);
-        Assert.Contains("IZLinkLocationRuntimeQuery", dispatchHost, StringComparison.Ordinal);
+        Assert.Contains("IZLinkLocationReadiness", dispatchHost, StringComparison.Ordinal);
+        Assert.Contains("readiness.IsPeerReadyAsync", dispatchHost, StringComparison.Ordinal);
+        Assert.DoesNotContain("HasReadyCourierRouteAsync", dispatchHost, StringComparison.Ordinal);
         Assert.Contains("StatusCodes.Status503ServiceUnavailable", dispatchHost, StringComparison.Ordinal);
         Assert.DoesNotContain("new FindCourierActorReq(\"__health__\")", dispatchHost, StringComparison.Ordinal);
         Assert.DoesNotContain("RequestWithRetryAsync", dispatchAdapters, StringComparison.Ordinal);
@@ -1342,7 +1437,8 @@ public sealed class RegressionTests
             Assert.DoesNotContain("IZLinkActorRemoteAddressResolver", text, StringComparison.Ordinal);
             Assert.DoesNotContain("ResolveActorRemoteAddressAsync", text, StringComparison.Ordinal);
             Assert.DoesNotContain("GetRemoteAddressAsync", text, StringComparison.Ordinal);
-            Assert.Contains("ActorRefSnapshot", text, StringComparison.Ordinal);
+            Assert.Contains("ActorRefWire", text, StringComparison.Ordinal);
+            Assert.DoesNotContain("ActorRefSnapshot", text, StringComparison.Ordinal);
         }
     }
 
@@ -1368,7 +1464,7 @@ public sealed class RegressionTests
 
         Assert.Contains("OnLeaveActorAsync", userSpot, StringComparison.Ordinal);
         Assert.Contains("OnDisconnectActorAsync", userSpot, StringComparison.Ordinal);
-        Assert.Contains("leaveActor", userSpot, StringComparison.Ordinal);
+        Assert.Contains("LeaveActorAsync", userSpot, StringComparison.Ordinal);
         Assert.Contains("MarkForDestroyAfterRoomLeave", userSpot, StringComparison.Ordinal);
         Assert.Contains("MarkDisconnected", userSpot, StringComparison.Ordinal);
         Assert.DoesNotContain("DestroyActorAsync", userSpot, StringComparison.Ordinal);
@@ -1429,6 +1525,24 @@ public sealed class RegressionTests
         if (Directory.Exists(infrastructureSessionsRoot)) yield return infrastructureSessionsRoot;
     }
 
+    private static bool IsAllowedSampleLocationStoreException(string file)
+    {
+        return Path.GetFileName(file).Equals("RedisRoomRouteStore.cs", StringComparison.Ordinal)
+               && file.Contains(
+                   $"{Path.DirectorySeparatorChar}TicTacToe{Path.DirectorySeparatorChar}",
+                   StringComparison.Ordinal);
+    }
+
+    private static bool IsAllowedActorAddressResolverException(
+        string file,
+        string token,
+        ISet<string> allowedRelativeFiles)
+    {
+        return string.Equals(token, "IZLinkActorAddressResolver", StringComparison.Ordinal)
+               && allowedRelativeFiles.Contains(
+                   NormalizeRelativePath(Path.GetRelativePath(ResolveSamplesRoot(), file)));
+    }
+
     private static string ResolveSampleRoot(string sampleName)
     {
         return Path.Combine(ResolveSamplesRoot(), sampleName);
@@ -1437,6 +1551,11 @@ public sealed class RegressionTests
     private static string ResolveSamplesRoot()
     {
         return Path.Combine(ResolveDotnetRoot(), "samples");
+    }
+
+    private static string ResolveE2eRoot()
+    {
+        return Path.Combine(ResolveDotnetRoot(), "e2e");
     }
 
     private static string ResolveDotnetRoot()
@@ -1459,6 +1578,11 @@ public sealed class RegressionTests
 
         throw new DirectoryNotFoundException(
             "Could not find framework/languages/dotnet/samples from test runtime.");
+    }
+
+    private static string NormalizeRelativePath(string path)
+    {
+        return path.Replace(Path.DirectorySeparatorChar, '/');
     }
 
 }

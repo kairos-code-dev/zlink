@@ -18,7 +18,7 @@ public sealed class HandlerExposureTests : RegistrationValidationSupport
 
         var client = host.Services.GetRequiredService<IZLinkRouteClient>();
         var exception = await Assert.ThrowsAsync<ZLinkConfigurationException>(() =>
-            Task.Run(() => client.Send(
+            Task.Run(() => client.SendToNode(
                     "missing",
                     RoutingId.From("01"),
                     "ping")
@@ -138,7 +138,7 @@ public sealed class HandlerExposureTests : RegistrationValidationSupport
         {
             options.AddHandlersFromAssemblyOf<RegistrationValidationSupport>();
             {
-                var channel = options.AddRouteMesh("backend");
+                var channel = options.AddRouteMeshChannel("backend");
                 channel.EnableServer("tcp://127.0.0.1:7101");
                 channel.EnableClient("tcp://127.0.0.1:7102");
                 channel.AddHandlerGroup("validation-route");
@@ -162,7 +162,7 @@ public sealed class HandlerExposureTests : RegistrationValidationSupport
             {
                 options.AddHandlersFromAssemblyOf<RegistrationValidationSupport>();
                 {
-                    var channel = options.AddRouteMesh("backend");
+                    var channel = options.AddRouteMeshChannel("backend");
                     channel.EnableServer("tcp://127.0.0.1:7101");
                     channel.EnableClient("tcp://127.0.0.1:7102");
                     channel.AddHandlerGroup("missing-route-group");
@@ -183,7 +183,7 @@ public sealed class HandlerExposureTests : RegistrationValidationSupport
             {
                 options.AddHandlersFromAssemblyOf<RegistrationValidationSupport>();
                 {
-                    var channel = options.AddRouteMesh("backend");
+                    var channel = options.AddRouteMeshChannel("backend");
                     channel.EnableServer("tcp://127.0.0.1:7101");
                     channel.EnableClient("tcp://127.0.0.1:7102");
                     channel.AddHandlerGroup("validation-publish");
@@ -224,7 +224,7 @@ public sealed class HandlerExposureTests : RegistrationValidationSupport
             {
                 options.AddHandlersFromAssemblyOf<RegistrationValidationSupport>();
                 {
-                    var channel = options.AddRouteMesh("backend");
+                    var channel = options.AddRouteMeshChannel("backend");
                     channel.EnableServer("tcp://127.0.0.1:7101");
                     channel.EnableClient("tcp://127.0.0.1:7102");
                     channel.AddHandlerGroup("validation-route");
@@ -269,7 +269,7 @@ public sealed class HandlerExposureTests : RegistrationValidationSupport
         {
             options.UseInMemoryLocationStores();
             {
-                var channel = options.AddRouteMesh("route").EnableServer("tcp://0.0.0.0:5700");
+                var channel = options.AddRouteMeshChannel("route").EnableServer("tcp://0.0.0.0:5700");
                 channel.SetRoutingId(RoutingId.From("route-node"));
                 channel.AddRequestHandler<TestRouteRequestHandler>();
             }
@@ -293,7 +293,7 @@ public sealed class HandlerExposureTests : RegistrationValidationSupport
         services.AddZLinkFramework(options =>
         {
             {
-                var channel = options.AddRouteMesh("route").EnableServer("tcp://0.0.0.0:5700");
+                var channel = options.AddRouteMeshChannel("route").EnableServer("tcp://0.0.0.0:5700");
                 channel.SetRoutingId(RoutingId.From("route-node"));
                 channel.EnableClient("tcp://10.0.0.2:5700");
                 channel.AddRequestHandler<TestRouteRequestHandler>();
@@ -319,7 +319,7 @@ public sealed class HandlerExposureTests : RegistrationValidationSupport
         {
             options.UseInMemoryLocationStores();
             {
-                var channel = options.AddRouteMesh("backend");
+                var channel = options.AddRouteMeshChannel("backend");
                 channel.EnableServer("tcp://127.0.0.1:7101");
                 channel.AddRequestHandler<TestRouteRequestHandler>();
             }

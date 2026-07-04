@@ -10,7 +10,7 @@ internal sealed partial class YieldSession
 {
     private static async Task<YieldShutdownScenarioRes> RunShutdownThroughSpotRouteAsync(
         IZLinkRouteClient routes,
-        IZLinkSpotLocationResolver spots,
+        IZLinkSpotAddressResolver spots,
         YieldShutdownScenarioReq request,
         CancellationToken cancellationToken)
     {
@@ -41,7 +41,7 @@ internal sealed partial class YieldSession
 
     private static async Task<YieldShutdownRecoveryRes> RunShutdownRecoveryThroughSpotRouteAsync(
         IZLinkRouteClient routes,
-        IZLinkSpotLocationResolver spots,
+        IZLinkSpotAddressResolver spots,
         YieldShutdownRecoveryReq request,
         CancellationToken cancellationToken)
     {

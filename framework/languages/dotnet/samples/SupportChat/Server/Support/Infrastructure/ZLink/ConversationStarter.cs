@@ -12,7 +12,7 @@ internal sealed class ConversationStarter(IZLinkSpotManager spots) : IConversati
         ConversationStartReq request,
         CancellationToken cancellationToken)
     {
-        await spots.GetOrCreateAsync<ConversationSpot>(
+        await spots.GetOrCreateAsync<ConversationSpot, ConversationCreateReq>(
             RoutingId.From(conversationId),
             new ConversationCreateReq(
                 request.CustomerActorId,

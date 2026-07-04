@@ -2,12 +2,12 @@ namespace Zlink.Framework.Contracts.Channels;
 
 public interface IZLinkRouteClient
 {
-    IZLinkSendCall Send<TMessage>(
+    IZLinkSendCall SendToNode<TMessage>(
         string routerChannelId,
         RoutingId targetNodeRid,
         TMessage message);
 
-    IZLinkRouteRequestCall Request<TRequest>(
+    IZLinkRequestCall RequestToNode<TRequest>(
         string routerChannelId,
         RoutingId targetNodeRid,
         TRequest request);
@@ -27,7 +27,7 @@ public interface IZLinkRouteClient
     /// plane. A stale address fails with SpotRouteNotFound; re-resolve and
     /// retry per the caller's policy.
     /// </summary>
-    IZLinkRouteRequestCall RequestToSpot<TRequest>(
+    IZLinkRequestCall RequestToSpot<TRequest>(
         string routerChannelId,
         ZLinkSpotAddress address,
         TRequest request);
@@ -63,6 +63,10 @@ public sealed class ZLinkRouteSendContext : ZLinkHandlerContext
         SourceNodeRid = sourceNodeRid;
     }
 
+    /// <summary>
+    /// The route channel id that delivered the message. This is the same value
+    /// exposed through <see cref="IZLinkHandlerContext.ChannelName" />.
+    /// </summary>
     public string RouterChannelId { get; }
 
     public RoutingId SourceNodeRid { get; }
@@ -82,6 +86,10 @@ public sealed class ZLinkRouteRequestContext : ZLinkHandlerContext
         SourceNodeRid = sourceNodeRid;
     }
 
+    /// <summary>
+    /// The route channel id that delivered the request. This is the same value
+    /// exposed through <see cref="IZLinkHandlerContext.ChannelName" />.
+    /// </summary>
     public string RouterChannelId { get; }
 
     public RoutingId SourceNodeRid { get; }

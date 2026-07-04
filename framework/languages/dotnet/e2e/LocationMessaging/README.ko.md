@@ -3,8 +3,8 @@
 이 디렉토리는 `framework/doc/framework/common/e2e/config-1-location-messaging.ko.md` 기준의
 `.NET` location store 기반 messaging E2E 앱이다. registry process는 없다. 각 노드가
 공식 Redis location store extension(`AddRedisLocationStore`)으로 자기 peer location row를
-자동 등록하고, 검증은 `IZLinkLocationRuntimeQuery.ListPeersAsync(filter)`(raw row)와
-`IZLinkPeerLocationResolver.ListPeersAsync(..., Refresh)`(member peer 사용자 기능)로 나눈다.
+자동 등록하고, 검증은 `IZLinkLocationRuntimeQuery.ListPeerLocationsAsync(filter)`(raw row)와
+`IZLinkPeerLocationResolver.ListLivePeersAsync(...)`(member peer 사용자 기능)로 나눈다.
 
 현재 구현된 시나리오:
 

@@ -25,7 +25,9 @@ public sealed class ZLinkLocationOptions
     /// <see cref="ZLinkPageRequest"/>.</summary>
     public int ListPageSize { get; set; } = 1000;
 
-    /// <summary>How long auto connect keeps the last known desired target
-    /// set while the store is unreachable (fail-static).</summary>
+    /// <summary>Grace boundary for store failure handling. Existing ready
+    /// connections stay alive while the transport stays alive; after this
+    /// time, auto connect must not start new outbound connects until the
+    /// store recovers.</summary>
     public TimeSpan StoreFailureGrace { get; set; } = TimeSpan.FromSeconds(30);
 }

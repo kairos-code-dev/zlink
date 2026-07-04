@@ -51,7 +51,7 @@ public sealed class ZLinkRedisLocationOptions
             ? explicitOptions.Clone()
             : ConfigurationOptions.Parse(ConnectionString!);
 
-        // The store maps command failures to StoreUnavailable / read
+        // The store maps command failures to StoreFailure / read
         // exceptions itself; the multiplexer must keep reconnecting in the
         // background instead of failing construction permanently.
         configuration.AbortOnConnectFail = false;

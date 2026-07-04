@@ -30,10 +30,7 @@ internal sealed class ZLinkActorEntrySpotRouteInternalPacketDispatcher(
         CancellationToken cancellationToken)
     {
         _ = routedHeader;
-        var request = (ZLinkActorEntrySpotRouteJoinRequest?)ZLinkEnvelopeCodec.DecodeBody(
-                          received.Parts,
-                          typeof(ZLinkActorEntrySpotRouteJoinRequest))
-                      ?? throw new InvalidOperationException("Actor EntrySpot route join request was empty.");
+        var request = ZLinkActorEntrySpotRoutePackets.DecodeJoinRequest(received.Parts);
 
         // Hosting handoff from the source node (see JoinRoutedActorAsync).
         CreateActorResult created;
@@ -60,10 +57,8 @@ internal sealed class ZLinkActorEntrySpotRouteInternalPacketDispatcher(
                              ZLinkFrameworkErrorKind.ActorRouteNotFound,
                              $"Actor EntrySpot route join target node '{nativeRef.NodeRid}' does not have an Entry Spot activation.");
 
-        using var joinRequestPayload = Message.From(request.RequestPayload);
-        var joinRequest = ZLinkMessage.FromEnvelopePayload(
-            request.RequestContentType,
-            joinRequestPayload,
+        var joinRequest = ZLinkActorEntrySpotRoutePackets.DecodeJoinRequestPayload(
+            request,
             runtime.Registration.Codecs);
         var admission = activation.TryResolveActorJoin(out var descriptor) && descriptor is not null
             ? await activation.InvokeActorJoinAsync(descriptor, actor, joinRequest, cancellationToken)
@@ -76,26 +71,13 @@ internal sealed class ZLinkActorEntrySpotRouteInternalPacketDispatcher(
                     cancellationToken)
                 .ConfigureAwait(false);
 
-        var replyContentType = ZLinkEnvelopeCodec.DefaultContentType;
-        Message? replyPayload = null;
-        if (admission.Reply is { } reply)
-        {
-            var encodedReply = reply.Encode(runtime.Registration.Codecs);
-            replyContentType = encodedReply.ContentType;
-            replyPayload = Message.From(encodedReply.Payload.Bytes.Span);
-        }
-
-        using (replyPayload)
-        {
-            return ZLinkEnvelopeCodec.EncodePart(new ZLinkActorEntrySpotRouteJoinReply(
-                admission.Accepted,
-                actor.ActorId,
-                state.ActorType ?? request.ActorType,
-                nativeRef.NodeRid.ToHex(),
-                nativeRef.Generation,
-                replyContentType,
-                replyPayload?.ToArray() ?? Array.Empty<byte>()));
-        }
+        return ZLinkActorEntrySpotRoutePackets.EncodeJoinReply(
+            admission.Accepted,
+            actor.ActorId,
+            state.ActorType ?? request.ActorType,
+            nativeRef,
+            admission.Reply,
+            runtime.Registration.Codecs);
     }
 
     private static ZLinkSpotNodeRuntime FindSpotNode(

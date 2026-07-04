@@ -2,60 +2,19 @@ namespace Zlink.Framework.UnitTests;
 
 public sealed class LocationContractTests
 {
-    [Theory]
-    [InlineData(ZLinkLocationAutoConnectType.RouteMesh, "route-mesh")]
-    [InlineData(ZLinkLocationAutoConnectType.ClientServer, "client-server")]
-    [InlineData(ZLinkLocationAutoConnectType.DealerMesh, "dealer-mesh")]
-    [InlineData(ZLinkLocationAutoConnectType.Fanout, "fanout")]
-    [InlineData(ZLinkLocationAutoConnectType.SpotMesh, "spot-mesh")]
-    public void AutoConnectType_Canonical_String_RoundTrips(
-        ZLinkLocationAutoConnectType type,
-        string canonical)
+    [Fact]
+    public void Canonical_Name_Helper_Is_Not_Public_Contract()
     {
-        Assert.Equal(canonical, type.ToCanonicalString());
-        Assert.True(ZLinkLocationCanonicalNames.TryParseAutoConnectType(canonical, out var parsed));
-        Assert.Equal(type, parsed);
-    }
+        var assembly = typeof(ZLinkLocationAutoConnectType).Assembly;
 
-    [Theory]
-    [InlineData(ZLinkLocationRole.Router, "router")]
-    [InlineData(ZLinkLocationRole.Dealer, "dealer")]
-    [InlineData(ZLinkLocationRole.Pub, "pub")]
-    [InlineData(ZLinkLocationRole.Sub, "sub")]
-    [InlineData(ZLinkLocationRole.Spot, "spot")]
-    public void Role_Canonical_String_RoundTrips(ZLinkLocationRole role, string canonical)
-    {
-        Assert.Equal(canonical, role.ToCanonicalString());
-        Assert.True(ZLinkLocationCanonicalNames.TryParseRole(canonical, out var parsed));
-        Assert.Equal(role, parsed);
-    }
-
-    [Theory]
-    [InlineData("ROUTE-MESH")]
-    [InlineData("RouteMesh")]
-    [InlineData("route_mesh")]
-    [InlineData("")]
-    public void AutoConnectType_Parse_Rejects_NonCanonical_Values(string value)
-    {
-        Assert.False(ZLinkLocationCanonicalNames.TryParseAutoConnectType(value, out _));
-    }
-
-    [Theory]
-    [InlineData("Router")]
-    [InlineData("PUB")]
-    [InlineData("unknown")]
-    public void Role_Parse_Rejects_NonCanonical_Values(string value)
-    {
-        Assert.False(ZLinkLocationCanonicalNames.TryParseRole(value, out _));
+        Assert.Null(assembly.GetType(
+            "Zlink.Framework.Contracts.Locations.ZLinkLocation" + "CanonicalNames"));
     }
 
     [Fact]
-    public void Invalid_Values_Have_No_Canonical_String()
+    public void Location_Kind_Has_Invalid_Zero_Value()
     {
-        Assert.Throws<ArgumentOutOfRangeException>(
-            () => ZLinkLocationAutoConnectType.Invalid.ToCanonicalString());
-        Assert.Throws<ArgumentOutOfRangeException>(
-            () => ZLinkLocationRole.Invalid.ToCanonicalString());
+        Assert.Equal(0, (int)ZLinkLocationKind.Invalid);
     }
 
     [Fact]
@@ -70,7 +29,9 @@ public sealed class LocationContractTests
         Assert.Equal(updatedAt, stored.UpdatedAt);
         Assert.Equal(ZLinkLocationWriteStatus.IgnoredStale, ZLinkLocationWriteResult.IgnoredStale.Status);
         Assert.Equal(ZLinkLocationWriteStatus.RejectedConflict, ZLinkLocationWriteResult.RejectedConflict.Status);
-        Assert.Equal(ZLinkLocationWriteStatus.StoreUnavailable, ZLinkLocationWriteResult.StoreUnavailable.Status);
+        Assert.DoesNotContain(
+            Enum.GetNames<ZLinkLocationWriteStatus>(),
+            static name => name == "Store" + "Unavailable");
     }
 
     [Fact]
@@ -80,5 +41,14 @@ public sealed class LocationContractTests
 
         Assert.Equal(0, page.PageSize);
         Assert.Null(page.ContinuationToken);
+    }
+
+    [Fact]
+    public void Location_Readiness_Contract_Uses_Boolean_Peer_Check()
+    {
+        var method = typeof(IZLinkLocationReadiness).GetMethod(nameof(IZLinkLocationReadiness.IsPeerReadyAsync));
+
+        Assert.NotNull(method);
+        Assert.Equal(typeof(ValueTask<bool>), method.ReturnType);
     }
 }

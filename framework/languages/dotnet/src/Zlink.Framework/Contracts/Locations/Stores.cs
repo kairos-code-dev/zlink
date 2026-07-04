@@ -1,24 +1,31 @@
 namespace Zlink.Framework.Contracts.Locations;
 
 /// <summary>
-/// Stores peer location rows for auto connect. Writes must honor the write
-/// intent and owner/generation guard atomically. Read APIs report store
-/// failures as exceptions; write APIs return
-/// <see cref="ZLinkLocationWriteStatus.StoreUnavailable"/> instead.
-/// </summary>
-/// <summary>
 /// One physical location store providing every required store role. The
 /// five roles are all-or-nothing on one backend; optional contracts (change
 /// stamp, watch) are recognized when the same instance implements them.
 /// Register an instance with AddLocationStore — the framework never names a
 /// concrete backend on its own surface.
+///
+/// Expected races are represented by write status values. Store failures
+/// are reported as exceptions for both reads and writes.
 /// </summary>
 public interface IZLinkLocationStore :
     IZLinkPeerLocationStore,
     IZLinkSpotLocationStore,
     IZLinkActorLocationStore,
     IZLinkRouteLocationStore,
-    IZLinkOwnerLeaseStore;
+    IZLinkOwnerLeaseStore
+{
+    /// <summary>
+    /// Removes every location row left by an owner, regardless of kind.
+    /// Runtime shutdown and takeover cleanup use this path; implementations
+    /// should make it one atomic operation when their backend allows it.
+    /// </summary>
+    ValueTask<long> RemoveAllByOwnerAsync(
+        string ownerId,
+        CancellationToken cancellationToken = default);
+}
 
 public interface IZLinkPeerLocationStore
 {
@@ -30,10 +37,6 @@ public interface IZLinkPeerLocationStore
     ValueTask<ZLinkLocationWriteResult> RemovePeerAsync(
         ZLinkPeerLocationKey key,
         ZLinkLocationOwnerToken owner,
-        CancellationToken cancellationToken = default);
-
-    ValueTask<long> RemoveByOwnerAsync(
-        string ownerId,
         CancellationToken cancellationToken = default);
 
     /// <summary>
@@ -58,10 +61,6 @@ public interface IZLinkSpotLocationStore
         ZLinkLocationOwnerToken owner,
         CancellationToken cancellationToken = default);
 
-    ValueTask<long> RemoveByOwnerAsync(
-        string ownerId,
-        CancellationToken cancellationToken = default);
-
     ValueTask<ZLinkSpotLocation?> ResolveSpotAsync(
         ZLinkSpotLocationKey key,
         CancellationToken cancellationToken = default);
@@ -84,10 +83,6 @@ public interface IZLinkActorLocationStore
         ZLinkLocationOwnerToken owner,
         CancellationToken cancellationToken = default);
 
-    ValueTask<long> RemoveByOwnerAsync(
-        string ownerId,
-        CancellationToken cancellationToken = default);
-
     ValueTask<ZLinkActorLocation?> ResolveActorAsync(
         ZLinkActorLocationKey key,
         CancellationToken cancellationToken = default);
@@ -108,10 +103,6 @@ public interface IZLinkRouteLocationStore
     ValueTask<ZLinkLocationWriteResult> RemoveRouteAsync(
         ZLinkRouteLocationKey key,
         ZLinkLocationOwnerToken owner,
-        CancellationToken cancellationToken = default);
-
-    ValueTask<long> RemoveByOwnerAsync(
-        string ownerId,
         CancellationToken cancellationToken = default);
 
     ValueTask<ZLinkRouteLocation?> ResolveRouteAsync(
@@ -137,7 +128,7 @@ public interface IZLinkOwnerLeaseStore
     /// passes a TTL and the store computes the absolute expiry from its own
     /// clock; callers never produce absolute expiry times.
     /// </summary>
-    ValueTask<ZLinkLocationWriteResult> RenewOwnerLeaseAsync(
+    ValueTask<ZLinkOwnerLeaseRenewal> RenewOwnerLeaseAsync(
         string ownerId,
         RoutingId nodeRid,
         TimeSpan leaseTtl,
@@ -147,7 +138,7 @@ public interface IZLinkOwnerLeaseStore
     /// Removes a lease. Intended for the owner's own shutdown path and for
     /// operational recovery tools only.
     /// </summary>
-    ValueTask<ZLinkLocationWriteResult> RemoveOwnerLeaseAsync(
+    ValueTask<bool> RemoveOwnerLeaseAsync(
         string ownerId,
         CancellationToken cancellationToken = default);
 

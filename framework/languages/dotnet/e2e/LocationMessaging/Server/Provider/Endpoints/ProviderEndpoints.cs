@@ -21,7 +21,7 @@ internal static class ProviderEndpoints
             IZLinkLocationRuntimeQuery query,
             CancellationToken cancellationToken) =>
         {
-            var peers = await query.ListPeersAsync(
+            var peers = await query.ListPeerLocationsAsync(
                 new ZLinkPeerLocationFilter(MeshName: mesh),
                 cancellationToken);
             return Results.Ok(peers.Select(ToPeerRow).ToArray());
@@ -33,7 +33,7 @@ internal static class ProviderEndpoints
             IZLinkPeerLocationResolver resolver,
             CancellationToken cancellationToken) =>
         {
-            var peers = await resolver.ListPeersAsync(
+            var peers = await resolver.ListLivePeersAsync(
                 new ZLinkPeerLocationFilter(MeshName: mesh),
                 cancellationToken);
             return Results.Ok(peers.Select(ToPeerRow).ToArray());
@@ -82,7 +82,7 @@ internal static class ProviderEndpoints
             var failed = false;
             try
             {
-                await route.Request("profile.route", RoutingId.From("missing-rid"), request)
+                await route.RequestToNode("profile.route", RoutingId.From("missing-rid"), request)
                     .PacketName("ScenarioRoutePing")
                     .Timeout(TimeSpan.FromMilliseconds(300))
                     .Async<ScenarioRoutePong>();
@@ -170,7 +170,7 @@ internal static class ProviderEndpoints
         return new PeerLocationRow(
             peer.MeshName,
             peer.NodeRid?.ToString(),
-            peer.Role.ToCanonicalString(),
+            peer.Role.ToString(),
             peer.Endpoint,
             peer.Weight,
             peer.OwnerId,
@@ -195,7 +195,7 @@ internal static class ProviderEndpoints
         while (DateTimeOffset.UtcNow < deadline)
             try
             {
-                return await route.Request("profile.route", target, request)
+                return await route.RequestToNode("profile.route", target, request)
                     .PacketName("ScenarioRoutePing")
                     .Timeout(TimeSpan.FromSeconds(5))
                     .Async<ScenarioRoutePong>();

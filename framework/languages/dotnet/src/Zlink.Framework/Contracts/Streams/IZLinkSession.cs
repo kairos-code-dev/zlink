@@ -53,6 +53,10 @@ public interface IZLinkSessionActors
         ActorRef actor,
         CancellationToken cancellationToken = default);
 
+    ValueTask<IZLinkSessionActor> BindOrGetAsync(
+        ActorRef actor,
+        CancellationToken cancellationToken = default);
+
     IZLinkSessionActor? Find(string actorId);
 }
 
@@ -81,7 +85,12 @@ public interface IZLinkSessionSendCall
 
     IZLinkSessionSendCall Compress();
 
-    void Submit();
+    /// <summary>
+    /// Submits the session send. The cancellation token is checked before the
+    /// frame is written; once the synchronous stream write starts it cannot be
+    /// interrupted by this token.
+    /// </summary>
+    void Submit(CancellationToken cancellationToken = default);
 }
 
 public interface IZLinkSessionReplyCall
@@ -90,5 +99,10 @@ public interface IZLinkSessionReplyCall
 
     IZLinkSessionReplyCall Compress();
 
-    void Submit();
+    /// <summary>
+    /// Submits a reply for the currently handled request packet. The reply uses
+    /// the request packet name and does not expose PacketName because a reply
+    /// must keep the request correlation.
+    /// </summary>
+    void Submit(CancellationToken cancellationToken = default);
 }

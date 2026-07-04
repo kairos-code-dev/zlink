@@ -187,8 +187,20 @@ internal static class ZLinkSpotDescriptorFactory
 
         return contractType is null
             ? []
-            : contractType.GetMethods()
+            : EnumerateInterfaceMethods(contractType)
                 .Where(method => method.Name == ActorJoinMethodName);
+    }
+
+    private static IEnumerable<MethodInfo> EnumerateInterfaceMethods(Type interfaceType)
+    {
+        foreach (var method in interfaceType.GetMethods())
+            yield return method;
+
+        foreach (var inheritedInterface in interfaceType.GetInterfaces())
+        {
+            foreach (var method in inheritedInterface.GetMethods())
+                yield return method;
+        }
     }
 
     private static SpotActorContract? GetSpotActorContract(Type spotType)

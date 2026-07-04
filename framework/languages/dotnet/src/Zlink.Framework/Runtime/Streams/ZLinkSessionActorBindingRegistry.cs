@@ -64,6 +64,26 @@ internal sealed class ZLinkSessionActorBindingRegistry(ZLinkFrameworkRuntime run
         return null;
     }
 
+    public ValueTask ReleaseAsync(
+        ZLinkSessionContext context,
+        ZLinkSessionActor actor,
+        CancellationToken cancellationToken)
+    {
+        cancellationToken.ThrowIfCancellationRequested();
+
+        lock (_bindings)
+        {
+            _bindings.Remove(BuildBindingKey(actor.ActorId, actor.BindingToken));
+            if (_actorsById.TryGetValue(actor.ActorId, out var current)
+                && string.Equals(current.BindingToken, actor.BindingToken, StringComparison.Ordinal))
+                _actorsById.Remove(actor.ActorId);
+        }
+
+        runtime.UnbindSessionActor(actor.ActorId, context, actor.BindingToken);
+        runtime.UnbindActorSession(actor.ActorId, actor.BindingToken);
+        return ValueTask.CompletedTask;
+    }
+
     public ValueTask CleanupAsync(
         ZLinkSessionContext context,
         CancellationToken cancellationToken)

@@ -4,22 +4,26 @@ public readonly record struct ZLinkSpotActorJoinResult(bool Accepted, ZLinkMessa
 {
     public static ZLinkSpotActorJoinResult Accept(ZLinkMessage? reply = null)
     {
-        return new ZLinkSpotActorJoinResult(true, reply);
+        var result = ZLinkSpotAcceptRejectResult.Accept(reply);
+        return new ZLinkSpotActorJoinResult(result.Accepted, result.Reply);
     }
 
     public static ZLinkSpotActorJoinResult Accept<TReply>(TReply reply)
     {
-        return new ZLinkSpotActorJoinResult(true, ZLinkMessage.From(reply));
+        var result = ZLinkSpotAcceptRejectResult.Accept(reply);
+        return new ZLinkSpotActorJoinResult(result.Accepted, result.Reply);
     }
 
     public static ZLinkSpotActorJoinResult Reject(ZLinkMessage? reply = null)
     {
-        return new ZLinkSpotActorJoinResult(false, reply);
+        var result = ZLinkSpotAcceptRejectResult.Reject(reply);
+        return new ZLinkSpotActorJoinResult(result.Accepted, result.Reply);
     }
 
     public static ZLinkSpotActorJoinResult Reject<TReply>(TReply reply)
     {
-        return new ZLinkSpotActorJoinResult(false, ZLinkMessage.From(reply));
+        var result = ZLinkSpotAcceptRejectResult.Reject(reply);
+        return new ZLinkSpotActorJoinResult(result.Accepted, result.Reply);
     }
 }
 
@@ -114,7 +118,7 @@ public interface IZLinkSpot
     }
 }
 
-public interface IZLinkSpot<TActor> : IZLinkSpot
+public interface IZLinkSpotActorLifecycle<TActor>
     where TActor : IZLinkActor
 {
     ValueTask<ZLinkSpotActorJoinResult> OnActorJoinAsync(
@@ -147,6 +151,9 @@ public interface IZLinkSpot<TActor> : IZLinkSpot
     }
 }
 
+public interface IZLinkSpot<TActor> : IZLinkSpot, IZLinkSpotActorLifecycle<TActor>
+    where TActor : IZLinkActor;
+
 public interface IZLinkActorHandlerRegistry
 {
     void AddHandler<THandler>()
@@ -165,17 +172,11 @@ public interface IZLinkActorHandlerRegistry
 
     void AddActorSend<THandler, TActor>(string packetName)
         where THandler : class
-        where TActor : IZLinkActor
-    {
-        AddActorPacket<THandler, TActor>(packetName);
-    }
+        where TActor : IZLinkActor;
 
     void AddActorRequest<THandler, TActor>(string packetName)
         where THandler : class
-        where TActor : IZLinkActor
-    {
-        AddActorPacket<THandler, TActor>(packetName);
-    }
+        where TActor : IZLinkActor;
 }
 
 public interface IZLinkSpotHandlerRegistry : IZLinkActorHandlerRegistry
@@ -204,7 +205,7 @@ public interface IZLinkSpotOutbound
     /// RequestTargetNotFound (node unreachable or unknown); re-resolve and
     /// retry per the caller's policy.
     /// </summary>
-    IZLinkRequestCall RequestToSpot<TRequest>(
+    IZLinkYieldRequestCall RequestToSpot<TRequest>(
         ZLinkSpotAddress address,
         TRequest request);
 
@@ -216,12 +217,12 @@ public interface IZLinkSpotOutbound
         string channelName,
         TMessage message);
 
-    IZLinkRequestCall RequestToChannel<TRequest>(
+    IZLinkYieldRequestCall RequestToChannel<TRequest>(
         string channelName,
         TRequest request);
 }
 
-public interface IZLinkSpotContext
+public interface IZLinkSpotCommonContext
 {
     RoutingId SpotRid { get; }
 
@@ -230,13 +231,6 @@ public interface IZLinkSpotContext
     IZLinkSpotHandlerRegistry Handlers { get; }
 
     IZLinkSpotOutbound Outbound { get; }
-
-    ValueTask leaveActor(
-        IZLinkActor actor,
-        CancellationToken cancellationToken = default);
-
-    ValueTask<bool> CloseAsync(
-        CancellationToken cancellationToken = default);
 
     ValueTask<IZLinkTimer> AddTimer<THandler>(
         string name,
@@ -247,6 +241,16 @@ public interface IZLinkSpotContext
 
     IZLinkWorkerCall<TResult> RunWorker<TResult>(
         Func<CancellationToken, TResult> work);
+}
+
+public interface IZLinkSpotContext : IZLinkSpotCommonContext
+{
+    ValueTask LeaveActorAsync(
+        IZLinkActor actor,
+        CancellationToken cancellationToken = default);
+
+    ValueTask<bool> CloseAsync(
+        CancellationToken cancellationToken = default);
 }
 
 public interface IZLinkEntrySpot
@@ -268,7 +272,7 @@ public interface IZLinkEntrySpot
     }
 }
 
-public interface IZLinkEntrySpot<TActor> : IZLinkEntrySpot
+public interface IZLinkEntrySpot<TActor> : IZLinkEntrySpot, IZLinkSpotActorLifecycle<TActor>
     where TActor : IZLinkActor
 {
     ValueTask OnCreateActorAsync(
@@ -278,60 +282,13 @@ public interface IZLinkEntrySpot<TActor> : IZLinkEntrySpot
     {
         return ValueTask.CompletedTask;
     }
-
-    ValueTask<ZLinkSpotActorJoinResult> OnActorJoinAsync(
-        TActor actor,
-        ZLinkMessage request,
-        CancellationToken cancellationToken)
-    {
-        return ValueTask.FromResult(ZLinkSpotActorJoinResult.Reject());
-    }
-
-    ValueTask OnJoinedActorAsync(
-        TActor actor,
-        CancellationToken cancellationToken)
-    {
-        return ValueTask.CompletedTask;
-    }
-
-    ValueTask OnLeaveActorAsync(
-        TActor actor,
-        CancellationToken cancellationToken)
-    {
-        return ValueTask.CompletedTask;
-    }
-
-    ValueTask OnDisconnectActorAsync(
-        TActor actor,
-        CancellationToken cancellationToken)
-    {
-        return ValueTask.CompletedTask;
-    }
 }
 
-public interface IZLinkEntrySpotContext
+public interface IZLinkEntrySpotContext : IZLinkSpotCommonContext
 {
-    RoutingId SpotRid { get; }
-
-    RoutingId NodeRid { get; }
-
-    IZLinkSpotHandlerRegistry Handlers { get; }
-
-    IZLinkSpotOutbound Outbound { get; }
-
     ValueTask DestroyActorAsync(
         IZLinkActor actor,
         CancellationToken cancellationToken = default);
-
-    ValueTask<IZLinkTimer> AddTimer<THandler>(
-        string name,
-        TimeSpan period,
-        ZLinkTimerOptions? options = null,
-        CancellationToken cancellationToken = default)
-        where THandler : class;
-
-    IZLinkWorkerCall<TResult> RunWorker<TResult>(
-        Func<CancellationToken, TResult> work);
 }
 
 public interface IZLinkSpotActorSendHandler<TSpot, TActor, in TMessage>

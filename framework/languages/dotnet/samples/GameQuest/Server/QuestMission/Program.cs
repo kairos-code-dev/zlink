@@ -46,7 +46,7 @@ internal static class Program
                 .TraceLogFile(SampleFlowLog.Path(missionName))
                 .TraceLabel(missionName);
             options.AddHandlersFromAssemblyOf(typeof(Program));
-            options.AddRouteMesh(SampleNames.QuestOwnerRouteChannel)
+            options.AddRouteMeshChannel(SampleNames.QuestOwnerRouteChannel)
                 .EnableServer(instance.RouteEndpoint)
                 .SetRoutingId(instance.SpotRid)
                 .AddRequestHandler<GameplayEventRouteHandler, ApplyGameplayEventReq, ApplyGameplayEventRes>();

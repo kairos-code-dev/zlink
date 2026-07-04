@@ -11,6 +11,7 @@ namespace Zlink.Framework.Runtime.Locations;
 internal sealed class ZLinkLocationRuntime : IAsyncDisposable, IDisposable
 {
     private readonly ZLinkLocationOptions _options;
+    private readonly IZLinkLocationStore _locationStore;
     private readonly IZLinkPeerLocationStore _peerStore;
     private readonly IZLinkSpotLocationStore _spotStore;
     private readonly IZLinkActorLocationStore _actorStore;
@@ -26,6 +27,7 @@ internal sealed class ZLinkLocationRuntime : IAsyncDisposable, IDisposable
 
     internal ZLinkLocationRuntime(
         ZLinkLocationOptions options,
+        IZLinkLocationStore locationStore,
         IZLinkPeerLocationStore peerStore,
         IZLinkSpotLocationStore spotStore,
         IZLinkActorLocationStore actorStore,
@@ -35,6 +37,7 @@ internal sealed class ZLinkLocationRuntime : IAsyncDisposable, IDisposable
         ZLinkLocationEventEmitter? events = null)
     {
         _options = options;
+        _locationStore = locationStore;
         _peerStore = peerStore;
         _spotStore = spotStore;
         _actorStore = actorStore;
@@ -110,10 +113,7 @@ internal sealed class ZLinkLocationRuntime : IAsyncDisposable, IDisposable
         {
             await _ownerLeaseStore.RemoveOwnerLeaseAsync(OwnerId, cancellationToken)
                 .ConfigureAwait(false);
-            await _peerStore.RemoveByOwnerAsync(OwnerId, cancellationToken).ConfigureAwait(false);
-            await _spotStore.RemoveByOwnerAsync(OwnerId, cancellationToken).ConfigureAwait(false);
-            await _actorStore.RemoveByOwnerAsync(OwnerId, cancellationToken).ConfigureAwait(false);
-            await _routeStore.RemoveByOwnerAsync(OwnerId, cancellationToken).ConfigureAwait(false);
+            await _locationStore.RemoveAllByOwnerAsync(OwnerId, cancellationToken).ConfigureAwait(false);
         }
         catch (Exception exception)
         {
@@ -150,13 +150,13 @@ internal sealed class ZLinkLocationRuntime : IAsyncDisposable, IDisposable
     {
         // The registration path rejects values outside the closed sets as a
         // validation error; readers additionally ignore such rows (draft 6.5).
-        if (!ZLinkLocationCanonicalNames.IsKnown(peer.AutoConnectType))
+        if (!ZLinkLocationValueCodec.IsKnown(peer.AutoConnectType))
         {
             throw new ArgumentOutOfRangeException(
                 nameof(peer), peer.AutoConnectType, "Unknown auto-connect type.");
         }
 
-        if (!ZLinkLocationCanonicalNames.IsKnown(peer.Role))
+        if (!ZLinkLocationValueCodec.IsKnown(peer.Role))
         {
             throw new ArgumentOutOfRangeException(nameof(peer), peer.Role, "Unknown location role.");
         }
@@ -205,14 +205,13 @@ internal sealed class ZLinkLocationRuntime : IAsyncDisposable, IDisposable
     {
         var stamped = actor with
         {
-            OwnerId = OwnerId,
-            ActorType = ZLinkLocationKeyCodec.NormalizeActorType(actor.ActorType)
+            OwnerId = OwnerId
         };
         var result = await GuardStoreWriteAsync(
             () => _actorStore.UpdateActorAsync(stamped, intent, cancellationToken))
             .ConfigureAwait(false);
         NotifyIfStale(result, ZLinkLocationKind.Actor, ZLinkLocationKeyCodec.EncodeActorKey(
-            new ZLinkActorLocationKey(stamped.ActorType, stamped.ActorId)));
+            new ZLinkActorLocationKey(stamped.ActorId)));
         if (result.Status == ZLinkLocationWriteStatus.Stored)
         {
             await _events.ActorRowUpdatedAsync(
@@ -266,17 +265,13 @@ internal sealed class ZLinkLocationRuntime : IAsyncDisposable, IDisposable
         long generation,
         CancellationToken cancellationToken = default)
     {
-        var normalized = key with
-        {
-            ActorType = ZLinkLocationKeyCodec.NormalizeActorType(key.ActorType)
-        };
         var result = await GuardStoreWriteAsync(
-            () => _actorStore.RemoveActorAsync(normalized, new ZLinkLocationOwnerToken(OwnerId, generation), cancellationToken))
+            () => _actorStore.RemoveActorAsync(key, new ZLinkLocationOwnerToken(OwnerId, generation), cancellationToken))
             .ConfigureAwait(false);
-        NotifyIfStale(result, ZLinkLocationKind.Actor, ZLinkLocationKeyCodec.EncodeActorKey(normalized));
+        NotifyIfStale(result, ZLinkLocationKind.Actor, ZLinkLocationKeyCodec.EncodeActorKey(key));
         if (result.Status == ZLinkLocationWriteStatus.Stored)
         {
-            await _events.ActorRowRemovedAsync(normalized, cancellationToken).ConfigureAwait(false);
+            await _events.ActorRowRemovedAsync(key, cancellationToken).ConfigureAwait(false);
         }
 
         return result;
@@ -324,20 +319,14 @@ internal sealed class ZLinkLocationRuntime : IAsyncDisposable, IDisposable
             var result = await _ownerLeaseStore.RenewOwnerLeaseAsync(
                 OwnerId, _nodeRid, _options.OwnerLeaseTtl, cancellationToken)
                 .ConfigureAwait(false);
-            if (result.Status == ZLinkLocationWriteStatus.Stored)
+            lock (_stateGate)
             {
-                lock (_stateGate)
-                {
-                    OwnerLeaseHealthy = true;
-                    OwnerLeaseRenewedAt = _time.GetUtcNow();
-                    LastError = null;
-                }
-
-                return true;
+                OwnerLeaseHealthy = true;
+                OwnerLeaseRenewedAt = result.StoreNow;
+                LastError = null;
             }
 
-            RecordFailure($"Owner lease renew returned {result.Status}.");
-            return false;
+            return true;
         }
         catch (Exception exception)
         {
@@ -376,7 +365,7 @@ internal sealed class ZLinkLocationRuntime : IAsyncDisposable, IDisposable
         catch (Exception exception)
         {
             RecordFailure(exception.Message);
-            return ZLinkLocationWriteResult.StoreUnavailable;
+            throw;
         }
     }
 

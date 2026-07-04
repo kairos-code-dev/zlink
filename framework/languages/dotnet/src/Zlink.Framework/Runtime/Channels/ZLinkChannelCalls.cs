@@ -71,22 +71,32 @@ internal sealed class ZLinkRequestCall<TMessage>(
     ZLinkFrameworkRegistration registration,
     string channelName,
     TMessage request)
-    : IZLinkRequestCall
+    : IZLinkYieldRequestCall
 {
     private readonly ZLinkSerialTurn? _turn = ZLinkSerialTurn.Current;
     private string? _messageName = ZLinkMessageNameResolver.ResolveFromMessage(request);
     private TimeSpan? _timeout;
 
-    public IZLinkRequestCall PacketName(string messageName)
+    public IZLinkYieldRequestCall PacketName(string messageName)
     {
         _messageName = messageName;
         return this;
     }
 
-    public IZLinkRequestCall Timeout(TimeSpan timeout)
+    public IZLinkYieldRequestCall Timeout(TimeSpan timeout)
     {
         _timeout = timeout;
         return this;
+    }
+
+    IZLinkRequestCall IZLinkRequestCall.PacketName(string messageName)
+    {
+        return PacketName(messageName);
+    }
+
+    IZLinkRequestCall IZLinkRequestCall.Timeout(TimeSpan timeout)
+    {
+        return Timeout(timeout);
     }
 
     public async ValueTask<TReply> Async<TReply>(CancellationToken cancellationToken = default)

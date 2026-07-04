@@ -20,7 +20,7 @@ internal interface IZLinkMultipartRouteClient : IZLinkRouteClient
 
 internal sealed class ZLinkRouteClient(ZLinkFrameworkRuntime runtime) : IZLinkMultipartRouteClient
 {
-    public IZLinkSendCall Send<TMessage>(
+    public IZLinkSendCall SendToNode<TMessage>(
         string routerChannelId,
         RoutingId targetNodeRid,
         TMessage message)
@@ -28,7 +28,7 @@ internal sealed class ZLinkRouteClient(ZLinkFrameworkRuntime runtime) : IZLinkMu
         return new ZLinkRouteSendCall<TMessage>(runtime, routerChannelId, targetNodeRid, message);
     }
 
-    public IZLinkRouteRequestCall Request<TRequest>(
+    public IZLinkRequestCall RequestToNode<TRequest>(
         string routerChannelId,
         RoutingId targetNodeRid,
         TRequest request)
@@ -44,7 +44,7 @@ internal sealed class ZLinkRouteClient(ZLinkFrameworkRuntime runtime) : IZLinkMu
         return new ZLinkRouteSpotSendCall<TMessage>(runtime, routerChannelId, address, message);
     }
 
-    public IZLinkRouteRequestCall RequestToSpot<TRequest>(
+    public IZLinkRequestCall RequestToSpot<TRequest>(
         string routerChannelId,
         ZLinkSpotAddress address,
         TRequest request)
@@ -122,18 +122,18 @@ internal sealed class ZLinkRouteRequestCall<TRequest>(
     ZLinkFrameworkRuntime runtime,
     string routerChannelId,
     RoutingId targetNodeRid,
-    TRequest request) : IZLinkRouteRequestCall
+    TRequest request) : IZLinkRequestCall
 {
     private string? _packetName = ZLinkMessageNameResolver.ResolveFromMessage(request);
     private TimeSpan? _timeout;
 
-    public IZLinkRouteRequestCall PacketName(string packetName)
+    public IZLinkRequestCall PacketName(string packetName)
     {
         _packetName = packetName;
         return this;
     }
 
-    public IZLinkRouteRequestCall Timeout(TimeSpan timeout)
+    public IZLinkRequestCall Timeout(TimeSpan timeout)
     {
         _timeout = timeout;
         return this;
@@ -191,18 +191,18 @@ internal sealed class ZLinkRouteSpotRequestCall<TRequest>(
     ZLinkFrameworkRuntime runtime,
     string routerChannelId,
     ZLinkSpotAddress address,
-    TRequest request) : IZLinkRouteRequestCall
+    TRequest request) : IZLinkRequestCall
 {
     private string? _packetName = ZLinkMessageNameResolver.ResolveFromMessage(request);
     private TimeSpan? _timeout;
 
-    public IZLinkRouteRequestCall PacketName(string packetName)
+    public IZLinkRequestCall PacketName(string packetName)
     {
         _packetName = packetName;
         return this;
     }
 
-    public IZLinkRouteRequestCall Timeout(TimeSpan timeout)
+    public IZLinkRequestCall Timeout(TimeSpan timeout)
     {
         _timeout = timeout;
         return this;

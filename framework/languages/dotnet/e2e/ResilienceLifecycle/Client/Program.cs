@@ -12,8 +12,12 @@ using var registry = ZLinkHttpClient.Create(options.TopologyUrl)
     .Build();
 await using var processes = new ResilienceProcessManager(options);
 
-using var providerA = ZLinkHttpClient.Create(options.ProviderAUrl).Build();
-using var providerB = ZLinkHttpClient.Create(options.ProviderBUrl).Build();
+using var providerA = ZLinkHttpClient.Create(options.ProviderAUrl)
+    .Timeout(TimeSpan.FromMinutes(5))
+    .Build();
+using var providerB = ZLinkHttpClient.Create(options.ProviderBUrl)
+    .Timeout(TimeSpan.FromMinutes(5))
+    .Build();
 
 var scenarios = new (string Name, Func<Task> Run)[]
 {

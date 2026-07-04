@@ -16,9 +16,7 @@ internal sealed class ZLinkHandlerDispatcher(
         var scopedContext = RebindContext(context);
         var invocation = new ZLinkHandlerInvocation(
             message,
-            scopedContext,
-            scopedContext.ChannelName,
-            scopedContext.PacketName);
+            scopedContext);
         var pipeline = BuildPipeline(endpoint, message, scopedContext, invocation, scope.ServiceProvider);
         return await pipeline(cancellationToken).ConfigureAwait(false);
     }

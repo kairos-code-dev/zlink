@@ -40,7 +40,7 @@ internal sealed class PlayerQuestOwnerProvisioner(
         CancellationToken cancellationToken)
     {
         var spotRid = RoutingId.From(Encoding.UTF8.GetBytes($"player:{playerId}"));
-        await spots.GetOrCreateAsync<PlayerQuestSpot>(
+        await spots.GetOrCreateAsync<PlayerQuestSpot, PlayerQuestSpotCreateReq>(
             spotRid,
             new PlayerQuestSpotCreateReq(playerId),
             cancellationToken);

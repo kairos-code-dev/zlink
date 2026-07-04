@@ -50,7 +50,7 @@ internal static class Program
                 .TraceLogFile(SampleFlowLog.Path(apiName))
                 .TraceLabel(apiName);
             options.AddHandlersFromAssemblyOf(typeof(Program));
-            options.AddRouteMesh(SampleNames.QuestOwnerRouteChannel)
+            options.AddRouteMeshChannel(SampleNames.QuestOwnerRouteChannel)
                 .EnableServer(topology.RouteEndpointForApi(apiName))
                 .SetRoutingId(topology.RouteRidForApi(apiName));
             options.AddStreamNode(SampleNames.StreamNode)

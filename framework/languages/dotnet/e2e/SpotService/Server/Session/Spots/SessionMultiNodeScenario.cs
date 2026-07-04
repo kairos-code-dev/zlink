@@ -13,7 +13,7 @@ namespace SpotService.Server.Session.Spots;
 internal sealed class MultiNodeCreateSpotAHandler(
     IZLinkSpotManager spots,
     IZLinkRouteClient routes,
-    IZLinkSpotLocationResolver locator,
+    IZLinkSpotAddressResolver locator,
     EvidenceStore evidence)
     : IZLinkRouteRequestHandler<MultiNodeCreateSpotReq, MultiNodeCreateSpotRes>
 {
@@ -46,7 +46,7 @@ internal sealed class MultiNodeCreateSpotAHandler(
 internal sealed class MultiNodeCreateSpotBHandler(
     IZLinkSpotManager spots,
     IZLinkRouteClient routes,
-    IZLinkSpotLocationResolver locator,
+    IZLinkSpotAddressResolver locator,
     EvidenceStore evidence)
     : IZLinkRouteRequestHandler<MultiNodeCreateSpotReq, MultiNodeCreateSpotRes>
 {
@@ -80,7 +80,7 @@ internal static class MultiNodeScenario
 {
     public static async Task<StateRes> RequestStateWithRetryAsync(
         IZLinkRouteClient routes,
-        IZLinkSpotLocationResolver locator,
+        IZLinkSpotAddressResolver locator,
         string channelName,
         string spotRid,
         int delta,
@@ -104,7 +104,9 @@ internal static class MultiNodeScenario
             {
                 last = ex;
             }
-            catch (ZLinkFrameworkException ex) when (ex.InnerException is ZlinkRequestException or ZlinkSubmitException)
+            catch (ZLinkFrameworkException ex) when (
+                ex.Kind == ZLinkFrameworkErrorKind.RequestTargetNotFound
+                || ex.InnerException is ZlinkRequestException or ZlinkSubmitException)
             {
                 last = ex;
             }

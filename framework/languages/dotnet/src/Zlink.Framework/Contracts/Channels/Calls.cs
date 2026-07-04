@@ -14,21 +14,15 @@ public interface IZLinkRequestCall
     IZLinkRequestCall Timeout(TimeSpan timeout);
 
     ValueTask<TReply> Async<TReply>(CancellationToken cancellationToken = default);
-
-    ValueTask<TReply> Yield<TReply>(CancellationToken cancellationToken = default)
-    {
-        _ = cancellationToken;
-        throw new NotSupportedException("Yield is not supported by this request call.");
-    }
 }
 
-public interface IZLinkRouteRequestCall
+public interface IZLinkYieldRequestCall : IZLinkRequestCall
 {
-    IZLinkRouteRequestCall PacketName(string messageName);
+    new IZLinkYieldRequestCall PacketName(string messageName);
 
-    IZLinkRouteRequestCall Timeout(TimeSpan timeout);
+    new IZLinkYieldRequestCall Timeout(TimeSpan timeout);
 
-    ValueTask<TReply> Async<TReply>(CancellationToken cancellationToken = default);
+    ValueTask<TReply> Yield<TReply>(CancellationToken cancellationToken = default);
 }
 
 public interface IZLinkPublishCall

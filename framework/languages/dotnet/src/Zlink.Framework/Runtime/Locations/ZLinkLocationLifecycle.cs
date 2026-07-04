@@ -5,7 +5,7 @@ internal enum ZLinkActorClaimStatus
     Claimed = 1,
     AlreadyOwned = 2,
     Conflict = 3,
-    StoreUnavailable = 4
+    StoreFailure = 4
 }
 
 internal readonly record struct ZLinkActorClaimResult(
@@ -25,7 +25,7 @@ internal readonly record struct ZLinkActorClaimActivation<TActor>(
 /// IgnoredStale after another owner's Takeover) deactivates the local
 /// instance and single-activation holds (draft section 9).
 /// </summary>
-internal sealed class ZLinkLocationLifecycle : IDisposable
+internal sealed class ZLinkLocationLifecycle : IZLinkActorLocationLifecycle, IDisposable
 {
     private static readonly AsyncLocal<bool> TakeoverScope = new();
 
@@ -70,7 +70,7 @@ internal sealed class ZLinkLocationLifecycle : IDisposable
     /// claimer never activates; it gets the winner's freshly resolved
     /// location instead. An activation failure rolls the claim back.
     /// </summary>
-    internal async ValueTask<ZLinkActorClaimActivation<TActor>> ExecuteActorClaimThenActivateAsync<TActor>(
+    public async ValueTask<ZLinkActorClaimActivation<TActor>> ExecuteActorClaimThenActivateAsync<TActor>(
         string actorType,
         string actorId,
         RoutingId nodeRid,
@@ -86,7 +86,7 @@ internal sealed class ZLinkLocationLifecycle : IDisposable
             case ZLinkActorClaimStatus.Conflict:
                 return new ZLinkActorClaimActivation<TActor>(null, claim.Existing);
 
-            case ZLinkActorClaimStatus.StoreUnavailable:
+            case ZLinkActorClaimStatus.StoreFailure:
                 throw new ZLinkFrameworkException(
                     ZLinkFrameworkErrorKind.ActorCreateFailed,
                     $"Actor '{actorId}' cannot be created because the location store is unavailable.");
@@ -106,16 +106,15 @@ internal sealed class ZLinkLocationLifecycle : IDisposable
         }
     }
 
-    internal async ValueTask<ZLinkActorClaimResult> ClaimActorAsync(
+    public async ValueTask<ZLinkActorClaimResult> ClaimActorAsync(
         string actorType,
         string actorId,
         RoutingId nodeRid,
         Func<CancellationToken, ValueTask>? deactivate,
         CancellationToken cancellationToken)
     {
-        var normalizedType = ZLinkLocationKeyCodec.NormalizeActorType(actorType);
         var canonical = ZLinkLocationKeyCodec.EncodeActorKey(
-            new ZLinkActorLocationKey(normalizedType, actorId));
+            new ZLinkActorLocationKey(actorId));
         lock (_gate)
         {
             if (_actors.ContainsKey(canonical))
@@ -125,25 +124,40 @@ internal sealed class ZLinkLocationLifecycle : IDisposable
         }
 
         var row = new ZLinkActorLocation(
-            normalizedType,
             actorId,
-            ActorRef: string.Empty,
+            ActorType: actorType,
+            ActorRef: null,
             nodeRid,
-            Generation: 0,
             LocationKind: ZLinkSpotKind.Entry,
+            SpotMeshName: string.Empty,
             SpotRid: null,
-            SpotKind: ZLinkSpotKind.Entry,
             OwnerId: string.Empty,
+            Generation: 0,
             UpdatedAt: default);
-        var result = await _runtime.WriteActorAsync(row, ZLinkLocationWriteIntent.NewClaim, cancellationToken)
-            .ConfigureAwait(false);
+        ZLinkLocationWriteResult result;
+        try
+        {
+            result = await _runtime.WriteActorAsync(row, ZLinkLocationWriteIntent.NewClaim, cancellationToken)
+                .ConfigureAwait(false);
+        }
+        catch
+        {
+            return new ZLinkActorClaimResult(ZLinkActorClaimStatus.StoreFailure, null);
+        }
         if (result.Status == ZLinkLocationWriteStatus.RejectedConflict && TakeoverScope.Value)
         {
             // Hosting handoff: the live row belongs to the previous host,
             // which deactivates its instance as part of the move. Takeover
             // is the fencing path that lets the new host claim anyway.
-            result = await _runtime.WriteActorAsync(row, ZLinkLocationWriteIntent.Takeover, cancellationToken)
-                .ConfigureAwait(false);
+            try
+            {
+                result = await _runtime.WriteActorAsync(row, ZLinkLocationWriteIntent.Takeover, cancellationToken)
+                    .ConfigureAwait(false);
+            }
+            catch
+            {
+                return new ZLinkActorClaimResult(ZLinkActorClaimStatus.StoreFailure, null);
+            }
         }
 
         switch (result.Status)
@@ -161,80 +175,90 @@ internal sealed class ZLinkLocationLifecycle : IDisposable
             case ZLinkLocationWriteStatus.RejectedConflict:
             {
                 var existing = await ResolveExistingActorAsync(
-                        normalizedType,
-                        actorId,
-                        cancellationToken)
+                        actorId, cancellationToken)
                     .ConfigureAwait(false);
                 return new ZLinkActorClaimResult(ZLinkActorClaimStatus.Conflict, existing);
             }
 
             default:
-                return new ZLinkActorClaimResult(ZLinkActorClaimStatus.StoreUnavailable, null);
+                return new ZLinkActorClaimResult(ZLinkActorClaimStatus.StoreFailure, null);
         }
     }
 
-    internal ValueTask SetActorRefAsync(
+    public async ValueTask<ZLinkLocationWriteResult> PublishActorRefAsync(
         string actorType,
         string actorId,
-        string actorRef,
-        CancellationToken cancellationToken = default) =>
-        RenewActorAsync(actorType, actorId, row => row with { ActorRef = actorRef }, cancellationToken);
+        ActorRef actorRef,
+        CancellationToken cancellationToken = default)
+    {
+        var result = await RenewActorAsync(
+            actorType,
+            actorId,
+            row => row with { ActorRef = actorRef },
+            cancellationToken).ConfigureAwait(false);
+        return result ?? ZLinkLocationWriteResult.IgnoredStale;
+    }
 
-    internal ValueTask NotifyActorJoinedSpotAsync(
+    internal async ValueTask NotifyActorJoinedSpotAsync(
         string actorType,
         string actorId,
         RoutingId spotRid,
-        CancellationToken cancellationToken = default) =>
-        RenewActorAsync(
-            actorType,
-            actorId,
-            row => row with
-            {
-                LocationKind = ZLinkSpotKind.User,
-                SpotRid = spotRid,
-                SpotKind = ZLinkSpotKind.User
-            },
-            cancellationToken);
+        CancellationToken cancellationToken = default)
+    {
+        await RenewActorAsync(
+                actorType,
+                actorId,
+                row => row with
+                {
+                    LocationKind = ZLinkSpotKind.User,
+                    SpotRid = spotRid
+                },
+                cancellationToken)
+            .ConfigureAwait(false);
+    }
 
-    internal ValueTask NotifyActorMovedToEntrySpotAsync(
+    internal async ValueTask NotifyActorMovedToEntrySpotAsync(
         string actorType,
         string actorId,
         RoutingId targetNodeRid,
-        CancellationToken cancellationToken = default) =>
-        RenewActorAsync(
-            actorType,
-            actorId,
-            row => row with
-            {
-                NodeRid = targetNodeRid,
-                LocationKind = ZLinkSpotKind.Entry,
-                SpotRid = null,
-                SpotKind = ZLinkSpotKind.Entry
-            },
-            cancellationToken);
+        CancellationToken cancellationToken = default)
+    {
+        await RenewActorAsync(
+                actorType,
+                actorId,
+                row => row with
+                {
+                    NodeRid = targetNodeRid,
+                    LocationKind = ZLinkSpotKind.Entry,
+                    SpotRid = null
+                },
+                cancellationToken)
+            .ConfigureAwait(false);
+    }
 
-    internal ValueTask NotifyActorLeftSpotAsync(
+    internal async ValueTask NotifyActorLeftSpotAsync(
         string actorType,
         string actorId,
-        CancellationToken cancellationToken = default) =>
-        RenewActorAsync(
-            actorType,
-            actorId,
-            row => row with
-            {
-                LocationKind = ZLinkSpotKind.Entry,
-                SpotRid = null,
-                SpotKind = ZLinkSpotKind.Entry
-            },
-            cancellationToken);
+        CancellationToken cancellationToken = default)
+    {
+        await RenewActorAsync(
+                actorType,
+                actorId,
+                row => row with
+                {
+                    LocationKind = ZLinkSpotKind.Entry,
+                    SpotRid = null
+                },
+                cancellationToken)
+            .ConfigureAwait(false);
+    }
 
     internal async ValueTask ReleaseActorAsync(
         string actorType,
         string actorId,
         CancellationToken cancellationToken = default)
     {
-        var key = new ZLinkActorLocationKey(
-            ZLinkLocationKeyCodec.NormalizeActorType(actorType), actorId);
+        var key = new ZLinkActorLocationKey(actorId);
         var canonical = ZLinkLocationKeyCodec.EncodeActorKey(key);
         TrackedActor? tracked;
         lock (_gate)
@@ -254,7 +278,7 @@ internal sealed class ZLinkLocationLifecycle : IDisposable
     internal bool OwnsActor(string actorType, string actorId)
     {
         var canonical = ZLinkLocationKeyCodec.EncodeActorKey(new ZLinkActorLocationKey(
-            ZLinkLocationKeyCodec.NormalizeActorType(actorType), actorId));
+            actorId));
         lock (_gate)
         {
             return _actors.ContainsKey(canonical);
@@ -389,9 +413,6 @@ internal sealed class ZLinkLocationLifecycle : IDisposable
         await _runtime.RemoveRouteAsync(key, generation, cancellationToken).ConfigureAwait(false);
     }
 
-    internal static string SerializeActorRef(RoutingId nodeRid, string actorId, ulong generation) =>
-        $"{nodeRid.ToHex()}:{generation}:{actorId}";
-
     // ----- ownership loss (draft 9) -----
 
     private void OnOwnershipLost(ZLinkLocationKind kind, string canonicalKey)
@@ -422,14 +443,13 @@ internal sealed class ZLinkLocationLifecycle : IDisposable
     }
 
     private async ValueTask<ZLinkActorLocation?> ResolveExistingActorAsync(
-        string actorType,
         string actorId,
         CancellationToken cancellationToken)
     {
         try
         {
             return await _actorResolver.ResolveActorRowAsync(
-                    new ZLinkActorLocationKey(actorType, actorId),
+                    new ZLinkActorLocationKey(actorId),
                     cancellationToken)
                 .ConfigureAwait(false);
         }
@@ -441,20 +461,20 @@ internal sealed class ZLinkLocationLifecycle : IDisposable
         }
     }
 
-    private ValueTask RenewActorAsync(
+    private async ValueTask<ZLinkLocationWriteResult?> RenewActorAsync(
         string actorType,
         string actorId,
         Func<ZLinkActorLocation, ZLinkActorLocation> mutate,
         CancellationToken cancellationToken)
     {
         var canonical = ZLinkLocationKeyCodec.EncodeActorKey(new ZLinkActorLocationKey(
-            ZLinkLocationKeyCodec.NormalizeActorType(actorType), actorId));
+            actorId));
         TrackedActor? tracked;
         lock (_gate)
         {
             if (!_actors.TryGetValue(canonical, out tracked))
             {
-                return ValueTask.CompletedTask;
+                return null;
             }
 
             tracked.Row = mutate(tracked.Row);
@@ -462,10 +482,11 @@ internal sealed class ZLinkLocationLifecycle : IDisposable
 
         // Renew keeps the store-issued generation; an IgnoredStale answer
         // raises OwnershipLost through the runtime and deactivates locally.
-        return new ValueTask(_runtime.WriteActorAsync(
-            tracked.Row,
-            ZLinkLocationWriteIntent.Renew,
-            cancellationToken).AsTask());
+        return await _runtime.WriteActorAsync(
+                tracked.Row,
+                ZLinkLocationWriteIntent.Renew,
+                cancellationToken)
+            .ConfigureAwait(false);
     }
 
     private static async Task RunGuardedAsync(Func<ValueTask> operation)

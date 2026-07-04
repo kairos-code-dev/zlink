@@ -202,6 +202,13 @@ internal sealed class ZLinkSessionActorsContext(
         return actors.BindActorAsync(context, actor, cancellationToken);
     }
 
+    public ValueTask<IZLinkSessionActor> BindOrGetAsync(
+        ActorRef actor,
+        CancellationToken cancellationToken = default)
+    {
+        return actors.BindOrGetActorAsync(context, actor, cancellationToken);
+    }
+
     public IZLinkSessionActor? Find(string actorId)
     {
         return actors.FindActor(actorId);

@@ -70,7 +70,7 @@ internal sealed class ZLinkMonitoringPollingRunner(
             catch (Exception error) when (error is not OperationCanceledException)
             {
                 // A store outage must not kill the source (fail-static):
-                // it degrades to a StoreUnavailable event and the loop
+                // it degrades to a StoreFailure event and the loop
                 // keeps polling for recovery.
                 diff.DispatchCaptureFailure(timestamp, dispatchLocationRuntimeEvent);
             }

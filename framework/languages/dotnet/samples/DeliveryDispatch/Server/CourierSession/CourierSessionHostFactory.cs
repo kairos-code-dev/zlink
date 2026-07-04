@@ -33,7 +33,7 @@ public static class CourierSessionHostFactory
             // The bound-actor session relay rides the courier route mesh;
             // the session joins dial-only under its spot node identity so
             // actor nodes can route delivery offers back to bound sessions.
-            options.AddRouteMesh(SampleNames.CourierActorNodeRouteChannel)
+            options.AddRouteMeshChannel(SampleNames.CourierActorNodeRouteChannel)
                 .EnableClient()
                 .SetRoutingId(topology.CourierSessionSpotNodeRid);
             options.AddSpotMesh(SampleNames.CourierActorDiscovery)

@@ -1,26 +1,18 @@
-# .NET ResilienceLifecycle E2E feature map
+# .NET StoreFailure E2E feature map
 
-기준 문서: `framework/doc/framework/common/e2e/config-5-resilience-lifecycle.ko.md`
+기준 문서: `framework/doc/framework/common/e2e/config-6-store-failure-recovery.ko.md`
+
+이 문서는 `.NET` StoreFailure client가 실제로 실행하는 시나리오만 기록한다. 기준 문서의
+Store 응답 지연 비블로킹 시나리오는 현재 `.NET` client 실행 목록에 없다.
 
 | 시나리오 | 상태 | 근거 |
 |----------|------|------|
-| RL-A1 | 구현 | provider를 같은 endpoint로 재시작하고 consumer 재시작 없이 복구하는 marker가 있다. |
-| RL-A2 | 구현 | 같은 rid provider를 다른 endpoint로 재기동하고 topology 갱신 뒤 원래 endpoint를 복구하는 marker가 있다. |
-| RL-A3 | 구현 | 다수 client host를 동시에 생성해 재접속 storm 후 request가 정상화되는 marker가 있다. |
-| RL-A4 | 구현 | provider drain 후 green endpoint로 교체하고 신규 set 복구 marker가 있다. |
-| RL-A5 | 구현 | provider down/up flapping 중 살아 있는 provider 수렴과 복구 marker가 있다. |
-| RL-B1 | 구현 | client cancellation / pending cleanup marker가 있다. |
-| RL-B2 | 구현 | slow in-flight 처리 중 provider crash, public failure, surviving provider follow-up marker가 있다. |
-| RL-B3 | 구현 | provider graceful shutdown 뒤 stale endpoint로 가지 않고 재기동하는 marker가 있다. |
-| RL-B4 | 구현 | runtime drain / restore marker가 있다. |
-| RL-B5 | 구현 | drain 중 in-flight 완료 marker가 있다. |
-| RL-B6 | 구현 | gray fault mode에서 일부 실패와 healthy provider 성공을 함께 관측하고 fault 해제 후 정상화하는 marker가 있다. |
-| RL-C1 | 구현 | 다수 client host 생성/종료 후 follow-up request marker가 있다. |
-| RL-C2 | 구현 | provider crash 후 topology Ready 이탈, 새 discovery host의 surviving provider request, provider 복구 marker가 있다. |
-| RL-C3 | 구현 | provider down/restart로 node pause/recovery를 모사하고 topology 단일 Ready 수렴 marker가 있다. |
-| RL-C4 | 구현 | registry outage 중 direct established socket이 유지되고, registry/provider 재시작 뒤 new discovery host가 복구되는 marker가 있다. |
-| RL-D1 | 구현 | high fanout request burst marker가 있다. |
-| RL-D2 | 구현 | dispatch-error observer fault 뒤 messaging follow-up이 계속 동작하는 marker가 있다. |
-| RL-D3 | 구현 | dispatch-error evidence marker(reason/action/packetName)가 남는 marker가 있다. |
-| RL-D4 | 구현 | missing request handler error reply 예외와 server dispatch-error evidence marker가 있다. |
-| RL-D5 | 구현 | request/send 혼합 burst workload marker가 있다. |
+| SF-A1 | 구현 | 정상 store에서 consumer peer list에 `api-a`와 `api-b`가 모두 보이고, request가 성공하며, consumer와 두 provider의 runtime status가 healthy store와 owner lease 갱신을 보고한다. |
+| SF-A2 | 구현 | watch/change-stamp surface가 없는 polling-only consumer가 watch disabled status를 보고하고, provider 추가와 제거를 polling만으로 peer list에 반영한다. |
+| SF-B1 | 구현 | store 장애 중에도 기존 연결 request가 계속 성공하고, consumer runtime status가 store unhealthy와 owner lease heartbeat 실패를 기록한 뒤 복구 후 healthy로 돌아온다. |
+| SF-B2 | 구현 | store failure grace를 넘긴 장애 중에도 기존 연결 request가 성공하고, 장애가 status에 드러나며, store 복구 뒤 provider row가 live list에 다시 나타난다. |
+| SF-D1 | 구현 | owner lease TTL보다 짧은 store 장애 동안 request가 계속 성공하고, 복구 뒤 runtime status가 healthy로 돌아오며 provider row가 모두 live 상태로 남는다. |
+| SF-D3 | 구현 | 장애 전 healthy, 장애 중 unhealthy와 last error, 복구 후 healthy와 더 새로운 last refresh가 순서대로 status에 나타나고 watch/polling과 last error 필드를 관측한다. |
+| SF-C2 | 구현 | provider 정상 종료가 lease TTL보다 빠르게 row를 제거하고, 이후 request가 떠난 `api-b`로 가지 않는다. |
+| SF-C1 | 구현 | SIGKILL된 provider의 owner lease가 만료되면 `api-b` row가 peer list에서 제외되고, follow-up request가 살아 있는 `api-a`로만 빠르게 처리된다. |
+| SF-D2 | 구현 | lease TTL보다 긴 store 장애와 장애 중 provider crash 뒤에도 살아 있는 provider가 복구 후 재등록되고, 죽은 provider는 disconnect grace 이후 선택되지 않으며 post-recovery request가 `api-a`로 처리된다. |

@@ -9,8 +9,8 @@ namespace Zlink.Framework.Runtime.Locations;
 /// re-resolve on failure; nothing here caches.
 /// </summary>
 internal sealed class ZLinkLocationAddressResolvers :
-    IZLinkSpotLocationResolver,
-    IZLinkActorLocationResolver
+    IZLinkSpotAddressResolver,
+    IZLinkActorAddressResolver
 {
     private readonly IReadOnlyList<string> _meshNames;
     private readonly ZLinkStoreLocationResolvers _rows;
@@ -47,12 +47,11 @@ internal sealed class ZLinkLocationAddressResolvers :
     }
 
     public async ValueTask<ZLinkSpotAddress?> ResolveActorSpotAddressAsync(
-        string actorType,
         string actorId,
         CancellationToken cancellationToken = default)
     {
         var row = await _rows.ResolveActorRowAsync(
-                new ZLinkActorLocationKey(actorType, actorId),
+                new ZLinkActorLocationKey(actorId),
                 cancellationToken)
             .ConfigureAwait(false);
         if (row is null)

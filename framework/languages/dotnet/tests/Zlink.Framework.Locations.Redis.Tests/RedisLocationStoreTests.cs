@@ -14,6 +14,44 @@ public sealed class RedisLocationStoreTests
         _fixture = fixture;
     }
 
+    [Fact]
+    public void ActorRef_Row_Json_Uses_Typed_Internal_Codec()
+    {
+        var json = ZLinkRedisLocationRowJson.Serialize(TestRows.Actor(OwnerA, 0));
+
+        Assert.Contains("\"ActorRef\":{", json, StringComparison.Ordinal);
+        Assert.Contains("\"nodeRid\":", json, StringComparison.Ordinal);
+        Assert.Contains("\"actorId\":\"actor-1\"", json, StringComparison.Ordinal);
+        Assert.Contains("\"generation\":1", json, StringComparison.Ordinal);
+        Assert.DoesNotContain("node-1:1:actor-1", json, StringComparison.Ordinal);
+        Assert.DoesNotContain("SpotKind", json, StringComparison.Ordinal);
+
+        var roundtrip = ZLinkRedisLocationRowJson.Deserialize<ZLinkActorLocation>(json);
+        Assert.Equal(RoutingId.From("node-1"), roundtrip.ActorRef?.NodeRid);
+        Assert.Equal("actor-1", roundtrip.ActorRef?.ActorId);
+        Assert.Equal(1ul, roundtrip.ActorRef?.Generation);
+    }
+
+    [Fact]
+    public void Redis_Key_Codec_Decodes_Encoded_Keys_To_Typed_Union()
+    {
+        var encoded = ZLinkRedisLocationKeyCodec.EncodeActorKey(new ZLinkActorLocationKey("actor-1"));
+
+        var decoded = Assert.IsType<ZLinkLocationKey.Actor>(
+            ZLinkRedisLocationKeyCodec.DecodeKey(ZLinkLocationKind.Actor, encoded));
+
+        Assert.Equal("actor-1", decoded.Key.ActorId);
+    }
+
+    [Fact]
+    public void RemoveAllByOwner_Uses_One_Lua_Script_For_All_Four_Kinds()
+    {
+        Assert.Contains("for i = 1, 4 do", ZLinkRedisLocationScripts.RemoveAllByOwner, StringComparison.Ordinal);
+        Assert.Contains("local ownerIndex = KEYS[i]", ZLinkRedisLocationScripts.RemoveAllByOwner, StringComparison.Ordinal);
+        Assert.Contains("redis.call('DEL', ownerIndex)", ZLinkRedisLocationScripts.RemoveAllByOwner, StringComparison.Ordinal);
+        Assert.DoesNotContain("MULTI", ZLinkRedisLocationScripts.RemoveAllByOwner, StringComparison.OrdinalIgnoreCase);
+    }
+
     [SkippableFact]
     public async Task Update_Resolve_Remove_Roundtrip_Preserves_Row_Fields()
     {
@@ -25,9 +63,9 @@ public sealed class RedisLocationStoreTests
         Assert.Equal(1, claimed.Generation);
         Assert.NotEqual(default, claimed.UpdatedAt);
 
-        var resolved = await store.ResolveActorAsync(new ZLinkActorLocationKey("player", "actor-1"));
+        var resolved = await store.ResolveActorAsync(new ZLinkActorLocationKey("actor-1"));
         Assert.NotNull(resolved);
-        Assert.Equal("actor-ref", resolved!.ActorRef);
+        Assert.Equal("actor-1", resolved!.ActorRef?.ActorId);
         Assert.Equal(RoutingId.From("node-1"), resolved.NodeRid);
         Assert.Equal(ZLinkSpotKind.Entry, resolved.LocationKind);
         Assert.Null(resolved.SpotRid);
@@ -38,10 +76,10 @@ public sealed class RedisLocationStoreTests
         Assert.Equal(claimed.UpdatedAt, resolved.UpdatedAt);
 
         var removed = await store.RemoveActorAsync(
-            new ZLinkActorLocationKey("player", "actor-1"),
+            new ZLinkActorLocationKey("actor-1"),
             new ZLinkLocationOwnerToken(OwnerA, claimed.Generation));
         Assert.Equal(ZLinkLocationWriteStatus.Stored, removed.Status);
-        Assert.Null(await store.ResolveActorAsync(new ZLinkActorLocationKey("player", "actor-1")));
+        Assert.Null(await store.ResolveActorAsync(new ZLinkActorLocationKey("actor-1")));
     }
 
     [SkippableFact]
@@ -94,7 +132,7 @@ public sealed class RedisLocationStoreTests
         Assert.Equal(1, first.Generation);
 
         var removed = await store.RemoveActorAsync(
-            new ZLinkActorLocationKey("player", "actor-1"),
+            new ZLinkActorLocationKey("actor-1"),
             new ZLinkLocationOwnerToken(OwnerA, first.Generation));
         Assert.Equal(ZLinkLocationWriteStatus.Stored, removed.Status);
 
@@ -143,10 +181,10 @@ public sealed class RedisLocationStoreTests
         Assert.Equal(ZLinkLocationWriteStatus.IgnoredStale, staleRenew.Status);
 
         var staleRemove = await store.RemoveActorAsync(
-            new ZLinkActorLocationKey("player", "actor-1"),
+            new ZLinkActorLocationKey("actor-1"),
             new ZLinkLocationOwnerToken(OwnerA, claimed.Generation));
         Assert.Equal(ZLinkLocationWriteStatus.IgnoredStale, staleRemove.Status);
-        Assert.NotNull(await store.ResolveActorAsync(new ZLinkActorLocationKey("player", "actor-1")));
+        Assert.NotNull(await store.ResolveActorAsync(new ZLinkActorLocationKey("actor-1")));
     }
 
     [SkippableFact]
@@ -182,15 +220,45 @@ public sealed class RedisLocationStoreTests
         await actors.UpdateActorAsync(TestRows.Actor(OwnerA, 0, "actor-2"), ZLinkLocationWriteIntent.NewClaim);
         await actors.UpdateActorAsync(TestRows.Actor(OwnerB, 0, "actor-3"), ZLinkLocationWriteIntent.NewClaim);
 
-        var removed = await actors.RemoveByOwnerAsync(OwnerA);
+        var removed = await store.RemoveAllByOwnerAsync(OwnerA);
 
         Assert.Equal(2, removed);
-        Assert.Null(await store.ResolveActorAsync(new ZLinkActorLocationKey("player", "actor-1")));
-        Assert.Null(await store.ResolveActorAsync(new ZLinkActorLocationKey("player", "actor-2")));
-        Assert.NotNull(await store.ResolveActorAsync(new ZLinkActorLocationKey("player", "actor-3")));
+        Assert.Null(await store.ResolveActorAsync(new ZLinkActorLocationKey("actor-1")));
+        Assert.Null(await store.ResolveActorAsync(new ZLinkActorLocationKey("actor-2")));
+        Assert.NotNull(await store.ResolveActorAsync(new ZLinkActorLocationKey("actor-3")));
 
         var everyone = await actors.ListActorsAsync(new ZLinkActorLocationFilter());
         Assert.Single(everyone.Items);
+    }
+
+    [SkippableFact]
+    public async Task RemoveAllByOwner_Removes_All_Four_Kinds_For_The_Owner()
+    {
+        await using var store = CreateStoreWithLiveOwnersAsync(OwnerA, out var setup, OwnerB);
+        await setup;
+
+        await store.UpdatePeerAsync(TestRows.Peer(OwnerA, endpoint: "tcp://127.0.0.1:5001", nodeRid: "node-a"),
+            ZLinkLocationWriteIntent.NewClaim);
+        await store.UpdatePeerAsync(TestRows.Peer(OwnerB, endpoint: "tcp://127.0.0.1:5002", nodeRid: "node-b"),
+            ZLinkLocationWriteIntent.NewClaim);
+        await store.UpdateSpotAsync(TestRows.Spot(OwnerA, "spot-a"), ZLinkLocationWriteIntent.NewClaim);
+        await store.UpdateSpotAsync(TestRows.Spot(OwnerB, "spot-b"), ZLinkLocationWriteIntent.NewClaim);
+        await store.UpdateActorAsync(TestRows.Actor(OwnerA, 0, "actor-a"), ZLinkLocationWriteIntent.NewClaim);
+        await store.UpdateActorAsync(TestRows.Actor(OwnerB, 0, "actor-b"), ZLinkLocationWriteIntent.NewClaim);
+        await store.UpdateRouteAsync(TestRows.Route(OwnerA, "route-a"), ZLinkLocationWriteIntent.NewClaim);
+        await store.UpdateRouteAsync(TestRows.Route(OwnerB, "route-b"), ZLinkLocationWriteIntent.NewClaim);
+
+        var removed = await store.RemoveAllByOwnerAsync(OwnerA);
+
+        Assert.Equal(4, removed);
+        Assert.DoesNotContain(await store.ListPeersAsync(new ZLinkPeerLocationFilter()), row => row.OwnerId == OwnerA);
+        Assert.Empty((await store.ListSpotsAsync(new ZLinkSpotLocationFilter())).Items.Where(row => row.OwnerId == OwnerA));
+        Assert.Empty((await store.ListActorsAsync(new ZLinkActorLocationFilter())).Items.Where(row => row.OwnerId == OwnerA));
+        Assert.Empty((await store.ListRoutesAsync(new ZLinkRouteLocationFilter())).Items.Where(row => row.OwnerId == OwnerA));
+        Assert.Contains(await store.ListPeersAsync(new ZLinkPeerLocationFilter()), row => row.OwnerId == OwnerB);
+        Assert.NotNull(await store.ResolveSpotAsync(new ZLinkSpotLocationKey("play", RoutingId.From("spot-b"))));
+        Assert.NotNull(await store.ResolveActorAsync(new ZLinkActorLocationKey("actor-b")));
+        Assert.NotNull(await store.ResolveRouteAsync(new ZLinkRouteLocationKey(ZLinkRouteKind.ActorSession, "route-b")));
     }
 
     [SkippableFact]
@@ -263,8 +331,7 @@ public sealed class RedisLocationStoreTests
             {
                 NodeRid = RoutingId.From("node-2"),
                 LocationKind = ZLinkSpotKind.User,
-                SpotRid = RoutingId.From("spot-9"),
-                SpotKind = ZLinkSpotKind.User
+                SpotRid = RoutingId.From("spot-9")
             },
             ZLinkLocationWriteIntent.NewClaim);
         var actorByNode = await store.ListActorsAsync(
@@ -457,7 +524,7 @@ public sealed class RedisLocationStoreTests
         Assert.True(lease.UpdatedAt <= snapshot.StoreNow);
 
         var removed = await store.RemoveOwnerLeaseAsync(OwnerA);
-        Assert.Equal(ZLinkLocationWriteStatus.Stored, removed.Status);
+        Assert.True(removed);
         Assert.Empty((await store.ListOwnerLeasesAsync()).Leases);
     }
 
@@ -476,7 +543,7 @@ public sealed class RedisLocationStoreTests
             foreach (var ownerId in owners)
             {
                 var result = await store.RenewOwnerLeaseAsync(ownerId, RoutingId.From("node-1"), LeaseTtl);
-                Assert.Equal(ZLinkLocationWriteStatus.Stored, result.Status);
+                Assert.True(result.LeaseExpiresAt > result.StoreNow);
             }
         }
     }

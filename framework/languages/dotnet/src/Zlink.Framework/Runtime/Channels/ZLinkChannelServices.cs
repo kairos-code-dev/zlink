@@ -8,7 +8,7 @@ internal sealed class ZLinkChannelClient(ZLinkFrameworkRuntime runtime, ZLinkFra
         return new ZLinkSendCall(runtime, registration, channelName, message);
     }
 
-    public IZLinkRequestCall RequestToChannel<TMessage>(string channelName, TMessage request)
+    public IZLinkYieldRequestCall RequestToChannel<TMessage>(string channelName, TMessage request)
     {
         return new ZLinkRequestCall<TMessage>(runtime, registration, channelName, request);
     }

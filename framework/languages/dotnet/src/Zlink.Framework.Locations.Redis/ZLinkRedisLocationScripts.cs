@@ -160,6 +160,41 @@ internal static class ZLinkRedisLocationScripts
         """;
 
     /// <summary>
+    /// Bulk remove of one owner's rows across all location kinds in one
+    /// atomic script. Generation counters survive.
+    ///
+    /// KEYS[1..4] owner index sets for peer, spot, actor, route.
+    /// KEYS[5..8] kind index sets for peer, spot, actor, route.
+    /// ARGV[1..4] row hash key prefixes for peer, spot, actor, route.
+    /// ARGV[5..8] stamp key bases for peer, spot, actor, route.
+    /// </summary>
+    internal const string RemoveAllByOwner = """
+        if redis.replicate_commands then redis.replicate_commands() end
+        local removed = 0
+        for i = 1, 4 do
+            local ownerIndex = KEYS[i]
+            local kindIndex = KEYS[i + 4]
+            local rowPrefix = ARGV[i]
+            local stampBase = ARGV[i + 4]
+            local rowKeys = redis.call('SMEMBERS', ownerIndex)
+            for _, rowKey in ipairs(rowKeys) do
+                local rowHash = rowPrefix .. rowKey
+                local mesh = redis.call('HGET', rowHash, 'mesh')
+                if redis.call('DEL', rowHash) == 1 then
+                    removed = removed + 1
+                    redis.call('SREM', kindIndex, rowKey)
+                    if mesh then
+                        redis.call('INCR', stampBase .. ':' .. mesh)
+                    end
+                    redis.call('INCR', stampBase)
+                end
+            end
+            redis.call('DEL', ownerIndex)
+        end
+        return removed
+        """;
+
+    /// <summary>
     /// Owner lease upsert: SET with PX TTL so expiry is judged by the Redis
     /// clock, plus index bookkeeping for the snapshot list. Returns nowMs.
     ///
@@ -174,15 +209,16 @@ internal static class ZLinkRedisLocationScripts
         """;
 
     /// <summary>
-    /// Lease removal for the owner's own shutdown path. Returns nowMs.
+    /// Lease removal for the owner's own shutdown path. Returns removed
+    /// count, 0 or 1.
     ///
     /// KEYS[1] lease key, KEYS[2] lease index set. ARGV[1] owner id.
     /// </summary>
     internal const string RemoveLease = Prologue + """
 
-        redis.call('DEL', KEYS[1])
+        local removed = redis.call('DEL', KEYS[1])
         redis.call('SREM', KEYS[2], ARGV[1])
-        return nowMs
+        return removed
         """;
 
     /// <summary>

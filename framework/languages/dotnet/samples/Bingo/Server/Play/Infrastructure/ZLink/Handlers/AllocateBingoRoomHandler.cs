@@ -37,7 +37,7 @@ internal sealed class AllocateBingoRoomHandler(
             reservation.RoomId,
             reservation.OwnerPlayNodeRid);
         if (reservation.LocalRoomSettings is not null)
-            await spots.GetOrCreateAsync<BingoRoom>(
+            await spots.GetOrCreateAsync<BingoRoom, BingoRoomSettingsPayload>(
                 RoutingId.From(reservation.RoomId),
                 BingoRoomSettingsPayloadMapper.ToPayload(reservation.LocalRoomSettings),
                 cancellationToken);

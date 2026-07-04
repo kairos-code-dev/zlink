@@ -88,7 +88,6 @@ internal sealed class ZLinkActorEntrySpotJoinCoordinator(
                 ZLinkFrameworkErrorKind.ActorRouteNotFound,
                 $"Actor entry SPOT join failed for '{actor.ActorId}' with '{result.Result}'.");
 
-        var resultActor = accepted ? result.Actor : actorRef;
         if (accepted)
         {
             actorState.NativeActorRef = result.Actor;
@@ -114,7 +113,7 @@ internal sealed class ZLinkActorEntrySpotJoinCoordinator(
 
         return new ZLinkActorJoinResult(
             accepted,
-            ToActorRef(resultActor),
+            accepted ? ToActorRef(result.Actor) : null,
             reply);
     }
 
@@ -144,16 +143,13 @@ internal sealed class ZLinkActorEntrySpotJoinCoordinator(
                                ZLinkFrameworkErrorKind.ActorRouteNotFound,
                                $"Actor entry SPOT join failed for '{actor.ActorId}' because target node '{spotNodeRid}' is not connected and no route channel is registered.");
 
-        var encodedRequest = joinRequest.Encode(registration.Codecs);
-        ZLinkActorEntrySpotRouteJoinRequest request;
-        request = new ZLinkActorEntrySpotRouteJoinRequest(
+        var request = ZLinkActorEntrySpotRoutePackets.CreateJoinRequest(
             actor.ActorId,
             actorState.ActorType ?? actor.GetType().Name,
-            sourceActorRef.NodeRid.ToHex(),
-            previousActivation?.SpotRid.ToHex() ?? string.Empty,
-            sourceActorRef.Generation,
-            encodedRequest.ContentType,
-            encodedRequest.Payload.ToArray());
+            sourceActorRef,
+            previousActivation?.SpotRid,
+            joinRequest,
+            registration.Codecs);
 
         var reply = await routeChannel
             .RequestAsync<ZLinkActorEntrySpotRouteJoinRequest, ZLinkActorEntrySpotRouteJoinReply>(
@@ -164,21 +160,16 @@ internal sealed class ZLinkActorEntrySpotJoinCoordinator(
                 cancellationToken)
             .ConfigureAwait(false);
 
-        using var replyPayload = Message.From(reply.ReplyPayload);
-        var replyMessage = ZLinkMessage.FromEnvelopePayload(
-            reply.ReplyContentType,
-            replyPayload,
+        var replyMessage = ZLinkActorEntrySpotRoutePackets.DecodeJoinReplyPayload(
+            reply,
             registration.Codecs);
         if (!reply.Accepted)
             return new ZLinkActorJoinResult(
                 false,
-                ToActorRef(sourceActorRef),
+                null,
                 replyMessage);
 
-        var targetRef = new ZLinkBackendActorRef(
-            RoutingId.From(reply.TargetNodeRid),
-            actor.ActorId,
-            reply.ActorGeneration);
+        var targetRef = ZLinkActorEntrySpotRoutePackets.ToActorRef(reply);
         actorState.NativeActorRef = targetRef;
         await NotifyManagedUserSpotLeftForEntrySpotJoinAsync(
                 actor,
@@ -233,7 +224,7 @@ internal sealed class ZLinkActorEntrySpotJoinCoordinator(
         if (!admission.Accepted)
             return new ZLinkActorJoinResult(
                 false,
-                ToActorRef(sourceActorRef),
+                null,
                 reply);
 
         actorState.NativeActorRef = targetRef;
@@ -312,7 +303,7 @@ internal sealed class ZLinkActorEntrySpotJoinCoordinator(
 
     private static ActorRef ToActorRef(ZLinkBackendActorRef actorRef)
     {
-        return new ActorRef(actorRef.NodeRid, actorRef.ActorId, actorRef.Generation);
+        return actorRef.ToNative();
     }
 
     private static ZLinkMessage CopyReply(ZLinkMessage? reply)

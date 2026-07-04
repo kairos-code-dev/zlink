@@ -99,6 +99,7 @@ public sealed class RouteCodecTests
                 RoutingId.From("target-spot"),
                 parts));
             Assert.Equal(1, bridge.SendCount);
+            Assert.Equal(SendFlags.DontWait, bridge.LastSendFlags);
             Assert.Equal(1, bridge.DrainCount);
         }
         finally
@@ -124,6 +125,7 @@ public sealed class RouteCodecTests
                 static (_, _) => { },
                 TimeSpan.FromSeconds(1)));
             Assert.Equal(1, bridge.RequestCount);
+            Assert.Equal(SendFlags.DontWait, bridge.LastRequestFlags);
             Assert.Equal(1, bridge.DrainCount);
         }
         finally
@@ -341,6 +343,10 @@ public sealed class RouteCodecTests
 
         public int DrainCount { get; private set; }
 
+        public SendFlags LastSendFlags { get; private set; }
+
+        public SendFlags LastRequestFlags { get; private set; }
+
         public object NativeInstance => this;
 
         public ValueTask DisposeAsync()
@@ -369,7 +375,7 @@ public sealed class RouteCodecTests
             _ = targetNodeRid;
             _ = targetSpotRid;
             _ = parts;
-            _ = flags;
+            LastSendFlags = flags;
             SendCount++;
             return sendAccepted;
         }
@@ -388,7 +394,7 @@ public sealed class RouteCodecTests
             _ = targetSpotRid;
             _ = parts;
             _ = callback;
-            _ = flags;
+            LastRequestFlags = flags;
             _ = timeout;
             RequestCount++;
             return requestAccepted;

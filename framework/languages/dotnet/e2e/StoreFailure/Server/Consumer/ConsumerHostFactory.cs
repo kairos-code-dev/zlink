@@ -75,7 +75,7 @@ internal static class ConsumerHostFactory
         {
             try
             {
-                var peers = await query.ListPeersAsync(
+                var peers = await query.ListPeerLocationsAsync(
                     new ZLinkPeerLocationFilter(),
                     cancellationToken);
                 return Results.Ok(peers

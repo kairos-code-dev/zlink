@@ -58,8 +58,12 @@ internal sealed class ScenarioSession(
         var actorId = dispatch.Metadata.Find(SpotServiceNames.ActorIdMetadata);
         var actor = string.IsNullOrWhiteSpace(actorId)
             ? RequireSingleBoundActor()
-            : Context.Actors.Find(actorId)
-              ?? throw new InvalidOperationException($"Actor route not found: {actorId}");
+            : Context.Actors.Find(actorId);
+        if (actor is null)
+        {
+            throw new InvalidOperationException($"Actor route not found: {actorId}");
+        }
+
         await actor.RelayAsync(payload, cancellationToken);
     }
 
@@ -93,7 +97,7 @@ internal sealed class AuthSessionHandler(
         var request = payload.Decode<AuthReq>();
         var ensured = string.Equals(request.NodeRid, node.Rid, StringComparison.Ordinal)
             ? await EnsureLocalActorAsync(actors, node, evidence, request, cancellationToken)
-            : await routes.Request(
+            : await routes.RequestToNode(
                     SpotServiceNames.ControlChannel,
                     RoutingId.From(request.NodeRid),
                     new EnsureActorReq(request.ActorId, request.DisplayName, request.NodeRid))
@@ -143,7 +147,7 @@ internal sealed class MultiBindSessionHandler(
         var request = payload.Decode<MultiBindReq>();
         foreach (var actorId in new[] { request.FirstActorId, request.SecondActorId })
         {
-            var ensured = await routes.Request(
+            var ensured = await routes.RequestToNode(
                     SpotServiceNames.ControlChannel,
                     RoutingId.From(request.NodeRid),
                     new EnsureActorReq(actorId, actorId, request.NodeRid))
@@ -177,7 +181,7 @@ internal sealed class UserSpotAuthSessionHandler(
         var request = payload.Decode<UserSpotAuthReq>();
         var ensured = string.Equals(request.NodeRid, node.Rid, StringComparison.Ordinal)
             ? await EnsureLocalActorAsync(actors, evidence, request, cancellationToken)
-            : await routes.Request(
+            : await routes.RequestToNode(
                     SpotServiceNames.ControlChannel,
                     RoutingId.From(request.NodeRid),
                     new EnsureActorReq(request.ActorId, request.DisplayName, request.NodeRid))

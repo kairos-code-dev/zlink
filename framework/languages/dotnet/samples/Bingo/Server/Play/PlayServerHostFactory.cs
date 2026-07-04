@@ -48,7 +48,7 @@ public static class PlayServerHostFactory
             options.AddClientServerChannel(SampleNames.ApiChannel)
                 .EnableClient();
 
-            options.AddRouteMesh(SampleNames.PlayChannel)
+            options.AddRouteMeshChannel(SampleNames.PlayChannel)
                 .EnableServer(node.PlayChannelEndpoint)
                 .EnableClient()
                 .SetRoutingId(node.NodeRid)

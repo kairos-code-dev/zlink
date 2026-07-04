@@ -10,7 +10,7 @@ namespace SpotService.Server.Play.Handlers;
 [ZLinkSpotRequestHandler("SpotToSpotReq")]
 internal sealed class SpotToSpotHandler(
     EvidenceStore evidence,
-    IZLinkSpotLocationResolver spots)
+    IZLinkSpotAddressResolver spots)
     : IZLinkSpotRequestHandler<ScenarioUserSpot, SpotToSpotReq, SpotToSpotRes>
 {
     public async ValueTask<SpotToSpotRes> HandleAsync(
@@ -47,7 +47,7 @@ internal sealed class SpotToSpotHandler(
 [ZLinkSpotRequestHandler("SpotToSpotTimeoutReq")]
 internal sealed class SpotToSpotTimeoutHandler(
     EvidenceStore evidence,
-    IZLinkSpotLocationResolver spots)
+    IZLinkSpotAddressResolver spots)
     : IZLinkSpotRequestHandler<ScenarioUserSpot, SpotToSpotTimeoutReq, SpotToSpotTimeoutRes>
 {
     public async ValueTask<SpotToSpotTimeoutRes> HandleAsync(
@@ -86,7 +86,7 @@ internal sealed class SpotToSpotTimeoutHandler(
 [ZLinkSpotRequestHandler("SpotToSpotNegativeReq")]
 internal sealed class SpotToSpotNegativeHandler(
     EvidenceStore evidence,
-    IZLinkSpotLocationResolver spots)
+    IZLinkSpotAddressResolver spots)
     : IZLinkSpotRequestHandler<ScenarioUserSpot, SpotToSpotNegativeReq, SpotToSpotNegativeRes>
 {
     public async ValueTask<SpotToSpotNegativeRes> HandleAsync(

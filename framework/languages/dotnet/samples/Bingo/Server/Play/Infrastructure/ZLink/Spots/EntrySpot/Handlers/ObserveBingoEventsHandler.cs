@@ -21,7 +21,7 @@ internal sealed class ObserveBingoEventsHandler(IZLinkSpotManager spots)
     {
         var observerRid = ObserverRoomRid(message.RoomId, entrySpot.Context.NodeRid);
         var settings = BingoRoomSettings.CreateObserver(message.RoomId, entrySpot.Context.NodeRid.ToString());
-        await spots.GetOrCreateAsync<BingoRoom>(
+        await spots.GetOrCreateAsync<BingoRoom, BingoRoomSettingsPayload>(
             observerRid,
             BingoRoomSettingsPayloadMapper.ToPayload(settings),
             cancellationToken);

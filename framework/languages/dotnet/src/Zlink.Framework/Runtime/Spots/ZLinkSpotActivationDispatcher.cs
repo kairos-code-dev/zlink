@@ -232,15 +232,10 @@ internal sealed class ZLinkSpotActivationDispatcher
         ZLinkRemoteActorJoinReply reply;
         try
         {
-            var joinRequest = ZLinkEnvelopeCodec.DecodePart<ZLinkRemoteActorJoinRequest>(received.Parts[1]);
+            var joinRequest = ZLinkRemoteActorJoinPackets.DecodeJoinRequest(received.Parts);
             reply = await runtime.JoinRoutedActorAsync(
-                    joinRequest.ActorId,
-                    joinRequest.ActorType,
                     nativeSpot.RoutingId,
-                    ToRoutingId(joinRequest.BoundSessionNodeRid),
-                    ToRoutingId(joinRequest.BoundSessionRid),
-                    joinRequest.RequestContentType,
-                    joinRequest.Request,
+                    joinRequest,
                     cancellationToken)
                 .ConfigureAwait(false);
         }
@@ -250,12 +245,11 @@ internal sealed class ZLinkSpotActivationDispatcher
             return true;
         }
 
-        var replyParts = ZLinkSpotReplyEnvelope.EncodeResponseParts(
+        var replyParts = ZLinkRemoteActorJoinPackets.EncodeJoinReplyEnvelope(
             channelName,
             header.MessageName,
             header.CorrelationId,
-            reply,
-            typeof(ZLinkRemoteActorJoinReply));
+            reply);
         try
         {
             received.Reply()
@@ -292,11 +286,6 @@ internal sealed class ZLinkSpotActivationDispatcher
         {
             ZLinkMessageParts.DisposeAll(replyParts);
         }
-    }
-
-    private static RoutingId? ToRoutingId(byte[]? bytes)
-    {
-        return bytes is { Length: > 0 } ? RoutingId.From(bytes) : null;
     }
 
     public async ValueTask DispatchSubscriptionsAsync(CancellationToken cancellationToken)

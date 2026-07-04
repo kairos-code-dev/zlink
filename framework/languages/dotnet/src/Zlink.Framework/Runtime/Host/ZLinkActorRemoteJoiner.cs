@@ -70,18 +70,14 @@ internal sealed class ZLinkActorRemoteJoiner(
             ZLinkRemoteActorJoinPackets.RequestPacketName,
             registration.DefaultRequestTimeout);
         actorState.TryGetBoundSession(out var boundSession);
-        var encodedRequest = request.Encode(registration.Codecs);
-        var payload = new ZLinkRemoteActorJoinRequest(
+        var parts = ZLinkRemoteActorJoinPackets.EncodeJoinRequest(
+            header,
             actor.ActorId,
             actorState.ActorType,
-            boundSession.SessionNodeRid?.ToBytes().ToArray(),
-            boundSession.SessionRid.Size > 0 ? boundSession.SessionRid.ToBytes().ToArray() : null,
-            encodedRequest.ContentType,
-            encodedRequest.Payload.ToArray());
-        var parts = ZLinkEnvelopeCodec.EncodeParts(
-            header,
-            payload,
-            typeof(ZLinkRemoteActorJoinRequest));
+            boundSession.SessionNodeRid,
+            boundSession.SessionRid,
+            request,
+            registration.Codecs);
 
         var replyParts = await runtime.RequestToSpotViaRouterChannelAsync(
                 routerChannelId,
@@ -91,18 +87,13 @@ internal sealed class ZLinkActorRemoteJoiner(
                 registration.DefaultRequestTimeout,
                 cancellationToken)
             .ConfigureAwait(false);
-        var reply = ZLinkClientCallCodec.DecodeEnvelopeReplyAndDispose<ZLinkRemoteActorJoinReply>(
+        var reply = ZLinkRemoteActorJoinPackets.DecodeJoinReplyAndDispose(
             replyParts,
-            "Remote actor join reply was empty.",
-            $"Remote actor join failed for '{actor.ActorId}' to SPOT '{targetSpotRid}'.");
-        var resultActorRef = new ZLinkBackendActorRef(
-            RoutingId.From(reply.ActorNodeRid),
-            reply.ActorId,
-            reply.ActorGeneration);
-        using var resultReply = Message.From(reply.Reply);
-        var replyMessage = ZLinkMessage.FromEnvelopePayload(
-            reply.ReplyContentType,
-            resultReply,
+            actor.ActorId,
+            targetSpotRid);
+        var resultActorRef = ZLinkRemoteActorJoinPackets.ToActorRef(reply);
+        var replyMessage = ZLinkRemoteActorJoinPackets.DecodeJoinReplyPayload(
+            reply,
             registration.Codecs);
 
         if (reply.Accepted)
@@ -116,7 +107,7 @@ internal sealed class ZLinkActorRemoteJoiner(
 
         return new ZLinkActorJoinResult(
             reply.Accepted,
-            ToActorRef(reply.Accepted ? resultActorRef : actorRef),
+            reply.Accepted ? ToActorRef(resultActorRef) : null,
             replyMessage);
     }
 
@@ -238,7 +229,6 @@ internal sealed class ZLinkActorRemoteJoiner(
             targetSpotRid);
         var accepted = joinResult.JoinResultCode == 0;
         var actorState = actorSessionManager.GetOrCreateState(actor.ActorId);
-        var resultActor = accepted ? joinResult.Actor : actorRef;
         if (accepted)
         {
             actorState.NativeActorRef = joinResult.Actor;
@@ -247,7 +237,7 @@ internal sealed class ZLinkActorRemoteJoiner(
 
         return new ZLinkActorJoinResult(
             accepted,
-            ToActorRef(resultActor),
+            accepted ? ToActorRef(joinResult.Actor) : null,
             reply);
     }
 
@@ -276,7 +266,7 @@ internal sealed class ZLinkActorRemoteJoiner(
 
     private static ActorRef ToActorRef(ZLinkBackendActorRef actorRef)
     {
-        return new ActorRef(actorRef.NodeRid, actorRef.ActorId, actorRef.Generation);
+        return actorRef.ToNative();
     }
 
     private ZLinkMessage DecodeNativeJoinReply(

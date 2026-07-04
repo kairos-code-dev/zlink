@@ -4,7 +4,7 @@
 
 | 시나리오 | 상태 | 근거 |
 |----------|------|------|
-| RM-A1 | 구현 | location store 자동 연결 request marker가 있고, `IZLinkLocationRuntimeQuery.ListPeersAsync`(raw row)와 `IZLinkPeerLocationResolver.ListPeersAsync(..., Refresh)`(member peer)로 두 provider row가 살아 있음을 확인한다. |
+| RM-A1 | 구현 | location store 자동 연결 request marker가 있고, `IZLinkLocationRuntimeQuery.ListPeerLocationsAsync`(raw row)와 `IZLinkPeerLocationResolver.ListLivePeersAsync(...)`(member peer)로 두 provider row가 살아 있음을 확인한다. |
 | RM-A2 | 구현 | 수동 endpoint request marker가 있다. |
 | RM-A4 | 구현 | 같은 rid failover marker가 있고, runtime query peer list가 rid `api-a`의 살아 있는 row 하나를 교체 endpoint로 보여줄 때까지 대기한 뒤 검증한다. |
 | RM-A6 | 구현 | profile/workflow channel을 같은 location store(같은 key prefix)에 등록하고, mesh name filter로 peer row 집합이 섞이지 않음과 각 channel request가 자기 provider evidence에만 남는지 검증한다. |

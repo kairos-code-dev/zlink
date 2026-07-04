@@ -64,7 +64,7 @@ internal static class GatewayHostFactory
             IZLinkSpotPublisherClient publisher,
             EvidenceStore evidence) =>
         {
-            publisher.PublishSpot(
+            publisher.Publish(
                     SpotServiceNames.SpotChannel,
                     SpotServiceNames.SpotMsgTopic,
                     new SpotMsg(request.Marker))

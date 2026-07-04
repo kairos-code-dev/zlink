@@ -51,13 +51,13 @@ public interface IZLinkMessageFlowControl
 // A transition or error result in a message's lifecycle.
 public enum ZLinkMessageFlowOutcome
 {
-    Received,
-    Dispatched,
-    Replied,
-    Dropped,
-    Sent,
-    ReplyReceived,
-    Error
+    Received = 0,
+    Dispatched = 1,
+    Replied = 2,
+    Dropped = 3,
+    Sent = 4,
+    ReplyReceived = 5,
+    Error = 6
 }
 
 public sealed record ZLinkMessageFlowEvent(
@@ -120,54 +120,54 @@ public interface IZLinkDiagnosticsOptions
 
 public enum ZLinkUnhandledDispatchAction
 {
-    ReplyError,
-    LogAndDrop,
-    Drop,
-    Throw
+    ReplyError = 0,
+    LogAndDrop = 1,
+    Drop = 2,
+    Throw = 3
 }
 
 public enum ZLinkMessageFlowLogMode
 {
-    Off,
-    ErrorsOnly,
-    KeyTransitions,
-    Verbose,
-    Diagnostic
+    Off = 0,
+    ErrorsOnly = 1,
+    KeyTransitions = 2,
+    Verbose = 3,
+    Diagnostic = 4
 }
 
 public enum ZLinkDispatchErrorSurface
 {
-    Channel,
-    RouteMeshChannel,
-    SpotRoute,
-    SpotSubscription,
-    SpotActor,
-    StreamSession
+    Channel = 0,
+    RouteMeshChannel = 1,
+    SpotRoute = 2,
+    SpotSubscription = 3,
+    SpotActor = 4,
+    StreamSession = 5
 }
 
 public enum ZLinkDispatchMessageKind
 {
-    Request,
-    Send,
-    Publish,
-    Response,
-    Error,
-    ActorRequest,
-    ActorSend
+    Request = 0,
+    Send = 1,
+    Publish = 2,
+    Response = 3,
+    Error = 4,
+    ActorRequest = 5,
+    ActorSend = 6
 }
 
 public enum ZLinkDispatchErrorReason
 {
-    HandlerMissing,
-    PayloadDecodeFailed,
-    HandlerException,
-    InvalidFrame,
-    ReplyPathMissing,
-    UnexpectedReply
+    HandlerMissing = 0,
+    PayloadDecodeFailed = 1,
+    HandlerException = 2,
+    InvalidFrame = 3,
+    ReplyPathMissing = 4,
+    UnexpectedReply = 5
 }
 
 public enum ZLinkDispatchErrorAction
 {
-    ReplyError,
-    Drop
+    ReplyError = 0,
+    Drop = 1
 }

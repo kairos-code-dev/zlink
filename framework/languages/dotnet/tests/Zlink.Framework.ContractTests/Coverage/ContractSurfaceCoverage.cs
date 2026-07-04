@@ -98,7 +98,7 @@ public sealed class ContractSurfaceCoverage
         Type requiredParameterType,
         Type disallowedParameterType)
     {
-        var matchingMethods = contractType.GetMethods()
+        var matchingMethods = EnumerateInterfaceMethods(contractType)
             .Where(method => method.Name == methodName
                              && method.GetParameters().Any(parameter => parameter.Name == parameterName))
             .ToArray();
@@ -117,6 +117,18 @@ public sealed class ContractSurfaceCoverage
                 method.GetParameters(),
                 parameter => parameter.Name == parameterName);
             Assert.NotEqual(disallowedParameterType, parameter.ParameterType);
+        }
+    }
+
+    private static IEnumerable<MethodInfo> EnumerateInterfaceMethods(Type interfaceType)
+    {
+        foreach (var method in interfaceType.GetMethods())
+            yield return method;
+
+        foreach (var inheritedInterface in interfaceType.GetInterfaces())
+        {
+            foreach (var method in inheritedInterface.GetMethods())
+                yield return method;
         }
     }
 }

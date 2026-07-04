@@ -7,7 +7,7 @@ public sealed class LocationResolverTests
     private const string OwnerA = "owner-a";
     private const string OwnerB = "owner-b";
     private static readonly TimeSpan LeaseTtl = TimeSpan.FromSeconds(15);
-    private static readonly ZLinkActorLocationKey ActorKey = new("player", "actor-1");
+    private static readonly ZLinkActorLocationKey ActorKey = new("actor-1");
 
     [Fact]
     public async Task Every_Resolve_Reads_The_Store()
@@ -68,6 +68,17 @@ public sealed class LocationResolverTests
     }
 
     [Fact]
+    public async Task Actor_Row_Is_Not_Returned_Before_ActorRef_Is_Published()
+    {
+        var fixture = await FixtureAsync();
+        await fixture.Store.UpdateActorAsync(
+            InMemoryLocationStoreTests.Actor(OwnerA, 0) with { ActorRef = null },
+            ZLinkLocationWriteIntent.NewClaim);
+
+        Assert.Null(await fixture.Resolvers.ResolveActorRowAsync(ActorKey));
+    }
+
+    [Fact]
     public async Task Peer_List_Excludes_Expired_Owners()
     {
         var fixture = await FixtureAsync();
@@ -79,14 +90,14 @@ public sealed class LocationResolverTests
             ZLinkLocationWriteIntent.NewClaim);
 
         var filter = new ZLinkPeerLocationFilter(MeshName: "play");
-        var both = await fixture.Resolvers.ListPeersAsync(filter);
+        var both = await fixture.Resolvers.ListLivePeersAsync(filter);
         Assert.Equal(2, both.Count);
 
         // Owner A's lease expires; the peer drops out of the desired set
         // within one polling interval without any row write.
         fixture.Time.Advance(LeaseTtl + TimeSpan.FromSeconds(1));
 
-        var survivors = await fixture.Resolvers.ListPeersAsync(filter);
+        var survivors = await fixture.Resolvers.ListLivePeersAsync(filter);
         Assert.Single(survivors);
         Assert.Equal(OwnerB, survivors[0].OwnerId);
     }
@@ -144,8 +155,7 @@ public sealed class LocationResolverTests
         };
         await fixture.Store.UpdateActorAsync(entryActor, ZLinkLocationWriteIntent.NewClaim);
 
-        var entryAddress = await addresses.ResolveActorSpotAddressAsync(
-            entryActor.ActorType, entryActor.ActorId);
+        var entryAddress = await addresses.ResolveActorSpotAddressAsync(entryActor.ActorId);
         Assert.NotNull(entryAddress);
         Assert.Equal(entryAddress.Value.NodeRid, entryAddress.Value.SpotRid);
 
@@ -157,8 +167,7 @@ public sealed class LocationResolverTests
         };
         await fixture.Store.UpdateActorAsync(userActor, ZLinkLocationWriteIntent.NewClaim);
 
-        var userAddress = await addresses.ResolveActorSpotAddressAsync(
-            userActor.ActorType, userActor.ActorId);
+        var userAddress = await addresses.ResolveActorSpotAddressAsync(userActor.ActorId);
         Assert.NotNull(userAddress);
         Assert.Equal(RoutingId.From("spot-7"), userAddress.Value.SpotRid);
         Assert.Equal(userActor.NodeRid, userAddress.Value.NodeRid);
@@ -190,7 +199,7 @@ public sealed class LocationResolverTests
             });
         var resolvers = new ZLinkStoreLocationResolvers(options, junk, store, store, store, tracker, time);
 
-        var rows = await resolvers.ListPeersAsync(new ZLinkPeerLocationFilter(MeshName: "play"));
+        var rows = await resolvers.ListLivePeersAsync(new ZLinkPeerLocationFilter(MeshName: "play"));
 
         var survivor = Assert.Single(rows);
         Assert.Equal(ZLinkLocationRole.Router, survivor.Role);
@@ -220,10 +229,6 @@ public sealed class LocationResolverTests
             CancellationToken cancellationToken = default) =>
             inner.RemovePeerAsync(key, owner, cancellationToken);
 
-        public ValueTask<long> RemoveByOwnerAsync(
-            string ownerId,
-            CancellationToken cancellationToken = default) =>
-            inner.RemoveByOwnerAsync(ownerId, cancellationToken);
     }
 
     [Fact]
@@ -234,8 +239,8 @@ public sealed class LocationResolverTests
             InMemoryLocationStoreTests.Actor(OwnerA, 0) with { ActorType = "" },
             ZLinkLocationWriteIntent.NewClaim);
 
-        var byEmpty = await fixture.Resolvers.ResolveActorRowAsync(new ZLinkActorLocationKey("", "actor-1"));
-        var byNull = await fixture.Resolvers.ResolveActorRowAsync(new ZLinkActorLocationKey(null!, "actor-1"));
+        var byEmpty = await fixture.Resolvers.ResolveActorRowAsync(new ZLinkActorLocationKey("actor-1"));
+        var byNull = await fixture.Resolvers.ResolveActorRowAsync(new ZLinkActorLocationKey("actor-1"));
 
         Assert.NotNull(byEmpty);
         Assert.NotNull(byNull);
@@ -292,11 +297,6 @@ public sealed class LocationResolverTests
             CancellationToken cancellationToken = default) =>
             throw new NotSupportedException();
 
-        public ValueTask<long> RemoveByOwnerAsync(
-            string ownerId,
-            CancellationToken cancellationToken = default) =>
-            throw new NotSupportedException();
-
         public ValueTask<ZLinkLocationPage<ZLinkActorLocation>> ListActorsAsync(
             ZLinkActorLocationFilter filter,
             ZLinkPageRequest page = default,
@@ -327,11 +327,6 @@ public sealed class LocationResolverTests
             ZLinkLocationOwnerToken owner,
             CancellationToken cancellationToken = default) =>
             inner.RemoveActorAsync(key, owner, cancellationToken);
-
-        public ValueTask<long> RemoveByOwnerAsync(
-            string ownerId,
-            CancellationToken cancellationToken = default) =>
-            inner.RemoveByOwnerAsync(ownerId, cancellationToken);
 
         public ValueTask<ZLinkLocationPage<ZLinkActorLocation>> ListActorsAsync(
             ZLinkActorLocationFilter filter,

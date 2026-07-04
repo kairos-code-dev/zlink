@@ -11,7 +11,7 @@ namespace YieldDispatch.Server.Session.Support;
 internal sealed partial class YieldSession(
     IZLinkSessionContext context,
     IZLinkRouteClient routes,
-    IZLinkSpotLocationResolver spots,
+    IZLinkSpotAddressResolver spots,
     EvidenceStore evidence) : IZLinkSession
 {
     public IZLinkSessionContext Context { get; } = context;
@@ -208,8 +208,12 @@ internal sealed partial class YieldSession(
                 var actorId = dispatch.Metadata.Find(YieldDispatchNames.ActorIdMetadata);
                 var actor = string.IsNullOrWhiteSpace(actorId)
                     ? RequireSingleBoundActor()
-                    : Context.Actors.Find(actorId)
-                      ?? throw new InvalidOperationException($"Actor route not found: {actorId}");
+                    : Context.Actors.Find(actorId);
+                if (actor is null)
+                {
+                    throw new InvalidOperationException($"Actor route not found: {actorId}");
+                }
+
                 await actor.RelayAsync(payload, cancellationToken);
                 return;
             }

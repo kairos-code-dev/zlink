@@ -38,27 +38,18 @@ public interface IZLinkActorContext
 
 public sealed record ZLinkActorJoinResult(
     bool Accepted,
-    ActorRef Actor,
+    ActorRef? Actor,
     ZLinkMessage Reply);
 
 public sealed record ZLinkActorJoinResult<TReply>(
     bool Accepted,
-    ActorRef Actor,
+    ActorRef? Actor,
     TReply Reply);
 
-public interface IZLinkActorJoinSpotCall
+public interface IZLinkActorJoinCall
 {
-    IZLinkActorJoinSpotCall Timeout(TimeSpan timeout);
-
     ValueTask<ZLinkActorJoinResult> Async(
         CancellationToken cancellationToken = default);
-
-    ValueTask<ZLinkActorJoinResult> Yield(
-        CancellationToken cancellationToken = default)
-    {
-        _ = cancellationToken;
-        throw new NotSupportedException("Yield is not supported by this actor join call.");
-    }
 
     async ValueTask<ZLinkActorJoinResult<TReply>> Async<TReply>(
         CancellationToken cancellationToken = default)
@@ -69,6 +60,12 @@ public interface IZLinkActorJoinSpotCall
             result.Actor,
             result.Reply.Decode<TReply>());
     }
+}
+
+public interface IZLinkActorYieldJoinCall : IZLinkActorJoinCall
+{
+    ValueTask<ZLinkActorJoinResult> Yield(
+        CancellationToken cancellationToken = default);
 
     async ValueTask<ZLinkActorJoinResult<TReply>> Yield<TReply>(
         CancellationToken cancellationToken = default)
@@ -81,37 +78,12 @@ public interface IZLinkActorJoinSpotCall
     }
 }
 
-public interface IZLinkActorJoinEntrySpotCall
+public interface IZLinkActorJoinSpotCall : IZLinkActorYieldJoinCall
+{
+    IZLinkActorJoinSpotCall Timeout(TimeSpan timeout);
+}
+
+public interface IZLinkActorJoinEntrySpotCall : IZLinkActorYieldJoinCall
 {
     IZLinkActorJoinEntrySpotCall Timeout(TimeSpan timeout);
-
-    ValueTask<ZLinkActorJoinResult> Async(
-        CancellationToken cancellationToken = default);
-
-    ValueTask<ZLinkActorJoinResult> Yield(
-        CancellationToken cancellationToken = default)
-    {
-        _ = cancellationToken;
-        throw new NotSupportedException("Yield is not supported by this actor join call.");
-    }
-
-    async ValueTask<ZLinkActorJoinResult<TReply>> Async<TReply>(
-        CancellationToken cancellationToken = default)
-    {
-        var result = await Async(cancellationToken).ConfigureAwait(false);
-        return new ZLinkActorJoinResult<TReply>(
-            result.Accepted,
-            result.Actor,
-            result.Reply.Decode<TReply>());
-    }
-
-    async ValueTask<ZLinkActorJoinResult<TReply>> Yield<TReply>(
-        CancellationToken cancellationToken = default)
-    {
-        var result = await Yield(cancellationToken).ConfigureAwait(false);
-        return new ZLinkActorJoinResult<TReply>(
-            result.Accepted,
-            result.Actor,
-            result.Reply.Decode<TReply>());
-    }
 }

@@ -45,7 +45,7 @@ internal sealed class StartOrderWorkflowRouteHandler(
         string orderId,
         CancellationToken cancellationToken)
     {
-        await spots.GetOrCreateAsync<OrderWorkflowSpot>(
+        await spots.GetOrCreateAsync<OrderWorkflowSpot, OrderWorkflowSpotCreateReq>(
             RoutingId.From(orderId),
             new OrderWorkflowSpotCreateReq(orderId),
             cancellationToken);

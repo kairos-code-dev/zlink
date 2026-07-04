@@ -12,7 +12,7 @@ internal sealed class ZLinkSpotOutboundEndpoint(
         return new ZLinkRoutedSpotSendCall<TMessage>(activation, address, message);
     }
 
-    public IZLinkRequestCall RequestToSpot<TRequest>(ZLinkSpotAddress address, TRequest request)
+    public IZLinkYieldRequestCall RequestToSpot<TRequest>(ZLinkSpotAddress address, TRequest request)
     {
         return new ZLinkRoutedSpotRequestCall<TRequest>(activation, address, request);
     }
@@ -27,7 +27,7 @@ internal sealed class ZLinkSpotOutboundEndpoint(
         return new ZLinkCurrentSpotSendCall<TMessage>(activation, channelName, message);
     }
 
-    public IZLinkRequestCall RequestToChannel<TRequest>(string channelName, TRequest request)
+    public IZLinkYieldRequestCall RequestToChannel<TRequest>(string channelName, TRequest request)
     {
         return new ZLinkCurrentSpotRequestCall<TRequest>(activation, channelName, request);
     }

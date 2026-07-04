@@ -30,9 +30,6 @@ internal sealed class EnsureSupportUserActorHandler(
     private static EnsureSupportUserActorRes ToResponse(ActorRef actor)
     {
         return new EnsureSupportUserActorRes(
-            new ActorRefSnapshot(
-                actor.NodeRid.ToBytes().ToArray(),
-                actor.ActorId,
-                actor.Generation));
+            ZLinkActorRefSnapshot.From(actor));
     }
 }

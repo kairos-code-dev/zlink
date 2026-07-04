@@ -12,7 +12,7 @@ internal sealed class ZLinkSpotOutboundService(IServiceProvider services) : IZLi
             message);
     }
 
-    public IZLinkRequestCall RequestToSpot<TMessage>(ZLinkSpotAddress address, TMessage request)
+    public IZLinkYieldRequestCall RequestToSpot<TMessage>(ZLinkSpotAddress address, TMessage request)
     {
         return new ZLinkRoutedSpotRequestCall<TMessage>(
             ZLinkSpotAmbientContext.RequireCurrent(),
@@ -30,7 +30,7 @@ internal sealed class ZLinkSpotOutboundService(IServiceProvider services) : IZLi
         return ZLinkSpotAmbientContext.RequireCurrent().SendToChannel(channelName, message);
     }
 
-    public IZLinkRequestCall RequestToChannel<TMessage>(string channelName, TMessage request)
+    public IZLinkYieldRequestCall RequestToChannel<TMessage>(string channelName, TMessage request)
     {
         return ZLinkSpotAmbientContext.RequireCurrent().RequestToChannel(channelName, request);
     }
@@ -77,22 +77,32 @@ internal sealed class ZLinkRoutedSpotSendCall<TMessage>(
 internal sealed class ZLinkRoutedSpotRequestCall<TRequest>(
     IZLinkCurrentSpotActivation activation,
     ZLinkSpotAddress address,
-    TRequest request) : IZLinkRequestCall
+    TRequest request) : IZLinkYieldRequestCall
 {
     private readonly ZLinkSerialTurn? _turn = ZLinkSerialTurn.Current;
     private string? _messageName = ZLinkMessageNameResolver.ResolveFromMessage(request);
     private TimeSpan? _timeout;
 
-    public IZLinkRequestCall PacketName(string messageName)
+    public IZLinkYieldRequestCall PacketName(string messageName)
     {
         _messageName = messageName;
         return this;
     }
 
-    public IZLinkRequestCall Timeout(TimeSpan timeout)
+    public IZLinkYieldRequestCall Timeout(TimeSpan timeout)
     {
         _timeout = timeout;
         return this;
+    }
+
+    IZLinkRequestCall IZLinkRequestCall.PacketName(string messageName)
+    {
+        return PacketName(messageName);
+    }
+
+    IZLinkRequestCall IZLinkRequestCall.Timeout(TimeSpan timeout)
+    {
+        return Timeout(timeout);
     }
 
     public async ValueTask<TReply> Async<TReply>(CancellationToken cancellationToken = default)
@@ -159,22 +169,32 @@ internal sealed class ZLinkCurrentSpotSendCall<TMessage>(
 internal sealed class ZLinkCurrentSpotRequestCall<TMessage>(
     IZLinkCurrentSpotActivation activation,
     string channelName,
-    TMessage request) : IZLinkRequestCall
+    TMessage request) : IZLinkYieldRequestCall
 {
     private readonly ZLinkSerialTurn? _turn = ZLinkSerialTurn.Current;
     private string? _messageName = ZLinkMessageNameResolver.ResolveFromMessage(request);
     private TimeSpan? _timeout;
 
-    public IZLinkRequestCall PacketName(string messageName)
+    public IZLinkYieldRequestCall PacketName(string messageName)
     {
         _messageName = messageName;
         return this;
     }
 
-    public IZLinkRequestCall Timeout(TimeSpan timeout)
+    public IZLinkYieldRequestCall Timeout(TimeSpan timeout)
     {
         _timeout = timeout;
         return this;
+    }
+
+    IZLinkRequestCall IZLinkRequestCall.PacketName(string messageName)
+    {
+        return PacketName(messageName);
+    }
+
+    IZLinkRequestCall IZLinkRequestCall.Timeout(TimeSpan timeout)
+    {
+        return Timeout(timeout);
     }
 
     public async ValueTask<TReply> Async<TReply>(CancellationToken cancellationToken = default)

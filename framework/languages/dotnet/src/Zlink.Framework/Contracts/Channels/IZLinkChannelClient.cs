@@ -4,7 +4,7 @@ public interface IZLinkChannelClient
 {
     IZLinkSendCall SendToChannel<TMessage>(string channelName, TMessage message);
 
-    IZLinkRequestCall RequestToChannel<TMessage>(
+    IZLinkYieldRequestCall RequestToChannel<TMessage>(
         string channelName,
         TMessage request);
 }

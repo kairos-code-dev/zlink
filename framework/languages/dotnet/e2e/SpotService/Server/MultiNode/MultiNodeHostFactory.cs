@@ -56,7 +56,7 @@ internal static class MultiNodeHostFactory
             if (isNodeA)
             {
                 var routeEndpoint = Require(options.MultiRouteAEndpoint, "--multi-route-a-endpoint");
-                framework.AddRouteMesh(SpotServiceNames.MultiRouteChannelA)
+                framework.AddRouteMeshChannel(SpotServiceNames.MultiRouteChannelA)
                     .EnableServer(routeEndpoint)
                     .EnableClient(routeEndpoint)
                     .SetRoutingId(RoutingId.From(SpotServiceNames.MultiSpotNodeA))
@@ -71,7 +71,7 @@ internal static class MultiNodeHostFactory
             if (isNodeB)
             {
                 var routeEndpoint = Require(options.MultiRouteBEndpoint, "--multi-route-b-endpoint");
-                framework.AddRouteMesh(SpotServiceNames.MultiRouteChannelB)
+                framework.AddRouteMeshChannel(SpotServiceNames.MultiRouteChannelB)
                     .EnableServer(routeEndpoint)
                     .EnableClient(routeEndpoint)
                     .SetRoutingId(RoutingId.From(SpotServiceNames.MultiSpotNodeB))
@@ -117,7 +117,7 @@ internal static class MultiNodeHostFactory
         });
         app.MapPost("/spot/state/request", async (
             IZLinkRouteClient routes,
-            IZLinkSpotLocationResolver locator,
+            IZLinkSpotAddressResolver locator,
             NodeOptions node,
             MultiNodeStateRouteReq request,
             CancellationToken cancellationToken) =>

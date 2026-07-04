@@ -85,11 +85,11 @@ internal sealed class ZLinkSpotPublisherConfig : IZLinkSpotPublisherConfig
 {
     private TimeSpan? _sendTimeout;
 
-    public int SendHighWaterMark { private get; set; }
+    public int SendHighWaterMark { get; set; }
 
     public TimeSpan? SendTimeout
     {
-        private get => _sendTimeout;
+        get => _sendTimeout;
         set
         {
             ZLinkSocketConfig.ValidateSendTimeout(value);
@@ -97,16 +97,16 @@ internal sealed class ZLinkSpotPublisherConfig : IZLinkSpotPublisherConfig
         }
     }
 
-    public TimeSpan? Linger { private get; set; }
+    public TimeSpan? Linger { get; set; }
 
-    public bool NoDrop { private get; set; }
+    public bool NoDrop { get; set; }
 }
 
 internal sealed class ZLinkSpotSubscriberConfig : IZLinkSpotSubscriberConfig
 {
-    public int ReceiveHighWaterMark { private get; set; }
+    public int ReceiveHighWaterMark { get; set; }
 
-    public TimeSpan? ReceiveTimeout { private get; set; }
+    public TimeSpan? ReceiveTimeout { get; set; }
 
-    public TimeSpan? Linger { private get; set; }
+    public TimeSpan? Linger { get; set; }
 }

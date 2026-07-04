@@ -54,8 +54,12 @@ internal sealed class CourierSession(
         }
 
         var decision = payload.Decode<CourierDecisionMsg>();
-        var actor = Context.Actors.Find(decision.CourierId)
-            ?? throw new InvalidOperationException($"Courier actor is not bound: {decision.CourierId}");
+        var actor = Context.Actors.Find(decision.CourierId);
+        if (actor is null)
+        {
+            throw new InvalidOperationException($"Courier actor is not bound: {decision.CourierId}");
+        }
+
         await actor.RelayAsync(payload, cancellationToken);
     }
 }

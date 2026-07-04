@@ -25,7 +25,7 @@ internal sealed class ZLinkObservedLocationGenerations
         _spots.Accept(new ZLinkSpotLocationKey(row.MeshName, row.SpotRid), row.Generation);
 
     internal bool AcceptActor(ZLinkActorLocation row) =>
-        _actors.Accept(new ZLinkActorLocationKey(row.ActorType, row.ActorId), row.Generation);
+        _actors.Accept(new ZLinkActorLocationKey(row.ActorId), row.Generation);
 
     internal bool AcceptRoute(ZLinkRouteLocation row) =>
         _routes.Accept(new ZLinkRouteLocationKey(row.RouteKind, row.RouteKey), row.Generation);

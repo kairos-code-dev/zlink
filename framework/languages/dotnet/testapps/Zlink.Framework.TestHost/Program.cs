@@ -106,7 +106,7 @@ internal sealed class SpotStartupPublishHostedService(
     {
         while (!stoppingToken.IsCancellationRequested)
         {
-            publisher.PublishSpot(channelName, topic, new StartupStageEvent(value)).Submit(stoppingToken);
+            publisher.Publish(channelName, topic, new StartupStageEvent(value)).Submit(stoppingToken);
 
             try
             {

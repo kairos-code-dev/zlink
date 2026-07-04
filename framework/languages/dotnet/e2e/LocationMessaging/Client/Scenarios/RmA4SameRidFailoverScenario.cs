@@ -75,7 +75,7 @@ internal static class RmA4SameRidFailoverScenario
         {
             var rows = (await client.Get("/locations/peers?mesh=profile")
                 .SubmitAsync<PeerLocationRow[]>()).Body
-                .Where(row => row.Role == "router" && row.NodeRid == "api-a")
+                .Where(row => row.Role == "Router" && row.NodeRid == "api-a")
                 .ToArray();
             if (rows.Length == 1 && rows[0].Endpoint == expectedEndpoint) return;
 

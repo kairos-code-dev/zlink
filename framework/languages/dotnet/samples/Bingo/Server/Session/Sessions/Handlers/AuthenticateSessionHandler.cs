@@ -32,7 +32,7 @@ internal sealed class AuthenticateBingoSessionHandler(
             || string.IsNullOrWhiteSpace(authenticated.DisplayName))
             throw new InvalidOperationException(authenticated.Reason ?? "Player authentication failed.");
 
-        var ensured = await routes.Request(
+        var ensured = await routes.RequestToNode(
                 SampleNames.PlayChannel,
                 session.PreferredPlayNodeRid,
                 new EnsurePlayerActorReq
@@ -43,7 +43,7 @@ internal sealed class AuthenticateBingoSessionHandler(
                 })
             .Async<EnsurePlayerActorRes>(cancellationToken);
 
-        await context.Actors.BindAsync(
+        await context.Actors.BindOrGetAsync(
             ToActorRef(ensured.Actor),
             cancellationToken);
 
@@ -56,7 +56,7 @@ internal sealed class AuthenticateBingoSessionHandler(
             .Submit();
     }
 
-    private static ActorRef ToActorRef(ActorRefSnapshot snapshot)
+    private static ActorRef ToActorRef(ActorRefWire snapshot)
     {
         return new ActorRef(
             RoutingId.From(snapshot.NodeRid),

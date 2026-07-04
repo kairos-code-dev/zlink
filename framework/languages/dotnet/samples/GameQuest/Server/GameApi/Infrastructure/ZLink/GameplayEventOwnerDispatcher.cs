@@ -15,7 +15,7 @@ internal sealed class GameplayEventOwnerDispatcher(
     {
         var owner = topology.OwnerRouteRid(gameplayEvent.PlayerId);
         await routes
-            .Request(SampleNames.QuestOwnerRouteChannel, owner, new ApplyGameplayEventReq(gameplayEvent))
+            .RequestToNode(SampleNames.QuestOwnerRouteChannel, owner, new ApplyGameplayEventReq(gameplayEvent))
             .Async<ApplyGameplayEventRes>(cancellationToken);
         return owner.ToString();
     }

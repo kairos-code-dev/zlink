@@ -2,7 +2,7 @@ namespace Zlink.Framework.Runtime.Spots;
 
 internal sealed partial class ZLinkSpotActivation
 {
-    public ValueTask leaveActor(
+    public ValueTask LeaveActorAsync(
         IZLinkActor actor,
         CancellationToken cancellationToken = default)
     {

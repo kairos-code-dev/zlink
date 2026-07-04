@@ -1,4 +1,5 @@
 using SupportChat.Shared.Contracts;
+using Zlink.Framework.Contracts.Actors;
 
 namespace SupportChat.Server.Configuration;
 
@@ -8,12 +9,7 @@ public sealed record EnsureSupportUserActorReq(
     string Role,
     string ParticipantId);
 
-public sealed record ActorRefSnapshot(
-    byte[] NodeRid,
-    string ActorId,
-    ulong Generation);
-
-public sealed record EnsureSupportUserActorRes(ActorRefSnapshot Actor);
+public sealed record EnsureSupportUserActorRes(ZLinkActorRefSnapshot Actor);
 
 // One agent serves many conversations, so each assigned conversation gets its own
 // conversation actor (ParticipantId = the agent's roster id). The session asks the
@@ -24,5 +20,5 @@ public sealed record EnsureAgentConversationReq(
     string ConversationId);
 
 public sealed record EnsureAgentConversationRes(
-    ActorRefSnapshot Actor,
+    ZLinkActorRefSnapshot Actor,
     ConversationState State);

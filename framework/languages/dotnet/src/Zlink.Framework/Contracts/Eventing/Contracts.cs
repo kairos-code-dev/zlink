@@ -110,7 +110,7 @@ public enum ZLinkLocationRuntimeEventKind
     StatusChanged = 0,
     TopologyChanged = 1,
     ServiceSummaryChanged = 2,
-    StoreUnavailable = 3,
+    StoreFailure = 3,
     StoreRecovered = 4
 }
 

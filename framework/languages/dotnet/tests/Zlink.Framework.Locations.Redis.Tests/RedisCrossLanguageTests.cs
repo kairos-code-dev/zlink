@@ -15,7 +15,7 @@ public sealed class RedisCrossLanguageTests
     {
         await using var store = CreateCrossLanguageStore("java");
 
-        var actor = await store.ResolveActorAsync(new ZLinkActorLocationKey("player", "java-actor"));
+        var actor = await store.ResolveActorAsync(new ZLinkActorLocationKey("java-actor"));
         var spot = await store.ResolveSpotAsync(new ZLinkSpotLocationKey("cross", RoutingId.From("java-spot")));
         var route = await store.ResolveRouteAsync(new ZLinkRouteLocationKey(ZLinkRouteKind.ActorSession, "java-route"));
         var peers = await store.ListPeersAsync(new ZLinkPeerLocationFilter(
@@ -25,7 +25,7 @@ public sealed class RedisCrossLanguageTests
             NodeRid: RoutingId.From("java-node")));
 
         Assert.NotNull(actor);
-        Assert.Equal("java-ref", actor!.ActorRef);
+        Assert.Equal("java-actor", actor!.ActorRef?.ActorId);
         Assert.Equal(RoutingId.From("java-node"), actor.NodeRid);
         Assert.Equal("java-owner", actor.OwnerId);
 
@@ -66,7 +66,7 @@ public sealed class RedisCrossLanguageTests
     {
         await using var store = CreateCrossLanguageStore("node");
 
-        var actor = await store.ResolveActorAsync(new ZLinkActorLocationKey("player", "node-actor"));
+        var actor = await store.ResolveActorAsync(new ZLinkActorLocationKey("node-actor"));
         var spot = await store.ResolveSpotAsync(new ZLinkSpotLocationKey("cross", RoutingId.From("node-spot")));
         var route = await store.ResolveRouteAsync(new ZLinkRouteLocationKey(ZLinkRouteKind.ActorSession, "node-route"));
         var peers = await store.ListPeersAsync(new ZLinkPeerLocationFilter(
@@ -76,7 +76,7 @@ public sealed class RedisCrossLanguageTests
             NodeRid: RoutingId.From("node-node")));
 
         Assert.NotNull(actor);
-        Assert.Equal("node-ref", actor!.ActorRef);
+        Assert.Equal("node-actor", actor!.ActorRef?.ActorId);
         Assert.Equal(RoutingId.From("node-node"), actor.NodeRid);
         Assert.Equal("node-owner", actor.OwnerId);
 
@@ -117,7 +117,7 @@ public sealed class RedisCrossLanguageTests
     {
         await using var store = CreateCrossLanguageStore("cpp");
 
-        var actor = await store.ResolveActorAsync(new ZLinkActorLocationKey("player", "cpp-actor"));
+        var actor = await store.ResolveActorAsync(new ZLinkActorLocationKey("cpp-actor"));
         var spot = await store.ResolveSpotAsync(new ZLinkSpotLocationKey("cross", RoutingId.From("cpp-spot")));
         var route = await store.ResolveRouteAsync(new ZLinkRouteLocationKey(ZLinkRouteKind.ActorSession, "cpp-route"));
         var peers = await store.ListPeersAsync(new ZLinkPeerLocationFilter(
@@ -127,7 +127,7 @@ public sealed class RedisCrossLanguageTests
             NodeRid: RoutingId.From("cpp-node")));
 
         Assert.NotNull(actor);
-        Assert.Equal("cpp-ref", actor!.ActorRef);
+        Assert.Equal("cpp-actor", actor!.ActorRef?.ActorId);
         Assert.Equal(RoutingId.From("cpp-node"), actor.NodeRid);
         Assert.Equal("cpp-owner", actor.OwnerId);
 
@@ -202,19 +202,16 @@ public sealed class RedisCrossLanguageTests
         default);
 
     private static ZLinkActorLocation DotnetActor() => new(
-        "player",
         "dotnet-actor",
-        "dotnet-ref",
+        "player",
+        new ActorRef(RoutingId.From("dotnet-node"), "dotnet-actor", 1),
         RoutingId.From("dotnet-node"),
-        0,
         ZLinkSpotKind.User,
+        "cross",
         RoutingId.From("dotnet-spot"),
-        ZLinkSpotKind.User,
         "dotnet-owner",
-        default)
-    {
-        SpotMeshName = "cross"
-    };
+        0,
+        default);
 
     private static ZLinkRouteLocation DotnetRoute() => new(
         ZLinkRouteKind.ActorSession,

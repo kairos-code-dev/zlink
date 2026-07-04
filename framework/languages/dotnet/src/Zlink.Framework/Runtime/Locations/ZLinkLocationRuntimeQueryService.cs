@@ -52,7 +52,7 @@ internal sealed class ZLinkLocationRuntimeQueryService : IZLinkLocationRuntimeQu
             OwnerLeaseHealthy: _runtime.OwnerLeaseHealthy,
             OwnerLeaseRenewedAt: _runtime.OwnerLeaseRenewedAt));
 
-    public async ValueTask<IReadOnlyList<ZLinkPeerLocation>> ListPeersAsync(
+    public async ValueTask<IReadOnlyList<ZLinkPeerLocation>> ListPeerLocationsAsync(
         ZLinkPeerLocationFilter filter,
         CancellationToken cancellationToken = default)
     {
@@ -62,7 +62,7 @@ internal sealed class ZLinkLocationRuntimeQueryService : IZLinkLocationRuntimeQu
             .ConfigureAwait(false);
     }
 
-    public async ValueTask<ZLinkLocationPage<ZLinkSpotLocation>> ListSpotsAsync(
+    public async ValueTask<ZLinkLocationPage<ZLinkSpotLocation>> ListSpotLocationsAsync(
         ZLinkSpotLocationFilter filter,
         ZLinkPageRequest page = default,
         CancellationToken cancellationToken = default)
@@ -75,20 +75,21 @@ internal sealed class ZLinkLocationRuntimeQueryService : IZLinkLocationRuntimeQu
         return new ZLinkLocationPage<ZLinkSpotLocation>(live, raw.ContinuationToken);
     }
 
-    public async ValueTask<ZLinkLocationPage<ZLinkActorLocation>> ListActorsAsync(
+    public async ValueTask<ZLinkLocationPage<ZLinkActorLocation>> ListActorLocationsAsync(
         ZLinkActorLocationFilter filter,
         ZLinkPageRequest page = default,
         CancellationToken cancellationToken = default)
     {
         var raw = await _actorStore.ListActorsAsync(filter, Normalize(page), cancellationToken)
             .ConfigureAwait(false);
+        var published = raw.Items.Where(static row => row.ActorRef is not null).ToArray();
         var live = await FilterLiveAsync(
-                raw.Items, static row => row.OwnerId, row => _observed.AcceptActor(row), cancellationToken)
+                published, static row => row.OwnerId, row => _observed.AcceptActor(row), cancellationToken)
             .ConfigureAwait(false);
         return new ZLinkLocationPage<ZLinkActorLocation>(live, raw.ContinuationToken);
     }
 
-    public async ValueTask<ZLinkLocationPage<ZLinkRouteLocation>> ListRoutesAsync(
+    public async ValueTask<ZLinkLocationPage<ZLinkRouteLocation>> ListRouteLocationsAsync(
         ZLinkRouteLocationFilter filter,
         ZLinkPageRequest page = default,
         CancellationToken cancellationToken = default)
@@ -139,7 +140,7 @@ internal sealed class ZLinkLocationRuntimeQueryService : IZLinkLocationRuntimeQu
 
             case ZLinkLocationKind.Spot:
             {
-                var spots = await ListSpotsAsync(
+                var spots = await ListSpotLocationsAsync(
                     new ZLinkSpotLocationFilter(MeshName: filter.MeshName, NodeRid: filter.NodeRid),
                     Normalize(page),
                     cancellationToken).ConfigureAwait(false);
@@ -154,7 +155,7 @@ internal sealed class ZLinkLocationRuntimeQueryService : IZLinkLocationRuntimeQu
 
             case ZLinkLocationKind.Actor:
             {
-                var actors = await ListActorsAsync(
+                var actors = await ListActorLocationsAsync(
                     new ZLinkActorLocationFilter(NodeRid: filter.NodeRid),
                     Normalize(page),
                     cancellationToken).ConfigureAwait(false);
@@ -169,7 +170,7 @@ internal sealed class ZLinkLocationRuntimeQueryService : IZLinkLocationRuntimeQu
 
             default:
             {
-                var routes = await ListRoutesAsync(
+                var routes = await ListRouteLocationsAsync(
                     new ZLinkRouteLocationFilter(OwnerNodeRid: filter.NodeRid),
                     Normalize(page),
                     cancellationToken).ConfigureAwait(false);

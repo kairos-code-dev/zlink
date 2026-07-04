@@ -9,8 +9,8 @@ internal sealed class ZLinkActorCreationCoordinator(
     Func<ZLinkActorRuntimeState, ZLinkActorContext> ensureActorContext,
     Func<IZLinkActor, ZLinkActorRuntimeState, ZLinkActorContext> bindActorContext)
 {
-    private ZLinkLocationLifecycle? Lifecycle =>
-        services.GetService(typeof(ZLinkLocationLifecycle)) as ZLinkLocationLifecycle;
+    private IZLinkActorLocationLifecycle? Lifecycle =>
+        services.GetService(typeof(IZLinkActorLocationLifecycle)) as IZLinkActorLocationLifecycle;
 
     public async ValueTask<CreateActorResult> CreateAndBindActorAsync(
         ZLinkActorRuntimeState state,
@@ -91,13 +91,10 @@ internal sealed class ZLinkActorCreationCoordinator(
         }
 
         if (state.NativeActorRef is { } nativeRef)
-            await lifecycle.SetActorRefAsync(
+            await lifecycle.PublishActorRefAsync(
                     actorType,
                     actorId,
-                    ZLinkLocationLifecycle.SerializeActorRef(
-                        nativeRef.NodeRid,
-                        nativeRef.ActorId,
-                        nativeRef.Generation),
+                    nativeRef.ToNative(),
                     cancellationToken)
                 .ConfigureAwait(false);
 

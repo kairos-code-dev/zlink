@@ -85,13 +85,8 @@ internal sealed partial class ZLinkFrameworkRuntime
     }
 
     internal async ValueTask<ZLinkRemoteActorJoinReply> JoinRoutedActorAsync(
-        string actorId,
-        string actorType,
         RoutingId spotRid,
-        RoutingId? boundSessionNodeRid,
-        RoutingId? boundSessionRid,
-        string requestContentType,
-        byte[] requestPayload,
+        ZLinkRemoteActorJoinRequest request,
         CancellationToken cancellationToken = default)
     {
         var activation = await GetSpotActivationByRidAsync(spotRid, cancellationToken)
@@ -103,44 +98,34 @@ internal sealed partial class ZLinkFrameworkRuntime
         CreateActorResult creation;
         using (ZLinkLocationLifecycle.EnterActorTakeoverScope())
         {
-            creation = await CreateLocalActorAsync(actorId, actorType, cancellationToken)
+            creation = await CreateLocalActorAsync(
+                    ZLinkRemoteActorJoinPackets.GetJoinRequestActorId(request),
+                    ZLinkRemoteActorJoinPackets.GetJoinRequestActorType(request),
+                    cancellationToken)
                 .ConfigureAwait(false);
         }
+        var actorId = ZLinkRemoteActorJoinPackets.GetJoinRequestActorId(request);
         var actorState = GetOrCreateActorState(actorId);
         var actorRef = actorState.NativeActorRef
                        ?? throw new ZLinkFrameworkException(
                            ZLinkFrameworkErrorKind.ActorRouteNotFound,
                            $"Actor '{actorId}' does not have a native Actor ref.");
-        BindRemoteBoundSessionRoute(actorId, actorRef, boundSessionNodeRid, boundSessionRid);
+        var boundRoute = ZLinkRemoteActorJoinPackets.DecodeBoundSessionRoute(request);
+        BindRemoteBoundSessionRoute(actorId, actorRef, boundRoute.NodeRid, boundRoute.SessionRid);
 
-        using var requestMessage = Message.From(requestPayload);
         var result = await activation.JoinActorAsync(
                 creation.Actor,
-                ZLinkMessage.FromEnvelopePayload(
-                    requestContentType,
-                    requestMessage,
+                ZLinkRemoteActorJoinPackets.DecodeJoinRequestPayload(
+                    request,
                     Registration.Codecs),
                 cancellationToken)
             .ConfigureAwait(false);
-        var replyContentType = ZLinkEnvelopeCodec.DefaultContentType;
-        Message? encodedReply = null;
-        if (result.Reply is { } reply)
-        {
-            var encoded = reply.Encode(Registration.Codecs);
-            replyContentType = encoded.ContentType;
-            encodedReply = Message.From(encoded.Payload.Bytes.Span);
-        }
 
-        using (encodedReply)
-        {
-            return new ZLinkRemoteActorJoinReply(
-                result.Accepted,
-                actorRef.NodeRid.ToBytes().ToArray(),
-                actorRef.ActorId,
-                actorRef.Generation,
-                replyContentType,
-                encodedReply?.ToArray() ?? Array.Empty<byte>());
-        }
+        return ZLinkRemoteActorJoinPackets.CreateJoinReply(
+            result.Accepted,
+            actorRef,
+            result.Reply,
+            Registration.Codecs);
     }
 
     private void BindRemoteBoundSessionRoute(

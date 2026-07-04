@@ -13,8 +13,7 @@ namespace Zlink.Framework.Locations.Redis;
 /// Behavior is contractually identical to the framework's in-memory store:
 /// store-issued generations that survive row removal, owner-guarded removes,
 /// store-clock UpdatedAt, and double change stamp bumps per write. Read APIs
-/// surface store failures as exceptions; write APIs return
-/// <see cref="ZLinkLocationWriteStatus.StoreUnavailable"/> instead.
+/// surface store failures as exceptions for both reads and writes.
 /// </summary>
 public sealed class ZLinkRedisLocationStore :
     IZLinkLocationStore,
@@ -51,7 +50,7 @@ public sealed class ZLinkRedisLocationStore :
     {
         Tag = "actor",
         EncodeKey = static row => ZLinkRedisLocationKeyCodec.EncodeActorKey(
-            new ZLinkActorLocationKey(row.ActorType, row.ActorId)),
+            new ZLinkActorLocationKey(row.ActorId)),
         MeshOf = static _ => null,
         OwnerOf = static row => row.OwnerId,
         GenerationOf = static row => row.Generation,
@@ -118,11 +117,6 @@ public sealed class ZLinkRedisLocationStore :
             PeerKind.Tag, ZLinkRedisLocationKeyCodec.EncodePeerKey(key), key.MeshName,
             owner, cancellationToken);
 
-    ValueTask<long> IZLinkPeerLocationStore.RemoveByOwnerAsync(
-        string ownerId,
-        CancellationToken cancellationToken) =>
-        RemoveByOwnerAsync(PeerKind.Tag, ownerId, cancellationToken);
-
     public async ValueTask<IReadOnlyList<ZLinkPeerLocation>> ListPeersAsync(
         ZLinkPeerLocationFilter filter,
         CancellationToken cancellationToken = default)
@@ -148,11 +142,6 @@ public sealed class ZLinkRedisLocationStore :
         RemoveAsync(
             SpotKind.Tag, ZLinkRedisLocationKeyCodec.EncodeSpotKey(key), key.MeshName,
             owner, cancellationToken);
-
-    ValueTask<long> IZLinkSpotLocationStore.RemoveByOwnerAsync(
-        string ownerId,
-        CancellationToken cancellationToken) =>
-        RemoveByOwnerAsync(SpotKind.Tag, ownerId, cancellationToken);
 
     public ValueTask<ZLinkSpotLocation?> ResolveSpotAsync(
         ZLinkSpotLocationKey key,
@@ -181,11 +170,6 @@ public sealed class ZLinkRedisLocationStore :
             ActorKind.Tag, ZLinkRedisLocationKeyCodec.EncodeActorKey(key), meshName: null,
             owner, cancellationToken);
 
-    ValueTask<long> IZLinkActorLocationStore.RemoveByOwnerAsync(
-        string ownerId,
-        CancellationToken cancellationToken) =>
-        RemoveByOwnerAsync(ActorKind.Tag, ownerId, cancellationToken);
-
     public ValueTask<ZLinkActorLocation?> ResolveActorAsync(
         ZLinkActorLocationKey key,
         CancellationToken cancellationToken = default) =>
@@ -213,11 +197,6 @@ public sealed class ZLinkRedisLocationStore :
             RouteKind.Tag, ZLinkRedisLocationKeyCodec.EncodeRouteKey(key), meshName: null,
             owner, cancellationToken);
 
-    ValueTask<long> IZLinkRouteLocationStore.RemoveByOwnerAsync(
-        string ownerId,
-        CancellationToken cancellationToken) =>
-        RemoveByOwnerAsync(RouteKind.Tag, ownerId, cancellationToken);
-
     public ValueTask<ZLinkRouteLocation?> ResolveRouteAsync(
         ZLinkRouteLocationKey key,
         CancellationToken cancellationToken = default) =>
@@ -231,7 +210,7 @@ public sealed class ZLinkRedisLocationStore :
 
     // ----- owner lease store -----------------------------------------------
 
-    public async ValueTask<ZLinkLocationWriteResult> RenewOwnerLeaseAsync(
+    public async ValueTask<ZLinkOwnerLeaseRenewal> RenewOwnerLeaseAsync(
         string ownerId,
         RoutingId nodeRid,
         TimeSpan leaseTtl,
@@ -240,46 +219,55 @@ public sealed class ZLinkRedisLocationStore :
         // PX rejects non-positive values; a TTL that low means "already
         // expired", which one millisecond is close enough to.
         var ttlMs = Math.Max(1L, (long)leaseTtl.TotalMilliseconds);
-        try
-        {
-            var database = await GetDatabaseAsync(cancellationToken).ConfigureAwait(false);
-            var nowMs = (long)await database.ScriptEvaluateAsync(
-                ZLinkRedisLocationScripts.RenewLease,
-                [LeaseKey(ownerId), LeaseIndexKey()],
-                [ownerId, nodeRid.ToHex(), ttlMs]).ConfigureAwait(false);
-            return ZLinkLocationWriteResult.Stored(0, FromUnixMs(nowMs));
-        }
-        catch (RedisException)
-        {
-            return ZLinkLocationWriteResult.StoreUnavailable;
-        }
-        catch (RedisTimeoutException)
-        {
-            return ZLinkLocationWriteResult.StoreUnavailable;
-        }
+        var database = await GetDatabaseAsync(cancellationToken).ConfigureAwait(false);
+        var nowMs = (long)await database.ScriptEvaluateAsync(
+            ZLinkRedisLocationScripts.RenewLease,
+            [LeaseKey(ownerId), LeaseIndexKey()],
+            [ownerId, nodeRid.ToHex(), ttlMs]).ConfigureAwait(false);
+        var storeNow = FromUnixMs(nowMs);
+        return new ZLinkOwnerLeaseRenewal(storeNow + TimeSpan.FromMilliseconds(ttlMs), storeNow);
     }
 
-    public async ValueTask<ZLinkLocationWriteResult> RemoveOwnerLeaseAsync(
+    public async ValueTask<bool> RemoveOwnerLeaseAsync(
         string ownerId,
         CancellationToken cancellationToken = default)
     {
-        try
-        {
-            var database = await GetDatabaseAsync(cancellationToken).ConfigureAwait(false);
-            var nowMs = (long)await database.ScriptEvaluateAsync(
-                ZLinkRedisLocationScripts.RemoveLease,
-                [LeaseKey(ownerId), LeaseIndexKey()],
-                [ownerId]).ConfigureAwait(false);
-            return ZLinkLocationWriteResult.Stored(0, FromUnixMs(nowMs));
-        }
-        catch (RedisException)
-        {
-            return ZLinkLocationWriteResult.StoreUnavailable;
-        }
-        catch (RedisTimeoutException)
-        {
-            return ZLinkLocationWriteResult.StoreUnavailable;
-        }
+        var database = await GetDatabaseAsync(cancellationToken).ConfigureAwait(false);
+        var removed = (long)await database.ScriptEvaluateAsync(
+            ZLinkRedisLocationScripts.RemoveLease,
+            [LeaseKey(ownerId), LeaseIndexKey()],
+            [ownerId]).ConfigureAwait(false);
+        return removed != 0;
+    }
+
+    public async ValueTask<long> RemoveAllByOwnerAsync(
+        string ownerId,
+        CancellationToken cancellationToken = default)
+    {
+        var database = await GetDatabaseAsync(cancellationToken).ConfigureAwait(false);
+        var removed = await database.ScriptEvaluateAsync(
+            ZLinkRedisLocationScripts.RemoveAllByOwner,
+            [
+                (RedisKey)(OwnerIndexKeyPrefix(PeerKind.Tag) + ownerId),
+                (RedisKey)(OwnerIndexKeyPrefix(SpotKind.Tag) + ownerId),
+                (RedisKey)(OwnerIndexKeyPrefix(ActorKind.Tag) + ownerId),
+                (RedisKey)(OwnerIndexKeyPrefix(RouteKind.Tag) + ownerId),
+                KindIndexKey(PeerKind.Tag),
+                KindIndexKey(SpotKind.Tag),
+                KindIndexKey(ActorKind.Tag),
+                KindIndexKey(RouteKind.Tag)
+            ],
+            [
+                RowHashKeyPrefix(PeerKind.Tag),
+                RowHashKeyPrefix(SpotKind.Tag),
+                RowHashKeyPrefix(ActorKind.Tag),
+                RowHashKeyPrefix(RouteKind.Tag),
+                StampKey(PeerKind.Tag, meshName: null),
+                StampKey(SpotKind.Tag, meshName: null),
+                StampKey(ActorKind.Tag, meshName: null),
+                StampKey(RouteKind.Tag, meshName: null)
+            ]).ConfigureAwait(false);
+        return (long)removed;
     }
 
     public async ValueTask<ZLinkOwnerLeaseSnapshot> ListOwnerLeasesAsync(
@@ -358,35 +346,24 @@ public sealed class ZLinkRedisLocationStore :
         var rowKey = kind.EncodeKey(row);
         var meshName = kind.MeshOf(row);
         var json = ZLinkRedisLocationRowJson.Serialize(row);
-        try
-        {
-            var database = await GetDatabaseAsync(cancellationToken).ConfigureAwait(false);
-            var result = (RedisResult[])(await database.ScriptEvaluateAsync(
-                ZLinkRedisLocationScripts.Write,
-                [RowHashKey(kind.Tag, rowKey), GenerationKey(kind.Tag, rowKey), KindIndexKey(kind.Tag)],
-                [
-                    intentName,
-                    kind.OwnerOf(row),
-                    kind.GenerationOf(row),
-                    json,
-                    rowKey,
-                    LeaseKeyPrefix(),
-                    OwnerIndexKeyPrefix(kind.Tag),
-                    StampKey(kind.Tag, meshName),
-                    meshName is null ? string.Empty : StampKey(kind.Tag, meshName: null),
-                    meshName is null ? "0" : "1",
-                    meshName ?? string.Empty
-                ]).ConfigureAwait(false))!;
-            return ToWriteResult(result);
-        }
-        catch (RedisException)
-        {
-            return ZLinkLocationWriteResult.StoreUnavailable;
-        }
-        catch (RedisTimeoutException)
-        {
-            return ZLinkLocationWriteResult.StoreUnavailable;
-        }
+        var database = await GetDatabaseAsync(cancellationToken).ConfigureAwait(false);
+        var result = (RedisResult[])(await database.ScriptEvaluateAsync(
+            ZLinkRedisLocationScripts.Write,
+            [RowHashKey(kind.Tag, rowKey), GenerationKey(kind.Tag, rowKey), KindIndexKey(kind.Tag)],
+            [
+                intentName,
+                kind.OwnerOf(row),
+                kind.GenerationOf(row),
+                json,
+                rowKey,
+                LeaseKeyPrefix(),
+                OwnerIndexKeyPrefix(kind.Tag),
+                StampKey(kind.Tag, meshName),
+                meshName is null ? string.Empty : StampKey(kind.Tag, meshName: null),
+                meshName is null ? "0" : "1",
+                meshName ?? string.Empty
+            ]).ConfigureAwait(false))!;
+        return ToWriteResult(result);
     }
 
     private async ValueTask<ZLinkLocationWriteResult> RemoveAsync(
@@ -396,43 +373,19 @@ public sealed class ZLinkRedisLocationStore :
         ZLinkLocationOwnerToken owner,
         CancellationToken cancellationToken)
     {
-        try
-        {
-            var database = await GetDatabaseAsync(cancellationToken).ConfigureAwait(false);
-            var result = (RedisResult[])(await database.ScriptEvaluateAsync(
-                ZLinkRedisLocationScripts.Remove,
-                [RowHashKey(tag, rowKey), KindIndexKey(tag)],
-                [
-                    owner.OwnerId,
-                    owner.Generation,
-                    rowKey,
-                    OwnerIndexKeyPrefix(tag),
-                    StampKey(tag, meshName),
-                    meshName is null ? string.Empty : StampKey(tag, meshName: null)
-                ]).ConfigureAwait(false))!;
-            return ToWriteResult(result);
-        }
-        catch (RedisException)
-        {
-            return ZLinkLocationWriteResult.StoreUnavailable;
-        }
-        catch (RedisTimeoutException)
-        {
-            return ZLinkLocationWriteResult.StoreUnavailable;
-        }
-    }
-
-    private async ValueTask<long> RemoveByOwnerAsync(
-        string tag,
-        string ownerId,
-        CancellationToken cancellationToken)
-    {
         var database = await GetDatabaseAsync(cancellationToken).ConfigureAwait(false);
-        var removed = await database.ScriptEvaluateAsync(
-            ZLinkRedisLocationScripts.RemoveByOwner,
-            [(RedisKey)(OwnerIndexKeyPrefix(tag) + ownerId), KindIndexKey(tag)],
-            [RowHashKeyPrefix(tag), StampKey(tag, meshName: null)]).ConfigureAwait(false);
-        return (long)removed;
+        var result = (RedisResult[])(await database.ScriptEvaluateAsync(
+            ZLinkRedisLocationScripts.Remove,
+            [RowHashKey(tag, rowKey), KindIndexKey(tag)],
+            [
+                owner.OwnerId,
+                owner.Generation,
+                rowKey,
+                OwnerIndexKeyPrefix(tag),
+                StampKey(tag, meshName),
+                meshName is null ? string.Empty : StampKey(tag, meshName: null)
+            ]).ConfigureAwait(false))!;
+        return ToWriteResult(result);
     }
 
     private async ValueTask<TRow?> ResolveAsync<TRow>(

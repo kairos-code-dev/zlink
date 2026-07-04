@@ -17,7 +17,9 @@ internal static class RlA4DrainAndGreenEndpointScenario
         await WaitForWeightAsync(providerB, 0);
 
         var green = await processes.StartProviderBGreenAsync();
-        using var greenProvider = ZLinkHttpClient.Create(green.Url).Build();
+        using var greenProvider = ZLinkHttpClient.Create(green.Url)
+            .Timeout(TimeSpan.FromMinutes(5))
+            .Build();
 
         for (var i = 0; i < 12; i++)
         {

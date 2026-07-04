@@ -20,7 +20,7 @@ internal sealed class MatchBingoHandler(
     {
         logger.LogInformation("api match: request. actor={ActorId}, mode={Mode}, actorNode={ActorNodeRid}",
             request.ActorId, request.Mode, request.ActorNodeRid);
-        var allocated = await routes.Request(
+        var allocated = await routes.RequestToNode(
                     SampleNames.PlayChannel,
                     RoutingId.From(request.ActorNodeRid),
                     new AllocateBingoRoomReq

@@ -92,7 +92,7 @@ internal sealed class ZLinkAutoConnectReconciler
         IReadOnlyList<ZLinkPeerLocation> rows;
         try
         {
-            rows = await _peers.ListPeersAsync(
+            rows = await _peers.ListLivePeersAsync(
                 new ZLinkPeerLocationFilter(
                     AutoConnectType: _local.AutoConnectType,
                     MeshName: _local.MeshName),
@@ -101,7 +101,9 @@ internal sealed class ZLinkAutoConnectReconciler
         catch (Exception)
         {
             // Fail-static: keep the last desired set, compute no diff, and
-            // let already-ready connections live until transport failure.
+            // keep already-ready connections alive. While the store is
+            // unreachable the loop cannot accept expanded desired sets, so
+            // no new outbound connects are started after the failure.
             _storeFailed = true;
             _localPublished = false;
             return;

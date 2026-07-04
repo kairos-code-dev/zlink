@@ -57,6 +57,7 @@ internal static class SfD2LongOutageRecoveryScenario
             peers => !SfProbe.HasRid(peers, "api-b"),
             options.OwnerLeaseTtl * 2 + options.HeartbeatInterval * 4,
             "SF-D2: the provider that died during the outage was not dropped after recovery.");
+        await WaitForDeadProviderDisconnectAsync(consumer, options);
 
         for (var i = 0; i < 8; i++)
         {
@@ -114,5 +115,45 @@ internal static class SfD2LongOutageRecoveryScenario
             maxGap < options.OwnerLeaseTtl * 2,
             $"SF-D2: successful traffic stalled for {maxGap}, longer than the dead-transport tolerance.");
         return replies;
+    }
+
+    private static async Task WaitForDeadProviderDisconnectAsync(
+        ZLinkHttpClient consumer,
+        ClientOptions options)
+    {
+        var deadline = DateTimeOffset.UtcNow + options.HeartbeatInterval + options.PollingInterval * 4;
+        Exception? last = null;
+        while (DateTimeOffset.UtcNow < deadline)
+        {
+            var allOnSurvivor = true;
+            for (var i = 0; i < 4; i++)
+            {
+                try
+                {
+                    var reply = await SfProbe.RequestAsync(
+                        consumer,
+                        $"sf-d2-disconnect-probe-{Guid.NewGuid():N}");
+                    if (reply.ProviderRid != "api-a")
+                    {
+                        allOnSurvivor = false;
+                        break;
+                    }
+                }
+                catch (Exception ex)
+                {
+                    last = ex;
+                    allOnSurvivor = false;
+                    break;
+                }
+            }
+
+            if (allOnSurvivor) return;
+
+            await Task.Delay(options.PollingInterval, CancellationToken.None);
+        }
+
+        throw new InvalidOperationException(
+            "SF-D2: the dead provider transport was still selected after the disconnect grace.",
+            last);
     }
 }

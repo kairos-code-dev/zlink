@@ -31,13 +31,13 @@ internal interface IZLinkSpotOutboundSink
 {
     IZLinkSendCall SendToSpot<TMessage>(ZLinkSpotAddress address, TMessage message);
 
-    IZLinkRequestCall RequestToSpot<TRequest>(ZLinkSpotAddress address, TRequest request);
+    IZLinkYieldRequestCall RequestToSpot<TRequest>(ZLinkSpotAddress address, TRequest request);
 
     IZLinkPublishCall Publish<TEvent>(string topic, TEvent message);
 
     IZLinkSendCall SendToChannel<TMessage>(string channelName, TMessage message);
 
-    IZLinkRequestCall RequestToChannel<TRequest>(string channelName, TRequest request);
+    IZLinkYieldRequestCall RequestToChannel<TRequest>(string channelName, TRequest request);
 }
 
 internal sealed class ZLinkSpotHandlerRegistrySurface(IZLinkSpotHandlerRegistrySink activation)
@@ -100,7 +100,7 @@ internal sealed class ZLinkSpotOutboundSurface(IZLinkSpotOutboundSink activation
         return activation.SendToSpot(address, message);
     }
 
-    public IZLinkRequestCall RequestToSpot<TRequest>(ZLinkSpotAddress address, TRequest request)
+    public IZLinkYieldRequestCall RequestToSpot<TRequest>(ZLinkSpotAddress address, TRequest request)
     {
         return activation.RequestToSpot(address, request);
     }
@@ -115,7 +115,7 @@ internal sealed class ZLinkSpotOutboundSurface(IZLinkSpotOutboundSink activation
         return activation.SendToChannel(channelName, message);
     }
 
-    public IZLinkRequestCall RequestToChannel<TRequest>(string channelName, TRequest request)
+    public IZLinkYieldRequestCall RequestToChannel<TRequest>(string channelName, TRequest request)
     {
         return activation.RequestToChannel(channelName, request);
     }

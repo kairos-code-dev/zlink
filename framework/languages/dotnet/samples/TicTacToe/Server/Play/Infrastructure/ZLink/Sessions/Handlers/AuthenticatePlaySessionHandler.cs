@@ -69,7 +69,7 @@ internal sealed class AuthenticatePlaySessionHandler(
             "play stream: binding actor to session. sessionId={SessionId}, actor={ActorId}",
             context.SessionId,
             player.ActorId);
-        var boundActor = await context.Actors.BindAsync(
+        var boundActor = await context.Actors.BindOrGetAsync(
             playerActor,
             cancellationToken);
 

@@ -65,7 +65,7 @@ public sealed class LocationRuntimePollingDiffTests
         Assert.Equal(
             [
                 ZLinkLocationRuntimeEventKind.StatusChanged,
-                ZLinkLocationRuntimeEventKind.StoreUnavailable
+                ZLinkLocationRuntimeEventKind.StoreFailure
             ],
             events.Select(static @event => @event.Event).ToArray());
         events.Clear();
@@ -85,7 +85,7 @@ public sealed class LocationRuntimePollingDiffTests
     }
 
     [Fact]
-    public void First_Snapshot_With_Unhealthy_Store_Publishes_StoreUnavailable()
+    public void First_Snapshot_With_Unhealthy_Store_Publishes_StoreFailure()
     {
         var diff = new ZLinkLocationRuntimePollingEventDiff("locations");
         var events = new List<ZLinkLocationRuntimeEvent>();
@@ -93,7 +93,7 @@ public sealed class LocationRuntimePollingDiffTests
         diff.DispatchChanges(Snapshot(storeHealthy: false, "tcp://127.0.0.1:9000"), Timestamp, events.Add);
 
         Assert.Contains(
-            ZLinkLocationRuntimeEventKind.StoreUnavailable,
+            ZLinkLocationRuntimeEventKind.StoreFailure,
             events.Select(static @event => @event.Event));
     }
 

@@ -12,7 +12,7 @@ internal sealed class ZLinkLocationRuntimePollingEventDiff(string sourceName)
 
     /// <summary>
     /// A store outage keeps the last projection (fail-static) and surfaces
-    /// as a single StoreUnavailable event; the next successful capture
+    /// as a single StoreFailure event; the next successful capture
     /// reports StoreRecovered through the regular health transition.
     /// </summary>
     public void DispatchCaptureFailure(
@@ -26,7 +26,7 @@ internal sealed class ZLinkLocationRuntimePollingEventDiff(string sourceName)
         dispatch(new ZLinkLocationRuntimeEvent(
             sourceName,
             timestamp,
-            ZLinkLocationRuntimeEventKind.StoreUnavailable,
+            ZLinkLocationRuntimeEventKind.StoreFailure,
             _previous?.Status,
             null,
             null));
@@ -54,7 +54,7 @@ internal sealed class ZLinkLocationRuntimePollingEventDiff(string sourceName)
             dispatch(new ZLinkLocationRuntimeEvent(
                 sourceName,
                 timestamp,
-                ZLinkLocationRuntimeEventKind.StoreUnavailable,
+                ZLinkLocationRuntimeEventKind.StoreFailure,
                 current.Status,
                 null,
                 null));

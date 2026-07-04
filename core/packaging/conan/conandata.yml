@@ -1,4 +1,6 @@
 sources:
+  "8.5.0":
+    url: "https://github.com/kairos-code-dev/zlink/archive/refs/tags/core/v8.5.0.tar.gz"
   "8.4.3":
     url: "https://github.com/kairos-code-dev/zlink/archive/refs/tags/core/v8.4.3.tar.gz"
   "8.4.2":

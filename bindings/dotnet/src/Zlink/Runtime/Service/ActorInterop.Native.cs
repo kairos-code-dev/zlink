@@ -67,6 +67,7 @@ internal static partial class ActorInterop
             RoutingIdInterop.FromNative(ref native.SourceSessionRid)
             ?? throw new ZlinkRecvException(
                 ZlinkRecvException.ErrorCode.InternalError),
+            native.RequestId,
             native.Flags);
     }
 

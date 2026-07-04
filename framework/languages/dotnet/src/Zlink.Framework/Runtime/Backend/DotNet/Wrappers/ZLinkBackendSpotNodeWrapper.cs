@@ -221,6 +221,23 @@ internal sealed class ZLinkBackendSpotNodeWrapper(ISpotNode nativeSpotNode) : IZ
         return await operation.Async(cancellationToken).ConfigureAwait(false);
     }
 
+    public void ReplyActorNoBind(
+        ZLinkBackendActorRef actor,
+        RoutingId sourceNodeRid,
+        RoutingId sourceSessionRid,
+        ulong requestId,
+        uint flags,
+        IReadOnlyList<Message> parts)
+    {
+        var info = new ActorRecvInfo(
+            actor.ToNative(),
+            sourceNodeRid,
+            sourceSessionRid,
+            requestId,
+            flags);
+        nativeSpotNode.ReplyActorNoBind(info, parts);
+    }
+
     public bool ForwardActorBoundSessionPart(
         ZLinkBackendActorRef actor,
         RoutingId sourceNodeRid,

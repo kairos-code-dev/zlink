@@ -7,6 +7,7 @@ namespace Zlink.Framework.Runtime.Spots;
 
 internal sealed class ZLinkSpotActivationDispatcher
 {
+    private const uint ActorRecvInfoNoBind = 1u;
     private readonly ZLinkSpotActorJoinDispatcher _actorJoinDispatcher;
     private readonly ZLinkSpotActorPacketDispatcher _actorPacketDispatcher;
     private readonly ZLinkDispatchErrorReporter _dispatchErrors;
@@ -140,9 +141,12 @@ internal sealed class ZLinkSpotActivationDispatcher
             {
                 await DispatchActorStreamPartAsync(
                         actor,
+                        frame.Actor,
                         frame.Actor.ActorId,
                         frame.SourceNodeRid,
                         frame.SourceSessionRid,
+                        frame.RequestId,
+                        frame.Flags,
                         frame.Header,
                         frame.Body,
                         cancellationToken)
@@ -298,9 +302,12 @@ internal sealed class ZLinkSpotActivationDispatcher
 
     private async ValueTask DispatchActorStreamPartAsync(
         IZLinkActor actor,
+        ZLinkBackendActorRef actorRef,
         string actorId,
         RoutingId sourceNodeRid,
         RoutingId sourceSessionRid,
+        ulong requestId,
+        uint flags,
         ZlinkStreamHeader streamHeader,
         Message body,
         CancellationToken cancellationToken)
@@ -317,39 +324,67 @@ internal sealed class ZLinkSpotActivationDispatcher
         }
 
         var runtimeState = runtime.GetOrCreateActorState(actorId);
-        await using var boundSessionScope = ZLinkBoundSessionDispatchScope.Enter(actorId);
-        runtime.BindActorSession(
-            actorId,
-            sourceNodeRid,
-            sourceSessionRid,
-            BuildNativeBoundSessionToken(sourceSessionRid));
-        if (streamHeader.RequestSeq is not null)
+        var isNoBind = requestId != 0 && (flags & ActorRecvInfoNoBind) != 0;
+        ZLinkBoundSessionDispatchScope? boundSessionScope = null;
+        if (!isNoBind)
         {
-            var reply = await _actorPacketDispatcher.DispatchForReplyAsync(
+            boundSessionScope = ZLinkBoundSessionDispatchScope.Enter(actorId);
+            runtime.BindActorSession(
+                actorId,
+                sourceNodeRid,
+                sourceSessionRid,
+                BuildNativeBoundSessionToken(sourceSessionRid));
+        }
+
+        try
+        {
+            if (streamHeader.RequestSeq is not null)
+            {
+                var reply = await _actorPacketDispatcher.DispatchForReplyAsync(
+                        actor,
+                        runtimeState,
+                        streamHeader,
+                        body,
+                        cancellationToken)
+                    .ConfigureAwait(false);
+                if (reply is null) return;
+
+                var frame = reply.ToFrame(streamHeader);
+                if (isNoBind)
+                {
+                    using var replyMessage = Message.From(frame);
+                    runtime.ReplyActorNoBind(
+                        actorRef,
+                        sourceNodeRid,
+                        sourceSessionRid,
+                        requestId,
+                        flags,
+                        [replyMessage]);
+                }
+                else
+                {
+                    await SendFrameWithRetryAsync(runtime, actorId, frame, cancellationToken)
+                        .ConfigureAwait(false);
+
+                    await boundSessionScope!.DrainAsync(cancellationToken)
+                        .ConfigureAwait(false);
+                }
+                return;
+            }
+
+            await _actorPacketDispatcher.DispatchAsync(
                     actor,
                     runtimeState,
                     streamHeader,
                     body,
                     cancellationToken)
                 .ConfigureAwait(false);
-            if (reply is null) return;
-
-            var frame = reply.ToFrame(streamHeader);
-            await SendFrameWithRetryAsync(runtime, actorId, frame, cancellationToken)
-                .ConfigureAwait(false);
-
-            await boundSessionScope.DrainAsync(cancellationToken)
-                .ConfigureAwait(false);
-            return;
         }
-
-        await _actorPacketDispatcher.DispatchAsync(
-                actor,
-                runtimeState,
-                streamHeader,
-                body,
-                cancellationToken)
-            .ConfigureAwait(false);
+        finally
+        {
+            if (boundSessionScope is not null)
+                await boundSessionScope.DisposeAsync().ConfigureAwait(false);
+        }
     }
 
     private static async ValueTask SendFrameWithRetryAsync(

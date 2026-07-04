@@ -4,8 +4,8 @@
 
 static_assert(ZLINK_VERSION_MAJOR == 8, "zlink/common.h major version must match package version");
 static_assert(ZLINK_VERSION_MINOR == 5, "zlink/common.h minor version must match package version");
-static_assert(ZLINK_VERSION_PATCH == 0, "zlink/common.h patch version must match package version");
-static_assert(ZLINK_VERSION == ZLINK_MAKE_VERSION(8, 5, 0),
+static_assert(ZLINK_VERSION_PATCH == 1, "zlink/common.h patch version must match package version");
+static_assert(ZLINK_VERSION == ZLINK_MAKE_VERSION(8, 5, 1),
   "zlink/common.h aggregate version must match package version");
 
 int main()

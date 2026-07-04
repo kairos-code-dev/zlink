@@ -984,6 +984,7 @@ class _Lib:
                 ctypes.c_void_p,
                 ctypes.POINTER(ZlinkActorRef),
                 ctypes.POINTER(ZlinkMsg),
+                ctypes.c_size_t,
                 ctypes.c_void_p,
                 ctypes.c_void_p,
                 ctypes.c_uint32,

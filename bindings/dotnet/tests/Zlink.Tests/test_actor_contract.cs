@@ -295,6 +295,12 @@ public sealed class test_actor_contract
             Assert.Equal(new[] { "first", "second" }, parts);
             Assert.Empty(callbackErrors);
 
+            using Message sendFirst = Message.From("send-first");
+            using Message sendSecond = Message.From("send-second");
+            Assert.True(node.SendToActor(actor.Ref)
+                .Messages(new[] { sendFirst, sendSecond })
+                .Submit());
+
             actor.CloseBoundSession(TimeSpan.FromSeconds(2));
             Zlink.MultipartClose(await actor.Leave(spot)
                 .Timeout(TimeSpan.FromSeconds(2))

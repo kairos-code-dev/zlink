@@ -122,10 +122,11 @@ internal static partial class NativeMethods
         int flags);
 
     [DllImport(LibraryName, CallingConvention = CallingConvention.Cdecl)]
-    internal static extern int zlink_spot_node_send_to_actor(
+    internal static extern unsafe int zlink_spot_node_send_to_actor(
         IntPtr node,
         ref ZlinkActorRef actor,
-        ref ZlinkMsg message,
+        ZlinkMsg* parts,
+        nuint partCount,
         IntPtr completion,
         IntPtr userData,
         int flags,
@@ -141,6 +142,14 @@ internal static partial class NativeMethods
         IntPtr userData,
         int flags,
         uint timeoutMs);
+
+    [DllImport(LibraryName, CallingConvention = CallingConvention.Cdecl)]
+    internal static extern unsafe int zlink_spot_node_actor_reply_no_bind(
+        IntPtr node,
+        ref ZlinkActorRecvInfo info,
+        ZlinkMsg* parts,
+        nuint partCount,
+        int result);
 
     [DllImport(LibraryName, CallingConvention = CallingConvention.Cdecl)]
     internal static extern int zlink_spot_node_actor_forward_bound_session_part(

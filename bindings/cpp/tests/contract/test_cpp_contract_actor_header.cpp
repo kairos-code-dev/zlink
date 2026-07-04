@@ -51,6 +51,13 @@ static_assert (std::is_same<decltype (std::declval<zlink::service::spot_node_t &
                             zlink::service::send_operation_t>::value,
                "spot_node_t must expose resolved Actor send builder");
 static_assert (
+  std::is_same<decltype (std::declval<zlink::service::spot_node_t &> ()
+                          .send_to_actor (std::declval<const zlink::actor_ref_t &> ())
+                          .message (std::declval<zlink::message_t &> ())
+                          .message (std::declval<zlink::message_t &> ())),
+               zlink::service::send_submit_operation_t &&>::value,
+  "spot_node_t Actor send builder must accept multipart payloads");
+static_assert (
   std::is_same<decltype (std::declval<zlink::service::spot_node_t &> ().request_to_actor (
                  std::declval<const zlink::actor_ref_t &> ())),
                zlink::service::request_operation_t>::value,

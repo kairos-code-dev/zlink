@@ -606,7 +606,7 @@ objects.
 
 Python exposes `SpotNode.send_to_actor(actor_ref)` and
 `SpotNode.request_to_actor(actor_ref)` for resolved Actor refs. The send
-operation consumes one message on successful submit and completes when the
+operation consumes one or more message parts on successful submit and completes when the
 Actor owner mailbox accepts the handoff. The request operation consumes
 request parts on successful submit and delivers the Actor handler reply parts.
 Python must not reintroduce the removed Discovery route table or resolver APIs

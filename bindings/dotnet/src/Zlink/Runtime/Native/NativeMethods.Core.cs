@@ -61,6 +61,7 @@ internal static partial class NativeMethods
         "zlink_spot_node_actor_forward_bound_session_part",
         "zlink_spot_node_actor_bind_remote_session",
         "zlink_spot_node_actor_close_bound_session",
+        "zlink_spot_node_actor_reply_no_bind",
         "zlink_spot_send_channel_part",
         "zlink_spot_request_channel_part",
         "zlink_spot_publish_part",

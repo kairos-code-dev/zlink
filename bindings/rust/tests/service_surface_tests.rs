@@ -178,6 +178,7 @@ fn actor_surfaces_exist() {
     let _ = node
         .send_to_actor(&remote)
         .message(Message::try_from(b"actor-send").unwrap())
+        .message(Message::try_from(b"actor-send-2").unwrap())
         .flags(SendFlags::DONT_WAIT);
     let _ = node
         .request_to_actor(&remote)

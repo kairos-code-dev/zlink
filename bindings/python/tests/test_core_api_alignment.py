@@ -5,6 +5,7 @@ import time
 import unittest
 
 import zlink
+from zlink._runtime.service.spot.spot_ops import SendOp as RuntimeSendOp
 
 
 def _tcp_endpoint():
@@ -153,6 +154,12 @@ class CoreApiAlignmentTests(unittest.TestCase):
         self.assertTrue(hasattr(zlink.StreamSocket, "send_bound_actor"))
         self.assertFalse(hasattr(zlink, "Discovery"))
         self.assertFalse(hasattr(zlink, "create_discovery"))
+
+    def test_send_to_actor_operation_accepts_multipart_payload(self):
+        submitted = []
+        op = RuntimeSendOp(None, lambda parts, flags: submitted.append((parts, flags)) or True)
+        self.assertTrue(op.message(b"first").message(b"second").submit())
+        self.assertEqual(([b"first", b"second"], 0), submitted[0])
         self.assertFalse(hasattr(zlink.DealerSocket, "attach_discovery"))
         self.assertFalse(hasattr(zlink.RouterSocket, "attach_discovery"))
         self.assertFalse(hasattr(zlink.PubSocket, "attach_discovery"))

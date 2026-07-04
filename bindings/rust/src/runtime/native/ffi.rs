@@ -1281,7 +1281,8 @@ unsafe extern "C" {
     pub fn zlink_spot_node_send_to_actor(
         node: *mut c_void,
         actor: *const zlink_actor_ref_t,
-        message: *mut zlink_msg_t,
+        parts: *mut zlink_msg_t,
+        part_count: usize,
         handler: zlink_reply_handler_fn,
         userdata: *mut c_void,
         flags: zlink_send_flags_t,

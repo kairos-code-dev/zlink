@@ -2224,14 +2224,15 @@ public final class Native {
 
     public static int spotNodeSendToActor(MemorySegment node,
                                           MemorySegment actor,
-                                          MemorySegment message,
+                                          MemorySegment parts,
+                                          long partCount,
                                           MemorySegment callback,
                                           MemorySegment userdata,
                                           int flags,
                                           int timeoutMs) {
         try {
             return (int) NativeSpotSymbols.MH_SPOT_NODE_SEND_TO_ACTOR.invokeExact(
-              node, actor, message, callback, userdata, flags, timeoutMs);
+              node, actor, parts, partCount, callback, userdata, flags, timeoutMs);
         } catch (Throwable t) {
             throw new RuntimeException("zlink_spot_node_send_to_actor failed", t);
         }

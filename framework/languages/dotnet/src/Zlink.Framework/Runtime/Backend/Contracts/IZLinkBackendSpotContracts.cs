@@ -82,6 +82,14 @@ internal interface IZLinkBackendSpotNode : IZLinkBackendObject, IAsyncDisposable
         TimeSpan? timeout,
         CancellationToken cancellationToken);
 
+    void ReplyActorNoBind(
+        ZLinkBackendActorRef actor,
+        RoutingId sourceNodeRid,
+        RoutingId sourceSessionRid,
+        ulong requestId,
+        uint flags,
+        IReadOnlyList<Message> parts);
+
     bool ForwardActorBoundSessionPart(
         ZLinkBackendActorRef actor,
         RoutingId sourceNodeRid,

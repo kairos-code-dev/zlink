@@ -523,7 +523,7 @@ C++는 Actor와 Spot 라우트 조회 결과를 구체 계약 타입으로 노�
 
 C++는 resolve된 Actor ref를 인자로 받는 `spot_node_t::send_to_actor(actor_ref_t)`와
 `spot_node_t::request_to_actor(actor_ref_t)`를 노출한다. `send_to_actor`는 submit이
-성공하면 메시지 하나의 소유권을 넘기고, Actor 소유자 mailbox가 인계를 받으면
+성공하면 하나 이상의 message part 소유권을 넘기고, Actor 소유자 mailbox가 인계를 받으면
 완료된다. `request_to_actor`는 submit이 성공하면 요청 part의 소유권을 넘기고,
 Actor handler가 만든 reply part를 callback 또는 awaitable 결과로 전달한다. C++는
 제거된 Discovery route table이나 resolver API를 compatibility helper로 되살리면

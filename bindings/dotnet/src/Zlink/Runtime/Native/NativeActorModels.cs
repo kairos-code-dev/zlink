@@ -21,6 +21,7 @@ internal struct ZlinkActorRecvInfo
     public ZlinkActorRef Actor;
     public ZlinkRoutingId SourceNodeRid;
     public ZlinkRoutingId SourceSessionRid;
+    public ulong RequestId;
     public uint Flags;
 }
 

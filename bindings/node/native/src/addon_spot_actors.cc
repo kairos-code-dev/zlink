@@ -341,11 +341,6 @@ napi_value spot_node_send_to_actor (napi_env env, napi_callback_info info)
     std::vector<zlink_msg_t> parts;
     if (!build_msg_vector_or_single (env, argv[2], &parts))
         return NULL;
-    if (parts.size () != 1) {
-        close_msg_vector (parts);
-        napi_throw_range_error (env, NULL, "sendToActor message must be single part");
-        return NULL;
-    }
     int32_t flags = 0;
     if (argc >= 4)
         napi_get_value_int32 (env, argv[3], &flags);
@@ -353,9 +348,9 @@ napi_value spot_node_send_to_actor (napi_env env, napi_callback_info info)
     if (argc >= 5)
         napi_get_value_int32 (env, argv[4], &timeout_ms);
     sync_request_state_t state;
-    int rc = zlink_spot_node_send_to_actor (node, &ref, &parts[0], sync_request_callback, &state,
-                                            static_cast<zlink_send_flags_t> (flags),
-                                            static_cast<uint32_t> (timeout_ms));
+    int rc = zlink_spot_node_send_to_actor (
+      node, &ref, parts.empty () ? NULL : parts.data (), parts.size (), sync_request_callback,
+      &state, static_cast<zlink_send_flags_t> (flags), static_cast<uint32_t> (timeout_ms));
     if (rc != ZLINK_SUBMIT_OK) {
         close_msg_vector (parts);
         return throw_last_error (env, "spotNodeSendToActor failed");

@@ -64,6 +64,8 @@ internal sealed record ZLinkBackendActorPart(
     ZLinkBackendActorRef Actor,
     RoutingId SourceNodeRid,
     RoutingId SourceSessionRid,
+    ulong RequestId,
+    uint Flags,
     Message Message,
     bool More);
 

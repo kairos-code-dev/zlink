@@ -139,7 +139,7 @@ internal sealed class DynamicProcess(Process process, string httpUrl, string? ch
 
     public async Task WaitReadyAsync()
     {
-        using var client = new HttpClient();
+        using var client = ZLinkHttpClient.Create(HttpUrl).Build();
         for (var i = 0; i < 120; i++)
         {
             if (process.HasExited)
@@ -147,8 +147,8 @@ internal sealed class DynamicProcess(Process process, string httpUrl, string? ch
 
             try
             {
-                using var response = await client.GetAsync($"{HttpUrl}/health");
-                if (response.IsSuccessStatusCode) return;
+                await client.Get("/health").SubmitAsync<string>();
+                return;
             }
             catch
             {

@@ -547,7 +547,7 @@ Required verification after .NET binding changes. Run these commands from
 
 The binding exposes `ISpotNode.SendToActor(ActorRef)` and
 `ISpotNode.RequestToActor(ActorRef)` for resolved Actor refs. `SendToActor`
-consumes one message on successful submit and completes when the Actor owner
+consumes one or more message parts on successful submit and completes when the Actor owner
 mailbox accepts the handoff. `RequestToActor` consumes request parts on
 successful submit and delivers the Actor handler reply parts through the task
 or callback. The binding must not reintroduce the removed Discovery route

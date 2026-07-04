@@ -1082,7 +1082,7 @@ C++ exposes Actor and Spot route lookup results as concrete contract types.
 
 C++ exposes `spot_node_t::send_to_actor(actor_ref_t)` and
 `spot_node_t::request_to_actor(actor_ref_t)` for resolved Actor refs.
-`send_to_actor` consumes one message on successful submit and completes when
+`send_to_actor` consumes one or more message parts on successful submit and completes when
 the Actor owner mailbox accepts the handoff. `request_to_actor` consumes the
 request parts on successful submit and delivers the Actor handler reply parts
 to the callback or awaitable result. C++ must not reintroduce the removed

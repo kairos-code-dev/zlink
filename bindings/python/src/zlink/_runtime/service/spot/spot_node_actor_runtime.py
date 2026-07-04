@@ -114,16 +114,15 @@ class SpotNodeActorMixin:
 
     def _send_to_actor_submit(self, actor_ref, parts, flags=0):
         native_parts = _clone_payload(parts)
-        if len(native_parts) != 1:
-            _close_native_parts(native_parts)
-            raise SubmitError(SubmitResult.INVALID_ARGUMENT, 0)
+        native_array = _prepare_native_parts(native_parts)
         native_actor = _actor_ref_to_native(actor_ref)
         handle = id(native_parts)
         self._actor_request_pending[handle] = PendingRequest()
         rc = lib().zlink_spot_node_send_to_actor(
             self._handle,
             ctypes.byref(native_actor),
-            ctypes.byref(native_parts[0]),
+            native_array if native_parts else None,
+            len(native_parts),
             self._ensure_actor_reply_handler(),
             ctypes.c_void_p(handle),
             int(flags),

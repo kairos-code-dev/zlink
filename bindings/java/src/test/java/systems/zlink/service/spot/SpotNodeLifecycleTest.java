@@ -29,6 +29,23 @@ class SpotNodeLifecycleTest {
     }
 
     @Test
+    void sendToActorBuilderAcceptsMultipartPayload() {
+        TestSupport.assumeNative();
+
+        try (Context ctx = Zlink.createContext();
+             SpotNode node = ctx.createSpotNode()) {
+            ActorRef actor = new ActorRef(
+                RoutingId.from("java-surface-node"),
+                "java-surface-actor",
+                0L);
+            SendSubmitOperation op = node.sendToActor(actor)
+                .message(Message.from("first"))
+                .message(Message.from("second"));
+            assertNotNull(op);
+        }
+    }
+
+    @Test
     void closeCascadesToOwnedSpots() throws Exception {
         TestSupport.assumeNative();
 

@@ -1558,6 +1558,30 @@ public sealed class RegressionTests
         return Path.Combine(ResolveDotnetRoot(), "e2e");
     }
 
+    [Fact]
+    public void Samples_And_E2E_Use_ZLinkHttpClient_Not_Raw_HttpClient()
+    {
+        // 규약: 샘플·e2e의 HTTP 클라이언트는 Zlink.HttpClient(ZLinkHttpClient)만 쓴다.
+        // raw System.Net.Http.HttpClient 인스턴스화는 규약 위반이다.
+        var root = ResolveDotnetRoot();
+        var offenders = new List<string>();
+        foreach (var dir in new[] { "samples", "e2e" })
+        {
+            var basePath = Path.Combine(root, dir);
+            if (!Directory.Exists(basePath)) continue;
+            foreach (var file in Directory.EnumerateFiles(basePath, "*.cs", SearchOption.AllDirectories))
+            {
+                if (file.Contains($"{Path.DirectorySeparatorChar}obj{Path.DirectorySeparatorChar}")
+                    || file.Contains($"{Path.DirectorySeparatorChar}bin{Path.DirectorySeparatorChar}"))
+                    continue;
+                if (File.ReadAllText(file).Contains("new HttpClient"))
+                    offenders.Add(NormalizeRelativePath(Path.GetRelativePath(root, file)));
+            }
+        }
+
+        Assert.Empty(offenders);
+    }
+
     private static string ResolveDotnetRoot()
     {
         var current = new DirectoryInfo(AppContext.BaseDirectory);

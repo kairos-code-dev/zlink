@@ -4,6 +4,8 @@ internal readonly record struct ZLinkSpotActorFrame(
     ZLinkBackendActorRef Actor,
     RoutingId SourceNodeRid,
     RoutingId SourceSessionRid,
+    ulong RequestId,
+    uint Flags,
     ZlinkStreamHeader Header,
     Message Body);
 
@@ -41,6 +43,8 @@ internal static class ZLinkSpotActorFrameReader
             headerPart.Actor,
             headerPart.SourceNodeRid,
             headerPart.SourceSessionRid,
+            headerPart.RequestId,
+            headerPart.Flags,
             header,
             body);
         return true;

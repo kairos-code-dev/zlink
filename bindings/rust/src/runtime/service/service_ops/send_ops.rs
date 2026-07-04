@@ -158,15 +158,16 @@ impl SendOpReadyRuntime for SendOp<Ready> {
             return check_submit_rc(rc).map(|_| true);
         }
         if let SendOpKind::ActorSend { actor } = &op.kind {
-            if op.parts.len() != 1 {
+            if op.parts.is_empty() {
                 return Err(submit_validation_error());
             }
-            let mut native = take_message_raw(&mut op.parts[0]);
+            let mut native = prepare_send_parts(&mut op.parts)?;
             let rc = unsafe {
                 ffi::zlink_spot_node_send_to_actor(
                     handle,
                     actor,
-                    &mut native,
+                    native.as_mut_ptr(),
+                    native.len(),
                     actor_send_ack_callback,
                     std::ptr::null_mut(),
                     flags.bits(),
@@ -174,8 +175,10 @@ impl SendOpReadyRuntime for SendOp<Ready> {
                 )
             };
             if rc != 0 {
-                unsafe {
-                    ffi::zlink_msg_close(&mut native);
+                for part in &mut native {
+                    unsafe {
+                        ffi::zlink_msg_close(part);
+                    }
                 }
             }
             return check_submit_rc(rc).map(|_| true);

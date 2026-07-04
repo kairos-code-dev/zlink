@@ -456,6 +456,22 @@ internal sealed partial class ZLinkFrameworkRuntime
         return node.SendActorBoundSession(actorRef, parts, flags);
     }
 
+    internal void ReplyActorNoBind(
+        ZLinkBackendActorRef actor,
+        RoutingId sourceNodeRid,
+        RoutingId sourceSessionRid,
+        ulong requestId,
+        uint flags,
+        IReadOnlyList<Message> parts)
+    {
+        var node = GetActorSpotNode()
+                   ?? throw new ZLinkFrameworkException(
+                       ZLinkFrameworkErrorKind.ActorSessionNotBound,
+                       "Actor no-bind reply requires a router-capable SpotNode.",
+                       false);
+        node.ReplyActorNoBind(actor, sourceNodeRid, sourceSessionRid, requestId, flags, parts);
+    }
+
     internal bool ForwardActorBoundSessionPart(
         ZLinkBackendActorRef actorRef,
         RoutingId sourceNodeRid,

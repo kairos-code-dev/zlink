@@ -175,6 +175,15 @@ public interface ISpotNode : IDisposable, IAsyncDisposable
     RequestOperation RequestToActor(ActorRef actor);
 
     /// <summary>
+    ///     Replies to a no-bind actor request described by <paramref name="info" />.
+    ///     The reply parts are consumed on a successful submit.
+    /// </summary>
+    void ReplyActorNoBind(
+        ActorRecvInfo info,
+        IReadOnlyList<Message> parts,
+        RequestResult result = RequestResult.Ok);
+
+    /// <summary>
     ///     Forwards one stream session part to a remote actor while preserving the
     ///     original session owner and session routing ids.
     /// </summary>

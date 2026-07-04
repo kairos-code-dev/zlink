@@ -191,25 +191,35 @@ internal sealed partial class SpotNode
         SendFlags flags = SendFlags.None)
     {
         RequestReplySupport.EnsureParts(parts, nameof(parts));
-        if (parts.Count != 1)
-            throw new ArgumentException("send-to-actor requires exactly one message.",
-                nameof(parts));
         EnsureNotDisposed();
-        var cloned = parts[0].Copy();
-        ZlinkMsg nativePart = default;
-        cloned.MoveTo(ref nativePart);
+        var cloned = RequestReplySupport.CloneParts(parts);
+        var nativeParts = cloned.Length <= StackActorCreatePartLimit
+            ? stackalloc ZlinkMsg[StackActorCreatePartLimit]
+            : new ZlinkMsg[cloned.Length];
+        nativeParts = nativeParts.Slice(0, cloned.Length);
+        var built = 0;
         var submitted = false;
         try
         {
+            NativeMessageParts.MoveToNative(cloned, nativeParts,
+                nameof(parts), ref built);
             var nativeActor = ActorInterop.ToNative(actor);
-            var rc = NativeMethods.zlink_spot_node_send_to_actor(
-                Handle,
-                ref nativeActor,
-                ref nativePart,
-                ActorInterop.NoopReplyHandlerPtr,
-                IntPtr.Zero,
-                (int)flags,
-                0);
+            int rc;
+            unsafe
+            {
+                fixed (ZlinkMsg* nativePtr = nativeParts)
+                {
+                    rc = NativeMethods.zlink_spot_node_send_to_actor(
+                        Handle,
+                        ref nativeActor,
+                        nativePtr,
+                        (nuint)cloned.Length,
+                        ActorInterop.NoopReplyHandlerPtr,
+                        IntPtr.Zero,
+                        (int)flags,
+                        0);
+                }
+            }
             submitted = true;
             if (rc != 0)
                 throw ZlinkException.CreateSubmitException(NativeMethods.zlink_errno());
@@ -224,7 +234,58 @@ internal sealed partial class SpotNode
         finally
         {
             if (!submitted)
-                NativeMethods.zlink_msg_close(ref nativePart);
+                NativeMessageParts.RestoreManaged(cloned, nativeParts, 0, built);
+        }
+    }
+
+    public void ReplyActorNoBind(
+        ActorRecvInfo info,
+        IReadOnlyList<Message> parts,
+        RequestResult result = RequestResult.Ok)
+    {
+        RequestReplySupport.EnsureParts(parts, nameof(parts));
+        EnsureNotDisposed();
+        var cloned = RequestReplySupport.CloneParts(parts);
+        var nativeActor = ActorInterop.ToNative(info.Actor);
+        var nativeInfo = new ZlinkActorRecvInfo
+        {
+            Actor = nativeActor,
+            SourceNodeRid = info.SourceNodeRid.ToNative(),
+            SourceSessionRid = info.SourceSessionRid.ToNative(),
+            RequestId = info.RequestId,
+            Flags = info.Flags
+        };
+        var nativeParts = cloned.Length <= StackActorCreatePartLimit
+            ? stackalloc ZlinkMsg[StackActorCreatePartLimit]
+            : new ZlinkMsg[cloned.Length];
+        nativeParts = nativeParts.Slice(0, cloned.Length);
+        var built = 0;
+        var submitted = false;
+        try
+        {
+            NativeMessageParts.MoveToNative(cloned, nativeParts,
+                nameof(parts), ref built);
+            unsafe
+            {
+                fixed (ZlinkMsg* nativePtr = nativeParts)
+                {
+                    var rc = NativeMethods.zlink_spot_node_actor_reply_no_bind(
+                        Handle,
+                        ref nativeInfo,
+                        nativePtr,
+                        (nuint)cloned.Length,
+                        (int)result);
+                    submitted = true;
+                    if (rc != 0)
+                        throw ZlinkException.CreateSubmitException(
+                            NativeMethods.zlink_errno());
+                }
+            }
+        }
+        finally
+        {
+            if (!submitted)
+                NativeMessageParts.RestoreManaged(cloned, nativeParts, 0, built);
         }
     }
 

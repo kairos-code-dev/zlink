@@ -101,6 +101,8 @@ internal static class ZLinkDotNetBackendMappings
                 message.Info.Actor.ToBackend(),
                 message.Info.SourceNodeRid,
                 message.Info.SourceSessionRid,
+                message.Info.RequestId,
+                message.Info.Flags,
                 message.Parts[i],
                 i + 1 < parts.Length);
 

@@ -103,11 +103,13 @@ public sealed record ActorRoute(
 /// <param name="Actor">The actor the message was received for.</param>
 /// <param name="SourceNodeRid">The routing id of the source node.</param>
 /// <param name="SourceSessionRid">The routing id of the source session.</param>
+/// <param name="RequestId">The no-bind request id, or zero for non-request messages.</param>
 /// <param name="Flags">Implementation-defined receive flags.</param>
 public sealed record ActorRecvInfo(
     ActorRef Actor,
     RoutingId SourceNodeRid,
     RoutingId SourceSessionRid,
+    ulong RequestId,
     uint Flags);
 
 /// <summary>

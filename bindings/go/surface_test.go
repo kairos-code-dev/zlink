@@ -68,6 +68,26 @@ func TestSurfaceCanonicalBuilderSignatures(t *testing.T) {
 	assertReturn((*zlink.SpotNode)(nil), "RequestToActor", requestOp)
 }
 
+func TestSurfaceActorSendAcceptsMultipartBuilder(t *testing.T) {
+	ctx := newContext(t)
+	defer ctx.Close()
+	node, err := ctx.SpotNode()
+	if err != nil {
+		t.Fatalf("SpotNode() error = %v", err)
+	}
+	defer node.Close()
+	actor := zlink.ActorRef{
+		NodeRID: zlink.NewRoutingID([]byte("surface-node")),
+		ActorID: "surface-actor",
+	}
+	first := newMessage(t, "first")
+	defer first.Close()
+	second := newMessage(t, "second")
+	defer second.Close()
+
+	_ = node.SendToActor(actor).Message(first).Message(second).Flags(zlink.SendFlagsNone)
+}
+
 func TestSurfaceEntrySpotJoinRequiresRequest(t *testing.T) {
 	method := methodType((*zlink.SpotNode)(nil), "JoinActorEntrySpot")
 	if method == nil {

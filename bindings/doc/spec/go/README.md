@@ -460,7 +460,7 @@ Go exposes Actor and Spot route lookup results through exported value types.
 
 Go exposes `SpotNode.SendToActor(ActorRef)` and
 `SpotNode.RequestToActor(ActorRef)` for resolved Actor refs. The send operation
-consumes one message on successful submit and completes when the Actor owner
+consumes one or more message parts on successful submit and completes when the Actor owner
 mailbox accepts the handoff. The request operation consumes request parts on
 successful submit and delivers the Actor handler reply parts. Go must not
 reintroduce the removed Discovery route table or resolver APIs as compatibility

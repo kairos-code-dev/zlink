@@ -553,27 +553,25 @@ final class SpotNodeActorOperations {
         @Override
         public boolean submit() {
             ensureNotSubmitted();
-            if (parts.size() != 1)
-                throw new IllegalArgumentException(
-                    "sendToActor requires exactly one message");
+            if (parts.isEmpty())
+                throw new IllegalArgumentException("at least one message required");
             submitted = true;
             ActorRequestCallbacks.PendingToken token =
                 ActorRequestCallbacks.register((result, replyParts) -> {});
             try (Arena arena = Arena.ofConfined()) {
-                MemorySegment nativeMsg = arena.allocate(
-                    NativeLayouts.MESSAGE_LAYOUT);
-                InternalAccess.messageCopyTo(parts.get(0), nativeMsg);
+                MemorySegment nativeParts = parts.copyToNativeArray(arena);
                 int rc = Native.spotNodeSendToActor(
                     node.handle(),
                     ActorInterop.actorRefToNative(arena, actor),
-                    nativeMsg,
+                    nativeParts,
+                    parts.size(),
                     ActorRequestCallbacks.REPLY_CALLBACK,
                     MemorySegment.ofAddress(token.id()),
                     flags.value(),
                     0);
                 if (rc != 0) {
                     ActorRequestCallbacks.remove(token.id());
-                    NativeMessage.messageClose(nativeMsg);
+                    MessagePartsBuffer.closeNativeArray(nativeParts, parts.size());
                     if (flags == SendFlags.DONT_WAIT
                         && SubmitResult.fromValue(rc)
                             == SubmitResult.BACKPRESSURED) {

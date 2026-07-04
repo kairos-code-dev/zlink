@@ -38,8 +38,8 @@ static inline int zlink_spot_node_actor_leave_spot_go_ops(void *node, const zlin
     return zlink_spot_node_actor_leave_spot(node, actor, spot, (zlink_reply_handler_fn)goZlinkReplyTrampoline, (void *)userdata, timeout_ms);
 }
 
-static inline int zlink_spot_node_send_to_actor_go_ops(void *node, const zlink_actor_ref_t *actor, zlink_msg_t *message, zlink_send_flags_t flags, uint32_t timeout_ms, uintptr_t userdata) {
-    return zlink_spot_node_send_to_actor(node, actor, message, (zlink_reply_handler_fn)goZlinkReplyTrampoline, (void *)userdata, flags, timeout_ms);
+static inline int zlink_spot_node_send_to_actor_go_ops(void *node, const zlink_actor_ref_t *actor, zlink_msg_t *parts, size_t part_count, zlink_send_flags_t flags, uint32_t timeout_ms, uintptr_t userdata) {
+    return zlink_spot_node_send_to_actor(node, actor, parts, part_count, (zlink_reply_handler_fn)goZlinkReplyTrampoline, (void *)userdata, flags, timeout_ms);
 }
 
 static inline int zlink_spot_node_request_to_actor_go_ops(void *node, const zlink_actor_ref_t *actor, zlink_msg_t *parts, size_t part_count, zlink_send_flags_t flags, uint32_t timeout_ms, uintptr_t userdata) {
@@ -225,10 +225,9 @@ func (n *SpotNode) SendToActor(actor ActorRef) SendOp {
 		if err != nil {
 			return err
 		}
-		return submitSingleFromBuilderParts(parts, func(part *C.zlink_msg_t, partFlag C.zlink_part_flag_t) error {
-			_ = partFlag
+		return submitAggregateFromSendParts(parts, func(nativeParts *C.zlink_msg_t, partCount C.size_t) error {
 			return submitActorRequestNative(nil, func(stateHandle cgo.Handle) error {
-				return submitErrorFromResult(C.zlink_spot_node_send_to_actor_go_ops(handle, &rawActor, part, C.zlink_send_flags_t(flags), 0, C.uintptr_t(stateHandle)))
+				return submitErrorFromResult(C.zlink_spot_node_send_to_actor_go_ops(handle, &rawActor, nativeParts, partCount, C.zlink_send_flags_t(flags), 0, C.uintptr_t(stateHandle)))
 			}, func(RequestResult, []*Message) {})
 		})
 	})

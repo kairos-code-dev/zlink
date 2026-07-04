@@ -529,7 +529,7 @@ Rust exposes Actor and Spot route lookup results through public value types.
 
 Rust exposes `SpotNode::send_to_actor(&ActorRef)` and
 `SpotNode::request_to_actor(&ActorRef)` for resolved Actor refs. The send
-operation consumes one message on successful submit and completes when the
+operation consumes one or more message parts on successful submit and completes when the
 Actor owner mailbox accepts the handoff. The request operation consumes
 request parts on successful submit and delivers the Actor handler reply parts.
 Rust must not reintroduce the removed Discovery route table or resolver APIs

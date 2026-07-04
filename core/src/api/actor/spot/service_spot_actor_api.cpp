@@ -3628,14 +3628,15 @@ zlink_submit_result_t submit_actor_no_bind (void *node_,
 extern "C" zlink_submit_result_t
 zlink_spot_node_send_to_actor (void *node_,
                                const zlink_actor_ref_t *actor_ref_,
-                               zlink_msg_t *message_,
+                               zlink_msg_t *parts_,
+                               size_t part_count_,
                                zlink_reply_handler_fn completion_,
                                void *userdata_,
                                zlink_send_flags_t flags_,
                                uint32_t timeout_ms_)
 {
-    return submit_actor_no_bind (node_, actor_ref_, message_, 1, completion_, userdata_, flags_,
-                                 timeout_ms_, true);
+    return submit_actor_no_bind (node_, actor_ref_, parts_, part_count_, completion_, userdata_,
+                                 flags_, timeout_ms_, true);
 }
 
 extern "C" zlink_submit_result_t

@@ -11,6 +11,7 @@
 #include <mutex>
 #include <string>
 #include <string.h>
+#include <vector>
 
 namespace
 {
@@ -86,6 +87,7 @@ struct actor_recv_probe_t
     zlink_actor_ref_t actor;
     zlink_actor_recv_info_t info;
     std::string payload;
+    std::vector<std::string> payloads;
 };
 
 struct actor_dispatch_context_t
@@ -103,22 +105,31 @@ void on_actor_dispatch_with_node (void *spot_,
         || info_->event != ZLINK_SPOT_DISPATCH_EVENT_ACTOR_READABLE)
         return;
 
-    zlink_msg_t part;
-    zlink_msg_init (&part);
-    zlink_part_flag_t more = ZLINK_PART_FINAL;
-    zlink_actor_recv_info_t recv_info;
-    memset (&recv_info, 0, sizeof (recv_info));
-    const zlink_recv_result_t rc =
-      zlink_spot_node_actor_recv_part (ctx->node, &ctx->probe->actor, &recv_info, &part, &more,
-                                       ZLINK_RECV_FLAGS_DONTWAIT);
-    if (rc == ZLINK_RECV_OK) {
-        std::lock_guard<std::mutex> lock (ctx->probe->mutex);
-        ++ctx->probe->calls;
-        ctx->probe->info = recv_info;
-        ctx->probe->payload = part_to_string (&part);
-        ctx->probe->cv.notify_all ();
+    while (true) {
+        zlink_msg_t part;
+        zlink_msg_init (&part);
+        zlink_part_flag_t more = ZLINK_PART_FINAL;
+        zlink_actor_recv_info_t recv_info;
+        memset (&recv_info, 0, sizeof (recv_info));
+        const zlink_recv_result_t rc =
+          zlink_spot_node_actor_recv_part (ctx->node, &ctx->probe->actor, &recv_info, &part, &more,
+                                           ZLINK_RECV_FLAGS_DONTWAIT);
+        if (rc != ZLINK_RECV_OK) {
+            zlink_msg_close (&part);
+            break;
+        }
+        {
+            std::lock_guard<std::mutex> lock (ctx->probe->mutex);
+            ++ctx->probe->calls;
+            ctx->probe->info = recv_info;
+            ctx->probe->payload = part_to_string (&part);
+            ctx->probe->payloads.push_back (ctx->probe->payload);
+            ctx->probe->cv.notify_all ();
+        }
+        zlink_msg_close (&part);
+        if (more == ZLINK_PART_FINAL)
+            break;
     }
-    zlink_msg_close (&part);
     LIBZLINK_UNUSED (spot_);
 }
 
@@ -255,7 +266,7 @@ void test_no_bind_delivery_ack_and_mailbox_source_do_not_bind_session ()
     init_part (&msg, "no-bind");
     TEST_ASSERT_EQUAL_INT (ZLINK_SUBMIT_OK,
                            zlink_spot_node_send_to_actor (
-                             node, &actor, &msg, &on_reply, &ack, ZLINK_DONTWAIT, 1000));
+                             node, &actor, &msg, 1, &on_reply, &ack, ZLINK_DONTWAIT, 1000));
     TEST_ASSERT_TRUE (wait_callback_count (&ack, 1));
     TEST_ASSERT_EQUAL_INT (ZLINK_REQUEST_OK, ack.result);
     TEST_ASSERT_EQUAL_UINT (0, ack.part_count);
@@ -265,6 +276,24 @@ void test_no_bind_delivery_ack_and_mailbox_source_do_not_bind_session ()
     zlink_routing_id_t node_rid;
     memset (&node_rid, 0, sizeof (node_rid));
     TEST_ASSERT_SUCCESS_ERRNO (zlink_get_routing_id (node, &node_rid));
+    TEST_ASSERT_TRUE (same_rid (node_rid, recv_probe.info.source_node_rid));
+    TEST_ASSERT_TRUE (same_rid (node_rid, recv_probe.info.source_session_rid));
+
+    callback_probe_t multipart_ack;
+    zlink_msg_t multipart[2];
+    init_part (&multipart[0], "header");
+    init_part (&multipart[1], "payload");
+    TEST_ASSERT_EQUAL_INT (ZLINK_SUBMIT_OK,
+                           zlink_spot_node_send_to_actor (
+                             node, &actor, multipart, 2, &on_reply, &multipart_ack, ZLINK_DONTWAIT,
+                             1000));
+    TEST_ASSERT_TRUE (wait_callback_count (&multipart_ack, 1));
+    TEST_ASSERT_EQUAL_INT (ZLINK_REQUEST_OK, multipart_ack.result);
+    TEST_ASSERT_EQUAL_UINT (0, multipart_ack.part_count);
+
+    TEST_ASSERT_TRUE (wait_actor_recv_count (&recv_probe, 3));
+    TEST_ASSERT_EQUAL_STRING ("header", recv_probe.payloads[1].c_str ());
+    TEST_ASSERT_EQUAL_STRING ("payload", recv_probe.payloads[2].c_str ());
     TEST_ASSERT_TRUE (same_rid (node_rid, recv_probe.info.source_node_rid));
     TEST_ASSERT_TRUE (same_rid (node_rid, recv_probe.info.source_session_rid));
 
@@ -286,7 +315,7 @@ void test_actor_missing_and_stale_return_distinct_native_results ()
     init_part (&missing_msg, "missing");
     TEST_ASSERT_EQUAL_INT (ZLINK_SUBMIT_OK,
                            zlink_spot_node_send_to_actor (
-                             node, &missing_actor, &missing_msg, &on_reply, &missing,
+                             node, &missing_actor, &missing_msg, 1, &on_reply, &missing,
                              ZLINK_DONTWAIT, 1000));
     TEST_ASSERT_TRUE (wait_callback_count (&missing, 1));
     TEST_ASSERT_EQUAL_INT (ZLINK_REQUEST_NOT_FOUND, missing.result);
@@ -298,7 +327,7 @@ void test_actor_missing_and_stale_return_distinct_native_results ()
     init_part (&stale_msg, "stale");
     TEST_ASSERT_EQUAL_INT (ZLINK_SUBMIT_OK,
                            zlink_spot_node_send_to_actor (
-                             node, &stale_actor, &stale_msg, &on_reply, &stale, ZLINK_DONTWAIT,
+                             node, &stale_actor, &stale_msg, 1, &on_reply, &stale, ZLINK_DONTWAIT,
                              1000));
     TEST_ASSERT_TRUE (wait_callback_count (&stale, 1));
     TEST_ASSERT_EQUAL_INT (ZLINK_REQUEST_CONFLICT, stale.result);
@@ -320,7 +349,7 @@ void test_route_not_connected_fails_at_submit ()
     zlink_msg_t msg;
     init_part (&msg, "route-missing");
     const zlink_submit_result_t rc = zlink_spot_node_send_to_actor (
-      node, &remote, &msg, &on_reply, &callback, ZLINK_DONTWAIT, 100);
+      node, &remote, &msg, 1, &on_reply, &callback, ZLINK_DONTWAIT, 100);
     TEST_ASSERT_NOT_EQUAL (ZLINK_SUBMIT_OK, rc);
     TEST_ASSERT_FALSE (wait_callback_count (&callback, 1));
     zlink_msg_close (&msg);

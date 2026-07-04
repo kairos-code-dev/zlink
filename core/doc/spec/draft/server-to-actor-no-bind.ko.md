@@ -179,7 +179,8 @@ node에서 actor로 보내는 방향이 드러나는 이름을 사용한다. wir
 zlink_submit_result_t zlink_spot_node_send_to_actor(
   void *node,
   const zlink_actor_ref_t *actor,
-  zlink_msg_t *message,
+  zlink_msg_t *parts,
+  size_t part_count,
   zlink_reply_handler_fn completion,
   void *userdata,
   zlink_send_flags_t flags,
@@ -200,6 +201,7 @@ zlink_submit_result_t zlink_spot_node_request_to_actor(
 `request_no_bind`의 callback은 actor handler reply를 반환한다. 두 함수 모두 caller가 이미 resolve한
 `zlink_actor_ref_t`를 받는다. actor id 단독 lookup과 stale 재조회 정책은 framework location 계층의 책임으로
 남긴다.
+send도 actor mailbox에 envelope header와 payload를 함께 넣어야 하므로 request와 같은 multipart 인자를 받는다.
 
 새 flag로 기존 bound-session 함수를 확장하지 않는다. 같은 함수에서 source session rid가 실제 session인지
 caller endpoint인지 옵션으로 갈라지면 public C API가 얕아지고, binding과 framework가 session 의미를 매번

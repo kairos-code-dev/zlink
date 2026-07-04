@@ -18,7 +18,7 @@
 accept/egress 를 호출하거나 raw `DEALER`·`ROUTER`·`PUB` socket 을 `SpotNode` 에 붙일 필요가 없다.
 
 단, 자동으로 깔리는 것은 transport(소켓 배선)까지다. "이 spot 이 지금 어느 노드에 있는가"는
-transport 가 아니라 **주소**의 문제다. 호출자가 `IZLinkSpotLocationResolver` 로 spot rid 를
+transport 가 아니라 **주소**의 문제다. 호출자가 `IZLinkSpotAddressResolver` 로 spot rid 를
 주소(`ZLinkSpotAddress` — 소유 노드 rid + spot rid)로 한 번 바꿔 보관하고, 보낼 때는 그 주소를
 그대로 쓴다. 보내는 순간에는 어떤 위치 조회도 일어나지 않으므로, spot 이 여러 노드에 흩어져
 있어도 주소만 맞으면 도달한다. 주소가 낡으면(spot 이동·소멸) 전송이 명확한 오류로 실패하고
@@ -849,7 +849,7 @@ public sealed class GetStageStateHandler
 
 spot **안**(spot↔spot)에서는 `RequestToSpot(주소, …)`. 같은 mesh 라 배선이 자동이다.
 
-대상 spot 의 **주소는 한 번만 조회해서 들고 있는다.** `IZLinkSpotLocationResolver` 로
+대상 spot 의 **주소는 한 번만 조회해서 들고 있는다.** `IZLinkSpotAddressResolver` 로
 spot rid 를 주소(`ZLinkSpotAddress` — 소유 노드 rid + spot rid)로 바꾸고, 그 주소를
 상태에 보관했다가 보낼 때마다 재사용한다. 보내는 순간에는 어떤 조회도 일어나지 않는다.
 주소가 낡으면(spot 이 이동·소멸) 전송이 명확한 오류로 실패하고, 그때 다시 resolve 한다
@@ -873,7 +873,7 @@ spot **밖**(외부 코드)에서는 `IZLinkRouteClient` 로 **RouteMesh channel
 // 일반 코드(spot 아님) — route client 로 spot 주소에 request
 public sealed class StageQueryAdapter(
     IZLinkRouteClient routes,
-    IZLinkSpotLocationResolver spots)
+    IZLinkSpotAddressResolver spots)
 {
     private ZLinkSpotAddress? _stage;   // 한 번 resolve 해서 보관
 

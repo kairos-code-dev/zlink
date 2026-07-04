@@ -52,8 +52,8 @@ store에 도달하고 owner lease join으로 유효성을 판정한다.
 
 | resolver | 입력 | 반환 |
 |----------|------|------|
-| `IZLinkSpotLocationResolver.ResolveSpotAddressAsync(spotRid)` | spot rid (이 runtime이 참여한 spot mesh들에서 검색) | `ZLinkSpotAddress?` |
-| `IZLinkActorLocationResolver.ResolveActorSpotAddressAsync(actorType, actorId)` | 전역 actor key | actor가 위치한 spot의 `ZLinkSpotAddress?` (ENTRY_SPOT이면 entry spot 주소) |
+| `IZLinkSpotAddressResolver.ResolveSpotAddressAsync(spotRid)` | spot rid (이 runtime이 참여한 spot mesh들에서 검색) | `ZLinkSpotAddress?` |
+| `IZLinkActorAddressResolver.ResolveActorSpotAddressAsync(actorId)` | 전역 actor key | actor가 위치한 spot의 `ZLinkSpotAddress?` (ENTRY_SPOT이면 entry spot 주소) |
 
 - actor 1:1 spot topology에서는 호출자가 아는 것이 transient한 spot rid가 아니라 actor
   id이므로 `ResolveActorSpotAddressAsync`가 1차 조회 표면이다. spot rid 조회는 spot rid를
@@ -112,7 +112,7 @@ owner 이동, node 장애, 정상 lifecycle의 spot destroy 후 보유 주소는
 
 ### 4.1 request 실패 분류 — fail-fast
 
-오류 종류는 전부 기존 `ZLinkFrameworkErrorKind`를 쓴다. 새 종류를 추가하지 않는다.
+이 spot request 분류는 기존 `ZLinkFrameworkErrorKind`만 쓴다(이 표를 위한 새 종류를 추가하지 않는다). actor 대상 표면의 실패 분류(`ActorLocationStale`·`ActorCreateRejected` 신설 포함)는 POSD 재설계 정본(framework/doc/plan/framework-public-contract-posd-redesign.ko.md L12~L13)이 별도로 정의한다.
 
 | 상태 | 판정 위치 | 오류 | 호출자의 다음 행동 |
 |------|-----------|------|--------------------|

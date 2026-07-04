@@ -52,6 +52,16 @@ prefix `P`, kind ∈ {`peer`, `spot`, `actor`, `route`} 기준. row key는 key �
 row key 예 (peer): `AutoConnectType canonical 문자열 + MeshName + Role canonical 문자열 +
 identity(NodeRid hex, 없으면 endpoint)`를 length-prefix로 연결한 값.
 
+**POSD 재설계 반영(2026-07-04, cross-language row/key 형식 변경)**:
+
+- actor row key는 **actor id 단독**이다 — actor id 전역 unique 계약에 따라 `ActorType`은 key
+  구성에서 제거됐다(type은 row의 nullable 진단 필드로만 남는다).
+- row `json`의 actor ref는 문자열 포맷이 아니라 **typed 객체 `{ nodeRid, actorId, generation }`**
+  로 직렬화한다. actor ref 문자열 조립/파싱은 어떤 언어 extension에도 존재해서는 안 된다.
+- actor row의 중복 `SpotKind` 필드는 제거됐다 — actor가 사는 spot 종류는 `LocationKind` 단독이다.
+- 이 세 가지는 4언어 extension이 동일하게 따라야 하는 저장 형식 변경이며, 언어별 적용 현황은
+  `framework/doc/plan/framework-public-contract-posd-redesign-{node,java,cpp}.ko.md`가 추적한다.
+
 ## 3. 원자성 — write는 전부 Lua script
 
 모든 write 결정(NewClaim/Renew/Takeover 판정, generation 발급, owner-guard remove, lease
@@ -89,8 +99,7 @@ polling tick은 stamp만 먼저 읽고(GET 1회) 값이 바뀌었을 때만 목�
 
 ## 6. 오류 변환과 connection lifecycle
 
-- read API에서 Redis 연결/명령 실패는 infrastructure error로 던진다. write API는
-  `StoreUnavailable`을 반환한다(계약 §3.1).
+- read API와 write API에서 Redis 연결/명령 실패는 infrastructure error로 던진다(계약 §3.1).
 - Redis client connection은 extension 인스턴스가 소유한다. 인스턴스는 `IAsyncDisposable`이며
   framework host가 dispose lifecycle을 관리한다. 재연결 정책은 언어별 Redis client의 표준
   동작을 따르고, 장애 구간의 의미는 framework의 fail-static 규칙이 담당한다.

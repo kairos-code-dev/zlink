@@ -14,6 +14,14 @@
 > 후속 결정이다. location store/resolver 계약의 row 모델, owner lease, 자동연결은 그대로 두고,
 > **spot 메시징 표면과 resolver 조회 표면, 캐시 정책만** 바꾼다. 두 문서가 충돌하면 이 문서가
 > 우선하며, 구현 완료 후 location resolver/store 초안의 해당 절을 이 문서 기준으로 고친다.
+>
+> **POSD 재설계 변경 후보(2026-07-04, 적용 대기)**: 이 문서의 메시징 표면 위에 actor 대상
+> 사용자 표면(actor client `SendToActor`/`RequestToActor`, actor directory)이 후보로 얹힌다 —
+> 정본은 `framework/doc/plan/framework-public-contract-posd-redesign.ko.md`(L12~L14). actor 대상
+> 전송의 실패 분류는 이 문서의 fail-fast 분류를 확장한다(`ActorLocationStale`·`ActorCreateRejected`
+> 신설, id-type 충돌은 `ActorTypeMismatch` 재사용). envelope는 actor-forwarding framing 재사용으로
+> 확정됐고(P0 조사-3), 서버 송신이 수신측 bound-session route 갱신을 유발하지 않는 framing 변형이
+> 잔여 설계 조건이다.
 
 ## 1. 결정 요약
 
@@ -117,38 +125,33 @@ resolver는 항상 store를 읽고, owner lease join으로 유효성을 판정�
 
 ```csharp
 // 변경 후 계약 (dotnet 기준)
-public interface IZLinkSpotLocationResolver
+public interface IZLinkSpotAddressResolver
 {
-    /// <summary>spot mesh 안에서 spot rid로 spot full 주소를 조회한다.
+    /// <summary>spot rid로 spot full 주소를 조회한다.
     /// 없거나 owner lease가 만료됐으면 null.</summary>
     ValueTask<ZLinkSpotAddress?> ResolveSpotAddressAsync(
-        string meshName,
         RoutingId spotRid,
         CancellationToken ct = default);
 }
 
-public interface IZLinkActorLocationResolver
+public interface IZLinkActorAddressResolver
 {
     /// <summary>actor가 위치한 spot의 full 주소를 조회한다.
     /// ENTRY_SPOT이면 entry spot 주소, USER_SPOT이면 그 user spot 주소. 없으면 null.</summary>
     ValueTask<ZLinkSpotAddress?> ResolveActorSpotAddressAsync(
-        string actorType,
         string actorId,
         CancellationToken ct = default);
 }
 ```
 
-- spot 조회 입력은 location key 모델(`ZLinkSpotLocationKey = MeshName + SpotRid`)과 같다.
-  spot rid는 mesh 안에서만 유일하므로 mesh 없는 rid 단독 조회는 모호하다 — 기존 내부
-  resolver(`ZLinkSpotLocationRidResolver`)가 모든 mesh를 순회하던 것도 이 입력 누락의
-  보정이었고, mesh를 명시하면 그 순회가 사라진다. 조회 입력의 mesh는 그대로 반환 주소의
-  `MeshName`이 된다.
-- actor 조회는 actor key(`ActorType + ActorId`)가 전역이므로 mesh 입력이 없다. 대신 actor
+- spot 조회 입력은 spot rid다. resolver가 참여 중인 spot mesh의 live row를 조회해 메시징 주소를
+  반환한다.
+- actor 조회는 actor id가 전역 key이므로 mesh 입력이 없다. 대신 actor
   location row가 현재 위치의 spot mesh name을 lifecycle 갱신마다 함께 기록해(생성 시 entry
   spot의 mesh, join 시 user spot의 mesh), resolver가 mesh를 포함한 완결 주소를 반환한다.
   호출자에게 topology 지식을 요구하지 않는다.
-- `IZLinkPeerLocationResolver.ListPeersAsync`, `IZLinkRouteLocationResolver.ResolveRouteAsync`도
-  freshness 파라미터만 제거하고 유지한다.
+- `IZLinkPeerLocationResolver.ListLivePeersAsync`도 freshness 파라미터 없이 live peer 목록을
+  반환한다. route 단건 조회는 public resolver가 아니라 store SPI/운영 조회 경로에서 다룬다.
 - actor 하나당 spot 하나를 할당하는 1:1 topology에서는 호출자가 아는 것이 transient한 spot
   rid가 아니라 actor id이므로 `ResolveActorSpotAddressAsync`가 1차 조회 표면이 된다. spot rid
   조회는 spot rid를 도메인 key에서 파생하는 topology(player owner spot 등)에서 쓴다.
@@ -229,7 +232,8 @@ owner 이동, node 장애, 그리고 정상 lifecycle의 spot destroy(actor 1:1 
 
 로컬에서 이미 판정할 수 있는 상태를 submitter가 재시도로 흡수해 generic timeout으로 뭉개면,
 호출자는 재resolve 시점을 알 수 없어 이 설계 전체가 무너진다. request 실패는 판정 즉시 구분
-가능한 오류로 반환한다. 오류 종류는 전부 기존 `ZLinkFrameworkErrorKind`를 쓴다.
+가능한 오류로 반환한다. 이 spot request 분류는 기존 `ZLinkFrameworkErrorKind`만 쓴다(actor 대상
+표면의 신설 kind는 POSD 재설계 정본 L12~L13이 별도 정의).
 
 | 상태 | 판정 위치 | 오류 | 호출자의 다음 행동 |
 |------|-----------|------|--------------------|

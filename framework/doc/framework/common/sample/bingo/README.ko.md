@@ -565,7 +565,9 @@ EnsurePlayerActorReq {
   PreferredActorNodeRid: string
 }
 
-ActorRefSnapshot {
+// protobuf 경계 전용 wire 메시지 — framework의 ZLinkActorRefSnapshot과의 변환은
+// generated message 경계 한 곳에서만 수행한다.
+ActorRefWire {
   NodeRid: bytes
   ActorId: string
   Generation: uint64
@@ -574,7 +576,7 @@ ActorRefSnapshot {
 EnsurePlayerActorRes {
   ActorId: string
   ActorType: string
-  Actor: ActorRefSnapshot
+  Actor: ActorRefWire
 }
 ```
 

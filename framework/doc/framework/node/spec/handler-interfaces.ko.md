@@ -1864,27 +1864,21 @@ export interface IZLinkLocationStore extends
   IZLinkOwnerLeaseStore {}
 
 export interface IZLinkPeerLocationResolver {
-  listPeers(filter: ZLinkPeerLocationFilter, signal?: AbortSignal): Promise<readonly ZLinkPeerLocation[]>;
+  listLivePeers(filter: ZLinkPeerLocationFilter, signal?: AbortSignal): Promise<readonly ZLinkPeerLocation[]>;
 }
 
-export interface IZLinkSpotLocationResolver {
+export interface IZLinkSpotAddressResolver {
   resolveSpotAddress(
-    meshName: string,
     spotRid: RoutingId,
     signal?: AbortSignal
   ): Promise<ZLinkSpotAddress | undefined>;
 }
 
-export interface IZLinkActorLocationResolver {
+export interface IZLinkActorAddressResolver {
   resolveActorSpotAddress(
-    actorType: string,
     actorId: string,
     signal?: AbortSignal
   ): Promise<ZLinkSpotAddress | undefined>;
-}
-
-export interface IZLinkRouteLocationResolver {
-  resolveRoute(key: ZLinkRouteLocationKey, signal?: AbortSignal): Promise<ZLinkRouteLocation | undefined>;
 }
 ```
 

@@ -375,7 +375,7 @@ public interface IZLinkSpotHandlerRegistry : IZLinkActorHandlerRegistry
 
 public interface IZLinkSpotOutbound
 {
-    // 주소(ZLinkSpotAddress)는 IZLinkSpotLocationResolver 로 한 번 조회해 보관한다.
+    // 주소(ZLinkSpotAddress)는 IZLinkSpotAddressResolver 로 한 번 조회해 보관한다.
     // 전송 시점에는 어떤 위치 조회도 일어나지 않는다(공통 spot 주소 메시징 스펙).
     IZLinkSendCall SendToSpot<TMessage>(
         ZLinkSpotAddress address,
@@ -3264,25 +3264,24 @@ public interface IZLinkLocationRuntimeQuery
     ValueTask<ZLinkLocationRuntimeStatus> GetStatusAsync(
         CancellationToken cancellationToken = default);
 
-    ValueTask<IReadOnlyList<ZLinkPeerLocation>> ListPeersAsync(
+    ValueTask<IReadOnlyList<ZLinkPeerLocation>> ListPeerLocationsAsync(
         ZLinkPeerLocationFilter filter,
         CancellationToken cancellationToken = default);
 
-    // ListSpotsAsync / ListActorsAsync / ListRoutesAsync (paged),
+    // ListSpotLocationsAsync / ListActorLocationsAsync / ListRouteLocationsAsync (paged),
     // ListTopologyAsync, ListServiceSummariesAsync — aspnet-core-location 참조
 }
 
-public interface IZLinkSpotLocationResolver
+public interface IZLinkSpotAddressResolver
 {
     ValueTask<ZLinkSpotAddress?> ResolveSpotAddressAsync(
         RoutingId spotRid,
         CancellationToken cancellationToken = default);
 }
 
-public interface IZLinkActorLocationResolver
+public interface IZLinkActorAddressResolver
 {
     ValueTask<ZLinkSpotAddress?> ResolveActorSpotAddressAsync(
-        string actorType,
         string actorId,
         CancellationToken cancellationToken = default);
 }

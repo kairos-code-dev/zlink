@@ -16,6 +16,10 @@
 > [cpp](framework-location-resolver-store-porting-cpp.ko.md).
 > 전체 순서는 **node → java(+kotlin) → cpp**이며 java는 node 다음이다.
 
+
+> **후속(2026-07-04)**: 이 문서의 이식 완료분 위에 POSD 재설계 2차 wave가 예정되어 있다.
+> 변경 목록 정본은 `framework/doc/plan/framework-public-contract-posd-redesign.ko.md`,
+> 이 언어의 진행 문서는 `framework/doc/plan/framework-public-contract-posd-redesign-java.ko.md`다.
 경로: `framework/languages/java/` (kotlin은 그 아래 `zlink-framework-kotlin` 모듈)
 
 ## 1. 상태 보드
@@ -36,13 +40,13 @@
 | P8. 레거시 registry/discovery 제거 + 회귀 가드 (원본 §20.1) | ✅ | 2026-07-03 |
 | P9. E2E 전환 — `e2e/` (원본 §22) | ✅ | 2026-07-04 |
 | P10. sample 전환 — TicTacToe·Bingo만 (원본 §22) | ✅ | 2026-07-04 |
-| P11. POSD/DDD 리팩토링 루프 (원본 §21) | ⬜ | |
+| P11. POSD/DDD 리팩토링 루프 (원본 §21) | ✅ | 2026-07-04 |
 | K1. Kotlin suspend 어댑터 | ✅ | 2026-07-03 |
 | K2. Kotlin Flow 어댑터 (watch/pagination) | ✅ | 2026-07-03 |
 | K3. Kotlin 사용자 store 구현용 suspend 브리지 | ✅ | 2026-07-03 |
 | K4. `e2e-kotlin/` 대칭 시나리오 전환 | ✅ | 2026-07-04 |
 | K5. kotlin sample 전환 — TicTacToe·Bingo만 | ✅ | 2026-07-04 |
-| G. 완료 게이트 — codex 리뷰 통과 (누락 0건·리팩토링 요소 0건, 7절) | ⬜ | |
+| G. 완료 게이트 — codex 리뷰 통과 (누락 0건·리팩토링 요소 0건, 7절) | ✅ | 2026-07-04 |
 
 kotlin(K1~K5)은 별도 런타임 구현이 아니라 java API 확정 뒤에 붙이는 얇은 어댑터다. P1~P11은
 java core에서 한 번만 구현하며 kotlin이 그대로 공유한다.
@@ -167,8 +171,8 @@ java core에서 한 번만 구현하며 kotlin이 그대로 공유한다.
       registry host 제거, store 등록, actor 재연결 흐름, run script, README.
       **범위는 `TicTacToe`, `Bingo` 두 sample까지만이다** — 그 외 sample은 이번 포팅 범위에서
       제외한다
-- [ ] P11. POSD/DDD 리팩토링 루프
-- [ ] 원본 §24 확인표 점검 (§24.3 cache 항목은 spot-address draft 기준 "캐시 없음"으로 판정)
+- [x] P11. POSD/DDD 리팩토링 루프
+- [x] 원본 §24 확인표 점검 (§24.3 cache 항목은 spot-address draft 기준 "캐시 없음"으로 판정)
 - [x] cross-language 검증: 같은 Redis instance에 dotnet과 java가 함께 붙어 서로의
       peer/spot/actor/route row를 읽는 검증 (key codec 바이트 호환의 실측 근거)
 
@@ -289,6 +293,8 @@ P11(POSD/DDD 리팩토링 루프)의 완료 판정도 이 게이트의 리뷰 2 
 | 2026-07-04 | K4 `SpotService` 전환: Kotlin SpotService의 registry role과 `useDiscovery()`/registry endpoint option plumbing을 제거하고 Play/Gateway/MultiNode/Session role이 공식 Redis location store extension을 같은 endpoint와 실행별 key prefix로 공유하게 했다. actor-session 전용 Session topology는 Play가 소유한 `room-a`/`room-b`와 충돌하지 않도록 `actor-room-a`/`actor-room-b`를 사용한다. `SM-C4`는 Java SpotService와 같은 수준으로 Gateway `/spot/publish` 응답과 gateway evidence를 검증한다. 검증: legacy registry code grep no-hit, `../../gradlew --project-cache-dir /tmp/zlink-kotlin-spot-gradle-cache --no-daemon --no-parallel --max-workers=1 :Client:installDist :Server:Play:installDist :Server:Gateway:installDist :Server:MultiNode:installDist :Server:Session:installDist --console=plain` 통과, `timeout 420s ./run_e2e.sh SM-A1` 통과(`logs/20260704-043723-45896`), `timeout 480s ./run_e2e.sh SM-B1` 통과(`logs/20260704-044437-55250`, actor-session 묶음 passed), `timeout 420s ./run_e2e.sh SM-C4` 통과(`logs/20260704-045245-65740`), `timeout 900s ./run_e2e.sh` 통과(`logs/20260704-045322-67016`, 모든 구현 mode passed, `spot-service kotlin e2e result=passed`) |
 | 2026-07-04 | K4 `DiscoveryRegistryHa` 일부 전환: Kotlin Provider/Consumer role에서 `useDiscovery()` 의존을 제거하고 공식 Java Redis location store extension을 Spring bean으로 등록했다. Consumer는 public `monitoringLocationRuntimeQuery()` 기반 `/locations/status`와 `/locations/peers`를 노출한다. runner는 `SF-A1` 경로에서 전용 Redis container와 Provider/Consumer/Client만 실행한다. 검증: `../../gradlew --project-cache-dir /tmp/zlink-kotlin-dr-gradle-cache --no-daemon --no-parallel --max-workers=1 :Client:installDist :Server:Provider:installDist :Server:Consumer:installDist --console=plain` 통과, `timeout 420s ./run_e2e.sh SF-A1` 통과(`logs/20260704-050521-80178`, `scenario SF-A1 passed providers=[api-a]`, `discovery-registry-ha kotlin e2e result=passed scenario=SF-A1`). K4 DiscoveryRegistryHa 전체 완료 아님 — 남은 `SF-*` scenario와 legacy `DR-*`/Registry/Probe/Embedded cleanup은 계속 전환 대상 |
 | 2026-07-04 | K4 `DiscoveryRegistryHa` 완료: Kotlin DiscoveryRegistryHa를 Config 6 StoreFailure 기준으로 전환했다. legacy `DR-*` scenario source와 `Server/Registry`/`Server/Probe`/`Server/Embedded` Gradle include/source를 제거하고, 실행 그래프는 `Shared`/`Client`/`Server:Provider`/`Server:Consumer`만 남겼다. Provider/Consumer는 공식 Java Redis location store extension을 공유하고, Consumer는 public `monitoringLocationRuntimeQuery()` 기반 status/peer endpoint를 노출한다. `SF-A2` polling-only 검증을 위해 watch interface를 노출하지 않는 store wrapper를 추가했다. 검증: 비문서 source grep에서 `useDiscovery(`, `registry-routers`, `Server:Registry`, `ZLinkRegistry`, `DR-` no-hit, `../../gradlew --project-cache-dir /tmp/zlink-kotlin-dr-gradle-cache --no-daemon --no-parallel --max-workers=1 :Client:installDist :Server:Provider:installDist :Server:Consumer:installDist --console=plain` 통과, `timeout 420s ./run_e2e.sh SF-A1` 통과(`logs/20260704-051543-91770`), `timeout 1200s ./run_e2e.sh all` 통과(`logs/20260704-051605-92888`, `SF-A1`/`SF-A2`/`SF-B1`/`SF-B2`/`SF-C1`/`SF-C2`/`SF-D1`/`SF-D2`/`SF-D3` passed, `discovery-registry-ha kotlin e2e result=passed`) |
+| 2026-07-04 | P11/G 리뷰 게이트 1차: 원본 draft §24 확인표와 Java/Kotlin public/runtime/Redis extension 표면을 대조했다. Redis extension은 Jedis가 아니라 Lettuce async command(`lettuce-core`, `RedisClient.connectAsync`, `RedisAsyncCommands`)를 사용하고, Kotlin suspend 표면은 `CompletionStage.await()`로 비차단 대기한다. 리뷰 중 사용자 구현 store 브리지의 기본 dispatcher가 `Dispatchers.Default`인 점을 발견해 `ZLinkSuspendingLocationStore` 기본 scope/dispatcher를 `Dispatchers.IO`로 바꿨다. 검증: `./gradlew --no-daemon --no-parallel --max-workers=1 :zlink-framework-kotlin:test --tests systems.zlink.framework.kotlin.KotlinLocationExtensionsTest --console=plain` 통과 |
+| 2026-07-04 | P11/G 리뷰 게이트 완료: 적용 완결성 리뷰와 POSD/DDD 리팩토링 리뷰를 재수행했고 남은 누락 0건, 남은 리팩토링 요소 0건으로 판정했다. `rg`로 location 핵심 소스에서 Jedis/Default dispatcher/blocking Redis client no-hit, Redis extension의 Lettuce async 경로, Kotlin IO 격리, legacy registry/discovery runtime 의존 제거를 확인했다. 최종 Gradle 검증: `./gradlew --no-daemon --no-parallel --max-workers=1 test contractTest fakeBackendTest integrationTest sampleTest --console=plain` 통과. 실제 Redis cross-language 재검증: 전용 Docker Redis `127.0.0.1:26379`, prefix `codex-20260704074650-90126`에서 Java write Gradle 통과, .NET `RedisCrossLanguageTests.Dotnet_Reads_Java_Rows`/`Dotnet_Writes_Rows_For_Java_To_Read` 2 passed 0 skipped, Java read Gradle 통과. E2E 재검증은 IO 격리 패치 직전 runtime 수정 상태에서 완료했고, IO 격리 패치는 focused Kotlin test와 최종 Gradle 검증으로 확인했다. E2E 증거: Java `DiscoveryRegistryHa`(`logs/20260704-071535-10499`), `RegistrationCodec`(`logs/20260704-071741-17579`), `RegistryMessaging` 단독 재실행(`logs/20260704-071859-20712`), `PubSub`(`logs/20260704-072012-24614`), `SpotService`(`logs/20260704-072054-26374`), `RuntimeMonitoring`(`logs/20260704-072203-28757`), `ResilienceLifecycle`(`logs/20260704-072225-29818`), `YieldDispatch`(`logs/20260704-072346-33405`) 통과. Kotlin `DiscoveryRegistryHa`(`logs/20260704-072459-38940`), `RegistrationCodec`(`logs/20260704-072715-46390`), `RegistryMessaging`(`logs/20260704-072745-47891` 및 scenario별 sub-run), `PubSub`(`logs/20260704-073410-68303`), `SpotService`(`logs/20260704-073503-70477`), `RuntimeMonitoring`(`logs/20260704-073717-75209`), `ResilienceLifecycle`(`logs/20260704-073747-77069`), `YieldDispatch`(`logs/20260704-073914-80800`) 통과. Java `RegistryMessaging` 전체 sweep 중 1회 native abort(`logs/20260704-071758-18461`)가 있었으나 같은 config 단독 재실행은 통과했다 |
 
 > 갱신 규칙: 단계 착수/완료 때 1절 상태 보드와 4·5절 체크리스트를 갱신하고, 이 표에 한 줄
 > 기록을 남긴다. 계약이 바뀌면 이 문서가 아니라 원본 draft를 고치고 여기서는 참조만 한다.

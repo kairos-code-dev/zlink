@@ -12,6 +12,39 @@
 > 결정했다(spot 메시징이 spot full 주소를 받는 모델로 바뀌면서 캐시의 존재 이유가 사라짐).
 > 어느 절에서든 두 문서가 충돌하면 그 문서가 우선한다.
 
+## 0. POSD 재설계 변경 후보 (2026-07-04, 적용 대기)
+
+이 문서가 정의한 계약 위에 **POSD 재설계 2차 wave**가 확정 대기 상태로 얹혀 있다. 변경 목록의
+정본은 `framework/doc/plan/framework-public-contract-posd-redesign.ko.md`(L1~L20 + A1~D3, 값
+테이블 포함)이고, 상세 설계는 같은 디렉터리의 dotnet plan 2개다. **이 절의 변경이 이 문서 본문과
+충돌하면 재설계 문서가 우선한다.** 본문 서술·예제의 전면 갱신은 dotnet 레퍼런스 구현 완료 후
+(재설계 P6)에 수행한다.
+
+이 문서 본문에 영향을 주는 확정 후보 요지 (ID는 재설계 문서 기준):
+
+- **L1** kind별 remove-by-owner 4개 → 통합 store의 `RemoveAllByOwner` 하나(원자적).
+- **L2** write status에서 store-unavailable 삭제 — 경합=상태값, 인프라 장애=예외.
+- **L3** lease renew/remove 반환형 교정(lease renewal 모델 / bool).
+- **L4·L5** actor row 재정의(typed nullable actor ref, spot-kind 중복 필드 삭제, actor type은
+  진단 정보) + **actor key = actor id 단독**(전역 unique 계약, type 불일치는 기존
+  `ActorTypeMismatch`로 거부). Redis row/key 형식에 cross-language 영향 — key schema 정본은 이
+  문서의 store 형식 절에서 함께 갱신한다.
+- **L6·L7** resolver 표면 재편(live peer / spot address / actor address 3종, route resolver
+  내부화, actor-ref resolver 비신설) + 운영 조회 `List*Locations` 개명. **liveness 확정: List
+  계열은 live row 반환**(P0 조사-2 — 현행 구현·e2e 의존), stale 관측은 topology(Lost)·
+  summary(Stopped).
+- **L8·L9** watch typed key union + canonical 문자열 helper 내부화(단일 매핑 테이블).
+- **L10** enum 명시 값 규약 — location role은 uint16 폭·값 유지(값 1은 제거된 gateway 예약 결번,
+  숫자가 core wire·Redis row JSON에 직렬화됨 — P0 조사-1).
+- **L12~L17** 사용자 편의 표면 신설 후보: actor directory(find/ensure + 실패 계약), actor
+  client(send/request-to-actor, await 단독 터미널, 실패 분류 — `ActorLocationStale`·
+  `ActorCreateRejected` 신설, id-type 충돌은 `ActorTypeMismatch` 재사용), 기존 session actors에
+  bind-or-get 추가, readiness(확인 불가=false), actor ref snapshot. **envelope는 actor-forwarding
+  framing 재사용 확정**(P0 조사-3) — 단 서버 송신이 수신측 bound-session route 갱신을 유발하지
+  않는 변형이 필요하다(잔여 설계 조건, spot-address 문서와 함께 확정).
+- **L18~L20** 표면 금지 규칙(샘플·업무 코드의 store SPI 직접 사용 금지 등), internal 분류,
+  peer key identity·route payload 문구 계약.
+
 ## 1. 목적
 
 framework는 분산 환경에서 아래 세 가지 위치 문제를 해결해야 한다.
@@ -136,7 +169,7 @@ cache 설명은 어떤 문제가 있었는지 파악하기 위한 참고 자료�
 | auto-connect role matching | auto-connect type별 허용 role과 outbound 방향을 정한다. | 14절의 role 허용 정책과 target 매칭 정책으로 그대로 옮긴다. |
 | pairwise initiator | route mesh, dealer mesh, spot mesh에서 routing id와 endpoint total order로 한쪽만 dial한다. | framework reconcile loop가 같은 비교 규칙으로 desired target set을 만든다. |
 | peer weight/value | member peer entry가 weight와 `int64` value를 노출한다. | peer location row에 `Weight`, `Value`를 포함하고, member peer 조회와 admission 정책이 이 값을 사용한다. |
-| member peers | Discovery cache 또는 Registry에서 현재 peer 목록을 조회한다. | resolver의 `ListPeersAsync(filter)`와 framework query API로 제공한다. |
+| member peers | Discovery cache 또는 Registry에서 현재 peer 목록을 조회한다. | resolver의 `ListLivePeersAsync(filter)`와 framework query API로 제공한다. |
 | topology query | service kind, role, state, channel, routing id 등으로 topology snapshot을 조회한다. | peer/spot/actor list query와 별도 `LocationTopology` 조회 모델로 제공한다. store 구현체는 filter 조회를 제공하고, framework가 state와 stale 판정을 해석한다. |
 | service summary | channel별 total/ready/error/stopped 집계를 제공한다. | framework runtime이 location row와 connection state를 집계해 운영 조회 API로 제공한다. store가 집계를 결정하지 않는다. |
 | status | registry id, state, entry count, peer registry count, last error 등을 제공한다. | registry process가 없어지므로 같은 필드를 보존하지 않는다. 대신 location runtime status로 store health, watch/poll 상태, last error, last refresh 시각을 제공한다. |
@@ -348,19 +381,19 @@ spot 생성/start 시 framework가 spot location을 update한다. spot stop/dest
 
 ### 6.3 actor location
 
-actor location은 `actor type + actor id`로 현재 actor 위치를 찾기 위한 값이다.
+actor location은 `actor id`로 현재 actor 위치를 찾기 위한 값이다.
 
 | 필드 | 의미 |
 |------|------|
 | `ActorType` | 선택적 actor type |
 | `ActorId` | application actor id |
-| `ActorRef` | framework가 actor instance를 다시 찾을 때 쓰는 opaque actor reference |
+| `ActorRef` | framework가 actor instance를 다시 찾을 때 쓰는 typed opaque actor reference. publish 전에는 null일 수 있다 |
 | `NodeRid` | actor가 존재하는 node routing id |
-| `Generation` | actor 재생성 또는 이동을 구분하는 fencing token |
 | `LocationKind` | `ENTRY_SPOT` 또는 `USER_SPOT` |
+| `SpotMeshName` | actor가 위치한 spot mesh 이름 |
 | `SpotRid` | user spot actor이면 필수. entry spot actor이면 비울 수 있다 |
-| `SpotKind` | spot rid가 있을 때 spot 종류. 현재는 `LocationKind`와 값이 같지만 spot kind 확장에 대비해 둔다 |
 | `OwnerId` | framework runtime instance id |
+| `Generation` | actor 재생성 또는 이동을 구분하는 fencing token |
 | `UpdatedAt` | store가 기록한 마지막 갱신 시각. 사용자 node의 wall clock 값이 아니다 |
 
 actor 생성 시 framework가 actor location을 update한다. actor가 user spot에 join/leave하면 location을
@@ -389,7 +422,7 @@ key는 framework가 만든다. store 구현체는 전달받은 key를 그대로 
 |-----|------|
 | peer key | `AutoConnectType + MeshName + Role + NodeRid`. `NodeRid`가 없는 role은 `AutoConnectType + MeshName + Role + Endpoint`를 사용한다. |
 | spot key | `MeshName + SpotRid` |
-| actor key | `ActorType + ActorId`. `ActorType`이 없으면 빈 문자열로 정규화한다. 빈 문자열과 null은 같은 값이다. |
+| actor key | `ActorId` |
 | route key | `RouteKind + RouteKey` |
 
 key 문자열 비교가 필요한 구현체는 각 구성 요소를 길이 prefix 또는 escaping이 있는 stable encoding으로
@@ -436,9 +469,23 @@ extension도 owner lease와 location row를 같은 저장소에 둔다.
 ## 7. Store 계약
 
 store는 peer, spot, actor, route 위치 row를 저장하고 조회한다. 공통 framework 계약은 책임별 interface를
-분리한다. 한 구현체가 네 interface를 모두 구현할 수는 있지만, framework가 요구하는 등록 지점은
-peer, spot, actor, route별로 나뉜다. owner lease store는 7.5, 네 store가 공유하는 write 결과와 write
-intent, owner token은 7.6, optional watch는 7.7에서 정의한다.
+분리하되, extension package를 위한 통합 store 계약은 네 location store와 owner lease store를 한
+인스턴스에 묶는다. owner lease store는 7.5, 네 store가 공유하는 write 결과와 write intent, owner
+token은 7.6, optional watch는 7.7에서 정의한다.
+
+```csharp
+public interface IZLinkLocationStore :
+    IZLinkPeerLocationStore,
+    IZLinkSpotLocationStore,
+    IZLinkActorLocationStore,
+    IZLinkRouteLocationStore,
+    IZLinkOwnerLeaseStore
+{
+    ValueTask<long> RemoveAllByOwnerAsync(
+        string ownerId,
+        CancellationToken ct = default);
+}
+```
 
 ### 7.1 peer store
 
@@ -452,9 +499,6 @@ public interface IZLinkPeerLocationStore
     ValueTask<ZLinkLocationWriteResult> RemovePeerAsync(
         ZLinkPeerLocationKey key,
         ZLinkLocationOwnerToken owner,
-        CancellationToken ct = default);
-    ValueTask<long> RemoveByOwnerAsync(
-        string ownerId,
         CancellationToken ct = default);
     ValueTask<IReadOnlyList<ZLinkPeerLocation>> ListPeersAsync(
         ZLinkPeerLocationFilter filter,
@@ -477,9 +521,6 @@ public interface IZLinkSpotLocationStore
     ValueTask<ZLinkLocationWriteResult> RemoveSpotAsync(
         ZLinkSpotLocationKey key,
         ZLinkLocationOwnerToken owner,
-        CancellationToken ct = default);
-    ValueTask<long> RemoveByOwnerAsync(
-        string ownerId,
         CancellationToken ct = default);
     ValueTask<ZLinkSpotLocation?> ResolveSpotAsync(
         ZLinkSpotLocationKey key,
@@ -506,9 +547,6 @@ public interface IZLinkActorLocationStore
     ValueTask<ZLinkLocationWriteResult> RemoveActorAsync(
         ZLinkActorLocationKey key,
         ZLinkLocationOwnerToken owner,
-        CancellationToken ct = default);
-    ValueTask<long> RemoveByOwnerAsync(
-        string ownerId,
         CancellationToken ct = default);
     ValueTask<ZLinkActorLocation?> ResolveActorAsync(
         ZLinkActorLocationKey key,
@@ -540,9 +578,6 @@ public interface IZLinkRouteLocationStore
         ZLinkRouteLocationKey key,
         ZLinkLocationOwnerToken owner,
         CancellationToken ct = default);
-    ValueTask<long> RemoveByOwnerAsync(
-        string ownerId,
-        CancellationToken ct = default);
     ValueTask<ZLinkRouteLocation?> ResolveRouteAsync(
         ZLinkRouteLocationKey key,
         CancellationToken ct = default);
@@ -562,12 +597,12 @@ route kind는 framework가 정의한 좁은 용도로만 사용한다. 초기 �
 ```csharp
 public interface IZLinkOwnerLeaseStore
 {
-    ValueTask<ZLinkLocationWriteResult> RenewOwnerLeaseAsync(
+    ValueTask<ZLinkOwnerLeaseRenewal> RenewOwnerLeaseAsync(
         string ownerId,
         RoutingId nodeRid,
         TimeSpan leaseTtl,
         CancellationToken ct = default);
-    ValueTask<ZLinkLocationWriteResult> RemoveOwnerLeaseAsync(
+    ValueTask<bool> RemoveOwnerLeaseAsync(
         string ownerId,
         CancellationToken ct = default);
     ValueTask<ZLinkOwnerLeaseSnapshot> ListOwnerLeasesAsync(
@@ -602,7 +637,6 @@ monotonic 경과 시간으로 계산한다(6.6). application node의 wall clock�
 | `Stored` | 저장 또는 교체에 성공했다. |
 | `IgnoredStale` | 이미 교체된 구세대 owner token으로 온 update/remove라 무시했다. row는 바뀌지 않는다. |
 | `RejectedConflict` | 살아 있는 row가 있는 key에 대한 new claim이 실패했다. 동시 claim 패배가 여기에 해당한다. |
-| `StoreUnavailable` | store 연결 또는 저장이 실패했다. |
 
 update 요청은 `ZLinkLocationWriteIntent`로 세 가지 의도 중 하나를 명시한다.
 
@@ -627,8 +661,8 @@ owner는 이후 write에서 `IgnoredStale`을 받고 9절의 소유권 상실 �
 `ZLinkLocationOwnerToken`은 `OwnerId + Generation`이다. remove는 owner token이 현재 row와 일치할 때만
 성공한다. 구세대 token의 remove는 `IgnoredStale`이다.
 
-read API(`Resolve...`, `List...`)는 store 장애를 결과값이 아니라 infrastructure error로 구분해 던진다.
-write API는 예외 대신 `StoreUnavailable`을 반환한다.
+read API(`Resolve...`, `List...`)와 write API는 store 장애를 결과값이 아니라 infrastructure error로
+구분해 던진다.
 
 ### 7.7 optional watch
 
@@ -662,14 +696,14 @@ resolver는 framework runtime과 application-facing client가 위치를 찾을 �
 ```csharp
 public interface IZLinkPeerLocationResolver
 {
-    ValueTask<IReadOnlyList<ZLinkPeerLocation>> ListPeersAsync(
+    ValueTask<IReadOnlyList<ZLinkPeerLocation>> ListLivePeersAsync(
         ZLinkPeerLocationFilter filter,
         CancellationToken ct = default);
 }
 
 // 메시징 조회: spot rid → spot full 주소. 호출자가 주소를 보관하고
 // 실패 시 재조회한다. 전송 경로는 조회하지 않는다.
-public interface IZLinkSpotLocationResolver
+public interface IZLinkSpotAddressResolver
 {
     ValueTask<ZLinkSpotAddress?> ResolveSpotAddressAsync(
         RoutingId spotRid,
@@ -677,18 +711,10 @@ public interface IZLinkSpotLocationResolver
 }
 
 // 메시징 조회: actor id → 그 actor가 위치한 spot의 full 주소.
-public interface IZLinkActorLocationResolver
+public interface IZLinkActorAddressResolver
 {
     ValueTask<ZLinkSpotAddress?> ResolveActorSpotAddressAsync(
-        string actorType,
         string actorId,
-        CancellationToken ct = default);
-}
-
-public interface IZLinkRouteLocationResolver
-{
-    ValueTask<ZLinkRouteLocation?> ResolveRouteAsync(
-        ZLinkRouteLocationKey key,
         CancellationToken ct = default);
 }
 ```
@@ -696,6 +722,8 @@ public interface IZLinkRouteLocationResolver
 재연결과 "없으면 생성" 판단, takeover 같은 lifecycle 흐름은 generation을 포함한 location row가
 필요하므로 resolver가 아니라 store/runtime 경로를 사용한다. 운영 진단은
 `IZLinkLocationRuntimeQuery`를 사용한다 — 이 표면도 store를 직접 읽는다.
+route row 단건 조회가 필요하면 resolver public 표면이 아니라 store SPI나 runtime 내부 운영 조회
+경로에서 `IZLinkRouteLocationStore.ResolveRouteAsync(...)`를 사용한다.
 
 ### 8.1 목록 조회 filter
 
@@ -727,8 +755,9 @@ peer, spot, actor, route 목록 조회는 filter 기반이다. filter의 비어 
 
 목록 조회도 stale row를 성공 결과에 포함하지 않는다. stale row는 owner lease가 만료된 owner의
 row이거나, 같은 key에 대해 이 runtime이 이미 관찰한 generation보다 오래된 generation의 row다. 후자는
-복제 지연이 있는 store에서 뒤늦게 읽힌 값을 걸러내기 위한 규칙이다. 운영 진단에서 stale row까지 보고
-싶다면 별도의 diagnostic API로 분리한다.
+복제 지연이 있는 store에서 뒤늦게 읽힌 값을 걸러내기 위한 규칙이다. stale 관측은 topology(만료
+owner의 peer를 Lost로 노출)와 service summary(Stopped 집계)가 담당하고, 원시 row가 필요한 진단은
+store SPI의 몫이다(P0 조사-2 확정 — 별도 diagnostic API를 만들지 않는다).
 
 spot/actor/route 목록 조회는 `ZLinkPageRequest`(page size, continuation token)를 받고
 `ZLinkLocationPage<T>`(item 목록, next continuation token)를 반환한다. row가 수백만 개일 수 있으므로
@@ -749,18 +778,18 @@ framework는 registry topology/status/service summary를 그대로 복제하지 
 public interface IZLinkLocationRuntimeQuery
 {
     ValueTask<ZLinkLocationRuntimeStatus> GetStatusAsync(CancellationToken ct = default);
-    ValueTask<IReadOnlyList<ZLinkPeerLocation>> ListPeersAsync(
+    ValueTask<IReadOnlyList<ZLinkPeerLocation>> ListPeerLocationsAsync(
         ZLinkPeerLocationFilter filter,
         CancellationToken ct = default);
-    ValueTask<ZLinkLocationPage<ZLinkSpotLocation>> ListSpotsAsync(
+    ValueTask<ZLinkLocationPage<ZLinkSpotLocation>> ListSpotLocationsAsync(
         ZLinkSpotLocationFilter filter,
         ZLinkPageRequest page = default,
         CancellationToken ct = default);
-    ValueTask<ZLinkLocationPage<ZLinkActorLocation>> ListActorsAsync(
+    ValueTask<ZLinkLocationPage<ZLinkActorLocation>> ListActorLocationsAsync(
         ZLinkActorLocationFilter filter,
         ZLinkPageRequest page = default,
         CancellationToken ct = default);
-    ValueTask<ZLinkLocationPage<ZLinkRouteLocation>> ListRoutesAsync(
+    ValueTask<ZLinkLocationPage<ZLinkRouteLocation>> ListRouteLocationsAsync(
         ZLinkRouteLocationFilter filter,
         ZLinkPageRequest page = default,
         CancellationToken ct = default);
@@ -1098,7 +1127,7 @@ framework spot runtime은 아래 event에서 store를 자동 갱신한다.
 | user spot moved | 새 owner가 `Takeover` intent로 store가 발급한 새 generation을 받아 spot location을 update한다. |
 | user spot stopped/destroyed | owner/generation guard로 spot location을 remove한다. |
 | owner heartbeat | owner lease를 연장한다. spot row는 개별 write하지 않는다. |
-| owner shutdown | owner lease를 제거하고 `RemoveByOwnerAsync`로 owner가 소유한 spot row를 bulk remove한다. |
+| owner shutdown | owner lease를 제거하고 `RemoveAllByOwnerAsync`로 owner가 소유한 row를 bulk remove한다. |
 
 ### 15.2 resolve 알고리즘
 
@@ -1146,12 +1175,12 @@ framework actor runtime은 아래 event에서 store를 자동 갱신한다.
 | actor moved | 새 owner가 `Takeover` intent로 store가 발급한 새 generation을 받아 actor location을 update한다. |
 | actor destroyed | owner/generation guard로 actor location을 remove한다. |
 | owner heartbeat | owner lease를 연장한다. actor row는 개별 write하지 않는다. |
-| owner shutdown | owner lease를 제거하고 `RemoveByOwnerAsync`로 owner가 소유한 actor row를 bulk remove한다. |
+| owner shutdown | owner lease를 제거하고 `RemoveAllByOwnerAsync`로 owner가 소유한 row를 bulk remove한다. |
 
 ### 16.2 resolve 알고리즘
 
 ```text
-ResolveActorSpotAddress(actorType, actorId)
+ResolveActorSpotAddress(actorId)
   1. store에서 actor key 조회
   2. row의 owner lease 만료 여부 확인 (lease 목록 join)
   3. location kind와 spot rid 필수 조건을 검증
@@ -1235,8 +1264,8 @@ id를 동시에 만드는 race에서 진 쪽은 instance를 만들기 전에 `Re
 
 | 기존 API/개념 | 처리 | 대체 |
 |---------------|------|------|
-| `UseRegistryActorResolver()` 계열 | 제거 | `AddActorLocationStore<T>()` 또는 공식 Redis extension 등록 후 기본 `IZLinkActorLocationResolver` 사용 |
-| `UseRegistryRouteResolver()` 계열 | 제거 | `AddRouteLocationStore<T>()` 또는 공식 Redis extension 등록 후 기본 `IZLinkRouteLocationResolver` 사용 |
+| `UseRegistryActorResolver()` 계열 | 제거 | `AddActorLocationStore<T>()` 또는 공식 Redis extension 등록 후 기본 `IZLinkActorAddressResolver` 사용 |
+| `UseRegistryRouteResolver()` 계열 | 제거 | `AddRouteLocationStore<T>()` 또는 공식 Redis extension 등록 후 route 단건 조회를 store SPI/운영 조회로 제한 |
 | `UseDiscovery(...)`가 registry endpoint를 직접 받는 channel 설정 | 대체 | location store 기반 자동 연결 option으로 대체 |
 | embedded registry host registration API | 제거 | 공식 Redis extension 또는 사용자 store 구현체 등록 |
 | registry topology query client API를 framework 운영 조회로 노출하는 표면 | 제거 | `IZLinkLocationRuntimeQuery` |
@@ -1274,10 +1303,10 @@ options.AddLocationStore(new ZLinkRedisLocationStore(redis => redis
 
 | API | 용도 |
 |-----|------|
-| `IZLinkPeerLocationResolver` | 자동 연결이 peer list를 조회한다. 매 조회가 store를 읽고 owner liveness를 join한다. |
-| `IZLinkSpotLocationResolver` | `spot rid`로 spot full 주소(`ZLinkSpotAddress`)를 찾는다. 호출자가 주소를 보관한다. |
-| `IZLinkActorLocationResolver` | `actor type + actor id`로 그 actor가 위치한 spot의 full 주소를 찾는다. |
-| `IZLinkRouteLocationResolver` | actor session, spot name, framework route 같은 owner-bound route를 단건 resolve한다. |
+| `IZLinkPeerLocationResolver` | 자동 연결이 live peer list를 조회한다. 매 조회가 store를 읽고 owner liveness를 join한다. |
+| `IZLinkSpotAddressResolver` | `spot rid`로 spot full 주소(`ZLinkSpotAddress`)를 찾는다. 호출자가 주소를 보관한다. |
+| `IZLinkActorAddressResolver` | `actor id`로 그 actor가 위치한 spot의 full 주소를 찾는다. |
+| route 단건 조회 | public resolver를 두지 않는다. 필요하면 store SPI/운영 조회 경로에서 처리한다. |
 | `IZLinkLocationRuntimeQuery` | 운영 도구와 E2E가 raw location row, topology projection, runtime status를 조회한다. spot/actor/route 목록 조회는 이 표면에만 있다. |
 
 ### 20.4 새로 추가할 option
@@ -1397,7 +1426,7 @@ E2E 수정의 기준이 된다. Java, Kotlin, Node.js, C++ framework는 .NET 구
   비교를 쓰지 않음
 - `Takeover` 뒤 구 owner의 다음 row write가 `IgnoredStale`을 받고 local instance를 deactivate함
 - owner lease 만료 시 그 owner의 peer/spot/actor/route row가 resolve/list에서 제외됨
-- owner shutdown 시 `RemoveByOwnerAsync`가 그 owner의 row를 bulk remove함
+- owner shutdown 시 `RemoveAllByOwnerAsync`가 그 owner의 row를 bulk remove함
 - spot/actor/route list가 continuation token으로 전체 row를 나눠 순회함
 - change stamp가 바뀌지 않은 polling tick은 목록 조회를 생략함
 
@@ -1429,8 +1458,8 @@ E2E와 언어별 E2E는 수정된 문서를 따라간다.
   연결 혼합”이 아니라 “location-store 자동 연결과 manual 연결 혼합”으로 바뀐다.
 - 기존 registry 장애/HA 테스트는 store 장애/복구 테스트로 바꾼다. Redis extension E2E에서는 Redis
   연결 끊김, 재연결, owner lease 만료, stale row 제거, polling fallback을 검증한다.
-  나눈다. member peer 사용자 기능 검증은 `IZLinkPeerLocationResolver.ListPeersAsync(filter)`로,
-  E2E의 raw peer row 상태 확인은 `IZLinkLocationRuntimeQuery.ListPeersAsync(filter)`로
+  나눈다. member peer 사용자 기능 검증은 `IZLinkPeerLocationResolver.ListLivePeersAsync(filter)`로,
+  E2E의 raw peer row 상태 확인은 `IZLinkLocationRuntimeQuery.ListPeerLocationsAsync(filter)`로
   바꾼다.
 - actor/spot resolve E2E는 “cache hit만으로 통과”하면 안 된다. 재연결, 생성 race, handover,
   stale owner 제거 시나리오는 재resolve 경로를 반드시 포함한다.
@@ -1522,14 +1551,14 @@ draft가 기준이며, 정식 spec 문서에는 아직 구현되지 않은 계�
 
 ### 24.2 store interface
 
-- [x] `IZLinkPeerLocationStore` — update(intent), remove(owner guard), `RemoveByOwnerAsync`, list — 7.1
+- [x] `IZLinkPeerLocationStore` — update(intent), remove(owner guard), list — 7.1
 - [x] `IZLinkSpotLocationStore` — 위 항목 + 단건 resolve + paged list — 7.2
 - [x] `IZLinkActorLocationStore` — 위 항목과 동일 구성 — 7.3
 - [x] `IZLinkRouteLocationStore` — 위 항목과 동일 구성, route kind 3종 — 7.4
 - [x] `IZLinkOwnerLeaseStore` — renew는 upsert, remove는 shutdown/운영 복구 전용, snapshot list — 7.5
 - [x] `IZLinkLocationWatchStore` (optional) — 7.7
 - [x] `IZLinkLocationChangeStampStore` (optional) — 14.5
-- [x] read는 infrastructure error 예외, write는 `StoreUnavailable` 반환 — 7.6, 19절
+- [x] read/write는 infrastructure error 예외 — 7.6, 19절
 
 ### 24.3 runtime 정책
 

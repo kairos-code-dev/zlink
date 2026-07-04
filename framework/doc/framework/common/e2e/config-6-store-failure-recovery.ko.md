@@ -33,7 +33,8 @@ messaging 성공, 각 역할 server의 evidence.
 - 다룬다: store 장애 중 fail-static(기존 연결 유지, diff 계산 중단), store failure grace 초과
   시 신규 outbound connect 중단, owner lease 만료로 인한 stale row 제외, store 복구 순서(owner
   lease와 local row 재등록 → heartbeat interval 1회 유예 → disconnect diff), watch가 없는
-  store 구성의 polling fallback, runtime status 관측.
+  store 구성의 polling fallback, runtime status 관측, store가 끊기지 않고 응답만 느려질 때
+  Redis client 호출이 무관한 concurrent 처리를 막지 않는지(비블로킹 실측).
 - 여기서 다루지 않는 것: 정상 상태 자동 연결·scale·failover(Config 1), provider 노드 자체의
   restart/crash resilience(Config 5), monitoring event 표면(Config 7), store 제품 자체의
   HA/복제(store 구현체 책임).
@@ -167,6 +168,29 @@ heartbeat/lease/grace 상수에서 계산한 별도 이름의 시나리오 대�
 - 절차: SF-D1 또는 SF-D2 실행 중 probe가 각 노드의 `GetStatusAsync`를 단계별로 조회한다.
 - 검증: 정상 구간은 store healthy + owner lease 갱신 정상, 장애 구간은 store unhealthy + last error 기록 + lease 갱신 실패 표시, 복구 후 healthy 복귀 + last refresh 갱신이 순서대로 관측된다. watch/polling 상태와 cache entry count 같은 필드가 조회 가능하다.
 - 세부 동작: `ZLinkLocationRuntimeStatus` 필드의 장애 사이클 반영.
+
+### Track E — store 응답 지연(장애 아님) 중 비블로킹
+
+#### SF-E1 store 응답 지연 중 무관 concurrent 처리 비블로킹
+
+우선순위: `P1`
+
+**한마디로:** store가 끊기지 않고 응답만 느려질 때, 그 지연이 같은 프로세스가 처리하는 무관한
+동시 요청(location store와 상관없는 application messaging)까지 막지 않는가.
+
+- 절차: harness가 Redis를 정지시키지 않고 응답 지연만 주입한다(예: proxy를 통한 지연 주입,
+  또는 느린 Lua 스크립트로 특정 key에 대한 응답만 지연). 지연이 걸리는 동안 같은 provider
+  프로세스로 location store와 무관한 concurrent request를 계속 보낸다. 지연 주입 없는 harness에서는
+  이 시나리오를 "미구현(하네스 대기)"로 둔다.
+- 검증: 지연 중에도 무관 request의 p99 latency가 SF-A1 baseline 대비 유의미하게 증가하지 않는다
+  (예: baseline의 N배 이내로 사전 정의). `GetStatusAsync` 조회 자체도 무관 요청 경로를 막지
+  않는다. 이 결과로 store client가 스레드나 이벤트 루프를 점유하지 않고 진짜 비동기·논블로킹으로
+  I/O를 수행함을 실측으로 증명한다(계약은
+  [location store 포팅 inventory](../../../../../doc/plan/framework-location-store-porting-inventory.ko.md)
+  §4-7).
+- 세부 동작: Redis 응답 지연이 코루틴 dispatcher(Kotlin)나 core I/O 스레드(C++, `PERF_IO_THREADS`)를
+  점유하지 않음을 검증. 이 트랙은 store 자체의 정상/비정상보다 client 구현의 비블로킹 여부를 보는
+  점에서 Track A~D와 다르다.
 
 ## 5. 완료 기준
 

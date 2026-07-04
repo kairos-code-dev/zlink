@@ -1,0 +1,52 @@
+{
+  "notice": "All four Redis extensions must match this fixture byte-for-byte. Canonical contract: framework/doc/framework/common/spec/location-store-redis.ko.md.",
+  "format": "actor-location-v2",
+  "hashFields": [
+    "owner",
+    "gen",
+    "json",
+    "updatedAtMs"
+  ],
+  "rows": [
+    {
+      "kind": "actor",
+      "key": "7:actor-1",
+      "hash": {
+        "owner": "owner-a",
+        "gen": "0",
+        "json": "{\"ActorId\":\"actor-1\",\"ActorType\":\"player\",\"ActorRef\":{\"nodeRid\":\"6e6f64652d31\",\"actorId\":\"actor-1\",\"generation\":1},\"NodeRid\":\"6e6f64652d31\",\"LocationKind\":1,\"SpotMeshName\":\"play\",\"SpotRid\":null,\"OwnerId\":\"owner-a\",\"Generation\":0,\"UpdatedAt\":\"0001-01-01T00:00:00+00:00\"}",
+        "updatedAtMs": "0"
+      }
+    },
+    {
+      "kind": "peer",
+      "key": "10:route-mesh4:play6:router12:6e6f64652d31",
+      "hash": {
+        "owner": "owner-a",
+        "gen": "0",
+        "json": "{\"AutoConnectType\":1,\"MeshName\":\"play\",\"NodeRid\":\"6e6f64652d31\",\"Role\":3,\"Endpoint\":\"tcp://127.0.0.1:5001\",\"Weight\":100,\"Value\":7,\"Metadata\":{\"route-endpoint\":\"tcp://127.0.0.1:6001\"},\"Capabilities\":[\"router\",\"route-bridge\"],\"OwnerId\":\"owner-a\",\"Generation\":0,\"UpdatedAt\":\"0001-01-01T00:00:00+00:00\"}",
+        "updatedAtMs": "0"
+      }
+    },
+    {
+      "kind": "spot",
+      "key": "4:play12:73706f742d31",
+      "hash": {
+        "owner": "owner-a",
+        "gen": "0",
+        "json": "{\"MeshName\":\"play\",\"SpotRid\":\"73706f742d31\",\"SpotType\":\"game\",\"NodeRid\":\"6e6f64652d31\",\"SpotKind\":2,\"RouteEndpoint\":null,\"OwnerId\":\"owner-a\",\"Generation\":0,\"UpdatedAt\":\"0001-01-01T00:00:00+00:00\"}",
+        "updatedAtMs": "0"
+      }
+    },
+    {
+      "kind": "route",
+      "key": "1:17:route-1",
+      "hash": {
+        "owner": "owner-a",
+        "gen": "0",
+        "json": "{\"RouteKind\":1,\"RouteKey\":\"route-1\",\"OwnerNodeRid\":\"6e6f64652d31\",\"OwnerId\":\"owner-a\",\"Generation\":0,\"Value\":\"AQIDBA==\",\"UpdatedAt\":\"0001-01-01T00:00:00+00:00\"}",
+        "updatedAtMs": "0"
+      }
+    }
+  ]
+}

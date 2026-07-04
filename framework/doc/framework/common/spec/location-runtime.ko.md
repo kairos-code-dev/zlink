@@ -51,9 +51,9 @@ mesh, fanout, spot mesh), `MeshName`, `NodeRid`, `Role`(router/dealer/pub/sub/sp
 
 ### 2.3 actor location
 
-actor가 어느 node/spot에 있는지. `ActorType`, `ActorId`, `NodeRid`, `SpotRid`,
-`LocationKind`(entry spot actor / user spot actor), `ActorGeneration`, `OwnerId`,
-`Generation`, `UpdatedAt`. actor lifecycle이 자동 갱신한다.
+actor가 어느 node/spot에 있는지. `ActorId`, `ActorType`, `ActorRef`, `NodeRid`, `SpotRid`,
+`LocationKind`(entry spot actor / user spot actor), `SpotMeshName`, `OwnerId`, `Generation`,
+`UpdatedAt`. actor lifecycle이 자동 갱신한다.
 
 ### 2.4 route location
 
@@ -73,7 +73,7 @@ write는 runtime instance당 1회이므로 store 부하는 node 수에 비례한
 수 있으며, extension은 통합 계약(`IZLinkLocationStore` — 5종 결합)을 구현한 **인스턴스 하나**를
 `AddLocationStore(instance)`로 등록한다(§8). 각 store는 공통으로 다음을 제공한다.
 
-- `Update...(row, intent)` / `Remove...(key, ownerToken)` / `RemoveByOwner(ownerId)`
+- `Update...(row, intent)` / `Remove...(key, ownerToken)` / `IZLinkLocationStore.RemoveAllByOwnerAsync(ownerId)`
 - 단건 `Resolve...(key)` (peer 제외) / filter 기반 `List...(filter[, page])`
 - peer list와 owner lease list는 **pagination 없는 단일 snapshot**이다. reconcile의 desired
   set 계산은 한 시점의 전체 목록을 전제로 하므로 page 간 시점 불일치를 허용하지 않는다.
@@ -91,7 +91,6 @@ update/remove는 `ZLinkLocationWriteResult`를 반환한다. 성공 시 store가
 | `Stored` | 저장 또는 교체 성공 |
 | `IgnoredStale` | 구세대 owner token의 update/remove라 무시. row 불변 |
 | `RejectedConflict` | 살아 있는 row가 있는 key에 대한 new claim 실패(동시 claim 패배) |
-| `StoreUnavailable` | store 연결/저장 실패 |
 
 | intent | 성공 조건 | generation |
 |--------|-----------|------------|
@@ -99,8 +98,8 @@ update/remove는 `ZLinkLocationWriteResult`를 반환한다. 성공 시 store가
 | `Renew` | 현재 row와 같은 `OwnerId + Generation` 제시 | 불변 |
 | `Takeover` | 살아 있는 row를 새 owner가 명시적으로 교체(framework가 의도한 이동 전용) | 새 token 원자 발급 |
 
-`ZLinkLocationOwnerToken`은 `OwnerId + Generation`이다. read API는 store 장애를 infrastructure
-error로 던지고, write API는 예외 대신 `StoreUnavailable`을 반환한다.
+`ZLinkLocationOwnerToken`은 `OwnerId + Generation`이다. read API와 write API는 store 장애를
+infrastructure error로 던진다.
 
 ### 3.2 owner lease store
 
@@ -139,10 +138,10 @@ store에 도달하고 owner lease join으로 유효성을 판정한다.
 
 | resolver | 표면 | 용도 |
 |----------|------|------|
-| `IZLinkPeerLocationResolver` | `ListPeersAsync(filter)` | 자동 연결의 peer list 조회 |
-| `IZLinkSpotLocationResolver` | `ResolveSpotAddressAsync(spotRid)` → `ZLinkSpotAddress?` | 메시징 조회: spot rid → spot full 주소 |
-| `IZLinkActorLocationResolver` | `ResolveActorSpotAddressAsync(actorType, actorId)` → `ZLinkSpotAddress?` | 메시징 조회: actor → 그 actor가 위치한 spot의 full 주소 |
-| `IZLinkRouteLocationResolver` | `ResolveRouteAsync(key)` | owner-bound route 단건 resolve |
+| `IZLinkPeerLocationResolver` | `ListLivePeersAsync(filter)` | 자동 연결의 live peer list 조회 |
+| `IZLinkSpotAddressResolver` | `ResolveSpotAddressAsync(spotRid)` → `ZLinkSpotAddress?` | 메시징 조회: spot rid → spot full 주소 |
+| `IZLinkActorAddressResolver` | `ResolveActorSpotAddressAsync(actorId)` → `ZLinkSpotAddress?` | 메시징 조회: actor → 그 actor가 위치한 spot의 full 주소 |
+| route 단건 조회 | store SPI/운영 조회 | owner-bound route 단건 조회는 public resolver로 노출하지 않음 |
 
 - 메시징 resolver는 **주소**(`ZLinkSpotAddress` = `NodeRid + SpotRid`; mesh는 전송 문맥이
   결정)를 반환한다. 호출자가 주소를 보관하고 전송 실패 시 재resolve한다. 상세는
@@ -200,8 +199,8 @@ manual endpoint 연결(`EnableClient(endpoint)`)은 auto reconcile이 끊지 않
 | API | 반환 |
 |-----|------|
 | `GetStatusAsync()` | `ZLinkLocationRuntimeStatus` — store health, watch enabled, polling interval, last refresh, last error, owner lease 갱신 상태 |
-| `ListPeersAsync(filter)` | 살아 있는 raw peer row (snapshot) |
-| `ListSpotsAsync/ListActorsAsync/ListRoutesAsync(filter, page)` | 살아 있는 raw row (paged) |
+| `ListPeerLocationsAsync(filter)` | 살아 있는 raw peer row (snapshot) |
+| `ListSpotLocationsAsync/ListActorLocationsAsync/ListRouteLocationsAsync(filter, page)` | 살아 있는 raw row (paged) |
 | `ListTopologyAsync(filter, page)` | `ZLinkLocationTopologyEntry` projection — location row + connection state + lease + generation을 runtime이 합성 |
 | `ListServiceSummariesAsync(filter)` | mesh/type/role별 count summary |
 
@@ -267,7 +266,7 @@ kind는 닫힌 enum이다. 상세 계약은 [메시지 흐름 추적](message-fl
 | 상황 | 결과 |
 |------|------|
 | store 연결 실패 (read) | infrastructure error |
-| store 연결 실패 (write) | `StoreUnavailable`. 기존 connection은 fail-static |
+| store 연결 실패 (write) | infrastructure error(예외, 원인 보존) — 경합 상태값(`IgnoredStale`/`RejectedConflict`)과 분리한다. 기존 connection은 fail-static |
 | 위치 없음 | not found |
 | stale row만 있음 | not found |
 | owner/generation 충돌 | conflict 또는 rejected |

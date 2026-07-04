@@ -387,10 +387,11 @@ EnsureSupportUserActorReq {
 }
 
 EnsureSupportUserActorRes {
-  Actor: ActorRefSnapshot
+  Actor: ZLinkActorRefSnapshot
 }
 
-ActorRefSnapshot {
+// framework 제공 wire 모델(ZLinkActorRefSnapshot) — 샘플이 정의하지 않는다.
+ZLinkActorRefSnapshot {
   NodeRid: bytes
   ActorId: string
   Generation: uint64
@@ -406,7 +407,7 @@ EnsureAgentConversationReq {
 }
 
 EnsureAgentConversationRes {
-  Actor: ActorRefSnapshot
+  Actor: ZLinkActorRefSnapshot
   State: ConversationState
 }
 ```
@@ -895,8 +896,8 @@ sequenceDiagram
 ```
 
 reconnect는 conversation state와 actor를 새로 만들지 않는다. Session 서버는 actor 위치를
-resolve로 찾아(`ResolveActorSpotAddressAsync` — location store 도달) 기존 actor를 새 stream
-session에 다시 bind한다. resolve가 null이면 그때만 생성 경로(claim-then-activate)로 간다. customer는 reconnect 뒤 `JoinConversationReq`로 자기
+actor directory의 `FindAsync`(actor id 단독 — location store 도달)로 찾아 기존 actor를 새 stream
+session에 다시 bind한다. `FindAsync`가 null이면 그때만 생성 경로(claim-then-activate)로 간다. customer는 reconnect 뒤 `JoinConversationReq`로 자기
 conversation state를 다시 확인한다. 상담원은 roster actor를 다시 bind한 뒤
 `SetAgentAvailableReq(true)`로 상담 가능 상태를 다시 등록하고(이때 roster의 bound session
 경로가 새 session으로 갱신된다), 열려 있던 conversation마다 `JoinConversationReq`로 그

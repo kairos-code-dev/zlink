@@ -163,7 +163,7 @@ options.AddClientServerChannel("pricing")
 
 // 운영: 살아 있는 peer 와 상태를 runtime query 로 조회 (09-location §3)
 app.MapGet("/ops/topology", async (IZLinkLocationRuntimeQuery query) =>
-    Results.Ok(await query.ListPeersAsync(new ZLinkPeerLocationFilter())));
+    Results.Ok(await query.ListPeerLocationsAsync(new ZLinkPeerLocationFilter())));
 
 // correlation·로깅 같은 공통 처리는 filter 로 (gRPC interceptor 대체)
 options.UseFilter<CorrelationFilter>();        // IZLinkHandlerFilter

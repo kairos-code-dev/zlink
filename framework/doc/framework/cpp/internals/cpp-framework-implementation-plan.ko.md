@@ -690,7 +690,7 @@ ctest --test-dir framework/languages/cpp/build -L framework-regression -R reliab
 - `spot_handler_registry_t`
 - `add_handler<&TSpot::method>()`
 - `add_subscribe<&TSpot::method>(topic)`
-- `add_actor_packet<&TSpot::method>()`
+- `add_actor_send<&TSpot::method>()` / `add_actor_request<&TSpot::method>()` (send=Command, request=Request 등록 실구분 — POSD 재설계 B4)
 - `on_actor_join(actor, message_t)`
 - `on_actor_joined(actor)`
 - `onLeaveActor(actor)`

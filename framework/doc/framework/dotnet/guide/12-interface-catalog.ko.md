@@ -465,7 +465,7 @@ resolve 해서 재시도한다. send 는 best-effort 라 조용히 버려진다
 | `IZLinkSpotManager` | spot 인스턴스 생성/조회/종료(`CreateAsync`, `GetOrCreateAsync`, `FindAsync`, `ListAsync`, `CloseAsync`) |
 | `IZLinkSpotOutbound` | current Spot callback 안에서의 outbound(`SendToSpot(주소, …)`/`RequestToSpot(주소, …)`/`SendToChannel`/`RequestToChannel`/`Publish`) |
 | `IZLinkSpotPublisherClient` | local spot 없는 노드의 spot channel publish(`PublishSpot(channelName, topic, msg)`) |
-| `IZLinkSpotLocationResolver` | spot rid → `ZLinkSpotAddress` 조회(`ResolveSpotAddressAsync`) — location store 를 읽는 기본 메시징 조회 |
+| `IZLinkSpotAddressResolver` | spot rid → `ZLinkSpotAddress` 조회(`ResolveSpotAddressAsync`) — location store 를 읽는 기본 메시징 조회 |
 | `IZLinkSpotRemoteAddressResolver` | spot rid → 주소 해석을 직접 구현으로 바꾸는 교체 지점(`AddSpotRemoteAddressResolver<T>()`) |
 
 검증: `SpotContracts.Spot_clients_separate_local_spot_api_routed_egress_and_publisher_channels`.
@@ -699,12 +699,12 @@ var loc = options.ConfigureLocations();
 loc.OwnerLeaseTtl = TimeSpan.FromSeconds(15);
 
 // 메시징 조회 — 주소를 한 번 받아 보관한다 (DI 주입)
-ZLinkSpotAddress? spot = await spots.ResolveSpotAddressAsync(spotRid, ct);          // IZLinkSpotLocationResolver
-ZLinkSpotAddress? actorSpot = await actors.ResolveActorSpotAddressAsync("player", "p-1", ct); // IZLinkActorLocationResolver
+ZLinkSpotAddress? spot = await spots.ResolveSpotAddressAsync(spotRid, ct);          // IZLinkSpotAddressResolver
+ZLinkSpotAddress? actorSpot = await actors.ResolveActorSpotAddressAsync("p-1", ct); // IZLinkActorAddressResolver
 
 // 운영 조회 — 살아 있는 raw row 와 상태 (DI 주입)
 var status = await query.GetStatusAsync(ct);                                        // IZLinkLocationRuntimeQuery
-var peers = await query.ListPeersAsync(new ZLinkPeerLocationFilter(), ct);
+var peers = await query.ListPeerLocationsAsync(new ZLinkPeerLocationFilter(), ct);
 ```
 
 | 인터페이스 | 역할 |
@@ -714,10 +714,10 @@ var peers = await query.ListPeersAsync(new ZLinkPeerLocationFilter(), ct);
 | `IZLinkOwnerLeaseStore` | runtime instance 별 owner lease(생존 신고) 저장 계약 |
 | `IZLinkLocationChangeStampStore` | (선택) kind/mesh 별 change stamp — 변경 유무를 싸게 감지하는 최적화 |
 | `IZLinkLocationWatchStore` | (선택) 변경 이벤트 stream — reconcile 을 깨우는 최적화. 없으면 polling 이 정확성 경로 |
-| `IZLinkPeerLocationResolver` | 자동 연결이 쓰는 peer row 목록 조회(`ListPeersAsync(filter)`) |
-| `IZLinkSpotLocationResolver` | spot rid → `ZLinkSpotAddress` 메시징 조회 |
-| `IZLinkActorLocationResolver` | actor(type+id) → 그 actor 가 있는 spot 의 `ZLinkSpotAddress` |
-| `IZLinkRouteLocationResolver` | owner-bound route 단건 조회 |
+| `IZLinkPeerLocationResolver` | 자동 연결이 쓰는 live peer row 목록 조회(`ListLivePeersAsync(filter)`) |
+| `IZLinkSpotAddressResolver` | spot rid → `ZLinkSpotAddress` 메시징 조회 |
+| `IZLinkActorAddressResolver` | actor id → 그 actor 가 있는 spot 의 `ZLinkSpotAddress` |
+| route 단건 조회 | public resolver가 아니라 store SPI/운영 조회 경로에서 처리 |
 | `IZLinkLocationRuntimeQuery` | 운영/E2E 조회 — 살아 있는 raw row, topology projection, store 상태 |
 
 모든 조회는 store 에 도달한다(캐시 없음). 죽은 서버의 row 는 owner lease 만료 후

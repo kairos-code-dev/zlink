@@ -121,7 +121,7 @@ public sealed record ConversationState(
 `Closed` 를 쓴다. `ConversationId` 는 conversation Spot 의 routing id hex 문자열
 (`SpotRid.ToHex()`)을 그대로 쓴다. Api·Support 서버 사이의 orchestration DTO
 (`OpenConversationApiReq`, `AllocateConversationReq`, `AssignAgentReq`,
-`EnsureSupportUserActorReq`, `ActorRefSnapshot`)도 같은 파일에 둔다.
+`EnsureSupportUserActorReq`, `ZLinkActorRefSnapshot`)도 같은 파일에 둔다.
 
 ## 3. 서버 구성
 

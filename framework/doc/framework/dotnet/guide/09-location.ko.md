@@ -85,7 +85,7 @@ locations.StoreFailureGrace = TimeSpan.FromSeconds(30);
 app.MapGet("/ops/locations", async (IZLinkLocationRuntimeQuery query) =>
 {
     var status = await query.GetStatusAsync();
-    var peers = await query.ListPeersAsync(new ZLinkPeerLocationFilter());
+    var peers = await query.ListPeerLocationsAsync(new ZLinkPeerLocationFilter());
     return Results.Ok(new
     {
         storeHealthy = status.StoreHealthy,
@@ -96,7 +96,7 @@ app.MapGet("/ops/locations", async (IZLinkLocationRuntimeQuery query) =>
 ```
 
 - `GetStatusAsync()` — store health, 마지막 오류, owner lease 갱신 상태.
-- `ListPeersAsync(filter)` — 살아 있는(lease 유효) peer row 만 반환한다. 죽은 서버의
+- `ListPeerLocationsAsync(filter)` — 살아 있는(lease 유효) peer row 만 반환한다. 죽은 서버의
   row 는 lease 만료 후 자동으로 제외된다.
 - topology projection·service summary 조회와 location 이벤트 관측은
   [10-monitoring](10-monitoring.ko.md) 의 `location-runtime` source 와 함께 쓴다.
@@ -108,7 +108,7 @@ SPOT·actor 메시징이 원격 대상을 찾을 때도 같은 store 를 쓴다.
 다시 resolve 한다.
 
 ```csharp
-public sealed class OrderRouter(IZLinkSpotLocationResolver spots)
+public sealed class OrderRouter(IZLinkSpotAddressResolver spots)
 {
     public async Task<ZLinkSpotAddress> FindRoomAsync(RoutingId roomRid)
     {
@@ -119,7 +119,7 @@ public sealed class OrderRouter(IZLinkSpotLocationResolver spots)
 }
 ```
 
-`IZLinkActorLocationResolver.ResolveActorSpotAddressAsync(actorType, actorId)` 는 actor
+`IZLinkActorAddressResolver.ResolveActorSpotAddressAsync(actorId)` 는 actor
 가 위치한 spot 의 주소를 돌려준다. 세부 흐름은 [06-actor-spot](06-actor-spot.ko.md)과
 [07-actor-session](07-actor-session.ko.md)를 참고한다.
 

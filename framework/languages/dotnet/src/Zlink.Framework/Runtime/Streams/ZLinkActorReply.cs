@@ -1,11 +1,14 @@
 namespace Zlink.Framework.Runtime.Streams;
 
 internal sealed class ZLinkActorReply(
+    ZlinkStreamMessageKind kind,
     ZlinkStreamCodec codec,
     byte[] payload,
     ZlinkStreamHeaderFlags flags,
     ZlinkStreamMetadata metadata)
 {
+    public ZlinkStreamMessageKind Kind { get; } = kind;
+
     public ZlinkStreamCodec Codec { get; } = codec;
 
     public byte[] Payload { get; } = payload;
@@ -18,7 +21,12 @@ internal sealed class ZLinkActorReply(
         ZlinkStreamCodec codec,
         byte[] payload)
     {
-        return new ZLinkActorReply(codec, payload, ZlinkStreamHeaderFlags.None, ZlinkStreamMetadata.Empty);
+        return new ZLinkActorReply(
+            ZlinkStreamMessageKind.Response,
+            codec,
+            payload,
+            ZlinkStreamHeaderFlags.None,
+            ZlinkStreamMetadata.Empty);
     }
 
     public static ZLinkActorReply FromPayload(
@@ -37,7 +45,18 @@ internal sealed class ZLinkActorReply(
         var metadata = ZlinkStreamMetadata.Empty;
         foreach (var (key, value) in options.Metadata) metadata = metadata.With(key, value);
 
-        return new ZLinkActorReply(codec, payload, flags, metadata);
+        return new ZLinkActorReply(ZlinkStreamMessageKind.Response, codec, payload, flags, metadata);
+    }
+
+    public static ZLinkActorReply FromError(Exception exception)
+    {
+        return new ZLinkActorReply(
+            ZlinkStreamMessageKind.Error,
+            ZlinkStreamCodec.Json,
+            ZLinkEnvelopeCodec.EncodeJsonBytes(
+                new ZLinkStreamWireError(exception.GetType().Name, exception.Message)),
+            ZlinkStreamHeaderFlags.None,
+            ZlinkStreamMetadata.Empty);
     }
 
     public byte[] ToFrame(ZlinkStreamHeader requestHeader)
@@ -46,7 +65,7 @@ internal sealed class ZLinkActorReply(
             throw new InvalidOperationException("Actor reply frame requires a request sequence.");
 
         var responseHeader = new ZlinkStreamHeader(
-            ZlinkStreamMessageKind.Response,
+            Kind,
             Codec,
             Flags | ZlinkStreamHeaderFlags.HasRequestSeq,
             requestSeq,

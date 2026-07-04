@@ -1,7 +1,11 @@
 namespace Zlink.Framework.Runtime.Spots;
 
-internal sealed class ZLinkEntrySpotActorRouter
+internal sealed class ZLinkEntrySpotActorRouter(ZLinkFrameworkRuntime runtime)
 {
+    private readonly ZLinkDispatchErrorReporter _dispatchErrors = new(
+        runtime.Registration.DispatchOptions,
+        runtime.Services);
+
     public async ValueTask<bool> TryAsync(
         ZLinkFrameworkRuntimeState state,
         IZLinkActor actor,
@@ -55,25 +59,41 @@ internal sealed class ZLinkEntrySpotActorRouter
             // router) must not re-enter the mailbox — that deadlocks the
             // actor. Turnless callers (the entry pump) still serialize
             // through it.
-            var reply = callerOwnsDispatchTurn
-                ? await dispatch.InvokePacketForReplyAsync(
-                        descriptor,
-                        actor,
-                        header,
-                        body,
-                        cancellationToken)
-                    .ConfigureAwait(false)
-                : await runtimeState.ExecuteDispatchAsync(
-                        header,
-                        ct => dispatch.InvokePacketForReplyAsync(
+            try
+            {
+                var reply = callerOwnsDispatchTurn
+                    ? await dispatch.InvokePacketForReplyAsync(
                             descriptor,
                             actor,
                             header,
                             body,
-                            ct),
-                        cancellationToken)
-                    .ConfigureAwait(false);
-            return new EntrySpotActorReplyDispatchResult(true, reply);
+                            cancellationToken)
+                        .ConfigureAwait(false)
+                    : await runtimeState.ExecuteDispatchAsync(
+                            header,
+                            ct => dispatch.InvokePacketForReplyAsync(
+                                descriptor,
+                                actor,
+                                header,
+                                body,
+                                ct),
+                            cancellationToken)
+                        .ConfigureAwait(false);
+                return new EntrySpotActorReplyDispatchResult(true, reply);
+            }
+            catch (Exception ex)
+            {
+                _dispatchErrors.Report(new ZLinkDispatchFailure(
+                    ZLinkDispatchErrorSurface.SpotActor,
+                    ZLinkDispatchMessageKind.ActorRequest,
+                    ZLinkDispatchErrorReason.HandlerException,
+                    ZLinkDispatchErrorAction.ReplyError,
+                    header.Name,
+                    ActorId: actor.ActorId,
+                    CorrelationId: header.CorrelationId ?? header.RequestSeq?.ToString(),
+                    Exception: ex));
+                return new EntrySpotActorReplyDispatchResult(true, ZLinkActorReply.FromError(ex));
+            }
         }
 
         return new EntrySpotActorReplyDispatchResult(false, null);

@@ -6,7 +6,7 @@ internal sealed class ZLinkSpotRuntimeManager(
     IZLinkBackendAdapterFactory backendAdapterFactory,
     ZLinkFrameworkRegistration registration)
 {
-    private readonly ZLinkEntrySpotActorRouter _entrySpotActors = new();
+    private readonly ZLinkEntrySpotActorRouter _entrySpotActors = new(runtime);
 
     private readonly ZLinkSpotNodeInitializer _nodeInitializer = new(
         services,

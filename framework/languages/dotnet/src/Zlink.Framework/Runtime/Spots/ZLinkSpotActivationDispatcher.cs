@@ -110,13 +110,23 @@ internal sealed class ZLinkSpotActivationDispatcher
             if (!actors.TryGetActor(headerPart.Actor.ActorId, out var actor) || actor is null)
                 actor = runtimeState.Actor;
 
+            if (!ZLinkSpotActorFrameReader.TryRead(parts, ref i, headerPart, out var frame)) continue;
+
             if (actor is null)
             {
-                ZLinkSpotActorFrameReader.DisposeFrame(parts, ref i, headerPart);
+                using (frame.Body)
+                {
+                    ReplyNoBindActorMissingIfRequest(
+                        frame.Actor,
+                        frame.SourceNodeRid,
+                        frame.SourceSessionRid,
+                        frame.RequestId,
+                        frame.Flags,
+                        frame.Header);
+                }
+
                 continue;
             }
-
-            if (!ZLinkSpotActorFrameReader.TryRead(parts, ref i, headerPart, out var frame)) continue;
 
             if (ZLinkActorSessionForwarder.ShouldForward(
                     runtimeState,
@@ -324,7 +334,7 @@ internal sealed class ZLinkSpotActivationDispatcher
         }
 
         var runtimeState = runtime.GetOrCreateActorState(actorId);
-        var isNoBind = requestId != 0 && (flags & ActorRecvInfoNoBind) != 0;
+        var isNoBind = IsNoBindRequest(requestId, flags);
         ZLinkBoundSessionDispatchScope? boundSessionScope = null;
         if (!isNoBind)
         {
@@ -352,14 +362,14 @@ internal sealed class ZLinkSpotActivationDispatcher
                 var frame = reply.ToFrame(streamHeader);
                 if (isNoBind)
                 {
-                    using var replyMessage = Message.From(frame);
-                    runtime.ReplyActorNoBind(
+                    ReplyNoBind(
                         actorRef,
                         sourceNodeRid,
                         sourceSessionRid,
                         requestId,
                         flags,
-                        [replyMessage]);
+                        streamHeader,
+                        reply);
                 }
                 else
                 {
@@ -385,6 +395,56 @@ internal sealed class ZLinkSpotActivationDispatcher
             if (boundSessionScope is not null)
                 await boundSessionScope.DisposeAsync().ConfigureAwait(false);
         }
+    }
+
+    private void ReplyNoBindActorMissingIfRequest(
+        ZLinkBackendActorRef actorRef,
+        RoutingId sourceNodeRid,
+        RoutingId sourceSessionRid,
+        ulong requestId,
+        uint flags,
+        ZlinkStreamHeader requestHeader)
+    {
+        if (requestHeader.Kind != ZlinkStreamMessageKind.Request
+            || requestHeader.RequestSeq is null
+            || !IsNoBindRequest(requestId, flags))
+            return;
+
+        ReplyNoBind(
+            actorRef,
+            sourceNodeRid,
+            sourceSessionRid,
+            requestId,
+            flags,
+            requestHeader,
+            ZLinkActorReply.FromError(new ZLinkFrameworkException(
+                ZLinkFrameworkErrorKind.ActorRouteNotFound,
+                $"Actor '{actorRef.ActorId}' is not available.")));
+    }
+
+    private void ReplyNoBind(
+        ZLinkBackendActorRef actorRef,
+        RoutingId sourceNodeRid,
+        RoutingId sourceSessionRid,
+        ulong requestId,
+        uint flags,
+        ZlinkStreamHeader requestHeader,
+        ZLinkActorReply reply)
+    {
+        var frame = reply.ToFrame(requestHeader);
+        using var replyMessage = Message.From(frame);
+        runtime.ReplyActorNoBind(
+            actorRef,
+            sourceNodeRid,
+            sourceSessionRid,
+            requestId,
+            flags,
+            [replyMessage]);
+    }
+
+    private static bool IsNoBindRequest(ulong requestId, uint flags)
+    {
+        return requestId != 0 && (flags & ActorRecvInfoNoBind) != 0;
     }
 
     private static async ValueTask SendFrameWithRetryAsync(

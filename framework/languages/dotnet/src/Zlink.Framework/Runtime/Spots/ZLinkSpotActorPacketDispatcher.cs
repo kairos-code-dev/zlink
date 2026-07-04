@@ -147,7 +147,7 @@ internal sealed class ZLinkSpotActorPacketDispatcher(
                     ActorId: actor.ActorId,
                     CorrelationId: header.CorrelationId ?? header.RequestSeq?.ToString(),
                     Exception: ex));
-                throw;
+                return ZLinkActorReply.FromError(ex);
             }
 
         ZLinkMessageFlowLogger.HandlerMissing(
@@ -160,6 +160,9 @@ internal sealed class ZLinkSpotActorPacketDispatcher(
             "no-handler",
             actorId: actor.ActorId,
             actorType: actor.GetType().FullName);
+        var error = new ZLinkFrameworkException(
+            ZLinkFrameworkErrorKind.ActorDispatchHandlerNotFound,
+            $"No Spot actor request handler is registered for '{header.Name}'.");
         dispatchErrors.Report(new ZLinkDispatchFailure(
             ZLinkDispatchErrorSurface.SpotActor,
             ZLinkDispatchMessageKind.ActorRequest,
@@ -168,10 +171,8 @@ internal sealed class ZLinkSpotActorPacketDispatcher(
             header.Name,
             ActorId: actor.ActorId,
             CorrelationId: header.CorrelationId ?? header.RequestSeq?.ToString(),
-            Exception: new ZLinkFrameworkException(
-                ZLinkFrameworkErrorKind.ActorDispatchHandlerNotFound,
-                $"No Spot actor request handler is registered for '{header.Name}'.")));
-        return null;
+            Exception: error));
+        return ZLinkActorReply.FromError(error);
     }
 
     private bool TryResolveActorPacketDescriptor(

@@ -4,6 +4,8 @@ namespace Zlink.Framework.Runtime.Spots;
 
 internal static class ZLinkEntrySpotActorDispatcher
 {
+    private const uint ActorRecvInfoNoBind = 1u;
+
     public static async Task DispatchAsync(
         ZLinkFrameworkRuntime runtime,
         ZLinkEntrySpotActivation? activation,
@@ -20,13 +22,24 @@ internal static class ZLinkEntrySpotActorDispatcher
             var headerPart = parts[i++];
             var actorState = runtime.GetOrCreateActorState(headerPart.Actor.ActorId);
             var actor = actorState.Actor;
+            if (!ZLinkSpotActorFrameReader.TryRead(parts, ref i, headerPart, out var frame)) continue;
+
             if (actor is null)
             {
-                ZLinkSpotActorFrameReader.DisposeFrame(parts, ref i, headerPart);
+                using (frame.Body)
+                {
+                    ReplyNoBindActorMissingIfRequest(
+                        runtime,
+                        frame.Actor,
+                        frame.SourceNodeRid,
+                        frame.SourceSessionRid,
+                        frame.RequestId,
+                        frame.Flags,
+                        frame.Header);
+                }
+
                 continue;
             }
-
-            if (!ZLinkSpotActorFrameReader.TryRead(parts, ref i, headerPart, out var frame)) continue;
 
             if (ZLinkActorSessionForwarder.ShouldForward(
                     actorState,
@@ -52,8 +65,11 @@ internal static class ZLinkEntrySpotActorDispatcher
                     activation,
                     actorState,
                     actor,
+                    frame.Actor,
                     frame.SourceNodeRid,
                     frame.SourceSessionRid,
+                    frame.RequestId,
+                    frame.Flags,
                     frame.Header,
                     frame.Body,
                     cancellationToken)
@@ -66,8 +82,11 @@ internal static class ZLinkEntrySpotActorDispatcher
         ZLinkEntrySpotActivation? activation,
         ZLinkActorRuntimeState actorState,
         IZLinkActor actor,
+        ZLinkBackendActorRef actorRef,
         RoutingId sourceNodeRid,
         RoutingId sourceSessionRid,
+        ulong requestId,
+        uint flags,
         ZlinkStreamHeader header,
         Message body,
         CancellationToken cancellationToken)
@@ -79,8 +98,11 @@ internal static class ZLinkEntrySpotActorDispatcher
                     activation,
                     actorState,
                     actor,
+                    actorRef,
                     sourceNodeRid,
                     sourceSessionRid,
+                    requestId,
+                    flags,
                     header,
                     body,
                     cancellationToken)
@@ -97,8 +119,11 @@ internal static class ZLinkEntrySpotActorDispatcher
         ZLinkEntrySpotActivation? activation,
         ZLinkActorRuntimeState actorState,
         IZLinkActor actor,
+        ZLinkBackendActorRef actorRef,
         RoutingId sourceNodeRid,
         RoutingId sourceSessionRid,
+        ulong requestId,
+        uint flags,
         ZlinkStreamHeader header,
         Message body,
         CancellationToken cancellationToken)
@@ -116,54 +141,79 @@ internal static class ZLinkEntrySpotActorDispatcher
             return;
         }
 
-        await using var boundSessionScope = ZLinkBoundSessionDispatchScope.Enter(actor.ActorId);
-        runtime.BindActorSession(
-            actor.ActorId,
-            sourceNodeRid,
-            sourceSessionRid,
-            BuildNativeBoundSessionToken(sourceSessionRid));
-
-        // Only genuine requests take the reply path: a relayed Send can
-        // carry a request seq (stream-level bookkeeping), and treating it
-        // as a request dead-ends in a reply lookup that re-enters this
-        // actor's dispatch turn.
-        if (header.Kind == ZlinkStreamMessageKind.Request && header.RequestSeq is not null)
+        var isNoBind = IsNoBindRequest(requestId, flags);
+        ZLinkBoundSessionDispatchScope? boundSessionScope = null;
+        if (!isNoBind)
         {
-            var liveActivation = actorState.LiveActivation;
-            var reply = liveActivation is not null
-                ? await runtime.SubmitActorForReplyAsync(
-                        actor.ActorId,
-                        header,
-                        body,
-                        cancellationToken)
-                    .ConfigureAwait(false)
-                : await SubmitEntryOrCurrentActorForReplyAsync(
-                        runtime,
-                        actor,
-                        actorState,
-                        header,
-                        body,
-                        cancellationToken)
-                    .ConfigureAwait(false);
-
-            if (reply is not null)
-                await SendResponseAsync(runtime, actor.ActorId, header, reply, cancellationToken)
-                    .ConfigureAwait(false);
-
-            await boundSessionScope.DrainAsync(cancellationToken)
-                .ConfigureAwait(false);
-            return;
+            boundSessionScope = ZLinkBoundSessionDispatchScope.Enter(actor.ActorId);
+            runtime.BindActorSession(
+                actor.ActorId,
+                sourceNodeRid,
+                sourceSessionRid,
+                BuildNativeBoundSessionToken(sourceSessionRid));
         }
 
-        if (actorState.LiveActivation is not null)
+        try
         {
+            // Only genuine requests take the reply path: a relayed Send can
+            // carry a request seq (stream-level bookkeeping), and treating it
+            // as a request dead-ends in a reply lookup that re-enters this
+            // actor's dispatch turn.
+            if (header.Kind == ZlinkStreamMessageKind.Request && header.RequestSeq is not null)
+            {
+                var liveActivation = actorState.LiveActivation;
+                var reply = liveActivation is not null
+                    ? await runtime.SubmitActorForReplyAsync(
+                            actor.ActorId,
+                            header,
+                            body,
+                            cancellationToken)
+                        .ConfigureAwait(false)
+                    : await SubmitEntryOrCurrentActorForReplyAsync(
+                            runtime,
+                            actor,
+                            actorState,
+                            header,
+                            body,
+                            cancellationToken)
+                        .ConfigureAwait(false);
+
+                if (reply is not null)
+                    await SendResponseAsync(
+                            runtime,
+                            actor.ActorId,
+                            actorRef,
+                            sourceNodeRid,
+                            sourceSessionRid,
+                            requestId,
+                            flags,
+                            isNoBind,
+                            header,
+                            reply,
+                            cancellationToken)
+                        .ConfigureAwait(false);
+
+                if (!isNoBind)
+                    await boundSessionScope!.DrainAsync(cancellationToken)
+                        .ConfigureAwait(false);
+                return;
+            }
+
+            if (actorState.LiveActivation is not null)
+            {
+                await runtime.SubmitActorAsync(actor, header, body, cancellationToken)
+                    .ConfigureAwait(false);
+                return;
+            }
+
             await runtime.SubmitActorAsync(actor, header, body, cancellationToken)
                 .ConfigureAwait(false);
-            return;
         }
-
-        await runtime.SubmitActorAsync(actor, header, body, cancellationToken)
-            .ConfigureAwait(false);
+        finally
+        {
+            if (boundSessionScope is not null)
+                await boundSessionScope.DisposeAsync().ConfigureAwait(false);
+        }
     }
 
     private static async ValueTask<ZLinkActorReply?> SubmitEntryOrCurrentActorForReplyAsync(
@@ -195,13 +245,87 @@ internal static class ZLinkEntrySpotActorDispatcher
     private static async ValueTask SendResponseAsync(
         ZLinkFrameworkRuntime runtime,
         string actorId,
+        ZLinkBackendActorRef actorRef,
+        RoutingId sourceNodeRid,
+        RoutingId sourceSessionRid,
+        ulong requestId,
+        uint flags,
+        bool isNoBind,
         ZlinkStreamHeader requestHeader,
         ZLinkActorReply reply,
         CancellationToken cancellationToken)
     {
+        if (isNoBind)
+        {
+            SendNoBindReply(
+                runtime,
+                actorRef,
+                sourceNodeRid,
+                sourceSessionRid,
+                requestId,
+                flags,
+                requestHeader,
+                reply);
+        }
+        else
+        {
+            var frame = reply.ToFrame(requestHeader);
+            await SendFrameWithRetryAsync(runtime, actorId, frame, cancellationToken)
+                .ConfigureAwait(false);
+        }
+    }
+
+    private static void ReplyNoBindActorMissingIfRequest(
+        ZLinkFrameworkRuntime runtime,
+        ZLinkBackendActorRef actorRef,
+        RoutingId sourceNodeRid,
+        RoutingId sourceSessionRid,
+        ulong requestId,
+        uint flags,
+        ZlinkStreamHeader requestHeader)
+    {
+        if (requestHeader.Kind != ZlinkStreamMessageKind.Request
+            || requestHeader.RequestSeq is null
+            || !IsNoBindRequest(requestId, flags))
+            return;
+
+        SendNoBindReply(
+            runtime,
+            actorRef,
+            sourceNodeRid,
+            sourceSessionRid,
+            requestId,
+            flags,
+            requestHeader,
+            ZLinkActorReply.FromError(new ZLinkFrameworkException(
+                ZLinkFrameworkErrorKind.ActorRouteNotFound,
+                $"Actor '{actorRef.ActorId}' is not available.")));
+    }
+
+    private static void SendNoBindReply(
+        ZLinkFrameworkRuntime runtime,
+        ZLinkBackendActorRef actorRef,
+        RoutingId sourceNodeRid,
+        RoutingId sourceSessionRid,
+        ulong requestId,
+        uint flags,
+        ZlinkStreamHeader requestHeader,
+        ZLinkActorReply reply)
+    {
         var frame = reply.ToFrame(requestHeader);
-        await SendFrameWithRetryAsync(runtime, actorId, frame, cancellationToken)
-            .ConfigureAwait(false);
+        using var replyMessage = Message.From(frame);
+        runtime.ReplyActorNoBind(
+            actorRef,
+            sourceNodeRid,
+            sourceSessionRid,
+            requestId,
+            flags,
+            [replyMessage]);
+    }
+
+    private static bool IsNoBindRequest(ulong requestId, uint flags)
+    {
+        return requestId != 0 && (flags & ActorRecvInfoNoBind) != 0;
     }
 
     private static async ValueTask SendFrameWithRetryAsync(

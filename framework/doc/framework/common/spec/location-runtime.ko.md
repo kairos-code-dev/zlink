@@ -36,6 +36,26 @@ watch/polling, 운영 조회 projection의 의미는 이 문서가 소유한다.
 네 종류의 location row가 있다. 모든 row는 owner-bound다: `OwnerId`(framework runtime instance
 id)와 `Generation`(fencing token)을 가진다.
 
+### 2.0 닫힌 값 집합
+
+location row, Redis row JSON, 운영 조회가 쓰는 enum 값은 언어별 ordinal에 맡기지 않고 아래
+숫자로 고정한다. 저장소 key가 문자열을 써야 할 때는 표의 canonical 문자열만 사용한다.
+
+| enum | 값 | canonical 문자열 |
+|------|-----|------------------|
+| `LocationAutoConnectType` | `Invalid=0`, `RouteMesh=1`, `ClientServer=2`, `DealerMesh=3`, `Fanout=4`, `SpotMesh=5` | `route-mesh` / `client-server` / `dealer-mesh` / `fanout` / `spot-mesh` |
+| `LocationRole` | `Invalid=0`, `Spot=2`, `Router=3`, `Dealer=4`, `Pub=5`, `Sub=6` | `spot` / `router` / `dealer` / `pub` / `sub` |
+| `RouteKind` | `Invalid=0`, `ActorSession=1`, `SpotName=2`, `FrameworkRoute=3` | - |
+| `LocationKind` | `Invalid=0`, `Peer=1`, `Spot=2`, `Actor=3`, `Route=4` | - |
+| `WriteIntent` | `NewClaim=1`, `Renew=2`, `Takeover=3` | - |
+| `WriteStatus` | `Stored=1`, `IgnoredStale=2`, `RejectedConflict=3` | - |
+| `LocationChangeType` | `Upserted=1`, `Removed=2`, `Expired=3` | - |
+| `LocationTopologyState` | `Discovered=1`, `Connecting=2`, `Ready=3`, `Lost=4`, `Error=5`, `Stopped=6` | - |
+| `SpotKind` | `Invalid=0`, `Entry=1`, `User=2` | - |
+
+`LocationRole`은 core service role의 `uint16` 값과 맞춘다. 값 `1`은 제거된 gateway role의
+예약 결번이며 다시 쓰지 않는다. 이 숫자는 core wire와 Redis row JSON에 드러나므로 변경할 수 없다.
+
 ### 2.1 peer location
 
 자동 연결에 필요한 node endpoint 정보. `AutoConnectType`(route mesh, client/server, dealer
@@ -69,11 +89,16 @@ write는 runtime instance당 1회이므로 store 부하는 node 수에 비례한
 
 ## 3. Store 계약
 
-책임별 interface 5종: peer/spot/actor/route store + owner lease store. 한 구현체가 전부 구현할
-수 있으며, extension은 통합 계약(`IZLinkLocationStore` — 5종 결합)을 구현한 **인스턴스 하나**를
-`AddLocationStore(instance)`로 등록한다(§8). 각 store는 공통으로 다음을 제공한다.
+책임별 interface는 peer/spot/actor/route store + owner lease store로 나뉜다. 그러나 public
+등록 표면은 **한 물리 저장소 인스턴스**를 등록하는 통합 계약만 제공한다. extension과 사용자
+구현체는 통합 계약(`IZLinkLocationStore` — 5종 결합)을 구현한 인스턴스 하나를
+`AddLocationStore(instance)`로 등록한다(§8). owner lease와 row가 같은 저장소에 있어야
+`NewClaim`의 "기존 row owner lease 만료" 판정을 원자적으로 할 수 있기 때문이다.
 
-- `Update...(row, intent)` / `Remove...(key, ownerToken)` / `IZLinkLocationStore.RemoveAllByOwnerAsync(ownerId)`
+각 store 역할은 공통으로 다음을 제공한다.
+
+- `Update...(row, intent)` / `Remove...(key, ownerToken)` /
+  `IZLinkLocationStore.RemoveAllByOwnerAsync(ownerId)`
 - 단건 `Resolve...(key)` (peer 제외) / filter 기반 `List...(filter[, page])`
 - peer list와 owner lease list는 **pagination 없는 단일 snapshot**이다. reconcile의 desired
   set 계산은 한 시점의 전체 목록을 전제로 하므로 page 간 시점 불일치를 허용하지 않는다.
@@ -212,23 +237,20 @@ topology 의미를 결정하지 않는다.
 ### 8.1 등록
 
 ```csharp
-// 개별 등록 (custom 구현체를 역할별로 나눠 제공할 때)
-options.AddPeerLocationStore<TStore>();
-options.AddSpotLocationStore<TStore>();
-options.AddActorLocationStore<TStore>();
-options.AddRouteLocationStore<TStore>();
-options.AddOwnerLeaseStore<TStore>();
-
-// extension package 통합 등록 (권장) — codec serializer 인스턴스 등록과 같은 형태
+// extension 또는 사용자 구현체 통합 등록.
+// 같은 인스턴스가 peer/spot/actor/route row와 owner lease를 모두 담당한다.
 options.AddLocationStore(new ZLinkRedisLocationStore(redis => redis
     .SetConnectionString("...")
     .SetKeyPrefix("zlink:app")));
+
+// 단일 process 개발, unit test, sample smoke test 전용.
+options.UseInMemoryLocationStores();
 ```
 
 `AddLocationStore(instance)`는 통합 계약 `IZLinkLocationStore`(store 5종 결합)를 구현한
 인스턴스 하나를 등록한다. 같은 인스턴스가 optional 계약(change stamp, watch)도 구현하면
-자동으로 인식된다. extension은 전용 등록 함수를 만들지 않는다. 통합 등록과 개별 등록을 섞어
-쓰는 것은 검증 오류다.
+자동으로 인식된다. extension은 전용 등록 함수를 만들지 않는다.
+`AddLocationStore(instance)`와 `UseInMemoryLocationStores()`를 함께 쓰는 것은 검증 오류다.
 
 ### 8.2 option
 

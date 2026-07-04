@@ -1,8 +1,18 @@
 # Framework Location Resolver/Store 계약 초안
 
-> 이 문서는 구현 전 초안이다. 현재 공개 계약이 아니며, framework 구현, 언어별 API,
-> location store interface, extension package, 회귀 테스트가 끝난 뒤 정식 spec/guide 문서에
-> 나누어 반영한다.
+> **상태: 승격됨(2026-07-04).**
+> 4언어 구현이 완료된 location resolver/store 계약은 아래 정식 spec으로 승격됐다.
+> 이 문서는 구현 전 설계와 보류 항목을 남기는 역사 기록이며, 현재 공개 계약의 기준이 아니다.
+>
+> - [location-runtime.ko.md](../spec/location-runtime.ko.md)
+> - [location-store-redis.ko.md](../spec/location-store-redis.ko.md)
+> - [framework-api.ko.md](../spec/framework-api.ko.md)
+> - [spot-address-messaging.ko.md](../spec/spot-address-messaging.ko.md)
+>
+> L13 actor client 관련 내용은 core gateway protocol 협력이 필요한 보류 항목이므로 승격하지
+> 않았다. 이 항목은 아래 0.2절에 남기며, 정식 spec에는 아직 공개 계약으로 쓰지 않는다.
+>
+> 원문 본문은 구현 전 초안으로 남긴다. 본문이 위 정식 spec과 충돌하면 정식 spec이 우선한다.
 >
 > 이 문서는 core registry/discovery에 의존하지 않고 framework가 자동 연결, spot 위치 조회,
 > actor 위치 조회를 제공하기 위한 공통 계약 후보를 정의한다.
@@ -12,38 +22,37 @@
 > 결정했다(spot 메시징이 spot full 주소를 받는 모델로 바뀌면서 캐시의 존재 이유가 사라짐).
 > 어느 절에서든 두 문서가 충돌하면 그 문서가 우선한다.
 
-## 0. POSD 재설계 변경 후보 (2026-07-04, 적용 대기)
+## 0. POSD 재설계 승격 상태 (2026-07-04)
 
-이 문서가 정의한 계약 위에 **POSD 재설계 2차 wave**가 확정 대기 상태로 얹혀 있다. 변경 목록의
-정본은 `framework/doc/plan/framework-public-contract-posd-redesign.ko.md`(L1~L20 + A1~D3, 값
-테이블 포함)이고, 상세 설계는 같은 디렉터리의 dotnet plan 2개다. **이 절의 변경이 이 문서 본문과
-충돌하면 재설계 문서가 우선한다.** 본문 서술·예제의 전면 갱신은 dotnet 레퍼런스 구현 완료 후
-(재설계 P6)에 수행한다.
+### 0.1 승격 완료
 
-이 문서 본문에 영향을 주는 확정 후보 요지 (ID는 재설계 문서 기준):
+`framework/doc/plan/framework-public-contract-posd-redesign.ko.md`의 P6 범위 중 구현이 끝난
+location resolver/store 계약은 정식 spec으로 옮겼다.
 
-- **L1** kind별 remove-by-owner 4개 → 통합 store의 `RemoveAllByOwner` 하나(원자적).
-- **L2** write status에서 store-unavailable 삭제 — 경합=상태값, 인프라 장애=예외.
-- **L3** lease renew/remove 반환형 교정(lease renewal 모델 / bool).
-- **L4·L5** actor row 재정의(typed nullable actor ref, spot-kind 중복 필드 삭제, actor type은
-  진단 정보) + **actor key = actor id 단독**(전역 unique 계약, type 불일치는 기존
-  `ActorTypeMismatch`로 거부). Redis row/key 형식에 cross-language 영향 — key schema 정본은 이
-  문서의 store 형식 절에서 함께 갱신한다.
-- **L6·L7** resolver 표면 재편(live peer / spot address / actor address 3종, route resolver
-  내부화, actor-ref resolver 비신설) + 운영 조회 `List*Locations` 개명. **liveness 확정: List
-  계열은 live row 반환**(P0 조사-2 — 현행 구현·e2e 의존), stale 관측은 topology(Lost)·
-  summary(Stopped).
-- **L8·L9** watch typed key union + canonical 문자열 helper 내부화(단일 매핑 테이블).
-- **L10** enum 명시 값 규약 — location role은 uint16 폭·값 유지(값 1은 제거된 gateway 예약 결번,
-  숫자가 core wire·Redis row JSON에 직렬화됨 — P0 조사-1).
-- **L12~L17** 사용자 편의 표면 신설 후보: actor directory(find/ensure + 실패 계약), actor
-  client(send/request-to-actor, await 단독 터미널, 실패 분류 — `ActorLocationStale`·
-  `ActorCreateRejected` 신설, id-type 충돌은 `ActorTypeMismatch` 재사용), 기존 session actors에
-  bind-or-get 추가, readiness(확인 불가=false), actor ref snapshot. **envelope는 actor-forwarding
-  framing 재사용 확정**(P0 조사-3) — 단 서버 송신이 수신측 bound-session route 갱신을 유발하지
-  않는 변형이 필요하다(잔여 설계 조건, spot-address 문서와 함께 확정).
-- **L18~L20** 표면 금지 규칙(샘플·업무 코드의 store SPI 직접 사용 금지 등), internal 분류,
-  peer key identity·route payload 문구 계약.
+| 항목 | 승격 위치 |
+|------|-----------|
+| 통합 store 등록, `RemoveAllByOwner`, write status에서 store 장애 제거, owner lease renewal/bool remove | [location-runtime.ko.md](../spec/location-runtime.ko.md) |
+| actor row 재정의, actor key = actor id, resolver 3종, live-only runtime query, watch/change stamp, enum 값 테이블 | [location-runtime.ko.md](../spec/location-runtime.ko.md) |
+| Redis key schema, `actor-location-v2` fixture, typed actor ref JSON, actor row key 형식 | [location-store-redis.ko.md](../spec/location-store-redis.ko.md) |
+| framework error kind 값 0~21과 기본 retriable 정책 | [framework-api.ko.md](../spec/framework-api.ko.md) |
+| 캐시 제거와 spot full address 메시징 | [spot-address-messaging.ko.md](../spec/spot-address-messaging.ko.md) |
+
+### 0.2 보류 — L13 actor client
+
+L13 actor client(`send-to-actor` / `request-to-actor`)는 승격하지 않는다. 이 항목은 core gateway
+protocol에 서버 송신이 수신측 bound-session route 갱신을 유발하지 않는 경로가 필요하다. 해당 core
+트랙이 끝나기 전까지 4언어 모두 L13 public API를 계약으로 제공하지 않는다.
+
+보류 중인 의미론:
+
+- actor id 단독으로 대상 actor를 찾는 send/request 표면.
+- await 가능한 단독 터미널. resolve 실패를 삼키는 void submit 경로는 두지 않는다.
+- await 완료 의미는 "resolve 성공 + 로컬 전송 경로 인계"이며, 원격 handler 전달 보장은 아니다.
+- 실패 분류는 `ActorRouteNotFound`, `ActorLocationStale`, `RouteNotConnected`를 사용한다.
+- silent drop, auto-create, 메시지 파킹은 금지한다.
+
+이 절의 L13 내용은 구현 전 draft로 남긴다. core 설계와 4언어 구현이 완료된 뒤에만 정식 spec으로
+승격한다.
 
 ## 1. 목적
 

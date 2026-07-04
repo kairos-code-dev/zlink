@@ -52,15 +52,21 @@ prefix `P`, kind ∈ {`peer`, `spot`, `actor`, `route`} 기준. row key는 key �
 row key 예 (peer): `AutoConnectType canonical 문자열 + MeshName + Role canonical 문자열 +
 identity(NodeRid hex, 없으면 endpoint)`를 length-prefix로 연결한 값.
 
+Redis row 형식의 byte-for-byte fixture 정본은
+`framework/testdata/location/redis/actor-location-v2.json`이다. 네 언어 Redis extension은 이
+fixture와 같은 key 문자열, hash field, row JSON을 만들어야 한다. fixture의 hash field는
+`owner`, `gen`, `json`, `updatedAtMs`이고, row JSON은 PascalCase public field 이름을 유지한다.
+`RoutingId` 값은 소문자 hex 문자열로 저장하고, route `Value`는 base64 문자열로 저장한다.
+
 **POSD 재설계 반영(2026-07-04, cross-language row/key 형식 변경)**:
 
 - actor row key는 **actor id 단독**이다 — actor id 전역 unique 계약에 따라 `ActorType`은 key
   구성에서 제거됐다(type은 row의 nullable 진단 필드로만 남는다).
 - row `json`의 actor ref는 문자열 포맷이 아니라 **typed 객체 `{ nodeRid, actorId, generation }`**
-  로 직렬화한다. actor ref 문자열 조립/파싱은 어떤 언어 extension에도 존재해서는 안 된다.
+  로 직렬화한다. 이 객체의 field 이름은 camelCase이고, `nodeRid`는 routing id hex 문자열이다.
+  actor ref 문자열 조립/파싱은 어떤 언어 extension에도 존재해서는 안 된다.
 - actor row의 중복 `SpotKind` 필드는 제거됐다 — actor가 사는 spot 종류는 `LocationKind` 단독이다.
-- 이 세 가지는 4언어 extension이 동일하게 따라야 하는 저장 형식 변경이며, 언어별 적용 현황은
-  `framework/doc/plan/framework-public-contract-posd-redesign-{node,java,cpp}.ko.md`가 추적한다.
+- 이 세 가지는 4언어 extension이 동일하게 따라야 하는 저장 형식 변경이다.
 
 ## 3. 원자성 — write는 전부 Lua script
 

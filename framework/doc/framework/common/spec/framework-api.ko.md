@@ -131,7 +131,42 @@
   결정은 [session-actor-dispatch.ko.md](session-actor-dispatch.ko.md)에서
   본다.
 
-### 2.3 transport 통합 축
+### 2.3 Framework 오류 kind
+
+framework 오류는 언어마다 exception/error 표현이 달라도 같은 kind 집합을 가진다. 숫자 값은
+관측과 진단 데이터의 안정성을 위해 고정한다. 오류 kind는 값 `0`도 유효한 멤버이므로,
+`Invalid=0` 규칙의 예외다.
+
+| 값 | kind | 기본 재시도 |
+|----|------|-------------|
+| 0 | `ActorRouteNotFound` | no |
+| 1 | `ActorCreateFailed` | no |
+| 2 | `ActorAlreadyExists` | no |
+| 3 | `ActorTypeMismatch` | no |
+| 4 | `SpotCreateFailed` | no |
+| 5 | `SpotRouteNotFound` | no |
+| 6 | `SpotTypeMismatch` | no |
+| 7 | `ActorSessionNotBound` | no |
+| 8 | `HandlerNotFound` | no |
+| 9 | `RouteHandlerNotFound` | no |
+| 10 | `ActorDispatchHandlerNotFound` | no |
+| 11 | `PayloadDecodeFailed` | no |
+| 12 | `RouteNotConnected` | yes |
+| 13 | `RequestTargetNotFound` | no |
+| 14 | `RequestRejected` | no |
+| 15 | `RequestProtocolError` | no |
+| 16 | `RequestFailed` | no |
+| 17 | `WorkerQueueFull` | no |
+| 18 | `WorkerTimedOut` | no |
+| 19 | `WorkerFailed` | no |
+| 20 | `ActorLocationStale` | yes |
+| 21 | `ActorCreateRejected` | no |
+
+기본 재시도 값은 kind별 공통 정책이다. `RouteNotConnected`는 아직 route가 연결되지 않은
+수렴 창일 수 있고, `ActorLocationStale`은 actor 위치가 바뀐 직후의 bounded retry 대상이다.
+그 밖의 kind는 기본적으로 같은 요청을 즉시 반복해도 의미 있는 진전이 없다고 본다.
+
+### 2.4 transport 통합 축
 
 framework가 직접 통합할 transport 축은 [overview.ko.md](overview.ko.md)의
 section 2에 정의되어 있다. 이 문서는 channel messaging, `PUB/SUB`, `STREAM`

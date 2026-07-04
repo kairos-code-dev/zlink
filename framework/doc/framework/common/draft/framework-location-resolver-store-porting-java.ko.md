@@ -17,9 +17,12 @@
 > 전체 순서는 **node → java(+kotlin) → cpp**이며 java는 node 다음이다.
 
 
-> **후속(2026-07-04)**: 이 문서의 이식 완료분 위에 POSD 재설계 2차 wave가 예정되어 있다.
+> **후속(2026-07-04)**: 이 문서의 이식 완료분 위에 POSD 재설계 2차 wave가 진행됐다.
 > 변경 목록 정본은 `framework/doc/plan/framework-public-contract-posd-redesign.ko.md`,
 > 이 언어의 진행 문서는 `framework/doc/plan/framework-public-contract-posd-redesign-java.ko.md`다.
+> **완료(2026-07-04)**: 2차 wave도 완료됐다. 이 문서는 1차 location resolver/store 포팅 기록으로
+> 보존하며, 현재 공통 계약은 [location runtime spec](../spec/location-runtime.ko.md)과
+> [Redis store spec](../spec/location-store-redis.ko.md)을 기준으로 본다.
 경로: `framework/languages/java/` (kotlin은 그 아래 `zlink-framework-kotlin` 모듈)
 
 ## 1. 상태 보드

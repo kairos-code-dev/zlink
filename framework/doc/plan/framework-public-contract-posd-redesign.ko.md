@@ -168,8 +168,8 @@ canonical 문자열의 정본은 공통 store codec 문서이며 이 표는 그 
 - [x] **P2. node 적용** ✅ 2026-07-04 (S0~S6+G 완료, 전체 테스트 그린, 리뷰 2축 "이슈 없음") — [진행 문서](framework-public-contract-posd-redesign-node.ko.md). e2e·샘플 포함.
 - [x] **P3. java(+kotlin) 적용** ✅ 2026-07-04 (S0~S6+G 완료, 4모듈+e2e 8+샘플 그린, 리뷰 2축 통과) — [진행 문서](framework-public-contract-posd-redesign-java.ko.md). e2e·샘플 포함.
 - [x] **P4. cpp 적용** ✅ 2026-07-04 (S0~S6+G 완료, 빌드+ctest 42/42 그린, 리뷰 2축 통과) — [진행 문서](framework-public-contract-posd-redesign-cpp.ko.md). e2e·샘플 포함.
-- [ ] **P5. parity 강제 장치** — 6절 두 항목 설계·도입.
-- [ ] **P6. 문서 승격** — 구현된 계약만 공통 spec/guide로 승격, draft 상태 해제. 언어별 문서의
+- [x] **P5. parity 강제 장치** ✅ 2026-07-04 — ①형태 고정 테스트=4언어 S6에서 확보 ②계약 인벤토리 CI 체커(framework/doc/contract-inventory/framework-public-contract-inventory.json + doc/site/scripts/check_framework_contract_inventory.py, docs.yml 연결, 실측 통과: types=52 methods=34 enums=9).
+- [x] **P6. 문서 승격** ✅ 2026-07-04 (location resolver/store 계약 spec 승격+draft 상태 갱신+porting draft 3종 완료 반영 — L13은 CORE 트랙 완료까지 draft 유지) — 구현된 계약만 공통 spec/guide로 승격, draft 상태 해제. 언어별 문서의
       상태 보드 완료 확인.
 
 **적용 범위 규칙**: 모든 변경 항목(L1~L20, A1~D3)의 완료 조건은 계약 파일 수정이 아니라 **소비자

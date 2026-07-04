@@ -72,8 +72,16 @@ template <typename T> class task_t
         }
         void unhandled_exception ()
         {
-            set_result (result_t<T>::failure (error_code_t::user_callback_failed,
-                                              "unhandled connector coroutine exception"));
+            std::string detail = "unhandled connector coroutine exception";
+            try {
+                throw;
+            }
+            catch (const std::exception &error) {
+                detail += std::string (": ") + error.what ();
+            }
+            catch (...) {
+            }
+            set_result (result_t<T>::failure (error_code_t::user_callback_failed, detail));
         }
         void return_value (result_t<T> value) { set_result (std::move (value)); }
         template <typename U>

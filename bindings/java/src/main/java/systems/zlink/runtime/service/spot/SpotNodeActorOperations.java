@@ -8,6 +8,7 @@ import java.time.Duration;
 import java.util.List;
 import java.util.Objects;
 import java.util.concurrent.CompletableFuture;
+import java.util.concurrent.CompletionStage;
 import systems.zlink.contracts.errors.ConfigResult;
 import systems.zlink.contracts.errors.ZlinkConfigException;
 import systems.zlink.contracts.errors.ZlinkRequestException;
@@ -23,9 +24,13 @@ import systems.zlink.contracts.service.spot.ActorLookupOperation;
 import systems.zlink.contracts.service.spot.ActorLookupResult;
 import systems.zlink.contracts.service.spot.ActorRef;
 import systems.zlink.contracts.service.spot.ReplyHandler;
+import systems.zlink.contracts.service.spot.RequestOperation;
+import systems.zlink.contracts.service.spot.RequestSubmitOperation;
+import systems.zlink.contracts.service.spot.RequestCallbackSubmitOperation;
 import systems.zlink.contracts.service.spot.SendOperation;
 import systems.zlink.contracts.service.spot.SendSubmitOperation;
 import systems.zlink.contracts.sockets.RequestResult;
+import systems.zlink.contracts.sockets.RequestCallback;
 import systems.zlink.contracts.sockets.SendFlags;
 import systems.zlink.contracts.sockets.SubmitResult;
 import systems.zlink.contracts.core.RoutingId;
@@ -196,6 +201,18 @@ final class SpotNodeActorOperations {
         Objects.requireNonNull(actor, "actor");
         node.ensureOpen();
         return new SendBoundSessionBuilder(actor);
+    }
+
+    SendOperation sendToActor(ActorRef actor) {
+        Objects.requireNonNull(actor, "actor");
+        node.ensureOpen();
+        return new SendToActorBuilder(actor);
+    }
+
+    RequestOperation requestToActor(ActorRef actor) {
+        Objects.requireNonNull(actor, "actor");
+        node.ensureOpen();
+        return new RequestToActorBuilder(actor);
     }
 
     SendOperation forwardActorBoundSession(
@@ -505,6 +522,191 @@ final class SpotNodeActorOperations {
         private void ensureNotSubmitted() {
             if (submitted)
                 throw new IllegalStateException("operation already submitted");
+        }
+    }
+
+    private final class SendToActorBuilder
+        implements SendOperation, SendSubmitOperation {
+        private final ActorRef actor;
+        private final MessagePartsBuffer parts = new MessagePartsBuffer();
+        private SendFlags flags = SendFlags.NONE;
+        private boolean submitted;
+
+        SendToActorBuilder(ActorRef actor) {
+            this.actor = actor;
+        }
+
+        @Override
+        public SendSubmitOperation message(Message part) {
+            ensureNotSubmitted();
+            parts.add(Objects.requireNonNull(part, "part"));
+            return this;
+        }
+
+        @Override
+        public SendSubmitOperation flags(SendFlags value) {
+            ensureNotSubmitted();
+            flags = Objects.requireNonNull(value, "flags");
+            return this;
+        }
+
+        @Override
+        public boolean submit() {
+            ensureNotSubmitted();
+            if (parts.size() != 1)
+                throw new IllegalArgumentException(
+                    "sendToActor requires exactly one message");
+            submitted = true;
+            ActorRequestCallbacks.PendingToken token =
+                ActorRequestCallbacks.register((result, replyParts) -> {});
+            try (Arena arena = Arena.ofConfined()) {
+                MemorySegment nativeMsg = arena.allocate(
+                    NativeLayouts.MESSAGE_LAYOUT);
+                InternalAccess.messageCopyTo(parts.get(0), nativeMsg);
+                int rc = Native.spotNodeSendToActor(
+                    node.handle(),
+                    ActorInterop.actorRefToNative(arena, actor),
+                    nativeMsg,
+                    ActorRequestCallbacks.REPLY_CALLBACK,
+                    MemorySegment.ofAddress(token.id()),
+                    flags.value(),
+                    0);
+                if (rc != 0) {
+                    ActorRequestCallbacks.remove(token.id());
+                    NativeMessage.messageClose(nativeMsg);
+                    if (flags == SendFlags.DONT_WAIT
+                        && SubmitResult.fromValue(rc)
+                            == SubmitResult.BACKPRESSURED) {
+                        return false;
+                    }
+                    throw new ZlinkSubmitException(SubmitResult.fromValue(rc));
+                }
+            }
+            return true;
+        }
+
+        private void ensureNotSubmitted() {
+            if (submitted)
+                throw new IllegalStateException("operation already submitted");
+        }
+    }
+
+    private final class RequestToActorBuilder
+        implements RequestOperation, RequestSubmitOperation {
+        private final ActorRef actor;
+        private final MessagePartsBuffer parts = new MessagePartsBuffer();
+        private SendFlags flags = SendFlags.NONE;
+        private Duration timeout = Duration.ZERO;
+        private boolean submitted;
+
+        RequestToActorBuilder(ActorRef actor) {
+            this.actor = actor;
+        }
+
+        @Override
+        public RequestSubmitOperation message(Message part) {
+            add(part);
+            return this;
+        }
+
+        @Override
+        public RequestSubmitOperation timeout(Duration value) {
+            ensureNotSubmitted();
+            timeout = Objects.requireNonNull(value, "timeout");
+            return this;
+        }
+
+        @Override
+        public RequestCallbackSubmitOperation flags(SendFlags value) {
+            ensureNotSubmitted();
+            flags = Objects.requireNonNull(value, "flags");
+            return new RequestToActorCallbackBuilder(this);
+        }
+
+        @Override
+        public CompletionStage<List<Message>> submit() {
+            CompletableFuture<List<Message>> future = new CompletableFuture<>();
+            submit((result, replyParts) -> {
+                if (result == RequestResult.OK) {
+                    future.complete(replyParts);
+                } else {
+                    future.completeExceptionally(new ZlinkRequestException(result));
+                }
+            });
+            return future;
+        }
+
+        @Override
+        public boolean submit(RequestCallback callback) {
+            Objects.requireNonNull(callback, "callback");
+            ensureNotSubmitted();
+            if (parts.isEmpty())
+                throw new IllegalArgumentException("at least one message required");
+            submitted = true;
+            ActorRequestCallbacks.PendingToken token =
+                ActorRequestCallbacks.register(callback::onComplete);
+            try (Arena arena = Arena.ofConfined()) {
+                MemorySegment nativeParts = parts.copyToNativeArray(arena);
+                int rc = Native.spotNodeRequestToActor(
+                    node.handle(),
+                    ActorInterop.actorRefToNative(arena, actor),
+                    nativeParts,
+                    parts.size(),
+                    ActorRequestCallbacks.REPLY_CALLBACK,
+                    MemorySegment.ofAddress(token.id()),
+                    flags.value(),
+                    NativeSpotNode.timeoutMillis(timeout));
+                if (rc != 0) {
+                    ActorRequestCallbacks.remove(token.id());
+                    MessagePartsBuffer.closeNativeArray(nativeParts, parts.size());
+                    throw new ZlinkSubmitException(SubmitResult.fromValue(rc));
+                }
+            }
+            return true;
+        }
+
+        void add(Message part) {
+            ensureNotSubmitted();
+            parts.add(Objects.requireNonNull(part, "part"));
+        }
+
+        void ensureNotSubmitted() {
+            if (submitted)
+                throw new IllegalStateException("operation already submitted");
+        }
+    }
+
+    private final class RequestToActorCallbackBuilder
+        implements RequestCallbackSubmitOperation {
+        private final RequestToActorBuilder owner;
+
+        RequestToActorCallbackBuilder(RequestToActorBuilder owner) {
+            this.owner = owner;
+        }
+
+        @Override
+        public RequestCallbackSubmitOperation message(Message part) {
+            owner.add(part);
+            return this;
+        }
+
+        @Override
+        public RequestCallbackSubmitOperation timeout(Duration value) {
+            owner.ensureNotSubmitted();
+            owner.timeout = Objects.requireNonNull(value, "timeout");
+            return this;
+        }
+
+        @Override
+        public RequestCallbackSubmitOperation flags(SendFlags value) {
+            owner.ensureNotSubmitted();
+            owner.flags = Objects.requireNonNull(value, "flags");
+            return this;
+        }
+
+        @Override
+        public boolean submit(RequestCallback callback) {
+            return owner.submit(callback);
         }
     }
 }

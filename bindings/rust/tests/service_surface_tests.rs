@@ -176,6 +176,15 @@ fn actor_surfaces_exist() {
         .flags(SendFlags::DONT_WAIT)
         .timeout(std::time::Duration::from_millis(1));
     let _ = node
+        .send_to_actor(&remote)
+        .message(Message::try_from(b"actor-send").unwrap())
+        .flags(SendFlags::DONT_WAIT);
+    let _ = node
+        .request_to_actor(&remote)
+        .message(Message::try_from(b"actor-request").unwrap())
+        .flags(SendFlags::DONT_WAIT)
+        .timeout(std::time::Duration::from_millis(1));
+    let _ = node
         .leave_actor(&remote, &RoutingId::from(b"actor-spot"))
         .timeout(std::time::Duration::from_millis(1));
     fn _dispatch_handler(_info: SpotDispatchInfo<'_>) {}

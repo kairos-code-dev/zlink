@@ -156,6 +156,25 @@ ZLINK_EXPORT zlink_submit_result_t zlink_spot_node_actor_forward_bound_session_p
   zlink_send_flags_t flags_,
   zlink_part_flag_t part_flag_);
 
+ZLINK_EXPORT zlink_submit_result_t
+zlink_spot_node_send_to_actor (void *node_,
+                               const zlink_actor_ref_t *actor_,
+                               zlink_msg_t *message_,
+                               zlink_reply_handler_fn completion_,
+                               void *userdata_,
+                               zlink_send_flags_t flags_,
+                               uint32_t timeout_ms_);
+
+ZLINK_EXPORT zlink_submit_result_t
+zlink_spot_node_request_to_actor (void *node_,
+                                  const zlink_actor_ref_t *actor_,
+                                  zlink_msg_t *parts_,
+                                  size_t part_count_,
+                                  zlink_reply_handler_fn callback_,
+                                  void *userdata_,
+                                  zlink_send_flags_t flags_,
+                                  uint32_t timeout_ms_);
+
 ZLINK_EXPORT zlink_config_result_t zlink_spot_node_actor_bind_remote_session (
   void *node_,
   const zlink_actor_ref_t *actor_,

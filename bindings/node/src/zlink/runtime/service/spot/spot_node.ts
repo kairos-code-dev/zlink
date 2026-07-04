@@ -9,16 +9,17 @@ import { getNativeHandle, NativeHandle } from '../../handles/native_handle';
 import { closeCall, configCall, connectCall } from '../../errors/native_errors';
 import { validateCString } from '../../options/validation';
 import { int32Buffer, readInt32Option } from '../../sockets/socket_options';
-import { RuntimeSendOperation } from '../../sockets/socket_operation_builders';
+import { RuntimeRequestOperation, RuntimeSendOperation } from '../../sockets/socket_operation_builders';
 import { normalizeRoutingId } from '../../core/routing_id';
 import { requireNative } from '../../native/native';
 import { normalizeOperationPayload } from '../../buffers/message_conversion';
 import { RoutingId, type MessageLike } from '../../../contracts';
+import { SendFlags } from '../../../contracts/sockets';
 import type { AutoHwmProfileValue } from '../../../contracts/core';
-import { SpotNodeMode, type ActorDestroyOperation, type ActorJoinEntrySpotOperation, type ActorJoinOperation, type ActorLeaveOperation, type ActorLookupOperation, type ActorRef, type SendOperation, type SpotNodeActorEntry, type SpotNodeModeValue, type SpotNodePeerEntry, type SpotNodePeerFilter, type SpotNodeSocketEntry, type SpotNodeSocketFilter, type SpotNodeSpotEntry, type SpotNodeStatus, type SpotNodeSubjectEntry, type SpotNodeSubjectFilter } from '../../../contracts/service';
+import { SpotNodeMode, type ActorDestroyOperation, type ActorJoinEntrySpotOperation, type ActorJoinOperation, type ActorLeaveOperation, type ActorLookupOperation, type ActorRef, type RequestOperation, type SendOperation, type SpotNodeActorEntry, type SpotNodeModeValue, type SpotNodePeerEntry, type SpotNodePeerFilter, type SpotNodeSocketEntry, type SpotNodeSocketFilter, type SpotNodeSpotEntry, type SpotNodeStatus, type SpotNodeSubjectEntry, type SpotNodeSubjectFilter } from '../../../contracts/service';
 import { SpotNodeOption } from './spot_options';
 import { actorRefFromRaw, actorRefToRaw, spotNodeActorEntryFromRaw, spotNodeSpotEntryFromRaw } from './actor_models';
-import { invokeActorBindRemoteSession, invokeActorDestroy, invokeActorJoin, invokeActorJoinEntrySpot, invokeActorLeave, invokeActorSendBoundSession, invokeRemoteActorGetRef } from './actor_invokers';
+import { invokeActorBindRemoteSession, invokeActorDestroy, invokeActorJoin, invokeActorJoinEntrySpot, invokeActorLeave, invokeActorSendBoundSession, invokeRemoteActorGetRef, invokeRequestToActor, invokeSendToActor } from './actor_invokers';
 import { RuntimeActorDestroyOperation, RuntimeActorJoinEntrySpotOperation, RuntimeActorJoinOperation, RuntimeActorLeaveOperation, RuntimeActorLookupOperation } from './actor_operations';
 import { mapSpotNodePeerEntry, mapSpotNodeSocketEntry, mapSpotNodeStatus, mapSpotNodeSubjectEntry, type ActorRefRaw, type SpotNodePeerEntryRaw, type SpotNodeSocketEntryRaw, type SpotNodeSpotGetOrNewRaw, type SpotNodeStatusRaw, type SpotNodeSubjectEntryRaw } from './spot_raw_models';
 
@@ -247,6 +248,38 @@ export class SpotNode extends NativeHandle {
   sendActorBoundSession(actor: ActorRef): SendOperation {
     const node = this._native;
     return new RuntimeSendOperation((parts, flags) => invokeActorSendBoundSession(node, actor, parts, flags));
+  }
+  sendToActor(actor: ActorRef): SendOperation {
+    const node = this._native;
+    return new RuntimeSendOperation((parts, flags) => invokeSendToActor(node, actor, parts, flags));
+  }
+  requestToActor(actor: ActorRef): RequestOperation {
+    const node = this._native;
+    return new RuntimeRequestOperation((parts, callbackOrTimeout, flagsOrTimeout, maybeTimeout) => {
+      if (typeof callbackOrTimeout === 'function') {
+        return invokeRequestToActor(
+          node,
+          actor,
+          parts,
+          callbackOrTimeout,
+          (flagsOrTimeout as SendFlags | undefined) ?? SendFlags.None,
+          maybeTimeout ?? 0,
+        );
+      }
+      return new Promise((resolve, reject) => {
+        invokeRequestToActor(
+          node,
+          actor,
+          parts,
+          (result, replyParts) => {
+            if (result === 0) resolve(replyParts);
+            else reject(new Error(`requestToActor failed: ${result}`));
+          },
+          SendFlags.None,
+          callbackOrTimeout ?? 0,
+        );
+      });
+    });
   }
   bindRemoteActorSession(actor: ActorRef, sourceNodeRid: RoutingId, sourceSessionRid: RoutingId): void {
     invokeActorBindRemoteSession(this._native, actor, sourceNodeRid, sourceSessionRid);

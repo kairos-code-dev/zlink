@@ -143,11 +143,17 @@ inline bool submit_bound_session_send_state (spot_operation_state_t &state_)
 
         zlink_msg_t native;
         move_to_native_or_reject (part, &native);
-        const submit_result_t rc =
-          static_cast<submit_result_t> (zlink_spot_node_actor_send_bound_session_msg (
-            zlink::detail::native_handle (*state_.node),
-            zlink::detail::actor_ref_native (*state_.actor), &native,
-            static_cast<zlink_send_flags_t> (static_cast<int> (state_.flags))));
+        const submit_result_t rc = static_cast<submit_result_t> (
+          state_.kind == spot_operation_kind_t::actor_send
+            ? zlink_spot_node_send_to_actor (
+                zlink::detail::native_handle (*state_.node),
+                zlink::detail::actor_ref_native (*state_.actor), &native,
+                nullptr, nullptr,
+                static_cast<zlink_send_flags_t> (static_cast<int> (state_.flags)), 0)
+            : zlink_spot_node_actor_send_bound_session_msg (
+                zlink::detail::native_handle (*state_.node),
+                zlink::detail::actor_ref_native (*state_.actor), &native,
+                static_cast<zlink_send_flags_t> (static_cast<int> (state_.flags))));
         if (rc == submit_result_t::ok)
             return true;
 
@@ -167,11 +173,17 @@ inline bool submit_bound_session_send_state (spot_operation_state_t &state_)
 
     zlink_msg_t native;
     zlink::detail::move_to_native (parts[0], &native);
-    const submit_result_t rc =
-      static_cast<submit_result_t> (zlink_spot_node_actor_send_bound_session_msg (
-        zlink::detail::native_handle (*state_.node),
-        zlink::detail::actor_ref_native (*state_.actor), &native,
-        static_cast<zlink_send_flags_t> (static_cast<int> (state_.flags))));
+    const submit_result_t rc = static_cast<submit_result_t> (
+      state_.kind == spot_operation_kind_t::actor_send
+        ? zlink_spot_node_send_to_actor (
+            zlink::detail::native_handle (*state_.node),
+            zlink::detail::actor_ref_native (*state_.actor), &native,
+            nullptr, nullptr,
+            static_cast<zlink_send_flags_t> (static_cast<int> (state_.flags)), 0)
+        : zlink_spot_node_actor_send_bound_session_msg (
+            zlink::detail::native_handle (*state_.node),
+            zlink::detail::actor_ref_native (*state_.actor), &native,
+            static_cast<zlink_send_flags_t> (static_cast<int> (state_.flags))));
     if (rc != submit_result_t::ok) {
         parts[0].init ();
         (void) zlink_msg_move (zlink::detail::native_handle (parts[0]), &native);

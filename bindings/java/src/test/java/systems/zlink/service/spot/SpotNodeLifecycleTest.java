@@ -21,6 +21,14 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
 
 class SpotNodeLifecycleTest {
     @Test
+    void spotNodeActorRefSendAndRequestSurfaceExists() throws Exception {
+        assertEquals(SendOperation.class,
+            SpotNode.class.getMethod("sendToActor", ActorRef.class).getReturnType());
+        assertEquals(RequestOperation.class,
+            SpotNode.class.getMethod("requestToActor", ActorRef.class).getReturnType());
+    }
+
+    @Test
     void closeCascadesToOwnedSpots() throws Exception {
         TestSupport.assumeNative();
 

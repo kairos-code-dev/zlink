@@ -979,6 +979,33 @@ class _Lib:
             ctypes.c_int,
         )
         self._require(
+            "zlink_spot_node_send_to_actor",
+            [
+                ctypes.c_void_p,
+                ctypes.POINTER(ZlinkActorRef),
+                ctypes.POINTER(ZlinkMsg),
+                ctypes.c_void_p,
+                ctypes.c_void_p,
+                ctypes.c_uint32,
+                ctypes.c_uint32,
+            ],
+            ctypes.c_int,
+        )
+        self._require(
+            "zlink_spot_node_request_to_actor",
+            [
+                ctypes.c_void_p,
+                ctypes.POINTER(ZlinkActorRef),
+                ctypes.POINTER(ZlinkMsg),
+                ctypes.c_size_t,
+                ctypes.c_void_p,
+                ctypes.c_void_p,
+                ctypes.c_uint32,
+                ctypes.c_uint32,
+            ],
+            ctypes.c_int,
+        )
+        self._require(
             "zlink_stream_bound_actors",
             [
                 ctypes.c_void_p,

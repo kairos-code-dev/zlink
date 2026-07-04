@@ -96,6 +96,21 @@ export interface ServiceNativeBinding {
     parts: unknown,
     flags: number
   ) => void;
+  spotNodeSendToActor: (
+    node: NativeHandle,
+    actor: ActorRefRaw,
+    parts: unknown,
+    flags: number,
+    timeoutMs: number
+  ) => void;
+  spotNodeRequestToActor: (
+    node: NativeHandle,
+    actor: ActorRefRaw,
+    parts: unknown,
+    callback: NativeRequestCallback,
+    flags: number,
+    timeoutMs: number
+  ) => void;
   spotNodeActors: (node: NativeHandle) => SpotNodeActorEntryRaw[];
   spotRouteBridgeNew: (ctx: NativeHandle, node: NativeHandle) => NativeHandle;
   spotRouteBridgeClose: (bridge: NativeHandle) => void;

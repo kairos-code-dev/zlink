@@ -175,6 +175,55 @@ export function invokeActorSendBoundSession(
   return true;
 }
 
+export function invokeSendToActor(
+  nodeHandle: unknown,
+  actor: ActorRef,
+  parts: MessageLike | readonly MessageLike[],
+  flags: SendFlags,
+): boolean {
+  try {
+    requireNative().spotNodeSendToActor(
+      nodeHandle,
+      actorRefToRaw(actor),
+      normalizeOperationPayload(parts),
+      flags | 0,
+      0,
+    );
+  } catch (error) {
+    const submitError = submitNativeError(error, flags, 'sendToActor failed');
+    if (((flags | 0) & (SendFlags.DontWait | 0)) && submitError.result === SubmitResult.Backpressured) {
+      return false;
+    }
+    throw submitError;
+  }
+  return true;
+}
+
+export function invokeRequestToActor(
+  nodeHandle: unknown,
+  actor: ActorRef,
+  parts: MessageLike | readonly MessageLike[],
+  callback: ReplyHandler,
+  flags: SendFlags,
+  timeoutMs: number,
+): boolean {
+  try {
+    requireNative().spotNodeRequestToActor(
+      nodeHandle,
+      actorRefToRaw(actor),
+      normalizeOperationPayload(parts),
+      (result: number, replyParts: Buffer[] | null) => {
+        callback(result as RequestResult, messagesFromNativeBuffers(replyParts));
+      },
+      flags | 0,
+      timeoutMs | 0,
+    );
+    return true;
+  } catch (error) {
+    throw submitNativeError(error, flags, 'requestToActor failed');
+  }
+}
+
 export function invokeActorBindRemoteSession(
   nodeHandle: unknown,
   actor: ActorRef,

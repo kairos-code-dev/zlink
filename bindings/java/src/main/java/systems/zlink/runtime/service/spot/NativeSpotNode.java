@@ -18,6 +18,7 @@ import systems.zlink.contracts.service.spot.ActorJoinOperation;
 import systems.zlink.contracts.service.spot.ActorLeaveOperation;
 import systems.zlink.contracts.service.spot.ActorLookupOperation;
 import systems.zlink.contracts.service.spot.ActorRef;
+import systems.zlink.contracts.service.spot.RequestOperation;
 import systems.zlink.contracts.service.spot.SendOperation;
 import systems.zlink.contracts.service.spot.Spot;
 import systems.zlink.contracts.service.spot.SpotNode;
@@ -450,6 +451,14 @@ public final class NativeSpotNode implements SpotNode {
      */
     public SendOperation sendActorBoundSession(ActorRef actor) {
         return actorOperations.sendActorBoundSession(actor);
+    }
+
+    public SendOperation sendToActor(ActorRef actor) {
+        return actorOperations.sendToActor(actor);
+    }
+
+    public RequestOperation requestToActor(ActorRef actor) {
+        return actorOperations.requestToActor(actor);
     }
 
     /**

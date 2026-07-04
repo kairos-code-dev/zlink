@@ -440,6 +440,35 @@ impl SpotNodePublicRuntime for SpotNode {
         })
     }
 
+    fn send_to_actor(&self, actor: &ActorRef) -> SendOp<Empty> {
+        let raw = actor.to_raw().unwrap_or(ffi::zlink_actor_ref_t {
+            node_rid: ffi::zlink_routing_id_t::empty(),
+            actor_id: [0; ffi::ZLINK_ACTOR_ID_MAX],
+            generation: 0,
+        });
+        wrap_send_op(NativeSendOp {
+            handle: spot_node_handle(self),
+            kind: SendOpKind::ActorSend { actor: raw },
+            parts: Vec::new(),
+            flags: SendFlags::NONE,
+        })
+    }
+
+    fn request_to_actor(&self, actor: &ActorRef) -> RequestOp<Empty> {
+        let raw = actor.to_raw().unwrap_or(ffi::zlink_actor_ref_t {
+            node_rid: ffi::zlink_routing_id_t::empty(),
+            actor_id: [0; ffi::ZLINK_ACTOR_ID_MAX],
+            generation: 0,
+        });
+        wrap_request_op(NativeRequestOp {
+            handle: spot_node_handle(self),
+            kind: RequestOpKind::ActorRequest { actor: raw },
+            parts: Vec::new(),
+            flags: None,
+            timeout: Duration::ZERO,
+        })
+    }
+
     fn status(&self) -> Result<SpotNodeStatus, ConfigError> {
         let mut raw = MaybeUninit::<ffi::zlink_spot_node_status_t>::uninit();
         check_config_rc(unsafe {

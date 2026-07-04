@@ -190,6 +190,10 @@ class spot_node_t
 
     send_operation_t send_bound_session_msg (const actor_ref_t &actor_);
 
+    send_operation_t send_to_actor (const actor_ref_t &actor_);
+
+    request_operation_t request_to_actor (const actor_ref_t &actor_);
+
     std::vector<spot_node_spot_entry_t> spots () const;
 
     std::vector<spot_node_actor_entry_t> actors () const;

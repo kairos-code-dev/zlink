@@ -522,7 +522,10 @@ SPOT은 서비스 계층 API이며, raw socket의 누출이 아니다.
 - `SpotNodeSpotEntry`와 `SpotNodeActorEntry`는 코어 snapshot과 동일한 Spot
   kind/현재 Spot 필드를 노출한다.
 
-바인딩은 ROUTER↔Actor 직접 메시징 메서드를 추가하지 않는다. 프레임워크 코드와
-애플리케이션은 Spot routed API와 `SpotNode` 또는 자체 protocol state가 제공하는
-Actor ref를 조합한다. 바인딩은 제거된 Discovery route table이나 resolver API를
-compatibility helper로 되살리면 안 된다.
+바인딩은 resolve된 Actor ref를 인자로 받는 `ISpotNode.SendToActor(ActorRef)`와
+`ISpotNode.RequestToActor(ActorRef)`를 노출한다. `SendToActor`는 submit이
+성공하면 메시지 하나의 소유권을 넘기고, Actor 소유자 mailbox가 인계를 받으면
+완료된다. `RequestToActor`는 submit이 성공하면 요청 part의 소유권을 넘기고,
+Actor handler가 만든 reply part를 task 또는 callback으로 전달한다. 바인딩은
+제거된 Discovery route table이나 resolver API를 compatibility helper로 되살리면
+안 된다.

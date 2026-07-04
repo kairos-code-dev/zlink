@@ -420,6 +420,17 @@ else:
     print("Updated: none (already up to date)")
 PY
 
+# cpp binding version markers (common.h fallback defines + contract test assertion)
+IFS='.' read -r EV_MAJOR EV_MINOR EV_PATCH <<<"${expect_version}"
+CPP_COMMON="${REPO_ROOT}/bindings/cpp/include/zlink/common.h"
+CPP_VER_TEST="${REPO_ROOT}/bindings/cpp/tests/contract/test_cpp_contract_common_header_version.cpp"
+if [[ -f "${CPP_COMMON}" ]]; then
+  sed -i -E "s/#define ZLINK_VERSION_MAJOR [0-9]+/#define ZLINK_VERSION_MAJOR ${EV_MAJOR}/; s/#define ZLINK_VERSION_MINOR [0-9]+/#define ZLINK_VERSION_MINOR ${EV_MINOR}/; s/#define ZLINK_VERSION_PATCH [0-9]+/#define ZLINK_VERSION_PATCH ${EV_PATCH}/" "${CPP_COMMON}"
+fi
+if [[ -f "${CPP_VER_TEST}" ]]; then
+  sed -i -E "s/ZLINK_MAKE_VERSION\([0-9]+, [0-9]+, [0-9]+\)/ZLINK_MAKE_VERSION(${EV_MAJOR}, ${EV_MINOR}, ${EV_PATCH})/; s/ZLINK_VERSION_MAJOR == [0-9]+/ZLINK_VERSION_MAJOR == ${EV_MAJOR}/; s/ZLINK_VERSION_MINOR == [0-9]+/ZLINK_VERSION_MINOR == ${EV_MINOR}/; s/ZLINK_VERSION_PATCH == [0-9]+/ZLINK_VERSION_PATCH == ${EV_PATCH}/" "${CPP_VER_TEST}"
+fi
+
 echo "[3/3] Verifying linux-x64 zlink_version major compatibility with ${expect_version}"
 
 REPO_ROOT="${REPO_ROOT}" EXPECT_VERSION="${expect_version}" "${py_bin}" - <<'PY'

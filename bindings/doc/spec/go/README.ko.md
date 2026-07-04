@@ -428,7 +428,9 @@ Go는 Actor와 Spot 경로 lookup 결과를 export 값 타입으로 노출한다
 - SpotNode snapshot 엔트리는 core snapshot과 동일한 Spot kind/현재 Spot 필드를
   노출한다.
 
-Go는 ROUTER-to-Actor 또는 Actor-to-ROUTER 직접 메시징 메서드를 추가하지 않는다.
-호출자는 Spot routed API와 `SpotNode` 또는 자체 protocol state가 제공하는
-Actor ref를 조합한다. Go는 제거된 Discovery route table이나 resolver API를
-compatibility helper로 되살리면 안 된다.
+Go는 resolve된 Actor ref를 인자로 받는 `SpotNode.SendToActor(ActorRef)`와
+`SpotNode.RequestToActor(ActorRef)`를 노출한다. send operation은 submit이
+성공하면 메시지 하나의 소유권을 넘기고, Actor 소유자 mailbox가 인계를 받으면
+완료된다. request operation은 submit이 성공하면 요청 part의 소유권을 넘기고,
+Actor handler가 만든 reply part를 전달한다. Go는 제거된 Discovery route table이나
+resolver API를 compatibility helper로 되살리면 안 된다.

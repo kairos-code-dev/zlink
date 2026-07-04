@@ -41,6 +41,18 @@ internal sealed partial class SpotNode
         return new ActorSendBoundSessionOperation(this, actor);
     }
 
+    public SendOperation SendToActor(ActorRef actor)
+    {
+        EnsureNotDisposed();
+        return new ActorSendToActorOperation(this, actor);
+    }
+
+    public RequestOperation RequestToActor(ActorRef actor)
+    {
+        EnsureNotDisposed();
+        return new ActorRequestToActorOperation(this, actor);
+    }
+
     public bool ForwardActorBoundSessionPart(
         ActorRef actor,
         RoutingId sourceNodeRid,
@@ -110,6 +122,110 @@ internal sealed partial class SpotNode
             Handle, ref nativeActor, ActorInterop.NormalizeTimeout(timeout));
         if (rc != 0)
             throw ZlinkException.CreateRequestException(NativeMethods.zlink_errno());
+    }
+
+    internal Task<IReadOnlyList<Message>> RequestToActorAsync(
+        ActorRef actor,
+        IReadOnlyList<Message> parts,
+        TimeSpan timeout = default,
+        SendFlags flags = SendFlags.None,
+        CancellationToken ct = default)
+    {
+        RequestReplySupport.EnsureParts(parts, nameof(parts));
+        EnsureNotDisposed();
+        var cloned = RequestReplySupport.CloneParts(parts);
+        var nativeActor = ActorInterop.ToNative(actor);
+        var timeoutMs = RequestReplySupport.NormalizeTimeout(timeout);
+        var completion = new TaskCompletionSource<Received>(
+            TaskCreationOptions.RunContinuationsAsynchronously);
+        GCHandle handle = default;
+        var nativeParts = cloned.Length <= StackActorCreatePartLimit
+            ? stackalloc ZlinkMsg[StackActorCreatePartLimit]
+            : new ZlinkMsg[cloned.Length];
+        nativeParts = nativeParts.Slice(0, cloned.Length);
+        var built = 0;
+        var submitted = false;
+        try
+        {
+            NativeMessageParts.MoveToNative(cloned, nativeParts,
+                nameof(parts), ref built);
+            RequestCallState state = new(completion);
+            handle = GCHandle.Alloc(state, GCHandleType.Normal);
+            state.SetCancellationRegistration(ct.CanBeCanceled
+                ? ct.Register(static userdata => { RequestCallState.CancelFromUserData(userdata); }, handle)
+                : default);
+            unsafe
+            {
+                fixed (ZlinkMsg* nativePtr = nativeParts)
+                {
+                    var rc = NativeMethods.zlink_spot_node_request_to_actor(
+                        Handle,
+                        ref nativeActor,
+                        nativePtr,
+                        (nuint)cloned.Length,
+                        ActorInterop.ReplyHandlerPtr,
+                        GCHandle.ToIntPtr(handle),
+                        (int)flags,
+                        timeoutMs);
+                    if (rc != 0)
+                        throw ZlinkException.CreateSubmitException(
+                            NativeMethods.zlink_errno());
+                }
+            }
+            submitted = true;
+            return ActorInterop.TakePartsAsync(completion.Task);
+        }
+        catch
+        {
+            if (!submitted)
+                NativeMessageParts.RestoreManaged(cloned, nativeParts, 0, built);
+            if (handle.IsAllocated)
+                handle.Free();
+            throw;
+        }
+    }
+
+    internal bool SendToActor(
+        ActorRef actor,
+        IReadOnlyList<Message> parts,
+        SendFlags flags = SendFlags.None)
+    {
+        RequestReplySupport.EnsureParts(parts, nameof(parts));
+        if (parts.Count != 1)
+            throw new ArgumentException("send-to-actor requires exactly one message.",
+                nameof(parts));
+        EnsureNotDisposed();
+        var cloned = parts[0].Copy();
+        ZlinkMsg nativePart = default;
+        cloned.MoveTo(ref nativePart);
+        var submitted = false;
+        try
+        {
+            var nativeActor = ActorInterop.ToNative(actor);
+            var rc = NativeMethods.zlink_spot_node_send_to_actor(
+                Handle,
+                ref nativeActor,
+                ref nativePart,
+                ActorInterop.NoopReplyHandlerPtr,
+                IntPtr.Zero,
+                (int)flags,
+                0);
+            submitted = true;
+            if (rc != 0)
+                throw ZlinkException.CreateSubmitException(NativeMethods.zlink_errno());
+            return true;
+        }
+        catch (ZlinkException error) when ((flags & SendFlags.DontWait) != 0
+                                           && RequestReplySupport.MapSendNoWaitResult(error)
+                                           == SendResult.Backpressured)
+        {
+            return false;
+        }
+        finally
+        {
+            if (!submitted)
+                NativeMethods.zlink_msg_close(ref nativePart);
+        }
     }
 
     public ActorLookupOperation RemoteActorGetRef(RoutingId targetNodeRid,

@@ -527,6 +527,8 @@ pub(crate) trait SpotNodePublicRuntime {
     ) -> ActorJoinEntrySpotOp<Ready>;
     fn leave_actor(&self, actor: &ActorRef, current_spot_rid: &RoutingId) -> ActorLeaveOp<Empty>;
     fn send_bound_session_msg(&self, actor: &ActorRef) -> SendOp<Empty>;
+    fn send_to_actor(&self, actor: &ActorRef) -> SendOp<Empty>;
+    fn request_to_actor(&self, actor: &ActorRef) -> RequestOp<Empty>;
     fn status(&self) -> Result<SpotNodeStatus, ConfigError>;
     fn set_routing_id(&self, rid: &RoutingId) -> Result<(), ConfigError>;
     fn routing_id(&self) -> Result<RoutingId, ConfigError>;

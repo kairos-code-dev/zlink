@@ -120,6 +120,162 @@ internal sealed class ActorJoinOperationImpl : ActorJoinOperation,
     }
 }
 
+internal sealed class ActorSendToActorOperation : SendOperation,
+    SendSubmitOperation
+{
+    private readonly ActorRef _actor;
+    private readonly SpotNode _node;
+    private SendFlags _flags;
+    private OperationMessageBuffer _parts;
+    private OperationSubmissionGuard _submission;
+
+    internal ActorSendToActorOperation(SpotNode node, ActorRef actor)
+    {
+        _node = node;
+        _actor = actor;
+    }
+
+    public SendSubmitOperation Message(Message message)
+    {
+        EnsureNotSubmitted();
+        _parts.Add(message);
+        return this;
+    }
+
+    public SendSubmitOperation Flags(SendFlags flags)
+    {
+        EnsureNotSubmitted();
+        _flags = flags;
+        return this;
+    }
+
+    public bool Submit()
+    {
+        EnsureNotSubmitted();
+        _parts.EnsureNotEmpty();
+        _submission.MarkSubmitted();
+        return _node.SendToActor(_actor, _parts.Parts, _flags);
+    }
+
+    private void EnsureNotSubmitted()
+    {
+        _submission.EnsureNotSubmitted();
+    }
+}
+
+internal sealed class ActorRequestToActorOperation : RequestOperation,
+    RequestSubmitOperation, RequestCallbackSubmitOperation
+{
+    private readonly ActorRef _actor;
+    private readonly SpotNode _node;
+    private bool _callbackStage;
+    private SendFlags _flags;
+    private OperationMessageBuffer _parts;
+    private OperationSubmissionGuard _submission;
+    private TimeSpan _timeout;
+
+    internal ActorRequestToActorOperation(SpotNode node, ActorRef actor)
+    {
+        _node = node;
+        _actor = actor;
+    }
+
+    RequestCallbackSubmitOperation RequestCallbackSubmitOperation.Message(
+        Message message)
+    {
+        AddMessage(message);
+        return this;
+    }
+
+    RequestCallbackSubmitOperation RequestCallbackSubmitOperation.Timeout(
+        TimeSpan timeout)
+    {
+        EnsureNotSubmitted();
+        _timeout = timeout;
+        return this;
+    }
+
+    RequestCallbackSubmitOperation RequestCallbackSubmitOperation.Flags(
+        SendFlags flags)
+    {
+        EnsureNotSubmitted();
+        _flags = flags;
+        return this;
+    }
+
+    public RequestSubmitOperation Message(Message message)
+    {
+        AddMessage(message);
+        return this;
+    }
+
+    public RequestSubmitOperation Timeout(TimeSpan timeout)
+    {
+        EnsureNotSubmitted();
+        _timeout = timeout;
+        return this;
+    }
+
+    public RequestCallbackSubmitOperation Flags(SendFlags flags)
+    {
+        EnsureNotSubmitted();
+        _callbackStage = true;
+        _flags = flags;
+        return this;
+    }
+
+    public Task<IReadOnlyList<Message>> Async(
+        CancellationToken ct = default)
+    {
+        EnsureReadyToSubmit();
+        if (_callbackStage)
+            throw new ZlinkConfigException(
+                ZlinkConfigException.ErrorCode.InvalidState);
+        _submission.MarkSubmitted();
+        return _node.RequestToActorAsync(_actor, _parts.Parts, _timeout,
+            _flags, ct);
+    }
+
+    public bool Submit(RequestCallback callback)
+    {
+        if (callback == null)
+            throw new ArgumentNullException(nameof(callback));
+        EnsureReadyToSubmit();
+        _submission.MarkSubmitted();
+        try
+        {
+            ActorInterop.AttachPartsCallback(
+                () => _node.RequestToActorAsync(_actor, _parts.Parts, _timeout,
+                    _flags, CancellationToken.None),
+                (result, parts) => callback(result, parts));
+            return true;
+        }
+        catch (ZlinkException error) when ((_flags & SendFlags.DontWait) != 0
+                                           && RequestReplySupport.MapSendNoWaitResult(error)
+                                           == SendResult.Backpressured)
+        {
+            return false;
+        }
+    }
+
+    private void AddMessage(Message message)
+    {
+        EnsureNotSubmitted();
+        _parts.Add(message);
+    }
+
+    private void EnsureReadyToSubmit()
+    {
+        EnsureNotSubmitted();
+        _parts.EnsureNotEmpty();
+    }
+
+    private void EnsureNotSubmitted()
+    {
+        _submission.EnsureNotSubmitted();
+    }
+}
+
 internal sealed class ActorJoinEntrySpotOperationImpl :
     ActorJoinEntrySpotOperation
 {

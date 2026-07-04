@@ -682,5 +682,23 @@ send_operation_t spot_node_t::send_bound_session_msg (const actor_ref_t &actor_)
     return send_operation_t (std::move (state_ptr));
 }
 
+send_operation_t spot_node_t::send_to_actor (const actor_ref_t &actor_)
+{
+    auto state_ptr = detail::acquire_state ();
+    state_ptr->kind = detail::spot_operation_kind_t::actor_send;
+    state_ptr->node = this;
+    state_ptr->actor = actor_;
+    return send_operation_t (std::move (state_ptr));
+}
+
+request_operation_t spot_node_t::request_to_actor (const actor_ref_t &actor_)
+{
+    auto state_ptr = detail::acquire_state ();
+    state_ptr->kind = detail::spot_operation_kind_t::request_to_actor;
+    state_ptr->node = this;
+    state_ptr->actor = actor_;
+    return request_operation_t (std::move (state_ptr));
+}
+
 } // namespace service
 } // namespace zlink

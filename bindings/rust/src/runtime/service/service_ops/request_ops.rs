@@ -69,6 +69,9 @@ pub(in crate::service) enum RequestOpKind {
         dest_node_rid: RoutingId,
         dest_spot_rid: RoutingId,
     },
+    ActorRequest {
+        actor: ffi::zlink_actor_ref_t,
+    },
 }
 
 pub(crate) fn dealer_request_op(handle: *mut c_void) -> RequestOp<Empty> {
@@ -223,6 +226,7 @@ where
         RequestOpKind::Channel { .. }
         | RequestOpKind::ToSpot { .. }
         | RequestOpKind::ToRouter { .. } => Some(RequestProgressGuard::attach_spot(handle)),
+        RequestOpKind::ActorRequest { .. } => None,
         RequestOpKind::DealerRequest
         | RequestOpKind::RouterRequest { .. }
         | RequestOpKind::RouterRequestToSpot { .. } => {
@@ -334,10 +338,30 @@ where
                 )
             })?
         }
+        RequestOpKind::ActorRequest { actor } => {
+            let timeout_ms = timeout_to_timeout_ms(timeout);
+            unsafe {
+                ffi::zlink_spot_node_request_to_actor(
+                    handle,
+                    actor,
+                    native.as_mut_ptr(),
+                    native.len(),
+                    crate::service::spot_runtime::spot_reply_callback,
+                    state_ptr.cast(),
+                    flags.bits(),
+                    timeout_ms,
+                )
+            }
+        }
     };
     if rc != 0 {
         unsafe {
             drop(Box::from_raw(state_ptr));
+        }
+        for part in &mut native {
+            unsafe {
+                ffi::zlink_msg_close(part);
+            }
         }
     }
     check_submit_rc(rc)

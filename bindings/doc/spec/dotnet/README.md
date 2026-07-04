@@ -545,8 +545,10 @@ Required verification after .NET binding changes. Run these commands from
 - `SpotNodeSpotEntry` and `SpotNodeActorEntry` expose the same Spot kind/current
   Spot fields as the core snapshots.
 
-The binding must not add ROUTER-to-Actor or Actor-to-ROUTER direct messaging
-methods. Framework code and applications use the Spot routed APIs and the
-Actor refs supplied by `SpotNode` or by their own protocol state. The binding
-must not reintroduce the removed Discovery route table or resolver APIs as
-compatibility helpers.
+The binding exposes `ISpotNode.SendToActor(ActorRef)` and
+`ISpotNode.RequestToActor(ActorRef)` for resolved Actor refs. `SendToActor`
+consumes one message on successful submit and completes when the Actor owner
+mailbox accepts the handoff. `RequestToActor` consumes request parts on
+successful submit and delivers the Actor handler reply parts through the task
+or callback. The binding must not reintroduce the removed Discovery route
+table or resolver APIs as compatibility helpers.

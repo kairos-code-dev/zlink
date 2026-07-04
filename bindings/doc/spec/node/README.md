@@ -693,7 +693,9 @@ objects and matching TypeScript declarations.
 - SpotNode snapshot entries expose the same Spot kind/current Spot fields as the
   core snapshots.
 
-Node must not add ROUTER-to-Actor or Actor-to-ROUTER direct messaging methods.
-Callers use the SPOT routed APIs and the Actor refs supplied by `SpotNode`
-or by their own protocol state. Node must not reintroduce the removed
+Node exposes `SpotNode.sendToActor` and `SpotNode.requestToActor` for resolved
+Actor refs, using the language naming convention. The send operation consumes one message on
+successful submit and completes when the Actor owner mailbox accepts the
+handoff. The request operation consumes request parts on successful submit and
+delivers the Actor handler reply parts. Node must not reintroduce the removed
 Discovery route table or resolver APIs as compatibility helpers.

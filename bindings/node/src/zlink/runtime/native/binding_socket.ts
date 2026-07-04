@@ -164,6 +164,21 @@ export interface SocketNativeBinding {
     sourceNodeRid: Buffer,
     sourceSessionRid: Buffer
   ) => void;
+  spotNodeSendToActor: (
+    node: NativeHandle,
+    actor: ActorRefRaw,
+    parts: unknown,
+    flags: number,
+    timeoutMs: number
+  ) => void;
+  spotNodeRequestToActor: (
+    node: NativeHandle,
+    actor: ActorRefRaw,
+    parts: unknown,
+    callback: NativeRequestCallback,
+    flags: number,
+    timeoutMs: number
+  ) => void;
   streamBindActor: (
     stream: NativeHandle,
     sessionRid: Buffer,

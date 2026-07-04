@@ -1278,6 +1278,25 @@ unsafe extern "C" {
         message: *mut zlink_msg_t,
         flags: zlink_send_flags_t,
     ) -> c_int;
+    pub fn zlink_spot_node_send_to_actor(
+        node: *mut c_void,
+        actor: *const zlink_actor_ref_t,
+        message: *mut zlink_msg_t,
+        handler: zlink_reply_handler_fn,
+        userdata: *mut c_void,
+        flags: zlink_send_flags_t,
+        timeout_ms: u32,
+    ) -> zlink_submit_result_t;
+    pub fn zlink_spot_node_request_to_actor(
+        node: *mut c_void,
+        actor: *const zlink_actor_ref_t,
+        parts: *mut zlink_msg_t,
+        part_count: usize,
+        handler: zlink_reply_handler_fn,
+        userdata: *mut c_void,
+        flags: zlink_send_flags_t,
+        timeout_ms: u32,
+    ) -> zlink_submit_result_t;
     pub fn zlink_spot_node_actor_close_bound_session(
         node: *mut c_void,
         actor: *const zlink_actor_ref_t,

@@ -83,7 +83,27 @@ Redis extension 등록 방식 추가 → 기존 registry/discovery E2E를 locati
      `redis-plus-plus` async 인터페이스, 또는 hiredis + libevent/libuv)를 전용 이벤트
      루프/스레드에서 돌려 core I/O 경로와 격리한다.
    - 공통 검증: Redis를 인위적으로 느리게 만든 상태에서 무관한 동시 spot/actor 처리(코루틴/
-     이벤트 루프 task)의 p99 latency가 영향받지 않는지 부하 테스트로 확인한다.
+     이벤트 루프 task)의 p99 latency가 영향받지 않는지 부하 테스트로 확인한다. E2E 적용 지점은
+     `framework/doc/framework/common/e2e/config-6-store-failure-recovery.ko.md`의 Track E
+     (SF-E1, P1) — 언어별 포팅이 E2E 단계에 이르면 이 시나리오를 그 언어로도 통과시켜야 한다.
+     harness에 지연 주입 기능이 없는 언어는 다른 P1 시나리오와 같은 방식으로 "미구현(하네스
+     대기)"로 명시하고 임의로 생략하지 않는다.
+8. **샘플 적용 계획** — location store로 이미 전환된 공통 샘플 문서(Bingo 등, "location store
+   기반 자동 연결"로 서술)는 아직 .NET 구현만 그 서술을 따른다. Kotlin/C++/Java에도 같은 이름의
+   샘플이 이미 존재한다(`framework/languages/java/samples/kotlin/{Bingo,TicTacToe,SupportChat,
+   DeliveryDispatch}`, `framework/languages/java/samples/java/{Bingo,TicTacToe,SupportChat,
+   DeliveryDispatch,ShoppingMall,GameQuest}`, `framework/languages/cpp/samples/{Bingo,TicTacToe,
+   DeliveryDispatch}`). 이 문서 3절의 Redis extension이 해당 언어에서 "완료"로 바뀌는 시점에
+   맞춰 그 언어 샘플도 함께 마이그레이션한다 — 순서는:
+   1. 그 언어의 Redis extension이 §4-7 비블로킹 계약을 만족(Track E 통과)한다.
+   2. 그 언어 Bingo 샘플의 실행 구성(연결 등록 코드)을 in-memory/직접 endpoint 설정에서 location
+      store 등록으로 바꾼다 — 공통 문서(`framework/doc/framework/common/sample/bingo/README.ko.md`)
+      가 이미 서술한 "match queue Redis"와 "location store" 구분을 그 언어 구현에도 반영한다.
+   3. 다른 언어 샘플(TicTacToe·SupportChat·DeliveryDispatch 등)은 공통 문서가 location store
+      전환을 요구하지 않는 한(문서가 명시적으로 수동 endpoint를 유지하는 샘플도 있다 — 예:
+      TicTacToe) 변경하지 않는다. 공통 문서 서술과 그 언어 구현이 다시 갈라지지 않도록, 언어별
+      구현을 옮기기 전에 반드시 해당 공통 문서를 먼저 확인한다.
+   이 표는 3절 상태 표의 "Redis extension" 열이 "완료"로 바뀔 때마다 갱신한다.
 
 ## 5. 다음 갱신 시점
 

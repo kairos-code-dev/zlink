@@ -94,6 +94,50 @@ bool submit_raw_request_callback (detail::spot_operation_state_t &state_,
       });
 }
 
+async_result_t<std::vector<message_t>>
+submit_actor_request_awaitable (detail::spot_operation_state_t &state_)
+{
+    if (!state_.node || !state_.actor)
+        throw submit_error_t (submit_result_t::invalid_argument, EINVAL);
+    std::unique_ptr<detail::request_state_t> request_state (detail::make_future_request_state ());
+    std::future<std::vector<message_t>> future = request_state->promise->get_future ();
+    const int rc = detail::submit_message_array (state_.parts, [&] (zlink_msg_t *native_,
+                                                                    size_t part_count_) {
+        return zlink_spot_node_request_to_actor (
+          zlink::detail::native_handle (*state_.node),
+          zlink::detail::actor_ref_native (*state_.actor), native_, part_count_,
+          &detail::request_callback_trampoline, request_state.get (),
+          static_cast<zlink_send_flags_t> (static_cast<int> (state_.flags)),
+          zlink::detail::native_timeout_ms (state_.timeout));
+    });
+    if (rc != ZLINK_SUBMIT_OK)
+        throw submit_error_t (static_cast<submit_result_t> (rc), zlink_errno ());
+    request_state.release ();
+    return async_result_t<std::vector<message_t>> (std::move (future));
+}
+
+bool submit_actor_request_callback (detail::spot_operation_state_t &state_,
+                                    request_callback_t callback_)
+{
+    if (!state_.node || !state_.actor)
+        throw submit_error_t (submit_result_t::invalid_argument, EINVAL);
+    std::unique_ptr<detail::request_state_t> request_state (
+      detail::make_callback_request_state (std::move (callback_)));
+    const int rc = detail::submit_message_array (state_.parts, [&] (zlink_msg_t *native_,
+                                                                    size_t part_count_) {
+        return zlink_spot_node_request_to_actor (
+          zlink::detail::native_handle (*state_.node),
+          zlink::detail::actor_ref_native (*state_.actor), native_, part_count_,
+          &detail::request_callback_trampoline, request_state.get (),
+          static_cast<zlink_send_flags_t> (static_cast<int> (state_.flags)),
+          zlink::detail::native_timeout_ms (state_.timeout));
+    });
+    if (rc != ZLINK_SUBMIT_OK)
+        throw submit_error_t (static_cast<submit_result_t> (rc), zlink_errno ());
+    request_state.release ();
+    return true;
+}
+
 } // namespace
 
 request_submit_operation_t::~request_submit_operation_t ()
@@ -239,6 +283,9 @@ async_result_t<std::vector<message_t>> request_submit_operation_t::async () &&
     if (is_raw_request_kind (state.kind))
         return submit_raw_request_awaitable (state);
 
+    if (state.kind == detail::spot_operation_kind_t::request_to_actor)
+        return submit_actor_request_awaitable (state);
+
     if (!state.spot)
         throw submit_error_t (submit_result_t::invalid_argument, EINVAL);
 
@@ -273,6 +320,9 @@ bool request_callback_submit_operation_t::submit (request_callback_t callback_) 
 
     if (is_raw_request_kind (state.kind))
         return submit_raw_request_callback (state, std::move (callback_));
+
+    if (state.kind == detail::spot_operation_kind_t::request_to_actor)
+        return submit_actor_request_callback (state, std::move (callback_));
 
     if (!state.spot)
         throw submit_error_t (submit_result_t::invalid_argument, EINVAL);

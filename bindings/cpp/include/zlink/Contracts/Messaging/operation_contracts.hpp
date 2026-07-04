@@ -256,6 +256,7 @@ class request_operation_t
 
     std::unique_ptr<detail::spot_operation_state_t> _state;
     friend class spot_t;
+    friend class spot_node_t;
     friend class zlink::dealer_socket_t;
     friend class zlink::router_socket_t;
 };

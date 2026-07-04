@@ -328,6 +328,89 @@ napi_value spot_node_actor_send_bound_session_msg (napi_env env, napi_callback_i
     return ok;
 }
 
+napi_value spot_node_send_to_actor (napi_env env, napi_callback_info info)
+{
+    napi_value argv[5];
+    size_t argc = 5;
+    napi_get_cb_info (env, info, &argc, argv, NULL, NULL);
+    void *node = NULL;
+    napi_get_value_external (env, argv[0], &node);
+    zlink_actor_ref_t ref;
+    if (!parse_actor_ref_value (env, argv[1], &ref))
+        return NULL;
+    std::vector<zlink_msg_t> parts;
+    if (!build_msg_vector_or_single (env, argv[2], &parts))
+        return NULL;
+    if (parts.size () != 1) {
+        close_msg_vector (parts);
+        napi_throw_range_error (env, NULL, "sendToActor message must be single part");
+        return NULL;
+    }
+    int32_t flags = 0;
+    if (argc >= 4)
+        napi_get_value_int32 (env, argv[3], &flags);
+    int32_t timeout_ms = 0;
+    if (argc >= 5)
+        napi_get_value_int32 (env, argv[4], &timeout_ms);
+    sync_request_state_t state;
+    int rc = zlink_spot_node_send_to_actor (node, &ref, &parts[0], sync_request_callback, &state,
+                                            static_cast<zlink_send_flags_t> (flags),
+                                            static_cast<uint32_t> (timeout_ms));
+    if (rc != ZLINK_SUBMIT_OK) {
+        close_msg_vector (parts);
+        return throw_last_error (env, "spotNodeSendToActor failed");
+    }
+    zlink_request_result_t request_rc = wait_sync_request (&state);
+    if (request_rc != ZLINK_REQUEST_OK)
+        return throw_last_error (env, "spotNodeSendToActor failed");
+    napi_value ok;
+    napi_get_undefined (env, &ok);
+    return ok;
+}
+
+napi_value spot_node_request_to_actor (napi_env env, napi_callback_info info)
+{
+    napi_value argv[6];
+    size_t argc = 6;
+    napi_get_cb_info (env, info, &argc, argv, NULL, NULL);
+    void *node = NULL;
+    napi_get_value_external (env, argv[0], &node);
+    zlink_actor_ref_t ref;
+    if (!parse_actor_ref_value (env, argv[1], &ref))
+        return NULL;
+    std::vector<zlink_msg_t> parts;
+    if (!build_msg_vector_or_single (env, argv[2], &parts))
+        return NULL;
+    napi_valuetype handler_type = napi_undefined;
+    napi_typeof (env, argv[3], &handler_type);
+    if (handler_type != napi_function) {
+        close_msg_vector (parts);
+        napi_throw_type_error (env, NULL, "requestToActor handler must be a function");
+        return NULL;
+    }
+    int32_t flags = 0;
+    napi_get_value_int32 (env, argv[4], &flags);
+    int32_t timeout_ms = 0;
+    napi_get_value_int32 (env, argv[5], &timeout_ms);
+    request_js_state_t *state = create_request_js_state (env, argv[3]);
+    if (!state) {
+        close_msg_vector (parts);
+        return NULL;
+    }
+    int rc = zlink_spot_node_request_to_actor (
+      node, &ref, parts.empty () ? NULL : parts.data (), parts.size (),
+      request_reply_callback_trampoline, state, static_cast<zlink_send_flags_t> (flags),
+      static_cast<uint32_t> (timeout_ms));
+    if (rc != ZLINK_SUBMIT_OK) {
+        abort_request_js_state (state);
+        close_msg_vector (parts);
+        return throw_last_error (env, "spotNodeRequestToActor failed");
+    }
+    napi_value ok;
+    napi_get_undefined (env, &ok);
+    return ok;
+}
+
 napi_value spot_node_actor_bind_remote_session (napi_env env, napi_callback_info info)
 {
     napi_value argv[4];

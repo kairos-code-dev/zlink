@@ -38,6 +38,14 @@ static inline int zlink_spot_node_actor_leave_spot_go_ops(void *node, const zlin
     return zlink_spot_node_actor_leave_spot(node, actor, spot, (zlink_reply_handler_fn)goZlinkReplyTrampoline, (void *)userdata, timeout_ms);
 }
 
+static inline int zlink_spot_node_send_to_actor_go_ops(void *node, const zlink_actor_ref_t *actor, zlink_msg_t *message, zlink_send_flags_t flags, uint32_t timeout_ms, uintptr_t userdata) {
+    return zlink_spot_node_send_to_actor(node, actor, message, (zlink_reply_handler_fn)goZlinkReplyTrampoline, (void *)userdata, flags, timeout_ms);
+}
+
+static inline int zlink_spot_node_request_to_actor_go_ops(void *node, const zlink_actor_ref_t *actor, zlink_msg_t *parts, size_t part_count, zlink_send_flags_t flags, uint32_t timeout_ms, uintptr_t userdata) {
+    return zlink_spot_node_request_to_actor(node, actor, parts, part_count, (zlink_reply_handler_fn)goZlinkReplyTrampoline, (void *)userdata, flags, timeout_ms);
+}
+
 static inline int zlink_stream_bind_actor_go_ops(void *stream, const zlink_routing_id_t *session, const zlink_actor_ref_t *actor, uint32_t timeout_ms, uintptr_t userdata) {
     return zlink_stream_bind_actor(stream, session, actor, (zlink_reply_handler_fn)goZlinkReplyTrampoline, (void *)userdata, timeout_ms);
 }
@@ -201,6 +209,56 @@ func (n *SpotNode) SendBoundSessionMsg(actor ActorRef) SendOp {
 			_ = partFlag
 			return submitErrorFromResult(C.zlink_spot_node_actor_send_bound_session_msg(handle, &rawActor, part, C.zlink_send_flags_t(flags)))
 		})
+	})
+}
+
+// SendToActor returns a send builder that targets a resolved Actor ref. The
+// completion acknowledges handoff to the Actor owner's mailbox; request-style
+// reply payloads are not produced by this operation.
+func (n *SpotNode) SendToActor(actor ActorRef) SendOp {
+	return newSendBuilder(nil, func(parts []sendBuilderPart, flags SendFlags) error {
+		handle, err := n.handleOrError()
+		if err != nil {
+			return err
+		}
+		rawActor, err := actor.toC()
+		if err != nil {
+			return err
+		}
+		return submitSingleFromBuilderParts(parts, func(part *C.zlink_msg_t, partFlag C.zlink_part_flag_t) error {
+			_ = partFlag
+			return submitActorRequestNative(nil, func(stateHandle cgo.Handle) error {
+				return submitErrorFromResult(C.zlink_spot_node_send_to_actor_go_ops(handle, &rawActor, part, C.zlink_send_flags_t(flags), 0, C.uintptr_t(stateHandle)))
+			}, func(RequestResult, []*Message) {})
+		})
+	})
+}
+
+// RequestToActor returns a request builder that targets a resolved Actor ref.
+// The completion callback receives the Actor handler reply parts.
+func (n *SpotNode) RequestToActor(actor ActorRef) RequestOp {
+	return newRequestBuilder(nil, func(parts []requestBuilderPart, flags SendFlags, timeout time.Duration, cb RequestReplyCallback) error {
+		handle, err := n.handleOrError()
+		if err != nil {
+			return err
+		}
+		rawActor, err := actor.toC()
+		if err != nil {
+			return err
+		}
+		state := newReplyCallbackState()
+		stateHandle := cgo.NewHandle(state)
+		if err := submitAggregateFromRequestParts(parts, func(nativeParts *C.zlink_msg_t, partCount C.size_t) error {
+			return submitErrorFromResult(C.zlink_spot_node_request_to_actor_go_ops(handle, &rawActor, nativeParts, partCount, C.zlink_send_flags_t(flags), C.uint32_t(requestTimeoutMillis(timeout)), C.uintptr_t(stateHandle)))
+		}); err != nil {
+			stateHandle.Delete()
+			return err
+		}
+		go func() {
+			result := state.wait()
+			cb(result.result, result.parts)
+		}()
+		return nil
 	})
 }
 

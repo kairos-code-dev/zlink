@@ -163,6 +163,18 @@ public interface ISpotNode : IDisposable, IAsyncDisposable
     SendOperation SendActorBoundSession(ActorRef actor);
 
     /// <summary>
+    ///     Begins a send to a resolved actor reference. Completion acknowledges
+    ///     handoff to the actor owner's mailbox.
+    /// </summary>
+    SendOperation SendToActor(ActorRef actor);
+
+    /// <summary>
+    ///     Begins a request to a resolved actor reference. The callback or task
+    ///     receives the actor handler reply parts.
+    /// </summary>
+    RequestOperation RequestToActor(ActorRef actor);
+
+    /// <summary>
     ///     Forwards one stream session part to a remote actor while preserving the
     ///     original session owner and session routing ids.
     /// </summary>

@@ -44,6 +44,22 @@ fn send_op_mut<State>(op: &mut SendOp<State>) -> &mut NativeSendOp {
         .expect("zlink native send op")
 }
 
+unsafe extern "C" fn actor_send_ack_callback(
+    _result: ffi::zlink_request_result_t,
+    parts: *mut ffi::zlink_msg_t,
+    part_count: usize,
+    _userdata: *mut c_void,
+) {
+    if parts.is_null() {
+        return;
+    }
+    for i in 0..part_count.min(1024) {
+        unsafe {
+            ffi::zlink_msg_close(parts.add(i));
+        }
+    }
+}
+
 #[allow(clippy::large_enum_variant)]
 pub(in crate::service) enum SendOpKind {
     // ---- Spot-layer dispatch (handle = spot) ----
@@ -73,6 +89,10 @@ pub(in crate::service) enum SendOpKind {
     /// `handle` is a SpotNode pointer. Sends one part via
     /// `zlink_spot_node_actor_send_bound_session_msg` (single-part only).
     ActorBoundSession {
+        actor: ffi::zlink_actor_ref_t,
+    },
+    /// `handle` is a SpotNode pointer. Sends one part to a resolved Actor ref.
+    ActorSend {
         actor: ffi::zlink_actor_ref_t,
     },
     /// `handle` is a STREAM socket pointer. Sends parts via
@@ -128,6 +148,29 @@ impl SendOpReadyRuntime for SendOp<Ready> {
                     actor,
                     &mut native,
                     flags.bits(),
+                )
+            };
+            if rc != 0 {
+                unsafe {
+                    ffi::zlink_msg_close(&mut native);
+                }
+            }
+            return check_submit_rc(rc).map(|_| true);
+        }
+        if let SendOpKind::ActorSend { actor } = &op.kind {
+            if op.parts.len() != 1 {
+                return Err(submit_validation_error());
+            }
+            let mut native = take_message_raw(&mut op.parts[0]);
+            let rc = unsafe {
+                ffi::zlink_spot_node_send_to_actor(
+                    handle,
+                    actor,
+                    &mut native,
+                    actor_send_ack_callback,
+                    std::ptr::null_mut(),
+                    flags.bits(),
+                    0,
                 )
             };
             if rc != 0 {
@@ -205,7 +248,7 @@ impl SendOpReadyRuntime for SendOp<Ready> {
                     )
                 })?
             }
-            SendOpKind::ActorBoundSession { .. } => unreachable!(),
+            SendOpKind::ActorBoundSession { .. } | SendOpKind::ActorSend { .. } => unreachable!(),
         };
         drop(op.parts);
         let result = check_submit_rc(rc);

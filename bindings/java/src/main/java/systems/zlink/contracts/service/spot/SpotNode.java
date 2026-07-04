@@ -112,6 +112,12 @@ public interface SpotNode extends AutoCloseable {
      */
     SendOperation sendActorBoundSession(ActorRef actor);
 
+    /** Builds a send to a resolved Actor ref; completion acknowledges mailbox handoff. */
+    SendOperation sendToActor(ActorRef actor);
+
+    /** Builds a request to a resolved Actor ref; completion returns Actor handler reply parts. */
+    RequestOperation requestToActor(ActorRef actor);
+
     /**
      * Session-to-actor forward builder for a STREAM session route owned by
      * another source SpotNode.

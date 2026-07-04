@@ -133,6 +133,8 @@ test('rid disconnect surface exists on sockets and spot nodes', () => {
     assert.equal(typeof stream.disconnectRid, 'function');
     assert.equal(typeof node.connectPeerRid, 'function');
     assert.equal(typeof node.disconnectPeerRid, 'function');
+    assert.equal(typeof node.sendToActor, 'function');
+    assert.equal(typeof node.requestToActor, 'function');
     node.close();
     stream.close();
     dealer.close();

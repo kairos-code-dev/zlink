@@ -458,7 +458,10 @@ Go exposes Actor and Spot route lookup results through exported value types.
 - SpotNode snapshot entries expose the same Spot kind/current Spot fields as the
   core snapshots.
 
-Go must not add ROUTER-to-Actor or Actor-to-ROUTER direct messaging methods.
-Callers use the Spot routed APIs and the Actor refs supplied by `SpotNode` or
-by their own protocol state. Go must not reintroduce the removed Discovery
-route table or resolver APIs as compatibility helpers.
+Go exposes `SpotNode.SendToActor(ActorRef)` and
+`SpotNode.RequestToActor(ActorRef)` for resolved Actor refs. The send operation
+consumes one message on successful submit and completes when the Actor owner
+mailbox accepts the handoff. The request operation consumes request parts on
+successful submit and delivers the Actor handler reply parts. Go must not
+reintroduce the removed Discovery route table or resolver APIs as compatibility
+helpers.

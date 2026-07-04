@@ -39,6 +39,7 @@ enum class spot_operation_kind_t
     request_channel,
     request_to_spot,
     request_to_router,
+    request_to_actor,
     reply_to_spot,
     reply_to_router,
     // Operation kinds for built-in received_t.send()/reply() builders. The state uses
@@ -47,6 +48,7 @@ enum class spot_operation_kind_t
     received_reply,
     // Operation kind for spot_node_t::send_bound_session_msg(actor).
     bound_session_send,
+    actor_send,
     // Operation kind for stream_socket_t::send_bound_actor(session, actor_id).
     stream_bound_actor_send
 };

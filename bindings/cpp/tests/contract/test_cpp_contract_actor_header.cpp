@@ -46,6 +46,15 @@ static_assert (std::is_same<decltype (std::declval<zlink::stream_socket_t &> ().
                               std::declval<const std::string &> ())),
                             zlink::service::send_operation_t>::value,
                "stream_socket_t must expose bound actor send builder");
+static_assert (std::is_same<decltype (std::declval<zlink::service::spot_node_t &> ().send_to_actor (
+                              std::declval<const zlink::actor_ref_t &> ())),
+                            zlink::service::send_operation_t>::value,
+               "spot_node_t must expose resolved Actor send builder");
+static_assert (
+  std::is_same<decltype (std::declval<zlink::service::spot_node_t &> ().request_to_actor (
+                 std::declval<const zlink::actor_ref_t &> ())),
+               zlink::service::request_operation_t>::value,
+  "spot_node_t must expose resolved Actor request builder");
 static_assert (std::is_same<decltype (std::declval<zlink::service::actor_t &> ().join (
                               std::declval<zlink::service::spot_t &> ())),
                             zlink::service::actor_join_operation_t>::value,

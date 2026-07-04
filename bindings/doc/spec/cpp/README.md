@@ -1080,7 +1080,10 @@ C++ exposes Actor and Spot route lookup results as concrete contract types.
 - `spot_node_spot_entry_t` and `spot_node_actor_entry_t` expose the same Spot
   kind/current Spot fields as the core snapshots.
 
-C++ must not introduce ROUTER-to-Actor or Actor-to-ROUTER direct messaging
-methods. Applications use the Spot routed APIs and the Actor refs supplied by
-`spot_node_t` or by their own protocol state. C++ must not reintroduce the
-removed Discovery route table or resolver APIs as compatibility helpers.
+C++ exposes `spot_node_t::send_to_actor(actor_ref_t)` and
+`spot_node_t::request_to_actor(actor_ref_t)` for resolved Actor refs.
+`send_to_actor` consumes one message on successful submit and completes when
+the Actor owner mailbox accepts the handoff. `request_to_actor` consumes the
+request parts on successful submit and delivers the Actor handler reply parts
+to the callback or awaitable result. C++ must not reintroduce the removed
+Discovery route table or resolver APIs as compatibility helpers.

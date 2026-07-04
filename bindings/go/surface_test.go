@@ -64,6 +64,8 @@ func TestSurfaceCanonicalBuilderSignatures(t *testing.T) {
 	assertReturn((*zlink.Actor)(nil), "Join", actorJoinOp)
 	assertReturn((*zlink.SpotNode)(nil), "JoinActorEntrySpot", actorJoinEntrySpotOp)
 	assertReturn((*zlink.StreamSocket)(nil), "BindActor", actorBindOp)
+	assertReturn((*zlink.SpotNode)(nil), "SendToActor", sendOp)
+	assertReturn((*zlink.SpotNode)(nil), "RequestToActor", requestOp)
 }
 
 func TestSurfaceEntrySpotJoinRequiresRequest(t *testing.T) {

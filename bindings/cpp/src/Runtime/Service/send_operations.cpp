@@ -148,6 +148,7 @@ bool send_submit_operation_t::submit () &&
             return sent;
         }
         case detail::spot_operation_kind_t::bound_session_send:
+        case detail::spot_operation_kind_t::actor_send:
             return detail::submit_bound_session_send_state (state);
         case detail::spot_operation_kind_t::stream_bound_actor_send:
             return detail::submit_stream_bound_actor_send_state (state);

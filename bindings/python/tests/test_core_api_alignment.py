@@ -138,6 +138,8 @@ class CoreApiAlignmentTests(unittest.TestCase):
         self.assertTrue(hasattr(zlink.SpotNode, "actor_lookup"))
         self.assertTrue(hasattr(zlink.SpotNode, "destroy_actor"))
         self.assertFalse(hasattr(zlink.SpotNode, "destroy_" + "remote_actor"))
+        self.assertTrue(hasattr(zlink.SpotNode, "send_to_actor"))
+        self.assertTrue(hasattr(zlink.SpotNode, "request_to_actor"))
         self.assertTrue(hasattr(zlink.SpotNode, "join_actor"))
         self.assertTrue(hasattr(zlink.SpotNode, "leave_actor"))
         self.assertTrue(hasattr(zlink.SpotNode, "get_or_create_spot"))

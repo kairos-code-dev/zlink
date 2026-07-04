@@ -1,6 +1,6 @@
 use crate::runtime_bridge::{SpotNodeContract, SpotNodeStorage};
 use crate::spot_operations::{
-    ActorDestroyOp, ActorJoinEntrySpotOp, ActorJoinOp, ActorLeaveOp, ActorLookupOp,
+    ActorDestroyOp, ActorJoinEntrySpotOp, ActorJoinOp, ActorLeaveOp, ActorLookupOp, RequestOp,
 };
 use crate::{
     Actor, ActorRef, AutoHwmProfile, CloseError, ConfigError, ConnectError, Empty, Message, Ready,
@@ -216,6 +216,16 @@ impl SpotNode {
     /// Begins a send to `actor`'s bound session; parts are consumed on a successful submit (see [`SendOp`]).
     pub fn send_bound_session_msg(&self, actor: &ActorRef) -> SendOp<Empty> {
         <Self as SpotNodeContract>::send_bound_session_msg(self, actor)
+    }
+
+    /// Begins a send to a resolved Actor ref; completion acknowledges mailbox handoff.
+    pub fn send_to_actor(&self, actor: &ActorRef) -> SendOp<Empty> {
+        <Self as SpotNodeContract>::send_to_actor(self, actor)
+    }
+
+    /// Begins a request to a resolved Actor ref; completion returns the Actor handler reply.
+    pub fn request_to_actor(&self, actor: &ActorRef) -> RequestOp<Empty> {
+        <Self as SpotNodeContract>::request_to_actor(self, actor)
     }
 
     /// Returns a snapshot of the node's status.

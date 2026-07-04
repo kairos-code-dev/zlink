@@ -19,6 +19,7 @@ from ...handles.native_support import (
 )
 from .actor_ops import ActorDestroyOp, ActorJoinEntrySpotOp, ActorJoinOp, ActorLeaveOp, ActorLookupOp
 from .native_parts import close_native_parts as _close_native_parts, prepare_native_parts as _prepare_native_parts
+from .request_progress import PendingRequest
 from .spot import _ACTOR_JOIN_ENTRY_SPOT_HANDLER, _ACTOR_JOIN_HANDLER, _ACTOR_LOOKUP_HANDLER, _timeout_to_ms
 from .spot_models_runtime import (
     ActorJoinEntrySpotResult,
@@ -29,7 +30,7 @@ from .spot_models_runtime import (
     _actor_ref_from_native,
     _actor_ref_to_native,
 )
-from .spot_ops import SendOp
+from .spot_ops import RequestOp, SendOp
 from .spot_receive import _clone_payload, _make_message_list
 
 
@@ -78,6 +79,20 @@ class SpotNodeActorMixin:
             ),
         )
 
+    def send_to_actor(self, actor_ref):
+        return SendOp(
+            self,
+            lambda parts, flags: self._send_to_actor_submit(actor_ref, parts, flags),
+        )
+
+    def request_to_actor(self, actor_ref):
+        return RequestOp(
+            self,
+            lambda parts, callback, flags=0, timeout=0: self._request_to_actor_submit(
+                actor_ref, parts, callback, flags, timeout
+            ),
+        )
+
     def _actor_send_bound_session_submit(self, actor_ref, parts, flags=0):
         native_parts = _clone_payload(parts)
         if len(native_parts) != 1:
@@ -94,6 +109,54 @@ class SpotNodeActorMixin:
             _close_native_parts(native_parts)
             if int(flags) & 1 and rc == int(SubmitResult.BACKPRESSURED):
                 return False
+            _raise_result_error(SubmitError, SubmitResult, rc, lib().zlink_errno())
+        return True
+
+    def _send_to_actor_submit(self, actor_ref, parts, flags=0):
+        native_parts = _clone_payload(parts)
+        if len(native_parts) != 1:
+            _close_native_parts(native_parts)
+            raise SubmitError(SubmitResult.INVALID_ARGUMENT, 0)
+        native_actor = _actor_ref_to_native(actor_ref)
+        handle = id(native_parts)
+        self._actor_request_pending[handle] = PendingRequest()
+        rc = lib().zlink_spot_node_send_to_actor(
+            self._handle,
+            ctypes.byref(native_actor),
+            ctypes.byref(native_parts[0]),
+            self._ensure_actor_reply_handler(),
+            ctypes.c_void_p(handle),
+            int(flags),
+            0,
+        )
+        if rc != 0:
+            self._actor_request_pending.pop(handle, None)
+            _close_native_parts(native_parts)
+            if int(flags) & 1 and rc == int(SubmitResult.BACKPRESSURED):
+                return False
+            _raise_result_error(SubmitError, SubmitResult, rc, lib().zlink_errno())
+        return True
+
+    def _request_to_actor_submit(self, actor_ref, parts, callback, flags=0, timeout=0):
+        native_actor = _actor_ref_to_native(actor_ref)
+        native_parts = _clone_payload(parts)
+        native_array = _prepare_native_parts(native_parts)
+        pending = PendingRequest(callback=callback)
+        handle = id(pending)
+        self._actor_request_pending[handle] = pending
+        rc = lib().zlink_spot_node_request_to_actor(
+            self._handle,
+            ctypes.byref(native_actor),
+            native_array if native_parts else None,
+            len(native_parts),
+            self._ensure_actor_reply_handler(),
+            ctypes.c_void_p(handle),
+            int(flags),
+            _timeout_to_ms(timeout),
+        )
+        if rc != 0:
+            self._actor_request_pending.pop(handle, None)
+            _close_native_parts(native_parts)
             _raise_result_error(SubmitError, SubmitResult, rc, lib().zlink_errno())
         return True
 

@@ -10,6 +10,15 @@ namespace Systems.Zlink.Tests;
 public sealed class test_actor_contract
 {
     [Fact]
+    public void spot_node_actor_ref_send_and_request_surface_exists()
+    {
+        Assert.Equal(typeof(SendOperation),
+            typeof(ISpotNode).GetMethod(nameof(ISpotNode.SendToActor))!.ReturnType);
+        Assert.Equal(typeof(RequestOperation),
+            typeof(ISpotNode).GetMethod(nameof(ISpotNode.RequestToActor))!.ReturnType);
+    }
+
+    [Fact]
     public async Task local_actor_join_carries_request_and_reply_messages()
     {
         if (!CoreTestSupport.IsNativeAvailable())

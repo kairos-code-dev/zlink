@@ -8,6 +8,7 @@ import type {
   ActorJoinOperation,
   ActorLeaveOperation,
   ActorLookupOperation,
+  RequestOperation,
   ActorRef,
   SendOperation,
   SpotNodeActorEntry,
@@ -92,6 +93,10 @@ export interface SpotNode {
   leaveActor(actor: ActorRef, targetSpotRid: RoutingId): ActorLeaveOperation;
   /** Begin a send to `actor`'s bound session; parts are consumed on a successful submit. */
   sendActorBoundSession(actor: ActorRef): SendOperation;
+  /** Begin a send to a resolved Actor ref; completion acknowledges mailbox handoff. */
+  sendToActor(actor: ActorRef): SendOperation;
+  /** Begin a request to a resolved Actor ref; completion returns the Actor handler reply. */
+  requestToActor(actor: ActorRef): RequestOperation;
   /** Bind a remote actor to a session owned by another node. */
   bindRemoteActorSession(actor: ActorRef, sourceNodeRid: RoutingId, sourceSessionRid: RoutingId): void;
   /** Return a snapshot of the node's status. */

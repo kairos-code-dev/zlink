@@ -1,0 +1,24 @@
+package systems.zlink.samples.gamequest.server.questmission.handlers;
+
+import systems.zlink.framework.channels.ZLinkRouteRequestContext;
+import systems.zlink.framework.channels.ZLinkRouteRequestHandler;
+import systems.zlink.framework.handlers.ZLinkHandlerGroup;
+import systems.zlink.samples.gamequest.server.questmission.store.QuestStore;
+import systems.zlink.samples.gamequest.shared.contracts.Messages;
+
+@ZLinkHandlerGroup("quest-owner")
+public final class GetQuestProgressHandler
+    implements ZLinkRouteRequestHandler<Messages.GetQuestProgressReq, Messages.GetQuestProgressRes> {
+    private final QuestStore store;
+
+    public GetQuestProgressHandler(QuestStore store) {
+        this.store = store;
+    }
+
+    @Override
+    public Messages.GetQuestProgressRes handle(
+        Messages.GetQuestProgressReq request,
+        ZLinkRouteRequestContext context) {
+        return new Messages.GetQuestProgressRes(store.projection(request.playerId()));
+    }
+}

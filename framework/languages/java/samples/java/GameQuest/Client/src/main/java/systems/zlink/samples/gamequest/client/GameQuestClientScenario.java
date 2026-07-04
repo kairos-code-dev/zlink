@@ -1,0 +1,203 @@
+package systems.zlink.samples.gamequest.client;
+
+import com.fasterxml.jackson.databind.ObjectMapper;
+import java.net.URI;
+import java.net.http.HttpClient;
+import java.net.http.HttpRequest;
+import java.net.http.HttpResponse;
+import java.time.Duration;
+import java.time.Instant;
+import java.util.List;
+import java.util.concurrent.CompletionStage;
+import systems.zlink.samples.gamequest.server.configuration.SampleNames;
+import systems.zlink.samples.gamequest.server.configuration.SampleTopology;
+import systems.zlink.samples.gamequest.shared.contracts.Messages;
+import systems.zlink.stream.connector.ZLinkStreamConnector;
+import systems.zlink.stream.connector.ZLinkStreamMessage;
+
+public final class GameQuestClientScenario {
+    private final ObjectMapper json = new ObjectMapper();
+    private final HttpClient http = HttpClient.newHttpClient();
+
+    public void run(ZLinkStreamConnector apiAStream, ZLinkStreamConnector apiBStream) throws Exception {
+        apiAStream.connect().await();
+        Messages.JoinSessionRes joined = apiAStream
+            .request(new Messages.JoinSessionReq("player-alice"))
+            .await(Messages.JoinSessionRes.class);
+        ensure(joined.activeQuests().isEmpty());
+
+        CompletionStage<ZLinkStreamMessage<Messages.QuestProgressNotify>> firstProgress =
+            apiAStream.waitFor(Messages.QuestProgressNotify.class).submit(Messages.QuestProgressNotify.class);
+        Messages.KillMonsterRes firstKill = apiAStream
+            .request(new Messages.KillMonsterReq("player-alice", "wolf", "forest", "kill-1"))
+            .await(Messages.KillMonsterRes.class);
+        ensure(firstKill.eventId().equals("player-alice-kill-1"));
+        Messages.QuestProgressNotify firstPush = apiAStream.await(firstProgress).payload();
+        ensure(firstPush.playerId().equals("player-alice"));
+        ensure(firstPush.progress().questId().equals(Messages.QuestIds.FirstHunt));
+        ensure(firstPush.progress().currentCount() == 1);
+
+        CompletionStage<ZLinkStreamMessage<Messages.QuestCompletedNotify>> firstHuntCompleted =
+            apiAStream.waitFor(Messages.QuestCompletedNotify.class)
+                .where(Messages.QuestCompletedNotify.class, message ->
+                    message.payload().progress().questId().equals(Messages.QuestIds.FirstHunt))
+                .submit(Messages.QuestCompletedNotify.class);
+        apiAStream.request(new Messages.KillMonsterReq("player-alice", "wolf", "forest", "kill-2"))
+            .await(Messages.KillMonsterRes.class);
+        Messages.KillMonsterRes thirdKill = apiAStream
+            .request(new Messages.KillMonsterReq("player-alice", "wolf", "forest", "kill-3"))
+            .await(Messages.KillMonsterRes.class);
+        ensure(thirdKill.eventId().equals("player-alice-kill-3"));
+        Messages.QuestCompletedNotify firstHuntPush = apiAStream.await(firstHuntCompleted).payload();
+        ensure(firstHuntPush.rewardGranted());
+        ensure(firstHuntPush.progress().status().equals(Messages.QuestStatuses.RewardGranted));
+
+        Messages.KillMonsterRes duplicate = apiAStream
+            .request(new Messages.KillMonsterReq("player-alice", "wolf", "forest", "kill-3"))
+            .await(Messages.KillMonsterRes.class);
+        ensure(duplicate.eventId().equals(thirdKill.eventId()));
+
+        CompletionStage<ZLinkStreamMessage<Messages.QuestCompletedNotify>> auctionCompleted =
+            apiAStream.waitFor(Messages.QuestCompletedNotify.class)
+                .where(Messages.QuestCompletedNotify.class, message ->
+                    message.payload().progress().questId().equals(Messages.QuestIds.OpenAuction))
+                .submit(Messages.QuestCompletedNotify.class);
+        Messages.UnlockFeatureRes auction = apiAStream
+            .request(new Messages.UnlockFeatureReq("player-alice", "auction", "unlock-auction"))
+            .await(Messages.UnlockFeatureRes.class);
+        ensure(auction.eventId().equals("player-alice-unlock-auction"));
+        ensure(apiAStream.await(auctionCompleted).payload().rewardGranted());
+        Messages.GetGameplaySnapshotRes snapshot = post(
+            SampleTopology.ApiAHttpEndpoint,
+            "/internal/snapshot",
+            new Messages.GetGameplaySnapshotReq("player-alice"),
+            Messages.GetGameplaySnapshotRes.class);
+        ensure(snapshot.unlockedFeatureIds().contains("auction"));
+
+        ensure(postRaw(SampleTopology.MissionAHttpEndpoint, "/self-check/owner/player-alice/close"));
+        ensure(postRaw(SampleTopology.MissionBHttpEndpoint, "/self-check/owner/player-alice/close"));
+
+        Messages.CompleteMissionRes tutorial = apiAStream
+            .request(new Messages.CompleteMissionReq("player-alice", "tutorial", "mission-tutorial"))
+            .await(Messages.CompleteMissionRes.class);
+        ensure(tutorial.eventId().equals("player-alice-mission-tutorial"));
+        Messages.EnterAreaRes ruins = apiAStream
+            .request(new Messages.EnterAreaReq("player-alice", "ruins", "enter-ruins"))
+            .await(Messages.EnterAreaRes.class);
+        ensure(ruins.eventId().equals("player-alice-enter-ruins"));
+
+        Messages.CollectItemRes offlineItem = apiAStream
+            .request(new Messages.CollectItemReq("player-bob", "healing-herb", 1, "herb-1"))
+            .await(Messages.CollectItemRes.class);
+        ensure(offlineItem.eventId().equals("player-bob-herb-1"));
+
+        apiBStream.connect().await();
+        Messages.JoinSessionRes bobJoined = apiBStream
+            .request(new Messages.JoinSessionReq("player-bob"))
+            .await(Messages.JoinSessionRes.class);
+        ensure(hasProgress(bobJoined.activeQuests(), Messages.QuestIds.HerbGathering, 1));
+
+        CompletionStage<ZLinkStreamMessage<Messages.QuestCompletedNotify>> herbCompleted =
+            apiBStream.waitFor(Messages.QuestCompletedNotify.class)
+                .where(Messages.QuestCompletedNotify.class, message ->
+                    message.payload().progress().questId().equals(Messages.QuestIds.HerbGathering))
+                .submit(Messages.QuestCompletedNotify.class);
+        Messages.CollectItemRes onlineItem = apiBStream
+            .request(new Messages.CollectItemReq("player-bob", "healing-herb", 4, "herb-2"))
+            .await(Messages.CollectItemRes.class);
+        ensure(onlineItem.eventId().equals("player-bob-herb-2"));
+        Messages.QuestCompletedNotify herbPush = apiBStream.await(herbCompleted).payload();
+        ensure(herbPush.playerId().equals("player-bob"));
+        ensure(herbPush.rewardGranted());
+        ensure(herbPush.progress().status().equals(Messages.QuestStatuses.RewardGranted));
+
+        ensure(postRaw(SampleTopology.ApiAHttpEndpoint,
+            "/self-check/projection/player-bob/" + Messages.QuestIds.HerbGathering + "/delete"));
+        Messages.GetQuestProgressRes missingProjection = apiBStream
+            .request(new Messages.GetQuestProgressReq("player-bob"))
+            .await(Messages.GetQuestProgressRes.class);
+        ensure(missingProjection.activeQuests().stream()
+            .noneMatch(progress -> progress.questId().equals(Messages.QuestIds.HerbGathering)));
+        Messages.QuestProgress rebuilt = post(
+            SampleTopology.ApiAHttpEndpoint,
+            "/self-check/projection/player-bob/" + Messages.QuestIds.HerbGathering + "/rebuild",
+            "",
+            Messages.QuestProgress.class);
+        ensure(rebuilt.questId().equals(Messages.QuestIds.HerbGathering));
+        ensure(rebuilt.status().equals(Messages.QuestStatuses.RewardGranted));
+        Messages.GetQuestProgressRes rebuiltProjection = apiBStream
+            .request(new Messages.GetQuestProgressReq("player-bob"))
+            .await(Messages.GetQuestProgressRes.class);
+        ensure(rebuiltProjection.activeQuests().stream().anyMatch(progress ->
+            progress.questId().equals(Messages.QuestIds.HerbGathering)
+                && progress.status().equals(Messages.QuestStatuses.RewardGranted)));
+
+        ensure(postRaw(SampleTopology.ApiBHttpEndpoint, "/self-check/gameplay/kill-without-publish/player-alice"));
+        Messages.SyncQuestProgressRes sync = apiAStream
+            .request(new Messages.SyncQuestProgressReq("player-alice"))
+            .await(Messages.SyncQuestProgressRes.class);
+        ensure(sync.updatedQuests().stream().anyMatch(progress ->
+            progress.questId().equals(Messages.QuestIds.FirstHunt) && progress.currentCount() >= 4));
+        Messages.GetQuestProgressRes reconciled = apiBStream
+            .request(new Messages.GetQuestProgressReq("player-alice"))
+            .await(Messages.GetQuestProgressRes.class);
+        ensure(reconciled.activeQuests().stream().anyMatch(progress ->
+            progress.questId().equals(Messages.QuestIds.FirstHunt) && progress.currentCount() >= 4));
+
+        apiAStream.close().await();
+
+        Messages.GameQuestServerAssertRes assertion = waitForServerAssertion();
+        ensure(assertion.passed());
+        System.out.println(SampleNames.ServerEvidenceMarker);
+    }
+
+    private Messages.GameQuestServerAssertRes waitForServerAssertion() throws Exception {
+        Instant deadline = Instant.now().plus(Duration.ofSeconds(10));
+        Messages.GameQuestServerAssertRes last = null;
+        while (Instant.now().isBefore(deadline)) {
+            last = post(
+                SampleTopology.ApiAHttpEndpoint,
+                "/self-check/assert",
+                "",
+                Messages.GameQuestServerAssertRes.class);
+            if (last.passed()) {
+                return last;
+            }
+        }
+        return last;
+    }
+
+    private boolean hasProgress(List<Messages.QuestProgress> progress, String questId, int currentCount) {
+        return progress.stream()
+            .anyMatch(item -> item.questId().equals(questId) && item.currentCount() == currentCount);
+    }
+
+    private boolean postRaw(String base, String path) throws Exception {
+        HttpRequest request = HttpRequest.newBuilder()
+            .uri(URI.create(base + path))
+            .POST(HttpRequest.BodyPublishers.ofString(""))
+            .build();
+        HttpResponse<String> response = http.send(request, HttpResponse.BodyHandlers.ofString());
+        return response.statusCode() >= 200 && response.statusCode() < 300;
+    }
+
+    private <T> T post(String base, String path, Object body, Class<T> type) throws Exception {
+        HttpRequest request = HttpRequest.newBuilder()
+            .uri(URI.create(base + path))
+            .header("content-type", "application/json")
+            .POST(HttpRequest.BodyPublishers.ofString(body instanceof String value ? value : json.writeValueAsString(body)))
+            .build();
+        HttpResponse<String> response = http.send(request, HttpResponse.BodyHandlers.ofString());
+        if (response.statusCode() < 200 || response.statusCode() >= 300) {
+            throw new IllegalStateException("HTTP " + response.statusCode() + " for " + path + ": "
+                + response.body());
+        }
+        return json.readValue(response.body(), type);
+    }
+
+    private static void ensure(boolean condition) {
+        if (!condition) {
+            throw new IllegalStateException("Ensure failed");
+        }
+    }
+}

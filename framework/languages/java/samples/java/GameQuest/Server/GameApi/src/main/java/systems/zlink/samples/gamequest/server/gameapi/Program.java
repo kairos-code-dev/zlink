@@ -1,0 +1,178 @@
+package systems.zlink.samples.gamequest.server.gameapi;
+
+import com.fasterxml.jackson.databind.ObjectMapper;
+import com.sun.net.httpserver.HttpExchange;
+import com.sun.net.httpserver.HttpServer;
+import java.io.IOException;
+import java.net.InetSocketAddress;
+import java.net.URI;
+import java.nio.charset.StandardCharsets;
+import java.time.Instant;
+import org.springframework.boot.WebApplicationType;
+import org.springframework.boot.autoconfigure.SpringBootApplication;
+import org.springframework.boot.builder.SpringApplicationBuilder;
+import org.springframework.context.annotation.Bean;
+import systems.zlink.framework.channels.ZLinkRouteClient;
+import systems.zlink.framework.configuration.ZLinkMessageFlowLogMode;
+import systems.zlink.framework.locations.redis.ZLinkRedisLocationStore;
+import systems.zlink.framework.spring.EnableZLinkFramework;
+import systems.zlink.framework.spring.ZLinkFrameworkConfigurer;
+import systems.zlink.samples.gamequest.server.configuration.SampleLocationStore;
+import systems.zlink.samples.gamequest.server.configuration.SampleNames;
+import systems.zlink.samples.gamequest.server.configuration.SampleTopology;
+import systems.zlink.samples.gamequest.server.gameapi.sessions.GameQuestSession;
+import systems.zlink.samples.gamequest.server.gameapi.store.GameQuestStore;
+import systems.zlink.samples.gamequest.shared.contracts.Messages;
+
+@EnableZLinkFramework
+@SpringBootApplication(
+    proxyBeanMethods = false,
+    scanBasePackageClasses = Program.class)
+public class Program {
+    public static void main(String[] args) throws Exception {
+        AutoCloseable app = run(args);
+        GameQuestStore store = ApplicationContextHolder.store;
+        HttpServer http = startHttp(store);
+        Runtime.getRuntime().addShutdownHook(new Thread(() -> {
+            http.stop(0);
+            try {
+                app.close();
+            } catch (Exception ignored) {
+            }
+        }));
+        Thread.currentThread().join();
+    }
+
+    public static AutoCloseable run(String... args) {
+        SpringApplicationBuilder builder = new SpringApplicationBuilder(Program.class)
+            .web(WebApplicationType.NONE);
+        builder.application().setKeepAlive(true);
+        return builder.run(args)::close;
+    }
+
+    @Bean
+    ZLinkFrameworkConfigurer gameApiFramework() {
+        return options -> {
+            options.configureDispatch()
+                .messageFlow(ZLinkMessageFlowLogMode.KEY_TRANSITIONS)
+                .traceLogFile(System.getenv().getOrDefault("GAMEQUEST_LOG_DIR", "logs")
+                    + "/flow-" + SampleTopology.apiName() + ".log")
+                .traceLabel(SampleTopology.apiName());
+            options.addRouteMeshChannel(SampleNames.QuestOwnerRouteChannel)
+                .enableClient();
+            options.addStreamNode(SampleNames.StreamNode)
+                .bind(SampleTopology.selectedApiStreamEndpoint())
+                .registerSession(GameQuestSession.class);
+        };
+    }
+
+    @Bean(destroyMethod = "close")
+    ZLinkRedisLocationStore locationStore() {
+        return SampleLocationStore.create();
+    }
+
+    @Bean(destroyMethod = "close")
+    GameQuestStore gameQuestStore() {
+        GameQuestStore store = new GameQuestStore();
+        ApplicationContextHolder.store = store;
+        return store;
+    }
+
+    @Bean
+    GameQuestApiServices gameQuestApiServices(GameQuestStore store, ZLinkRouteClient routes) {
+        ApplicationContextHolder.store = store;
+        ApplicationContextHolder.routes = routes;
+        return new GameQuestApiServices();
+    }
+
+    private static HttpServer startHttp(GameQuestStore store) throws IOException {
+        ObjectMapper json = new ObjectMapper();
+        URI uri = URI.create(SampleTopology.selectedApiHttpEndpoint());
+        HttpServer server = HttpServer.create(new InetSocketAddress(uri.getHost(), uri.getPort()), 0);
+        server.createContext("/health", exchange -> writeJson(exchange, json, 200, new Health("ok")));
+        server.createContext("/internal/snapshot", exchange -> {
+            Messages.GetGameplaySnapshotReq request = readJson(exchange, json, Messages.GetGameplaySnapshotReq.class);
+            writeJson(exchange, json, 200, store.snapshot(request.playerId()));
+        });
+        server.createContext("/quest/progress/", exchange -> {
+            String playerId = exchange.getRequestURI().getPath().substring("/quest/progress/".length());
+            writeJson(exchange, json, 200, new Messages.GetQuestProgressRes(store.projection(playerId)));
+        });
+        server.createContext("/self-check/gameplay/kill-without-publish/", exchange -> {
+            String playerId = exchange.getRequestURI().getPath()
+                .substring("/self-check/gameplay/kill-without-publish/".length());
+            store.addUnpublishedKill(playerId);
+            writeJson(exchange, json, 200, new Accepted(true));
+        });
+        server.createContext("/self-check/projection/", exchange -> handleProjection(exchange, json, store));
+        server.createContext("/self-check/assert", exchange -> writeJson(exchange, json, 200, store.assertState()));
+        server.start();
+        return server;
+    }
+
+    private static void handleProjection(
+        HttpExchange exchange,
+        ObjectMapper json,
+        GameQuestStore store) throws IOException {
+        String[] parts = exchange.getRequestURI().getPath().split("/");
+        String playerId = parts.length >= 4 ? parts[3] : "";
+        String questId = parts.length >= 5 ? parts[4] : "";
+        String action = parts.length >= 6 ? parts[5] : "";
+        if ("delete".equals(action)) {
+            Messages.DeleteQuestProjectionRes deleted = ApplicationContextHolder.routes
+                .requestToNode(
+                    SampleNames.QuestOwnerRouteChannel,
+                    SampleTopology.ownerRouteRid(playerId),
+                    new Messages.DeleteQuestProjectionReq(playerId, questId))
+                .await(Messages.DeleteQuestProjectionRes.class);
+            store.deleteProjection(playerId, questId);
+            writeJson(exchange, json, 200, deleted);
+            return;
+        }
+        if ("rebuild".equals(action)) {
+            Messages.QuestProgress rebuilt = ApplicationContextHolder.routes
+                .requestToNode(
+                    SampleNames.QuestOwnerRouteChannel,
+                    SampleTopology.ownerRouteRid(playerId),
+                    new Messages.RebuildQuestProjectionReq(playerId, questId, 0))
+                .await(Messages.QuestProgress.class);
+            store.mergeProjection(playerId, java.util.List.of(rebuilt));
+            writeJson(exchange, json, 200, rebuilt);
+            return;
+        }
+        writeJson(exchange, json, 404, new ErrorBody("unknown projection action"));
+    }
+
+    private static <T> T readJson(HttpExchange exchange, ObjectMapper json, Class<T> type) throws IOException {
+        return json.readValue(exchange.getRequestBody(), type);
+    }
+
+    private static void writeJson(HttpExchange exchange, ObjectMapper json, int status, Object body)
+        throws IOException {
+        byte[] bytes = json.writeValueAsString(body).getBytes(StandardCharsets.UTF_8);
+        exchange.getResponseHeaders().add("content-type", "application/json");
+        exchange.sendResponseHeaders(status, bytes.length);
+        exchange.getResponseBody().write(bytes);
+        exchange.close();
+    }
+
+    private record Health(String status) {
+    }
+
+    private record Accepted(boolean accepted) {
+    }
+
+    private record Deleted(boolean deleted) {
+    }
+
+    private record ErrorBody(String error) {
+    }
+
+    private static final class GameQuestApiServices {
+    }
+
+    private static final class ApplicationContextHolder {
+        private static GameQuestStore store;
+        private static ZLinkRouteClient routes;
+    }
+}

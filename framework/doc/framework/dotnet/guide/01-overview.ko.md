@@ -2,32 +2,32 @@
 [문서 목록](../../../README.ko.md) | [이전: ZLink Framework for .NET](../README.ko.md) | [다음: Getting Started](02-getting-started.ko.md)
 <!-- framework-adapter-nav:end -->
 
-# 1. ZLink Framework for .NET — 개요
+# 1. ZLink Framework for .NET - 개요
 
 > 이 문서는 `.NET` 가이드의 진입점이다. 가이드는 `ASP.NET Core` 개발자가
-> ZLink Framework 의 기능을 **읽고 바로 따라 쓸 수 있도록** 개념과 사용법을
+> ZLink Framework의 기능을 **읽고 바로 따라 쓸 수 있도록** 개념과 사용법을
 > 직접 설명한다. 개념의 **언어 중립 정식 정의**는 [공통 스펙
-> 개요](../../common/spec/overview.ko.md)가, `.NET` 표면의 **정식 계약**은
+> 개요](../../common/spec/overview.ko.md)가, `.NET` public API의 **정식 계약**은
 > [spec/](../spec/handler-interfaces.ko.md) 문서가 다룬다. 두 표기가 어긋나면
-> spec 이 우선이다.
+> spec이 우선이다.
 
 ## 1. 한 줄 정의
 
-`ZLink Framework for .NET`은 zlink `.NET` 바인딩 위에 올라가, 별도 **gateway 나
+`ZLink Framework for .NET`은 zlink `.NET` 바인딩 위에 올라가, 별도 **gateway나
 전용 로드밸런서 없이** 논리 `channel name` 기준의 서버 간 호출, pub/sub, `SPOT`,
-`STREAM`을 `ASP.NET Core`의 DI 와 hosted service 모델 안에서 쓰게 해 주는 상위
+`STREAM`을 `ASP.NET Core`의 DI와 hosted service 모델 안에서 쓰게 해 주는 상위
 계층이다.
 
-핵심은 "raw socket 과 위치 저장소 조회를 직접 다루지 않는다"는 것이다.
-개발자는 HTTP/gRPC 를 쓰던 감각으로 **handler, client, filter** 를 작성하고,
-연결·위치 조회·라우팅·재연결·correlation 은 framework 가 처리한다. HTTP middleware 는
+핵심은 "raw socket과 location store 조회를 application 코드에서 직접 다루지 않는다"는 것이다.
+개발자는 HTTP/gRPC를 쓰던 감각으로 **handler, client, filter**를 작성하고,
+연결·위치 조회·라우팅·재연결·correlation은 framework가 처리한다. HTTP middleware는
 HTTP pipeline 전용이므로, ZLink handler 앞뒤의 로깅·검증·권한 확인·메트릭 기록은
 `IZLinkHandlerFilter` 로 분리한다.
 
-> **ZLink 은 다국어 framework 다.** 호출 계약이 언어 중립 wire protocol(ZMP) +
+> **ZLink은 여러 언어에서 같은 계약으로 쓰는 framework다.** 호출 계약이 언어 중립 wire protocol(ZMP) +
 > codec + 논리 channel/packet 이라, 서로 다른 언어로 구현된 서비스가 같은 channel
 > 위에서 상호 호출한다(예: room 서버 C++, API 서버 .NET·Java). 이 가이드는 `.NET`
-> binding 기준이며 `.NET` 구현을 reference 로 삼는다. 다른 언어로 구현된 서비스도
+> 바인딩 기준이며 `.NET` 구현을 reference implementation(기준 구현)으로 삼는다. 다른 언어로 구현된 서비스도
 > 같은 channel 계약 위에서 함께 통신한다. 자세한 cross-language 모델은
 > [13-grpc-alternative §2.1](13-grpc-alternative.ko.md)이 다룬다.
 
@@ -35,27 +35,28 @@ HTTP pipeline 전용이므로, ZLink handler 앞뒤의 로깅·검증·권한 �
 
 ASP.NET Core 서비스가 서로 통신할 때 흔히 드는 비용은 다음과 같다.
 
-- 서비스마다 주소·포트를 알아야 하고, 앞단에 gateway 나 로드밸런서를 둔다.
-- 메시징 라이브러리를 쓰면 socket·endpoint·재연결·서비스 위치 조회를 앱이 직접 관리한다.
+- 서비스마다 주소·포트를 알아야 하고, 앞단에 gateway나 로드밸런서를 둔다.
+- 메시징 라이브러리를 쓰면 socket·endpoint·재연결·서비스 위치 조회를 application이 직접 관리한다.
 - 요청/응답, 단방향 전송, 이벤트 fan-out 마다 다른 코드 경로가 생긴다.
 - 로깅·검증·권한 확인 같은 공통 처리가 HTTP middleware 와 handler 코드 사이에 흩어진다.
 - 게임 room/stage 같은 동적 단위를 다루려면 라우팅과 세션 관리를 또 따로 짠다.
 
-ZLink Framework 는 이 모든 호출의 단위를 **논리 `channel name` 하나**로 좁힌다.
-응용은 "`order` channel 로 요청을 보낸다"만 알면 되고, 그 channel 이 어디에 몇 개
-떠 있는지는 location store 에 적힌 peer row 를 framework 가 읽어 숨긴다.
+ZLink Framework는 이 모든 호출의 단위를 **논리 `channel name` 하나**로 좁힌다.
+application에서는 "`order` channel로 요청을 보낸다"처럼 사용하면 된다. 그 channel이
+어느 서버에서 몇 개 실행 중인지는 location store에 등록된 peer 정보를 framework가 읽어
+숨긴다.
 
-서버 하나를 만들 때 직접 작성해야 했던 것들을 framework 가 처리한다.
+서버 하나를 만들 때 직접 작성해야 했던 것들을 framework가 처리한다.
 
-| 직접 만들어야 했던 것 | framework 가 처리하는 방식 |
+| 직접 만들어야 했던 것 | framework가 처리하는 방식 |
 |-----------------------|----------------------------|
 | socket 생성·bind·connect 관리 | channel/stream 이름과 역할로 선언하면 hosted service가 연결 |
-| 메시지 직렬화·역직렬화 | codec 등록과 handler 계약으로 DTO를 그대로 주고받음 |
-| 요청 routing·dispatch | handler group 또는 typed handler 등록으로 메시지가 자동으로 찾아옴 |
+| 메시지 직렬화·역직렬화 | codec 등록과 handler 계약에 맞춰 DTO를 그대로 주고받음 |
+| 요청 routing·dispatch | handler group 또는 typed handler 등록으로 메시지가 알맞은 handler에 도착 |
 | 로깅·검증·권한 확인 같은 공통 처리 반복 | HTTP route는 middleware, ZLink handler는 `IZLinkHandlerFilter`로 분리 |
 | 동시 요청의 상태 보호 | SPOT의 직렬 실행으로 lock 없이 상태 관리 |
-| 서비스 생성·의존성 관리 | ASP.NET Core DI에서 handler, client, filter를 resolve |
-| 서버 주소 관리·연결 해석 | location store 자동 연결로 endpoint 추적 |
+| 서비스 생성·의존성 관리 | ASP.NET Core DI에서 handler, client, filter를 생성 |
+| 서버 주소 관리·연결 결정 | location store를 통해 현재 살아 있는 endpoint 추적 |
 | 설정·로그·모니터링 | ASP.NET Core 설정·logging·hosted service와 통합 |
 
 ### 기존 방식 대비 (체감 난이도)
@@ -81,27 +82,27 @@ public sealed class GetPriceHandler
         => ValueTask.FromResult(new PriceReply(request.Symbol, 187.42m));   // 187.42m 은 데모용 고정값(실제론 조회 결과)
 }
 
-// 등록 — 채널 선언 → 서버 활성화 → handler 등록이 한 channel 빌더에 묶인다(이게 "한 줄짜리 channel 등록").
+// 등록 - 채널 선언 -> 서버 활성화 -> handler 등록이 한 channel 빌더에 묶인다(이게 "한 줄짜리 channel 등록").
 builder.Services.AddZLinkFramework(options =>
 {
     {
         var channel =     options.AddClientServerChannel("price"); // channel 이름 선언
-                channel.EnableServer("tcp://0.0.0.0:7301");        // 이 channel 의 server 역할 활성화(수신 endpoint)
-        channel.AddRequestHandler<GetPriceHandler>();              // 그 server 가 부를 handler 등록
+                channel.EnableServer("tcp://0.0.0.0:7301");        // 이 channel의 server 역할 활성화(수신 endpoint)
+        channel.AddRequestHandler<GetPriceHandler>();              // 그 server가 부를 handler 등록
 
     }
 });
 
-// 클라이언트: IZLinkChannelClient 를 주입받아 호출한다. builder(RequestToChannel = 요청 구성) +
+// 클라이언트: IZLinkChannelClient를 주입받아 호출한다. builder(RequestToChannel = 요청 구성) +
 // 종결자(.Async<TReply> = 실제 송신하고 reply 도착까지 대기)의 2단계다.
 var reply = await client
-    .RequestToChannel("price", new PriceRequest("AAPL"))   // builder: 어느 channel 에 무슨 요청을
+    .RequestToChannel("price", new PriceRequest("AAPL"))   // builder: 어느 channel에 무슨 요청을 보낼지 지정
     .Async<PriceReply>(ct);                                // 종결자: reply 타입 지정 + 송신·대기
 ```
 
-배선 코드가 사라지고 남는 것은 handler 와 한 줄짜리 channel 등록뿐이다.
+배선 코드가 사라지고 남는 것은 handler와 한 줄짜리 channel 등록뿐이다.
 
-### 아키텍처 — 어디에 올라가는가
+### 아키텍처 - 어디에 올라가는가
 
 ```
 +-----------------------------------------------------------+
@@ -118,21 +119,21 @@ var reply = await client
 +-----------------------------------------------------------+
 ```
 
-Framework 는 새 transport 나 새 socket 의미를 만들지 않는다. 기존 바인딩
-기능을 **DI · hosted service · handler · attribute** 모델로 감싸 노출할 뿐이다.
+Framework는 새 transport나 새 socket 의미를 만들지 않는다. 기존 바인딩
+기능을 **DI · hosted service · handler · attribute** 모델로 감싸 application에서 쓰기 쉽게 노출한다.
 backend 의존 기준은
 [internals/backend-dependency-policy](../internals/backend-dependency-policy.ko.md)
 가 소유한다.
 
 ## 2. 개념 요약
 
-이 framework 의 기능 단위들이다. 각각 전용 장에서 상세히 다룬다.
+이 framework의 기능 단위들이다. 각각 전용 장에서 상세히 다룬다.
 
 ### DI 컨테이너 — ASP.NET Core 서비스 의존성 사용
 
 `AddZLinkFramework(...)` 안에서 등록한 handler, client, filter는 ASP.NET Core DI와
-같은 컨테이너에서 만들어진다. 사용자는 handler 생성자에 필요한 서비스를 선언하고,
-framework 는 dispatch 시점에 필요한 객체를 resolve한다.
+같은 컨테이너에서 만들어진다. application 코드는 handler 생성자에 필요한 서비스를 선언하고,
+framework는 dispatch 시점에 필요한 객체를 DI 컨테이너에서 가져온다.
 
 [3장 →](03-concepts.ko.md)
 
@@ -170,12 +171,12 @@ runtime이 처리한다.
 
 [4장 →](04-channel-messaging.ko.md)
 
-### zlink core 와 기본 소켓 패턴
+### zlink core와 기본 소켓 패턴
 
-위 레이어 그림처럼 framework 는 새 소켓 의미를 만들지 않는다. zlink core(C API)가 소켓
-패턴을 제공하고, .NET 바인딩이 이를 typed 클래스로 노출하며, framework runtime 이
+위 레이어 그림처럼 framework는 새 소켓 의미를 만들지 않는다. zlink core(C API)가 소켓
+패턴을 제공하고, `.NET` 바인딩이 이를 typed 클래스로 노출하며, framework runtime이
 channel·spot 선언에 맞춰 생성·bind·connect 한다. 그래서 가이드 곳곳에
-`DEALER`·`ROUTER`·`PUB/SUB` 이름이 보이며, **어떤 소켓 위에서 도는지** 알면 channel 종류
+`DEALER`·`ROUTER`·`PUB/SUB` 이름이 보인다. **어떤 소켓 위에서 도는지** 알면 channel 종류
 선택이 쉬워진다.
 
 | framework 구성 | 하부 소켓 | 쓰임 |
@@ -183,7 +184,7 @@ channel·spot 선언에 맞춰 생성·bind·connect 한다. 그래서 가이드
 | client-server channel | `DEALER → ROUTER` | 1:1 request/response·단방향 send |
 | fanout channel | `PUB → SUB` | 이벤트 fan-out (여러 구독자) |
 | route mesh channel | `ROUTER ↔ ROUTER` | routing id 기반 엔티티 라우팅 |
-| STREAM session | `STREAM` | 외부 client(raw TCP/WS) 연동 |
+| STREAM session | `STREAM` | 외부 client(raw TCP/WS) 연결 |
 
 각 소켓의 메시징 패턴·라우팅 전략·호환성 매트릭스·코드 예제는 zlink core 가이드가
 자세히 다룬다:
@@ -196,7 +197,7 @@ channel·spot 선언에 맞춰 생성·bind·connect 한다. 그래서 가이드
 ### SPOT — 상태 단위를 lock 없이 관리
 
 SPOT은 game room, stage, zone, 주문 처리 단위처럼 하나의 상태 영역과 참여자를 묶는
-실행 단위다. 같은 SPOT에 들어오는 packet, timer, actor callback은 하나의 실행 줄에서
+실행 단위다. 같은 SPOT에 들어오는 packet, timer, actor callback은 하나의 실행 흐름에서
 처리되므로 SPOT이 소유한 상태에 lock 없이 접근할 수 있다.
 
 [5장 →](05-spot.ko.md)
@@ -206,7 +207,7 @@ SPOT은 game room, stage, zone, 주문 처리 단위처럼 하나의 상태 영�
 Actor는 연결 하나 또는 사용자 하나를 대표하는 서버 쪽 객체다. STREAM session이 외부
 client 연결을 받고, actor는 SPOT에 입장해 상태 처리에 참여한다. 서버 간 actor relay도
 가능하므로 session 서버와 domain 서버를 나눌 수 있다. actor lifecycle·호스팅은 6장이,
-session↔actor binding·dispatch·client push 는 7장이 다룬다.
+session↔actor binding·dispatch·client push는 7장이 다룬다.
 
 [6장 →](06-actor-spot.ko.md) · [7장 →](07-actor-session.ko.md)
 
@@ -221,8 +222,8 @@ Stream Connector가 담당한다.
 ### Location store — 주소 자동 연결
 
 서버가 여러 인스턴스로 확장될 때 어느 주소로 연결할지를 코드에 하드코딩하지 않는다.
-location store 가 등록된 서버 목록을 관리하고, client 역할의 서버가 store 에서 현재
-살아 있는 서버의 위치 row 를 읽어 동적으로 연결한다.
+location store가 등록된 서버 목록을 관리하고, client 역할의 서버가 store에서 현재
+살아 있는 서버의 위치 정보를 읽어 동적으로 연결한다.
 
 [9장 →](09-location.ko.md)
 
@@ -245,9 +246,9 @@ flowchart LR
 | SPOT | typed spot factory, Spot context outbound, timer | [05-spot](05-spot.ko.md) |
 | actor / session | actor factory, Entry Spot, `IZLinkBoundSession`, session actor dispatch | [06-actor-spot](06-actor-spot.ko.md) · [07-actor-session](07-actor-session.ko.md) |
 | STREAM | framework session packet, Stream Connector | [08-stream](08-stream.ko.md) |
-| 인프라 | Location 자동 연결·운영 조회, runtime monitoring | [09-location](09-location.ko.md), [10-monitoring](10-monitoring.ko.md) |
+| 인프라 | Location 기반 자동 연결·운영 조회, runtime monitoring | [09-location](09-location.ko.md), [10-monitoring](10-monitoring.ko.md) |
 
-## 3. 전체 토폴로지
+## 3. 전체 topology
 
 각 기능이 어떻게 맞물리는지 보여주는 예시다. 이 지도를 각 기능 장이 확대해 들어간다.
 
@@ -282,10 +283,10 @@ flowchart LR
     classDef infra fill:#eceff1,stroke:#546e7a,color:#000000
 ```
 
-- **진입 서버** — ASP.NET Core HTTP로 외부 요청을 받아 domain 서버에 위임한다.
-- **도메인 서버** — channel server + SPOT(상태 단위) + session relay + stream node.
-- **Location store** — 서버 주소 row 를 관리한다. 점선 = store 조회로 해석되는 연결.
-- **클라이언트 앱** — HTTP로 요청 생성, stream으로 실시간 상태 수신.
+- **진입 서버** - ASP.NET Core HTTP로 외부 요청을 받아 domain 서버에 위임한다.
+- **도메인 서버** - channel server + SPOT(상태 단위) + session relay + stream node.
+- **Location store** - 서버 주소 정보를 관리한다. 점선은 store 조회를 통해 endpoint를 찾는 연결이다.
+- **클라이언트 앱** - HTTP로 요청을 보내고, stream으로 실시간 상태를 받는다.
 
 ## 4. 산출물
 
@@ -297,45 +298,76 @@ flowchart LR
 | 등록 진입점 | `builder.Services.AddZLinkFramework(...)` |
 
 client 측 Stream Connector는 별도 산출물 `Systems.Zlink.Stream.Connector`다. 서버
-framework와 독립적으로 배포되며, client 앱에서 TCP/TLS/WS/WSS 접속과 packet codec을
+framework와 독립적으로 배포되며, client application에서 TCP/TLS/WS/WSS 접속과 packet codec을
 담당한다.
 
 ## 5. 누구를 위한 것인가 / 비목표
 
-- **대상:** 서버 간 메시징이 필요한 `ASP.NET Core` 백엔드, 실시간 game/stage
-  서버, 외부 client(STREAM)를 받는 게이트 서버, 클러스터 topology 를 운영에서
-  들여다봐야 하는 팀.
-- **비목표:** 새 transport 나 새 socket 의미를 만드는 것이 아니다. 기존
-  `.NET` 바인딩(`DealerSocket`, `SpotNode` 등)을 그대로 쓰되
-  framework 친화적으로 감싼다.
+이 가이드는 ZLink의 내부 구현을 고치려는 사람보다, `ASP.NET Core` 서비스에 ZLink를
+붙여 실제 시스템을 만들려는 application 개발자를 먼저 대상으로 한다. 하부 소켓을
+직접 배선하는 법보다 channel, handler, SPOT, STREAM, location store를 언제 골라 쓰는지에
+초점을 둔다.
 
-framework 는 handler 를 자동으로 모든 channel 에 열지 않는다. assembly scan 은
-handler 를 **찾는** 단계이고, 실제 노출은 `AddHandlerGroup(...)` 또는 개별 typed
-handler registration 이 정한다. 자세한 규칙은
-[04-channel-messaging](04-channel-messaging.ko.md) §3 에서 다룬다.
+주요 독자는 다음과 같다.
+
+- **백엔드 API 개발자**: HTTP endpoint 안에서 다른 내부 서비스로 요청을 보내거나,
+  기존 gRPC 호출을 논리 `channel name` 기반 request / response 로 바꾸려는 사람.
+- **마이크로서비스 운영 개발자**: 서버 instance가 늘고 줄어도 주소를 코드에 박지 않고,
+  location store가 관리하는 현재 서버 목록으로 자동 연결하려는 사람.
+- **실시간 서비스 개발자**: game room, stage, zone, 주문 workflow처럼 상태를 가진
+  단위를 SPOT으로 묶고, 같은 상태에 들어오는 packet을 한 실행 흐름에서 처리하려는 사람.
+- **gateway / connector 개발자**: 외부 client는 TCP, TLS, WebSocket 같은 STREAM으로
+  받고, 내부 처리는 channel이나 actor로 넘기려는 사람.
+- **기술 리더와 리뷰어**: ZLink를 도입할 만한 문제인지 판단하고, 어떤 책임은 ZLink가
+  맡고 어떤 책임은 DB, broker, domain service에 남겨야 하는지 확인하려는 사람.
+
+`guide/samples/` 아래 문서는 ZLink의 용도를 가장 구체적으로 보여 준다. 먼저
+[channel messaging 샘플](samples/channel-messaging-samples.ko.md)에서 서비스 간
+request / response, HTTP handler 안에서의 outbound 호출, publish / subscribe 흐름을
+본다. 상태 소유와 라우팅은 [SPOT 샘플](samples/spot-samples.ko.md), 외부 client 연결은
+[STREAM 샘플](samples/stream-samples.ko.md)과 [Stream Connector](samples/streaming-client.ko.md),
+실시간 game server 구조는 [TicTacToe](samples/tictactoe-game-sample.ko.md)와
+[Bingo](samples/bingo-game-sample.ko.md)에서 확인한다.
+[ShoppingMall](samples/shoppingmall-sample.ko.md),
+[DeliveryDispatch](samples/deliverydispatch-sample.ko.md),
+[GameQuest](samples/gamequest-sample.ko.md),
+[SupportChat](samples/supportchat-sample.ko.md)은 주문 workflow, 배정·상태 추적,
+게임 진행, 상담·채팅처럼 업무 도메인까지 붙인 end-to-end 샘플이다.
+
+비목표도 분명하다. ZLink Framework는 새 transport나 새 socket 의미를 만드는 계층이
+아니다. 기존 `.NET` 바인딩(`DealerSocket`, `SpotNode` 등)을 그대로 쓰되, application
+개발자가 DI, hosted service, handler, location store 모델로 다룰 수 있게 감싼다. 정식
+public API 계약을 검토하는 사람은 [spec/](../spec/handler-interfaces.ko.md)을, runtime
+내부 구조를 고치는 사람은 [internals/](../internals/backend-dependency-policy.ko.md)를
+같이 봐야 한다.
+
+framework는 handler를 자동으로 모든 channel에 열지 않는다. assembly scan은 handler를
+**찾는** 단계이고, 실제 노출은 `AddHandlerGroup(...)` 또는 개별 typed handler
+registration이 정한다. 자세한 규칙은 [04-channel-messaging](04-channel-messaging.ko.md)
+§3 에서 다룬다.
 
 ## 6. 이름 표기 규칙 (혼동 주의)
 
 가이드 전체에서 다음 표기를 일관되게 쓴다.
 
-- **framework adapter 가 노출하는 모든 public 타입**(interface, record, enum,
+- **framework adapter가 노출하는 모든 public 타입**(interface, record, enum,
   attribute, exception, DI 확장 메서드)은 `ZLink` prefix(대문자 `L`)를 쓴다. 예:
   `IZLinkChannelClient`, `ZLinkRequestContext`, `[ZLinkRequest]`, `AddZLinkFramework`,
   `ZLinkFrameworkException`.
 - **단, client 측 Stream Connector 패키지**(`Systems.Zlink.Stream.Connector`)의
   타입은 `Zlink` prefix(소문자 `l`)를 쓴다. 예: `IZlinkStreamConnector`,
-  `ZlinkStreamConnectorOptions`, `ZlinkStreamMessage`. 이는 connector 가 서버
+  `ZlinkStreamConnectorOptions`, `ZlinkStreamMessage`. 이는 connector가 서버
   framework 패키지에 의존하지 않는 독립 client 라이브러리이기 때문이다.
-- **하부 zlink core C API** 는 `zlink_*` snake_case 다.
-- NuGet package id 와 namespace 단어는 역순 도메인 규칙을 따라
-  `Systems.Zlink.*` 다(예: `Systems.Zlink.Framework`).
+- **하부 zlink core C API**는 `zlink_*` snake_case다.
+- NuGet package id와 namespace 단어는 역순 도메인 규칙을 따라
+  `Systems.Zlink.*`다(예: `Systems.Zlink.Framework`).
 
 > 정리하면: **서버 framework = `ZLink`, client connector = `Zlink`.** 한 코드에
 > 두 표기가 같이 보이면 오타가 아니라 위 규칙 때문이다.
 
 ## 7. 현재 상태
 
-이 가이드가 설명하는 표면은 [spec/](../spec/handler-interfaces.ko.md) 의 계약
+이 가이드가 설명하는 public API는 [spec/](../spec/handler-interfaces.ko.md)의 계약
 카탈로그를 따른다. 구현이 진행되는 동안에도 인터페이스의 모양과 동사(`Request`,
 `Submit`, `Bind`, `AddHandlerGroup` 등)는 spec 문서를 기준으로 확인한다. 세부
 필드까지 정확한 정식 정의가 필요하면 항상 spec 문서를 교차 참조한다.
@@ -353,7 +385,7 @@ handler registration 이 정한다. 자세한 규칙은
 9. [10-monitoring](10-monitoring.ko.md) — runtime 이벤트 관찰
 10. [11-feature-map](11-feature-map.ko.md) — 무엇을·얼마나 쉽게·언제 쓰나
 11. [12-interface-catalog](12-interface-catalog.ko.md) — 모든 계약 인터페이스를 코드로(ContractTests 검증)
-12. [13-grpc-alternative](13-grpc-alternative.ko.md) — **ZLink 을 어디에 쓰나**(사용처·문제 신호·경계 + 케이스 허브, 도입 판단 문서)
+12. [13-grpc-alternative](13-grpc-alternative.ko.md) — **ZLink을 어디에 쓰나**(사용처·문제 신호·경계 + 케이스 허브, 도입 판단 문서)
 13. 케이스 스터디 — 도입 판단과 아키텍처 매핑:
     [13 전자상거래](case-studies/13-case-ecommerce-checkout.ko.md) ·
     [14 mesh+운영](case-studies/14-case-microservice-mesh.ko.md) ·

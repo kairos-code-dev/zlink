@@ -109,6 +109,28 @@ view를 소유하는 모델"로 읽는 편이 맞다. 즉:
 
 SPOT 내부 peer topology와 channel 단위 호출은 서로 다른 경로로 설명한다.
 
+### 3.1 요청 경로의 channel 선택 기준
+
+요청을 보내는 쪽은 아래 기준으로 표면을 고른다. 샘플은 이 기준의 시연이므로
+예외 없이 따른다.
+
+1. **무상태 요청** — 어느 서버가 받아도 결과가 같은 요청은
+   `ClientServerChannel`을 쓴다. client는 endpoint를 직접 지정하지 않고
+   무인자 `EnableClient()`로 location store 발견에 맡긴다(§5.1).
+2. **상태 대상 요청** — 특정 상태(actor, spot, 파티션)가 목적지인 요청은
+   두 가지 중 하나를 쓴다.
+   - **actor/spot 표면**: entry spot이 find/ensure/bind류 요청을 받도록 하고,
+     보내는 쪽은 `RequestToSpot`과 spot address로 대상 node를 지정한다.
+     응답에 싣는 actor ref는 actor manager가 반환한 값을 그대로 쓴다.
+   - **owner 일관 channel**: 소유자를 해시 등으로 정적으로 정하는 구조면,
+     인스턴스별 channel 이름(예: `<name>.<instanceId>`)을 서버마다 서빙하고
+     보내는 쪽이 owner 인스턴스의 channel로 보낸다. 생성(start)과 이후
+     요청(continue)이 반드시 같은 owner로 가야 소유권이 갈라지지 않는다.
+3. **RouteMesh channel은 샘플에서 쓰지 않는다** — node rid를 직접 지정하는
+   route mesh 표면은 framework 내부(spot bridge 등)와 특수한 인프라 계층의
+   것이다. 애플리케이션 수준 요청이 rid 지정이 필요해 보이면 대부분 2의
+   상태 대상 요청이며, actor/spot 표면이나 owner 일관 channel로 표현한다.
+
 ## 4. playhouse use case에 대한 해석
 
 `playhouse` 시나리오에서는 play 서버가 여러 api channel에 요청을 보내야 할 수

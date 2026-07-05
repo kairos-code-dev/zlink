@@ -164,7 +164,7 @@ class gamequest_session_t final : public packet_stream_session_t
         if (packet == kill_monster_req_t::packet_name) {
             const auto request = payload.parse_json<kill_monster_req_t> ();
             const auto event = event_for (request.player_id, request.idempotency_key,
-                                          "KillMonster", request.monster_id, 1);
+                                          "MonsterKilled", request.monster_id, 1);
             auto applied = co_await apply_event (stream, event);
             stream.reply_packet (zlink::message_t::from_json (
                                    kill_monster_res_t{event.event_id}))
@@ -176,7 +176,7 @@ class gamequest_session_t final : public packet_stream_session_t
         if (packet == collect_item_req_t::packet_name) {
             const auto request = payload.parse_json<collect_item_req_t> ();
             const auto event = event_for (request.player_id, request.idempotency_key,
-                                          "CollectItem", request.item_id, request.count);
+                                          "ItemCollected", request.item_id, request.count);
             auto applied = co_await apply_event (stream, event);
             stream.reply_packet (zlink::message_t::from_json (
                                    collect_item_res_t{event.event_id}))
@@ -188,7 +188,7 @@ class gamequest_session_t final : public packet_stream_session_t
         if (packet == complete_mission_req_t::packet_name) {
             const auto request = payload.parse_json<complete_mission_req_t> ();
             const auto event = event_for (request.player_id, request.idempotency_key,
-                                          "CompleteMission", request.mission_id, 1);
+                                          "MissionCompleted", request.mission_id, 1);
             auto applied = co_await apply_event (stream, event);
             stream.reply_packet (zlink::message_t::from_json (
                                    complete_mission_res_t{event.event_id}))
@@ -200,7 +200,7 @@ class gamequest_session_t final : public packet_stream_session_t
         if (packet == enter_area_req_t::packet_name) {
             const auto request = payload.parse_json<enter_area_req_t> ();
             const auto event = event_for (request.player_id, request.idempotency_key,
-                                          "EnterArea", request.area_id, 1);
+                                          "AreaEntered", request.area_id, 1);
             auto applied = co_await apply_event (stream, event);
             stream.reply_packet (zlink::message_t::from_json (
                                    enter_area_res_t{event.event_id}))
@@ -212,7 +212,7 @@ class gamequest_session_t final : public packet_stream_session_t
         if (packet == unlock_feature_req_t::packet_name) {
             const auto request = payload.parse_json<unlock_feature_req_t> ();
             const auto event = event_for (request.player_id, request.idempotency_key,
-                                          "UnlockFeature", request.feature_id, 1);
+                                          "FeatureUnlocked", request.feature_id, 1);
             auto applied = co_await apply_event (stream, event);
             stream.reply_packet (zlink::message_t::from_json (
                                    unlock_feature_res_t{event.event_id}))

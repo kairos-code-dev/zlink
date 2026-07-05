@@ -34,23 +34,23 @@ class quest_store_t
         _seen_events[event_key] = event.event_id;
 
         std::string completed;
-        if (event.event_type == "KillMonster" && event.value == "wolf") {
+        if (event.event_type == "MonsterKilled" && event.value == "wolf") {
             completed = advance (event.player_id, quest_ids_t::first_hunt, event.count, 3,
                                  event.event_id);
         }
-        else if (event.event_type == "UnlockFeature" && event.value == "auction") {
+        else if (event.event_type == "FeatureUnlocked" && event.value == "auction") {
             completed = advance (event.player_id, quest_ids_t::open_auction, 1, 1,
                                  event.event_id);
         }
-        else if (event.event_type == "CollectItem" && event.value == "healing-herb") {
+        else if (event.event_type == "ItemCollected" && event.value == "healing-herb") {
             completed = advance (event.player_id, quest_ids_t::herb_gathering, event.count, 5,
                                  event.event_id);
         }
-        else if (event.event_type == "CompleteMission" && event.value == "tutorial") {
+        else if (event.event_type == "MissionCompleted" && event.value == "tutorial") {
             completed = advance (event.player_id, quest_ids_t::clear_tutorial, 1, 1,
                                  event.event_id);
         }
-        else if (event.event_type == "EnterArea" && event.value == "ruins") {
+        else if (event.event_type == "AreaEntered" && event.value == "ruins") {
             completed = advance (event.player_id, quest_ids_t::visit_ruins, 1, 1,
                                  event.event_id);
         }

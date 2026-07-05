@@ -56,6 +56,7 @@ class gamequest_client_scenario_t
                                 .packet_name (kill_monster_req_t::packet_name)
                                 .async<kill_monster_res_t> ()
                                 .result ();
+            dump_event_id_if_mismatch ("first kill", "player-alice-kill-1", first_kill);
             ensure (first_kill && first_kill.value ().event_id == "player-alice-kill-1",
                     "first kill event id mismatch");
             ensure (first_progress.get ().progress.current_count == 1,
@@ -202,6 +203,28 @@ class gamequest_client_scenario_t
                       << " count=" << quest.current_count << "/"
                       << quest.required_count << "\n";
         }
+    }
+
+    template <typename TResult>
+    static void dump_event_id_if_mismatch (const char *label,
+                                           const std::string &expected,
+                                           const TResult &result)
+    {
+        if (result && result.value ().event_id == expected) {
+            return;
+        }
+
+        std::cerr << "gamequest event id dump label=" << label << " expected=" << expected;
+        if (result) {
+            std::cerr << " actual=" << result.value ().event_id;
+        }
+        else {
+            std::cerr << " actual=<no-response>";
+            if (result.error ()) {
+                std::cerr << " error=" << result.error ()->message;
+            }
+        }
+        std::cerr << "\n";
     }
 
     static void assert_server (const std::string &api_http_url)

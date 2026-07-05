@@ -118,6 +118,7 @@ try {
 
     Assert-SampleLogContains -LogDirectory $LogDir -Pattern "deliverydispatch tracking: status"
     Assert-SampleLogContains -LogDirectory $LogDir -Pattern "deliverydispatch customer-session: bound customer"
+    Assert-SampleLogContains -LogDirectory $LogDir -Pattern "deliverydispatch customer-entry: pushed status"
     Assert-SampleLogContains -LogDirectory $LogDir -Pattern "deliverydispatch courier-session: bound courier=courier-a"
     Assert-SampleLogContains -LogDirectory $LogDir -Pattern "deliverydispatch courier-session: bound courier=courier-b"
     Wait-SampleLogContains "message flow" "DeliveryDispatch message-flow evidence"

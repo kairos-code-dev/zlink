@@ -1,4 +1,5 @@
 using DeliveryDispatch.Shared.Contracts;
+using DeliveryDispatch.Server.CustomerGateway.Spots.EntrySpot.Handlers;
 using Microsoft.Extensions.Logging;
 using Zlink.Framework.Contracts.Actors;
 using Zlink.Framework.Contracts.Messaging;
@@ -16,6 +17,8 @@ internal sealed class CustomerEntrySpot(
 
     public void Configure()
     {
+        Context.Handlers.AddActorPacket<DeliveryStatusUpdatedHandler, CustomerActor>(
+            nameof(DeliveryStatusUpdatedMsg));
     }
 
     public async ValueTask PushStatusAsync(

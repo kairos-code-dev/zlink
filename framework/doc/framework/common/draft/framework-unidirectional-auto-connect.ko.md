@@ -1,6 +1,6 @@
 # [DRAFT] framework auto-connect 단방향 연결 규칙 통일 (route mesh · spot mesh)
 
-- 상태: 설계 확정(사용자 결정 2026-07-05) — 구현 진행
+- 상태: 구현 진행 — cpp 파일럿 그린(ctest 30/30·TicTacToe 3연속·DD·TA, core 갭 없음)·dotnet(TA PASS)·node(TA PASS·lint 그린) 완료, java 후속 진행 중(TA 회귀 수정)
 - 소관: **framework**(location auto-connect가 연결 판정·dial의 실행 주체 — registry 제거 후 core discovery_protocol의 규칙은 참조 정본일 뿐 실행 경로 아님). core는 기존 능력(ROUTER 인바운드 identity 송신, PROBE_ROUTER 옵션)으로 충분한지 실측 후 갭 발견 시에만 수정
 - 결정자: 사용자 (배경 논의: route mesh 양방향 connect의 대규모(1000+ node) 연결 오버헤드)
 

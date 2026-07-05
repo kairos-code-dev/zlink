@@ -1002,9 +1002,9 @@ local capability는 같은 mesh의 peer list를 읽은 뒤 아래 규칙으로 c
 | client/server | local dealer -> remote router. router는 dealer로 outbound connect하지 않는다. |
 | dealer mesh | local dealer -> remote dealer. 중복 연결을 피하려고 routing id와 endpoint를 비교해 한쪽만 connect한다. |
 | fanout | local sub -> remote pub. pub는 sub로 outbound connect하지 않는다. |
-| spot mesh | local spot -> remote spot. 같은 endpoint와 같은 routing id는 제외하고 **양방향으로 connect한다**. native spot data plane과 route bridge는 각 node가 자기가 주소 지정하는 peer로 직접 dial한 링크를 전제하며, rid 지정 connect가 rid 기준으로 중복을 흡수한다. router role row는 spot endpoint metadata를 풀 때만 사용한다. |
+| spot mesh | local spot -> remote spot. 같은 endpoint와 같은 routing id는 제외하고 **pairwise initiator로 한쪽만 connect한다**(2026-07-05 단방향 통일 — [framework-unidirectional-auto-connect.ko.md](framework-unidirectional-auto-connect.ko.md)). initiator dial은 probe를 켜서 수신측이 연결 즉시 상대 rid를 학습하고, non-initiator 방향 rid 지정 송신은 인바운드 identity로 라우팅한다. router role row는 spot endpoint metadata를 풀 때만 사용한다. |
 
-pairwise initiator는 대칭 route/dealer mesh 공통 규칙이다. 기존 core 정책처럼
+pairwise initiator는 대칭 route/dealer/spot mesh 공통 규칙이다(2026-07-05 단방향 통일로 spot mesh 포함). 기존 core 정책처럼
 routing id가 둘 다 있으면 routing id byte order를 먼저 비교하고, 없거나 같으면 endpoint 문자열을
 비교한다. 비교 결과 local이 더 작은 쪽일 때만 connect한다. 양쪽이 동시에 서로 connect하면 같은
 routing id에 연결이 두 개 생기고, route mesh에서는 rid 지정 요청의 라우팅이 깨진다.
@@ -1021,24 +1021,41 @@ peer는 새 owner id로 row를 다시 claim하므로, owner 변화가 죽은 프
 
 ### 14.4 reconcile loop
 
-자동연결 runtime은 mesh별로 reconcile loop를 가진다.
+자동연결 runtime은 mesh마다 "지금 연결되어 있어야 하는 대상"과 "실제로 지금 연결된 대상"을 계속
+맞춘다. 이 반복 작업을 reconcile loop라고 부른다. 쉽게 말하면, store를 읽어 원하는 연결 목록을 다시
+계산하고, 현재 연결 상태와 비교해서 부족한 연결은 만들고 더 이상 필요 없는 연결은 끊는 과정이다.
+
+loop가 직접 저장하는 것은 "내 runtime이 이 mesh에 참여한다"는 local peer location row다. 다른
+runtime도 같은 방식으로 자기 row를 갱신한다. 그래서 각 runtime은 store에서 같은 mesh의 peer row를
+읽으면, 지금 연결 후보가 누구인지 알 수 있다.
 
 ```text
-1. local capability 시작
-2. local peer location update
-3. store에서 같은 mesh의 peer list 조회
-4. role 허용 정책과 target 매칭 정책으로 desired target set 생성
-5. 현재 active connection set과 desired target set 비교
-6. desired에는 있고 active에는 없으면 connect
-7. active에는 있고 desired에는 없으면 disconnect
-8. 같은 peer id의 endpoint가 바뀌었으면 기존 endpoint disconnect 후 새 endpoint connect
-9. heartbeat 주기마다 owner lease 갱신
-10. watch event 또는 polling tick 때 3-8 반복
-11. shutdown 때 owner lease와 local peer location remove 후 active connection 정리
+1. local capability를 시작한다.
+2. 이 runtime의 peer location row를 store에 쓴다.
+3. store에서 같은 mesh의 peer list를 읽는다.
+4. role 허용 정책과 target 매칭 정책으로 desired target set을 만든다.
+5. 현재 active connection set과 desired target set을 비교한다.
+6. desired에는 있는데 active에는 없으면 새로 connect한다.
+7. active에는 있는데 desired에는 없으면 disconnect한다.
+8. 같은 peer key의 endpoint나 owner가 바뀌었으면 기존 연결을 끊고 새 row로 connect한다.
+9. heartbeat 주기마다 owner lease를 갱신한다.
+10. watch event 또는 polling tick이 오면 3-8을 다시 수행한다.
+11. shutdown 때 owner lease와 local peer location을 제거하고 active connection을 정리한다.
 ```
 
+여기서 `desired target set`은 "정책상 연결되어 있어야 하는 원격 peer 목록"이다. 이 목록은 store에
+그대로 저장하지 않고 매번 peer list에서 계산한다. 따라서 store row가 바뀌거나 owner lease가 만료되면
+다음 reconcile에서 자연스럽게 연결 대상이 바뀐다.
+
 desired target key는 가능한 경우 `remote node rid + role`로 잡는다. routing id가 없는 role이면
-`endpoint + role`을 key로 잡는다. 같은 key의 endpoint가 바뀌면 peer handover로 보고 연결을 갱신한다.
+`endpoint + role`을 key로 잡는다. key는 "같은 peer인지"를 판단하는 기준이고, endpoint는 "어디로
+dial할지"를 말한다. 같은 key의 endpoint나 owner가 바뀌면 같은 peer가 새 주소나 새 runtime instance로
+이동한 것으로 보고 peer handover로 처리한다. 이때 기존 연결을 유지하지 않고 끊은 뒤 새 row의
+endpoint로 다시 연결한다.
+
+watch와 polling은 loop를 깨우는 방법만 다르다. watch가 있으면 store 변경 event가 왔을 때 바로 다시
+계산하고, watch가 없으면 polling interval마다 다시 계산한다. 두 경우 모두 최종 판단은 "store에서
+읽은 최신 peer list로 desired target set을 다시 만든다"는 같은 규칙을 따른다.
 
 ### 14.5 watch와 polling
 

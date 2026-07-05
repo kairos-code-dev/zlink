@@ -35,6 +35,7 @@ public static class NodeHostFactory
                 .EnableRouter(nodeConfig.SpotRouterEndpoint)
                 .SetRoutingId(nodeConfig.Rid)
                 .SetEntrySpotRoutingId(nodeConfig.Rid)
+                .ConnectRouter(topology.CourierSessionSpotNodeRid, topology.CourierSessionSpotRouterEndpoint)
                 .EnablePubSub(nodeConfig.SpotEndpoint)
                 .AddEntrySpot<CourierEntrySpot>()
                 .AddActorFactory<CourierActorFactory>(SampleNames.CourierActorType);

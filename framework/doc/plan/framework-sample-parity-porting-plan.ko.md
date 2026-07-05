@@ -43,7 +43,7 @@
 |----|------|------|:---:|------|
 | P-J1 | java | GameQuest **포팅(재분류)** | ✅ | 2026-07-05 완료 — dotnet 미러, run_sample 3연속 PASS, 릴리즈 게이트 그린 |
 | P-N1 | node | SupportChat | ✅ | 2026-07-05 완료 — 2연속 PASS, sample-regression 35/35 |
-| P-N2 | node | GameQuest | ⬜ | 키스톤: NestJS 모듈+ZLink 채널(HTTP 아님) — dotnet Spring 대응 구조 미러 |
+| P-N2 | node | GameQuest | 🟨 | 구조 완성·빌드 그린, 클라 requestTimeout 6왕복 미결(동결) — 다음: java 정본과 flow trace hop 비교. 로그 scratchpad/run_ngq5 |
 | P-N3 | node | ShoppingMall | ⬜ | |
 | P-K1 | kotlin | GameQuest | ✅ | 2026-07-05 완료 — java 정본 미러, run_sample 3연속 PASS |
 | P-K2 | kotlin | ShoppingMall | ⬜ | |

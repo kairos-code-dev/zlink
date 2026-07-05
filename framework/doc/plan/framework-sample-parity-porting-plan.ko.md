@@ -13,9 +13,9 @@
 | TicTacToe | ✅ | ✅ | ✅ | ✅ | ✅ |
 | Bingo | ✅ | ✅ | ✅ | ✅ | ✅ |
 | DeliveryDispatch | ✅ | ✅ | ✅ | ✅ | ✅ |
-| SupportChat | ✅ | ✅ | ✅ | ✅ | **⬜ P-C1** |
+| SupportChat | ✅ | ✅ | ✅ | ✅ | ✅ |
 | GameQuest | ✅ | **⬜ P-N2** | ✅ | ✅ | **⬜ P-C2** |
-| ShoppingMall | ✅ | **⬜ P-N3** | ✅ | ✅ | **⬜ P-C3** |
+| ShoppingMall | ✅ | ✅ | ✅ | ✅ | **⬜ P-C3** |
 
 갭 합계: **8건 포팅 + 1건 완성도 확인**(P-J1: java GameQuest는 디렉터리·빌드는 있으나
 [GameQuest 포팅 트랙](../../doc 참조)의 잔여 모듈 완성 여부를 S0에서 확인).
@@ -44,10 +44,10 @@
 | P-J1 | java | GameQuest **포팅(재분류)** | ✅ | 2026-07-05 완료 — dotnet 미러, run_sample 3연속 PASS, 릴리즈 게이트 그린 |
 | P-N1 | node | SupportChat | ✅ | 2026-07-05 완료 — 2연속 PASS, sample-regression 35/35 |
 | P-N2 | node | GameQuest | 🟨 | 구조 완성·빌드 그린, 클라 requestTimeout 6왕복 미결(동결) — 다음: java 정본과 flow trace hop 비교. 로그 scratchpad/run_ngq5 |
-| P-N3 | node | ShoppingMall | ⬜ | |
+| P-N3 | node | ShoppingMall | ✅ | 2026-07-05 완료 — 3연속 PASS |
 | P-K1 | kotlin | GameQuest | ✅ | 2026-07-05 완료 — java 정본 미러, run_sample 3연속 PASS |
 | P-K2 | kotlin | ShoppingMall | ✅ | 2026-07-05 완료 — 구 registry 제거·location store 전환, 3연속 PASS |
-| P-C1 | cpp | SupportChat | ⬜ | |
+| P-C1 | cpp | SupportChat | ✅ | 2026-07-05 완료 — 3연속 PASS |
 | P-C2 | cpp | GameQuest | ⬜ | |
 | P-C3 | cpp | ShoppingMall | ⬜ | |
 | SAMP-V | dotnet | 6종 샘플 ↔ 공통 샘플 문서 갭 검증·수정 | ✅ | 2026-07-04 갭 0 — 코드·문서 일치 |

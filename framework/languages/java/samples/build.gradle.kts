@@ -41,7 +41,6 @@ val sampleProjectPaths = listOf(
     ":kotlin:ShoppingMall:Server:CommerceApi",
     ":kotlin:ShoppingMall:Server:Configuration",
     ":kotlin:ShoppingMall:Server:OrderWorkflow",
-    ":kotlin:ShoppingMall:Server:Registry",
     ":kotlin:ShoppingMall:Shared",
     ":kotlin:TicTacToe:Client",
     ":kotlin:TicTacToe:Server",

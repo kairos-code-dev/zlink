@@ -1,7 +1,6 @@
 package systems.zlink.samples.kotlin.shoppingmall.client.configuration
 
 object SampleTopology {
-    val RegistryRouterEndpoint = property("registryRouterEndpoint", "tcp://127.0.0.1:47491")
     val CommerceApiAEndpoint = property("commerceApiAEndpoint", "tcp://127.0.0.1:47492")
     val CommerceApiBEndpoint = property("commerceApiBEndpoint", "tcp://127.0.0.1:47493")
 

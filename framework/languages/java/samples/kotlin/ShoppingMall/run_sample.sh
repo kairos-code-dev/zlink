@@ -4,7 +4,8 @@ set -euo pipefail
 cd "$(dirname "${BASH_SOURCE[0]}")"
 
 pids=()
-role_pattern='systems\.zlink\.samples\.kotlin\.shoppingmall\.(server\.(registry|commerceapi|orderworkflow)\.ProgramKt|client\.ProgramKt)'
+redis_container_id=""
+role_pattern='systems\.zlink\.samples\.kotlin\.shoppingmall\.(server\.(commerceapi|orderworkflow)\.ProgramKt|client\.ProgramKt)'
 log_dir="build/sample-logs"
 store_dir="build/sample-store"
 export SHOPPINGMALL_LOG_DIR="${SHOPPINGMALL_LOG_DIR:-$(pwd)/logs}"
@@ -82,6 +83,9 @@ cleanup() {
   for pid in "${pids[@]}"; do
     wait "${pid}" 2>/dev/null || true
   done
+  if [[ -n "${redis_container_id}" ]]; then
+    docker rm -f "${redis_container_id}" >/dev/null 2>&1 || true
+  fi
   return "${status}"
 }
 trap cleanup EXIT
@@ -104,10 +108,13 @@ reserve_ports() {
   python3 - <<'PY'
 import random
 import socket
+import sys
 reserved = []
 try:
     chosen = set()
-    while len(reserved) < 6:
+    attempts = 0
+    while len(reserved) < 4 and attempts < 1000:
+        attempts += 1
         host = "127.0.0.1"
         port = random.randint(48000, 60999)
         key = (host, port)
@@ -124,6 +131,9 @@ try:
             continue
         chosen.add(key)
         reserved.append((host, port, sockets))
+    if len(reserved) < 4:
+        print("unable to reserve local TCP ports", file=sys.stderr)
+        sys.exit(1)
     print(" ".join(f"{host}:{port}" for host, port, _ in reserved))
 finally:
     for _, _, sockets in reserved:
@@ -149,39 +159,55 @@ build_framework_jars() {
       :zlink-framework-core:jar \
       :zlink-framework-spring-boot-starter:jar \
       :zlink-framework-kotlin:jar \
+      :zlink-framework-locations-redis:jar \
       --quiet
   )
 }
 
-read -r registry_pub registry_router commerce_a commerce_b workflow_a workflow_b < <(reserve_ports)
-registry_pub_host="${registry_pub%:*}"; registry_pub_port="${registry_pub##*:}"
-registry_router_host="${registry_router%:*}"; registry_router_port="${registry_router##*:}"
+read -r -a reserved_endpoints < <(reserve_ports)
+if [[ "${#reserved_endpoints[@]}" -ne 4 ]]; then
+  echo "Failed to reserve sample ports." >&2
+  exit 1
+fi
+commerce_a="${reserved_endpoints[0]}"
+commerce_b="${reserved_endpoints[1]}"
+workflow_a="${reserved_endpoints[2]}"
+workflow_b="${reserved_endpoints[3]}"
 commerce_a_host="${commerce_a%:*}"; commerce_a_port="${commerce_a##*:}"
 commerce_b_host="${commerce_b%:*}"; commerce_b_port="${commerce_b##*:}"
 workflow_a_host="${workflow_a%:*}"; workflow_a_port="${workflow_a##*:}"
 workflow_b_host="${workflow_b%:*}"; workflow_b_port="${workflow_b##*:}"
 
+shoppingmall_redis_key_prefix="${SHOPPINGMALL_REDIS_KEY_PREFIX:-shoppingmall:kotlin:${RANDOM}:$$:}"
+if [[ -z "${SHOPPINGMALL_REDIS_ENDPOINT:-}" ]]; then
+  if ! command -v docker >/dev/null 2>&1; then
+    echo "Docker is required when SHOPPINGMALL_REDIS_ENDPOINT is not set." >&2
+    exit 1
+  fi
+  if ! timeout 5s docker info >/dev/null 2>&1; then
+    echo "Docker daemon access is required when SHOPPINGMALL_REDIS_ENDPOINT is not set." >&2
+    exit 1
+  fi
+  redis_container_id="$(docker run -d --rm --name "shoppingmall-kotlin-redis-${RANDOM}-$$" -p "127.0.0.1::6379" redis:7.2-alpine)"
+  SHOPPINGMALL_REDIS_ENDPOINT="$(docker port "${redis_container_id}" 6379/tcp | sed -E 's/.*:([0-9]+)$/127.0.0.1:\1/')"
+fi
+wait_port "${SHOPPINGMALL_REDIS_ENDPOINT%:*}" "${SHOPPINGMALL_REDIS_ENDPOINT##*:}"
+
 prefix="zlink.samples.shoppingmall"
 export JAVA_TOOL_OPTIONS="${JAVA_TOOL_OPTIONS:-} \
--D${prefix}.registryPubEndpoint=tcp://${registry_pub_host}:${registry_pub_port} \
--D${prefix}.registryRouterEndpoint=tcp://${registry_router_host}:${registry_router_port} \
 -D${prefix}.commerceApiAEndpoint=tcp://${commerce_a_host}:${commerce_a_port} \
 -D${prefix}.commerceApiBEndpoint=tcp://${commerce_b_host}:${commerce_b_port} \
 -D${prefix}.workflowAEndpoint=tcp://${workflow_a_host}:${workflow_a_port} \
 -D${prefix}.workflowBEndpoint=tcp://${workflow_b_host}:${workflow_b_port} \
+-D${prefix}.redisEndpoint=${SHOPPINGMALL_REDIS_ENDPOINT} \
+-D${prefix}.redisKeyPrefix=${shoppingmall_redis_key_prefix} \
 -D${prefix}.storeDir=${PWD}/${store_dir}"
 
 build_framework_jars
 gradle_run \
-  :Server:Registry:installDist \
   :Server:OrderWorkflow:installDist \
   :Server:CommerceApi:installDist \
   :Client:installDist
-
-"$(app_bin Server/Registry Registry)" >"${log_dir}/registry.log" 2>&1 &
-pids+=("$!")
-wait_port "${registry_pub_host}" "${registry_pub_port}"
-wait_port "${registry_router_host}" "${registry_router_port}"
 
 "$(app_bin Server/OrderWorkflow OrderWorkflow)" --instance workflow-a >"${log_dir}/workflow-a.log" 2>&1 &
 pids+=("$!")

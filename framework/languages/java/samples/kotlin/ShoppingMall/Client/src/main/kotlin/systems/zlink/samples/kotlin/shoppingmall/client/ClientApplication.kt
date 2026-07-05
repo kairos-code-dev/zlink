@@ -5,10 +5,11 @@ import org.springframework.boot.autoconfigure.SpringBootApplication
 import org.springframework.boot.builder.SpringApplicationBuilder
 import org.springframework.context.annotation.Bean
 import systems.zlink.framework.channels.ZLinkClient
+import systems.zlink.framework.locations.redis.ZLinkRedisLocationStore
 import systems.zlink.framework.spring.EnableZLinkFramework
 import systems.zlink.framework.spring.ZLinkFrameworkConfigurer
 import systems.zlink.samples.kotlin.shoppingmall.client.configuration.SampleNames
-import systems.zlink.samples.kotlin.shoppingmall.client.configuration.SampleTopology
+import systems.zlink.samples.kotlin.shoppingmall.server.configuration.SampleLocationStore
 
 @EnableZLinkFramework
 @SpringBootApplication(
@@ -17,9 +18,11 @@ import systems.zlink.samples.kotlin.shoppingmall.client.configuration.SampleTopo
 )
 class ClientApplication {
     @Bean
+    fun locationStore(): ZLinkRedisLocationStore = SampleLocationStore.create()
+
+    @Bean
     fun clientFramework(): ZLinkFrameworkConfigurer =
         ZLinkFrameworkConfigurer { options ->
-            options.useDiscovery().addRegistryEndpoint(SampleTopology.RegistryRouterEndpoint)
             options.addClientServerChannel(SampleNames.commerceApiChannel(SampleNames.ApiInstanceA))
                 .enableClient()
             options.addClientServerChannel(SampleNames.commerceApiChannel(SampleNames.ApiInstanceB))

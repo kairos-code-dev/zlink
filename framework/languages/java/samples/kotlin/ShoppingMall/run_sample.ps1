@@ -12,8 +12,9 @@ Remove-Item -Force -ErrorAction SilentlyContinue (Join-Path $LogDir "*.log")
 Remove-Item -Force -ErrorAction SilentlyContinue (Join-Path $StoreDir "*")
 
 $Gradle = if ($IsWindows) { Join-Path $SampleDir "../../gradlew.bat" } else { Join-Path $SampleDir "../../gradlew" }
-$RolePattern = "systems\.zlink\.samples\.kotlin\.shoppingmall\.(server\.(registry|commerceapi|orderworkflow)\.ProgramKt|client\.ProgramKt)"
+$RolePattern = "systems\.zlink\.samples\.kotlin\.shoppingmall\.(server\.(commerceapi|orderworkflow)\.ProgramKt|client\.ProgramKt)"
 $Processes = New-Object System.Collections.Generic.List[System.Diagnostics.Process]
+$RedisContainerId = $null
 
 function Print-Logs {
     param([int]$Status)
@@ -46,6 +47,9 @@ function Cleanup {
         }
     }
     Stop-RoleProcesses
+    if ($RedisContainerId) {
+        & docker rm -f $RedisContainerId 2>$null | Out-Null
+    }
 }
 
 function Reserve-Endpoints {
@@ -112,30 +116,37 @@ function Start-GradleRole {
 $Status = 1
 $oldJavaToolOptions = $env:JAVA_TOOL_OPTIONS
 try {
-    $endpoints = Reserve-Endpoints 6
-    $registryPub = Split-Endpoint $endpoints[0]
-    $registryRouter = Split-Endpoint $endpoints[1]
-    $commerceA = Split-Endpoint $endpoints[2]
-    $commerceB = Split-Endpoint $endpoints[3]
-    $workflowA = Split-Endpoint $endpoints[4]
-    $workflowB = Split-Endpoint $endpoints[5]
+    $endpoints = Reserve-Endpoints 4
+    $commerceA = Split-Endpoint $endpoints[0]
+    $commerceB = Split-Endpoint $endpoints[1]
+    $workflowA = Split-Endpoint $endpoints[2]
+    $workflowB = Split-Endpoint $endpoints[3]
+
+    $redisEndpoint = $env:SHOPPINGMALL_REDIS_ENDPOINT
+    if (-not $redisEndpoint) {
+        & docker info *> $null
+        if ($LASTEXITCODE -ne 0) { throw "Docker daemon access is required when SHOPPINGMALL_REDIS_ENDPOINT is not set." }
+        $RedisContainerId = (& docker run -d --rm --name "shoppingmall-kotlin-redis-$PID-$([Guid]::NewGuid().ToString('N'))" -p "127.0.0.1::6379" redis:7.2-alpine).Trim()
+        if ($LASTEXITCODE -ne 0) { throw "Docker is required when SHOPPINGMALL_REDIS_ENDPOINT is not set." }
+        $redisEndpoint = (& docker port $RedisContainerId 6379/tcp).Trim() -replace ".*:([0-9]+)$", "127.0.0.1:`$1"
+    }
+    $redis = Split-Endpoint $redisEndpoint
+    Wait-Port $redis.Host $redis.Port
+
+    $redisKeyPrefix = if ($env:SHOPPINGMALL_REDIS_KEY_PREFIX) { $env:SHOPPINGMALL_REDIS_KEY_PREFIX } else { "shoppingmall:kotlin:${PID}:$([Guid]::NewGuid().ToString('N')):" }
 
     $prefix = "zlink.samples.shoppingmall"
-    $env:JAVA_TOOL_OPTIONS = "$oldJavaToolOptions -D$prefix.registryPubEndpoint=tcp://$($registryPub.Host):$($registryPub.Port) -D$prefix.registryRouterEndpoint=tcp://$($registryRouter.Host):$($registryRouter.Port) -D$prefix.commerceApiAEndpoint=tcp://$($commerceA.Host):$($commerceA.Port) -D$prefix.commerceApiBEndpoint=tcp://$($commerceB.Host):$($commerceB.Port) -D$prefix.workflowAEndpoint=tcp://$($workflowA.Host):$($workflowA.Port) -D$prefix.workflowBEndpoint=tcp://$($workflowB.Host):$($workflowB.Port) -D$prefix.storeDir=$StoreDir"
+    $env:JAVA_TOOL_OPTIONS = "$oldJavaToolOptions -D$prefix.commerceApiAEndpoint=tcp://$($commerceA.Host):$($commerceA.Port) -D$prefix.commerceApiBEndpoint=tcp://$($commerceB.Host):$($commerceB.Port) -D$prefix.workflowAEndpoint=tcp://$($workflowA.Host):$($workflowA.Port) -D$prefix.workflowBEndpoint=tcp://$($workflowB.Host):$($workflowB.Port) -D$prefix.redisEndpoint=$redisEndpoint -D$prefix.redisKeyPrefix=$redisKeyPrefix -D$prefix.storeDir=$StoreDir"
 
     Push-Location "../../.."
     try {
-        & ./gradlew --no-daemon :zlink-framework-core:jar :zlink-framework-spring-boot-starter:jar :zlink-framework-kotlin:jar --quiet
+        & ./gradlew --no-daemon :zlink-framework-core:jar :zlink-framework-spring-boot-starter:jar :zlink-framework-kotlin:jar :zlink-framework-locations-redis:jar --quiet
         if ($LASTEXITCODE -ne 0) { throw "Framework jar build failed" }
     } finally {
         Pop-Location
     }
 
     Invoke-Gradle @("--settings-file", "standalone.settings.gradle.kts", "--no-daemon", "classes", "--quiet")
-
-    Start-GradleRole -Arguments @("--settings-file", "standalone.settings.gradle.kts", "--no-daemon", ":Server:Registry:run", "--quiet") -LogName "registry.log"
-    Wait-Port $registryPub.Host $registryPub.Port
-    Wait-Port $registryRouter.Host $registryRouter.Port
 
     Start-GradleRole -Arguments @("--settings-file", "standalone.settings.gradle.kts", "--no-daemon", ":Server:OrderWorkflow:run", "--args=--instance workflow-a", "--quiet") -LogName "workflow-a.log"
     Wait-Port $workflowA.Host $workflowA.Port

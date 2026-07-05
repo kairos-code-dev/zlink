@@ -27,8 +27,7 @@ pwsh -NoProfile -ExecutionPolicy Bypass -File .\run_sample.ps1
 - `Client/` contains the self-checking order workflow scenario.
 - `Server/CommerceApi/` receives order requests and queries order results.
 - `Server/OrderWorkflow/` owns order state transitions and projection rebuild.
-- `Server/Registry/` hosts the discovery registry used by the sample.
-- `Server/Configuration/` contains endpoint, channel, and packet settings.
+- `Server/Configuration/` contains endpoint, channel, location-store, and packet settings.
 
 The successful run prints `shoppingmall=completed` from the client and
 `shoppingmall-server-evidence=completed` after server evidence is checked.

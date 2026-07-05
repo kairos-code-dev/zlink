@@ -1,5 +1,8 @@
 package systems.zlink.samples.kotlin.shoppingmall.server.configuration
 
+import java.time.Duration
+import systems.zlink.framework.locations.redis.ZLinkRedisLocationOptions
+import systems.zlink.framework.locations.redis.ZLinkRedisLocationStore
 import systems.zlink.samples.kotlin.shoppingmall.shared.contracts.OrderState
 import systems.zlink.samples.kotlin.shoppingmall.shared.contracts.OrderStatuses
 
@@ -8,12 +11,12 @@ import systems.zlink.samples.kotlin.shoppingmall.shared.contracts.OrderStatuses
  * defaults through `-Dzlink.samples.shoppingmall.*` system properties.
  */
 object SampleTopology {
-    val RegistryPubEndpoint = property("registryPubEndpoint", "tcp://127.0.0.1:47490")
-    val RegistryRouterEndpoint = property("registryRouterEndpoint", "tcp://127.0.0.1:47491")
     val CommerceApiAEndpoint = property("commerceApiAEndpoint", "tcp://127.0.0.1:47492")
     val CommerceApiBEndpoint = property("commerceApiBEndpoint", "tcp://127.0.0.1:47493")
     val WorkflowAEndpoint = property("workflowAEndpoint", "tcp://127.0.0.1:47494")
     val WorkflowBEndpoint = property("workflowBEndpoint", "tcp://127.0.0.1:47495")
+    val RedisEndpoint = property("redisEndpoint", "127.0.0.1:6379")
+    val RedisKeyPrefix = property("redisKeyPrefix", "shoppingmall:kotlin:")
 
     fun commerceApiEndpoint(instanceId: String): String =
         if (instanceId == SampleNames.ApiInstanceB) CommerceApiBEndpoint else CommerceApiAEndpoint
@@ -45,4 +48,14 @@ object SampleTopology {
 
     private fun property(name: String, defaultValue: String): String =
         System.getProperty("zlink.samples.shoppingmall.$name", defaultValue)
+}
+
+object SampleLocationStore {
+    fun create(): ZLinkRedisLocationStore =
+        ZLinkRedisLocationStore(
+            ZLinkRedisLocationOptions()
+                .setConnectionString(SampleTopology.RedisEndpoint)
+                .setKeyPrefix("${SampleTopology.RedisKeyPrefix}locations:")
+                .setCommandTimeout(Duration.ofMillis(500)),
+        )
 }

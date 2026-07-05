@@ -7,9 +7,11 @@ import org.springframework.boot.builder.SpringApplicationBuilder
 import org.springframework.context.annotation.Bean
 import systems.zlink.framework.configuration.ZLinkMessageFlowLogMode
 import systems.zlink.framework.kotlin.configureDispatch
+import systems.zlink.framework.locations.redis.ZLinkRedisLocationStore
 import systems.zlink.framework.spring.EnableZLinkFramework
 import systems.zlink.framework.spring.ZLinkFrameworkConfigurer
 import systems.zlink.samples.kotlin.shoppingmall.server.configuration.CommerceStore
+import systems.zlink.samples.kotlin.shoppingmall.server.configuration.SampleLocationStore
 import systems.zlink.samples.kotlin.shoppingmall.server.configuration.SampleNames
 import systems.zlink.samples.kotlin.shoppingmall.server.configuration.SampleTopology
 
@@ -27,9 +29,11 @@ class CommerceApiApplication {
     fun commerceStore(): CommerceStore = CommerceStore()
 
     @Bean
+    fun locationStore(): ZLinkRedisLocationStore = SampleLocationStore.create()
+
+    @Bean
     fun commerceApiFramework(options: CommerceApiInstanceOptions): ZLinkFrameworkConfigurer =
         ZLinkFrameworkConfigurer { configurer ->
-            configurer.useDiscovery().addRegistryEndpoint(SampleTopology.RegistryRouterEndpoint)
             configurer.configureDispatch {
                 messageFlow(ZLinkMessageFlowLogMode.KEY_TRANSITIONS)
                 traceLogFile((System.getenv("SHOPPINGMALL_LOG_DIR") ?: "logs") + "/flow-${options.instanceId}.log")

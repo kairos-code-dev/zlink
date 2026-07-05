@@ -349,9 +349,13 @@ static int handle_connect_peer_pub_command (const ctrl_command_context_t &ctx_,
 
     if (ctx_.runtime->routed_router && !peer_rid.empty ()) {
         if (!ctx_.runtime->external_route_id_matches (arg_, peer_rid, arg_)) {
+            const int probe_router = 1;
             if (ctx_.runtime->routed_router->setsockopt (ZLINK_INTERNAL_OPT_CONNECT_ROUTING_ID,
                                                          peer_rid.data (), peer_rid.size ())
                   != 0
+                || ctx_.runtime->routed_router->setsockopt (ZLINK_INTERNAL_OPT_PROBE_ROUTER,
+                                                            &probe_router, sizeof (probe_router))
+                     != 0
                 || ctx_.runtime->routed_router->connect (arg_.c_str ()) != 0) {
                 const int saved_errno = errno != 0 ? errno : EIO;
                 if (!existing_peer && ctx_.mesh_xsub)

@@ -52,6 +52,26 @@ int try_send_routed_text (void *router_, const char *target_rid_, const char *te
     return zlink_send (router_, text_, strlen (text_), ZLINK_DONTWAIT);
 }
 
+bool wait_for_probe_identity (void *router_, const zlink_routing_id_t *expected_source_)
+{
+    const auto deadline = std::chrono::steady_clock::now () + std::chrono::milliseconds (3000);
+    while (std::chrono::steady_clock::now () < deadline) {
+        unsigned char source[256];
+        const int source_size = zlink_recv (router_, source, sizeof (source), ZLINK_DONTWAIT);
+        if (source_size >= 0) {
+            TEST_ASSERT_EQUAL_UINT (expected_source_->size, source_size);
+            TEST_ASSERT_EQUAL_MEMORY (expected_source_->data, source, expected_source_->size);
+            unsigned char payload[1];
+            const int payload_size = zlink_recv (router_, payload, sizeof (payload), 0);
+            TEST_ASSERT_EQUAL_INT (0, payload_size);
+            return true;
+        }
+        TEST_ASSERT_EQUAL_INT (EAGAIN, zlink_errno ());
+        msleep (10);
+    }
+    return false;
+}
+
 void recv_routed_text (void *router_, const char *expected_source_, const char *expected_text_)
 {
     const auto deadline = std::chrono::steady_clock::now () + std::chrono::milliseconds (3000);
@@ -113,6 +133,46 @@ void test_router_probe_identity_supports_reverse_rid_send_cleanup_and_relearn ()
     test_context_socket_close_zero_linger (client_a);
     test_context_socket_close_zero_linger (server_b);
 }
+
+void test_spot_connect_peer_rid_defaults_probe_for_reverse_identity_learning ()
+{
+    void *server_b = test_context_socket (ZLINK_SOCKET_ROUTER);
+    TEST_ASSERT_NOT_NULL (server_b);
+
+    set_router_rid (server_b, "spot-inbound-node-b");
+    set_router_mandatory (server_b);
+
+    const char *server_endpoint = "inproc://spot-connect-peer-rid-inbound-identity-b";
+    TEST_ASSERT_SUCCESS_ERRNO (zlink_bind (server_b, server_endpoint));
+
+    zlink_spot_node_options_t options;
+    memset (&options, 0, sizeof (options));
+    options.mode = ZLINK_SPOT_NODE_MODE_ROUTED;
+    void *client_a = zlink_spot_node_new (get_test_context (), &options);
+    TEST_ASSERT_NOT_NULL (client_a);
+    TEST_ASSERT_SUCCESS_ERRNO (
+      zlink_spot_node_set_router_bind (client_a,
+                                       "inproc://spot-connect-peer-rid-inbound-identity-a"));
+
+    zlink_spot_node_status_t client_status;
+    memset (&client_status, 0, sizeof (client_status));
+    TEST_ASSERT_SUCCESS_ERRNO (zlink_spot_node_status (client_a, &client_status));
+    TEST_ASSERT_TRUE (client_status.node_routing_id.size > 0);
+
+    zlink_routing_id_t server_rid;
+    memset (&server_rid, 0, sizeof (server_rid));
+    server_rid.size = static_cast<uint8_t> (strlen ("spot-inbound-node-b"));
+    memcpy (server_rid.data, "spot-inbound-node-b", server_rid.size);
+
+    TEST_ASSERT_EQUAL_INT (ZLINK_CONNECT_OK,
+                           zlink_spot_node_connect_peer_rid (client_a, &server_rid,
+                                                             server_endpoint));
+    TEST_ASSERT_TRUE_MESSAGE (wait_for_probe_identity (server_b, &client_status.node_routing_id),
+                              "spot connect_peer_rid did not send an inbound identity probe");
+
+    TEST_ASSERT_EQUAL_INT (ZLINK_CLOSE_OK, zlink_spot_node_destroy (&client_a));
+    test_context_socket_close_zero_linger (server_b);
+}
 }
 
 int main ()
@@ -122,6 +182,7 @@ int main ()
     UNITY_BEGIN ();
 
     RUN_TEST (test_router_probe_identity_supports_reverse_rid_send_cleanup_and_relearn);
+    RUN_TEST (test_spot_connect_peer_rid_defaults_probe_for_reverse_identity_learning);
 
     return UNITY_END ();
 }

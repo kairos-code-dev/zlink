@@ -88,9 +88,13 @@ int connect_routed_router_peer (spot_node_t *node_,
     if (runtime_->external_route_id_matches (peer_data_endpoint_, route_id, peer_route_endpoint_))
         return 0;
 
+    const int probe_router = 1;
     if (runtime_->routed_router->setsockopt (ZLINK_INTERNAL_OPT_CONNECT_ROUTING_ID,
                                              route_id.data (), route_id.size ())
           != 0
+        || runtime_->routed_router->setsockopt (ZLINK_INTERNAL_OPT_PROBE_ROUTER, &probe_router,
+                                               sizeof (probe_router))
+             != 0
         || runtime_->routed_router->connect (peer_route_endpoint_.c_str ()) != 0) {
         const int saved_errno = errno != 0 ? errno : EIO;
         if (spot_debug::enabled ("ZLINK_DEBUG_SPOT_DIRECT_ROUTE")) {

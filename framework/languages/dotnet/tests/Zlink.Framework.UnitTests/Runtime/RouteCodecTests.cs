@@ -1,6 +1,7 @@
 using System.Text;
 using Microsoft.Extensions.DependencyInjection;
 using Zlink.Framework.Runtime.Backend.Contracts;
+using Zlink.Framework.Runtime.Channels;
 using Zlink.Framework.Runtime.Codecs;
 
 namespace Zlink.Framework.UnitTests.Runtime;
@@ -134,6 +135,49 @@ public sealed class RouteCodecTests
         }
     }
 
+    [Fact]
+    public void RouteConnectionSet_RidAwareConnect_SetsProbeBeforeConnect()
+    {
+        var router = new RecordingConnectRouter();
+        var connections = new ZLinkRouteConnectionSet(router);
+        var peerRid = RoutingId.From("route-peer");
+
+        connections.Connect(peerRid, "inproc://route-peer");
+
+        Assert.Equal(peerRid, router.ConnectRoutingId);
+        Assert.True(router.ProbeEnabled);
+        Assert.Equal(["connect-rid", "probe", "connect"], router.Events);
+        Assert.Equal("inproc://route-peer", Assert.Single(router.Connected));
+    }
+
+    [Fact]
+    public async Task RouterProbe_AllowsNonInitiatorRidAddressedSendOverInboundIdentity()
+    {
+        await using var context = Systems.Zlink.Zlink.CreateContext();
+        await using var initiator = context.CreateRouterSocket();
+        await using var nonInitiator = context.CreateRouterSocket();
+        var initiatorRid = RoutingId.From("route-a-initiator");
+        var nonInitiatorRid = RoutingId.From("route-z-non-initiator");
+        var endpoint = $"inproc://route-inbound-identity-{Guid.NewGuid():N}";
+
+        initiator.SetRoutingId(initiatorRid);
+        nonInitiator.SetRoutingId(nonInitiatorRid);
+        initiator.Options.Linger = TimeSpan.Zero;
+        nonInitiator.Options.Linger = TimeSpan.Zero;
+        nonInitiator.Options.Mandatory = true;
+        nonInitiator.Bind(endpoint);
+        initiator.Options.SetConnectRoutingId(nonInitiatorRid);
+        initiator.Options.Probe = true;
+        initiator.Connect(endpoint);
+
+        await SendUntilReceivedAsync(
+            nonInitiator,
+            initiator,
+            initiatorRid,
+            "reply-from-non-initiator",
+            TimeSpan.FromSeconds(3));
+    }
+
     private static ZLinkRouteChannelRuntime CreateRouteChannelRuntime()
     {
         var services = new ServiceCollection().BuildServiceProvider();
@@ -145,6 +189,40 @@ public sealed class RouteCodecTests
             new ZLinkRouteHandlerRegistry([]),
             null,
             CancellationToken.None);
+    }
+
+    private static async Task SendUntilReceivedAsync(
+        IRouterSocket sender,
+        IRouterSocket receiver,
+        RoutingId targetRid,
+        string payload,
+        TimeSpan timeout)
+    {
+        var deadline = DateTime.UtcNow + timeout;
+        using var received = Received.Create();
+        while (DateTime.UtcNow < deadline)
+        {
+            using (var message = Message.From(payload))
+            {
+                try
+                {
+                    _ = sender.Send(targetRid).Message(message).Submit();
+                }
+                catch (ZlinkException)
+                {
+                }
+            }
+
+            if (receiver.Recv(received, RecvFlags.DontWait))
+            {
+                Assert.Equal(payload, received.SinglePartOrThrow().GetString());
+                return;
+            }
+
+            await Task.Delay(10);
+        }
+
+        throw new TimeoutException("Timed out waiting for inbound identity routed send.");
     }
 
     private sealed record RouteProbe(string Text);
@@ -259,6 +337,10 @@ public sealed class RouteCodecTests
         {
         }
 
+        public void SetProbe(bool enabled)
+        {
+        }
+
         public void SetMandatory(bool mandatory)
         {
             throw new NotSupportedException();
@@ -330,6 +412,157 @@ public sealed class RouteCodecTests
             _ = requestSeq;
             ReplyContentType = ZLinkEnvelopeCodec.DecodeHeader(parts).ContentType;
             ReplyBody = parts[1].GetString();
+        }
+    }
+
+    private sealed class RecordingConnectRouter : IZLinkBackendRouterSocket
+    {
+        public List<string> Events { get; } = [];
+
+        public List<string> Connected { get; } = [];
+
+        public RoutingId? ConnectRoutingId { get; private set; }
+
+        public bool ProbeEnabled { get; private set; }
+
+        public object NativeInstance => this;
+
+        public ValueTask DisposeAsync()
+        {
+            return ValueTask.CompletedTask;
+        }
+
+        public void Bind(string endpoint)
+        {
+            throw new NotSupportedException();
+        }
+
+        public void SetChannelName(string channelName)
+        {
+            throw new NotSupportedException();
+        }
+
+        public void Connect(string endpoint)
+        {
+            Events.Add("connect");
+            Connected.Add(endpoint);
+        }
+
+        public void Disconnect(string endpoint)
+        {
+            throw new NotSupportedException();
+        }
+
+        public void SetPeerWeight(int weight)
+        {
+            throw new NotSupportedException();
+        }
+
+        public int GetPeerWeight()
+        {
+            throw new NotSupportedException();
+        }
+
+        public void OnSendReady(Action handler)
+        {
+            _ = handler;
+        }
+
+        public void SetSendHighWaterMark(int value)
+        {
+            throw new NotSupportedException();
+        }
+
+        public void SetReceiveHighWaterMark(int value)
+        {
+            throw new NotSupportedException();
+        }
+
+        public void SetRoutingId(RoutingId routingId)
+        {
+            throw new NotSupportedException();
+        }
+
+        public void SetConnectRoutingId(RoutingId routingId)
+        {
+            Events.Add("connect-rid");
+            ConnectRoutingId = routingId;
+        }
+
+        public void SetProbe(bool enabled)
+        {
+            Events.Add("probe");
+            ProbeEnabled = enabled;
+        }
+
+        public void SetMandatory(bool mandatory)
+        {
+            throw new NotSupportedException();
+        }
+
+        public Received? Recv(RecvFlags flags = RecvFlags.None)
+        {
+            throw new NotSupportedException();
+        }
+
+        public bool Send(RoutingId routingId, Message message, SendFlags flags)
+        {
+            throw new NotSupportedException();
+        }
+
+        public bool Send(RoutingId routingId, IReadOnlyList<Message> parts, SendFlags flags)
+        {
+            throw new NotSupportedException();
+        }
+
+        public bool Request(
+            RoutingId routingId,
+            Message message,
+            RequestCallback callback,
+            SendFlags flags,
+            TimeSpan? timeout)
+        {
+            throw new NotSupportedException();
+        }
+
+        public bool Request(
+            RoutingId routingId,
+            IReadOnlyList<Message> parts,
+            RequestCallback callback,
+            SendFlags flags,
+            TimeSpan? timeout)
+        {
+            throw new NotSupportedException();
+        }
+
+        public bool SendToSpot(
+            RoutingId targetNodeRid,
+            RoutingId targetSpotRid,
+            IReadOnlyList<Message> parts,
+            SendFlags flags)
+        {
+            throw new NotSupportedException();
+        }
+
+        public bool RequestToSpot(
+            RoutingId targetNodeRid,
+            RoutingId targetSpotRid,
+            IReadOnlyList<Message> parts,
+            RequestCallback callback,
+            SendFlags flags,
+            TimeSpan? timeout)
+        {
+            throw new NotSupportedException();
+        }
+
+        public void Reply(RoutingId routingId, ulong requestSeq, Message message)
+        {
+            throw new NotSupportedException();
+        }
+
+        public void Reply(RoutingId routingId, ulong requestSeq, IReadOnlyList<Message> parts)
+        {
+            throw new NotSupportedException();
         }
     }
 

@@ -26,8 +26,8 @@ internal sealed record ZLinkAutoConnectTarget(
 
 /// <summary>
 /// Pure desired-target-set computation: the role allow table and target
-/// matching rules of the draft, with the dealer-mesh pairwise initiator
-/// order. No I/O, so every rule is unit-testable in isolation.
+/// matching rules of the draft, with the pairwise initiator order for
+/// symmetric meshes. No I/O, so every rule is unit-testable in isolation.
 /// </summary>
 internal static class ZLinkAutoConnectPlanner
 {
@@ -116,12 +116,10 @@ internal static class ZLinkAutoConnectPlanner
             // A publisher never dials out to subscribers.
             ZLinkLocationAutoConnectType.Fanout =>
                 local.Role == ZLinkLocationRole.Sub && peer.Role == ZLinkLocationRole.Pub,
-            // Spot mesh links stay bidirectional: the native spot data
-            // plane and its route bridge expect each node to dial the peers
-            // it addresses, and connect_peer_rid dedupes by rid.
             ZLinkLocationAutoConnectType.SpotMesh =>
                 local.Role == ZLinkLocationRole.Spot
-                && peer.Role == ZLinkLocationRole.Spot,
+                && peer.Role == ZLinkLocationRole.Spot
+                && LocalIsInitiator(local, peer),
             _ => false
         };
 

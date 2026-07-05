@@ -27,6 +27,7 @@ internal sealed class ZLinkRouteConnectionSet(IZLinkBackendRouterSocket router)
         lock (_connectGate)
         {
             router.SetConnectRoutingId(peerRid);
+            router.SetProbe(true);
             router.Connect(endpoint);
         }
     }

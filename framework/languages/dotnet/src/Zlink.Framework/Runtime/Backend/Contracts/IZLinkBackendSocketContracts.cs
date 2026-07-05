@@ -66,6 +66,8 @@ internal interface IZLinkBackendRouterSocket : IZLinkBackendConnectableSocket, I
     /// connect reaches, so rid-addressed sends work toward dialed peers.</summary>
     void SetConnectRoutingId(RoutingId routingId);
 
+    void SetProbe(bool enabled);
+
     void SetMandatory(bool mandatory);
 
     Received? Recv(RecvFlags flags = RecvFlags.None);

@@ -51,6 +51,11 @@ internal sealed class ZLinkBackendRouterSocketWrapper(IRouterSocket nativeSocket
         nativeSocket.Options.SetConnectRoutingId(routingId);
     }
 
+    public void SetProbe(bool enabled)
+    {
+        nativeSocket.Options.Probe = enabled;
+    }
+
     public void SetMandatory(bool mandatory)
     {
         nativeSocket.Options.Mandatory = mandatory;

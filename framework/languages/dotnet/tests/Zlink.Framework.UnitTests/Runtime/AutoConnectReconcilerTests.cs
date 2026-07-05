@@ -52,6 +52,7 @@ public sealed class AutoConnectReconcilerTests
     [Theory]
     [InlineData(ZLinkLocationAutoConnectType.DealerMesh, ZLinkLocationRole.Dealer)]
     [InlineData(ZLinkLocationAutoConnectType.RouteMesh, ZLinkLocationRole.Router)]
+    [InlineData(ZLinkLocationAutoConnectType.SpotMesh, ZLinkLocationRole.Spot)]
     public void Symmetric_Mesh_Pairwise_Initiator_Connects_From_The_Smaller_Side_Only(
         ZLinkLocationAutoConnectType type,
         ZLinkLocationRole role)
@@ -64,9 +65,8 @@ public sealed class AutoConnectReconcilerTests
         var fromSmaller = ZLinkAutoConnectPlanner.ComputeDesired(smaller, [rowBigger]);
         var fromBigger = ZLinkAutoConnectPlanner.ComputeDesired(bigger, [rowSmaller]);
 
-        // Only the byte-order smaller routing id dials, so the pair never
-        // double-connects: two links for one routing id break rid-addressed
-        // requests on route meshes.
+        // Only the byte-order smaller routing id dials, so route, spot,
+        // and dealer meshes share one physical link per peer pair.
         Assert.Single(fromSmaller);
         Assert.Empty(fromBigger);
     }

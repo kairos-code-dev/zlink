@@ -59,6 +59,8 @@ else
   REDIS_ENDPOINT="127.0.0.1:$REDIS_PORT"
 fi
 REDIS_KEY_PREFIX="zlink:e2e:to-actor:$(date +%s)-$$"
+ACTOR_RID="${TO_ACTOR_ACTOR_RID:-to-actor-owner}"
+CALLER_RID="${TO_ACTOR_CALLER_RID:-to-actor-caller}"
 
 ACTOR_HTTP_PORT="$(pick_port)"
 CALLER_HTTP_PORT="$(pick_port)"
@@ -76,7 +78,7 @@ dotnet build "$CALLER_PROJECT" --maxcpucount:1 >/dev/null
 dotnet build "$CLIENT_PROJECT" --maxcpucount:1 >/dev/null
 
 dotnet run --no-build --project "$ACTOR_PROJECT" -- \
-  --rid to-actor-owner \
+  --rid "$ACTOR_RID" \
   --http-url "$ACTOR_URL" \
   --redis-endpoint "$REDIS_ENDPOINT" \
   --redis-key-prefix "$REDIS_KEY_PREFIX" \
@@ -88,7 +90,7 @@ dotnet run --no-build --project "$ACTOR_PROJECT" -- \
 pids+=("$!")
 
 dotnet run --no-build --project "$CALLER_PROJECT" -- \
-  --rid to-actor-caller \
+  --rid "$CALLER_RID" \
   --http-url "$CALLER_URL" \
   --redis-endpoint "$REDIS_ENDPOINT" \
   --redis-key-prefix "$REDIS_KEY_PREFIX" \

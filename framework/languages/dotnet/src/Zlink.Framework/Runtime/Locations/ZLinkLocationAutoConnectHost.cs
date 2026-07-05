@@ -301,6 +301,8 @@ internal sealed class ZLinkLocationAutoConnectHost : IAsyncDisposable, IZLinkAut
             {
                 if (target.NodeRid is { Size: > 0 } rid)
                 {
+                    // Core connect_peer_rid sends the router probe that lets the
+                    // non-initiator route replies over the inbound identity.
                     node.ConnectPeer(rid, target.Endpoint);
                 }
                 else

@@ -155,6 +155,19 @@ public sealed class AutoConnectReconcilerTests
     }
 
     [Fact]
+    public void SpotMesh_Target_Keeps_Peer_RoutingId_For_RidAware_Connect()
+    {
+        var local = Local(ZLinkLocationAutoConnectType.SpotMesh, ZLinkLocationRole.Spot, "aa", "tcp://a:1");
+        var peer = Peer(ZLinkLocationAutoConnectType.SpotMesh, ZLinkLocationRole.Spot, "zz", "tcp://z:1");
+
+        var desired = ZLinkAutoConnectPlanner.ComputeDesired(local, [peer]);
+
+        var target = Assert.Single(desired.Values);
+        Assert.Equal(RoutingId.From("zz"), target.NodeRid);
+        Assert.Equal("tcp://z:1", target.Endpoint);
+    }
+
+    [Fact]
     public async Task Owner_Change_For_The_Same_Peer_Key_Is_A_Handover()
     {
         var fixture = await FixtureAsync();

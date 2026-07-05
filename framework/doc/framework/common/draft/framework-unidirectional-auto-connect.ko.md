@@ -1,6 +1,6 @@
 # [DRAFT] framework auto-connect 단방향 연결 규칙 통일 (route mesh · spot mesh)
 
-- 상태: **cpp·dotnet·node 완료·커밋**(각 TA e2e PASS, core 갭 없음). **java 재작업 진행 중** — 핵심 가설(사용자 힌트): probe 프레임이 수신 recv 스트림에 들어오는데 java 수신 루프가 스킵하지 않아 메시징 처리가 오염(이전 4회 시도의 실패 2유형 — ready 제출 실패·health 지연 — 을 설명). cpp/node의 probe 프레임 필터링 지점 대조로 수정 중
+- 상태: **cpp·dotnet·node 완료**(각 TA PASS, core 8.6.1 위 재검증 그린). **core 완료**: 8.6.0(인바운드 identity 송신 테이블)+8.6.1(spot connect_peer_rid probe 기본화) 릴리즈·배포. **java 진행**: 단방향 적용 커밋됨, TA 10회 중 5(0→60% 개선) — 잔여 실패 2유형(간헐 peer row 미게시·ready 제출 실패)은 java 기동 파이프라인 초기화 레이스로 수렴, 정밀 감사 후속 트랙 필요
 - 소관: **framework**(location auto-connect가 연결 판정·dial의 실행 주체 — registry 제거 후 core discovery_protocol의 규칙은 참조 정본일 뿐 실행 경로 아님). core는 기존 능력(ROUTER 인바운드 identity 송신, PROBE_ROUTER 옵션)으로 충분한지 실측 후 갭 발견 시에만 수정
 - 결정자: 사용자 (배경 논의: route mesh 양방향 connect의 대규모(1000+ node) 연결 오버헤드)
 

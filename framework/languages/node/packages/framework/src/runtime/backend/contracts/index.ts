@@ -181,6 +181,10 @@ export interface ZLinkBackendRequestOperation {
 }
 
 export interface ZLinkBackendRouterSocket extends ZLinkBackendConnectableSocket {
+  readonly options?: {
+    probe?: boolean;
+    setConnectRoutingId?(routingId: RoutingId): void;
+  };
   peerWeight: number;
   sendHighWaterMark: number;
   receiveHighWaterMark: number;

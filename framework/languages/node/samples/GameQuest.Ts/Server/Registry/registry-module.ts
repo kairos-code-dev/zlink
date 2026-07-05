@@ -1,0 +1,3 @@
+class RegistryModule {}
+
+export { RegistryModule };

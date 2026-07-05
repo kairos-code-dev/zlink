@@ -1741,7 +1741,8 @@ export class ZLinkChannelRuntimeManager {
         localRow: routeChannel.bind === undefined ? undefined : peerLocation(local, routeChannel.weight),
         executor: new ZLinkSocketAutoConnectExecutor(
           this.sockets.routeRouter(routeChannel.routerChannelId),
-          new Set(routeChannel.manualConnections ?? [])
+          new Set(routeChannel.manualConnections ?? []),
+          { routerInitiatorDial: true }
         )
       });
     }
@@ -1770,12 +1771,16 @@ interface ZLinkChannelAutoConnectCapability {
 class ZLinkSocketAutoConnectExecutor implements IZLinkAutoConnectExecutor {
   constructor(
     private readonly socket: ZLinkBackendConnectableSocket,
-    private readonly manualEndpoints: ReadonlySet<string>
+    private readonly manualEndpoints: ReadonlySet<string>,
+    private readonly options: { readonly routerInitiatorDial?: boolean } = {}
   ) {}
 
   connect(target: ZLinkAutoConnectTarget): void {
     if (this.manualEndpoints.has(target.endpoint)) {
       return;
+    }
+    if (this.options.routerInitiatorDial === true) {
+      configureRouterInitiatorDial(this.socket, target);
     }
     this.socket.connect(target.endpoint);
   }
@@ -1794,6 +1799,19 @@ class ZLinkNoopAutoConnectExecutor implements IZLinkAutoConnectExecutor {
   connect(): void {}
 
   disconnect(): void {}
+}
+
+function configureRouterInitiatorDial(socket: ZLinkBackendConnectableSocket, target: ZLinkAutoConnectTarget): void {
+  const options = (socket as ZLinkBackendRouterSocket).options;
+  if (options === undefined) {
+    return;
+  }
+  if ('probe' in options) {
+    options.probe = true;
+  }
+  if (target.nodeRid !== undefined) {
+    options.setConnectRoutingId?.(target.nodeRid);
+  }
 }
 
 function autoConnectLocal(
@@ -1998,14 +2016,14 @@ class ZLinkChannelSocketRegistry {
     }
     const router = this.adapter.createRouterSocket(this.context);
     router.setChannelName(routerChannelId);
+    const routerOptions: unknown = 'options' in router ? router.options : undefined;
     if (
       (routeChannel.manualConnections?.length ?? 0) > 0 &&
-      'options' in router &&
-      typeof router.options === 'object' &&
-      router.options !== null &&
-      'probe' in router.options
+      typeof routerOptions === 'object' &&
+      routerOptions !== null &&
+      'probe' in routerOptions
     ) {
-      (router.options as { probe: boolean }).probe = true;
+      (routerOptions as { probe: boolean }).probe = true;
     }
     if (routeChannel.routingId !== undefined && routeChannel.routingId.length > 0) {
       router.setRoutingId(routeChannel.routingId);

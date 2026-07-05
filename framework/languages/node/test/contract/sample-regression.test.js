@@ -10,13 +10,15 @@ const requiredSamples = [
   'TicTacToe.Ts',
   'Bingo.Ts',
   'DeliveryDispatch.Ts',
-  'SupportChat.Ts'
+  'SupportChat.Ts',
+  'GameQuest.Ts'
 ];
 const topologySamples = [
   'TicTacToe.Ts',
   'Bingo.Ts',
   'DeliveryDispatch.Ts',
-  'SupportChat.Ts'
+  'SupportChat.Ts',
+  'GameQuest.Ts'
 ];
 
 test('node samples define the required sample directories and README files', () => {

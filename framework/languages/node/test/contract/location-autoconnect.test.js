@@ -31,6 +31,7 @@ test('auto-connect planner applies role policy pairwise initiator and dial-only 
   const spot = local(framework.ZLinkLocationAutoConnectType.SpotMesh, framework.ZLinkLocationRole.Spot, 'node-a', 'tcp://spot-a');
   const spotDesired = internal.ZLinkAutoConnectPlanner.computeDesired(spot, [
     peer('owner-b', framework.ZLinkLocationAutoConnectType.SpotMesh, framework.ZLinkLocationRole.Spot, 'node-b', 'tcp://spot-b'),
+    peer('owner-0', framework.ZLinkLocationAutoConnectType.SpotMesh, framework.ZLinkLocationRole.Spot, 'node-0', 'tcp://spot-0'),
     peer('owner-router', framework.ZLinkLocationAutoConnectType.SpotMesh, framework.ZLinkLocationRole.Router, 'node-r', 'tcp://router')
   ]);
   assert.deepEqual([...spotDesired.values()].map((target) => target.endpoint), ['tcp://spot-b']);

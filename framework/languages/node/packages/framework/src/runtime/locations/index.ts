@@ -1798,7 +1798,9 @@ function shouldDialAutoConnectPeer(local: ZLinkAutoConnectLocal, peer: ZLinkPeer
     case ZLinkLocationAutoConnectType.Fanout:
       return local.role === ZLinkLocationRole.Sub && peer.role === ZLinkLocationRole.Pub;
     case ZLinkLocationAutoConnectType.SpotMesh:
-      return local.role === ZLinkLocationRole.Spot && peer.role === ZLinkLocationRole.Spot;
+      return local.role === ZLinkLocationRole.Spot
+        && peer.role === ZLinkLocationRole.Spot
+        && localIsPairwiseInitiator(local, peer);
     default:
       return false;
   }

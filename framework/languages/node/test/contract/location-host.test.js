@@ -185,6 +185,8 @@ test('framework runtime host starts channel auto-connect loops from location pee
         'subscriber:events:connect:tcp://remote-events'
       ].sort()
     );
+    assert.ok(calls.includes(`router:mesh:probe:true`));
+    assert.ok(calls.includes(`router:mesh:connectRoutingId:${rid('node-b').toHex()}`));
   } finally {
     await runtime.stop();
   }
@@ -205,6 +207,10 @@ test('framework runtime host starts spot node auto-connect loops from location p
   await store.renewOwnerLease('owner-remote', rid('node-b'), 30000);
   await store.updatePeer(
     spotPeer('owner-remote', 'node-b', 'tcp://remote-spot', 'tcp://remote-pub'),
+    framework.ZLinkLocationWriteIntent.NewClaim
+  );
+  await store.updatePeer(
+    spotPeer('owner-lower', 'node-0', 'tcp://lower-spot', 'tcp://lower-pub'),
     framework.ZLinkLocationWriteIntent.NewClaim
   );
   await store.updatePeer(
@@ -244,6 +250,8 @@ test('framework runtime host starts spot node auto-connect loops from location p
     await runtime.start();
     assert.ok(calls.includes(`spot:connectPeerRid:${rid('node-b').toHex()}:tcp://remote-spot`));
     assert.ok(calls.includes('spot:connectPeer:tcp://remote-pub'));
+    assert.equal(calls.some((call) => call.includes('tcp://lower-spot')), false);
+    assert.equal(calls.some((call) => call.includes('tcp://lower-pub')), false);
     assert.ok(calls.includes('spot:connectPeer:tcp://manual-spot'));
     assert.ok(calls.includes('spot:connectPeer:tcp://manual-pub'));
   } finally {
@@ -285,12 +293,12 @@ function fakeBackendAdapterFactory(calls, nodeRid) {
           return fakeConnectableSocket(calls, 'dealer');
         },
         createRouterSocket() {
-          return {
-            ...fakeConnectableSocket(calls, 'router'),
+          const socket = fakeConnectableSocket(calls, 'router');
+          return Object.assign(socket, {
             setRoutingId() {},
             recv() { return null; },
             reply() { return { message() { return this; }, submit() {} }; }
-          };
+          });
         },
         createPublisherSocket() {
           return {
@@ -380,7 +388,7 @@ function fakeSpotRouteBridge() {
 }
 
 function fakeConnectableSocket(calls, kind) {
-  return {
+  const socket = {
     nativeInstance: {},
     channelName: '',
     peerWeight: 100,
@@ -406,6 +414,18 @@ function fakeConnectableSocket(calls, kind) {
     recv() { return null; },
     async dispose() {}
   };
+  if (kind !== 'router') {
+    return socket;
+  }
+  socket.options = {
+    set probe(value) {
+      calls.push(`${kind}:${socket.channelName}:probe:${value}`);
+    },
+    setConnectRoutingId(routingId) {
+      calls.push(`${kind}:${socket.channelName}:connectRoutingId:${routingId.toHex()}`);
+    }
+  };
+  return socket;
 }
 
 function peer(meshName, ownerId, nodeRid, endpoint) {

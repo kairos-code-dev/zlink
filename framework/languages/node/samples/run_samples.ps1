@@ -25,3 +25,4 @@ try {
 & (Join-Path $scriptDir "Bingo.Ts/run_sample.ps1")
 & (Join-Path $scriptDir "DeliveryDispatch.Ts/run_sample.ps1")
 & (Join-Path $scriptDir "SupportChat.Ts/run_sample.ps1")
+& (Join-Path $scriptDir "GameQuest.Ts/run_sample.ps1")

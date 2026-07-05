@@ -23,7 +23,7 @@ class SupportChatClientScenario {
     const agentAuth = await this.post<AuthenticateRes>('/auth', { accessToken: 'agent-1' });
     ensure(() => agentAuth.actorId === 'agent-1');
     ensure(() => agentAuth.role === SupportChatRoles.Agent);
-    ensure(() => (agentAuth.displayName ?? '').length > 0);
+    ensure(() => agentAuth.displayName.length > 0);
     ensure((await this.setAvailable('agent-1', true)).isAvailable);
 
     const customer1 = await this.post<AuthenticateRes>('/auth', { accessToken: 'customer-1' });

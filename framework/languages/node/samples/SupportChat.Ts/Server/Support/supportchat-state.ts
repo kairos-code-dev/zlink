@@ -201,11 +201,10 @@ function firstAvailableAgent(snapshot: SupportChatSnapshot): string | undefined 
 }
 
 function requireConversation(snapshot: SupportChatSnapshot, conversationId: string): PersistedConversation {
-  const state = snapshot.conversations[conversationId];
-  if (state === undefined) {
+  if (!Object.prototype.hasOwnProperty.call(snapshot.conversations, conversationId)) {
     throw new Error(`Unknown conversation '${conversationId}'.`);
   }
-  return state;
+  return snapshot.conversations[conversationId];
 }
 
 function participants(state: ConversationState): string[] {

@@ -147,7 +147,8 @@ builder.Services.AddZLinkFramework(options =>
 - 그에 대응하는 backing `SpotNode` 생성
   view 공급
 - 같은 channel에 속한 다른 `SpotNode`와만 mesh 구성
-- local routed router 역할[^capability] 활성화
+- local routed router 역할[^capability] 활성화. 이 역할은 같은 process 안의 SPOT 경로와 다른 channel
+  경로 사이에서 라우팅을 맡는다.
 - local SPOT pub/sub 역할 활성화
 - 다른 channel 호출용 client attach
 - 필요하다면 외부 노드용 spot publish client attach
@@ -603,7 +604,7 @@ encode/decode한다. 이 payload는 방 설정, seed, 접근 정책처럼 spot�
 제거한다. remote 생성 relay가 필요한 경우 factory 식별은 framework 내부 metadata로
 처리하며 application API에 노출하지 않는다.
 
-명시적 `spotRid`가 필요한 경우 public surface는
+명시적 `spotRid`가 필요한 경우 public API 표면은
 `CreateAsync<TSpot>(spotRid, ...)`가 아니라
 `GetOrCreateAsync<TSpot>(spotRid, request, ...)`로 표현한다. 이미 같은
 `spotRid`의 framework spot이 ready 상태면 `State = Existing`을 반환하고, 새
@@ -1159,7 +1160,7 @@ actor join 문맥이 함께 검증되어야 한다. 또한 spot 이름과 id 를
 [^hot-path]: hot path 는 호출이 매우 잦아 성능에 직접 영향을 주는 핵심 실행 경로를 뜻한다.
 [^reflection]: reflection 은 런타임에 타입과 멤버 정보를 동적으로 조사·호출하는 기능이다. 강력하지만 hot path 에서는 비용이 크므로 보통 등록 단계까지만 제한한다.
 [^boxing]: boxing 은 값 타입(value type)을 참조 타입(object)으로 감싸 힙에 올리는 변환으로, 핫패스에서 누적되면 GC 압력을 키운다.
-[^allocator-pressure]: allocator pressure 는 짧은 시간에 잦은 할당이 일어나 GC 가 자주 동작하면서 latency 와 throughput 을 함께 떨어뜨리는 상태를 가리킨다.
+[^allocator-pressure]: allocator pressure 는 짧은 시간에 잦은 할당이 일어나 GC 가 자주 동작하면서 응답 지연과 처리량을 함께 떨어뜨리는 상태를 가리킨다.
 [^lock-contention]: lock contention 은 여러 thread 가 같은 lock 을 동시에 잡으려고 다투면서 대기가 누적되어 처리량이 떨어지는 상태를 가리킨다.
 [^rid]: `rid` 는 routing id 의 약칭으로, transport 계층에서 특정 peer 를 가리키는 식별자다.
 [^backpressure]: backpressure 는 송신 측이 수신 측의 처리 속도를 넘어 메시지를 밀어 넣지 못하도록 흐름을 조절하는 메커니즘이다.

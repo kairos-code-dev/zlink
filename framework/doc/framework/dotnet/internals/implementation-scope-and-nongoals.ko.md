@@ -89,7 +89,7 @@
 
 - `implementation scope` 에 적힌 항목이 모두 코드와 테스트로 존재한다.
 - `regression-test-matrix.ko.md` 의 release gate[^release-gate] 를 통과한다.
-- `.NET` 문서의 샘플이 실제 public surface[^public-surface] 와 어긋나지 않는다.
+- `.NET` 문서의 샘플이 실제 public API 표면[^public-surface] 과 어긋나지 않는다.
 - `backend-dependency-policy.ko.md` 가 정한 backend leakage[^backend-leakage]
   금지 규칙을 어기지 않는다.
 - 저장소가 패키징하는 여섯 runtime RID 전부에서 CI 기준이 유지된다.
@@ -99,9 +99,9 @@
 
 ## 6. 회귀 테스트
 
-구현 범위와 비목표는 public surface 가 의도치 않게 부풀어 오르는 것을 막아 주는
-회귀 테스트와 함께 관리한다. 즉 새 API 가 추가되면, 이 문서의 범위 표와 public
-surface 테스트를 같이 갱신해야 한다.
+구현 범위와 비목표는 public API 표면이 의도치 않게 부풀어 오르는 것을 막아 주는
+회귀 테스트와 함께 관리한다. 즉 새 API 가 추가되면, 이 문서의 범위 표와 public API 표면 테스트를 같이
+갱신해야 한다.
 
 | 테스트 케이스 | 확인 기준 |
 |---------------|-----------|
@@ -126,7 +126,7 @@ surface 테스트를 같이 갱신해야 한다.
 [^stage-wrapper]: stage wrapper 는 `playhouse` 의 Stage 같은 상위 모델을 SPOT 위에 얹어서 쓰기 위한 추가 추상이다.
 [^topology]: topology 는 어떤 노드(channel, spot, registry 등)가 어디에 있는지, 그리고 서로 어떻게 연결되어 있는지를 나타내는 구성 정보다.
 [^release-gate]: release gate 는 새 버전을 배포하기 전에 반드시 통과해야 하는 검증 단계(테스트, 빌드, 점검)의 묶음이다.
-[^public-surface]: public surface 는 외부 사용자에게 노출되는 모든 타입·메서드·attribute 의 총합을 가리킨다.
+[^public-surface]: public surface 는 외부 사용자에게 노출되는 모든 타입·메서드·attribute 의 총합을 가리킨다. 본문에서는 가능한 한 public API 표면이라고 풀어 쓴다.
 [^backend-leakage]: backend leakage 는 framework 내부에서만 써야 할 backend 구현 타입이 public API 로 새어 나오는 현상을 가리킨다.
 
 ---

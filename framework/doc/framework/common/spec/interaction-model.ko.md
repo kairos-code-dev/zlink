@@ -68,7 +68,7 @@
   `ROUTER <-> ROUTER` routed 경로로 설명한다.
 - SPOT 쪽은 routed 호출보다 route bridge channel socket을 통한
   `SendToChannel(...).Submit(...)` 같은 표면이 먼저 보이는 편이 더 자연스럽다.
-- caller가 위치값을 이미 알고 있더라도, 기본 application public surface에서는
+- caller가 위치값을 이미 알고 있더라도, 기본 application public API 표면에서는
   낱개 위치값을 받는 direct target send를 보여 주지 않는다. 위치는 항상
   resolve 로 얻은 주소 값 하나로만 다룬다.
 - command send는 기본 one-way submit을 뜻한다. framework는 blocking send를 task로

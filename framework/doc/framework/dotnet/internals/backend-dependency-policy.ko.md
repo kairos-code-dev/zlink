@@ -70,7 +70,7 @@ compatibility layer[^compatibility-layer] 를 끼워 줄 수 있는 종류다.
 - `Registry`
 - 하부의 timer, recv loop, raw socket monitor 같은 객체
 
-이 객체들은 backend 구현 세부에 가깝다. 따라서 public surface[^public-surface]
+이 객체들은 backend 구현 세부에 가깝다. 따라서 public API 표면[^public-surface]
 에 한 번이라도 새어 들어가면 곤란하다. 다음 backend 교체가 곧바로
 breaking change[^breaking-change] 로 이어지기 때문이다.
 
@@ -102,7 +102,7 @@ framework 와 backend 사이에는 항상 어댑터 한 층을 두고, 역할을
   역할은 framework service 가 맡는다. 실제 backend 호출은 adapter layer 가
   떠맡는다.
 - 샘플 문서가 low-level binding 타입을 직접 보여 주더라도, 그 설명이 framework
-  의 public surface 설명과 섞이지 않게 분리한다.
+  의 public API 표면 설명과 섞이지 않게 분리한다.
 
 ## 8. 교체 시 규칙
 
@@ -140,7 +140,7 @@ backend 의존 정책은 framework 의 public API 와 adapter factory 두 축으
 [^transport-primitive]: transport primitive 는 메시지 전송 계층에서 의미가 단단하게 굳어진 기초 값(예: `RoutingId`, `Message`, `SendFlags`)을 가리킨다.
 [^transport-identity]: transport identity 는 전송 계층에서 누가 누구에게 보내는지를 식별하는 값이다. `RoutingId` 가 대표적인 예다.
 [^compatibility-layer]: compatibility layer 는 내부 구현이 바뀌어도 외부에서 보이는 의미가 같게 유지되도록 끼워 넣는 중간 코드를 가리킨다.
-[^public-surface]: public surface 는 외부 사용자에게 노출되는 모든 타입·메서드·attribute 의 총합을 가리킨다.
+[^public-surface]: public surface 는 외부 사용자에게 노출되는 모든 타입·메서드·attribute 의 총합을 가리킨다. 본문에서는 가능한 한 public API 표면이라고 풀어 쓴다.
 [^breaking-change]: breaking change 는 기존 사용자 코드를 그대로 다시 빌드하거나 실행할 수 없게 만드는 비호환 변경을 뜻한다.
 [^synthetic-enum]: synthetic enum 은 backend 가 내려 주는 원시 값을 그대로 쓰지 않고, framework 쪽에서 다시 정의한 의미 단위로 만든 enum 을 가리킨다.
 [^dto]: DTO(Data Transfer Object) 는 계층 간에 값을 옮기는 용도의 단순한 데이터 구조다.

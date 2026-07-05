@@ -50,7 +50,7 @@ use case를 설명할 틀을 갖추었는지를 본다.
 - location store 기반 자동 연결과 rid resolve([location runtime](location-runtime.ko.md),
   E2E Config 1)
 - actor 재연결(재resolve)과 spot 주소 조회(E2E Config 2)
-- store extension 등록과 store 장애/복구(fail-static, owner lease 만료 —
+- store extension 등록과 store 장애/복구(장애 중 마지막 연결 판단 유지, owner lease 만료 —
   [Redis extension](location-store-redis.ko.md), E2E Config 6)
 
 반면 아래는 아직 부족하다.

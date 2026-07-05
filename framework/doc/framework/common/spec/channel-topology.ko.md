@@ -49,8 +49,8 @@
   subscribe 경로를 연다.
 - 같은 `channel name`에 속한 provider 집합은 location store 기반 자동 연결이
   갱신한다. provider는 자기 peer location row를 framework lifecycle로 store에
-  등록하고, consumer는 그 row를 조회/reconcile해 연결한다. row 모델과 reconcile
-  규칙(role matching, pairwise initiator, fail-static)은
+  등록하고, consumer는 그 row를 조회한 뒤 실제 연결 상태를 맞춘다. row 모델과 자동 연결
+  규칙(role matching, pairwise initiator, 장애 중 마지막 연결 판단 유지)은
   [location runtime](location-runtime.ko.md) §2, §6을 따른다.
 
 수동 연결을 쓰면 그 channel의 provider 집합을 직접 설정한다. 운영 점검이나 제어
@@ -64,7 +64,7 @@
 - `profile.subscriber`는 event subscribe용 `SUB` 연결을 뜻한다.
 
 같은 역할은 자동 연결과 수동 연결을 동시에 가질 수는 없다. 자동 연결이 관리하는
-`DEALER`의 연결 집합은 reconcile이 소유하므로 수동 `connect`와 섞이면 진실
+`DEALER`의 연결 집합은 자동 연결 상태 맞추기 작업이 소유하므로 수동 `connect`와 섞이면 진실
 공급원이 둘이 되기 때문이다.
 따라서 framework는 `channel + capability`마다 연결 방식을 하나씩 고르고, 앱
 전체에서는 역할별로 다른 방식을 나눠 쓰는 모델로 설명하는 편이 맞다.
@@ -215,8 +215,8 @@ channel name은 배포와 topology를 나타내는 값이므로 handler method a
 ### 5.3 location runtime query
 
 - 운영 점검, warm-up, 관리 화면, 디버깅에 유용하다.
-- 자동 연결이 지금 보고 있는 개별 channel view 밖의 전체 상태(raw location row,
-  topology projection, status)를 읽을 수 있다
+- 자동 연결이 지금 보고 있는 개별 channel view 밖의 전체 상태(원시 location row,
+  runtime이 합성한 topology 보기, status)를 읽을 수 있다
   ([location runtime](location-runtime.ko.md) §7).
 - 일반 요청 경로에서는 runtime query보다 channel view를 기준으로
   동작하는 편을 기본 방향으로 본다.

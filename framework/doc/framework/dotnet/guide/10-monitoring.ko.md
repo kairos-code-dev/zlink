@@ -7,8 +7,8 @@
 > 정식 계약은 [spec/aspnet-core-monitoring](../spec/aspnet-core-monitoring.ko.md)가
 > 다룬다.
 
-handler 호출만으로는 운영을 다 볼 수 없다. socket connect/disconnect, 위치·연결
-projection 변화, spot peer/subject 변화, timer handler 실패 같은 **runtime
+handler 호출만으로는 운영을 다 볼 수 없다. socket connect/disconnect, 위치·연결 상태를 runtime이
+합성한 보기의 변화, spot peer/subject 변화, timer handler 실패 같은 **runtime
 변화**도 framework 표면에서 받아야 한다. monitoring 이 이를 source 별로 통일된
 방식으로 노출한다.
 
@@ -20,8 +20,8 @@ projection 변화, spot peer/subject 변화, timer handler 실패 같은 **runti
 | source | 방식 |
 |--------|------|
 | socket | raw monitor 기반 event (connect/disconnect/handshake 등) |
-| location | 주기적 snapshot diff 기반 event 합성 (`location-runtime` source, [09-location](09-location.ko.md)) |
-| spot | 주기적 snapshot diff 기반 + timer 실패는 즉시 |
+| location | 주기적으로 상태를 읽고 직전 상태와 비교해 event 합성 (`location-runtime` source, [09-location](09-location.ko.md)) |
+| spot | 주기적으로 상태를 읽고 직전 상태와 비교해 event 합성 + timer 실패는 즉시 |
 
 공통 규칙: event kind 는 `enum`, payload 는 `record struct`, 응용은
 `IZLinkRuntimeEventHandler<TEvent>` 를 DI 에 등록해 수신한다.
@@ -50,7 +50,7 @@ builder.Services.AddZLinkMonitoring(monitor =>
 
     monitor.AddSpotEvents("stage-node", TimeSpan.FromSeconds(1));
 
-    // location store 를 등록한 배포에서 — 자기 노드의 위치/연결 projection 변화를 받는다
+    // location store 를 등록한 배포에서 — 자기 노드의 위치/연결 상태 변화 이벤트를 받는다
     monitor.AddLocationRuntimeEvents("location-runtime", TimeSpan.FromSeconds(1));
 });
 
@@ -122,8 +122,8 @@ socket event 만 native monitor event/value 를 진단 정보로 함께 노출�
 
 ### location
 
-location store 를 등록한 배포([09-location](09-location.ko.md))에서, 자기 노드의 위치
-projection(살아 있는 peer, 연결 상태, store 건강)이 바뀔 때 이벤트가 온다.
+location store 를 등록한 배포([09-location](09-location.ko.md))에서, 자기 노드의 위치와 연결 상태
+보기(살아 있는 peer, 연결 상태, store 건강)가 바뀔 때 이벤트가 온다.
 
 ```csharp
 public sealed class LocationMonitor(ILogger<LocationMonitor> logger)
@@ -138,7 +138,7 @@ public sealed class LocationMonitor(ILogger<LocationMonitor> logger)
                 logger.LogInformation("topology: {Count} entries", @event.Topology?.Count ?? 0);
                 break;
             case ZLinkLocationRuntimeEventKind.StoreUnavailable:
-                // store 가 죽었다 — 기존 연결은 유지되지만(fail-static) 새 위치 반영이 멈춘다
+                // store 가 죽었다 — 기존 연결은 유지되지만 새 위치 반영이 멈춘다
                 logger.LogWarning("location store unavailable: {Error}", @event.Status?.LastError);
                 break;
             case ZLinkLocationRuntimeEventKind.StoreRecovered:
@@ -167,7 +167,7 @@ public sealed class StageNodeMonitor(ILogger<StageNodeMonitor> logger)
         switch (@event.Event)   // 5종 고정(StatusChanged 포함) — 여기선 4 케이스만 처리
         {
             case ZLinkSpotEventKind.PeersChanged:
-                // peers/subjects 는 interval snapshot diff 로 합성된다(주기 의존).
+                // peers/subjects 는 interval 마다 상태를 비교해 합성된다(주기 의존).
                 logger.LogInformation("spot peers: {Source} {Count}",
                     @event.SourceName, @event.Peers?.Count ?? 0);
                 break;
@@ -194,7 +194,7 @@ spot event 는 `StatusChanged`, `PeersChanged`, `SubjectsChanged`,
 `TimerHandlerFailed`, `TimerStoppedAfterUnhandledException` **5종 고정**이다.
 
 > **timer 실패는 polling 주기를 기다리지 않는다.** status/peer/subject 변화는
-> `AddSpotEvents(...)` 의 `interval` 로 snapshot diff 하지만, timer handler 실패는
+> `AddSpotEvents(...)` 의 `interval` 로 직전 상태와 비교하지만, timer handler 실패는
 > 발생 시점에 즉시 발행된다. timer 정책은 [05-spot](05-spot.ko.md) §3 참고.
 
 ## 4. 자주 막히는 곳

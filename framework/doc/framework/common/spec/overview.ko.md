@@ -26,7 +26,7 @@ pub/sub, `SPOT`, `STREAM`, location store 기반 자동 연결을 사용할 수 
 - stream integration
 - channel별 location store 기반 자동 연결([location runtime](location-runtime.ko.md))
 - runtime monitoring
-- location runtime query (raw row/topology projection/status 운영 조회)
+- location runtime query (원시 row, runtime이 합성한 topology 보기, status 운영 조회)
 - framework-friendly handler / client / event API
 
 raw socket과 low-level 연결 배선을 프레임워크 사용자가 직접 다루지 않고도

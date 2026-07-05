@@ -65,4 +65,4 @@ source of truth로 사용한다.
 | 테스트 케이스 | 확인 기준 |
 |---------------|-----------|
 | `EntryRoutingTests.EntrySpotRoutingId_IsApplied_ToNativeEntrySpot` | `ConfigureEntrySpot(...)`에서 지정한 routing id가 native Entry Spot facade에 적용되고 Entry Spot activation의 `SpotRid`로 노출된다. |
-| `ScaffoldSmokeTests.PublicSurface_Removes_DirectRouteContracts_And_Exposes_ActorContracts` | 제거된 route 계약이 public surface 로 다시 노출되지 않고 actor/session 계약은 유지된다. |
+| `ScaffoldSmokeTests.PublicSurface_Removes_DirectRouteContracts_And_Exposes_ActorContracts` | 제거된 route 계약이 public API 표면으로 다시 노출되지 않고 actor/session 계약은 유지된다. |

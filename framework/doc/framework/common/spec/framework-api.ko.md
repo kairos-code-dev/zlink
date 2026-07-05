@@ -113,7 +113,7 @@
   있어야 한다.
 - 운영 점검이나 관리 API에서는 location runtime query
   (`IZLinkLocationRuntimeQuery` — [location runtime](location-runtime.ko.md) §7)의
-  raw row/topology projection/status를 읽는 별도 surface를 둘 수 있어야 한다.
+  원시 row, runtime이 합성한 topology 보기, status를 읽는 별도 조회 표면을 둘 수 있어야 한다.
 - socket/location runtime/spot 변화를 typed event handler로 받을 수
   있는 별도 monitoring surface도 둘 수 있어야 한다.
 - 이 outbound client는 framework 전용 메시지 handler 안뿐 아니라, 기존 HTTP
@@ -198,8 +198,8 @@ framework는 monitoring 표면을 별도 축으로 설명하는 편이 맞다.
 - 실제 callback payload는 source 이름과 상세 정보를 함께 가진 구조화된 값으로
   둔다.
 - socket source는 하부 monitor를 감싸는 편이 자연스럽다.
-- location runtime/spot source는 raw monitor를 가장한 표면보다 snapshot diff 기반
-  event로 설명하는 편이 맞다([location runtime](location-runtime.ko.md) §9).
+- location runtime/spot source는 raw monitor를 가장한 표면보다, 일정 주기로 상태를 읽고 직전 상태와
+  비교해 바뀐 때만 event를 만드는 방식으로 설명하는 편이 맞다([location runtime](location-runtime.ko.md) §9).
 - application은 typed runtime event handler를 구현해서 이 이벤트를 받는 모델을
   기본으로 본다.
 

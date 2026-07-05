@@ -8,28 +8,45 @@
 
 이 문서는 framework의 **분산 위치 관리(location runtime)** 언어 중립 공통 스펙이다. 위치 모델
 (peer/spot/actor/route row), owner lease와 generation, store/resolver 계약, 자동 연결 규칙,
-watch/polling, 운영 조회 projection의 의미는 이 문서가 소유한다. 다른 spec 문서는 이 문서를
+watch/polling, 운영 조회 모델의 의미는 이 문서가 소유한다. 다른 spec 문서는 이 문서를
 링크하고 세부 모델을 반복하지 않는다. 네이밍은 [framework API](framework-api.ko.md)와
-[공통 스펙 README §5.2.1](../README.ko.md#521-네이밍-규칙)의 canonical 규칙을 따른다.
+[공통 스펙 README §5.2.1](../README.ko.md#521-네이밍-규칙)의 공통 이름 규칙을 따른다.
 
 > core discovery/registry는 framework 표면에서 제거됐다. 위치 정보의 기준 저장소는 사용자가
 > 등록하는 **location store**(공식 Redis extension 또는 사용자 구현체)이며, framework runtime이
 > 그 위에서 lease join, generation guard, 자동 연결을 수행한다.
 
+## 0. 용어 읽는 법
+
+이 문서의 영어 용어는 API 이름과 여러 언어 구현이 함께 맞춰야 하는 계약 이름이다. 본문에서는 아래
+뜻으로 읽는다.
+
+| 용어 | 뜻 |
+|------|----|
+| row | store에 저장된 위치 정보 한 건이다. peer row, actor row처럼 종류별로 나뉜다. |
+| owner lease | row를 쓴 runtime이 아직 살아 있는지 판단하기 위한 임대 기록이다. |
+| generation | 같은 key가 다시 등록될 때 이전 row와 새 row를 구분하는 세대 값이다. |
+| lease join | row의 `OwnerId`와 owner lease 목록을 대조해서 row의 owner가 살아 있는지 확인하는 과정이다. |
+| generation guard | owner와 generation이 맞을 때만 갱신·삭제를 허용해 오래된 write를 막는 규칙이다. |
+| watch | store가 변경을 알려 주는 방식이다. 지원하지 않는 store도 있을 수 있다. |
+| polling | runtime이 주기적으로 store를 다시 읽어 변경 여부를 확인하는 방식이다. watch가 없어도 동작해야 하는 기본 경로다. |
+| change stamp | 특정 범위의 row가 바뀔 때마다 증가하는 번호다. 변경이 없으면 전체 목록 조회를 건너뛰기 위해 쓴다. |
+| fail-static | store 장애 중 마지막으로 성공한 연결 판단을 유지하고 새 connect/disconnect 계산을 멈추는 정책이다. |
+
 ## 1. 기본 원칙
 
 - **store는 저장만, 정책은 runtime이.** store 구현체는 row 저장/조회/원자적 write만 책임진다.
   owner lease join, generation guard, 자동 연결 diff는 framework runtime의 책임이다.
-- **캐시 없음.** resolver와 운영 조회의 모든 읽기는 store에 도달한다. freshness 매개변수나
-  cache TTL 같은 개념은 계약에 없다. 위치를 반복 사용하는 쪽(메시징 호출자)이 resolve 결과를
-  보관하고, 실패 시 재resolve한다.
+- **캐시 없음.** resolver와 운영 조회의 모든 읽기는 store에 도달한다. "이 값이 얼마나 최신인가"를
+  나타내는 매개변수나 cache TTL 같은 개념은 계약에 없다. 위치를 반복 사용하는 쪽
+  (메시징 호출자)이 resolve 결과를 보관하고, 실패 시 재resolve한다.
 - **생존은 owner lease로.** row 자체는 생존을 증명하지 않는다. row owner의 lease가 만료되면
-  그 owner의 모든 row는 성공 결과에서 제외된다(stale). 물리 삭제는 background cleanup의
-  책임이고 계약 대상이 아니다.
+  그 owner의 모든 row는 성공 결과에서 제외된다. 이런 row를 stale row, 즉 더 이상 성공 결과로 쓰면
+  안 되는 오래된 row라고 부른다. 물리 삭제는 background cleanup의 책임이고 계약 대상이 아니다.
 - **시간은 store 기준.** lease 만료 판정에 application node의 wall clock을 쓰지 않는다.
   호출자는 TTL만 전달하고 절대 만료 시각은 store가 자기 시계로 계산한다.
-- **fail-static.** store 장애는 즉시 연결 해제로 번역되지 않는다. 마지막으로 성공한 desired
-  target set을 유지하고, 이미 수립된 연결의 메시징은 store와 독립적으로 계속 동작한다.
+- **fail-static.** store 장애는 즉시 연결 해제로 번역되지 않는다. 마지막으로 성공한 연결 대상
+  목록을 유지하고, 이미 수립된 연결의 메시징은 store와 독립적으로 계속 동작한다.
 
 ## 2. 위치 모델
 
@@ -39,9 +56,10 @@ id)와 `Generation`(fencing token)을 가진다.
 ### 2.0 닫힌 값 집합
 
 location row, Redis row JSON, 운영 조회가 쓰는 enum 값은 언어별 ordinal에 맡기지 않고 아래
-숫자로 고정한다. 저장소 key가 문자열을 써야 할 때는 표의 canonical 문자열만 사용한다.
+숫자로 고정한다. 저장소 key가 문자열을 써야 할 때는 표의 "공통 문자열"만 사용한다. 공통 문자열은
+모든 언어 구현이 store에 같은 값을 쓰도록 고정한 문자열이다.
 
-| enum | 값 | canonical 문자열 |
+| enum | 값 | 공통 문자열 |
 |------|-----|------------------|
 | `LocationAutoConnectType` | `Invalid=0`, `RouteMesh=1`, `ClientServer=2`, `DealerMesh=3`, `Fanout=4`, `SpotMesh=5` | `route-mesh` / `client-server` / `dealer-mesh` / `fanout` / `spot-mesh` |
 | `LocationRole` | `Invalid=0`, `Spot=2`, `Router=3`, `Dealer=4`, `Pub=5`, `Sub=6` | `spot` / `router` / `dealer` / `pub` / `sub` |
@@ -100,8 +118,9 @@ write는 runtime instance당 1회이므로 store 부하는 node 수에 비례한
 - `Update...(row, intent)` / `Remove...(key, ownerToken)` /
   `IZLinkLocationStore.RemoveAllByOwnerAsync(ownerId)`
 - 단건 `Resolve...(key)` (peer 제외) / filter 기반 `List...(filter[, page])`
-- peer list와 owner lease list는 **pagination 없는 단일 snapshot**이다. reconcile의 desired
-  set 계산은 한 시점의 전체 목록을 전제로 하므로 page 간 시점 불일치를 허용하지 않는다.
+- peer list와 owner lease list는 **pagination 없는 단일 snapshot**이다. 자동 연결에서 "연결되어
+  있어야 하는 대상 목록"을 계산하려면 한 시점의 전체 목록이 필요하므로 page 간 시점 불일치를
+  허용하지 않는다.
   mesh당 peer row 수천 상한을 전제로 하며 이를 넘으면 mesh를 분할한다.
 - spot/actor/route 목록은 `ZLinkPageRequest`(page size, opaque continuation token)와
   `ZLinkLocationPage<T>`를 사용한다. 기본 page 크기는 `list page size` option을 따른다.
@@ -140,8 +159,9 @@ snapshot으로 반환한다. 만료 판정은 `LeaseExpiresAt - StoreNow`와 조
   변경 유무를 감지한다. 구현하면 polling tick이 stamp만 읽고 변화가 있을 때만 목록을 읽는다.
 - **watch**(`IZLinkLocationWatchStore`): 변경 이벤트 stream으로 reconcile을 깨운다.
 
-둘 다 latency 최적화일 뿐이다. **polling이 correctness 경로**이며, stamp/watch 이벤트가
-유실돼도 다음 polling 결과로 같은 상태에 도달해야 한다.
+둘 다 더 빨리 반응하고 조회 부하를 줄이기 위한 최적화일 뿐이다. **polling이 올바른 연결 상태에
+도달하기 위한 기본 경로**이며, stamp/watch 이벤트가 유실돼도 다음 polling 결과로 같은 상태에 도달해야
+한다.
 
 ## 4. Owner/Generation 규칙
 

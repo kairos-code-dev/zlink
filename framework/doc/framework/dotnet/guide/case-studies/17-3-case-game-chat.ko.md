@@ -32,7 +32,7 @@ CometChat 도 gaming use case 에서 multi-user group, moderation, multiplayer m
 
 - **scope 별 room 모델.** whisper, party, guild, match, battle, world 가 서로 다르다.
 - **session binding.** player 는 모바일/PC/콘솔 중 하나 이상으로 접속할 수 있다.
-- **low latency.** gameplay 중 채팅은 빠르게 보여야 하지만, 모든 메시지가 영속일 필요는 없다.
+- **낮은 지연 시간.** gameplay 중 채팅은 빠르게 보여야 하지만, 모든 메시지가 영속일 필요는 없다.
 - **moderation.** 욕설, spam, 신고, mute, block, GM command 가 필요하다.
 - **context event.** 전투 위치, guild 가입, 점령, 아이템 획득 같은 game event 가 chat 에 섞인다.
 - **offline behavior.** guild notice, DM 은 offline push 가 필요할 수 있다.

@@ -8,8 +8,8 @@
 
 이 문서는 framework가 공식 제공하는 **Redis location store extension**의 언어 중립 공통
 스펙이다. store/lease/generation의 계약 의미는 [location runtime](location-runtime.ko.md)이
-소유하고, 이 문서는 그 계약을 Redis 위에서 어떻게 만족시키는지(key schema, 원자성, watch/stamp,
-오류 변환, connection lifecycle)를 정의한다.
+소유하고, 이 문서는 그 계약을 Redis 위에서 어떻게 만족시키는지(key 구조, 원자성, 변경 감지,
+오류 변환, Redis 연결 수명)를 정의한다.
 
 > Redis extension은 **공식 제공이지만 framework 본체 dependency가 아니다.** 별도 package
 > (`Zlink.Framework.Locations.Redis` 상당)로 배포되고, 사용자는 인스턴스를 만들어
@@ -29,15 +29,16 @@ options.AddLocationStore(new ZLinkRedisLocationStore(redis => redis
 | key prefix | 이 배포의 모든 key 앞에 붙는 격리 접두사. 배포(또는 테스트 실행)별로 달라야 한다 |
 
 Redis extension 인스턴스는 store 5종 통합 계약과 optional **change stamp** 계약을 구현한다.
-watch(변경 이벤트 stream)는 구현하지 않는다 — polling + change stamp가 이 extension의 변경
-감지 경로다(계약상 polling이 correctness 경로이므로 충분하다).
+watch(변경 이벤트 stream)는 구현하지 않는다. 이 extension은 polling과 change stamp로 변경을 감지한다.
+polling은 주기적으로 store를 다시 읽는 방식이고, change stamp는 row가 바뀔 때 증가하는 번호다. 계약상
+polling만으로도 올바른 연결 상태에 도달해야 하므로 Redis extension이 watch를 제공하지 않아도 충분하다.
 
 ## 2. Key schema
 
 prefix `P`, kind ∈ {`peer`, `spot`, `actor`, `route`} 기준. row key는 key 필드들을
-`길이:값` 형태로 이어 붙인 canonical length-prefixed 문자열이며, `RoutingId`는 hex로
-인코딩한다(임의 바이트 rid와 구분자 충돌을 피하기 위해 — row key에 raw rid 문자열을 쓰지
-않는다).
+`길이:값` 형태로 이어 붙인 문자열이다. 이렇게 길이를 함께 저장하면 값 안에 구분자가 들어 있어도
+어디까지가 한 필드인지 알 수 있다. `RoutingId`는 hex로 인코딩한다. 임의 바이트 rid와 구분자 충돌을
+피해야 하므로 row key에 raw rid 문자열을 쓰지 않는다.
 
 | key | 타입 | 내용 |
 |-----|------|------|
@@ -49,7 +50,7 @@ prefix `P`, kind ∈ {`peer`, `spot`, `actor`, `route`} 기준. row key는 key �
 | `P:leases` | SET | lease를 가진 적 있는 owner id 목록 |
 | `P:stamp:{kind}[:{mesh}]` | STRING | scope별 change stamp counter |
 
-row key 예 (peer): `AutoConnectType canonical 문자열 + MeshName + Role canonical 문자열 +
+row key 예 (peer): `AutoConnectType 공통 문자열 + MeshName + Role 공통 문자열 +
 identity(NodeRid hex, 없으면 endpoint)`를 length-prefix로 연결한 값.
 
 Redis row 형식의 byte-for-byte fixture 정본은
@@ -100,15 +101,17 @@ key prefix를 hash-tag(`{...}`)로 구성해야 한다(공식 지원 범위 밖�
 ## 5. Change stamp
 
 `P:stamp:{kind}[:{mesh}]`는 해당 scope의 write마다 `INCR`되는 단조 counter다. runtime의
-polling tick은 stamp만 먼저 읽고(GET 1회) 값이 바뀌었을 때만 목록을 읽는다. stamp는 최적화일
-뿐이며 유실/불일치가 있어도 다음 polling의 전체 목록 조회로 correctness가 보장된다.
+polling tick은 stamp만 먼저 읽고(GET 1회) 값이 바뀌었을 때만 목록을 읽는다. stamp는 변경이 없을 때
+전체 목록 조회를 건너뛰기 위한 최적화일 뿐이다. stamp가 유실되거나 실제 row 상태와 잠시 어긋나도,
+다음 polling의 전체 목록 조회로 최종 연결 상태가 맞춰져야 한다.
 
 ## 6. 오류 변환과 connection lifecycle
 
 - read API와 write API에서 Redis 연결/명령 실패는 infrastructure error로 던진다(계약 §3.1).
 - Redis client connection은 extension 인스턴스가 소유한다. 인스턴스는 `IAsyncDisposable`이며
   framework host가 dispose lifecycle을 관리한다. 재연결 정책은 언어별 Redis client의 표준
-  동작을 따르고, 장애 구간의 의미는 framework의 fail-static 규칙이 담당한다.
+  동작을 따르고, 장애 구간의 의미는 framework의 fail-static 규칙이 담당한다. fail-static은 마지막으로
+  성공한 연결 판단을 유지하고 새 connect/disconnect 계산을 멈추는 정책이다.
 - Redis 응답 지연/실패가 framework runtime을 블록하면 안 된다 — 조회 실패는 상태
   (`StoreUnavailable`)와 이벤트로 강등된다.
 

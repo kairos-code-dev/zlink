@@ -712,13 +712,13 @@ var peers = await query.ListPeerLocationsAsync(new ZLinkPeerLocationFilter(), ct
 | `IZLinkLocationStore` | store 5종(peer/spot/actor/route/owner lease)의 통합 계약. `AddLocationStore(instance)` 로 등록 |
 | `IZLinkPeerLocationStore` / `IZLinkSpotLocationStore` / `IZLinkActorLocationStore` / `IZLinkRouteLocationStore` | 역할별 store 계약. 사용자 구현체를 역할별로 나눠 등록할 때 사용 |
 | `IZLinkOwnerLeaseStore` | runtime instance 별 owner lease(생존 신고) 저장 계약 |
-| `IZLinkLocationChangeStampStore` | (선택) kind/mesh 별 change stamp — 변경 유무를 싸게 감지하는 최적화 |
-| `IZLinkLocationWatchStore` | (선택) 변경 이벤트 stream — reconcile 을 깨우는 최적화. 없으면 polling 이 정확성 경로 |
+| `IZLinkLocationChangeStampStore` | (선택) kind/mesh 별 change stamp — 변경 번호만 읽어 변경 유무를 싸게 감지하는 최적화 |
+| `IZLinkLocationWatchStore` | (선택) 변경 이벤트 stream — 자동 연결 재계산을 깨우는 최적화. 없으면 polling, 즉 주기적 store 재조회가 기본 경로 |
 | `IZLinkPeerLocationResolver` | 자동 연결이 쓰는 live peer row 목록 조회(`ListLivePeersAsync(filter)`) |
 | `IZLinkSpotAddressResolver` | spot rid → `ZLinkSpotAddress` 메시징 조회 |
 | `IZLinkActorAddressResolver` | actor id → 그 actor 가 있는 spot 의 `ZLinkSpotAddress` |
 | route 단건 조회 | public resolver가 아니라 store SPI/운영 조회 경로에서 처리 |
-| `IZLinkLocationRuntimeQuery` | 운영/E2E 조회 — 살아 있는 raw row, topology projection, store 상태 |
+| `IZLinkLocationRuntimeQuery` | 운영/E2E 조회 — 살아 있는 원시 row, runtime이 합성한 topology 보기, store 상태 |
 
 모든 조회는 store 에 도달한다(캐시 없음). 죽은 서버의 row 는 owner lease 만료 후
 성공 결과에서 자동 제외된다.

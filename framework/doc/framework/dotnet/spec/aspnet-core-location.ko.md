@@ -1,7 +1,7 @@
 # ASP.NET Core Location Integration
 
 .NET framework 의 location store 등록·자동 연결·운영 조회 공개 계약이다. 언어 중립
-의미(위치 모델, owner lease, generation, fail-static, 자동 연결 규칙)는
+의미(위치 모델, owner lease, generation, 장애 중 마지막 연결 판단 유지, 자동 연결 규칙)는
 [공통 location runtime 스펙](../../common/spec/location-runtime.ko.md)이 소유하고, 이
 문서는 .NET 표면(등록 API, 타입, DI)만 정의한다. 사용법 예제는
 [guide 09-location](../guide/09-location.ko.md)을 본다.
@@ -40,7 +40,7 @@ store 를 등록하면 아래 서비스가 DI 에 등록된다. 캐시가 없다
 
 - store 가 등록된 배포에서 `EnableClient()`(endpoint 없음)는 store 기반 자동 연결로
   동작한다. `EnableServer(endpoint)` 는 bind 와 동시에 peer row 자동 등록을 켠다.
-- `EnableClient(endpoint)`(수동)는 자동 reconcile 대상이 아니다. 같은 역할에서 두
+- `EnableClient(endpoint)`(수동)는 자동 연결 상태 맞추기 대상이 아니다. 같은 역할에서 두
   방식을 섞으면 startup 오류다.
 - 전송 실패의 fail-fast 분류(`RouteNotConnected` 등)는 mesh 구성원 snapshot 기준이다.
   오류 종류는 [session-actor-dispatch](session-actor-dispatch.ko.md)의 오류 매트릭스를
@@ -60,8 +60,8 @@ store 를 등록하면 아래 서비스가 DI 에 등록된다. 캐시가 없다
 
 | 테스트 케이스 | 확인 기준 |
 |---------------|-----------|
-| `Zlink.Framework.UnitTests` location 계열 | 옵션/등록 검증, resolver stale 제외, reconcile diff 규칙 |
+| `Zlink.Framework.UnitTests` location 계열 | 옵션/등록 검증, resolver가 오래된 row를 제외하는지, 자동 연결 차이 계산 규칙 |
 | `Zlink.Framework.ContractTests` store contract | in-memory 와 Redis 구현이 같은 store 계약 시나리오를 통과한다 |
 | E2E Config 1 (`LocationMessaging`) | store 기반 자동 연결·failover·scale 시나리오 |
-| E2E Config 6 (`StoreFailure`) | store 장애/복구, fail-static, owner lease 만료 |
+| E2E Config 6 (`StoreFailure`) | store 장애/복구, 장애 중 마지막 연결 판단 유지, owner lease 만료 |
 | `RegressionTests.DotNet_Samples_Do_Not_Use_Legacy_Registry_Discovery` | .NET sample 이 제거된 Registry/Discovery API 를 다시 사용하지 않는다 |

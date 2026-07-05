@@ -10,7 +10,7 @@
 공통 스펙이다. 공통 의미(로그 모드, 이벤트, 옵저버 계약, 성능 계약, 출력 라우팅, 길목,
 스트림 correlation_id 와이어 포맷)는 이 문서가 소유하며, 언어별 문서는 여기서 정한 의미를
 자기 언어의 관용구와 표면으로만 구체화한다. 네이밍은 [framework API](framework-api.ko.md)와
-[공통 스펙 README §5.2.1](../README.ko.md#521-네이밍-규칙)의 canonical 규칙을 따른다.
+[공통 스펙 README §5.2.1](../README.ko.md#521-네이밍-규칙)의 공통 이름 규칙을 따른다.
 
 > 실패 관측(dispatch error reporter)은 같은 어휘(`surface`/`kind`/`correlation_id`)와 같은
 > fan-out 패턴(표준 로거 라우팅 + offload observer)을 공유한다. 이 문서는 **정상 흐름**을,

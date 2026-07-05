@@ -116,7 +116,7 @@ reply matching은 framework helper 안에 있을 때 더 자연스럽다. applic
   transport 위치값을 직접 요구하지 않는다.
 - actor와 현재 stream session의 묶음은 사용자가 생성 후 bind(`GetOrCreateAsync` + `BindAsync`) 또는
   `session.Actors.BindAsync(...)`를 호출할 때 framework/core 내부 binding으로 갱신한다.
-- 기존 direct target send/request API와 session gateway naming은 새 public surface에서
+- 기존 direct target send/request API와 session gateway naming은 새 public API 표면에서
   제거한다.
 
 이 목표의 핵심은 "더 많은 helper를 추가한다"가 아니다. 사용자가 알아야 하는
@@ -210,9 +210,9 @@ framework helper는 이 callback 안에서 선택된 dispatch의 transport 세�
 ### 8.1 현재 낮은 수준 actor relay 표면
 
 이전 초안은 session에서 actor로 넘어온 relay envelope를 play side에서 직접 처리하는
-raw handler를 public surface처럼 두었다. 기존 구현 이름에 `SessionProxy`가 들어가지만,
-이것은 actor가 client session으로 보내는 현재 `SessionProxy`가 아니다. 새 public
-surface에서는 이 raw handler 이름을 유지하지 않는다.
+raw handler를 public API 표면처럼 두었다. 기존 구현 이름에 `SessionProxy`가 들어가지만,
+이것은 actor가 client session으로 보내는 현재 `SessionProxy`가 아니다. 새 public API 표면에서는 이
+raw handler 이름을 유지하지 않는다.
 
 이 표면은 framework internal envelope를 직접 다룰 수 있다는 장점이 있다. 하지만
 일반 handler에는 너무 넓다. typed handler가 필요한 사용자는 대부분 아래 세 가지를
@@ -766,7 +766,7 @@ sample 중심에 두면 실제 사용 모델과 어긋난다.
   store의 peer row로 peer를 찾는다.
 - 같은 역할에서 자동 연결과 수동 연결을 섞으면 startup에서 실패한다.
 - sample은 자동 연결 실패를 retry loop나 sleep으로 숨기지 않는다.
-- 바로 연결되지 않으면 location runtime query(status/peer list/topology projection)를
+- 바로 연결되지 않으면 location runtime query(status, peer list, runtime이 합성한 topology 보기)를
   먼저 확인할 수 있어야 한다.
 
 diagnostic helper는 retry helper와 다르다. diagnostic helper는 location runtime query
@@ -785,7 +785,7 @@ actor route와 같은 문제가 `Spot` 호출에도 있다. 사용자가 `SpotRi
 보낼 수 없고 `SpotNodeId`나 node `RoutingId`까지 알아야 한다면, transport 위치 정보가
 application 코드에 새어 나온다.
 
-framework public surface는 spot 호출이 node 경계를 넘을 때 spot location
+framework public API 표면은 spot 호출이 node 경계를 넘을 때 spot location
 resolver로 얻은 주소를 사용한다. session-gateway sample에서 game room이 같은 Play
 서버 안에만 있으면 resolve가 드러나지 않을 수 있지만, 문서의 cross-node 계약은
 resolve-보관-재resolve 규칙을 포함해야 한다. 멀티게임 sample의 game room은 도메인 핵심 실행 문맥이므로

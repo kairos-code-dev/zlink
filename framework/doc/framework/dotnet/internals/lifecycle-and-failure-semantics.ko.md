@@ -104,9 +104,9 @@ nonblocking send, pending queue, ready notification 조합으로 내부에서 �
   숨겨서 끼워 넣지 않는다. reconnect 가 필요하면 명시적인 `Connect(...)`
   호출이나 상위의 retry policy 가 책임진다.
 - socket 단의 이벤트는 하부 monitor event 를 그대로 감싼다.
-- location 과 spot 쪽 관측은 polling 과 snapshot diff 를 기반으로
-  framework 가 다시 만든 synthetic event 로 올린다.
-- 자동 연결의 개별 connect/disconnect 는 socket event 로, projection 변화는 location 의
+- location 과 spot 쪽 관측은 polling 으로 상태를 읽고 직전 상태와 비교한 뒤
+  framework 가 다시 만든 합성 event 로 올린다.
+- 자동 연결의 개별 connect/disconnect 는 socket event 로, runtime이 합성한 상태 보기 변화는 location 의
   snapshot 이나 query 로 확인하게 한다.
 
 ## 7. Stream Session Error 의미

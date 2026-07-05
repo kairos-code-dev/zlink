@@ -52,7 +52,7 @@ builder.Services.AddZLinkFramework(framework =>
 - `SetKeyPrefix` 는 배포(환경)별 격리 접두사다. 같은 Redis 를 여러 환경이 공유해도
   prefix 가 다르면 서로 보이지 않는다.
 - 같은 역할에서 자동 연결과 수동 endpoint 연결을 섞지 않는다. 수동으로 등록한
-  연결은 자동 reconcile 이 끊지 않는다.
+  연결은 자동 연결 상태 맞추기 작업이 끊지 않는다.
 - 사용자 저장소가 필요하면 통합 계약 `IZLinkLocationStore` 를 구현한 인스턴스를 같은
   지점에 등록한다.
 
@@ -60,11 +60,11 @@ builder.Services.AddZLinkFramework(framework =>
 
 - 서버 lifecycle 이 시작될 때 peer location row 와 **owner lease** 를 store 에 쓰고,
   heartbeat 주기로 lease 를 갱신한다.
-- client 쪽 reconcile 루프가 peer row 를 조회해 연결을 만들고, row 가 사라지거나
+- client 쪽 자동 연결 루프가 peer row 를 조회해 연결을 만들고, row 가 사라지거나
   lease 가 만료되면 연결을 정리한다. 정상 종료는 row 를 즉시 지우고, crash 는 lease
   만료로 전파된다.
-- store 가 잠시 죽어도 **기존 연결은 유지**된다(fail-static). 이미 연결된 상대와의
-  메시징은 store 와 무관하게 계속 동작한다.
+- store 가 잠시 죽어도 **기존 연결은 유지**된다. 이 정책은 새 정보를 얻지 못하는 동안 마지막으로
+  성공한 연결 판단을 유지하고, 이미 연결된 상대와의 메시징은 store 와 무관하게 계속 동작하게 한다.
 
 타이밍 옵션은 `ConfigureLocations()` 로 조정한다.
 
@@ -98,7 +98,7 @@ app.MapGet("/ops/locations", async (IZLinkLocationRuntimeQuery query) =>
 - `GetStatusAsync()` — store health, 마지막 오류, owner lease 갱신 상태.
 - `ListPeerLocationsAsync(filter)` — 살아 있는(lease 유효) peer row 만 반환한다. 죽은 서버의
   row 는 lease 만료 후 자동으로 제외된다.
-- topology projection·service summary 조회와 location 이벤트 관측은
+- runtime이 합성한 topology 보기, service summary 조회, location 이벤트 관측은
   [10-monitoring](10-monitoring.ko.md) 의 `location-runtime` source 와 함께 쓴다.
 
 ## 4. spot / actor 위치 조회

@@ -917,7 +917,7 @@ Spot lifecycle callback 도 같은 규칙을 따른다. 즉 같은 Spot 안에�
 process 종료 시에 반드시 호출되는 것이 아니다.
 
 이 문서가 전제하는 low-level `.NET` 바인딩 표면도 함께 문서에 고정해 둘
-필요가 있다. 현재 `bindings/dotnet/src/Zlink` 기준의 실제 public surface
+필요가 있다. 현재 `bindings/dotnet/src/Zlink` 기준의 실제 public API 표면
 는 다음과 같다.
 
 ```csharp
@@ -1444,7 +1444,7 @@ framework 의 `SpotActivation` 은 두 가지 이벤트를 수신한다.
 3. 조회에 성공하면 target user Spot 의 `OnActorJoinAsync(...)` 를 호출한다.
 4. `TargetActor` 를 찾지 못하면 join 요청을 거부한다.
 
-framework 는 native `ActorRef` 를 public surface 에 그대로 노출하지
+framework 는 native `ActorRef` 를 public API 표면에 그대로 노출하지
 않는다.
 
 Spot lifecycle callback 에는 actor instance 와 cancellation token 만 전달된다. join
@@ -2163,7 +2163,7 @@ framework 초안에서 말하는 "spot 용 함수" 와 "channelName 으로 호�
 
 `IZLinkRouteClient` 는 route mesh channel 로 target node 에 send/request 할 때
 사용한다. 반환 타입은 channel client 와 같은 `IZLinkSendCall`,
-`IZLinkRequestCall` 이다. route 전용 call interface 는 public surface 에 두지
+`IZLinkRequestCall` 이다. route 전용 call interface 는 public API 표면에 두지
 않는다.
 
 ```csharp
@@ -2295,7 +2295,7 @@ remote actor handle 을 만들고, core SessionRelay 가 그 actor ref 를 기�
 
 ### 5.5.1 route transport helper
 
-route transport helper 는 application 의 public surface 가 아니다.
+route transport helper 는 application 의 public API 표면이 아니다.
 internal transport helper 다.
 
 사용처는 다음과 같다. routed channel (`AddRouteMesh`) 을 통해 특정 노드의 `RoutingId` 로 direct
@@ -2862,7 +2862,7 @@ required이고, 수신 node가 새 id를 발급하는 create 요청에서는 opt
 `zlink_spot_destroy()` 로 이어지는 native SPOT facade 정리를 수행한다. Entry Spot 은
 SpotNode lifecycle 이 소유하므로 이 API의 대상이 아니다.
 
-현재 SPOT topology 초안에서는 high-level public surface 에
+현재 SPOT topology 초안에서는 높은 수준의 public API 표면에
 `spotRid -> targetRid` 주소를 직접 노출하지 않는다.
 
 주소 해석은 `IZLinkSpotRemoteAddressResolver` 가 담당한다. framework 의 기본
@@ -3294,7 +3294,7 @@ public interface IZLinkActorAddressResolver
 
 ### 10.3 runtime monitoring
 
-runtime monitoring 은 운영 표면이다. socket 하부 monitor 와 spot snapshot diff 를 함께
+runtime monitoring 은 운영 표면이다. socket 하부 monitor 와 spot의 주기적 상태 비교 이벤트를 함께
 감싸는 역할이다.
 
 공용 handler shape 는 다음과 같이 두는 편이 자연스럽다.
@@ -3342,7 +3342,7 @@ public interface IZLinkRuntimeEventPublisher
 event 표면은 두 단계로 나누어 둔다. event kind 는 enum 으로, 실제
 callback payload 는 record struct 로 둔다.
 
-이유는 단순하다. enum 만으로는 source name, routing id, endpoint, snapshot
+이유는 단순하다. enum 만으로는 source name, routing id, endpoint, 한 시점에 읽은 상태 목록
 같은 운영 정보를 한꺼번에 전달하기 어렵기 때문이다.
 
 native monitor enum 과 raw status 값에 대해서도 비슷한 원칙을 적용한다.
@@ -3433,7 +3433,7 @@ public readonly record struct ZLinkSpotEvent(
 ```
 
 `TimerHandlerFailed` 와 `TimerStoppedAfterUnhandledException` 은 polling interval 을
-기다리는 snapshot diff event 가 아니다. timer handler 에서 처리되지 않은 예외가
+기다리는 주기적 상태 비교 event 가 아니다. timer handler 에서 처리되지 않은 예외가
 발생한 시점에 즉시 발행된다. exception 객체 자체는 public payload 에 넣지 않고,
 `ZLinkSpotTimerDiagnostic` 에 직렬화 가능한 요약 정보를 담는다.
 
@@ -3822,7 +3822,7 @@ builder.Services.AddZLinkFramework(options =>
 
 이 문서의 interface 항목들은 두 가지를 확인해야 한다.
 
-- public surface 가 backend 구현 세부사항을 새어 내지 않는지.
+- public API 표면이 backend 구현 세부사항을 새어 내지 않는지.
 - 등록 · handler · client 표면이 런타임 테스트와 같은 이름을 유지하는지.
 
 interface 설명을 변경하면, 아래 테스트도 함께 조정한다.
@@ -3830,12 +3830,12 @@ interface 설명을 변경하면, 아래 테스트도 함께 조정한다.
 | 테스트 케이스 | 확인 기준 |
 |---------------|-----------|
 | `ScaffoldSmokeTests.PublicSurface_DoesNotExpose_BackendConcreteTypes` | framework public API가 허용된 값 타입 외의 backend concrete type을 직접 노출하지 않는다. |
-| `ScaffoldSmokeTests.PublicSurface_Removes_DirectRouteContracts_And_Exposes_ActorContracts` | direct route 계약은 빠지고 actor/session 계약은 public surface에 남아 있다. |
+| `ScaffoldSmokeTests.PublicSurface_Removes_DirectRouteContracts_And_Exposes_ActorContracts` | direct route 계약은 빠지고 actor/session 계약은 public API 표면에 남아 있다. |
 | `ScaffoldSmokeTests.FrameworkRoot_IsDiscoverable_FromTestRuntime` | framework root type 이 test runtime 에서 발견되고 public 등록 표면이 조립된다. |
 | `HandlerResultAwaiterTests.AwaitAsync_Returns_ValueTaskOfT_Result` | `ValueTask<T>` handler 결과를 값 타입 boxing 여부와 무관하게 기다리고 실제 reply 값을 반환한다. |
 | `ProtocolTests.SpotActorRegistry_DoesNot_Resolve_Request_To_Send_Handler` | Entry Spot/user Spot actor request packet 이 send handler 로 fallback dispatch 되지 않고, send/request 밖 stream kind 도 actor packet 으로 처리되지 않는다. |
 | `LocalSessionRelayTests.LocalSessionActorDispatch_Relays_Stream_Request_And_Replies_From_Request_Handler` | local actor relay 도 request handler 반환값으로 stream response 를 작성한다. |
-| `ScaffoldSmokeTests.PublicSurface_Removes_ActorReply_And_StreamClientContracts` | actor context Reply 와 actor stream client 계약이 public surface 에 다시 노출되지 않는다. |
+| `ScaffoldSmokeTests.PublicSurface_Removes_ActorReply_And_StreamClientContracts` | actor context Reply 와 actor stream client 계약이 public API 표면에 다시 노출되지 않는다. |
 
 [^public-contract]: 라이브러리가 외부에 약속한 공식 API. 한 번 공개되면 호환성을 깨지 않고는 변경하기 어렵다.
 [^transport]: 메시지가 실제로 네트워크나 IPC 위에서 오가는 하부 계층. ZLink에서는 socket, stream, route 등이 이에 해당한다.

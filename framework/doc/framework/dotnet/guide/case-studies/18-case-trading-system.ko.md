@@ -131,8 +131,8 @@ Disruptor/Aeron 으로 남긴다.
 | 외부 venue | FIX 엔진 | FIX 유지(ZLink 대체 아님) |
 | 주문 라우팅/리스크 | 내부 버스 | `Request/Send` channel |
 
-> **모델은 같고 latency tier 는 다르다.** SPOT 의 직렬 보장은 매칭 엔진의 결정성과
-> 같은 _shape_ 다. 하지만 마이크로초가 생사인 매칭 hot loop는 Disruptor/Aeron/
+> **모델은 같고 허용 지연 시간 구간은 다르다.** SPOT 의 직렬 보장은 매칭 엔진의 결정성과
+> 같은 구조다. 하지만 마이크로초가 생사인 매칭 hot loop는 Disruptor/Aeron/
 > colocation 으로 남긴다 — ZLink 는 그 _주변부_ 를 단순화한다.
 
 ## 5. 아키텍처 비교 — 컴포넌트와 메시지 흐름
@@ -216,15 +216,15 @@ sequenceDiagram
   Note over SP: 마이크로초 hot loop는 Disruptor/Aeron 유지
 ```
 
-흐름의 _모양_ 은 같다(심볼 직렬 → 시세 fan-out). 차이는 latency tier 다 — ZLink 는
+흐름의 구조는 같다(심볼 직렬 → 시세 fan-out). 차이는 허용 지연 시간 구간이다. ZLink 는
 주변부를 단순화하고, 마이크로초 매칭 코어는 전용 인프라로 남긴다.
 
 ## 6. 줄어드는 것 / 그대로 남는 것
 
 - **줄어드는 것:** 주변부의 시세 배포 transport, 연결 수용 gateway, discovery/mesh.
 - **그대로 남는 것:** **마이크로초 HFT 매칭 코어**(Aeron/Disruptor/SBE/colocation),
-  **FIX 외부 연동**, **regulatory audit 영속(DB/event store)**. ZLink 는 이 hot path
-  latency tier 를 노리지 않는다. 공통 경계는
+  **FIX 외부 연동**, **regulatory audit 영속(DB/event store)**. ZLink 는 이 핵심 실행 경로의
+  마이크로초 지연 시간 구간을 노리지 않는다. 공통 경계는
   [13-grpc-alternative](../13-grpc-alternative.ko.md)의 §4 경계 절 참고.
 
 ## 7. 더 보기

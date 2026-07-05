@@ -33,8 +33,8 @@ framework 표면에서 함께 받을 수 있어야 한다.
 그래서 framework 는 source 마다 표면을 달리 둔다.
 
 - socket 은 raw monitor[^raw-monitor] 기반 event 로 올린다.
-- registry / spot 은 snapshot diff[^snapshot-diff] 기반 event 로 올린다.
-- timer handler failure 는 발생 시점에 point-in-time event 로 올린다.
+- registry / spot 은 일정 주기로 상태를 읽고 직전 상태와 비교해서 바뀐 때만 event 로 올린다.
+- timer handler failure 는 주기적 조회를 기다리지 않고 발생 시점에 바로 event 로 올린다.
 - discovery 자체는 별도 runtime event 로 만들지 않는다. registry 의 topology /
   service / member snapshot 을 조회해서 현재 provider 상태를 확인한다.
 
@@ -47,7 +47,7 @@ framework 표면에서 함께 받을 수 있어야 한다.
 - event kind 는 enum 으로 둔다.
 - 실제 callback payload 는 record struct 로 둔다.
 - socket 은 하부 monitor 를 그대로 감싼다.
-- registry / spot 은 polling[^polling] 과 snapshot diff 로 event 를 합성한다.
+- registry / spot 은 polling[^polling] 으로 상태를 읽고 직전 상태와 비교해서 event 를 합성한다.
 - timer handler failure 는 polling interval 을 기다리지 않고 즉시 발행한다.
 - discovery 상태는 registry snapshot / query 결과로 조회한다.
 - application 은 `IZLinkRuntimeEventHandler<TEvent>` 를 구현해서 이벤트를 받는다.
@@ -150,7 +150,7 @@ event 안의 optional diagnostic detail 로만 노출한다.
 
 이 "optional diagnostic" 도 framework 가 소유한 타입으로 다시 감싼다. 즉
 backend `.NET` binding 의 `MonitorEventType`, `ServiceEventType`, `SubjectKind`,
-`RegistryStatus`, `SpotNodeStatus` 같은 타입은 framework 의 public surface 에
+`RegistryStatus`, `SpotNodeStatus` 같은 타입은 framework 의 public API 표면에
 직접 노출하지 않는다.
 
 `AddSocketEvents(...)` 에 event kind 를 따로 넘기지 않으면, 그 source 에서
@@ -284,14 +284,14 @@ public sealed class StageNodeMonitor
 }
 ```
 
-spot 도 registry 와 같은 이유로, raw monitor 보다 snapshot diff 표면이 더 잘
-맞는다. 즉 `Status()`, `Peers()`, `Subjects()` 를
+spot 도 registry 와 같은 이유로, raw monitor 보다 주기적으로 상태를 읽고 직전 상태와 비교하는 표면이
+더 잘 맞는다. 즉 `Status()`, `Peers()`, `Subjects()` 를
 주기적으로 읽고, 변화가 있을 때 typed event 로 올리는 방향을 기본으로 본다.
 
-timer handler failure 는 snapshot diff 가 아니다. `TimerHandlerFailed` 와
+timer handler failure 는 주기적 상태 비교 결과가 아니다. `TimerHandlerFailed` 와
 `TimerStoppedAfterUnhandledException` 은 timer callback 에서 처리되지 않은 예외가
 발생한 시점에 즉시 발행된다. `AddSpotEvents(sourceName, interval)` 의 `interval`
-은 status / peer / subject snapshot diff 에만 적용하고, timer failure event 를
+은 status / peer / subject 상태 비교에만 적용하고, timer failure event 를
 지연시키지 않는다.
 
 `ZLinkSpotEvent` payload 에 노출되는 `ZLinkSpotNodeStatus` 와
@@ -320,9 +320,9 @@ internal 타입이다. 따라서 application 코드에서 직접 다루지 않�
 - socket
   - raw monitor 기반
 - registry/spot 상태
-  - snapshot diff 기반
+  - 주기적으로 상태를 읽고 직전 상태와 비교해서 event 합성
 - spot timer failure
-  - timer loop 에서 즉시 발행하는 point-in-time event
+  - timer loop 에서 실패가 발생한 시점에 즉시 발행하는 event
 - discovery
   - registry snapshot/query 기반 조회
 - application
@@ -343,7 +343,7 @@ internal 타입이다. 따라서 application 코드에서 직접 다루지 않�
 - spot event 종류는 `StatusChanged`, `PeersChanged`, `SubjectsChanged`,
   `TimerHandlerFailed`, `TimerStoppedAfterUnhandledException` 다.
 - socket event payload 는 raw native enum 과 상태 코드를 함께 노출한다. 반면
-  registry event 와 spot 상태 event 는 snapshot diff 기반의 합성 event 다. timer
+  registry event 와 spot 상태 event 는 주기적 상태 비교로 만든 합성 event 다. timer
   failure event 는 framework timer loop 에서 즉시 만든다. discovery 는 runtime
   event 자체가 아니므로 별도 event payload 를 두지 않는다.
 
@@ -356,7 +356,7 @@ Monitoring 문서의 항목은 다음을 확인한다.
 - 등록한 source 이름이 실제 runtime 역할과 맞는지
 - SPOT 상태 변화와 socket 상태 변화가 typed event 로 관찰되는지
 - timer handler failure 가 polling interval 을 기다리지 않고 typed event 로 관찰되는지
-- raw monitor event 를 그대로 외부로 새어 보내지 않는다는 정책이 public surface
+- raw monitor event 를 그대로 외부로 새어 보내지 않는다는 정책이 public API 표면
   테스트에서도 유지되는지
 
 | 테스트 케이스 | 확인 기준 |
@@ -439,7 +439,7 @@ Bingo 3노드(Api/Play/Session)는 각자 `MessageFlow(KeyTransitions)` +
 [^topology]: topology는 어떤 노드(channel, spot, registry 등)가 어디에 있고 서로 어떻게 연결되어 있는지를 나타내는 구성 정보다.
 [^spot-node]: spot node는 여러 spot 인스턴스를 호스팅하는 컨테이너 노드를 가리킨다.
 [^raw-monitor]: raw monitor는 하부 socket 계층에서 직접 발생하는 저수준 이벤트(연결 성공, 끊김 등)를 그대로 수신하는 메커니즘이다.
-[^snapshot-diff]: snapshot diff는 일정 주기로 상태 스냅샷을 읽고, 이전 스냅샷과 비교해서 차이가 있을 때만 event를 합성하는 방식이다.
+[^snapshot-diff]: snapshot diff는 일정 주기로 상태 스냅샷을 읽고, 이전 스냅샷과 비교해서 차이가 있을 때만 event를 합성하는 방식이다. 본문에서는 가능한 한 "주기적으로 상태를 읽고 직전 상태와 비교한다"처럼 풀어 쓴다.
 [^polling]: polling은 주기적으로 상태를 직접 조회해서 변화를 감지하는 방식이다. push 기반 event가 없을 때 사용한다.
 [^capability]: **역할**은 어떤 노드(channel, spot 등)가 외부에 노출하는 기능 단위(예: server, client, subscriber, publisher)를 가리킨다.
 

@@ -17,7 +17,7 @@
 > 이 문서는 core registry/discovery에 의존하지 않고 framework가 자동 연결, spot 위치 조회,
 > actor 위치 조회를 제공하기 위한 공통 계약 후보를 정의한다.
 >
-> **반영됨**: 이 문서의 캐시/freshness 서술은 전부 제거·재서술됐다. 결정과 근거는
+> **반영됨**: 이 문서의 캐시와 최신성 판단 서술은 전부 제거·재서술됐다. 결정과 근거는
 > [framework-spot-address-messaging.ko.md](framework-spot-address-messaging.ko.md)에서 제거하기로
 > 결정했다(spot 메시징이 spot full 주소를 받는 모델로 바뀌면서 캐시의 존재 이유가 사라짐).
 > 어느 절에서든 두 문서가 충돌하면 그 문서가 우선한다.
@@ -54,6 +54,33 @@ protocol에 서버 송신이 수신측 bound-session route 갱신을 유발하�
 이 절의 L13 내용은 구현 전 draft로 남긴다. core 설계와 4언어 구현이 완료된 뒤에만 정식 spec으로
 승격한다.
 
+### 0.3 이 문서의 기술 용어 읽는 법
+
+이 문서는 여러 언어의 framework 구현자가 같은 계약을 맞추기 위한 초안이다. 그래서 API 이름, 필드 이름,
+저장소에 들어가는 key 이름은 영어 식별자를 그대로 쓴다. 대신 본문에서는 아래 뜻으로 읽는다.
+
+| 용어 | 이 문서에서의 뜻 |
+|------|------------------|
+| runtime | 실행 중인 framework 인스턴스다. 보통 하나의 프로세스 안에서 node, spot, actor lifecycle을 관리한다. |
+| store | 위치 정보를 저장하고 조회하는 저장소 구현체다. Redis, RDB, MongoDB, in-memory 구현이 여기에 해당한다. |
+| row | store에 저장되는 위치 정보 한 건이다. peer row, spot row, actor row처럼 대상 종류별로 나뉜다. |
+| key | 같은 row인지 판단하기 위해 쓰는 식별 값이다. 문자열을 단순히 이어 붙이지 않고 충돌이 없게 인코딩해야 한다. |
+| owner | 어떤 runtime이 그 row를 썼는지 나타내는 소유자다. 같은 대상이라도 runtime이 재시작하면 owner가 바뀐다. |
+| owner lease | owner가 아직 살아 있다고 판단하기 위한 임대 기록이다. heartbeat가 끊겨 만료되면 그 owner의 row는 성공 결과에서 제외한다. |
+| heartbeat | runtime이 주기적으로 owner lease를 연장하는 동작이다. row마다 보내지 않고 runtime마다 한 번만 보낸다. |
+| generation | 같은 key가 다시 등록되었을 때 이전 row와 새 row를 구분하는 세대 값이다. 오래된 owner가 최신 row를 덮지 못하게 한다. |
+| claim | 비어 있거나 만료된 key의 소유권을 잡는 저장 동작이다. actor 생성처럼 "내가 이 대상을 소유한다"는 결정을 store에 기록한다. |
+| fencing | 오래된 owner가 뒤늦게 write/remove를 보내도 최신 row를 망가뜨리지 못하게 막는 보호 규칙이다. |
+| watch | store가 "위치 정보가 바뀌었다"고 framework에 알려 주는 변경 알림 방식이다. 지원하지 않는 store도 있을 수 있다. |
+| polling | framework가 일정 주기마다 store를 다시 읽어 변경 여부를 확인하는 방식이다. watch가 없어도 동작해야 하는 기본 경로다. |
+| reconcile | store에서 읽은 최신 위치 정보로 "연결되어 있어야 하는 대상"을 다시 계산하고, 실제 연결 상태를 그 결과에 맞추는 반복 작업이다. |
+| desired target set | 정책상 연결되어 있어야 하는 원격 peer 목록이다. store에 그대로 저장하지 않고 peer row와 owner lease를 읽어 매번 계산한다. |
+| active connection set | 지금 runtime이 실제로 유지하고 있는 연결 목록이다. |
+| handover | 같은 대상의 endpoint나 owner가 바뀌었을 때 기존 연결을 끊고 새 row가 가리키는 위치로 다시 연결하는 처리다. |
+| stale row | 더 이상 성공 결과로 쓰면 안 되는 오래된 row다. 대표적으로 owner lease가 만료됐거나 이미 더 새 generation을 본 row가 여기에 해당한다. |
+| snapshot | 한 시점에 store에서 읽은 목록 전체다. 목록을 여러 번 나누어 읽으면 시점이 섞일 수 있으므로 peer 목록과 owner lease 목록은 한 번에 읽는다. |
+| extension package | framework 본체 밖에서 제공되는 선택 구현 패키지다. 예를 들어 Redis store 구현을 별도 패키지로 제공할 수 있다. |
+
 ## 1. 목적
 
 framework는 분산 환경에서 아래 세 가지 위치 문제를 해결해야 한다.
@@ -64,8 +91,9 @@ framework는 분산 환경에서 아래 세 가지 위치 문제를 해결해야
 
 이 기능은 core native registry/discovery가 아니라 framework의 location resolver/store 계약으로
 제공한다. 자동연결 정책은 기존 core discovery가 제공하던 role 매칭과 peer diff 동작을 framework로
-옮긴다. framework 본체는 storage interface와 등록 지점만 제공하고, 실제 저장소 구현은 사용자 코드나
-별도 extension package가 제공한다.
+옮긴다. 여기서 peer diff는 "연결되어 있어야 하는 peer 목록"과 "지금 연결된 peer 목록"을 비교해
+연결을 만들거나 끊는 동작이다. framework 본체는 저장소 interface와 등록 지점만 제공하고, 실제 저장소
+구현은 사용자 코드나 별도 extension package가 제공한다.
 
 ### 1.1 스케일 목표
 
@@ -82,14 +110,16 @@ framework는 분산 환경에서 아래 세 가지 위치 문제를 해결해야
 
 이 목표가 계약에 강제하는 원칙은 다음과 같다.
 
-- 위치 resolve는 메시징마다 수행하지 않는다. store 조회는 session 수립, 재연결, 실패 복구, reconcile
-  tick에서만 일어나고, 일반 packet 경로는 호출자가 보관한 spot 주소와 이미 연결된 route를 사용한다.
+- 위치 resolve는 메시지를 보낼 때마다 수행하지 않는다. store 조회는 session 수립, 재연결, 실패 복구,
+  자동 연결 상태를 다시 맞추는 주기적 확인에서만 일어난다. 일반 packet 경로는 호출자가 보관한 spot
+  주소와 이미 연결된 route를 사용한다.
 - heartbeat는 row 단위가 아니라 owner 단위다. actor/spot row 수백만 개의 lease를 개별 write로 연장하는
   구조는 금지한다. 6.6의 owner lease 모델을 따른다. lease write 부하는 actor 수가 아니라 node 수에
   비례해야 한다.
 - spot/actor/route 목록 조회는 pagination을 지원한다. 수백만 row를 한 번에 반환하는 표면은 두지 않는다.
-- peer polling은 change stamp로 변경이 없는 tick의 비용을 O(1)로 만든다. node 수천 개의 1초 polling이
-  store에 full list 조회로 도달하면 안 된다.
+- peer polling은 change stamp로 변경이 없는 확인 주기의 비용을 O(1)로 만든다. change stamp는 "이
+  범위의 row가 마지막으로 바뀐 번호"다. node 수천 개가 1초마다 확인하더라도, 변경이 없을 때마다 store에
+  전체 목록 조회가 들어가면 안 된다.
 
 ## 2. 비목표
 
@@ -101,10 +131,10 @@ framework는 분산 환경에서 아래 세 가지 위치 문제를 해결해야
 
 ## 3. 기본 원칙
 
-location store는 위치 정보의 authoritative source다. 하지만 위치 정책은 store가 아니라 framework가
-소유한다. 사용자는 위치 row를 어디에 저장하고 어떻게 조회할지만 선택한다. 자동연결, spot resolve,
-actor resolve의 key 모델, lifecycle update/remove, owner/generation 처리 정책은
-framework가 공통으로 제공한다.
+location store는 위치 정보를 판단할 때 기준으로 삼는 저장소다. 하지만 위치 정책은 store가 아니라
+framework가 소유한다. 사용자는 위치 row를 어디에 저장하고 어떻게 조회할지만 선택한다. 자동연결, spot
+resolve, actor resolve의 key 모델, lifecycle update/remove, owner/generation 처리 정책은 framework가
+공통으로 제공한다.
 
 사용자는 storage 구현체를 등록한다. framework의 자동연결과 resolver는 store interface만 사용하므로,
 저장 위치와 query 방식은 구현체가 책임진다.
@@ -144,8 +174,8 @@ registry/discovery 의존 지점을 제거하고 같은 사용자 기능을 loca
 
 - 기존 framework의 `UseRegistry...` resolver, embedded registry host, registry topology query endpoint는
   location store/resolver/runtime query로 교체한다.
-- 자동 연결은 core service list broadcast를 재현하지 않고, peer location list와 watch/polling으로
-  desired target set을 계산한다.
+- 자동 연결은 core service list broadcast를 재현하지 않는다. 대신 peer location list를 읽고, watch 알림
+  또는 polling 재조회로 "연결되어 있어야 하는 대상 목록"을 다시 계산한다.
 - spot/actor/route 조회는 core route table을 읽지 않고, framework lifecycle이 갱신한 location row를
   resolver가 읽는다.
 - Redis extension은 framework의 공식 공유 저장소 구현체지만, framework 본체는 Redis client나 Redis
@@ -174,15 +204,15 @@ cache 설명은 어떤 문제가 있었는지 파악하기 위한 참고 자료�
 | service registration | socket, SpotNode가 endpoint, role, weight, value, metadata를 Registry에 등록한다. | framework lifecycle이 peer location row를 자동 upsert한다. row에는 auto-connect type, mesh name, role, endpoint, node rid, weight, value, metadata, owner/generation을 담는다. 생존 판정은 row가 아니라 owner lease가 담당한다. |
 | unregister | owner가 종료되면 등록 row를 제거한다. owner가 사라지면 timeout으로 정리한다. | 정상 종료에서는 owner/generation guard로 remove한다. 비정상 종료는 owner lease 만료와 cleanup으로 제거한다. |
 | heartbeat | Discovery가 등록된 service participant의 heartbeat를 주기적으로 보낸다. | framework location runtime이 runtime instance당 하나의 owner lease를 주기적으로 갱신한다. peer/spot/actor row를 heartbeat마다 개별 write하지 않는다. |
-| service list broadcast | Registry가 service list를 Discovery에 broadcast하고 Discovery가 local provider snapshot을 갱신한다. | store watch가 있으면 변경 event로 reconcile을 깨운다. watch가 없으면 polling으로 같은 결과를 얻는다. resolver에는 캐시가 없고 매 조회가 store를 읽는다. |
+| service list broadcast | Registry가 service list를 Discovery에 broadcast하고 Discovery가 local provider snapshot을 갱신한다. | store가 변경 알림을 지원하면 그 알림으로 자동 연결 재계산을 시작한다. 변경 알림이 없으면 주기적으로 store를 다시 읽어 같은 결과를 얻는다. resolver에는 캐시가 없고 매 조회가 store를 읽는다. |
 | auto-connect role matching | auto-connect type별 허용 role과 outbound 방향을 정한다. | 14절의 role 허용 정책과 target 매칭 정책으로 그대로 옮긴다. |
-| pairwise initiator | route mesh, dealer mesh, spot mesh에서 routing id와 endpoint total order로 한쪽만 dial한다. | framework reconcile loop가 같은 비교 규칙으로 desired target set을 만든다. |
+| pairwise initiator | route mesh, dealer mesh, spot mesh에서 routing id와 endpoint total order로 한쪽만 dial한다. | framework의 자동 연결 반복 작업이 같은 비교 규칙으로 연결 대상 목록을 만든다. |
 | peer weight/value | member peer entry가 weight와 `int64` value를 노출한다. | peer location row에 `Weight`, `Value`를 포함하고, member peer 조회와 admission 정책이 이 값을 사용한다. |
 | member peers | Discovery cache 또는 Registry에서 현재 peer 목록을 조회한다. | resolver의 `ListLivePeersAsync(filter)`와 framework query API로 제공한다. |
 | topology query | service kind, role, state, channel, routing id 등으로 topology snapshot을 조회한다. | peer/spot/actor list query와 별도 `LocationTopology` 조회 모델로 제공한다. store 구현체는 filter 조회를 제공하고, framework가 state와 stale 판정을 해석한다. |
 | service summary | channel별 total/ready/error/stopped 집계를 제공한다. | framework runtime이 location row와 connection state를 집계해 운영 조회 API로 제공한다. store가 집계를 결정하지 않는다. |
 | status | registry id, state, entry count, peer registry count, last error 등을 제공한다. | registry process가 없어지므로 같은 필드를 보존하지 않는다. 대신 location runtime status로 store health, watch/poll 상태, last error, last refresh 시각을 제공한다. |
-| registry clustering | Registry끼리 service list와 route snapshot을 flooding하고 `registry_id + list_seq`로 중복을 제거한다. | framework는 저장소 클러스터링을 직접 구현하지 않는다. HA와 복제는 사용자가 선택한 store 구현체의 책임이다. framework는 store-issued generation, lease, store 기준 updated time으로 중복과 stale row를 걸러낸다. |
+| registry clustering | Registry끼리 service list와 route snapshot을 flooding하고 `registry_id + list_seq`로 중복을 제거한다. | framework는 저장소 클러스터링을 직접 구현하지 않는다. HA와 복제는 사용자가 선택한 store 구현체의 책임이다. framework는 store가 발급한 generation, owner lease, store 기준 updated time으로 중복과 오래된 row를 걸러낸다. |
 | spot owner resolve | `spot_rid -> owner_node_rid + spot_kind`를 cache 후 필요하면 Registry topology query로 refresh한다. | 15절의 spot resolve/list로 옮긴다. 기준 저장소는 spot store이고, 조회 결과(spot 주소)는 호출자가 보관한다. |
 | actor active route | `actor_id -> actor ref + current spot` route를 owner-bound row로 조회한다. | 16절의 actor resolve/list로 옮긴다. actor lifecycle이 row를 자동 갱신하고, 재연결 경로는 resolve를 다시 호출한다(모든 resolve는 store에 도달한다). |
 | generic route bind/resolve | framework 계층이 `kind + key -> owner rid + value` owner-bound route를 직접 관리할 수 있다. | 공통 location 계약에 route store를 포함한다. actor session binding, spot name 같은 framework route도 같은 owner/generation/lease 정책을 사용한다. |
@@ -211,7 +241,7 @@ store 구현체가 바뀌어도 아래 정책은 바뀌면 안 된다.
 |------|----------------|
 | key 생성 | peer, spot, actor, route location key를 같은 규칙으로 만든다. |
 | 자동 update/remove | node, spot, actor lifecycle event를 받아 row를 갱신한다. |
-| owner/generation guard | 오래된 owner가 최신 row를 덮거나 지우지 못하게 한다. |
+| owner/generation guard | row를 쓴 runtime과 generation이 맞을 때만 갱신·삭제를 허용해서, 오래된 owner가 최신 row를 덮거나 지우지 못하게 한다. |
 | owner lease 만료 | owner lease가 만료된 owner의 row는 resolve 성공으로 반환하지 않는다. |
 | 오류 의미 | not found, stale, conflict, store 장애를 구분한다. |
 
@@ -221,9 +251,9 @@ store 구현체는 아래 동작만 제공한다.
 |-------------|------|
 | row upsert/remove | framework가 만든 key와 value를 저장하거나 제거한다. |
 | row lookup/list | key 또는 filter로 row를 조회한다. |
-| conditional update | owner/generation 조건을 저장소 기능으로 보장한다. |
-| owner lease/cleanup | owner lease 갱신과 만료 판정, 만료 owner row의 물리 정리를 저장소에 맞는 방식으로 구현한다. |
-| optional watch | 저장소가 지원하면 변경 알림을 framework에 전달한다. |
+| conditional update | 현재 row의 owner와 generation이 요청과 맞을 때만 저장되도록 store 안에서 원자적으로 처리한다. |
+| owner lease/cleanup | owner lease 갱신과 만료 판정, 만료된 owner가 남긴 row의 물리 정리를 저장소에 맞는 방식으로 구현한다. |
+| optional watch | 저장소가 변경 알림 기능을 지원하면 그 알림을 framework에 전달한다. 지원하지 않으면 polling이 같은 역할을 한다. |
 
 즉 어떤 구현체를 등록해도 자동연결이나 actor 재연결 알고리즘이 달라지면 안 된다.
 
@@ -234,7 +264,8 @@ store 구현체는 아래 동작만 제공한다.
 
 #### 자동 연결과 node crash (6.6, 14절)
 
-owner lease 하나로 생존을 신고하고, crash는 row write 없이 lease 만료만으로 전파된다.
+owner lease 하나로 runtime 생존을 신고한다. runtime이 비정상 종료되면 각 row를 직접 지우지 못하므로,
+owner lease 만료를 통해 그 runtime이 남긴 row를 성공 결과에서 제외한다.
 
 ```mermaid
 sequenceDiagram
@@ -261,9 +292,10 @@ sequenceDiagram
     B->>A: disconnect
 ```
 
-#### actor 생성 race — claim-then-activate (17절)
+#### actor 동시 생성 — 위치 claim 후 활성화 (17절)
 
-위치 claim이 성공한 쪽만 instance를 활성화한다. 패자는 instance를 만들기 전에 물러난다.
+같은 actor id를 두 runtime이 동시에 만들려고 하면, 먼저 위치 소유권을 store에 기록한 쪽만 actor
+instance를 활성화한다. 실패한 쪽은 instance를 만들기 전에 물러난다.
 
 ```mermaid
 sequenceDiagram
@@ -293,10 +325,10 @@ remove에 그 token을 제시한다. 패자는 최신 generation 값을 알 필�
 `IgnoredStale`로 거부되는 순간 소유권 상실만 알게 된다. token 비교는 항상 store 안에서 일어나므로,
 generation을 배포하는 별도 protocol이 없어도 fencing이 성립한다(9절).
 
-#### 계획된 이동과 Takeover fencing (9절)
+#### 계획된 이동과 Takeover 보호 규칙 (9절)
 
-기본 경로는 구 instance를 먼저 멈추는 deactivate-first다. `Takeover`는 구 owner가 협조하지 못할 때의
-fencing 경로다.
+기본 경로는 기존 instance를 먼저 멈추고 새 owner가 소유권을 가져가는 방식이다. `Takeover`는 기존
+owner가 응답하지 않을 때도 새 owner가 store에서 더 새 generation을 받아 오래된 write를 막는 경로다.
 
 ```mermaid
 sequenceDiagram
@@ -325,7 +357,8 @@ sequenceDiagram
 
 #### store 장애와 복구 (14.8)
 
-장애 중에는 fail-static으로 버티고, 복구 시에는 재등록과 유예를 diff보다 먼저 수행한다.
+장애 중에는 마지막으로 성공한 연결 상태를 유지한다. store가 복구되면 먼저 자기 owner lease와 peer row를
+다시 등록하고, 다른 runtime도 재등록할 시간을 준 뒤 연결을 끊을지 계산한다.
 
 ```mermaid
 sequenceDiagram
@@ -441,7 +474,7 @@ key 문자열 비교가 필요한 구현체는 각 구성 요소를 길이 prefi
 
 `AutoConnectType`과 `Role`은 닫힌 값 집합이다. auto-connect type은 route mesh, client/server, dealer
 mesh, fanout, spot mesh 5종이고 role은 router, dealer, pub, sub, spot 5종이다(14.2). .NET 첫 구현은 이를
-enum으로 정의하되, key 직렬화는 언어 중립적인 canonical 소문자 문자열로 고정한다:
+enum으로 정의하되, store에 저장되는 key 문자열은 모든 언어가 같은 값을 쓰도록 소문자 문자열로 고정한다:
 `route-mesh`, `client-server`, `dealer-mesh`, `fanout`, `spot-mesh` / `router`, `dealer`, `pub`, `sub`,
 `spot`. 언어별 enum 표기가 달라도 store에 저장되는 key는 같아야 한다. store에서 읽힌 row의 값이 이
 집합 밖이면 reconcile과 resolve는 그 row를 무시하고 진단에 보고한다. 등록 경로에서 집합 밖 값은
@@ -449,9 +482,10 @@ validation error다.
 
 ### 6.6 owner lease
 
-location row는 row별 lease를 갖지 않는다. row의 살아 있음은 owner lease로 판단한다. owner lease는
-framework runtime instance당 하나이며, heartbeat도 runtime당 한 번씩만 일어난다. actor가 수백만 개라도
-lease write 부하는 node 수에만 비례한다.
+location row는 row별 lease를 갖지 않는다. row 하나마다 생존 시간을 따로 연장하면 actor가 많을 때
+write 수가 너무 커지기 때문이다. row의 살아 있음은 owner lease로 판단한다. owner lease는 framework
+runtime instance당 하나이며, heartbeat도 runtime당 한 번씩만 일어난다. actor가 수백만 개라도 lease
+write 부하는 node 수에만 비례한다.
 
 | 필드 | 의미 |
 |------|------|
@@ -461,14 +495,15 @@ lease write 부하는 node 수에만 비례한다.
 | `UpdatedAt` | store가 기록한 마지막 갱신 시각 |
 
 row 유효성 규칙: row가 존재하고, row의 `OwnerId`에 해당하는 owner lease가 만료되지 않았을 때만
-유효하다. resolver와 reconcile은 owner lease 목록(runtime instance 수만큼, 수천 건 이하)을 cache하고
-이 join을 local에서 수행한다. owner lease가 만료된 owner의 row는 resolve/list 성공 결과에서 제외하고,
-물리 삭제는 background cleanup 또는 lazy 삭제가 담당한다.
+유효하다. resolver와 자동 연결 반복 작업은 owner lease 목록(runtime instance 수만큼, 수천 건 이하)을
+잠시 보관하고, row의 owner가 살아 있는지 local에서 대조한다. owner lease가 만료된 owner의 row는
+resolve/list 성공 결과에서 제외하고, 실제 삭제는 background cleanup 또는 다음 접근 시점의 lazy 삭제가
+담당한다.
 
 만료 판정에 application node의 wall clock을 쓰지 않는다. owner lease 목록 조회 결과에 포함된 store
 기준 현재 시각으로 각 lease의 남은 시간을 계산하고, 조회 이후의 경과는 local monotonic clock으로 잰다.
-owner lease 목록은 watch와 change stamp의 대상이 아니며 polling interval마다 갱신한다. 따라서 owner
-lease cache의 staleness 상한은 polling interval 한 번이다.
+owner lease 목록은 watch와 change stamp의 대상이 아니며 polling interval마다 갱신한다. 따라서 runtime이
+잠시 보관한 owner lease 목록은 최대 polling interval 한 번만큼 늦을 수 있다.
 
 owner lease store와 location store는 같은 물리 저장소를 사용해야 한다. `NewClaim`의 "만료된 row" 판정은
 location store가 owner lease를 원자적으로 참조해야 하는데, 서로 다른 저장소에 걸친 원자적 판정은
@@ -686,9 +721,10 @@ public interface IZLinkLocationWatchStore
 }
 ```
 
-store 구현체가 이 interface도 구현하면 framework runtime은 watch event로 reconcile을
-깨운다. 구현하지 않으면 polling이 correctness 경로다. watch event는 latency 최적화일 뿐이고, event 유실이
-있어도 다음 polling 결과로 같은 상태에 도달해야 한다.
+store 구현체가 이 interface도 구현하면 framework runtime은 변경 event를 받아 자동 연결 재계산을 바로
+시작한다. 구현하지 않으면 polling, 즉 주기적인 store 재조회가 올바른 연결 상태에 도달하기 위한 기본
+경로다. watch event는 더 빨리 반응하고 조회 부하를 줄이기 위한 최적화일 뿐이다. event가 유실되어도
+다음 polling 결과로 같은 상태에 도달해야 한다.
 
 | 모델 | 필수 필드 |
 |------|-----------|
@@ -773,8 +809,9 @@ spot/actor/route 목록 조회는 `ZLinkPageRequest`(page size, continuation tok
 전체 목록을 한 번에 반환하는 표면은 두지 않는다. continuation token은 store 구현체가 정의하는 opaque
 값이다. `ZLinkPageRequest`의 default 값은 `list page size` option의 기본 page 크기를 사용한다는 뜻이다.
 
-peer 목록과 owner lease 목록은 pagination 없는 단일 snapshot 계약이다. reconcile의 desired target set
-계산은 한 시점의 전체 목록을 전제로 하므로, page 간 시점 불일치가 생기는 pagination을 넣지 않는다.
+peer 목록과 owner lease 목록은 pagination 없는 단일 snapshot 계약이다. 자동 연결에서 "연결되어 있어야
+하는 대상 목록"을 계산할 때는 한 시점의 전체 목록이 필요하다. 따라서 page 간 시점 불일치가 생기는
+pagination을 넣지 않는다.
 이 계약은 1.1의 mesh당 peer row 수천 목표를 전제로 하며, 이를 넘는 topology는 pagination이 아니라
 mesh 분할로 해결한다. store 구현체는 peer list와 owner lease list에 pagination을 구현하지 않는다.
 
@@ -819,20 +856,20 @@ public interface IZLinkLocationRuntimeQuery
 | `ZLinkLocationServiceSummary` | mesh name, auto-connect type, role, total count, ready count, error count, stopped count, last updated time |
 
 runtime query의 raw list API는 운영 도구와 E2E가 peer, spot, actor, route location row를 직접 확인하기
-위한 표면이다. runtime query의 모든 조회는 store를 직접 읽는다. resolver 표면도 캐시가 없으므로
-freshness 개념 자체가 없다(`IZLinkPeerLocationResolver`의 peer list와 spot/actor/route 단건
-resolve)에만 있다. `LocationTopology`는 운영과 E2E 검증을 위한 projection이다. store가 topology 의미를
-결정하지 않는다. framework runtime이 location row, connection state, lease, generation을 합쳐
-projection을 만든다.
+위한 조회 표면이다. runtime query의 모든 조회는 store를 직접 읽는다. resolver에도 캐시가 없으므로
+"이 값이 얼마나 최신인가"를 따로 표현하는 별도 최신성 개념은 없다. `LocationTopology`는 운영과 E2E
+검증을 위해 framework가 만들어 주는 보기용 모델이다. store가 topology 의미를 결정하지 않는다.
+framework runtime이 location row, connection state, lease, generation을 합쳐 topology 항목을 만든다.
 
 ## 9. Owner/Generation 규칙
 
 `OwnerId`는 framework runtime instance가 시작할 때 생성하는 안정적인 process-local id다. 같은 process가
 재시작하면 새 `OwnerId`를 사용한다.
 
-`Generation`은 같은 logical key를 다시 claim할 때 stale row를 구분하는 fencing token이다. generation은
-node의 wall clock으로 만들지 않는다. store 구현체가 key별로 원자적으로 할당하거나, 같은 효과를 내는
-compare-and-set token을 제공해야 한다.
+`Generation`은 같은 logical key를 다시 claim할 때 오래된 row와 새 row를 구분하는 값이다. 이 값은
+오래된 owner가 뒤늦게 보낸 write/remove를 막는 데 사용한다. generation은 node의 wall clock으로 만들지
+않는다. store 구현체가 key별로 원자적으로 할당하거나, 같은 효과를 내는 compare-and-set token을
+제공해야 한다.
 
 .NET 첫 구현은 아래 규칙을 사용한다.
 
@@ -897,16 +934,16 @@ framework는 등록된 store 구현체에 아래 능력을 요구한다.
 
 | 기능 | 설명 |
 |------|------|
-| conditional upsert | write intent와 owner/generation 조건에 맞는 row 갱신을 원자적으로 처리한다. |
-| remove with owner guard | 현재 owner/generation이 일치할 때만 row를 제거한다. |
-| bulk remove by owner | owner shutdown 때 그 owner의 row 전체를 개별 호출 없이 제거한다. |
-| owner lease | owner lease row의 원자적 갱신과 만료 판정을 제공한다. |
+| conditional upsert | write intent와 owner/generation 조건에 맞을 때만 row 갱신이 성공하도록 store 안에서 한 번에 처리한다. |
+| remove with owner guard | 현재 owner/generation이 요청과 일치할 때만 row를 제거한다. |
+| bulk remove by owner | owner shutdown 때 그 owner의 row 전체를 row별 개별 호출 없이 제거한다. |
+| owner lease | owner lease row의 갱신과 만료 판정을 store 안에서 일관되게 제공한다. |
 | list by mesh | 자동연결 loop가 같은 mesh의 peer row를 조회할 수 있어야 한다. |
 | resolve by key | spot rid 또는 actor key로 단건 위치를 조회한다. |
 | paged list by filter | 운영 조회, placement, 복구 작업이 continuation token으로 수백만 row를 나눠 조회할 수 있어야 한다. |
 | generation guard | 오래된 owner가 최신 row를 덮거나 지우지 못하게 한다. |
 | optional watch | 구현체가 지원하면 변경 event를 받을 수 있다. 지원하지 않으면 polling으로 동작한다. |
-| optional change stamp | 구현체가 지원하면 kind/mesh별 change stamp를 제공해 변경 없는 polling tick의 비용을 줄인다. |
+| optional change stamp | 구현체가 지원하면 kind/mesh별 변경 번호를 제공해, 변경이 없는 polling 주기에는 전체 목록 조회를 건너뛰게 한다. |
 
 store 구현체는 Redis, RDB, MongoDB, 파일, in-memory 등 어떤 저장소를 써도 된다. framework runtime은
 interface만 사용하고 저장소의 query 언어나 schema detail을 알지 않는다.
@@ -1015,11 +1052,11 @@ dial한다.** 이 예외가 없으면 dial 전용 구성원이 initiator가 아�
 않는 교착이 생긴다.
 
 connect 대상의 재연결 판정은 target key(role + node rid)가 같아도 **row의 endpoint 또는 owner가
-바뀌면 handover**로 처리한다: 기존 연결을 끊고 새로 dial한다. 같은 rid와 endpoint로 재시작한
-peer는 새 owner id로 row를 다시 claim하므로, owner 변화가 죽은 프로세스를 향한 링크를
-살아 있는 프로세스로 교체하는 신호가 된다.
+바뀌면 handover**로 처리한다. handover는 기존 연결을 끊고 새 row가 가리키는 endpoint로 다시 dial하는
+처리다. 같은 rid와 endpoint로 재시작한 peer는 새 owner id로 row를 다시 claim하므로, owner 변화가 죽은
+프로세스를 향한 링크를 살아 있는 프로세스로 교체하는 신호가 된다.
 
-### 14.4 reconcile loop
+### 14.4 reconcile loop(자동 연결 상태 맞추기)
 
 자동연결 runtime은 mesh마다 "지금 연결되어 있어야 하는 대상"과 "실제로 지금 연결된 대상"을 계속
 맞춘다. 이 반복 작업을 reconcile loop라고 부른다. 쉽게 말하면, store를 읽어 원하는 연결 목록을 다시
@@ -1033,10 +1070,10 @@ runtime도 같은 방식으로 자기 row를 갱신한다. 그래서 각 runtime
 1. local capability를 시작한다.
 2. 이 runtime의 peer location row를 store에 쓴다.
 3. store에서 같은 mesh의 peer list를 읽는다.
-4. role 허용 정책과 target 매칭 정책으로 desired target set을 만든다.
-5. 현재 active connection set과 desired target set을 비교한다.
-6. desired에는 있는데 active에는 없으면 새로 connect한다.
-7. active에는 있는데 desired에는 없으면 disconnect한다.
+4. role 허용 정책과 target 매칭 정책으로 연결되어 있어야 하는 대상 목록을 만든다.
+5. 현재 실제 연결 목록과 연결되어 있어야 하는 대상 목록을 비교한다.
+6. 연결되어 있어야 하는 대상 목록에는 있는데 실제 연결 목록에는 없으면 새로 connect한다.
+7. 실제 연결 목록에는 있는데 연결되어 있어야 하는 대상 목록에는 없으면 disconnect한다.
 8. 같은 peer key의 endpoint나 owner가 바뀌었으면 기존 연결을 끊고 새 row로 connect한다.
 9. heartbeat 주기마다 owner lease를 갱신한다.
 10. watch event 또는 polling tick이 오면 3-8을 다시 수행한다.
@@ -1045,23 +1082,24 @@ runtime도 같은 방식으로 자기 row를 갱신한다. 그래서 각 runtime
 
 여기서 `desired target set`은 "정책상 연결되어 있어야 하는 원격 peer 목록"이다. 이 목록은 store에
 그대로 저장하지 않고 매번 peer list에서 계산한다. 따라서 store row가 바뀌거나 owner lease가 만료되면
-다음 reconcile에서 자연스럽게 연결 대상이 바뀐다.
+다음 자동 연결 재계산에서 자연스럽게 연결 대상이 바뀐다.
 
-desired target key는 가능한 경우 `remote node rid + role`로 잡는다. routing id가 없는 role이면
+연결 대상 key는 가능한 경우 `remote node rid + role`로 잡는다. routing id가 없는 role이면
 `endpoint + role`을 key로 잡는다. key는 "같은 peer인지"를 판단하는 기준이고, endpoint는 "어디로
 dial할지"를 말한다. 같은 key의 endpoint나 owner가 바뀌면 같은 peer가 새 주소나 새 runtime instance로
 이동한 것으로 보고 peer handover로 처리한다. 이때 기존 연결을 유지하지 않고 끊은 뒤 새 row의
 endpoint로 다시 연결한다.
 
-watch와 polling은 loop를 깨우는 방법만 다르다. watch가 있으면 store 변경 event가 왔을 때 바로 다시
-계산하고, watch가 없으면 polling interval마다 다시 계산한다. 두 경우 모두 최종 판단은 "store에서
-읽은 최신 peer list로 desired target set을 다시 만든다"는 같은 규칙을 따른다.
+watch와 polling은 자동 연결 재계산을 시작하는 방법만 다르다. watch가 있으면 store 변경 event가 왔을
+때 바로 다시 계산하고, watch가 없으면 polling interval마다 다시 계산한다. 두 경우 모두 최종 판단은
+"store에서 읽은 최신 peer list로 연결되어 있어야 하는 대상 목록을 다시 만든다"는 같은 규칙을 따른다.
 
 ### 14.5 watch와 polling
 
-store가 watch를 지원하면 변경 event를 받아 reconcile을 즉시 깨운다.
+store가 watch를 지원하면 변경 event를 받아 자동 연결 재계산을 즉시 시작한다.
 
-store가 watch를 지원하지 않으면 polling으로 동작한다.
+store가 watch를 지원하지 않으면 polling으로 동작한다. 즉, framework가 일정 주기마다 store를 다시 읽고
+변경 여부를 직접 확인한다.
 
 | 항목 | 기본값 후보 |
 |------|-------------|
@@ -1070,11 +1108,13 @@ store가 watch를 지원하지 않으면 polling으로 동작한다.
 | polling interval | 1초 |
 | connect retry backoff | 250 ms에서 시작해 상한 5초 |
 
-polling은 correctness의 기본 경로다. watch는 latency와 부하를 줄이는 최적화다. 따라서 어떤
-extension 구현체를 사용해도 watch event와 polling 결과는 같은 의미를 가져야 한다.
+polling은 자동연결이 올바른 상태에 도달하기 위한 기본 경로다. watch는 더 빨리 반응하고 조회 부하를
+줄이기 위한 최적화다. 따라서 어떤 extension 구현체를 사용해도 watch event를 받은 뒤 계산한 결과와
+polling으로 다시 읽어 계산한 결과는 같은 의미를 가져야 한다.
 
-polling 비용은 change stamp로 줄인다. store가 아래 optional interface를 구현하면 poller는 tick마다
-change stamp만 읽고, 이전 값과 같으면 목록 조회를 건너뛴다.
+polling 비용은 change stamp로 줄인다. change stamp는 특정 범위의 row가 바뀔 때마다 증가하는 번호다.
+store가 아래 optional interface를 구현하면 poller는 확인 주기마다 이 번호만 읽고, 이전 값과 같으면
+목록 조회를 건너뛴다.
 
 ```csharp
 public interface IZLinkLocationChangeStampStore
@@ -1088,15 +1128,16 @@ public interface IZLinkLocationChangeStampStore
 scope는 location kind와 mesh name이다. stamp는 해당 scope의 row가 바뀔 때마다 store가 단조 증가시키는
 값이다. Redis extension은 write Lua script 안에서 scope별 counter를 INCR한다. 변경이 없는 tick의
 비용은 O(1)이므로, node 수천 개가 1초 polling을 해도 store에는 stamp 조회만 도달하고 full list 조회는
-실제 변경이 있을 때만 일어난다. change stamp가 없는 구현체는 full list polling으로 동작하되, polling
-interval을 mesh 크기에 맞춰 늘릴 수 있어야 한다.
+실제 변경이 있을 때만 일어난다. change stamp가 없는 구현체는 polling 때마다 전체 목록을 읽는 방식으로
+동작하되, mesh 크기에 맞춰 polling interval을 늘릴 수 있어야 한다.
 
-change stamp는 row 변경만 추적한다. desired target set은 row와 owner lease의 join이므로, tick 생략
-조건은 change stamp와 live owner 집합(만료되지 않은 owner lease의 owner 집합) 둘 다 변하지 않았을
-때다. 신규 node의 lease 등장(그 owner의 row가 유효해짐)이나 crash로 인한 lease 만료(그 owner의
-row를 desired set에서 빼야 함)는 row write 없이 join 결과를 바꾸므로, live owner 집합이 바뀐 tick은
-목록 조회를 건너뛰지 않는다. lease 연장은 집합을 바꾸지 않으므로 정상 상태 tick 비용은 여전히
-O(1)이다. live owner 집합은 6.6의 owner lease snapshot에서 local로 계산한다.
+change stamp는 row 변경만 추적한다. 하지만 연결되어 있어야 하는 대상 목록은 row와 owner lease를 함께
+보고 계산한다. 그래서 목록 조회를 건너뛰려면 change stamp와 살아 있는 owner 집합이 둘 다 변하지
+않아야 한다. 여기서 살아 있는 owner 집합은 만료되지 않은 owner lease의 owner 목록이다. 신규 node의
+lease가 생기거나 crash로 lease가 만료되면 row write가 없어도 연결 대상 목록이 달라질 수 있다. 따라서
+살아 있는 owner 집합이 바뀐 확인 주기에는 목록 조회를 건너뛰지 않는다. lease 연장은 집합 자체를
+바꾸지 않으므로 정상 상태의 확인 비용은 여전히 O(1)이다. 살아 있는 owner 집합은 6.6의 owner lease
+snapshot에서 local로 계산한다.
 
 ### 14.6 연결 실행
 
@@ -1117,11 +1158,12 @@ manual connection은 그대로 지원한다. 같은 endpoint가 manual과 auto �
 ### 14.8 store 장애 중 자동 연결 정책
 
 store 조회나 heartbeat가 일시적으로 실패해도 framework는 즉시 기존 자동 연결을 모두 끊지 않는다.
-기본 정책은 fail-static이다.
+기본 정책은 fail-static이다. fail-static은 새 정보를 얻지 못하는 동안 마지막으로 성공한 연결 판단을
+유지하고, 새 connect/disconnect 계산을 멈추는 정책이다.
 
 | 상황 | 동작 |
 |------|------|
-| peer list 조회 실패 | 마지막으로 성공한 desired target set을 유지하고 새 connect/disconnect diff를 계산하지 않는다. |
+| peer list 조회 실패 | 마지막으로 성공한 연결 대상 목록을 유지하고 새 connect/disconnect 차이를 계산하지 않는다. |
 | owner lease heartbeat 실패 | owner lease가 연장되지 않았음을 runtime status에 기록하고 backoff 후 재시도한다. |
 | store failure grace 안에 복구 | 기존 connection을 유지하고 다음 성공 조회 결과로 reconcile한다. |
 | store failure grace 초과 | 새 outbound connect는 중단한다. 이미 ready인 connection은 transport failure가 나기 전까지 유지한다. |
@@ -1129,8 +1171,8 @@ store 조회나 heartbeat가 일시적으로 실패해도 framework는 즉시 �
 | store 복구 후 stale row 발견 | 유예가 지난 뒤 성공 조회 결과에서 빠진 target만 disconnect한다. |
 
 기본 `store failure grace` 후보는 `owner lease TTL * 2`다. 이 값은 store 장애가 짧게 지나갔을 때 mesh 전체가
-동시에 disconnect/reconnect하는 일을 줄이기 위한 완충 시간이다. stale row를 무기한 유지하라는 뜻은
-아니며, store가 복구되면 항상 fresh list로 reconcile한다.
+동시에 disconnect/reconnect하는 일을 줄이기 위한 완충 시간이다. 오래된 row를 무기한 유지하라는 뜻은
+아니며, store가 복구되면 항상 store에서 새로 읽은 목록으로 연결 상태를 다시 맞춘다.
 
 복구 직후의 재등록과 유예가 필요한 이유: 장애가 owner lease TTL보다 길었으면 복구 시점에 모든 owner
 lease가 만료되어 있다. 각 node가 자기 owner lease를 다시 갱신하기 전에 첫 조회 결과로 바로 disconnect
@@ -1384,8 +1426,9 @@ E2E 수정의 기준이 된다. Java, Kotlin, Node.js, C++ framework는 .NET 구
 3. location runtime을 만든다.
    framework lifecycle event에서 peer/spot/actor/route row를 자동 update/remove하고, owner lease
    heartbeat를 처리한다.
-4. 자동 연결 reconcile loop를 location runtime에 연결한다.
-   기존 core discovery 호출을 제거하고 peer location resolver를 통해 desired target set을 계산한다.
+4. 자동 연결 상태 맞추기 반복 작업을 location runtime에 연결한다.
+   기존 core discovery 호출을 제거하고 peer location resolver를 통해 연결되어 있어야 하는 대상 목록을
+   계산한다.
 5. actor/spot/route resolver를 channel, session, actor runtime에 연결한다.
    재연결과 “없으면 생성” 경로는 resolve를 다시 호출한다.
 6. 공식 Redis extension을 추가한다.
@@ -1440,9 +1483,10 @@ E2E 수정의 기준이 된다. Java, Kotlin, Node.js, C++ framework는 .NET 구
 - actor/spot/route 목록 조회가 owner lease 만료 row와 stale row를 성공 결과에서 제외
 - spot/actor/route 목록 조회는 runtime query 표면에서만 제공되고 cache 없이 store를 직접 읽음
 - runtime query의 peer list도 store를 직접 읽음
-- `AutoConnectType`/`Role`의 key 직렬화가 언어와 무관하게 canonical 소문자 문자열로 저장됨
+- `AutoConnectType`/`Role`의 key 직렬화가 모든 언어에서 같은 소문자 문자열로 저장됨
 - 닫힌 값 집합 밖의 값을 가진 row는 reconcile/resolve가 무시하고 진단에 보고함
-- store 장애 중 자동 연결은 fail-static으로 동작하고 store 복구 뒤 fresh list로 reconcile
+- store 장애 중 자동 연결은 마지막으로 성공한 연결 판단을 유지하고, store 복구 뒤 새로 읽은 목록으로
+  연결 상태를 다시 맞춤
 - store 복구 직후 local row 재등록과 heartbeat interval 유예 뒤에 disconnect diff를 적용해 살아 있는
   peer를 한꺼번에 끊지 않음
 - 서로 다른 owner의 동시 `NewClaim`은 하나만 `Stored`가 되고 패자는 `RejectedConflict`를 받음
@@ -1565,7 +1609,7 @@ draft가 기준이며, 정식 spec 문서에는 아직 구현되지 않은 계�
 - [x] `ZLinkActorLocation` — 6.3의 필드 전부, `SpotRid` 필수 조건 포함
 - [x] `ZLinkRouteLocation` — 6.4의 필드 전부
 - [x] key 모델 4종과 stable encoding 규칙 — 6.5
-- [x] `AutoConnectType`/`Role` 닫힌 값 집합과 canonical 소문자 key 직렬화, unknown 값 처리 — 6.5
+- [x] `AutoConnectType`/`Role` 닫힌 값 집합과 언어 공통 소문자 key 직렬화, unknown 값 처리 — 6.5
 - [x] `ZLinkOwnerLease`, `ZLinkOwnerLeaseSnapshot`(`StoreNow` 포함) — 6.6, 7.5
 - [x] `ZLinkLocationWriteResult` 4종, `ZLinkLocationWriteIntent` 3종, `ZLinkLocationOwnerToken` — 7.6
 - [x] `ZLinkLocationWatchFilter`, `ZLinkLocationChanged` — 7.7
@@ -1595,20 +1639,20 @@ draft가 기준이며, 정식 spec 문서에는 아직 구현되지 않은 계�
 - [x] claim-then-activate 생성 순서 — 16.1, 17절
 - [x] owner lease heartbeat (runtime당 1회, row 개별 write 금지) — 6.6, 14.4
 - [x] owner lease snapshot join과 monotonic 만료 판정 (wall clock 비교 금지) — 6.6, 7.5
-- [x] owner lease 목록 polling 갱신 (staleness 상한 = polling interval) — 6.6
+- [x] owner lease 목록 polling 갱신 (최대 지연 = polling interval) — 6.6
 - [x] 단건 cache (enable/TTL/max entries, not-found 미cache, working set 기준) — 10절 (대체 예정: spot-address 초안이 캐시 제거)
 - [x] peer list cache와 watch/change stamp 무효화 — 10절 (대체 예정: peer snapshot은 reconciler 내부 상태로 재분류)
 - [x] stale row 정의 (owner lease 만료 또는 관찰한 generation보다 오래된 row) — 8.1
-- [x] `UpdatedAt` 용도 제한 (운영 표시/정렬 보조만, 충돌 해소·유효성·freshness에 사용 금지) — 9절
-- [x] runtime query는 freshness 없이 항상 direct store read — 8.2
+- [x] `UpdatedAt` 용도 제한 (운영 표시/정렬 보조만, 충돌 해소·유효성·최신성 판단에 사용 금지) — 9절
+- [x] runtime query는 별도 최신성 개념 없이 항상 store를 직접 읽음 — 8.2
 - [x] 오류 구분 표 — 19절
 
 ### 24.4 자동 연결
 
 - [x] role 허용 정책 표 — 14.2
 - [x] target 매칭 정책과 dealer mesh pairwise initiator — 14.3
-- [x] reconcile loop 11단계 — 14.4
-- [x] watch 우선, polling correctness, change stamp 생략 경로 — 14.5
+- [x] 자동 연결 상태 맞추기 반복 작업 11단계 — 14.4
+- [x] watch 우선, polling 기본 경로, change stamp 생략 경로 — 14.5
 - [x] 연결 실패 backoff, 연결 실패는 row 제거 사유 아님 — 14.6
 - [x] manual connection 우선 규칙 — 14.7
 - [x] fail-static 표와 store failure grace — 14.8

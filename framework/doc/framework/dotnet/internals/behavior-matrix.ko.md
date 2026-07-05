@@ -119,8 +119,8 @@
 | 조합 | 허용 여부 | 기대 동작 |
 |------|-----------|-----------|
 | `AddZLinkMonitoring(...)` + 등록된 socket source 이름 | 허용 | 해당 source에 event handler를 연결한다 |
-| `AddZLinkMonitoring(...)` + 등록된 registry source 이름 | 허용 | snapshot diff polling[^snapshot-diff-polling]을 시작한다 |
-| `AddZLinkMonitoring(...)` + 등록된 spot source 이름 | 허용 | snapshot diff polling을 시작한다 |
+| `AddZLinkMonitoring(...)` + 등록된 registry source 이름 | 허용 | 주기적으로 상태를 읽고 직전 상태와 비교하는 관측을 시작한다 |
+| `AddZLinkMonitoring(...)` + 등록된 spot source 이름 | 허용 | 주기적으로 상태를 읽고 직전 상태와 비교하는 관측을 시작한다 |
 | `AddZLinkMonitoring(...)` + 임의 discovery source 이름 | 비허용 | 자동 연결 상태는 `location-runtime` source 와 runtime query 로 관찰하는 것이 원칙이다 |
 | 존재하지 않는 source 이름 등록 | 비허용 | startup validation 오류 |
 | polling source인데 interval이 0 이하 | 비허용 | startup validation 오류 |
@@ -176,7 +176,7 @@ runtime integration 테스트도 같은 변경에 함께 포함시킨다.
 [^spot]: `SPOT` 은 동적으로 생성·소멸되는 논리적 노드(예: room, stage 등) 단위로 메시지를 라우팅하는 추상이다. `SpotNode` 는 하나 이상의 spot 인스턴스를 호스팅하는 컨테이너 노드를 가리킨다.
 [^entry-spot]: Entry Spot 은 SpotNode 가 접속한 actor 를 가장 먼저 받아들이는 진입용 spot 이다. 이후 user Spot 으로 옮겨 가기 전 단계 역할을 한다.
 [^binding-token]: session binding token 은 actor 와 stream session 의 연결 상태를 식별하는 토큰으로, 재연결 시 어느 binding 이 최신인지 구분하는 데 쓰인다.
-[^snapshot-diff-polling]: snapshot diff polling 은 일정 주기로 전체 스냅샷을 가져온 뒤 직전 스냅샷과 비교해 변경된 부분만 이벤트로 올리는 방식이다.
+[^snapshot-diff-polling]: snapshot diff polling 은 일정 주기로 전체 스냅샷을 가져온 뒤 직전 스냅샷과 비교해 변경된 부분만 이벤트로 올리는 방식이다. 본문에서는 가능한 한 "주기적으로 상태를 읽고 직전 상태와 비교한다"처럼 풀어 쓴다.
 [^topology]: topology 는 어떤 노드(channel, spot, registry 등)가 어디에 있는지, 그리고 서로 어떻게 연결되어 있는지를 나타내는 구성 정보다.
 
 ---

@@ -33,12 +33,11 @@
 다만 현재 구현 범위를 기준으로 보면, 이 문서는 두 층으로 나눠서 읽어야 한다.
 
 - 3.1 과 3.1.4, 그리고 이 절에 등장하는 `IZLinkSpot` / `IZLinkSpotOutbound`
-  예시는 현재 framework core 의 public surface 에 맞춘 샘플이다.
+  예시는 현재 framework core 의 public API 표면에 맞춘 샘플이다.
 - 3.2.1 의 actor[^actor] / session[^session] membership 예시는 stage wrapper
-  같은 상위 확장 아이디어를 메모해 둔 부분이다. 아직 framework core 의 public
-  surface 는 아니다.
+  같은 상위 확장 아이디어를 메모해 둔 부분이다. 아직 framework core 의 public API 표면은 아니다.
 - `targetRid + spotRid` 형태의 direct routed[^direct-routed] 호출은 framework
-  public surface 에 포함하지 않는다. spot rid 기반 호출은 모두
+  public API 표면에 포함하지 않는다. spot rid 기반 호출은 모두
   `IZLinkSpotOutbound` 가 resolver[^resolver] 를 거쳐 처리한다.
 
 ## 2. 인터페이스 요약
@@ -401,7 +400,7 @@ app.Run();
   - `play` client/server channel의 server `ROUTER`에서 이 node의 user Spot으로
     routed send/request를 보낼 수 있게 한다.
   - 같은 표면은 `AddRouteMesh`의 route mesh `ROUTER`에도 사용할 수 있다.
-  - 이 설정은 target SpotNode 쪽 ingress 연결이다. application public surface 에
+  - 이 설정은 target SpotNode 쪽 ingress 연결이다. application public API 표면에
     별도 routed Spot egress client 를 노출하지 않는다.
 - `EnablePubSub(endpoint)`
   - local spot 문맥에서 `spot.Context.Outbound.Publish(...)`를 호출할 수 있게 한다.
@@ -672,7 +671,7 @@ app.MapPost("/stage/query", async (
 app.Run();
 ```
 
-현재 framework core 의 public surface 에는 RID[^rid] 기반의 direct routed
+현재 framework core 의 public API 표면에는 RID[^rid] 기반의 direct routed
 호출이 열려 있지 않다. 그래서 이 샘플도 현행 계약을 다음 두 가지만으로
 한정해 본다.
 

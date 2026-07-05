@@ -371,7 +371,7 @@ yield 전에 상태 변경을 확정하지 않는 방식으로 작성한다. 이
 |------|----------------|------|
 | `deliverydispatch.tracking` | `AddClientServerChannel` | `DispatchWorker module -> Tracking` |
 | `delivery-customers` | `AddSpotMesh` | `CustomerEntrySpot`에서 customer actor 관리 |
-| `delivery-couriers` | `AddSpotMesh` + `AddRouteMesh` | `CourierSession/DispatchWorker -> target SpotNode rid -> CourierEntrySpot -> CourierActor` |
+| `delivery-couriers` | `AddSpotMesh` | `CourierSession/DispatchWorker -> target SpotNode rid -> CourierEntrySpot -> CourierActor` |
 
 `delivery-couriers`는 배송원마다 하나씩 늘어나는 channel이 아니다. 모든 배송원 actor가
 같은 mesh 안에 있고, framework actor/session binding이 어떤 session route로 client에 push할지를

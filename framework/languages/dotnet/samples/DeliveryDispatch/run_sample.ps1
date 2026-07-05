@@ -48,8 +48,7 @@ try {
     Set-DefaultEnv "DELIVERYDISPATCH_REDIS_KEY_PREFIX" "deliverydispatch:dotnet:${PID}:$([Guid]::NewGuid().ToString('N')):"
     Set-DefaultEnv "DELIVERYDISPATCH_DISPATCH_HTTP" "http://127.0.0.1:$($ports[2])"
     Set-DefaultEnv "DELIVERYDISPATCH_DISPATCH_CHANNEL" "tcp://127.0.0.1:$($ports[3])"
-    Set-DefaultEnv "DELIVERYDISPATCH_COURIER_ACTOR_NODE1_ROUTE" "tcp://127.0.0.1:$($ports[4])"
-    Set-DefaultEnv "DELIVERYDISPATCH_TRACKING_ROUTE" "tcp://127.0.0.1:$($ports[5])"
+    Set-DefaultEnv "DELIVERYDISPATCH_TRACKING_CHANNEL" "tcp://127.0.0.1:$($ports[5])"
     Set-DefaultEnv "DELIVERYDISPATCH_TRACKING_SPOT_ROUTER" "tcp://127.0.0.1:$($ports[6])"
     Set-DefaultEnv "DELIVERYDISPATCH_TRACKING_SPOT" "tcp://127.0.0.1:$($ports[7])"
     Set-DefaultEnv "DELIVERYDISPATCH_CUSTOMER_STREAM" "tcp://127.0.0.1:$($ports[8])"
@@ -60,7 +59,6 @@ try {
     Set-DefaultEnv "DELIVERYDISPATCH_COURIER_SESSION_SPOT" "tcp://127.0.0.1:$($ports[13])"
     Set-DefaultEnv "DELIVERYDISPATCH_COURIER_ACTOR_NODE1_ROUTER" "tcp://127.0.0.1:$($ports[14])"
     Set-DefaultEnv "DELIVERYDISPATCH_COURIER_ACTOR_NODE1" "tcp://127.0.0.1:$($ports[15])"
-    Set-DefaultEnv "DELIVERYDISPATCH_COURIER_ACTOR_NODE2_ROUTE" "tcp://127.0.0.1:$($ports[16])"
     Set-DefaultEnv "DELIVERYDISPATCH_COURIER_ACTOR_NODE2_ROUTER" "tcp://127.0.0.1:$($ports[17])"
     Set-DefaultEnv "DELIVERYDISPATCH_COURIER_ACTOR_NODE2" "tcp://127.0.0.1:$($ports[18])"
     Set-DefaultEnv "DELIVERYDISPATCH_WORK_DIR" $WorkDir
@@ -83,7 +81,7 @@ try {
     Invoke-SampleDotnetBuild (Join-Path $ScriptDir "DeliveryDispatch.sln")
 
     Start-SampleDotnetAssembly -Name "tracking" -Project (Join-Path $ScriptDir "Server/Tracking/DeliveryDispatch.Server.Tracking.csproj") -LogDirectory $LogDir | Out-Null
-    Wait-SampleTcpEndpoint "tracking-route" $env:DELIVERYDISPATCH_TRACKING_ROUTE
+    Wait-SampleTcpEndpoint "tracking-channel" $env:DELIVERYDISPATCH_TRACKING_CHANNEL
     Wait-SampleTcpEndpoint "tracking-spot-router" $env:DELIVERYDISPATCH_TRACKING_SPOT_ROUTER
     Wait-SampleTcpEndpoint "tracking-spot" $env:DELIVERYDISPATCH_TRACKING_SPOT
 
@@ -95,11 +93,9 @@ try {
     Wait-SampleTcpEndpoint "courier-session-stream" $env:DELIVERYDISPATCH_COURIER_STREAM
 
     Start-SampleDotnetAssembly -Name "courier-actor-node1" -Project (Join-Path $ScriptDir "Server/CourierActorNode/DeliveryDispatch.Server.CourierActorNode.csproj") -LogDirectory $LogDir -Arguments @("--node", "node1") | Out-Null
-    Wait-SampleTcpEndpoint "courier-actor-node1-route" $env:DELIVERYDISPATCH_COURIER_ACTOR_NODE1_ROUTE
     Wait-SampleTcpEndpoint "courier-actor-node1-router" $env:DELIVERYDISPATCH_COURIER_ACTOR_NODE1_ROUTER
 
     Start-SampleDotnetAssembly -Name "courier-actor-node2" -Project (Join-Path $ScriptDir "Server/CourierActorNode/DeliveryDispatch.Server.CourierActorNode.csproj") -LogDirectory $LogDir -Arguments @("--node", "node2") | Out-Null
-    Wait-SampleTcpEndpoint "courier-actor-node2-route" $env:DELIVERYDISPATCH_COURIER_ACTOR_NODE2_ROUTE
     Wait-SampleTcpEndpoint "courier-actor-node2-router" $env:DELIVERYDISPATCH_COURIER_ACTOR_NODE2_ROUTER
 
     Start-SampleDotnetAssembly -Name "dispatch" -Project (Join-Path $ScriptDir "Server/Dispatch/DeliveryDispatch.Server.Dispatch.csproj") -LogDirectory $LogDir | Out-Null

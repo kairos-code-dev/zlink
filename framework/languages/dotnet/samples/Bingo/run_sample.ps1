@@ -91,12 +91,6 @@ try {
     Set-DefaultEnv "BINGO_PLAY_B_SPOT_ENDPOINT" "tcp://127.0.0.1:$($ports[13])"
     Set-DefaultEnv "BINGO_PLAY_B_SPOT_ROUTER_ENDPOINT" "tcp://127.0.0.1:$($ports[14])"
     Set-DefaultEnv "BINGO_API_B_CHANNEL_ENDPOINT" "tcp://127.0.0.1:$($ports[15])"
-    Set-DefaultEnv "BINGO_API_A_PLAY_ROUTE_ENDPOINT" "tcp://127.0.0.1:$($ports[17])"
-    Set-DefaultEnv "BINGO_API_B_PLAY_ROUTE_ENDPOINT" "tcp://127.0.0.1:$($ports[18])"
-    Set-DefaultEnv "BINGO_SESSION_A_PLAY_ROUTE_ENDPOINT" "tcp://127.0.0.1:$($ports[19])"
-    Set-DefaultEnv "BINGO_SESSION_B_PLAY_ROUTE_ENDPOINT" "tcp://127.0.0.1:$($ports[20])"
-    Set-DefaultEnv "BINGO_METADATA_DIR" (Join-Path $RunDir "metadata")
-
     $docker = Get-Command docker -ErrorAction SilentlyContinue
     if ($null -eq $docker) {
         throw "Docker is required to run the Bingo sample."
@@ -116,10 +110,8 @@ try {
 
     Start-SampleDotnetAssembly -Name "api-a" -Project (Join-Path $ScriptDir "Server/Api/Bingo.Server.Api.csproj") -LogDirectory $LogDir -Arguments @("--node", "a") | Out-Null
     Wait-SampleTcpEndpoint "api-a" $env:BINGO_API_A_CHANNEL_ENDPOINT
-    Wait-SampleTcpEndpoint "api-a-play-route" $env:BINGO_API_A_PLAY_ROUTE_ENDPOINT
     Start-SampleDotnetAssembly -Name "api-b" -Project (Join-Path $ScriptDir "Server/Api/Bingo.Server.Api.csproj") -LogDirectory $LogDir -Arguments @("--node", "b") | Out-Null
     Wait-SampleTcpEndpoint "api-b" $env:BINGO_API_B_CHANNEL_ENDPOINT
-    Wait-SampleTcpEndpoint "api-b-play-route" $env:BINGO_API_B_PLAY_ROUTE_ENDPOINT
 
     Start-SampleDotnetAssembly -Name "play-a" -Project (Join-Path $ScriptDir "Server/Play/Bingo.Server.Play.csproj") -LogDirectory $LogDir -Arguments @("--node", "a") | Out-Null
     Wait-SampleTcpEndpoint "play-a" $env:BINGO_PLAY_A_CHANNEL_ENDPOINT
@@ -133,11 +125,9 @@ try {
     Start-SampleDotnetAssembly -Name "session-a" -Project (Join-Path $ScriptDir "Server/Session/Bingo.Server.Session.csproj") -LogDirectory $LogDir -Arguments @("--node", "a") | Out-Null
     Wait-SampleTcpEndpoint "session-a-router" $env:BINGO_SESSION_A_ROUTER_ENDPOINT
     Wait-SampleTcpEndpoint "session-a-stream" $env:BINGO_SESSION_A_STREAM_ENDPOINT
-    Wait-SampleTcpEndpoint "session-a-play-route" $env:BINGO_SESSION_A_PLAY_ROUTE_ENDPOINT
     Start-SampleDotnetAssembly -Name "session-b" -Project (Join-Path $ScriptDir "Server/Session/Bingo.Server.Session.csproj") -LogDirectory $LogDir -Arguments @("--node", "b") | Out-Null
     Wait-SampleTcpEndpoint "session-b-router" $env:BINGO_SESSION_B_ROUTER_ENDPOINT
     Wait-SampleTcpEndpoint "session-b-stream" $env:BINGO_SESSION_B_STREAM_ENDPOINT
-    Wait-SampleTcpEndpoint "session-b-play-route" $env:BINGO_SESSION_B_PLAY_ROUTE_ENDPOINT
 
     $clientLog = Join-Path $LogDir "client.log"
     Invoke-SampleDotnetRun -Project (Join-Path $ScriptDir "Client/Bingo.Client.csproj") -Arguments @("--stream-a-endpoint", $env:BINGO_SESSION_A_STREAM_ENDPOINT, "--stream-b-endpoint", $env:BINGO_SESSION_B_STREAM_ENDPOINT) *> $clientLog

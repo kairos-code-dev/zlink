@@ -46,10 +46,6 @@ internal static class Program
                 .TraceLogFile(SampleFlowLog.Path(missionName))
                 .TraceLabel(missionName);
             options.AddHandlersFromAssemblyOf(typeof(Program));
-            options.AddRouteMeshChannel(SampleNames.QuestOwnerRouteChannel)
-                .EnableServer(instance.RouteEndpoint)
-                .SetRoutingId(instance.SpotRid)
-                .AddRequestHandler<GameplayEventRouteHandler, ApplyGameplayEventReq, ApplyGameplayEventRes>();
             options.AddSpotMesh(SampleNames.QuestSpotDiscovery)
                 .EnableRouter(instance.SpotRouterEndpoint)
                 .SetRoutingId(instance.SpotRid)
@@ -76,6 +72,17 @@ internal static class Program
                 return Results.Ok(new SyncQuestProgressRes(await store.ReadProjectionAsync(request.PlayerId, cancellationToken)));
 
             return Results.Ok(await playerQuestOwners.SyncAsync(request, cancellationToken));
+        });
+        app.MapPost("/internal/apply", async (
+            ApplyGameplayEventReq request,
+            PlayerQuestOwnerProvisioner playerQuestOwners,
+            QuestOwnerRouter ownerRouter,
+            CancellationToken cancellationToken) =>
+        {
+            if (!ownerRouter.IsLocalOwner(request.Event.PlayerId))
+                return Results.Ok(new ApplyGameplayEventRes(false));
+
+            return Results.Ok(await playerQuestOwners.ApplyGameplayEventAsync(request.Event, cancellationToken));
         });
         app.MapPost("/self-check/owner/{playerId}/close", async (
             string playerId,

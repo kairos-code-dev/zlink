@@ -1,19 +1,18 @@
 using DeliveryDispatch.Server.Configuration;
+using DeliveryDispatch.Server.CourierActorNode.Spots.EntrySpot;
 using DeliveryDispatch.Shared.Contracts;
 using Microsoft.Extensions.Logging;
 using Zlink.Framework.Contracts.Actors;
-using Zlink.Framework.Contracts.Channels;
-using Zlink.Framework.Contracts.Handlers;
+using Zlink.Framework.Contracts.Spots;
 
 namespace DeliveryDispatch.Server.CourierActorNode;
 
-[ZLinkHandlerGroup(SampleNames.CourierActorNodeRouteChannel)]
 internal sealed class FindCourierActorRouteHandler(IZLinkActorManager actorManager)
-    : IZLinkRouteRequestHandler<FindCourierActorReq, FindCourierActorRes>
+    : IZLinkSpotRequestHandler<CourierEntrySpot, FindCourierActorReq, FindCourierActorRes>
 {
     public async ValueTask<FindCourierActorRes> HandleAsync(
+        CourierEntrySpot spot,
         FindCourierActorReq request,
-        ZLinkRouteRequestContext context,
         CancellationToken cancellationToken)
     {
         var actor = await actorManager.FindAsync(request.CourierId, cancellationToken);
@@ -29,15 +28,14 @@ internal sealed class FindCourierActorRouteHandler(IZLinkActorManager actorManag
     }
 }
 
-[ZLinkHandlerGroup(SampleNames.CourierActorNodeRouteChannel)]
 internal sealed class EnsureCourierActorRouteHandler(
     IZLinkActorManager actorManager,
     ILogger<EnsureCourierActorRouteHandler> logger)
-    : IZLinkRouteRequestHandler<EnsureCourierActorReq, EnsureCourierActorRes>
+    : IZLinkSpotRequestHandler<CourierEntrySpot, EnsureCourierActorReq, EnsureCourierActorRes>
 {
     public async ValueTask<EnsureCourierActorRes> HandleAsync(
+        CourierEntrySpot spot,
         EnsureCourierActorReq request,
-        ZLinkRouteRequestContext context,
         CancellationToken cancellationToken)
     {
         var actor = await actorManager.GetOrCreateAsync(
@@ -55,15 +53,14 @@ internal sealed class EnsureCourierActorRouteHandler(
     }
 }
 
-[ZLinkHandlerGroup(SampleNames.CourierActorNodeRouteChannel)]
 internal sealed class OfferDeliveryRouteHandler(
     IZLinkActorManager actorManager,
     ActorDirectory actors)
-    : IZLinkRouteRequestHandler<OfferDeliveryReq, OfferDeliveryRes>
+    : IZLinkSpotRequestHandler<CourierEntrySpot, OfferDeliveryReq, OfferDeliveryRes>
 {
     public async ValueTask<OfferDeliveryRes> HandleAsync(
+        CourierEntrySpot spot,
         OfferDeliveryReq request,
-        ZLinkRouteRequestContext context,
         CancellationToken cancellationToken)
     {
         var actorRef = await actorManager.FindAsync(request.CourierId, cancellationToken)

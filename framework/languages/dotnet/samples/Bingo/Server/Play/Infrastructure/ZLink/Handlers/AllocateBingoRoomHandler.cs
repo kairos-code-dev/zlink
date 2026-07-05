@@ -3,7 +3,6 @@ using Bingo.Server.Play.Infrastructure.ZLink.Spots.BingoRoomSpot;
 using Bingo.Shared.Contracts;
 using Microsoft.Extensions.Logging;
 using Systems.Zlink;
-using Zlink.Framework.Contracts.Channels;
 using Zlink.Framework.Contracts.Handlers;
 using Zlink.Framework.Contracts.Spots;
 
@@ -14,11 +13,11 @@ internal sealed class AllocateBingoRoomHandler(
     BingoRoomAllocator allocator,
     IZLinkSpotManager spots,
     ILogger<AllocateBingoRoomHandler> logger)
-    : IZLinkRouteRequestHandler<AllocateBingoRoomReq, AllocateBingoRoomRes>
+    : IZLinkRequestHandler<AllocateBingoRoomReq, AllocateBingoRoomRes>
 {
     public async ValueTask<AllocateBingoRoomRes> HandleAsync(
         AllocateBingoRoomReq request,
-        ZLinkRouteRequestContext context,
+        ZLinkRequestContext context,
         CancellationToken cancellationToken)
     {
         logger.LogInformation(

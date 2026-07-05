@@ -4,6 +4,8 @@ using Microsoft.Extensions.Logging;
 using Systems.Zlink;
 using Zlink.Framework.Contracts.Actors;
 using Zlink.Framework.Contracts.Channels;
+using Zlink.Framework.Contracts.Locations;
+using Zlink.Framework.Contracts.Spots;
 using Zlink.Framework.Contracts.Streams;
 
 namespace DeliveryDispatch.Server.CourierSession;
@@ -41,9 +43,10 @@ internal sealed class CourierSessionBinder(
         CancellationToken cancellationToken)
     {
         var placement = topology.CourierPlacement(courierId);
-        var found = await routes.RequestToNode(
-                SampleNames.CourierActorNodeRouteChannel,
-                placement.NodeRid,
+        var address = new ZLinkSpotAddress(placement.NodeRid, placement.NodeRid);
+        var found = await routes.RequestToSpot(
+                SampleNames.CourierActorDiscovery,
+                address,
                 new FindCourierActorReq(courierId))
             .PacketName(nameof(FindCourierActorReq))
             .Async<FindCourierActorRes>(cancellationToken);
@@ -52,9 +55,9 @@ internal sealed class CourierSessionBinder(
             return existing;
         }
 
-        var ensured = await routes.RequestToNode(
-                SampleNames.CourierActorNodeRouteChannel,
-                placement.NodeRid,
+        var ensured = await routes.RequestToSpot(
+                SampleNames.CourierActorDiscovery,
+                address,
                 new EnsureCourierActorReq(courierId))
             .PacketName(nameof(EnsureCourierActorReq))
             .Async<EnsureCourierActorRes>(cancellationToken);

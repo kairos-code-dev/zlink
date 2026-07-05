@@ -6,15 +6,13 @@ using Zlink.Framework.Contracts.Channels;
 namespace ShoppingMall.Server.CommerceApi.Infrastructure.ZLink;
 
 internal sealed class ZLinkOrderWorkflowRouter(
-    IZLinkRouteClient routes,
-    SampleTopology topology) : IOrderWorkflowRouter
+    IZLinkChannelClient channels) : IOrderWorkflowRouter
 {
     public async ValueTask<OrderState> StartAsync(
         StartOrderWorkflowReq command,
         CancellationToken cancellationToken)
     {
-        var owner = topology.ForOrderId(command.OrderId);
-        var response = await routes.RequestToNode(SampleNames.OrderWorkflowRouteChannel, owner.RouteRid, command)
+        var response = await channels.RequestToChannel(SampleNames.OrderWorkflowRouteChannel, command)
             .Async<StartOrderWorkflowRes>(cancellationToken);
         return response.State;
     }
@@ -23,8 +21,7 @@ internal sealed class ZLinkOrderWorkflowRouter(
         ContinueOrderWorkflowReq command,
         CancellationToken cancellationToken)
     {
-        var owner = topology.ForOrderId(command.OrderId);
-        var response = await routes.RequestToNode(SampleNames.OrderWorkflowRouteChannel, owner.RouteRid, command)
+        var response = await channels.RequestToChannel(SampleNames.OrderWorkflowRouteChannel, command)
             .Async<ContinueOrderWorkflowRes>(cancellationToken);
         return response.State;
     }
@@ -33,8 +30,7 @@ internal sealed class ZLinkOrderWorkflowRouter(
         RebuildOrderProjectionReq command,
         CancellationToken cancellationToken)
     {
-        var owner = topology.ForOrderId(command.OrderId);
-        var response = await routes.RequestToNode(SampleNames.OrderWorkflowRouteChannel, owner.RouteRid, command)
+        var response = await channels.RequestToChannel(SampleNames.OrderWorkflowRouteChannel, command)
             .Async<RebuildOrderProjectionRes>(cancellationToken);
         return response.State;
     }

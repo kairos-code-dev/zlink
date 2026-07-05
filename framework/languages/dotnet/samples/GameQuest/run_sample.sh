@@ -76,8 +76,6 @@ PY
 )"
 
 export GAMEQUEST_REDIS_KEY_PREFIX="gamequest:dotnet:${RUN_ID}:"
-export GAMEQUEST_GAMEAPI_A_ROUTE_ENDPOINT="tcp://127.0.0.1:${PORTS[2]}"
-export GAMEQUEST_GAMEAPI_B_ROUTE_ENDPOINT="tcp://127.0.0.1:${PORTS[13]}"
 export GAMEQUEST_GAMEAPI_A_HTTP_BASE_URL="http://127.0.0.1:${PORTS[3]}"
 export GAMEQUEST_GAMEAPI_B_HTTP_BASE_URL="http://127.0.0.1:${PORTS[4]}"
 export GAMEQUEST_GAMEAPI_A_STREAM_ENDPOINT="ws://127.0.0.1:${PORTS[3]}/quest/ws"
@@ -90,8 +88,6 @@ export GAMEQUEST_MISSION_A_SPOT_ENDPOINT="tcp://127.0.0.1:${PORTS[9]}"
 export GAMEQUEST_MISSION_A_SPOT_ROUTER_ENDPOINT="tcp://127.0.0.1:${PORTS[10]}"
 export GAMEQUEST_MISSION_B_SPOT_ENDPOINT="tcp://127.0.0.1:${PORTS[11]}"
 export GAMEQUEST_MISSION_B_SPOT_ROUTER_ENDPOINT="tcp://127.0.0.1:${PORTS[12]}"
-export GAMEQUEST_MISSION_A_ROUTE_ENDPOINT="tcp://127.0.0.1:${PORTS[14]}"
-export GAMEQUEST_MISSION_B_ROUTE_ENDPOINT="tcp://127.0.0.1:${PORTS[15]}"
 
 endpoint_host() {
   local endpoint="$1"
@@ -168,26 +164,22 @@ ASPNETCORE_URLS="${GAMEQUEST_MISSION_A_HTTP_URL}" GAMEQUEST_MISSION_NAME="missio
   start_server mission-a "${SCRIPT_DIR}/Server/QuestMission/GameQuest.QuestMission.csproj"
 wait_port mission-a-spot-router "${GAMEQUEST_MISSION_A_SPOT_ROUTER_ENDPOINT}"
 wait_port mission-a-spot-pub "${GAMEQUEST_MISSION_A_SPOT_ENDPOINT}"
-wait_port mission-a-route "${GAMEQUEST_MISSION_A_ROUTE_ENDPOINT}"
 wait_http mission-a "${GAMEQUEST_MISSION_A_HTTP_URL}"
 
 ASPNETCORE_URLS="${GAMEQUEST_MISSION_B_HTTP_URL}" GAMEQUEST_MISSION_NAME="mission-b" \
   start_server mission-b "${SCRIPT_DIR}/Server/QuestMission/GameQuest.QuestMission.csproj"
 wait_port mission-b-spot-router "${GAMEQUEST_MISSION_B_SPOT_ROUTER_ENDPOINT}"
 wait_port mission-b-spot-pub "${GAMEQUEST_MISSION_B_SPOT_ENDPOINT}"
-wait_port mission-b-route "${GAMEQUEST_MISSION_B_ROUTE_ENDPOINT}"
 wait_http mission-b "${GAMEQUEST_MISSION_B_HTTP_URL}"
 
 ASPNETCORE_URLS="${GAMEQUEST_GAMEAPI_A_HTTP_BASE_URL}" GAMEQUEST_API_NAME="api-a" GAMEQUEST_STREAM_BIND_ENDPOINT="${GAMEQUEST_API_A_STREAM_BIND_ENDPOINT}" \
   start_server api-a "${SCRIPT_DIR}/Server/GameApi/GameQuest.GameApi.csproj"
 wait_port api-a-stream "${GAMEQUEST_API_A_STREAM_BIND_ENDPOINT}"
-wait_port api-a-route "${GAMEQUEST_GAMEAPI_A_ROUTE_ENDPOINT}"
 wait_http api-a "${GAMEQUEST_GAMEAPI_A_HTTP_BASE_URL}"
 
 ASPNETCORE_URLS="${GAMEQUEST_GAMEAPI_B_HTTP_BASE_URL}" GAMEQUEST_API_NAME="api-b" GAMEQUEST_STREAM_BIND_ENDPOINT="${GAMEQUEST_API_B_STREAM_BIND_ENDPOINT}" \
   start_server api-b "${SCRIPT_DIR}/Server/GameApi/GameQuest.GameApi.csproj"
 wait_port api-b-stream "${GAMEQUEST_API_B_STREAM_BIND_ENDPOINT}"
-wait_port api-b-route "${GAMEQUEST_GAMEAPI_B_ROUTE_ENDPOINT}"
 wait_http api-b "${GAMEQUEST_GAMEAPI_B_HTTP_BASE_URL}"
 
 dotnet run --no-build --project "${SCRIPT_DIR}/Client/GameQuest.Client.csproj" >"${LOG_DIR}/client.log" 2>&1

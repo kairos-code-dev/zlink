@@ -36,10 +36,6 @@ public static class SessionServerHostFactory
             options.Codecs.Use(ZLinkProtobufCodec.Default);
             options.AddClientServerChannel(SampleNames.ApiChannel)
                 .EnableClient();
-            options.AddRouteMeshChannel(SampleNames.PlayChannel)
-                .EnableServer(session.PlayRouteEndpoint)
-                .EnableClient()
-                .SetRoutingId(session.PlayRouteRid);
             options.AddSpotMesh(SampleNames.RoomSpotDiscovery)
                 .EnableRouter(session.RouterEndpoint)
                 .SetRoutingId(session.RoutingId);

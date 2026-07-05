@@ -17,12 +17,10 @@ try {
     $env:SHOPPINGMALL_REDIS_KEY_PREFIX = "shoppingmall:dotnet:${RunId}:"
     $env:SHOPPINGMALL_API_A_HTTP_URL = "http://127.0.0.1:$($ports[0])"
     $env:SHOPPINGMALL_API_B_HTTP_URL = "http://127.0.0.1:$($ports[1])"
-    $env:SHOPPINGMALL_API_A_ROUTE_ENDPOINT = "tcp://127.0.0.1:$($ports[2])"
-    $env:SHOPPINGMALL_API_B_ROUTE_ENDPOINT = "tcp://127.0.0.1:$($ports[3])"
     $env:SHOPPINGMALL_WORKFLOW_A_HTTP_URL = "http://127.0.0.1:$($ports[4])"
     $env:SHOPPINGMALL_WORKFLOW_B_HTTP_URL = "http://127.0.0.1:$($ports[5])"
-    $env:SHOPPINGMALL_WORKFLOW_A_ROUTE_ENDPOINT = "tcp://127.0.0.1:$($ports[6])"
-    $env:SHOPPINGMALL_WORKFLOW_B_ROUTE_ENDPOINT = "tcp://127.0.0.1:$($ports[7])"
+    $env:SHOPPINGMALL_WORKFLOW_A_CHANNEL_ENDPOINT = "tcp://127.0.0.1:$($ports[6])"
+    $env:SHOPPINGMALL_WORKFLOW_B_CHANNEL_ENDPOINT = "tcp://127.0.0.1:$($ports[7])"
     $env:SHOPPINGMALL_WORKFLOW_A_SPOT_ENDPOINT = "tcp://127.0.0.1:$($ports[8])"
     $env:SHOPPINGMALL_WORKFLOW_A_SPOT_ROUTER_ENDPOINT = "tcp://127.0.0.1:$($ports[9])"
     $env:SHOPPINGMALL_WORKFLOW_B_SPOT_ENDPOINT = "tcp://127.0.0.1:$($ports[10])"
@@ -45,23 +43,21 @@ try {
     Wait-SampleTcpEndpoint "redis" "tcp://$env:SHOPPINGMALL_REDIS_ENDPOINT"
 
     Start-SampleDotnetAssembly -Name "workflow-a" -Project (Join-Path $ScriptDir "Server/OrderWorkflow/ShoppingMall.OrderWorkflow.csproj") -LogDirectory $LogDir -Arguments @("--instance", "workflow-a") | Out-Null
-    Wait-SampleTcpEndpoint "workflow-a-route" $env:SHOPPINGMALL_WORKFLOW_A_ROUTE_ENDPOINT
+    Wait-SampleTcpEndpoint "workflow-a-channel" $env:SHOPPINGMALL_WORKFLOW_A_CHANNEL_ENDPOINT
     Wait-SampleTcpEndpoint "workflow-a-spot-router" $env:SHOPPINGMALL_WORKFLOW_A_SPOT_ROUTER_ENDPOINT
     Wait-SampleTcpEndpoint "workflow-a-spot-pub" $env:SHOPPINGMALL_WORKFLOW_A_SPOT_ENDPOINT
     Wait-SampleHttpHealth "workflow-a" $env:SHOPPINGMALL_WORKFLOW_A_HTTP_URL
 
     Start-SampleDotnetAssembly -Name "workflow-b" -Project (Join-Path $ScriptDir "Server/OrderWorkflow/ShoppingMall.OrderWorkflow.csproj") -LogDirectory $LogDir -Arguments @("--instance", "workflow-b") | Out-Null
-    Wait-SampleTcpEndpoint "workflow-b-route" $env:SHOPPINGMALL_WORKFLOW_B_ROUTE_ENDPOINT
+    Wait-SampleTcpEndpoint "workflow-b-channel" $env:SHOPPINGMALL_WORKFLOW_B_CHANNEL_ENDPOINT
     Wait-SampleTcpEndpoint "workflow-b-spot-router" $env:SHOPPINGMALL_WORKFLOW_B_SPOT_ROUTER_ENDPOINT
     Wait-SampleTcpEndpoint "workflow-b-spot-pub" $env:SHOPPINGMALL_WORKFLOW_B_SPOT_ENDPOINT
     Wait-SampleHttpHealth "workflow-b" $env:SHOPPINGMALL_WORKFLOW_B_HTTP_URL
 
     Start-SampleDotnetAssembly -Name "api-a" -Project (Join-Path $ScriptDir "Server/CommerceApi/ShoppingMall.CommerceApi.csproj") -LogDirectory $LogDir -Arguments @("--instance", "api-a") | Out-Null
-    Wait-SampleTcpEndpoint "api-a-route" $env:SHOPPINGMALL_API_A_ROUTE_ENDPOINT
     Wait-SampleHttpHealth "api-a" $env:SHOPPINGMALL_API_A_HTTP_URL
 
     Start-SampleDotnetAssembly -Name "api-b" -Project (Join-Path $ScriptDir "Server/CommerceApi/ShoppingMall.CommerceApi.csproj") -LogDirectory $LogDir -Arguments @("--instance", "api-b") | Out-Null
-    Wait-SampleTcpEndpoint "api-b-route" $env:SHOPPINGMALL_API_B_ROUTE_ENDPOINT
     Wait-SampleHttpHealth "api-b" $env:SHOPPINGMALL_API_B_HTTP_URL
 
     Invoke-SampleDotnetRun -Project (Join-Path $ScriptDir "Client/ShoppingMall.Client.csproj")

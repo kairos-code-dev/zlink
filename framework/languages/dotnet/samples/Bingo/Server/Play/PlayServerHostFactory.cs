@@ -48,13 +48,14 @@ public static class PlayServerHostFactory
             options.AddClientServerChannel(SampleNames.ApiChannel)
                 .EnableClient();
 
-            options.AddRouteMeshChannel(SampleNames.PlayChannel)
+            options.AddClientServerChannel(SampleNames.PlayChannel)
                 .EnableServer(node.PlayChannelEndpoint)
                 .EnableClient()
                 .SetRoutingId(node.NodeRid)
                 .AddHandlerGroup("play");
             options.AddSpotMesh(SampleNames.RoomSpotDiscovery)                .EnableRouter(node.SpotRouterEndpoint)
                 .SetRoutingId(node.NodeRid)
+                .SetEntrySpotRoutingId(node.NodeRid)
                 .EnablePubSub(node.SpotPubEndpoint)
                 .AddEntrySpot<BingoEntrySpot>()
                 .AddActorFactory<PlayerActorFactory>(SampleNames.PlayerActorType)

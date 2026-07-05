@@ -32,11 +32,9 @@ public sealed record SampleTopology(
         return new SampleTopology(
             new SampleApiNode(
                 ReadEndpoint("BINGO_API_A_CHANNEL_ENDPOINT", "tcp://127.0.0.1:47103"),
-                ReadEndpoint("BINGO_API_A_PLAY_ROUTE_ENDPOINT", "tcp://127.0.0.1:47118"),
                 RoutingId.From("3301")),
             new SampleApiNode(
                 ReadEndpoint("BINGO_API_B_CHANNEL_ENDPOINT", "tcp://127.0.0.1:47117"),
-                ReadEndpoint("BINGO_API_B_PLAY_ROUTE_ENDPOINT", "tcp://127.0.0.1:47119"),
                 RoutingId.From("3302")),
             playA,
             playB,
@@ -44,20 +42,16 @@ public sealed record SampleTopology(
                 ReadEndpoint("BINGO_SESSION_A_SPOT_ENDPOINT", "tcp://127.0.0.1:47105"),
                 ReadEndpoint("BINGO_SESSION_A_ROUTER_ENDPOINT", "tcp://127.0.0.1:47106"),
                 ReadEndpoint("BINGO_SESSION_A_STREAM_ENDPOINT", "tcp://127.0.0.1:47112"),
-                ReadEndpoint("BINGO_SESSION_A_PLAY_ROUTE_ENDPOINT", "tcp://127.0.0.1:47120"),
                 RoutingId.From("1101"),
                 RoutingId.From("1102"),
-                RoutingId.From("1105"),
                 playA.NodeRid,
                 playA.PlayChannelEndpoint),
             new SampleSessionNode(
                 ReadEndpoint("BINGO_SESSION_B_SPOT_ENDPOINT", "tcp://127.0.0.1:47107"),
                 ReadEndpoint("BINGO_SESSION_B_ROUTER_ENDPOINT", "tcp://127.0.0.1:47108"),
                 ReadEndpoint("BINGO_SESSION_B_STREAM_ENDPOINT", "tcp://127.0.0.1:47113"),
-                ReadEndpoint("BINGO_SESSION_B_PLAY_ROUTE_ENDPOINT", "tcp://127.0.0.1:47121"),
                 RoutingId.From("1103"),
                 RoutingId.From("1104"),
-                RoutingId.From("1106"),
                 playB.NodeRid,
                 playB.PlayChannelEndpoint),
             ReadRequired("BINGO_REDIS_ENDPOINT"),
@@ -107,7 +101,6 @@ public sealed record SampleTopology(
 
 public sealed record SampleApiNode(
     string ChannelEndpoint,
-    string PlayRouteEndpoint,
     RoutingId RouteRid);
 
 public sealed record SamplePlayNode(
@@ -121,9 +114,7 @@ public sealed record SampleSessionNode(
     string PubEndpoint,
     string RouterEndpoint,
     string StreamEndpoint,
-    string PlayRouteEndpoint,
     RoutingId RoutingId,
     RoutingId PublisherRoutingId,
-    RoutingId PlayRouteRid,
     RoutingId PreferredPlayNodeRid,
     string PreferredPlayChannelEndpoint);

@@ -2,7 +2,9 @@ using Bingo.Server.Configuration;
 using Bingo.Shared.Contracts;
 using Systems.Zlink;
 using Zlink.Framework.Contracts.Channels;
+using Zlink.Framework.Contracts.Locations;
 using Zlink.Framework.Contracts.Messaging;
+using Zlink.Framework.Contracts.Spots;
 using Zlink.Framework.Contracts.Streams;
 
 namespace Bingo.Server.Session.Sessions.Handlers;
@@ -32,9 +34,10 @@ internal sealed class AuthenticateBingoSessionHandler(
             || string.IsNullOrWhiteSpace(authenticated.DisplayName))
             throw new InvalidOperationException(authenticated.Reason ?? "Player authentication failed.");
 
-        var ensured = await routes.RequestToNode(
-                SampleNames.PlayChannel,
-                session.PreferredPlayNodeRid,
+        var playEntrySpot = new ZLinkSpotAddress(session.PreferredPlayNodeRid, session.PreferredPlayNodeRid);
+        var ensured = await routes.RequestToSpot(
+                SampleNames.RoomSpotDiscovery,
+                playEntrySpot,
                 new EnsurePlayerActorReq
                 {
                     ActorId = authenticated.ActorId,

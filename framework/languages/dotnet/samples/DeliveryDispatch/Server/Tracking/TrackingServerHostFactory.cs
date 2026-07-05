@@ -31,7 +31,7 @@ public static class TrackingServerHostFactory
                 .TraceLabel("tracking");
             options.AddHandlersFromAssemblyOf(typeof(DeliveryStatusChangedHandler));
             options.AddClientServerChannel(SampleNames.TrackingRouteChannel)
-                .EnableServer(topology.TrackingRouteEndpoint)
+                .EnableServer(topology.TrackingChannelEndpoint)
                 .SetRoutingId(RoutingId.From("delivery-tracking-server"))
                 .AddHandlerGroup(SampleNames.TrackingRouteChannel);
             options.AddSpotMesh(SampleNames.CustomerActorDiscovery)

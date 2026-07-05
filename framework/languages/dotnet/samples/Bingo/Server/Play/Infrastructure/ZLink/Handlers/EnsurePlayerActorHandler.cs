@@ -1,19 +1,20 @@
 using Bingo.Server.Configuration;
+using Bingo.Server.Play.Infrastructure.ZLink.Spots.EntrySpot;
 using Bingo.Shared.Contracts;
 using Zlink.Framework.Contracts.Actors;
-using Zlink.Framework.Contracts.Channels;
 using Zlink.Framework.Contracts.Handlers;
+using Zlink.Framework.Contracts.Spots;
 
 namespace Bingo.Server.Play.Infrastructure.ZLink.Handlers;
 
 [ZLinkHandlerGroup("play")]
 internal sealed class EnsurePlayerActorHandler(
     IZLinkActorManager actors)
-    : IZLinkRouteRequestHandler<EnsurePlayerActorReq, EnsurePlayerActorRes>
+    : IZLinkSpotRequestHandler<BingoEntrySpot, EnsurePlayerActorReq, EnsurePlayerActorRes>
 {
     public async ValueTask<EnsurePlayerActorRes> HandleAsync(
+        BingoEntrySpot spot,
         EnsurePlayerActorReq request,
-        ZLinkRouteRequestContext context,
         CancellationToken cancellationToken)
     {
         var actor = await actors.GetOrCreateAsync(

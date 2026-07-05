@@ -50,9 +50,6 @@ internal static class Program
                 .TraceLogFile(SampleFlowLog.Path(apiName))
                 .TraceLabel(apiName);
             options.AddHandlersFromAssemblyOf(typeof(Program));
-            options.AddRouteMeshChannel(SampleNames.QuestOwnerRouteChannel)
-                .EnableServer(topology.RouteEndpointForApi(apiName))
-                .SetRoutingId(topology.RouteRidForApi(apiName));
             options.AddStreamNode(SampleNames.StreamNode)
                 .Bind(Environment.GetEnvironmentVariable("GAMEQUEST_STREAM_BIND_ENDPOINT")
                       ?? throw new InvalidOperationException("GAMEQUEST_STREAM_BIND_ENDPOINT is required."))

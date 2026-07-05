@@ -735,8 +735,7 @@ public sealed class RegressionTests
         var missionProgram = File.ReadAllText(Path.Combine(sampleRoot, "Server", "QuestMission", "Program.cs"));
         var playerQuestProvisioner = File.ReadAllText(Path.Combine(sampleRoot, "Server", "QuestMission",
             "Infrastructure", "ZLink", "PlayerQuestSpotProvisioner.cs"));
-        var gameplayIngress = File.ReadAllText(Path.Combine(sampleRoot, "Server", "QuestMission", "Infrastructure",
-            "ZLink", "GameplayEventRouteHandler.cs"));
+        var gameplayIngress = missionProgram;
         var playerQuestSpot = File.ReadAllText(Path.Combine(sampleRoot, "Server", "QuestMission", "Infrastructure",
             "ZLink", "Spots", "PlayerQuestSpot", "PlayerQuestSpot.cs"));
         var questDomain = File.ReadAllText(Path.Combine(sampleRoot, "Server", "QuestMission", "Domain",
@@ -812,8 +811,8 @@ public sealed class RegressionTests
         Assert.DoesNotContain("MapPost(\"/feature/unlock\"", gameApiProgram, StringComparison.Ordinal);
         Assert.DoesNotContain("AddFanoutChannel", gameApiProgram, StringComparison.Ordinal);
         Assert.DoesNotContain("AddFanoutChannel", missionProgram, StringComparison.Ordinal);
-        Assert.Contains("AddRouteMeshChannel(SampleNames.QuestOwnerRouteChannel)", gameApiProgram, StringComparison.Ordinal);
-        Assert.Contains("AddRouteMeshChannel(SampleNames.QuestOwnerRouteChannel)", missionProgram, StringComparison.Ordinal);
+        Assert.DoesNotContain("AddRouteMeshChannel", gameApiProgram, StringComparison.Ordinal);
+        Assert.DoesNotContain("AddRouteMeshChannel", missionProgram, StringComparison.Ordinal);
 
         Assert.DoesNotContain("StoreDirectory", topology, StringComparison.Ordinal);
         Assert.DoesNotContain("GAMEQUEST_STORE_DIR", topology, StringComparison.Ordinal);
@@ -828,12 +827,11 @@ public sealed class RegressionTests
         Assert.DoesNotContain("File.WriteAllText", gameApiStore, StringComparison.Ordinal);
         Assert.DoesNotContain("File.ReadAllText", questStore, StringComparison.Ordinal);
         Assert.DoesNotContain("File.WriteAllText", questStore, StringComparison.Ordinal);
-        Assert.Contains("IZLinkRouteRequestHandler<ApplyGameplayEventReq, ApplyGameplayEventRes>", gameplayIngress,
-            StringComparison.Ordinal);
+        Assert.Contains("MapPost(\"/internal/apply\"", missionProgram, StringComparison.Ordinal);
         Assert.Contains("playerQuestOwners.ApplyGameplayEventAsync", gameplayIngress, StringComparison.Ordinal);
         Assert.Contains("ownerRouter.IsLocalOwner", gameplayIngress, StringComparison.Ordinal);
         Assert.Contains("IGameplayEventOwnerDispatcher", actionService, StringComparison.Ordinal);
-        Assert.Contains("RequestToNode(SampleNames.QuestOwnerRouteChannel", eventDispatcher, StringComparison.Ordinal);
+        Assert.Contains("Post(\"/internal/apply\")", eventDispatcher, StringComparison.Ordinal);
         Assert.Contains("topology.OwnerRouteRid(gameplayEvent.PlayerId)", eventDispatcher, StringComparison.Ordinal);
         Assert.DoesNotContain("interface IPlayerQuestOwnerProvisioner", questProcessor, StringComparison.Ordinal);
         Assert.DoesNotContain("IPlayerQuestOwnerProvisioner", gameplayIngress, StringComparison.Ordinal);

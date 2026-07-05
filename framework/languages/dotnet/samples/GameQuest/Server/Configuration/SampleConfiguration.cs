@@ -38,8 +38,6 @@ public static class QuestStatuses
 public sealed record GameQuestTopology(
     string RedisEndpoint,
     string RedisKeyPrefix,
-    string GameApiARouteEndpoint,
-    string GameApiBRouteEndpoint,
     string GameApiAHttpBaseUrl,
     string GameApiBHttpBaseUrl,
     string MissionAHttpBaseUrl,
@@ -48,10 +46,8 @@ public sealed record GameQuestTopology(
     string GameApiBStreamEndpoint,
     string MissionASpotEndpoint,
     string MissionASpotRouterEndpoint,
-    string MissionARouteEndpoint,
     string MissionBSpotEndpoint,
     string MissionBSpotRouterEndpoint,
-    string MissionBRouteEndpoint,
     RoutingId MissionASpotRid,
     RoutingId MissionBSpotRid,
     RoutingId GameApiARouteRid,
@@ -60,8 +56,6 @@ public sealed record GameQuestTopology(
     public static GameQuestTopology FromEnvironment() => new(
         Required("GAMEQUEST_REDIS_ENDPOINT"),
         Environment.GetEnvironmentVariable("GAMEQUEST_REDIS_KEY_PREFIX") ?? "gamequest:",
-        Required("GAMEQUEST_GAMEAPI_A_ROUTE_ENDPOINT"),
-        Required("GAMEQUEST_GAMEAPI_B_ROUTE_ENDPOINT"),
         Required("GAMEQUEST_GAMEAPI_A_HTTP_BASE_URL"),
         Required("GAMEQUEST_GAMEAPI_B_HTTP_BASE_URL"),
         Required("GAMEQUEST_MISSION_A_HTTP_URL"),
@@ -70,10 +64,8 @@ public sealed record GameQuestTopology(
         Required("GAMEQUEST_GAMEAPI_B_STREAM_ENDPOINT"),
         Required("GAMEQUEST_MISSION_A_SPOT_ENDPOINT"),
         Required("GAMEQUEST_MISSION_A_SPOT_ROUTER_ENDPOINT"),
-        Required("GAMEQUEST_MISSION_A_ROUTE_ENDPOINT"),
         Required("GAMEQUEST_MISSION_B_SPOT_ENDPOINT"),
         Required("GAMEQUEST_MISSION_B_SPOT_ROUTER_ENDPOINT"),
-        Required("GAMEQUEST_MISSION_B_ROUTE_ENDPOINT"),
         RoutingId.From("7101"),
         RoutingId.From("7102"),
         RoutingId.From("7001"),
@@ -82,18 +74,13 @@ public sealed record GameQuestTopology(
     public QuestMissionInstanceTopology ForQuestMission(string missionName)
     {
         return string.Equals(missionName, "mission-b", StringComparison.Ordinal)
-            ? new QuestMissionInstanceTopology(missionName, MissionBSpotEndpoint, MissionBSpotRouterEndpoint, MissionBRouteEndpoint, MissionBSpotRid, OwnerIndex: 1)
-            : new QuestMissionInstanceTopology("mission-a", MissionASpotEndpoint, MissionASpotRouterEndpoint, MissionARouteEndpoint, MissionASpotRid, OwnerIndex: 0);
+            ? new QuestMissionInstanceTopology(missionName, MissionBSpotEndpoint, MissionBSpotRouterEndpoint, MissionBSpotRid, OwnerIndex: 1)
+            : new QuestMissionInstanceTopology("mission-a", MissionASpotEndpoint, MissionASpotRouterEndpoint, MissionASpotRid, OwnerIndex: 0);
     }
 
     private static string Required(string name) =>
         Environment.GetEnvironmentVariable(name)
         ?? throw new InvalidOperationException($"{name} is required.");
-
-    public string RouteEndpointForApi(string apiName) =>
-        string.Equals(apiName, "api-b", StringComparison.Ordinal)
-            ? GameApiBRouteEndpoint
-            : GameApiARouteEndpoint;
 
     public RoutingId RouteRidForApi(string apiName) =>
         string.Equals(apiName, "api-b", StringComparison.Ordinal)
@@ -122,6 +109,5 @@ public sealed record QuestMissionInstanceTopology(
     string MissionName,
     string SpotEndpoint,
     string SpotRouterEndpoint,
-    string RouteEndpoint,
     RoutingId SpotRid,
     int OwnerIndex);

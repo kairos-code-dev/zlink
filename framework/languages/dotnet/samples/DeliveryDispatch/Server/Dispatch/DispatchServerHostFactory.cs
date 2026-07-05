@@ -4,7 +4,6 @@ using Microsoft.Extensions.Logging;
 using Systems.Zlink;
 using Zlink.Framework.AspNetCore;
 using Zlink.Framework.Contracts.Channels;
-using Zlink.Framework.Contracts.Locations;
 using Zlink.Framework.Locations.Redis;
 using Zlink.Framework.Contracts.Dispatch;
 using Zlink.Samples.Logging;
@@ -42,33 +41,18 @@ public static class DispatchServerHostFactory
                 .EnableClient()
                 .SetRoutingId(Systems.Zlink.RoutingId.From("delivery-dispatch-channel"))
                 .AddHandlerGroup(SampleNames.DispatchChannel);
-            options.AddRouteMeshChannel(SampleNames.CourierActorNodeRouteChannel)
-                .EnableClient()
-                .SetRoutingId(Systems.Zlink.RoutingId.From("delivery-dispatch-courier-client"));
+            options.AddSpotMesh(SampleNames.CourierActorDiscovery)
+                .EnableRouter("inproc://delivery-dispatch-courier-client")
+                .SetRoutingId(Systems.Zlink.RoutingId.From("delivery-dispatch-courier-client"))
+                .ConnectRouter(topology.CourierActorNode1Rid, topology.CourierActorNode1RouterEndpoint)
+                .ConnectRouter(topology.CourierActorNode2Rid, topology.CourierActorNode2RouterEndpoint);
             options.AddClientServerChannel(SampleNames.TrackingRouteChannel)
                 .EnableClient()
                 .SetRoutingId(Systems.Zlink.RoutingId.From("delivery-dispatch-tracking-client"));
         });
 
         var app = builder.Build();
-        app.MapGet("/health", async (
-            IZLinkLocationReadiness readiness,
-            CancellationToken cancellationToken) =>
-        {
-            var node1Ready = await readiness.IsPeerReadyAsync(
-                SampleNames.CourierActorNodeRouteChannel,
-                ZLinkLocationRole.Router,
-                topology.CourierActorNode1Rid,
-                cancellationToken);
-            var node2Ready = await readiness.IsPeerReadyAsync(
-                SampleNames.CourierActorNodeRouteChannel,
-                ZLinkLocationRole.Router,
-                topology.CourierActorNode2Rid,
-                cancellationToken);
-            return node1Ready && node2Ready
-                ? Results.Ok(new { ready = true, role = "dispatch" })
-                : Results.StatusCode(StatusCodes.Status503ServiceUnavailable);
-        });
+        app.MapGet("/health", () => Results.Ok(new { ready = true, role = "dispatch" }));
         app.MapPost("/deliveries", (
             CreateDeliveryReq request,
             Zlink.Framework.Contracts.Channels.IZLinkChannelClient channels,

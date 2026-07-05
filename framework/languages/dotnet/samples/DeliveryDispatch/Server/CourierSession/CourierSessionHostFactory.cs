@@ -30,15 +30,11 @@ public static class CourierSessionHostFactory
                 .TraceLogFile(SampleFlowLog.Path("courier-session"))
                 .TraceLabel("courier-session");
             options.AddHandlersFromAssemblyOf(typeof(CourierSessionHostFactory));
-            // The bound-actor session relay rides the courier route mesh;
-            // the session joins dial-only under its spot node identity so
-            // actor nodes can route delivery offers back to bound sessions.
-            options.AddRouteMeshChannel(SampleNames.CourierActorNodeRouteChannel)
-                .EnableClient()
-                .SetRoutingId(topology.CourierSessionSpotNodeRid);
             options.AddSpotMesh(SampleNames.CourierActorDiscovery)
-                                .EnableRouter(topology.CourierSessionSpotRouterEndpoint)
+                .EnableRouter(topology.CourierSessionSpotRouterEndpoint)
                 .SetRoutingId(topology.CourierSessionSpotNodeRid)
+                .ConnectRouter(topology.CourierActorNode1Rid, topology.CourierActorNode1RouterEndpoint)
+                .ConnectRouter(topology.CourierActorNode2Rid, topology.CourierActorNode2RouterEndpoint)
                 .EnablePubSub(topology.CourierSessionSpotEndpoint);
             options.AddStreamNode(SampleNames.CourierStreamNode)
                 .Bind(topology.CourierStreamEndpoint)

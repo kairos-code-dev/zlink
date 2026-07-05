@@ -1,7 +1,6 @@
 using Bingo.Server.Configuration;
 using Bingo.Shared.Contracts;
 using Microsoft.Extensions.Logging;
-using Systems.Zlink;
 using Zlink.Framework.Contracts.Channels;
 using Zlink.Framework.Contracts.Handlers;
 
@@ -9,7 +8,7 @@ namespace Bingo.Server.Api.Handlers;
 
 [ZLinkHandlerGroup("api")]
 internal sealed class MatchBingoHandler(
-    IZLinkRouteClient routes,
+    IZLinkChannelClient channels,
     ILogger<MatchBingoHandler> logger)
     : IZLinkRequestHandler<MatchBingoApiReq, MatchBingoApiRes>
 {
@@ -20,9 +19,8 @@ internal sealed class MatchBingoHandler(
     {
         logger.LogInformation("api match: request. actor={ActorId}, mode={Mode}, actorNode={ActorNodeRid}",
             request.ActorId, request.Mode, request.ActorNodeRid);
-        var allocated = await routes.RequestToNode(
+        var allocated = await channels.RequestToChannel(
                     SampleNames.PlayChannel,
-                    RoutingId.From(request.ActorNodeRid),
                     new AllocateBingoRoomReq
                     {
                         Mode = request.Mode,

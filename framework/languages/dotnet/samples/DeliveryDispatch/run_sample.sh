@@ -2,7 +2,7 @@
 set -euo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-RUN_DIR="$(mktemp -d)"
+RUN_DIR="${SAMPLE_RUN_DIR:-$(mktemp -d)}"
 LOG_DIR="${RUN_DIR}/logs"
 WORK_DIR="${RUN_DIR}/work"
 export DELIVERYDISPATCH_LOG_DIR="${DELIVERYDISPATCH_LOG_DIR:-${SCRIPT_DIR}/logs}"
@@ -85,8 +85,7 @@ fi
 export DELIVERYDISPATCH_REDIS_KEY_PREFIX="${DELIVERYDISPATCH_REDIS_KEY_PREFIX:-deliverydispatch:dotnet:${RANDOM}:$$:}"
 export DELIVERYDISPATCH_DISPATCH_HTTP="http://127.0.0.1:${PORTS[2]}"
 export DELIVERYDISPATCH_DISPATCH_CHANNEL="tcp://127.0.0.1:${PORTS[3]}"
-export DELIVERYDISPATCH_COURIER_ACTOR_NODE1_ROUTE="tcp://127.0.0.1:${PORTS[4]}"
-export DELIVERYDISPATCH_TRACKING_ROUTE="tcp://127.0.0.1:${PORTS[5]}"
+export DELIVERYDISPATCH_TRACKING_CHANNEL="tcp://127.0.0.1:${PORTS[5]}"
 export DELIVERYDISPATCH_TRACKING_SPOT_ROUTER="tcp://127.0.0.1:${PORTS[6]}"
 export DELIVERYDISPATCH_TRACKING_SPOT="tcp://127.0.0.1:${PORTS[7]}"
 export DELIVERYDISPATCH_CUSTOMER_STREAM="tcp://127.0.0.1:${PORTS[8]}"
@@ -97,7 +96,6 @@ export DELIVERYDISPATCH_COURIER_SESSION_SPOT_ROUTER="tcp://127.0.0.1:${PORTS[12]
 export DELIVERYDISPATCH_COURIER_SESSION_SPOT="tcp://127.0.0.1:${PORTS[13]}"
 export DELIVERYDISPATCH_COURIER_ACTOR_NODE1_ROUTER="tcp://127.0.0.1:${PORTS[14]}"
 export DELIVERYDISPATCH_COURIER_ACTOR_NODE1="tcp://127.0.0.1:${PORTS[15]}"
-export DELIVERYDISPATCH_COURIER_ACTOR_NODE2_ROUTE="tcp://127.0.0.1:${PORTS[16]}"
 export DELIVERYDISPATCH_COURIER_ACTOR_NODE2_ROUTER="tcp://127.0.0.1:${PORTS[17]}"
 export DELIVERYDISPATCH_COURIER_ACTOR_NODE2="tcp://127.0.0.1:${PORTS[18]}"
 export DELIVERYDISPATCH_WORK_DIR="${WORK_DIR}"
@@ -189,7 +187,7 @@ wait_port redis "tcp://${DELIVERYDISPATCH_REDIS_ENDPOINT}"
 dotnet build "${SCRIPT_DIR}/DeliveryDispatch.sln" --maxcpucount:1
 
 start_server tracking "${SCRIPT_DIR}/Server/Tracking/DeliveryDispatch.Server.Tracking.csproj"
-wait_port tracking-route "${DELIVERYDISPATCH_TRACKING_ROUTE}"
+wait_port tracking-channel "${DELIVERYDISPATCH_TRACKING_CHANNEL}"
 wait_port tracking-spot-router "${DELIVERYDISPATCH_TRACKING_SPOT_ROUTER}"
 wait_port tracking-spot "${DELIVERYDISPATCH_TRACKING_SPOT}"
 
@@ -201,11 +199,9 @@ start_server courier-session "${SCRIPT_DIR}/Server/CourierSession/DeliveryDispat
 wait_port courier-session-stream "${DELIVERYDISPATCH_COURIER_STREAM}"
 
 start_server courier-actor-node1 "${SCRIPT_DIR}/Server/CourierActorNode/DeliveryDispatch.Server.CourierActorNode.csproj" --node node1
-wait_port courier-actor-node1-route "${DELIVERYDISPATCH_COURIER_ACTOR_NODE1_ROUTE}"
 wait_port courier-actor-node1-router "${DELIVERYDISPATCH_COURIER_ACTOR_NODE1_ROUTER}"
 
 start_server courier-actor-node2 "${SCRIPT_DIR}/Server/CourierActorNode/DeliveryDispatch.Server.CourierActorNode.csproj" --node node2
-wait_port courier-actor-node2-route "${DELIVERYDISPATCH_COURIER_ACTOR_NODE2_ROUTE}"
 wait_port courier-actor-node2-router "${DELIVERYDISPATCH_COURIER_ACTOR_NODE2_ROUTER}"
 
 start_server dispatch "${SCRIPT_DIR}/Server/Dispatch/DeliveryDispatch.Server.Dispatch.csproj"

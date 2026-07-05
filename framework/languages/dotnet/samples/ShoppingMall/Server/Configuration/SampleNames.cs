@@ -31,12 +31,10 @@ public sealed record SampleTopology(
     string RedisKeyPrefix,
     string ApiAHttpUrl,
     string ApiBHttpUrl,
-    string ApiARouteEndpoint,
-    string ApiBRouteEndpoint,
     string WorkflowAHttpUrl,
     string WorkflowBHttpUrl,
-    string WorkflowARouteEndpoint,
-    string WorkflowBRouteEndpoint,
+    string WorkflowAChannelEndpoint,
+    string WorkflowBChannelEndpoint,
     string WorkflowASpotEndpoint,
     string WorkflowASpotRouterEndpoint,
     string WorkflowBSpotEndpoint,
@@ -55,12 +53,10 @@ public sealed record SampleTopology(
             Read("SHOPPINGMALL_REDIS_KEY_PREFIX", "shoppingmall:"),
             Read("SHOPPINGMALL_API_A_HTTP_URL", "http://127.0.0.1:48203"),
             Read("SHOPPINGMALL_API_B_HTTP_URL", "http://127.0.0.1:48204"),
-            Read("SHOPPINGMALL_API_A_ROUTE_ENDPOINT", "tcp://127.0.0.1:48205"),
-            Read("SHOPPINGMALL_API_B_ROUTE_ENDPOINT", "tcp://127.0.0.1:48206"),
             Read("SHOPPINGMALL_WORKFLOW_A_HTTP_URL", "http://127.0.0.1:48207"),
             Read("SHOPPINGMALL_WORKFLOW_B_HTTP_URL", "http://127.0.0.1:48208"),
-            Read("SHOPPINGMALL_WORKFLOW_A_ROUTE_ENDPOINT", "tcp://127.0.0.1:48209"),
-            Read("SHOPPINGMALL_WORKFLOW_B_ROUTE_ENDPOINT", "tcp://127.0.0.1:48210"),
+            Read("SHOPPINGMALL_WORKFLOW_A_CHANNEL_ENDPOINT", "tcp://127.0.0.1:48209"),
+            Read("SHOPPINGMALL_WORKFLOW_B_CHANNEL_ENDPOINT", "tcp://127.0.0.1:48210"),
             Read("SHOPPINGMALL_WORKFLOW_A_SPOT_ENDPOINT", "tcp://127.0.0.1:48211"),
             Read("SHOPPINGMALL_WORKFLOW_A_SPOT_ROUTER_ENDPOINT", "tcp://127.0.0.1:48212"),
             Read("SHOPPINGMALL_WORKFLOW_B_SPOT_ENDPOINT", "tcp://127.0.0.1:48213"),
@@ -76,8 +72,8 @@ public sealed record SampleTopology(
     public ApiInstanceTopology ForInstance(string instanceId)
     {
         return string.Equals(instanceId, "api-b", StringComparison.Ordinal)
-            ? new ApiInstanceTopology(instanceId, ApiBHttpUrl, ApiBRouteEndpoint, ApiBRouteRid)
-            : new ApiInstanceTopology("api-a", ApiAHttpUrl, ApiARouteEndpoint, ApiARouteRid);
+            ? new ApiInstanceTopology(instanceId, ApiBHttpUrl, ApiBRouteRid)
+            : new ApiInstanceTopology("api-a", ApiAHttpUrl, ApiARouteRid);
     }
 
     public WorkflowInstanceTopology ForWorkflowInstance(string instanceId)
@@ -86,7 +82,7 @@ public sealed record SampleTopology(
             ? new WorkflowInstanceTopology(
                 instanceId,
                 WorkflowBHttpUrl,
-                WorkflowBRouteEndpoint,
+                WorkflowBChannelEndpoint,
                 WorkflowBSpotEndpoint,
                 WorkflowBSpotRouterEndpoint,
                 WorkflowBRouteRid,
@@ -95,7 +91,7 @@ public sealed record SampleTopology(
             : new WorkflowInstanceTopology(
                 "workflow-a",
                 WorkflowAHttpUrl,
-                WorkflowARouteEndpoint,
+                WorkflowAChannelEndpoint,
                 WorkflowASpotEndpoint,
                 WorkflowASpotRouterEndpoint,
                 WorkflowARouteRid,
@@ -132,13 +128,12 @@ public sealed record SampleTopology(
 public sealed record ApiInstanceTopology(
     string InstanceId,
     string HttpUrl,
-    string RouteEndpoint,
     RoutingId RouteRid);
 
 public sealed record WorkflowInstanceTopology(
     string InstanceId,
     string HttpUrl,
-    string RouteEndpoint,
+    string ChannelEndpoint,
     string SpotEndpoint,
     string SpotRouterEndpoint,
     RoutingId RouteRid,

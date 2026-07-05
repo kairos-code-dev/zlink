@@ -55,9 +55,9 @@ internal static class Program
                 .MessageFlow(ZLinkMessageFlowLogMode.KeyTransitions)
                 .TraceLogFile(SampleFlowLog.Path(instance.InstanceId))
                 .TraceLabel(instance.InstanceId);
-            options.AddRouteMeshChannel(SampleNames.OrderWorkflowRouteChannel)
-                .EnableServer(instance.RouteEndpoint)
-                .SetRoutingId(instance.RouteRid);
+            options.AddClientServerChannel(SampleNames.OrderWorkflowRouteChannel)
+                .EnableClient(topology.WorkflowAChannelEndpoint)
+                .EnableClient(topology.WorkflowBChannelEndpoint);
         });
 
         var app = builder.Build();

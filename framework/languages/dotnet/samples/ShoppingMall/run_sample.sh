@@ -2,7 +2,7 @@
 set -euo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-RUN_DIR="$(mktemp -d)"
+RUN_DIR="${SAMPLE_RUN_DIR:-$(mktemp -d)}"
 RUN_ID="$(basename "${RUN_DIR}")-$$-${RANDOM}"
 LOG_DIR="${RUN_DIR}/logs"
 SAMPLE_LOG_DIR="${RUN_DIR}/sample-logs"
@@ -49,7 +49,13 @@ cleanup() {
 }
 trap cleanup EXIT
 
-read -r -a PORTS <<<"$(python3 - <<'PY'
+if [[ -n "${SHOPPINGMALL_BASE_PORT:-}" ]]; then
+  PORTS=()
+  for offset in $(seq 1 12); do
+    PORTS+=("$((SHOPPINGMALL_BASE_PORT + offset))")
+  done
+else
+  read -r -a PORTS <<<"$(python3 - <<'PY'
 import random
 import socket
 
@@ -74,16 +80,15 @@ finally:
         sock.close()
 PY
 )"
+fi
 
 export SHOPPINGMALL_REDIS_KEY_PREFIX="shoppingmall:dotnet:${RUN_ID}:"
 export SHOPPINGMALL_API_A_HTTP_URL="http://127.0.0.1:${PORTS[0]}"
 export SHOPPINGMALL_API_B_HTTP_URL="http://127.0.0.1:${PORTS[1]}"
-export SHOPPINGMALL_API_A_ROUTE_ENDPOINT="tcp://127.0.0.1:${PORTS[2]}"
-export SHOPPINGMALL_API_B_ROUTE_ENDPOINT="tcp://127.0.0.1:${PORTS[3]}"
 export SHOPPINGMALL_WORKFLOW_A_HTTP_URL="http://127.0.0.1:${PORTS[4]}"
 export SHOPPINGMALL_WORKFLOW_B_HTTP_URL="http://127.0.0.1:${PORTS[5]}"
-export SHOPPINGMALL_WORKFLOW_A_ROUTE_ENDPOINT="tcp://127.0.0.1:${PORTS[6]}"
-export SHOPPINGMALL_WORKFLOW_B_ROUTE_ENDPOINT="tcp://127.0.0.1:${PORTS[7]}"
+export SHOPPINGMALL_WORKFLOW_A_CHANNEL_ENDPOINT="tcp://127.0.0.1:${PORTS[6]}"
+export SHOPPINGMALL_WORKFLOW_B_CHANNEL_ENDPOINT="tcp://127.0.0.1:${PORTS[7]}"
 export SHOPPINGMALL_WORKFLOW_A_SPOT_ENDPOINT="tcp://127.0.0.1:${PORTS[8]}"
 export SHOPPINGMALL_WORKFLOW_A_SPOT_ROUTER_ENDPOINT="tcp://127.0.0.1:${PORTS[9]}"
 export SHOPPINGMALL_WORKFLOW_B_SPOT_ENDPOINT="tcp://127.0.0.1:${PORTS[10]}"
@@ -161,23 +166,21 @@ export SHOPPINGMALL_REDIS_ENDPOINT="$(docker port "${REDIS_CONTAINER}" 6379/tcp 
 wait_port redis "tcp://${SHOPPINGMALL_REDIS_ENDPOINT}"
 
 start_server workflow-a "${SCRIPT_DIR}/Server/OrderWorkflow/ShoppingMall.OrderWorkflow.csproj" --instance workflow-a
-wait_port workflow-a-route "${SHOPPINGMALL_WORKFLOW_A_ROUTE_ENDPOINT}"
+wait_port workflow-a-channel "${SHOPPINGMALL_WORKFLOW_A_CHANNEL_ENDPOINT}"
 wait_port workflow-a-spot-router "${SHOPPINGMALL_WORKFLOW_A_SPOT_ROUTER_ENDPOINT}"
 wait_port workflow-a-spot-pub "${SHOPPINGMALL_WORKFLOW_A_SPOT_ENDPOINT}"
 wait_http workflow-a "${SHOPPINGMALL_WORKFLOW_A_HTTP_URL}"
 
 start_server workflow-b "${SCRIPT_DIR}/Server/OrderWorkflow/ShoppingMall.OrderWorkflow.csproj" --instance workflow-b
-wait_port workflow-b-route "${SHOPPINGMALL_WORKFLOW_B_ROUTE_ENDPOINT}"
+wait_port workflow-b-channel "${SHOPPINGMALL_WORKFLOW_B_CHANNEL_ENDPOINT}"
 wait_port workflow-b-spot-router "${SHOPPINGMALL_WORKFLOW_B_SPOT_ROUTER_ENDPOINT}"
 wait_port workflow-b-spot-pub "${SHOPPINGMALL_WORKFLOW_B_SPOT_ENDPOINT}"
 wait_http workflow-b "${SHOPPINGMALL_WORKFLOW_B_HTTP_URL}"
 
 start_server api-a "${SCRIPT_DIR}/Server/CommerceApi/ShoppingMall.CommerceApi.csproj" --instance api-a
-wait_port api-a-route "${SHOPPINGMALL_API_A_ROUTE_ENDPOINT}"
 wait_http api-a "${SHOPPINGMALL_API_A_HTTP_URL}"
 
 start_server api-b "${SCRIPT_DIR}/Server/CommerceApi/ShoppingMall.CommerceApi.csproj" --instance api-b
-wait_port api-b-route "${SHOPPINGMALL_API_B_ROUTE_ENDPOINT}"
 wait_http api-b "${SHOPPINGMALL_API_B_HTTP_URL}"
 
 dotnet run --no-build --project "${SCRIPT_DIR}/Client/ShoppingMall.Client.csproj" >"${LOG_DIR}/client.log" 2>&1

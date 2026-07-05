@@ -7,7 +7,7 @@ public sealed record SampleTopology(
     string RedisKeyPrefix,
     string DispatchHttpUrl,
     string DispatchChannelEndpoint,
-    string TrackingRouteEndpoint,
+    string TrackingChannelEndpoint,
     string TrackingSpotRouterEndpoint,
     string TrackingSpotEndpoint,
     string CustomerStreamEndpoint,
@@ -18,11 +18,9 @@ public sealed record SampleTopology(
     string CourierSessionSpotRouterEndpoint,
     string CourierSessionSpotEndpoint,
     RoutingId CourierSessionSpotNodeRid,
-    string CourierActorNode1RouteEndpoint,
     string CourierActorNode1RouterEndpoint,
     string CourierActorNode1Endpoint,
     RoutingId CourierActorNode1Rid,
-    string CourierActorNode2RouteEndpoint,
     string CourierActorNode2RouterEndpoint,
     string CourierActorNode2Endpoint,
     RoutingId CourierActorNode2Rid)
@@ -37,20 +35,17 @@ public sealed record SampleTopology(
                            ?? "http://127.0.0.1:7392";
         var dispatchChannel = Environment.GetEnvironmentVariable("DELIVERYDISPATCH_DISPATCH_CHANNEL")
                               ?? "tcp://127.0.0.1:7395";
-        var trackingRoute = Environment.GetEnvironmentVariable("DELIVERYDISPATCH_TRACKING_ROUTE")
-                            ?? "tcp://127.0.0.1:7397";
+        var trackingChannel = Environment.GetEnvironmentVariable("DELIVERYDISPATCH_TRACKING_CHANNEL")
+                              ?? "tcp://127.0.0.1:7397";
         var trackingSpotRouter = Environment.GetEnvironmentVariable("DELIVERYDISPATCH_TRACKING_SPOT_ROUTER")
                                   ?? "tcp://127.0.0.1:7398";
         var trackingSpot = Environment.GetEnvironmentVariable("DELIVERYDISPATCH_TRACKING_SPOT")
                            ?? "tcp://127.0.0.1:7399";
         var customerStream = Environment.GetEnvironmentVariable("DELIVERYDISPATCH_CUSTOMER_STREAM")
-                             ?? Environment.GetEnvironmentVariable("DELIVERYDISPATCH_SESSION_STREAM")
                              ?? "tcp://127.0.0.1:7400";
         var customerSpotRouter = Environment.GetEnvironmentVariable("DELIVERYDISPATCH_CUSTOMER_SPOT_ROUTER")
-                                 ?? Environment.GetEnvironmentVariable("DELIVERYDISPATCH_SESSION_SPOT_ROUTER")
                                  ?? "tcp://127.0.0.1:7401";
         var customerSpot = Environment.GetEnvironmentVariable("DELIVERYDISPATCH_CUSTOMER_SPOT")
-                           ?? Environment.GetEnvironmentVariable("DELIVERYDISPATCH_SESSION_SPOT")
                            ?? "tcp://127.0.0.1:7402";
         var courierStream = Environment.GetEnvironmentVariable("DELIVERYDISPATCH_COURIER_STREAM")
                             ?? "tcp://127.0.0.1:7403";
@@ -59,14 +54,10 @@ public sealed record SampleTopology(
             ?? "tcp://127.0.0.1:7404";
         var courierSessionSpot = Environment.GetEnvironmentVariable("DELIVERYDISPATCH_COURIER_SESSION_SPOT")
                                  ?? "tcp://127.0.0.1:7405";
-        var courierSpotNode1Route = Environment.GetEnvironmentVariable("DELIVERYDISPATCH_COURIER_ACTOR_NODE1_ROUTE")
-                                    ?? "tcp://127.0.0.1:7406";
         var courierSpotNode1Router = Environment.GetEnvironmentVariable("DELIVERYDISPATCH_COURIER_ACTOR_NODE1_ROUTER")
                                      ?? "tcp://127.0.0.1:7407";
         var courierSpotNode1 = Environment.GetEnvironmentVariable("DELIVERYDISPATCH_COURIER_ACTOR_NODE1")
                                ?? "tcp://127.0.0.1:7408";
-        var courierSpotNode2Route = Environment.GetEnvironmentVariable("DELIVERYDISPATCH_COURIER_ACTOR_NODE2_ROUTE")
-                                    ?? "tcp://127.0.0.1:7409";
         var courierSpotNode2Router = Environment.GetEnvironmentVariable("DELIVERYDISPATCH_COURIER_ACTOR_NODE2_ROUTER")
                                      ?? "tcp://127.0.0.1:7410";
         var courierSpotNode2 = Environment.GetEnvironmentVariable("DELIVERYDISPATCH_COURIER_ACTOR_NODE2")
@@ -77,7 +68,7 @@ public sealed record SampleTopology(
             redisKeyPrefix,
             dispatchHttp,
             dispatchChannel,
-            trackingRoute,
+            trackingChannel,
             trackingSpotRouter,
             trackingSpot,
             customerStream,
@@ -88,11 +79,9 @@ public sealed record SampleTopology(
             courierSessionSpotRouter,
             courierSessionSpot,
             RoutingId.From(SampleNames.CourierSessionSpotNode),
-            courierSpotNode1Route,
             courierSpotNode1Router,
             courierSpotNode1,
             RoutingId.From(SampleNames.CourierActorNode1),
-            courierSpotNode2Route,
             courierSpotNode2Router,
             courierSpotNode2,
             RoutingId.From(SampleNames.CourierActorNode2));

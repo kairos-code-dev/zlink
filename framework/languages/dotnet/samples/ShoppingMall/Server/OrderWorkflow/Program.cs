@@ -54,8 +54,8 @@ internal static class Program
                 .MessageFlow(ZLinkMessageFlowLogMode.KeyTransitions)
                 .TraceLogFile(SampleFlowLog.Path(instance.InstanceId))
                 .TraceLabel(instance.InstanceId);
-            options.AddRouteMeshChannel(SampleNames.OrderWorkflowRouteChannel)
-                .EnableServer(instance.RouteEndpoint)
+            options.AddClientServerChannel(SampleNames.OrderWorkflowRouteChannel)
+                .EnableServer(instance.ChannelEndpoint)
                 .SetRoutingId(instance.RouteRid)
                 .AddRequestHandler<StartOrderWorkflowRouteHandler, StartOrderWorkflowReq, StartOrderWorkflowRes>()
                 .AddRequestHandler<ContinueOrderWorkflowRouteHandler, ContinueOrderWorkflowReq,
@@ -84,7 +84,7 @@ internal static class Program
                 cancellationToken);
             var address = new ZLinkSpotAddress(instance.SpotRid, RoutingId.From(request.OrderId));
             var response = await routes
-                .RequestToSpot(SampleNames.OrderWorkflowRouteChannel, address, new PrepareInventoryReservedCheckpointReq(request))
+                .RequestToSpot(SampleNames.OrderSpotDiscovery, address, new PrepareInventoryReservedCheckpointReq(request))
                 .Async<StartOrderWorkflowRes>(cancellationToken);
             return Results.Ok(response);
         });

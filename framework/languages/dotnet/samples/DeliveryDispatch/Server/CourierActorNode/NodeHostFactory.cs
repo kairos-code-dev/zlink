@@ -31,15 +31,10 @@ public static class NodeHostFactory
                 .TraceLogFile(SampleFlowLog.Path($"courier-actor-{nodeConfig.Name}"))
                 .TraceLabel($"courier-actor-{nodeConfig.Name}");
             options.AddHandlersFromAssemblyOf(typeof(NodeHostFactory));
-            options.AddRouteMeshChannel(SampleNames.CourierActorNodeRouteChannel)
-                .SetRoutingId(nodeConfig.Rid)
-                .AddHandlerGroup(SampleNames.CourierActorNodeRouteChannel)
-                .EnableServer(nodeConfig.RouteEndpoint)
-                .EnableClient();
-
             options.AddSpotMesh(SampleNames.CourierActorDiscovery)
-                                .EnableRouter(nodeConfig.SpotRouterEndpoint)
+                .EnableRouter(nodeConfig.SpotRouterEndpoint)
                 .SetRoutingId(nodeConfig.Rid)
+                .SetEntrySpotRoutingId(nodeConfig.Rid)
                 .EnablePubSub(nodeConfig.SpotEndpoint)
                 .AddEntrySpot<CourierEntrySpot>()
                 .AddActorFactory<CourierActorFactory>(SampleNames.CourierActorType);
@@ -55,13 +50,11 @@ public static class NodeHostFactory
             "node1" => new NodeOptions(
                 "node1",
                 topology.CourierActorNode1Rid,
-                topology.CourierActorNode1RouteEndpoint,
                 topology.CourierActorNode1RouterEndpoint,
                 topology.CourierActorNode1Endpoint),
             "node2" => new NodeOptions(
                 "node2",
                 topology.CourierActorNode2Rid,
-                topology.CourierActorNode2RouteEndpoint,
                 topology.CourierActorNode2RouterEndpoint,
                 topology.CourierActorNode2Endpoint),
             _ => throw new InvalidOperationException($"Unknown courier actor node '{node}'.")
@@ -71,7 +64,6 @@ public static class NodeHostFactory
     private sealed record NodeOptions(
         string Name,
         Systems.Zlink.RoutingId Rid,
-        string RouteEndpoint,
         string SpotRouterEndpoint,
         string SpotEndpoint);
 }

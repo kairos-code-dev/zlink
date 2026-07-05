@@ -15,8 +15,6 @@ try {
 
     $env:GAMEQUEST_LOG_DIR = $SampleLogDir
     $env:GAMEQUEST_REDIS_KEY_PREFIX = "gamequest:dotnet:${RunId}:"
-    $env:GAMEQUEST_GAMEAPI_A_ROUTE_ENDPOINT = "tcp://127.0.0.1:$($ports[2])"
-    $env:GAMEQUEST_GAMEAPI_B_ROUTE_ENDPOINT = "tcp://127.0.0.1:$($ports[13])"
     $env:GAMEQUEST_GAMEAPI_A_HTTP_BASE_URL = "http://127.0.0.1:$($ports[3])"
     $env:GAMEQUEST_GAMEAPI_B_HTTP_BASE_URL = "http://127.0.0.1:$($ports[4])"
     $env:GAMEQUEST_GAMEAPI_A_STREAM_ENDPOINT = "ws://127.0.0.1:$($ports[3])/quest/ws"
@@ -29,8 +27,6 @@ try {
     $env:GAMEQUEST_MISSION_A_SPOT_ROUTER_ENDPOINT = "tcp://127.0.0.1:$($ports[10])"
     $env:GAMEQUEST_MISSION_B_SPOT_ENDPOINT = "tcp://127.0.0.1:$($ports[11])"
     $env:GAMEQUEST_MISSION_B_SPOT_ROUTER_ENDPOINT = "tcp://127.0.0.1:$($ports[12])"
-    $env:GAMEQUEST_MISSION_A_ROUTE_ENDPOINT = "tcp://127.0.0.1:$($ports[14])"
-    $env:GAMEQUEST_MISSION_B_ROUTE_ENDPOINT = "tcp://127.0.0.1:$($ports[15])"
 
     Invoke-SampleDotnetBuild (Join-Path $ScriptDir "GameQuest.csproj")
 
@@ -53,7 +49,6 @@ try {
     Start-SampleDotnetAssembly -Name "mission-a" -Project (Join-Path $ScriptDir "Server/QuestMission/GameQuest.QuestMission.csproj") -LogDirectory $LogDir | Out-Null
     Wait-SampleTcpEndpoint "mission-a-spot-router" $env:GAMEQUEST_MISSION_A_SPOT_ROUTER_ENDPOINT
     Wait-SampleTcpEndpoint "mission-a-spot-pub" $env:GAMEQUEST_MISSION_A_SPOT_ENDPOINT
-    Wait-SampleTcpEndpoint "mission-a-route" $env:GAMEQUEST_MISSION_A_ROUTE_ENDPOINT
     Wait-SampleHttpHealth "mission-a" $env:GAMEQUEST_MISSION_A_HTTP_URL
 
     $env:ASPNETCORE_URLS = $env:GAMEQUEST_MISSION_B_HTTP_URL
@@ -61,7 +56,6 @@ try {
     Start-SampleDotnetAssembly -Name "mission-b" -Project (Join-Path $ScriptDir "Server/QuestMission/GameQuest.QuestMission.csproj") -LogDirectory $LogDir | Out-Null
     Wait-SampleTcpEndpoint "mission-b-spot-router" $env:GAMEQUEST_MISSION_B_SPOT_ROUTER_ENDPOINT
     Wait-SampleTcpEndpoint "mission-b-spot-pub" $env:GAMEQUEST_MISSION_B_SPOT_ENDPOINT
-    Wait-SampleTcpEndpoint "mission-b-route" $env:GAMEQUEST_MISSION_B_ROUTE_ENDPOINT
     Wait-SampleHttpHealth "mission-b" $env:GAMEQUEST_MISSION_B_HTTP_URL
 
     $env:ASPNETCORE_URLS = $env:GAMEQUEST_GAMEAPI_A_HTTP_BASE_URL
@@ -69,7 +63,6 @@ try {
     $env:GAMEQUEST_STREAM_BIND_ENDPOINT = $env:GAMEQUEST_API_A_STREAM_BIND_ENDPOINT
     Start-SampleDotnetAssembly -Name "api-a" -Project (Join-Path $ScriptDir "Server/GameApi/GameQuest.GameApi.csproj") -LogDirectory $LogDir | Out-Null
     Wait-SampleTcpEndpoint "api-a-stream" $env:GAMEQUEST_API_A_STREAM_BIND_ENDPOINT
-    Wait-SampleTcpEndpoint "api-a-route" $env:GAMEQUEST_GAMEAPI_A_ROUTE_ENDPOINT
     Wait-SampleHttpHealth "api-a" $env:GAMEQUEST_GAMEAPI_A_HTTP_BASE_URL
 
     $env:ASPNETCORE_URLS = $env:GAMEQUEST_GAMEAPI_B_HTTP_BASE_URL
@@ -77,7 +70,6 @@ try {
     $env:GAMEQUEST_STREAM_BIND_ENDPOINT = $env:GAMEQUEST_API_B_STREAM_BIND_ENDPOINT
     Start-SampleDotnetAssembly -Name "api-b" -Project (Join-Path $ScriptDir "Server/GameApi/GameQuest.GameApi.csproj") -LogDirectory $LogDir | Out-Null
     Wait-SampleTcpEndpoint "api-b-stream" $env:GAMEQUEST_API_B_STREAM_BIND_ENDPOINT
-    Wait-SampleTcpEndpoint "api-b-route" $env:GAMEQUEST_GAMEAPI_B_ROUTE_ENDPOINT
     Wait-SampleHttpHealth "api-b" $env:GAMEQUEST_GAMEAPI_B_HTTP_BASE_URL
 
     Invoke-SampleDotnetRun -Project (Join-Path $ScriptDir "Client/GameQuest.Client.csproj")

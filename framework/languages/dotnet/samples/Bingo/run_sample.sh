@@ -2,7 +2,7 @@
 set -euo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-RUN_DIR="$(mktemp -d)"
+RUN_DIR="${SAMPLE_RUN_DIR:-$(mktemp -d)}"
 RUN_ID="$(basename "${RUN_DIR}")-$$-${RANDOM}"
 LOG_DIR="${RUN_DIR}/logs"
 export BINGO_LOG_DIR="${BINGO_LOG_DIR:-${SCRIPT_DIR}/logs}"
@@ -101,11 +101,6 @@ export BINGO_SESSION_B_STREAM_ENDPOINT="${BINGO_SESSION_B_STREAM_ENDPOINT:-tcp:/
 export BINGO_PLAY_B_SPOT_ENDPOINT="${BINGO_PLAY_B_SPOT_ENDPOINT:-tcp://127.0.0.1:${PORTS[13]}}"
 export BINGO_PLAY_B_SPOT_ROUTER_ENDPOINT="${BINGO_PLAY_B_SPOT_ROUTER_ENDPOINT:-tcp://127.0.0.1:${PORTS[14]}}"
 export BINGO_API_B_CHANNEL_ENDPOINT="${BINGO_API_B_CHANNEL_ENDPOINT:-tcp://127.0.0.1:${PORTS[15]}}"
-export BINGO_API_A_PLAY_ROUTE_ENDPOINT="${BINGO_API_A_PLAY_ROUTE_ENDPOINT:-tcp://127.0.0.1:${PORTS[17]}}"
-export BINGO_API_B_PLAY_ROUTE_ENDPOINT="${BINGO_API_B_PLAY_ROUTE_ENDPOINT:-tcp://127.0.0.1:${PORTS[18]}}"
-export BINGO_SESSION_A_PLAY_ROUTE_ENDPOINT="${BINGO_SESSION_A_PLAY_ROUTE_ENDPOINT:-tcp://127.0.0.1:${PORTS[19]}}"
-export BINGO_SESSION_B_PLAY_ROUTE_ENDPOINT="${BINGO_SESSION_B_PLAY_ROUTE_ENDPOINT:-tcp://127.0.0.1:${PORTS[20]}}"
-export BINGO_METADATA_DIR="${BINGO_METADATA_DIR:-${RUN_DIR}/metadata}"
 
 endpoint_host() {
   local endpoint="$1"
@@ -184,19 +179,15 @@ wait_port play-b-spot-pub "${BINGO_PLAY_B_SPOT_ENDPOINT}"
 
 start_server api-a "${SCRIPT_DIR}/Server/Api/Bingo.Server.Api.csproj" --node a
 wait_port api-a "${BINGO_API_A_CHANNEL_ENDPOINT}"
-wait_port api-a-play-route "${BINGO_API_A_PLAY_ROUTE_ENDPOINT}"
 start_server api-b "${SCRIPT_DIR}/Server/Api/Bingo.Server.Api.csproj" --node b
 wait_port api-b "${BINGO_API_B_CHANNEL_ENDPOINT}"
-wait_port api-b-play-route "${BINGO_API_B_PLAY_ROUTE_ENDPOINT}"
 
 start_server session-a "${SCRIPT_DIR}/Server/Session/Bingo.Server.Session.csproj" --node a
 wait_port session-a-router "${BINGO_SESSION_A_ROUTER_ENDPOINT}"
 wait_port session-a-stream "${BINGO_SESSION_A_STREAM_ENDPOINT}"
-wait_port session-a-play-route "${BINGO_SESSION_A_PLAY_ROUTE_ENDPOINT}"
 start_server session-b "${SCRIPT_DIR}/Server/Session/Bingo.Server.Session.csproj" --node b
 wait_port session-b-router "${BINGO_SESSION_B_ROUTER_ENDPOINT}"
 wait_port session-b-stream "${BINGO_SESSION_B_STREAM_ENDPOINT}"
-wait_port session-b-play-route "${BINGO_SESSION_B_PLAY_ROUTE_ENDPOINT}"
 
 dotnet run --no-build --project "${SCRIPT_DIR}/Client/Bingo.Client.csproj" -- \
   --stream-a-endpoint "${BINGO_SESSION_A_STREAM_ENDPOINT}" \

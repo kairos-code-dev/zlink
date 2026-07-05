@@ -1,6 +1,8 @@
 using DeliveryDispatch.Server.Configuration;
 using DeliveryDispatch.Shared.Contracts;
 using Zlink.Framework.Contracts.Channels;
+using Zlink.Framework.Contracts.Locations;
+using Zlink.Framework.Contracts.Spots;
 
 namespace DeliveryDispatch.Server.Dispatch;
 
@@ -14,10 +16,11 @@ internal sealed class CourierOfferPort(
         CancellationToken cancellationToken)
     {
         var placement = topology.CourierPlacement(courierId);
+        var address = new ZLinkSpotAddress(placement.NodeRid, placement.NodeRid);
         var found = await DispatchRouteClient.RequestAsync<FindCourierActorReq, FindCourierActorRes>(
             routes,
-            SampleNames.CourierActorNodeRouteChannel,
-            placement.NodeRid,
+            SampleNames.CourierActorDiscovery,
+            address,
             new FindCourierActorReq(courierId),
             cancellationToken);
         if (found.Actor is null)
@@ -27,8 +30,8 @@ internal sealed class CourierOfferPort(
 
         var response = await DispatchRouteClient.RequestAsync<OfferDeliveryReq, OfferDeliveryRes>(
             routes,
-            SampleNames.CourierActorNodeRouteChannel,
-            found.Actor.NodeRid,
+            SampleNames.CourierActorDiscovery,
+            new ZLinkSpotAddress(found.Actor.NodeRid, found.Actor.NodeRid),
             new OfferDeliveryReq(courierId, delivery.DeliveryId, delivery.PickupAddress, delivery.DropoffAddress),
             cancellationToken,
             SampleTimings.OfferRequestTimeout);
@@ -81,12 +84,12 @@ internal static class DispatchRouteClient
     public static async ValueTask<TRes> RequestAsync<TReq, TRes>(
         IZLinkRouteClient routes,
         string routeChannelName,
-        Systems.Zlink.RoutingId targetNodeRid,
+        ZLinkSpotAddress address,
         TReq request,
         CancellationToken cancellationToken,
         TimeSpan? timeout = null)
     {
-        var call = routes.RequestToNode(routeChannelName, targetNodeRid, request)
+        var call = routes.RequestToSpot(routeChannelName, address, request)
             .PacketName(typeof(TReq).Name);
         if (timeout is { } value)
         {

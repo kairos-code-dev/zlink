@@ -1,3 +1,4 @@
+using System.Text;
 using System.Text.Json;
 using Systems.Zlink.Stream.Connector.Contracts;
 using Zlink.Framework.Contracts.Codecs;
@@ -79,7 +80,22 @@ internal sealed class HttpClientCodecRegistry : IZLinkCodecRegistryBuilder, IZLi
             && _serializers.TryGetValue(NormalizeContentType(contentType), out var found))
             return found.Serializer.Deserialize(ZLinkEncodedPayload.From(body), type);
 
+        if (type == typeof(string)) return DecodeString(body);
+
         return JsonSerializer.Deserialize(body, type, JsonOptions);
+    }
+
+    private static string DecodeString(byte[] body)
+    {
+        try
+        {
+            return JsonSerializer.Deserialize<string>(body, JsonOptions)
+                   ?? string.Empty;
+        }
+        catch (JsonException)
+        {
+            return Encoding.UTF8.GetString(body);
+        }
     }
 
     private void AddSerializer(

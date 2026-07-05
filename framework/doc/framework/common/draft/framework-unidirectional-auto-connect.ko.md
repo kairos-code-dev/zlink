@@ -1,6 +1,6 @@
 # [DRAFT] framework auto-connect 단방향 연결 규칙 통일 (route mesh · spot mesh)
 
-- 상태: **cpp·dotnet·node 완료·커밋**(각 TA e2e PASS, core 갭 없음). **java는 재작업 대기** — 4회 수정 시도에서 TA 불안정(최고 5/10)이 지속되어 전량 revert, 원상(그린) 복귀 확인. 다음 라운드에 cpp(c0e28baaf)·node 커밋과 1:1 대조로 재작업(관찰: 실패는 ①TA-A1-ready ZlinkSubmitException ②서버 health 30초 지연 두 유형 — java auto-connect 기동 경로가 유력)
+- 상태: **cpp·dotnet·node 완료·커밋**(각 TA e2e PASS, core 갭 없음). **java 재작업 진행 중** — 핵심 가설(사용자 힌트): probe 프레임이 수신 recv 스트림에 들어오는데 java 수신 루프가 스킵하지 않아 메시징 처리가 오염(이전 4회 시도의 실패 2유형 — ready 제출 실패·health 지연 — 을 설명). cpp/node의 probe 프레임 필터링 지점 대조로 수정 중
 - 소관: **framework**(location auto-connect가 연결 판정·dial의 실행 주체 — registry 제거 후 core discovery_protocol의 규칙은 참조 정본일 뿐 실행 경로 아님). core는 기존 능력(ROUTER 인바운드 identity 송신, PROBE_ROUTER 옵션)으로 충분한지 실측 후 갭 발견 시에만 수정
 - 결정자: 사용자 (배경 논의: route mesh 양방향 connect의 대규모(1000+ node) 연결 오버헤드)
 

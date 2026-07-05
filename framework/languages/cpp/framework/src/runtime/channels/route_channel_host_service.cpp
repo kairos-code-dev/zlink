@@ -182,6 +182,7 @@ class route_channel_host_service_t::route_loop_t
             try {
                 if (peer_rid) {
                     _router->options ().connect_routing_id (*peer_rid);
+                    _router->options ().probe (true);
                 }
                 _router->connect (endpoint);
                 _connected_endpoints.insert (endpoint);

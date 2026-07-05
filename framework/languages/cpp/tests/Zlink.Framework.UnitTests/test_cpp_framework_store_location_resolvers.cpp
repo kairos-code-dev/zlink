@@ -1364,19 +1364,19 @@ TEST (ZLinkFrameworkStoreLocationResolvers, AutoConnectHostReconcilesRouteMeshCo
     location_options_t options;
     options.heartbeat_interval = std::chrono::milliseconds (50);
     auto runtime = std::make_shared<location_runtime_t> (*store, options, "owner-route-local");
-    runtime->start (zlink::routing_id_t::from ("route-local-node"));
+    runtime->start (zlink::routing_id_t::from ("route-z-local-node"));
 
     seed_peer (*store, "owner-route-remote",
                peer_location_t{.auto_connect_type = location_auto_connect_type_t::route_mesh,
                                .mesh_name = "route.mesh",
-                               .node_rid = zlink::routing_id_t::from ("route-remote-node"),
+                               .node_rid = zlink::routing_id_t::from ("route-a-remote-node"),
                                .role = location_role_t::router,
                                .endpoint = "inproc://route-remote",
                                .weight = 42});
 
     zlink::framework::zlink_builder_t zlink;
     zlink.route_channel ("route.mesh")
-      .set_routing_id (zlink::routing_id_t::from ("route-local-node"))
+      .set_routing_id (zlink::routing_id_t::from ("route-z-local-node"))
       .connect ("inproc://route-manual");
     auto manager = zlink::framework::detail::channel_runtime_manager_t::from (zlink);
     manager.initialize_route_channels (zlink);
@@ -1417,6 +1417,109 @@ TEST (ZLinkFrameworkStoreLocationResolvers, AutoConnectHostReconcilesRouteMeshCo
     service.stop ();
     EXPECT_TRUE (store->list_peers ({}).result ().value ().empty ());
     runtime->stop ();
+}
+
+TEST (ZLinkFrameworkStoreLocationResolvers, AutoConnectHostUsesRouteMeshInitiatorOrdering)
+{
+    auto store = std::make_shared<in_memory_location_store_t> ();
+    location_options_t options;
+    options.heartbeat_interval = std::chrono::milliseconds (50);
+
+    auto lower_runtime =
+      std::make_shared<location_runtime_t> (*store, options, "owner-route-lower-local");
+    lower_runtime->start (zlink::routing_id_t::from ("route-a-local-node"));
+    seed_peer (*store, "owner-route-higher-remote",
+               peer_location_t{.auto_connect_type = location_auto_connect_type_t::route_mesh,
+                               .mesh_name = "route.lower",
+                               .node_rid = zlink::routing_id_t::from ("route-z-remote-node"),
+                               .role = location_role_t::router,
+                               .endpoint = "inproc://route-higher-remote",
+                               .weight = 100});
+
+    zlink::framework::zlink_builder_t lower_zlink;
+    lower_zlink.route_channel ("route.lower")
+      .bind ("inproc://route-lower-local")
+      .set_routing_id (zlink::routing_id_t::from ("route-a-local-node"));
+    auto lower_manager =
+      zlink::framework::detail::channel_runtime_manager_t::from (lower_zlink);
+    lower_manager.initialize_route_channels (lower_zlink);
+    auto &lower_route = lower_manager.get_route_channel ("route.lower");
+
+    zlink::framework::service_collection_t lower_services;
+    lower_services.add_factory<zlink::framework::location_store_t> (
+      [store] (zlink::framework::service_provider_t &) {
+          return std::static_pointer_cast<zlink::framework::location_store_t> (store);
+      },
+      zlink::framework::service_lifetime_t::singleton);
+    lower_services.add_factory<location_runtime_t> (
+      [lower_runtime] (zlink::framework::service_provider_t &) { return lower_runtime; },
+      zlink::framework::service_lifetime_t::singleton);
+    auto lower_provider = lower_services.build_provider ();
+
+    location_auto_connect_host_service_t lower_service (lower_zlink.message_bus (),
+                                                        lower_zlink.channels ());
+    lower_service.start (lower_provider);
+
+    EXPECT_TRUE (wait_until ([&] {
+        const auto connections = lower_route.list_connections ();
+        const auto targets = lower_route.list_connection_targets ();
+        return std::find (connections.begin (), connections.end (), "inproc://route-higher-remote")
+                 != connections.end ()
+               && std::any_of (targets.begin (), targets.end (), [] (const auto &target) {
+                      return target.endpoint == "inproc://route-higher-remote" && target.peer_rid
+                             && target.peer_rid->to_string () == "route-z-remote-node";
+                  });
+    }));
+    lower_service.stop ();
+    lower_runtime->stop ();
+
+    ASSERT_EQ (1, store->remove_all_by_owner ("owner-route-higher-remote").result ().value ());
+
+    auto higher_runtime =
+      std::make_shared<location_runtime_t> (*store, options, "owner-route-higher-local");
+    higher_runtime->start (zlink::routing_id_t::from ("route-z-local-node"));
+    seed_peer (*store, "owner-route-lower-remote",
+               peer_location_t{.auto_connect_type = location_auto_connect_type_t::route_mesh,
+                               .mesh_name = "route.higher",
+                               .node_rid = zlink::routing_id_t::from ("route-a-remote-node"),
+                               .role = location_role_t::router,
+                               .endpoint = "inproc://route-lower-remote",
+                               .weight = 100});
+
+    zlink::framework::zlink_builder_t higher_zlink;
+    higher_zlink.route_channel ("route.higher")
+      .bind ("inproc://route-higher-local")
+      .set_routing_id (zlink::routing_id_t::from ("route-z-local-node"));
+    auto higher_manager =
+      zlink::framework::detail::channel_runtime_manager_t::from (higher_zlink);
+    higher_manager.initialize_route_channels (higher_zlink);
+    auto &higher_route = higher_manager.get_route_channel ("route.higher");
+
+    zlink::framework::service_collection_t higher_services;
+    higher_services.add_factory<zlink::framework::location_store_t> (
+      [store] (zlink::framework::service_provider_t &) {
+          return std::static_pointer_cast<zlink::framework::location_store_t> (store);
+      },
+      zlink::framework::service_lifetime_t::singleton);
+    higher_services.add_factory<location_runtime_t> (
+      [higher_runtime] (zlink::framework::service_provider_t &) { return higher_runtime; },
+      zlink::framework::service_lifetime_t::singleton);
+    auto higher_provider = higher_services.build_provider ();
+
+    location_auto_connect_host_service_t higher_service (higher_zlink.message_bus (),
+                                                         higher_zlink.channels ());
+    higher_service.start (higher_provider);
+
+    std::this_thread::sleep_for (std::chrono::milliseconds (250));
+    const auto higher_connections = higher_route.list_connections ();
+    EXPECT_EQ (higher_connections.end (),
+               std::find (higher_connections.begin (), higher_connections.end (),
+                          "inproc://route-lower-remote"));
+
+    higher_service.stop ();
+    higher_runtime->stop ();
+    ASSERT_EQ (1, store->remove_all_by_owner ("owner-route-lower-remote").result ().value ());
+    EXPECT_TRUE (store->list_peers ({}).result ().value ().empty ());
 }
 
 TEST (ZLinkFrameworkStoreLocationResolvers, LocationMonitoringHostPublishesSnapshots)

@@ -53,7 +53,7 @@ class play_server_host_factory_t
             use_default_bingo_codecs (options.codecs ());
             add_sample_location_store (options, topology);
             options.add_route_mesh_channel (sample_names_t::play_channel)
-              .enable_server (topology.selected_play_channel_endpoint ())
+              .enable_server (topology.selected_play_route_endpoint ())
               .set_routing_id (zlink::routing_id_t::from (topology.selected_play_node_rid ()))
               .enable_client (topology.peer_play_route_endpoint ())
               .use_handler_group ("play");

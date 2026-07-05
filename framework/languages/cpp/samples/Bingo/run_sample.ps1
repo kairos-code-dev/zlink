@@ -176,6 +176,8 @@ try {
     $playBSpotEndpoint = if ($env:BINGO_PLAY_B_SPOT_ENDPOINT) { $env:BINGO_PLAY_B_SPOT_ENDPOINT } else { "tcp://$($ports[13])" }
     $playBSpotRouterEndpoint = if ($env:BINGO_PLAY_B_SPOT_ROUTER_ENDPOINT) { $env:BINGO_PLAY_B_SPOT_ROUTER_ENDPOINT } else { "tcp://$($ports[14])" }
     $apiBChannelEndpoint = if ($env:BINGO_API_B_CHANNEL_ENDPOINT) { $env:BINGO_API_B_CHANNEL_ENDPOINT } else { "tcp://$($ports[15])" }
+    $playARouteEndpoint = if ($env:BINGO_PLAY_A_ROUTE_ENDPOINT) { $env:BINGO_PLAY_A_ROUTE_ENDPOINT } else { "tcp://$($ports[0])" }
+    $playBRouteEndpoint = if ($env:BINGO_PLAY_B_ROUTE_ENDPOINT) { $env:BINGO_PLAY_B_ROUTE_ENDPOINT } else { "tcp://$($ports[1])" }
     $apiAPlayRouteEndpoint = if ($env:BINGO_API_A_PLAY_ROUTE_ENDPOINT) { $env:BINGO_API_A_PLAY_ROUTE_ENDPOINT } else { "tcp://$($ports[17])" }
     $apiBPlayRouteEndpoint = if ($env:BINGO_API_B_PLAY_ROUTE_ENDPOINT) { $env:BINGO_API_B_PLAY_ROUTE_ENDPOINT } else { "tcp://$($ports[18])" }
     $sessionAPlayRouteEndpoint = if ($env:BINGO_SESSION_A_PLAY_ROUTE_ENDPOINT) { $env:BINGO_SESSION_A_PLAY_ROUTE_ENDPOINT } else { "tcp://$($ports[19])" }
@@ -205,8 +207,10 @@ try {
         "--sample.topology.playChannelEndpoint=$playAChannelEndpoint",
         "--sample.topology.playAChannelEndpoint=$playAChannelEndpoint",
         "--sample.topology.playBChannelEndpoint=$playBChannelEndpoint",
-        "--sample.topology.playARouteEndpoint=$apiAPlayRouteEndpoint",
-        "--sample.topology.playBRouteEndpoint=$apiBPlayRouteEndpoint",
+        "--sample.topology.playARouteEndpoint=$playARouteEndpoint",
+        "--sample.topology.playBRouteEndpoint=$playBRouteEndpoint",
+        "--sample.topology.apiAPlayRouteEndpoint=$apiAPlayRouteEndpoint",
+        "--sample.topology.apiBPlayRouteEndpoint=$apiBPlayRouteEndpoint",
         "--sample.topology.sessionAPlayRouteEndpoint=$sessionAPlayRouteEndpoint",
         "--sample.topology.sessionBPlayRouteEndpoint=$sessionBPlayRouteEndpoint",
         "--sample.topology.playASpotEndpoint=$playASpotEndpoint",
@@ -251,10 +255,12 @@ try {
 
     Start-Server "play-a" $PlayBin ($serverArgs + @("--sample.topology.playNode=a"))
     Wait-Endpoint "play-a" $playAChannelEndpoint
+    Wait-Endpoint "play-a-route" $playARouteEndpoint
     Wait-Endpoint "play-a-spot-router" $playASpotRouterEndpoint
     Wait-Endpoint "play-a-spot-pub" $playASpotEndpoint
     Start-Server "play-b" $PlayBin ($serverArgs + @("--sample.topology.playNode=b"))
     Wait-Endpoint "play-b" $playBChannelEndpoint
+    Wait-Endpoint "play-b-route" $playBRouteEndpoint
     Wait-Endpoint "play-b-spot-router" $playBSpotRouterEndpoint
     Wait-Endpoint "play-b-spot-pub" $playBSpotEndpoint
 

@@ -33,6 +33,10 @@ struct sample_topology_t
           section.get ("playARouteEndpoint").value_or (topology.play_a_route_endpoint);
         topology.play_b_route_endpoint =
           section.get ("playBRouteEndpoint").value_or (topology.play_b_route_endpoint);
+        topology.api_a_play_route_endpoint =
+          section.get ("apiAPlayRouteEndpoint").value_or (topology.api_a_play_route_endpoint);
+        topology.api_b_play_route_endpoint =
+          section.get ("apiBPlayRouteEndpoint").value_or (topology.api_b_play_route_endpoint);
         topology.session_a_route_endpoint =
           section.get ("sessionAPlayRouteEndpoint").value_or (topology.session_a_route_endpoint);
         topology.session_b_route_endpoint =
@@ -104,6 +108,8 @@ struct sample_topology_t
     std::string play_b_channel_endpoint = "tcp://127.0.0.1:47114";
     std::string play_a_route_endpoint = "tcp://127.0.0.1:47118";
     std::string play_b_route_endpoint = "tcp://127.0.0.1:47119";
+    std::string api_a_play_route_endpoint = "tcp://127.0.0.1:47120";
+    std::string api_b_play_route_endpoint = "tcp://127.0.0.1:47123";
     std::string session_a_route_endpoint = "tcp://127.0.0.1:47121";
     std::string session_b_route_endpoint = "tcp://127.0.0.1:47122";
     std::string play_spot_endpoint = "tcp://127.0.0.1:47110";
@@ -154,7 +160,7 @@ struct sample_topology_t
 
     std::string selected_api_play_route_endpoint () const
     {
-        return api_node == "b" ? play_b_route_endpoint : play_a_route_endpoint;
+        return api_node == "b" ? api_b_play_route_endpoint : api_a_play_route_endpoint;
     }
 
     std::string selected_api_route_rid () const
@@ -165,6 +171,11 @@ struct sample_topology_t
     std::string selected_session_route_endpoint () const
     {
         return session_node == "b" ? session_b_route_endpoint : session_a_route_endpoint;
+    }
+
+    std::string selected_play_route_endpoint () const
+    {
+        return play_node == "b" ? play_b_route_endpoint : play_a_route_endpoint;
     }
 
     std::string selected_session_route_rid () const

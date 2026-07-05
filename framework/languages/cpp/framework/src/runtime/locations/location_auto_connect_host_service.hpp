@@ -382,14 +382,16 @@ class location_auto_connect_host_service_t final : public hosted_service_t
                 return local.role == location_role_t::sub && peer.role == location_role_t::pub;
             case location_auto_connect_type_t::route_mesh:
                 if (local.role == location_role_t::dealer) {
-                    return peer.role == location_role_t::router;
+                    return peer.role == location_role_t::router
+                           && local_is_initiator (local, peer);
                 }
                 return local.role == location_role_t::router && peer.role == location_role_t::router
                        && local_is_initiator (local, peer);
             case location_auto_connect_type_t::dealer_mesh:
                 return local.role == peer.role && local_is_initiator (local, peer);
             case location_auto_connect_type_t::spot_mesh:
-                return local.role == location_role_t::spot && peer.role == location_role_t::spot;
+                return local.role == location_role_t::spot && peer.role == location_role_t::spot
+                       && local_is_initiator (local, peer);
             case location_auto_connect_type_t::invalid:
                 return false;
         }

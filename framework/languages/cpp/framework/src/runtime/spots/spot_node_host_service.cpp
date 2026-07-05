@@ -72,6 +72,20 @@ bool is_local_spot_peer (const peer_location_t &local, const peer_location_t &pe
     return !local.endpoint.empty () && peer.endpoint == local.endpoint;
 }
 
+bool local_spot_is_initiator (const peer_location_t &local, const peer_location_t &peer)
+{
+    if (local.endpoint.empty ()) {
+        return true;
+    }
+    if (local.node_rid && peer.node_rid) {
+        const auto by_rid = local.node_rid->to_hex ().compare (peer.node_rid->to_hex ());
+        if (by_rid != 0) {
+            return by_rid < 0;
+        }
+    }
+    return local.endpoint < peer.endpoint;
+}
+
 bool is_manual_spot_endpoint (const spot_node_snapshot_t &snapshot, const std::string &endpoint)
 {
     return std::find (snapshot.router_manual_connections.begin (),
@@ -149,7 +163,8 @@ void reconcile_spot_mesh (spot_node_host_service_t::native_node_t &native,
         .value ();
     std::map<std::string, peer_location_t> desired;
     for (auto &row : rows) {
-        if (row.endpoint.empty () || is_local_spot_peer (*native.local_peer, row)) {
+        if (row.endpoint.empty () || is_local_spot_peer (*native.local_peer, row)
+            || !local_spot_is_initiator (*native.local_peer, row)) {
             continue;
         }
         desired[spot_target_key (row)] = std::move (row);

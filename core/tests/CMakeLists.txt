@@ -105,6 +105,7 @@ set(tests
   ${INTEGRATION_TEST_ROOT}/test_pubsub_filter_xpub
   ${INTEGRATION_TEST_ROOT}/test_xpub_nodrop
   ${INTEGRATION_TEST_ROOT}/test_spot_dispatch_event
+  ${INTEGRATION_TEST_ROOT}/test_spot_data_plane_inbound_identity
   ${INTEGRATION_TEST_ROOT}/test_spot_actor_gateway_no_bind
   ${INTEGRATION_TEST_ROOT}/test_spot_poller
   ${INTEGRATION_TEST_ROOT}/test_spot_route_bridge_api

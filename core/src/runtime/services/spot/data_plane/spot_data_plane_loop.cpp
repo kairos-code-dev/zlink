@@ -97,6 +97,8 @@ void refresh_data_plane_limits_and_hwm (spot_runtime_t *runtime_,
 void drain_data_plane_queued_ingress (spot_runtime_t *runtime_,
                                       spot_data_plane_runtime_state_t *state_)
 {
+    if (state_->routed_router && state_->routed_router->socket_msg_dispatch_active ())
+        state_->routed_router->socket_msg_dispatch_drain_pending ();
     (void) spot_reqrep_internal::drain_runtime_routed_router_ingress_queue (runtime_);
     (void) spot_data_plane_forwarder_t::drain_pub_ingress_socket (runtime_, state_);
     (void) spot_data_plane_forwarder_t::drain_publish_ingress_queue (runtime_, state_);
@@ -199,8 +201,10 @@ bool handle_ctrl_event (socket_base_t *socket_,
     }
 
     if (socket_ == state_->routed_router) {
-        if (!socket_->socket_msg_dispatch_active ()
-            && zlink_spot_process_routed_router (node_, socket_) != 0) {
+        if (socket_->socket_msg_dispatch_active ()) {
+            socket_->socket_msg_dispatch_drain_pending ();
+            (void) spot_reqrep_internal::drain_runtime_routed_router_ingress_queue (runtime_);
+        } else if (zlink_spot_process_routed_router (node_, socket_) != 0) {
             *fatal_errno_out_ = errno;
             *running_out_ = false;
         }

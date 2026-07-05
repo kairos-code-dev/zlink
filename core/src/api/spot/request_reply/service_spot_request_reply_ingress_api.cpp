@@ -189,6 +189,9 @@ int zlink::spot_reqrep_internal::process_routed_router_combined_for_data_plane (
         return -1;
     }
 
+    if (combined_->size () == 1 && zlink_msg_size (&(*combined_)[0]) == 0)
+        return 0;
+
     const int processed = process_route_combined_message (node_, NULL, *combined_);
     return processed < 0 ? -1 : 0;
 }
@@ -224,6 +227,10 @@ extern "C" int zlink_spot_process_routed_router (void *node_, void *socket_)
         if (spot_direct_route_debug_enabled ()) {
             std::fprintf (stderr, "[spot-direct] routed-router recv ok socket=%d parts=%zu\n",
                           socket->socket_id (), combined.size ());
+        }
+        if (combined.size () == 1 && zlink_msg_size (&combined[0]) == 0) {
+            zlink::request_reply::close_built_parts (&combined);
+            continue;
         }
         if (process_route_combined_message (node_, socket, combined) < 0)
             return -1;

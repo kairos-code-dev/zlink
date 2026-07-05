@@ -359,6 +359,10 @@ static int handle_connect_peer_pub_command (const ctrl_command_context_t &ctx_,
                 (void) ctx_.runtime->routed_router->term_endpoint (arg_.c_str ());
                 return send_ctrl_errno_reply (ctx_, saved_errno);
             }
+            if (spot_debug::enabled ("ZLINK_DEBUG_SPOT_DIRECT_ROUTE")) {
+                std::fprintf (stderr, "[spot-direct] connect routed router route=%s endpoint=%s\n",
+                              peer_rid.c_str (), arg_.c_str ());
+            }
         }
         ctx_.runtime->set_external_route_id (arg_, peer_rid, arg_);
     }

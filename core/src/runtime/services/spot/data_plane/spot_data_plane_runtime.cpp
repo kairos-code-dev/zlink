@@ -376,6 +376,7 @@ static int configure_runtime_sockets (spot_runtime_t *runtime_,
             state_->routed_router->setsockopt (ZLINK_INTERNAL_OPT_SNDHWM, &routed_router_sndhwm,
                                                sizeof (routed_router_sndhwm));
         }
+        state_->routed_router->setsockopt (ZLINK_INTERNAL_OPT_PROBE_ROUTER, &one, sizeof (one));
         state_->routed_router->setsockopt (ZLINK_INTERNAL_OPT_RCVTIMEO, &neg_one, sizeof (neg_one));
         state_->routed_router->setsockopt (ZLINK_INTERNAL_OPT_SNDTIMEO, &zero, sizeof (zero));
         state_->routed_router->setsockopt (ZLINK_INTERNAL_OPT_SUBMIT_RETRY_MODE, &submit_retry_mode,
@@ -561,6 +562,8 @@ int spot_data_plane_t::initialize_runtime (spot_node_t *node_,
             && state_out_->poller->add (state_out_->pub_ingress_sub, NULL, ZLINK_POLLIN) != 0)
         || (state_out_->peer_ctrl_sub
             && state_out_->poller->add (state_out_->peer_ctrl_sub, NULL, ZLINK_POLLIN) != 0)
+        || (state_out_->routed_router
+            && state_out_->poller->add (state_out_->routed_router, NULL, ZLINK_POLLIN) != 0)
         || add_mesh_peer_observer_to_poller (state_out_) != 0
         || (state_out_->publish_ingress.signaler.valid ()
             && state_out_->poller->add_fd (state_out_->publish_ingress.signaler.get_fd (), NULL,

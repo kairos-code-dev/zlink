@@ -701,11 +701,15 @@ public final class ZLinkSpotRuntime implements ZLinkSpotManager, AutoCloseable {
             () -> close(spotRid));
     }
 
-    private void claimEntrySpotLocation(SpotNodeLocationMetadata metadata) {
+    private CompletionStage<ZLinkLocationWriteStatus> claimEntrySpotLocationAsync(
+        SpotNodeLocationMetadata metadata) {
         if (metadata.routeEndpoint() == null || metadata.routeEndpoint().isBlank()) {
-            return;
+            return CompletableFuture.completedFuture(ZLinkLocationWriteStatus.STORED);
         }
-        locationLifecycle.claimSpotAsync(
+        if (locationLifecycle == null) {
+            return CompletableFuture.completedFuture(ZLinkLocationWriteStatus.STORED);
+        }
+        return locationLifecycle.claimSpotAsync(
                 metadata.meshName(),
                 metadata.nodeRid(),
                 null,
@@ -713,10 +717,14 @@ public final class ZLinkSpotRuntime implements ZLinkSpotManager, AutoCloseable {
                 ZLinkSpotKind.ENTRY,
                 metadata.routeEndpoint(),
                 null)
-            .exceptionallyCompose(error -> {
-                CompletableFuture<ZLinkLocationWriteStatus> failed = new CompletableFuture<>();
-                failed.completeExceptionally(error);
-                return failed;
+            .thenApply(status -> {
+                if (status != ZLinkLocationWriteStatus.STORED) {
+                    boot("entrySpot location claim status=" + status
+                        + " mesh=" + metadata.meshName()
+                        + " nodeRid=" + metadata.nodeRid().toHex()
+                        + " endpoint=" + metadata.routeEndpoint());
+                }
+                return status;
             });
     }
 
@@ -896,6 +904,10 @@ public final class ZLinkSpotRuntime implements ZLinkSpotManager, AutoCloseable {
         return routingId != null && routingId.size() > 0;
     }
 
+    private static void boot(String step) {
+        System.out.println("[boot] component=spot-runtime step=" + step);
+    }
+
     public ZLinkSpotOutbound outbound() {
         return new AmbientSpotOutbound();
     }
@@ -912,11 +924,18 @@ public final class ZLinkSpotRuntime implements ZLinkSpotManager, AutoCloseable {
 
     public void setLocationLifecycle(ZLinkLocationLifecycle lifecycle) {
         this.locationLifecycle = lifecycle;
-        if (lifecycle != null) {
-            for (SpotNodeLocationMetadata metadata : locationMetadataByNodeRid.values()) {
-                claimEntrySpotLocation(metadata);
-            }
+    }
+
+    public CompletionStage<Void> claimEntrySpotLocationsAsync() {
+        if (locationLifecycle == null) {
+            return CompletableFuture.completedFuture(null);
         }
+        CompletionStage<Void> chain = CompletableFuture.completedFuture(null);
+        for (SpotNodeLocationMetadata metadata : locationMetadataByNodeRid.values()) {
+            chain = chain.thenCompose(ignored -> claimEntrySpotLocationAsync(metadata)
+                .thenApply(status -> null));
+        }
+        return chain;
     }
 
     private CompletionStage<ZLinkSpotRemoteAddress> resolveSpotRemoteAddressAsync(

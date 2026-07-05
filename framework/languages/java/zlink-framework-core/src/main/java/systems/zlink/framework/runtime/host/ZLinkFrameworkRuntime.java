@@ -194,6 +194,11 @@ public final class ZLinkFrameworkRuntime
                 runtimeHandlers,
                 eventDispatcher);
             this.spots.setLocationLifecycle(this.locationLifecycle);
+            boot("spotRuntime entrySpotLocation claim");
+            this.spots.claimEntrySpotLocationsAsync()
+                .toCompletableFuture()
+                .join();
+            boot("spotRuntime entrySpotLocation claim done");
             boot("spotRuntime create done");
         }
         Class<? extends ZLinkSpotRemoteAddressResolver> resolverType =
@@ -211,17 +216,6 @@ public final class ZLinkFrameworkRuntime
             this.channels.registerSpotRouteBridgeOwner(this.spots::primaryNode);
             this.channels.registerSpotRouteBridgeDispatchDrainer(
                 this.spots::drainRoutedDispatchQueues);
-        }
-        if (this.locationAutoConnectHost != null) {
-            boot("autoConnect start");
-            this.locationAutoConnectHost.startAsync(
-                    this.registration,
-                    this.channels,
-                    this.spots == null ? java.util.Map.of() : this.spots.nodesByName(),
-                    this.spots)
-                .toCompletableFuture()
-                .join();
-            boot("autoConnect start done");
         }
         var actorNodeRegistration = options.registration().spotNodes().stream()
             .filter(node -> !node.actorFactories().isEmpty())
@@ -287,6 +281,17 @@ public final class ZLinkFrameworkRuntime
                 spots == null ? ignored -> true : spots::isSessionRelayRouteReady,
                 spots);
         boot("streamRuntime create done enabled=" + (this.streams != null));
+        if (this.locationAutoConnectHost != null) {
+            boot("autoConnect start");
+            this.locationAutoConnectHost.startAsync(
+                    this.registration,
+                    this.channels,
+                    this.spots == null ? java.util.Map.of() : this.spots.nodesByName(),
+                    this.spots)
+                .toCompletableFuture()
+                .join();
+            boot("autoConnect start done");
+        }
         boot("runtime constructor done");
     }
 

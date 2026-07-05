@@ -195,14 +195,15 @@ start_server customer-gateway "${SCRIPT_DIR}/Server/CustomerGateway/DeliveryDisp
 wait_port customer-stream "${DELIVERYDISPATCH_CUSTOMER_STREAM}"
 wait_port customer-spot-router "${DELIVERYDISPATCH_CUSTOMER_SPOT_ROUTER}"
 
-start_server courier-session "${SCRIPT_DIR}/Server/CourierSession/DeliveryDispatch.Server.CourierSession.csproj"
-wait_port courier-session-stream "${DELIVERYDISPATCH_COURIER_STREAM}"
-
 start_server courier-actor-node1 "${SCRIPT_DIR}/Server/CourierActorNode/DeliveryDispatch.Server.CourierActorNode.csproj" --node node1
 wait_port courier-actor-node1-router "${DELIVERYDISPATCH_COURIER_ACTOR_NODE1_ROUTER}"
 
 start_server courier-actor-node2 "${SCRIPT_DIR}/Server/CourierActorNode/DeliveryDispatch.Server.CourierActorNode.csproj" --node node2
 wait_port courier-actor-node2-router "${DELIVERYDISPATCH_COURIER_ACTOR_NODE2_ROUTER}"
+
+start_server courier-session "${SCRIPT_DIR}/Server/CourierSession/DeliveryDispatch.Server.CourierSession.csproj"
+wait_port courier-session-router "${DELIVERYDISPATCH_COURIER_SESSION_SPOT_ROUTER}"
+wait_port courier-session-stream "${DELIVERYDISPATCH_COURIER_STREAM}"
 
 start_server dispatch "${SCRIPT_DIR}/Server/Dispatch/DeliveryDispatch.Server.Dispatch.csproj"
 wait_http dispatch "${DELIVERYDISPATCH_DISPATCH_HTTP}"

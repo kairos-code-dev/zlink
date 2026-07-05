@@ -38,7 +38,9 @@ public static class SessionServerHostFactory
                 .EnableClient();
             options.AddSpotMesh(SampleNames.RoomSpotDiscovery)
                 .EnableRouter(session.RouterEndpoint)
-                .SetRoutingId(session.RoutingId);
+                .SetRoutingId(session.RoutingId)
+                .ConnectRouter(session.PreferredPlayNodeRid, session.PreferredPlaySpotRouterEndpoint)
+                .EnablePubSub(session.PubEndpoint);
             options.AddStreamNode(SampleNames.StreamNode)
                 .Bind(session.StreamEndpoint)
                 .RegisterSession<BingoSession>();

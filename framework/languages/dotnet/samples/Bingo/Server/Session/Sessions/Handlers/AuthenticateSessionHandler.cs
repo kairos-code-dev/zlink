@@ -1,5 +1,6 @@
 using Bingo.Server.Configuration;
 using Bingo.Shared.Contracts;
+using Microsoft.Extensions.Logging;
 using Systems.Zlink;
 using Zlink.Framework.Contracts.Channels;
 using Zlink.Framework.Contracts.Locations;
@@ -12,7 +13,8 @@ namespace Bingo.Server.Session.Sessions.Handlers;
 internal sealed class AuthenticateBingoSessionHandler(
     IZLinkChannelClient channels,
     IZLinkRouteClient routes,
-    SampleSessionNode session)
+    SampleSessionNode session,
+    ILogger<AuthenticateBingoSessionHandler> logger)
     : IZLinkSessionPacketHandler<IZLinkSessionContext>
 {
     public string PacketName => nameof(AuthenticateReq);
@@ -46,9 +48,14 @@ internal sealed class AuthenticateBingoSessionHandler(
                 })
             .Async<EnsurePlayerActorRes>(cancellationToken);
 
-        await context.Actors.BindOrGetAsync(
+        var boundActor = await context.Actors.BindOrGetAsync(
             ToActorRef(ensured.Actor),
             cancellationToken);
+        logger.LogInformation(
+            "bingo session: bound player={ActorId} node={NodeRid} session={SessionId}",
+            boundActor.ActorId,
+            ensured.Actor.NodeRid,
+            context.SessionId);
 
         context.Client.Reply(new AuthenticateRes
             {

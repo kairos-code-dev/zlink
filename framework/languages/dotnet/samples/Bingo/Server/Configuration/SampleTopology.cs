@@ -45,6 +45,7 @@ public sealed record SampleTopology(
                 RoutingId.From("1101"),
                 RoutingId.From("1102"),
                 playA.NodeRid,
+                playA.SpotRouterEndpoint,
                 playA.PlayChannelEndpoint),
             new SampleSessionNode(
                 ReadEndpoint("BINGO_SESSION_B_SPOT_ENDPOINT", "tcp://127.0.0.1:47107"),
@@ -53,6 +54,7 @@ public sealed record SampleTopology(
                 RoutingId.From("1103"),
                 RoutingId.From("1104"),
                 playB.NodeRid,
+                playB.SpotRouterEndpoint,
                 playB.PlayChannelEndpoint),
             ReadRequired("BINGO_REDIS_ENDPOINT"),
             ReadText("BINGO_REDIS_KEY_PREFIX", "bingo:"));
@@ -117,4 +119,5 @@ public sealed record SampleSessionNode(
     RoutingId RoutingId,
     RoutingId PublisherRoutingId,
     RoutingId PreferredPlayNodeRid,
+    string PreferredPlaySpotRouterEndpoint,
     string PreferredPlayChannelEndpoint);

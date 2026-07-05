@@ -827,9 +827,19 @@ export class ZLinkChannelRuntimeManager {
       return undefined;
     }
     const bridge = spotRouteNode.createRouteBridge();
+    if (process.env.ZLINK_AUTOCONNECT_TRACE === '1') {
+      console.error(
+        `[zlink-autoconnect] routeBridge attach begin channel=${channelName} socket=${socketTraceId(router)}`
+      );
+    }
     bridge.attachRouterChannel(channelName, router, {
       capabilities: ZLINK_BACKEND_SPOT_ROUTE_BRIDGE_ROUTE_WITH_CHANNEL_INBOUND
     });
+    if (process.env.ZLINK_AUTOCONNECT_TRACE === '1') {
+      console.error(
+        `[zlink-autoconnect] routeBridge attach done channel=${channelName} socket=${socketTraceId(router)}`
+      );
+    }
     this.spotRouteBridges.set(channelName, bridge);
     return bridge;
   }
@@ -2122,12 +2132,30 @@ class ZLinkChannelSocketRegistry {
     }
     applySocketConfig(router, routeChannel);
     this.trackSubmitter(router);
-    if (routeChannel.bind !== undefined && routeChannel.bind.trim().length > 0) {
-      router.bind(routeChannel.bind);
-    }
     if ((routeChannel.manualConnections ?? []).length > 0) {
       for (const endpoint of routeChannel.manualConnections ?? []) {
+        if (process.env.ZLINK_AUTOCONNECT_TRACE === '1') {
+          console.error(
+            `[zlink-autoconnect] routeRouter manual connect begin channel=${routerChannelId} ` +
+              `endpoint=${endpoint} socket=${socketTraceId(router)}`
+          );
+        }
         router.connect(endpoint);
+        if (process.env.ZLINK_AUTOCONNECT_TRACE === '1') {
+          console.error(
+            `[zlink-autoconnect] routeRouter manual connect done channel=${routerChannelId} ` +
+              `endpoint=${endpoint} socket=${socketTraceId(router)}`
+          );
+        }
+      }
+    }
+    if (routeChannel.bind !== undefined && routeChannel.bind.trim().length > 0) {
+      router.bind(routeChannel.bind);
+      if (process.env.ZLINK_AUTOCONNECT_TRACE === '1') {
+        console.error(
+          `[zlink-autoconnect] routeRouter bound channel=${routerChannelId} ` +
+            `endpoint=${routeChannel.bind} socket=${socketTraceId(router)}`
+        );
       }
     }
     this.routeRouters.set(routerChannelId, router);

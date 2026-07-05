@@ -2114,6 +2114,7 @@ test('framework runtime host lets route router own accepted Spot route channel f
     registration: await resolveFrameworkRegistration(nestjs.ZLinkModule.forRoot(nestjs.zlinkFramework()
       .addRouteMeshChannel('room.route')
         .enableRouter('tcp://0.0.0.0:9410')
+        .enableClient('tcp://127.0.0.1:9410')
         .routingId('room-node')
       .addSpotMesh('room')
         .enableRouter('tcp://0.0.0.0:9411', 'room-node')
@@ -2150,7 +2151,7 @@ test('framework runtime host lets route router own accepted Spot route channel f
               setChannelName(channelName) { calls.push(`route:setChannelName:${channelName}`); },
               setRoutingId(routingId) { calls.push(`route:setRoutingId:${routingId}`); },
               bind(endpoint) { calls.push(`route:bind:${endpoint}`); },
-              connect() {},
+              connect(endpoint) { calls.push(`route:connect:${endpoint}`); },
               disconnect() {},
               attachDiscovery() {},
               recv() {
@@ -2190,6 +2191,7 @@ test('framework runtime host lets route router own accepted Spot route channel f
     'route:createRouter',
     'route:setChannelName:room.route',
     'route:setRoutingId:room-node',
+    'route:connect:tcp://127.0.0.1:9410',
     'route:bind:tcp://0.0.0.0:9410',
     'spot:createRouteBridge',
     'bridge:attachRouter:room.route',

@@ -3,6 +3,7 @@ const test = require('node:test');
 
 const zlink = require('../../../../../bindings/node/dist');
 const backend = require('../../packages/framework/dist/runtime/backend');
+const framework = require('../../packages/framework/dist/internal');
 
 test('backend adapter factory exposes the supported backend adapters', () => {
   const factory = new backend.ZLinkNodeBackendAdapterFactory();
@@ -117,6 +118,66 @@ test('backend adapter converts public string route bridge target RIDs to native 
     await spotNode.dispose();
     await context.dispose();
   }
+});
+
+test('channel runtime connects route mesh peers before bind and spot route bridge attach', () => {
+  const calls = [];
+  const registration = framework.createFrameworkRegistrationWithBuilder((builder) => {
+    builder.addRouteMeshChannel('room.route')
+      .enableServer('tcp://0.0.0.0:9410')
+      .enableClient('tcp://127.0.0.1:9410');
+    builder.addSpotMesh('room')
+      .enableRouter('tcp://0.0.0.0:9411', 'room-node');
+  });
+  const routeSocket = {
+    nativeInstance: {},
+    setChannelName(channelName) { calls.push(`route:setChannelName:${channelName}`); },
+    setRoutingId(routingId) { calls.push(`route:setRoutingId:${routingId}`); },
+    connect(endpoint) { calls.push(`route:connect:${endpoint}`); },
+    bind(endpoint) { calls.push(`route:bind:${endpoint}`); },
+    disconnect() {},
+    onSendReady() {},
+    recv() { return undefined; },
+    async dispose() {}
+  };
+  const spotNode = {
+    routingId: 'room-node',
+    createRouteBridge() {
+      calls.push('spot:createRouteBridge');
+      return {
+        attachRouterChannel(channelName) { calls.push(`bridge:attachRouter:${channelName}`); },
+        async dispose() {}
+      };
+    }
+  };
+  const runtime = new framework.ZLinkChannelRuntimeManager(
+    registration,
+    {
+      createRouterSocket() {
+        calls.push('route:createRouter');
+        return routeSocket;
+      }
+    },
+    { nativeInstance: {}, shutdown() {}, async dispose() {} }
+  );
+
+  runtime.bindRouteMeshRouters();
+  runtime.setSpotNodes(new Map([['room', spotNode]]));
+  runtime.start({
+    errorSink: { report() {} },
+    run(_name, _task) {
+      return Promise.resolve();
+    }
+  });
+
+  assert.deepEqual(calls, [
+    'route:createRouter',
+    'route:setChannelName:room.route',
+    'route:connect:tcp://127.0.0.1:9410',
+    'route:bind:tcp://0.0.0.0:9410',
+    'spot:createRouteBridge',
+    'bridge:attachRouter:room.route'
+  ]);
 });
 
 test('backend adapter normalizes missing SpotNode actor lookup to undefined', async () => {

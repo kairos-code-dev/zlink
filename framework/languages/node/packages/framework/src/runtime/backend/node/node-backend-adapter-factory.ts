@@ -584,10 +584,27 @@ function resolveSocketLifecycleProperty(
   }
   if (property === 'dispose') {
     return async () => {
+      if (process.env.ZLINK_AUTOCONNECT_TRACE === '1' && state.boundEndpoints.size > 0) {
+        console.error(
+          `[zlink-autoconnect] socket dispose bound=${[...state.boundEndpoints].join(',')}\n` +
+            new Error('dispose-stack').stack
+        );
+      }
       disableSocketLinger(target);
       closeSocketRoutes(target, state.peerRoutingIds);
       closeSocketEndpoints(target, state.boundEndpoints, state.connectedEndpoints);
       await closeWithBusyRetry(target as { close(): void });
+    };
+  }
+  if (property === 'close') {
+    return () => {
+      if (process.env.ZLINK_AUTOCONNECT_TRACE === '1' && state.boundEndpoints.size > 0) {
+        console.error(
+          `[zlink-autoconnect] socket close bound=${[...state.boundEndpoints].join(',')}\n` +
+            new Error('close-stack').stack
+        );
+      }
+      (target as { close(): void }).close();
     };
   }
   if (property === 'bind') {
@@ -598,6 +615,11 @@ function resolveSocketLifecycleProperty(
   }
   if (property === 'unbind') {
     return (endpoint: string) => {
+      if (process.env.ZLINK_AUTOCONNECT_TRACE === '1') {
+        console.error(
+          `[zlink-autoconnect] socket unbind endpoint=${endpoint}\n` + new Error('unbind-stack').stack
+        );
+      }
       (target as { unbind(endpoint: string): void }).unbind(endpoint);
       state.boundEndpoints.delete(endpoint);
     };

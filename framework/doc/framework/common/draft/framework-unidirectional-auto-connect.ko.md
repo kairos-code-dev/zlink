@@ -1,7 +1,7 @@
-# [DRAFT] auto-connect 단방향 연결 규칙 통일 (route mesh · spot mesh)
+# [DRAFT] framework auto-connect 단방향 연결 규칙 통일 (route mesh · spot mesh)
 
 - 상태: 설계 확정(사용자 결정 2026-07-05) — 구현 진행
-- 대상 버전: core 8.6.0 (동작 규칙 변경 — minor)
+- 소관: **framework**(location auto-connect가 연결 판정·dial의 실행 주체 — registry 제거 후 core discovery_protocol의 규칙은 참조 정본일 뿐 실행 경로 아님). core는 기존 능력(ROUTER 인바운드 identity 송신, PROBE_ROUTER 옵션)으로 충분한지 실측 후 갭 발견 시에만 수정
 - 결정자: 사용자 (배경 논의: route mesh 양방향 connect의 대규모(1000+ node) 연결 오버헤드)
 
 ## 1. 배경과 현행 규칙
@@ -43,23 +43,21 @@ non-initiator도 rid-addressed 송신이 가능해야 하므로:
    (half-open 방지). 재연결은 initiator 소유 — non-initiator 방향 송신의
    일시 실패는 송신 측 timeout 내 재시도(기존 채널 retriable 재시도 정책)로 흡수.
 
-## 3. 적용 계획 (확립된 core 트랙 절차)
+## 3. 적용 계획 (framework 작업)
 
-1. **core**: `socket_auto_connect_target_matches`의 ROUTE_MESH·SPOT_MESH를
-   `< 0`으로 변경 + probe 활성화 + 인바운드 identity 라우팅(route bridge·
-   spot data plane 송신 경로) + **회귀 테스트**(단방향 페어에서 양방향
-   rid-addressed 송수신, disconnect 후 테이블 정리, 재연결 후 재학습).
-2. **버전 8.6.0** — 3곳 동기(루트 VERSION, core/include/zlink.h,
-   core/packaging/conan/conandata.yml) → `core/v8.6.0` 태그 → GitHub Actions
-   릴리즈(gh run watch 감시).
-3. **bindings**: `bindings/update_zlink_libs.sh core/v8.6.0 --expect-version 8.6.0`.
-4. **framework 4언어 정합**: location auto-connect 소비 로직(dotnet
-   `ZLinkLocationAutoConnectHost`, cpp `location_auto_connect_host_service`,
-   node·java 대응)을 동일한 `< 0` 단방향으로 + 인바운드 rid 송신 경로 검증.
-   공통 draft(framework-location-resolver-store-porting-*.ko.md)의 연결 규칙
-   문구 갱신.
-5. **재검증**: 4언어 TA e2e·TicTacToe·DeliveryDispatch·(Bingo) 러너 —
-   route/spot mesh를 실제로 넘나드는 시나리오 전부.
+1. **cpp 파일럿**: `location_auto_connect_host_service`의 should_dial을
+   ROUTE_MESH·SPOT_MESH `< 0` 단방향으로 + connect 소켓 probe 활성화(core
+   `ZLINK_INTERNAL_OPT_PROBE_ROUTER` 소비) + **인바운드 rid 송신 실측**
+   (route request_to_node·spot data plane·route bridge가 non-initiator
+   방향에서 동작하는지 — TicTacToe/DD/TA e2e로 판정).
+2. **core 갭 처리(조건부)**: 인바운드 링크에서 rid-addressed 경로가 막히는
+   지점이 실측되면 그때만 core 수정 트랙(버전 업·릴리즈·bindings 배포 —
+   확립된 절차) 가동.
+3. **4언어 횡전개**: dotnet `ZLinkLocationAutoConnectHost`, node·java 대응
+   구현을 동일 규칙으로. 유닛(단방향 페어 양방향 송수신·disconnect 정리) 추가.
+4. **문서 정합**: 공통 draft(framework-location-resolver-store-porting-*.ko.md)의
+   연결 규칙 문구를 단방향으로 갱신.
+5. **재검증**: 4언어 TA e2e·TicTacToe·DeliveryDispatch·(Bingo) 러너.
 
 ## 4. 비고
 

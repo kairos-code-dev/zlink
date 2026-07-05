@@ -23,6 +23,8 @@ framework public API와 stream connector public API를 사용해서, 같은 서�
 - server 간 channel과 Spot messaging에서 request/reply 방식과 send/send 방식의 차이가 무엇인가.
 - Spot handler 안에서 remote request를 `Async`로 기다리는 경우와 `Yield`로 대기 coroutine을 양보하는
   경우의 head-of-line blocking 차이가 얼마나 나는가.
+- Spot handler가 `runWorker(...)`로 local worker pool에 작업을 맡길 때, 기본 terminator로 기다리는
+  경우와 `Yield`로 기다리는 경우의 turn 점유·queue 진행성 차이가 얼마나 나는가.
 - payload 크기가 1 KiB에서 4 KiB로 커졌을 때 처리량과 지연 시간이 어떻게 변하는가.
 - client runner, server process, framework dispatch, codec, transport 중 병목 후보가 어디인지
   evidence로 분리할 수 있는가.
@@ -32,9 +34,9 @@ framework public API와 stream connector public API를 사용해서, 같은 서�
 공통 성능 테스트는 `.NET`, Java, Kotlin, Node.js, C++ framework에서 같은 의미로 구현한다. 언어별
 문법과 runner 도구는 달라도 시나리오 이름, payload 크기, 측정 구간, 메트릭 이름, 성공 조건은 맞춘다.
 
-초기 범위는 아래 다섯 가지 축이다. 모든 표준 시나리오는 `1 KiB`와 `4 KiB` 두 payload 크기로 실행한다.
-다만 결과를 해석할 때 CS(session/actor) 계열과 Spot execution 계열은 `1 KiB`, S2S(channel/Spot)
-계열은 `4 KiB`를 대표 수치로 본다.
+초기 범위는 아래 일곱 가지 축이다. 모든 표준 시나리오는 `1 KiB`와 `4 KiB` 두 payload 크기로 실행한다.
+다만 결과를 해석할 때 CS(session/actor) 계열과 Spot execution 계열, PS(publish-subscribe) 계열은
+`1 KiB`, S2S(channel/Spot)와 AC(actor client no-bind) 계열은 `4 KiB`를 대표 수치로 본다.
 
 | 축 | 목적 | 대표 payload | 함께 실행할 payload |
 |----|------|---------------|--------------------|
@@ -42,7 +44,22 @@ framework public API와 stream connector public API를 사용해서, 같은 서�
 | connector → session → remote actor echo | session 서버와 actor 서버가 분리된 구조의 비용 측정 | 1 KiB | 4 KiB |
 | channel → remote Spot echo | server 간 channel에서 remote Spot으로 요청하거나 전송하는 비용 측정 | 4 KiB | 1 KiB |
 | remote Spot → channel echo | remote Spot에서 channel server로 요청하거나 전송하는 비용 측정 | 4 KiB | 1 KiB |
-| Spot execution Async/Yield echo | Spot handler의 `Async` 대기와 `Yield` 대기 비용 및 queue 진행성 측정 | 1 KiB | 4 KiB |
+| Spot execution Async/Yield echo | Spot handler의 remote request `Async`/`Yield` 대기 비용과 `runWorker(...)` local worker pool offload `Async`/`Yield` 대기 비용, queue 진행성 측정 | 1 KiB | 4 KiB |
+| actor client(no-bind) → actor echo | session 없는 server 측 caller가 actor id로 직접 send/request하는 비용 측정 (`L13`, draft 계약) | 4 KiB | 1 KiB |
+| publish → subscriber fanout | publisher 하나가 여러 subscriber에게 이벤트를 뿌릴 때 fanout 처리량과 delivery latency 측정 | 1 KiB | 4 KiB |
+
+`publish → subscriber fanout` 축은 `framework/doc/framework/common/spec/interaction-model.ko.md` §3.3과
+`framework/doc/framework/common/spec/channel-topology.ko.md`가 정의하는 `publish-subscribe` 공용
+상호작용 모델, 그리고 `framework/doc/framework/common/e2e/config-3-pubsub.ko.md`의 fanout 시나리오를
+기준으로 한다. `publish-subscribe`는 이미 5개 언어 모두 구현되어 승격된 공개 계약이므로, `L13`과 달리
+이 축은 언어별 스킵 없이 다른 다섯 축과 동일하게 필수로 구현한다.
+
+`actor client(no-bind) → actor echo` 축은 `framework/doc/plan/framework-public-contract-posd-redesign.ko.md`
+3절의 `L13`(actor client, `SendToActor`/`RequestToActor`) 계약과 `framework/doc/framework/common/e2e/config-9-to-actor-messaging.ko.md`
+시나리오를 기준으로 한다. 이 문서를 쓰는 시점 기준 `L13`은 언어별 구현이 진행 중이고 공통 e2e가 아직
+그린이 아니므로, 이 축의 perf 시나리오는 구현을 기다리는 target blueprint다. `L13` public API가 없는
+언어는 이 축을 스킵하고 나머지 다섯 축만 표준 perf로 유지하며, `L13`이 없다는 이유로 전체 perf 구현을
+지연하지 않는다.
 
 payload 크기는 message payload 본문 크기를 뜻한다. framework header, connector frame, codec metadata는
 포함하지 않는다. 각 언어는 같은 byte pattern을 만들어야 한다. 압축이나 문자열 interning 효과가 결과를
@@ -99,7 +116,11 @@ shell runner에서는 아래 long option을 지원해야 한다.
 | `--payload-sizes` | `1024,4096` | 여러 payload 크기를 순서대로 실행 |
 | `--inflight` | `1` | client당 동시 요청 또는 미완료 echo 수 |
 | `--connect-concurrency` | `256` | 동시에 연결을 시도하는 connector 수 |
-| `--mode` | 시나리오 기본값 | `request`, `send-send`, `async-request`, `yield-request`, `no-await` 중 하나 |
+| `--spot-count` | `16` | Spot execution 시나리오에서 부하를 분산할 Spot RID 개수. `spot-yield-contention`은 이 값과 무관하게 `1`로 고정한다 |
+| `--subscriber-count` | `8` | pub/sub 시나리오에서 fanout을 받는 subscriber process 수 |
+| `--worker-task-millis` | `5` | Spot worker offload 시나리오에서 `runWorker(...)`가 수행할 고정 비용 blocking 작업 시간 |
+| `--worker-pool-size` | `8` | Spot worker offload 시나리오에서 framework worker pool의 최대 thread 수 |
+| `--mode` | 시나리오 기본값 | `request`, `send-send`, `async-request`, `yield-request`, `no-await`, `publish`, `worker-offload-async`, `worker-offload-yield` 중 하나 |
 | `--codec` | `json` | payload codec. 시나리오가 고정하면 override하지 않는다 |
 | `--output` | `perf-results/<run-id>` | 결과 파일 디렉토리 |
 | `--run-id` | timestamp | 로그와 결과를 묶는 실행 id |
@@ -141,12 +162,20 @@ endpoint option을 여러 개 늘어놓으면 언어별로 이름이 달라지�
     "spot": {
       "appEndpoint": "tcp://127.0.0.1:21005",
       "metricsUrl": "http://127.0.0.1:31005",
-      "spotRid": "perf-spot-0"
+      "spotRids": ["perf-spot-0", "perf-spot-1", "perf-spot-2", "perf-spot-3"]
     },
     "remoteEcho": {
       "appEndpoint": "tcp://127.0.0.1:21006",
       "metricsUrl": "http://127.0.0.1:31006"
     },
+    "publisher": {
+      "appEndpoint": "tcp://127.0.0.1:21008",
+      "metricsUrl": "http://127.0.0.1:31008"
+    },
+    "subscribers": [
+      { "appEndpoint": "tcp://127.0.0.1:21101", "metricsUrl": "http://127.0.0.1:31101", "subscriberId": 0 },
+      { "appEndpoint": "tcp://127.0.0.1:21102", "metricsUrl": "http://127.0.0.1:31102", "subscriberId": 1 }
+    ],
     "registry": {
       "appEndpoint": "tcp://127.0.0.1:21007",
       "metricsUrl": "http://127.0.0.1:31007"
@@ -158,6 +187,17 @@ endpoint option을 여러 개 늘어놓으면 언어별로 이름이 달라지�
 필요 없는 role은 생략한다. `appEndpoint`는 해당 role의 framework 통신 endpoint이고, `metricsUrl`은
 성능 테스트 전용 HTTP endpoint다. scenario가 benchmark 시작을 server에 알려야 하면 해당 role의
 `appEndpoint`로 `PerfTriggerRequest`를 보낸다. HTTP metrics endpoint를 trigger 경로로 사용하지 않는다.
+
+`subscribers`는 `spotRids`와 달리 한 role 안의 목록이 아니라, 독립 프로세스 role을 배열로 나열한
+것이다. 배열 길이는 `--subscriber-count`와 같다. 각 항목은 자기 `metricsUrl`을 가진 별도
+process이므로, `/perf/reset`·`/perf/stats`도 subscriber마다 따로 호출하고 결과도 subscriber별로
+남긴다(§15 `server-<role>.json` 규칙을 `server-subscriber-<subscriberId>.json`으로 확장한다).
+
+`spot` role의 `spotRids`는 Spot server가 미리 만들어 둔 Spot RID 목록이며, 길이는 `--spot-count`와
+같다. client는 connector마다 이 목록을 순서대로 나눠 맡아 요청을 여러 Spot RID로 분산한다.
+`spot-yield-contention`은 `--spot-count 1`을 강제하므로 이 목록의 첫 번째 값만 사용하고, 모든
+connector가 같은 Spot RID로 요청을 보낸다. 여러 Spot RID로 부하를 나누는 시나리오와 단일 Spot RID에
+집중하는 시나리오는 이 목록 길이 하나로 구분되어야 하며, 언어별 구현이 임의로 RID 수를 정하면 안 된다.
 
 ## 6. 표준 프로젝트 구조
 
@@ -185,7 +225,12 @@ framework/languages/<lang>/perf/
 |   |   |-- SpotAsyncRequestEchoScenario.*
 |   |   |-- SpotYieldRequestEchoScenario.*
 |   |   |-- SpotYieldContentionScenario.*
-|   |   `-- SpotNoAwaitEchoScenario.*
+|   |   |-- SpotNoAwaitEchoScenario.*
+|   |   |-- SpotWorkerOffloadAsyncEchoScenario.*
+|   |   |-- SpotWorkerOffloadYieldEchoScenario.*
+|   |   |-- ActorNoBindRequestEchoScenario.*
+|   |   |-- ActorNoBindSendSendEchoScenario.*
+|   |   `-- PubSubFanoutEchoScenario.*
 |   |-- Support/
 |   |   |-- PerfClientOptions.*
 |   |   |-- PerfRunPlan.*
@@ -204,6 +249,9 @@ framework/languages/<lang>/perf/
 |   |-- Channel/
 |   |-- Spot/
 |   |-- RemoteEcho/
+|   |-- ActorCaller/        `L13` actor client 공개 API가 있는 언어에서만 둔다
+|   |-- Publisher/
+|   |-- Subscriber/
 |   `-- Registry/           registry가 필요한 언어/시나리오에서만 둔다
 |-- ServerSupport/
 |   |-- Metrics/
@@ -299,14 +347,25 @@ thread pool queue 같은 언어별 runner 상태를 기록한다. client process
 |------|-------------|-----------|
 | `SessionActorLocal` | stream session, local actor, actor factory, local echo handler | connector → session → actor |
 | `Session` | stream session, remote actor relay, request reply 처리 | connector → session → remote actor |
-| `Actor` | actor/Entry Spot 또는 actor owner Spot, echo actor handler | remote actor echo |
+| `Actor` | actor/Entry Spot 또는 actor owner Spot, echo actor handler | remote actor echo, actor client no-bind echo |
 | `Channel` | channel request/send handler, trigger endpoint | channel ↔ Spot |
 | `Spot` | Spot factory, Spot handler, timer가 필요하면 perf 전용 timer | Spot ↔ channel, Async/Yield |
 | `RemoteEcho` | Spot execution 시나리오에서 Spot handler가 호출하는 단순 channel echo server | Async/Yield remote request |
+| `ActorCaller` | session을 만들지 않는 외부 caller, `L13` actor client 공개 API로 `SendToActor`/`RequestToActor` 호출 실행 | actor client no-bind echo |
+| `Publisher` | publish channel server, `EventPublish`/`Publish(...).Async()` 공개 API로 이벤트 발행 | publish fanout |
+| `Subscriber` | subscribe handler, 수신 event를 evidence/metric으로 기록 | publish fanout |
 | `Registry` | discovery가 필요한 구성의 registry | measured path 아님 |
 
 server process는 각각 자기 metrics endpoint를 가진다. 여러 server가 하나의 metrics endpoint를 공유하면
 어느 role이 병목인지 분리할 수 없다.
+
+`ActorCaller`가 참여하는 시나리오는 actor 위치 resolve를 위해 공식 location store(예: Redis) 확장이
+필요하다. 이 구성에서는 `Registry` role 대신 location store 자체를 공유 의존성으로 띄우고, endpoint-config에
+role별 endpoint를 기록한다.
+
+`Publisher`/`Subscriber`도 fanout 연결을 위해 같은 location store가 필요하다(config-3-pubsub과 동일).
+`Subscriber`는 `--subscriber-count`개 별도 process로 띄우고, 하나의 binary가 `--role subscriber`로
+여러 인스턴스를 흉내 내지 않는다.
 
 ### 6.4 support 코드 분리
 
@@ -489,6 +548,11 @@ scenario class 또는 file 이름은 아래 canonical 이름을 따른다.
 | `spot-yield-request-echo` | `SpotYieldRequestEchoScenario` |
 | `spot-yield-contention` | `SpotYieldContentionScenario` |
 | `spot-no-await-echo` | `SpotNoAwaitEchoScenario` |
+| `spot-worker-offload-async-echo` | `SpotWorkerOffloadAsyncEchoScenario` |
+| `spot-worker-offload-yield-echo` | `SpotWorkerOffloadYieldEchoScenario` |
+| `actor-no-bind-request-echo` | `ActorNoBindRequestEchoScenario` |
+| `actor-no-bind-send-send-echo` | `ActorNoBindSendSendEchoScenario` |
+| `pubsub-fanout-echo` | `PubSubFanoutEchoScenario` |
 
 언어별 casing은 바꿀 수 있지만 단어는 바꾸지 않는다. 예를 들어 C++ 파일명은
 `s2s_channel_to_spot_request_echo_scenario.cpp`처럼 쓸 수 있다.
@@ -633,6 +697,7 @@ Spot handler가 remote I/O를 기다리는 동안 Spot job 흐름을 얼마나 �
 | 서버 구성 | `SpotServer`, `RemoteEchoServer`, 필요하면 `Registry` |
 | payload | 대표 1 KiB, 함께 4 KiB |
 | mode | `async-request` |
+| Spot 배치 | `--spot-count`개 Spot RID로 요청 분산 |
 | 측정 단위 | Spot handler echo completion |
 | 비교 목적 | Spot handler 내부 `Async` remote request 대기 비용 |
 
@@ -648,6 +713,7 @@ request reply를 기다릴 때 `Yield` 계열 terminator를 사용한다는 점�
 | 서버 구성 | `SpotServer`, `RemoteEchoServer`, 필요하면 `Registry` |
 | payload | 대표 1 KiB, 함께 4 KiB |
 | mode | `yield-request` |
+| Spot 배치 | `--spot-count`개 Spot RID로 요청 분산 |
 | 측정 단위 | Spot handler echo completion |
 | 비교 목적 | Spot handler 내부 `Yield` remote request 대기 비용과 queue 진행성 |
 
@@ -662,11 +728,14 @@ request reply를 기다릴 때 `Yield` 계열 terminator를 사용한다는 점�
 | 서버 구성 | `SpotServer`, `RemoteEchoServer`, 필요하면 `Registry` |
 | payload | 대표 1 KiB, 함께 4 KiB |
 | mode | `yield-request` |
+| Spot 배치 | `--spot-count 1` 고정 |
 | 측정 단위 | 단일 Spot RID echo completion |
 | 비교 목적 | 단일 Spot에 요청이 몰릴 때 `Yield`가 queue 진행을 풀어 주는지 측정 |
 
-이 시나리오는 여러 Spot RID로 부하를 분산하지 않는다. 여러 Spot으로 분산하면 `Yield`의 queue 진행성
-효과와 owner 분산 효과가 섞이기 때문이다.
+이 시나리오는 `--spot-count 1`로 고정해서 여러 Spot RID로 부하를 분산하지 않는다. 여러 Spot으로
+분산하면 `Yield`의 queue 진행성 효과와 owner 분산 효과가 섞이기 때문이다. 같은 조건의
+`spot-async-request-echo`/`spot-yield-request-echo`와 비교할 때는 두 실행 모두 같은 `--spot-count`
+값을 써야 하며, 그중 하나만 `--spot-count 1`로 바꾸면 이 시나리오와 구분이 사라진다.
 
 ### 10.10 `spot-no-await-echo`
 
@@ -684,6 +753,107 @@ payload 검증 비용만 보기 위한 기준이다.
 Spot execution 시나리오의 handler는 공유 mutable state를 request 전후에 이어서 판단하지 않는다.
 `Yield`는 대기 중 Spot의 다른 job이 진행될 수 있으므로, admission I/O나 단순 echo처럼 request 전후
 상태 동기화 위험이 없는 흐름만 측정한다.
+
+### 10.11 `spot-worker-offload-async-echo`
+
+client가 Spot server에 trigger 요청을 보낸다. Spot handler는 `runWorker(...)`(언어별
+`RunWorker`/`runWorker`/`run_worker`)로 고정 비용 blocking 작업을 framework worker pool에 맡기고,
+기본(non-yield) terminator로 완료를 기다린 뒤 client-visible completion을 기록한다. `RemoteEcho`
+서버는 필요 없다 — 이 축은 remote I/O가 아니라 local worker pool로의 offload 비용을 잰다. worker
+작업 자체는 `--worker-task-millis`로 고정한 busy-wait 또는 sleep이며, 언어별로 임의의 CPU 작업을
+넣지 않는다.
+
+| 항목 | 값 |
+|------|----|
+| 서버 구성 | `SpotServer` |
+| payload | 대표 1 KiB, 함께 4 KiB |
+| mode | `worker-offload-async` |
+| worker 설정 | `--worker-task-millis`, `--worker-pool-size` |
+| 측정 단위 | Spot handler echo completion |
+| 비교 목적 | Spot handler가 기본 terminator로 worker pool 완료를 기다릴 때 turn 점유 비용 |
+| 실패 분류 | `WorkerQueueFull`, `WorkerTimeout`을 `errors.byKind`에 구분 기록 |
+
+### 10.12 `spot-worker-offload-yield-echo`
+
+`spot-worker-offload-async-echo`와 같은 worker 작업을 쓰지만, Spot handler가 `runWorker(...)`
+완료를 `Yield` terminator로 기다린다. `Yield`는 대기 중 같은 Spot의 다른 job이 진행될 수 있게
+하므로, 이 시나리오는 처리량뿐 아니라 queue 진행성과 worker 완료 후 resume latency를 함께 본다.
+`config-8-yield-dispatch.ko.md`의 YD-A4(worker offload yield)가 검증하는 기능을 같은 조건에서
+perf로 재는 것이며, e2e가 이미 확인한 기능(순서 보장 등)을 다시 단언하지 않는다.
+
+| 항목 | 값 |
+|------|----|
+| 서버 구성 | `SpotServer` |
+| payload | 대표 1 KiB, 함께 4 KiB |
+| mode | `worker-offload-yield` |
+| worker 설정 | `--worker-task-millis`, `--worker-pool-size` |
+| 측정 단위 | Spot handler echo completion |
+| 비교 목적 | worker pool 완료 대기 중 `Yield`가 Spot queue 진행을 풀어 주는지, worker→Spot mailbox 재개 비용 |
+| 실패 분류 | `WorkerQueueFull`, `WorkerTimeout`을 `errors.byKind`에 구분 기록 |
+
+같은 조건의 `spot-worker-offload-async-echo`와 비교할 때는 두 실행 모두 같은 `--worker-task-millis`,
+`--worker-pool-size`, payload, in-flight 조건을 써야 한다. 이 축은 `channel-topology.ko.md`가
+정의하는 분산 worker pool 라우팅("worker-dispatch" 상호작용 모델, 여러 worker 프로세스로 부하를
+분산하는 모델)과는 다르다. 그 모델은 `spec/usecase-validation.ko.md`에 "모델은 있으나 retry,
+in-flight failure, 처리 보장 논의가 부족함"으로 기록된 미확정 설계이고 공개 API가 없으므로 perf
+대상이 아니다. 여기서 재는 `runWorker(...)`는 같은 프로세스 안의 Spot 전용 worker thread pool
+offload로, 이미 5개 언어 모두 구현되어 있는 별개의 확정 공개 API다.
+
+### 10.13 `actor-no-bind-request-echo`
+
+session이 없는 `ActorCaller` server가 `L13` actor client 공개 API의 `RequestToActor` 호출로 actor id에
+직접 request를 보내고 reply를 받는다. client는 benchmark trigger만 `ActorCaller`에 보내며, 측정
+대상은 server 간 actor client no-bind request/reply다. `RequestToActor`의 await 완료는 "resolve
+성공 + 로컬 mailbox 인계"가 아니라 handler reply 도착을 뜻한다(no-bind 계약 정의 그대로).
+
+| 항목 | 값 |
+|------|----|
+| 서버 구성 | `ActorCaller`, `Actor`, location store(Redis) |
+| payload | 대표 4 KiB, 함께 1 KiB |
+| mode | `request` |
+| 측정 단위 | server 간 echo completion |
+| 비교 목적 | session bind 없이 actor id로 직접 request할 때 resolve + no-bind 전달 비용 |
+| 실패 분류 | `ActorRouteNotFound`, `ActorLocationStale`, `RouteNotConnected`를 `errors.byKind`에 구분 기록 |
+
+이 시나리오는 언제나 bind되지 않은 actor를 대상으로 한다. `config-9-to-actor-messaging.ko.md`의 bind
+상태 매트릭스(TA-A1~A4)는 기능 검증이 목적이므로 perf에서 다시 만들지 않는다.
+
+### 10.14 `actor-no-bind-send-send-echo`
+
+`ActorCaller` server가 `SendToActor`로 actor id에 echo 요청을 보내고, actor handler가 같은
+`ActorCaller`로 send 응답을 보낸다. `SendToActor` 자체의 await 완료(resolve 성공 + 로컬 mailbox
+인계)와 실제 echo 왕복(correlation 완료)은 서로 다른 시점이므로 둘을 분리해서 기록한다.
+
+| 항목 | 값 |
+|------|----|
+| 서버 구성 | `ActorCaller`, `Actor`, location store(Redis) |
+| payload | 대표 4 KiB, 함께 1 KiB |
+| mode | `send-send` |
+| 측정 단위 | correlation 완료 수 (로컬 인계 latency는 별도 기록) |
+| 비교 목적 | session bind 없이 양방향 send로 actor에 접근할 때 최대 처리량과 로컬 인계 비용 |
+| 실패 분류 | `ActorRouteNotFound`, `ActorLocationStale`, `RouteNotConnected`를 `errors.byKind`에 구분 기록 |
+
+### 10.15 `pubsub-fanout-echo`
+
+`Publisher` server가 고정된 하나의 topic으로 이벤트를 연속 발행하고, `--subscriber-count`개의
+`Subscriber` server가 같은 이벤트를 받는다. client는 benchmark trigger만 `Publisher`에 보내며,
+측정 대상은 publisher → 다수 subscriber fanout이다. `Publish(...).Async()`는 remote 수신을
+보장하지 않으므로, 완료 기준은 client-visible echo completion이 아니라 아래 표의 subscriber별
+delivery로 정의한다.
+
+| 항목 | 값 |
+|------|----|
+| 서버 구성 | `Publisher`, `Subscriber` × `--subscriber-count`, location store(Redis) |
+| payload | 대표 1 KiB, 함께 4 KiB |
+| mode | `publish` |
+| 측정 단위 | subscriber별 수신 event 수, `fanout.deliveryRatio`, delivery latency |
+| 비교 목적 | fanout 폭(subscriber 수)에 따른 publish 처리량과 subscriber별 delivery latency 변화 |
+| 실패 분류 | 수신 누락은 error가 아니라 `fanout.deliveryRatio` 하락으로 관측한다. transport 오류만 `errors.byKind`에 기록한다 |
+
+이 시나리오는 topic 필터 기능(`config-3-pubsub.ko.md` PS-A2가 다룬다), late subscriber 합류,
+publisher/subscriber 재시작 같은 동적 이벤트를 재현하지 않는다. 이런 기능 검증은 e2e Config 3의 몫이고,
+perf는 이미 구독이 완료된 정상 상태에서 fanout 처리량만 측정한다. warmup phase에서 모든 subscriber가
+최소 한 건을 수신할 때까지 기다린 뒤에만 measured phase로 넘어간다.
 
 ## 11. Baseline 시나리오
 
@@ -711,11 +881,17 @@ baseline이 아직 없는 언어는 통합 시나리오 결과를 해석할 때 
 | `PerfEchoReply` | `runId`, `clientId`, `sequence`, `correlationId`, `receivedTicks`, `payload` | echo 응답 |
 | `PerfTriggerRequest` | `runId`, `batchSize`, `mode`, `payloadSize`, `payload` | server 간 echo batch 시작 |
 | `PerfTriggerReply` | `accepted`, `completed`, `failed`, `message` | trigger 처리 결과 |
+| `PerfPublishEvent` | `runId`, `sequence`, `topic`, `sentTicks`, `payload` | publisher가 발행하는 fanout 이벤트 |
 | `PerfMetricsSnapshot` | 아래 §14 메트릭 필드 | client/server metric 조회 결과 |
 
 `payload`는 수신 측에서 크기와 일부 byte pattern을 확인한다. echo 테스트에서는 payload를 그대로
 돌려보내야 한다. payload를 새로 만들거나 압축하거나 일부만 돌려보내면 측정 의미가 달라지므로 실패로
 본다.
+
+`PerfPublishEvent`는 `PerfEchoRequest`와 달리 `clientId`/`correlationId`가 없다. 발행은 특정 수신자를
+겨냥하지 않으므로 clientId 개념이 없고, reply가 없으므로 correlation도 없다. 대신 `sequence`가
+subscriber별로 연속 수신 여부를 검증하는 유일한 키다. `topic`은 `pubsub-fanout-echo`에서 항상 같은
+고정값을 쓴다. topic별 분기는 perf 범위가 아니다.
 
 ## 13. Request 방식과 Send/Send 방식의 공정성
 
@@ -757,7 +933,11 @@ baseline이 아직 없는 언어는 통합 시나리오 결과를 해석할 때 
 | `process.rssMb` | MiB | resident memory |
 | `process.allocatedMb` | MiB | runtime이 제공할 수 있으면 allocated bytes |
 | `gc.gen0`, `gc.gen1`, `gc.gen2` | count | GC 횟수. GC가 없는 언어는 `null` |
-| `errors.byKind` | object | timeout, decode, route, connection, handler 등 오류 분류 |
+| `errors.byKind` | object | timeout, decode, route, connection, handler 등 오류 분류. `actor-no-bind-*` 시나리오는 `ActorRouteNotFound`, `ActorLocationStale`, `RouteNotConnected`도 별도 key로 기록 |
+| `actor.resolve.latency.p95Ms` | ms | `L13` no-bind 호출에서 actor id resolve에 걸린 시간 p95 |
+| `actor.resolve.latency.p99Ms` | ms | `L13` no-bind 호출에서 actor id resolve에 걸린 시간 p99 |
+| `actor.localHandoff.latency.p95Ms` | ms | `SendToActor` await 완료(로컬 mailbox 인계)까지 걸린 시간 p95 |
+| `actor.localHandoff.latency.p99Ms` | ms | `SendToActor` await 완료(로컬 mailbox 인계)까지 걸린 시간 p99 |
 | `spot.mailboxDepth.max` | count | 측정 중 관측된 Spot mailbox 최대 depth |
 | `spot.mailboxDepth.mean` | count | 측정 중 관측된 Spot mailbox 평균 depth |
 | `spot.yieldedCoroutines` | count | `Yield`로 대기한 coroutine 수 |
@@ -766,11 +946,26 @@ baseline이 아직 없는 언어는 통합 시나리오 결과를 해석할 때 
 | `spot.resumeLatency.p99Ms` | ms | reply 수신 가능 시점부터 coroutine 재개까지 p99 |
 | `spot.remoteRequestRtt.p95Ms` | ms | Spot handler가 호출한 remote request RTT p95 |
 | `spot.remoteRequestRtt.p99Ms` | ms | Spot handler가 호출한 remote request RTT p99 |
+| `worker.pool.queueDepth.max` | count | 측정 중 관측된 worker pool 대기열 최대 depth |
+| `worker.pool.queueDepth.mean` | count | 측정 중 관측된 worker pool 대기열 평균 depth |
+| `worker.pool.queueWaitLatency.p95Ms` | ms | `runWorker(...)` 제출부터 worker thread가 집어들 때까지 p95 |
+| `worker.pool.queueWaitLatency.p99Ms` | ms | `runWorker(...)` 제출부터 worker thread가 집어들 때까지 p99 |
+| `worker.taskLatency.p95Ms` | ms | worker thread에서 작업 실행(`--worker-task-millis`) 자체 소요 p95 |
+| `worker.taskLatency.p99Ms` | ms | worker thread에서 작업 실행(`--worker-task-millis`) 자체 소요 p99 |
+| `worker.resumeLatency.p95Ms` | ms | worker 작업 완료부터 원래 Spot mailbox continuation 재개까지 p95 (`Yield`만 해당) |
+| `worker.resumeLatency.p99Ms` | ms | worker 작업 완료부터 원래 Spot mailbox continuation 재개까지 p99 (`Yield`만 해당) |
+| `messages.published` | count | publisher가 measured phase 동안 발행한 event 수 |
+| `fanout.subscriberCount` | count | 이 실행에 참여한 subscriber process 수 |
+| `fanout.deliveryRatio` | ratio(0~1) | subscriber별 (수신한 고유 sequence 수 / `messages.published`) 중 최솟값 |
+| `fanout.deliveryLatency.p95Ms` | ms | publish 시각부터 subscriber 수신 시각까지 p95 |
+| `fanout.deliveryLatency.p99Ms` | ms | publish 시각부터 subscriber 수신 시각까지 p99 |
 
 KOPS는 `messages.completed / measuredSeconds / 1000`으로 계산한다. request/reply echo는 내부적으로
 여러 message를 만들 수 있으므로, KOPS와 `messagesPerSec`를 구분해서 기록한다.
-Spot 관련 metric은 해당 시나리오가 지원하지 않으면 `null`로 둔다. 값을 임의로 `0`으로 채우면
-지원하지 않는 것과 실제 0을 구분할 수 없다.
+Spot 관련 metric, `actor.*` metric, `fanout.*` metric, `worker.*` metric은 해당 시나리오가 지원하지 않으면 `null`로
+둔다. 값을 임의로 `0`으로 채우면 지원하지 않는 것과 실제 0을 구분할 수 없다.
+`pubsub-fanout-echo`의 `messages.completed`는 client-visible echo가 없으므로 항상 `null`이고,
+대신 `fanout.deliveryRatio`와 `messages.published`로 성공을 판단한다.
 
 latency percentile을 여러 client process에서 합산하려면 histogram bucket이 필요하다. 모든 client와
 server snapshot은 아래 형식의 histogram을 함께 기록한다.
@@ -1086,7 +1281,7 @@ C++ 구현은 release build 산출물을 사용한다. core runtime 또는 bindi
 1. 공통 message 계약과 result schema를 만든다.
 2. metrics collector와 `POST /perf/reset`, `GET /perf/stats`, `GET /perf/ready`를 만든다.
 3. client runner의 connect, warmup, measured, report phase를 만든다.
-4. `connector-echo-only` baseline으로 runner와 metric이 맞는지 확인한다.
+4. `connector-echo-only`와 `session-echo-only` baseline으로 runner와 metric이 맞는지 확인한다.
 5. `cs-local-session-actor-echo`를 구현한다.
 6. `cs-remote-session-actor-echo`를 구현한다.
 7. `channel-echo-only`와 `spot-local-echo` baseline을 구현한다.
@@ -1094,9 +1289,16 @@ C++ 구현은 release build 산출물을 사용한다. core runtime 또는 bindi
 9. Spot → channel request, Spot → channel send/send를 구현한다.
 10. `spot-no-await-echo`, `spot-async-request-echo`, `spot-yield-request-echo`를 구현한다.
 11. `spot-yield-contention`으로 단일 Spot RID 집중 부하를 구현한다.
-12. `run_perf.sh`가 모든 표준 시나리오를 실행하고 결과를 한 디렉토리에 모으게 한다.
-13. Codex 에이전트로 문서, scenario 이름, result schema, public API 사용 여부를 리뷰한다.
-14. 남은 이슈가 없을 때까지 수정과 리뷰를 반복하고, 마지막 리뷰가 `LOOP CLEAN`이면 완료로 본다.
+12. `spot-worker-offload-async-echo`, `spot-worker-offload-yield-echo`를 구현한다. `RemoteEcho`
+    서버 없이 `SpotServer`만으로 `runWorker(...)` 완료를 기다리는 경로이므로 10~11단계와 독립적으로
+    진행할 수 있다.
+13. `L13` actor client 공개 API가 있는 언어는 `actor-no-bind-request-echo`, `actor-no-bind-send-send-echo`를
+    구현한다. 없는 언어는 이 단계를 건너뛰고 14단계로 진행한다.
+14. `pubsub-fanout-echo`를 구현한다. `Publisher`/`Subscriber` role과 `--subscriber-count` 분할을
+    먼저 만들고, warmup의 "모든 subscriber 최초 수신 확인" barrier부터 맞춘다.
+15. `run_perf.sh`가 모든 표준 시나리오를 실행하고 결과를 한 디렉토리에 모으게 한다.
+16. Codex 에이전트로 문서, scenario 이름, result schema, public API 사용 여부를 리뷰한다.
+17. 남은 이슈가 없을 때까지 수정과 리뷰를 반복하고, 마지막 리뷰가 `LOOP CLEAN`이면 완료로 본다.
 
 ## 19. 회귀와 비교 기준
 
@@ -1139,6 +1341,8 @@ runner를 다른 host 또는 여러 host에 분산한다.
 - readiness를 고정 sleep으로만 판단하지 않는다.
 - request 방식과 send/send 방식을 in-flight 제한 없이 비교하지 않는다.
 - `Async`와 `Yield`를 서로 다른 remote echo server, payload, in-flight 조건에서 비교하지 않는다.
+- worker offload `Async`와 `Yield`를 서로 다른 `--worker-task-millis`나 `--worker-pool-size`
+  조건에서 비교하지 않는다.
 - `Yield` 성능 시나리오에서 request 전후 공유 mutable state를 이어서 판단하는 업무 로직을 넣지 않는다.
 - payload 검증을 생략하지 않는다. 잘못된 echo가 빠르게 성공한 것처럼 보이면 결과가 무의미하다.
 - 실패한 메시지를 latency percentile에 섞지 않는다. 실패는 별도 error metric으로 기록한다.
@@ -1148,11 +1352,16 @@ runner를 다른 host 또는 여러 host에 분산한다.
 
 언어별 perf 구현은 아래 조건을 만족해야 완료로 본다.
 
-- 표준 scenario 이름을 모두 지원한다.
+- 표준 scenario 이름을 모두 지원한다. 단 `actor-no-bind-request-echo`/`actor-no-bind-send-send-echo`는
+  해당 언어에 `L13` actor client 공개 API가 있을 때만 요구한다.
 - 각 scenario가 `1 KiB`와 `4 KiB` payload, 기본 connection 수를 따른다.
 - client/server metrics가 공통 result schema로 저장된다.
 - `request`와 `send-send`가 같은 in-flight 기준으로 실행된다.
 - Spot `Async`와 `Yield` 시나리오가 같은 remote echo server, payload, in-flight 기준으로 실행된다.
+- Spot worker offload `Async`와 `Yield` 시나리오가 같은 `--worker-task-millis`, `--worker-pool-size`,
+  payload, in-flight 기준으로 실행된다.
+- `pubsub-fanout-echo`는 모든 `Subscriber` process의 metrics가 개별 파일로 수집되고, `fanout.deliveryRatio`가
+  결과에 기록된다.
 - server metrics endpoint가 warmup 후 reset되고 measured phase 후 snapshot된다.
 - 실패와 timeout이 0이 아니면 summary에 원인별 count가 나온다.
 - `run_perf.sh`가 모든 표준 시나리오를 실행할 수 있다.

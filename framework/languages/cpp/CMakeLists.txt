@@ -1549,6 +1549,44 @@ if(ZLINK_FRAMEWORK_CPP_BUILD_SAMPLES)
     zlink::stream_connector
     zlink::stream_e2e_client)
   add_zlink_framework_sample(
+    sample_cpp_framework_gamequest_game_api
+    samples/GameQuest/Server/GameApi/main.cpp
+    "framework-sample-gamequest;framework-sample-api"
+    zlink::framework
+    zlink::framework_locations_redis
+    zlink::http_client
+    zlink::stream_connector)
+  add_zlink_framework_sample(
+    sample_cpp_framework_gamequest_quest_mission
+    samples/GameQuest/Server/QuestMission/main.cpp
+    "framework-sample-gamequest;framework-sample-mission"
+    zlink::framework
+    zlink::framework_locations_redis)
+  add_executable(sample_cpp_framework_gamequest_client
+    samples/GameQuest/Client/main.cpp)
+  target_link_libraries(sample_cpp_framework_gamequest_client PRIVATE
+    zlink::framework
+    zlink::http_client
+    zlink::stream_connector
+    zlink::stream_e2e_client)
+  add_zlink_framework_sample(
+    sample_cpp_framework_shoppingmall_commerce_api
+    samples/ShoppingMall/Server/CommerceApi/main.cpp
+    "framework-sample-shoppingmall;framework-sample-api"
+    zlink::framework
+    zlink::framework_locations_redis
+    zlink::http_client)
+  add_zlink_framework_sample(
+    sample_cpp_framework_shoppingmall_order_workflow
+    samples/ShoppingMall/Server/OrderWorkflow/main.cpp
+    "framework-sample-shoppingmall;framework-sample-workflow"
+    zlink::framework
+    zlink::framework_locations_redis)
+  add_executable(sample_cpp_framework_shoppingmall_client
+    samples/ShoppingMall/Client/main.cpp)
+  target_link_libraries(sample_cpp_framework_shoppingmall_client PRIVATE
+    zlink::http_client)
+  add_zlink_framework_sample(
     sample_cpp_framework_supportchat_api
     samples/SupportChat/Server/Api/main.cpp
     "framework-sample-supportchat;framework-sample-api"
@@ -1603,6 +1641,14 @@ if(ZLINK_FRAMEWORK_CPP_BUILD_SAMPLES)
     DeliveryDispatch
     "framework-sample-deliverydispatch;framework-sample-api;framework-sample-courier;framework-sample-dispatch;framework-sample-probe;framework-sample-registry;framework-sample-session;framework-sample-tracking"
     420)
+  add_zlink_framework_sample_runner(
+    GameQuest
+    "framework-sample-gamequest;framework-sample-api;framework-sample-mission"
+    300)
+  add_zlink_framework_sample_runner(
+    ShoppingMall
+    "framework-sample-shoppingmall;framework-sample-api;framework-sample-workflow"
+    300)
   add_zlink_framework_sample_runner(
     SupportChat
     "framework-sample-supportchat;framework-sample-api;framework-sample-probe;framework-sample-session;framework-sample-support"

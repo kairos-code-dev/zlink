@@ -1,0 +1,344 @@
+/* SPDX-License-Identifier: MPL-2.0 */
+
+#include "../Configuration/location_store.hpp"
+#include "../Configuration/sample_names.hpp"
+#include "../Configuration/sample_topology.hpp"
+#include "../common_codecs.hpp"
+#include "../../sample_log_dir.hpp"
+
+#include <zlink/framework.hpp>
+
+#include <algorithm>
+#include <chrono>
+#include <ctime>
+#include <iostream>
+#include <map>
+#include <mutex>
+#include <optional>
+#include <string>
+#include <vector>
+
+namespace zlink::samples::gamequest
+{
+
+using namespace framework;
+
+class game_api_store_t
+{
+  public:
+    void bind (const std::string &player_id, const std::string &api_name)
+    {
+        const std::lock_guard lock (_mutex);
+        _bindings[player_id] = api_name;
+    }
+
+    void unbind (const std::string &player_id)
+    {
+        const std::lock_guard lock (_mutex);
+        _bindings.erase (player_id);
+    }
+
+    void merge_projection (const std::string &player_id,
+                           const std::vector<quest_progress_t> &projection)
+    {
+        const std::lock_guard lock (_mutex);
+        _projections[player_id] = projection;
+    }
+
+    std::vector<quest_progress_t> projection (const std::string &player_id) const
+    {
+        const std::lock_guard lock (_mutex);
+        const auto found = _projections.find (player_id);
+        return found == _projections.end () ? std::vector<quest_progress_t>{} : found->second;
+    }
+
+    void record_event (const gameplay_event_envelope_t &event)
+    {
+        const std::lock_guard lock (_mutex);
+        _events.push_back (event);
+    }
+
+    server_assertion_res_t assert_state () const
+    {
+        const std::lock_guard lock (_mutex);
+        std::vector<std::string> evidence;
+        bool alice_first_hunt = false;
+        bool alice_auction = false;
+        bool bob_herb = false;
+        for (const auto &[player_id, projection] : _projections) {
+            for (const auto &progress : projection) {
+                evidence.push_back (player_id + ":" + progress.quest_id + ":"
+                                    + progress.status + ":"
+                                    + std::to_string (progress.current_count) + "/"
+                                    + std::to_string (progress.required_count));
+                alice_first_hunt =
+                  alice_first_hunt
+                  || (progress.player_id == "player-alice"
+                      && progress.quest_id == quest_ids_t::first_hunt
+                      && progress.status == quest_status_t::reward_granted);
+                alice_auction = alice_auction
+                                || (progress.player_id == "player-alice"
+                                    && progress.quest_id == quest_ids_t::open_auction
+                                    && progress.status == quest_status_t::reward_granted);
+                bob_herb = bob_herb || (progress.player_id == "player-bob"
+                                        && progress.quest_id == quest_ids_t::herb_gathering
+                                        && progress.status == quest_status_t::reward_granted);
+            }
+        }
+        for (const auto &[player, api] : _bindings) {
+            evidence.push_back ("binding:" + player + ":" + api);
+        }
+        for (const auto &event : _events) {
+            evidence.push_back ("event:" + event.player_id + ":" + event.event_type + ":"
+                                + event.idempotency_key);
+        }
+        return {alice_first_hunt || alice_auction || bob_herb, evidence};
+    }
+
+  private:
+    mutable std::mutex _mutex;
+    std::map<std::string, std::string> _bindings;
+    std::map<std::string, std::vector<quest_progress_t>> _projections;
+    std::vector<gameplay_event_envelope_t> _events;
+};
+
+class gamequest_session_t final : public packet_stream_session_t
+{
+  public:
+    using dependency_types = dependency_list_t<route_client_t, game_api_store_t, sample_topology_t>;
+
+    gamequest_session_t (route_client_t &routes,
+                         game_api_store_t &store,
+                         sample_topology_t &topology) :
+        _routes (routes), _store (store), _topology (topology)
+    {
+    }
+
+    task_t<void> on_connected (stream_t &) override { co_return; }
+
+    task_t<void> on_disconnected (stream_t &) override
+    {
+        if (_player_id) {
+            _store.unbind (*_player_id);
+            _player_id.reset ();
+        }
+        co_return;
+    }
+
+    task_t<void> on_error (stream_t &, const stream_error_t &) override { co_return; }
+
+    task_t<void> on_packet (stream_t &stream,
+                            const stream_dispatch_context_t &dispatch,
+                            const zlink::message_t &payload) override
+    {
+        const auto packet = std::string (dispatch.packet_name ());
+        if (packet == join_session_req_t::packet_name) {
+            const auto request = payload.parse_json<join_session_req_t> ();
+            _player_id = request.player_id;
+            _store.bind (request.player_id, _topology.api_name);
+            stream.reply_packet (zlink::message_t::from_json (
+                                   join_session_res_t{_store.projection (request.player_id)}))
+              .packet_name (join_session_res_t::packet_name)
+              .submit ();
+            co_return;
+        }
+        if (packet == get_quest_progress_req_t::packet_name) {
+            const auto request = payload.parse_json<get_quest_progress_req_t> ();
+            auto synced = co_await sync_projection (request.player_id);
+            _store.merge_projection (request.player_id, synced.updated_quests);
+            stream.reply_packet (zlink::message_t::from_json (
+                                   get_quest_progress_res_t{synced.updated_quests}))
+              .packet_name (get_quest_progress_res_t::packet_name)
+              .submit ();
+            co_return;
+        }
+        if (packet == sync_quest_progress_req_t::packet_name) {
+            const auto request = payload.parse_json<sync_quest_progress_req_t> ();
+            auto synced = co_await sync_projection (request.player_id);
+            _store.merge_projection (request.player_id, synced.updated_quests);
+            stream.reply_packet (zlink::message_t::from_json (synced))
+              .packet_name (sync_quest_progress_res_t::packet_name)
+              .submit ();
+            co_return;
+        }
+        if (packet == kill_monster_req_t::packet_name) {
+            const auto request = payload.parse_json<kill_monster_req_t> ();
+            const auto event = event_for (request.player_id, request.idempotency_key,
+                                          "KillMonster", request.monster_id, 1);
+            auto applied = co_await apply_event (stream, event);
+            stream.reply_packet (zlink::message_t::from_json (
+                                   kill_monster_res_t{event.event_id}))
+              .packet_name (kill_monster_res_t::packet_name)
+              .submit ();
+            (void) applied;
+            co_return;
+        }
+        if (packet == collect_item_req_t::packet_name) {
+            const auto request = payload.parse_json<collect_item_req_t> ();
+            const auto event = event_for (request.player_id, request.idempotency_key,
+                                          "CollectItem", request.item_id, request.count);
+            auto applied = co_await apply_event (stream, event);
+            stream.reply_packet (zlink::message_t::from_json (
+                                   collect_item_res_t{event.event_id}))
+              .packet_name (collect_item_res_t::packet_name)
+              .submit ();
+            (void) applied;
+            co_return;
+        }
+        if (packet == complete_mission_req_t::packet_name) {
+            const auto request = payload.parse_json<complete_mission_req_t> ();
+            const auto event = event_for (request.player_id, request.idempotency_key,
+                                          "CompleteMission", request.mission_id, 1);
+            auto applied = co_await apply_event (stream, event);
+            stream.reply_packet (zlink::message_t::from_json (
+                                   complete_mission_res_t{event.event_id}))
+              .packet_name (complete_mission_res_t::packet_name)
+              .submit ();
+            (void) applied;
+            co_return;
+        }
+        if (packet == enter_area_req_t::packet_name) {
+            const auto request = payload.parse_json<enter_area_req_t> ();
+            const auto event = event_for (request.player_id, request.idempotency_key,
+                                          "EnterArea", request.area_id, 1);
+            auto applied = co_await apply_event (stream, event);
+            stream.reply_packet (zlink::message_t::from_json (
+                                   enter_area_res_t{event.event_id}))
+              .packet_name (enter_area_res_t::packet_name)
+              .submit ();
+            (void) applied;
+            co_return;
+        }
+        if (packet == unlock_feature_req_t::packet_name) {
+            const auto request = payload.parse_json<unlock_feature_req_t> ();
+            const auto event = event_for (request.player_id, request.idempotency_key,
+                                          "UnlockFeature", request.feature_id, 1);
+            auto applied = co_await apply_event (stream, event);
+            stream.reply_packet (zlink::message_t::from_json (
+                                   unlock_feature_res_t{event.event_id}))
+              .packet_name (unlock_feature_res_t::packet_name)
+              .submit ();
+            (void) applied;
+            co_return;
+        }
+        throw framework_exception_t (framework_error_kind_t::request_failed,
+                                     "Unsupported GameQuest packet: " + packet);
+    }
+
+  private:
+    gameplay_event_envelope_t event_for (std::string player_id,
+                                         std::string idempotency_key,
+                                         std::string event_type,
+                                         std::string value,
+                                         int count) const
+    {
+        return {player_id + "-" + idempotency_key,
+                std::move (player_id),
+                std::move (idempotency_key),
+                std::move (event_type),
+                std::move (value),
+                count,
+                _topology.api_name,
+                static_cast<long long> (std::time (nullptr)) * 1000LL};
+    }
+
+    task_t<sync_quest_progress_res_t> sync_projection (const std::string &player_id)
+    {
+        auto synced =
+          co_await _routes.request_to_node (sample_names_t::quest_owner_route_channel,
+                                            owner_route_rid (player_id),
+                                            sync_quest_progress_req_t{player_id})
+            .packet_name (sync_quest_progress_req_t::packet_name)
+            .template async<sync_quest_progress_res_t> ();
+        co_return synced;
+    }
+
+    task_t<apply_gameplay_event_res_t> apply_event (stream_t &stream,
+                                                    const gameplay_event_envelope_t &event)
+    {
+        auto applied =
+          co_await _routes.request_to_node (sample_names_t::quest_owner_route_channel,
+                                            owner_route_rid (event.player_id),
+                                            apply_gameplay_event_req_t{event})
+            .packet_name (apply_gameplay_event_req_t::packet_name)
+            .template async<apply_gameplay_event_res_t> ();
+        _store.record_event (event);
+        _store.merge_projection (event.player_id, applied.projection);
+        std::cerr << "gamequest api event routed player=" << event.player_id
+                  << " owner=" << owner_index (event.player_id)
+                  << " type=" << event.event_type << "\n";
+        if (_player_id && *_player_id == event.player_id && !applied.projection.empty ()) {
+            const auto progress = applied.projection.back ();
+            if (!applied.completed_quest_id.empty ()) {
+                stream.write_packet (zlink::message_t::from_json (
+                                       quest_completed_notify_t{
+                                         event.player_id, stream.session_id (), progress, true}))
+                  .packet_name (quest_completed_notify_t::packet_name)
+                  .submit ();
+            }
+            else {
+                stream.write_packet (zlink::message_t::from_json (
+                                       quest_progress_notify_t{
+                                         event.player_id, stream.session_id (), progress}))
+                  .packet_name (quest_progress_notify_t::packet_name)
+                  .submit ();
+            }
+        }
+        co_return applied;
+    }
+
+    route_client_t &_routes;
+    game_api_store_t &_store;
+    sample_topology_t &_topology;
+    std::optional<std::string> _player_id;
+};
+
+class server_assertion_http_handler_t
+{
+  public:
+    using dependency_types = dependency_list_t<game_api_store_t>;
+    using request_type = server_assertion_req_t;
+    using reply_type = server_assertion_res_t;
+    static constexpr const char *topic_name = server_assertion_req_t::packet_name;
+
+    explicit server_assertion_http_handler_t (game_api_store_t &store) : _store (store) {}
+
+    server_assertion_res_t handle (const server_assertion_req_t &)
+    {
+        return _store.assert_state ();
+    }
+
+  private:
+    game_api_store_t &_store;
+};
+
+} // namespace zlink::samples::gamequest
+
+int main (int argc, char **argv)
+{
+    using namespace zlink::framework;
+    using namespace zlink::samples::gamequest;
+
+    const sample_topology_t topology;
+    auto app = app_t::create ();
+    app.add_zlink_framework ([&] (zlink_framework_options_t &options) {
+        options.configure_dispatch ()
+          .message_flow (message_flow_log_mode_t::key_transitions)
+          .trace_log_file (gamequest_flow_log_path (topology.api_name))
+          .trace_label (topology.api_name);
+        options.services ().add_singleton<sample_topology_t> ();
+        options.services ().add_singleton<game_api_store_t> ();
+        add_gamequest_json_codecs (options.codecs ());
+        add_gamequest_location_store (options, topology);
+        options.add_route_mesh_channel (sample_names_t::quest_owner_route_channel)
+          .enable_client ();
+        options.add_stream_node (sample_names_t::stream_node)
+          .bind (topology.selected_api_stream_endpoint ())
+          .register_session<gamequest_session_t> ();
+        options.http ()
+          .listen (topology.selected_api_http_url ())
+          .map_health ("/health")
+          .map_post<server_assertion_http_handler_t> ("/self-check/assert");
+    });
+    return app.run (argc, argv);
+}
